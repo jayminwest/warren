@@ -31,6 +31,14 @@ record_id="${WARREN_STUB_MULCH_ID:-mx-stub-$$}"
 seed_id="${WARREN_STUB_SEED_ID:-stub-seed-1}"
 sleep_ms="${WARREN_STUB_SLEEP_MS:-0}"
 
+# Prompt-driven sleep override — burrow's [env] block can't pin per-run
+# values, but the prompt arg always reaches us verbatim. Scenarios that
+# need a long-running agent (steer, cancel, restart-recovery) embed
+# `[sleep_ms=NNN]` anywhere in the prompt and we honour it.
+if [[ "${1:-}" =~ \[sleep_ms=([0-9]+)\] ]]; then
+  sleep_ms="${BASH_REMATCH[1]}"
+fi
+
 ts="$(date -u +%Y-%m-%dT%H:%M:%S.000Z)"
 
 # Ensure target directories exist (warren may not have seeded them if

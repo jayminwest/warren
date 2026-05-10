@@ -8,16 +8,26 @@
 # Operator workflow:
 #   fly launch                  # creates the app from this fly.toml
 #   fly volumes create warren_data --size 50 --region sjc
+#   BURROW_TOKEN=$(openssl rand -hex 32)
 #   fly secrets set \
 #       WARREN_API_TOKEN=$(openssl rand -hex 32) \
+#       BURROW_API_TOKEN=$BURROW_TOKEN \
+#       WARREN_BURROW_TOKEN=$BURROW_TOKEN \
 #       CANOPY_REPO_URL=https://github.com/<you>/agents.git \
 #       ANTHROPIC_API_KEY=... \
 #       GITHUB_TOKEN=...
 #   fly deploy
 #
+# BURROW_API_TOKEN (read by `burrow serve`) and WARREN_BURROW_TOKEN
+# (read by warren's burrow-client) MUST be set to the same value —
+# warren talks to burrow over the unix socket with bearer auth, and
+# a missing/mismatched pair surfaces as 401 "missing Authorization
+# header" on every dispatch. WARREN_API_TOKEN is the browser-facing
+# token (paste it into the UI's login screen).
+#
 # After deploy, the warren UI is reachable at https://<app>.fly.dev.
 
-app = "warren"
+app = "warren-deployed"
 primary_region = "sjc"
 
 [build]
