@@ -175,8 +175,14 @@ function spawnBurrow(
 	env: Record<string, string>,
 	burrowDataDir: string,
 ): SpawnedProc {
+	// Acceptance burrow needs the declarative `stub-shell` agent registered
+	// in its runtime registry — `burrow serve` doesn't auto-register agents
+	// from a project's burrow.toml, so we launch a tiny wrapper that does
+	// it programmatically before delegating to runServeCommand. Production
+	// warren talks to plain `burrow serve` (the supervisor in src/supervisor/main.ts).
+	const wrapperEntry = new URL("./burrow-with-stub.ts", import.meta.url).pathname;
 	const proc = Bun.spawn({
-		cmd: ["burrow", "serve", "--socket", socketPath, "--no-auth"],
+		cmd: ["bun", "run", wrapperEntry, "--socket", socketPath, "--no-auth"],
 		env: { ...env, BURROW_DATA_DIR: burrowDataDir },
 		stdin: "ignore",
 		stdout: process.env.WARREN_ACCEPTANCE_BURROW_STDOUT === "1" ? "inherit" : "ignore",
