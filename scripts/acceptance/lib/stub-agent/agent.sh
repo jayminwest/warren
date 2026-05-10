@@ -65,11 +65,20 @@ echo "stub-agent: wrote seed close id=${seed_id} to ${seeds_path}"
 
 # Optional sleep so scenarios that need a long-running agent (event
 # stream replay, supervisor restart) can drive the kill before exit.
+# Heartbeats are emitted once per second so warren's bridge has a steady
+# source of new events during the kill window — without them, the bash
+# script would emit its three setup lines, then sleep silently, then
+# print "done" all at once, and a restart-recovery scenario couldn't
+# tell whether warren actually re-bridged or just replayed cached
+# history.
 if [ "${sleep_ms}" -gt 0 ]; then
   # bash sleep is integer seconds; round up.
   secs=$(( (sleep_ms + 999) / 1000 ))
   echo "stub-agent: sleeping ${secs}s before exit"
-  sleep "${secs}"
+  for ((i = 1; i <= secs; i++)); do
+    sleep 1
+    echo "stub-agent: heartbeat ${i}/${secs}"
+  done
 fi
 
 echo "stub-agent: done"

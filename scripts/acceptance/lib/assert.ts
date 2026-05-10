@@ -31,6 +31,23 @@ export interface ScenarioCtx {
 	};
 	readonly logger: ScenarioLogger;
 	readonly tmp: string;
+	/**
+	 * Lifecycle handle for scenarios that need to drive process control
+	 * (restart-recovery, supervisor restart-budget). Populated by the
+	 * harness; absent in container mode until the compose launcher lands.
+	 * Scenarios that need it should declare in-proc-only and assert
+	 * presence — calling without checking is a hard error.
+	 */
+	readonly lifecycle?: ScenarioLifecycle;
+}
+
+export interface ScenarioLifecycle {
+	/** Force-stop warren; burrow keeps running. Bridge connections drop. */
+	killWarren(): Promise<void>;
+	/** Re-spawn warren after killWarren and wait for /healthz. */
+	restartWarren(): Promise<void>;
+	/** Force-stop burrow (for supervisor restart-budget scenarios). */
+	killBurrow(): Promise<void>;
 }
 
 export interface ScenarioLogger {

@@ -163,6 +163,15 @@ async function buildSampleProject(repoPath: string): Promise<void> {
 		`network = "restricted"`,
 		`allowed_domains = ["github.com", "registry.npmjs.org"]`,
 		"",
+		// Forward the four WARREN_STUB_* knobs the agent.sh script reads
+		// from the harness env into the sandbox. burrow's resolveEnv()
+		// silently drops keys missing from the host env, so scenarios
+		// that don't set them (03, 04) are unaffected; scenarios 05/06
+		// rely on WARREN_STUB_SLEEP_MS to keep the agent alive across the
+		// kill window.
+		"[env]",
+		`optional = ["WARREN_STUB_SLEEP_MS", "WARREN_STUB_MULCH_DOMAIN", "WARREN_STUB_MULCH_ID", "WARREN_STUB_SEED_ID"]`,
+		"",
 		"[[agents]]",
 		`id = "${STUB_AGENT_NAME}"`,
 		`displayName = "Stub Shell (acceptance)"`,
