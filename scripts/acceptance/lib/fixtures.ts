@@ -192,6 +192,15 @@ async function buildSampleProject(repoPath: string): Promise<void> {
 	await mkdir(dirname(targetScript), { recursive: true });
 	await copyFile(harnessStubScript, targetScript);
 
+	// Pi-shaped stub agent script (warren-17a4) — emits pi RPC JSONL with
+	// `turn_end` usage so scenario 16 can assert non-null cost/token
+	// columns after the run completes. Registered as the `pi` runtime in
+	// burrow-with-stub.ts with a custom AgentRuntime whose parseEvents is
+	// burrow's parsePiEvents.
+	const harnessPiScript = new URL("./stub-agent/pi-agent.sh", import.meta.url);
+	const targetPiScript = join(repoPath, "tools", "pi-stub-agent.sh");
+	await copyFile(harnessPiScript, targetPiScript);
+
 	// Seed the project's .seeds/issues.jsonl with one open seed the stub
 	// agent will close — gives reap's seeds-close-mirror sub-step
 	// something to mirror.
@@ -216,6 +225,7 @@ async function buildSampleProject(repoPath: string): Promise<void> {
 	await writeFile(join(repoPath, "README.md"), readme);
 
 	await runIn(repoPath, ["chmod", "+x", "tools/stub-agent.sh"], env);
+	await runIn(repoPath, ["chmod", "+x", "tools/pi-stub-agent.sh"], env);
 	await runIn(repoPath, ["git", "add", "."], env);
 	await runIn(repoPath, ["git", "commit", "-m", "init: sample project fixture"], env);
 }

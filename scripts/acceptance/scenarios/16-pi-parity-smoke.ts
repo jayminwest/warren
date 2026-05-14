@@ -25,13 +25,22 @@
  *
  * Why "at least one event" instead of "agent_start specifically": burrow's
  * upstream piRuntime (--mode rpc) is the cross-repo step warren-0e06,
- * not yet shipped in @os-eco/burrow-cli 0.2.7. Until it lands, the
- * acceptance harness registers a declarative pi agent in burrow-with-stub.ts
- * that reuses the stub-shell script — same dispatch wiring, same events
- * table, generic 'text' event kind (raw-text parser). Once piRuntime ships,
- * this scenario can tighten the assertion to kind='agent_start'. The
- * parity claim of this step is "warren can dispatch pi end-to-end through
- * burrow" — event kind specificity is a follow-on step (warren-70af).
+ * not yet shipped in @os-eco/burrow-cli 0.2.12. Until it lands, the
+ * acceptance harness registers a CUSTOM AgentRuntime for the `pi` id
+ * (burrow-with-stub.ts) that combines burrow's declarative spawn
+ * machinery with its real `parsePiEvents` parser — so the pi-shaped
+ * JSONL emitted by `tools/pi-stub-agent.sh` lands as `state_change`
+ * events whose payload preserves the original pi envelope verbatim.
+ * Once piRuntime ships, this scenario can tighten the assertion to
+ * kind='agent_start' (follow-on warren-70af).
+ *
+ * warren-17a4 extension: this scenario also asserts that the run's
+ * cost_usd / tokens_input / tokens_output columns are non-null after
+ * the run completes. The pi stub emits a `turn_end` envelope carrying
+ * `message.usage.cost.total` + token counts and an `agent_end` envelope
+ * — warren's bridge (src/runs/stream.ts) accumulates the usage and
+ * persists via `RunsRepo.attachStats`. End-to-end proof that pi cost
+ * tracking works through the public HTTP surface, not just unit tests.
  */
 
 import {
@@ -72,6 +81,11 @@ interface RunRow {
 	readonly state: string;
 	readonly prompt: string;
 	readonly trigger: string;
+	readonly costUsd?: number | null;
+	readonly tokensInput?: number | null;
+	readonly tokensOutput?: number | null;
+	readonly tokensCacheRead?: number | null;
+	readonly tokensCacheWrite?: number | null;
 }
 
 interface CreateRunResponse {
@@ -91,6 +105,7 @@ interface EventEnvelope {
 
 const RUN_ID_PATTERN = /^run_[0-9a-hjkmnpqrstvwxyz]{12}$/;
 const FIRST_EVENT_TIMEOUT_MS = 15_000;
+const PI_USAGE_TIMEOUT_MS = 15_000;
 
 export const scenario: Scenario = {
 	id: "16",
@@ -162,8 +177,35 @@ export const scenario: Scenario = {
 			// a non-follow GET against the run's events endpoint is the
 			// durable signal we want.
 			await waitForFirstEvent(http, run.id, FIRST_EVENT_TIMEOUT_MS);
+
+			// 5. Wait for pi `turn_end` accumulation to land on the run row
+			// (warren-17a4). The acceptance pi runtime (burrow-with-stub.ts)
+			// dispatches `tools/pi-stub-agent.sh`, which emits a pi RPC
+			// `turn_end` envelope with `message.usage.cost.total=0.000666`
+			// plus token counts, followed by `agent_end`. Warren's bridge
+			// (src/runs/stream.ts) accumulates `turn_end` usage and calls
+			// `RunsRepo.attachStats` on `agent_end` — so by the time the
+			// run reaches a terminal state, cost_usd / tokens_input /
+			// tokens_output MUST be non-null. This is the assertion the
+			// seed was tracking: pi cost wiring is end-to-end observable
+			// via the warren HTTP surface, not just in unit tests.
+			const final = await waitForPiUsage(http, run.id, PI_USAGE_TIMEOUT_MS);
+			assertTrue(
+				typeof final.costUsd === "number" && final.costUsd > 0,
+				`run.cost_usd should be > 0 after pi turn_end; got ${JSON.stringify(final.costUsd)}`,
+			);
+			assertTrue(
+				typeof final.tokensInput === "number" && final.tokensInput > 0,
+				`run.tokens_input should be > 0 after pi turn_end; got ${JSON.stringify(final.tokensInput)}`,
+			);
+			assertTrue(
+				typeof final.tokensOutput === "number" && final.tokensOutput > 0,
+				`run.tokens_output should be > 0 after pi turn_end; got ${JSON.stringify(final.tokensOutput)}`,
+			);
 		} finally {
-			// 5. Cancel — cancel is idempotent (mx-fadaa2), best-effort.
+			// 6. Cancel — cancel is idempotent (mx-fadaa2), best-effort. The
+			// pi stub usually exits on its own before we get here, but the
+			// teardown safety net keeps us aligned with scenario 04.
 			await safelyCancel(http, run.id, ctx);
 		}
 	},
@@ -195,6 +237,34 @@ async function waitForFirstEvent(
 	}
 	throw new AcceptanceError(
 		`no events landed for run ${runId} within ${timeoutMs}ms — bridge or dispatch wiring is broken`,
+	);
+}
+
+/**
+ * Poll GET /runs/:id until pi usage columns are populated, or throw on
+ * timeout. Both attachStats fire-points (isPiAgentEnd + terminal
+ * detection) target the same row, so the first non-null read wins.
+ */
+async function waitForPiUsage(http: WarrenHttp, runId: string, timeoutMs: number): Promise<RunRow> {
+	const deadline = Date.now() + timeoutMs;
+	let last: RunRow | undefined;
+	while (Date.now() < deadline) {
+		const row = await http.expectJson<RunRow>("GET", `/runs/${encodeURIComponent(runId)}`, 200);
+		last = row;
+		if (
+			typeof row.costUsd === "number" &&
+			typeof row.tokensInput === "number" &&
+			typeof row.tokensOutput === "number"
+		) {
+			return row;
+		}
+		await sleep(150);
+	}
+	throw new AcceptanceError(
+		`pi usage columns stayed null on run ${runId} after ${timeoutMs}ms ` +
+			`(state=${JSON.stringify(last?.state)} costUsd=${JSON.stringify(last?.costUsd)} ` +
+			`tokensInput=${JSON.stringify(last?.tokensInput)} tokensOutput=${JSON.stringify(last?.tokensOutput)}) ` +
+			"— warren's bridge did not accumulate+persist the pi turn_end usage envelope",
 	);
 }
 

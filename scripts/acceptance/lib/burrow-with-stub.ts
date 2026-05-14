@@ -28,6 +28,8 @@
  */
 import { Client, type DispatchSpawnFn, loadAgentConfig } from "@os-eco/burrow-cli";
 import { runServeCommand } from "@os-eco/burrow-cli/src/cli/commands/serve.ts";
+import { parsePiEvents } from "@os-eco/burrow-cli/src/runtime/parsers/pi.ts";
+import type { AgentRuntime } from "@os-eco/burrow-cli/src/runtime/runtime.ts";
 
 interface ParsedArgs {
 	socket?: string;
@@ -131,19 +133,48 @@ const STUB_AGENT_CONFIG = {
 // runtime warren ships (alongside claude-code + sapling). Burrow's piRuntime
 // is the cross-repo half of pl-4374 (warren-0e06) and is not yet shipped in
 // @os-eco/burrow-cli; until it lands, the acceptance harness registers a
-// declarative pi agent that reuses the stub-shell script so scenario 16 has
-// something to dispatch through. Same id ('pi') warren forwards as the burrow
-// runtime id at burrow.up time (mx-7352f4).
+// custom AgentRuntime for the `pi` id (warren-17a4):
+//
+//   - dispatch via the standard declarative spawn renderer pointing at
+//     `tools/pi-stub-agent.sh` (emits pi RPC JSONL with `turn_end` usage)
+//   - parseEvents replaced with burrow's real `parsePiEvents` so the
+//     stub's lines flow through warren's bridge as `state_change`
+//     events whose payload carries the pi envelope verbatim
+//
+// This bypasses burrow's declarative `outputFormat` enum (which only
+// supports raw-text / stream-json / jsonl-claude — see burrow
+// src/schemas/agent-config.ts) without widening the cross-repo surface.
+// Same id ('pi') warren forwards as the burrow runtime id at burrow.up
+// time (mx-7352f4).
 const PI_AGENT_CONFIG = {
 	id: "pi",
 	displayName: "Pi Coding Agent (acceptance stub)",
 	command: "bash",
-	args: ["./tools/stub-agent.sh", "{{prompt}}"],
+	args: ["./tools/pi-stub-agent.sh", "{{prompt}}"],
 	promptDelivery: "arg" as const,
+	// outputFormat must satisfy the AgentConfig schema for loadAgentConfig;
+	// we override parseEvents below before registering, so the parser
+	// chosen here (raw-text) is never invoked.
 	outputFormat: "raw-text" as const,
 	supportsResume: false,
 	inboxDelivery: "none" as const,
 };
+
+/**
+ * Build the custom pi runtime: declarative spawn machinery + pi parser.
+ * loadAgentConfig validates+materializes an AgentRuntime; we shallow-copy
+ * it and replace parseEvents with parsePiEvents. Keeping the rest of the
+ * runtime intact (buildSpawnCommand, prepareWorkspace, installCheck, etc.)
+ * means the dispatch path is identical to the declarative one — only
+ * the event taxonomy changes.
+ */
+function buildPiAcceptanceRuntime(): AgentRuntime {
+	const base = loadAgentConfig(PI_AGENT_CONFIG);
+	return {
+		...base,
+		parseEvents: (line: string) => parsePiEvents(line),
+	};
+}
 
 async function main(): Promise<number> {
 	const args = parseArgs(process.argv.slice(2));
@@ -159,8 +190,9 @@ async function main(): Promise<number> {
 		// `agentId: "stub-shell"` when warren spawns a run. Identical to what
 		// `burrow.toml [[agents]]` *would* do if upstream auto-registered it.
 		client.agents.register(loadAgentConfig(STUB_AGENT_CONFIG));
-		// Same shape for pi until burrow's piRuntime ships (warren-0e06).
-		client.agents.register(loadAgentConfig(PI_AGENT_CONFIG));
+		// Pi: same declarative dispatch + the real parsePiEvents parser
+		// so `turn_end` usage envelopes reach warren's bridge (warren-17a4).
+		client.agents.register(buildPiAcceptanceRuntime());
 
 		const serveOpts: Parameters<typeof runServeCommand>[0]["options"] = {};
 		if (args.socket !== undefined) serveOpts.socket = args.socket;
