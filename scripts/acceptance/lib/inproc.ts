@@ -60,6 +60,45 @@ export interface BootHandle {
 	killBurrow(): Promise<void>;
 }
 
+/**
+ * Multi-burrow boot for the R-12 scenario (warren-82ea). Spawns N burrow
+ * subprocesses each on its own unix socket inside `tmpRoot/sock/`,
+ * writes a `warren.toml` with a `[[workers]]` row per burrow, and
+ * spawns warren pointed at that toml via `WARREN_CONFIG_FILE`. Auth
+ * runs end-to-end: every burrow is launched WITHOUT `--no-auth` and
+ * WITH `BURROW_API_TOKEN=<shared>`, and warren reads the matching
+ * `WARREN_BURROW_TOKEN` from env (the acceptance #8 contract in
+ * src/server-config/workers.ts).
+ *
+ * Distinct from `bootInProc` to keep the single-burrow happy path
+ * untouched — the existing scenarios 01-17 don't pay for the toml
+ * write, the multi-process spawn loop, or the auth-on burrow.
+ */
+export interface MultiBurrowBootOptions {
+	readonly tmpRoot: string;
+	readonly token: string;
+	readonly canopyRepoUrl: string;
+	/** Per-worker name (becomes the `[[workers]]` row name + the worker dir). */
+	readonly workers: readonly string[];
+	readonly burrowToken: string;
+	readonly gitConfigPath?: string;
+	readonly bind?: { host: string; port: number };
+	readonly extraEnv?: Record<string, string>;
+	readonly serverEntry?: string;
+}
+
+export interface MultiBurrowHandle {
+	readonly warrenUrl: string;
+	readonly token: string;
+	readonly tmpRoot: string;
+	readonly dataDir: string;
+	readonly env: Record<string, string>;
+	readonly workers: ReadonlyArray<{ readonly name: string; readonly socketPath: string }>;
+	stop(): Promise<void>;
+	/** SIGKILL one of the burrow worker subprocesses by name. */
+	killBurrow(name: string): Promise<void>;
+}
+
 const SOCKET_WAIT_TIMEOUT_MS = 5_000;
 const HEALTHZ_WAIT_TIMEOUT_MS = 10_000;
 const POLL_INTERVAL_MS = 100;
@@ -222,6 +261,156 @@ async function stopChild(child: SpawnedProc | undefined): Promise<void> {
 		}
 		await child.exited.catch(() => 0);
 	}
+}
+
+export async function bootInProcMulti(opts: MultiBurrowBootOptions): Promise<MultiBurrowHandle> {
+	if (opts.workers.length === 0) {
+		throw new Error("bootInProcMulti: workers must be non-empty");
+	}
+	const tmpRoot = opts.tmpRoot;
+	const dataDir = join(tmpRoot, "data");
+	const sockDir = join(tmpRoot, "sock");
+	const canopyDir = join(dataDir, "canopy-repo");
+	const projectsDir = join(dataDir, "projects");
+	const dbPath = join(dataDir, "warren.db");
+	const gitConfigPath = opts.gitConfigPath ?? join(tmpRoot, "git-config");
+	const tomlPath = join(tmpRoot, "warren.toml");
+
+	for (const d of [dataDir, sockDir, projectsDir]) {
+		await mkdir(d, { recursive: true });
+	}
+
+	const bind = opts.bind ?? { host: "127.0.0.1", port: pickPort() };
+	const warrenUrl = `http://${bind.host}:${bind.port}`;
+
+	// One data dir per worker so burrows don't trample one another's
+	// sqlite db. Sockets live in a shared sockDir for easy operator-side
+	// inspection.
+	const workerLayout = opts.workers.map((name) => ({
+		name,
+		socketPath: join(sockDir, `${name}.sock`),
+		burrowDataDir: join(tmpRoot, "burrow", name),
+	}));
+	for (const w of workerLayout) {
+		await mkdir(w.burrowDataDir, { recursive: true });
+	}
+
+	// warren.toml: one `[[workers]]` row per burrow. The loader
+	// (src/server-config/load.ts) reads this via WARREN_CONFIG_FILE; the
+	// boot path branches to BurrowClientPool.fromConfig because
+	// workers.length > 0.
+	const tomlLines: string[] = [];
+	for (const w of workerLayout) {
+		tomlLines.push("[[workers]]");
+		tomlLines.push(`name = "${w.name}"`);
+		tomlLines.push(`url = "unix://${w.socketPath}"`);
+		tomlLines.push("");
+	}
+	await writeFile(tomlPath, `${tomlLines.join("\n")}\n`);
+
+	const sharedEnv: Record<string, string> = {
+		...filterEnv(process.env),
+		GIT_CONFIG_GLOBAL: gitConfigPath,
+		GIT_AUTHOR_NAME: "Warren Acceptance",
+		GIT_AUTHOR_EMAIL: "acceptance@warren.invalid",
+		GIT_COMMITTER_NAME: "Warren Acceptance",
+		GIT_COMMITTER_EMAIL: "acceptance@warren.invalid",
+	};
+
+	if (opts.gitConfigPath === undefined) {
+		await writeFile(gitConfigPath, "[init]\n\tdefaultBranch = main\n");
+	}
+
+	const warrenEnv: Record<string, string> = {
+		...sharedEnv,
+		WARREN_API_TOKEN: opts.token,
+		WARREN_BIND_HOST: bind.host,
+		WARREN_BIND_PORT: String(bind.port),
+		WARREN_DB_PATH: dbPath,
+		WARREN_DATA_DIR: dataDir,
+		WARREN_CANOPY_DIR: canopyDir,
+		WARREN_PROJECTS_DIR: projectsDir,
+		WARREN_DISABLE_UI: "1",
+		WARREN_CONFIG_FILE: tomlPath,
+		WARREN_BURROW_TOKEN: opts.burrowToken,
+		// Faster probe so failover assertions don't have to wait the 30s
+		// production default to see a killed worker flip to unreachable.
+		WARREN_WORKER_PROBE_INTERVAL_MS: "500",
+		WARREN_WORKER_PROBE_TIMEOUT_MS: "1000",
+		WARREN_LOG_LEVEL: process.env.WARREN_ACCEPTANCE_LOG_LEVEL ?? "warn",
+		CANOPY_REPO_URL: opts.canopyRepoUrl,
+		...(opts.extraEnv ?? {}),
+	};
+
+	const burrows = new Map<string, SpawnedProc>();
+	for (const w of workerLayout) {
+		const burrowEnv: Record<string, string> = {
+			...sharedEnv,
+			BURROW_DATA_DIR: w.burrowDataDir,
+			BURROW_API_TOKEN: opts.burrowToken,
+		};
+		burrows.set(w.name, spawnBurrowMulti(w.socketPath, burrowEnv));
+	}
+
+	for (const w of workerLayout) {
+		await waitForSocket(w.socketPath, SOCKET_WAIT_TIMEOUT_MS);
+	}
+
+	const warren = spawnWarren(opts.serverEntry ?? "src/server/main.ts", warrenEnv);
+	await waitForHealthz(warrenUrl, HEALTHZ_WAIT_TIMEOUT_MS);
+
+	let warrenLive: SpawnedProc | undefined = warren;
+
+	return {
+		warrenUrl,
+		token: opts.token,
+		tmpRoot,
+		dataDir,
+		env: warrenEnv,
+		workers: workerLayout.map((w) => ({ name: w.name, socketPath: w.socketPath })),
+		stop: async () => {
+			await stopChild(warrenLive);
+			warrenLive = undefined;
+			for (const [, b] of burrows) await stopChild(b);
+			burrows.clear();
+			try {
+				await rm(tmpRoot, { recursive: true, force: true });
+			} catch {
+				// Best-effort cleanup.
+			}
+		},
+		killBurrow: async (name: string) => {
+			const b = burrows.get(name);
+			if (b === undefined) throw new Error(`bootInProcMulti.killBurrow: unknown worker ${name}`);
+			// SIGKILL (not SIGTERM) so the scenario sees the unreachable
+			// path rather than a clean shutdown; mirrors the R-12 promise that
+			// a crashed worker doesn't take the fan-out down with it.
+			try {
+				b.proc.kill("SIGKILL");
+			} catch {
+				// Already dead.
+			}
+			await b.exited.catch(() => 0);
+			burrows.delete(name);
+		},
+	};
+}
+
+function spawnBurrowMulti(socketPath: string, env: Record<string, string>): SpawnedProc {
+	const wrapperEntry = new URL("./burrow-with-stub.ts", import.meta.url).pathname;
+	// Auth ON: no `--no-auth`. Burrow reads BURROW_API_TOKEN from env and
+	// requires every HTTP call to carry `Authorization: Bearer <token>`;
+	// warren's BurrowClientPool.fromConfig threads the matching
+	// WARREN_BURROW_TOKEN. This is the R-12 cross-host shape — no
+	// implicit trust between warren and its workers.
+	const proc = Bun.spawn({
+		cmd: ["bun", "run", wrapperEntry, "--socket", socketPath],
+		env,
+		stdin: "ignore",
+		stdout: process.env.WARREN_ACCEPTANCE_BURROW_STDOUT === "1" ? "inherit" : "ignore",
+		stderr: process.env.WARREN_ACCEPTANCE_BURROW_STDERR === "1" ? "inherit" : "ignore",
+	});
+	return { proc, exited: proc.exited.then((c) => c ?? 0) };
 }
 
 async function waitForSocket(path: string, timeoutMs: number): Promise<void> {

@@ -15,6 +15,7 @@ domains:
   diagnostics: {}
   planning: {}
   triggers: {}
+  acceptance: {}
 governance:
   max_entries: 100
   warn_entries: 150
