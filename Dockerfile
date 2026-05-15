@@ -33,6 +33,15 @@ FROM oven/bun:1.2
 # uidmap provides newuidmap/newgidmap for the userns nesting. ca-certificates
 # is needed by git over https. curl is kept around for first-run diagnostics
 # against the burrow socket (saves having to bun -e fetch() workarounds).
+#
+# nodejs (real Node, not the bun-shim) is required by preview sidecars
+# (warren-a82b): per-run JS dev servers (`pnpm dev`, `npm run dev`, `next`,
+# `vite`, etc.) shell out through node_modules/.bin/* shell stubs whose
+# shebang is `#!/usr/bin/env node`. Until this layer landed, that resolved
+# to a bun-shim symlink installed below for pi compat, and Bun's built-in
+# module coverage drift (e.g. missing `node:sqlite` on v1.2.23) crashed any
+# Next.js / Remix project on startup. NodeSource ships a recent LTS — bookworm's
+# stock `nodejs` package is too old (18.19) for current frontend stacks.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         bubblewrap \
@@ -40,6 +49,9 @@ RUN apt-get update \
         git \
         ca-certificates \
         curl \
+        gnupg \
+    && curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
+    && apt-get install -y --no-install-recommends nodejs \
     && rm -rf /var/lib/apt/lists/*
 
 # Bundled CLIs warren shells out to during run setup, reap, and project
@@ -50,10 +62,12 @@ RUN apt-get update \
 # each tool's current release; bumping them is a deliberate image-rebuild
 # decision.
 #
-# pnpm + npm are baked in so per-run preview sidecars (R-19 / SPEC §11.L)
-# can boot the common JS dev-server commands (`pnpm dev`, `npm run dev`)
-# in projects that don't use bun. They use the same /usr/local/bin/node
-# bun-shim symlink installed below for pi compat (warren-810f).
+# pnpm is baked in so per-run preview sidecars (R-19 / SPEC §11.L) can
+# boot the common JS dev-server commands (`pnpm dev`) in projects that
+# don't use bun. npm ships with the NodeSource `nodejs` package above,
+# so we don't reinstall it via bun. Both run under the real Node installed
+# in the apt layer (warren-a82b) — not the bun-shim — so any Node built-in
+# module a project's deps reach for resolves correctly.
 #
 # BUN_INSTALL=/usr/local relocates the global package store from the default
 # /root/.bun/install/global into /usr/local/install/global. Burrow's bwrap
@@ -71,8 +85,7 @@ RUN bun install -g \
     @os-eco/sapling-cli@0.3.2 \
     @anthropic-ai/claude-code@2.1.138 \
     @earendil-works/pi-coding-agent@0.74.0 \
-    pnpm@11.1.2 \
-    npm@11.14.1
+    pnpm@11.1.2
 
 # bun install -g skips lifecycle scripts by default, so claude-code's
 # postinstall (which downloads the platform-native `claude` binary) doesn't
@@ -80,13 +93,17 @@ RUN bun install -g \
 # burrow tries to spawn it.
 RUN bun run /usr/local/install/global/node_modules/@anthropic-ai/claude-code/install.cjs
 
-# Pi ships dist/cli.js with a `#!/usr/bin/env node` shebang. The oven/bun
-# image provides a node-compatible shim at /usr/local/bun-node-fallback-bin/node,
-# but that path is not on the PATH burrow exposes inside the sandbox. Burrow
-# does ro-bind /usr/local/bin via the SYSTEM_RO_MOUNTS profile, so symlinking
-# node there makes pi's shebang resolve for the UID-1000 agent. Without this
-# `pi` fails immediately with `/usr/bin/env: 'node': No such file or directory`.
-RUN ln -s /usr/local/bun-node-fallback-bin/node /usr/local/bin/node
+# Pi ships dist/cli.js with a `#!/usr/bin/env node` shebang. Historically we
+# satisfied this by symlinking /usr/local/bin/node → the oven/bun-node-fallback
+# shim, but that double-purposed the global `node` for non-pi consumers (npm
+# stubs, dev-server shell-wrappers) which then loaded under Bun and crashed
+# on Bun-missing built-ins like `node:sqlite` (warren-a82b). Now that real
+# Node is installed in the apt layer above, /usr/local/bin/node IS real Node.
+# Patch pi's shebang in-place so it runs under bun directly, bypassing the
+# `node` binary entirely. Without this pi would launch under real Node — which
+# pi does not target — and break on the first bun-only API it touches.
+RUN sed -i '1s|^#!/usr/bin/env node|#!/usr/bin/env bun|' \
+        /usr/local/install/global/node_modules/@earendil-works/pi-coding-agent/dist/cli.js
 
 WORKDIR /app
 
