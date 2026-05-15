@@ -1,8 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
-import { Activity, Boxes, Bot, FolderGit2, LogOut, Plus } from "lucide-react";
+import { Activity, Bot, FolderGit2, LogOut, Plus } from "lucide-react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { metaApi, setApiToken } from "@/api/client.ts";
 import { ThemeToggle } from "@/components/ThemeToggle.tsx";
+import { WarrenLogo } from "@/components/WarrenLogo.tsx";
 import { Button } from "@/components/ui/button.tsx";
 import { cn } from "@/lib/utils.ts";
 
@@ -33,7 +34,7 @@ export function Layout() {
 		<div className="flex min-h-screen">
 			<aside className="hidden w-56 flex-col border-r bg-(--color-muted)/40 p-4 md:flex">
 				<div className="mb-6 flex items-baseline gap-2 px-2">
-					<Boxes className="h-5 w-5 self-center" />
+					<WarrenLogo className="h-5 w-5 self-center" />
 					<span className="text-base font-semibold">warren</span>
 					{version.data ? (
 						<span className="text-xs font-mono text-(--color-muted-foreground)">

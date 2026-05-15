@@ -10,7 +10,7 @@
  * the burrow IDs are written back once we have them.
  */
 
-import { and, asc, desc, eq, inArray, isNotNull, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNotNull, type SQL, sql } from "drizzle-orm";
 import { NotFoundError, StateTransitionError, ValidationError } from "../../core/errors.ts";
 import { generateId } from "../../core/ids.ts";
 import type { SqliteDrizzleDb } from "../client.ts";
@@ -134,34 +134,64 @@ export class RunsRepo {
 		return row;
 	}
 
-	async listAll(limit = 100): Promise<RunRow[]> {
+	/**
+	 * Order key for the listAll / listByProject / listByAgent triplet
+	 * (warren-fd4b). 'started' = startedAt DESC, the historical default
+	 * (covered by runsProjectStarted). 'cost' = costUsd, with explicit
+	 * NULLS LAST in both directions so unbilled runs always sink — the
+	 * "spot expensive runs" goal cares about the populated tail, and a
+	 * pile of NULLs at the top of a DESC sort would defeat the feature.
+	 * id ASC remains the stable tiebreaker.
+	 */
+	private orderByClause(sort: "started" | "cost" = "started", dir: "asc" | "desc" = "desc"): SQL[] {
+		if (sort === "cost") {
+			const col = this.runs.costUsd;
+			const primary = dir === "asc" ? sql`${col} ASC NULLS LAST` : sql`${col} DESC NULLS LAST`;
+			return [primary, asc(this.runs.id)];
+		}
+		const col = this.runs.startedAt;
+		return [dir === "asc" ? asc(col) : desc(col), asc(this.runs.id)];
+	}
+
+	async listAll(
+		options: { limit?: number; sort?: "started" | "cost"; dir?: "asc" | "desc" } = {},
+	): Promise<RunRow[]> {
+		const { limit = 100, sort = "started", dir = "desc" } = options;
 		return this.adapter.pickAll(
 			this.db
 				.select()
 				.from(this.runs)
-				.orderBy(desc(this.runs.startedAt), asc(this.runs.id))
+				.orderBy(...this.orderByClause(sort, dir))
 				.limit(limit),
 		);
 	}
 
-	async listByProject(projectId: string, limit = 100): Promise<RunRow[]> {
+	async listByProject(
+		projectId: string,
+		options: { limit?: number; sort?: "started" | "cost"; dir?: "asc" | "desc" } = {},
+	): Promise<RunRow[]> {
+		const { limit = 100, sort = "started", dir = "desc" } = options;
 		return this.adapter.pickAll(
 			this.db
 				.select()
 				.from(this.runs)
 				.where(eq(this.runs.projectId, projectId))
-				.orderBy(desc(this.runs.startedAt), asc(this.runs.id))
+				.orderBy(...this.orderByClause(sort, dir))
 				.limit(limit),
 		);
 	}
 
-	async listByAgent(agentName: string, limit = 100): Promise<RunRow[]> {
+	async listByAgent(
+		agentName: string,
+		options: { limit?: number; sort?: "started" | "cost"; dir?: "asc" | "desc" } = {},
+	): Promise<RunRow[]> {
+		const { limit = 100, sort = "started", dir = "desc" } = options;
 		return this.adapter.pickAll(
 			this.db
 				.select()
 				.from(this.runs)
 				.where(eq(this.runs.agentName, agentName))
-				.orderBy(desc(this.runs.startedAt), asc(this.runs.id))
+				.orderBy(...this.orderByClause(sort, dir))
 				.limit(limit),
 		);
 	}

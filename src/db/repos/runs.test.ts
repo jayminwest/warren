@@ -373,6 +373,26 @@ function suite(dialect: "sqlite" | "postgres"): void {
 			}
 		});
 
+		test("listAll sorts by cost with NULLS LAST in both directions", async () => {
+			const { handle, repo, agentName, projectId } = await open();
+			try {
+				const cheap = await spawn(repo, agentName, projectId);
+				const pricey = await spawn(repo, agentName, projectId);
+				const unbilled = await spawn(repo, agentName, projectId);
+				await repo.attachStats(cheap.id, { costUsd: 0.05 });
+				await repo.attachStats(pricey.id, { costUsd: 1.23 });
+				// `unbilled` has costUsd === null.
+
+				const desc = await repo.listAll({ sort: "cost", dir: "desc" });
+				expect(desc.map((r) => r.id)).toEqual([pricey.id, cheap.id, unbilled.id]);
+
+				const asc = await repo.listAll({ sort: "cost", dir: "asc" });
+				expect(asc.map((r) => r.id)).toEqual([cheap.id, pricey.id, unbilled.id]);
+			} finally {
+				await handle.close();
+			}
+		});
+
 		test("listByState filters by single state and arrays", async () => {
 			const { handle, repo, agentName, projectId } = await open();
 			try {

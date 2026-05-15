@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { ChevronDown, ChevronUp } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { agentsApi, projectsApi, runsApi } from "@/api/client.ts";
@@ -24,9 +25,13 @@ import { formatCostUsd } from "./RunDetail.tsx";
 const COST_COLUMN_LS_KEY = "warren.runsList.showCostColumn";
 
 type Filter = "all" | { kind: "agent"; value: string } | { kind: "project"; value: string };
+type SortKey = "started" | "cost";
+type SortDir = "asc" | "desc";
 
 export function RunsPage() {
 	const [filter, setFilter] = useState<Filter>("all");
+	const [sort, setSort] = useState<SortKey>("started");
+	const [dir, setDir] = useState<SortDir>("desc");
 	const [showCost, setShowCost] = useState<boolean>(() => {
 		if (typeof window === "undefined") return true;
 		const stored = window.localStorage.getItem(COST_COLUMN_LS_KEY);
@@ -39,12 +44,32 @@ export function RunsPage() {
 		window.localStorage.setItem(COST_COLUMN_LS_KEY, showCost ? "1" : "0");
 	}, [showCost]);
 
-	const filterApi = filter === "all" ? {} : { [filter.kind]: filter.value };
+	const filterApi = {
+		...(filter === "all" ? {} : { [filter.kind]: filter.value }),
+		sort,
+		dir,
+	};
 	const runs = useQuery({
-		queryKey: ["runs", filter],
+		queryKey: ["runs", filter, sort, dir],
 		queryFn: ({ signal }) => runsApi.list(filterApi, signal),
 		refetchInterval: 5000,
 	});
+
+	// Click cycles: inactive → desc → asc → (back to started/desc default).
+	const toggleSort = (key: SortKey): void => {
+		if (sort !== key) {
+			setSort(key);
+			setDir("desc");
+			return;
+		}
+		if (dir === "desc") {
+			setDir("asc");
+			return;
+		}
+		// asc → reset to default (started/desc)
+		setSort("started");
+		setDir("desc");
+	};
 	const agents = useQuery({
 		queryKey: ["agents"],
 		queryFn: ({ signal }) => agentsApi.list(signal),
@@ -154,8 +179,25 @@ export function RunsPage() {
 									<TableHead>ID</TableHead>
 									<TableHead>Agent</TableHead>
 									<TableHead>Project</TableHead>
-									<TableHead>Started</TableHead>
-									{showCost ? <TableHead className="text-right">Cost</TableHead> : null}
+									<TableHead>
+										<SortHeader
+											label="Started"
+											active={sort === "started"}
+											dir={dir}
+											onClick={() => toggleSort("started")}
+										/>
+									</TableHead>
+									{showCost ? (
+										<TableHead className="text-right">
+											<SortHeader
+												label="Cost"
+												active={sort === "cost"}
+												dir={dir}
+												align="right"
+												onClick={() => toggleSort("cost")}
+											/>
+										</TableHead>
+									) : null}
 								</TableRow>
 							</TableHeader>
 							<TableBody>
@@ -202,6 +244,34 @@ export function RunsPage() {
 				</CardContent>
 			</Card>
 		</div>
+	);
+}
+
+function SortHeader({
+	label,
+	active,
+	dir,
+	align = "left",
+	onClick,
+}: {
+	label: string;
+	active: boolean;
+	dir: SortDir;
+	align?: "left" | "right";
+	onClick: () => void;
+}) {
+	const Icon = dir === "asc" ? ChevronUp : ChevronDown;
+	return (
+		<button
+			type="button"
+			onClick={onClick}
+			className={`inline-flex items-center gap-1 transition-colors hover:text-(--color-fg) ${
+				align === "right" ? "ml-auto" : ""
+			} ${active ? "text-(--color-fg)" : ""}`}
+		>
+			{label}
+			{active ? <Icon className="h-3 w-3" /> : null}
+		</button>
 	);
 }
 

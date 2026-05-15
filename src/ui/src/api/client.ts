@@ -154,6 +154,8 @@ export const projectsApi = {
 export interface ListRunsFilter {
 	project?: string;
 	agent?: string;
+	sort?: "started" | "cost";
+	dir?: "asc" | "desc";
 }
 
 export const runsApi = {
@@ -161,6 +163,8 @@ export const runsApi = {
 		const params = new URLSearchParams();
 		if (filter.project) params.set("project", filter.project);
 		if (filter.agent) params.set("agent", filter.agent);
+		if (filter.sort) params.set("sort", filter.sort);
+		if (filter.dir) params.set("dir", filter.dir);
 		const qs = params.toString();
 		return request<{ runs: RunRow[] }>(`/runs${qs.length > 0 ? `?${qs}` : ""}`, {
 			...(signal ? { signal } : {}),

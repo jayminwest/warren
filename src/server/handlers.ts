@@ -612,6 +612,26 @@ function parseDrainFlag(body: Record<string, unknown>): boolean {
 /* Runs (§8.1)                                                              */
 /* ----------------------------------------------------------------------- */
 
+function parseRunsSort(ctx: { url: URL }): { sort: "started" | "cost"; dir: "asc" | "desc" } {
+	const rawSort = ctx.url.searchParams.get("sort");
+	const rawDir = ctx.url.searchParams.get("dir");
+	let sort: "started" | "cost" = "started";
+	if (rawSort !== null) {
+		if (rawSort !== "started" && rawSort !== "cost") {
+			throw new ValidationError("?sort must be 'started' or 'cost'");
+		}
+		sort = rawSort;
+	}
+	let dir: "asc" | "desc" = "desc";
+	if (rawDir !== null) {
+		if (rawDir !== "asc" && rawDir !== "desc") {
+			throw new ValidationError("?dir must be 'asc' or 'desc'");
+		}
+		dir = rawDir;
+	}
+	return { sort, dir };
+}
+
 function listRunsHandler(deps: ServerDeps): RouteHandler {
 	return async (ctx) => {
 		const project = ctx.url.searchParams.get("project");
@@ -619,13 +639,14 @@ function listRunsHandler(deps: ServerDeps): RouteHandler {
 		if (project !== null && agent !== null) {
 			throw new ValidationError("filter by either ?project=... or ?agent=..., not both");
 		}
+		const order = parseRunsSort(ctx);
 		if (project !== null) {
-			return jsonResponse(200, { runs: await deps.repos.runs.listByProject(project) });
+			return jsonResponse(200, { runs: await deps.repos.runs.listByProject(project, order) });
 		}
 		if (agent !== null) {
-			return jsonResponse(200, { runs: await deps.repos.runs.listByAgent(agent) });
+			return jsonResponse(200, { runs: await deps.repos.runs.listByAgent(agent, order) });
 		}
-		return jsonResponse(200, { runs: await deps.repos.runs.listAll() });
+		return jsonResponse(200, { runs: await deps.repos.runs.listAll(order) });
 	};
 }
 

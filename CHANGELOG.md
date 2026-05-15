@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.10] — 2026-05-15
+
+Branding pass on the UI and a sortable Cost column on the runs list.
+
+### Added
+
+- **`feat(ui)`** — Warren brand mark in the sidebar header and tab
+  favicon (`warren-1990`). New `WarrenLogo` component renders the
+  burrow-network mark (hex cluster + active spoke + control-plane
+  center) as inline SVG using `currentColor`, so it adapts to both
+  light and dark themes from `src/ui/src/components/Layout.tsx`. The
+  `Boxes` lucide placeholder is gone. `src/ui/public/favicon.svg`
+  carries a self-contained variant (explicit fills plus a
+  `prefers-color-scheme` style block) wired in via `<link rel="icon">`
+  in `src/ui/index.html`.
+- **`feat(runs)`** — sortable Cost column on the runs list
+  (`warren-fd4b`). `GET /runs` now accepts `?sort=started|cost` and
+  `?dir=asc|desc` (defaults preserve the previous `startedAt DESC`
+  ordering); the repo's `listAll` / `listByProject` / `listByAgent`
+  triplet takes an options bag and orders by `cost_usd` with explicit
+  `NULLS LAST` in both directions so unbilled runs always sink. The
+  Runs page renders click-to-sort headers on Started and Cost with a
+  chevron affordance; cycle is inactive → desc → asc → default.
+  `id ASC` remains the stable tiebreaker.
+
 ## [0.3.9] — 2026-05-15
 
 README polish reflecting that warren is in continuous use, not a

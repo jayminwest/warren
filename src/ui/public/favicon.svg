@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Warren mark — burrow network: hexagonal cluster of nodes with one
+  active spoke and a control-plane center. Matches branding/icon.png.
+
+  Tab favicons can't use currentColor reliably across browsers, so we
+  bake in a mid-gray that's legible on both light and dark tab strips,
+  with a prefers-color-scheme tweak for finer contrast where supported.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+	<style>
+		.edge { stroke: #8b8d94; stroke-width: 2.2; stroke-linecap: round; fill: none; opacity: 0.55; }
+		.spoke { stroke: #a0a2a8; stroke-width: 2.2; stroke-linecap: round; fill: none; }
+		.active { stroke: #f2f4f8; fill: #f2f4f8; }
+		.node { fill: #a0a2a8; }
+		.center { fill: #d0d4dc; }
+		@media (prefers-color-scheme: light) {
+			.edge { stroke: #6b6d74; }
+			.spoke { stroke: #4a4c52; }
+			.node { fill: #4a4c52; }
+			.center { fill: #2a2c32; }
+			.active { stroke: #18191c; fill: #18191c; }
+		}
+	</style>
+	<!-- tunnel ring -->
+	<g class="edge">
+		<line x1="50" y1="18" x2="77.713" y2="34" />
+		<line x1="77.713" y1="34" x2="77.713" y2="66" />
+		<line x1="77.713" y1="66" x2="50" y2="82" />
+		<line x1="50" y1="82" x2="22.287" y2="66" />
+		<line x1="22.287" y1="66" x2="22.287" y2="34" />
+		<line x1="22.287" y1="34" x2="50" y2="18" />
+	</g>
+	<!-- inactive spokes -->
+	<g class="spoke">
+		<line x1="50" y1="50" x2="50" y2="18" />
+		<line x1="50" y1="50" x2="77.713" y2="66" />
+		<line x1="50" y1="50" x2="50" y2="82" />
+		<line x1="50" y1="50" x2="22.287" y2="66" />
+		<line x1="50" y1="50" x2="22.287" y2="34" />
+	</g>
+	<!-- active spoke + node (top-right) -->
+	<line class="spoke active" x1="50" y1="50" x2="77.713" y2="34" />
+	<!-- outer nodes -->
+	<g class="node">
+		<circle cx="50" cy="18" r="4.5" />
+		<circle cx="77.713" cy="66" r="4.5" />
+		<circle cx="50" cy="82" r="4.5" />
+		<circle cx="22.287" cy="66" r="4.5" />
+		<circle cx="22.287" cy="34" r="4.5" />
+	</g>
+	<circle class="active" cx="77.713" cy="34" r="4.5" />
+	<!-- control plane -->
+	<rect class="center" x="42" y="42" width="16" height="16" rx="2.8" />
+</svg>
