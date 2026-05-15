@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Activity, Boxes, Bot, FolderGit2, LogOut, Plus } from "lucide-react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { metaApi, setApiToken } from "@/api/client.ts";
+import { ThemeToggle } from "@/components/ThemeToggle.tsx";
 import { Button } from "@/components/ui/button.tsx";
 import { cn } from "@/lib/utils.ts";
 
@@ -73,6 +74,7 @@ export function Layout() {
 						Dispatch run
 					</NavLink>
 				</nav>
+				<ThemeToggle />
 				<Button variant="ghost" size="sm" onClick={handleLogout} className="mt-2 justify-start">
 					<LogOut className="h-4 w-4" />
 					Log out

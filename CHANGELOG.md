@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.8] — 2026-05-15
+
+Users can now override the OS theme from within warren.
+
+### Added
+
+- **`feat(ui)`** — sidebar light/dark/system theme toggle
+  (`warren-d340`). New `useTheme` hook persists the user's choice to
+  `localStorage.warren.theme`, writes `data-theme` on `<html>`, and only
+  listens for `prefers-color-scheme` flips while in System mode. New
+  `ThemeToggle` component sits directly above Log out in
+  `Layout.tsx`, cycling Light → Dark → System with a Sun/Moon/Monitor
+  icon and an `aria-label` describing the next state. `index.css`
+  refactors the dark token block out of `@media (prefers-color-scheme:
+  dark) { @theme { … } }` into a pair of selectors
+  (`:root[data-theme="dark"]` for explicit overrides;
+  `@media (prefers-color-scheme: dark) :root:not([data-theme])` for the
+  default OS-following path) so the same tokens are reachable from
+  either trigger — oklch values unchanged. An inline FOUC-guard script
+  in `src/ui/index.html` reads `localStorage` and sets `dataset.theme`
+  synchronously before React paints.
+
 ## [0.3.7] — 2026-05-14
 
 Claude-code joins pi on the cost/token tracking surface, the UI gets a

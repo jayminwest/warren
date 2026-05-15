@@ -21,8 +21,33 @@
 	--color-ring: oklch(60% 0 0);
 }
 
+/*
+ * Dark-mode tokens.
+ *
+ * Triggered by EITHER an explicit `data-theme="dark"` on <html> (set by
+ * useTheme / the FOUC-prevention script in index.html), OR — when no
+ * override is stored — by the OS `prefers-color-scheme: dark` media query.
+ *
+ * Keep both selector blocks in sync; the oklch() values must match the
+ * original `@media (prefers-color-scheme: dark) { @theme { … } }` set.
+ */
+:root[data-theme="dark"] {
+	--color-bg: oklch(14% 0.005 264);
+	--color-fg: oklch(96% 0.005 264);
+	--color-muted: oklch(20% 0.01 264);
+	--color-muted-foreground: oklch(67% 0.01 264);
+	--color-border: oklch(28% 0.01 264);
+	--color-card: oklch(17% 0.008 264);
+	--color-primary: oklch(85% 0.02 264);
+	--color-primary-foreground: oklch(15% 0.005 264);
+	--color-destructive: oklch(62% 0.22 27);
+	--color-destructive-foreground: oklch(98% 0 0);
+	--color-accent: oklch(24% 0.01 264);
+	--color-ring: oklch(60% 0.01 264);
+}
+
 @media (prefers-color-scheme: dark) {
-	@theme {
+	:root:not([data-theme]) {
 		--color-bg: oklch(14% 0.005 264);
 		--color-fg: oklch(96% 0.005 264);
 		--color-muted: oklch(20% 0.01 264);

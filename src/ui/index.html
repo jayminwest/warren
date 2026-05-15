@@ -5,6 +5,18 @@
 		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
 		<meta name="color-scheme" content="light dark" />
 		<title>warren</title>
+		<script>
+			// FOUC guard: apply persisted theme before React paints.
+			// Keep in sync with src/hooks/useTheme.ts (key: warren.theme).
+			(function () {
+				try {
+					var t = localStorage.getItem("warren.theme");
+					if (t === "light" || t === "dark") {
+						document.documentElement.dataset.theme = t;
+					}
+				} catch (_) {}
+			})();
+		</script>
 	</head>
 	<body>
 		<div id="root"></div>
