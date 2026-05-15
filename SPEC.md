@@ -1251,22 +1251,26 @@ produces a preview that may contain secrets. Bearer-in-header is
 impossible for a browser hitting `run-<id>.<host>` directly, so warren
 issues a signed cookie from `GET /runs/:id/preview/login?token=…&redirect=…`
 (ROADMAP option a). Cookie scope is `Domain=.<warren-host>;
-Path=/; HttpOnly; Secure; SameSite=Lax`. The proxy preamble verifies
-the HMAC before forwarding; unauthenticated requests 401, not 502. A
-doctor check warns when `WARREN_PREVIEW_HOST` is set but
-`WARREN_API_TOKEN` is the default placeholder. GitHub OAuth (ROADMAP
-option b) defers to R-18; per-run basic-auth password (option c) and
-no-auth (option d) stay rejected.
+Path=/; HttpOnly; Secure; SameSite=Lax` **in subdomain mode**; path
+mode narrows the scope to `Path=/p/<run-id>/` with no `Domain` (see
+the "Routing modes — path vs subdomain" addendum below). The proxy
+preamble verifies the HMAC before forwarding; unauthenticated requests
+401, not 502. A doctor check warns when `WARREN_PREVIEW_HOST` is set
+but `WARREN_API_TOKEN` is the default placeholder (mode-gated; see
+addendum). GitHub OAuth (ROADMAP option b) defers to R-18; per-run
+basic-auth password (option c) and no-auth (option d) stay rejected.
 
 **Routing — in-process Bun route, not a separate reverse proxy.** The
-proxy match (`Host: run-<id>.<host>`) lives in `src/server/main.ts` as
-a preamble before the API/UI routes. It resolves `runs.preview_port` →
-`127.0.0.1:<port>` and forwards HTTP + WS through
-`burrowClientPool.clientFor({burrowId})` so the multi-worker placement
-(`warren-c0c9` / `pl-9ba1` step 5) keeps holding. Cross-host
-(`runs.worker_id !== local`) returns **501 with an explicit R-12
-deferral message** — silent fall-through to a closed loopback port
-would manifest as "preview works for some runs, not others."
+proxy match (`Host: run-<id>.<host>` for subdomain mode; `/p/<run-id>/`
+path-prefix for path mode — see the "Routing modes" addendum below)
+lives in `src/server/main.ts` as a preamble before the API/UI routes.
+It resolves `runs.preview_port` → `127.0.0.1:<port>` and forwards
+HTTP + WS through `burrowClientPool.clientFor({burrowId})` so the
+multi-worker placement (`warren-c0c9` / `pl-9ba1` step 5) keeps
+holding. Cross-host (`runs.worker_id !== local`) returns **501 with
+an explicit R-12 deferral message** — silent fall-through to a closed
+loopback port would manifest as "preview works for some runs, not
+others."
 
 **TLS termination stays operator-side.** Per SPEC §8.1 / §11.D, TLS is
 the operator's Caddy / Fly edge. Warren ships docs for the wildcard
@@ -1336,6 +1340,145 @@ canonical layout is one file per concern (`config.yaml`, `preview.yaml`,
 loads with a deprecation warning, and `warren config migrate` converts
 an existing install in place. See §11.H for the loader precedence and
 `.warren/MIGRATION.md` for before/after examples.
+
+**Routing modes — path vs subdomain (warren-f4d7, pl-f4ea, 2026-05-15).**
+The original §11.L lock above describes subdomain-mode routing
+(`Host: run-<id>.<warren-host>`). That mode requires the operator to own
+a domain, configure a wildcard CNAME, and provision a wildcard TLS cert
+via DNS-01 — a closed door for the common self-hoster who just
+`fly deploy`s warren. A second mode, **path mode**, reuses the single
+hostname + cert that already serves the warren UI and adds zero
+DNS/cert work. Path mode is the **default** from this addendum onward;
+subdomain mode stays as the explicit opt-in for multi-tenant operators.
+
+Selection knob:
+
+```
+WARREN_PREVIEW_MODE = path | subdomain        # default: path
+```
+
+(Also accepted as a top-level field in `.warren/preview.yaml` — but the
+env var is the operator-facing surface; the per-project field exists
+only so a project can pin a mode for its own previews when the operator
+runs warren in a mixed configuration. The env wins on conflict, matching
+the rest of `WARREN_PREVIEW_*`.)
+
+**URL contract.** Path mode serves a run's preview at
+`https://<warren-host>/p/<run-id>/...`. The run-id slug is the same
+`[a-z0-9-]+` shape already used in `run-<id>.<warren-host>`. Subdomain
+mode keeps the `https://run-<id>.<warren-host>/...` contract from the
+original §11.L. No URL form ever serves a preview outside its
+`/p/<run-id>/` (path mode) or `run-<id>.<host>` (subdomain mode) scope.
+
+**Routing — path-prefix preamble.** The proxy preamble in
+`src/server/main.ts` (mx-787718) grows a sibling match:
+
+- Subdomain mode: existing `Host: run-<id>.<warren-host>` match.
+- Path mode: regex `^/p/(?<runId>[a-z0-9-]+)(?<rest>/.*)?$` on the
+  request path; strip `/p/<run-id>` before forwarding upstream. The
+  upstream sees a request rooted at `<rest>` (or `/` when `rest` is
+  empty), identical in shape to what subdomain mode forwards today.
+
+Both branches share the rest of the seam: resolve
+`runs.preview_port → 127.0.0.1:<port>` via
+`burrowClientPool.clientFor({burrowId})`, forward HTTP + WS, update
+`runs.preview_last_hit_at` with the 30s-debounce (mx-411a6f), 501 on
+cross-host (`runs.worker_id !== local`) with the R-12 deferral message,
+404 (not 502) on unknown run-id. The eviction worker, port allocator,
+and reap-time `preview_launch` / `pr_annotate_preview` sub-steps stay
+mode-agnostic.
+
+**HTML rewrite contract (path mode only, best-effort).** Root-relative
+asset URLs (`/assets/foo.js`) and dev-server `Location:` redirects
+(`Location: /signin`) would escape the `/p/<run-id>/` prefix and 404
+against warren's UI/API routes. The path-mode proxy applies two
+response transforms:
+
+1. **`<base href>` injection.** When the upstream response
+   `Content-Type` is `text/html` (parameters tolerated), inject
+   `<base href="/p/<run-id>/">` immediately after the opening `<head>`
+   tag. Skipped when the document already declares a `<base>` element
+   (idempotent — re-proxying the warren-served HTML is a no-op).
+   Rewrites are bounded to the first 64 KiB of body; larger documents
+   without a `<head>` in the first 64 KiB pass through untouched and
+   accept the breakage (the apps that hit this are rare enough that
+   subdomain mode is the right escape hatch).
+2. **`Location:` header rewrite.** On any 3xx response, if `Location:`
+   parses as a same-origin or scheme-relative path that starts with `/`
+   and does **not** already start with `/p/<run-id>/`, rewrite to
+   `/p/<run-id>/<rest>`. Absolute URLs to external origins pass through
+   untouched. `Location:` values that already start with `/p/<run-id>/`
+   are not double-prefixed.
+
+JSON, JS, CSS, images, fonts, and all other non-HTML content types pass
+through byte-for-byte. The rewriter is best-effort: an upstream that
+streams chunked HTML without a parseable `<head>` in the first chunk
+gets no `<base>`, but the proxy never errors the response over this.
+
+**Cookie scope per mode.** The signed-cookie auth (`src/preview/cookie.ts`,
+mx-c38965) parameterizes scope by mode:
+
+- Subdomain mode (unchanged): `Domain=.<warren-host>; Path=/; HttpOnly;
+  Secure; SameSite=Lax`.
+- Path mode: `Path=/p/<run-id>/; HttpOnly; Secure; SameSite=Lax`. No
+  `Domain` attribute. Two previews on the same warren host hold
+  independent path-scoped cookies; a reviewer can be authenticated to
+  multiple previews simultaneously in the same browser.
+
+The HMAC and token shape are identical across modes. The login route
+`GET /runs/:id/preview/login?token=…&redirect=…` stays the canonical
+entry point; in path mode it sets the path-scoped cookie and redirects
+to `/p/<run-id>/<redirect-or-slash>`. Unauthenticated requests on the
+proxied path 401 (not 502) just as in subdomain mode.
+
+**PR annotation URL shape.** `src/runs/pr-annotate.ts` (mx-ba79c4)
+branches on mode when composing the `preview_url_or_placeholder`
+fragment: `https://<warren-host>/p/<run-id>/` in path mode,
+`https://run-<id>.<warren-host>/` in subdomain mode. The
+`<!-- warren:preview-start --> / <!-- warren:preview-end -->` markers
+are unchanged; the annotate step stays idempotent across mode flips
+between reap and re-annotate (a project that flips modes mid-PR will
+see a single replacement, not duplicate markers).
+
+**Doctor checks per mode.** The existing `checkPreviewAuthStrength`
+(mx-f2cf0b) warning — `WARREN_PREVIEW_HOST` set with placeholder
+`WARREN_API_TOKEN` — still applies in both modes. The
+`WARREN_PREVIEW_HOST`-required warning becomes **mode-gated**: in path
+mode `WARREN_PREVIEW_HOST` is optional (warren derives the preview
+origin from the request's own `Host`), so the warning fires only in
+subdomain mode. Wildcard-DNS / DNS-01 cert advisories are
+subdomain-only.
+
+**Single-tenant-per-host caveat.** Path mode shares one cookie jar
+(scoped by `/p/<run-id>/`) across all previews on the warren host. The
+Path scope keeps sessions distinct per run, but an organization that
+wants org-scale previews — many reviewers, many projects, dozens of
+concurrent previews — should run subdomain mode. Path mode is sized
+for solo-operator and small-team deploys, which is exactly the
+audience that motivated this follow-up.
+
+**Trade-offs accepted by path mode.**
+
+- Apps that compute URLs from `window.location.host` and assume
+  `host == app-origin` (rare in modern SPAs, common in older PHP-style
+  apps) may misbehave under `/p/<run-id>/`. Operators with such apps
+  use subdomain mode. The trade-off is documented; warren does not
+  rewrite JS at runtime.
+- Some dev servers (Vite, Next, CRA) honor `<base href>` for asset
+  resolution but require an explicit `--base` flag for HMR websocket
+  paths. Projects configure the framework-specific base via their
+  existing `preview.command` in `.warren/preview.yaml` — warren ships
+  `<base>` injection as best-effort and documents the known-good
+  shapes; it does not synthesize per-framework wrappers.
+
+**Acceptance coverage.** Scenario `20-preview.ts` (the existing
+Linux-only happy-path + idle-TTL scenario) gains a path-mode sibling
+(`20-preview-path.ts`, or a parametrized variant of the same scenario)
+that boots warren with `WARREN_PREVIEW_MODE=path`, exercises the
+`/p/<run-id>/` URL end-to-end (cookie issuance, `<base>` injection,
+`Location:` rewrite on a redirect), and verifies that the
+wildcard-host doctor warning does **not** fire when
+`WARREN_PREVIEW_HOST` is unset. macOS still skips per mx-1d31f0.
 
 ### 11.M PR-body template (warren-bd49, 2026-05-14)
 
