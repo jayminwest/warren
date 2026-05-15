@@ -51,6 +51,7 @@ import {
 	checkWarrenConfigDeprecations,
 	type DiagnosticCheck,
 } from "../diagnostics/checks.ts";
+import { VERSION } from "../index.ts";
 import { createRunPreviewsRepo, DEFAULT_MAX_LIVE } from "../preview/eviction.ts";
 import { DEFAULT_PREVIEW_PORT_RANGE, PreviewPortAllocator } from "../preview/port-allocator.ts";
 import { teardownPreview } from "../preview/teardown.ts";
@@ -1016,6 +1017,10 @@ function healthz(): RouteHandler {
 	return () => jsonResponse(200, { ok: true });
 }
 
+function version(): RouteHandler {
+	return () => jsonResponse(200, { version: VERSION });
+}
+
 function readyz(deps: ServerDeps): RouteHandler {
 	return async () => {
 		// SpawnFn is required for the bwrap + canopy_clean probes; main.ts
@@ -1159,6 +1164,7 @@ interface RouteEntry {
 const ROUTE_TABLE: readonly RouteEntry[] = [
 	{ method: "GET", pattern: "/healthz", build: () => healthz() },
 	{ method: "GET", pattern: "/readyz", build: readyz },
+	{ method: "GET", pattern: "/version", build: () => version() },
 
 	{ method: "GET", pattern: "/agents", build: listAgents },
 	{ method: "POST", pattern: "/agents/refresh", build: refreshAgents },
@@ -1226,6 +1232,7 @@ export const API_PREFIXES: readonly string[] = [
 	"/workers",
 	"/healthz",
 	"/readyz",
+	"/version",
 	"/preview",
 ];
 
@@ -1258,6 +1265,11 @@ export function isApiPath(pathname: string): boolean {
  */
 export function isAuthExempt(pathname: string): boolean {
 	if (pathname === "/healthz") return true;
+	// `/version` is non-sensitive (just the package version string) and
+	// the UI fetches it before the user logs in to render in the sidebar
+	// header. Keeping it auth-exempt avoids a chicken-and-egg on the
+	// login screen.
+	if (pathname === "/version") return true;
 	// Preview login handshake (R-19 / SPEC §11.L): the browser arrives
 	// without an Authorization header and validates the bearer via
 	// `?token=<WARREN_API_TOKEN>`. The handler does its own constant-time

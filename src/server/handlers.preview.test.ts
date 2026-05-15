@@ -75,6 +75,10 @@ describe("isAuthExempt", () => {
 		expect(isAuthExempt("/healthz")).toBe(true);
 	});
 
+	test("/version is auth-exempt (warren-6ea5)", () => {
+		expect(isAuthExempt("/version")).toBe(true);
+	});
+
 	test("/runs/<id>/preview/login is auth-exempt (SPEC §11.L)", () => {
 		expect(isAuthExempt("/runs/run_abc/preview/login")).toBe(true);
 		expect(isAuthExempt("/runs/run_abc/preview/login/")).toBe(true);

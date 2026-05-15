@@ -159,6 +159,14 @@ describe("startServer — lifecycle", () => {
 		expect(res.status).toBe(200);
 	});
 
+	test("/version is auth-exempt and returns the package version (warren-6ea5)", async () => {
+		handle = startServer(await depsFor(repos), tcpOpts({ auth: bearerAuth("secret") }));
+		const res = await fetch(`${tcpUrl(handle)}/version`);
+		expect(res.status).toBe(200);
+		const body = (await res.json()) as { version: string };
+		expect(body.version).toMatch(/^\d+\.\d+\.\d+(-[\w.]+)?$/);
+	});
+
 	test("/readyz still requires auth (body reveals failed checks)", async () => {
 		handle = startServer(await depsFor(repos), tcpOpts({ auth: bearerAuth("secret") }));
 		const res = await fetch(`${tcpUrl(handle)}/readyz`);

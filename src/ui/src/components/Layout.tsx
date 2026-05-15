@@ -1,6 +1,7 @@
+import { useQuery } from "@tanstack/react-query";
 import { Activity, Boxes, Bot, FolderGit2, LogOut, Plus } from "lucide-react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
-import { setApiToken } from "@/api/client.ts";
+import { metaApi, setApiToken } from "@/api/client.ts";
 import { Button } from "@/components/ui/button.tsx";
 import { cn } from "@/lib/utils.ts";
 
@@ -13,6 +14,15 @@ const NAV_ITEMS: { to: string; label: string; icon: React.ComponentType<{ classN
 export function Layout() {
 	const navigate = useNavigate();
 
+	// Version is auth-exempt and stable for the life of the server
+	// process — fetch once, cache forever (warren-6ea5).
+	const version = useQuery({
+		queryKey: ["meta", "version"],
+		queryFn: ({ signal }) => metaApi.version(signal),
+		staleTime: Infinity,
+		retry: false,
+	});
+
 	const handleLogout = (): void => {
 		setApiToken(null);
 		navigate("/login", { replace: true });
@@ -21,9 +31,14 @@ export function Layout() {
 	return (
 		<div className="flex min-h-screen">
 			<aside className="hidden w-56 flex-col border-r bg-(--color-muted)/40 p-4 md:flex">
-				<div className="mb-6 flex items-center gap-2 px-2">
-					<Boxes className="h-5 w-5" />
+				<div className="mb-6 flex items-baseline gap-2 px-2">
+					<Boxes className="h-5 w-5 self-center" />
 					<span className="text-base font-semibold">warren</span>
+					{version.data ? (
+						<span className="text-xs font-mono text-(--color-muted-foreground)">
+							v{version.data.version}
+						</span>
+					) : null}
 				</div>
 				<nav className="flex flex-1 flex-col gap-1">
 					{NAV_ITEMS.map(({ to, label, icon: Icon }) => (

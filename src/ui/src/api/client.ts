@@ -337,4 +337,6 @@ export async function* streamRunEvents(
 export const metaApi = {
 	healthz: () => request<{ ok: boolean }>("/healthz"),
 	readyz: () => request<ReadyzResponse>("/readyz"),
+	version: (signal?: AbortSignal) =>
+		request<{ version: string }>("/version", { ...(signal ? { signal } : {}) }),
 };

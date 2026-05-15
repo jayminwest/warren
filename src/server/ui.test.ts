@@ -80,6 +80,7 @@ describe("createUiHandler", () => {
 			"/runs/abc",
 			"/healthz",
 			"/readyz",
+			"/version",
 		]) {
 			const res = await handler(ctxFor(prefix));
 			expect(res.status).toBe(404);
