@@ -789,6 +789,134 @@ describe("bridgeRunStream", () => {
 		expect(after.tokensInput).toBe(100);
 	});
 
+	// claude-code cost extraction (warren-87f9). Claude-code emits a
+	// single terminal `result` envelope carrying `total_cost_usd` +
+	// `usage.{input_tokens,output_tokens,cache_read_input_tokens,
+	// cache_creation_input_tokens}`. Burrow's jsonl-claude parser maps it
+	// to state_change/system, so the bridge sniffs the payload shape.
+	function claudeResult(
+		burrowRunId: string,
+		seq: number,
+		usage: {
+			inputTokens: number;
+			outputTokens: number;
+			cacheReadInputTokens?: number;
+			cacheCreationInputTokens?: number;
+			totalCostUsd: number;
+			isError?: boolean;
+		},
+	): RunEvent {
+		return evt(burrowRunId, seq, {
+			kind: "state_change",
+			stream: "system",
+			payload: {
+				type: "result",
+				subtype: "success",
+				is_error: usage.isError ?? false,
+				total_cost_usd: usage.totalCostUsd,
+				usage: {
+					input_tokens: usage.inputTokens,
+					output_tokens: usage.outputTokens,
+					cache_read_input_tokens: usage.cacheReadInputTokens ?? 0,
+					cache_creation_input_tokens: usage.cacheCreationInputTokens ?? 0,
+				},
+			},
+		});
+	}
+
+	test("in-stream claude: result envelope lands in cost/token columns at terminal", async () => {
+		await bridgeRunStream({
+			runId,
+			burrowRunId,
+			repos,
+			broker,
+			burrowId: "bur_aaaaaaaaaaaa",
+			burrowClientPool: await makePool(repos),
+			source: source([
+				evt(burrowRunId, 1, { kind: "agent_start" }),
+				claudeResult(burrowRunId, 2, {
+					inputTokens: 1200,
+					outputTokens: 400,
+					cacheReadInputTokens: 5000,
+					cacheCreationInputTokens: 200,
+					totalCostUsd: 0.0421,
+				}),
+			]),
+		});
+		const after = await repos.runs.require(runId);
+		expect(after.costUsd).toBeCloseTo(0.0421);
+		expect(after.tokensInput).toBe(1200);
+		expect(after.tokensOutput).toBe(400);
+		expect(after.tokensCacheRead).toBe(5000);
+		expect(after.tokensCacheWrite).toBe(200);
+	});
+
+	test("in-stream claude: result with no total_cost_usd / usage leaves columns null", async () => {
+		await bridgeRunStream({
+			runId,
+			burrowRunId,
+			repos,
+			broker,
+			burrowId: "bur_aaaaaaaaaaaa",
+			burrowClientPool: await makePool(repos),
+			source: source([
+				evt(burrowRunId, 1, { kind: "agent_start" }),
+				evt(burrowRunId, 2, {
+					kind: "state_change",
+					stream: "system",
+					payload: { type: "result", subtype: "success", is_error: false },
+				}),
+			]),
+		});
+		const after = await repos.runs.require(runId);
+		expect(after.costUsd).toBeNull();
+		expect(after.tokensInput).toBeNull();
+	});
+
+	test("in-stream claude: failed result (is_error=true) still records cost", async () => {
+		await bridgeRunStream({
+			runId,
+			burrowRunId,
+			repos,
+			broker,
+			burrowId: "bur_aaaaaaaaaaaa",
+			burrowClientPool: await makePool(repos),
+			source: source([
+				claudeResult(burrowRunId, 1, {
+					inputTokens: 50,
+					outputTokens: 10,
+					totalCostUsd: 0.0009,
+					isError: true,
+				}),
+			]),
+		});
+		const after = await repos.runs.require(runId);
+		expect(after.costUsd).toBeCloseTo(0.0009);
+		expect(after.tokensInput).toBe(50);
+	});
+
+	test("in-stream claude: pi turn_end + claude result — pi wins (parity)", async () => {
+		await bridgeRunStream({
+			runId,
+			burrowRunId,
+			repos,
+			broker,
+			burrowId: "bur_aaaaaaaaaaaa",
+			burrowClientPool: await makePool(repos),
+			source: source([
+				piTurnEnd(burrowRunId, 1, { input: 100, output: 25, costTotal: 0.005 }),
+				claudeResult(burrowRunId, 2, {
+					inputTokens: 999,
+					outputTokens: 999,
+					totalCostUsd: 9.99,
+				}),
+			]),
+		});
+		const after = await repos.runs.require(runId);
+		expect(after.costUsd).toBeCloseTo(0.005);
+		expect(after.tokensInput).toBe(100);
+	});
+
 	test("in-stream: turn_end with malformed usage is ignored (no row update)", async () => {
 		await bridgeRunStream({
 			runId,

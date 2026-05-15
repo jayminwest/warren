@@ -201,6 +201,16 @@ async function buildSampleProject(repoPath: string): Promise<void> {
 	const targetPiScript = join(repoPath, "tools", "pi-stub-agent.sh");
 	await copyFile(harnessPiScript, targetPiScript);
 
+	// Claude-code-shaped stub agent script (warren-87f9) — emits
+	// stream-json with a terminal `result` envelope carrying
+	// `total_cost_usd` + `usage.*_tokens` so scenario 17 can assert
+	// non-null cost/token columns after the run completes. Registered as
+	// the `claude-code` runtime in burrow-with-stub.ts (overriding
+	// burrow's built-in) with `parseJsonlClaude` as the event parser.
+	const harnessClaudeScript = new URL("./stub-agent/claude-code-agent.sh", import.meta.url);
+	const targetClaudeScript = join(repoPath, "tools", "claude-code-stub-agent.sh");
+	await copyFile(harnessClaudeScript, targetClaudeScript);
+
 	// Seed the project's .seeds/issues.jsonl with one open seed the stub
 	// agent will close — gives reap's seeds-close-mirror sub-step
 	// something to mirror.
@@ -226,6 +236,7 @@ async function buildSampleProject(repoPath: string): Promise<void> {
 
 	await runIn(repoPath, ["chmod", "+x", "tools/stub-agent.sh"], env);
 	await runIn(repoPath, ["chmod", "+x", "tools/pi-stub-agent.sh"], env);
+	await runIn(repoPath, ["chmod", "+x", "tools/claude-code-stub-agent.sh"], env);
 	await runIn(repoPath, ["git", "add", "."], env);
 	await runIn(repoPath, ["git", "commit", "-m", "init: sample project fixture"], env);
 }

@@ -194,6 +194,12 @@ export async function bridgeRunStream(input: BridgeRunStreamInput): Promise<Brid
 	let statsBaseline: Promise<SessionStats | null> | undefined;
 	let statsPersisted = false;
 	const piUsage: SessionStatsAccumulator = newSessionStatsAccumulator();
+	// claude-code cost tracking (warren-87f9). Single-shot: claude-code
+	// emits one `result` envelope at run end carrying `total_cost_usd` +
+	// `usage.{input,output,cache_read_input,cache_creation_input}_tokens`.
+	// Shape-sniffed in `extractClaudeUsage`; persisted on terminal only
+	// when no pi usage was observed (pi path wins for parity).
+	const claudeUsage: SessionStatsAccumulator = newSessionStatsAccumulator();
 
 	try {
 		for await (const event of source(ctrl.signal)) {
@@ -231,6 +237,7 @@ export async function bridgeRunStream(input: BridgeRunStreamInput): Promise<Brid
 			broker.publish(runId, row);
 
 			accumulatePiUsage(piUsage, event);
+			extractClaudeUsage(claudeUsage, event);
 
 			if (!statsPersisted && isPiAgentEnd(event)) {
 				statsPersisted = true;
@@ -245,8 +252,9 @@ export async function bridgeRunStream(input: BridgeRunStreamInput): Promise<Brid
 						logger: input.logger,
 					});
 				} else {
-					await persistInStreamPiUsage({
+					await persistInStreamUsage({
 						usage: piUsage,
+						runtime: "pi",
 						runId,
 						burrowRunId,
 						repos,
@@ -274,9 +282,21 @@ export async function bridgeRunStream(input: BridgeRunStreamInput): Promise<Brid
 							signal: ctrl.signal,
 							logger: input.logger,
 						});
-					} else {
-						persistInStreamPiUsage({
+					} else if (piUsage.seen) {
+						// Prefer pi if observed (mixed-shape stream); claude-code
+						// usage is the fallback when no pi `turn_end` ever fired.
+						persistInStreamUsage({
 							usage: piUsage,
+							runtime: "pi",
+							runId,
+							burrowRunId,
+							repos,
+							logger: input.logger,
+						});
+					} else {
+						persistInStreamUsage({
+							usage: claudeUsage,
+							runtime: "claude",
 							runId,
 							burrowRunId,
 							repos,
@@ -588,8 +608,49 @@ function toNumber(value: unknown): number | null {
 	return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
+/**
+ * Extract claude-code's run-level usage from its single terminal `result`
+ * envelope (warren-87f9). Shape (see burrow `src/runtime/parsers/jsonl-claude.ts`):
+ *   {"type":"result", "subtype":"success", "total_cost_usd": N,
+ *    "usage":{ "input_tokens":N, "output_tokens":N,
+ *              "cache_read_input_tokens":N, "cache_creation_input_tokens":N }}
+ * Single-shot: claude-code emits cumulative totals once at end, so we
+ * assign (not add) to the accumulator. Pi's `turn_end` shape is
+ * disjoint (different `type` + nested `message.usage.cost.total`), so
+ * shape-sniffing here can't collide with `accumulatePiUsage`.
+ *
+ * Defensive: unknown shapes leave the accumulator untouched. A future
+ * claude-code that adds fields can't crash the bridge — worst case we
+ * miss this run's cost.
+ */
+function extractClaudeUsage(acc: SessionStatsAccumulator, event: RunEvent): void {
+	if (event.kind !== "state_change") return;
+	if (event.stream !== "system") return;
+	const payload = event.payload;
+	if (payload === null || typeof payload !== "object") return;
+	const env = payload as Record<string, unknown>;
+	if (env.type !== "result") return;
+	const costTotal = toNumber(env.total_cost_usd);
+	const usage = env.usage;
+	const u = usage !== null && typeof usage === "object" ? (usage as Record<string, unknown>) : null;
+	const tokensInput = u !== null ? toNumber(u.input_tokens) : null;
+	const tokensOutput = u !== null ? toNumber(u.output_tokens) : null;
+	const tokensCacheRead = u !== null ? toNumber(u.cache_read_input_tokens) : null;
+	const tokensCacheWrite = u !== null ? toNumber(u.cache_creation_input_tokens) : null;
+	// Require cost OR input/output tokens before flagging the envelope as
+	// real claude-code usage — mirrors accumulatePiUsage's guard.
+	if (costTotal === null && tokensInput === null && tokensOutput === null) return;
+	acc.seen = true;
+	acc.costUsd = costTotal ?? 0;
+	acc.tokensInput = tokensInput ?? 0;
+	acc.tokensOutput = tokensOutput ?? 0;
+	acc.tokensCacheRead = tokensCacheRead ?? 0;
+	acc.tokensCacheWrite = tokensCacheWrite ?? 0;
+}
+
 interface PersistInStreamUsageInput {
 	readonly usage: SessionStatsAccumulator;
+	readonly runtime: "pi" | "claude";
 	readonly runId: string;
 	readonly burrowRunId: string;
 	readonly repos: Repos;
@@ -597,13 +658,14 @@ interface PersistInStreamUsageInput {
 }
 
 /**
- * Persist in-stream-accumulated pi usage via `RunsRepo.attachStats`.
- * Skips when no `turn_end` envelope was ever observed (non-pi run, or
- * pi-but-no-turn-completed) so cost columns stay null with parity to
- * claude-code. attachStats throws on storage errors; we log + swallow
- * to match the PiStatsClient path's best-effort posture.
+ * Persist in-stream-accumulated runtime usage via `RunsRepo.attachStats`.
+ * Skips when nothing was observed (non-cost-emitting run) so columns
+ * stay null. attachStats throws on storage errors; we log + swallow to
+ * match the PiStatsClient path's best-effort posture. The `runtime`
+ * tag distinguishes pi (`turn_end` accumulator, warren-17a4) from
+ * claude-code (`result` single-shot, warren-87f9) in the log line.
  */
-async function persistInStreamPiUsage(input: PersistInStreamUsageInput): Promise<void> {
+async function persistInStreamUsage(input: PersistInStreamUsageInput): Promise<void> {
 	if (!input.usage.seen) return;
 	try {
 		await input.repos.runs.attachStats(input.runId, {
@@ -617,20 +679,22 @@ async function persistInStreamPiUsage(input: PersistInStreamUsageInput): Promise
 			{
 				runId: input.runId,
 				burrowRunId: input.burrowRunId,
+				runtime: input.runtime,
 				costUsd: input.usage.costUsd,
 				tokensInput: input.usage.tokensInput,
 				tokensOutput: input.usage.tokensOutput,
 			},
-			"persisted pi in-stream usage totals",
+			"persisted in-stream usage totals",
 		);
 	} catch (err) {
 		input.logger?.warn?.(
 			{
 				runId: input.runId,
 				burrowRunId: input.burrowRunId,
+				runtime: input.runtime,
 				err: err instanceof Error ? err.message : String(err),
 			},
-			"attachStats threw on in-stream pi usage; cost columns may stay null",
+			"attachStats threw on in-stream usage; cost columns may stay null",
 		);
 	}
 }

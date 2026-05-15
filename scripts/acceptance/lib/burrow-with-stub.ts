@@ -28,6 +28,7 @@
  */
 import { Client, type DispatchSpawnFn, loadAgentConfig } from "@os-eco/burrow-cli";
 import { runServeCommand } from "@os-eco/burrow-cli/src/cli/commands/serve.ts";
+import { parseJsonlClaude } from "@os-eco/burrow-cli/src/runtime/parsers/jsonl-claude.ts";
 import { parsePiEvents } from "@os-eco/burrow-cli/src/runtime/parsers/pi.ts";
 import type { AgentRuntime } from "@os-eco/burrow-cli/src/runtime/runtime.ts";
 
@@ -176,6 +177,37 @@ function buildPiAcceptanceRuntime(): AgentRuntime {
 	};
 }
 
+// Claude-code stub (warren-87f9). Burrow ships a built-in `claude-code`
+// runtime that invokes the real `claude` CLI — which the acceptance
+// harness can't drive without an Anthropic API key. We register a
+// custom AgentRuntime under the same id, which `Map.set` semantics in
+// AgentRegistry (burrow `src/runtime/registry.ts`) overrides cleanly.
+// The stub script emits stream-json with a terminal `result` envelope
+// carrying `total_cost_usd` + `usage.*_tokens`; warren's bridge
+// (src/runs/stream.ts:extractClaudeUsage) reads it on terminal
+// detection. Scenario 17 asserts the resulting cost/token columns are
+// non-null.
+const CLAUDE_AGENT_CONFIG = {
+	id: "claude-code",
+	displayName: "Claude Code (acceptance stub)",
+	command: "bash",
+	args: ["./tools/claude-code-stub-agent.sh", "{{prompt}}"],
+	promptDelivery: "arg" as const,
+	// outputFormat must satisfy the AgentConfig schema; the real parser
+	// is swapped in below via parseEvents override.
+	outputFormat: "raw-text" as const,
+	supportsResume: false,
+	inboxDelivery: "none" as const,
+};
+
+function buildClaudeAcceptanceRuntime(): AgentRuntime {
+	const base = loadAgentConfig(CLAUDE_AGENT_CONFIG);
+	return {
+		...base,
+		parseEvents: (line: string) => parseJsonlClaude(line),
+	};
+}
+
 async function main(): Promise<number> {
 	const args = parseArgs(process.argv.slice(2));
 
@@ -193,6 +225,10 @@ async function main(): Promise<number> {
 		// Pi: same declarative dispatch + the real parsePiEvents parser
 		// so `turn_end` usage envelopes reach warren's bridge (warren-17a4).
 		client.agents.register(buildPiAcceptanceRuntime());
+		// Override burrow's built-in claude-code runtime with a stub so
+		// acceptance scenarios can dispatch agent='claude-code' without an
+		// Anthropic API key (warren-87f9).
+		client.agents.register(buildClaudeAcceptanceRuntime());
 
 		const serveOpts: Parameters<typeof runServeCommand>[0]["options"] = {};
 		if (args.socket !== undefined) serveOpts.socket = args.socket;

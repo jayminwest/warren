@@ -85,7 +85,7 @@ Warren is a thin coordinator — most of the value is in the runtime plus whiche
 - No laptop-driven `burrow up` against warren. The home server is the canonical V1 deploy.
 - No real-time collaboration. One UI, one user at a time.
 - No payment, no usage metering, no quota in V1. Per-user / per-project cost and concurrency guardrails are planned post-V1 (R-17).
-- No cost or run-budget enforcement in V1. Token spend and concurrent-run caps are planned post-V1 (R-17). V1 does *report* per-run cost + token usage for the `pi` built-in (`runs.cost_usd`, `runs.tokens_*`, §11.K) — reporting is observability; enforcement (per-user / per-project budget caps) is the deferred half.
+- No cost or run-budget enforcement in V1. Token spend and concurrent-run caps are planned post-V1 (R-17). V1 does *report* per-run cost + token usage for the `pi` and `claude-code` built-ins (`runs.cost_usd`, `runs.tokens_*`, §11.K) — reporting is observability; enforcement (per-user / per-project budget caps) is the deferred half. `sapling` runs leave the columns null (no terminal cost emission yet).
 - ~~No bring-your-own database in V1~~ — **shipped post-V1 (R-13, pl-f17e, 2026-05-14):** SQLite (default, `bun:sqlite`) and Postgres (`drizzle-orm/node-postgres`) are both first-class backends selected by `WARREN_DB_URL`. Burrow's own per-worker SQLite stays untouched — that's run-local sandbox state, not org truth.
 - No MCP server configuration in V1. Canopy-frontmatter-driven MCP plus burrow-side credential mounts are planned post-V1 (R-15).
 - No audit log in V1. Append-only dispatch/steer/cancel/secret-read ledger is planned post-V1 (R-16), and lands alongside R-09 since it depends on real user identity.
@@ -1057,12 +1057,27 @@ from the selected agent's frontmatter.
 `runs`: `cost_usd REAL`, `tokens_input INTEGER`, `tokens_output INTEGER`,
 `tokens_cache_read INTEGER`, `tokens_cache_write INTEGER`. `RunsRepo.attachStats`
 mirrors `attachBurrow`'s partial-input semantics (`mx-49272e`): omitted fields
-preserve existing values; explicit `null` does not clear. The bridge layer
-issues `get_session_stats` against pi at run-start and run-end via a
-`PiStatsClient` injected into `bridgeRunStream` (`mx-916eb6`); persisted
-cost is the run-end-minus-run-start delta (defends against the multi-session
-cost double-count when pi resumes via `--continue` / `--session`).
-Non-pi runs leave every column `null`. RPC failures are logged as a system
+preserve existing values; explicit `null` does not clear. Two runtimes
+populate the columns by shape-sniffing events as they flow through
+`bridgeRunStream`:
+- **pi** (`warren-17a4`): `accumulatePiUsage` sums `turn_end.message.usage`
+  totals across turns; persisted at the first `agent_end`. The legacy
+  out-of-band `PiStatsClient` (`mx-916eb6`) is still wired as an explicit
+  override that wins over in-stream when injected — it fetches
+  `get_session_stats` at run-start and run-end and persists the delta,
+  defending against the multi-session cost double-count when pi resumes
+  via `--continue` / `--session`.
+- **claude-code** (`warren-87f9`): `extractClaudeUsage` reads the single
+  terminal `result` envelope's `total_cost_usd` + `usage.{input_tokens,
+  output_tokens, cache_read_input_tokens, cache_creation_input_tokens}`.
+  Single-shot — claude-code emits cumulative run totals once at end, so
+  no accumulation is needed. Persisted on terminal detection.
+
+Dispatch is shape-sniffed (not keyed off `runs.agent_name`) so a future
+runtime emitting a known terminal shape Just Works. If both shapes
+appear in one stream (mixed runtimes — unlikely in practice), pi wins
+for parity with the pre-warren-87f9 behavior. `sapling` runs leave every
+column `null` (no terminal cost emission yet — separate seed). RPC failures are logged as a system
 event and do not fail the run. `RunDetail.tsx` renders a header cost badge
 using `formatCostUsd()` (`mx-9d987a`): `≥$1` → 2 decimals, `<$1` → 3 decimals;
 badge omitted when `cost_usd` is `null`. `Runs.tsx` adds an opt-in Cost
