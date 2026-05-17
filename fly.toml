@@ -94,7 +94,7 @@ primary_region = "sjc"
 [[vm]]
   cpu_kind = "shared"
   cpus = 2
-  memory = "2gb"
+  memory = "4gb"
 
 # NOTE: Fly's TOML schema doesn't have first-class fields for the four
 # bwrap flags (apparmor / seccomp / systempaths / SYS_ADMIN). Fly
