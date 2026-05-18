@@ -108,6 +108,7 @@ async function depsFor(
 	repos: Repos,
 	burrowClient: BurrowClient,
 	bridges?: BridgeRegistry,
+	extras?: { plotResolver?: import("../plots/index.ts").PlotResolver },
 ): Promise<ServerDeps> {
 	const broker = new RunEventBroker();
 	const burrowClientPool = await poolFor(repos, burrowClient);
@@ -142,6 +143,7 @@ async function depsFor(
 			}
 			return { stdout: "", stderr: "", exitCode: 0 };
 		},
+		...(extras?.plotResolver !== undefined ? { plotResolver: extras.plotResolver } : {}),
 	};
 }
 
@@ -363,6 +365,177 @@ describe("POST /runs — spawn flow", () => {
 
 		const res = await fetch(`${tcpUrl(handle)}/runs`, { method: "POST" });
 		expect(res.status).toBe(400);
+	});
+});
+
+describe("POST /runs — plot_id format + existence validation (warren-bae5)", () => {
+	let db: WarrenDb;
+	let repos: Repos;
+	let handle: ServeHandle | null = null;
+	let projectLocalPath = "";
+
+	beforeEach(async () => {
+		db = await openDatabase({ path: ":memory:" });
+		repos = createRepos(db);
+		await repos.agents.upsert({
+			name: "refactor-bot",
+			renderedJson: {
+				name: "refactor-bot",
+				version: 1,
+				sections: { system: "you are refactor-bot" },
+				resolvedFrom: [],
+				frontmatter: {},
+			},
+		});
+		const { mkdtemp } = await import("node:fs/promises");
+		const { tmpdir } = await import("node:os");
+		const { join } = await import("node:path");
+		projectLocalPath = await mkdtemp(join(tmpdir(), "warren-handlers-plotvalid-"));
+		await repos.projects.create({
+			gitUrl: "https://github.com/x/y.git",
+			localPath: projectLocalPath,
+			defaultBranch: "main",
+			hasPlot: true,
+		});
+	});
+
+	afterEach(async () => {
+		if (handle) {
+			await handle.stop();
+			handle = null;
+		}
+		await db.close();
+	});
+
+	async function makeHandle(
+		resolver?: import("../plots/index.ts").PlotResolver,
+	): Promise<{ project: { id: string }; handle: ServeHandle }> {
+		const project = (await repos.projects.listAll())[0];
+		if (!project) throw new Error("project missing");
+		const { mkdtemp } = await import("node:fs/promises");
+		const { tmpdir } = await import("node:os");
+		const { join } = await import("node:path");
+		const tmpWs = await mkdtemp(join(tmpdir(), "warren-plotvalid-ws-"));
+		const calls: { method: string; path: string; body: unknown }[] = [];
+		const burrowClient = makeBurrowClient(
+			{ burrowId: "bur_plotvalid000", burrowRunId: "run_plotvalid000", workspacePath: tmpWs },
+			calls,
+		);
+		const deps = await depsFor(
+			repos,
+			burrowClient,
+			undefined,
+			resolver !== undefined ? { plotResolver: resolver } : undefined,
+		);
+		handle = startServer(deps, {
+			transport: { kind: "tcp", hostname: "127.0.0.1", port: 0 },
+			auth: NO_AUTH,
+			logger: silentLogger,
+		});
+		return { project, handle };
+	}
+
+	test("malformed plot_id ('plot_id=plot-3e72876d') → 400 plot_id_invalid (the bug from warren-a353)", async () => {
+		const { project } = await makeHandle();
+		if (handle === null) throw new Error("handle missing");
+		const res = await fetch(`${tcpUrl(handle)}/runs`, {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({
+				agent: "refactor-bot",
+				project: project.id,
+				prompt: "hello",
+				plotId: "plot_id=plot-3e72876d",
+			}),
+		});
+		expect(res.status).toBe(400);
+		const body = (await res.json()) as { error: { code: string; hint?: string } };
+		expect(body.error.code).toBe("plot_id_invalid");
+	});
+
+	test("well-formed but non-existent plot_id → 400 plot_id_not_found", async () => {
+		const resolver = {
+			async resolve() {
+				return null;
+			},
+		};
+		const { project } = await makeHandle(resolver);
+		if (handle === null) throw new Error("handle missing");
+		const res = await fetch(`${tcpUrl(handle)}/runs`, {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({
+				agent: "refactor-bot",
+				project: project.id,
+				prompt: "hello",
+				plotId: "plot-deadbeef",
+			}),
+		});
+		expect(res.status).toBe(400);
+		const body = (await res.json()) as { error: { code: string } };
+		expect(body.error.code).toBe("plot_id_not_found");
+	});
+
+	test("well-formed + resolver hit → 201 (happy path)", async () => {
+		const project = (await repos.projects.listAll())[0];
+		if (!project) throw new Error("project missing");
+		const resolver = {
+			async resolve() {
+				return project;
+			},
+		};
+		await makeHandle(resolver);
+		if (handle === null) throw new Error("handle missing");
+		const res = await fetch(`${tcpUrl(handle)}/runs`, {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({
+				agent: "refactor-bot",
+				project: project.id,
+				prompt: "hello",
+				plotId: "plot-3e72876d",
+			}),
+		});
+		expect(res.status).toBe(201);
+	});
+
+	test("omitted plot_id is byte-identical to current behavior (no validation kicks in)", async () => {
+		const { project } = await makeHandle({
+			async resolve() {
+				throw new Error("resolver should not be consulted when plot_id is omitted");
+			},
+		});
+		if (handle === null) throw new Error("handle missing");
+		const res = await fetch(`${tcpUrl(handle)}/runs`, {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({
+				agent: "refactor-bot",
+				project: project.id,
+				prompt: "hello",
+			}),
+		});
+		expect(res.status).toBe(201);
+	});
+
+	test("empty-string plot_id is treated as not supplied (no validation kicks in)", async () => {
+		const { project } = await makeHandle({
+			async resolve() {
+				throw new Error("resolver should not be consulted when plot_id is empty");
+			},
+		});
+		if (handle === null) throw new Error("handle missing");
+		const res = await fetch(`${tcpUrl(handle)}/runs`, {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({
+				agent: "refactor-bot",
+				project: project.id,
+				prompt: "hello",
+				plotId: "",
+			}),
+		});
+		expect(res.status).toBe(201);
 	});
 });
 

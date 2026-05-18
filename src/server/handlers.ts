@@ -76,7 +76,10 @@ import {
 	defaultPlotReader,
 	defaultPlotStatusChanger,
 	EMPTY_PLOT_SUMMARIES,
+	isValidPlotIdFormat,
 	type PlotEnvelope,
+	PlotIdInvalidError,
+	PlotIdNotFoundError,
 	type PlotSummary,
 } from "../plots/index.ts";
 import { createRunPreviewsRepo, DEFAULT_MAX_LIVE } from "../preview/eviction.ts";
@@ -240,6 +243,44 @@ function withAgentSource(row: AgentRow): AgentRow & { source: AgentSource } {
  * so a typo'd query (`?projectId=`) surfaces instead of silently
  * collapsing to global-only.
  */
+/**
+ * Validate `plotId` at the dispatch edge (POST /runs, POST /plan-runs).
+ * Both inputs are normalized so an undefined / empty string passes
+ * through unchanged — "no plot bound" is a first-class shape.
+ *
+ * Format check is always-on (`isValidPlotIdFormat`). Existence check
+ * runs only when `plotResolver` is wired on ServerDeps (production
+ * wires it in src/server/main.ts). Test harnesses that omit the
+ * resolver get format-only validation, which matches the existing
+ * per-Plot handler posture in this file (`deps.plotResolver !==
+ * undefined ? ... : null`).
+ *
+ * warren-bae5 / pl-5310 step 2 — fold-in of warren-a353.
+ */
+async function assertPlotIdDispatchable(input: {
+	readonly plotId: string | undefined;
+	readonly plotResolver?: import("../plots/index.ts").PlotResolver;
+}): Promise<void> {
+	const { plotId, plotResolver } = input;
+	if (plotId === undefined || plotId === "") return;
+	if (!isValidPlotIdFormat(plotId)) {
+		throw new PlotIdInvalidError(
+			`plot_id ${JSON.stringify(plotId)} is not a valid Plot ID (expected shape: plot-<lower-alphanum>+)`,
+			{
+				recoveryHint:
+					"Plot IDs look like `plot-3e72876d`. Visit /plots to copy the canonical id of an existing Plot.",
+			},
+		);
+	}
+	if (plotResolver === undefined) return;
+	const owning = await plotResolver.resolve(plotId);
+	if (owning === null) {
+		throw new PlotIdNotFoundError(`plot_id ${plotId} does not match any known Plot`, {
+			recoveryHint: "Verify the Plot exists at /plots, or omit plot_id to dispatch an unbound run.",
+		});
+	}
+}
+
 function parseProjectIdQuery(ctx: RouteContext): string | undefined {
 	const raw = ctx.url.searchParams.get("projectId");
 	if (raw === null) return undefined;
@@ -844,6 +885,12 @@ function createRunHandler(deps: ServerDeps): RouteHandler {
 		const seedId = optionalString(body, "seedId");
 		const plotId = optionalString(body, "plotId");
 		const dispatcherHandle = optionalString(body, "dispatcherHandle");
+		// warren-bae5 / pl-5310 step 2: validate plot_id BEFORE handing off
+		// to spawnRun so a malformed or non-existent plot_id fails at the
+		// operator-facing edge instead of silently no-opping at the
+		// host-side defaultPlotAppender. Empty string is normalized to "no
+		// plot bound" (matches spawnRun's posture and the createPlanRun gate).
+		await assertPlotIdDispatchable({ plotId, plotResolver: deps.plotResolver });
 		const result = await spawnRun({
 			repos: deps.repos,
 			burrowClientPool: deps.burrowClientPool,
@@ -1319,6 +1366,12 @@ function createPlanRunHandler(deps: ServerDeps): RouteHandler {
 				},
 			);
 		}
+
+		// (2c) warren-bae5 / pl-5310 step 2: plot_id format + existence
+		// validation, mirroring createRunHandler's check. Layered AFTER
+		// ProjectLacksPlotError so the more-specific project-shape error
+		// still wins when both apply.
+		await assertPlotIdDispatchable({ plotId, plotResolver: deps.plotResolver });
 
 		// (3) read the plan via seeds-cli.
 		if (deps.seedsCli === undefined) {

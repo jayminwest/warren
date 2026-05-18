@@ -104,12 +104,20 @@ export function NewPlanRunPage() {
 
 	const trimmedPlanId = planId.trim();
 	const trimmedPrompt = promptTemplate.trim();
+	// warren-bae5 / pl-5310 step 2: mirror server-side `^plot-[a-z0-9]+$`
+	// validation (src/plots/id-validator.ts). Same lockstep-duplicated regex
+	// as NewRun.tsx — keep them in sync.
+	const PLOT_ID_RE = /^plot-[a-z0-9]+$/;
+	const trimmedPlotIdForUi = plotId.trim();
+	const plotIdMalformed =
+		hasPlot && trimmedPlotIdForUi.length > 0 && !PLOT_ID_RE.test(trimmedPlotIdForUi);
 	const submittable =
 		project.length > 0 &&
 		agent.length > 0 &&
 		trimmedPlanId.length > 0 &&
 		trimmedPrompt.length > 0 &&
-		hasSeeds;
+		hasSeeds &&
+		!plotIdMalformed;
 
 	const handleSubmit = (e: React.FormEvent): void => {
 		e.preventDefault();
@@ -269,7 +277,7 @@ export function NewPlanRunPage() {
 									id="plotId"
 									value={plotId}
 									onChange={(e) => setPlotId(e.target.value)}
-									placeholder="plot_…"
+									placeholder="plot-…"
 									autoComplete="off"
 									spellCheck={false}
 								/>
@@ -278,6 +286,11 @@ export function NewPlanRunPage() {
 									PLOT_ID; the Plot auto-transitions to <code className="font-mono">done</code>{" "}
 									when every child merges.
 								</p>
+								{plotIdMalformed ? (
+									<p className="text-xs text-(--color-destructive)">
+										Plot ID must look like <code className="font-mono">plot-xxxxxxxx</code>.
+									</p>
+								) : null}
 							</div>
 						) : null}
 

@@ -100,6 +100,7 @@ interface BuildDepsInput {
 	bridges?: BridgeRegistry;
 	planRunPlotAppender?: PlanRunPlotAppender;
 	logger?: Logger;
+	plotResolver?: import("../plots/index.ts").PlotResolver;
 }
 
 async function depsFor(input: BuildDepsInput): Promise<ServerDeps> {
@@ -124,6 +125,7 @@ async function depsFor(input: BuildDepsInput): Promise<ServerDeps> {
 		...(input.planRunPlotAppender !== undefined
 			? { planRunPlotAppender: input.planRunPlotAppender }
 			: {}),
+		...(input.plotResolver !== undefined ? { plotResolver: input.plotResolver } : {}),
 	};
 }
 
@@ -379,20 +381,20 @@ describe("POST /plan-runs", () => {
 				project: plottedProjectId,
 				planId: "pl-plot",
 				agent: "claude-code",
-				plotId: "plot_abc",
+				plotId: "plot-abc",
 			}),
 		});
 		expect(res.status).toBe(201);
 		const body = (await res.json()) as { planRun: { id: string; plotId: string | null } };
-		expect(body.planRun.plotId).toBe("plot_abc");
+		expect(body.planRun.plotId).toBe("plot-abc");
 
 		// Round-trips on GET /plan-runs/:id as well.
 		const detail = await fetch(`${tcpUrl(handle)}/plan-runs/${body.planRun.id}`);
 		const detailBody = (await detail.json()) as { planRun: { plotId: string | null } };
-		expect(detailBody.planRun.plotId).toBe("plot_abc");
+		expect(detailBody.planRun.plotId).toBe("plot-abc");
 
 		const persisted = await repos.planRuns.require(body.planRun.id);
-		expect(persisted.plotId).toBe("plot_abc");
+		expect(persisted.plotId).toBe("plot-abc");
 	});
 
 	test("rejects plot_id on a project without .plot/: 400 + code=project_lacks_plot", async () => {
@@ -411,7 +413,7 @@ describe("POST /plan-runs", () => {
 				project: seedyProjectId,
 				planId: "pl-x",
 				agent: "claude-code",
-				plotId: "plot_abc",
+				plotId: "plot-abc",
 			}),
 		});
 		expect(res.status).toBe(400);
@@ -449,7 +451,7 @@ describe("POST /plan-runs", () => {
 				project: barePlottedProjectId,
 				planId: "pl-x",
 				agent: "claude-code",
-				plotId: "plot_abc",
+				plotId: "plot-abc",
 			}),
 		});
 		expect(res.status).toBe(400);
@@ -571,7 +573,7 @@ describe("POST /plan-runs", () => {
 				project: plottedProjectId,
 				planId: "pl-emit",
 				agent: "claude-code",
-				plotId: "plot_emit_1",
+				plotId: "plot-emit1",
 				dispatcherHandle: "alice",
 			}),
 		});
@@ -582,7 +584,7 @@ describe("POST /plan-runs", () => {
 		const call = appendCalls[0];
 		if (!call) throw new Error("appender not called");
 		expect(call.plotDir).toBe("/tmp/plotted/.plot");
-		expect(call.plotId).toBe("plot_emit_1");
+		expect(call.plotId).toBe("plot-emit1");
 		expect(call.handle).toBe("alice");
 		expect(call.planRunId).toBe(body.planRun.id);
 		expect(call.planId).toBe("pl-emit");
@@ -661,7 +663,7 @@ describe("POST /plan-runs", () => {
 				project: plottedProjectId,
 				planId: "pl-default",
 				agent: "claude-code",
-				plotId: "plot_d",
+				plotId: "plot-d",
 			}),
 		});
 		expect(res.status).toBe(201);
@@ -701,7 +703,7 @@ describe("POST /plan-runs", () => {
 				project: plottedProjectId,
 				planId: "pl-bad",
 				agent: "claude-code",
-				plotId: "plot_b",
+				plotId: "plot-b",
 				dispatcherHandle: "@bad/handle",
 			}),
 		});
@@ -743,7 +745,7 @@ describe("POST /plan-runs", () => {
 				project: plottedProjectId,
 				planId: "pl-fail",
 				agent: "claude-code",
-				plotId: "plot_f",
+				plotId: "plot-f",
 			}),
 		});
 		expect(res.status).toBe(201);
@@ -758,12 +760,12 @@ describe("POST /plan-runs", () => {
 			err?: string;
 		};
 		expect(obj.planRunId).toBe(body.planRun.id);
-		expect(obj.plotId).toBe("plot_f");
+		expect(obj.plotId).toBe("plot-f");
 		expect(obj.err).toContain("plot offline");
 
 		// Row still persists — failure was non-fatal.
 		const persisted = await repos.planRuns.require(body.planRun.id);
-		expect(persisted.plotId).toBe("plot_f");
+		expect(persisted.plotId).toBe("plot-f");
 	});
 
 	test("404 when project doesn't exist", async () => {
@@ -785,6 +787,60 @@ describe("POST /plan-runs", () => {
 			}),
 		});
 		expect(res.status).toBe(404);
+	});
+
+	test("malformed plot_id → 400 plot_id_invalid (warren-bae5)", async () => {
+		const sdSpawn = makeSdSpawn([], []);
+		const deps = await depsFor({ repos, sdSpawn });
+		handle = startServer(deps, {
+			transport: { kind: "tcp", hostname: "127.0.0.1", port: 0 },
+			auth: NO_AUTH,
+			logger: silentLogger,
+		});
+		const res = await fetch(`${tcpUrl(handle)}/plan-runs`, {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({
+				project: plottedProjectId,
+				planId: "pl-x",
+				agent: "claude-code",
+				plotId: "plot_id=plot-3e72876d",
+			}),
+		});
+		expect(res.status).toBe(400);
+		const body = (await res.json()) as { error: { code: string } };
+		expect(body.error.code).toBe("plot_id_invalid");
+		// No row inserted.
+		expect(await repos.planRuns.listByProjectAndState(plottedProjectId)).toHaveLength(0);
+	});
+
+	test("well-formed but non-existent plot_id → 400 plot_id_not_found (warren-bae5)", async () => {
+		const sdSpawn = makeSdSpawn([], []);
+		const resolver = {
+			async resolve() {
+				return null;
+			},
+		};
+		const deps = await depsFor({ repos, sdSpawn, plotResolver: resolver });
+		handle = startServer(deps, {
+			transport: { kind: "tcp", hostname: "127.0.0.1", port: 0 },
+			auth: NO_AUTH,
+			logger: silentLogger,
+		});
+		const res = await fetch(`${tcpUrl(handle)}/plan-runs`, {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({
+				project: plottedProjectId,
+				planId: "pl-x",
+				agent: "claude-code",
+				plotId: "plot-deadbeef",
+			}),
+		});
+		expect(res.status).toBe(400);
+		const body = (await res.json()) as { error: { code: string } };
+		expect(body.error.code).toBe("plot_id_not_found");
+		expect(await repos.planRuns.listByProjectAndState(plottedProjectId)).toHaveLength(0);
 	});
 });
 

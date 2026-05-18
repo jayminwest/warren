@@ -80,3 +80,41 @@ export class PlotQuestionNotFoundError extends WarrenError {
 export class PlotQuestionAlreadyAnsweredError extends WarrenError {
 	readonly code = "plot_question_already_answered";
 }
+
+/**
+ * Raised by `POST /runs` and `POST /plan-runs` (warren-bae5 / pl-5310
+ * step 2) when the supplied `plotId` does not match the
+ * `^plot-[a-z0-9]+$` shape that `@os-eco/plot-cli` mints. Mapped to
+ * 400 in `src/server/errors.ts`. HTTP consumers branch on
+ * `code === "plot_id_invalid"`.
+ *
+ * Origin: dogfood signal #4 from plot-3e72876d (warren-a353). A user
+ * pasted the prose form `plot_id=plot-3e72876d` (including the
+ * `plot_id=` prefix) into the NewRun plot_id input. The previous
+ * silent-accept posture amplified once steps 3 and 4 of pl-5310
+ * landed batch + plan-run dispatch on top of the single-run
+ * primitive — N runs against a malformed plot_id would silently
+ * fail N appender calls. Validating at the dispatch edge keeps the
+ * failure local to the operator-facing input.
+ */
+export class PlotIdInvalidError extends WarrenError {
+	readonly code = "plot_id_invalid";
+}
+
+/**
+ * Raised by `POST /runs` and `POST /plan-runs` (warren-bae5 / pl-5310
+ * step 2) when the supplied `plotId` is well-formed but no
+ * `hasPlot=true` project owns it (per `PlotResolver.resolve`). Mapped
+ * to 400 in `src/server/errors.ts`. HTTP consumers branch on
+ * `code === "plot_id_not_found"`.
+ *
+ * The existence check piggybacks on `PlotResolver` (src/plots/resolver.ts)
+ * which is already used by every per-Plot handler. Only fires when
+ * the resolver is wired into ServerDeps — production wires it in
+ * src/server/main.ts. Test harnesses that don't wire a resolver get
+ * format-only validation (matches the existing per-Plot handler
+ * posture in handlers.ts).
+ */
+export class PlotIdNotFoundError extends WarrenError {
+	readonly code = "plot_id_not_found";
+}

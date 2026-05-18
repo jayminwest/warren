@@ -167,6 +167,7 @@ export function NewRunPage() {
 	const handleSubmit = (e: React.FormEvent): void => {
 		e.preventDefault();
 		if (agent.length === 0 || project.length === 0 || prompt.trim().length === 0) return;
+		if (plotIdMalformed) return;
 		const trimmedRef = ref.trim();
 		const trimmedProvider = providerOverride.trim();
 		const trimmedModel = modelOverride.trim();
@@ -186,6 +187,16 @@ export function NewRunPage() {
 	const noProjects = !projects.isLoading && (projects.data?.projects.length ?? 0) === 0;
 	const selectedProject = projects.data?.projects.find((p) => p.id === project);
 	const hasPlot = selectedProject?.hasPlot ?? false;
+
+	// warren-bae5 / pl-5310 step 2: client-side mirror of the
+	// `^plot-[a-z0-9]+$` shape the server enforces (src/plots/id-validator.ts).
+	// Duplicated regex — the UI bundle can't import warren's server-side
+	// `src/plots/index.ts` (no node-only deps allowed in the browser
+	// bundle), so keep these two literals in lockstep.
+	const PLOT_ID_RE = /^plot-[a-z0-9]+$/;
+	const trimmedPlotIdForUi = plotId.trim();
+	const plotIdMalformed =
+		hasPlot && trimmedPlotIdForUi.length > 0 && !PLOT_ID_RE.test(trimmedPlotIdForUi);
 
 	return (
 		<div className="mx-auto max-w-3xl space-y-6">
@@ -311,6 +322,11 @@ export function NewRunPage() {
 									sandbox sees <code className="font-mono">PLOT_ID</code> /{" "}
 									<code className="font-mono">PLOT_ACTOR</code>.
 								</p>
+								{plotIdMalformed ? (
+									<p className="text-xs text-(--color-destructive)">
+										Plot ID must look like <code className="font-mono">plot-xxxxxxxx</code>.
+									</p>
+								) : null}
 							</div>
 						) : null}
 
@@ -417,7 +433,8 @@ export function NewRunPage() {
 									spawn.isPending ||
 									agent.length === 0 ||
 									project.length === 0 ||
-									prompt.trim().length === 0
+									prompt.trim().length === 0 ||
+									plotIdMalformed
 								}
 							>
 								{spawn.isPending ? "Dispatching…" : "Dispatch"}

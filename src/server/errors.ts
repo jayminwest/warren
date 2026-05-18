@@ -46,6 +46,8 @@ import {
 } from "../plan-runs/errors.ts";
 import {
 	PlotAttachmentNotFoundError,
+	PlotIdInvalidError,
+	PlotIdNotFoundError,
 	PlotIllegalStatusTransitionError,
 	PlotIntentFrozenError,
 	PlotQuestionAlreadyAnsweredError,
@@ -126,6 +128,8 @@ function warrenStatusFor(err: WarrenError): number {
 	if (err instanceof PlotAttachmentNotFoundError) return 404;
 	if (err instanceof PlotQuestionNotFoundError) return 404;
 	if (err instanceof PlotQuestionAlreadyAnsweredError) return 409;
+	if (err instanceof PlotIdInvalidError) return 400;
+	if (err instanceof PlotIdNotFoundError) return 400;
 	if (err instanceof BurrowUnreachableError) return 503;
 	if (err instanceof CanopyUnavailableError) return 503;
 	if (err instanceof ProjectUnavailableError) return 503;

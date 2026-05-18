@@ -34,11 +34,14 @@ export {
 } from "./creator.ts";
 export {
 	PlotAttachmentNotFoundError,
+	PlotIdInvalidError,
+	PlotIdNotFoundError,
 	PlotIllegalStatusTransitionError,
 	PlotIntentFrozenError,
 	PlotQuestionAlreadyAnsweredError,
 	PlotQuestionNotFoundError,
 } from "./errors.ts";
+export { isValidPlotIdFormat, PLOT_ID_REGEX } from "./id-validator.ts";
 export {
 	assertIntentMutable,
 	defaultPlotIntentEditor,
