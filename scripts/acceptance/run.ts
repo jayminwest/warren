@@ -61,6 +61,7 @@ import { scenario as scenario24 } from "./scenarios/24-preview-node-runtime.ts";
 import { scenario as scenario25 } from "./scenarios/25-plot-roundtrip.ts";
 import { scenario as scenario26 } from "./scenarios/26-plan-run-roundtrip.ts";
 import { scenario as scenario27 } from "./scenarios/27-plan-run-plot-roundtrip.ts";
+import { scenario as scenario28 } from "./scenarios/28-plot-list-and-create.ts";
 
 const SCENARIOS: readonly Scenario[] = [
 	scenario01,
@@ -91,6 +92,7 @@ const SCENARIOS: readonly Scenario[] = [
 	scenario25,
 	scenario26,
 	scenario27,
+	scenario28,
 ];
 
 interface ParsedArgs {
