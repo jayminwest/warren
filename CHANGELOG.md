@@ -7,6 +7,74 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.7] — 2026-05-18
+
+Patch release bundling the next two shipped steps of the Plot UX vision
+(pl-5310 / warren-e40a) on top of the per-seed Run button that landed in
+`0.4.6`: dispatch-time `plot_id` validation closes the silent-accept
+dogfood signal from `plot-3e72876d`, and PlotDetail grows a batch
+"Dispatch all" header action on the SubstratePanel. The cross-repo
+Plot→synthesized plan-run pipeline (pl-5310 step 4) lands as a SPEC
+§11.Q design lock only — implementation is gated on an upstream
+seeds-cli contract (warren-d519) and will ship in a follow-up release.
+
+### Added
+
+- **`feat(server,ui)`** — Batch "Dispatch all (N)" button on PlotDetail's
+  SubstratePanel (warren-7c3f, pl-5310 step 3). Opens a confirm dialog
+  and fires N parallel `POST /runs` in one go, each bound to the Plot
+  via `plot_id` and `seed_id`. Reuses the same agent/prompt resolution
+  as the per-row RunSeedButton (`.warren/defaults.yaml` `defaultRole` +
+  `defaultPrompt` with `{seed_id}` substituted). Each dispatch's
+  `run_dispatched` event flows into the activity feed via the 5s poll
+  tick. Eligibility: `seeds_issue` attachments that are not `sd_plan`-
+  shaped (`pl-*` refs already render their own per-row Run plan
+  button). V1 ships parallel mode only — serial-gated-on-PR-merge is
+  deferred to pl-5310 step 4. Closed-seed skip filed as warren-4015
+  follow-up.
+
+### Changed
+
+- **`feat(server,ui)`** — `plot_id` format + existence validation at
+  dispatch (warren-bae5, pl-5310 step 2). Two new typed errors in
+  `src/plots/errors.ts` — `PlotIdInvalidError` (`code=plot_id_invalid`)
+  and `PlotIdNotFoundError` (`code=plot_id_not_found`) — both mapped to
+  400 in `src/server/errors.ts`. New shared helper
+  `src/plots/id-validator.ts` exports `PLOT_ID_REGEX`
+  (`/^plot-[a-z0-9]+$/`) and `isValidPlotIdFormat()`. The HTTP edge
+  calls `assertPlotIdDispatchable()` in `createRunHandler` and
+  `createPlanRunHandler` **before** any row insert; format check is
+  always-on, existence check piggybacks on `deps.plotResolver` and
+  no-ops when unwired so test harnesses keep working. Empty / undefined
+  `plot_id` passes through unchanged. In `createPlanRunHandler` the new
+  check layers **after** `ProjectLacksPlotError` so the more-specific
+  project-shape error still wins when both apply. Client mirror:
+  `NewRun.tsx` and `NewPlanRun.tsx` duplicate the regex literal
+  (UI bundle can't import server-side `src/plots/index.ts`), show an
+  inline error, and disable the Dispatch button while malformed.
+  Origin: dogfood signal #4 from `plot-3e72876d` (warren-a353) where a
+  user pasted the literal string `plot_id=plot-3e72876d` (including the
+  `plot_id=` prefix) into the NewRun input and warren silently accepted
+  it.
+
+### Docs
+
+- **`docs(spec)`** — SPEC §11.Q "Plot → synthesized plan-run pipeline
+  (pl-5310 step 4)" design lock (warren-a4b7). Locks the endpoint shape
+  (`POST /plot-plan-runs`), the synthesis algorithm (filter closed +
+  `sd_plan` attachments, mint throwaway parent seed, call
+  `POST /plan-runs` in-process with `plot_id`), the typed-4xx error map
+  (mirrors §11.O/§11.P gates + warren-bae5 `plot_id` validation), the
+  UI surface (PlotDetail "Dispatch as plan-run" button next to
+  `BatchDispatchAllButton`), and acceptance scenario 30 composing
+  scenarios 25 + 27 + 29. §11.Q names the upstream seeds-cli contract:
+  `sd plan submit` accepts existing-seed children, validates per-repo
+  existence, rejects cross-repo ids + closed seeds at submit time,
+  emits a plan row byte-compatible with warren's `showPlan` reader.
+  Once upstream ships, warren double-pins per the burrow-cli rule
+  (`package.json` + `bun.lock` + `Dockerfile`). pl-f404 decomposes
+  warren-a4b7 into 5 children blocked on warren-d519. No code changes.
+
 ## [0.4.6] — 2026-05-18
 
 Patch release bundling the post-`0.4.5` stream of dogfood-driven fixes
