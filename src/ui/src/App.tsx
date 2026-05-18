@@ -1,6 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { HashRouter, Navigate, Route, Routes } from "react-router-dom";
 import { AuthGate } from "@/components/AuthGate.tsx";
+import { DefaultLanding } from "@/components/DefaultLanding.tsx";
 import { Layout } from "@/components/Layout.tsx";
 import { AgentsPage } from "@/pages/Agents.tsx";
 import { LoginPage } from "@/pages/Login.tsx";
@@ -44,7 +45,7 @@ export function App() {
 							</AuthGate>
 						}
 					>
-						<Route index element={<Navigate to="/runs" replace />} />
+						<Route index element={<DefaultLanding />} />
 						<Route path="/runs" element={<RunsPage />} />
 						<Route path="/runs/new" element={<NewRunPage />} />
 						<Route path="/runs/:id" element={<RunDetailPage />} />

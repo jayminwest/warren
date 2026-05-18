@@ -45,14 +45,14 @@ export function Layout() {
 		[projects.data],
 	);
 	const navItems = useMemo<NavItem[]>(() => {
+		// Byte-identical to pre-Plots order when no project opted in —
+		// preserves the CLAUDE.md standalone path (warren-e59a / pl-9d6a
+		// step 19).
 		if (!anyHasPlot) return BASE_NAV_ITEMS;
-		// Order: Runs → Plans → Plots → Projects → Agents (insert
-		// Plots between Plans and Projects).
-		return [
-			...BASE_NAV_ITEMS.slice(0, 2),
-			PLOTS_NAV_ITEM,
-			...BASE_NAV_ITEMS.slice(2),
-		];
+		// Plot-enabled deployments lead with Plots, then the existing
+		// Runs → Plans → Projects → Agents order: Plots → Runs → Plans
+		// → Projects → Agents.
+		return [PLOTS_NAV_ITEM, ...BASE_NAV_ITEMS];
 	}, [anyHasPlot]);
 
 	const handleLogout = (): void => {
