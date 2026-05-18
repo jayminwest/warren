@@ -42,6 +42,7 @@ import {
 	createPlotAggregator,
 	createPlotResolver,
 	defaultPlotCreator,
+	defaultPlotIntentEditor,
 	defaultPlotReader,
 } from "../plots/index.ts";
 import { createPreviewAuth, type PreviewAuth } from "../preview/cookie.ts";
@@ -400,6 +401,7 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 		...(previewAuth !== undefined ? { previewAuth } : {}),
 		plotAggregator,
 		plotCreator: defaultPlotCreator,
+		plotIntentEditor: defaultPlotIntentEditor,
 		plotReader: defaultPlotReader,
 		plotResolver: createPlotResolver({
 			projectsRepo: repos.projects,

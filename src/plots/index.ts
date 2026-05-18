@@ -24,6 +24,15 @@ export {
 	defaultPlotCreator,
 	type PlotCreator,
 } from "./creator.ts";
+export { PlotIntentFrozenError } from "./errors.ts";
+export {
+	assertIntentMutable,
+	defaultPlotIntentEditor,
+	type EditPlotIntentPatch,
+	type EditPlotIntentRequest,
+	type EditPlotIntentResult,
+	type PlotIntentEditor,
+} from "./intent-editor.ts";
 export {
 	defaultPlotReader,
 	type PlotEnvelope,

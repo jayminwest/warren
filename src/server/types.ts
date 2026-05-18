@@ -262,6 +262,21 @@ export interface ServerDeps {
 	 * empty-deployments contract stays stable.
 	 */
 	readonly plotResolver?: import("../plots/index.ts").PlotResolver;
+	/**
+	 * Server-side Plot intent editor (warren-896f / pl-9d6a step 9). Used
+	 * by `POST /plots/:id/intent` to open a `UserPlotClient` against the
+	 * owning project's `.plot/`, enforce SPEC §6's frozen-at-done rule,
+	 * apply the patch via `PlotHandle.editIntent`, and return the fresh
+	 * envelope subset (`{id, name, status, intent, attachments[],
+	 * event_log[]}` — `project_id` is stitched on by the handler from
+	 * the resolved `ProjectRow`). Failure surfaces synchronously (the
+	 * user is waiting on the result — see seed body — so this is NOT
+	 * fire-and-log, in contrast to `defaultPlanRunPlotAppender`).
+	 * `bootServer` always wires the default; tests substitute a stub to
+	 * assert payload shape without touching disk. When undefined the
+	 * handler falls back to `defaultPlotIntentEditor`.
+	 */
+	readonly plotIntentEditor?: import("../plots/index.ts").PlotIntentEditor;
 }
 
 /**
