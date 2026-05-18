@@ -217,6 +217,18 @@ export interface ServerDeps {
 	 * without touching disk.
 	 */
 	readonly planRunPlotAppender?: PlanRunPlotAppender;
+	/**
+	 * Server-side Plot aggregator (warren-c167 / pl-9d6a step 2). Used by
+	 * `GET /plots` to fan out `UserPlotClient.query` across every
+	 * `hasPlot=true` project, with a 5s in-memory cache and the
+	 * empty-deployments byte-identical contract (see
+	 * `src/plots/aggregate.ts`). `bootServer` always wires the default
+	 * factory; tests stub the seam in `src/plots/aggregate.ts` and inject a
+	 * custom aggregator here. When undefined the handler returns
+	 * `EMPTY_PLOT_SUMMARIES` so a non-Plot deployment still sees a stable
+	 * 200/`[]` response.
+	 */
+	readonly plotAggregator?: import("../plots/index.ts").PlotAggregator;
 }
 
 /**

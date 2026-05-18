@@ -34,6 +34,7 @@ import type {
 	HttpBurrowListFilter,
 	MessagePriority,
 } from "@os-eco/burrow-cli";
+import { PLOT_STATUSES, type PlotStatus } from "@os-eco/plot-cli";
 import { withTransportMapping } from "../burrow-client/client.ts";
 import { fanOutAcrossWorkers } from "../burrow-client/fanout.ts";
 import { NotFoundError, ValidationError } from "../core/errors.ts";
@@ -62,6 +63,7 @@ import {
 	defaultPlanRunPlotAppender,
 	emitPlanRunDispatchedToPlot,
 } from "../plan-runs/plot-appender.ts";
+import { EMPTY_PLOT_SUMMARIES } from "../plots/index.ts";
 import { createRunPreviewsRepo, DEFAULT_MAX_LIVE } from "../preview/eviction.ts";
 import { DEFAULT_PREVIEW_PORT_RANGE, PreviewPortAllocator } from "../preview/port-allocator.ts";
 import { teardownPreview } from "../preview/teardown.ts";
@@ -1785,6 +1787,55 @@ async function checkAgentsRegistered(deps: ServerDeps): Promise<DiagnosticCheck>
 }
 
 /* ----------------------------------------------------------------------- */
+/* Plots                                                                    */
+/* ----------------------------------------------------------------------- */
+
+/**
+ * `GET /plots?status=` — list Plot summaries aggregated across every
+ * `hasPlot=true` project (warren-c167 / pl-9d6a step 2).
+ *
+ * Single-response JSON: no NDJSON envelope here — the list is bounded
+ * by the number of Plots across all hasPlot projects (Plot SPEC notes
+ * this is small-N relative to runs). The 5s in-memory cache lives
+ * inside the aggregator (`src/plots/aggregate.ts`); successful list
+ * calls never block on a fresh per-project rebuild.
+ *
+ * Empty-deployments contract (pinned by `28-plot-list-and-create.ts`
+ * and the unit test below): when zero projects have `hasPlot=true` we
+ * return the byte-identical empty array. `EMPTY_PLOT_SUMMARIES` is the
+ * canonical reference so a non-Plot deployment that walks the API
+ * surface sees a stable `200 []` response without any new bytes —
+ * preserving the CLAUDE.md "opt-in built-in feature" framing.
+ *
+ * Status filter: validated against the `@os-eco/plot-cli`
+ * `PLOT_STATUSES` whitelist so a typo doesn't silently return zero
+ * results. Unknown status → `ValidationError` (→ 400 / `bad_request`).
+ */
+function listPlotsHandler(deps: ServerDeps): RouteHandler {
+	return async (ctx) => {
+		const rawStatus = ctx.url.searchParams.get("status");
+		let status: PlotStatus | undefined;
+		if (rawStatus !== null && rawStatus !== "") {
+			if (!(PLOT_STATUSES as readonly string[]).includes(rawStatus)) {
+				throw new ValidationError(
+					`unknown status '${rawStatus}'; expected one of ${PLOT_STATUSES.join(", ")}`,
+				);
+			}
+			status = rawStatus as PlotStatus;
+		}
+		// Aggregator may be omitted by tests; fall back to the byte-identical
+		// empty contract so the wire shape stays the same regardless.
+		if (deps.plotAggregator === undefined) {
+			return jsonResponse(200, { plots: EMPTY_PLOT_SUMMARIES });
+		}
+		const plots = await deps.plotAggregator.listSummaries(
+			status !== undefined ? { status } : undefined,
+		);
+		return jsonResponse(200, { plots });
+	};
+}
+
+/* ----------------------------------------------------------------------- */
 /* Public API                                                               */
 /* ----------------------------------------------------------------------- */
 
@@ -1842,6 +1893,8 @@ const ROUTE_TABLE: readonly RouteEntry[] = [
 	{ method: "GET", pattern: "/plan-runs/:id", build: getPlanRunHandler },
 	{ method: "POST", pattern: "/plan-runs/:id/cancel", build: cancelPlanRunHandler },
 	{ method: "GET", pattern: "/plan-runs/:id/events", build: streamPlanRunEventsHandler },
+
+	{ method: "GET", pattern: "/plots", build: listPlotsHandler },
 ];
 
 /**
@@ -1879,6 +1932,7 @@ export const API_PREFIXES: readonly string[] = [
 	"/version",
 	"/preview",
 	"/plan-runs",
+	"/plots",
 ];
 
 /**

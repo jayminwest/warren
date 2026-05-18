@@ -38,6 +38,7 @@ import {
 	defaultPlotStatusSetter,
 	loadPlanRunCoordinatorConfigFromEnv,
 } from "../plan-runs/index.ts";
+import { createPlotAggregator } from "../plots/index.ts";
 import { createPreviewAuth, type PreviewAuth } from "../preview/cookie.ts";
 import {
 	loadPreviewEvictionConfigFromEnv,
@@ -361,6 +362,17 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 	const previewHostForDeps =
 		previewLaunchConfig.host !== null ? previewLaunchConfig.host : undefined;
 
+	// Plot aggregator (warren-c167 / pl-9d6a step 2). 5s in-memory cache,
+	// fan-out across every `hasPlot=true` project, byte-identical empty
+	// contract for deployments where no project ships `.plot/`. Threaded
+	// through ServerDeps so `GET /plots` (and later mutating handlers in
+	// pl-9d6a) read the same cache.
+	const plotAggregator = createPlotAggregator({
+		projectsRepo: repos.projects,
+		logger,
+		...(opts.now !== undefined ? { now: () => (opts.now as () => Date)().getTime() } : {}),
+	});
+
 	const deps: ServerDeps = {
 		repos,
 		db,
@@ -381,6 +393,7 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 		previewMode: previewLaunchConfig.mode,
 		...(previewHostForDeps !== undefined ? { previewHost: previewHostForDeps } : {}),
 		...(previewAuth !== undefined ? { previewAuth } : {}),
+		plotAggregator,
 		...(opts.now !== undefined ? { now: opts.now } : {}),
 	};
 
