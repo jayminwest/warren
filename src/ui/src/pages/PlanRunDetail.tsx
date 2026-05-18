@@ -3,6 +3,7 @@ import { CircleStop } from "lucide-react";
 import { useMemo } from "react";
 import { Link, useParams } from "react-router-dom";
 import { planRunsApi } from "@/api/client.ts";
+import { PlotMetaCardContent } from "@/components/PlotMetaCardContent.tsx";
 import type { PlanRunChildRow, PlanRunRow, RunRow } from "@/api/types.ts";
 import { PLAN_RUN_TERMINAL_STATES } from "@/api/types.ts";
 import {
@@ -124,12 +125,7 @@ export function PlanRunDetailPage() {
 				) : null}
 				{planRun.plotId !== null ? (
 					<MetaCard label="Plot">
-						<Link
-							to={`/plots/${encodeURIComponent(planRun.plotId)}`}
-							className="font-mono text-xs underline-offset-2 hover:underline"
-						>
-							{planRun.plotId}
-						</Link>
+						<PlotMetaCardContent plotId={planRun.plotId} />
 					</MetaCard>
 				) : null}
 				<MetaCard label="Created">{relativeTime(planRun.createdAt)}</MetaCard>
