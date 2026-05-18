@@ -19,6 +19,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import type { Attachment, Intent, PlotEvent } from "@os-eco/plot-cli";
 import { BurrowClient, BurrowClientPool } from "../burrow-client/index.ts";
 import { openDatabase, type WarrenDb } from "../db/client.ts";
 import { createRepos, type Repos } from "../db/repos/index.ts";
@@ -28,7 +29,12 @@ import type {
 	CreatePlotResult,
 	PlotAggregator,
 	PlotCreator,
+	PlotEnvelope,
+	PlotReader,
+	PlotResolver,
 	PlotSummary,
+	ReadPlotRequest,
+	ReadPlotResult,
 } from "../plots/index.ts";
 import { RunEventBroker } from "../runs/index.ts";
 import { NO_AUTH } from "./auth.ts";
@@ -70,6 +76,8 @@ interface BuildDepsInput {
 	repos: Repos;
 	plotAggregator?: PlotAggregator;
 	plotCreator?: PlotCreator;
+	plotReader?: PlotReader;
+	plotResolver?: PlotResolver;
 }
 
 async function depsFor(input: BuildDepsInput): Promise<ServerDeps> {
@@ -90,7 +98,38 @@ async function depsFor(input: BuildDepsInput): Promise<ServerDeps> {
 		uiDistDir: null,
 		...(input.plotAggregator !== undefined ? { plotAggregator: input.plotAggregator } : {}),
 		...(input.plotCreator !== undefined ? { plotCreator: input.plotCreator } : {}),
+		...(input.plotReader !== undefined ? { plotReader: input.plotReader } : {}),
+		...(input.plotResolver !== undefined ? { plotResolver: input.plotResolver } : {}),
 	};
+}
+
+interface FakeReaderCall {
+	readonly input: ReadPlotRequest;
+}
+
+function fakeReader(result: ReadPlotResult): { reader: PlotReader; calls: FakeReaderCall[] } {
+	const calls: FakeReaderCall[] = [];
+	const reader: PlotReader = {
+		async read(input) {
+			calls.push({ input });
+			return result;
+		},
+	};
+	return { reader, calls };
+}
+
+function fakeResolver(map: Record<string, ProjectRow | null>): {
+	resolver: PlotResolver;
+	calls: string[];
+} {
+	const calls: string[] = [];
+	const resolver: PlotResolver = {
+		async resolve(plotId) {
+			calls.push(plotId);
+			return map[plotId] ?? null;
+		},
+	};
+	return { resolver, calls };
 }
 
 interface FakeCreatorCall {
@@ -512,6 +551,165 @@ describe("POST /plots", () => {
 		});
 		// Generic error → 500 (no typed mapping); the user sees the failure
 		// synchronously rather than the create silently succeeding-with-warning.
+		expect(res.status).toBe(500);
+	});
+});
+
+describe("GET /plots/:id", () => {
+	let db: WarrenDb;
+	let repos: Repos;
+	let handle: ServeHandle | null = null;
+
+	beforeEach(async () => {
+		db = await openDatabase({ path: ":memory:" });
+		repos = createRepos(db);
+	});
+
+	afterEach(async () => {
+		if (handle) {
+			await handle.stop();
+			handle = null;
+		}
+		await db.close();
+	});
+
+	const intent: Intent = {
+		goal: "ship it",
+		non_goals: ["yak shave"],
+		constraints: [],
+		success_criteria: ["green CI"],
+	};
+
+	const attachments: Attachment[] = [
+		{
+			id: "att-001",
+			type: "seeds_issue",
+			ref: "warren-961e",
+			role: "primary",
+			added_at: "2026-05-18T01:00:00Z",
+			added_by: "user:alice",
+		},
+	];
+
+	const events: PlotEvent[] = [
+		{
+			type: "plot_created",
+			actor: "user:alice",
+			at: "2026-05-18T01:00:00Z",
+			data: { name: "P" },
+		},
+		{
+			type: "note",
+			actor: "user:alice",
+			at: "2026-05-18T01:30:00Z",
+			data: { text: "second" },
+		},
+	];
+
+	const READ_RESULT: ReadPlotResult = {
+		id: "pt-xyz",
+		name: "P",
+		status: "active",
+		intent,
+		attachments,
+		event_log: events,
+	};
+
+	test("happy path: returns full envelope with project_id stitched on", async () => {
+		const project = await seedProject(repos, { id: "proj-plot", hasPlot: true });
+		const { resolver, calls: resolverCalls } = fakeResolver({ "pt-xyz": project });
+		const { reader, calls: readerCalls } = fakeReader(READ_RESULT);
+		const deps = await depsFor({ repos, plotResolver: resolver, plotReader: reader });
+		handle = startServer(deps, {
+			transport: { kind: "tcp", hostname: "127.0.0.1", port: 0 },
+			auth: NO_AUTH,
+			logger: silentLogger,
+		});
+
+		const res = await fetch(`${tcpUrl(handle)}/plots/pt-xyz`);
+		expect(res.status).toBe(200);
+		const body = (await res.json()) as PlotEnvelope;
+		expect(body.id).toBe("pt-xyz");
+		expect(body.name).toBe("P");
+		expect(body.status).toBe("active");
+		expect(body.intent).toEqual(intent);
+		expect(body.attachments).toEqual(attachments);
+		expect(body.event_log).toEqual(events);
+		expect(body.project_id).toBe(project.id);
+
+		expect(resolverCalls).toEqual(["pt-xyz"]);
+		expect(readerCalls).toHaveLength(1);
+		const call = readerCalls[0];
+		if (call === undefined) throw new Error("expected one reader call");
+		expect(call.input.plotId).toBe("pt-xyz");
+		expect(call.input.plotDir).toBe(`${project.localPath}/.plot`);
+	});
+
+	test("404s when the resolver returns null (unknown plot_id)", async () => {
+		const { resolver } = fakeResolver({});
+		const { reader, calls } = fakeReader(READ_RESULT);
+		const deps = await depsFor({ repos, plotResolver: resolver, plotReader: reader });
+		handle = startServer(deps, {
+			transport: { kind: "tcp", hostname: "127.0.0.1", port: 0 },
+			auth: NO_AUTH,
+			logger: silentLogger,
+		});
+
+		const res = await fetch(`${tcpUrl(handle)}/plots/pt-missing`);
+		expect(res.status).toBe(404);
+		const body = (await res.json()) as { error: { code: string; message: string } };
+		expect(body.error.code).toBe("not_found");
+		expect(body.error.message).toContain("pt-missing");
+		expect(calls).toEqual([]);
+	});
+
+	test("404s when no resolver is wired (non-Plot deployment)", async () => {
+		const deps = await depsFor({ repos });
+		handle = startServer(deps, {
+			transport: { kind: "tcp", hostname: "127.0.0.1", port: 0 },
+			auth: NO_AUTH,
+			logger: silentLogger,
+		});
+
+		const res = await fetch(`${tcpUrl(handle)}/plots/pt-anything`);
+		expect(res.status).toBe(404);
+	});
+
+	test("surfaces ProjectLacksPlotError defensively when hasPlot flipped after resolution", async () => {
+		const project = await seedProject(repos, { id: "proj-flipped", hasPlot: false });
+		const { resolver } = fakeResolver({ "pt-flipped": project });
+		const { reader, calls } = fakeReader(READ_RESULT);
+		const deps = await depsFor({ repos, plotResolver: resolver, plotReader: reader });
+		handle = startServer(deps, {
+			transport: { kind: "tcp", hostname: "127.0.0.1", port: 0 },
+			auth: NO_AUTH,
+			logger: silentLogger,
+		});
+
+		const res = await fetch(`${tcpUrl(handle)}/plots/pt-flipped`);
+		expect(res.status).toBe(400);
+		const body = (await res.json()) as { error: { code: string; message: string } };
+		expect(body.error.code).toBe("project_lacks_plot");
+		expect(body.error.message).toContain(project.id);
+		expect(calls).toEqual([]);
+	});
+
+	test("propagates reader errors as 500 (no fire-and-log)", async () => {
+		const project = await seedProject(repos, { id: "proj-boom", hasPlot: true });
+		const { resolver } = fakeResolver({ "pt-boom": project });
+		const boom: PlotReader = {
+			async read() {
+				throw new Error("disk on fire");
+			},
+		};
+		const deps = await depsFor({ repos, plotResolver: resolver, plotReader: boom });
+		handle = startServer(deps, {
+			transport: { kind: "tcp", hostname: "127.0.0.1", port: 0 },
+			auth: NO_AUTH,
+			logger: silentLogger,
+		});
+
+		const res = await fetch(`${tcpUrl(handle)}/plots/pt-boom`);
 		expect(res.status).toBe(500);
 	});
 });

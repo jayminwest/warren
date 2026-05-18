@@ -63,7 +63,13 @@ import {
 	defaultPlanRunPlotAppender,
 	emitPlanRunDispatchedToPlot,
 } from "../plan-runs/plot-appender.ts";
-import { defaultPlotCreator, EMPTY_PLOT_SUMMARIES, type PlotSummary } from "../plots/index.ts";
+import {
+	defaultPlotCreator,
+	defaultPlotReader,
+	EMPTY_PLOT_SUMMARIES,
+	type PlotEnvelope,
+	type PlotSummary,
+} from "../plots/index.ts";
 import { createRunPreviewsRepo, DEFAULT_MAX_LIVE } from "../preview/eviction.ts";
 import { DEFAULT_PREVIEW_PORT_RANGE, PreviewPortAllocator } from "../preview/port-allocator.ts";
 import { teardownPreview } from "../preview/teardown.ts";
@@ -1976,6 +1982,81 @@ function parseIntentPatch(
 	return patch;
 }
 
+/**
+ * `GET /plots/:id` — full Plot envelope by id (warren-961e /
+ * pl-9d6a step 8).
+ *
+ * Handler order:
+ *   (1) resolve the owning project via `deps.plotResolver`
+ *       (built on top of `plotAggregator`'s per-project cache so the
+ *       typical UI flow — `GET /plots` followed by `GET /plots/:id` —
+ *       does at most one index read per project within the 5s TTL).
+ *       `null` → typed 404. When no resolver is wired (non-Plot
+ *       deployment), the handler also returns 404 so the
+ *       empty-deployments contract stays stable.
+ *   (2) defensive `hasPlot` re-check — the resolver only walks
+ *       `hasPlot=true` projects, but the flag could have flipped
+ *       between the aggregator's cached read and this lookup.
+ *       Surface as `ProjectLacksPlotError` (same 400 envelope the
+ *       create/dispatch paths use) so HTTP consumers see one stable
+ *       `project_lacks_plot` code across handlers.
+ *   (3) hand off to `deps.plotReader` (default `defaultPlotReader`),
+ *       which opens a `UserPlotClient` against `<project>/.plot/`,
+ *       snapshots `read()` + `events()` in parallel, and returns the
+ *       per-project envelope subset. The handler stitches `project_id`
+ *       on top to build the wire shape.
+ *
+ * `event_log` is returned in ascending `at` order — the reader sorts
+ * defensively so the wire contract doesn't depend on the Plot
+ * library's internal append order. The UI collapses long chains of
+ * same-kind same-actor events client-side (see warren-bdbf).
+ */
+function getPlotHandler(deps: ServerDeps): RouteHandler {
+	return async (ctx) => {
+		const plotId = requireParam(ctx, "id");
+
+		// (1) resolve owning project. No resolver wired → 404 (same
+		// posture as the byte-identical empty contract on GET /plots).
+		const project =
+			deps.plotResolver !== undefined ? await deps.plotResolver.resolve(plotId) : null;
+		if (project === null) {
+			throw new NotFoundError(`plot not found: ${plotId}`, {
+				recoveryHint:
+					"check the plot id; only Plots in projects with hasPlot=true are visible to warren",
+			});
+		}
+
+		// (2) defensive hasPlot re-check.
+		if (!project.hasPlot) {
+			throw new ProjectLacksPlotError(
+				`project ${project.id} no longer has a .plot/ directory; cannot read plot ${plotId}`,
+				{
+					recoveryHint:
+						"refresh the project so warren picks up the current .plot/ state, or recreate .plot/ via `plot init`",
+				},
+			);
+		}
+
+		// (3) read full envelope.
+		const reader = deps.plotReader ?? defaultPlotReader;
+		const result = await reader.read({
+			plotDir: join(project.localPath, ".plot"),
+			plotId,
+		});
+
+		const envelope: PlotEnvelope = {
+			id: result.id,
+			name: result.name,
+			status: result.status,
+			intent: result.intent,
+			attachments: result.attachments,
+			event_log: result.event_log,
+			project_id: project.id,
+		};
+		return jsonResponse(200, envelope);
+	};
+}
+
 /* ----------------------------------------------------------------------- */
 /* Public API                                                               */
 /* ----------------------------------------------------------------------- */
@@ -2037,6 +2118,7 @@ const ROUTE_TABLE: readonly RouteEntry[] = [
 
 	{ method: "GET", pattern: "/plots", build: listPlotsHandler },
 	{ method: "POST", pattern: "/plots", build: createPlotHandler },
+	{ method: "GET", pattern: "/plots/:id", build: getPlotHandler },
 ];
 
 /**

@@ -241,6 +241,27 @@ export interface ServerDeps {
 	 * falls back to `defaultPlotCreator`.
 	 */
 	readonly plotCreator?: import("../plots/index.ts").PlotCreator;
+	/**
+	 * Server-side Plot reader (warren-961e / pl-9d6a step 8). Used by
+	 * `GET /plots/:id` to open a `UserPlotClient` against the owning
+	 * project's `.plot/`, snapshot the Plot + its event log, and return
+	 * the full envelope (`{id, name, status, intent, attachments[],
+	 * event_log[]}` — `project_id` is stitched on by the handler from
+	 * the resolved `ProjectRow`). `bootServer` always wires the default;
+	 * tests substitute a stub to assert payload shape without touching
+	 * disk. When undefined the handler falls back to `defaultPlotReader`.
+	 */
+	readonly plotReader?: import("../plots/index.ts").PlotReader;
+	/**
+	 * Server-side Plot resolver (warren-961e / pl-9d6a step 8). Used by
+	 * every per-Plot handler (`GET /plots/:id` and the mutation handlers
+	 * landing later in pl-9d6a) to find the project owning a given
+	 * `plot_id`. `bootServer` wires `createPlotResolver` backed by the
+	 * same `plotAggregator` cache; tests substitute a stub to short-circuit
+	 * the project lookup. When undefined the handler returns 404 so the
+	 * empty-deployments contract stays stable.
+	 */
+	readonly plotResolver?: import("../plots/index.ts").PlotResolver;
 }
 
 /**

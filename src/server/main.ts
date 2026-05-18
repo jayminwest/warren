@@ -38,7 +38,12 @@ import {
 	defaultPlotStatusSetter,
 	loadPlanRunCoordinatorConfigFromEnv,
 } from "../plan-runs/index.ts";
-import { createPlotAggregator, defaultPlotCreator } from "../plots/index.ts";
+import {
+	createPlotAggregator,
+	createPlotResolver,
+	defaultPlotCreator,
+	defaultPlotReader,
+} from "../plots/index.ts";
 import { createPreviewAuth, type PreviewAuth } from "../preview/cookie.ts";
 import {
 	loadPreviewEvictionConfigFromEnv,
@@ -395,6 +400,11 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 		...(previewAuth !== undefined ? { previewAuth } : {}),
 		plotAggregator,
 		plotCreator: defaultPlotCreator,
+		plotReader: defaultPlotReader,
+		plotResolver: createPlotResolver({
+			projectsRepo: repos.projects,
+			aggregator: plotAggregator,
+		}),
 		...(opts.now !== undefined ? { now: opts.now } : {}),
 	};
 

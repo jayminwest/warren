@@ -24,6 +24,13 @@ export {
 	defaultPlotCreator,
 	type PlotCreator,
 } from "./creator.ts";
+export {
+	defaultPlotReader,
+	type PlotEnvelope,
+	type PlotReader,
+	type ReadPlotRequest,
+	type ReadPlotResult,
+} from "./reader.ts";
 export { createPlotResolver, type PlotResolver, type PlotResolverOptions } from "./resolver.ts";
 export {
 	buildIntentGoalPreview,
