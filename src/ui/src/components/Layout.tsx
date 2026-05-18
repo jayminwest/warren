@@ -1,18 +1,23 @@
 import { useQuery } from "@tanstack/react-query";
-import { Activity, Bot, FolderGit2, ListChecks, LogOut, Plus } from "lucide-react";
+import { Activity, Bot, FolderGit2, ListChecks, LogOut, Network, Plus } from "lucide-react";
+import { useMemo } from "react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
-import { metaApi, setApiToken } from "@/api/client.ts";
+import { metaApi, projectsApi, setApiToken } from "@/api/client.ts";
 import { ThemeToggle } from "@/components/ThemeToggle.tsx";
 import { WarrenLogo } from "@/components/WarrenLogo.tsx";
 import { Button } from "@/components/ui/button.tsx";
 import { cn } from "@/lib/utils.ts";
 
-const NAV_ITEMS: { to: string; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
+type NavItem = { to: string; label: string; icon: React.ComponentType<{ className?: string }> };
+
+const BASE_NAV_ITEMS: NavItem[] = [
 	{ to: "/runs", label: "Runs", icon: Activity },
 	{ to: "/plan-runs", label: "Plans", icon: ListChecks },
-	{ to: "/agents", label: "Agents", icon: Bot },
 	{ to: "/projects", label: "Projects", icon: FolderGit2 },
+	{ to: "/agents", label: "Agents", icon: Bot },
 ];
+
+const PLOTS_NAV_ITEM: NavItem = { to: "/plots", label: "Plots", icon: Network };
 
 export function Layout() {
 	const navigate = useNavigate();
@@ -25,6 +30,30 @@ export function Layout() {
 		staleTime: Infinity,
 		retry: false,
 	});
+
+	// Gate the Plots sidebar entry on at least one project having
+	// `.plot/` provisioned. The projects list is the canonical source
+	// for `hasPlot` (warren-4e20); reuse the same query key as the
+	// Plots page so tanstack-query dedupes the fetch.
+	const projects = useQuery({
+		queryKey: ["projects"],
+		queryFn: ({ signal }) => projectsApi.list(signal),
+		staleTime: 5000,
+	});
+	const anyHasPlot = useMemo(
+		() => (projects.data?.projects ?? []).some((p) => p.hasPlot),
+		[projects.data],
+	);
+	const navItems = useMemo<NavItem[]>(() => {
+		if (!anyHasPlot) return BASE_NAV_ITEMS;
+		// Order: Runs → Plans → Plots → Projects → Agents (insert
+		// Plots between Plans and Projects).
+		return [
+			...BASE_NAV_ITEMS.slice(0, 2),
+			PLOTS_NAV_ITEM,
+			...BASE_NAV_ITEMS.slice(2),
+		];
+	}, [anyHasPlot]);
 
 	const handleLogout = (): void => {
 		setApiToken(null);
@@ -44,7 +73,7 @@ export function Layout() {
 					) : null}
 				</div>
 				<nav className="flex flex-1 flex-col gap-1">
-					{NAV_ITEMS.map(({ to, label, icon: Icon }) => (
+					{navItems.map(({ to, label, icon: Icon }) => (
 						<NavLink
 							key={to}
 							to={to}
