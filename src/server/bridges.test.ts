@@ -56,15 +56,41 @@ function stub(
 	return impl as unknown as typeof fetch;
 }
 
+/**
+ * Default stub burrow client: returns a synthetic `running` row for any
+ * `GET /runs/:id` (so warren-b1a9's bootBridges pre-probe passes) and 404
+ * for everything else. Tests exercising the ghost-run reconciler build
+ * their own client that 404s on the run-get instead.
+ */
 function makeBurrowClient(): BurrowClient {
 	return new BurrowClient({
 		config: { transport: { kind: "unix", path: "/tmp/x.sock" } },
-		fetch: stub(
-			async () =>
-				new Response(JSON.stringify({ error: { code: "not_found", message: "stub" } }), {
-					status: 404,
-				}),
-		),
+		fetch: stub(async (input, init) => {
+			const url = new URL(String(input), "http://localhost");
+			const method = init?.method ?? "GET";
+			if (method === "GET" && /^\/runs\/[^/]+$/.test(url.pathname)) {
+				return new Response(
+					JSON.stringify({
+						id: "stub_run",
+						burrowId: "bur_a",
+						agentId: "refactor-bot",
+						prompt: "p",
+						resumeOfRunId: null,
+						state: "running",
+						exitCode: null,
+						errorMessage: null,
+						metadataJson: null,
+						queuedAt: new Date("2026-05-17T19:00:00Z").toISOString(),
+						startedAt: new Date("2026-05-17T19:00:01Z").toISOString(),
+						completedAt: null,
+					}),
+					{ status: 200, headers: { "content-type": "application/json" } },
+				);
+			}
+			return new Response(JSON.stringify({ error: { code: "not_found", message: "stub" } }), {
+				status: 404,
+			});
+		}),
 	});
 }
 
@@ -503,6 +529,102 @@ describe("bootBridges", () => {
 		expect(result.skipped).toEqual([{ runId: r2.id, reason: "no_placement" }]);
 		expect(calls).toEqual([r1.id]);
 		await result.registry.stopAll();
+	});
+
+	test("warren-b1a9: pre-probe 404 reconciles run to failed/burrow_run_lost without starting bridge", async () => {
+		const project = (await repos.projects.listAll())[0];
+		if (!project) throw new Error("project missing");
+
+		const r = await repos.runs.create({
+			agentName: "refactor-bot",
+			projectId: project.id,
+			prompt: "p",
+			renderedAgentJson: { sections: { system: "x" } },
+			trigger: "manual",
+		});
+		await repos.runs.attachBurrow(r.id, {
+			burrowId: "bur_lostlostlost",
+			burrowRunId: "rb_ghostghost1",
+		});
+		await repos.burrows.create({ id: "bur_lostlostlost", workerId: "local" });
+		await repos.runs.markRunning(r.id);
+
+		// Burrow stub that 404s on GET /runs/:id (ghost).
+		const ghostClient = new BurrowClient({
+			config: { transport: { kind: "unix", path: "/tmp/x.sock" } },
+			fetch: stub(
+				async () =>
+					new Response(
+						JSON.stringify({
+							error: { code: "not_found", message: "run not found: rb_ghostghost1" },
+						}),
+						{ status: 404, headers: { "content-type": "application/json" } },
+					),
+			),
+		});
+		const pool = await makePool(repos, ghostClient);
+
+		const calls: string[] = [];
+		const result = await bootBridges({
+			repos,
+			broker: new RunEventBroker(),
+			burrowClientPool: pool,
+			bridge: async (input) => {
+				calls.push(input.runId);
+				return { written: 0, skipped: 0, errored: false };
+			},
+		});
+
+		expect(calls).toEqual([]);
+		expect(result.resumed).toEqual([]);
+		expect(result.skipped).toEqual([{ runId: r.id, reason: "burrow_run_lost" }]);
+		const run = await repos.runs.require(r.id);
+		expect(run.state).toBe("failed");
+		expect(run.failureReason).toBe("burrow_run_lost");
+		const events = await repos.events.listByRun(r.id);
+		expect(events.length).toBe(1);
+		expect(events[0]?.kind).toBe("bridge_lost");
+		expect((events[0]?.payloadJson as { reason: string }).reason).toBe("burrow_run_lost");
+		await result.registry.stopAll();
+	});
+
+	test("warren-b1a9: bridge burrowRunMissing reconciles + stops reconnect loop", async () => {
+		const project = (await repos.projects.listAll())[0];
+		if (!project) throw new Error("project missing");
+		const r = await repos.runs.create({
+			agentName: "refactor-bot",
+			projectId: project.id,
+			prompt: "p",
+			renderedAgentJson: { sections: { system: "x" } },
+			trigger: "manual",
+		});
+		await repos.runs.attachBurrow(r.id, {
+			burrowId: "bur_a",
+			burrowRunId: "rb_a",
+		});
+		await repos.burrows.create({ id: "bur_a", workerId: "local" });
+		await repos.runs.markRunning(r.id);
+
+		let calls = 0;
+		const registry = createBridgeRegistry({
+			repos,
+			broker: new RunEventBroker(),
+			burrowClientPool: await makePool(repos),
+			bridge: async () => {
+				calls += 1;
+				return { written: 0, skipped: 0, errored: false, burrowRunMissing: true as const };
+			},
+			reconnectBackoffMs: [0],
+		});
+
+		registry.start(r.id, "rb_a", "bur_a");
+		while (registry.size() > 0) await new Promise((res) => setTimeout(res, 0));
+		expect(calls).toBe(1); // No reconnect after burrowRunMissing.
+		const run = await repos.runs.require(r.id);
+		expect(run.state).toBe("failed");
+		expect(run.failureReason).toBe("burrow_run_lost");
+		const events = await repos.events.listByRun(r.id);
+		expect(events.some((e) => e.kind === "bridge_lost")).toBe(true);
 	});
 
 	test("returns an empty registry when no active runs", async () => {

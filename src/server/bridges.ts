@@ -25,14 +25,27 @@
  * Each reconnect re-reads `MAX(events.burrow_event_seq)` so the seq
  * dedupe in `bridgeRunStream` keeps the events table consistent.
  *
+ * Ghost-run reconciliation (warren-b1a9). When burrow returns 404 for
+ * the run's `burrow_run_id` (typically because warren's host machine
+ * restarted and burrow lost its in-memory run state), the bridge sets
+ * `burrowRunMissing: true` instead of `errored: true`. The registry
+ * catches this, stops the reconnect loop, transitions the warren row to
+ * `failed` with `failure_reason='burrow_run_lost'`, and emits a
+ * `bridge_lost` system event. `bootBridges` also pre-probes each active
+ * run via `http.runs.get` and runs the same reconciler before starting
+ * a bridge — so a deploy that wipes burrow's in-memory state cleans up
+ * ghost rows within one boot tick instead of looping forever on backoff.
+ *
  * The registry stays small (one entry per active run); resolved bridges
  * remove themselves automatically so a long-lived server doesn't grow
  * unbounded. Tests inject a stub bridge factory to avoid a real burrow.
  */
 
+import { NotFoundError as BurrowNotFoundError } from "@os-eco/burrow-cli";
+import { withTransportMapping } from "../burrow-client/client.ts";
 import type { BurrowClientPool } from "../burrow-client/pool.ts";
 import type { Repos } from "../db/repos/index.ts";
-import type { RunState } from "../db/schema.ts";
+import type { EventRow, RunState } from "../db/schema.ts";
 import type { PreviewLaunchConfig } from "../preview/launch.ts";
 import type { PreviewPortAllocator } from "../preview/port-allocator.ts";
 import {
@@ -251,6 +264,22 @@ async function runWithReconnect(input: RunWithReconnectInput): Promise<BridgeRun
 		totalWritten += result.written;
 		totalSkipped += result.skipped;
 
+		if (result.burrowRunMissing === true) {
+			// warren-b1a9: burrow returned 404 mid-stream. The run is
+			// unrecoverable — reconcile the warren row to `failed` so the UI,
+			// /readyz, and the next bootBridges pass all stop treating it as
+			// live. Don't reconnect; the only thing waiting on the wire is
+			// another 404.
+			await reconcileLostBurrowRun({
+				runId: input.runId,
+				burrowRunId: input.burrowRunId,
+				repos: input.repos,
+				broker: input.broker,
+				...(input.logger !== undefined ? { logger: input.logger } : {}),
+			});
+			return { written: totalWritten, skipped: totalSkipped, errored: false };
+		}
+
 		if (result.terminalDetected !== undefined) {
 			// warren-a69a: bridge observed a runtime-terminal event. Reap
 			// inline so the warren row finalizes without depending on an
@@ -419,6 +448,86 @@ async function resolveProjectPrTemplate(
 	}
 }
 
+interface ReconcileLostBurrowRunInput {
+	readonly runId: string;
+	readonly burrowRunId: string;
+	readonly repos: Repos;
+	readonly broker: RunEventBroker;
+	readonly logger?: BridgeLogger;
+	readonly now?: () => Date;
+}
+
+/**
+ * warren-b1a9: transition a non-terminal warren run to `failed` with
+ * `failure_reason='burrow_run_lost'` and emit a `bridge_lost` audit event.
+ * Used both by the live-bridge 404 catch and by the boot-time reconciler.
+ * Idempotent: a run that's already terminal is left alone (the event is
+ * still appended so the UI shows why the bridge stopped).
+ *
+ * The state machine doesn't allow `queued → failed` directly, so this
+ * mirrors reap's `markRunning` shim for queued ghost runs (run never made
+ * it to running because the bridge never claimed before burrow lost it).
+ */
+async function reconcileLostBurrowRun(input: ReconcileLostBurrowRunInput): Promise<void> {
+	const now = (input.now ?? (() => new Date()))();
+	let finalized = false;
+	try {
+		const run = await input.repos.runs.get(input.runId);
+		if (run === null) {
+			return;
+		}
+		if (TERMINAL_RUN_STATES.has(run.state)) {
+			input.logger?.info?.(
+				{ runId: input.runId, state: run.state },
+				"reconcileLostBurrowRun: run already terminal; skipping finalize",
+			);
+		} else {
+			if (run.state === "queued") {
+				await input.repos.runs.markRunning(input.runId, now);
+			}
+			await input.repos.runs.finalize(input.runId, "failed", now, "burrow_run_lost");
+			finalized = true;
+		}
+	} catch (err) {
+		input.logger?.error?.(
+			{
+				runId: input.runId,
+				burrowRunId: input.burrowRunId,
+				err: err instanceof Error ? err.message : String(err),
+			},
+			"reconcileLostBurrowRun: failed to finalize run",
+		);
+	}
+	try {
+		const seq = ((await input.repos.events.maxSeqForRun(input.runId)) ?? 0) + 1;
+		const row: EventRow = await input.repos.events.append({
+			runId: input.runId,
+			burrowEventSeq: seq,
+			ts: now.toISOString(),
+			kind: "bridge_lost",
+			stream: "system",
+			payload: {
+				burrowRunId: input.burrowRunId,
+				reason: "burrow_run_lost",
+				finalized,
+			},
+		});
+		input.broker.publish(input.runId, row);
+	} catch (err) {
+		input.logger?.error?.(
+			{
+				runId: input.runId,
+				err: err instanceof Error ? err.message : String(err),
+			},
+			"reconcileLostBurrowRun: failed to emit bridge_lost event",
+		);
+	}
+	input.logger?.warn?.(
+		{ runId: input.runId, burrowRunId: input.burrowRunId, finalized },
+		"reconciled ghost run: burrow no longer knows this burrow_run_id",
+	);
+}
+
 function defaultSleep(ms: number, signal: AbortSignal): Promise<void> {
 	if (ms <= 0) return Promise.resolve();
 	return new Promise<void>((resolve, reject) => {
@@ -442,6 +551,15 @@ function defaultSleep(ms: number, signal: AbortSignal): Promise<void> {
 export interface BootBridgesResult {
 	readonly registry: BridgeRegistry;
 	readonly resumed: readonly { runId: string; burrowRunId: string }[];
+	/**
+	 * Active rows we did NOT attach a bridge to. Reasons:
+	 *   - `no_burrow_run_id` / `no_burrow_id` — partial spawn (spawn-rollback territory).
+	 *   - `no_placement` — pre-pl-9ba1 orphan: `burrow_id` is set but `burrows` row missing.
+	 *   - `burrow_run_lost` (warren-b1a9) — burrow returned 404 for the
+	 *     `burrow_run_id`. The reconciler already finalized the warren
+	 *     row to `failed`; the bridge isn't started because there's
+	 *     nothing to stream.
+	 */
 	readonly skipped: readonly { runId: string; reason: string }[];
 }
 
@@ -490,6 +608,40 @@ export async function bootBridges(input: CreateBridgeRegistryInput): Promise<Boo
 				"skipping recovery: burrow_id has no `burrows` row (pre-pl-9ba1 orphan)",
 			);
 			continue;
+		}
+		// warren-b1a9: probe burrow for the run BEFORE starting the bridge.
+		// On a machine restart burrow may have lost in-flight runs from its
+		// in-memory store; without this pre-check the bridge would start,
+		// 404 on its first poll, and only then reconcile. The pre-check is
+		// cheap (one GET per active run at boot) and gives operators a clean
+		// `skipped: 'burrow_run_lost'` signal in the result.
+		try {
+			const { client } = await input.burrowClientPool.clientFor({ burrowId: run.burrowId });
+			await withTransportMapping(client.config, () => client.http.runs.get(run.burrowRunId ?? ""));
+		} catch (err) {
+			if (err instanceof BurrowNotFoundError) {
+				skipped.push({ runId: run.id, reason: "burrow_run_lost" });
+				await reconcileLostBurrowRun({
+					runId: run.id,
+					burrowRunId: run.burrowRunId,
+					repos: input.repos,
+					broker: input.broker,
+					...(input.logger !== undefined ? { logger: input.logger } : {}),
+				});
+				continue;
+			}
+			// Transport errors / pool-resolution failures: log and fall through
+			// to start the bridge anyway. The bridge's reconnect loop is the
+			// correct place to wait for a transiently-unreachable worker; the
+			// reconciler is only for the structural "burrow has no record" case.
+			input.logger?.warn?.(
+				{
+					runId: run.id,
+					burrowRunId: run.burrowRunId,
+					err: err instanceof Error ? err.message : String(err),
+				},
+				"bootBridges reconcile probe failed (non-404); starting bridge anyway",
+			);
 		}
 		registry.start(run.id, run.burrowRunId, run.burrowId);
 		resumed.push({ runId: run.id, burrowRunId: run.burrowRunId });

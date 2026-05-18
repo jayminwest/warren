@@ -9,6 +9,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`fix(bridge)`** — Detect & reconcile "ghost" runs (warren state
+  `running`, burrow has no record). When warren's machine restarts and
+  burrow loses an in-flight run from its store, the bridge previously
+  spammed `bridge errored — reconnecting after backoff` forever and the
+  warren row stayed `running` indefinitely, requiring direct DB surgery
+  to clear. Now: (1) `bridgeRunStream` distinguishes `BurrowNotFoundError`
+  from transport errors and returns `burrowRunMissing: true` instead of
+  `errored: true`; (2) the bridge registry's reconnect loop treats
+  `burrowRunMissing` as terminal, transitions the warren row to `failed`
+  with `failure_reason='burrow_run_lost'`, and emits a `bridge_lost`
+  system event for the UI; (3) `bootBridges` pre-probes each non-terminal
+  run via `GET /runs/:id` at startup and reconciles ghosts (skip code
+  `burrow_run_lost`) before attaching a bridge; (4) `cancelRun` on 404
+  finalizes the row to the same shape so the user gets a clean response
+  instead of `run not found: run_xxx`; (5) `steerRun` on 404 raises a
+  `ValidationError` pointing at the lost-run state instead of leaking the
+  raw burrow error. Closes `warren-b1a9`.
 - **`fix(deploy)`** — Pin burrow's data directory onto the persistent
   `/data` volume via `BURROW_DATA_DIR=/data/burrow` (set in `Dockerfile`
   ENV and mirrored in `fly.toml [env]`). Previously burrow fell back to

@@ -41,7 +41,7 @@
  * map them onto the response envelope.
  */
 
-import type { Run as BurrowRun } from "@os-eco/burrow-cli";
+import { NotFoundError as BurrowNotFoundError, type Run as BurrowRun } from "@os-eco/burrow-cli";
 import { withTransportMapping } from "../burrow-client/client.ts";
 import type { BurrowClientPool } from "../burrow-client/pool.ts";
 import { ValidationError } from "../core/errors.ts";
@@ -124,12 +124,34 @@ export async function cancelRun(input: CancelRunInput): Promise<CancelRunResult>
 		);
 	}
 	const { client } = await input.burrowClientPool.clientFor({ burrowId: run.burrowId });
-	const burrowRun = await withTransportMapping(client.config, () =>
-		client.http.runs.cancel(
-			burrowRunId,
-			input.reason !== undefined ? { reason: input.reason } : {},
-		),
-	);
+	let burrowRun: BurrowRun;
+	try {
+		burrowRun = await withTransportMapping(client.config, () =>
+			client.http.runs.cancel(
+				burrowRunId,
+				input.reason !== undefined ? { reason: input.reason } : {},
+			),
+		);
+	} catch (err) {
+		if (err instanceof BurrowNotFoundError) {
+			// warren-b1a9: burrow has no record of this run (ghost). Treat the
+			// cancel intent as "terminalize this row now" — the user clicked
+			// Cancel, the run is unrecoverable, give them a clean response
+			// instead of the raw `run not found: run_xxx`.
+			const now = (input.now ?? (() => new Date()))();
+			if (run.state === "queued") {
+				await input.repos.runs.markRunning(run.id, now);
+			}
+			const finalized = await input.repos.runs.finalize(run.id, "failed", now, "burrow_run_lost");
+			await emitCancelEvent(input, run.id, {
+				reason: input.reason,
+				mode: "burrow_run_lost",
+				burrowRunId,
+			});
+			return { state: finalized.state, burrowRun: null, alreadyTerminal: false };
+		}
+		throw err;
+	}
 
 	await emitCancelEvent(input, run.id, {
 		reason: input.reason,

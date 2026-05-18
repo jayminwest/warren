@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import type { RunEvent } from "@os-eco/burrow-cli";
+import { NotFoundError as BurrowNotFoundError, type RunEvent } from "@os-eco/burrow-cli";
 import { BurrowClient, BurrowClientPool } from "../burrow-client/index.ts";
 import { openDatabase, type WarrenDb } from "../db/client.ts";
 import { createRepos, type Repos } from "../db/repos/index.ts";
@@ -394,6 +394,53 @@ describe("bridgeRunStream", () => {
 		// The trailing event after terminal must NOT be persisted — bridge breaks.
 		const seqs = (await repos.events.listByRun(runId)).map((e) => e.burrowEventSeq);
 		expect(seqs).toEqual([1]);
+	});
+
+	test("warren-b1a9: BurrowNotFoundError from source sets burrowRunMissing, not errored", async () => {
+		const missingSource = (): AsyncIterable<RunEvent> => ({
+			[Symbol.asyncIterator](): AsyncIterator<RunEvent> {
+				return {
+					next: async () => {
+						throw new BurrowNotFoundError(`run not found: ${burrowRunId}`);
+					},
+				};
+			},
+		});
+		const result = await bridgeRunStream({
+			runId,
+			burrowRunId,
+			repos,
+			broker,
+			burrowId: "bur_aaaaaaaaaaaa",
+			burrowClientPool: await makePool(repos),
+			source: missingSource,
+		});
+		expect(result.burrowRunMissing).toBe(true);
+		expect(result.errored).toBe(false);
+		expect(result.terminalDetected).toBeUndefined();
+	});
+
+	test("warren-b1a9: non-404 throw still sets errored=true (reconnect path)", async () => {
+		const transportSource = (): AsyncIterable<RunEvent> => ({
+			[Symbol.asyncIterator](): AsyncIterator<RunEvent> {
+				return {
+					next: async () => {
+						throw new Error("ECONNRESET");
+					},
+				};
+			},
+		});
+		const result = await bridgeRunStream({
+			runId,
+			burrowRunId,
+			repos,
+			broker,
+			burrowId: "bur_aaaaaaaaaaaa",
+			burrowClientPool: await makePool(repos),
+			source: transportSource,
+		});
+		expect(result.burrowRunMissing).toBeUndefined();
+		expect(result.errored).toBe(true);
 	});
 
 	test("warren-2687: pi agent_end on non-system stream does not set terminalDetected", async () => {

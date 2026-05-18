@@ -28,7 +28,11 @@
  * route can map them onto the appropriate response envelope.
  */
 
-import type { Message, MessagePriority } from "@os-eco/burrow-cli";
+import {
+	NotFoundError as BurrowNotFoundError,
+	type Message,
+	type MessagePriority,
+} from "@os-eco/burrow-cli";
 import { withTransportMapping } from "../burrow-client/client.ts";
 import type { BurrowClientPool } from "../burrow-client/pool.ts";
 import { ValidationError } from "../core/errors.ts";
@@ -77,14 +81,29 @@ export async function steerRun(input: SteerRunInput): Promise<SteerRunResult> {
 
 	const burrowId = run.burrowId;
 	const { client } = await input.burrowClientPool.clientFor({ burrowId });
-	const message = await withTransportMapping(client.config, () =>
-		client.http.inbox.send({
-			burrowId,
-			body: input.body,
-			...(input.priority !== undefined ? { priority: input.priority } : {}),
-			...(input.fromActor !== undefined ? { fromActor: input.fromActor } : {}),
-		}),
-	);
+	let message: Message;
+	try {
+		message = await withTransportMapping(client.config, () =>
+			client.http.inbox.send({
+				burrowId,
+				body: input.body,
+				...(input.priority !== undefined ? { priority: input.priority } : {}),
+				...(input.fromActor !== undefined ? { fromActor: input.fromActor } : {}),
+			}),
+		);
+	} catch (err) {
+		if (err instanceof BurrowNotFoundError) {
+			// warren-b1a9: burrow has no record of this burrow (ghost). Steering
+			// is meaningless against a lost run; reject with a clean
+			// ValidationError so the UI knows to refresh — the bridge or the
+			// next bootBridges pass will reconcile the warren row to `failed`.
+			throw new ValidationError(
+				`burrow '${burrowId}' is unknown to the worker; the run is likely lost`,
+				{ recoveryHint: "refresh — the bridge will reconcile this run to failed" },
+			);
+		}
+		throw err;
+	}
 
 	await emitSteerEvent(input, run.id, message);
 	return { message };

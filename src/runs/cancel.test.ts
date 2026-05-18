@@ -414,11 +414,35 @@ describe("cancelRun", () => {
 		expect((await repos.runs.require(runId)).state).toBe("running");
 	});
 
-	test("server-side burrow errors propagate without emitting an audit event", async () => {
+	test("warren-b1a9: burrow 404 reconciles the run to failed/burrow_run_lost", async () => {
 		const runId = await createRun({ state: "running" });
 		const { client } = makeBurrowClient({
 			status: 404,
-			body: { error: { code: "not_found", message: "burrow run gone" } },
+			body: { error: { code: "not_found", message: "run not found: rb_a" } },
+		});
+		const result = await cancelRun({
+			runId,
+			repos,
+			burrowClientPool: await makePool(client, repos),
+		});
+		expect(result.state).toBe("failed");
+		expect(result.burrowRun).toBeNull();
+		expect(result.alreadyTerminal).toBe(false);
+		const run = await repos.runs.require(runId);
+		expect(run.state).toBe("failed");
+		expect(run.failureReason).toBe("burrow_run_lost");
+		// Audit event landed describing the reconciliation.
+		const events = await repos.events.listByRun(runId);
+		expect(events.length).toBe(1);
+		expect(events[0]?.kind).toBe("cancel.requested");
+		expect((events[0]?.payloadJson as { mode: string }).mode).toBe("burrow_run_lost");
+	});
+
+	test("non-404 burrow errors still propagate without emitting an audit event", async () => {
+		const runId = await createRun({ state: "running" });
+		const { client } = makeBurrowClient({
+			status: 500,
+			body: { error: { code: "internal", message: "boom" } },
 		});
 		await expect(
 			cancelRun({ runId, repos, burrowClientPool: await makePool(client, repos) }),

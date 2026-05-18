@@ -342,4 +342,17 @@ describe("steerRun", () => {
 		).rejects.toThrow();
 		expect(await repos.events.countByRun(runId)).toBe(0);
 	});
+
+	test("warren-b1a9: burrow 404 on inbox surfaces as ValidationError (run is lost)", async () => {
+		const runId = await createRunningRun();
+		const { client } = makeBurrowClient({
+			status: 404,
+			body: { error: { code: "not_found", message: "burrow bur_aaaaaaaaaaaa not found" } },
+		});
+		await expect(
+			steerRun({ runId, body: "hi", repos, burrowClientPool: await makePool(client, repos) }),
+		).rejects.toBeInstanceOf(ValidationError);
+		// No audit event — steering a ghost run is rejected, not recorded.
+		expect(await repos.events.countByRun(runId)).toBe(0);
+	});
 });

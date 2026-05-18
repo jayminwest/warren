@@ -13,7 +13,8 @@ export type RunFailureReason =
 	| "never_started"
 	| "no_model_response"
 	| "crashed"
-	| "timed_out";
+	| "timed_out"
+	| "burrow_run_lost";
 
 /**
  * Preview environment lifecycle (R-19 / SPEC §11.L). Null on rows whose

@@ -42,6 +42,11 @@ export type RunTerminalState = (typeof RUN_TERMINAL_STATES)[number];
  *     hit an unrecoverable error mid-conversation).
  *   - `timed_out` is reserved for a future deadline-based reaper — burrow
  *     doesn't currently report a separate timeout state.
+ *   - `burrow_run_lost` (warren-b1a9) means burrow returned 404 for the
+ *     run's `burrow_run_id` — typically a warren-machine restart that
+ *     wiped burrow's in-memory run state. The reconciler (bootBridges)
+ *     and the bridge's mid-stream 404 catch both mark the warren row
+ *     `failed` with this reason instead of looping forever.
  *
  * Null on succeeded/cancelled rows.
  */
@@ -50,6 +55,7 @@ export const RUN_FAILURE_REASONS = [
 	"no_model_response",
 	"crashed",
 	"timed_out",
+	"burrow_run_lost",
 ] as const;
 export type RunFailureReason = (typeof RUN_FAILURE_REASONS)[number];
 

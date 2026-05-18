@@ -44,7 +44,7 @@
  * caller can stop them on shutdown.
  */
 
-import type { RunEvent } from "@os-eco/burrow-cli";
+import { NotFoundError as BurrowNotFoundError, type RunEvent } from "@os-eco/burrow-cli";
 import type { BurrowClient } from "../burrow-client/client.ts";
 import { withTransportMapping } from "../burrow-client/client.ts";
 import type { BurrowClientPool } from "../burrow-client/pool.ts";
@@ -150,6 +150,17 @@ export interface BridgeRunStreamResult {
 	 * for bridges that ended via abort, error, or natural source close.
 	 */
 	readonly terminalDetected?: { readonly outcome: RunTerminalState };
+	/**
+	 * Set when burrow returned 404 / NotFoundError for the run's
+	 * `burrow_run_id` while polling the stream (warren-b1a9). Indicates a
+	 * "ghost run" — typically a warren-machine restart wiped burrow's
+	 * in-memory run state for an in-flight run. The registry treats this
+	 * as terminal: it stops the reconnect loop and reconciles the warren
+	 * row to `failed` with `failure_reason='burrow_run_lost'` rather than
+	 * spinning forever on backoff. Mutually exclusive with
+	 * `terminalDetected`.
+	 */
+	readonly burrowRunMissing?: true;
 }
 
 /**
@@ -184,6 +195,7 @@ export async function bridgeRunStream(input: BridgeRunStreamInput): Promise<Brid
 	let errored = false;
 	let claimed = false;
 	let terminalDetected: { outcome: RunTerminalState } | undefined;
+	let burrowRunMissing = false;
 	// pi cost tracking (warren-a7dc, warren-17a4). Two paths:
 	//   1. In-stream extraction (default): accumulate `turn_end` usage as
 	//      events flow through the bridge. Persisted on terminal.
@@ -308,17 +320,32 @@ export async function bridgeRunStream(input: BridgeRunStreamInput): Promise<Brid
 			}
 		}
 	} catch (err) {
-		errored = true;
-		input.logger?.error?.(
-			{
-				runId,
-				burrowRunId,
-				written,
-				skipped,
-				err: err instanceof Error ? err.message : String(err),
-			},
-			"run stream bridge errored",
-		);
+		if (err instanceof BurrowNotFoundError) {
+			// warren-b1a9: burrow no longer has this run (machine restart wiped
+			// its in-memory store, deliberate cleanup, etc.). Surface as a
+			// distinct terminal signal so the registry stops reconnecting and
+			// reconciles the warren row to `failed` instead of spinning on
+			// backoff. Don't set `errored` — errored=true triggers the reconnect
+			// loop; the missing-run signal is exactly the case where reconnect
+			// is hopeless.
+			burrowRunMissing = true;
+			input.logger?.warn?.(
+				{ runId, burrowRunId, written, skipped, err: err.message },
+				"run stream bridge: burrow returned 404 for burrow_run_id (ghost run)",
+			);
+		} else {
+			errored = true;
+			input.logger?.error?.(
+				{
+					runId,
+					burrowRunId,
+					written,
+					skipped,
+					err: err instanceof Error ? err.message : String(err),
+				},
+				"run stream bridge errored",
+			);
+		}
 	} finally {
 		if (input.signal !== undefined) input.signal.removeEventListener("abort", onAbort);
 		ctrl.abort();
@@ -326,9 +353,12 @@ export async function bridgeRunStream(input: BridgeRunStreamInput): Promise<Brid
 	}
 
 	input.logger?.info?.(
-		{ runId, burrowRunId, written, skipped, errored },
+		{ runId, burrowRunId, written, skipped, errored, burrowRunMissing },
 		"run stream bridge ended",
 	);
+	if (burrowRunMissing) {
+		return { written, skipped, errored, burrowRunMissing: true };
+	}
 	return terminalDetected !== undefined
 		? { written, skipped, errored, terminalDetected }
 		: { written, skipped, errored };
