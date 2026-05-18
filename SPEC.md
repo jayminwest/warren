@@ -1853,6 +1853,133 @@ covers the round-trip end-to-end against a real warren+burrow stack:
   (e.g. internal maintenance jobs) is not added in Phase 1 — current
   cron and scheduled-seed paths attribute to the trigger owner's handle.
 
+#### 11.O.Plot.UI Plot-centric UI surface (pl-9d6a, 2026-05-18)
+
+Phase 3 of `warren-d362` shifts warren's web UI from run-centric to
+Plot-centric on deployments that opt into Plot, without disturbing the
+standalone path. Plots become the primary surface — list page, detail
+page with intent + substrate + unified activity feed, and a default
+landing redirect — while every write path stays bound to the same
+`UserPlotClient` ACL surface §11.O established for single-run dispatch.
+
+Following the §11.O / mx-49a44c five-thing template:
+
+1. **Gating contract.** Two-level gate, evaluated independently:
+   - **Default-landing gate.** `someProject.hasPlot === true` AND
+     `GET /plots` returns at least one Plot. Both conditions must hold
+     before the index route's `DefaultLanding` component
+     (`src/ui/src/components/DefaultLanding.tsx`) redirects to `/plots`;
+     otherwise it redirects to `/runs` so the CLAUDE.md standalone path
+     stays byte-identical. The sidebar reorder in
+     `src/ui/src/components/Layout.tsx` mirrors the same gate: Plots →
+     Runs → Plan Runs → Projects → Agents when the gate is true; the
+     existing order is preserved when it is false.
+   - **Per-endpoint gate.** Every `/plots*` write handler
+     (`POST /plots`, `POST /plots/:id/intent`, `POST /plots/:id/status`,
+     `POST/DELETE /plots/:id/attachments`,
+     `POST /plots/:id/questions/:event_id/answer`) re-checks
+     `project.hasPlot === true` against the project resolved by
+     `PlotResolver` and rejects with a typed `ProjectLacksPlotError`
+     (400) before any side effect — defensive against the rare case
+     where `.plot/` is removed after a Plot's events.jsonl already
+     exists on disk. `GET /plots` returns an empty array (not 404) when
+     no `hasPlot` projects exist; the contract is pinned by the
+     handler test in `warren-c167`.
+
+2. **API contract.** All `/plots*` routes are registered in
+   `src/server/router.ts` and live behind the same bearer-token
+   middleware as the rest of warren's HTTP surface:
+
+   | Route | Body | Returns |
+   |---|---|---|
+   | `GET /plots?status=` | — | `PlotSummary[]` (aggregated across `hasPlot` projects, sorted by `last_event_ts` desc) |
+   | `POST /plots` | `{project_id, name?, intent?, dispatcher_handle?}` | new `PlotSummary` |
+   | `GET /plots/:id` | — | full Plot envelope `{id, name, status, intent, attachments[], event_log[], project_id}` |
+   | `POST /plots/:id/intent` | `{goal?, non_goals?, constraints?, success_criteria?, dispatcher_handle?}` | new `PlotSummary` + `intent_edited` event |
+   | `POST /plots/:id/status` | `{next, dispatcher_handle?}` | new `PlotSummary` + `status_changed` event |
+   | `POST /plots/:id/attachments` | `{kind, ref, role?, dispatcher_handle?}` | `attachment_added` event |
+   | `DELETE /plots/:id/attachments/:ref` | — | `attachment_removed` event |
+   | `POST /plots/:id/questions/:event_id/answer` | `{answer, dispatcher_handle?}` | new `question_answered` event |
+
+   `dispatcher_handle` resolves through `resolveDispatcherHandle` with
+   an `operator` fallback (the mx-6a9788 pattern shared with §11.O's
+   single-run dispatch). Write paths are **not** fire-and-log here —
+   the user is waiting on the response, so failures surface
+   synchronously as typed 4xx errors. `GET` paths return the
+   `PlotResolver`-backed 404 when the id is unknown.
+
+3. **ACL surface.** Every write path opens a `UserPlotClient` against
+   the owning project's `.plot/` directory, attributed as
+   `user:<dispatcher_handle>`. The facade narrows the emittable event
+   set to `HUMANS_ONLY_EVENT_TYPES` at the type level — `agent:*`
+   attribution is unreachable from any of these handlers at compile
+   time (mx-bd4d67). Status transitions are double-validated: the
+   handler checks the SPEC §6.5 whitelist before the library call as
+   defense in depth; intent edits reject when the current status is
+   `done` or `archived` (intent is frozen at done). Answer handlers
+   enforce the concurrency invariant — already-answered questions
+   reject at the handler edge, since the Plot library does not by
+   itself guarantee one-answer-per-question across racing writers.
+
+4. **Data-flow diagram.** Two loops converge on the unified Activity
+   Feed:
+
+   ```
+   ── UI write path (synchronous) ─────────────────────────────────────
+   PlotDetail / Plots list (src/ui/src/pages/{PlotDetail,Plots}.tsx)
+       │  plotsApi.{create,editIntent,setStatus,attach,detach,answer}
+       ▼
+   warren handler (src/server/handlers.ts)
+       │  hasPlot gate → PlotResolver → resolveDispatcherHandle
+       ▼
+   UserPlotClient facade (src/plot-client/, HUMANS_ONLY_EVENT_TYPES)
+       │  .editIntent / .setStatus / .attach / .answerQuestion
+       ▼
+   PlotStore → .plot/plot-<id>.events.jsonl  (single-writer fsync)
+       ▲
+   ── Reap loop (asynchronous, from §11.O) ────────────────────────────
+   burrow reap → mergePlot → tail agent-emitted events into
+       warren's event stream tagged with plot_id
+       ▲
+   Sandbox: agent runs `plot append` (agent:<name>:<run-id>)
+   ```
+
+   The ActivityFeed component (`src/ui/src/pages/PlotDetail.tsx`)
+   polls `GET /plots/:id` every 5s with tanstack-query `staleTime: 5s`
+   (mx-268674), so events from either loop converge in one feed within
+   one polling interval. Human and agent events render with the same
+   `EventLine` shape (mx-b97599 from RunDetail) — the actor slot is
+   the only visual distinction. Chains of 3+ same-kind / same-actor
+   events collapse into a single fold; open `question_posed` events
+   render an inline answer-card that POSTs to the answer endpoint with
+   optimistic insertion of the `question_answered` event.
+
+5. **Deferred.**
+   - **Live event channel.** Phase 3 polls at 5s rather than streaming
+     `plot append` events live (pl-2047 risk #6). A future phase will
+     push agent-emitted events into warren's event stream without the
+     reap-time JSONL tail.
+   - **Status-tag triggers.** Promoting a Plot to `ready` does not yet
+     fire an agent dispatch; the operator still clicks `Run plan` on
+     an attached `sd_plan` for the active execution path.
+   - **Multi-Plot cross-references.** Linking one Plot from another's
+     substrate panel is not modelled — attachments use only the
+     fixed kind set (`seeds_issue`, `mulch_record`, `canopy_prompt`,
+     `agent_run`, `gh_pr`, `sd_plan`).
+
+**Acceptance.** Scenarios 28 + 29 cover the surface end-to-end against
+a live warren+burrow stack:
+
+- **Scenario 28** (`scripts/acceptance/scenarios/28-plot-list-and-create.ts`)
+  pins the list+create roundtrip across a mix of `hasPlot` and
+  non-`hasPlot` projects, including the byte-identical-empty snapshot
+  on the non-`hasPlot` `/runs` surface.
+- **Scenario 29** (`scripts/acceptance/scenarios/29-plot-detail-roundtrip.ts`)
+  exercises the full detail page — intent edits, status-transition
+  rejections per §6.5, attachment add/remove, the already-answered
+  question rejection, and the `Run plan` → `POST /plan-runs` →
+  Plot auto-`done` composition that reuses §11.P.Plot's wiring.
+
 ### 11.P PlanRun: serial plan execution (pl-a258, 2026-05-18)
 
 PlanRun is a dispatch mode, not a fifth bundled feature. The substrate

@@ -7,6 +7,111 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] — 2026-05-18
+
+Phase 3 of `warren-d362` (plan `pl-9d6a`) shifts warren's web UI from
+run-centric to Plot-centric on deployments that opt into Plot, without
+disturbing the standalone path. Plots become the primary surface —
+list page, detail page with intent + substrate + unified activity feed,
+and a default-landing redirect — while every write path stays bound
+to the same `UserPlotClient` ACL surface §11.O established for
+single-run dispatch. The minor bump (0.3.18 → 0.4.0) reflects the
+new top-level surface and routing flip.
+
+### Added
+
+- **`feat(plots)`** — server-side Plot aggregation module
+  (`warren-7e85`). `src/plots/` exposes a typed facade over
+  `UserPlotClient.list/query/rebuildIndex` across `hasPlot` projects,
+  returning `PlotSummary[]` with parallel per-project queries, a
+  best-effort `rebuildIndex+retry-once` recovery on cold-cache misses
+  (mx-239786), and a 5s in-memory cache keyed by `project_id`.
+  `PlotResolver` resolves the owning project for a given `plot_id`.
+  Unit tests pin the byte-identical empty-array contract when no
+  project has `hasPlot=true`.
+- **`feat(server)`** — `GET /plots` aggregator handler
+  (`warren-c167`). Optional `?status=` filter; empty array (not 404)
+  when no `hasPlot` projects exist.
+- **`feat(server)`** — `POST /plots` create handler (`warren-194e`).
+  Gated on `project.hasPlot` with typed `ProjectLacksPlotError`;
+  `dispatcher_handle` resolution with `operator` fallback (mx-6a9788);
+  hard-rejected on failure (no fire-and-log — the user is waiting).
+- **`feat(server)`** — `GET /plots/:id` full-envelope handler
+  (`warren-961e`). `PlotResolver`-backed 404; `event_log` ordered by
+  `ts` ascending for the UI's unified feed.
+- **`feat(server)`** — `POST /plots/:id/intent` intent-edit handler
+  (`warren-896f`). Rejects edits when the current status is `done` or
+  `archived` (SPEC §6 — intent is frozen at done). The facade's
+  compile-time ACL guard (mx-bd4d67) makes `agent:*` attribution
+  unreachable from this path.
+- **`feat(server)`** — `POST /plots/:id/status` transition handler
+  (`warren-e868`). Validates against the SPEC §6.5 whitelist at the
+  handler edge as defense in depth.
+- **`feat(server)`** — `POST/DELETE /plots/:id/attachments`
+  (`warren-589c`). Per-kind ref-shape validation at the handler edge
+  (mx-aa4e2e); routes through `UserPlotClient.attach/detach`.
+- **`feat(server)`** — `POST /plots/:id/questions/:event_id/answer`
+  (`warren-e1ac`). Validates the targeted `question_posed` exists and
+  has no subsequent `question_answered` referencing it before
+  appending — a handler-edge concurrency invariant the Plot library
+  does not guarantee on its own.
+- **`feat(ui)`** — `plotsApi` + Plot wire-type mirrors
+  (`warren-4879`). `src/ui/src/api/client.ts` gains
+  `plotsApi.{list,create,get,editIntent,setStatus,attach,detach,answer,dispatchPlanRun}`;
+  types mirrored manually in `src/ui/src/api/types.ts` per the
+  mx-7f971c pattern.
+- **`feat(ui)`** — `/plots` list page (`warren-e3e6`). Sortable
+  table (default sort by `last_event_ts` desc), status filter chip
+  group, New Plot dialog filtered to `hasPlot=true` projects, empty
+  state copy when no `hasPlot` projects exist.
+- **`feat(ui)`** — sidebar `Plots` entry gated on
+  `someProject.hasPlot=true` (`warren-2f55`).
+- **`feat(ui)`** — `/plots/:id` PlotDetail page (`warren-bdbf`).
+  Three-panel layout: IntentPanel (editable inline, disabled at
+  `done`/`archived`), SubstratePanel (attachments grouped by role with
+  detach + add), ActivityFeed (unified human + agent timeline reusing
+  the mx-b97599 EventLine shape; 3+ same-kind/same-actor chains
+  collapse). Polls every 5s with tanstack-query `staleTime: 5s`
+  (mx-268674).
+- **`feat(ui)`** — Run-plan button on PlotDetail (`warren-5d94`).
+  Visible when an `sd_plan` attachment exists; confirm-dialog +
+  `POST /plan-runs` with auto-filled `plot_id` reuses the NewPlanRun
+  defaults flow (mx-4c064b) and routes to `/plan-runs/:id` on success.
+- **`feat(ui)`** — inline question-answer card in ActivityFeed
+  (`warren-3c3e`). Open `question_posed` events render with a textarea
+  + Submit; optimistic insertion of `question_answered`, draft-restore
+  on failure.
+- **`feat(ui)`** — status-transition control + `PlotStatusBadge`
+  (`warren-6336`). Button group rendering only the legally-reachable
+  next statuses per SPEC §6.5; optimistic UI; badge mirrors
+  `StateBadge.tsx`'s shape.
+- **`feat(ui)`** — live Plot back-link on PlanRunDetail + RunDetail
+  with graceful 404 fallback (`warren-37fd`). Flips the mx-757be9
+  placeholder now that `/plots/:id` is rendered.
+- **`feat(ui)`** — default-landing flip + sidebar reorder
+  (`warren-e59a`). `DefaultLanding.tsx` redirects to `/plots` only
+  when `someProject.hasPlot && anyPlotExists`; otherwise to `/runs`
+  (the CLAUDE.md standalone path is preserved byte-identical). Layout
+  reorders to Plots → Runs → Plan Runs → Projects → Agents under
+  the same gate.
+- **`test(acceptance)`** — scenarios 28 + 29
+  (`warren-5b8a`, `warren-c40b`). Scenario 28 pins the list+create
+  roundtrip across mixed `hasPlot` / non-`hasPlot` projects with the
+  zero-leakage `/runs` snapshot; scenario 29 exercises the full
+  detail-page roundtrip including the `Run plan` → `POST /plan-runs`
+  → Plot auto-`done` composition that reuses §11.P.Plot's wiring
+  (mx-92e6b3 + mx-90f430). Both follow the mx-af2627 / mx-15e4da
+  in-proc warren-stack pattern with idempotent teardown.
+
+### Changed
+
+- **`docs(spec)`** — SPEC.md gains §11.O.Plot.UI subsection following
+  the mx-49a44c five-thing template (gating, API, ACL, ASCII
+  data-flow, what's deferred).
+- **`docs(readme)`** — README features section calls out the
+  `hasPlot`-conditional default landing and the unified activity feed,
+  pointing at SPEC §11.O.Plot.UI.
+
 ## [0.3.18] — 2026-05-18
 
 PlanRun composes onto Plot: a plan-run dispatched against a `.plot/`

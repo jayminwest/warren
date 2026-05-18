@@ -32,6 +32,7 @@ Stable (`0.3.12`), running on Fly.io in continuous use against real GitHub repos
 - **Steerable mid-run.** `POST /runs/:id/steer` lands a message in the agent's inbox; the next turn picks it up. `POST /runs/:id/cancel` aborts cleanly.
 - **Scheduled runs.** `.warren/triggers.yaml` defines cron triggers per project; the in-process scheduler dispatches them on the same composition path as manual runs.
 - **Serial plan-run dispatch.** Projects shipping `.seeds/` can `POST /plan-runs` against a seeds plan; warren walks the plan's children one at a time, spawning one run per child and gating each on the previous PR merging before the next dispatches. Re-dispatching the same plan after some children have closed resumes from the next open child.
+- **Plot-centric UI on opt-in deployments.** When any project ships `.plot/` and at least one Plot exists, warren's default landing flips to `/plots` and the sidebar reorders Plots above Runs; the standalone path (no `.plot/` projects) stays byte-identical with `/runs` as the index. The Plot detail page renders intent + substrate + a unified activity feed where human and agent events share one timeline, with inline answer-cards on open questions and a Run-plan button when an `sd_plan` is attached. See [SPEC §11.O.Plot.UI](SPEC.md#11oplotui-plot-centric-ui-surface-pl-9d6a-2026-05-18).
 - **Three thin clients of one pipeline.** Web UI, `warren` admin CLI, and HTTP API all flow through the same composition path ([SPEC §4.3](SPEC.md#43-the-composition-flow)).
 
 ## Quickstart (home server)
