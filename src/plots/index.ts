@@ -24,7 +24,7 @@ export {
 	defaultPlotCreator,
 	type PlotCreator,
 } from "./creator.ts";
-export { PlotIntentFrozenError } from "./errors.ts";
+export { PlotIllegalStatusTransitionError, PlotIntentFrozenError } from "./errors.ts";
 export {
 	assertIntentMutable,
 	defaultPlotIntentEditor,
@@ -41,6 +41,15 @@ export {
 	type ReadPlotResult,
 } from "./reader.ts";
 export { createPlotResolver, type PlotResolver, type PlotResolverOptions } from "./resolver.ts";
+export {
+	assertStatusTransitionAllowed,
+	type ChangePlotStatusRequest,
+	type ChangePlotStatusResult,
+	defaultPlotStatusChanger,
+	isLegalStatusTransition,
+	type PlotStatusChanger,
+	STATUS_TRANSITIONS,
+} from "./status-changer.ts";
 export {
 	buildIntentGoalPreview,
 	INTENT_GOAL_PREVIEW_MAX,

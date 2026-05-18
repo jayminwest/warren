@@ -67,6 +67,7 @@ import {
 	defaultPlotCreator,
 	defaultPlotIntentEditor,
 	defaultPlotReader,
+	defaultPlotStatusChanger,
 	EMPTY_PLOT_SUMMARIES,
 	type PlotEnvelope,
 	type PlotSummary,
@@ -2211,6 +2212,121 @@ function parseTopLevelIntentPatch(
 	return hasField ? patch : undefined;
 }
 
+/**
+ * `POST /plots/:id/status` — transition a Plot's status (warren-e868 /
+ * pl-9d6a step 10).
+ *
+ * Handler order:
+ *   (1) parse + validate the body's `next` field against
+ *       `PLOT_STATUSES` (typo guard at the handler edge — same
+ *       whitelist `GET /plots?status=` uses).
+ *   (2) resolve the dispatcher handle via `resolveDispatcherHandle`
+ *       (mx-6a9788) — malformed/empty input downgrades to `operator`.
+ *   (3) resolve the owning project via `deps.plotResolver`; `null`
+ *       or unwired resolver → 404 (empty-deployments contract).
+ *   (4) defensive `hasPlot` re-check — surfaces as
+ *       `ProjectLacksPlotError` (400 / `project_lacks_plot`) for the
+ *       same envelope the create / intent paths use.
+ *   (5) hand off to `deps.plotStatusChanger` (default
+ *       `defaultPlotStatusChanger`) which opens a `UserPlotClient`,
+ *       runs the SPEC §6.5 transition matrix
+ *       (`assertStatusTransitionAllowed`) against the on-disk current
+ *       status, calls `setStatus(next)`, and snapshots the fresh
+ *       summary + `status_changed` event. Failure propagates
+ *       synchronously — NOT fire-and-log (mx-92e6b3 contrasts:
+ *       PlanRun's plot-append IS fire-and-log because the user is
+ *       waiting on the PlanRun, not the Plot mirror; here the user is
+ *       waiting on the transition itself).
+ *   (6) invalidate the aggregator cache entry for the project so a
+ *       follow-up `GET /plots` sees the new status (and the
+ *       refreshed `last_event_ts`/`last_event_actor`) without the 5s
+ *       TTL wait.
+ *   (7) return 200 with `{ summary: PlotSummary, event: PlotEvent }`
+ *       — the UI splices `event` into the optimistic activity feed and
+ *       reconciles the summary row against the next list response.
+ *
+ * Body shape: `{ next: 'drafting'|'ready'|'active'|'done'|'archived',
+ *   dispatcher_handle? }`. Unknown body fields are ignored
+ *   (forward-compatible with later additions like `reason`).
+ *
+ * ACL note: this handler uses `UserPlotClient` exclusively (via the
+ * status-changer seam). `AgentPlotHandle` doesn't expose `setStatus`
+ * at the type level (mx-bd4d67), so the agent-actor mistake is
+ * unreachable from this code path at compile time.
+ */
+function changePlotStatusHandler(deps: ServerDeps): RouteHandler {
+	return async (ctx) => {
+		const plotId = requireParam(ctx, "id");
+		const body = await readJsonBody(ctx);
+		const dispatcherHandle = optionalString(body, "dispatcher_handle");
+
+		// (1) parse + validate `next`.
+		const rawNext = body.next;
+		if (typeof rawNext !== "string") {
+			throw new ValidationError("field 'next' must be a string");
+		}
+		if (!(PLOT_STATUSES as readonly string[]).includes(rawNext)) {
+			throw new ValidationError(
+				`unknown status '${rawNext}'; expected one of ${PLOT_STATUSES.join(", ")}`,
+			);
+		}
+		const next = rawNext as PlotStatus;
+
+		// (2) handle resolution.
+		const handle = resolveDispatcherHandle(dispatcherHandle);
+
+		// (3) resolve owning project.
+		const project =
+			deps.plotResolver !== undefined ? await deps.plotResolver.resolve(plotId) : null;
+		if (project === null) {
+			throw new NotFoundError(`plot not found: ${plotId}`, {
+				recoveryHint:
+					"check the plot id; only Plots in projects with hasPlot=true are visible to warren",
+			});
+		}
+
+		// (4) defensive hasPlot re-check.
+		if (!project.hasPlot) {
+			throw new ProjectLacksPlotError(
+				`project ${project.id} no longer has a .plot/ directory; cannot change status on plot ${plotId}`,
+				{
+					recoveryHint:
+						"refresh the project so warren picks up the current .plot/ state, or recreate .plot/ via `plot init`",
+				},
+			);
+		}
+
+		// (5) delegate to the changer seam. The changer reads the current
+		// status from disk and re-runs `assertStatusTransitionAllowed`
+		// before calling `setStatus`; warren never constructs an invalid
+		// transition (defense in depth on top of the lib's own guard).
+		const changer = deps.plotStatusChanger ?? defaultPlotStatusChanger;
+		const result = await changer.change({
+			plotDir: join(project.localPath, ".plot"),
+			plotId,
+			handle,
+			next,
+		});
+
+		// (6) drop the aggregator cache so the next list sees the new
+		// status / last_event_ts without waiting for the 5s TTL.
+		deps.plotAggregator?.invalidate(project.id);
+
+		// (7) wire response — PlotSummary + the emitted status_changed event.
+		const summary: PlotSummary = {
+			id: result.id,
+			name: result.name,
+			status: result.status,
+			intent_goal_preview: result.intent_goal_preview,
+			attachments_count: result.attachments_count,
+			last_event_ts: result.last_event_ts,
+			last_event_actor: result.last_event_actor,
+			project_id: project.id,
+		};
+		return jsonResponse(200, { summary, event: result.event });
+	};
+}
+
 /* ----------------------------------------------------------------------- */
 /* Public API                                                               */
 /* ----------------------------------------------------------------------- */
@@ -2274,6 +2390,7 @@ const ROUTE_TABLE: readonly RouteEntry[] = [
 	{ method: "POST", pattern: "/plots", build: createPlotHandler },
 	{ method: "GET", pattern: "/plots/:id", build: getPlotHandler },
 	{ method: "POST", pattern: "/plots/:id/intent", build: editPlotIntentHandler },
+	{ method: "POST", pattern: "/plots/:id/status", build: changePlotStatusHandler },
 ];
 
 /**

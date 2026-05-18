@@ -44,6 +44,7 @@ import {
 	defaultPlotCreator,
 	defaultPlotIntentEditor,
 	defaultPlotReader,
+	defaultPlotStatusChanger,
 } from "../plots/index.ts";
 import { createPreviewAuth, type PreviewAuth } from "../preview/cookie.ts";
 import {
@@ -403,6 +404,7 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 		plotCreator: defaultPlotCreator,
 		plotIntentEditor: defaultPlotIntentEditor,
 		plotReader: defaultPlotReader,
+		plotStatusChanger: defaultPlotStatusChanger,
 		plotResolver: createPlotResolver({
 			projectsRepo: repos.projects,
 			aggregator: plotAggregator,

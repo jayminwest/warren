@@ -277,6 +277,18 @@ export interface ServerDeps {
 	 * handler falls back to `defaultPlotIntentEditor`.
 	 */
 	readonly plotIntentEditor?: import("../plots/index.ts").PlotIntentEditor;
+	/**
+	 * Server-side Plot status changer (warren-e868 / pl-9d6a step 10). Used
+	 * by `POST /plots/:id/status` to open a `UserPlotClient` against the
+	 * owning project's `.plot/`, enforce the SPEC §6.5 transition matrix
+	 * (defense-in-depth on top of the handler-edge check), call
+	 * `PlotHandle.setStatus`, and return the fresh summary subset +
+	 * emitted `status_changed` event. Failure surfaces synchronously
+	 * (NOT fire-and-log — same posture as `plotIntentEditor`).
+	 * `bootServer` always wires the default; tests substitute a stub.
+	 * When undefined the handler falls back to `defaultPlotStatusChanger`.
+	 */
+	readonly plotStatusChanger?: import("../plots/index.ts").PlotStatusChanger;
 }
 
 /**

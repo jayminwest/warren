@@ -44,7 +44,7 @@ import {
 	ProjectLacksPlotError,
 	ProjectLacksSeedsError,
 } from "../plan-runs/errors.ts";
-import { PlotIntentFrozenError } from "../plots/errors.ts";
+import { PlotIllegalStatusTransitionError, PlotIntentFrozenError } from "../plots/errors.ts";
 import { ProjectUnavailableError } from "../projects/errors.ts";
 import { AgentSchemaError, CanopyUnavailableError } from "../registry/errors.ts";
 import { RunSpawnError } from "../runs/errors.ts";
@@ -116,6 +116,7 @@ function warrenStatusFor(err: WarrenError): number {
 	if (err instanceof PlanHasNoOpenChildrenError) return 400;
 	if (err instanceof StateTransitionError) return 409;
 	if (err instanceof PlotIntentFrozenError) return 409;
+	if (err instanceof PlotIllegalStatusTransitionError) return 409;
 	if (err instanceof BurrowUnreachableError) return 503;
 	if (err instanceof CanopyUnavailableError) return 503;
 	if (err instanceof ProjectUnavailableError) return 503;
