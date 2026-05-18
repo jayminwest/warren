@@ -1,0 +1,25 @@
+/**
+ * Public re-exports for the Plot aggregation module
+ * (warren-7e85 / pl-9d6a step 1).
+ *
+ * Handlers and the resolver consume this barrel so the internal
+ * layout (aggregate.ts / resolver.ts / types.ts) can move without
+ * touching call sites — same pattern as `src/plot-client/index.ts`.
+ */
+
+export {
+	type AggregatorClientFactory,
+	type AggregatorPlotClient,
+	createPlotAggregator,
+	defaultAggregatorClientFactory,
+	EMPTY_PLOT_SUMMARIES,
+	type ListPlotSummariesQuery,
+	type PlotAggregator,
+	type PlotAggregatorOptions,
+} from "./aggregate.ts";
+export { createPlotResolver, type PlotResolver, type PlotResolverOptions } from "./resolver.ts";
+export {
+	buildIntentGoalPreview,
+	INTENT_GOAL_PREVIEW_MAX,
+	type PlotSummary,
+} from "./types.ts";
