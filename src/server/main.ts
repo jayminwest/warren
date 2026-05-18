@@ -44,6 +44,7 @@ import {
 	defaultPlotAttacher,
 	defaultPlotCreator,
 	defaultPlotIntentEditor,
+	defaultPlotQuestionAnswerer,
 	defaultPlotReader,
 	defaultPlotStatusChanger,
 } from "../plots/index.ts";
@@ -407,6 +408,7 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 		plotIntentEditor: defaultPlotIntentEditor,
 		plotReader: defaultPlotReader,
 		plotStatusChanger: defaultPlotStatusChanger,
+		plotQuestionAnswerer: defaultPlotQuestionAnswerer,
 		plotResolver: createPlotResolver({
 			projectsRepo: repos.projects,
 			aggregator: plotAggregator,

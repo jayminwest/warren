@@ -72,6 +72,7 @@ import {
 	defaultPlotAttacher,
 	defaultPlotCreator,
 	defaultPlotIntentEditor,
+	defaultPlotQuestionAnswerer,
 	defaultPlotReader,
 	defaultPlotStatusChanger,
 	EMPTY_PLOT_SUMMARIES,
@@ -2571,6 +2572,111 @@ function detachPlotHandler(deps: ServerDeps): RouteHandler {
 	};
 }
 
+/**
+ * `POST /plots/:id/questions/:event_id/answer` — answer a `question_posed`
+ * event with a `question_answered` event (warren-e1ac / pl-9d6a step 12).
+ *
+ * The wire `:event_id` is the `at` ISO timestamp of the targeted
+ * `question_posed` event. PlotEvent has no synthetic id; `at` is the
+ * stable identifier the UI feeds back after reading the event log.
+ *
+ * Handler order:
+ *   (1) decode `:event_id` (the router runs `decodeURIComponent`) and
+ *       reject empty values at the edge.
+ *   (2) parse + validate the body's `answer` field (non-empty string).
+ *       `dispatcher_handle` resolution via `resolveDispatcherHandle`
+ *       (mx-6a9788) — malformed/empty input downgrades to `operator`.
+ *   (3) resolve the owning project via `deps.plotResolver`; `null` or
+ *       unwired resolver → 404 (empty-deployments contract).
+ *   (4) defensive `hasPlot` re-check — surfaces as
+ *       `ProjectLacksPlotError` (400 / `project_lacks_plot`) for parity
+ *       with the create / intent / status / attach paths.
+ *   (5) hand off to `deps.plotQuestionAnswerer` (default
+ *       `defaultPlotQuestionAnswerer`). The answerer re-validates the
+ *       handler-edge concurrency invariant against the fresh on-disk
+ *       event log (the targeted `question_posed` still exists AND has
+ *       no subsequent `question_answered` referencing it) and appends
+ *       the `question_answered` event via the typed `UserPlotClient`.
+ *       Failure propagates synchronously — NOT fire-and-log; the user
+ *       is waiting on the answer submit.
+ *   (6) invalidate the aggregator cache entry for the project so a
+ *       follow-up `GET /plots` sees the refreshed `last_event_ts` /
+ *       `last_event_actor` without the 5s TTL wait.
+ *   (7) return 200 with `{ event: PlotEvent }` — the freshly appended
+ *       `question_answered` event for the UI to splice into the
+ *       optimistic activity feed; the next `GET /plots/:id` reconciles
+ *       the rest of the envelope.
+ *
+ * ACL note: this handler uses `UserPlotClient` exclusively (via the
+ * answerer seam). `question_answered` is one of the four humans-only
+ * event types per SPEC §6 — `AgentPlotHandle.append` excludes it at
+ * the type level (mx-bd4d67), so the agent-actor mistake is
+ * unreachable from this code path at compile time.
+ */
+function answerPlotQuestionHandler(deps: ServerDeps): RouteHandler {
+	return async (ctx) => {
+		const plotId = requireParam(ctx, "id");
+		const eventId = requireParam(ctx, "event_id");
+		if (eventId.length === 0) {
+			throw new ValidationError("path param ':event_id' must be a non-empty string");
+		}
+
+		const body = await readJsonBody(ctx);
+		const dispatcherHandle = optionalString(body, "dispatcher_handle");
+
+		// (2) parse + validate `answer`.
+		const rawAnswer = body.answer;
+		if (typeof rawAnswer !== "string" || rawAnswer.length === 0) {
+			throw new ValidationError("field 'answer' must be a non-empty string");
+		}
+
+		// handle resolution.
+		const handle = resolveDispatcherHandle(dispatcherHandle);
+
+		// (3) resolve owning project.
+		const project =
+			deps.plotResolver !== undefined ? await deps.plotResolver.resolve(plotId) : null;
+		if (project === null) {
+			throw new NotFoundError(`plot not found: ${plotId}`, {
+				recoveryHint:
+					"check the plot id; only Plots in projects with hasPlot=true are visible to warren",
+			});
+		}
+
+		// (4) defensive hasPlot re-check.
+		if (!project.hasPlot) {
+			throw new ProjectLacksPlotError(
+				`project ${project.id} no longer has a .plot/ directory; cannot answer question on plot ${plotId}`,
+				{
+					recoveryHint:
+						"refresh the project so warren picks up the current .plot/ state, or recreate .plot/ via `plot init`",
+				},
+			);
+		}
+
+		// (5) delegate to the answerer seam. The answerer re-reads the
+		// event log and re-runs `assertQuestionAnswerable` against the
+		// fresh on-disk state before calling `append` — the lib
+		// guarantees neither half of the invariant, so warren owns it.
+		const answerer = deps.plotQuestionAnswerer ?? defaultPlotQuestionAnswerer;
+		const result = await answerer.answer({
+			plotDir: join(project.localPath, ".plot"),
+			plotId,
+			handle,
+			eventId,
+			answer: rawAnswer,
+		});
+
+		// (6) drop the aggregator cache so the next list sees the
+		// refreshed last_event_ts / last_event_actor without the 5s TTL.
+		deps.plotAggregator?.invalidate(project.id);
+
+		// (7) wire response — just the freshly appended event for
+		// optimistic UI splice.
+		return jsonResponse(200, { event: result.event });
+	};
+}
+
 /* ----------------------------------------------------------------------- */
 /* Public API                                                               */
 /* ----------------------------------------------------------------------- */
@@ -2640,6 +2746,11 @@ const ROUTE_TABLE: readonly RouteEntry[] = [
 		method: "DELETE",
 		pattern: "/plots/:id/attachments/:ref",
 		build: detachPlotHandler,
+	},
+	{
+		method: "POST",
+		pattern: "/plots/:id/questions/:event_id/answer",
+		build: answerPlotQuestionHandler,
 	},
 ];
 

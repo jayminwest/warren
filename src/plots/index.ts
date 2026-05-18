@@ -36,6 +36,8 @@ export {
 	PlotAttachmentNotFoundError,
 	PlotIllegalStatusTransitionError,
 	PlotIntentFrozenError,
+	PlotQuestionAlreadyAnsweredError,
+	PlotQuestionNotFoundError,
 } from "./errors.ts";
 export {
 	assertIntentMutable,
@@ -45,6 +47,13 @@ export {
 	type EditPlotIntentResult,
 	type PlotIntentEditor,
 } from "./intent-editor.ts";
+export {
+	type AnswerPlotQuestionRequest,
+	type AnswerPlotQuestionResult,
+	assertQuestionAnswerable,
+	defaultPlotQuestionAnswerer,
+	type PlotQuestionAnswerer,
+} from "./question-answerer.ts";
 export {
 	defaultPlotReader,
 	type PlotEnvelope,

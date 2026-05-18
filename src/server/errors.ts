@@ -48,6 +48,8 @@ import {
 	PlotAttachmentNotFoundError,
 	PlotIllegalStatusTransitionError,
 	PlotIntentFrozenError,
+	PlotQuestionAlreadyAnsweredError,
+	PlotQuestionNotFoundError,
 } from "../plots/errors.ts";
 import { ProjectUnavailableError } from "../projects/errors.ts";
 import { AgentSchemaError, CanopyUnavailableError } from "../registry/errors.ts";
@@ -122,6 +124,8 @@ function warrenStatusFor(err: WarrenError): number {
 	if (err instanceof PlotIntentFrozenError) return 409;
 	if (err instanceof PlotIllegalStatusTransitionError) return 409;
 	if (err instanceof PlotAttachmentNotFoundError) return 404;
+	if (err instanceof PlotQuestionNotFoundError) return 404;
+	if (err instanceof PlotQuestionAlreadyAnsweredError) return 409;
 	if (err instanceof BurrowUnreachableError) return 503;
 	if (err instanceof CanopyUnavailableError) return 503;
 	if (err instanceof ProjectUnavailableError) return 503;

@@ -50,3 +50,33 @@ export class PlotIllegalStatusTransitionError extends WarrenError {
 export class PlotAttachmentNotFoundError extends WarrenError {
 	readonly code = "plot_attachment_not_found";
 }
+
+/**
+ * Raised by `POST /plots/:id/questions/:event_id/answer` (warren-e1ac /
+ * pl-9d6a step 12) when the targeted `:event_id` does not match any
+ * `question_posed` event in the Plot's event log. Mapped to 404 in
+ * `src/server/errors.ts`.
+ *
+ * The wire `:event_id` is the ISO timestamp (`at`) of the
+ * `question_posed` event the UI is answering — PlotEvent has no
+ * synthetic id field, and `at` is the only stable identifier the lib
+ * surfaces on the wire. A typo or stale UI state is the canonical
+ * trigger; the recovery hint nudges callers to re-fetch the envelope.
+ */
+export class PlotQuestionNotFoundError extends WarrenError {
+	readonly code = "plot_question_not_found";
+}
+
+/**
+ * Raised by `POST /plots/:id/questions/:event_id/answer` (warren-e1ac /
+ * pl-9d6a step 12) when a subsequent `question_answered` event already
+ * references the same `question_id` (the targeted `:event_id`). The
+ * `@os-eco/plot-cli` library does NOT guarantee single-answer
+ * semantics on its own — warren enforces the invariant at the handler
+ * edge by walking the event log forward from the targeted question.
+ * Mapped to 409 in `src/server/errors.ts` (state-transition shape) so
+ * HTTP consumers can branch on `code === "plot_question_already_answered"`.
+ */
+export class PlotQuestionAlreadyAnsweredError extends WarrenError {
+	readonly code = "plot_question_already_answered";
+}

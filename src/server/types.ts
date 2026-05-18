@@ -303,6 +303,20 @@ export interface ServerDeps {
 	 * When undefined the handler falls back to `defaultPlotAttacher`.
 	 */
 	readonly plotAttacher?: import("../plots/index.ts").PlotAttacher;
+	/**
+	 * Server-side Plot question-answer seam (warren-e1ac / pl-9d6a step 12).
+	 * Used by `POST /plots/:id/questions/:event_id/answer` to open a
+	 * `UserPlotClient` against the owning project's `.plot/`, re-validate
+	 * the handler-edge concurrency invariant (the targeted `question_posed`
+	 * still exists and has no subsequent `question_answered`) against the
+	 * fresh on-disk event log, append the `question_answered` event, and
+	 * return the freshly appended event for optimistic UI splice. Failure
+	 * surfaces synchronously (NOT fire-and-log — same posture as the
+	 * intent/status/attach seams). `bootServer` always wires the default;
+	 * tests substitute a stub. When undefined the handler falls back to
+	 * `defaultPlotQuestionAnswerer`.
+	 */
+	readonly plotQuestionAnswerer?: import("../plots/index.ts").PlotQuestionAnswerer;
 }
 
 /**
