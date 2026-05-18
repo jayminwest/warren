@@ -8,7 +8,9 @@ import {
 	type PlotAttachment,
 	type PlotEnvelope,
 	type PlotEvent,
+	type PlotStatus,
 } from "@/api/types.ts";
+import { PlotStatusBadge } from "@/components/PlotStatusBadge.tsx";
 import { Button } from "@/components/ui/button.tsx";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card.tsx";
 import {
@@ -40,8 +42,14 @@ import { formatTimestamp, relativeTime } from "@/lib/utils.ts";
  * (mx-268674 pattern). No live event stream yet — that's deferred per
  * SPEC §11.O.Plot.UI (pl-2047 risk #6).
  *
- * Out of scope here (separate steps in pl-9d6a):
- *   - Status transition button group (warren-6336 / step 16).
+ * Status transition control (warren-6336 / pl-9d6a step 16): the
+ * header renders `PlotStatusBadge` above a `StatusTransitionControl`
+ * button group that surfaces only the legally-reachable next statuses
+ * per SPEC §6.5 (matrix mirrored from `src/plots/status-changer.ts`).
+ * Click POSTs `/plots/:id/status` via `plotsApi.changeStatus` and
+ * optimistically swaps the cached envelope's status + splices the
+ * returned `status_changed` event into the activity feed; failure
+ * surfaces inline below the buttons.
  *
  * Inline question-answer card (warren-3c3e / pl-9d6a step 15):
  * `question_posed` events without a matching `question_answered`
@@ -89,12 +97,7 @@ export function PlotDetailPage() {
 		<div className="space-y-6">
 			<header className="flex flex-wrap items-start justify-between gap-4">
 				<div className="space-y-1">
-					<div className="flex items-baseline gap-3">
-						<h1 className="text-2xl font-semibold tracking-tight">{plot.name}</h1>
-						<span className="rounded-full border px-2 py-0.5 text-xs">
-							{plot.status}
-						</span>
-					</div>
+					<h1 className="text-2xl font-semibold tracking-tight">{plot.name}</h1>
 					<div className="font-mono text-xs text-(--color-muted-foreground)">
 						{plot.id} · project{" "}
 						<Link
@@ -105,6 +108,7 @@ export function PlotDetailPage() {
 						</Link>
 					</div>
 				</div>
+				<StatusTransitionControl plot={plot} />
 			</header>
 
 			<div className="grid gap-6 lg:grid-cols-2">
@@ -113,6 +117,112 @@ export function PlotDetailPage() {
 			</div>
 
 			<ActivityFeed plotId={plot.id} events={plot.event_log} />
+		</div>
+	);
+}
+
+/* ----------------------------------------------------------------------- */
+/* StatusTransitionControl (warren-6336)                                    */
+/* ----------------------------------------------------------------------- */
+
+/**
+ * SPEC §6.5 transition matrix mirrored from
+ * `src/plots/status-changer.ts` `STATUS_TRANSITIONS`. Kept as a UI-side
+ * constant so the button group can render before the request reaches
+ * the server; the server re-validates authoritatively. If the matrix
+ * ever drifts, the server's `PlotIllegalStatusTransitionError`
+ * surfaces inline below the buttons so the mistake is loud rather
+ * than silent.
+ */
+const NEXT_STATUSES: Readonly<Record<PlotStatus, readonly PlotStatus[]>> = {
+	drafting: ["ready", "archived"],
+	ready: ["active", "archived"],
+	active: ["done", "archived"],
+	done: ["archived"],
+	archived: [],
+};
+
+function StatusTransitionControl({ plot }: { plot: PlotEnvelope }) {
+	const qc = useQueryClient();
+	const nexts = NEXT_STATUSES[plot.status];
+
+	const mutation = useMutation({
+		mutationFn: (next: PlotStatus) => plotsApi.changeStatus(plot.id, { next }),
+		onMutate: async (next) => {
+			// Optimistic: cancel in-flight refetches and patch the cached
+			// envelope so the badge + button group flip immediately. The
+			// server-returned event splices into event_log onSuccess; if the
+			// request fails we roll back below.
+			await qc.cancelQueries({ queryKey: ["plot", plot.id] });
+			const prev = qc.getQueryData<PlotEnvelope>(["plot", plot.id]);
+			if (prev !== undefined) {
+				qc.setQueryData<PlotEnvelope>(["plot", plot.id], {
+					...prev,
+					status: next,
+				});
+			}
+			return { prev };
+		},
+		onError: (_err, _next, ctx) => {
+			if (ctx?.prev !== undefined) {
+				qc.setQueryData(["plot", plot.id], ctx.prev);
+			}
+		},
+		onSuccess: (resp) => {
+			qc.setQueryData<PlotEnvelope>(["plot", plot.id], (prev) => {
+				if (prev === undefined) return prev;
+				const hasEvent = prev.event_log.some((e) => e.at === resp.event.at);
+				return {
+					...prev,
+					status: resp.summary.status,
+					event_log: hasEvent ? prev.event_log : [...prev.event_log, resp.event],
+				};
+			});
+			qc.invalidateQueries({ queryKey: ["plots"] });
+			qc.invalidateQueries({ queryKey: ["plot", plot.id] });
+		},
+	});
+
+	const errorMessage = ((): string | null => {
+		if (!mutation.isError) return null;
+		if (mutation.error instanceof ApiError) {
+			return `${mutation.error.message} (${mutation.error.code})`;
+		}
+		return mutation.error instanceof Error
+			? mutation.error.message
+			: String(mutation.error);
+	})();
+
+	return (
+		<div className="flex flex-col items-end gap-2">
+			<PlotStatusBadge status={plot.status} />
+			{nexts.length === 0 ? (
+				<p className="text-xs text-(--color-muted-foreground)">
+					Terminal status — no further transitions.
+				</p>
+			) : (
+				<div className="flex flex-wrap items-center justify-end gap-2">
+					{nexts.map((next) => (
+						<Button
+							key={next}
+							type="button"
+							size="sm"
+							variant={next === "archived" ? "outline" : "default"}
+							disabled={mutation.isPending}
+							onClick={() => mutation.mutate(next)}
+						>
+							{mutation.isPending && mutation.variables === next
+								? `→ ${next}…`
+								: `→ ${next}`}
+						</Button>
+					))}
+				</div>
+			)}
+			{errorMessage !== null ? (
+				<p className="max-w-xs text-right text-xs text-(--color-destructive)">
+					{errorMessage}
+				</p>
+			) : null}
 		</div>
 	);
 }
