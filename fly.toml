@@ -43,6 +43,13 @@ primary_region = "sjc"
 
 [env]
   WARREN_DATA_DIR = "/data"
+  # Pin burrow's SQLite + archive + projects dir onto the warren_data
+  # volume. Without this, burrow falls back to XDG_DATA_HOME (the
+  # container's ephemeral overlay) and every redeploy wipes the run state
+  # of any in-flight burrow, orphaning warren's still-'running' rows
+  # (warren-0375). Mirrors the Dockerfile ENV so it's visible at the
+  # deploy-config layer too.
+  BURROW_DATA_DIR = "/data/burrow"
   WARREN_BIND_HOST = "0.0.0.0"
   WARREN_BIND_PORT = "8080"
 
@@ -52,10 +59,13 @@ primary_region = "sjc"
 
 # Warren is single-instance: one Machine, one persistent volume. Deploys
 # bounce the supervisor (which restarts both children); the volume keeps
-# warren.db (SQLite default), canopy clone, and project clones across
-# deploys. When WARREN_DB_URL points at an external Postgres, warren.db
-# is unused — the volume still holds canopy + project clones, so the
-# mount stays in place either way.
+# warren.db (SQLite default), canopy clone, project clones, AND burrow's
+# own SQLite + archive/ + projects/ under /data/burrow (BURROW_DATA_DIR)
+# across deploys. Without the burrow pin, every redeploy wiped burrow's
+# state and orphaned warren rows still marked 'running' (warren-0375).
+# When WARREN_DB_URL points at an external Postgres, warren.db is unused
+# — the volume still holds canopy + project clones + burrow's data, so
+# the mount stays in place either way.
 [[services]]
   internal_port = 8080
   protocol = "tcp"

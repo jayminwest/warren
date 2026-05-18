@@ -142,9 +142,24 @@ RUN ln -s /app/src/cli/main.ts /usr/local/bin/warren \
 ENV WARREN_DATA_DIR=/data
 ENV WARREN_BURROW_SOCKET=/var/run/burrow.sock
 
+# Pin burrow's data dir onto the same persistent volume warren uses.
+# Burrow's default is XDG_DATA_HOME/burrow (~/.local/share/burrow on the
+# container's writable overlay), which gets wiped on every redeploy and
+# orphans any in-flight runs whose warren-side state still says 'running'
+# but whose burrow-side execution state was the freshly-erased SQLite
+# (warren-0375). BURROW_DATA_DIR is read by burrow's path resolver
+# (node_modules/@os-eco/burrow-cli/src/config/paths.ts) ahead of
+# XDG_DATA_HOME and lands db.sqlite, archive/, projects/ under /data.
+# The supervisor's burrow child inherits this env (src/supervisor/main.ts).
+ENV BURROW_DATA_DIR=/data/burrow
+
 # /data is a persistence boundary (sqlite + cloned canopy + cloned project
-# repos). /var/run is where the supervisor binds burrow's unix socket; the
-# directory must exist for `burrow serve --socket /var/run/burrow.sock`.
+# repos + burrow's db.sqlite under /data/burrow). /var/run is where the
+# supervisor binds burrow's unix socket; the directory must exist for
+# `burrow serve --socket /var/run/burrow.sock`. /data/burrow itself is
+# created by burrow's db client (mkdir -p of dbPath's dirname) on first
+# open — it doesn't need pre-creation here (it'd be shadowed by the
+# volume mount anyway).
 RUN mkdir -p /data /var/run
 
 EXPOSE 8080

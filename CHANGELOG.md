@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **`fix(deploy)`** — Pin burrow's data directory onto the persistent
+  `/data` volume via `BURROW_DATA_DIR=/data/burrow` (set in `Dockerfile`
+  ENV and mirrored in `fly.toml [env]`). Previously burrow fell back to
+  its default `XDG_DATA_HOME/burrow` path (`/root/.local/share/burrow`),
+  which lived on the container's writable overlay and got wiped on
+  every redeploy. Any run in flight at deploy time was orphaned:
+  warren's row stayed `state='running'` (its DB is on the volume), but
+  burrow returned 404 for the burrow_run_id on cancel + stream, leaving
+  the bridge in indefinite reconnect-with-backoff. `BURROW_DATA_DIR`
+  is read by burrow's path resolver (burrow-cli `src/config/paths.ts`)
+  ahead of `XDG_DATA_HOME`, and the supervisor's `Bun.spawn` of
+  `burrow serve` inherits process env so no supervisor-side wiring
+  change was needed. Burrow's db client `mkdir -p`s the dbPath parent
+  on first open, so `/data/burrow/` materializes itself on the
+  mounted volume. Closes `warren-0375`.
+
 ## [0.4.5] — 2026-05-18
 
 Patch release surfacing dogfood signal #3 from `plot-3e72876d` (the
