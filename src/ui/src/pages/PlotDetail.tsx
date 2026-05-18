@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
-import { Link, useParams } from "react-router-dom";
-import { plotsApi } from "@/api/client.ts";
+import { Link, useNavigate, useParams } from "react-router-dom";
+import { agentsApi, ApiError, plotsApi, projectsApi } from "@/api/client.ts";
 import {
 	ATTACHMENT_TYPES,
 	type AttachmentType,
@@ -42,8 +42,11 @@ import { formatTimestamp, relativeTime } from "@/lib/utils.ts";
  *
  * Out of scope here (separate steps in pl-9d6a):
  *   - Status transition button group (warren-6336 / step 16).
- *   - Run-plan button for sd_plan attachments (warren-5d94 / step 14).
  *   - Inline question-answer card (warren-3c3e / step 15).
+ *
+ * Run-plan button (warren-5d94 / step 14): rendered on each sd_plan
+ * attachment row in SubstratePanel; opens a confirm dialog and POSTs
+ * `/plan-runs` with the auto-filled plot_id.
  */
 export function PlotDetailPage() {
 	const { id } = useParams<{ id: string }>();
@@ -318,6 +321,7 @@ function SubstratePanel({ plot }: { plot: PlotEnvelope }) {
 										<AttachmentRow
 											key={a.id}
 											plotId={plot.id}
+											projectId={plot.project_id}
 											attachment={a}
 										/>
 									))}
@@ -349,11 +353,24 @@ function groupAttachmentsByRole(
 	return [...map.entries()].sort(([a], [b]) => a.localeCompare(b));
 }
 
+/**
+ * sd_plan detection (warren-5d94). `@os-eco/plot-cli` v0.3 doesn't
+ * carry a dedicated `sd_plan` AttachmentType, so the convention here
+ * is: a `seeds_issue` attachment whose `ref` is a seeds plan id
+ * (`pl-*`). Update this predicate when plot-cli grows a first-class
+ * `seeds_plan` kind — the rest of the dialog plumbing stays put.
+ */
+function isSdPlanAttachment(a: PlotAttachment): boolean {
+	return a.type === "seeds_issue" && /^pl-/i.test(a.ref);
+}
+
 function AttachmentRow({
 	plotId,
+	projectId,
 	attachment,
 }: {
 	plotId: string;
+	projectId: string;
 	attachment: PlotAttachment;
 }) {
 	const qc = useQueryClient();
@@ -384,15 +401,24 @@ function AttachmentRow({
 					</p>
 				) : null}
 			</div>
-			<Button
-				type="button"
-				variant="outline"
-				size="sm"
-				onClick={() => detach.mutate()}
-				disabled={detach.isPending}
-			>
-				{detach.isPending ? "…" : "Detach"}
-			</Button>
+			<div className="flex shrink-0 items-center gap-2">
+				{isSdPlanAttachment(attachment) ? (
+					<RunPlanButton
+						plotId={plotId}
+						projectId={projectId}
+						planRef={attachment.ref}
+					/>
+				) : null}
+				<Button
+					type="button"
+					variant="outline"
+					size="sm"
+					onClick={() => detach.mutate()}
+					disabled={detach.isPending}
+				>
+					{detach.isPending ? "…" : "Detach"}
+				</Button>
+			</div>
 		</li>
 	);
 }
@@ -558,6 +584,246 @@ function refHint(kind: AttachmentType): string {
 		case "file":
 			return "Free-form path.";
 	}
+}
+
+/* ----------------------------------------------------------------------- */
+/* RunPlanButton (warren-5d94)                                              */
+/* ----------------------------------------------------------------------- */
+
+const DEFAULT_PROMPT_TEMPLATE = "work on sd {seed_id}";
+
+/**
+ * Per-attachment "Run plan" action. Visible only when the row is an
+ * sd_plan attachment (see isSdPlanAttachment). Clicking opens a
+ * confirm dialog showing the read-only triple (plan ref, project,
+ * auto-filled plot_id) and the resolved agent + default prompt
+ * template; confirm POSTs to `/plan-runs` via `plotsApi.dispatchPlanRun`.
+ * On success the user is routed to `/plan-runs/:id`, which closes the
+ * loop back to this Plot via PlanRunDetail's existing back-link
+ * (mx-757be9 / warren-37fd).
+ */
+function RunPlanButton({
+	plotId,
+	projectId,
+	planRef,
+}: {
+	plotId: string;
+	projectId: string;
+	planRef: string;
+}) {
+	const [open, setOpen] = useState(false);
+	return (
+		<>
+			<Button type="button" size="sm" onClick={() => setOpen(true)}>
+				Run plan
+			</Button>
+			{open ? (
+				<RunPlanDialog
+					plotId={plotId}
+					projectId={projectId}
+					planRef={planRef}
+					onOpenChange={setOpen}
+				/>
+			) : null}
+		</>
+	);
+}
+
+function RunPlanDialog({
+	plotId,
+	projectId,
+	planRef,
+	onOpenChange,
+}: {
+	plotId: string;
+	projectId: string;
+	planRef: string;
+	onOpenChange: (open: boolean) => void;
+}) {
+	const navigate = useNavigate();
+	const qc = useQueryClient();
+
+	// Resolve project defaults + agent registry to fill in the dispatch
+	// inputs the user can't see on PlotDetail. This mirrors NewPlanRun's
+	// defaults flow (mx-4c064b / mx-be04a6) so dispatching from a Plot
+	// uses the same auto-filled provider/model/agent the dedicated
+	// NewPlanRun page would have used.
+	const projects = useQuery({
+		queryKey: ["projects"],
+		queryFn: ({ signal }) => projectsApi.list(signal),
+	});
+	const warrenConfig = useQuery({
+		queryKey: ["projects", projectId, "warren-config"],
+		queryFn: ({ signal }) => projectsApi.warrenConfig(projectId, signal),
+	});
+	const agents = useQuery({
+		queryKey: ["agents", { projectId }],
+		queryFn: ({ signal }) => agentsApi.list({ projectId }, signal),
+	});
+
+	const project = projects.data?.projects.find((p) => p.id === projectId);
+	const defaults = warrenConfig.data?.defaults ?? null;
+	const defaultRole = defaults?.defaultRole;
+	const registered = agents.data?.agents ?? [];
+	const defaultRoleRegistered =
+		defaultRole !== undefined && registered.some((a) => a.name === defaultRole);
+	const resolvedAgent = defaultRoleRegistered ? (defaultRole as string) : null;
+
+	const dispatch = useMutation({
+		mutationFn: () => {
+			if (resolvedAgent === null) {
+				throw new Error(
+					"No default agent resolved — set `defaults.defaultRole` in `.warren/defaults.yaml` and register the agent.",
+				);
+			}
+			const provider = defaults?.defaultProvider;
+			const model = defaults?.defaultModel;
+			return plotsApi.dispatchPlanRun({
+				project: projectId,
+				planId: planRef,
+				agent: resolvedAgent,
+				promptTemplate: DEFAULT_PROMPT_TEMPLATE,
+				plotId,
+				...(provider !== undefined && provider.length > 0
+					? { providerOverride: provider }
+					: {}),
+				...(model !== undefined && model.length > 0
+					? { modelOverride: model }
+					: {}),
+			});
+		},
+		onSuccess: (data) => {
+			qc.invalidateQueries({ queryKey: ["plan-runs"] });
+			qc.invalidateQueries({ queryKey: ["plot", plotId] });
+			navigate(`/plan-runs/${encodeURIComponent(data.planRun.id)}`);
+		},
+	});
+
+	const loading = projects.isLoading || warrenConfig.isLoading || agents.isLoading;
+	const hasSeeds = project?.hasSeeds ?? false;
+	const readyToDispatch =
+		!loading && hasSeeds && resolvedAgent !== null && !dispatch.isPending;
+
+	const errorMessage = ((): string | null => {
+		if (dispatch.error === null || dispatch.error === undefined) return null;
+		if (dispatch.error instanceof ApiError) {
+			return `${dispatch.error.message} (${dispatch.error.code})`;
+		}
+		return dispatch.error instanceof Error
+			? dispatch.error.message
+			: String(dispatch.error);
+	})();
+
+	return (
+		<Dialog
+			open={true}
+			onOpenChange={(next) => {
+				if (!next) dispatch.reset();
+				onOpenChange(next);
+			}}
+		>
+			<DialogContent>
+				<DialogHeader>
+					<DialogTitle>Run plan</DialogTitle>
+					<DialogDescription>
+						Dispatch a plan run bound to this Plot. Each child seed in
+						the plan is dispatched as its own warren run; the Plot
+						auto-transitions to <code className="font-mono">done</code>{" "}
+						when every child merges.
+					</DialogDescription>
+				</DialogHeader>
+
+				<div className="space-y-3 text-sm">
+					<ReadOnlyField label="Plan" value={planRef} />
+					<ReadOnlyField
+						label="Project"
+						value={project?.gitUrl ?? projectId}
+						hint={project?.gitUrl !== undefined ? projectId : undefined}
+					/>
+					<ReadOnlyField label="Plot" value={plotId} />
+					<ReadOnlyField
+						label="Agent"
+						value={
+							loading
+								? "resolving…"
+								: (resolvedAgent ?? "(no default agent set)")
+						}
+					/>
+					<ReadOnlyField
+						label="Prompt template"
+						value={DEFAULT_PROMPT_TEMPLATE}
+						hint="{seed_id} is substituted per child."
+					/>
+				</div>
+
+				{!loading && !hasSeeds ? (
+					<p className="text-sm text-(--color-destructive)">
+						Plan runs require <code className="font-mono">.seeds/</code>{" "}
+						at the project root. This project has none — add one and
+						refresh.
+					</p>
+				) : null}
+				{!loading && hasSeeds && resolvedAgent === null ? (
+					<p className="text-sm text-(--color-destructive)">
+						No default agent resolved. Set{" "}
+						<code className="font-mono">defaults.defaultRole</code> in{" "}
+						<code className="font-mono">.warren/defaults.yaml</code> and
+						register the agent, or dispatch from{" "}
+						<Link
+							to="/plan-runs/new"
+							className="underline-offset-2 hover:underline"
+						>
+							/plan-runs/new
+						</Link>{" "}
+						with the agent picker.
+					</p>
+				) : null}
+				{errorMessage !== null ? (
+					<p className="text-sm text-(--color-destructive)">{errorMessage}</p>
+				) : null}
+
+				<DialogFooter>
+					<Button
+						type="button"
+						variant="outline"
+						onClick={() => onOpenChange(false)}
+						disabled={dispatch.isPending}
+					>
+						Cancel
+					</Button>
+					<Button
+						type="button"
+						disabled={!readyToDispatch}
+						onClick={() => dispatch.mutate()}
+					>
+						{dispatch.isPending ? "Dispatching…" : "Dispatch"}
+					</Button>
+				</DialogFooter>
+			</DialogContent>
+		</Dialog>
+	);
+}
+
+function ReadOnlyField({
+	label,
+	value,
+	hint,
+}: {
+	label: string;
+	value: string;
+	hint?: string;
+}) {
+	return (
+		<div className="space-y-0.5">
+			<div className="text-xs font-medium uppercase tracking-wide text-(--color-muted-foreground)">
+				{label}
+			</div>
+			<div className="break-all font-mono text-sm">{value}</div>
+			{hint !== undefined ? (
+				<div className="text-xs text-(--color-muted-foreground)">{hint}</div>
+			) : null}
+		</div>
+	);
 }
 
 /* ----------------------------------------------------------------------- */

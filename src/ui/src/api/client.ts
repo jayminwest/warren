@@ -459,6 +459,18 @@ export const plotsApi = {
 			},
 		),
 	/**
+	 * `POST /plan-runs` (sugar) — dispatch a plan run bound to this
+	 * Plot. Identical wire surface to `planRunsApi.create`; surfaced on
+	 * `plotsApi` so the PlotDetail "Run plan" button (warren-5d94 /
+	 * pl-9d6a step 14) reads as a Plot-side action. The server-side
+	 * stacked gate (mx-4b7ff8) rejects with `project_lacks_seeds` when
+	 * the project has no `.seeds/` directory and with
+	 * `project_lacks_plot` when `plotId` is set on a project without
+	 * `.plot/`; both surface as `ApiError` to the caller.
+	 */
+	dispatchPlanRun: (input: CreatePlanRunInput) =>
+		request<CreatePlanRunResponse>("/plan-runs", { method: "POST", body: input }),
+	/**
 	 * `POST /plots/:id/questions/:event_id/answer` — answer a
 	 * question_posed event. `eventId` is the targeted event's `at` ISO
 	 * timestamp.
