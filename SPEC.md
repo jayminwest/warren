@@ -2470,6 +2470,181 @@ composes scenarios 25 + 26 against a real warren+burrow stack:
   live-streaming events from sandbox `plot append` calls (replacing
   JSONL-tail-at-reap for live updates).
 
+### 11.Q Plot → synthesized plan-run pipeline (pl-5310 step 4, 2026-05-18)
+
+Design lock for `warren-a4b7` (pl-5310 step 4, parent epic
+`warren-e40a`). Closes the deepest realization of the Plot UX vision:
+ a Plot becomes a plan becomes seeds become runs, with the seeds plan
+synthesized on the fly from the Plot's `seeds_issue` attachments so
+the user never hand-rolls a plan file. The implementing seed assumes
+this section as contract.
+
+**Status: design-locked, not yet implemented.** Per the
+`cross-repo-design-lock-seed` pattern (mx-bffcf1), phase 1 freezes
+this section AND files the upstream seeds-cli dependency seed before
+any code lands. The full pl-5310-step-4 sub-plan decomposes into
+(a) seeds-cli ships existing-seed children support, (b) warren
+double-pins the new seeds-cli version, (c) warren ships a synthesis
+module, (d) `POST /plot-plan-runs` endpoint, (e) PlotDetail "Dispatch
+as plan-run" button, (f) acceptance scenario.
+
+**The gap.** §11.O ships Plot, §11.P ships PlanRun, §11.P.Plot ships
+their composition — given an existing seeds plan id + a plot id, the
+stack works end-to-end (one `plan_run_dispatched` event, per-child
+`PLOT_ID` injection, auto-`done` on final merge). What is missing is
+the synthesis step: today a user with a Plot bound to N `seeds_issue`
+attachments must either (a) dispatch the N runs one-by-one via the
+per-seed Run button (warren-ff2a, pl-5310 step 1) or (b) fire the
+batch parallel/serial dispatcher (warren-7c3f, pl-5310 step 3) which
+bypasses plan-run's PR-merge serial gating. Neither path produces a
+tracked PlanRun row, neither inherits `pl-7937`'s auto-done hook, and
+neither reuses the existing `/plan-runs/:id` detail page as the
+launch-and-watch surface. The cleanest shape is to synthesize a
+seeds plan whose children ARE the attached seeds, then dispatch it
+through the existing §11.P coordinator unmodified.
+
+**Upstream seeds-cli dependency.** Today's `sd plan submit` spawns
+NEW child seeds; it has no notion of adopting existing seeds as
+children of a new plan. That capability is the hard prerequisite for
+this section and is tracked in warren's `.seeds/` as the cross-repo
+coordination seed (per mx-bffcf1: "files the dependency seed in the
+consumer repo's .seeds/"). The seeds-cli contract this section
+assumes:
+
+- `sd plan submit <seed-id> --plan <file>` accepts a new optional
+  `existing_seeds: ["warren-X", "warren-Y", ...]` field in the plan
+  JSON's `steps` array (or a sibling top-level field — exact shape
+  is seeds-cli's call). Either form: children become references to
+  the named seeds, not new spawns.
+- Validation, seeds-side: every named seed must exist in the same
+  `.seeds/issues.jsonl`; cross-repo seed ids are rejected; closed
+  seeds are rejected at plan-submit time (plan-run already skips
+  closed children at advance time, but plan creation should be
+  intentional, not a silent skip).
+- The resulting plan row in `plans.jsonl` is byte-compatible with
+  today's plans for plan-run's `showPlan(planId)` reader — same
+  `children: [seedId, ...]` projection — so warren's `src/plan-runs/`
+  coordinator needs zero changes.
+
+The upstream seed is filed locally as the design lock's pinned
+blocker; once seeds-cli ships, warren double-pins per the
+burrow-cli rule (CLAUDE.md "Relationship to burrow": package.json +
+bun.lock + Dockerfile global install, lockstep).
+
+**Endpoint.** `POST /plot-plan-runs` — synthesize-and-dispatch is one
+call, atomic from the caller's perspective. Request body:
+
+```ts
+{
+  plot_id: string;          // PLOT_ID_REGEX-validated per warren-bae5
+  project_id: string;
+  agent_name: string;
+  prompt_template?: string; // defaults to 'work on sd {seed_id}'
+  ref?: string;
+  provider_override?: string;
+  model_override?: string;
+  dispatcher_handle?: string;
+}
+```
+
+No `plan_id` — the endpoint synthesizes one. The handler:
+
+1. Validates the Plot exists and `project.hasPlot` (typed 4xx on
+   miss, mirrors §11.O's `ProjectLacksPlotError`).
+2. Validates the project has `.seeds/` (typed 4xx, mirrors §11.P's
+   gate).
+3. Reads the Plot's `seeds_issue` attachments, filtering out
+   `isSdPlanAttachment` shapes (sd_plan-typed attachments already
+   dispatch via the §11.P.Plot path — see PlotDetail's existing
+   Run-plan button, warren-5d94 / step 14) and closed seeds.
+4. If zero candidates remain: typed 4xx `NoDispatchableSeedsError`
+   with `recoveryHint: "attach open seeds_issue items to this Plot
+   first, or close and re-create the Plot if all attached seeds are
+   already merged"`.
+5. Synthesizes a seeds plan rooted at a fresh throwaway parent seed
+   (`type: task`, title `"Plot <plot-id> synthesized plan-run"`,
+   description back-refs the Plot) via the new `sd plan submit
+   --existing-seeds` API. Children are the candidate seed ids in
+   their attachment order.
+6. Calls the existing `POST /plan-runs` handler in-process with
+   `plot_id` set — reusing every §11.P.Plot wiring for free
+   (`plan_run_dispatched` event, per-child `PLOT_ID` injection,
+   auto-`done` on final merge). Returns `201` with the same shape
+   `POST /plan-runs` returns; the caller navigates to
+   `/plan-runs/:id` from the response.
+
+**Disjoint flows preserved.** This endpoint is additive. `POST
+/plan-runs` remains the canonical entry for explicit-plan dispatch
+(including the existing PlotDetail Run-plan button for `sd_plan`
+attachments, warren-5d94). `POST /runs` is untouched. The synthesis
+step runs server-side; the existing seeds-cli call is a `Bun.spawn`
+through the same `sd` binary the host already shells out to (per
+§11.B-era convention; no new sandbox shape).
+
+**Idempotency / replay.** Synthesis is not idempotent — a second
+click mints a second throwaway parent seed and a second plan id, and
+therefore a second PlanRun. This is intentional symmetry with the
+batch dispatcher (warren-7c3f): the user clicks, gets a confirm
+dialog, and is responsible for the dispatch. The confirm dialog
+displays the candidate seed list (with closed/sd_plan filter
+rationale) and the synthesized plan title before submission. If the
+user wants to resume a stalled PlanRun against the same children,
+that is the existing `POST /plan-runs` re-dispatch path on the
+synthesized plan id (mx-382fab).
+
+**UI surface.** PlotDetail (`src/ui/src/pages/PlotDetail.tsx`) gains
+a "Dispatch as plan-run" button in the same Summary slot as the
+batch dispatcher (warren-7c3f), gated on the same
+`isBatchDispatchTarget` filter producing ≥1 candidate. The button
+opens a confirm dialog (shared shape with `BatchDispatchDialog`)
+showing the synthesized plan title + the candidate seed list, fires
+`POST /plot-plan-runs`, and routes to `/plan-runs/:id` on success.
+The batch dispatcher (step 3) remains as the parallel-fan-out
+escape hatch; the plan-run button is the recommended path once this
+section ships (CHANGELOG to call this out, and the batch button's
+inline help text updated to point at the plan-run alternative).
+
+**Acceptance.** Scenario 30
+(`scripts/acceptance/scenarios/30-plot-plan-run-synthesis.ts`)
+composes scenarios 25 + 27 + 29 against a real warren+burrow stack:
+
+1. Init a project with both `.plot/` (one Plot, ≥3 `seeds_issue`
+   attachments, one closed seed mixed in, one `sd_plan`-shaped
+   attachment mixed in) and `.seeds/`.
+2. `POST /plot-plan-runs` with the Plot id. Assert: response is a
+   201 with a PlanRun row; the synthesized plan row exists in
+   `.seeds/plans.jsonl`; children are the open non-`sd_plan`
+   attachments only.
+3. Walk children to completion. Assert one `run_dispatched` event
+   per child on the Plot (including trivial-merge), one
+   `plan_run_dispatched` event at start, `PLOT_ID` / `PLOT_ACTOR`
+   reach each child sandbox.
+4. After the final child merges, assert the Plot's status flipped
+   to `'done'` (auto-transition inherited from §11.P.Plot).
+5. Negative paths: project without `.plot/` → typed 4xx; project
+   without `.seeds/` → typed 4xx; Plot with zero dispatchable
+   attachments → `NoDispatchableSeedsError`; malformed `plot_id` →
+   typed 4xx (mirrors warren-bae5).
+6. Re-dispatch the same Plot a second time → second PlanRun spawns
+   against a second synthesized plan, both visible on the Plot's
+   activity feed (no clobber, no idempotency).
+
+**Deferred.**
+
+- A "Replay this PlanRun against the same Plot" shortcut on
+  `PlanRunDetail` that reuses the existing synthesized plan id
+  instead of minting a new one (the existing `POST /plan-runs`
+  re-dispatch already covers the mechanism; the UI shortcut is a
+  follow-up).
+- Surfacing the synthesized plan in PlotDetail's attachments list
+  retroactively (would require a Plot append at synthesis time;
+  out of scope for this section, file a follow-up if dogfood
+  surfaces the need).
+- Cross-repo seed adoption (children referencing seeds in a
+  different `.seeds/issues.jsonl` than the parent plan) — the
+  seeds-cli contract above explicitly rejects this; revisit when
+  the org-readiness work (§11.J) lights up multi-project Plots.
+
 ---
 
 ## 12. Relationship to other os-eco tools
@@ -2480,7 +2655,7 @@ composes scenarios 25 + 26 against a real warren+burrow stack:
 | **canopy** | Hard dependency. Source of agent definitions. Cloned at startup, refreshed on demand. |
 | **mulch** | Used per-project. Warren reads the project's `.mulch/expertise/` on the host to source `expertise_seed` lines and merges per-run mulch records back during reap (host-side disk write, last-write-wins-by-ts). The per-run `.mulch/` inside the burrow workspace is seeded via the `seed.files` payload on `POST /burrows` (R-07; see §11.A) — warren never shells out to `ml record` inside the sandbox. |
 | **seeds** | Used per-project. Warren reads `sd ready` to surface the project's worklist in the UI; agents file/close seeds during runs. |
-| **plot** | Used per-project. Gated on the project shipping a `.plot/` directory and the dispatch request carrying a `plot_id`. Warren imports `@os-eco/plot-cli` as a typed facade (`src/plot-client/`), injects `PLOT_ID` + `PLOT_ACTOR` env into the sandbox at spawn, appends `run_dispatched` to the originating Plot, and mirrors agent-emitted events back into warren's event stream at reap (§11.O). Plan-runs compose onto Plot when both `.seeds/` and `.plot/` are present and `plot_id` is on the dispatch: one `plan_run_dispatched` lands at PlanRun start, every child inherits the parent's `plot_id` for free, and the Plot auto-transitions to `done` when the final child merges (§11.P.Plot). |
+| **plot** | Used per-project. Gated on the project shipping a `.plot/` directory and the dispatch request carrying a `plot_id`. Warren imports `@os-eco/plot-cli` as a typed facade (`src/plot-client/`), injects `PLOT_ID` + `PLOT_ACTOR` env into the sandbox at spawn, appends `run_dispatched` to the originating Plot, and mirrors agent-emitted events back into warren's event stream at reap (§11.O). Plan-runs compose onto Plot when both `.seeds/` and `.plot/` are present and `plot_id` is on the dispatch: one `plan_run_dispatched` lands at PlanRun start, every child inherits the parent's `plot_id` for free, and the Plot auto-transitions to `done` when the final child merges (§11.P.Plot). A Plot's `seeds_issue` attachments can be synthesized into a fresh plan and dispatched in one `POST /plot-plan-runs` call (§11.Q, pl-5310 step 4) — design-locked, gated on an upstream seeds-cli capability tracked locally. |
 | **sapling** | One of three built-in harnesses (alongside `claude-code` and `pi`). Shipped as a pre-installed CLI in the container; selected per agent via `burrow_config`. |
 | **pi** (`@earendil-works/pi-coding-agent`) | Third built-in harness, multi-provider with first-class per-run cost reporting. Shipped as a pre-installed CLI in the container; runtime contract lives in burrow's `AgentRegistry` (see §11.K). |
 | **overstory** | Sibling, not subordinate. Multi-agent orchestration is overstory's domain; warren is single-agent-per-run. Overstory could be invoked as a "harness" in a future agent definition. |
