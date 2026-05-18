@@ -10,9 +10,18 @@ import type {
 	CancelRunResponse,
 	CreatePlanRunInput,
 	CreatePlanRunResponse,
+	AnswerPlotQuestionInput,
+	AnswerPlotQuestionResponse,
+	AttachPlotInput,
+	AttachPlotResponse,
+	ChangePlotStatusInput,
+	ChangePlotStatusResponse,
 	CreatePlotInput,
 	CreateRunInput,
+	DetachPlotResponse,
+	EditPlotIntentInput,
 	ListPlotsResponse,
+	PlotEnvelope,
 	PlanRunDetailResponse,
 	PlanRunRow,
 	PlanRunState,
@@ -382,6 +391,91 @@ export const plotsApi = {
 					: {}),
 			},
 		}),
+	/**
+	 * `GET /plots/:id` — full Plot envelope (warren-961e / pl-9d6a step 8).
+	 * `event_log` is returned in ascending `at` order; the UI collapses
+	 * same-kind same-actor chains client-side.
+	 */
+	get: (plotId: string, signal?: AbortSignal) =>
+		request<PlotEnvelope>(`/plots/${encodeURIComponent(plotId)}`, {
+			...(signal ? { signal } : {}),
+		}),
+	/**
+	 * `POST /plots/:id/intent` — edit Plot intent (warren-896f /
+	 * pl-9d6a step 9). Server rejects with `plot_intent_frozen` (409)
+	 * when status is done/archived; UI also disables the form to short
+	 * the round-trip.
+	 */
+	editIntent: (plotId: string, input: EditPlotIntentInput) => {
+		const body: Record<string, unknown> = {};
+		if (input.goal !== undefined) body.goal = input.goal;
+		if (input.non_goals !== undefined) body.non_goals = input.non_goals;
+		if (input.constraints !== undefined) body.constraints = input.constraints;
+		if (input.success_criteria !== undefined) body.success_criteria = input.success_criteria;
+		if (input.dispatcherHandle !== undefined) body.dispatcher_handle = input.dispatcherHandle;
+		return request<PlotEnvelope>(`/plots/${encodeURIComponent(plotId)}/intent`, {
+			method: "POST",
+			body,
+		});
+	},
+	/**
+	 * `POST /plots/:id/status` — transition status (warren-e868 /
+	 * pl-9d6a step 10). The legal-transition matrix is enforced at the
+	 * handler edge; UI button group should already only surface
+	 * reachable next states.
+	 */
+	changeStatus: (plotId: string, input: ChangePlotStatusInput) =>
+		request<ChangePlotStatusResponse>(`/plots/${encodeURIComponent(plotId)}/status`, {
+			method: "POST",
+			body: {
+				next: input.next,
+				...(input.dispatcherHandle !== undefined
+					? { dispatcher_handle: input.dispatcherHandle }
+					: {}),
+			},
+		}),
+	/** `POST /plots/:id/attachments` — attach external reference. */
+	attach: (plotId: string, input: AttachPlotInput) =>
+		request<AttachPlotResponse>(`/plots/${encodeURIComponent(plotId)}/attachments`, {
+			method: "POST",
+			body: {
+				kind: input.kind,
+				ref: input.ref,
+				...(input.role !== undefined ? { role: input.role } : {}),
+				...(input.dispatcherHandle !== undefined
+					? { dispatcher_handle: input.dispatcherHandle }
+					: {}),
+			},
+		}),
+	/** `DELETE /plots/:id/attachments/:ref` — detach by ref. */
+	detach: (plotId: string, ref: string, dispatcherHandle?: string) =>
+		request<DetachPlotResponse>(
+			`/plots/${encodeURIComponent(plotId)}/attachments/${encodeURIComponent(ref)}`,
+			{
+				method: "DELETE",
+				...(dispatcherHandle !== undefined
+					? { body: { dispatcher_handle: dispatcherHandle } }
+					: {}),
+			},
+		),
+	/**
+	 * `POST /plots/:id/questions/:event_id/answer` — answer a
+	 * question_posed event. `eventId` is the targeted event's `at` ISO
+	 * timestamp.
+	 */
+	answerQuestion: (plotId: string, input: AnswerPlotQuestionInput) =>
+		request<AnswerPlotQuestionResponse>(
+			`/plots/${encodeURIComponent(plotId)}/questions/${encodeURIComponent(input.eventId)}/answer`,
+			{
+				method: "POST",
+				body: {
+					answer: input.answer,
+					...(input.dispatcherHandle !== undefined
+						? { dispatcher_handle: input.dispatcherHandle }
+						: {}),
+				},
+			},
+		),
 };
 
 /* ----------------------------------------------------------------------- */

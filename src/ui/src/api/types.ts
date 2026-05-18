@@ -615,3 +615,140 @@ export interface CreatePlotInput {
 export interface ListPlotsResponse {
 	plots: PlotSummary[];
 }
+
+/* ----------------------------------------------------------------------- */
+/* Plot detail (warren-961e/896f/e868/589c/e1ac, pl-9d6a steps 8–12).        */
+/*                                                                          */
+/* Mirrors @os-eco/plot-cli `Intent`, `Attachment`, `PlotEvent` plus the    */
+/* server-side per-handler response envelopes. Kept in sync by hand —      */
+/* src/ui is excluded from the root tsconfig (mx-7f971c).                  */
+/* ----------------------------------------------------------------------- */
+
+export const ATTACHMENT_TYPES = [
+	"seeds_issue",
+	"mulch_record",
+	"agent_run",
+	"gh_pr",
+	"gh_issue",
+	"file",
+] as const;
+export type AttachmentType = (typeof ATTACHMENT_TYPES)[number];
+
+export interface PlotIntent {
+	goal: string;
+	non_goals: string[];
+	constraints: string[];
+	success_criteria: string[];
+}
+
+export interface PlotAttachment {
+	id: string; // att-NNN
+	type: AttachmentType;
+	ref: string;
+	role: string;
+	added_at: string;
+	added_by: string;
+}
+
+/**
+ * One Plot event — discriminated union on `type`. Mirrors the
+ * @os-eco/plot-cli `PlotEvent` shape. The UI treats unknown future
+ * types as opaque `data: unknown` rather than rejecting on read.
+ */
+export type PlotEventType =
+	| "plot_created"
+	| "intent_edited"
+	| "status_changed"
+	| "attachment_added"
+	| "attachment_removed"
+	| "run_dispatched"
+	| "plan_run_dispatched"
+	| "decision_made"
+	| "question_posed"
+	| "question_answered"
+	| "artifact_produced"
+	| "note";
+
+export interface PlotEvent {
+	type: PlotEventType | string;
+	actor: string;
+	at: string; // ISO 8601; doubles as the event's stable id (used by
+	           // POST /plots/:id/questions/:event_id/answer).
+	data: Record<string, unknown>;
+}
+
+/**
+ * `GET /plots/:id` envelope (warren-961e). The reader sorts the event
+ * log by `at` ascending defensively; the UI collapses chains of
+ * same-kind same-actor events client-side.
+ */
+export interface PlotEnvelope {
+	id: string;
+	name: string;
+	status: PlotStatus;
+	intent: PlotIntent;
+	attachments: PlotAttachment[];
+	event_log: PlotEvent[];
+	project_id: string;
+}
+
+/**
+ * `POST /plots/:id/intent` request body (warren-896f). Flat top-level
+ * fields (no `intent:` wrapper, unlike `POST /plots`). Omitted fields
+ * are left untouched; an empty patch is accepted as a no-op.
+ */
+export interface EditPlotIntentInput {
+	goal?: string;
+	non_goals?: string[];
+	constraints?: string[];
+	success_criteria?: string[];
+	dispatcherHandle?: string;
+}
+
+/**
+ * `POST /plots/:id/status` request body + response envelope
+ * (warren-e868). The server validates the SPEC §6.5 transition matrix
+ * before delegating to the lib.
+ */
+export interface ChangePlotStatusInput {
+	next: PlotStatus;
+	dispatcherHandle?: string;
+}
+export interface ChangePlotStatusResponse {
+	summary: PlotSummary;
+	event: PlotEvent;
+}
+
+/**
+ * `POST /plots/:id/attachments` request body + response envelope
+ * (warren-589c). Per-kind ref shape is validated at the server edge.
+ */
+export interface AttachPlotInput {
+	kind: AttachmentType;
+	ref: string;
+	role?: string;
+	dispatcherHandle?: string;
+}
+export interface AttachPlotResponse {
+	envelope: PlotEnvelope;
+	attachment: PlotAttachment;
+}
+
+/** `DELETE /plots/:id/attachments/:ref` response envelope. */
+export interface DetachPlotResponse {
+	envelope: PlotEnvelope;
+	removed_id: string;
+}
+
+/**
+ * `POST /plots/:id/questions/:event_id/answer` request body + response.
+ * `eventId` is the targeted `question_posed` event's `at` ISO timestamp.
+ */
+export interface AnswerPlotQuestionInput {
+	eventId: string;
+	answer: string;
+	dispatcherHandle?: string;
+}
+export interface AnswerPlotQuestionResponse {
+	event: PlotEvent;
+}

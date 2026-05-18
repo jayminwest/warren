@@ -8,6 +8,7 @@ import { NewPlanRunPage } from "@/pages/NewPlanRun.tsx";
 import { NewRunPage } from "@/pages/NewRun.tsx";
 import { PlanRunDetailPage } from "@/pages/PlanRunDetail.tsx";
 import { PlanRunsPage } from "@/pages/PlanRuns.tsx";
+import { PlotDetailPage } from "@/pages/PlotDetail.tsx";
 import { PlotsPage } from "@/pages/Plots.tsx";
 import { ProjectDetailPage } from "@/pages/ProjectDetail.tsx";
 import { ProjectsPage } from "@/pages/Projects.tsx";
@@ -51,6 +52,7 @@ export function App() {
 						<Route path="/plan-runs/new" element={<NewPlanRunPage />} />
 						<Route path="/plan-runs/:id" element={<PlanRunDetailPage />} />
 						<Route path="/plots" element={<PlotsPage />} />
+						<Route path="/plots/:id" element={<PlotDetailPage />} />
 						<Route path="/agents" element={<AgentsPage />} />
 						<Route path="/projects" element={<ProjectsPage />} />
 						<Route path="/projects/:id" element={<ProjectDetailPage />} />
