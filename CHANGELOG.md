@@ -7,6 +7,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.2] — 2026-05-18
+
+Patch release closing `warren-6f25` / plan `pl-d4d6`: warren's host-side
+Plot appenders (`defaultPlotAppender`, `defaultPlanRunPlotAppender`,
+`autoTransitionPlotToDone`) write to `<project_clone>/.plot/` without
+ever committing, but `refreshProjectClone`'s `git reset --hard
+origin/<ref>` wiped those uncommitted writes on every subsequent
+`spawnRun`. Observable as: only the **last** child's `run_dispatched`
+survived on disk after a plan-run; `plan_run_dispatched` and earlier
+per-child events disappeared, and the auto-`done` status snapshot
+reverted to `active` at the next refresh. Scenario 27 had been masking
+the regression with a 100ms tail of the events.jsonl that accumulated
+the transient writes into memory before the next reset wiped them.
+
+Fix shape: shape (b) per the plan — preserve `.plot/` across the reset
+rather than commit it through reap (shape (a) deferred as
+`warren-343a`). `refreshProjectClone` now wraps fetch+reset in
+`defaultPreservePlot`, which snapshots regular files under `.plot/`
+(skipping the derived `.index.db*`) to an out-of-tree `mkdtemp` dir,
+runs the reset, then restores the snapshot back into the working tree.
+Snapshot wins on conflict (host-side appender writes are strictly
+newer than anything committed in the project repo). Projects without
+`.plot/` short-circuit before any fs work — byte-identical to the
+pre-fix refresh.
+
+### Changed
+
+- **`fix(projects)`** — `refreshProjectClone` now preserves `.plot/`
+  across `git reset --hard` via the new `defaultPreservePlot` wrapper
+  (`warren-fdd2`). The wrapper is injectable for tests; the SQLite
+  `.index.db*` files are intentionally not preserved (derived state,
+  rebuilt on demand by the existing `plot rebuild-index` retry-once
+  path in `defaultPlotAppender`).
+- **`test(projects)`** — `src/projects/refresh.test.ts` gains coverage
+  for byte-equality preservation of `events.jsonl`, snapshot-wins
+  semantics on conflict with origin, byte-identical behavior for
+  projects without `.plot/`, and tmpdir cleanup under repeated
+  refreshes (`warren-b960`).
+- **`test(acceptance)`** — scenario 27 reads `.plot/<id>.events.jsonl`
+  directly at the end of the plan-run instead of tailing it every
+  100ms; the workaround is gone now that the writes survive on disk
+  (`warren-aa63`).
+- **`docs(spec)`** — SPEC §11.O documents the `.plot/` preservation
+  contract and the deferred origin-durability work (`warren-343a`).
+  §11.P cross-references it for between-child durability.
+
 ## [0.4.1] — 2026-05-18
 
 Patch release closing the warren-side of `warren-a346` / plan `pl-95dd`:

@@ -1853,6 +1853,51 @@ covers the round-trip end-to-end against a real warren+burrow stack:
   (e.g. internal maintenance jobs) is not added in Phase 1 — current
   cron and scheduled-seed paths attribute to the trigger owner's handle.
 
+**`.plot/` preservation across refresh (pl-d4d6, 2026-05-18).** Warren's
+host-side Plot appenders (`defaultPlotAppender` in `src/runs/spawn.ts`,
+`defaultPlanRunPlotAppender` in `src/plan-runs/plot-appender.ts`,
+`autoTransitionPlotToDone` in `src/plan-runs/plot-transition.ts`) write
+to `<project_clone>/.plot/<id>.events.jsonl` and
+`<project_clone>/.plot/<id>.json` without `git add`/`git commit` — they
+rely on the working tree itself being durable. But `refreshProjectClone`
+(`src/projects/refresh.ts`) runs `git reset --hard origin/<ref>` on
+every `spawnRun`, which discards uncommitted working-tree changes
+including untracked files. Pre-fix, only the **last** child's
+`run_dispatched` event survived on disk; `plan_run_dispatched` and
+earlier per-child events vanished at the next child's refresh, and the
+auto-`done` status snapshot reverted to `active` on subsequent
+refreshes — observably broken once any second `spawnRun` ran against
+the same clone (`warren-6f25`).
+
+Fix shape: **preserve `.plot/` across the reset** rather than commit it
+through reap (shape (a) commit-through-reap deferred as `warren-343a`).
+The `preservePlot` wrapper (default `defaultPreservePlot`) hooks the
+fetch→reset sequence: when the pre-reset working tree contains `.plot/`
+(probed via the same dirent check as `detectProjectFeatures`),
+`snapshotPlotDir` copies regular files recursively to an out-of-tree
+`mkdtemp("warren-plot-snapshot-")` directory, the reset runs, then
+`restorePlotDir` writes the snapshot back into the post-reset tree.
+Snapshot wins on conflict — host-side appender writes are strictly
+newer than anything committed in the project. The `.index.db*` SQLite
+files are skipped (derived state, gitignored per plot's contract;
+rebuilt on demand via the existing `plot rebuild-index` retry-once path
+in `defaultPlotAppender`). Temp dirs are removed in a `finally`. A
+project without `.plot/` short-circuits before any fs work — the
+`hasPlot=false` path is byte-identical to the pre-fix `refreshProjectClone`.
+
+Durability surface: preservation is **across resets of the same clone**,
+not **across machines**. Origin still sees only what reap commits and
+pushes; an operator inspecting `.plot/` on a different host or after
+`deleteProject` + re-clone observes the in-repo committed state only.
+Full origin-durability is shape (a), tracked under `warren-343a` —
+it's a larger change (PR carries `.plot/` writes, agents need a
+`.plot/` commit contract, trivial-merge children with no agent commits
+need a separate carrier) and was deliberately deferred. Scenario 27
+(`scripts/acceptance/scenarios/27-plan-run-plot-roundtrip.ts`) reads
+`.plot/<id>.events.jsonl` directly at the end of the plan-run to
+assert the preservation contract; it previously tailed the file every
+100ms to capture transient writes (removed in `warren-aa63`).
+
 #### 11.O.Plot.UI Plot-centric UI surface (pl-9d6a, 2026-05-18)
 
 Phase 3 of `warren-d362` shifts warren's web UI from run-centric to
@@ -2154,7 +2199,10 @@ both `.seeds/` AND `.plot/` can carry an optional `plot_id` that
 threads through every child run and reports lifecycle back to the
 originating Plot. The wiring is purely additive — a PlanRun dispatched
 without `plot_id`, or against a project without `.plot/`, is
-byte-identical to the §11.P baseline. See §11.P.Plot below.
+byte-identical to the §11.P baseline. See §11.P.Plot below. The
+between-child durability of those Plot writes depends on the `.plot/`
+preservation contract documented at the bottom of §11.O — without it,
+only the last child's `run_dispatched` would survive on disk.
 
 ### 11.P.Plot PlanRun + Plot composition (pl-7937, 2026-05-18)
 
