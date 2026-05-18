@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { agentsApi, ApiError, plotsApi, projectsApi } from "@/api/client.ts";
+import { agentsApi, ApiError, plotsApi, projectsApi, runsApi } from "@/api/client.ts";
 import {
 	ATTACHMENT_TYPES,
 	type AttachmentType,
@@ -414,14 +414,27 @@ function SubstratePanel({ plot }: { plot: PlotEnvelope }) {
 	const [dialogOpen, setDialogOpen] = useState(false);
 
 	const grouped = useMemo(() => groupAttachmentsByRole(plot.attachments), [plot.attachments]);
+	const batchTargets = useMemo(
+		() => plot.attachments.filter(isBatchDispatchTarget),
+		[plot.attachments],
+	);
 
 	return (
 		<Card>
 			<CardHeader className="flex flex-row items-center justify-between space-y-0">
 				<CardTitle>Substrate</CardTitle>
-				<Button size="sm" onClick={() => setDialogOpen(true)}>
-					Add attachment
-				</Button>
+				<div className="flex items-center gap-2">
+					{batchTargets.length > 0 ? (
+						<BatchDispatchAllButton
+							plotId={plot.id}
+							projectId={plot.project_id}
+							targets={batchTargets}
+						/>
+					) : null}
+					<Button size="sm" onClick={() => setDialogOpen(true)}>
+						Add attachment
+					</Button>
+				</div>
 			</CardHeader>
 			<CardContent>
 				{plot.attachments.length === 0 ? (
@@ -953,10 +966,286 @@ function ReadOnlyField({
 }
 
 /* ----------------------------------------------------------------------- */
-/* RunSeedButton (warren-ff2a)                                              */
+/* BatchDispatchAllButton (warren-7c3f / pl-5310 step 3)                    */
 /* ----------------------------------------------------------------------- */
 
 const DEFAULT_SEED_PROMPT_TEMPLATE = "work on sd {seed_id}";
+
+/**
+ * V1 batch-dispatch eligibility: a `seeds_issue` attachment whose ref
+ * is NOT a seeds plan id. sd_plan-shaped attachments already have
+ * their own per-row `Run plan` button (warren-5d94) and shouldn't be
+ * dispatched as individual seed runs.
+ *
+ * Skipping *closed* seeds (per the original seed contract — warren-ea66
+ * acceptance (d)) requires a seed-status read path that warren doesn't
+ * surface to the UI yet; deferred. The confirm dialog lists every
+ * target ref by hand so the operator can spot-check before firing.
+ */
+function isBatchDispatchTarget(a: PlotAttachment): boolean {
+	return a.type === "seeds_issue" && !isSdPlanAttachment(a);
+}
+
+interface BatchDispatchOutcome {
+	ref: string;
+	status: "pending" | "dispatched" | "failed";
+	runId?: string;
+	error?: string;
+}
+
+/**
+ * Batch "Dispatch all attached seeds" header action on PlotDetail
+ * (warren-7c3f / pl-5310 step 3). Reuses the same per-seed dispatch
+ * primitive as `RunSeedButton` (warren-ff2a) — same agent/prompt
+ * resolution from `.warren/defaults.yaml`, same `plotId` binding — but
+ * fires N parallel `POST /runs` requests in one go instead of routing
+ * the user through `/runs/new` per attachment.
+ *
+ * Scope (V1): parallel mode only. Serial-gated-on-PR-merge mode is
+ * deferred to pl-5310 step 4 (Plot→synthesized plan→plan-run), which
+ * inherits gating for free from the existing plan-run coordinator.
+ * Adding a stop-gap serial queue inside warren now would build a code
+ * path step 4 immediately deprecates (pl-5310 risk #4).
+ *
+ * Server-side wiring: each `POST /runs` with `plotId` emits a
+ * `run_dispatched` event onto the Plot's event_log (SPEC §11.O), so
+ * the activity feed picks all N up within one 5s poll tick — no extra
+ * client work required.
+ */
+function BatchDispatchAllButton({
+	plotId,
+	projectId,
+	targets,
+}: {
+	plotId: string;
+	projectId: string;
+	targets: readonly PlotAttachment[];
+}) {
+	const [open, setOpen] = useState(false);
+	return (
+		<>
+			<Button type="button" size="sm" variant="outline" onClick={() => setOpen(true)}>
+				Dispatch all ({targets.length})
+			</Button>
+			{open ? (
+				<BatchDispatchDialog
+					plotId={plotId}
+					projectId={projectId}
+					targets={targets}
+					onOpenChange={setOpen}
+				/>
+			) : null}
+		</>
+	);
+}
+
+function BatchDispatchDialog({
+	plotId,
+	projectId,
+	targets,
+	onOpenChange,
+}: {
+	plotId: string;
+	projectId: string;
+	targets: readonly PlotAttachment[];
+	onOpenChange: (open: boolean) => void;
+}) {
+	const qc = useQueryClient();
+	const warrenConfig = useQuery({
+		queryKey: ["projects", projectId, "warren-config"],
+		queryFn: ({ signal }) => projectsApi.warrenConfig(projectId, signal),
+	});
+	const agents = useQuery({
+		queryKey: ["agents", { projectId }],
+		queryFn: ({ signal }) => agentsApi.list({ projectId }, signal),
+	});
+
+	const defaults = warrenConfig.data?.defaults ?? null;
+	const defaultRole = defaults?.defaultRole;
+	const registered = agents.data?.agents ?? [];
+	const resolvedAgent =
+		defaultRole !== undefined && registered.some((a) => a.name === defaultRole)
+			? (defaultRole as string)
+			: null;
+	const template = defaults?.defaultPrompt ?? DEFAULT_SEED_PROMPT_TEMPLATE;
+	const loading = warrenConfig.isLoading || agents.isLoading;
+
+	const [outcomes, setOutcomes] = useState<BatchDispatchOutcome[]>(() =>
+		targets.map((t) => ({ ref: t.ref, status: "pending" })),
+	);
+	const [dispatching, setDispatching] = useState(false);
+	const [done, setDone] = useState(false);
+
+	const providerOverride =
+		defaults?.defaultProvider !== undefined && defaults.defaultProvider.length > 0
+			? defaults.defaultProvider
+			: undefined;
+	const modelOverride =
+		defaults?.defaultModel !== undefined && defaults.defaultModel.length > 0
+			? defaults.defaultModel
+			: undefined;
+
+	const dispatchAll = async (): Promise<void> => {
+		if (resolvedAgent === null) return;
+		setDispatching(true);
+		const agent = resolvedAgent;
+		await Promise.all(
+			targets.map(async (t, idx) => {
+				const prompt = template.replaceAll("{seed_id}", t.ref);
+				try {
+					const resp = await runsApi.create({
+						agent,
+						project: projectId,
+						prompt,
+						seedId: t.ref,
+						plotId,
+						...(providerOverride !== undefined ? { providerOverride } : {}),
+						...(modelOverride !== undefined ? { modelOverride } : {}),
+					});
+					setOutcomes((prev) => {
+						const next = prev.slice();
+						next[idx] = { ref: t.ref, status: "dispatched", runId: resp.run.id };
+						return next;
+					});
+				} catch (err) {
+					const msg =
+						err instanceof ApiError
+							? `${err.message} (${err.code})`
+							: err instanceof Error
+								? err.message
+								: String(err);
+					setOutcomes((prev) => {
+						const next = prev.slice();
+						next[idx] = { ref: t.ref, status: "failed", error: msg };
+						return next;
+					});
+				}
+			}),
+		);
+		setDispatching(false);
+		setDone(true);
+		qc.invalidateQueries({ queryKey: ["plot", plotId] });
+		qc.invalidateQueries({ queryKey: ["runs"] });
+	};
+
+	const readyToDispatch = !loading && resolvedAgent !== null && !dispatching && !done;
+
+	return (
+		<Dialog open={true} onOpenChange={(next) => onOpenChange(next)}>
+			<DialogContent>
+				<DialogHeader>
+					<DialogTitle>Dispatch all attached seeds</DialogTitle>
+					<DialogDescription>
+						Dispatch <strong>{targets.length}</strong> parallel run
+						{targets.length === 1 ? "" : "s"} bound to this Plot, one per
+						attached seeds_issue. Each run uses the project's default agent
+						and prompt template; <code className="font-mono">{"{seed_id}"}</code>
+						is substituted per target.
+					</DialogDescription>
+				</DialogHeader>
+
+				<div className="space-y-3 text-sm">
+					<ReadOnlyField label="Project" value={projectId} />
+					<ReadOnlyField label="Plot" value={plotId} />
+					<ReadOnlyField
+						label="Agent"
+						value={
+							loading
+								? "resolving…"
+								: (resolvedAgent ?? "(no default agent set)")
+						}
+					/>
+					<ReadOnlyField
+						label="Prompt template"
+						value={template}
+						hint="{seed_id} is substituted per target."
+					/>
+					<div className="space-y-1">
+						<div className="text-xs font-medium uppercase tracking-wide text-(--color-muted-foreground)">
+							Targets ({targets.length})
+						</div>
+						<ul className="max-h-40 overflow-auto divide-y rounded-md border">
+							{outcomes.map((o) => (
+								<li
+									key={o.ref}
+									className="flex items-center justify-between gap-2 px-3 py-1.5 text-xs"
+								>
+									<span className="truncate font-mono">{o.ref}</span>
+									<BatchOutcomeBadge outcome={o} />
+								</li>
+							))}
+						</ul>
+					</div>
+				</div>
+
+				{!loading && resolvedAgent === null ? (
+					<p className="text-sm text-(--color-destructive)">
+						No default agent resolved. Set{" "}
+						<code className="font-mono">defaults.defaultRole</code> in{" "}
+						<code className="font-mono">.warren/defaults.yaml</code> and
+						register the agent before dispatching in batch.
+					</p>
+				) : null}
+
+				<DialogFooter>
+					<Button
+						type="button"
+						variant="outline"
+						onClick={() => onOpenChange(false)}
+						disabled={dispatching}
+					>
+						{done ? "Close" : "Cancel"}
+					</Button>
+					{!done ? (
+						<Button
+							type="button"
+							disabled={!readyToDispatch}
+							onClick={() => {
+								void dispatchAll();
+							}}
+						>
+							{dispatching
+								? `Dispatching ${targets.length}…`
+								: `Dispatch ${targets.length}`}
+						</Button>
+					) : null}
+				</DialogFooter>
+			</DialogContent>
+		</Dialog>
+	);
+}
+
+function BatchOutcomeBadge({ outcome }: { outcome: BatchDispatchOutcome }) {
+	if (outcome.status === "pending") {
+		return (
+			<span className="shrink-0 rounded border px-1.5 py-0.5 font-mono text-(--color-muted-foreground)">
+				pending
+			</span>
+		);
+	}
+	if (outcome.status === "dispatched") {
+		return (
+			<Link
+				to={`/runs/${encodeURIComponent(outcome.runId ?? "")}`}
+				className="shrink-0 rounded border px-1.5 py-0.5 font-mono underline-offset-2 hover:underline"
+			>
+				{outcome.runId ?? "dispatched"}
+			</Link>
+		);
+	}
+	return (
+		<span
+			className="shrink-0 truncate rounded border px-1.5 py-0.5 font-mono text-(--color-destructive)"
+			title={outcome.error ?? "failed"}
+		>
+			failed
+		</span>
+	);
+}
+
+/* ----------------------------------------------------------------------- */
+/* RunSeedButton (warren-ff2a)                                              */
+/* ----------------------------------------------------------------------- */
 
 /**
  * Per-attachment "Run agent" action. Visible on every `seeds_issue`
