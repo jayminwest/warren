@@ -7,6 +7,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.1] — 2026-05-18
+
+Patch release closing the warren-side of `warren-a346` / plan `pl-95dd`:
+the Plot env-reach gap where `PLOT_ID` / `PLOT_ACTOR` set on a run
+dispatch were dropped at burrow's `POST /burrows` boundary instead of
+reaching the sandbox. The fix itself ships in burrow as `burrow-59cd`
+(burrow parses `body.env` on burrow up); warren consumes it by
+bumping the `@os-eco/burrow-cli` double-pin and flipping scenario 25's
+previously soft-skipped env-reach / workspace plot append / `plot.*`
+mirror assertions to hard-required so any future regression in the
+burrow contract fails CI loudly. No warren API or schema changes —
+send-side (`BurrowClient.burrowsUp`, `src/runs/spawn.ts`) was already
+correct; this release is purely the consumer-side bump that makes the
+os-eco Plot integration's agent-side append path end-to-end honest
+for the first time.
+
+### Changed
+
+- **`chore(burrow-cli)`** — bump `@os-eco/burrow-cli` double-pin
+  (`warren-0a6b`) across `package.json`, `bun.lock`, and the
+  `Dockerfile` global install to the release containing `burrow-59cd`
+  (`body.env` parsing on `POST /burrows`). Per the CLAUDE.md
+  "Relationship to burrow" convention all pin locations stay in sync;
+  a mismatch is a no-op since `Bun.spawn` resolves
+  `./node_modules/.bin/burrow` before `PATH`.
+- **`test(acceptance)`** — scenario 25
+  (`scripts/acceptance/scenarios/25-plot-dispatch-roundtrip.ts`,
+  `warren-49d7`) drops the `if (skipReason) ...` guards around the
+  env-reaches-sandbox / workspace-plot-append / `plot.*` mirror
+  assertions. Inside a sandbox spawned from a run with
+  `PLOT_ID=plot-xyz` and `PLOT_ACTOR=agent:claude:wr-...`,
+  `printenv PLOT_ID` and `printenv PLOT_ACTOR` now return the
+  dispatched values rather than empty strings, and the parallel
+  PlanRun + Plot roundtrip (scenario 27) remains green.
+
+### Fixed
+
+- **Plot env-reach end-to-end** (`warren-a346`, `pl-95dd`) — runs
+  dispatched with a `plot_id` against a `.plot/`-enabled project now
+  see `PLOT_ID` and `PLOT_ACTOR` inside the sandbox, unblocking the
+  in-sandbox `plot` CLI's agent-side append path. Previously the
+  values were silently dropped at burrow's handler edge
+  (`burrow-59cd`) and warren's Plot integration was half-disconnected.
+
 ## [0.4.0] — 2026-05-18
 
 Phase 3 of `warren-d362` (plan `pl-9d6a`) shifts warren's web UI from
