@@ -34,7 +34,12 @@ import type {
 	HttpBurrowListFilter,
 	MessagePriority,
 } from "@os-eco/burrow-cli";
-import { PLOT_STATUSES, type PlotStatus } from "@os-eco/plot-cli";
+import {
+	ATTACHMENT_TYPES,
+	type AttachmentType,
+	PLOT_STATUSES,
+	type PlotStatus,
+} from "@os-eco/plot-cli";
 import { withTransportMapping } from "../burrow-client/client.ts";
 import { fanOutAcrossWorkers } from "../burrow-client/fanout.ts";
 import { NotFoundError, ValidationError } from "../core/errors.ts";
@@ -64,6 +69,7 @@ import {
 	emitPlanRunDispatchedToPlot,
 } from "../plan-runs/plot-appender.ts";
 import {
+	defaultPlotAttacher,
 	defaultPlotCreator,
 	defaultPlotIntentEditor,
 	defaultPlotReader,
@@ -2327,6 +2333,244 @@ function changePlotStatusHandler(deps: ServerDeps): RouteHandler {
 	};
 }
 
+/**
+ * Per-kind ref-shape patterns enforced at the handler edge (warren-589c).
+ *
+ * The lib only checks `ref.minLength >= 1`. Warren narrows this further
+ * so typos / wrong-kind refs reject before the disk round-trip. Kinds
+ * without a defined pattern fall through to the lib's min-length check.
+ *
+ * SPEC §3.1 leaves `ref` free-form, but the conventional shapes are
+ * tractable:
+ *   - `seeds_issue`  → `<project>-<4 hex>` (seeds id format).
+ *   - `mulch_record` → `mx-<6 hex>` (mulch record id format).
+ *   - `agent_run`    → `run-<...>` (warren run id format, prefix
+ *                                      check only — the suffix shape
+ *                                      varies across deployments).
+ *   - `gh_pr`        → free-form (PRs use full URLs / owner/repo#N).
+ *   - `gh_issue`     → free-form (same).
+ *   - `file`         → free-form (paths are arbitrary).
+ */
+const ATTACHMENT_REF_PATTERNS: Partial<Record<AttachmentType, RegExp>> = {
+	seeds_issue: /^[a-z0-9_-]+-[a-f0-9]{4}$/,
+	mulch_record: /^mx-[a-f0-9]{6}$/,
+	agent_run: /^run-[A-Za-z0-9_-]+$/,
+};
+
+/**
+ * `POST /plots/:id/attachments` — attach an external reference to a
+ * Plot (warren-589c / pl-9d6a step 11).
+ *
+ * Handler order:
+ *   (1) parse + validate `kind` against `ATTACHMENT_TYPES` (the lib's
+ *       enum). The seed body lists six wire kinds; the lib's enum is
+ *       the source of truth, so kinds outside
+ *       `seeds_issue|mulch_record|agent_run|gh_pr|gh_issue|file` are
+ *       rejected with 400. Per-kind ref shape is then validated via
+ *       `ATTACHMENT_REF_PATTERNS` (e.g. `seeds_issue` ref matches
+ *       `/^[a-z0-9_-]+-[a-f0-9]{4}$/`).
+ *   (2) parse + validate `ref` (non-empty string) and the optional
+ *       `role` (non-empty string when present).
+ *   (3) resolve the dispatcher handle via `resolveDispatcherHandle`
+ *       (mx-6a9788) — malformed/empty input downgrades to `operator`.
+ *   (4) resolve the owning project via `deps.plotResolver`; `null` or
+ *       unwired resolver → 404 (empty-deployments contract).
+ *   (5) defensive `hasPlot` re-check — surfaces as
+ *       `ProjectLacksPlotError` (400 / `project_lacks_plot`) for
+ *       parity with the create / intent / status paths.
+ *   (6) hand off to `deps.plotAttacher` (default `defaultPlotAttacher`)
+ *       which opens a `UserPlotClient` and calls `PlotHandle.attach`.
+ *       Failure propagates synchronously — NOT fire-and-log.
+ *   (7) invalidate the aggregator cache entry for the project so a
+ *       follow-up `GET /plots` sees the new `attachments_count`
+ *       without the 5s TTL wait.
+ *   (8) return 200 with `{ envelope: PlotEnvelope, attachment: Attachment }`
+ *       so the UI can splice the new attachment into its optimistic
+ *       state without re-rendering the entire envelope.
+ *
+ * ACL note: `UserPlotClient` exclusively (via the attacher seam).
+ * Agent actors are not routed through this handler — see SPEC §6 —
+ * but `attach` is permitted on `AgentPlotHandle` too; threading the
+ * write through the user-typed seam keeps the actor on the wire log
+ * consistent with the intent/status writes.
+ */
+function attachPlotHandler(deps: ServerDeps): RouteHandler {
+	return async (ctx) => {
+		const plotId = requireParam(ctx, "id");
+		const body = await readJsonBody(ctx);
+		const dispatcherHandle = optionalString(body, "dispatcher_handle");
+
+		// (1) parse + validate `kind`.
+		const rawKind = body.kind;
+		if (typeof rawKind !== "string") {
+			throw new ValidationError("field 'kind' must be a string");
+		}
+		if (!(ATTACHMENT_TYPES as readonly string[]).includes(rawKind)) {
+			throw new ValidationError(
+				`unknown kind '${rawKind}'; expected one of ${ATTACHMENT_TYPES.join(", ")}`,
+			);
+		}
+		const kind = rawKind as AttachmentType;
+
+		// (2) parse + validate `ref` and `role`.
+		const rawRef = body.ref;
+		if (typeof rawRef !== "string" || rawRef.length === 0) {
+			throw new ValidationError("field 'ref' must be a non-empty string");
+		}
+		const refPattern = ATTACHMENT_REF_PATTERNS[kind];
+		if (refPattern !== undefined && !refPattern.test(rawRef)) {
+			throw new ValidationError(
+				`field 'ref' does not match the expected shape for kind '${kind}' (pattern: ${refPattern.source})`,
+			);
+		}
+		let role: string | undefined;
+		if (body.role !== undefined) {
+			if (typeof body.role !== "string" || body.role.length === 0) {
+				throw new ValidationError("field 'role' must be a non-empty string when present");
+			}
+			role = body.role;
+		}
+
+		// (3) handle resolution.
+		const handle = resolveDispatcherHandle(dispatcherHandle);
+
+		// (4) resolve owning project.
+		const project =
+			deps.plotResolver !== undefined ? await deps.plotResolver.resolve(plotId) : null;
+		if (project === null) {
+			throw new NotFoundError(`plot not found: ${plotId}`, {
+				recoveryHint:
+					"check the plot id; only Plots in projects with hasPlot=true are visible to warren",
+			});
+		}
+
+		// (5) defensive hasPlot re-check.
+		if (!project.hasPlot) {
+			throw new ProjectLacksPlotError(
+				`project ${project.id} no longer has a .plot/ directory; cannot attach to plot ${plotId}`,
+				{
+					recoveryHint:
+						"refresh the project so warren picks up the current .plot/ state, or recreate .plot/ via `plot init`",
+				},
+			);
+		}
+
+		// (6) delegate to the attacher seam.
+		const attacher = deps.plotAttacher ?? defaultPlotAttacher;
+		const result = await attacher.attach({
+			plotDir: join(project.localPath, ".plot"),
+			plotId,
+			handle,
+			kind,
+			ref: rawRef,
+			...(role !== undefined ? { role } : {}),
+		});
+
+		// (7) drop the aggregator cache so the next list sees the new
+		// attachments_count / last_event_ts without waiting for the 5s TTL.
+		deps.plotAggregator?.invalidate(project.id);
+
+		// (8) wire response — full PlotEnvelope + the freshly added attachment.
+		const envelope: PlotEnvelope = {
+			id: result.id,
+			name: result.name,
+			status: result.status,
+			intent: result.intent,
+			attachments: result.attachments,
+			event_log: result.event_log,
+			project_id: project.id,
+		};
+		return jsonResponse(200, { envelope, attachment: result.attachment });
+	};
+}
+
+/**
+ * `DELETE /plots/:id/attachments/:ref` — detach an external reference
+ * from a Plot (warren-589c / pl-9d6a step 11).
+ *
+ * Handler order:
+ *   (1) decode the `:ref` URL param (the router already runs
+ *       `decodeURIComponent` per `src/server/router.ts`) and reject
+ *       empty refs at the edge.
+ *   (2) parse the optional `dispatcher_handle` from the request body
+ *       (DELETE bodies are spec-legal under fetch and Bun.serve). When
+ *       no body is provided we accept that and fall through to the
+ *       `operator` fallback.
+ *   (3) resolve the dispatcher handle via `resolveDispatcherHandle`.
+ *   (4) resolve the owning project via `deps.plotResolver`; `null` or
+ *       unwired resolver → 404 (empty-deployments contract).
+ *   (5) defensive `hasPlot` re-check — `ProjectLacksPlotError` (400).
+ *   (6) hand off to `deps.plotAttacher.detach` (default
+ *       `defaultPlotAttacher`) which reads the Plot, maps the ref to
+ *       the lib's `att-NNN` id, and calls `PlotHandle.detach`.
+ *       `PlotAttachmentNotFoundError` (404) surfaces when the ref
+ *       doesn't match any current attachment.
+ *   (7) invalidate the aggregator cache entry for the project.
+ *   (8) return 200 with `{ envelope: PlotEnvelope, removed_id }`.
+ */
+function detachPlotHandler(deps: ServerDeps): RouteHandler {
+	return async (ctx) => {
+		const plotId = requireParam(ctx, "id");
+		const ref = requireParam(ctx, "ref");
+		if (ref.length === 0) {
+			throw new ValidationError("path param ':ref' must be a non-empty string");
+		}
+
+		// (2) optional body. DELETE bodies are rare — readJsonBodyOrEmpty
+		// returns null for empty payloads so the call stays optional.
+		const body = await readJsonBodyOrEmpty(ctx);
+		const dispatcherHandle = body !== null ? optionalString(body, "dispatcher_handle") : undefined;
+
+		// (3) handle resolution.
+		const handle = resolveDispatcherHandle(dispatcherHandle);
+
+		// (4) resolve owning project.
+		const project =
+			deps.plotResolver !== undefined ? await deps.plotResolver.resolve(plotId) : null;
+		if (project === null) {
+			throw new NotFoundError(`plot not found: ${plotId}`, {
+				recoveryHint:
+					"check the plot id; only Plots in projects with hasPlot=true are visible to warren",
+			});
+		}
+
+		// (5) defensive hasPlot re-check.
+		if (!project.hasPlot) {
+			throw new ProjectLacksPlotError(
+				`project ${project.id} no longer has a .plot/ directory; cannot detach from plot ${plotId}`,
+				{
+					recoveryHint:
+						"refresh the project so warren picks up the current .plot/ state, or recreate .plot/ via `plot init`",
+				},
+			);
+		}
+
+		// (6) delegate to the attacher seam.
+		const attacher = deps.plotAttacher ?? defaultPlotAttacher;
+		const result = await attacher.detach({
+			plotDir: join(project.localPath, ".plot"),
+			plotId,
+			handle,
+			ref,
+		});
+
+		// (7) drop the aggregator cache.
+		deps.plotAggregator?.invalidate(project.id);
+
+		// (8) wire response — full PlotEnvelope + the removed attachment id.
+		const envelope: PlotEnvelope = {
+			id: result.id,
+			name: result.name,
+			status: result.status,
+			intent: result.intent,
+			attachments: result.attachments,
+			event_log: result.event_log,
+			project_id: project.id,
+		};
+		return jsonResponse(200, { envelope, removed_id: result.removed_id });
+	};
+}
+
 /* ----------------------------------------------------------------------- */
 /* Public API                                                               */
 /* ----------------------------------------------------------------------- */
@@ -2391,6 +2635,12 @@ const ROUTE_TABLE: readonly RouteEntry[] = [
 	{ method: "GET", pattern: "/plots/:id", build: getPlotHandler },
 	{ method: "POST", pattern: "/plots/:id/intent", build: editPlotIntentHandler },
 	{ method: "POST", pattern: "/plots/:id/status", build: changePlotStatusHandler },
+	{ method: "POST", pattern: "/plots/:id/attachments", build: attachPlotHandler },
+	{
+		method: "DELETE",
+		pattern: "/plots/:id/attachments/:ref",
+		build: detachPlotHandler,
+	},
 ];
 
 /**

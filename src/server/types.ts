@@ -289,6 +289,20 @@ export interface ServerDeps {
 	 * When undefined the handler falls back to `defaultPlotStatusChanger`.
 	 */
 	readonly plotStatusChanger?: import("../plots/index.ts").PlotStatusChanger;
+	/**
+	 * Server-side Plot attach/detach seam (warren-589c / pl-9d6a step 11).
+	 * Used by `POST /plots/:id/attachments` and
+	 * `DELETE /plots/:id/attachments/:ref` to open a `UserPlotClient`
+	 * against the owning project's `.plot/`, call
+	 * `PlotHandle.attach` / `PlotHandle.detach`, and return the fresh
+	 * envelope subset (`{id, name, status, intent, attachments[],
+	 * event_log[]}` — plus `attachment` for attach, `removed_id` for
+	 * detach). Failure surfaces synchronously (NOT fire-and-log — same
+	 * posture as `plotIntentEditor` / `plotStatusChanger`).
+	 * `bootServer` always wires the default; tests substitute a stub.
+	 * When undefined the handler falls back to `defaultPlotAttacher`.
+	 */
+	readonly plotAttacher?: import("../plots/index.ts").PlotAttacher;
 }
 
 /**

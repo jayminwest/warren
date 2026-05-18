@@ -18,13 +18,25 @@ export {
 	type PlotAggregatorOptions,
 } from "./aggregate.ts";
 export {
+	type AttachPlotRequest,
+	type AttachPlotResult,
+	type DetachPlotRequest,
+	type DetachPlotResult,
+	defaultPlotAttacher,
+	type PlotAttacher,
+} from "./attacher.ts";
+export {
 	type CreatePlotIntentPatch,
 	type CreatePlotRequest,
 	type CreatePlotResult,
 	defaultPlotCreator,
 	type PlotCreator,
 } from "./creator.ts";
-export { PlotIllegalStatusTransitionError, PlotIntentFrozenError } from "./errors.ts";
+export {
+	PlotAttachmentNotFoundError,
+	PlotIllegalStatusTransitionError,
+	PlotIntentFrozenError,
+} from "./errors.ts";
 export {
 	assertIntentMutable,
 	defaultPlotIntentEditor,

@@ -41,6 +41,7 @@ import {
 import {
 	createPlotAggregator,
 	createPlotResolver,
+	defaultPlotAttacher,
 	defaultPlotCreator,
 	defaultPlotIntentEditor,
 	defaultPlotReader,
@@ -402,6 +403,7 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 		...(previewAuth !== undefined ? { previewAuth } : {}),
 		plotAggregator,
 		plotCreator: defaultPlotCreator,
+		plotAttacher: defaultPlotAttacher,
 		plotIntentEditor: defaultPlotIntentEditor,
 		plotReader: defaultPlotReader,
 		plotStatusChanger: defaultPlotStatusChanger,
