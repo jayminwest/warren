@@ -29,35 +29,35 @@
  *     listed in WARREN_STUB_NO_COMMIT_SEEDS → trivial-merge branch).
  *   - pl-acc-27-base — 1 child (ah-acc-27-d open) used for the no-plot baseline.
  *
- * Plot append surface caveat: host-side appenders (the
- * `plan_run_dispatched` write in createPlanRunHandler and the per-child
- * `run_dispatched` write in spawnRun's defaultPlotAppender) write to the
- * project clone's `.plot/<plotId>.events.jsonl` WITHOUT committing.
- * `spawnRun` calls `refreshProject` (src/projects/refresh.ts) before each
- * child dispatch, which does `git reset --hard origin/<ref>` and discards
- * those uncommitted lines. So a post-completion read of the file shows
- * only the LAST surviving writes (the trivial-merge child's run_dispatched
- * + the auto-done status_changed). To assert the FULL sequence we tail
- * the file every 100ms throughout plan execution and accumulate unique
- * lines into a Set — every appender call has a window between the post-
- * refresh write and the next-child refresh that the tail catches.
+ * Plot append durability: host-side appenders (the `plan_run_dispatched`
+ * write in createPlanRunHandler and the per-child `run_dispatched` write
+ * in spawnRun's defaultPlotAppender) write to the project clone's
+ * `.plot/<plotId>.events.jsonl` WITHOUT committing. Historically
+ * `spawnRun`'s pre-child `refreshProject` (`git reset --hard origin/<ref>`)
+ * wiped those uncommitted lines, so the scenario tailed the file every
+ * 100ms to accumulate transient writes. That workaround is gone: as of
+ * warren-fdd2 (pl-d4d6 step 1) refreshProjectClone snapshots `.plot/`
+ * out-of-tree before the reset and restores it after, so every host-side
+ * append persists across child dispatches and assertions read directly
+ * from the on-disk events.jsonl at the end of the plan-run
+ * (warren-aa63 / pl-d4d6 step 3 removes the tail).
  *
  * Assertions:
  *   1. POST /plan-runs with plot_id → 201 with planRun.plotId set; the
  *      PlanRun row stores it. (covers acceptance #1 from a real stack)
- *   2. `plan_run_dispatched` accumulates into the events.jsonl tail
- *      between POST and the first child's refresh (acceptance #5,
- *      warren-b89f).
+ *   2. `plan_run_dispatched` lands in events.jsonl between POST and the
+ *      first child's dispatch (acceptance #5, warren-b89f) — read
+ *      directly from disk post-completion now that refreshProjectClone
+ *      preserves .plot/ (warren-fdd2).
  *   3. PlanRun reaches `succeeded` with three `merged` children, mirroring
  *      scenario 26's happy path (acceptance #12).
- *   4. Per-child `run_dispatched` accumulates into the tail for every
- *      child — including the trivial-merge case — via the unchanged
- *      Phase 1 host-side appender (acceptance #7, warren-e848).
+ *   4. Per-child `run_dispatched` lands in events.jsonl for every child —
+ *      including the trivial-merge case — via the unchanged Phase 1
+ *      host-side appender (acceptance #7, warren-e848).
  *   5. Plot status flips `active → done` after the coordinator's
  *      `plan_succeeded` arm, verified two ways: (a) the persisted
- *      `<plotId>.json` snapshot's `status` field (survives because no
- *      refresh fires after the final child), and (b) a `status_changed`
- *      event in the events.jsonl tail authored by `user:operator`
+ *      `<plotId>.json` snapshot's `status` field, and (b) a
+ *      `status_changed` event in events.jsonl authored by `user:operator`
  *      (acceptance #8, warren-b290). The events stream on the anchor
  *      child run surfaces `plan_run.plot_auto_done`.
  *   6. SOFT_SKIP (warren-a346, shared with scenario 25): the per-child
@@ -70,8 +70,9 @@
  *      planRun.plotId=null AND produces zero new Plot writes — no new
  *      plan_run_dispatched line and no run_dispatched line referencing
  *      the baseline planRun's id or its child run id. The Plot stays at
- *      `done` (already terminal from step 5) and the coordinator's
- *      transitionPlot is a no-op since planRun.plotId is null.
+ *      `done` (already terminal from step 5, durable across refreshes
+ *      thanks to warren-fdd2) and the coordinator's transitionPlot is
+ *      a no-op since planRun.plotId is null.
  *
  * Negative-path (acceptance #2: plot_id on a non-Plot project → 400
  * `project_lacks_plot`) is covered by the unit test in
@@ -168,13 +169,13 @@ const PLAN_DEADLINE_MS = 90_000;
 const POLL_INTERVAL_MS = 500;
 const PLOT_FILE_POLL_TIMEOUT_MS = 10_000;
 /**
- * After waitForPlanState returns, give the auto-done transition + final
- * tail one more poll cycle to flush. The plan-run state flips to
- * `succeeded` BEFORE the transitionPlot hook runs, so a tight read can
- * miss the status_changed event. 1.5s ≫ 100ms poll interval ≫ 1s
- * coordinator tick — accommodates the slowest realistic schedule.
+ * After waitForPlanState returns, give the auto-done transition one more
+ * cycle to land on disk. The plan-run state flips to `succeeded` BEFORE
+ * the transitionPlot hook runs, so a tight read can miss the
+ * status_changed event. 1.5s ≫ 1s coordinator tick — accommodates the
+ * slowest realistic schedule.
  */
-const POST_PLAN_TAIL_FLUSH_MS = 1_500;
+const POST_PLAN_FLUSH_MS = 1_500;
 
 export const scenario: Scenario = {
 	id: "27",
@@ -237,14 +238,7 @@ export const scenario: Scenario = {
 			const plotEventsPath = join(project.localPath, ".plot", `${plotId}.events.jsonl`);
 			const plotJsonPath = join(project.localPath, ".plot", `${plotId}.json`);
 
-			// Tail the Plot events file BEFORE dispatching so we accumulate
-			// every transient host-side write — defaultPlotAppender writes
-			// are uncommitted and get wiped by the next child's
-			// refreshProject (git reset --hard). Start it now so the
-			// plan_run_dispatched line lands in our Set even if the
-			// coordinator's first tick races our first poll.
-			const plotTail = startPlotEventsTail(plotEventsPath, 100);
-			try {
+			{
 				// === Plot-bound PlanRun ===
 				const created = await http.expectJson<CreatePlanRunResponse>("POST", "/plan-runs", 201, {
 					body: {
@@ -296,14 +290,15 @@ export const scenario: Scenario = {
 					);
 				}
 
-				// Give the tail one final flush before reading — the
-				// last appender writes (status_changed → done from
-				// transitionPlot) land after waitForPlanState returns
-				// since the coordinator emits the warren-side
-				// plan_run.plot_auto_done event in the same arm.
-				await sleep(POST_PLAN_TAIL_FLUSH_MS);
-				await plotTail.tickOnce();
-				const seenLines = plotTail.lines();
+				// Wait one cycle for the coordinator's plan_succeeded arm
+				// to land its transitionPlot write — the plan-run state
+				// flips to `succeeded` BEFORE the transitionPlot hook
+				// runs. As of warren-fdd2 (pl-d4d6) refreshProjectClone
+				// preserves .plot/ across resets, so we read directly from
+				// the on-disk events.jsonl rather than tailing — every
+				// host-side append now survives.
+				await sleep(POST_PLAN_FLUSH_MS);
+				const seenLines = await readPlotEventLines(plotEventsPath);
 				const parsedSeen = parsePlotLines(seenLines);
 
 				// (warren-b89f / pl-7937 step 4) plan_run_dispatched landed
@@ -315,7 +310,7 @@ export const scenario: Scenario = {
 				);
 				if (planRunDispatched === undefined) {
 					throw new AcceptanceError(
-						`plot-bound PlanRun: missing 'plan_run_dispatched' event for planRun=${planRunId} in accumulated events.jsonl tail (${seenLines.size} lines seen)`,
+						`plot-bound PlanRun: missing 'plan_run_dispatched' event for planRun=${planRunId} in on-disk events.jsonl (${seenLines.size} lines seen)`,
 					);
 				}
 				assertEqual(
@@ -379,8 +374,7 @@ export const scenario: Scenario = {
 					"plot-bound PlanRun: .plot/<id>.json snapshot status flipped to 'done'",
 				);
 
-				await plotTail.tickOnce();
-				const parsedAfterDone = parsePlotLines(plotTail.lines());
+				const parsedAfterDone = parsePlotLines(await readPlotEventLines(plotEventsPath));
 				const statusChanged = parsedAfterDone.find((ev) => {
 					if (ev.type !== "status_changed") return false;
 					if (ev.actor !== "user:operator") return false;
@@ -390,7 +384,7 @@ export const scenario: Scenario = {
 				});
 				if (statusChanged === undefined) {
 					throw new AcceptanceError(
-						`plot-bound PlanRun: missing 'status_changed' → done by user:operator in events.jsonl tail`,
+						`plot-bound PlanRun: missing 'status_changed' → done by user:operator in on-disk events.jsonl`,
 					);
 				}
 
@@ -447,10 +441,12 @@ export const scenario: Scenario = {
 				//     run_dispatched line referencing its child run id)
 				//   - NOT emit plan_run.plot_* events on the coordinator
 				//     stream
-				// We keep the tail running across the baseline so any
-				// spurious appender write between dispatch and
-				// next-child-refresh would still land in the Set.
-				const linesBeforeBaseline = new Set(plotTail.lines());
+				// Snapshot the on-disk events.jsonl before the baseline
+				// POST; after completion we diff the two reads. Any
+				// appender write from the no-plot path would persist
+				// (refresh preservation, warren-fdd2) and show up in the
+				// diff.
+				const linesBeforeBaseline = await readPlotEventLines(plotEventsPath);
 
 				const baseline = await http.expectJson<CreatePlanRunResponse>("POST", "/plan-runs", 201, {
 					body: {
@@ -494,9 +490,9 @@ export const scenario: Scenario = {
 					"baseline PlanRun: child run carries plotId=null (no env injection)",
 				);
 
-				await sleep(POST_PLAN_TAIL_FLUSH_MS);
-				await plotTail.tickOnce();
-				const newLines = [...plotTail.lines()].filter((l) => !linesBeforeBaseline.has(l));
+				await sleep(POST_PLAN_FLUSH_MS);
+				const linesAfterBaseline = await readPlotEventLines(plotEventsPath);
+				const newLines = [...linesAfterBaseline].filter((l) => !linesBeforeBaseline.has(l));
 				for (const line of newLines) {
 					if (
 						line.includes(`"plan_run_id":"${baselinePlanRunId}"`) ||
@@ -517,16 +513,16 @@ export const scenario: Scenario = {
 					);
 				}
 
-				// The persisted .json status flipped back to 'active'
-				// because `refreshProject` (git reset --hard) wipes
-				// uncommitted .plot/ changes before each child spawn —
-				// the first PlanRun's auto-done update was never
-				// committed. That's a known Phase 1/2 limitation
-				// orthogonal to this scenario's contract; the binding
-				// promise here is "baseline emits no new Plot events
-				// for itself," already asserted above.
-			} finally {
-				plotTail.stop();
+				// The persisted .json status stays `done` across the
+				// baseline PlanRun's refreshes thanks to warren-fdd2's
+				// snapshot+restore — verify the on-disk snapshot still
+				// reports the terminal status from step 5.
+				const baselineSnapshot = await readPlotSnapshot(plotJsonPath);
+				assertEqual(
+					baselineSnapshot.status,
+					"done",
+					"baseline PlanRun: .plot/<id>.json status remains 'done' across refresh (warren-fdd2)",
+				);
 			}
 		} finally {
 			if (handle !== undefined) {
@@ -719,54 +715,27 @@ function findTextEvent(events: readonly EventRow[], needle: string): EventRow | 
 }
 
 /**
- * Tail a Plot events.jsonl file: every `intervalMs` snapshot the file,
- * split into trimmed non-empty lines, and add each to a Set. Returns an
- * object with `lines()` (the accumulated unique line set) and `stop()`.
- *
- * Why a Set tail and not a single-read assertion: host-side appenders
- * (defaultPlotAppender in spawnRun, defaultPlanRunPlotAppender in the
- * POST /plan-runs handler) write to the project clone's
- * .plot/<id>.events.jsonl WITHOUT committing. `refreshProject` (src/
- * projects/refresh.ts) does `git reset --hard origin/<ref>` on each
- * subsequent run dispatch, discarding those uncommitted lines. A single
- * post-completion read therefore shows only the LAST surviving writes.
- * Continuous polling at 100ms is fine-grained enough to catch each
- * appender call inside the window between its write and the next
- * child's refresh.
+ * Read the Plot events.jsonl from disk and return the set of trimmed
+ * non-empty lines. As of warren-fdd2 (pl-d4d6 step 1) refreshProjectClone
+ * snapshots `.plot/` out-of-tree before `git reset --hard` and restores
+ * it after, so host-side appender writes accumulate across child
+ * dispatches and a single post-completion read sees every line. Missing
+ * file is treated as an empty set so the helper composes with the
+ * pre-dispatch baseline snapshot.
  */
-interface PlotEventsTail {
-	lines(): ReadonlySet<string>;
-	tickOnce(): Promise<void>;
-	stop(): void;
-}
-
-function startPlotEventsTail(path: string, intervalMs: number): PlotEventsTail {
+async function readPlotEventLines(path: string): Promise<ReadonlySet<string>> {
 	const seen = new Set<string>();
-	let stopped = false;
-	const tick = async (): Promise<void> => {
-		if (stopped) return;
-		try {
-			const body = await readFile(path, "utf8");
-			for (const line of body.split("\n")) {
-				const trimmed = line.trim();
-				if (trimmed === "") continue;
-				seen.add(trimmed);
-			}
-		} catch {
-			// File not yet present — keep polling.
+	try {
+		const body = await readFile(path, "utf8");
+		for (const line of body.split("\n")) {
+			const trimmed = line.trim();
+			if (trimmed === "") continue;
+			seen.add(trimmed);
 		}
-	};
-	const handle = setInterval(() => {
-		void tick();
-	}, intervalMs);
-	return {
-		lines: () => seen,
-		tickOnce: tick,
-		stop: () => {
-			stopped = true;
-			clearInterval(handle);
-		},
-	};
+	} catch {
+		// File not yet present — return empty set.
+	}
+	return seen;
 }
 
 interface ParsedPlotEvent {
