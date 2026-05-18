@@ -31,17 +31,18 @@
  *   4. Assertions on `/runs/:id/events` and on disk:
  *        - host-side `run_dispatched` line is present in the project's
  *          `.plot/plot-<id>.events.jsonl` post-spawn (step 2).
- *        - Conditional on `body.env` reaching the sandbox (warren-a346):
- *          a `text` event containing `PLOT_ID=<id>` proves warren-e26f's
- *          env reached the sandbox process group; `plot.decision_made`
- *          appears with matching `plotId` (mirrored by warren-7e0f);
- *          and the project's `.plot/plot-<id>.events.jsonl` carries the
- *          agent's `decision_made` line after reap. These three assertions
- *          are soft-skipped today because burrow-cli@0.3.1's
- *          `POST /burrows` handler doesn't parse `body.env` into
- *          `BurrowUpInput.envOverrides` — when warren-a346 lands and the
- *          burrow-cli pin moves forward, flip them to hard requirements
- *          (search for SOFT_SKIP_REASON below).
+ *        - Hard-required (warren-49d7, pl-95dd step 2): a `text` event
+ *          containing `PLOT_ID=<id>` proves warren-e26f's env reached the
+ *          sandbox process group; `PLOT_ACTOR=agent:<name>:<runId>` proves
+ *          the composed actor string survived intact; `plot.decision_made`
+ *          appears with matching `plotId` (mirrored by warren-7e0f); and
+ *          the project's `.plot/plot-<id>.events.jsonl` carries the
+ *          agent's `decision_made` line after reap. These were
+ *          soft-skipped pre-warren-a346 because burrow-cli@0.3.1's
+ *          `POST /burrows` handler dropped `body.env`; with burrow-59cd
+ *          shipped and the burrow-cli pin bumped (warren-0a6b), the
+ *          contract is enforced unconditionally so any future regression
+ *          fails CI loudly.
  *
  *   5. Negative path — dispatch a run on the EXISTING `.plot`-less sample
  *      project WITHOUT a `plot_id`. Assert no event on the stream has a
@@ -176,55 +177,55 @@ export const scenario: Scenario = {
 		// merged + mirrored.
 		const plotEvents = await fetchAllEvents(http, plotRun.id);
 
-		// SOFT_SKIP_REASON (warren-a346): the next three blocks assert that
-		// PLOT_ID + PLOT_ACTOR reached the sandbox env, that the agent's
-		// `plot append` succeeded inside the workspace, and that reap
-		// mirrored the agent's `decision_made` into warren's event stream.
-		// All three depend on burrow's `POST /burrows` handler parsing
-		// `body.env` into `BurrowUpInput.envOverrides`, which burrow-cli@0.3.1
-		// does not yet do. When warren-a346 lands and the pin moves forward,
-		// flip each `ctx.logger.warn` branch below to `throw new AcceptanceError`.
+		// Hard-required (warren-49d7, pl-95dd step 2): with burrow-59cd shipped
+		// and the burrow-cli pin bumped (warren-0a6b), burrow's POST /burrows
+		// handler parses body.env into BurrowUpInput.envOverrides, so PLOT_ID
+		// and PLOT_ACTOR reach the sandbox process group. The four assertions
+		// below — env echo, actor echo, agent plot append, reap mirror — now
+		// run unconditionally; any future regression in that contract fails
+		// CI loudly here.
 		const echoed = findTextEvent(plotEvents, `PLOT_ID=${plotId}`);
+		if (echoed === undefined) {
+			throw new AcceptanceError(
+				`plot run ${plotRun.id}: missing PLOT_ID=${plotId} echo on stream — burrow did not forward body.env into the sandbox (warren-a346/burrow-59cd regression?); got text events: ${listTextEvents(plotEvents)}`,
+			);
+		}
 		const expectedActorPrefix = `PLOT_ACTOR=agent:${ctx.fixtures.stubAgentName}:${plotRun.id}`;
 		const echoedActor = findTextEvent(plotEvents, expectedActorPrefix);
+		if (echoedActor === undefined) {
+			throw new AcceptanceError(
+				`plot run ${plotRun.id}: missing ${expectedActorPrefix} echo on stream — PLOT_ACTOR did not reach the sandbox; got text events: ${listTextEvents(plotEvents)}`,
+			);
+		}
 		const plotOk = findTextEvent(plotEvents, "plot append decision_made OK");
+		if (plotOk === undefined) {
+			throw new AcceptanceError(
+				`plot run ${plotRun.id}: env reached the sandbox but 'plot append decision_made' did not succeed; got text events: ${listTextEvents(plotEvents)}`,
+			);
+		}
 		const mirrored = plotEvents.find(
 			(e) => e.kind === "plot.decision_made" && (e.payload?.plotId ?? null) === plotId,
 		);
-
-		const envReached = echoed !== undefined && echoedActor !== undefined;
-		if (!envReached) {
-			ctx.logger.warn(
-				`scenario-25 (warren-a346 pending): no PLOT_ID/PLOT_ACTOR echo on stream — burrow does not yet forward body.env into the sandbox; got text events: ${listTextEvents(plotEvents)}`,
-			);
-		} else {
-			// Env reached the sandbox — the dependent assertions become hard.
-			if (plotOk === undefined) {
-				throw new AcceptanceError(
-					`plot run ${plotRun.id}: env reached the sandbox but 'plot append decision_made' did not succeed; got text events: ${listTextEvents(plotEvents)}`,
-				);
-			}
-			if (mirrored === undefined) {
-				throw new AcceptanceError(
-					`plot run ${plotRun.id}: env reached the sandbox and plot append succeeded, but reap did not mirror plot.decision_made for plotId=${plotId}; got kinds: ${summariseKinds(plotEvents)}`,
-				);
-			}
-			assertEqual(
-				mirrored.payload?.actor,
-				`agent:${ctx.fixtures.stubAgentName}:${plotRun.id}`,
-				"mirrored plot.decision_made carries the agent actor warren-e26f composed",
-			);
-
-			// Post-reap disk verification — the project's persistent
-			// .plot/plot-<id>.events.jsonl now carries the agent's decision_made
-			// line in addition to the host-side run_dispatched.
-			const projectPlotEventsAfter = await readFile(projectPlotEventsPath, "utf8");
-			assertTrue(
-				projectPlotEventsAfter.includes(`"type":"decision_made"`) &&
-					projectPlotEventsAfter.includes(`agent:${ctx.fixtures.stubAgentName}:${plotRun.id}`),
-				`project .plot file ${projectPlotEventsPath} missing agent decision_made entry after reap; body: ${projectPlotEventsAfter}`,
+		if (mirrored === undefined) {
+			throw new AcceptanceError(
+				`plot run ${plotRun.id}: env reached the sandbox and plot append succeeded, but reap did not mirror plot.decision_made for plotId=${plotId}; got kinds: ${summariseKinds(plotEvents)}`,
 			);
 		}
+		assertEqual(
+			mirrored.payload?.actor,
+			`agent:${ctx.fixtures.stubAgentName}:${plotRun.id}`,
+			"mirrored plot.decision_made carries the agent actor warren-e26f composed",
+		);
+
+		// Post-reap disk verification — the project's persistent
+		// .plot/plot-<id>.events.jsonl now carries the agent's decision_made
+		// line in addition to the host-side run_dispatched.
+		const projectPlotEventsAfter = await readFile(projectPlotEventsPath, "utf8");
+		assertTrue(
+			projectPlotEventsAfter.includes(`"type":"decision_made"`) &&
+				projectPlotEventsAfter.includes(`agent:${ctx.fixtures.stubAgentName}:${plotRun.id}`),
+			`project .plot file ${projectPlotEventsPath} missing agent decision_made entry after reap; body: ${projectPlotEventsAfter}`,
+		);
 
 		// === Byte-identical no-plot path ===
 		// Dispatch against the EXISTING sample (no .plot/) WITHOUT plot_id.
