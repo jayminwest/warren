@@ -42,7 +42,15 @@ import { formatTimestamp, relativeTime } from "@/lib/utils.ts";
  *
  * Out of scope here (separate steps in pl-9d6a):
  *   - Status transition button group (warren-6336 / step 16).
- *   - Inline question-answer card (warren-3c3e / step 15).
+ *
+ * Inline question-answer card (warren-3c3e / pl-9d6a step 15):
+ * `question_posed` events without a matching `question_answered`
+ * (joined on `question_id === question_posed.at`) render an inline
+ * answer card with a textarea + Submit; submit POSTs to
+ * `/plots/:id/questions/:event_id/answer` via `plotsApi.answerQuestion`
+ * and optimistically splices the returned event into the cached plot
+ * envelope. Closed questions render the answer text collapsed under
+ * the question row, no card.
  *
  * Run-plan button (warren-5d94 / step 14): rendered on each sd_plan
  * attachment row in SubstratePanel; opens a confirm dialog and POSTs
@@ -104,7 +112,7 @@ export function PlotDetailPage() {
 				<SubstratePanel plot={plot} />
 			</div>
 
-			<ActivityFeed events={plot.event_log} />
+			<ActivityFeed plotId={plot.id} events={plot.event_log} />
 		</div>
 	);
 }
@@ -870,8 +878,32 @@ function clusterEvents(events: readonly PlotEvent[]): Cluster[] {
 	return out;
 }
 
-function ActivityFeed({ events }: { events: readonly PlotEvent[] }) {
+/**
+ * Walk the event log once and build a `question_id → question_answered`
+ * map. `question_id` is the targeted `question_posed.at` (see
+ * `src/plots/question-answerer.ts` and mx-noted in this file's header).
+ * Events with unknown shapes (missing `data.question_id`) are skipped.
+ */
+function buildAnswerMap(events: readonly PlotEvent[]): Map<string, PlotEvent> {
+	const out = new Map<string, PlotEvent>();
+	for (const ev of events) {
+		if (ev.type !== "question_answered") continue;
+		const qid = readString((ev.data as { question_id?: unknown }).question_id);
+		if (qid === null) continue;
+		out.set(qid, ev);
+	}
+	return out;
+}
+
+function ActivityFeed({
+	plotId,
+	events,
+}: {
+	plotId: string;
+	events: readonly PlotEvent[];
+}) {
 	const clusters = useMemo(() => clusterEvents(events), [events]);
+	const answers = useMemo(() => buildAnswerMap(events), [events]);
 	return (
 		<Card>
 			<CardHeader>
@@ -890,14 +922,18 @@ function ActivityFeed({ events }: { events: readonly PlotEvent[] }) {
 									// event_log; index is the stable cluster id within
 									// this render.
 									key={`fold-${idx}`}
+									plotId={plotId}
 									events={c.events}
+									answers={answers}
 								/>
 							) : (
 								<EventLine
 									// biome-ignore lint/suspicious/noArrayIndexKey: see
 									// above — singles also key on their cluster index.
 									key={`evt-${idx}`}
+									plotId={plotId}
 									event={c.events[0] as PlotEvent}
+									answers={answers}
 								/>
 							),
 						)}
@@ -908,7 +944,15 @@ function ActivityFeed({ events }: { events: readonly PlotEvent[] }) {
 	);
 }
 
-function FoldedCluster({ events }: { events: PlotEvent[] }) {
+function FoldedCluster({
+	plotId,
+	events,
+	answers,
+}: {
+	plotId: string;
+	events: PlotEvent[];
+	answers: Map<string, PlotEvent>;
+}) {
 	const [open, setOpen] = useState(false);
 	const head = events[0] as PlotEvent;
 	const tail = events[events.length - 1] as PlotEvent;
@@ -925,7 +969,12 @@ function FoldedCluster({ events }: { events: PlotEvent[] }) {
 					</button>
 				</li>
 				{events.map((e) => (
-					<EventLine key={`${e.at}-${e.type}`} event={e} />
+					<EventLine
+						key={`${e.at}-${e.type}`}
+						plotId={plotId}
+						event={e}
+						answers={answers}
+					/>
 				))}
 			</>
 		);
@@ -953,9 +1002,19 @@ function FoldedCluster({ events }: { events: PlotEvent[] }) {
  * and the expanded body shows the raw payload. The actor slot lives
  * on the left of the summary so eyes can scan a stable column.
  */
-function EventLine({ event }: { event: PlotEvent }) {
+function EventLine({
+	plotId,
+	event,
+	answers,
+}: {
+	plotId: string;
+	event: PlotEvent;
+	answers: Map<string, PlotEvent>;
+}) {
 	const summary = summarizePlotEvent(event);
 	const expanded = JSON.stringify(event.data, null, 2);
+	const isQuestion = event.type === "question_posed";
+	const answer = isQuestion ? answers.get(event.at) : undefined;
 	return (
 		<li>
 			<details className="group">
@@ -978,7 +1037,119 @@ function EventLine({ event }: { event: PlotEvent }) {
 					</pre>
 				</div>
 			</details>
+			{isQuestion && answer !== undefined ? (
+				<AnsweredQuestionRow answer={answer} />
+			) : null}
+			{isQuestion && answer === undefined ? (
+				<AnswerCard plotId={plotId} questionEventId={event.at} />
+			) : null}
 		</li>
+	);
+}
+
+/**
+ * Inline answer affordance (warren-3c3e / pl-9d6a step 15). Rendered
+ * below each `question_posed` event that has no matching
+ * `question_answered`. Submit POSTs to `/plots/:id/questions/:event_id/answer`
+ * and optimistically splices the returned event into the cached plot
+ * envelope so the card disappears immediately without waiting for the
+ * 5s refetch. On failure the draft is preserved (mutation state holds
+ * the textarea via `draft` state) and an inline error surfaces.
+ */
+function AnswerCard({
+	plotId,
+	questionEventId,
+}: {
+	plotId: string;
+	questionEventId: string;
+}) {
+	const qc = useQueryClient();
+	const [draft, setDraft] = useState("");
+
+	const mutation = useMutation({
+		mutationFn: () =>
+			plotsApi.answerQuestion(plotId, {
+				eventId: questionEventId,
+				answer: draft.trim(),
+			}),
+		onSuccess: (resp) => {
+			// Optimistic-but-server-truthed splice: insert the server-
+			// returned event into the cached envelope's event_log so the
+			// answer card disappears now, not on the next 5s poll. The
+			// refetch will reconcile if anything drifted.
+			qc.setQueryData<PlotEnvelope>(["plot", plotId], (prev) => {
+				if (prev === undefined) return prev;
+				if (prev.event_log.some((e) => e.at === resp.event.at)) return prev;
+				return { ...prev, event_log: [...prev.event_log, resp.event] };
+			});
+			qc.invalidateQueries({ queryKey: ["plot", plotId] });
+			setDraft("");
+		},
+		// On failure: do nothing — `draft` already holds the user's text
+		// so they can edit and resubmit (draft-restore-on-failure).
+	});
+
+	const submittable = draft.trim().length > 0 && !mutation.isPending;
+
+	const submit = (e: React.FormEvent): void => {
+		e.preventDefault();
+		if (!submittable) return;
+		mutation.mutate();
+	};
+
+	return (
+		<form
+			onSubmit={submit}
+			className="ml-[11rem] mt-1 mb-2 space-y-2 rounded-md border border-dashed p-3"
+		>
+			<Label htmlFor={`answer-${questionEventId}`} className="text-xs">
+				Your answer
+			</Label>
+			<Textarea
+				id={`answer-${questionEventId}`}
+				rows={3}
+				value={draft}
+				onChange={(e) => setDraft(e.target.value)}
+				disabled={mutation.isPending}
+				placeholder="Type a reply…"
+			/>
+			{mutation.isError ? (
+				<p className="text-sm text-(--color-destructive)">
+					{mutation.error instanceof ApiError
+						? `${mutation.error.message} (${mutation.error.code})`
+						: mutation.error instanceof Error
+							? mutation.error.message
+							: String(mutation.error)}
+				</p>
+			) : null}
+			<div className="flex justify-end">
+				<Button type="submit" size="sm" disabled={!submittable}>
+					{mutation.isPending ? "Submitting…" : "Submit"}
+				</Button>
+			</div>
+		</form>
+	);
+}
+
+/**
+ * Compact inline display of a `question_answered` event attached to
+ * its `question_posed`. Per the seed contract: closed questions render
+ * the answer collapsed below the question, no card. The full answer
+ * event still appears as its own row elsewhere in the feed — this is
+ * an at-a-glance hint so the question row reads as resolved.
+ */
+function AnsweredQuestionRow({ answer }: { answer: PlotEvent }) {
+	const text = readString(answer.data.text) ?? "";
+	return (
+		<div className="ml-[11rem] mt-1 mb-2 flex items-baseline gap-2 text-xs">
+			<span className="shrink-0 rounded border px-1.5 py-0.5 font-mono text-(--color-muted-foreground)">
+				answered
+			</span>
+			<span className="truncate text-(--color-muted-foreground)" title={text}>
+				<span className="font-mono">{answer.actor}</span>
+				{text.length > 0 ? <> · {text}</> : null}
+			</span>
+		</div>
 	);
 }
 
