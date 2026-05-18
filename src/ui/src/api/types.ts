@@ -533,3 +533,85 @@ export interface CancelPlanRunResponse {
 	cancelledChild: { childSeq: number; runId: string } | null;
 	alreadyTerminal: boolean;
 }
+
+/* ----------------------------------------------------------------------- */
+/* Plots (warren-4879 / pl-9d6a step 4).                                    */
+/*                                                                          */
+/* Mirrors the server-side `PlotSummary` shape from `src/plots/types.ts`    */
+/* and the `@os-eco/plot-cli` `PlotStatus` literal union. Kept in sync by   */
+/* hand because src/ui is excluded from the root tsconfig — the boundary   */
+/* is the HTTP wire, not a TS import (mx-7f971c).                          */
+/* ----------------------------------------------------------------------- */
+
+/**
+ * Plot status enum — mirror of `@os-eco/plot-cli` `PlotStatus`. The five
+ * values match the SPEC §6.5 transition whitelist; UI status filter chips
+ * iterate `PLOT_STATUSES` so the mirror is the single source of truth on
+ * the UI side.
+ */
+export type PlotStatus = "drafting" | "ready" | "active" | "done" | "archived";
+
+export const PLOT_STATUSES: readonly PlotStatus[] = [
+	"drafting",
+	"ready",
+	"active",
+	"done",
+	"archived",
+];
+
+/**
+ * Row shape returned by `GET /plots` (one row per Plot across every
+ * project with `hasPlot=true`) and the JSON body of `POST /plots`
+ * (warren-c167, warren-194e). Sortable in the UI by `last_event_ts`
+ * desc, `name`, or `status`. Field names match the wire envelope
+ * verbatim — snake_case on the wire, not the UI's camelCase
+ * convention, because the server hands the `PlotSummary` interface
+ * straight through to `JSON.stringify`.
+ */
+export interface PlotSummary {
+	id: string;
+	name: string;
+	status: PlotStatus;
+	/** First ~160 chars of `intent.goal`, with ellipsis when truncated. */
+	intent_goal_preview: string;
+	attachments_count: number;
+	/** ISO 8601 timestamp of the most recent event in the Plot's log. */
+	last_event_ts: string;
+	/** Actor string of the most recent event (e.g. `user:alice`). */
+	last_event_actor: string;
+	/** Warren project id (`prj_xxx`) the Plot lives in. */
+	project_id: string;
+}
+
+/**
+ * Optional partial intent body accepted on `POST /plots`. Every field
+ * is optional; omitted fields stay at the `PlotStore.create` defaults
+ * (empty string / empty arrays). The UI's New-Plot dialog surfaces
+ * `goal` as the only field today; the array fields are reserved for
+ * the Plot detail intent editor (warren-bdbf).
+ */
+export interface CreatePlotIntentPatch {
+	goal?: string;
+	non_goals?: string[];
+	constraints?: string[];
+	success_criteria?: string[];
+}
+
+/**
+ * `POST /plots` request body. `projectId` is the warren project id
+ * (the wire envelope's `project_id`); the client serializer rewrites
+ * to snake_case so callers can keep the rest of the UI in camelCase.
+ * Empty/whitespace-only `name` is rejected by the server; omit the
+ * field entirely to accept the `"Untitled Plot"` default.
+ */
+export interface CreatePlotInput {
+	projectId: string;
+	name?: string;
+	intent?: CreatePlotIntentPatch;
+	dispatcherHandle?: string;
+}
+
+/** `GET /plots` envelope. */
+export interface ListPlotsResponse {
+	plots: PlotSummary[];
+}

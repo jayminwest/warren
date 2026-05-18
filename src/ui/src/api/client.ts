@@ -10,10 +10,14 @@ import type {
 	CancelRunResponse,
 	CreatePlanRunInput,
 	CreatePlanRunResponse,
+	CreatePlotInput,
 	CreateRunInput,
+	ListPlotsResponse,
 	PlanRunDetailResponse,
 	PlanRunRow,
 	PlanRunState,
+	PlotStatus,
+	PlotSummary,
 	PreviewConfigResponse,
 	PreviewTeardownResponse,
 	ProjectRow,
@@ -332,6 +336,53 @@ export async function* streamPlanRunEvents(
 		opts,
 	);
 }
+
+/* ----------------------------------------------------------------------- */
+/* Plots (warren-4879 / pl-9d6a step 4).                                    */
+/* ----------------------------------------------------------------------- */
+
+export interface ListPlotsFilter {
+	status?: PlotStatus;
+}
+
+export const plotsApi = {
+	/**
+	 * `GET /plots?status=` — cross-project Plot list. Empty array (200)
+	 * when no `hasPlot=true` projects exist (mirrors the
+	 * byte-identical-empty contract pinned by scenario 28); the UI's
+	 * Plots page renders the "no hasPlot projects yet" empty state on
+	 * `plots.length === 0`. Unknown status string is rejected
+	 * server-side with a 400 / `bad_request`.
+	 */
+	list: (filter: ListPlotsFilter = {}, signal?: AbortSignal) => {
+		const params = new URLSearchParams();
+		if (filter.status) params.set("status", filter.status);
+		const qs = params.toString();
+		return request<ListPlotsResponse>(`/plots${qs.length > 0 ? `?${qs}` : ""}`, {
+			...(signal ? { signal } : {}),
+		});
+	},
+	/**
+	 * `POST /plots` — create a fresh Plot in the named project's `.plot/`
+	 * directory. Returns the new `PlotSummary` (201). Rejects with
+	 * `ApiError` code `project_lacks_plot` when the project hasn't opted
+	 * into Plots (mirrors the server-side `ProjectLacksPlotError`). The
+	 * input is camelCase; the wire body uses snake_case per the
+	 * `POST /plots` handler contract.
+	 */
+	create: (input: CreatePlotInput) =>
+		request<PlotSummary>("/plots", {
+			method: "POST",
+			body: {
+				project_id: input.projectId,
+				...(input.name !== undefined ? { name: input.name } : {}),
+				...(input.intent !== undefined ? { intent: input.intent } : {}),
+				...(input.dispatcherHandle !== undefined
+					? { dispatcher_handle: input.dispatcherHandle }
+					: {}),
+			},
+		}),
+};
 
 /* ----------------------------------------------------------------------- */
 /* NDJSON event stream — `GET /runs/:id/events?follow=1` (SPEC §8.1).      */
