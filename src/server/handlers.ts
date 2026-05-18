@@ -63,7 +63,7 @@ import {
 	defaultPlanRunPlotAppender,
 	emitPlanRunDispatchedToPlot,
 } from "../plan-runs/plot-appender.ts";
-import { EMPTY_PLOT_SUMMARIES } from "../plots/index.ts";
+import { defaultPlotCreator, EMPTY_PLOT_SUMMARIES, type PlotSummary } from "../plots/index.ts";
 import { createRunPreviewsRepo, DEFAULT_MAX_LIVE } from "../preview/eviction.ts";
 import { DEFAULT_PREVIEW_PORT_RANGE, PreviewPortAllocator } from "../preview/port-allocator.ts";
 import { teardownPreview } from "../preview/teardown.ts";
@@ -1835,6 +1835,147 @@ function listPlotsHandler(deps: ServerDeps): RouteHandler {
 	};
 }
 
+/**
+ * `POST /plots` — create a fresh Plot in the named project's `.plot/`
+ * directory (warren-194e / pl-9d6a step 3).
+ *
+ * Handler order:
+ *   (1) load project (NotFoundError → 404).
+ *   (2) reject when `project.hasPlot === false` via typed
+ *       `ProjectLacksPlotError` (mirrors POST /plan-runs' gate at
+ *       mx-afe7e0 — same 400 envelope, stable `project_lacks_plot`
+ *       code so HTTP consumers can branch).
+ *   (3) resolve the dispatcher handle via `resolveDispatcherHandle`
+ *       (mx-6a9788) — malformed/empty input downgrades to `operator`
+ *       rather than throwing.
+ *   (4) parse + validate the body's optional `intent` patch shape.
+ *   (5) hand off to `deps.plotCreator` (default `defaultPlotCreator`)
+ *       which opens a `UserPlotClient` against `<project>/.plot/`,
+ *       calls `PlotStore.create({name})`, optionally applies the
+ *       intent patch via `editIntent`, and returns the per-project
+ *       `CreatePlotResult`. **Not** fire-and-log — the user is
+ *       waiting on the create result, so a failure here propagates
+ *       synchronously to the HTTP response (mx-92e6b3 contrasts:
+ *       PlanRun's plot-append IS fire-and-log because the user is
+ *       waiting on the PlanRun, not the Plot mirror).
+ *   (6) invalidate the aggregator's cache entry for the project so the
+ *       next `GET /plots` (or `PlotResolver.resolve` for follow-up
+ *       per-Plot handlers landing later in pl-9d6a) sees the fresh
+ *       Plot without waiting for the 5s TTL.
+ *   (7) return 201 with the full `PlotSummary` (per-project subset +
+ *       `project_id` from the resolved row).
+ *
+ * Body shape: `{ project_id: string, name?: string, intent?: {
+ *   goal?, non_goals?, constraints?, success_criteria? },
+ *   dispatcher_handle?: string }`. `name` defaults to `"Untitled
+ *   Plot"` when omitted so the UI's New-Plot dialog can ship a
+ *   nameless draft (the user renames later via the per-Plot intent
+ *   surface); explicit empty string is rejected since
+ *   `PlotStore.create` requires non-empty.
+ */
+function createPlotHandler(deps: ServerDeps): RouteHandler {
+	return async (ctx) => {
+		const body = await readJsonBody(ctx);
+		const projectId = requireString(body, "project_id");
+		const rawName = optionalString(body, "name");
+		if (rawName !== undefined && rawName.trim().length === 0) {
+			throw new ValidationError("field 'name' must be a non-empty string when provided");
+		}
+		const name = rawName !== undefined ? rawName : "Untitled Plot";
+		const dispatcherHandle = optionalString(body, "dispatcher_handle");
+		const intent = parseIntentPatch(body.intent);
+
+		// (1) project lookup — NotFoundError → 404.
+		const project = await deps.repos.projects.require(projectId);
+
+		// (2) hasPlot gate — typed error mirrors mx-afe7e0's shape.
+		if (!project.hasPlot) {
+			throw new ProjectLacksPlotError(
+				`project ${project.id} has no .plot/ directory; cannot create a Plot`,
+				{
+					recoveryHint:
+						"run `plot init` in the project clone and refresh the project so warren picks up the .plot/ directory",
+				},
+			);
+		}
+
+		// (3) dispatcher handle resolution (mx-6a9788).
+		const handle = resolveDispatcherHandle(dispatcherHandle);
+
+		// (4/5) delegate to the creator seam.
+		const creator = deps.plotCreator ?? defaultPlotCreator;
+		const created = await creator.create({
+			plotDir: join(project.localPath, ".plot"),
+			handle,
+			name,
+			...(intent !== undefined ? { intent } : {}),
+		});
+
+		// (6) drop the aggregator's cache entry so subsequent reads see
+		// the fresh Plot without waiting for the 5s TTL.
+		deps.plotAggregator?.invalidate(project.id);
+
+		// (7) wire response — PlotSummary shape.
+		const summary: PlotSummary = {
+			id: created.id,
+			name: created.name,
+			status: created.status,
+			intent_goal_preview: created.intent_goal_preview,
+			attachments_count: created.attachments_count,
+			last_event_ts: created.last_event_ts,
+			last_event_actor: created.last_event_actor,
+			project_id: project.id,
+		};
+		return jsonResponse(201, summary);
+	};
+}
+
+/**
+ * Parse + validate the optional `intent` body field on `POST /plots`.
+ * `null`/`undefined` → undefined (no patch). Anything else must be a
+ * JSON object; unknown fields are rejected so a typo'd `goals`/`nongoals`
+ * surfaces instead of silently dropping. List fields must be arrays of
+ * non-empty strings.
+ */
+function parseIntentPatch(
+	raw: unknown,
+): import("../plots/index.ts").CreatePlotIntentPatch | undefined {
+	if (raw === undefined || raw === null) return undefined;
+	if (typeof raw !== "object" || Array.isArray(raw)) {
+		throw new ValidationError("field 'intent' must be a JSON object");
+	}
+	const obj = raw as Record<string, unknown>;
+	const allowed = new Set(["goal", "non_goals", "constraints", "success_criteria"]);
+	for (const key of Object.keys(obj)) {
+		if (!allowed.has(key)) {
+			throw new ValidationError(
+				`field 'intent.${key}' is not recognized; expected one of goal, non_goals, constraints, success_criteria`,
+			);
+		}
+	}
+	const patch: {
+		goal?: string;
+		non_goals?: string[];
+		constraints?: string[];
+		success_criteria?: string[];
+	} = {};
+	if (obj.goal !== undefined) {
+		if (typeof obj.goal !== "string") {
+			throw new ValidationError("field 'intent.goal' must be a string");
+		}
+		patch.goal = obj.goal;
+	}
+	for (const key of ["non_goals", "constraints", "success_criteria"] as const) {
+		const v = obj[key];
+		if (v === undefined) continue;
+		if (!Array.isArray(v) || v.some((item) => typeof item !== "string" || item.length === 0)) {
+			throw new ValidationError(`field 'intent.${key}' must be an array of non-empty strings`);
+		}
+		patch[key] = v as string[];
+	}
+	return patch;
+}
+
 /* ----------------------------------------------------------------------- */
 /* Public API                                                               */
 /* ----------------------------------------------------------------------- */
@@ -1895,6 +2036,7 @@ const ROUTE_TABLE: readonly RouteEntry[] = [
 	{ method: "GET", pattern: "/plan-runs/:id/events", build: streamPlanRunEventsHandler },
 
 	{ method: "GET", pattern: "/plots", build: listPlotsHandler },
+	{ method: "POST", pattern: "/plots", build: createPlotHandler },
 ];
 
 /**

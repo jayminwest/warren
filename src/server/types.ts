@@ -229,6 +229,18 @@ export interface ServerDeps {
 	 * 200/`[]` response.
 	 */
 	readonly plotAggregator?: import("../plots/index.ts").PlotAggregator;
+	/**
+	 * Server-side Plot creator (warren-194e / pl-9d6a step 3). Used by
+	 * `POST /plots` to open a `UserPlotClient` against the target
+	 * project's `.plot/`, call `PlotStore.create({name})`, optionally
+	 * apply an initial intent patch via `editIntent`, and return the
+	 * fresh `PlotSummary` subset. Failure surfaces synchronously (the
+	 * user is waiting on the result — see seed body). `bootServer`
+	 * always wires the default; tests substitute a stub to assert
+	 * payload shape without touching disk. When undefined the handler
+	 * falls back to `defaultPlotCreator`.
+	 */
+	readonly plotCreator?: import("../plots/index.ts").PlotCreator;
 }
 
 /**

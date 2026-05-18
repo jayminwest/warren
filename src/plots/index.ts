@@ -17,6 +17,13 @@ export {
 	type PlotAggregator,
 	type PlotAggregatorOptions,
 } from "./aggregate.ts";
+export {
+	type CreatePlotIntentPatch,
+	type CreatePlotRequest,
+	type CreatePlotResult,
+	defaultPlotCreator,
+	type PlotCreator,
+} from "./creator.ts";
 export { createPlotResolver, type PlotResolver, type PlotResolverOptions } from "./resolver.ts";
 export {
 	buildIntentGoalPreview,
