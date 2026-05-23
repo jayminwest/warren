@@ -17,6 +17,7 @@ import { PlotStatusBadge } from "@/components/PlotStatusBadge.tsx";
 import { StateBadge } from "@/components/StateBadge.tsx";
 import { RefreshProjectsCTA } from "@/components/RefreshProjectsCTA.tsx";
 import type { NewRunRouteState } from "@/pages/NewRun.tsx";
+import { Badge } from "@/components/ui/badge.tsx";
 import { Button } from "@/components/ui/button.tsx";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card.tsx";
 import {
@@ -2290,7 +2291,15 @@ function InteractivePanel({ plot, frozen }: { plot: PlotEnvelope; frozen: boolea
 	return (
 		<Card>
 			<CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2 space-y-0">
-				<CardTitle>Interactive</CardTitle>
+				<div className="flex items-center gap-2">
+					<CardTitle>Interactive</CardTitle>
+					<Badge
+						variant="outline"
+						title="Interactive chat is experimental: dispatch + Formalize work, but the agent's reply does not stream back into this transcript yet. Open the run detail page to read the agent's response."
+					>
+						experimental
+					</Badge>
+				</div>
 				<div className="flex flex-wrap items-center gap-2">
 					<Button
 						type="button"
@@ -2338,32 +2347,62 @@ function InteractivePanel({ plot, frozen }: { plot: PlotEnvelope; frozen: boolea
 			</CardHeader>
 			<CardContent>
 				{activeRunId === null ? (
-					<p className="text-sm text-(--color-muted-foreground)">
-						No interactive conversation yet. Start brainstorming to sharpen
-						this Plot's intent, or run the planner to scout the repo and
-						submit a structured <code className="font-mono">sd plan</code>.
-					</p>
+					<div className="flex flex-col gap-2">
+						<p className="text-sm text-(--color-muted-foreground)">
+							No interactive conversation yet. Start brainstorming to
+							sharpen this Plot's intent, or run the planner to scout the
+							repo and submit a structured{" "}
+							<code className="font-mono">sd plan</code>.
+						</p>
+						<p className="text-xs text-(--color-muted-foreground)">
+							Heads up: the chat transcript is experimental — messages
+							are delivered, but the agent's reply lands on the run's
+							event log rather than streaming back into the chat. Open
+							the run detail page from the activity feed below to read
+							responses. Formalize and question-answer flows still
+							work end-to-end.
+						</p>
+					</div>
 				) : (
-					<div id="interactive-chat" className="h-[480px]">
-						<Chat
-							runId={activeRunId}
-							follow
-							onTurnSpawned={(turnId) => setActiveRunId(turnId)}
-							header={
-								<div className="flex items-center gap-2 text-xs text-(--color-muted-foreground)">
-									<span className="rounded border px-1.5 py-0.5 font-mono">
-										{activeAgent ?? "interactive"}
-									</span>
-									<Link
-										to={`/runs/${encodeURIComponent(activeRunId)}`}
-										className="font-mono underline-offset-2 hover:underline"
-									>
-										{activeRunId}
-									</Link>
-								</div>
-							}
-							placeholder="Continue the conversation…"
-						/>
+					<div className="flex flex-col gap-2">
+						<div
+							role="note"
+							className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-800 dark:text-amber-200"
+						>
+							<strong className="font-semibold">Experimental:</strong>{" "}
+							your message is delivered to the agent, but the agent's
+							reply is not yet streamed back into this transcript. Open
+							the{" "}
+							<Link
+								to={`/runs/${encodeURIComponent(activeRunId)}`}
+								className="font-mono underline underline-offset-2"
+							>
+								run detail page
+							</Link>{" "}
+							to read the response. Formalize and question-answer
+							flows still work end-to-end.
+						</div>
+						<div id="interactive-chat" className="h-[480px]">
+							<Chat
+								runId={activeRunId}
+								follow
+								onTurnSpawned={(turnId) => setActiveRunId(turnId)}
+								header={
+									<div className="flex items-center gap-2 text-xs text-(--color-muted-foreground)">
+										<span className="rounded border px-1.5 py-0.5 font-mono">
+											{activeAgent ?? "interactive"}
+										</span>
+										<Link
+											to={`/runs/${encodeURIComponent(activeRunId)}`}
+											className="font-mono underline-offset-2 hover:underline"
+										>
+											{activeRunId}
+										</Link>
+									</div>
+								}
+								placeholder="Continue the conversation…"
+							/>
+						</div>
 					</div>
 				)}
 			</CardContent>
