@@ -86,7 +86,7 @@ export function PlanRunsPage() {
 				<select
 					value={projectFilter}
 					onChange={(e) => setProjectFilter(e.target.value)}
-					className="ml-auto h-8 rounded-md border bg-(--color-card) px-2 text-xs"
+					className="h-8 w-full rounded-md border bg-(--color-card) px-2 text-xs sm:ml-auto sm:w-auto"
 				>
 					<option value="">All projects</option>
 					{projects.data?.projects.map((p) => (
@@ -118,13 +118,13 @@ export function PlanRunsPage() {
 						<Table>
 							<TableHeader>
 								<TableRow>
-									<TableHead>State</TableHead>
-									<TableHead>ID</TableHead>
-									<TableHead>Plan</TableHead>
-									<TableHead>Project</TableHead>
-									<TableHead>Agent</TableHead>
-									<TableHead>Children</TableHead>
-									<TableHead>Started</TableHead>
+									<TableHead className="whitespace-nowrap">State</TableHead>
+									<TableHead className="whitespace-nowrap">ID</TableHead>
+									<TableHead className="whitespace-nowrap">Plan</TableHead>
+									<TableHead className="whitespace-nowrap">Project</TableHead>
+									<TableHead className="whitespace-nowrap">Agent</TableHead>
+									<TableHead className="whitespace-nowrap">Children</TableHead>
+									<TableHead className="whitespace-nowrap">Started</TableHead>
 								</TableRow>
 							</TableHeader>
 							<TableBody>
@@ -188,13 +188,13 @@ function PlanRunListRow({
 					{planRunId}
 				</Link>
 			</TableCell>
-			<TableCell className="font-mono text-xs">{planId}</TableCell>
-			<TableCell className="font-mono text-xs">{projectLabel}</TableCell>
-			<TableCell>{agentName}</TableCell>
-			<TableCell className="font-mono text-xs text-(--color-muted-foreground)">
+			<TableCell className="whitespace-nowrap font-mono text-xs">{planId}</TableCell>
+			<TableCell className="whitespace-nowrap font-mono text-xs">{projectLabel}</TableCell>
+			<TableCell className="whitespace-nowrap">{agentName}</TableCell>
+			<TableCell className="whitespace-nowrap font-mono text-xs text-(--color-muted-foreground)">
 				{counts}
 			</TableCell>
-			<TableCell className="text-(--color-muted-foreground)">
+			<TableCell className="whitespace-nowrap text-(--color-muted-foreground)">
 				{relativeTime(startedAt)}
 			</TableCell>
 		</TableRow>

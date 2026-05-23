@@ -149,7 +149,7 @@ export function RunsPage() {
 			</div>
 
 			<Card>
-				<CardHeader className="flex-row items-center justify-between space-y-0">
+				<CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2 space-y-0">
 					<CardTitle>{runs.data?.runs.length ?? 0} runs</CardTitle>
 					{showCost && costTotals.priced > 0 ? (
 						<span
@@ -175,11 +175,11 @@ export function RunsPage() {
 						<Table>
 							<TableHeader>
 								<TableRow>
-									<TableHead>State</TableHead>
-									<TableHead>ID</TableHead>
-									<TableHead>Agent</TableHead>
-									<TableHead>Project</TableHead>
-									<TableHead>
+									<TableHead className="whitespace-nowrap">State</TableHead>
+									<TableHead className="whitespace-nowrap">ID</TableHead>
+									<TableHead className="whitespace-nowrap">Agent</TableHead>
+									<TableHead className="whitespace-nowrap">Project</TableHead>
+									<TableHead className="whitespace-nowrap">
 										<SortHeader
 											label="Started"
 											active={sort === "started"}
@@ -188,7 +188,7 @@ export function RunsPage() {
 										/>
 									</TableHead>
 									{showCost ? (
-										<TableHead className="text-right">
+										<TableHead className="whitespace-nowrap text-right">
 											<SortHeader
 												label="Cost"
 												active={sort === "cost"}
@@ -214,8 +214,8 @@ export function RunsPage() {
 												{r.id}
 											</Link>
 										</TableCell>
-										<TableCell>{r.agentName}</TableCell>
-										<TableCell className="font-mono text-xs">
+										<TableCell className="whitespace-nowrap">{r.agentName}</TableCell>
+										<TableCell className="whitespace-nowrap font-mono text-xs">
 											{r.projectId === null ? (
 												<span className="italic text-(--color-muted-foreground)">
 													(deleted project)
@@ -224,11 +224,11 @@ export function RunsPage() {
 												(projectIndex.get(r.projectId) ?? r.projectId)
 											)}
 										</TableCell>
-										<TableCell className="text-(--color-muted-foreground)">
+										<TableCell className="whitespace-nowrap text-(--color-muted-foreground)">
 											{relativeTime(r.startedAt)}
 										</TableCell>
 										{showCost ? (
-											<TableCell className="text-right font-mono text-xs">
+											<TableCell className="whitespace-nowrap text-right font-mono text-xs">
 												{r.costUsd !== null ? (
 													formatCostUsd(r.costUsd)
 												) : (

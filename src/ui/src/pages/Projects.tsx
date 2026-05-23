@@ -87,19 +87,19 @@ export function ProjectsPage() {
 						<Table>
 							<TableHeader>
 								<TableRow>
-									<TableHead>ID</TableHead>
-									<TableHead>Git URL</TableHead>
-									<TableHead>Default branch</TableHead>
-									<TableHead>HEAD</TableHead>
-									<TableHead>Last fetched</TableHead>
-									<TableHead>Added</TableHead>
+									<TableHead className="whitespace-nowrap">ID</TableHead>
+									<TableHead className="whitespace-nowrap">Git URL</TableHead>
+									<TableHead className="whitespace-nowrap">Default branch</TableHead>
+									<TableHead className="whitespace-nowrap">HEAD</TableHead>
+									<TableHead className="whitespace-nowrap">Last fetched</TableHead>
+									<TableHead className="whitespace-nowrap">Added</TableHead>
 									<TableHead className="w-24" />
 								</TableRow>
 							</TableHeader>
 							<TableBody>
 								{projects.data?.projects.map((p) => (
 									<TableRow key={p.id}>
-										<TableCell className="font-mono text-xs">
+										<TableCell className="whitespace-nowrap font-mono text-xs">
 											<Link
 												to={`/projects/${encodeURIComponent(p.id)}`}
 												className="underline-offset-4 hover:underline"
@@ -107,22 +107,22 @@ export function ProjectsPage() {
 												{p.id}
 											</Link>
 										</TableCell>
-										<TableCell className="font-mono text-xs">
+										<TableCell className="whitespace-nowrap font-mono text-xs">
 											{p.gitUrl}
 										</TableCell>
-										<TableCell>{p.defaultBranch}</TableCell>
+										<TableCell className="whitespace-nowrap">{p.defaultBranch}</TableCell>
 										<TableCell
-											className="font-mono text-xs"
+											className="whitespace-nowrap font-mono text-xs"
 											title={p.lastHeadSha ?? "never fetched"}
 										>
 											{p.lastHeadSha !== null ? p.lastHeadSha.slice(0, 7) : "—"}
 										</TableCell>
-										<TableCell className="text-(--color-muted-foreground)">
+										<TableCell className="whitespace-nowrap text-(--color-muted-foreground)">
 											{p.lastFetchedAt !== null
 												? formatTimestamp(p.lastFetchedAt)
 												: "never"}
 										</TableCell>
-										<TableCell className="text-(--color-muted-foreground)">
+										<TableCell className="whitespace-nowrap text-(--color-muted-foreground)">
 											{formatTimestamp(p.addedAt)}
 										</TableCell>
 										<TableCell>
