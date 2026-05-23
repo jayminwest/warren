@@ -5,6 +5,7 @@ import { DrizzleAdapter } from "../../db/repos/drizzle-adapter.ts";
 import { parseRenderedAgent, type RenderResponse } from "../schema.ts";
 import {
 	agentSourceTier,
+	BRAINSTORM_BUILTIN,
 	BUILTIN_AGENT_NAMES,
 	BUILTIN_AGENTS,
 	CLAUDE_CODE_BUILTIN,
@@ -19,10 +20,11 @@ import {
 } from "./index.ts";
 
 describe("BUILTIN_AGENTS", () => {
-	test("includes claude-code, sapling, and pi", () => {
+	test("includes claude-code, sapling, pi, and brainstorm", () => {
 		expect(BUILTIN_AGENT_NAMES.has("claude-code")).toBe(true);
 		expect(BUILTIN_AGENT_NAMES.has("sapling")).toBe(true);
 		expect(BUILTIN_AGENT_NAMES.has("pi")).toBe(true);
+		expect(BUILTIN_AGENT_NAMES.has("brainstorm")).toBe(true);
 	});
 
 	test("each builtin has a non-empty system section (warren's required schema field)", () => {
@@ -60,6 +62,7 @@ describe("readAgentSource", () => {
 		expect(readAgentSource(CLAUDE_CODE_BUILTIN)).toBe("builtin");
 		expect(readAgentSource(SAPLING_BUILTIN)).toBe("builtin");
 		expect(readAgentSource(PI_BUILTIN)).toBe("builtin");
+		expect(readAgentSource(BRAINSTORM_BUILTIN)).toBe("builtin");
 	});
 
 	test("returns 'library' for arbitrary library-shaped renderedJson", () => {
@@ -160,6 +163,46 @@ describe("stampAgentSource", () => {
 		expect(stamped.frontmatter.source).toBe("project:prj_aaaaaaaaaaaa");
 		expect(readAgentSource(stamped)).toBe("project:prj_aaaaaaaaaaaa");
 		expect(agentSourceTier(readAgentSource(stamped))).toBe("project");
+	});
+});
+
+describe("BRAINSTORM_BUILTIN", () => {
+	test("is registered as an interactive read-only scout", () => {
+		// pl-0344 step 6 / warren-3de8: brainstorm pairs with planner as
+		// the first interactive built-ins. The interactive tag lets the UI
+		// surface it under interactive-run pickers without parsing the
+		// system prompt.
+		expect(BRAINSTORM_BUILTIN.name).toBe("brainstorm");
+		expect(BRAINSTORM_BUILTIN.frontmatter.tags).toContain("interactive");
+	});
+
+	test("system prompt forbids workspace writes, plot writes, and dispatch", () => {
+		// Warren's burrow_config only forwards [sandbox].network onto
+		// POST /burrows (src/runs/burrow_config.ts), so the read-only
+		// scout contract is enforced in the prompt for now. These string
+		// checks pin the contract so a casual edit doesn't silently widen
+		// the role.
+		const system = BRAINSTORM_BUILTIN.sections.system ?? "";
+		expect(system).toMatch(/read-only scout/i);
+		expect(system).toMatch(/must NOT/);
+		expect(system).toMatch(/Edit, create, or delete files/);
+		expect(system).toMatch(/\.plot\//);
+		expect(system).toMatch(/Dispatch runs/);
+	});
+
+	test("requires open network for web-fetch scouting", () => {
+		expect(BRAINSTORM_BUILTIN.sections.burrow_config).toContain('network = "open"');
+	});
+
+	test("drives the user toward the four Plot intent fields", () => {
+		// The interactive-run primitive (warren-1117) and the formalize
+		// flow (warren-d22e) both expect brainstorm to produce material
+		// that maps onto goal / non_goals / constraints / success_criteria.
+		const system = BRAINSTORM_BUILTIN.sections.system ?? "";
+		expect(system).toMatch(/goal/);
+		expect(system).toMatch(/non_goals/);
+		expect(system).toMatch(/constraints/);
+		expect(system).toMatch(/success_criteria/);
 	});
 });
 

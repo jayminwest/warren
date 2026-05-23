@@ -24,6 +24,7 @@
 
 import type { AgentsRepo } from "../../db/repos/agents.ts";
 import type { AgentDefinition } from "../schema.ts";
+import { BRAINSTORM_BUILTIN } from "./brainstorm.ts";
 import { CLAUDE_CODE_BUILTIN } from "./claude-code.ts";
 import { PI_BUILTIN } from "./pi.ts";
 import { SAPLING_BUILTIN } from "./sapling.ts";
@@ -53,6 +54,7 @@ export const BUILTIN_AGENTS: readonly AgentDefinition[] = [
 	CLAUDE_CODE_BUILTIN,
 	SAPLING_BUILTIN,
 	PI_BUILTIN,
+	BRAINSTORM_BUILTIN,
 ];
 
 export const BUILTIN_AGENT_NAMES: ReadonlySet<string> = new Set(BUILTIN_AGENTS.map((a) => a.name));
@@ -175,4 +177,4 @@ export function stampAgentSource(agent: AgentDefinition, source: AgentSource): A
 	};
 }
 
-export { CLAUDE_CODE_BUILTIN, PI_BUILTIN, SAPLING_BUILTIN };
+export { BRAINSTORM_BUILTIN, CLAUDE_CODE_BUILTIN, PI_BUILTIN, SAPLING_BUILTIN };
