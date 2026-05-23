@@ -12,6 +12,7 @@ import {
 	isProjectAgentSource,
 	makeProjectAgentSource,
 	PI_BUILTIN,
+	PLANNER_BUILTIN,
 	projectIdFromAgentSource,
 	readAgentSource,
 	SAPLING_BUILTIN,
@@ -20,11 +21,12 @@ import {
 } from "./index.ts";
 
 describe("BUILTIN_AGENTS", () => {
-	test("includes claude-code, sapling, pi, and brainstorm", () => {
+	test("includes claude-code, sapling, pi, brainstorm, and planner", () => {
 		expect(BUILTIN_AGENT_NAMES.has("claude-code")).toBe(true);
 		expect(BUILTIN_AGENT_NAMES.has("sapling")).toBe(true);
 		expect(BUILTIN_AGENT_NAMES.has("pi")).toBe(true);
 		expect(BUILTIN_AGENT_NAMES.has("brainstorm")).toBe(true);
+		expect(BUILTIN_AGENT_NAMES.has("planner")).toBe(true);
 	});
 
 	test("each builtin has a non-empty system section (warren's required schema field)", () => {
@@ -63,6 +65,7 @@ describe("readAgentSource", () => {
 		expect(readAgentSource(SAPLING_BUILTIN)).toBe("builtin");
 		expect(readAgentSource(PI_BUILTIN)).toBe("builtin");
 		expect(readAgentSource(BRAINSTORM_BUILTIN)).toBe("builtin");
+		expect(readAgentSource(PLANNER_BUILTIN)).toBe("builtin");
 	});
 
 	test("returns 'library' for arbitrary library-shaped renderedJson", () => {
@@ -203,6 +206,56 @@ describe("BRAINSTORM_BUILTIN", () => {
 		expect(system).toMatch(/non_goals/);
 		expect(system).toMatch(/constraints/);
 		expect(system).toMatch(/success_criteria/);
+	});
+});
+
+describe("PLANNER_BUILTIN", () => {
+	test("is registered as an interactive scout with narrow write scope", () => {
+		// pl-0344 step 7 / warren-543d: planner pairs with brainstorm as
+		// the second interactive built-in. The interactive tag lets the UI
+		// surface it under interactive-run pickers without parsing the
+		// system prompt.
+		expect(PLANNER_BUILTIN.name).toBe("planner");
+		expect(PLANNER_BUILTIN.frontmatter.tags).toContain("interactive");
+	});
+
+	test("system prompt allows .plot/ and .seeds/ writes only, forbids source + dispatch", () => {
+		// Warren's burrow_config only forwards [sandbox].network onto
+		// POST /burrows (src/runs/burrow_config.ts), so the path-scoped
+		// write contract is enforced in the prompt for now. These string
+		// checks pin the contract so a casual edit doesn't silently widen
+		// the role.
+		const system = PLANNER_BUILTIN.sections.system ?? "";
+		expect(system).toMatch(/must NOT/);
+		expect(system).toMatch(/source files/);
+		expect(system).toMatch(/Dispatch agent runs/);
+		expect(system).toMatch(/\.plot\//);
+		expect(system).toMatch(/\.seeds\//);
+	});
+
+	test("references the sd plan submit pipeline that produces seeds", () => {
+		// The planner's only side effect on work items is via
+		// `sd plan submit`, which spawns child seeds (mx-77117c documents
+		// the 0-BASED `steps[i].blocks` index semantics — the prompt
+		// reiterates that so the agent doesn't off-by-one).
+		const system = PLANNER_BUILTIN.sections.system ?? "";
+		expect(system).toMatch(/sd plan prompt/);
+		expect(system).toMatch(/sd plan submit/);
+		expect(system).toMatch(/0-BASED/);
+	});
+
+	test("refuses to invent Plot intent and defers to brainstorm + formalize", () => {
+		// The interactive run primitive (warren-1117) loads Plot context
+		// into the prompt. If intent is empty, planner must bounce the user
+		// to the brainstorm/formalize flow (warren-3de8 / warren-d22e)
+		// rather than fabricate goals.
+		const system = PLANNER_BUILTIN.sections.system ?? "";
+		expect(system).toMatch(/brainstorm/);
+		expect(system).toMatch(/formalize/);
+	});
+
+	test("requires open network for scouting external references", () => {
+		expect(PLANNER_BUILTIN.sections.burrow_config).toContain('network = "open"');
 	});
 });
 
