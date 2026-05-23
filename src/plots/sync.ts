@@ -1,10 +1,10 @@
-import { mkdtemp, readdir, readFile, writeFile, mkdir, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { PlotSyncConfig } from "../warren-config/index.ts";
 import type { SpawnFn } from "../projects/index.ts";
 import { parseGitHubUrl } from "../projects/url.ts";
-import { openPullRequest, parsePullRequestRef, mergePullRequest } from "../runs/pr.ts";
+import { mergePullRequest, openPullRequest, parsePullRequestRef } from "../runs/pr.ts";
+import type { PlotSyncConfig } from "../warren-config/index.ts";
 
 export interface PlotSyncRequest {
 	readonly projectPath: string;
@@ -52,7 +52,10 @@ async function copyPlotDir(src: string, dst: string): Promise<void> {
 	const srcFileNames = new Set<string>();
 	for (const entry of srcEntries) {
 		if (!entry.isFile()) continue;
-		if (entry.name.startsWith("plot-") && (entry.name.endsWith(".events.jsonl") || entry.name.endsWith(".json"))) {
+		if (
+			entry.name.startsWith("plot-") &&
+			(entry.name.endsWith(".events.jsonl") || entry.name.endsWith(".json"))
+		) {
 			srcFileNames.add(entry.name);
 			const content = await readFile(join(src, entry.name));
 			await writeFile(join(dst, entry.name), content);
@@ -63,7 +66,10 @@ async function copyPlotDir(src: string, dst: string): Promise<void> {
 		const dstEntries = await readdir(dst, { withFileTypes: true });
 		for (const entry of dstEntries) {
 			if (!entry.isFile()) continue;
-			if (entry.name.startsWith("plot-") && (entry.name.endsWith(".events.jsonl") || entry.name.endsWith(".json"))) {
+			if (
+				entry.name.startsWith("plot-") &&
+				(entry.name.endsWith(".events.jsonl") || entry.name.endsWith(".json"))
+			) {
 				if (!srcFileNames.has(entry.name)) {
 					await rm(join(dst, entry.name), { force: true });
 				}
@@ -76,16 +82,8 @@ async function copyPlotDir(src: string, dst: string): Promise<void> {
 
 export const defaultPlotSyncer: PlotSyncer = {
 	async sync(input) {
-		const {
-			projectPath,
-			gitUrl,
-			defaultBranch,
-			token,
-			handle,
-			plotSyncConfig,
-			spawn,
-			gitBinary,
-		} = input;
+		const { projectPath, gitUrl, defaultBranch, token, handle, plotSyncConfig, spawn, gitBinary } =
+			input;
 		const fetchImpl = input.fetch ?? globalThis.fetch;
 
 		// 1. Detect if .plot/ files are dirty
@@ -135,7 +133,9 @@ export const defaultPlotSyncer: PlotSyncer = {
 				);
 			}
 			if (worktreeAddRes.exitCode !== 0) {
-				throw new Error(`Failed to create git worktree (exit ${worktreeAddRes.exitCode}): ${worktreeAddRes.stderr}`);
+				throw new Error(
+					`Failed to create git worktree (exit ${worktreeAddRes.exitCode}): ${worktreeAddRes.stderr}`,
+				);
 			}
 
 			// 7. Copy plot files to worktree
@@ -144,29 +144,38 @@ export const defaultPlotSyncer: PlotSyncer = {
 			// 8. Stage, commit, and push
 			const addRes = await trySpawn(spawn, [gitBinary, "add", ".plot/"], { cwd: worktreePath });
 			if (addRes.exitCode !== 0) {
-				throw new Error(`Failed to stage changes in worktree (exit ${addRes.exitCode}): ${addRes.stderr}`);
+				throw new Error(
+					`Failed to stage changes in worktree (exit ${addRes.exitCode}): ${addRes.stderr}`,
+				);
 			}
 
 			const commitRes = await trySpawn(
 				spawn,
 				[
 					gitBinary,
-					"-c", "user.name=warren",
-					"-c", "user.email=warren@os-eco.dev",
+					"-c",
+					"user.name=warren",
+					"-c",
+					"user.email=warren@os-eco.dev",
 					"commit",
-					"-m", "plot sync: update plot metadata",
+					"-m",
+					"plot sync: update plot metadata",
 				],
 				{ cwd: worktreePath },
 			);
 			if (commitRes.exitCode !== 0) {
-				throw new Error(`Failed to commit changes in worktree (exit ${commitRes.exitCode}): ${commitRes.stderr}`);
+				throw new Error(
+					`Failed to commit changes in worktree (exit ${commitRes.exitCode}): ${commitRes.stderr}`,
+				);
 			}
 
 			const pushRes = await trySpawn(spawn, [gitBinary, "push", "origin", branchName], {
 				cwd: worktreePath,
 			});
 			if (pushRes.exitCode !== 0) {
-				throw new Error(`Failed to push sync branch to origin (exit ${pushRes.exitCode}): ${pushRes.stderr}`);
+				throw new Error(
+					`Failed to push sync branch to origin (exit ${pushRes.exitCode}): ${pushRes.stderr}`,
+				);
 			}
 		} finally {
 			// 9. Clean up worktree definition and directory
@@ -212,7 +221,9 @@ export const defaultPlotSyncer: PlotSyncer = {
 			});
 			const merged = mergeResult.kind === "merged" || mergeResult.kind === "already_merged";
 			if (!merged) {
-				throw new Error(`Failed to merge sync pull request: ${mergeResult.kind === "not_mergeable" ? mergeResult.message : mergeResult.kind}`);
+				throw new Error(
+					`Failed to merge sync pull request: ${mergeResult.kind === "not_mergeable" ? mergeResult.message : mergeResult.kind}`,
+				);
 			}
 			return {
 				kind: "synced",
