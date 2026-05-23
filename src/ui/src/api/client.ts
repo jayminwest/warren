@@ -40,6 +40,8 @@ import type {
 	RunRow,
 	RunTriggerResponse,
 	SeedStatusResponse,
+	SendRunMessageInput,
+	SendRunMessageResponse,
 	SpawnRunResponse,
 	SteerRunResponse,
 	TriggersResponse,
@@ -240,6 +242,11 @@ export const runsApi = {
 		request<RunRow>(`/runs/${encodeURIComponent(id)}`, { ...(signal ? { signal } : {}) }),
 	create: (input: CreateRunInput) =>
 		request<SpawnRunResponse>("/runs", { method: "POST", body: input }),
+	sendMessage: (id: string, input: SendRunMessageInput) =>
+		request<SendRunMessageResponse>(`/runs/${encodeURIComponent(id)}/messages`, {
+			method: "POST",
+			body: input,
+		}),
 	steer: (id: string, input: { body: string }) =>
 		request<SteerRunResponse>(`/runs/${encodeURIComponent(id)}/steer`, {
 			method: "POST",
