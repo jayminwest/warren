@@ -11,6 +11,9 @@
 {"type":"run_dispatched","actor":"user:operator","at":"2026-05-23T05:48:56.779Z","data":{"run_id":"run_nf04a9tydpfq","agent":"planner","model":"claude-opus-4-7","project":"prj_z07y6ssfjfpk"}}
 {"type":"status_changed","actor":"user:operator","at":"2026-05-23T05:54:10.233Z","data":{"from":"drafting","to":"ready"}}
 {"type":"run_dispatched","actor":"user:operator","at":"2026-05-23T05:57:29.075Z","data":{"run_id":"run_nfkpyesk1e8p","agent":"planner","model":"claude-opus-4-7","project":"prj_z07y6ssfjfpk"}}
+{"type":"status_changed","actor":"user:operator","at":"2026-05-23T06:23:24.353Z","data":{"from":"ready","to":"active"}}
+{"type":"intent_edited","actor":"user:operator","at":"2026-05-23T06:25:10.364Z","data":{"field":"goal","value":"Improving the mobile UX."}}
+{"type":"run_dispatched","actor":"user:operator","at":"2026-05-23T06:31:39.492Z","data":{"run_id":"run_3sjyxfjvfhch","agent":"planner","model":"claude-opus-4-7","project":"prj_z07y6ssfjfpk"}}
 {"type":"attachment_added","actor":"user:jayminwest","at":"2026-05-23T06:10:00.848Z","data":{"id":"att-001","type":"seeds_issue","ref":"pl-4ed6","role":"tracks"}}
 {"type":"attachment_added","actor":"user:jayminwest","at":"2026-05-23T06:10:03.329Z","data":{"id":"att-002","type":"seeds_issue","ref":"warren-fb3c","role":"tracks"}}
 {"type":"attachment_added","actor":"user:jayminwest","at":"2026-05-23T06:10:03.370Z","data":{"id":"att-003","type":"seeds_issue","ref":"warren-0155","role":"tracks"}}
