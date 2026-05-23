@@ -70,6 +70,7 @@ import {
 } from "../plan-runs/plot-appender.ts";
 import { NoDispatchableSeedsError } from "../plot-plan-runs/index.ts";
 import {
+	createDefaultPlotFormalizer,
 	defaultPlotAttacher,
 	defaultPlotCreator,
 	defaultPlotIntentEditor,
@@ -2514,6 +2515,217 @@ function parseIntentPatch(
 }
 
 /**
+ * `POST /brainstorm` — one-shot brainstorm dispatcher (warren-d22e /
+ * pl-0344 step 8).
+ *
+ * Atomically creates a draft Plot (status defaults to `drafting`, empty
+ * intent, name defaults to `"Untitled brainstorm"`) and dispatches the
+ * first interactive turn against the built-in `brainstorm` agent bound
+ * to that Plot. The two operations are exposed as separate primitives
+ * (`POST /plots`, `POST /runs` with `mode='interactive'`) but the
+ * fresh-start UX is a single click — wrapping them here saves the UI
+ * an awkward two-call dance plus a partial-failure rollback.
+ *
+ * Body shape: `{ project_id: string, prompt: string, name?: string,
+ *   agent?: string, dispatcher_handle?: string, providerOverride?,
+ *   modelOverride?, ref? }`. `agent` overrides the default
+ *   `"brainstorm"` so canopy-library variants can swap in by name; the
+ *   override flows through warren's normal agent-resolution path.
+ *
+ * Handler order mirrors `POST /plots` then `POST /runs` (interactive):
+ *   (1) project lookup + `hasPlot` gate (`ProjectLacksPlotError`).
+ *   (2) dispatcher-handle resolution (mx-6a9788).
+ *   (3) create the draft Plot via `deps.plotCreator`. Failure surfaces
+ *       synchronously — the user is waiting on the result; we don't
+ *       want a half-state where the run lands without a Plot.
+ *   (4) build the first-turn prompt via `buildInteractivePrompt` (the
+ *       same envelope `spawnInteractiveTurn` emits on turn N, so the
+ *       agent sees a uniform shape across turn 1 and turn N).
+ *   (5) `spawnRun({mode:'interactive', plotId: created.id, agentName})`.
+ *   (6) `appendUserMessage` on the new run so the events stream
+ *       reflects the conversation from turn 0.
+ *   (7) start the bridge so events flow into warren immediately.
+ *   (8) return 201 with `{plot, run, burrow}`.
+ *
+ * Aggregator cache is invalidated after the create so subsequent
+ * `GET /plots` lists see the fresh Plot without waiting for the 5s
+ * TTL.
+ */
+function createBrainstormHandler(deps: ServerDeps): RouteHandler {
+	return async (ctx) => {
+		const body = await readJsonBody(ctx);
+		const projectId = requireString(body, "project_id");
+		const prompt = requireString(body, "prompt");
+		const rawName = optionalString(body, "name");
+		if (rawName !== undefined && rawName.trim().length === 0) {
+			throw new ValidationError("field 'name' must be a non-empty string when provided");
+		}
+		const name = rawName !== undefined ? rawName : "Untitled brainstorm";
+		const dispatcherHandle = optionalString(body, "dispatcher_handle");
+		const providerOverride = optionalString(body, "providerOverride");
+		const modelOverride = optionalString(body, "modelOverride");
+		const ref = optionalString(body, "ref");
+		const agentName = optionalString(body, "agent") ?? "brainstorm";
+
+		// (1) project + hasPlot gate.
+		const project = await deps.repos.projects.require(projectId);
+		if (!project.hasPlot) {
+			throw new ProjectLacksPlotError(
+				`project ${project.id} has no .plot/ directory; cannot start a brainstorm`,
+				{
+					recoveryHint:
+						"run `plot init` in the project clone and refresh the project so warren picks up the .plot/ directory",
+				},
+			);
+		}
+
+		// (2) dispatcher-handle resolution.
+		const handle = resolveDispatcherHandle(dispatcherHandle);
+
+		// (3) create the draft Plot.
+		const creator = deps.plotCreator ?? defaultPlotCreator;
+		const created = await creator.create({
+			plotDir: join(project.localPath, ".plot"),
+			handle,
+			name,
+		});
+		deps.plotAggregator?.invalidate(project.id);
+
+		// (4) build first-turn prompt envelope. Best-effort context load —
+		// a freshly-created Plot has no events yet, but we still go through
+		// the same builder so the agent sees a uniform shape.
+		let context = null;
+		try {
+			context = await defaultPlotContextReader.read({
+				plotDir: join(project.localPath, ".plot"),
+				plotId: created.id,
+				historyTail: 0,
+				handle,
+			});
+		} catch {
+			// Best-effort; matches the createRunHandler interactive-first-turn
+			// posture above.
+		}
+		const dispatchedPrompt = buildInteractivePrompt(context, prompt);
+
+		// (5) dispatch the first interactive turn.
+		const spawned = await spawnRun({
+			repos: deps.repos,
+			burrowClientPool: deps.burrowClientPool,
+			agentName,
+			projectId,
+			prompt: dispatchedPrompt,
+			mode: "interactive",
+			plotId: created.id,
+			dispatcherHandle: handle,
+			trigger: "brainstorm",
+			projectsConfig: deps.projectsConfig,
+			projectSpawn: deps.spawn ?? defaultSpawn,
+			...(ref !== undefined ? { ref } : {}),
+			...(providerOverride !== undefined ? { providerOverride } : {}),
+			...(modelOverride !== undefined ? { modelOverride } : {}),
+			...(deps.now !== undefined ? { now: deps.now } : {}),
+			...(deps.warrenConfigs !== undefined ? { warrenConfigs: deps.warrenConfigs } : {}),
+			...(deps.runBranchPrefixDefault !== undefined
+				? { runBranchPrefixDefault: deps.runBranchPrefixDefault }
+				: {}),
+			...(deps.seedsCli !== undefined ? { seedsCli: deps.seedsCli } : {}),
+		});
+
+		// (6) append the raw user_message event on turn 0.
+		await appendUserMessage({
+			repos: deps.repos,
+			runId: spawned.run.id,
+			message: prompt,
+			handle,
+			...(deps.now !== undefined ? { now: deps.now() } : {}),
+		});
+
+		// (7) start the bridge so events flow into warren immediately.
+		deps.bridges.start(spawned.run.id, spawned.burrowRun.id, spawned.burrow.id);
+
+		// (8) wire response.
+		const summary: PlotSummary = {
+			id: created.id,
+			name: created.name,
+			status: created.status,
+			intent_goal_preview: created.intent_goal_preview,
+			attachments_count: created.attachments_count,
+			last_event_ts: created.last_event_ts,
+			last_event_actor: created.last_event_actor,
+			project_id: project.id,
+		};
+		return jsonResponse(201, {
+			plot: summary,
+			run: spawned.run,
+			burrow: {
+				id: spawned.burrow.id,
+				workspacePath: spawned.burrow.workspacePath,
+			},
+		});
+	};
+}
+
+/**
+ * `POST /plots/:id/formalize` — brainstorm-summarize endpoint
+ * (warren-d22e / pl-0344 step 8).
+ *
+ * Returns a **suggested** Plot intent extracted from the agent's
+ * messages in the brainstorm conversation. Non-mutating: the Plot is
+ * untouched, no Plot event is emitted, no run is spawned. The caller
+ * (UI) renders the suggestion as a form the user edits, then applies
+ * via the existing `POST /plots/:id/intent` route and transitions to
+ * `ready` via `POST /plots/:id/status`.
+ *
+ * Handler order:
+ *   (1) resolve owning project via `deps.plotResolver`. `null` → typed
+ *       404 so the empty-deployments contract stays stable.
+ *   (2) defensive `hasPlot` re-check — the resolver only walks
+ *       `hasPlot=true` rows, but the flag can flip out from under us.
+ *   (3) hand off to `deps.plotFormalizer` (default
+ *       `createDefaultPlotFormalizer({repos})`) which reads every
+ *       `agent_message` event on interactive runs bound to the Plot,
+ *       parses field markers, and returns the accumulated suggestion.
+ *
+ * Response shape: `{plot_id, suggested_intent: {goal, non_goals,
+ *   constraints, success_criteria}, source_message_count}`. An
+ *   all-empty suggestion + `source_message_count: 0` is the legitimate
+ *   "no agent_message events yet" response — the UI shows "start
+ *   chatting first" instead of an empty form.
+ */
+function formalizePlotHandler(deps: ServerDeps): RouteHandler {
+	return async (ctx) => {
+		const plotId = requireParam(ctx, "id");
+
+		// (1) resolve owning project.
+		const project =
+			deps.plotResolver !== undefined ? await deps.plotResolver.resolve(plotId) : null;
+		if (project === null) {
+			throw new NotFoundError(`plot not found: ${plotId}`, {
+				recoveryHint:
+					"check the plot id; only Plots in projects with hasPlot=true are visible to warren",
+			});
+		}
+
+		// (2) defensive hasPlot re-check.
+		if (!project.hasPlot) {
+			throw new ProjectLacksPlotError(
+				`project ${project.id} no longer has a .plot/ directory; cannot formalize plot ${plotId}`,
+				{
+					recoveryHint:
+						"refresh the project so warren picks up the current .plot/ state, or recreate .plot/ via `plot init`",
+				},
+			);
+		}
+
+		// (3) delegate to the formalizer seam.
+		const formalizer = deps.plotFormalizer ?? createDefaultPlotFormalizer({ repos: deps.repos });
+		const result = await formalizer.formalize({ plotId });
+		return jsonResponse(200, result);
+	};
+}
+
+/**
  * `GET /plots/:id` — full Plot envelope by id (warren-961e /
  * pl-9d6a step 8).
  *
@@ -3261,8 +3473,10 @@ const ROUTE_TABLE: readonly RouteEntry[] = [
 	{ method: "POST", pattern: "/plan-runs/:id/cancel", build: cancelPlanRunHandler },
 	{ method: "GET", pattern: "/plan-runs/:id/events", build: streamPlanRunEventsHandler },
 
+	{ method: "POST", pattern: "/brainstorm", build: createBrainstormHandler },
 	{ method: "GET", pattern: "/plots", build: listPlotsHandler },
 	{ method: "POST", pattern: "/plots", build: createPlotHandler },
+	{ method: "POST", pattern: "/plots/:id/formalize", build: formalizePlotHandler },
 	{ method: "GET", pattern: "/plots/:id", build: getPlotHandler },
 	{ method: "POST", pattern: "/plots/:id/intent", build: editPlotIntentHandler },
 	{ method: "POST", pattern: "/plots/:id/status", build: changePlotStatusHandler },
@@ -3305,6 +3519,7 @@ export function buildApiRoutes(deps: ServerDeps): Route[] {
  */
 export const API_PREFIXES: readonly string[] = [
 	"/agents",
+	"/brainstorm",
 	"/burrows",
 	"/projects",
 	"/runs",

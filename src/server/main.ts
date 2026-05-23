@@ -40,6 +40,7 @@ import {
 } from "../plan-runs/index.ts";
 import { createDefaultPlanSynthesizer } from "../plot-plan-runs/index.ts";
 import {
+	createDefaultPlotFormalizer,
 	createPlotAggregator,
 	createPlotResolver,
 	defaultPlotAttacher,
@@ -441,6 +442,7 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 		plotReader: defaultPlotReader,
 		plotStatusChanger: defaultPlotStatusChanger,
 		plotQuestionAnswerer: defaultPlotQuestionAnswerer,
+		plotFormalizer: createDefaultPlotFormalizer({ repos }),
 		plotResolver: createPlotResolver({
 			projectsRepo: repos.projects,
 			aggregator: plotAggregator,

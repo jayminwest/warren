@@ -216,6 +216,25 @@ export class RunsRepo {
 		);
 	}
 
+	/**
+	 * Every run row bound to a given `plotId`, ordered by id (stable for
+	 * tests). Powers `POST /plots/:id/formalize` (warren-d22e / pl-0344
+	 * step 8) which needs to enumerate every interactive turn of a
+	 * brainstorm conversation to extract suggested intent — the caller
+	 * re-sorts the underlying events by `ts` so dispatch-order surprises
+	 * don't affect the summary. The `runs_plot_id` index (sqlite +
+	 * postgres) covers the predicate.
+	 */
+	async listByPlotId(plotId: string): Promise<RunRow[]> {
+		return this.adapter.pickAll(
+			this.db
+				.select()
+				.from(this.runs)
+				.where(eq(this.runs.plotId, plotId))
+				.orderBy(asc(this.runs.id)),
+		);
+	}
+
 	async listByAgent(
 		agentName: string,
 		options: { limit?: number; sort?: "started" | "cost"; dir?: "asc" | "desc" } = {},

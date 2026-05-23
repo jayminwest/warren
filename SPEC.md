@@ -2117,6 +2117,45 @@ agent:
   inflating the top-level shape — the nested block exists to give that
   growth a home.
 
+**Brainstorm + Formalize (warren-d22e / pl-0344 step 8).** The
+fresh-start UX for the Plot workbench loop is a single click that
+creates a draft Plot and opens a brainstorm chat against it. Two
+endpoints carry that flow:
+
+- `POST /brainstorm` — atomically (a) creates a draft Plot via
+  `defaultPlotCreator` (status defaults to `drafting`, empty intent,
+  name defaults to `"Untitled brainstorm"`) and (b) dispatches the
+  first interactive turn against the built-in `brainstorm` agent
+  bound to that Plot. Body: `{ project_id, prompt, name?, agent?,
+  dispatcher_handle?, providerOverride?, modelOverride?, ref? }`.
+  Returns 201 with `{plot: PlotSummary, run: RunRow, burrow: {id,
+  workspacePath}}`. The two underlying primitives (`POST /plots`
+  + `POST /runs` mode=interactive) remain available; this endpoint
+  exists so the UI doesn't need to issue them sequentially with
+  partial-failure rollback.
+- `POST /plots/:id/formalize` — deterministic-extraction endpoint
+  that returns a **suggested** intent (`{goal, non_goals, constraints,
+  success_criteria}`) parsed from `agent_message` events on the Plot's
+  interactive runs. The Plot is NOT mutated and no Plot event is
+  emitted: the user reviews + edits the suggestion and applies it via
+  the existing `POST /plots/:id/intent` route, then transitions to
+  `ready` via `POST /plots/:id/status`. The parser anchors a marker
+  contract (`**goal**: ...`, `**non_goals**: -`, etc.) advertised in
+  the brainstorm agent's system prompt; LLM-generated summaries are
+  intentionally not part of the response shape (async dispatch +
+  synchronous HTTP don't compose, and the user re-edits the
+  suggestion anyway). Response: `{plot_id, suggested_intent,
+  source_message_count}`. An all-empty suggestion + `0` count is
+  the legitimate "no agent_message events yet" response so the UI
+  can show "start chatting first" instead of an empty form.
+
+Seams: `ServerDeps.plotFormalizer` (default
+`createDefaultPlotFormalizer({repos})`) lets tests stub the extraction;
+`RunsRepo.listByPlotId(plotId)` fans the underlying events query out
+over the `runs_plot_id` index without an N+1. Brainstorm rides the
+existing `defaultPlotCreator` + `spawnRun` seams — no new sandbox
+shape, no new agent contract.
+
 ### 11.P PlanRun: serial plan execution (pl-a258, 2026-05-18)
 
 PlanRun is a dispatch mode, not a fifth bundled feature. The substrate

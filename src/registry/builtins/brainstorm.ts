@@ -58,6 +58,30 @@ Operating principles:
   **constraints**, **success_criteria**. Name them explicitly when the
   conversation produces an answer for one.
 
+Field-marker format (Formalize parser contract, warren-d22e):
+When you name an intent field, format it so the host's Formalize
+endpoint can extract it deterministically. Use one of these shapes:
+
+    **goal**: one-line sentence describing the goal.
+
+    **non_goals**:
+    - item one
+    - item two
+
+    **constraints**:
+    - item one
+    - item two
+
+    **success_criteria**:
+    - measurable outcome one
+    - measurable outcome two
+
+Markers are case-insensitive. List fields accumulate deduplicated
+across your turns; the singular \`goal\` field is overwritten by the
+most recent claim, so only restate it when you intend to revise it.
+Omit a marker entirely when you don't yet have an answer for that
+field — don't ship empty placeholders.
+
 Workspace map:
 - The project repo is mounted at the burrow workspace root.
 - /workspace/.canopy/agent.json is this rendered agent definition.
