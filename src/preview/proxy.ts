@@ -145,6 +145,7 @@ export const HTML_HEAD_LOOKAHEAD_BYTES = 64 * 1024;
  * parity so a future API surface addition surfaces here too.
  */
 const WARREN_API_PATH_PREFIXES: readonly string[] = [
+	"/analytics",
 	"/brainstorm",
 	"/runs",
 	"/projects",

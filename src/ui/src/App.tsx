@@ -4,6 +4,7 @@ import { AuthGate } from "@/components/AuthGate.tsx";
 import { DefaultLanding } from "@/components/DefaultLanding.tsx";
 import { Layout } from "@/components/Layout.tsx";
 import { AgentsPage } from "@/pages/Agents.tsx";
+import { CostAnalyticsPage } from "@/pages/CostAnalytics.tsx";
 import { LoginPage } from "@/pages/Login.tsx";
 import { NewPlanRunPage } from "@/pages/NewPlanRun.tsx";
 import { NewRunPage } from "@/pages/NewRun.tsx";
@@ -57,6 +58,7 @@ export function App() {
 						<Route path="/plots/:id" element={<PlotDetailPage />} />
 						<Route path="/plots/:id/summary" element={<PlotSummaryPage />} />
 						<Route path="/agents" element={<AgentsPage />} />
+						<Route path="/cost-analytics" element={<CostAnalyticsPage />} />
 						<Route path="/projects" element={<ProjectsPage />} />
 						<Route path="/projects/:id" element={<ProjectDetailPage />} />
 					</Route>

@@ -810,3 +810,52 @@ export const metaApi = {
 	version: (signal?: AbortSignal) =>
 		request<{ version: string }>("/version", { ...(signal ? { signal } : {}) }),
 };
+
+/* ----------------------------------------------------------------------- */
+/* Analytics (warren-cf63 / pl-b0c0 step 6)                                 */
+/* ----------------------------------------------------------------------- */
+
+export type CostDimension =
+	| "date"
+	| "project"
+	| "plan"
+	| "plot"
+	| "run"
+	| "agent"
+	| "model"
+	| "provider";
+
+export interface CostBucket {
+	key: string;
+	costUsd: number;
+	runs: number;
+	priced: number;
+}
+
+export interface CostAnalyticsResponse {
+	filter: { projectId: string | null; from: string | null; to: string | null };
+	totals: { runs: number; priced: number; costUsd: number };
+	breakdowns: Record<CostDimension, CostBucket[]>;
+}
+
+export interface CostAnalyticsFilter {
+	projectId?: string;
+	from?: string;
+	to?: string;
+}
+
+export const COST_ANALYTICS_NONE_KEY = "__none__";
+
+export const analyticsApi = {
+	cost: (filter: CostAnalyticsFilter = {}, signal?: AbortSignal) => {
+		const params = new URLSearchParams();
+		if (filter.projectId) params.set("projectId", filter.projectId);
+		if (filter.from) params.set("from", filter.from);
+		if (filter.to) params.set("to", filter.to);
+		const qs = params.toString();
+		return request<CostAnalyticsResponse>(
+			`/analytics/cost${qs.length > 0 ? `?${qs}` : ""}`,
+			{ ...(signal ? { signal } : {}) },
+		);
+	},
+};

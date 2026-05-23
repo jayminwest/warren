@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import {
 	Activity,
 	Bot,
+	DollarSign,
 	FolderGit2,
 	ListChecks,
 	LogOut,
@@ -32,6 +33,10 @@ const BASE_NAV_ITEMS: NavItem[] = [
 	{ to: "/plan-runs", label: "Plans", icon: ListChecks },
 	{ to: "/projects", label: "Projects", icon: FolderGit2 },
 	{ to: "/agents", label: "Agents", icon: Bot },
+	// Cost analytics (warren-cf63 / pl-b0c0 step 6) lives at the bottom
+	// of the sidebar — it's an operator-facing analytics view, not a
+	// daily-driver page, so it stays out of the lead-eight positions.
+	{ to: "/cost-analytics", label: "Cost", icon: DollarSign },
 ];
 
 const PLOTS_NAV_ITEM: NavItem = { to: "/plots", label: "Plots", icon: Network };

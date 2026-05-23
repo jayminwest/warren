@@ -13,6 +13,14 @@ export {
 } from "./branch.ts";
 export { type ParsedBurrowConfig, parseBurrowConfig } from "./burrow_config.ts";
 export { type CancelRunInput, type CancelRunResult, cancelRun } from "./cancel.ts";
+export {
+	buildCostAnalytics,
+	type CostAnalytics,
+	type CostAnalyticsRow,
+	type CostBucket,
+	type Dimension as CostDimension,
+	NONE_KEY as COST_ANALYTICS_NONE_KEY,
+} from "./cost-analytics.ts";
 export { RunSpawnError } from "./errors.ts";
 export {
 	DEFAULT_SUBSCRIPTION_BUFFER,

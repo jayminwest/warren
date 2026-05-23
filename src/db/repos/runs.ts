@@ -10,7 +10,7 @@
  * the burrow IDs are written back once we have them.
  */
 
-import { and, asc, desc, eq, inArray, isNotNull, type SQL, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNotNull, lte, type SQL, sql } from "drizzle-orm";
 import { NotFoundError, StateTransitionError, ValidationError } from "../../core/errors.ts";
 import { generateId } from "../../core/ids.ts";
 import type { SqliteDrizzleDb } from "../client.ts";
@@ -309,6 +309,34 @@ export class RunsRepo {
 			costTotalUsd: Number(row?.costTotalUsd ?? 0),
 			costPricedCount: Number(row?.costPricedCount ?? 0),
 		};
+	}
+
+	/**
+	 * Filtered listing for the cost analytics endpoint (warren-cf63 /
+	 * pl-b0c0 step 6). `from`/`to` clip on `startedAt` as ISO8601 strings —
+	 * text comparison is lexicographic but ISO8601 is order-preserving so
+	 * the comparison degenerates to chronological. Both bounds are
+	 * optional; omitting both returns every row (the caller is responsible
+	 * for bounding the window — the endpoint defaults to the last 30 days).
+	 * Rows with a null `startedAt` are excluded when either bound is set,
+	 * mirroring how a SQL date filter naturally drops them.
+	 */
+	async listForAnalytics(
+		filter: { projectId?: string; from?: string; to?: string } = {},
+	): Promise<RunRow[]> {
+		const conds: SQL[] = [];
+		if (filter.projectId !== undefined) {
+			conds.push(eq(this.runs.projectId, filter.projectId));
+		}
+		if (filter.from !== undefined) {
+			conds.push(gte(this.runs.startedAt, filter.from));
+		}
+		if (filter.to !== undefined) {
+			conds.push(lte(this.runs.startedAt, filter.to));
+		}
+		const where = conds.length === 0 ? undefined : conds.length === 1 ? conds[0] : and(...conds);
+		const baseQuery = this.db.select().from(this.runs).orderBy(desc(this.runs.startedAt));
+		return this.adapter.pickAll(where === undefined ? baseQuery : baseQuery.where(where));
 	}
 
 	/**

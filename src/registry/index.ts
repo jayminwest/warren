@@ -70,4 +70,5 @@ export {
 	type RenderResponse,
 	RenderResponseSchema,
 	type RequiredAgentSection,
+	readProviderFrontmatter,
 } from "./schema.ts";

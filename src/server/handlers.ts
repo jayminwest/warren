@@ -96,6 +96,7 @@ import type { SpawnFn, SpawnOptions, SpawnResult } from "../projects/clone.ts";
 import { addProject, deleteProject, listProjects, refreshProject } from "../projects/index.ts";
 import { type AgentSource, readAgentSource } from "../registry/builtins/index.ts";
 import { CanopyClient } from "../registry/canopy.ts";
+import { readProviderFrontmatter } from "../registry/index.ts";
 import {
 	type RefreshProjectResult,
 	refreshAgentRegistry,
@@ -103,7 +104,9 @@ import {
 } from "../registry/refresh.ts";
 import {
 	appendUserMessage,
+	buildCostAnalytics,
 	buildInteractivePrompt,
+	type CostAnalyticsRow,
 	cancelRun,
 	defaultPlotContextReader,
 	hydrateRunsUsage,
@@ -983,6 +986,82 @@ function getRunHandler(deps: ServerDeps): RouteHandler {
 		const run = await hydrateRunUsage(row, deps.repos.events);
 		return jsonResponse(200, run);
 	};
+}
+
+/**
+ * `GET /analytics/cost?from=&to=&projectId=` (warren-cf63 / pl-b0c0 step 6).
+ *
+ * Window defaults to the last 30 days when neither bound is supplied so
+ * a fresh install renders a useful chart without operator setup. Both
+ * bounds and `projectId` are validated lightly — a malformed date is a
+ * 400 because the lexicographic ISO8601 compare in `listForAnalytics`
+ * would silently produce surprising results otherwise.
+ */
+function listCostAnalyticsHandler(deps: ServerDeps): RouteHandler {
+	return async (ctx) => {
+		const projectId = ctx.url.searchParams.get("projectId") ?? undefined;
+		const from = parseAnalyticsDateBound(ctx, "from");
+		const to = parseAnalyticsDateBound(ctx, "to");
+		const defaultFrom = (() => {
+			if (from !== undefined) return from;
+			if (to !== undefined) return undefined;
+			const d = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+			return d.toISOString();
+		})();
+		const filter: { projectId?: string; from?: string; to?: string } = {};
+		if (projectId !== undefined) filter.projectId = projectId;
+		if (defaultFrom !== undefined) filter.from = defaultFrom;
+		if (to !== undefined) filter.to = to;
+		const rowsRaw = await deps.repos.runs.listForAnalytics(filter);
+		// Hydrate so terminal runs with bridge-died cost still count.
+		const rows = await hydrateRunsUsage(rowsRaw, deps.repos.events);
+		const planByRun = new Map<string, string>();
+		if (rows.length > 0) {
+			const joined = await deps.repos.planRuns.resolvePlanForRunIds(rows.map((r) => r.id));
+			for (const j of joined) planByRun.set(j.runId, j.planId);
+		}
+		const analyticsRows: CostAnalyticsRow[] = rows.map((r) => {
+			const { provider, model } = extractProviderModel(r.renderedAgentJson);
+			return {
+				runId: r.id,
+				projectId: r.projectId,
+				agentName: r.agentName,
+				plotId: r.plotId,
+				planId: planByRun.get(r.id) ?? null,
+				planRunId: null,
+				provider: provider ?? null,
+				model: model ?? null,
+				costUsd: r.costUsd,
+				startedAt: r.startedAt,
+			};
+		});
+		const analytics = buildCostAnalytics(analyticsRows);
+		return jsonResponse(200, {
+			filter: {
+				projectId: projectId ?? null,
+				from: defaultFrom ?? null,
+				to: to ?? null,
+			},
+			...analytics,
+		});
+	};
+}
+
+function parseAnalyticsDateBound(ctx: { url: URL }, name: "from" | "to"): string | undefined {
+	const raw = ctx.url.searchParams.get(name);
+	if (raw === null || raw === "") return undefined;
+	const d = new Date(raw);
+	if (Number.isNaN(d.getTime())) {
+		throw new ValidationError(`?${name} must be an ISO8601 date or datetime`);
+	}
+	return d.toISOString();
+}
+
+function extractProviderModel(rendered: unknown): { provider?: string; model?: string } {
+	if (rendered === null || typeof rendered !== "object") return {};
+	const fm = (rendered as { frontmatter?: unknown }).frontmatter;
+	if (fm === null || fm === undefined || typeof fm !== "object") return {};
+	return readProviderFrontmatter(fm as Readonly<Record<string, unknown>>);
 }
 
 /**
@@ -3908,6 +3987,7 @@ const ROUTE_TABLE: readonly RouteEntry[] = [
 	{ method: "GET", pattern: "/workers", build: listWorkersHandler },
 	{ method: "POST", pattern: "/workers/:name/drain", build: drainWorkerHandler },
 
+	{ method: "GET", pattern: "/analytics/cost", build: listCostAnalyticsHandler },
 	{ method: "GET", pattern: "/runs", build: listRunsHandler },
 	{ method: "POST", pattern: "/runs", build: createRunHandler },
 	{ method: "GET", pattern: "/runs/:id", build: getRunHandler },
@@ -3991,6 +4071,7 @@ export function buildApiRoutes(deps: ServerDeps): Route[] {
  */
 export const API_PREFIXES: readonly string[] = [
 	"/agents",
+	"/analytics",
 	"/brainstorm",
 	"/burrows",
 	"/projects",
