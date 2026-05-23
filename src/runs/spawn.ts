@@ -60,7 +60,7 @@ import { withTransportMapping } from "../burrow-client/client.ts";
 import type { BurrowClientPool } from "../burrow-client/pool.ts";
 import { NotFoundError, ValidationError } from "../core/errors.ts";
 import type { Repos } from "../db/repos/index.ts";
-import type { RunRow } from "../db/schema.ts";
+import type { RunMode, RunRow } from "../db/schema.ts";
 import { UserPlotClient } from "../plot-client/index.ts";
 import type { SpawnFn as ProjectSpawnFn } from "../projects/clone.ts";
 import type { ProjectsConfig } from "../projects/config.ts";
@@ -107,6 +107,15 @@ export interface SpawnRunInput {
 	 * Manual prompts and legacy callers leave it undefined → null on disk.
 	 */
 	readonly seedId?: string;
+	/**
+	 * Run mode (pl-0344 step 1 / warren-67b6; surfaced by step 3 / warren-1117).
+	 * `batch` (default) is the historical single-shot run; `interactive` is the
+	 * respawn-per-turn primitive used by `spawnInteractiveTurn` in
+	 * `./interactive.ts`. Persisted to `runs.mode` and fixed at row creation;
+	 * forwarded onto the burrow up call unchanged (burrow has no notion of
+	 * mode — the discriminator is warren-side only).
+	 */
+	readonly mode?: RunMode;
 	/**
 	 * Optional Plot id this run is dispatched against (warren-a8c3,
 	 * parent warren-000b). Validated against `project.hasPlot` here:
@@ -330,6 +339,7 @@ export async function spawnRun(input: SpawnRunInput): Promise<SpawnRunResult> {
 		workerId: placement.workerName,
 		...(input.seedId !== undefined ? { seedId: input.seedId } : {}),
 		...(input.plotId !== undefined && input.plotId !== "" ? { plotId: input.plotId } : {}),
+		...(input.mode !== undefined ? { mode: input.mode } : {}),
 		now: input.now?.(),
 	});
 
