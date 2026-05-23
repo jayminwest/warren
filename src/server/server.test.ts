@@ -339,6 +339,32 @@ describe("startServer — routes", () => {
 		handle = startServer(await depsFor(repos), tcpOpts());
 		const res = await fetch(`${tcpUrl(handle)}/runs`);
 		expect(res.status).toBe(200);
+		// warren-ee50 / pl-b0c0 step 1: paginated envelope shape.
+		const body = (await res.json()) as Record<string, unknown>;
+		expect(body.runs).toEqual([]);
+		expect(body.total).toBe(0);
+		expect(body.costTotalUsd).toBe(0);
+		expect(body.costPricedCount).toBe(0);
+		expect(body.limit).toBe(100);
+		expect(body.offset).toBe(0);
+	});
+
+	test("GET /runs?limit=0 rejects with ValidationError", async () => {
+		handle = startServer(await depsFor(repos), tcpOpts());
+		const res = await fetch(`${tcpUrl(handle)}/runs?limit=0`);
+		expect(res.status).toBe(400);
+	});
+
+	test("GET /runs?limit=501 rejects with ValidationError", async () => {
+		handle = startServer(await depsFor(repos), tcpOpts());
+		const res = await fetch(`${tcpUrl(handle)}/runs?limit=501`);
+		expect(res.status).toBe(400);
+	});
+
+	test("GET /runs?offset=-1 rejects with ValidationError", async () => {
+		handle = startServer(await depsFor(repos), tcpOpts());
+		const res = await fetch(`${tcpUrl(handle)}/runs?offset=-1`);
+		expect(res.status).toBe(400);
 	});
 
 	test("GET /runs/:id 404s on unknown id", async () => {

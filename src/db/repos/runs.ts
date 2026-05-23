@@ -189,30 +189,42 @@ export class RunsRepo {
 	}
 
 	async listAll(
-		options: { limit?: number; sort?: "started" | "cost"; dir?: "asc" | "desc" } = {},
+		options: {
+			limit?: number;
+			offset?: number;
+			sort?: "started" | "cost";
+			dir?: "asc" | "desc";
+		} = {},
 	): Promise<RunRow[]> {
-		const { limit = 100, sort = "started", dir = "desc" } = options;
+		const { limit = 100, offset = 0, sort = "started", dir = "desc" } = options;
 		return this.adapter.pickAll(
 			this.db
 				.select()
 				.from(this.runs)
 				.orderBy(...this.orderByClause(sort, dir))
-				.limit(limit),
+				.limit(limit)
+				.offset(offset),
 		);
 	}
 
 	async listByProject(
 		projectId: string,
-		options: { limit?: number; sort?: "started" | "cost"; dir?: "asc" | "desc" } = {},
+		options: {
+			limit?: number;
+			offset?: number;
+			sort?: "started" | "cost";
+			dir?: "asc" | "desc";
+		} = {},
 	): Promise<RunRow[]> {
-		const { limit = 100, sort = "started", dir = "desc" } = options;
+		const { limit = 100, offset = 0, sort = "started", dir = "desc" } = options;
 		return this.adapter.pickAll(
 			this.db
 				.select()
 				.from(this.runs)
 				.where(eq(this.runs.projectId, projectId))
 				.orderBy(...this.orderByClause(sort, dir))
-				.limit(limit),
+				.limit(limit)
+				.offset(offset),
 		);
 	}
 
@@ -237,17 +249,66 @@ export class RunsRepo {
 
 	async listByAgent(
 		agentName: string,
-		options: { limit?: number; sort?: "started" | "cost"; dir?: "asc" | "desc" } = {},
+		options: {
+			limit?: number;
+			offset?: number;
+			sort?: "started" | "cost";
+			dir?: "asc" | "desc";
+		} = {},
 	): Promise<RunRow[]> {
-		const { limit = 100, sort = "started", dir = "desc" } = options;
+		const { limit = 100, offset = 0, sort = "started", dir = "desc" } = options;
 		return this.adapter.pickAll(
 			this.db
 				.select()
 				.from(this.runs)
 				.where(eq(this.runs.agentName, agentName))
 				.orderBy(...this.orderByClause(sort, dir))
-				.limit(limit),
+				.limit(limit)
+				.offset(offset),
 		);
+	}
+
+	/**
+	 * Filtered-set aggregates for the Runs page header (warren-ee50 /
+	 * pl-b0c0 step 1). Returns the full `total` count + cost rollup for
+	 * the same predicate the list*() siblings page over, so the UI can
+	 * show "all-time" totals even when only a window of rows is on
+	 * screen. `costTotalUsd` sums runs.cost_usd where it is non-null;
+	 * `costPricedCount` counts those rows. Ghost runs whose cost is only
+	 * recoverable via in-stream extraction (hydrateRunsUsage) are NOT
+	 * folded into the aggregate — that's a deliberate trade-off to keep
+	 * the header cheap (single DB pass) at the cost of a small
+	 * underestimate on terminal-but-uncheckpointed rows.
+	 */
+	async aggregate(filter: { projectId?: string; agentName?: string } = {}): Promise<{
+		total: number;
+		costTotalUsd: number;
+		costPricedCount: number;
+	}> {
+		const conds: SQL[] = [];
+		if (filter.projectId !== undefined) {
+			conds.push(eq(this.runs.projectId, filter.projectId));
+		}
+		if (filter.agentName !== undefined) {
+			conds.push(eq(this.runs.agentName, filter.agentName));
+		}
+		const where = conds.length === 0 ? undefined : conds.length === 1 ? conds[0] : and(...conds);
+		const baseQuery = this.db
+			.select({
+				total: sql<number>`count(*)`,
+				costTotalUsd: sql<number | null>`sum(${this.runs.costUsd})`,
+				costPricedCount: sql<number>`count(${this.runs.costUsd})`,
+			})
+			.from(this.runs);
+		const rows = await this.adapter.pickAll(
+			where === undefined ? baseQuery : baseQuery.where(where),
+		);
+		const row = rows[0];
+		return {
+			total: Number(row?.total ?? 0),
+			costTotalUsd: Number(row?.costTotalUsd ?? 0),
+			costPricedCount: Number(row?.costPricedCount ?? 0),
+		};
 	}
 
 	/**

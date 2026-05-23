@@ -415,6 +415,53 @@ function suite(dialect: "sqlite" | "postgres"): void {
 			}
 		});
 
+		test("listAll honors limit + offset for pagination", async () => {
+			const { handle, repo, agentName, projectId } = await open();
+			try {
+				const ids: string[] = [];
+				for (let i = 0; i < 5; i++) {
+					const row = await spawn(repo, agentName, projectId);
+					ids.push(row.id);
+				}
+				// queued rows have startedAt=null, so the started-DESC ordering
+				// falls back to the id ASC tiebreaker (see orderByClause).
+				const sorted = [...ids].sort();
+				const page1 = await repo.listAll({ limit: 2, offset: 0 });
+				const page2 = await repo.listAll({ limit: 2, offset: 2 });
+				const page3 = await repo.listAll({ limit: 2, offset: 4 });
+				expect(page1.map((r) => r.id)).toEqual(sorted.slice(0, 2));
+				expect(page2.map((r) => r.id)).toEqual(sorted.slice(2, 4));
+				expect(page3.map((r) => r.id)).toEqual(sorted.slice(4, 5));
+			} finally {
+				await handle.close();
+			}
+		});
+
+		test("aggregate sums cost + counts across the full filtered set", async () => {
+			const { handle, repo, agentName, projectId } = await open();
+			try {
+				const a = await spawn(repo, agentName, projectId);
+				const b = await spawn(repo, agentName, projectId);
+				await spawn(repo, agentName, projectId); // unbilled
+				await repo.attachStats(a.id, { costUsd: 0.25 });
+				await repo.attachStats(b.id, { costUsd: 1.5 });
+
+				const all = await repo.aggregate();
+				expect(all.total).toBe(3);
+				expect(all.costPricedCount).toBe(2);
+				expect(all.costTotalUsd).toBeCloseTo(1.75, 6);
+
+				const byProject = await repo.aggregate({ projectId });
+				expect(byProject.total).toBe(3);
+				const byAgent = await repo.aggregate({ agentName });
+				expect(byAgent.total).toBe(3);
+				const other = await repo.aggregate({ projectId: "prj_nope" });
+				expect(other).toEqual({ total: 0, costTotalUsd: 0, costPricedCount: 0 });
+			} finally {
+				await handle.close();
+			}
+		});
+
 		test("listByState filters by single state and arrays", async () => {
 			const { handle, repo, agentName, projectId } = await open();
 			try {

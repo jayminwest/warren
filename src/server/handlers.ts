@@ -904,6 +904,38 @@ function parseRunsSort(ctx: { url: URL }): { sort: "started" | "cost"; dir: "asc
 	return { sort, dir };
 }
 
+/**
+ * Parse `?limit` / `?offset` for the runs list (warren-ee50 / pl-b0c0
+ * step 1). Defaults preserve the historical 100-row window so existing
+ * consumers stay byte-compatible; `limit` is clamped to a sane range
+ * to keep a paginated UI honest and the server cheap. `offset` is
+ * non-negative; the caller is responsible for stitching pages on its
+ * end (no opaque cursor — the predicates here are stable + the
+ * `runs.id` tiebreaker in `orderByClause` keeps the order total).
+ */
+function parseRunsPagination(ctx: { url: URL }): { limit: number; offset: number } {
+	const rawLimit = ctx.url.searchParams.get("limit");
+	const rawOffset = ctx.url.searchParams.get("offset");
+	let limit = 100;
+	if (rawLimit !== null) {
+		const n = Number.parseInt(rawLimit, 10);
+		if (!Number.isFinite(n) || n <= 0) {
+			throw new ValidationError("?limit must be a positive integer");
+		}
+		if (n > 500) throw new ValidationError("?limit must be ≤ 500");
+		limit = n;
+	}
+	let offset = 0;
+	if (rawOffset !== null) {
+		const n = Number.parseInt(rawOffset, 10);
+		if (!Number.isFinite(n) || n < 0) {
+			throw new ValidationError("?offset must be a non-negative integer");
+		}
+		offset = n;
+	}
+	return { limit, offset };
+}
+
 function listRunsHandler(deps: ServerDeps): RouteHandler {
 	return async (ctx) => {
 		const project = ctx.url.searchParams.get("project");
@@ -912,16 +944,32 @@ function listRunsHandler(deps: ServerDeps): RouteHandler {
 			throw new ValidationError("filter by either ?project=... or ?agent=..., not both");
 		}
 		const order = parseRunsSort(ctx);
+		const page = parseRunsPagination(ctx);
+		const listOpts = { ...order, ...page };
 		const rows =
 			project !== null
-				? await deps.repos.runs.listByProject(project, order)
+				? await deps.repos.runs.listByProject(project, listOpts)
 				: agent !== null
-					? await deps.repos.runs.listByAgent(agent, order)
-					: await deps.repos.runs.listAll(order);
+					? await deps.repos.runs.listByAgent(agent, listOpts)
+					: await deps.repos.runs.listAll(listOpts);
 		// warren-ab18: surface in-events cost for terminal runs whose
 		// bridge died before the final checkpoint landed.
 		const runs = await hydrateRunsUsage(rows, deps.repos.events);
-		return jsonResponse(200, { runs });
+		// warren-ee50 / pl-b0c0 step 1: aggregate the full filtered set so
+		// the Runs page can show all-time totals next to a paginated table.
+		const aggFilter = {
+			...(project !== null ? { projectId: project } : {}),
+			...(agent !== null ? { agentName: agent } : {}),
+		};
+		const agg = await deps.repos.runs.aggregate(aggFilter);
+		return jsonResponse(200, {
+			runs,
+			total: agg.total,
+			costTotalUsd: agg.costTotalUsd,
+			costPricedCount: agg.costPricedCount,
+			limit: page.limit,
+			offset: page.offset,
+		});
 	};
 }
 

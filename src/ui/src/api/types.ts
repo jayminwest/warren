@@ -226,6 +226,23 @@ export interface SpawnRunResponse {
 }
 
 /**
+ * `GET /runs` envelope (warren-ee50 / pl-b0c0 step 1). `runs` is the
+ * paginated window; `total`/`costTotalUsd`/`costPricedCount` describe
+ * the full filtered set so the Runs page can show all-time totals
+ * even when only a window of rows is on screen. `limit`/`offset` echo
+ * back the resolved pagination so the UI can render "Showing X–Y of
+ * T" against the same numbers the server applied.
+ */
+export interface ListRunsResponse {
+	runs: RunRow[];
+	total: number;
+	costTotalUsd: number;
+	costPricedCount: number;
+	limit: number;
+	offset: number;
+}
+
+/**
  * Body for `POST /runs/:id/messages` (pl-0344 step 4 / warren-b3b9).
  * Sends a follow-up user turn on an interactive conversation. `:id` is
  * any prior interactive run row that shares the conversation's plotId

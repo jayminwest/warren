@@ -28,6 +28,7 @@ import type {
 	DetachPlotResponse,
 	EditPlotIntentInput,
 	ListPlotsResponse,
+	ListRunsResponse,
 	PlotEnvelope,
 	PlotSummaryArtifact,
 	PlanRunDetailResponse,
@@ -230,6 +231,8 @@ export interface ListRunsFilter {
 	agent?: string;
 	sort?: "started" | "cost";
 	dir?: "asc" | "desc";
+	limit?: number;
+	offset?: number;
 }
 
 export const runsApi = {
@@ -239,8 +242,10 @@ export const runsApi = {
 		if (filter.agent) params.set("agent", filter.agent);
 		if (filter.sort) params.set("sort", filter.sort);
 		if (filter.dir) params.set("dir", filter.dir);
+		if (filter.limit !== undefined) params.set("limit", String(filter.limit));
+		if (filter.offset !== undefined) params.set("offset", String(filter.offset));
 		const qs = params.toString();
-		return request<{ runs: RunRow[] }>(`/runs${qs.length > 0 ? `?${qs}` : ""}`, {
+		return request<ListRunsResponse>(`/runs${qs.length > 0 ? `?${qs}` : ""}`, {
 			...(signal ? { signal } : {}),
 		});
 	},

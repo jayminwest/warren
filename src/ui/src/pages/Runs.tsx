@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { ChevronDown, ChevronUp } from "lucide-react";
+import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { agentsApi, projectsApi, runsApi } from "@/api/client.ts";
@@ -23,6 +23,14 @@ import { formatCostUsd } from "./RunDetail.tsx";
 // toggle remains as a hide option for operators who want to recover the
 // horizontal space; localStorage persists the choice.
 const COST_COLUMN_LS_KEY = "warren.runsList.showCostColumn";
+// warren-ee50 / pl-b0c0 step 1: page size + offset persist in
+// localStorage so the operator's chosen window survives a refresh.
+// `offset` is intentionally NOT persisted — a stale offset can land
+// past the end of the result set after the row count shrinks, and
+// resetting to page 1 on reload is the conservative default.
+const PAGE_SIZE_LS_KEY = "warren.runsList.pageSize";
+const PAGE_SIZE_OPTIONS: readonly number[] = [25, 50, 100, 200];
+const DEFAULT_PAGE_SIZE = 50;
 
 type Filter = "all" | { kind: "agent"; value: string } | { kind: "project"; value: string };
 type SortKey = "started" | "cost";
@@ -32,6 +40,14 @@ export function RunsPage() {
 	const [filter, setFilter] = useState<Filter>("all");
 	const [sort, setSort] = useState<SortKey>("started");
 	const [dir, setDir] = useState<SortDir>("desc");
+	const [pageSize, setPageSize] = useState<number>(() => {
+		if (typeof window === "undefined") return DEFAULT_PAGE_SIZE;
+		const stored = window.localStorage.getItem(PAGE_SIZE_LS_KEY);
+		if (stored === null) return DEFAULT_PAGE_SIZE;
+		const n = Number.parseInt(stored, 10);
+		return PAGE_SIZE_OPTIONS.includes(n) ? n : DEFAULT_PAGE_SIZE;
+	});
+	const [offset, setOffset] = useState<number>(0);
 	const [showCost, setShowCost] = useState<boolean>(() => {
 		if (typeof window === "undefined") return true;
 		const stored = window.localStorage.getItem(COST_COLUMN_LS_KEY);
@@ -44,13 +60,28 @@ export function RunsPage() {
 		window.localStorage.setItem(COST_COLUMN_LS_KEY, showCost ? "1" : "0");
 	}, [showCost]);
 
+	useEffect(() => {
+		if (typeof window === "undefined") return;
+		window.localStorage.setItem(PAGE_SIZE_LS_KEY, String(pageSize));
+	}, [pageSize]);
+
+	// Any change to filter / sort / dir / page size resets to page 1.
+	// Otherwise an operator who narrows the result set can land on a
+	// past-the-end offset and see an empty page.
+	// biome-ignore lint/correctness/useExhaustiveDependencies: offset reset is the intended side effect
+	useEffect(() => {
+		setOffset(0);
+	}, [filter, sort, dir, pageSize]);
+
 	const filterApi = {
 		...(filter === "all" ? {} : { [filter.kind]: filter.value }),
 		sort,
 		dir,
+		limit: pageSize,
+		offset,
 	};
 	const runs = useQuery({
-		queryKey: ["runs", filter, sort, dir],
+		queryKey: ["runs", filter, sort, dir, pageSize, offset],
 		queryFn: ({ signal }) => runsApi.list(filterApi, signal),
 		refetchInterval: 5000,
 	});
@@ -85,17 +116,18 @@ export function RunsPage() {
 		return m;
 	}, [projects.data]);
 
-	const costTotals = useMemo(() => {
-		let total = 0;
-		let priced = 0;
-		for (const r of runs.data?.runs ?? []) {
-			if (r.costUsd !== null) {
-				total += r.costUsd;
-				priced += 1;
-			}
-		}
-		return { total, priced };
-	}, [runs.data]);
+	// All-time totals from the server (warren-ee50). Survives pagination
+	// — unlike the prior "sum the visible page" approach.
+	const totalRuns = runs.data?.total ?? 0;
+	const costTotals = {
+		total: runs.data?.costTotalUsd ?? 0,
+		priced: runs.data?.costPricedCount ?? 0,
+	};
+	const visibleCount = runs.data?.runs.length ?? 0;
+	const rangeStart = visibleCount === 0 ? 0 : offset + 1;
+	const rangeEnd = offset + visibleCount;
+	const hasPrev = offset > 0;
+	const hasNext = offset + visibleCount < totalRuns;
 
 	return (
 		<div className="space-y-6">
@@ -150,11 +182,11 @@ export function RunsPage() {
 
 			<Card>
 				<CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2 space-y-0">
-					<CardTitle>{runs.data?.runs.length ?? 0} runs</CardTitle>
+					<CardTitle>{totalRuns} runs</CardTitle>
 					{showCost && costTotals.priced > 0 ? (
 						<span
 							className="font-mono text-xs text-(--color-muted-foreground)"
-							title={`${costTotals.priced} of ${runs.data?.runs.length ?? 0} runs have a recorded cost`}
+							title={`${costTotals.priced} of ${totalRuns} runs have a recorded cost (all-time)`}
 						>
 							total: {formatCostUsd(costTotals.total)}
 						</span>
@@ -242,6 +274,52 @@ export function RunsPage() {
 						</Table>
 					)}
 				</CardContent>
+				{totalRuns > 0 ? (
+					<div className="flex flex-wrap items-center justify-between gap-3 border-t border-(--color-border) px-4 py-2">
+						<div className="flex items-center gap-2 text-xs text-(--color-muted-foreground)">
+							<label htmlFor="runs-page-size" className="text-xs">
+								Rows per page
+							</label>
+							<select
+								id="runs-page-size"
+								value={pageSize}
+								onChange={(e) => setPageSize(Number.parseInt(e.target.value, 10))}
+								className="rounded border border-(--color-border) bg-(--color-card) px-2 py-1 text-xs"
+							>
+								{PAGE_SIZE_OPTIONS.map((n) => (
+									<option key={n} value={n}>
+										{n}
+									</option>
+								))}
+							</select>
+						</div>
+						<div className="flex items-center gap-3 text-xs text-(--color-muted-foreground)">
+							<span className="font-mono">
+								{rangeStart}–{rangeEnd} of {totalRuns}
+							</span>
+							<div className="flex items-center gap-1">
+								<Button
+									variant="ghost"
+									size="sm"
+									disabled={!hasPrev}
+									onClick={() => setOffset((o) => Math.max(0, o - pageSize))}
+									aria-label="Previous page"
+								>
+									<ChevronLeft className="h-4 w-4" />
+								</Button>
+								<Button
+									variant="ghost"
+									size="sm"
+									disabled={!hasNext}
+									onClick={() => setOffset((o) => o + pageSize)}
+									aria-label="Next page"
+								>
+									<ChevronRight className="h-4 w-4" />
+								</Button>
+							</div>
+						</div>
+					</div>
+				) : null}
 			</Card>
 		</div>
 	);
