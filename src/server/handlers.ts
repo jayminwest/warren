@@ -85,6 +85,8 @@ import {
 	PlotIdNotFoundError,
 	type PlotNeedsAttentionSummary,
 	type PlotSummary,
+	type PlotSummaryArtifact,
+	summarizePlot,
 } from "../plots/index.ts";
 import { createRunPreviewsRepo, DEFAULT_MAX_LIVE } from "../preview/eviction.ts";
 import { DEFAULT_PREVIEW_PORT_RANGE, PreviewPortAllocator } from "../preview/port-allocator.ts";
@@ -2900,6 +2902,53 @@ function getPlotHandler(deps: ServerDeps): RouteHandler {
 }
 
 /**
+ * `GET /plots/:id/summary` — curated artifact view (warren-8917 /
+ * pl-0344 step 15). Same resolver + reader stack as `GET /plots/:id`,
+ * but the response is the institutional-memory projection produced by
+ * `summarizePlot`: formatted intent, decisions filtered by
+ * `decision_made`, linked PRs (with merge audit trail) + commits, and
+ * a curated structural timeline. Pure derivation — no extra IO beyond
+ * the reader.
+ */
+function getPlotSummaryHandler(deps: ServerDeps): RouteHandler {
+	return async (ctx) => {
+		const plotId = requireParam(ctx, "id");
+		const project =
+			deps.plotResolver !== undefined ? await deps.plotResolver.resolve(plotId) : null;
+		if (project === null) {
+			throw new NotFoundError(`plot not found: ${plotId}`, {
+				recoveryHint:
+					"check the plot id; only Plots in projects with hasPlot=true are visible to warren",
+			});
+		}
+		if (!project.hasPlot) {
+			throw new ProjectLacksPlotError(
+				`project ${project.id} no longer has a .plot/ directory; cannot read plot ${plotId}`,
+				{
+					recoveryHint:
+						"refresh the project so warren picks up the current .plot/ state, or recreate .plot/ via `plot init`",
+				},
+			);
+		}
+		const reader = deps.plotReader ?? defaultPlotReader;
+		const result = await reader.read({
+			plotDir: join(project.localPath, ".plot"),
+			plotId,
+		});
+		const artifact: PlotSummaryArtifact = summarizePlot({
+			id: result.id,
+			name: result.name,
+			status: result.status,
+			project_id: project.id,
+			intent: result.intent,
+			attachments: result.attachments,
+			event_log: result.event_log,
+		});
+		return jsonResponse(200, artifact);
+	};
+}
+
+/**
  * `POST /plots/:id/intent` — edit a Plot's intent body (warren-896f /
  * pl-9d6a step 9).
  *
@@ -3743,6 +3792,9 @@ const ROUTE_TABLE: readonly RouteEntry[] = [
 		build: needsAttentionCountHandler,
 	},
 	{ method: "POST", pattern: "/plots/:id/formalize", build: formalizePlotHandler },
+	// Static-suffix path — must precede `/plots/:id` so the param route
+	// doesn't swallow `summary` as the rest of the id.
+	{ method: "GET", pattern: "/plots/:id/summary", build: getPlotSummaryHandler },
 	{ method: "GET", pattern: "/plots/:id", build: getPlotHandler },
 	{ method: "POST", pattern: "/plots/:id/intent", build: editPlotIntentHandler },
 	{ method: "POST", pattern: "/plots/:id/status", build: changePlotStatusHandler },

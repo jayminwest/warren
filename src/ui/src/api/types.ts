@@ -960,3 +960,75 @@ export interface FormalizePlotResponse {
 export interface AnswerPlotQuestionResponse {
 	event: PlotEvent;
 }
+
+/* ----------------------------------------------------------------------- */
+/* `GET /plots/:id/summary` — curated artifact view (warren-8917 /          */
+/* pl-0344 step 15). Institutional-memory projection: formatted intent,    */
+/* decisions filtered from the event log by type=decision_made, linked     */
+/* PRs + commits, and a curated structural timeline.                       */
+/* ----------------------------------------------------------------------- */
+
+export interface PlotSummaryDecision {
+	at: string;
+	actor: string;
+	summary: string;
+	rationale?: string;
+}
+
+export interface PlotSummaryLinkedPr {
+	attachment_id: string;
+	ref: string;
+	role: string;
+	added_at: string;
+	added_by: string;
+	/** ISO 8601 of the pr_merged note, or null when not merged. */
+	merged_at: string | null;
+}
+
+export interface PlotSummaryLinkedCommit {
+	at: string;
+	ref: string;
+	actor: string;
+}
+
+export interface PlotSummaryLinkedSeed {
+	attachment_id: string;
+	ref: string;
+	role: string;
+	added_at: string;
+	added_by: string;
+}
+
+export type PlotSummaryTimelineKind =
+	| "plot_created"
+	| "status_changed"
+	| "decision_made"
+	| "question_posed"
+	| "question_answered"
+	| "attachment_added"
+	| "run_dispatched"
+	| "plan_run_dispatched"
+	| "artifact_produced";
+
+export interface PlotSummaryTimelineEntry {
+	at: string;
+	actor: string;
+	kind: PlotSummaryTimelineKind;
+	label: string;
+}
+
+export interface PlotSummaryArtifact {
+	id: string;
+	name: string;
+	status: PlotStatus;
+	project_id: string;
+	intent: PlotIntent;
+	created_at: string;
+	last_event_at: string;
+	done_at: string | null;
+	decisions: PlotSummaryDecision[];
+	linked_prs: PlotSummaryLinkedPr[];
+	linked_commits: PlotSummaryLinkedCommit[];
+	linked_seeds: PlotSummaryLinkedSeed[];
+	timeline: PlotSummaryTimelineEntry[];
+}

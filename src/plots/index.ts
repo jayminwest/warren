@@ -101,6 +101,18 @@ export {
 	STATUS_TRANSITIONS,
 } from "./status-changer.ts";
 export {
+	type PlotSummaryArtifact,
+	type PlotSummaryDecision,
+	type PlotSummaryLinkedCommit,
+	type PlotSummaryLinkedPr,
+	type PlotSummaryLinkedSeed,
+	type PlotSummaryTimelineEntry,
+	type SummarizePlotInput,
+	summarizePlot,
+	TIMELINE_KINDS,
+	type TimelineKind,
+} from "./summary.ts";
+export {
 	buildIntentGoalPreview,
 	INTENT_GOAL_PREVIEW_MAX,
 	type PlotSummary,

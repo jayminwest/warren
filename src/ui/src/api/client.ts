@@ -29,6 +29,7 @@ import type {
 	EditPlotIntentInput,
 	ListPlotsResponse,
 	PlotEnvelope,
+	PlotSummaryArtifact,
 	PlanRunDetailResponse,
 	PlanRunRow,
 	PlanRunState,
@@ -482,6 +483,17 @@ export const plotsApi = {
 	 */
 	get: (plotId: string, signal?: AbortSignal) =>
 		request<PlotEnvelope>(`/plots/${encodeURIComponent(plotId)}`, {
+			...(signal ? { signal } : {}),
+		}),
+	/**
+	 * `GET /plots/:id/summary` — curated artifact view (warren-8917 /
+	 * pl-0344 step 15). Returns the institutional-memory projection:
+	 * formatted intent, decisions filtered from the event log,
+	 * linked PRs + commits, and a structural timeline. Pure derivation
+	 * over the same `.plot/` reader as `get`.
+	 */
+	summary: (plotId: string, signal?: AbortSignal) =>
+		request<PlotSummaryArtifact>(`/plots/${encodeURIComponent(plotId)}/summary`, {
 			...(signal ? { signal } : {}),
 		}),
 	/**

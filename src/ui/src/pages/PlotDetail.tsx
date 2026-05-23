@@ -126,6 +126,13 @@ export function PlotDetailPage() {
 						>
 							{plot.project_id}
 						</Link>
+						{" · "}
+						<Link
+							to={`/plots/${encodeURIComponent(plot.id)}/summary`}
+							className="underline-offset-2 hover:underline"
+						>
+							view summary
+						</Link>
 					</div>
 				</div>
 				<StatusTransitionControl plot={plot} />
