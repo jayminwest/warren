@@ -96,10 +96,14 @@ import {
 	refreshProjectAgents,
 } from "../registry/refresh.ts";
 import {
+	appendUserMessage,
+	buildInteractivePrompt,
 	cancelRun,
+	defaultPlotContextReader,
 	hydrateRunsUsage,
 	hydrateRunUsage,
 	resolveDispatcherHandle,
+	spawnInteractiveTurn,
 	spawnRun,
 	steerRun,
 	tailRunEvents,
@@ -926,27 +930,101 @@ function getRunHandler(deps: ServerDeps): RouteHandler {
 	};
 }
 
+/**
+ * Parse the optional `mode` body field on `POST /runs` (pl-0344 step 4 /
+ * warren-b3b9). Defaults to `'batch'` so existing single-shot dispatch
+ * callers are byte-identical. `'interactive'` opts in to the
+ * respawn-per-turn primitive (`src/runs/interactive.ts`); when set,
+ * `plotId` is required and `interactiveAgent` may override `agent`.
+ */
+function parseRunMode(body: Record<string, unknown>): "batch" | "interactive" {
+	const raw = body.mode;
+	if (raw === undefined || raw === null) return "batch";
+	if (raw !== "batch" && raw !== "interactive") {
+		throw new ValidationError(
+			`field 'mode' must be 'batch' or 'interactive'; got ${JSON.stringify(raw)}`,
+		);
+	}
+	return raw;
+}
+
 function createRunHandler(deps: ServerDeps): RouteHandler {
 	return async (ctx) => {
 		const body = await readJsonBody(ctx);
+		const mode = parseRunMode(body);
 		const ref = optionalString(body, "ref");
 		const providerOverride = optionalString(body, "providerOverride");
 		const modelOverride = optionalString(body, "modelOverride");
 		const seedId = optionalString(body, "seedId");
 		const plotId = optionalString(body, "plotId");
 		const dispatcherHandle = optionalString(body, "dispatcherHandle");
+		// `interactiveAgent` overrides `agent` when mode='interactive' (pl-0344
+		// step 4 / warren-b3b9). The field is dedicated so a UI surface that
+		// always sends both `agent` (batch default) and `interactiveAgent`
+		// (brainstorm/planner preset) can flip mode without re-keying.
+		const interactiveAgent = optionalString(body, "interactiveAgent");
+		const agentName =
+			mode === "interactive" && interactiveAgent !== undefined
+				? interactiveAgent
+				: requireString(body, "agent");
+		const projectId = requireString(body, "project");
+		const prompt = requireString(body, "prompt");
+
 		// warren-bae5 / pl-5310 step 2: validate plot_id BEFORE handing off
 		// to spawnRun so a malformed or non-existent plot_id fails at the
 		// operator-facing edge instead of silently no-opping at the
 		// host-side defaultPlotAppender. Empty string is normalized to "no
 		// plot bound" (matches spawnRun's posture and the createPlanRun gate).
 		await assertPlotIdDispatchable({ plotId, plotResolver: deps.plotResolver });
+
+		// Interactive runs REQUIRE a plot_id — the primitive is meaningless
+		// without a Plot to bind the conversation to. Validated AFTER format
+		// + existence so the more-specific format error still wins when both
+		// apply.
+		if (mode === "interactive" && (plotId === undefined || plotId === "")) {
+			throw new ValidationError(
+				"plotId is required when mode='interactive'; interactive runs bind to a Plot",
+				{
+					recoveryHint: "either pass plotId on POST /runs, or omit `mode` to dispatch a batch run",
+				},
+			);
+		}
+
+		// Compose the dispatch prompt. Batch runs ship the operator-supplied
+		// prompt verbatim. Interactive first-turn dispatches wrap it in the
+		// same <plot_context> + <user_message> envelope the follow-up turn
+		// builder (`spawnInteractiveTurn`) emits, so the agent sees a uniform
+		// prompt shape across turn 1 and turn N. Context load is best-effort
+		// — a torn `.plot/.index.db` or vanished events file falls back to
+		// the user message alone.
+		let dispatchedPrompt = prompt;
+		if (mode === "interactive" && plotId !== undefined && plotId !== "") {
+			const project = await deps.repos.projects.require(projectId);
+			const handle = resolveDispatcherHandle(dispatcherHandle);
+			let context = null;
+			try {
+				context = await defaultPlotContextReader.read({
+					plotDir: join(project.localPath, ".plot"),
+					plotId,
+					historyTail: 0,
+					handle,
+				});
+			} catch {
+				// Best-effort — first-turn dispatches still proceed without
+				// the envelope. spawnInteractiveTurn captures the same
+				// degradation as a system event; on first turn we don't yet
+				// have a run row to attach the warning to.
+			}
+			dispatchedPrompt = buildInteractivePrompt(context, prompt);
+		}
+
 		const result = await spawnRun({
 			repos: deps.repos,
 			burrowClientPool: deps.burrowClientPool,
-			agentName: requireString(body, "agent"),
-			projectId: requireString(body, "project"),
-			prompt: requireString(body, "prompt"),
+			agentName,
+			projectId,
+			prompt: dispatchedPrompt,
+			mode,
 			...(body.metadata !== undefined ? { metadata: body.metadata } : {}),
 			...(deps.now !== undefined ? { now: deps.now } : {}),
 			projectsConfig: deps.projectsConfig,
@@ -963,6 +1041,20 @@ function createRunHandler(deps: ServerDeps): RouteHandler {
 				: {}),
 			...(deps.seedsCli !== undefined ? { seedsCli: deps.seedsCli } : {}),
 		});
+
+		// First-turn interactive dispatch: append the raw user_message event
+		// onto the new run so the events stream reflects the conversation
+		// from turn 0. `spawnInteractiveTurn` (follow-up turns) does the same.
+		if (mode === "interactive") {
+			await appendUserMessage({
+				repos: deps.repos,
+				runId: result.run.id,
+				message: prompt,
+				handle: resolveDispatcherHandle(dispatcherHandle),
+				...(deps.now !== undefined ? { now: deps.now() } : {}),
+			});
+		}
+
 		// Hand off to the bridge so events start flowing into warren.events
 		// — without this the dispatched run would emit events into burrow
 		// but the warren wire would never see them.
@@ -970,6 +1062,81 @@ function createRunHandler(deps: ServerDeps): RouteHandler {
 		return jsonResponse(201, {
 			run: result.run,
 			burrow: { id: result.burrow.id, workspacePath: result.burrow.workspacePath },
+		});
+	};
+}
+
+/**
+ * `POST /runs/:id/messages` — send a follow-up user turn on an
+ * interactive conversation (pl-0344 step 4 / warren-b3b9).
+ *
+ * `:id` is the conversation handle — any prior interactive run row that
+ * shares the same plotId works (the handler resolves the plot context
+ * from disk, not from this row). Returns **202 Accepted** with the
+ * freshly-spawned turn row + burrow descriptor + user_message event:
+ * the dispatch is async (the agent reply lands later as an
+ * `agent_message` event captured at reap), and 202 is the canonical
+ * "queued for processing, see events stream for completion" shape.
+ *
+ * Body: `{message: string, dispatcherHandle?: string, providerOverride?,
+ * modelOverride?, ref?}`. Field shape mirrors `POST /runs` so a UI
+ * surface can reuse its dispatch plumbing.
+ *
+ * Errors:
+ *   - 400 `validation_error` — missing/empty message, prior run is not
+ *     mode='interactive', prior run has no plot_id, message is empty.
+ *   - 404 `not_found` — prior run id doesn't exist.
+ *
+ * The follow-up turn is registered with the bridge the same way `POST
+ * /runs` does, so its events flow onto warren's stream immediately.
+ */
+function postRunMessageHandler(deps: ServerDeps): RouteHandler {
+	return async (ctx) => {
+		const id = requireParam(ctx, "id");
+		const body = await readJsonBody(ctx);
+		const message = requireString(body, "message");
+		const dispatcherHandle = optionalString(body, "dispatcherHandle");
+		const providerOverride = optionalString(body, "providerOverride");
+		const modelOverride = optionalString(body, "modelOverride");
+		const ref = optionalString(body, "ref");
+
+		const result = await spawnInteractiveTurn({
+			runId: id,
+			message,
+			repos: deps.repos,
+			burrowClientPool: deps.burrowClientPool,
+			trigger: "interactive",
+			projectsConfig: deps.projectsConfig,
+			projectSpawn: deps.spawn ?? defaultSpawn,
+			...(ref !== undefined ? { ref } : {}),
+			...(providerOverride !== undefined ? { providerOverride } : {}),
+			...(modelOverride !== undefined ? { modelOverride } : {}),
+			...(dispatcherHandle !== undefined ? { dispatcherHandle } : {}),
+			...(deps.now !== undefined ? { now: deps.now } : {}),
+			...(deps.warrenConfigs !== undefined ? { warrenConfigs: deps.warrenConfigs } : {}),
+			...(deps.runBranchPrefixDefault !== undefined
+				? { runBranchPrefixDefault: deps.runBranchPrefixDefault }
+				: {}),
+			...(deps.seedsCli !== undefined ? { seedsCli: deps.seedsCli } : {}),
+		});
+
+		deps.bridges.start(result.turn.run.id, result.turn.burrowRun.id, result.turn.burrow.id);
+
+		return jsonResponse(202, {
+			run: result.turn.run,
+			burrow: {
+				id: result.turn.burrow.id,
+				workspacePath: result.turn.burrow.workspacePath,
+			},
+			userMessageEvent: {
+				id: result.userMessageEvent.id,
+				runId: result.userMessageEvent.runId,
+				seq: result.userMessageEvent.burrowEventSeq,
+				ts: result.userMessageEvent.ts,
+				kind: result.userMessageEvent.kind,
+			},
+			priorRunId: result.priorRun.id,
+			plotContextDegraded: result.plotContextDegraded,
 		});
 	};
 }
@@ -3079,6 +3246,7 @@ const ROUTE_TABLE: readonly RouteEntry[] = [
 	{ method: "POST", pattern: "/runs", build: createRunHandler },
 	{ method: "GET", pattern: "/runs/:id", build: getRunHandler },
 	{ method: "GET", pattern: "/runs/:id/events", build: streamRunEventsHandler },
+	{ method: "POST", pattern: "/runs/:id/messages", build: postRunMessageHandler },
 	{ method: "POST", pattern: "/runs/:id/steer", build: steerRunHandler },
 	{ method: "POST", pattern: "/runs/:id/cancel", build: cancelRunHandler },
 	{ method: "GET", pattern: "/runs/:id/preview/login", build: previewLoginHandler },
