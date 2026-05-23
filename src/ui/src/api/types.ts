@@ -1070,3 +1070,14 @@ export interface PlotSummaryArtifact {
 	linked_seeds: PlotSummaryLinkedSeed[];
 	timeline: PlotSummaryTimelineEntry[];
 }
+
+export type PlotSyncResponse =
+	| { kind: "no_op" }
+	| {
+			kind: "synced";
+			branch: string;
+			prUrl: string;
+			prNumber?: number;
+			merged: boolean;
+	  };
+

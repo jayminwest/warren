@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
+import { GitBranch } from "lucide-react";
 import { agentsApi, ApiError, plotsApi, projectsApi, runsApi } from "@/api/client.ts";
 import {
 	ATTACHMENT_TYPES,
@@ -72,6 +73,100 @@ import { formatTimestamp, relativeTime } from "@/lib/utils.ts";
  * attachment row in SubstratePanel; opens a confirm dialog and POSTs
  * `/plan-runs` with the auto-filled plot_id.
  */
+function PlotSyncButton({ plotId }: { plotId: string }) {
+	const qc = useQueryClient();
+	const [statusMessage, setStatusMessage] = useState<{
+		text: string;
+		type: "success" | "info" | "error";
+		prUrl?: string;
+	} | null>(null);
+
+	const mutation = useMutation({
+		mutationFn: () => plotsApi.sync(plotId),
+		onSuccess: (resp) => {
+			if (resp.kind === "no_op") {
+				setStatusMessage({
+					text: "Everything is already up to date on GitHub.",
+					type: "info",
+				});
+			} else {
+				setStatusMessage({
+					text: resp.merged
+						? `Synced & merged sync branch ${resp.branch}!`
+						: `Synced! Opened PR for branch ${resp.branch}.`,
+					type: "success",
+					prUrl: resp.prUrl,
+				});
+			}
+			qc.invalidateQueries({ queryKey: ["plot", plotId] });
+		},
+		onError: (err) => {
+			const msg =
+				err instanceof ApiError
+					? `${err.message} (${err.code})`
+					: err instanceof Error
+						? err.message
+						: String(err);
+			setStatusMessage({
+				text: `Sync failed: ${msg}`,
+				type: "error",
+			});
+		},
+	});
+
+	// Auto-clear success/info messages after some seconds, but keep error visible
+	useEffect(() => {
+		if (statusMessage && statusMessage.type !== "error") {
+			const t = setTimeout(() => setStatusMessage(null), 8000);
+			return () => clearTimeout(t);
+		}
+	}, [statusMessage]);
+
+	return (
+		<div className="flex flex-col items-end gap-1">
+			<div className="flex flex-wrap items-center justify-end gap-2">
+				{statusMessage ? (
+					<span
+						className={`text-xs ${
+							statusMessage.type === "error"
+								? "text-(--color-destructive)"
+								: statusMessage.type === "success"
+									? "text-emerald-700 dark:text-emerald-300"
+									: "text-(--color-muted-foreground)"
+						}`}
+					>
+						{statusMessage.text}
+						{statusMessage.prUrl && (
+							<a
+								href={statusMessage.prUrl}
+								target="_blank"
+								rel="noreferrer"
+								className="ml-1 font-medium underline hover:text-(--color-primary)"
+							>
+								View PR
+							</a>
+						)}
+					</span>
+				) : null}
+				<Button
+					type="button"
+					variant="outline"
+					size="sm"
+					className="h-8 gap-1.5"
+					disabled={mutation.isPending}
+					onClick={() => {
+						setStatusMessage(null);
+						mutation.mutate();
+					}}
+				>
+					<GitBranch className={`h-3.5 w-3.5 ${mutation.isPending ? "animate-spin" : ""}`} />
+					{mutation.isPending ? "Syncing to GitHub…" : "Sync to GitHub"}
+				</Button>
+			</div>
+		</div>
+	);
+}
+
 export function PlotDetailPage() {
 	const { id } = useParams<{ id: string }>();
 	const plotId = id ?? "";
@@ -137,7 +232,10 @@ export function PlotDetailPage() {
 						</Link>
 					</div>
 				</div>
-				<StatusTransitionControl plot={plot} />
+				<div className="flex flex-col items-end gap-3">
+					<StatusTransitionControl plot={plot} />
+					<PlotSyncButton plotId={plot.id} />
+				</div>
 			</header>
 
 			<div className="grid gap-6 lg:grid-cols-2">

@@ -32,6 +32,7 @@ import type {
 	ListRunsResponse,
 	PlotEnvelope,
 	PlotSummaryArtifact,
+	PlotSyncResponse,
 	PlanRunDetailResponse,
 	PlanRunRow,
 	PlanRunState,
@@ -692,6 +693,14 @@ export const plotsApi = {
 						: {}),
 				},
 			},
+		),
+	/**
+	 * `POST /plots/:id/sync` — manually sync plot metadata to GitHub (warren-1d0c / pl-5a6c step 4).
+	 */
+	sync: (plotId: string) =>
+		request<PlotSyncResponse>(
+			`/plots/${encodeURIComponent(plotId)}/sync`,
+			{ method: "POST", body: {} },
 		),
 };
 
