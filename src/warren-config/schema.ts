@@ -204,6 +204,22 @@ const AgentConfigSchema = z
 
 export type AgentConfig = z.infer<typeof AgentConfigSchema>;
 
+// warren-cd22: per-project configuration for plot sync to GitHub (pl-5a6c).
+// mergeStrategy controls when changes are merged (immediate / auto / manual).
+// targetBranch overrides the default branch when pushing changes.
+const PlotSyncMergeStrategySchema = z.enum(["immediate", "auto", "manual"]);
+
+export type PlotSyncMergeStrategy = z.infer<typeof PlotSyncMergeStrategySchema>;
+
+const PlotSyncConfigSchema = z
+	.object({
+		mergeStrategy: PlotSyncMergeStrategySchema.optional(),
+		targetBranch: z.string().min(1, "targetBranch must be non-empty if provided").optional(),
+	})
+	.strict();
+
+export type PlotSyncConfig = z.infer<typeof PlotSyncConfigSchema>;
+
 // warren-b802: per-project override of the burrow runtime backing the
 // interactive built-in agents (brainstorm / planner). Without this, an
 // operator must stand up a canopy library just to change the runtime
@@ -350,6 +366,8 @@ export const DefaultsConfigSchema = z
 		// agent row stays honest as 'builtin'. Precedence: config override >
 		// agent frontmatter.runtime > agent.name.
 		interactiveAgents: InteractiveAgentsConfigSchema.optional(),
+		// warren-cd22: per-project configuration for plot sync to GitHub.
+		plotSync: PlotSyncConfigSchema.optional(),
 	})
 	.strict();
 

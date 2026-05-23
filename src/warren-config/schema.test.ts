@@ -262,6 +262,83 @@ describe("DefaultsConfigSchema interactiveAgents block (warren-b802)", () => {
 	});
 });
 
+describe("DefaultsConfigSchema plotSync block (warren-cd22)", () => {
+	test("accepts valid mergeStrategy values", () => {
+		for (const strategy of ["immediate", "auto", "manual"] as const) {
+			const parsed = DefaultsConfigSchema.safeParse({
+				plotSync: { mergeStrategy: strategy },
+			});
+			expect(parsed.success).toBe(true);
+			if (parsed.success) {
+				expect(parsed.data.plotSync?.mergeStrategy).toBe(strategy);
+			}
+		}
+	});
+
+	test("accepts a valid targetBranch", () => {
+		const parsed = DefaultsConfigSchema.safeParse({
+			plotSync: { targetBranch: "main" },
+		});
+		expect(parsed.success).toBe(true);
+		if (parsed.success) {
+			expect(parsed.data.plotSync?.targetBranch).toBe("main");
+		}
+	});
+
+	test("accepts both fields together", () => {
+		const parsed = DefaultsConfigSchema.safeParse({
+			plotSync: { mergeStrategy: "immediate", targetBranch: "develop" },
+		});
+		expect(parsed.success).toBe(true);
+		if (parsed.success) {
+			expect(parsed.data.plotSync?.mergeStrategy).toBe("immediate");
+			expect(parsed.data.plotSync?.targetBranch).toBe("develop");
+		}
+	});
+
+	test("accepts empty block (both fields optional)", () => {
+		const parsed = DefaultsConfigSchema.safeParse({ plotSync: {} });
+		expect(parsed.success).toBe(true);
+	});
+
+	test("leaves plotSync undefined when the block is omitted", () => {
+		const parsed = DefaultsConfigSchema.safeParse({});
+		expect(parsed.success).toBe(true);
+		if (parsed.success) {
+			expect(parsed.data.plotSync).toBeUndefined();
+		}
+	});
+
+	test("rejects unknown mergeStrategy values (typo protection)", () => {
+		expect(
+			DefaultsConfigSchema.safeParse({
+				plotSync: { mergeStrategy: "always" },
+			}).success,
+		).toBe(false);
+		expect(
+			DefaultsConfigSchema.safeParse({
+				plotSync: { mergeStrategy: "never" },
+			}).success,
+		).toBe(false);
+	});
+
+	test("rejects empty-string targetBranch", () => {
+		expect(
+			DefaultsConfigSchema.safeParse({
+				plotSync: { targetBranch: "" },
+			}).success,
+		).toBe(false);
+	});
+
+	test("rejects unknown fields inside plotSync (strict)", () => {
+		expect(
+			DefaultsConfigSchema.safeParse({
+				plotSync: { mergeStrategy: "auto", extra: true },
+			}).success,
+		).toBe(false);
+	});
+});
+
 describe("interactiveRuntimeOverride (warren-b802)", () => {
 	test("returns undefined when defaults is null/undefined", () => {
 		expect(interactiveRuntimeOverride("brainstorm", null)).toBeUndefined();

@@ -40,6 +40,8 @@ export {
 	interactiveRuntimeOverride,
 	KNOWN_RUNTIME_IDS,
 	type ParseResult,
+	type PlotSyncConfig,
+	type PlotSyncMergeStrategy,
 	type PreviewConfig,
 	PreviewConfigSchema,
 	type PreviewMode,
