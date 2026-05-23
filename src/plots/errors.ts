@@ -118,3 +118,29 @@ export class PlotIdInvalidError extends WarrenError {
 export class PlotIdNotFoundError extends WarrenError {
 	readonly code = "plot_id_not_found";
 }
+
+/**
+ * Raised by `POST /plots/:id/attachments/:ref/merge` (warren-8e39 /
+ * pl-0344 step 14) when the targeted attachment exists but is not a
+ * `gh_pr` kind. Only PR attachments are mergeable through warren —
+ * `seeds_issue`, `mulch_record`, `agent_run`, `gh_issue`, and `file`
+ * have no GitHub merge semantics. Mapped to 400 in
+ * `src/server/errors.ts`. Consumers branch on
+ * `code === "plot_pr_attachment_mismatched_kind"`.
+ */
+export class PlotPrAttachmentMismatchedKindError extends WarrenError {
+	readonly code = "plot_pr_attachment_mismatched_kind";
+}
+
+/**
+ * Raised by `POST /plots/:id/attachments/:ref/merge` (warren-8e39 /
+ * pl-0344 step 14) when the `gh_pr` attachment's ref is not a
+ * recognized GitHub PR shape (canonical URL
+ * `https://github.com/<owner>/<repo>/pull/<n>` or the
+ * `<owner>/<repo>#<n>` shorthand). GHE-hosted or hand-typed values
+ * land here. Mapped to 400 in `src/server/errors.ts`. Consumers
+ * branch on `code === "plot_pr_attachment_invalid"`.
+ */
+export class PlotPrAttachmentInvalidError extends WarrenError {
+	readonly code = "plot_pr_attachment_invalid";
+}

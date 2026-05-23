@@ -305,6 +305,20 @@ export interface ServerDeps {
 	 */
 	readonly plotAttacher?: import("../plots/index.ts").PlotAttacher;
 	/**
+	 * Server-side Plot PR-merge seam (warren-8e39 / pl-0344 step 14).
+	 * Used by `POST /plots/:id/attachments/:ref/merge` to resolve the
+	 * `gh_pr` attachment by ref, call the GitHub merge REST API
+	 * (`PUT /repos/:o/:r/pulls/:n/merge`), and return the fresh
+	 * envelope subset plus the merge result variant. The handler
+	 * schedules a follow-up `refreshProjectClone` on success so the
+	 * local clone picks up the new merge commit. Failure surfaces
+	 * synchronously (NOT fire-and-log — the user clicked the button).
+	 * `bootServer` always wires the default; tests substitute a stub.
+	 * When undefined the handler rejects with 503 so an unwired
+	 * deployment doesn't silently swallow the click.
+	 */
+	readonly plotPrMerger?: import("../plots/index.ts").PlotPrMerger;
+	/**
 	 * Server-side Plot question-answer seam (warren-e1ac / pl-9d6a step 12).
 	 * Used by `POST /plots/:id/questions/:event_id/answer` to open a
 	 * `UserPlotClient` against the owning project's `.plot/`, re-validate

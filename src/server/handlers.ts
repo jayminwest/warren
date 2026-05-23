@@ -74,6 +74,7 @@ import {
 	defaultPlotAttacher,
 	defaultPlotCreator,
 	defaultPlotIntentEditor,
+	defaultPlotPrMerger,
 	defaultPlotQuestionAnswerer,
 	defaultPlotReader,
 	defaultPlotStatusChanger,
@@ -3411,6 +3412,160 @@ function detachPlotHandler(deps: ServerDeps): RouteHandler {
 }
 
 /**
+ * `POST /plots/:id/attachments/:ref/merge` — click-to-merge a
+ * GitHub PR attachment (warren-8e39 / pl-0344 step 14).
+ *
+ * Handler order:
+ *   (1) decode `:ref` (router runs decodeURIComponent) and reject
+ *       empty refs at the edge.
+ *   (2) optional body parses `dispatcher_handle` + `merge_method`
+ *       (‘merge’ | ‘squash’ | ‘rebase’, default ‘merge’).
+ *   (3) handle resolution via `resolveDispatcherHandle`.
+ *   (4) resolve owning project via `deps.plotResolver`; `null` /
+ *       unwired → 404.
+ *   (5) defensive `hasPlot` re-check → `ProjectLacksPlotError`.
+ *   (6) `deps.plotPrMerger.merge` resolves the gh_pr attachment,
+ *       parses the ref, calls `mergePullRequest` against the GitHub
+ *       REST API, and returns the post-merge Plot snapshot + the
+ *       `MergePullRequestResult` variant. Errors:
+ *         - `PlotAttachmentNotFoundError` (404) — unknown ref
+ *         - `PlotPrAttachmentMismatchedKindError` (400) — wrong kind
+ *         - `PlotPrAttachmentInvalidError` (400) — unparseable ref
+ *   (7) on `merge.kind === "merged" | "already_merged"` schedule a
+ *       background `refreshProject` so the local clone picks up the
+ *       new merge commit. Fire-and-forget with structured-logger
+ *       error handling — the wire response does NOT block on the
+ *       refresh, the UI gets the merge outcome immediately and the
+ *       follow-up clone state lands via the existing
+ *       `last_refreshed_at` field on the project row (refreshed via
+ *       the standard `/projects/:id/refresh` cycle, just kicked
+ *       early here).
+ *   (8) invalidate the aggregator cache entry for the project (the
+ *       fresh event log on the envelope reflects any post-merge
+ *       gardening the lib does).
+ *   (9) return 200 with `{ envelope, merge, attachment_id,
+ *       refresh_scheduled }`. The `merge` variant is surfaced
+ *       verbatim so the UI renders rate-limit + error states
+ *       without re-parsing the envelope.
+ *
+ * GitHub auth: `deps.autoOpenPr.token` already carries `GITHUB_TOKEN`
+ * (same source the reap path uses for PR open). Tokenless
+ * deployments surface `merge.kind === "missing_token"` so the UI
+ * can hint the operator at the env var.
+ */
+const MERGE_METHODS = ["merge", "squash", "rebase"] as const;
+type MergeMethod = (typeof MERGE_METHODS)[number];
+
+function mergePlotPrAttachmentHandler(deps: ServerDeps): RouteHandler {
+	return async (ctx) => {
+		const plotId = requireParam(ctx, "id");
+		const ref = requireParam(ctx, "ref");
+		if (ref.length === 0) {
+			throw new ValidationError("path param ':ref' must be a non-empty string");
+		}
+
+		const body = await readJsonBodyOrEmpty(ctx);
+		const dispatcherHandle = body !== null ? optionalString(body, "dispatcher_handle") : undefined;
+		let mergeMethod: MergeMethod | undefined;
+		if (body !== null && body.merge_method !== undefined) {
+			const raw = body.merge_method;
+			if (typeof raw !== "string" || !(MERGE_METHODS as readonly string[]).includes(raw)) {
+				throw new ValidationError(
+					`field 'merge_method' must be one of ${MERGE_METHODS.join(", ")} when present`,
+				);
+			}
+			mergeMethod = raw as MergeMethod;
+		}
+
+		const handle = resolveDispatcherHandle(dispatcherHandle);
+
+		const project =
+			deps.plotResolver !== undefined ? await deps.plotResolver.resolve(plotId) : null;
+		if (project === null) {
+			throw new NotFoundError(`plot not found: ${plotId}`, {
+				recoveryHint:
+					"check the plot id; only Plots in projects with hasPlot=true are visible to warren",
+			});
+		}
+
+		if (!project.hasPlot) {
+			throw new ProjectLacksPlotError(
+				`project ${project.id} no longer has a .plot/ directory; cannot merge attachment on plot ${plotId}`,
+				{
+					recoveryHint:
+						"refresh the project so warren picks up the current .plot/ state, or recreate .plot/ via `plot init`",
+				},
+			);
+		}
+
+		const merger = deps.plotPrMerger ?? defaultPlotPrMerger;
+		const token = deps.autoOpenPr?.token ?? "";
+		const result = await merger.merge({
+			plotDir: join(project.localPath, ".plot"),
+			plotId,
+			handle,
+			ref,
+			token,
+			...(mergeMethod !== undefined ? { mergeMethod } : {}),
+		});
+
+		let refreshScheduled = false;
+		if (result.merge.kind === "merged" || result.merge.kind === "already_merged") {
+			refreshScheduled = true;
+			// Fire-and-forget background refresh so the local clone picks up
+			// the new merge commit. The user already has the merge outcome
+			// on the response; this is a follow-up sync.
+			const projectId = project.id;
+			void refreshProject({
+				repo: deps.repos.projects,
+				config: deps.projectsConfig,
+				id: projectId,
+				spawn: deps.spawn ?? defaultSpawn,
+				...(deps.now !== undefined ? { now: deps.now } : {}),
+				...(deps.warrenConfigs !== undefined ? { warrenConfigs: deps.warrenConfigs } : {}),
+			})
+				.then((res) => {
+					deps.logger.info(
+						{ projectId, headSha: res.headSha, plotId, ref },
+						"background project refresh after PR merge",
+					);
+				})
+				.catch((err: unknown) => {
+					deps.logger.warn(
+						{
+							projectId,
+							plotId,
+							ref,
+							err: err instanceof Error ? err.message : String(err),
+						},
+						"background project refresh after PR merge failed",
+					);
+				});
+		}
+
+		deps.plotAggregator?.invalidate(project.id);
+
+		const paused_runs = await loadPausedRunsForPlot(deps, plotId, project);
+		const envelope: PlotEnvelope = {
+			id: result.id,
+			name: result.name,
+			status: result.status,
+			intent: result.intent,
+			attachments: result.attachments,
+			event_log: result.event_log,
+			project_id: project.id,
+			paused_runs,
+		};
+		return jsonResponse(200, {
+			envelope,
+			merge: result.merge,
+			attachment_id: result.attachment_id,
+			refresh_scheduled: refreshScheduled,
+		});
+	};
+}
+
+/**
  * `POST /plots/:id/questions/:event_id/answer` — answer a `question_posed`
  * event with a `question_answered` event (warren-e1ac / pl-9d6a step 12).
  *
@@ -3592,6 +3747,13 @@ const ROUTE_TABLE: readonly RouteEntry[] = [
 	{ method: "POST", pattern: "/plots/:id/intent", build: editPlotIntentHandler },
 	{ method: "POST", pattern: "/plots/:id/status", build: changePlotStatusHandler },
 	{ method: "POST", pattern: "/plots/:id/attachments", build: attachPlotHandler },
+	// Specific path — must precede `/plots/:id/attachments/:ref` so the
+	// DELETE-by-ref route doesn't swallow `<ref>/merge` as a ref.
+	{
+		method: "POST",
+		pattern: "/plots/:id/attachments/:ref/merge",
+		build: mergePlotPrAttachmentHandler,
+	},
 	{
 		method: "DELETE",
 		pattern: "/plots/:id/attachments/:ref",

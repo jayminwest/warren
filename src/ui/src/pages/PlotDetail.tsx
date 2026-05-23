@@ -5,6 +5,7 @@ import { agentsApi, ApiError, plotsApi, projectsApi, runsApi } from "@/api/clien
 import {
 	ATTACHMENT_TYPES,
 	type AttachmentType,
+	type MergePlotPrOutcome,
 	type PausedRunInfo,
 	type PlotAttachment,
 	type PlotEnvelope,
@@ -544,6 +545,20 @@ function AttachmentRow({
 			qc.invalidateQueries({ queryKey: ["plots"] });
 		},
 	});
+	const merge = useMutation({
+		mutationFn: () => plotsApi.mergeAttachment(plotId, attachment.ref),
+		onSuccess: (resp) => {
+			qc.setQueryData(["plot", plotId], resp.envelope);
+			qc.invalidateQueries({ queryKey: ["plots"] });
+			if (resp.refresh_scheduled) {
+				// Background clone refresh was scheduled — give the plot list
+				// a nudge so `last_event_ts` / project row updates surface
+				// on the next poll.
+				qc.invalidateQueries({ queryKey: ["projects"] });
+			}
+		},
+	});
+	const mergeOutcome = merge.data?.merge;
 	return (
 		<li className="flex items-center justify-between gap-2 px-3 py-2 text-sm">
 			<div className="min-w-0 space-y-0.5">
@@ -563,8 +578,30 @@ function AttachmentRow({
 							: String(detach.error)}
 					</p>
 				) : null}
+				{merge.isError ? (
+					<p className="text-xs text-(--color-destructive)">
+						{merge.error instanceof Error
+							? merge.error.message
+							: String(merge.error)}
+					</p>
+				) : null}
+				{mergeOutcome !== undefined ? (
+					<MergeOutcomeBanner outcome={mergeOutcome} />
+				) : null}
 			</div>
 			<div className="flex shrink-0 items-center gap-2">
+				{attachment.type === "gh_pr" ? (
+					<Button
+						type="button"
+						variant="outline"
+						size="sm"
+						onClick={() => merge.mutate()}
+						disabled={merge.isPending}
+						title="Merge this PR via the GitHub REST API and refresh the project clone"
+					>
+						{merge.isPending ? "Merging…" : "Merge"}
+					</Button>
+				) : null}
 				{isSdPlanAttachment(attachment) ? (
 					<RunPlanButton
 						plotId={plotId}
@@ -1244,6 +1281,71 @@ function DispatchAsPlanRunDialog({
 /* ----------------------------------------------------------------------- */
 
 const DEFAULT_SEED_PROMPT_TEMPLATE = "work on sd {seed_id}";
+
+/**
+ * Inline banner that surfaces the GitHub merge outcome under a
+ * `gh_pr` attachment row. Tuned for the V1.5 click-to-merge flow
+ * (warren-8e39): success collapses to a one-liner, error states
+ * (rate-limited, not-mergeable, missing token) show the relevant
+ * detail so the operator knows what to do next.
+ */
+function MergeOutcomeBanner({ outcome }: { outcome: MergePlotPrOutcome }) {
+	switch (outcome.kind) {
+		case "merged":
+			return (
+				<p className="text-xs text-(--color-muted-foreground)">
+					Merged · sha {outcome.sha.slice(0, 7)} · syncing clone…
+				</p>
+			);
+		case "already_merged":
+			return (
+				<p className="text-xs text-(--color-muted-foreground)">
+					Already merged · syncing clone…
+				</p>
+			);
+		case "not_mergeable":
+			return (
+				<p className="text-xs text-(--color-destructive)">
+					Cannot merge: {outcome.message}
+				</p>
+			);
+		case "not_found":
+			return (
+				<p className="text-xs text-(--color-destructive)">
+					PR not found on GitHub: {outcome.message}
+				</p>
+			);
+		case "missing_token":
+			return (
+				<p className="text-xs text-(--color-destructive)">
+					GITHUB_TOKEN unset on the warren server — set it to enable
+					click-to-merge.
+				</p>
+			);
+		case "rate_limited": {
+			const reset = outcome.resetAt;
+			return (
+				<p className="text-xs text-(--color-destructive)">
+					GitHub rate limit hit
+					{reset !== null ? ` · resets ${relativeTime(reset)}` : ""} · try
+					again shortly.
+				</p>
+			);
+		}
+		case "network":
+			return (
+				<p className="text-xs text-(--color-destructive)">
+					Network error talking to GitHub: {outcome.message}
+				</p>
+			);
+		case "http_error":
+			return (
+				<p className="text-xs text-(--color-destructive)">
+					GitHub returned {outcome.status}: {outcome.message}
+				</p>
+			);
+	}
+}
 
 /**
  * V1 batch-dispatch eligibility: a `seeds_issue` attachment whose ref

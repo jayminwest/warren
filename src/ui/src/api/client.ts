@@ -19,6 +19,8 @@ import type {
 	AnswerPlotQuestionResponse,
 	AttachPlotInput,
 	AttachPlotResponse,
+	MergePlotPrInput,
+	MergePlotPrResponse,
 	ChangePlotStatusInput,
 	ChangePlotStatusResponse,
 	CreatePlotInput,
@@ -538,6 +540,26 @@ export const plotsApi = {
 				...(dispatcherHandle !== undefined
 					? { body: { dispatcher_handle: dispatcherHandle } }
 					: {}),
+			},
+		),
+	/**
+	 * `POST /plots/:id/attachments/:ref/merge` — click-to-merge a
+	 * `gh_pr` attachment (warren-8e39 / pl-0344 step 14). Returns the
+	 * fresh envelope plus the GitHub merge outcome variant. On
+	 * `merged` / `already_merged` the server schedules a background
+	 * project-clone refresh.
+	 */
+	mergeAttachment: (plotId: string, ref: string, input: MergePlotPrInput = {}) =>
+		request<MergePlotPrResponse>(
+			`/plots/${encodeURIComponent(plotId)}/attachments/${encodeURIComponent(ref)}/merge`,
+			{
+				method: "POST",
+				body: {
+					...(input.mergeMethod !== undefined ? { merge_method: input.mergeMethod } : {}),
+					...(input.dispatcherHandle !== undefined
+						? { dispatcher_handle: input.dispatcherHandle }
+						: {}),
+				},
 			},
 		),
 	/**

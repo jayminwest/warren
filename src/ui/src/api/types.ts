@@ -878,6 +878,37 @@ export interface DetachPlotResponse {
 }
 
 /**
+ * `POST /plots/:id/attachments/:ref/merge` request body + response
+ * envelope (warren-8e39 / pl-0344 step 14).
+ *
+ * The `merge.kind` discriminant is forwarded verbatim from the server
+ * so the UI can render rate-limit + error states without re-parsing.
+ */
+export type MergeMethod = "merge" | "squash" | "rebase";
+
+export interface MergePlotPrInput {
+	mergeMethod?: MergeMethod;
+	dispatcherHandle?: string;
+}
+
+export type MergePlotPrOutcome =
+	| { kind: "merged"; sha: string }
+	| { kind: "already_merged" }
+	| { kind: "not_mergeable"; message: string }
+	| { kind: "not_found"; message: string }
+	| { kind: "missing_token"; message: string }
+	| { kind: "rate_limited"; message: string; resetAt: string | null }
+	| { kind: "network"; message: string }
+	| { kind: "http_error"; status: number; message: string };
+
+export interface MergePlotPrResponse {
+	envelope: PlotEnvelope;
+	merge: MergePlotPrOutcome;
+	attachment_id: string;
+	refresh_scheduled: boolean;
+}
+
+/**
  * `POST /plots/:id/questions/:event_id/answer` request body + response.
  * `eventId` is the targeted `question_posed` event's `at` ISO timestamp.
  */

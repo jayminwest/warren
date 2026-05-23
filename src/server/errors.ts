@@ -51,6 +51,8 @@ import {
 	PlotIdNotFoundError,
 	PlotIllegalStatusTransitionError,
 	PlotIntentFrozenError,
+	PlotPrAttachmentInvalidError,
+	PlotPrAttachmentMismatchedKindError,
 	PlotQuestionAlreadyAnsweredError,
 	PlotQuestionNotFoundError,
 } from "../plots/errors.ts";
@@ -129,6 +131,8 @@ function warrenStatusFor(err: WarrenError): number {
 	if (err instanceof PlotIntentFrozenError) return 409;
 	if (err instanceof PlotIllegalStatusTransitionError) return 409;
 	if (err instanceof PlotAttachmentNotFoundError) return 404;
+	if (err instanceof PlotPrAttachmentMismatchedKindError) return 400;
+	if (err instanceof PlotPrAttachmentInvalidError) return 400;
 	if (err instanceof PlotQuestionNotFoundError) return 404;
 	if (err instanceof PlotQuestionAlreadyAnsweredError) return 409;
 	if (err instanceof PlotIdInvalidError) return 400;

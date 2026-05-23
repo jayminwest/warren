@@ -3,8 +3,10 @@ import {
 	buildPrContent,
 	checkPullRequestMerged,
 	loadAutoOpenPrConfigFromEnv,
+	mergePullRequest,
 	openPullRequest,
 	type PrFetcher,
+	parsePullRequestRef,
 	parsePullRequestUrl,
 } from "./pr.ts";
 
@@ -473,5 +475,130 @@ describe("parsePullRequestUrl", () => {
 		expect(parsePullRequestUrl("http://github.com/o/r/pull/42")).toBeNull();
 		expect(parsePullRequestUrl("https://github.com/o/r/pull/abc")).toBeNull();
 		expect(parsePullRequestUrl("https://github.com/o/r/pull/0")).toBeNull();
+	});
+});
+
+describe("parsePullRequestRef", () => {
+	test("accepts canonical URL", () => {
+		expect(parsePullRequestRef("https://github.com/o/r/pull/3")).toEqual({
+			owner: "o",
+			repo: "r",
+			number: 3,
+		});
+	});
+
+	test("accepts owner/repo#N shorthand", () => {
+		expect(parsePullRequestRef("jayminwest/warren#42")).toEqual({
+			owner: "jayminwest",
+			repo: "warren",
+			number: 42,
+		});
+		expect(parsePullRequestRef("  jayminwest/warren#1 ")).toEqual({
+			owner: "jayminwest",
+			repo: "warren",
+			number: 1,
+		});
+	});
+
+	test("rejects unrecognized shapes", () => {
+		expect(parsePullRequestRef("jayminwest/warren")).toBeNull();
+		expect(parsePullRequestRef("warren#42")).toBeNull();
+		expect(parsePullRequestRef("o/r/issues/1")).toBeNull();
+		expect(parsePullRequestRef("")).toBeNull();
+	});
+});
+
+describe("mergePullRequest", () => {
+	const baseMerge = {
+		owner: "o",
+		repo: "r",
+		number: 7,
+		token: "ghp_x",
+	};
+
+	test("returns merged on 200 with merged=true", async () => {
+		const { fetch, calls } = recordingFetch([jsonResponse(200, { merged: true, sha: "abc123" })]);
+		const result = await mergePullRequest({ ...baseMerge, fetch });
+		expect(result.kind).toBe("merged");
+		expect((result as { sha: string }).sha).toBe("abc123");
+		expect(calls[0]?.method).toBe("PUT");
+		expect(calls[0]?.url).toBe("https://api.github.com/repos/o/r/pulls/7/merge");
+		expect(calls[0]?.headers.authorization).toBe("Bearer ghp_x");
+		expect(JSON.parse(calls[0]?.body ?? "{}")).toEqual({ merge_method: "merge" });
+	});
+
+	test("forwards merge_method and commit_message", async () => {
+		const { fetch, calls } = recordingFetch([jsonResponse(200, { merged: true, sha: "def" })]);
+		await mergePullRequest({
+			...baseMerge,
+			mergeMethod: "squash",
+			commitMessage: "chore: merge",
+			fetch,
+		});
+		expect(JSON.parse(calls[0]?.body ?? "{}")).toEqual({
+			merge_method: "squash",
+			commit_message: "chore: merge",
+		});
+	});
+
+	test("detects already_merged via 405 body", async () => {
+		const { fetch } = recordingFetch([
+			jsonResponse(405, { message: "Pull Request is already merged" }),
+		]);
+		const result = await mergePullRequest({ ...baseMerge, fetch });
+		expect(result.kind).toBe("already_merged");
+	});
+
+	test("returns not_mergeable on 405 with non-merged message", async () => {
+		const { fetch } = recordingFetch([
+			jsonResponse(405, { message: "Pull Request is not mergeable" }),
+		]);
+		const result = await mergePullRequest({ ...baseMerge, fetch });
+		expect(result.kind).toBe("not_mergeable");
+		expect((result as { message: string }).message).toContain("not mergeable");
+	});
+
+	test("returns rate_limited on 403 with x-ratelimit-remaining=0", async () => {
+		const resetEpoch = 1_700_000_000;
+		const response = new Response(JSON.stringify({ message: "rate limit exceeded" }), {
+			status: 403,
+			headers: {
+				"content-type": "application/json",
+				"x-ratelimit-remaining": "0",
+				"x-ratelimit-reset": String(resetEpoch),
+			},
+		});
+		const { fetch } = recordingFetch([response]);
+		const result = await mergePullRequest({ ...baseMerge, fetch });
+		expect(result.kind).toBe("rate_limited");
+		expect((result as { resetAt: string | null }).resetAt).toBe(
+			new Date(resetEpoch * 1000).toISOString(),
+		);
+	});
+
+	test("returns rate_limited on 429", async () => {
+		const { fetch } = recordingFetch([jsonResponse(429, { message: "slow down" })]);
+		const result = await mergePullRequest({ ...baseMerge, fetch });
+		expect(result.kind).toBe("rate_limited");
+	});
+
+	test("returns not_found on 404", async () => {
+		const { fetch } = recordingFetch([jsonResponse(404, { message: "Not Found" })]);
+		const result = await mergePullRequest({ ...baseMerge, fetch });
+		expect(result.kind).toBe("not_found");
+	});
+
+	test("missing token short-circuits", async () => {
+		const result = await mergePullRequest({ ...baseMerge, token: "" });
+		expect(result.kind).toBe("missing_token");
+	});
+
+	test("network failure surfaces", async () => {
+		const failing = (async () => {
+			throw new Error("ECONNREFUSED");
+		}) as unknown as typeof fetch;
+		const result = await mergePullRequest({ ...baseMerge, fetch: failing });
+		expect(result.kind).toBe("network");
+		expect((result as { message: string }).message).toContain("ECONNREFUSED");
 	});
 });

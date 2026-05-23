@@ -40,6 +40,8 @@ export {
 	PlotIdNotFoundError,
 	PlotIllegalStatusTransitionError,
 	PlotIntentFrozenError,
+	PlotPrAttachmentInvalidError,
+	PlotPrAttachmentMismatchedKindError,
 	PlotQuestionAlreadyAnsweredError,
 	PlotQuestionNotFoundError,
 } from "./errors.ts";
@@ -68,6 +70,12 @@ export {
 	type NeedsAttentionInputs,
 	type NeedsAttentionReason,
 } from "./needs-attention.ts";
+export {
+	defaultPlotPrMerger,
+	type MergePlotPrRequest,
+	type MergePlotPrResult,
+	type PlotPrMerger,
+} from "./pr-merger.ts";
 export {
 	type AnswerPlotQuestionRequest,
 	type AnswerPlotQuestionResult,
