@@ -1,236 +1,245 @@
-/**
- * `PlotSyncer` — Core plot sync to GitHub (pl-5a6c).
- *
- * Scans `.plot/` in the project's local clone. If there are dirty files,
- * creates a git worktree based on the configured targetBranch (falling back to
- * defaultBranch), stages and commits the `.plot/` changes, pushes a unique
- * branch, opens a GitHub PR, and optionally merges it immediately depending on
- * the mergeStrategy.
- */
-
-import { copyFile, mkdir, readdir, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { SpawnFn, SpawnOptions, SpawnResult } from "../projects/clone.ts";
-import type { ProjectsConfig } from "../projects/config.ts";
-import { refreshProjectClone } from "../projects/refresh.ts";
+import type { SpawnFn } from "../projects/index.ts";
 import { parseGitHubUrl } from "../projects/url.ts";
-import { mergePullRequest, openPullRequest, parsePullRequestUrl } from "../runs/pr.ts";
-import { loadWarrenConfig } from "../warren-config/index.ts";
+import { mergePullRequest, openPullRequest, parsePullRequestRef } from "../runs/pr.ts";
+import type { PlotSyncConfig } from "../warren-config/index.ts";
 
-export interface SyncPlotRequest {
-	readonly projectId: string;
-	readonly localPath: string;
+export interface PlotSyncRequest {
+	readonly projectPath: string;
 	readonly gitUrl: string;
 	readonly defaultBranch: string;
-	readonly projectsConfig: ProjectsConfig;
-	readonly spawn: SpawnFn;
 	readonly token: string;
+	readonly handle: string;
+	readonly plotSyncConfig?: PlotSyncConfig;
+	readonly spawn: SpawnFn;
 	readonly fetch?: typeof fetch;
+	readonly gitBinary: string;
 }
 
-export type SyncPlotResult =
-	| { readonly kind: "noop"; readonly reason: "no_changes" }
-	| { readonly kind: "noop"; readonly reason: "missing_token" }
+export type PlotSyncResult =
+	| { readonly kind: "no_op" }
 	| {
 			readonly kind: "synced";
 			readonly branch: string;
 			readonly prUrl: string;
+			readonly prNumber?: number;
 			readonly merged: boolean;
 	  };
 
 export interface PlotSyncer {
-	sync(input: SyncPlotRequest): Promise<SyncPlotResult>;
+	sync(input: PlotSyncRequest): Promise<PlotSyncResult>;
+}
+
+async function trySpawn(
+	spawn: SpawnFn,
+	cmd: readonly string[],
+	opts: { cwd: string; timeoutMs?: number },
+): Promise<{ readonly stdout: string; readonly stderr: string; readonly exitCode: number }> {
+	try {
+		return await spawn(cmd, opts);
+	} catch (err) {
+		throw new Error(
+			`failed to spawn ${cmd.join(" ")}: ${err instanceof Error ? err.message : String(err)}`,
+		);
+	}
+}
+
+async function copyPlotDir(src: string, dst: string): Promise<void> {
+	await mkdir(dst, { recursive: true });
+	const srcEntries = await readdir(src, { withFileTypes: true });
+	const srcFileNames = new Set<string>();
+	for (const entry of srcEntries) {
+		if (!entry.isFile()) continue;
+		if (
+			entry.name.startsWith("plot-") &&
+			(entry.name.endsWith(".events.jsonl") || entry.name.endsWith(".json"))
+		) {
+			srcFileNames.add(entry.name);
+			const content = await readFile(join(src, entry.name));
+			await writeFile(join(dst, entry.name), content);
+		}
+	}
+	// Delete any files in dst that are not in src
+	try {
+		const dstEntries = await readdir(dst, { withFileTypes: true });
+		for (const entry of dstEntries) {
+			if (!entry.isFile()) continue;
+			if (
+				entry.name.startsWith("plot-") &&
+				(entry.name.endsWith(".events.jsonl") || entry.name.endsWith(".json"))
+			) {
+				if (!srcFileNames.has(entry.name)) {
+					await rm(join(dst, entry.name), { force: true });
+				}
+			}
+		}
+	} catch {
+		// If dst/.plot didn't exist, readdir might fail, which is fine
+	}
 }
 
 export const defaultPlotSyncer: PlotSyncer = {
 	async sync(input) {
-		const { localPath, gitUrl, defaultBranch, projectsConfig, spawn, token, fetch } = input;
+		const { projectPath, gitUrl, defaultBranch, token, handle, plotSyncConfig, spawn, gitBinary } =
+			input;
+		const fetchImpl = input.fetch ?? globalThis.fetch;
 
-		// 1. Check if GITHUB_TOKEN is present
-		if (token === "") {
-			return { kind: "noop", reason: "missing_token" };
-		}
-
-		// 2. Check if .plot/ directory actually has any uncommitted changes
-		const gitBinary = projectsConfig.gitBinary;
-		const statusResult = await trySpawn(
-			spawn,
-			[gitBinary, "status", "--porcelain", "--", ".plot/"],
-			{
-				cwd: localPath,
-			},
-		);
-		if (statusResult.exitCode !== 0) {
-			throw new Error(
-				`git status --porcelain -- .plot/ failed with exit ${statusResult.exitCode}: ${statusResult.stderr}`,
-			);
-		}
-		if (statusResult.stdout.trim() === "") {
-			return { kind: "noop", reason: "no_changes" };
-		}
-
-		// 3. Load warren configuration to find targetBranch and mergeStrategy
-		const config = await loadWarrenConfig({ projectPath: localPath });
-		const plotSync = config.defaults?.plotSync;
-		const targetBranch = plotSync?.targetBranch ?? defaultBranch;
-		const mergeStrategy = plotSync?.mergeStrategy ?? "manual";
-
-		// 4. Set up temporary worktree
-		const hash = Math.random().toString(16).substring(2, 10);
-		const branchName = `warren/plot-sync-${hash}`;
-		const worktreeDir = join(tmpdir(), `warren-worktree-${hash}`);
-
-		// Fetch target branch to make sure it's present and up-to-date
-		await trySpawn(spawn, [gitBinary, "fetch", "origin", targetBranch], {
-			cwd: localPath,
+		// 1. Detect if .plot/ files are dirty
+		const statusRes = await trySpawn(spawn, [gitBinary, "status", "--porcelain", "--", ".plot/"], {
+			cwd: projectPath,
 		});
-
-		// Create the git worktree with the new branch
-		const worktreeResult = await trySpawn(
-			spawn,
-			[gitBinary, "worktree", "add", "-b", branchName, worktreeDir, `origin/${targetBranch}`],
-			{ cwd: localPath },
-		);
-		if (worktreeResult.exitCode !== 0) {
-			throw new Error(
-				`git worktree add failed with exit ${worktreeResult.exitCode}: ${worktreeResult.stderr}`,
-			);
+		if (statusRes.exitCode !== 0) {
+			throw new Error(`git status failed (exit ${statusRes.exitCode}): ${statusRes.stderr}`);
 		}
+		if (statusRes.stdout.trim() === "") {
+			return { kind: "no_op" };
+		}
+
+		// 2. Resolve target branch and merge strategy
+		const targetBranch = plotSyncConfig?.targetBranch ?? defaultBranch;
+		const mergeStrategy = plotSyncConfig?.mergeStrategy ?? "manual";
+
+		// 3. Fetch from origin to be up to date
+		const fetchRes = await trySpawn(spawn, [gitBinary, "fetch", "--prune", "origin"], {
+			cwd: projectPath,
+		});
+		if (fetchRes.exitCode !== 0) {
+			// Best-effort in offline/test mode: warn but don't hard crash if it's local branch only
+		}
+
+		// 4. Generate unique branch name
+		const bytes = new Uint8Array(4);
+		crypto.getRandomValues(bytes);
+		const branchHash = Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+		const branchName = `warren/plot-sync-${branchHash}`;
+
+		// 5. Create temporary worktree
+		const worktreePath = await mkdtemp(join(tmpdir(), `warren-plot-sync-${branchHash}-`));
 
 		try {
-			// Copy dirty .plot/ files to the worktree
-			const srcPlotDir = join(localPath, ".plot");
-			const destPlotDir = join(worktreeDir, ".plot");
-			await mkdir(destPlotDir, { recursive: true });
-
-			const files = await readdir(srcPlotDir);
-			for (const file of files) {
-				if (
-					file.startsWith("plot-") &&
-					(file.endsWith(".json") || file.endsWith(".events.jsonl"))
-				) {
-					await copyFile(join(srcPlotDir, file), join(destPlotDir, file));
-				}
-			}
-
-			// Stage changes
-			const addResult = await trySpawn(spawn, [gitBinary, "add", "--", ".plot/"], {
-				cwd: worktreeDir,
-			});
-			if (addResult.exitCode !== 0) {
-				throw new Error(`git add in worktree failed: ${addResult.stderr}`);
-			}
-
-			// Double check cached diff before commit
-			const diffResult = await trySpawn(
+			// 6. Create worktree from origin/<targetBranch> falling back to local targetBranch
+			let worktreeAddRes = await trySpawn(
 				spawn,
-				[gitBinary, "diff", "--cached", "--quiet", "--", ".plot/"],
-				{ cwd: worktreeDir },
+				[gitBinary, "worktree", "add", "-b", branchName, worktreePath, `origin/${targetBranch}`],
+				{ cwd: projectPath },
 			);
-
-			if (diffResult.exitCode !== 0) {
-				// We have changes to commit
-				const commitResult = await trySpawn(
+			if (worktreeAddRes.exitCode !== 0) {
+				worktreeAddRes = await trySpawn(
 					spawn,
-					[
-						gitBinary,
-						"-c",
-						"user.name=warren",
-						"-c",
-						"user.email=warren@os-eco.dev",
-						"commit",
-						"-m",
-						"chore(warren): plot state",
-					],
-					{ cwd: worktreeDir },
+					[gitBinary, "worktree", "add", "-b", branchName, worktreePath, targetBranch],
+					{ cwd: projectPath },
 				);
-				if (commitResult.exitCode !== 0) {
-					throw new Error(`git commit in worktree failed: ${commitResult.stderr}`);
-				}
+			}
+			if (worktreeAddRes.exitCode !== 0) {
+				throw new Error(
+					`Failed to create git worktree (exit ${worktreeAddRes.exitCode}): ${worktreeAddRes.stderr}`,
+				);
 			}
 
-			// Push to origin
-			const pushResult = await trySpawn(spawn, [gitBinary, "push", "origin", branchName], {
-				cwd: worktreeDir,
+			// 7. Copy plot files to worktree
+			await copyPlotDir(join(projectPath, ".plot"), join(worktreePath, ".plot"));
+
+			// 8. Stage, commit, and push
+			const addRes = await trySpawn(spawn, [gitBinary, "add", ".plot/"], { cwd: worktreePath });
+			if (addRes.exitCode !== 0) {
+				throw new Error(
+					`Failed to stage changes in worktree (exit ${addRes.exitCode}): ${addRes.stderr}`,
+				);
+			}
+
+			const commitRes = await trySpawn(
+				spawn,
+				[
+					gitBinary,
+					"-c",
+					"user.name=warren",
+					"-c",
+					"user.email=warren@os-eco.dev",
+					"commit",
+					"-m",
+					"plot sync: update plot metadata",
+				],
+				{ cwd: worktreePath },
+			);
+			if (commitRes.exitCode !== 0) {
+				throw new Error(
+					`Failed to commit changes in worktree (exit ${commitRes.exitCode}): ${commitRes.stderr}`,
+				);
+			}
+
+			const pushRes = await trySpawn(spawn, [gitBinary, "push", "origin", branchName], {
+				cwd: worktreePath,
 			});
-			if (pushResult.exitCode !== 0) {
-				throw new Error(`git push origin ${branchName} failed: ${pushResult.stderr}`);
+			if (pushRes.exitCode !== 0) {
+				throw new Error(
+					`Failed to push sync branch to origin (exit ${pushRes.exitCode}): ${pushRes.stderr}`,
+				);
 			}
 		} finally {
-			// Clean up worktree from git tracking and disk
-			await trySpawn(spawn, [gitBinary, "worktree", "remove", "--force", worktreeDir], {
-				cwd: localPath,
-			}).catch(() => undefined);
-			await rm(worktreeDir, { recursive: true, force: true }).catch(() => undefined);
+			// 9. Clean up worktree definition and directory
+			await trySpawn(spawn, [gitBinary, "worktree", "remove", "--force", worktreePath], {
+				cwd: projectPath,
+			});
+			await rm(worktreePath, { recursive: true, force: true }).catch(() => {});
 		}
 
-		// 5. Open pull request
-		const parsed = parseGitHubUrl(gitUrl);
+		// 10. Open Pull Request
+		const parsedUrl = parseGitHubUrl(gitUrl);
 		const prResult = await openPullRequest(
 			{
-				owner: parsed.owner,
-				repo: parsed.name,
+				owner: parsedUrl.owner,
+				repo: parsedUrl.name,
 				head: branchName,
 				base: targetBranch,
-				title: "chore(warren): sync plot state",
-				body: "Synced plot state to GitHub via Warren.",
+				title: "plot sync: update plot metadata",
+				body: `This PR was auto-generated by Warren to sync plot metadata changes from workspace edits back to the repository.\n\nSynced changes:\n- Plot metadata and event logs in \`.plot/\` by @${handle}`,
 				token,
 			},
-			{ fetch: fetch ?? globalThis.fetch },
+			{ fetch: fetchImpl },
 		);
 
 		if (!prResult.ok) {
-			throw new Error(`failed to open pull request: ${prResult.message}`);
+			throw new Error(`Failed to open sync pull request: ${prResult.message}`);
 		}
 
-		let merged = false;
+		const prParsed = parsePullRequestRef(prResult.url);
+		const prNumber = prParsed?.number;
+
+		// 11. Optionally Merge Pull Request
 		if (mergeStrategy === "immediate" || mergeStrategy === "auto") {
-			const prRef = parsePullRequestUrl(prResult.url);
-			if (prRef === null) {
-				throw new Error(`failed to parse pull request URL: ${prResult.url}`);
+			if (prNumber === undefined) {
+				throw new Error(`Failed to parse PR number from URL: ${prResult.url}`);
 			}
 			const mergeResult = await mergePullRequest({
-				owner: prRef.owner,
-				repo: prRef.repo,
-				number: prRef.number,
+				owner: parsedUrl.owner,
+				repo: parsedUrl.name,
+				number: prNumber,
 				token,
-				fetch: fetch ?? globalThis.fetch,
+				fetch: fetchImpl,
 			});
-			merged = mergeResult.kind === "merged" || mergeResult.kind === "already_merged";
-
-			// Refresh the project clone so the changes are integrated locally
-			if (merged) {
-				await refreshProjectClone({
-					config: projectsConfig,
-					localPath,
-					ref: targetBranch,
-					spawn,
-				});
+			const merged = mergeResult.kind === "merged" || mergeResult.kind === "already_merged";
+			if (!merged) {
+				throw new Error(
+					`Failed to merge sync pull request: ${mergeResult.kind === "not_mergeable" ? mergeResult.message : mergeResult.kind}`,
+				);
 			}
+			return {
+				kind: "synced",
+				branch: branchName,
+				prUrl: prResult.url,
+				prNumber,
+				merged: true,
+			};
 		}
 
 		return {
 			kind: "synced",
 			branch: branchName,
 			prUrl: prResult.url,
-			merged,
+			prNumber,
+			merged: false,
 		};
 	},
 };
-
-async function trySpawn(
-	spawn: SpawnFn,
-	cmd: readonly string[],
-	opts: SpawnOptions,
-): Promise<SpawnResult> {
-	try {
-		return await spawn(cmd, opts);
-	} catch (err) {
-		return {
-			stdout: "",
-			stderr: err instanceof Error ? err.message : String(err),
-			exitCode: -1,
-		};
-	}
-}

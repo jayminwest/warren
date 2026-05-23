@@ -3959,16 +3959,22 @@ function triggerBackgroundSync(
 ): void {
 	const syncer = deps.plotSyncer ?? defaultPlotSyncer;
 	const token = deps.autoOpenPr?.token ?? "";
-	void syncer
-		.sync({
-			projectId: project.id,
-			localPath: project.localPath,
+	void (async () => {
+		const config =
+			deps.warrenConfigs !== undefined
+				? await deps.warrenConfigs.get(project.id, project.localPath)
+				: await loadWarrenConfig({ projectPath: project.localPath });
+		return syncer.sync({
+			projectPath: project.localPath,
 			gitUrl: project.gitUrl,
 			defaultBranch: project.defaultBranch,
-			projectsConfig: deps.projectsConfig,
-			spawn: deps.spawn ?? defaultSpawn,
 			token,
-		})
+			handle: "warren",
+			plotSyncConfig: config.defaults?.plotSync,
+			spawn: deps.spawn ?? defaultSpawn,
+			gitBinary: deps.projectsConfig.gitBinary,
+		});
+	})()
 		.then((result) => {
 			deps.logger.info({ projectId: project.id, plotId, result }, "background plot sync complete");
 		})
@@ -4009,14 +4015,25 @@ function syncPlotHandler(deps: ServerDeps): RouteHandler {
 
 		const syncer = deps.plotSyncer ?? defaultPlotSyncer;
 		const token = deps.autoOpenPr?.token ?? "";
+		let plotSyncConfig: import("../warren-config/index.ts").PlotSyncConfig | undefined;
+		try {
+			const config =
+				deps.warrenConfigs !== undefined
+					? await deps.warrenConfigs.get(project.id, project.localPath)
+					: await loadWarrenConfig({ projectPath: project.localPath });
+			plotSyncConfig = config.defaults?.plotSync;
+		} catch {
+			// Config unavailable (e.g. clone missing) — proceed with defaults.
+		}
 		const result = await syncer.sync({
-			projectId: project.id,
-			localPath: project.localPath,
+			projectPath: project.localPath,
 			gitUrl: project.gitUrl,
 			defaultBranch: project.defaultBranch,
-			projectsConfig: deps.projectsConfig,
-			spawn: deps.spawn ?? defaultSpawn,
 			token,
+			handle: "warren",
+			plotSyncConfig,
+			spawn: deps.spawn ?? defaultSpawn,
+			gitBinary: deps.projectsConfig.gitBinary,
 		});
 
 		return jsonResponse(200, result);

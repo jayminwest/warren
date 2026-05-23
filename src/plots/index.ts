@@ -121,8 +121,8 @@ export {
 export {
 	defaultPlotSyncer,
 	type PlotSyncer,
-	type SyncPlotRequest,
-	type SyncPlotResult,
+	type PlotSyncRequest,
+	type PlotSyncResult,
 } from "./sync.ts";
 export {
 	buildIntentGoalPreview,
