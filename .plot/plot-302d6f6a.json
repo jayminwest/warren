@@ -1,0 +1,22 @@
+{
+  "attachments": [],
+  "created_at": "2026-05-23T04:49:39.001Z",
+  "id": "plot-302d6f6a",
+  "intent": {
+    "constraints": [
+      "Avoid touching any backend code, only UI/UX"
+    ],
+    "goal": "Improving the mobile UX",
+    "non_goals": [
+      "Major overhauls of the UI/UX. Just adding mobile support throughout the application.",
+      "Change the API key auth system."
+    ],
+    "success_criteria": [
+      "I can use warren fully on mobile."
+    ]
+  },
+  "name": "Untitled brainstorm",
+  "schema_version": 1,
+  "status": "drafting",
+  "updated_at": "2026-05-23T04:53:42.032Z"
+}
