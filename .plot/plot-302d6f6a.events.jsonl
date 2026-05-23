@@ -5,3 +5,7 @@
 {"type":"intent_edited","actor":"user:operator","at":"2026-05-23T04:53:42.032Z","data":{"field":"non_goals","value":["Major overhauls of the UI/UX. Just adding mobile support throughout the application.","Change the API key auth system."]}}
 {"type":"intent_edited","actor":"user:operator","at":"2026-05-23T04:53:42.032Z","data":{"field":"constraints","value":["Avoid touching any backend code, only UI/UX"]}}
 {"type":"intent_edited","actor":"user:operator","at":"2026-05-23T04:53:42.032Z","data":{"field":"success_criteria","value":["I can use warren fully on mobile."]}}
+{"type":"run_dispatched","actor":"user:operator","at":"2026-05-23T05:18:48.801Z","data":{"run_id":"run_e15rxbcx8ybf","agent":"brainstorm","model":"claude-opus-4-7","project":"prj_z07y6ssfjfpk"}}
+{"type":"run_dispatched","actor":"user:operator","at":"2026-05-23T05:19:29.906Z","data":{"run_id":"run_amwpdb6wcxpx","agent":"planner","model":"claude-opus-4-7","project":"prj_z07y6ssfjfpk"}}
+{"type":"run_dispatched","actor":"user:operator","at":"2026-05-23T05:24:58.848Z","data":{"run_id":"run_0e4qmpsrk1sh","agent":"planner","model":"claude-opus-4-7","project":"prj_z07y6ssfjfpk"}}
+{"type":"run_dispatched","actor":"user:operator","at":"2026-05-23T05:48:56.779Z","data":{"run_id":"run_nf04a9tydpfq","agent":"planner","model":"claude-opus-4-7","project":"prj_z07y6ssfjfpk"}}
