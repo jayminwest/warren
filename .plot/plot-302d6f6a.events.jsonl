@@ -9,3 +9,5 @@
 {"type":"run_dispatched","actor":"user:operator","at":"2026-05-23T05:19:29.906Z","data":{"run_id":"run_amwpdb6wcxpx","agent":"planner","model":"claude-opus-4-7","project":"prj_z07y6ssfjfpk"}}
 {"type":"run_dispatched","actor":"user:operator","at":"2026-05-23T05:24:58.848Z","data":{"run_id":"run_0e4qmpsrk1sh","agent":"planner","model":"claude-opus-4-7","project":"prj_z07y6ssfjfpk"}}
 {"type":"run_dispatched","actor":"user:operator","at":"2026-05-23T05:48:56.779Z","data":{"run_id":"run_nf04a9tydpfq","agent":"planner","model":"claude-opus-4-7","project":"prj_z07y6ssfjfpk"}}
+{"type":"status_changed","actor":"user:operator","at":"2026-05-23T05:54:10.233Z","data":{"from":"drafting","to":"ready"}}
+{"type":"run_dispatched","actor":"user:operator","at":"2026-05-23T05:57:29.075Z","data":{"run_id":"run_nfkpyesk1e8p","agent":"planner","model":"claude-opus-4-7","project":"prj_z07y6ssfjfpk"}}
