@@ -10,6 +10,7 @@ import {
 	type PlotAttachment,
 	type PlotEnvelope,
 	type PlotEvent,
+	PLOT_STATUSES,
 	type PlotStatus,
 } from "@/api/types.ts";
 import { Chat } from "@/components/Chat.tsx";
@@ -285,17 +286,24 @@ function PlotNameEditor({ plot }: { plot: PlotEnvelope }) {
 }
 
 /* ----------------------------------------------------------------------- */
-/* StatusTransitionControl (warren-6336)                                    */
+/* StatusTransitionControl (warren-6336 / warren-470e dropdown refactor)   */
 /* ----------------------------------------------------------------------- */
 
 /**
  * SPEC §6.5 transition matrix mirrored from
  * `src/plots/status-changer.ts` `STATUS_TRANSITIONS`. Kept as a UI-side
- * constant so the button group can render before the request reaches
- * the server; the server re-validates authoritatively. If the matrix
- * ever drifts, the server's `PlotIllegalStatusTransitionError`
- * surfaces inline below the buttons so the mistake is loud rather
- * than silent.
+ * constant so the dropdown can render before the request reaches the
+ * server; the server re-validates authoritatively. If the matrix ever
+ * drifts, the server's `PlotIllegalStatusTransitionError` surfaces
+ * inline below the dropdown so the mistake is loud rather than silent.
+ *
+ * warren-470e: previously a button group (one Button per legal next),
+ * which felt forward-only and didn't scale visually past two options.
+ * The dropdown surfaces every legally-reachable phase under a single
+ * affordance (an explicit '→ status' Apply control) and keeps the
+ * server contract unchanged. Phases not in the matrix are rendered
+ * disabled so operators see the full set and understand why the rest
+ * are unreachable from here.
  */
 const NEXT_STATUSES: Readonly<Record<PlotStatus, readonly PlotStatus[]>> = {
 	drafting: ["ready", "archived"],
@@ -308,12 +316,21 @@ const NEXT_STATUSES: Readonly<Record<PlotStatus, readonly PlotStatus[]>> = {
 function StatusTransitionControl({ plot }: { plot: PlotEnvelope }) {
 	const qc = useQueryClient();
 	const nexts = NEXT_STATUSES[plot.status];
+	const [selected, setSelected] = useState<PlotStatus | "">("");
+
+	// Reset the dropdown selection whenever the plot's current status
+	// changes (either by our own mutation or a poll-time refetch picking
+	// up an out-of-band change). Keeps the chooser pointed at "pick a
+	// phase" rather than stale-locked on the previous target.
+	useEffect(() => {
+		setSelected("");
+	}, [plot.status]);
 
 	const mutation = useMutation({
 		mutationFn: (next: PlotStatus) => plotsApi.changeStatus(plot.id, { next }),
 		onMutate: async (next) => {
 			// Optimistic: cancel in-flight refetches and patch the cached
-			// envelope so the badge + button group flip immediately. The
+			// envelope so the badge + dropdown flip immediately. The
 			// server-returned event splices into event_log onSuccess; if the
 			// request fails we roll back below.
 			await qc.cancelQueries({ queryKey: ["plot", plot.id] });
@@ -356,6 +373,9 @@ function StatusTransitionControl({ plot }: { plot: PlotEnvelope }) {
 			: String(mutation.error);
 	})();
 
+	const canApply =
+		selected !== "" && !mutation.isPending && nexts.includes(selected);
+
 	return (
 		<div className="flex flex-col items-end gap-2">
 			<PlotStatusBadge status={plot.status} />
@@ -365,20 +385,41 @@ function StatusTransitionControl({ plot }: { plot: PlotEnvelope }) {
 				</p>
 			) : (
 				<div className="flex flex-wrap items-center justify-end gap-2">
-					{nexts.map((next) => (
-						<Button
-							key={next}
-							type="button"
-							size="sm"
-							variant={next === "archived" ? "outline" : "default"}
-							disabled={mutation.isPending}
-							onClick={() => mutation.mutate(next)}
-						>
-							{mutation.isPending && mutation.variables === next
-								? `→ ${next}…`
-								: `→ ${next}`}
-						</Button>
-					))}
+					<Label htmlFor={`plot-status-next-${plot.id}`} className="sr-only">
+						Change status
+					</Label>
+					<select
+						id={`plot-status-next-${plot.id}`}
+						value={selected}
+						disabled={mutation.isPending}
+						onChange={(e) => setSelected(e.target.value as PlotStatus | "")}
+						className="flex h-9 rounded-md border bg-(--color-card) px-3 py-1 text-sm shadow-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-ring) disabled:cursor-not-allowed disabled:opacity-50"
+						aria-label="Change status"
+					>
+						<option value="">Change status…</option>
+						{PLOT_STATUSES.filter((s) => s !== plot.status).map((s) => {
+							const legal = nexts.includes(s);
+							return (
+								<option key={s} value={s} disabled={!legal}>
+									{legal ? `→ ${s}` : `→ ${s} (not allowed from ${plot.status})`}
+								</option>
+							);
+						})}
+					</select>
+					<Button
+						type="button"
+						size="sm"
+						variant={selected === "archived" ? "outline" : "default"}
+						disabled={!canApply}
+						onClick={() => {
+							if (selected === "") return;
+							mutation.mutate(selected);
+						}}
+					>
+						{mutation.isPending && mutation.variables !== undefined
+							? `→ ${mutation.variables}…`
+							: "Apply"}
+					</Button>
 				</div>
 			)}
 			{errorMessage !== null ? (
