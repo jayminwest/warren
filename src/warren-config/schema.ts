@@ -177,6 +177,33 @@ const PreviewConnectTimeoutSchema = DurationStringSchema.refine(
 
 const PreviewSetupSchema = z.string().min(1, "preview.setup must be non-empty");
 
+// warren-cd37 / SPEC §11.O (pl-0344 step 2): per-project override of the
+// wall-clock budget for paused interactive turns. When an agent emits a
+// `question_posed` event into the Plot event log the run transitions to
+// `paused`; if no `question_answered` arrives within this window the
+// supervisor respawns the agent turn with a timeout warning (warren-2976).
+// Bounds: 1s..24h. Sub-second timeouts aren't meaningful (Plot event polling
+// is coarser than that); >24h is almost certainly a typo since the operator
+// can always cancel a paused run by hand. Field carries `.default()` so a
+// consumer reading a parsed `agent` block always sees a number; the
+// `DEFAULT_AGENT_PAUSE_TIMEOUT_MS` constant is the fallback when the whole
+// `agent` block is absent.
+export const DEFAULT_AGENT_PAUSE_TIMEOUT_MS = 1_800_000; // 30 minutes
+
+const AgentPauseTimeoutMsSchema = z
+	.number()
+	.int("agent.pauseTimeoutMs must be an integer (milliseconds)")
+	.min(1_000, "agent.pauseTimeoutMs must be between 1s (1000) and 24h (86400000)")
+	.max(86_400_000, "agent.pauseTimeoutMs must be between 1s (1000) and 24h (86400000)");
+
+const AgentConfigSchema = z
+	.object({
+		pauseTimeoutMs: AgentPauseTimeoutMsSchema.default(DEFAULT_AGENT_PAUSE_TIMEOUT_MS),
+	})
+	.strict();
+
+export type AgentConfig = z.infer<typeof AgentConfigSchema>;
+
 // warren-fcb7 / SPEC §11.L (path-mode addendum, pl-f4ea): per-project pin of
 // the preview routing mode. Operator-facing surface is `WARREN_PREVIEW_MODE`
 // in env; this top-level field on `.warren/preview.yaml` lets a project
@@ -293,6 +320,12 @@ export const DefaultsConfigSchema = z
 		// still accepted on `config.yaml` / legacy `defaults.json` for smooth
 		// migration. When both exist `preview.yaml` wins (loader-side).
 		preview: PreviewConfigSchema.optional(),
+		// warren-cd37 / SPEC §11.O: per-project agent-runtime knobs. Currently
+		// only `pauseTimeoutMs` (interactive-turn pause budget for
+		// warren-2976); future agent-scoped overrides slot in here without
+		// inflating the top level. Missing block → use
+		// DEFAULT_AGENT_PAUSE_TIMEOUT_MS at the consumption site.
+		agent: AgentConfigSchema.optional(),
 	})
 	.strict();
 

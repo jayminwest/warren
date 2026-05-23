@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+	DEFAULT_AGENT_PAUSE_TIMEOUT_MS,
 	DEFAULT_PREVIEW_MODE,
 	DefaultsConfigSchema,
 	PreviewConfigSchema,
@@ -128,6 +129,69 @@ describe("DefaultsConfigSchema", () => {
 		expect(DefaultsConfigSchema.safeParse({ runBranchPrefix: "warren" }).success).toBe(true);
 		expect(DefaultsConfigSchema.safeParse({ runBranchPrefix: "agent-1" }).success).toBe(true);
 		expect(DefaultsConfigSchema.safeParse({ runBranchPrefix: "bot.fix" }).success).toBe(true);
+	});
+});
+
+describe("DefaultsConfigSchema agent block (warren-cd37)", () => {
+	test("DEFAULT_AGENT_PAUSE_TIMEOUT_MS is 30 minutes in milliseconds", () => {
+		expect(DEFAULT_AGENT_PAUSE_TIMEOUT_MS).toBe(1_800_000);
+	});
+
+	test("applies DEFAULT_AGENT_PAUSE_TIMEOUT_MS when agent block is present but field omitted", () => {
+		const parsed = DefaultsConfigSchema.safeParse({ agent: {} });
+		expect(parsed.success).toBe(true);
+		if (parsed.success) {
+			expect(parsed.data.agent?.pauseTimeoutMs).toBe(DEFAULT_AGENT_PAUSE_TIMEOUT_MS);
+		}
+	});
+
+	test("accepts an explicit pauseTimeoutMs override", () => {
+		const parsed = DefaultsConfigSchema.safeParse({ agent: { pauseTimeoutMs: 60_000 } });
+		expect(parsed.success).toBe(true);
+		if (parsed.success) {
+			expect(parsed.data.agent?.pauseTimeoutMs).toBe(60_000);
+		}
+	});
+
+	test("leaves agent undefined when the block is omitted entirely", () => {
+		const parsed = DefaultsConfigSchema.safeParse({});
+		expect(parsed.success).toBe(true);
+		if (parsed.success) {
+			expect(parsed.data.agent).toBeUndefined();
+		}
+	});
+
+	test("rejects pauseTimeoutMs below 1s", () => {
+		expect(DefaultsConfigSchema.safeParse({ agent: { pauseTimeoutMs: 500 } }).success).toBe(false);
+		expect(DefaultsConfigSchema.safeParse({ agent: { pauseTimeoutMs: 0 } }).success).toBe(false);
+		expect(DefaultsConfigSchema.safeParse({ agent: { pauseTimeoutMs: -1 } }).success).toBe(false);
+	});
+
+	test("rejects pauseTimeoutMs above 24h", () => {
+		expect(DefaultsConfigSchema.safeParse({ agent: { pauseTimeoutMs: 86_400_001 } }).success).toBe(
+			false,
+		);
+	});
+
+	test("accepts the boundary values", () => {
+		expect(DefaultsConfigSchema.safeParse({ agent: { pauseTimeoutMs: 1_000 } }).success).toBe(true);
+		expect(DefaultsConfigSchema.safeParse({ agent: { pauseTimeoutMs: 86_400_000 } }).success).toBe(
+			true,
+		);
+	});
+
+	test("rejects non-integer pauseTimeoutMs", () => {
+		expect(DefaultsConfigSchema.safeParse({ agent: { pauseTimeoutMs: 1500.5 } }).success).toBe(
+			false,
+		);
+	});
+
+	test("rejects unknown fields inside agent (strict)", () => {
+		expect(
+			DefaultsConfigSchema.safeParse({
+				agent: { pauseTimeoutMs: 60_000, unknownField: true },
+			}).success,
+		).toBe(false);
 	});
 });
 

@@ -2090,6 +2090,33 @@ a live warren+burrow stack:
   question rejection, and the `Run plan` → `POST /plan-runs` →
   Plot auto-`done` composition that reuses §11.P.Plot's wiring.
 
+**Interactive runs configuration (warren-cd37 / pl-0344 step 2).** The
+Plot-workbench loop (pl-0344) introduces a *paused* run state for batch
+runs that emit `question_posed` and a respawn-per-turn lifecycle for
+interactive runs (warren-1117 / warren-2976). Both need a wall-clock
+budget for how long warren waits on the human before respawning the
+agent with a timeout warning. That budget is per-project:
+
+```yaml
+# .warren/config.yaml
+agent:
+  pauseTimeoutMs: 1800000  # 30 minutes (default)
+```
+
+- Lives on `DefaultsConfigSchema.agent.pauseTimeoutMs`
+  (`src/warren-config/schema.ts`), surfaced by `loadWarrenConfig()`
+  alongside the existing defaults.
+- Bounds: 1s..24h. Sub-second timeouts aren't meaningful given Plot
+  event polling cadence; >24h is almost certainly a typo — operators
+  can still cancel paused runs by hand.
+- Default constant `DEFAULT_AGENT_PAUSE_TIMEOUT_MS` (1_800_000) is
+  exported from the same module; consumers that need to handle the
+  "no agent block at all" case fall back to it. The schema applies
+  `.default()` so a parsed `agent` block always carries a number.
+- Future agent-runtime knobs slot under `agent.*` rather than
+  inflating the top-level shape — the nested block exists to give that
+  growth a home.
+
 ### 11.P PlanRun: serial plan execution (pl-a258, 2026-05-18)
 
 PlanRun is a dispatch mode, not a fifth bundled feature. The substrate

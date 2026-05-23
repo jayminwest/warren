@@ -55,6 +55,24 @@ scheduler (`.warren/triggers.yaml` + past-due `scheduledFor` seed
 extensions, SPEC §11.I) are what V1 ships; GitHub webhook triggers
 and library API exports are deferred to V2.
 
+### Per-project config (`.warren/config.yaml`)
+
+The canonical home for per-project defaults is `.warren/config.yaml`
+(legacy `.warren/defaults.json` still loads with a deprecation warning).
+Schema lives in `src/warren-config/schema.ts` (`DefaultsConfigSchema`)
+and is surfaced by `loadWarrenConfig()`. Notable knobs:
+
+- `defaultRole`, `defaultPrompt`, `defaultProvider`, `defaultModel`,
+  `defaultBranch`, `runBranchPrefix` — dispatch-time defaults; see
+  SPEC §11.H.
+- `preview` — per-run preview environments; canonical home is
+  `.warren/preview.yaml`, see SPEC §11.L.
+- `agent.pauseTimeoutMs` (default `1800000` = 30 min, bounds 1s..24h)
+  — wall-clock budget for paused interactive turns and batch runs that
+  emit `question_posed`. Consumers fall back to
+  `DEFAULT_AGENT_PAUSE_TIMEOUT_MS` when the block is absent. SPEC §11.O
+  (warren-cd37 / pl-0344 step 2).
+
 ## Relationship to burrow
 
 Warren and burrow are tightly coupled — burrow is the sandbox runtime,
