@@ -24,3 +24,6 @@
 {"type":"run_dispatched","actor":"user:operator","at":"2026-05-23T06:36:55.863Z","data":{"run_id":"run_xyg68dchrtd1","agent":"pi","model":"claude-opus-4-7","project":"prj_z07y6ssfjfpk"}}
 {"type":"run_dispatched","actor":"user:operator","at":"2026-05-23T06:41:55.956Z","data":{"run_id":"run_eykjc07nwk8b","agent":"pi","model":"claude-opus-4-7","project":"prj_z07y6ssfjfpk"}}
 {"type":"run_dispatched","actor":"user:operator","at":"2026-05-23T06:54:53.974Z","data":{"run_id":"run_8dn1ccf93ry2","agent":"pi","model":"claude-opus-4-7","project":"prj_z07y6ssfjfpk"}}
+{"type":"status_changed","actor":"user:operator","at":"2026-05-23T15:26:03.858Z","data":{"from":"ready","to":"active"}}
+{"type":"status_changed","actor":"user:operator","at":"2026-05-23T15:26:06.146Z","data":{"from":"active","to":"done"}}
+{"type":"note","actor":"user:operator","at":"2026-05-23T15:27:27.764Z","data":{"text":"renamed from \"Untitled brainstorm\" to \"Mobile UX\""}}
