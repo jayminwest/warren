@@ -79,6 +79,7 @@ import {
 	defaultPlotReader,
 	defaultPlotRenamer,
 	defaultPlotStatusChanger,
+	defaultPlotSyncer,
 	EMPTY_PLOT_SUMMARIES,
 	isValidPlotIdFormat,
 	type PlotEnvelope,
@@ -2890,6 +2891,10 @@ function formalizePlotHandler(deps: ServerDeps): RouteHandler {
 		// (3) delegate to the formalizer seam.
 		const formalizer = deps.plotFormalizer ?? createDefaultPlotFormalizer({ repos: deps.repos });
 		const result = await formalizer.formalize({ plotId });
+
+		// Trigger background sync
+		triggerBackgroundSync(deps, project, plotId);
+
 		return jsonResponse(200, result);
 	};
 }
@@ -3428,6 +3433,9 @@ function changePlotStatusHandler(deps: ServerDeps): RouteHandler {
 		// status / last_event_ts without waiting for the 5s TTL.
 		deps.plotAggregator?.invalidate(project.id);
 
+		// Trigger background sync
+		triggerBackgroundSync(deps, project, plotId);
+
 		// (7) wire response — PlotSummary + the emitted status_changed event.
 		const summary: PlotSummary = {
 			id: result.id,
@@ -3944,6 +3952,77 @@ function answerPlotQuestionHandler(deps: ServerDeps): RouteHandler {
 	};
 }
 
+function triggerBackgroundSync(
+	deps: ServerDeps,
+	project: { id: string; localPath: string; gitUrl: string; defaultBranch: string },
+	plotId: string,
+): void {
+	const syncer = deps.plotSyncer ?? defaultPlotSyncer;
+	const token = deps.autoOpenPr?.token ?? "";
+	void syncer
+		.sync({
+			projectId: project.id,
+			localPath: project.localPath,
+			gitUrl: project.gitUrl,
+			defaultBranch: project.defaultBranch,
+			projectsConfig: deps.projectsConfig,
+			spawn: deps.spawn ?? defaultSpawn,
+			token,
+		})
+		.then((result) => {
+			deps.logger.info({ projectId: project.id, plotId, result }, "background plot sync complete");
+		})
+		.catch((err) => {
+			deps.logger.error(
+				{
+					projectId: project.id,
+					plotId,
+					error: err instanceof Error ? err.message : String(err),
+				},
+				"background plot sync failed",
+			);
+		});
+}
+
+function syncPlotHandler(deps: ServerDeps): RouteHandler {
+	return async (ctx) => {
+		const plotId = requireParam(ctx, "id");
+
+		const project =
+			deps.plotResolver !== undefined ? await deps.plotResolver.resolve(plotId) : null;
+		if (project === null) {
+			throw new NotFoundError(`plot not found: ${plotId}`, {
+				recoveryHint:
+					"check the plot id; only Plots in projects with hasPlot=true are visible to warren",
+			});
+		}
+
+		if (!project.hasPlot) {
+			throw new ProjectLacksPlotError(
+				`project ${project.id} no longer has a .plot/ directory; cannot sync plot ${plotId}`,
+				{
+					recoveryHint:
+						"refresh the project so warren picks up the current .plot/ state, or recreate .plot/ via `plot init`",
+				},
+			);
+		}
+
+		const syncer = deps.plotSyncer ?? defaultPlotSyncer;
+		const token = deps.autoOpenPr?.token ?? "";
+		const result = await syncer.sync({
+			projectId: project.id,
+			localPath: project.localPath,
+			gitUrl: project.gitUrl,
+			defaultBranch: project.defaultBranch,
+			projectsConfig: deps.projectsConfig,
+			spawn: deps.spawn ?? defaultSpawn,
+			token,
+		});
+
+		return jsonResponse(200, result);
+	};
+}
+
 /* ----------------------------------------------------------------------- */
 /* Public API                                                               */
 /* ----------------------------------------------------------------------- */
@@ -4024,6 +4103,7 @@ const ROUTE_TABLE: readonly RouteEntry[] = [
 	{ method: "GET", pattern: "/plots/:id", build: getPlotHandler },
 	{ method: "POST", pattern: "/plots/:id/intent", build: editPlotIntentHandler },
 	{ method: "POST", pattern: "/plots/:id/rename", build: renamePlotHandler },
+	{ method: "POST", pattern: "/plots/:id/sync", build: syncPlotHandler },
 	{ method: "POST", pattern: "/plots/:id/status", build: changePlotStatusHandler },
 	{ method: "POST", pattern: "/plots/:id/attachments", build: attachPlotHandler },
 	// Specific path — must precede `/plots/:id/attachments/:ref` so the

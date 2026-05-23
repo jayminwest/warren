@@ -333,6 +333,12 @@ export interface ServerDeps {
 	 */
 	readonly plotPrMerger?: import("../plots/index.ts").PlotPrMerger;
 	/**
+	 * Server-side Plot sync seam (warren-5bc2 / pl-5a6c).
+	 * Used by `POST /plots/:id/sync` to check for dirty `.plot/` files,
+	 * commit and push changes, and open/merge a PR.
+	 */
+	readonly plotSyncer?: import("../plots/index.ts").PlotSyncer;
+	/**
 	 * Server-side Plot question-answer seam (warren-e1ac / pl-9d6a step 12).
 	 * Used by `POST /plots/:id/questions/:event_id/answer` to open a
 	 * `UserPlotClient` against the owning project's `.plot/`, re-validate

@@ -114,6 +114,7 @@ interface BuildDepsInput {
 	plotPrMerger?: PlotPrMerger;
 	plotQuestionAnswerer?: PlotQuestionAnswerer;
 	plotFormalizer?: PlotFormalizer;
+	plotSyncer?: import("../plots/index.ts").PlotSyncer;
 	autoOpenToken?: string;
 }
 
@@ -157,6 +158,7 @@ async function depsFor(input: BuildDepsInput): Promise<ServerDeps> {
 			? { plotQuestionAnswerer: input.plotQuestionAnswerer }
 			: {}),
 		...(input.plotFormalizer !== undefined ? { plotFormalizer: input.plotFormalizer } : {}),
+		...(input.plotSyncer !== undefined ? { plotSyncer: input.plotSyncer } : {}),
 	};
 }
 
@@ -3628,5 +3630,97 @@ describe("POST /plots/:id/formalize", () => {
 			constraints: [],
 			success_criteria: [],
 		});
+	});
+});
+
+describe("POST /plots/:id/sync", () => {
+	let db: WarrenDb;
+	let repos: Repos;
+	let handle: ServeHandle | null = null;
+
+	beforeEach(async () => {
+		db = await openDatabase({ path: ":memory:" });
+		repos = createRepos(db);
+	});
+
+	afterEach(async () => {
+		if (handle) {
+			await handle.stop();
+			handle = null;
+		}
+		await db.close();
+	});
+
+	test("returns the synced result when successful", async () => {
+		const project = await seedProject(repos, { id: "proj-sync", hasPlot: true });
+		const { resolver } = fakeResolver({ "plot-sync-01": project });
+		const mockSyncer: import("../plots/index.ts").PlotSyncer = {
+			async sync(_input) {
+				return {
+					kind: "synced",
+					branch: "warren/plot-sync-xyz",
+					prUrl: "https://github.com/owner/repo/pull/1",
+					merged: true,
+				};
+			},
+		};
+
+		const deps = await depsFor({ repos, plotResolver: resolver, plotSyncer: mockSyncer });
+		handle = startServer(deps, {
+			transport: { kind: "tcp", hostname: "127.0.0.1", port: 0 },
+			auth: NO_AUTH,
+			logger: silentLogger,
+		});
+
+		const res = await fetch(`${tcpUrl(handle)}/plots/plot-sync-01/sync`, {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({}),
+		});
+
+		expect(res.status).toBe(200);
+		const body = await res.json();
+		expect(body).toEqual({
+			kind: "synced",
+			branch: "warren/plot-sync-xyz",
+			prUrl: "https://github.com/owner/repo/pull/1",
+			merged: true,
+		});
+	});
+
+	test("returns 404 for non-existent plot id", async () => {
+		const deps = await depsFor({ repos });
+		handle = startServer(deps, {
+			transport: { kind: "tcp", hostname: "127.0.0.1", port: 0 },
+			auth: NO_AUTH,
+			logger: silentLogger,
+		});
+
+		const res = await fetch(`${tcpUrl(handle)}/plots/plot-missing-01/sync`, {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({}),
+		});
+
+		expect(res.status).toBe(404);
+	});
+
+	test("returns error when project lacks plot directory", async () => {
+		const project = await seedProject(repos, { id: "proj-noplot", hasPlot: false });
+		const { resolver } = fakeResolver({ "plot-noplot-01": project });
+		const deps = await depsFor({ repos, plotResolver: resolver });
+		handle = startServer(deps, {
+			transport: { kind: "tcp", hostname: "127.0.0.1", port: 0 },
+			auth: NO_AUTH,
+			logger: silentLogger,
+		});
+
+		const res = await fetch(`${tcpUrl(handle)}/plots/plot-noplot-01/sync`, {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({}),
+		});
+
+		expect(res.status).toBe(400); // ProjectLacksPlotError -> 400
 	});
 });
