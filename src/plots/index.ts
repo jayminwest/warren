@@ -107,6 +107,12 @@ export {
 	STATUS_TRANSITIONS,
 } from "./status-changer.ts";
 export {
+	defaultPlotSyncer,
+	type PlotSyncRequest,
+	type PlotSyncResult,
+	type PlotSyncer,
+} from "./sync.ts";
+export {
 	type PlotSummaryArtifact,
 	type PlotSummaryDecision,
 	type PlotSummaryLinkedCommit,
