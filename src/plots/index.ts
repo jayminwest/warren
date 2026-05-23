@@ -10,12 +10,14 @@
 export {
 	type AggregatorClientFactory,
 	type AggregatorPlotClient,
+	type AggregatorRunsRepo,
 	createPlotAggregator,
 	defaultAggregatorClientFactory,
 	EMPTY_PLOT_SUMMARIES,
 	type ListPlotSummariesQuery,
 	type PlotAggregator,
 	type PlotAggregatorOptions,
+	type PlotNeedsAttentionSummary,
 } from "./aggregate.ts";
 export {
 	type AttachPlotRequest,
@@ -59,6 +61,13 @@ export {
 	type EditPlotIntentResult,
 	type PlotIntentEditor,
 } from "./intent-editor.ts";
+export {
+	computeNeedsAttentionReasons,
+	DEFAULT_STALE_DRAFT_DAYS,
+	NEEDS_ATTENTION_REASONS,
+	type NeedsAttentionInputs,
+	type NeedsAttentionReason,
+} from "./needs-attention.ts";
 export {
 	type AnswerPlotQuestionRequest,
 	type AnswerPlotQuestionResult,

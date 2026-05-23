@@ -82,6 +82,7 @@ import {
 	type PlotEnvelope,
 	PlotIdInvalidError,
 	PlotIdNotFoundError,
+	type PlotNeedsAttentionSummary,
 	type PlotSummary,
 } from "../plots/index.ts";
 import { createRunPreviewsRepo, DEFAULT_MAX_LIVE } from "../preview/eviction.ts";
@@ -2352,6 +2353,7 @@ async function checkAgentsRegistered(deps: ServerDeps): Promise<DiagnosticCheck>
 function listPlotsHandler(deps: ServerDeps): RouteHandler {
 	return async (ctx) => {
 		const rawStatus = ctx.url.searchParams.get("status");
+		const rawFilter = ctx.url.searchParams.get("filter");
 		let status: PlotStatus | undefined;
 		if (rawStatus !== null && rawStatus !== "") {
 			if (!(PLOT_STATUSES as readonly string[]).includes(rawStatus)) {
@@ -2360,6 +2362,22 @@ function listPlotsHandler(deps: ServerDeps): RouteHandler {
 				);
 			}
 			status = rawStatus as PlotStatus;
+		}
+		// `?filter=needs_attention` (warren-d693 / pl-0344 step 9) routes
+		// to the needs-attention scorer and returns rows carrying a
+		// `reasons` array. `?status` + `?filter` compose: the status
+		// filter is applied client-side on top of the needs-attention
+		// set so a UI can render "drafting Plots in the Needs you view".
+		if (rawFilter !== null && rawFilter !== "") {
+			if (rawFilter !== "needs_attention") {
+				throw new ValidationError(`unknown filter '${rawFilter}'; expected one of needs_attention`);
+			}
+			if (deps.plotAggregator === undefined) {
+				return jsonResponse(200, { plots: [] as readonly PlotNeedsAttentionSummary[] });
+			}
+			const rows = await deps.plotAggregator.listNeedsAttention();
+			const filtered = status !== undefined ? rows.filter((r) => r.status === status) : rows;
+			return jsonResponse(200, { plots: filtered });
 		}
 		// Aggregator may be omitted by tests; fall back to the byte-identical
 		// empty contract so the wire shape stays the same regardless.
@@ -2370,6 +2388,25 @@ function listPlotsHandler(deps: ServerDeps): RouteHandler {
 			status !== undefined ? { status } : undefined,
 		);
 		return jsonResponse(200, { plots });
+	};
+}
+
+/**
+ * `GET /plots/needs-attention/count` — sidebar-badge counter for the
+ * deployment-wide "Needs you" view (warren-d693 / pl-0344 step 9,
+ * surfaced in the UI by warren-f0e2 / step 13).
+ *
+ * Returns `{ count: number }`. Deployments without `plotAggregator`
+ * wired (the standalone-warren empty-deployment contract) return
+ * `{ count: 0 }` — byte-stable for the no-Plot path.
+ */
+function needsAttentionCountHandler(deps: ServerDeps): RouteHandler {
+	return async () => {
+		if (deps.plotAggregator === undefined) {
+			return jsonResponse(200, { count: 0 });
+		}
+		const count = await deps.plotAggregator.countNeedsAttention();
+		return jsonResponse(200, { count });
 	};
 }
 
@@ -3476,6 +3513,13 @@ const ROUTE_TABLE: readonly RouteEntry[] = [
 	{ method: "POST", pattern: "/brainstorm", build: createBrainstormHandler },
 	{ method: "GET", pattern: "/plots", build: listPlotsHandler },
 	{ method: "POST", pattern: "/plots", build: createPlotHandler },
+	// Static path — must precede `/plots/:id` so the param route doesn't
+	// swallow `needs-attention` as an :id.
+	{
+		method: "GET",
+		pattern: "/plots/needs-attention/count",
+		build: needsAttentionCountHandler,
+	},
 	{ method: "POST", pattern: "/plots/:id/formalize", build: formalizePlotHandler },
 	{ method: "GET", pattern: "/plots/:id", build: getPlotHandler },
 	{ method: "POST", pattern: "/plots/:id/intent", build: editPlotIntentHandler },

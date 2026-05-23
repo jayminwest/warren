@@ -56,6 +56,12 @@ function aggregatorReturning(rows: PlotSummary[]): {
 				listCalls += 1;
 				return rows;
 			},
+			async listNeedsAttention() {
+				return [];
+			},
+			async countNeedsAttention() {
+				return 0;
+			},
 			invalidate() {},
 		},
 	};

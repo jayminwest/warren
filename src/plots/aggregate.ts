@@ -49,9 +49,14 @@
 import { readdir } from "node:fs/promises";
 import { join } from "node:path";
 import type { PlotEvent, PlotStatus } from "@os-eco/plot-cli";
-import type { ProjectRow } from "../db/schema.ts";
+import type { ProjectRow, RunRow } from "../db/schema.ts";
 import { UserPlotClient } from "../plot-client/index.ts";
 import type { Logger } from "../server/types.ts";
+import {
+	computeNeedsAttentionReasons,
+	DEFAULT_STALE_DRAFT_DAYS,
+	type NeedsAttentionReason,
+} from "./needs-attention.ts";
 import { buildIntentGoalPreview, type PlotSummary } from "./types.ts";
 
 /**
@@ -124,6 +129,19 @@ export const defaultAggregatorClientFactory: AggregatorClientFactory = (project)
 	};
 };
 
+/**
+ * Narrow seam over `RunsRepo` exposing only the queries the
+ * needs-attention scorer requires (warren-d693 / pl-0344 step 9). The
+ * aggregator calls `listByState('paused')` once per
+ * `listNeedsAttention()` invocation and groups the result by `plotId`
+ * — a single SQL query covers the whole deployment, not a per-Plot
+ * fan-out. The default wiring in `src/server/main.ts` passes
+ * `repos.runs` directly; tests pass a stub.
+ */
+export interface AggregatorRunsRepo {
+	listByState(state: "paused"): Promise<RunRow[]>;
+}
+
 export interface PlotAggregatorOptions {
 	readonly projectsRepo: { listAll(): Promise<ProjectRow[]> };
 	readonly logger: Logger;
@@ -132,10 +150,35 @@ export interface PlotAggregatorOptions {
 	readonly cacheTtlMs?: number;
 	/** Clock seam; defaults to `Date.now`. */
 	readonly now?: () => number;
+	/**
+	 * Source for the `paused_run` needs-attention signal. Optional only
+	 * so the existing fakes don't break; in production main wires
+	 * `repos.runs`. When absent, `listNeedsAttention` / `countNeedsAttention`
+	 * treat every Plot as having zero paused runs (the other two signals
+	 * still apply).
+	 */
+	readonly runsRepo?: AggregatorRunsRepo;
+	/**
+	 * Stale-draft threshold in days for the `stale_draft`
+	 * needs-attention signal (warren-d693 / pl-0344 step 9). Defaults
+	 * to `DEFAULT_STALE_DRAFT_DAYS` (7). Tests shrink this to make
+	 * deterministic assertions cheap.
+	 */
+	readonly staleDraftAfterDays?: number;
 }
 
 export interface ListPlotSummariesQuery {
 	readonly status?: PlotStatus;
+}
+
+/**
+ * `PlotSummary` plus the ordered list of reasons it surfaces in the
+ * "Needs you" view (warren-d693 / pl-0344 step 9). Returned by
+ * `PlotAggregator.listNeedsAttention()` and the `?filter=needs_attention`
+ * variant of `GET /plots`.
+ */
+export interface PlotNeedsAttentionSummary extends PlotSummary {
+	readonly reasons: readonly NeedsAttentionReason[];
 }
 
 export interface PlotAggregator {
@@ -146,6 +189,28 @@ export interface PlotAggregator {
 	 * contract — see module comment).
 	 */
 	listSummaries(q?: ListPlotSummariesQuery): Promise<readonly PlotSummary[]>;
+	/**
+	 * Aggregate Plots that surface in the deployment-wide "Needs you"
+	 * view (warren-d693 / pl-0344 step 9). Each row carries an ordered,
+	 * non-empty `reasons` list. Sorted by `last_event_ts` desc, matching
+	 * `listSummaries`. Returns an empty array when no Plot qualifies
+	 * (and when the deployment has zero `hasPlot=true` projects).
+	 *
+	 * Cost model: one `listByState('paused')` query, one cached
+	 * `listSummaries()` call, and per-Plot `readEvents` for every Plot
+	 * already cached. The per-project cache is shared with
+	 * `listSummaries`, so a UI that renders both the main Plots list
+	 * and the sidebar badge within the 5s TTL only pays the events
+	 * fan-out once.
+	 */
+	listNeedsAttention(): Promise<readonly PlotNeedsAttentionSummary[]>;
+	/**
+	 * Count of Plots in the "Needs you" view. Powers the sidebar badge
+	 * (warren-f0e2 / pl-0344 step 13). Currently delegates to
+	 * `listNeedsAttention().length`; the indirection keeps room for a
+	 * cheaper per-project count cache if the badge becomes a hot path.
+	 */
+	countNeedsAttention(): Promise<number>;
 	/**
 	 * Drop one project's cache entry (or all entries when omitted).
 	 * Called by mutating handlers so the next read sees fresh data.
@@ -172,7 +237,9 @@ export function createPlotAggregator(opts: PlotAggregatorOptions): PlotAggregato
 	const factory = opts.clientFactory ?? defaultAggregatorClientFactory;
 	const ttl = opts.cacheTtlMs ?? 5_000;
 	const now = opts.now ?? (() => Date.now());
+	const staleDraftAfterDays = opts.staleDraftAfterDays ?? DEFAULT_STALE_DRAFT_DAYS;
 	const cache = new Map<string, CacheEntry>();
+	const eventsCache = new Map<string, ReadonlyArray<PlotEvent>>();
 
 	async function loadProject(project: ProjectRow): Promise<readonly PlotSummary[]> {
 		const cached = cache.get(project.id);
@@ -206,14 +273,112 @@ export function createPlotAggregator(opts: PlotAggregatorOptions): PlotAggregato
 			});
 			return merged;
 		},
+		async listNeedsAttention() {
+			const summaries = await this.listSummaries();
+			if (summaries.length === 0) return [];
+			const pausedByPlot = await pausedPlotIds(opts.runsRepo, opts.logger);
+			const nowDate = new Date(now());
+			// Cache the project lookup once per call so loadEventsForSummary
+			// doesn't hit projectsRepo.listAll() per Plot.
+			const projects = await opts.projectsRepo.listAll();
+			const projectsById = new Map(projects.map((p) => [p.id, p]));
+			const rows: PlotNeedsAttentionSummary[] = [];
+			for (const s of summaries) {
+				const events = await loadEventsForSummary(s, projectsById);
+				const reasons = computeNeedsAttentionReasons({
+					plot: s,
+					events,
+					hasPausedRun: pausedByPlot.has(s.id),
+					now: nowDate,
+					staleDraftAfterDays,
+				});
+				if (reasons.length > 0) {
+					rows.push({ ...s, reasons });
+				}
+			}
+			return rows;
+		},
+		async countNeedsAttention() {
+			const rows = await this.listNeedsAttention();
+			return rows.length;
+		},
 		invalidate(projectId) {
 			if (projectId === undefined) {
 				cache.clear();
+				eventsCache.clear();
 				return;
 			}
 			cache.delete(projectId);
+			// Drop any cached events whose Plot belonged to this project.
+			// We can't tell from a Plot id alone which project it came from,
+			// so just clear all events on per-project invalidation. The
+			// events cache is a within-call optimisation anyway (see
+			// `loadEventsForSummary`), so the throwaway cost is bounded.
+			eventsCache.clear();
 		},
 	};
+
+	async function loadEventsForSummary(
+		summary: PlotSummary,
+		projectsById: Map<string, ProjectRow>,
+	): Promise<ReadonlyArray<PlotEvent>> {
+		const cached = eventsCache.get(summary.id);
+		if (cached !== undefined) return cached;
+		const project = projectsById.get(summary.project_id);
+		if (project === undefined) return [];
+		const client = factory(project);
+		try {
+			const events = await client.readEvents(summary.id);
+			eventsCache.set(summary.id, events);
+			return events;
+		} catch (err) {
+			opts.logger.warn(
+				{
+					plotId: summary.id,
+					projectId: summary.project_id,
+					err: err instanceof Error ? err.message : String(err),
+				},
+				"plots.needs_attention_events_failed",
+			);
+			return [];
+		} finally {
+			try {
+				client.close();
+			} catch {
+				// best-effort
+			}
+		}
+	}
+}
+
+/**
+ * Build the `plotId → hasPaused` lookup used by the needs-attention
+ * scorer. Tolerates an absent `runsRepo` (treats no rows as paused) and
+ * a failing query (logs + returns empty so one broken backend doesn't
+ * 500 the deployment-wide list). Rows with `plotId === null` are
+ * skipped — those are batch runs not tied to a Plot.
+ */
+async function pausedPlotIds(
+	runsRepo: AggregatorRunsRepo | undefined,
+	logger: Logger,
+): Promise<Set<string>> {
+	if (runsRepo === undefined) return new Set();
+	try {
+		const rows = await runsRepo.listByState("paused");
+		const set = new Set<string>();
+		for (const row of rows) {
+			if (row.plotId !== null && row.plotId !== undefined && row.plotId !== "") {
+				set.add(row.plotId);
+			}
+		}
+		return set;
+	} catch (err) {
+		logger.warn(
+			{ err: err instanceof Error ? err.message : String(err) },
+			"plots.needs_attention_paused_query_failed",
+		);
+		return new Set();
+	}
 }
 
 /**

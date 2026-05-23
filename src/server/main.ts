@@ -412,6 +412,10 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 	const plotAggregator = createPlotAggregator({
 		projectsRepo: repos.projects,
 		logger,
+		// `paused_run` needs-attention signal source (warren-d693 /
+		// pl-0344 step 9). `repos.runs` already satisfies
+		// `AggregatorRunsRepo`'s narrow surface.
+		runsRepo: repos.runs,
 		...(opts.now !== undefined ? { now: () => (opts.now as () => Date)().getTime() } : {}),
 	});
 
