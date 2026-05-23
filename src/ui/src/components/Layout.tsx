@@ -2,13 +2,19 @@ import { useQuery } from "@tanstack/react-query";
 import { Activity, Bot, FolderGit2, ListChecks, LogOut, Network, Plus } from "lucide-react";
 import { useMemo } from "react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
-import { metaApi, projectsApi, setApiToken } from "@/api/client.ts";
+import { metaApi, plotsApi, projectsApi, setApiToken } from "@/api/client.ts";
 import { ThemeToggle } from "@/components/ThemeToggle.tsx";
 import { WarrenLogo } from "@/components/WarrenLogo.tsx";
 import { Button } from "@/components/ui/button.tsx";
 import { cn } from "@/lib/utils.ts";
 
-type NavItem = { to: string; label: string; icon: React.ComponentType<{ className?: string }> };
+type NavItem = {
+	to: string;
+	label: string;
+	icon: React.ComponentType<{ className?: string }>;
+	/** Optional small counter rendered to the right of the label. */
+	badge?: number;
+};
 
 const BASE_NAV_ITEMS: NavItem[] = [
 	{ to: "/runs", label: "Runs", icon: Activity },
@@ -44,6 +50,24 @@ export function Layout() {
 		() => (projects.data?.projects ?? []).some((p) => p.hasPlot),
 		[projects.data],
 	);
+
+	// Needs-you sidebar badge (warren-f0e2 / pl-0344 step 13). Polls
+	// the cheap `{count}` endpoint every 10s only when the deployment
+	// has at least one `.plot/`-enabled project; non-Plot deployments
+	// pay nothing. Errors collapse to undefined — the badge silently
+	// hides rather than disrupting the sidebar layout.
+	const needsAttention = useQuery({
+		queryKey: ["plots", "needs-attention-count"],
+		queryFn: ({ signal }) => plotsApi.needsAttentionCount(signal),
+		enabled: anyHasPlot,
+		refetchInterval: 10000,
+		staleTime: 5000,
+	});
+	const needsAttentionBadge =
+		needsAttention.data !== undefined && needsAttention.data.count > 0
+			? needsAttention.data.count
+			: undefined;
+
 	const navItems = useMemo<NavItem[]>(() => {
 		// Byte-identical to pre-Plots order when no project opted in —
 		// preserves the CLAUDE.md standalone path (warren-e59a / pl-9d6a
@@ -52,8 +76,12 @@ export function Layout() {
 		// Plot-enabled deployments lead with Plots, then the existing
 		// Runs → Plans → Projects → Agents order: Plots → Runs → Plans
 		// → Projects → Agents.
-		return [PLOTS_NAV_ITEM, ...BASE_NAV_ITEMS];
-	}, [anyHasPlot]);
+		const plotsItem: NavItem =
+			needsAttentionBadge !== undefined
+				? { ...PLOTS_NAV_ITEM, badge: needsAttentionBadge }
+				: PLOTS_NAV_ITEM;
+		return [plotsItem, ...BASE_NAV_ITEMS];
+	}, [anyHasPlot, needsAttentionBadge]);
 
 	const handleLogout = (): void => {
 		setApiToken(null);
@@ -73,7 +101,7 @@ export function Layout() {
 					) : null}
 				</div>
 				<nav className="flex flex-1 flex-col gap-1">
-					{navItems.map(({ to, label, icon: Icon }) => (
+					{navItems.map(({ to, label, icon: Icon, badge }) => (
 						<NavLink
 							key={to}
 							to={to}
@@ -87,7 +115,15 @@ export function Layout() {
 							}
 						>
 							<Icon className="h-4 w-4" />
-							{label}
+							<span className="flex-1">{label}</span>
+							{badge !== undefined ? (
+								<span
+									aria-label={`${badge} need${badge === 1 ? "" : "s"} your attention`}
+									className="ml-auto rounded-full bg-(--color-primary) px-1.5 py-0.5 text-xs font-mono text-(--color-primary-foreground)"
+								>
+									{badge > 99 ? "99+" : badge}
+								</span>
+							) : null}
 						</NavLink>
 					))}
 					<NavLink

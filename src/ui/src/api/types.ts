@@ -674,7 +674,25 @@ export interface PlotSummary {
 	last_event_actor: string;
 	/** Warren project id (`prj_xxx`) the Plot lives in. */
 	project_id: string;
+	/**
+	 * Populated only by `GET /plots?filter=needs_attention` (warren-d693 /
+	 * pl-0344 step 9). Ordered non-empty list of reasons the Plot
+	 * surfaces in the Needs-you view; absent on the default list.
+	 */
+	reasons?: NeedsAttentionReason[];
 }
+
+/**
+ * Canonical "Needs you" signals (mirrors `src/plots/needs-attention.ts`).
+ * Order is significant — server returns reasons in this canonical
+ * order so badges render consistently.
+ */
+export const NEEDS_ATTENTION_REASONS = [
+	"paused_run",
+	"merged_pr_unreviewed",
+	"stale_draft",
+] as const;
+export type NeedsAttentionReason = (typeof NEEDS_ATTENTION_REASONS)[number];
 
 /**
  * Optional partial intent body accepted on `POST /plots`. Every field

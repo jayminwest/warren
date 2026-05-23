@@ -2,7 +2,12 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { plotsApi, projectsApi } from "@/api/client.ts";
-import { PLOT_STATUSES, type PlotStatus, type PlotSummary } from "@/api/types.ts";
+import {
+	PLOT_STATUSES,
+	type NeedsAttentionReason,
+	type PlotStatus,
+	type PlotSummary,
+} from "@/api/types.ts";
 import { RefreshProjectsCTA } from "@/components/RefreshProjectsCTA.tsx";
 import { Button } from "@/components/ui/button.tsx";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card.tsx";
@@ -30,6 +35,12 @@ const STATUS_FILTERS: { label: string; value: "all" | PlotStatus }[] = [
 type SortKey = "last_event_ts" | "name" | "status";
 type SortDir = "asc" | "desc";
 
+const NEEDS_ATTENTION_LABELS: Record<NeedsAttentionReason, string> = {
+	paused_run: "paused run",
+	merged_pr_unreviewed: "PR merged",
+	stale_draft: "stale draft",
+};
+
 /**
  * /plots — sortable cross-project Plot list (warren-e3e6, pl-9d6a step 5).
  *
@@ -43,14 +54,22 @@ type SortDir = "asc" | "desc";
  */
 export function PlotsPage() {
 	const [statusFilter, setStatusFilter] = useState<"all" | PlotStatus>("all");
+	const [needsAttention, setNeedsAttention] = useState(false);
 	const [sortKey, setSortKey] = useState<SortKey>("last_event_ts");
 	const [sortDir, setSortDir] = useState<SortDir>("desc");
 	const [dialogOpen, setDialogOpen] = useState(false);
+	const [brainstormOpen, setBrainstormOpen] = useState(false);
 
 	const plots = useQuery({
-		queryKey: ["plots", statusFilter],
+		queryKey: ["plots", statusFilter, needsAttention ? "needs_attention" : "all"],
 		queryFn: ({ signal }) =>
-			plotsApi.list(statusFilter === "all" ? {} : { status: statusFilter }, signal),
+			plotsApi.list(
+				{
+					...(statusFilter === "all" ? {} : { status: statusFilter }),
+					...(needsAttention ? { filter: "needs_attention" as const } : {}),
+				},
+				signal,
+			),
 		refetchInterval: 5000,
 	});
 
@@ -107,12 +126,40 @@ export function PlotsPage() {
 						on a per-Plot event log.
 					</p>
 				</div>
-				<Button onClick={() => setDialogOpen(true)} disabled={projects.isLoading}>
-					New Plot
-				</Button>
+				<div className="flex flex-wrap items-center gap-2">
+					<Button
+						variant="outline"
+						onClick={() => setBrainstormOpen(true)}
+						disabled={projects.isLoading}
+					>
+						Start brainstorming
+					</Button>
+					<Button onClick={() => setDialogOpen(true)} disabled={projects.isLoading}>
+						New Plot
+					</Button>
+				</div>
 			</header>
 
 			<div className="flex flex-wrap items-center gap-2">
+				{/* Needs-you chip is a parallel toggle, separated visually
+				    by a divider — it composes on top of the status filter
+				    (warren-d693 server contract: ?filter+?status compose). */}
+				<button
+					type="button"
+					onClick={() => setNeedsAttention((v) => !v)}
+					aria-pressed={needsAttention}
+					className={`rounded-full border px-3 py-1 text-xs transition-colors ${
+						needsAttention
+							? "bg-(--color-primary) text-(--color-primary-foreground)"
+							: "bg-(--color-card) hover:bg-(--color-accent)"
+					}`}
+				>
+					Needs you
+				</button>
+				<span
+					aria-hidden="true"
+					className="mx-1 h-4 w-px bg-(--color-border)"
+				/>
 				{STATUS_FILTERS.map((f) => (
 					<button
 						key={f.value}
@@ -146,6 +193,7 @@ export function PlotsPage() {
 						<EmptyState
 							hasPlotProjectCount={hasPlotProjects.length}
 							statusFiltered={statusFilter !== "all"}
+							needsAttention={needsAttention}
 						/>
 					) : (
 						<PlotsTable
@@ -163,6 +211,12 @@ export function PlotsPage() {
 				onOpenChange={setDialogOpen}
 				hasPlotProjects={hasPlotProjects}
 			/>
+
+			<StartBrainstormDialog
+				open={brainstormOpen}
+				onOpenChange={setBrainstormOpen}
+				hasPlotProjects={hasPlotProjects}
+			/>
 		</div>
 	);
 }
@@ -170,10 +224,19 @@ export function PlotsPage() {
 function EmptyState({
 	hasPlotProjectCount,
 	statusFiltered,
+	needsAttention,
 }: {
 	hasPlotProjectCount: number;
 	statusFiltered: boolean;
+	needsAttention: boolean;
 }) {
+	if (needsAttention) {
+		return (
+			<p className="p-6 text-sm text-(--color-muted-foreground)">
+				Nothing needs your attention right now—every Plot is unblocked.
+			</p>
+		);
+	}
 	if (statusFiltered) {
 		return (
 			<p className="p-6 text-sm text-(--color-muted-foreground)">
@@ -255,9 +318,20 @@ function PlotsTable({
 							</div>
 						</td>
 						<td className="px-4 py-2">
-							<span className="rounded-full border px-2 py-0.5 text-xs">
-								{p.status}
-							</span>
+							<div className="flex flex-wrap items-center gap-1">
+								<span className="rounded-full border px-2 py-0.5 text-xs">
+									{p.status}
+								</span>
+								{p.reasons?.map((r) => (
+									<span
+										key={r}
+										className="rounded-full bg-(--color-primary)/15 px-2 py-0.5 text-xs text-(--color-primary)"
+										title={`Needs you: ${r}`}
+									>
+										{NEEDS_ATTENTION_LABELS[r]}
+									</span>
+								))}
+							</div>
 						</td>
 						<td className="px-4 py-2 text-(--color-muted-foreground)">
 							{p.intent_goal_preview || "—"}
@@ -414,6 +488,147 @@ function NewPlotDialog({
 							</Button>
 							<Button type="submit" disabled={!submittable}>
 								{create.isPending ? "Creating…" : "Create Plot"}
+							</Button>
+						</DialogFooter>
+					</form>
+				)}
+			</DialogContent>
+		</Dialog>
+	);
+}
+
+const BRAINSTORM_DEFAULT_PROMPT =
+	"I have an unformed idea I want to sharpen into a Plot intent. Help me think through what it's really for.";
+
+/**
+ * Cross-project brainstorm dispatcher (warren-f0e2 / pl-0344 step 13).
+ * `POST /brainstorm` atomically creates a draft Plot in the chosen
+ * project and dispatches the first interactive turn against the
+ * built-in `brainstorm` agent (read-only scout). On success navigates
+ * straight to the new Plot's detail page where the inline Chat picks
+ * up the streamed agent reply (mx-0ea49c respawn-per-turn primitive).
+ */
+function StartBrainstormDialog({
+	open,
+	onOpenChange,
+	hasPlotProjects,
+}: {
+	open: boolean;
+	onOpenChange: (open: boolean) => void;
+	hasPlotProjects: { id: string; gitUrl: string }[];
+}) {
+	const navigate = useNavigate();
+	const qc = useQueryClient();
+	const [projectId, setProjectId] = useState("");
+	const [prompt, setPrompt] = useState(BRAINSTORM_DEFAULT_PROMPT);
+
+	const start = useMutation({
+		mutationFn: () =>
+			plotsApi.startBrainstorm({
+				projectId,
+				prompt: prompt.trim(),
+			}),
+		onSuccess: (resp) => {
+			qc.invalidateQueries({ queryKey: ["plots"] });
+			qc.invalidateQueries({ queryKey: ["runs"] });
+			onOpenChange(false);
+			setProjectId("");
+			setPrompt(BRAINSTORM_DEFAULT_PROMPT);
+			navigate(`/plots/${encodeURIComponent(resp.plot.id)}`);
+		},
+	});
+
+	const noEligible = hasPlotProjects.length === 0;
+	const submittable =
+		projectId.length > 0 && prompt.trim().length > 0 && !start.isPending;
+
+	const handleSubmit = (e: React.FormEvent): void => {
+		e.preventDefault();
+		if (!submittable) return;
+		start.mutate();
+	};
+
+	return (
+		<Dialog
+			open={open}
+			onOpenChange={(next) => {
+				if (!next) start.reset();
+				onOpenChange(next);
+			}}
+		>
+			<DialogContent>
+				<DialogHeader>
+					<DialogTitle>Start brainstorming</DialogTitle>
+					<DialogDescription>
+						Create a draft Plot and dispatch the built-in{" "}
+						<code className="font-mono">brainstorm</code> agent — a
+						read-only scout that asks questions to help sharpen the
+						idea into a Plot intent.
+					</DialogDescription>
+				</DialogHeader>
+
+				{noEligible ? (
+					<p className="text-sm text-(--color-muted-foreground)">
+						No Plot-enabled projects yet — run{" "}
+						<code className="font-mono">plot init</code> in a project clone and
+						refresh.
+					</p>
+				) : (
+					<form onSubmit={handleSubmit} className="space-y-4">
+						<div className="space-y-1.5">
+							<Label htmlFor="brainstorm-project">Project</Label>
+							<select
+								id="brainstorm-project"
+								required
+								value={projectId}
+								onChange={(e) => setProjectId(e.target.value)}
+								className="flex h-9 w-full rounded-md border bg-(--color-card) px-3 py-1 text-sm shadow-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-ring)"
+							>
+								<option value="" disabled>
+									Pick a Plot-enabled project…
+								</option>
+								{hasPlotProjects.map((p) => (
+									<option key={p.id} value={p.id}>
+										{p.gitUrl} ({p.id})
+									</option>
+								))}
+							</select>
+						</div>
+
+						<div className="space-y-1.5">
+							<Label htmlFor="brainstorm-prompt">Opening message</Label>
+							<Textarea
+								id="brainstorm-prompt"
+								rows={4}
+								value={prompt}
+								onChange={(e) => setPrompt(e.target.value)}
+								disabled={start.isPending}
+							/>
+							<p className="text-xs text-(--color-muted-foreground)">
+								First-turn prompt. The agent will reply in the Plot's
+								chat panel.
+							</p>
+						</div>
+
+						{start.isError ? (
+							<p className="text-sm text-(--color-destructive)">
+								{start.error instanceof Error
+									? start.error.message
+									: String(start.error)}
+							</p>
+						) : null}
+
+						<DialogFooter>
+							<Button
+								type="button"
+								variant="outline"
+								onClick={() => onOpenChange(false)}
+								disabled={start.isPending}
+							>
+								Cancel
+							</Button>
+							<Button type="submit" disabled={!submittable}>
+								{start.isPending ? "Starting…" : "Start brainstorming"}
 							</Button>
 						</DialogFooter>
 					</form>

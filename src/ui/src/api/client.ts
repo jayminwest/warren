@@ -417,6 +417,12 @@ export async function* streamPlanRunEvents(
 
 export interface ListPlotsFilter {
 	status?: PlotStatus;
+	/**
+	 * `needs_attention` routes to the server-side scorer; rows carry an
+	 * ordered `reasons` array (warren-d693). Status filter composes on
+	 * top so a UI can render e.g. "drafting Plots in the Needs-you view".
+	 */
+	filter?: "needs_attention";
 }
 
 export const plotsApi = {
@@ -431,11 +437,22 @@ export const plotsApi = {
 	list: (filter: ListPlotsFilter = {}, signal?: AbortSignal) => {
 		const params = new URLSearchParams();
 		if (filter.status) params.set("status", filter.status);
+		if (filter.filter) params.set("filter", filter.filter);
 		const qs = params.toString();
 		return request<ListPlotsResponse>(`/plots${qs.length > 0 ? `?${qs}` : ""}`, {
 			...(signal ? { signal } : {}),
 		});
 	},
+	/**
+	 * `GET /plots/needs-attention/count` — sidebar-badge counter
+	 * (warren-d693 / pl-0344 step 9; consumed by Layout in warren-f0e2 /
+	 * step 13). Returns `{ count: 0 }` on deployments without the Plot
+	 * aggregator wired — byte-stable for the standalone path.
+	 */
+	needsAttentionCount: (signal?: AbortSignal) =>
+		request<{ count: number }>("/plots/needs-attention/count", {
+			...(signal ? { signal } : {}),
+		}),
 	/**
 	 * `POST /plots` — create a fresh Plot in the named project's `.plot/`
 	 * directory. Returns the new `PlotSummary` (201). Rejects with
