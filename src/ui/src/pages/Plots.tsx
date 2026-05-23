@@ -268,10 +268,11 @@ function PlotsTable({
 	onSort: (key: SortKey) => void;
 }) {
 	return (
+		<div className="relative w-full overflow-auto">
 		<table className="w-full caption-bottom text-sm">
 			<thead className="border-b">
 				<tr className="text-left text-(--color-muted-foreground)">
-					<th className="h-10 px-4 font-medium">
+					<th className="h-10 whitespace-nowrap px-4 font-medium">
 						<button
 							type="button"
 							onClick={() => onSort("name")}
@@ -280,7 +281,7 @@ function PlotsTable({
 							Name{sortIndicator("name")}
 						</button>
 					</th>
-					<th className="h-10 px-4 font-medium">
+					<th className="h-10 whitespace-nowrap px-4 font-medium">
 						<button
 							type="button"
 							onClick={() => onSort("status")}
@@ -289,10 +290,12 @@ function PlotsTable({
 							Status{sortIndicator("status")}
 						</button>
 					</th>
-					<th className="h-10 px-4 font-medium">Intent</th>
-					<th className="h-10 px-4 font-medium">Project</th>
-					<th className="h-10 px-4 font-medium text-right">Attachments</th>
-					<th className="h-10 px-4 font-medium">
+					<th className="h-10 whitespace-nowrap px-4 font-medium">Intent</th>
+					<th className="h-10 whitespace-nowrap px-4 font-medium">Project</th>
+					<th className="h-10 whitespace-nowrap px-4 font-medium text-right">
+						Attachments
+					</th>
+					<th className="h-10 whitespace-nowrap px-4 font-medium">
 						<button
 							type="button"
 							onClick={() => onSort("last_event_ts")}
@@ -306,7 +309,7 @@ function PlotsTable({
 			<tbody>
 				{plots.map((p) => (
 					<tr key={`${p.project_id}::${p.id}`} className="border-b last:border-0">
-						<td className="px-4 py-2">
+						<td className="whitespace-nowrap px-4 py-2">
 							<Link
 								to={`/plots/${encodeURIComponent(p.id)}`}
 								className="font-medium underline-offset-2 hover:underline"
@@ -317,7 +320,7 @@ function PlotsTable({
 								{p.id}
 							</div>
 						</td>
-						<td className="px-4 py-2">
+						<td className="whitespace-nowrap px-4 py-2">
 							<div className="flex flex-wrap items-center gap-1">
 								<span className="rounded-full border px-2 py-0.5 text-xs">
 									{p.status}
@@ -333,16 +336,16 @@ function PlotsTable({
 								))}
 							</div>
 						</td>
-						<td className="px-4 py-2 text-(--color-muted-foreground)">
+						<td className="max-w-[16rem] truncate px-4 py-2 text-(--color-muted-foreground)">
 							{p.intent_goal_preview || "—"}
 						</td>
-						<td className="px-4 py-2 font-mono text-xs">
+						<td className="whitespace-nowrap px-4 py-2 font-mono text-xs">
 							{projectLabel(p.project_id)}
 						</td>
-						<td className="px-4 py-2 text-right font-mono text-xs">
+						<td className="whitespace-nowrap px-4 py-2 text-right font-mono text-xs">
 							{p.attachments_count}
 						</td>
-						<td className="px-4 py-2 text-(--color-muted-foreground)">
+						<td className="whitespace-nowrap px-4 py-2 text-(--color-muted-foreground)">
 							<div>{relativeTime(p.last_event_ts)}</div>
 							<div className="font-mono text-xs">{p.last_event_actor}</div>
 						</td>
@@ -350,6 +353,7 @@ function PlotsTable({
 				))}
 			</tbody>
 		</table>
+		</div>
 	);
 }
 

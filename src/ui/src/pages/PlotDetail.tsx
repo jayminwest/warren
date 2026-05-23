@@ -453,9 +453,9 @@ function SubstratePanel({ plot }: { plot: PlotEnvelope }) {
 
 	return (
 		<Card>
-			<CardHeader className="flex flex-row items-center justify-between space-y-0">
+			<CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2 space-y-0">
 				<CardTitle>Substrate</CardTitle>
-				<div className="flex items-center gap-2">
+				<div className="flex flex-wrap items-center gap-2">
 					{batchTargets.length > 0 ? (
 						<DispatchAsPlanRunButton
 							plotId={plot.id}
@@ -1991,7 +1991,7 @@ function EventLine({
 						{relativeTime(event.at)}
 					</span>
 				</summary>
-				<div className="ml-[11rem] mt-1 mb-2 space-y-1">
+				<div className="ml-28 mt-1 mb-2 space-y-1 sm:ml-[11rem]">
 					<div className="text-xs text-(--color-muted-foreground)">
 						{formatTimestamp(event.at)}
 					</div>
@@ -2083,8 +2083,8 @@ function AnswerCard({
 			onSubmit={submit}
 			className={
 				isPaused
-					? "ml-[11rem] mt-1 mb-2 space-y-2 rounded-md border-2 border-(--color-primary) bg-(--color-accent)/40 p-3 shadow-sm"
-					: "ml-[11rem] mt-1 mb-2 space-y-2 rounded-md border border-dashed p-3"
+					? "ml-28 mt-1 mb-2 space-y-2 rounded-md border-2 border-(--color-primary) bg-(--color-accent)/40 p-3 shadow-sm sm:ml-[11rem]"
+					: "ml-28 mt-1 mb-2 space-y-2 rounded-md border border-dashed p-3 sm:ml-[11rem]"
 			}
 		>
 			{isPaused ? (
@@ -2204,7 +2204,7 @@ function formatRemaining(ms: number): string {
 function AnsweredQuestionRow({ answer }: { answer: PlotEvent }) {
 	const text = readString(answer.data.text) ?? "";
 	return (
-		<div className="ml-[11rem] mt-1 mb-2 flex items-baseline gap-2 text-xs">
+		<div className="ml-28 mt-1 mb-2 flex items-baseline gap-2 text-xs sm:ml-[11rem]">
 			<span className="shrink-0 rounded border px-1.5 py-0.5 font-mono text-(--color-muted-foreground)">
 				answered
 			</span>
@@ -2289,7 +2289,7 @@ function InteractivePanel({ plot, frozen }: { plot: PlotEnvelope; frozen: boolea
 
 	return (
 		<Card>
-			<CardHeader className="flex flex-row items-center justify-between space-y-0">
+			<CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2 space-y-0">
 				<CardTitle>Interactive</CardTitle>
 				<div className="flex flex-wrap items-center gap-2">
 					<Button
@@ -2703,7 +2703,7 @@ function FormalizeDialog({
 function ActorSlot({ actor }: { actor: string }) {
 	return (
 		<span
-			className="w-40 shrink-0 truncate font-mono text-xs text-(--color-muted-foreground)"
+			className="w-24 shrink-0 truncate font-mono text-xs text-(--color-muted-foreground) sm:w-40"
 			title={actor}
 		>
 			{actor}
