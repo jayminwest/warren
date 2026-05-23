@@ -240,7 +240,7 @@ export function NewRunPage() {
 									setAgent(e.target.value);
 									setAgentTouched(true);
 								}}
-								className="flex h-9 w-full rounded-md border bg-(--color-card) px-3 py-1 text-sm shadow-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-ring)"
+								className="flex h-11 sm:h-9 w-full rounded-md border bg-(--color-card) px-3 py-1 text-base sm:text-sm shadow-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-ring)"
 							>
 								<option value="" disabled>
 									Pick an agent…
@@ -276,7 +276,7 @@ export function NewRunPage() {
 								required
 								value={project}
 								onChange={(e) => setProject(e.target.value)}
-								className="flex h-9 w-full rounded-md border bg-(--color-card) px-3 py-1 text-sm shadow-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-ring)"
+								className="flex h-11 sm:h-9 w-full rounded-md border bg-(--color-card) px-3 py-1 text-base sm:text-sm shadow-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-ring)"
 							>
 								<option value="" disabled>
 									Pick a project…
@@ -298,6 +298,7 @@ export function NewRunPage() {
 								placeholder={selectedProject?.defaultBranch ?? "default branch"}
 								autoComplete="off"
 								spellCheck={false}
+								className="h-11 sm:h-9 text-base sm:text-sm"
 							/>
 							<p className="text-xs text-(--color-muted-foreground)">
 								Leave blank to use the project's default branch. Free text — no
@@ -315,6 +316,7 @@ export function NewRunPage() {
 									placeholder="plot-…"
 									autoComplete="off"
 									spellCheck={false}
+									className="h-11 sm:h-9 text-base sm:text-sm"
 								/>
 								<p className="text-xs text-(--color-muted-foreground)">
 									Bind this run to a Plot. The Plot's activity feed gets a{" "}
@@ -345,6 +347,7 @@ export function NewRunPage() {
 									}
 									autoComplete="off"
 									spellCheck={false}
+									className="h-11 sm:h-9 text-base sm:text-sm"
 								/>
 								{providerFromProjectDefault ? (
 									<p className="text-xs text-(--color-muted-foreground)">
@@ -375,6 +378,7 @@ export function NewRunPage() {
 									}
 									autoComplete="off"
 									spellCheck={false}
+									className="h-11 sm:h-9 text-base sm:text-sm"
 								/>
 								{modelFromProjectDefault ? (
 									<p className="text-xs text-(--color-muted-foreground)">
@@ -401,6 +405,7 @@ export function NewRunPage() {
 									setPromptTouched(true);
 								}}
 								placeholder="What should the agent do?"
+								className="text-base sm:text-sm"
 							/>
 							{promptFromDefault ? (
 								<p className="text-xs text-(--color-muted-foreground)">
@@ -418,12 +423,13 @@ export function NewRunPage() {
 							</p>
 						) : null}
 
-						<div className="flex justify-end gap-2">
+						<div className="flex flex-col sm:flex-row sm:justify-end gap-2">
 							<Button
 								type="button"
 								variant="outline"
 								onClick={() => navigate("/runs")}
 								disabled={spawn.isPending}
+								className="h-11 w-full sm:h-9 sm:w-auto"
 							>
 								Cancel
 							</Button>
@@ -436,6 +442,7 @@ export function NewRunPage() {
 									prompt.trim().length === 0 ||
 									plotIdMalformed
 								}
+								className="h-11 w-full sm:h-9 sm:w-auto"
 							>
 								{spawn.isPending ? "Dispatching…" : "Dispatch"}
 							</Button>

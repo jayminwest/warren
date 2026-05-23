@@ -208,7 +208,7 @@ export function NewPlanRunPage() {
 								required
 								value={project}
 								onChange={(e) => setProject(e.target.value)}
-								className="flex h-9 w-full rounded-md border bg-(--color-card) px-3 py-1 text-sm shadow-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-ring)"
+								className="flex h-11 sm:h-9 w-full rounded-md border bg-(--color-card) px-3 py-1 text-base sm:text-sm shadow-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-ring)"
 							>
 								<option value="" disabled>
 									Pick a project…
@@ -233,7 +233,7 @@ export function NewPlanRunPage() {
 									setAgentTouched(true);
 								}}
 								disabled={!hasSeeds}
-								className="flex h-9 w-full rounded-md border bg-(--color-card) px-3 py-1 text-sm shadow-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-ring) disabled:cursor-not-allowed disabled:opacity-60"
+								className="flex h-11 sm:h-9 w-full rounded-md border bg-(--color-card) px-3 py-1 text-base sm:text-sm shadow-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-ring) disabled:cursor-not-allowed disabled:opacity-60"
 							>
 								<option value="" disabled>
 									Pick an agent…
@@ -263,6 +263,7 @@ export function NewPlanRunPage() {
 								disabled={!hasSeeds}
 								autoComplete="off"
 								spellCheck={false}
+								className="h-11 sm:h-9 text-base sm:text-sm"
 							/>
 							<p className="text-xs text-(--color-muted-foreground)">
 								Seeds plan id (run <code className="font-mono">sd plan</code> in
@@ -280,6 +281,7 @@ export function NewPlanRunPage() {
 									placeholder="plot-…"
 									autoComplete="off"
 									spellCheck={false}
+									className="h-11 sm:h-9 text-base sm:text-sm"
 								/>
 								<p className="text-xs text-(--color-muted-foreground)">
 									Bind this plan run to a Plot. Each child run inherits
@@ -307,6 +309,7 @@ export function NewPlanRunPage() {
 								}}
 								disabled={!hasSeeds}
 								placeholder={DEFAULT_PROMPT_TEMPLATE}
+								className="text-base sm:text-sm"
 							/>
 							<p className="text-xs text-(--color-muted-foreground)">
 								<code className="font-mono">{"{seed_id}"}</code> is substituted
@@ -327,6 +330,7 @@ export function NewPlanRunPage() {
 								disabled={!hasSeeds}
 								autoComplete="off"
 								spellCheck={false}
+								className="h-11 sm:h-9 text-base sm:text-sm"
 							/>
 							<p className="text-xs text-(--color-muted-foreground)">
 								Leave blank to use the project's default branch.
@@ -351,6 +355,7 @@ export function NewPlanRunPage() {
 									disabled={!hasSeeds}
 									autoComplete="off"
 									spellCheck={false}
+									className="h-11 sm:h-9 text-base sm:text-sm"
 								/>
 							</div>
 							<div className="space-y-1.5">
@@ -370,6 +375,7 @@ export function NewPlanRunPage() {
 									disabled={!hasSeeds}
 									autoComplete="off"
 									spellCheck={false}
+									className="h-11 sm:h-9 text-base sm:text-sm"
 								/>
 							</div>
 						</div>
@@ -382,16 +388,21 @@ export function NewPlanRunPage() {
 							</p>
 						) : null}
 
-						<div className="flex justify-end gap-2">
+						<div className="flex flex-col sm:flex-row sm:justify-end gap-2">
 							<Button
 								type="button"
 								variant="outline"
 								onClick={() => navigate("/plan-runs")}
 								disabled={dispatch.isPending}
+								className="h-11 w-full sm:h-9 sm:w-auto"
 							>
 								Cancel
 							</Button>
-							<Button type="submit" disabled={dispatch.isPending || !submittable}>
+							<Button
+								type="submit"
+								disabled={dispatch.isPending || !submittable}
+								className="h-11 w-full sm:h-9 sm:w-auto"
+							>
 								{dispatch.isPending ? "Dispatching…" : "Dispatch"}
 							</Button>
 						</div>
