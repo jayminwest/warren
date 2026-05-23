@@ -5,6 +5,7 @@ import { agentsApi, ApiError, plotsApi, projectsApi, runsApi } from "@/api/clien
 import {
 	ATTACHMENT_TYPES,
 	type AttachmentType,
+	type PausedRunInfo,
 	type PlotAttachment,
 	type PlotEnvelope,
 	type PlotEvent,
@@ -12,6 +13,7 @@ import {
 } from "@/api/types.ts";
 import { Chat } from "@/components/Chat.tsx";
 import { PlotStatusBadge } from "@/components/PlotStatusBadge.tsx";
+import { StateBadge } from "@/components/StateBadge.tsx";
 import { RefreshProjectsCTA } from "@/components/RefreshProjectsCTA.tsx";
 import type { NewRunRouteState } from "@/pages/NewRun.tsx";
 import { Button } from "@/components/ui/button.tsx";
@@ -135,7 +137,11 @@ export function PlotDetailPage() {
 
 			<InteractivePanel plot={plot} frozen={frozen} />
 
-			<ActivityFeed plotId={plot.id} events={plot.event_log} />
+			<ActivityFeed
+				plotId={plot.id}
+				events={plot.event_log}
+				pausedRuns={plot.paused_runs}
+			/>
 		</div>
 	);
 }
@@ -1710,15 +1716,38 @@ function buildAnswerMap(events: readonly PlotEvent[]): Map<string, PlotEvent> {
 	return out;
 }
 
+/**
+ * Index `paused_runs[]` by their `paused_question_event_id` so the
+ * activity feed can drive the prominent "Answer & resume" affordance
+ * on the matching `question_posed` event in O(1) (warren-4ea4 /
+ * pl-0344 step 12). Multiple paused runs on the same question event
+ * are vanishingly rare in practice (one batch run per Plot at a
+ * time), but a Map's last-write-wins matches the seed contract — the
+ * UI only needs *some* paused row to fire the countdown.
+ */
+function buildPausedByQuestion(
+	pausedRuns: readonly PausedRunInfo[],
+): Map<string, PausedRunInfo> {
+	const out = new Map<string, PausedRunInfo>();
+	for (const r of pausedRuns) out.set(r.paused_question_event_id, r);
+	return out;
+}
+
 function ActivityFeed({
 	plotId,
 	events,
+	pausedRuns,
 }: {
 	plotId: string;
 	events: readonly PlotEvent[];
+	pausedRuns: readonly PausedRunInfo[];
 }) {
 	const clusters = useMemo(() => clusterEvents(events), [events]);
 	const answers = useMemo(() => buildAnswerMap(events), [events]);
+	const pausedByQuestion = useMemo(
+		() => buildPausedByQuestion(pausedRuns),
+		[pausedRuns],
+	);
 	return (
 		<Card>
 			<CardHeader>
@@ -1740,6 +1769,7 @@ function ActivityFeed({
 									plotId={plotId}
 									events={c.events}
 									answers={answers}
+									pausedByQuestion={pausedByQuestion}
 								/>
 							) : (
 								<EventLine
@@ -1749,6 +1779,7 @@ function ActivityFeed({
 									plotId={plotId}
 									event={c.events[0] as PlotEvent}
 									answers={answers}
+									pausedByQuestion={pausedByQuestion}
 								/>
 							),
 						)}
@@ -1763,10 +1794,12 @@ function FoldedCluster({
 	plotId,
 	events,
 	answers,
+	pausedByQuestion,
 }: {
 	plotId: string;
 	events: PlotEvent[];
 	answers: Map<string, PlotEvent>;
+	pausedByQuestion: Map<string, PausedRunInfo>;
 }) {
 	const [open, setOpen] = useState(false);
 	const head = events[0] as PlotEvent;
@@ -1789,6 +1822,7 @@ function FoldedCluster({
 						plotId={plotId}
 						event={e}
 						answers={answers}
+						pausedByQuestion={pausedByQuestion}
 					/>
 				))}
 			</>
@@ -1821,21 +1855,26 @@ function EventLine({
 	plotId,
 	event,
 	answers,
+	pausedByQuestion,
 }: {
 	plotId: string;
 	event: PlotEvent;
 	answers: Map<string, PlotEvent>;
+	pausedByQuestion: Map<string, PausedRunInfo>;
 }) {
 	const summary = summarizePlotEvent(event);
 	const expanded = JSON.stringify(event.data, null, 2);
 	const isQuestion = event.type === "question_posed";
 	const answer = isQuestion ? answers.get(event.at) : undefined;
+	const pausedRun =
+		isQuestion && answer === undefined ? pausedByQuestion.get(event.at) : undefined;
 	return (
 		<li>
 			<details className="group">
 				<summary className="flex cursor-pointer items-baseline gap-3 rounded-md px-2 py-1 text-sm select-none hover:bg-(--color-accent) [&::-webkit-details-marker]:hidden">
 					<ActorSlot actor={event.actor} />
 					<span className="shrink-0 font-medium">{event.type}</span>
+					{pausedRun !== undefined ? <StateBadge state="paused" /> : null}
 					<span className="min-w-0 flex-1 truncate text-(--color-muted-foreground) group-open:hidden">
 						{summary}
 					</span>
@@ -1856,7 +1895,11 @@ function EventLine({
 				<AnsweredQuestionRow answer={answer} />
 			) : null}
 			{isQuestion && answer === undefined ? (
-				<AnswerCard plotId={plotId} questionEventId={event.at} />
+				<AnswerCard
+					plotId={plotId}
+					questionEventId={event.at}
+					pausedRun={pausedRun}
+				/>
 			) : null}
 		</li>
 	);
@@ -1870,13 +1913,26 @@ function EventLine({
  * envelope so the card disappears immediately without waiting for the
  * 5s refetch. On failure the draft is preserved (mutation state holds
  * the textarea via `draft` state) and an inline error surfaces.
+ *
+ * Paused-run promotion (warren-4ea4 / pl-0344 step 12): when this
+ * question is the `paused_question_event_id` of a paused warren run,
+ * the card surfaces a primary-colored border + "Answer & resume"
+ * heading + countdown to the `agent.pauseTimeoutMs` budget instead of
+ * the bare "Your answer" affordance. The countdown re-renders every
+ * 1s via a `setInterval` tick driven off `paused_at + pause_timeout_ms`;
+ * once the budget elapses the line flips to "Pause budget elapsed —
+ * agent will resume with a timeout warning" but the submit stays
+ * enabled (the supervisor's resume detector is best-effort, and a
+ * late answer still routes through `POST /questions/:id/answer`).
  */
 function AnswerCard({
 	plotId,
 	questionEventId,
+	pausedRun,
 }: {
 	plotId: string;
 	questionEventId: string;
+	pausedRun: PausedRunInfo | undefined;
 }) {
 	const qc = useQueryClient();
 	const [draft, setDraft] = useState("");
@@ -1912,13 +1968,33 @@ function AnswerCard({
 		mutation.mutate();
 	};
 
+	const isPaused = pausedRun !== undefined;
 	return (
 		<form
 			onSubmit={submit}
-			className="ml-[11rem] mt-1 mb-2 space-y-2 rounded-md border border-dashed p-3"
+			className={
+				isPaused
+					? "ml-[11rem] mt-1 mb-2 space-y-2 rounded-md border-2 border-(--color-primary) bg-(--color-accent)/40 p-3 shadow-sm"
+					: "ml-[11rem] mt-1 mb-2 space-y-2 rounded-md border border-dashed p-3"
+			}
 		>
+			{isPaused ? (
+				<div className="flex flex-wrap items-baseline justify-between gap-2">
+					<div className="flex items-baseline gap-2">
+						<StateBadge state="paused" />
+						<span className="text-sm font-semibold">Answer &amp; resume</span>
+						<span className="font-mono text-xs text-(--color-muted-foreground)">
+							run {pausedRun.run_id}
+						</span>
+					</div>
+					<PauseCountdown
+						pausedAt={pausedRun.paused_at}
+						pauseTimeoutMs={pausedRun.pause_timeout_ms}
+					/>
+				</div>
+			) : null}
 			<Label htmlFor={`answer-${questionEventId}`} className="text-xs">
-				Your answer
+				{isPaused ? "Your answer (the run resumes on submit)" : "Your answer"}
 			</Label>
 			<Textarea
 				id={`answer-${questionEventId}`}
@@ -1939,11 +2015,74 @@ function AnswerCard({
 			) : null}
 			<div className="flex justify-end">
 				<Button type="submit" size="sm" disabled={!submittable}>
-					{mutation.isPending ? "Submitting…" : "Submit"}
+					{mutation.isPending
+						? "Submitting…"
+						: isPaused
+							? "Answer & resume"
+							: "Submit"}
 				</Button>
 			</div>
 		</form>
 	);
+}
+
+/**
+ * Live countdown to the `agent.pauseTimeoutMs` budget for a paused
+ * run (warren-4ea4 / pl-0344 step 12). Anchored on `paused_at +
+ * pause_timeout_ms` (both surfaced on `PausedRunInfo`); ticks every
+ * 1s via a `setInterval`. Past zero the line flips to an
+ * "elapsed" message — the run will resume with a timeout warning
+ * the next time the pause detector ticks (`src/runs/pause.ts`),
+ * but the user can still answer.
+ */
+function PauseCountdown({
+	pausedAt,
+	pauseTimeoutMs,
+}: {
+	pausedAt: string;
+	pauseTimeoutMs: number;
+}) {
+	const deadlineMs = useMemo(() => {
+		const t = Date.parse(pausedAt);
+		return Number.isNaN(t) ? null : t + pauseTimeoutMs;
+	}, [pausedAt, pauseTimeoutMs]);
+	const [now, setNow] = useState(() => Date.now());
+	useEffect(() => {
+		if (deadlineMs === null) return;
+		const id = setInterval(() => setNow(Date.now()), 1000);
+		return () => clearInterval(id);
+	}, [deadlineMs]);
+	if (deadlineMs === null) {
+		return (
+			<span className="font-mono text-xs text-(--color-muted-foreground)">
+				pause budget unknown
+			</span>
+		);
+	}
+	const remainingMs = deadlineMs - now;
+	if (remainingMs <= 0) {
+		return (
+			<span className="font-mono text-xs text-(--color-destructive)">
+				budget elapsed — agent will resume with timeout warning
+			</span>
+		);
+	}
+	return (
+		<span className="font-mono text-xs text-(--color-muted-foreground)">
+			resumes in {formatRemaining(remainingMs)}
+		</span>
+	);
+}
+
+function formatRemaining(ms: number): string {
+	const totalSeconds = Math.max(0, Math.ceil(ms / 1000));
+	const hours = Math.floor(totalSeconds / 3600);
+	const minutes = Math.floor((totalSeconds % 3600) / 60);
+	const seconds = totalSeconds % 60;
+	const mm = minutes.toString().padStart(2, "0");
+	const ss = seconds.toString().padStart(2, "0");
+	if (hours > 0) return `${hours}:${mm}:${ss}`;
+	return `${mm}:${ss}`;
 }
 
 /**

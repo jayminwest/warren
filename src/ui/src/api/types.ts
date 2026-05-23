@@ -4,7 +4,7 @@
 // (root tsconfig excludes `src/ui` deliberately — the boundary is the
 // HTTP wire, not a TS import).
 
-export type RunState = "queued" | "running" | "succeeded" | "failed" | "cancelled";
+export type RunState = "queued" | "running" | "paused" | "succeeded" | "failed" | "cancelled";
 
 export const RUN_TERMINAL_STATES: readonly RunState[] = ["succeeded", "failed", "cancelled"];
 
@@ -783,6 +783,32 @@ export interface PlotEnvelope {
 	attachments: PlotAttachment[];
 	event_log: PlotEvent[];
 	project_id: string;
+	/**
+	 * Snapshot of warren runs in state=paused bound to this plot.
+	 * Sourced from `runs.listByPlotId(plot.id)` filtered to `paused`
+	 * at envelope-read time (warren-4ea4 / pl-0344 step 12). Drives
+	 * the prominent "Answer & resume" affordance + countdown that
+	 * PlotDetail renders below the matching `question_posed` event.
+	 * Empty when no paused run exists for the plot.
+	 */
+	paused_runs: PausedRunInfo[];
+}
+
+/**
+ * One row of `paused_runs[]` on `PlotEnvelope` (warren-4ea4 /
+ * pl-0344 step 12). The shape is the narrow subset PlotDetail needs:
+ * the run id (for diagnostics), the `paused_at` ISO timestamp (anchor
+ * for the countdown), the `paused_question_event_id` that joins this
+ * row to a `question_posed` event in `event_log` (same id contract as
+ * the AnswerCard's `:event_id`), and the resolved per-project
+ * `agent.pauseTimeoutMs` budget so the UI can render "resumes in
+ * N:NN" without re-reading the project config.
+ */
+export interface PausedRunInfo {
+	run_id: string;
+	paused_at: string;
+	paused_question_event_id: string;
+	pause_timeout_ms: number;
 }
 
 /**

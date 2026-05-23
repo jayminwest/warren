@@ -31,6 +31,32 @@ export interface PlotEnvelope {
 	readonly attachments: readonly Attachment[];
 	readonly event_log: readonly PlotEvent[];
 	readonly project_id: string;
+	/**
+	 * Snapshot of warren `runs` rows bound to this Plot in state
+	 * `paused` (warren-4ea4 / pl-0344 step 12). Drives PlotDetail's
+	 * prominent "Answer & resume" affordance + countdown on the
+	 * matching `question_posed` event in `event_log`. Empty array when
+	 * no paused run exists for the Plot. Resolved by the handler
+	 * (`loadPausedRunsForPlot` in `src/server/handlers.ts`) rather than
+	 * the reader, since this seam is `.plot/`-only and runs live in
+	 * warren's SQLite.
+	 */
+	readonly paused_runs: readonly PausedRunInfo[];
+}
+
+/**
+ * One row of `paused_runs[]` on `PlotEnvelope` (warren-4ea4 /
+ * pl-0344 step 12). Narrow PlotDetail-facing subset of `RunRow`:
+ * the run id, `paused_at` (countdown anchor), the
+ * `paused_question_event_id` that joins this row to a
+ * `question_posed.at` in `event_log`, and the resolved
+ * `agent.pauseTimeoutMs` budget.
+ */
+export interface PausedRunInfo {
+	readonly run_id: string;
+	readonly paused_at: string;
+	readonly paused_question_event_id: string;
+	readonly pause_timeout_ms: number;
 }
 
 export interface ReadPlotRequest {

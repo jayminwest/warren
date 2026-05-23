@@ -114,6 +114,7 @@ import { showPlan, showSeed } from "../seeds-cli/index.ts";
 import { buildTriggerSummaries, parseCron, resolveCronPrompt } from "../triggers/index.ts";
 import {
 	type CronTrigger,
+	DEFAULT_AGENT_PAUSE_TIMEOUT_MS,
 	DEFAULT_PREVIEW_MODE,
 	type LoadedWarrenConfig,
 	loadWarrenConfig,
@@ -2763,6 +2764,64 @@ function formalizePlotHandler(deps: ServerDeps): RouteHandler {
 }
 
 /**
+ * Resolve `paused_runs[]` for a Plot envelope (warren-4ea4 /
+ * pl-0344 step 12). Each row is the narrow PlotDetail-facing subset:
+ * `{run_id, paused_at, paused_question_event_id, pause_timeout_ms}`.
+ * The timeout budget mirrors `resolveBudget()` in `src/runs/pause.ts`
+ * — per-project `agent.pauseTimeoutMs` (via the WarrenConfigCache when
+ * wired, else `loadWarrenConfig` direct read), falling back to
+ * `DEFAULT_AGENT_PAUSE_TIMEOUT_MS` on any config error so the UI
+ * countdown always has a number to anchor on.
+ *
+ * Rows missing `paused_at` or `paused_question_event_id` are skipped
+ * defensively — the pause detector always stamps both on transition
+ * (warren-2976), but a hand-crafted/malformed row should not crash the
+ * envelope.
+ */
+async function loadPausedRunsForPlot(
+	deps: ServerDeps,
+	plotId: string,
+	project: { id: string; localPath: string },
+): Promise<
+	Array<{
+		run_id: string;
+		paused_at: string;
+		paused_question_event_id: string;
+		pause_timeout_ms: number;
+	}>
+> {
+	const rows = await deps.repos.runs.listByPlotId(plotId);
+	const paused = rows.filter((r) => r.state === "paused");
+	if (paused.length === 0) return [];
+	let pauseTimeoutMs = DEFAULT_AGENT_PAUSE_TIMEOUT_MS;
+	try {
+		const cfg = await (deps.warrenConfigs !== undefined
+			? deps.warrenConfigs.get(project.id, project.localPath)
+			: loadWarrenConfig({ projectPath: project.localPath }));
+		const value = cfg.defaults?.agent?.pauseTimeoutMs;
+		if (typeof value === "number" && Number.isFinite(value)) pauseTimeoutMs = value;
+	} catch {
+		// fall through to default
+	}
+	const out: Array<{
+		run_id: string;
+		paused_at: string;
+		paused_question_event_id: string;
+		pause_timeout_ms: number;
+	}> = [];
+	for (const r of paused) {
+		if (r.pausedAt === null || r.pausedQuestionEventId === null) continue;
+		out.push({
+			run_id: r.id,
+			paused_at: r.pausedAt,
+			paused_question_event_id: r.pausedQuestionEventId,
+			pause_timeout_ms: pauseTimeoutMs,
+		});
+	}
+	return out;
+}
+
+/**
  * `GET /plots/:id` — full Plot envelope by id (warren-961e /
  * pl-9d6a step 8).
  *
@@ -2824,6 +2883,7 @@ function getPlotHandler(deps: ServerDeps): RouteHandler {
 			plotId,
 		});
 
+		const paused_runs = await loadPausedRunsForPlot(deps, plotId, project);
 		const envelope: PlotEnvelope = {
 			id: result.id,
 			name: result.name,
@@ -2832,6 +2892,7 @@ function getPlotHandler(deps: ServerDeps): RouteHandler {
 			attachments: result.attachments,
 			event_log: result.event_log,
 			project_id: project.id,
+			paused_runs,
 		};
 		return jsonResponse(200, envelope);
 	};
@@ -2930,6 +2991,7 @@ function editPlotIntentHandler(deps: ServerDeps): RouteHandler {
 		deps.plotAggregator?.invalidate(project.id);
 
 		// (7) wire response — full PlotEnvelope.
+		const paused_runs = await loadPausedRunsForPlot(deps, plotId, project);
 		const envelope: PlotEnvelope = {
 			id: result.id,
 			name: result.name,
@@ -2938,6 +3000,7 @@ function editPlotIntentHandler(deps: ServerDeps): RouteHandler {
 			attachments: result.attachments,
 			event_log: result.event_log,
 			project_id: project.id,
+			paused_runs,
 		};
 		return jsonResponse(200, envelope);
 	};
@@ -3243,6 +3306,7 @@ function attachPlotHandler(deps: ServerDeps): RouteHandler {
 		deps.plotAggregator?.invalidate(project.id);
 
 		// (8) wire response — full PlotEnvelope + the freshly added attachment.
+		const paused_runs = await loadPausedRunsForPlot(deps, plotId, project);
 		const envelope: PlotEnvelope = {
 			id: result.id,
 			name: result.name,
@@ -3251,6 +3315,7 @@ function attachPlotHandler(deps: ServerDeps): RouteHandler {
 			attachments: result.attachments,
 			event_log: result.event_log,
 			project_id: project.id,
+			paused_runs,
 		};
 		return jsonResponse(200, { envelope, attachment: result.attachment });
 	};
@@ -3330,6 +3395,7 @@ function detachPlotHandler(deps: ServerDeps): RouteHandler {
 		deps.plotAggregator?.invalidate(project.id);
 
 		// (8) wire response — full PlotEnvelope + the removed attachment id.
+		const paused_runs = await loadPausedRunsForPlot(deps, plotId, project);
 		const envelope: PlotEnvelope = {
 			id: result.id,
 			name: result.name,
@@ -3338,6 +3404,7 @@ function detachPlotHandler(deps: ServerDeps): RouteHandler {
 			attachments: result.attachments,
 			event_log: result.event_log,
 			project_id: project.id,
+			paused_runs,
 		};
 		return jsonResponse(200, { envelope, removed_id: result.removed_id });
 	};
