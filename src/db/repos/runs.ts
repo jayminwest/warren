@@ -292,6 +292,46 @@ export class RunsRepo {
 		return { ...current, ...patch };
 	}
 
+	/**
+	 * Transition `running → paused` for the pause detector (pl-0344 step 5
+	 * / warren-2976). Stamps `paused_at` + `paused_question_event_id`; the
+	 * resume path (`markResumedFromPause`) clears both on transition back
+	 * to `running`. `failureReason` / `startedAt` / `endedAt` are
+	 * intentionally left alone — a paused run isn't terminal, and the
+	 * underlying burrow run continues to count against `startedAt`.
+	 */
+	async markPaused(id: string, questionEventId: string, now: Date = new Date()): Promise<RunRow> {
+		const current = await this.require(id);
+		assertRunTransition(current.state, "paused");
+		const patch = {
+			state: "paused" as const,
+			pausedAt: now.toISOString(),
+			pausedQuestionEventId: questionEventId,
+		};
+		await this.adapter.runWrite(this.db.update(this.runs).set(patch).where(eq(this.runs.id, id)));
+		return { ...current, ...patch };
+	}
+
+	/**
+	 * Transition `paused → running` for the pause detector resume path
+	 * (pl-0344 step 5 / warren-2976). Clears `paused_at` +
+	 * `paused_question_event_id` so a subsequent pause-detect pass against
+	 * the same row reads as a fresh `running` row, not a stale paused
+	 * remnant. Leaves `startedAt` alone — the burrow run's wall-clock
+	 * lifetime is unchanged by a pause round-trip.
+	 */
+	async markResumedFromPause(id: string): Promise<RunRow> {
+		const current = await this.require(id);
+		assertRunTransition(current.state, "running");
+		const patch = {
+			state: "running" as const,
+			pausedAt: null,
+			pausedQuestionEventId: null,
+		};
+		await this.adapter.runWrite(this.db.update(this.runs).set(patch).where(eq(this.runs.id, id)));
+		return { ...current, ...patch };
+	}
+
 	async finalize(
 		id: string,
 		terminal: RunTerminalState,

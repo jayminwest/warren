@@ -36,6 +36,24 @@ export {
 	spawnInteractiveTurn,
 } from "./interactive.ts";
 export {
+	bootPauseDetector,
+	defaultPlotEventReader,
+	extractAnswerText,
+	findAnswerFor,
+	PAUSE_DETECTED_KIND,
+	PAUSE_RESUMED_KIND,
+	PAUSE_TIMED_OUT_KIND,
+	type PauseDetectorHandle,
+	type PauseTickDeps,
+	type PauseTickResult,
+	type PlotEventReader,
+	pickUnansweredQuestion,
+	type RespawnFn,
+	type RespawnInput,
+	type RespawnReason,
+	tickPauseDetector,
+} from "./pause.ts";
+export {
 	type AutoOpenPrConfig,
 	buildPrContent,
 	loadAutoOpenPrConfigFromEnv,

@@ -62,6 +62,8 @@ import { loadProjectsConfigFromEnv } from "../projects/config.ts";
 import { seedBuiltinAgents } from "../registry/builtins/index.ts";
 import { loadCanopyRegistryConfigFromEnv } from "../registry/config.ts";
 import {
+	bootPauseDetector,
+	defaultPlotEventReader,
 	loadAutoOpenPrConfigFromEnv,
 	loadRunBranchPrefixFromEnv,
 	RunEventBroker,
@@ -324,6 +326,35 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 		logger.info({ tickMs: planRunCoordinatorConfig.tickMs }, "plan-run coordinator running");
 	}
 
+	// Pause detector (pl-0344 step 5 / warren-2976). Polls Plot event
+	// logs of in-flight batch runs for unanswered `question_posed` and
+	// resumes paused runs on `question_answered` or pauseTimeoutMs.
+	// Disabled by default until the brainstorm/planner agents land
+	// (warren-3de8 / warren-d22e) and the system has paused runs to
+	// surface; enable via WARREN_PAUSE_DETECTOR_ENABLED=1.
+	const pauseDetectorEnabled = parseTrueEnv(env.WARREN_PAUSE_DETECTOR_ENABLED);
+	const pauseDetectorTickMs = parseIntEnv(env.WARREN_PAUSE_DETECTOR_TICK_MS, 15_000);
+	const pauseDetector = bootPauseDetector({
+		repos,
+		plotReader: defaultPlotEventReader,
+		respawn: async (input) => {
+			logger.info(
+				{ runId: input.run.id, reason: input.reason.kind },
+				"pause.respawn_seam_unconfigured",
+			);
+		},
+		warrenConfigs,
+		tickMs: pauseDetectorTickMs,
+		disabled: !pauseDetectorEnabled,
+		logger: pauseLoggerFromPino(logger),
+		...(opts.now !== undefined ? { now: opts.now } : {}),
+	});
+	if (!pauseDetectorEnabled) {
+		logger.info({}, "pause detector disabled (set WARREN_PAUSE_DETECTOR_ENABLED=1 to enable)");
+	} else {
+		logger.info({ tickMs: pauseDetectorTickMs }, "pause detector running");
+	}
+
 	// Preview TTL + LRU eviction worker (R-19 / SPEC §11.L, warren-ea6b).
 	// Dialect-polymorphic since warren-adfb (createRunPreviewsRepo runs on
 	// either backend).
@@ -469,6 +500,7 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 			// spawnRun before bridges/burrow/db disappear under it.
 			await handle.stop();
 			await planRunCoordinator.stop();
+			await pauseDetector.stop();
 			await scheduler.stop();
 			await previewEvictionWorker.stop();
 			await workerProbe.stop();
@@ -604,6 +636,30 @@ function planRunLoggerFromPino(logger: Logger): {
 		warn: (obj, msg) => logger.warn(obj, msg),
 		error: (obj, msg) => logger.error(obj, msg),
 	};
+}
+
+function pauseLoggerFromPino(logger: Logger): {
+	info(obj: Record<string, unknown>, msg?: string): void;
+	warn(obj: Record<string, unknown>, msg?: string): void;
+	error(obj: Record<string, unknown>, msg?: string): void;
+} {
+	return {
+		info: (obj, msg) => logger.info(obj, msg),
+		warn: (obj, msg) => logger.warn(obj, msg),
+		error: (obj, msg) => logger.error(obj, msg),
+	};
+}
+
+function parseTrueEnv(raw: string | undefined): boolean {
+	if (raw === undefined) return false;
+	const t = raw.trim().toLowerCase();
+	return t === "1" || t === "true" || t === "yes";
+}
+
+function parseIntEnv(raw: string | undefined, fallback: number): number {
+	if (raw === undefined) return fallback;
+	const n = Number.parseInt(raw, 10);
+	return Number.isFinite(n) && n > 0 ? n : fallback;
 }
 
 function previewEvictionLoggerFromPino(logger: Logger): {
