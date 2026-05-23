@@ -2,7 +2,8 @@ import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { planRunsApi, projectsApi } from "@/api/client.ts";
-import type { PlanRunChildState, PlanRunState } from "@/api/types.ts";
+import type { PlanRunChildState, PlanRunState, RunRow } from "@/api/types.ts";
+import { formatCostUsd } from "./RunDetail.tsx";
 import { PlanRunStateBadge } from "@/components/PlanRunStateBadge.tsx";
 import { Button } from "@/components/ui/button.tsx";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card.tsx";
@@ -124,6 +125,7 @@ export function PlanRunsPage() {
 									<TableHead className="whitespace-nowrap">Project</TableHead>
 									<TableHead className="whitespace-nowrap">Agent</TableHead>
 									<TableHead className="whitespace-nowrap">Children</TableHead>
+									<TableHead className="whitespace-nowrap">Cost</TableHead>
 									<TableHead className="whitespace-nowrap">Started</TableHead>
 								</TableRow>
 							</TableHeader>
@@ -175,6 +177,7 @@ function PlanRunListRow({
 		refetchInterval: 5000,
 	});
 	const counts = summarizeChildren(detail.data?.children ?? []);
+	const cost = summarizeCost(detail.data?.runs ?? []);
 	return (
 		<TableRow>
 			<TableCell>
@@ -194,11 +197,45 @@ function PlanRunListRow({
 			<TableCell className="whitespace-nowrap font-mono text-xs text-(--color-muted-foreground)">
 				{counts}
 			</TableCell>
+			<TableCell
+				className="whitespace-nowrap font-mono text-xs text-(--color-muted-foreground)"
+				title={
+					cost.priced === 0
+						? "No child runs have a recorded cost yet"
+						: `${cost.priced} of ${cost.total} child runs have a recorded cost`
+				}
+			>
+				{cost.priced === 0 ? "—" : formatCostUsd(cost.sum)}
+			</TableCell>
 			<TableCell className="whitespace-nowrap text-(--color-muted-foreground)">
 				{relativeTime(startedAt)}
 			</TableCell>
 		</TableRow>
 	);
+}
+
+/**
+ * Aggregate cost across a plan-run's child runs (warren-2235 / pl-b0c0
+ * step 5). Mirrors RunsRepo.aggregate's NULL-aware rollup: `sum` adds
+ * non-null `costUsd` only, `priced` counts those rows, `total` is the
+ * full child-run count. Ghost runs whose cost was never recorded land
+ * in `total - priced` — the tooltip surfaces the gap so a low total
+ * isn't mistaken for cheap.
+ */
+function summarizeCost(runs: RunRow[]): {
+	sum: number;
+	priced: number;
+	total: number;
+} {
+	let sum = 0;
+	let priced = 0;
+	for (const r of runs) {
+		if (r.costUsd !== null) {
+			sum += r.costUsd;
+			priced += 1;
+		}
+	}
+	return { sum, priced, total: runs.length };
 }
 
 function summarizeChildren(

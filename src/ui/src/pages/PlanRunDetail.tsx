@@ -21,6 +21,7 @@ import {
 	TableRow,
 } from "@/components/ui/table.tsx";
 import { formatTimestamp, relativeTime } from "@/lib/utils.ts";
+import { formatCostUsd } from "./RunDetail.tsx";
 
 const ACTIVE_STATES = new Set<PlanRunRow["state"]>(["queued", "running"]);
 
@@ -56,6 +57,7 @@ export function PlanRunDetailPage() {
 	if (!detail.data) return null;
 	const { planRun, children, runs } = detail.data;
 	const canCancel = ACTIVE_STATES.has(planRun.state);
+	const cost = summarizeRunCost(runs);
 
 	return (
 		<div className="space-y-6">
@@ -105,6 +107,18 @@ export function PlanRunDetailPage() {
 				<MetaCard label="Dispatcher">{planRun.dispatcherHandle}</MetaCard>
 				<MetaCard label="Trigger">{planRun.trigger}</MetaCard>
 				<MetaCard label="Children">{children.length}</MetaCard>
+				<MetaCard label="Cost">
+					<span
+						className="font-mono text-xs"
+						title={
+							cost.priced === 0
+								? "No child runs have a recorded cost yet"
+								: `${cost.priced} of ${runs.length} child runs have a recorded cost`
+						}
+					>
+						{cost.priced === 0 ? "—" : formatCostUsd(cost.sum)}
+					</span>
+				</MetaCard>
 				<MetaCard label="Started">{formatTimestamp(planRun.startedAt)}</MetaCard>
 				<MetaCard label="Ended">{formatTimestamp(planRun.endedAt)}</MetaCard>
 				<MetaCard label="Duration">{formatDuration(planRun)}</MetaCard>
@@ -280,6 +294,25 @@ function MetaCard({ label, children }: { label: string; children: React.ReactNod
 			</CardContent>
 		</Card>
 	);
+}
+
+/**
+ * Sum non-null `costUsd` across a plan-run's child runs (warren-2235 /
+ * pl-b0c0 step 5). NULL-aware: matches RunsRepo.aggregate's posture so
+ * the Cost meta card displays the same number a future server-side
+ * rollup would, and the `priced` counter surfaces ghost runs whose cost
+ * was never recorded.
+ */
+function summarizeRunCost(runs: RunRow[]): { sum: number; priced: number } {
+	let sum = 0;
+	let priced = 0;
+	for (const r of runs) {
+		if (r.costUsd !== null) {
+			sum += r.costUsd;
+			priced += 1;
+		}
+	}
+	return { sum, priced };
 }
 
 function formatDuration(planRun: PlanRunRow): string {
