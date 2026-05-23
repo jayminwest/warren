@@ -77,6 +77,7 @@ import {
 	defaultPlotPrMerger,
 	defaultPlotQuestionAnswerer,
 	defaultPlotReader,
+	defaultPlotRenamer,
 	defaultPlotStatusChanger,
 	EMPTY_PLOT_SUMMARIES,
 	isValidPlotIdFormat,
@@ -3105,6 +3106,103 @@ function editPlotIntentHandler(deps: ServerDeps): RouteHandler {
 }
 
 /**
+ * `POST /plots/:id/rename` — update a Plot's display name (warren-bed0 /
+ * pl-b0c0 step 3).
+ *
+ * Handler order mirrors `editPlotIntentHandler`:
+ *   (1) parse + validate `{name}` from the body (non-empty string after
+ *       trim; unknown fields reject so typos surface). `dispatcher_handle`
+ *       is accepted and threaded through but read separately.
+ *   (2) resolve the dispatcher handle via `resolveDispatcherHandle`.
+ *   (3) resolve the owning project via `deps.plotResolver`; `null` → 404.
+ *   (4) defensive `hasPlot` re-check (→ 400 `project_lacks_plot`).
+ *   (5) hand off to `deps.plotRenamer` (default `defaultPlotRenamer`),
+ *       which opens a `UserPlotClient`, mutates `plot.json#/name`, and
+ *       appends a `note` event recording the from→to transition.
+ *       Failure surfaces synchronously — NOT fire-and-log.
+ *   (6) invalidate the aggregator's cache entry for the project so a
+ *       follow-up `GET /plots` sees the new name without the 5s TTL wait.
+ *   (7) return 200 with the full `PlotEnvelope`.
+ *
+ * Renames are allowed in every status. The name is pure metadata — the
+ * SPEC §6 frozen-at-done rule applies only to the intent body.
+ */
+function renamePlotHandler(deps: ServerDeps): RouteHandler {
+	return async (ctx) => {
+		const plotId = requireParam(ctx, "id");
+		const body = await readJsonBody(ctx);
+		const dispatcherHandle = optionalString(body, "dispatcher_handle");
+
+		// (1) parse the rename body.
+		const allowed = new Set(["name", "dispatcher_handle"]);
+		for (const key of Object.keys(body)) {
+			if (!allowed.has(key)) {
+				throw new ValidationError(
+					`field '${key}' is not recognized; expected one of name, dispatcher_handle`,
+				);
+			}
+		}
+		if (typeof body.name !== "string") {
+			throw new ValidationError("field 'name' must be a string");
+		}
+		const trimmedName = body.name.trim();
+		if (trimmedName.length === 0) {
+			throw new ValidationError("field 'name' must be a non-empty string");
+		}
+
+		// (2) handle resolution.
+		const handle = resolveDispatcherHandle(dispatcherHandle);
+
+		// (3) resolve owning project.
+		const project =
+			deps.plotResolver !== undefined ? await deps.plotResolver.resolve(plotId) : null;
+		if (project === null) {
+			throw new NotFoundError(`plot not found: ${plotId}`, {
+				recoveryHint:
+					"check the plot id; only Plots in projects with hasPlot=true are visible to warren",
+			});
+		}
+
+		// (4) defensive hasPlot re-check.
+		if (!project.hasPlot) {
+			throw new ProjectLacksPlotError(
+				`project ${project.id} no longer has a .plot/ directory; cannot rename plot ${plotId}`,
+				{
+					recoveryHint:
+						"refresh the project so warren picks up the current .plot/ state, or recreate .plot/ via `plot init`",
+				},
+			);
+		}
+
+		// (5) delegate to the renamer seam.
+		const renamer = deps.plotRenamer ?? defaultPlotRenamer;
+		const result = await renamer.rename({
+			plotDir: join(project.localPath, ".plot"),
+			plotId,
+			handle,
+			name: trimmedName,
+		});
+
+		// (6) drop aggregator cache so a follow-up list sees the new name.
+		deps.plotAggregator?.invalidate(project.id);
+
+		// (7) wire response — full PlotEnvelope.
+		const paused_runs = await loadPausedRunsForPlot(deps, plotId, project);
+		const envelope: PlotEnvelope = {
+			id: result.id,
+			name: result.name,
+			status: result.status,
+			intent: result.intent,
+			attachments: result.attachments,
+			event_log: result.event_log,
+			project_id: project.id,
+			paused_runs,
+		};
+		return jsonResponse(200, envelope);
+	};
+}
+
+/**
  * Parse + validate the top-level intent fields on `POST /plots/:id/intent`.
  * The wire contract here is flat (`{goal?, non_goals?, ..., dispatcher_handle?}`)
  * rather than the nested `{intent: {...}}` shape used by `POST /plots`,
@@ -3845,6 +3943,7 @@ const ROUTE_TABLE: readonly RouteEntry[] = [
 	{ method: "GET", pattern: "/plots/:id/summary", build: getPlotSummaryHandler },
 	{ method: "GET", pattern: "/plots/:id", build: getPlotHandler },
 	{ method: "POST", pattern: "/plots/:id/intent", build: editPlotIntentHandler },
+	{ method: "POST", pattern: "/plots/:id/rename", build: renamePlotHandler },
 	{ method: "POST", pattern: "/plots/:id/status", build: changePlotStatusHandler },
 	{ method: "POST", pattern: "/plots/:id/attachments", build: attachPlotHandler },
 	// Specific path — must precede `/plots/:id/attachments/:ref` so the

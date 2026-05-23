@@ -49,6 +49,7 @@ import {
 	defaultPlotPrMerger,
 	defaultPlotQuestionAnswerer,
 	defaultPlotReader,
+	defaultPlotRenamer,
 	defaultPlotStatusChanger,
 } from "../plots/index.ts";
 import { createPreviewAuth, type PreviewAuth } from "../preview/cookie.ts";
@@ -445,6 +446,7 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 		plotAttacher: defaultPlotAttacher,
 		plotPrMerger: defaultPlotPrMerger,
 		plotIntentEditor: defaultPlotIntentEditor,
+		plotRenamer: defaultPlotRenamer,
 		plotReader: defaultPlotReader,
 		plotStatusChanger: defaultPlotStatusChanger,
 		plotQuestionAnswerer: defaultPlotQuestionAnswerer,

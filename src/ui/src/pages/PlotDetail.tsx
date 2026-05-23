@@ -118,7 +118,7 @@ export function PlotDetailPage() {
 		<div className="space-y-6">
 			<header className="flex flex-wrap items-start justify-between gap-4">
 				<div className="space-y-1">
-					<h1 className="text-2xl font-semibold tracking-tight">{plot.name}</h1>
+					<PlotNameEditor plot={plot} />
 					<div className="font-mono text-xs text-(--color-muted-foreground)">
 						{plot.id} · project{" "}
 						<Link
@@ -151,6 +151,135 @@ export function PlotDetailPage() {
 				events={plot.event_log}
 				pausedRuns={plot.paused_runs}
 			/>
+		</div>
+	);
+}
+
+/* ----------------------------------------------------------------------- */
+/* PlotNameEditor (warren-bed0 / pl-b0c0 step 3)                            */
+/* ----------------------------------------------------------------------- */
+
+/**
+ * Inline name editor for a Plot. Displays the current name as an
+ * `<h1>`; clicking the heading (or the small "rename" affordance)
+ * swaps it for an `<input>` + Save/Cancel buttons. Saving POSTs to
+ * `/plots/:id/rename` via `plotsApi.rename`; on success the cached
+ * envelope's `name` flips immediately (optimistic) and the server
+ * response's full envelope replaces the cache entry.
+ *
+ * Empty-after-trim or no-change submissions are short-circuited
+ * client-side so the user doesn't pay a round-trip for a no-op.
+ * Errors are surfaced inline (status + message) without dropping the
+ * user out of edit mode.
+ */
+function PlotNameEditor({ plot }: { plot: PlotEnvelope }) {
+	const qc = useQueryClient();
+	const [editing, setEditing] = useState(false);
+	const [draft, setDraft] = useState(plot.name);
+
+	// Re-sync draft when the underlying name changes from elsewhere
+	// (concurrent rename, refetch). Keep the user's draft if they're
+	// actively editing.
+	useEffect(() => {
+		if (!editing) setDraft(plot.name);
+	}, [plot.name, editing]);
+
+	const mutation = useMutation({
+		mutationFn: (name: string) => plotsApi.rename(plot.id, { name }),
+		onSuccess: (envelope) => {
+			qc.setQueryData<PlotEnvelope>(["plot", plot.id], envelope);
+			qc.invalidateQueries({ queryKey: ["plots"] });
+			setEditing(false);
+		},
+	});
+
+	const errorMessage = ((): string | null => {
+		if (!mutation.isError) return null;
+		if (mutation.error instanceof ApiError) {
+			return `${mutation.error.message} (${mutation.error.code})`;
+		}
+		return mutation.error instanceof Error
+			? mutation.error.message
+			: String(mutation.error);
+	})();
+
+	function submit() {
+		const trimmed = draft.trim();
+		if (trimmed.length === 0) return;
+		if (trimmed === plot.name) {
+			setEditing(false);
+			return;
+		}
+		mutation.mutate(trimmed);
+	}
+
+	if (!editing) {
+		return (
+			<div className="flex items-center gap-2">
+				<h1 className="text-2xl font-semibold tracking-tight">{plot.name}</h1>
+				<Button
+					type="button"
+					variant="ghost"
+					size="sm"
+					className="text-xs text-(--color-muted-foreground)"
+					onClick={() => {
+						setDraft(plot.name);
+						mutation.reset();
+						setEditing(true);
+					}}
+					aria-label="Rename plot"
+				>
+					rename
+				</Button>
+			</div>
+		);
+	}
+
+	return (
+		<div className="space-y-1">
+			<div className="flex flex-wrap items-center gap-2">
+				<Input
+					value={draft}
+					onChange={(e) => setDraft(e.target.value)}
+					onKeyDown={(e) => {
+						if (e.key === "Enter") {
+							e.preventDefault();
+							submit();
+						} else if (e.key === "Escape") {
+							e.preventDefault();
+							setEditing(false);
+						}
+					}}
+					disabled={mutation.isPending}
+					autoFocus
+					aria-label="New plot name"
+					className="h-9 max-w-md text-base font-semibold"
+				/>
+				<Button
+					type="button"
+					size="sm"
+					onClick={submit}
+					disabled={
+						mutation.isPending ||
+						draft.trim().length === 0 ||
+						draft.trim() === plot.name
+					}
+				>
+					{mutation.isPending ? "Saving…" : "Save"}
+				</Button>
+				<Button
+					type="button"
+					variant="ghost"
+					size="sm"
+					onClick={() => setEditing(false)}
+					disabled={mutation.isPending}
+				>
+					Cancel
+				</Button>
+			</div>
+			{errorMessage !== null ? (
+				<p className="text-xs text-(--color-destructive)">{errorMessage}</p>
+			) : null}
 		</div>
 	);
 }

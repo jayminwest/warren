@@ -39,6 +39,8 @@ import { join } from "node:path";
 import {
 	type Actor,
 	type AgentActor,
+	type Plot,
+	type PlotEvent,
 	PlotStore,
 	SQLitePlotIndex,
 	type UserActor,
@@ -99,6 +101,43 @@ export class UserPlotClient extends BasePlotClient<UserActor, UserPlotHandle> {
 	// user client makes that intent explicit at the type level.
 	create(input: Parameters<PlotStore["create"]>[0]): Promise<UserPlotHandle> {
 		return this.store.create(input).then((handle) => new UserPlotHandle(handle));
+	}
+
+	/**
+	 * Rename a Plot in-place (warren-bed0 / pl-b0c0 step 3). Mutates
+	 * `plot.json#/name` under the same per-Plot file lock the lib uses
+	 * for `editIntent` / `setStatus`, and appends a `note` event with
+	 * the from→to transition so the change is auditable in the event
+	 * log (plot-cli v0.3 has no `plot_renamed` event type; the note is
+	 * the closest first-class fit until upstream adds one).
+	 *
+	 * No-op if `newName` matches the current name. Throws if `newName`
+	 * is empty after trim (the lib's create() refuses empty names; we
+	 * mirror that invariant here so the on-disk Plot stays valid).
+	 */
+	async rename(plotId: string, newName: string): Promise<{ plot: Plot; event: PlotEvent | null }> {
+		const trimmed = newName.trim();
+		if (trimmed.length === 0) {
+			throw new Error("UserPlotClient.rename: name must not be empty");
+		}
+		let emitted: PlotEvent | null = null;
+		const { plot } = await this.store.transact(plotId, (current, now) => {
+			if (current.name === trimmed) {
+				return { next: current, events: [] };
+			}
+			const actorStr = `${this.actor.kind}:${this.actor.handle}`;
+			const event: PlotEvent = {
+				type: "note",
+				actor: actorStr,
+				at: now,
+				data: {
+					text: `renamed from ${JSON.stringify(current.name)} to ${JSON.stringify(trimmed)}`,
+				},
+			};
+			emitted = event;
+			return { next: { ...current, name: trimmed }, events: [event] };
+		});
+		return { plot, event: emitted };
 	}
 }
 

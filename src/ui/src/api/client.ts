@@ -27,6 +27,7 @@ import type {
 	CreateRunInput,
 	DetachPlotResponse,
 	EditPlotIntentInput,
+	RenamePlotInput,
 	ListPlotsResponse,
 	ListRunsResponse,
 	PlotEnvelope,
@@ -515,6 +516,19 @@ export const plotsApi = {
 		if (input.success_criteria !== undefined) body.success_criteria = input.success_criteria;
 		if (input.dispatcherHandle !== undefined) body.dispatcher_handle = input.dispatcherHandle;
 		return request<PlotEnvelope>(`/plots/${encodeURIComponent(plotId)}/intent`, {
+			method: "POST",
+			body,
+		});
+	},
+	/**
+	 * `POST /plots/:id/rename` — rename a Plot (warren-bed0 / pl-b0c0
+	 * step 3). Server trims the name and rejects empty-after-trim with
+	 * 400. Allowed in every status (the name is pure metadata).
+	 */
+	rename: (plotId: string, input: RenamePlotInput) => {
+		const body: Record<string, unknown> = { name: input.name };
+		if (input.dispatcherHandle !== undefined) body.dispatcher_handle = input.dispatcherHandle;
+		return request<PlotEnvelope>(`/plots/${encodeURIComponent(plotId)}/rename`, {
 			method: "POST",
 			body,
 		});

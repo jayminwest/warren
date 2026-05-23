@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `POST /plots/:id/rename` — update a Plot's display name from the UI
+  (warren-bed0 / pl-b0c0 step 3). PlotDetail's header gains an inline
+  rename affordance ("rename" button next to the name, Save/Cancel +
+  Enter/Escape keybinds). Renames are allowed in every status — the
+  SPEC §6 frozen-at-done rule applies only to the intent body. The
+  rename mutates `plot.json#/name` under the lib's per-Plot file lock
+  via a new `UserPlotClient.rename` method and appends a `note` event
+  recording the from→to transition (plot-cli v0.3 has no
+  `plot_renamed` event type).
+
 ## [0.5.2] — 2026-05-22
 
 Patch release. Fixes canopy-defined interactive agents (brainstorm,

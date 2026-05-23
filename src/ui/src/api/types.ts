@@ -860,6 +860,17 @@ export interface EditPlotIntentInput {
 }
 
 /**
+ * `POST /plots/:id/rename` request body (warren-bed0 / pl-b0c0 step 3).
+ * `name` is trimmed server-side; an empty-after-trim value is rejected
+ * with 400. Renames are allowed in every status — the SPEC §6
+ * frozen-at-done rule applies only to the intent body, not the name.
+ */
+export interface RenamePlotInput {
+	name: string;
+	dispatcherHandle?: string;
+}
+
+/**
  * `POST /plots/:id/status` request body + response envelope
  * (warren-e868). The server validates the SPEC §6.5 transition matrix
  * before delegating to the lib.

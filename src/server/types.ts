@@ -279,6 +279,20 @@ export interface ServerDeps {
 	 */
 	readonly plotIntentEditor?: import("../plots/index.ts").PlotIntentEditor;
 	/**
+	 * Server-side Plot rename seam (warren-bed0 / pl-b0c0 step 3). Used by
+	 * `POST /plots/:id/rename` to open a `UserPlotClient` against the
+	 * owning project's `.plot/`, mutate `plot.json#/name` under the lib's
+	 * per-Plot file lock via `UserPlotClient.rename` (which appends a
+	 * `note` event recording the from→to transition), and return the fresh
+	 * envelope subset. Failure surfaces synchronously (NOT fire-and-log
+	 * — same posture as `plotIntentEditor` / `plotStatusChanger`). Renames
+	 * are allowed in every status — the name is pure metadata, unlike the
+	 * intent body which freezes at done/archived per SPEC §6. `bootServer`
+	 * always wires the default; tests substitute a stub. When undefined
+	 * the handler falls back to `defaultPlotRenamer`.
+	 */
+	readonly plotRenamer?: import("../plots/index.ts").PlotRenamer;
+	/**
 	 * Server-side Plot status changer (warren-e868 / pl-9d6a step 10). Used
 	 * by `POST /plots/:id/status` to open a `UserPlotClient` against the
 	 * owning project's `.plot/`, enforce the SPEC §6.5 transition matrix

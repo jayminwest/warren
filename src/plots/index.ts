@@ -90,6 +90,12 @@ export {
 	type ReadPlotRequest,
 	type ReadPlotResult,
 } from "./reader.ts";
+export {
+	defaultPlotRenamer,
+	type PlotRenamer,
+	type RenamePlotRequest,
+	type RenamePlotResult,
+} from "./renamer.ts";
 export { createPlotResolver, type PlotResolver, type PlotResolverOptions } from "./resolver.ts";
 export {
 	assertStatusTransitionAllowed,
