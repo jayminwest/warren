@@ -254,35 +254,28 @@ async function trySpawn(
 }
 
 /**
- * Default `.plot/` preservation wrapper (warren-fdd2, plan pl-d4d6).
+ * Default `.plot/` preservation wrapper (warren-fdd2, plan pl-d4d6,
+ * warren-af9e merge fix).
  *
- * Snapshot shape (b): keep the post-fetch `git reset --hard` correct for
- * the agent-workspace invariant (clean tree per child run) while not
- * wiping warren-managed coordination state. Warren's host-side Plot
- * appenders (defaultPlotAppender in src/runs/spawn.ts,
- * defaultPlanRunPlotAppender, autoTransitionPlotToDone) write to
- * `<localPath>/.plot/<id>.events.jsonl` and `<id>.json` WITHOUT
- * committing. Without this wrapper, those writes would survive only
- * until the next spawnRun's refresh — the symptom that motivated
- * scenario 27 (warren-97a3) and this seed.
+ * Snapshots the host-side-writable plot data files (`plot-*.json`,
+ * `plot-*.events.jsonl`) to a tmpdir before the reset, then **merges**
+ * them back into the post-reset tree rather than blindly overwriting.
+ * This preserves remote changes (new attachments, intent edits, events
+ * committed and pushed by users) while retaining host-appender writes
+ * (status transitions, appended events).
  *
- * Strategy: copy every regular file under `.plot/` (recursively) to an
- * out-of-tree tmpdir before the reset, then copy them back after.
- * Snapshot wins on conflict — a host-appender write is strictly newer
- * than anything committed into the project repo's `.plot/` (the
- * appended file content is append-only, and a `status_changed` to
- * `done` supersedes an older `active`). The SQLite index
- * (`.plot/.index.db` + `.index.db-wal` + `.index.db-shm`) is derived
- * state per ../plot/README.md; we skip those files so the index
- * rebuilds via Plot's existing retry-once path (mx-239786) rather than
- * carrying stale rows across the reset.
+ * Merge strategy per file type:
+ *   - `.events.jsonl` — dedup-append: remote lines kept, snapshot-only
+ *     lines appended at the tail.
+ *   - `.json` — field-level: remote is the base (attachments, intent,
+ *     etc.); host-side `status` + `updated_at` overlay when status
+ *     differs.
+ *   - Files absent post-reset are restored from snapshot (host-created
+ *     plots the remote hasn't seen yet).
  *
- * Best-effort on cleanup: a failure to remove the tmp dir doesn't fail
- * the refresh, but we always attempt removal in a finally so 100
- * consecutive refreshes don't leak under os.tmpdir().
+ * Only flat `plot-*` data files are captured; subdirectories, the
+ * `.index.db*` SQLite index, and non-plot files are left for git.
  */
-const PLOT_INDEX_SKIP_PREFIX = ".index.db";
-
 export const defaultPreservePlot: PreservePlotFn = async (localPath, hasPlot, fn) => {
 	if (!hasPlot) {
 		await fn();
@@ -295,7 +288,7 @@ export const defaultPreservePlot: PreservePlotFn = async (localPath, hasPlot, fn
 		const copied = await snapshotPlotDir(src, snapshotDir);
 		await fn();
 		if (copied > 0) {
-			await restorePlotDir(snapshotDir, src);
+			await mergePlotSnapshot(snapshotDir, src);
 		}
 	} finally {
 		if (snapshotDir !== null) {
@@ -305,10 +298,11 @@ export const defaultPreservePlot: PreservePlotFn = async (localPath, hasPlot, fn
 };
 
 /**
- * Recursively copy every regular file under `src` into `dst`, skipping
- * the Plot SQLite index files. Returns the number of files copied.
- * Tolerates `src` not existing or being empty — returns 0, lets the
- * caller skip the restore step.
+ * Copy plot data files (`plot-*.events.jsonl` and `plot-*.json`) from
+ * `src` into `dst`. Only captures the flat file types the host-side
+ * appenders write — subdirectories, `.index.db*` SQLite state, and
+ * other files are left for git to manage via the reset. Returns the
+ * number of files copied; 0 means the caller can skip the merge step.
  */
 async function snapshotPlotDir(src: string, dst: string): Promise<number> {
 	let entries: Dirent[];
@@ -320,43 +314,125 @@ async function snapshotPlotDir(src: string, dst: string): Promise<number> {
 	}
 	let count = 0;
 	for (const entry of entries) {
-		if (entry.name.startsWith(PLOT_INDEX_SKIP_PREFIX)) continue;
+		if (!entry.isFile()) continue;
+		if (!isPlotDataFile(entry.name)) continue;
 		const srcPath = join(src, entry.name);
 		const dstPath = join(dst, entry.name);
-		if (entry.isDirectory()) {
-			await mkdir(dstPath, { recursive: true });
-			count += await snapshotPlotDir(srcPath, dstPath);
-		} else if (entry.isFile()) {
-			const buf = await readFile(srcPath);
-			await writeFile(dstPath, buf);
-			count += 1;
-		}
-		// Symlinks, sockets, etc. are intentionally skipped — Plot only
-		// writes regular files under `.plot/`.
+		const buf = await readFile(srcPath);
+		await writeFile(dstPath, buf);
+		count += 1;
 	}
 	return count;
 }
 
 /**
- * Restore the snapshot back into `<localPath>/.plot/`. Snapshot wins on
- * conflict: a path present in both the freshly-reset tree and the
- * snapshot gets overwritten with the snapshot's bytes. The `.plot/`
- * root is recreated when the reset removed it entirely (the typical
- * case when the project never committed `.plot/` to origin).
+ * Merge the snapshot back into `<localPath>/.plot/` instead of blindly
+ * overwriting (warren-af9e). For each snapshotted file:
+ *
+ *   - **Not present post-reset** → restore from snapshot (host created it).
+ *   - **`.events.jsonl`** → dedup-append: remote lines kept in order,
+ *     snapshot-only lines appended at the tail.
+ *   - **`.json`** → field-level merge: remote is the base (preserving
+ *     attachments, intent, etc. fetched from origin); host-side
+ *     `status` + `updated_at` overlay when status differs.
+ *
+ * Files present post-reset but absent from the snapshot are untouched —
+ * they are new remote content the host never saw.
  */
-async function restorePlotDir(src: string, dst: string): Promise<void> {
-	await mkdir(dst, { recursive: true });
-	const entries = await readdir(src, { withFileTypes: true });
+async function mergePlotSnapshot(snapshotDir: string, plotDir: string): Promise<void> {
+	await mkdir(plotDir, { recursive: true });
+	const entries = await readdir(snapshotDir, { withFileTypes: true });
 	for (const entry of entries) {
-		const srcPath = join(src, entry.name);
-		const dstPath = join(dst, entry.name);
-		if (entry.isDirectory()) {
-			await restorePlotDir(srcPath, dstPath);
-		} else if (entry.isFile()) {
-			const buf = await readFile(srcPath);
-			await writeFile(dstPath, buf);
+		if (!entry.isFile()) continue;
+		const snapshotPath = join(snapshotDir, entry.name);
+		const plotPath = join(plotDir, entry.name);
+		const snapshotContent = await readFile(snapshotPath, "utf8");
+
+		let remoteContent: string | null = null;
+		try {
+			remoteContent = await readFile(plotPath, "utf8");
+		} catch (err) {
+			if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
+		}
+
+		if (remoteContent === null) {
+			await writeFile(plotPath, snapshotContent);
+			continue;
+		}
+
+		if (entry.name.endsWith(".events.jsonl")) {
+			const merged = mergeEventsLines(remoteContent, snapshotContent);
+			if (merged !== remoteContent) {
+				await writeFile(plotPath, merged);
+			}
+		} else if (entry.name.endsWith(".json")) {
+			const merged = mergePlotJsonForRefresh(remoteContent, snapshotContent);
+			if (merged !== remoteContent) {
+				await writeFile(plotPath, merged);
+			}
 		}
 	}
+}
+
+function isPlotDataFile(name: string): boolean {
+	return name.startsWith("plot-") && (name.endsWith(".events.jsonl") || name.endsWith(".json"));
+}
+
+/**
+ * Dedup-append merge for `.events.jsonl`: keep all remote lines in
+ * order, then append any snapshot lines not already present. Matches
+ * the `mergePlotEventsFile` strategy in `src/runs/reap.ts`.
+ */
+export function mergeEventsLines(remote: string, snapshot: string): string {
+	const remoteLines = splitNonEmpty(remote);
+	const seen = new Set(remoteLines);
+	const appended: string[] = [];
+	for (const line of splitNonEmpty(snapshot)) {
+		if (seen.has(line)) continue;
+		seen.add(line);
+		appended.push(line);
+	}
+	if (appended.length === 0) return remote;
+	const all = [...remoteLines, ...appended];
+	return all.length === 0 ? "" : `${all.join("\n")}\n`;
+}
+
+function splitNonEmpty(body: string): string[] {
+	return body.split("\n").filter(Boolean);
+}
+
+/**
+ * Field-level merge for `plot-*.json`: take the post-reset (remote)
+ * copy as the base — it carries the latest attachments, intent, and
+ * other fields fetched from origin. Overlay `status` (and `updated_at`)
+ * from the snapshot only when the host-side appender changed status
+ * (e.g. `autoTransitionPlotToDone`). When status is unchanged, the
+ * remote version is returned as-is.
+ */
+export function mergePlotJsonForRefresh(remote: string, snapshot: string): string {
+	if (remote === snapshot) return remote;
+	try {
+		const remoteObj = JSON.parse(remote) as Record<string, unknown>;
+		const snapshotObj = JSON.parse(snapshot) as Record<string, unknown>;
+		if (snapshotObj.status === remoteObj.status) {
+			return remote;
+		}
+		remoteObj.status = snapshotObj.status;
+		if (snapshotObj.updated_at !== undefined) {
+			remoteObj.updated_at = snapshotObj.updated_at;
+		}
+		return `${JSON.stringify(sortKeys(remoteObj), null, 2)}\n`;
+	} catch {
+		return snapshot;
+	}
+}
+
+function sortKeys(obj: Record<string, unknown>): Record<string, unknown> {
+	const sorted: Record<string, unknown> = {};
+	for (const k of Object.keys(obj).sort()) {
+		sorted[k] = obj[k];
+	}
+	return sorted;
 }
 
 function formatStderr(result: SpawnResult): string {

@@ -5,7 +5,12 @@ import { join } from "node:path";
 import type { SpawnFn, SpawnResult } from "./clone.ts";
 import type { ProjectsConfig } from "./config.ts";
 import { ProjectUnavailableError } from "./errors.ts";
-import { detectProjectFeatures, refreshProjectClone } from "./refresh.ts";
+import {
+	detectProjectFeatures,
+	mergeEventsLines,
+	mergePlotJsonForRefresh,
+	refreshProjectClone,
+} from "./refresh.ts";
 
 const CFG: ProjectsConfig = { root: "/data/projects", gitBinary: "git" };
 
@@ -424,15 +429,13 @@ describe("refreshProjectClone preserves .plot/ across reset (warren-b960, pl-d4d
 		}
 	});
 
-	test("recursively preserves nested files under .plot/", async () => {
+	test("subdirectories under .plot/ are NOT preserved — git manages them (warren-af9e)", async () => {
 		const root = await makeRoot();
 		try {
 			const plotDir = join(root, ".plot");
 			const nestedDir = join(plotDir, "attachments", "plot-z");
 			await mkdir(nestedDir, { recursive: true });
-			const nestedPath = join(nestedDir, "blob.bin");
-			const nestedBytes = Buffer.from([0x00, 0x01, 0x02, 0xff]);
-			await writeFile(nestedPath, nestedBytes);
+			await writeFile(join(nestedDir, "blob.bin"), Buffer.from([0x00, 0x01, 0x02, 0xff]));
 			await writeFile(join(plotDir, "plot-z.events.jsonl"), `{"kind":"z"}\n`);
 
 			const sha = "e".repeat(40);
@@ -453,8 +456,156 @@ describe("refreshProjectClone preserves .plot/ across reset (warren-b960, pl-d4d
 				spawn,
 			});
 
-			const restoredNested = await readFile(nestedPath);
-			expect(restoredNested.equals(nestedBytes)).toBe(true);
+			const after = (await readdir(plotDir)).sort();
+			expect(after).toEqual(["plot-z.events.jsonl"]);
+		} finally {
+			await rm(root, { recursive: true, force: true });
+		}
+	});
+
+	test("remote attachments survive refresh when host only changed status (warren-af9e)", async () => {
+		const root = await makeRoot();
+		try {
+			const plotDir = join(root, ".plot");
+			await mkdir(plotDir, { recursive: true });
+			const statusPath = join(plotDir, "plot-abc.json");
+			// Host-side: autoTransitionPlotToDone set status to "done"
+			await writeFile(
+				statusPath,
+				JSON.stringify({
+					id: "plot-abc",
+					status: "done",
+					attachments: [],
+					updated_at: "2026-05-23T02:00:00.000Z",
+				}),
+			);
+
+			const sha = "a".repeat(40);
+			const spawn: SpawnFn = async (cmd) => {
+				if (cmd[1] === "reset" && cmd[3] === "origin/main") {
+					await rm(plotDir, { recursive: true, force: true });
+					await mkdir(plotDir, { recursive: true });
+					// Remote has newer attachments but still-active status
+					await writeFile(
+						statusPath,
+						JSON.stringify({
+							id: "plot-abc",
+							status: "active",
+							attachments: [{ id: "att-1", type: "seeds_issue", ref: "sd-1", role: "child" }],
+							intent: { goal: "Ship feature X" },
+							updated_at: "2026-05-23T01:00:00.000Z",
+						}),
+					);
+					return ok();
+				}
+				if (cmd[1] === "rev-parse") return ok(`${sha}\n`);
+				return ok();
+			};
+
+			await refreshProjectClone({
+				config: CFG,
+				localPath: root,
+				ref: "main",
+				spawn,
+			});
+
+			const merged = JSON.parse(await readFile(statusPath, "utf8")) as Record<string, unknown>;
+			expect(merged.status).toBe("done");
+			expect(merged.updated_at).toBe("2026-05-23T02:00:00.000Z");
+			expect(merged.attachments).toEqual([
+				{ id: "att-1", type: "seeds_issue", ref: "sd-1", role: "child" },
+			]);
+			expect((merged as Record<string, Record<string, unknown>>).intent).toEqual({
+				goal: "Ship feature X",
+			});
+		} finally {
+			await rm(root, { recursive: true, force: true });
+		}
+	});
+
+	test("remote events survive refresh and host-appended events are merged in (warren-af9e)", async () => {
+		const root = await makeRoot();
+		try {
+			const plotDir = join(root, ".plot");
+			await mkdir(plotDir, { recursive: true });
+			const eventsPath = join(plotDir, "plot-123.events.jsonl");
+			// Snapshot has base events (also on remote) + host-appended events
+			const baseEvent = '{"type":"plot_created","actor":"user:alice","at":"2026-05-23T00:00:00Z"}';
+			const hostEvent =
+				'{"type":"run_dispatched","actor":"agent:claude","at":"2026-05-23T01:00:00Z"}';
+			await writeFile(eventsPath, `${baseEvent}\n${hostEvent}\n`);
+
+			const sha = "b".repeat(40);
+			const remoteOnlyEvent =
+				'{"type":"attachment_added","actor":"user:bob","at":"2026-05-23T00:30:00Z"}';
+			const spawn: SpawnFn = async (cmd) => {
+				if (cmd[1] === "reset" && cmd[3] === "origin/main") {
+					await rm(plotDir, { recursive: true, force: true });
+					await mkdir(plotDir, { recursive: true });
+					// Remote has base event + a user-added event the host never saw
+					await writeFile(eventsPath, `${baseEvent}\n${remoteOnlyEvent}\n`);
+					return ok();
+				}
+				if (cmd[1] === "rev-parse") return ok(`${sha}\n`);
+				return ok();
+			};
+
+			await refreshProjectClone({
+				config: CFG,
+				localPath: root,
+				ref: "main",
+				spawn,
+			});
+
+			const merged = (await readFile(eventsPath, "utf8")).trim().split("\n");
+			// Base event kept, remote-only event kept, host event appended
+			expect(merged).toEqual([baseEvent, remoteOnlyEvent, hostEvent]);
+		} finally {
+			await rm(root, { recursive: true, force: true });
+		}
+	});
+
+	test("same-status json takes remote version as-is (warren-af9e)", async () => {
+		const root = await makeRoot();
+		try {
+			const plotDir = join(root, ".plot");
+			await mkdir(plotDir, { recursive: true });
+			const statusPath = join(plotDir, "plot-abc.json");
+			// Host didn't change status — snapshot has stale attachments
+			await writeFile(
+				statusPath,
+				JSON.stringify({ id: "plot-abc", status: "active", attachments: [] }),
+			);
+
+			const sha = "d".repeat(40);
+			const spawn: SpawnFn = async (cmd) => {
+				if (cmd[1] === "reset" && cmd[3] === "origin/main") {
+					await rm(plotDir, { recursive: true, force: true });
+					await mkdir(plotDir, { recursive: true });
+					// Remote has same status but newer attachments
+					await writeFile(
+						statusPath,
+						JSON.stringify({
+							id: "plot-abc",
+							status: "active",
+							attachments: [{ id: "att-2" }],
+						}),
+					);
+					return ok();
+				}
+				if (cmd[1] === "rev-parse") return ok(`${sha}\n`);
+				return ok();
+			};
+
+			await refreshProjectClone({
+				config: CFG,
+				localPath: root,
+				ref: "main",
+				spawn,
+			});
+
+			const result = JSON.parse(await readFile(statusPath, "utf8")) as Record<string, unknown>;
+			expect(result.attachments).toEqual([{ id: "att-2" }]);
 		} finally {
 			await rm(root, { recursive: true, force: true });
 		}
@@ -485,5 +636,74 @@ describe("detectProjectFeatures", () => {
 		});
 		expect(result).toEqual({ hasPlot: false, hasSeeds: true });
 		expect(probed).toContain("/data/projects/x/y/.seeds");
+	});
+});
+
+describe("mergeEventsLines (warren-af9e)", () => {
+	test("appends snapshot-only lines after remote lines", () => {
+		const remote = '{"type":"a"}\n{"type":"b"}\n';
+		const snapshot = '{"type":"a"}\n{"type":"c"}\n';
+		const result = mergeEventsLines(remote, snapshot);
+		expect(result).toBe('{"type":"a"}\n{"type":"b"}\n{"type":"c"}\n');
+	});
+
+	test("returns remote unchanged when snapshot is a subset", () => {
+		const remote = '{"type":"a"}\n{"type":"b"}\n';
+		const snapshot = '{"type":"a"}\n';
+		const result = mergeEventsLines(remote, snapshot);
+		expect(result).toBe(remote);
+	});
+
+	test("handles empty remote — all snapshot lines restored", () => {
+		const snapshot = '{"type":"a"}\n{"type":"b"}\n';
+		const result = mergeEventsLines("", snapshot);
+		expect(result).toBe('{"type":"a"}\n{"type":"b"}\n');
+	});
+
+	test("deduplicates identical lines", () => {
+		const remote = '{"type":"a"}\n';
+		const snapshot = '{"type":"a"}\n{"type":"a"}\n';
+		const result = mergeEventsLines(remote, snapshot);
+		expect(result).toBe(remote);
+	});
+});
+
+describe("mergePlotJsonForRefresh (warren-af9e)", () => {
+	test("overlays snapshot status onto remote when status differs", () => {
+		const remote = JSON.stringify({
+			id: "plot-x",
+			status: "active",
+			attachments: [{ id: "att-1" }],
+		});
+		const snapshot = JSON.stringify({
+			id: "plot-x",
+			status: "done",
+			attachments: [],
+			updated_at: "2026-05-23T02:00:00Z",
+		});
+		const result = JSON.parse(mergePlotJsonForRefresh(remote, snapshot)) as Record<string, unknown>;
+		expect(result.status).toBe("done");
+		expect(result.attachments).toEqual([{ id: "att-1" }]);
+		expect(result.updated_at).toBe("2026-05-23T02:00:00Z");
+	});
+
+	test("returns remote when status matches", () => {
+		const remote = JSON.stringify({
+			id: "plot-x",
+			status: "active",
+			attachments: [{ id: "att-2" }],
+		});
+		const snapshot = JSON.stringify({ id: "plot-x", status: "active", attachments: [] });
+		expect(mergePlotJsonForRefresh(remote, snapshot)).toBe(remote);
+	});
+
+	test("returns remote when both are identical", () => {
+		const data = JSON.stringify({ id: "plot-x", status: "done" });
+		expect(mergePlotJsonForRefresh(data, data)).toBe(data);
+	});
+
+	test("falls back to snapshot on unparseable remote JSON", () => {
+		const snapshot = '{"status":"done"}';
+		expect(mergePlotJsonForRefresh("not-json", snapshot)).toBe(snapshot);
 	});
 });
