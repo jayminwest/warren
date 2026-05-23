@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.1] — 2026-05-23
+
+Patch release. Fixes interactive agents (brainstorm/planner) failing
+with "agent not registered" (#68).
+
+### Fixed
+
+- Interactive agents (brainstorm/planner) no longer fail with
+  "agent not registered" (#68).
+
 ## [0.5.0] — 2026-05-23
 
 Minor release shipping the Plot-workbench loop (plan pl-0344, parent
