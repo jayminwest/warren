@@ -52,7 +52,7 @@ export function PlotSummaryPage() {
 	if (a === undefined) return null;
 
 	return (
-		<div className="mx-auto max-w-4xl space-y-6 p-6">
+		<div className="mx-auto max-w-4xl space-y-6 p-4 sm:p-6">
 			<Header artifact={a} />
 			<IntentSection artifact={a} />
 			<DecisionsSection decisions={a.decisions} />
@@ -67,10 +67,12 @@ export function PlotSummaryPage() {
 function Header({ artifact }: { artifact: PlotSummaryArtifact }) {
 	return (
 		<header className="space-y-2 border-b pb-4">
-			<div className="flex items-baseline gap-3">
+			<div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
 				<h1 className="text-2xl font-semibold tracking-tight">{artifact.name}</h1>
 				<PlotStatusBadge status={artifact.status} />
-				<span className="ml-auto text-xs text-muted-foreground">{artifact.id}</span>
+				<span className="font-mono text-xs text-muted-foreground sm:ml-auto">
+					{artifact.id}
+				</span>
 			</div>
 			<dl className="grid grid-cols-2 gap-x-6 gap-y-1 text-xs text-muted-foreground sm:grid-cols-3">
 				<div>
@@ -188,8 +190,11 @@ function LinkedPrsSection({ prs }: { prs: PlotSummaryLinkedPr[] }) {
 				) : (
 					<ul className="space-y-2">
 						{prs.map((pr) => (
-							<li key={pr.attachment_id} className="flex items-baseline justify-between gap-3">
-								<div>
+							<li
+								key={pr.attachment_id}
+								className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1"
+							>
+								<div className="min-w-0 break-all">
 									<span className="font-mono">{pr.ref}</span>
 									<span className="ml-2 text-xs text-muted-foreground">({pr.role})</span>
 								</div>
@@ -223,8 +228,11 @@ function LinkedCommitsSection({ commits }: { commits: PlotSummaryLinkedCommit[] 
 				) : (
 					<ul className="space-y-1">
 						{commits.map((c) => (
-							<li key={`${c.at}-${c.ref}`} className="flex items-baseline justify-between gap-3">
-								<span className="font-mono text-xs">{c.ref}</span>
+							<li
+								key={`${c.at}-${c.ref}`}
+								className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1"
+							>
+								<span className="break-all font-mono text-xs">{c.ref}</span>
 								<span className="text-xs text-muted-foreground">
 									{formatTimestamp(c.at)} · {c.actor}
 								</span>
@@ -249,8 +257,11 @@ function LinkedSeedsSection({ seeds }: { seeds: PlotSummaryLinkedSeed[] }) {
 				) : (
 					<ul className="space-y-1">
 						{seeds.map((s) => (
-							<li key={s.attachment_id} className="flex items-baseline justify-between gap-3">
-								<div>
+							<li
+								key={s.attachment_id}
+								className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1"
+							>
+								<div className="min-w-0 break-all">
 									<span className="font-mono">{s.ref}</span>
 									<span className="ml-2 text-xs text-muted-foreground">({s.role})</span>
 								</div>
@@ -280,9 +291,9 @@ function TimelineSection({ timeline }: { timeline: PlotSummaryTimelineEntry[] })
 						{timeline.map((t) => (
 							<li
 								key={`${t.at}-${t.kind}`}
-								className="flex items-baseline gap-3 border-l-2 border-muted pl-3"
+								className="flex flex-wrap items-baseline gap-x-3 gap-y-1 border-l-2 border-muted pl-3"
 							>
-								<span className="w-32 shrink-0 text-xs text-muted-foreground">
+								<span className="w-24 shrink-0 text-xs text-muted-foreground sm:w-32">
 									{formatTimestamp(t.at)}
 								</span>
 								<span className="flex-1">{t.label}</span>
