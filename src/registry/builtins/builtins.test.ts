@@ -197,6 +197,15 @@ describe("BRAINSTORM_BUILTIN", () => {
 		expect(BRAINSTORM_BUILTIN.sections.burrow_config).toContain('network = "open"');
 	});
 
+	test("declares runtime = 'claude-code' so dispatch composes on the real runtime", () => {
+		// warren-ebca: burrow's BUILT_IN_RUNTIMES has no `brainstorm`
+		// entry; without this stamp, dispatchRun would send `"brainstorm"`
+		// as the burrow runtime id and the run would fail with
+		// `agent 'brainstorm' is not registered`. readRuntimeId() resolves
+		// this to "claude-code".
+		expect(BRAINSTORM_BUILTIN.frontmatter.runtime).toBe("claude-code");
+	});
+
 	test("drives the user toward the four Plot intent fields", () => {
 		// The interactive-run primitive (warren-1117) and the formalize
 		// flow (warren-d22e) both expect brainstorm to produce material
@@ -242,6 +251,13 @@ describe("PLANNER_BUILTIN", () => {
 		expect(system).toMatch(/sd plan prompt/);
 		expect(system).toMatch(/sd plan submit/);
 		expect(system).toMatch(/0-BASED/);
+	});
+
+	test("declares runtime = 'claude-code' so dispatch composes on the real runtime", () => {
+		// warren-ebca: see BRAINSTORM_BUILTIN's matching test — planner is
+		// the other system-prompt-only canopy agent whose name does not
+		// match any burrow runtime.
+		expect(PLANNER_BUILTIN.frontmatter.runtime).toBe("claude-code");
 	});
 
 	test("refuses to invent Plot intent and defers to brainstorm + formalize", () => {

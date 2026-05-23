@@ -644,6 +644,53 @@ describe("spawnRun", () => {
 		});
 	});
 
+	test("dispatch uses frontmatter.runtime as the burrow runtime id when set (warren-ebca)", async () => {
+		// Brainstorm/planner are canopy agents whose name (`brainstorm`)
+		// is NOT a burrow runtime id; without `frontmatter.runtime`,
+		// dispatchRun would send `"brainstorm"` and burrow would fail the
+		// run with `agent 'brainstorm' is not registered`. The fix routes
+		// the dispatch onto the declared runtime instead.
+		await repos.agents.upsert({
+			name: "brainstorm",
+			renderedJson: makeAgentJson({
+				name: "brainstorm",
+				sections: { system: "be a scout" },
+				frontmatter: { source: "builtin", runtime: "claude-code" },
+			}),
+		});
+		const { client, calls } = makeBurrowClient();
+		await spawnRun({
+			repos,
+			burrowClientPool: await makePool(repos, client),
+			agentName: "brainstorm",
+			projectId: "prj_xxxxxxxxxxxx",
+			prompt: "help me think",
+		});
+		const dispatch = calls.find((c) => c.path === "/burrows/bur_aaaaaaaaaaaa/runs");
+		expect(dispatch).toBeDefined();
+		expect((dispatch?.body as { agentId: string }).agentId).toBe("claude-code");
+	});
+
+	test("dispatch falls back to agent.name when frontmatter.runtime is unset (warren-ebca)", async () => {
+		// claude-code / sapling / pi keep working: their name already
+		// matches their burrow runtime id, so omitting `runtime` resolves
+		// to `agent.name` via readRuntimeId().
+		await repos.agents.upsert({
+			name: "refactor-bot",
+			renderedJson: makeAgentJson({ frontmatter: {} }),
+		});
+		const { client, calls } = makeBurrowClient();
+		await spawnRun({
+			repos,
+			burrowClientPool: await makePool(repos, client),
+			agentName: "refactor-bot",
+			projectId: "prj_xxxxxxxxxxxx",
+			prompt: "p",
+		});
+		const dispatch = calls.find((c) => c.path === "/burrows/bur_aaaaaaaaaaaa/runs");
+		expect((dispatch?.body as { agentId: string }).agentId).toBe("refactor-bot");
+	});
+
 	test("forwards agent.frontmatter as burrow run metadata so piRuntime gets provider/model (warren-d34e)", async () => {
 		await repos.agents.upsert({
 			name: "pi",

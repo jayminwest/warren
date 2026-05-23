@@ -64,6 +64,14 @@ export interface AgentDefinition {
  *   model    — provider-specific model id (e.g. "claude-sonnet-4-6",
  *              "gpt-4o", "gemini-2.0-pro"). Free-form string; the runtime
  *              decides how to interpret it.
+ *   runtime  — burrow runtime id this canopy agent dispatches onto
+ *              (e.g. "claude-code", "sapling", "pi"). When unset,
+ *              warren falls back to `agent.name` — preserving the
+ *              historical name=runtime convention for claude-code /
+ *              sapling / pi. Interactive system-prompt-only agents like
+ *              `brainstorm` / `planner` (warren-ebca) set this so they
+ *              compose onto a real burrow runtime instead of looking up
+ *              their own name in `BUILT_IN_RUNTIMES`.
  *
  * Both stay in the open `frontmatter` bag (no schema rev) so a canopy
  * author can set them inline. `POST /runs` accepts the same two fields
@@ -80,6 +88,19 @@ export function readProviderFrontmatter(frontmatter: Readonly<Record<string, unk
 	const m = frontmatter.model;
 	if (typeof m === "string" && m.length > 0) result.model = m;
 	return result;
+}
+
+/**
+ * Resolve the burrow runtime id this canopy agent should dispatch onto.
+ * Prefers an explicit `frontmatter.runtime` (set by interactive built-ins
+ * like brainstorm/planner that layer a system prompt on top of an
+ * existing runtime) and falls back to `agent.name` for the historical
+ * name=runtime convention (claude-code / sapling / pi). See warren-ebca.
+ */
+export function readRuntimeId(agent: AgentDefinition): string {
+	const r = agent.frontmatter.runtime;
+	if (typeof r === "string" && r.length > 0) return r;
+	return agent.name;
 }
 
 /**

@@ -69,6 +69,7 @@ import {
 	type AgentDefinition,
 	parseRenderedAgent,
 	RenderResponseSchema,
+	readRuntimeId,
 	withProviderOverrides,
 } from "../registry/schema.ts";
 import {
@@ -389,10 +390,16 @@ export async function spawnRun(input: SpawnRunInput): Promise<SpawnRunResult> {
 		});
 		await input.repos.runs.attachBurrow(run.id, { burrowId: burrow.id });
 
+		// warren-ebca: dispatch onto the burrow runtime id, not the canopy
+		// agent name. Built-in agents whose name happens to match a burrow
+		// runtime (claude-code / sapling / pi) keep working via the
+		// `agent.name` fallback in readRuntimeId; interactive agents like
+		// brainstorm / planner declare `frontmatter.runtime` to compose
+		// onto an existing runtime instead of demanding their own.
 		const burrowRun = await dispatchRun(
 			placement.client,
 			burrow.id,
-			agent.name,
+			readRuntimeId(agent),
 			composeDispatchPrompt(agent.sections.system, input.prompt),
 			composeBurrowMetadata(input.metadata, agent.frontmatter),
 		);
