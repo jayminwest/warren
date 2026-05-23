@@ -102,6 +102,13 @@ export interface RunRow {
 	 * stream envelope mirrors the same field for live consumers.
 	 */
 	plotId: string | null;
+	/**
+	 * Run mode discriminator (pl-0344 step 1 / warren-67b6, step 4 /
+	 * warren-b3b9). `'batch'` is the legacy one-shot dispatch; `'interactive'`
+	 * is the respawn-per-turn primitive bound to a Plot. Pinned at row
+	 * creation; warren-side only (burrow doesn't know about run mode).
+	 */
+	mode: "batch" | "interactive";
 	renderedAgentJson: unknown;
 	state: RunState;
 	failureReason: RunFailureReason | null;
@@ -201,6 +208,16 @@ export interface CreateRunInput {
 	 * plot_id for a project without Plots returns a 400 ValidationError.
 	 */
 	plotId?: string;
+	/**
+	 * Run mode (pl-0344 step 4 / warren-b3b9). Defaults to `'batch'`
+	 * server-side; pass `'interactive'` together with `plotId` to spawn
+	 * an interactive turn. `interactiveAgent` may override `agent` when
+	 * mode is interactive so a UI surface can flip mode without
+	 * re-keying the picker (`agent` stays its batch default).
+	 */
+	mode?: "batch" | "interactive";
+	interactiveAgent?: string;
+	dispatcherHandle?: string;
 }
 
 export interface SpawnRunResponse {
@@ -825,6 +842,46 @@ export interface AnswerPlotQuestionInput {
 	answer: string;
 	dispatcherHandle?: string;
 }
+/**
+ * `POST /brainstorm` request body (pl-0344 step 8 / warren-d22e).
+ * Atomically creates a draft Plot in the named project and dispatches
+ * the first interactive turn against the built-in `brainstorm` agent
+ * (override via `agent`). Returns the new Plot summary + run row.
+ */
+export interface StartBrainstormInput {
+	projectId: string;
+	prompt: string;
+	name?: string;
+	agent?: string;
+	dispatcherHandle?: string;
+	providerOverride?: string;
+	modelOverride?: string;
+	ref?: string;
+}
+export interface StartBrainstormResponse {
+	plot: PlotSummary;
+	run: RunRow;
+	burrow: BurrowSummary;
+}
+
+/**
+ * Server-side `SuggestedIntent` mirror (pl-0344 step 8 /
+ * warren-d22e). Returned by `POST /plots/:id/formalize` as a
+ * suggested edit — the UI renders it as a review form and applies
+ * via the existing `POST /plots/:id/intent` route on accept.
+ */
+export interface SuggestedIntent {
+	goal: string;
+	non_goals: string[];
+	constraints: string[];
+	success_criteria: string[];
+}
+export interface FormalizePlotResponse {
+	plot_id: string;
+	suggested_intent: SuggestedIntent;
+	source_message_count: number;
+}
+
 export interface AnswerPlotQuestionResponse {
 	event: PlotEvent;
 }
