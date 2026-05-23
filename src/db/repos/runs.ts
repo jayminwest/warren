@@ -17,6 +17,7 @@ import type { SqliteDrizzleDb } from "../client.ts";
 import type {
 	PreviewState,
 	RunFailureReason,
+	RunMode,
 	RunRow,
 	RunState,
 	RunTerminalState,
@@ -25,7 +26,13 @@ import type { DrizzleAdapter } from "./drizzle-adapter.ts";
 
 const ALLOWED_TRANSITIONS: Record<RunState, readonly RunState[]> = {
 	queued: ["running", "cancelled"],
-	running: ["succeeded", "failed", "cancelled"],
+	// `paused` is pl-0344 step 1 / warren-67b6: the supervisor (step 5 /
+	// warren-2976) flips a running batch run to `paused` on detection of a
+	// blocking Plot `question_posed` event; the answer (or pause-timeout)
+	// flips it back to `running` via a respawned turn. Operators can still
+	// cancel a paused run.
+	running: ["paused", "succeeded", "failed", "cancelled"],
+	paused: ["running", "cancelled"],
 	succeeded: [],
 	failed: [],
 	cancelled: [],
@@ -70,6 +77,12 @@ export interface CreateRunInput {
 	 * project actually has a `.plot/` directory happens at handler level
 	 * via `project.hasPlot` — the repo writes whatever it's handed.
 	 */
+	/**
+	 * Run mode (pl-0344 step 1 / warren-67b6). `batch` (default) is the
+	 * historical single-shot run; `interactive` is the respawn-per-turn
+	 * primitive (pl-0344 step 3 / warren-1117). Fixed at run-create time.
+	 */
+	mode?: RunMode;
 	plotId?: string | null;
 	now?: Date;
 }
@@ -135,6 +148,9 @@ export class RunsRepo {
 			previewStartedAt: null,
 			previewLastHitAt: null,
 			previewFailureMessage: null,
+			mode: input.mode ?? "batch",
+			pausedAt: null,
+			pausedQuestionEventId: null,
 		};
 		await this.adapter.runWrite(this.db.insert(this.runs).values(row));
 		return row;

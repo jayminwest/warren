@@ -34,6 +34,7 @@ import {
 	PLAN_RUN_STATES,
 	PREVIEW_STATES,
 	RUN_FAILURE_REASONS,
+	RUN_MODES,
 	RUN_STATES,
 	TABLE_NAMES,
 	WORKER_STATES,
@@ -189,6 +190,21 @@ export const runs = sqliteTable(
 		previewStartedAt: text("preview_started_at"),
 		previewLastHitAt: text("preview_last_hit_at"),
 		previewFailureMessage: text("preview_failure_message"),
+		// Run mode discriminator (pl-0344 step 1 / warren-67b6). `batch` is the
+		// historical single-shot run; `interactive` is the respawn-per-turn
+		// primitive (pl-0344 step 3 / warren-1117). Fixed at run-create time.
+		// Defaults to `batch` so legacy rows match the historical shape.
+		mode: text("mode", { enum: RUN_MODES }).notNull().default("batch"),
+		// Pause bookkeeping (pl-0344 step 1 / warren-67b6). Populated when the
+		// supervisor (pl-0344 step 5 / warren-2976) detects a blocking
+		// `question_posed` event on the linked Plot and transitions the run
+		// `running → paused`. `paused_at` is the ISO8601 transition timestamp;
+		// `paused_question_event_id` is the Plot event id awaiting an answer.
+		// Both nullable: only set while the run is in the `paused` state. On
+		// resume (`paused → running`), the row may keep or clear these — the
+		// supervisor clears them once the answering turn is dispatched.
+		pausedAt: text("paused_at"),
+		pausedQuestionEventId: text("paused_question_event_id"),
 	},
 	(t) => [
 		index(INDEX_NAMES.runsState).on(t.state),
@@ -196,6 +212,7 @@ export const runs = sqliteTable(
 		index(INDEX_NAMES.runsAgentStarted).on(t.agentName, sql`${t.startedAt} DESC`),
 		index(INDEX_NAMES.runsWorkerState).on(t.workerId, t.state),
 		index(INDEX_NAMES.runsPlotId).on(t.plotId),
+		index(INDEX_NAMES.runsMode).on(t.mode),
 	],
 );
 

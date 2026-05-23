@@ -71,6 +71,13 @@
 			"when": 1779076504033,
 			"tag": "0009_add_plan_run_plot_id",
 			"breakpoints": true
+		},
+		{
+			"idx": 10,
+			"version": "7",
+			"when": 1779495709745,
+			"tag": "0010_add_run_mode_and_pause",
+			"breakpoints": true
 		}
 	]
 }

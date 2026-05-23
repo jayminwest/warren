@@ -15,7 +15,14 @@
  * Postgres tables exist but are unused at runtime.
  */
 
-export const RUN_STATES = ["queued", "running", "succeeded", "failed", "cancelled"] as const;
+export const RUN_STATES = [
+	"queued",
+	"running",
+	"paused",
+	"succeeded",
+	"failed",
+	"cancelled",
+] as const;
 export type RunState = (typeof RUN_STATES)[number];
 
 export const RUN_TERMINAL_STATES = [
@@ -24,6 +31,19 @@ export const RUN_TERMINAL_STATES = [
 	"cancelled",
 ] as const satisfies readonly RunState[];
 export type RunTerminalState = (typeof RUN_TERMINAL_STATES)[number];
+
+/**
+ * Run mode discriminator (pl-0344 step 1 / warren-67b6). `batch` is the
+ * historical single-shot run: warren spawns burrow, agent runs to completion,
+ * reap pushes the branch. `interactive` is the respawn-per-turn primitive
+ * powering brainstorm + planner agents (pl-0344 step 3 / warren-1117) — each
+ * user message dispatches a fresh burrow turn that reads Plot context, replies,
+ * and exits. Mode is fixed at run-create time. TS-only narrowing (mx-2ab984);
+ * defaults to `batch` so legacy rows written before this column existed match
+ * the historical shape.
+ */
+export const RUN_MODES = ["batch", "interactive"] as const;
+export type RunMode = (typeof RUN_MODES)[number];
 
 /**
  * Failure-cause discriminator for a `failed` run (warren-3c40, warren-5165).
@@ -190,6 +210,7 @@ export const INDEX_NAMES = {
 	runsAgentStarted: "runs_agent_started_idx",
 	runsWorkerState: "runs_worker_state_idx",
 	runsPlotId: "runs_plot_id_idx",
+	runsMode: "runs_mode_idx",
 	eventsRunSeq: "events_run_seq_idx",
 	eventsRunTs: "events_run_ts_idx",
 	triggersProject: "triggers_project_idx",

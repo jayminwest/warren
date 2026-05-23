@@ -41,6 +41,7 @@ import {
 	PLAN_RUN_STATES,
 	PREVIEW_STATES,
 	RUN_FAILURE_REASONS,
+	RUN_MODES,
 	RUN_STATES,
 	TABLE_NAMES,
 	WORKER_STATES,
@@ -117,6 +118,11 @@ export const runs = pgTable(
 		previewStartedAt: text("preview_started_at"),
 		previewLastHitAt: text("preview_last_hit_at"),
 		previewFailureMessage: text("preview_failure_message"),
+		// Mirror of sqlite mode (pl-0344 step 1 / warren-67b6). See sqlite.ts
+		// for shape + state-machine intent.
+		mode: text("mode", { enum: RUN_MODES }).notNull().default("batch"),
+		pausedAt: text("paused_at"),
+		pausedQuestionEventId: text("paused_question_event_id"),
 	},
 	(t) => [
 		index(INDEX_NAMES.runsState).on(t.state),
@@ -124,6 +130,7 @@ export const runs = pgTable(
 		index(INDEX_NAMES.runsAgentStarted).on(t.agentName, sql`${t.startedAt} DESC`),
 		index(INDEX_NAMES.runsWorkerState).on(t.workerId, t.state),
 		index(INDEX_NAMES.runsPlotId).on(t.plotId),
+		index(INDEX_NAMES.runsMode).on(t.mode),
 	],
 );
 
