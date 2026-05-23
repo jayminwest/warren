@@ -7,6 +7,123 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] — 2026-05-23
+
+Minor release shipping the Plot-workbench loop (plan pl-0344, parent
+warren-769e / SPEC §11.O). Plot is now the primary UI surface: users
+brainstorm Plots from zero with an interactive agent, formalize intent,
+run a planner that submits structured seeds plans, and watch batch runs
+pause on `question_posed` and resume on `question_answered`. V1.5
+click-to-merge + auto-sync and a summary-artifact view round out the
+loop. The /plots inbox surfaces "needs you" Plots via a sidebar badge,
+and a new acceptance scenario (32) covers the full loop end-to-end.
+
+### Added
+
+- **`feat(db)`** — `runs.mode` column (`batch`|`interactive`, default
+  `batch`) plus pause columns (`paused_at`, `paused_question_event_id`)
+  and the new `paused` run state (warren-67b6 / pl-0344 step 1).
+  `ALLOWED_TRANSITIONS` extended with `running→paused`,
+  `paused→running`, `paused→cancelled`. Mirrored across sqlite +
+  postgres schemas with matching migrations; `drift.test.ts` updated.
+- **`feat(config)`** — `agent.pauseTimeoutMs` knob in
+  `DefaultsConfigSchema` (default `1800000` = 30 min, bounds 1s..24h)
+  for paused interactive turns and batch runs awaiting answers
+  (warren-cd37 / pl-0344 step 2). Surfaced via `loadWarrenConfig()`,
+  documented in SPEC §11.O and CLAUDE.md.
+- **`feat(runs)`** — interactive run primitive (warren-1117 /
+  pl-0344 step 3). New `src/runs/interactive.ts` implements
+  respawn-per-turn lifecycle: `spawnInteractiveTurn(runId, message)`
+  reads Plot context (intent + last N events + attachments), constructs
+  the prompt, spawns burrow via existing `spawnRun`, and captures the
+  reply on reap. User and agent turns persist as `user_message` /
+  `agent_message` events. Composable with `interactiveAgent` config
+  (brainstorm vs planner).
+- **`feat(server)`** — interactive run HTTP API (warren-b3b9 /
+  pl-0344 step 4). `POST /runs` now accepts `mode='interactive'` +
+  `interactiveAgent` + `plot_id` (required for interactive). New
+  `POST /runs/:id/messages` sends a user turn (202). `GET /runs/:id/events`
+  streams interactive message events. Typed request/response schemas
+  in `src/server/handlers.ts`.
+- **`feat(runs)`** — blocking-question pause detector for batch runs
+  (warren-2976 / pl-0344 step 5). Supervisor polls `.plot/.index.db`
+  for new `question_posed` events on in-flight batch runs, transitions
+  the run to `paused`, persists `paused_question_event_id`, and
+  schedules `pauseTimeoutMs`. On `question_answered` for the same
+  Plot+question, warren respawns the agent turn with the answer in
+  prompt context; on timeout the same respawn fires with a timeout
+  warning. Coverage in `src/runs/pause.test.ts`.
+- **`feat(registry)`** — built-in `brainstorm` agent (warren-3de8 /
+  pl-0344 step 6). New `src/registry/builtins/brainstorm.ts` ships a
+  read-only scout (rg + file read + web fetch) that sharpens an
+  unformed idea into Plot intent. No Plot writes, no source-code
+  writes, no dispatch. Registered in `seedBuiltinAgents()`.
+- **`feat(registry)`** — built-in `planner` agent (warren-543d /
+  pl-0344 step 7). New `src/registry/builtins/planner.ts` reads Plot
+  intent, scouts the repo, asks clarifying questions interactively,
+  submits a structured `sd plan` via `sd plan submit`, and attaches
+  resulting seeds to the Plot. Writes restricted to `.plot/` +
+  `.seeds/` paths; no source-code writes.
+- **`feat(plots)`** — brainstorm dispatcher + formalize endpoint
+  (warren-d22e / pl-0344 step 8). `POST /brainstorm` creates a draft
+  Plot (status=`drafting`, empty intent, auto-named) and spawns the
+  first interactive turn with the brainstorm agent. `POST
+  /plots/:id/formalize` runs a summarize turn that returns suggested
+  intent (goal, non_goals, constraints, success_criteria) from the
+  conversation; user edits via existing `POST /plots/:id/intent` and
+  transitions to `ready` via existing status endpoint.
+- **`feat(plots)`** — needs-attention API (warren-d693 /
+  pl-0344 step 9). `GET /plots?filter=needs_attention` returns Plots
+  with (a) paused runs awaiting answer, (b) merged-but-unreviewed
+  `gh_pr` attachments, (c) drafts with no activity in N days. New
+  `PlotsRepo.listNeedsAttention()` + `GET /plots/needs-attention/count`
+  for the sidebar badge.
+- **`feat(ui)`** — `Chat.tsx` component primitive (warren-ea98 /
+  pl-0344 step 10). Streaming message list (user + agent bubbles),
+  input box, send button; consumes `useEventStream` for live agent
+  replies via `/runs/:id/events`. Reusable across brainstorm + planner
+  + future interactive surfaces.
+- **`feat(ui)`** — PlotDetail interactive surfaces (warren-444c /
+  pl-0344 step 11). "Start brainstorming" button (creates a Plot via
+  `POST /brainstorm` if none, else opens chat), "Run planner" button
+  (spawns planner interactive run), inline `Chat` panel for the
+  currently-active interactive run, and "Formalize" button (`POST
+  /plots/:id/formalize` → suggested intent for user review → transitions
+  to `ready` on accept).
+- **`feat(ui)`** — paused-run surfacing on PlotDetail (warren-4ea4 /
+  pl-0344 step 12). Activity feed renders `question_posed` events with
+  a prominent "Answer & resume" card (textarea + submit via existing
+  `POST /plots/:id/questions/:event_id/answer`) and a countdown to the
+  pause timeout. New `StateBadge` variant for `paused`.
+- **`feat(ui)`** — Plot-first home + inbox (warren-f0e2 /
+  pl-0344 step 13). `DefaultLanding` now redirects `/` → `/plots`
+  whenever any project has `hasPlot`. Plots page gains a "Needs you"
+  filter chip (queries `?filter=needs_attention`), the sidebar gains a
+  needs-attention badge, and "Start brainstorming" + "New Plot" become
+  primary buttons at the top of `/plots`.
+- **`feat(plots)`** — (V1.5) click-to-merge + auto-sync (warren-8e39 /
+  pl-0344 step 14). `POST /plots/:id/attachments/:ref/merge` calls the
+  GitHub API to merge a `gh_pr` attachment; on success warren schedules
+  `refreshProjectClone()` to pull merged commits into the local clone.
+  Merge state + GitHub rate-limit/error states surfaced on the PR
+  attachment UI; background sync notifies via the existing event
+  stream.
+- **`feat(plots)`** — (V1.5) summary artifact view (warren-8917 /
+  pl-0344 step 15). `GET /plots/:id/summary` returns a curated payload
+  (formatted intent, decisions filtered from the event log by
+  `type=decision_made`, linked PRs + commits, timeline) backed by the
+  pure `summarizePlot` derivation seam in `src/plots/summary.ts`. New
+  `src/ui/src/pages/PlotSummary.tsx` at `/plots/:id/summary` renders a
+  clean institutional-memory layout.
+- **`test(acceptance)`** — scenario 32, Plot-workbench loop
+  (warren-7cd9 / pl-0344 step 16). Covers the full V1+V1.5 loop
+  end-to-end against live warren+burrow: create brainstorm Plot, chat,
+  formalize, run planner, submit `sd plan`, dispatch PlanRun, agent
+  emits `question_posed`, run pauses, user answers via API, run
+  resumes, PR opens, user clicks merge, auto-sync pulls into clone,
+  Plot auto-transitions to `done`, summary renders. Idempotent and
+  deterministic; cleans up after itself.
+
 ## [0.4.8] — 2026-05-19
 
 Patch release closing out the SPEC §11.Q "Plot → synthesized plan-run
