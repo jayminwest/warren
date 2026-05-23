@@ -66,11 +66,28 @@ export interface SeedBuiltinAgentsResult {
 	readonly skipped: readonly string[];
 }
 
+function areDeepEqual(a: unknown, b: unknown): boolean {
+	if (a === b) return true;
+	if (typeof a !== "object" || a === null || typeof b !== "object" || b === null) {
+		return false;
+	}
+	const keysA = Object.keys(a);
+	const keysB = Object.keys(b);
+	if (keysA.length !== keysB.length) return false;
+	for (const key of keysA) {
+		if (!Object.hasOwn(b, key)) return false;
+		if (!areDeepEqual((a as Record<string, unknown>)[key], (b as Record<string, unknown>)[key])) {
+			return false;
+		}
+	}
+	return true;
+}
+
 /**
  * Insert each built-in into the agents table only if a row with the
- * same name does not already exist. Pre-existing rows (whether seeded
- * by an earlier boot or upserted by a refresh of a same-named library
- * agent) are preserved.
+ * same name does not already exist, or if the existing row is a built-in
+ * whose content/frontmatter has drifted from the code's definition.
+ * Pre-existing overridden rows (library or project tier) are preserved.
  */
 export async function seedBuiltinAgents(
 	repo: AgentsRepo,
@@ -80,9 +97,17 @@ export async function seedBuiltinAgents(
 	const seeded: string[] = [];
 	const skipped: string[] = [];
 	for (const builtin of builtins) {
-		if ((await repo.get(builtin.name)) !== null) {
-			skipped.push(builtin.name);
-			continue;
+		const existing = await repo.get(builtin.name);
+		if (existing !== null) {
+			const source = readAgentSource(existing.renderedJson);
+			if (source !== BUILTIN_AGENT_SOURCE) {
+				skipped.push(builtin.name);
+				continue;
+			}
+			if (areDeepEqual(existing.renderedJson, builtin)) {
+				skipped.push(builtin.name);
+				continue;
+			}
 		}
 		await repo.upsert({
 			name: builtin.name,

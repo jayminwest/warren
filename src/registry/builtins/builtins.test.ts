@@ -318,4 +318,29 @@ describe("seedBuiltinAgents", () => {
 		expect(second.seeded).toEqual([]);
 		expect([...second.skipped].sort()).toEqual([...BUILTIN_AGENT_NAMES].sort());
 	});
+
+	test("re-upserts pre-existing builtin rows when their content/frontmatter has drifted", async () => {
+		const oldBrainstorm = {
+			...BRAINSTORM_BUILTIN,
+			frontmatter: {
+				...BRAINSTORM_BUILTIN.frontmatter,
+				runtime: undefined, // Simulates pre-v0.5.1 state where runtime wasn't set
+			},
+		};
+
+		await repo.upsert({
+			name: "brainstorm",
+			renderedJson: oldBrainstorm,
+		});
+
+		// Now run seedBuiltinAgents. It should recognize the drift and re-upsert brainstorm.
+		const result = await seedBuiltinAgents(repo);
+		expect(result.seeded).toContain("brainstorm");
+
+		// The stored version should now have the updated frontmatter with 'runtime' set to 'pi'.
+		const stored = await repo.get("brainstorm");
+		expect(stored).not.toBeNull();
+		const rendered = stored?.renderedJson as { frontmatter: { runtime: string } };
+		expect(rendered.frontmatter.runtime).toBe("pi");
+	});
 });
