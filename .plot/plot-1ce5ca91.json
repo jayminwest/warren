@@ -1,5 +1,70 @@
 {
-  "attachments": [],
+  "attachments": [
+    {
+      "added_at": "2026-05-25T19:50:20.150Z",
+      "added_by": "agent:planner:run_0wz54sybfdr4",
+      "id": "att-001",
+      "ref": "warren-7c75",
+      "role": "implementation",
+      "type": "seeds_issue"
+    },
+    {
+      "added_at": "2026-05-25T19:50:23.571Z",
+      "added_by": "agent:planner:run_0wz54sybfdr4",
+      "id": "att-002",
+      "ref": "warren-552c",
+      "role": "step",
+      "type": "seeds_issue"
+    },
+    {
+      "added_at": "2026-05-25T19:50:23.633Z",
+      "added_by": "agent:planner:run_0wz54sybfdr4",
+      "id": "att-003",
+      "ref": "warren-285f",
+      "role": "step",
+      "type": "seeds_issue"
+    },
+    {
+      "added_at": "2026-05-25T19:50:23.696Z",
+      "added_by": "agent:planner:run_0wz54sybfdr4",
+      "id": "att-004",
+      "ref": "warren-387a",
+      "role": "step",
+      "type": "seeds_issue"
+    },
+    {
+      "added_at": "2026-05-25T19:50:23.762Z",
+      "added_by": "agent:planner:run_0wz54sybfdr4",
+      "id": "att-005",
+      "ref": "warren-e0ed",
+      "role": "step",
+      "type": "seeds_issue"
+    },
+    {
+      "added_at": "2026-05-25T19:50:23.825Z",
+      "added_by": "agent:planner:run_0wz54sybfdr4",
+      "id": "att-006",
+      "ref": "warren-a4b9",
+      "role": "step",
+      "type": "seeds_issue"
+    },
+    {
+      "added_at": "2026-05-25T19:50:23.889Z",
+      "added_by": "agent:planner:run_0wz54sybfdr4",
+      "id": "att-007",
+      "ref": "warren-8ffc",
+      "role": "step",
+      "type": "seeds_issue"
+    },
+    {
+      "added_at": "2026-05-25T19:50:27.599Z",
+      "added_by": "agent:planner:run_0wz54sybfdr4",
+      "id": "att-008",
+      "ref": "pl-e4d7",
+      "role": "plan",
+      "type": "seeds_issue"
+    }
+  ],
   "created_at": "2026-05-24T21:14:33.764Z",
   "id": "plot-1ce5ca91",
   "intent": {
@@ -15,5 +80,5 @@
   "name": "Warren Client SDK — typed remote client for external agents",
   "schema_version": 1,
   "status": "ready",
-  "updated_at": "2026-05-25T19:27:05.069Z"
+  "updated_at": "2026-05-25T19:50:27.599Z"
 }

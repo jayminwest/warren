@@ -5,3 +5,12 @@
 {"type":"status_changed","actor":"user:jayminwest","at":"2026-05-24T21:15:09.068Z","data":{"from":"drafting","to":"ready"}}
 {"type":"intent_edited","actor":"user:operator","at":"2026-05-25T19:27:05.069Z","data":{"field":"goal","value":"Enable external projects to autonomously dispatch coding runs against its own codebase, stream events, steer agents mid-run, and manage projects/plots via warren's HTTP API without MCP"}}
 {"type":"intent_edited","actor":"user:operator","at":"2026-05-25T19:27:05.069Z","data":{"field":"success_criteria","value":["External projects can import WarrenClient from @os-eco/warren-cli/client, dispatch a run to Fly.io warren, stream events, and steer — all with bearer token auth"]}}
+{"type":"run_dispatched","actor":"user:operator","at":"2026-05-25T19:46:39.951Z","data":{"run_id":"run_0wz54sybfdr4","agent":"planner","model":"gemini-3.5-flash","project":"prj_z07y6ssfjfpk"}}
+{"type":"attachment_added","actor":"agent:planner:run_0wz54sybfdr4","at":"2026-05-25T19:50:20.150Z","data":{"id":"att-001","type":"seeds_issue","ref":"warren-7c75","role":"implementation"}}
+{"type":"attachment_added","actor":"agent:planner:run_0wz54sybfdr4","at":"2026-05-25T19:50:23.571Z","data":{"id":"att-002","type":"seeds_issue","ref":"warren-552c","role":"step"}}
+{"type":"attachment_added","actor":"agent:planner:run_0wz54sybfdr4","at":"2026-05-25T19:50:23.633Z","data":{"id":"att-003","type":"seeds_issue","ref":"warren-285f","role":"step"}}
+{"type":"attachment_added","actor":"agent:planner:run_0wz54sybfdr4","at":"2026-05-25T19:50:23.696Z","data":{"id":"att-004","type":"seeds_issue","ref":"warren-387a","role":"step"}}
+{"type":"attachment_added","actor":"agent:planner:run_0wz54sybfdr4","at":"2026-05-25T19:50:23.762Z","data":{"id":"att-005","type":"seeds_issue","ref":"warren-e0ed","role":"step"}}
+{"type":"attachment_added","actor":"agent:planner:run_0wz54sybfdr4","at":"2026-05-25T19:50:23.825Z","data":{"id":"att-006","type":"seeds_issue","ref":"warren-a4b9","role":"step"}}
+{"type":"attachment_added","actor":"agent:planner:run_0wz54sybfdr4","at":"2026-05-25T19:50:23.889Z","data":{"id":"att-007","type":"seeds_issue","ref":"warren-8ffc","role":"step"}}
+{"type":"attachment_added","actor":"agent:planner:run_0wz54sybfdr4","at":"2026-05-25T19:50:27.599Z","data":{"id":"att-008","type":"seeds_issue","ref":"pl-e4d7","role":"plan"}}
