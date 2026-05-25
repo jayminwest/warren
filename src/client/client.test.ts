@@ -130,6 +130,161 @@ describe("WarrenClient", () => {
 			expect(clientErr.message).toContain("warren request failed with status 500");
 		}
 	});
+
+	test("performs listProjects request", async () => {
+		let observedUrl: string | undefined;
+		let observedMethod: string | undefined;
+
+		const stubFetch = stub(async (input, init) => {
+			observedUrl = String(input);
+			observedMethod = init?.method ?? "GET";
+			return jsonResponse(200, {
+				projects: [
+					{ id: "p1", gitUrl: "git@github.com:foo/bar.git", localPath: "/foo", defaultBranch: "main", addedAt: "now", lastFetchedAt: null, lastHeadSha: null, hasPlot: false, hasSeeds: false }
+				]
+			});
+		});
+
+		const client = new WarrenClient({
+			config: { baseUrl: "https://warren.local" },
+			fetch: stubFetch,
+		});
+
+		const res = await client.listProjects();
+		expect(res.projects).toHaveLength(1);
+		expect(res.projects[0].id).toBe("p1");
+		expect(observedUrl).toBe("https://warren.local/projects");
+		expect(observedMethod).toBe("GET");
+	});
+
+	test("performs createProject request", async () => {
+		let observedUrl: string | undefined;
+		let observedMethod: string | undefined;
+		let observedBody: string | undefined;
+
+		const stubFetch = stub(async (input, init) => {
+			observedUrl = String(input);
+			observedMethod = init?.method;
+			observedBody = init?.body as string;
+			return jsonResponse(201, { id: "p1", gitUrl: "git@github.com:foo/bar.git", localPath: "/foo", defaultBranch: "main", addedAt: "now", lastFetchedAt: null, lastHeadSha: null, hasPlot: false, hasSeeds: false });
+		});
+
+		const client = new WarrenClient({
+			config: { baseUrl: "https://warren.local" },
+			fetch: stubFetch,
+		});
+
+		const res = await client.createProject({
+			gitUrl: "git@github.com:foo/bar.git",
+			defaultBranch: "main",
+		});
+
+		expect(res.id).toBe("p1");
+		expect(observedUrl).toBe("https://warren.local/projects");
+		expect(observedMethod).toBe("POST");
+		expect(JSON.parse(observedBody || "{}")).toEqual({
+			gitUrl: "git@github.com:foo/bar.git",
+			defaultBranch: "main",
+		});
+	});
+
+	test("performs refreshProject request with or without ref", async () => {
+		let observedUrl: string | undefined;
+		let observedMethod: string | undefined;
+		let observedBody: string | undefined;
+
+		const stubFetch = stub(async (input, init) => {
+			observedUrl = String(input);
+			observedMethod = init?.method;
+			observedBody = init?.body as string;
+			return jsonResponse(200, {
+				project: { id: "p1", gitUrl: "git@github.com:foo/bar.git", localPath: "/foo", defaultBranch: "main", addedAt: "now", lastFetchedAt: "now", lastHeadSha: "sha-abc", hasPlot: false, hasSeeds: false },
+				headSha: "sha-abc",
+				ref: "main",
+			});
+		});
+
+		const client = new WarrenClient({
+			config: { baseUrl: "https://warren.local" },
+			fetch: stubFetch,
+		});
+
+		// 1. Without input
+		const res1 = await client.refreshProject("p1");
+		expect(res1.project.id).toBe("p1");
+		expect(res1.headSha).toBe("sha-abc");
+		expect(observedUrl).toBe("https://warren.local/projects/p1/refresh");
+		expect(observedMethod).toBe("POST");
+		expect(observedBody).toBeUndefined();
+
+		// 2. With input ref
+		const res2 = await client.refreshProject("p1", { ref: "feature-branch" });
+		expect(res2.project.id).toBe("p1");
+		expect(observedUrl).toBe("https://warren.local/projects/p1/refresh");
+		expect(observedMethod).toBe("POST");
+		expect(JSON.parse(observedBody || "{}")).toEqual({ ref: "feature-branch" });
+	});
+
+	test("performs listAgents request with or without projectId", async () => {
+		let observedUrl1: string | undefined;
+		let observedUrl2: string | undefined;
+
+		const stubFetch = stub(async (input) => {
+			if (!observedUrl1) {
+				observedUrl1 = String(input);
+			} else {
+				observedUrl2 = String(input);
+			}
+			return jsonResponse(200, {
+				agents: [{ name: "claude-code", renderedJson: {}, registeredAt: "now", lastRefreshed: "now", source: "builtin" }]
+			});
+		});
+
+		const client = new WarrenClient({
+			config: { baseUrl: "https://warren.local" },
+			fetch: stubFetch,
+		});
+
+		// 1. Without projectId
+		const res1 = await client.listAgents();
+		expect(res1.agents).toHaveLength(1);
+		expect(res1.agents[0].name).toBe("claude-code");
+		expect(observedUrl1).toBe("https://warren.local/agents");
+
+		// 2. With projectId
+		const res2 = await client.listAgents({ projectId: "p-abc" });
+		expect(res2.agents).toHaveLength(1);
+		expect(observedUrl2).toBe("https://warren.local/agents?projectId=p-abc");
+	});
+
+	test("performs getAgent request with or without projectId", async () => {
+		let observedUrl1: string | undefined;
+		let observedUrl2: string | undefined;
+
+		const stubFetch = stub(async (input) => {
+			if (!observedUrl1) {
+				observedUrl1 = String(input);
+			} else {
+				observedUrl2 = String(input);
+			}
+			return jsonResponse(200, { name: "claude-code", renderedJson: {}, registeredAt: "now", lastRefreshed: "now", source: "builtin" });
+		});
+
+		const client = new WarrenClient({
+			config: { baseUrl: "https://warren.local" },
+			fetch: stubFetch,
+		});
+
+		// 1. Without projectId
+		const res1 = await client.getAgent("claude-code");
+		expect(res1.name).toBe("claude-code");
+		expect(observedUrl1).toBe("https://warren.local/agents/claude-code");
+
+		// 2. With projectId
+		const res2 = await client.getAgent("claude-code", { projectId: "p-abc" });
+		expect(res2.name).toBe("claude-code");
+		expect(observedUrl2).toBe("https://warren.local/agents/claude-code?projectId=p-abc");
+	});
 });
 
 describe("WarrenClient.probe", () => {

@@ -107,3 +107,35 @@ export interface ListRunsResponse {
 	costTotalUsd: number | null;
 	costPricedCount: number;
 }
+
+export interface CreateProjectInput {
+	gitUrl: string;
+	defaultBranch?: string;
+}
+
+export interface ListProjectsResponse {
+	projects: ProjectRow[];
+}
+
+export interface RefreshProjectInput {
+	ref?: string;
+}
+
+export interface RefreshProjectResponse {
+	project: ProjectRow;
+	headSha: string;
+	ref: string;
+}
+
+export interface ListAgentsInput {
+	projectId?: string;
+}
+
+export interface ListAgentsResponse {
+	agents: AgentRow[];
+}
+
+export interface GetAgentInput {
+	projectId?: string;
+}
+

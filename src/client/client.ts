@@ -1,10 +1,18 @@
 import { type EnvLike, loadWarrenClientConfigFromEnv, type WarrenClientConfig } from "./config.ts";
 import { WarrenClientError, WarrenUnreachableError } from "./errors.ts";
 import type {
+	AgentRow,
 	ApiErrorEnvelope,
+	CreateProjectInput,
 	CreateRunInput,
+	GetAgentInput,
+	ListAgentsInput,
+	ListAgentsResponse,
+	ListProjectsResponse,
 	ListRunsResponse,
 	ProjectRow,
+	RefreshProjectInput,
+	RefreshProjectResponse,
 	SpawnRunResponse,
 } from "./types.ts";
 
@@ -81,6 +89,40 @@ export class WarrenClient {
 
 	async getProject(projectId: string): Promise<ProjectRow> {
 		return this.request<ProjectRow>(`/projects/${projectId}`);
+	}
+
+	async listProjects(): Promise<ListProjectsResponse> {
+		return this.request<ListProjectsResponse>("/projects");
+	}
+
+	async createProject(input: CreateProjectInput): Promise<ProjectRow> {
+		return this.request<ProjectRow>("/projects", {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify(input),
+		});
+	}
+
+	async refreshProject(projectId: string, input?: RefreshProjectInput): Promise<RefreshProjectResponse> {
+		return this.request<RefreshProjectResponse>(`/projects/${encodeURIComponent(projectId)}/refresh`, {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: input !== undefined ? JSON.stringify(input) : undefined,
+		});
+	}
+
+	async listAgents(input?: ListAgentsInput): Promise<ListAgentsResponse> {
+		const path = input?.projectId !== undefined
+			? `/agents?projectId=${encodeURIComponent(input.projectId)}`
+			: "/agents";
+		return this.request<ListAgentsResponse>(path);
+	}
+
+	async getAgent(name: string, input?: GetAgentInput): Promise<AgentRow> {
+		const path = input?.projectId !== undefined
+			? `/agents/${encodeURIComponent(name)}?projectId=${encodeURIComponent(input.projectId)}`
+			: `/agents/${encodeURIComponent(name)}`;
+		return this.request<AgentRow>(path);
 	}
 
 	async createRun(input: CreateRunInput): Promise<SpawnRunResponse> {
