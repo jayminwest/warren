@@ -247,3 +247,245 @@ export interface ListRunsResponse {
 	costTotalUsd: number | null;
 	costPricedCount: number;
 }
+
+/* ----------------------------------------------------------------------- */
+/* Plots — typed facade over /plots endpoints (warren-8ffc).               */
+/*                                                                          */
+/* The wire envelope under /plots is snake_case end-to-end (mirror of the  */
+/* @os-eco/plot-cli on-disk shape); the client surfaces it verbatim so     */
+/* readers can hand a `PlotEnvelope` straight to a Plot library consumer   */
+/* without re-keying. Inputs accept camelCase for ergonomics and the       */
+/* client maps to snake_case at the request boundary (parallel to          */
+/* `dispatch()` mapping `branch/model/provider` onto the runs wire).       */
+/* ----------------------------------------------------------------------- */
+
+export type PlotStatus = "drafting" | "ready" | "active" | "done" | "archived";
+
+export const PLOT_STATUSES: readonly PlotStatus[] = [
+	"drafting",
+	"ready",
+	"active",
+	"done",
+	"archived",
+];
+
+export const NEEDS_ATTENTION_REASONS = [
+	"paused_run",
+	"merged_pr_unreviewed",
+	"stale_draft",
+] as const;
+export type NeedsAttentionReason = (typeof NEEDS_ATTENTION_REASONS)[number];
+
+export interface PlotSummary {
+	id: string;
+	name: string;
+	status: PlotStatus;
+	/** First ~160 chars of `intent.goal`, with ellipsis when truncated. */
+	intent_goal_preview: string;
+	attachments_count: number;
+	last_event_ts: string;
+	last_event_actor: string;
+	project_id: string;
+	/** Populated only by `GET /plots?filter=needs_attention`. */
+	reasons?: NeedsAttentionReason[];
+}
+
+export const ATTACHMENT_TYPES = [
+	"seeds_issue",
+	"mulch_record",
+	"agent_run",
+	"gh_pr",
+	"gh_issue",
+	"file",
+] as const;
+export type AttachmentType = (typeof ATTACHMENT_TYPES)[number];
+
+export interface PlotIntent {
+	goal: string;
+	non_goals: string[];
+	constraints: string[];
+	success_criteria: string[];
+}
+
+export interface PlotAttachment {
+	id: string;
+	type: AttachmentType;
+	ref: string;
+	role: string;
+	added_at: string;
+	added_by: string;
+}
+
+export interface PlotEvent {
+	type: string;
+	actor: string;
+	at: string;
+	data: Record<string, unknown>;
+}
+
+/** Snapshot of warren runs in state=paused bound to this plot. */
+export interface PausedRunInfo {
+	run_id: string;
+	paused_at: string;
+	paused_question_event_id: string;
+	pause_timeout_ms: number;
+}
+
+export interface PlotEnvelope {
+	id: string;
+	name: string;
+	status: PlotStatus;
+	intent: PlotIntent;
+	attachments: PlotAttachment[];
+	event_log: PlotEvent[];
+	project_id: string;
+	paused_runs: PausedRunInfo[];
+}
+
+export interface ListPlotsResponse {
+	plots: PlotSummary[];
+}
+
+export interface ListPlotsFilter {
+	status?: PlotStatus;
+	/** `?filter=needs_attention` — rows carry a `reasons` array. */
+	needsAttention?: boolean;
+}
+
+/** Optional partial intent body accepted on `POST /plots`. */
+export interface CreatePlotIntentPatch {
+	goal?: string;
+	non_goals?: string[];
+	constraints?: string[];
+	success_criteria?: string[];
+}
+
+export interface CreatePlotInput {
+	projectId: string;
+	name?: string;
+	intent?: CreatePlotIntentPatch;
+	dispatcherHandle?: string;
+}
+
+/** `POST /plots/:id/intent` — flat top-level fields (no `intent:` wrapper). */
+export interface EditPlotIntentInput {
+	goal?: string;
+	non_goals?: string[];
+	constraints?: string[];
+	success_criteria?: string[];
+	dispatcherHandle?: string;
+}
+
+export interface ChangePlotStatusInput {
+	next: PlotStatus;
+	dispatcherHandle?: string;
+}
+
+export interface ChangePlotStatusResponse {
+	summary: PlotSummary;
+	event: PlotEvent;
+}
+
+export type PlotSyncResponse =
+	| { kind: "no_op" }
+	| {
+			kind: "synced";
+			branch: string;
+			prUrl: string;
+			prNumber?: number;
+			merged: boolean;
+	  };
+
+/* ----------------------------------------------------------------------- */
+/* Plan-runs — typed facade over /plan-runs (warren-8ffc).                 */
+/* Wire envelope is camelCase, mirroring /runs.                            */
+/* ----------------------------------------------------------------------- */
+
+export type PlanRunState = "queued" | "running" | "succeeded" | "failed" | "cancelled";
+
+export const PLAN_RUN_TERMINAL_STATES: ReadonlySet<PlanRunState> = new Set([
+	"succeeded",
+	"failed",
+	"cancelled",
+]);
+
+export function isTerminalPlanRunState(
+	state: PlanRunState,
+): state is "succeeded" | "failed" | "cancelled" {
+	return PLAN_RUN_TERMINAL_STATES.has(state);
+}
+
+export type PlanRunChildState =
+	| "pending"
+	| "dispatched"
+	| "running"
+	| "pr_open"
+	| "merged"
+	| "failed"
+	| "skipped";
+
+export interface PlanRunRow {
+	id: string;
+	planId: string;
+	projectId: string;
+	agentName: string;
+	promptTemplate: string;
+	ref: string | null;
+	providerOverride: string | null;
+	modelOverride: string | null;
+	dispatcherHandle: string;
+	trigger: string;
+	state: PlanRunState;
+	failureReason: string | null;
+	createdAt: string;
+	startedAt: string | null;
+	endedAt: string | null;
+	plotId: string | null;
+}
+
+export interface PlanRunChildRow {
+	planRunId: string;
+	seq: number;
+	seedId: string;
+	runId: string | null;
+	state: PlanRunChildState;
+	createdAt: string;
+	updatedAt: string;
+	startedAt: string | null;
+	endedAt: string | null;
+	prMergedAt: string | null;
+	failureReason: string | null;
+}
+
+/** `POST /plan-runs` request body. Wire envelope is camelCase. */
+export interface CreatePlanRunInput {
+	project: string;
+	planId: string;
+	agent: string;
+	promptTemplate?: string;
+	ref?: string;
+	providerOverride?: string;
+	modelOverride?: string;
+	dispatcherHandle?: string;
+	plotId?: string;
+}
+
+export interface CreatePlanRunResponse {
+	planRun: PlanRunRow;
+	children: PlanRunChildRow[];
+}
+
+export interface PlanRunDetailResponse {
+	planRun: PlanRunRow;
+	children: PlanRunChildRow[];
+	runs: RunRow[];
+}
+
+export interface ListPlanRunsFilter {
+	project?: string;
+	state?: PlanRunState;
+}
+
+export interface ListPlanRunsResponse {
+	planRuns: PlanRunRow[];
+}
