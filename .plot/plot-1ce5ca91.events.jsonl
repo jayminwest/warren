@@ -15,3 +15,6 @@
 {"type":"attachment_added","actor":"agent:planner:run_0wz54sybfdr4","at":"2026-05-25T19:50:23.889Z","data":{"id":"att-007","type":"seeds_issue","ref":"warren-8ffc","role":"step"}}
 {"type":"attachment_added","actor":"agent:planner:run_0wz54sybfdr4","at":"2026-05-25T19:50:27.599Z","data":{"id":"att-008","type":"seeds_issue","ref":"pl-e4d7","role":"plan"}}
 {"type":"attachment_added","actor":"user:jayminwest","at":"2026-05-25T20:15:00.000Z","data":{"id":"att-009","type":"seeds_issue","ref":"warren-bdfd","role":"step"}}
+{"type":"plan_run_dispatched","actor":"user:operator","at":"2026-05-25T20:25:24.932Z","data":{"plan_run_id":"plnr_0n3gywwd38ds","plan_id":"pl-e4d7","children_count":7}}
+{"type":"run_dispatched","actor":"user:operator","at":"2026-05-25T20:25:29.207Z","data":{"run_id":"run_sjthkqk8nve9","agent":"pi","model":"gemini-3.5-flash","project":"prj_z07y6ssfjfpk"}}
+{"type":"status_changed","actor":"user:operator","at":"2026-05-25T20:25:49.915Z","data":{"from":"ready","to":"active"}}
