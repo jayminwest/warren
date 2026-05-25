@@ -1,0 +1,141 @@
+import { type EnvLike, loadWarrenClientConfigFromEnv, type WarrenClientConfig } from "./config.ts";
+import { WarrenClientError, WarrenUnreachableError } from "./errors.ts";
+import type {
+	ApiErrorEnvelope,
+	CreateRunInput,
+	ListRunsResponse,
+	ProjectRow,
+	SpawnRunResponse,
+} from "./types.ts";
+
+export const DEFAULT_PROBE_TIMEOUT_MS = 2_000;
+
+export interface WarrenClientOptions {
+	readonly config: WarrenClientConfig;
+	/** Override fetch (tests, instrumentation). */
+	readonly fetch?: typeof fetch;
+}
+
+export class WarrenClient {
+	readonly config: WarrenClientConfig;
+	private readonly fetchImpl: typeof fetch;
+
+	constructor(opts: WarrenClientOptions) {
+		this.config = opts.config;
+		this.fetchImpl = opts.fetch ?? fetch;
+	}
+
+	static fromEnv(env: EnvLike = process.env, fetchImpl?: typeof fetch): WarrenClient {
+		const config = loadWarrenClientConfigFromEnv(env);
+		return new WarrenClient(fetchImpl !== undefined ? { config, fetch: fetchImpl } : { config });
+	}
+
+	/**
+	 * Hit `/healthz` with a timeout and convert transport-layer failures
+	 * into `WarrenUnreachableError`. `/healthz` is auth-exempt.
+	 */
+	async probe(timeoutMs: number = DEFAULT_PROBE_TIMEOUT_MS): Promise<void> {
+		const ctrl = new AbortController();
+		const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+		try {
+			await this.withTransportMapping(async () => {
+				const aborted = new Promise<never>((_, reject) => {
+					ctrl.signal.addEventListener(
+						"abort",
+						() => reject(new WarrenUnreachableError(`warren probe timed out after ${timeoutMs}ms`)),
+						{ once: true },
+					);
+				});
+				await Promise.race([this.requestRaw("/healthz", { signal: ctrl.signal }), aborted]);
+			});
+		} finally {
+			clearTimeout(timer);
+		}
+	}
+
+	/**
+	 * Helper to send requests and handle common things like bearer token auth,
+	 * URL concatenation, and response deserialization.
+	 */
+	async request<T>(path: string, init: RequestInit = {}): Promise<T> {
+		return this.withTransportMapping(async () => {
+			const res = await this.requestRaw(path, init);
+			if (!res.ok) {
+				let envelope: ApiErrorEnvelope | null = null;
+				try {
+					envelope = (await res.json()) as ApiErrorEnvelope;
+				} catch {
+					// Non-JSON or malformed body
+				}
+				const code = envelope?.error?.code ?? `http_${res.status}`;
+				const message =
+					envelope?.error?.message ?? `warren request failed with status ${res.status}`;
+				const hint = envelope?.error?.hint;
+				throw new WarrenClientError(res.status, code, message, hint);
+			}
+			const text = await res.text();
+			if (text.length === 0) return undefined as T;
+			return JSON.parse(text) as T;
+		});
+	}
+
+	async getProject(projectId: string): Promise<ProjectRow> {
+		return this.request<ProjectRow>(`/projects/${projectId}`);
+	}
+
+	async createRun(input: CreateRunInput): Promise<SpawnRunResponse> {
+		return this.request<SpawnRunResponse>("/runs", {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify(input),
+		});
+	}
+
+	async listRuns(): Promise<ListRunsResponse> {
+		return this.request<ListRunsResponse>("/runs");
+	}
+
+	async close(): Promise<void> {
+		// No-op for now, but adheres to BurrowClient's shape.
+	}
+
+	private async requestRaw(path: string, init: RequestInit = {}): Promise<Response> {
+		const base = this.config.baseUrl;
+		const cleanBase = base.endsWith("/") ? base : `${base}/`;
+		const cleanPath = path.startsWith("/") ? path.slice(1) : path;
+		const url = new URL(cleanPath, cleanBase);
+
+		const headers = new Headers(init.headers);
+		if (this.config.token !== undefined && this.config.token !== "") {
+			headers.set("authorization", `Bearer ${this.config.token}`);
+		}
+		return await this.fetchImpl(url.toString(), {
+			...init,
+			headers,
+		});
+	}
+
+	private async withTransportMapping<T>(fn: () => Promise<T>): Promise<T> {
+		try {
+			return await fn();
+		} catch (err) {
+			if (err instanceof WarrenUnreachableError || err instanceof WarrenClientError) {
+				throw err;
+			}
+			if (err instanceof Error) {
+				const isAbort =
+					err.name === "AbortError" ||
+					err.message.includes("timed out") ||
+					err.message.includes("abort");
+				if (isAbort) {
+					throw err;
+				}
+				throw new WarrenUnreachableError(
+					`warren unreachable at ${this.config.baseUrl}: ${err.message}`,
+					{ cause: err },
+				);
+			}
+			throw err;
+		}
+	}
+}
