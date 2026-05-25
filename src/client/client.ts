@@ -16,8 +16,10 @@ import {
 	type RefreshProjectAgentsResult,
 	type RefreshProjectInput,
 	type RefreshProjectResponse,
+	type RunEvent,
 	type RunRow,
 	type SpawnRunResponse,
+	type StreamRunEventsOptions,
 } from "./types.ts";
 
 export const DEFAULT_PROBE_TIMEOUT_MS = 2_000;
@@ -229,6 +231,89 @@ export class WarrenClient {
 				);
 			}
 			await sleepWithSignal(interval, opts.signal);
+		}
+	}
+
+	/**
+	 * Async iterator over `GET /runs/:id/events` (NDJSON tail). One yield
+	 * per event row, parsed as {@link RunEvent}. The wire format is
+	 * NDJSON, not SSE — each line is a JSON envelope terminated by `\n`.
+	 *
+	 * - `follow: true` keeps the connection open so new events stream as
+	 *   the run progresses. Without it, the server closes once the
+	 *   current backlog is drained.
+	 * - `sinceSeq` replays only events with `burrowEventSeq > sinceSeq`,
+	 *   matching the server's `?since=` semantics.
+	 * - `signal` aborts the underlying fetch so callers can tear the
+	 *   connection down on unmount / cancel.
+	 *
+	 * Malformed lines are dropped silently — the stream is best-effort by
+	 * design, mirroring the UI consumer in `src/ui/src/api/client.ts`.
+	 */
+	async *streamRunEvents(
+		runId: string,
+		opts: StreamRunEventsOptions = {},
+	): AsyncGenerator<RunEvent, void, void> {
+		const params = new URLSearchParams();
+		if (opts.follow) params.set("follow", "1");
+		if (opts.sinceSeq !== undefined) params.set("since", String(opts.sinceSeq));
+		const qs = params.toString();
+		const path = `/runs/${encodeURIComponent(runId)}/events${qs.length > 0 ? `?${qs}` : ""}`;
+
+		const init: RequestInit = { headers: { accept: "application/x-ndjson" } };
+		if (opts.signal) init.signal = opts.signal;
+
+		const res = await this.withTransportMapping(() => this.requestRaw(path, init));
+		if (!res.ok) {
+			let envelope: ApiErrorEnvelope | null = null;
+			try {
+				envelope = (await res.json()) as ApiErrorEnvelope;
+			} catch {
+				// Non-JSON or malformed body — fall through to the default code/message.
+			}
+			const code = envelope?.error?.code ?? `http_${res.status}`;
+			const message = envelope?.error?.message ?? `warren request failed with status ${res.status}`;
+			const hint = envelope?.error?.hint;
+			throw new WarrenClientError(res.status, code, message, hint);
+		}
+		if (res.body === null) return;
+
+		const reader = res.body.getReader();
+		const decoder = new TextDecoder();
+		let buf = "";
+		try {
+			while (true) {
+				const { done, value } = await reader.read();
+				if (done) break;
+				buf += decoder.decode(value, { stream: true });
+				let nl = buf.indexOf("\n");
+				while (nl !== -1) {
+					const line = buf.slice(0, nl);
+					buf = buf.slice(nl + 1);
+					if (line.length > 0) {
+						try {
+							yield JSON.parse(line) as RunEvent;
+						} catch {
+							// drop malformed line; keep streaming
+						}
+					}
+					nl = buf.indexOf("\n");
+				}
+			}
+			const tail = buf.trim();
+			if (tail.length > 0) {
+				try {
+					yield JSON.parse(tail) as RunEvent;
+				} catch {
+					// drop
+				}
+			}
+		} finally {
+			try {
+				reader.releaseLock();
+			} catch {
+				// ignore — releaseLock can throw if we already errored out
+			}
 		}
 	}
 

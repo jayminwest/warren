@@ -126,6 +126,15 @@ export interface RunEvent {
 	plotId: string | null;
 }
 
+export interface StreamRunEventsOptions {
+	/** Keep the connection open and emit new events as they arrive. */
+	follow?: boolean;
+	/** Replay starting just after this `burrowEventSeq`. */
+	sinceSeq?: number;
+	/** External abort signal — closes the underlying HTTP body. */
+	signal?: AbortSignal;
+}
+
 export interface ApiErrorEnvelope {
 	error: {
 		code: string;
