@@ -5,7 +5,10 @@
  */
 
 export {
+	DEFAULT_POLL_INTERVAL_MS,
+	DEFAULT_POLL_TIMEOUT_MS,
 	DEFAULT_PROBE_TIMEOUT_MS,
+	type WaitForRunOptions,
 	WarrenClient,
 	type WarrenClientOptions,
 } from "./client.ts";

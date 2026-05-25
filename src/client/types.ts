@@ -1,5 +1,19 @@
 export type RunState = "queued" | "running" | "paused" | "succeeded" | "failed" | "cancelled";
 
+export type RunTerminalState = "succeeded" | "failed" | "cancelled";
+
+/** Canonical set of terminal run states. Mirrors src/db/schema.ts RUN_TERMINAL_STATES. */
+export const RUN_TERMINAL_STATES: ReadonlySet<RunState> = new Set([
+	"succeeded",
+	"failed",
+	"cancelled",
+]);
+
+/** Narrow a RunState to a terminal one. */
+export function isTerminalRunState(state: RunState): state is RunTerminalState {
+	return RUN_TERMINAL_STATES.has(state);
+}
+
 export type RunFailureReason =
 	| "never_started"
 	| "no_model_response"
@@ -127,6 +141,29 @@ export interface CreateRunInput {
 	ref?: string;
 	providerOverride?: string;
 	modelOverride?: string;
+	seedId?: string;
+	plotId?: string;
+	mode?: "batch" | "interactive";
+	interactiveAgent?: string;
+	dispatcherHandle?: string;
+}
+
+/**
+ * Ergonomic input for {@link WarrenClient.dispatch}. Mirrors
+ * {@link CreateRunInput} but uses the user-facing field names
+ * (`model`, `branch`, `provider`) from `warren run` CLI flags. Mapped
+ * onto CreateRunInput at request time.
+ */
+export interface DispatchRunInput {
+	agent: string;
+	project: string;
+	prompt: string;
+	/** Maps to CreateRunInput.ref — git branch / ref to clone the workspace from. */
+	branch?: string;
+	/** Maps to CreateRunInput.modelOverride. */
+	model?: string;
+	/** Maps to CreateRunInput.providerOverride. */
+	provider?: string;
 	seedId?: string;
 	plotId?: string;
 	mode?: "batch" | "interactive";
