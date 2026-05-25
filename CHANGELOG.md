@@ -7,6 +7,60 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0] — 2026-05-25
+
+Minor release introducing the **Warren Client SDK** (`src/client/`) — a
+standalone, zero-server-deps TypeScript facade over warren's HTTP API,
+intended for acceptance scenarios, CLIs, and third-party tooling that
+drive warren without re-implementing the wire format.
+
+### Added
+
+- **`feat(client)`** — `WarrenClient` skeleton, wire types, error
+  classes, and config loader (warren-552c, #91). Establishes the
+  package layout: types co-located in `src/client/types.ts`, transport
+  errors (`WarrenClientError`, `WarrenUnreachableError`) in
+  `errors.ts`, no imports from server-side modules (mirrors the
+  `burrow-client/` pattern, cf. mx-acdd4c).
+- **`feat(client)`** — Project & agent management endpoints
+  (warren-285f, #93): `listProjects` / `createProject` /
+  `refreshProject` and `listAgents` / `getAgent` / `refreshAgents` /
+  `refreshProjectAgents`. Path segments are URL-encoded; `refreshProject`
+  sends `{}` when no ref is supplied to satisfy
+  `readJsonBodyOrEmpty`.
+- **`feat(client)`** — Run dispatch and status polling (warren-387a,
+  #94): `dispatch()` (wrapping `POST /runs` with a user-facing
+  `DispatchRunInput`), `getRun()`, and `waitForRun({intervalMs,
+  timeoutMs, signal, onTick})` polling until `isTerminalRunState`
+  holds. Defaults: 2 s poll, 30 min budget. Throws
+  `WarrenClientError(408, 'wait_timeout')` on deadline,
+  `AbortError` on signal. Exports `RUN_TERMINAL_STATES` /
+  `isTerminalRunState` mirroring `src/db/schema.ts`.
+- **`feat(client)`** — SSE event streaming via
+  `streamRunEvents(runId, { follow?, sinceSeq?, signal? })` (warren-e0ed,
+  #95). Wire format is NDJSON (not SSE despite the seed title) to match
+  the existing `GET /runs/:id/events` handler. Yields typed `RunEvent`
+  objects via `AsyncGenerator`; handles chunked partial lines, flushes
+  trailing newline-less line, drops malformed lines best-effort.
+  Transport failures map to `WarrenUnreachableError` via the shared
+  `withTransportMapping` seam.
+- **`feat(client)`** — Mid-run steering: `steer(runId, { body,
+  priority?, fromActor? })` wraps `POST /runs/:id/steer` and returns
+  `{ message: InboxMessage }` (warren-a4b9, #96). `InboxMessage` /
+  `MessagePriority` are declared inline to keep the client zero-deps on
+  `@os-eco/burrow-cli`. Docstring points operators at the server-driven
+  pause/resume lifecycle (`src/runs/pause.ts`, Plot `question_answered`)
+  so they don't issue a redundant `resume` after answering a
+  `question_posed`.
+- **`feat(client)`** — Plot and plan-run management (warren-8ffc, #97):
+  `listPlots` / `getPlot` / `createPlot` / `editPlotIntent` /
+  `changePlotStatus` / `syncPlot` for `/plots` (snake_case wire,
+  mirroring `@os-eco/plot-cli`'s on-disk shape), and `createPlanRun` /
+  `getPlanRun` / `listPlanRuns` for `/plan-runs` (camelCase wire,
+  parallel to `/runs`). Inputs accept camelCase for ergonomics and are
+  mapped to snake_case at the boundary for `/plots`. Optional fields
+  are omitted when undefined.
+
 ## [0.5.6] — 2026-05-25
 
 Patch release fixing Plot aggregator staleness when new Plots arrive
