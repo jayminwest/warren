@@ -26,3 +26,6 @@
 {"type":"run_dispatched","actor":"user:operator","at":"2026-05-25T20:41:21.073Z","data":{"run_id":"run_ar206aht8nzy","agent":"pi","model":"claude-opus-4-7","project":"prj_z07y6ssfjfpk"}}
 {"type":"run_dispatched","actor":"user:operator","at":"2026-05-25T20:46:31.251Z","data":{"run_id":"run_wwc6qgsz18bt","agent":"pi","model":"claude-opus-4-7","project":"prj_z07y6ssfjfpk"}}
 {"type":"run_dispatched","actor":"user:operator","at":"2026-05-25T21:00:34.009Z","data":{"run_id":"run_as82qeae2vwk","agent":"pi","model":"claude-opus-4-7","project":"prj_z07y6ssfjfpk"}}
+{"type":"run_dispatched","actor":"user:operator","at":"2026-05-25T21:22:32.986Z","data":{"run_id":"run_ymkvccja6qg7","agent":"pi","model":"claude-opus-4-7","project":"prj_z07y6ssfjfpk"}}
+{"type":"plan_run_dispatched","actor":"user:operator","at":"2026-05-25T21:54:28.566Z","data":{"plan_run_id":"plnr_hpdjgtz5ftyt","plan_id":"pl-e4d7","children_count":7}}
+{"type":"run_dispatched","actor":"user:operator","at":"2026-05-25T21:54:41.040Z","data":{"run_id":"run_2f7awh6n734r","agent":"pi","model":"claude-opus-4-7","project":"prj_z07y6ssfjfpk"}}
