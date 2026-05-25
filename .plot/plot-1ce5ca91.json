@@ -6,14 +6,14 @@
     "constraints": [
       "Zero server-side deps in src/client/ (no drizzle, bun:sqlite, burrow). Wire types declared fresh. Follows src/burrow-client/ pattern. Single version — SDK and CLI cannot drift."
     ],
-    "goal": "Enable kota-v2 to autonomously dispatch coding runs against its own codebase, stream events, steer agents mid-run, and manage projects/plots via warren's HTTP API without MCP",
+    "goal": "Enable external projects to autonomously dispatch coding runs against its own codebase, stream events, steer agents mid-run, and manage projects/plots via warren's HTTP API without MCP",
     "non_goals": [],
     "success_criteria": [
-      "kota-v2 can import WarrenClient from @os-eco/warren-cli/client, dispatch a run to Fly.io warren, stream events, and steer — all with bearer token auth"
+      "External projects can import WarrenClient from @os-eco/warren-cli/client, dispatch a run to Fly.io warren, stream events, and steer — all with bearer token auth"
     ]
   },
   "name": "Warren Client SDK — typed remote client for external agents",
   "schema_version": 1,
   "status": "ready",
-  "updated_at": "2026-05-24T21:15:09.068Z"
+  "updated_at": "2026-05-25T19:27:05.069Z"
 }
