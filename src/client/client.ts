@@ -1,10 +1,19 @@
 import { type EnvLike, loadWarrenClientConfigFromEnv, type WarrenClientConfig } from "./config.ts";
 import { WarrenClientError, WarrenUnreachableError } from "./errors.ts";
 import type {
+	AgentRow,
 	ApiErrorEnvelope,
+	CreateProjectInput,
 	CreateRunInput,
+	ListAgentsQuery,
+	ListAgentsResponse,
+	ListProjectsResponse,
 	ListRunsResponse,
 	ProjectRow,
+	RefreshAgentsResponse,
+	RefreshProjectAgentsResult,
+	RefreshProjectInput,
+	RefreshProjectResponse,
 	SpawnRunResponse,
 } from "./types.ts";
 
@@ -80,7 +89,60 @@ export class WarrenClient {
 	}
 
 	async getProject(projectId: string): Promise<ProjectRow> {
-		return this.request<ProjectRow>(`/projects/${projectId}`);
+		return this.request<ProjectRow>(`/projects/${encodeURIComponent(projectId)}`);
+	}
+
+	async listProjects(): Promise<ListProjectsResponse> {
+		return this.request<ListProjectsResponse>("/projects");
+	}
+
+	async createProject(input: CreateProjectInput): Promise<ProjectRow> {
+		return this.request<ProjectRow>("/projects", {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify(input),
+		});
+	}
+
+	async refreshProject(
+		projectId: string,
+		input: RefreshProjectInput = {},
+	): Promise<RefreshProjectResponse> {
+		return this.request<RefreshProjectResponse>(
+			`/projects/${encodeURIComponent(projectId)}/refresh`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify(input),
+			},
+		);
+	}
+
+	async refreshProjectAgents(projectId: string): Promise<RefreshProjectAgentsResult> {
+		return this.request<RefreshProjectAgentsResult>(
+			`/projects/${encodeURIComponent(projectId)}/agents/refresh`,
+			{ method: "POST" },
+		);
+	}
+
+	async listAgents(query: ListAgentsQuery = {}): Promise<ListAgentsResponse> {
+		const qs =
+			query.projectId !== undefined && query.projectId !== ""
+				? `?projectId=${encodeURIComponent(query.projectId)}`
+				: "";
+		return this.request<ListAgentsResponse>(`/agents${qs}`);
+	}
+
+	async getAgent(name: string, query: ListAgentsQuery = {}): Promise<AgentRow> {
+		const qs =
+			query.projectId !== undefined && query.projectId !== ""
+				? `?projectId=${encodeURIComponent(query.projectId)}`
+				: "";
+		return this.request<AgentRow>(`/agents/${encodeURIComponent(name)}${qs}`);
+	}
+
+	async refreshAgents(): Promise<RefreshAgentsResponse> {
+		return this.request<RefreshAgentsResponse>("/agents/refresh", { method: "POST" });
 	}
 
 	async createRun(input: CreateRunInput): Promise<SpawnRunResponse> {

@@ -9,12 +9,55 @@ export type RunFailureReason =
 
 export type PreviewState = "starting" | "live" | "failed" | "torn-down";
 
+export type AgentSource = "builtin" | "library" | `project:${string}`;
+
 export interface AgentRow {
 	name: string;
 	renderedJson: unknown;
 	registeredAt: string;
 	lastRefreshed: string;
-	source?: "builtin" | "library" | `project:${string}`;
+	source?: AgentSource;
+}
+
+export interface RefreshSkipped {
+	name: string;
+	reason: string;
+	code: string;
+}
+
+export interface CloneResult {
+	cloned: boolean;
+	localDir: string;
+}
+
+export interface ListAgentsQuery {
+	projectId?: string;
+}
+
+export interface ListAgentsResponse {
+	agents: AgentRow[];
+}
+
+export interface RefreshProjectAgentsResult {
+	projectId: string;
+	registered: AgentRow[];
+	skipped: RefreshSkipped[];
+	removed: string[];
+}
+
+export interface ProjectRefreshErrorRow {
+	projectId: string;
+	code: string;
+	message: string;
+}
+
+export interface RefreshAgentsResponse {
+	clone: CloneResult;
+	registered: AgentRow[];
+	skipped: RefreshSkipped[];
+	removed: string[];
+	projects: RefreshProjectAgentsResult[];
+	projectErrors: ProjectRefreshErrorRow[];
 }
 
 export interface ProjectRow {
@@ -97,6 +140,25 @@ export interface SpawnRunResponse {
 		id: string;
 		workspacePath: string;
 	};
+}
+
+export interface ListProjectsResponse {
+	projects: ProjectRow[];
+}
+
+export interface CreateProjectInput {
+	gitUrl: string;
+	defaultBranch?: string;
+}
+
+export interface RefreshProjectInput {
+	ref?: string;
+}
+
+export interface RefreshProjectResponse {
+	project: ProjectRow;
+	headSha: string;
+	ref: string;
 }
 
 export interface ListRunsResponse {
