@@ -207,6 +207,38 @@ export interface RefreshProjectResponse {
 	ref: string;
 }
 
+/**
+ * Burrow inbox message priority. Mirrors `MESSAGE_PRIORITIES` from
+ * `@os-eco/burrow-cli` — kept inline so the client package has no
+ * server-side deps.
+ */
+export type MessagePriority = "low" | "normal" | "high" | "urgent";
+
+/** Burrow inbox message row returned by `POST /runs/:id/steer`. */
+export interface InboxMessage {
+	id: string;
+	burrowId: string;
+	fromActor: string;
+	body: string;
+	priority: MessagePriority;
+	state: "unread" | "delivered" | "failed";
+	deliveredAtRunId: string | null;
+	createdAt: string;
+	deliveredAt: string | null;
+}
+
+export interface SteerRunInput {
+	/** Steering body — non-empty after trim. */
+	body: string;
+	priority?: MessagePriority;
+	/** Actor identifier recorded on the burrow message. */
+	fromActor?: string;
+}
+
+export interface SteerRunResponse {
+	message: InboxMessage;
+}
+
 export interface ListRunsResponse {
 	runs: RunRow[];
 	total: number;

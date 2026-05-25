@@ -19,6 +19,8 @@ import {
 	type RunEvent,
 	type RunRow,
 	type SpawnRunResponse,
+	type SteerRunInput,
+	type SteerRunResponse,
 	type StreamRunEventsOptions,
 } from "./types.ts";
 
@@ -194,6 +196,30 @@ export class WarrenClient {
 		if (input.interactiveAgent !== undefined) body.interactiveAgent = input.interactiveAgent;
 		if (input.dispatcherHandle !== undefined) body.dispatcherHandle = input.dispatcherHandle;
 		return this.createRun(body);
+	}
+
+	/**
+	 * `POST /runs/:id/steer` — mid-run steering. Forwards an operator
+	 * message into the burrow inbox; the next agent turn on the run's
+	 * burrow receives it. Valid only while the run is non-terminal AND a
+	 * burrow is attached (the spawn-rollback window throws
+	 * `ValidationError` server-side).
+	 *
+	 * For interactive runs this is the prompt-injection seam. For batch
+	 * runs the same path delivers nudges, but blocking-question
+	 * `pause ↔ resume` is driven server-side by Plot `question_answered`
+	 * events (`src/runs/pause.ts`), not by this endpoint — callers do not
+	 * need to issue an explicit "resume" after a steer.
+	 */
+	async steer(runId: string, input: SteerRunInput): Promise<SteerRunResponse> {
+		const body: Record<string, unknown> = { body: input.body };
+		if (input.priority !== undefined) body.priority = input.priority;
+		if (input.fromActor !== undefined) body.fromActor = input.fromActor;
+		return this.request<SteerRunResponse>(`/runs/${encodeURIComponent(runId)}/steer`, {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify(body),
+		});
 	}
 
 	async getRun(runId: string): Promise<RunRow> {

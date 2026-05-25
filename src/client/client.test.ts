@@ -382,6 +382,100 @@ describe("WarrenClient.dispatch + waitForRun", () => {
 		});
 	});
 
+	test("steer POSTs /runs/:id/steer with body and optional priority/fromActor", async () => {
+		let observedUrl: string | undefined;
+		let observedMethod: string | undefined;
+		let observedBody: string | undefined;
+		const stubFetch = stub(async (input, init) => {
+			observedUrl = String(input);
+			observedMethod = init?.method;
+			observedBody = init?.body as string;
+			return jsonResponse(200, {
+				message: {
+					id: "m1",
+					burrowId: "b1",
+					fromActor: "operator",
+					body: "focus on tests",
+					priority: "high",
+					state: "unread",
+					deliveredAtRunId: null,
+					createdAt: "2026-05-25T00:00:00.000Z",
+					deliveredAt: null,
+				},
+			});
+		});
+		const c = new WarrenClient({
+			config: { baseUrl: "https://w.local" },
+			fetch: stubFetch,
+		});
+		const res = await c.steer("r 1", {
+			body: "focus on tests",
+			priority: "high",
+			fromActor: "operator",
+		});
+		expect(observedUrl).toBe("https://w.local/runs/r%201/steer");
+		expect(observedMethod).toBe("POST");
+		expect(JSON.parse(observedBody as string)).toEqual({
+			body: "focus on tests",
+			priority: "high",
+			fromActor: "operator",
+		});
+		expect(res.message.id).toBe("m1");
+		expect(res.message.priority).toBe("high");
+	});
+
+	test("steer omits priority and fromActor when not provided", async () => {
+		let observedBody: string | undefined;
+		const stubFetch = stub(async (_input, init) => {
+			observedBody = init?.body as string;
+			return jsonResponse(200, {
+				message: {
+					id: "m2",
+					burrowId: "b1",
+					fromActor: "warren",
+					body: "nudge",
+					priority: "normal",
+					state: "unread",
+					deliveredAtRunId: null,
+					createdAt: "2026-05-25T00:00:00.000Z",
+					deliveredAt: null,
+				},
+			});
+		});
+		const c = new WarrenClient({
+			config: { baseUrl: "https://w.local" },
+			fetch: stubFetch,
+		});
+		await c.steer("r1", { body: "nudge" });
+		expect(JSON.parse(observedBody as string)).toEqual({ body: "nudge" });
+	});
+
+	test("steer surfaces server validation errors as WarrenClientError", async () => {
+		const stubFetch = stub(async () =>
+			jsonResponse(400, {
+				error: {
+					code: "validation_error",
+					message: "cannot steer a succeeded run",
+					hint: "steering is only valid while the run is queued or running",
+				},
+			}),
+		);
+		const c = new WarrenClient({
+			config: { baseUrl: "https://w.local" },
+			fetch: stubFetch,
+		});
+		let caught: unknown;
+		try {
+			await c.steer("r1", { body: "late" });
+		} catch (err) {
+			caught = err;
+		}
+		expect(caught).toBeInstanceOf(WarrenClientError);
+		const e = caught as WarrenClientError;
+		expect(e.status).toBe(400);
+		expect(e.code).toBe("validation_error");
+	});
+
 	test("getRun GETs /runs/:id and url-encodes", async () => {
 		let observedUrl: string | undefined;
 		const stubFetch = stub(async (input) => {
