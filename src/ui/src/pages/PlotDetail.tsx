@@ -1126,6 +1126,14 @@ function RunPlanDialog({
 	const navigate = useNavigate();
 	const qc = useQueryClient();
 
+	// Editable prompt template (warren-6e4c / pl-f666 step 1). Mirrors
+	// NewPlanRun.tsx ~line 300-320 so dispatching from a Plot has the
+	// same expressivity as the dedicated /plan-runs/new page. State
+	// resets on close because RunPlanButton unmounts this dialog.
+	const [promptTemplate, setPromptTemplate] = useState(DEFAULT_PROMPT_TEMPLATE);
+	const [promptTouched, setPromptTouched] = useState(false);
+	const trimmedPrompt = promptTemplate.trim();
+
 	// Resolve project defaults + agent registry to fill in the dispatch
 	// inputs the user can't see on PlotDetail. This mirrors NewPlanRun's
 	// defaults flow (mx-4c064b / mx-be04a6) so dispatching from a Plot
@@ -1159,13 +1167,16 @@ function RunPlanDialog({
 					"No default agent resolved — set `defaults.defaultRole` in `.warren/defaults.yaml` and register the agent.",
 				);
 			}
+			if (trimmedPrompt.length === 0) {
+				throw new Error("Prompt template must not be empty.");
+			}
 			const provider = defaults?.defaultProvider;
 			const model = defaults?.defaultModel;
 			return plotsApi.dispatchPlanRun({
 				project: projectId,
 				planId: planRef,
 				agent: resolvedAgent,
-				promptTemplate: DEFAULT_PROMPT_TEMPLATE,
+				promptTemplate: trimmedPrompt,
 				plotId,
 				...(provider !== undefined && provider.length > 0
 					? { providerOverride: provider }
@@ -1185,7 +1196,11 @@ function RunPlanDialog({
 	const loading = projects.isLoading || warrenConfig.isLoading || agents.isLoading;
 	const hasSeeds = project?.hasSeeds ?? false;
 	const readyToDispatch =
-		!loading && hasSeeds && resolvedAgent !== null && !dispatch.isPending;
+		!loading &&
+		hasSeeds &&
+		resolvedAgent !== null &&
+		trimmedPrompt.length > 0 &&
+		!dispatch.isPending;
 
 	const errorMessage = ((): string | null => {
 		if (dispatch.error === null || dispatch.error === undefined) return null;
@@ -1232,11 +1247,31 @@ function RunPlanDialog({
 								: (resolvedAgent ?? "(no default agent set)")
 						}
 					/>
-					<ReadOnlyField
-						label="Prompt template"
-						value={DEFAULT_PROMPT_TEMPLATE}
-						hint="{seed_id} is substituted per child."
-					/>
+					<div className="space-y-1.5">
+						<Label htmlFor="plot-run-plan-promptTemplate">
+							Prompt template
+						</Label>
+						<Textarea
+							id="plot-run-plan-promptTemplate"
+							required
+							rows={3}
+							value={promptTemplate}
+							onChange={(e) => {
+								setPromptTemplate(e.target.value);
+								setPromptTouched(true);
+							}}
+							disabled={!hasSeeds || dispatch.isPending}
+							placeholder={DEFAULT_PROMPT_TEMPLATE}
+							className="text-base sm:text-sm"
+						/>
+						<p className="text-xs text-(--color-muted-foreground)">
+							<code className="font-mono">{"{seed_id}"}</code> is
+							substituted per child.
+							{!promptTouched && promptTemplate === DEFAULT_PROMPT_TEMPLATE
+								? " Default."
+								: ""}
+						</p>
+					</div>
 				</div>
 
 				{!loading && !hasSeeds ? (
