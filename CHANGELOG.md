@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.6] — 2026-05-26
+
+Patch release fixing preview-launch misclassification of slow-first-headers
+dev servers. Phase-1 of `attemptPreviewLaunch` now answers the narrower
+question ("did anything bind on the host port?") with a raw TCP handshake
+instead of an HTTP fetch, so a bound server that takes >2s to flush
+response headers (e.g. Next.js mid-compile) no longer burns the connect
+budget being classified as `not_connected`. Closes plan pl-592f
+(warren-c3a2).
+
+### Added
+
+- **`feat(preview)`** — `tcpConnectOnce(host, port, timeoutMs)` helper in
+  `src/preview/launch.ts` opens a raw TCP socket via `Bun.connect` and
+  closes it on the first connect callback, returning `connected` |
+  `not_connected` (warren-49d9). Exported so unit tests can drive it
+  directly.
+- **`feat(preview)`** — optional `LaunchPreviewInput.tcpConnect` injection
+  point mirroring the existing `fetch` injection, so phase-1 probe
+  behaviour is fully deterministic under test (warren-44ed).
+
+### Fixed
+
+- **`fix(preview)`** — phase-1 of `attemptPreviewLaunch` now uses
+  `tcpConnectOnce` instead of `probeOnce`'s HTTP fetch (warren-44ed).
+  `probeOnce` is reserved for phase-2 where the HTTP readiness question
+  is the correct one. Hit in real Next.js dispatches (`run_sjxddbjpg950`)
+  where slow first-headers caused the connect budget to expire even
+  though the dev server was bound. Regression test in launch.test.ts
+  exercises the slow-first-headers path (warren-f04c).
+
 ## [0.6.5] — 2026-05-25
 
 Patch release fixing auto_plan_run never firing when `mirrorPlans` is
