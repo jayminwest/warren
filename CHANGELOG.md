@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.7] — 2026-05-26
+
+Patch release with two small follow-ups from the 2026-05-26 nightwatch
+patrol (plan pl-fb66): a docs correction to the `/release` slash command
+and a content-type normalization on the preview-proxy error path.
+
+### Fixed
+
+- **`fix(preview)`** — `previewError` and `previewUnauthorized` in
+  `src/preview/proxy.ts` now emit
+  `content-type: application/json; charset=utf-8`, matching the rest of
+  warren's JSON responses (`jsonResponse`, `notFoundResponse`). Error
+  envelopes and the 401 `www-authenticate` header are unchanged
+  (warren-a1e1).
+
+### Docs
+
+- **`docs(release)`** — `.claude/commands/release.md` step 4 now
+  instructs editing `package.json` and `src/index.ts` directly, matching
+  CLAUDE.md's explicit note that there is no `bun run version:bump`
+  script in this repo. The release workflow's version-consistency check
+  is called out inline (warren-9023).
+
 ## [0.6.6] — 2026-05-26
 
 Patch release fixing preview-launch misclassification of slow-first-headers
