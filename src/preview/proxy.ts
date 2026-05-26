@@ -872,7 +872,7 @@ function hasBaseElement(buf: Uint8Array, from: number): boolean {
 function previewError(status: number, code: string, message: string): Response {
 	return new Response(JSON.stringify({ error: { code, message } }), {
 		status,
-		headers: { "content-type": "application/json" },
+		headers: { "content-type": "application/json; charset=utf-8" },
 	});
 }
 
@@ -899,7 +899,7 @@ function previewUnauthorized(runId: string, config: PreviewProxyConfig, url: URL
 	return new Response(JSON.stringify(body), {
 		status: 401,
 		headers: {
-			"content-type": "application/json",
+			"content-type": "application/json; charset=utf-8",
 			// Browsers don't honor WWW-Authenticate for cookie schemes, but
 			// the header is informative for CLI consumers.
 			"www-authenticate": 'Cookie realm="warren-preview"',
