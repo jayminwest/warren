@@ -520,6 +520,67 @@ async function probeOnce(
 	}
 }
 
+/**
+ * Phase-1 TCP-only probe (warren-49d9 / pl-592f step 1).
+ *
+ * Phase 1 of `attemptPreviewLaunch` only needs to answer one question:
+ * **is anything bound on the host port yet?** `probeOnce` answers a
+ * stricter question (did the server send HTTP headers in time?) which
+ * misclassifies slow-first-headers dev servers (e.g. Next.js mid-compile)
+ * as `not_connected` and burns the connect budget. `tcpConnectOnce` opens
+ * a raw TCP socket via `Bun.connect` and resolves as soon as the kernel
+ * reports the connection established (or refused / unreachable / timed
+ * out), without doing any HTTP work. The socket is closed immediately.
+ *
+ * Returns:
+ *   - `connected`     → kernel accepted the TCP handshake; port is bound.
+ *   - `not_connected` → refused, unreachable, or `timeoutMs` elapsed
+ *                       before the handshake completed.
+ */
+export async function tcpConnectOnce(
+	host: string,
+	port: number,
+	timeoutMs: number,
+): Promise<"connected" | "not_connected"> {
+	return new Promise<"connected" | "not_connected">((resolve) => {
+		let settled = false;
+		let tid: ReturnType<typeof setTimeout> | undefined;
+		let socket: { end: () => void } | undefined;
+
+		const finish = (outcome: "connected" | "not_connected"): void => {
+			if (settled) return;
+			settled = true;
+			if (tid !== undefined) clearTimeout(tid);
+			try {
+				socket?.end();
+			} catch {
+				// socket may already be closed; ignore.
+			}
+			resolve(outcome);
+		};
+
+		tid = setTimeout(() => finish("not_connected"), timeoutMs);
+
+		Bun.connect({
+			hostname: host,
+			port,
+			socket: {
+				open(sock) {
+					socket = sock;
+					finish("connected");
+				},
+				close() {},
+				data() {},
+				error() {
+					finish("not_connected");
+				},
+			},
+		}).catch(() => {
+			finish("not_connected");
+		});
+	});
+}
+
 async function drainBody(res: Response): Promise<void> {
 	try {
 		await res.body?.cancel();
