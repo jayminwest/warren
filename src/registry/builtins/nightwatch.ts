@@ -51,6 +51,7 @@ const SYSTEM_BODY = `You are a code patrol agent. Your job is to scan a reposito
    - title: short, imperative ("Fix inconsistent JSON output in list commands")
    - description: file paths, line ranges, what's wrong, what correct looks like
    - blocks: indices of steps this step must complete before (forward semantics, 0-based)
+   - labels: always include "nightwatch" so every spawned child seed inherits the agent tag (mirrors the parent-seed --labels patrol,nightwatch in step 7). The final "Release" step gets labels: ["nightwatch"] too.
 10. Submit: \`sd plan submit <seed-id> --plan <file>\`
 11. Report: list the plan id and child seed ids. Summarize the total finding count by category.
 
