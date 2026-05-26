@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.9] — 2026-05-26
+
+Patch release making the Plot "Run plan" dialog's agent prompt editable
+(plan pl-f666, parent warren-b55b).
+
+### Added
+
+- **`feat(ui)`** — `RunPlanDialog` in `src/ui/src/pages/PlotDetail.tsx`
+  now exposes a controlled `<Textarea>` for the agent prompt, seeded
+  with `DEFAULT_PROMPT_TEMPLATE` and tracking a `promptTouched` flag
+  for the "Default." hint (mirrors the `NewPlanRun` pattern). The
+  edited prompt is forwarded on dispatch; an empty prompt is rejected
+  client-side (warren-6e4c).
+
+### Tests
+
+- **`test(ui)`** — Added coverage for the editable prompt in the Plot
+  Run-plan dialog (warren-fdf0).
+
 ## [0.6.8] — 2026-05-26
 
 Patch release adding a bulk "Sync all" button to the /projects page and
