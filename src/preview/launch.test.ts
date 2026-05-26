@@ -108,6 +108,47 @@ function fakeFetch(responses: Array<Response | (() => Response)>): {
 	return { fetch: fn, calls };
 }
 
+// warren-44ed / pl-592f step 2: phase-1 now uses tcpConnectOnce (raw TCP)
+// instead of fetch. Tests that want to exercise phase-2 readiness logic
+// inject `tcpConnect: alwaysConnected` so phase-1 transitions on the first
+// poll; tests that exercise phase-1 itself supply explicit sequences via
+// `fakeTcp`.
+const alwaysConnected: (
+	host: string,
+	port: number,
+	timeoutMs: number,
+) => Promise<"connected" | "not_connected"> = async () => "connected";
+
+const alwaysRefused: (
+	host: string,
+	port: number,
+	timeoutMs: number,
+) => Promise<"connected" | "not_connected"> = async () => "not_connected";
+
+function fakeTcp(outcomes: Array<"connected" | "not_connected">): {
+	tcpConnect: (
+		host: string,
+		port: number,
+		timeoutMs: number,
+	) => Promise<"connected" | "not_connected">;
+	calls: number;
+} {
+	const state = { calls: 0 };
+	const tcpConnect = async (): Promise<"connected" | "not_connected"> => {
+		const next = outcomes[state.calls++];
+		if (next === undefined) {
+			throw new Error("fakeTcp: out of outcomes");
+		}
+		return next;
+	};
+	return {
+		tcpConnect,
+		get calls() {
+			return state.calls;
+		},
+	};
+}
+
 describe("launchPreview", () => {
 	let db: WarrenDb;
 	let repos: Repos;
@@ -318,6 +359,7 @@ describe("launchPreview", () => {
 			allocator,
 			sidecars: sidecars.client,
 			fetch,
+			tcpConnect: alwaysConnected,
 			sleep: async () => {
 				ticks += 5;
 			},
@@ -366,6 +408,7 @@ describe("launchPreview", () => {
 			allocator,
 			sidecars: sidecars.client,
 			fetch,
+			tcpConnect: alwaysConnected,
 			sleep: async (ms) => {
 				ticks += ms * 10; // advance fast so the loop exits in O(1) probes
 			},
@@ -378,38 +421,32 @@ describe("launchPreview", () => {
 		expect(calls.length).toBeLessThan(5);
 	});
 
-	// warren-33eb / warren-9b15: a fetch that never resolves on its own must
-	// not block the loop's wall clock. The per-call AbortController fires
-	// before each probe returns, the loop ticks past the connect deadline,
-	// and we end in `connect_timeout` (the new phase-1 reason — a hung fetch
-	// that never produces a Response is indistinguishable from "port never
-	// bound" once the AbortController fires) rather than hanging on the
-	// upstream fetch.
-	test("aborts hung fetches via per-call timeout and still hits the wall-clock deadline", async () => {
+	// warren-33eb / warren-9b15 / warren-44ed: each phase-1 probe must be
+	// bounded by the per-call timeout so a hung sidecar can't block the
+	// wall clock. Under warren-44ed phase-1 uses `tcpConnect` (not fetch);
+	// a tcpConnect that never resolves on its own still surfaces as
+	// `connect_timeout` via the per-call timeout inside `tcpConnectOnce`.
+	test("aborts hung phase-1 probes via per-call timeout and still hits the wall-clock deadline", async () => {
 		const sidecars = fakeSidecars({ stdout: "", stderr: "compiling…\n" });
 		const t0 = new Date("2026-05-14T18:00:00.000Z").getTime();
 		let ticks = 0;
 		const now = (): Date => new Date(t0 + ticks);
 
-		// Fetch that ignores the response and only resolves (as a rejection) when
-		// the AbortController fires. Without the per-call timeout this would hang
-		// forever and the deadline check would never run.
+		// tcpConnect that respects the per-call `timeoutMs` argument by
+		// resolving "not_connected" exactly at that bound — simulating a
+		// TCP SYN that never gets ACKed. Without per-call bounding this
+		// would hang forever and the deadline check would never run.
 		let probeCalls = 0;
-		const hangingFetch = (async (
-			_input: URL | RequestInfo,
-			init?: RequestInit,
-		): Promise<Response> => {
+		const hangingTcp = (async (
+			_host: string,
+			_port: number,
+			timeoutMs: number,
+		): Promise<"connected" | "not_connected"> => {
 			probeCalls++;
-			const signal = init?.signal;
-			if (signal === undefined || signal === null) {
-				throw new Error("expected per-call AbortSignal");
-			}
-			return new Promise<Response>((_resolve, reject) => {
-				signal.addEventListener("abort", () => {
-					reject(new DOMException("aborted", "AbortError"));
-				});
+			return new Promise((resolve) => {
+				setTimeout(() => resolve("not_connected"), timeoutMs);
 			});
-		}) as unknown as typeof fetch;
+		}) as (host: string, port: number, timeoutMs: number) => Promise<"connected" | "not_connected">;
 
 		const result = await launchPreview({
 			runId,
@@ -418,7 +455,8 @@ describe("launchPreview", () => {
 			repos,
 			allocator,
 			sidecars: sidecars.client,
-			fetch: hangingFetch,
+			fetch: (async () => new Response("never", { status: 200 })) as unknown as typeof fetch,
+			tcpConnect: hangingTcp,
 			sleep: async () => {
 				// Advance the wall clock past the deadline once a probe has aborted.
 				ticks += 1_000;
@@ -432,7 +470,7 @@ describe("launchPreview", () => {
 
 		expect(result.ok).toBe(false);
 		expect((result as { reason: string }).reason).toBe("connect_timeout");
-		// Loop must have iterated at least once and bounded — not a single 10s hang.
+		// Loop must have iterated at least once and bounded — not a single hang.
 		expect(probeCalls).toBeGreaterThanOrEqual(1);
 		expect(probeCalls).toBeLessThan(20);
 		const row = await repos.runs.require(runId);
@@ -465,8 +503,8 @@ describe("launchPreview", () => {
 			const t0 = new Date("2026-05-14T18:00:00.000Z").getTime();
 			let ticks = 0;
 			const now = (): Date => new Date(t0 + ticks);
-			// Fetch throws synchronously like ECONNREFUSED — every probe is
-			// "not_connected", phase 1 never transitions, connect_timeout fires.
+			// warren-44ed: phase-1 uses tcpConnect; an always-refused tcpConnect
+			// means phase 1 never transitions, connect_timeout fires.
 			const refusingFetch = (async () => {
 				throw new TypeError("fetch failed: ECONNREFUSED");
 			}) as unknown as typeof fetch;
@@ -478,6 +516,7 @@ describe("launchPreview", () => {
 				allocator,
 				sidecars: sidecars.client,
 				fetch: refusingFetch,
+				tcpConnect: alwaysRefused,
 				sleep: async () => {
 					ticks += 1_000;
 				},
@@ -497,19 +536,20 @@ describe("launchPreview", () => {
 			expect(row.previewFailureMessage).toContain("did not accept");
 		});
 
-		test("transitions phase 1 → phase 2 on first HTTP response (4xx/5xx), then waits the full readiness budget", async () => {
+		test("transitions phase 1 → phase 2 on first successful TCP connect, then waits the full readiness budget", async () => {
 			const sidecars = fakeSidecars({ stdout: "", stderr: "compiling…\n" });
 			const t0 = new Date("2026-05-14T18:00:00.000Z").getTime();
 			let ticks = 0;
 			const now = (): Date => new Date(t0 + ticks);
+			// warren-44ed: phase-1 is now TCP-only.
+			// First tcpConnect: not_connected (phase 1, no transition).
+			// Second tcpConnect: connected (phase 1 → phase 2 transition).
+			// Phase 2 fetch: 502 then 200 (→ ready).
+			const tcp = fakeTcp(["not_connected", "connected"]);
 			let i = 0;
-			// First probe: ECONNREFUSED (phase 1, no transition).
-			// Second probe: 502 (phase 1 → phase 2 transition).
-			// Third probe: 200 (phase 2 → ready).
 			const fetchImpl = (async (input: URL | RequestInfo): Promise<Response> => {
 				i++;
-				if (i === 1) throw new TypeError("fetch failed");
-				if (i === 2) return new Response("bad gateway", { status: 502 });
+				if (i === 1) return new Response("bad gateway", { status: 502 });
 				const url =
 					typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
 				expect(url).toBe("http://127.0.0.1:40000/");
@@ -523,6 +563,7 @@ describe("launchPreview", () => {
 				allocator,
 				sidecars: sidecars.client,
 				fetch: fetchImpl,
+				tcpConnect: tcp.tcpConnect,
 				sleep: async () => {
 					ticks += 10;
 				},
@@ -532,7 +573,8 @@ describe("launchPreview", () => {
 				readinessPollMs: 10,
 			});
 			expect(result.ok).toBe(true);
-			expect(i).toBe(3);
+			expect(tcp.calls).toBe(2);
+			expect(i).toBe(2);
 			const row = await repos.runs.require(runId);
 			expect(row.previewState).toBe("live");
 			expect(row.previewFailureMessage).toBeNull();
@@ -543,15 +585,15 @@ describe("launchPreview", () => {
 			const t0 = new Date("2026-05-14T18:00:00.000Z").getTime();
 			let ticks = 0;
 			const now = (): Date => new Date(t0 + ticks);
-			// Phase 1: ~3 ECONNREFUSED probes eat ~3000ms of wall clock
+			// Phase 1: 3 not_connected probes eat ~3000ms of wall clock
 			// (longer than readinessTimeoutMs alone would allow). Phase 2: first
 			// probe is 200. With a single-phase deadline starting at create, the
 			// 200ms readiness budget would have been exhausted by phase-1 waits;
 			// the two-phase contract keeps it intact.
+			const tcp = fakeTcp(["not_connected", "not_connected", "not_connected", "connected"]);
 			let i = 0;
 			const fetchImpl = (async (): Promise<Response> => {
 				i++;
-				if (i <= 3) throw new TypeError("fetch failed");
 				return new Response("ok", { status: 200 });
 			}) as unknown as typeof fetch;
 			const result = await launchPreview({
@@ -562,6 +604,7 @@ describe("launchPreview", () => {
 				allocator,
 				sidecars: sidecars.client,
 				fetch: fetchImpl,
+				tcpConnect: tcp.tcpConnect,
 				sleep: async () => {
 					ticks += 1_000;
 				},
@@ -571,7 +614,8 @@ describe("launchPreview", () => {
 				readinessPollMs: 50,
 			});
 			expect(result.ok).toBe(true);
-			expect(i).toBe(4);
+			expect(tcp.calls).toBe(4);
+			expect(i).toBe(1);
 		});
 
 		test("readiness_timeout failure message records phase=readiness", async () => {
@@ -592,6 +636,7 @@ describe("launchPreview", () => {
 				allocator,
 				sidecars: sidecars.client,
 				fetch,
+				tcpConnect: alwaysConnected,
 				sleep: async () => {
 					ticks += 5_000;
 				},

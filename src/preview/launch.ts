@@ -92,6 +92,15 @@ export interface LaunchPreviewInput {
 	readonly now?: () => Date;
 	/** Override the readiness-probe HTTP fetch (tests). */
 	readonly fetch?: typeof fetch;
+	/**
+	 * Override the phase-1 TCP-connect probe (tests). Real callers leave
+	 * this undefined so `tcpConnectOnce` is used. warren-44ed / pl-592f.
+	 */
+	readonly tcpConnect?: (
+		host: string,
+		port: number,
+		timeoutMs: number,
+	) => Promise<"connected" | "not_connected">;
 	/** Override sleeping between probe attempts (tests). */
 	readonly sleep?: (ms: number) => Promise<void>;
 	/** Cap the readiness probe loop. Defaults to `DEFAULT_READINESS_TIMEOUT_MS`. */
@@ -228,6 +237,7 @@ function defaultSidecarEnv(sandboxPort: number): Record<string, string> {
 export async function launchPreview(input: LaunchPreviewInput): Promise<LaunchPreviewResult> {
 	const now = input.now ?? (() => new Date());
 	const fetchImpl = input.fetch ?? globalThis.fetch;
+	const tcpConnectImpl = input.tcpConnect ?? tcpConnectOnce;
 	const sleep = input.sleep ?? defaultSleep;
 	const timeoutMs = input.readinessTimeoutMs ?? DEFAULT_READINESS_TIMEOUT_MS;
 	const connectTimeoutMs = input.connectTimeoutMs ?? DEFAULT_CONNECT_TIMEOUT_MS;
@@ -302,24 +312,22 @@ export async function launchPreview(input: LaunchPreviewInput): Promise<LaunchPr
 	const probeUrl = `http://127.0.0.1:${port}${readinessPath}`;
 
 	// warren-9b15: two-phase probe loop. Phase 1 ("connect") waits for the
-	// sidecar's listener to accept TCP — any HTTP response, even 4xx/5xx,
-	// proves the port bound. Phase 2 ("readiness") then waits for 2xx/3xx
-	// with its own wall clock, starting at the phase transition. Splitting
-	// the budget means a slow burrow / cold image / shell pre-exec hang
-	// surfaces as `connect_timeout` and stops eating the bundler budget.
+	// sidecar's listener to accept TCP — a raw TCP handshake proves the
+	// port is bound (see warren-44ed for why phase 1 doesn't speak HTTP).
+	// Phase 2 ("readiness") then waits for 2xx/3xx with its own wall clock,
+	// starting at the phase transition. Splitting the budget means a slow
+	// burrow / cold image / shell pre-exec hang surfaces as `connect_timeout`
+	// and stops eating the bundler budget.
+	// warren-44ed / pl-592f step 2: phase-1 uses tcpConnectOnce (raw TCP
+	// handshake) instead of probeOnce (HTTP fetch) so slow-first-headers
+	// dev servers (e.g. Next.js mid-compile) don't get misclassified as
+	// not_connected while their port is actually bound. probeOnce stays
+	// in phase 2 where the HTTP-level readiness question is the right one.
 	const connectDeadline = now().getTime() + connectTimeoutMs;
 	while (true) {
-		const probe = await probeOnce(fetchImpl, probeUrl, perCallTimeoutMs);
-		if (probe === "ready") {
-			await input.repos.runs.attachPreview(input.runId, {
-				previewState: "live",
-				previewLastHitAt: now().toISOString(),
-				previewFailureMessage: null,
-			});
-			return { ok: true, port, sidecarId };
-		}
-		if (probe === "http_response") {
-			// Phase 1 → phase 2: port bound but didn't yet return 2xx/3xx.
+		const probe = await tcpConnectImpl("127.0.0.1", port, perCallTimeoutMs);
+		if (probe === "connected") {
+			// Phase 1 → phase 2: port accepts TCP. HTTP readiness is phase-2's job.
 			break;
 		}
 		// probe === "not_connected" → keep waiting under the connect budget.
