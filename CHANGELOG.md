@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.15] — 2026-05-27
+
+Patch release landing pl-5516: pi `agent_end` envelopes that carry a
+provider error (overloaded_error 529, rate_limit, network, …) now
+finalize the run as `failed` instead of silently succeeding, so reap's
+`inferFailureReason` fires and downstream plan-run automation no longer
+advances on a stale branch.
+
+### Fixed
+
+- **`fix(runs)`** — `detectRuntimeTerminal` in `src/runs/stream.ts`
+  now inspects pi `agent_end` envelopes for `stopReason === 'error'`
+  or a non-empty `errorMessage` and returns `'failed'` when either is
+  present, mirroring the claude-code `result.is_error` guard. Zero
+  tokens / empty content alone is still treated as a legitimate noop
+  (warren-1ac2 / pl-5516 step 1).
+
+### Added
+
+- **`test(runs)`** — `src/runs/stream.detect.test.ts` locks the pi
+  `agent_end` mapping table (stopReason='error' → failed, errorMessage
+  alone → failed, empty/zero-usage success → succeeded, non-state
+  envelopes → null) so the provider-error → succeeded regression
+  surfaces as a focused unit-test failure (warren-6fcc / pl-5516
+  step 2).
+
 ## [0.6.14] — 2026-05-27
 
 Patch release landing the CI-parity plan (pl-da5b): the local
