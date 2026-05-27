@@ -928,8 +928,8 @@ function parseRunsPagination(ctx: { url: URL }): { limit: number; offset: number
 	let limit = 100;
 	if (rawLimit !== null) {
 		const n = Number.parseInt(rawLimit, 10);
-		if (!Number.isFinite(n) || n <= 0) {
-			throw new ValidationError("?limit must be a positive integer");
+		if (!Number.isFinite(n) || n <= 0 || String(n) !== rawLimit) {
+			throw new ValidationError(`?limit must be a positive integer; got '${rawLimit}'`);
 		}
 		if (n > 500) throw new ValidationError("?limit must be ≤ 500");
 		limit = n;
@@ -937,8 +937,8 @@ function parseRunsPagination(ctx: { url: URL }): { limit: number; offset: number
 	let offset = 0;
 	if (rawOffset !== null) {
 		const n = Number.parseInt(rawOffset, 10);
-		if (!Number.isFinite(n) || n < 0) {
-			throw new ValidationError("?offset must be a non-negative integer");
+		if (!Number.isFinite(n) || n < 0 || String(n) !== rawOffset) {
+			throw new ValidationError(`?offset must be a non-negative integer; got '${rawOffset}'`);
 		}
 		offset = n;
 	}

@@ -122,7 +122,7 @@ function parseEnvPositiveInt(env: EnvLike, name: string, fallback: number): numb
 	const raw = env[name];
 	if (raw === undefined || raw.trim() === "") return fallback;
 	const parsed = Number.parseInt(raw, 10);
-	if (!Number.isInteger(parsed) || parsed <= 0) {
+	if (!Number.isInteger(parsed) || parsed <= 0 || String(parsed) !== raw.trim()) {
 		throw new ValidationError(`${name} must be a positive integer (got ${JSON.stringify(raw)})`);
 	}
 	return parsed;
