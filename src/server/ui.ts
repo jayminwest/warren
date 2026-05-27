@@ -23,7 +23,6 @@
 
 import { existsSync, statSync } from "node:fs";
 import { join, resolve, sep } from "node:path";
-import { isApiPath } from "./handlers.ts";
 import type { RouteContext, RouteHandler } from "./types.ts";
 
 const CONTENT_TYPES: Readonly<Record<string, string>> = {
@@ -60,7 +59,6 @@ export function createUiHandler(opts: UiHandlerOptions): RouteHandler {
 
 	return async (ctx: RouteContext): Promise<Response> => {
 		const requested = decodePath(ctx.url.pathname);
-		if (isApiPath(requested)) return notFoundResponse(requested);
 
 		// Try the literal file under dist first.
 		const candidate = resolveUnder(root, requested);
@@ -127,16 +125,6 @@ function contentTypeFor(path: string): string {
 	if (idx === -1) return "application/octet-stream";
 	const ext = path.slice(idx).toLowerCase();
 	return CONTENT_TYPES[ext] ?? "application/octet-stream";
-}
-
-function notFoundResponse(pathname: string): Response {
-	const body = JSON.stringify({
-		error: { code: "not_found", message: `no route matches ${pathname}` },
-	});
-	return new Response(body, {
-		status: 404,
-		headers: { "content-type": "application/json; charset=utf-8" },
-	});
 }
 
 interface ReadResult {
