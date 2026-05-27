@@ -1,13 +1,25 @@
 version: 2
 updates:
+  # warren-9a92 / pl-7b06 step 15: dependency-update delay via Dependabot's
+  # `cooldown` block. Holds back PRs for freshly published versions so we don't
+  # auto-adopt a release on day zero — gives the ecosystem (and us) time to
+  # surface regressions before they land on main. Mirrors Renovate's
+  # `minimumReleaseAge` behaviour.
   - package-ecosystem: npm
     directory: /
     schedule:
       interval: weekly
     target-branch: main
+    cooldown:
+      default-days: 5
+      semver-major-days: 14
+      semver-minor-days: 5
+      semver-patch-days: 3
 
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
     target-branch: main
+    cooldown:
+      default-days: 5
