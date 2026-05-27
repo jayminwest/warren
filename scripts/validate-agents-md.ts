@@ -63,7 +63,7 @@ export function stripShellComments(block: string): string {
 
 export function extractBunRunScripts(blocks: string[]): Set<string> {
 	const scripts = new Set<string>();
-	const pattern = /\bbun\s+run\s+([a-zA-Z0-9:_\-]+)/g;
+	const pattern = /\bbun\s+run\s+([a-zA-Z0-9:_-]+)/g;
 	for (const rawBlock of blocks) {
 		const block = stripShellComments(rawBlock);
 		let m: RegExpExecArray | null;

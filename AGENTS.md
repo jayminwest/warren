@@ -74,6 +74,14 @@ their frozen ceiling — the ratchet only goes down. Biome's
 budget at the function level, with the same baseline exceptions called
 out in `biome.json`'s `overrides`.
 
+CI also runs `bun run check:debt-markers` (warren-7f2b), which scans
+`src/` and `scripts/` `.ts`/`.tsx` for `TODO` / `FIXME` / `HACK` / `XXX`
+and fails if any marker lacks a tracker reference on the same line
+(`warren-XXXX`, `pl-XXXX`, `mx-XXXX`, `#NNN`, or a URL). The ratchet
+grandfather list lives in `scripts/debt-marker-allowlist.json` and only
+goes down — pair new markers with an id (or remove them) rather than
+appending to the allowlist.
+
 CI (`.github/workflows/release.yml`) runs the same trinity. Do not merge
 with lint warnings; fix at write time or promote to error in `biome.json`.
 

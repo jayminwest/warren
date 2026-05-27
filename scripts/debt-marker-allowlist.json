@@ -1,0 +1,4 @@
+{
+	"_comment": "Grandfathered untracked debt markers (warren-7f2b). Each entry is `path:line` and must match an existing TODO/FIXME/HACK/XXX with no tracker reference on the same line. Ratchet only goes down — remove entries as debt is paid off; new entries require justification (and ideally a follow-up seed).",
+	"allowlist": []
+}

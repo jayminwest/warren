@@ -37,6 +37,7 @@
 		"typecheck": "tsc --noEmit",
 		"validate:agents-md": "bun run scripts/validate-agents-md.ts",
 		"check:file-sizes": "bun run scripts/check-file-sizes.ts",
+		"check:debt-markers": "bun run scripts/check-debt-markers.ts",
 		"db:generate": "bun run db:generate:sqlite && bun run db:generate:postgres",
 		"db:generate:sqlite": "drizzle-kit generate --config=drizzle.config.sqlite.ts",
 		"db:generate:postgres": "drizzle-kit generate --config=drizzle.config.postgres.ts",
