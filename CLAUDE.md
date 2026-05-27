@@ -136,14 +136,16 @@ bun run ui:install            # cd src/ui && bun install
 
 ## Quality Gates
 
-Run all three before committing — warnings count as failures:
+Run all checks before committing — warnings count as failures:
 
 ```bash
-bun test && bun run lint && bun run typecheck
+bun run check:all
 ```
 
-CI runs the same trinity (see `.github/workflows/release.yml`). Don't merge
-with lint warnings; fix at write time or promote to error in `biome.json`.
+This runs: `test`, `lint`, `typecheck`, `validate:agents-md`,
+`check:file-sizes`, and `check:debt-markers` — the same set CI enforces
+(see `.github/workflows/ci.yml`). Don't merge with lint warnings; fix at
+write time or promote to error in `biome.json`.
 
 ## TypeScript Conventions
 
@@ -180,7 +182,7 @@ expected to run against a live (possibly long-lived) deployment.
 When ending a work session, complete ALL steps:
 
 1. File issues for remaining work: `sd create --title "..."`
-2. Run quality gates (if code changed): `bun test && bun run lint && bun run typecheck`
+2. Run quality gates (if code changed): `bun run check:all`
 3. Close finished issues: `sd close <id>`
 4. Record insights worth preserving: `ml learn` then `ml record ...`
 5. Push: `sd sync && ml sync && git push`

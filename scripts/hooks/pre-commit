@@ -6,3 +6,12 @@ bun run lint
 
 echo "Running typecheck..."
 bun run typecheck
+
+echo "Validating AGENTS.md..."
+bun run validate:agents-md
+
+echo "Checking file sizes..."
+bun run check:file-sizes
+
+echo "Checking debt markers..."
+bun run check:debt-markers

@@ -41,10 +41,10 @@ bun test src/foo.test.ts                   # Run a single test file
 biome check .                              # Lint + format check
 biome check --write .                      # Auto-fix lint + format issues
 tsc --noEmit                               # Type check
-bun test && biome check . && tsc --noEmit  # All quality gates
+bun run check:all                          # All quality gates
 ```
 
-Always run all three quality gates before submitting a PR.
+Always run `bun run check:all` before submitting a PR.
 
 ## TypeScript Conventions
 

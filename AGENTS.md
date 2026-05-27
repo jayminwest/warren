@@ -59,28 +59,36 @@ bun run ui:install            # cd src/ui && bun install
 
 ## Quality gates
 
-Run all three before committing — warnings count as failures:
+Run all checks before committing — warnings count as failures:
 
 ```bash
-bun test && bun run lint && bun run typecheck
+bun run check:all
 ```
 
-CI also runs `bun run check:file-sizes`, which enforces a per-file
-line-count budget (warren-4553). New `.ts`/`.tsx` files under `src/` and
-`scripts/` must stay ≤ 500 lines; existing oversized files are
-grandfathered in `scripts/file-size-budgets.json` and may not grow past
-their frozen ceiling — the ratchet only goes down. Biome's
-`noExcessiveLinesPerFunction` rule (also 500-line cap) enforces the same
-budget at the function level, with the same baseline exceptions called
-out in `biome.json`'s `overrides`.
+This runs: `test`, `lint`, `typecheck`, `validate:agents-md`,
+`check:file-sizes`, and `check:debt-markers` — the same set CI enforces
+(see `.github/workflows/ci.yml`). Do not merge with lint warnings; fix
+at write time or promote to error in `biome.json`.
 
-CI also runs `bun run check:debt-markers` (warren-7f2b), which scans
-`src/` and `scripts/` `.ts`/`.tsx` for `TODO` / `FIXME` / `HACK` / `XXX`
-and fails if any marker lacks a tracker reference on the same line
-(`warren-XXXX`, `pl-XXXX`, `mx-XXXX`, `#NNN`, or a URL). The ratchet
-grandfather list lives in `scripts/debt-marker-allowlist.json` and only
-goes down — pair new markers with an id (or remove them) rather than
-appending to the allowlist.
+Details on the additional checks:
+
+- **`check:file-sizes`** (warren-4553) — enforces a per-file line-count
+  budget. New `.ts`/`.tsx` files under `src/` and `scripts/` must stay
+  ≤ 500 lines; existing oversized files are grandfathered in
+  `scripts/file-size-budgets.json` and may not grow past their frozen
+  ceiling — the ratchet only goes down. Biome's
+  `noExcessiveLinesPerFunction` rule (also 500-line cap) enforces the
+  same budget at the function level, with the same baseline exceptions
+  called out in `biome.json`'s `overrides`.
+- **`check:debt-markers`** (warren-7f2b) — scans `src/` and `scripts/`
+  `.ts`/`.tsx` for `TODO` / `FIXME` / `HACK` / `XXX` and fails if any
+  marker lacks a tracker reference on the same line (`warren-XXXX`,
+  `pl-XXXX`, `mx-XXXX`, `#NNN`, or a URL). The ratchet grandfather list
+  lives in `scripts/debt-marker-allowlist.json` and only goes down —
+  pair new markers with an id (or remove them) rather than appending to
+  the allowlist.
+- **`validate:agents-md`** — validates that `AGENTS.md` references
+  (`bun run <X>` commands and backtick-quoted paths) still exist.
 
 Biome's `noExcessiveCognitiveComplexity` rule (warren-d3a6, cognitive
 complexity ≤ 15) enforces a project-wide complexity ceiling. New code
@@ -170,8 +178,7 @@ idempotent, and clean up after themselves.
 When ending a work session, complete ALL steps:
 
 1. File issues for remaining work: `sd create --title "..."`
-2. Run quality gates (if code changed):
-   `bun test && bun run lint && bun run typecheck`
+2. Run quality gates (if code changed): `bun run check:all`
 3. Close finished issues: `sd close <id>`
 4. Record insights worth preserving: `ml learn` then `ml record ...`
 5. Push: `sd sync && ml sync && git push`
