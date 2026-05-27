@@ -11,7 +11,6 @@
 		"scripts/acceptance/scenarios/29-plot-detail-roundtrip.ts": 1013,
 		"scripts/acceptance/scenarios/31-plot-plan-run-synthesis.ts": 950,
 		"scripts/acceptance/scenarios/32-plot-workbench-loop.ts": 706,
-		"src/client/client.test.ts": 993,
 		"src/client/client.ts": 569,
 		"src/db/repos/runs.ts": 610,
 		"src/diagnostics/checks.test.ts": 653,

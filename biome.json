@@ -60,7 +60,7 @@
 	},
 	"overrides": [
 		{
-			"includes": ["src/client/client.test.ts", "src/registry/refresh.test.ts"],
+			"includes": ["src/registry/refresh.test.ts"],
 			"linter": {
 				"rules": {
 					"complexity": {
