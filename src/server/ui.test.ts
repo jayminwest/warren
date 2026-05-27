@@ -61,32 +61,13 @@ describe("createUiHandler", () => {
 	});
 
 	test("unknown SPA route falls through to index.html", async () => {
+		// API-prefix JSON 404 is enforced by dispatch (src/server/server.ts);
+		// createUiHandler itself only ever sees non-API paths and serves the
+		// SPA shell so React Router can handle deep links.
 		const handler = createUiHandler({ distDir });
-		const res = await handler(ctxFor("/runs/abc/detail"));
-		// /runs is an API prefix — should NOT fall through
-		expect(res.status).toBe(404);
-
-		const res2 = await handler(ctxFor("/projects-page"));
-		expect(res2.status).toBe(200);
-		expect(await res2.text()).toContain("warren ui");
-	});
-
-	test("API prefixes return 404 envelope, not the SPA shell", async () => {
-		const handler = createUiHandler({ distDir });
-		for (const prefix of [
-			"/agents",
-			"/agents/x",
-			"/projects",
-			"/runs/abc",
-			"/healthz",
-			"/readyz",
-			"/version",
-		]) {
-			const res = await handler(ctxFor(prefix));
-			expect(res.status).toBe(404);
-			const body = (await res.json()) as { error: { code: string } };
-			expect(body.error.code).toBe("not_found");
-		}
+		const res = await handler(ctxFor("/projects-page"));
+		expect(res.status).toBe(200);
+		expect(await res.text()).toContain("warren ui");
 	});
 
 	test("path traversal is rejected (falls through to index.html)", async () => {
