@@ -494,7 +494,7 @@ export async function bridgeRunStream(input: BridgeRunStreamInput): Promise<Brid
  * is handled by `cancelRun`. Future runtimes extend this dispatch by
  * adding their runtime-specific terminal shape.
  */
-function detectRuntimeTerminal(event: RunEvent): RunTerminalState | null {
+export function detectRuntimeTerminal(event: RunEvent): RunTerminalState | null {
 	if (event.kind !== "state_change") return null;
 	if (event.stream !== "system") return null;
 	const payload = event.payload;
