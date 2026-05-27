@@ -82,8 +82,9 @@ bun run check:all
 
 This runs: `check:coverage` (tests + coverage ratchet), `lint`,
 `typecheck`, `validate:agents-md`, `check:file-sizes`,
-`check:debt-markers`, `check:deps`, `check:bundle-size:build`,
-`gen:docs:check`, and `gen:openapi:check` — the same set CI enforces (see
+`check:debt-markers`, `check:duplicates` (jscpd), `check:deps`,
+`check:bundle-size:build`, `gen:docs:check`, and `gen:openapi:check`
+— the same set CI enforces (see
 `.github/workflows/ci.yml`). Do not merge with lint warnings; fix at
 write time or promote to error in `biome.json`.
 
@@ -155,7 +156,7 @@ workspace. The fix for a knip hit is almost always `bun remove <dep>`
 (or `cd src/ui && bun remove <dep>`) — only ignore a dep when it's
 resolved by string at runtime (e.g. a pino transport target).
 
-CI also runs `bun run check:duplicates` (warren-61e9), which invokes
+`check:all` runs `bun run check:duplicates` (warren-61e9), which invokes
 [jscpd](https://github.com/kucherenko/jscpd) over `src/**/*.{ts,tsx}` to
 detect copy-pasted code. Config lives in `.jscpd.json`: tests,
 auto-generated migrations (`src/db/migrations/`), drizzle schema

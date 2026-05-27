@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **`chore(dx)`** — `bun run check:all` now invokes `check:duplicates`
+  (jscpd) inline so the local quality gate mirrors `ci.yml` exactly.
+  Previously CI ran jscpd on top of `check:all`; that drift is gone
+  (warren-2bcd / pl-da5b step 2).
+
 ## [0.6.13] — 2026-05-27
 
 Patch release fixing structured JSON 404s on unmatched API-prefix paths,
