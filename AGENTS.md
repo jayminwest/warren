@@ -66,10 +66,10 @@ bun run check:all
 ```
 
 This runs: `test`, `lint`, `typecheck`, `validate:agents-md`,
-`check:file-sizes`, `check:debt-markers`, `check:deps`, and
-`check:bundle-size:build` — the same set CI enforces (see
-`.github/workflows/ci.yml`). Do not merge with lint warnings; fix at
-write time or promote to error in `biome.json`.
+`check:file-sizes`, `check:debt-markers`, `check:deps`,
+`check:bundle-size:build`, and `gen:docs:check` — the same set CI
+enforces (see `.github/workflows/ci.yml`). Do not merge with lint
+warnings; fix at write time or promote to error in `biome.json`.
 
 Details on the additional checks:
 
@@ -107,6 +107,13 @@ entries.
   existing `src/ui/dist` tree, or `bun run check:bundle-size:build` to build
   first; CI uses the explicit `build:ui` + `check:bundle-size` pair so
   the build step is visible in logs.
+
+- **`gen:docs:check`** (warren-e5fb) — verifies that `docs/http-api.md`
+  is in sync with the `ROUTE_TABLE` array in `src/server/handlers.ts`.
+  The route table is the canonical HTTP API surface; this guard keeps
+  the doc from drifting. To refresh after editing routes, run
+  `bun run gen:docs` and commit the result. CI runs the `--check` mode
+  via `check:all`.
 
 `check:deps` (warren-d109) wraps [knip](https://knip.dev) in
 `--dependencies` mode (config in `knip.json`) to flag unused or
