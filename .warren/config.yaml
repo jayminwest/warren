@@ -29,6 +29,13 @@ defaultModel: claude-opus-4-7
 # built-in "burrow".
 runBranchPrefix: warren
 
+# Canonical green-tree command for this repo. Surfaced to agents via
+# $WARREN_QUALITY_GATE (composeRunEnv in src/runs/spawn.ts) so the
+# built-in claude-code / sapling / pi prompts don't fall back to the
+# fuzzy "look for it in CLAUDE.md" heuristic. Must mirror CI — see
+# warren-57cd / pl-da5b step 4 and AGENTS.md "Quality gates".
+qualityGate: bun run check:all
+
 # Per-run preview environment. CANONICAL home is .warren/preview.yaml
 # (top-level document = the preview block itself). The nested form below
 # is still accepted here for smooth migration; preview.yaml wins on
