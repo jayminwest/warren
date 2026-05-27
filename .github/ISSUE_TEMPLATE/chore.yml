@@ -1,0 +1,91 @@
+name: Chore / Maintenance
+description: Internal cleanup, tooling, CI, refactor, or test work
+labels: ["type/chore", "status/needs-triage"]
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What needs to be done, and why?
+    validations:
+      required: true
+
+  - type: textarea
+    id: motivation
+    attributes:
+      label: Motivation
+      description: |
+        Why now? Link to the failing CI run, debt-marker tracker, or
+        upstream change that prompted this work.
+    validations:
+      required: false
+
+  - type: dropdown
+    id: kind
+    attributes:
+      label: Kind
+      description: Pick the closest category. Used to set the secondary type label.
+      options:
+        - "chore -- general maintenance / tooling"
+        - "refactor -- internal restructure, no behaviour change"
+        - "test -- add or strengthen tests"
+        - "performance -- latency / throughput / memory"
+        - "security -- security-sensitive change"
+        - "docs -- documentation-only"
+      default: 0
+    validations:
+      required: true
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      description: See `docs/labels.md` for the full priority taxonomy.
+      options:
+        - "P0 -- critical / blocking"
+        - "P1 -- high"
+        - "P2 -- medium"
+        - "P3 -- low"
+      default: 2
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Affected area
+      multiple: true
+      options:
+        - "area/server"
+        - "area/ui"
+        - "area/cli"
+        - "area/supervisor"
+        - "area/burrow"
+        - "area/db"
+        - "area/agents"
+        - "area/runs"
+        - "area/projects"
+        - "area/plot"
+        - "area/plan-runs"
+        - "area/preview"
+        - "area/scheduler"
+        - "area/acceptance"
+        - "area/build"
+        - "area/docs"
+        - "area/deps"
+        - "unsure -- maintainer will triage"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: effort
+    attributes:
+      label: Estimated effort
+      description: Rough sizing; maintainers may revise during triage.
+      options:
+        - "effort/small -- < 1 day"
+        - "effort/medium -- 1-3 days"
+        - "effort/large -- > 3 days (split via `sd plan`)"
+      default: 0
+    validations:
+      required: false
