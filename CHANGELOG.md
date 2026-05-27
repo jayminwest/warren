@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.13] — 2026-05-27
+
+Patch release fixing structured JSON 404s on unmatched API-prefix paths,
+plus CI test-timing visibility and a Postgres migration FK fix.
+
+### Fixed
+
+- **`fix(server)`** — Requests to unmatched paths under an API prefix
+  (e.g. `GET /runs/<id>/status`) now return the canonical JSON
+  `not_found` / `method_not_allowed` envelope instead of falling
+  through to the SPA HTML shell. The guard is lifted into dispatch in
+  `src/server/server.ts` so there is exactly one place that decides
+  "API path → JSON 404"; the redundant in-handler check in
+  `src/server/ui.ts` was removed (pl-230a, warren-635d, warren-b1b8,
+  warren-66bd, warren-ac91).
+- **`fix(db)`** — Postgres migration `0008_add_plan_runs.sql` no longer
+  schema-qualifies its FK targets as `"public"."plan_runs"`, matching
+  the `0004` fix from the previous release. Migrations now resolve via
+  `search_path` and succeed under isolated test schemas.
+
+### Changed
+
+- **`ci`** — CI now runs `bun run test:ci` (emits
+  `test-results/junit.xml` via `bun test --reporter=junit`) and
+  publishes a slowest-suites / slowest-tests markdown summary via
+  `bun run report:test-timing`. JUnit XML is uploaded as the
+  `bun-test-junit` artifact on every run, including failures, for
+  offline regression triage and perf ratchets (warren-cec7).
+
 ## [0.6.12] — 2026-05-27
 
 Patch release tightening server input parsing and de-duplicating JSON
