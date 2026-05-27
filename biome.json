@@ -124,7 +124,7 @@
 				"src/server/handlers/projects.ts",
 				"src/server/handlers/runs.ts",
 				"src/server/integration.multi-worker.test.ts",
-				"src/server/main.ts",
+				"src/server/main/index.ts",
 				"src/server/server.ts",
 				"src/ui-tests/plot-detail-run-plan-dialog.test.ts"
 			],

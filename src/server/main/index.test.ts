@@ -9,8 +9,8 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { WARREN_DB_POOL_MAX_ENV } from "../db/client.ts";
-import { resolvePgPoolMax } from "./main.ts";
+import { WARREN_DB_POOL_MAX_ENV } from "../../db/client.ts";
+import { resolvePgPoolMax } from "./index.ts";
 
 describe("resolvePgPoolMax", () => {
 	test("undefined / blank env returns undefined (let openDatabase default win)", () => {

@@ -34,7 +34,11 @@ export {
 	isApiPath,
 	isAuthExempt,
 } from "./handlers/index.ts";
-export { type BootServerOptions, bootServer, type WarrenServerHandle } from "./main.ts";
+export {
+	type BootServerOptions,
+	bootServer,
+	type WarrenServerHandle,
+} from "./main/index.ts";
 export {
 	DEFAULT_WORKER_PROBE_INTERVAL_MS,
 	DEFAULT_WORKER_PROBE_TIMEOUT_MS,

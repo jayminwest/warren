@@ -38,7 +38,6 @@
 		"src/server/handlers/runs.test.ts": 988,
 		"src/server/handlers/runs.ts": 789,
 		"src/server/integration.multi-worker.test.ts": 553,
-		"src/server/main.ts": 700,
 		"src/server/server.test.ts": 536,
 		"src/warren-config/schema.test.ts": 757
 	}

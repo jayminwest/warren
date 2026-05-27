@@ -11,7 +11,11 @@
  * `bootServer` itself; nothing to surface here.
  */
 
-import { type BootServerOptions, bootServer, type WarrenServerHandle } from "../../server/main.ts";
+import {
+	type BootServerOptions,
+	bootServer,
+	type WarrenServerHandle,
+} from "../../server/main/index.ts";
 import type { CliContext } from "../output.ts";
 import { formatError } from "../output.ts";
 

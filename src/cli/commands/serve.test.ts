@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { WarrenServerHandle } from "../../server/main.ts";
+import type { WarrenServerHandle } from "../../server/main/index.ts";
 import type { CliContext } from "../output.ts";
 import { runServe } from "./serve.ts";
 

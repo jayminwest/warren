@@ -21,15 +21,20 @@
  * fail-fast when the socket is unreachable) is async. The probe is
  * non-fatal — warren will still start if burrow is down so /readyz
  * can report it — but logged.
+ *
+ * Split into a `main/` subdirectory (warren-8d3d / pl-9088 step 10):
+ * - `./utils.ts`         — env/process/db helpers (incl. `defaultSpawn`,
+ *                          `resolvePgPoolMax`)
+ * - `./logging.ts`       — pino → narrow logger adapters
+ * - `./preview-wiring.ts` — preview signed-cookie + proxy assembly
  */
 
 import { join } from "node:path";
 import pino from "pino";
-import { BurrowClientPool } from "../burrow-client/index.ts";
-import { type AnyWarrenDb, openDatabase, WARREN_DB_POOL_MAX_ENV } from "../db/client.ts";
-import { DrizzleAdapter } from "../db/repos/drizzle-adapter.ts";
-import { createRepos } from "../db/repos/index.ts";
-import { parseDatabaseUrl } from "../db/url.ts";
+import { BurrowClientPool } from "../../burrow-client/index.ts";
+import { openDatabase } from "../../db/client.ts";
+import { DrizzleAdapter } from "../../db/repos/drizzle-adapter.ts";
+import { createRepos } from "../../db/repos/index.ts";
 import {
 	autoTransitionPlotToDone,
 	bootPlanRunCoordinator,
@@ -37,33 +42,16 @@ import {
 	createPrMergeChecker,
 	defaultPlotStatusSetter,
 	loadPlanRunCoordinatorConfigFromEnv,
-} from "../plan-runs/index.ts";
-import { createDefaultPlanSynthesizer } from "../plot-plan-runs/index.ts";
-import {
-	createDefaultPlotFormalizer,
-	createPlotAggregator,
-	createPlotResolver,
-	defaultPlotAttacher,
-	defaultPlotCreator,
-	defaultPlotIntentEditor,
-	defaultPlotPrMerger,
-	defaultPlotQuestionAnswerer,
-	defaultPlotReader,
-	defaultPlotRenamer,
-	defaultPlotStatusChanger,
-} from "../plots/index.ts";
-import { createPreviewAuth, type PreviewAuth } from "../preview/cookie.ts";
+} from "../../plan-runs/index.ts";
 import {
 	loadPreviewEvictionConfigFromEnv,
 	startPreviewEvictionWorker,
-} from "../preview/eviction/index.ts";
-import { loadPreviewLaunchConfigFromEnv } from "../preview/launch/index.ts";
-import { loadPreviewPortRangeFromEnv, PreviewPortAllocator } from "../preview/port-allocator.ts";
-import { createPreviewProxyHandler } from "../preview/proxy/index.ts";
-import type { SpawnFn, SpawnOptions, SpawnResult } from "../projects/clone.ts";
-import { loadProjectsConfigFromEnv } from "../projects/config.ts";
-import { seedBuiltinAgents } from "../registry/builtins/index.ts";
-import { loadCanopyRegistryConfigFromEnv } from "../registry/config.ts";
+} from "../../preview/eviction/index.ts";
+import { loadPreviewLaunchConfigFromEnv } from "../../preview/launch/index.ts";
+import { loadPreviewPortRangeFromEnv, PreviewPortAllocator } from "../../preview/port-allocator.ts";
+import { loadProjectsConfigFromEnv } from "../../projects/config.ts";
+import { seedBuiltinAgents } from "../../registry/builtins/index.ts";
+import { loadCanopyRegistryConfigFromEnv } from "../../registry/config.ts";
 import {
 	bootPauseDetector,
 	defaultPlotEventReader,
@@ -71,21 +59,44 @@ import {
 	loadRunBranchPrefixFromEnv,
 	RunEventBroker,
 	resolveDispatcherHandle,
-} from "../runs/index.ts";
-import { showSeed } from "../seeds-cli/index.ts";
+} from "../../runs/index.ts";
+import { showSeed } from "../../seeds-cli/index.ts";
 import {
 	loadWarrenServerConfigFromFile,
 	requireSharedBurrowToken,
-} from "../server-config/index.ts";
-import { loadTriggerSchedulerConfigFromEnv } from "../triggers/index.ts";
-import { createWarrenConfigCache } from "../warren-config/index.ts";
-import { NO_AUTH, resolveAuth } from "./auth.ts";
-import { bootBridges } from "./bridges.ts";
-import { type EnvLike, loadServerConfigFromEnv } from "./config.ts";
-import { loadWorkerProbeConfigFromEnv, startWorkerProbe } from "./probe.ts";
-import { bootScheduler } from "./scheduler.ts";
-import { startServer } from "./server.ts";
-import type { AuthProvider, Logger, ServeHandle, ServerDeps } from "./types.ts";
+} from "../../server-config/index.ts";
+import { loadTriggerSchedulerConfigFromEnv } from "../../triggers/index.ts";
+import { createWarrenConfigCache } from "../../warren-config/index.ts";
+import { NO_AUTH, resolveAuth } from "../auth.ts";
+import { bootBridges } from "../bridges.ts";
+import { type EnvLike, loadServerConfigFromEnv } from "../config.ts";
+import { loadWorkerProbeConfigFromEnv, startWorkerProbe } from "../probe.ts";
+import { bootScheduler } from "../scheduler.ts";
+import { startServer } from "../server.ts";
+import type { AuthProvider, ServeHandle } from "../types.ts";
+import { buildServerDeps } from "./deps.ts";
+import {
+	bridgeLoggerFromPino,
+	pauseLoggerFromPino,
+	planRunLoggerFromPino,
+	previewEvictionLoggerFromPino,
+	probeLoggerFromPino,
+	schedulerLoggerFromPino,
+} from "./logging.ts";
+import { createPreviewAuthAndProxy } from "./preview-wiring.ts";
+import {
+	closeDatabase,
+	defaultSpawn,
+	parseIntEnv,
+	parseTrueEnv,
+	redactDbUrl,
+	resolvePgPoolMax,
+} from "./utils.ts";
+
+// Re-export `resolvePgPoolMax` so the strict round-trip check stays
+// accessible from `main.test.ts` (and any other importer that grew
+// before the split).
+export { resolvePgPoolMax } from "./utils.ts";
 
 export interface BootServerOptions {
 	readonly env?: EnvLike;
@@ -384,112 +395,36 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 		);
 	}
 
-	// Preview signed-cookie auth (R-19 / SPEC §11.L, warren-8a10; path-mode
-	// scope warren-edff). Both surfaces (login handshake + proxy preamble)
-	// need the same secret; derive from `WARREN_API_TOKEN` so a fresh-install
-	// operator doesn't have a second token to manage.
-	//
-	// Subdomain mode requires `WARREN_PREVIEW_HOST` (the cookie's Domain
-	// scope and the proxy's Host match both anchor to it). Path mode
-	// (default) doesn't — previews ride on the warren host itself, so the
-	// only disabler is `--no-auth` (no token to sign with).
-	const previewAuth: PreviewAuth | undefined =
-		serverConfig.token !== null &&
-		(previewLaunchConfig.mode === "path" || previewLaunchConfig.host !== null)
-			? createPreviewAuth(serverConfig.token, {
-					scope:
-						previewLaunchConfig.mode === "path"
-							? { mode: "path" }
-							: { mode: "subdomain", cookieDomain: `.${previewLaunchConfig.host}` },
-				})
-			: undefined;
-	const previewHostForDeps =
-		previewLaunchConfig.host !== null ? previewLaunchConfig.host : undefined;
-
-	// Plot aggregator (warren-c167 / pl-9d6a step 2). 5s in-memory cache,
-	// fan-out across every `hasPlot=true` project, byte-identical empty
-	// contract for deployments where no project ships `.plot/`. Threaded
-	// through ServerDeps so `GET /plots` (and later mutating handlers in
-	// pl-9d6a) read the same cache.
-	const plotAggregator = createPlotAggregator({
-		projectsRepo: repos.projects,
+	const { previewAuth, previewProxy } = createPreviewAuthAndProxy({
+		token: serverConfig.token,
+		previewLaunchConfig,
+		repos,
 		logger,
-		// `paused_run` needs-attention signal source (warren-d693 /
-		// pl-0344 step 9). `repos.runs` already satisfies
-		// `AggregatorRunsRepo`'s narrow surface.
-		runsRepo: repos.runs,
-		...(opts.now !== undefined ? { now: () => (opts.now as () => Date)().getTime() } : {}),
+		...(opts.now !== undefined ? { now: opts.now } : {}),
 	});
-
-	const deps: ServerDeps = {
+	const deps = buildServerDeps({
 		repos,
 		db,
 		burrowClientPool,
 		broker,
 		bridges: bridgesBoot.registry,
-		...(canopyConfig !== null ? { canopyConfig } : {}),
+		canopyConfig,
 		projectsConfig,
 		logger,
 		uiDistDir: serverConfig.uiDistDir,
-		spawn: defaultSpawn,
-		seedsCli: { sdBinary: schedulerConfig.sdBinary, spawn: defaultSpawn },
 		autoOpenPr,
 		warrenConfigs,
-		...(runBranchPrefixDefault !== undefined ? { runBranchPrefixDefault } : {}),
+		runBranchPrefixDefault,
 		previewPortRange,
-		previewMaxLive: previewEvictionConfig.maxLive,
-		previewMode: previewLaunchConfig.mode,
-		...(previewHostForDeps !== undefined ? { previewHost: previewHostForDeps } : {}),
-		...(previewAuth !== undefined ? { previewAuth } : {}),
-		plotAggregator,
-		plotCreator: defaultPlotCreator,
-		plotAttacher: defaultPlotAttacher,
-		plotPrMerger: defaultPlotPrMerger,
-		plotIntentEditor: defaultPlotIntentEditor,
-		plotRenamer: defaultPlotRenamer,
-		plotReader: defaultPlotReader,
-		plotStatusChanger: defaultPlotStatusChanger,
-		plotQuestionAnswerer: defaultPlotQuestionAnswerer,
-		plotFormalizer: createDefaultPlotFormalizer({ repos }),
-		plotResolver: createPlotResolver({
-			projectsRepo: repos.projects,
-			aggregator: plotAggregator,
-		}),
-		planSynthesizer: createDefaultPlanSynthesizer({
-			seedsCli: { sdBinary: schedulerConfig.sdBinary, spawn: defaultSpawn },
-		}),
+		previewLaunchConfig,
+		previewEvictionConfig,
+		previewAuth,
+		sdBinary: schedulerConfig.sdBinary,
 		...(opts.now !== undefined ? { now: opts.now } : {}),
-	};
+	});
 
 	const auth: AuthProvider =
 		serverConfig.token !== null ? resolveAuth({ token: serverConfig.token }) : NO_AUTH;
-
-	// Wire the preview proxy preamble. Mode discriminator from
-	// `WARREN_PREVIEW_MODE` (warren-fcb7) picks the routing branch:
-	// subdomain mode keys off `Host: run-<id>.<host>` and requires
-	// `WARREN_PREVIEW_HOST`. Path mode (warren-edff) keys off the
-	// request pathname and works without a host — the proxy derives
-	// the preview origin from the inbound request, the cookie scopes
-	// itself per-runId via `Path=/p/<id>/`.
-	const previewProxy =
-		previewAuth !== undefined &&
-		(previewLaunchConfig.mode === "path" || previewLaunchConfig.host !== null)
-			? createPreviewProxyHandler({
-					repos,
-					previewAuth,
-					config:
-						previewLaunchConfig.mode === "path"
-							? { mode: "path", host: previewLaunchConfig.host }
-							: { mode: "subdomain", host: previewLaunchConfig.host as string },
-					...(opts.now !== undefined ? { now: opts.now } : {}),
-				})
-			: undefined;
-	if (previewLaunchConfig.host !== null && previewAuth === undefined) {
-		logger.warn(
-			{ host: previewLaunchConfig.host },
-			"WARREN_PREVIEW_HOST is set but --no-auth disables the signed-cookie surface; preview proxy off",
-		);
-	}
 
 	const handle = startServer(deps, {
 		transport: serverConfig.transport,
@@ -521,174 +456,11 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 	};
 }
 
-function probeLoggerFromPino(logger: Logger): {
-	info(obj: object, msg?: string): void;
-	warn(obj: object, msg?: string): void;
-	error(obj: object, msg?: string): void;
-	debug?(obj: object, msg?: string): void;
-} {
-	return {
-		info: (obj, msg) => logger.info(obj, msg),
-		warn: (obj, msg) => logger.warn(obj, msg),
-		error: (obj, msg) => logger.error(obj, msg),
-		debug: (obj, msg) => logger.debug?.(obj, msg),
-	};
-}
-
 /**
- * Production `Bun.spawn` adaptor matching the SpawnFn shape the
- * registry/projects modules and the Phase-13 `/readyz` probes consume.
- * Identical to the CLI's `defaultSpawn` (output.ts) and the local
- * `defaultSpawn` in handlers.ts; the duplication is deliberate so
- * neither surface imports the other.
- */
-const defaultSpawn: SpawnFn = async (
-	cmd: readonly string[],
-	opts: SpawnOptions,
-): Promise<SpawnResult> => {
-	const proc = Bun.spawn({
-		cmd: [...cmd],
-		cwd: opts.cwd,
-		stdout: "pipe",
-		stderr: "pipe",
-	});
-	const timer =
-		opts.timeoutMs !== undefined && opts.timeoutMs > 0
-			? setTimeout(() => proc.kill(), opts.timeoutMs)
-			: null;
-	const [stdout, stderr, exitCode] = await Promise.all([
-		new Response(proc.stdout).text(),
-		new Response(proc.stderr).text(),
-		proc.exited,
-	]);
-	if (timer !== null) clearTimeout(timer);
-	return { stdout, stderr, exitCode: exitCode ?? 0 };
-};
-
-async function closeDatabase(db: AnyWarrenDb): Promise<void> {
-	try {
-		await db.close();
-	} catch {
-		// Closing twice during a panicked shutdown is fine.
-	}
-}
-
-/**
- * Read `WARREN_DB_POOL_MAX` (pg pool max). Undefined / blank → use the
- * `openDatabase` default. The pool size only matters on the postgres
- * branch; the sqlite branch ignores it.
- */
-export function resolvePgPoolMax(env: EnvLike): number | undefined {
-	return parseIntEnv(env, WARREN_DB_POOL_MAX_ENV, undefined);
-}
-
-/**
- * Strip the userinfo (`user:password@`) from a postgres URL before
- * logging. sqlite URLs and bare sentinels pass through unchanged.
- * Defensive: any URL-parse failure falls back to the dialect-and-scheme
- * shorthand so a malformed URL never leaks creds into the log.
- */
-function redactDbUrl(url: string): string {
-	const parsed = parseDatabaseUrl(url);
-	if (parsed.dialect === "sqlite") return url;
-	try {
-		const u = new URL(parsed.connectionString);
-		if (u.username !== "" || u.password !== "") {
-			u.username = "";
-			u.password = "";
-			return u.toString();
-		}
-		return parsed.connectionString;
-	} catch {
-		return "postgres://<unparseable>";
-	}
-}
-
-function bridgeLoggerFromPino(logger: Logger): {
-	info?(obj: object, msg?: string): void;
-	warn?(obj: object, msg?: string): void;
-	error?(obj: object, msg?: string): void;
-} {
-	return {
-		info: (obj, msg) => logger.info(obj, msg),
-		warn: (obj, msg) => logger.warn(obj, msg),
-		error: (obj, msg) => logger.error(obj, msg),
-	};
-}
-
-function schedulerLoggerFromPino(logger: Logger): {
-	info(obj: Record<string, unknown>, msg?: string): void;
-	warn(obj: Record<string, unknown>, msg?: string): void;
-	error(obj: Record<string, unknown>, msg?: string): void;
-} {
-	return {
-		info: (obj, msg) => logger.info(obj, msg),
-		warn: (obj, msg) => logger.warn(obj, msg),
-		error: (obj, msg) => logger.error(obj, msg),
-	};
-}
-
-function planRunLoggerFromPino(logger: Logger): {
-	info(obj: Record<string, unknown>, msg?: string): void;
-	warn(obj: Record<string, unknown>, msg?: string): void;
-	error(obj: Record<string, unknown>, msg?: string): void;
-} {
-	return {
-		info: (obj, msg) => logger.info(obj, msg),
-		warn: (obj, msg) => logger.warn(obj, msg),
-		error: (obj, msg) => logger.error(obj, msg),
-	};
-}
-
-function pauseLoggerFromPino(logger: Logger): {
-	info(obj: Record<string, unknown>, msg?: string): void;
-	warn(obj: Record<string, unknown>, msg?: string): void;
-	error(obj: Record<string, unknown>, msg?: string): void;
-} {
-	return {
-		info: (obj, msg) => logger.info(obj, msg),
-		warn: (obj, msg) => logger.warn(obj, msg),
-		error: (obj, msg) => logger.error(obj, msg),
-	};
-}
-
-function parseTrueEnv(raw: string | undefined): boolean {
-	if (raw === undefined) return false;
-	const t = raw.trim().toLowerCase();
-	return t === "1" || t === "true" || t === "yes";
-}
-
-function parseIntEnv<F extends number | undefined>(
-	env: EnvLike,
-	name: string,
-	fallback: F,
-): number | F {
-	const raw = env[name];
-	if (raw === undefined || raw === "") return fallback;
-	const n = Number.parseInt(raw, 10);
-	if (!Number.isFinite(n) || n <= 0 || String(n) !== raw) {
-		throw new Error(`${name} must be a positive integer (got ${JSON.stringify(raw)})`);
-	}
-	return n;
-}
-
-function previewEvictionLoggerFromPino(logger: Logger): {
-	info(obj: Record<string, unknown>, msg?: string): void;
-	warn(obj: Record<string, unknown>, msg?: string): void;
-	error(obj: Record<string, unknown>, msg?: string): void;
-} {
-	return {
-		info: (obj, msg) => logger.info(obj, msg),
-		warn: (obj, msg) => logger.warn(obj, msg),
-		error: (obj, msg) => logger.error(obj, msg),
-	};
-}
-
-/**
- * CLI entry. Allows `bun run src/server/main.ts` to act as the warren
- * serve binary the supervisor (Phase 12) execs. Catches startup errors,
- * formats them, and exits non-zero so docker/fly's restart policy
- * kicks in.
+ * CLI entry. Allows `bun run src/server/main/index.ts` to act as the
+ * warren serve binary the supervisor (Phase 12) execs. Catches startup
+ * errors, formats them, and exits non-zero so docker/fly's restart
+ * policy kicks in.
  */
 if (import.meta.main) {
 	bootServer().catch((err) => {
