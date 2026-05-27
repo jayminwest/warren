@@ -1,17 +1,7 @@
 #!/usr/bin/env bash
+# Single source of truth for the pre-commit gate: run the same battery CI
+# runs (see warren-008a / pl-da5b). Diverging from `check:all` here would
+# recreate the gate-drift that warren-5797 was opened to kill. If a check
+# is too slow for the hook, fix the check — don't carve out a subset.
 set -euo pipefail
-
-echo "Running lint..."
-bun run lint
-
-echo "Running typecheck..."
-bun run typecheck
-
-echo "Validating AGENTS.md..."
-bun run validate:agents-md
-
-echo "Checking file sizes..."
-bun run check:file-sizes
-
-echo "Checking debt markers..."
-bun run check:debt-markers
+exec bun run check:all

@@ -63,7 +63,7 @@
 		"build:ui": "cd src/ui && bun install && bun run build",
 		"acceptance": "bun run scripts/acceptance/run.ts",
 		"acceptance:container": "bun run scripts/acceptance/run.ts --mode container",
-		"prepare": "[ -d .git ] && git config core.hooksPath scripts/hooks || true"
+		"prepare": "[ -e .git ] && git config core.hooksPath scripts/hooks || true"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "^2.4.10",
