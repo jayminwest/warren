@@ -107,6 +107,19 @@ deploy:
 
 The deploy-scoped token is bound to a single app and cannot list secrets, ssh, or touch other apps, so it's safe to live in CI. See `.github/workflows/release.yml` for the reference shape used by `warren-deployed.fly.dev`.
 
+### Observability on a live deploy
+
+Warren ships enough operator-visible surface for a single-box / single-Fly-app deploy to be inspectable without bolting on extra infrastructure. The pieces:
+
+- **Health & readiness probes.** `GET /healthz` is a cheap liveness check (returns `{ok: true}`, auth-exempt — point Fly's `[[services.http_checks]]` or any uptime monitor at it). `GET /readyz` runs deeper diagnostics (DB reachable, bwrap usable, canopy clone fresh when `CANOPY_REPO_URL` is set) and returns a `DiagnosticCheck[]` payload — use it for deploy gating, not for hot-path liveness. `GET /version` returns `{version}` straight from `src/index.ts` so you can confirm a rollout actually swapped the image.
+- **Structured JSON logs.** The server emits one [pino](https://getpino.io) JSON line per event on stdout (name `warren`, level controlled by `WARREN_LOG_LEVEL`, default `info`). On Fly that means everything is queryable with `fly logs -a <your-warren-app>` and via the **Logs** tab on the Fly dashboard (`https://fly.io/apps/<your-warren-app>/monitoring`). Pipe through `| jq` locally for ad-hoc filtering; ship to an external store with a [pino transport](https://getpino.io/#/docs/transports) if you need retention beyond Fly's window.
+- **Correlation IDs.** Every HTTP response carries an `X-Request-ID` header (`src/server/request-id.ts`, warren-30af). Warren honours a well-formed inbound `X-Request-ID` and otherwise mints one; the same id is bound into the per-request pino child logger, so grepping `fly logs | jq 'select(.req_id == "…")'` reconstructs the full server-side trace for one client call. Forward the header from any reverse proxy in front of warren to keep the chain unbroken.
+- **Per-run cost & token usage.** `runs.cost_usd` and `runs.tokens_*` columns are populated for the `pi` and `claude-code` built-ins (SPEC §11.K); the UI run-detail page surfaces them and `GET /analytics/cost?from=&to=&projectId=` aggregates across runs (`src/db/repos/runs.ts:listForAnalytics`). This is reporting, not enforcement — budget caps are deferred to R-17.
+- **Fly dashboards.** The **Metrics** tab on the Fly app dashboard graphs CPU, RAM, and per-volume IO out of the box; pair it with the **Logs** tab above for incident triage. `fly status -a <your-warren-app>` and `fly vm status` print machine + volume state from the CLI. `fly ssh console -a <your-warren-app>` drops you into the running container if you need to inspect `/data/warren.db` directly (sqlite default) or tail the canopy clone under `WARREN_CANOPY_DIR`.
+- **Pre-flight checks.** Run `warren doctor` (`src/cli/commands/doctor.ts`) against a deployed instance to surface common misconfigurations — empty/placeholder bearer tokens, unbalanced preview markers, missing `WARREN_PREVIEW_HOST` when previews are wired, etc. Cheaper than reading the logs after a failed run.
+
+There is no built-in Prometheus / OpenTelemetry exporter in V1. If you need one, the request-id + pino combination is the seam to extend; the route table (`ROUTE_TABLE` in `src/server/handlers.ts`, documented in [`docs/http-api.md`](docs/http-api.md)) is the stable surface to instrument against.
+
 ## Power features (opt-in)
 
 Warren bundles a small set of [os-eco](https://github.com/jayminwest/os-eco) tools as built-in features. They're not required for a basic run. Each lights up when you use it and stays silent when you don't.
