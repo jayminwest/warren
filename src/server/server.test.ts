@@ -89,8 +89,20 @@ async function depsFor(
 	};
 }
 
+const tempDirs: string[] = [];
+function mkTempDir(prefix: string): string {
+	const dir = mkdtempSync(join(tmpdir(), prefix));
+	tempDirs.push(dir);
+	return dir;
+}
+function cleanupTempDirs(): void {
+	while (tempDirs.length > 0) {
+		const dir = tempDirs.pop();
+		if (dir !== undefined) rmSync(dir, { recursive: true, force: true });
+	}
+}
 function setupUiDist(): string {
-	const dir = mkdtempSync(join(tmpdir(), "warren-server-ui-"));
+	const dir = mkTempDir("warren-server-ui-");
 	writeFileSync(join(dir, "index.html"), "<html><body>warren ui</body></html>");
 	mkdirSync(join(dir, "assets"), { recursive: true });
 	writeFileSync(join(dir, "assets", "app.js"), "console.log('hi')");
@@ -127,6 +139,7 @@ describe("startServer — lifecycle", () => {
 			handle = null;
 		}
 		await db.close();
+		cleanupTempDirs();
 	});
 
 	test("binds an ephemeral port and exposes the resolved url", async () => {
@@ -177,33 +190,29 @@ describe("startServer — lifecycle", () => {
 		// Without this, a fresh browser hitting `/` gets a 401 envelope and
 		// the user can never reach Login.tsx to enter their bearer token.
 		const distDir = setupUiDist();
-		try {
-			handle = startServer(
-				await depsFor(repos, undefined, { uiDistDir: distDir }),
-				tcpOpts({ auth: bearerAuth("secret") }),
-			);
-			const base = tcpUrl(handle);
+		handle = startServer(
+			await depsFor(repos, undefined, { uiDistDir: distDir }),
+			tcpOpts({ auth: bearerAuth("secret") }),
+		);
+		const base = tcpUrl(handle);
 
-			const root = await fetch(`${base}/`);
-			expect(root.status).toBe(200);
-			expect(root.headers.get("content-type")).toContain("text/html");
-			expect(await root.text()).toContain("warren ui");
+		const root = await fetch(`${base}/`);
+		expect(root.status).toBe(200);
+		expect(root.headers.get("content-type")).toContain("text/html");
+		expect(await root.text()).toContain("warren ui");
 
-			const asset = await fetch(`${base}/assets/app.js`);
-			expect(asset.status).toBe(200);
-			expect(asset.headers.get("content-type")).toContain("text/javascript");
+		const asset = await fetch(`${base}/assets/app.js`);
+		expect(asset.status).toBe(200);
+		expect(asset.headers.get("content-type")).toContain("text/javascript");
 
-			// React Router deep link → falls through to index.html, no 401.
-			const deep = await fetch(`${base}/login`);
-			expect(deep.status).toBe(200);
-			expect(await deep.text()).toContain("warren ui");
+		// React Router deep link → falls through to index.html, no 401.
+		const deep = await fetch(`${base}/login`);
+		expect(deep.status).toBe(200);
+		expect(await deep.text()).toContain("warren ui");
 
-			// API endpoints stay gated.
-			const agents = await fetch(`${base}/agents`);
-			expect(agents.status).toBe(401);
-		} finally {
-			rmSync(distDir, { recursive: true, force: true });
-		}
+		// API endpoints stay gated.
+		const agents = await fetch(`${base}/agents`);
+		expect(agents.status).toBe(401);
 	});
 
 	test("unknown path → 404 not_found envelope", async () => {
@@ -212,6 +221,19 @@ describe("startServer — lifecycle", () => {
 		expect(res.status).toBe(404);
 		const body = (await res.json()) as { error: { code: string } };
 		expect(body.error.code).toBe("not_found");
+	});
+
+	test("unmatched API-prefix path → JSON 404 even with UI dist (warren-635d)", async () => {
+		// pl-230a regression: /runs/<id>/status is under the /runs API prefix
+		// but matches no route. With a UI dist installed the GET / fallback
+		// exists in the route table; dispatch must still short-circuit to the
+		// JSON not_found envelope, never the SPA HTML shell.
+		const dist = setupUiDist();
+		handle = startServer(await depsFor(repos, undefined, { uiDistDir: dist }), tcpOpts());
+		const res = await fetch(`${tcpUrl(handle)}/runs/run_abc/status`);
+		expect(res.status).toBe(404);
+		expect(res.headers.get("content-type")).toContain("application/json");
+		expect(((await res.json()) as { error: { code: string } }).error.code).toBe("not_found");
 	});
 
 	test("known path with wrong method → 405 method_not_allowed", async () => {
@@ -306,6 +328,7 @@ describe("startServer — routes", () => {
 			handle = null;
 		}
 		await db.close();
+		cleanupTempDirs();
 	});
 
 	test("GET /agents returns the agents list", async () => {
@@ -424,72 +447,50 @@ describe("startServer — routes", () => {
 	test("/readyz returns 200 when every mirrored check passes", async () => {
 		// Existing canopy clone + at least one agent registered + burrow
 		// probe succeeds (stubbed) + bwrap + canopy_clean stubbed clean.
-		const canopyDir = mkdtempSync(join(tmpdir(), "warren-readyz-"));
-		try {
-			handle = startServer(await depsFor(repos, undefined, { canopyDir, db }), tcpOpts());
-			const res = await fetch(`${tcpUrl(handle)}/readyz`);
-			expect(res.status).toBe(200);
-			const body = (await res.json()) as {
-				ok: boolean;
-				checks: { name: string; ok: boolean; message?: string }[];
-			};
-			expect(body.ok).toBe(true);
-			expect(body.checks.every((c) => c.ok)).toBe(true);
-			const dbCheck = body.checks.find((c) => c.name === "db_reachable");
-			expect(dbCheck?.ok).toBe(true);
-			expect(dbCheck?.message).toBe("dialect=sqlite");
-		} finally {
-			await handle?.stop();
-			handle = null;
-			rmSync(canopyDir, { recursive: true, force: true });
-		}
+		const canopyDir = mkTempDir("warren-readyz-");
+		handle = startServer(await depsFor(repos, undefined, { canopyDir, db }), tcpOpts());
+		const res = await fetch(`${tcpUrl(handle)}/readyz`);
+		expect(res.status).toBe(200);
+		const body = (await res.json()) as {
+			ok: boolean;
+			checks: { name: string; ok: boolean; message?: string }[];
+		};
+		expect(body.ok).toBe(true);
+		expect(body.checks.every((c) => c.ok)).toBe(true);
+		const dbCheck = body.checks.find((c) => c.name === "db_reachable");
+		expect(dbCheck?.ok).toBe(true);
+		expect(dbCheck?.message).toBe("dialect=sqlite");
 	});
 
 	test("/readyz flags bwrap when the probe fails", async () => {
-		const canopyDir = mkdtempSync(join(tmpdir(), "warren-readyz-bwrap-"));
+		const canopyDir = mkTempDir("warren-readyz-bwrap-");
 		const failBwrap: SpawnFn = async (cmd) => {
 			if (cmd[0]?.endsWith("bwrap")) {
 				return { stdout: "", stderr: "command not found", exitCode: 127 };
 			}
 			return { stdout: "", stderr: "", exitCode: 0 };
 		};
-		try {
-			handle = startServer(
-				await depsFor(repos, undefined, { canopyDir, spawn: failBwrap }),
-				tcpOpts(),
-			);
-			const res = await fetch(`${tcpUrl(handle)}/readyz`);
-			expect(res.status).toBe(503);
-			const body = (await res.json()) as {
-				ok: boolean;
-				checks: { name: string; ok: boolean; hint?: string }[];
-			};
-			const bwrap = body.checks.find((c) => c.name === "bwrap");
-			expect(bwrap?.ok).toBe(false);
-			expect(bwrap?.hint).toContain("bubblewrap");
-		} finally {
-			await handle?.stop();
-			handle = null;
-			rmSync(canopyDir, { recursive: true, force: true });
-		}
+		handle = startServer(
+			await depsFor(repos, undefined, { canopyDir, spawn: failBwrap }),
+			tcpOpts(),
+		);
+		const res = await fetch(`${tcpUrl(handle)}/readyz`);
+		expect(res.status).toBe(503);
+		const body = (await res.json()) as {
+			ok: boolean;
+			checks: { name: string; ok: boolean; hint?: string }[];
+		};
+		const bwrap = body.checks.find((c) => c.name === "bwrap");
+		expect(bwrap?.ok).toBe(false);
+		expect(bwrap?.hint).toContain("bubblewrap");
 	});
 
 	test("/readyz returns 200 with no canopy library configured (warren-d3e9)", async () => {
 		// Strip canopyConfig — equivalent to booting without CANOPY_REPO_URL.
 		// canopy_clone / canopy_clean become informational `ok: true` and
 		// the agents check passes because the test fixture seeded one row.
-		const deps = await depsFor(repos);
-		const noCanopyDeps: ServerDeps = {
-			repos: deps.repos,
-			burrowClientPool: deps.burrowClientPool,
-			broker: deps.broker,
-			bridges: deps.bridges,
-			projectsConfig: deps.projectsConfig,
-			logger: deps.logger,
-			uiDistDir: deps.uiDistDir,
-			...(deps.spawn !== undefined ? { spawn: deps.spawn } : {}),
-		};
-		handle = startServer(noCanopyDeps, tcpOpts());
+		const { canopyConfig: _stripCanopy, ...noCanopyDeps } = await depsFor(repos);
+		handle = startServer(noCanopyDeps satisfies ServerDeps, tcpOpts());
 		const res = await fetch(`${tcpUrl(handle)}/readyz`);
 		expect(res.status).toBe(200);
 		const body = (await res.json()) as {
@@ -503,7 +504,7 @@ describe("startServer — routes", () => {
 	});
 
 	test("/readyz flags canopy_clean when git status reports dirt", async () => {
-		const canopyDir = mkdtempSync(join(tmpdir(), "warren-readyz-dirty-"));
+		const canopyDir = mkTempDir("warren-readyz-dirty-");
 		const dirtySpawn: SpawnFn = async (cmd) => {
 			if (cmd[0]?.endsWith("bwrap")) {
 				return { stdout: "bubblewrap 0.8.0\n", stderr: "", exitCode: 0 };
@@ -513,24 +514,18 @@ describe("startServer — routes", () => {
 			}
 			return { stdout: "", stderr: "", exitCode: 0 };
 		};
-		try {
-			handle = startServer(
-				await depsFor(repos, undefined, { canopyDir, spawn: dirtySpawn }),
-				tcpOpts(),
-			);
-			const res = await fetch(`${tcpUrl(handle)}/readyz`);
-			expect(res.status).toBe(503);
-			const body = (await res.json()) as {
-				ok: boolean;
-				checks: { name: string; ok: boolean; message?: string }[];
-			};
-			const clean = body.checks.find((c) => c.name === "canopy_clean");
-			expect(clean?.ok).toBe(false);
-			expect(clean?.message).toContain("2 local mutation");
-		} finally {
-			await handle?.stop();
-			handle = null;
-			rmSync(canopyDir, { recursive: true, force: true });
-		}
+		handle = startServer(
+			await depsFor(repos, undefined, { canopyDir, spawn: dirtySpawn }),
+			tcpOpts(),
+		);
+		const res = await fetch(`${tcpUrl(handle)}/readyz`);
+		expect(res.status).toBe(503);
+		const body = (await res.json()) as {
+			ok: boolean;
+			checks: { name: string; ok: boolean; message?: string }[];
+		};
+		const clean = body.checks.find((c) => c.name === "canopy_clean");
+		expect(clean?.ok).toBe(false);
+		expect(clean?.message).toContain("2 local mutation");
 	});
 });
