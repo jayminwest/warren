@@ -32,6 +32,10 @@ jobs:
         if: always()
         run: bun run report:test-timing
 
+      - name: Code-quality metrics summary
+        if: always()
+        run: bun run report:quality-metrics
+
       - name: Upload test timing artifact
         if: always()
         uses: actions/upload-artifact@v4

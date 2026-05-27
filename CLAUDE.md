@@ -158,6 +158,15 @@ uploads `coverage/lcov.info` as a build artifact. The ratchet only
 goes UP — raise the floors when coverage improves; lowering them
 implies you removed tests and needs a tracker reference in the diff.
 
+`report:quality-metrics` (warren-5b95) is a passive CI reporter — it
+parses `coverage/lcov.info`, `biome.json` overrides, and the various
+budget JSON files, then appends a consolidated code-quality panel to
+`$GITHUB_STEP_SUMMARY` (coverage % vs floors, complexity grandfather
+counts, file-size + debt-marker ratchet status, bundle-size headroom).
+It enforces nothing — the underlying ratchet scripts already fail the
+build — so it runs with `if: always()` after the test job in
+`.github/workflows/ci.yml` and is safe to run locally too.
+
 `check:deps` (warren-d109) wraps [knip](https://knip.dev) in
 `--dependencies` mode to flag unused / undeclared npm dependencies
 across the root package and the `src/ui` workspace. Config lives in

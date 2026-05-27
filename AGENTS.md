@@ -49,6 +49,7 @@ bun run test:ci               # bun test --reporter=junit -> test-results/junit.
 bun run test:coverage         # bun test --coverage (text + lcov -> coverage/)
 bun run check:coverage        # tests + coverage + ratchet enforcement
 bun run report:test-timing    # print slowest suites/tests from junit.xml
+bun run report:quality-metrics # print code-quality metrics summary (coverage + complexity + ratchets)
 bun run lint                  # biome check --error-on-warnings .
 bun run typecheck             # tsc --noEmit
 bun run build:ui              # cd src/ui && bun install && bun run build
@@ -57,7 +58,10 @@ bun run build:ui              # cd src/ui && bun install && bun run build
 CI (`.github/workflows/ci.yml`, warren-cec7) runs `bun run test:ci` instead
 of bare `bun test` so every PR emits `test-results/junit.xml`, then runs
 `bun run report:test-timing` to dump a slowest-suite/slowest-test summary
-into the GitHub Actions step summary, and uploads the JUnit XML as the
+into the GitHub Actions step summary, then `bun run report:quality-metrics`
+(warren-5b95) appends a consolidated code-quality panel — coverage % vs
+floors, complexity grandfather counts, file-size + debt-marker ratchet
+status, and bundle-size headroom — to the same summary, and uploads the JUnit XML as the
 `bun-test-junit` artifact for offline analysis (regression triage, perf
 ratchets, etc.). `test-results/` is gitignored — it's a build artifact.
 

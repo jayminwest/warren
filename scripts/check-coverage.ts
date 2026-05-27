@@ -29,7 +29,7 @@
  */
 
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 const REPO_ROOT = resolve(import.meta.dir, "..");
@@ -120,11 +120,29 @@ function printRatchetHint(totals: CoverageTotals, budgets: CoverageBudgets): voi
 	}
 }
 
+function writeSummaryArtifact(totals: CoverageTotals): void {
+	// Persist the *text-reporter* totals so downstream consumers
+	// (e.g. scripts/report-quality-metrics.ts, warren-5b95) can render the
+	// same numbers users see in the CI log. lcov.info aggregates diverge
+	// here (it counts non-executable spans), so this JSON is the source of
+	// truth for the "All files" aggregate.
+	try {
+		mkdirSync(COVERAGE_DIR, { recursive: true });
+		writeFileSync(
+			resolve(COVERAGE_DIR, "summary.json"),
+			`${JSON.stringify({ functions: totals.functions, lines: totals.lines }, null, 2)}\n`,
+		);
+	} catch (err) {
+		console.error(`check-coverage: failed to write coverage/summary.json: ${err}`);
+	}
+}
+
 function reportResult(
 	totals: CoverageTotals | undefined,
 	budgets: CoverageBudgets,
 	testExitCode: number,
 ): number {
+	if (totals) writeSummaryArtifact(totals);
 	if (!totals) {
 		console.error(
 			"check-coverage: could not find 'All files' row in test output — did the test run finish?",
