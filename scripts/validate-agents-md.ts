@@ -28,6 +28,8 @@ const KNOWN_MISSING_PATHS = new Set<string>([
 	"src/ui/dist", // built by `bun run build:ui`
 	"../burrow/SPEC.md", // sibling repo, not vendored
 	".warren/config.yaml", // per-project file, written at runtime
+	"kebab-case.ts", // naming-convention illustration, not a real file
+	"PascalCase.tsx", // naming-convention illustration, not a real file
 ]);
 
 type Failure = { file: string; kind: string; detail: string };
