@@ -46,7 +46,7 @@ import { withTransportMapping } from "../burrow-client/client.ts";
 import type { BurrowClientPool } from "../burrow-client/pool.ts";
 import type { Repos } from "../db/repos/index.ts";
 import type { EventRow, RunState } from "../db/schema.ts";
-import type { PreviewLaunchConfig } from "../preview/launch.ts";
+import type { PreviewLaunchConfig } from "../preview/launch/index.ts";
 import type { PreviewPortAllocator } from "../preview/port-allocator.ts";
 import {
 	type AutoOpenPrConfig,

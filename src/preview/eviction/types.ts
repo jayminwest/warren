@@ -14,7 +14,7 @@ import type { Repos } from "../../db/repos/index.ts";
 import type { PreviewState } from "../../db/schema.ts";
 import type { RunEventBroker } from "../../runs/events.ts";
 import type { WarrenConfigCache } from "../../warren-config/index.ts";
-import type { PreviewSidecarsClient } from "../launch.ts";
+import type { PreviewSidecarsClient } from "../launch/index.ts";
 
 export interface PreviewEvictionConfig {
 	readonly idleTtlMs: number;

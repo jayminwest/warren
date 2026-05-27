@@ -5,7 +5,7 @@ import type {
 	LaunchPreviewInput,
 	LaunchPreviewResult,
 	PreviewLaunchConfig,
-} from "../../preview/launch.ts";
+} from "../../preview/launch/index.ts";
 import type { PreviewPortAllocator } from "../../preview/port-allocator.ts";
 import type { ServerPreviewConfig } from "../../warren-config/index.ts";
 import type { RunEventBroker } from "../events.ts";

@@ -8,7 +8,7 @@ import {
 	type LaunchPreviewResult,
 	launchPreview,
 	type PreviewLaunchConfig,
-} from "../../preview/launch.ts";
+} from "../../preview/launch/index.ts";
 import type { PreviewPortAllocator } from "../../preview/port-allocator.ts";
 import { DEFAULT_PREVIEW_MODE, type ServerPreviewConfig } from "../../warren-config/index.ts";
 import type { AutoOpenPrConfig } from "../pr.ts";

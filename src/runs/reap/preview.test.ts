@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { DrizzleAdapter } from "../../db/repos/drizzle-adapter.ts";
-import type { LaunchPreviewInput, LaunchPreviewResult } from "../../preview/launch.ts";
+import type { LaunchPreviewInput, LaunchPreviewResult } from "../../preview/launch/index.ts";
 import { PreviewPortAllocator } from "../../preview/port-allocator.ts";
 import type { ServerPreviewConfig } from "../../warren-config/index.ts";
 import type { AnnotatePrPreviewInput, AnnotatePrPreviewResult } from "../pr-annotate.ts";

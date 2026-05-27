@@ -60,11 +60,7 @@
 	},
 	"overrides": [
 		{
-			"includes": [
-				"src/client/client.test.ts",
-				"src/preview/launch.test.ts",
-				"src/registry/refresh.test.ts"
-			],
+			"includes": ["src/client/client.test.ts", "src/registry/refresh.test.ts"],
 			"linter": {
 				"rules": {
 					"complexity": {
@@ -98,7 +94,8 @@
 				"src/plots/summary.ts",
 				"src/plots/sync.ts",
 				"src/preview/cookie.ts",
-				"src/preview/launch.ts",
+				"src/preview/launch/orchestrate.ts",
+				"src/preview/launch/setup.ts",
 				"src/preview/proxy/index.ts",
 				"src/preview/proxy/rewrite.ts",
 				"src/projects/refresh.ts",

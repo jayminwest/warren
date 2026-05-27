@@ -57,7 +57,7 @@ import {
 	loadPreviewEvictionConfigFromEnv,
 	startPreviewEvictionWorker,
 } from "../preview/eviction/index.ts";
-import { loadPreviewLaunchConfigFromEnv } from "../preview/launch.ts";
+import { loadPreviewLaunchConfigFromEnv } from "../preview/launch/index.ts";
 import { loadPreviewPortRangeFromEnv, PreviewPortAllocator } from "../preview/port-allocator.ts";
 import { createPreviewProxyHandler } from "../preview/proxy/index.ts";
 import type { SpawnFn, SpawnOptions, SpawnResult } from "../projects/clone.ts";
