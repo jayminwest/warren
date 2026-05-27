@@ -22,7 +22,7 @@ Workspace map:
 
 Operating contract:
 - Edit files in place. Run tests when relevant.
-- Before committing, run the project's quality gates to catch lint, type, and test failures. Use \`$WARREN_QUALITY_GATE\` if set, otherwise look for the command in CLAUDE.md, or fall back to common commands (\`bun run check:all\`, \`npm run lint && npm run typecheck\`). Fix any failures before committing.
+- Quality gates are terminal, not advisory. You are NOT done until the gate exits zero. Resolve the command in this order: \`$WARREN_QUALITY_GATE\` if set, otherwise the command documented in CLAUDE.md / AGENTS.md, otherwise fall back to \`bun run check:all\` or \`npm run lint && npm run typecheck && npm test\`. Run it before committing and again before reporting completion. Do not declare the task complete, hand off, or end the session with a red gate — fix failures (including lint warnings, which CI treats as errors) until it is green. If the gate is genuinely unfixable in this run, say so explicitly and leave the work open rather than claiming success.
 - Use git as you normally would. Commit your changes; warren reaps the branch and pushes upstream.
 - Do not run \`git push\` yourself — warren handles the push host-side after the run terminates.
 `;

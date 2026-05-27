@@ -57,6 +57,21 @@ describe("BUILTIN_AGENTS", () => {
 			expect(builtin.frontmatter.source).toBe("builtin");
 		}
 	});
+
+	// warren-6a34: the operating-contract block for the three interactive
+	// coding built-ins must frame the quality gate as terminal, not advisory.
+	// This regression test prevents the bullet from drifting back to softer
+	// "run gates before committing" wording that lets agents declare success
+	// on a red tree.
+	test("claude-code / sapling / pi declare the quality gate as terminal (warren-6a34)", () => {
+		for (const builtin of [CLAUDE_CODE_BUILTIN, SAPLING_BUILTIN, PI_BUILTIN]) {
+			const system = builtin.sections.system ?? "";
+			expect(system).toContain("$WARREN_QUALITY_GATE");
+			expect(system).toContain("NOT done until the gate exits zero");
+			expect(system).toContain("Do not declare the task complete");
+			expect(system).toContain("red gate");
+		}
+	});
 });
 
 describe("readAgentSource", () => {
