@@ -60,16 +60,6 @@
 	},
 	"overrides": [
 		{
-			"includes": ["src/registry/refresh.test.ts"],
-			"linter": {
-				"rules": {
-					"complexity": {
-						"noExcessiveLinesPerFunction": "off"
-					}
-				}
-			}
-		},
-		{
 			"includes": [
 				"scripts/acceptance/lib/assert.ts",
 				"scripts/acceptance/lib/http.ts",
@@ -99,7 +89,6 @@
 				"src/preview/proxy/index.ts",
 				"src/preview/proxy/rewrite.ts",
 				"src/projects/refresh.ts",
-				"src/registry/refresh.test.ts",
 				"src/runs/burrow-config.ts",
 				"src/runs/cancel.ts",
 				"src/runs/cost-analytics.ts",

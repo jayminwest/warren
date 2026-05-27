@@ -21,7 +21,6 @@
 		"src/plots/aggregate.ts": 506,
 		"src/projects/manage.test.ts": 763,
 		"src/projects/refresh.test.ts": 709,
-		"src/registry/refresh.test.ts": 1041,
 		"src/runs/pause.test.ts": 616,
 		"src/runs/pr.test.ts": 604,
 		"src/runs/pr.ts": 659,
