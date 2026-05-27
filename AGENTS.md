@@ -82,6 +82,13 @@ grandfather list lives in `scripts/debt-marker-allowlist.json` and only
 goes down — pair new markers with an id (or remove them) rather than
 appending to the allowlist.
 
+Biome's `noExcessiveCognitiveComplexity` rule (warren-d3a6, cognitive
+complexity ≤ 15) enforces a project-wide complexity ceiling. New code
+must stay under the threshold; existing offenders are grandfathered in
+the second `overrides` block of `biome.json`. The ratchet only goes
+down — refactor offenders out of the list rather than adding new
+entries.
+
 CI (`.github/workflows/release.yml`) runs the same trinity. Do not merge
 with lint warnings; fix at write time or promote to error in `biome.json`.
 
