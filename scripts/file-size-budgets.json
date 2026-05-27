@@ -32,8 +32,6 @@
 		"src/runs/pause.test.ts": 616,
 		"src/runs/pr.test.ts": 604,
 		"src/runs/pr.ts": 659,
-		"src/runs/spawn.test.ts": 1344,
-		"src/runs/spawn.ts": 882,
 		"src/server/bridges.test.ts": 647,
 		"src/server/bridges.ts": 655,
 		"src/server/handlers/agents.test.ts": 533,

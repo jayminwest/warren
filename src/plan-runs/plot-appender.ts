@@ -2,7 +2,7 @@
  * `plan_run_dispatched` Plot append for PlanRun creation
  * (warren-b89f / pl-7937 step 4).
  *
- * Mirrors `defaultPlotAppender` in src/runs/spawn.ts:590–622: opens a
+ * Mirrors `defaultPlotAppender` in src/runs/spawn/plot-append.ts: opens a
  * `UserPlotClient` against `<project>/.plot/`, appends one event, retries
  * once after `rebuildIndex` on first-attempt failure, then closes. The
  * caller-side wrapper (`emitPlanRunDispatchedToPlot`) is fire-and-log —

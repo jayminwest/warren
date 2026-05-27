@@ -115,7 +115,7 @@ export function createPlanRunHandler(deps: ServerDeps): RouteHandler {
 		}
 
 		// (2b) hasPlot gate — symmetric to single-run's spawn-time check
-		// (src/runs/spawn.ts, warren-a8c3). Empty-string plot_id is treated
+		// (src/runs/spawn/dispatch.ts, warren-a8c3). Empty-string plot_id is treated
 		// as "not provided" to match the single-run handler's posture.
 		if (plotId !== undefined && plotId !== "" && !project.hasPlot) {
 			throw new ProjectLacksPlotError(
@@ -201,7 +201,7 @@ export function createPlanRunHandler(deps: ServerDeps): RouteHandler {
 
 		// (6b) warren-b89f / pl-7937 step 4: emit one `plan_run_dispatched`
 		// event onto the bound Plot — fire-and-log, mirrors the single-run
-		// `defaultPlotAppender` posture in src/runs/spawn.ts:407–425. The
+		// `defaultPlotAppender` posture in src/runs/spawn/plot-append.ts. The
 		// PlanRun row is durably persisted by this point, so a Plot-write
 		// failure logs `plan_run.plot_append_failed` and the POST still
 		// returns 201.

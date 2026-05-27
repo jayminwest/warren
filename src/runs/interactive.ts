@@ -66,7 +66,7 @@ import {
 	type SpawnRunInput,
 	type SpawnRunResult,
 	spawnRun,
-} from "./spawn.ts";
+} from "./spawn/index.ts";
 
 /** Event kind for the user's typed message on an interactive run. */
 export const INTERACTIVE_USER_MESSAGE_KIND = "user_message" as const;
@@ -427,6 +427,6 @@ async function recordPlotContextLoadFailure(
 		});
 	} catch {
 		// Logging-only path; nothing to recover here. Mirrors the
-		// recordPlotAppendFailure shape in src/runs/spawn.ts.
+		// recordPlotAppendFailure shape in src/runs/spawn/plot-append.ts.
 	}
 }

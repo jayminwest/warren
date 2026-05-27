@@ -42,7 +42,7 @@ export class PlanHasNoOpenChildrenError extends WarrenError {
  * shape so HTTP consumers branch on `code === "project_lacks_plot"`
  * without parsing the message. Mapped to 400 in src/server/errors.ts.
  *
- * Symmetric to the single-run gate in src/runs/spawn.ts (warren-a8c3),
+ * Symmetric to the single-run gate in src/runs/spawn/dispatch.ts (warren-a8c3),
  * just routed through a typed error here so the plan-runs error surface
  * is uniform.
  */

@@ -90,7 +90,7 @@ export {
 	type SpawnRunInput,
 	type SpawnRunResult,
 	spawnRun,
-} from "./spawn.ts";
+} from "./spawn/index.ts";
 export { type SteerRunInput, type SteerRunResult, steerRun } from "./steer.ts";
 export {
 	type ActiveBridge,

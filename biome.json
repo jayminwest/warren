@@ -63,8 +63,7 @@
 			"includes": [
 				"src/client/client.test.ts",
 				"src/preview/launch.test.ts",
-				"src/registry/refresh.test.ts",
-				"src/runs/spawn.test.ts"
+				"src/registry/refresh.test.ts"
 			],
 			"linter": {
 				"rules": {
@@ -116,8 +115,7 @@
 				"src/runs/reap/run.ts",
 				"src/runs/reap/seeds.ts",
 				"src/runs/seed.ts",
-				"src/runs/spawn.test.ts",
-				"src/runs/spawn.ts",
+				"src/runs/spawn/dispatch.ts",
 				"src/runs/stream/bridge.ts",
 				"src/runs/usage-aggregate.ts",
 				"src/server-config/workers.ts",

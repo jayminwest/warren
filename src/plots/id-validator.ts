@@ -6,7 +6,7 @@
  * surfaces (POST /runs, POST /plan-runs) validate against this shape
  * BEFORE the warren row is inserted so a malformed input fails at
  * the operator-facing edge instead of silently no-opping at the
- * host-side `defaultPlotAppender` (src/runs/spawn.ts:407-425) and
+ * host-side `defaultPlotAppender` (src/runs/spawn/plot-append.ts) and
  * surfacing far later as a "Plot no longer available" badge on the
  * run detail page.
  *

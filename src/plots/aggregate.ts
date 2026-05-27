@@ -10,7 +10,7 @@
  *   - `PlotResolver` (./resolver.ts) — find the owning project for a
  *     given `plot_id` by scanning every `hasPlot` project's index.
  *
- * Posture mirrors `src/runs/spawn.ts`'s `defaultPlotAppender` and
+ * Posture mirrors `src/runs/spawn/plot-append.ts`'s `defaultPlotAppender` and
  * `src/plan-runs/plot-appender.ts` (mx-239786 / mx-92e6b3): on a
  * first-attempt query failure the index is rebuilt best-effort and the
  * query is retried once. The retry also fires when the first query
