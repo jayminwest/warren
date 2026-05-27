@@ -164,22 +164,11 @@ const defaultSpawn: SpawnFn = async (
 /* ----------------------------------------------------------------------- */
 
 async function readJsonBody(ctx: RouteContext): Promise<Record<string, unknown>> {
-	const raw = await ctx.request.text();
-	if (raw.length === 0) {
+	const parsed = await readJsonBodyOrEmpty(ctx);
+	if (parsed === null) {
 		throw new ValidationError("request body is empty; expected a JSON object");
 	}
-	let parsed: unknown;
-	try {
-		parsed = JSON.parse(raw);
-	} catch (err) {
-		throw new ValidationError(
-			`request body must be JSON: ${err instanceof Error ? err.message : String(err)}`,
-		);
-	}
-	if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
-		throw new ValidationError("request body must be a JSON object");
-	}
-	return parsed as Record<string, unknown>;
+	return parsed;
 }
 
 async function readJsonBodyOrEmpty(ctx: RouteContext): Promise<Record<string, unknown> | null> {
