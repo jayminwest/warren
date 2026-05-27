@@ -16,3 +16,5 @@ supabase/
 .plot/.index.db-shm
 .plot/.index.db-wal
 .claude/settings.local.json
+.idea/
+.vscode/

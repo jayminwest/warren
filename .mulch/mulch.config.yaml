@@ -21,6 +21,7 @@ domains:
   warren: {}
   release: {}
   preview: {}
+  conventions: {}
 governance:
   max_entries: 100
   warn_entries: 150
