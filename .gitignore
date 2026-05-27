@@ -18,3 +18,4 @@ supabase/
 .claude/settings.local.json
 .idea/
 .vscode/
+test-results/

@@ -32,6 +32,8 @@
 	},
 	"scripts": {
 		"test": "bun test",
+		"test:ci": "mkdir -p test-results && bun test --reporter=junit --reporter-outfile=test-results/junit.xml",
+		"report:test-timing": "bun run scripts/report-test-timing.ts",
 		"lint": "biome check --error-on-warnings .",
 		"lint:fix": "biome check --write --error-on-warnings .",
 		"typecheck": "tsc --noEmit",
