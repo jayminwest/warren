@@ -36,7 +36,7 @@ tags:
 paths:
   /agents:
     get:
-      operationId: listAgents
+      operationId: listAgentsHandler
       tags:
         - agents
       summary: GET /agents
@@ -47,7 +47,7 @@ paths:
           description: Error response (see `src/core/errors.ts`).
   /agents/refresh:
     post:
-      operationId: refreshAgents
+      operationId: refreshAgentsHandler
       tags:
         - agents
       summary: POST /agents/refresh
@@ -58,7 +58,7 @@ paths:
           description: Error response (see `src/core/errors.ts`).
   /agents/{name}:
     get:
-      operationId: getAgent
+      operationId: getAgentHandler
       tags:
         - agents
       summary: GET /agents/:name
@@ -125,7 +125,7 @@ paths:
             type: string
   /healthz:
     get:
-      operationId: healthz
+      operationId: healthzHandler
       tags:
         - meta
       summary: GET /healthz
@@ -623,7 +623,7 @@ paths:
             type: string
   /readyz:
     get:
-      operationId: readyz
+      operationId: readyzHandler
       tags:
         - meta
       summary: GET /readyz
@@ -774,7 +774,7 @@ paths:
             type: string
   /version:
     get:
-      operationId: version
+      operationId: versionHandler
       tags:
         - meta
       summary: GET /version

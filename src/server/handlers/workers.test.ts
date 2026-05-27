@@ -1,12 +1,12 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { BurrowClient, BurrowClientPool } from "../burrow-client/index.ts";
-import { openDatabase, type WarrenDb } from "../db/client.ts";
-import { createRepos, type Repos } from "../db/repos/index.ts";
-import { RunEventBroker } from "../runs/index.ts";
-import { NO_AUTH } from "./auth.ts";
-import { createBridgeRegistry } from "./bridges.ts";
-import { startServer } from "./server.ts";
-import type { Logger, ServeHandle, ServerDeps } from "./types.ts";
+import { BurrowClient, BurrowClientPool } from "../../burrow-client/index.ts";
+import { openDatabase, type WarrenDb } from "../../db/client.ts";
+import { createRepos, type Repos } from "../../db/repos/index.ts";
+import { RunEventBroker } from "../../runs/index.ts";
+import { NO_AUTH } from "../auth.ts";
+import { createBridgeRegistry } from "../bridges.ts";
+import { startServer } from "../server.ts";
+import type { Logger, ServeHandle, ServerDeps } from "../types.ts";
 
 const silentLogger: Logger = {
 	info() {},

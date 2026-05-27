@@ -13,9 +13,9 @@ Total routes: **51**.
 
 | Method | Pattern | Handler | Notes |
 | --- | --- | --- | --- |
-| `GET` | `/agents` | `listAgents` |  |
-| `POST` | `/agents/refresh` | `refreshAgents` |  |
-| `GET` | `/agents/:name` | `getAgent` |  |
+| `GET` | `/agents` | `listAgentsHandler` |  |
+| `POST` | `/agents/refresh` | `refreshAgentsHandler` |  |
+| `GET` | `/agents/:name` | `getAgentHandler` |  |
 
 ## /analytics
 
@@ -40,7 +40,7 @@ Total routes: **51**.
 
 | Method | Pattern | Handler | Notes |
 | --- | --- | --- | --- |
-| `GET` | `/healthz` | `healthz` |  |
+| `GET` | `/healthz` | `healthzHandler` |  |
 
 ## /plan-runs
 
@@ -101,7 +101,7 @@ Total routes: **51**.
 
 | Method | Pattern | Handler | Notes |
 | --- | --- | --- | --- |
-| `GET` | `/readyz` | `readyz` |  |
+| `GET` | `/readyz` | `readyzHandler` |  |
 
 ## /runs
 
@@ -121,7 +121,7 @@ Total routes: **51**.
 
 | Method | Pattern | Handler | Notes |
 | --- | --- | --- | --- |
-| `GET` | `/version` | `version` |  |
+| `GET` | `/version` | `versionHandler` |  |
 
 ## /workers
 
