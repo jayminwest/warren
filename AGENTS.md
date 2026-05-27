@@ -82,8 +82,8 @@ bun run check:all
 
 This runs: `check:coverage` (tests + coverage ratchet), `lint`,
 `typecheck`, `validate:agents-md`, `check:file-sizes`,
-`check:debt-markers`, `check:deps`, `check:bundle-size:build`, and
-`gen:docs:check` — the same set CI enforces (see
+`check:debt-markers`, `check:deps`, `check:bundle-size:build`,
+`gen:docs:check`, and `gen:openapi:check` — the same set CI enforces (see
 `.github/workflows/ci.yml`). Do not merge with lint warnings; fix at
 write time or promote to error in `biome.json`.
 
@@ -140,6 +140,13 @@ entries.
   the doc from drifting. To refresh after editing routes, run
   `bun run gen:docs` and commit the result. CI runs the `--check` mode
   via `check:all`.
+
+- **`gen:openapi:check`** (warren-b46b) — verifies that
+  `docs/openapi.yaml` (an OpenAPI 3.1 schema derived from the same
+  `ROUTE_TABLE`) is up to date. Paths, methods, path parameters, and
+  operationIds are generated from the handler module; request/response
+  bodies remain permissive in V1. Refresh with `bun run gen:openapi`
+  and commit; CI runs `--check` via `check:all`.
 
 `check:deps` (warren-d109) wraps [knip](https://knip.dev) in
 `--dependencies` mode (config in `knip.json`) to flag unused or

@@ -144,8 +144,10 @@ bun run check:all
 
 This runs: `check:coverage` (tests + coverage ratchet), `lint`,
 `typecheck`, `validate:agents-md`, `check:file-sizes`,
-`check:debt-markers`, `check:deps`, `check:bundle-size:build`, and
-`gen:docs:check` — the same set CI enforces (see
+`check:debt-markers`, `check:deps`, `check:bundle-size:build`,
+`gen:docs:check`, and `gen:openapi:check` (warren-b46b: keeps the
+`docs/openapi.yaml` OpenAPI 3.1 schema in sync with `ROUTE_TABLE`) —
+the same set CI enforces (see
 `.github/workflows/ci.yml`). CI also runs `check:duplicates` (jscpd)
 on top. Don't merge with lint warnings; fix at write time or promote
 to error in `biome.json`.
