@@ -19,3 +19,4 @@ supabase/
 .idea/
 .vscode/
 test-results/
+coverage/

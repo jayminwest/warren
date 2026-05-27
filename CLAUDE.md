@@ -142,12 +142,21 @@ Run all checks before committing — warnings count as failures:
 bun run check:all
 ```
 
-This runs: `test`, `lint`, `typecheck`, `validate:agents-md`,
-`check:file-sizes`, `check:debt-markers`, `check:deps`, and
-`check:bundle-size:build` — the same set CI enforces (see
+This runs: `check:coverage` (tests + coverage ratchet), `lint`,
+`typecheck`, `validate:agents-md`, `check:file-sizes`,
+`check:debt-markers`, `check:deps`, `check:bundle-size:build`, and
+`gen:docs:check` — the same set CI enforces (see
 `.github/workflows/ci.yml`). CI also runs `check:duplicates` (jscpd)
 on top. Don't merge with lint warnings; fix at write time or promote
 to error in `biome.json`.
+
+`check:coverage` (warren-e4b1) wraps `bun test --coverage` and enforces
+the floors in `scripts/coverage-budgets.json` against the "All files"
+row of Bun's text coverage reporter. CI runs `check:coverage:ci`, which
+additionally emits `test-results/junit.xml` for the timing summary and
+uploads `coverage/lcov.info` as a build artifact. The ratchet only
+goes UP — raise the floors when coverage improves; lowering them
+implies you removed tests and needs a tracker reference in the diff.
 
 `check:deps` (warren-d109) wraps [knip](https://knip.dev) in
 `--dependencies` mode to flag unused / undeclared npm dependencies

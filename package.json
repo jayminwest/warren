@@ -32,6 +32,9 @@
 	},
 	"scripts": {
 		"test": "bun test",
+		"test:coverage": "bun test --coverage --coverage-reporter=text --coverage-reporter=lcov --coverage-dir=coverage",
+		"check:coverage": "bun run scripts/check-coverage.ts",
+		"check:coverage:ci": "bun run scripts/check-coverage.ts --junit",
 		"test:ci": "mkdir -p test-results && bun test --reporter=junit --reporter-outfile=test-results/junit.xml",
 		"report:test-timing": "bun run scripts/report-test-timing.ts",
 		"lint": "biome check --error-on-warnings .",
@@ -46,7 +49,7 @@
 		"check:bundle-size:build": "bun run scripts/check-bundle-size.ts --build",
 		"gen:docs": "bun run scripts/generate-docs.ts",
 		"gen:docs:check": "bun run scripts/generate-docs.ts --check",
-		"check:all": "bun test && bun run lint && bun run typecheck && bun run validate:agents-md && bun run check:file-sizes && bun run check:debt-markers && bun run check:deps && bun run check:bundle-size:build && bun run gen:docs:check",
+		"check:all": "bun run check:coverage && bun run lint && bun run typecheck && bun run validate:agents-md && bun run check:file-sizes && bun run check:debt-markers && bun run check:deps && bun run check:bundle-size:build && bun run gen:docs:check",
 		"db:generate": "bun run db:generate:sqlite && bun run db:generate:postgres",
 		"db:generate:sqlite": "drizzle-kit generate --config=drizzle.config.sqlite.ts",
 		"db:generate:postgres": "drizzle-kit generate --config=drizzle.config.postgres.ts",

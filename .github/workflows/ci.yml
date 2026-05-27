@@ -25,8 +25,8 @@ jobs:
       - run: bun run check:deps
       - run: bun run build:ui
       - run: bun run check:bundle-size
-      - name: Run tests (JUnit reporter)
-        run: bun run test:ci
+      - name: Run tests with coverage + JUnit reporter
+        run: bun run check:coverage:ci
 
       - name: Test timing summary
         if: always()
@@ -38,4 +38,12 @@ jobs:
         with:
           name: bun-test-junit
           path: test-results/junit.xml
+          if-no-files-found: warn
+
+      - name: Upload coverage artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bun-test-coverage
+          path: coverage/lcov.info
           if-no-files-found: warn

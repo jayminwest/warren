@@ -46,6 +46,8 @@ From the repo root:
 bun test                      # Run all tests
 bun test src/foo.test.ts      # Run a single test file
 bun run test:ci               # bun test --reporter=junit -> test-results/junit.xml
+bun run test:coverage         # bun test --coverage (text + lcov -> coverage/)
+bun run check:coverage        # tests + coverage + ratchet enforcement
 bun run report:test-timing    # print slowest suites/tests from junit.xml
 bun run lint                  # biome check --error-on-warnings .
 bun run typecheck             # tsc --noEmit
@@ -74,11 +76,12 @@ Run all checks before committing — warnings count as failures:
 bun run check:all
 ```
 
-This runs: `test`, `lint`, `typecheck`, `validate:agents-md`,
-`check:file-sizes`, `check:debt-markers`, `check:deps`,
-`check:bundle-size:build`, and `gen:docs:check` — the same set CI
-enforces (see `.github/workflows/ci.yml`). Do not merge with lint
-warnings; fix at write time or promote to error in `biome.json`.
+This runs: `check:coverage` (tests + coverage ratchet), `lint`,
+`typecheck`, `validate:agents-md`, `check:file-sizes`,
+`check:debt-markers`, `check:deps`, `check:bundle-size:build`, and
+`gen:docs:check` — the same set CI enforces (see
+`.github/workflows/ci.yml`). Do not merge with lint warnings; fix at
+write time or promote to error in `biome.json`.
 
 Details on the additional checks:
 
@@ -116,6 +119,16 @@ entries.
   existing `src/ui/dist` tree, or `bun run check:bundle-size:build` to build
   first; CI uses the explicit `build:ui` + `check:bundle-size` pair so
   the build step is visible in logs.
+
+- **`check:coverage`** (warren-e4b1) — wraps `bun test --coverage`
+  (text + lcov reporters) and enforces the floors in
+  `scripts/coverage-budgets.json` against the "All files" aggregate of
+  Bun's text coverage table. CI invokes `check:coverage:ci`, which
+  additionally emits `test-results/junit.xml` for the test-timing
+  summary; the `coverage/lcov.info` artifact is uploaded for downstream
+  analysis. The ratchet only goes UP — raise floors as coverage
+  improves; lowering them requires a tracker-referenced rationale (it
+  means you deleted tests).
 
 - **`gen:docs:check`** (warren-e5fb) — verifies that `docs/http-api.md`
   is in sync with the `ROUTE_TABLE` array in `src/server/handlers.ts`.
