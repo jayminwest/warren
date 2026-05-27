@@ -36,6 +36,7 @@
 		"check:coverage": "bun run scripts/check-coverage.ts",
 		"check:coverage:ci": "bun run scripts/check-coverage.ts --junit",
 		"test:ci": "mkdir -p test-results && bun test --reporter=junit --reporter-outfile=test-results/junit.xml",
+		"test:pg": "bun run scripts/test-pg.ts",
 		"report:test-timing": "bun run scripts/report-test-timing.ts",
 		"report:quality-metrics": "bun run scripts/report-quality-metrics.ts",
 		"lint": "biome check --error-on-warnings .",
