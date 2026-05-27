@@ -194,6 +194,7 @@ describe("launchPreview", () => {
 			allocator,
 			sidecars: sidecars.client,
 			fetch,
+			tcpConnect: alwaysConnected,
 			sleep: async () => {},
 			now: () => new Date("2026-05-14T18:00:00.000Z"),
 		});
@@ -228,6 +229,7 @@ describe("launchPreview", () => {
 			allocator,
 			sidecars: sidecars.client,
 			fetch,
+			tcpConnect: alwaysConnected,
 			sleep: async () => {},
 		});
 		expect(sidecars.creates[0]?.env).toEqual({
@@ -249,6 +251,7 @@ describe("launchPreview", () => {
 			allocator,
 			sidecars: sidecars.client,
 			fetch,
+			tcpConnect: alwaysConnected,
 			sleep: async () => {},
 		});
 		expect(calls[0]).toBe("http://127.0.0.1:40000/healthz");
@@ -266,6 +269,7 @@ describe("launchPreview", () => {
 			allocator,
 			sidecars: sidecars.client,
 			fetch,
+			tcpConnect: alwaysConnected,
 			sleep: async () => {},
 		});
 		expect(result.ok).toBe(true);
@@ -757,6 +761,7 @@ describe("launchPreview", () => {
 				allocator,
 				sidecars: sidecars.client,
 				fetch,
+				tcpConnect: alwaysConnected,
 				sleep: async () => {},
 				now: () => new Date("2026-05-14T18:00:00.000Z"),
 			});
@@ -847,6 +852,7 @@ describe("launchPreview", () => {
 				allocator,
 				sidecars: sidecars.client,
 				fetch,
+				tcpConnect: alwaysConnected,
 				sleep: async () => {},
 				now: () => new Date("2026-05-14T18:00:00.000Z"),
 			});

@@ -22,7 +22,7 @@
 		"src/plots/aggregate.ts": 506,
 		"src/preview/eviction.test.ts": 545,
 		"src/preview/eviction.ts": 819,
-		"src/preview/launch.test.ts": 989,
+		"src/preview/launch.test.ts": 995,
 		"src/preview/launch.ts": 712,
 		"src/preview/proxy.test.ts": 1593,
 		"src/preview/proxy.ts": 912,
