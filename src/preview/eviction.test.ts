@@ -61,16 +61,16 @@ describe("loadPreviewEvictionConfigFromEnv", () => {
 		).toBe(false);
 	});
 
-	test("malformed env values fail loudly", () => {
-		expect(() =>
-			loadPreviewEvictionConfigFromEnv({ [WARREN_PREVIEW_IDLE_TTL_ENV]: "garbage" }),
-		).toThrow(ValidationError);
-		expect(() => loadPreviewEvictionConfigFromEnv({ [WARREN_PREVIEW_MAX_LIVE_ENV]: "0" })).toThrow(
-			ValidationError,
-		);
-		expect(() => loadPreviewEvictionConfigFromEnv({ [WARREN_PREVIEW_MAX_LIVE_ENV]: "-1" })).toThrow(
-			ValidationError,
-		);
+	test("malformed env values fail loudly (incl. junk-suffix warren-da37)", () => {
+		const cases: Array<[string, string]> = [
+			[WARREN_PREVIEW_IDLE_TTL_ENV, "garbage"],
+			[WARREN_PREVIEW_MAX_LIVE_ENV, "0"],
+			[WARREN_PREVIEW_MAX_LIVE_ENV, "-1"],
+			[WARREN_PREVIEW_MAX_LIVE_ENV, "5abc"], // warren-da37: junk suffix
+			[WARREN_PREVIEW_EVICTION_TICK_MS_ENV, "1500x"], // warren-da37
+		];
+		for (const [n, v] of cases)
+			expect(() => loadPreviewEvictionConfigFromEnv({ [n]: v })).toThrow(ValidationError);
 	});
 });
 

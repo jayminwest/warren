@@ -349,22 +349,22 @@ describe("startServer — routes", () => {
 		expect(body.offset).toBe(0);
 	});
 
-	test("GET /runs?limit=0 rejects with ValidationError", async () => {
+	test("GET /runs pagination rejects out-of-range + junk-suffix inputs (warren-da37)", async () => {
 		handle = startServer(await depsFor(repos), tcpOpts());
-		const res = await fetch(`${tcpUrl(handle)}/runs?limit=0`);
-		expect(res.status).toBe(400);
-	});
-
-	test("GET /runs?limit=501 rejects with ValidationError", async () => {
-		handle = startServer(await depsFor(repos), tcpOpts());
-		const res = await fetch(`${tcpUrl(handle)}/runs?limit=501`);
-		expect(res.status).toBe(400);
-	});
-
-	test("GET /runs?offset=-1 rejects with ValidationError", async () => {
-		handle = startServer(await depsFor(repos), tcpOpts());
-		const res = await fetch(`${tcpUrl(handle)}/runs?offset=-1`);
-		expect(res.status).toBe(400);
+		const base = tcpUrl(handle);
+		for (const qs of ["limit=0", "limit=501", "offset=-1"]) {
+			expect((await fetch(`${base}/runs?${qs}`)).status).toBe(400);
+		}
+		// warren-da37: junk suffix must reject, not silently truncate.
+		for (const [qs, needle] of [
+			["limit=5abc", "5abc"],
+			["offset=10x", "10x"],
+		] as const) {
+			const res = await fetch(`${base}/runs?${qs}`);
+			expect(res.status).toBe(400);
+			const body = (await res.json()) as { error?: { message?: string } };
+			expect(body.error?.message ?? "").toContain(needle);
+		}
 	});
 
 	test("GET /runs/:id 404s on unknown id", async () => {

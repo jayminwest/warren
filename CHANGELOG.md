@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.12] — 2026-05-27
+
+Patch release tightening server input parsing and de-duplicating JSON
+body helpers.
+
+### Fixed
+
+- **`fix(server)`** — HTTP pagination (`?limit=`, `?offset=`) and the
+  env-int helpers (`parseEnvPositiveInt`, `resolvePgPoolMax`,
+  `parseIntEnv`) now apply the same strict `String(n) === raw`
+  round-trip check used by `parseNonNegativeInt` /
+  `parsePositiveInt`. Junk-suffix inputs like `?limit=5abc`,
+  `WARREN_DB_POOL_MAX=10x`, and `WARREN_PAUSE_DETECTOR_TICK_MS=15000abc`
+  now reject with a `ValidationError` instead of silently coercing to
+  the leading integer (warren-da37).
+
+### Changed
+
+- **`refactor(server)`** — `readJsonBody` is now a thin wrapper over
+  `readJsonBodyOrEmpty`, eliminating ~95% duplicated parse / validation
+  / error-message code while preserving the byte-identical error
+  strings for empty body, invalid JSON, and non-object payloads
+  (warren-9ced).
+
 ## [0.6.11] — 2026-05-27
 
 Patch release fixing pre-commit hooks and adding quality-gate

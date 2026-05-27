@@ -164,22 +164,11 @@ const defaultSpawn: SpawnFn = async (
 /* ----------------------------------------------------------------------- */
 
 async function readJsonBody(ctx: RouteContext): Promise<Record<string, unknown>> {
-	const raw = await ctx.request.text();
-	if (raw.length === 0) {
+	const parsed = await readJsonBodyOrEmpty(ctx);
+	if (parsed === null) {
 		throw new ValidationError("request body is empty; expected a JSON object");
 	}
-	let parsed: unknown;
-	try {
-		parsed = JSON.parse(raw);
-	} catch (err) {
-		throw new ValidationError(
-			`request body must be JSON: ${err instanceof Error ? err.message : String(err)}`,
-		);
-	}
-	if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
-		throw new ValidationError("request body must be a JSON object");
-	}
-	return parsed as Record<string, unknown>;
+	return parsed;
 }
 
 async function readJsonBodyOrEmpty(ctx: RouteContext): Promise<Record<string, unknown> | null> {
@@ -928,8 +917,8 @@ function parseRunsPagination(ctx: { url: URL }): { limit: number; offset: number
 	let limit = 100;
 	if (rawLimit !== null) {
 		const n = Number.parseInt(rawLimit, 10);
-		if (!Number.isFinite(n) || n <= 0) {
-			throw new ValidationError("?limit must be a positive integer");
+		if (!Number.isFinite(n) || n <= 0 || String(n) !== rawLimit) {
+			throw new ValidationError(`?limit must be a positive integer; got '${rawLimit}'`);
 		}
 		if (n > 500) throw new ValidationError("?limit must be ≤ 500");
 		limit = n;
@@ -937,8 +926,8 @@ function parseRunsPagination(ctx: { url: URL }): { limit: number; offset: number
 	let offset = 0;
 	if (rawOffset !== null) {
 		const n = Number.parseInt(rawOffset, 10);
-		if (!Number.isFinite(n) || n < 0) {
-			throw new ValidationError("?offset must be a non-negative integer");
+		if (!Number.isFinite(n) || n < 0 || String(n) !== rawOffset) {
+			throw new ValidationError(`?offset must be a non-negative integer; got '${rawOffset}'`);
 		}
 		offset = n;
 	}

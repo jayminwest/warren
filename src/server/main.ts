@@ -336,7 +336,7 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 	// (warren-3de8 / warren-d22e) and the system has paused runs to
 	// surface; enable via WARREN_PAUSE_DETECTOR_ENABLED=1.
 	const pauseDetectorEnabled = parseTrueEnv(env.WARREN_PAUSE_DETECTOR_ENABLED);
-	const pauseDetectorTickMs = parseIntEnv(env.WARREN_PAUSE_DETECTOR_TICK_MS, 15_000);
+	const pauseDetectorTickMs = parseIntEnv(env, "WARREN_PAUSE_DETECTOR_TICK_MS", 15_000);
 	const pauseDetector = bootPauseDetector({
 		repos,
 		plotReader: defaultPlotEventReader,
@@ -578,16 +578,8 @@ async function closeDatabase(db: AnyWarrenDb): Promise<void> {
  * `openDatabase` default. The pool size only matters on the postgres
  * branch; the sqlite branch ignores it.
  */
-function resolvePgPoolMax(env: EnvLike): number | undefined {
-	const raw = env[WARREN_DB_POOL_MAX_ENV];
-	if (raw === undefined || raw === "") return undefined;
-	const parsed = Number.parseInt(raw, 10);
-	if (!Number.isInteger(parsed) || parsed <= 0) {
-		throw new Error(
-			`${WARREN_DB_POOL_MAX_ENV} must be a positive integer (got ${JSON.stringify(raw)})`,
-		);
-	}
-	return parsed;
+export function resolvePgPoolMax(env: EnvLike): number | undefined {
+	return parseIntEnv(env, WARREN_DB_POOL_MAX_ENV, undefined);
 }
 
 /**
@@ -666,10 +658,18 @@ function parseTrueEnv(raw: string | undefined): boolean {
 	return t === "1" || t === "true" || t === "yes";
 }
 
-function parseIntEnv(raw: string | undefined, fallback: number): number {
-	if (raw === undefined) return fallback;
+function parseIntEnv<F extends number | undefined>(
+	env: EnvLike,
+	name: string,
+	fallback: F,
+): number | F {
+	const raw = env[name];
+	if (raw === undefined || raw === "") return fallback;
 	const n = Number.parseInt(raw, 10);
-	return Number.isFinite(n) && n > 0 ? n : fallback;
+	if (!Number.isFinite(n) || n <= 0 || String(n) !== raw) {
+		throw new Error(`${name} must be a positive integer (got ${JSON.stringify(raw)})`);
+	}
+	return n;
 }
 
 function previewEvictionLoggerFromPino(logger: Logger): {
