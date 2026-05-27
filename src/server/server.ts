@@ -23,6 +23,7 @@ import { existsSync, unlinkSync } from "node:fs";
 import { NO_AUTH } from "./auth.ts";
 import { methodNotAllowed, notFound, renderError } from "./errors.ts";
 import { buildApiRoutes, isApiPath, isAuthExempt } from "./handlers.ts";
+import { bindRequestIdLogger, extractOrGenerateRequestId, stampRequestId } from "./request-id.ts";
 import { jsonResponse } from "./response.ts";
 import { matchRoute, pathExists } from "./router.ts";
 import type {
@@ -66,8 +67,24 @@ export function startServer(deps: ServerDeps, opts: ServeOptions = {}): ServeHan
 	const idleTimeout = opts.idleTimeout ?? DEFAULT_IDLE_TIMEOUT_SECONDS;
 	const previewProxy = opts.previewProxy;
 
-	const fetchHandler = (request: Request): Promise<Response> =>
-		handleRequest(request, routes, auth, logger, previewProxy);
+	const fetchHandler = async (request: Request): Promise<Response> => {
+		// X-Request-ID middleware (warren-30af / pl-7b06 step 19): mint or
+		// adopt a correlation id, thread it through the handler pipeline,
+		// and stamp it onto every outgoing response — regardless of which
+		// branch (handler, error, auth deny, preview proxy, UI fallback)
+		// produced the Response.
+		const requestId = extractOrGenerateRequestId(request);
+		const requestLogger = bindRequestIdLogger(logger, requestId);
+		const response = await handleRequest(
+			request,
+			routes,
+			auth,
+			requestLogger,
+			previewProxy,
+			requestId,
+		);
+		return stampRequestId(response, requestId);
+	};
 
 	const server =
 		transport.kind === "unix"
@@ -162,6 +179,7 @@ async function handleRequest(
 	auth: AuthProvider,
 	logger: Logger,
 	previewProxy: PreviewProxyHandler | undefined,
+	requestId: string,
 ): Promise<Response> {
 	const url = new URL(request.url);
 
@@ -195,6 +213,7 @@ async function handleRequest(
 			url,
 			params: match.params,
 			logger,
+			requestId,
 		};
 		try {
 			return await match.route.handler(ctx);
@@ -237,6 +256,7 @@ async function handleRequest(
 			url,
 			params: {},
 			logger,
+			requestId,
 		};
 		try {
 			return await uiFallback.handler(ctx);

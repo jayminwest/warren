@@ -60,7 +60,22 @@ export interface RouteContext {
 	readonly request: Request;
 	readonly url: URL;
 	readonly params: Readonly<Record<string, string>>;
+	/**
+	 * Per-request child logger pre-bound with `request_id` (warren-30af).
+	 * Handlers should prefer this over `deps.logger` so every log line
+	 * produced inside a request carries the correlation id that is also
+	 * stamped into the response's `X-Request-ID` header.
+	 */
 	readonly logger: Logger;
+	/**
+	 * The correlation id stamped onto the outgoing response's
+	 * `X-Request-ID` header (warren-30af / pl-7b06 step 19). Either
+	 * the inbound header value (when well-formed) or a freshly minted
+	 * UUID. Surfaced here so handlers that propagate the id into
+	 * downstream calls (burrow, plot, etc.) don't have to re-parse it
+	 * off the request.
+	 */
+	readonly requestId: string;
 }
 
 export type RouteHandler = (ctx: RouteContext) => Response | Promise<Response>;

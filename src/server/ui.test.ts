@@ -27,6 +27,7 @@ function ctxFor(pathname: string): RouteContext {
 		url,
 		params: {},
 		logger: silentLogger,
+		requestId: "test-request-id",
 	};
 }
 
