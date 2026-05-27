@@ -50,7 +50,7 @@ import { RUN_TERMINAL_STATES, type RunState, type RunTerminalState } from "../db
 import type { RunEventBroker } from "./events.ts";
 import type { AutoOpenPrConfig } from "./pr.ts";
 import { type ReapRunInput, type ReapRunResult, reapRun } from "./reap/index.ts";
-import type { BridgeLogger } from "./stream.ts";
+import type { BridgeLogger } from "./stream/index.ts";
 
 export interface CancelRunInput {
 	readonly runId: string;

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { RunEvent } from "@os-eco/burrow-cli";
-import { detectRuntimeTerminal } from "./stream.ts";
+import { detectRuntimeTerminal } from "./terminal-detect.ts";
 
 /**
  * warren-6fcc / pl-5516 step 2: focused unit coverage for

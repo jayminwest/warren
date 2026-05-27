@@ -103,7 +103,7 @@ export {
 	type RecoverActiveRunStreamsResult,
 	recoverActiveRunStreams,
 	type SessionStats,
-} from "./stream.ts";
+} from "./stream/index.ts";
 export {
 	accumulatePiUsage,
 	aggregateUsageFromEvents,

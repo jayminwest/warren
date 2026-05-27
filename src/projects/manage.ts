@@ -30,7 +30,7 @@ import { resolve, sep } from "node:path";
 import { ValidationError } from "../core/errors.ts";
 import type { ProjectsRepo } from "../db/repos/projects.ts";
 import type { ProjectRow } from "../db/schema.ts";
-import type { BridgeLogger } from "../runs/stream.ts";
+import type { BridgeLogger } from "../runs/stream/index.ts";
 import type { WarrenConfigCache } from "../warren-config/index.ts";
 import {
 	type CloneProjectResult,

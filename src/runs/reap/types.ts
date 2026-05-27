@@ -12,7 +12,7 @@ import type { RunEventBroker } from "../events.ts";
 import type { AutoOpenPrConfig, OpenPullRequestInput, OpenPullRequestResult } from "../pr.ts";
 import type { AnnotatePrPreviewInput, AnnotatePrPreviewResult } from "../pr-annotate.ts";
 import type { PrTemplateOverrides } from "../pr-template.ts";
-import type { BridgeLogger } from "../stream.ts";
+import type { BridgeLogger } from "../stream/index.ts";
 
 /* ----------------------------------------------------------------------- */
 /* Public surface                                                           */

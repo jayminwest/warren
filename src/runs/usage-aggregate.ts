@@ -26,7 +26,7 @@
  * aggregator — worst case is "we miss this run's cost".
  */
 
-import type { SessionStats } from "./stream.ts";
+import type { SessionStats } from "./stream/index.ts";
 
 /**
  * Structural subset of `RunEvent` (burrow stream) and `EventRow`

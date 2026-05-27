@@ -64,8 +64,7 @@
 				"src/client/client.test.ts",
 				"src/preview/launch.test.ts",
 				"src/registry/refresh.test.ts",
-				"src/runs/spawn.test.ts",
-				"src/runs/stream.test.ts"
+				"src/runs/spawn.test.ts"
 			],
 			"linter": {
 				"rules": {
@@ -119,7 +118,7 @@
 				"src/runs/seed.ts",
 				"src/runs/spawn.test.ts",
 				"src/runs/spawn.ts",
-				"src/runs/stream.ts",
+				"src/runs/stream/bridge.ts",
 				"src/runs/usage-aggregate.ts",
 				"src/server-config/workers.ts",
 				"src/server/bridges.ts",
