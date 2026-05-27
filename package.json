@@ -38,6 +38,7 @@
 		"validate:agents-md": "bun run scripts/validate-agents-md.ts",
 		"check:file-sizes": "bun run scripts/check-file-sizes.ts",
 		"check:debt-markers": "bun run scripts/check-debt-markers.ts",
+		"check:duplicates": "jscpd",
 		"db:generate": "bun run db:generate:sqlite && bun run db:generate:postgres",
 		"db:generate:sqlite": "drizzle-kit generate --config=drizzle.config.sqlite.ts",
 		"db:generate:postgres": "drizzle-kit generate --config=drizzle.config.postgres.ts",
@@ -54,6 +55,7 @@
 		"@types/js-yaml": "^4.0.9",
 		"@types/pg": "^8.11.10",
 		"drizzle-kit": "^0.31.10",
+		"jscpd": "^4.2.4",
 		"typescript": "^6.0.3"
 	},
 	"dependencies": {

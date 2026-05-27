@@ -1,0 +1,19 @@
+{
+	"$schema": "https://raw.githubusercontent.com/kucherenko/jscpd/master/packages/jscpd/schemas/jscpd.json",
+	"pattern": "src/**/*.{ts,tsx}",
+	"ignore": [
+		"**/node_modules/**",
+		"**/__golden__/**",
+		"**/*.test.ts",
+		"**/*.test.tsx",
+		"src/db/migrations/**",
+		"src/db/schema/**",
+		"src/ui/dist/**"
+	],
+	"minTokens": 100,
+	"threshold": 3,
+	"reporters": ["consoleFull"],
+	"absolute": false,
+	"gitignore": true,
+	"silent": false
+}

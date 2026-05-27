@@ -89,6 +89,15 @@ the second `overrides` block of `biome.json`. The ratchet only goes
 down — refactor offenders out of the list rather than adding new
 entries.
 
+CI also runs `bun run check:duplicates` (warren-61e9), which invokes
+[jscpd](https://github.com/kucherenko/jscpd) over `src/**/*.{ts,tsx}` to
+detect copy-pasted code. Config lives in `.jscpd.json`: tests,
+auto-generated migrations (`src/db/migrations/`), drizzle schema
+(`src/db/schema/`), goldens, and the UI build output are excluded so
+the scanner only sees hand-written production code. The percentage
+threshold (`threshold` in `.jscpd.json`) is a ratchet that should only
+go down — fix duplicates rather than raising the ceiling.
+
 CI (`.github/workflows/release.yml`) runs the same trinity. Do not merge
 with lint warnings; fix at write time or promote to error in `biome.json`.
 

@@ -20,4 +20,5 @@ jobs:
       - run: bun run validate:agents-md
       - run: bun run check:file-sizes
       - run: bun run check:debt-markers
+      - run: bun run check:duplicates
       - run: bun test
