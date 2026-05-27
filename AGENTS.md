@@ -66,9 +66,10 @@ bun run check:all
 ```
 
 This runs: `test`, `lint`, `typecheck`, `validate:agents-md`,
-`check:file-sizes`, `check:debt-markers`, and `check:deps` — the same
-set CI enforces (see `.github/workflows/ci.yml`). Do not merge with lint warnings; fix
-at write time or promote to error in `biome.json`.
+`check:file-sizes`, `check:debt-markers`, `check:deps`, and
+`check:bundle-size:build` — the same set CI enforces (see
+`.github/workflows/ci.yml`). Do not merge with lint warnings; fix at
+write time or promote to error in `biome.json`.
 
 Details on the additional checks:
 
@@ -96,6 +97,16 @@ must stay under the threshold; existing offenders are grandfathered in
 the second `overrides` block of `biome.json`. The ratchet only goes
 down — refactor offenders out of the list rather than adding new
 entries.
+
+- **`check:bundle-size`** (warren-5abc) — measures the Vite UI build
+  output in `src/ui/dist/assets/` and enforces a ratchet in
+  `scripts/bundle-size-budgets.json`. Tracks raw + gzipped totals per
+  extension (`.js`, `.css`) and the largest single chunk's gzipped
+  size. The ratchet only goes DOWN — code-split or trim deps rather
+  than raising a budget. Run `bun run check:bundle-size` against an
+  existing `src/ui/dist` tree, or `bun run check:bundle-size:build` to build
+  first; CI uses the explicit `build:ui` + `check:bundle-size` pair so
+  the build step is visible in logs.
 
 `check:deps` (warren-d109) wraps [knip](https://knip.dev) in
 `--dependencies` mode (config in `knip.json`) to flag unused or

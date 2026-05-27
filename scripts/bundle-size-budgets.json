@@ -1,0 +1,19 @@
+{
+	"$comment": "Bundle-size ratchet for src/ui/dist/ (warren-5abc, plan pl-7b06 step 13). Frozen ceilings — the ratchet only goes down. Update budgets downward when refactoring; do NOT raise them to land a regression. All sizes in bytes. gzip uses Node zlib defaults (level 6) to match Vite's reporter.",
+	"totals": {
+		"raw": {
+			"js": 475460,
+			"css": 34474
+		},
+		"gzip": {
+			"js": 135337,
+			"css": 6900
+		}
+	},
+	"largest": {
+		"gzip": {
+			"js": 135337,
+			"css": 6900
+		}
+	}
+}

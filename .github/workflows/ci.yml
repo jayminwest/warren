@@ -23,4 +23,6 @@ jobs:
       - run: bun run check:duplicates
       - run: bun run ui:install
       - run: bun run check:deps
+      - run: bun run build:ui
+      - run: bun run check:bundle-size
       - run: bun test
