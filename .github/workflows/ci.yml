@@ -17,4 +17,5 @@ jobs:
       - run: bun install
       - run: bun run lint
       - run: bun run typecheck
+      - run: bun run validate:agents-md
       - run: bun test
