@@ -45,10 +45,19 @@ From the repo root:
 ```bash
 bun test                      # Run all tests
 bun test src/foo.test.ts      # Run a single test file
+bun run test:ci               # bun test --reporter=junit -> test-results/junit.xml
+bun run report:test-timing    # print slowest suites/tests from junit.xml
 bun run lint                  # biome check --error-on-warnings .
 bun run typecheck             # tsc --noEmit
 bun run build:ui              # cd src/ui && bun install && bun run build
 ```
+
+CI (`.github/workflows/ci.yml`, warren-cec7) runs `bun run test:ci` instead
+of bare `bun test` so every PR emits `test-results/junit.xml`, then runs
+`bun run report:test-timing` to dump a slowest-suite/slowest-test summary
+into the GitHub Actions step summary, and uploads the JUnit XML as the
+`bun-test-junit` artifact for offline analysis (regression triage, perf
+ratchets, etc.). `test-results/` is gitignored — it's a build artifact.
 
 UI-only (its own package):
 

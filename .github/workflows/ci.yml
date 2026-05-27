@@ -25,4 +25,17 @@ jobs:
       - run: bun run check:deps
       - run: bun run build:ui
       - run: bun run check:bundle-size
-      - run: bun test
+      - name: Run tests (JUnit reporter)
+        run: bun run test:ci
+
+      - name: Test timing summary
+        if: always()
+        run: bun run report:test-timing
+
+      - name: Upload test timing artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bun-test-junit
+          path: test-results/junit.xml
+          if-no-files-found: warn
