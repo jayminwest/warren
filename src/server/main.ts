@@ -59,7 +59,7 @@ import {
 } from "../preview/eviction.ts";
 import { loadPreviewLaunchConfigFromEnv } from "../preview/launch.ts";
 import { loadPreviewPortRangeFromEnv, PreviewPortAllocator } from "../preview/port-allocator.ts";
-import { createPreviewProxyHandler } from "../preview/proxy.ts";
+import { createPreviewProxyHandler } from "../preview/proxy/index.ts";
 import type { SpawnFn, SpawnOptions, SpawnResult } from "../projects/clone.ts";
 import { loadProjectsConfigFromEnv } from "../projects/config.ts";
 import { seedBuiltinAgents } from "../registry/builtins/index.ts";

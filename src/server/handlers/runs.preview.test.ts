@@ -4,7 +4,7 @@ import { type AnyWarrenDb, openDatabase, type WarrenDb } from "../../db/client.t
 import { createRepos, type Repos } from "../../db/repos/index.ts";
 import { isPostgresTestEnabled, withDb } from "../../db/testing.ts";
 import { COOKIE_NAME, createPreviewAuth, type PreviewAuth } from "../../preview/cookie.ts";
-import { createPreviewProxyHandler } from "../../preview/proxy.ts";
+import { createPreviewProxyHandler } from "../../preview/proxy/index.ts";
 import { RunEventBroker } from "../../runs/index.ts";
 import { bearerAuth } from "../auth.ts";
 import { createBridgeRegistry } from "../bridges.ts";
