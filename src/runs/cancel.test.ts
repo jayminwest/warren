@@ -7,7 +7,7 @@ import { createRepos, type Repos } from "../db/repos/index.ts";
 import type { RunTerminalState } from "../db/schema.ts";
 import { cancelRun } from "./cancel.ts";
 import { RunEventBroker } from "./events.ts";
-import type { ReapRunResult } from "./reap.ts";
+import type { ReapRunResult } from "./reap/index.ts";
 
 /**
  * One-worker pool wired to a stub burrow client (warren-c0c9). Upserts a

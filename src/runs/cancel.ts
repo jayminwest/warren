@@ -49,7 +49,7 @@ import type { Repos } from "../db/repos/index.ts";
 import { RUN_TERMINAL_STATES, type RunState, type RunTerminalState } from "../db/schema.ts";
 import type { RunEventBroker } from "./events.ts";
 import type { AutoOpenPrConfig } from "./pr.ts";
-import { type ReapRunInput, type ReapRunResult, reapRun } from "./reap.ts";
+import { type ReapRunInput, type ReapRunResult, reapRun } from "./reap/index.ts";
 import type { BridgeLogger } from "./stream.ts";
 
 export interface CancelRunInput {

@@ -32,8 +32,6 @@
 		"src/runs/pause.test.ts": 616,
 		"src/runs/pr.test.ts": 604,
 		"src/runs/pr.ts": 659,
-		"src/runs/reap.test.ts": 2792,
-		"src/runs/reap.ts": 2114,
 		"src/runs/spawn.test.ts": 1344,
 		"src/runs/spawn.ts": 882,
 		"src/runs/stream.test.ts": 1248,

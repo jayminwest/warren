@@ -78,7 +78,7 @@ export {
 	type ReapStep,
 	type ReapStepError,
 	reapRun,
-} from "./reap.ts";
+} from "./reap/index.ts";
 export {
 	type BuildSeedFilesResult,
 	buildSeedFiles,
