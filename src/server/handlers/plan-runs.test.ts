@@ -7,19 +7,19 @@
  */
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { BurrowClient, BurrowClientPool } from "../burrow-client/index.ts";
-import { openDatabase, type WarrenDb } from "../db/client.ts";
-import { createRepos, type Repos } from "../db/repos/index.ts";
+import { BurrowClient, BurrowClientPool } from "../../burrow-client/index.ts";
+import { openDatabase, type WarrenDb } from "../../db/client.ts";
+import { createRepos, type Repos } from "../../db/repos/index.ts";
 import type {
 	AppendPlanRunDispatchedInput,
 	PlanRunPlotAppender,
-} from "../plan-runs/plot-appender.ts";
-import type { SpawnFn, SpawnOptions, SpawnResult } from "../projects/clone.ts";
-import { RunEventBroker } from "../runs/index.ts";
-import { NO_AUTH } from "./auth.ts";
-import { createBridgeRegistry } from "./bridges.ts";
-import { startServer } from "./server.ts";
-import type { BridgeRegistry, Logger, ServeHandle, ServerDeps } from "./types.ts";
+} from "../../plan-runs/plot-appender.ts";
+import type { SpawnFn, SpawnOptions, SpawnResult } from "../../projects/clone.ts";
+import { RunEventBroker } from "../../runs/index.ts";
+import { NO_AUTH } from "../auth.ts";
+import { createBridgeRegistry } from "../bridges.ts";
+import { startServer } from "../server.ts";
+import type { BridgeRegistry, Logger, ServeHandle, ServerDeps } from "../types.ts";
 
 const silentLogger: Logger = {
 	info() {},
@@ -100,7 +100,7 @@ interface BuildDepsInput {
 	bridges?: BridgeRegistry;
 	planRunPlotAppender?: PlanRunPlotAppender;
 	logger?: Logger;
-	plotResolver?: import("../plots/index.ts").PlotResolver;
+	plotResolver?: import("../../plots/index.ts").PlotResolver;
 }
 
 async function depsFor(input: BuildDepsInput): Promise<ServerDeps> {
@@ -166,6 +166,78 @@ function tcpUrl(handle: ServeHandle): string {
 	return `http://${handle.transport.hostname}:${handle.transport.port}`;
 }
 
+interface PlanRunFixture {
+	db: WarrenDb;
+	repos: Repos;
+	projectId: string;
+	seedyProjectId: string;
+	plottedProjectId: string;
+	barePlottedProjectId: string;
+}
+
+/**
+ * Shared per-test fixture for the `POST /plan-runs` describe blocks
+ * (warren-a2b4 / pl-9088 step 2). Splitting the original monolithic
+ * describe into smaller siblings to satisfy the noExcessiveLinesPerFunction
+ * cap requires a single setup seam so the fixture stays byte-identical
+ * across siblings.
+ *
+ * Pathological `barePlottedProject` (hasPlot=true + hasSeeds=false) is
+ * kept here solely to lock in gate-stack ordering (warren-909c /
+ * pl-7937 step 6): the handler must fire the seeds-gate first so
+ * plot_id never short-circuits the .seeds/ requirement.
+ */
+async function setupPlanRunFixture(): Promise<PlanRunFixture> {
+	const db = await openDatabase({ path: ":memory:" });
+	const repos = createRepos(db);
+
+	await repos.agents.upsert({
+		name: "claude-code",
+		renderedJson: {
+			name: "claude-code",
+			version: 1,
+			sections: { system: "you are claude" },
+			resolvedFrom: [],
+			frontmatter: {},
+		},
+	});
+
+	const seedy = await repos.projects.create({
+		gitUrl: "https://github.com/x/seedy.git",
+		localPath: "/tmp/seedy",
+		defaultBranch: "main",
+		hasSeeds: true,
+	});
+	const bare = await repos.projects.create({
+		gitUrl: "https://github.com/x/bare.git",
+		localPath: "/tmp/bare",
+		defaultBranch: "main",
+		hasSeeds: false,
+	});
+	const plotted = await repos.projects.create({
+		gitUrl: "https://github.com/x/plotted.git",
+		localPath: "/tmp/plotted",
+		defaultBranch: "main",
+		hasSeeds: true,
+		hasPlot: true,
+	});
+	const barePlotted = await repos.projects.create({
+		gitUrl: "https://github.com/x/bare-plotted.git",
+		localPath: "/tmp/bare-plotted",
+		defaultBranch: "main",
+		hasSeeds: false,
+		hasPlot: true,
+	});
+	return {
+		db,
+		repos,
+		projectId: bare.id,
+		seedyProjectId: seedy.id,
+		plottedProjectId: plotted.id,
+		barePlottedProjectId: barePlotted.id,
+	};
+}
+
 describe("POST /plan-runs", () => {
 	let db: WarrenDb;
 	let repos: Repos;
@@ -176,58 +248,13 @@ describe("POST /plan-runs", () => {
 	let barePlottedProjectId = "";
 
 	beforeEach(async () => {
-		db = await openDatabase({ path: ":memory:" });
-		repos = createRepos(db);
-
-		await repos.agents.upsert({
-			name: "claude-code",
-			renderedJson: {
-				name: "claude-code",
-				version: 1,
-				sections: { system: "you are claude" },
-				resolvedFrom: [],
-				frontmatter: {},
-			},
-		});
-
-		const seedy = await repos.projects.create({
-			gitUrl: "https://github.com/x/seedy.git",
-			localPath: "/tmp/seedy",
-			defaultBranch: "main",
-			hasSeeds: true,
-		});
-		seedyProjectId = seedy.id;
-
-		const bare = await repos.projects.create({
-			gitUrl: "https://github.com/x/bare.git",
-			localPath: "/tmp/bare",
-			defaultBranch: "main",
-			hasSeeds: false,
-		});
-		projectId = bare.id;
-
-		const plotted = await repos.projects.create({
-			gitUrl: "https://github.com/x/plotted.git",
-			localPath: "/tmp/plotted",
-			defaultBranch: "main",
-			hasSeeds: true,
-			hasPlot: true,
-		});
-		plottedProjectId = plotted.id;
-
-		// Pathological shape used solely to lock in gate-stack ordering
-		// (warren-909c / pl-7937 step 6): hasPlot=true but hasSeeds=false
-		// means the plot-gate WOULD pass while the seeds-gate rejects.
-		// The handler must fire the seeds-gate first so plot_id never
-		// short-circuits the .seeds/ requirement.
-		const barePlotted = await repos.projects.create({
-			gitUrl: "https://github.com/x/bare-plotted.git",
-			localPath: "/tmp/bare-plotted",
-			defaultBranch: "main",
-			hasSeeds: false,
-			hasPlot: true,
-		});
-		barePlottedProjectId = barePlotted.id;
+		const f = await setupPlanRunFixture();
+		db = f.db;
+		repos = f.repos;
+		projectId = f.projectId;
+		seedyProjectId = f.seedyProjectId;
+		plottedProjectId = f.plottedProjectId;
+		barePlottedProjectId = f.barePlottedProjectId;
 	});
 
 	afterEach(async () => {
@@ -532,6 +559,52 @@ describe("POST /plan-runs", () => {
 		expect(body.planRun.plotId).toBeNull();
 	});
 
+	// warren-b89f Plot integration tests (`plan_run_dispatched` emission)
+	// live in the sibling describe below — split out solely to keep this
+	// describe under Biome's noExcessiveLinesPerFunction cap (warren-a2b4).
+	test("404 when project doesn't exist", async () => {
+		const sdSpawn = makeSdSpawn([], []);
+		const deps = await depsFor({ repos, sdSpawn });
+		handle = startServer(deps, {
+			transport: { kind: "tcp", hostname: "127.0.0.1", port: 0 },
+			auth: NO_AUTH,
+			logger: silentLogger,
+		});
+
+		const res = await fetch(`${tcpUrl(handle)}/plan-runs`, {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({
+				project: "prj_does_not_exist",
+				planId: "pl-x",
+				agent: "claude-code",
+			}),
+		});
+		expect(res.status).toBe(404);
+	});
+});
+
+describe("POST /plan-runs — Plot integration (warren-b89f)", () => {
+	let db: WarrenDb;
+	let repos: Repos;
+	let handle: ServeHandle | null = null;
+	let plottedProjectId = "";
+
+	beforeEach(async () => {
+		const f = await setupPlanRunFixture();
+		db = f.db;
+		repos = f.repos;
+		plottedProjectId = f.plottedProjectId;
+	});
+
+	afterEach(async () => {
+		if (handle) {
+			await handle.stop();
+			handle = null;
+		}
+		await db.close();
+	});
+
 	test("emits plan_run_dispatched on the bound Plot at creation time (warren-b89f)", async () => {
 		const sdSpawn = makeSdSpawn(
 			[],
@@ -767,26 +840,27 @@ describe("POST /plan-runs", () => {
 		const persisted = await repos.planRuns.require(body.planRun.id);
 		expect(persisted.plotId).toBe("plot-f");
 	});
+});
 
-	test("404 when project doesn't exist", async () => {
-		const sdSpawn = makeSdSpawn([], []);
-		const deps = await depsFor({ repos, sdSpawn });
-		handle = startServer(deps, {
-			transport: { kind: "tcp", hostname: "127.0.0.1", port: 0 },
-			auth: NO_AUTH,
-			logger: silentLogger,
-		});
+describe("POST /plan-runs — plot_id validation (warren-bae5)", () => {
+	let db: WarrenDb;
+	let repos: Repos;
+	let handle: ServeHandle | null = null;
+	let plottedProjectId = "";
 
-		const res = await fetch(`${tcpUrl(handle)}/plan-runs`, {
-			method: "POST",
-			headers: { "content-type": "application/json" },
-			body: JSON.stringify({
-				project: "prj_does_not_exist",
-				planId: "pl-x",
-				agent: "claude-code",
-			}),
-		});
-		expect(res.status).toBe(404);
+	beforeEach(async () => {
+		const f = await setupPlanRunFixture();
+		db = f.db;
+		repos = f.repos;
+		plottedProjectId = f.plottedProjectId;
+	});
+
+	afterEach(async () => {
+		if (handle) {
+			await handle.stop();
+			handle = null;
+		}
+		await db.close();
 	});
 
 	test("malformed plot_id → 400 plot_id_invalid (warren-bae5)", async () => {

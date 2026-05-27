@@ -172,7 +172,7 @@ with lint warnings; fix at write time or promote to error in `biome.json`.
 
 - **Filenames (server/scripts):** `kebab-case.ts`. Tests are
   `<name>.test.ts` sitting next to the file under test. Dotted
-  groupings (e.g. `src/server/handlers.plan-runs.test.ts`) are allowed
+  groupings (e.g. `src/server/handlers/plan-runs.test.ts`) are allowed
   and each dot-segment must itself be kebab-case. Enforced by Biome's
   `useFilenamingConvention` rule (group `style`, kebab-case, strict).
   The `src/ui/` package is excluded from this Biome config and uses
