@@ -136,7 +136,7 @@ entries.
   means you deleted tests).
 
 - **`gen:docs:check`** (warren-e5fb) — verifies that `docs/http-api.md`
-  is in sync with the `ROUTE_TABLE` array in `src/server/handlers.ts`.
+  is in sync with the `ROUTE_TABLE` array in `src/server/handlers/index.ts`.
   The route table is the canonical HTTP API surface; this guard keeps
   the doc from drifting. To refresh after editing routes, run
   `bun run gen:docs` and commit the result. CI runs the `--check` mode

@@ -22,7 +22,7 @@
 import { existsSync, unlinkSync } from "node:fs";
 import { NO_AUTH } from "./auth.ts";
 import { methodNotAllowed, notFound, renderError } from "./errors.ts";
-import { buildApiRoutes, isApiPath, isAuthExempt } from "./handlers.ts";
+import { buildApiRoutes, isApiPath, isAuthExempt } from "./handlers/index.ts";
 import { bindRequestIdLogger, extractOrGenerateRequestId, stampRequestId } from "./request-id.ts";
 import { jsonResponse } from "./response.ts";
 import { matchRoute, pathExists } from "./router.ts";

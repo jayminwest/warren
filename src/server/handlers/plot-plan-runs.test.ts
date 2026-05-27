@@ -1,45 +1,43 @@
 /**
  * Tests for `POST /plot-plan-runs` (warren-99b2 / pl-f404 step 3 /
- * SPEC §11.Q).
- *
- * The handler composes:
- *   1. plot_id format validation (warren-bae5)
- *   2. project + .plot/ + .seeds/ gates (mirrors POST /plan-runs)
- *   3. plot existence via PlotResolver
- *   4. attachment fetch via PlotReader, candidate filter
- *   5. per-candidate `sd show` status probe (filters out closed seeds)
- *   6. plan synthesis via the `planSynthesizer` seam
- *   7. `sd plan show` re-read of the synthesized plan
- *   8. PlanRun persistence + Plot append (mirrors POST /plan-runs)
- *
- * Stubs are layered at each seam: PlotResolver / PlotReader for the
- * attachment surface, `planSynthesizer` for the synthesis, `sdSpawn`
- * for `sd show` + `sd plan show`, `planRunPlotAppender` for the Plot
- * mirror. No real `sd` binary or disk read happens.
+ * SPEC §11.Q). The handler composes plot_id validation, project +
+ * .plot/ + .seeds/ gates, PlotResolver existence check, PlotReader
+ * attachment fetch + candidate filter, per-candidate `sd show` status
+ * probe, plan synthesis via the `planSynthesizer` seam, `sd plan show`
+ * re-read, and PlanRun persistence + Plot append (mirrors POST
+ * /plan-runs). Stubs layer at each seam — PlotResolver / PlotReader,
+ * `planSynthesizer`, `sdSpawn` for `sd show` + `sd plan show`,
+ * `planRunPlotAppender` for the Plot mirror — so no real `sd` binary
+ * or disk read happens.
  */
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Attachment } from "@os-eco/plot-cli";
-import { BurrowClient, BurrowClientPool } from "../burrow-client/index.ts";
-import { openDatabase, type WarrenDb } from "../db/client.ts";
-import { createRepos, type Repos } from "../db/repos/index.ts";
-import type { ProjectRow } from "../db/schema.ts";
+import { BurrowClient, BurrowClientPool } from "../../burrow-client/index.ts";
+import { openDatabase, type WarrenDb } from "../../db/client.ts";
+import { createRepos, type Repos } from "../../db/repos/index.ts";
+import type { ProjectRow } from "../../db/schema.ts";
 import type {
 	AppendPlanRunDispatchedInput,
 	PlanRunPlotAppender,
-} from "../plan-runs/plot-appender.ts";
+} from "../../plan-runs/plot-appender.ts";
 import type {
 	PlanSynthesizer,
 	SynthesizePlanInput,
 	SynthesizePlanResult,
-} from "../plot-plan-runs/index.ts";
-import type { PlotReader, PlotResolver, ReadPlotRequest, ReadPlotResult } from "../plots/index.ts";
-import type { SpawnFn, SpawnOptions, SpawnResult } from "../projects/clone.ts";
-import { RunEventBroker } from "../runs/index.ts";
-import { NO_AUTH } from "./auth.ts";
-import { createBridgeRegistry } from "./bridges.ts";
-import { startServer } from "./server.ts";
-import type { BridgeRegistry, Logger, ServeHandle, ServerDeps } from "./types.ts";
+} from "../../plot-plan-runs/index.ts";
+import type {
+	PlotReader,
+	PlotResolver,
+	ReadPlotRequest,
+	ReadPlotResult,
+} from "../../plots/index.ts";
+import type { SpawnFn, SpawnOptions, SpawnResult } from "../../projects/clone.ts";
+import { RunEventBroker } from "../../runs/index.ts";
+import { NO_AUTH } from "../auth.ts";
+import { createBridgeRegistry } from "../bridges.ts";
+import { startServer } from "../server.ts";
+import type { BridgeRegistry, Logger, ServeHandle, ServerDeps } from "../types.ts";
 
 const silentLogger: Logger = {
 	info() {},
@@ -590,7 +588,7 @@ describe("POST /plot-plan-runs", () => {
 	});
 
 	test("synthesizer error surfaces as 500 sd_plan_synthesis_error", async () => {
-		const { SdPlanSynthesisError } = await import("../plot-plan-runs/index.ts");
+		const { SdPlanSynthesisError } = await import("../../plot-plan-runs/index.ts");
 		const sdSpawn = makeSdSpawn(
 			[],
 			[

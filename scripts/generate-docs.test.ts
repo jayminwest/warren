@@ -6,7 +6,7 @@ import { extractRoutes, generate, groupRoutes, renderMarkdown } from "./generate
 const REPO_ROOT = resolve(import.meta.dir, "..");
 
 describe("generate-docs", () => {
-	test("docs/http-api.md is in sync with src/server/handlers.ts", () => {
+	test("docs/http-api.md is in sync with src/server/handlers/index.ts", () => {
 		const { content } = generate();
 		const onDisk = readFileSync(resolve(REPO_ROOT, "docs/http-api.md"), "utf8");
 		expect(onDisk).toBe(content);

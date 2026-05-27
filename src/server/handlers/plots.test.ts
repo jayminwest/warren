@@ -20,17 +20,17 @@
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Attachment, Intent, PlotEvent, PlotStatus } from "@os-eco/plot-cli";
-import { BurrowClient, BurrowClientPool } from "../burrow-client/index.ts";
-import { openDatabase, type WarrenDb } from "../db/client.ts";
-import { createRepos, type Repos } from "../db/repos/index.ts";
-import type { ProjectRow } from "../db/schema.ts";
+import { BurrowClient, BurrowClientPool } from "../../burrow-client/index.ts";
+import { openDatabase, type WarrenDb } from "../../db/client.ts";
+import { createRepos, type Repos } from "../../db/repos/index.ts";
+import type { ProjectRow } from "../../db/schema.ts";
 import {
 	PlotAttachmentNotFoundError,
 	PlotIllegalStatusTransitionError,
 	PlotIntentFrozenError,
 	PlotQuestionAlreadyAnsweredError,
 	PlotQuestionNotFoundError,
-} from "../plots/errors.ts";
+} from "../../plots/errors.ts";
 import type {
 	AnswerPlotQuestionRequest,
 	AnswerPlotQuestionResult,
@@ -64,12 +64,12 @@ import type {
 	ReadPlotResult,
 	RenamePlotRequest,
 	RenamePlotResult,
-} from "../plots/index.ts";
-import { RunEventBroker } from "../runs/index.ts";
-import { NO_AUTH } from "./auth.ts";
-import { createBridgeRegistry } from "./bridges.ts";
-import { startServer } from "./server.ts";
-import type { Logger, ServeHandle, ServerDeps } from "./types.ts";
+} from "../../plots/index.ts";
+import { RunEventBroker } from "../../runs/index.ts";
+import { NO_AUTH } from "../auth.ts";
+import { createBridgeRegistry } from "../bridges.ts";
+import { startServer } from "../server.ts";
+import type { Logger, ServeHandle, ServerDeps } from "../types.ts";
 
 const silentLogger: Logger = {
 	info() {},
@@ -114,7 +114,7 @@ interface BuildDepsInput {
 	plotPrMerger?: PlotPrMerger;
 	plotQuestionAnswerer?: PlotQuestionAnswerer;
 	plotFormalizer?: PlotFormalizer;
-	plotSyncer?: import("../plots/index.ts").PlotSyncer;
+	plotSyncer?: import("../../plots/index.ts").PlotSyncer;
 	autoOpenToken?: string;
 }
 
@@ -3654,7 +3654,7 @@ describe("POST /plots/:id/sync", () => {
 	test("returns the synced result when successful", async () => {
 		const project = await seedProject(repos, { id: "proj-sync", hasPlot: true });
 		const { resolver } = fakeResolver({ "plot-sync-01": project });
-		const mockSyncer: import("../plots/index.ts").PlotSyncer = {
+		const mockSyncer: import("../../plots/index.ts").PlotSyncer = {
 			async sync(_input) {
 				return {
 					kind: "synced",

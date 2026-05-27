@@ -7,7 +7,7 @@ import { buildDocument, convertPattern, generate, tagFor } from "./generate-open
 const REPO_ROOT = resolve(import.meta.dir, "..");
 
 describe("generate-openapi", () => {
-	test("docs/openapi.yaml is in sync with src/server/handlers.ts", () => {
+	test("docs/openapi.yaml is in sync with src/server/handlers/index.ts", () => {
 		const { content } = generate();
 		const onDisk = readFileSync(resolve(REPO_ROOT, "docs/openapi.yaml"), "utf8");
 		expect(onDisk).toBe(content);

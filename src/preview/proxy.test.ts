@@ -1205,7 +1205,7 @@ describe("warren-api-prefixes-stay-in-sync (warren-63e1)", () => {
 		// handlers.ts into the preview tree. This test makes the duplication
 		// safe by asserting parity at build time — adding a new API surface
 		// to handlers.ts surfaces here as a failed assertion.
-		const handlers = await import("../server/handlers.ts");
+		const handlers = await import("../server/handlers/index.ts");
 		const { API_ROUTE_PATTERNS } = handlers;
 		// Derive prefixes from the pattern list: the first path segment.
 		const observedPrefixes = new Set<string>();

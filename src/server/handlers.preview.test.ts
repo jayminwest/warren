@@ -8,7 +8,7 @@ import { createPreviewProxyHandler } from "../preview/proxy.ts";
 import { RunEventBroker } from "../runs/index.ts";
 import { bearerAuth } from "./auth.ts";
 import { createBridgeRegistry } from "./bridges.ts";
-import { isAuthExempt } from "./handlers.ts";
+import { isAuthExempt } from "./handlers/index.ts";
 import { startServer } from "./server.ts";
 import type { BridgeRegistry, ServeHandle, ServerDeps } from "./types.ts";
 

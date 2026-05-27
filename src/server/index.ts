@@ -33,7 +33,7 @@ export {
 	buildApiRoutes,
 	isApiPath,
 	isAuthExempt,
-} from "./handlers.ts";
+} from "./handlers/index.ts";
 export { type BootServerOptions, bootServer, type WarrenServerHandle } from "./main.ts";
 export {
 	DEFAULT_WORKER_PROBE_INTERVAL_MS,
