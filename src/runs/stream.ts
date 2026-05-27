@@ -485,18 +485,14 @@ export async function bridgeRunStream(input: BridgeRunStreamInput): Promise<Brid
  *     "result"`. The `is_error` field distinguishes a clean exit from a
  *     crash; `is_error: true` → `failed`, anything else → `succeeded`.
  *   - pi: burrow's pi parser emits `payload.type === "agent_end"` as the
- *     final lifecycle envelope (burrow `src/runtime/parsers/pi.ts`).
- *     The envelope carries no error flag, so the bridge treats it as
- *     "the agent reached its natural end" → `succeeded`; reap then
- *     reconciles against burrow's authoritative `exit_code` /
- *     `state` if the process crashed afterwards.
+ *     final lifecycle envelope. `stopReason === "error"` or a non-empty
+ *     `errorMessage` → `failed` (warren-1ac2 / pl-5516); absent both,
+ *     → `succeeded`. Zero-token / empty-content alone is NOT a failure
+ *     signal — a legitimate noop run shares that shape.
  *
  * burrow's own cancel path emits a different terminal shape; that case
- * is handled by `cancelRun` which already has the burrow run state in
- * hand, so the bridge doesn't need to detect it here.
- *
- * Future runtimes extend this dispatch by adding their runtime-specific
- * terminal shape.
+ * is handled by `cancelRun`. Future runtimes extend this dispatch by
+ * adding their runtime-specific terminal shape.
  */
 function detectRuntimeTerminal(event: RunEvent): RunTerminalState | null {
 	if (event.kind !== "state_change") return null;
@@ -505,7 +501,11 @@ function detectRuntimeTerminal(event: RunEvent): RunTerminalState | null {
 	if (payload === null || typeof payload !== "object") return null;
 	const env = payload as Record<string, unknown>;
 	if (env.type === "result") return env.is_error === true ? "failed" : "succeeded";
-	if (env.type === "agent_end") return "succeeded";
+	if (env.type === "agent_end") {
+		const err = env.errorMessage;
+		const failed = env.stopReason === "error" || (typeof err === "string" && err.length > 0);
+		return failed ? "failed" : "succeeded";
+	}
 	return null;
 }
 
