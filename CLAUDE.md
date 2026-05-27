@@ -143,10 +143,11 @@ bun run check:all
 ```
 
 This runs: `test`, `lint`, `typecheck`, `validate:agents-md`,
-`check:file-sizes`, `check:debt-markers`, and `check:deps` — the same
-set CI enforces (see `.github/workflows/ci.yml`). CI also runs
-`check:duplicates` (jscpd) on top. Don't merge with lint warnings; fix
-at write time or promote to error in `biome.json`.
+`check:file-sizes`, `check:debt-markers`, `check:deps`, and
+`check:bundle-size:build` — the same set CI enforces (see
+`.github/workflows/ci.yml`). CI also runs `check:duplicates` (jscpd)
+on top. Don't merge with lint warnings; fix at write time or promote
+to error in `biome.json`.
 
 `check:deps` (warren-d109) wraps [knip](https://knip.dev) in
 `--dependencies` mode to flag unused / undeclared npm dependencies
