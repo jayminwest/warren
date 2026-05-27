@@ -22,7 +22,7 @@
 import { existsSync, unlinkSync } from "node:fs";
 import { NO_AUTH } from "./auth.ts";
 import { methodNotAllowed, notFound, renderError } from "./errors.ts";
-import { buildApiRoutes, isAuthExempt } from "./handlers.ts";
+import { buildApiRoutes, isApiPath, isAuthExempt } from "./handlers.ts";
 import { jsonResponse } from "./response.ts";
 import { matchRoute, pathExists } from "./router.ts";
 import type {
@@ -212,7 +212,18 @@ async function handleRequest(
 		}
 	}
 
-	// No match. If the route is a GET with a UI handler available, fall
+	// No match. Any path under an API prefix must return a canonical JSON
+	// 404 envelope rather than leaking the SPA HTML shell — this is the
+	// single chokepoint that guarantees that contract regardless of UI
+	// handler state (see plan pl-230a / warren-635d).
+	if (isApiPath(url.pathname)) {
+		const rendered = pathExists(routes, url.pathname)
+			? methodNotAllowed(request.method, url.pathname)
+			: notFound(url.pathname);
+		return jsonResponse(rendered.status, rendered.envelope);
+	}
+
+	// If the route is a GET with a UI handler available, fall
 	// through to the SPA index — that's how the UI's deep-link routes
 	// (`/projects/abc`, `/runs/xyz`) hit the React shell. We model this
 	// by checking whether a `GET /` UI route exists in the table.
