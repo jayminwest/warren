@@ -20,7 +20,7 @@ import {
 	checkWarrenConfigDeprecations,
 	type DiagnosticCheck,
 } from "../../diagnostics/checks.ts";
-import { createRunPreviewsRepo, DEFAULT_MAX_LIVE } from "../../preview/eviction.ts";
+import { createRunPreviewsRepo, DEFAULT_MAX_LIVE } from "../../preview/eviction/index.ts";
 import { DEFAULT_PREVIEW_PORT_RANGE, PreviewPortAllocator } from "../../preview/port-allocator.ts";
 import type { SpawnFn } from "../../projects/clone.ts";
 import { jsonResponse } from "../response.ts";

@@ -23,7 +23,7 @@ import type { BurrowClientPool } from "../burrow-client/pool.ts";
 import { ValidationError } from "../core/errors.ts";
 import { type AnyWarrenDb, pingDatabase } from "../db/client.ts";
 import { parseDatabaseUrl, sqliteUrlForPath } from "../db/url.ts";
-import { PREVIEW_MAX_LIVE_WARN_RATIO } from "../preview/eviction.ts";
+import { PREVIEW_MAX_LIVE_WARN_RATIO } from "../preview/eviction/index.ts";
 import { type PortUsage, PREVIEW_PORT_USAGE_WARN_RATIO } from "../preview/port-allocator.ts";
 import type { SpawnFn } from "../projects/clone.ts";
 import { type CanopyRegistryConfig, loadCanopyRegistryConfigFromEnv } from "../registry/config.ts";

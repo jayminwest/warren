@@ -56,7 +56,7 @@ import { createPreviewAuth, type PreviewAuth } from "../preview/cookie.ts";
 import {
 	loadPreviewEvictionConfigFromEnv,
 	startPreviewEvictionWorker,
-} from "../preview/eviction.ts";
+} from "../preview/eviction/index.ts";
 import { loadPreviewLaunchConfigFromEnv } from "../preview/launch.ts";
 import { loadPreviewPortRangeFromEnv, PreviewPortAllocator } from "../preview/port-allocator.ts";
 import { createPreviewProxyHandler } from "../preview/proxy/index.ts";

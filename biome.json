@@ -98,7 +98,6 @@
 				"src/plots/summary.ts",
 				"src/plots/sync.ts",
 				"src/preview/cookie.ts",
-				"src/preview/eviction.ts",
 				"src/preview/launch.ts",
 				"src/preview/proxy/index.ts",
 				"src/preview/proxy/rewrite.ts",

@@ -20,8 +20,6 @@
 		"src/plan-runs/coordinator.ts": 587,
 		"src/plots/aggregate.test.ts": 847,
 		"src/plots/aggregate.ts": 506,
-		"src/preview/eviction.test.ts": 545,
-		"src/preview/eviction.ts": 819,
 		"src/preview/launch.test.ts": 995,
 		"src/preview/launch.ts": 712,
 		"src/projects/manage.test.ts": 763,

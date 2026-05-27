@@ -4,7 +4,11 @@ import { NotFoundError } from "../core/errors.ts";
 import { openDatabase, type WarrenDb } from "../db/client.ts";
 import { createRepos, type Repos } from "../db/repos/index.ts";
 import { RunEventBroker } from "../runs/events.ts";
-import { createRunPreviewsRepo, type SidecarClient, type SidecarResolver } from "./eviction.ts";
+import {
+	createRunPreviewsRepo,
+	type SidecarClient,
+	type SidecarResolver,
+} from "./eviction/index.ts";
 import { PREVIEW_TORN_DOWN_EVENT_KIND, teardownPreview } from "./teardown.ts";
 
 interface FakeSidecars {

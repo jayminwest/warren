@@ -47,7 +47,7 @@ import {
 	type PreviewEvictionLogger,
 	type RunPreviewsRepo,
 	type SidecarResolver,
-} from "./eviction.ts";
+} from "./eviction/index.ts";
 
 export type { ManualTeardownStatus };
 

@@ -14,7 +14,7 @@
 import { join } from "node:path";
 import type { MessagePriority } from "@os-eco/burrow-cli";
 import { ValidationError } from "../../core/errors.ts";
-import { createRunPreviewsRepo } from "../../preview/eviction.ts";
+import { createRunPreviewsRepo } from "../../preview/eviction/index.ts";
 import { teardownPreview } from "../../preview/teardown.ts";
 import { readProviderFrontmatter } from "../../registry/index.ts";
 import {
