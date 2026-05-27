@@ -33,7 +33,11 @@
 				"useTemplate": "error"
 			},
 			"complexity": {
-				"noUselessTypeConstraint": "error"
+				"noUselessTypeConstraint": "error",
+				"noExcessiveLinesPerFunction": {
+					"level": "error",
+					"options": { "maxLines": 500 }
+				}
 			}
 		}
 	},
@@ -41,5 +45,26 @@
 		"enabled": true,
 		"indentStyle": "tab",
 		"lineWidth": 100
-	}
+	},
+	"overrides": [
+		{
+			"includes": [
+				"src/client/client.test.ts",
+				"src/preview/launch.test.ts",
+				"src/registry/refresh.test.ts",
+				"src/runs/reap.test.ts",
+				"src/runs/reap.ts",
+				"src/runs/spawn.test.ts",
+				"src/runs/stream.test.ts",
+				"src/server/handlers.plan-runs.test.ts"
+			],
+			"linter": {
+				"rules": {
+					"complexity": {
+						"noExcessiveLinesPerFunction": "off"
+					}
+				}
+			}
+		}
+	]
 }

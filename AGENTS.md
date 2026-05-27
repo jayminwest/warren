@@ -65,6 +65,15 @@ Run all three before committing — warnings count as failures:
 bun test && bun run lint && bun run typecheck
 ```
 
+CI also runs `bun run check:file-sizes`, which enforces a per-file
+line-count budget (warren-4553). New `.ts`/`.tsx` files under `src/` and
+`scripts/` must stay ≤ 500 lines; existing oversized files are
+grandfathered in `scripts/file-size-budgets.json` and may not grow past
+their frozen ceiling — the ratchet only goes down. Biome's
+`noExcessiveLinesPerFunction` rule (also 500-line cap) enforces the same
+budget at the function level, with the same baseline exceptions called
+out in `biome.json`'s `overrides`.
+
 CI (`.github/workflows/release.yml`) runs the same trinity. Do not merge
 with lint warnings; fix at write time or promote to error in `biome.json`.
 
