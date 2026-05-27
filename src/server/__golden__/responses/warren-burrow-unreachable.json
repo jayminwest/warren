@@ -1,0 +1,9 @@
+{
+	"status": 503,
+	"body": {
+		"error": {
+			"code": "burrow_unreachable",
+			"message": "socket closed"
+		}
+	}
+}

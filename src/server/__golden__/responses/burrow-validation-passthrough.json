@@ -1,0 +1,9 @@
+{
+	"status": 400,
+	"body": {
+		"error": {
+			"code": "validation_error",
+			"message": "bad body"
+		}
+	}
+}

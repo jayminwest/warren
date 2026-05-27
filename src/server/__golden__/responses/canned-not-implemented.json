@@ -1,0 +1,9 @@
+{
+	"status": 501,
+	"body": {
+		"error": {
+			"code": "not_implemented",
+			"message": "route GET /scaffold is scaffolded but has no handler yet"
+		}
+	}
+}

@@ -1,0 +1,9 @@
+{
+	"status": 500,
+	"body": {
+		"error": {
+			"code": "internal_error",
+			"message": "boom"
+		}
+	}
+}

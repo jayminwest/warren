@@ -223,6 +223,23 @@ Canonical home for per-project defaults. Schema:
 `preview`, `agent.pauseTimeoutMs`, `plotSync`. See `CLAUDE.md` and
 SPEC §11.H / §11.L / §11.O for details.
 
+## Golden snapshots
+
+Stable wire shapes that downstream consumers depend on are pinned with
+on-disk JSON fixtures under a sibling directory named `__golden__`.
+The first adopter is `src/server/__golden__/responses` (warren-8aa4 /
+pl-7b06 step 22), which locks `renderError` + `notFound` /
+`methodNotAllowed` / `notImplemented` envelopes; the companion test is
+`src/server/responses.golden.test.ts`. Regenerate after an intentional
+shape change with `WARREN_UPDATE_GOLDENS=1 bun test
+src/server/responses.golden.test.ts`, then `git diff` the fixtures and
+commit only the diffs you meant. The directory name mirrors the
+upstream burrow convention (the `__golden__` fixture dirs under
+burrow's parser tree) and is already excluded from `check:file-sizes`, `check:debt-markers`,
+`check:duplicates`, and Biome's filename-convention rule — keep new
+golden directories under the same name so those exclusions keep
+applying without churn.
+
 ## Acceptance harness
 
 `scripts/acceptance/` runs scenario-based end-to-end checks against a

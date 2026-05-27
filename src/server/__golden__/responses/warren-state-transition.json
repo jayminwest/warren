@@ -1,0 +1,9 @@
+{
+	"status": 409,
+	"body": {
+		"error": {
+			"code": "state_transition_error",
+			"message": "cannot cancel finished run"
+		}
+	}
+}

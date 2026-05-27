@@ -1,0 +1,9 @@
+{
+	"status": 405,
+	"body": {
+		"error": {
+			"code": "method_not_allowed",
+			"message": "PATCH not allowed on /runs/abc"
+		}
+	}
+}
