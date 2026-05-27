@@ -7,12 +7,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.14] — 2026-05-27
+
+Patch release landing the CI-parity plan (pl-da5b): the local
+`bun run check:all` now mirrors `ci.yml` + `ci-postgres.yml` exactly,
+the pre-commit hook delegates to that same gate, deployed agents read
+it via `WARREN_QUALITY_GATE`, and a drift detector keeps the three in
+sync going forward.
+
+### Added
+
+- **`feat(dx)`** — `bun run test:pg` boots a disposable Docker Postgres
+  and runs the test matrix with `WARREN_TEST_DIALECT=postgres`, so the
+  Postgres lane CI exercises is reproducible locally (warren-0d10 /
+  pl-da5b step 1).
+- **`feat(ci)`** — `scripts/check-ci-parity.ts` parses `ci.yml` and
+  `ci-postgres.yml` and fails if any `bun run <X>` step is not
+  transitively reachable from `check:all`. Wired into `check:all`
+  itself so drift can't land silently (warren-6296 / pl-da5b step 3).
+
 ### Changed
 
 - **`chore(dx)`** — `bun run check:all` now invokes `check:duplicates`
   (jscpd) inline so the local quality gate mirrors `ci.yml` exactly.
   Previously CI ran jscpd on top of `check:all`; that drift is gone
   (warren-2bcd / pl-da5b step 2).
+- **`chore(config)`** — This repo's `.warren/config.yaml` now sets
+  `qualityGate: "bun run check:all"` so deployed agents read it via
+  `WARREN_QUALITY_GATE` instead of the fuzzy fallback (warren-57cd /
+  pl-da5b step 4).
+- **`chore(hooks)`** — `scripts/hooks/pre-commit` is collapsed to
+  `exec bun run check:all`, making it impossible to commit through a
+  red gate locally (warren-8544 / pl-da5b step 5).
+- **`docs(agents)`** — Built-in claude-code / sapling / pi agent
+  prompts now treat the green quality gate as terminal, not advisory:
+  explicit "you are not done until `$WARREN_QUALITY_GATE` exits zero"
+  language replaces the prior soft wording (warren-6a34 / pl-da5b
+  step 6).
+
+### Fixed
+
+- **`test(ci-parity)`** — Validated the new `check:all` against a
+  dirty migration (Class A regression) and a missing-artifact
+  reference (Class B regression) to confirm both failure modes are
+  caught locally before CI (warren-ace1 / pl-da5b step 7).
 
 ## [0.6.13] — 2026-05-27
 
