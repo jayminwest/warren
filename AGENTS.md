@@ -66,8 +66,8 @@ bun run check:all
 ```
 
 This runs: `test`, `lint`, `typecheck`, `validate:agents-md`,
-`check:file-sizes`, and `check:debt-markers` — the same set CI enforces
-(see `.github/workflows/ci.yml`). Do not merge with lint warnings; fix
+`check:file-sizes`, `check:debt-markers`, and `check:deps` — the same
+set CI enforces (see `.github/workflows/ci.yml`). Do not merge with lint warnings; fix
 at write time or promote to error in `biome.json`.
 
 Details on the additional checks:
@@ -96,6 +96,13 @@ must stay under the threshold; existing offenders are grandfathered in
 the second `overrides` block of `biome.json`. The ratchet only goes
 down — refactor offenders out of the list rather than adding new
 entries.
+
+`check:deps` (warren-d109) wraps [knip](https://knip.dev) in
+`--dependencies` mode (config in `knip.json`) to flag unused or
+undeclared npm dependencies across the root package and the `src/ui`
+workspace. The fix for a knip hit is almost always `bun remove <dep>`
+(or `cd src/ui && bun remove <dep>`) — only ignore a dep when it's
+resolved by string at runtime (e.g. a pino transport target).
 
 CI also runs `bun run check:duplicates` (warren-61e9), which invokes
 [jscpd](https://github.com/kucherenko/jscpd) over `src/**/*.{ts,tsx}` to

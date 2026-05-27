@@ -39,7 +39,8 @@
 		"check:file-sizes": "bun run scripts/check-file-sizes.ts",
 		"check:debt-markers": "bun run scripts/check-debt-markers.ts",
 		"check:duplicates": "jscpd",
-		"check:all": "bun test && bun run lint && bun run typecheck && bun run validate:agents-md && bun run check:file-sizes && bun run check:debt-markers",
+		"check:deps": "knip --dependencies",
+		"check:all": "bun test && bun run lint && bun run typecheck && bun run validate:agents-md && bun run check:file-sizes && bun run check:debt-markers && bun run check:deps",
 		"db:generate": "bun run db:generate:sqlite && bun run db:generate:postgres",
 		"db:generate:sqlite": "drizzle-kit generate --config=drizzle.config.sqlite.ts",
 		"db:generate:postgres": "drizzle-kit generate --config=drizzle.config.postgres.ts",
@@ -57,19 +58,18 @@
 		"@types/pg": "^8.11.10",
 		"drizzle-kit": "^0.31.10",
 		"jscpd": "^4.2.4",
+		"knip": "^6.14.2",
 		"typescript": "^6.0.3"
 	},
 	"dependencies": {
 		"@os-eco/burrow-cli": "^0.3.4",
 		"@os-eco/plot-cli": "^0.3.0",
-		"chalk": "^5.6.2",
 		"commander": "^14.0.3",
 		"croner": "^10.0.1",
 		"drizzle-orm": "^0.45.2",
 		"js-yaml": "^4.1.1",
 		"pg": "^8.13.1",
 		"pino": "^10.3.1",
-		"pino-pretty": "^13.1.3",
 		"zod": "^4.4.3"
 	}
 }

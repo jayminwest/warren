@@ -21,4 +21,6 @@ jobs:
       - run: bun run check:file-sizes
       - run: bun run check:debt-markers
       - run: bun run check:duplicates
+      - run: bun run ui:install
+      - run: bun run check:deps
       - run: bun test
