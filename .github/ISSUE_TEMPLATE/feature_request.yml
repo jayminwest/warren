@@ -1,6 +1,6 @@
 name: Feature Request
 description: Suggest a new feature or improvement
-labels: ["enhancement"]
+labels: ["type/feature", "status/needs-triage"]
 body:
   - type: textarea
     id: problem
@@ -25,3 +25,48 @@ body:
       description: What other approaches did you consider?
     validations:
       required: false
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      description: |
+        How important is this to you? Maintainers may re-triage. See
+        `docs/labels.md` for the full priority taxonomy.
+      options:
+        - "P0 -- critical / blocks a release"
+        - "P1 -- high / needed for next milestone"
+        - "P2 -- medium / normal feature work"
+        - "P3 -- low / nice-to-have"
+      default: 2
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Affected area
+      description: |
+        Which part of warren would this touch? Pick the closest match(es);
+        select "unsure" if you don't know.
+      multiple: true
+      options:
+        - "area/server -- HTTP API / handlers"
+        - "area/ui -- React SPA"
+        - "area/cli -- CLI commands"
+        - "area/supervisor -- supervisor process"
+        - "area/burrow -- sandbox / burrow boundary"
+        - "area/db -- storage / migrations"
+        - "area/agents -- agent registry / built-ins"
+        - "area/runs -- run lifecycle / events"
+        - "area/projects -- project management"
+        - "area/plot -- Plot integration"
+        - "area/plan-runs -- serial plan dispatch"
+        - "area/preview -- preview environments"
+        - "area/scheduler -- cron / triggers"
+        - "area/acceptance -- acceptance harness"
+        - "area/build -- CI / lint / tooling"
+        - "area/docs -- documentation"
+        - "unsure -- maintainer will triage"
+    validations:
+      required: true

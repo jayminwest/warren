@@ -136,6 +136,14 @@ Prefix with `fix:`, `feat:`, or `docs:` when the category is clear. Plain descri
 
 Use [GitHub Issues](https://github.com/jayminwest/warren/issues) for bug reports and feature requests. For security vulnerabilities, see [SECURITY.md](SECURITY.md).
 
+Issue templates apply the baseline `type/*`, `priority/*`, and
+`status/needs-triage` labels automatically. The full label taxonomy --
+namespaced `priority/*`, `type/*`, `area/*`, `status/*`, and `effort/*`
+groups -- is documented in [`docs/labels.md`](docs/labels.md) and
+defined canonically in [`.github/labels.yml`](.github/labels.yml). The
+[`sync-labels`](.github/workflows/sync-labels.yml) workflow keeps the
+GitHub repository's labels in sync with the source file.
+
 ## License
 
 By contributing, you agree that your contributions will be licensed under the [MIT License](LICENSE).

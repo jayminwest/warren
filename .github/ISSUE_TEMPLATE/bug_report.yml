@@ -1,6 +1,6 @@
 name: Bug Report
 description: Report a bug in warren
-labels: ["bug"]
+labels: ["type/bug", "status/needs-triage"]
 body:
   - type: textarea
     id: steps
@@ -26,6 +26,52 @@ body:
     attributes:
       label: Actual behavior
       description: What actually happened?
+    validations:
+      required: true
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      description: |
+        How urgent is this for you? Maintainers may re-triage, but a starting
+        point helps. See `docs/labels.md` for the full priority taxonomy.
+      options:
+        - "P0 -- critical / production-impacting"
+        - "P1 -- high / blocks my workflow"
+        - "P2 -- medium / annoying but workable"
+        - "P3 -- low / nice-to-have"
+      default: 2
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Affected area
+      description: |
+        Which part of warren does this touch? Pick the closest match; leave
+        as "unsure" if you don't know and a maintainer will label it during
+        triage.
+      multiple: true
+      options:
+        - "area/server -- HTTP API / handlers"
+        - "area/ui -- React SPA"
+        - "area/cli -- CLI commands"
+        - "area/supervisor -- supervisor process"
+        - "area/burrow -- sandbox / burrow boundary"
+        - "area/db -- storage / migrations"
+        - "area/agents -- agent registry / built-ins"
+        - "area/runs -- run lifecycle / events"
+        - "area/projects -- project management"
+        - "area/plot -- Plot integration"
+        - "area/plan-runs -- serial plan dispatch"
+        - "area/preview -- preview environments"
+        - "area/scheduler -- cron / triggers"
+        - "area/acceptance -- acceptance harness"
+        - "area/build -- CI / lint / tooling"
+        - "area/docs -- documentation"
+        - "unsure -- maintainer will triage"
     validations:
       required: true
 

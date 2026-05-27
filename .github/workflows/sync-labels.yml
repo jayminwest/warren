@@ -1,0 +1,63 @@
+name: Sync labels
+
+# Mirrors `.github/labels.yml` to the GitHub repository's label set.
+# Runs on every push to `main` that touches the source file, on PRs that
+# modify it (dry-run for review), and on manual dispatch.
+#
+# The source file is the canonical taxonomy; see docs/labels.md for the
+# rationale behind the priority/type/area/status/effort namespaces.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/labels.yml"
+      - ".github/workflows/sync-labels.yml"
+  pull_request:
+    paths:
+      - ".github/labels.yml"
+      - ".github/workflows/sync-labels.yml"
+  workflow_dispatch:
+    inputs:
+      dry-run:
+        description: "Preview the diff without writing to GitHub"
+        type: boolean
+        required: false
+        default: false
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      # Pull-request runs are always dry-run: we want to see the diff in
+      # the workflow logs before merging, but we never mutate the repo's
+      # label set from an unmerged change. Manual dispatch honours the
+      # `dry-run` input so maintainers can preview ad-hoc.
+      - name: Compute dry-run flag
+        id: mode
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            echo "dry-run=true" >> "$GITHUB_OUTPUT"
+          elif [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "dry-run=${{ inputs.dry-run }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "dry-run=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Sync labels from .github/labels.yml
+        uses: crazy-max/ghaction-github-labeler@v5
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          yaml-file: .github/labels.yml
+          # Keep labels that are not in the source file (e.g. labels
+          # created by external integrations or third-party bots) so the
+          # sync is additive rather than destructive.
+          skip-delete: true
+          dry-run: ${{ steps.mode.outputs.dry-run }}

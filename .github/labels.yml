@@ -1,0 +1,203 @@
+# Canonical GitHub label taxonomy for warren.
+#
+# This file is the source of truth for issue + PR labels. It is consumed by
+# `.github/workflows/sync-labels.yml`, which mirrors any drift back to the
+# GitHub repository on every push to `main` that touches this file.
+#
+# Conventions:
+#   * Namespaced labels use `<group>/<value>` (e.g. `priority/P1`, `area/server`).
+#   * Each group uses a shared hue so labels are visually distinguishable:
+#       priority/*  -- red ramp (P0 darkest, P3 lightest)
+#       type/*      -- blue ramp
+#       area/*      -- green ramp
+#       status/*    -- yellow ramp
+#       effort/*    -- purple ramp
+#   * Legacy GitHub defaults (`bug`, `enhancement`, `documentation`,
+#     `dependencies`, `javascript`) are kept for compatibility with
+#     existing issues and Dependabot but mapped to their canonical
+#     `type/*` siblings in the docs (see docs/labels.md).
+#
+# Add or rename entries via PR; the sync workflow uses `--skip-delete` so
+# manually-created labels are preserved (the source of truth still wins for
+# any label name that appears here).
+
+# ---------------------------------------------------------------------------
+# Priority -- how urgent is the work?
+# ---------------------------------------------------------------------------
+- name: "priority/P0"
+  color: "b60205"
+  description: "Critical: production-impacting or blocking release; drop everything"
+- name: "priority/P1"
+  color: "d93f0b"
+  description: "High: required for the next milestone"
+- name: "priority/P2"
+  color: "fbca04"
+  description: "Medium: default priority for normal feature work"
+- name: "priority/P3"
+  color: "fef2c0"
+  description: "Low: nice-to-have; pick up when capacity allows"
+
+# ---------------------------------------------------------------------------
+# Type -- what kind of change is this?
+# ---------------------------------------------------------------------------
+- name: "type/bug"
+  color: "1d76db"
+  description: "Defect: existing behaviour is incorrect"
+- name: "type/feature"
+  color: "2188ff"
+  description: "New user-facing capability"
+- name: "type/chore"
+  color: "5cb3ff"
+  description: "Maintenance: tooling, CI, build, internal cleanup"
+- name: "type/refactor"
+  color: "0e8a16"
+  description: "Internal restructure without behaviour change"
+- name: "type/docs"
+  color: "0075ca"
+  description: "Documentation-only change"
+- name: "type/test"
+  color: "bfd4f2"
+  description: "Test coverage: add, fix, or strengthen tests"
+- name: "type/security"
+  color: "b60205"
+  description: "Security-sensitive change or vulnerability fix"
+- name: "type/performance"
+  color: "1d76db"
+  description: "Performance improvement: latency, throughput, memory"
+
+# ---------------------------------------------------------------------------
+# Area -- which part of warren does it touch?
+# (Aligned with the top-level directories under src/ plus cross-cutting
+#  concerns such as docs, deps, CI, and the burrow boundary.)
+# ---------------------------------------------------------------------------
+- name: "area/server"
+  color: "0e8a16"
+  description: "HTTP API surface (src/server/, ROUTE_TABLE, handlers)"
+- name: "area/ui"
+  color: "0e8a16"
+  description: "React/Vite SPA (src/ui/, @os-eco/warren-ui)"
+- name: "area/cli"
+  color: "0e8a16"
+  description: "CLI commands (src/cli/, warren / wr entry points)"
+- name: "area/supervisor"
+  color: "0e8a16"
+  description: "Supervisor process (src/supervisor/, lifecycle, signal handling)"
+- name: "area/burrow"
+  color: "0e8a16"
+  description: "burrow boundary (src/burrow-client/, sandbox HTTP facade)"
+- name: "area/db"
+  color: "0e8a16"
+  description: "Persistence (src/db/, drizzle schema/migrations, SQLite/Postgres)"
+- name: "area/agents"
+  color: "0e8a16"
+  description: "Agent registry + built-ins (src/registry/, src/agents/)"
+- name: "area/runs"
+  color: "0e8a16"
+  description: "Run lifecycle, events, streaming (src/runs/)"
+- name: "area/projects"
+  color: "0e8a16"
+  description: "Project management (src/projects/, .warren/config.yaml)"
+- name: "area/plot"
+  color: "0e8a16"
+  description: "Plot integration (plot_id wiring, sync to GitHub)"
+- name: "area/plan-runs"
+  color: "0e8a16"
+  description: "plan-runs dispatch mode (src/plan-runs/)"
+- name: "area/preview"
+  color: "0e8a16"
+  description: "Preview environments (.warren/preview.yaml)"
+- name: "area/scheduler"
+  color: "0e8a16"
+  description: "Cron triggers + scheduled runs (.warren/triggers.yaml)"
+- name: "area/acceptance"
+  color: "0e8a16"
+  description: "End-to-end acceptance harness (scripts/acceptance/)"
+- name: "area/build"
+  color: "0e8a16"
+  description: "Build, CI, lint, type-check, ratchets, tooling (.github/, scripts/)"
+- name: "area/docs"
+  color: "0e8a16"
+  description: "Documentation (README, SPEC, AGENTS.md, docs/)"
+- name: "area/deps"
+  color: "0e8a16"
+  description: "Dependency updates (Dependabot, bun.lock, package.json)"
+
+# ---------------------------------------------------------------------------
+# Status -- where does this sit in the workflow?
+# ---------------------------------------------------------------------------
+- name: "status/needs-triage"
+  color: "fbca04"
+  description: "Newly filed; needs priority/area/type before pickup"
+- name: "status/blocked"
+  color: "e99695"
+  description: "Cannot proceed: waiting on dependency, decision, or external party"
+- name: "status/in-progress"
+  color: "c5def5"
+  description: "Actively being worked on"
+- name: "status/needs-review"
+  color: "fbca04"
+  description: "Implementation complete; awaiting review"
+- name: "status/needs-info"
+  color: "fbca04"
+  description: "Waiting on the reporter for clarification or reproduction steps"
+- name: "status/wontfix"
+  color: "ffffff"
+  description: "Will not be worked on; out of scope or by design"
+- name: "status/duplicate"
+  color: "cfd3d7"
+  description: "Tracked elsewhere; closed in favour of the canonical issue"
+
+# ---------------------------------------------------------------------------
+# Effort -- rough sizing for agent + human planning
+# ---------------------------------------------------------------------------
+- name: "effort/small"
+  color: "d4c5f9"
+  description: "< 1 day of focused work"
+- name: "effort/medium"
+  color: "b392f0"
+  description: "1-3 days of focused work"
+- name: "effort/large"
+  color: "6f42c1"
+  description: "> 3 days; consider splitting via `sd plan`"
+
+# ---------------------------------------------------------------------------
+# Discovery -- highlight contributor-friendly work
+# ---------------------------------------------------------------------------
+- name: "good first issue"
+  color: "7057ff"
+  description: "Good entry point for first-time contributors"
+- name: "help wanted"
+  color: "008672"
+  description: "Maintainers welcome external contributions here"
+
+# ---------------------------------------------------------------------------
+# Legacy GitHub defaults -- preserved for backward compatibility.
+# New issues should prefer the namespaced equivalents above.
+# ---------------------------------------------------------------------------
+- name: "bug"
+  color: "d73a4a"
+  description: "Legacy alias for type/bug (kept for existing issues + templates)"
+- name: "enhancement"
+  color: "a2eeef"
+  description: "Legacy alias for type/feature (kept for existing issues + templates)"
+- name: "documentation"
+  color: "0075ca"
+  description: "Legacy alias for type/docs (kept for existing issues)"
+- name: "dependencies"
+  color: "0366d6"
+  description: "Dependabot updates (alias for area/deps)"
+- name: "javascript"
+  color: "168700"
+  description: "Dependabot ecosystem tag for JS/TS dependency PRs"
+- name: "question"
+  color: "d876e3"
+  description: "Further information is requested"
+- name: "invalid"
+  color: "e4e669"
+  description: "Does not appear to be actionable as filed"
+- name: "duplicate"
+  color: "cfd3d7"
+  description: "Legacy alias for status/duplicate"
+- name: "wontfix"
+  color: "ffffff"
+  description: "Legacy alias for status/wontfix"
