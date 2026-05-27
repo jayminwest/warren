@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { parseBurrowConfig } from "./burrow_config.ts";
+import { parseBurrowConfig } from "./burrow-config.ts";
 import { RunSpawnError } from "./errors.ts";
 
 describe("parseBurrowConfig", () => {

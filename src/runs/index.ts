@@ -11,7 +11,7 @@ export {
 	type RunBranchEnvLike,
 	resolveRunBranchPrefix,
 } from "./branch.ts";
-export { type ParsedBurrowConfig, parseBurrowConfig } from "./burrow_config.ts";
+export { type ParsedBurrowConfig, parseBurrowConfig } from "./burrow-config.ts";
 export { type CancelRunInput, type CancelRunResult, cancelRun } from "./cancel.ts";
 export {
 	buildCostAnalytics,

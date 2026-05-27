@@ -85,6 +85,29 @@ appending to the allowlist.
 CI (`.github/workflows/release.yml`) runs the same trinity. Do not merge
 with lint warnings; fix at write time or promote to error in `biome.json`.
 
+## Naming conventions
+
+- **Filenames (server/scripts):** `kebab-case.ts`. Tests are
+  `<name>.test.ts` sitting next to the file under test. Dotted
+  groupings (e.g. `handlers.plan-runs.test.ts`) are allowed and each
+  dot-segment must itself be kebab-case. Enforced by Biome's
+  `style/useFilenamingConvention` rule (kebab-case, strict). The
+  `src/ui/` package is excluded from this Biome config and uses
+  `PascalCase.tsx` for React components/pages plus kebab-case for
+  everything else (hooks, helpers, api modules).
+- **Directories:** `kebab-case` (`burrow-client/`, `plan-runs/`,
+  `warren-config/`).
+- **Identifiers:** `camelCase` for functions, variables, and instance
+  fields; `PascalCase` for types, interfaces, classes, and React
+  components; `SCREAMING_SNAKE_CASE` for module-level constants that
+  are true constants (e.g. `NETWORK_POLICIES`). Booleans read as
+  predicates (`isOpen`, `hasPreview`).
+- **Test names:** `describe("<unitUnderTest>")` + `test("verb-led
+  behaviour description")` — no `should`, no `it`.
+- **TOML / config keys** (agent definitions, `burrow_config`, etc.)
+  stay `snake_case` to match the upstream schema even when the TS
+  helper that parses them is kebab-case.
+
 ## TypeScript conventions
 
 - Strict mode with `noUncheckedIndexedAccess` — always handle possible

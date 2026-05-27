@@ -30,7 +30,15 @@
 				"useImportType": "error",
 				"useExportType": "error",
 				"useNodejsImportProtocol": "error",
-				"useTemplate": "error"
+				"useTemplate": "error",
+				"useFilenamingConvention": {
+					"level": "error",
+					"options": {
+						"strictCase": true,
+						"requireAscii": true,
+						"filenameCases": ["kebab-case"]
+					}
+				}
 			},
 			"complexity": {
 				"noUselessTypeConstraint": "error",

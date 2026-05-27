@@ -81,7 +81,7 @@ import {
 import type { DefaultsConfig, WarrenConfigCache } from "../warren-config/index.ts";
 import { interactiveRuntimeOverride } from "../warren-config/schema.ts";
 import { composeRunBranch, resolveRunBranchPrefix } from "./branch.ts";
-import { parseBurrowConfig } from "./burrow_config.ts";
+import { parseBurrowConfig } from "./burrow-config.ts";
 import { RunSpawnError } from "./errors.ts";
 import { buildSeedFiles } from "./seed.ts";
 
