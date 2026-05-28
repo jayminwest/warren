@@ -10,8 +10,10 @@ import {
 	PlanRunChildStateBadge,
 	PlanRunStateBadge,
 } from "@/components/PlanRunStateBadge.tsx";
+import { Alert } from "@/components/ui/alert.tsx";
 import { Button } from "@/components/ui/button.tsx";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card.tsx";
+import { Spinner } from "@/components/ui/spinner.tsx";
 import {
 	Table,
 	TableBody,
@@ -20,6 +22,7 @@ import {
 	TableHeader,
 	TableRow,
 } from "@/components/ui/table.tsx";
+import { formatError } from "@/lib/format-error.ts";
 import { formatTimestamp, relativeTime } from "@/lib/utils.ts";
 import { formatCostUsd } from "./RunDetail.tsx";
 
@@ -45,13 +48,13 @@ export function PlanRunDetailPage() {
 	});
 
 	if (detail.isLoading) {
-		return <p className="text-sm text-(--color-muted-foreground)">Loading…</p>;
+		return <Spinner label="Loading plan run" />;
 	}
 	if (detail.isError) {
 		return (
-			<p className="text-sm text-(--color-destructive)">
-				{detail.error instanceof Error ? detail.error.message : String(detail.error)}
-			</p>
+			<Alert variant="danger" title="Failed to load plan run">
+				{formatError(detail.error)}
+			</Alert>
 		);
 	}
 	if (!detail.data) return null;
@@ -266,11 +269,7 @@ function CancelStatus({
 }) {
 	if (mutation.isError) {
 		return (
-			<p className="text-xs text-(--color-destructive)">
-				{mutation.error instanceof Error
-					? mutation.error.message
-					: String(mutation.error)}
-			</p>
+			<p className="text-xs text-(--color-destructive)">{formatError(mutation.error)}</p>
 		);
 	}
 	if (mutation.isSuccess) {

@@ -78,10 +78,15 @@
 	 * Pairs: -foreground for high-contrast text on the colored fill.
 	 */
 	--color-success: oklch(60% 0.13 150);
+	--color-success-foreground: oklch(28% 0.06 150);
 	--color-warning: oklch(72% 0.15 75);
+	--color-warning-foreground: oklch(32% 0.08 75);
 	--color-info: oklch(60% 0.15 240);
+	--color-info-foreground: oklch(32% 0.10 240);
 	--color-danger: oklch(58% 0.22 27);
+	--color-danger-foreground: oklch(32% 0.14 27);
 	--color-neutral: oklch(55% 0.02 264);
+	--color-neutral-foreground: oklch(28% 0.01 264);
 
 	/*
 	 * `destructive` is preserved as an alias for `danger` so existing
@@ -139,10 +144,15 @@
 	--color-primary-foreground: oklch(15% 0.01 152);
 
 	--color-success: oklch(72% 0.13 150);
+	--color-success-foreground: oklch(94% 0.04 150);
 	--color-warning: oklch(80% 0.15 75);
+	--color-warning-foreground: oklch(95% 0.06 75);
 	--color-info: oklch(72% 0.14 240);
+	--color-info-foreground: oklch(94% 0.05 240);
 	--color-danger: oklch(68% 0.21 27);
+	--color-danger-foreground: oklch(95% 0.06 27);
 	--color-neutral: oklch(70% 0.02 264);
+	--color-neutral-foreground: oklch(95% 0.01 264);
 
 	--color-destructive: oklch(68% 0.21 27);
 	--color-destructive-foreground: oklch(15% 0.01 27);

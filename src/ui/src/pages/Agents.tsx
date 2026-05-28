@@ -3,10 +3,13 @@ import { ChevronDown, ChevronRight, RefreshCw } from "lucide-react";
 import { useState } from "react";
 import { agentsApi, projectsApi } from "@/api/client.ts";
 import type { AgentRow } from "@/api/types.ts";
+import { Alert } from "@/components/ui/alert.tsx";
 import { Badge } from "@/components/ui/badge.tsx";
 import { Button } from "@/components/ui/button.tsx";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card.tsx";
+import { EmptyState } from "@/components/ui/empty-state.tsx";
 import { Label } from "@/components/ui/label.tsx";
+import { Spinner } from "@/components/ui/spinner.tsx";
 import {
 	Table,
 	TableBody,
@@ -16,6 +19,7 @@ import {
 	TableRow,
 } from "@/components/ui/table.tsx";
 import { type AgentSourceTier, classifyAgentSource } from "@/lib/agent-source.ts";
+import { formatError } from "@/lib/format-error.ts";
 import { formatTimestamp } from "@/lib/utils.ts";
 
 export function AgentsPage() {
@@ -150,21 +154,15 @@ export function AgentsPage() {
 			) : null}
 
 			{refresh.isError ? (
-				<Card>
-					<CardContent className="p-4 text-sm text-(--color-destructive)">
-						{refresh.error instanceof Error ? refresh.error.message : String(refresh.error)}
-					</CardContent>
-				</Card>
+				<Alert variant="danger" title="Registry refresh failed">
+					{formatError(refresh.error)}
+				</Alert>
 			) : null}
 
 			{refreshProject.isError ? (
-				<Card>
-					<CardContent className="p-4 text-sm text-(--color-destructive)">
-						{refreshProject.error instanceof Error
-							? refreshProject.error.message
-							: String(refreshProject.error)}
-					</CardContent>
-				</Card>
+				<Alert variant="danger" title="Project tier refresh failed">
+					{formatError(refreshProject.error)}
+				</Alert>
 			) : null}
 
 			<Card>
@@ -173,21 +171,26 @@ export function AgentsPage() {
 				</CardHeader>
 				<CardContent className="p-0">
 					{agents.isLoading ? (
-						<p className="p-6 text-sm text-(--color-muted-foreground)">Loading…</p>
+						<div className="p-6"><Spinner label="Loading agents" /></div>
 					) : agents.isError ? (
-						<p className="p-6 text-sm text-(--color-destructive)">
-							{agents.error instanceof Error
-								? agents.error.message
-								: String(agents.error)}
-						</p>
+						<div className="p-6">
+							<Alert variant="danger" title="Failed to load agents">
+								{formatError(agents.error)}
+							</Alert>
+						</div>
 					) : agents.data?.agents.length === 0 ? (
-						<p className="p-6 text-sm text-(--color-muted-foreground)">
-							No agents registered. Built-in <code>claude-code</code>,{" "}
-							<code>sapling</code>, and <code>pi</code> should appear here
-							automatically — if not, check <code>warren doctor</code>. To layer
-							a custom canopy library on top, set <code>CANOPY_REPO_URL</code> and
-							click <strong>Refresh registry</strong>.
-						</p>
+						<EmptyState
+							title="No agents registered"
+							description={
+								<>
+									Built-in <code>claude-code</code>, <code>sapling</code>, and{" "}
+									<code>pi</code> should appear here automatically — if not,
+									check <code>warren doctor</code>. To layer a custom canopy
+									library on top, set <code>CANOPY_REPO_URL</code> and click{" "}
+									<strong>Refresh registry</strong>.
+								</>
+							}
+						/>
 					) : (
 						<Table>
 							<TableHeader>

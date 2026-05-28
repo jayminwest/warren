@@ -33,11 +33,12 @@
  */
 
 import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
-import { ApiError, runsApi } from "@/api/client.ts";
+import { runsApi } from "@/api/client.ts";
 import type { RunEvent } from "@/api/types.ts";
 import { Button } from "@/components/ui/button.tsx";
 import { Textarea } from "@/components/ui/textarea.tsx";
 import { useEventStream } from "@/hooks/useEventStream.ts";
+import { formatError } from "@/lib/format-error.ts";
 import { cn, formatTimestamp } from "@/lib/utils.ts";
 
 /** Event kinds the chat surface materializes into bubbles. */
@@ -148,13 +149,7 @@ export function Chat({
 			setDraft("");
 			if (onTurnSpawned) onTurnSpawned(res.run.id);
 		} catch (err) {
-			const msg =
-				err instanceof ApiError
-					? `${err.code}: ${err.message}`
-					: err instanceof Error
-						? err.message
-						: String(err);
-			setSendError(msg);
+			setSendError(formatError(err));
 		} finally {
 			setSending(false);
 		}

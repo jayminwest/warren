@@ -4,8 +4,11 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { agentsApi, projectsApi, runsApi } from "@/api/client.ts";
 import { StateBadge } from "@/components/StateBadge.tsx";
+import { Alert } from "@/components/ui/alert.tsx";
 import { Button } from "@/components/ui/button.tsx";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card.tsx";
+import { EmptyState } from "@/components/ui/empty-state.tsx";
+import { Spinner } from "@/components/ui/spinner.tsx";
 import {
 	Table,
 	TableBody,
@@ -14,6 +17,7 @@ import {
 	TableHeader,
 	TableRow,
 } from "@/components/ui/table.tsx";
+import { formatError } from "@/lib/format-error.ts";
 import { relativeTime } from "@/lib/utils.ts";
 import { formatCostUsd } from "./RunDetail.tsx";
 
@@ -194,15 +198,18 @@ export function RunsPage() {
 				</CardHeader>
 				<CardContent className="p-0">
 					{runs.isLoading ? (
-						<p className="p-6 text-sm text-(--color-muted-foreground)">Loading…</p>
+						<div className="p-6"><Spinner label="Loading runs" /></div>
 					) : runs.isError ? (
-						<p className="p-6 text-sm text-(--color-destructive)">
-							{runs.error instanceof Error ? runs.error.message : String(runs.error)}
-						</p>
+						<div className="p-6">
+							<Alert variant="danger" title="Failed to load runs">
+								{formatError(runs.error)}
+							</Alert>
+						</div>
 					) : runs.data?.runs.length === 0 ? (
-						<p className="p-6 text-sm text-(--color-muted-foreground)">
-							No runs match this filter. Dispatch one above.
-						</p>
+						<EmptyState
+							title="No runs match this filter"
+							description="Dispatch one above."
+						/>
 					) : (
 						<Table>
 							<TableHeader>

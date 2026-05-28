@@ -20,12 +20,15 @@ import { PREVIEW_ACTIVE_STATES, RUN_TERMINAL_STATES } from "@/api/types.ts";
 import { PlotMetaCardContent } from "@/components/PlotMetaCardContent.tsx";
 import { StateBadge } from "@/components/StateBadge.tsx";
 import { StatusIndicator } from "@/components/StatusIndicator.tsx";
+import { Alert } from "@/components/ui/alert.tsx";
 import { Badge } from "@/components/ui/badge.tsx";
 import { Button } from "@/components/ui/button.tsx";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card.tsx";
 import { Label } from "@/components/ui/label.tsx";
+import { Spinner } from "@/components/ui/spinner.tsx";
 import { Textarea } from "@/components/ui/textarea.tsx";
 import { useEventStream } from "@/hooks/useEventStream.ts";
+import { formatError } from "@/lib/format-error.ts";
 import { formatTimestamp, relativeTime } from "@/lib/utils.ts";
 
 /**
@@ -100,13 +103,13 @@ export function RunDetailPage() {
 	});
 
 	if (run.isLoading) {
-		return <p className="text-sm text-(--color-muted-foreground)">Loading…</p>;
+		return <Spinner label="Loading run" />;
 	}
 	if (run.isError) {
 		return (
-			<p className="text-sm text-(--color-destructive)">
-				{run.error instanceof Error ? run.error.message : String(run.error)}
-			</p>
+			<Alert variant="danger" title="Failed to load run">
+				{formatError(run.error)}
+			</Alert>
 		);
 	}
 	if (!run.data) return null;

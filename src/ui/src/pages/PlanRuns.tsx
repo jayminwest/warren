@@ -5,8 +5,11 @@ import { planRunsApi, projectsApi } from "@/api/client.ts";
 import type { PlanRunChildState, PlanRunState, RunRow } from "@/api/types.ts";
 import { formatCostUsd } from "./RunDetail.tsx";
 import { PlanRunStateBadge } from "@/components/PlanRunStateBadge.tsx";
+import { Alert } from "@/components/ui/alert.tsx";
 import { Button } from "@/components/ui/button.tsx";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card.tsx";
+import { EmptyState } from "@/components/ui/empty-state.tsx";
+import { Spinner } from "@/components/ui/spinner.tsx";
 import {
 	Table,
 	TableBody,
@@ -15,6 +18,7 @@ import {
 	TableHeader,
 	TableRow,
 } from "@/components/ui/table.tsx";
+import { formatError } from "@/lib/format-error.ts";
 import { relativeTime } from "@/lib/utils.ts";
 
 const STATE_FILTERS: { label: string; value: "all" | PlanRunState }[] = [
@@ -104,17 +108,18 @@ export function PlanRunsPage() {
 				</CardHeader>
 				<CardContent className="p-0">
 					{planRuns.isLoading ? (
-						<p className="p-6 text-sm text-(--color-muted-foreground)">Loading…</p>
+						<div className="p-6"><Spinner label="Loading plan runs" /></div>
 					) : planRuns.isError ? (
-						<p className="p-6 text-sm text-(--color-destructive)">
-							{planRuns.error instanceof Error
-								? planRuns.error.message
-								: String(planRuns.error)}
-						</p>
+						<div className="p-6">
+							<Alert variant="danger" title="Failed to load plan runs">
+								{formatError(planRuns.error)}
+							</Alert>
+						</div>
 					) : planRuns.data?.planRuns.length === 0 ? (
-						<p className="p-6 text-sm text-(--color-muted-foreground)">
-							No plan runs match this filter. Dispatch one above.
-						</p>
+						<EmptyState
+							title="No plan runs match this filter"
+							description="Dispatch one above."
+						/>
 					) : (
 						<Table>
 							<TableHeader>

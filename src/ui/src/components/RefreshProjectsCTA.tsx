@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { RefreshCw } from "lucide-react";
 import { projectsApi } from "@/api/client.ts";
 import { Button } from "@/components/ui/button.tsx";
+import { formatError } from "@/lib/format-error.ts";
 
 /**
  * "Refresh projects to discover new Plots" CTA (warren-bb22).
@@ -50,11 +51,7 @@ export function RefreshProjectsCTA({ label }: { label?: string }) {
 				{label ?? "Refresh projects to discover new Plots"}
 			</Button>
 			{refreshAll.isError ? (
-				<span className="text-xs text-(--color-destructive)">
-					{refreshAll.error instanceof Error
-						? refreshAll.error.message
-						: String(refreshAll.error)}
-				</span>
+				<span className="text-xs text-(--color-destructive)">{formatError(refreshAll.error)}</span>
 			) : null}
 			{refreshAll.isSuccess ? (
 				<span className="text-xs text-(--color-muted-foreground)">

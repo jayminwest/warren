@@ -3,6 +3,7 @@ import { HashRouter, Navigate, Route, Routes } from "react-router-dom";
 import { AuthGate } from "@/components/AuthGate.tsx";
 import { DefaultLanding } from "@/components/DefaultLanding.tsx";
 import { Layout } from "@/components/Layout.tsx";
+import { ToastProvider } from "@/components/ui/toast.tsx";
 import { AgentsPage } from "@/pages/Agents.tsx";
 import { CostAnalyticsPage } from "@/pages/CostAnalytics.tsx";
 import { LoginPage } from "@/pages/Login.tsx";
@@ -37,6 +38,7 @@ const queryClient = new QueryClient({
 export function App() {
 	return (
 		<QueryClientProvider client={queryClient}>
+			<ToastProvider>
 			<HashRouter>
 				<Routes>
 					<Route path="/login" element={<LoginPage />} />
@@ -65,6 +67,7 @@ export function App() {
 					<Route path="*" element={<Navigate to="/runs" replace />} />
 				</Routes>
 			</HashRouter>
+			</ToastProvider>
 		</QueryClientProvider>
 	);
 }

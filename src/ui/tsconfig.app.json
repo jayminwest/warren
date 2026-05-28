@@ -27,5 +27,6 @@
 		"skipLibCheck": true,
 		"types": []
 	},
-	"include": ["src"]
+	"include": ["src"],
+	"exclude": ["src/**/*.test.ts", "src/**/*.test.tsx"]
 }

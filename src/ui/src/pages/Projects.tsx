@@ -5,8 +5,11 @@ import { Link } from "react-router-dom";
 import { projectsApi } from "@/api/client.ts";
 import type { ProjectRow } from "@/api/types.ts";
 import { RefreshProjectsCTA } from "@/components/RefreshProjectsCTA.tsx";
+import { Alert } from "@/components/ui/alert.tsx";
 import { Button } from "@/components/ui/button.tsx";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card.tsx";
+import { EmptyState } from "@/components/ui/empty-state.tsx";
+import { Spinner } from "@/components/ui/spinner.tsx";
 import {
 	Dialog,
 	DialogContent,
@@ -25,6 +28,7 @@ import {
 	TableHeader,
 	TableRow,
 } from "@/components/ui/table.tsx";
+import { formatError } from "@/lib/format-error.ts";
 import { formatTimestamp } from "@/lib/utils.ts";
 
 export function ProjectsPage() {
@@ -64,7 +68,7 @@ export function ProjectsPage() {
 			<AddProjectForm
 				onSubmit={(input) => create.mutate(input)}
 				pending={create.isPending}
-				error={create.error instanceof Error ? create.error.message : null}
+				error={create.error ? formatError(create.error) : null}
 			/>
 
 			<Card>
@@ -74,17 +78,18 @@ export function ProjectsPage() {
 				</CardHeader>
 				<CardContent className="p-0">
 					{projects.isLoading ? (
-						<p className="p-6 text-sm text-(--color-muted-foreground)">Loading…</p>
+						<div className="p-6"><Spinner label="Loading projects" /></div>
 					) : projects.isError ? (
-						<p className="p-6 text-sm text-(--color-destructive)">
-							{projects.error instanceof Error
-								? projects.error.message
-								: String(projects.error)}
-						</p>
+						<div className="p-6">
+							<Alert variant="danger" title="Failed to load projects">
+								{formatError(projects.error)}
+							</Alert>
+						</div>
 					) : projects.data?.projects.length === 0 ? (
-						<p className="p-6 text-sm text-(--color-muted-foreground)">
-							No projects yet. Add one with a GitHub URL above.
-						</p>
+						<EmptyState
+							title="No projects yet"
+							description="Add one with a GitHub URL above."
+						/>
 					) : (
 						<Table>
 							<TableHeader>
@@ -185,7 +190,7 @@ export function ProjectsPage() {
 					</DialogHeader>
 					{del.isError ? (
 						<p className="text-sm text-(--color-destructive)">
-							{del.error instanceof Error ? del.error.message : String(del.error)}
+							{formatError(del.error)}
 						</p>
 					) : null}
 					<DialogFooter>

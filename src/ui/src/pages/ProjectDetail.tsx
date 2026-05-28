@@ -10,9 +10,12 @@ import type {
 	WarrenConfigFileError,
 	WarrenConfigResponse,
 } from "@/api/types.ts";
+import { Alert } from "@/components/ui/alert.tsx";
 import { Badge } from "@/components/ui/badge.tsx";
 import { Button } from "@/components/ui/button.tsx";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card.tsx";
+import { Spinner } from "@/components/ui/spinner.tsx";
+import { formatError } from "@/lib/format-error.ts";
 import { formatTimestamp } from "@/lib/utils.ts";
 
 export function ProjectDetailPage() {
@@ -55,13 +58,13 @@ export function ProjectDetailPage() {
 			</header>
 
 			{projects.isLoading ? (
-				<p className="text-sm text-(--color-muted-foreground)">Loading…</p>
+				<Spinner label="Loading project" />
 			) : projects.isError ? (
-				<p className="text-sm text-(--color-destructive)">
-					{projects.error instanceof Error ? projects.error.message : String(projects.error)}
-				</p>
+				<Alert variant="danger" title="Failed to load project">
+					{formatError(projects.error)}
+				</Alert>
 			) : project === undefined ? (
-				<p className="text-sm text-(--color-destructive)">Project not found.</p>
+				<Alert variant="danger" title="Project not found" />
 			) : (
 				<>
 					<ProjectMetaCard project={project} />
@@ -150,7 +153,7 @@ function WarrenConfigPanel({
 			</CardHeader>
 			<CardContent className="space-y-6">
 				{isLoading ? (
-					<p className="text-sm text-(--color-muted-foreground)">Loading…</p>
+					<Spinner label="Loading warren config" />
 				) : error !== null && error !== undefined ? (
 					<WarrenConfigError error={error} />
 				) : query === undefined ? null : (
@@ -168,16 +171,14 @@ function WarrenConfigPanel({
 function WarrenConfigError({ error }: { error: unknown }) {
 	if (error instanceof ApiError && error.status === 503) {
 		return (
-			<div className="space-y-1 text-sm">
-				<p className="text-(--color-destructive)">{error.message}</p>
+			<Alert variant="danger" title={error.message}>
 				{error.hint !== undefined ? (
-					<p className="text-xs text-(--color-muted-foreground)">{error.hint}</p>
+					<span className="text-xs">{error.hint}</span>
 				) : null}
-			</div>
+			</Alert>
 		);
 	}
-	const message = error instanceof Error ? error.message : String(error);
-	return <p className="text-sm text-(--color-destructive)">{message}</p>;
+	return <Alert variant="danger">{formatError(error)}</Alert>;
 }
 
 function TriggersBlock({ projectId }: { projectId: string }) {
@@ -210,11 +211,7 @@ function TriggersBlock({ projectId }: { projectId: string }) {
 			{triggersQuery.isLoading ? (
 				<EmptyHint text="Loading…" />
 			) : triggersQuery.isError ? (
-				<p className="text-sm text-(--color-destructive)">
-					{triggersQuery.error instanceof Error
-						? triggersQuery.error.message
-						: String(triggersQuery.error)}
-				</p>
+				<Alert variant="danger">{formatError(triggersQuery.error)}</Alert>
 			) : triggersQuery.data === undefined || triggersQuery.data.triggers.length === 0 ? (
 				<EmptyHint text="No triggers configured (edit .warren/triggers.yaml on the project repo to add one)." />
 			) : (
@@ -227,9 +224,7 @@ function TriggersBlock({ projectId }: { projectId: string }) {
 							onRunNow={() => runNow.mutate(t.id)}
 							runError={
 								runNow.isError && runNow.variables === t.id
-									? runNow.error instanceof Error
-										? runNow.error.message
-										: String(runNow.error)
+									? formatError(runNow.error)
 									: null
 							}
 						/>
