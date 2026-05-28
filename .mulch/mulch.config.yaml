@@ -24,6 +24,7 @@ domains:
   conventions: {}
   convention: {}
   docs: {}
+  ui-design-system: {}
 governance:
   max_entries: 100
   warn_entries: 150
