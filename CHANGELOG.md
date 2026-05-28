@@ -7,6 +7,84 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.2] — 2026-05-28
+
+Frontend design-system revamp (pl-55a3 / warren-6358) plus a wave of
+test-file and handler-module decompositions. The UI now ships on a
+tightened token layer (self-hosted Inter / JetBrains Mono, brand green,
+unified grays, status/radius/shadow/z tokens), upgraded primitives, a
+shared status registry, shared state components, motion, layout
+promotions, and a decomposed PlotDetail tree. No public API or wire
+shape changes.
+
+### Added
+
+- **`ui(tokens)`** — Phase 1 design token foundations in
+  `src/ui/src/index.css`: self-hosted Inter + JetBrains Mono via
+  `@fontsource`, brand-green palette, unified gray ramp, status / radius
+  / shadow / z-index tokens, dark-variant fix (#196, warren-23fe).
+- **`ui(primitives)`** — Phase 2b new primitives: Select, Checkbox,
+  Spinner, Skeleton, Tooltip (#198, warren-57d7).
+- **`ui(state)`** — Phase 4 shared state primitives: Alert / Callout,
+  EmptyState, Toast (Radix), and a `formatError()` util; replaced inline
+  loading / empty / error sites (#200, warren-36f0).
+- **`ui(motion)`** — Phase 5 motion layer: added `framer-motion` for
+  staggered entry, event-stream item animations, dialog / skeleton
+  transitions, gated behind `prefers-reduced-motion` (#201, warren-5da1).
+- **`ui(layout)`** — Phase 6 layout promotions: PageHeader, Field
+  (label + control + error), FilterPill / Toggle group; swept ad-hoc
+  `rounded-md border` containers onto Card variants (#202, warren-e6b3).
+
+### Changed
+
+- **`ui(primitives)`** — Phase 2a upgraded existing primitives
+  (Button / Card / Input / Textarea / Badge / Table / Dialog) with
+  active states, token-driven hover, durations, and Card elevation
+  variants (#197, warren-6e69).
+- **`ui(status)`** — Phase 3 unified status into a single
+  `StatusIndicator` registry (state → label / color token / icon /
+  pulse); refactored `StateBadge`, `PlotStatusBadge`,
+  `PlanRunStateBadge`, and RunDetail's `statusVariant()` onto it
+  (#199, warren-3849).
+- **`ui(plot-detail)`** — Phase 7 decomposed the 3 000-line
+  `PlotDetail.tsx` monolith onto the new primitives and layout
+  components under a `plot-detail/` sub-tree, back under the file-size
+  budget (#203, warren-2221).
+- **`refactor(server)`** — Split `src/server/plots.ts` phase 1:
+  extracted workbench, sync, and list/create handlers (#184,
+  warren-3f46).
+- **`refactor(server)`** — Split the runs handler and runs test file
+  into modular sub-modules (#185, warren-6566).
+- **`refactor(server)`** — Split `src/server/plan-runs.test.ts` into
+  five focused test files alongside `plan-runs.test-helpers.ts` (#186,
+  warren-64f6).
+- **`refactor(server)`** — Split `src/server/runs.preview.test.ts`
+  into focused preview-stage files (#187, warren-d951).
+- **`refactor(server)`** — Split `src/server/projects.test.ts` into
+  focused handler test files (#188, warren-3fcd).
+- **`refactor(tests)`** — Split `aggregate.test.ts` into separate
+  files and extracted shared helpers (#189).
+- **`refactor(plan-runs)`** — Split
+  `src/plan-runs/coordinator.test.ts` into per-phase test files (#190,
+  warren-6bf6).
+- **`refactor(registry)`** — Split `manage.test.ts` into modular
+  per-operation files (#191, warren-e73a).
+- **`refactor(warren-config)`** — Split `schema.test.ts` (757 lines)
+  into per-schema-section test files alongside `schema.ts` and
+  extracted shared config fixtures into `schema.test-helpers.ts`
+  (#192, warren-3730).
+- **`refactor(acceptance)`** — Decomposed
+  `scripts/acceptance/scenarios/29-plot-detail-roundtrip.ts` (#193,
+  warren-69fe).
+- **`refactor(acceptance)`** — Decomposed
+  `scripts/acceptance/scenarios/31-plot-plan-run-synthesis.ts` under
+  500 lines (#194).
+- **`refactor(acceptance)`** — Decomposed
+  `scripts/acceptance/scenarios/27-plan-run-plot-roundtrip.ts` and
+  lowered the file-size budget (#195, warren-5c16).
+- **`docs(readme)`** — Dropped the retired os-eco logo embed and
+  overstory / greenhouse references.
+
 ## [0.7.1] — 2026-05-27
 
 Hotfix: the v0.7.0 refactoring moved `src/server/main.ts` to
