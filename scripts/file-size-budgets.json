@@ -6,7 +6,6 @@
 		"scripts/acceptance/scenarios/20-preview.ts": 658,
 		"scripts/acceptance/scenarios/25-plot-roundtrip.ts": 556,
 		"scripts/acceptance/scenarios/26-plan-run-roundtrip.ts": 563,
-		"scripts/acceptance/scenarios/27-plan-run-plot-roundtrip.ts": 856,
 		"scripts/acceptance/scenarios/28-plot-list-and-create.ts": 559,
 		"scripts/acceptance/scenarios/32-plot-workbench-loop.ts": 706,
 		"src/client/client.ts": 569,

@@ -79,6 +79,8 @@ export interface PlanRunChildRow {
 export interface RunRow {
 	readonly id: string;
 	readonly state: string;
+	readonly trigger?: string;
+	readonly prUrl?: string | null;
 	readonly plotId: string | null;
 }
 
