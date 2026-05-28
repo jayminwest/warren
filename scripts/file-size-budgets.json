@@ -28,7 +28,6 @@
 		"src/server/bridges.ts": 655,
 		"src/server/handlers/agents.test.ts": 533,
 		"src/server/handlers/projects.test.ts": 938,
-		"src/server/handlers/runs.preview.test.ts": 767,
 		"src/server/handlers/plot-plan-runs.test.ts": 640,
 		"src/server/handlers/plots.list.test.ts": 700,
 		"src/server/handlers/plots.test.ts": 2442,
