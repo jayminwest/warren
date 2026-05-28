@@ -17,7 +17,6 @@
 		"src/diagnostics/checks.ts": 616,
 		"src/plan-runs/coordinator.test.ts": 804,
 		"src/plan-runs/coordinator.ts": 587,
-		"src/plots/aggregate.test.ts": 847,
 		"src/plots/aggregate.ts": 506,
 		"src/projects/manage.test.ts": 763,
 		"src/projects/refresh.test.ts": 709,
