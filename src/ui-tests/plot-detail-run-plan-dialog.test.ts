@@ -20,7 +20,18 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-const PLOT_DETAIL_PATH = join(import.meta.dir, "..", "ui", "src", "pages", "PlotDetail.tsx");
+// warren-2221 / pl-55a3 step 8: PlotDetail.tsx was decomposed into
+// src/ui/src/pages/plot-detail/*; RunPlanButton / RunPlanDialog now
+// live in run-plan.tsx.
+const PLOT_DETAIL_PATH = join(
+	import.meta.dir,
+	"..",
+	"ui",
+	"src",
+	"pages",
+	"plot-detail",
+	"run-plan.tsx",
+);
 const SOURCE = readFileSync(PLOT_DETAIL_PATH, "utf8");
 
 /**
@@ -31,7 +42,9 @@ const SOURCE = readFileSync(PLOT_DETAIL_PATH, "utf8");
  * handled correctly.
  */
 function extractFunctionBody(source: string, name: string): string {
-	const decl = `function ${name}(`;
+	const decl = source.includes(`export function ${name}(`)
+		? `export function ${name}(`
+		: `function ${name}(`;
 	const start = source.indexOf(decl);
 	if (start < 0) {
 		throw new Error(`function ${name} not found in source`);
