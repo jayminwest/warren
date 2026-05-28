@@ -67,7 +67,7 @@ import {
 	needsAttentionCountHandler,
 	renamePlotHandler,
 	syncPlotHandler,
-} from "./plots.ts";
+} from "./plots/index.ts";
 import {
 	createProjectHandler,
 	deleteProjectHandler,
