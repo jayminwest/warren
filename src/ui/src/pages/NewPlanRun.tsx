@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button.tsx";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card.tsx";
 import { Input } from "@/components/ui/input.tsx";
 import { Label } from "@/components/ui/label.tsx";
+import { PageHeader } from "@/components/ui/page-header.tsx";
 import { Textarea } from "@/components/ui/textarea.tsx";
 
 const DEFAULT_PROMPT_TEMPLATE = "work on sd {seed_id}";
@@ -143,13 +144,10 @@ export function NewPlanRunPage() {
 
 	return (
 		<div className="mx-auto max-w-3xl space-y-6">
-			<header>
-				<h1 className="text-2xl font-semibold tracking-tight">Dispatch plan run</h1>
-				<p className="text-sm text-(--color-muted-foreground)">
-					Walk a seeds plan in order — one warren run per open child seed,
-					sequentially.
-				</p>
-			</header>
+			<PageHeader
+				title="Dispatch plan run"
+				description="Walk a seeds plan in order — one warren run per open child seed, sequentially."
+			/>
 
 			{noProjects ? (
 				<Card>

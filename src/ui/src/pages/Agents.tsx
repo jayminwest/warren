@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button.tsx";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card.tsx";
 import { EmptyState } from "@/components/ui/empty-state.tsx";
 import { Label } from "@/components/ui/label.tsx";
+import { PageHeader } from "@/components/ui/page-header.tsx";
 import { Spinner } from "@/components/ui/spinner.tsx";
 import {
 	Table,
@@ -53,17 +54,19 @@ export function AgentsPage() {
 
 	return (
 		<div className="space-y-6">
-			<header className="flex flex-wrap items-start justify-between gap-3">
-				<div>
-					<h1 className="text-2xl font-semibold tracking-tight">Agents</h1>
-					<p className="text-sm text-(--color-muted-foreground)">
+			<PageHeader
+				className="items-start"
+				title="Agents"
+				description={
+					<>
 						Agents available for dispatch. <code>claude-code</code>,{" "}
 						<code>sapling</code>, and <code>pi</code> ship inline; refresh
 						re-clones the optional canopy library for custom agents. Pick a
 						project to surface its <code>.canopy/</code> tier.
-					</p>
-				</div>
-				<div className="flex flex-wrap items-end gap-2">
+					</>
+				}
+				actions={
+					<div className="flex flex-wrap items-end gap-2">
 					<div className="space-y-1.5">
 						<Label htmlFor="agent-project-filter" className="text-xs">
 							Project
@@ -107,7 +110,8 @@ export function AgentsPage() {
 						Refresh registry
 					</Button>
 				</div>
-			</header>
+				}
+			/>
 
 			{refresh.isSuccess ? (
 				<Card>

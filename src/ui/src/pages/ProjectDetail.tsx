@@ -13,10 +13,16 @@ import type {
 import { Alert } from "@/components/ui/alert.tsx";
 import { Badge } from "@/components/ui/badge.tsx";
 import { Button } from "@/components/ui/button.tsx";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card.tsx";
+import {
+	Card,
+	CardContent,
+	CardHeader,
+	CardTitle,
+	cardVariants,
+} from "@/components/ui/card.tsx";
 import { Spinner } from "@/components/ui/spinner.tsx";
 import { formatError } from "@/lib/format-error.ts";
-import { formatTimestamp } from "@/lib/utils.ts";
+import { cn, formatTimestamp } from "@/lib/utils.ts";
 
 export function ProjectDetailPage() {
 	const { id = "" } = useParams<{ id: string }>();
@@ -247,7 +253,12 @@ function TriggerRow({
 	runError: string | null;
 }) {
 	return (
-		<li className="rounded-md border bg-(--color-muted)/30 px-3 py-2 text-sm">
+		<li
+			className={cn(
+				cardVariants({ variant: "flat" }),
+				"bg-(--color-muted)/30 px-3 py-2 text-sm",
+			)}
+		>
 			<div className="flex flex-wrap items-center justify-between gap-2">
 				<div className="flex flex-wrap items-baseline gap-2">
 					<span className="font-mono font-semibold">{trigger.id}</span>

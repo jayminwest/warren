@@ -9,6 +9,7 @@ import { Alert } from "@/components/ui/alert.tsx";
 import { Button } from "@/components/ui/button.tsx";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card.tsx";
 import { EmptyState } from "@/components/ui/empty-state.tsx";
+import { PageHeader } from "@/components/ui/page-header.tsx";
 import { Spinner } from "@/components/ui/spinner.tsx";
 import {
 	Table,
@@ -60,18 +61,15 @@ export function PlanRunsPage() {
 
 	return (
 		<div className="space-y-6">
-			<header className="flex flex-wrap items-center justify-between gap-4">
-				<div>
-					<h1 className="text-2xl font-semibold tracking-tight">Plan runs</h1>
-					<p className="text-sm text-(--color-muted-foreground)">
-						Serial execution of a seeds plan — one warren run per open child,
-						in order.
-					</p>
-				</div>
-				<Link to="/plan-runs/new">
-					<Button>Dispatch a plan run</Button>
-				</Link>
-			</header>
+			<PageHeader
+				title="Plan runs"
+				description="Serial execution of a seeds plan — one warren run per open child, in order."
+				actions={
+					<Link to="/plan-runs/new">
+						<Button>Dispatch a plan run</Button>
+					</Link>
+				}
+			/>
 
 			<div className="flex flex-wrap items-center gap-2">
 				{STATE_FILTERS.map((f) => (

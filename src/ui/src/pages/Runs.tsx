@@ -8,7 +8,9 @@ import { Alert } from "@/components/ui/alert.tsx";
 import { Button } from "@/components/ui/button.tsx";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card.tsx";
 import { EmptyState } from "@/components/ui/empty-state.tsx";
+import { FilterPill } from "@/components/ui/filter-pill.tsx";
 import { FadeInItem, StaggerList } from "@/components/ui/motion.tsx";
+import { PageHeader } from "@/components/ui/page-header.tsx";
 import { Spinner } from "@/components/ui/spinner.tsx";
 import {
 	Table,
@@ -136,17 +138,15 @@ export function RunsPage() {
 
 	return (
 		<div className="space-y-6">
-			<header className="flex flex-wrap items-center justify-between gap-4">
-				<div>
-					<h1 className="text-2xl font-semibold tracking-tight">Runs</h1>
-					<p className="text-sm text-(--color-muted-foreground)">
-						Agent runs dispatched into burrow sandboxes.
-					</p>
-				</div>
-				<Link to="/runs/new">
-					<Button>Dispatch a run</Button>
-				</Link>
-			</header>
+			<PageHeader
+				title="Runs"
+				description="Agent runs dispatched into burrow sandboxes."
+				actions={
+					<Link to="/runs/new">
+						<Button>Dispatch a run</Button>
+					</Link>
+				}
+			/>
 
 			<div className="flex flex-wrap items-center justify-between gap-3">
 				<div className="flex flex-wrap items-center gap-2">
@@ -361,30 +361,6 @@ function SortHeader({
 		>
 			{label}
 			{active ? <Icon className="h-3 w-3" /> : null}
-		</button>
-	);
-}
-
-function FilterPill({
-	active,
-	label,
-	onClick,
-}: {
-	active: boolean;
-	label: string;
-	onClick: () => void;
-}) {
-	return (
-		<button
-			type="button"
-			onClick={onClick}
-			className={`rounded-full border px-3 py-1 text-xs transition-colors ${
-				active
-					? "bg-(--color-primary) text-(--color-primary-foreground)"
-					: "bg-(--color-card) hover:bg-(--color-accent)"
-			}`}
-		>
-			{label}
 		</button>
 	);
 }

@@ -8,18 +8,27 @@ import { cn } from "@/lib/utils.ts";
  * Card grows elevation variants without changing the default look.
  * `default` keeps `shadow-xs` so existing call sites render
  * identically; `elevated` raises to `shadow-md` for content meant to
- * read above the page. Phase 6 (warren-e6b3) will add the
- * `interactive` and `flat` variants when callers actually need them
- * — adding them earlier just pays bundle-size for utilities no
- * consumer references yet.
+ * read above the page.
+ *
+ * Phase 6 (warren-e6b3 / pl-55a3 step 7) added:
+ *   - `flat` — no shadow, smaller `rounded-md` corner, used by the
+ *     ad-hoc `rounded-md border bg-(--color-card)` panels the sweep
+ *     promoted onto Card. Pairs with a translucent muted fill via
+ *     a className override on call sites that need it.
+ *
+ * Phase 7 (warren-2221) will add an `interactive` variant (hover
+ * border + shadow lift) once the PlotDetail decomposition surfaces
+ * actual clickable-row sites — adding it now would just pay the
+ * bundle-size cost for utilities no consumer references yet.
  */
 const cardVariants = cva(
-	"rounded-lg border bg-(--color-card) text-(--color-fg)",
+	"border bg-(--color-card) text-(--color-fg)",
 	{
 		variants: {
 			variant: {
-				default: "shadow-xs",
-				elevated: "shadow-md",
+				default: "rounded-lg shadow-xs",
+				elevated: "rounded-lg shadow-md",
+				flat: "rounded-md",
 			},
 		},
 		defaultVariants: {

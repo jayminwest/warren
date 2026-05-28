@@ -28,6 +28,7 @@ import {
 	projectsApi,
 } from "@/api/client.ts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card.tsx";
+import { PageHeader } from "@/components/ui/page-header.tsx";
 import {
 	Table,
 	TableBody,
@@ -103,12 +104,10 @@ export function CostAnalyticsPage() {
 
 	return (
 		<div className="space-y-6">
-			<header>
-				<h1 className="text-2xl font-semibold tracking-tight">Cost analytics</h1>
-				<p className="text-sm text-(--color-muted-foreground)">
-					Spend breakdown across runs.cost_usd. Defaults to the last 30 days.
-				</p>
-			</header>
+			<PageHeader
+				title="Cost analytics"
+				description="Spend breakdown across runs.cost_usd. Defaults to the last 30 days."
+			/>
 
 			<Card>
 				<CardHeader>

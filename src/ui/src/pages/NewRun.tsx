@@ -7,7 +7,9 @@ import { Badge } from "@/components/ui/badge.tsx";
 import { Button } from "@/components/ui/button.tsx";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card.tsx";
 import { Input } from "@/components/ui/input.tsx";
+import { Field } from "@/components/ui/field.tsx";
 import { Label } from "@/components/ui/label.tsx";
+import { PageHeader } from "@/components/ui/page-header.tsx";
 import { Textarea } from "@/components/ui/textarea.tsx";
 import { classifyAgentSource } from "@/lib/agent-source.ts";
 
@@ -200,12 +202,10 @@ export function NewRunPage() {
 
 	return (
 		<div className="mx-auto max-w-3xl space-y-6">
-			<header>
-				<h1 className="text-2xl font-semibold tracking-tight">Dispatch run</h1>
-				<p className="text-sm text-(--color-muted-foreground)">
-					Spawn an agent against a project repo inside a fresh sandbox.
-				</p>
-			</header>
+			<PageHeader
+				title="Dispatch run"
+				description="Spawn an agent against a project repo inside a fresh sandbox."
+			/>
 
 			{noAgents ? (
 				<Card>
@@ -289,8 +289,11 @@ export function NewRunPage() {
 							</select>
 						</div>
 
-						<div className="space-y-1.5">
-							<Label htmlFor="ref">Branch / tag / SHA (optional)</Label>
+						<Field
+							label="Branch / tag / SHA (optional)"
+							htmlFor="ref"
+							description="Leave blank to use the project's default branch. Free text — no remote-branch lookup yet."
+						>
 							<Input
 								id="ref"
 								value={ref}
@@ -300,15 +303,29 @@ export function NewRunPage() {
 								spellCheck={false}
 								className="h-11 sm:h-9 text-base sm:text-sm"
 							/>
-							<p className="text-xs text-(--color-muted-foreground)">
-								Leave blank to use the project's default branch. Free text — no
-								remote-branch lookup yet.
-							</p>
-						</div>
+						</Field>
 
 						{hasPlot ? (
-							<div className="space-y-1.5">
-								<Label htmlFor="plotId">Plot ID (optional)</Label>
+							<Field
+								label="Plot ID (optional)"
+								htmlFor="plotId"
+								description={
+									<>
+										Bind this run to a Plot. The Plot's activity feed gets a{" "}
+										<code className="font-mono">run_dispatched</code> event; the
+										sandbox sees <code className="font-mono">PLOT_ID</code> /{" "}
+										<code className="font-mono">PLOT_ACTOR</code>.
+									</>
+								}
+								error={
+									plotIdMalformed ? (
+										<>
+											Plot ID must look like{" "}
+											<code className="font-mono">plot-xxxxxxxx</code>.
+										</>
+									) : null
+								}
+							>
 								<Input
 									id="plotId"
 									value={plotId}
@@ -318,18 +335,7 @@ export function NewRunPage() {
 									spellCheck={false}
 									className="h-11 sm:h-9 text-base sm:text-sm"
 								/>
-								<p className="text-xs text-(--color-muted-foreground)">
-									Bind this run to a Plot. The Plot's activity feed gets a{" "}
-									<code className="font-mono">run_dispatched</code> event; the
-									sandbox sees <code className="font-mono">PLOT_ID</code> /{" "}
-									<code className="font-mono">PLOT_ACTOR</code>.
-								</p>
-								{plotIdMalformed ? (
-									<p className="text-xs text-(--color-destructive)">
-										Plot ID must look like <code className="font-mono">plot-xxxxxxxx</code>.
-									</p>
-								) : null}
-							</div>
+							</Field>
 						) : null}
 
 						<div className="grid grid-cols-1 gap-4 sm:grid-cols-2">

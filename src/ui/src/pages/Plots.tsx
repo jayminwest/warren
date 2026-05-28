@@ -21,6 +21,7 @@ import {
 } from "@/components/ui/dialog.tsx";
 import { Input } from "@/components/ui/input.tsx";
 import { Label } from "@/components/ui/label.tsx";
+import { PageHeader } from "@/components/ui/page-header.tsx";
 import { Textarea } from "@/components/ui/textarea.tsx";
 import { relativeTime } from "@/lib/utils.ts";
 
@@ -118,27 +119,24 @@ export function PlotsPage() {
 
 	return (
 		<div className="space-y-6">
-			<header className="flex flex-wrap items-center justify-between gap-4">
-				<div>
-					<h1 className="text-2xl font-semibold tracking-tight">Plots</h1>
-					<p className="text-sm text-(--color-muted-foreground)">
-						Shared coordination substrate — humans and agents as peer nodes
-						on a per-Plot event log.
-					</p>
-				</div>
-				<div className="flex flex-wrap items-center gap-2">
-					<Button
-						variant="outline"
-						onClick={() => setBrainstormOpen(true)}
-						disabled={projects.isLoading}
-					>
-						Start brainstorming
-					</Button>
-					<Button onClick={() => setDialogOpen(true)} disabled={projects.isLoading}>
-						New Plot
-					</Button>
-				</div>
-			</header>
+			<PageHeader
+				title="Plots"
+				description="Shared coordination substrate — humans and agents as peer nodes on a per-Plot event log."
+				actions={
+					<>
+						<Button
+							variant="outline"
+							onClick={() => setBrainstormOpen(true)}
+							disabled={projects.isLoading}
+						>
+							Start brainstorming
+						</Button>
+						<Button onClick={() => setDialogOpen(true)} disabled={projects.isLoading}>
+							New Plot
+						</Button>
+					</>
+				}
+			/>
 
 			<div className="flex flex-wrap items-center gap-2">
 				{/* Needs-you chip is a parallel toggle, separated visually

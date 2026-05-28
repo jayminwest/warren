@@ -9,6 +9,7 @@ import { Alert } from "@/components/ui/alert.tsx";
 import { Button } from "@/components/ui/button.tsx";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card.tsx";
 import { EmptyState } from "@/components/ui/empty-state.tsx";
+import { PageHeader } from "@/components/ui/page-header.tsx";
 import { Spinner } from "@/components/ui/spinner.tsx";
 import {
 	Dialog,
@@ -58,12 +59,14 @@ export function ProjectsPage() {
 
 	return (
 		<div className="space-y-6">
-			<header>
-				<h1 className="text-2xl font-semibold tracking-tight">Projects</h1>
-				<p className="text-sm text-(--color-muted-foreground)">
-					GitHub repos cloned under <code>$WARREN_PROJECTS_DIR</code>.
-				</p>
-			</header>
+			<PageHeader
+				title="Projects"
+				description={
+					<>
+						GitHub repos cloned under <code>$WARREN_PROJECTS_DIR</code>.
+					</>
+				}
+			/>
 
 			<AddProjectForm
 				onSubmit={(input) => create.mutate(input)}
