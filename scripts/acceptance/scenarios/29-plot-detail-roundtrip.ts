@@ -1,116 +1,21 @@
 /**
- * Scenario 29 — Plot detail roundtrip end-to-end (warren-c40b /
- * pl-9d6a step 18). Closes the loop the per-step unit tests open for
- * the 3b sub-phase:
+ * Scenario 29 — Plot detail roundtrip end-to-end (warren-c40b / pl-9d6a step 18).
+ * Closes the loop the per-step unit tests open for the 3b sub-phase:
  *   - warren-961e (GET /plots/:id envelope shape),
- *   - warren-896f (POST /plots/:id/intent — intent_edited append +
- *     intent_goal_preview refresh),
- *   - warren-e868 (POST /plots/:id/status — illegal-transition guard
- *     surfaces 409 / `plot_illegal_status_transition`),
- *   - warren-589c (POST /plots/:id/attachments + DELETE — roundtrip
- *     through the lib's att-NNN id),
- *   - warren-e1ac (POST /plots/:id/questions/:event_id/answer +
- *     already-answered invariant),
- *   - warren-5d94 (Run-plan button → POST /plan-runs with plot_id;
- *     composes with pl-7937's append + auto-done wiring).
+ *   - warren-896f (POST /plots/:id/intent — intent_edited append + intent_goal_preview refresh),
+ *   - warren-e868 (POST /plots/:id/status — illegal-transition guard surfaces 409 / `plot_illegal_status_transition`),
+ *   - warren-589c (POST /plots/:id/attachments + DELETE — roundtrip through the lib's att-NNN id),
+ *   - warren-e1ac (POST /plots/:id/questions/:event_id/answer + already-answered invariant),
+ *   - warren-5d94 (Run-plan button → POST /plan-runs with plot_id; composes with pl-7937's append + auto-done wiring).
  *
- * Composes with scenario 25 (Plot integration roundtrip, mx-af2627)
- * and scenario 27 (PlanRun + Plot, mx-15e4da): scenario 25 covers the
- * spawn-time env injection + reap mirror; scenario 27 covers the
- * coordinator's per-child append + auto-done. This scenario sits
- * between them — exercising every per-Plot mutation handler on one
- * .seeds/-and-.plot/-enabled project, then triggering the same
- * plan-run flow scenario 27 covers, but ALSO verifying the Plot's
- * pre-plan-run state shape on the wire (envelope, attachments,
- * question_posed surface).
+ * Composes with scenario 25 (Plot integration roundtrip, mx-af2627) and scenario 27 (PlanRun + Plot, mx-15e4da).
  *
- * Topology: in-proc only, per-scenario stack (mirrors scenario 27's
- * stack reuse — we need the same `WARREN_GH_FETCH_OVERRIDE=merged` /
- * `WARREN_STUB_NO_COMMIT_SEEDS` / `WARREN_PLAN_RUN_TICK_MS` knobs).
+ * Topology: in-proc only, per-scenario stack (mirrors scenario 27's stack reuse).
  *
- * Fixture (committed to git):
- *   - .seeds/ with two open children (ah-acc29-aaaa, ah-acc29-bbbb)
- *     and one two-child plan (pl-acc-29ab). `WARREN_STUB_NO_COMMIT_SEEDS`
- *     names ah-acc29-bbbb so it drives the trivial-merge branch.
- *   - .plot/ with one pre-init Plot transitioned drafting → ready →
- *     active, holding:
- *       * one `question_posed` event by an agent actor (so the
- *         already-answered invariant has a real, unanswered question
- *         to target),
- *       * one `seeds_issue` attachment whose ref is the plan id
- *         (`pl-acc-29ab`) — that's how the UI's Run-plan button
- *         detects an "sd_plan" attachment today (warren-5d94's
- *         `seeds_issue + ref ~ /^pl-/i` convention),
- *       * one `mulch_record` attachment (ref `mx-acc290`).
- *
- * Wire assertions, in order:
- *   1. GET /plots/:id returns the full envelope (id, name, status,
- *      intent, attachments[], event_log[], project_id) with the
- *      fixture's seeded shape (active, two attachments, plot_created
- *      + status_changed×2 + attachment_added×2 + question_posed
- *      events present, ordered ascending by `at`).
- *   2. POST /plots/:id/intent {goal:"…"} returns the refreshed
- *      envelope; the next GET shows `intent.goal` updated AND a new
- *      `intent_edited` event in the event log authored by
- *      `user:operator` (default dispatcher fallback per mx-6a9788).
- *   3. POST /plots/:id/status rejects three actually-illegal
- *      transitions from `active` with 409 /
- *      `plot_illegal_status_transition`:
- *        - next=`drafting` (back-edge),
- *        - next=`ready`    (back-edge),
- *        - next=`active`   (self-transition).
- *      The seed text also lists "→ done rejected" with the rationale
- *      "active → done requires plan completion", but the SPEC §6.5
- *      transition matrix (`STATUS_TRANSITIONS`) actually permits
- *      `active → done` directly — that's exactly the edge the
- *      auto-done hook fires on at the end of this scenario. We
- *      deliberately do NOT assert `done` is rejected here because it
- *      isn't; the gap between the seed's rationale and the
- *      implementation is intentional (no plan-completion guard lives
- *      at the handler edge; auto-done is the trusted caller). When a
- *      plan-completion gate lands, add the assertion back here.
- *   4. POST /plots/:id/attachments adds a third attachment (kind
- *      `agent_run`, ref shape `^run-[A-Za-z0-9_-]+$`), the next GET
- *      shows it, and DELETE /plots/:id/attachments/:ref removes it.
- *      The two pre-seeded attachments stay untouched.
- *   5. POST /plots/:id/questions/:event_id/answer lands a
- *      `question_answered` event referencing the targeted
- *      `question_posed`. A second POST against the same event_id is
- *      rejected with 409 / `plot_question_already_answered`
- *      (handler-edge concurrency invariant — warren-e1ac).
- *   6. Run-plan button equivalent: POST /plan-runs with
- *      `{project, planId: 'pl-acc-29ab', agent: 'claude-code', plotId,
- *       promptTemplate: 'closeseed {seed_id}'}` triggers the pl-7937
- *      wiring. We mirror scenario 27's Plot-events-file tail to verify:
- *        - `plan_run_dispatched` lands on the Plot at POST time
- *          (warren-b89f),
- *        - both children produce a `run_dispatched` Plot event
- *          including the trivial-merge child (warren-e848, Phase 1
- *          host-side appender independent of commitsAhead),
- *        - on plan_succeeded the Plot auto-transitions `active → done`
- *          (warren-b290) verified two ways: the persisted
- *          `<plotId>.json` snapshot AND a `status_changed → done`
- *          event in the events tail authored by `user:operator`.
- *      The plan-run's own stream carries `plan_run.plot_auto_done`
- *      and none of the failure-arm kinds.
- *   7. mergePlot mirror SOFT_SKIP (warren-a346, shared with scenarios
- *      25 + 27): the per-child sandbox carries PLOT_ID + PLOT_ACTOR
- *      and the agent emits a `plot append` whose result reap mirrors
- *      into warren's stream tagged with `plotId` (mx-98e080). The
- *      claude-stub agent emits a `claude-stub: PLOT_ID=<id> PLOT_ACTOR=<actor>`
- *      text envelope when the env is present (mx-deeeac), so we look
- *      for that across the child run streams. burrow-cli@0.3.x does
- *      not yet forward body.env into the sandbox; until warren-a346
- *      lands the assertion soft-skips with a `ctx.logger.warn`. Flip
- *      to a hard `AcceptanceError` when the pin moves forward.
- *
- * Idempotent teardown: per-scenario stack lives entirely under
- * `mkdtemp` so the harness wipes it on success. The fixture is built
- * fresh each run (no insteadOf accumulation in the shared
- * `ctx.tmp/git-config`).
+ * Idempotent teardown: per-scenario stack lives entirely under `mkdtemp` so the harness wipes it on success.
  */
 
-import { copyFile, mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -118,128 +23,31 @@ import { AcceptanceError, assertEqual, assertTrue, type Scenario } from "../lib/
 import { WarrenHttp } from "../lib/http.ts";
 import { type BootHandle, bootInProc } from "../lib/inproc.ts";
 
-interface ProjectRow {
-	readonly id: string;
-	readonly gitUrl: string;
-	readonly localPath: string;
-	readonly defaultBranch: string;
-	readonly hasSeeds?: boolean;
-	readonly hasPlot?: boolean;
-}
-
-interface PlotAttachment {
-	readonly id: string;
-	readonly type: string;
-	readonly ref: string;
-	readonly role?: string;
-	readonly added_at: string;
-	readonly added_by: string;
-}
-
-interface PlotEventWire {
-	readonly type: string;
-	readonly actor: string;
-	readonly at: string;
-	readonly data?: Record<string, unknown>;
-}
-
-interface PlotEnvelope {
-	readonly id: string;
-	readonly name: string;
-	readonly status: string;
-	readonly intent: {
-		readonly goal: string;
-		readonly non_goals: readonly string[];
-		readonly constraints: readonly string[];
-		readonly success_criteria: readonly string[];
-	};
-	readonly attachments: readonly PlotAttachment[];
-	readonly event_log: readonly PlotEventWire[];
-	readonly project_id: string;
-}
-
-interface AttachResponse {
-	readonly envelope: PlotEnvelope;
-	readonly attachment: PlotAttachment;
-}
-
-interface DetachResponse {
-	readonly envelope: PlotEnvelope;
-	readonly removed_id: string;
-}
-
-interface AnswerResponse {
-	readonly event: PlotEventWire;
-}
-
-interface PlanRunRow {
-	readonly id: string;
-	readonly planId: string;
-	readonly projectId: string;
-	readonly agentName: string;
-	readonly state: "queued" | "running" | "succeeded" | "failed" | "cancelled";
-	readonly plotId: string | null;
-}
-
-interface PlanRunChildRow {
-	readonly planRunId: string;
-	readonly seq: number;
-	readonly seedId: string;
-	readonly runId: string | null;
-	readonly state:
-		| "pending"
-		| "dispatched"
-		| "running"
-		| "pr_open"
-		| "merged"
-		| "failed"
-		| "skipped";
-}
-
-interface RunRow {
-	readonly id: string;
-	readonly state: string;
-	readonly plotId: string | null;
-}
-
-interface CreatePlanRunResponse {
-	readonly planRun: PlanRunRow;
-	readonly children: readonly PlanRunChildRow[];
-}
-
-interface PlanRunDetailResponse {
-	readonly planRun: PlanRunRow;
-	readonly children: readonly PlanRunChildRow[];
-	readonly runs: readonly RunRow[];
-}
-
-interface EventRow {
-	readonly id: number;
-	readonly runId: string;
-	readonly seq: number;
-	readonly kind: string;
-	readonly payload: Record<string, unknown> | null;
-}
-
-interface ErrorEnvelope {
-	readonly error?: { readonly code?: string; readonly message?: string };
-}
-
-interface PlotSnapshot {
-	readonly id: string;
-	readonly status: string;
-}
+import {
+	fetchAllPlanRunEvents,
+	fetchAllRunEvents,
+	findTextEvent,
+	parsePlotLines,
+	startPlotEventsTail,
+} from "./lib/event-helpers.ts";
+import { buildFixture29 } from "./lib/fixture-29.ts";
+import { sleep, waitForPlanState, waitForPlotStatus } from "./lib/poll-helpers.ts";
+import type {
+	AnswerResponse,
+	AttachResponse,
+	CreatePlanRunResponse,
+	DetachResponse,
+	ErrorEnvelope,
+	PlotEnvelope,
+	ProjectRow,
+} from "./lib/types.ts";
 
 const PROJECT_URL = "https://github.com/warren-acceptance/sample-plot-detail.git";
 const PLAN_ID = "pl-acc-29ab";
-const SEED_A = "ah-acc29-aaaa";
 const SEED_B = "ah-acc29-bbbb";
 const MULCH_REF = "mx-acc290";
-const SEED_TS = "2026-05-17T00:00:00.000Z";
 
-const TERMINAL_PLAN_STATES = new Set(["succeeded", "failed", "cancelled"]);
 const PLAN_DEADLINE_MS = 90_000;
-const POLL_INTERVAL_MS = 500;
 const PLOT_FILE_POLL_TIMEOUT_MS = 10_000;
 const POST_PLAN_TAIL_FLUSH_MS = 1_500;
 
@@ -253,7 +61,7 @@ export const scenario: Scenario = {
 		const fixturePath = join(scenarioRoot, "fixture");
 		const gitConfigPath = join(scenarioRoot, "git-config");
 
-		const { plotId, questionAt } = await buildFixture({
+		const { plotId, questionAt } = await buildFixture29({
 			fixturePath,
 			sourceSamplePath: ctx.fixtures.sampleProjectPath,
 			harnessGitConfigPath: join(ctx.tmp, "git-config"),
@@ -310,7 +118,6 @@ export const scenario: Scenario = {
 				);
 			}
 
-			// event_log ordering + presence of seeded kinds.
 			const kinds = env1.event_log.map((e) => e.type);
 			for (const required of [
 				"plot_created",
@@ -326,11 +133,12 @@ export const scenario: Scenario = {
 			for (let i = 1; i < env1.event_log.length; i++) {
 				const prev = env1.event_log[i - 1];
 				const cur = env1.event_log[i];
-				if (prev === undefined || cur === undefined) continue;
-				assertTrue(
-					prev.at <= cur.at,
-					`envelope.event_log not ascending at index ${i}: ${prev.at} vs ${cur.at}`,
-				);
+				if (prev && cur) {
+					assertTrue(
+						prev.at <= cur.at,
+						`envelope.event_log not ascending at index ${i}: ${prev.at} vs ${cur.at}`,
+					);
+				}
 			}
 			const seededQuestion = env1.event_log.find(
 				(e) => e.type === "question_posed" && e.at === questionAt,
@@ -618,396 +426,3 @@ export const scenario: Scenario = {
 		}
 	},
 };
-
-interface BuildFixtureInput {
-	readonly fixturePath: string;
-	readonly sourceSamplePath: string;
-	readonly harnessGitConfigPath: string;
-	readonly gitConfigPath: string;
-	readonly projectGitUrl: string;
-}
-
-interface BuildFixtureResult {
-	readonly plotId: string;
-	readonly questionAt: string;
-}
-
-/**
- * Build a `.seeds/`-and-`.plot/`-enabled fixture and append an
- * insteadOf redirect so warren's `git clone <projectGitUrl>` resolves
- * to the on-disk path. Returns the seeded Plot id + the `at`
- * timestamp of the seeded `question_posed` (the wire :event_id).
- *
- * Mirrors scenario 27's fixture shape verbatim with three deltas:
- *   (1) the plan has two children (not three),
- *   (2) we append `question_posed` via PLOT_ACTOR=agent:* so the
- *       answer endpoint has a real, unanswered question to target,
- *   (3) we attach two refs (sd_plan-via-seeds_issue + mulch_record)
- *       so the GET /plots/:id assertion sees a populated
- *       attachments[] before the scenario starts mutating.
- */
-async function buildFixture(input: BuildFixtureInput): Promise<BuildFixtureResult> {
-	await mkdir(input.fixturePath, { recursive: true });
-	await mkdir(join(input.fixturePath, "tools"), { recursive: true });
-	await mkdir(join(input.fixturePath, ".seeds"), { recursive: true });
-
-	const burrowToml = await readFile(join(input.sourceSamplePath, "burrow.toml"), "utf8");
-	await writeFile(join(input.fixturePath, "burrow.toml"), burrowToml);
-	await copyFile(
-		join(input.sourceSamplePath, "tools", "stub-agent.sh"),
-		join(input.fixturePath, "tools", "stub-agent.sh"),
-	);
-	await copyFile(
-		join(input.sourceSamplePath, "tools", "claude-code-stub-agent.sh"),
-		join(input.fixturePath, "tools", "claude-code-stub-agent.sh"),
-	);
-	await writeFile(
-		join(input.fixturePath, "README.md"),
-		"# warren acceptance plot detail fixture\n\nUsed by scripts/acceptance/scenarios/29-plot-detail-roundtrip.ts.\n",
-	);
-
-	await writeFile(
-		join(input.fixturePath, ".seeds", "config.yaml"),
-		`project: "sample-plot-detail"\nversion: "1"\nmax_plan_depth: 3\n`,
-	);
-	await writeFile(
-		join(input.fixturePath, ".seeds", "issues.jsonl"),
-		[seedRowOpen(SEED_A), seedRowOpen(SEED_B)].join(""),
-	);
-	await writeFile(
-		join(input.fixturePath, ".seeds", "plans.jsonl"),
-		[planRow(PLAN_ID, [SEED_A, SEED_B])].join(""),
-	);
-
-	const env = withGitIdentity();
-	await runIn(input.fixturePath, ["git", "init", "--initial-branch=main"], env);
-	await runIn(input.fixturePath, ["chmod", "+x", "tools/stub-agent.sh"], env);
-	await runIn(input.fixturePath, ["chmod", "+x", "tools/claude-code-stub-agent.sh"], env);
-
-	const userEnv: Record<string, string> = { ...env, PLOT_ACTOR: "user:acceptance" };
-	const agentEnv: Record<string, string> = {
-		...env,
-		PLOT_ACTOR: "agent:claude-code:scenario-29-seed",
-	};
-
-	await runIn(input.fixturePath, ["plot", "init", "scenario-29"], userEnv);
-	const list = await runIn(input.fixturePath, ["plot", "list", "--json"], userEnv);
-	const plots = JSON.parse(list.stdout) as ReadonlyArray<{ id: string }>;
-	if (plots.length !== 1) {
-		throw new AcceptanceError(
-			`scenario-29 fixture: expected one Plot after init, got ${plots.length}: ${list.stdout}`,
-		);
-	}
-	const plotId = plots[0]?.id;
-	if (plotId === undefined) {
-		throw new AcceptanceError(`scenario-29 fixture: plot list --json missing id`);
-	}
-
-	// drafting → ready → active so the auto-done has an active Plot to terminate.
-	await runIn(input.fixturePath, ["plot", "status", plotId, "ready"], userEnv);
-	await runIn(input.fixturePath, ["plot", "status", plotId, "active"], userEnv);
-
-	// Attach the two pre-seeded refs. The sd_plan convention is a
-	// `seeds_issue` attachment whose ref is a `pl-*` id (warren-5d94 /
-	// isSdPlanAttachment in PlotDetail.tsx); update if plot-cli ever
-	// grows a first-class `seeds_plan` kind.
-	await runIn(
-		input.fixturePath,
-		["plot", "attach", plotId, `seeds_issue:${PLAN_ID}`, "--role", "primary"],
-		userEnv,
-	);
-	await runIn(
-		input.fixturePath,
-		["plot", "attach", plotId, `mulch_record:${MULCH_REF}`, "--role", "context"],
-		userEnv,
-	);
-
-	// Agent-authored question_posed so the answerer has a real
-	// unanswered question to target. The agent actor route is the
-	// only legal one for question_posed (SPEC §6 — humans-only event
-	// types exclude it from the agent restriction but in practice
-	// agents pose, users answer; using `agent:*` keeps the actor
-	// consistent with how the warren stack would generate it).
-	await runIn(
-		input.fixturePath,
-		[
-			"plot",
-			"append",
-			plotId,
-			"--event",
-			"question_posed",
-			"--data",
-			JSON.stringify({ text: "scenario-29: which db?", blocking: true }),
-		],
-		agentEnv,
-	);
-
-	// Recover the `at` timestamp of the just-appended question_posed
-	// from the events.jsonl tail — the wire :event_id is that ISO
-	// string (warren-e1ac).
-	const eventsBody = await readFile(
-		join(input.fixturePath, ".plot", `${plotId}.events.jsonl`),
-		"utf8",
-	);
-	let questionAt: string | undefined;
-	for (const line of eventsBody.split("\n")) {
-		const trimmed = line.trim();
-		if (trimmed === "") continue;
-		try {
-			const ev = JSON.parse(trimmed) as { type?: string; at?: string };
-			if (ev.type === "question_posed" && typeof ev.at === "string") {
-				questionAt = ev.at;
-				break;
-			}
-		} catch {
-			// non-JSON line, ignore
-		}
-	}
-	if (questionAt === undefined) {
-		throw new AcceptanceError(
-			`scenario-29 fixture: could not find seeded question_posed in ${plotId}.events.jsonl`,
-		);
-	}
-
-	await runIn(input.fixturePath, ["git", "add", "."], env);
-	await runIn(
-		input.fixturePath,
-		["git", "commit", "-m", "init: plot detail acceptance fixture"],
-		env,
-	);
-
-	const harnessConfig = await readFile(input.harnessGitConfigPath, "utf8").catch(() => "");
-	const lines: string[] = [
-		harnessConfig.trimEnd(),
-		`[url "${input.fixturePath}"]`,
-		`\tinsteadOf = ${input.projectGitUrl}`,
-		"",
-	];
-	await writeFile(input.gitConfigPath, `${lines.join("\n")}\n`);
-
-	return { plotId, questionAt };
-}
-
-function seedRowOpen(id: string): string {
-	const row = {
-		id,
-		title: `scenario-29 ${id}`,
-		status: "open",
-		type: "task",
-		priority: 3,
-		createdAt: SEED_TS,
-		updatedAt: SEED_TS,
-	};
-	return `${JSON.stringify(row)}\n`;
-}
-
-function planRow(id: string, children: readonly string[]): string {
-	const plan = {
-		id,
-		seed: "warren-acc-29",
-		template: "feature",
-		status: "approved",
-		revision: 1,
-		sections: {
-			context: `scenario-29 acceptance plan ${id}`,
-			approach: "dispatch child seeds via the plan-run coordinator",
-			steps: children.map((s) => ({ title: `close ${s}` })),
-		},
-		children,
-		createdAt: SEED_TS,
-		updatedAt: SEED_TS,
-		name: `scenario-29 ${id}`,
-	};
-	return `${JSON.stringify(plan)}\n`;
-}
-
-async function waitForPlanState(
-	http: WarrenHttp,
-	planRunId: string,
-	target: string,
-	timeoutMs: number,
-): Promise<PlanRunDetailResponse> {
-	const start = Date.now();
-	let last = "unknown";
-	while (Date.now() - start < timeoutMs) {
-		const row = await http.expectJson<PlanRunDetailResponse>(
-			"GET",
-			`/plan-runs/${encodeURIComponent(planRunId)}`,
-			200,
-		);
-		last = row.planRun.state;
-		if (row.planRun.state === target) return row;
-		if (TERMINAL_PLAN_STATES.has(row.planRun.state)) {
-			throw new AcceptanceError(
-				`plan-run ${planRunId}: expected '${target}', reached terminal '${row.planRun.state}'`,
-			);
-		}
-		await sleep(POLL_INTERVAL_MS);
-	}
-	throw new AcceptanceError(
-		`plan-run ${planRunId} did not reach '${target}' within ${timeoutMs}ms (last=${last})`,
-	);
-}
-
-async function fetchAllPlanRunEvents(http: WarrenHttp, planRunId: string): Promise<EventRow[]> {
-	const events: EventRow[] = [];
-	for await (const row of http.streamNdjson(`/plan-runs/${encodeURIComponent(planRunId)}/events`)) {
-		events.push(row as EventRow);
-	}
-	return events;
-}
-
-async function fetchAllRunEvents(http: WarrenHttp, runId: string): Promise<EventRow[]> {
-	const events: EventRow[] = [];
-	for await (const row of http.streamNdjson(`/runs/${encodeURIComponent(runId)}/events`)) {
-		events.push(row as EventRow);
-	}
-	return events;
-}
-
-function findTextEvent(events: readonly EventRow[], needle: string): EventRow | undefined {
-	return events.find(
-		(e) =>
-			e.kind === "text" &&
-			typeof e.payload?.text === "string" &&
-			(e.payload.text as string).includes(needle),
-	);
-}
-
-interface PlotEventsTail {
-	lines(): ReadonlySet<string>;
-	tickOnce(): Promise<void>;
-	stop(): void;
-}
-
-function startPlotEventsTail(path: string, intervalMs: number): PlotEventsTail {
-	const seen = new Set<string>();
-	let stopped = false;
-	const tick = async (): Promise<void> => {
-		if (stopped) return;
-		try {
-			const body = await readFile(path, "utf8");
-			for (const line of body.split("\n")) {
-				const trimmed = line.trim();
-				if (trimmed === "") continue;
-				seen.add(trimmed);
-			}
-		} catch {
-			// not yet present — keep polling
-		}
-	};
-	const handle = setInterval(() => {
-		void tick();
-	}, intervalMs);
-	return {
-		lines: () => seen,
-		tickOnce: tick,
-		stop: () => {
-			stopped = true;
-			clearInterval(handle);
-		},
-	};
-}
-
-interface ParsedPlotEvent {
-	readonly type: string;
-	readonly actor: string;
-	readonly at: string;
-	readonly data: unknown;
-}
-
-function parsePlotLines(lines: ReadonlySet<string>): ParsedPlotEvent[] {
-	const out: ParsedPlotEvent[] = [];
-	for (const line of lines) {
-		let parsed: unknown;
-		try {
-			parsed = JSON.parse(line);
-		} catch {
-			continue;
-		}
-		if (typeof parsed !== "object" || parsed === null) continue;
-		const row = parsed as { type?: unknown; actor?: unknown; at?: unknown; data?: unknown };
-		if (
-			typeof row.type !== "string" ||
-			typeof row.actor !== "string" ||
-			typeof row.at !== "string"
-		) {
-			continue;
-		}
-		out.push({ type: row.type, actor: row.actor, at: row.at, data: row.data ?? null });
-	}
-	return out;
-}
-
-async function readPlotSnapshot(path: string): Promise<PlotSnapshot> {
-	const body = await readFile(path, "utf8");
-	return JSON.parse(body) as PlotSnapshot;
-}
-
-async function waitForPlotStatus(
-	path: string,
-	target: string,
-	timeoutMs: number,
-): Promise<PlotSnapshot> {
-	const start = Date.now();
-	let lastStatus = "unknown";
-	while (Date.now() - start < timeoutMs) {
-		try {
-			const snap = await readPlotSnapshot(path);
-			lastStatus = snap.status;
-			if (snap.status === target) return snap;
-		} catch {
-			// not yet present or mid-write
-		}
-		await sleep(100);
-	}
-	throw new AcceptanceError(
-		`Plot at ${path} did not reach status='${target}' within ${timeoutMs}ms (last=${lastStatus})`,
-	);
-}
-
-interface RunResult {
-	stdout: string;
-	stderr: string;
-}
-
-async function runIn(
-	cwd: string,
-	cmd: readonly string[],
-	env: Record<string, string>,
-): Promise<RunResult> {
-	const proc = Bun.spawn({
-		cmd: [...cmd],
-		cwd,
-		env,
-		stdin: "ignore",
-		stdout: "pipe",
-		stderr: "pipe",
-	});
-	const [stdout, stderr, exitCode] = await Promise.all([
-		new Response(proc.stdout).text(),
-		new Response(proc.stderr).text(),
-		proc.exited,
-	]);
-	if ((exitCode ?? 0) !== 0) {
-		throw new AcceptanceError(
-			`scenario-29 command failed (${cmd.join(" ")} in ${cwd}): exit ${exitCode}\nstderr: ${stderr}\nstdout: ${stdout}`,
-		);
-	}
-	return { stdout, stderr };
-}
-
-function withGitIdentity(): Record<string, string> {
-	return {
-		PATH: process.env.PATH ?? "",
-		HOME: process.env.HOME ?? "/tmp",
-		GIT_AUTHOR_NAME: "Warren Acceptance",
-		GIT_AUTHOR_EMAIL: "acceptance@warren.invalid",
-		GIT_COMMITTER_NAME: "Warren Acceptance",
-		GIT_COMMITTER_EMAIL: "acceptance@warren.invalid",
-	};
-}
-
-function sleep(ms: number): Promise<void> {
-	return new Promise((resolve) => setTimeout(resolve, ms));
-}
