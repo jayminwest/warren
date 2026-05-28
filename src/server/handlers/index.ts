@@ -89,7 +89,7 @@ import {
 	previewTeardownHandler,
 	steerRunHandler,
 	streamRunEventsHandler,
-} from "./runs.ts";
+} from "./runs/index.ts";
 import { drainWorkerHandler, listWorkersHandler } from "./workers.ts";
 
 /**

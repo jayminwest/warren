@@ -35,8 +35,6 @@
 		"src/server/handlers/plots.test.ts": 2442,
 		"src/server/handlers/plots.ts": 1010,
 		"src/server/handlers/plots.workbench.test.ts": 766,
-		"src/server/handlers/runs.test.ts": 988,
-		"src/server/handlers/runs.ts": 789,
 		"src/server/integration.multi-worker.test.ts": 553,
 		"src/server/server.test.ts": 536,
 		"src/warren-config/schema.test.ts": 757

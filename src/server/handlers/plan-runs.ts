@@ -33,7 +33,7 @@ import {
 	requireParam,
 	requireString,
 } from "./index.ts";
-import { asNdjsonStream, bridgeAbort, eventToNdjson } from "./runs.ts";
+import { asNdjsonStream, bridgeAbort, eventToNdjson } from "./runs/index.ts";
 
 /* ----------------------------------------------------------------------- */
 /* Plan runs (warren-f923 / pl-a258 step 6)                                 */
