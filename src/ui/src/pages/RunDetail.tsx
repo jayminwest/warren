@@ -19,6 +19,7 @@ import type {
 import { PREVIEW_ACTIVE_STATES, RUN_TERMINAL_STATES } from "@/api/types.ts";
 import { PlotMetaCardContent } from "@/components/PlotMetaCardContent.tsx";
 import { StateBadge } from "@/components/StateBadge.tsx";
+import { StatusIndicator } from "@/components/StatusIndicator.tsx";
 import { Badge } from "@/components/ui/badge.tsx";
 import { Button } from "@/components/ui/button.tsx";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card.tsx";
@@ -429,19 +430,9 @@ function PreviewMetaLine({
 }
 
 function PreviewStateBadge({ state }: { state: PreviewState }) {
-	const variant: "queued" | "succeeded" | "failed" | "cancelled" =
-		state === "starting"
-			? "queued"
-			: state === "live"
-				? "succeeded"
-				: state === "failed"
-					? "failed"
-					: "cancelled";
-	return (
-		<Badge variant={variant} className="font-mono text-xs">
-			{state}
-		</Badge>
-	);
+	// warren-3849: delegate to the unified StatusIndicator registry so
+	// preview state colour/icon/pulse stays in lockstep with Plot/Run.
+	return <StatusIndicator kind="preview" status={state} />;
 }
 
 function PreviewTeardownButton({
@@ -573,9 +564,9 @@ function EventTail({
 				<CardTitle>Events ({sorted.length})</CardTitle>
 				<div className="flex items-center gap-2">
 					{terminal ? (
-						<Badge variant="cancelled">terminal</Badge>
+						<StatusIndicator kind="run" status="cancelled" label="terminal" />
 					) : (
-						<Badge variant={statusVariant(status)}>{status}</Badge>
+						<StatusIndicator kind="eventStream" status={status} />
 					)}
 					<label className="flex items-center gap-1 text-xs text-(--color-muted-foreground)">
 						<input
@@ -659,23 +650,6 @@ function formatTokenBreakdown(r: RunRow): string | null {
 		parts.push(`${formatTokens(r.tokensCacheWrite)} cache-w`);
 	}
 	return parts.length === 0 ? null : parts.join(" · ");
-}
-
-function statusVariant(
-	s: string,
-): "running" | "queued" | "succeeded" | "failed" | "cancelled" | "secondary" {
-	switch (s) {
-		case "live":
-			return "running";
-		case "connecting":
-			return "queued";
-		case "ended":
-			return "succeeded";
-		case "error":
-			return "failed";
-		default:
-			return "secondary";
-	}
 }
 
 /**
