@@ -8,6 +8,7 @@ import { Alert } from "@/components/ui/alert.tsx";
 import { Button } from "@/components/ui/button.tsx";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card.tsx";
 import { EmptyState } from "@/components/ui/empty-state.tsx";
+import { FadeInItem, StaggerList } from "@/components/ui/motion.tsx";
 import { Spinner } from "@/components/ui/spinner.tsx";
 import {
 	Table,
@@ -160,29 +161,33 @@ export function RunsPage() {
 				</div>
 			</div>
 
-			<div className="flex flex-wrap gap-2">
-				<FilterPill
-					active={filter === "all"}
-					label="All"
-					onClick={() => setFilter("all")}
-				/>
-				{agents.data?.agents.map((a) => (
+			<StaggerList className="flex flex-wrap gap-2">
+				<FadeInItem>
 					<FilterPill
-						key={`a-${a.name}`}
-						active={filter !== "all" && filter.kind === "agent" && filter.value === a.name}
-						label={`agent: ${a.name}`}
-						onClick={() => setFilter({ kind: "agent", value: a.name })}
+						active={filter === "all"}
+						label="All"
+						onClick={() => setFilter("all")}
 					/>
+				</FadeInItem>
+				{agents.data?.agents.map((a) => (
+					<FadeInItem key={`a-${a.name}`}>
+						<FilterPill
+							active={filter !== "all" && filter.kind === "agent" && filter.value === a.name}
+							label={`agent: ${a.name}`}
+							onClick={() => setFilter({ kind: "agent", value: a.name })}
+						/>
+					</FadeInItem>
 				))}
 				{projects.data?.projects.map((p) => (
-					<FilterPill
-						key={`p-${p.id}`}
-						active={filter !== "all" && filter.kind === "project" && filter.value === p.id}
-						label={`project: ${p.gitUrl.replace(/^https:\/\/github\.com\//, "")}`}
-						onClick={() => setFilter({ kind: "project", value: p.id })}
-					/>
+					<FadeInItem key={`p-${p.id}`}>
+						<FilterPill
+							active={filter !== "all" && filter.kind === "project" && filter.value === p.id}
+							label={`project: ${p.gitUrl.replace(/^https:\/\/github\.com\//, "")}`}
+							onClick={() => setFilter({ kind: "project", value: p.id })}
+						/>
+					</FadeInItem>
 				))}
-			</div>
+			</StaggerList>
 
 			<Card>
 				<CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2 space-y-0">

@@ -25,6 +25,7 @@ import { Badge } from "@/components/ui/badge.tsx";
 import { Button } from "@/components/ui/button.tsx";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card.tsx";
 import { Label } from "@/components/ui/label.tsx";
+import { AnimatePresence, StreamItem } from "@/components/ui/motion.tsx";
 import { Spinner } from "@/components/ui/spinner.tsx";
 import { Textarea } from "@/components/ui/textarea.tsx";
 import { useEventStream } from "@/hooks/useEventStream.ts";
@@ -595,7 +596,9 @@ function EventTail({
 					{sorted.length === 0 ? (
 						<p className="p-4 text-(--color-muted-foreground)">No events yet.</p>
 					) : (
-						sorted.map((e) => <EventLine key={e.id} event={e} />)
+						<AnimatePresence initial={false}>
+							{sorted.map((e) => <EventLine key={e.id} event={e} />)}
+						</AnimatePresence>
 					)}
 				</div>
 			</CardContent>
@@ -686,6 +689,14 @@ function piSubKind(event: RunEvent): string | null {
 }
 
 function EventLine({ event }: { event: RunEvent }) {
+	return (
+		<StreamItem>
+			<EventLineInner event={event} />
+		</StreamItem>
+	);
+}
+
+function EventLineInner({ event }: { event: RunEvent }) {
 	const sub = piSubKind(event);
 	const isError = event.stream === "stderr" || sub === "extension_error";
 	const colour = isError
