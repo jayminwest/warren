@@ -87,3 +87,18 @@ export function parsePlotLines(lines: ReadonlySet<string>): ParsedPlotEvent[] {
 	}
 	return out;
 }
+
+export async function readPlotEventLines(path: string): Promise<ReadonlySet<string>> {
+	const seen = new Set<string>();
+	try {
+		const body = await readFile(path, "utf8");
+		for (const line of body.split("\n")) {
+			const trimmed = line.trim();
+			if (trimmed === "") continue;
+			seen.add(trimmed);
+		}
+	} catch {
+		// File not yet present — return empty set.
+	}
+	return seen;
+}

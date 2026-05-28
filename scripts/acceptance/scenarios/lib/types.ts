@@ -87,6 +87,13 @@ export interface CreatePlanRunResponse {
 	readonly children: readonly PlanRunChildRow[];
 }
 
+export interface CreatePlotPlanRunResponse {
+	readonly planRun: PlanRunRow;
+	readonly children: readonly PlanRunChildRow[];
+	readonly synthesizedPlanId: string;
+	readonly parentSeedId: string;
+}
+
 export interface PlanRunDetailResponse {
 	readonly planRun: PlanRunRow;
 	readonly children: readonly PlanRunChildRow[];
