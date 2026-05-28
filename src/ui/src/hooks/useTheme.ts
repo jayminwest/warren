@@ -30,14 +30,14 @@ function getSystemTheme(): ResolvedTheme {
 	return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
 }
 
-function applyTheme(theme: Theme): void {
+function applyTheme(theme: Theme, system: ResolvedTheme): void {
 	if (typeof document === "undefined") return;
 	const root = document.documentElement;
-	if (theme === "system") {
-		delete root.dataset.theme;
-	} else {
-		root.dataset.theme = theme;
-	}
+	// Always set a concrete data-theme=light|dark on <html> (warren-23fe):
+	// the index.css token sheet and the @custom-variant dark rule both key
+	// off this attribute as the single source of truth. "system" is
+	// resolved to the current OS preference here at runtime.
+	root.dataset.theme = theme === "system" ? system : theme;
 }
 
 function persistTheme(theme: Theme): void {
@@ -61,17 +61,20 @@ export function useTheme(): {
 	const [theme, setThemeState] = useState<Theme>(() => readStoredTheme());
 	const [systemTheme, setSystemTheme] = useState<ResolvedTheme>(() => getSystemTheme());
 
-	// Apply on mount and whenever theme changes. The FOUC-prevention script in
-	// index.html sets data-theme synchronously before React paints; this keeps
-	// the attribute in sync afterwards.
+	// Apply on mount and whenever theme or the resolved system preference
+	// changes. The FOUC-prevention script in index.html sets data-theme
+	// synchronously before React paints; this keeps the attribute in sync
+	// afterwards (including when the OS preference flips while theme ===
+	// "system").
 	useEffect(() => {
-		applyTheme(theme);
-	}, [theme]);
+		applyTheme(theme, systemTheme);
+	}, [theme, systemTheme]);
 
-	// Track OS preference, but only matters when theme === "system".
+	// Track OS preference whenever a media query is available. We keep the
+	// listener attached even when theme !== "system" so that switching back
+	// to "system" picks up the current OS value without a remount.
 	useEffect(() => {
 		if (typeof window === "undefined" || typeof window.matchMedia !== "function") return;
-		if (theme !== "system") return;
 		const mq = window.matchMedia("(prefers-color-scheme: dark)");
 		const onChange = (e: MediaQueryListEvent): void => {
 			setSystemTheme(e.matches ? "dark" : "light");
@@ -80,7 +83,7 @@ export function useTheme(): {
 		setSystemTheme(mq.matches ? "dark" : "light");
 		mq.addEventListener("change", onChange);
 		return () => mq.removeEventListener("change", onChange);
-	}, [theme]);
+	}, []);
 
 	const setTheme = useCallback((next: Theme): void => {
 		persistTheme(next);

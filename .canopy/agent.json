@@ -13,7 +13,7 @@
       "agent"
     ],
     "source": "builtin",
-    "provider": "google",
-    "model": "gemini-3.5-flash"
+    "provider": "anthropic",
+    "model": "claude-opus-4-7"
   }
 }

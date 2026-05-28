@@ -7,15 +7,32 @@
 		<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
 		<title>warren</title>
 		<script>
-			// FOUC guard: apply persisted theme before React paints.
+			// FOUC guard: resolve persisted theme (or OS preference for "system")
+			// to a concrete data-theme=light|dark on <html> before React paints.
 			// Keep in sync with src/hooks/useTheme.ts (key: warren.theme).
+			// Resolving "system" here — rather than leaving the attribute unset —
+			// is what lets the single `:root[data-theme="dark"]` block in
+			// index.css (warren-23fe) replace the old duplicated OS-pref @media
+			// block, and what makes the `dark:` Tailwind variant
+			// (@custom-variant dark) track the toggle.
 			(function () {
 				try {
-					var t = localStorage.getItem("warren.theme");
-					if (t === "light" || t === "dark") {
-						document.documentElement.dataset.theme = t;
-					}
-				} catch (_) {}
+					var stored = localStorage.getItem("warren.theme");
+					var choice =
+						stored === "light" || stored === "dark" || stored === "system"
+							? stored
+							: "system";
+					var resolved =
+						choice === "system"
+							? window.matchMedia &&
+								window.matchMedia("(prefers-color-scheme: dark)").matches
+								? "dark"
+								: "light"
+							: choice;
+					document.documentElement.dataset.theme = resolved;
+				} catch (_) {
+					document.documentElement.dataset.theme = "light";
+				}
 			})();
 		</script>
 	</head>

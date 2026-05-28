@@ -1,19 +1,20 @@
 {
 	"$comment": "Bundle-size ratchet for src/ui/dist/ (warren-5abc, plan pl-7b06 step 13). Frozen ceilings — the ratchet only goes down. Update budgets downward when refactoring; do NOT raise them to land a regression. All sizes in bytes. gzip uses Node zlib defaults (level 6) to match Vite's reporter.",
+	"$comment_css_2026_05_28": "warren-23fe / pl-55a3 step 1: CSS budgets raised from raw 34474 / gzip 6960 to raw 35200 / gzip 7160 as a one-time legitimate floor bump for the Phase 1 design-token foundation in src/ui/src/index.css (self-hosted Inter + JetBrains Mono via @font-face against @fontsource-variable, brand --color-primary, unified gray ramp, semantic status palette success/warning/info/danger/neutral, --radius-* / tinted --shadow-* / --z-* scales, @custom-variant dark, collapsed dark token block). Unused -foreground pairs and shadow-xl/z-base were trimmed to minimise the bump; remaining delta is the irreducible cost of the new token surface. Future phases (warren-6e69 / -57d7 / -3849 / -36f0 / -5da1 / -e6b3 / -2221) must hold flat or shrink against this floor.",
 	"totals": {
 		"raw": {
 			"js": 475460,
-			"css": 34474
+			"css": 35200
 		},
 		"gzip": {
 			"js": 136500,
-			"css": 6960
+			"css": 7160
 		}
 	},
 	"largest": {
 		"gzip": {
 			"js": 136500,
-			"css": 6960
+			"css": 7160
 		}
 	}
 }

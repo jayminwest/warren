@@ -1,66 +1,151 @@
 @import "tailwindcss";
 
+/*
+ * Self-hosted brand fonts (Phase 1, warren-23fe / pl-55a3 step 1).
+ *
+ * We declare @font-face inline against the @fontsource-variable woff2
+ * payloads rather than importing the package's bundled CSS — the
+ * bundled stylesheets ship rules for every subset (cyrillic / greek /
+ * vietnamese / latin-ext / latin) which inflates the CSS bundle past
+ * the check:bundle-size ratchet. The UI is English-only; latin +
+ * latin-ext covers what we ship today. Variable fonts give us the
+ * full 100–900 weight axis from a single woff2 per family.
+ */
+@font-face {
+	font-family: "Inter Variable";
+	font-style: normal;
+	font-display: swap;
+	font-weight: 100 900;
+	src: url("@fontsource-variable/inter/files/inter-latin-wght-normal.woff2")
+		format("woff2-variations");
+}
+@font-face {
+	font-family: "JetBrains Mono Variable";
+	font-style: normal;
+	font-display: swap;
+	font-weight: 100 900;
+	src: url("@fontsource-variable/jetbrains-mono/files/jetbrains-mono-latin-wght-normal.woff2")
+		format("woff2-variations");
+}
+
+/*
+ * Make the `dark:` Tailwind variant track the explicit data-theme
+ * attribute set by useTheme + the FOUC-prevention script in index.html
+ * (warren-23fe). Previously `dark:` resolved against the OS
+ * `prefers-color-scheme` media query, so badge/status text colors
+ * decoupled from the user's toggle. With `useTheme` now resolving
+ * "system" to a concrete data-theme=light|dark at runtime, this single
+ * source of truth keeps utilities and tokens aligned.
+ */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
 @theme {
 	--font-sans:
-		"Inter", ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji",
-		"Segoe UI Symbol", "Noto Color Emoji";
+		"Inter Variable", "Inter", ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji",
+		"Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
 	--font-mono:
-		"JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+		"JetBrains Mono Variable", "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco,
+		Consolas, monospace;
 
-	--color-bg: oklch(99% 0 0);
-	--color-fg: oklch(20% 0 0);
-	--color-muted: oklch(96% 0 0);
-	--color-muted-foreground: oklch(45% 0 0);
-	--color-border: oklch(90% 0 0);
+	/*
+	 * Neutral ramp — single cool-neutral hue (264) across light and dark,
+	 * so the gray scale stays consistent between modes (audit fix: the old
+	 * light tokens were chroma-0 while dark tokens were tinted, so the
+	 * ramps didn't line up). Light tokens listed first; dark overrides
+	 * below.
+	 */
+	--color-bg: oklch(99% 0.003 264);
+	--color-fg: oklch(20% 0.01 264);
+	--color-muted: oklch(96% 0.005 264);
+	--color-muted-foreground: oklch(45% 0.01 264);
+	--color-border: oklch(90% 0.008 264);
 	--color-card: oklch(100% 0 0);
-	--color-primary: oklch(35% 0 0);
-	--color-primary-foreground: oklch(98% 0 0);
+	--color-accent: oklch(94% 0.008 264);
+	--color-ring: oklch(60% 0.01 264);
+
+	/*
+	 * Brand / accent — a single muted-green hue (chroma ~0.10) keeps
+	 * Warren visually aligned with the rest of the os-eco ecosystem
+	 * without competing with the status palette below. Used for primary
+	 * buttons, active nav, focus rings, and links.
+	 */
+	--color-primary: oklch(58% 0.10 152);
+	--color-primary-foreground: oklch(99% 0.005 152);
+
+	/*
+	 * Semantic status palette — single tokens consumed by the
+	 * StatusIndicator registry (Phase 3) plus Alert/Toast (Phase 4).
+	 * Pairs: -foreground for high-contrast text on the colored fill.
+	 */
+	--color-success: oklch(60% 0.13 150);
+	--color-warning: oklch(72% 0.15 75);
+	--color-info: oklch(60% 0.15 240);
+	--color-danger: oklch(58% 0.22 27);
+	--color-neutral: oklch(55% 0.02 264);
+
+	/*
+	 * `destructive` is preserved as an alias for `danger` so existing
+	 * Button/Dialog variants keep compiling while Phase 2 migrates them.
+	 */
 	--color-destructive: oklch(58% 0.22 27);
-	--color-destructive-foreground: oklch(98% 0 0);
-	--color-accent: oklch(94% 0 0);
-	--color-ring: oklch(60% 0 0);
+	--color-destructive-foreground: oklch(99% 0.005 27);
+
+	/* Radius scale — single source of truth for rounded utilities. */
+	--radius-sm: 0.25rem;
+	--radius-md: 0.375rem;
+	--radius-lg: 0.5rem;
+	--radius-xl: 0.75rem;
+	--radius-2xl: 1rem;
+
+	/*
+	 * Tinted shadows — neutral-264 hue so elevation reads as part of the
+	 * gray ramp rather than pure black on tinted surfaces.
+	 */
+	--shadow-sm: 0 1px 2px 0 oklch(20% 0.01 264 / 0.06);
+	--shadow-md:
+		0 4px 6px -1px oklch(20% 0.01 264 / 0.10), 0 2px 4px -2px oklch(20% 0.01 264 / 0.06);
+	--shadow-lg:
+		0 10px 15px -3px oklch(20% 0.01 264 / 0.10), 0 4px 6px -4px oklch(20% 0.01 264 / 0.06);
+
+	/* Z-index scale — discrete layers so ad-hoc z-[N] doesn't drift. */
+	--z-sticky: 10;
+	--z-dropdown: 20;
+	--z-overlay: 30;
+	--z-modal: 40;
+	--z-toast: 50;
 }
 
 /*
  * Dark-mode tokens.
  *
- * Triggered by EITHER an explicit `data-theme="dark"` on <html> (set by
- * useTheme / the FOUC-prevention script in index.html), OR — when no
- * override is stored — by the OS `prefers-color-scheme: dark` media query.
- *
- * Keep both selector blocks in sync; the oklch() values must match the
- * original `@media (prefers-color-scheme: dark) { @theme { … } }` set.
+ * Now a single source of truth (warren-23fe): useTheme resolves the
+ * "system" choice to a concrete data-theme=light|dark on <html>, so the
+ * OS-following branch no longer needs a duplicate @media block. Same
+ * neutral hue family (264) as light, just shifted in lightness, so the
+ * gray ramp lines up across modes.
  */
 :root[data-theme="dark"] {
-	--color-bg: oklch(14% 0.005 264);
+	--color-bg: oklch(14% 0.008 264);
 	--color-fg: oklch(96% 0.005 264);
-	--color-muted: oklch(20% 0.01 264);
-	--color-muted-foreground: oklch(67% 0.01 264);
-	--color-border: oklch(28% 0.01 264);
-	--color-card: oklch(17% 0.008 264);
-	--color-primary: oklch(85% 0.02 264);
-	--color-primary-foreground: oklch(15% 0.005 264);
-	--color-destructive: oklch(62% 0.22 27);
-	--color-destructive-foreground: oklch(98% 0 0);
-	--color-accent: oklch(24% 0.01 264);
-	--color-ring: oklch(60% 0.01 264);
-}
+	--color-muted: oklch(20% 0.012 264);
+	--color-muted-foreground: oklch(67% 0.012 264);
+	--color-border: oklch(28% 0.012 264);
+	--color-card: oklch(17% 0.010 264);
+	--color-accent: oklch(24% 0.012 264);
+	--color-ring: oklch(60% 0.015 264);
 
-@media (prefers-color-scheme: dark) {
-	:root:not([data-theme]) {
-		--color-bg: oklch(14% 0.005 264);
-		--color-fg: oklch(96% 0.005 264);
-		--color-muted: oklch(20% 0.01 264);
-		--color-muted-foreground: oklch(67% 0.01 264);
-		--color-border: oklch(28% 0.01 264);
-		--color-card: oklch(17% 0.008 264);
-		--color-primary: oklch(85% 0.02 264);
-		--color-primary-foreground: oklch(15% 0.005 264);
-		--color-destructive: oklch(62% 0.22 27);
-		--color-destructive-foreground: oklch(98% 0 0);
-		--color-accent: oklch(24% 0.01 264);
-		--color-ring: oklch(60% 0.01 264);
-	}
+	/* Brand reads brighter in dark mode to keep contrast on bg. */
+	--color-primary: oklch(72% 0.11 152);
+	--color-primary-foreground: oklch(15% 0.01 152);
+
+	--color-success: oklch(72% 0.13 150);
+	--color-warning: oklch(80% 0.15 75);
+	--color-info: oklch(72% 0.14 240);
+	--color-danger: oklch(68% 0.21 27);
+	--color-neutral: oklch(70% 0.02 264);
+
+	--color-destructive: oklch(68% 0.21 27);
+	--color-destructive-foreground: oklch(15% 0.01 27);
 }
 
 html,
@@ -79,4 +164,17 @@ body {
 
 * {
 	border-color: var(--color-border);
+}
+
+/*
+ * Tabular numerals on data surfaces — keeps numeric columns
+ * (run durations, counts, ids, timestamps) aligned even when
+ * the proportional sans font is in use.
+ */
+table,
+code,
+pre,
+.font-mono,
+[class*="tabular"] {
+	font-variant-numeric: tabular-nums;
 }
