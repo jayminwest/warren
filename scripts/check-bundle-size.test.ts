@@ -2,7 +2,14 @@ import { describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { type Budgets, diff, loadBudgets, measure } from "./check-bundle-size.ts";
+import {
+	type Budgets,
+	diff,
+	loadBudgets,
+	type Measurement,
+	measure,
+	updateBudgets,
+} from "./check-bundle-size.ts";
 
 const REPO_ROOT = resolve(import.meta.dir, "..");
 const BUDGETS_PATH = resolve(REPO_ROOT, "scripts/bundle-size-budgets.json");
@@ -84,6 +91,52 @@ describe("check-bundle-size", () => {
 			files: [],
 		};
 		expect(diff(atCeiling, budgets)).toEqual([]);
+	});
+
+	const measurementOf = (raw: number, gzip: number): Measurement => ({
+		totals: { raw: { js: raw, css: raw }, gzip: { js: gzip, css: gzip } },
+		largest: { gzip: { js: gzip, css: gzip } },
+		files: [],
+	});
+
+	function writeTempBudgets(b: Budgets): string {
+		const dir = mkdtempSync(join(tmpdir(), "warren-budgets-"));
+		const path = join(dir, "bundle-size-budgets.json");
+		writeFileSync(path, JSON.stringify({ $comment: "test", ...b }, null, "\t"));
+		return path;
+	}
+
+	test("updateBudgets writes measured + headroom and preserves $comment", () => {
+		const path = writeTempBudgets({
+			totals: { raw: { js: 999999, css: 999999 }, gzip: { js: 999999, css: 999999 } },
+			largest: { gzip: { js: 999999, css: 999999 } },
+		});
+		// allowRaise=true so the down-only guard does not block this lowering anyway.
+		const res = updateBudgets(measurementOf(1000, 100), path, true);
+		expect(res.wrote).toBe(true);
+		const written = JSON.parse(readFileSync(path, "utf8")) as Record<string, unknown> & Budgets;
+		// js headroom = 800 raw / 400 gzip; css headroom = half (400 / 200).
+		expect(written.totals.raw.js).toBe(1800);
+		expect(written.totals.raw.css).toBe(1400);
+		expect(written.totals.gzip.js).toBe(500);
+		expect(written.totals.gzip.css).toBe(300);
+		expect(written.largest.gzip.js).toBe(500);
+		expect(written.$comment).toBe("test");
+	});
+
+	test("updateBudgets refuses to raise a budget unless allowRaise is set", () => {
+		const path = writeTempBudgets({
+			totals: { raw: { js: 1000, css: 1000 }, gzip: { js: 100, css: 100 } },
+			largest: { gzip: { js: 100, css: 100 } },
+		});
+		const before = readFileSync(path, "utf8");
+		// measured js raw 5000 + 600 headroom > existing 1000 → a raise.
+		const res = updateBudgets(measurementOf(5000, 500), path, false);
+		expect(res.wrote).toBe(false);
+		expect(res.raised.length).toBeGreaterThan(0);
+		expect(res.raised.some((r) => r.startsWith("totals.raw.js"))).toBe(true);
+		// File is left untouched when a raise is refused.
+		expect(readFileSync(path, "utf8")).toBe(before);
 	});
 
 	test("current dist passes the guard when present", () => {

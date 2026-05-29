@@ -19,15 +19,43 @@
  * Usage:
  *   bun run scripts/check-bundle-size.ts             # measure existing dist/
  *   bun run scripts/check-bundle-size.ts --build     # build:ui first, then measure
+ *   bun run scripts/check-bundle-size.ts --build --update
+ *                                                    # build, then WRITE budgets =
+ *                                                    # measured + headroom (re-baseline)
  *
  * If `src/ui/dist/` is missing the script exits non-zero with a hint
  * unless `--build` (or `WARREN_BUNDLE_SIZE_BUILD=1`) is set.
+ *
+ * Parity, two traps that have bitten us (warren-bfc6):
+ *   1. Vite's build-log gzip figure runs ~2KB COOLER than this script's
+ *      Node-zlib gzip. Budget from THIS script, never from Vite's reporter.
+ *   2. A stale local `src/ui/node_modules` can carry different dep versions
+ *      than the committed lockfile and produce a different bundle than CI.
+ *      `build:ui` installs with --frozen-lockfile precisely so a clean local
+ *      build is byte-identical to CI; if your numbers disagree with CI, blow
+ *      away node_modules and rebuild rather than padding the budget.
+ *
+ * Re-baselining: never hand-edit the numbers in bundle-size-budgets.json. Run
+ * `--update` instead: it writes budgets straight from the measured build plus a
+ * small churn headroom (HEADROOM_RAW/_GZIP). The ratchet still only goes down —
+ * `--update` refuses to RAISE a budget unless WARREN_BUNDLE_SIZE_ALLOW_RAISE=1
+ * is set (a knowing re-baseline, e.g. a legitimate new floor).
  */
 
 import { spawnSync } from "node:child_process";
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { gzipSync } from "node:zlib";
+
+/**
+ * Headroom added to a measured size when re-baselining via --update (js bucket;
+ * css uses half). The build is byte-reproducible across machines as long as
+ * deps come from the committed lockfile (build:ui installs --frozen-lockfile),
+ * so this is only a small churn buffer for trivial follow-up changes, NOT a
+ * cross-platform fudge factor — local and CI measure identical bytes.
+ */
+const HEADROOM_RAW = 800;
+const HEADROOM_GZIP = 400;
 
 const REPO_ROOT = resolve(import.meta.dir, "..");
 const BUDGETS_PATH = resolve(REPO_ROOT, "scripts/bundle-size-budgets.json");
@@ -141,6 +169,53 @@ export function diff(measurement: Measurement, budgets: Budgets): Failure[] {
 	return failures;
 }
 
+export type UpdateResult = { wrote: boolean; raised: string[] };
+
+/**
+ * Re-baseline budgets from a measurement: budget = measured + headroom, written
+ * straight back into bundle-size-budgets.json (numeric fields only; all
+ * `$comment*` keys and ordering are preserved). Refuses to raise an existing
+ * budget unless `allowRaise` is set, keeping the ratchet honest — in that case
+ * nothing is written and the offending metrics are returned in `raised`.
+ */
+export function updateBudgets(
+	measurement: Measurement,
+	budgetsPath = BUDGETS_PATH,
+	allowRaise = process.env.WARREN_BUNDLE_SIZE_ALLOW_RAISE === "1",
+): UpdateResult {
+	const raw = JSON.parse(readFileSync(budgetsPath, "utf8")) as Record<string, unknown>;
+	const totals = raw.totals as Budgets["totals"];
+	const largest = raw.largest as Budgets["largest"];
+	const raised: string[] = [];
+
+	const apply = (current: number, measured: number, headroom: number, label: string): number => {
+		const next = measured + headroom;
+		if (next > current && !allowRaise) {
+			raised.push(`${label}: ${current} → ${next} (measured ${measured} + ${headroom})`);
+			return current;
+		}
+		return next;
+	};
+
+	for (const b of BUCKETS) {
+		const hRaw = b === "js" ? HEADROOM_RAW : Math.round(HEADROOM_RAW / 2);
+		const hGzip = b === "js" ? HEADROOM_GZIP : Math.round(HEADROOM_GZIP / 2);
+		totals.raw[b] = apply(totals.raw[b], measurement.totals.raw[b], hRaw, `totals.raw.${b}`);
+		totals.gzip[b] = apply(totals.gzip[b], measurement.totals.gzip[b], hGzip, `totals.gzip.${b}`);
+		largest.gzip[b] = apply(
+			largest.gzip[b],
+			measurement.largest.gzip[b],
+			hGzip,
+			`largest.gzip.${b}`,
+		);
+	}
+
+	if (raised.length > 0) return { wrote: false, raised };
+
+	writeFileSync(budgetsPath, `${JSON.stringify(raw, null, "\t")}\n`);
+	return { wrote: true, raised };
+}
+
 function fmtBytes(n: number): string {
 	if (n < 1024) return `${n} B`;
 	return `${(n / 1024).toFixed(2)} KiB (${n} B)`;
@@ -169,13 +244,30 @@ function main(): void {
 		process.exit(1);
 	}
 
-	const budgets = loadBudgets();
 	const m = measure();
 
 	console.log("Bundle-size measurement (src/ui/dist/assets/):");
 	for (const f of m.files) {
 		console.log(`  ${f.name}: raw ${fmtBytes(f.raw)}, gzip ${fmtBytes(f.gzip)}`);
 	}
+
+	if (args.has("--update")) {
+		const { wrote, raised } = updateBudgets(m);
+		if (!wrote) {
+			console.error("");
+			console.error("Bundle-size --update refused to RAISE budgets (ratchet only goes down):");
+			for (const r of raised) console.error(`  ${r}`);
+			console.error("");
+			console.error(
+				"If this is a legitimate new floor, re-run with WARREN_BUNDLE_SIZE_ALLOW_RAISE=1 and document why in a $comment.",
+			);
+			process.exit(1);
+		}
+		console.log(`Wrote re-baselined budgets to ${BUDGETS_PATH} (measured + headroom).`);
+		return;
+	}
+
+	const budgets = loadBudgets();
 	for (const b of BUCKETS) {
 		console.log(
 			`  totals.${b}: raw ${fmtBytes(m.totals.raw[b])} / budget ${fmtBytes(budgets.totals.raw[b])}; gzip ${fmtBytes(m.totals.gzip[b])} / budget ${fmtBytes(budgets.totals.gzip[b])}; largest gzip ${fmtBytes(m.largest.gzip[b])} / budget ${fmtBytes(budgets.largest.gzip[b])}`,

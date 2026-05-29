@@ -176,6 +176,23 @@ always `bun remove <dep>` (or `cd src/ui && bun remove <dep>`) — don't
 add it to an ignore list unless it's a runtime-only / transport peer
 (e.g. pino transports loaded by string name).
 
+`check:bundle-size` (warren-5abc) guards `src/ui/dist/` against the
+ratchet in `scripts/bundle-size-budgets.json`. **Two parity gotchas
+that have already bitten us (warren-bfc6): (1) never set a budget from
+Vite's build-log gzip number — Vite's reporter runs ~2KB COOLER than
+this guard's Node-zlib gzip, so a budget eyeballed from Vite will fail
+CI. (2) A stale `src/ui/node_modules` produces a different bundle than
+CI's fresh install.** The build is byte-reproducible across machines —
+`build:ui` installs with `--frozen-lockfile`, so a clean local build
+measures the exact same bytes as CI. If your numbers disagree with CI,
+`rm -rf src/ui/node_modules` and rebuild; don't pad the budget. Never
+hand-edit the numbers — to re-baseline, run `bun run
+check:bundle-size:build --update`, which writes budgets straight from
+the measured build plus a small churn headroom. The ratchet still only
+goes down: `--update` refuses to RAISE a budget unless
+`WARREN_BUNDLE_SIZE_ALLOW_RAISE=1` is set (a knowing new floor — document
+why in a `$comment`).
+
 ## TypeScript Conventions
 
 - Strict mode with `noUncheckedIndexedAccess` — always handle possible `undefined` from indexing
