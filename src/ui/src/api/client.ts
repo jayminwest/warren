@@ -868,3 +868,96 @@ export const analyticsApi = {
 		);
 	},
 };
+
+/* ----------------------------------------------------------------------- */
+/* Run analytics (warren-df6e / pl-ad0f step 4)                            */
+/* ----------------------------------------------------------------------- */
+
+/** Sentinel key for a null group (no startedAt, model, provider, etc.). */
+export const RUN_ANALYTICS_NONE_KEY = "__none__";
+
+/** avg/median/p95 over the non-null sample, all-null when empty. */
+export interface RunStatSummary {
+	avg: number | null;
+	median: number | null;
+	p95: number | null;
+	count: number;
+}
+
+export interface RunAnalyticsTotals {
+	runs: number;
+	succeeded: number;
+	failed: number;
+	cancelled: number;
+	active: number;
+	successRate: number | null;
+	durationMs: RunStatSummary;
+	contextTokens: RunStatSummary;
+	cost: { total: number; avg: number | null; priced: number };
+}
+
+export interface RunDayBucket {
+	key: string;
+	runs: number;
+	succeeded: number;
+	failed: number;
+	cancelled: number;
+	active: number;
+	contextTokensTotal: number;
+}
+
+export interface RunGroupBucket {
+	key: string;
+	runs: number;
+	succeeded: number;
+	failed: number;
+	successRate: number | null;
+	contextTokensTotal: number;
+	avgContextTokens: number | null;
+	costUsd: number;
+	priced: number;
+	avgDurationMs: number | null;
+}
+
+export interface RunFailureBucket {
+	key: string;
+	runs: number;
+}
+
+export interface SeedContextBucket {
+	seedId: string;
+	runs: number;
+	contextTokensTotal: number;
+	avgContextTokens: number | null;
+}
+
+export interface RunAnalyticsResponse {
+	filter: { projectId: string | null; from: string | null; to: string | null };
+	totals: RunAnalyticsTotals;
+	timeSeries: RunDayBucket[];
+	byAgent: RunGroupBucket[];
+	byModel: RunGroupBucket[];
+	byProvider: RunGroupBucket[];
+	byFailureReason: RunFailureBucket[];
+	topSeedsByContext: SeedContextBucket[];
+}
+
+export interface RunAnalyticsFilter {
+	projectId?: string;
+	from?: string;
+	to?: string;
+}
+
+export const runAnalyticsApi = {
+	runs: (filter: RunAnalyticsFilter = {}, signal?: AbortSignal) => {
+		const params = new URLSearchParams();
+		if (filter.projectId) params.set("projectId", filter.projectId);
+		if (filter.from) params.set("from", filter.from);
+		if (filter.to) params.set("to", filter.to);
+		const qs = params.toString();
+		return request<RunAnalyticsResponse>(
+			`/analytics/runs${qs.length > 0 ? `?${qs}` : ""}`,
+			{ ...(signal ? { signal } : {}) },
+		);
+	},
+};
