@@ -66,7 +66,16 @@ export function resolveRunBranchPrefix(input: {
  * Compose the burrow workspace branch warren passes to `burrows.up`. The
  * suffix is always the warren run id so the branch back-references the
  * warren run row even when the burrow id is stripped from logs.
+ *
+ * `targetBranch` (warren-05ea) overrides the composed `${prefix}/${runId}`
+ * shape entirely: a CI-fixer run must push to the *existing* PR branch so
+ * the PR's CI re-runs, rather than opening a fresh `${prefix}/run_xxx`
+ * branch. A non-empty `targetBranch` short-circuits prefix composition;
+ * an empty / whitespace-only value falls back to the composed branch so a
+ * stray config can never strand a spawn on a blank ref.
  */
-export function composeRunBranch(prefix: string, runId: string): string {
+export function composeRunBranch(prefix: string, runId: string, targetBranch?: string): string {
+	const override = targetBranch?.trim();
+	if (override !== undefined && override !== "") return override;
 	return `${prefix}/${runId}`;
 }

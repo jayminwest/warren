@@ -220,6 +220,41 @@ const PlotSyncConfigSchema = z
 
 export type PlotSyncConfig = z.infer<typeof PlotSyncConfigSchema>;
 
+// warren-05ea: per-project opt-in for the polling CI-fixer (V1). When
+// `enabled`, warren's CI-status poller watches the project's own PRs
+// (matched via `runs.prUrl`) and, on a failing check-run, dispatches a
+// `pr-fixer` run against the existing PR branch. Off by default — a
+// missing block means "not opted in". Numeric knobs carry `.default()`
+// so consumers always see concrete numbers; the `DEFAULT_CI_FIXER_*`
+// constants are the fallbacks when the whole block is absent.
+export const DEFAULT_CI_FIXER_MAX_RETRIES = 2;
+export const DEFAULT_CI_FIXER_COOLDOWN_MINUTES = 10;
+export const DEFAULT_CI_FIXER_LOG_TAIL_LINES = 200;
+export const DEFAULT_CI_FIXER_ROLE = "pr-fixer";
+
+const boundedInt = (field: string, min: number, max: number) =>
+	z
+		.number()
+		.int(`${field} must be an integer`)
+		.min(min, `${field} must be between ${min} and ${max}`)
+		.max(max, `${field} must be between ${min} and ${max}`);
+
+const CiFixerConfigSchema = z
+	.object({
+		enabled: z.boolean().default(false),
+		maxRetries: boundedInt("ciFixer.maxRetries", 0, 10).default(DEFAULT_CI_FIXER_MAX_RETRIES),
+		cooldownMinutes: boundedInt("ciFixer.cooldownMinutes", 0, 1_440).default(
+			DEFAULT_CI_FIXER_COOLDOWN_MINUTES,
+		),
+		logTailLines: boundedInt("ciFixer.logTailLines", 1, 2_000).default(
+			DEFAULT_CI_FIXER_LOG_TAIL_LINES,
+		),
+		role: RoleNameSchema.default(DEFAULT_CI_FIXER_ROLE),
+	})
+	.strict();
+
+export type CiFixerConfig = z.infer<typeof CiFixerConfigSchema>;
+
 // warren-b802: per-project override of the burrow runtime backing the
 // interactive built-in agents (brainstorm / planner). Without this, an
 // operator must stand up a canopy library just to change the runtime
@@ -368,6 +403,9 @@ export const DefaultsConfigSchema = z
 		interactiveAgents: InteractiveAgentsConfigSchema.optional(),
 		// warren-cd22: per-project configuration for plot sync to GitHub.
 		plotSync: PlotSyncConfigSchema.optional(),
+		// warren-05ea: per-project opt-in for the polling CI-fixer. Missing
+		// block → poller skips the project. See CiFixerConfigSchema above.
+		ciFixer: CiFixerConfigSchema.optional(),
 		qualityGate: z.string().min(1, "qualityGate must be non-empty if provided").optional(),
 	})
 	.strict();

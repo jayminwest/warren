@@ -2,6 +2,10 @@ import { describe, expect, test } from "bun:test";
 import { VALID_SERVER_PREVIEW } from "./schema.test-helpers.ts";
 import {
 	DEFAULT_AGENT_PAUSE_TIMEOUT_MS,
+	DEFAULT_CI_FIXER_COOLDOWN_MINUTES,
+	DEFAULT_CI_FIXER_LOG_TAIL_LINES,
+	DEFAULT_CI_FIXER_MAX_RETRIES,
+	DEFAULT_CI_FIXER_ROLE,
 	DefaultsConfigSchema,
 	interactiveRuntimeOverride,
 	KNOWN_RUNTIME_IDS,
@@ -344,5 +348,53 @@ describe("DefaultsConfigSchema preview block", () => {
 			expect(result.message).toMatch(/preview/);
 			expect(result.message).toMatch(/command/);
 		}
+	});
+});
+
+describe("DefaultsConfigSchema ciFixer block (warren-05ea)", () => {
+	test("applies defaults when the block is present but fields are omitted", () => {
+		const parsed = DefaultsConfigSchema.safeParse({ ciFixer: {} });
+		expect(parsed.success).toBe(true);
+		if (parsed.success) {
+			expect(parsed.data.ciFixer?.enabled).toBe(false);
+			expect(parsed.data.ciFixer?.maxRetries).toBe(DEFAULT_CI_FIXER_MAX_RETRIES);
+			expect(parsed.data.ciFixer?.cooldownMinutes).toBe(DEFAULT_CI_FIXER_COOLDOWN_MINUTES);
+			expect(parsed.data.ciFixer?.logTailLines).toBe(DEFAULT_CI_FIXER_LOG_TAIL_LINES);
+			expect(parsed.data.ciFixer?.role).toBe(DEFAULT_CI_FIXER_ROLE);
+		}
+	});
+
+	test("accepts an explicit opt-in with overrides", () => {
+		const parsed = DefaultsConfigSchema.safeParse({
+			ciFixer: {
+				enabled: true,
+				maxRetries: 3,
+				cooldownMinutes: 5,
+				logTailLines: 50,
+				role: "my-fixer",
+			},
+		});
+		expect(parsed.success).toBe(true);
+		if (parsed.success) {
+			expect(parsed.data.ciFixer?.enabled).toBe(true);
+			expect(parsed.data.ciFixer?.maxRetries).toBe(3);
+			expect(parsed.data.ciFixer?.role).toBe("my-fixer");
+		}
+	});
+
+	test("leaves ciFixer undefined when the block is omitted", () => {
+		const parsed = DefaultsConfigSchema.safeParse({});
+		expect(parsed.success).toBe(true);
+		if (parsed.success) expect(parsed.data.ciFixer).toBeUndefined();
+	});
+
+	test("rejects out-of-range knobs and unknown fields", () => {
+		expect(DefaultsConfigSchema.safeParse({ ciFixer: { maxRetries: -1 } }).success).toBe(false);
+		expect(DefaultsConfigSchema.safeParse({ ciFixer: { maxRetries: 11 } }).success).toBe(false);
+		expect(DefaultsConfigSchema.safeParse({ ciFixer: { cooldownMinutes: 2000 } }).success).toBe(
+			false,
+		);
+		expect(DefaultsConfigSchema.safeParse({ ciFixer: { logTailLines: 0 } }).success).toBe(false);
+		expect(DefaultsConfigSchema.safeParse({ ciFixer: { unknownField: true } }).success).toBe(false);
 	});
 });

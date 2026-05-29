@@ -59,4 +59,13 @@ describe("composeRunBranch", () => {
 	test("joins prefix + run id with a single slash", () => {
 		expect(composeRunBranch("warren", "run_abc123")).toBe("warren/run_abc123");
 	});
+
+	test("returns the targetBranch override when provided (warren-05ea)", () => {
+		expect(composeRunBranch("warren", "run_abc123", "fix/existing-pr")).toBe("fix/existing-pr");
+	});
+
+	test("falls back to the composed branch for an empty / whitespace targetBranch", () => {
+		expect(composeRunBranch("warren", "run_abc123", "")).toBe("warren/run_abc123");
+		expect(composeRunBranch("warren", "run_abc123", "   ")).toBe("warren/run_abc123");
+	});
 });

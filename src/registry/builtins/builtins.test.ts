@@ -13,6 +13,7 @@ import {
 	makeProjectAgentSource,
 	PI_BUILTIN,
 	PLANNER_BUILTIN,
+	PR_FIXER_BUILTIN,
 	projectIdFromAgentSource,
 	readAgentSource,
 	SAPLING_BUILTIN,
@@ -21,12 +22,13 @@ import {
 } from "./index.ts";
 
 describe("BUILTIN_AGENTS", () => {
-	test("includes claude-code, sapling, pi, brainstorm, and planner", () => {
+	test("includes claude-code, sapling, pi, brainstorm, planner, and pr-fixer", () => {
 		expect(BUILTIN_AGENT_NAMES.has("claude-code")).toBe(true);
 		expect(BUILTIN_AGENT_NAMES.has("sapling")).toBe(true);
 		expect(BUILTIN_AGENT_NAMES.has("pi")).toBe(true);
 		expect(BUILTIN_AGENT_NAMES.has("brainstorm")).toBe(true);
 		expect(BUILTIN_AGENT_NAMES.has("planner")).toBe(true);
+		expect(BUILTIN_AGENT_NAMES.has("pr-fixer")).toBe(true);
 	});
 
 	test("each builtin has a non-empty system section (warren's required schema field)", () => {
@@ -287,6 +289,33 @@ describe("PLANNER_BUILTIN", () => {
 
 	test("requires open network for scouting external references", () => {
 		expect(PLANNER_BUILTIN.sections.burrow_config).toContain('network = "open"');
+	});
+});
+
+describe("PR_FIXER_BUILTIN", () => {
+	test("is registered as a source-editing CI-repair agent (warren-05ea)", () => {
+		expect(PR_FIXER_BUILTIN.name).toBe("pr-fixer");
+		expect(PR_FIXER_BUILTIN.frontmatter.source).toBe("builtin");
+		// Unlike the patrol agents it has no auto_plan_run frontmatter — the
+		// CI poller dispatches it directly, not via reap's plan-run path.
+		expect(PR_FIXER_BUILTIN.frontmatter.auto_plan_run).toBeUndefined();
+	});
+
+	test("declares runtime = 'pi' so dispatch composes on the real runtime", () => {
+		expect(PR_FIXER_BUILTIN.frontmatter.runtime).toBe("pi");
+	});
+
+	test("system prompt frames the quality gate as terminal and forbids a new PR", () => {
+		const system = PR_FIXER_BUILTIN.sections.system ?? "";
+		expect(system).toContain("$WARREN_QUALITY_GATE");
+		expect(system).toContain("NOT done until the gate exits zero");
+		expect(system).toMatch(/do NOT open a new pull request/i);
+		expect(system).toMatch(/Do not run `git push`/);
+	});
+
+	test("system prompt forbids deleting/skipping failing tests as a workaround", () => {
+		const system = PR_FIXER_BUILTIN.sections.system ?? "";
+		expect(system).toMatch(/disable, skip, or delete failing tests/i);
 	});
 });
 

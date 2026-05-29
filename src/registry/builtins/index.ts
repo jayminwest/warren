@@ -30,6 +30,7 @@ import { CLAUDE_CODE_BUILTIN } from "./claude-code.ts";
 import { NIGHTWATCH_BUILTIN } from "./nightwatch.ts";
 import { PI_BUILTIN } from "./pi.ts";
 import { PLANNER_BUILTIN } from "./planner.ts";
+import { PR_FIXER_BUILTIN } from "./pr-fixer.ts";
 import { SAPLING_BUILTIN } from "./sapling.ts";
 
 export const BUILTIN_AGENT_SOURCE = "builtin" as const;
@@ -61,6 +62,7 @@ export const BUILTIN_AGENTS: readonly AgentDefinition[] = [
 	PLANNER_BUILTIN,
 	NIGHTWATCH_BUILTIN,
 	BUGWATCH_BUILTIN,
+	PR_FIXER_BUILTIN,
 ];
 
 export const BUILTIN_AGENT_NAMES: ReadonlySet<string> = new Set(BUILTIN_AGENTS.map((a) => a.name));
@@ -215,5 +217,6 @@ export {
 	NIGHTWATCH_BUILTIN,
 	PI_BUILTIN,
 	PLANNER_BUILTIN,
+	PR_FIXER_BUILTIN,
 	SAPLING_BUILTIN,
 };
