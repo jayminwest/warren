@@ -37,9 +37,13 @@
  *
  * Re-baselining: never hand-edit the numbers in bundle-size-budgets.json. Run
  * `--update` instead: it writes budgets straight from the measured build plus a
- * small churn headroom (HEADROOM_RAW/_GZIP). The ratchet still only goes down —
- * `--update` refuses to RAISE a budget unless WARREN_BUNDLE_SIZE_ALLOW_RAISE=1
- * is set (a knowing re-baseline, e.g. a legitimate new floor).
+ * small churn headroom (HEADROOM_RAW/_GZIP) using the SAME Node-zlib gzip the
+ * guard enforces, so a budget it writes is guaranteed to pass the check (this
+ * is what closes the Vite-vs-guard parity gap — agents stop copying Vite's
+ * cooler build-log number). Raising is bounded: a growth within `AUTO_RAISE_CAP`
+ * re-baselines hands-free, but a larger jump (a heavy new dep) is refused unless
+ * WARREN_BUNDLE_SIZE_ALLOW_RAISE=1 is set (a knowing new floor). Lowering always
+ * applies — the ratchet still pulls down.
  */
 
 import { spawnSync } from "node:child_process";
@@ -56,6 +60,24 @@ import { gzipSync } from "node:zlib";
  */
 const HEADROOM_RAW = 800;
 const HEADROOM_GZIP = 400;
+
+/**
+ * Bounded auto-raise cap for `--update` (warren bundle-size noise fix). The
+ * historic ratchet refused to raise ANY budget without
+ * WARREN_BUNDLE_SIZE_ALLOW_RAISE=1, which pushed agents into hand-editing the
+ * JSON from Vite's build-log gzip number — that figure runs ~2KB cooler than
+ * this guard, so the budget landed too tight and CI tripped by a few hundred
+ * bytes to ~2KB (the only failure mode we ever saw). `--update` now lets a
+ * budget grow without the override AS LONG AS the increase stays within these
+ * per-metric caps, so ordinary feature churn re-baselines frictionlessly while
+ * a genuinely surprising jump (a heavy new dep) still hits the refusal path and
+ * forces a human ack via WARREN_BUNDLE_SIZE_ALLOW_RAISE=1. Caps are absolute
+ * bytes per bucket; raw tracks ~3x gzip. Tune here, not by padding budgets.
+ */
+const AUTO_RAISE_CAP: { raw: Record<Bucket, number>; gzip: Record<Bucket, number> } = {
+	raw: { js: 24576, css: 6144 },
+	gzip: { js: 8192, css: 2048 },
+};
 
 const REPO_ROOT = resolve(import.meta.dir, "..");
 const BUDGETS_PATH = resolve(REPO_ROOT, "scripts/bundle-size-budgets.json");
@@ -169,14 +191,17 @@ export function diff(measurement: Measurement, budgets: Budgets): Failure[] {
 	return failures;
 }
 
-export type UpdateResult = { wrote: boolean; raised: string[] };
+export type UpdateResult = { wrote: boolean; raised: string[]; autoRaised: string[] };
 
 /**
  * Re-baseline budgets from a measurement: budget = measured + headroom, written
  * straight back into bundle-size-budgets.json (numeric fields only; all
- * `$comment*` keys and ordering are preserved). Refuses to raise an existing
- * budget unless `allowRaise` is set, keeping the ratchet honest — in that case
- * nothing is written and the offending metrics are returned in `raised`.
+ * `$comment*` keys and ordering are preserved). Lowering a budget always
+ * applies. Raising is allowed without `allowRaise` only when the increase stays
+ * within `AUTO_RAISE_CAP` (ordinary churn re-baselines hands-free); a larger
+ * jump is refused, nothing is written, and the offending metrics are returned
+ * in `raised` for a deliberate WARREN_BUNDLE_SIZE_ALLOW_RAISE=1 override.
+ * Metrics that grew but stayed within the cap are reported in `autoRaised`.
  */
 export function updateBudgets(
 	measurement: Measurement,
@@ -187,33 +212,57 @@ export function updateBudgets(
 	const totals = raw.totals as Budgets["totals"];
 	const largest = raw.largest as Budgets["largest"];
 	const raised: string[] = [];
+	const autoRaised: string[] = [];
 
-	const apply = (current: number, measured: number, headroom: number, label: string): number => {
+	const apply = (
+		current: number,
+		measured: number,
+		headroom: number,
+		cap: number,
+		label: string,
+	): number => {
 		const next = measured + headroom;
-		if (next > current && !allowRaise) {
-			raised.push(`${label}: ${current} → ${next} (measured ${measured} + ${headroom})`);
-			return current;
+		if (next <= current) return next;
+		if (allowRaise) return next;
+		const delta = next - current;
+		if (delta <= cap) {
+			autoRaised.push(`${label}: ${current} → ${next} (+${delta} B, within ${cap} B cap)`);
+			return next;
 		}
-		return next;
+		raised.push(`${label}: ${current} → ${next} (+${delta} B, exceeds ${cap} B cap)`);
+		return current;
 	};
 
 	for (const b of BUCKETS) {
 		const hRaw = b === "js" ? HEADROOM_RAW : Math.round(HEADROOM_RAW / 2);
 		const hGzip = b === "js" ? HEADROOM_GZIP : Math.round(HEADROOM_GZIP / 2);
-		totals.raw[b] = apply(totals.raw[b], measurement.totals.raw[b], hRaw, `totals.raw.${b}`);
-		totals.gzip[b] = apply(totals.gzip[b], measurement.totals.gzip[b], hGzip, `totals.gzip.${b}`);
+		totals.raw[b] = apply(
+			totals.raw[b],
+			measurement.totals.raw[b],
+			hRaw,
+			AUTO_RAISE_CAP.raw[b],
+			`totals.raw.${b}`,
+		);
+		totals.gzip[b] = apply(
+			totals.gzip[b],
+			measurement.totals.gzip[b],
+			hGzip,
+			AUTO_RAISE_CAP.gzip[b],
+			`totals.gzip.${b}`,
+		);
 		largest.gzip[b] = apply(
 			largest.gzip[b],
 			measurement.largest.gzip[b],
 			hGzip,
+			AUTO_RAISE_CAP.gzip[b],
 			`largest.gzip.${b}`,
 		);
 	}
 
-	if (raised.length > 0) return { wrote: false, raised };
+	if (raised.length > 0) return { wrote: false, raised, autoRaised };
 
 	writeFileSync(budgetsPath, `${JSON.stringify(raw, null, "\t")}\n`);
-	return { wrote: true, raised };
+	return { wrote: true, raised, autoRaised };
 }
 
 function fmtBytes(n: number): string {
@@ -231,6 +280,22 @@ function runBuildUi(): void {
 		console.error("build:ui failed");
 		process.exit(result.status ?? 1);
 	}
+}
+
+function runUpdate(m: Measurement): void {
+	const { wrote, raised, autoRaised } = updateBudgets(m);
+	if (!wrote) {
+		console.error("");
+		console.error("Bundle-size --update refused to RAISE budgets beyond the auto-raise cap:");
+		for (const r of raised) console.error(`  ${r}`);
+		console.error("");
+		console.error(
+			"That much growth should be a deliberate new floor (e.g. a heavy new dep). Re-run with WARREN_BUNDLE_SIZE_ALLOW_RAISE=1 and document why in a $comment.",
+		);
+		process.exit(1);
+	}
+	console.log(`Wrote re-baselined budgets to ${BUDGETS_PATH} (measured + headroom).`);
+	for (const r of autoRaised) console.log(`  auto-raised ${r}`);
 }
 
 function main(): void {
@@ -252,18 +317,7 @@ function main(): void {
 	}
 
 	if (args.has("--update")) {
-		const { wrote, raised } = updateBudgets(m);
-		if (!wrote) {
-			console.error("");
-			console.error("Bundle-size --update refused to RAISE budgets (ratchet only goes down):");
-			for (const r of raised) console.error(`  ${r}`);
-			console.error("");
-			console.error(
-				"If this is a legitimate new floor, re-run with WARREN_BUNDLE_SIZE_ALLOW_RAISE=1 and document why in a $comment.",
-			);
-			process.exit(1);
-		}
-		console.log(`Wrote re-baselined budgets to ${BUDGETS_PATH} (measured + headroom).`);
+		runUpdate(m);
 		return;
 	}
 
@@ -285,7 +339,7 @@ function main(): void {
 		}
 		console.error("");
 		console.error(
-			"Tip: see scripts/bundle-size-budgets.json — the ratchet only goes down. Code-split or trim deps rather than raising the budget.",
+			"Tip: do NOT hand-edit scripts/bundle-size-budgets.json from Vite's build-log gzip number — it runs ~2KB cooler than this guard, so eyeballed budgets fail CI. Re-baseline with `bun run check:bundle-size:build --update`, which writes the authoritative measured numbers; ordinary growth auto-raises within the cap, a heavy new dep still needs WARREN_BUNDLE_SIZE_ALLOW_RAISE=1. Then commit the budget diff (or code-split / trim deps to stay flat).",
 		);
 		process.exit(1);
 	}

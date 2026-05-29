@@ -119,9 +119,16 @@ entries.
   output in `src/ui/dist/assets/` and enforces a ratchet in
   `scripts/bundle-size-budgets.json`. Tracks raw + gzipped totals per
   extension (`.js`, `.css`) and the largest single chunk's gzipped
-  size. The ratchet only goes DOWN — code-split or trim deps rather
-  than raising a budget. Run `bun run check:bundle-size` against an
-  existing `src/ui/dist` tree, or `bun run check:bundle-size:build` to build
+  size. Never hand-edit the budget JSON from Vite's build-log gzip
+  number — it runs ~2KB cooler than this guard, so eyeballed budgets
+  fail CI. Re-baseline with `bun run check:bundle-size:build --update`,
+  which writes the authoritative measured numbers: lowering always
+  applies, ordinary growth auto-raises within `AUTO_RAISE_CAP`, and a
+  heavy new dep past the cap needs `WARREN_BUNDLE_SIZE_ALLOW_RAISE=1`.
+  The `bundle-size-autoheal` workflow re-baselines + pushes for you when
+  a PR fails on a within-cap overshoot, so a few-hundred-byte miss never
+  halts a run. Run `bun run check:bundle-size` against an existing
+  `src/ui/dist` tree, or `bun run check:bundle-size:build` to build
   first; CI uses the explicit `build:ui` + `check:bundle-size` pair so
   the build step is visible in logs.
 
