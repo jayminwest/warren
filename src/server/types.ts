@@ -277,6 +277,18 @@ export interface ServerDeps {
 	 */
 	readonly plotReader?: import("../plots/index.ts").PlotReader;
 	/**
+	 * Plan-child adopter (warren-18a9). Used by `GET /plots/:id` to
+	 * reconcile a Plot's `sd_plan` attachments (a `seeds_issue` whose
+	 * `ref` is a `pl-*` plan id) with the children of the plans they
+	 * reference: any plan child not already present as a `seeds_issue`
+	 * attachment is auto-attached so the Plot's substrate panel stays in
+	 * parity with the plan. Best-effort + fire-and-log — a reconciliation
+	 * failure never breaks the read. Gated on `seedsCli` being wired and
+	 * the owning project having `.seeds/`. When undefined the handler
+	 * falls back to `defaultPlanChildAdopter`.
+	 */
+	readonly planChildAdopter?: import("../plots/index.ts").PlanChildAdopter;
+	/**
 	 * Server-side Plot resolver (warren-961e / pl-9d6a step 8). Used by
 	 * every per-Plot handler (`GET /plots/:id` and the mutation handlers
 	 * landing later in pl-9d6a) to find the project owning a given

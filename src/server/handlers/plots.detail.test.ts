@@ -9,7 +9,12 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Attachment, Intent, PlotEvent } from "@os-eco/plot-cli";
 import { openDatabase, type WarrenDb } from "../../db/client.ts";
-import type { PlotEnvelope, PlotReader, ReadPlotResult } from "../../plots/index.ts";
+import type {
+	PlanChildAdopter,
+	PlotEnvelope,
+	PlotReader,
+	ReadPlotResult,
+} from "../../plots/index.ts";
 import { NO_AUTH } from "../auth.ts";
 import { startServer } from "../server.ts";
 import type { ServeHandle } from "../types.ts";
@@ -180,6 +185,106 @@ describe("GET /plots/:id", () => {
 
 		const res = await fetch(`${tcpUrl(handle)}/plots/pt-boom`);
 		expect(res.status).toBe(500);
+	});
+
+	test("reconciles plan children before reading when seedsCli + hasSeeds (warren-18a9)", async () => {
+		const project = await seedProject(repos, {
+			id: "proj-adopt",
+			hasPlot: true,
+			hasSeeds: true,
+		});
+		const { resolver } = fakeResolver({ "pt-xyz": project });
+		const { reader } = fakeReader(READ_RESULT);
+		const adoptCalls: Array<{ plotId: string; projectPath: string }> = [];
+		const planChildAdopter: PlanChildAdopter = {
+			async adopt(input) {
+				adoptCalls.push({ plotId: input.plotId, projectPath: input.projectPath });
+				return { adopted: ["warren-bdfd"] };
+			},
+		};
+		const deps = await depsFor({
+			repos,
+			plotResolver: resolver,
+			plotReader: reader,
+			planChildAdopter,
+			seedsCli: { sdBinary: "sd", spawn: async () => ({ exitCode: 0, stdout: "", stderr: "" }) },
+		});
+		handle = startServer(deps, {
+			transport: { kind: "tcp", hostname: "127.0.0.1", port: 0 },
+			auth: NO_AUTH,
+			logger: silentLogger,
+		});
+
+		const res = await fetch(`${tcpUrl(handle)}/plots/pt-xyz`);
+		expect(res.status).toBe(200);
+		expect(adoptCalls).toHaveLength(1);
+		expect(adoptCalls[0]?.plotId).toBe("pt-xyz");
+		expect(adoptCalls[0]?.projectPath).toBe(project.localPath);
+	});
+
+	test("skips reconciliation when the project has no .seeds/ (warren-18a9)", async () => {
+		const project = await seedProject(repos, {
+			id: "proj-no-seeds",
+			hasPlot: true,
+			hasSeeds: false,
+		});
+		const { resolver } = fakeResolver({ "pt-xyz": project });
+		const { reader } = fakeReader(READ_RESULT);
+		let adoptCalled = false;
+		const planChildAdopter: PlanChildAdopter = {
+			async adopt() {
+				adoptCalled = true;
+				return { adopted: [] };
+			},
+		};
+		const deps = await depsFor({
+			repos,
+			plotResolver: resolver,
+			plotReader: reader,
+			planChildAdopter,
+			seedsCli: { sdBinary: "sd", spawn: async () => ({ exitCode: 0, stdout: "", stderr: "" }) },
+		});
+		handle = startServer(deps, {
+			transport: { kind: "tcp", hostname: "127.0.0.1", port: 0 },
+			auth: NO_AUTH,
+			logger: silentLogger,
+		});
+
+		const res = await fetch(`${tcpUrl(handle)}/plots/pt-xyz`);
+		expect(res.status).toBe(200);
+		expect(adoptCalled).toBe(false);
+	});
+
+	test("adopter failure never breaks the read (fire-and-log) (warren-18a9)", async () => {
+		const project = await seedProject(repos, {
+			id: "proj-adopt-boom",
+			hasPlot: true,
+			hasSeeds: true,
+		});
+		const { resolver } = fakeResolver({ "pt-xyz": project });
+		const { reader } = fakeReader(READ_RESULT);
+		const planChildAdopter: PlanChildAdopter = {
+			async adopt() {
+				throw new Error("sd on fire");
+			},
+		};
+		const deps = await depsFor({
+			repos,
+			plotResolver: resolver,
+			plotReader: reader,
+			planChildAdopter,
+			seedsCli: { sdBinary: "sd", spawn: async () => ({ exitCode: 0, stdout: "", stderr: "" }) },
+		});
+		handle = startServer(deps, {
+			transport: { kind: "tcp", hostname: "127.0.0.1", port: 0 },
+			auth: NO_AUTH,
+			logger: silentLogger,
+		});
+
+		const res = await fetch(`${tcpUrl(handle)}/plots/pt-xyz`);
+		expect(res.status).toBe(200);
+		const body = (await res.json()) as PlotEnvelope;
+		expect(body.id).toBe("pt-xyz");
 	});
 });
 

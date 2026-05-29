@@ -15,7 +15,12 @@ import {
 import { jsonResponse } from "../../response.ts";
 import type { RouteHandler, ServerDeps } from "../../types.ts";
 import { requireParam } from "../index.ts";
-import { buildPlotEnvelope, loadPausedRunsForPlot, resolvePlotProject } from "./shared.ts";
+import {
+	buildPlotEnvelope,
+	loadPausedRunsForPlot,
+	reconcilePlanChildAttachments,
+	resolvePlotProject,
+} from "./shared.ts";
 
 /**
  * `GET /plots/:id` — full Plot envelope by id (warren-961e /
@@ -45,6 +50,11 @@ function getPlotHandler(deps: ServerDeps): RouteHandler {
 	return async (ctx) => {
 		const plotId = requireParam(ctx, "id");
 		const project = await resolvePlotProject(deps, plotId, "read plot");
+
+		// Reconcile sd_plan attachments with their plans' children
+		// (warren-18a9) BEFORE the read so newly adopted children appear
+		// in this same envelope. Best-effort — never breaks the read.
+		await reconcilePlanChildAttachments(deps, plotId, project);
 
 		const reader = deps.plotReader ?? defaultPlotReader;
 		const result = await reader.read({

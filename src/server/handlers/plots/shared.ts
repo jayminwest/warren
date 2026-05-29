@@ -8,10 +8,12 @@
  * the error messages and recovery hints below mirror the originals verbatim.
  */
 
+import { join } from "node:path";
 import { NotFoundError } from "../../../core/errors.ts";
 import type { ProjectRow } from "../../../db/schema.ts";
 import { ProjectLacksPlotError } from "../../../plan-runs/errors.ts";
-import type { PlotEnvelope } from "../../../plots/index.ts";
+import { defaultPlanChildAdopter, type PlotEnvelope } from "../../../plots/index.ts";
+import { resolveDispatcherHandle } from "../../../runs/index.ts";
 import { DEFAULT_AGENT_PAUSE_TIMEOUT_MS, loadWarrenConfig } from "../../../warren-config/index.ts";
 import type { ServerDeps } from "../../types.ts";
 
@@ -108,6 +110,53 @@ export async function resolvePlotProject(
 		);
 	}
 	return project;
+}
+
+/**
+ * Best-effort reconciliation of a Plot's `sd_plan` attachments with the
+ * children of the plans they reference (warren-18a9). Runs BEFORE the
+ * read on `GET /plots/:id` so any newly adopted child appears in the
+ * same response.
+ *
+ * No-op (and zero shell-outs) when the project has no `.seeds/` or no
+ * seeds CLI is wired — the adopter shells out to `sd plan show`, so
+ * both are prerequisites. Failures are swallowed + logged: a stale plan
+ * ref or sd hiccup must never break the Plot read. On a non-empty
+ * adoption the aggregator cache is invalidated so a follow-up
+ * `GET /plots` sees the new `attachments_count` without the TTL wait.
+ */
+export async function reconcilePlanChildAttachments(
+	deps: ServerDeps,
+	plotId: string,
+	project: ProjectRow,
+): Promise<void> {
+	if (deps.seedsCli === undefined || !project.hasSeeds) return;
+	const adopter = deps.planChildAdopter ?? defaultPlanChildAdopter;
+	try {
+		const result = await adopter.adopt({
+			plotDir: join(project.localPath, ".plot"),
+			projectPath: project.localPath,
+			plotId,
+			handle: resolveDispatcherHandle(undefined),
+			seedsCli: deps.seedsCli,
+		});
+		if (result.adopted.length > 0) {
+			deps.plotAggregator?.invalidate(project.id);
+			deps.logger.info(
+				{ plotId, projectId: project.id, adopted: result.adopted },
+				"plot.plan_children_adopted",
+			);
+		}
+	} catch (err) {
+		deps.logger.warn(
+			{
+				plotId,
+				projectId: project.id,
+				err: err instanceof Error ? err.message : String(err),
+			},
+			"plot.plan_child_adopt_failed",
+		);
+	}
 }
 
 /** Shape produced by the plot read/write seams (the per-project subset). */

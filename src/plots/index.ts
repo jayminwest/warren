@@ -71,6 +71,13 @@ export {
 	type NeedsAttentionReason,
 } from "./needs-attention.ts";
 export {
+	type AdoptPlanChildrenRequest,
+	type AdoptPlanChildrenResult,
+	defaultPlanChildAdopter,
+	isSdPlanAttachmentRef,
+	type PlanChildAdopter,
+} from "./plan-child-adopter.ts";
+export {
 	defaultPlotPrMerger,
 	type MergePlotPrRequest,
 	type MergePlotPrResult,

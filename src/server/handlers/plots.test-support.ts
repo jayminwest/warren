@@ -75,6 +75,8 @@ export interface BuildDepsInput {
 	plotQuestionAnswerer?: import("../../plots/index.ts").PlotQuestionAnswerer;
 	plotFormalizer?: import("../../plots/index.ts").PlotFormalizer;
 	plotSyncer?: import("../../plots/index.ts").PlotSyncer;
+	planChildAdopter?: import("../../plots/index.ts").PlanChildAdopter;
+	seedsCli?: import("../../seeds-cli/index.ts").SeedsCliDeps;
 	autoOpenToken?: string;
 }
 
@@ -119,6 +121,8 @@ export async function depsFor(input: BuildDepsInput): Promise<ServerDeps> {
 			: {}),
 		...(input.plotFormalizer !== undefined ? { plotFormalizer: input.plotFormalizer } : {}),
 		...(input.plotSyncer !== undefined ? { plotSyncer: input.plotSyncer } : {}),
+		...(input.planChildAdopter !== undefined ? { planChildAdopter: input.planChildAdopter } : {}),
+		...(input.seedsCli !== undefined ? { seedsCli: input.seedsCli } : {}),
 	};
 }
 
