@@ -194,3 +194,158 @@ describe("GET /analytics/runs", () => {
 		expect(body.filter.projectId).toBe(projectId);
 	});
 });
+
+describe("GET /analytics/behavior", () => {
+	let db: WarrenDb;
+	let repos: Repos;
+	let handle: ServeHandle | null = null;
+	let projectId: string;
+
+	beforeEach(async () => {
+		db = await openDatabase({ path: ":memory:" });
+		repos = createRepos(db);
+		const project = await repos.projects.create({
+			gitUrl: "https://github.com/o/r",
+			localPath: "/tmp/r",
+			defaultBranch: "main",
+		});
+		projectId = project.id;
+	});
+
+	afterEach(async () => {
+		if (handle) {
+			await handle.stop();
+			handle = null;
+		}
+		await db.close();
+	});
+
+	function start(): void {
+		handle = startServer(depsFor(repos), {
+			transport: { kind: "tcp", hostname: "127.0.0.1", port: 0 },
+			auth: NO_AUTH,
+			logger: silentLogger,
+		});
+	}
+
+	async function seedRunReturningId(opts: SeedRunOpts): Promise<string> {
+		const run = await repos.runs.create({
+			agentName: opts.agentName,
+			projectId: opts.projectId,
+			prompt: "p",
+			renderedAgentJson: { frontmatter: { provider: opts.provider, model: opts.model } },
+			trigger: "manual",
+			seedId: opts.seedId ?? null,
+			now: new Date(opts.startedAt),
+		});
+		await repos.runs.markRunning(run.id, new Date(opts.startedAt));
+		if (opts.state !== "running" && opts.state !== "queued") {
+			await repos.runs.finalize(
+				run.id,
+				opts.state as "succeeded" | "failed" | "cancelled",
+				new Date(opts.endedAt ?? opts.startedAt),
+				opts.failureReason ?? null,
+			);
+		}
+		return run.id;
+	}
+
+	async function toolUse(runId: string, seq: number, id: string, command: string): Promise<void> {
+		await repos.events.append({
+			runId,
+			burrowEventSeq: seq,
+			ts: new Date(2026, 4, 20, 10, 0, seq).toISOString(),
+			kind: "tool_use",
+			payload: { id, input: { command } },
+		});
+	}
+
+	async function toolResult(
+		runId: string,
+		seq: number,
+		id: string,
+		isError: boolean,
+	): Promise<void> {
+		await repos.events.append({
+			runId,
+			burrowEventSeq: seq,
+			ts: new Date(2026, 4, 20, 10, 0, seq).toISOString(),
+			kind: "tool_result",
+			payload: { tool_use_id: id, is_error: isError },
+		});
+	}
+
+	test("returns an empty mining + insights envelope on a fresh install (warren-5d50)", async () => {
+		start();
+		const res = await fetch(`${tcpUrl(handle as ServeHandle)}/analytics/behavior`);
+		expect(res.status).toBe(200);
+		const body = (await res.json()) as {
+			mining: {
+				totals: { toolUses: number; commands: number };
+				byFrequency: unknown[];
+				byCategory: unknown[];
+			};
+			insights: unknown[];
+			filter: { projectId: string | null; from: string | null };
+		};
+		expect(body.mining.totals.toolUses).toBe(0);
+		expect(body.mining.byFrequency).toEqual([]);
+		expect(body.mining.byCategory).toEqual([]);
+		expect(body.insights).toEqual([]);
+		expect(body.filter.projectId).toBeNull();
+		expect(typeof body.filter.from).toBe("string");
+	});
+
+	test("mines commands, correlates failures, and surfaces os-eco highlights (warren-5d50)", async () => {
+		const runId = await seedRunReturningId({
+			projectId,
+			agentName: "claude-code",
+			provider: "anthropic",
+			model: "sonnet",
+			seedId: "warren-aaaa",
+			state: "failed",
+			failureReason: "crashed",
+			startedAt: "2026-05-20T10:00:00.000Z",
+			endedAt: "2026-05-20T10:05:00.000Z",
+		});
+		// `bun run check:all` fails, is re-run, and fails again (a stuck loop).
+		await toolUse(runId, 1, "u1", "bun run check:all");
+		await toolResult(runId, 2, "u1", true);
+		await toolUse(runId, 3, "u2", "bun run check:all");
+		await toolResult(runId, 4, "u2", true);
+		await toolUse(runId, 5, "u3", "ls -la");
+		await toolResult(runId, 6, "u3", false);
+
+		start();
+		const res = await fetch(`${tcpUrl(handle as ServeHandle)}/analytics/behavior`);
+		expect(res.status).toBe(200);
+		const body = (await res.json()) as {
+			mining: {
+				totals: { toolUses: number; commands: number; failures: number };
+				byFrequency: { command: string; invocations: number; failures: number }[];
+				byStuckScore: { command: string; stuckScore: number }[];
+				osEcoCommands: { command: string; osEco: boolean }[];
+			};
+			insights: { kind: string; subject: string | null }[];
+		};
+		expect(body.mining.totals.toolUses).toBe(3);
+		expect(body.mining.totals.failures).toBe(2);
+		const checkAll = body.mining.byFrequency.find((c) => c.command === "bun run check:all");
+		expect(checkAll).toMatchObject({ invocations: 2, failures: 2 });
+		expect(body.mining.byStuckScore[0]).toMatchObject({
+			command: "bun run check:all",
+			stuckScore: 1,
+		});
+		expect(body.mining.osEcoCommands.map((c) => c.command)).toContain("bun run check:all");
+		// Derived insights flag the stuck/failed command.
+		const kinds = body.insights.map((i) => i.kind);
+		expect(kinds).toContain("most-failed-command");
+		expect(kinds).toContain("most-retried-command");
+	});
+
+	test("rejects malformed ?from (warren-5d50)", async () => {
+		start();
+		const bad = await fetch(`${tcpUrl(handle as ServeHandle)}/analytics/behavior?from=nope`);
+		expect(bad.status).toBe(400);
+	});
+});

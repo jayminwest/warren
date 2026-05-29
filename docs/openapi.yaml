@@ -73,6 +73,17 @@ paths:
           required: true
           schema:
             type: string
+  /analytics/behavior:
+    get:
+      operationId: listBehaviorAnalyticsHandler
+      tags:
+        - analytics
+      summary: GET /analytics/behavior
+      responses:
+        '200':
+          description: Successful response.
+        default:
+          description: Error response (see `src/core/errors.ts`).
   /analytics/cost:
     get:
       operationId: listCostAnalyticsHandler

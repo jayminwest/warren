@@ -5,6 +5,26 @@
  */
 
 export {
+	buildCommandMining,
+	type CategoryBucket,
+	type CommandCategory,
+	type CommandMining,
+	type CommandMiningTotals,
+	type CommandStat,
+	categorize,
+	generalizeCommand,
+	isOsEcoCommand,
+	type ToolEventRow,
+} from "./analytics/command-mining.ts";
+export {
+	buildInsights,
+	type Insight,
+	type InsightKind,
+	type InsightSeverity,
+	type InsightsInput,
+	type SteeringSignals,
+} from "./analytics/insights.ts";
+export {
 	buildRunMetrics,
 	contextTokensOf,
 	durationMsOf,
