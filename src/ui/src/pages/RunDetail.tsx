@@ -118,6 +118,7 @@ export function RunDetailPage() {
 	if (!run.data) return null;
 	const r = run.data;
 	const reap = extractReapSummary(stream.events);
+	const bridgeStalled = !isTerminal && isBridgeStalled(stream.events);
 
 	return (
 		<div className="space-y-6">
@@ -135,7 +136,7 @@ export function RunDetailPage() {
 							<Badge
 								variant="cancelled"
 								className="font-mono text-xs"
-								title="git push exited zero but the branch landed no new commits — agent did not commit (warren-f3bb)"
+								title="Push succeeded but the branch has no new commits — the agent didn't commit"
 							>
 								empty push
 							</Badge>
@@ -154,7 +155,7 @@ export function RunDetailPage() {
 								target="_blank"
 								rel="noreferrer noopener"
 								className="font-mono text-xs underline underline-offset-2 text-(--color-fg) hover:text-(--color-primary)"
-								title="Open the auto-opened pull request on GitHub (warren-f6af)"
+								title="Open the auto-opened pull request on GitHub"
 							>
 								PR ↗
 							</a>
@@ -202,6 +203,12 @@ export function RunDetailPage() {
 				</div>
 			</header>
 
+			{bridgeStalled ? (
+				<Alert variant="warning" title="Agent infrastructure unreachable">
+					Can't reach the sandbox; reconnects keep timing out. Retrying.
+				</Alert>
+			) : null}
+
 			<div className="grid gap-4 md:grid-cols-3">
 				<CostCard run={r} />
 				<MetaCard label="Started">{formatTimestamp(r.startedAt)}</MetaCard>
@@ -218,7 +225,7 @@ export function RunDetailPage() {
 					<MetaCard label="Seed">
 						<span
 							className="font-mono text-xs"
-							title="Seeds issue this run was dispatched against (pl-bb70 / warren-c845)"
+							title="Seeds issue this run was dispatched against"
 						>
 							{r.seedId}
 						</span>
@@ -399,8 +406,8 @@ function PreviewCard({ run }: { run: RunRow }) {
 							className="font-mono text-xs"
 							title={
 								mode === "path"
-									? "Path-mode previews ride on the warren host under /p/<run-id>/ (SPEC §11.L)"
-									: "Subdomain-mode previews ride on run-<id>.<host> (SPEC §11.L)"
+									? "Path-mode previews ride on the warren host under /p/<run-id>/"
+									: "Subdomain-mode previews ride on run-<id>.<host>"
 							}
 						>
 							{mode}
@@ -413,7 +420,7 @@ function PreviewCard({ run }: { run: RunRow }) {
 						target="_blank"
 						rel="noreferrer noopener"
 						className="inline-flex items-center gap-1 font-mono text-xs underline underline-offset-2 hover:text-(--color-primary)"
-						title="Open the live preview via the signed-cookie handshake (R-19 / SPEC §11.L)"
+						title="Open the live preview"
 					>
 						Open <ExternalLink className="h-3.5 w-3.5" />
 					</a>
@@ -488,12 +495,13 @@ function PreviewTeardownButton({
 	// in the browser after teardown until the path is reused; subdomain-mode
 	// previews retire the dedicated `run-<id>.<host>` origin entirely. Both
 	// land on the same idempotent endpoint — the copy just sets expectations.
+	const base = "Stop the preview sidecar and release the port";
 	const title =
 		mode === "path"
-			? "Stop the preview sidecar and release the port. The /p/<run-id>/ prefix returns 404 after teardown; the path-scoped warren_preview cookie remains in the browser."
+			? `${base}. /p/<run-id>/ returns 404 after teardown.`
 			: mode === "subdomain"
-				? "Stop the preview sidecar and release the port. The run-<id>.<host> subdomain returns 404 after teardown."
-				: "Stop the preview sidecar and release the port.";
+				? `${base}; the subdomain returns 404.`
+				: `${base}.`;
 	return (
 		<div className="flex flex-col items-start gap-1">
 			<Button
@@ -656,6 +664,20 @@ function extractReapSummary(events: RunEvent[]): ReapCompletedPayload | null {
 		return ev.payload as ReapCompletedPayload;
 	}
 	return null;
+}
+
+/**
+ * warren-6376: true when the bridge's most recent degraded-state signal
+ * is a `bridge_stalled` (N failed burrow reconnects) not yet cleared by a
+ * later `bridge_recovered`. Drives the "infrastructure unreachable" banner.
+ */
+function isBridgeStalled(events: RunEvent[]): boolean {
+	for (let i = events.length - 1; i >= 0; i--) {
+		const k = events[i]?.kind;
+		if (k === "bridge_stalled") return true;
+		if (k === "bridge_recovered") return false;
+	}
+	return false;
 }
 
 /**
