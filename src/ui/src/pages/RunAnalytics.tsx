@@ -1,5 +1,6 @@
 /**
- * Run analytics view — Phase 1 (warren-638a / pl-ad0f step 5).
+ * Run analytics view — Phase 1 (warren-638a / pl-ad0f step 5) + Phase 2
+ * (warren-436a / pl-ad0f step 10).
  *
  * Operator dashboard over `runs` execution telemetry, complementing the
  * spend-focused Cost analytics page. Renders a date-range / project
@@ -7,6 +8,13 @@
  * (runs-over-time, avg-context-per-agent, top-seeds-by-context,
  * failure-reason), and per-agent / per-model rollup tables — all from a
  * single `GET /analytics/runs` round-trip (`runAnalyticsApi.runs`).
+ *
+ * Phase 2 layers in a second `GET /analytics/behavior` round-trip
+ * (`runAnalyticsApi.behavior`): severity-coded insight callout cards at
+ * the top, a command-by-category bar chart, and the stuck-command
+ * leaderboard table with os-eco highlighting. The behavior query is
+ * independent so the fast run-level view renders without waiting on the
+ * heavier event-trace scan.
  *
  * Filter state persists in the URL hash query via react-router's
  * `useSearchParams` so deep links survive a refresh, mirroring the Cost
@@ -25,6 +33,8 @@ import {
 	RunsOverTimeChart,
 	TopSeedsByContextChart,
 } from "./run-analytics/Charts.tsx";
+import { CommandCategoryChart, StuckCommandTable } from "./run-analytics/CommandMining.tsx";
+import { InsightCallouts } from "./run-analytics/Insights.tsx";
 import { KpiCards } from "./run-analytics/KpiCards.tsx";
 import { GroupTable } from "./run-analytics/Tables.tsx";
 
@@ -65,8 +75,22 @@ export function RunAnalyticsPage() {
 			),
 	});
 
+	const behavior = useQuery({
+		queryKey: ["analytics", "behavior", { projectId, from, to }],
+		queryFn: ({ signal }) =>
+			runAnalyticsApi.behavior(
+				{
+					...(projectId !== "" ? { projectId } : {}),
+					...(from !== "" ? { from: `${from}T00:00:00.000Z` } : {}),
+					...(to !== "" ? { to: `${to}T23:59:59.999Z` } : {}),
+				},
+				signal,
+			),
+	});
+
 	const data = analytics.data;
 	const loading = analytics.isLoading;
+	const behaviorData = behavior.data;
 
 	return (
 		<div className="space-y-6">
@@ -136,6 +160,8 @@ export function RunAnalyticsPage() {
 				</Card>
 			) : null}
 
+			<InsightCallouts insights={behaviorData?.insights ?? []} />
+
 			<KpiCards totals={data?.totals} />
 
 			<div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
@@ -160,6 +186,20 @@ export function RunAnalyticsPage() {
 					buckets={data?.byModel ?? []}
 					loading={loading}
 				/>
+			</div>
+
+			{behavior.isError ? (
+				<Card>
+					<CardContent className="py-6 text-sm text-(--color-destructive)">
+						Failed to load command behavior.{" "}
+						{(behavior.error as Error | null)?.message ?? ""}
+					</CardContent>
+				</Card>
+			) : null}
+
+			<div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+				<CommandCategoryChart byCategory={behaviorData?.mining.byCategory ?? []} />
+				<StuckCommandTable byStuckScore={behaviorData?.mining.byStuckScore ?? []} />
 			</div>
 		</div>
 	);

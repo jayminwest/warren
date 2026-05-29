@@ -948,6 +948,85 @@ export interface RunAnalyticsFilter {
 	to?: string;
 }
 
+/* ----------------------------------------------------------------------- */
+/* Run behavior analytics — command mining + insights (warren-436a /       */
+/* pl-ad0f step 10). Mirrors the server shapes in                          */
+/* src/runs/analytics/command-mining.ts + insights.ts.                     */
+/* ----------------------------------------------------------------------- */
+
+/** Generalized command category — `os-eco` rows are highlighted in the UI. */
+export type CommandCategory =
+	| "os-eco"
+	| "vcs"
+	| "package"
+	| "build"
+	| "test"
+	| "filesystem"
+	| "network"
+	| "other";
+
+export interface CommandStat {
+	command: string;
+	category: CommandCategory;
+	osEco: boolean;
+	runs: number;
+	invocations: number;
+	failures: number;
+	failureRate: number | null;
+	retries: number;
+	stuckScore: number;
+}
+
+export interface CommandCategoryBucket {
+	category: CommandCategory;
+	invocations: number;
+	failures: number;
+	commands: number;
+}
+
+export interface CommandMiningTotals {
+	toolUses: number;
+	commands: number;
+	distinctCommands: number;
+	failures: number;
+	retries: number;
+}
+
+export interface CommandMining {
+	totals: CommandMiningTotals;
+	byFrequency: CommandStat[];
+	byFailures: CommandStat[];
+	byStuckScore: CommandStat[];
+	osEcoCommands: CommandStat[];
+	byCategory: CommandCategoryBucket[];
+}
+
+export type InsightSeverity = "info" | "warning" | "critical";
+
+export type InsightKind =
+	| "highest-context-seed"
+	| "worst-success-agent"
+	| "most-failed-command"
+	| "most-retried-command"
+	| "model-cost-outlier"
+	| "steering-anomaly"
+	| "pause-anomaly";
+
+export interface Insight {
+	kind: InsightKind;
+	severity: InsightSeverity;
+	title: string;
+	detail: string;
+	value: number;
+	subject: string | null;
+}
+
+export interface RunBehaviorResponse {
+	filter: { projectId: string | null; from: string | null; to: string | null };
+	mining: CommandMining;
+	insights: Insight[];
+}
+
 export const runAnalyticsApi = {
 	runs: (filter: RunAnalyticsFilter = {}, signal?: AbortSignal) => {
 		const params = new URLSearchParams();
@@ -957,6 +1036,17 @@ export const runAnalyticsApi = {
 		const qs = params.toString();
 		return request<RunAnalyticsResponse>(
 			`/analytics/runs${qs.length > 0 ? `?${qs}` : ""}`,
+			{ ...(signal ? { signal } : {}) },
+		);
+	},
+	behavior: (filter: RunAnalyticsFilter = {}, signal?: AbortSignal) => {
+		const params = new URLSearchParams();
+		if (filter.projectId) params.set("projectId", filter.projectId);
+		if (filter.from) params.set("from", filter.from);
+		if (filter.to) params.set("to", filter.to);
+		const qs = params.toString();
+		return request<RunBehaviorResponse>(
+			`/analytics/behavior${qs.length > 0 ? `?${qs}` : ""}`,
 			{ ...(signal ? { signal } : {}) },
 		);
 	},
