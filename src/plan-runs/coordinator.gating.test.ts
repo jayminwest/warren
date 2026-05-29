@@ -80,6 +80,76 @@ describe("advancePlanRun — parentRunId gate (warren-d9a2)", () => {
 		expect(reloaded.state).toBe("running");
 	});
 
+	test("parentRunId set, parent PR open past merge budget → plan_failed (warren-3937)", async () => {
+		const parentRunId = await h.makeRun("warren-parent");
+		await h.repos.runs.markRunning(parentRunId, NOW);
+		await h.repos.runs.finalize(parentRunId, "succeeded", NOW);
+		await h.repos.runs.setPrUrl(parentRunId, "https://github.com/x/y/pull/99");
+		const pr = await createPlanRunWithParent(parentRunId);
+		const later = new Date(NOW.getTime() + 60 * 60 * 1000); // +1h, past 30m default
+		const result = await advancePlanRun({
+			planRun: pr,
+			repos: h.repos,
+			showSeed: h.showSeedStub("open"),
+			checkPrMerged: async () => ({ kind: "open" }),
+			spawn: h.spawnStub(() => "unused"),
+			emit: h.emit,
+			now: () => later,
+		});
+		expect(result.kind).toBe("plan_failed");
+		if (result.kind === "plan_failed") {
+			expect(result.reason).toBe("parent_pr_merge_timeout");
+		}
+		const reloaded = await h.repos.planRuns.require(pr.id);
+		expect(reloaded.state).toBe("failed");
+		expect(reloaded.failureReason).toBe("parent_pr_merge_timeout");
+		// Surfaced on the parent run's event stream so the operator sees why.
+		const failedEvent = h.events.find(
+			(e) => e.runId === parentRunId && e.kind === "plan_run.failed",
+		);
+		expect(failedEvent?.payload.reason).toBe("parent_pr_merge_timeout");
+		expect(failedEvent?.payload.prUrl).toBe("https://github.com/x/y/pull/99");
+	});
+
+	test("parentRunId set, parent PR open within budget → still waiting (warren-3937)", async () => {
+		const parentRunId = await h.makeRun("warren-parent");
+		await h.repos.runs.markRunning(parentRunId, NOW);
+		await h.repos.runs.finalize(parentRunId, "succeeded", NOW);
+		await h.repos.runs.setPrUrl(parentRunId, "https://github.com/x/y/pull/99");
+		const pr = await createPlanRunWithParent(parentRunId);
+		const soon = new Date(NOW.getTime() + 5 * 60 * 1000); // +5m, under 30m default
+		const result = await advancePlanRun({
+			planRun: pr,
+			repos: h.repos,
+			showSeed: h.showSeedStub("open"),
+			checkPrMerged: async () => ({ kind: "open" }),
+			spawn: h.spawnStub(() => "unused"),
+			emit: h.emit,
+			now: () => soon,
+		});
+		expect(result.kind).toBe("waiting_for_parent_merge");
+	});
+
+	test("mergeTimeoutMs=0 disables the parent merge timeout (warren-3937)", async () => {
+		const parentRunId = await h.makeRun("warren-parent");
+		await h.repos.runs.markRunning(parentRunId, NOW);
+		await h.repos.runs.finalize(parentRunId, "succeeded", NOW);
+		await h.repos.runs.setPrUrl(parentRunId, "https://github.com/x/y/pull/99");
+		const pr = await createPlanRunWithParent(parentRunId);
+		const muchLater = new Date(NOW.getTime() + 24 * 60 * 60 * 1000); // +1d
+		const result = await advancePlanRun({
+			planRun: pr,
+			repos: h.repos,
+			showSeed: h.showSeedStub("open"),
+			checkPrMerged: async () => ({ kind: "open" }),
+			spawn: h.spawnStub(() => "unused"),
+			emit: h.emit,
+			mergeTimeoutMs: 0,
+			now: () => muchLater,
+		});
+		expect(result.kind).toBe("waiting_for_parent_merge");
+	});
+
 	test("parentRunId set, parent PR closed unmerged → plan_failed", async () => {
 		const parentRunId = await h.makeRun("warren-parent");
 		await h.repos.runs.markRunning(parentRunId, NOW);

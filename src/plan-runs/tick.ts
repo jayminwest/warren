@@ -58,6 +58,12 @@ export interface PlanRunTickDeps {
 	 * — tests and deployments without `.plot/` projects leave it unwired.
 	 */
 	readonly transitionPlot?: CoordinatorTransitionPlotFn;
+	/**
+	 * Bounded wall-clock merge-wait budget (ms) forwarded to
+	 * {@link advancePlanRun} (warren-3937). Omit to use the coordinator
+	 * default ({@link DEFAULT_MERGE_TIMEOUT_MS}); 0 disables the timeout.
+	 */
+	readonly mergeTimeoutMs?: number;
 }
 
 export interface PlanRunAdvanceLog {
@@ -86,6 +92,7 @@ export async function runPlanRunTick(deps: PlanRunTickDeps): Promise<PlanRunTick
 				spawn: deps.spawn,
 				emit,
 				...(deps.transitionPlot !== undefined ? { transitionPlot: deps.transitionPlot } : {}),
+				...(deps.mergeTimeoutMs !== undefined ? { mergeTimeoutMs: deps.mergeTimeoutMs } : {}),
 				...(deps.now !== undefined ? { now: deps.now } : {}),
 			});
 			advances.push({ planRunId: planRun.id, result });

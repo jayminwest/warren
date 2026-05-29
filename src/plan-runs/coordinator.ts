@@ -39,10 +39,15 @@ import {
 	type PlanRunChildRow,
 	type PlanRunChildState,
 	type PlanRunRow,
-	RUN_TERMINAL_STATES,
-	type RunRow,
 } from "../db/schema.ts";
 import type { SeedShowResult } from "../seeds-cli/index.ts";
+import {
+	checkParentRunMerged,
+	hasEmptyPushEvent,
+	isFatalHttpError,
+	isTerminalRun,
+	mergeDeadlineExceeded,
+} from "./merge-gate.ts";
 import type { AutoTransitionResult } from "./plot-transition.ts";
 import type { PrMergeChecker } from "./pr-merge.ts";
 
@@ -120,13 +125,26 @@ export interface AdvancePlanRunInput {
 	 * skip — tests that don't exercise Plot wiring leave it unwired.
 	 */
 	readonly transitionPlot?: CoordinatorTransitionPlotFn;
+	/**
+	 * Bounded wall-clock budget (ms) for a PR to merge once its run has
+	 * ended (warren-3937). Applied to both the parent-merge gate and the
+	 * child `waiting_for_merge` branch. A PR that stays `open` past this
+	 * budget (failing required checks, BLOCKED mergeStateStatus, stuck
+	 * auto-merge) fails the plan-run instead of waiting forever. Defaults
+	 * to {@link DEFAULT_MERGE_TIMEOUT_MS}; 0 disables (unbounded wait).
+	 */
+	readonly mergeTimeoutMs?: number;
 	readonly now?: () => Date;
 }
+
+/** Default merge-wait budget: 30 minutes (warren-3937). */
+export const DEFAULT_MERGE_TIMEOUT_MS = 30 * 60 * 1000;
 
 const IN_FLIGHT_STATES: readonly PlanRunChildState[] = ["dispatched", "running", "pr_open"];
 
 export async function advancePlanRun(input: AdvancePlanRunInput): Promise<AdvanceResult> {
 	const nowFn = input.now ?? (() => new Date());
+	const mergeTimeoutMs = input.mergeTimeoutMs ?? DEFAULT_MERGE_TIMEOUT_MS;
 	let planRun = input.planRun;
 
 	// (a) Queued → running.
@@ -143,6 +161,8 @@ export async function advancePlanRun(input: AdvancePlanRunInput): Promise<Advanc
 			planRun,
 			repos: input.repos,
 			checkPrMerged: input.checkPrMerged,
+			emit: input.emit,
+			mergeTimeoutMs,
 			now: nowFn,
 		});
 		if (gateResult !== null) return gateResult;
@@ -163,6 +183,7 @@ export async function advancePlanRun(input: AdvancePlanRunInput): Promise<Advanc
 				repos: input.repos,
 				checkPrMerged: input.checkPrMerged,
 				emit: input.emit,
+				mergeTimeoutMs,
 				now: nowFn,
 			});
 			if (decision.kind === "merged") {
@@ -289,6 +310,7 @@ interface HandleInFlightInput {
 	readonly repos: CoordinatorRepos;
 	readonly checkPrMerged: PrMergeChecker;
 	readonly emit: CoordinatorEmitFn;
+	readonly mergeTimeoutMs: number;
 	readonly now: () => Date;
 }
 
@@ -297,7 +319,7 @@ type HandleInFlightDecision =
 	| { readonly kind: "result"; readonly result: AdvanceResult };
 
 async function handleInFlight(input: HandleInFlightInput): Promise<HandleInFlightDecision> {
-	const { planRun, child, repos, checkPrMerged, emit, now } = input;
+	const { planRun, child, repos, checkPrMerged, emit, mergeTimeoutMs, now } = input;
 	if (child.runId === null) {
 		return {
 			kind: "result",
@@ -431,6 +453,33 @@ async function handleInFlight(input: HandleInFlightInput): Promise<HandleInFligh
 		return { kind: "merged" };
 	}
 	if (polled.kind === "open") {
+		// warren-3937: a PR that stays open past the merge budget (failing
+		// required checks / BLOCKED / stuck auto-merge) fails the plan rather
+		// than waiting forever. The clock starts when the child run ended.
+		if (mergeDeadlineExceeded(run.endedAt, now, mergeTimeoutMs)) {
+			const reason = "child_pr_merge_timeout";
+			const endedAt = now().toISOString();
+			await repos.planRuns.updateChild({
+				planRunId: planRun.id,
+				seq: child.seq,
+				patch: { state: "failed", endedAt, failureReason: reason },
+				now: now(),
+			});
+			await repos.planRuns.transitionTo(planRun.id, "failed", {
+				endedAt,
+				failureReason: reason,
+			});
+			await emit(child.runId, "plan_run.failed", {
+				planRunId: planRun.id,
+				failedSeq: child.seq,
+				reason,
+				prUrl: run.prUrl,
+			});
+			return {
+				kind: "result",
+				result: { kind: "plan_failed", failedSeq: child.seq, reason },
+			};
+		}
 		await emit(child.runId, "plan_run.waiting_for_merge", {
 			planRunId: planRun.id,
 			seq: child.seq,
@@ -466,87 +515,6 @@ async function handleInFlight(input: HandleInFlightInput): Promise<HandleInFligh
 	// `missing_token` or transient `http_error` (status 0 or 5xx that
 	// survived pr-merge.ts retries) — keep waiting.
 	return { kind: "result", result: { kind: "waiting_for_merge" } };
-}
-
-/**
- * Gate auto-plan-runs on the parent run's PR being merged (warren-d9a2).
- * Returns null when the gate passes (proceed to child dispatch) or an
- * AdvanceResult when the gate blocks or fails the plan-run.
- */
-async function checkParentRunMerged(input: {
-	readonly planRun: PlanRunRow;
-	readonly repos: CoordinatorRepos;
-	readonly checkPrMerged: PrMergeChecker;
-	readonly now: () => Date;
-}): Promise<AdvanceResult | null> {
-	const { planRun, repos, checkPrMerged, now } = input;
-	const parentRunId = planRun.parentRunId;
-	if (parentRunId === null) return null;
-
-	const parentRun = await repos.runs.get(parentRunId);
-	if (parentRun === null) {
-		// Parent run row deleted — treat as gate-passed (best-effort).
-		return null;
-	}
-
-	if (parentRun.prUrl === null) {
-		// No PR — check for trivial (empty push) merge.
-		const trivial = await hasEmptyPushEvent(repos, parentRunId);
-		if (trivial) return null;
-		// Parent still running or hasn't pushed yet — wait.
-		if (!isTerminalRun(parentRun)) return { kind: "waiting_for_parent_merge" };
-		// Terminal with no PR and no empty-push → nothing to merge from.
-		// Fail the plan-run so it doesn't hang indefinitely.
-		const reason = "parent_pr_not_merged";
-		const endedAt = now().toISOString();
-		await repos.planRuns.transitionTo(planRun.id, "failed", { endedAt, failureReason: reason });
-		return { kind: "plan_failed", failedSeq: 0, reason };
-	}
-
-	const polled = await checkPrMerged(parentRun.prUrl);
-	if (polled.kind === "merged") return null;
-	if (polled.kind === "open") return { kind: "waiting_for_parent_merge" };
-	if (polled.kind === "closed_unmerged" || isFatalHttpError(polled)) {
-		const reason = "parent_pr_not_merged";
-		const endedAt = now().toISOString();
-		await repos.planRuns.transitionTo(planRun.id, "failed", { endedAt, failureReason: reason });
-		return { kind: "plan_failed", failedSeq: 0, reason };
-	}
-	// Transient error / missing token — keep waiting.
-	return { kind: "waiting_for_parent_merge" };
-}
-
-function isFatalHttpError(result: {
-	kind: string;
-	status?: number;
-}): result is { kind: "http_error"; status: number; message: string } {
-	return (
-		result.kind === "http_error" &&
-		typeof result.status === "number" &&
-		result.status >= 400 &&
-		result.status < 500
-	);
-}
-
-function isTerminalRun(run: RunRow): boolean {
-	return (RUN_TERMINAL_STATES as readonly string[]).includes(run.state);
-}
-
-/**
- * Walk warren's persisted event stream for the child's run looking for the
- * `reap.empty_push` system event (mx-ab8532). Presence ⇒ commitsAhead===0,
- * which is the trivial-merge signal the coordinator advances on directly.
- *
- * Listed in increasing seq order; the event always lands once per run if it
- * fires, so a linear scan with no limit is fine — runs that produce
- * thousands of events have already paid the persistence cost.
- */
-async function hasEmptyPushEvent(repos: CoordinatorRepos, runId: string): Promise<boolean> {
-	const events = await repos.events.listByRun(runId);
-	for (const ev of events) {
-		if (ev.kind === "reap.empty_push") return true;
-	}
-	return false;
 }
 
 function mostRecentDispatchedRunId(children: readonly PlanRunChildRow[]): string | null {

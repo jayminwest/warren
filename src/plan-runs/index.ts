@@ -6,6 +6,7 @@
  */
 
 export {
+	DEFAULT_PLAN_RUN_MERGE_TIMEOUT_MS,
 	DEFAULT_PLAN_RUN_TICK_MS,
 	type EnvLike,
 	loadPlanRunCoordinatorConfigFromEnv,
@@ -22,6 +23,7 @@ export {
 	type CoordinatorSpawnInput,
 	type CoordinatorSpawnResult,
 	type CoordinatorTransitionPlotFn,
+	DEFAULT_MERGE_TIMEOUT_MS,
 	isChildTerminal,
 	PLAN_RUN_EVENT_KINDS,
 	type PlanRunEventKind,

@@ -41,6 +41,40 @@ describe("advancePlanRun — completion phase", () => {
 		expect(h.events.some((e) => e.kind === "plan_run.waiting_for_merge")).toBe(true);
 	});
 
+	test("pr_open + open poll past merge budget → plan_failed child_pr_merge_timeout (warren-3937)", async () => {
+		await h.repos.planRuns.transitionTo(h.planRun.id, "running", { startedAt: NOW.toISOString() });
+		const runId = await h.makeRun("warren-a");
+		await h.repos.runs.markRunning(runId, NOW);
+		await h.repos.runs.finalize(runId, "succeeded", NOW);
+		await h.repos.runs.setPrUrl(runId, "https://github.com/x/y/pull/42");
+		await h.repos.planRuns.updateChild({
+			planRunId: h.planRun.id,
+			seq: 1,
+			patch: { runId, state: "pr_open", startedAt: NOW.toISOString() },
+		});
+		const planRun = await h.repos.planRuns.require(h.planRun.id);
+		const later = new Date(NOW.getTime() + 60 * 60 * 1000); // +1h, past 30m default
+		const result = await advancePlanRun({
+			planRun,
+			repos: h.repos,
+			showSeed: h.showSeedStub("open"),
+			checkPrMerged: async () => ({ kind: "open" }),
+			spawn: h.spawnStub(() => "unused"),
+			emit: h.emit,
+			now: () => later,
+		});
+		expect(result.kind).toBe("plan_failed");
+		if (result.kind === "plan_failed") {
+			expect(result.reason).toBe("child_pr_merge_timeout");
+			expect(result.failedSeq).toBe(1);
+		}
+		const reloaded = await h.repos.planRuns.require(h.planRun.id);
+		expect(reloaded.state).toBe("failed");
+		expect(reloaded.failureReason).toBe("child_pr_merge_timeout");
+		const failedEvent = h.events.find((e) => e.kind === "plan_run.failed");
+		expect(failedEvent?.payload.reason).toBe("child_pr_merge_timeout");
+	});
+
 	test("pr_open + merged poll → child merged, dispatch next, advanced result", async () => {
 		await h.repos.planRuns.transitionTo(h.planRun.id, "running", { startedAt: NOW.toISOString() });
 		const runId = await h.makeRun("warren-a");

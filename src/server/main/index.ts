@@ -331,6 +331,7 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 		},
 		tickMs: planRunCoordinatorConfig.tickMs,
 		disabled: planRunCoordinatorConfig.disabled,
+		mergeTimeoutMs: planRunCoordinatorConfig.mergeTimeoutMs,
 		logger: planRunLoggerFromPino(logger),
 		...(opts.now !== undefined ? { now: opts.now } : {}),
 	});
