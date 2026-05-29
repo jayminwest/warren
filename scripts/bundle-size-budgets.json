@@ -1,19 +1,20 @@
 {
 	"$comment": "Bundle-size ratchet for src/ui/dist/ (warren-5abc, plan pl-7b06 step 13). Frozen ceilings — the ratchet only goes down. Update budgets downward when refactoring; do NOT raise them to land a regression. All sizes in bytes. gzip uses Node zlib defaults (level 6), which runs ~2KB HOTTER than Vite's own build-log gzip figure — budget against `bun run check:bundle-size`, NOT Vite's reporter. CANONICAL WORKFLOW: re-baseline with `bun run check:bundle-size:build --update` so budgets are written from the measured build (measured + small churn headroom), never hand-edited from an eyeballed number. The build is byte-reproducible across machines because build:ui installs with --frozen-lockfile, so a clean local build measures the SAME bytes as CI — if your numbers disagree with CI, your src/ui/node_modules is stale; `rm -rf src/ui/node_modules` and rebuild rather than padding the budget.",
+	"$comment_recharts_2026_05_29": "FOUNDATIONAL BUMP (warren-876c / pl-ad0f step 3): the Run Analytics dashboard (pl-ad0f) introduces recharts (3.8.x), the first chart library in this UI and an operator-approved new dependency. recharts tree-shakes poorly — even importing only the LineChart/AreaChart/BarChart/PieChart primitives the dashboard needs pulls in most of its d3 dependency graph (~+411KB raw / ~+118KB gzip JS over the pl-55a3 floor when bundled into a single chunk). The wrapper seam is src/ui/src/components/ui/chart.tsx; the page that actually renders charts lands in warren-638a / warren-436a. Per the escape-hatch convention (mx-f1f5f7) a dep bump normally owes a code-split, so these ceilings are a deliberately generous ONE-TIME allowance sized to the eager single-chunk worst case (measured probe: raw js 995627 / gzip js 292643, largest == totals) plus small headroom — the page-building steps need not fight the ratchet, but they SHOULD lazy-load the analytics route so recharts lands in its own chunk and the main initial-load chunk holds near the pl-55a3 floor. The ratchet-only-goes-down rule is SUSPENDED for JS until warren-9d89 (pl-ad0f final gates), which MUST re-baseline these JS budgets DOWN to the true measured floor via `bun run check:bundle-size:build --update`. CSS budgets are unchanged — recharts ships no CSS.",
 	"$comment_pl55a3_closeout_2026_05_29": "warren-bfc6 / pl-369d: pl-55a3 (warren-6358, frontend design-system revamp, v0.7.2) is now closed. The TEMPORARY overhaul ceilings raised across PR #197/#201 are collapsed to honest floors here. NOTE: pl-55a3 grew the bundle right up to its ceilings — the only metric with genuine room to ratchet down is gzip css (8500 → 8200). raw js, raw css, and gzip js are at their true floors and cannot drop. The first attempt at this closeout (commit c2a3ba5) set gzip js to 172580 from a number that was NOT produced by `bun run check:bundle-size` — it matched Vite's build-log reporter (~2KB cooler), so when CI ran the actual script the identical bytes gzipped to 173931 and the guard failed. Re-baselined from the actual check script on a clean --frozen-lockfile build (byte-identical to CI): gzip js 173931 / raw js 583998 / gzip css 8005 / raw css 40432 (largest chunk == totals — single js + single css asset). Budgets = those figures + a small churn headroom. The bulk of the js floor is the Phase 5 motion layer (framer-motion v12 via strict LazyMotion + domAnimation, NOT the full motion proxy). The 'ratchet only goes down' rule is back in force from here — future UI work must hold flat or shrink against THIS floor.",
 	"totals": {
 		"raw": {
-			"js": 584500,
+			"js": 997000,
 			"css": 40700
 		},
 		"gzip": {
-			"js": 174300,
+			"js": 293500,
 			"css": 8200
 		}
 	},
 	"largest": {
 		"gzip": {
-			"js": 174300,
+			"js": 293500,
 			"css": 8200
 		}
 	}
