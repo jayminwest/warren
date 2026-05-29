@@ -115,6 +115,37 @@ export interface FakeExecOpts {
 	 * has-staged-delta branch under stagePlotForCommit.
 	 */
 	stagedDelta?: boolean;
+	/**
+	 * Stdout for `git status --porcelain` (warren-72b9 dropped-commit
+	 * probe). Default `""` (clean tree = deliberate no-op). Set to a
+	 * non-empty string (e.g. `" M src/foo.ts"`) to simulate uncommitted
+	 * changes left behind by an agent that never ran `git commit`.
+	 */
+	gitStatus?: string;
+	/** Throw on `git status --porcelain` calls (default: succeed). */
+	failGitStatus?: string;
+}
+
+/** Match a `git <sub> …` invocation for the fakeExec command router. */
+function isGitSub(cmd: string, args: readonly string[], sub: string): boolean {
+	return cmd === "git" && args[0] === sub;
+}
+
+type ExecResult = { stdout: string; stderr: string };
+
+function handleRevList(failRevList: string | null, revListCount: string): ExecResult {
+	if (failRevList !== null) throw new Error(failRevList);
+	return { stdout: `${revListCount}\n`, stderr: "" };
+}
+
+function handleStatus(failGitStatus: string | null, gitStatus: string): ExecResult {
+	if (failGitStatus !== null) throw new Error(failGitStatus);
+	return { stdout: gitStatus, stderr: "" };
+}
+
+function handleDiffCached(stagedDelta: boolean): ExecResult {
+	if (stagedDelta) throw new Error("staged changes present");
+	return { stdout: "", stderr: "" };
 }
 
 export function fakeExec(opts: FakeExecOpts = {}): FakeExec {
@@ -123,22 +154,17 @@ export function fakeExec(opts: FakeExecOpts = {}): FakeExec {
 	const failRevList = opts.failRevList ?? null;
 	const revListCount = opts.revListCount ?? "1";
 	const stagedDelta = opts.stagedDelta === true;
+	const gitStatus = opts.gitStatus ?? "";
+	const failGitStatus = opts.failGitStatus ?? null;
 	const exec: ReapExec = {
 		run: async (cmd, args, opt) => {
 			calls.push({ cmd, args, cwd: opt.cwd });
-			const isRevList = cmd === "git" && args[0] === "rev-list";
-			if (isRevList) {
-				if (failRevList !== null) throw new Error(failRevList);
-				return { stdout: `${revListCount}\n`, stderr: "" };
+			if (isGitSub(cmd, args, "rev-list")) return handleRevList(failRevList, revListCount);
+			if (isGitSub(cmd, args, "status") && args.includes("--porcelain")) {
+				return handleStatus(failGitStatus, gitStatus);
 			}
-			const isDiffCached =
-				cmd === "git" &&
-				args[0] === "diff" &&
-				args.includes("--cached") &&
-				args.includes("--quiet");
-			if (isDiffCached) {
-				if (stagedDelta) throw new Error("staged changes present");
-				return { stdout: "", stderr: "" };
+			if (isGitSub(cmd, args, "diff") && args.includes("--cached") && args.includes("--quiet")) {
+				return handleDiffCached(stagedDelta);
 			}
 			if (fail !== null) throw new Error(fail.reason);
 			return { stdout: "", stderr: "" };

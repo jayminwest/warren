@@ -67,6 +67,15 @@ export type RunMode = (typeof RUN_MODES)[number];
  *     wiped burrow's in-memory run state. The reconciler (bootBridges)
  *     and the bridge's mid-stream 404 catch both mark the warren row
  *     `failed` with this reason instead of looping forever.
+ *   - `dropped_commit` (warren-72b9) means reap's `git push` landed zero
+ *     commits ahead of the base branch (`reap.empty_push`) AND the
+ *     workspace tree was still dirty at reap — the agent edited/staged
+ *     work but never ran `git commit` (the common weak-model failure,
+ *     e.g. Gemini Flash narrating "before committing" then exiting).
+ *     Distinguished from a deliberate no-op (clean tree, zero commits)
+ *     which stays `succeeded`. Marking the run `failed` keeps a dropped
+ *     commit from masquerading as success and, on plan-runs, fails the
+ *     plan instead of silently auto-merging/advancing past the child.
  *
  * Null on succeeded/cancelled rows.
  */
@@ -76,6 +85,7 @@ export const RUN_FAILURE_REASONS = [
 	"crashed",
 	"timed_out",
 	"burrow_run_lost",
+	"dropped_commit",
 ] as const;
 export type RunFailureReason = (typeof RUN_FAILURE_REASONS)[number];
 

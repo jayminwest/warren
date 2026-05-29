@@ -82,15 +82,62 @@ describe("reapRun", () => {
 
 		expect(result.branchPushed).toBe(true);
 		expect(result.commitsAhead).toBe(0);
+		// Clean tree (default fakeExec gitStatus="") => deliberate no-op, the
+		// run still succeeds (warren-72b9).
+		expect(result.state).toBe("succeeded");
+		expect(result.failureReason).toBeNull();
 		const events = await ctx.repos.events.listByRun(ctx.runId);
 		const empty = events.find((ev) => ev.kind === "reap.empty_push");
 		expect(empty).toBeDefined();
 		expect(empty?.payloadJson).toMatchObject({
 			branch: "agent/refactor-bot/run-1",
 			baseBranch: "main",
+			dirty: false,
+			droppedCommit: false,
 		});
 		const completed = events.find((ev) => ev.kind === "reap.completed");
 		expect(completed?.payloadJson).toMatchObject({ branchPushed: true, commitsAhead: 0 });
+	});
+
+	test("flags a dropped commit (zero commits + dirty tree) and fails the run (warren-72b9)", async () => {
+		const e = fakeExec({ revListCount: "0", gitStatus: " M src/foo.ts\n?? new.ts\n" });
+
+		const result = await reapRun({
+			runId: ctx.runId,
+			outcome: "succeeded",
+			repos: ctx.repos,
+			burrowClientPool: await makePool(fakeBurrowClient(makeBurrow()), ctx.repos),
+			broker: ctx.broker,
+			fs: fakeFs().fs,
+			exec: e.exec,
+		});
+
+		expect(result.commitsAhead).toBe(0);
+		expect(result.state).toBe("failed");
+		expect(result.failureReason).toBe("dropped_commit");
+		const events = await ctx.repos.events.listByRun(ctx.runId);
+		const empty = events.find((ev) => ev.kind === "reap.empty_push");
+		expect(empty?.payloadJson).toMatchObject({ dirty: true, droppedCommit: true });
+		const run = await ctx.repos.runs.require(ctx.runId);
+		expect(run.state).toBe("failed");
+		expect(run.failureReason).toBe("dropped_commit");
+	});
+
+	test("git status probe failure degrades a zero-commit push to a no-op success (warren-72b9)", async () => {
+		const e = fakeExec({ revListCount: "0", failGitStatus: "fatal: not a git repo" });
+
+		const result = await reapRun({
+			runId: ctx.runId,
+			outcome: "succeeded",
+			repos: ctx.repos,
+			burrowClientPool: await makePool(fakeBurrowClient(makeBurrow()), ctx.repos),
+			fs: fakeFs().fs,
+			exec: e.exec,
+		});
+
+		expect(result.commitsAhead).toBe(0);
+		expect(result.state).toBe("succeeded");
+		expect(result.failureReason).toBeNull();
 	});
 
 	test("does not emit reap.empty_push when push lands real commits", async () => {

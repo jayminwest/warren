@@ -20,7 +20,7 @@
  * Trivial-merge (mx-fd8619): when the child run terminal-succeeds with
  * `run.prUrl === null` AND reap emitted a `reap.empty_push` system event
  * (commitsAhead === 0), the coordinator advances directly to `merged`
- * without GitHub polling — there's nothing to merge.
+ * without GitHub polling. Dropped commits (warren-72b9) reap `failed` first.
  *
  * Events fire via `emit(runId, kind, payload)` on the most recently
  * dispatched child run; callers wire it to `repos.events.append`

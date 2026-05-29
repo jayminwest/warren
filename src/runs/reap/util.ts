@@ -92,6 +92,26 @@ export const defaultFs: ReapFs = {
 	},
 };
 
+/**
+ * Probe whether the workspace tree has uncommitted changes (warren-72b9).
+ * Used by the empty-push path to tell a dropped commit (dirty tree + zero
+ * commits ahead = agent staged work but never `git commit`-ed) apart from
+ * a deliberate no-op (clean tree). `git status --porcelain` failures
+ * resolve to `false` so a probe error degrades to the no-op shape rather
+ * than crying wolf.
+ */
+export async function isWorkspaceDirty(exec: ReapExec, workspacePath: string): Promise<boolean> {
+	try {
+		const status = await exec.run("git", ["status", "--porcelain"], {
+			cwd: workspacePath,
+			timeoutMs: 10_000,
+		});
+		return status.stdout.trim() !== "";
+	} catch {
+		return false;
+	}
+}
+
 export const defaultExec: ReapExec = {
 	run: async (cmd, args, opts) => {
 		const execOpts: { cwd: string; timeout?: number } = { cwd: opts.cwd };

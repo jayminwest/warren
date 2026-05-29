@@ -14,7 +14,8 @@ export type RunFailureReason =
 	| "no_model_response"
 	| "crashed"
 	| "timed_out"
-	| "burrow_run_lost";
+	| "burrow_run_lost"
+	| "dropped_commit";
 
 /**
  * Preview environment lifecycle (R-19 / SPEC §11.L). Null on rows whose

@@ -160,6 +160,35 @@ describe("advancePlanRun — completion phase", () => {
 		expect(reloaded.state).toBe("failed");
 	});
 
+	test("dropped-commit child (failed/dropped_commit) fails the plan, not a trivial merge (warren-72b9)", async () => {
+		await h.repos.planRuns.transitionTo(h.planRun.id, "running", { startedAt: NOW.toISOString() });
+		const runId = await h.makeRun("warren-a");
+		await h.repos.runs.markRunning(runId, NOW);
+		// reap flips a zero-commit + dirty-tree run to failed/dropped_commit.
+		await h.repos.runs.finalize(runId, "failed", NOW, "dropped_commit");
+		await h.repos.planRuns.updateChild({
+			planRunId: h.planRun.id,
+			seq: 1,
+			patch: { runId, state: "running", startedAt: NOW.toISOString() },
+		});
+		const planRun = await h.repos.planRuns.require(h.planRun.id);
+		const result = await advancePlanRun({
+			planRun,
+			repos: h.repos,
+			showSeed: h.showSeedStub("open"),
+			checkPrMerged: neverPoll,
+			spawn: h.spawnStub(() => "unused"),
+			emit: h.emit,
+			now: () => NOW,
+		});
+		expect(result.kind).toBe("plan_failed");
+		if (result.kind === "plan_failed") {
+			expect(result.reason).toBe("child_dropped_commit");
+		}
+		const reloaded = await h.repos.planRuns.require(h.planRun.id);
+		expect(reloaded.state).toBe("failed");
+	});
+
 	test("trivial merge: succeeded run with no prUrl + reap.empty_push event", async () => {
 		await h.repos.planRuns.transitionTo(h.planRun.id, "running", { startedAt: NOW.toISOString() });
 		const runId = await h.makeRun("warren-a");

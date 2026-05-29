@@ -1,7 +1,7 @@
 import { join } from "node:path";
 import type { BurrowClient } from "../../burrow-client/client.ts";
 import { withTransportMapping } from "../../burrow-client/client.ts";
-import type { EventRow, RunFailureReason } from "../../db/schema.ts";
+import type { EventRow, RunFailureReason, RunTerminalState } from "../../db/schema.ts";
 import { openPullRequest } from "../pr.ts";
 import { dispatchAutoPlanRuns, hasAutoPlanRunFrontmatter, parsePlanIds } from "./auto-plan-run.ts";
 import { runWorkspaceDestroy } from "./destroy.ts";
@@ -13,7 +13,13 @@ import { mirrorPlans, mirrorSeeds } from "./seeds.ts";
 import { stagePlotForCommit, stageSeedsForCommit } from "./stage.ts";
 import { inferFailureReason, isTerminal, transitionToTerminal } from "./state.ts";
 import type { ReapRunInput, ReapRunResult, ReapStep, ReapStepError } from "./types.ts";
-import { buildAlreadyTerminalResult, createSeqAllocator, defaultExec, defaultFs } from "./util.ts";
+import {
+	buildAlreadyTerminalResult,
+	createSeqAllocator,
+	defaultExec,
+	defaultFs,
+	isWorkspaceDirty,
+} from "./util.ts";
 
 export async function reapRun(input: ReapRunInput): Promise<ReapRunResult> {
 	const fs = input.fs ?? defaultFs;
@@ -77,6 +83,7 @@ export async function reapRun(input: ReapRunInput): Promise<ReapRunResult> {
 	let seedsCommitted = false;
 	let branchPushed = false;
 	let commitsAhead: number | null = null;
+	let droppedCommit = false;
 	let prUrl: string | null = null;
 	let previewLaunchState: "live" | "failed" | null = null;
 	let previewLaunchPort: number | null = null;
@@ -260,12 +267,10 @@ export async function reapRun(input: ReapRunInput): Promise<ReapRunResult> {
 		}
 
 		// Empty-push observability (warren-f3bb): branchPushed alone can't
-		// tell apart a real-work push from a no-op against an unchanged
-		// HEAD (the agent never `git commit`-ed). Count commits ahead of
-		// the project's defaultBranch; surface zero as `reap.empty_push`
-		// and pin the count on `commitsAhead`. rev-list failures are
-		// non-fatal — a missing base ref or transient git error degrades
-		// to `commitsAhead: null` rather than failing the reap step.
+		// tell a real-work push from a no-op against an unchanged HEAD.
+		// Count commits ahead of the project's defaultBranch; surface zero
+		// as `reap.empty_push` and pin the count on `commitsAhead`. rev-list
+		// failures are non-fatal — they degrade to `commitsAhead: null`.
 		if (branchPushed && baseBranch !== null) {
 			try {
 				const out = await exec.run("git", ["rev-list", "--count", `${baseBranch}..HEAD`], {
@@ -281,11 +286,17 @@ export async function reapRun(input: ReapRunInput): Promise<ReapRunResult> {
 				);
 			}
 			if (commitsAhead === 0) {
+				// warren-72b9: dirty tree + zero commits = staged-but-uncommitted.
+				const dirty = await isWorkspaceDirty(exec, workspacePath);
+				droppedCommit = dirty && input.outcome === "succeeded";
 				await emit("reap.empty_push", {
 					branch,
 					baseBranch,
-					message:
-						"git push exited zero but the branch landed no new commits — agent did not commit",
+					dirty,
+					droppedCommit,
+					message: dirty
+						? "git push exited zero and the workspace still has uncommitted changes — agent staged work but never committed"
+						: "git push exited zero but the branch landed no new commits — agent did not commit",
 				});
 			}
 		}
@@ -318,9 +329,11 @@ export async function reapRun(input: ReapRunInput): Promise<ReapRunResult> {
 		}
 
 		// Preview launch (warren-f156 / SPEC §11.L). See runPreviewLaunch +
-		// runPreviewAnnotate for the gate semantics.
+		// runPreviewAnnotate for the gate semantics. Skipped on a dropped
+		// commit (warren-72b9).
 		if (
 			input.outcome === "succeeded" &&
+			!droppedCommit &&
 			input.previewConfig !== undefined &&
 			input.portAllocator !== undefined &&
 			workerClient !== null &&
@@ -371,16 +384,23 @@ export async function reapRun(input: ReapRunInput): Promise<ReapRunResult> {
 		});
 	}
 
-	const failureReason: RunFailureReason | null =
-		input.outcome === "failed"
-			? (input.failureReason ?? (await inferFailureReason(input.repos, run.id, stateOnEntry)))
-			: null;
+	// warren-72b9: `droppedCommit` flips an otherwise-succeeded run to
+	// `failed`/`dropped_commit` so it can't masquerade as success.
+	const effectiveOutcome: RunTerminalState = droppedCommit ? "failed" : input.outcome;
+
+	let failureReason: RunFailureReason | null = null;
+	if (droppedCommit) {
+		failureReason = "dropped_commit";
+	} else if (effectiveOutcome === "failed") {
+		failureReason =
+			input.failureReason ?? (await inferFailureReason(input.repos, run.id, stateOnEntry));
+	}
 
 	const finalState = await transitionToTerminal(
 		input.repos,
 		run.id,
 		stateOnEntry,
-		input.outcome,
+		effectiveOutcome,
 		now(),
 		failureReason,
 	);
