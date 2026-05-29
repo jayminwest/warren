@@ -158,6 +158,9 @@ export const defaultPlotSyncer: PlotSyncer = {
 					"-c",
 					"user.email=warren@os-eco.dev",
 					"commit",
+					// warren-27d3: warren's plot-sync bookkeeping commit must not be
+					// gated by the project's git hooks (e.g. a check:all pre-commit).
+					"--no-verify",
 					"-m",
 					"plot sync: update plot metadata",
 				],

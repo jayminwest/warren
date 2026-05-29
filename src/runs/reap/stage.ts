@@ -95,6 +95,10 @@ export async function stagePlotForCommit(input: StagePlotForCommitInput): Promis
 			"-c",
 			"user.email=warren@os-eco.dev",
 			"commit",
+			// warren-27d3: internal bookkeeping commits must never be gated by
+			// the project's git hooks (e.g. a pre-commit hook running the full
+			// check:all gauntlet). --no-verify skips pre-commit / commit-msg.
+			"--no-verify",
 			"-m",
 			"chore(warren): plot state",
 		],
@@ -194,6 +198,8 @@ export async function stageSeedsForCommit(input: StageSeedsForCommitInput): Prom
 			"-c",
 			"user.email=warren@os-eco.dev",
 			"commit",
+			// warren-27d3: skip project git hooks for warren's bookkeeping commit.
+			"--no-verify",
 			"-m",
 			"chore(warren): seeds state",
 		],

@@ -97,6 +97,7 @@ describe("reapRun commit-through-reap sub-steps (warren-343a + warren-7ecc)", ()
 				"-c",
 				"user.email=warren@os-eco.dev",
 				"commit",
+				"--no-verify",
 				"-m",
 				"chore(warren): plot state",
 			]);
@@ -285,6 +286,7 @@ describe("reapRun commit-through-reap sub-steps (warren-343a + warren-7ecc)", ()
 				"-c",
 				"user.email=warren@os-eco.dev",
 				"commit",
+				"--no-verify",
 				"-m",
 				"chore(warren): seeds state",
 			]);
