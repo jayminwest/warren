@@ -1,5 +1,5 @@
 {
-	"_comment": "Coverage floors enforced by scripts/check-coverage.ts (warren-e4b1, pl-7b06 step 17). Set just below the current baseline (functions 86.25%, lines 91.62% as of 2026-05-27) to absorb measurement noise. The ratchet only goes UP — raise these numbers as coverage improves; never lower them. To grow past a budget: add tests first, then raise the floor.",
-	"functions": 86.87,
-	"lines": 90.23
+	"_comment": "Coverage floors enforced by scripts/check-coverage.ts (warren-e4b1, pl-7b06 step 17). Set just below the current baseline (functions 87.59%, lines 90.82% as of 2026-05-29, warren-f65e) to absorb measurement noise. The ratchet only goes UP — raise these numbers as coverage improves; never lower them. To grow past a budget: add tests first, then raise the floor.",
+	"functions": 87.09,
+	"lines": 90.32
 }
