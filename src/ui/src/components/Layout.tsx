@@ -2,6 +2,7 @@ import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { useQuery } from "@tanstack/react-query";
 import {
 	Activity,
+	BarChart3,
 	Bot,
 	DollarSign,
 	FolderGit2,
@@ -37,6 +38,9 @@ const BASE_NAV_ITEMS: NavItem[] = [
 	// of the sidebar — it's an operator-facing analytics view, not a
 	// daily-driver page, so it stays out of the lead-eight positions.
 	{ to: "/cost-analytics", label: "Cost", icon: DollarSign },
+	// Run analytics (warren-638a / pl-ad0f step 5) sits beside Cost as
+	// the execution-telemetry companion to the spend view.
+	{ to: "/run-analytics", label: "Run stats", icon: BarChart3 },
 ];
 
 const PLOTS_NAV_ITEM: NavItem = { to: "/plots", label: "Plots", icon: Network };
