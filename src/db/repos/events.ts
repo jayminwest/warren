@@ -12,6 +12,13 @@ import type { SqliteDrizzleDb } from "../client.ts";
 import type { EventRow, EventStream } from "../schema.ts";
 import type { DrizzleAdapter } from "./drizzle-adapter.ts";
 
+/**
+ * Default row cap for {@link EventsRepo.listToolEventsForRuns}. Bounds the
+ * cost of scanning the events table for the analytics behavior view; callers
+ * that need a tighter (or looser) bound pass an explicit `limit`.
+ */
+export const DEFAULT_TOOL_EVENT_CAP = 20_000;
+
 export interface AppendEventInput {
 	runId: string;
 	burrowEventSeq: number;
@@ -140,6 +147,39 @@ export class EventsRepo {
 					),
 				)
 				.orderBy(asc(this.events.runId), asc(this.events.burrowEventSeq)),
+		);
+	}
+
+	/**
+	 * Tool-call trace rows (`kind=tool_use` / `kind=tool_result`) across many
+	 * runs, for the run-analytics behavior view (warren-e355 / pl-ad0f step 6).
+	 * The command-mining aggregator parses `payload.input.command` from the
+	 * `tool_use` rows and correlates outcomes by joining `tool_result` rows on
+	 * `tool_use_id`, so both kinds must come back together.
+	 *
+	 * Ordered by (runId, seq) so callers can group + correlate in a single
+	 * pass. Capped at `opts.limit` (default {@link DEFAULT_TOOL_EVENT_CAP}) to
+	 * bound the scan cost on busy instances. Empty `runIds` short-circuits
+	 * without a DB hit.
+	 */
+	async listToolEventsForRuns(
+		runIds: readonly string[],
+		opts: { limit?: number } = {},
+	): Promise<EventRow[]> {
+		if (runIds.length === 0) return [];
+		const limit = opts.limit ?? DEFAULT_TOOL_EVENT_CAP;
+		return this.adapter.pickAll(
+			this.db
+				.select()
+				.from(this.events)
+				.where(
+					and(
+						inArray(this.events.runId, runIds as string[]),
+						inArray(this.events.kind, ["tool_use", "tool_result"]),
+					),
+				)
+				.orderBy(asc(this.events.runId), asc(this.events.burrowEventSeq))
+				.limit(limit),
 		);
 	}
 

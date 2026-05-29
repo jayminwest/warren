@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { isPostgresTestEnabled, withDb } from "../testing.ts";
 import { AgentsRepo } from "./agents.ts";
 import { DrizzleAdapter } from "./drizzle-adapter.ts";
-import { EventsRepo } from "./events.ts";
+import { DEFAULT_TOOL_EVENT_CAP, EventsRepo } from "./events.ts";
 import { ProjectsRepo } from "./projects.ts";
 import { RunsRepo } from "./runs.ts";
 
@@ -140,6 +140,46 @@ function suite(dialect: "sqlite" | "postgres"): void {
 				await append(events, runId, 1);
 				await append(events, runId, 2);
 				expect(await events.countByRun(runId)).toBe(2);
+			} finally {
+				await handle.close();
+			}
+		});
+
+		test("listToolEventsForRuns returns only tool_use/tool_result rows ordered by (runId, seq)", async () => {
+			const { handle, events, runId } = await open();
+			try {
+				await append(events, runId, 1, "text");
+				await append(events, runId, 4, "tool_result");
+				await append(events, runId, 2, "tool_use");
+				await append(events, runId, 3, "thinking");
+				const rows = await events.listToolEventsForRuns([runId]);
+				expect(rows.map((r) => [r.kind, r.burrowEventSeq])).toEqual([
+					["tool_use", 2],
+					["tool_result", 4],
+				]);
+			} finally {
+				await handle.close();
+			}
+		});
+
+		test("listToolEventsForRuns returns [] for empty runIds without a DB hit", async () => {
+			const { handle, events } = await open();
+			try {
+				expect(await events.listToolEventsForRuns([])).toEqual([]);
+			} finally {
+				await handle.close();
+			}
+		});
+
+		test("listToolEventsForRuns caps the row count at the limit", async () => {
+			const { handle, events, runId } = await open();
+			try {
+				for (let seq = 1; seq <= 5; seq++) {
+					await append(events, runId, seq, "tool_use");
+				}
+				const rows = await events.listToolEventsForRuns([runId], { limit: 3 });
+				expect(rows.map((r) => r.burrowEventSeq)).toEqual([1, 2, 3]);
+				expect(DEFAULT_TOOL_EVENT_CAP).toBeGreaterThan(0);
 			} finally {
 				await handle.close();
 			}
