@@ -83,6 +83,7 @@ import {
 	createRunHandler,
 	getRunHandler,
 	listCostAnalyticsHandler,
+	listRunAnalyticsHandler,
 	listRunsHandler,
 	postRunMessageHandler,
 	previewLoginHandler,
@@ -275,6 +276,7 @@ const ROUTE_TABLE: readonly RouteEntry[] = [
 	{ method: "POST", pattern: "/workers/:name/drain", build: drainWorkerHandler },
 
 	{ method: "GET", pattern: "/analytics/cost", build: listCostAnalyticsHandler },
+	{ method: "GET", pattern: "/analytics/runs", build: listRunAnalyticsHandler },
 	{ method: "GET", pattern: "/runs", build: listRunsHandler },
 	{ method: "POST", pattern: "/runs", build: createRunHandler },
 	{ method: "GET", pattern: "/runs/:id", build: getRunHandler },

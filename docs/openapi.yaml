@@ -84,6 +84,17 @@ paths:
           description: Successful response.
         default:
           description: Error response (see `src/core/errors.ts`).
+  /analytics/runs:
+    get:
+      operationId: listRunAnalyticsHandler
+      tags:
+        - analytics
+      summary: GET /analytics/runs
+      responses:
+        '200':
+          description: Successful response.
+        default:
+          description: Error response (see `src/core/errors.ts`).
   /brainstorm:
     post:
       operationId: createBrainstormHandler

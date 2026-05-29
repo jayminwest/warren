@@ -5,6 +5,21 @@
  */
 
 export {
+	buildRunMetrics,
+	contextTokensOf,
+	durationMsOf,
+	type FailureBucket,
+	type GroupDimension as RunGroupDimension,
+	NONE_KEY as RUN_METRICS_NONE_KEY,
+	type RunDayBucket,
+	type RunGroupBucket,
+	type RunMetrics,
+	type RunMetricsRow,
+	type RunTotals,
+	type SeedContextBucket,
+	type StatSummary,
+} from "./analytics/run-metrics.ts";
+export {
 	composeRunBranch,
 	DEFAULT_RUN_BRANCH_PREFIX,
 	loadRunBranchPrefixFromEnv,

@@ -124,12 +124,7 @@ export function listCostAnalyticsHandler(deps: ServerDeps): RouteHandler {
 		const projectId = ctx.url.searchParams.get("projectId") ?? undefined;
 		const from = parseAnalyticsDateBound(ctx, "from");
 		const to = parseAnalyticsDateBound(ctx, "to");
-		const defaultFrom = (() => {
-			if (from !== undefined) return from;
-			if (to !== undefined) return undefined;
-			const d = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-			return d.toISOString();
-		})();
+		const defaultFrom = resolveAnalyticsFrom(from, to);
 		const filter: { projectId?: string; from?: string; to?: string } = {};
 		if (projectId !== undefined) filter.projectId = projectId;
 		if (defaultFrom !== undefined) filter.from = defaultFrom;
@@ -169,7 +164,10 @@ export function listCostAnalyticsHandler(deps: ServerDeps): RouteHandler {
 	};
 }
 
-function parseAnalyticsDateBound(ctx: { url: URL }, name: "from" | "to"): string | undefined {
+export function parseAnalyticsDateBound(
+	ctx: { url: URL },
+	name: "from" | "to",
+): string | undefined {
 	const raw = ctx.url.searchParams.get(name);
 	if (raw === null || raw === "") return undefined;
 	const d = new Date(raw);
@@ -179,7 +177,22 @@ function parseAnalyticsDateBound(ctx: { url: URL }, name: "from" | "to"): string
 	return d.toISOString();
 }
 
-function extractProviderModel(rendered: unknown): { provider?: string; model?: string } {
+/**
+ * Resolve the analytics window `from` bound, defaulting to the last 30
+ * days when neither bound is supplied so a fresh install renders a
+ * useful chart without operator setup. Shared by the cost + run
+ * analytics handlers (warren-cf63 / warren-0692).
+ */
+export function resolveAnalyticsFrom(
+	from: string | undefined,
+	to: string | undefined,
+): string | undefined {
+	if (from !== undefined) return from;
+	if (to !== undefined) return undefined;
+	return new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+}
+
+export function extractProviderModel(rendered: unknown): { provider?: string; model?: string } {
 	if (rendered === null || typeof rendered !== "object") return {};
 	const fm = (rendered as { frontmatter?: unknown }).frontmatter;
 	if (fm === null || fm === undefined || typeof fm !== "object") return {};
