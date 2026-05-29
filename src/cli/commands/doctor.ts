@@ -22,6 +22,7 @@ import { loadBurrowClientConfigFromEnv } from "../../burrow-client/config.ts";
 import { ValidationError } from "../../core/errors.ts";
 import type { AnyWarrenDb } from "../../db/client.ts";
 import { DrizzleAdapter } from "../../db/repos/drizzle-adapter.ts";
+import { createRepos } from "../../db/repos/index.ts";
 import {
 	checkBurrowReachable,
 	checkBwrap,
@@ -36,8 +37,10 @@ import {
 	type DiagnosticCheck,
 	type WarrenConfigCheckProject,
 } from "../../diagnostics/checks.ts";
+import { checkStaleBurrowWorkspaces } from "../../diagnostics/stale-workspaces.ts";
 import { loadPreviewPortRangeFromEnv, PreviewPortAllocator } from "../../preview/port-allocator.ts";
 import { loadProjectsConfigFromEnv } from "../../projects/config.ts";
+import { loadWorkspaceGcConfigFromEnv } from "../../runs/reap/gc.ts";
 import type { CliContext, EnvLike } from "../output.ts";
 import { writeJsonLine } from "../output.ts";
 
@@ -98,6 +101,8 @@ export async function runDoctor(
 	checks.push(await checkWarrenConfigDeprecations({ projects: deps.projects ?? [] }));
 
 	checks.push(await previewPortAllocatorCheck(context.env, deps.db));
+
+	checks.push(await staleBurrowWorkspacesCheck(context.env, deps.db));
 
 	checks.push(checkPreviewAuthStrength({ env: context.env }));
 
@@ -162,6 +167,33 @@ function projectsRootCheck(env: EnvLike, exists: (path: string) => boolean): Doc
 			? config.root
 			: `${config.root} (will be created on first project add)`,
 	};
+}
+
+async function staleBurrowWorkspacesCheck(
+	env: EnvLike,
+	db: AnyWarrenDb | undefined,
+): Promise<DoctorCheck> {
+	let ttlMs: number;
+	try {
+		ttlMs = loadWorkspaceGcConfigFromEnv(env).ttlMs;
+	} catch (err) {
+		return {
+			name: "stale_burrow_workspaces",
+			ok: false,
+			message: err instanceof Error ? err.message : String(err),
+		};
+	}
+	if (db === undefined) {
+		return { name: "stale_burrow_workspaces", ok: true, message: "no db handle wired" };
+	}
+	const repos = createRepos(db);
+	return checkStaleBurrowWorkspaces({
+		probe: {
+			listAll: () => repos.burrows.listAll(),
+			listByState: (state) => repos.runs.listByState(state),
+		},
+		ttlMs,
+	});
 }
 
 async function previewPortAllocatorCheck(

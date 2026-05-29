@@ -215,6 +215,7 @@ describe("runDoctor", () => {
 			"warren_config",
 			"warren_config_deprecations",
 			"preview_port_allocator",
+			"stale_burrow_workspaces",
 			"preview_auth_strength",
 			"burrow_reachable",
 		]);

@@ -56,6 +56,7 @@ export interface BuildServerDepsInput {
 	readonly previewPortRange: PreviewPortRange;
 	readonly previewLaunchConfig: PreviewLaunchConfig;
 	readonly previewEvictionConfig: PreviewEvictionConfig;
+	readonly workspaceGcTtlMs: number;
 	readonly previewAuth: PreviewAuth | undefined;
 	readonly sdBinary: string;
 	readonly now?: () => Date;
@@ -78,6 +79,7 @@ export function buildServerDeps(input: BuildServerDepsInput): ServerDeps {
 		previewPortRange,
 		previewLaunchConfig,
 		previewEvictionConfig,
+		workspaceGcTtlMs,
 		previewAuth,
 		sdBinary,
 		now,
@@ -117,6 +119,7 @@ export function buildServerDeps(input: BuildServerDepsInput): ServerDeps {
 		...(runBranchPrefixDefault !== undefined ? { runBranchPrefixDefault } : {}),
 		previewPortRange,
 		previewMaxLive: previewEvictionConfig.maxLive,
+		workspaceGcTtlMs,
 		previewMode: previewLaunchConfig.mode,
 		...(previewHostForDeps !== undefined ? { previewHost: previewHostForDeps } : {}),
 		...(previewAuth !== undefined ? { previewAuth } : {}),

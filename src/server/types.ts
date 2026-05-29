@@ -199,6 +199,14 @@ export interface ServerDeps {
 	 */
 	readonly previewMaxLive?: number;
 	/**
+	 * Fallback workspace-GC TTL in ms (warren-0a9a). Resolved from
+	 * `WARREN_WORKSPACE_GC_TTL` at boot so `/readyz`'s
+	 * `stale_burrow_workspaces` probe ages burrows on the same threshold
+	 * the GC sweeper uses. Tests may omit; the probe is skipped when
+	 * absent.
+	 */
+	readonly workspaceGcTtlMs?: number;
+	/**
 	 * Operator's preview host suffix (R-19 / SPEC §11.L, warren-8a10).
 	 * Resolved at boot from `WARREN_PREVIEW_HOST`. In subdomain mode the
 	 * Host-match preview proxy preamble requires this; in path mode it

@@ -60,6 +60,7 @@ import {
 	RunEventBroker,
 	resolveDispatcherHandle,
 } from "../../runs/index.ts";
+import { loadWorkspaceGcConfigFromEnv, startWorkspaceGcWorker } from "../../runs/reap/gc.ts";
 import { showSeed } from "../../seeds-cli/index.ts";
 import {
 	loadWarrenServerConfigFromFile,
@@ -82,6 +83,7 @@ import {
 	previewEvictionLoggerFromPino,
 	probeLoggerFromPino,
 	schedulerLoggerFromPino,
+	workspaceGcLoggerFromPino,
 } from "./logging.ts";
 import { createPreviewAuthAndProxy } from "./preview-wiring.ts";
 import {
@@ -198,6 +200,7 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 	const portAllocator = new PreviewPortAllocator(DrizzleAdapter.for(db), previewPortRange);
 	const previewLaunchConfig = loadPreviewLaunchConfigFromEnv(env);
 	const previewEvictionConfig = loadPreviewEvictionConfigFromEnv(env);
+	const workspaceGcConfig = loadWorkspaceGcConfigFromEnv(env);
 
 	const bridgesBoot = await bootBridges({
 		repos,
@@ -396,6 +399,24 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 		);
 	}
 
+	// Fallback GC for stranded burrow workspaces (warren-0a9a). Per-reap
+	// destroy (warren-0d89) covers the happy path; this periodic sweep
+	// reclaims burrows stranded by a mid-reap crash or an out-of-band
+	// force-kill that never got a reap.
+	const workspaceGcWorker = startWorkspaceGcWorker({
+		repos,
+		burrowClientPool,
+		config: workspaceGcConfig,
+		logger: workspaceGcLoggerFromPino(logger),
+		...(opts.now !== undefined ? { now: opts.now } : {}),
+	});
+	logger.info(
+		{ ...workspaceGcConfig },
+		workspaceGcConfig.disabled
+			? "workspace GC disabled via WARREN_WORKSPACE_GC_DISABLED"
+			: "workspace GC worker running",
+	);
+
 	const { previewAuth, previewProxy } = createPreviewAuthAndProxy({
 		token: serverConfig.token,
 		previewLaunchConfig,
@@ -419,6 +440,7 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 		previewPortRange,
 		previewLaunchConfig,
 		previewEvictionConfig,
+		workspaceGcTtlMs: workspaceGcConfig.ttlMs,
 		previewAuth,
 		sdBinary: schedulerConfig.sdBinary,
 		...(opts.now !== undefined ? { now: opts.now } : {}),
@@ -449,6 +471,7 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 			await pauseDetector.stop();
 			await scheduler.stop();
 			await previewEvictionWorker.stop();
+			await workspaceGcWorker.stop();
 			await workerProbe.stop();
 			await bridgesBoot.registry.stopAll();
 			await burrowClientPool.close();

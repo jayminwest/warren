@@ -73,3 +73,11 @@ export function previewEvictionLoggerFromPino(logger: Logger): RecordLogger {
 		error: (obj, msg) => logger.error(obj, msg),
 	};
 }
+
+export function workspaceGcLoggerFromPino(logger: Logger): RecordLogger {
+	return {
+		info: (obj, msg) => logger.info(obj, msg),
+		warn: (obj, msg) => logger.warn(obj, msg),
+		error: (obj, msg) => logger.error(obj, msg),
+	};
+}

@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`runs(reap)`** — fallback GC for stranded burrow workspaces
+  (warren-0a9a): a periodic sweep walks the `burrows` placement table
+  and destroys workspaces whose runs are all terminal and whose newest
+  activity is older than `WARREN_WORKSPACE_GC_TTL` (default 1h). This
+  reclaims burrows that the per-reap `workspace_destroy` (warren-0d89)
+  missed — warren crashing mid-reap, or a run force-killed before reap
+  ran. Burrows with any live (queued/running/paused) run are never
+  touched, and every destroy is best-effort. A matching
+  `stale_burrow_workspaces` check is wired into `warren doctor` and
+  `GET /readyz` so disk leaks stay visible even with the worker
+  disabled. Tunables: `WARREN_WORKSPACE_GC_TTL`,
+  `WARREN_WORKSPACE_GC_TICK_MS`, `WARREN_WORKSPACE_GC_DISABLED`.
+
 ## [0.7.4] — 2026-05-29
 
 Release-train batch (pl-369d / warren-8104): notable Medium fixes and

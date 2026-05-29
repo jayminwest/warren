@@ -20,6 +20,7 @@ import {
 	checkWarrenConfigDeprecations,
 	type DiagnosticCheck,
 } from "../../diagnostics/checks.ts";
+import { checkStaleBurrowWorkspaces } from "../../diagnostics/stale-workspaces.ts";
 import { createRunPreviewsRepo, DEFAULT_MAX_LIVE } from "../../preview/eviction/index.ts";
 import { DEFAULT_PREVIEW_PORT_RANGE, PreviewPortAllocator } from "../../preview/port-allocator.ts";
 import type { SpawnFn } from "../../projects/clone.ts";
@@ -69,6 +70,7 @@ export function readyzHandler(deps: ServerDeps): RouteHandler {
 		checks.push(await checkWarrenConfigDeprecations(warrenConfigArgs));
 		checks.push(await previewPortAllocatorReadyzCheck(deps));
 		checks.push(await previewMaxLiveReadyzCheck(deps));
+		checks.push(await staleBurrowWorkspacesReadyzCheck(deps));
 		// Auth-strength probe (R-19 / SPEC §11.L, warren-8a10) reads from
 		// process.env directly: server boot already validated the token shape,
 		// so /readyz only needs to surface the strength heuristic against the
@@ -113,6 +115,26 @@ async function previewMaxLiveReadyzCheck(deps: ServerDeps): Promise<DiagnosticCh
 	return checkPreviewMaxLive({
 		probe: { count: () => previews.countActivePreviews() },
 		maxLive,
+	});
+}
+
+async function staleBurrowWorkspacesReadyzCheck(deps: ServerDeps): Promise<DiagnosticCheck> {
+	// TTL is resolved at boot (`ServerDeps.workspaceGcTtlMs`). Tests omit it;
+	// degrade to an informational `ok: true` rather than guessing a TTL.
+	if (deps.workspaceGcTtlMs === undefined) {
+		return {
+			name: "stale_burrow_workspaces",
+			ok: true,
+			message: "workspace GC TTL not wired",
+		};
+	}
+	return checkStaleBurrowWorkspaces({
+		probe: {
+			listAll: () => deps.repos.burrows.listAll(),
+			listByState: (state) => deps.repos.runs.listByState(state),
+		},
+		ttlMs: deps.workspaceGcTtlMs,
+		...(deps.now !== undefined ? { now: deps.now() } : {}),
 	});
 }
 
