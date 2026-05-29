@@ -188,10 +188,18 @@ measures the exact same bytes as CI. If your numbers disagree with CI,
 `rm -rf src/ui/node_modules` and rebuild; don't pad the budget. Never
 hand-edit the numbers — to re-baseline, run `bun run
 check:bundle-size:build --update`, which writes budgets straight from
-the measured build plus a small churn headroom. The ratchet still only
-goes down: `--update` refuses to RAISE a budget unless
+the measured build plus a small churn headroom, using the SAME Node-zlib
+gzip the guard enforces (so a budget it writes always passes — this is
+what closes the Vite parity gap; stop copying Vite's cooler number).
+Lowering always applies. Raising is bounded: ordinary feature growth
+within `AUTO_RAISE_CAP` (in `check-bundle-size.ts`) re-baselines
+hands-free, but a heavy new dep that blows past the cap is refused unless
 `WARREN_BUNDLE_SIZE_ALLOW_RAISE=1` is set (a knowing new floor — document
-why in a `$comment`).
+why in a `$comment`). If an agent forgets to re-baseline at all, the
+`bundle-size-autoheal` workflow re-runs the bounded `--update` on the PR
+branch and pushes the measured budgets back so the run isn't halted by a
+few-hundred-byte overshoot; only non-bundle failures (or growth past the
+cap) reach a human.
 
 ## TypeScript Conventions
 

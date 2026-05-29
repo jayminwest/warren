@@ -1,0 +1,74 @@
+name: bundle-size-autoheal
+
+# Bounded auto-heal for the bundle-size guard. Every recent CI failure on this
+# repo was `check:bundle-size` tripping by a few hundred bytes to ~2KB because an
+# agent hand-edited scripts/bundle-size-budgets.json from Vite's build-log gzip
+# number (which runs ~2KB cooler than the Node-zlib guard). The script-level fix
+# (bounded auto-raise in `--update`) stops agents submitting wrong budgets; this
+# workflow catches the residual case where an agent forgets to re-baseline at all.
+#
+# When CI fails on a same-repo PR branch, this rebuilds the UI and runs
+# `check-bundle-size --update` WITHOUT WARREN_BUNDLE_SIZE_ALLOW_RAISE, so only
+# growth within AUTO_RAISE_CAP re-baselines; a heavy new dep stays failed for a
+# human. If (and only if) the budgets file actually changed, it commits the
+# measured re-baseline back to the PR branch, which re-triggers CI. If the real
+# failure was something else, `check:bundle-size` already passes after the build
+# and the job exits without touching anything — so it never masks non-bundle
+# failures and never loops (an unchanged measurement yields an unchanged budget).
+#
+# Uses AUTO_MERGE_PAT (not GITHUB_TOKEN) so the heal commit re-triggers CI;
+# GITHUB_TOKEN-authored pushes are suppressed by GitHub to avoid recursion.
+# NOTE: workflow_run jobs run from the DEFAULT branch's copy of this file, so
+# this only takes effect once merged to main.
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+
+permissions:
+  contents: write
+
+jobs:
+  autoheal:
+    runs-on: ubuntu-latest
+    if: >-
+      github.event.workflow_run.conclusion == 'failure' &&
+      github.event.workflow_run.event == 'pull_request' &&
+      github.event.workflow_run.head_branch != 'main' &&
+      github.event.workflow_run.head_repository.full_name == github.repository
+    env:
+      HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          token: ${{ secrets.AUTO_MERGE_PAT }}
+          ref: ${{ github.event.workflow_run.head_branch }}
+          fetch-depth: 0
+
+      - uses: oven-sh/setup-bun@v2
+
+      - run: bun install
+      - run: bun run ui:install
+      - run: bun run build:ui
+
+      - name: Re-baseline bundle-size budgets if (and only if) that was the failure
+        run: |
+          set -euo pipefail
+          if bun run check:bundle-size; then
+            echo "Bundle-size guard already passes — failure was not bundle-size. Nothing to heal."
+            exit 0
+          fi
+          echo "Bundle-size guard failing — attempting bounded re-baseline."
+          bun run scripts/check-bundle-size.ts --update || true
+          if git diff --quiet -- scripts/bundle-size-budgets.json; then
+            echo "Overage exceeds the auto-raise cap (or nothing to write). Leaving for a human."
+            exit 0
+          fi
+          echo "Budgets re-baselined within cap — verifying the guard now passes."
+          bun run check:bundle-size
+          git config user.name "factory-droid[bot]"
+          git config user.email "138933559+factory-droid[bot]@users.noreply.github.com"
+          git add scripts/bundle-size-budgets.json
+          git commit -m "ci: auto-heal bundle-size budgets (measured re-baseline)"
+          git push origin "HEAD:${HEAD_BRANCH}"

@@ -124,17 +124,32 @@ describe("check-bundle-size", () => {
 		expect(written.$comment).toBe("test");
 	});
 
-	test("updateBudgets refuses to raise a budget unless allowRaise is set", () => {
+	test("updateBudgets auto-raises a small growth within the cap without allowRaise", () => {
+		const path = writeTempBudgets({
+			totals: { raw: { js: 1000, css: 1000 }, gzip: { js: 100, css: 100 } },
+			largest: { gzip: { js: 100, css: 100 } },
+		});
+		// raw js delta = (5000+800) - 1000 = 4800 B, well under the 24576 B cap;
+		// gzip js delta = (500+400) - 100 = 800 B, under the 8192 B cap.
+		const res = updateBudgets(measurementOf(5000, 500), path, false);
+		expect(res.wrote).toBe(true);
+		expect(res.raised).toEqual([]);
+		expect(res.autoRaised.some((r) => r.startsWith("totals.raw.js"))).toBe(true);
+		const written = JSON.parse(readFileSync(path, "utf8")) as Record<string, unknown> & Budgets;
+		expect(written.totals.raw.js).toBe(5800);
+		expect(written.totals.gzip.js).toBe(900);
+	});
+
+	test("updateBudgets refuses a raise that exceeds the cap unless allowRaise is set", () => {
 		const path = writeTempBudgets({
 			totals: { raw: { js: 1000, css: 1000 }, gzip: { js: 100, css: 100 } },
 			largest: { gzip: { js: 100, css: 100 } },
 		});
 		const before = readFileSync(path, "utf8");
-		// measured js raw 5000 + 600 headroom > existing 1000 → a raise.
-		const res = updateBudgets(measurementOf(5000, 500), path, false);
+		// gzip js delta = (100000+400) - 100 ≈ 100300 B, far beyond the 8192 B cap.
+		const res = updateBudgets(measurementOf(200000, 100000), path, false);
 		expect(res.wrote).toBe(false);
-		expect(res.raised.length).toBeGreaterThan(0);
-		expect(res.raised.some((r) => r.startsWith("totals.raw.js"))).toBe(true);
+		expect(res.raised.some((r) => r.startsWith("totals.gzip.js"))).toBe(true);
 		// File is left untouched when a raise is refused.
 		expect(readFileSync(path, "utf8")).toBe(before);
 	});
