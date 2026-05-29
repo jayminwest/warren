@@ -7,8 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.5] — 2026-05-29
+
+Medium/low backlog batch (pl-df2f / warren-4b01): CI/release hardening,
+plan-run robustness, and a pair of run-lifecycle features.
+
 ### Added
 
+- **`runs`** — one-click re-run / clone of a terminal run: `POST /runs`
+  accepts `cloneFromRunId` (a `replicate` chain kind alongside the
+  existing continuation) to copy the prior run's agent / model /
+  project / prompt and dispatch a fresh run against the project default
+  base (warren-e96f, #234).
+- **`ci(pr-fixer)`** — standalone core of the polling CI-fixer: a
+  `pr-fixer` built-in agent plus `ciFixer` config and check-run polling
+  that auto-dispatches a source-editing repair run against an existing
+  PR branch on CI failure (warren-05ea, #235).
 - **`runs(reap)`** — fallback GC for stranded burrow workspaces
   (warren-0a9a): a periodic sweep walks the `burrows` placement table
   and destroys workspaces whose runs are all terminal and whose newest
@@ -21,6 +35,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `GET /readyz` so disk leaks stay visible even with the worker
   disabled. Tunables: `WARREN_WORKSPACE_GC_TTL`,
   `WARREN_WORKSPACE_GC_TICK_MS`, `WARREN_WORKSPACE_GC_DISABLED`.
+
+### Changed
+
+- **`plots`** — a Plot carrying an `sd_plan` attachment now auto-adopts
+  new plan children as `seeds_issue` attachments, keeping the substrate
+  panel in parity with the plan (warren-18a9, #233).
+- **`runs(reap)`** — wire `appendAgentMessage` from reap so interactive
+  (brainstorm/planner) runs surface the agent's reply in the inline Chat
+  transcript, not just the run event log (warren-509f, #232).
+- **`dx`** — split the residual >700-line files below the file-size
+  ratchet and lower the budget accordingly (warren-9a61, #231).
+
+### Fixed
+
+- **`plan-runs`** — bound the parent-merge wait so an unmergeable PR
+  (failing required checks, BLOCKED merge state, stuck auto-merge) can
+  no longer hang a plan-run forever; a wall-clock merge budget fails the
+  wait once exceeded (warren-3937, #229).
+
+### CI / Release
+
+- **`ci`** — pin the bun version via `.bun-version` in `setup-bun` for
+  build reproducibility (warren-76f3, #227).
+- **`ci(release)`** — auto-start Fly machines after deploy so a machine
+  left `stopped` by an earlier crash-loop is recovered without a manual
+  `fly machine start` (warren-f0d6, #228).
 
 ## [0.7.4] — 2026-05-29
 
