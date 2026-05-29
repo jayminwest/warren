@@ -4,7 +4,6 @@ import { Link } from "react-router-dom";
 import { ApiError, plotsApi, runsApi } from "@/api/client.ts";
 import type { PlotEnvelope, PlotEvent } from "@/api/types.ts";
 import { Chat } from "@/components/Chat.tsx";
-import { Badge } from "@/components/ui/badge.tsx";
 import { Button } from "@/components/ui/button.tsx";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card.tsx";
 import {
@@ -29,9 +28,9 @@ import { ReadOnlyField } from "./run-plan.tsx";
 /**
  * InteractivePanel (warren-444c / pl-0344 step 11) — renders Start
  * brainstorming / Run planner / Formalize over an inline Chat anchored
- * to the latest interactive run on the Plot. Gated behind an
- * experimental Badge while reap-side agent_message bridging is wired
- * (mx-545b22, warren-509f).
+ * to the latest interactive run on the Plot. The agent's reply streams
+ * back into the transcript via reap-side `agent_message` capture
+ * (warren-509f, src/runs/reap/interactive.ts).
  */
 
 /* ----------------------------------------------------------------------- */
@@ -110,12 +109,6 @@ export function InteractivePanel({ plot, frozen }: { plot: PlotEnvelope; frozen:
 			<CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2 space-y-0">
 				<div className="flex items-center gap-2">
 					<CardTitle>Interactive</CardTitle>
-					<Badge
-						variant="outline"
-						title="Interactive chat is experimental: dispatch + Formalize work, but the agent's reply does not stream back into this transcript yet. Open the run detail page to read the agent's response."
-					>
-						experimental
-					</Badge>
 				</div>
 				<div className="flex flex-wrap items-center gap-2">
 					<Button
@@ -171,34 +164,9 @@ export function InteractivePanel({ plot, frozen }: { plot: PlotEnvelope; frozen:
 							repo and submit a structured{" "}
 							<code className="font-mono">sd plan</code>.
 						</p>
-						<p className="text-xs text-(--color-muted-foreground)">
-							Heads up: the chat transcript is experimental — messages
-							are delivered, but the agent's reply lands on the run's
-							event log rather than streaming back into the chat. Open
-							the run detail page from the activity feed below to read
-							responses. Formalize and question-answer flows still
-							work end-to-end.
-						</p>
 					</div>
 				) : (
 					<div className="flex flex-col gap-2">
-						<div
-							role="note"
-							className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-800 dark:text-amber-200"
-						>
-							<strong className="font-semibold">Experimental:</strong>{" "}
-							your message is delivered to the agent, but the agent's
-							reply is not yet streamed back into this transcript. Open
-							the{" "}
-							<Link
-								to={`/runs/${encodeURIComponent(activeRunId)}`}
-								className="font-mono underline underline-offset-2"
-							>
-								run detail page
-							</Link>{" "}
-							to read the response. Formalize and question-answer
-							flows still work end-to-end.
-						</div>
 						<div id="interactive-chat" className="h-[480px]">
 							<Chat
 								runId={activeRunId}

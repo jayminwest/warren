@@ -5,6 +5,7 @@ import type { EventRow, RunFailureReason, RunTerminalState } from "../../db/sche
 import { openPullRequest } from "../pr.ts";
 import { dispatchAutoPlanRuns, hasAutoPlanRunFrontmatter, parsePlanIds } from "./auto-plan-run.ts";
 import { runWorkspaceDestroy } from "./destroy.ts";
+import { captureInteractiveReply } from "./interactive.ts";
 import { mergeMulch } from "./mulch.ts";
 import { mergePlot } from "./plot-merge.ts";
 import { runPrOpen } from "./pr-open.ts";
@@ -36,16 +37,14 @@ export async function reapRun(input: ReapRunInput): Promise<ReapRunResult> {
 	}
 
 	// State on entry is the discriminator: still `queued` means the bridge
-	// never claimed it (no events ever flowed from burrow), so this is a
-	// "burrow never started the run" failure rather than a real crash.
+	// never claimed it (no events flowed from burrow) — "never started".
 	const stateOnEntry = run.state;
 
 	// `run.projectId` is null when the project was deleted while the run
 	// existed (warren-5f19): the FK is `ON DELETE SET NULL`, so the run
-	// row survives the delete as an orphan. We can still finalize the
-	// state (the events were already streamed), but the mulch-merge,
-	// seeds-close, and branch-push sub-steps target the project clone on
-	// disk, which is gone. Skip them and emit a single system event so
+	// row survives as an orphan. We can still finalize the state, but the
+	// mulch-merge, seeds-close, and branch-push sub-steps target the
+	// project clone on disk, which is gone. Skip them and emit a system so
 	// operators can see why reap was a no-op.
 	const project = run.projectId !== null ? await input.repos.projects.get(run.projectId) : null;
 	const seq = createSeqAllocator((await input.repos.events.maxSeqForRun(run.id)) ?? 0);
@@ -110,12 +109,9 @@ export async function reapRun(input: ReapRunInput): Promise<ReapRunResult> {
 		}
 	}
 	// Base branch for the empty-push count comes from the project row, not
-	// burrow: burrow's `BurrowRow` does not expose `baseBranch` at the top
-	// level (it's tucked into `providerStateJson`), and warren's projects
-	// table already pins `defaultBranch` (notNull) at clone time. For V1
-	// the primary flow always carves the workspace branch off
-	// `project.defaultBranch`, so this is the correct reference for
-	// `git rev-list --count <baseBranch>..HEAD`.
+	// burrow (which doesn't expose baseBranch at the top level). For V1 the
+	// primary flow always carves the workspace branch off
+	// `project.defaultBranch`, the correct ref for `rev-list --count`.
 	const baseBranch: string | null = project?.defaultBranch ?? null;
 
 	if (workspacePath !== null && project !== null) {
@@ -439,6 +435,10 @@ export async function reapRun(input: ReapRunInput): Promise<ReapRunResult> {
 		emit,
 		fail: (step, err) => fail(step, err),
 	});
+
+	// Interactive capture (warren-509f): append the agent's final reply as an
+	// `agent_message` event. Last, so seq allocation can't collide.
+	await captureInteractiveReply({ run, input, now: now() });
 
 	if (input.broker !== undefined) input.broker.close(run.id);
 
