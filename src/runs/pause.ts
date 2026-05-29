@@ -49,7 +49,7 @@
  *
  * The `respawn` seam is intentionally not wired to the live `spawnRun`
  * inside this module — the production wiring lives in
- * `src/server/main.ts`'s `bootPauseDetector` call. Keeping it as a
+ * `src/server/main/index.ts`'s `bootPauseDetector` call. Keeping it as a
  * seam keeps the unit tests disk-free and mirrors the plan-run
  * coordinator's `spawn` injection.
  */

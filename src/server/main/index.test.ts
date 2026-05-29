@@ -1,6 +1,6 @@
 /**
  * Unit tests for the env-var integer parsers exported from
- * `src/server/main.ts` (warren-da37 / pl-60a6 step 1). The HTTP-query
+ * `src/server/main/index.ts` (warren-da37 / pl-60a6 step 1). The HTTP-query
  * variants live in `server.test.ts`; this file covers the env-only
  * `resolvePgPoolMax` so the strict round-trip check (`String(n) ===
  * raw`) is regression-locked: junk-suffix inputs (`"10x"`,

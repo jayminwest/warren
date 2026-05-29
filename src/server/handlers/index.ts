@@ -200,7 +200,7 @@ export function parseNonNegativeInt(raw: string | null, label: string): number |
  *
  * Format check is always-on (`isValidPlotIdFormat`). Existence check
  * runs only when `plotResolver` is wired on ServerDeps (production
- * wires it in src/server/main.ts). Test harnesses that omit the
+ * wires it in src/server/main/index.ts). Test harnesses that omit the
  * resolver get format-only validation, which matches the existing
  * per-Plot handler posture in this file (`deps.plotResolver !==
  * undefined ? ... : null`).

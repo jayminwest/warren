@@ -1,7 +1,7 @@
 /**
  * `warren serve` — boot the HTTP server and block until SIGINT/SIGTERM.
  *
- * Thin wrapper around `bootServer` (server/main.ts). The supervisor
+ * Thin wrapper around `bootServer` (server/main/index.ts). The supervisor
  * (Phase 12) execs `warren serve` as one of two child processes and
  * forwards signals; this command's only job is to translate the signal
  * into a `handle.stop()` call and exit cleanly.

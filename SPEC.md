@@ -656,7 +656,7 @@ The entrypoint is the Bun supervisor (`src/supervisor/main.ts`), not warren dire
 
 - Spawns `burrow serve --socket /var/run/burrow.sock` as a child via `Bun.spawn`.
 - Waits for the socket file to appear (`fs.access` poll, 100 ms × 50 = 5s timeout) before spawning warren.
-- Spawns warren (`bun run src/server/main.ts`) as a child.
+- Spawns warren (`bun run src/server/main/index.ts`) as a child.
 - Forwards `SIGTERM` and `SIGINT` to both children, then waits for clean exit (5s grace) before forcing.
 - Restarts `burrow serve` if it exits non-zero, with an exponential backoff and a budget of 5 restarts in 60s; after exhaustion, the supervisor exits, the container restarts under Docker/Fly's restart policy.
 - Crashes if warren exits non-zero (warren is the user-facing process; restart-by-orchestrator is preferred to mask warren bugs in-process).
@@ -1310,7 +1310,7 @@ basic-auth password (option c) and no-auth (option d) stay rejected.
 **Routing — in-process Bun route, not a separate reverse proxy.** The
 proxy match (`Host: run-<id>.<host>` for subdomain mode; `/p/<run-id>/`
 path-prefix for path mode — see the "Routing modes" addendum below)
-lives in `src/server/main.ts` as a preamble before the API/UI routes.
+lives in `src/server/main/index.ts` as a preamble before the API/UI routes.
 It resolves `runs.preview_port` → `127.0.0.1:<port>` and forwards
 HTTP + WS through `burrowClientPool.clientFor({burrowId})` so the
 multi-worker placement (`warren-c0c9` / `pl-9ba1` step 5) keeps
@@ -1419,7 +1419,7 @@ original §11.L. No URL form ever serves a preview outside its
 `/p/<run-id>/` (path mode) or `run-<id>.<host>` (subdomain mode) scope.
 
 **Routing — path-prefix preamble.** The proxy preamble in
-`src/server/main.ts` (mx-787718) grows a sibling match:
+`src/server/main/index.ts` (mx-787718) grows a sibling match:
 
 - Subdomain mode: existing `Host: run-<id>.<warren-host>` match.
 - Path mode: regex `^/p/(?<runId>[a-z0-9-]+)(?<rest>/.*)?$` on the

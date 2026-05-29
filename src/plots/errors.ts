@@ -111,7 +111,7 @@ export class PlotIdInvalidError extends WarrenError {
  * The existence check piggybacks on `PlotResolver` (src/plots/resolver.ts)
  * which is already used by every per-Plot handler. Only fires when
  * the resolver is wired into ServerDeps — production wires it in
- * src/server/main.ts. Test harnesses that don't wire a resolver get
+ * src/server/main/index.ts. Test harnesses that don't wire a resolver get
  * format-only validation (matches the existing per-Plot handler
  * posture in handlers.ts).
  */

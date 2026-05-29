@@ -150,7 +150,7 @@ export const defaultAggregatorClientFactory: AggregatorClientFactory = (project)
  * aggregator calls `listByState('paused')` once per
  * `listNeedsAttention()` invocation and groups the result by `plotId`
  * — a single SQL query covers the whole deployment, not a per-Plot
- * fan-out. The default wiring in `src/server/main.ts` passes
+ * fan-out. The default wiring in `src/server/main/index.ts` passes
  * `repos.runs` directly; tests pass a stub.
  */
 export interface AggregatorRunsRepo {

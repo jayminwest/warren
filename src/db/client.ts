@@ -6,7 +6,7 @@
  * `WARREN_DB_URL=postgres://...`). The pg migration set lives under
  * `src/db/migrations/postgres/` (warren-373e); production boot still passes
  * `{ path }` so the sqlite branch is the only path exercised at runtime until
- * step 5 (warren-e2ea) widens server/main.ts onto WARREN_DB_URL.
+ * step 5 (warren-e2ea) widens server/main/index.ts onto WARREN_DB_URL.
  *
  * Two shapes share one entry point. The `{ path }` overload preserves the
  * pre-R-13 sqlite signature exactly — tests and the existing server boot path

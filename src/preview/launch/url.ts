@@ -6,7 +6,7 @@
  * reviewer-facing URL for a `live` preview in either mode.
  *
  * Kept separate from the orchestration code because both the server
- * bootstrap (`src/server/main.ts`, `src/server/bridges.ts`) and the UI
+ * bootstrap (`src/server/main/index.ts`, `src/server/bridges.ts`) and the UI
  * (via `formatPreviewUrl`'s spec, mirrored in `src/ui/src/api/client.ts`)
  * depend on these helpers without ever touching the launch state machine.
  */
