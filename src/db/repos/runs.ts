@@ -54,36 +54,35 @@ export interface CreateRunInput {
 	burrowId?: string | null;
 	burrowRunId?: string | null;
 	/**
-	 * Worker that will host the burrow for this run (warren-135b). The
-	 * spawn flow (pl-9ba1 step 4) resolves this via `placeFor` before
-	 * provisioning and writes the denormalized id here so streaming /
-	 * cancel / steer paths can route without joining `burrows`. Null on
-	 * rows written before pl-9ba1 step 4 wired this in.
+	 * Worker that will host the burrow for this run (warren-135b). Resolved
+	 * by the spawn flow's `placeFor` (pl-9ba1 step 4) and denormalized here
+	 * so streaming / cancel / steer route without joining `burrows`.
 	 */
 	workerId?: string | null;
 	/**
-	 * Back-link to the seeds issue this run was dispatched against
-	 * (pl-bb70 step 3). Optional; null encodes "no seed" (manual prompt,
-	 * legacy row). Persisted so the post-dispatch `updateExtensions`
-	 * write (pl-bb70 step 4) has the seed to merge {role, trigger,
-	 * lastRunId, lastRunAt} into and so the Run API can surface a
-	 * back-link on RunDetail (pl-bb70 step 6).
+	 * Back-link to the seeds issue this run was dispatched against (pl-bb70
+	 * step 3). Null encodes "no seed". Persisted so the post-dispatch
+	 * `updateExtensions` write (step 4) has a seed to merge into and the Run
+	 * API can surface a back-link on RunDetail (step 6).
 	 */
 	seedId?: string | null;
 	/**
-	 * Back-link to the Plot this run was dispatched against (warren-a8c3,
-	 * parent warren-000b). Null/undefined when the project hasn't opted
-	 * into Plots or the dispatch omitted plot_id. Validation that the
-	 * project actually has a `.plot/` directory happens at handler level
-	 * via `project.hasPlot` — the repo writes whatever it's handed.
-	 */
-	/**
 	 * Run mode (pl-0344 step 1 / warren-67b6). `batch` (default) is the
 	 * historical single-shot run; `interactive` is the respawn-per-turn
-	 * primitive (pl-0344 step 3 / warren-1117). Fixed at run-create time.
+	 * primitive (warren-1117). Fixed at run-create time.
 	 */
 	mode?: RunMode;
+	/**
+	 * Back-link to the Plot this run was dispatched against (warren-a8c3).
+	 * Null when the project hasn't opted into Plots or plot_id was omitted;
+	 * `project.hasPlot` is validated at the handler.
+	 */
 	plotId?: string | null;
+	/**
+	 * Continuation back-link (warren-4b11): the prior run whose pushed branch
+	 * seeded this run's workspace. Null for root runs; plain text id, no FK.
+	 */
+	parentRunId?: string | null;
 	now?: Date;
 }
 
@@ -130,6 +129,7 @@ export class RunsRepo {
 			workerId: input.workerId ?? null,
 			seedId: input.seedId ?? null,
 			plotId: input.plotId ?? null,
+			parentRunId: input.parentRunId ?? null,
 			renderedAgentJson: input.renderedAgentJson,
 			state: "queued",
 			failureReason: null,

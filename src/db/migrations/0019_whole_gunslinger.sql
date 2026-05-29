@@ -1,0 +1,1 @@
+ALTER TABLE `runs` ADD `parent_run_id` text;

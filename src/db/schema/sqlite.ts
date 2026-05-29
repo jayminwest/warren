@@ -205,6 +205,17 @@ export const runs = sqliteTable(
 		// supervisor clears them once the answering turn is dispatched.
 		pausedAt: text("paused_at"),
 		pausedQuestionEventId: text("paused_question_event_id"),
+		// Continuation back-link (warren-4b11): when an operator re-runs a
+		// terminated run "with a follow-up", the new run is spawned with the
+		// prior run's pushed branch as the workspace base (instead of the
+		// project default branch). This column records which run this one
+		// continues from, so the UI can render a chain indicator and chain
+		// cost/token totals are derivable by walking the link. Cost/tokens on
+		// each run stay independent — they are NOT accumulated with the
+		// parent. Nullable: the overwhelming majority of runs are roots.
+		// Plain text (no FK) for symmetry with the other run back-links and to
+		// keep the column tolerant of a since-deleted parent row.
+		parentRunId: text("parent_run_id"),
 	},
 	(t) => [
 		index(INDEX_NAMES.runsState).on(t.state),

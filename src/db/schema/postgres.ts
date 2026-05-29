@@ -123,6 +123,9 @@ export const runs = pgTable(
 		mode: text("mode", { enum: RUN_MODES }).notNull().default("batch"),
 		pausedAt: text("paused_at"),
 		pausedQuestionEventId: text("paused_question_event_id"),
+		// Mirror of sqlite parent_run_id (warren-4b11). Continuation back-link
+		// for re-run-with-follow-up; see sqlite.ts for the full shape + intent.
+		parentRunId: text("parent_run_id"),
 	},
 	(t) => [
 		index(INDEX_NAMES.runsState).on(t.state),

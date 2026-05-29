@@ -147,6 +147,48 @@ describe("POST /runs — spawn flow", () => {
 		expect(persisted.seedId).toBe("seed-123");
 	});
 
+	test("continueFromRunId persists onto runs.parent_run_id (warren-4b11)", async () => {
+		const project = (await repos.projects.listAll())[0];
+		if (!project) throw new Error("project missing");
+
+		const parent = await repos.runs.create({
+			agentName: "refactor-bot",
+			projectId: project.id,
+			prompt: "first pass",
+			renderedAgentJson: { name: "refactor-bot", version: 1, sections: { system: "x" } },
+			trigger: "manual",
+		});
+
+		const calls: { method: string; path: string; body: unknown }[] = [];
+		const burrowClient = makeBurrowClient(
+			{ burrowId: "bur_cont00000000", burrowRunId: "run_contrun00000", workspacePath: "/tmp/ws" },
+			calls,
+		);
+		const deps = await depsFor(repos, burrowClient);
+		handle = startServer(deps, {
+			transport: { kind: "tcp", hostname: "127.0.0.1", port: 0 },
+			auth: NO_AUTH,
+			logger: silentLogger,
+		});
+
+		const res = await fetch(`${tcpUrl(handle)}/runs`, {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({
+				agent: "refactor-bot",
+				project: project.id,
+				prompt: "follow up",
+				continueFromRunId: parent.id,
+			}),
+		});
+		expect(res.status).toBe(201);
+		const body = (await res.json()) as { run: { id: string; parentRunId: string | null } };
+		expect(body.run.parentRunId).toBe(parent.id);
+
+		const persisted = await repos.runs.require(body.run.id);
+		expect(persisted.parentRunId).toBe(parent.id);
+	});
+
 	test("invalid body params → 400 validation_error", async () => {
 		const calls: { method: string; path: string; body: unknown }[] = [];
 		const burrowClient = makeBurrowClient(

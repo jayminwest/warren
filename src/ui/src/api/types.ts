@@ -104,6 +104,14 @@ export interface RunRow {
 	 */
 	plotId: string | null;
 	/**
+	 * Continuation back-link (warren-4b11). Set when this run was spawned as
+	 * a "re-run with follow-up" of a prior terminal run: its workspace was
+	 * seeded from the parent's pushed branch instead of the project default
+	 * branch. Null for root runs. The Runs list renders a `↪ from run_xxx`
+	 * chain indicator and RunDetail links back to the parent.
+	 */
+	parentRunId: string | null;
+	/**
 	 * Run mode discriminator (pl-0344 step 1 / warren-67b6, step 4 /
 	 * warren-b3b9). `'batch'` is the legacy one-shot dispatch; `'interactive'`
 	 * is the respawn-per-turn primitive bound to a Plot. Pinned at row
@@ -219,6 +227,14 @@ export interface CreateRunInput {
 	mode?: "batch" | "interactive";
 	interactiveAgent?: string;
 	dispatcherHandle?: string;
+	/**
+	 * Optional continuation parent (warren-4b11). When set, the new run is
+	 * spawned as a "re-run with follow-up": its workspace is seeded from the
+	 * parent's pushed branch instead of the project default branch, and the
+	 * link is recorded on `runs.parent_run_id`. The parent must belong to
+	 * the same project.
+	 */
+	continueFromRunId?: string;
 }
 
 export interface SpawnRunResponse {

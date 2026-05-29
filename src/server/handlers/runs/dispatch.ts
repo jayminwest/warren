@@ -89,6 +89,12 @@ export function createRunHandler(deps: ServerDeps): RouteHandler {
 		const modelOverride = optionalString(body, "modelOverride");
 		const seedId = optionalString(body, "seedId");
 		const plotId = optionalString(body, "plotId");
+		// warren-4b11: "re-run with follow-up" — base the workspace on the
+		// prior run's pushed branch and record the parent link. Accept both
+		// `continueFromRunId` (the UI affordance name) and `parentRunId` (the
+		// column name); the former wins when both are present.
+		const parentRunId =
+			optionalString(body, "continueFromRunId") ?? optionalString(body, "parentRunId");
 		const dispatcherHandle = optionalString(body, "dispatcherHandle");
 
 		const interactiveAgent = optionalString(body, "interactiveAgent");
@@ -126,6 +132,7 @@ export function createRunHandler(deps: ServerDeps): RouteHandler {
 			modelOverride,
 			seedId,
 			plotId,
+			...(parentRunId !== undefined ? { parentRunId } : {}),
 			dispatcherHandle,
 			warrenConfigs: deps.warrenConfigs,
 			runBranchPrefixDefault: deps.runBranchPrefixDefault,

@@ -191,10 +191,7 @@ export class WarrenClient {
 		});
 	}
 
-	/**
-	 * POST /runs with the ergonomic `warren run` field names
-	 * (`branch`, `model`, `provider`). Thin wrapper over {@link createRun}.
-	 */
+	/** POST /runs with ergonomic `warren run` field names. Wraps {@link createRun}. */
 	async dispatch(input: DispatchRunInput): Promise<SpawnRunResponse> {
 		const body: CreateRunInput = {
 			agent: input.agent,
@@ -209,6 +206,7 @@ export class WarrenClient {
 		if (input.mode !== undefined) body.mode = input.mode;
 		if (input.interactiveAgent !== undefined) body.interactiveAgent = input.interactiveAgent;
 		if (input.dispatcherHandle !== undefined) body.dispatcherHandle = input.dispatcherHandle;
+		if (input.continueFromRunId !== undefined) body.continueFromRunId = input.continueFromRunId;
 		return this.createRun(body);
 	}
 

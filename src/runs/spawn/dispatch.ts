@@ -110,6 +110,15 @@ export async function spawnRun(input: SpawnRunInput): Promise<SpawnRunResult> {
 	const baseAgent = readCachedAgent(agentRow.renderedJson, agentRow.name);
 	const burrowConfig = parseBurrowConfig(baseAgent.sections.burrow_config);
 
+	// warren-4b11: continuation runs ("re-run with follow-up") seed their
+	// workspace from the prior run's pushed branch instead of the project
+	// default branch. Resolve the parent's branch up front and feed it as the
+	// refresh ref so the local clone is checked out to the parent branch tip
+	// before burrow forks the new run branch off it. The parent link is also
+	// recorded on the new run row below so the UI can render a chain indicator
+	// and chain cost/token totals are derivable by walking the link.
+	const baseRef = await resolveContinuationRef(input, project);
+
 	// Refresh the project clone to origin/<ref> so the run sees the
 	// latest commits. Skipped only when the caller didn't wire the
 	// projects-config + spawn seam (tests that pre-stage their own
@@ -122,7 +131,7 @@ export async function spawnRun(input: SpawnRunInput): Promise<SpawnRunResult> {
 					repo: input.repos.projects,
 					config: input.projectsConfig,
 					id: project.id,
-					...(input.ref !== undefined ? { ref: input.ref } : {}),
+					...(baseRef !== undefined ? { ref: baseRef } : {}),
 					spawn: input.projectSpawn,
 					...(input.now !== undefined ? { now: input.now } : {}),
 					...(input.warrenConfigs !== undefined ? { warrenConfigs: input.warrenConfigs } : {}),
@@ -175,6 +184,9 @@ export async function spawnRun(input: SpawnRunInput): Promise<SpawnRunResult> {
 		...(input.seedId !== undefined ? { seedId: input.seedId } : {}),
 		...(input.plotId !== undefined && input.plotId !== "" ? { plotId: input.plotId } : {}),
 		...(input.mode !== undefined ? { mode: input.mode } : {}),
+		...(input.parentRunId !== undefined && input.parentRunId !== ""
+			? { parentRunId: input.parentRunId }
+			: {}),
 		now: input.now?.(),
 	});
 
@@ -284,6 +296,44 @@ export async function spawnRun(input: SpawnRunInput): Promise<SpawnRunResult> {
 		await rollback(input, run.id, burrow, placement.client);
 		throw err;
 	}
+}
+
+/**
+ * Resolve the git ref the project clone should be refreshed to before the
+ * burrow forks the new run branch (warren-4b11).
+ *
+ * - No `parentRunId` → the caller's explicit `ref` (or undefined, which
+ *   refreshProject resolves to the project's tracked default branch).
+ * - `parentRunId` set → the parent run's pushed branch, recomposed from the
+ *   same prefix precedence the parent's spawn used
+ *   (`composeRunBranch(resolveRunBranchPrefix(...), parentRunId)`). We read
+ *   the project defaults here (a lightweight pre-refresh peek) only to get
+ *   the prefix; the working tree's `.warren/` is stable across a project's
+ *   runs, so this matches the branch the parent actually pushed.
+ *
+ * The parent must belong to the same project — a continuation forks the
+ * parent's branch on the same origin, so a cross-project parent would be a
+ * meaningless base. We reject it with a typed ValidationError rather than
+ * silently checking out a branch that doesn't exist on this origin.
+ */
+async function resolveContinuationRef(
+	input: SpawnRunInput,
+	project: { id: string; localPath: string },
+): Promise<string | undefined> {
+	if (input.parentRunId === undefined || input.parentRunId === "") return input.ref;
+	const parent = await input.repos.runs.require(input.parentRunId);
+	if (parent.projectId !== project.id) {
+		throw new ValidationError(
+			`parent run ${parent.id} belongs to a different project; a continuation must reuse the same project's branch`,
+			{ recoveryHint: "re-run with a parentRunId from the same project, or omit it" },
+		);
+	}
+	const defaults = await readProjectDefaults(input.warrenConfigs, project.id, project.localPath);
+	const prefix = resolveRunBranchPrefix({
+		projectDefault: defaults?.runBranchPrefix,
+		envDefault: input.runBranchPrefixDefault,
+	});
+	return composeRunBranch(prefix, parent.id);
 }
 
 async function provisionBurrow(

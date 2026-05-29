@@ -84,6 +84,15 @@ export interface SpawnRunInput {
 	readonly projectSpawn?: ProjectSpawnFn;
 	/** Branch, tag, or SHA to refresh to. Defaults to the project's tracked default branch. */
 	readonly ref?: string;
+	/**
+	 * Continuation parent (warren-4b11). When set, this run is a "re-run with
+	 * follow-up" of a prior terminal run: its workspace is seeded from the
+	 * parent's pushed branch (`${prefix}/${parentRunId}`) instead of the
+	 * project default branch, and the link is recorded on `runs.parent_run_id`.
+	 * The parent must belong to the same project. Empty / unset → a root run.
+	 * Overrides `ref` when both are provided — the continuation base wins.
+	 */
+	readonly parentRunId?: string;
 	/** Override the project refresher; defaults to `refreshProject`. */
 	readonly refreshProjectFn?: typeof refreshProject;
 	/**

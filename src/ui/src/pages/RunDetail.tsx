@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CircleStop, ExternalLink, Send, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import {
 	buildPreviewLoginUrl,
 	formatPreviewUrl,
@@ -31,6 +31,7 @@ import { Textarea } from "@/components/ui/textarea.tsx";
 import { useEventStream } from "@/hooks/useEventStream.ts";
 import { formatError } from "@/lib/format-error.ts";
 import { formatTimestamp, relativeTime } from "@/lib/utils.ts";
+import type { NewRunRouteState } from "@/pages/NewRun.tsx";
 
 /**
  * Event kinds whose arrival means the warren run row may have advanced
@@ -55,6 +56,7 @@ const REFETCH_TRIGGER_KINDS: ReadonlySet<string> = new Set([
 export function RunDetailPage() {
 	const { id = "" } = useParams<{ id: string }>();
 	const qc = useQueryClient();
+	const navigate = useNavigate();
 
 	const run = useQuery({
 		queryKey: ["runs", id],
@@ -168,14 +170,34 @@ export function RunDetailPage() {
 					</p>
 				</div>
 				<div className="flex flex-col items-end gap-1">
-					<Button
-						variant="destructive"
-						onClick={() => cancel.mutate()}
-						disabled={cancel.isPending || isTerminal}
-					>
-						<CircleStop className="h-4 w-4" />
-						{cancel.isPending ? "Cancelling…" : "Cancel"}
-					</Button>
+					{isTerminal ? (
+						<Button
+							variant="outline"
+							onClick={() =>
+								navigate("/runs/new", {
+									state: {
+										continueFromRunId: r.id,
+									agent: r.agentName,
+									project: r.projectId ?? undefined,
+									plotId: r.plotId ?? undefined,
+									prompt: r.prompt,
+								} satisfies NewRunRouteState,
+								})
+							}
+						>
+							<Send className="h-4 w-4" />
+							Re-run with follow-up
+						</Button>
+					) : (
+						<Button
+							variant="destructive"
+							onClick={() => cancel.mutate()}
+							disabled={cancel.isPending || isTerminal}
+						>
+							<CircleStop className="h-4 w-4" />
+							{cancel.isPending ? "Cancelling…" : "Cancel"}
+						</Button>
+					)}
 					<CancelStatus mutation={cancel} />
 				</div>
 			</header>
@@ -217,6 +239,16 @@ export function RunDetailPage() {
 				{r.plotId !== null ? (
 					<MetaCard label="Plot">
 						<PlotMetaCardContent plotId={r.plotId} />
+					</MetaCard>
+				) : null}
+				{r.parentRunId !== null ? (
+					<MetaCard label="Continued from">
+						<Link
+							to={`/runs/${encodeURIComponent(r.parentRunId)}`}
+							className="font-mono text-xs underline hover:text-(--color-primary)"
+						>
+							↪ {r.parentRunId}
+						</Link>
 					</MetaCard>
 				) : null}
 			</div>

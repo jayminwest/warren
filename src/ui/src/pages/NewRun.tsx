@@ -27,6 +27,12 @@ export interface NewRunRouteState {
 	agent?: string;
 	plotId?: string;
 	prompt?: string;
+	/**
+	 * Continuation parent (warren-4b11). When RunDetail's "Re-run with
+	 * follow-up" navigates here, it carries the prior run id so the new run
+	 * is spawned with that run's pushed branch as the workspace base.
+	 */
+	continueFromRunId?: string;
 }
 
 function readRouteState(state: unknown): NewRunRouteState {
@@ -37,6 +43,7 @@ function readRouteState(state: unknown): NewRunRouteState {
 	if (typeof s.agent === "string") out.agent = s.agent;
 	if (typeof s.plotId === "string") out.plotId = s.plotId;
 	if (typeof s.prompt === "string") out.prompt = s.prompt;
+	if (typeof s.continueFromRunId === "string") out.continueFromRunId = s.continueFromRunId;
 	return out;
 }
 
@@ -182,8 +189,13 @@ export function NewRunPage() {
 			...(trimmedProvider.length > 0 ? { providerOverride: trimmedProvider } : {}),
 			...(trimmedModel.length > 0 ? { modelOverride: trimmedModel } : {}),
 			...(hasPlot && trimmedPlotId.length > 0 ? { plotId: trimmedPlotId } : {}),
+			...(continueFromRunId !== undefined ? { continueFromRunId } : {}),
 		});
 	};
+
+	// warren-4b11: a continuation pre-fills the parent id from route state
+	// and is fixed for the life of the form — there's no picker for it.
+	const continueFromRunId = initialState.continueFromRunId;
 
 	const noAgents = !agents.isLoading && (agents.data?.agents.length ?? 0) === 0;
 	const noProjects = !projects.isLoading && (projects.data?.projects.length ?? 0) === 0;
@@ -206,6 +218,12 @@ export function NewRunPage() {
 				title="Dispatch run"
 				description="Spawn an agent against a project repo inside a fresh sandbox."
 			/>
+
+			{continueFromRunId !== undefined ? (
+				<p className="font-mono text-sm text-(--color-muted-foreground)">
+					↪ from {continueFromRunId}
+				</p>
+			) : null}
 
 			{noAgents ? (
 				<Card>

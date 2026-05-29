@@ -85,6 +85,13 @@
 			"when": 1779773497017,
 			"tag": "0011_add_plan_run_parent_run_id",
 			"breakpoints": true
+		},
+		{
+			"idx": 12,
+			"version": "7",
+			"when": 1780018237599,
+			"tag": "0012_silent_silverclaw",
+			"breakpoints": true
 		}
 	]
 }

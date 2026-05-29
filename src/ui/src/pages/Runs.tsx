@@ -257,6 +257,14 @@ export function RunsPage() {
 											>
 												{r.id}
 											</Link>
+											{r.parentRunId !== null ? (
+												<Link
+													to={`/runs/${encodeURIComponent(r.parentRunId)}`}
+													className="block font-mono text-xs text-(--color-muted-foreground) hover:underline"
+												>
+													↪ from {r.parentRunId}
+												</Link>
+											) : null}
 										</TableCell>
 										<TableCell className="whitespace-nowrap">{r.agentName}</TableCell>
 										<TableCell className="whitespace-nowrap font-mono text-xs">
