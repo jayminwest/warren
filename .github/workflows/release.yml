@@ -121,3 +121,32 @@ jobs:
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
         run: flyctl deploy --remote-only --app warren-deployed
+
+      - name: Ensure machines are started after deploy
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          APP=warren-deployed
+          # A crash-loop during deploy (e.g. broken entrypoint) can leave a
+          # machine in 'stopped' state even after a later release reports
+          # 'complete'. flyctl deploy does not auto-recover that machine, so
+          # detect stopped machines and start them, then fail loudly if any
+          # machine is still not running. See seed warren-f0d6.
+          STOPPED=$(flyctl machines list --app "$APP" --json \
+            | node -e 'const m=JSON.parse(require("fs").readFileSync(0,"utf8"));console.log(m.filter(x=>x.state!=="started").map(x=>x.id).join("\n"))')
+          if [ -n "$STOPPED" ]; then
+            echo "::warning::Machines not started after deploy: $STOPPED — attempting start"
+            for id in $STOPPED; do
+              echo "Starting machine $id"
+              flyctl machine start "$id" --app "$APP"
+            done
+          fi
+          # Re-check: every machine must be 'started' or the deploy did not
+          # actually bring the app back up.
+          NOT_STARTED=$(flyctl machines list --app "$APP" --json \
+            | node -e 'const m=JSON.parse(require("fs").readFileSync(0,"utf8"));console.log(m.filter(x=>x.state!=="started").map(x=>`${x.id} (${x.state})`).join(", "))')
+          if [ -n "$NOT_STARTED" ]; then
+            echo "::error::Deploy completed but machines are not running: $NOT_STARTED"
+            exit 1
+          fi
+          echo "All machines started."
