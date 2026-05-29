@@ -28,6 +28,7 @@ import {
 	uniqueIndex,
 } from "drizzle-orm/sqlite-core";
 import {
+	CLONE_KINDS,
 	EVENT_STREAMS,
 	INDEX_NAMES,
 	PLAN_RUN_CHILD_STATES,
@@ -216,6 +217,12 @@ export const runs = sqliteTable(
 		// Plain text (no FK) for symmetry with the other run back-links and to
 		// keep the column tolerant of a since-deleted parent row.
 		parentRunId: text("parent_run_id"),
+		// Chain-kind discriminator (warren-e96f). Tells a `parent_run_id`
+		// back-link apart: `continue` (warren-4b11) seeds the workspace from
+		// the parent's pushed branch; `replicate` (warren-e96f) re-dispatches
+		// the parent's exact config against the project default base. Null for
+		// root runs (no parent). See `CLONE_KINDS` in columns.ts.
+		cloneKind: text("clone_kind", { enum: CLONE_KINDS }),
 	},
 	(t) => [
 		index(INDEX_NAMES.runsState).on(t.state),

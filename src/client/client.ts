@@ -207,6 +207,7 @@ export class WarrenClient {
 		if (input.interactiveAgent !== undefined) body.interactiveAgent = input.interactiveAgent;
 		if (input.dispatcherHandle !== undefined) body.dispatcherHandle = input.dispatcherHandle;
 		if (input.continueFromRunId !== undefined) body.continueFromRunId = input.continueFromRunId;
+		if (input.cloneFromRunId !== undefined) body.cloneFromRunId = input.cloneFromRunId;
 		return this.createRun(body);
 	}
 

@@ -94,8 +94,9 @@ export interface RunRow {
 	burrowRunId: string | null;
 	seedId: string | null;
 	plotId: string | null;
-	/** Continuation back-link (warren-4b11); null for root runs. */
+	/** Chain back-link (warren-4b11 / warren-e96f); null for root runs. */
 	parentRunId: string | null;
+	cloneKind: "replicate" | "continue" | null;
 	mode: "batch" | "interactive";
 	renderedAgentJson: unknown;
 	state: RunState;
@@ -146,9 +147,10 @@ export interface ApiErrorEnvelope {
 }
 
 export interface CreateRunInput {
-	agent: string;
-	project: string;
-	prompt: string;
+	// agent/project/prompt: required unless cloneFromRunId is set (warren-e96f).
+	agent?: string;
+	project?: string;
+	prompt?: string;
 	ref?: string;
 	providerOverride?: string;
 	modelOverride?: string;
@@ -159,13 +161,14 @@ export interface CreateRunInput {
 	dispatcherHandle?: string;
 	/** Continuation parent (warren-4b11): seed the workspace from this run's branch. */
 	continueFromRunId?: string;
+	/** Replicate parent (warren-e96f): re-dispatch this run's config against the project base. */
+	cloneFromRunId?: string;
 }
 
 /**
  * Ergonomic input for {@link WarrenClient.dispatch}. Mirrors
- * {@link CreateRunInput} but uses the user-facing field names
- * (`model`, `branch`, `provider`) from `warren run` CLI flags. Mapped
- * onto CreateRunInput at request time.
+ * {@link CreateRunInput} but uses the user-facing field names (`model`,
+ * `branch`, `provider`) from `warren run` CLI flags, mapped at request time.
  */
 export interface DispatchRunInput {
 	agent: string;
@@ -184,6 +187,8 @@ export interface DispatchRunInput {
 	dispatcherHandle?: string;
 	/** Maps to CreateRunInput.continueFromRunId (warren-4b11). */
 	continueFromRunId?: string;
+	/** Maps to CreateRunInput.cloneFromRunId (warren-e96f). */
+	cloneFromRunId?: string;
 }
 
 export interface SpawnRunResponse {
@@ -213,11 +218,7 @@ export interface RefreshProjectResponse {
 	ref: string;
 }
 
-/**
- * Burrow inbox message priority. Mirrors `MESSAGE_PRIORITIES` from
- * `@os-eco/burrow-cli` — kept inline so the client package has no
- * server-side deps.
- */
+/** Burrow inbox message priority. Mirrors `MESSAGE_PRIORITIES` from `@os-eco/burrow-cli`. */
 export type MessagePriority = "low" | "normal" | "high" | "urgent";
 
 /** Burrow inbox message row returned by `POST /runs/:id/steer`. */

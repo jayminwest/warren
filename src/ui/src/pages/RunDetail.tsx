@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CircleStop, ExternalLink, Send, Trash2 } from "lucide-react";
+import { CircleStop, ExternalLink, RefreshCw, Send, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import {
@@ -172,23 +172,42 @@ export function RunDetailPage() {
 				</div>
 				<div className="flex flex-col items-end gap-1">
 					{isTerminal ? (
-						<Button
-							variant="outline"
-							onClick={() =>
-								navigate("/runs/new", {
-									state: {
-										continueFromRunId: r.id,
-									agent: r.agentName,
-									project: r.projectId ?? undefined,
-									plotId: r.plotId ?? undefined,
-									prompt: r.prompt,
-								} satisfies NewRunRouteState,
-								})
-							}
-						>
-							<Send className="h-4 w-4" />
-							Re-run with follow-up
-						</Button>
+						<div className="flex gap-2">
+							<Button
+								variant="outline"
+								onClick={() =>
+									navigate("/runs/new", {
+										state: {
+											cloneFromRunId: r.id,
+											agent: r.agentName,
+											project: r.projectId ?? undefined,
+											plotId: r.plotId ?? undefined,
+											prompt: r.prompt,
+										} satisfies NewRunRouteState,
+									})
+								}
+							>
+								<RefreshCw className="h-4 w-4" />
+								Re-run from scratch
+							</Button>
+							<Button
+								variant="outline"
+								onClick={() =>
+									navigate("/runs/new", {
+										state: {
+											continueFromRunId: r.id,
+											agent: r.agentName,
+											project: r.projectId ?? undefined,
+											plotId: r.plotId ?? undefined,
+											prompt: r.prompt,
+										} satisfies NewRunRouteState,
+									})
+								}
+							>
+								<Send className="h-4 w-4" />
+								Continue with follow-up
+							</Button>
+						</div>
 					) : (
 						<Button
 							variant="destructive"
@@ -249,12 +268,12 @@ export function RunDetailPage() {
 					</MetaCard>
 				) : null}
 				{r.parentRunId !== null ? (
-					<MetaCard label="Continued from">
+					<MetaCard label={r.cloneKind === "replicate" ? "Re-run of" : "Continued from"}>
 						<Link
 							to={`/runs/${encodeURIComponent(r.parentRunId)}`}
 							className="font-mono text-xs underline hover:text-(--color-primary)"
 						>
-							↪ {r.parentRunId}
+							{r.cloneKind === "replicate" ? "⟳" : "↪"} {r.parentRunId}
 						</Link>
 					</MetaCard>
 				) : null}

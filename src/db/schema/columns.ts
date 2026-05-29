@@ -46,6 +46,24 @@ export const RUN_MODES = ["batch", "interactive"] as const;
 export type RunMode = (typeof RUN_MODES)[number];
 
 /**
+ * Chain-kind discriminator for a run that carries a `parent_run_id`
+ * (warren-e96f). Both kinds share the parent back-link column but differ in
+ * workspace semantics:
+ *
+ *   - `continue` (warren-4b11) — the new run's workspace is seeded from the
+ *     parent run's pushed branch; a follow-up turn that builds on prior work.
+ *   - `replicate` (warren-e96f) — the new run is a fresh re-dispatch of the
+ *     parent's exact agent / model / project / prompt against the project's
+ *     default base (NOT the parent's pushed branch). Independent of whatever
+ *     the parent did — the parent might have failed before pushing.
+ *
+ * Nullable on the row: root runs (no parent) leave it null. TS-only narrowing
+ * (mx-2ab984); no SQL CHECK. Set at run-create time and never mutated.
+ */
+export const CLONE_KINDS = ["replicate", "continue"] as const;
+export type CloneKind = (typeof CLONE_KINDS)[number];
+
+/**
  * Failure-cause discriminator for a `failed` run (warren-3c40, warren-5165).
  * `state:failed` alone can't tell several different failure shapes apart.
  * Reap infers from the warren state on entry plus event content:

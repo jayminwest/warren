@@ -112,6 +112,14 @@ export interface RunRow {
 	 */
 	parentRunId: string | null;
 	/**
+	 * Chain-kind discriminator (warren-e96f) for a run carrying a
+	 * `parentRunId`: `'continue'` (warren-4b11 — workspace seeded from the
+	 * parent's pushed branch) vs `'replicate'` (warren-e96f — fresh
+	 * re-dispatch of the parent's exact agent/model/project/prompt against
+	 * the project default base). Null for root runs.
+	 */
+	cloneKind: "replicate" | "continue" | null;
+	/**
 	 * Run mode discriminator (pl-0344 step 1 / warren-67b6, step 4 /
 	 * warren-b3b9). `'batch'` is the legacy one-shot dispatch; `'interactive'`
 	 * is the respawn-per-turn primitive bound to a Plot. Pinned at row

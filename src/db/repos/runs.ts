@@ -15,6 +15,7 @@ import { NotFoundError, StateTransitionError, ValidationError } from "../../core
 import { generateId } from "../../core/ids.ts";
 import type { SqliteDrizzleDb } from "../client.ts";
 import type {
+	CloneKind,
 	PreviewState,
 	RunFailureReason,
 	RunMode,
@@ -79,10 +80,13 @@ export interface CreateRunInput {
 	 */
 	plotId?: string | null;
 	/**
-	 * Continuation back-link (warren-4b11): the prior run whose pushed branch
-	 * seeded this run's workspace. Null for root runs; plain text id, no FK.
+	 * Continuation/replicate back-link (warren-4b11 / warren-e96f). Null for
+	 * root runs; plain text id, no FK. `cloneKind` tells the two chain kinds
+	 * apart: `continue` (seed from parent's pushed branch) vs `replicate`.
 	 */
 	parentRunId?: string | null;
+	/** Chain kind (warren-e96f); null for root runs. */
+	cloneKind?: CloneKind | null;
 	now?: Date;
 }
 
@@ -130,6 +134,7 @@ export class RunsRepo {
 			seedId: input.seedId ?? null,
 			plotId: input.plotId ?? null,
 			parentRunId: input.parentRunId ?? null,
+			cloneKind: input.cloneKind ?? null,
 			renderedAgentJson: input.renderedAgentJson,
 			state: "queued",
 			failureReason: null,
@@ -270,15 +275,12 @@ export class RunsRepo {
 
 	/**
 	 * Filtered-set aggregates for the Runs page header (warren-ee50 /
-	 * pl-b0c0 step 1). Returns the full `total` count + cost rollup for
-	 * the same predicate the list*() siblings page over, so the UI can
-	 * show "all-time" totals even when only a window of rows is on
-	 * screen. `costTotalUsd` sums runs.cost_usd where it is non-null;
-	 * `costPricedCount` counts those rows. Ghost runs whose cost is only
-	 * recoverable via in-stream extraction (hydrateRunsUsage) are NOT
-	 * folded into the aggregate — that's a deliberate trade-off to keep
-	 * the header cheap (single DB pass) at the cost of a small
-	 * underestimate on terminal-but-uncheckpointed rows.
+	 * pl-b0c0 step 1). Returns the full `total` count + cost rollup for the
+	 * same predicate the list*() siblings page over. `costTotalUsd` sums
+	 * runs.cost_usd where non-null; `costPricedCount` counts those rows.
+	 * Ghost runs whose cost is only recoverable via in-stream extraction
+	 * (hydrateRunsUsage) are NOT folded in — a deliberate trade-off to keep
+	 * the header cheap (single DB pass) at a small underestimate.
 	 */
 	async aggregate(filter: { projectId?: string; agentName?: string } = {}): Promise<{
 		total: number;
@@ -313,13 +315,10 @@ export class RunsRepo {
 
 	/**
 	 * Filtered listing for the cost analytics endpoint (warren-cf63 /
-	 * pl-b0c0 step 6). `from`/`to` clip on `startedAt` as ISO8601 strings —
-	 * text comparison is lexicographic but ISO8601 is order-preserving so
-	 * the comparison degenerates to chronological. Both bounds are
-	 * optional; omitting both returns every row (the caller is responsible
-	 * for bounding the window — the endpoint defaults to the last 30 days).
-	 * Rows with a null `startedAt` are excluded when either bound is set,
-	 * mirroring how a SQL date filter naturally drops them.
+	 * pl-b0c0 step 6). `from`/`to` clip on `startedAt` as ISO8601 strings
+	 * (lexicographic == chronological). Both optional; omitting both returns
+	 * every row (the endpoint defaults to the last 30 days). Rows with a null
+	 * `startedAt` are excluded when either bound is set, mirroring SQL.
 	 */
 	async listForAnalytics(
 		filter: { projectId?: string; from?: string; to?: string } = {},

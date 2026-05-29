@@ -8,7 +8,7 @@
 import type { Burrow, Run as BurrowRun } from "@os-eco/burrow-cli";
 import type { BurrowClientPool } from "../../burrow-client/pool.ts";
 import type { Repos } from "../../db/repos/index.ts";
-import type { RunMode, RunRow } from "../../db/schema.ts";
+import type { CloneKind, RunMode, RunRow } from "../../db/schema.ts";
 import type { SpawnFn as ProjectSpawnFn } from "../../projects/clone.ts";
 import type { ProjectsConfig } from "../../projects/config.ts";
 import type { refreshProject } from "../../projects/manage.ts";
@@ -93,6 +93,17 @@ export interface SpawnRunInput {
 	 * Overrides `ref` when both are provided — the continuation base wins.
 	 */
 	readonly parentRunId?: string;
+	/**
+	 * Chain-kind discriminator (warren-e96f) for a run carrying `parentRunId`.
+	 * Defaults to `continue` (warren-4b11 semantics: seed the workspace from
+	 * the parent's pushed branch) so existing continuation callers are
+	 * unchanged. `replicate` flips the base-ref resolution to the caller's
+	 * explicit `ref` (or the project default branch) instead of the parent's
+	 * pushed branch — a fresh re-dispatch of the parent's config that is
+	 * independent of whatever the parent did. Persisted to `runs.clone_kind`.
+	 * Ignored when `parentRunId` is unset (root run → null clone_kind).
+	 */
+	readonly cloneKind?: CloneKind;
 	/** Override the project refresher; defaults to `refreshProject`. */
 	readonly refreshProjectFn?: typeof refreshProject;
 	/**

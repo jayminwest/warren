@@ -92,6 +92,13 @@
 			"when": 1780018237599,
 			"tag": "0012_silent_silverclaw",
 			"breakpoints": true
+		},
+		{
+			"idx": 13,
+			"version": "7",
+			"when": 1780080738337,
+			"tag": "0013_aberrant_next_avengers",
+			"breakpoints": true
 		}
 	]
 }

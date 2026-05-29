@@ -1,0 +1,1 @@
+ALTER TABLE `runs` ADD `clone_kind` text;

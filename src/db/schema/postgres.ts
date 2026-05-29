@@ -35,6 +35,7 @@ import {
 	uniqueIndex,
 } from "drizzle-orm/pg-core";
 import {
+	CLONE_KINDS,
 	EVENT_STREAMS,
 	INDEX_NAMES,
 	PLAN_RUN_CHILD_STATES,
@@ -126,6 +127,9 @@ export const runs = pgTable(
 		// Mirror of sqlite parent_run_id (warren-4b11). Continuation back-link
 		// for re-run-with-follow-up; see sqlite.ts for the full shape + intent.
 		parentRunId: text("parent_run_id"),
+		// Mirror of sqlite clone_kind (warren-e96f). Discriminates `continue`
+		// vs `replicate` chain links; see sqlite.ts for the full shape + intent.
+		cloneKind: text("clone_kind", { enum: CLONE_KINDS }),
 	},
 	(t) => [
 		index(INDEX_NAMES.runsState).on(t.state),

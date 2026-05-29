@@ -1,5 +1,6 @@
 import { join } from "node:path";
 import { ValidationError } from "../../../core/errors.ts";
+import { readProviderFrontmatter } from "../../../registry/schema.ts";
 import {
 	appendUserMessage,
 	buildInteractivePrompt,
@@ -80,30 +81,124 @@ async function buildDispatchedPrompt(
 	}
 }
 
+/**
+ * Defaults derived from a prior run for the `cloneFromRunId` re-run path
+ * (warren-e96f). Every field is a fallback: an explicit body field on
+ * `POST /runs` still wins, so the UI can prefill `/runs/new` and let the
+ * operator tweak a knob, while a true one-click re-run sends only
+ * `cloneFromRunId` and inherits the parent's config verbatim.
+ */
+interface CloneDefaults {
+	readonly agentName: string;
+	readonly projectId: string;
+	readonly prompt: string;
+	readonly providerOverride?: string;
+	readonly modelOverride?: string;
+}
+
+/**
+ * Resolve the prior run referenced by `cloneFromRunId` into dispatch
+ * defaults (warren-e96f). The effective provider/model are read back off the
+ * parent's frozen `rendered_agent_json` so the replica fires onto the exact
+ * same model the parent used, regardless of which slot (override vs project
+ * default vs agent frontmatter) originally supplied it.
+ */
+async function resolveCloneDefaults(
+	deps: ServerDeps,
+	cloneFromRunId: string,
+): Promise<CloneDefaults> {
+	const parent = await deps.repos.runs.require(cloneFromRunId);
+	if (parent.projectId === null) {
+		throw new ValidationError(
+			`run ${cloneFromRunId} has no project; cannot re-run a run whose project was deleted`,
+		);
+	}
+	const rendered = parent.renderedAgentJson as { frontmatter?: Record<string, unknown> };
+	const fm = readProviderFrontmatter(rendered.frontmatter ?? {});
+	return {
+		agentName: parent.agentName,
+		projectId: parent.projectId,
+		prompt: parent.prompt,
+		...(fm.provider !== undefined ? { providerOverride: fm.provider } : {}),
+		...(fm.model !== undefined ? { modelOverride: fm.model } : {}),
+	};
+}
+
+/**
+ * Resolved chain + identity fields for a `POST /runs` dispatch
+ * (warren-4b11 + warren-e96f). Factored out of `createRunHandler` to keep
+ * the handler's cognitive complexity under the project ceiling: the
+ * continuation/replicate fallbacks add several `??` chains that all collapse
+ * here.
+ */
+interface ResolvedDispatchFields {
+	readonly agentName: string;
+	readonly projectId: string;
+	readonly prompt: string;
+	readonly providerOverride?: string;
+	readonly modelOverride?: string;
+	readonly parentRunId?: string;
+	readonly cloneKind?: "replicate";
+}
+
+async function resolveDispatchFields(
+	deps: ServerDeps,
+	body: Record<string, unknown>,
+	mode: "batch" | "interactive",
+): Promise<ResolvedDispatchFields> {
+	// warren-4b11: "re-run with follow-up" — base the workspace on the prior
+	// run's pushed branch. Accept both `continueFromRunId` (the UI affordance
+	// name) and `parentRunId` (the column name); the former wins.
+	const continueFromRunId =
+		optionalString(body, "continueFromRunId") ?? optionalString(body, "parentRunId");
+	// warren-e96f: "re-run from scratch" — replicate the prior run's exact
+	// agent / model / project / prompt against the project default base.
+	// Mutually exclusive with the continuation path; continuation wins.
+	const cloneFromRunId = optionalString(body, "cloneFromRunId");
+	const clone =
+		continueFromRunId === undefined && cloneFromRunId !== undefined
+			? await resolveCloneDefaults(deps, cloneFromRunId)
+			: undefined;
+
+	const interactiveAgent = optionalString(body, "interactiveAgent");
+	const agentName =
+		mode === "interactive" && interactiveAgent !== undefined
+			? interactiveAgent
+			: (optionalString(body, "agent") ?? clone?.agentName ?? requireString(body, "agent"));
+
+	return {
+		agentName,
+		projectId:
+			optionalString(body, "project") ?? clone?.projectId ?? requireString(body, "project"),
+		prompt: optionalString(body, "prompt") ?? clone?.prompt ?? requireString(body, "prompt"),
+		providerOverride: optionalString(body, "providerOverride") ?? clone?.providerOverride,
+		modelOverride: optionalString(body, "modelOverride") ?? clone?.modelOverride,
+		// A replicate records the same `parent_run_id` column as a continuation;
+		// the `clone_kind` discriminator keeps them apart.
+		...(continueFromRunId !== undefined ? { parentRunId: continueFromRunId } : {}),
+		...(clone !== undefined && cloneFromRunId !== undefined
+			? { parentRunId: cloneFromRunId, cloneKind: "replicate" as const }
+			: {}),
+	};
+}
+
 export function createRunHandler(deps: ServerDeps): RouteHandler {
 	return async (ctx) => {
 		const body = await readJsonBody(ctx);
 		const mode = parseRunMode(body);
-		const ref = optionalString(body, "ref");
-		const providerOverride = optionalString(body, "providerOverride");
-		const modelOverride = optionalString(body, "modelOverride");
 		const seedId = optionalString(body, "seedId");
 		const plotId = optionalString(body, "plotId");
-		// warren-4b11: "re-run with follow-up" — base the workspace on the
-		// prior run's pushed branch and record the parent link. Accept both
-		// `continueFromRunId` (the UI affordance name) and `parentRunId` (the
-		// column name); the former wins when both are present.
-		const parentRunId =
-			optionalString(body, "continueFromRunId") ?? optionalString(body, "parentRunId");
+		const ref = optionalString(body, "ref");
 		const dispatcherHandle = optionalString(body, "dispatcherHandle");
-
-		const interactiveAgent = optionalString(body, "interactiveAgent");
-		const agentName =
-			mode === "interactive" && interactiveAgent !== undefined
-				? interactiveAgent
-				: requireString(body, "agent");
-		const projectId = requireString(body, "project");
-		const prompt = requireString(body, "prompt");
+		const {
+			agentName,
+			projectId,
+			prompt,
+			providerOverride,
+			modelOverride,
+			parentRunId,
+			cloneKind,
+		} = await resolveDispatchFields(deps, body, mode);
 
 		await validateDispatchPlotAndMode(mode, plotId, deps.plotResolver);
 
@@ -133,6 +228,7 @@ export function createRunHandler(deps: ServerDeps): RouteHandler {
 			seedId,
 			plotId,
 			...(parentRunId !== undefined ? { parentRunId } : {}),
+			...(cloneKind !== undefined ? { cloneKind } : {}),
 			dispatcherHandle,
 			warrenConfigs: deps.warrenConfigs,
 			runBranchPrefixDefault: deps.runBranchPrefixDefault,

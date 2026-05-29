@@ -189,6 +189,59 @@ describe("POST /runs — spawn flow", () => {
 		expect(persisted.parentRunId).toBe(parent.id);
 	});
 
+	test("cloneFromRunId re-runs the parent's config with clone_kind=replicate (warren-e96f)", async () => {
+		const project = (await repos.projects.listAll())[0];
+		if (!project) throw new Error("project missing");
+
+		const parent = await repos.runs.create({
+			agentName: "refactor-bot",
+			projectId: project.id,
+			prompt: "the original prompt",
+			renderedAgentJson: {
+				name: "refactor-bot",
+				version: 1,
+				sections: { system: "x" },
+				frontmatter: { provider: "anthropic", model: "claude-sonnet-4-6" },
+			},
+			trigger: "manual",
+		});
+
+		const burrowClient = makeBurrowClient(
+			{ burrowId: "bur_clone0000000", burrowRunId: "run_clonerun0000", workspacePath: "/tmp/ws" },
+			[],
+		);
+		const deps = await depsFor(repos, burrowClient);
+		handle = startServer(deps, {
+			transport: { kind: "tcp", hostname: "127.0.0.1", port: 0 },
+			auth: NO_AUTH,
+			logger: silentLogger,
+		});
+
+		// One-click re-run: only cloneFromRunId is sent; agent/project/prompt
+		// are inherited from the parent.
+		const res = await fetch(`${tcpUrl(handle)}/runs`, {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({ cloneFromRunId: parent.id }),
+		});
+		expect(res.status).toBe(201);
+		const body = (await res.json()) as {
+			run: { id: string; parentRunId: string | null; cloneKind: string | null };
+		};
+		expect(body.run.parentRunId).toBe(parent.id);
+		expect(body.run.cloneKind).toBe("replicate");
+
+		const persisted = await repos.runs.require(body.run.id);
+		expect(persisted.agentName).toBe("refactor-bot");
+		expect(persisted.prompt).toBe("the original prompt");
+		expect(persisted.projectId).toBe(project.id);
+		expect(persisted.cloneKind).toBe("replicate");
+		// Effective model is replicated from the parent's frozen agent json.
+		const fm = (persisted.renderedAgentJson as { frontmatter?: Record<string, unknown> })
+			.frontmatter;
+		expect(fm?.model).toBe("claude-sonnet-4-6");
+	});
+
 	test("invalid body params → 400 validation_error", async () => {
 		const calls: { method: string; path: string; body: unknown }[] = [];
 		const burrowClient = makeBurrowClient(
