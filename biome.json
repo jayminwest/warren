@@ -110,7 +110,6 @@
 				"src/server/errors.ts",
 				"src/server/handlers/plan-runs.ts",
 				"src/server/handlers/plot-plan-runs.ts",
-				"src/server/handlers/plots.ts",
 				"src/server/handlers/projects.ts",
 				"src/server/handlers/runs.ts",
 				"src/server/integration.multi-worker.test.ts",

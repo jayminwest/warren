@@ -23,8 +23,6 @@
 		"src/server/handlers/projects.settings.test.ts": 685,
 		"src/server/handlers/plot-plan-runs.test.ts": 640,
 		"src/server/handlers/plots.list.test.ts": 700,
-		"src/server/handlers/plots.test.ts": 2442,
-		"src/server/handlers/plots.ts": 1010,
 		"src/server/handlers/plots.workbench.test.ts": 766,
 		"src/server/integration.multi-worker.test.ts": 553,
 		"src/server/server.test.ts": 536

@@ -4,13 +4,12 @@
  * Extracted from `src/server/handlers/plots.ts` (warren-3f46 / pl-3255 step 1).
  */
 
-import { NotFoundError } from "../../../core/errors.ts";
-import { ProjectLacksPlotError } from "../../../plan-runs/errors.ts";
 import { defaultPlotSyncer } from "../../../plots/index.ts";
 import { loadWarrenConfig } from "../../../warren-config/index.ts";
 import { jsonResponse } from "../../response.ts";
 import type { RouteHandler, ServerDeps } from "../../types.ts";
 import { defaultSpawn, requireParam } from "../index.ts";
+import { resolvePlotProject } from "./shared.ts";
 
 function triggerBackgroundSync(
 	deps: ServerDeps,
@@ -53,25 +52,7 @@ function triggerBackgroundSync(
 function syncPlotHandler(deps: ServerDeps): RouteHandler {
 	return async (ctx) => {
 		const plotId = requireParam(ctx, "id");
-
-		const project =
-			deps.plotResolver !== undefined ? await deps.plotResolver.resolve(plotId) : null;
-		if (project === null) {
-			throw new NotFoundError(`plot not found: ${plotId}`, {
-				recoveryHint:
-					"check the plot id; only Plots in projects with hasPlot=true are visible to warren",
-			});
-		}
-
-		if (!project.hasPlot) {
-			throw new ProjectLacksPlotError(
-				`project ${project.id} no longer has a .plot/ directory; cannot sync plot ${plotId}`,
-				{
-					recoveryHint:
-						"refresh the project so warren picks up the current .plot/ state, or recreate .plot/ via `plot init`",
-				},
-			);
-		}
+		const project = await resolvePlotProject(deps, plotId, "sync plot");
 
 		const syncer = deps.plotSyncer ?? defaultPlotSyncer;
 		const token = deps.autoOpenPr?.token ?? "";
