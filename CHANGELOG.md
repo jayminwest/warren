@@ -7,6 +7,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.3] — 2026-05-29
+
+Run Analytics dashboard (pl-ad0f / warren-a00a): context-usage and
+agent-behavior mining built on the existing Cost Analytics architecture.
+Pure, dialect-agnostic aggregator modules under `src/runs/analytics/`,
+thin `RouteHandler` factories, two new read-only endpoints, and a new
+UI page with recharts visualizations.
+
+### Added
+
+- **`runs(analytics)`** — run-level analytics aggregator
+  (`src/runs/analytics/run-metrics.ts`) and `GET /analytics/runs`
+  handler: KPIs (run count, success rate, avg/median/p95 duration, avg
+  context tokens, avg/total cost), a runs-per-day time-series bucketed
+  by state, per-agent and per-model/provider breakdowns, a
+  failure-reason breakdown, and top-seeds-by-context — all honoring
+  `projectId` + `from`/`to` filters (warren-368e, warren-0692).
+- **`runs(analytics)`** — command-mining
+  (`src/runs/analytics/command-mining.ts`) and derived-insights
+  (`src/runs/analytics/insights.ts`) aggregators plus the
+  `GET /analytics/behavior` handler: command frequency/failure/retry
+  ranking with `tool_result.is_error` correlation via `tool_use_id`,
+  retry-loop + stuck-score detection, os-eco command highlighting
+  (ml/sd/gh/bun check:all), and typed severity-ranked insight callouts
+  (warren-8976, warren-1788, warren-5d50).
+- **`db`** — `EventsRepo.listToolEventsForRuns(runIds, {limit?})`
+  returning capped `tool_use`/`tool_result` rows for behavior mining
+  (warren-e355).
+- **`ui(analytics)`** — RunAnalytics page reachable from the nav,
+  mirroring the CostAnalytics filter UX: KPI cards, recharts graphs
+  (runs-over-time, avg-context-per-agent, top-seeds-by-context,
+  failure-reason), per-agent/model tables, insights callout cards, a
+  command-category bar, and a stuck-command leaderboard with os-eco
+  highlighting (warren-df6e, warren-638a, warren-436a).
+- **`ui(deps)`** — recharts (`^3.8.1`) added to `src/ui` as the first
+  chart library, with the bundle-size ratchet re-baselined accordingly
+  (warren-876c).
+
 ## [0.7.2] — 2026-05-28
 
 Frontend design-system revamp (pl-55a3 / warren-6358) plus a wave of
