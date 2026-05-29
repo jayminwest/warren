@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { RunEvent } from "@os-eco/burrow-cli";
-import { detectRuntimeTerminal } from "./terminal-detect.ts";
+import { detectRuntimeTerminal, isPiAgentEnd } from "./terminal-detect.ts";
 
 /**
  * warren-6fcc / pl-5516 step 2: focused unit coverage for
@@ -71,5 +71,52 @@ describe("detectRuntimeTerminal — pi agent_end", () => {
 	test("non-state_change kind is ignored", () => {
 		const ev = envelope({ type: "agent_end", stopReason: "error", errorMessage: "x" });
 		expect(detectRuntimeTerminal({ ...ev, kind: "text" })).toBeNull();
+	});
+
+	test("null or non-object payload is ignored", () => {
+		const ev = envelope({ type: "agent_end" });
+		expect(detectRuntimeTerminal({ ...ev, payload: null })).toBeNull();
+		expect(detectRuntimeTerminal({ ...ev, payload: "agent_end" })).toBeNull();
+	});
+
+	test("unknown envelope type yields null", () => {
+		expect(detectRuntimeTerminal(envelope({ type: "assistant" }))).toBeNull();
+	});
+});
+
+describe("detectRuntimeTerminal — claude-code result", () => {
+	test("result with is_error=true is failed", () => {
+		expect(detectRuntimeTerminal(envelope({ type: "result", is_error: true }))).toBe("failed");
+	});
+
+	test("result without is_error is succeeded", () => {
+		expect(detectRuntimeTerminal(envelope({ type: "result", is_error: false }))).toBe("succeeded");
+		expect(detectRuntimeTerminal(envelope({ type: "result" }))).toBe("succeeded");
+	});
+});
+
+describe("isPiAgentEnd", () => {
+	test("matches pi agent_end on the state_change/system carrier", () => {
+		expect(isPiAgentEnd(envelope({ type: "agent_end", stopReason: "end_turn" }))).toBe(true);
+	});
+
+	test("rejects claude-code result envelope (pi-only concern)", () => {
+		expect(isPiAgentEnd(envelope({ type: "result", is_error: false }))).toBe(false);
+	});
+
+	test("rejects non-system stream", () => {
+		const ev = envelope({ type: "agent_end" });
+		expect(isPiAgentEnd({ ...ev, stream: "stdout" })).toBe(false);
+	});
+
+	test("rejects non-state_change kind", () => {
+		const ev = envelope({ type: "agent_end" });
+		expect(isPiAgentEnd({ ...ev, kind: "text" })).toBe(false);
+	});
+
+	test("rejects null or non-object payload", () => {
+		const ev = envelope({ type: "agent_end" });
+		expect(isPiAgentEnd({ ...ev, payload: null })).toBe(false);
+		expect(isPiAgentEnd({ ...ev, payload: 42 })).toBe(false);
 	});
 });
