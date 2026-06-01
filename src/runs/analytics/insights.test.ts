@@ -45,8 +45,8 @@ function seed(seedId: string, contextTokensTotal: number, runs = 1): SeedContext
 	};
 }
 
-function agent(key: string, succeeded: number, failed: number): RunGroupBucket {
-	const terminal = succeeded + failed;
+function agent(key: string, succeeded: number, failed: number, cancelled = 0): RunGroupBucket {
+	const terminal = succeeded + failed + cancelled;
 	return {
 		key,
 		runs: terminal,
@@ -142,6 +142,15 @@ describe("buildInsights", () => {
 		const i = find(buildInsights({ metrics, mining: emptyMining() }), "worst-success-agent");
 		expect(i.severity).toBe("critical");
 		expect(i.subject).toBe("flaky");
+	});
+
+	test("reports the rate and count over the same cancelled-inclusive terminal denominator", () => {
+		// 1 succeeded, 4 failed, 5 cancelled -> 10 terminal runs, successRate 0.1.
+		const metrics = { ...emptyMetrics(), byAgent: [agent("flaky", 1, 4, 5)] };
+		const i = find(buildInsights({ metrics, mining: emptyMining() }), "worst-success-agent");
+		expect(i.value).toBe(0.1);
+		// Count must match the denominator behind the rate, not succeeded + failed (5).
+		expect(i.detail).toContain("10% of 10 terminal run(s)");
 	});
 
 	test("ignores agents below the minimum terminal-run sample", () => {

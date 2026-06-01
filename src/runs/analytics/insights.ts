@@ -137,11 +137,22 @@ function highestContextSeed(metrics: RunMetrics): Insight | null {
 	};
 }
 
+/**
+ * Terminal-run count consistent with `RunGroupBucket.successRate`, which is
+ * `succeeded / (succeeded + failed + cancelled)`. The bucket does not expose
+ * `cancelled`, so recover the denominator from the reported rate when it is
+ * positive; fall back to `succeeded + failed` only when the rate is 0 (where
+ * `succeeded` is 0 and the rate carries no denominator information).
+ */
+function terminalRuns(g: RunGroupBucket): number {
+	if (g.successRate !== null && g.successRate > 0) return Math.round(g.succeeded / g.successRate);
+	return g.succeeded + g.failed;
+}
+
 function worstSuccessAgent(metrics: RunMetrics): Insight | null {
 	let worst: RunGroupBucket | null = null;
 	for (const g of metrics.byAgent) {
-		const terminal = g.succeeded + g.failed;
-		if (g.successRate === null || terminal < MIN_AGENT_TERMINAL_RUNS) continue;
+		if (g.successRate === null || terminalRuns(g) < MIN_AGENT_TERMINAL_RUNS) continue;
 		if (worst === null || g.successRate < (worst.successRate ?? 1)) worst = g;
 	}
 	if (worst === null || worst.successRate === null) return null;
@@ -150,9 +161,9 @@ function worstSuccessAgent(metrics: RunMetrics): Insight | null {
 		kind: "worst-success-agent",
 		severity: worst.successRate < AGENT_CRITICAL_SUCCESS_RATE ? "critical" : "warning",
 		title: "Worst-performing agent",
-		detail: `Agent "${worst.key}" succeeded in only ${pct(worst.successRate)} of ${
-			worst.succeeded + worst.failed
-		} terminal run(s).`,
+		detail: `Agent "${worst.key}" succeeded in only ${pct(worst.successRate)} of ${terminalRuns(
+			worst,
+		)} terminal run(s).`,
 		value: worst.successRate,
 		subject: worst.key,
 	};
