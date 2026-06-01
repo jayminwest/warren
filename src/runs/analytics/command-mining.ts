@@ -228,9 +228,11 @@ export function categorize(generalized: string): CommandCategory {
 	const bin = parts[0] ?? "";
 	if (bin === "git") return "vcs";
 	if (PKG_MANAGERS.has(bin)) {
-		if (generalized.includes("test")) return "test";
+		// Token-precise matching: a script named `latest` must not match `test`
+		// and `rebuild` must not match `build` (warren-d4d5).
+		if (parts.includes("test")) return "test";
 		if (PKG_SUBS.has(parts[1] ?? "")) return "package";
-		if (generalized.includes("build")) return "build";
+		if (parts.includes("build")) return "build";
 		return "other";
 	}
 	if (["tsc", "vite", "make", "cargo", "tsup", "esbuild", "webpack"].includes(bin)) return "build";

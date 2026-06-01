@@ -105,6 +105,11 @@ describe("categorize", () => {
 		expect(categorize("curl")).toBe("network");
 		expect(categorize("python")).toBe("other");
 	});
+
+	test("uses token-precise matching so script names are not misclassified", () => {
+		expect(categorize(generalizeCommand("bun run latest") ?? "")).toBe("other");
+		expect(categorize(generalizeCommand("bun run rebuild") ?? "")).toBe("other");
+	});
 });
 
 describe("buildCommandMining", () => {
