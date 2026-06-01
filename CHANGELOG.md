@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.7] — 2026-06-01
+
+Nightwatch patrol (pl-c046): three small, independent fixes to the
+run-analytics command-mining and insights paths.
+
+### Fixed
+
+- **`runs/analytics(command-mining)`** — `generalizeBun` no longer
+  collapses every `bun <x>` form into `bun run <x>`, so `bun install`
+  stops surfacing as a phantom `bun run install` script. Bun's own
+  subcommands (`install`, `add`, `x`, `pm`, …) are recognized and
+  emitted as `bun <sub>`, leaving the run-script family untouched
+  (warren-235e).
+- **`runs/analytics(command-mining)`** — `categorize()` now uses
+  token-precise matching for package-manager test/build categories so
+  script names like `latest` and `rebuild` are no longer misclassified
+  as `test` via substring matching (warren-d4d5).
+- **`runs/analytics(insights)`** — the worst-success-agent denominator
+  is now aligned with the success rate it reports (warren-4cfa).
+
 ## [0.7.6] — 2026-05-29
 
 Plan-run robustness: make a plan that references a child seed which
