@@ -51,6 +51,16 @@ describe("generalizeCommand", () => {
 		expect(generalizeCommand("bun run test src/x.test.ts")).toBe("bun test");
 	});
 
+	test("keeps bun subcommands distinct from run scripts", () => {
+		expect(generalizeCommand("bun install")).toBe("bun install");
+		expect(generalizeCommand("bun i")).toBe("bun i");
+		expect(generalizeCommand("bun add lodash")).toBe("bun add");
+		expect(generalizeCommand("bun remove lodash")).toBe("bun remove");
+		expect(generalizeCommand("bun x prettier")).toBe("bun x");
+		expect(generalizeCommand("bun pm ls")).toBe("bun pm");
+		expect(generalizeCommand("bun build ./index.ts")).toBe("bun build");
+	});
+
 	test("uses the trailing &&-joined segment", () => {
 		expect(generalizeCommand("cd /workspace && bun test")).toBe("bun test");
 		expect(generalizeCommand("cd a && cd b && git status")).toBe("git status");

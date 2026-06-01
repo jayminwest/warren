@@ -187,9 +187,29 @@ export function generalizeCommand(raw: string): string | null {
 	return sub === undefined ? base : `${base} ${sub}`;
 }
 
-/** `bun` / `bun run` normalize to the same `bun run <script>` family. */
+/**
+ * Bun's own subcommands, which must not be collapsed into the
+ * `bun run <script>` family — `bun install` is package management, not a
+ * user script named `install`. `run` and `test` are handled separately.
+ */
+const BUN_SUBCOMMANDS = new Set(
+	"install i add a remove rm update outdated link unlink pm x create init build upgrade publish patch audit why exec repl".split(
+		" ",
+	),
+);
+
+/**
+ * `bun` / `bun run` normalize to the same `bun run <script>` family, but bun's
+ * own subcommands (`bun install`, `bun add`, …) keep their `bun <sub>` shape
+ * rather than masquerading as a run script.
+ */
 function generalizeBun(rest: readonly string[]): string {
-	const args = rest[0] === "run" ? rest.slice(1) : rest;
+	const first = rest[0];
+	if (first === undefined) return "bun";
+	if (first !== "run" && first !== "test" && BUN_SUBCOMMANDS.has(first)) {
+		return `bun ${first}`;
+	}
+	const args = first === "run" ? rest.slice(1) : rest;
 	const script = args[0];
 	if (script === undefined) return "bun";
 	if (script === "test") return "bun test";
