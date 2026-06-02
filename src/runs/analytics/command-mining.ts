@@ -222,17 +222,24 @@ export function isOsEcoCommand(generalized: string): boolean {
 	return generalized.startsWith("bun run check:");
 }
 
+// True when any token's `:`-delimited segments exactly match `segment`, so
+// `test:unit`/`lint:test` match `test` while `latest` does not (warren-1f19).
+function hasSegment(parts: readonly string[], segment: string): boolean {
+	return parts.some((part) => part.split(":").includes(segment));
+}
+
 export function categorize(generalized: string): CommandCategory {
 	if (isOsEcoCommand(generalized)) return "os-eco";
 	const parts = generalized.split(" ");
 	const bin = parts[0] ?? "";
 	if (bin === "git") return "vcs";
 	if (PKG_MANAGERS.has(bin)) {
-		// Token-precise matching: a script named `latest` must not match `test`
-		// and `rebuild` must not match `build` (warren-d4d5).
-		if (parts.includes("test")) return "test";
+		// Token- and segment-precise matching: `latest`/`rebuild` must not match
+		// `test`/`build` (warren-d4d5), while colon-namespaced scripts like
+		// `test:unit`/`build:ui` bucket by their matching segment (warren-1f19).
+		if (hasSegment(parts, "test")) return "test";
 		if (PKG_SUBS.has(parts[1] ?? "")) return "package";
-		if (parts.includes("build")) return "build";
+		if (hasSegment(parts, "build")) return "build";
 		return "other";
 	}
 	if (["tsc", "vite", "make", "cargo", "tsup", "esbuild", "webpack"].includes(bin)) return "build";

@@ -110,6 +110,16 @@ describe("categorize", () => {
 		expect(categorize(generalizeCommand("bun run latest") ?? "")).toBe("other");
 		expect(categorize(generalizeCommand("bun run rebuild") ?? "")).toBe("other");
 	});
+
+	test("buckets colon-namespaced scripts by their matching segment", () => {
+		expect(categorize(generalizeCommand("bun run test:unit") ?? "")).toBe("test");
+		expect(categorize(generalizeCommand("bun run build:ui") ?? "")).toBe("build");
+		// Direct (already-generalized) colon scripts also bucket by segment.
+		expect(categorize("bun run lint:test")).toBe("test");
+		// Non-matching colon scripts still fall through to `other`.
+		expect(categorize(generalizeCommand("bun run latest:tag") ?? "")).toBe("other");
+		expect(categorize(generalizeCommand("bun run prebuild:assets") ?? "")).toBe("other");
+	});
 });
 
 describe("buildCommandMining", () => {
