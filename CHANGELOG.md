@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.8] — 2026-06-02
+
+Nightwatch patrol (pl-f6e3): two small, independent fixes to the
+run-analytics command-mining and insights-docs paths.
+
+### Fixed
+
+- **`runs/analytics(command-mining)`** — `categorize()` now matches
+  package-manager `test`/`build` categories on a token's `:`-delimited
+  segments, so colon-namespaced scripts like `test:unit` and `build:ui`
+  bucket correctly while names like `latest`/`rebuild` still do not
+  (warren-1f19).
+
+### Documentation
+
+- **`runs/analytics(insights)`** — corrected the `buildInsights` /
+  `SteeringSignals` docs that advertised `steering-anomaly` /
+  `pause-anomaly` callouts as live. They are latent: no production
+  caller (notably `GET /analytics/behavior`) passes a `SteeringSignals`
+  bundle, so those kinds never fire today (warren-2e86).
+
 ## [0.7.7] — 2026-06-01
 
 Nightwatch patrol (pl-c046): three small, independent fixes to the
