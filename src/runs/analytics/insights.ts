@@ -9,8 +9,8 @@
  * (step 10) renders as severity-coded cards above the dense tables.
  *
  * It takes the already-computed {@link RunMetrics} + {@link CommandMining}
- * rollups (plus an optional {@link SteeringSignals} bundle the handler counts
- * while scanning events) and derives at most one {@link Insight} per category:
+ * rollups (plus an optional {@link SteeringSignals} bundle) and derives at most
+ * one {@link Insight} per category:
  *
  *   - `highest-context-seed`: the seed burning the most context tokens
  *   - `worst-success-agent`: the agent with the lowest success rate (only when
@@ -22,6 +22,13 @@
  *     its peers' median
  *   - `steering-anomaly`: a high share of runs needing mid-run human steering
  *   - `pause-anomaly`: runs that stalled until their pause timed out
+ *
+ * NOTE: the `steering-anomaly` / `pause-anomaly` callouts are latent. They
+ * fire only when a caller passes the optional {@link SteeringSignals} bundle,
+ * and no production code currently does so — the `GET /analytics/behavior`
+ * handler calls `buildInsights` without `steering`, so these two kinds never
+ * appear in the live endpoint's response today. The machinery is retained for
+ * a future caller that tallies steering/pause counters while scanning events.
  *
  * Every callout carries a typed `kind`, a `severity`, a numeric `value` (the
  * metric that triggered it) and a `subject` (the seed / agent / command /
@@ -62,8 +69,11 @@ export interface Insight {
 }
 
 /**
- * Steering / pause counters the handler tallies while scanning events. All
+ * Steering / pause counters a caller may tally while scanning events. All
  * optional — when omitted (or zeroed) the steering/pause insights are skipped.
+ * No production caller currently supplies this bundle (the
+ * `GET /analytics/behavior` handler omits it), so the steering/pause insights
+ * are dormant until a future caller wires it up.
  */
 export interface SteeringSignals {
 	readonly totalRuns: number;

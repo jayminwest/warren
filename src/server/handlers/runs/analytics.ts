@@ -145,6 +145,11 @@ export function listRunAnalyticsHandler(deps: ServerDeps): RouteHandler {
  * ranked, severity-coded callout list (`buildInsights`). The run-level rollup
  * itself stays on `/analytics/runs` — this endpoint returns just the behavior
  * layers (`mining` + `insights`) so the fast view can render independently.
+ *
+ * Note: `buildInsights` is called without a {@link SteeringSignals} bundle, so
+ * the `steering-anomaly` / `pause-anomaly` callouts never fire here — the
+ * handler does not currently tally steering/pause counters from the event
+ * trace. Only the metrics/mining-derived insights appear in this response.
  */
 export function listBehaviorAnalyticsHandler(deps: ServerDeps): RouteHandler {
 	return async (ctx) => {
