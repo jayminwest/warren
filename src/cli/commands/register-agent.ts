@@ -1,7 +1,7 @@
 /**
  * `warren register-agent <name>` — clone (or fast-forward) the canopy
  * library, render the named prompt, and upsert it into the warren agents
- * cache. Mirrors `POST /agents/refresh` (handlers.ts) but scoped to a
+ * cache. Mirrors `POST /agents/refresh` (src/server/handlers/agents.ts) but scoped to a
  * single agent so an operator can iterate quickly without re-rendering
  * a library of 20+ prompts.
  *

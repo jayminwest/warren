@@ -19,7 +19,7 @@
  *                          lastRunAt, role, trigger:'cron'}` in one write
  *
  * `WarrenTriggerKind` locks down the trigger-string proliferation called
- * out as risk #6 in the plan. Today `src/server/handlers.ts` (Run Now)
+ * out as risk #6 in the plan. Today `src/server/handlers/runs/index.ts` (Run Now)
  * writes `"manual-trigger"` into the warren `runs.trigger` column and
  * `src/runs/spawn/dispatch.ts` defaults to `"manual"`; the enum here is the
  * downstream-stable contract that step 4 will reconcile callers onto.

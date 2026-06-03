@@ -50,7 +50,7 @@ export const PROCESS_STDIO: Stdio = {
 
 /**
  * Default `Bun.spawn` adaptor matching the SpawnFn shape the registry +
- * projects modules expect. Identical to `defaultSpawn` in handlers.ts; the
+ * projects modules expect. Identical to `defaultSpawn` in src/server/main/utils.ts; the
  * duplication is deliberate — handlers and CLI are independent surfaces and
  * neither should import the other.
  */
