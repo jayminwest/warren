@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.9] — 2026-06-03
+
+Nightwatch patrol (pl-d6cd): comment-only sweep repointing stale
+`src/server/handlers.ts` doc references at their real homes after the
+monolithic handler file was split into `src/server/handlers/` and
+`src/server/main/`.
+
+### Documentation
+
+- **`src/server` cross-references** — retargeted ~13 stale doc comments
+  that pointed at the long-removed monolithic `src/server/handlers.ts`
+  (including a dead `:1453` line number) to the symbols' actual current
+  modules under `src/server/handlers/` and `src/server/main/`. Covers
+  the server + runtime modules (warren-79f3), the CLI + seeds-cli
+  modules (warren-6e71), and the UI api modules (warren-a97e). No
+  behavior or signature changes.
+
 ## [0.7.8] — 2026-06-02
 
 Nightwatch patrol (pl-f6e3): two small, independent fixes to the
