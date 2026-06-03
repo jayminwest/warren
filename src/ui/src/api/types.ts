@@ -541,7 +541,7 @@ export interface RunTriggerResponse {
 /* ----------------------------------------------------------------------- */
 /* Plan-runs (warren-f923 / warren-a87f, pl-a258).                          */
 /*                                                                         */
-/* Mirrors the server payload shapes from src/server/handlers.ts and the   */
+/* Mirrors the server payload shapes from src/server/handlers/ and the     */
 /* drizzle row types in src/db/schema/sqlite.ts. Kept manually in sync     */
 /* with the wire — src/ui/ is excluded from the root tsconfig and the      */
 /* boundary is the HTTP wire, not a TS import (mx-1bd551).                 */

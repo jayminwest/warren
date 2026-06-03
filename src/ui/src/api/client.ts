@@ -278,7 +278,7 @@ export const runsApi = {
 			body: {
 				// `agent` is still a required field server-side even when
 				// `interactiveAgent` overrides it (see parseRunMode +
-				// createRunHandler in src/server/handlers.ts).
+				// createRunHandler in src/server/handlers/runs/index.ts).
 				agent: input.agent,
 				interactiveAgent: input.agent,
 				mode: "interactive",
