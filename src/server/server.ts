@@ -7,7 +7,7 @@
  * `AuthProvider` the caller injects; the dispatch layer never inspects
  * token values.
  *
- * Auth exemption (see `isAuthExempt` in handlers.ts): `/healthz` plus
+ * Auth exemption (see `isAuthExempt` in handlers/index.ts): `/healthz` plus
  * every non-API path (SPA shell, static assets, React Router deep
  * links) — otherwise a fresh browser can't reach `Login.tsx` to enter
  * its bearer token. `/readyz` and the rest of the API stay gated;

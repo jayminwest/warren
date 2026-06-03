@@ -145,7 +145,7 @@ function warrenStatusFor(err: WarrenError): number {
 	// they signal a worker-side capacity / reachability problem on a route
 	// that depended on a healthy worker. NotFoundError handles the "warren
 	// never recorded this burrow id" case before placement is consulted —
-	// see `getBurrowHandler` in handlers.ts.
+	// see `getBurrowHandler` in handlers/burrows.ts.
 	if (err instanceof NoEligibleWorkerError) return 503;
 	if (err instanceof StickyWorkerUnreachableError) return 503;
 	if (err instanceof AgentSchemaError) return 422;

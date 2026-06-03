@@ -34,7 +34,7 @@
  *
  * Cancellation / TTL is explicitly the eviction worker's concern; this
  * module only owns the manual transition. The route handler does its
- * own JSON shaping (`src/server/handlers.ts`).
+ * own JSON shaping (`src/server/handlers/`).
  */
 
 import type { BurrowClientPool } from "../burrow-client/pool.ts";

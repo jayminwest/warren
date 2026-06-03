@@ -113,7 +113,7 @@ export class PlotIdInvalidError extends WarrenError {
  * the resolver is wired into ServerDeps — production wires it in
  * src/server/main/index.ts. Test harnesses that don't wire a resolver get
  * format-only validation (matches the existing per-Plot handler
- * posture in handlers.ts).
+ * posture in handlers/plots/).
  */
 export class PlotIdNotFoundError extends WarrenError {
 	readonly code = "plot_id_not_found";

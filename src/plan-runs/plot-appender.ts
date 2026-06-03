@@ -13,7 +13,7 @@
  * Unlike single-run, the warren event isn't a row in the `events` table:
  * `events` is keyed by `run_id`, and at PlanRun creation no child run
  * exists yet. Logger-level surfacing is consistent with the existing
- * `plan_run.cancel_child_failed` posture in handlers.ts:1453.
+ * `plan_run.cancel_child_failed` posture in handlers/plan-runs.ts.
  */
 
 import { UserPlotClient } from "../plot-client/index.ts";

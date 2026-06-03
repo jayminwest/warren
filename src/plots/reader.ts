@@ -37,7 +37,7 @@ export interface PlotEnvelope {
 	 * prominent "Answer & resume" affordance + countdown on the
 	 * matching `question_posed` event in `event_log`. Empty array when
 	 * no paused run exists for the Plot. Resolved by the handler
-	 * (`loadPausedRunsForPlot` in `src/server/handlers.ts`) rather than
+	 * (`loadPausedRunsForPlot` in `src/server/handlers/plots/shared.ts`) rather than
 	 * the reader, since this seam is `.plot/`-only and runs live in
 	 * warren's SQLite.
 	 */

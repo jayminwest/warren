@@ -35,7 +35,7 @@
  *
  * Note: this module deliberately stays burrow-agnostic — it takes any
  * `BurrowClient` and any async function. The endpoint glue (e.g.
- * `GET /burrows` in `server/handlers.ts`) layers domain shape on top
+ * `GET /burrows` in `server/handlers/burrows.ts`) layers domain shape on top
  * (`http.burrows.list()` + `withTransportMapping` + createdAt sort).
  */
 
