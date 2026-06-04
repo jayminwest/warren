@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.11] — 2026-06-04
+
+Nightwatch patrol (pl-cbb5): comment-only sweep fixing two pockets of
+documentation drift left behind by the `src/server/handlers.ts` →
+`src/server/handlers/` split and the `WarrenTriggerKind` enum work.
+
+### Documentation
+
+- **stale `handlers.ts` test references** — repointed two test-comment
+  references at their verified current homes:
+  `src/runs/spawn/seed-extensions.test.ts` now names
+  `src/server/handlers/projects.ts` (the `"manual-trigger"` writer) and
+  `src/preview/proxy/route-match.test.ts` now names
+  `src/server/handlers/index.ts` (warren-5106).
+- **`manual-trigger` writer attribution** — corrected the doc comment in
+  `src/seeds-cli/warren-extensions.ts` to attribute `"manual-trigger"` to
+  the cron-trigger manual-run handler in `src/server/handlers/projects.ts`
+  and clarify that Run Now (POST /runs) defaults to `"manual"`
+  (warren-fc50).
+
 ## [0.7.10] — 2026-06-03
 
 Dedupe duplicate `POST /runs` deliveries so a single logical dispatch
