@@ -114,7 +114,7 @@ describe("warren-api-prefixes-stay-in-sync (warren-63e1)", () => {
 		// proxy/route-match.ts duplicates the prefix list to avoid pulling
 		// all of handlers/index.ts into the preview tree. This test makes
 		// the duplication safe by asserting parity at build time — adding
-		// a new API surface to handlers.ts surfaces here as a failed
+		// a new API surface to handlers/index.ts surfaces here as a failed
 		// assertion.
 		const handlers = await import("../../server/handlers/index.ts");
 		const { API_ROUTE_PATTERNS } = handlers;

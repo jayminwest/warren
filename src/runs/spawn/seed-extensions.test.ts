@@ -124,7 +124,7 @@ describe("spawnRun: post-dispatch seed extension write (pl-bb70)", () => {
 		expect(payload.reason).toContain("sd update");
 	});
 
-	test("drops an unrecognized trigger string but still writes role/lastRunId/lastRunAt (handlers.ts:354 'manual-trigger')", async () => {
+	test("drops an unrecognized trigger string but still writes role/lastRunId/lastRunAt (src/server/handlers/projects.ts 'manual-trigger')", async () => {
 		const { client } = makeBurrowClient();
 		const sdCalls: { cmd: readonly string[] }[] = [];
 		const seedsSpawn: ProjectSpawnFn = async (cmd) => {
