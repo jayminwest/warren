@@ -19,10 +19,12 @@
  *                          lastRunAt, role, trigger:'cron'}` in one write
  *
  * `WarrenTriggerKind` locks down the trigger-string proliferation called
- * out as risk #6 in the plan. Today `src/server/handlers/runs/index.ts` (Run Now)
- * writes `"manual-trigger"` into the warren `runs.trigger` column and
- * `src/runs/spawn/dispatch.ts` defaults to `"manual"`; the enum here is the
- * downstream-stable contract that step 4 will reconcile callers onto.
+ * out as risk #6 in the plan. Today the cron-trigger manual-run handler
+ * `src/server/handlers/projects.ts` (POST /projects/:id/triggers/:triggerId/run)
+ * writes `"manual-trigger"` into the warren `runs.trigger` column, while
+ * Run Now (POST /runs) passes no trigger and defaults to `"manual"`; the
+ * enum here is the downstream-stable contract that step 4 will reconcile
+ * callers onto.
  *
  * The schema is `.strict()` for writes — unknown keys would silently
  * persist into seeds and rot the convention. Reads go through
