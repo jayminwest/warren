@@ -53,8 +53,6 @@ import { loadProjectsConfigFromEnv } from "../../projects/config.ts";
 import { seedBuiltinAgents } from "../../registry/builtins/index.ts";
 import { loadCanopyRegistryConfigFromEnv } from "../../registry/config.ts";
 import {
-	bootPauseDetector,
-	defaultPlotEventReader,
 	loadAutoOpenPrConfigFromEnv,
 	loadRunBranchPrefixFromEnv,
 	RunEventBroker,
@@ -76,9 +74,9 @@ import { bootScheduler } from "../scheduler.ts";
 import { startServer } from "../server.ts";
 import type { AuthProvider, ServeHandle } from "../types.ts";
 import { buildServerDeps } from "./deps.ts";
+import { bootPauseDetectorFromEnv, bootWatchdogFromEnv } from "./detector-wiring.ts";
 import {
 	bridgeLoggerFromPino,
-	pauseLoggerFromPino,
 	planRunLoggerFromPino,
 	previewEvictionLoggerFromPino,
 	probeLoggerFromPino,
@@ -86,14 +84,7 @@ import {
 	workspaceGcLoggerFromPino,
 } from "./logging.ts";
 import { createPreviewAuthAndProxy } from "./preview-wiring.ts";
-import {
-	closeDatabase,
-	defaultSpawn,
-	parseIntEnv,
-	parseTrueEnv,
-	redactDbUrl,
-	resolvePgPoolMax,
-} from "./utils.ts";
+import { closeDatabase, defaultSpawn, redactDbUrl, resolvePgPoolMax } from "./utils.ts";
 
 // Re-export `resolvePgPoolMax` so the strict round-trip check stays
 // accessible from `main.test.ts` (and any other importer that grew
@@ -354,28 +345,27 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 	// Disabled by default until the brainstorm/planner agents land
 	// (warren-3de8 / warren-d22e) and the system has paused runs to
 	// surface; enable via WARREN_PAUSE_DETECTOR_ENABLED=1.
-	const pauseDetectorEnabled = parseTrueEnv(env.WARREN_PAUSE_DETECTOR_ENABLED);
-	const pauseDetectorTickMs = parseIntEnv(env, "WARREN_PAUSE_DETECTOR_TICK_MS", 15_000);
-	const pauseDetector = bootPauseDetector({
+	const pauseDetector = bootPauseDetectorFromEnv({
+		env,
 		repos,
-		plotReader: defaultPlotEventReader,
-		respawn: async (input) => {
-			logger.info(
-				{ runId: input.run.id, reason: input.reason.kind },
-				"pause.respawn_seam_unconfigured",
-			);
-		},
 		warrenConfigs,
-		tickMs: pauseDetectorTickMs,
-		disabled: !pauseDetectorEnabled,
-		logger: pauseLoggerFromPino(logger),
+		logger,
 		...(opts.now !== undefined ? { now: opts.now } : {}),
 	});
-	if (!pauseDetectorEnabled) {
-		logger.info({}, "pause detector disabled (set WARREN_PAUSE_DETECTOR_ENABLED=1 to enable)");
-	} else {
-		logger.info({ tickMs: pauseDetectorTickMs }, "pause detector running");
-	}
+
+	// Run heartbeat watchdog (warren-285d). Force-fails `running` runs that
+	// go silent-but-busy (e.g. a runaway gate command behind a stuck bash
+	// tool) past WARREN_RUN_HEARTBEAT_TIMEOUT_MS, routing the timeout
+	// through reap so the burrow workspace + bwrap process tree is torn down.
+	const watchdog = bootWatchdogFromEnv({
+		env,
+		repos,
+		burrowClientPool,
+		broker,
+		autoOpenPr,
+		logger,
+		...(opts.now !== undefined ? { now: opts.now } : {}),
+	});
 
 	// Preview TTL + LRU eviction worker (R-19 / SPEC §11.L, warren-ea6b).
 	// Dialect-polymorphic since warren-adfb (createRunPreviewsRepo runs on
@@ -473,6 +463,7 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 			await handle.stop();
 			await planRunCoordinator.stop();
 			await pauseDetector.stop();
+			await watchdog.stop();
 			await scheduler.stop();
 			await previewEvictionWorker.stop();
 			await workspaceGcWorker.stop();

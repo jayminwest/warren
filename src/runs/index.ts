@@ -153,3 +153,16 @@ export {
 	hydrateRunUsage,
 	type UsageEventsFetcher,
 } from "./usage-hydrate.ts";
+export {
+	type BootWatchdogInput,
+	bootWatchdog,
+	computeIdleMs,
+	DEFAULT_WATCHDOG_TICK_MS,
+	loadWatchdogConfigFromEnv,
+	tickWatchdog,
+	WATCHDOG_TIMED_OUT_KIND,
+	type WatchdogConfig,
+	type WatchdogHandle,
+	type WatchdogTickDeps,
+	type WatchdogTickResult,
+} from "./watchdog.ts";
