@@ -37,6 +37,8 @@ function makeBurrowClient(
 	fix: { burrowId: string; burrowRunId: string; workspacePath: string },
 	calls: Call[],
 ): BurrowClient {
+	let burrowCounter = 0;
+	let runCounter = 0;
 	return new BurrowClient({
 		config: { transport: { kind: "unix", path: "/tmp/x.sock" } },
 		fetch: stub(async (input, init) => {
@@ -46,8 +48,10 @@ function makeBurrowClient(
 			const reqBody = typeof init?.body === "string" ? JSON.parse(init.body) : undefined;
 			calls.push({ method, path, body: reqBody });
 			if (method === "POST" && path === "/burrows") {
+				burrowCounter++;
+				const burrowId = `${fix.burrowId}_${burrowCounter}`;
 				return jsonRes(201, {
-					id: fix.burrowId,
+					id: burrowId,
 					name: "burrow",
 					kind: "task",
 					projectRoot: "/data/projects/x/y",
@@ -62,10 +66,14 @@ function makeBurrowClient(
 					updatedAt: "2026-05-08T12:00:00Z",
 				});
 			}
-			if (method === "POST" && path === `/burrows/${fix.burrowId}/runs`) {
+			const matchRuns = path.match(/^\/burrows\/([^/]+)\/runs$/);
+			if (method === "POST" && matchRuns) {
+				const burrowId = matchRuns[1];
+				runCounter++;
+				const burrowRunId = `${fix.burrowRunId}_${runCounter}`;
 				return jsonRes(201, {
-					id: fix.burrowRunId,
-					burrowId: fix.burrowId,
+					id: burrowRunId,
+					burrowId: burrowId,
 					agentId: "leveret",
 					prompt: "hello",
 					resumeOfRunId: null,
@@ -78,10 +86,12 @@ function makeBurrowClient(
 					completedAt: null,
 				});
 			}
-			if (method === "POST" && path.match(/^\/burrows\/[^/]+\/inbox$/)) {
+			const matchInbox = path.match(/^\/burrows\/([^/]+)\/inbox$/);
+			if (method === "POST" && matchInbox) {
+				const burrowId = matchInbox[1];
 				return jsonRes(201, {
 					id: "msg_inbox00000",
-					burrowId: fix.burrowId,
+					burrowId: burrowId,
 					fromActor: "operator",
 					body: String((reqBody as { body?: unknown })?.body ?? ""),
 					priority: "normal",
@@ -188,6 +198,7 @@ describe("conversation endpoints", () => {
 			},
 		});
 		const localPath = await mkdtemp(join(tmpdir(), "warren-conv-"));
+		await require("node:fs/promises").mkdir(join(localPath, ".plot"), { recursive: true });
 		const project = await repos.projects.create({
 			gitUrl: "https://github.com/x/y.git",
 			localPath,

@@ -46,6 +46,7 @@ import {
 	getConversationHandler,
 	listConversationsHandler,
 	postConversationMessageHandler,
+	rewakeConversationHandler,
 	sendOffConversationHandler,
 } from "./conversations.ts";
 import { readyzHandler } from "./diagnostics.ts";
@@ -314,6 +315,11 @@ const ROUTE_TABLE: readonly RouteEntry[] = [
 		method: "POST",
 		pattern: "/conversations/:id/send-off",
 		build: sendOffConversationHandler,
+	},
+	{
+		method: "POST",
+		pattern: "/conversations/:id/re-wake",
+		build: rewakeConversationHandler,
 	},
 
 	{ method: "GET", pattern: "/plots", build: listPlotsHandler },

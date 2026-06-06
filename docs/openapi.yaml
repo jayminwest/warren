@@ -189,6 +189,23 @@ paths:
           required: true
           schema:
             type: string
+  /conversations/{id}/re-wake:
+    post:
+      operationId: rewakeConversationHandler
+      tags:
+        - conversations
+      summary: POST /conversations/:id/re-wake
+      responses:
+        '200':
+          description: Successful response.
+        default:
+          description: Error response (see `src/core/errors.ts`).
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
   /conversations/{id}/send-off:
     post:
       operationId: sendOffConversationHandler

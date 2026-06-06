@@ -33,6 +33,7 @@ import { assertRunTransition } from "../../db/repos/runs.ts";
 import type { ConversationRow, ConversationState } from "../../db/schema.ts";
 import { ProjectLacksPlotError } from "../../plan-runs/errors.ts";
 import { defaultPlotCreator, defaultPlotSyncer } from "../../plots/index.ts";
+import { rewakeConversation } from "../../runs/conversation-rewake.ts";
 import { resolveDispatcherHandle, spawnRun, steerRun } from "../../runs/index.ts";
 import { loadWarrenConfig } from "../../warren-config/index.ts";
 import { jsonResponse } from "../response.ts";
@@ -42,6 +43,7 @@ import {
 	defaultSpawn,
 	optionalString,
 	readJsonBody,
+	readJsonBodyOrEmpty,
 	requireParam,
 	requireString,
 } from "./index.ts";
@@ -375,6 +377,73 @@ export function sendOffConversationHandler(deps: ServerDeps): RouteHandler {
 			plot_id: conversation.plotId,
 			pr: { url: result.prUrl, number: result.prNumber ?? null, branch: result.branch },
 			planner_agent: plannerAgent,
+		});
+	};
+}
+
+/**
+ * `POST /conversations/:id/re-wake` — "Re-wake conversation" (LEVERET.md §0.4 / §0.2 / warren-6ccf).
+ *
+ * Spawns a fresh mode:"conversation" run that replays the transcript into a
+ * brand-new pi session, rotates conversations.anchoring_run_id to point at the
+ * new run, starts the bridge, and returns the updated conversation row + the new run id.
+ */
+export function rewakeConversationHandler(deps: ServerDeps): RouteHandler {
+	return async (ctx) => {
+		const id = requireParam(ctx, "id");
+		const body = (await readJsonBodyOrEmpty(ctx)) ?? {};
+		const dispatcherHandle = optionalString(body, "dispatcher_handle");
+		const providerOverride = optionalString(body, "provider_override");
+		const modelOverride = optionalString(body, "model_override");
+
+		const result = await rewakeConversation({
+			repos: deps.repos,
+			burrowClientPool: deps.burrowClientPool,
+			conversationId: id,
+			reader: {
+				async readConversation(conversationId: string) {
+					const row = await deps.repos.conversations.get(conversationId);
+					if (row === null) return null;
+					return {
+						id: row.id,
+						projectId: row.projectId,
+						plotId: row.plotId,
+						anchoringRunId: row.anchoringRunId,
+						status: row.status,
+					};
+				},
+				async readTranscript(conversationId: string) {
+					const messages = await deps.repos.messages.listByConversation(conversationId);
+					return messages.map((m) => ({
+						seq: m.seq,
+						role: m.role,
+						content: m.content,
+					}));
+				},
+			},
+			rotator: {
+				async rotate({ conversationId, newRunId, now }) {
+					await deps.repos.conversations.rotateAnchor(conversationId, newRunId, now);
+				},
+			},
+			projectsConfig: deps.projectsConfig,
+			projectSpawn: deps.spawn ?? defaultSpawn,
+			dispatcherHandle,
+			providerOverride,
+			modelOverride,
+			warrenConfigs: deps.warrenConfigs,
+			runBranchPrefixDefault: deps.runBranchPrefixDefault,
+			seedsCli: deps.seedsCli,
+			...(deps.now !== undefined ? { now: deps.now } : {}),
+		});
+
+		deps.bridges.start(result.turn.run.id, result.turn.burrowRun.id, result.turn.burrow.id);
+
+		const conversation = await deps.repos.conversations.require(id);
+
+		return jsonResponse(200, {
+			conversation,
+			run: { id: result.turn.run.id, mode: result.turn.run.mode },
 		});
 	};
 }
