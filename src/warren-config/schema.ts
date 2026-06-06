@@ -177,17 +177,13 @@ const PreviewConnectTimeoutSchema = DurationStringSchema.refine(
 
 const PreviewSetupSchema = z.string().min(1, "preview.setup must be non-empty");
 
-// warren-cd37 / SPEC §11.O (pl-0344 step 2): per-project override of the
-// wall-clock budget for paused interactive turns. When an agent emits a
-// `question_posed` event into the Plot event log the run transitions to
-// `paused`; if no `question_answered` arrives within this window the
-// supervisor respawns the agent turn with a timeout warning (warren-2976).
-// Bounds: 1s..24h. Sub-second timeouts aren't meaningful (Plot event polling
-// is coarser than that); >24h is almost certainly a typo since the operator
-// can always cancel a paused run by hand. Field carries `.default()` so a
-// consumer reading a parsed `agent` block always sees a number; the
-// `DEFAULT_AGENT_PAUSE_TIMEOUT_MS` constant is the fallback when the whole
-// `agent` block is absent.
+// warren-cd37 / SPEC §11.O (pl-0344 step 2): wall-clock budget for paused
+// interactive turns. An agent's `question_posed` Plot event transitions the run
+// to `paused`; if no `question_answered` arrives within this window the
+// supervisor respawns the turn with a timeout warning (warren-2976). Bounds:
+// 1s..24h (sub-second is meaningless vs Plot polling; >24h is likely a typo —
+// the operator can cancel by hand). Field is `.default()`-backed; the
+// `DEFAULT_*` constant is the fallback when the `agent` block is absent.
 export const DEFAULT_AGENT_PAUSE_TIMEOUT_MS = 1_800_000; // 30 minutes
 
 const AgentPauseTimeoutMsSchema = z
@@ -203,6 +199,29 @@ const AgentConfigSchema = z
 	.strict();
 
 export type AgentConfig = z.infer<typeof AgentConfigSchema>;
+
+// warren-005d / LEVERET.md §0.4 / §0.14: idle-timeout budget for a
+// mode:"conversation" anchoring run. The run stays non-terminal across turns,
+// so warren owns the deadline; when `now - conversations.last_activity_at`
+// exceeds this, the coordinator finalizes ONLY the run (→ succeeded) — the
+// conversation stays status='active' and the `messages` transcript survives.
+// Mirrors `agent.pauseTimeoutMs` (bounds 1s..24h, `.default()`-backed); the
+// `DEFAULT_*` constant is the fallback when the block is absent.
+export const DEFAULT_CONVERSATION_IDLE_TIMEOUT_MS = 1_200_000; // 20 minutes
+
+const ConversationIdleTimeoutMsSchema = z
+	.number()
+	.int("conversation.idleTimeoutMs must be an integer (milliseconds)")
+	.min(1_000, "conversation.idleTimeoutMs must be between 1s (1000) and 24h (86400000)")
+	.max(86_400_000, "conversation.idleTimeoutMs must be between 1s (1000) and 24h (86400000)");
+
+const ConversationConfigSchema = z
+	.object({
+		idleTimeoutMs: ConversationIdleTimeoutMsSchema.default(DEFAULT_CONVERSATION_IDLE_TIMEOUT_MS),
+	})
+	.strict();
+
+export type ConversationConfig = z.infer<typeof ConversationConfigSchema>;
 
 // warren-cd22: per-project configuration for plot sync to GitHub (pl-5a6c).
 // mergeStrategy controls when changes are merged (immediate / auto / manual).
@@ -372,39 +391,28 @@ export const DefaultsConfigSchema = z
 		defaultRole: RoleNameSchema.optional(),
 		defaultBranch: z.string().min(1, "defaultBranch must be non-empty if provided").optional(),
 		defaultPrompt: PromptSchema.optional(),
-		// warren-618b: free-text provider/model defaults applied at spawn time
-		// the same way per-run overrides are (operator override > project
-		// default > agent frontmatter). Runtimes that don't honor frontmatter
-		// .provider/.model just ignore them — same shape as the per-run override.
+		// warren-618b: free-text provider/model defaults applied at spawn time the
+		// same way per-run overrides are (operator > project default > frontmatter).
 		defaultProvider: z.string().min(1, "defaultProvider must be non-empty if provided").optional(),
 		defaultModel: z.string().min(1, "defaultModel must be non-empty if provided").optional(),
-		// warren-9993: per-project override of the run branch prefix. spawnRun
-		// composes the branch as `${runBranchPrefix}/${run.id}` and passes it
-		// to burrows.up. Precedence project default > WARREN_RUN_BRANCH_PREFIX
-		// env > built-in "burrow" (kept as the default for backward compat).
+		// warren-9993: run branch prefix; spawnRun composes `${prefix}/${run.id}`.
+		// Precedence: project default > WARREN_RUN_BRANCH_PREFIX env > "burrow".
 		runBranchPrefix: RunBranchPrefixSchema.optional(),
-		// warren-7be9 / SPEC §11.L: per-run preview environments (R-19).
-		// Missing-block is not an error — projects without a `preview` field
-		// simply skip the reap-time preview launch sub-step. Post-warren-5840
-		// the canonical home is `.warren/preview.yaml`; this nested field is
-		// still accepted on `config.yaml` / legacy `defaults.json` for smooth
-		// migration. When both exist `preview.yaml` wins (loader-side).
+		// warren-7be9 / SPEC §11.L: per-run preview environments (R-19). Canonical
+		// home is `.warren/preview.yaml` (post-warren-5840); this nested field is
+		// still accepted for migration — when both exist, `preview.yaml` wins.
 		preview: PreviewConfigSchema.optional(),
-		// warren-cd37 / SPEC §11.O: per-project agent-runtime knobs. Currently
-		// only `pauseTimeoutMs` (interactive-turn pause budget for
-		// warren-2976); future agent-scoped overrides slot in here without
-		// inflating the top level. Missing block → use
-		// DEFAULT_AGENT_PAUSE_TIMEOUT_MS at the consumption site.
+		// warren-cd37 / SPEC §11.O: per-project agent-runtime knobs (only
+		// `pauseTimeoutMs` today). Missing block → use the DEFAULT_* fallback.
 		agent: AgentConfigSchema.optional(),
-		// warren-b802: per-project override of the burrow runtime backing
-		// the interactive built-in agents. Resolved at dispatch time so the
-		// agent row stays honest as 'builtin'. Precedence: config override >
-		// agent frontmatter.runtime > agent.name.
+		// warren-005d / LEVERET.md §0.4: conversation-runtime knobs (`idleTimeoutMs`).
+		conversation: ConversationConfigSchema.optional(),
+		// warren-b802: override of the burrow runtime backing interactive built-in
+		// agents. Precedence: config override > agent frontmatter.runtime > name.
 		interactiveAgents: InteractiveAgentsConfigSchema.optional(),
-		// warren-cd22: per-project configuration for plot sync to GitHub.
+		// warren-cd22: per-project plot-sync-to-GitHub configuration.
 		plotSync: PlotSyncConfigSchema.optional(),
-		// warren-05ea: per-project opt-in for the polling CI-fixer. Missing
-		// block → poller skips the project. See CiFixerConfigSchema above.
+		// warren-05ea: opt-in polling CI-fixer; missing block → poller skips it.
 		ciFixer: CiFixerConfigSchema.optional(),
 		qualityGate: z.string().min(1, "qualityGate must be non-empty if provided").optional(),
 	})

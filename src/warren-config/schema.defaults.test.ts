@@ -6,6 +6,7 @@ import {
 	DEFAULT_CI_FIXER_LOG_TAIL_LINES,
 	DEFAULT_CI_FIXER_MAX_RETRIES,
 	DEFAULT_CI_FIXER_ROLE,
+	DEFAULT_CONVERSATION_IDLE_TIMEOUT_MS,
 	DefaultsConfigSchema,
 	interactiveRuntimeOverride,
 	KNOWN_RUNTIME_IDS,
@@ -121,6 +122,74 @@ describe("DefaultsConfigSchema agent block (warren-cd37)", () => {
 		expect(
 			DefaultsConfigSchema.safeParse({
 				agent: { pauseTimeoutMs: 60_000, unknownField: true },
+			}).success,
+		).toBe(false);
+	});
+});
+
+describe("DefaultsConfigSchema conversation block (warren-005d)", () => {
+	test("DEFAULT_CONVERSATION_IDLE_TIMEOUT_MS is 20 minutes in milliseconds", () => {
+		expect(DEFAULT_CONVERSATION_IDLE_TIMEOUT_MS).toBe(1_200_000);
+	});
+
+	test("applies the default when the conversation block is present but field omitted", () => {
+		const parsed = DefaultsConfigSchema.safeParse({ conversation: {} });
+		expect(parsed.success).toBe(true);
+		if (parsed.success) {
+			expect(parsed.data.conversation?.idleTimeoutMs).toBe(DEFAULT_CONVERSATION_IDLE_TIMEOUT_MS);
+		}
+	});
+
+	test("accepts an explicit idleTimeoutMs override", () => {
+		const parsed = DefaultsConfigSchema.safeParse({ conversation: { idleTimeoutMs: 60_000 } });
+		expect(parsed.success).toBe(true);
+		if (parsed.success) {
+			expect(parsed.data.conversation?.idleTimeoutMs).toBe(60_000);
+		}
+	});
+
+	test("leaves conversation undefined when the block is omitted entirely", () => {
+		const parsed = DefaultsConfigSchema.safeParse({});
+		expect(parsed.success).toBe(true);
+		if (parsed.success) {
+			expect(parsed.data.conversation).toBeUndefined();
+		}
+	});
+
+	test("rejects idleTimeoutMs below 1s", () => {
+		expect(DefaultsConfigSchema.safeParse({ conversation: { idleTimeoutMs: 500 } }).success).toBe(
+			false,
+		);
+		expect(DefaultsConfigSchema.safeParse({ conversation: { idleTimeoutMs: 0 } }).success).toBe(
+			false,
+		);
+	});
+
+	test("rejects idleTimeoutMs above 24h", () => {
+		expect(
+			DefaultsConfigSchema.safeParse({ conversation: { idleTimeoutMs: 86_400_001 } }).success,
+		).toBe(false);
+	});
+
+	test("accepts the boundary values", () => {
+		expect(DefaultsConfigSchema.safeParse({ conversation: { idleTimeoutMs: 1_000 } }).success).toBe(
+			true,
+		);
+		expect(
+			DefaultsConfigSchema.safeParse({ conversation: { idleTimeoutMs: 86_400_000 } }).success,
+		).toBe(true);
+	});
+
+	test("rejects non-integer idleTimeoutMs", () => {
+		expect(
+			DefaultsConfigSchema.safeParse({ conversation: { idleTimeoutMs: 1500.5 } }).success,
+		).toBe(false);
+	});
+
+	test("rejects unknown fields inside conversation (strict)", () => {
+		expect(
+			DefaultsConfigSchema.safeParse({
+				conversation: { idleTimeoutMs: 60_000, unknownField: true },
 			}).success,
 		).toBe(false);
 	});

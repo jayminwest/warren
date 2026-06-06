@@ -31,8 +31,10 @@ export {
 } from "./load.ts";
 export {
 	type AgentConfig,
+	type ConversationConfig,
 	type CronTrigger,
 	DEFAULT_AGENT_PAUSE_TIMEOUT_MS,
+	DEFAULT_CONVERSATION_IDLE_TIMEOUT_MS,
 	DEFAULT_PREVIEW_MODE,
 	type DefaultsConfig,
 	DefaultsConfigSchema,
