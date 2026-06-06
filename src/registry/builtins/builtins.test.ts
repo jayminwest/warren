@@ -10,6 +10,7 @@ import {
 	BUILTIN_AGENTS,
 	CLAUDE_CODE_BUILTIN,
 	isProjectAgentSource,
+	LEVERET_BUILTIN,
 	makeProjectAgentSource,
 	PI_BUILTIN,
 	PLANNER_BUILTIN,
@@ -22,13 +23,14 @@ import {
 } from "./index.ts";
 
 describe("BUILTIN_AGENTS", () => {
-	test("includes claude-code, sapling, pi, brainstorm, planner, and pr-fixer", () => {
+	test("includes claude-code, sapling, pi, brainstorm, planner, pr-fixer, and leveret", () => {
 		expect(BUILTIN_AGENT_NAMES.has("claude-code")).toBe(true);
 		expect(BUILTIN_AGENT_NAMES.has("sapling")).toBe(true);
 		expect(BUILTIN_AGENT_NAMES.has("pi")).toBe(true);
 		expect(BUILTIN_AGENT_NAMES.has("brainstorm")).toBe(true);
 		expect(BUILTIN_AGENT_NAMES.has("planner")).toBe(true);
 		expect(BUILTIN_AGENT_NAMES.has("pr-fixer")).toBe(true);
+		expect(BUILTIN_AGENT_NAMES.has("leveret")).toBe(true);
 	});
 
 	test("each builtin has a non-empty system section (warren's required schema field)", () => {
@@ -316,6 +318,64 @@ describe("PR_FIXER_BUILTIN", () => {
 	test("system prompt forbids deleting/skipping failing tests as a workaround", () => {
 		const system = PR_FIXER_BUILTIN.sections.system ?? "";
 		expect(system).toMatch(/disable, skip, or delete failing tests/i);
+	});
+});
+
+describe("LEVERET_BUILTIN", () => {
+	test("is registered as a conversation overseer (warren-fdd9)", () => {
+		expect(LEVERET_BUILTIN.name).toBe("leveret");
+		expect(LEVERET_BUILTIN.frontmatter.source).toBe("builtin");
+		// The conversation tag lets the UI surface leveret under the
+		// conversation pickers without parsing the system prompt.
+		expect(LEVERET_BUILTIN.frontmatter.tags).toContain("conversation");
+	});
+
+	test("declares runtime = 'pi-chat' (free-string runtime, §0.0.E)", () => {
+		// readRuntimeId reads frontmatter.runtime as a free string and
+		// forwards it onto burrow as the runtime id — no KNOWN_RUNTIME_IDS
+		// change is needed.
+		expect(LEVERET_BUILTIN.frontmatter.runtime).toBe("pi-chat");
+	});
+
+	test("requires open network", () => {
+		expect(LEVERET_BUILTIN.sections.burrow_config).toContain('network = "open"');
+	});
+
+	test("system prompt grants read-leaning tools and withholds edit/write", () => {
+		// Safe-by-construction: with no source-editing tool the send-off PR
+		// can only carry a plot-state update. These string checks pin the
+		// contract so a casual edit doesn't silently widen the role.
+		const system = LEVERET_BUILTIN.sections.system ?? "";
+		expect(system).toMatch(/read-leaning tools/i);
+		expect(system).toMatch(/do NOT have .*edit.* or .*write/i);
+		expect(system).toMatch(/bash/);
+	});
+
+	test("drives the four structured Plot intent fields", () => {
+		const system = LEVERET_BUILTIN.sections.system ?? "";
+		expect(system).toMatch(/goal/);
+		expect(system).toMatch(/non_goals/);
+		expect(system).toMatch(/constraints/);
+		expect(system).toMatch(/success_criteria/);
+	});
+
+	test("ships the propose_intent extension as a valid pi_extensions JSONL line", () => {
+		const section = LEVERET_BUILTIN.sections.pi_extensions ?? "";
+		expect(section.length).toBeGreaterThan(0);
+		const parsed = JSON.parse(section) as { name: string; body: string };
+		expect(parsed.name).toBe("propose_intent");
+		// The body is a default-exporting (pi) => {…} module registering the
+		// propose_intent tool, bound to the four intent fields and returning
+		// the patch on details (correlated host-side by toolCallId).
+		expect(parsed.body).toContain("export default function");
+		expect(parsed.body).toContain('name: "propose_intent"');
+		expect(parsed.body).toContain("pi.registerTool");
+		expect(parsed.body).toContain("intent_patch");
+		for (const field of ["goal", "non_goals", "constraints", "success_criteria"]) {
+			expect(parsed.body).toContain(field);
+		}
+		// Pure proposal carrier — it must not edit/write the workspace.
+		expect(parsed.body).not.toContain("writeFile");
 	});
 });
 

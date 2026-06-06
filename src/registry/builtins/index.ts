@@ -27,6 +27,7 @@ import type { AgentDefinition } from "../schema.ts";
 import { BRAINSTORM_BUILTIN } from "./brainstorm.ts";
 import { BUGWATCH_BUILTIN } from "./bugwatch.ts";
 import { CLAUDE_CODE_BUILTIN } from "./claude-code.ts";
+import { LEVERET_BUILTIN } from "./leveret.ts";
 import { NIGHTWATCH_BUILTIN } from "./nightwatch.ts";
 import { PI_BUILTIN } from "./pi.ts";
 import { PLANNER_BUILTIN } from "./planner.ts";
@@ -63,6 +64,7 @@ export const BUILTIN_AGENTS: readonly AgentDefinition[] = [
 	NIGHTWATCH_BUILTIN,
 	BUGWATCH_BUILTIN,
 	PR_FIXER_BUILTIN,
+	LEVERET_BUILTIN,
 ];
 
 export const BUILTIN_AGENT_NAMES: ReadonlySet<string> = new Set(BUILTIN_AGENTS.map((a) => a.name));
@@ -214,6 +216,7 @@ export {
 	BRAINSTORM_BUILTIN,
 	BUGWATCH_BUILTIN,
 	CLAUDE_CODE_BUILTIN,
+	LEVERET_BUILTIN,
 	NIGHTWATCH_BUILTIN,
 	PI_BUILTIN,
 	PLANNER_BUILTIN,
