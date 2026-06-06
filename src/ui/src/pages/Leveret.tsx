@@ -10,6 +10,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card.tsx";
 import { PageHeader } from "@/components/ui/page-header.tsx";
 import { relativeTime } from "@/lib/utils.ts";
+import { NewConversationButton } from "./leveret/new-conversation-dialog.tsx";
 
 type StatusFilter = "all" | ConversationState;
 
@@ -61,6 +62,7 @@ export function LeveretPage() {
 			<PageHeader
 				title="Leveret"
 				description="Cross-project overseer — long-lived conversations that shape Plot intent before a plan run."
+				actions={<NewConversationButton />}
 			/>
 
 			<div className="flex flex-wrap items-center gap-2">
