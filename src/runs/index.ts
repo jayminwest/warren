@@ -27,10 +27,12 @@ export {
 export {
 	buildRunMetrics,
 	contextTokensOf,
+	type DimensionTokenSeries,
 	durationMsOf,
 	type FailureBucket,
 	type GroupDimension as RunGroupDimension,
 	NONE_KEY as RUN_METRICS_NONE_KEY,
+	OTHER_KEY as RUN_METRICS_OTHER_KEY,
 	type RunDayBucket,
 	type RunGroupBucket,
 	type RunMetrics,
@@ -38,6 +40,8 @@ export {
 	type RunTotals,
 	type SeedContextBucket,
 	type StatSummary,
+	type TokenBreakdown,
+	type TokenDayBucket,
 } from "./analytics/run-metrics.ts";
 export {
 	composeRunBranch,

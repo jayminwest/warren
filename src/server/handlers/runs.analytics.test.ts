@@ -49,6 +49,8 @@ interface SeedRunOpts {
 	failureReason?: RunFailureReason | null;
 	tokensInput?: number | null;
 	tokensCacheRead?: number | null;
+	tokensOutput?: number | null;
+	tokensCacheWrite?: number | null;
 	startedAt: string;
 	endedAt?: string;
 }
@@ -72,10 +74,17 @@ async function seedRun(repos: Repos, opts: SeedRunOpts): Promise<void> {
 			opts.failureReason ?? null,
 		);
 	}
-	if (opts.tokensInput !== undefined || opts.tokensCacheRead !== undefined) {
+	if (
+		opts.tokensInput !== undefined ||
+		opts.tokensCacheRead !== undefined ||
+		opts.tokensOutput !== undefined ||
+		opts.tokensCacheWrite !== undefined
+	) {
 		await repos.runs.attachStats(run.id, {
 			tokensInput: opts.tokensInput ?? null,
 			tokensCacheRead: opts.tokensCacheRead ?? null,
+			tokensOutput: opts.tokensOutput ?? null,
+			tokensCacheWrite: opts.tokensCacheWrite ?? null,
 		});
 	}
 }
@@ -192,6 +201,140 @@ describe("GET /analytics/runs", () => {
 		expect(ok.status).toBe(200);
 		const body = (await ok.json()) as { filter: { projectId: string | null } };
 		expect(body.filter.projectId).toBe(projectId);
+	});
+
+	test("tokens section: empty window yields zeroed totals and empty series, not NaN (warren-1244)", async () => {
+		start();
+		const res = await fetch(`${tcpUrl(handle as ServeHandle)}/analytics/runs`);
+		expect(res.status).toBe(200);
+		const { tokens } = (await res.json()) as { tokens: Record<string, unknown> };
+		expect(tokens).toBeDefined();
+		expect(tokens.totals).toEqual({ input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 });
+		for (const key of [
+			"byModel",
+			"byProvider",
+			"timeSeries",
+			"byModelTimeSeries",
+			"byProviderTimeSeries",
+		]) {
+			expect(tokens[key]).toEqual([]);
+		}
+	});
+
+	test("tokens section: aggregates all four kinds, per-model/provider breakdowns, and daily series (warren-1244)", async () => {
+		// Two runs: same provider (anthropic), different models.
+		await seedRun(repos, {
+			projectId,
+			agentName: "claude-code",
+			provider: "anthropic",
+			model: "sonnet",
+			state: "succeeded",
+			tokensInput: 100,
+			tokensOutput: 50,
+			tokensCacheRead: 20,
+			tokensCacheWrite: 10,
+			startedAt: "2026-05-20T10:00:00.000Z",
+			endedAt: "2026-05-20T10:05:00.000Z",
+		});
+		await seedRun(repos, {
+			projectId,
+			agentName: "claude-code",
+			provider: "anthropic",
+			model: "haiku",
+			state: "succeeded",
+			tokensInput: 40,
+			tokensOutput: 20,
+			tokensCacheRead: 5,
+			tokensCacheWrite: 5,
+			startedAt: "2026-05-21T12:00:00.000Z",
+			endedAt: "2026-05-21T12:02:00.000Z",
+		});
+		start();
+		const res = await fetch(`${tcpUrl(handle as ServeHandle)}/analytics/runs`);
+		expect(res.status).toBe(200);
+		const body = (await res.json()) as {
+			tokens: {
+				totals: {
+					input: number;
+					output: number;
+					cacheRead: number;
+					cacheWrite: number;
+					total: number;
+				};
+				byModel: { key: string; tokens: { input: number; total: number } }[];
+				byProvider: { key: string; tokens: { input: number; total: number } }[];
+				timeSeries: { date: string; input: number; total: number }[];
+				byModelTimeSeries: { key: string; series: { date: string; total: number }[] }[];
+				byProviderTimeSeries: { key: string; series: { date: string; total: number }[] }[];
+			};
+		};
+		const { tokens } = body;
+		// Aggregate totals: input=140, output=70, cacheRead=25, cacheWrite=15, total=250.
+		expect(tokens.totals.input).toBe(140);
+		expect(tokens.totals.output).toBe(70);
+		expect(tokens.totals.cacheRead).toBe(25);
+		expect(tokens.totals.cacheWrite).toBe(15);
+		expect(tokens.totals.total).toBe(250);
+		// Per-model: sonnet=180 total, haiku=70 total (sorted desc by total).
+		expect(tokens.byModel).toHaveLength(2);
+		expect(tokens.byModel[0]).toMatchObject({ key: "sonnet", tokens: { input: 100, total: 180 } });
+		expect(tokens.byModel[1]).toMatchObject({ key: "haiku", tokens: { input: 40, total: 70 } });
+		// Per-provider: single anthropic bucket with all tokens.
+		expect(tokens.byProvider).toHaveLength(1);
+		expect(tokens.byProvider[0]).toMatchObject({ key: "anthropic", tokens: { total: 250 } });
+		// Daily time series: two days.
+		expect(tokens.timeSeries).toHaveLength(2);
+		expect(tokens.timeSeries[0]).toMatchObject({ date: "2026-05-20", input: 100, total: 180 });
+		expect(tokens.timeSeries[1]).toMatchObject({ date: "2026-05-21", input: 40, total: 70 });
+		// Per-model time series: two series (sonnet, haiku), each with one daily bucket.
+		expect(tokens.byModelTimeSeries).toHaveLength(2);
+		const sonnetSeries = tokens.byModelTimeSeries.find((s) => s.key === "sonnet");
+		expect(sonnetSeries?.series[0]).toMatchObject({ date: "2026-05-20", total: 180 });
+		// Per-provider time series: one series (anthropic) with two daily buckets.
+		expect(tokens.byProviderTimeSeries).toHaveLength(1);
+		expect(tokens.byProviderTimeSeries[0]?.key).toBe("anthropic");
+		expect(tokens.byProviderTimeSeries[0]?.series).toHaveLength(2);
+	});
+
+	test("tokens section: respects ?projectId filter — runs from other projects are excluded (warren-1244)", async () => {
+		// Create a second project and seed a run there — it must not bleed into the filtered result.
+		const otherProject = await repos.projects.create({
+			gitUrl: "https://github.com/o/other",
+			localPath: "/tmp/other",
+			defaultBranch: "main",
+		});
+		await seedRun(repos, {
+			projectId,
+			agentName: "claude-code",
+			provider: "anthropic",
+			model: "sonnet",
+			state: "succeeded",
+			tokensInput: 500,
+			tokensOutput: 200,
+			startedAt: "2026-05-20T10:00:00.000Z",
+			endedAt: "2026-05-20T10:05:00.000Z",
+		});
+		await seedRun(repos, {
+			projectId: otherProject.id,
+			agentName: "claude-code",
+			provider: "anthropic",
+			model: "sonnet",
+			state: "succeeded",
+			tokensInput: 9999,
+			tokensOutput: 9999,
+			startedAt: "2026-05-20T10:00:00.000Z",
+			endedAt: "2026-05-20T10:05:00.000Z",
+		});
+		start();
+		const res = await fetch(
+			`${tcpUrl(handle as ServeHandle)}/analytics/runs?projectId=${projectId}`,
+		);
+		expect(res.status).toBe(200);
+		const body = (await res.json()) as {
+			tokens: { totals: { input: number } };
+		};
+		// Only the first project's run contributes — 9999 tokens from other project must be absent.
+		expect(body.tokens.totals.input).toBe(500);
 	});
 });
 

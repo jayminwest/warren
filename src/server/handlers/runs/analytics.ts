@@ -18,9 +18,12 @@ import {
 	buildCommandMining,
 	buildInsights,
 	buildRunMetrics,
+	type DimensionTokenSeries,
 	hydrateRunsUsage,
 	type RunMetrics,
 	type RunMetricsRow,
+	type TokenBreakdown,
+	type TokenDayBucket,
 	type ToolEventRow,
 } from "../../../runs/index.ts";
 import { jsonResponse } from "../../response.ts";
@@ -30,6 +33,27 @@ import {
 	parseAnalyticsDateBound,
 	resolveAnalyticsFrom,
 } from "./lifecycle.ts";
+
+/**
+ * Structured token section added to `GET /analytics/runs` (warren-1244 / pl-d1a2).
+ * Groups all token analytics — aggregate totals, per-model/provider summaries,
+ * and daily time series — into a single nested object so the UI can render
+ * token charts without picking fields off multiple top-level keys.
+ */
+export interface RunAnalyticsTokensSection {
+	/** Aggregate token breakdown across all runs in the window. */
+	readonly totals: TokenBreakdown;
+	/** Per-model aggregate token totals, sorted by total tokens desc. */
+	readonly byModel: readonly { readonly key: string; readonly tokens: TokenBreakdown }[];
+	/** Per-provider aggregate token totals, sorted by total tokens desc. */
+	readonly byProvider: readonly { readonly key: string; readonly tokens: TokenBreakdown }[];
+	/** Overall daily token series, one bucket per calendar day (YYYY-MM-DD). */
+	readonly timeSeries: readonly TokenDayBucket[];
+	/** Per-model daily token series, top-5 + OTHER_KEY fold + NONE_KEY. */
+	readonly byModelTimeSeries: readonly DimensionTokenSeries[];
+	/** Per-provider daily token series, top-5 + OTHER_KEY fold + NONE_KEY. */
+	readonly byProviderTimeSeries: readonly DimensionTokenSeries[];
+}
 
 /** Resolved `?from`/`?to`/`?projectId` analytics window. */
 interface AnalyticsWindow {
@@ -119,19 +143,41 @@ async function loadToolEventRows(
 }
 
 /**
- * `GET /analytics/runs?from=&to=&projectId=` (warren-0692 / pl-ad0f step 2).
+ * Build the `tokens` section for `GET /analytics/runs` from the already-computed
+ * `RunMetrics`. Extracts per-model and per-provider token totals (the static
+ * breakdown) and wires the time-series fields produced by warren-d3cd.
+ */
+function buildTokensSection(metrics: RunMetrics): RunAnalyticsTokensSection {
+	return {
+		totals: metrics.totals.tokens,
+		byModel: metrics.byModel.map((b) => ({ key: b.key, tokens: b.tokens })),
+		byProvider: metrics.byProvider.map((b) => ({ key: b.key, tokens: b.tokens })),
+		timeSeries: metrics.tokenTimeSeries,
+		byModelTimeSeries: metrics.tokenByModelSeries,
+		byProviderTimeSeries: metrics.tokenByProviderSeries,
+	};
+}
+
+/**
+ * `GET /analytics/runs?from=&to=&projectId=` (warren-0692 / pl-ad0f step 2;
+ * tokens section added by warren-1244 / pl-d1a2 step 3).
  *
  * Window defaults to the last 30 days when neither bound is supplied,
  * matching `GET /analytics/cost`. Both bounds and `projectId` are
  * validated lightly — a malformed date is a 400 because the
  * lexicographic ISO8601 compare in `listForAnalytics` would silently
  * produce surprising results otherwise.
+ *
+ * The response includes all `RunMetrics` fields at the top level PLUS a
+ * structured `tokens` section that groups token analytics into a single
+ * nested object for convenient UI consumption.
  */
 export function listRunAnalyticsHandler(deps: ServerDeps): RouteHandler {
 	return async (ctx) => {
 		const { echo, filter } = resolveAnalyticsWindow(ctx);
 		const { metrics } = await loadRunMetrics(deps, filter);
-		return jsonResponse(200, { filter: echo, ...metrics });
+		const tokens = buildTokensSection(metrics);
+		return jsonResponse(200, { filter: echo, ...metrics, tokens });
 	};
 }
 
