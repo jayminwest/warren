@@ -43,3 +43,9 @@ export function formatRate(rate: number | null): string {
 export function formatCount(n: number | null): string {
 	return n === null ? "—" : n.toLocaleString();
 }
+
+/** 0..1 ratio → "92.3%", null → "—". Higher precision than formatRate. */
+export function formatPercent(ratio: number | null): string {
+	if (ratio === null) return "—";
+	return `${(ratio * 100).toFixed(1)}%`;
+}

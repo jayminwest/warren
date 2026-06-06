@@ -38,6 +38,7 @@ import { TokenConsumptionChart } from "./run-analytics/TokenConsumptionChart.tsx
 import { InsightCallouts } from "./run-analytics/Insights.tsx";
 import { KpiCards } from "./run-analytics/KpiCards.tsx";
 import { GroupTable } from "./run-analytics/Tables.tsx";
+import { TokenKpiCards, TokenGroupTable } from "./run-analytics/TokenStats.tsx";
 
 /** Default date window: last 30 days. Mirrors the server default. */
 function defaultFrom(): string {
@@ -198,6 +199,8 @@ export function RunAnalyticsPage() {
 				</Card>
 			) : null}
 
+			<TokenKpiCards totals={data?.tokens.totals} />
+
 			{data ? (
 				<TokenConsumptionChart
 					timeSeries={data.tokens.timeSeries}
@@ -205,6 +208,23 @@ export function RunAnalyticsPage() {
 					byProviderTimeSeries={data.tokens.byProviderTimeSeries}
 				/>
 			) : null}
+
+			<div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+				<TokenGroupTable
+					title="Token usage by model"
+					subtitle="Token breakdown per model"
+					dimension="model"
+					buckets={data?.byModel ?? []}
+					loading={loading}
+				/>
+				<TokenGroupTable
+					title="Token usage by provider"
+					subtitle="Token breakdown per provider"
+					dimension="provider"
+					buckets={data?.byProvider ?? []}
+					loading={loading}
+				/>
+			</div>
 
 			<div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
 				<CommandCategoryChart byCategory={behaviorData?.mining.byCategory ?? []} />
