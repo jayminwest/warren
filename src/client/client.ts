@@ -203,8 +203,6 @@ export class WarrenClient {
 		if (input.provider !== undefined) body.providerOverride = input.provider;
 		if (input.seedId !== undefined) body.seedId = input.seedId;
 		if (input.plotId !== undefined) body.plotId = input.plotId;
-		if (input.mode !== undefined) body.mode = input.mode;
-		if (input.interactiveAgent !== undefined) body.interactiveAgent = input.interactiveAgent;
 		if (input.dispatcherHandle !== undefined) body.dispatcherHandle = input.dispatcherHandle;
 		if (input.continueFromRunId !== undefined) body.continueFromRunId = input.continueFromRunId;
 		if (input.cloneFromRunId !== undefined) body.cloneFromRunId = input.cloneFromRunId;
@@ -218,8 +216,7 @@ export class WarrenClient {
 	 * burrow is attached (the spawn-rollback window throws
 	 * `ValidationError` server-side).
 	 *
-	 * For interactive runs this is the prompt-injection seam. For batch
-	 * runs the same path delivers nudges, but blocking-question
+	 * For batch runs this path delivers nudges, but blocking-question
 	 * `pause ↔ resume` is driven server-side by Plot `question_answered`
 	 * events (`src/runs/pause.ts`), not by this endpoint — callers do not
 	 * need to issue an explicit "resume" after a steer.

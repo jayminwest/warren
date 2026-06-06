@@ -122,7 +122,7 @@ describe("POST /plots/:id/formalize", () => {
 			renderedAgentJson: {},
 			prompt: "p1",
 			trigger: "brainstorm",
-			mode: "interactive",
+			mode: "conversation",
 			plotId: "plot-roundtrip0",
 		});
 		const run2 = await repos.runs.create({
@@ -131,7 +131,7 @@ describe("POST /plots/:id/formalize", () => {
 			renderedAgentJson: {},
 			prompt: "p2",
 			trigger: "brainstorm",
-			mode: "interactive",
+			mode: "conversation",
 			plotId: "plot-roundtrip0",
 		});
 		await repos.events.append({

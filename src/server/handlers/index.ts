@@ -62,7 +62,6 @@ import {
 	answerPlotQuestionHandler,
 	attachPlotHandler,
 	changePlotStatusHandler,
-	createBrainstormHandler,
 	createPlotHandler,
 	detachPlotHandler,
 	editPlotIntentHandler,
@@ -93,7 +92,6 @@ import {
 	listCostAnalyticsHandler,
 	listRunAnalyticsHandler,
 	listRunsHandler,
-	postRunMessageHandler,
 	previewLoginHandler,
 	previewTeardownHandler,
 	steerRunHandler,
@@ -290,7 +288,6 @@ const ROUTE_TABLE: readonly RouteEntry[] = [
 	{ method: "POST", pattern: "/runs", build: createRunHandler },
 	{ method: "GET", pattern: "/runs/:id", build: getRunHandler },
 	{ method: "GET", pattern: "/runs/:id/events", build: streamRunEventsHandler },
-	{ method: "POST", pattern: "/runs/:id/messages", build: postRunMessageHandler },
 	{ method: "POST", pattern: "/runs/:id/steer", build: steerRunHandler },
 	{ method: "POST", pattern: "/runs/:id/cancel", build: cancelRunHandler },
 	{ method: "GET", pattern: "/runs/:id/preview/login", build: previewLoginHandler },
@@ -319,7 +316,6 @@ const ROUTE_TABLE: readonly RouteEntry[] = [
 		build: sendOffConversationHandler,
 	},
 
-	{ method: "POST", pattern: "/brainstorm", build: createBrainstormHandler },
 	{ method: "GET", pattern: "/plots", build: listPlotsHandler },
 	{ method: "POST", pattern: "/plots", build: createPlotHandler },
 	// Static path — must precede `/plots/:id` so the param route doesn't
@@ -385,7 +381,6 @@ export function buildApiRoutes(deps: ServerDeps): Route[] {
 export const API_PREFIXES: readonly string[] = [
 	"/agents",
 	"/analytics",
-	"/brainstorm",
 	"/burrows",
 	"/conversations",
 	"/projects",

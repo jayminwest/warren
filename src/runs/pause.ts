@@ -42,10 +42,8 @@
  * work. Per-run errors are caught so one bad row can't tear down the
  * loop.
  *
- * Interactive runs are deliberately excluded — their pause/resume
- * shape is owned by the respawn-per-turn primitive in
- * src/runs/interactive.ts (mx warren-1117). The pause detector only
- * touches `mode === "batch"` rows.
+ * Non-batch runs (e.g. `mode === "conversation"`) are deliberately
+ * excluded — the pause detector only touches `mode === "batch"` rows.
  *
  * The `respawn` seam is intentionally not wired to the live `spawnRun`
  * inside this module — the production wiring lives in

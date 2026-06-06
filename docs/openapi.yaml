@@ -13,8 +13,6 @@ tags:
     description: '`/agents` routes.'
   - name: analytics
     description: '`/analytics` routes.'
-  - name: brainstorm
-    description: '`/brainstorm` routes.'
   - name: burrows
     description: '`/burrows` routes.'
   - name: conversations
@@ -103,17 +101,6 @@ paths:
       tags:
         - analytics
       summary: GET /analytics/runs
-      responses:
-        '200':
-          description: Successful response.
-        default:
-          description: Error response (see `src/core/errors.ts`).
-  /brainstorm:
-    post:
-      operationId: createBrainstormHandler
-      tags:
-        - brainstorm
-      summary: POST /brainstorm
       responses:
         '200':
           description: Successful response.
@@ -789,23 +776,6 @@ paths:
       tags:
         - runs
       summary: GET /runs/:id/events
-      responses:
-        '200':
-          description: Successful response.
-        default:
-          description: Error response (see `src/core/errors.ts`).
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
-  /runs/{id}/messages:
-    post:
-      operationId: postRunMessageHandler
-      tags:
-        - runs
-      summary: POST /runs/:id/messages
       responses:
         '200':
           description: Successful response.

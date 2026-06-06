@@ -5,7 +5,6 @@ import { DrizzleAdapter } from "../../db/repos/drizzle-adapter.ts";
 import { parseRenderedAgent, type RenderResponse } from "../schema.ts";
 import {
 	agentSourceTier,
-	BRAINSTORM_BUILTIN,
 	BUILTIN_AGENT_NAMES,
 	BUILTIN_AGENTS,
 	CLAUDE_CODE_BUILTIN,
@@ -23,11 +22,11 @@ import {
 } from "./index.ts";
 
 describe("BUILTIN_AGENTS", () => {
-	test("includes claude-code, sapling, pi, brainstorm, planner, pr-fixer, and leveret", () => {
+	test("includes claude-code, sapling, pi, planner, pr-fixer, and leveret", () => {
 		expect(BUILTIN_AGENT_NAMES.has("claude-code")).toBe(true);
 		expect(BUILTIN_AGENT_NAMES.has("sapling")).toBe(true);
 		expect(BUILTIN_AGENT_NAMES.has("pi")).toBe(true);
-		expect(BUILTIN_AGENT_NAMES.has("brainstorm")).toBe(true);
+		expect(BUILTIN_AGENT_NAMES.has("brainstorm")).toBe(false);
 		expect(BUILTIN_AGENT_NAMES.has("planner")).toBe(true);
 		expect(BUILTIN_AGENT_NAMES.has("pr-fixer")).toBe(true);
 		expect(BUILTIN_AGENT_NAMES.has("leveret")).toBe(true);
@@ -83,7 +82,6 @@ describe("readAgentSource", () => {
 		expect(readAgentSource(CLAUDE_CODE_BUILTIN)).toBe("builtin");
 		expect(readAgentSource(SAPLING_BUILTIN)).toBe("builtin");
 		expect(readAgentSource(PI_BUILTIN)).toBe("builtin");
-		expect(readAgentSource(BRAINSTORM_BUILTIN)).toBe("builtin");
 		expect(readAgentSource(PLANNER_BUILTIN)).toBe("builtin");
 	});
 
@@ -185,55 +183,6 @@ describe("stampAgentSource", () => {
 		expect(stamped.frontmatter.source).toBe("project:prj_aaaaaaaaaaaa");
 		expect(readAgentSource(stamped)).toBe("project:prj_aaaaaaaaaaaa");
 		expect(agentSourceTier(readAgentSource(stamped))).toBe("project");
-	});
-});
-
-describe("BRAINSTORM_BUILTIN", () => {
-	test("is registered as an interactive read-only scout", () => {
-		// pl-0344 step 6 / warren-3de8: brainstorm pairs with planner as
-		// the first interactive built-ins. The interactive tag lets the UI
-		// surface it under interactive-run pickers without parsing the
-		// system prompt.
-		expect(BRAINSTORM_BUILTIN.name).toBe("brainstorm");
-		expect(BRAINSTORM_BUILTIN.frontmatter.tags).toContain("interactive");
-	});
-
-	test("system prompt forbids workspace writes, plot writes, and dispatch", () => {
-		// Warren's burrow_config only forwards [sandbox].network onto
-		// POST /burrows (src/runs/burrow_config.ts), so the read-only
-		// scout contract is enforced in the prompt for now. These string
-		// checks pin the contract so a casual edit doesn't silently widen
-		// the role.
-		const system = BRAINSTORM_BUILTIN.sections.system ?? "";
-		expect(system).toMatch(/read-only scout/i);
-		expect(system).toMatch(/must NOT/);
-		expect(system).toMatch(/Edit, create, or delete files/);
-		expect(system).toMatch(/\.plot\//);
-		expect(system).toMatch(/Dispatch runs/);
-	});
-
-	test("requires open network for web-fetch scouting", () => {
-		expect(BRAINSTORM_BUILTIN.sections.burrow_config).toContain('network = "open"');
-	});
-
-	test("declares runtime = 'pi' so dispatch composes on the real runtime", () => {
-		// warren-ebca: burrow's BUILT_IN_RUNTIMES has no `brainstorm`
-		// entry; without this stamp, dispatchRun would send `"brainstorm"`
-		// as the burrow runtime id and the run would fail with
-		// `agent 'brainstorm' is not registered`. readRuntimeId() resolves
-		// this to "pi".
-		expect(BRAINSTORM_BUILTIN.frontmatter.runtime).toBe("pi");
-	});
-
-	test("drives the user toward the four Plot intent fields", () => {
-		// The interactive-run primitive (warren-1117) and the formalize
-		// flow (warren-d22e) both expect brainstorm to produce material
-		// that maps onto goal / non_goals / constraints / success_criteria.
-		const system = BRAINSTORM_BUILTIN.sections.system ?? "";
-		expect(system).toMatch(/goal/);
-		expect(system).toMatch(/non_goals/);
-		expect(system).toMatch(/constraints/);
-		expect(system).toMatch(/success_criteria/);
 	});
 });
 
@@ -424,25 +373,25 @@ describe("seedBuiltinAgents", () => {
 	});
 
 	test("re-upserts pre-existing builtin rows when their content/frontmatter has drifted", async () => {
-		const oldBrainstorm = {
-			...BRAINSTORM_BUILTIN,
+		const oldPlanner = {
+			...PLANNER_BUILTIN,
 			frontmatter: {
-				...BRAINSTORM_BUILTIN.frontmatter,
+				...PLANNER_BUILTIN.frontmatter,
 				runtime: undefined, // Simulates pre-v0.5.1 state where runtime wasn't set
 			},
 		};
 
 		await repo.upsert({
-			name: "brainstorm",
-			renderedJson: oldBrainstorm,
+			name: "planner",
+			renderedJson: oldPlanner,
 		});
 
-		// Now run seedBuiltinAgents. It should recognize the drift and re-upsert brainstorm.
+		// Now run seedBuiltinAgents. It should recognize the drift and re-upsert planner.
 		const result = await seedBuiltinAgents(repo);
-		expect(result.seeded).toContain("brainstorm");
+		expect(result.seeded).toContain("planner");
 
 		// The stored version should now have the updated frontmatter with 'runtime' set to 'pi'.
-		const stored = await repo.get("brainstorm");
+		const stored = await repo.get("planner");
 		expect(stored).not.toBeNull();
 		const rendered = stored?.renderedJson as { frontmatter: { runtime: string } };
 		expect(rendered.frontmatter.runtime).toBe("pi");

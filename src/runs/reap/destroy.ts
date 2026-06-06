@@ -56,13 +56,13 @@ export async function runWorkspaceDestroy(input: RunWorkspaceDestroyInput): Prom
 	const { run, workerClient } = input;
 	if (run.burrowId === null || workerClient === null) return false;
 
-	// warren-c770: extend the interactive exemption to `conversation` runs.
-	// A conversation anchors a still-open pi-chat session whose workspace must
-	// survive across turns; destroying it would strand the live transcript.
-	if (run.mode === "interactive" || run.mode === "conversation") {
+	// warren-c770: a conversation anchors a still-open pi-chat session whose
+	// workspace must survive across turns; destroying it would strand the live
+	// transcript.
+	if (run.mode === "conversation") {
 		await input.emit("reap.workspace_destroy_skipped", {
 			burrowId: run.burrowId,
-			reason: run.mode === "conversation" ? "conversation_run" : "interactive_run",
+			reason: "conversation_run",
 		});
 		return false;
 	}

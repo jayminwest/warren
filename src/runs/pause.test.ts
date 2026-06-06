@@ -8,7 +8,7 @@
  *     the answer text folded into the seam input).
  *   - timeout resume (`paused → running` + respawn with `timed_out`
  *     reason) once `agent.pauseTimeoutMs` has elapsed since `paused_at`.
- *   - no-op cases (interactive runs, runs without a `plot_id`, paused
+ *   - no-op cases (conversation runs, runs without a `plot_id`, paused
  *     row missing `paused_question_event_id`, no unanswered question).
  *   - per-run error isolation so one bad row can't tear down the tick.
  *   - single-flight `bootPauseDetector` wrapper drops overlapping
@@ -185,14 +185,14 @@ describe("tickPauseDetector", () => {
 		return row.id;
 	}
 
-	async function seedRunningInteractive(): Promise<string> {
+	async function seedRunningConversation(): Promise<string> {
 		const row = await repos.runs.create({
 			agentName: "claude-code",
 			projectId: PROJECT_ID,
 			prompt: "<seed>",
 			renderedAgentJson: makeAgentJson(),
-			trigger: "interactive",
-			mode: "interactive",
+			trigger: "conversation",
+			mode: "conversation",
 			plotId: PLOT_ID,
 		});
 		await repos.runs.markRunning(row.id);
@@ -231,8 +231,8 @@ describe("tickPauseDetector", () => {
 		expect(respawns).toEqual([]); // pause does NOT respawn
 	});
 
-	test("skips interactive runs (they have their own respawn primitive)", async () => {
-		await seedRunningInteractive();
+	test("skips conversation runs (they anchor a long-lived pi-chat session)", async () => {
+		await seedRunningConversation();
 		const result = await tickPauseDetector({
 			repos,
 			plotReader: stubReader([poseEvent("2026-05-23T00:00:01Z")]),

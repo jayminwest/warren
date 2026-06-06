@@ -41,10 +41,10 @@ export interface SpawnRunInput {
 	 */
 	readonly seedId?: string;
 	/**
-	 * Run mode (pl-0344 step 1 / warren-67b6; surfaced by step 3 / warren-1117).
-	 * `batch` (default) is the historical single-shot run; `interactive` is the
-	 * respawn-per-turn primitive used by `spawnInteractiveTurn` in
-	 * `../interactive.ts`. Persisted to `runs.mode` and fixed at row creation;
+	 * Run mode (pl-0344 step 1 / warren-67b6).
+	 * `batch` (default) is the historical single-shot run; `conversation`
+	 * anchors a long-lived pi-chat session (LEVERET.md §0.4). Persisted to
+	 * `runs.mode` and fixed at row creation;
 	 * forwarded onto the burrow up call unchanged (burrow has no notion of
 	 * mode — the discriminator is warren-side only).
 	 */

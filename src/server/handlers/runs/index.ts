@@ -3,10 +3,7 @@
  */
 
 export { listBehaviorAnalyticsHandler, listRunAnalyticsHandler } from "./analytics.ts";
-export {
-	createRunHandler,
-	postRunMessageHandler,
-} from "./dispatch.ts";
+export { createRunHandler } from "./dispatch.ts";
 export {
 	asNdjsonStream,
 	bridgeAbort,

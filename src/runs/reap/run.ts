@@ -5,7 +5,6 @@ import type { EventRow, RunFailureReason, RunTerminalState } from "../../db/sche
 import { openPullRequest } from "../pr.ts";
 import { dispatchAutoPlanRuns, hasAutoPlanRunFrontmatter, parsePlanIds } from "./auto-plan-run.ts";
 import { runWorkspaceDestroy } from "./destroy.ts";
-import { captureInteractiveReply } from "./interactive.ts";
 import { mergeMulch } from "./mulch.ts";
 import { mergePlot } from "./plot-merge.ts";
 import { runPrOpen } from "./pr-open.ts";
@@ -424,7 +423,7 @@ export async function reapRun(input: ReapRunInput): Promise<ReapRunResult> {
 
 	// Final sub-step (warren-0d89): destroy the burrow workspace now that
 	// every result has been extracted and the branch pushed. Best-effort —
-	// skipped for interactive runs and still-live previews, and a failure
+	// skipped for conversation runs and still-live previews, and a failure
 	// surfaces as `reap_failed` step=`workspace_destroy` without blocking
 	// the terminal-state transition above.
 	const workspaceDestroyed = await runWorkspaceDestroy({
@@ -435,10 +434,6 @@ export async function reapRun(input: ReapRunInput): Promise<ReapRunResult> {
 		emit,
 		fail: (step, err) => fail(step, err),
 	});
-
-	// Interactive capture (warren-509f): append the agent's final reply as an
-	// `agent_message` event. Last, so seq allocation can't collide.
-	await captureInteractiveReply({ run, input, now: now() });
 
 	if (input.broker !== undefined) input.broker.close(run.id);
 

@@ -35,12 +35,10 @@ export type RunTerminalState = (typeof RUN_TERMINAL_STATES)[number];
 /**
  * Run mode discriminator (pl-0344 step 1 / warren-67b6). `batch` is the
  * historical single-shot run: warren spawns burrow, agent runs to completion,
- * reap pushes the branch. `interactive` is the respawn-per-turn primitive
- * powering brainstorm + planner agents (pl-0344 step 3 / warren-1117) — each
- * user message dispatches a fresh burrow turn that reads Plot context, replies,
- * and exits. Mode is fixed at run-create time. TS-only narrowing (mx-2ab984);
- * defaults to `batch` so legacy rows written before this column existed match
- * the historical shape.
+ * reap pushes the branch. Mode is fixed at run-create time. TS-only narrowing
+ * (mx-2ab984); defaults to `batch` so legacy rows written before this column
+ * existed match the historical shape. (The retired `interactive` mode value
+ * is intentionally dropped from the enum — warren-d622 / LEVERET.md §0.8.)
  *
  * `conversation` (LEVERET.md §0.4, warren-c770) is the pi-chat runtime mode:
  * the burrow-side agent suppresses the per-turn `agent_end` terminal envelope,
@@ -48,7 +46,7 @@ export type RunTerminalState = (typeof RUN_TERMINAL_STATES)[number];
  * guards (watchdog, reap workspace-destroy, crash-recovery finalize) must
  * therefore exempt it — an idle conversation run is healthy, not hung.
  */
-export const RUN_MODES = ["batch", "interactive", "conversation"] as const;
+export const RUN_MODES = ["batch", "conversation"] as const;
 export type RunMode = (typeof RUN_MODES)[number];
 
 /**

@@ -97,7 +97,7 @@ export interface RunRow {
 	/** Chain back-link (warren-4b11 / warren-e96f); null for root runs. */
 	parentRunId: string | null;
 	cloneKind: "replicate" | "continue" | null;
-	mode: "batch" | "interactive";
+	mode: "batch" | "conversation";
 	renderedAgentJson: unknown;
 	state: RunState;
 	failureReason: RunFailureReason | null;
@@ -156,8 +156,6 @@ export interface CreateRunInput {
 	modelOverride?: string;
 	seedId?: string;
 	plotId?: string;
-	mode?: "batch" | "interactive";
-	interactiveAgent?: string;
 	dispatcherHandle?: string;
 	/** Continuation parent (warren-4b11): seed the workspace from this run's branch. */
 	continueFromRunId?: string;
@@ -182,8 +180,6 @@ export interface DispatchRunInput {
 	provider?: string;
 	seedId?: string;
 	plotId?: string;
-	mode?: "batch" | "interactive";
-	interactiveAgent?: string;
 	dispatcherHandle?: string;
 	/** Maps to CreateRunInput.continueFromRunId (warren-4b11). */
 	continueFromRunId?: string;

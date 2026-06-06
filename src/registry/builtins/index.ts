@@ -24,7 +24,6 @@
 
 import type { AgentsRepo } from "../../db/repos/agents.ts";
 import type { AgentDefinition } from "../schema.ts";
-import { BRAINSTORM_BUILTIN } from "./brainstorm.ts";
 import { BUGWATCH_BUILTIN } from "./bugwatch.ts";
 import { CLAUDE_CODE_BUILTIN } from "./claude-code.ts";
 import { LEVERET_BUILTIN } from "./leveret.ts";
@@ -59,7 +58,6 @@ export const BUILTIN_AGENTS: readonly AgentDefinition[] = [
 	CLAUDE_CODE_BUILTIN,
 	SAPLING_BUILTIN,
 	PI_BUILTIN,
-	BRAINSTORM_BUILTIN,
 	PLANNER_BUILTIN,
 	NIGHTWATCH_BUILTIN,
 	BUGWATCH_BUILTIN,
@@ -213,7 +211,6 @@ export function stampAgentSource(agent: AgentDefinition, source: AgentSource): A
 }
 
 export {
-	BRAINSTORM_BUILTIN,
 	BUGWATCH_BUILTIN,
 	CLAUDE_CODE_BUILTIN,
 	LEVERET_BUILTIN,

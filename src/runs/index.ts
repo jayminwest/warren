@@ -83,20 +83,6 @@ export {
 	tailRunEvents,
 } from "./events.ts";
 export {
-	appendAgentMessage,
-	appendUserMessage,
-	buildInteractivePrompt,
-	DEFAULT_PLOT_HISTORY_TAIL,
-	defaultPlotContextReader,
-	INTERACTIVE_AGENT_MESSAGE_KIND,
-	INTERACTIVE_USER_MESSAGE_KIND,
-	type InteractivePlotContext,
-	type PlotContextReader,
-	type SpawnInteractiveTurnInput,
-	type SpawnInteractiveTurnResult,
-	spawnInteractiveTurn,
-} from "./interactive.ts";
-export {
 	bootPauseDetector,
 	defaultPlotEventReader,
 	extractAnswerText,
