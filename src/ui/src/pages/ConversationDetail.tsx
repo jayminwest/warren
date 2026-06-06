@@ -10,6 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card.t
 import { PageHeader } from "@/components/ui/page-header.tsx";
 import { Textarea } from "@/components/ui/textarea.tsx";
 import { formatError } from "@/lib/format-error.ts";
+import { DispatchPlanButton } from "./conversation-detail/dispatch-plan-dialog.tsx";
 
 /**
  * /leveret/:id — the Leveret conversation split-view (warren-01c8,
@@ -27,10 +28,11 @@ import { formatError } from "@/lib/format-error.ts";
  * `POST /plots/:id/intent`, and live-updating: the plot query polls so a
  * leveret `propose_intent -> intent_edited` edit shows up within seconds.
  *
- * TOP BAR: 'Send to planner' (enabled once intent is non-empty). The
- * send-off wiring itself lands in warren-756d and the operator-gated
- * 'Dispatch plan' popup in warren-6e45 — here the button is present and
- * intent-gated, surfacing an inline note until that path lands.
+ * TOP BAR: 'Send to planner' (enabled once intent is non-empty), plus
+ * the operator-gated 'Dispatch plan' popup (warren-6e45) which appears
+ * once the merge poller has dispatched the planner (`plannerRunId`
+ * stamped) and the planner has emitted a seeds plan — it MIRRORS the
+ * `/plan-runs/new` fields and dispatches over the existing plan-run path.
  */
 export function ConversationDetailPage(): JSX.Element {
 	const { id = "" } = useParams<{ id: string }>();
@@ -54,6 +56,13 @@ export function ConversationDetailPage(): JSX.Element {
 				}
 				actions={
 					<div className="flex items-center gap-2">
+						{row?.plannerRunId != null && row.plannerRunId !== "" && row.projectId !== null ? (
+							<DispatchPlanButton
+								projectId={row.projectId}
+								plotId={row.plotId}
+								plannerRunId={row.plannerRunId}
+							/>
+						) : null}
 						<Link to="/leveret" className="text-sm underline-offset-2 hover:underline">
 							← All conversations
 						</Link>

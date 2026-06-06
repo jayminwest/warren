@@ -1128,6 +1128,21 @@ export interface ConversationRow {
 	createdAt: string;
 	lastActivityAt: string;
 	closedAt: string | null;
+	/**
+	 * Send-off PR ref persisted when the operator sends the conversation
+	 * to the planner (warren-756d). Null until send-off.
+	 */
+	submittedPrUrl?: string | null;
+	submittedPrNumber?: number | null;
+	/** Planner agent pinned at send-off (warren-756d). Null until send-off. */
+	plannerAgent?: string | null;
+	/**
+	 * The auto-dispatched planner run id, stamped by the merge poller once
+	 * the send-off PR merges (warren-b872). Non-null means the planner has
+	 * been dispatched and a synthesized plan exists (or is in flight) — this
+	 * gates the operator-only "Dispatch plan" popup (warren-6e45).
+	 */
+	plannerRunId?: string | null;
 }
 
 export interface ListConversationsFilter {
