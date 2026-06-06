@@ -16,6 +16,7 @@
  */
 
 import type { AgentDefinition } from "../schema.ts";
+import { MODEL_TIERS } from "./model-tiers.ts";
 
 const SYSTEM_BODY = `You are a code patrol agent. Your job is to scan a repository for quality issues and produce a seeds plan that fixes them. You do NOT write fixes yourself — you produce the plan, and a separate plan-run executes it.
 
@@ -86,5 +87,9 @@ export const NIGHTWATCH_BUILTIN: AgentDefinition = {
 		runtime: "pi",
 		auto_plan_run: true,
 		auto_plan_run_agent: "pi",
+		// Opus tier (model-tiers.ts): subtle defect/security scanning
+		// benefits from the strongest reasoning; the cheaper plan-run
+		// children it spawns (auto_plan_run_agent "pi") execute on Sonnet.
+		...MODEL_TIERS.opus,
 	},
 };

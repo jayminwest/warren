@@ -16,6 +16,7 @@
  */
 
 import type { AgentDefinition } from "../schema.ts";
+import { MODEL_TIERS } from "./model-tiers.ts";
 
 const SYSTEM_BODY = `You are a helpful coding assistant. Be concise.
 
@@ -44,5 +45,9 @@ export const PI_BUILTIN: AgentDefinition = {
 	frontmatter: {
 		source: "builtin",
 		tags: ["agent"],
+		// Sonnet tier (model-tiers.ts): pi is the plan-run child executor
+		// — the bulk of run volume, running well-decomposed steps where
+		// Sonnet matches Opus at lower cost.
+		...MODEL_TIERS.sonnet,
 	},
 };

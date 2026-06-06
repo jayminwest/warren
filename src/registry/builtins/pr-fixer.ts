@@ -18,6 +18,7 @@
  */
 
 import type { AgentDefinition } from "../schema.ts";
+import { MODEL_TIERS } from "./model-tiers.ts";
 
 const SYSTEM_BODY = `You are a CI-repair agent. A pull request that warren opened has failing CI checks. Your job is to read the failure, find the root cause, apply the smallest correct fix, verify it locally, and commit. Warren pushes your commit to the PR's existing branch, so CI re-runs automatically. You do NOT open a new pull request.
 
@@ -73,5 +74,8 @@ export const PR_FIXER_BUILTIN: AgentDefinition = {
 		source: "builtin",
 		tags: ["agent"],
 		runtime: "pi",
+		// Sonnet tier (model-tiers.ts): smallest correct fix to a known CI
+		// failure, gated by the PR's re-run CI.
+		...MODEL_TIERS.sonnet,
 	},
 };

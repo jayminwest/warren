@@ -8,6 +8,7 @@
  */
 
 import type { AgentDefinition } from "../schema.ts";
+import { MODEL_TIERS } from "./model-tiers.ts";
 
 const SYSTEM_BODY = `You are a helpful coding assistant. Be concise.
 
@@ -35,5 +36,7 @@ export const SAPLING_BUILTIN: AgentDefinition = {
 	frontmatter: {
 		source: "builtin",
 		tags: ["agent"],
+		// Sonnet tier (model-tiers.ts): alternate coding harness, scoped work.
+		...MODEL_TIERS.sonnet,
 	},
 };

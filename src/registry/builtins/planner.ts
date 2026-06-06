@@ -31,6 +31,7 @@
  */
 
 import type { AgentDefinition } from "../schema.ts";
+import { MODEL_TIERS } from "./model-tiers.ts";
 
 const SYSTEM_BODY = `You are a planning partner for a software project. Your role is to read an existing **Plot intent** (goal, non_goals, constraints, success_criteria) and produce a structured **seeds plan** that decomposes the work into reviewable steps.
 
@@ -83,5 +84,8 @@ export const PLANNER_BUILTIN: AgentDefinition = {
 		// its own. Without this, burrow looks up "planner" in
 		// BUILT_IN_RUNTIMES and the run fails before agent boot.
 		runtime: "pi",
+		// Opus tier (model-tiers.ts): the plan planner emits caps the
+		// quality of every downstream step.
+		...MODEL_TIERS.opus,
 	},
 };

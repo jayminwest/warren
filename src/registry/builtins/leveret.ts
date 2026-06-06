@@ -32,6 +32,7 @@
  */
 
 import type { AgentDefinition } from "../schema.ts";
+import { MODEL_TIERS } from "./model-tiers.ts";
 
 const SYSTEM_BODY = `You are **Leveret**, the conversational overseer for a software project. Your job is to help a human shape a Plot's structured **intent** through conversation, then hand a clean, well-formed intent off to a planner.
 
@@ -159,5 +160,8 @@ export const LEVERET_BUILTIN: AgentDefinition = {
 		// readRuntimeId reads frontmatter.runtime as a free string and
 		// forwards it onto burrow — no KNOWN_RUNTIME_IDS change needed.
 		runtime: "pi-chat",
+		// Opus tier (model-tiers.ts): the overseer's conversation quality
+		// shapes the Plot intent every downstream agent works from.
+		...MODEL_TIERS.opus,
 	},
 };

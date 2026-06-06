@@ -22,6 +22,7 @@
  */
 
 import type { AgentDefinition } from "../schema.ts";
+import { MODEL_TIERS } from "./model-tiers.ts";
 
 const SYSTEM_BODY = `You are a bug triage agent. Your job is to read existing open bug seeds, investigate the codebase to understand each one, and produce a seeds plan per bug with concrete fix steps. You do NOT write fixes yourself — you produce plans, and separate plan-runs execute them.
 
@@ -102,5 +103,8 @@ export const BUGWATCH_BUILTIN: AgentDefinition = {
 		runtime: "pi",
 		auto_plan_run: true,
 		auto_plan_run_agent: "pi",
+		// Sonnet tier (model-tiers.ts): bounded triage (≤3 well-specified
+		// bugs per run).
+		...MODEL_TIERS.sonnet,
 	},
 };

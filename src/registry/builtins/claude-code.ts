@@ -11,6 +11,7 @@
  */
 
 import type { AgentDefinition } from "../schema.ts";
+import { MODEL_TIERS } from "./model-tiers.ts";
 
 const SYSTEM_BODY = `You are a helpful coding assistant. Be concise.
 
@@ -38,5 +39,8 @@ export const CLAUDE_CODE_BUILTIN: AgentDefinition = {
 	frontmatter: {
 		source: "builtin",
 		tags: ["agent"],
+		// Sonnet tier (model-tiers.ts): decomposed/scoped coding work;
+		// operators raise to Opus per-run when a raw prompt needs it.
+		...MODEL_TIERS.sonnet,
 	},
 };
