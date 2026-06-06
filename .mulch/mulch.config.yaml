@@ -28,6 +28,7 @@ domains:
   ci: {}
   run-analytics: {}
   analytics: {}
+  sandbox: {}
 governance:
   max_entries: 100
   warn_entries: 150
