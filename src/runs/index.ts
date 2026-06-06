@@ -49,6 +49,24 @@ export {
 export { type ParsedBurrowConfig, parseBurrowConfig } from "./burrow-config.ts";
 export { type CancelRunInput, type CancelRunResult, cancelRun } from "./cancel.ts";
 export {
+	type CreateMergePollerDispatchInput,
+	createMergePollerDispatch,
+} from "./conversation-merge-dispatch.ts";
+export {
+	type BootMergePollerInput,
+	bootConversationMergePoller,
+	buildPlannerDispatchPrompt,
+	CONVERSATION_PLANNER_DISPATCHED_KIND,
+	DEFAULT_PLANNER_AGENT,
+	type MergePollerHandle,
+	type MergePollTickDeps,
+	type MergePollTickResult,
+	type PlannerDispatchFn,
+	type PlannerDispatchInput,
+	type PlannerDispatchResult,
+	tickConversationMergePoller,
+} from "./conversation-merge-poller.ts";
+export {
 	buildCostAnalytics,
 	type CostAnalytics,
 	type CostAnalyticsRow,

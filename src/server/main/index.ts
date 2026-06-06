@@ -74,7 +74,7 @@ import { bootScheduler } from "../scheduler.ts";
 import { startServer } from "../server.ts";
 import type { AuthProvider, ServeHandle } from "../types.ts";
 import { buildServerDeps } from "./deps.ts";
-import { bootPauseDetectorFromEnv, bootWatchdogFromEnv } from "./detector-wiring.ts";
+import { bootBackgroundDetectors } from "./detector-wiring.ts";
 import {
 	bridgeLoggerFromPino,
 	planRunLoggerFromPino,
@@ -339,30 +339,22 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 		logger.info({ tickMs: planRunCoordinatorConfig.tickMs }, "plan-run coordinator running");
 	}
 
-	// Pause detector (pl-0344 step 5 / warren-2976). Polls Plot event
-	// logs of in-flight batch runs for unanswered `question_posed` and
-	// resumes paused runs on `question_answered` or pauseTimeoutMs.
-	// Disabled by default until the brainstorm/planner agents land
-	// (warren-3de8 / warren-d22e) and the system has paused runs to
-	// surface; enable via WARREN_PAUSE_DETECTOR_ENABLED=1.
-	const pauseDetector = bootPauseDetectorFromEnv({
-		env,
-		repos,
-		warrenConfigs,
-		logger,
-		...(opts.now !== undefined ? { now: opts.now } : {}),
-	});
-
-	// Run heartbeat watchdog (warren-285d). Force-fails `running` runs that
-	// go silent-but-busy (e.g. a runaway gate command behind a stuck bash
-	// tool) past WARREN_RUN_HEARTBEAT_TIMEOUT_MS, routing the timeout
-	// through reap so the burrow workspace + bwrap process tree is torn down.
-	const watchdog = bootWatchdogFromEnv({
+	// Opt-in background detectors (each gated by its own env flag): the pause
+	// detector (warren-2976), run heartbeat watchdog (warren-285d), and send-off
+	// PR-merge poller (warren-b872, auto-dispatches the planner once a sent-off
+	// conversation's plotSync PR merges). See detector-wiring.ts.
+	const { pauseDetector, watchdog, mergePoller } = bootBackgroundDetectors({
 		env,
 		repos,
 		burrowClientPool,
 		broker,
+		bridges: bridgesBoot.registry,
+		warrenConfigs,
+		projectsConfig,
+		projectSpawn: defaultSpawn,
+		seedsCli,
 		autoOpenPr,
+		...(runBranchPrefixDefault !== undefined ? { runBranchPrefixDefault } : {}),
 		logger,
 		...(opts.now !== undefined ? { now: opts.now } : {}),
 	});
@@ -464,6 +456,7 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 			await planRunCoordinator.stop();
 			await pauseDetector.stop();
 			await watchdog.stop();
+			await mergePoller.stop();
 			await scheduler.stop();
 			await previewEvictionWorker.stop();
 			await workspaceGcWorker.stop();

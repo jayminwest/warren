@@ -1,0 +1,1 @@
+ALTER TABLE "conversations" ADD COLUMN "planner_run_id" text;

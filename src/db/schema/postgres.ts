@@ -317,6 +317,8 @@ export const conversations = pgTable(
 		submittedPrUrl: text("submitted_pr_url"),
 		submittedPrNumber: integer("submitted_pr_number"),
 		plannerAgent: text("planner_agent"),
+		// Merge-poller planner dispatch back-link (warren-b872) — mirror of sqlite.
+		plannerRunId: text("planner_run_id"),
 		createdAt: text("created_at").notNull(),
 		lastActivityAt: text("last_activity_at").notNull(),
 		closedAt: text("closed_at"),

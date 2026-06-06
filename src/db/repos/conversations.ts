@@ -13,7 +13,7 @@
  * `rotateAnchor()` simply repoints the live run.
  */
 
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, isNull } from "drizzle-orm";
 import { NotFoundError } from "../../core/errors.ts";
 import { generateId } from "../../core/ids.ts";
 import type { SqliteDrizzleDb } from "../client.ts";
@@ -56,6 +56,7 @@ export class ConversationsRepo {
 			submittedPrUrl: null,
 			submittedPrNumber: null,
 			plannerAgent: null,
+			plannerRunId: null,
 			createdAt: now,
 			lastActivityAt: now,
 			closedAt: null,
@@ -173,6 +174,49 @@ export class ConversationsRepo {
 					lastActivityAt: ts,
 				})
 				.where(eq(this.conversations.id, id)),
+		);
+		return this.require(id);
+	}
+
+	/**
+	 * Closed conversations that carry a submitted send-off PR but have NOT yet
+	 * had their planner run auto-dispatched (`planner_run_id IS NULL`). These are
+	 * the rows the merge poller (warren-b872) probes for a merged PR each tick.
+	 * Returned most-recent-activity first so the freshest send-offs poll first.
+	 */
+	async listAwaitingPlannerDispatch(): Promise<ConversationRow[]> {
+		const rows = await this.adapter.pickAll(
+			this.db
+				.select()
+				.from(this.conversations)
+				.where(eq(this.conversations.status, "closed"))
+				.orderBy(desc(this.conversations.lastActivityAt)),
+		);
+		return rows.filter(
+			(r) => r.submittedPrUrl !== null && r.submittedPrUrl !== "" && r.plannerRunId === null,
+		);
+	}
+
+	/**
+	 * Stamp the auto-dispatched planner run id on a sent-off conversation
+	 * (warren-b872). Single-shot guard: writes only when `planner_run_id` is
+	 * still null, so a racing second poll tick (or crash-recovery re-detect)
+	 * cannot double-dispatch. Returns the post-write row, or `null` when the
+	 * write was skipped because a dispatch was already recorded.
+	 */
+	async recordPlannerDispatch(
+		id: string,
+		plannerRunId: string,
+		now?: Date,
+	): Promise<ConversationRow | null> {
+		const ts = (now ?? new Date()).toISOString();
+		const existing = await this.require(id);
+		if (existing.plannerRunId !== null) return null;
+		await this.adapter.runWrite(
+			this.db
+				.update(this.conversations)
+				.set({ plannerRunId, lastActivityAt: ts })
+				.where(and(eq(this.conversations.id, id), isNull(this.conversations.plannerRunId))),
 		);
 		return this.require(id);
 	}

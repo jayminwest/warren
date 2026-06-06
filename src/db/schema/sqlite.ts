@@ -515,10 +515,10 @@ export const conversations = sqliteTable(
 		anchoringRunId: text("anchoring_run_id"),
 		status: text("status", { enum: CONVERSATION_STATES }).notNull().default("active"),
 		title: text("title"),
-		// Send-off (LEVERET §0.0.B / warren-756d): plotSync PR ref + planner agent.
-		submittedPrUrl: text("submitted_pr_url"),
+		submittedPrUrl: text("submitted_pr_url"), // send-off PR ref (warren-756d)
 		submittedPrNumber: integer("submitted_pr_number"),
-		plannerAgent: text("planner_agent"),
+		plannerAgent: text("planner_agent"), // send-off planner agent (warren-756d)
+		plannerRunId: text("planner_run_id"), // merge-poller dispatch guard (warren-b872)
 		createdAt: text("created_at").notNull(),
 		lastActivityAt: text("last_activity_at").notNull(),
 		closedAt: text("closed_at"),

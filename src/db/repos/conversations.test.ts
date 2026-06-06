@@ -155,6 +155,51 @@ function suite(dialect: "sqlite" | "postgres"): void {
 			}
 		});
 
+		test("listAwaitingPlannerDispatch returns sent-off-but-undispatched conversations", async () => {
+			const { handle, repo, projectId } = await open();
+			try {
+				// active (no send-off) — excluded.
+				await repo.create({ projectId, plotId: "plot-a" });
+				// sent off, awaiting dispatch — included.
+				const sent = await repo.create({ projectId, plotId: "plot-b" });
+				await repo.recordSubmission(sent.id, {
+					prUrl: "https://github.com/x/y/pull/1",
+					prNumber: 1,
+				});
+				// sent off AND already dispatched — excluded.
+				const done = await repo.create({ projectId, plotId: "plot-c" });
+				await repo.recordSubmission(done.id, {
+					prUrl: "https://github.com/x/y/pull/2",
+					prNumber: 2,
+				});
+				await repo.recordPlannerDispatch(done.id, "run_planner");
+				// closed without a send-off PR — excluded.
+				const bare = await repo.create({ projectId, plotId: "plot-d" });
+				await repo.close(bare.id);
+
+				const awaiting = await repo.listAwaitingPlannerDispatch();
+				expect(awaiting.map((r) => r.id)).toEqual([sent.id]);
+			} finally {
+				await handle.close();
+			}
+		});
+
+		test("recordPlannerDispatch is single-shot — a second call returns null", async () => {
+			const { handle, repo, projectId } = await open();
+			try {
+				const c = await repo.create({ projectId, plotId: "plot-e" });
+				await repo.recordSubmission(c.id, { prUrl: "https://github.com/x/y/pull/3" });
+				const first = await repo.recordPlannerDispatch(c.id, "run_first");
+				expect(first?.plannerRunId).toBe("run_first");
+				const second = await repo.recordPlannerDispatch(c.id, "run_second");
+				expect(second).toBeNull();
+				const got = await repo.get(c.id);
+				expect(got?.plannerRunId).toBe("run_first");
+			} finally {
+				await handle.close();
+			}
+		});
+
 		test("deleting the owning project orphans (not deletes) its conversations", async () => {
 			const { handle, repo, projects, projectId } = await open();
 			try {

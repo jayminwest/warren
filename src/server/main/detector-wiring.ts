@@ -17,19 +17,26 @@
 
 import type { BurrowClientPool } from "../../burrow-client/pool.ts";
 import type { Repos } from "../../db/repos/index.ts";
+import { createPrMergeChecker } from "../../plan-runs/index.ts";
+import type { SpawnFn } from "../../projects/clone.ts";
+import type { ProjectsConfig } from "../../projects/config.ts";
 import {
 	type AutoOpenPrConfig,
+	bootConversationMergePoller,
 	bootPauseDetector,
 	bootWatchdog,
+	createMergePollerDispatch,
 	defaultPlotEventReader,
 	loadWatchdogConfigFromEnv,
+	type MergePollerHandle,
 	type PauseDetectorHandle,
 	type RunEventBroker,
 	type WatchdogHandle,
 } from "../../runs/index.ts";
+import type { SeedsCliDeps } from "../../seeds-cli/index.ts";
 import type { WarrenConfigCache } from "../../warren-config/index.ts";
 import type { EnvLike } from "../config.ts";
-import type { Logger } from "../types.ts";
+import type { BridgeRegistry, Logger } from "../types.ts";
 import { bridgeLoggerFromPino, pauseLoggerFromPino } from "./logging.ts";
 import { parseIntEnv, parseTrueEnv } from "./utils.ts";
 
@@ -68,6 +75,63 @@ export function bootPauseDetectorFromEnv(input: PauseDetectorWiringInput): Pause
 	return handle;
 }
 
+export interface MergePollerWiringInput {
+	readonly env: EnvLike;
+	readonly repos: Repos;
+	readonly burrowClientPool: BurrowClientPool;
+	readonly bridges: BridgeRegistry;
+	readonly warrenConfigs: WarrenConfigCache;
+	readonly projectsConfig: ProjectsConfig;
+	readonly projectSpawn: SpawnFn;
+	readonly seedsCli: SeedsCliDeps;
+	readonly autoOpenPr: AutoOpenPrConfig;
+	readonly runBranchPrefixDefault?: string;
+	readonly logger: Logger;
+	readonly now?: () => Date;
+}
+
+/**
+ * Boot the send-off PR-merge poller (warren-b872). Opt-in via
+ * `WARREN_MERGE_POLLER_ENABLED=1`; polls every
+ * `WARREN_MERGE_POLLER_TICK_MS` (default 30s). Auto-dispatches the planner run
+ * keyed on `plot_id` once a sent-off conversation's plotSync PR merges.
+ */
+export function bootConversationMergePollerFromEnv(
+	input: MergePollerWiringInput,
+): MergePollerHandle {
+	const { env, logger } = input;
+	const enabled = parseTrueEnv(env.WARREN_MERGE_POLLER_ENABLED);
+	const tickMs = parseIntEnv(env, "WARREN_MERGE_POLLER_TICK_MS", 30_000);
+	const dispatch = createMergePollerDispatch({
+		repos: input.repos,
+		burrowClientPool: input.burrowClientPool,
+		bridges: input.bridges,
+		warrenConfigs: input.warrenConfigs,
+		projectsConfig: input.projectsConfig,
+		projectSpawn: input.projectSpawn,
+		seedsCli: input.seedsCli,
+		...(input.runBranchPrefixDefault !== undefined
+			? { runBranchPrefixDefault: input.runBranchPrefixDefault }
+			: {}),
+		...(input.now !== undefined ? { now: input.now } : {}),
+	});
+	const handle = bootConversationMergePoller({
+		repos: input.repos,
+		checkPrMerged: createPrMergeChecker({ token: input.autoOpenPr.token }),
+		dispatch,
+		tickMs,
+		disabled: !enabled,
+		logger: pauseLoggerFromPino(logger),
+		...(input.now !== undefined ? { now: input.now } : {}),
+	});
+	if (!enabled) {
+		logger.info({}, "merge poller disabled (set WARREN_MERGE_POLLER_ENABLED=1 to enable)");
+	} else {
+		logger.info({ tickMs }, "merge poller running");
+	}
+	return handle;
+}
+
 export interface WatchdogWiringInput {
 	readonly env: EnvLike;
 	readonly repos: Repos;
@@ -101,4 +165,76 @@ export function bootWatchdogFromEnv(input: WatchdogWiringInput): WatchdogHandle 
 		);
 	}
 	return handle;
+}
+
+/**
+ * Superset input for `bootBackgroundDetectors` — the pause detector, run
+ * heartbeat watchdog, and send-off merge poller share most of their deps, so
+ * `bootServer` hands the whole bag once instead of wiring three call sites.
+ */
+export interface BackgroundDetectorWiringInput {
+	readonly env: EnvLike;
+	readonly repos: Repos;
+	readonly burrowClientPool: BurrowClientPool;
+	readonly broker: RunEventBroker;
+	readonly bridges: BridgeRegistry;
+	readonly warrenConfigs: WarrenConfigCache;
+	readonly projectsConfig: ProjectsConfig;
+	readonly projectSpawn: SpawnFn;
+	readonly seedsCli: SeedsCliDeps;
+	readonly autoOpenPr: AutoOpenPrConfig;
+	readonly runBranchPrefixDefault?: string;
+	readonly logger: Logger;
+	readonly now?: () => Date;
+}
+
+export interface BackgroundDetectorHandles {
+	readonly pauseDetector: PauseDetectorHandle;
+	readonly watchdog: WatchdogHandle;
+	readonly mergePoller: MergePollerHandle;
+}
+
+/**
+ * Boot all three opt-in background detectors in one call. Each is independently
+ * gated by its own env flag inside the per-detector boot; this wrapper just
+ * collapses the shared dep-plumbing so `bootServer` stays under the file-size
+ * ratchet.
+ */
+export function bootBackgroundDetectors(
+	input: BackgroundDetectorWiringInput,
+): BackgroundDetectorHandles {
+	const now = input.now !== undefined ? { now: input.now } : {};
+	const pauseDetector = bootPauseDetectorFromEnv({
+		env: input.env,
+		repos: input.repos,
+		warrenConfigs: input.warrenConfigs,
+		logger: input.logger,
+		...now,
+	});
+	const watchdog = bootWatchdogFromEnv({
+		env: input.env,
+		repos: input.repos,
+		burrowClientPool: input.burrowClientPool,
+		broker: input.broker,
+		autoOpenPr: input.autoOpenPr,
+		logger: input.logger,
+		...now,
+	});
+	const mergePoller = bootConversationMergePollerFromEnv({
+		env: input.env,
+		repos: input.repos,
+		burrowClientPool: input.burrowClientPool,
+		bridges: input.bridges,
+		warrenConfigs: input.warrenConfigs,
+		projectsConfig: input.projectsConfig,
+		projectSpawn: input.projectSpawn,
+		seedsCli: input.seedsCli,
+		autoOpenPr: input.autoOpenPr,
+		...(input.runBranchPrefixDefault !== undefined
+			? { runBranchPrefixDefault: input.runBranchPrefixDefault }
+			: {}),
+		logger: input.logger,
+		...now,
+	});
+	return { pauseDetector, watchdog, mergePoller };
 }
