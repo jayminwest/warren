@@ -1185,3 +1185,29 @@ export interface PostConversationMessageResponse {
 	steerMessageId: string;
 }
 
+export interface CreateConversationInput {
+	projectId: string;
+	plotId?: string;
+	title?: string;
+	message?: string;
+	dispatcherHandle?: string;
+}
+
+export interface CreateConversationResponse {
+	conversation: ConversationRow;
+	run: { id: string; mode: string };
+	burrow: { id: string; workspacePath: string };
+}
+
+export interface SendOffConversationResponse {
+	conversation: ConversationRow;
+	plot_id: string;
+	pr: { url: string; number: number | null; branch: string };
+	planner_agent: string | null;
+}
+
+export interface RewakeConversationResponse {
+	conversation: ConversationRow;
+	run: { id: string; mode: string };
+}
+

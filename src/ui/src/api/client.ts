@@ -59,6 +59,10 @@ import type {
 	SteerRunResponse,
 	TriggersResponse,
 	WarrenConfigResponse,
+	CreateConversationInput,
+	CreateConversationResponse,
+	SendOffConversationResponse,
+	RewakeConversationResponse,
 } from "./types.ts";
 
 const TOKEN_KEY = "warren.apiToken";
@@ -758,6 +762,55 @@ export const conversationsApi = {
 				},
 			},
 		),
+	/**
+	 * `POST /conversations` — create a fresh conversation (warren-7186).
+	 */
+	create: (input: CreateConversationInput) =>
+		request<CreateConversationResponse>("/conversations", {
+			method: "POST",
+			body: {
+				project_id: input.projectId,
+				...(input.plotId !== undefined ? { plot_id: input.plotId } : {}),
+				...(input.title !== undefined ? { title: input.title } : {}),
+				...(input.message !== undefined ? { message: input.message } : {}),
+				...(input.dispatcherHandle !== undefined
+					? { dispatcher_handle: input.dispatcherHandle }
+					: {}),
+			},
+		}),
+	/**
+	 * `POST /conversations/:id/send-off` — send the conversation to the planner (warren-7186).
+	 */
+	sendOff: (id: string, input: { plannerAgent?: string } = {}) =>
+		request<SendOffConversationResponse>(`/conversations/${encodeURIComponent(id)}/send-off`, {
+			method: "POST",
+			body: {
+				...(input.plannerAgent !== undefined ? { planner_agent: input.plannerAgent } : {}),
+			},
+		}),
+	/**
+	 * `POST /conversations/:id/re-wake` — re-wake an idle-finalized active conversation (warren-7186).
+	 */
+	rewake: (
+		id: string,
+		input: {
+			dispatcherHandle?: string;
+			providerOverride?: string;
+			modelOverride?: string;
+		} = {},
+	) =>
+		request<RewakeConversationResponse>(`/conversations/${encodeURIComponent(id)}/re-wake`, {
+			method: "POST",
+			body: {
+				...(input.dispatcherHandle !== undefined
+					? { dispatcher_handle: input.dispatcherHandle }
+					: {}),
+				...(input.providerOverride !== undefined
+					? { provider_override: input.providerOverride }
+					: {}),
+				...(input.modelOverride !== undefined ? { model_override: input.modelOverride } : {}),
+			},
+		}),
 };
 
 /* ----------------------------------------------------------------------- */
