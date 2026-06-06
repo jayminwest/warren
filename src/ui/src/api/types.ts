@@ -1206,6 +1206,70 @@ export interface SendOffConversationResponse {
 	planner_agent: string | null;
 }
 
+/* ----------------------------------------------------------------------- */
+/* Run-analytics token types (warren-3be4 / pl-d1a2 step 3).               */
+/*                                                                          */
+/* Mirrors the server-side shapes from src/runs/analytics/run-metrics.ts   */
+/* and src/server/handlers/runs/analytics.ts. Kept in sync by hand —       */
+/* src/ui is excluded from the root tsconfig and the boundary is the HTTP  */
+/* wire, not a TS import (mx-1bd551).                                       */
+/* ----------------------------------------------------------------------- */
+
+/**
+ * Aggregate token counts by kind (input, output, cache-read, cache-write)
+ * plus a pre-computed total. All values are non-negative integers; zero
+ * means no token data for the window (not null — the server always zeroes
+ * empty windows rather than omitting the field).
+ */
+export interface TokenBreakdown {
+	readonly input: number;
+	readonly output: number;
+	readonly cacheRead: number;
+	readonly cacheWrite: number;
+	readonly total: number;
+}
+
+/** One calendar-day's token counts in an overall time-series. `date` is YYYY-MM-DD. */
+export interface TokenDayBucket {
+	readonly date: string;
+	readonly input: number;
+	readonly output: number;
+	readonly cacheRead: number;
+	readonly cacheWrite: number;
+	readonly total: number;
+}
+
+/**
+ * One key's (model or provider) daily token series in a per-dimension
+ * breakdown. `key` may be the `__none__` or `__other__` sentinel — see
+ * `RUN_ANALYTICS_NONE_KEY` / `RUN_ANALYTICS_OTHER_KEY` in client.ts.
+ */
+export interface DimensionTokenSeries {
+	readonly key: string;
+	readonly series: readonly TokenDayBucket[];
+}
+
+/**
+ * The `tokens` section of `GET /analytics/runs` (warren-1244 / pl-d1a2
+ * step 2). Carries aggregate totals, per-model/per-provider roll-ups,
+ * and three time-series (overall + by-model + by-provider) all within
+ * the same filter window applied to the rest of the response.
+ */
+export interface RunAnalyticsTokensSection {
+	/** Aggregate token totals across the entire filter window. */
+	readonly totals: TokenBreakdown;
+	/** Per-model aggregate totals, sorted by total tokens desc. */
+	readonly byModel: readonly { readonly key: string; readonly tokens: TokenBreakdown }[];
+	/** Per-provider aggregate totals, sorted by total tokens desc. */
+	readonly byProvider: readonly { readonly key: string; readonly tokens: TokenBreakdown }[];
+	/** Overall daily token time-series (one bucket per calendar day). */
+	readonly timeSeries: readonly TokenDayBucket[];
+	/** Per-model daily series, top-5 by total + OTHER_KEY fold + NONE_KEY. */
+	readonly byModelTimeSeries: readonly DimensionTokenSeries[];
+	/** Per-provider daily series, top-5 by total + OTHER_KEY fold + NONE_KEY. */
+	readonly byProviderTimeSeries: readonly DimensionTokenSeries[];
+}
+
 export interface RewakeConversationResponse {
 	conversation: ConversationRow;
 	run: { id: string; mode: string };

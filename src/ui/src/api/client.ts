@@ -63,7 +63,11 @@ import type {
 	CreateConversationResponse,
 	SendOffConversationResponse,
 	RewakeConversationResponse,
+	TokenBreakdown,
+	RunAnalyticsTokensSection,
 } from "./types.ts";
+
+export type { TokenBreakdown, DimensionTokenSeries, TokenDayBucket, RunAnalyticsTokensSection } from "./types.ts";
 
 const TOKEN_KEY = "warren.apiToken";
 
@@ -984,6 +988,8 @@ export const analyticsApi = {
 
 /** Sentinel key for a null group (no startedAt, model, provider, etc.). */
 export const RUN_ANALYTICS_NONE_KEY = "__none__";
+/** Sentinel key for the folded remainder in per-dimension token series (≥6 keys). */
+export const RUN_ANALYTICS_OTHER_KEY = "__other__";
 
 /** avg/median/p95 over the non-null sample, all-null when empty. */
 export interface RunStatSummary {
@@ -1023,6 +1029,7 @@ export interface RunGroupBucket {
 	successRate: number | null;
 	contextTokensTotal: number;
 	avgContextTokens: number | null;
+	tokens: TokenBreakdown;
 	costUsd: number;
 	priced: number;
 	avgDurationMs: number | null;
@@ -1049,6 +1056,8 @@ export interface RunAnalyticsResponse {
 	byProvider: RunGroupBucket[];
 	byFailureReason: RunFailureBucket[];
 	topSeedsByContext: SeedContextBucket[];
+	/** Token analytics section added by warren-1244 / pl-d1a2 step 2. */
+	tokens: RunAnalyticsTokensSection;
 }
 
 export interface RunAnalyticsFilter {
