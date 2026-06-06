@@ -26,7 +26,7 @@
  * report and the reaper agree on what "stranded" means.
  */
 
-import type { DestroyBurrowResult } from "@os-eco/burrow-cli";
+import { NotFoundError as BurrowNotFoundError, type DestroyBurrowResult } from "@os-eco/burrow-cli";
 import type { BurrowClient } from "../../burrow-client/client.ts";
 import { withTransportMapping } from "../../burrow-client/client.ts";
 import { ValidationError } from "../../core/errors.ts";
@@ -290,6 +290,20 @@ async function destroyOne(
 		);
 		return true;
 	} catch (err) {
+		// 404 from burrow means the workspace is already gone on burrow's side.
+		// Prune the warren-side placement row so we stop retrying on every sweep.
+		if (err instanceof BurrowNotFoundError) {
+			try {
+				await input.repos.burrows.delete(candidate.burrowId);
+			} catch {
+				// Best-effort; will be retried next sweep.
+			}
+			input.logger?.info(
+				{ burrowId: candidate.burrowId, workerId: candidate.workerId },
+				"workspace_gc.already_gone",
+			);
+			return true;
+		}
 		input.logger?.warn(
 			{
 				burrowId: candidate.burrowId,

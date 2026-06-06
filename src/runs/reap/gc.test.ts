@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { DestroyBurrowResult } from "@os-eco/burrow-cli";
+import { NotFoundError as BurrowNotFoundError, type DestroyBurrowResult } from "@os-eco/burrow-cli";
 import type { BurrowClient } from "../../burrow-client/client.ts";
 import { ValidationError } from "../../core/errors.ts";
 import type { BurrowRow, RunRow } from "../../db/schema.ts";
@@ -219,6 +219,35 @@ describe("runWorkspaceGcTick", () => {
 		);
 		expect(result).toEqual({ scanned: 1, stranded: 1, destroyed: 0, failed: 1 });
 		expect(h.deleted).toEqual([]);
+	});
+
+	test("treats a 404 from burrow as already-gone: deletes placement row and counts as destroyed", async () => {
+		const h: Harness = {
+			burrows: [burrow("bur_old", "2026-05-29T09:00:00.000Z")],
+			deleted: [],
+			destroyed: [],
+		};
+		const logs: string[] = [];
+		const result = await runWorkspaceGcTick(
+			tickInput(h, {
+				destroyBurrow: async () => {
+					throw new BurrowNotFoundError("burrow not found");
+				},
+				logger: {
+					info: (obj) => {
+						logs.push((obj as { msg?: string })["msg"] ?? JSON.stringify(obj));
+					},
+					warn: () => {},
+					error: () => {},
+				},
+			}),
+		);
+		// Counts as destroyed (not failed) so the metric stays accurate.
+		expect(result).toEqual({ scanned: 1, stranded: 1, destroyed: 1, failed: 0 });
+		// Placement row is pruned so the same burrow isn't retried next sweep.
+		expect(h.deleted).toEqual(["bur_old"]);
+		// Logged at info, not warn — it's not an error.
+		expect(logs.some((m) => m.includes("already_gone") || m.includes("bur_old"))).toBe(true);
 	});
 
 	test("counts a clientFor failure as a failed destroy", async () => {
