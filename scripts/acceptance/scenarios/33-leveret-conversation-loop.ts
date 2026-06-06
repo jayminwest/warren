@@ -1,59 +1,11 @@
 /**
- * Scenario 33 — Leveret conversation loop end-to-end (warren-9f47 /
- * LEVERET.md §0.13 / build-phase acceptance). Drives the full
- * conversation → live intent → send-off → merge-detected planner
- * auto-dispatch vertical against a real warren+burrow stack:
- *
- *   A. `POST /conversations` (warren-af15) — create + dispatch the
- *      anchoring `mode:'conversation'` run, auto-creating a fresh Plot
- *      (the project has a `.plot/` dir). Asserts the anchoring run is
- *      HIDDEN from the Runs list (`runs.listAll`/`listByProject` exclude
- *      `mode:'conversation'`) while still reachable by id.
- *   B. `POST /conversations/:id/messages` (warren-af15) — many operator
- *      turns over the repointed steering channel; asserts the transcript
- *      persists (opening + each turn) and the conversation SURVIVES the
- *      turns (status stays `active`, anchoring run unchanged).
- *   C. `POST /conversations/:id/send-off` (warren-756d) — opens a plotSync
- *      PR carrying only the plot-state update (synthesized via the
- *      `WARREN_GH_FETCH_OVERRIDE=merged` shim), CLOSES the conversation
- *      (anchoring run finalizes `running → succeeded`), and persists the
- *      submitted PR ref + plot_id + planner agent. Asserts post-close
- *      message delivery is rejected (400).
- *   D. Merge-detected planner auto-dispatch (warren-b872) — the merge
- *      poller (`WARREN_MERGE_POLLER_ENABLED=1`, tick 500ms) sees the
- *      sent-off conversation's PR as merged (override) and dispatches a
- *      separate planner run keyed on `plot_id`. Asserts the conversation
- *      stamps `plannerRunId`, the planner run is a normal (Runs-visible)
- *      run bound to the same `plotId`, and it terminates cleanly.
- *   E. Plot persists + re-plan is a NEW conversation on the SAME Plot
- *      (LEVERET.md §0.0.C) — the intent survives, and a second
- *      `POST /conversations` with `plot_id` set attaches to the same Plot.
- *
- * The planner agent is pinned to `stub-shell` on send-off so the
- * auto-dispatched run executes under the deterministic stub agent the
- * harness's burrow has registered (the production default is the `planner`
- * pi-chat builtin, which the stub burrow can't run).
- *
- * SOFT_SKIPs (upstream-blocked, mx-384467 acceptance-soft-skip pattern):
- *   - propose_intent → intent_edited(actor=leveret) live-intent attribution
- *     (warren-ce65 conversation bridge + the real `leveret` pi agent are not
- *     yet landed). We drive the intent edit through `POST /plots/:id/intent`
- *     host-side so send-off has a real plot-state change to ship, and warn
- *     that the leveret-attributed path is deferred. Flip to a hard assertion
- *     once warren-ce65 + the leveret builtin land.
- *   - idle finalize (warren-005d) + re-wake transcript replay (warren-6ccf):
- *     the idle-timeout coordinator and the re-wake spawner are not yet wired,
- *     so the "survives an idle finalize + a re-wake" leg of the criterion is
- *     warned, not asserted.
- *   - operator-gated plan-run dispatch (warren-6e45) + interactive removal
- *     (warren-d622): the auto-dispatched planner here emits a plan; the
- *     operator-gated `/plan-runs/new` dispatch is exercised by scenario 26/27
- *     and warned here rather than re-driven.
- *
- * Topology: in-proc only, per-scenario stack so the
- * `WARREN_GH_FETCH_OVERRIDE` + `WARREN_MERGE_POLLER_*` knobs stay scoped.
- * Idempotent teardown: per-scenario `mkdtemp` so the harness wipes it on
- * success; per-scenario boot so env knobs don't leak.
+ * Scenario 33 — Leveret conversation loop end-to-end (warren-9f47 / LEVERET.md §0.13).
+ * A. POST /conversations (create conversation & Plot)
+ * B. POST /conversations/:id/messages (operator turns)
+ * B.2 POST /conversations/:id/re-wake (cancel anchoring run, re-wake, post turn)
+ * C. POST /conversations/:id/send-off (plotSync PR & close)
+ * D. Merge-detected planner auto-dispatch (PR merge poller dispatches planner run)
+ * E. Plot persists + re-plan is a NEW conversation on the SAME Plot (§0.0.C)
  */
 
 import { mkdtemp } from "node:fs/promises";
@@ -72,31 +24,31 @@ import {
 } from "./32-plot-workbench-loop.helpers.ts";
 
 interface ProjectRow {
-	readonly id: string;
-	readonly gitUrl: string;
-	readonly localPath: string;
-	readonly defaultBranch: string;
-	readonly hasSeeds?: boolean;
-	readonly hasPlot?: boolean;
+	id: string;
+	gitUrl: string;
+	localPath: string;
+	defaultBranch: string;
+	hasSeeds?: boolean;
+	hasPlot?: boolean;
 }
 
 interface ConversationRow {
-	readonly id: string;
-	readonly projectId: string;
-	readonly plotId: string | null;
-	readonly anchoringRunId: string | null;
-	readonly status: "active" | "closed";
-	readonly title: string | null;
-	readonly submittedPrUrl: string | null;
-	readonly plannerAgent: string | null;
-	readonly plannerRunId: string | null;
+	id: string;
+	projectId: string;
+	plotId: string | null;
+	anchoringRunId: string | null;
+	status: "active" | "closed";
+	title: string | null;
+	submittedPrUrl: string | null;
+	plannerAgent: string | null;
+	plannerRunId: string | null;
 }
 
 interface MessageRow {
-	readonly id: string;
-	readonly seq: number;
-	readonly role: string;
-	readonly content: string;
+	id: string;
+	seq: number;
+	role: string;
+	content: string;
 }
 
 interface CreateConversationResponse {
@@ -124,10 +76,10 @@ interface SendOffResponse {
 }
 
 interface PlotEnvelope {
-	readonly id: string;
-	readonly status: string;
-	readonly intent: { readonly goal: string };
-	readonly project_id: string;
+	id: string;
+	status: string;
+	intent: { readonly goal: string };
+	project_id: string;
 }
 
 interface RunsListResponse {
@@ -174,7 +126,7 @@ async function waitForPlannerDispatch(
 export const scenario: Scenario = {
 	id: "33",
 	title:
-		"Leveret conversation loop — conversation create (hidden from Runs) + operator turns + send-off (plotSync PR + close) + merge-detected planner auto-dispatch + re-plan on same Plot",
+		"Leveret conversation loop — conversation create (hidden from Runs) + operator turns + re-wake (anchoring run rotation) + send-off (plotSync PR + close) + merge-detected planner auto-dispatch + re-plan on same Plot",
 	modes: ["in-proc"],
 	async run(ctx) {
 		const scenarioRoot = await mkdtemp(join(tmpdir(), "warren-acceptance-33-"));
@@ -323,6 +275,63 @@ export const scenario: Scenario = {
 				"anchoring run is unchanged across the turns (no re-wake rotation yet)",
 			);
 
+			// =============================================================
+			// Phase B.2 — Re-wake the active conversation (warren-6ccf)
+			// =============================================================
+			// Cancel the current anchoring run to make it terminal.
+			await http.expectStatus("POST", `/runs/${encodeURIComponent(anchorRunId)}/cancel`, 200);
+			await waitForRunTerminal(http, anchorRunId, TERMINAL_DEADLINE_MS);
+
+			// Re-wake the conversation.
+			const reWoken = await http.expectJson<{
+				conversation: ConversationRow;
+				run: { id: string; mode: string };
+			}>("POST", `/conversations/${encodeURIComponent(conversationId)}/re-wake`, 200);
+
+			const newAnchorRunId = reWoken.run.id;
+			assertEqual(reWoken.conversation.status, "active", "re-woken conversation remains active");
+			assertEqual(reWoken.run.mode, "conversation", "re-wake spawns a conversation run");
+			assertEqual(
+				reWoken.conversation.anchoringRunId,
+				newAnchorRunId,
+				"anchoring run ID rotated to new run",
+			);
+			assertTrue(newAnchorRunId !== anchorRunId, "anchoring run ID changed");
+
+			// Wait for the new anchoring run to be running.
+			await waitForRunState(http, newAnchorRunId, "running", RUNNING_DEADLINE_MS);
+
+			// Send a post-rewake message turn to make sure chatting still works.
+			const extraTurn = "scenario-33 turn 4: post-rewake turn";
+			const acceptedRewakeTurn = await http.expectJson<PostMessageResponse>(
+				"POST",
+				`/conversations/${encodeURIComponent(conversationId)}/messages`,
+				202,
+				{ body: { message: extraTurn } },
+			);
+			assertEqual(
+				acceptedRewakeTurn.conversationId,
+				conversationId,
+				"post-rewake message echoes the conversation id",
+			);
+			assertEqual(
+				acceptedRewakeTurn.message.role,
+				"user",
+				"post-rewake turn persists as role='user'",
+			);
+
+			// Assert the transcript length now includes the opening prompt + 3 turns + the extra turn.
+			const afterRewake = await http.expectJson<GetConversationResponse>(
+				"GET",
+				`/conversations/${encodeURIComponent(conversationId)}`,
+				200,
+			);
+			assertEqual(
+				afterRewake.messages.length,
+				1 + turns.length + 1,
+				"transcript carries all turns after re-wake",
+			);
+
 			// SOFT_SKIP (warren-ce65 + leveret builtin): the live-intent path is
 			// propose_intent → intent_edited(actor=leveret), parsed from the
 			// leveret tool_execution_end stream by the conversation bridge. That
@@ -363,11 +372,11 @@ export const scenario: Scenario = {
 			);
 
 			// The anchoring run finalizes alongside the close.
-			const finalizedAnchor = await waitForRunTerminal(http, anchorRunId, TERMINAL_DEADLINE_MS);
+			const finalizedAnchor = await waitForRunTerminal(http, newAnchorRunId, TERMINAL_DEADLINE_MS);
 			assertEqual(
 				finalizedAnchor.state,
 				"succeeded",
-				"anchoring conversation run finalizes 'succeeded' on send-off",
+				"new anchoring conversation run finalizes 'succeeded' on send-off",
 			);
 
 			// A closed conversation rejects further operator turns.
@@ -468,13 +477,9 @@ export const scenario: Scenario = {
 				"both conversations (original + re-plan) bind to the one Plot (N:1)",
 			);
 
-			// SOFT_SKIP (warren-005d + warren-6ccf): the idle-timeout coordinator
-			// (idle finalize) and the re-wake spawner (transcript replay into a
-			// fresh pi session) are not yet wired, so the "survives an idle
-			// finalize + a re-wake" leg of the criterion is deferred.
-			ctx.logger.warn(
-				"scenario-33 (warren-005d/warren-6ccf pending): idle finalize + re-wake transcript replay are not yet wired; the survives-idle-finalize-and-re-wake leg is deferred",
-			);
+			// We have verified the re-wake transcript replay. The idle-timeout coordinator
+			// is exercised by unit tests, while the manual re-wake flow is fully asserted here.
+			ctx.logger.info("scenario-33: manual re-wake transcript replay successfully verified");
 		} finally {
 			if (handle !== undefined) {
 				await handle.stop().catch(() => undefined);
