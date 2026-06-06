@@ -1143,3 +1143,30 @@ export interface ListConversationsResponse {
 	conversations: ConversationRow[];
 }
 
+export const MESSAGE_ROLES = ["user", "assistant", "system", "tool"] as const;
+export type MessageRole = (typeof MESSAGE_ROLES)[number];
+
+/** Mirrors the `messages` table wire shape (camelCase drizzle $inferSelect). */
+export interface MessageRow {
+	id: string;
+	conversationId: string;
+	seq: number;
+	role: MessageRole;
+	content: string;
+	runId: string | null;
+	createdAt: string;
+}
+
+/** `GET /conversations/:id` — conversation + full transcript. */
+export interface GetConversationResponse {
+	conversation: ConversationRow;
+	messages: MessageRow[];
+}
+
+/** `POST /conversations/:id/messages` — 202 Accepted envelope. */
+export interface PostConversationMessageResponse {
+	conversationId: string;
+	message: { id: string; seq: number; role: MessageRole };
+	steerMessageId: string;
+}
+

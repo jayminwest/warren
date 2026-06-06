@@ -84,6 +84,15 @@ export interface ChatProps {
 	 * re-anchor).
 	 */
 	readonly onTurnSpawned?: (turnRunId: string) => void;
+	/**
+	 * Override the default `POST /runs/:id/messages` send path. When
+	 * provided, the chat calls this instead — used by the Leveret
+	 * conversation split-view (warren-01c8), which delivers turns over
+	 * `POST /conversations/:id/messages` (persist + steer the long-lived
+	 * anchoring run) and keeps its stream anchored on `runId` rather than
+	 * re-anchoring onto a fresh turn. Resolves when the turn is accepted.
+	 */
+	readonly sendMessage?: (message: string) => Promise<void>;
 	/** Optional className passthrough for the outer wrapper. */
 	readonly className?: string;
 }
@@ -114,6 +123,7 @@ export function Chat({
 	placeholder = "Type a message…",
 	header,
 	onTurnSpawned,
+	sendMessage,
 	className,
 }: ChatProps): JSX.Element {
 	const { events, status, error } = useEventStream(runId, follow);
@@ -145,9 +155,14 @@ export function Chat({
 		setSending(true);
 		setSendError(null);
 		try {
-			const res = await runsApi.sendMessage(runId, { message: trimmed });
-			setDraft("");
-			if (onTurnSpawned) onTurnSpawned(res.run.id);
+			if (sendMessage) {
+				await sendMessage(trimmed);
+				setDraft("");
+			} else {
+				const res = await runsApi.sendMessage(runId, { message: trimmed });
+				setDraft("");
+				if (onTurnSpawned) onTurnSpawned(res.run.id);
+			}
 		} catch (err) {
 			setSendError(formatError(err));
 		} finally {

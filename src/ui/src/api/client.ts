@@ -12,8 +12,10 @@ import type {
 	CreatePlanRunResponse,
 	CreatePlotPlanRunInput,
 	CreatePlotPlanRunResponse,
+	GetConversationResponse,
 	ListConversationsFilter,
 	ListConversationsResponse,
+	PostConversationMessageResponse,
 	FormalizePlotResponse,
 	StartBrainstormInput,
 	StartBrainstormResponse,
@@ -726,6 +728,36 @@ export const conversationsApi = {
 			{ ...(signal ? { signal } : {}) },
 		);
 	},
+	/**
+	 * `GET /conversations/:id` — conversation row + full transcript
+	 * (warren-af15). Backs the Leveret split-view page (warren-01c8);
+	 * `conversation.anchoringRunId` is the handle the chat surface
+	 * streams from and `conversation.plotId` the Plot the right pane
+	 * renders + edits.
+	 */
+	get: (id: string, signal?: AbortSignal) =>
+		request<GetConversationResponse>(`/conversations/${encodeURIComponent(id)}`, {
+			...(signal ? { signal } : {}),
+		}),
+	/**
+	 * `POST /conversations/:id/messages` — deliver an operator turn over
+	 * the steering channel (warren-af15). 202 Accepted: the leveret reply
+	 * lands asynchronously on the anchoring run's event stream, which the
+	 * Chat surface tails. Persisted to the transcript for re-wake replay.
+	 */
+	postMessage: (id: string, input: { message: string; dispatcherHandle?: string }) =>
+		request<PostConversationMessageResponse>(
+			`/conversations/${encodeURIComponent(id)}/messages`,
+			{
+				method: "POST",
+				body: {
+					message: input.message,
+					...(input.dispatcherHandle !== undefined
+						? { dispatcher_handle: input.dispatcherHandle }
+						: {}),
+				},
+			},
+		),
 };
 
 /* ----------------------------------------------------------------------- */
