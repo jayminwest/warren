@@ -20,6 +20,7 @@ import {
 	events as pgEvents,
 	planRunChildren as pgPlanRunChildren,
 	planRuns as pgPlanRuns,
+	plots as pgPlots,
 	projects as pgProjects,
 	runs as pgRuns,
 	triggers as pgTriggers,
@@ -31,6 +32,7 @@ import {
 	events as sqliteEvents,
 	planRunChildren as sqlitePlanRunChildren,
 	planRuns as sqlitePlanRuns,
+	plots as sqlitePlots,
 	projects as sqliteProjects,
 	runs as sqliteRuns,
 	triggers as sqliteTriggers,
@@ -47,6 +49,7 @@ const SQLITE_TABLES: Record<string, SQLiteTable> = {
 	burrows: sqliteBurrows,
 	planRuns: sqlitePlanRuns,
 	planRunChildren: sqlitePlanRunChildren,
+	plots: sqlitePlots,
 };
 
 const PG_TABLES: Record<string, PgTable> = {
@@ -59,6 +62,7 @@ const PG_TABLES: Record<string, PgTable> = {
 	burrows: pgBurrows,
 	planRuns: pgPlanRuns,
 	planRunChildren: pgPlanRunChildren,
+	plots: pgPlots,
 };
 
 type AnyTable = keyof typeof SQLITE_TABLES;
@@ -199,6 +203,7 @@ const TABLE_KEYS: AnyTable[] = [
 	"burrows",
 	"planRuns",
 	"planRunChildren",
+	"plots",
 ];
 
 describe("schema dialect parity (sqlite ↔ postgres)", () => {

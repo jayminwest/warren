@@ -27,6 +27,7 @@ import {
 	text,
 	uniqueIndex,
 } from "drizzle-orm/sqlite-core";
+import type { PlotProjectionState } from "./columns.ts";
 import {
 	CLONE_KINDS,
 	EVENT_STREAMS,
@@ -461,7 +462,38 @@ export type WorkerRow = typeof workers.$inferSelect;
 export type WorkerInsert = typeof workers.$inferInsert;
 export type BurrowRow = typeof burrows.$inferSelect;
 export type BurrowInsert = typeof burrows.$inferInsert;
+/**
+ * Plots projection (warren-9022 / LEVERET §0.0.A / §0.0.F). A read-cache that
+ * mirrors full git-backed Plot state — NOT an authoritative store; source of
+ * truth stays git. The `state_json` blob holds the entire plot state (schema
+ * stable across plot-shape drift), and the promoted scalars (project_id /
+ * status / title / updated_at) are denormalized out of it for list / index
+ * queries. `project_id` FKs `projects.id` ON DELETE CASCADE (the projection
+ * is rebuildable from git); `id` is the caller-supplied `plot-...` id
+ * (PLOT_ID_REGEX, mx-28a262). See `columns.ts`'s `PlotProjectionState` for
+ * the full framing.
+ */
+export const plots = sqliteTable(
+	TABLE_NAMES.plots,
+	{
+		id: text("id").primaryKey(),
+		projectId: text("project_id")
+			.notNull()
+			.references(() => projects.id, { onDelete: "cascade" }),
+		status: text("status").notNull(),
+		title: text("title"),
+		updatedAt: text("updated_at").notNull(),
+		stateJson: text("state_json", { mode: "json" }).$type<PlotProjectionState>().notNull(),
+	},
+	(t) => [
+		index(INDEX_NAMES.plotsProjectUpdated).on(t.projectId, t.updatedAt),
+		index(INDEX_NAMES.plotsStatus).on(t.status),
+	],
+);
+
 export type PlanRunRow = typeof planRuns.$inferSelect;
 export type PlanRunInsert = typeof planRuns.$inferInsert;
 export type PlanRunChildRow = typeof planRunChildren.$inferSelect;
 export type PlanRunChildInsert = typeof planRunChildren.$inferInsert;
+export type PlotRow = typeof plots.$inferSelect;
+export type PlotInsert = typeof plots.$inferInsert;

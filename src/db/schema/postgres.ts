@@ -34,6 +34,7 @@ import {
 	text,
 	uniqueIndex,
 } from "drizzle-orm/pg-core";
+import type { PlotProjectionState } from "./columns.ts";
 import {
 	CLONE_KINDS,
 	EVENT_STREAMS,
@@ -272,7 +273,33 @@ export type WorkerRow = typeof workers.$inferSelect;
 export type WorkerInsert = typeof workers.$inferInsert;
 export type BurrowRow = typeof burrows.$inferSelect;
 export type BurrowInsert = typeof burrows.$inferInsert;
+/**
+ * Plots projection (warren-9022 / LEVERET §0.0.A / §0.0.F) — mirror of sqlite.
+ * `state_json` is `jsonb` here (vs sqlite's `text mode:"json"`); the drift
+ * check compares structure (column name + nullability + FK + index), not the
+ * storage type. See sqlite.ts for the projection's full intent.
+ */
+export const plots = pgTable(
+	TABLE_NAMES.plots,
+	{
+		id: text("id").primaryKey(),
+		projectId: text("project_id")
+			.notNull()
+			.references(() => projects.id, { onDelete: "cascade" }),
+		status: text("status").notNull(),
+		title: text("title"),
+		updatedAt: text("updated_at").notNull(),
+		stateJson: jsonb("state_json").$type<PlotProjectionState>().notNull(),
+	},
+	(t) => [
+		index(INDEX_NAMES.plotsProjectUpdated).on(t.projectId, t.updatedAt),
+		index(INDEX_NAMES.plotsStatus).on(t.status),
+	],
+);
+
 export type PlanRunRow = typeof planRuns.$inferSelect;
 export type PlanRunInsert = typeof planRuns.$inferInsert;
 export type PlanRunChildRow = typeof planRunChildren.$inferSelect;
 export type PlanRunChildInsert = typeof planRunChildren.$inferInsert;
+export type PlotRow = typeof plots.$inferSelect;
+export type PlotInsert = typeof plots.$inferInsert;

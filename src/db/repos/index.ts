@@ -9,6 +9,7 @@ import { BurrowsRepo } from "./burrows.ts";
 import { DrizzleAdapter } from "./drizzle-adapter.ts";
 import { EventsRepo } from "./events.ts";
 import { PlanRunsRepo } from "./plan-runs.ts";
+import { PlotsRepo } from "./plots.ts";
 import { ProjectsRepo } from "./projects.ts";
 import { RunsRepo } from "./runs.ts";
 import { TriggersRepo } from "./triggers.ts";
@@ -23,6 +24,7 @@ export interface Repos {
 	workers: WorkersRepo;
 	burrows: BurrowsRepo;
 	planRuns: PlanRunsRepo;
+	plots: PlotsRepo;
 }
 
 export function createRepos(db: AnyWarrenDb): Repos {
@@ -36,6 +38,7 @@ export function createRepos(db: AnyWarrenDb): Repos {
 		workers: new WorkersRepo(adapter),
 		burrows: new BurrowsRepo(adapter),
 		planRuns: new PlanRunsRepo(adapter),
+		plots: new PlotsRepo(adapter),
 	};
 }
 
@@ -44,6 +47,7 @@ export {
 	BurrowsRepo,
 	EventsRepo,
 	PlanRunsRepo,
+	PlotsRepo,
 	ProjectsRepo,
 	RunsRepo,
 	TriggersRepo,
