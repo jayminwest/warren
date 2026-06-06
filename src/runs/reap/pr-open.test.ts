@@ -237,3 +237,145 @@ describe("reapRun pr_open sub-step (warren-f6af)", () => {
 		expect(result.state).toBe("succeeded");
 	});
 });
+
+describe("runPrOpen retry (warren-70c6)", () => {
+	let ctx: Ctx;
+
+	beforeEach(async () => {
+		ctx = await setup();
+	});
+
+	afterEach(async () => {
+		await ctx.db.close();
+	});
+
+	function fakeOpenPr(
+		responses: ReadonlyArray<OpenPullRequestResult | (() => OpenPullRequestResult)>,
+	): {
+		openPr: (input: OpenPullRequestInput) => Promise<OpenPullRequestResult>;
+		calls: OpenPullRequestInput[];
+	} {
+		const calls: OpenPullRequestInput[] = [];
+		let i = 0;
+		const openPr = async (input: OpenPullRequestInput): Promise<OpenPullRequestResult> => {
+			calls.push(input);
+			const r = responses[i++];
+			if (r === undefined) throw new Error("fakeOpenPr: out of responses");
+			return typeof r === "function" ? r() : r;
+		};
+		return { openPr, calls };
+	}
+
+	const noopSleep = async (_ms: number): Promise<void> => {};
+
+	test("retries transient 422 and succeeds on second attempt", async () => {
+		const e = fakeExec({ revListCount: "2" });
+		const transient422: OpenPullRequestResult = {
+			ok: false,
+			reason: "http_error",
+			// transient 422: "head invalid" while GitHub indexes the just-pushed ref
+			message: "Validation Failed errors=[head-invalid]",
+		};
+		const success: OpenPullRequestResult = {
+			ok: true,
+			url: "https://github.com/x/y/pull/32",
+			mode: "created",
+		};
+		const pr = fakeOpenPr([transient422, success]);
+		const result = await reapRun({
+			runId: ctx.runId,
+			outcome: "succeeded",
+			repos: ctx.repos,
+			burrowClientPool: await makePool(fakeBurrowClient(makeBurrow()), ctx.repos),
+			fs: fakeFs().fs,
+			exec: e.exec,
+			autoOpenPr: { enabled: true, token: "ghp_xyz", warrenBaseUrl: null },
+			openPr: pr.openPr,
+			sleep: noopSleep,
+		});
+		expect(result.prUrl).toBe("https://github.com/x/y/pull/32");
+		expect(pr.calls).toHaveLength(2);
+		expect(result.errors.map((x) => x.step)).not.toContain("pr_open");
+		const events = await ctx.repos.events.listByRun(ctx.runId);
+		expect(events.find((ev) => ev.kind === "reap.pr_opened")).toBeDefined();
+	});
+
+	test("retries 5xx and succeeds on third attempt", async () => {
+		const e = fakeExec({ revListCount: "2" });
+		const err5xx: OpenPullRequestResult = {
+			ok: false,
+			reason: "http_error",
+			message: "POST /pulls returned 503: Service Unavailable",
+		};
+		const success: OpenPullRequestResult = {
+			ok: true,
+			url: "https://github.com/x/y/pull/33",
+			mode: "created",
+		};
+		const pr = fakeOpenPr([err5xx, err5xx, success]);
+		const result = await reapRun({
+			runId: ctx.runId,
+			outcome: "succeeded",
+			repos: ctx.repos,
+			burrowClientPool: await makePool(fakeBurrowClient(makeBurrow()), ctx.repos),
+			fs: fakeFs().fs,
+			exec: e.exec,
+			autoOpenPr: { enabled: true, token: "ghp_xyz", warrenBaseUrl: null },
+			openPr: pr.openPr,
+			sleep: noopSleep,
+		});
+		expect(result.prUrl).toBe("https://github.com/x/y/pull/33");
+		expect(pr.calls).toHaveLength(3);
+		expect(result.errors.map((x) => x.step)).not.toContain("pr_open");
+	});
+
+	test("exhausts all retries and emits reap_failed when every attempt fails", async () => {
+		const e = fakeExec({ revListCount: "2" });
+		const transient422: OpenPullRequestResult = {
+			ok: false,
+			reason: "http_error",
+			message: "Validation Failed errors=[head-invalid]",
+		};
+		// 1 initial + 3 retries = 4 attempts total
+		const pr = fakeOpenPr([transient422, transient422, transient422, transient422]);
+		const result = await reapRun({
+			runId: ctx.runId,
+			outcome: "succeeded",
+			repos: ctx.repos,
+			burrowClientPool: await makePool(fakeBurrowClient(makeBurrow()), ctx.repos),
+			fs: fakeFs().fs,
+			exec: e.exec,
+			autoOpenPr: { enabled: true, token: "ghp_xyz", warrenBaseUrl: null },
+			openPr: pr.openPr,
+			sleep: noopSleep,
+		});
+		expect(result.prUrl).toBeNull();
+		expect(pr.calls).toHaveLength(4);
+		expect(result.errors.map((x) => x.step)).toContain("pr_open");
+		expect(result.state).toBe("succeeded"); // run itself still succeeded
+	});
+
+	test("does not retry permanent 422 (no commits between)", async () => {
+		const e = fakeExec({ revListCount: "2" });
+		const permanent422: OpenPullRequestResult = {
+			ok: false,
+			reason: "http_error",
+			message: "Validation Failed errors=[No commits between main and feature.]",
+		};
+		const pr = fakeOpenPr([permanent422]);
+		const result = await reapRun({
+			runId: ctx.runId,
+			outcome: "succeeded",
+			repos: ctx.repos,
+			burrowClientPool: await makePool(fakeBurrowClient(makeBurrow()), ctx.repos),
+			fs: fakeFs().fs,
+			exec: e.exec,
+			autoOpenPr: { enabled: true, token: "ghp_xyz", warrenBaseUrl: null },
+			openPr: pr.openPr,
+			sleep: noopSleep,
+		});
+		expect(result.prUrl).toBeNull();
+		expect(pr.calls).toHaveLength(1); // no retry
+		expect(result.errors.map((x) => x.step)).toContain("pr_open");
+	});
+});

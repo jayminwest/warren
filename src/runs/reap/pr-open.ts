@@ -12,6 +12,34 @@ import type { PrTemplateOverrides } from "../pr-template.ts";
 import type { ReapExec } from "./types.ts";
 
 /* ----------------------------------------------------------------------- */
+/* Retry policy for PR open (warren-70c6)                                   */
+/* ----------------------------------------------------------------------- */
+
+// 3 retries after the initial attempt: ~1s, ~2s, ~4s backoff.
+const PR_OPEN_RETRY_DELAYS_MS = [1_000, 2_000, 4_000] as const;
+
+function defaultSleep(ms: number): Promise<void> {
+	return new Promise<void>((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Returns true when the PR-open result warrants a retry.
+ *
+ * Retryable: any `http_error` that is not a known-permanent 422 shape.
+ *   - "already exists" 422 is handled inside openPullRequest (returns ok:true),
+ *     so it never reaches here.
+ *   - "No commits between" 422 is permanent; don't retry.
+ *   - All other http_errors (transient 422 e.g. "head invalid", 5xx) → retry.
+ *
+ * Not retried: missing_token (operator config), network (surface immediately).
+ */
+function isRetryablePrResult(result: OpenPullRequestResult): boolean {
+	if (result.ok || result.reason !== "http_error") return false;
+	if (/no commits between/i.test(result.message)) return false;
+	return true;
+}
+
+/* ----------------------------------------------------------------------- */
 /* PR open (warren-f6af)                                                    */
 /* ----------------------------------------------------------------------- */
 
@@ -197,6 +225,8 @@ export interface RunPrOpenInput {
 	readonly setPrUrl: (runId: string, url: string) => Promise<unknown>;
 	readonly openPr: (input: OpenPullRequestInput) => Promise<OpenPullRequestResult>;
 	readonly prTemplate?: PrTemplateOverrides;
+	/** Injected sleep for tests; defaults to real setTimeout-based sleep. */
+	readonly sleep?: (ms: number) => Promise<void>;
 }
 
 /**
@@ -214,7 +244,7 @@ export async function runPrOpen(input: RunPrOpenInput): Promise<string | null> {
 			prompt: input.run.prompt,
 			exec: input.exec,
 		});
-		const opened = await tryOpenPr({
+		const prArgs: TryOpenPrInput = {
 			project: input.project,
 			branch: input.branch,
 			autoOpen: input.autoOpen,
@@ -223,7 +253,14 @@ export async function runPrOpen(input: RunPrOpenInput): Promise<string | null> {
 			previewOptedIn: input.previewOptedIn,
 			openPr: input.openPr,
 			...(input.prTemplate !== undefined ? { prTemplate: input.prTemplate } : {}),
-		});
+		};
+		const sleep = input.sleep ?? defaultSleep;
+		let opened = await tryOpenPr(prArgs);
+		for (let attempt = 0; attempt < PR_OPEN_RETRY_DELAYS_MS.length; attempt++) {
+			if (opened.ok || !isRetryablePrResult(opened)) break;
+			await sleep(PR_OPEN_RETRY_DELAYS_MS[attempt] ?? 1_000);
+			opened = await tryOpenPr(prArgs);
+		}
 		if (opened.ok) {
 			await input.setPrUrl(input.run.id, opened.url);
 			await input.emit("reap.pr_opened", {

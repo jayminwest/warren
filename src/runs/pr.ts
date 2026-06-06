@@ -147,7 +147,7 @@ export async function openPullRequest(
 				message: "PR already exists but lookup did not return a url",
 			};
 		}
-		return { ok: false, reason: "http_error", message };
+		return { ok: false, reason: "http_error", message: `${message} errors=${errorsBlob}` };
 	}
 
 	const text = await readText(res);

@@ -320,6 +320,7 @@ export async function reapRun(input: ReapRunInput): Promise<ReapRunResult> {
 				setPrUrl: (id, url) => input.repos.runs.setPrUrl(id, url),
 				openPr: input.openPr ?? openPullRequest,
 				...(input.prTemplate !== undefined ? { prTemplate: input.prTemplate } : {}),
+				...(input.sleep !== undefined ? { sleep: input.sleep } : {}),
 			});
 		}
 

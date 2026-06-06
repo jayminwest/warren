@@ -83,6 +83,11 @@ export interface ReapRunInput {
 	 */
 	readonly openPr?: (input: OpenPullRequestInput) => Promise<OpenPullRequestResult>;
 	/**
+	 * Override the sleep seam for PR-open retry back-off (warren-70c6 / tests).
+	 * Defaults to real `setTimeout`-based sleep in production.
+	 */
+	readonly sleep?: (ms: number) => Promise<void>;
+	/**
 	 * Per-run preview environments (R-19 / SPEC §11.L, warren-f156). When
 	 * the project has opted in via `.warren/defaults.json` and `outcome ===
 	 * "succeeded"`, reap launches `preview.command` as a long-lived burrow

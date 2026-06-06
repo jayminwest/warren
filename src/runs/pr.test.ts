@@ -101,7 +101,7 @@ describe("openPullRequest", () => {
 		expect(calls[1]?.url).toContain("base=main");
 	});
 
-	test("returns http_error for unrecognized 422 (e.g. no commits between)", async () => {
+	test("returns http_error for unrecognized 422 and embeds errors[] in message (warren-70c6)", async () => {
 		const { fetch, calls } = recordingFetch([
 			jsonResponse(422, {
 				message: "Validation Failed",
@@ -109,8 +109,8 @@ describe("openPullRequest", () => {
 			}),
 		]);
 		const result = await openPullRequest(baseInput, { fetch });
-		expect(result.ok).toBe(false);
 		expect((result as { reason: string }).reason).toBe("http_error");
+		expect((result as { message: string }).message).toContain("errors="); // warren-70c6
 		expect(calls).toHaveLength(1);
 	});
 
