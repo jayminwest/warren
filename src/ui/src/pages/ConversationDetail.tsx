@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { conversationsApi, plotsApi } from "@/api/client.ts";
-import type { EditPlotIntentInput, PlotEnvelope, PlotStatus } from "@/api/types.ts";
+import type { ConversationRow, EditPlotIntentInput, PlotEnvelope, PlotStatus } from "@/api/types.ts";
 import { Chat } from "@/components/Chat.tsx";
 import { PlotStatusBadge } from "@/components/PlotStatusBadge.tsx";
 import { Button } from "@/components/ui/button.tsx";
@@ -11,6 +11,7 @@ import { PageHeader } from "@/components/ui/page-header.tsx";
 import { Textarea } from "@/components/ui/textarea.tsx";
 import { formatError } from "@/lib/format-error.ts";
 import { DispatchPlanButton } from "./conversation-detail/dispatch-plan-dialog.tsx";
+import { SendOffButton } from "./conversation-detail/send-off-button.tsx";
 
 /**
  * /leveret/:id — the Leveret conversation split-view (warren-01c8,
@@ -110,7 +111,7 @@ export function ConversationDetailPage(): JSX.Element {
 						</CardContent>
 					</Card>
 
-					<IntentPane plotId={row.plotId} />
+					<IntentPane conversation={row} />
 				</div>
 			)}
 		</div>
@@ -174,11 +175,11 @@ function patchFromFields(fields: IntentField[]): EditPlotIntentInput {
 
 const FROZEN_STATUSES: readonly PlotStatus[] = ["done", "archived"];
 
-function IntentPane({ plotId }: { plotId: string | null }): JSX.Element {
+function IntentPane({ conversation }: { conversation: ConversationRow }): JSX.Element {
 	const queryClient = useQueryClient();
 	const [drafts, setDrafts] = useState<Record<string, string> | null>(null);
-	const [sendNote, setSendNote] = useState<string | null>(null);
 
+	const plotId = conversation.plotId;
 	const plot = useQuery({
 		queryKey: ["plot", plotId],
 		queryFn: ({ signal }) => plotsApi.get(plotId ?? "", signal),
@@ -203,7 +204,9 @@ function IntentPane({ plotId }: { plotId: string | null }): JSX.Element {
 		[baseFields, drafts],
 	);
 
-	const frozen = plot.data ? FROZEN_STATUSES.includes(plot.data.status) : false;
+	const frozen =
+		(plot.data ? FROZEN_STATUSES.includes(plot.data.status) : false) ||
+		conversation.status === "closed";
 
 	const save = useMutation({
 		mutationFn: (fields: IntentField[]) =>
@@ -303,21 +306,28 @@ function IntentPane({ plotId }: { plotId: string | null }): JSX.Element {
 						</Button>
 					)}
 				</div>
-				<Button
-					size="sm"
-					disabled={!intentIsNonEmpty(baseFields)}
-					onClick={() => setSendNote("Planner send-off lands in warren-756d / warren-6e45.")}
-				>
-					Send to planner
-				</Button>
+				<SendOffButton
+					conversation={conversation}
+					intentNonEmpty={intentIsNonEmpty(baseFields)}
+				/>
 			</div>
 			{save.isError ? (
 				<p className="px-3 pb-2 text-xs text-(--color-destructive)">
 					{formatError(save.error)}
 				</p>
 			) : null}
-			{sendNote !== null ? (
-				<p className="px-3 pb-2 text-xs text-(--color-muted-foreground)">{sendNote}</p>
+			{conversation.submittedPrUrl ? (
+				<p className="px-3 pb-2 text-xs text-(--color-muted-foreground)">
+					Sent to planner:{" "}
+					<a
+						href={conversation.submittedPrUrl}
+						target="_blank"
+						rel="noopener noreferrer"
+						className="font-semibold text-primary underline underline-offset-2 hover:text-primary/80"
+					>
+						PR #{conversation.submittedPrNumber || "link"} ↗
+					</a>
+				</p>
 			) : null}
 		</Card>
 	);

@@ -18,6 +18,17 @@ import { join } from "node:path";
 const PAGE_PATH = join(import.meta.dir, "..", "ui", "src", "pages", "ConversationDetail.tsx");
 const SOURCE = readFileSync(PAGE_PATH, "utf8");
 
+const SEND_OFF_PATH = join(
+	import.meta.dir,
+	"..",
+	"ui",
+	"src",
+	"pages",
+	"conversation-detail",
+	"send-off-button.tsx",
+);
+const SEND_OFF_SOURCE = readFileSync(SEND_OFF_PATH, "utf8");
+
 const APP_PATH = join(import.meta.dir, "..", "ui", "src", "App.tsx");
 const APP_SOURCE = readFileSync(APP_PATH, "utf8");
 
@@ -66,8 +77,11 @@ describe("ConversationDetail split-view (warren-01c8)", () => {
 	});
 
 	test("top-bar 'Send to planner' is gated on non-empty intent", () => {
-		expect(SOURCE).toContain("Send to planner");
-		expect(SOURCE).toMatch(/disabled=\{!intentIsNonEmpty\(baseFields\)\}/);
+		expect(SOURCE).toContain("SendOffButton");
+		expect(SOURCE).toMatch(/intentNonEmpty=\{intentIsNonEmpty\(baseFields\)\}/);
+
+		expect(SEND_OFF_SOURCE).toContain("Send to planner");
+		expect(SEND_OFF_SOURCE).toMatch(/disabled=\{!intentNonEmpty/);
 	});
 
 	test("frozen (done/archived) plots disable intent editing", () => {
