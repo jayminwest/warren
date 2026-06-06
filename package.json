@@ -76,7 +76,7 @@
 		"typescript": "^6.0.3"
 	},
 	"dependencies": {
-		"@os-eco/burrow-cli": "^0.3.11",
+		"@os-eco/burrow-cli": "^0.3.12",
 		"@os-eco/plot-cli": "^0.4.0",
 		"commander": "^15.0.0",
 		"croner": "^10.0.1",
