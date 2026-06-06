@@ -86,6 +86,7 @@ describe("buildSeedFiles", () => {
 		expect(result.mulchDomains).toEqual([]);
 		expect(result.piSkills).toEqual([]);
 		expect(result.piPrompts).toEqual([]);
+		expect(result.piExtensions).toEqual([]);
 		// Only the canopy envelope drops when no optional sections are present.
 		expect(result.files.map((f) => f.path)).toEqual([".canopy/agent.json"]);
 	});
@@ -171,6 +172,70 @@ describe("buildSeedFiles", () => {
 		);
 	});
 
+	test("emits pi_extensions JSONL lines at .pi/extensions/<name>.ts", () => {
+		const section = [
+			JSON.stringify({ name: "propose-intent", body: "export default (pi) => {};" }),
+			JSON.stringify({ name: "audit", body: "export default (pi) => { pi.x(); };" }),
+		].join("\n");
+		const result = buildSeedFiles(makeAgent({ sections: { system: "s", pi_extensions: section } }));
+		const map = byPath(result.files);
+
+		expect(result.piExtensions).toEqual(["audit", "propose-intent"]);
+		expect(map.get(".pi/extensions/propose-intent.ts")?.contents).toBe(
+			"export default (pi) => {};\n",
+		);
+		expect(map.get(".pi/extensions/audit.ts")?.contents).toBe(
+			"export default (pi) => { pi.x(); };\n",
+		);
+	});
+
+	test("preserves a body that already ends with a newline (pi_extensions)", () => {
+		const section = JSON.stringify({ name: "x", body: "export default () => {};\n" });
+		const result = buildSeedFiles(makeAgent({ sections: { system: "s", pi_extensions: section } }));
+		expect(byPath(result.files).get(".pi/extensions/x.ts")?.contents).toBe(
+			"export default () => {};\n",
+		);
+	});
+
+	test("rejects malformed pi_extensions lines with RunSpawnError", () => {
+		expect(() =>
+			buildSeedFiles(makeAgent({ sections: { system: "s", pi_extensions: "not json" } })),
+		).toThrow(RunSpawnError);
+	});
+
+	test("rejects pi_extensions lines without a string body", () => {
+		expect(() =>
+			buildSeedFiles(
+				makeAgent({
+					sections: { system: "s", pi_extensions: JSON.stringify({ name: "x" }) },
+				}),
+			),
+		).toThrow(RunSpawnError);
+	});
+
+	test("rejects pi_extensions names containing path separators or traversal", () => {
+		expect(() =>
+			buildSeedFiles(
+				makeAgent({
+					sections: {
+						system: "s",
+						pi_extensions: JSON.stringify({ name: "../escape", body: "x" }),
+					},
+				}),
+			),
+		).toThrow(RunSpawnError);
+	});
+
+	test("rejects duplicate pi_extensions names", () => {
+		const dup = [
+			JSON.stringify({ name: "x", body: "a" }),
+			JSON.stringify({ name: "x", body: "b" }),
+		].join("\n");
+		expect(() =>
+			buildSeedFiles(makeAgent({ sections: { system: "s", pi_extensions: dup } })),
+		).toThrow(RunSpawnError);
+	});
+
 	test("rejects malformed pi_prompts lines with RunSpawnError", () => {
 		expect(() =>
 			buildSeedFiles(
@@ -194,6 +259,7 @@ describe("buildSeedFiles", () => {
 					expertise_seed: '{"type":"convention","domain":"d","content":"c"}',
 					pi_skills: section,
 					pi_prompts: section,
+					pi_extensions: section,
 				},
 			}),
 		);

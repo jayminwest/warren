@@ -34,6 +34,11 @@
  *   `.pi/prompts/<name>.md` — same JSONL `{name, body}` shape as
  *      pi_skills but flat (one .md per prompt, no per-prompt
  *      directory).
+ *
+ *   `.pi/extensions/<name>.ts` — same JSONL `{name, body}` shape as
+ *      pi_prompts but flat .ts modules (extensions default-export a
+ *      `(pi) => {…}` registration function). INERT until burrow drops
+ *      `--no-extensions` for pi-chat; seeding alone is a no-op.
  */
 
 import type { HttpWorkspaceFile } from "@os-eco/burrow-cli";
@@ -49,6 +54,7 @@ export interface BuildSeedFilesResult {
 	readonly workflowPath: string | null;
 	readonly piSkills: readonly string[];
 	readonly piPrompts: readonly string[];
+	readonly piExtensions: readonly string[];
 }
 
 export function buildSeedFiles(agent: AgentDefinition): BuildSeedFilesResult {
@@ -88,6 +94,12 @@ export function buildSeedFiles(agent: AgentDefinition): BuildSeedFilesResult {
 	);
 	files.push(...promptFiles);
 
+	const { names: piExtensions, files: extensionFiles } = buildPiArtifactFiles(
+		agent.sections.pi_extensions,
+		"extension",
+	);
+	files.push(...extensionFiles);
+
 	return {
 		files,
 		canopyPath,
@@ -95,6 +107,7 @@ export function buildSeedFiles(agent: AgentDefinition): BuildSeedFilesResult {
 		workflowPath: workflowFile?.path ?? null,
 		piSkills,
 		piPrompts,
+		piExtensions,
 	};
 }
 
@@ -150,14 +163,14 @@ function buildWorkflowFile(body: string | undefined): HttpWorkspaceFile | null {
 	};
 }
 
-type PiArtifactKind = "skill" | "prompt";
+type PiArtifactKind = "skill" | "prompt" | "extension";
 
 function buildPiArtifactFiles(
 	body: string | undefined,
 	kind: PiArtifactKind,
 ): { names: readonly string[]; files: HttpWorkspaceFile[] } {
 	if (body === undefined || body.trim() === "") return { names: [], files: [] };
-	const sectionName = kind === "skill" ? "pi_skills" : "pi_prompts";
+	const sectionName = PI_ARTIFACT_SECTION[kind];
 
 	const entries: Array<{ name: string; body: string }> = [];
 	const seen = new Set<string>();
@@ -204,14 +217,31 @@ function buildPiArtifactFiles(
 
 	if (entries.length === 0) return { names: [], files: [] };
 
-	const baseDir = kind === "skill" ? ".pi/skills" : ".pi/prompts";
 	const files = entries.map((entry) => {
-		const path =
-			kind === "skill" ? `${baseDir}/${entry.name}/SKILL.md` : `${baseDir}/${entry.name}.md`;
-		return { path, contents: entry.body.endsWith("\n") ? entry.body : `${entry.body}\n` };
+		return {
+			path: piArtifactPath(kind, entry.name),
+			contents: entry.body.endsWith("\n") ? entry.body : `${entry.body}\n`,
+		};
 	});
 	const names = entries.map((e) => e.name).sort();
 	return { names, files };
+}
+
+const PI_ARTIFACT_SECTION: Record<PiArtifactKind, string> = {
+	skill: "pi_skills",
+	prompt: "pi_prompts",
+	extension: "pi_extensions",
+};
+
+function piArtifactPath(kind: PiArtifactKind, name: string): string {
+	switch (kind) {
+		case "skill":
+			return `.pi/skills/${name}/SKILL.md`;
+		case "prompt":
+			return `.pi/prompts/${name}.md`;
+		case "extension":
+			return `.pi/extensions/${name}.ts`;
+	}
 }
 
 function isSafeArtifactName(name: string): boolean {
