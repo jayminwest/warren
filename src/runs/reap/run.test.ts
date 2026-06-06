@@ -342,6 +342,76 @@ describe("reapRun", () => {
 		expect(order.indexOf("reap.completed")).toBeLessThan(order.indexOf("reap.workspace_destroyed"));
 	});
 
+	test("never-started (queued) run skips workspace pipeline and emits reap.never_started_skip (warren-5e53)", async () => {
+		// Create a fresh run whose state is still `queued` — never had markRunning called.
+		const project = (await ctx.repos.projects.listAll())[0];
+		expect(project).toBeDefined();
+		const queued = await ctx.repos.runs.create({
+			agentName: "refactor-bot",
+			projectId: (project as { id: string }).id,
+			prompt: "p",
+			renderedAgentJson: {},
+			trigger: "manual",
+			burrowId: "bur_aaaaaaaaaaaa",
+			burrowRunId: "run_neverstarted1",
+		});
+		const e = fakeExec();
+
+		const result = await reapRun({
+			runId: queued.id,
+			outcome: "failed",
+			repos: ctx.repos,
+			burrowClientPool: await makePool(fakeBurrowClient(makeBurrow()), ctx.repos),
+			fs: fakeFs().fs,
+			exec: e.exec,
+		});
+
+		// No git commands run — no push, no rev-list.
+		expect(e.calls).toHaveLength(0);
+		// No workspace pipeline work done.
+		expect(result.branchPushed).toBe(false);
+		expect(result.plotCommitted).toBe(false);
+		expect(result.mulchUpdated).toBe(0);
+		expect(result.mulchSkipped).toBe(0);
+		// State correctly reflects never_started.
+		expect(result.failureReason).toBe("never_started");
+		const events = await ctx.repos.events.listByRun(queued.id);
+		const skipEv = events.find((ev) => ev.kind === "reap.never_started_skip");
+		expect(skipEv).toBeDefined();
+		const completedEv = events.find((ev) => ev.kind === "reap.completed");
+		expect(completedEv).toBeDefined();
+		// Skip event precedes completed.
+		const order = events.map((ev) => ev.kind);
+		expect(order.indexOf("reap.never_started_skip")).toBeLessThan(order.indexOf("reap.completed"));
+	});
+
+	test("never-started (queued) run still destroys workspace after skipping pipeline (warren-5e53)", async () => {
+		const project = (await ctx.repos.projects.listAll())[0];
+		expect(project).toBeDefined();
+		const queued = await ctx.repos.runs.create({
+			agentName: "refactor-bot",
+			projectId: (project as { id: string }).id,
+			prompt: "p",
+			renderedAgentJson: {},
+			trigger: "manual",
+			burrowId: "bur_aaaaaaaaaaaa",
+			burrowRunId: "run_neverstarted2",
+		});
+
+		const result = await reapRun({
+			runId: queued.id,
+			outcome: "failed",
+			repos: ctx.repos,
+			burrowClientPool: await makePool(fakeBurrowClient(makeBurrow()), ctx.repos),
+			fs: fakeFs().fs,
+			exec: fakeExec().exec,
+		});
+
+		expect(result.state).toBe("failed");
+		expect(result.workspaceDestroyed).toBe(true);
+		expect(result.errors).toEqual([]);
+	});
+
 	test("publishes reap-emitted events to the broker for live tailers", async () => {
 		const f = fakeFs({
 			"/data/burrow/ws/.mulch/expertise/build.jsonl":

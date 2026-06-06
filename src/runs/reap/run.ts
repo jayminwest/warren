@@ -36,7 +36,7 @@ export async function reapRun(input: ReapRunInput): Promise<ReapRunResult> {
 	}
 
 	// State on entry is the discriminator: still `queued` means the bridge
-	// never claimed it (no events flowed from burrow) — "never started".
+	// never claimed it (no events flowed from burrow) — "never started" (warren-5e53).
 	const stateOnEntry = run.state;
 
 	// `run.projectId` is null when the project was deleted while the run
@@ -113,7 +113,11 @@ export async function reapRun(input: ReapRunInput): Promise<ReapRunResult> {
 	// `project.defaultBranch`, the correct ref for `rev-list --count`.
 	const baseBranch: string | null = project?.defaultBranch ?? null;
 
-	if (workspacePath !== null && project !== null) {
+	if (stateOnEntry === "queued" && workspacePath !== null && project !== null) {
+		await emit("reap.never_started_skip", {
+			message: "agent never ran; skipping workspace pipeline",
+		});
+	} else if (stateOnEntry !== "queued" && workspacePath !== null && project !== null) {
 		try {
 			const result = await mergeMulch(workspacePath, project.localPath, fs, emit, fail);
 			mulchUpdated = result.updated;
