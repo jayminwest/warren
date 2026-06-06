@@ -17,7 +17,12 @@ import { resolveDispatcherHandle } from "../../../runs/index.ts";
 import { jsonResponse } from "../../response.ts";
 import type { RouteHandler, ServerDeps } from "../../types.ts";
 import { optionalString, readJsonBody, requireParam } from "../index.ts";
-import { buildPlotEnvelope, loadPausedRunsForPlot, resolvePlotProject } from "./shared.ts";
+import {
+	buildPlotEnvelope,
+	loadPausedRunsForPlot,
+	plotProjectionForProject,
+	resolvePlotProject,
+} from "./shared.ts";
 
 /**
  * `POST /plots/:id/intent` — edit a Plot's intent body (warren-896f /
@@ -68,6 +73,7 @@ function editPlotIntentHandler(deps: ServerDeps): RouteHandler {
 			plotId,
 			handle,
 			patch: patch ?? {},
+			projection: plotProjectionForProject(deps, project.id),
 		});
 
 		deps.plotAggregator?.invalidate(project.id);
@@ -129,6 +135,7 @@ function renamePlotHandler(deps: ServerDeps): RouteHandler {
 			plotId,
 			handle,
 			name: trimmedName,
+			projection: plotProjectionForProject(deps, project.id),
 		});
 
 		deps.plotAggregator?.invalidate(project.id);

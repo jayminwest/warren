@@ -84,6 +84,10 @@ export {
 	type PlotPrMerger,
 } from "./pr-merger.ts";
 export {
+	createPlotsProjectionSink,
+	type PlotsProjectionSinkOptions,
+} from "./projection-sink.ts";
+export {
 	type AnswerPlotQuestionRequest,
 	type AnswerPlotQuestionResult,
 	assertQuestionAnswerable,

@@ -18,6 +18,7 @@ import { resolveDispatcherHandle } from "../../../runs/index.ts";
 import { jsonResponse } from "../../response.ts";
 import type { RouteHandler, ServerDeps } from "../../types.ts";
 import { optionalString, readJsonBody, requireString } from "../index.ts";
+import { plotProjectionForProject } from "./shared.ts";
 
 /**
  * `GET /plots?status=` — list Plot summaries aggregated across every
@@ -120,6 +121,7 @@ function createPlotHandler(deps: ServerDeps): RouteHandler {
 			handle,
 			name,
 			...(intent !== undefined ? { intent } : {}),
+			projection: plotProjectionForProject(deps, project.id),
 		});
 
 		deps.plotAggregator?.invalidate(project.id);

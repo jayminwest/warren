@@ -12,10 +12,30 @@ import { join } from "node:path";
 import { NotFoundError } from "../../../core/errors.ts";
 import type { ProjectRow } from "../../../db/schema.ts";
 import { ProjectLacksPlotError } from "../../../plan-runs/errors.ts";
-import { defaultPlanChildAdopter, type PlotEnvelope } from "../../../plots/index.ts";
+import type { PlotProjectionSink } from "../../../plot-client/index.ts";
+import {
+	createPlotsProjectionSink,
+	defaultPlanChildAdopter,
+	type PlotEnvelope,
+} from "../../../plots/index.ts";
 import { resolveDispatcherHandle } from "../../../runs/index.ts";
 import { DEFAULT_AGENT_PAUSE_TIMEOUT_MS, loadWarrenConfig } from "../../../warren-config/index.ts";
 import type { ServerDeps } from "../../types.ts";
+
+/**
+ * Build the read-cache upsert seam for a resolved project (warren-7b60).
+ * Threaded into the Plot read/write seams so every `UserPlotClient`
+ * read/write through them refreshes the `plots` projection row. The Plot
+ * blob carries no `project_id`, so the binding lives here where the
+ * resolved `ProjectRow` is in hand.
+ */
+export function plotProjectionForProject(deps: ServerDeps, projectId: string): PlotProjectionSink {
+	return createPlotsProjectionSink({
+		repo: deps.repos.plots,
+		projectId,
+		logger: deps.logger,
+	});
+}
 
 /** Per-plot paused-run row surfaced on the PlotDetail envelope. */
 export interface PausedRunRow {

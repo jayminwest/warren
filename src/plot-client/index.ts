@@ -24,6 +24,7 @@ export {
 	type UserAppendInput,
 	UserPlotHandle,
 } from "./handle.ts";
+export type { PlotProjectionSink } from "./projection.ts";
 export {
 	type AgentAllowedEventType,
 	HUMANS_ONLY_EVENT_TYPES,

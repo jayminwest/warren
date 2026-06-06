@@ -27,7 +27,7 @@
  */
 
 import type { Plot, PlotEvent, PlotStatus } from "@os-eco/plot-cli";
-import { UserPlotClient } from "../plot-client/index.ts";
+import { type PlotProjectionSink, UserPlotClient } from "../plot-client/index.ts";
 import { PlotIllegalStatusTransitionError } from "./errors.ts";
 import { buildIntentGoalPreview } from "./types.ts";
 
@@ -90,6 +90,8 @@ export interface ChangePlotStatusRequest {
 	readonly handle: string;
 	/** Requested next status \u2014 already validated against `STATUS_TRANSITIONS` at the handler edge. */
 	readonly next: PlotStatus;
+	/** Optional read-cache upsert seam (warren-7b60). */
+	readonly projection?: PlotProjectionSink;
 }
 
 /**
@@ -142,6 +144,7 @@ export const defaultPlotStatusChanger: PlotStatusChanger = {
 		const client = new UserPlotClient({
 			dir: input.plotDir,
 			actor: { kind: "user", handle: input.handle, raw: `user:${input.handle}` },
+			projection: input.projection,
 		});
 		try {
 			const handle = client.get(input.plotId);

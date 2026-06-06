@@ -25,7 +25,12 @@ import {
 	readJsonBodyOrEmpty,
 	requireParam,
 } from "../index.ts";
-import { buildPlotEnvelope, loadPausedRunsForPlot, resolvePlotProject } from "./shared.ts";
+import {
+	buildPlotEnvelope,
+	loadPausedRunsForPlot,
+	plotProjectionForProject,
+	resolvePlotProject,
+} from "./shared.ts";
 
 /**
  * Per-kind ref-shape patterns enforced at the handler edge (warren-589c).
@@ -137,6 +142,7 @@ function attachPlotHandler(deps: ServerDeps): RouteHandler {
 			kind,
 			ref,
 			...(role !== undefined ? { role } : {}),
+			projection: plotProjectionForProject(deps, project.id),
 		});
 
 		deps.plotAggregator?.invalidate(project.id);
@@ -189,6 +195,7 @@ function detachPlotHandler(deps: ServerDeps): RouteHandler {
 			plotId,
 			handle,
 			ref,
+			projection: plotProjectionForProject(deps, project.id),
 		});
 
 		deps.plotAggregator?.invalidate(project.id);

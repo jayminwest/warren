@@ -14,7 +14,7 @@ import { resolveDispatcherHandle } from "../../../runs/index.ts";
 import { jsonResponse } from "../../response.ts";
 import type { RouteHandler, ServerDeps } from "../../types.ts";
 import { optionalString, readJsonBody, requireParam } from "../index.ts";
-import { resolvePlotProject } from "./shared.ts";
+import { plotProjectionForProject, resolvePlotProject } from "./shared.ts";
 import { triggerBackgroundSync } from "./sync.ts";
 
 /**
@@ -83,6 +83,7 @@ function changePlotStatusHandler(deps: ServerDeps): RouteHandler {
 			plotId,
 			handle,
 			next,
+			projection: plotProjectionForProject(deps, project.id),
 		});
 
 		deps.plotAggregator?.invalidate(project.id);

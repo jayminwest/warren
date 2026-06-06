@@ -21,7 +21,7 @@
  */
 
 import type { Attachment, Intent, Plot, PlotEvent, PlotStatus } from "@os-eco/plot-cli";
-import { UserPlotClient } from "../plot-client/index.ts";
+import { type PlotProjectionSink, UserPlotClient } from "../plot-client/index.ts";
 
 export interface PlotEnvelope {
 	readonly id: string;
@@ -64,6 +64,12 @@ export interface ReadPlotRequest {
 	readonly plotDir: string;
 	/** Target Plot id (`plot-xxxxxxxx`). */
 	readonly plotId: string;
+	/**
+	 * Optional read-cache upsert seam (warren-7b60). When supplied, the
+	 * read refreshes the `plots` projection row from the git state it just
+	 * loaded. The handler builds it from `deps.repos.plots` + `project.id`.
+	 */
+	readonly projection?: PlotProjectionSink;
 }
 
 /**
@@ -99,6 +105,7 @@ export const defaultPlotReader: PlotReader = {
 		const client = new UserPlotClient({
 			dir: input.plotDir,
 			actor: { kind: "user", handle: "operator", raw: "user:operator" },
+			projection: input.projection,
 		});
 		try {
 			const handle = client.get(input.plotId);

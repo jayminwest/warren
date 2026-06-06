@@ -46,6 +46,7 @@ import {
 	type UserActor,
 } from "@os-eco/plot-cli";
 import { AgentPlotHandle, UserPlotHandle } from "./handle.ts";
+import type { PlotProjectionSink } from "./projection.ts";
 
 export const PLOT_INDEX_FILENAME = ".index.db";
 
@@ -56,6 +57,13 @@ export interface PlotClientOptions<A extends Actor = Actor> {
 	readonly indexPath?: string;
 	/** Plot actor making writes through this client. */
 	readonly actor: A;
+	/**
+	 * Optional read-cache upsert seam (warren-7b60). When supplied, every
+	 * read/write through the resulting handles refreshes the `plots`
+	 * projection row from freshly-read git state. Omitted → no-op on that
+	 * axis. See `./projection.ts` for the best-effort contract.
+	 */
+	readonly projection?: PlotProjectionSink;
 }
 
 abstract class BasePlotClient<A extends Actor, H extends UserPlotHandle | AgentPlotHandle> {
@@ -63,10 +71,12 @@ abstract class BasePlotClient<A extends Actor, H extends UserPlotHandle | AgentP
 	readonly actor: A;
 	readonly index: SQLitePlotIndex;
 	protected readonly store: PlotStore;
+	protected readonly projection?: PlotProjectionSink;
 
 	constructor(opts: PlotClientOptions<A>) {
 		this.dir = opts.dir;
 		this.actor = opts.actor;
+		this.projection = opts.projection;
 		this.index = new SQLitePlotIndex(opts.indexPath ?? join(opts.dir, PLOT_INDEX_FILENAME));
 		this.store = new PlotStore({ dir: opts.dir, index: this.index, actor: opts.actor });
 	}
@@ -92,7 +102,7 @@ abstract class BasePlotClient<A extends Actor, H extends UserPlotHandle | AgentP
 
 export class UserPlotClient extends BasePlotClient<UserActor, UserPlotHandle> {
 	get(plotId: string): UserPlotHandle {
-		return new UserPlotHandle(this.store.get(plotId));
+		return new UserPlotHandle(this.store.get(plotId), this.projection);
 	}
 
 	// `plot_created` is allowed for both user and agent actors per SPEC §6,
@@ -100,7 +110,13 @@ export class UserPlotClient extends BasePlotClient<UserActor, UserPlotHandle> {
 	// agent-actor flows attach to an existing Plot. Keeping `create` on the
 	// user client makes that intent explicit at the type level.
 	create(input: Parameters<PlotStore["create"]>[0]): Promise<UserPlotHandle> {
-		return this.store.create(input).then((handle) => new UserPlotHandle(handle));
+		return this.store.create(input).then(async (handle) => {
+			const wrapped = new UserPlotHandle(handle, this.projection);
+			// Populate the projection for the freshly-minted Plot so a
+			// list/index query sees it without waiting for a follow-up read.
+			await wrapped.read();
+			return wrapped;
+		});
 	}
 
 	/**
@@ -137,13 +153,15 @@ export class UserPlotClient extends BasePlotClient<UserActor, UserPlotHandle> {
 			emitted = event;
 			return { next: { ...current, name: trimmed }, events: [event] };
 		});
+		// Refresh the read-cache from the post-rename git state (warren-7b60).
+		await this.projection?.upsert(plot);
 		return { plot, event: emitted };
 	}
 }
 
 export class AgentPlotClient extends BasePlotClient<AgentActor, AgentPlotHandle> {
 	get(plotId: string): AgentPlotHandle {
-		return new AgentPlotHandle(this.store.get(plotId));
+		return new AgentPlotHandle(this.store.get(plotId), this.projection);
 	}
 }
 

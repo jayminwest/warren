@@ -42,7 +42,7 @@ import type {
 	PlotEvent,
 	PlotStatus,
 } from "@os-eco/plot-cli";
-import { UserPlotClient } from "../plot-client/index.ts";
+import { type PlotProjectionSink, UserPlotClient } from "../plot-client/index.ts";
 import { PlotAttachmentNotFoundError } from "./errors.ts";
 
 export interface AttachPlotRequest {
@@ -58,6 +58,8 @@ export interface AttachPlotRequest {
 	readonly ref: string;
 	/** Optional role override; defaults to `"tracks"` when omitted. */
 	readonly role?: string;
+	/** Optional read-cache upsert seam (warren-7b60). */
+	readonly projection?: PlotProjectionSink;
 }
 
 export interface DetachPlotRequest {
@@ -66,6 +68,8 @@ export interface DetachPlotRequest {
 	readonly handle: string;
 	/** External reference of the attachment to remove (NOT the att-NNN id). */
 	readonly ref: string;
+	/** Optional read-cache upsert seam (warren-7b60). */
+	readonly projection?: PlotProjectionSink;
 }
 
 /**
@@ -120,6 +124,7 @@ export const defaultPlotAttacher: PlotAttacher = {
 		const client = new UserPlotClient({
 			dir: input.plotDir,
 			actor: { kind: "user", handle: input.handle, raw: `user:${input.handle}` },
+			projection: input.projection,
 		});
 		try {
 			const handle = client.get(input.plotId);
@@ -139,6 +144,7 @@ export const defaultPlotAttacher: PlotAttacher = {
 		const client = new UserPlotClient({
 			dir: input.plotDir,
 			actor: { kind: "user", handle: input.handle, raw: `user:${input.handle}` },
+			projection: input.projection,
 		});
 		try {
 			const handle = client.get(input.plotId);

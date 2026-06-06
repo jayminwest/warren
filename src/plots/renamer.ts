@@ -22,7 +22,7 @@
  */
 
 import type { Attachment, Intent, Plot, PlotEvent, PlotStatus } from "@os-eco/plot-cli";
-import { UserPlotClient } from "../plot-client/index.ts";
+import { type PlotProjectionSink, UserPlotClient } from "../plot-client/index.ts";
 
 export interface RenamePlotRequest {
 	/** Absolute path to the project's `.plot/` directory. */
@@ -33,6 +33,8 @@ export interface RenamePlotRequest {
 	readonly handle: string;
 	/** New name. Trimmed; must be non-empty after trim. */
 	readonly name: string;
+	/** Optional read-cache upsert seam (warren-7b60). */
+	readonly projection?: PlotProjectionSink;
 }
 
 /**
@@ -63,6 +65,7 @@ export const defaultPlotRenamer: PlotRenamer = {
 		const client = new UserPlotClient({
 			dir: input.plotDir,
 			actor: { kind: "user", handle: input.handle, raw: `user:${input.handle}` },
+			projection: input.projection,
 		});
 		try {
 			await client.rename(input.plotId, input.name);

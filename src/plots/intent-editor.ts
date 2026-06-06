@@ -26,7 +26,7 @@
  */
 
 import type { Attachment, Intent, Plot, PlotEvent, PlotStatus } from "@os-eco/plot-cli";
-import { UserPlotClient } from "../plot-client/index.ts";
+import { type PlotProjectionSink, UserPlotClient } from "../plot-client/index.ts";
 import { PlotIntentFrozenError } from "./errors.ts";
 
 /**
@@ -50,6 +50,12 @@ export interface EditPlotIntentRequest {
 	readonly handle: string;
 	/** Intent patch — at least one field is expected, but an empty patch is a no-op. */
 	readonly patch: EditPlotIntentPatch;
+	/**
+	 * Optional read-cache upsert seam (warren-7b60). When supplied, the
+	 * read + the `intent_edited` write both refresh the `plots` projection
+	 * row. The handler builds it from `deps.repos.plots` + `project.id`.
+	 */
+	readonly projection?: PlotProjectionSink;
 }
 
 /**
@@ -90,6 +96,7 @@ export const defaultPlotIntentEditor: PlotIntentEditor = {
 		const client = new UserPlotClient({
 			dir: input.plotDir,
 			actor: { kind: "user", handle: input.handle, raw: `user:${input.handle}` },
+			projection: input.projection,
 		});
 		try {
 			const handle = client.get(input.plotId);

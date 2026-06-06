@@ -18,6 +18,7 @@ import { requireParam } from "../index.ts";
 import {
 	buildPlotEnvelope,
 	loadPausedRunsForPlot,
+	plotProjectionForProject,
 	reconcilePlanChildAttachments,
 	resolvePlotProject,
 } from "./shared.ts";
@@ -60,6 +61,7 @@ function getPlotHandler(deps: ServerDeps): RouteHandler {
 		const result = await reader.read({
 			plotDir: join(project.localPath, ".plot"),
 			plotId,
+			projection: plotProjectionForProject(deps, project.id),
 		});
 
 		const paused_runs = await loadPausedRunsForPlot(deps, plotId, project);
@@ -84,6 +86,7 @@ function getPlotSummaryHandler(deps: ServerDeps): RouteHandler {
 		const result = await reader.read({
 			plotDir: join(project.localPath, ".plot"),
 			plotId,
+			projection: plotProjectionForProject(deps, project.id),
 		});
 		const artifact: PlotSummaryArtifact = summarizePlot({
 			id: result.id,

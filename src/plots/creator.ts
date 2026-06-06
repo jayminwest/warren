@@ -25,7 +25,7 @@
  */
 
 import type { PlotStatus } from "@os-eco/plot-cli";
-import { UserPlotClient } from "../plot-client/index.ts";
+import { type PlotProjectionSink, UserPlotClient } from "../plot-client/index.ts";
 import { buildIntentGoalPreview } from "./types.ts";
 
 /**
@@ -49,6 +49,12 @@ export interface CreatePlotRequest {
 	readonly name: string;
 	/** Optional initial intent body — applied via `editIntent` post-create. */
 	readonly intent?: CreatePlotIntentPatch;
+	/**
+	 * Optional read-cache upsert seam (warren-7b60). When supplied, the
+	 * freshly-created Plot is written into the `plots` projection table.
+	 * The handler builds it from `deps.repos.plots` + `project.id`.
+	 */
+	readonly projection?: PlotProjectionSink;
 }
 
 /**
@@ -86,6 +92,7 @@ export const defaultPlotCreator: PlotCreator = {
 		const client = new UserPlotClient({
 			dir: input.plotDir,
 			actor: { kind: "user", handle: input.handle, raw: `user:${input.handle}` },
+			projection: input.projection,
 		});
 		try {
 			const handle = await client.create({ name: input.name });

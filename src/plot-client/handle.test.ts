@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type { PlotHandle } from "@os-eco/plot-cli";
 import { PlotAgentACLViolationError } from "./errors.ts";
 import { AgentPlotHandle, UserPlotHandle } from "./handle.ts";
+import type { PlotProjectionSink } from "./projection.ts";
 import { HUMANS_ONLY_EVENT_TYPES, type HumansOnlyEventType } from "./types.ts";
 
 // Records every method the wrapper forwards to so each test can assert
@@ -178,5 +179,64 @@ describe("UserPlotHandle", () => {
 			"append",
 			"append",
 		]);
+	});
+});
+
+describe("BasePlotHandle projection hook (warren-7b60)", () => {
+	function recordingSink(): { sink: PlotProjectionSink; upserts: unknown[] } {
+		const upserts: unknown[] = [];
+		return {
+			upserts,
+			sink: {
+				upsert(plot) {
+					upserts.push(plot);
+				},
+			},
+		};
+	}
+
+	test("read() refreshes the projection with the freshly-read plot", async () => {
+		const { inner } = recorderHandle();
+		const { sink, upserts } = recordingSink();
+		const handle = new UserPlotHandle(inner, sink);
+		const plot = await handle.read();
+		expect(upserts).toEqual([plot]);
+	});
+
+	test("editIntent / setStatus refresh from the mutator return value", async () => {
+		const { inner } = recorderHandle();
+		const { sink, upserts } = recordingSink();
+		const handle = new UserPlotHandle(inner, sink);
+		const edited = await handle.editIntent({ goal: "g" });
+		const status = await handle.setStatus("ready");
+		expect(upserts).toEqual([edited, status]);
+	});
+
+	test("detach / append re-read the plot before refreshing the projection", async () => {
+		const { inner, calls } = recorderHandle();
+		const { sink, upserts } = recordingSink();
+		const handle = new UserPlotHandle(inner, sink);
+		await handle.detach("att-001");
+		await handle.append({ type: "note", data: {} });
+		// Each mutation triggers a follow-up read whose result feeds the sink.
+		expect(calls.map((c) => c.method)).toEqual(["detach", "read", "append", "read"]);
+		expect(upserts).toHaveLength(2);
+	});
+
+	test("no sink wired → no extra reads on detach/append", async () => {
+		const { inner, calls } = recorderHandle();
+		const handle = new UserPlotHandle(inner);
+		await handle.detach("att-001");
+		await handle.append({ type: "note", data: {} });
+		expect(calls.map((c) => c.method)).toEqual(["detach", "append"]);
+	});
+
+	test("AgentPlotHandle append refreshes the projection after a permitted write", async () => {
+		const { inner, calls } = recorderHandle();
+		const { sink, upserts } = recordingSink();
+		const handle = new AgentPlotHandle(inner, sink);
+		await handle.append({ type: "note", data: {} });
+		expect(calls.map((c) => c.method)).toEqual(["append", "read"]);
+		expect(upserts).toHaveLength(1);
 	});
 });

@@ -30,6 +30,7 @@ import type {
 	UserActor,
 } from "@os-eco/plot-cli";
 import { PlotAgentACLViolationError } from "./errors.ts";
+import type { PlotProjectionSink } from "./projection.ts";
 import { type AgentAllowedEventType, isHumansOnlyEventType } from "./types.ts";
 
 export interface AgentAppendInput<T extends AgentAllowedEventType> {
@@ -43,14 +44,20 @@ export interface UserAppendInput<T extends PlotEventType> {
 }
 
 abstract class BasePlotHandle {
-	constructor(protected readonly inner: PlotHandle) {}
+	constructor(
+		protected readonly inner: PlotHandle,
+		/** Optional read-cache upsert seam (warren-7b60). */
+		protected readonly projection?: PlotProjectionSink,
+	) {}
 
 	get id(): string {
 		return this.inner.id;
 	}
 
-	read(): Promise<Plot> {
-		return this.inner.read();
+	async read(): Promise<Plot> {
+		const plot = await this.inner.read();
+		await this.syncProjection(plot);
+		return plot;
 	}
 
 	events(): Promise<PlotEvent[]> {
@@ -64,39 +71,75 @@ abstract class BasePlotHandle {
 		return this.inner.view(name);
 	}
 
-	attach(input: AttachInput): Promise<Attachment> {
-		return this.inner.attach(input);
+	async attach(input: AttachInput): Promise<Attachment> {
+		const attachment = await this.inner.attach(input);
+		await this.refreshProjection();
+		return attachment;
+	}
+
+	/**
+	 * Refresh the projection from a Plot the caller already has in hand
+	 * (e.g. the return value of `editIntent` / `setStatus`). The sink is
+	 * best-effort (see `PlotProjectionSink`); the `PlotClient` awaits it
+	 * only so projection writes are deterministically ordered for tests.
+	 */
+	protected async syncProjection(plot: Plot): Promise<void> {
+		if (!this.projection) return;
+		await this.projection.upsert(plot);
+	}
+
+	/**
+	 * Re-read the Plot and refresh the projection. Used after mutations
+	 * whose return value is not the full Plot (`attach`/`detach`/`append`).
+	 * Skips the extra read entirely when no sink is wired.
+	 */
+	protected async refreshProjection(): Promise<void> {
+		if (!this.projection) return;
+		await this.projection.upsert(await this.inner.read());
 	}
 }
 
 export class UserPlotHandle extends BasePlotHandle {
 	readonly actorKind: UserActor["kind"] = "user";
 
-	editIntent(patch: Parameters<PlotHandle["editIntent"]>[0]): Promise<Plot> {
-		return this.inner.editIntent(patch);
+	async editIntent(patch: Parameters<PlotHandle["editIntent"]>[0]): Promise<Plot> {
+		const plot = await this.inner.editIntent(patch);
+		await this.syncProjection(plot);
+		return plot;
 	}
 
-	detach(attachmentId: string): Promise<void> {
-		return this.inner.detach(attachmentId);
+	async detach(attachmentId: string): Promise<void> {
+		await this.inner.detach(attachmentId);
+		await this.refreshProjection();
 	}
 
-	setStatus(status: PlotStatus): Promise<Plot> {
-		return this.inner.setStatus(status);
+	async setStatus(status: PlotStatus): Promise<Plot> {
+		const plot = await this.inner.setStatus(status);
+		await this.syncProjection(plot);
+		return plot;
 	}
 
-	append<T extends PlotEventType>(input: UserAppendInput<T>): Promise<PlotEvent> {
-		return this.inner.append(input);
+	async append<T extends PlotEventType>(input: UserAppendInput<T>): Promise<PlotEvent> {
+		const event = await this.inner.append(input);
+		await this.refreshProjection();
+		return event;
 	}
 }
 
 export class AgentPlotHandle extends BasePlotHandle {
 	readonly actorKind: AgentActor["kind"] = "agent";
 
+	// Kept non-`async` so the ACL guard throws synchronously (an `async`
+	// method would surface the violation as a rejected promise instead);
+	// the projection refresh still chains off the real append.
 	append<T extends AgentAllowedEventType>(input: AgentAppendInput<T>): Promise<PlotEvent> {
 		if (isHumansOnlyEventType(input.type)) {
 			throw new PlotAgentACLViolationError(input.type);
 		}
-		return this.inner.append(input);
+		return this.inner.append(input).then(async (event) => {
+			await this.refreshProjection();
+			return event;
+		});
 	}
 }
 
