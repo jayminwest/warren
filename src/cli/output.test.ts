@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { ValidationError } from "../core/errors.ts";
-import { formatError, writeJsonLine } from "./output.ts";
+import { defaultSpawn, formatError, PROCESS_STDIO, writeJsonLine } from "./output.ts";
 
 describe("writeJsonLine", () => {
 	test("writes a single newline-terminated JSON object", () => {
@@ -22,5 +22,40 @@ describe("formatError", () => {
 
 	test("stringifies a non-Error", () => {
 		expect(formatError(42)).toBe("42");
+	});
+});
+
+describe("PROCESS_STDIO", () => {
+	test("stdout.write delegates to process.stdout.write", () => {
+		const chunks: string[] = [];
+		const original = process.stdout.write.bind(process.stdout);
+		process.stdout.write = (chunk: string) => { chunks.push(chunk); return true; };
+		try {
+			PROCESS_STDIO.stdout.write("hello stdout\n");
+		} finally {
+			process.stdout.write = original;
+		}
+		expect(chunks).toContain("hello stdout\n");
+	});
+
+	test("stderr.write delegates to process.stderr.write", () => {
+		const chunks: string[] = [];
+		const original = process.stderr.write.bind(process.stderr);
+		process.stderr.write = (chunk: string) => { chunks.push(chunk); return true; };
+		try {
+			PROCESS_STDIO.stderr.write("hello stderr\n");
+		} finally {
+			process.stderr.write = original;
+		}
+		expect(chunks).toContain("hello stderr\n");
+	});
+});
+
+describe("defaultSpawn", () => {
+	test("runs a command and captures stdout/stderr", async () => {
+		const result = await defaultSpawn(["echo", "coverage-test"], { cwd: "/tmp" });
+		expect(result.exitCode).toBe(0);
+		expect(result.stdout.trim()).toBe("coverage-test");
+		expect(result.stderr).toBe("");
 	});
 });

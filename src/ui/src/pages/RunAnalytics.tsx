@@ -34,6 +34,7 @@ import {
 	TopSeedsByContextChart,
 } from "./run-analytics/Charts.tsx";
 import { CommandCategoryChart, StuckCommandTable } from "./run-analytics/CommandMining.tsx";
+import { TokenConsumptionChart } from "./run-analytics/TokenConsumptionChart.tsx";
 import { InsightCallouts } from "./run-analytics/Insights.tsx";
 import { KpiCards } from "./run-analytics/KpiCards.tsx";
 import { GroupTable } from "./run-analytics/Tables.tsx";
@@ -195,6 +196,14 @@ export function RunAnalyticsPage() {
 						{(behavior.error as Error | null)?.message ?? ""}
 					</CardContent>
 				</Card>
+			) : null}
+
+			{data ? (
+				<TokenConsumptionChart
+					timeSeries={data.tokens.timeSeries}
+					byModelTimeSeries={data.tokens.byModelTimeSeries}
+					byProviderTimeSeries={data.tokens.byProviderTimeSeries}
+				/>
 			) : null}
 
 			<div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
