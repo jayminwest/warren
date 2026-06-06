@@ -19,6 +19,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { BurrowClientPool } from "../burrow-client/pool.ts";
 import { openDatabase, type WarrenDb } from "../db/client.ts";
 import { createRepos, type Repos } from "../db/repos/index.ts";
+import type { RunMode } from "../db/schema.ts";
 import type { ReapRunInput, ReapRunResult } from "./reap/index.ts";
 import {
 	bootWatchdog,
@@ -219,7 +220,7 @@ describe("tickWatchdog", () => {
 
 	async function seedRunning(
 		startedAt: string,
-		opts: { burrowId?: string; burrowRunId?: string } = {},
+		opts: { burrowId?: string; burrowRunId?: string; mode?: RunMode } = {},
 	): Promise<string> {
 		const row = await repos.runs.create({
 			agentName: "claude-code",
@@ -227,7 +228,7 @@ describe("tickWatchdog", () => {
 			prompt: "go",
 			renderedAgentJson: makeAgentJson(),
 			trigger: "manual",
-			mode: "batch",
+			mode: opts.mode ?? "batch",
 		});
 		await repos.runs.markRunning(row.id, new Date(startedAt));
 		if (opts.burrowId !== undefined || opts.burrowRunId !== undefined) {
@@ -270,6 +271,30 @@ describe("tickWatchdog", () => {
 		expect(timedOut).toBeDefined();
 		expect((timedOut?.payloadJson as { idleMs?: number }).idleMs).toBe(10 * 60_000);
 		expect((timedOut?.payloadJson as { burrowRunId?: string }).burrowRunId).toBe("run_b1");
+	});
+
+	test("never force-fails an idle conversation run (warren-c770)", async () => {
+		await seedRunning("2026-06-05T00:00:00Z", {
+			burrowId: "bur_1",
+			burrowRunId: "run_b1",
+			mode: "conversation",
+		});
+		const reapCalls: ReapRunInput[] = [];
+
+		const result = await tickWatchdog({
+			repos,
+			burrowClientPool: NEVER_POOL,
+			heartbeatTimeoutMs: 5 * 60_000,
+			// 10min idle — well past budget; a batch run here would force-fail.
+			now: () => new Date("2026-06-05T00:10:00Z"),
+			reap: async (input) => {
+				reapCalls.push(input);
+				return fakeReapResult("failed");
+			},
+		});
+
+		expect(result.timedOut).toEqual([]);
+		expect(reapCalls).toEqual([]);
 	});
 
 	test("leaves a run inside budget alone", async () => {

@@ -40,7 +40,8 @@ export interface RunWorkspaceDestroyInput {
  *
  * Skipped — without an error — when:
  *   - the run has no burrow to destroy, or reap never resolved the worker;
- *   - the run is `interactive` (it may respawn into the same workspace);
+ *   - the run is `interactive` or `conversation` (it may respawn into / keep
+ *     streaming against the same workspace; warren-c770);
  *   - a preview is still live (this reap launched one, or an earlier launch
  *     left `previewState` in `starting`/`live`) — the eviction worker owns
  *     teardown in that case.
@@ -55,10 +56,13 @@ export async function runWorkspaceDestroy(input: RunWorkspaceDestroyInput): Prom
 	const { run, workerClient } = input;
 	if (run.burrowId === null || workerClient === null) return false;
 
-	if (run.mode === "interactive") {
+	// warren-c770: extend the interactive exemption to `conversation` runs.
+	// A conversation anchors a still-open pi-chat session whose workspace must
+	// survive across turns; destroying it would strand the live transcript.
+	if (run.mode === "interactive" || run.mode === "conversation") {
 		await input.emit("reap.workspace_destroy_skipped", {
 			burrowId: run.burrowId,
-			reason: "interactive_run",
+			reason: run.mode === "conversation" ? "conversation_run" : "interactive_run",
 		});
 		return false;
 	}

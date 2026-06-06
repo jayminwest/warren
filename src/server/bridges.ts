@@ -316,6 +316,21 @@ export async function bootBridges(input: CreateBridgeRegistryInput): Promise<Boo
 			await withTransportMapping(client.config, () => client.http.runs.get(run.burrowRunId ?? ""));
 		} catch (err) {
 			if (err instanceof BurrowNotFoundError) {
+				// warren-c770: a `conversation` run's burrow run legitimately
+				// disappears across a host restart (the pi-chat session lived in
+				// burrow's in-memory store). Finalizing it to `burrow_run_lost`
+				// here would tombstone a healthy conversation; instead leave the
+				// row non-terminal and skip the bridge. Re-wake (warren-6ccf) is
+				// responsible for spawning a fresh pi session that replays the
+				// persisted transcript.
+				if (run.mode === "conversation") {
+					skipped.push({ runId: run.id, reason: "conversation_burrow_lost" });
+					input.logger?.info?.(
+						{ runId: run.id, burrowRunId: run.burrowRunId },
+						"skipping recovery: conversation burrow run lost (awaiting re-wake)",
+					);
+					continue;
+				}
 				skipped.push({ runId: run.id, reason: "burrow_run_lost" });
 				await reconcileLostBurrowRun({
 					runId: run.id,

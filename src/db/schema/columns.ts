@@ -41,8 +41,14 @@ export type RunTerminalState = (typeof RUN_TERMINAL_STATES)[number];
  * and exits. Mode is fixed at run-create time. TS-only narrowing (mx-2ab984);
  * defaults to `batch` so legacy rows written before this column existed match
  * the historical shape.
+ *
+ * `conversation` (LEVERET.md §0.4, warren-c770) is the pi-chat runtime mode:
+ * the burrow-side agent suppresses the per-turn `agent_end` terminal envelope,
+ * so the anchoring run stays non-terminal across turns. Warren-side lifetime
+ * guards (watchdog, reap workspace-destroy, crash-recovery finalize) must
+ * therefore exempt it — an idle conversation run is healthy, not hung.
  */
-export const RUN_MODES = ["batch", "interactive"] as const;
+export const RUN_MODES = ["batch", "interactive", "conversation"] as const;
 export type RunMode = (typeof RUN_MODES)[number];
 
 /**

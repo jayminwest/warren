@@ -139,6 +139,21 @@ describe("runWorkspaceDestroy", () => {
 		expect(h.events[0]?.payload).toMatchObject({ reason: "interactive_run" });
 	});
 
+	test("skips conversation runs and emits a skipped event (warren-c770)", async () => {
+		const h = harness();
+		const destroyed = await runWorkspaceDestroy({
+			run: run({ mode: "conversation" }),
+			previewLaunchState: null,
+			workerClient: fakeClient(),
+			destroyBurrow: async () => fakeResult(),
+			...deps(h),
+		});
+		expect(destroyed).toBe(false);
+		expect(h.deleted).toEqual([]);
+		expect(h.events[0]?.kind).toBe("reap.workspace_destroy_skipped");
+		expect(h.events[0]?.payload).toMatchObject({ reason: "conversation_run" });
+	});
+
 	test("skips when this reap launched a live preview", async () => {
 		const h = harness();
 		const destroyed = await runWorkspaceDestroy({
