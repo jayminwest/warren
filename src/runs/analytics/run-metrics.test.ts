@@ -5,6 +5,7 @@ import {
 	durationMsOf,
 	NONE_KEY,
 	type RunMetricsRow,
+	type TokenBreakdown,
 } from "./run-metrics.ts";
 
 function row(o: Partial<RunMetricsRow> & { runId: string }): RunMetricsRow {
@@ -21,6 +22,7 @@ function row(o: Partial<RunMetricsRow> & { runId: string }): RunMetricsRow {
 		tokensInput: o.tokensInput ?? null,
 		tokensCacheRead: o.tokensCacheRead ?? null,
 		tokensOutput: o.tokensOutput ?? null,
+		tokensCacheWrite: o.tokensCacheWrite ?? null,
 		startedAt: o.startedAt ?? null,
 		endedAt: o.endedAt ?? null,
 	};
@@ -68,6 +70,7 @@ describe("buildRunMetrics", () => {
 		expect(m.totals.successRate).toBeNull();
 		expect(m.totals.durationMs).toEqual({ avg: null, median: null, p95: null, count: 0 });
 		expect(m.totals.contextTokens.count).toBe(0);
+		expect(m.totals.tokens).toEqual({ input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 });
 		expect(m.totals.cost).toEqual({ total: 0, avg: null, priced: 0 });
 		expect(m.timeSeries).toEqual([]);
 		expect(m.byAgent).toEqual([]);
@@ -186,6 +189,112 @@ describe("buildRunMetrics", () => {
 			{ key: NONE_KEY, runs: 1 },
 			{ key: "never_started", runs: 1 },
 		]);
+	});
+
+	it("null token columns treated as 0 in token breakdown", () => {
+		// Row with all nulls → each kind counts as 0
+		const m = buildRunMetrics([row({ runId: "a" })]);
+		expect(m.totals.tokens).toEqual({ input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 });
+		expect(m.byAgent[0]?.tokens).toEqual({
+			input: 0,
+			output: 0,
+			cacheRead: 0,
+			cacheWrite: 0,
+			total: 0,
+		});
+	});
+
+	it("sums all four token kinds across multiple runs", () => {
+		const m = buildRunMetrics([
+			row({
+				runId: "a",
+				tokensInput: 100,
+				tokensOutput: 50,
+				tokensCacheRead: 20,
+				tokensCacheWrite: 10,
+			}),
+			row({
+				runId: "b",
+				tokensInput: 200,
+				tokensOutput: null,
+				tokensCacheRead: null,
+				tokensCacheWrite: 5,
+			}),
+		]);
+		const tb = m.totals.tokens;
+		expect(tb.input).toBe(300);
+		expect(tb.output).toBe(50);
+		expect(tb.cacheRead).toBe(20);
+		expect(tb.cacheWrite).toBe(15);
+		expect(tb.total).toBe(385);
+	});
+
+	it("totals.tokens equals sum of byAgent bucket tokens", () => {
+		const m = buildRunMetrics([
+			row({
+				runId: "a",
+				agentName: "alpha",
+				tokensInput: 100,
+				tokensOutput: 40,
+				tokensCacheRead: 10,
+				tokensCacheWrite: 5,
+			}),
+			row({
+				runId: "b",
+				agentName: "beta",
+				tokensInput: 200,
+				tokensOutput: 80,
+				tokensCacheRead: 30,
+				tokensCacheWrite: 15,
+			}),
+			row({ runId: "c", agentName: "alpha", tokensInput: 50, tokensOutput: 20 }),
+		]);
+		const sumInput = m.byAgent.reduce((s, g) => s + g.tokens.input, 0);
+		const sumTotal = m.byAgent.reduce((s, g) => s + g.tokens.total, 0);
+		expect(sumInput).toBe(m.totals.tokens.input);
+		expect(sumTotal).toBe(m.totals.tokens.total);
+	});
+
+	it("unknown model/provider buckets reconcile with totals for token breakdown", () => {
+		const m = buildRunMetrics([
+			row({
+				runId: "a",
+				model: "sonnet",
+				provider: "anthropic",
+				tokensInput: 300,
+				tokensOutput: 100,
+				tokensCacheWrite: 20,
+			}),
+			// null model/provider → NONE_KEY bucket
+			row({ runId: "b", tokensInput: 50, tokensOutput: 25 }),
+		]);
+		const modelSum = m.byModel.reduce((s, g) => s + g.tokens.input, 0);
+		const providerSum = m.byProvider.reduce((s, g) => s + g.tokens.total, 0);
+		expect(modelSum).toBe(m.totals.tokens.input);
+		expect(providerSum).toBe(m.totals.tokens.total);
+		// NONE_KEY bucket must exist
+		const noneModel = m.byModel.find((g) => g.key === NONE_KEY);
+		expect(noneModel?.tokens.input).toBe(50);
+	});
+
+	it("token total field equals sum of the four kinds", () => {
+		const check = (tb: TokenBreakdown) => {
+			expect(tb.total).toBe(tb.input + tb.output + tb.cacheRead + tb.cacheWrite);
+		};
+		const m = buildRunMetrics([
+			row({
+				runId: "a",
+				tokensInput: 111,
+				tokensOutput: 222,
+				tokensCacheRead: 333,
+				tokensCacheWrite: 444,
+			}),
+			row({ runId: "b", tokensInput: 10, model: "gpt-4", provider: "openai" }),
+		]);
+		check(m.totals.tokens);
+		for (const g of m.byAgent) check(g.tokens);
+		for (const g of m.byModel) check(g.tokens);
+		for (const g of m.byProvider) check(g.tokens);
 	});
 
 	it("ranks top seeds by total context, excluding null-seed runs", () => {

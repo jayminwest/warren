@@ -3,6 +3,8 @@ import type { CommandMining, CommandStat } from "./command-mining.ts";
 import { buildInsights, type Insight, type InsightKind, type SteeringSignals } from "./insights.ts";
 import type { RunGroupBucket, RunMetrics, SeedContextBucket } from "./run-metrics.ts";
 
+const ZERO_TOKENS = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 };
+
 function emptyMetrics(): RunMetrics {
 	return {
 		totals: {
@@ -14,6 +16,7 @@ function emptyMetrics(): RunMetrics {
 			successRate: null,
 			durationMs: { avg: null, median: null, p95: null, count: 0 },
 			contextTokens: { avg: null, median: null, p95: null, count: 0 },
+			tokens: ZERO_TOKENS,
 			cost: { total: 0, avg: null, priced: 0 },
 		},
 		timeSeries: [],
@@ -55,6 +58,7 @@ function agent(key: string, succeeded: number, failed: number, cancelled = 0): R
 		successRate: terminal === 0 ? null : succeeded / terminal,
 		contextTokensTotal: 0,
 		avgContextTokens: null,
+		tokens: ZERO_TOKENS,
 		costUsd: 0,
 		priced: 0,
 		avgDurationMs: null,
@@ -70,6 +74,7 @@ function model(key: string, costUsd: number, priced: number): RunGroupBucket {
 		successRate: priced === 0 ? null : 1,
 		contextTokensTotal: 0,
 		avgContextTokens: null,
+		tokens: ZERO_TOKENS,
 		costUsd,
 		priced,
 		avgDurationMs: null,

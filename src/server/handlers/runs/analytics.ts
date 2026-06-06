@@ -80,6 +80,7 @@ function toMetricsRows(rows: readonly RunRow[]): RunMetricsRow[] {
 			tokensInput: r.tokensInput,
 			tokensCacheRead: r.tokensCacheRead,
 			tokensOutput: r.tokensOutput,
+			tokensCacheWrite: r.tokensCacheWrite,
 			startedAt: r.startedAt,
 			endedAt: r.endedAt,
 		};

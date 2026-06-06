@@ -30,6 +30,19 @@
 
 import type { RunFailureReason, RunState } from "../../db/schema.ts";
 
+/**
+ * Token-kind breakdown for a set of runs. All four counters plus their sum.
+ * Null/undefined columns from rows are treated as 0 so the shape is always
+ * fully populated.
+ */
+export interface TokenBreakdown {
+	readonly input: number;
+	readonly output: number;
+	readonly cacheRead: number;
+	readonly cacheWrite: number;
+	readonly total: number;
+}
+
 /** Sentinel for a null group key (no startedAt, no failureReason, etc.). */
 export const NONE_KEY = "__none__";
 
@@ -46,6 +59,7 @@ export interface RunMetricsRow {
 	readonly tokensInput: number | null;
 	readonly tokensCacheRead: number | null;
 	readonly tokensOutput: number | null;
+	readonly tokensCacheWrite: number | null;
 	readonly startedAt: string | null;
 	readonly endedAt: string | null;
 }
@@ -70,6 +84,7 @@ export interface RunTotals {
 	readonly successRate: number | null;
 	readonly durationMs: StatSummary;
 	readonly contextTokens: StatSummary;
+	readonly tokens: TokenBreakdown;
 	readonly cost: {
 		readonly total: number;
 		readonly avg: number | null;
@@ -96,6 +111,7 @@ export interface RunGroupBucket {
 	readonly successRate: number | null;
 	readonly contextTokensTotal: number;
 	readonly avgContextTokens: number | null;
+	readonly tokens: TokenBreakdown;
 	readonly costUsd: number;
 	readonly priced: number;
 	readonly avgDurationMs: number | null;
@@ -166,6 +182,24 @@ function percentile(sorted: readonly number[], p: number): number | null {
 	return sorted[idx] ?? null;
 }
 
+function tokenBreakdownOf(row: RunMetricsRow): TokenBreakdown {
+	const input = row.tokensInput ?? 0;
+	const output = row.tokensOutput ?? 0;
+	const cacheRead = row.tokensCacheRead ?? 0;
+	const cacheWrite = row.tokensCacheWrite ?? 0;
+	return { input, output, cacheRead, cacheWrite, total: input + output + cacheRead + cacheWrite };
+}
+
+function addTokenBreakdowns(a: TokenBreakdown, b: TokenBreakdown): TokenBreakdown {
+	const input = a.input + b.input;
+	const output = a.output + b.output;
+	const cacheRead = a.cacheRead + b.cacheRead;
+	const cacheWrite = a.cacheWrite + b.cacheWrite;
+	return { input, output, cacheRead, cacheWrite, total: input + output + cacheRead + cacheWrite };
+}
+
+const ZERO_TOKENS: TokenBreakdown = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 };
+
 function computeTotals(rows: readonly RunMetricsRow[]): RunTotals {
 	let succeeded = 0;
 	let failed = 0;
@@ -173,6 +207,7 @@ function computeTotals(rows: readonly RunMetricsRow[]): RunTotals {
 	let active = 0;
 	let costTotal = 0;
 	let priced = 0;
+	let tokens: TokenBreakdown = ZERO_TOKENS;
 	const durations: number[] = [];
 	const contexts: number[] = [];
 	for (const r of rows) {
@@ -188,6 +223,7 @@ function computeTotals(rows: readonly RunMetricsRow[]): RunTotals {
 		if (dur !== null) durations.push(dur);
 		const ctx = contextTokensOf(r);
 		if (ctx !== null) contexts.push(ctx);
+		tokens = addTokenBreakdowns(tokens, tokenBreakdownOf(r));
 	}
 	const terminal = succeeded + failed + cancelled;
 	return {
@@ -199,6 +235,7 @@ function computeTotals(rows: readonly RunMetricsRow[]): RunTotals {
 		successRate: terminal === 0 ? null : succeeded / terminal,
 		durationMs: summarize(durations),
 		contextTokens: summarize(contexts),
+		tokens,
 		cost: { total: costTotal, avg: priced === 0 ? null : costTotal / priced, priced },
 	};
 }
@@ -246,6 +283,7 @@ interface GroupAcc {
 	cancelled: number;
 	contextTotal: number;
 	contextCount: number;
+	tokens: TokenBreakdown;
 	costUsd: number;
 	priced: number;
 	durations: number[];
@@ -259,6 +297,7 @@ function emptyGroupAcc(): GroupAcc {
 		cancelled: 0,
 		contextTotal: 0,
 		contextCount: 0,
+		tokens: ZERO_TOKENS,
 		costUsd: 0,
 		priced: 0,
 		durations: [],
@@ -281,6 +320,7 @@ function accumulateGroup(g: GroupAcc, r: RunMetricsRow): void {
 	}
 	const dur = durationMsOf(r);
 	if (dur !== null) g.durations.push(dur);
+	g.tokens = addTokenBreakdowns(g.tokens, tokenBreakdownOf(r));
 }
 
 function finalizeGroup(key: string, g: GroupAcc): RunGroupBucket {
@@ -293,6 +333,7 @@ function finalizeGroup(key: string, g: GroupAcc): RunGroupBucket {
 		successRate: terminal === 0 ? null : g.succeeded / terminal,
 		contextTokensTotal: g.contextTotal,
 		avgContextTokens: g.contextCount === 0 ? null : g.contextTotal / g.contextCount,
+		tokens: g.tokens,
 		costUsd: g.costUsd,
 		priced: g.priced,
 		avgDurationMs: g.durations.length === 0 ? null : summarize(g.durations).avg,
