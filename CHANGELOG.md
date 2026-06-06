@@ -7,6 +7,60 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.0] — 2026-06-06
+
+Leveret v1: an opt-in conversational front door for shaping a Plot
+intent before dispatching a plan run. A long-lived
+`mode:"conversation"` run hosts a streamed pi-chat session whose turns
+persist to the new `conversations` / `messages` tables; the bundled
+`leveret` agent proposes plot-intent edits via a `propose_intent`
+extension, and an operator sends the shaped intent off to a planner run
+via a plotSync PR.
+
+### Added
+
+- **Conversation run mode** — new `mode:"conversation"` run kind backed
+  by `conversations` + `messages` tables (`ConversationsRepo` /
+  `MessagesRepo`) with drift parity. Conversations are exempt from
+  watchdog force-fail, crash-recovery finalize, and reap
+  workspace-destroy, and are governed instead by a
+  `conversation.idleTimeoutMs` config knob + an idle-timeout coordinator
+  boot-worker that finalizes only the anchoring run. A re-wake path
+  spawns a fresh conversation run that replays the DB transcript into a
+  new pi session.
+- **`plots` projection table** — JSON-blob plot state with promoted
+  scalars (`id` / `project_id` / `status` / `title` / `updated_at`) and
+  `PlotsRepo` (drift parity), upserted from the `src/plot-client/`
+  read/write paths.
+- **`leveret` builtin agent** — runtime pi-chat with network open,
+  shipping the `propose_intent` extension; added to `BUILTIN_AGENTS`.
+  Seeding gained a `pi_extensions` agent section that drops files into
+  `.pi/extensions/` (mirroring `pi_skills` / `pi_prompts`).
+- **Conversation stream bridge** — persists turns to `messages`, parses
+  `propose_intent` from `tool_execution_end` details, and writes
+  `intent_edited(actor=leveret)` host-side.
+- **Conversation API + UI** — create/list/get/post-message endpoints
+  (with `mode:"conversation"` hidden from the Runs API), a top-level
+  Leveret nav entry + conversations list page, and a split-view page
+  (streamed chat left, live plot intent rendered from the plot JSON
+  shape right) with top-bar send-off buttons.
+- **Send-off + dispatch** — opens a plotSync PR carrying only the
+  plot-state update, closes the conversation, and persists the PR ref +
+  `plot_id` + planner agent; a PR-merge poller boot-worker (reusing
+  `src/plan-runs/pr-merge.ts`) auto-dispatches the planner run keyed on
+  `plot_id` when the PR merges, alongside an operator-gated "Dispatch
+  plan" popup mirroring `/plan-runs/new`.
+- **Acceptance scenario** — a deterministic, idempotent scenario
+  exercising conversation → live intent → send-off → dispatch under
+  `scripts/acceptance/scenarios/`.
+
+### Removed
+
+- **`mode=interactive` / `brainstorm`** — retired `spawnInteractiveTurn`,
+  `POST /brainstorm`, `reap/interactive`, and the `brainstorm` builtin,
+  superseded by the conversation mode. The no-Plot batch path is kept
+  byte-identical.
+
 ## [0.7.12] — 2026-06-05
 
 Sync the bundled os-eco tools onto their latest published versions.
