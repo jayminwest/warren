@@ -3,8 +3,8 @@ import {
 	isTerminalPlanRunState,
 	isTerminalRunState,
 	PLAN_RUN_TERMINAL_STATES,
-	RUN_TERMINAL_STATES,
 	type PlanRunState,
+	RUN_TERMINAL_STATES,
 	type RunState,
 } from "./types.ts";
 

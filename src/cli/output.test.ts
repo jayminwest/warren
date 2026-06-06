@@ -29,7 +29,10 @@ describe("PROCESS_STDIO", () => {
 	test("stdout.write delegates to process.stdout.write", () => {
 		const chunks: string[] = [];
 		const original = process.stdout.write.bind(process.stdout);
-		process.stdout.write = (chunk: string) => { chunks.push(chunk); return true; };
+		process.stdout.write = (chunk: string) => {
+			chunks.push(chunk);
+			return true;
+		};
 		try {
 			PROCESS_STDIO.stdout.write("hello stdout\n");
 		} finally {
@@ -41,7 +44,10 @@ describe("PROCESS_STDIO", () => {
 	test("stderr.write delegates to process.stderr.write", () => {
 		const chunks: string[] = [];
 		const original = process.stderr.write.bind(process.stderr);
-		process.stderr.write = (chunk: string) => { chunks.push(chunk); return true; };
+		process.stderr.write = (chunk: string) => {
+			chunks.push(chunk);
+			return true;
+		};
 		try {
 			PROCESS_STDIO.stderr.write("hello stderr\n");
 		} finally {
