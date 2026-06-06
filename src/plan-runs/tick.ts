@@ -28,6 +28,7 @@ import {
 	type AdvanceResult,
 	advancePlanRun,
 	type CoordinatorEmitFn,
+	type CoordinatorReopenPrFn,
 	type CoordinatorRepos,
 	type CoordinatorShowSeedFn,
 	type CoordinatorSpawnFn,
@@ -64,6 +65,12 @@ export interface PlanRunTickDeps {
 	 * default ({@link DEFAULT_MERGE_TIMEOUT_MS}); 0 disables the timeout.
 	 */
 	readonly mergeTimeoutMs?: number;
+	/**
+	 * Optional PR-(re)open seam (warren-22de). When provided, the
+	 * coordinator attempts to reopen a missing PR before failing terminally
+	 * on a child that succeeded with no prUrl and no empty-push event.
+	 */
+	readonly reopenPr?: CoordinatorReopenPrFn;
 }
 
 export interface PlanRunAdvanceLog {
@@ -93,6 +100,7 @@ export async function runPlanRunTick(deps: PlanRunTickDeps): Promise<PlanRunTick
 				emit,
 				...(deps.transitionPlot !== undefined ? { transitionPlot: deps.transitionPlot } : {}),
 				...(deps.mergeTimeoutMs !== undefined ? { mergeTimeoutMs: deps.mergeTimeoutMs } : {}),
+				...(deps.reopenPr !== undefined ? { reopenPr: deps.reopenPr } : {}),
 				...(deps.now !== undefined ? { now: deps.now } : {}),
 			});
 			advances.push({ planRunId: planRun.id, result });

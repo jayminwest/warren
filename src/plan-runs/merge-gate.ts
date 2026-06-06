@@ -11,6 +11,43 @@
 
 import { type PlanRunRow, RUN_TERMINAL_STATES, type RunRow } from "../db/schema.ts";
 import type { AdvanceResult, CoordinatorEmitFn, CoordinatorRepos } from "./coordinator.ts";
+
+/**
+ * Best-effort PR-(re)open seam (warren-22de). Called by the coordinator
+ * when a child run succeeds with no `prUrl` and no `reap.empty_push` event
+ * — reap's PR-open sub-step likely hit a transient error. Return the newly
+ * opened URL on success or `null` on failure.
+ */
+export type CoordinatorReopenPrFn = (runId: string) => Promise<string | null>;
+
+/** Outcome of a coordinator PR-reopen probe (warren-22de). */
+export type ChildPrReopenResult =
+	| { readonly kind: "expired" } // merge-wait budget exceeded — fail terminally
+	| { readonly kind: "reopened"; readonly url: string } // PR opened
+	| { readonly kind: "pending" }; // within budget, no URL yet — retry next tick
+
+/**
+ * Probe whether a succeeded-without-prUrl child can be recovered
+ * (warren-22de). Checks the merge-wait budget first; if within budget,
+ * calls `reopenPr`. The coordinator maps each kind to a terminal fail,
+ * pr_open fall-through, or noop-and-retry respectively.
+ */
+export async function resolveChildPrReopen(input: {
+	readonly run: { readonly id: string; readonly endedAt: string | null };
+	readonly reopenPr: CoordinatorReopenPrFn | undefined;
+	readonly mergeTimeoutMs: number;
+	readonly now: () => Date;
+}): Promise<ChildPrReopenResult> {
+	if (mergeDeadlineExceeded(input.run.endedAt, input.now, input.mergeTimeoutMs)) {
+		return { kind: "expired" };
+	}
+	if (input.reopenPr !== undefined) {
+		const url = await input.reopenPr(input.run.id);
+		if (url !== null) return { kind: "reopened", url };
+	}
+	return { kind: "pending" };
+}
+
 import type { PrMergeChecker } from "./pr-merge.ts";
 
 /**

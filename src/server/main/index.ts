@@ -50,14 +50,18 @@ import {
 import { loadPreviewLaunchConfigFromEnv } from "../../preview/launch/index.ts";
 import { loadPreviewPortRangeFromEnv, PreviewPortAllocator } from "../../preview/port-allocator.ts";
 import { loadProjectsConfigFromEnv } from "../../projects/config.ts";
+import { parseGitHubUrl } from "../../projects/index.ts";
 import { seedBuiltinAgents } from "../../registry/builtins/index.ts";
 import { loadCanopyRegistryConfigFromEnv } from "../../registry/config.ts";
 import {
+	composeRunBranch,
 	loadAutoOpenPrConfigFromEnv,
 	loadRunBranchPrefixFromEnv,
 	RunEventBroker,
 	resolveDispatcherHandle,
+	resolveRunBranchPrefix,
 } from "../../runs/index.ts";
+import { buildPrContent, openPullRequest } from "../../runs/pr.ts";
 import { loadWorkspaceGcConfigFromEnv, startWorkspaceGcWorker } from "../../runs/reap/gc.ts";
 import { showSeed } from "../../seeds-cli/index.ts";
 import {
@@ -295,6 +299,59 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 			return showSeed(seedsCli, project.localPath, seedId);
 		},
 		checkPrMerged: createPrMergeChecker({ token: autoOpenPr.token }),
+		reopenPr:
+			autoOpenPr.enabled && autoOpenPr.token !== ""
+				? async (runId: string): Promise<string | null> => {
+						try {
+							const run = await repos.runs.get(runId);
+							if (run === null || run.projectId === null) return null;
+							const project = await repos.projects.get(run.projectId);
+							if (project === null) return null;
+							const warrenConfig = await warrenConfigs.get(run.projectId, project.localPath);
+							const prefix = resolveRunBranchPrefix({
+								projectDefault: warrenConfig.defaults?.runBranchPrefix,
+								envDefault: runBranchPrefixDefault,
+							});
+							const branch = composeRunBranch(prefix, runId);
+							const parsed = parseGitHubUrl(project.gitUrl);
+							const content = buildPrContent({
+								prompt: run.prompt,
+								runId: run.id,
+								agentName: run.agentName,
+								...(run.startedAt !== null ? { startedAt: run.startedAt } : {}),
+								...(run.endedAt !== null ? { endedAt: run.endedAt } : {}),
+								...(run.costUsd !== null ? { costUsd: run.costUsd } : {}),
+								...(run.tokensInput !== null ? { tokensInput: run.tokensInput } : {}),
+								...(run.tokensOutput !== null ? { tokensOutput: run.tokensOutput } : {}),
+								...(run.tokensCacheRead !== null ? { tokensCacheRead: run.tokensCacheRead } : {}),
+								...(autoOpenPr.warrenBaseUrl !== null
+									? { warrenBaseUrl: autoOpenPr.warrenBaseUrl }
+									: {}),
+							});
+							const result = await openPullRequest({
+								owner: parsed.owner,
+								repo: parsed.name,
+								head: branch,
+								base: project.defaultBranch,
+								title: content.title,
+								body: content.body,
+								token: autoOpenPr.token,
+							});
+							if (result.ok) return result.url;
+							logger.warn(
+								{ runId, reason: result.reason, message: result.message },
+								"plan_run.reopen_pr_failed",
+							);
+							return null;
+						} catch (err) {
+							logger.warn(
+								{ runId, reason: err instanceof Error ? err.message : String(err) },
+								"plan_run.reopen_pr_error",
+							);
+							return null;
+						}
+					}
+				: undefined,
 		spawn: createPlanRunSpawn({
 			repos,
 			burrowClientPool,

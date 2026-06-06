@@ -17,6 +17,7 @@ export {
 	type AdvanceResult,
 	advancePlanRun,
 	type CoordinatorEmitFn,
+	type CoordinatorReopenPrFn,
 	type CoordinatorRepos,
 	type CoordinatorShowSeedFn,
 	type CoordinatorSpawnFn,
