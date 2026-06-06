@@ -27,6 +27,7 @@ domains:
   ui-design-system: {}
   ci: {}
   run-analytics: {}
+  analytics: {}
 governance:
   max_entries: 100
   warn_entries: 150

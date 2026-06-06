@@ -201,13 +201,11 @@ export function RunAnalyticsPage() {
 
 			<TokenKpiCards totals={data?.tokens.totals} />
 
-			{data ? (
-				<TokenConsumptionChart
-					timeSeries={data.tokens.timeSeries}
-					byModelTimeSeries={data.tokens.byModelTimeSeries}
-					byProviderTimeSeries={data.tokens.byProviderTimeSeries}
-				/>
-			) : null}
+			<TokenConsumptionChart
+				timeSeries={data?.tokens.timeSeries ?? []}
+				byModelTimeSeries={data?.tokens.byModelTimeSeries ?? []}
+				byProviderTimeSeries={data?.tokens.byProviderTimeSeries ?? []}
+			/>
 
 			<div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
 				<TokenGroupTable
