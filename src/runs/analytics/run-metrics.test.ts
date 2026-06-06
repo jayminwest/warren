@@ -8,6 +8,9 @@ import {
 	type TokenBreakdown,
 } from "./run-metrics.ts";
 
+// Token-series unit tests live in run-metrics-token-series.test.ts
+// (split to keep each file under the 500-line budget).
+
 function row(o: Partial<RunMetricsRow> & { runId: string }): RunMetricsRow {
 	return {
 		runId: o.runId,
@@ -78,6 +81,10 @@ describe("buildRunMetrics", () => {
 		expect(m.byProvider).toEqual([]);
 		expect(m.byFailureReason).toEqual([]);
 		expect(m.topSeedsByContext).toEqual([]);
+		// token series fields exist and are empty for zero rows
+		expect(m.tokenTimeSeries).toEqual([]);
+		expect(m.tokenByModelSeries).toEqual([]);
+		expect(m.tokenByProviderSeries).toEqual([]);
 	});
 
 	it("counts states and computes success rate over terminal runs only", () => {
@@ -311,5 +318,33 @@ describe("buildRunMetrics", () => {
 		expect(w1?.avgContextTokens).toBe(200);
 		const w3 = m.topSeedsByContext.find((s) => s.seedId === "warren-3");
 		expect(w3?.avgContextTokens).toBeNull();
+	});
+
+	it("exposes tokenTimeSeries / tokenByModelSeries / tokenByProviderSeries on RunMetrics", () => {
+		const m = buildRunMetrics([
+			row({
+				runId: "a",
+				startedAt: "2026-01-01T10:00:00Z",
+				model: "sonnet",
+				provider: "anthropic",
+				tokensInput: 100,
+				tokensOutput: 50,
+			}),
+			row({
+				runId: "b",
+				startedAt: "2026-01-01T20:00:00Z",
+				model: "sonnet",
+				provider: "anthropic",
+				tokensInput: 200,
+			}),
+		]);
+		expect(m.tokenTimeSeries.length).toBe(1);
+		expect(m.tokenTimeSeries[0]?.date).toBe("2026-01-01");
+		expect(m.tokenTimeSeries[0]?.input).toBe(300);
+		expect(m.tokenTimeSeries[0]?.output).toBe(50);
+		expect(m.tokenByModelSeries.length).toBe(1);
+		expect(m.tokenByModelSeries[0]?.key).toBe("sonnet");
+		expect(m.tokenByProviderSeries.length).toBe(1);
+		expect(m.tokenByProviderSeries[0]?.key).toBe("anthropic");
 	});
 });

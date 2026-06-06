@@ -25,6 +25,9 @@ function emptyMetrics(): RunMetrics {
 		byProvider: [],
 		byFailureReason: [],
 		topSeedsByContext: [],
+		tokenTimeSeries: [],
+		tokenByModelSeries: [],
+		tokenByProviderSeries: [],
 	};
 }
 

@@ -29,6 +29,7 @@
  */
 
 import type { RunFailureReason, RunState } from "../../db/schema.ts";
+import { buildTokenDimSeries, buildTokenTimeSeries } from "./run-metrics-token-series.ts";
 
 /**
  * Token-kind breakdown for a set of runs. All four counters plus their sum.
@@ -45,6 +46,8 @@ export interface TokenBreakdown {
 
 /** Sentinel for a null group key (no startedAt, no failureReason, etc.). */
 export const NONE_KEY = "__none__";
+/** Sentinel for the folded remainder in per-dimension token series (≥6 keys). */
+export const OTHER_KEY = "__other__";
 
 export interface RunMetricsRow {
 	readonly runId: string;
@@ -129,6 +132,22 @@ export interface SeedContextBucket {
 	readonly avgContextTokens: number | null;
 }
 
+/** One calendar-day's token counts in a time-series. `date` is YYYY-MM-DD or NONE_KEY. */
+export interface TokenDayBucket {
+	readonly date: string;
+	readonly input: number;
+	readonly output: number;
+	readonly cacheRead: number;
+	readonly cacheWrite: number;
+	readonly total: number;
+}
+
+/** One key's daily token series in a per-model or per-provider breakdown. */
+export interface DimensionTokenSeries {
+	readonly key: string;
+	readonly series: readonly TokenDayBucket[];
+}
+
 export interface RunMetrics {
 	readonly totals: RunTotals;
 	readonly timeSeries: readonly RunDayBucket[];
@@ -137,6 +156,12 @@ export interface RunMetrics {
 	readonly byProvider: readonly RunGroupBucket[];
 	readonly byFailureReason: readonly FailureBucket[];
 	readonly topSeedsByContext: readonly SeedContextBucket[];
+	/** Overall daily token counts (one bucket per calendar day). */
+	readonly tokenTimeSeries: readonly TokenDayBucket[];
+	/** Per-model daily series, top-5 by total + OTHER_KEY fold + NONE_KEY. */
+	readonly tokenByModelSeries: readonly DimensionTokenSeries[];
+	/** Per-provider daily series, top-5 by total + OTHER_KEY fold + NONE_KEY. */
+	readonly tokenByProviderSeries: readonly DimensionTokenSeries[];
 }
 
 export type GroupDimension = "agent" | "model" | "provider";
@@ -182,7 +207,7 @@ function percentile(sorted: readonly number[], p: number): number | null {
 	return sorted[idx] ?? null;
 }
 
-function tokenBreakdownOf(row: RunMetricsRow): TokenBreakdown {
+export function tokenBreakdownOf(row: RunMetricsRow): TokenBreakdown {
 	const input = row.tokensInput ?? 0;
 	const output = row.tokensOutput ?? 0;
 	const cacheRead = row.tokensCacheRead ?? 0;
@@ -428,5 +453,8 @@ export function buildRunMetrics(rows: readonly RunMetricsRow[]): RunMetrics {
 		byProvider: buildGroup(rows, "provider"),
 		byFailureReason: buildFailureReasons(rows),
 		topSeedsByContext: buildTopSeeds(rows),
+		tokenTimeSeries: buildTokenTimeSeries(rows),
+		tokenByModelSeries: buildTokenDimSeries(rows, "model"),
+		tokenByProviderSeries: buildTokenDimSeries(rows, "provider"),
 	};
 }
