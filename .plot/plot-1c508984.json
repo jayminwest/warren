@@ -1,0 +1,15 @@
+{
+  "attachments": [],
+  "created_at": "2026-06-06T20:27:35.511Z",
+  "id": "plot-1c508984",
+  "intent": {
+    "constraints": [],
+    "goal": "",
+    "non_goals": [],
+    "success_criteria": []
+  },
+  "name": "Backlog Clearing 06/06/2026",
+  "schema_version": 1,
+  "status": "drafting",
+  "updated_at": "2026-06-06T20:27:35.511Z"
+}
