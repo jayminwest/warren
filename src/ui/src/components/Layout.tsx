@@ -11,6 +11,7 @@ import {
 	Menu,
 	Network,
 	Plus,
+	Rabbit,
 	X,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
@@ -44,6 +45,7 @@ const BASE_NAV_ITEMS: NavItem[] = [
 ];
 
 const PLOTS_NAV_ITEM: NavItem = { to: "/plots", label: "Plots", icon: Network };
+const LEVERET_NAV_ITEM: NavItem = { to: "/leveret", label: "Leveret", icon: Rabbit };
 
 export function Layout() {
 	const navigate = useNavigate();
@@ -93,14 +95,14 @@ export function Layout() {
 		// preserves the CLAUDE.md standalone path (warren-e59a / pl-9d6a
 		// step 19).
 		if (!anyHasPlot) return BASE_NAV_ITEMS;
-		// Plot-enabled deployments lead with Plots, then the existing
-		// Runs → Plans → Projects → Agents order: Plots → Runs → Plans
-		// → Projects → Agents.
+		// Plot-enabled deployments lead with the Leveret overseer home
+		// and Plots, then the existing Runs → Plans → Projects → Agents
+		// order: Leveret → Plots → Runs → Plans → Projects → Agents.
 		const plotsItem: NavItem =
 			needsAttentionBadge !== undefined
 				? { ...PLOTS_NAV_ITEM, badge: needsAttentionBadge }
 				: PLOTS_NAV_ITEM;
-		return [plotsItem, ...BASE_NAV_ITEMS];
+		return [LEVERET_NAV_ITEM, plotsItem, ...BASE_NAV_ITEMS];
 	}, [anyHasPlot, needsAttentionBadge]);
 
 	const handleLogout = (): void => {

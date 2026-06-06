@@ -7,6 +7,7 @@ import { Layout } from "@/components/Layout.tsx";
 import { MotionProvider } from "@/components/ui/motion.tsx";
 import { ToastProvider } from "@/components/ui/toast.tsx";
 import { AgentsPage } from "@/pages/Agents.tsx";
+import { LeveretPage } from "@/pages/Leveret.tsx";
 import { LoginPage } from "@/pages/Login.tsx";
 import { NewPlanRunPage } from "@/pages/NewPlanRun.tsx";
 import { NewRunPage } from "@/pages/NewRun.tsx";
@@ -74,6 +75,7 @@ export function App() {
 						<Route path="/plan-runs" element={<PlanRunsPage />} />
 						<Route path="/plan-runs/new" element={<NewPlanRunPage />} />
 						<Route path="/plan-runs/:id" element={<PlanRunDetailPage />} />
+						<Route path="/leveret" element={<LeveretPage />} />
 						<Route path="/plots" element={<PlotsPage />} />
 						<Route path="/plots/:id" element={<PlotDetailPage />} />
 						<Route path="/plots/:id/summary" element={<PlotSummaryPage />} />

@@ -12,6 +12,8 @@ import type {
 	CreatePlanRunResponse,
 	CreatePlotPlanRunInput,
 	CreatePlotPlanRunResponse,
+	ListConversationsFilter,
+	ListConversationsResponse,
 	FormalizePlotResponse,
 	StartBrainstormInput,
 	StartBrainstormResponse,
@@ -702,6 +704,28 @@ export const plotsApi = {
 			`/plots/${encodeURIComponent(plotId)}/sync`,
 			{ method: "POST", body: {} },
 		),
+};
+
+export const conversationsApi = {
+	/**
+	 * `GET /conversations` — Leveret conversations list (warren-af15 /
+	 * 763f). Optional `?project` / `?plot` (mutually exclusive) and
+	 * `?status` narrow the set; the bare call lists every conversation,
+	 * most-recent-activity first. Empty array (200) on deployments
+	 * without any conversations — the Leveret page renders its empty
+	 * state on `conversations.length === 0`.
+	 */
+	list: (filter: ListConversationsFilter = {}, signal?: AbortSignal) => {
+		const params = new URLSearchParams();
+		if (filter.project) params.set("project", filter.project);
+		if (filter.plot) params.set("plot", filter.plot);
+		if (filter.status) params.set("status", filter.status);
+		const qs = params.toString();
+		return request<ListConversationsResponse>(
+			`/conversations${qs.length > 0 ? `?${qs}` : ""}`,
+			{ ...(signal ? { signal } : {}) },
+		);
+	},
 };
 
 /* ----------------------------------------------------------------------- */

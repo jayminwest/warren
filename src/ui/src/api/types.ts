@@ -1107,3 +1107,39 @@ export type PlotSyncResponse =
 			merged: boolean;
 	  };
 
+/* ----------------------------------------------------------------------- */
+/* Leveret conversations (LEVERET.md §0.5/§0.9, warren-af15/763f).           */
+/*                                                                          */
+/* Mirrors the `conversations` table wire shape (camelCase drizzle         */
+/* $inferSelect) returned by GET /conversations. Kept in sync by hand —    */
+/* src/ui is excluded from the root tsconfig (mx-7f971c).                  */
+/* ----------------------------------------------------------------------- */
+
+export const CONVERSATION_STATES = ["active", "closed"] as const;
+export type ConversationState = (typeof CONVERSATION_STATES)[number];
+
+export interface ConversationRow {
+	id: string;
+	projectId: string | null;
+	plotId: string | null;
+	anchoringRunId: string | null;
+	status: ConversationState;
+	title: string | null;
+	createdAt: string;
+	lastActivityAt: string;
+	closedAt: string | null;
+}
+
+export interface ListConversationsFilter {
+	/** Narrow to one project. Mutually exclusive with `plot`. */
+	project?: string;
+	/** Narrow to one Plot. Mutually exclusive with `project`. */
+	plot?: string;
+	/** Narrow to `active` / `closed`. */
+	status?: ConversationState;
+}
+
+export interface ListConversationsResponse {
+	conversations: ConversationRow[];
+}
+
