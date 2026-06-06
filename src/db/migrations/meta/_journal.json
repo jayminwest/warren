@@ -162,6 +162,13 @@
 			"when": 1780741123730,
 			"tag": "0022_flowery_thor_girl",
 			"breakpoints": true
+		},
+		{
+			"idx": 23,
+			"version": "6",
+			"when": 1780744099425,
+			"tag": "0023_pink_slipstream",
+			"breakpoints": true
 		}
 	]
 }

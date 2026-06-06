@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { BurrowClient, BurrowClientPool } from "../../burrow-client/index.ts";
 import { openDatabase, type WarrenDb } from "../../db/client.ts";
 import { createRepos, type Repos } from "../../db/repos/index.ts";
-import type { PlotCreator } from "../../plots/index.ts";
+import type { PlotCreator, PlotResolver, PlotSyncer } from "../../plots/index.ts";
 import { RunEventBroker } from "../../runs/index.ts";
 import { NO_AUTH } from "../auth.ts";
 import { createBridgeRegistry } from "../bridges.ts";
@@ -105,10 +105,16 @@ async function poolFor(repos: Repos, client: BurrowClient): Promise<BurrowClient
 	return pool;
 }
 
+interface DepsExtras {
+	plotCreator?: PlotCreator;
+	plotResolver?: PlotResolver;
+	plotSyncer?: PlotSyncer;
+}
+
 async function depsFor(
 	repos: Repos,
 	burrowClient: BurrowClient,
-	plotCreator?: PlotCreator,
+	extras: DepsExtras = {},
 ): Promise<ServerDeps> {
 	const broker = new RunEventBroker();
 	const burrowClientPool = await poolFor(repos, burrowClient);
@@ -137,7 +143,9 @@ async function depsFor(
 			}
 			return { stdout: "", stderr: "", exitCode: 0 };
 		},
-		...(plotCreator !== undefined ? { plotCreator } : {}),
+		...(extras.plotCreator !== undefined ? { plotCreator: extras.plotCreator } : {}),
+		...(extras.plotResolver !== undefined ? { plotResolver: extras.plotResolver } : {}),
+		...(extras.plotSyncer !== undefined ? { plotSyncer: extras.plotSyncer } : {}),
 	};
 }
 
@@ -197,13 +205,13 @@ describe("conversation endpoints", () => {
 		await db.close();
 	});
 
-	async function boot(plotCreator?: PlotCreator): Promise<string> {
+	async function boot(extras: DepsExtras = {}): Promise<string> {
 		const ws = await mkdtemp(join(tmpdir(), "warren-conv-ws-"));
 		const client = makeBurrowClient(
 			{ burrowId: "bur_conv0000000", burrowRunId: "run_conv0000000", workspacePath: ws },
 			[],
 		);
-		const deps = await depsFor(repos, client, plotCreator);
+		const deps = await depsFor(repos, client, extras);
 		handle = startServer(deps, {
 			transport: { kind: "tcp", hostname: "127.0.0.1", port: 0 },
 			auth: NO_AUTH,
@@ -213,7 +221,7 @@ describe("conversation endpoints", () => {
 	}
 
 	test("POST /conversations auto-creates a Plot and dispatches an anchoring conversation run", async () => {
-		const url = await boot(PLOT_CREATOR);
+		const url = await boot({ plotCreator: PLOT_CREATOR });
 		const res = await fetch(`${url}/conversations`, {
 			method: "POST",
 			headers: { "content-type": "application/json" },
@@ -254,7 +262,7 @@ describe("conversation endpoints", () => {
 	});
 
 	test("GET /conversations lists and GET /conversations/:id returns the transcript", async () => {
-		const url = await boot(PLOT_CREATOR);
+		const url = await boot({ plotCreator: PLOT_CREATOR });
 		const created = (await (
 			await fetch(`${url}/conversations`, {
 				method: "POST",
@@ -277,7 +285,7 @@ describe("conversation endpoints", () => {
 	});
 
 	test("POST /conversations/:id/messages persists the turn and steers the run", async () => {
-		const url = await boot(PLOT_CREATOR);
+		const url = await boot({ plotCreator: PLOT_CREATOR });
 		const created = (await (
 			await fetch(`${url}/conversations`, {
 				method: "POST",
@@ -306,7 +314,7 @@ describe("conversation endpoints", () => {
 	});
 
 	test("POST /conversations/:id/messages 400s on a closed conversation", async () => {
-		const url = await boot(PLOT_CREATOR);
+		const url = await boot({ plotCreator: PLOT_CREATOR });
 		const created = (await (
 			await fetch(`${url}/conversations`, {
 				method: "POST",
@@ -328,5 +336,115 @@ describe("conversation endpoints", () => {
 		const url = await boot();
 		const res = await fetch(`${url}/conversations/conv_missing0000`);
 		expect(res.status).toBe(404);
+	});
+
+	async function resolverForProject(): Promise<PlotResolver> {
+		const project = await repos.projects.require(projectId);
+		return {
+			async resolve() {
+				return project;
+			},
+		};
+	}
+
+	const SYNCED_SYNCER: PlotSyncer = {
+		async sync() {
+			return {
+				kind: "synced",
+				branch: "warren/plot-sync-abc123",
+				prUrl: "https://github.com/x/y/pull/42",
+				prNumber: 42,
+				merged: false,
+			};
+		},
+	};
+
+	const NOOP_SYNCER: PlotSyncer = {
+		async sync() {
+			return { kind: "no_op" };
+		},
+	};
+
+	async function createConversation(url: string): Promise<{ id: string; plotId: string }> {
+		const created = (await (
+			await fetch(`${url}/conversations`, {
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({ project_id: projectId }),
+			})
+		).json()) as { conversation: { id: string; plotId: string } };
+		return created.conversation;
+	}
+
+	test("POST /conversations/:id/send-off opens a plotSync PR, closes the conversation, and persists the submission", async () => {
+		const url = await boot({
+			plotCreator: PLOT_CREATOR,
+			plotResolver: await resolverForProject(),
+			plotSyncer: SYNCED_SYNCER,
+		});
+		const conv = await createConversation(url);
+
+		const res = await fetch(`${url}/conversations/${conv.id}/send-off`, {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({ planner_agent: "claude-code" }),
+		});
+		expect(res.status).toBe(200);
+		const body = (await res.json()) as {
+			conversation: {
+				status: string;
+				submittedPrUrl: string;
+				submittedPrNumber: number;
+				plannerAgent: string;
+				closedAt: string | null;
+			};
+			plot_id: string;
+			pr: { url: string; number: number };
+			planner_agent: string;
+		};
+		expect(body.conversation.status).toBe("closed");
+		expect(body.conversation.submittedPrUrl).toBe("https://github.com/x/y/pull/42");
+		expect(body.conversation.submittedPrNumber).toBe(42);
+		expect(body.conversation.plannerAgent).toBe("claude-code");
+		expect(body.conversation.closedAt).not.toBeNull();
+		expect(body.plot_id).toBe(conv.plotId);
+		expect(body.pr.number).toBe(42);
+		expect(body.planner_agent).toBe("claude-code");
+
+		// Persisted on the row.
+		const row = await repos.conversations.require(conv.id);
+		expect(row.status).toBe("closed");
+		expect(row.submittedPrUrl).toBe("https://github.com/x/y/pull/42");
+		expect(row.plannerAgent).toBe("claude-code");
+	});
+
+	test("POST /conversations/:id/send-off 400s when there is no plot-state change to submit", async () => {
+		const url = await boot({
+			plotCreator: PLOT_CREATOR,
+			plotResolver: await resolverForProject(),
+			plotSyncer: NOOP_SYNCER,
+		});
+		const conv = await createConversation(url);
+
+		const res = await fetch(`${url}/conversations/${conv.id}/send-off`, { method: "POST" });
+		expect(res.status).toBe(400);
+
+		// Conversation stays active — nothing was submitted.
+		const row = await repos.conversations.require(conv.id);
+		expect(row.status).toBe("active");
+		expect(row.submittedPrUrl).toBeNull();
+	});
+
+	test("POST /conversations/:id/send-off 400s on an already-closed conversation", async () => {
+		const url = await boot({
+			plotCreator: PLOT_CREATOR,
+			plotResolver: await resolverForProject(),
+			plotSyncer: SYNCED_SYNCER,
+		});
+		const conv = await createConversation(url);
+		await repos.conversations.close(conv.id);
+
+		const res = await fetch(`${url}/conversations/${conv.id}/send-off`, { method: "POST" });
+		expect(res.status).toBe(400);
 	});
 });

@@ -132,6 +132,29 @@ function suite(dialect: "sqlite" | "postgres"): void {
 			}
 		});
 
+		test("recordSubmission stamps the PR ref + planner agent and closes", async () => {
+			const { handle, repo, projectId } = await open();
+			try {
+				const c = await repo.create({ projectId, plotId: "plot-abc" });
+				const sent = await repo.recordSubmission(
+					c.id,
+					{
+						prUrl: "https://github.com/x/y/pull/7",
+						prNumber: 7,
+						plannerAgent: "claude-code",
+					},
+					new Date("2026-06-06T00:00:00.000Z"),
+				);
+				expect(sent.status).toBe("closed");
+				expect(sent.closedAt).toBe("2026-06-06T00:00:00.000Z");
+				expect(sent.submittedPrUrl).toBe("https://github.com/x/y/pull/7");
+				expect(sent.submittedPrNumber).toBe(7);
+				expect(sent.plannerAgent).toBe("claude-code");
+			} finally {
+				await handle.close();
+			}
+		});
+
 		test("deleting the owning project orphans (not deletes) its conversations", async () => {
 			const { handle, repo, projects, projectId } = await open();
 			try {

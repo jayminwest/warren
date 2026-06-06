@@ -29,10 +29,12 @@
 
 import { join } from "node:path";
 import { ValidationError } from "../../core/errors.ts";
+import { assertRunTransition } from "../../db/repos/runs.ts";
 import type { ConversationRow, ConversationState } from "../../db/schema.ts";
 import { ProjectLacksPlotError } from "../../plan-runs/errors.ts";
-import { defaultPlotCreator } from "../../plots/index.ts";
+import { defaultPlotCreator, defaultPlotSyncer } from "../../plots/index.ts";
 import { resolveDispatcherHandle, spawnRun, steerRun } from "../../runs/index.ts";
+import { loadWarrenConfig } from "../../warren-config/index.ts";
 import { jsonResponse } from "../response.ts";
 import type { RouteHandler, ServerDeps } from "../types.ts";
 import {
@@ -43,10 +45,17 @@ import {
 	requireParam,
 	requireString,
 } from "./index.ts";
-import { plotProjectionForProject } from "./plots/shared.ts";
+import { plotProjectionForProject, resolvePlotProject } from "./plots/shared.ts";
 
 /** The conversational overseer agent (src/registry/builtins/leveret.ts). */
 const LEVERET_AGENT = "leveret";
+
+/**
+ * System event emitted on the anchoring run when the operator sends a
+ * conversation to the planner (warren-756d). Marks the run terminal alongside
+ * the conversation `active → closed` flip.
+ */
+export const CONVERSATION_SENT_OFF_KIND = "conversation.sent_off";
 
 /**
  * Seed prompt for a fresh conversation when the operator dispatches without
@@ -244,6 +253,128 @@ export function postConversationMessageHandler(deps: ServerDeps): RouteHandler {
 			conversationId: id,
 			message: { id: persisted.id, seq: persisted.seq, role: persisted.role },
 			steerMessageId: result.message.id,
+		});
+	};
+}
+
+/**
+ * Resolve the per-project `plotSync` config for the send-off PR, falling back
+ * to defaults when no `.warren/config.yaml` is present. Mirrors the resolution
+ * in `src/server/handlers/plots/sync.ts` so the two PR-opening paths behave
+ * identically.
+ */
+async function resolvePlotSyncConfig(
+	deps: ServerDeps,
+	project: { id: string; localPath: string },
+): Promise<import("../../warren-config/index.ts").PlotSyncConfig | undefined> {
+	try {
+		const config =
+			deps.warrenConfigs !== undefined
+				? await deps.warrenConfigs.get(project.id, project.localPath)
+				: await loadWarrenConfig({ projectPath: project.localPath });
+		return config.defaults?.plotSync;
+	} catch {
+		return undefined;
+	}
+}
+
+/**
+ * Finalize the anchoring run alongside the conversation `active → closed`
+ * flip. Defensive: a run that already went terminal (idle-finalize, crash
+ * recovery) is left as-is — the conversation close is the source of truth.
+ */
+async function finalizeAnchoringRun(
+	deps: ServerDeps,
+	conversation: ConversationRow,
+	now: Date,
+): Promise<void> {
+	if (conversation.anchoringRunId === null) return;
+	const run = await deps.repos.runs.get(conversation.anchoringRunId);
+	if (run === null || run.state !== "running") return;
+	assertRunTransition(run.state, "succeeded");
+	await deps.repos.runs.finalize(run.id, "succeeded", now);
+	const seq = ((await deps.repos.events.maxSeqForRun(run.id)) ?? 0) + 1;
+	await deps.repos.events.append({
+		runId: run.id,
+		burrowEventSeq: seq,
+		ts: now.toISOString(),
+		kind: CONVERSATION_SENT_OFF_KIND,
+		stream: "system",
+		payload: { conversationId: conversation.id, finalizedAt: now.toISOString() },
+	});
+}
+
+/**
+ * `POST /conversations/:id/send-off` — "Send to planner" (LEVERET.md §0.0.B /
+ * §0.7 / warren-756d).
+ *
+ * Opens a plotSync PR whose ONLY change is the plot-state update (safe by
+ * construction — leveret ships no edit/write tool), CLOSES the conversation
+ * (anchoring run finalizes, the Plot persists), and PERSISTS the submitted PR
+ * ref + plot_id + planner agent on the conversation row so the merge poller
+ * (warren-b872) can auto-dispatch the planner run keyed on `plot_id` once the
+ * PR merges. Re-plan after send-off is a NEW conversation attached to the same
+ * Plot (§0.0.C).
+ *
+ * Errors: 400 if the conversation is already closed or has no Plot bound (no
+ * intent to submit), or if there is no dirty `.plot/` change to ship; 404 if
+ * the conversation (or its Plot's project) is unknown.
+ */
+export function sendOffConversationHandler(deps: ServerDeps): RouteHandler {
+	return async (ctx) => {
+		const id = requireParam(ctx, "id");
+		const body = await readJsonBody(ctx);
+		const plannerAgent = optionalString(body, "planner_agent") ?? null;
+
+		const conversation = await deps.repos.conversations.require(id);
+		if (conversation.status === "closed") {
+			throw new ValidationError(`conversation ${id} is already closed; cannot send to planner`, {
+				recoveryHint: "start a new conversation to re-plan against the same Plot",
+			});
+		}
+		if (conversation.plotId === null || conversation.plotId === "") {
+			throw new ValidationError(`conversation ${id} has no Plot bound; nothing to send`, {
+				recoveryHint: "shape the Plot's intent before sending to the planner",
+			});
+		}
+
+		const project = await resolvePlotProject(deps, conversation.plotId, "send plot to planner");
+		const syncer = deps.plotSyncer ?? defaultPlotSyncer;
+		const result = await syncer.sync({
+			projectPath: project.localPath,
+			gitUrl: project.gitUrl,
+			defaultBranch: project.defaultBranch,
+			token: deps.autoOpenPr?.token ?? "",
+			handle: "warren",
+			plotSyncConfig: await resolvePlotSyncConfig(deps, project),
+			spawn: deps.spawn ?? defaultSpawn,
+			gitBinary: deps.projectsConfig.gitBinary,
+		});
+
+		if (result.kind === "no_op") {
+			throw new ValidationError(
+				`conversation ${id} has no plot-state changes to submit to the planner`,
+				{ recoveryHint: "shape the Plot's intent before sending to the planner" },
+			);
+		}
+
+		const now = deps.now?.() ?? new Date();
+		await finalizeAnchoringRun(deps, conversation, now);
+		const closed = await deps.repos.conversations.recordSubmission(
+			id,
+			{
+				prUrl: result.prUrl,
+				...(result.prNumber !== undefined ? { prNumber: result.prNumber } : {}),
+				plannerAgent,
+			},
+			now,
+		);
+
+		return jsonResponse(200, {
+			conversation: closed,
+			plot_id: conversation.plotId,
+			pr: { url: result.prUrl, number: result.prNumber ?? null, branch: result.branch },
+			planner_agent: plannerAgent,
 		});
 	};
 }

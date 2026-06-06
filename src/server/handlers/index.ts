@@ -46,6 +46,7 @@ import {
 	getConversationHandler,
 	listConversationsHandler,
 	postConversationMessageHandler,
+	sendOffConversationHandler,
 } from "./conversations.ts";
 import { readyzHandler } from "./diagnostics.ts";
 import { healthzHandler, previewConfigHandler, versionHandler } from "./meta.ts";
@@ -311,6 +312,11 @@ const ROUTE_TABLE: readonly RouteEntry[] = [
 		method: "POST",
 		pattern: "/conversations/:id/messages",
 		build: postConversationMessageHandler,
+	},
+	{
+		method: "POST",
+		pattern: "/conversations/:id/send-off",
+		build: sendOffConversationHandler,
 	},
 
 	{ method: "POST", pattern: "/brainstorm", build: createBrainstormHandler },

@@ -53,6 +53,9 @@ export class ConversationsRepo {
 			anchoringRunId: input.anchoringRunId ?? null,
 			status: "active",
 			title: input.title ?? null,
+			submittedPrUrl: null,
+			submittedPrNumber: null,
+			plannerAgent: null,
 			createdAt: now,
 			lastActivityAt: now,
 			closedAt: null,
@@ -136,6 +139,42 @@ export class ConversationsRepo {
 				.set({ lastActivityAt: ts })
 				.where(eq(this.conversations.id, id)),
 		);
+	}
+
+	/**
+	 * Record a "Send to planner" send-off (LEVERET.md §0.0.B / §0.7 /
+	 * warren-756d) and CLOSE the conversation in one write. Stamps the
+	 * submitted plotSync PR ref + planner agent so the merge poller
+	 * (warren-b872) can auto-dispatch the planner run keyed on `plot_id`
+	 * once the PR merges, flips `status → closed`, and sets `closed_at` /
+	 * `last_activity_at`. Idempotent: a second send-off on an already-closed
+	 * conversation re-stamps the submission fields without re-closing.
+	 */
+	async recordSubmission(
+		id: string,
+		input: {
+			prUrl: string;
+			prNumber?: number | null;
+			plannerAgent?: string | null;
+		},
+		now?: Date,
+	): Promise<ConversationRow> {
+		const ts = (now ?? new Date()).toISOString();
+		const existing = await this.require(id);
+		await this.adapter.runWrite(
+			this.db
+				.update(this.conversations)
+				.set({
+					submittedPrUrl: input.prUrl,
+					submittedPrNumber: input.prNumber ?? null,
+					plannerAgent: input.plannerAgent ?? null,
+					status: "closed",
+					closedAt: existing.closedAt ?? ts,
+					lastActivityAt: ts,
+				})
+				.where(eq(this.conversations.id, id)),
+		);
+		return this.require(id);
 	}
 
 	/** Flip the conversation to `closed` (send-off / operator close). Idempotent. */

@@ -202,6 +202,23 @@ paths:
           required: true
           schema:
             type: string
+  /conversations/{id}/send-off:
+    post:
+      operationId: sendOffConversationHandler
+      tags:
+        - conversations
+      summary: POST /conversations/:id/send-off
+      responses:
+        '200':
+          description: Successful response.
+        default:
+          description: Error response (see `src/core/errors.ts`).
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
   /healthz:
     get:
       operationId: healthzHandler
