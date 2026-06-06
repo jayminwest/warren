@@ -177,13 +177,10 @@ const PreviewConnectTimeoutSchema = DurationStringSchema.refine(
 
 const PreviewSetupSchema = z.string().min(1, "preview.setup must be non-empty");
 
-// warren-cd37 / SPEC §11.O (pl-0344 step 2): wall-clock budget for paused
-// interactive turns. An agent's `question_posed` Plot event transitions the run
-// to `paused`; if no `question_answered` arrives within this window the
-// supervisor respawns the turn with a timeout warning (warren-2976). Bounds:
-// 1s..24h (sub-second is meaningless vs Plot polling; >24h is likely a typo —
-// the operator can cancel by hand). Field is `.default()`-backed; the
-// `DEFAULT_*` constant is the fallback when the `agent` block is absent.
+// warren-cd37 / SPEC §11.O (pl-0344 step 2): wall-clock budget for paused interactive turns.
+// `question_posed` transitions the run to `paused`; if `question_answered` doesn't arrive within
+// this window the supervisor respawns with a timeout warning (warren-2976). Bounds: 1s..24h.
+// Field is `.default()`-backed; the `DEFAULT_*` constant is the fallback when the block is absent.
 export const DEFAULT_AGENT_PAUSE_TIMEOUT_MS = 1_800_000; // 30 minutes
 
 const AgentPauseTimeoutMsSchema = z
@@ -195,6 +192,7 @@ const AgentPauseTimeoutMsSchema = z
 const AgentConfigSchema = z
 	.object({
 		pauseTimeoutMs: AgentPauseTimeoutMsSchema.default(DEFAULT_AGENT_PAUSE_TIMEOUT_MS),
+		skipGitHooks: z.boolean().optional(), // warren-8f4c: skip git-hooks arming on the host clone
 	})
 	.strict();
 

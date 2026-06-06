@@ -31,6 +31,9 @@ import { join } from "node:path";
 import type { SpawnFn, SpawnOptions, SpawnResult } from "./clone.ts";
 import type { ProjectsConfig } from "./config.ts";
 import { ProjectUnavailableError } from "./errors.ts";
+import { type ArmGitHooksReadFileFn, tryArmGitHooks } from "./git-hooks.ts";
+
+export { detectHooksPathFromPackageJson } from "./git-hooks.ts";
 
 export const DEFAULT_GIT_TIMEOUT_MS = 120_000;
 
@@ -96,6 +99,21 @@ export interface RefreshProjectCloneInput {
 	 * runs `fn()` directly.
 	 */
 	readonly preservePlot?: PreservePlotFn;
+	/**
+	 * When true (default), warren detects a `core.hooksPath` convention in
+	 * the project's `package.json` prepare script and applies it to the
+	 * local `.git/config` so every worktree burrow creates from this clone
+	 * inherits the project's pre-commit gate (warren-8f4c). Set to false
+	 * when the operator opts out via `agent.skipGitHooks` in
+	 * `.warren/config.yaml`.
+	 */
+	readonly armHooks?: boolean;
+	/**
+	 * Override the `readFile` implementation for `package.json` reads.
+	 * Defaults to the Node.js `fs/promises` `readFile`; injectable for
+	 * tests so they don't touch disk.
+	 */
+	readonly readFileFn?: ArmGitHooksReadFileFn;
 }
 
 /**
@@ -202,6 +220,25 @@ export async function refreshProjectClone(
 		await trySpawn(spawn, [config.gitBinary, "config", "--local", "--unset-all", key], {
 			cwd: localPath,
 			timeoutMs,
+		});
+	}
+
+	// warren-8f4c: arm the project's pre-commit gate so every worktree
+	// burrow creates from this clone inherits the hook. We detect
+	// `core.hooksPath` from the `prepare` script in `package.json` and
+	// apply it with `git config --local`. The config key lives in
+	// `.git/config` (not the working tree), so it survives `git reset
+	// --hard` and is shared across all worktrees via the gitCommonDir.
+	// Best-effort: a missing or unreadable `package.json`, an unmatched
+	// prepare script, or a failed git-config call are all silently skipped
+	// so the hook setup never blocks a run.
+	if (input.armHooks !== false) {
+		await tryArmGitHooks({
+			config,
+			localPath,
+			spawn,
+			timeoutMs,
+			readFileFn: input.readFileFn,
 		});
 	}
 

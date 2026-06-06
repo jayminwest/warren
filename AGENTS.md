@@ -228,7 +228,7 @@ Canonical home for per-project defaults. Schema:
 `src/warren-config/schema.ts` (`DefaultsConfigSchema`), surfaced by
 `loadWarrenConfig()`. Notable knobs: `defaultRole`, `defaultPrompt`,
 `defaultProvider`, `defaultModel`, `defaultBranch`, `runBranchPrefix`,
-`preview`, `agent.pauseTimeoutMs`, `plotSync`. See `CLAUDE.md` and
+`preview`, `agent.pauseTimeoutMs`, `agent.skipGitHooks`, `plotSync`. See `CLAUDE.md` and
 SPEC §11.H / §11.L / §11.O for details.
 
 ## Golden snapshots

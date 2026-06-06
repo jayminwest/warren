@@ -12,8 +12,8 @@
     "tags": [
       "agent"
     ],
+    "model": "claude-sonnet-4-6",
     "source": "builtin",
-    "provider": "anthropic",
-    "model": "claude-sonnet-4-6"
+    "provider": "anthropic"
   }
 }

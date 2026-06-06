@@ -78,6 +78,14 @@ and is surfaced by `loadWarrenConfig()`. Notable knobs:
   `detector-wiring.ts`; opt-out `WARREN_CONVERSATION_IDLE_DISABLED=1`)
   finalizes a conversation's anchoring run. The conversation stays
   `active`; transcript and Plot persist (warren-005d, LEVERET.md §0.4).
+- `agent.skipGitHooks` (default `false`) — set to `true` to skip arming
+  the project's git pre-commit gate on the host clone before each run.
+  By default warren detects a `git config core.hooksPath` call in the
+  project's `package.json` prepare script and applies it to the clone's
+  `.git/config` so every worktree (agent sandbox) inherits the hook.
+  Flip this when a project's hooks are too slow, require tools not
+  available on the warren host, or you explicitly want agent commits
+  unfiltered (warren-8f4c).
 - `plotSync` — per-project Plot sync to GitHub configuration.
   `mergeStrategy` (`immediate` | `auto` | `manual`, default `manual`)
   controls whether sync PRs are auto-merged; `targetBranch` overrides

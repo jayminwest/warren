@@ -135,6 +135,22 @@ export async function refreshProject(input: RefreshProjectInput): Promise<Refres
 		throw new ValidationError("ref must be a non-empty string");
 	}
 
+	// warren-8f4c: read `agent.skipGitHooks` from the pre-refresh
+	// envelope BEFORE invalidating the cache. Reading before invalidation
+	// gives us the config the operator set for this run; a concurrent edit
+	// to `.warren/config.yaml` that flips the knob will take effect on the
+	// next run. Best-effort: any cache / I-O error falls back to arming
+	// hooks (the safe default).
+	let armHooks = true;
+	if (input.warrenConfigs !== undefined) {
+		try {
+			const envelope = await input.warrenConfigs.get(id, row.localPath);
+			if (envelope.defaults?.agent?.skipGitHooks === true) armHooks = false;
+		} catch {
+			// Unreadable config → arm hooks by default.
+		}
+	}
+
 	// Drop the cached envelope BEFORE the working tree changes. Per
 	// pl-5d74 risk #4, this guarantees a concurrent
 	// GET /projects/:id/warren-config either (a) joined the in-flight
@@ -151,6 +167,7 @@ export async function refreshProject(input: RefreshProjectInput): Promise<Refres
 		ref,
 		spawn: input.spawn,
 		timeoutMs: input.timeoutMs ?? DEFAULT_GIT_TIMEOUT_MS,
+		armHooks,
 	});
 
 	const updated = await repo.recordRefresh({

@@ -3,6 +3,7 @@ import type { SpawnFn } from "./clone.ts";
 import { ProjectUnavailableError } from "./errors.ts";
 import { CFG, ok, recorder } from "./refresh.test-helpers.ts";
 import {
+	detectHooksPathFromPackageJson,
 	detectProjectFeatures,
 	mergeEventsLines,
 	mergePlotJsonForRefresh,
@@ -296,5 +297,133 @@ describe("mergePlotJsonForRefresh (warren-af9e)", () => {
 	test("falls back to snapshot on unparseable remote JSON", () => {
 		const snapshot = '{"status":"done"}';
 		expect(mergePlotJsonForRefresh("not-json", snapshot)).toBe(snapshot);
+	});
+});
+
+describe("detectHooksPathFromPackageJson (warren-8f4c)", () => {
+	test("extracts hooksPath from standard prepare script", () => {
+		const pkg = {
+			scripts: { prepare: "[ -e .git ] && git config core.hooksPath scripts/hooks || true" },
+		};
+		expect(detectHooksPathFromPackageJson(pkg)).toBe("scripts/hooks");
+	});
+
+	test("extracts hooksPath from prepare script with --local flag", () => {
+		const pkg = { scripts: { prepare: "git config --local core.hooksPath .githooks" } };
+		expect(detectHooksPathFromPackageJson(pkg)).toBe(".githooks");
+	});
+
+	test("returns undefined when prepare is absent", () => {
+		expect(detectHooksPathFromPackageJson({ scripts: { build: "tsc" } })).toBeUndefined();
+	});
+
+	test("returns undefined when scripts is absent", () => {
+		expect(detectHooksPathFromPackageJson({ name: "my-pkg" })).toBeUndefined();
+	});
+
+	test("returns undefined when prepare has no git config hooksPath", () => {
+		const pkg = { scripts: { prepare: "husky install" } };
+		expect(detectHooksPathFromPackageJson(pkg)).toBeUndefined();
+	});
+
+	test("returns undefined for null input", () => {
+		expect(detectHooksPathFromPackageJson(null)).toBeUndefined();
+	});
+
+	test("returns undefined for non-object input", () => {
+		expect(detectHooksPathFromPackageJson("string")).toBeUndefined();
+	});
+});
+
+describe("refreshProjectClone git-hooks arming (warren-8f4c)", () => {
+	test("applies core.hooksPath when package.json prepare script matches", async () => {
+		const sha = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+		const { spawn, calls } = recorder((cmd) => {
+			if (cmd[1] === "rev-parse") return ok(`${sha}\n`);
+			return ok();
+		});
+		const pkg = JSON.stringify({
+			scripts: { prepare: "git config core.hooksPath scripts/hooks || true" },
+		});
+		const result = await refreshProjectClone({
+			config: CFG,
+			localPath: "/data/projects/x/y",
+			ref: "main",
+			spawn,
+			exists: () => true,
+			readFileFn: async () => pkg,
+		});
+
+		expect(result.headSha).toBe(sha);
+		const hookCmd = calls.find(
+			(c) =>
+				c.cmd[1] === "config" &&
+				c.cmd.includes("core.hooksPath") &&
+				c.cmd.includes("scripts/hooks"),
+		);
+		expect(hookCmd).toBeDefined();
+		expect(hookCmd?.cmd).toEqual(["git", "config", "--local", "core.hooksPath", "scripts/hooks"]);
+	});
+
+	test("skips hook arming when armHooks is false", async () => {
+		const sha = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+		const { spawn, calls } = recorder((cmd) => {
+			if (cmd[1] === "rev-parse") return ok(`${sha}\n`);
+			return ok();
+		});
+		const pkg = JSON.stringify({ scripts: { prepare: "git config core.hooksPath scripts/hooks" } });
+		await refreshProjectClone({
+			config: CFG,
+			localPath: "/data/projects/x/y",
+			ref: "main",
+			spawn,
+			exists: () => true,
+			armHooks: false,
+			readFileFn: async () => pkg,
+		});
+
+		const hookCmds = calls.filter((c) => c.cmd.includes("core.hooksPath"));
+		expect(hookCmds).toHaveLength(0);
+	});
+
+	test("skips hook arming when package.json has no matching prepare script", async () => {
+		const sha = "cccccccccccccccccccccccccccccccccccccccc";
+		const { spawn, calls } = recorder((cmd) => {
+			if (cmd[1] === "rev-parse") return ok(`${sha}\n`);
+			return ok();
+		});
+		const pkg = JSON.stringify({ scripts: { build: "tsc" } });
+		await refreshProjectClone({
+			config: CFG,
+			localPath: "/data/projects/x/y",
+			ref: "main",
+			spawn,
+			exists: () => true,
+			readFileFn: async () => pkg,
+		});
+
+		const hookCmds = calls.filter((c) => c.cmd.includes("core.hooksPath"));
+		expect(hookCmds).toHaveLength(0);
+	});
+
+	test("silently skips hook arming when readFileFn throws", async () => {
+		const sha = "dddddddddddddddddddddddddddddddddddddddd";
+		const { spawn } = recorder((cmd) => {
+			if (cmd[1] === "rev-parse") return ok(`${sha}\n`);
+			return ok();
+		});
+		const result = await refreshProjectClone({
+			config: CFG,
+			localPath: "/data/projects/x/y",
+			ref: "main",
+			spawn,
+			exists: () => true,
+			readFileFn: async () => {
+				throw new Error("ENOENT");
+			},
+		});
+
+		// Run must succeed even when package.json is unreadable.
+		expect(result.headSha).toBe(sha);
 	});
 });

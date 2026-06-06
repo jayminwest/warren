@@ -3,6 +3,7 @@ import { ValidationError } from "../core/errors.ts";
 import { openDatabase, type WarrenDb } from "../db/client.ts";
 import { DrizzleAdapter } from "../db/repos/drizzle-adapter.ts";
 import { ProjectsRepo } from "../db/repos/projects.ts";
+import type { WarrenConfigCache } from "../warren-config/index.ts";
 import { ProjectUnavailableError } from "./errors.ts";
 import { CFG, fakeClone, NOOP_SPAWN, recordingCache } from "./manage.test-helpers.ts";
 import { addProject, refreshProject } from "./manage.ts";
@@ -324,5 +325,89 @@ describe("refreshProject", () => {
 		).rejects.toBeInstanceOf(ProjectUnavailableError);
 
 		expect(cache.invalidations).toEqual([row.id]);
+	});
+});
+
+describe("refreshProject git-hooks knob (warren-8f4c)", () => {
+	let db: WarrenDb;
+	let repo: ProjectsRepo;
+
+	beforeEach(async () => {
+		db = await openDatabase({ path: ":memory:" });
+		repo = new ProjectsRepo(DrizzleAdapter.for(db));
+	});
+
+	afterEach(async () => {
+		await db.close();
+	});
+
+	test("passes armHooks:true to refreshProjectClone by default", async () => {
+		const row = await addProject({
+			repo,
+			config: CFG,
+			gitUrl: "https://github.com/x/y.git",
+			spawn: NOOP_SPAWN,
+			clone: fakeClone(),
+		});
+
+		let receivedArmHooks: boolean | undefined;
+		await refreshProject({
+			repo,
+			config: CFG,
+			id: row.id,
+			spawn: NOOP_SPAWN,
+			refresh: async (input) => {
+				receivedArmHooks = input.armHooks;
+				return {
+					headSha: "a".repeat(40),
+					ref: input.ref,
+					features: { hasPlot: false, hasSeeds: false },
+				};
+			},
+		});
+
+		expect(receivedArmHooks).toBe(true);
+	});
+
+	test("passes armHooks:false when agent.skipGitHooks is true in config", async () => {
+		const row = await addProject({
+			repo,
+			config: CFG,
+			gitUrl: "https://github.com/x/y.git",
+			spawn: NOOP_SPAWN,
+			clone: fakeClone(),
+		});
+
+		const skipHooksCache: WarrenConfigCache = {
+			get: async () => ({
+				triggers: null,
+				defaults: { agent: { pauseTimeoutMs: 1_800_000, skipGitHooks: true } },
+				prTemplate: null,
+				errors: [],
+				warnings: [],
+			}),
+			invalidate: () => undefined,
+			clear: () => undefined,
+			size: () => 0,
+		};
+
+		let receivedArmHooks: boolean | undefined;
+		await refreshProject({
+			repo,
+			config: CFG,
+			id: row.id,
+			spawn: NOOP_SPAWN,
+			warrenConfigs: skipHooksCache,
+			refresh: async (input) => {
+				receivedArmHooks = input.armHooks;
+				return {
+					headSha: "b".repeat(40),
+					ref: input.ref,
+					features: { hasPlot: false, hasSeeds: false },
+				};
+			},
+		});
+
+		expect(receivedArmHooks).toBe(false);
 	});
 });
