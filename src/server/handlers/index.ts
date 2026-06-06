@@ -41,6 +41,12 @@ import {
 	refreshProjectAgentsHandler,
 } from "./agents.ts";
 import { getBurrowHandler, listBurrowsHandler } from "./burrows.ts";
+import {
+	createConversationHandler,
+	getConversationHandler,
+	listConversationsHandler,
+	postConversationMessageHandler,
+} from "./conversations.ts";
 import { readyzHandler } from "./diagnostics.ts";
 import { healthzHandler, previewConfigHandler, versionHandler } from "./meta.ts";
 import {
@@ -298,6 +304,15 @@ const ROUTE_TABLE: readonly RouteEntry[] = [
 	{ method: "POST", pattern: "/plan-runs/:id/cancel", build: cancelPlanRunHandler },
 	{ method: "GET", pattern: "/plan-runs/:id/events", build: streamPlanRunEventsHandler },
 
+	{ method: "GET", pattern: "/conversations", build: listConversationsHandler },
+	{ method: "POST", pattern: "/conversations", build: createConversationHandler },
+	{ method: "GET", pattern: "/conversations/:id", build: getConversationHandler },
+	{
+		method: "POST",
+		pattern: "/conversations/:id/messages",
+		build: postConversationMessageHandler,
+	},
+
 	{ method: "POST", pattern: "/brainstorm", build: createBrainstormHandler },
 	{ method: "GET", pattern: "/plots", build: listPlotsHandler },
 	{ method: "POST", pattern: "/plots", build: createPlotHandler },
@@ -366,6 +381,7 @@ export const API_PREFIXES: readonly string[] = [
 	"/analytics",
 	"/brainstorm",
 	"/burrows",
+	"/conversations",
 	"/projects",
 	"/runs",
 	"/workers",

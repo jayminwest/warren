@@ -21,6 +21,8 @@ const PREFIXES = {
 	project: "prj",
 	run: "run",
 	planRun: "plnr",
+	conversation: "conv",
+	message: "msg",
 } as const;
 
 export type IdKind = keyof typeof PREFIXES;

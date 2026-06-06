@@ -52,6 +52,26 @@ export const RUN_MODES = ["batch", "interactive", "conversation"] as const;
 export type RunMode = (typeof RUN_MODES)[number];
 
 /**
+ * Conversation lifecycle status (LEVERET.md §0.5 / warren-0b91). A
+ * conversation stays `active` across re-wakes (the anchoring run may go
+ * terminal and be respawned without closing the conversation); it flips
+ * to `closed` only on send-off (warren-756d) or operator close. TS-only
+ * narrowing — no SQL CHECK (mx-2ab984).
+ */
+export const CONVERSATION_STATES = ["active", "closed"] as const;
+export type ConversationState = (typeof CONVERSATION_STATES)[number];
+
+/**
+ * Role discriminator for a persisted conversation turn (LEVERET.md §0.5 /
+ * warren-0b91). `user` is an operator turn delivered over the steering
+ * channel; `assistant` is a leveret reply captured off the stream;
+ * `system` is a host-written marker (e.g. re-wake replay); `tool` carries
+ * a structured tool turn. TS-only narrowing — no SQL CHECK.
+ */
+export const MESSAGE_ROLES = ["user", "assistant", "system", "tool"] as const;
+export type MessageRole = (typeof MESSAGE_ROLES)[number];
+
+/**
  * Chain-kind discriminator for a run that carries a `parent_run_id`
  * (warren-e96f). Both kinds share the parent back-link column but differ in
  * workspace semantics:
@@ -255,6 +275,8 @@ export const TABLE_NAMES = {
 	planRuns: "plan_runs",
 	planRunChildren: "plan_run_children",
 	plots: "plots",
+	conversations: "conversations",
+	messages: "messages",
 } as const;
 
 /**
@@ -298,6 +320,13 @@ export const INDEX_NAMES = {
 	// `plots_status` powers status-filtered rollups across a project.
 	plotsProjectUpdated: "plots_project_updated_idx",
 	plotsStatus: "plots_status_idx",
+	// warren-0b91 / LEVERET §0.5. Conversations list by project (recency via
+	// last_activity_at scan off the project predicate) and by Plot binding
+	// (N:1 conversations per Plot). Messages page strictly by (conversation,
+	// seq) — the monotonic transcript order the re-wake replay reads back.
+	conversationsProject: "conversations_project_idx",
+	conversationsPlot: "conversations_plot_idx",
+	messagesConversationSeq: "messages_conversation_seq_idx",
 } as const;
 
 /**

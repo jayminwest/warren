@@ -30,8 +30,10 @@ import {
 import type { PlotProjectionState } from "./columns.ts";
 import {
 	CLONE_KINDS,
+	CONVERSATION_STATES,
 	EVENT_STREAMS,
 	INDEX_NAMES,
+	MESSAGE_ROLES,
 	PLAN_RUN_CHILD_STATES,
 	PLAN_RUN_STATES,
 	PREVIEW_STATES,
@@ -491,9 +493,72 @@ export const plots = sqliteTable(
 	],
 );
 
+/**
+ * Conversations (LEVERET.md §0.5 / §0.0.F / warren-0b91). One row per
+ * leveret conversation. N conversations bind to one Plot (N:1). The
+ * anchoring `mode:'conversation'` run rotates on re-wake, so
+ * `anchoring_run_id` is nullable and mutable; the conversation itself
+ * survives the run going terminal. `project_id` FKs `projects.id` ON
+ * DELETE SET NULL so deleting a project orphans (not blocks) its
+ * conversations — mirrors the `runs.project_id` posture. `plot_id` is
+ * plain text (Plots live in the project workspace, not warren's DB).
+ * The turn-by-turn transcript lives in `messages`, NOT here; the
+ * run-anchored `events` table stays single-writer (the bridge).
+ */
+export const conversations = sqliteTable(
+	TABLE_NAMES.conversations,
+	{
+		id: text("id").primaryKey(),
+		projectId: text("project_id").references(() => projects.id, { onDelete: "set null" }),
+		// Plot binding. Nullable in schema for forward-compat though v1 always
+		// sets it at conversation-create. Plain text, no FK — Plots are git-backed.
+		plotId: text("plot_id"),
+		// Anchoring mode:'conversation' run. Rotates on re-wake (warren-6ccf);
+		// nullable between rotations. Plain text for symmetry with run back-links.
+		anchoringRunId: text("anchoring_run_id"),
+		status: text("status", { enum: CONVERSATION_STATES }).notNull().default("active"),
+		title: text("title"),
+		createdAt: text("created_at").notNull(),
+		lastActivityAt: text("last_activity_at").notNull(),
+		closedAt: text("closed_at"),
+	},
+	(t) => [
+		index(INDEX_NAMES.conversationsProject).on(t.projectId),
+		index(INDEX_NAMES.conversationsPlot).on(t.plotId),
+	],
+);
+
+/**
+ * Messages (LEVERET.md §0.5 / warren-0b91). The conversation transcript,
+ * one row per turn, `seq` monotonic per conversation. `conversation_id`
+ * FKs `conversations.id` ON DELETE CASCADE (the transcript is meaningless
+ * without its conversation). `content` is TEXT (free-form turn body or a
+ * JSON-encoded tool payload). `run_id` optionally back-links the
+ * anchoring run that produced the turn; nullable for host-written rows.
+ */
+export const messages = sqliteTable(
+	TABLE_NAMES.messages,
+	{
+		id: text("id").primaryKey(),
+		conversationId: text("conversation_id")
+			.notNull()
+			.references(() => conversations.id, { onDelete: "cascade" }),
+		seq: integer("seq").notNull(),
+		role: text("role", { enum: MESSAGE_ROLES }).notNull(),
+		content: text("content").notNull(),
+		runId: text("run_id"),
+		createdAt: text("created_at").notNull(),
+	},
+	(t) => [index(INDEX_NAMES.messagesConversationSeq).on(t.conversationId, t.seq)],
+);
+
 export type PlanRunRow = typeof planRuns.$inferSelect;
 export type PlanRunInsert = typeof planRuns.$inferInsert;
 export type PlanRunChildRow = typeof planRunChildren.$inferSelect;
 export type PlanRunChildInsert = typeof planRunChildren.$inferInsert;
 export type PlotRow = typeof plots.$inferSelect;
 export type PlotInsert = typeof plots.$inferInsert;
+export type ConversationRow = typeof conversations.$inferSelect;
+export type ConversationInsert = typeof conversations.$inferInsert;
+export type MessageRow = typeof messages.$inferSelect;
+export type MessageInsert = typeof messages.$inferInsert;

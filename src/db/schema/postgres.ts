@@ -37,8 +37,10 @@ import {
 import type { PlotProjectionState } from "./columns.ts";
 import {
 	CLONE_KINDS,
+	CONVERSATION_STATES,
 	EVENT_STREAMS,
 	INDEX_NAMES,
+	MESSAGE_ROLES,
 	PLAN_RUN_CHILD_STATES,
 	PLAN_RUN_STATES,
 	PREVIEW_STATES,
@@ -297,9 +299,56 @@ export const plots = pgTable(
 	],
 );
 
+/**
+ * Conversations (LEVERET.md §0.5 / warren-0b91) — mirror of sqlite. See
+ * sqlite.ts for shape + lifecycle intent.
+ */
+export const conversations = pgTable(
+	TABLE_NAMES.conversations,
+	{
+		id: text("id").primaryKey(),
+		projectId: text("project_id").references(() => projects.id, { onDelete: "set null" }),
+		plotId: text("plot_id"),
+		anchoringRunId: text("anchoring_run_id"),
+		status: text("status", { enum: CONVERSATION_STATES }).notNull().default("active"),
+		title: text("title"),
+		createdAt: text("created_at").notNull(),
+		lastActivityAt: text("last_activity_at").notNull(),
+		closedAt: text("closed_at"),
+	},
+	(t) => [
+		index(INDEX_NAMES.conversationsProject).on(t.projectId),
+		index(INDEX_NAMES.conversationsPlot).on(t.plotId),
+	],
+);
+
+/**
+ * Messages (LEVERET.md §0.5 / warren-0b91) — mirror of sqlite. See
+ * sqlite.ts for shape + transcript intent.
+ */
+export const messages = pgTable(
+	TABLE_NAMES.messages,
+	{
+		id: text("id").primaryKey(),
+		conversationId: text("conversation_id")
+			.notNull()
+			.references(() => conversations.id, { onDelete: "cascade" }),
+		seq: integer("seq").notNull(),
+		role: text("role", { enum: MESSAGE_ROLES }).notNull(),
+		content: text("content").notNull(),
+		runId: text("run_id"),
+		createdAt: text("created_at").notNull(),
+	},
+	(t) => [index(INDEX_NAMES.messagesConversationSeq).on(t.conversationId, t.seq)],
+);
+
 export type PlanRunRow = typeof planRuns.$inferSelect;
 export type PlanRunInsert = typeof planRuns.$inferInsert;
 export type PlanRunChildRow = typeof planRunChildren.$inferSelect;
 export type PlanRunChildInsert = typeof planRunChildren.$inferInsert;
 export type PlotRow = typeof plots.$inferSelect;
 export type PlotInsert = typeof plots.$inferInsert;
+export type ConversationRow = typeof conversations.$inferSelect;
+export type ConversationInsert = typeof conversations.$inferInsert;
+export type MessageRow = typeof messages.$inferSelect;
+export type MessageInsert = typeof messages.$inferInsert;

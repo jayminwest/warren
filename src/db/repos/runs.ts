@@ -10,7 +10,7 @@
  * the burrow IDs are written back once we have them.
  */
 
-import { and, asc, desc, eq, gte, inArray, isNotNull, lte, type SQL, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNotNull, lte, ne, type SQL, sql } from "drizzle-orm";
 import { NotFoundError, StateTransitionError, ValidationError } from "../../core/errors.ts";
 import { generateId } from "../../core/ids.ts";
 import type { SqliteDrizzleDb } from "../client.ts";
@@ -206,6 +206,7 @@ export class RunsRepo {
 			this.db
 				.select()
 				.from(this.runs)
+				.where(ne(this.runs.mode, "conversation"))
 				.orderBy(...this.orderByClause(sort, dir))
 				.limit(limit)
 				.offset(offset),
@@ -226,7 +227,7 @@ export class RunsRepo {
 			this.db
 				.select()
 				.from(this.runs)
-				.where(eq(this.runs.projectId, projectId))
+				.where(and(eq(this.runs.projectId, projectId), ne(this.runs.mode, "conversation")))
 				.orderBy(...this.orderByClause(sort, dir))
 				.limit(limit)
 				.offset(offset),
@@ -266,7 +267,7 @@ export class RunsRepo {
 			this.db
 				.select()
 				.from(this.runs)
-				.where(eq(this.runs.agentName, agentName))
+				.where(and(eq(this.runs.agentName, agentName), ne(this.runs.mode, "conversation")))
 				.orderBy(...this.orderByClause(sort, dir))
 				.limit(limit)
 				.offset(offset),
@@ -287,14 +288,14 @@ export class RunsRepo {
 		costTotalUsd: number;
 		costPricedCount: number;
 	}> {
-		const conds: SQL[] = [];
+		const conds: SQL[] = [ne(this.runs.mode, "conversation")];
 		if (filter.projectId !== undefined) {
 			conds.push(eq(this.runs.projectId, filter.projectId));
 		}
 		if (filter.agentName !== undefined) {
 			conds.push(eq(this.runs.agentName, filter.agentName));
 		}
-		const where = conds.length === 0 ? undefined : conds.length === 1 ? conds[0] : and(...conds);
+		const where = conds.length === 1 ? conds[0] : and(...conds);
 		const baseQuery = this.db
 			.select({
 				total: sql<number>`count(*)`,

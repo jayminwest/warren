@@ -17,7 +17,9 @@ import { getTableConfig as getSqliteTableConfig, type SQLiteTable } from "drizzl
 import {
 	agents as pgAgents,
 	burrows as pgBurrows,
+	conversations as pgConversations,
 	events as pgEvents,
+	messages as pgMessages,
 	planRunChildren as pgPlanRunChildren,
 	planRuns as pgPlanRuns,
 	plots as pgPlots,
@@ -29,7 +31,9 @@ import {
 import {
 	agents as sqliteAgents,
 	burrows as sqliteBurrows,
+	conversations as sqliteConversations,
 	events as sqliteEvents,
+	messages as sqliteMessages,
 	planRunChildren as sqlitePlanRunChildren,
 	planRuns as sqlitePlanRuns,
 	plots as sqlitePlots,
@@ -50,6 +54,8 @@ const SQLITE_TABLES: Record<string, SQLiteTable> = {
 	planRuns: sqlitePlanRuns,
 	planRunChildren: sqlitePlanRunChildren,
 	plots: sqlitePlots,
+	conversations: sqliteConversations,
+	messages: sqliteMessages,
 };
 
 const PG_TABLES: Record<string, PgTable> = {
@@ -63,6 +69,8 @@ const PG_TABLES: Record<string, PgTable> = {
 	planRuns: pgPlanRuns,
 	planRunChildren: pgPlanRunChildren,
 	plots: pgPlots,
+	conversations: pgConversations,
+	messages: pgMessages,
 };
 
 type AnyTable = keyof typeof SQLITE_TABLES;
@@ -204,6 +212,8 @@ const TABLE_KEYS: AnyTable[] = [
 	"planRuns",
 	"planRunChildren",
 	"plots",
+	"conversations",
+	"messages",
 ];
 
 describe("schema dialect parity (sqlite ↔ postgres)", () => {
