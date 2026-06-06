@@ -1,7 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { conversationsApi, plotsApi } from "@/api/client.ts";
+import { conversationsApi, plotsApi, runsApi } from "@/api/client.ts";
+import { RUN_TERMINAL_STATES } from "@/api/types.ts";
 import type { ConversationRow, EditPlotIntentInput, PlotEnvelope, PlotStatus } from "@/api/types.ts";
 import { Chat } from "@/components/Chat.tsx";
 import { PlotStatusBadge } from "@/components/PlotStatusBadge.tsx";
@@ -11,6 +12,7 @@ import { PageHeader } from "@/components/ui/page-header.tsx";
 import { Textarea } from "@/components/ui/textarea.tsx";
 import { formatError } from "@/lib/format-error.ts";
 import { DispatchPlanButton } from "./conversation-detail/dispatch-plan-dialog.tsx";
+import { RewakeButton } from "./conversation-detail/rewake-button.tsx";
 import { SendOffButton } from "./conversation-detail/send-off-button.tsx";
 
 /**
@@ -48,6 +50,21 @@ export function ConversationDetailPage(): JSX.Element {
 	const row = conversation.data?.conversation;
 	const isActive = row?.status === "active";
 
+	const anchoringRunId = row?.anchoringRunId;
+	const anchoringRun = useQuery({
+		queryKey: ["run", anchoringRunId],
+		queryFn: ({ signal }) => runsApi.get(anchoringRunId ?? "", signal),
+		enabled: anchoringRunId !== null && anchoringRunId !== undefined && anchoringRunId !== "",
+		refetchInterval: (query) => {
+			const data = query.state.data;
+			if (!data) return 5000;
+			return RUN_TERMINAL_STATES.includes(data.state) ? false : 3000;
+		},
+	});
+
+	const isAnchoringRunTerminal =
+		anchoringRun.data !== undefined && RUN_TERMINAL_STATES.includes(anchoringRun.data.state);
+
 	return (
 		<div className="space-y-6">
 			<PageHeader
@@ -57,6 +74,12 @@ export function ConversationDetailPage(): JSX.Element {
 				}
 				actions={
 					<div className="flex items-center gap-2">
+						{row !== undefined ? (
+							<RewakeButton
+								conversation={row}
+								isAnchoringRunTerminal={isAnchoringRunTerminal}
+							/>
+						) : null}
 						{row?.plannerRunId != null && row.plannerRunId !== "" && row.projectId !== null ? (
 							<DispatchPlanButton
 								projectId={row.projectId}
@@ -95,13 +118,16 @@ export function ConversationDetailPage(): JSX.Element {
 								</p>
 							) : (
 								<Chat
+									key={row.anchoringRunId}
 									runId={row.anchoringRunId}
-									follow={isActive}
-									disabled={!isActive}
+									follow={isActive && !isAnchoringRunTerminal}
+									disabled={!isActive || isAnchoringRunTerminal}
 									placeholder={
-										isActive
-											? "Steer the leveret…"
-											: "This conversation is closed."
+										!isActive
+											? "This conversation is closed."
+											: isAnchoringRunTerminal
+												? "Run has completed. Re-wake the conversation to resume chatting."
+												: "Steer the leveret…"
 									}
 									sendMessage={async (message) => {
 										await conversationsApi.postMessage(id, { message });
