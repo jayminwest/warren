@@ -332,6 +332,62 @@ describe("spawnRun: burrow_config + runtime + metadata", () => {
 	});
 });
 
+describe("spawnRun: sandbox env (warren-b893)", () => {
+	let db: WarrenDb;
+	let repos: Repos;
+
+	beforeEach(async () => {
+		({ db, repos } = await setupRepos());
+	});
+	afterEach(async () => {
+		await db.close();
+	});
+
+	test("always injects BUN_INSTALL_CACHE_DIR into the burrow env (warren-b893)", async () => {
+		// Bun's default cache dir is <cwd>/.bun/install/cache; inside the
+		// workspace that means agents doing `git add .` sweep ~5k cache files
+		// into their commits. Pinning BUN_INSTALL_CACHE_DIR to /tmp keeps it
+		// off the git index for every project, every agent.
+		const { client, calls } = makeBurrowClient();
+		await spawnRun({
+			repos,
+			burrowClientPool: await makePool(repos, client),
+			agentName: "refactor-bot",
+			projectId: "prj_xxxxxxxxxxxx",
+			prompt: "fix it",
+		});
+		const up = calls.find((c) => c.path === "/burrows");
+		expect(up).toBeDefined();
+		const env = (up?.body as { env?: Record<string, string> }).env;
+		expect(env).toBeDefined();
+		expect(env?.BUN_INSTALL_CACHE_DIR).toBe("/tmp/bun-install-cache");
+	});
+
+	test("BUN_INSTALL_CACHE_DIR is still set when plot env vars are also injected (warren-b893)", async () => {
+		await repos.projects.create({
+			id: "prj_withplot",
+			gitUrl: "https://github.com/x/z.git",
+			localPath: "/data/projects/x/z",
+			defaultBranch: "main",
+			hasPlot: true,
+		});
+		const { client, calls } = makeBurrowClient();
+		await spawnRun({
+			repos,
+			burrowClientPool: await makePool(repos, client),
+			agentName: "refactor-bot",
+			projectId: "prj_withplot",
+			plotId: "plt_001",
+			prompt: "fix it",
+		});
+		const up = calls.find((c) => c.path === "/burrows");
+		const env = (up?.body as { env?: Record<string, string> }).env;
+		expect(env?.BUN_INSTALL_CACHE_DIR).toBe("/tmp/bun-install-cache");
+		expect(env?.PLOT_ID).toBe("plt_001");
+		expect(env?.PLOT_ACTOR).toMatch(/^agent:refactor-bot:run_/);
+	});
+});
+
 describe("spawnRun: rollback", () => {
 	let db: WarrenDb;
 	let repos: Repos;

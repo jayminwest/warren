@@ -76,9 +76,12 @@ describe("spawnRun: plotId gating + PLOT env injection (warren-a8c3 / warren-e26
 		const up = calls.find((c) => c.method === "POST" && c.path === "/burrows");
 		expect(up).toBeDefined();
 		const env = (up?.body as { env?: Record<string, string> }).env;
-		expect(env).toEqual({
+		// BUN_INSTALL_CACHE_DIR is always injected (warren-b893); check the
+		// Plot-specific vars are also present.
+		expect(env).toMatchObject({
 			PLOT_ID: "plot-2047abc1",
 			PLOT_ACTOR: `agent:refactor-bot:${result.run.id}`,
+			BUN_INSTALL_CACHE_DIR: "/tmp/bun-install-cache",
 		});
 	});
 
@@ -94,7 +97,9 @@ describe("spawnRun: plotId gating + PLOT env injection (warren-a8c3 / warren-e26
 
 		const up = calls.find((c) => c.method === "POST" && c.path === "/burrows");
 		expect(up).toBeDefined();
-		expect((up?.body as { env?: unknown }).env).toBeUndefined();
+		// env is always set (at minimum BUN_INSTALL_CACHE_DIR — warren-b893).
+		const env = (up?.body as { env?: Record<string, string> }).env;
+		expect(env).toEqual({ BUN_INSTALL_CACHE_DIR: "/tmp/bun-install-cache" });
 	});
 });
 

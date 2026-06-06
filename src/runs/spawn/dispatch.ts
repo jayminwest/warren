@@ -363,7 +363,7 @@ async function provisionBurrow(
 	agentId: string,
 	seedFiles: readonly HttpWorkspaceFile[],
 	branch: string,
-	env: Record<string, string> | null,
+	env: Record<string, string>,
 ): Promise<Burrow> {
 	// Caller forwards the burrow *runtime id* (`readRuntimeId(agent)`), not
 	// the canopy agent name. Burrow's `up` resolves toolchain mounts by
@@ -392,25 +392,30 @@ async function provisionBurrow(
 			branch,
 			...(network !== undefined ? { network } : {}),
 			...(seedFiles.length > 0 ? { seed: { files: seedFiles } } : {}),
-			...(env !== null ? { env } : {}),
+			env,
 		}),
 	);
 }
 
-/** Merge Plot identity vars (warren-e26f) + quality-gate (warren-5797) into the burrow env. */
+// warren-b893: route Bun cache outside the workspace so `git add .` never sweeps it.
+const BUN_INSTALL_CACHE_DIR = "/tmp/bun-install-cache";
+/** Merge Plot env vars (warren-e26f), quality-gate (warren-5797), and Bun cache relocation
+ * (warren-b893) into the sandbox env. Always returns a non-empty object. */
 function composeRunEnv(
 	plotId: string | null,
 	agentName: string,
 	runId: string,
 	qualityGate: string | undefined,
-): Record<string, string> | null {
-	const env: Record<string, string> = {};
+): Record<string, string> {
+	const env: Record<string, string> = {
+		BUN_INSTALL_CACHE_DIR,
+	};
 	if (plotId !== null) {
 		env.PLOT_ID = plotId;
 		env.PLOT_ACTOR = `agent:${agentName}:${runId}`;
 	}
 	if (qualityGate !== undefined) env.WARREN_QUALITY_GATE = qualityGate;
-	return Object.keys(env).length > 0 ? env : null;
+	return env;
 }
 
 async function dispatchRun(
