@@ -7,6 +7,59 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.2] — 2026-06-07
+
+Behavior analytics improvements, plan-run resilience, reap completeness
+for conversation runs, and several reliability fixes across the GC,
+PR-open retry, workspace prep, and seed-close paths.
+
+### Added
+
+- **Steering/pause signals in behavior analytics** — `GET /analytics/behavior`
+  now surfaces steering and pause signal counts alongside the existing
+  interrupt/retry breakdown, retiring the dead `dea` bucket that
+  accumulated uncategorised events.
+- **Cancelled count on RunGroupBucket** — `buildRunMetrics` exposes a
+  per-group `cancelled` field so the Insights panel no longer reverses-
+  engineers the number from total minus other states.
+- **Conversation idle-timeout coordinator** — the boot-worker that fires
+  the `conversation.idleTimeoutMs` watchdog is now wired end-to-end
+  (warren-005d); previously the config knob existed but the coordinator
+  was never started.
+
+### Fixed
+
+- **Reap: never_started conversation runs** — reap now executes the full
+  plot/mulch pipeline and branch push for `never_started` conversation
+  runs instead of silently skipping them, closing a hole where those
+  runs left orphaned workspace state.
+- **plan-run: best-effort child failures no longer halt the plan** —
+  a child run that declares itself best-effort and fails no longer
+  propagates a hard stop to the parent plan-run coordinator.
+- **PR-open: retry transient GitHub 422s** — non-'already exists'
+  GitHub 422 responses (rate-limit / transient conflicts) are now
+  retried with backoff instead of being treated as permanent failures.
+- **workspace_gc: stranded burrow rows no longer skipped** — the GC
+  cycle now properly re-enqueues stranded burrow workspace rows that
+  previously accumulated (58/59 failure pattern) instead of being
+  passed over on every cycle.
+- **Workspace prep: git hooks installed before agent handoff** — project
+  git hooks (`.warren/hooks/`) are now installed into the workspace
+  before the agent takes control, preventing hook-dependent workflows
+  from silently failing on first run.
+- **Sandbox: Bun install cache relocated outside workspace** — the Bun
+  package cache is now placed outside the agent workspace directory so
+  agent `git status` / `git clean` commands no longer see cache
+  entries as untracked files.
+- **Agents: seed closed reliably on stop** — agents that were prompted
+  to close their seeds on termination did so unreliably; the close
+  path is now robust to races between the stop signal and the in-
+  flight seed write.
+
+### Changed
+
+- Bumped `@os-eco/burrow-cli` 0.3.11 → 0.3.12 (pi-chat runtime fixes).
+
 ## [0.8.1] — 2026-06-06
 
 Token analytics end-to-end (pl-d1a2), the Leveret conversation loop
