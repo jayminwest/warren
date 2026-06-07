@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.4] — 2026-06-07
+
+Leveret UI fix: surface anchoring-run failures on the conversation
+surface so persisted transcripts render regardless of run state.
+
+### Fixed
+
+- **Persisted transcript now renders on the conversation surface**
+  regardless of run state — `Chat` accepts the already-fetched persisted
+  transcript and merges it with the live stream, so messages show even
+  when the live stream is empty.
+- **Terminal-failed anchoring runs surface a banner** in
+  `ConversationDetail` instead of leaving the surface blank.
+
+### Added
+
+- **`Chat` regression test** covering transcript render with an empty
+  live stream.
+
 ## [0.8.3] — 2026-06-07
 
 Documentation and dead-code cleanup from the nightwatch patrol, plus a
