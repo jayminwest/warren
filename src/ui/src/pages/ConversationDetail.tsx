@@ -120,6 +120,7 @@ export function ConversationDetailPage(): JSX.Element {
 								<Chat
 									key={row.anchoringRunId}
 									runId={row.anchoringRunId}
+									transcript={conversation.data?.messages}
 									follow={isActive && !isAnchoringRunTerminal}
 									disabled={!isActive || isAnchoringRunTerminal}
 									placeholder={
