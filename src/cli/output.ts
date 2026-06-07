@@ -50,9 +50,9 @@ export const PROCESS_STDIO: Stdio = {
 
 /**
  * Default `Bun.spawn` adaptor matching the SpawnFn shape the registry +
- * projects modules expect. Identical to `defaultSpawn` in src/server/main/utils.ts; the
- * duplication is deliberate — handlers and CLI are independent surfaces and
- * neither should import the other.
+ * projects modules expect. One of three identical copies, alongside
+ * `defaultSpawn` in src/server/main/utils.ts and src/server/handlers/index.ts;
+ * the duplication is deliberate so neither surface imports the other.
  */
 export const defaultSpawn: CliSpawn = async (cmd, opts) => {
 	const proc = Bun.spawn({

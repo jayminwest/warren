@@ -10,11 +10,10 @@ import type { SpawnFn, SpawnOptions, SpawnResult } from "../../projects/clone.ts
 import type { EnvLike } from "../config.ts";
 
 /**
- * Production `Bun.spawn` adaptor matching the SpawnFn shape the
- * registry/projects modules and the Phase-13 `/readyz` probes consume.
- * Identical to the CLI's `defaultSpawn` (output.ts) and the local
- * `defaultSpawn` in handlers/index.ts; the duplication is deliberate so
- * neither surface imports the other.
+ * Production `Bun.spawn` adaptor matching the SpawnFn shape the registry +
+ * projects modules expect. One of three identical copies, alongside
+ * `defaultSpawn` in src/cli/output.ts and src/server/handlers/index.ts;
+ * the duplication is deliberate so neither surface imports the other.
  */
 export const defaultSpawn: SpawnFn = async (
 	cmd: readonly string[],

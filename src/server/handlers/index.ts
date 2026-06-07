@@ -101,10 +101,10 @@ import {
 import { drainWorkerHandler, listWorkersHandler } from "./workers.ts";
 
 /**
- * Run a command via `Bun.spawn` and return the SpawnResult shape the
- * registry/projects modules expect. Non-zero exit codes are surfaced to
- * the caller; transport-level failures (binary missing, timeout) bubble
- * as the underlying Error so the call-site error mapper can wrap them.
+ * Default `Bun.spawn` adaptor matching the SpawnFn shape the registry +
+ * projects modules expect. One of three identical copies, alongside
+ * `defaultSpawn` in src/cli/output.ts and src/server/main/utils.ts;
+ * the duplication is deliberate so neither surface imports the other.
  */
 export const defaultSpawn: SpawnFn = async (
 	cmd: readonly string[],
