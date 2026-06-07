@@ -14,6 +14,7 @@
 export { SeedNotFoundError, SeedsCliError } from "./errors.ts";
 export {
 	clearScheduledFor,
+	closeSeed,
 	listScheduledSeeds,
 	type SeedsCliDeps,
 	updateExtensions,

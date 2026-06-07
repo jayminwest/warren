@@ -3,6 +3,7 @@ import { NotFoundError } from "@os-eco/burrow-cli";
 import type { BurrowClient } from "../../burrow-client/client.ts";
 import { withTransportMapping } from "../../burrow-client/client.ts";
 import type { EventRow } from "../../db/schema.ts";
+import { closeSeed, type SeedsCliDeps } from "../../seeds-cli/index.ts";
 import type { ReapFs } from "./types.ts";
 import { splitLines } from "./util.ts";
 
@@ -182,4 +183,33 @@ export async function mirrorPlans(input: MirrorClosedSeedsInput): Promise<number
 	}
 
 	return added;
+}
+
+/* ----------------------------------------------------------------------- */
+/* Host-side seed-id close (warren-0d2d)                                   */
+/* ----------------------------------------------------------------------- */
+
+export interface CloseRunSeedIdInput {
+	readonly seedId: string;
+	readonly projectPath: string;
+	readonly seedsCli: SeedsCliDeps;
+	readonly emit: (kind: string, payload: unknown) => Promise<EventRow>;
+}
+
+/**
+ * Host-side safety net: close the dispatched run's associated seed after a
+ * successful reap. Runs *after* `mirrorSeeds` so any workspace-side close
+ * the agent performed is already reflected in the project clone.
+ *
+ * If the seed was already closed (agent closed it + mirrorSeeds picked it
+ * up), `sd close` is idempotent and exits 0 — the extra call is harmless.
+ * `stageSeedsForCommit` will pick up the updated issues.jsonl and author
+ * a `chore(warren): seeds state` commit on the branch so the close appears
+ * in git history whether the agent ran `sd close` or not.
+ */
+export async function closeRunSeedId(input: CloseRunSeedIdInput): Promise<boolean> {
+	const { seedId, projectPath, seedsCli, emit } = input;
+	await closeSeed(seedsCli, projectPath, seedId);
+	await emit("seeds.seed_id_closed", { id: seedId, mode: "host_side" });
+	return true;
 }

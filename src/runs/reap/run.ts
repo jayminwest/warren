@@ -9,7 +9,7 @@ import { mergeMulch } from "./mulch.ts";
 import { mergePlot } from "./plot-merge.ts";
 import { runPrOpen } from "./pr-open.ts";
 import { runPreviewAnnotate, runPreviewLaunch } from "./preview.ts";
-import { mirrorPlans, mirrorSeeds } from "./seeds.ts";
+import { closeRunSeedId, mirrorPlans, mirrorSeeds } from "./seeds.ts";
 import { stagePlotForCommit, stageSeedsForCommit } from "./stage.ts";
 import { inferFailureReason, isTerminal, transitionToTerminal } from "./state.ts";
 import type { ReapRunInput, ReapRunResult, ReapStep, ReapStepError } from "./types.ts";
@@ -74,6 +74,7 @@ export async function reapRun(input: ReapRunInput): Promise<ReapRunResult> {
 	let mulchAppended = 0;
 	let seedsClosed = 0;
 	let seedsCreated = 0;
+	let seedIdClosed = false;
 	let plotEventsAppended = 0;
 	let plotsUpdated = 0;
 	let plotEventsMirrored = 0;
@@ -221,6 +222,30 @@ export async function reapRun(input: ReapRunInput): Promise<ReapRunResult> {
 				workspacePlanIds = parsePlanIds(workspacePlansBody);
 			} catch {
 				// Non-fatal — detection failure degrades to no auto-dispatch.
+			}
+		}
+
+		// warren-0d2d: host-side safety net — close the run's associated seed
+		// after a successful reap even if the agent didn't call `sd close`.
+		// Runs after mirrorSeeds (workspace → project clone) so an agent-side
+		// close is already reflected; `sd close` is idempotent. Runs before
+		// stageSeedsForCommit so the updated issues.jsonl is picked up into
+		// the workspace commit and lands on origin via branch_push.
+		if (
+			input.outcome === "succeeded" &&
+			run.seedId !== null &&
+			project.hasSeeds &&
+			input.seedsCli !== undefined
+		) {
+			try {
+				seedIdClosed = await closeRunSeedId({
+					seedId: run.seedId,
+					projectPath: project.localPath,
+					seedsCli: input.seedsCli,
+					emit,
+				});
+			} catch (err) {
+				await fail("seed_id_close", err);
 			}
 		}
 
@@ -409,7 +434,7 @@ export async function reapRun(input: ReapRunInput): Promise<ReapRunResult> {
 		state: finalState,
 		failureReason,
 		mulch: { updated: mulchUpdated, skipped: mulchSkipped, appended: mulchAppended },
-		seeds: { closed: seedsClosed, created: seedsCreated, committed: seedsCommitted },
+		seeds: { closed: seedsClosed, created: seedsCreated, seedIdClosed, committed: seedsCommitted },
 		plot: {
 			eventsAppended: plotEventsAppended,
 			plotsUpdated,
@@ -452,6 +477,7 @@ export async function reapRun(input: ReapRunInput): Promise<ReapRunResult> {
 			mulchAppended,
 			seedsClosed,
 			seedsCreated,
+			seedIdClosed,
 			seedsCommitted,
 			plotEventsAppended,
 			plotsUpdated,
@@ -479,6 +505,7 @@ export async function reapRun(input: ReapRunInput): Promise<ReapRunResult> {
 		mulchAppended,
 		seedsClosed,
 		seedsCreated,
+		seedIdClosed,
 		plotEventsAppended,
 		plotsUpdated,
 		plotEventsMirrored,

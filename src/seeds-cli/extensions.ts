@@ -82,6 +82,28 @@ export async function listScheduledSeeds(
 }
 
 /**
+ * Close a seed via `sd close <seedId>`. Best-effort — a non-zero exit is
+ * wrapped in `SeedsCliError` so callers can surface it as a reap failure
+ * rather than a fatal error. Seeds treats closing an already-closed seed
+ * as a no-op success (idempotent).
+ */
+export async function closeSeed(
+	deps: SeedsCliDeps,
+	projectPath: string,
+	seedId: string,
+): Promise<void> {
+	const result = await deps.spawn([deps.sdBinary, "close", seedId], {
+		cwd: projectPath,
+		timeoutMs: deps.timeoutMs ?? DEFAULT_SD_TIMEOUT_MS,
+	});
+	if (result.exitCode !== 0) {
+		throw new SeedsCliError(
+			`sd close ${seedId} exited ${result.exitCode}: ${truncate(result.stderr || result.stdout)}`,
+		);
+	}
+}
+
+/**
  * Move `scheduledFor → lastScheduledRun` on a seed via the seeds CLI's
  * extension-merge surface. Seeds' shallow-merge semantics treat `null` as
  * a clear, so writing `{scheduledFor: null, lastScheduledRun: runId}` in

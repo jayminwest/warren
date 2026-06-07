@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import type { SeedsCliDeps } from "../../seeds-cli/index.ts";
 import { reapRun } from "./index.ts";
 import {
 	type Ctx,
@@ -283,6 +284,183 @@ describe("mirrorPlans (warren-d9a2)", () => {
 			expect(workspacePlans).toContain("pl-agent-created");
 		} finally {
 			await ctx.db.close();
+		}
+	});
+});
+
+/* ----------------------------------------------------------------------- */
+/* Host-side seed-id close (warren-0d2d)                                   */
+/* ----------------------------------------------------------------------- */
+
+/** Build a SeedsCliDeps stub whose `spawn` tracks calls and returns exit 0. */
+function fakeSeedsCli(opts: { exitCode?: number } = {}): {
+	seedsCli: SeedsCliDeps;
+	calls: Array<{ args: string[]; cwd: string }>;
+} {
+	const calls: Array<{ args: string[]; cwd: string }> = [];
+	const seedsCli: SeedsCliDeps = {
+		sdBinary: "sd",
+		spawn: async (args, spawnOpts) => {
+			calls.push({ args: args as string[], cwd: spawnOpts?.cwd ?? "" });
+			const exitCode = opts.exitCode ?? 0;
+			return { exitCode, stdout: "", stderr: exitCode !== 0 ? "error" : "" };
+		},
+	};
+	return { seedsCli, calls };
+}
+
+describe("closeRunSeedId (warren-0d2d)", () => {
+	/** Setup helper: project with hasSeeds=true + run with seedId. */
+	async function setupWithSeedId(seedId: string | null = "sd-target"): Promise<{
+		db: ReturnType<typeof openDatabase> extends Promise<infer T> ? T : never;
+		repos: Awaited<ReturnType<typeof setup>>["repos"];
+		runId: string;
+	}> {
+		const db = await openDatabase({ path: ":memory:" });
+		const repos = createRepos(db);
+		await repos.agents.upsert({
+			name: "refactor-bot",
+			renderedJson: { sections: { system: "x" } },
+		});
+		const project = await repos.projects.create({
+			gitUrl: "https://github.com/x/y.git",
+			localPath: "/data/projects/x/y",
+			defaultBranch: "main",
+			hasSeeds: true,
+		});
+		const run = await repos.runs.create({
+			agentName: "refactor-bot",
+			projectId: project.id,
+			prompt: "p",
+			renderedAgentJson: {},
+			trigger: "manual",
+			burrowId: "bur_aaaaaaaaaaaa",
+			burrowRunId: "run_zzzzzzzzzzzz",
+			...(seedId !== null ? { seedId } : {}),
+		});
+		await repos.burrows.create({ id: "bur_aaaaaaaaaaaa", workerId: "local" });
+		await repos.runs.markRunning(run.id);
+		return { db, repos, runId: run.id };
+	}
+
+	test("closes the run seedId via sd cli when outcome=succeeded and run has a seedId", async () => {
+		const { db, repos, runId } = await setupWithSeedId("sd-target");
+		try {
+			const f = fakeFs({
+				"/data/projects/x/y/.seeds/issues.jsonl":
+					'{"id":"sd-target","status":"open","updatedAt":"2026-05-08T19:00:00Z","title":"x"}\n',
+			});
+			const { seedsCli, calls } = fakeSeedsCli();
+
+			const result = await reapRun({
+				runId,
+				outcome: "succeeded",
+				repos,
+				burrowClientPool: await makePool(fakeBurrowClient(makeBurrow()), repos),
+				fs: f.fs,
+				exec: fakeExec().exec,
+				seedsCli,
+			});
+
+			expect(result.seedIdClosed).toBe(true);
+			const closeCall = calls.find((c) => c.args.includes("close") && c.args.includes("sd-target"));
+			expect(closeCall).toBeDefined();
+			expect(closeCall?.cwd).toBe("/data/projects/x/y");
+			const events = await repos.events.listByRun(runId);
+			expect(events.find((ev) => ev.kind === "seeds.seed_id_closed")).toBeDefined();
+		} finally {
+			await db.close();
+		}
+	});
+
+	test("skips close when run has no seedId", async () => {
+		const { db, repos, runId } = await setupWithSeedId(null);
+		try {
+			const f = fakeFs({ "/data/projects/x/y/.seeds/issues.jsonl": "" });
+			const { seedsCli, calls } = fakeSeedsCli();
+
+			const result = await reapRun({
+				runId,
+				outcome: "succeeded",
+				repos,
+				burrowClientPool: await makePool(fakeBurrowClient(makeBurrow()), repos),
+				fs: f.fs,
+				exec: fakeExec().exec,
+				seedsCli,
+			});
+
+			expect(result.seedIdClosed).toBe(false);
+			expect(calls.some((c) => c.args.includes("close"))).toBe(false);
+		} finally {
+			await db.close();
+		}
+	});
+
+	test("skips close when outcome is failed", async () => {
+		const { db, repos, runId } = await setupWithSeedId("sd-target");
+		try {
+			const f = fakeFs({ "/data/projects/x/y/.seeds/issues.jsonl": "" });
+			const { seedsCli, calls } = fakeSeedsCli();
+
+			const result = await reapRun({
+				runId,
+				outcome: "failed",
+				repos,
+				burrowClientPool: await makePool(fakeBurrowClient(makeBurrow()), repos),
+				fs: f.fs,
+				exec: fakeExec().exec,
+				seedsCli,
+			});
+
+			expect(result.seedIdClosed).toBe(false);
+			expect(calls.some((c) => c.args.includes("close"))).toBe(false);
+		} finally {
+			await db.close();
+		}
+	});
+
+	test("surfaces sd close failure as reap_failed step=seed_id_close (best-effort)", async () => {
+		const { db, repos, runId } = await setupWithSeedId("sd-target");
+		try {
+			const f = fakeFs({ "/data/projects/x/y/.seeds/issues.jsonl": "" });
+			const { seedsCli } = fakeSeedsCli({ exitCode: 1 });
+
+			const result = await reapRun({
+				runId,
+				outcome: "succeeded",
+				repos,
+				burrowClientPool: await makePool(fakeBurrowClient(makeBurrow()), repos),
+				fs: f.fs,
+				exec: fakeExec().exec,
+				seedsCli,
+			});
+
+			expect(result.seedIdClosed).toBe(false);
+			expect(result.errors.map((e) => e.step)).toContain("seed_id_close");
+			expect(result.state).toBe("succeeded");
+		} finally {
+			await db.close();
+		}
+	});
+
+	test("skips close when seedsCli is not provided", async () => {
+		const { db, repos, runId } = await setupWithSeedId("sd-target");
+		try {
+			const f = fakeFs({ "/data/projects/x/y/.seeds/issues.jsonl": "" });
+
+			const result = await reapRun({
+				runId,
+				outcome: "succeeded",
+				repos,
+				burrowClientPool: await makePool(fakeBurrowClient(makeBurrow()), repos),
+				fs: f.fs,
+				exec: fakeExec().exec,
+			});
+
+			expect(result.seedIdClosed).toBe(false);
+			expect(result.errors.map((e) => e.step)).not.toContain("seed_id_close");
+		} finally {
+			await db.close();
 		}
 	});
 });

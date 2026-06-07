@@ -23,6 +23,7 @@ export function makeReapRunResult(overrides: Partial<ReapRunResult> = {}): ReapR
 		mulchAppended: 0,
 		seedsClosed: 0,
 		seedsCreated: 0,
+		seedIdClosed: false,
 		plotEventsAppended: 0,
 		plotsUpdated: 0,
 		plotEventsMirrored: 0,

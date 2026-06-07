@@ -50,6 +50,7 @@ function fakeReapResult(state: ReapRunResult["state"]): ReapRunResult {
 		mulchAppended: 0,
 		seedsClosed: 0,
 		seedsCreated: 0,
+		seedIdClosed: false,
 		plotEventsAppended: 0,
 		plotsUpdated: 0,
 		plotEventsMirrored: 0,

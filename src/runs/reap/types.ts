@@ -149,6 +149,7 @@ export type ReapStep =
 	| "mulch_merge"
 	| "seeds_close"
 	| "plans_mirror"
+	| "seed_id_close"
 	| "seeds_commit"
 	| "plot_merge"
 	| "plot_commit"
@@ -176,6 +177,14 @@ export interface ReapRunResult {
 	readonly mulchAppended: number;
 	readonly seedsClosed: number;
 	readonly seedsCreated: number;
+	/**
+	 * True when reap successfully closed the dispatched run's seed (warren-0d2d).
+	 * Requires `run.seedId` to be non-null, `outcome === "succeeded"`,
+	 * `project.hasSeeds === true`, and `seedsCli` to be configured. False when
+	 * the step was skipped (any gate missing) or when `sd close` failed
+	 * (failure surfaces as `reap_failed` step=`seed_id_close`).
+	 */
+	readonly seedIdClosed: boolean;
 	/**
 	 * Plot event log lines appended to the project's `.plot/plot-*.events.jsonl`
 	 * files after merging the burrow workspace's deltas (warren-7e0f /
