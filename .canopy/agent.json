@@ -12,7 +12,7 @@
     "tags": [
       "agent"
     ],
-    "model": "claude-sonnet-4-6",
+    "model": "claude-opus-4-8",
     "source": "builtin",
     "provider": "anthropic"
   }
