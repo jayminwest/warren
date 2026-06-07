@@ -25,9 +25,11 @@ export const PREVIEW_PATH_PREFIX = "/p";
  * based asset routing can skip "looks like a warren API call" without
  * pulling the whole handlers module into the preview/ tree. The
  * `warren-api-prefixes-stay-in-sync` test in `route-match.test.ts`
- * asserts parity so a future API surface addition surfaces here too.
+ * asserts set-equality in both directions (warren-abaa) so a future
+ * API surface addition *or* a stale extra left behind after a prefix
+ * removal both surface here as a failed assertion.
  */
-const WARREN_API_PATH_PREFIXES: readonly string[] = [
+export const WARREN_API_PATH_PREFIXES: readonly string[] = [
 	"/analytics",
 	"/conversations",
 	"/runs",

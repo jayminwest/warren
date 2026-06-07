@@ -4,6 +4,7 @@ import {
 	parsePreviewPathPrefix,
 	parseRunIdFromHost,
 	parseRunIdFromReferer,
+	WARREN_API_PATH_PREFIXES,
 } from "./route-match.ts";
 
 const HOST = "preview.warren.example.com";
@@ -129,6 +130,18 @@ describe("warren-api-prefixes-stay-in-sync (warren-63e1)", () => {
 		for (const p of observedPrefixes) {
 			expect(isWarrenApiPath(p)).toBe(true);
 		}
+		// Reverse direction (warren-abaa): every prefix in our local list
+		// must still be a real handler surface. This catches a *stale
+		// extra* — a prefix removed from handlers/index.ts but left behind
+		// here — which the forward check above can't see. Without it, the
+		// duplicated list silently drifts to over-route paths that no
+		// longer exist as API surfaces.
+		for (const local of WARREN_API_PATH_PREFIXES) {
+			expect(observedPrefixes.has(local)).toBe(true);
+		}
+		// Belt-and-suspenders: the two sets are exactly equal, so neither
+		// direction can drift without this suite failing.
+		expect([...WARREN_API_PATH_PREFIXES].sort()).toEqual([...observedPrefixes].sort());
 	});
 });
 
