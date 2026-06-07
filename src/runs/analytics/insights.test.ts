@@ -58,6 +58,7 @@ function agent(key: string, succeeded: number, failed: number, cancelled = 0): R
 		runs: terminal,
 		succeeded,
 		failed,
+		cancelled,
 		successRate: terminal === 0 ? null : succeeded / terminal,
 		contextTokensTotal: 0,
 		avgContextTokens: null,
@@ -74,6 +75,7 @@ function model(key: string, costUsd: number, priced: number): RunGroupBucket {
 		runs: priced,
 		succeeded: priced,
 		failed: 0,
+		cancelled: 0,
 		successRate: priced === 0 ? null : 1,
 		contextTokensTotal: 0,
 		avgContextTokens: null,
@@ -159,6 +161,17 @@ describe("buildInsights", () => {
 		expect(i.value).toBe(0.1);
 		// Count must match the denominator behind the rate, not succeeded + failed (5).
 		expect(i.detail).toContain("10% of 10 terminal run(s)");
+	});
+
+	test("counts cancelled runs in terminal denominator when successRate is 0", () => {
+		// Bug: old code fell back to succeeded+failed (1) when successRate===0,
+		// so 5 cancelled runs were invisible and terminalRuns()=1 < MIN_AGENT_TERMINAL_RUNS.
+		// Fixed: use g.succeeded + g.failed + g.cancelled directly.
+		const metrics = { ...emptyMetrics(), byAgent: [agent("worst", 0, 1, 5)] };
+		const i = find(buildInsights({ metrics, mining: emptyMining() }), "worst-success-agent");
+		expect(i.severity).toBe("critical");
+		expect(i.subject).toBe("worst");
+		expect(i.detail).toContain("0% of 6 terminal run(s)");
 	});
 
 	test("ignores agents below the minimum terminal-run sample", () => {

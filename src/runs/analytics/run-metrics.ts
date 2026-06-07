@@ -111,6 +111,7 @@ export interface RunGroupBucket {
 	readonly runs: number;
 	readonly succeeded: number;
 	readonly failed: number;
+	readonly cancelled: number;
 	readonly successRate: number | null;
 	readonly contextTokensTotal: number;
 	readonly avgContextTokens: number | null;
@@ -355,6 +356,7 @@ function finalizeGroup(key: string, g: GroupAcc): RunGroupBucket {
 		runs: g.runs,
 		succeeded: g.succeeded,
 		failed: g.failed,
+		cancelled: g.cancelled,
 		successRate: terminal === 0 ? null : g.succeeded / terminal,
 		contextTokensTotal: g.contextTotal,
 		avgContextTokens: g.contextCount === 0 ? null : g.contextTotal / g.contextCount,

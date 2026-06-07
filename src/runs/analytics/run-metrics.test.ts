@@ -174,6 +174,20 @@ describe("buildRunMetrics", () => {
 		expect(beta?.successRate).toBeCloseTo(0);
 	});
 
+	it("populates cancelled on RunGroupBucket and includes it in the terminal denominator", () => {
+		const m = buildRunMetrics([
+			row({ runId: "a", agentName: "agent-x", state: "cancelled" }),
+			row({ runId: "b", agentName: "agent-x", state: "cancelled" }),
+			row({ runId: "c", agentName: "agent-x", state: "failed" }),
+		]);
+		const g = m.byAgent.find((g) => g.key === "agent-x");
+		expect(g?.cancelled).toBe(2);
+		expect(g?.failed).toBe(1);
+		expect(g?.succeeded).toBe(0);
+		// terminal = 3; successRate = 0/3 = 0
+		expect(g?.successRate).toBe(0);
+	});
+
 	it("folds null model/provider into NONE_KEY", () => {
 		const m = buildRunMetrics([
 			row({ runId: "a", model: "sonnet", provider: "anthropic", tokensInput: 10 }),

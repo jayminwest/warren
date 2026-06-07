@@ -147,16 +147,9 @@ function highestContextSeed(metrics: RunMetrics): Insight | null {
 	};
 }
 
-/**
- * Terminal-run count consistent with `RunGroupBucket.successRate`, which is
- * `succeeded / (succeeded + failed + cancelled)`. The bucket does not expose
- * `cancelled`, so recover the denominator from the reported rate when it is
- * positive; fall back to `succeeded + failed` only when the rate is 0 (where
- * `succeeded` is 0 and the rate carries no denominator information).
- */
+/** Terminal-run count: succeeded + failed + cancelled. */
 function terminalRuns(g: RunGroupBucket): number {
-	if (g.successRate !== null && g.successRate > 0) return Math.round(g.succeeded / g.successRate);
-	return g.succeeded + g.failed;
+	return g.succeeded + g.failed + g.cancelled;
 }
 
 function worstSuccessAgent(metrics: RunMetrics): Insight | null {
