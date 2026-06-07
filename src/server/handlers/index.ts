@@ -403,7 +403,7 @@ export const API_PREFIXES: readonly string[] = [
 
 /**
  * True iff `pathname` is one of the API surfaces above. Cheap prefix
- * scan — five entries, no allocations on the hot path.
+ * scan — fourteen entries, no allocations on the hot path.
  */
 export function isApiPath(pathname: string): boolean {
 	for (const prefix of API_PREFIXES) {
