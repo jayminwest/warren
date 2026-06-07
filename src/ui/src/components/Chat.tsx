@@ -34,31 +34,16 @@
 
 import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { runsApi } from "@/api/client.ts";
-import type { MessageRow, RunEvent } from "@/api/types.ts";
+import type { MessageRow } from "@/api/types.ts";
+import {
+	buildChatMessages,
+	type ChatMessage,
+} from "@/components/chat-messages.ts";
 import { Button } from "@/components/ui/button.tsx";
 import { Textarea } from "@/components/ui/textarea.tsx";
 import { useEventStream } from "@/hooks/useEventStream.ts";
 import { formatError } from "@/lib/format-error.ts";
 import { cn, formatTimestamp } from "@/lib/utils.ts";
-
-/** Event kinds the chat surface materializes into bubbles. */
-const USER_KIND = "user_message";
-const AGENT_KIND = "agent_message";
-
-/** Bubble payload shape — matches `appendUserMessage`/`appendAgentMessage`. */
-interface MessagePayload {
-	actor?: string;
-	content?: string;
-}
-
-export interface ChatMessage {
-	readonly id: number | string;
-	readonly seq: number;
-	readonly kind: "user" | "agent";
-	readonly actor: string;
-	readonly content: string;
-	readonly ts: string;
-}
 
 export interface ChatProps {
 	/**
@@ -110,46 +95,6 @@ export interface ChatProps {
 	readonly className?: string;
 }
 
-/** Map a persisted transcript row to a chat bubble, or null to skip it. */
-function transcriptRowToMessage(row: MessageRow): ChatMessage | null {
-	let kind: ChatMessage["kind"];
-	if (row.role === "user") kind = "user";
-	else if (row.role === "assistant") kind = "agent";
-	else return null; // system / tool rows are not rendered as bubbles.
-	return {
-		id: row.id,
-		seq: row.seq,
-		kind,
-		actor: row.role,
-		content: row.content,
-		ts: row.createdAt,
-	};
-}
-
-/** Stable dedupe key for a chat bubble — (kind, content). */
-function messageDedupeKey(m: ChatMessage): string {
-	return `${m.kind}\u0000${m.content}`;
-}
-
-/** Extract the chat-message digest from a streamed RunEvent. */
-function toMessage(evt: RunEvent): ChatMessage | null {
-	if (evt.kind !== USER_KIND && evt.kind !== AGENT_KIND) return null;
-	const payload =
-		evt.payload !== null && typeof evt.payload === "object"
-			? (evt.payload as MessagePayload)
-			: {};
-	const content = typeof payload.content === "string" ? payload.content : "";
-	const actor = typeof payload.actor === "string" ? payload.actor : "unknown";
-	return {
-		id: evt.id,
-		seq: evt.seq,
-		kind: evt.kind === USER_KIND ? "user" : "agent",
-		actor,
-		content,
-		ts: evt.ts,
-	};
-}
-
 export function Chat({
 	runId,
 	follow = true,
@@ -162,33 +107,10 @@ export function Chat({
 	className,
 }: ChatProps): JSX.Element {
 	const { events, status, error } = useEventStream(runId, follow);
-	const streamMessages = useMemo(
-		() =>
-			events
-				.map(toMessage)
-				.filter((m): m is ChatMessage => m !== null)
-				.sort((a, b) => a.seq - b.seq),
-		[events],
+	const messages = useMemo(
+		() => buildChatMessages(transcript, events),
+		[transcript, events],
 	);
-	// Merge the persisted transcript (history) with the live stream,
-	// deduping by (kind, content) so a turn present in both surfaces is
-	// rendered once. The transcript renders first (it is the persisted
-	// history); stream messages not already in the transcript follow.
-	const messages = useMemo(() => {
-		const transcriptMessages = (transcript ?? [])
-			.map(transcriptRowToMessage)
-			.filter((m): m is ChatMessage => m !== null)
-			.sort((a, b) => a.seq - b.seq);
-		const seen = new Set(transcriptMessages.map(messageDedupeKey));
-		const merged = [...transcriptMessages];
-		for (const m of streamMessages) {
-			const key = messageDedupeKey(m);
-			if (seen.has(key)) continue;
-			seen.add(key);
-			merged.push(m);
-		}
-		return merged;
-	}, [transcript, streamMessages]);
 
 	const [draft, setDraft] = useState("");
 	const [sending, setSending] = useState(false);
