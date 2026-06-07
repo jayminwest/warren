@@ -235,7 +235,7 @@ describe("runWorkspaceGcTick", () => {
 				},
 				logger: {
 					info: (obj) => {
-						logs.push((obj as { msg?: string })["msg"] ?? JSON.stringify(obj));
+						logs.push((obj as { msg?: string }).msg ?? JSON.stringify(obj));
 					},
 					warn: () => {},
 					error: () => {},
