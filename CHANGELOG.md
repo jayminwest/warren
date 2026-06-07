@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.3] — 2026-06-07
+
+Documentation and dead-code cleanup from the nightwatch patrol, plus a
+tightened API-prefix sync test.
+
+### Fixed
+
+- **Stale `/brainstorm` prefix removed** from the preview proxy mirror
+  list, which no longer matched a live route.
+- **`isApiPath` doc comment count drift** corrected (the comment claimed
+  "five" prefixes but the list had since changed).
+- **`defaultSpawn` cross-reference comments harmonized** across the three
+  call sites that referenced each other.
+- **Biome `useLiteralKeys` info** resolved in `gc.test.ts`.
+
+### Changed
+
+- **`warren-api-prefixes-stay-in-sync` test tightened** to also catch
+  stale extras in the mirror list (reverse-direction assertion).
+
 ## [0.8.2] — 2026-06-07
 
 Behavior analytics improvements, plan-run resilience, reap completeness
