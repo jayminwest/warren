@@ -1,6 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import type { CommandMining, CommandStat } from "./command-mining.ts";
-import { buildInsights, type Insight, type InsightKind, type SteeringSignals } from "./insights.ts";
+import {
+	buildInsights,
+	buildSteeringSignals,
+	type Insight,
+	type InsightKind,
+	type SteeringEventRow,
+	type SteeringSignals,
+} from "./insights.ts";
 import type { RunGroupBucket, RunMetrics, SeedContextBucket } from "./run-metrics.ts";
 
 const ZERO_TOKENS = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 };
@@ -297,7 +304,95 @@ describe("buildInsights", () => {
 		expect(kinds(insights)).not.toContain("steering-anomaly");
 		expect(kinds(insights)).not.toContain("pause-anomaly");
 	});
+});
 
+describe("buildSteeringSignals", () => {
+	function row(runId: string, kind: string): SteeringEventRow {
+		return { runId, kind };
+	}
+
+	test("returns zeroed signals for an empty event list", () => {
+		const s = buildSteeringSignals([], 5);
+		expect(s).toEqual({
+			totalRuns: 5,
+			runsSteered: 0,
+			steeringMessages: 0,
+			runsPaused: 0,
+			pauseTimeouts: 0,
+		});
+	});
+
+	test("counts unique runs steered and total steer.sent messages", () => {
+		const rows: SteeringEventRow[] = [
+			row("run-1", "steer.sent"),
+			row("run-1", "steer.sent"),
+			row("run-2", "steer.sent"),
+		];
+		const s = buildSteeringSignals(rows, 10);
+		expect(s.runsSteered).toBe(2);
+		expect(s.steeringMessages).toBe(3);
+	});
+
+	test("counts unique runs paused from pause.detected events", () => {
+		const rows: SteeringEventRow[] = [
+			row("run-1", "pause.detected"),
+			row("run-1", "pause.detected"), // paused twice
+			row("run-2", "pause.detected"),
+		];
+		const s = buildSteeringSignals(rows, 5);
+		expect(s.runsPaused).toBe(2);
+	});
+
+	test("counts pause.timed_out events as pauseTimeouts", () => {
+		const rows: SteeringEventRow[] = [
+			row("run-1", "pause.detected"),
+			row("run-1", "pause.timed_out"),
+			row("run-2", "pause.timed_out"),
+		];
+		const s = buildSteeringSignals(rows, 10);
+		expect(s.pauseTimeouts).toBe(2);
+		expect(s.runsPaused).toBe(1); // only run-1 has pause.detected
+	});
+
+	test("ignores unrecognised event kinds", () => {
+		const rows: SteeringEventRow[] = [
+			row("run-1", "tool_use"),
+			row("run-1", "state_change"),
+			row("run-2", "steer.sent"),
+		];
+		const s = buildSteeringSignals(rows, 10);
+		expect(s.runsSteered).toBe(1);
+		expect(s.steeringMessages).toBe(1);
+		expect(s.runsPaused).toBe(0);
+		expect(s.pauseTimeouts).toBe(0);
+	});
+
+	test("produces signals that trigger steering-anomaly in buildInsights", () => {
+		// 6 out of 10 runs steered → share = 0.6 ≥ 0.5 critical threshold
+		const rows: SteeringEventRow[] = Array.from({ length: 6 }, (_, i) =>
+			row(`run-${i}`, "steer.sent"),
+		);
+		const steering = buildSteeringSignals(rows, 10);
+		const insights = buildInsights({ metrics: emptyMetrics(), mining: emptyMining(), steering });
+		const anomaly = insights.find((i) => i.kind === "steering-anomaly");
+		expect(anomaly).toBeDefined();
+		expect(anomaly?.severity).toBe("critical");
+	});
+
+	test("produces signals that trigger pause-anomaly in buildInsights", () => {
+		const rows: SteeringEventRow[] = [
+			row("run-1", "pause.detected"),
+			row("run-1", "pause.timed_out"),
+		];
+		const steering = buildSteeringSignals(rows, 5);
+		const insights = buildInsights({ metrics: emptyMetrics(), mining: emptyMining(), steering });
+		const anomaly = insights.find((i) => i.kind === "pause-anomaly");
+		expect(anomaly).toBeDefined();
+		expect(anomaly?.severity).toBe("critical");
+	});
+});
+
+describe("buildInsights (sorting)", () => {
 	test("sorts critical insights ahead of warning and info", () => {
 		const metrics = {
 			...emptyMetrics(),

@@ -18,6 +18,7 @@ import {
 	buildCommandMining,
 	buildInsights,
 	buildRunMetrics,
+	buildSteeringSignals,
 	type DimensionTokenSeries,
 	hydrateRunsUsage,
 	type RunMetrics,
@@ -193,21 +194,23 @@ export function listRunAnalyticsHandler(deps: ServerDeps): RouteHandler {
  * itself stays on `/analytics/runs` — this endpoint returns just the behavior
  * layers (`mining` + `insights`) so the fast view can render independently.
  *
- * Note: `buildInsights` is called without a {@link SteeringSignals} bundle, so
- * the `steering-anomaly` / `pause-anomaly` callouts never fire here — the
- * handler does not currently tally steering/pause counters from the event
- * trace. Only the metrics/mining-derived insights appear in this response.
+ * Steering / pause event kinds scanned when building {@link SteeringSignals}
+ * for `buildInsights`. These three event kinds are lightweight (at most a
+ * handful per run) so they are fetched in a separate, uncapped query rather
+ * than being mixed into the tool-event cap that bounds command mining.
  */
 export function listBehaviorAnalyticsHandler(deps: ServerDeps): RouteHandler {
 	return async (ctx) => {
 		const { echo, filter } = resolveAnalyticsWindow(ctx);
 		const { rows, metrics } = await loadRunMetrics(deps, filter);
-		const eventRows = await loadToolEventRows(
-			deps.repos.events,
-			rows.map((r) => r.id),
-		);
+		const runIds = rows.map((r) => r.id);
+		const [eventRows, steeringRows] = await Promise.all([
+			loadToolEventRows(deps.repos.events, runIds),
+			deps.repos.events.listSteeringAndPauseEventsForRuns(runIds),
+		]);
 		const mining = buildCommandMining(eventRows);
-		const insights = buildInsights({ metrics, mining });
+		const steering = buildSteeringSignals(steeringRows, rows.length);
+		const insights = buildInsights({ metrics, mining, steering });
 		return jsonResponse(200, { filter: echo, mining, insights });
 	};
 }

@@ -271,6 +271,73 @@ function compareInsights(a: Insight, b: Insight): number {
 }
 
 /**
+ * Event kind emitted by `steerRun` when a steering message is forwarded to
+ * the burrow inbox. Mirrored here so the analytics layer does not import from
+ * the run-lifecycle module.
+ */
+const STEER_SENT_KIND = "steer.sent";
+
+/**
+ * Event kind emitted by the pause detector when a run enters the paused
+ * state. Mirrored here from `pause.ts`.
+ */
+const PAUSE_DETECTED_KIND = "pause.detected";
+
+/**
+ * Event kind emitted by the pause detector when a paused run hits its budget.
+ * Mirrored here from `pause.ts`.
+ */
+const PAUSE_TIMED_OUT_KIND = "pause.timed_out";
+
+/**
+ * The minimal event shape the steering-signals aggregator needs. Matches the
+ * subset of `EventRow` used here so callers can pass the full row without an
+ * explicit cast.
+ */
+export interface SteeringEventRow {
+	readonly runId: string;
+	readonly kind: string;
+}
+
+/**
+ * Aggregate steering / pause counters from the raw event rows produced by
+ * `EventsRepo.listSteeringAndPauseEventsForRuns`. Returns a populated
+ * {@link SteeringSignals} bundle ready to pass to {@link buildInsights}.
+ *
+ * Complexity is O(n) in the number of event rows.
+ *
+ * @param rows - Events with kind in `steer.sent`, `pause.detected`,
+ *   `pause.timed_out` for all runs in the analytics window.
+ * @param totalRuns - Total run count in the window (denominator for rates).
+ */
+export function buildSteeringSignals(
+	rows: readonly SteeringEventRow[],
+	totalRuns: number,
+): SteeringSignals {
+	const steeredRunIds = new Set<string>();
+	const pausedRunIds = new Set<string>();
+	let steeringMessages = 0;
+	let pauseTimeouts = 0;
+	for (const row of rows) {
+		if (row.kind === STEER_SENT_KIND) {
+			steeredRunIds.add(row.runId);
+			steeringMessages++;
+		} else if (row.kind === PAUSE_DETECTED_KIND) {
+			pausedRunIds.add(row.runId);
+		} else if (row.kind === PAUSE_TIMED_OUT_KIND) {
+			pauseTimeouts++;
+		}
+	}
+	return {
+		totalRuns,
+		runsSteered: steeredRunIds.size,
+		steeringMessages,
+		runsPaused: pausedRunIds.size,
+		pauseTimeouts,
+	};
+}
+
+/**
  * Distill the run-metrics + command-mining rollups (and optional steering
  * signals) into a ranked list of severity-coded callouts. Returns `[]` for a
  * healthy, low-signal window. O(groups + commands) — a handful of single

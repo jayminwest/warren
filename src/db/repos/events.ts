@@ -183,6 +183,29 @@ export class EventsRepo {
 		);
 	}
 
+	/**
+	 * Fetch `steer.sent`, `pause.detected`, and `pause.timed_out` events for
+	 * the given runs. Used by the `GET /analytics/behavior` handler to build the
+	 * {@link SteeringSignals} bundle fed into `buildInsights` (warren-92ad).
+	 *
+	 * Ordered by (runId, seq). Empty `runIds` short-circuits without a DB hit.
+	 */
+	async listSteeringAndPauseEventsForRuns(runIds: readonly string[]): Promise<EventRow[]> {
+		if (runIds.length === 0) return [];
+		return this.adapter.pickAll(
+			this.db
+				.select()
+				.from(this.events)
+				.where(
+					and(
+						inArray(this.events.runId, runIds as string[]),
+						inArray(this.events.kind, ["steer.sent", "pause.detected", "pause.timed_out"]),
+					),
+				)
+				.orderBy(asc(this.events.runId), asc(this.events.burrowEventSeq)),
+		);
+	}
+
 	async countByRun(runId: string): Promise<number> {
 		const row = await this.adapter.pickOne<{ n: number | string }>(
 			this.db

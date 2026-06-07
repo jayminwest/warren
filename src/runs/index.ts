@@ -18,10 +18,12 @@ export {
 } from "./analytics/command-mining.ts";
 export {
 	buildInsights,
+	buildSteeringSignals,
 	type Insight,
 	type InsightKind,
 	type InsightSeverity,
 	type InsightsInput,
+	type SteeringEventRow,
 	type SteeringSignals,
 } from "./analytics/insights.ts";
 export {
