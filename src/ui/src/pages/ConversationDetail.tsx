@@ -6,6 +6,7 @@ import { RUN_TERMINAL_STATES } from "@/api/types.ts";
 import type { ConversationRow, EditPlotIntentInput, PlotEnvelope, PlotStatus } from "@/api/types.ts";
 import { Chat } from "@/components/Chat.tsx";
 import { PlotStatusBadge } from "@/components/PlotStatusBadge.tsx";
+import { Alert } from "@/components/ui/alert.tsx";
 import { Button } from "@/components/ui/button.tsx";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card.tsx";
 import { PageHeader } from "@/components/ui/page-header.tsx";
@@ -65,6 +66,10 @@ export function ConversationDetailPage(): JSX.Element {
 	const isAnchoringRunTerminal =
 		anchoringRun.data !== undefined && RUN_TERMINAL_STATES.includes(anchoringRun.data.state);
 
+	const anchoringRunFailed =
+		anchoringRun.data !== undefined && anchoringRun.data.state === "failed";
+	const anchoringFailureReason = anchoringRunFailed ? anchoringRun.data?.failureReason : null;
+
 	return (
 		<div className="space-y-6">
 			<PageHeader
@@ -112,6 +117,14 @@ export function ConversationDetailPage(): JSX.Element {
 							</CardTitle>
 						</CardHeader>
 						<CardContent className="flex min-h-0 flex-1 flex-col p-3 pt-0">
+							{anchoringRunFailed ? (
+								<Alert variant="danger" title="Anchoring run failed" className="mb-3">
+									{anchoringFailureReason
+										? `The conversation's anchoring run failed — ${anchoringFailureReason}.`
+										: "The conversation's anchoring run failed."}{" "}
+									Re-wake the conversation to resume chatting.
+								</Alert>
+							) : null}
 							{row.anchoringRunId === null ? (
 								<p className="text-sm text-(--color-muted-foreground)">
 									No anchoring run — re-wake the conversation to resume chatting.
