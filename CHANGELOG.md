@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.5] — 2026-06-09
+
+Comment-only documentation cleanup from the nightwatch patrol (plan
+pl-7580): repointed stale `src/...` path references in source comments
+that no longer resolved after several module splits/renames.
+
+### Fixed
+
+- **Stale `src/preview/launch.ts` and `src/preview/proxy.ts` comment
+  references** repointed after the `launch/` + `proxy/` splits.
+- **Stale `src/runs/reap.ts` comment references** repointed after the
+  `reap/` split.
+- **`src/runs/burrow_config.ts` filename typo** in `planner.ts` comment
+  corrected to `src/runs/burrow-config.ts`.
+- **Comments referencing the retired brainstorm/interactive flow**
+  updated to drop pointers to the removed files.
+
 ## [0.8.4] — 2026-06-07
 
 Leveret UI fix: surface anchoring-run failures on the conversation
