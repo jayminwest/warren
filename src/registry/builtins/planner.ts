@@ -19,7 +19,7 @@
  *
  * Writes are restricted to `.plot/` and `.seeds/` paths only. Warren
  * currently expresses sandbox policy via `burrow_config`'s
- * `[sandbox].network` only (`src/runs/burrow_config.ts` — the rest of
+ * `[sandbox].network` only (`src/runs/burrow-config.ts` — the rest of
  * the TOML is forward-compatible doc and not forwarded onto
  * `POST /burrows`). The path-scoped write contract is therefore
  * enforced **in the system prompt**; richer per-tool ACLs land when
