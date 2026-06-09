@@ -1,6 +1,6 @@
 /**
  * Route-matching parsers for the preview proxy (warren-b902 split of
- * src/preview/proxy.ts; original framing in proxy/index.ts).
+ * src/preview/proxy/index.ts; original framing in proxy/index.ts).
  *
  * Three matchers cover the proxy's two routing modes:
  *

@@ -465,7 +465,7 @@ export interface ServeOptions {
 	previewProxy?: PreviewProxyHandler;
 }
 
-/** Host-match preview proxy preamble. See `src/preview/proxy.ts`. */
+/** Host-match preview proxy preamble. See `src/preview/proxy/index.ts`. */
 export type PreviewProxyHandler = (request: Request, url: URL) => Promise<Response | null>;
 
 export interface ServeHandle {

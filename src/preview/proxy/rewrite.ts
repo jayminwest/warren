@@ -1,6 +1,6 @@
 /**
  * Path-mode HTML / URL byte-level rewrite logic for the preview proxy
- * (warren-b902 split of src/preview/proxy.ts; SPEC §11.L addendum,
+ * (warren-b902 split of src/preview/proxy/index.ts; SPEC §11.L addendum,
  * warren-ab3a + warren-63e1).
  *
  * Two byte-wise transforms run over the head of `text/html` responses

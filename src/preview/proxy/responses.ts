@@ -1,6 +1,6 @@
 /**
  * 4xx/5xx envelope builders for the preview proxy preamble
- * (warren-b902 split of src/preview/proxy.ts). The proxy preamble runs
+ * (warren-b902 split of src/preview/proxy/index.ts). The proxy preamble runs
  * *below* warren's normal error mapper, so these helpers shape their
  * own JSON envelopes directly.
  */

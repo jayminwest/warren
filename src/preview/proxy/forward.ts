@@ -1,6 +1,6 @@
 /**
  * Upstream-forwarding core for the preview proxy (warren-b902 split of
- * src/preview/proxy.ts). Owns the actual `fetch` to `127.0.0.1:<port>`,
+ * src/preview/proxy/index.ts). Owns the actual `fetch` to `127.0.0.1:<port>`,
  * inbound auth-header stripping, content-encoding normalization, and
  * the debounced `preview_last_hit_at` write that drives the eviction
  * worker's idle clock.

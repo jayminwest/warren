@@ -71,7 +71,7 @@ import {
 import type { PreviewProxyDeps, PreviewProxyHandler } from "./types.ts";
 
 // Public surface — types, helper functions, and constants the rest of
-// the codebase and tests pull from `./proxy.ts`. Re-exported here so
+// the codebase and tests pull from `./index.ts`. Re-exported here so
 // `import ... from "../preview/proxy/index.ts"` (or just
 // `"../preview/proxy"`) keeps working after the split.
 export { DEFAULT_DEBOUNCE_MS } from "./forward.ts";

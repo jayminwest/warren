@@ -316,7 +316,7 @@ const ServerPreviewConfigSchema = z
 		command: PreviewCommandSchema,
 		// warren-d9e7: optional pre-step. Runs to completion before the dev
 		// server sidecar spawns; non-zero exit fails the preview before the
-		// readiness probe is attempted. See `src/preview/launch.ts`.
+		// readiness probe is attempted. See `src/preview/launch/index.ts`.
 		setup: PreviewSetupSchema.optional(),
 		setup_timeout: PreviewSetupTimeoutSchema.optional(),
 		port: PreviewPortSchema,

@@ -1,6 +1,6 @@
 /**
  * Shared types for the preview proxy modules (warren-b902 split of
- * src/preview/proxy.ts). Lives in its own file so `responses.ts` can
+ * src/preview/proxy/index.ts). Lives in its own file so `responses.ts` can
  * reference `PreviewProxyConfig` without a cycle through `index.ts`.
  */
 

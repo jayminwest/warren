@@ -360,7 +360,7 @@ export const previewApi = {
 
 /**
  * Format the canonical preview URL for a run. Mirrors server-side
- * `formatPreviewUrl` (`src/preview/launch.ts`) so the displayed URL
+ * `formatPreviewUrl` (`src/preview/launch/index.ts`) so the displayed URL
  * matches where the login handshake actually redirects:
  *
  *   - path mode      → `<origin>/p/<runId>/` (origin from `config.host`
