@@ -29,8 +29,8 @@
  *   - **stale_draft**: Plot status is `drafting` and `last_event_ts`
  *     is older than `staleDraftAfterDays` (default 7). Pinned to
  *     `last_event_ts` (not `updated_at`) so an idle conversation in a
- *     brainstorm Plot — where every chat turn appends a `note` /
- *     interactive message event — keeps the draft fresh.
+ *     drafting Plot — where every chat turn appends a `note` /
+ *     conversation message event — keeps the draft fresh.
  *
  * The pure helper is exported separately from the aggregator so the
  * unit tests in `./aggregate.test.ts` can exercise it without mocking

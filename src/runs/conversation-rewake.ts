@@ -41,8 +41,8 @@
  *      `conversation.rewake_replayed` system event on the new run carrying the
  *      prior run id + replayed message count.
  *
- * Mirrors the seam discipline of `conversation-idle.ts` and the spawn-forward
- * discipline of `interactive.ts`: the reader / rotator are seams (production
+ * Mirrors the seam discipline of `conversation-idle.ts`: the reader / rotator
+ * are seams (production
  * queries the warren-0b91 `conversations` + `messages` tables; the unit suite
  * hands back literals) so this module needs neither disk nor those tables to
  * be exercised, and the live HTTP wiring (warren-af15) slots the repo-backed
@@ -323,6 +323,6 @@ async function appendRewakeEvent(
 		});
 	} catch {
 		// Logging-only trail; a failure here must not unwind a successful
-		// re-wake. Mirrors recordPlotContextLoadFailure in interactive.ts.
+		// re-wake. Best-effort logging trail only.
 	}
 }

@@ -1,25 +1,25 @@
 /**
- * `PlotFormalizer` — Plot brainstorm-summarize seam for
+ * `PlotFormalizer` — Plot conversation-summarize seam for
  * `POST /plots/:id/formalize` (warren-d22e / pl-0344 step 8).
  *
- * Formalize converts a brainstorm-style interactive conversation into a
+ * Formalize converts a Plot's intent-shaping conversation into a
  * **suggested** Plot intent — a `{goal, non_goals, constraints,
  * success_criteria}` shape the user reviews, edits, and applies via the
  * existing `POST /plots/:id/intent` route. The status transition to
  * `ready` rides on the existing `POST /plots/:id/status` route. This
  * handler is therefore non-mutating: it reads warren's events table for
- * every interactive run bound to the Plot, extracts the agent's
+ * every run bound to the Plot, extracts the agent's
  * marker-formatted intent claims, and returns a JSON suggestion. The
  * Plot itself is untouched, no Plot event is emitted, no run is
  * spawned.
  *
  * Why deterministic extraction, not a dispatched summarize-turn:
  *
- * 1. Interactive runs are async (respawn-per-turn, reply lands at reap
- *    via `agent_message` capture — see `src/runs/interactive.ts`). A
+ * 1. Conversation turns are async (the reply lands at reap via
+ *    `agent_message` capture — see `src/runs/conversation-rewake.ts`). A
  *    synchronous HTTP response that includes an agent-generated summary
  *    would either block on a fresh dispatch or return a half-shape.
- * 2. The brainstorm agent (`src/registry/builtins/brainstorm.ts`) is
+ * 2. The intent-shaping agent is
  *    already instructed to name intent fields explicitly via
  *    `**goal**: ...` / `**non_goals**: -` / etc. markers. The contract
  *    is in the system prompt; the parser anchors it.
@@ -31,7 +31,7 @@
  * Extraction rules:
  *
  * - The seam scans every `agent_message` event across the Plot's
- *   interactive runs, in `ts` ascending order. Later messages override
+ *   conversation runs, in `ts` ascending order. Later messages override
  *   earlier ones for the singular `goal` field; list fields
  *   (`non_goals`, `constraints`, `success_criteria`) accumulate
  *   deduplicated.
@@ -84,7 +84,7 @@ export interface DefaultPlotFormalizerDeps {
 
 /**
  * Production `PlotFormalizer`. Reads every `agent_message` event on
- * interactive runs bound to the Plot and folds them through
+ * conversation runs bound to the Plot and folds them through
  * `extractSuggestedIntent`. The Plot itself is untouched; the caller
  * (handler) is responsible for validating that the Plot exists.
  */

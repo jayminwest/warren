@@ -28,9 +28,10 @@ import { ReadOnlyField } from "./run-plan.tsx";
 /**
  * InteractivePanel (warren-444c / pl-0344 step 11) — renders Start
  * brainstorming / Run planner / Formalize over an inline Chat anchored
- * to the latest interactive run on the Plot. The agent's reply streams
- * back into the transcript via reap-side `agent_message` capture
- * (warren-509f, src/runs/reap/interactive.ts).
+ * to the latest conversation run on the Plot. The agent's reply streams
+ * back into the transcript via the Plot's conversation flow (the
+ * respawn-per-turn interactive primitive was retired with
+ * mode=interactive — warren-d622 / LEVERET.md §0.8).
  */
 
 /* ----------------------------------------------------------------------- */
@@ -58,12 +59,11 @@ interface InteractiveAnchor {
 /**
  * Walk the Plot's event_log in reverse and return the most recent
  * `run_dispatched` event whose `data.agent` is in the interactive set.
- * `null` when no interactive run has ever been dispatched against this
- * Plot. Each interactive turn is its own run row (respawn-per-turn,
- * src/runs/interactive.ts) but `Chat`'s `onTurnSpawned` re-anchor only
- * fires from inside the component — the activity feed sees every spawn
- * as a fresh `run_dispatched`, so picking the latest tracks the live
- * conversation handle.
+ * `null` when no such run has ever been dispatched against this
+ * Plot. Each turn is its own run row but `Chat`'s `onTurnSpawned`
+ * re-anchor only fires from inside the component — the activity feed
+ * sees every spawn as a fresh `run_dispatched`, so picking the latest
+ * tracks the live conversation handle.
  */
 function findLatestInteractiveRun(
 	events: readonly PlotEvent[],
