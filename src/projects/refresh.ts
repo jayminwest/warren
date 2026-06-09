@@ -418,7 +418,7 @@ function isPlotDataFile(name: string): boolean {
 /**
  * Dedup-append merge for `.events.jsonl`: keep all remote lines in
  * order, then append any snapshot lines not already present. Matches
- * the `mergePlotEventsFile` strategy in `src/runs/reap.ts`.
+ * the `mergePlotEventsFile` strategy in `src/runs/reap/plot-merge.ts`.
  */
 export function mergeEventsLines(remote: string, snapshot: string): string {
 	const remoteLines = splitNonEmpty(remote);

@@ -5,7 +5,7 @@
  * `launch/` modules in warren-62a7 / pl-9088 step 9.
  *
  * The actual orchestration (gating on outcome / opt-in / worker locality)
- * lives in `src/runs/reap.ts`; this module owns the mechanics once those
+ * lives in `src/runs/reap/preview.ts`; this module owns the mechanics once those
  * gates pass:
  *
  *   1. **Allocate** a host port via `PreviewPortAllocator`. The allocator
