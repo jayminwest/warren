@@ -38,8 +38,8 @@ export type HumansOnlyEventType = (typeof HUMANS_ONLY_EVENT_TYPES)[number];
 
 /**
  * Event types an agent actor may construct via the facade's generic
- * `append()` surface. The four dedicated mutators (`editIntent`,
- * `setStatus`, `detach`, plus `question_answered` appends) live only
+ * `append()` surface. The three dedicated mutators (`editIntent`,
+ * `setStatus`, `detach`) plus `question_answered` appends live only
  * on `UserPlotHandle`, so the narrowing here covers the one append
  * path agents share with users (`question_answered`) and lets the
  * other three drop out of the agent surface entirely.
