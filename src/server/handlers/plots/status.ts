@@ -65,7 +65,7 @@ function changePlotStatusHandler(deps: ServerDeps): RouteHandler {
 		}
 		if (!(PLOT_STATUSES as readonly string[]).includes(rawNext)) {
 			throw new ValidationError(
-				`unknown status '${rawNext}'; expected one of ${PLOT_STATUSES.join(", ")}`,
+				`status must be one of ${PLOT_STATUSES.join(", ")}; got '${rawNext}'`,
 			);
 		}
 		const next = rawNext as PlotStatus;

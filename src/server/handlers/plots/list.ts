@@ -47,7 +47,7 @@ function validateStatus(rawStatus: string | null): PlotStatus | undefined {
 	if (rawStatus !== null && rawStatus !== "") {
 		if (!(PLOT_STATUSES as readonly string[]).includes(rawStatus)) {
 			throw new ValidationError(
-				`unknown status '${rawStatus}'; expected one of ${PLOT_STATUSES.join(", ")}`,
+				`status must be one of ${PLOT_STATUSES.join(", ")}; got '${rawStatus}'`,
 			);
 		}
 		return rawStatus as PlotStatus;
@@ -61,7 +61,7 @@ async function handleNeedsAttentionFilter(
 	deps: ServerDeps,
 ) {
 	if (rawFilter !== "needs_attention") {
-		throw new ValidationError(`unknown filter '${rawFilter}'; expected one of needs_attention`);
+		throw new ValidationError(`filter must be one of needs_attention; got '${rawFilter}'`);
 	}
 	if (deps.plotAggregator === undefined) {
 		return jsonResponse(200, { plots: [] as readonly PlotNeedsAttentionSummary[] });

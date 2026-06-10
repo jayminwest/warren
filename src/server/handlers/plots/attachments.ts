@@ -99,7 +99,7 @@ function parseAttachmentBody(body: Record<string, unknown>): {
 	}
 	if (!(ATTACHMENT_TYPES as readonly string[]).includes(rawKind)) {
 		throw new ValidationError(
-			`unknown kind '${rawKind}'; expected one of ${ATTACHMENT_TYPES.join(", ")}`,
+			`kind must be one of ${ATTACHMENT_TYPES.join(", ")}; got '${rawKind}'`,
 		);
 	}
 	const kind = rawKind as AttachmentType;
@@ -247,7 +247,7 @@ function parseMergeMethod(body: Record<string, unknown> | null): MergeMethod | u
 	const raw = body.merge_method;
 	if (typeof raw !== "string" || !(MERGE_METHODS as readonly string[]).includes(raw)) {
 		throw new ValidationError(
-			`field 'merge_method' must be one of ${MERGE_METHODS.join(", ")} when present`,
+			`merge_method must be one of ${MERGE_METHODS.join(", ")}; got '${raw}'`,
 		);
 	}
 	return raw as MergeMethod;
