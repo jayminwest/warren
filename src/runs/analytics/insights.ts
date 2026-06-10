@@ -23,12 +23,12 @@
  *   - `steering-anomaly`: a high share of runs needing mid-run human steering
  *   - `pause-anomaly`: runs that stalled until their pause timed out
  *
- * NOTE: the `steering-anomaly` / `pause-anomaly` callouts are latent. They
- * fire only when a caller passes the optional {@link SteeringSignals} bundle,
- * and no production code currently does so — the `GET /analytics/behavior`
- * handler calls `buildInsights` without `steering`, so these two kinds never
- * appear in the live endpoint's response today. The machinery is retained for
- * a future caller that tallies steering/pause counters while scanning events.
+ * NOTE: the `steering-anomaly` / `pause-anomaly` callouts fire only when a
+ * caller passes the optional {@link SteeringSignals} bundle. The
+ * `GET /analytics/behavior` handler now supplies it — it tallies steering /
+ * pause counters via `buildSteeringSignals` (over a dedicated event query)
+ * and passes `steering` into `buildInsights` — so these two kinds appear in
+ * the live endpoint's response whenever the underlying signal is present.
  *
  * Every callout carries a typed `kind`, a `severity`, a numeric `value` (the
  * metric that triggered it) and a `subject` (the seed / agent / command /
@@ -71,9 +71,8 @@ export interface Insight {
 /**
  * Steering / pause counters a caller may tally while scanning events. All
  * optional — when omitted (or zeroed) the steering/pause insights are skipped.
- * No production caller currently supplies this bundle (the
- * `GET /analytics/behavior` handler omits it), so the steering/pause insights
- * are dormant until a future caller wires it up.
+ * The `GET /analytics/behavior` handler supplies this bundle (built by
+ * `buildSteeringSignals`), so the steering/pause insights are live there.
  */
 export interface SteeringSignals {
 	readonly totalRuns: number;
