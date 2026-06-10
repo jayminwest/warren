@@ -16,9 +16,10 @@
  *     SQL CHECK).
  *
  * `./drift.test.ts` enforces parity at the column-list / nullability / FK /
- * index level. This schema is not yet wired into `openDatabase` — the
- * dialect-aware client lands in step 3 (warren-a66e). Until then this file
- * is build-only and exercised by the drift test.
+ * index level. This schema is wired into the dialect-aware `openDatabase`
+ * (`../client.ts`), which selects it when handed a `postgres://` /
+ * `postgresql://` `WARREN_DB_URL`; the drift test still exercises it for
+ * parity coverage.
  */
 
 import { sql } from "drizzle-orm";
