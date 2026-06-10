@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.6] — 2026-06-10
+
+Comment-only documentation cleanup plus a validation error-message
+harmonization from the nightwatch patrol (plan pl-69e1).
+
+### Fixed
+
+- **Stale `latent` NOTE** in `src/runs/analytics/insights.ts` removed
+  after the feature it described landed.
+- **Stale `Postgres schema not yet wired` comments** repointed after the
+  dialect-aware `openDatabase` landed.
+- **`four dedicated mutators` miscount** in `src/plot-client/types.ts`
+  corrected.
+- **Validation error phrasing harmonized** across handlers — the
+  `expected one of` vs `must be one of ...; got` variants now use a
+  single consistent format.
+
 ## [0.8.5] — 2026-06-09
 
 Comment-only documentation cleanup from the nightwatch patrol (plan
