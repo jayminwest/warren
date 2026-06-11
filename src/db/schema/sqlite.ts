@@ -1,11 +1,11 @@
 /**
  * SQLite physical schema for warren's durable state (SPEC §9).
  *
- * Seven tables: agents (canopy registry cache), projects (cloned repos), runs
+ * Twelve tables: agents (canopy registry cache), projects (cloned repos), runs
  * (warren-side run rows that mirror burrow's lifecycle), events (write-through
- * cache of burrow's stream — see SPEC §9 "event durability rationale"),
- * triggers (R-06 scheduler bookkeeping), workers + burrows (multi-worker
- * placement registry, warren-b0a3 / warren-135b).
+ * cache of burrow's stream — see SPEC §9 "event durability rationale"), triggers
+ * (R-06 scheduler bookkeeping), workers + burrows (multi-worker placement
+ * registry), planRuns + planRunChildren, plots, and conversations + messages.
  *
  * Timestamps are ISO8601 TEXT, mirroring the burrow event envelope `ts` field
  * so we don't translate at the stream boundary. JSON columns use drizzle's
