@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.7] — 2026-06-11
+
+Doc-drift and validation error-message consistency fixes from the
+nightwatch patrol (plan pl-9796).
+
+### Fixed
+
+- **`Seven tables` doc drift** in the `src/db/schema/sqlite.ts` header
+  comment corrected to name the 12 tables actually defined in the file.
+- **`?sort`/`?dir` validation errors** in
+  `src/server/handlers/runs/lifecycle.ts` now end in `; got '<raw>'`,
+  matching the sibling `?limit`/`?offset` and conversations `?status`
+  messages.
+
 ## [0.8.6] — 2026-06-10
 
 Comment-only documentation cleanup plus a validation error-message
