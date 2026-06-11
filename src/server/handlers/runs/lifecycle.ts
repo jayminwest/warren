@@ -16,14 +16,14 @@ function parseRunsSort(ctx: { url: URL }): { sort: "started" | "cost"; dir: "asc
 	let sort: "started" | "cost" = "started";
 	if (rawSort !== null) {
 		if (rawSort !== "started" && rawSort !== "cost") {
-			throw new ValidationError("?sort must be 'started' or 'cost'");
+			throw new ValidationError(`?sort must be 'started' or 'cost'; got '${rawSort}'`);
 		}
 		sort = rawSort;
 	}
 	let dir: "asc" | "desc" = "desc";
 	if (rawDir !== null) {
 		if (rawDir !== "asc" && rawDir !== "desc") {
-			throw new ValidationError("?dir must be 'asc' or 'desc'");
+			throw new ValidationError(`?dir must be 'asc' or 'desc'; got '${rawDir}'`);
 		}
 		dir = rawDir;
 	}
