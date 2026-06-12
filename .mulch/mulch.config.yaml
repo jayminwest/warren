@@ -30,6 +30,7 @@ domains:
   analytics: {}
   sandbox: {}
   reap: {}
+  quality: {}
 governance:
   max_entries: 100
   warn_entries: 150
