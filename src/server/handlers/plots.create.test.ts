@@ -12,7 +12,7 @@ import {
 	seedProject,
 	silentLogger,
 	tcpUrl,
-} from "./plots.test-helpers.ts";
+} from "./plots.test-support.ts";
 
 describe("POST /plots", () => {
 	let db: WarrenDb;

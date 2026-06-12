@@ -5,7 +5,7 @@ import type { PlotSummary } from "../../plots/index.ts";
 import { NO_AUTH } from "../auth.ts";
 import { startServer } from "../server.ts";
 import type { ServeHandle } from "../types.ts";
-import { depsFor, fakeAggregator, silentLogger, summary, tcpUrl } from "./plots.test-helpers.ts";
+import { depsFor, fakeAggregator, silentLogger, summary, tcpUrl } from "./plots.test-support.ts";
 
 describe("GET /plots", () => {
 	let db: WarrenDb;

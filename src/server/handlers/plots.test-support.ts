@@ -17,10 +17,13 @@ import type { ProjectRow } from "../../db/schema.ts";
 import type {
 	AttachPlotRequest,
 	AttachPlotResult,
+	CreatePlotRequest,
+	CreatePlotResult,
 	DetachPlotRequest,
 	DetachPlotResult,
 	PlotAggregator,
 	PlotAttacher,
+	PlotCreator,
 	PlotReader,
 	PlotResolver,
 	PlotSummary,
@@ -123,6 +126,38 @@ export async function depsFor(input: BuildDepsInput): Promise<ServerDeps> {
 		...(input.plotSyncer !== undefined ? { plotSyncer: input.plotSyncer } : {}),
 		...(input.planChildAdopter !== undefined ? { planChildAdopter: input.planChildAdopter } : {}),
 		...(input.seedsCli !== undefined ? { seedsCli: input.seedsCli } : {}),
+	};
+}
+
+export interface FakeCreatorCall {
+	readonly input: CreatePlotRequest;
+}
+
+export function fakeCreator(result: CreatePlotResult): {
+	creator: PlotCreator;
+	calls: FakeCreatorCall[];
+} {
+	const calls: FakeCreatorCall[] = [];
+	const creator: PlotCreator = {
+		async create(input) {
+			calls.push({ input });
+			return result;
+		},
+	};
+	return { creator, calls };
+}
+
+export function summary(over: Partial<PlotSummary>): PlotSummary {
+	return {
+		id: "pt-a",
+		name: "A",
+		status: "active",
+		intent_goal_preview: "",
+		attachments_count: 0,
+		last_event_ts: "2026-05-18T00:00:00Z",
+		last_event_actor: "user:operator",
+		project_id: "proj-a",
+		...over,
 	};
 }
 
