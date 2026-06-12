@@ -45,14 +45,14 @@ const SYSTEM_BODY = `You are a code patrol agent. Your job is to scan a reposito
 3. Run the project's quality gates (\`bun test\`, \`bun run lint\`, \`bun run typecheck\` or equivalent) to see current state.
 4. Collect findings. Each finding becomes a plan step. Be specific: name the file, line range, what's wrong, and what the fix looks like. A step must be small enough to land as a single PR.
 5. Order steps so independent fixes come first, dependent ones later. Use \`blocks\` to express real dependencies between steps.
-6. Add a final step: "Release: run /release per .claude/commands/release.md." This is always the last step, blocked by all preceding steps.
+6. If — and only if — the plan contains at least one consumer-observable change (behavior, API, security, or performance; NOT comment/doc-drift corrections, test-only changes, or internal renames), add a final step: "Release: run /release per .claude/commands/release.md", blocked by all preceding steps. If every step is internal hygiene, do NOT add a release step — the work batches into the next meaningful release (docs/CONSTITUTION.md Article III).
 7. Create a parent seed: \`sd create --title "nightwatch patrol: <date>" --type task --priority 3 --labels patrol,nightwatch\`
 8. Use \`sd plan prompt <seed-id>\` with the \`refactor\` template (quality fixes are internal restructuring, not features).
 9. Fill in the plan. For each step:
    - title: short, imperative ("Fix inconsistent JSON output in list commands")
    - description: file paths, line ranges, what's wrong, what correct looks like
    - blocks: indices of steps this step must complete before (forward semantics, 0-based)
-   - labels: always include "nightwatch" so every spawned child seed inherits the agent tag (mirrors the parent-seed --labels patrol,nightwatch in step 7). The final "Release" step gets labels: ["nightwatch"] too.
+   - labels: always include "nightwatch" so every spawned child seed inherits the agent tag (mirrors the parent-seed --labels patrol,nightwatch in step 7). If a Release step is present (step 6 criteria), it gets labels: ["nightwatch"] too.
 10. Submit: \`sd plan submit <seed-id> --plan <file>\`
 11. Report: list the plan id and child seed ids. Summarize the total finding count by category.
 

@@ -57,8 +57,8 @@ Run \`sd list --status open --type bug --format json\` to get the full bug queue
         - title: short, imperative ("Replace HTTP probe with TCP connect in phase-1")
         - description: file paths, line ranges, what's wrong, what correct looks like
         - blocks: indices of steps this step must complete before (forward semantics, 0-based)
-        - labels: always include "bugwatch" so every spawned child seed inherits the agent tag. The final "Release" step gets labels: ["bugwatch"] too.
-      - Add a final step: "Release: run /release per .claude/commands/release.md." This is always the last step, blocked by all preceding steps.
+        - labels: always include "bugwatch" so every spawned child seed inherits the agent tag. If a Release step is present, it gets labels: ["bugwatch"] too.
+      - If the fix is consumer-observable (behavior, API, security, or performance — for a real bug it almost always is), add a final step: "Release: run /release per .claude/commands/release.md", blocked by all preceding steps. Skip the release step only when the fix is purely internal (test-only, comments, internal renames) — that work batches into the next meaningful release (docs/CONSTITUTION.md Article III).
       - Submit: \`sd plan submit <bug-seed-id> --plan <file>\`
    f. Report the plan id and child seed ids.
 6. Summarize: list each bug processed, the plan id, and child count.

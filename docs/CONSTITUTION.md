@@ -81,6 +81,12 @@ auto-merged PR. Any auditor that observes a merged change to these
 files without human approval files a priority-1 finding citing this
 article. The population does not rewrite its own mandate.
 
+Executable form: the "Article IX check" step in
+`.github/workflows/auto-merge.yml` refuses to enable auto-merge on any
+PR touching this file, `.warren/triggers.yaml`, `.canopy/`, or that
+workflow itself. The auditors still verify (the gate can be deleted;
+the deletion is itself a protected change).
+
 ## Amendments
 
 Amend by PR touching this file, flagged for human merge (Article IX).

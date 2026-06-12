@@ -26,7 +26,27 @@ jobs:
       !github.event.pull_request.draft &&
       github.event.pull_request.user.login == github.repository_owner
     steps:
+      # docs/CONSTITUTION.md Article IX: changes to the constitution, the
+      # audit triggers, project-tier agent prompts, or this workflow itself
+      # must be merged by a human — never auto-merge. This step is the
+      # executable form of that article.
+      - name: Article IX check (constitution-protected paths)
+        id: protected
+        env:
+          GH_TOKEN: ${{ secrets.AUTO_MERGE_PAT }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+        run: |
+          PROTECTED='^(docs/CONSTITUTION\.md|\.warren/triggers\.yaml|\.canopy/|\.github/workflows/auto-merge\.yml)'
+          CHANGED=$(gh pr view "$PR_URL" --json files -q '.files[].path')
+          if echo "$CHANGED" | grep -qE "$PROTECTED"; then
+            echo "hit=true" >> "$GITHUB_OUTPUT"
+            echo "Article IX: protected paths changed — auto-merge will NOT be enabled:"
+            echo "$CHANGED" | grep -E "$PROTECTED"
+          else
+            echo "hit=false" >> "$GITHUB_OUTPUT"
+          fi
       - name: Enable auto-merge (squash)
+        if: steps.protected.outputs.hit == 'false'
         env:
           GH_TOKEN: ${{ secrets.AUTO_MERGE_PAT }}
           PR_URL: ${{ github.event.pull_request.html_url }}
