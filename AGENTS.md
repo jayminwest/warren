@@ -77,20 +77,26 @@ bun run ui:install            # cd src/ui && bun install
 Run all checks before committing — warnings count as failures:
 
 ```bash
-bun run check:all
+bun run check:all     # or its agent-facing alias: bun run verify
 ```
 
-This runs: `check:coverage` (tests + coverage ratchet), `lint`,
-`typecheck`, `validate:agents-md`, `check:file-sizes`,
-`check:debt-markers`, `check:duplicates` (jscpd), `check:deps`,
-`check:bundle-size:build`, `gen:docs:check`, and `gen:openapi:check`
-— the same set CI enforces (see
-`.github/workflows/ci.yml`). Do not merge with lint warnings; fix at
-write time or promote to error in `biome.json`.
+`check:all` is the os-eco canonical quiet runner (`scripts/check-all.ts`,
+byte-identical to `../templates/l5-toolkit/scripts/check-all.ts` at the
+os-eco root — never edit it in place). It prints one aligned status line
+per gate and a `12/12 gates passed` tally; on failure it shows parsed
+failure signatures plus a `re-run: bun run <gate>` hint
+(`CHECK_ALL_VERBOSE=1` streams full output, `--bail` stops early).
+Warren's resolved manifest, in order: `lint`, `typecheck`,
+`check:agents`, `check:dups` (jscpd), `check:deps`, `check:size`,
+`check:debt`, `check:bundle-size`, `gen:docs:check`, `gen:openapi:check`,
+`check:coverage` (tests + coverage ratchet), and `check:ci-parity` —
+the same set CI enforces (see `.github/workflows/ci.yml`; escape
+hatches live in `scripts/ci-parity-config.json`). Do not merge with
+lint warnings; fix at write time or promote to error in `biome.json`.
 
 Details on the additional checks:
 
-- **`check:file-sizes`** (warren-4553) — enforces a per-file line-count
+- **`check:size`** (warren-4553) — enforces a per-file line-count
   budget. New `.ts`/`.tsx` files under `src/` and `scripts/` must stay
   ≤ 500 lines; existing oversized files are grandfathered in
   `scripts/file-size-budgets.json` and may not grow past their frozen
@@ -98,14 +104,14 @@ Details on the additional checks:
   `noExcessiveLinesPerFunction` rule (also 500-line cap) enforces the
   same budget at the function level, with the same baseline exceptions
   called out in `biome.json`'s `overrides`.
-- **`check:debt-markers`** (warren-7f2b) — scans `src/` and `scripts/`
+- **`check:debt`** (warren-7f2b) — scans `src/` and `scripts/`
   `.ts`/`.tsx` for `TODO` / `FIXME` / `HACK` / `XXX` and fails if any
   marker lacks a tracker reference on the same line (`warren-XXXX`,
   `pl-XXXX`, `mx-XXXX`, `#NNN`, or a URL). The ratchet grandfather list
   lives in `scripts/debt-marker-allowlist.json` and only goes down —
   pair new markers with an id (or remove them) rather than appending to
   the allowlist.
-- **`validate:agents-md`** — validates that `AGENTS.md` references
+- **`check:agents`** — validates that `AGENTS.md` references
   (`bun run <X>` commands and backtick-quoted paths) still exist.
 
 Biome's `noExcessiveCognitiveComplexity` rule (warren-d3a6, cognitive
@@ -121,16 +127,16 @@ entries.
   extension (`.js`, `.css`) and the largest single chunk's gzipped
   size. Never hand-edit the budget JSON from Vite's build-log gzip
   number — it runs ~2KB cooler than this guard, so eyeballed budgets
-  fail CI. Re-baseline with `bun run check:bundle-size:build --update`,
+  fail CI. Re-baseline with `bun run check:bundle-size --update`,
   which writes the authoritative measured numbers: lowering always
   applies, ordinary growth auto-raises within `AUTO_RAISE_CAP`, and a
   heavy new dep past the cap needs `WARREN_BUNDLE_SIZE_ALLOW_RAISE=1`.
   The `bundle-size-autoheal` workflow re-baselines + pushes for you when
   a PR fails on a within-cap overshoot, so a few-hundred-byte miss never
-  halts a run. Run `bun run check:bundle-size` against an existing
-  `src/ui/dist` tree, or `bun run check:bundle-size:build` to build
-  first; CI uses the explicit `build:ui` + `check:bundle-size` pair so
-  the build step is visible in logs.
+  halts a run. The script body carries `--build`, so `bun run
+  check:bundle-size` is self-contained (frozen-lockfile UI install +
+  build, then measure); CI additionally keeps an explicit `build:ui`
+  step so the build is visible in logs.
 
 - **`check:coverage`** (warren-e4b1) — wraps `bun test --coverage`
   (text + lcov reporters) and enforces the floors in
@@ -163,7 +169,7 @@ workspace. The fix for a knip hit is almost always `bun remove <dep>`
 (or `cd src/ui && bun remove <dep>`) — only ignore a dep when it's
 resolved by string at runtime (e.g. a pino transport target).
 
-`check:all` runs `bun run check:duplicates` (warren-61e9), which invokes
+`check:all` runs `bun run check:dups` (warren-61e9), which invokes
 [jscpd](https://github.com/kucherenko/jscpd) over `src/**/*.{ts,tsx}` to
 detect copy-pasted code. Config lives in `.jscpd.json`: tests,
 auto-generated migrations (`src/db/migrations/`), drizzle schema
@@ -243,8 +249,8 @@ shape change with `WARREN_UPDATE_GOLDENS=1 bun test
 src/server/responses.golden.test.ts`, then `git diff` the fixtures and
 commit only the diffs you meant. The directory name mirrors the
 upstream burrow convention (the `__golden__` fixture dirs under
-burrow's parser tree) and is already excluded from `check:file-sizes`, `check:debt-markers`,
-`check:duplicates`, and Biome's filename-convention rule — keep new
+burrow's parser tree) and is already excluded from `check:size`, `check:debt`,
+`check:dups`, and Biome's filename-convention rule — keep new
 golden directories under the same name so those exclusions keep
 applying without churn.
 

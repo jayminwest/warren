@@ -1,85 +1,58 @@
 #!/usr/bin/env bun
 /**
- * CI <-> `check:all` parity drift detector (warren-6296, plan pl-da5b step 3).
+ * CI <-> `check:all` parity drift detector — fleet-canonical port of
+ * warren's original (warren-6296), generalized for the os-eco
+ * check:all standard (docs/check-all-standard.md, os-eco-5db7).
  *
- * Parses the GitHub Actions workflows under `.github/workflows/` (today
- * `ci.yml` + `ci-postgres.yml`) and, for every `bun run <X>` invoked by
- * any `run:` step, verifies that `<X>` is transitively reachable from
- * the `check:all` script in `package.json` — i.e. running
- * `bun run check:all` locally exercises the same gate that CI does.
+ * This file is BYTE-IDENTICAL across every conforming repo — do not
+ * edit it in place. It imports the resolved GATES manifest from
+ * ./check-all.ts as the single source of truth, parses every
+ * `.github/workflows/ci*.yml`, and fails when any `bun run <X>`
+ * invoked by a CI `run:` step is not transitively reachable from the
+ * gate manifest — i.e. when CI enforces something `bun run check:all`
+ * does not exercise locally.
  *
- * Two structured escape hatches keep the detector usable without
- * collapsing every CI step into `check:all` verbatim:
+ * Per-repo escape hatches live OUTSIDE this file, in an optional
+ * `scripts/ci-parity-config.json`:
  *
- *   - `ALIASES` — maps a CI-side script name onto a canonical
- *     check:all-reachable equivalent. Use this for variants that do
- *     "the same gate, formatted differently" (e.g. `check:coverage:ci`
- *     is `check:coverage` plus a JUnit reporter; `check:bundle-size`
- *     is `check:bundle-size:build` minus the embedded `build:ui`).
+ *   {
+ *     "aliases": { "check:coverage:ci": "check:coverage" },
+ *     "ciOnly": ["report:test-timing", "report:quality-metrics"]
+ *   }
  *
- *   - `CI_ONLY` — explicit allowlist of scripts that are intentionally
- *     CI-only (summaries / reports / setup steps with no local
- *     equivalent). Adding to this list is the only sanctioned way to
- *     diverge — and each entry should be justified.
+ *   - `aliases` maps a CI-side script name onto a canonical
+ *     gate-reachable equivalent. Use for variants that run the same
+ *     gate with a different reporter / preamble (e.g. a junit
+ *     emitter).
+ *   - `ciOnly` is the explicit allowlist of scripts that are
+ *     intentionally CI-only (summaries / setup with no local
+ *     equivalent). Adding here is the only sanctioned way to diverge;
+ *     justify each entry in the config's "$comment".
  *
- * Anything outside those two sinks is treated as drift: either
- * `check:all` needs to grow to cover the CI step, the workflow needs
- * to invoke a different script, or — if it really is CI-only —
- * `CI_ONLY` needs a new entry.
- *
- * Wired into `bun run check:all` so a PR that adds a CI step without
- * also wiring it into the local gate fails before merge.
+ * Anything outside those two sinks is drift: grow the manifest, change
+ * the workflow, or add a justified escape-hatch entry.
  */
 
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
-import yaml from "js-yaml";
+import { parse } from "yaml";
+import { GATES } from "./check-all.ts";
 
 const REPO_ROOT = resolve(import.meta.dir, "..");
 const WORKFLOWS_DIR = resolve(REPO_ROOT, ".github/workflows");
 const PACKAGE_JSON = resolve(REPO_ROOT, "package.json");
+const PARITY_CONFIG = resolve(import.meta.dir, "ci-parity-config.json");
 const ROOT_GATE = "check:all";
 
-/**
- * CI-side script names whose semantics are covered (under a different
- * name) by something reachable from `check:all`. Add an entry only
- * when the two scripts truly run the same gate, just with different
- * reporters / preamble / output paths.
- */
-const ALIASES: Record<string, string> = {
-	// check:coverage:ci is check:coverage + JUnit reporter for the CI
-	// test-timing summary. The underlying gate (tests + coverage
-	// ratchet) is identical.
-	"check:coverage:ci": "check:coverage",
-	// check:bundle-size (without :build) assumes `src/ui/dist/` already
-	// exists; check:bundle-size:build calls `bun run build:ui` first via
-	// spawnSync. The assertion logic — the bundle-size ratchet — is the
-	// same. check:all uses the self-contained :build variant.
-	"check:bundle-size": "check:bundle-size:build",
-};
+export type ParityConfig = { aliases: Record<string, string>; ciOnly: ReadonlySet<string> };
 
-/**
- * Scripts CI is allowed to invoke without a check:all-side counterpart.
- * These are non-gating (informational summaries) or CI-environment
- * setup (UI dep install, UI build prereqs not needed locally because
- * the :build variants embed them).
- */
-const CI_ONLY: ReadonlySet<string> = new Set<string>([
-	// UI workspace install — local `bun install` at the repo root +
-	// `bun run build:ui` (embedded in check:bundle-size:build) already
-	// covers this for the gate path.
-	"ui:install",
-	// build:ui — invoked by check:bundle-size:build via spawnSync
-	// rather than `bun run`, so it doesn't show up in the reachability
-	// walk; CI invokes it explicitly so the build step is visible in
-	// logs (see warren-5abc design note in check-bundle-size.ts).
-	"build:ui",
-	// Reporting steps — they post step-summary panels from artifacts
-	// produced by the gate proper. Local devs read the same data from
-	// `coverage/` and `test-results/` directly.
-	"report:test-timing",
-	"report:quality-metrics",
-]);
+type RawParityConfig = { aliases?: Record<string, string>; ciOnly?: string[] };
+
+export function loadParityConfig(configPath: string = PARITY_CONFIG): ParityConfig {
+	if (!existsSync(configPath)) return { aliases: {}, ciOnly: new Set() };
+	const raw = JSON.parse(readFileSync(configPath, "utf8")) as RawParityConfig;
+	return { aliases: raw.aliases ?? {}, ciOnly: new Set(raw.ciOnly ?? []) };
+}
 
 type PackageJson = { scripts?: Record<string, string> };
 
@@ -96,35 +69,34 @@ export function extractBunRunTargets(command: string): string[] {
 	return out;
 }
 
-export function loadScripts(): Record<string, string> {
-	const pkg = JSON.parse(readFileSync(PACKAGE_JSON, "utf8")) as PackageJson;
+export function loadScripts(packageJsonPath: string = PACKAGE_JSON): Record<string, string> {
+	if (!existsSync(packageJsonPath)) return {};
+	const pkg = JSON.parse(readFileSync(packageJsonPath, "utf8")) as PackageJson;
 	return pkg.scripts ?? {};
 }
 
+/**
+ * Everything reachable from the gate manifest: the manifest itself,
+ * the check:all / verify entry points, and the transitive closure of
+ * `bun run <x>` references in script bodies.
+ */
 export function computeReachable(
 	scripts: Record<string, string>,
-	root: string,
-): { reachable: Set<string>; missing: string[] } {
+	gates: readonly string[],
+): Set<string> {
 	const reachable = new Set<string>();
-	const missing: string[] = [];
-	const stack: string[] = [root];
+	const stack: string[] = [ROOT_GATE, "verify", ...gates];
 	while (stack.length > 0) {
 		const name = stack.pop();
 		if (!name || reachable.has(name)) continue;
 		reachable.add(name);
 		const body = scripts[name];
-		if (body === undefined) {
-			// Root or referenced-but-undefined script. We tolerate
-			// missing-from-package here only for the root (caller's
-			// responsibility) — log all of them, the caller decides.
-			missing.push(name);
-			continue;
-		}
+		if (body === undefined) continue;
 		for (const dep of extractBunRunTargets(body)) {
 			if (!reachable.has(dep)) stack.push(dep);
 		}
 	}
-	return { reachable, missing };
+	return reachable;
 }
 
 type WorkflowStep = { run?: unknown };
@@ -133,10 +105,10 @@ type WorkflowFile = { jobs?: Record<string, WorkflowJob> };
 
 export type CiInvocation = { workflow: string; job: string; step: number; script: string };
 
-export function extractCiInvocations(filePath: string): CiInvocation[] {
+export function extractCiInvocations(filePath: string, repoRoot: string = REPO_ROOT): CiInvocation[] {
 	const text = readFileSync(filePath, "utf8");
-	const doc = yaml.load(text) as WorkflowFile | null;
-	const workflow = relative(REPO_ROOT, filePath);
+	const doc = parse(text) as WorkflowFile | null;
+	const workflow = relative(repoRoot, filePath);
 	const out: CiInvocation[] = [];
 	if (!doc || typeof doc !== "object" || !doc.jobs) return out;
 	for (const [jobName, job] of Object.entries(doc.jobs)) {
@@ -153,36 +125,27 @@ export function extractCiInvocations(filePath: string): CiInvocation[] {
 	return out;
 }
 
-export function listWorkflows(dir: string = WORKFLOWS_DIR): string[] {
+/** Gate workflows only (ci*.yml / ci*.yaml) — release/publish
+ *  orchestration is intentionally out-of-band from the per-PR gate. */
+export function listCiWorkflows(dir: string = WORKFLOWS_DIR): string[] {
 	if (!existsSync(dir)) return [];
 	return readdirSync(dir)
-		.filter((f) => f.endsWith(".yml") || f.endsWith(".yaml"))
+		.filter((f) => (f.endsWith(".yml") || f.endsWith(".yaml")) && f.startsWith("ci"))
 		.map((f) => join(dir, f))
 		.sort();
 }
 
 export type ParityFailure = CiInvocation & { canonical: string; reason: string };
 
-export function checkParity(): {
-	invocations: CiInvocation[];
-	reachable: Set<string>;
-	failures: ParityFailure[];
-} {
-	const scripts = loadScripts();
-	const { reachable } = computeReachable(scripts, ROOT_GATE);
+export function evaluateParity(
+	invocations: CiInvocation[],
+	reachable: ReadonlySet<string>,
+	config: ParityConfig,
+): ParityFailure[] {
 	const failures: ParityFailure[] = [];
-	const invocations: CiInvocation[] = [];
-	for (const wf of listWorkflows()) {
-		// Skip release.yml: release-time orchestration (tag, publish,
-		// changelog) is intentionally out-of-band from the per-PR gate.
-		// We only check the gate workflows (anything matching ci*.yml).
-		const base = wf.split("/").pop() ?? wf;
-		if (!base.startsWith("ci")) continue;
-		invocations.push(...extractCiInvocations(wf));
-	}
 	for (const inv of invocations) {
-		const canonical = ALIASES[inv.script] ?? inv.script;
-		if (CI_ONLY.has(canonical)) continue;
+		const canonical = config.aliases[inv.script] ?? inv.script;
+		if (config.ciOnly.has(canonical)) continue;
 		if (reachable.has(canonical)) continue;
 		const reason =
 			canonical === inv.script
@@ -190,6 +153,20 @@ export function checkParity(): {
 				: `aliased to "${canonical}", which is not reachable from ${ROOT_GATE}`;
 		failures.push({ ...inv, canonical, reason });
 	}
+	return failures;
+}
+
+export function checkParity(): {
+	invocations: CiInvocation[];
+	reachable: Set<string>;
+	failures: ParityFailure[];
+} {
+	const reachable = computeReachable(loadScripts(), GATES);
+	const invocations: CiInvocation[] = [];
+	for (const wf of listCiWorkflows()) {
+		invocations.push(...extractCiInvocations(wf));
+	}
+	const failures = evaluateParity(invocations, reachable, loadParityConfig());
 	return { invocations, reachable, failures };
 }
 
@@ -213,13 +190,13 @@ function main(): void {
 	for (const f of failures) console.error(formatFailure(f));
 	console.error(
 		`\nFix one of:\n` +
-			`  - Wire the script into the "${ROOT_GATE}" chain in package.json.\n` +
-			`  - Change CI to invoke a script that is already in the chain.\n` +
+			`  - Wire the script into the GATES manifest / a gate's script body.\n` +
+			`  - Change CI to invoke a script that is already reachable.\n` +
 			`  - If the step is intentionally CI-only (summary / setup with no local\n` +
-			`    equivalent), add the canonical name to CI_ONLY in scripts/check-ci-parity.ts\n` +
-			`    with a justification comment.\n` +
+			`    equivalent), add it to "ciOnly" in scripts/ci-parity-config.json with a\n` +
+			`    justification in the config's "$comment".\n` +
 			`  - If two scripts run the same gate under different names, map the CI name\n` +
-			`    to its canonical equivalent in ALIASES.`,
+			`    to its canonical equivalent in "aliases" in scripts/ci-parity-config.json.`,
 	);
 	process.exit(1);
 }

@@ -1,0 +1,22 @@
+{
+	"$comment": [
+		"Per-repo escape hatches for the byte-identical scripts/check-ci-parity.ts",
+		"(docs/check-all-standard.md §6). Justify every entry:",
+		"aliases.check:coverage:ci — check:coverage plus a JUnit reporter for the CI",
+		"  test-timing summary; the underlying gate (tests + coverage ratchet) is identical.",
+		"ciOnly.ui:install — UI workspace dep install so check:deps (knip) can resolve the",
+		"  src/ui workspace in CI; locally covered by the root bun install + the",
+		"  frozen-lockfile install embedded in check:bundle-size --build.",
+		"ciOnly.build:ui — explicit UI build step kept in CI so the build is visible in",
+		"  logs (warren-5abc); locally check:bundle-size runs the same build itself via",
+		"  its --build flag (spawnSync, so it never shows up in the reachability walk).",
+		"ciOnly.report:test-timing — non-gating step-summary panel built from",
+		"  test-results/junit.xml; local devs read the artifact directly.",
+		"ciOnly.report:quality-metrics — non-gating consolidated code-quality panel",
+		"  appended to $GITHUB_STEP_SUMMARY; enforces nothing (warren-5b95)."
+	],
+	"aliases": {
+		"check:coverage:ci": "check:coverage"
+	},
+	"ciOnly": ["ui:install", "build:ui", "report:test-timing", "report:quality-metrics"]
+}

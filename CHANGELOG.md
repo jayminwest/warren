@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **`quality(dx)`** — adopted the os-eco canonical `check:all` standard
+  (pl-cf2a; `docs/check-all-standard.md` at the os-eco root). Verbose
+  gate names renamed to the frozen terse vocabulary:
+  `check:file-sizes` → `check:size`, `check:debt-markers` →
+  `check:debt`, `check:duplicates` → `check:dups`, `validate:agents-md`
+  → `check:agents` (no deprecated aliases kept). `check:all` is now the
+  byte-identical quiet runner `scripts/check-all.ts` (one aligned line
+  per gate, signature-only failures, `CHECK_ALL_VERBOSE=1` / `--bail`),
+  with a new `verify` alias. `scripts/check-ci-parity.ts` is now the
+  fleet-canonical copy that imports `GATES` from `check-all.ts`; escape
+  hatches moved to `scripts/ci-parity-config.json`. `check:bundle-size`
+  now carries `--build` (self-contained frozen-lockfile UI build) and
+  the separate `check:bundle-size:build` script was removed.
+
 ## [0.8.7] — 2026-06-11
 
 Doc-drift and validation error-message consistency fixes from the

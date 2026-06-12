@@ -153,17 +153,48 @@ bun run ui:install            # cd src/ui && bun install
 Run all checks before committing — warnings count as failures:
 
 ```bash
-bun run check:all
+bun run check:all     # or its agent-facing alias: bun run verify
 ```
 
-This runs: `check:coverage` (tests + coverage ratchet), `lint`,
-`typecheck`, `validate:agents-md`, `check:file-sizes`,
-`check:debt-markers`, `check:duplicates` (jscpd), `check:deps`,
-`check:bundle-size:build`, `gen:docs:check`, and `gen:openapi:check`
+`check:all` is `bun scripts/check-all.ts` — the os-eco fleet's canonical
+quiet runner (see `docs/check-all-standard.md` at the os-eco root). The
+script is **byte-identical** to
+`templates/l5-toolkit/scripts/check-all.ts`; never edit it in place —
+all per-repo variation comes from `package.json`, which the runner
+filters against the frozen canonical gate order. (Both frozen scripts
+are exempted from Biome's formatter via a `biome.json` override so the
+local formatter can't break byte-identity; the linter still covers
+them.) Warren's resolved
+manifest (exported as `GATES`) is: `lint`, `typecheck`, `check:agents`,
+`check:dups` (jscpd), `check:deps`, `check:size`, `check:debt`,
+`check:bundle-size`, `gen:docs:check`, `gen:openapi:check`
 (warren-b46b: keeps the `docs/openapi.yaml` OpenAPI 3.1 schema in sync
-with `ROUTE_TABLE`) — the same set CI enforces (see
+with `ROUTE_TABLE`), `check:coverage` (tests + coverage ratchet), and
+`check:ci-parity` — the same set CI enforces (see
 `.github/workflows/ci.yml`). Don't merge with lint warnings; fix at
 write time or promote to error in `biome.json`.
+
+Output contract ("quiet"): one aligned `<✓|✗> <gate> (N.Ns)` line per
+gate, then a one-line tally on success (`12/12 gates passed (…s)`). On
+failure it prints the failing gate names plus parsed failure signatures
+(bun-test `(fail)` lines, tsc/biome errors, budget violations) — never
+the full log — and a `re-run: bun run <gate>` hint. Set
+`CHECK_ALL_VERBOSE=1` to stream full output; pass `--bail` to stop at
+the first failing gate.
+
+`verify` is the standard agent-facing entry point and is always exactly
+`bun run check:all` — neither name may diverge from the other.
+
+`check:ci-parity` (`bun scripts/check-ci-parity.ts`, also byte-identical
+to the template copy) imports `GATES` from `check-all.ts`, parses every
+`.github/workflows/ci*.yml` (today `ci.yml` + `ci-postgres.yml`), and
+fails when a CI `bun run <X>` step is not transitively reachable from
+the manifest. Per-repo escape hatches live in
+`scripts/ci-parity-config.json` — `aliases` (e.g. `check:coverage:ci` →
+`check:coverage`) for same-gate-different-reporter variants, `ciOnly`
+(`ui:install`, `build:ui`, `report:test-timing`,
+`report:quality-metrics`) for intentionally CI-only steps. Justify every
+entry in the config's `$comment`; never edit the script itself.
 
 `check:coverage` (warren-e4b1) wraps `bun test --coverage` and enforces
 the floors in `scripts/coverage-budgets.json` against the "All files"
@@ -201,7 +232,8 @@ CI's fresh install.** The build is byte-reproducible across machines —
 measures the exact same bytes as CI. If your numbers disagree with CI,
 `rm -rf src/ui/node_modules` and rebuild; don't pad the budget. Never
 hand-edit the numbers — to re-baseline, run `bun run
-check:bundle-size:build --update`, which writes budgets straight from
+check:bundle-size --update` (the script body carries `--build`, so it
+always builds first), which writes budgets straight from
 the measured build plus a small churn headroom, using the SAME Node-zlib
 gzip the guard enforces (so a budget it writes always passes — this is
 what closes the Vite parity gap; stop copying Vite's cooler number).

@@ -42,11 +42,11 @@ describe("validate-agents-md helpers", () => {
 
 	test("extractBunRunScripts captures colon-namespaced and hyphenated names", () => {
 		const scripts = extractBunRunScripts([
-			"bun run lint && bun run db:generate:sqlite && bun run validate:agents-md",
+			"bun run lint && bun run db:generate:sqlite && bun run check:bundle-size",
 		]);
 		expect(scripts.has("lint")).toBe(true);
 		expect(scripts.has("db:generate:sqlite")).toBe(true);
-		expect(scripts.has("validate:agents-md")).toBe(true);
+		expect(scripts.has("check:bundle-size")).toBe(true);
 	});
 
 	test("extractBacktickedPaths skips non-path tokens", () => {

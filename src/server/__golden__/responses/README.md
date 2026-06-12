@@ -32,8 +32,8 @@ roll the change back and stabilise the producer instead.
 The directory name mirrors the
 [burrow parser golden fixtures](https://github.com/jayminwest/burrow)
 convention (`burrow/src/runtime/parsers/__golden__/`) and is
-already excluded from `check:file-sizes`, `check:debt-markers`,
-`check:duplicates`, and Biome's filename-convention rule (see
+already excluded from `check:size`, `check:debt`,
+`check:dups`, and Biome's filename-convention rule (see
 `scripts/check-file-sizes.ts`, `scripts/check-debt-markers.ts`,
 `.jscpd.json`, `biome.json`). New golden directories under `src/`
 should follow the same name so those exclusions keep working.
