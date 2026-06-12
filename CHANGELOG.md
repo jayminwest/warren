@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.8] — 2026-06-12
+
+Truthy boolean env-var parser harmonization from the nightwatch patrol
+(plan pl-a04a).
+
+### Fixed
+
+- **Divergent truthy env-var parsers harmonized** on the canonical
+  `1`/`true`/`yes`/`on` token set (trimmed, case-insensitive), symmetric
+  with the existing falsy `0`/`false`/`no`/`off` opt-out set.
+  `parseTrueEnv` (`src/server/main/utils.ts`) now also accepts `on`, and
+  the inline parsers for `WARREN_WORKER_PROBE_DISABLED`
+  (`src/server/probe.ts`) and `WARREN_DISABLE_UI` (`src/server/config.ts`)
+  route through the same logic, so case variants and the `yes`/`on`
+  spellings are honored uniformly instead of being silently ignored.
+- **Supervisor `parseBoolEnv`** (`src/supervisor/main.ts`) for
+  `WARREN_BURROW_NO_AUTH` now trims, lowercases, and accepts
+  `1`/`true`/`yes`/`on`, while preserving the fail-safe default (absent
+  or empty keeps auth on).
+
 ## [0.8.7] — 2026-06-11
 
 Doc-drift and validation error-message consistency fixes from the
