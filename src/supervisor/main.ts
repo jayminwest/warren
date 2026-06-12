@@ -351,9 +351,10 @@ export const DEFAULT_BURROW_SOCKET = "/var/run/burrow.sock";
  *   WARREN_BURROW_SOCKET   socket the supervisor binds burrow to (and warren
  *                          reaches it through). Default: /var/run/burrow.sock
  *   WARREN_BURROW_BIN      burrow binary on PATH. Default: "burrow".
- *   WARREN_BURROW_NO_AUTH  "1"/"true" appends --no-auth to `burrow serve` so
- *                          warren can boot on a loopback-only dev box without
- *                          BURROW_API_TOKEN. Default: off.
+ *   WARREN_BURROW_NO_AUTH  1/true/yes/on (case-insensitive) appends --no-auth
+ *                          to `burrow serve` so warren can boot on a
+ *                          loopback-only dev box without BURROW_API_TOKEN.
+ *                          Default: off.
  *   WARREN_BURROW_ARGS     extra whitespace-separated args appended to
  *                          `burrow serve` (after --no-auth, if any). Use for
  *                          flags warren doesn't yet model explicitly.
@@ -381,7 +382,8 @@ export function resolveCommandFromEnv(opts: ResolveCommandOptions = {}): Resolve
 
 function parseBoolEnv(raw: string | undefined): boolean {
 	if (raw === undefined) return false;
-	return raw === "1" || raw.toLowerCase() === "true";
+	const lower = raw.trim().toLowerCase();
+	return lower === "1" || lower === "true" || lower === "yes" || lower === "on";
 }
 
 function parseArgsEnv(raw: string | undefined): string[] {

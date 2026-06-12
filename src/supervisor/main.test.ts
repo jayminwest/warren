@@ -400,6 +400,13 @@ describe("resolveCommandFromEnv", () => {
 		expect(cmd.burrowCmd).toContain("--no-auth");
 	});
 
+	test("WARREN_BURROW_NO_AUTH accepts 'yes'/'on' (case-insensitive, trimmed)", () => {
+		for (const raw of ["yes", "ON", " on ", "Yes"]) {
+			const cmd = resolveCommandFromEnv({ env: { WARREN_BURROW_NO_AUTH: raw } });
+			expect(cmd.burrowCmd).toContain("--no-auth");
+		}
+	});
+
 	test("WARREN_BURROW_NO_AUTH=0 leaves the command unchanged", () => {
 		const cmd = resolveCommandFromEnv({ env: { WARREN_BURROW_NO_AUTH: "0" } });
 		expect(cmd.burrowCmd).not.toContain("--no-auth");
