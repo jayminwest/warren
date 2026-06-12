@@ -17,7 +17,7 @@
  *   WARREN_DB_URL            dialect-aware database URL (sqlite:/// or postgres://)
  *   WARREN_DB_PATH           legacy SQLite path; back-compat alias for WARREN_DB_URL
  *   WARREN_UI_DIST_DIR       UI dist dir — defaults to <repo>/src/ui/dist
- *   WARREN_DISABLE_UI        '1'/'true' to disable static UI serving entirely
+ *   WARREN_DISABLE_UI        1/true/yes/on (case-insensitive) to disable static UI serving entirely
  *
  * `dbUrl` precedence (R-13 pl-f17e step 5, warren-e2ea): WARREN_DB_URL
  * wins; else WARREN_DB_PATH is synthesized into a sqlite:// URL; else
@@ -32,6 +32,7 @@
 import { join } from "node:path";
 import { ValidationError } from "../core/errors.ts";
 import { sqliteUrlForPath } from "../db/url.ts";
+import { parseTrueEnv } from "./main/utils.ts";
 import type { Transport } from "./types.ts";
 
 export const DEFAULT_DATA_DIR = "/data";
@@ -124,8 +125,7 @@ function resolveToken(env: EnvLike, noAuth: boolean): string | null {
 
 function resolveUiDistDir(env: EnvLike, fallback: string | undefined): string | null {
 	const explicit = env.WARREN_UI_DIST_DIR;
-	const disabled = env.WARREN_DISABLE_UI;
-	if (disabled === "1" || disabled === "true") return null;
+	if (parseTrueEnv(env.WARREN_DISABLE_UI)) return null;
 	if (explicit !== undefined && explicit !== "") return explicit;
 	return fallback ?? join(process.cwd(), "src", "ui", "dist");
 }

@@ -53,13 +53,20 @@ describe("loadWorkerProbeConfigFromEnv", () => {
 		).toEqual({ intervalMs: 5000, timeoutMs: 1500, disabled: false });
 	});
 
-	test("disabled='1' / 'true' flips the disabled flag", () => {
-		expect(loadWorkerProbeConfigFromEnv({ WARREN_WORKER_PROBE_DISABLED: "1" })).toEqual({
-			disabled: true,
-		});
-		expect(loadWorkerProbeConfigFromEnv({ WARREN_WORKER_PROBE_DISABLED: "true" })).toEqual({
-			disabled: true,
-		});
+	test("accepts 1/true/yes/on (case- and whitespace-insensitive) to flip the disabled flag", () => {
+		for (const raw of ["1", "true", "On", "YES", " true "]) {
+			expect(loadWorkerProbeConfigFromEnv({ WARREN_WORKER_PROBE_DISABLED: raw })).toEqual({
+				disabled: true,
+			});
+		}
+	});
+
+	test("keeps disabled=false for empty / 0 / off", () => {
+		for (const raw of ["", "0", "off"]) {
+			expect(loadWorkerProbeConfigFromEnv({ WARREN_WORKER_PROBE_DISABLED: raw })).toEqual({
+				disabled: false,
+			});
+		}
 	});
 
 	test("rejects non-integer intervals", () => {

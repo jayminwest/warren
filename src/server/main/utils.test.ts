@@ -16,6 +16,7 @@ describe("parseTrueEnv", () => {
 		expect(parseTrueEnv("0")).toBe(false);
 		expect(parseTrueEnv("false")).toBe(false);
 		expect(parseTrueEnv("no")).toBe(false);
+		expect(parseTrueEnv("off")).toBe(false);
 	});
 
 	test("accepts the canonical truthy set (case- and whitespace-insensitive)", () => {
@@ -23,7 +24,11 @@ describe("parseTrueEnv", () => {
 		expect(parseTrueEnv("true")).toBe(true);
 		expect(parseTrueEnv("TRUE")).toBe(true);
 		expect(parseTrueEnv("yes")).toBe(true);
+		expect(parseTrueEnv("YES")).toBe(true);
 		expect(parseTrueEnv("  Yes  ")).toBe(true);
+		expect(parseTrueEnv("  true  ")).toBe(true);
+		expect(parseTrueEnv("on")).toBe(true);
+		expect(parseTrueEnv("On")).toBe(true);
 	});
 });
 

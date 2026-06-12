@@ -85,11 +85,22 @@ describe("loadServerConfigFromEnv", () => {
 		expect(config.dbUrlConflict).toBe("/srv/legacy.sqlite");
 	});
 
-	test("WARREN_DISABLE_UI=1 disables UI", () => {
-		const config = loadServerConfigFromEnv({
-			env: { WARREN_API_TOKEN: "x", WARREN_DISABLE_UI: "1" },
-		});
-		expect(config.uiDistDir).toBeNull();
+	test("WARREN_DISABLE_UI accepts 1/true/yes/on (case- and whitespace-insensitive)", () => {
+		for (const raw of ["1", "true", "On", "YES", " true "]) {
+			const config = loadServerConfigFromEnv({
+				env: { WARREN_API_TOKEN: "x", WARREN_DISABLE_UI: raw },
+			});
+			expect(config.uiDistDir).toBeNull();
+		}
+	});
+
+	test("WARREN_DISABLE_UI leaves UI enabled for empty / 0 / off", () => {
+		for (const raw of ["", "0", "off"]) {
+			const config = loadServerConfigFromEnv({
+				env: { WARREN_API_TOKEN: "x", WARREN_DISABLE_UI: raw, WARREN_UI_DIST_DIR: "/app/ui" },
+			});
+			expect(config.uiDistDir).toBe("/app/ui");
+		}
 	});
 
 	test("WARREN_UI_DIST_DIR overrides the default", () => {

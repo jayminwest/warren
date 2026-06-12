@@ -80,7 +80,7 @@ export function redactDbUrl(url: string): string {
 export function parseTrueEnv(raw: string | undefined): boolean {
 	if (raw === undefined) return false;
 	const t = raw.trim().toLowerCase();
-	return t === "1" || t === "true" || t === "yes";
+	return t === "1" || t === "true" || t === "yes" || t === "on";
 }
 
 export function parseIntEnv<F extends number | undefined>(

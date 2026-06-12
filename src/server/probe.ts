@@ -31,6 +31,7 @@
 import type { BurrowClientPool, ProbeResult } from "../burrow-client/pool.ts";
 import type { WorkersRepo } from "../db/repos/workers.ts";
 import type { WorkerState } from "../db/schema.ts";
+import { parseTrueEnv } from "./main/utils.ts";
 
 /** Default probe cadence — matches plan approach prose ("every 30s"). */
 export const DEFAULT_WORKER_PROBE_INTERVAL_MS = 30_000;
@@ -71,8 +72,7 @@ export function loadWorkerProbeConfigFromEnv(env: EnvLike = process.env): Worker
 		env.WARREN_WORKER_PROBE_TIMEOUT_MS,
 		"WARREN_WORKER_PROBE_TIMEOUT_MS",
 	);
-	const disabledRaw = env.WARREN_WORKER_PROBE_DISABLED;
-	const disabled = disabledRaw === "1" || disabledRaw === "true";
+	const disabled = parseTrueEnv(env.WARREN_WORKER_PROBE_DISABLED);
 	return {
 		...(intervalMs !== undefined ? { intervalMs } : {}),
 		...(timeoutMs !== undefined ? { timeoutMs } : {}),
