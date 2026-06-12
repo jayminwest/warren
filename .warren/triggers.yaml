@@ -46,3 +46,42 @@
   prompt: |
     Triage open bug seeds and plan fixes. Follow your procedure exactly.
     Today's date is {{date}}. If no bugs qualify, report clean and exit.
+
+# Audit population (docs/CONSTITUTION.md). gatewatch + ratchetwatch are
+# mechanical auditors with plan+dispatch authority (auto_plan_run);
+# tastewatch is the report-only taste auditor — its weekly digest seed is
+# the human's five-minute calibration read. Article IX: changes to these
+# entries require explicit human review.
+
+- id: gatewatch-patrol
+  kind: cron
+  cron: '10 3 * * *'
+  role: gatewatch
+  timezone: America/Los_Angeles
+  prompt: |
+    Audit the last 36 hours of merged history for gate-integrity
+    violations per docs/CONSTITUTION.md. Follow your procedure exactly.
+    Today's date is {{date}}. Dedupe against open audit seeds before
+    filing. If the window is clean, report clean and exit.
+
+- id: ratchetwatch-patrol
+  kind: cron
+  cron: '40 3 * * *'
+  role: ratchetwatch
+  timezone: America/Los_Angeles
+  prompt: |
+    Measure ratchet slack (coverage floors, grandfather lists, bundle
+    creep, debt markers) per docs/CONSTITUTION.md Article II and plan
+    mechanical tightenings only. Follow your procedure exactly. Today's
+    date is {{date}}. If everything is tight, report tight and exit.
+
+- id: tastewatch-digest
+  kind: cron
+  cron: '0 4 * * 0'
+  role: tastewatch
+  timezone: America/Los_Angeles
+  prompt: |
+    Produce the weekly taste digest: stratified sample of the week's
+    merged commits judged against docs/CONSTITUTION.md, auditor
+    precision table, divergence trend, at most one proposed amendment.
+    Exactly one digest seed. Today's date is {{date}}.
