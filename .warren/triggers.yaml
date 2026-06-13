@@ -83,6 +83,17 @@
     — the existing 202 steering channel, no new endpoint or dispatch path.
     If everything is tight, report tight and exit.
 
+- id: warden-digest
+  kind: cron
+  cron: '0 5 * * 0'
+  role: warden-digest
+  timezone: America/Los_Angeles
+  prompt: |
+    Re-wake the Audit Warden conversation if its anchoring run has idled,
+    then post the weekly synthesis message so Leveret triages the week's
+    accumulated auditor findings and proposes plans. Follow your procedure
+    exactly. Today's date is {{date}}.
+
 - id: tastewatch-digest
   kind: cron
   cron: '0 4 * * 0'
