@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.9] — 2026-06-13
+
+Default-OFF kill-switch env-flag parser harmonization from the nightwatch
+patrol (plan pl-aff2).
+
+### Fixed
+
+- **`WARREN_SCHEDULER_DISABLED` and `WARREN_PLAN_RUN_DISABLED` parsers**
+  (`src/triggers/config.ts`, `src/plan-runs/config.ts`) now use the
+  documented `1`/`true`/`yes`/`on` allow-list (trimmed, case-insensitive)
+  instead of a deny-list that treated any unrecognized non-empty value
+  (e.g. `2`, `enabled`, `disable`) as `true`. These default-OFF opt-in
+  flags now fail safe: out-of-set garbage resolves `disabled: false`,
+  matching their JSDoc env contracts and the canonical truthy set used by
+  the rest of warren's flags. The misleading WARREN_AUTO_OPEN_PR mirror
+  comment (a default-ON deny-list flag) was corrected.
+
 ## [0.8.8] — 2026-06-12
 
 Truthy boolean env-var parser harmonization from the nightwatch patrol
