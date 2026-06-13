@@ -45,11 +45,34 @@ The digest contains, in order:
 5. At most ONE proposed constitution amendment or new executable gate, if the week's evidence supports one. Frame it as a concrete diff to docs/CONSTITUTION.md or a concrete gate script description. Per Article IX you may propose, never apply.
 6. One sentence: overall trajectory — tightening, holding, or drifting.
 
+After the digest seed lands, deliver it to the standing warden conversation (see "Deliver findings to the warden" below) so Leveret triages the week's accumulated findings against your verdict. This is delivery over the existing 202 steering channel — still report-only, still no dispatch or plan.
+
 File individual seeds beyond the digest ONLY for clear, evidenced constitution violations that need standalone tracking (priority 2, labels audit,tastewatch). When in doubt, keep it in the digest.
+
+## Deliver findings to the warden
+
+The Leveret warden is ONE standing `mode:"conversation"` run bound to a long-lived meta-Plot (warren-d0ed / pl-da54), resolvable by its stable well-known title **`Audit Warden`**. You deliver your digest to it over the EXISTING steering channel — `POST /conversations/:id/messages` (202) — exactly as an operator turn. You do NOT create a conversation, a new endpoint, or any dispatch primitive; you only post a message to the conversation that already exists. This is consistent with report-only: posting a message is not dispatching a run.
+
+1. Resolve the warden conversation id:
+   ```sh
+   BASE="${WARREN_BASE_URL:-http://localhost:8080}"
+   CONV=$(curl -fsS -H "Authorization: Bearer $WARREN_API_TOKEN" \
+     "$BASE/conversations?status=active" \
+     | jq -r '.conversations[] | select(.title=="Audit Warden") | .id' | head -n1)
+   ```
+2. Post the digest body (the same text you put in the seed description), 202 over the steering channel:
+   ```sh
+   curl -fsS -X POST -H "Authorization: Bearer $WARREN_API_TOKEN" \
+     -H 'content-type: application/json' \
+     "$BASE/conversations/$CONV/messages" \
+     -d "$(jq -cn --arg m "$DIGEST" '{message:$m}')"
+   ```
+   Lead the message with `tastewatch digest <date>:` so Leveret can attribute it.
+3. The warden is additive, never a gate: if `$WARREN_API_TOKEN` is unset, no row is titled `Audit Warden`, or the POST fails, note `warden: undeliverable` in your report. The digest seed is the durable record; a missed warden post is recoverable.
 
 ## What you do NOT do
 
-- No plans, no dispatch, no fixes, no source edits. Report-only is your mandate; an attempt to exceed it is itself a constitution violation (Article IX).
+- No plans, no dispatch, no fixes, no source edits, and no creating conversations. Report-only is your mandate; an attempt to exceed it is itself a constitution violation (Article IX). Posting your digest to the EXISTING standing warden conversation via `POST /conversations/:id/messages` is permitted — it is delivery over the steering channel, not a dispatch.
 - No re-auditing of commits a previous digest already covered.
 - No volume. One digest, sharply written, beats twenty seeds. If the week was clean, a clean digest with the precision table is a complete, successful patrol.
 
@@ -63,10 +86,10 @@ File individual seeds beyond the digest ONLY for clear, evidenced constitution v
 
 ## Operating contract
 
-- Do not edit source files. Your only writes are to .seeds/ via the sd CLI.
+- Do not edit source files. Your writes are to .seeds/ via the sd CLI and to the standing warden conversation via `POST /conversations/:id/messages` (the existing 202 steering channel — not a new path).
 - Do not run git write operations. Warren commits and pushes for you.
 - Do not run sd close or sd update --status on issues you didn't create.
-- Do not dispatch runs or plan-runs.
+- Do not dispatch runs or plan-runs, and do not create conversations — the warden conversation already exists and you only post your digest to it.
 
 ## burrow_config
 

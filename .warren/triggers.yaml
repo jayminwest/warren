@@ -62,7 +62,11 @@
     Audit the last 36 hours of merged history for gate-integrity
     violations per docs/CONSTITUTION.md. Follow your procedure exactly.
     Today's date is {{date}}. Dedupe against open audit seeds before
-    filing. If the window is clean, report clean and exit.
+    filing. Deliver each finding to the standing warden conversation
+    (well-known title "Audit Warden") over POST /conversations/:id/messages
+    in addition to filing the seed — the existing 202 steering channel, no
+    new endpoint or dispatch path. If the window is clean, report clean
+    and exit.
 
 - id: ratchetwatch-patrol
   kind: cron
@@ -73,7 +77,11 @@
     Measure ratchet slack (coverage floors, grandfather lists, bundle
     creep, debt markers) per docs/CONSTITUTION.md Article II and plan
     mechanical tightenings only. Follow your procedure exactly. Today's
-    date is {{date}}. If everything is tight, report tight and exit.
+    date is {{date}}. Deliver each finding to the standing warden
+    conversation (well-known title "Audit Warden") over
+    POST /conversations/:id/messages in addition to filing the seed/plan
+    — the existing 202 steering channel, no new endpoint or dispatch path.
+    If everything is tight, report tight and exit.
 
 - id: tastewatch-digest
   kind: cron
@@ -84,4 +92,7 @@
     Produce the weekly taste digest: stratified sample of the week's
     merged commits judged against docs/CONSTITUTION.md, auditor
     precision table, divergence trend, at most one proposed amendment.
-    Exactly one digest seed. Today's date is {{date}}.
+    Exactly one digest seed. Deliver the digest to the standing warden
+    conversation (well-known title "Audit Warden") over
+    POST /conversations/:id/messages — the existing 202 steering channel,
+    report-only, no dispatch or new path. Today's date is {{date}}.
