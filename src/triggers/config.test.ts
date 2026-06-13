@@ -47,6 +47,14 @@ describe("loadTriggerSchedulerConfigFromEnv", () => {
 		}
 	});
 
+	test("WARREN_SCHEDULER_DISABLED treats out-of-set values as not-disabled", () => {
+		for (const v of ["2", "enabled", "disable", "garbage"]) {
+			expect(loadTriggerSchedulerConfigFromEnv({ WARREN_SCHEDULER_DISABLED: v }).disabled).toBe(
+				false,
+			);
+		}
+	});
+
 	test("WARREN_SD_BINARY overrides the seeds binary", () => {
 		const cfg = loadTriggerSchedulerConfigFromEnv({ WARREN_SD_BINARY: "/usr/local/bin/sd" });
 		expect(cfg.sdBinary).toBe("/usr/local/bin/sd");

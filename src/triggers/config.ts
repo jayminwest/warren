@@ -54,11 +54,13 @@ function parseTickMs(raw: string | undefined): number {
 	return Math.trunc(parsed);
 }
 
-// Mirror the truthy set used by WARREN_AUTO_OPEN_PR (mx-b82711) so the
-// scheduler's env semantics aren't an outlier.
+// Default-OFF opt-in flag: use the canonical allow-list truthy set from
+// PR #340 ("1"/"true"/"yes"/"on", case-insensitive) so out-of-set garbage
+// resolves to false (fail-safe) and matches the documented env contract.
+// (Unlike the default-ON WARREN_AUTO_OPEN_PR, which correctly uses a
+// deny-list opt-out posture.)
 function parseBoolFlag(raw: string | undefined): boolean {
 	if (raw === undefined) return false;
-	const normalized = raw.trim().toLowerCase();
-	if (normalized === "") return false;
-	return !["0", "false", "no", "off"].includes(normalized);
+	const t = raw.trim().toLowerCase();
+	return t === "1" || t === "true" || t === "yes" || t === "on";
 }
