@@ -3,13 +3,24 @@
   "created_at": "2026-06-13T17:53:13.124Z",
   "id": "plot-781dea58",
   "intent": {
-    "constraints": [],
-    "goal": "",
-    "non_goals": [],
-    "success_criteria": []
+    "constraints": [
+      "The warden slice is gated on the repair arc: live intent (warren-ce65/df1b) and send-off→planner (warren-157a) must work before warden findings can produce plans",
+      "The warden ingests auditor findings only via the existing POST /conversations/:id/messages channel — no new endpoint or dispatch primitive",
+      "The warden runs as a standing conversation bound to a long-lived meta-Plot, not a per-finding conversation"
+    ],
+    "goal": "Close the Leveret repair arc so the overseer lands live Plot intent end-to-end, then stand up the Leveret warden (warren-d0ed) so auditor findings flow into a standing conversation that triages and proposes plans through the proven send-off\\u2192planner chain.",
+    "non_goals": [
+      "SUPERSEDES the earlier 'warden is out of scope' line — the warden is now IN scope, but only a thin first slice: a single standing conversation + weekly digest + plan proposals. Auditor-autonomy-promotion recommendations from tastewatch's precision table are deferred to a follow-up.",
+      "Building any new dispatch or ingestion path for the warden — it must reuse the existing POST /conversations/:id/messages steering channel (202 today)"
+    ],
+    "success_criteria": [
+      "A standing Leveret conversation bound to a meta-Plot ingests auditor findings via POST /conversations/:id/messages and synthesizes a weekly digest",
+      "The warden proposes at least one plan through the existing send-off→planner chain (no new dispatch path), exercising the repair-arc loop on real audit input",
+      "warren-d0ed is closed (thin slice), with auditor-autonomy-promotion recommendations filed as a tracked follow-up seed"
+    ]
   },
   "name": "Polishing Leveret",
   "schema_version": 1,
   "status": "drafting",
-  "updated_at": "2026-06-13T17:53:13.124Z"
+  "updated_at": "2026-06-13T20:42:37.062Z"
 }
