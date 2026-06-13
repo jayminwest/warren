@@ -23,6 +23,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   now carries `--build` (self-contained frozen-lockfile UI build) and
   the separate `check:bundle-size:build` script was removed.
 
+## [0.8.9] — 2026-06-13
+
+Default-OFF kill-switch env-flag parser harmonization from the nightwatch
+patrol (plan pl-aff2).
+
+### Fixed
+
+- **`WARREN_SCHEDULER_DISABLED` and `WARREN_PLAN_RUN_DISABLED` parsers**
+  (`src/triggers/config.ts`, `src/plan-runs/config.ts`) now use the
+  documented `1`/`true`/`yes`/`on` allow-list (trimmed, case-insensitive)
+  instead of a deny-list that treated any unrecognized non-empty value
+  (e.g. `2`, `enabled`, `disable`) as `true`. These default-OFF opt-in
+  flags now fail safe: out-of-set garbage resolves `disabled: false`,
+  matching their JSDoc env contracts and the canonical truthy set used by
+  the rest of warren's flags. The misleading WARREN_AUTO_OPEN_PR mirror
+  comment (a default-ON deny-list flag) was corrected.
+
+## [0.8.8] — 2026-06-12
+
+Truthy boolean env-var parser harmonization from the nightwatch patrol
+(plan pl-a04a).
+
+### Fixed
+
+- **Divergent truthy env-var parsers harmonized** on the canonical
+  `1`/`true`/`yes`/`on` token set (trimmed, case-insensitive), symmetric
+  with the existing falsy `0`/`false`/`no`/`off` opt-out set.
+  `parseTrueEnv` (`src/server/main/utils.ts`) now also accepts `on`, and
+  the inline parsers for `WARREN_WORKER_PROBE_DISABLED`
+  (`src/server/probe.ts`) and `WARREN_DISABLE_UI` (`src/server/config.ts`)
+  route through the same logic, so case variants and the `yes`/`on`
+  spellings are honored uniformly instead of being silently ignored.
+- **Supervisor `parseBoolEnv`** (`src/supervisor/main.ts`) for
+  `WARREN_BURROW_NO_AUTH` now trims, lowercases, and accepts
+  `1`/`true`/`yes`/`on`, while preserving the fail-safe default (absent
+  or empty keeps auth on).
+
 ## [0.8.7] — 2026-06-11
 
 Doc-drift and validation error-message consistency fixes from the
