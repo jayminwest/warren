@@ -93,3 +93,50 @@ Amend by PR touching this file, flagged for human merge (Article IX).
 Tastewatch's weekly digest may propose amendments; it may not apply
 them. When an article becomes fully enforceable as an executable gate,
 note the gate here and retire the manual check.
+
+---
+
+## Audit Warden boundary (warden architecture)
+
+The Audit Warden is a **standing** Leveret conversation that consolidates
+findings from gatewatch, ratchetwatch, and tastewatch into weekly digest
+plans. Its architecture is documented in `LEVERET.md §0.15`; this section
+records the constitutional constraints.
+
+### Ingestion rule
+
+Audit findings reach the warden **only** via
+`POST /conversations/:id/messages` (the existing 202 steering channel).
+No auditor writes directly to the DB or calls a new endpoint. This rule
+preserves Article IX: auditors cannot modify their own mandate, and the
+ingestion path is as auditable as any other operator turn.
+
+### Digest cadence
+
+- `warden-digest` cron: Sunday 05:00 America/Los_Angeles — Leveret
+  synthesizes the week's accumulated findings and proposes plans through
+  the existing send-off → planner chain.
+- `tastewatch-digest` cron: Sunday 04:00 America/Los_Angeles (60 min
+  before warden-digest) — tastewatch delivers the taste digest to the
+  warden conversation.
+
+Both trigger entries are in `.warren/triggers.yaml` and are protected by
+Article IX (require human review to change).
+
+### Meta-Plot and standing conversation
+
+The warden is bound to one long-lived meta-Plot (auto-created at warden
+bootstrap, never closed). The conversation is resolvable by the
+well-known title **"Audit Warden"** via `GET /conversations?status=active`.
+Re-wake (`POST /conversations/:id/re-wake`) restores a live session after
+idle-finalize without closing or re-creating the conversation or Plot.
+
+### Autonomy-promotion recommendations
+
+When tastewatch's precision table shows consistent, high-precision findings
+from an auditor, tastewatch *recommends* autonomy promotion in its digest.
+These recommendations are advisory — they are delivered to the warden
+conversation for Leveret to route as a proposed seed or amendment, and
+any resulting change to `.canopy/` or `.warren/triggers.yaml` requires
+explicit human review (Article IX). No auditor may grant itself or another
+auditor autonomous dispatch authority.
