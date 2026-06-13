@@ -1,0 +1,15 @@
+{
+  "attachments": [],
+  "created_at": "2026-06-13T17:53:13.124Z",
+  "id": "plot-781dea58",
+  "intent": {
+    "constraints": [],
+    "goal": "",
+    "non_goals": [],
+    "success_criteria": []
+  },
+  "name": "Polishing Leveret",
+  "schema_version": 1,
+  "status": "drafting",
+  "updated_at": "2026-06-13T17:53:13.124Z"
+}
