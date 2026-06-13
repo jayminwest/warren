@@ -215,11 +215,7 @@ export const scenario: Scenario = {
 			assertEqual(created.run.mode, "conversation", "warden dispatches mode='conversation' run");
 			assertTrue(plotId !== null && plotId.length > 0, "warden auto-creates a meta-Plot");
 			assertEqual(created.conversation.status, "active", "fresh warden conversation is active");
-			assertEqual(
-				created.conversation.title,
-				WARDEN_TITLE,
-				"conversation title is 'Audit Warden'",
-			);
+			assertEqual(created.conversation.title, WARDEN_TITLE, "conversation title is 'Audit Warden'");
 
 			// =================================================================
 			// Phase B — resolvable by well-known title via list endpoint
@@ -332,7 +328,7 @@ export const scenario: Scenario = {
 			// Verify the transcript content: last message is the digest turn.
 			const lastMsg = afterDigest.messages[afterDigest.messages.length - 1];
 			assertTrue(
-				lastMsg !== undefined && lastMsg.content.startsWith("warden-digest"),
+				Boolean(lastMsg?.content.startsWith("warden-digest")),
 				"last message in transcript is the warden-digest synthesis turn",
 			);
 
@@ -344,9 +340,14 @@ export const scenario: Scenario = {
 				"scenario-34 (warren-ce65 pending): leveret-attributed propose_intent is not yet wired; driving intent edit via POST /plots/:id/intent as a stand-in",
 			);
 			if (plotId === null) throw new Error("unreachable: plotId asserted non-null above");
-			await http.expectJson<PlotEnvelope>("POST", `/plots/${encodeURIComponent(plotId)}/intent`, 200, {
-				body: { goal: FINAL_GOAL },
-			});
+			await http.expectJson<PlotEnvelope>(
+				"POST",
+				`/plots/${encodeURIComponent(plotId)}/intent`,
+				200,
+				{
+					body: { goal: FINAL_GOAL },
+				},
+			);
 
 			// =================================================================
 			// Phase E — send-off: closes conversation, queues plotSync PR
