@@ -35,7 +35,7 @@ $ open http://homeserver.local:8080
 ```
 
 In the UI:
-1. **Pick an agent** — Warren ships three built-in agents inline (`src/registry/builtins/`): `claude-code` (default), `sapling` (alternative steerable harness), and `pi` (multi-provider harness with first-class cost reporting). A fresh install can dispatch a run against any of them without further setup. Power users who want a custom prompt library set `CANOPY_REPO_URL`; warren clones the repo and every prompt tagged `agent` becomes a library-source agent that overrides any same-named built-in.
+1. **Pick an agent** — Warren ships three built-in agents inline (`src/registry/builtins/`): `pi` (multi-provider harness with first-class cost reporting, and the default runtime when an agent pins none — warren-16f8), `claude-code` (single-provider Anthropic harness, opt-in via `frontmatter.runtime`), and `sapling` (alternative steerable harness). A fresh install can dispatch a run against any of them without further setup. Power users who want a custom prompt library set `CANOPY_REPO_URL`; warren clones the repo and every prompt tagged `agent` becomes a library-source agent that overrides any same-named built-in.
 2. **Add project** — paste a GitHub URL. Warren clones it under `/data/projects/`.
 3. **Spawn run** — pick agent + project + prompt. Warren provisions a sandbox, seeds the rendered agent into it, dispatches the run, streams events to the UI.
 4. **Watch and steer** — live event tail, send steering messages, cancel cleanly. If the project opted into the agent-memory feature, the UI also surfaces mulch records the agent recorded; if it opted into the issue-queue feature, it surfaces seeds the agent filed or closed.

@@ -39,6 +39,10 @@ export const CLAUDE_CODE_BUILTIN: AgentDefinition = {
 	frontmatter: {
 		source: "builtin",
 		tags: ["agent"],
+		// claude-code is opt-in since the default runtime flipped to pi
+		// (warren-16f8); pin it explicitly so this built-in keeps
+		// dispatching onto the claude-code burrow runtime.
+		runtime: "claude-code",
 		// Sonnet tier (model-tiers.ts): decomposed/scoped coding work;
 		// operators raise to Opus per-run when a raw prompt needs it.
 		...MODEL_TIERS.sonnet,

@@ -66,12 +66,14 @@ export interface AgentDefinition {
  *              decides how to interpret it.
  *   runtime  — burrow runtime id this canopy agent dispatches onto
  *              (e.g. "claude-code", "sapling", "pi"). When unset,
- *              warren falls back to `agent.name` — preserving the
- *              historical name=runtime convention for claude-code /
- *              sapling / pi. Interactive system-prompt-only agents like
- *              `brainstorm` / `planner` (warren-ebca) set this so they
- *              compose onto a real burrow runtime instead of looking up
- *              their own name in `BUILT_IN_RUNTIMES`.
+ *              warren falls back to `DEFAULT_RUNTIME_ID` ("pi") —
+ *              the multi-provider runtime is the preferred default
+ *              (warren-16f8). claude-code stays available but is now
+ *              opt-in: pin it via this field. Built-in agents that
+ *              want a non-pi runtime (claude-code / sapling) declare
+ *              it here explicitly; interactive system-prompt-only
+ *              agents like `brainstorm` / `planner` (warren-ebca) do
+ *              the same so they compose onto a real burrow runtime.
  *   auto_plan_run — boolean (warren-a32a). When true and the agent's run
  *              succeeds, reap diffs `.seeds/plans.jsonl` to detect new
  *              plans created during execution and auto-dispatches a
@@ -104,22 +106,32 @@ export function readProviderFrontmatter(frontmatter: Readonly<Record<string, unk
 }
 
 /**
+ * Default burrow runtime id warren dispatches onto when an agent pins
+ * none (warren-16f8). Pi is the multi-provider runtime — cost streams
+ * in-band, the unified provider matrix works, and it's what most
+ * dogfood runs use — so it's the preferred default; claude-code is
+ * opt-in via `frontmatter.runtime`.
+ */
+export const DEFAULT_RUNTIME_ID = "pi";
+
+/**
  * Resolve the burrow runtime id this canopy agent should dispatch onto.
  *
- * Precedence (warren-b802):
+ * Precedence (warren-b802 / warren-16f8):
  *   1. `configOverride` — per-project `.warren/config.yaml`
  *      `interactiveAgents.brainstormRuntime` / `plannerRuntime`
- *   2. `frontmatter.runtime` — set by interactive built-ins like
- *      brainstorm/planner that layer a system prompt on top of an
- *      existing runtime (warren-ebca)
- *   3. `agent.name` — historical name=runtime convention
- *      (claude-code / sapling / pi)
+ *   2. `frontmatter.runtime` — declared by built-ins that pin a
+ *      specific runtime (claude-code / sapling) or compose a system
+ *      prompt onto an existing runtime (brainstorm / planner,
+ *      warren-ebca)
+ *   3. `DEFAULT_RUNTIME_ID` ("pi") — the preferred default when
+ *      nothing pins a runtime; claude-code is opt-in
  */
 export function readRuntimeId(agent: AgentDefinition, configOverride?: string): string {
 	if (typeof configOverride === "string" && configOverride.length > 0) return configOverride;
 	const r = agent.frontmatter.runtime;
 	if (typeof r === "string" && r.length > 0) return r;
-	return agent.name;
+	return DEFAULT_RUNTIME_ID;
 }
 
 /**

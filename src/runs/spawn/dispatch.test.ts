@@ -106,7 +106,7 @@ describe("spawnRun: end-to-end + placement", () => {
 			method: "POST",
 			path: "/burrows/bur_aaaaaaaaaaaa/runs",
 			body: {
-				agentId: "refactor-bot",
+				agentId: "pi",
 				prompt: "be a refactor agent\n\n---\n\nfix the flaky test",
 				metadata: { frontmatter: {} },
 			},
@@ -120,7 +120,7 @@ describe("spawnRun: end-to-end + placement", () => {
 		};
 		expect(upBody.projectRoot).toBe("/data/projects/x/y");
 		expect(upBody.originUrl).toBe("https://github.com/x/y.git");
-		expect(upBody.agents).toEqual(["refactor-bot"]);
+		expect(upBody.agents).toEqual(["pi"]);
 		const seededPaths = (upBody.seed?.files ?? []).map((f) => f.path);
 		expect(seededPaths).toContain(".canopy/agent.json");
 
@@ -201,14 +201,15 @@ describe("spawnRun: burrow_config + runtime + metadata", () => {
 				projectRoot: "/data/projects/x/y",
 				originUrl: "https://github.com/x/y.git",
 				network: "restricted",
-				agents: ["refactor-bot"],
+				// refactor-bot pins no runtime → pi default (warren-16f8).
+				agents: ["pi"],
 			},
 		});
 		expect(calls[1]).toMatchObject({
 			method: "POST",
 			path: "/burrows/bur_aaaaaaaaaaaa/runs",
 			body: {
-				agentId: "refactor-bot",
+				agentId: "pi",
 				prompt: "s\n\n---\n\np",
 				metadata: { runByOperator: "alice", frontmatter: {} },
 			},
@@ -249,10 +250,9 @@ describe("spawnRun: burrow_config + runtime + metadata", () => {
 		expect((up?.body as { agents: readonly string[] }).agents).toEqual(["claude-code"]);
 	});
 
-	test("dispatch falls back to agent.name when frontmatter.runtime is unset (warren-ebca)", async () => {
-		// claude-code / sapling / pi keep working: their name already
-		// matches their burrow runtime id, so omitting `runtime` resolves
-		// to `agent.name` via readRuntimeId().
+	test("dispatch falls back to the pi default when frontmatter.runtime is unset (warren-16f8)", async () => {
+		// pi is the preferred default: an agent that pins no runtime
+		// resolves to `pi` via readRuntimeId rather than its canopy name.
 		await repos.agents.upsert({
 			name: "refactor-bot",
 			renderedJson: makeAgentJson({ frontmatter: {} }),
@@ -266,7 +266,7 @@ describe("spawnRun: burrow_config + runtime + metadata", () => {
 			prompt: "p",
 		});
 		const dispatch = calls.find((c) => c.path === "/burrows/bur_aaaaaaaaaaaa/runs");
-		expect((dispatch?.body as { agentId: string }).agentId).toBe("refactor-bot");
+		expect((dispatch?.body as { agentId: string }).agentId).toBe("pi");
 	});
 
 	test("forwards agent.frontmatter as burrow run metadata so piRuntime gets provider/model (warren-d34e)", async () => {

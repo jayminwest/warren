@@ -45,6 +45,10 @@ export const PI_BUILTIN: AgentDefinition = {
 	frontmatter: {
 		source: "builtin",
 		tags: ["agent"],
+		// pi is the default runtime (warren-16f8); declared explicitly
+		// here for parity with the other harness built-ins even though
+		// readRuntimeId would fall back to it anyway.
+		runtime: "pi",
 		// Sonnet tier (model-tiers.ts): pi is the plan-run child executor
 		// — the bulk of run volume, running well-decomposed steps where
 		// Sonnet matches Opus at lower cost.

@@ -241,12 +241,12 @@ export async function spawnRun(input: SpawnRunInput): Promise<SpawnRunResult> {
 		});
 		await input.repos.runs.attachBurrow(run.id, { burrowId: burrow.id });
 
-		// warren-ebca: dispatch onto the burrow runtime id, not the canopy
-		// agent name. Built-in agents whose name happens to match a burrow
-		// runtime (claude-code / sapling / pi) keep working via the
-		// `agent.name` fallback in readRuntimeId; interactive agents like
-		// brainstorm / planner declare `frontmatter.runtime` to compose
-		// onto an existing runtime instead of demanding their own.
+		// warren-ebca / warren-16f8: dispatch onto the burrow runtime id,
+		// not the canopy agent name. Built-in agents that want a non-pi
+		// runtime (claude-code / sapling) declare `frontmatter.runtime`
+		// explicitly; everything else falls back to the pi default in
+		// readRuntimeId. Interactive agents like brainstorm / planner also
+		// declare `frontmatter.runtime` to compose onto an existing runtime.
 		const burrowRun = await dispatchRun(
 			placement.client,
 			burrow.id,
@@ -369,7 +369,7 @@ async function provisionBurrow(
 	// the canopy agent name. Burrow's `up` resolves toolchain mounts by
 	// looking each id up in its runtime registry (claude-code / sapling /
 	// pi / codex). Interactive built-ins like brainstorm and planner compose
-	// onto claude-code via `frontmatter.runtime` — passing their canopy
+	// onto a runtime via `frontmatter.runtime` — passing their canopy
 	// name here would mean burrow's registry.get returns nothing,
 	// collectToolchainPaths returns [], and bwrap fails `execvp claude`
 	// at run start (warren-8526 / burrow-55e3, regression warren-53e6).
