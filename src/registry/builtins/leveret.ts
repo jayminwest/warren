@@ -1,6 +1,5 @@
 /**
- * Built-in `leveret` agent definition (LEVERET.md §0.11 / §0.1 / §0.2,
- * build-phase 3 / warren-fdd9).
+ * Built-in `leveret` agent definition (build-phase 3 / warren-fdd9).
  *
  * Leveret is warren's conversational **overseer**: an agent that runs on
  * the `pi-chat` runtime (a long-lived, multi-turn pi session rather than
@@ -13,7 +12,7 @@
  *
  * Runtime: `pi-chat`. `readRuntimeId` (src/registry/schema.ts) reads
  * `frontmatter.runtime` as a free string and forwards it onto burrow as
- * the runtime id — no `KNOWN_RUNTIME_IDS` change is required (§0.0.E).
+ * the runtime id — no `KNOWN_RUNTIME_IDS` change is required.
  *
  * Safe by construction: the system prompt grants only read-leaning tools
  * (`read`/`grep`/`find`/`ls`/`bash`) — `bash` is the operator-trusted
@@ -24,7 +23,7 @@
  * The single shipped pi extension `propose_intent` (seeded into
  * `.pi/extensions/propose_intent.ts` by src/runs/seed.ts, warren-e38b)
  * patches the STRUCTURED intent fields bound to the ../plot intent schema
- * (§0.14): `goal`, `non_goals`, `constraints`, `success_criteria`. It is
+ * `goal`, `non_goals`, `constraints`, `success_criteria`. It is
  * a field-scoped patch — NOT a free-form replace.
  *
  * Operators with a custom canopy library override this by registering a
@@ -75,7 +74,7 @@ Workspace map:
  * single tool whose `execute()` echoes the field-scoped intent patch on
  * the result's `details` — warren reads that off the
  * `tool_execution_end` stdout event and correlates by `toolCallId`
- * (§0.0.E) to write `intent_edited(actor=leveret)` host-side. The tool
+ * to write `intent_edited(actor=leveret)` host-side. The tool
  * does NOT touch `.plot/` itself; it is a pure proposal carrier.
  */
 const PROPOSE_INTENT_EXTENSION = `import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
@@ -156,7 +155,7 @@ export const LEVERET_BUILTIN: AgentDefinition = {
 	frontmatter: {
 		source: "builtin",
 		tags: ["agent", "conversation"],
-		// LEVERET.md §0.0.E: leveret dispatches onto the pi-chat runtime.
+		// leveret dispatches onto the pi-chat runtime.
 		// readRuntimeId reads frontmatter.runtime as a free string and
 		// forwards it onto burrow — no KNOWN_RUNTIME_IDS change needed.
 		runtime: "pi-chat",

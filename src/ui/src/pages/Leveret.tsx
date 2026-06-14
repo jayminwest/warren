@@ -23,7 +23,7 @@ const STATUS_FILTERS: { label: string; value: StatusFilter }[] = [
 ];
 
 /**
- * /leveret — cross-project overseer home (LEVERET.md §0.9, warren-763f).
+ * /leveret — cross-project overseer home (warren-763f).
  *
  * Lists leveret conversations (active / closed) most-recent-activity
  * first, backed by `GET /conversations`. The status filter chips drive

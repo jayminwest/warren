@@ -1,5 +1,5 @@
 /**
- * Repository for the `conversations` table (LEVERET.md §0.5 / warren-0b91).
+ * Repository for the `conversations` table (warren-0b91).
  *
  * One row per leveret conversation. N conversations bind to one Plot (N:1).
  * The anchoring `mode:'conversation'` run rotates on re-wake (warren-6ccf),
@@ -157,8 +157,8 @@ export class ConversationsRepo {
 	}
 
 	/**
-	 * Record a "Send to planner" send-off (LEVERET.md §0.0.B / §0.7 /
-	 * warren-756d) and CLOSE the conversation in one write. Stamps the
+	 * Record a "Send to planner" send-off (warren-756d) and CLOSE the
+	 * conversation in one write. Stamps the
 	 * submitted plotSync PR ref + planner agent so the merge poller
 	 * (warren-b872) can auto-dispatch the planner run keyed on `plot_id`
 	 * once the PR merges, flips `status → closed`, and sets `closed_at` /

@@ -17,8 +17,7 @@ import { Label } from "@/components/ui/label.tsx";
 import { Textarea } from "@/components/ui/textarea.tsx";
 
 /**
- * Operator-gated "Dispatch plan" popup (warren-6e45, LEVERET.md §0.0.B
- * step 4 / §0.7 step 4 / §0.9 / build-phase 5).
+ * Operator-gated "Dispatch plan" popup (warren-6e45, build-phase 5).
  *
  * Plan-run dispatch stays OPERATOR-GATED in v1 — there is no auto-dispatch
  * (this preserves the SPEC §10.4 approval-gate taste signal). Once the

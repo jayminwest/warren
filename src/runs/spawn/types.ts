@@ -43,7 +43,7 @@ export interface SpawnRunInput {
 	/**
 	 * Run mode (pl-0344 step 1 / warren-67b6).
 	 * `batch` (default) is the historical single-shot run; `conversation`
-	 * anchors a long-lived pi-chat session (LEVERET.md §0.4). Persisted to
+	 * anchors a long-lived pi-chat session. Persisted to
 	 * `runs.mode` and fixed at row creation;
 	 * forwarded onto the burrow up call unchanged (burrow has no notion of
 	 * mode — the discriminator is warren-side only).

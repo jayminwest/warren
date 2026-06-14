@@ -279,7 +279,7 @@ describe("LEVERET_BUILTIN", () => {
 		expect(LEVERET_BUILTIN.frontmatter.tags).toContain("conversation");
 	});
 
-	test("declares runtime = 'pi-chat' (free-string runtime, §0.0.E)", () => {
+	test("declares runtime = 'pi-chat' (free-string runtime)", () => {
 		// readRuntimeId reads frontmatter.runtime as a free string and
 		// forwards it onto burrow as the runtime id — no KNOWN_RUNTIME_IDS
 		// change is needed.

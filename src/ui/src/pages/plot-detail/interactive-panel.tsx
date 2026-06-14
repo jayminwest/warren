@@ -31,7 +31,7 @@ import { ReadOnlyField } from "./run-plan.tsx";
  * to the latest conversation run on the Plot. The agent's reply streams
  * back into the transcript via the Plot's conversation flow (the
  * respawn-per-turn interactive primitive was retired with
- * mode=interactive — warren-d622 / LEVERET.md §0.8).
+ * mode=interactive — warren-d622).
  */
 
 /* ----------------------------------------------------------------------- */

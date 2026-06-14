@@ -1,6 +1,5 @@
 /**
- * Conversation re-wake primitive (warren-6ccf / LEVERET.md §0.4 / §0.2 /
- * pl-d2d9 build-phase 2).
+ * Conversation re-wake primitive (warren-6ccf / pl-d2d9 build-phase 2).
  *
  * When the operator returns to an `active` conversation whose anchoring run
  * has gone terminal — idle-finalized (warren-005d), crash-recovered, or

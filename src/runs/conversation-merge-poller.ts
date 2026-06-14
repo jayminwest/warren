@@ -1,6 +1,5 @@
 /**
- * Send-off PR-merge poller (warren-b872 / LEVERET.md §0.0.B (steps 2-3) /
- * §0.7 / build-phase 5).
+ * Send-off PR-merge poller (warren-b872, build-phase 5).
  *
  * No webhooks in v1. When the operator sends a leveret conversation to the
  * planner (`POST /conversations/:id/send-off`, warren-756d), warren opens a

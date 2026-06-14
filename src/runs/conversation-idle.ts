@@ -1,6 +1,5 @@
 /**
- * Conversation idle-timeout coordinator (warren-005d / LEVERET.md §0.4 /
- * §0.14, pl-d2d9 build-phase 2).
+ * Conversation idle-timeout coordinator (warren-005d, pl-d2d9 build-phase 2).
  *
  * A mode:"conversation" anchoring run stays non-terminal across turns: the
  * burrow-side pi-chat agent suppresses the per-turn `agent_end` terminal

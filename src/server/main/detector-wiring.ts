@@ -13,7 +13,7 @@
  *   timeout through reap so the burrow workspace + bwrap process tree is
  *   torn down. Opt-in: arms only on a positive timeout. See
  *   `src/runs/watchdog.ts`.
- * - `bootConversationIdleDetectorFromEnv` (warren-005d / LEVERET.md §0.4):
+ * - `bootConversationIdleDetectorFromEnv` (warren-005d):
  *   finalizes the anchoring `mode:"conversation"` run after
  *   `conversation.idleTimeoutMs` of inactivity (the conversation row stays
  *   `active`; transcript and Plot persist). On by default — it is the only
@@ -151,8 +151,8 @@ export interface ConversationIdleWiringInput {
 }
 
 /**
- * Boot the conversation idle-timeout coordinator (warren-005d /
- * LEVERET.md §0.4 / §0.14). On by default — unlike the opt-in detectors
+ * Boot the conversation idle-timeout coordinator (warren-005d).
+ * On by default — unlike the opt-in detectors
  * above, this is the lifecycle reclaim path for conversation compute
  * (mirroring preview eviction / workspace GC), so it must not depend on an
  * operator remembering a flag. Opt-out via

@@ -1,6 +1,5 @@
 /**
- * Repository for the `plots` projection table (warren-9022 / LEVERET §0.0.A /
- * §0.0.F).
+ * Repository for the `plots` projection table (warren-9022).
  *
  * The plots table is a read-CACHE that mirrors full git-backed Plot state
  * (`.plot/<id>.json` + `<id>.events.jsonl`) — NOT an authoritative store. The

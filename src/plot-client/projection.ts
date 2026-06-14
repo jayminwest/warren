@@ -1,6 +1,6 @@
 /**
  * `PlotProjectionSink` — the read-cache upsert seam threaded through the
- * `PlotClient` read/write paths (warren-7b60 / LEVERET §0.0.A / §0.0.F).
+ * `PlotClient` read/write paths (warren-7b60).
  *
  * Background: the `plots` projection table (warren-9022) is a read-CACHE
  * that mirrors full git-backed Plot state (`.plot/<id>.json` +

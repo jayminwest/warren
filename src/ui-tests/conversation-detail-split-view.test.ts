@@ -57,7 +57,7 @@ describe("ConversationDetail split-view (warren-01c8)", () => {
 	});
 
 	test("RIGHT pane renders intent DYNAMICALLY from the plot JSON shape", () => {
-		// §0.0.A: no hardcoded goal/non_goals/constraints/success_criteria
+		// no hardcoded goal/non_goals/constraints/success_criteria
 		// field names — the renderer iterates the intent object's entries.
 		expect(SOURCE).toMatch(/Object\.entries\(intent\)/);
 		expect(SOURCE).not.toMatch(/intent\.goal\b/);

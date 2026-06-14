@@ -38,9 +38,9 @@ export type RunTerminalState = (typeof RUN_TERMINAL_STATES)[number];
  * reap pushes the branch. Mode is fixed at run-create time. TS-only narrowing
  * (mx-2ab984); defaults to `batch` so legacy rows written before this column
  * existed match the historical shape. (The retired `interactive` mode value
- * is intentionally dropped from the enum — warren-d622 / LEVERET.md §0.8.)
+ * is intentionally dropped from the enum — warren-d622.)
  *
- * `conversation` (LEVERET.md §0.4, warren-c770) is the pi-chat runtime mode:
+ * `conversation` (warren-c770) is the pi-chat runtime mode:
  * the burrow-side agent suppresses the per-turn `agent_end` terminal envelope,
  * so the anchoring run stays non-terminal across turns. Warren-side lifetime
  * guards (watchdog, reap workspace-destroy, crash-recovery finalize) must
@@ -50,7 +50,7 @@ export const RUN_MODES = ["batch", "conversation"] as const;
 export type RunMode = (typeof RUN_MODES)[number];
 
 /**
- * Conversation lifecycle status (LEVERET.md §0.5 / warren-0b91). A
+ * Conversation lifecycle status (warren-0b91). A
  * conversation stays `active` across re-wakes (the anchoring run may go
  * terminal and be respawned without closing the conversation); it flips
  * to `closed` only on send-off (warren-756d) or operator close. TS-only
@@ -60,8 +60,8 @@ export const CONVERSATION_STATES = ["active", "closed"] as const;
 export type ConversationState = (typeof CONVERSATION_STATES)[number];
 
 /**
- * Role discriminator for a persisted conversation turn (LEVERET.md §0.5 /
- * warren-0b91). `user` is an operator turn delivered over the steering
+ * Role discriminator for a persisted conversation turn
+ * (warren-0b91). `user` is an operator turn delivered over the steering
  * channel; `assistant` is a leveret reply captured off the stream;
  * `system` is a host-written marker (e.g. re-wake replay); `tool` carries
  * a structured tool turn. TS-only narrowing — no SQL CHECK.
@@ -240,8 +240,8 @@ export const PLAN_RUN_CHILD_TERMINAL_STATES = [
 export type PlanRunChildTerminalState = (typeof PLAN_RUN_CHILD_TERMINAL_STATES)[number];
 
 /**
- * Shape of the `plots.state_json` blob (warren-9022 / LEVERET §0.0.A /
- * §0.0.F). The plots table is a read-CACHE that mirrors full git-backed
+ * Shape of the `plots.state_json` blob (warren-9022). The plots table is
+ * a read-CACHE that mirrors full git-backed
  * Plot state (`.plot/<id>.json` + `<id>.events.jsonl`), NOT an authoritative
  * store — source of truth stays git. The JSON blob holds the entire plot
  * state object so the table schema stays stable as the plot section shape
@@ -251,7 +251,7 @@ export type PlanRunChildTerminalState = (typeof PLAN_RUN_CHILD_TERMINAL_STATES)[
  * object: warren never narrows the blob's interior — the plot-cli shape is
  * the source of truth and the projection round-trips it verbatim.
  *
- * Deliberately NOT modeled (§0.0.G open question, settled here): no event
+ * Deliberately NOT modeled (open question, settled here): no event
  * count / last-seq summary columns. Consumers that need event rollups read
  * the git-backed `<id>.events.jsonl`; promoting them would re-introduce the
  * per-shape-drift coupling the JSON blob exists to avoid.
@@ -312,13 +312,13 @@ export const INDEX_NAMES = {
 	planRunsPlotId: "plan_runs_plot_id_idx",
 	planRunChildrenRun: "plan_run_children_run_idx",
 	planRunChildrenState: "plan_run_children_state_idx",
-	// warren-9022 / LEVERET §0.0.A. The plots projection is queried two ways:
+	// warren-9022. The plots projection is queried two ways:
 	// `plots_project_updated` powers the per-project list ordered by recency
 	// (composite (project_id, updated_at) serves both ASC and DESC scans), and
 	// `plots_status` powers status-filtered rollups across a project.
 	plotsProjectUpdated: "plots_project_updated_idx",
 	plotsStatus: "plots_status_idx",
-	// warren-0b91 / LEVERET §0.5. Conversations list by project (recency via
+	// warren-0b91. Conversations list by project (recency via
 	// last_activity_at scan off the project predicate) and by Plot binding
 	// (N:1 conversations per Plot). Messages page strictly by (conversation,
 	// seq) — the monotonic transcript order the re-wake replay reads back.

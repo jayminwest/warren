@@ -198,7 +198,7 @@ const AgentConfigSchema = z
 
 export type AgentConfig = z.infer<typeof AgentConfigSchema>;
 
-// warren-005d / LEVERET.md §0.4 / §0.14: idle-timeout budget for a
+// warren-005d: idle-timeout budget for a
 // mode:"conversation" anchoring run. The run stays non-terminal across turns,
 // so warren owns the deadline; when `now - conversations.last_activity_at`
 // exceeds this, the coordinator finalizes ONLY the run (→ succeeded) — the
@@ -403,7 +403,7 @@ export const DefaultsConfigSchema = z
 		// warren-cd37 / SPEC §11.O: per-project agent-runtime knobs (only
 		// `pauseTimeoutMs` today). Missing block → use the DEFAULT_* fallback.
 		agent: AgentConfigSchema.optional(),
-		// warren-005d / LEVERET.md §0.4: conversation-runtime knobs (`idleTimeoutMs`).
+		// warren-005d: conversation-runtime knobs (`idleTimeoutMs`).
 		conversation: ConversationConfigSchema.optional(),
 		// warren-b802: override of the burrow runtime backing interactive built-in
 		// agents. Precedence: config override > agent frontmatter.runtime > name.

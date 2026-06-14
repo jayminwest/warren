@@ -1,11 +1,11 @@
 /**
- * Scenario 33 — Leveret conversation loop end-to-end (warren-9f47 / LEVERET.md §0.13).
+ * Scenario 33 — Leveret conversation loop end-to-end (warren-9f47).
  * A. POST /conversations (create conversation & Plot)
  * B. POST /conversations/:id/messages (operator turns)
  * B.2 POST /conversations/:id/re-wake (cancel anchoring run, re-wake, post turn)
  * C. POST /conversations/:id/send-off (plotSync PR & close)
  * D. Merge-detected planner auto-dispatch (PR merge poller dispatches planner run)
- * E. Plot persists + re-plan is a NEW conversation on the SAME Plot (§0.0.C)
+ * E. Plot persists + re-plan is a NEW conversation on the SAME Plot
  */
 
 import { mkdtemp } from "node:fs/promises";
@@ -463,7 +463,7 @@ export const scenario: Scenario = {
 			assertEqual(
 				rePlan.conversation.plotId,
 				plotId,
-				"re-plan conversation attaches to the SAME Plot (§0.0.C)",
+				"re-plan conversation attaches to the SAME Plot",
 			);
 
 			const byPlot = await http.expectJson<ConversationsListResponse>(

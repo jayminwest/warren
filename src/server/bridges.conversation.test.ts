@@ -3,7 +3,7 @@
  *
  * `bootBridges` pre-probes every active run's burrow run and, on a 404,
  * finalizes the warren row to `failed`/`burrow_run_lost`. A `conversation`
- * run (LEVERET.md §0.4) legitimately loses its burrow run across a host
+ * run legitimately loses its burrow run across a host
  * restart — the pi-chat session lived in burrow's in-memory store — so it
  * must be skipped without tombstoning. Re-wake (warren-6ccf) spawns a fresh
  * session that replays the persisted transcript.

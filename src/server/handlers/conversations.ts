@@ -1,6 +1,5 @@
 /**
- * Conversation HTTP handlers (LEVERET.md §0.11 / §0.9 / §0.2,
- * build-phase 4 / warren-af15).
+ * Conversation HTTP handlers (build-phase 4 / warren-af15).
  *
  * A conversation is a long-lived leveret chat that shapes a Plot's intent
  * (see `src/registry/builtins/leveret.ts`). Each conversation owns exactly
@@ -16,7 +15,7 @@
  *   - `GET    /conversations/:id`      conversation + full transcript.
  *   - `POST   /conversations/:id/messages` operator turn (steering channel).
  *
- * Create binds to a Plot one of two ways (operator choice, §0.2): pass
+ * Create binds to a Plot one of two ways (operator choice): pass
  * `plot_id` to ATTACH to an existing Plot, or omit it to AUTO-CREATE a
  * fresh Plot (same `plotCreator` seam `POST /plots` uses). N conversations
  * bind to one Plot (N:1).
@@ -307,8 +306,7 @@ async function finalizeAnchoringRun(
 }
 
 /**
- * `POST /conversations/:id/send-off` — "Send to planner" (LEVERET.md §0.0.B /
- * §0.7 / warren-756d).
+ * `POST /conversations/:id/send-off` — "Send to planner" (warren-756d).
  *
  * Opens a plotSync PR whose ONLY change is the plot-state update (safe by
  * construction — leveret ships no edit/write tool), CLOSES the conversation
@@ -316,7 +314,7 @@ async function finalizeAnchoringRun(
  * ref + plot_id + planner agent on the conversation row so the merge poller
  * (warren-b872) can auto-dispatch the planner run keyed on `plot_id` once the
  * PR merges. Re-plan after send-off is a NEW conversation attached to the same
- * Plot (§0.0.C).
+ * Plot.
  *
  * Errors: 400 if the conversation is already closed or has no Plot bound (no
  * intent to submit), or if there is no dirty `.plot/` change to ship; 404 if
@@ -382,7 +380,7 @@ export function sendOffConversationHandler(deps: ServerDeps): RouteHandler {
 }
 
 /**
- * `POST /conversations/:id/re-wake` — "Re-wake conversation" (LEVERET.md §0.4 / §0.2 / warren-6ccf).
+ * `POST /conversations/:id/re-wake` — "Re-wake conversation" (warren-6ccf).
  *
  * Spawns a fresh mode:"conversation" run that replays the transcript into a
  * brand-new pi session, rotates conversations.anchoring_run_id to point at the

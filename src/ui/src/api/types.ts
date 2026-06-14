@@ -1108,7 +1108,7 @@ export type PlotSyncResponse =
 	  };
 
 /* ----------------------------------------------------------------------- */
-/* Leveret conversations (LEVERET.md §0.5/§0.9, warren-af15/763f).           */
+/* Leveret conversations (warren-af15/763f).                                */
 /*                                                                          */
 /* Mirrors the `conversations` table wire shape (camelCase drizzle         */
 /* $inferSelect) returned by GET /conversations. Kept in sync by hand —    */

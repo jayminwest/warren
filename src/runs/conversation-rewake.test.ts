@@ -1,6 +1,6 @@
 /**
- * Unit tests for the conversation re-wake primitive (warren-6ccf /
- * LEVERET.md §0.4 / §0.2, pl-d2d9 build-phase 2).
+ * Unit tests for the conversation re-wake primitive
+ * (warren-6ccf, pl-d2d9 build-phase 2).
  *
  * Coverage per the seed body:
  *   - re-waking an `active` conversation whose anchoring run is terminal

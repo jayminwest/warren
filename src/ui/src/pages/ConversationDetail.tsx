@@ -19,7 +19,7 @@ import { SendOffButton } from "./conversation-detail/send-off-button.tsx";
 
 /**
  * /leveret/:id — the Leveret conversation split-view (warren-01c8,
- * LEVERET.md §0.9 / §0.0.A / build-phase 4).
+ * build-phase 4).
  *
  * LEFT: the streamed leveret chat, anchored on the conversation's
  * long-lived `mode:'conversation'` run. Reuses `Chat` with a
@@ -28,7 +28,7 @@ import { SendOffButton } from "./conversation-detail/send-off-button.tsx";
  * spawning a fresh turn run.
  *
  * RIGHT: the Plot intent being shaped — rendered DYNAMICALLY from the
- * plot's intent JSON shape (no hardcoded goal/non-goals/… fields, §0.0.A)
+ * plot's intent JSON shape (no hardcoded goal/non-goals/… fields)
  * so each Plot can surface a custom structure, operator-EDITABLE via
  * `POST /plots/:id/intent`, and live-updating: the plot query polls so a
  * leveret `propose_intent -> intent_edited` edit shows up within seconds.

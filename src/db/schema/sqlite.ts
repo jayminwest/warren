@@ -465,7 +465,7 @@ export type WorkerInsert = typeof workers.$inferInsert;
 export type BurrowRow = typeof burrows.$inferSelect;
 export type BurrowInsert = typeof burrows.$inferInsert;
 /**
- * Plots projection (warren-9022 / LEVERET §0.0.A / §0.0.F). A read-cache that
+ * Plots projection (warren-9022). A read-cache that
  * mirrors full git-backed Plot state — NOT an authoritative store; source of
  * truth stays git. The `state_json` blob holds the entire plot state (schema
  * stable across plot-shape drift), and the promoted scalars (project_id /
@@ -494,7 +494,7 @@ export const plots = sqliteTable(
 );
 
 /**
- * Conversations (LEVERET.md §0.5 / §0.0.F / warren-0b91). One row per
+ * Conversations (warren-0b91). One row per
  * leveret conversation. N conversations bind to one Plot (N:1). The
  * anchoring `mode:'conversation'` run rotates on re-wake, so
  * `anchoring_run_id` is nullable and mutable. `project_id` FKs `projects.id`
@@ -530,7 +530,7 @@ export const conversations = sqliteTable(
 );
 
 /**
- * Messages (LEVERET.md §0.5 / warren-0b91). The conversation transcript, one
+ * Messages (warren-0b91). The conversation transcript, one
  * row per turn, `seq` monotonic per conversation. `conversation_id` FKs
  * `conversations.id` ON DELETE CASCADE. `content` is TEXT (free-form turn body
  * or a JSON-encoded tool payload). `run_id` optionally back-links the

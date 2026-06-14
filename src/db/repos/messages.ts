@@ -1,5 +1,5 @@
 /**
- * Repository for the `messages` table (LEVERET.md §0.5 / warren-0b91).
+ * Repository for the `messages` table (warren-0b91).
  *
  * The conversation transcript, one row per turn, `seq` monotonic per
  * conversation. The re-wake primitive (warren-6ccf) reads this back oldest-

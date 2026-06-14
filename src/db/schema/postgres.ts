@@ -277,7 +277,7 @@ export type WorkerInsert = typeof workers.$inferInsert;
 export type BurrowRow = typeof burrows.$inferSelect;
 export type BurrowInsert = typeof burrows.$inferInsert;
 /**
- * Plots projection (warren-9022 / LEVERET §0.0.A / §0.0.F) — mirror of sqlite.
+ * Plots projection (warren-9022) — mirror of sqlite.
  * `state_json` is `jsonb` here (vs sqlite's `text mode:"json"`); the drift
  * check compares structure (column name + nullability + FK + index), not the
  * storage type. See sqlite.ts for the projection's full intent.
@@ -301,7 +301,7 @@ export const plots = pgTable(
 );
 
 /**
- * Conversations (LEVERET.md §0.5 / warren-0b91) — mirror of sqlite. See
+ * Conversations (warren-0b91) — mirror of sqlite. See
  * sqlite.ts for shape + lifecycle intent.
  */
 export const conversations = pgTable(
@@ -313,7 +313,7 @@ export const conversations = pgTable(
 		anchoringRunId: text("anchoring_run_id"),
 		status: text("status", { enum: CONVERSATION_STATES }).notNull().default("active"),
 		title: text("title"),
-		// Send-off submission (LEVERET.md §0.0.B / §0.7 / warren-756d) — mirror of
+		// Send-off submission (warren-756d) — mirror of
 		// sqlite. See sqlite.ts for intent.
 		submittedPrUrl: text("submitted_pr_url"),
 		submittedPrNumber: integer("submitted_pr_number"),
@@ -331,7 +331,7 @@ export const conversations = pgTable(
 );
 
 /**
- * Messages (LEVERET.md §0.5 / warren-0b91) — mirror of sqlite. See
+ * Messages (warren-0b91) — mirror of sqlite. See
  * sqlite.ts for shape + transcript intent.
  */
 export const messages = pgTable(

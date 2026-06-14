@@ -115,7 +115,7 @@ export async function tickWatchdog(deps: WatchdogTickDeps): Promise<WatchdogTick
 
 	for (const run of running) {
 		try {
-			// warren-c770: a `conversation` run (LEVERET.md §0.4) is deliberately
+			// warren-c770: a `conversation` run is deliberately
 			// long-lived across turns — the pi-chat runtime suppresses the
 			// per-turn terminal envelope, so the run sits idle between operator
 			// messages. An armed heartbeat watchdog must not mistake that idle

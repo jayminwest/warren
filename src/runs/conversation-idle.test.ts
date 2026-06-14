@@ -1,6 +1,6 @@
 /**
  * Unit tests for the conversation idle-timeout coordinator
- * (warren-005d / LEVERET.md §0.4 / §0.14, pl-d2d9 build-phase 2).
+ * (warren-005d, pl-d2d9 build-phase 2).
  *
  * Coverage per the seed body:
  *   - an idle conversation's anchoring run finalizes (`running →

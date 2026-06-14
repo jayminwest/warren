@@ -3,7 +3,7 @@
  *
  * Extracted from `src/server/handlers/plots.ts` (warren-3f46 / pl-3255 step 1).
  * The brainstorm dispatcher that used to live here was retired with the
- * mode=interactive path (warren-d622 / LEVERET.md §0.8); intent shaping now
+ * mode=interactive path (warren-d622); intent shaping now
  * rides conversations (`src/server/handlers/conversations.ts`).
  */
 

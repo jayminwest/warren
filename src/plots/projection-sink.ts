@@ -1,7 +1,7 @@
 /**
  * `createPlotsProjectionSink` — binds a `PlotClient` read-cache upsert seam
  * (`PlotProjectionSink`, warren-7b60) to the `plots` projection table via
- * `PlotsRepo` (warren-9022 / LEVERET §0.0.A / §0.0.F).
+ * `PlotsRepo` (warren-9022).
  *
  * The `PlotClient` (src/plot-client/) owns no `project_id` and no DB handle
  * by design — it is a per-`.plot/` facade. This adapter closes that gap: a
