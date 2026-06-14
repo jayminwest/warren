@@ -1,11 +1,18 @@
 /**
- * Scenario 33 — Leveret conversation loop end-to-end (warren-9f47).
- * A. POST /conversations (create conversation & Plot)
- * B. POST /conversations/:id/messages (operator turns)
- * B.2 POST /conversations/:id/re-wake (cancel anchoring run, re-wake, post turn)
- * C. POST /conversations/:id/send-off (plotSync PR & close)
- * D. Merge-detected planner auto-dispatch (PR merge poller dispatches planner run)
- * E. Plot persists + re-plan is a NEW conversation on the SAME Plot
+ * Scenario 33 — Workspace flow end-to-end (warren-9f47, adapted for the
+ * single tabbed Workspace surface, pl-0008 step 12 / warren-1198).
+ *
+ * The acceptance harness is API-level, so each leg below drives the endpoints
+ * that BACK a Workspace tab rather than the old /leveret + /plots pages:
+ *   - list   — GET /plots (the durable spine the Workspace list rows on) joined
+ *              with GET /conversations (active-conversation indicator).
+ *   - Shape  — POST /conversations (+ messages, re-wake) + intent edit.
+ *   - send-off — POST /conversations/:id/send-off (plotSync PR & close).
+ *   - Plan   — merge-detected planner auto-dispatch (Plan tab planner status).
+ *   - Run    — operator status control + operator-gated plan-run dispatch
+ *              (Plan tab DispatchPlanButton) + per-child execution to merged +
+ *              Plot auto-done (Run tab, SPEC §11.P).
+ * Then: Plot persists + re-plan is a NEW conversation on the SAME Plot.
  */
 
 import { mkdtemp } from "node:fs/promises";
@@ -18,77 +25,23 @@ import { type BootHandle, bootInProc } from "../lib/inproc.ts";
 import {
 	buildFixture,
 	type RunRow,
-	sleep,
 	waitForRunState,
 	waitForRunTerminal,
 } from "./32-plot-workbench-loop.helpers.ts";
-
-interface ProjectRow {
-	id: string;
-	gitUrl: string;
-	localPath: string;
-	defaultBranch: string;
-	hasSeeds?: boolean;
-	hasPlot?: boolean;
-}
-
-interface ConversationRow {
-	id: string;
-	projectId: string;
-	plotId: string | null;
-	anchoringRunId: string | null;
-	status: "active" | "closed";
-	title: string | null;
-	submittedPrUrl: string | null;
-	plannerAgent: string | null;
-	plannerRunId: string | null;
-}
-
-interface MessageRow {
-	id: string;
-	seq: number;
-	role: string;
-	content: string;
-}
-
-interface CreateConversationResponse {
-	readonly conversation: ConversationRow;
-	readonly run: { readonly id: string; readonly mode: string };
-	readonly burrow: { readonly id: string; readonly workspacePath: string };
-}
-
-interface GetConversationResponse {
-	readonly conversation: ConversationRow;
-	readonly messages: readonly MessageRow[];
-}
-
-interface PostMessageResponse {
-	readonly conversationId: string;
-	readonly message: { readonly id: string; readonly seq: number; readonly role: string };
-	readonly steerMessageId: string;
-}
-
-interface SendOffResponse {
-	readonly conversation: ConversationRow;
-	readonly plot_id: string;
-	readonly pr: { readonly url: string; readonly number: number | null; readonly branch: string };
-	readonly planner_agent: string | null;
-}
-
-interface PlotEnvelope {
-	id: string;
-	status: string;
-	intent: { readonly goal: string };
-	project_id: string;
-}
-
-interface RunsListResponse {
-	readonly runs: readonly RunRow[];
-}
-
-interface ConversationsListResponse {
-	readonly conversations: readonly ConversationRow[];
-}
+import {
+	type ConversationRow,
+	type ConversationsListResponse,
+	type CreateConversationResponse,
+	driveWorkspaceRunLeg,
+	extendFixtureWithPlan,
+	type GetConversationResponse,
+	type PlotEnvelope,
+	type PostMessageResponse,
+	type ProjectRow,
+	type RunsListResponse,
+	type SendOffResponse,
+	waitForPlannerDispatch,
+} from "./lib/scenario-33.ts";
 
 const PROJECT_URL = "https://github.com/warren-acceptance/sample-leveret.git";
 const FINAL_GOAL = "scenario-33 acceptance: drive the leveret conversation loop end-to-end";
@@ -96,37 +49,12 @@ const FINAL_GOAL = "scenario-33 acceptance: drive the leveret conversation loop 
 const RUNNING_DEADLINE_MS = 30_000;
 const TERMINAL_DEADLINE_MS = 60_000;
 const DISPATCH_DEADLINE_MS = 30_000;
-const POLL_INTERVAL_MS = 250;
-
-/** Poll a conversation until `plannerRunId` is stamped (merge poller fired). */
-async function waitForPlannerDispatch(
-	http: WarrenHttp,
-	conversationId: string,
-	timeoutMs: number,
-): Promise<ConversationRow> {
-	const start = Date.now();
-	let last: string | null = null;
-	while (Date.now() - start < timeoutMs) {
-		const { conversation } = await http.expectJson<GetConversationResponse>(
-			"GET",
-			`/conversations/${encodeURIComponent(conversationId)}`,
-			200,
-		);
-		if (conversation.plannerRunId !== null && conversation.plannerRunId !== "") {
-			return conversation;
-		}
-		last = conversation.status;
-		await sleep(POLL_INTERVAL_MS);
-	}
-	throw new Error(
-		`conversation ${conversationId} did not get a plannerRunId within ${timeoutMs}ms (status='${last}')`,
-	);
-}
+const PLAN_DEADLINE_MS = 90_000;
 
 export const scenario: Scenario = {
 	id: "33",
 	title:
-		"Leveret conversation loop — conversation create (hidden from Runs) + operator turns + re-wake (anchoring run rotation) + send-off (plotSync PR + close) + merge-detected planner auto-dispatch + re-plan on same Plot",
+		"Workspace flow — list (Plots ⋈ conversations) → Shape (conversation create hidden from Runs + operator turns + re-wake) → send-off (plotSync PR + close) → Plan (merge-detected planner auto-dispatch) → Run (operator-gated plan-run dispatch → children merged → Plot auto-done) → re-plan on same Plot",
 	modes: ["in-proc"],
 	async run(ctx) {
 		const scenarioRoot = await mkdtemp(join(tmpdir(), "warren-acceptance-33-"));
@@ -140,6 +68,10 @@ export const scenario: Scenario = {
 			gitConfigPath,
 			projectGitUrl: PROJECT_URL,
 		});
+		// Run leg (warren-1198): append a plan + its open child seeds so the
+		// operator-gated dispatch has a real seeds plan to drive once the
+		// planner has run.
+		await extendFixtureWithPlan(fixturePath);
 		ctx.logger.debug(`scenario-33: fixture=${fixturePath}`);
 
 		let handle: BootHandle | undefined;
@@ -162,6 +94,9 @@ export const scenario: Scenario = {
 					// lets the planner auto-dispatch land within seconds of the
 					// (synthesized) PR merge.
 					WARREN_MERGE_POLLER_TICK_MS: "500",
+					// Run leg — the plan-run coordinator tick drives each child
+					// through dispatch → PR-open → (synthesized) merge.
+					WARREN_PLAN_RUN_TICK_MS: "1000",
 				},
 			});
 			ctx.logger.info(`scenario-33: warren ready at ${handle.warrenUrl}`);
@@ -229,6 +164,26 @@ export const scenario: Scenario = {
 			assertTrue(
 				convList.conversations.some((c) => c.id === conversationId),
 				"conversation appears on the conversations list",
+			);
+
+			// Workspace LIST leg — the Workspace page rows one entry per Plot (the
+			// durable spine) and joins the active conversation as the
+			// active-conversation indicator. Assert the backing endpoints: the
+			// freshly bound Plot surfaces on GET /plots and the live conversation
+			// joins it.
+			if (plotId === null) throw new Error("unreachable: plotId asserted non-null above");
+			const plotsList = await http.expectJson<{ plots: readonly { id: string }[] }>(
+				"GET",
+				`/plots?project=${encodeURIComponent(project.id)}`,
+				200,
+			);
+			assertTrue(
+				plotsList.plots.some((p) => p.id === plotId),
+				"Workspace list: the conversation's Plot rows on GET /plots (the list spine)",
+			);
+			assertTrue(
+				convList.conversations.some((c) => c.id === conversationId && c.plotId === plotId),
+				"Workspace list: the active conversation joins its Plot (active-conversation indicator)",
 			);
 
 			// =============================================================
@@ -340,7 +295,6 @@ export const scenario: Scenario = {
 			ctx.logger.warn(
 				"scenario-33 (warren-ce65 pending): leveret-attributed propose_intent → intent_edited(actor=leveret) is not yet wired; driving the intent edit via POST /plots/:id/intent as a stand-in",
 			);
-			if (plotId === null) throw new Error("unreachable: plotId asserted non-null above");
 			await http.expectJson<PlotEnvelope>(
 				"POST",
 				`/plots/${encodeURIComponent(plotId)}/intent`,
@@ -422,14 +376,21 @@ export const scenario: Scenario = {
 
 			await waitForRunTerminal(http, plannerRunId, TERMINAL_DEADLINE_MS);
 
-			// SOFT_SKIP (warren-6e45 / warren-d622): the operator-gated
-			// `/plan-runs/new` dispatch popup + the interactive-mode retirement
-			// are exercised elsewhere (scenarios 26/27); the auto-dispatched
-			// planner above emits the plan that the operator-gated path would
-			// then dispatch.
-			ctx.logger.warn(
-				"scenario-33 (warren-6e45/warren-d622 pending): operator-gated plan-run dispatch + interactive removal are not re-driven here; the merge-poller planner dispatch stands in for the auto leg",
-			);
+			// =============================================================
+			// Run leg — operator-gated plan-run dispatch + per-child execution
+			// =============================================================
+			// The Plan tab gates dispatch behind an operator sign-off and then
+			// fires the existing DispatchPlanButton (POST /plan-runs, keyed on the
+			// Plot). The Workspace header's status control first walks the Plot
+			// drafting → ready → active so the §11.P coordinator has an `active`
+			// Plot to auto-terminate. The Run tab then surfaces per-child
+			// execution to `merged` and the Plot's auto-done transition — both
+			// asserted by driveWorkspaceRunLeg.
+			await driveWorkspaceRunLeg(http, {
+				projectId: project.id,
+				plotId,
+				deadlineMs: PLAN_DEADLINE_MS,
+			});
 
 			// =============================================================
 			// Phase E — Plot persists + re-plan is a NEW conversation
