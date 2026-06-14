@@ -2001,6 +2001,23 @@ re-dispatching B (or re-pushing after a manual refresh).
 
 #### 11.O.Plot.UI Plot-centric UI surface (pl-9d6a, 2026-05-18)
 
+> **Superseded by the Workspace collapse (pl-0008, 2026-06-14).** The
+> separate Leveret-conversations and Plots surfaces described below were
+> merged into a single **Workspace** section: one cross-project list
+> (one row per Plot) at `/workspace`, and one tabbed detail page at
+> `/workspace/:id` (Shape → Plan → Run → Activity, tab in a `?tab=`
+> query param). The sidebar carries a single `Workspace` nav entry
+> (gated on the same `hasPlot` + non-empty-`/plots` condition) and the
+> default landing redirects to `/workspace`; `/plots`, `/plots/:id`,
+> `/leveret`, and `/leveret/:id` redirect into the Workspace surface.
+> The Shape tab ports the live Leveret conversation surface (streamed
+> chat + dynamic intent editor); the dead `mode=interactive`
+> brainstorm/formalize path (`POST /brainstorm`,
+> `POST /plots/:id/formalize`, the `brainstorm` built-in) was removed.
+> The `/plots*` HTTP contract, ACL surface, and gating below are
+> otherwise unchanged — only the React surface moved. The original
+> phase-3 record is retained for the data-flow + ACL design history.
+
 Phase 3 of `warren-d362` shifts warren's web UI from run-centric to
 Plot-centric on deployments that opt into Plot, without disturbing the
 standalone path. Plots become the primary surface — list page, detail
@@ -2153,10 +2170,22 @@ agent:
   inflating the top-level shape — the nested block exists to give that
   growth a home.
 
-**Brainstorm + Formalize (warren-d22e / pl-0344 step 8).** The
-fresh-start UX for the Plot workbench loop is a single click that
-creates a draft Plot and opens a brainstorm chat against it. Two
-endpoints carry that flow:
+**Brainstorm + Formalize (warren-d22e / pl-0344 step 8).**
+
+> **Removed by the Workspace collapse (pl-0008, 2026-06-14).** The
+> `mode=interactive` brainstorm/formalize fresh-start path —
+> `POST /brainstorm`, `POST /plots/:id/formalize`, the `brainstorm`
+> built-in agent, and their UI panels — was deleted. Plot shaping now
+> runs entirely through the Leveret overseer conversation surfaced in
+> the Workspace **Shape** tab (`mode=conversation`, see §11.O.Plot.UI),
+> which proposes structured intent via the `propose_intent` tool rather
+> than the deterministic post-hoc extraction described here. The
+> historical design is retained below for the record.
+
+The original
+fresh-start UX for the Plot workbench loop was a single click that
+created a draft Plot and opened a brainstorm chat against it. Two
+endpoints carried that flow:
 
 - `POST /brainstorm` — atomically (a) creates a draft Plot via
   `defaultPlotCreator` (status defaults to `drafting`, empty intent,
