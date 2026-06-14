@@ -87,6 +87,13 @@ export interface AgentDefinition {
  *              propagating their system prompt to child runs that
  *              need to write code. Falls back to the parent run's
  *              agentName when unset.
+ *   tools    — object (warren-8dee). Per-agent tool allowlist/denylist
+ *              consumed by the pi runtime: `{ allow?, deny?, noBuiltins?,
+ *              noTools? }` → pi's `--tools` / `--exclude-tools` /
+ *              `--no-builtin-tools` / `--no-tools`. Read + normalized by
+ *              `readToolsFrontmatter`; gives reviewer / patrol agents a
+ *              hard read-only guarantee at the harness level (paired
+ *              warren↔burrow change, SPEC §11.K).
  *
  * Both stay in the open `frontmatter` bag (no schema rev) so a canopy
  * author can set them inline. `POST /runs` accepts the same two fields
@@ -103,6 +110,136 @@ export function readProviderFrontmatter(frontmatter: Readonly<Record<string, unk
 	const m = frontmatter.model;
 	if (typeof m === "string" && m.length > 0) result.model = m;
 	return result;
+}
+
+/**
+ * Normalized per-agent tool policy (warren-8dee).
+ *
+ *   allow      — tool-name allowlist → pi's `--tools <a,b,c>`
+ *   deny       — tool-name denylist  → pi's `--exclude-tools <a,b,c>`
+ *   noBuiltins — drop the built-in tool set → pi's `--no-builtin-tools`
+ *   noTools    — expose no tools at all → pi's `--no-tools`
+ *
+ * Only the `pi` runtime consumes this in V1 (paired warren↔burrow change,
+ * SPEC §11.K); other runtimes ignore the field. The policy rides the open
+ * `frontmatter` bag, so a canopy / `.warren` agent author declares it inline
+ * with no schema rev, and it forwards to burrow on run metadata via the same
+ * `composeBurrowMetadata` seam as `provider` / `model`.
+ */
+export interface ToolsPolicy {
+	readonly allow?: readonly string[];
+	readonly deny?: readonly string[];
+	readonly noBuiltins?: boolean;
+	readonly noTools?: boolean;
+}
+
+/**
+ * Coerce a frontmatter value into a string array. Accepts a real `string[]`
+ * (canopy artifact / typed `--fm key:=value` JSON) or a single
+ * comma/whitespace-separated string (the shape `cn --fm key:value`
+ * stringification produces — see the warren-5f07 string/boolean trap).
+ * Returns `undefined` for empty / unusable input so an empty allowlist is
+ * indistinguishable from omitting the field.
+ */
+function coerceToolNameList(
+	value: unknown,
+	label: string,
+	agentName: string,
+): string[] | undefined {
+	let raw: unknown[];
+	if (Array.isArray(value)) {
+		raw = value;
+	} else if (typeof value === "string") {
+		raw = value.split(/[\s,]+/);
+	} else {
+		throw new AgentSchemaError(
+			`agent "${agentName}" frontmatter.tools.${label} must be a string array or comma-separated string`,
+		);
+	}
+	const names: string[] = [];
+	for (const entry of raw) {
+		if (typeof entry !== "string") {
+			throw new AgentSchemaError(
+				`agent "${agentName}" frontmatter.tools.${label} entries must be strings`,
+			);
+		}
+		const trimmed = entry.trim();
+		if (trimmed.length > 0) names.push(trimmed);
+	}
+	return names.length > 0 ? names : undefined;
+}
+
+/**
+ * Coerce a frontmatter value into a boolean, tolerating the `"true"` /
+ * `"false"` strings `cn --fm` emits (warren-5f07). Returns `undefined` when
+ * the field is absent; throws on a value that is neither a boolean nor a
+ * recognized boolean string.
+ */
+function coerceToolFlag(value: unknown, label: string, agentName: string): boolean | undefined {
+	if (value === undefined) return undefined;
+	if (typeof value === "boolean") return value;
+	if (value === "true") return true;
+	if (value === "false") return false;
+	throw new AgentSchemaError(
+		`agent "${agentName}" frontmatter.tools.${label} must be a boolean (or "true"/"false")`,
+	);
+}
+
+/**
+ * Parse, validate, and normalize `frontmatter.tools` (warren-8dee). Returns
+ * `undefined` when the agent declares no tool policy; throws
+ * `AgentSchemaError` on a malformed declaration so it surfaces at registry
+ * refresh / spawn time rather than silently dropping a read-only guarantee.
+ * The returned object is canonical (string arrays, real booleans) so burrow's
+ * `buildPiArgv` reads a stable shape regardless of how the author authored it.
+ */
+export function readToolsFrontmatter(
+	frontmatter: Readonly<Record<string, unknown>>,
+	agentName = "<agent>",
+): ToolsPolicy | undefined {
+	const raw = frontmatter.tools;
+	if (raw === undefined || raw === null) return undefined;
+	if (typeof raw !== "object" || Array.isArray(raw)) {
+		throw new AgentSchemaError(`agent "${agentName}" frontmatter.tools must be an object`);
+	}
+	const obj = raw as Record<string, unknown>;
+	const policy: {
+		allow?: string[];
+		deny?: string[];
+		noBuiltins?: boolean;
+		noTools?: boolean;
+	} = {};
+	assignToolNameList(policy, "allow", obj.allow, agentName);
+	assignToolNameList(policy, "deny", obj.deny, agentName);
+	assignToolFlag(policy, "noBuiltins", obj.noBuiltins, agentName);
+	assignToolFlag(policy, "noTools", obj.noTools, agentName);
+	const empty =
+		policy.allow === undefined &&
+		policy.deny === undefined &&
+		policy.noBuiltins === undefined &&
+		policy.noTools === undefined;
+	return empty ? undefined : policy;
+}
+
+function assignToolNameList(
+	policy: { allow?: string[]; deny?: string[] },
+	key: "allow" | "deny",
+	value: unknown,
+	agentName: string,
+): void {
+	if (value === undefined || value === null) return;
+	const names = coerceToolNameList(value, key, agentName);
+	if (names !== undefined) policy[key] = names;
+}
+
+function assignToolFlag(
+	policy: { noBuiltins?: boolean; noTools?: boolean },
+	key: "noBuiltins" | "noTools",
+	value: unknown,
+	agentName: string,
+): void {
+	const flag = coerceToolFlag(value, key, agentName);
+	if (flag !== undefined) policy[key] = flag;
 }
 
 /**
@@ -201,6 +338,13 @@ export function parseRenderedAgent(raw: unknown, agentName?: string): AgentDefin
 		frontmatter: env.frontmatter ?? {},
 	};
 	validateAgentDefinition(def);
+	// warren-8dee: freeze the normalized tool policy back onto frontmatter so
+	// the rendered envelope (and the metadata warren forwards to burrow) carries
+	// a canonical shape regardless of how the canopy author declared it.
+	const toolsPolicy = readToolsFrontmatter(def.frontmatter, def.name);
+	if (toolsPolicy !== undefined) {
+		return { ...def, frontmatter: { ...def.frontmatter, tools: toolsPolicy } };
+	}
 	return def;
 }
 
@@ -218,6 +362,9 @@ export function validateAgentDefinition(def: AgentDefinition): void {
 			});
 		}
 	}
+	// warren-8dee: reject a malformed tools policy here (parse-time + cross-tier
+	// composer) so an unenforceable read-only declaration surfaces loudly.
+	readToolsFrontmatter(def.frontmatter, def.name);
 }
 
 /**

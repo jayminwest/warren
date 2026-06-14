@@ -6,6 +6,7 @@ import {
 	RenderResponseSchema,
 	readProviderFrontmatter,
 	readRuntimeId,
+	readToolsFrontmatter,
 	withMaxCostUsdOverride,
 	withProviderOverrides,
 } from "./schema.ts";
@@ -228,5 +229,82 @@ describe("withMaxCostUsdOverride", () => {
 		const original = { ...BASE, frontmatter: { ...BASE.frontmatter } };
 		withMaxCostUsdOverride(BASE, 10);
 		expect(BASE.frontmatter).toEqual(original.frontmatter);
+	});
+});
+
+describe("readToolsFrontmatter", () => {
+	test("returns undefined when no tools policy is declared", () => {
+		expect(readToolsFrontmatter({})).toBeUndefined();
+		expect(readToolsFrontmatter({ provider: "openai" })).toBeUndefined();
+		expect(readToolsFrontmatter({ tools: null })).toBeUndefined();
+	});
+
+	test("normalizes allow/deny string arrays", () => {
+		expect(readToolsFrontmatter({ tools: { allow: ["read", "grep"], deny: ["write"] } })).toEqual({
+			allow: ["read", "grep"],
+			deny: ["write"],
+		});
+	});
+
+	test("coerces comma/whitespace-separated strings into arrays (cn --fm shape)", () => {
+		expect(readToolsFrontmatter({ tools: { allow: "read, grep  bash" } })).toEqual({
+			allow: ["read", "grep", "bash"],
+		});
+	});
+
+	test("coerces boolean flags and tolerates true/false strings (warren-5f07 trap)", () => {
+		expect(readToolsFrontmatter({ tools: { noTools: true } })).toEqual({ noTools: true });
+		expect(readToolsFrontmatter({ tools: { noBuiltins: "true" } })).toEqual({
+			noBuiltins: true,
+		});
+		expect(readToolsFrontmatter({ tools: { noBuiltins: "false" } })).toEqual({
+			noBuiltins: false,
+		});
+	});
+
+	test("drops empty allow/deny so they are indistinguishable from omitted", () => {
+		expect(readToolsFrontmatter({ tools: { allow: [], deny: "  " } })).toBeUndefined();
+	});
+
+	test("rejects a non-object tools value", () => {
+		expect(() => readToolsFrontmatter({ tools: "read" }, "patrol")).toThrow(AgentSchemaError);
+		expect(() => readToolsFrontmatter({ tools: ["read"] }, "patrol")).toThrow(/must be an object/);
+	});
+
+	test("rejects malformed allow entries and flag values", () => {
+		expect(() => readToolsFrontmatter({ tools: { allow: 42 } }, "patrol")).toThrow(
+			AgentSchemaError,
+		);
+		expect(() => readToolsFrontmatter({ tools: { allow: [1, 2] } }, "patrol")).toThrow(
+			/entries must be strings/,
+		);
+		expect(() => readToolsFrontmatter({ tools: { noTools: "yes" } }, "patrol")).toThrow(
+			/must be a boolean/,
+		);
+	});
+
+	test("parseRenderedAgent freezes the normalized policy onto frontmatter", () => {
+		const def = parseRenderedAgent({
+			success: true,
+			command: "render",
+			name: "reviewer",
+			version: 1,
+			sections: [{ name: "system", body: "review only" }],
+			frontmatter: { tools: { allow: "read, grep", noBuiltins: "true" } },
+		});
+		expect(def.frontmatter.tools).toEqual({ allow: ["read", "grep"], noBuiltins: true });
+	});
+
+	test("parseRenderedAgent rejects a malformed tools policy", () => {
+		expect(() =>
+			parseRenderedAgent({
+				success: true,
+				command: "render",
+				name: "reviewer",
+				version: 1,
+				sections: [{ name: "system", body: "x" }],
+				frontmatter: { tools: "read" },
+			}),
+		).toThrow(/frontmatter\.tools must be an object/);
 	});
 });

@@ -1145,6 +1145,35 @@ same treatment. A library-only path would mean every operator who wants
 pi has to stand up a canopy fork first — high friction for the
 "multi-provider out of the box" value proposition.
 
+**Per-agent tool allowlist/denylist (warren-8dee).** `AgentDefinition.frontmatter`
+grows an optional `tools` object so a reviewer / patrol agent can declare a
+hard read-only (or otherwise scoped) tool surface at the harness level, not
+just via bwrap network policy. Shape:
+`tools = { allow?: string[], deny?: string[], noBuiltins?: boolean, noTools?: boolean }`.
+`readToolsFrontmatter` (`src/registry/schema.ts`) parses, validates, and
+normalizes it: `allow`/`deny` accept a real `string[]` or a single
+comma/whitespace-separated string (the shape `cn --fm key:value`
+stringification produces — same string/boolean trap as `auto_plan_run`,
+warren-5f07), and `noBuiltins`/`noTools` tolerate `"true"`/`"false"` strings.
+A malformed declaration throws `AgentSchemaError` at parse time
+(`parseRenderedAgent` + `validateAgentDefinition`) rather than silently
+dropping the guarantee. `parseRenderedAgent` freezes the *normalized* policy
+back onto `frontmatter.tools`, so the rendered envelope on
+`runs.rendered_agent_json` and the metadata warren forwards to burrow carry a
+canonical shape. The policy rides the existing `composeBurrowMetadata` seam
+(`src/runs/spawn/dispatch.ts`) — no new dispatch plumbing — so it forwards on
+`Run.metadataJson.frontmatter.tools` exactly like `provider`/`model`.
+
+This is a **paired warren↔burrow change** (same pin discipline as the
+piRuntime contract above): warren validates + forwards the policy; burrow's
+`buildPiArgv` (`../burrow src/runtime/pi.ts`) reads
+`ctx.frontmatter.tools` and appends `--tools <allow>` /
+`--exclude-tools <deny>` / `--no-builtin-tools` / `--no-tools` to the pi
+argv. Only the `pi` runtime consumes the field in V1 — `claude-code` and
+`sapling` ignore it. Until burrow ships the `buildPiArgv` half, warren
+already freezes + forwards a well-formed policy, so the burrow change is
+additive and non-breaking.
+
 **Adding a fourth built-in (or schema-extending pi).** Per `mx-39a64f`,
 five places update in lockstep: (1) `src/registry/builtins/<name>.ts`,
 (2) `BUILTIN_AGENTS` array + re-export in `src/registry/builtins/index.ts`,
