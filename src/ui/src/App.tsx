@@ -6,17 +6,17 @@ import { DefaultLanding } from "@/components/DefaultLanding.tsx";
 import { Layout } from "@/components/Layout.tsx";
 import { MotionProvider } from "@/components/ui/motion.tsx";
 import { ToastProvider } from "@/components/ui/toast.tsx";
+import {
+	ConversationToWorkspaceRedirect,
+	PlotToWorkspaceRedirect,
+} from "@/components/WorkspaceRedirects.tsx";
 import { AgentsPage } from "@/pages/Agents.tsx";
-import { ConversationDetailPage } from "@/pages/ConversationDetail.tsx";
-import { LeveretPage } from "@/pages/Leveret.tsx";
 import { LoginPage } from "@/pages/Login.tsx";
 import { NewPlanRunPage } from "@/pages/NewPlanRun.tsx";
 import { NewRunPage } from "@/pages/NewRun.tsx";
 import { PlanRunDetailPage } from "@/pages/PlanRunDetail.tsx";
 import { PlanRunsPage } from "@/pages/PlanRuns.tsx";
-import { PlotDetailPage } from "@/pages/PlotDetail.tsx";
 import { PlotSummaryPage } from "@/pages/PlotSummary.tsx";
-import { PlotsPage } from "@/pages/Plots.tsx";
 import { ProjectDetailPage } from "@/pages/ProjectDetail.tsx";
 import { ProjectsPage } from "@/pages/Projects.tsx";
 import { RunDetailPage } from "@/pages/RunDetail.tsx";
@@ -78,12 +78,14 @@ export function App() {
 						<Route path="/plan-runs" element={<PlanRunsPage />} />
 						<Route path="/plan-runs/new" element={<NewPlanRunPage />} />
 						<Route path="/plan-runs/:id" element={<PlanRunDetailPage />} />
-						<Route path="/leveret" element={<LeveretPage />} />
-						<Route path="/leveret/:id" element={<ConversationDetailPage />} />
 						<Route path="/workspace" element={<WorkspacePage />} />
 						<Route path="/workspace/:id" element={<WorkspaceDetailPage />} />
-						<Route path="/plots" element={<PlotsPage />} />
-						<Route path="/plots/:id" element={<PlotDetailPage />} />
+						{/* Legacy Leveret + Plots routes collapse into Workspace
+						    (warren-9cad / pl-0008 step 11). */}
+						<Route path="/leveret" element={<Navigate to="/workspace" replace />} />
+						<Route path="/leveret/:id" element={<ConversationToWorkspaceRedirect />} />
+						<Route path="/plots" element={<Navigate to="/workspace" replace />} />
+						<Route path="/plots/:id" element={<PlotToWorkspaceRedirect />} />
 						<Route path="/plots/:id/summary" element={<PlotSummaryPage />} />
 						<Route path="/agents" element={<AgentsPage />} />
 						<Route

@@ -11,7 +11,6 @@ import {
 	Menu,
 	Network,
 	Plus,
-	Rabbit,
 	X,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
@@ -44,8 +43,12 @@ const BASE_NAV_ITEMS: NavItem[] = [
 	{ to: "/run-analytics", label: "Run stats", icon: BarChart3 },
 ];
 
-const PLOTS_NAV_ITEM: NavItem = { to: "/plots", label: "Plots", icon: Network };
-const LEVERET_NAV_ITEM: NavItem = { to: "/leveret", label: "Leveret", icon: Rabbit };
+// Single collapsed Workspace entry (warren-9cad / pl-0008 step 11)
+// replaces the former Leveret + Plots pair: the Plot is the spine and
+// the conversation a facet of it, so one nav item now fronts the whole
+// shape → plan → run → activity lifecycle. The needs-you badge rides on
+// it.
+const WORKSPACE_NAV_ITEM: NavItem = { to: "/workspace", label: "Workspace", icon: Network };
 
 export function Layout() {
 	const navigate = useNavigate();
@@ -95,14 +98,14 @@ export function Layout() {
 		// preserves the CLAUDE.md standalone path (warren-e59a / pl-9d6a
 		// step 19).
 		if (!anyHasPlot) return BASE_NAV_ITEMS;
-		// Plot-enabled deployments lead with the Leveret overseer home
-		// and Plots, then the existing Runs → Plans → Projects → Agents
-		// order: Leveret → Plots → Runs → Plans → Projects → Agents.
-		const plotsItem: NavItem =
+		// Plot-enabled deployments lead with the single Workspace entry,
+		// then the existing Runs → Plans → Projects → Agents order:
+		// Workspace → Runs → Plans → Projects → Agents.
+		const workspaceItem: NavItem =
 			needsAttentionBadge !== undefined
-				? { ...PLOTS_NAV_ITEM, badge: needsAttentionBadge }
-				: PLOTS_NAV_ITEM;
-		return [LEVERET_NAV_ITEM, plotsItem, ...BASE_NAV_ITEMS];
+				? { ...WORKSPACE_NAV_ITEM, badge: needsAttentionBadge }
+				: WORKSPACE_NAV_ITEM;
+		return [workspaceItem, ...BASE_NAV_ITEMS];
 	}, [anyHasPlot, needsAttentionBadge]);
 
 	const handleLogout = (): void => {

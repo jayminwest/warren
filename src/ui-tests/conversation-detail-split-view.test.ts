@@ -15,9 +15,6 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-const PAGE_PATH = join(import.meta.dir, "..", "ui", "src", "pages", "ConversationDetail.tsx");
-const PAGE_SOURCE = readFileSync(PAGE_PATH, "utf8");
-
 // The split-view body (chat + dynamic intent editor + send-off) was
 // extracted into the shared ConversationSplitView (pl-0008 step 7 /
 // warren-3de4) so the /leveret/:id page and the Workspace Shape tab render
@@ -51,10 +48,14 @@ const CHAT_PATH = join(import.meta.dir, "..", "ui", "src", "components", "Chat.t
 const CHAT_SOURCE = readFileSync(CHAT_PATH, "utf8");
 
 describe("ConversationDetail split-view (warren-01c8)", () => {
-	test("registers the /leveret/:id route in App.tsx", () => {
-		expect(PAGE_SOURCE).toContain("ConversationDetailPage");
-		expect(APP_SOURCE).toContain("ConversationDetailPage");
-		expect(APP_SOURCE).toMatch(/path="\/leveret\/:id"\s+element=\{<ConversationDetailPage\s*\/>\}/);
+	test("legacy /leveret/:id route redirects into the Workspace surface", () => {
+		// pl-0008 step 11 / warren-9cad collapsed the standalone
+		// ConversationDetail page into the Workspace Shape tab; the old
+		// conversation deep link now resolves the owning Plot and redirects.
+		expect(APP_SOURCE).toContain("ConversationToWorkspaceRedirect");
+		expect(APP_SOURCE).toMatch(
+			/path="\/leveret\/:id"\s+element=\{<ConversationToWorkspaceRedirect\s*\/>\}/,
+		);
 	});
 
 	test("LEFT pane reuses Chat with a conversation send-message override", () => {

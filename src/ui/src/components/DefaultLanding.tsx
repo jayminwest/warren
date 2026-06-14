@@ -33,5 +33,5 @@ export function DefaultLanding() {
 	if (projects.isPending) return null;
 
 	const anyHasPlot = (projects.data?.projects ?? []).some((p) => p.hasPlot);
-	return <Navigate to={anyHasPlot ? "/plots" : "/runs"} replace />;
+	return <Navigate to={anyHasPlot ? "/workspace" : "/runs"} replace />;
 }
