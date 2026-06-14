@@ -59,7 +59,11 @@ import type { BurrowClient } from "../../burrow-client/client.ts";
 import { withTransportMapping } from "../../burrow-client/client.ts";
 import { NotFoundError, ValidationError } from "../../core/errors.ts";
 import { refreshProject } from "../../projects/manage.ts";
-import { readRuntimeId, withProviderOverrides } from "../../registry/schema.ts";
+import {
+	readRuntimeId,
+	withMaxCostUsdOverride,
+	withProviderOverrides,
+} from "../../registry/schema.ts";
 import { interactiveRuntimeOverride } from "../../warren-config/schema.ts";
 import { composeRunBranch, resolveRunBranchPrefix } from "../branch.ts";
 import { parseBurrowConfig } from "../burrow-config.ts";
@@ -140,11 +144,9 @@ export async function spawnRun(input: SpawnRunInput): Promise<SpawnRunResult> {
 	const projectAfterRefresh = refreshed?.project ?? project;
 
 	// warren-618b: fold per-project provider/model defaults onto the agent
-	// frontmatter, with the operator's per-run override winning. Final order
-	// is operator override > .warren/defaults.json > agent frontmatter. The
-	// resolved values ride the same `withProviderOverrides` path, so the
-	// frozen `runs.rendered_agent_json` reflects the effective frontmatter
-	// regardless of which slot supplied it.
+	// frontmatter, operator per-run override winning. Order: operator
+	// override > .warren/defaults.json > agent frontmatter, all riding the
+	// same `withProviderOverrides` path onto frozen `rendered_agent_json`.
 	const projectDefaults = await readProjectDefaults(
 		input.warrenConfigs,
 		projectAfterRefresh.id,
@@ -155,10 +157,14 @@ export async function spawnRun(input: SpawnRunInput): Promise<SpawnRunResult> {
 		projectDefaults?.defaultProvider,
 	);
 	const effectiveModel = resolveOverride(input.modelOverride, projectDefaults?.defaultModel);
-	const agent = withProviderOverrides(baseAgent, {
-		...(effectiveProvider !== undefined ? { providerOverride: effectiveProvider } : {}),
-		...(effectiveModel !== undefined ? { modelOverride: effectiveModel } : {}),
-	});
+	// warren-a63d: fold the per-trigger spend cap on top (trigger > agent).
+	const agent = withMaxCostUsdOverride(
+		withProviderOverrides(baseAgent, {
+			...(effectiveProvider !== undefined ? { providerOverride: effectiveProvider } : {}),
+			...(effectiveModel !== undefined ? { modelOverride: effectiveModel } : {}),
+		}),
+		input.maxCostUsdOverride,
+	);
 
 	// Build the seed payload BEFORE creating the warren row so a malformed
 	// expertise_seed / pi_skills / pi_prompts section surfaces as a clean
@@ -230,10 +236,9 @@ export async function spawnRun(input: SpawnRunInput): Promise<SpawnRunResult> {
 			runEnv,
 		);
 		// warren-39c3: persist the burrow → worker mapping (sticky-by-burrow)
-		// so cancel / steer / reap / fan-out reads can resolve the owning
-		// worker via `pool.clientFor({burrowId})`. Created in the same turn as
-		// `attachBurrow` so a crash between the two windows leaves the row
-		// consistent: either both are missing or both are populated.
+		// so cancel / steer / reap reads resolve the owning worker via
+		// `pool.clientFor({burrowId})`. Same turn as `attachBurrow` so a crash
+		// between leaves both missing or both populated.
 		await input.repos.burrows.create({
 			id: burrow.id,
 			workerId: placement.workerName,
@@ -241,12 +246,9 @@ export async function spawnRun(input: SpawnRunInput): Promise<SpawnRunResult> {
 		});
 		await input.repos.runs.attachBurrow(run.id, { burrowId: burrow.id });
 
-		// warren-ebca / warren-16f8: dispatch onto the burrow runtime id,
-		// not the canopy agent name. Built-in agents that want a non-pi
-		// runtime (claude-code / sapling) declare `frontmatter.runtime`
-		// explicitly; everything else falls back to the pi default in
-		// readRuntimeId. Interactive agents like brainstorm / planner also
-		// declare `frontmatter.runtime` to compose onto an existing runtime.
+		// warren-ebca / warren-16f8: dispatch onto the burrow runtime id
+		// (`readRuntimeId`: frontmatter.runtime pin, else the pi default),
+		// not the canopy agent name.
 		const burrowRun = await dispatchRun(
 			placement.client,
 			burrow.id,
@@ -273,10 +275,8 @@ export async function spawnRun(input: SpawnRunInput): Promise<SpawnRunResult> {
 			});
 		}
 		// warren-e848 / pl-2047 step 5: append a `run_dispatched` event to
-		// the originating Plot. Fire-and-log — failures emit a
-		// `plot_run_dispatched_failed` system event and DO NOT roll the
-		// dispatch back. Mirrors the writeSeedExtensions posture above and
-		// the cron tick's clearScheduledFor recovery shape.
+		// the originating Plot. Fire-and-log — same non-rollback posture as
+		// writeSeedExtensions above.
 		if (updated.plotId !== null && updated.plotId !== "") {
 			await emitRunDispatchedToPlot({
 				repos: input.repos,

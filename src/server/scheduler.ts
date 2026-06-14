@@ -83,6 +83,7 @@ export function bootScheduler(input: BootSchedulerInput): SchedulerHandle {
 			prompt: args.prompt,
 			trigger: args.trigger,
 			...(args.metadata !== undefined ? { metadata: args.metadata } : {}),
+			...(args.maxCostUsd !== undefined ? { maxCostUsdOverride: args.maxCostUsd } : {}),
 			projectsConfig: input.projectsConfig,
 			projectSpawn: input.projectSpawn,
 			warrenConfigs: input.warrenConfigs,

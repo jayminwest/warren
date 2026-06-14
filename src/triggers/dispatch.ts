@@ -39,6 +39,12 @@ export interface DispatchSpawnInput {
 	readonly prompt: string;
 	readonly trigger: string;
 	readonly metadata?: unknown;
+	/**
+	 * Per-trigger spend cap (warren-a63d). Forwarded to the spawn flow as
+	 * `maxCostUsdOverride` so the cron entry's `maxCostUsd` overrides the
+	 * agent's own cap. Omitted when the trigger declares none.
+	 */
+	readonly maxCostUsd?: number;
 }
 
 export interface DispatchSpawnResult {
@@ -142,6 +148,7 @@ export async function dispatchCronTrigger(input: DispatchCronInput): Promise<Dis
 				cron: input.trigger.cron,
 				...(input.trigger.seed !== undefined ? { seed: input.trigger.seed } : {}),
 			},
+			...(input.trigger.maxCostUsd !== undefined ? { maxCostUsd: input.trigger.maxCostUsd } : {}),
 		});
 		runId = spawned.runId;
 	} catch (err) {

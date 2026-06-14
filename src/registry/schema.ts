@@ -156,6 +156,22 @@ export function withProviderOverrides(
 }
 
 /**
+ * Return a new AgentDefinition with a per-trigger spend cap (warren-a63d)
+ * folded onto `frontmatter.maxCostUsd`, taking precedence over the
+ * agent's own value (trigger > agent). `undefined` leaves the agent's
+ * own `maxCostUsd` in force; the original agent is not mutated. Dispatch
+ * calls this before freezing `runs.rendered_agent_json` so the bridge
+ * sees a single, already-resolved cap.
+ */
+export function withMaxCostUsdOverride(
+	agent: AgentDefinition,
+	capUsd: number | undefined,
+): AgentDefinition {
+	if (capUsd === undefined) return agent;
+	return { ...agent, frontmatter: { ...agent.frontmatter, maxCostUsd: capUsd } };
+}
+
+/**
  * Parse and semantically validate the JSON body returned by
  * `cn render <name> --format json`. Throws `AgentSchemaError` for
  * any malformed or incomplete shape.

@@ -24,6 +24,7 @@ interface RecordedSpawn {
 	prompt: string;
 	trigger: string;
 	metadata?: unknown;
+	maxCostUsd?: number;
 }
 
 /**
@@ -48,6 +49,7 @@ function spawnRecorder(
 			prompt: input.prompt,
 			trigger: input.trigger,
 			metadata: input.metadata,
+			...(input.maxCostUsd !== undefined ? { maxCostUsd: input.maxCostUsd } : {}),
 		});
 		const run = await repos.runs.create({
 			agentName: input.agentName,
@@ -148,6 +150,42 @@ describe("dispatchCronTrigger", () => {
 		expect(row.lastFiredAt).toBe(now.toISOString());
 		expect(row.lastRunId).toBe(lastRunId() ?? "");
 		expect(row.nextFireAt).toBe("2026-05-12T00:00:00.000Z");
+	});
+
+	test("forwards the trigger's maxCostUsd to the spawn input when fired", async () => {
+		await repos.triggers.upsert({
+			projectId,
+			triggerId: TRIGGER_ID,
+			lastFiredAt: "2026-05-10T12:00:00.000Z",
+		});
+		const { spawn, calls } = spawnRecorder(repos, projectId);
+		const result = await dispatchCronTrigger({
+			projectId,
+			trigger: cronTrigger({ maxCostUsd: 5 }),
+			now: new Date("2026-05-11T00:05:00.000Z"),
+			repos,
+			spawn,
+		});
+		expect(result.kind).toBe("fired");
+		expect(calls).toHaveLength(1);
+		expect(calls[0]?.maxCostUsd).toBe(5);
+	});
+
+	test("omits maxCostUsd from the spawn input when the trigger declares none", async () => {
+		await repos.triggers.upsert({
+			projectId,
+			triggerId: TRIGGER_ID,
+			lastFiredAt: "2026-05-10T12:00:00.000Z",
+		});
+		const { spawn, calls } = spawnRecorder(repos, projectId);
+		await dispatchCronTrigger({
+			projectId,
+			trigger: cronTrigger(),
+			now: new Date("2026-05-11T00:05:00.000Z"),
+			repos,
+			spawn,
+		});
+		expect(calls[0]?.maxCostUsd).toBeUndefined();
 	});
 
 	test("no-catch-up: a 4-hour outage on an hourly trigger fires exactly once", async () => {

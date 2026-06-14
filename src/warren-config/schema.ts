@@ -18,8 +18,7 @@
  *
  * Triggers carry a `kind: 'cron'` discriminator even though only cron is
  * implemented today. Per pl-5d74 risk #1, this leaves room for future
- * webhook-style triggers (R-06+) to be added as another `kind:` without a
- * breaking schema rev.
+ * webhook-style triggers (R-06+) as another `kind:` without a schema rev.
  *
  * Triggers are parsed and exposed by this module but NOT dispatched here —
  * R-06 (cron scheduler) is the consumer. Defaults are parsed; the NewRun
@@ -352,6 +351,8 @@ export type ServerPreviewConfig = z.infer<typeof ServerPreviewConfigSchema>;
 export type StaticPreviewConfig = z.infer<typeof StaticPreviewConfigSchema>;
 export type PreviewConfig = z.infer<typeof PreviewConfigSchema>;
 
+// warren-a63d: per-trigger spend cap (USD); folded onto agent frontmatter
+// (trigger > agent) and enforced mid-run by the bridge. Positive finite.
 const CronTriggerSchema = z
 	.object({
 		id: TriggerIdSchema,
@@ -361,6 +362,7 @@ const CronTriggerSchema = z
 		role: RoleNameSchema,
 		timezone: TimezoneSchema.optional(),
 		prompt: PromptSchema.optional(),
+		maxCostUsd: z.number().positive("maxCostUsd must be positive").finite().optional(),
 	})
 	.strict();
 

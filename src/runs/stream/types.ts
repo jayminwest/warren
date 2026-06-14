@@ -149,6 +149,21 @@ export interface BridgeRunStreamInput {
 	readonly runStatePollMs?: number;
 	/** Override the post-terminal drain window (ms). Default 1000. */
 	readonly runStateDrainMs?: number;
+	/**
+	 * Effective per-run spend cap in USD (warren-a63d). When set, the
+	 * bridge cancels the run once cumulative cost crosses it. Normally
+	 * resolved by the bridge itself from `runs.rendered_agent_json`
+	 * (`resolveCostCapUsd`); tests inject it directly to exercise
+	 * enforcement without seeding a run row.
+	 */
+	readonly costCapUsd?: number;
+	/**
+	 * Override the graceful-cancel seam used when the spend cap trips
+	 * (warren-a63d, tests). Production defaults to a closure over the
+	 * resolved burrow client's `runs.cancel`; tests pass a stub to assert
+	 * the cancel fired without a live burrow.
+	 */
+	readonly cancelBurrowRun?: (reason: string) => Promise<void>;
 }
 
 export interface BridgeRunStreamResult {

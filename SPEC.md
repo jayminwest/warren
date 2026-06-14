@@ -85,7 +85,7 @@ Warren is a thin coordinator — most of the value is in the runtime plus whiche
 - No laptop-driven `burrow up` against warren. The home server is the canonical V1 deploy.
 - No real-time collaboration. One UI, one user at a time.
 - No payment, no usage metering, no quota in V1. Per-user / per-project cost and concurrency guardrails are planned post-V1 (R-17).
-- No cost or run-budget enforcement in V1. Token spend and concurrent-run caps are planned post-V1 (R-17). V1 does *report* per-run cost + token usage for the `pi` and `claude-code` built-ins (`runs.cost_usd`, `runs.tokens_*`, §11.K) — reporting is observability; enforcement (per-user / per-project budget caps) is the deferred half. `sapling` runs leave the columns null (no terminal cost emission yet).
+- Per-run spend caps are enforced (warren-a63d): a per-agent `frontmatter.maxCostUsd` or per-trigger `maxCostUsd` (triggers.yaml) cancels a run mid-stream once cumulative cost crosses the cap. Broader run-budget enforcement — concurrent-run caps, per-user / per-project rollups — is still planned post-V1 (R-17). V1 does *report* per-run cost + token usage for the `pi` and `claude-code` built-ins (`runs.cost_usd`, `runs.tokens_*`, §11.K) — reporting is observability; the per-user / per-project budget rollups remain the deferred half. `sapling` runs leave the columns null (no terminal cost emission yet).
 - ~~No bring-your-own database in V1~~ — **shipped post-V1 (R-13, pl-f17e, 2026-05-14):** SQLite (default, `bun:sqlite`) and Postgres (`drizzle-orm/node-postgres`) are both first-class backends selected by `WARREN_DB_URL`. Burrow's own per-worker SQLite stays untouched — that's run-local sandbox state, not org truth.
 - No MCP server configuration in V1. Canopy-frontmatter-driven MCP plus burrow-side credential mounts are planned post-V1 (R-15).
 - No audit log in V1. Append-only dispatch/steer/cancel/secret-read ledger is planned post-V1 (R-16), and lands alongside R-09 since it depends on real user identity.
@@ -765,7 +765,14 @@ projects migrate via `warren config migrate`. YAML parser is `js-yaml
 entries can land without a breaking schema rev — `mx-3636de`). Cron-token
 validation is intentionally loose (5 or 6 whitespace-separated fields,
 non-empty); R-06 owns full grammar checking when it wires in croner
-(`mx-40fe51`). `config.yaml` and legacy `defaults.json` share the same
+(`mx-40fe51`). A cron entry may also carry an optional `maxCostUsd`
+(warren-a63d) — a positive USD spend cap. At dispatch warren folds it
+onto the agent's frontmatter (overriding the agent's own
+`frontmatter.maxCostUsd`, so trigger > agent), freezing a single
+effective cap onto `runs.rendered_agent_json`; the event-bridge cancels
+the run once cumulative cost crosses it (emitting a `budget.exceeded`
+event). A malformed / non-positive value fails OPEN (no cap) so a budget
+typo never silently cancels every run. `config.yaml` and legacy `defaults.json` share the same
 schema — `{ defaultRole?, defaultBranch?, defaultPrompt?, defaultProvider?,
 defaultModel?, runBranchPrefix?, preview? }` — all optional, all strict.
 `runBranchPrefix` (warren-9993) overrides the prefix warren composes the

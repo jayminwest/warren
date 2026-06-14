@@ -22,17 +22,20 @@ import type { BurrowClient } from "../../burrow-client/client.ts";
 import { withTransportMapping } from "../../burrow-client/client.ts";
 import type { EventStream, RunTerminalState } from "../../db/schema.ts";
 import { EVENT_STREAMS } from "../../db/schema.ts";
+import { resolveCostCapUsd } from "../cost-cap.ts";
 import {
 	accumulatePiUsage,
 	extractClaudeUsage,
 	newSessionStatsAccumulator,
 	type SessionStatsAccumulator,
 } from "../usage-aggregate.ts";
+import { type CancelBurrowRunFn, enforceBudgetCap } from "./budget.ts";
 import { extractAssistantText, extractIntentPatch } from "./conversation-turn.ts";
 import { defaultRunStateProbe, runStatePoller } from "./run-state-poller.ts";
 import { persistInStreamUsage, persistPiStatsDelta, snapshotStats } from "./stats.ts";
 import { detectRuntimeTerminal, isPiAgentEnd } from "./terminal-detect.ts";
 import {
+	type BridgeLogger,
 	type BridgeRunStreamInput,
 	type BridgeRunStreamResult,
 	type BurrowTerminalSnapshot,
@@ -68,6 +71,15 @@ export async function bridgeRunStream(input: BridgeRunStreamInput): Promise<Brid
 			? null
 			: (await input.burrowClientPool.clientFor({ burrowId: input.burrowId })).client;
 	const source = input.source ?? defaultSource(sourceClient as BurrowClient, burrowRunId);
+
+	// warren-a63d: resolve the run's effective spend cap once. Explicit
+	// input wins (tests); otherwise read the cap frozen onto
+	// `runs.rendered_agent_json` (per-trigger override already folded over
+	// the per-agent value at dispatch). A null cap disables enforcement.
+	const costCapUsd = input.costCapUsd ?? (await resolveBridgeCostCap(repos, runId, input.logger));
+	const cancelBurrowRun: CancelBurrowRunFn =
+		input.cancelBurrowRun ??
+		defaultCancelBurrowRun(sourceClient as BurrowClient | null, burrowRunId);
 
 	// warren-6596: run-state poller. Covers runtimes that don't emit a
 	// recognised in-stream terminal envelope (raw-text declarative agents).
@@ -154,6 +166,29 @@ export async function bridgeRunStream(input: BridgeRunStreamInput): Promise<Brid
 
 			accumulatePiUsage(piUsage, event);
 			extractClaudeUsage(claudeUsage, event);
+
+			// warren-a63d: enforce the spend cap as cumulative cost crosses it.
+			// On exceed, the helper persists usage + emits `budget.exceeded` +
+			// cancels the burrow run; we break with a `cancelled` outcome so
+			// reap finalizes the warren row.
+			if (costCapUsd !== null) {
+				const exceeded = await enforceBudgetCap({
+					runId,
+					burrowRunId,
+					costCapUsd,
+					piUsage,
+					claudeUsage,
+					repos,
+					broker,
+					cancelBurrowRun,
+					...(input.logger !== undefined ? { logger: input.logger } : {}),
+				});
+				if (exceeded) {
+					statsPersisted = true;
+					terminalDetected = { outcome: "cancelled" };
+					break;
+				}
+			}
 
 			// warren-df71: conversation keep-alive. A mode:'conversation' run is
 			// a long-lived pi-chat session — `agent_end` is a TURN boundary, not
@@ -373,4 +408,44 @@ function normalizeStream(value: unknown): EventStream | null {
 
 function toIsoString(ts: Date | string): string {
 	return ts instanceof Date ? ts.toISOString() : ts;
+}
+
+/**
+ * Resolve the run's spend cap (warren-a63d) from its frozen
+ * `runs.rendered_agent_json`. Best-effort: a missing row or read error
+ * resolves to `null` (no cap) so a DB hiccup never blocks streaming.
+ */
+async function resolveBridgeCostCap(
+	repos: BridgeRunStreamInput["repos"],
+	runId: string,
+	logger: BridgeLogger | undefined,
+): Promise<number | null> {
+	try {
+		const run = await repos.runs.require(runId);
+		return resolveCostCapUsd(run.renderedAgentJson);
+	} catch (err) {
+		logger?.warn?.(
+			{ runId, err: err instanceof Error ? err.message : String(err) },
+			"failed to resolve spend cap; proceeding without enforcement",
+		);
+		return null;
+	}
+}
+
+/**
+ * Default graceful-cancel seam for spend-cap enforcement (warren-a63d):
+ * forward to the resolved burrow client's `runs.cancel`. When no client
+ * is available (tests with a `source` override but no `cancelBurrowRun`),
+ * it's a no-op — the bridge still breaks with `cancelled`.
+ */
+function defaultCancelBurrowRun(
+	client: BurrowClient | null,
+	burrowRunId: string,
+): CancelBurrowRunFn {
+	return async (reason: string): Promise<void> => {
+		if (client === null) return;
+		await withTransportMapping(client.config, () =>
+			client.http.runs.cancel(burrowRunId, { reason }),
+		);
+	};
 }

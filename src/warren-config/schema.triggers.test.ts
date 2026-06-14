@@ -22,6 +22,21 @@ describe("TriggersConfigSchema", () => {
 		}
 	});
 
+	test("accepts an optional positive maxCostUsd spend cap", () => {
+		const parsed = TriggersConfigSchema.safeParse([{ ...VALID_TRIGGER, maxCostUsd: 5 }]);
+		expect(parsed.success).toBe(true);
+		if (parsed.success) {
+			expect(parsed.data[0]?.maxCostUsd).toBe(5);
+		}
+	});
+
+	test("rejects a non-positive maxCostUsd", () => {
+		const zero = TriggersConfigSchema.safeParse([{ ...VALID_TRIGGER, maxCostUsd: 0 }]);
+		expect(zero.success).toBe(false);
+		const negative = TriggersConfigSchema.safeParse([{ ...VALID_TRIGGER, maxCostUsd: -1 }]);
+		expect(negative.success).toBe(false);
+	});
+
 	test("rejects unknown kinds (preserves room for future webhook triggers)", () => {
 		const parsed = TriggersConfigSchema.safeParse([{ ...VALID_TRIGGER, kind: "webhook" }]);
 		expect(parsed.success).toBe(false);

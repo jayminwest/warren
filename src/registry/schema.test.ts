@@ -6,6 +6,7 @@ import {
 	RenderResponseSchema,
 	readProviderFrontmatter,
 	readRuntimeId,
+	withMaxCostUsdOverride,
 	withProviderOverrides,
 } from "./schema.ts";
 
@@ -199,6 +200,33 @@ describe("withProviderOverrides", () => {
 	test("does not mutate the input agent", () => {
 		const original = { ...BASE, frontmatter: { ...BASE.frontmatter } };
 		withProviderOverrides(BASE, { providerOverride: "openai", modelOverride: "gpt-4o" });
+		expect(BASE.frontmatter).toEqual(original.frontmatter);
+	});
+});
+
+describe("withMaxCostUsdOverride", () => {
+	const BASE: AgentDefinition = {
+		name: "pi",
+		version: 1,
+		sections: { system: "hi" },
+		resolvedFrom: ["builtin:pi"],
+		frontmatter: { source: "builtin", maxCostUsd: 2 },
+	};
+
+	test("returns the same reference when no override is supplied", () => {
+		expect(withMaxCostUsdOverride(BASE, undefined)).toBe(BASE);
+	});
+
+	test("folds the cap onto frontmatter, overriding the agent's own value (trigger > agent)", () => {
+		const result = withMaxCostUsdOverride(BASE, 10);
+		expect(result).not.toBe(BASE);
+		expect(result.frontmatter.maxCostUsd).toBe(10);
+		expect(result.frontmatter.source).toBe("builtin");
+	});
+
+	test("does not mutate the input agent", () => {
+		const original = { ...BASE, frontmatter: { ...BASE.frontmatter } };
+		withMaxCostUsdOverride(BASE, 10);
 		expect(BASE.frontmatter).toEqual(original.frontmatter);
 	});
 });
