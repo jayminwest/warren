@@ -10,7 +10,6 @@ import {
 	StatusTransitionControl,
 } from "@/pages/plot-detail/header-controls.tsx";
 import { IntentPanel } from "@/pages/plot-detail/intent-panel.tsx";
-import { InteractivePanel } from "@/pages/plot-detail/interactive-panel.tsx";
 import { SubstratePanel } from "@/pages/plot-detail/substrate-panel.tsx";
 
 /**
@@ -22,7 +21,6 @@ import { SubstratePanel } from "@/pages/plot-detail/substrate-panel.tsx";
  *                             via POST /plots/:id/intent; disabled when status
  *                             is done/archived (server also rejects with 409).
  *   - SubstratePanel (right)— attachments grouped by role + Add/Detach dialog.
- *   - InteractivePanel      — Chat over the latest interactive run on the Plot.
  *   - ActivityFeed  (full)  — event_log timeline; collapses runs of 3+
  *                             same-kind same-actor events into a fold.
  *
@@ -112,8 +110,6 @@ export function PlotDetailPage() {
 				<IntentPanel plot={plot} frozen={frozen} />
 				<SubstratePanel plot={plot} />
 			</div>
-
-			<InteractivePanel plot={plot} frozen={frozen} />
 
 			<ActivityFeed
 				plotId={plot.id}

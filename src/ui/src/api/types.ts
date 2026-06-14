@@ -981,46 +981,6 @@ export interface AnswerPlotQuestionInput {
 	answer: string;
 	dispatcherHandle?: string;
 }
-/**
- * `POST /brainstorm` request body (pl-0344 step 8 / warren-d22e).
- * Atomically creates a draft Plot in the named project and dispatches
- * the first interactive turn against the built-in `brainstorm` agent
- * (override via `agent`). Returns the new Plot summary + run row.
- */
-export interface StartBrainstormInput {
-	projectId: string;
-	prompt: string;
-	name?: string;
-	agent?: string;
-	dispatcherHandle?: string;
-	providerOverride?: string;
-	modelOverride?: string;
-	ref?: string;
-}
-export interface StartBrainstormResponse {
-	plot: PlotSummary;
-	run: RunRow;
-	burrow: BurrowSummary;
-}
-
-/**
- * Server-side `SuggestedIntent` mirror (pl-0344 step 8 /
- * warren-d22e). Returned by `POST /plots/:id/formalize` as a
- * suggested edit — the UI renders it as a review form and applies
- * via the existing `POST /plots/:id/intent` route on accept.
- */
-export interface SuggestedIntent {
-	goal: string;
-	non_goals: string[];
-	constraints: string[];
-	success_criteria: string[];
-}
-export interface FormalizePlotResponse {
-	plot_id: string;
-	suggested_intent: SuggestedIntent;
-	source_message_count: number;
-}
-
 export interface AnswerPlotQuestionResponse {
 	event: PlotEvent;
 }

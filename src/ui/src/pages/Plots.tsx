@@ -59,7 +59,6 @@ export function PlotsPage() {
 	const [sortKey, setSortKey] = useState<SortKey>("last_event_ts");
 	const [sortDir, setSortDir] = useState<SortDir>("desc");
 	const [dialogOpen, setDialogOpen] = useState(false);
-	const [brainstormOpen, setBrainstormOpen] = useState(false);
 
 	const plots = useQuery({
 		queryKey: ["plots", statusFilter, needsAttention ? "needs_attention" : "all"],
@@ -123,18 +122,9 @@ export function PlotsPage() {
 				title="Plots"
 				description="Shared coordination substrate — humans and agents as peer nodes on a per-Plot event log."
 				actions={
-					<>
-						<Button
-							variant="outline"
-							onClick={() => setBrainstormOpen(true)}
-							disabled={projects.isLoading}
-						>
-							Start brainstorming
-						</Button>
-						<Button onClick={() => setDialogOpen(true)} disabled={projects.isLoading}>
-							New Plot
-						</Button>
-					</>
+					<Button onClick={() => setDialogOpen(true)} disabled={projects.isLoading}>
+						New Plot
+					</Button>
 				}
 			/>
 
@@ -207,12 +197,6 @@ export function PlotsPage() {
 			<NewPlotDialog
 				open={dialogOpen}
 				onOpenChange={setDialogOpen}
-				hasPlotProjects={hasPlotProjects}
-			/>
-
-			<StartBrainstormDialog
-				open={brainstormOpen}
-				onOpenChange={setBrainstormOpen}
 				hasPlotProjects={hasPlotProjects}
 			/>
 		</div>
@@ -490,147 +474,6 @@ function NewPlotDialog({
 							</Button>
 							<Button type="submit" disabled={!submittable}>
 								{create.isPending ? "Creating…" : "Create Plot"}
-							</Button>
-						</DialogFooter>
-					</form>
-				)}
-			</DialogContent>
-		</Dialog>
-	);
-}
-
-const BRAINSTORM_DEFAULT_PROMPT =
-	"I have an unformed idea I want to sharpen into a Plot intent. Help me think through what it's really for.";
-
-/**
- * Cross-project brainstorm dispatcher (warren-f0e2 / pl-0344 step 13).
- * `POST /brainstorm` atomically creates a draft Plot in the chosen
- * project and dispatches the first interactive turn against the
- * built-in `brainstorm` agent (read-only scout). On success navigates
- * straight to the new Plot's detail page where the inline Chat picks
- * up the streamed agent reply (mx-0ea49c respawn-per-turn primitive).
- */
-function StartBrainstormDialog({
-	open,
-	onOpenChange,
-	hasPlotProjects,
-}: {
-	open: boolean;
-	onOpenChange: (open: boolean) => void;
-	hasPlotProjects: { id: string; gitUrl: string }[];
-}) {
-	const navigate = useNavigate();
-	const qc = useQueryClient();
-	const [projectId, setProjectId] = useState("");
-	const [prompt, setPrompt] = useState(BRAINSTORM_DEFAULT_PROMPT);
-
-	const start = useMutation({
-		mutationFn: () =>
-			plotsApi.startBrainstorm({
-				projectId,
-				prompt: prompt.trim(),
-			}),
-		onSuccess: (resp) => {
-			qc.invalidateQueries({ queryKey: ["plots"] });
-			qc.invalidateQueries({ queryKey: ["runs"] });
-			onOpenChange(false);
-			setProjectId("");
-			setPrompt(BRAINSTORM_DEFAULT_PROMPT);
-			navigate(`/plots/${encodeURIComponent(resp.plot.id)}`);
-		},
-	});
-
-	const noEligible = hasPlotProjects.length === 0;
-	const submittable =
-		projectId.length > 0 && prompt.trim().length > 0 && !start.isPending;
-
-	const handleSubmit = (e: React.FormEvent): void => {
-		e.preventDefault();
-		if (!submittable) return;
-		start.mutate();
-	};
-
-	return (
-		<Dialog
-			open={open}
-			onOpenChange={(next) => {
-				if (!next) start.reset();
-				onOpenChange(next);
-			}}
-		>
-			<DialogContent>
-				<DialogHeader>
-					<DialogTitle>Start brainstorming</DialogTitle>
-					<DialogDescription>
-						Create a draft Plot and dispatch the built-in{" "}
-						<code className="font-mono">brainstorm</code> agent — a
-						read-only scout that asks questions to help sharpen the
-						idea into a Plot intent.
-					</DialogDescription>
-				</DialogHeader>
-
-				{noEligible ? (
-					<p className="text-sm text-(--color-muted-foreground)">
-						No Plot-enabled projects yet — run{" "}
-						<code className="font-mono">plot init</code> in a project clone and
-						refresh.
-					</p>
-				) : (
-					<form onSubmit={handleSubmit} className="space-y-4">
-						<div className="space-y-1.5">
-							<Label htmlFor="brainstorm-project">Project</Label>
-							<select
-								id="brainstorm-project"
-								required
-								value={projectId}
-								onChange={(e) => setProjectId(e.target.value)}
-								className="flex h-9 w-full rounded-md border bg-(--color-card) px-3 py-1 text-sm shadow-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-ring)"
-							>
-								<option value="" disabled>
-									Pick a Plot-enabled project…
-								</option>
-								{hasPlotProjects.map((p) => (
-									<option key={p.id} value={p.id}>
-										{p.gitUrl} ({p.id})
-									</option>
-								))}
-							</select>
-						</div>
-
-						<div className="space-y-1.5">
-							<Label htmlFor="brainstorm-prompt">Opening message</Label>
-							<Textarea
-								id="brainstorm-prompt"
-								rows={4}
-								value={prompt}
-								onChange={(e) => setPrompt(e.target.value)}
-								disabled={start.isPending}
-							/>
-							<p className="text-xs text-(--color-muted-foreground)">
-								First-turn prompt. The agent will reply in the Plot's
-								chat panel.
-							</p>
-						</div>
-
-						{start.isError ? (
-							<p className="text-sm text-(--color-destructive)">
-								{start.error instanceof Error
-									? start.error.message
-									: String(start.error)}
-							</p>
-						) : null}
-
-						<DialogFooter>
-							<Button
-								type="button"
-								variant="outline"
-								onClick={() => onOpenChange(false)}
-								disabled={start.isPending}
-							>
-								Cancel
-							</Button>
-							<Button type="submit" disabled={!submittable}>
-								{start.isPending ? "Starting…" : "Start brainstorming"}
 							</Button>
 						</DialogFooter>
 					</form>

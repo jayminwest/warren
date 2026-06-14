@@ -16,9 +16,6 @@ import type {
 	ListConversationsFilter,
 	ListConversationsResponse,
 	PostConversationMessageResponse,
-	FormalizePlotResponse,
-	StartBrainstormInput,
-	StartBrainstormResponse,
 	AnswerPlotQuestionInput,
 	AnswerPlotQuestionResponse,
 	AttachPlotInput,
@@ -267,48 +264,6 @@ export const runsApi = {
 		request<RunRow>(`/runs/${encodeURIComponent(id)}`, { ...(signal ? { signal } : {}) }),
 	create: (input: CreateRunInput) =>
 		request<SpawnRunResponse>("/runs", { method: "POST", body: input }),
-	/**
-	 * `POST /runs` sugar (pl-0344 step 4 / warren-b3b9) for spawning an
-	 * interactive turn bound to a Plot. Plumbs `mode: 'interactive'` +
-	 * `interactiveAgent` over the same wire path as `create`; the server
-	 * uses `interactiveAgent` to resolve the agent and requires `plotId`.
-	 * The Chat component spawns subsequent turns via `sendMessage`
-	 * against the freshly-spawned run id (`onTurnSpawned` re-anchor).
-	 */
-	createInteractive: (input: {
-		agent: string;
-		project: string;
-		plotId: string;
-		prompt: string;
-		ref?: string;
-		providerOverride?: string;
-		modelOverride?: string;
-		dispatcherHandle?: string;
-	}) =>
-		request<SpawnRunResponse>("/runs", {
-			method: "POST",
-			body: {
-				// `agent` is still a required field server-side even when
-				// `interactiveAgent` overrides it (see parseRunMode +
-				// createRunHandler in src/server/handlers/runs/index.ts).
-				agent: input.agent,
-				interactiveAgent: input.agent,
-				mode: "interactive",
-				project: input.project,
-				plotId: input.plotId,
-				prompt: input.prompt,
-				...(input.ref !== undefined ? { ref: input.ref } : {}),
-				...(input.providerOverride !== undefined
-					? { providerOverride: input.providerOverride }
-					: {}),
-				...(input.modelOverride !== undefined
-					? { modelOverride: input.modelOverride }
-					: {}),
-				...(input.dispatcherHandle !== undefined
-					? { dispatcherHandle: input.dispatcherHandle }
-					: {}),
-			},
-		}),
 	sendMessage: (id: string, input: SendRunMessageInput) =>
 		request<SendRunMessageResponse>(`/runs/${encodeURIComponent(id)}/messages`, {
 			method: "POST",
@@ -654,45 +609,6 @@ export const plotsApi = {
 	 * question_posed event. `eventId` is the targeted event's `at` ISO
 	 * timestamp.
 	 */
-	/**
-	 * `POST /brainstorm` — atomically create a draft Plot in the named
-	 * project and dispatch the first interactive turn against the
-	 * built-in `brainstorm` agent (pl-0344 step 8 / warren-d22e). The
-	 * one-call wrapper saves the UI an awkward `POST /plots` then
-	 * `POST /runs` dance plus partial-failure rollback.
-	 */
-	startBrainstorm: (input: StartBrainstormInput) =>
-		request<StartBrainstormResponse>("/brainstorm", {
-			method: "POST",
-			body: {
-				project_id: input.projectId,
-				prompt: input.prompt,
-				...(input.name !== undefined ? { name: input.name } : {}),
-				...(input.agent !== undefined ? { agent: input.agent } : {}),
-				...(input.dispatcherHandle !== undefined
-					? { dispatcher_handle: input.dispatcherHandle }
-					: {}),
-				...(input.providerOverride !== undefined
-					? { providerOverride: input.providerOverride }
-					: {}),
-				...(input.modelOverride !== undefined
-					? { modelOverride: input.modelOverride }
-					: {}),
-				...(input.ref !== undefined ? { ref: input.ref } : {}),
-			},
-		}),
-	/**
-	 * `POST /plots/:id/formalize` — returns a suggested Plot intent
-	 * extracted from the brainstorm conversation's `agent_message`
-	 * events (pl-0344 step 8 / warren-d22e). Non-mutating: the caller
-	 * (PlotDetail Formalize dialog) renders the suggestion as a review
-	 * form and applies via `editIntent` on accept.
-	 */
-	formalize: (plotId: string) =>
-		request<FormalizePlotResponse>(
-			`/plots/${encodeURIComponent(plotId)}/formalize`,
-			{ method: "POST", body: {} },
-		),
 	answerQuestion: (plotId: string, input: AnswerPlotQuestionInput) =>
 		request<AnswerPlotQuestionResponse>(
 			`/plots/${encodeURIComponent(plotId)}/questions/${encodeURIComponent(input.eventId)}/answer`,
