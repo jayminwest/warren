@@ -16,6 +16,7 @@ import {
 	StatusTransitionControl,
 } from "@/pages/plot-detail/header-controls.tsx";
 import { NewConversationButton } from "@/pages/leveret/new-conversation-dialog.tsx";
+import { ActivityTab } from "@/pages/workspace-detail/activity-tab.tsx";
 import { RunTab } from "@/pages/workspace-detail/run-tab.tsx";
 import { formatError } from "@/lib/format-error.ts";
 
@@ -413,17 +414,4 @@ function PlanHandoff({
 	);
 }
 
-/** Placeholder — filled by pl-0008 step 10 (warren-ef97). */
-function ActivityTab(_props: { plot: PlotEnvelope }) {
-	return <TabPlaceholder label="Activity" />;
-}
 
-function TabPlaceholder({ label }: { label: string }) {
-	return (
-		<Card>
-			<CardContent className="p-6 text-sm text-(--color-muted-foreground)">
-				The {label} tab is coming soon.
-			</CardContent>
-		</Card>
-	);
-}
