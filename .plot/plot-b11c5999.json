@@ -1,0 +1,25 @@
+{
+  "attachments": [],
+  "created_at": "2026-06-14T05:40:46.989Z",
+  "id": "plot-b11c5999",
+  "intent": {
+    "constraints": [
+      "Chat ordering/dedup fix lives in src/ui/src/components/chat-messages.ts: merge transcript + stream bubbles on a single unified ordering key instead of concatenating the two seq-sorted groups, and tighten the dedupe so a streamed turn and its persisted copy collapse to one bubble"
+    ],
+    "goal": "Land a low-risk cleanup batch — the full logging/traceability hardening set, fixes for the workspace chat surface (unbounded growth, out-of-order turns, and duplicated assistant messages), and removal of the leaked agent-session transcript from PR #340 — capped by a patch version bump to 0.9.1.",
+    "non_goals": [
+      "The plot-side EVENT_ACL.intent_edited widening (warren-df1b) — it spans the sibling ../plot repo and is out of scope for this warren-only batch",
+      "Investigation/forensics-only seeds with no code deliverable (warren-d5e5, PR #270 truthfulness audit)",
+      "The grandfathered file-size burndown refactor (warren-c65d) — large and explicitly one-per-patrol",
+      "New observability backends, dashboards, or metrics surfaces beyond the additive logging the audit (warren-3679) named"
+    ],
+    "success_criteria": [
+      "On the workspace conversation surface, user and agent turns render in correct chronological order across the transcript/stream boundary (no transcript-first-then-stream reordering)",
+      "No assistant message is duplicated when a streamed turn and its persisted transcript copy both exist; buildChatMessages dedupe is covered by a regression test in chat-messages.test.ts"
+    ]
+  },
+  "name": "Workspaces Testing",
+  "schema_version": 1,
+  "status": "drafting",
+  "updated_at": "2026-06-14T05:47:18.479Z"
+}
