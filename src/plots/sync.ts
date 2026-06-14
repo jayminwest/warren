@@ -1,6 +1,7 @@
 import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { warrenCommitIdentityArgs } from "../bot-identity.ts";
 import type { SpawnFn } from "../projects/index.ts";
 import { parseGitHubUrl } from "../projects/url.ts";
 import { mergePullRequest, openPullRequest, parsePullRequestRef } from "../runs/pr.ts";
@@ -153,10 +154,7 @@ export const defaultPlotSyncer: PlotSyncer = {
 				spawn,
 				[
 					gitBinary,
-					"-c",
-					"user.name=warren",
-					"-c",
-					"user.email=warren@os-eco.dev",
+					...warrenCommitIdentityArgs(),
 					"commit",
 					// warren-27d3: warren's plot-sync bookkeeping commit must not be
 					// gated by the project's git hooks (e.g. a check:all pre-commit).

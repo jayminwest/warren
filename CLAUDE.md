@@ -269,6 +269,28 @@ edit both files directly. `.github/workflows/release.yml` fails the release
 job if they disagree, then auto-tags `v$VERSION` and creates a GitHub release
 from the matching `CHANGELOG.md` section.
 
+## Git identities (Article VII)
+
+Per [`docs/CONSTITUTION.md`](docs/CONSTITUTION.md) Article VII ("Identity
+is consistent"), warren-authored commits use **one** canonical bot
+identity — one agent, one spelling. There are two distinct identities,
+and they must not be conflated:
+
+- **Warren's own bookkeeping bot** — the reap-time `chore(warren): …`
+  commits (plot/seeds state) and the plot-sync commit are authored as
+  `warren <warren@os-eco.dev>`. This spelling is the single source of
+  truth in `src/bot-identity.ts` (`WARREN_BOT_IDENTITY` /
+  `warrenCommitIdentityArgs()`). Never re-spell `user.name` /
+  `user.email` inline at a new commit site — import the constant so the
+  history can never drift again (warren-598f closed a ~9-spelling drift:
+  `@warren.local`, `@os-eco.local`, `@local`, `@example.com`, …).
+- **The agent's own author identity** — operator-configured via
+  `WARREN_GIT_AUTHOR_NAME` / `WARREN_GIT_AUTHOR_EMAIL` and installed by
+  `src/supervisor/git-identity.ts`. This governs the *agent's* commits,
+  not warren's bookkeeping bot. Operators should use a github.com
+  `<id>+warren@users.noreply.github.com` noreply address so the
+  contribution graph reflects agent-driven work.
+
 ## Acceptance Harness
 
 `scripts/acceptance/` runs scenario-based end-to-end checks against a real

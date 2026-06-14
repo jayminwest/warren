@@ -1,4 +1,5 @@
 import { join } from "node:path";
+import { warrenCommitIdentityArgs } from "../../bot-identity.ts";
 import type { EventRow } from "../../db/schema.ts";
 import type { ReapExec, ReapFs } from "./types.ts";
 
@@ -90,10 +91,7 @@ export async function stagePlotForCommit(input: StagePlotForCommitInput): Promis
 	await exec.run(
 		"git",
 		[
-			"-c",
-			"user.name=warren",
-			"-c",
-			"user.email=warren@os-eco.dev",
+			...warrenCommitIdentityArgs(),
 			"commit",
 			// warren-27d3: internal bookkeeping commits must never be gated by
 			// the project's git hooks (e.g. a pre-commit hook running the full
@@ -193,10 +191,7 @@ export async function stageSeedsForCommit(input: StageSeedsForCommitInput): Prom
 	await exec.run(
 		"git",
 		[
-			"-c",
-			"user.name=warren",
-			"-c",
-			"user.email=warren@os-eco.dev",
+			...warrenCommitIdentityArgs(),
 			"commit",
 			// warren-27d3: skip project git hooks for warren's bookkeeping commit.
 			"--no-verify",
