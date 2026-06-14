@@ -13,6 +13,12 @@
  *   timeout through reap so the burrow workspace + bwrap process tree is
  *   torn down. Opt-in: arms only on a positive timeout. See
  *   `src/runs/watchdog.ts`.
+ * - `bootConversationMergePollerFromEnv` (warren-b872): polls GitHub for
+ *   sent-off conversations whose plotSync PR has merged and auto-dispatches
+ *   the planner run keyed on `plot_id`. On by default (warren-157a) — like
+ *   the conversation idle detector it is a lifecycle-reclaim path that must
+ *   not depend on an operator remembering a flag. Opt-out via
+ *   `WARREN_MERGE_POLLER_DISABLED=1`.
  * - `bootConversationIdleDetectorFromEnv` (warren-005d):
  *   finalizes the anchoring `mode:"conversation"` run after
  *   `conversation.idleTimeoutMs` of inactivity (the conversation row stays
@@ -101,16 +107,19 @@ export interface MergePollerWiringInput {
 }
 
 /**
- * Boot the send-off PR-merge poller (warren-b872). Opt-in via
- * `WARREN_MERGE_POLLER_ENABLED=1`; polls every
- * `WARREN_MERGE_POLLER_TICK_MS` (default 30s). Auto-dispatches the planner run
- * keyed on `plot_id` once a sent-off conversation's plotSync PR merges.
+ * Boot the send-off PR-merge poller (warren-b872). On by default
+ * (warren-157a) — mirroring the conversation idle detector, this is the
+ * lifecycle path that auto-dispatches the planner run keyed on `plot_id`
+ * once a sent-off conversation's plotSync PR merges, so it must not depend
+ * on an operator remembering a flag. Opt-out via
+ * `WARREN_MERGE_POLLER_DISABLED=1`; polls every
+ * `WARREN_MERGE_POLLER_TICK_MS` (default 30s).
  */
 export function bootConversationMergePollerFromEnv(
 	input: MergePollerWiringInput,
 ): MergePollerHandle {
 	const { env, logger } = input;
-	const enabled = parseTrueEnv(env.WARREN_MERGE_POLLER_ENABLED);
+	const disabled = parseTrueEnv(env.WARREN_MERGE_POLLER_DISABLED);
 	const tickMs = parseIntEnv(env, "WARREN_MERGE_POLLER_TICK_MS", 30_000);
 	const dispatch = createMergePollerDispatch({
 		repos: input.repos,
@@ -130,12 +139,12 @@ export function bootConversationMergePollerFromEnv(
 		checkPrMerged: createPrMergeChecker({ token: input.autoOpenPr.token }),
 		dispatch,
 		tickMs,
-		disabled: !enabled,
+		disabled,
 		logger: pauseLoggerFromPino(logger),
 		...(input.now !== undefined ? { now: input.now } : {}),
 	});
-	if (!enabled) {
-		logger.info({}, "merge poller disabled (set WARREN_MERGE_POLLER_ENABLED=1 to enable)");
+	if (disabled) {
+		logger.info({}, "merge poller disabled via WARREN_MERGE_POLLER_DISABLED");
 	} else {
 		logger.info({ tickMs }, "merge poller running");
 	}
@@ -249,9 +258,11 @@ export interface BackgroundDetectorHandles {
 
 /**
  * Boot all four background detectors in one call. Each is independently
- * gated by its own env flag inside the per-detector boot (the conversation
- * idle detector is the only on-by-default one); this wrapper just collapses
- * the shared dep-plumbing so `bootServer` stays under the file-size ratchet.
+ * gated by its own env flag inside the per-detector boot (the pause
+ * detector and watchdog are opt-in; the conversation idle detector and the
+ * send-off merge poller are on-by-default opt-outs); this wrapper just
+ * collapses the shared dep-plumbing so `bootServer` stays under the
+ * file-size ratchet.
  */
 export function bootBackgroundDetectors(
 	input: BackgroundDetectorWiringInput,

@@ -11,7 +11,7 @@
  * C. POST auditor findings (gatewatch, ratchetwatch, tastewatch shaped messages)
  * D. POST digest synthesis message (warden-digest turn)
  * E. POST /conversations/:id/send-off  — closes conversation, queues planner
- * F. Merge-detected planner auto-dispatch (WARREN_MERGE_POLLER_ENABLED=1)
+ * F. Merge-detected planner auto-dispatch (merge poller is on by default)
  * G. Assert planner run dispatched, terminates (plan proposed through chain)
  */
 
@@ -175,8 +175,8 @@ export const scenario: Scenario = {
 					// send-off plotSync PR open + merge-poller PR-merge check both
 					// short-circuit to a synthetic `merged` result (hermetic, no GH).
 					WARREN_GH_FETCH_OVERRIDE: "merged",
-					// Merge poller — opt-in; 500ms tick lets planner dispatch land fast.
-					WARREN_MERGE_POLLER_ENABLED: "1",
+					// Merge poller — on by default (warren-157a); 500ms tick lets
+					// planner dispatch land fast.
 					WARREN_MERGE_POLLER_TICK_MS: "500",
 				},
 			});

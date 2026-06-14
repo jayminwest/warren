@@ -60,6 +60,8 @@ Required environment variables (see [`.env.example`](.env.example) for the full 
 
 The compose file applies the four bwrap-required security flags (`apparmor=unconfined`, `seccomp=unconfined`, `systempaths=unconfined`, `cap_add: SYS_ADMIN`). These relax the outer container so the runtime's nested userns sandboxes can come up. Removing any one of them breaks sandbox provisioning.
 
+> **Image requirement: burrow-cli ≥ 0.3.12.** Warren is co-tenanted with [burrow](https://github.com/jayminwest/burrow) inside the container and talks to it over a shared unix socket. The published image pins `@os-eco/burrow-cli@0.3.12` (see [`Dockerfile`](Dockerfile)); if you build your own image or override the runtime, install burrow-cli **0.3.12 or newer** — earlier releases predate the runtime contract warren depends on (agent spawn shape, resume support, event kinds) and will fail at dispatch.
+
 ## Deploy to Fly.io
 
 Same image, same volume layout, same security flags:

@@ -320,6 +320,44 @@ async function finalizeAnchoringRun(
  * intent to submit), or if there is no dirty `.plot/` change to ship; 404 if
  * the conversation (or its Plot's project) is unknown.
  */
+/**
+ * Guard the send-off preconditions (warren-756d / warren-157a): the
+ * conversation must be open, bound to a Plot, and warren must hold a GitHub
+ * token to push the plotSync PR. Returns the resolved token on success;
+ * throws a clear `ValidationError` otherwise so the operator never sees an
+ * opaque git-push failure. Extracted from the handler to keep its cognitive
+ * complexity under the ratchet.
+ */
+function assertSendOffReady(
+	deps: ServerDeps,
+	conversation: ConversationRow,
+): { token: string; plotId: string } {
+	const id = conversation.id;
+	if (conversation.status === "closed") {
+		throw new ValidationError(`conversation ${id} is already closed; cannot send to planner`, {
+			recoveryHint: "start a new conversation to re-plan against the same Plot",
+		});
+	}
+	if (conversation.plotId === null || conversation.plotId === "") {
+		throw new ValidationError(`conversation ${id} has no Plot bound; nothing to send`, {
+			recoveryHint: "shape the Plot's intent before sending to the planner",
+		});
+	}
+	// Sending to the planner pushes a plotSync PR, which needs a GitHub token.
+	// Without one the push fails deep inside git with an opaque error.
+	const token = deps.autoOpenPr?.token ?? "";
+	if (token === "") {
+		throw new ValidationError(
+			`conversation ${id} cannot be sent to the planner: no GitHub token configured`,
+			{
+				recoveryHint:
+					"set GITHUB_TOKEN (forwarded as the auto-open-PR token) so warren can push the plotSync PR",
+			},
+		);
+	}
+	return { token, plotId: conversation.plotId };
+}
+
 export function sendOffConversationHandler(deps: ServerDeps): RouteHandler {
 	return async (ctx) => {
 		const id = requireParam(ctx, "id");
@@ -327,24 +365,15 @@ export function sendOffConversationHandler(deps: ServerDeps): RouteHandler {
 		const plannerAgent = optionalString(body, "planner_agent") ?? null;
 
 		const conversation = await deps.repos.conversations.require(id);
-		if (conversation.status === "closed") {
-			throw new ValidationError(`conversation ${id} is already closed; cannot send to planner`, {
-				recoveryHint: "start a new conversation to re-plan against the same Plot",
-			});
-		}
-		if (conversation.plotId === null || conversation.plotId === "") {
-			throw new ValidationError(`conversation ${id} has no Plot bound; nothing to send`, {
-				recoveryHint: "shape the Plot's intent before sending to the planner",
-			});
-		}
+		const { token, plotId } = assertSendOffReady(deps, conversation);
 
-		const project = await resolvePlotProject(deps, conversation.plotId, "send plot to planner");
+		const project = await resolvePlotProject(deps, plotId, "send plot to planner");
 		const syncer = deps.plotSyncer ?? defaultPlotSyncer;
 		const result = await syncer.sync({
 			projectPath: project.localPath,
 			gitUrl: project.gitUrl,
 			defaultBranch: project.defaultBranch,
-			token: deps.autoOpenPr?.token ?? "",
+			token,
 			handle: "warren",
 			plotSyncConfig: await resolvePlotSyncConfig(deps, project),
 			spawn: deps.spawn ?? defaultSpawn,
@@ -372,7 +401,7 @@ export function sendOffConversationHandler(deps: ServerDeps): RouteHandler {
 
 		return jsonResponse(200, {
 			conversation: closed,
-			plot_id: conversation.plotId,
+			plot_id: plotId,
 			pr: { url: result.prUrl, number: result.prNumber ?? null, branch: result.branch },
 			planner_agent: plannerAgent,
 		});

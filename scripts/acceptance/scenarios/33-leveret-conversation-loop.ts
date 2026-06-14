@@ -158,10 +158,9 @@ export const scenario: Scenario = {
 					// short-circuit to a synthetic `merged` result so the loop
 					// stays hermetic (no real GitHub).
 					WARREN_GH_FETCH_OVERRIDE: "merged",
-					// Merge poller — production default is disabled; the 500ms
-					// tick lets the planner auto-dispatch land within seconds of
-					// the (synthesized) PR merge.
-					WARREN_MERGE_POLLER_ENABLED: "1",
+					// Merge poller — on by default (warren-157a); the 500ms tick
+					// lets the planner auto-dispatch land within seconds of the
+					// (synthesized) PR merge.
 					WARREN_MERGE_POLLER_TICK_MS: "500",
 				},
 			});

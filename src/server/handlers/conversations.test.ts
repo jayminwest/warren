@@ -119,6 +119,7 @@ interface DepsExtras {
 	plotCreator?: PlotCreator;
 	plotResolver?: PlotResolver;
 	plotSyncer?: PlotSyncer;
+	autoOpenPr?: ServerDeps["autoOpenPr"];
 }
 
 async function depsFor(
@@ -156,6 +157,7 @@ async function depsFor(
 		...(extras.plotCreator !== undefined ? { plotCreator: extras.plotCreator } : {}),
 		...(extras.plotResolver !== undefined ? { plotResolver: extras.plotResolver } : {}),
 		...(extras.plotSyncer !== undefined ? { plotSyncer: extras.plotSyncer } : {}),
+		...(extras.autoOpenPr !== undefined ? { autoOpenPr: extras.autoOpenPr } : {}),
 	};
 }
 
@@ -387,11 +389,14 @@ describe("conversation endpoints", () => {
 		return created.conversation;
 	}
 
+	const AUTO_OPEN_PR = { enabled: true, token: "gh-token", warrenBaseUrl: null } as const;
+
 	test("POST /conversations/:id/send-off opens a plotSync PR, closes the conversation, and persists the submission", async () => {
 		const url = await boot({
 			plotCreator: PLOT_CREATOR,
 			plotResolver: await resolverForProject(),
 			plotSyncer: SYNCED_SYNCER,
+			autoOpenPr: AUTO_OPEN_PR,
 		});
 		const conv = await createConversation(url);
 
@@ -434,6 +439,7 @@ describe("conversation endpoints", () => {
 			plotCreator: PLOT_CREATOR,
 			plotResolver: await resolverForProject(),
 			plotSyncer: NOOP_SYNCER,
+			autoOpenPr: AUTO_OPEN_PR,
 		});
 		const conv = await createConversation(url);
 
@@ -446,11 +452,37 @@ describe("conversation endpoints", () => {
 		expect(row.submittedPrUrl).toBeNull();
 	});
 
+	test("POST /conversations/:id/send-off surfaces a clear error when the GitHub token is missing", async () => {
+		// No autoOpenPr config — token resolves to "" (warren-157a).
+		const url = await boot({
+			plotCreator: PLOT_CREATOR,
+			plotResolver: await resolverForProject(),
+			plotSyncer: SYNCED_SYNCER,
+		});
+		const conv = await createConversation(url);
+
+		const res = await fetch(`${url}/conversations/${conv.id}/send-off`, {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({}),
+		});
+		expect(res.status).toBe(400);
+		const body = (await res.json()) as { error: { message: string; hint?: string } };
+		expect(body.error.message).toContain("no GitHub token configured");
+		expect(body.error.hint).toContain("GITHUB_TOKEN");
+
+		// Conversation stays active — nothing was submitted.
+		const row = await repos.conversations.require(conv.id);
+		expect(row.status).toBe("active");
+		expect(row.submittedPrUrl).toBeNull();
+	});
+
 	test("POST /conversations/:id/send-off 400s on an already-closed conversation", async () => {
 		const url = await boot({
 			plotCreator: PLOT_CREATOR,
 			plotResolver: await resolverForProject(),
 			plotSyncer: SYNCED_SYNCER,
+			autoOpenPr: AUTO_OPEN_PR,
 		});
 		const conv = await createConversation(url);
 		await repos.conversations.close(conv.id);
