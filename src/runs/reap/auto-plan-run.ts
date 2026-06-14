@@ -6,12 +6,26 @@ import { splitLines } from "./util.ts";
 /* Auto plan-run detection (warren-a32a)                                    */
 /* ----------------------------------------------------------------------- */
 
+/**
+ * Coerce a frontmatter flag that *should* be a boolean but may arrive as a
+ * string (warren-5f07). `cn --fm key:value` stringifies every value, so a
+ * canopy-authored agent that sets `auto_plan_run: true` lands in
+ * `rendered_agent_json` as the string `"true"` and silently loses
+ * auto-dispatch. Accept the real boolean `true` and the case-insensitive,
+ * trimmed string `"true"`; everything else (including `"false"`) is false.
+ */
+function coerceBooleanFlag(value: unknown): boolean {
+	if (value === true) return true;
+	if (typeof value === "string") return value.trim().toLowerCase() === "true";
+	return false;
+}
+
 export function hasAutoPlanRunFrontmatter(run: { renderedAgentJson: unknown }): boolean {
 	const json = run.renderedAgentJson;
 	if (json === null || typeof json !== "object" || Array.isArray(json)) return false;
 	const fm = (json as Record<string, unknown>).frontmatter;
 	if (fm === null || typeof fm !== "object" || Array.isArray(fm)) return false;
-	return (fm as Record<string, unknown>).auto_plan_run === true;
+	return coerceBooleanFlag((fm as Record<string, unknown>).auto_plan_run);
 }
 
 export function resolveAutoPlanRunAgent(run: {
