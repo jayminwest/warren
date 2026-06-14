@@ -7,6 +7,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.0] — 2026-06-14
+
+Leveret and Plots collapse into a single tabbed **Workspace** surface, and
+the retired brainstorm/formalize path is removed (plan pl-0008).
+
+### Added
+
+- **`feat(ui)`** — a single cross-project **Workspace** surface
+  (warren-dde5). The former `Leveret` and `Plots` sidebar entries collapse
+  into one `Workspace` nav entry (carrying the needs-you badge) backed by a
+  cross-project list (`Workspace.tsx`, one row per Plot with an
+  active-conversation indicator) and a tabbed detail page
+  (`WorkspaceDetail.tsx` at `/workspace/:id`) with **Shape / Plan / Run /
+  Activity** tabs (tab state in `?tab=`). Shape ports the live conversation
+  split-view (streamed chat + dynamic intent editor + send-off); Plan
+  surfaces the planner run, the generated sd plan, and an operator sign-off
+  gate around `DispatchPlanButton`; Run embeds plan-run execution (children
+  + per-child PR-merge status + the Plot auto-done transition); Activity
+  hosts the Plot event-log `ActivityFeed`, the `SubstratePanel`, and past
+  conversations as history. `/plots`, `/plots/:id`, `/leveret`, and
+  `/leveret/:id` now redirect into the Workspace surface.
+
+### Removed
+
+- **`feat(server)`** — the orphaned `POST /plots/:id/formalize` endpoint and
+  its `formalizePlotHandler` / brainstorm-summarize logic, plus the residual
+  `mode=interactive` / `brainstorm` dispatch remnants in `runs/` and
+  `runs/spawn/dispatch.ts` (the `planner` interactive agent and
+  `mode:conversation` are preserved). The dead UI client methods
+  (`plotsApi.startBrainstorm`, `runsApi.createInteractive`,
+  `plotsApi.formalize`) and their types, and the retired UI panels
+  (`InteractivePanel`, `StartBrainstormDialog`) are deleted along with the
+  now-unused `Leveret.tsx`, `Plots.tsx`, `ConversationDetail.tsx`, and
+  `PlotDetail.tsx` page shells (their reused sub-component trees are kept).
+
+### Changed
+
+- **`docs`** — README, `SPEC.md` §11.O/§11.P UI references, and acceptance
+  scenario 33 updated to describe the single Workspace surface and the
+  removed brainstorm/formalize path; `docs/http-api.md` + `docs/openapi.yaml`
+  regenerated and the UI bundle-size budgets re-baselined.
+
 ## [0.8.10] — 2026-06-13
 
 Conversation runs become long-lived pi-chat/leveret sessions, and the
