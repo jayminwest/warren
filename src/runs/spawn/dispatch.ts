@@ -218,8 +218,8 @@ export async function spawnRun(input: SpawnRunInput): Promise<SpawnRunResult> {
 	// already in hand.
 	const runEnv = composeRunEnv(run.plotId, agent.name, run.id, projectDefaults?.qualityGate);
 
-	// warren-b802: resolve per-project runtime override for interactive
-	// agents (brainstorm / planner) at dispatch time so the agent row
+	// warren-b802: resolve per-project runtime override for the planner
+	// interactive agent at dispatch time so the agent row
 	// stays honest as 'builtin'.
 	const runtimeOverride = interactiveRuntimeOverride(agent.name, projectDefaults);
 
@@ -368,7 +368,7 @@ async function provisionBurrow(
 	// Caller forwards the burrow *runtime id* (`readRuntimeId(agent)`), not
 	// the canopy agent name. Burrow's `up` resolves toolchain mounts by
 	// looking each id up in its runtime registry (claude-code / sapling /
-	// pi / codex). Interactive built-ins like brainstorm and planner compose
+	// pi / codex). Interactive built-ins like planner compose
 	// onto a runtime via `frontmatter.runtime` — passing their canopy
 	// name here would mean burrow's registry.get returns nothing,
 	// collectToolchainPaths returns [], and bwrap fails `execvp claude`

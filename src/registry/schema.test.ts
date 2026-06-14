@@ -104,10 +104,10 @@ describe("parseRenderedAgent", () => {
 
 describe("readRuntimeId", () => {
 	const INTERACTIVE: AgentDefinition = {
-		name: "brainstorm",
+		name: "planner",
 		version: 1,
 		sections: { system: "hi" },
-		resolvedFrom: ["builtin:brainstorm"],
+		resolvedFrom: ["builtin:planner"],
 		frontmatter: { source: "builtin", runtime: "pi" },
 	};
 

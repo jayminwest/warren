@@ -217,15 +217,15 @@ describe("spawnRun: burrow_config + runtime + metadata", () => {
 	});
 
 	test("dispatch uses frontmatter.runtime as the burrow runtime id when set (warren-ebca)", async () => {
-		// Brainstorm/planner are canopy agents whose name (`brainstorm`)
+		// Planner is a canopy agent whose name (`planner`)
 		// is NOT a burrow runtime id; without `frontmatter.runtime`,
-		// dispatchRun would send `"brainstorm"` and burrow would fail the
-		// run with `agent 'brainstorm' is not registered`. The fix routes
+		// dispatchRun would send `"planner"` and burrow would fail the
+		// run with `agent 'planner' is not registered`. The fix routes
 		// the dispatch onto the declared runtime instead.
 		await repos.agents.upsert({
-			name: "brainstorm",
+			name: "planner",
 			renderedJson: makeAgentJson({
-				name: "brainstorm",
+				name: "planner",
 				sections: { system: "be a scout" },
 				frontmatter: { source: "builtin", runtime: "claude-code" },
 			}),
@@ -234,7 +234,7 @@ describe("spawnRun: burrow_config + runtime + metadata", () => {
 		await spawnRun({
 			repos,
 			burrowClientPool: await makePool(repos, client),
-			agentName: "brainstorm",
+			agentName: "planner",
 			projectId: "prj_xxxxxxxxxxxx",
 			prompt: "help me think",
 		});

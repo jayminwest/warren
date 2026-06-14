@@ -196,15 +196,6 @@ describe("DefaultsConfigSchema conversation block (warren-005d)", () => {
 });
 
 describe("DefaultsConfigSchema interactiveAgents block (warren-b802)", () => {
-	test("accepts all known runtime ids for brainstormRuntime", () => {
-		for (const id of KNOWN_RUNTIME_IDS) {
-			const parsed = DefaultsConfigSchema.safeParse({
-				interactiveAgents: { brainstormRuntime: id },
-			});
-			expect(parsed.success).toBe(true);
-		}
-	});
-
 	test("accepts all known runtime ids for plannerRuntime", () => {
 		for (const id of KNOWN_RUNTIME_IDS) {
 			const parsed = DefaultsConfigSchema.safeParse({
@@ -214,18 +205,17 @@ describe("DefaultsConfigSchema interactiveAgents block (warren-b802)", () => {
 		}
 	});
 
-	test("accepts both fields together", () => {
+	test("accepts plannerRuntime field", () => {
 		const parsed = DefaultsConfigSchema.safeParse({
-			interactiveAgents: { brainstormRuntime: "claude-code", plannerRuntime: "sapling" },
+			interactiveAgents: { plannerRuntime: "sapling" },
 		});
 		expect(parsed.success).toBe(true);
 		if (parsed.success) {
-			expect(parsed.data.interactiveAgents?.brainstormRuntime).toBe("claude-code");
 			expect(parsed.data.interactiveAgents?.plannerRuntime).toBe("sapling");
 		}
 	});
 
-	test("accepts empty block (both fields optional)", () => {
+	test("accepts empty block (plannerRuntime optional)", () => {
 		const parsed = DefaultsConfigSchema.safeParse({ interactiveAgents: {} });
 		expect(parsed.success).toBe(true);
 	});
@@ -241,11 +231,6 @@ describe("DefaultsConfigSchema interactiveAgents block (warren-b802)", () => {
 	test("rejects unknown runtime ids (typo protection)", () => {
 		expect(
 			DefaultsConfigSchema.safeParse({
-				interactiveAgents: { brainstormRuntime: "openai" },
-			}).success,
-		).toBe(false);
-		expect(
-			DefaultsConfigSchema.safeParse({
 				interactiveAgents: { plannerRuntime: "gpt-4o" },
 			}).success,
 		).toBe(false);
@@ -254,7 +239,7 @@ describe("DefaultsConfigSchema interactiveAgents block (warren-b802)", () => {
 	test("rejects unknown fields inside interactiveAgents (strict)", () => {
 		expect(
 			DefaultsConfigSchema.safeParse({
-				interactiveAgents: { brainstormRuntime: "pi", extra: true },
+				interactiveAgents: { plannerRuntime: "pi", extra: true },
 			}).success,
 		).toBe(false);
 	});
@@ -339,18 +324,12 @@ describe("DefaultsConfigSchema plotSync block (warren-cd22)", () => {
 
 describe("interactiveRuntimeOverride (warren-b802)", () => {
 	test("returns undefined when defaults is null/undefined", () => {
-		expect(interactiveRuntimeOverride("brainstorm", null)).toBeUndefined();
+		expect(interactiveRuntimeOverride("planner", null)).toBeUndefined();
 		expect(interactiveRuntimeOverride("planner", undefined)).toBeUndefined();
 	});
 
 	test("returns undefined when interactiveAgents block is absent", () => {
-		expect(interactiveRuntimeOverride("brainstorm", {})).toBeUndefined();
 		expect(interactiveRuntimeOverride("planner", {})).toBeUndefined();
-	});
-
-	test("returns the configured runtime for brainstorm", () => {
-		const defaults = { interactiveAgents: { brainstormRuntime: "claude-code" as const } };
-		expect(interactiveRuntimeOverride("brainstorm", defaults)).toBe("claude-code");
 	});
 
 	test("returns the configured runtime for planner", () => {
@@ -361,7 +340,6 @@ describe("interactiveRuntimeOverride (warren-b802)", () => {
 	test("returns undefined for non-interactive agents", () => {
 		const defaults = {
 			interactiveAgents: {
-				brainstormRuntime: "claude-code" as const,
 				plannerRuntime: "sapling" as const,
 			},
 		};
@@ -370,7 +348,7 @@ describe("interactiveRuntimeOverride (warren-b802)", () => {
 	});
 
 	test("returns undefined when the specific field is not set", () => {
-		const defaults = { interactiveAgents: { brainstormRuntime: "pi" as const } };
+		const defaults = { interactiveAgents: {} };
 		expect(interactiveRuntimeOverride("planner", defaults)).toBeUndefined();
 	});
 });

@@ -272,7 +272,7 @@ const CiFixerConfigSchema = z
 export type CiFixerConfig = z.infer<typeof CiFixerConfigSchema>;
 
 // warren-b802: per-project override of the burrow runtime backing the
-// interactive built-in agents (brainstorm / planner). Without this, an
+// planner interactive built-in agent. Without this, an
 // operator must stand up a canopy library just to change the runtime
 // field. Validated against the known burrow runtime ids so a typo
 // surfaces at config-load time, not at burrow boot.
@@ -283,7 +283,6 @@ const RuntimeIdSchema = z.enum(KNOWN_RUNTIME_IDS);
 
 const InteractiveAgentsConfigSchema = z
 	.object({
-		brainstormRuntime: RuntimeIdSchema.optional(),
 		plannerRuntime: RuntimeIdSchema.optional(),
 	})
 	.strict();
@@ -489,7 +488,6 @@ export function interactiveRuntimeOverride(
 	defaults: DefaultsConfig | null | undefined,
 ): string | undefined {
 	if (defaults?.interactiveAgents === undefined) return undefined;
-	if (agentName === "brainstorm") return defaults.interactiveAgents.brainstormRuntime;
 	if (agentName === "planner") return defaults.interactiveAgents.plannerRuntime;
 	return undefined;
 }

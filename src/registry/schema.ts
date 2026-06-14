@@ -256,10 +256,10 @@ export const DEFAULT_RUNTIME_ID = "pi";
  *
  * Precedence (warren-b802 / warren-16f8):
  *   1. `configOverride` — per-project `.warren/config.yaml`
- *      `interactiveAgents.brainstormRuntime` / `plannerRuntime`
+ *      `interactiveAgents.plannerRuntime`
  *   2. `frontmatter.runtime` — declared by built-ins that pin a
  *      specific runtime (claude-code / sapling) or compose a system
- *      prompt onto an existing runtime (brainstorm / planner,
+ *      prompt onto an existing runtime (planner,
  *      warren-ebca)
  *   3. `DEFAULT_RUNTIME_ID` ("pi") — the preferred default when
  *      nothing pins a runtime; claude-code is opt-in
