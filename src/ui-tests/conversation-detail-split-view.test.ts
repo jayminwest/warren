@@ -16,7 +16,22 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 const PAGE_PATH = join(import.meta.dir, "..", "ui", "src", "pages", "ConversationDetail.tsx");
-const SOURCE = readFileSync(PAGE_PATH, "utf8");
+const PAGE_SOURCE = readFileSync(PAGE_PATH, "utf8");
+
+// The split-view body (chat + dynamic intent editor + send-off) was
+// extracted into the shared ConversationSplitView (pl-0008 step 7 /
+// warren-3de4) so the /leveret/:id page and the Workspace Shape tab render
+// an identical surface. Body-level assertions read from there.
+const SURFACE_PATH = join(
+	import.meta.dir,
+	"..",
+	"ui",
+	"src",
+	"pages",
+	"conversation-detail",
+	"conversation-surface.tsx",
+);
+const SOURCE = readFileSync(SURFACE_PATH, "utf8");
 
 const SEND_OFF_PATH = join(
 	import.meta.dir,
@@ -37,6 +52,7 @@ const CHAT_SOURCE = readFileSync(CHAT_PATH, "utf8");
 
 describe("ConversationDetail split-view (warren-01c8)", () => {
 	test("registers the /leveret/:id route in App.tsx", () => {
+		expect(PAGE_SOURCE).toContain("ConversationDetailPage");
 		expect(APP_SOURCE).toContain("ConversationDetailPage");
 		expect(APP_SOURCE).toMatch(/path="\/leveret\/:id"\s+element=\{<ConversationDetailPage\s*\/>\}/);
 	});

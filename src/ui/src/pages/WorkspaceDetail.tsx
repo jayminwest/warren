@@ -1,14 +1,20 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link, useParams, useSearchParams } from "react-router-dom";
-import type { PlotEnvelope } from "@/api/types.ts";
-import { plotsApi } from "@/api/client.ts";
+import { conversationsApi, plotsApi, runsApi } from "@/api/client.ts";
+import { RUN_TERMINAL_STATES } from "@/api/types.ts";
+import type { ConversationRow, PlotEnvelope } from "@/api/types.ts";
 import { RefreshProjectsCTA } from "@/components/RefreshProjectsCTA.tsx";
 import { Card, CardContent } from "@/components/ui/card.tsx";
+import { ConversationSplitView } from "@/pages/conversation-detail/conversation-surface.tsx";
+import { DispatchPlanButton } from "@/pages/conversation-detail/dispatch-plan-dialog.tsx";
+import { RewakeButton } from "@/pages/conversation-detail/rewake-button.tsx";
 import {
 	PlotNameEditor,
 	PlotSyncButton,
 	StatusTransitionControl,
 } from "@/pages/plot-detail/header-controls.tsx";
+import { NewConversationButton } from "@/pages/leveret/new-conversation-dialog.tsx";
+import { formatError } from "@/lib/format-error.ts";
 
 /**
  * /workspace/:id — the tabbed Workspace detail shell (warren-6e7d / pl-0008
@@ -150,9 +156,90 @@ export function WorkspaceDetailPage() {
 	);
 }
 
-/** Placeholder — filled by pl-0008 step 7 (warren-3de4). */
-function ShapeTab(_props: { plot: PlotEnvelope }) {
-	return <TabPlaceholder label="Shape" />;
+/**
+ * Shape tab (pl-0008 step 7 / warren-3de4) — the live conversation surface
+ * for the Plot. Resolves the Plot's conversation via
+ * `conversationsApi.list({plot})`: an `active` conversation wins, otherwise the
+ * most-recent (e.g. a closed, post-send-off) conversation renders read-only so
+ * the tab stays quiet. When the Plot has no conversation at all, a
+ * Start-conversation affordance is shown instead.
+ */
+function ShapeTab({ plot }: { plot: PlotEnvelope }) {
+	const conversations = useQuery({
+		queryKey: ["conversations", { plot: plot.id }],
+		queryFn: ({ signal }) => conversationsApi.list({ plot: plot.id }, signal),
+		refetchInterval: 5000,
+	});
+
+	if (conversations.isLoading) {
+		return <p className="text-sm text-(--color-muted-foreground)">Loading conversation…</p>;
+	}
+	if (conversations.isError) {
+		return (
+			<p className="text-sm text-(--color-destructive)">
+				{formatError(conversations.error)}
+			</p>
+		);
+	}
+
+	const rows = conversations.data?.conversations ?? [];
+	// `?plot` lists most-recent-activity first; prefer the live one, else fall
+	// back to the latest (post-send-off it's closed → the surface renders quiet).
+	const conversation = rows.find((c) => c.status === "active") ?? rows[0];
+
+	if (conversation === undefined) {
+		return (
+			<Card>
+				<CardContent className="flex flex-col items-start gap-3 p-6 text-sm">
+					<p className="text-(--color-muted-foreground)">
+						No conversation yet — start one to shape this Plot's intent with the
+						leveret.
+					</p>
+					<NewConversationButton />
+				</CardContent>
+			</Card>
+		);
+	}
+
+	return <ShapeConversation conversation={conversation} />;
+}
+
+function ShapeConversation({ conversation }: { conversation: ConversationRow }) {
+	const anchoringRunId = conversation.anchoringRunId;
+	const anchoringRun = useQuery({
+		queryKey: ["run", anchoringRunId],
+		queryFn: ({ signal }) => runsApi.get(anchoringRunId ?? "", signal),
+		enabled: anchoringRunId !== null && anchoringRunId !== "",
+		refetchInterval: (query) => {
+			const data = query.state.data;
+			if (!data) return 5000;
+			return RUN_TERMINAL_STATES.includes(data.state) ? false : 3000;
+		},
+	});
+
+	const isAnchoringRunTerminal =
+		anchoringRun.data !== undefined && RUN_TERMINAL_STATES.includes(anchoringRun.data.state);
+
+	return (
+		<div className="space-y-4">
+			<div className="flex flex-wrap items-center justify-end gap-2">
+				<RewakeButton
+					conversation={conversation}
+					isAnchoringRunTerminal={isAnchoringRunTerminal}
+				/>
+				{conversation.plannerRunId != null &&
+				conversation.plannerRunId !== "" &&
+				conversation.projectId !== null ? (
+					<DispatchPlanButton
+						projectId={conversation.projectId}
+						plotId={conversation.plotId}
+						plannerRunId={conversation.plannerRunId}
+					/>
+				) : null}
+			</div>
+			<ConversationSplitView conversationId={conversation.id} />
+		</div>
+	);
 }
 
 /** Placeholder — filled by pl-0008 step 8 (warren-e33f). */
