@@ -45,15 +45,6 @@ export {
 	PlotQuestionAlreadyAnsweredError,
 	PlotQuestionNotFoundError,
 } from "./errors.ts";
-export {
-	createDefaultPlotFormalizer,
-	type DefaultPlotFormalizerDeps,
-	extractSuggestedIntent,
-	type FormalizePlotRequest,
-	type FormalizePlotResult,
-	type PlotFormalizer,
-	type SuggestedIntent,
-} from "./formalize.ts";
 export { isValidPlotIdFormat, PLOT_ID_REGEX } from "./id-validator.ts";
 export {
 	assertIntentMutable,

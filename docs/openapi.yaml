@@ -433,23 +433,6 @@ paths:
           required: true
           schema:
             type: string
-  /plots/{id}/formalize:
-    post:
-      operationId: formalizePlotHandler
-      tags:
-        - plots
-      summary: POST /plots/:id/formalize
-      responses:
-        '200':
-          description: Successful response.
-        default:
-          description: Error response (see `src/core/errors.ts`).
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
   /plots/{id}/intent:
     post:
       operationId: editPlotIntentHandler

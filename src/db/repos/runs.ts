@@ -236,12 +236,10 @@ export class RunsRepo {
 
 	/**
 	 * Every run row bound to a given `plotId`, ordered by id (stable for
-	 * tests). Powers `POST /plots/:id/formalize` (warren-d22e / pl-0344
-	 * step 8) which needs to enumerate every turn of a Plot's
-	 * intent-shaping conversation to extract suggested intent — the caller
-	 * re-sorts the underlying events by `ts` so dispatch-order surprises
-	 * don't affect the summary. The `runs_plot_id` index (sqlite +
-	 * postgres) covers the predicate.
+	 * tests). Powers the Plot detail/summary surfaces that enumerate every
+	 * run bound to a Plot — callers re-sort the underlying events by `ts`
+	 * so dispatch-order surprises don't affect the result. The
+	 * `runs_plot_id` index (sqlite + postgres) covers the predicate.
 	 */
 	async listByPlotId(plotId: string): Promise<RunRow[]> {
 		return this.adapter.pickAll(

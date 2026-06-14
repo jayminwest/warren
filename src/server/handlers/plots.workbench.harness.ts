@@ -6,7 +6,6 @@ import type {
 	AnswerPlotQuestionRequest,
 	AnswerPlotQuestionResult,
 	PlotAggregator,
-	PlotFormalizer,
 	PlotQuestionAnswerer,
 	PlotResolver,
 	PlotSummary,
@@ -50,7 +49,6 @@ export interface BuildDepsInput {
 	plotAggregator?: PlotAggregator;
 	plotResolver?: PlotResolver;
 	plotQuestionAnswerer?: PlotQuestionAnswerer;
-	plotFormalizer?: PlotFormalizer;
 }
 
 export async function depsFor(input: BuildDepsInput): Promise<ServerDeps> {
@@ -74,7 +72,6 @@ export async function depsFor(input: BuildDepsInput): Promise<ServerDeps> {
 		...(input.plotQuestionAnswerer !== undefined
 			? { plotQuestionAnswerer: input.plotQuestionAnswerer }
 			: {}),
-		...(input.plotFormalizer !== undefined ? { plotFormalizer: input.plotFormalizer } : {}),
 	};
 }
 

@@ -10,7 +10,6 @@ import type { AnyWarrenDb } from "../../db/client.ts";
 import type { Repos } from "../../db/repos/index.ts";
 import { createDefaultPlanSynthesizer } from "../../plot-plan-runs/index.ts";
 import {
-	createDefaultPlotFormalizer,
 	createPlotAggregator,
 	createPlotResolver,
 	defaultPlanChildAdopter,
@@ -135,7 +134,6 @@ export function buildServerDeps(input: BuildServerDepsInput): ServerDeps {
 		planChildAdopter: defaultPlanChildAdopter,
 		plotStatusChanger: defaultPlotStatusChanger,
 		plotQuestionAnswerer: defaultPlotQuestionAnswerer,
-		plotFormalizer: createDefaultPlotFormalizer({ repos }),
 		plotResolver: createPlotResolver({
 			projectsRepo: repos.projects,
 			aggregator: plotAggregator,

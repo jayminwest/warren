@@ -66,7 +66,6 @@ import {
 	createPlotHandler,
 	detachPlotHandler,
 	editPlotIntentHandler,
-	formalizePlotHandler,
 	getPlotHandler,
 	getPlotSummaryHandler,
 	listPlotsHandler,
@@ -331,7 +330,6 @@ const ROUTE_TABLE: readonly RouteEntry[] = [
 		pattern: "/plots/needs-attention/count",
 		build: needsAttentionCountHandler,
 	},
-	{ method: "POST", pattern: "/plots/:id/formalize", build: formalizePlotHandler },
 	// Static-suffix path — must precede `/plots/:id` so the param route
 	// doesn't swallow `summary` as the rest of the id.
 	{ method: "GET", pattern: "/plots/:id/summary", build: getPlotSummaryHandler },

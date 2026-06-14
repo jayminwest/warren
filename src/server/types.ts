@@ -390,19 +390,6 @@ export interface ServerDeps {
 	 */
 	readonly plotQuestionAnswerer?: import("../plots/index.ts").PlotQuestionAnswerer;
 	/**
-	 * Server-side Plot formalize seam (warren-d22e / pl-0344 step 8).
-	 * Used by `POST /plots/:id/formalize` to extract a suggested intent
-	 * (`{goal, non_goals, constraints, success_criteria}`) from the
-	 * intent-shaping conversation — every `agent_message` event across
-	 * conversation runs bound to the Plot is parsed for field markers and
-	 * folded into a single suggestion. The Plot is NOT mutated; the user
-	 * accepts/edits via the existing `POST /plots/:id/intent` route.
-	 * `bootServer` always wires the default; tests substitute a stub.
-	 * When undefined the handler falls back to
-	 * `createDefaultPlotFormalizer({repos})`.
-	 */
-	readonly plotFormalizer?: import("../plots/index.ts").PlotFormalizer;
-	/**
 	 * Server-side plot→plan-run synthesizer (warren-99b2 / pl-f404 step 3
 	 * / SPEC §11.Q). `POST /plot-plan-runs` shells out via this seam to
 	 * mint a fresh throwaway parent seed and a seeds plan whose children

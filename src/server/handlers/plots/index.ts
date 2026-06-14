@@ -9,7 +9,7 @@
  *   - `status.ts`      — `POST /plots/:id/status`
  *   - `attachments.ts` — attach / detach / merge-PR
  *   - `sync.ts`        — `POST /plots/:id/sync` + background syncer
- *   - `workbench.ts`   — answer-question / formalize
+ *   - `workbench.ts`   — answer-question
  *   - `shared.ts`      — resolve-project / paused-runs / envelope helpers
  */
 
@@ -36,4 +36,4 @@ export {
 	syncPlotHandler,
 	triggerBackgroundSync,
 } from "./sync.ts";
-export { answerPlotQuestionHandler, formalizePlotHandler } from "./workbench.ts";
+export { answerPlotQuestionHandler } from "./workbench.ts";

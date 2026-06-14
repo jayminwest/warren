@@ -7,7 +7,7 @@ This page enumerates every HTTP route registered by warren's `Bun.serve` router.
 
 To refresh: `bun run gen:docs`. To check (CI mode): `bun run gen:docs:check`.
 
-Total routes: **57**.
+Total routes: **56**.
 
 ## /agents
 
@@ -72,7 +72,6 @@ Total routes: **57**.
 | `GET` | `/plots` | `listPlotsHandler` |  |
 | `POST` | `/plots` | `createPlotHandler` |  |
 | `GET` | `/plots/needs-attention/count` | `needsAttentionCountHandler` | Static path — must precede `/plots/:id` so the param route doesn't swallow `needs-attention` as an :id. |
-| `POST` | `/plots/:id/formalize` | `formalizePlotHandler` |  |
 | `GET` | `/plots/:id/summary` | `getPlotSummaryHandler` | Static-suffix path — must precede `/plots/:id` so the param route doesn't swallow `summary` as the rest of the id. |
 | `GET` | `/plots/:id` | `getPlotHandler` |  |
 | `POST` | `/plots/:id/intent` | `editPlotIntentHandler` |  |
