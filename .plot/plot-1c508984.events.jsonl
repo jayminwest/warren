@@ -3,3 +3,4 @@
 {"type":"run_dispatched","actor":"user:operator","at":"2026-06-06T20:27:58.244Z","data":{"run_id":"run_vj66cemfx7q4","agent":"leveret","model":"claude-opus-4-8","project":"prj_z07y6ssfjfpk"}}
 {"type":"run_dispatched","actor":"user:operator","at":"2026-06-06T20:48:24.462Z","data":{"run_id":"run_x17v275aqkye","agent":"leveret","model":"claude-opus-4-8","project":"prj_z07y6ssfjfpk"}}
 {"type":"run_dispatched","actor":"user:operator","at":"2026-06-07T16:12:18.144Z","data":{"run_id":"run_sc05s805398k","agent":"leveret","model":"claude-opus-4-8","project":"prj_z07y6ssfjfpk"}}
+{"type":"status_changed","actor":"user:operator","at":"2026-06-14T21:33:57.316Z","data":{"from":"drafting","to":"archived"}}
