@@ -1,9 +1,11 @@
 import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { conversationsApi, plotsApi, runsApi } from "@/api/client.ts";
 import { RUN_TERMINAL_STATES } from "@/api/types.ts";
 import type { ConversationRow, PlotEnvelope } from "@/api/types.ts";
 import { RefreshProjectsCTA } from "@/components/RefreshProjectsCTA.tsx";
+import { StatusIndicator } from "@/components/StatusIndicator.tsx";
 import { Card, CardContent } from "@/components/ui/card.tsx";
 import { ConversationSplitView } from "@/pages/conversation-detail/conversation-surface.tsx";
 import { DispatchPlanButton } from "@/pages/conversation-detail/dispatch-plan-dialog.tsx";
@@ -242,9 +244,172 @@ function ShapeConversation({ conversation }: { conversation: ConversationRow }) 
 	);
 }
 
-/** Placeholder — filled by pl-0008 step 8 (warren-e33f). */
-function PlanTab(_props: { plot: PlotEnvelope }) {
-	return <TabPlaceholder label="Plan" />;
+/**
+ * Plan tab (pl-0008 step 8 / warren-e33f) — minimal planner hand-off surface.
+ *
+ * Once the merge-poller stamps `conversation.plannerRunId`, the planner has
+ * been dispatched and a synthesized seeds plan exists (or is in flight). This
+ * tab does NOT render the plan inline — it shows the planner run's live status
+ * and links out to the planner run detail (where the generated plan id is
+ * surfaced), then an operator Sign-off gate that enables the existing
+ * `DispatchPlanButton`. Dispatch itself flows over the unchanged `/plan-runs`
+ * path (`dispatch-plan-dialog.tsx`).
+ *
+ * Before send-off / planner dispatch there is nothing to plan against, so the
+ * tab stays quiet with a pointer back to Shape.
+ */
+function PlanTab({ plot }: { plot: PlotEnvelope }) {
+	const conversations = useQuery({
+		queryKey: ["conversations", { plot: plot.id }],
+		queryFn: ({ signal }) => conversationsApi.list({ plot: plot.id }, signal),
+		refetchInterval: 5000,
+	});
+
+	if (conversations.isLoading) {
+		return <p className="text-sm text-(--color-muted-foreground)">Loading planner…</p>;
+	}
+	if (conversations.isError) {
+		return (
+			<p className="text-sm text-(--color-destructive)">
+				{formatError(conversations.error)}
+			</p>
+		);
+	}
+
+	const rows = conversations.data?.conversations ?? [];
+	// Prefer the conversation that's already been sent to the planner; else the
+	// most-recent (post-send-off it's closed but still carries plannerRunId).
+	const conversation =
+		rows.find((c) => c.plannerRunId != null && c.plannerRunId !== "") ?? rows[0];
+
+	const plannerRunId =
+		conversation?.plannerRunId != null && conversation.plannerRunId !== ""
+			? conversation.plannerRunId
+			: null;
+
+	if (conversation === undefined || plannerRunId === null) {
+		return (
+			<Card>
+				<CardContent className="p-6 text-sm text-(--color-muted-foreground)">
+					No plan yet. Shape this Plot's intent and send it to the planner from the{" "}
+					<strong className="font-medium text-(--color-foreground)">Shape</strong> tab;
+					once the send-off PR merges, the planner runs and its plan shows up here.
+				</CardContent>
+			</Card>
+		);
+	}
+
+	return (
+		<PlanHandoff
+			projectId={conversation.projectId}
+			plotId={conversation.plotId}
+			plannerRunId={plannerRunId}
+		/>
+	);
+}
+
+function PlanHandoff({
+	projectId,
+	plotId,
+	plannerRunId,
+}: {
+	projectId: string | null;
+	plotId: string | null;
+	plannerRunId: string;
+}) {
+	const [signedOff, setSignedOff] = useState(false);
+	const run = useQuery({
+		queryKey: ["run", plannerRunId],
+		queryFn: ({ signal }) => runsApi.get(plannerRunId, signal),
+		refetchInterval: (query) => {
+			const data = query.state.data;
+			if (!data) return 5000;
+			return RUN_TERMINAL_STATES.includes(data.state) ? false : 3000;
+		},
+	});
+
+	const runState = run.data?.state ?? null;
+	const isTerminal = runState !== null && RUN_TERMINAL_STATES.includes(runState);
+	const succeeded = runState === "succeeded";
+
+	return (
+		<Card>
+			<CardContent className="space-y-5 p-6 text-sm">
+				<div className="flex flex-wrap items-center justify-between gap-3">
+					<div className="space-y-1">
+						<p className="font-medium text-(--color-foreground)">Planner run</p>
+						<Link
+							to={`/runs/${encodeURIComponent(plannerRunId)}`}
+							className="font-mono text-xs underline-offset-2 hover:underline"
+						>
+							{plannerRunId} ↗
+						</Link>
+					</div>
+					{runState !== null ? (
+						<StatusIndicator kind="run" status={runState} />
+					) : (
+						<span className="text-xs text-(--color-muted-foreground)">loading…</span>
+					)}
+				</div>
+
+				<p className="text-(--color-muted-foreground)">
+					The planner emitted a seeds plan from this Plot's intent and stopped — open the{" "}
+					<Link
+						to={`/runs/${encodeURIComponent(plannerRunId)}`}
+						className="underline-offset-2 hover:underline"
+					>
+						planner run
+					</Link>{" "}
+					to read the generated plan and copy its plan id.
+				</p>
+
+				{!isTerminal ? (
+					<p className="text-xs text-(--color-muted-foreground)">
+						The planner is still running — wait for it to finish before dispatching.
+					</p>
+				) : null}
+
+				{isTerminal && !succeeded ? (
+					<p className="text-xs text-(--color-destructive)">
+						The planner run ended <code className="font-mono">{runState}</code> without a
+						usable plan. Re-wake the conversation from Shape and try again.
+					</p>
+				) : null}
+
+				{succeeded ? (
+					<div className="space-y-3 border-t pt-4">
+						<label className="flex items-start gap-2 text-(--color-foreground)">
+							<input
+								type="checkbox"
+								checked={signedOff}
+								onChange={(e) => setSignedOff(e.target.checked)}
+								className="mt-0.5 h-4 w-4"
+							/>
+							<span>
+								I've reviewed the generated plan and sign off on dispatching it.
+								Dispatch stays operator-gated.
+							</span>
+						</label>
+						<div>
+							{signedOff && projectId !== null ? (
+								<DispatchPlanButton
+									projectId={projectId}
+									plotId={plotId}
+									plannerRunId={plannerRunId}
+								/>
+							) : (
+								<p className="text-xs text-(--color-muted-foreground)">
+									{projectId === null
+										? "This conversation has no bound project — dispatch is unavailable."
+										: "Sign off above to enable dispatch."}
+								</p>
+							)}
+						</div>
+					</div>
+				) : null}
+			</CardContent>
+		</Card>
+	);
 }
 
 /** Placeholder — filled by pl-0008 step 9 (warren-d17f). */
