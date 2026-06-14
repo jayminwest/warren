@@ -3,8 +3,8 @@
  * so substrate-panel.tsx (which consumes `isSdPlanAttachment` /
  * `isBatchDispatchTarget`) and batch-dispatch.tsx (which also consumes
  * `isSdPlanAttachment`) avoid a circular import, and so
- * activity-feed.tsx and interactive-panel.tsx share the same narrow
- * `readString` type guard for unknown event payloads.
+ * activity-feed.tsx can use the same narrow `readString` type guard
+ * for unknown event payloads.
  *
  * No React, no DOM, no API client deps — keep it that way.
  */

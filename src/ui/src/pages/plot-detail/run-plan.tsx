@@ -22,9 +22,8 @@ import { Textarea } from "@/components/ui/textarea.tsx";
  * batch-dispatch button when you want a single coordinated plan-run.
  *
  * `ReadOnlyField` lives here because the dispatch dialogs were the
- * first consumers; it's re-exported for batch-dispatch and
- * interactive-panel (which also render confirm dialogs over read-only
- * facts).
+ * first consumers; it's re-exported for batch-dispatch (which also
+ * renders confirm dialogs over read-only facts).
  */
 
 /* ----------------------------------------------------------------------- */

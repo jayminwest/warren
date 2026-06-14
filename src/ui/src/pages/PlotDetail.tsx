@@ -31,8 +31,8 @@ import { SubstratePanel } from "@/pages/plot-detail/substrate-panel.tsx";
  * Phase-7 decomposition (warren-2221 / pl-55a3 step 8): the 3000-line
  * monolith that used to live here has been split into the
  * `plot-detail/` sub-tree (header-controls, intent-panel,
- * substrate-panel, run-plan, batch-dispatch, activity-feed,
- * interactive-panel + shared helpers). This page now owns only the
+ * substrate-panel, run-plan, batch-dispatch, activity-feed +
+ * shared helpers). This page now owns only the
  * query, the loading / error / 404 branches, and the layout shell.
  */
 export function PlotDetailPage() {

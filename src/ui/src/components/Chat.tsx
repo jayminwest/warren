@@ -27,9 +27,9 @@
  * agent reply must rebind its stream.
  *
  * Non-goals here: persisting draft text, optimistic user-bubble render
- * (the server-appended user_message lands fast enough), question_posed
- * surfacing (lives in PlotDetail's activity feed per warren-4ea4), or
- * formalize-summary rendering (warren-d22e / PlotDetail).
+ * (the server-appended user_message lands fast enough), or
+ * question_posed surfacing (lives in PlotDetail's activity feed per
+ * warren-4ea4).
  */
 
 import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";

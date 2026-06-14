@@ -11,8 +11,8 @@ import { projectsApi } from "@/api/client.ts";
  *
  *  - If at least one project has `hasPlot=true`, redirect to `/plots`
  *    **unconditionally** — even when the list is empty, since the
- *    landing page itself surfaces the "Start brainstorming" /
- *    "New Plot" affordances for spinning the first one up.
+ *    landing page itself surfaces the "New Plot" affordance for
+ *    spinning the first one up.
  *  - Otherwise redirect to `/runs` — preserves the CLAUDE.md standalone
  *    path where Plots are an opt-in built-in feature.
  *
