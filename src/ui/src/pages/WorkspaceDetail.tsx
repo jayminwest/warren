@@ -16,6 +16,7 @@ import {
 	StatusTransitionControl,
 } from "@/pages/plot-detail/header-controls.tsx";
 import { NewConversationButton } from "@/pages/leveret/new-conversation-dialog.tsx";
+import { RunTab } from "@/pages/workspace-detail/run-tab.tsx";
 import { formatError } from "@/lib/format-error.ts";
 
 /**
@@ -410,11 +411,6 @@ function PlanHandoff({
 			</CardContent>
 		</Card>
 	);
-}
-
-/** Placeholder — filled by pl-0008 step 9 (warren-d17f). */
-function RunTab(_props: { plot: PlotEnvelope }) {
-	return <TabPlaceholder label="Run" />;
 }
 
 /** Placeholder — filled by pl-0008 step 10 (warren-ef97). */

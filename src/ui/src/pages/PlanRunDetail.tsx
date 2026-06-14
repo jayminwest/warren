@@ -1,29 +1,18 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CircleStop } from "lucide-react";
-import { useMemo } from "react";
-import { Link, useParams } from "react-router-dom";
+import { useParams } from "react-router-dom";
 import { planRunsApi } from "@/api/client.ts";
 import { PlotMetaCardContent } from "@/components/PlotMetaCardContent.tsx";
-import type { PlanRunChildRow, PlanRunRow, RunRow } from "@/api/types.ts";
+import type { PlanRunRow, RunRow } from "@/api/types.ts";
 import { PLAN_RUN_TERMINAL_STATES } from "@/api/types.ts";
-import {
-	PlanRunChildStateBadge,
-	PlanRunStateBadge,
-} from "@/components/PlanRunStateBadge.tsx";
+import { PlanRunStateBadge } from "@/components/PlanRunStateBadge.tsx";
 import { Alert } from "@/components/ui/alert.tsx";
 import { Button } from "@/components/ui/button.tsx";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card.tsx";
 import { Spinner } from "@/components/ui/spinner.tsx";
-import {
-	Table,
-	TableBody,
-	TableCell,
-	TableHead,
-	TableHeader,
-	TableRow,
-} from "@/components/ui/table.tsx";
 import { formatError } from "@/lib/format-error.ts";
 import { formatTimestamp, relativeTime } from "@/lib/utils.ts";
+import { PlanRunChildTable } from "./plan-run-detail/child-table.tsx";
 import { formatCostUsd } from "./RunDetail.tsx";
 
 const ACTIVE_STATES = new Set<PlanRunRow["state"]>(["queued", "running"]);
@@ -159,106 +148,8 @@ export function PlanRunDetailPage() {
 				</CardContent>
 			</Card>
 
-			<ChildTable children={children} runs={runs} />
+			<PlanRunChildTable children={children} runs={runs} />
 		</div>
-	);
-}
-
-function ChildTable({
-	children,
-	runs,
-}: {
-	children: PlanRunChildRow[];
-	runs: RunRow[];
-}) {
-	const runIndex = useMemo(() => {
-		const m = new Map<string, RunRow>();
-		for (const r of runs) m.set(r.id, r);
-		return m;
-	}, [runs]);
-	return (
-		<Card>
-			<CardHeader>
-				<CardTitle>Children ({children.length})</CardTitle>
-			</CardHeader>
-			<CardContent className="p-0">
-				{children.length === 0 ? (
-					<p className="p-6 text-sm text-(--color-muted-foreground)">
-						No children — plan has no open child seeds.
-					</p>
-				) : (
-					<Table>
-						<TableHeader>
-							<TableRow>
-								<TableHead>Seq</TableHead>
-								<TableHead>State</TableHead>
-								<TableHead>Seed</TableHead>
-								<TableHead>Run</TableHead>
-								<TableHead>Started</TableHead>
-								<TableHead>Ended</TableHead>
-								<TableHead>PR</TableHead>
-								<TableHead>Failure</TableHead>
-							</TableRow>
-						</TableHeader>
-						<TableBody>
-							{children.map((c) => {
-								const linkedRun = c.runId !== null ? runIndex.get(c.runId) : undefined;
-								const prUrl = linkedRun?.prUrl ?? null;
-								return (
-									<TableRow key={`${c.planRunId}-${c.seq}`}>
-										<TableCell className="font-mono text-xs">{c.seq}</TableCell>
-										<TableCell>
-											<PlanRunChildStateBadge state={c.state} />
-										</TableCell>
-										<TableCell className="font-mono text-xs">{c.seedId}</TableCell>
-										<TableCell className="font-mono text-xs">
-											{c.runId !== null ? (
-												<Link
-													to={`/runs/${encodeURIComponent(c.runId)}`}
-													className="underline-offset-2 hover:underline"
-												>
-													{c.runId}
-												</Link>
-											) : (
-												<span className="text-(--color-muted-foreground)">—</span>
-											)}
-										</TableCell>
-										<TableCell className="text-(--color-muted-foreground)">
-											{c.startedAt !== null ? relativeTime(c.startedAt) : "—"}
-										</TableCell>
-										<TableCell className="text-(--color-muted-foreground)">
-											{c.endedAt !== null ? relativeTime(c.endedAt) : "—"}
-										</TableCell>
-										<TableCell className="font-mono text-xs">
-											{prUrl !== null ? (
-												<a
-													href={prUrl}
-													target="_blank"
-													rel="noreferrer noopener"
-													className="underline underline-offset-2 hover:text-(--color-primary)"
-													title={
-														c.prMergedAt !== null
-															? `merged ${c.prMergedAt}`
-															: "PR open"
-													}
-												>
-													PR ↗
-												</a>
-											) : (
-												<span className="text-(--color-muted-foreground)">—</span>
-											)}
-										</TableCell>
-										<TableCell className="text-xs text-(--color-destructive)">
-											{c.failureReason ?? ""}
-										</TableCell>
-									</TableRow>
-								);
-							})}
-						</TableBody>
-					</Table>
-				)}
-			</CardContent>
-		</Card>
 	);
 }
 
