@@ -3,7 +3,6 @@
 	"threshold": 500,
 	"budgets": {
 		"scripts/acceptance/scenarios/20-preview-path.ts": 560,
-		"scripts/acceptance/scenarios/20-preview.ts": 658,
 		"scripts/acceptance/scenarios/25-plot-roundtrip.ts": 556,
 		"scripts/acceptance/scenarios/26-plan-run-roundtrip.ts": 563,
 		"scripts/acceptance/scenarios/28-plot-list-and-create.ts": 559,
