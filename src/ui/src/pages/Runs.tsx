@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp } from "lucide-react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { agentsApi, projectsApi, runsApi } from "@/api/client.ts";
@@ -11,6 +11,7 @@ import { EmptyState } from "@/components/ui/empty-state.tsx";
 import { FilterPill } from "@/components/ui/filter-pill.tsx";
 import { FadeInItem, StaggerList } from "@/components/ui/motion.tsx";
 import { PageHeader } from "@/components/ui/page-header.tsx";
+import { SortableTableHead } from "@/components/ui/sortable-table-head.tsx";
 import { Spinner } from "@/components/ui/spinner.tsx";
 import {
 	Table,
@@ -108,6 +109,7 @@ export function RunsPage() {
 		setSort("started");
 		setDir("desc");
 	};
+	const sortState = { key: sort, direction: dir };
 	const agents = useQuery({
 		queryKey: ["agents"],
 		queryFn: ({ signal }) => agentsApi.list({}, signal),
@@ -223,24 +225,22 @@ export function RunsPage() {
 									<TableHead className="whitespace-nowrap">ID</TableHead>
 									<TableHead className="whitespace-nowrap">Agent</TableHead>
 									<TableHead className="whitespace-nowrap">Project</TableHead>
-									<TableHead className="whitespace-nowrap">
-										<SortHeader
-											label="Started"
-											active={sort === "started"}
-											dir={dir}
-											onClick={() => toggleSort("started")}
-										/>
-									</TableHead>
+									<SortableTableHead
+										columnKey="started"
+										sort={sortState}
+										onSort={toggleSort}
+									>
+										Started
+									</SortableTableHead>
 									{showCost ? (
-										<TableHead className="whitespace-nowrap text-right">
-											<SortHeader
-												label="Cost"
-												active={sort === "cost"}
-												dir={dir}
-												align="right"
-												onClick={() => toggleSort("cost")}
-											/>
-										</TableHead>
+										<SortableTableHead
+											columnKey="cost"
+											sort={sortState}
+											onSort={toggleSort}
+											align="right"
+										>
+											Cost
+										</SortableTableHead>
 									) : null}
 								</TableRow>
 							</TableHeader>
@@ -345,30 +345,3 @@ export function RunsPage() {
 	);
 }
 
-function SortHeader({
-	label,
-	active,
-	dir,
-	align = "left",
-	onClick,
-}: {
-	label: string;
-	active: boolean;
-	dir: SortDir;
-	align?: "left" | "right";
-	onClick: () => void;
-}) {
-	const Icon = dir === "asc" ? ChevronUp : ChevronDown;
-	return (
-		<button
-			type="button"
-			onClick={onClick}
-			className={`inline-flex items-center gap-1 transition-colors hover:text-(--color-fg) ${
-				align === "right" ? "ml-auto" : ""
-			} ${active ? "text-(--color-fg)" : ""}`}
-		>
-			{label}
-			{active ? <Icon className="h-3 w-3" /> : null}
-		</button>
-	);
-}
