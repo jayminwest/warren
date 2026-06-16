@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.2] — 2026-06-16
+
+A shared sortable-table primitive lands across the list surfaces, plus a
+seeds-cli image bump.
+
+### Added
+
+- **`feat(ui)`** — a canonical `SortableTableHead` column-header primitive
+  (`src/ui/src/components/ui/sortable-table-head.tsx`) with pure, react-free
+  helpers (`ariaSortFor`, `nextSortState`) that unit-test under the root bun
+  runner (#408, warren-9440). A companion `useClientSort` hook +
+  `applySort` / `compareStrings` helpers pair it with client-side data and
+  are adopted across the Projects, PlanRuns, Agents, and Workspace tables;
+  Workspace's hand-rolled `<table>` / arrow-indicator markup migrates onto
+  the shared Table + `SortableTableHead` family. Runs keeps its existing
+  server-driven sort (#409, warren-5562).
+
+### Changed
+
+- **`chore(deps)`** — bumped the pinned `@os-eco/seeds-cli` Docker image
+  install to `0.5.11`.
+
 ## [0.9.1] — 2026-06-16
 
 Low-risk cleanup batch for the **Workspace** surface (plan pl-2e59): chat

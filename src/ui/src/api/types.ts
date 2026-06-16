@@ -530,6 +530,29 @@ export interface SeedStatusResponse {
 }
 
 /**
+ * `GET /projects/:id/seeds/plans` — wire-lean seeds plan summary
+ * (warren-9b49 / pl-dfb5 step 3). Mirrors `PlanSummary` in
+ * src/seeds-cli/schema.ts; the heavyweight `sections` body is dropped
+ * server-side because the only consumer (the plan-run dispatch form's
+ * plan-id selector) just needs a label and status.
+ */
+export interface PlanSummary {
+	id: string;
+	status: string;
+	seed?: string;
+	template?: string;
+	revision?: number;
+	name?: string;
+	childCount: number;
+	createdAt?: string;
+	updatedAt?: string;
+}
+
+export interface SeedPlansResponse {
+	plans: PlanSummary[];
+}
+
+/**
  * `POST /projects/:id/triggers/:triggerId/run` returns the spawned run row
  * plus the burrow summary — same envelope as `POST /runs` (mx-f3b48d).
  */

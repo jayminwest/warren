@@ -9,7 +9,7 @@ import { NotFoundError, ValidationError } from "../../core/errors.ts";
 import { ProjectLacksSeedsError } from "../../plan-runs/errors.ts";
 import { addProject, deleteProject, listProjects, refreshProject } from "../../projects/index.ts";
 import { spawnRun } from "../../runs/index.ts";
-import { showSeed } from "../../seeds-cli/index.ts";
+import { listPlans, showSeed } from "../../seeds-cli/index.ts";
 import { buildTriggerSummaries, parseCron, resolveCronPrompt } from "../../triggers/index.ts";
 import {
 	type CronTrigger,
@@ -126,6 +126,40 @@ export function getProjectSeedHandler(deps: ServerDeps): RouteHandler {
 			status: issue.status,
 			blockedBy: issue.blockedBy ?? [],
 		});
+	};
+}
+
+/**
+ * `GET /projects/:id/seeds/plans` — list a project's seeds plans
+ * (warren-9b49 / pl-dfb5 step 3).
+ *
+ * Shells out to `sd plan list --json` via `listPlans` and returns the
+ * wire-lean plan summaries the plan-run dispatch form needs to populate
+ * its plan-id selector (no `sections` body). Read-only; no state changes.
+ *
+ * Gates mirror `getProjectSeedHandler` so the seeds-read contract stays
+ * uniform: project 404 via `projects.require`, `hasSeeds` gate
+ * (ProjectLacksSeedsError → 400), `seedsCli` configured (ValidationError
+ * → 400), and SeedsCliError from `listPlans` bubbles up as 500.
+ */
+export function listProjectSeedPlansHandler(deps: ServerDeps): RouteHandler {
+	return async (ctx) => {
+		const id = requireParam(ctx, "id");
+		const project = await deps.repos.projects.require(id);
+		if (!project.hasSeeds) {
+			throw new ProjectLacksSeedsError(
+				`project ${project.id} has no .seeds/ directory; plan list is not available`,
+				{ recoveryHint: "add a .seeds/ directory to the project clone and refresh" },
+			);
+		}
+		if (deps.seedsCli === undefined) {
+			throw new ValidationError(
+				"seeds CLI is not configured on this warren; plan list requires sd",
+				{ recoveryHint: "set WARREN_SD_BINARY (or install sd on PATH) and restart" },
+			);
+		}
+		const plans = await listPlans(deps.seedsCli, project.localPath);
+		return jsonResponse(200, { plans });
 	};
 }
 

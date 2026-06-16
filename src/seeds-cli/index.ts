@@ -21,10 +21,13 @@ export {
 } from "./extensions.ts";
 export {
 	type ParseScheduledSeedsResult,
+	type PlanListEnvelope,
+	PlanListEnvelopeSchema,
 	type PlanShowEnvelope,
 	PlanShowEnvelopeSchema,
 	type PlanShowPlan,
 	type PlanShowStep,
+	type PlanSummary,
 	parseScheduledSeeds,
 	type ScheduledSeed,
 	type SeedRow,
@@ -35,6 +38,7 @@ export {
 	SeedsListEnvelopeSchema,
 } from "./schema.ts";
 export {
+	listPlans,
 	type PlanShowResult,
 	type SeedShowResult,
 	showPlan,

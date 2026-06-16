@@ -128,6 +128,55 @@ export const SeedShowEnvelopeSchema = z
 export type SeedShowEnvelope = z.infer<typeof SeedShowEnvelopeSchema>;
 export type SeedShowIssue = z.infer<typeof SeedShowIssueSchema>;
 
+/**
+ * Envelope shape for `sd plan list --json` (warren-9b49 / pl-dfb5 step 3).
+ * Used by the read endpoint that populates the plan-run dispatch form's
+ * plan-id selector. We parse only the lean metadata the selector needs
+ * (id/name/status/seed/template + timestamps + child count) and drop the
+ * heavyweight `sections` payload `sd plan list` emits for every plan —
+ * the form only renders a label, not the plan body. `.passthrough()` keeps
+ * the facade forward-compatible as seeds grows new fields.
+ */
+const PlanListPlanSchema = z
+	.object({
+		id: z.string().min(1),
+		seed: z.string().min(1).optional(),
+		template: z.string().optional(),
+		status: z.string().min(1),
+		revision: z.number().int().optional(),
+		name: z.string().optional(),
+		children: z.array(z.string().min(1)).optional(),
+		createdAt: z.string().optional(),
+		updatedAt: z.string().optional(),
+	})
+	.passthrough();
+
+export const PlanListEnvelopeSchema = z
+	.object({
+		success: z.boolean().optional(),
+		plans: z.array(PlanListPlanSchema),
+	})
+	.passthrough();
+
+export type PlanListEnvelope = z.infer<typeof PlanListEnvelopeSchema>;
+
+/**
+ * Projected, wire-lean plan summary returned by `listPlans` — strips the
+ * `sd plan list` `sections` blob and any other passthrough fields so the
+ * HTTP response stays small.
+ */
+export interface PlanSummary {
+	readonly id: string;
+	readonly status: string;
+	readonly seed?: string;
+	readonly template?: string;
+	readonly revision?: number;
+	readonly name?: string;
+	readonly childCount: number;
+	readonly createdAt?: string;
+	readonly updatedAt?: string;
+}
+
 export interface ScheduledSeed {
 	readonly id: string;
 	readonly status: string;

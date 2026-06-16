@@ -49,6 +49,7 @@ import type {
 	RunEvent,
 	RunRow,
 	RunTriggerResponse,
+	SeedPlansResponse,
 	SeedStatusResponse,
 	SendRunMessageInput,
 	SendRunMessageResponse,
@@ -231,6 +232,15 @@ export const projectsApi = {
 			`/projects/${encodeURIComponent(id)}/seeds/${encodeURIComponent(seedId)}`,
 			{ ...(signal ? { signal } : {}) },
 		),
+	/**
+	 * `GET /projects/:id/seeds/plans` — list the project's seeds plans
+	 * (warren-9b49). Populates the plan-run dispatch form's plan-id
+	 * selector with a manual-entry fallback.
+	 */
+	seedPlans: (id: string, signal?: AbortSignal) =>
+		request<SeedPlansResponse>(`/projects/${encodeURIComponent(id)}/seeds/plans`, {
+			...(signal ? { signal } : {}),
+		}),
 };
 
 /* ----------------------------------------------------------------------- */
