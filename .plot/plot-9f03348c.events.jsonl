@@ -13,3 +13,7 @@
 {"type":"run_dispatched","actor":"user:operator","at":"2026-06-16T07:50:12.084Z","data":{"run_id":"run_wvh25jv2b7k5","agent":"pi","model":"claude-opus-4-8","project":"prj_z07y6ssfjfpk"}}
 {"type":"plan_run_dispatched","actor":"user:operator","at":"2026-06-16T09:51:32.729Z","data":{"plan_run_id":"plnr_kmzsefq78mc4","plan_id":"pl-dfb5","children_count":7}}
 {"type":"run_dispatched","actor":"user:operator","at":"2026-06-16T09:51:38.184Z","data":{"run_id":"run_gs3jk398axz7","agent":"pi","model":"claude-opus-4-8","project":"prj_z07y6ssfjfpk"}}
+{"type":"plan_run_dispatched","actor":"user:operator","at":"2026-06-16T11:00:39.557Z","data":{"plan_run_id":"plnr_1tg7rndwarw2","plan_id":"pl-dfb5","children_count":7}}
+{"type":"run_dispatched","actor":"user:operator","at":"2026-06-16T11:00:47.142Z","data":{"run_id":"run_7awypr3fx6xy","agent":"pi","model":"claude-opus-4-8","project":"prj_z07y6ssfjfpk"}}
+{"type":"plan_run_dispatched","actor":"user:operator","at":"2026-06-16T22:17:26.089Z","data":{"plan_run_id":"plnr_6r7xhd17hzjq","plan_id":"pl-dfb5","children_count":7}}
+{"type":"run_dispatched","actor":"user:operator","at":"2026-06-16T22:17:38.303Z","data":{"run_id":"run_pkvjpzfktxkv","agent":"pi","model":"claude-opus-4-8","project":"prj_z07y6ssfjfpk"}}
