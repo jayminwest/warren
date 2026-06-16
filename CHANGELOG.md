@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.3] — 2026-06-16
+
+The remaining pl-dfb5 papercuts land: a project-scoped seeds-plan read
+endpoint feeding a populated plan selector on the dispatch form, plus a
+standardized responsive contract applied across every page so the UI is
+phone-ready.
+
+### Added
+
+- **`feat(server)`** — `GET /projects/:id/seeds/plans` read endpoint plus a
+  `projectsApi.seedPlans` client method. The seeds-cli facade gains
+  `listPlans` (`sd plan list --json`) returning wire-lean `PlanSummary[]`
+  with the heavyweight body sections stripped; the route is registered
+  before `/seeds/:seedId` so the param route doesn't swallow `plans`
+  (#413, warren-9b49).
+- **`feat(ui)`** — the plan-run dispatch form's free-text Plan ID input is
+  replaced with a `<select>` populated from `projectsApi.seedPlans`, each
+  option labelled `name (id) — status`. A trailing "Enter plan ID
+  manually…" option flips back to free-text, and the form auto-falls back
+  to manual entry when the plan list fails to load or is empty so
+  plan-less projects still dispatch (#415, warren-c030).
+
+### Changed
+
+- **`feat(ui)`** — standardized responsive contract: canonical breakpoints
+  (~393px down to ~360px) and reusable wide-table-on-mobile tokens
+  (`responsive.ts`), applied across all pages so every surface works on
+  phones (#416 warren-3315, #417 warren-42ba).
+
 ## [0.9.2] — 2026-06-16
 
 A shared sortable-table primitive lands across the list surfaces, plus a
