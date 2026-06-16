@@ -17,6 +17,10 @@ supabase/
 .plot/.index.db-shm
 .plot/.index.db-wal
 .claude/settings.local.json
+
+# pi agent session transcripts: leaked run logs (prompts, thinking, tool
+# calls). Never commit — see sd warren-4c8d.
+.pi/sessions/
 .idea/
 .vscode/
 test-results/
