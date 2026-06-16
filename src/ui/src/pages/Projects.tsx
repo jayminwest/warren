@@ -4,6 +4,12 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { projectsApi } from "@/api/client.ts";
 import type { ProjectRow } from "@/api/types.ts";
+import {
+	compareStrings,
+	type Comparator,
+	useClientSort,
+} from "@/hooks/use-client-sort.ts";
+import { SortableTableHead } from "@/components/ui/sortable-table-head.tsx";
 import { RefreshProjectsCTA } from "@/components/RefreshProjectsCTA.tsx";
 import { Alert } from "@/components/ui/alert.tsx";
 import { Button } from "@/components/ui/button.tsx";
@@ -32,6 +38,17 @@ import {
 import { formatError } from "@/lib/format-error.ts";
 import { formatTimestamp } from "@/lib/utils.ts";
 
+type ProjectSortKey = "id" | "gitUrl" | "defaultBranch" | "lastHeadSha" | "lastFetchedAt" | "addedAt";
+
+const PROJECT_COMPARATORS: Record<ProjectSortKey, Comparator<ProjectRow>> = {
+	id: (a, b) => compareStrings(a.id, b.id),
+	gitUrl: (a, b) => compareStrings(a.gitUrl, b.gitUrl),
+	defaultBranch: (a, b) => compareStrings(a.defaultBranch, b.defaultBranch),
+	lastHeadSha: (a, b) => compareStrings(a.lastHeadSha, b.lastHeadSha),
+	lastFetchedAt: (a, b) => compareStrings(a.lastFetchedAt, b.lastFetchedAt),
+	addedAt: (a, b) => compareStrings(a.addedAt, b.addedAt),
+};
+
 export function ProjectsPage() {
 	const qc = useQueryClient();
 	const projects = useQuery({
@@ -39,6 +56,15 @@ export function ProjectsPage() {
 		queryFn: ({ signal }) => projectsApi.list(signal),
 	});
 	const [confirmDelete, setConfirmDelete] = useState<ProjectRow | null>(null);
+	const { sorted, sort, onSort } = useClientSort(
+		projects.data?.projects ?? [],
+		PROJECT_COMPARATORS,
+		{
+			initialKey: "addedAt",
+			initialDirection: "desc",
+			defaultDirections: { lastFetchedAt: "desc", addedAt: "desc" },
+		},
+	);
 
 	const create = useMutation({
 		mutationFn: (input: { gitUrl: string; defaultBranch?: string }) =>
@@ -97,17 +123,29 @@ export function ProjectsPage() {
 						<Table>
 							<TableHeader>
 								<TableRow>
-									<TableHead className="whitespace-nowrap">ID</TableHead>
-									<TableHead className="whitespace-nowrap">Git URL</TableHead>
-									<TableHead className="whitespace-nowrap">Default branch</TableHead>
-									<TableHead className="whitespace-nowrap">HEAD</TableHead>
-									<TableHead className="whitespace-nowrap">Last fetched</TableHead>
-									<TableHead className="whitespace-nowrap">Added</TableHead>
+									<SortableTableHead columnKey="id" sort={sort} onSort={onSort}>
+										ID
+									</SortableTableHead>
+									<SortableTableHead columnKey="gitUrl" sort={sort} onSort={onSort}>
+										Git URL
+									</SortableTableHead>
+									<SortableTableHead columnKey="defaultBranch" sort={sort} onSort={onSort}>
+										Default branch
+									</SortableTableHead>
+									<SortableTableHead columnKey="lastHeadSha" sort={sort} onSort={onSort}>
+										HEAD
+									</SortableTableHead>
+									<SortableTableHead columnKey="lastFetchedAt" sort={sort} onSort={onSort}>
+										Last fetched
+									</SortableTableHead>
+									<SortableTableHead columnKey="addedAt" sort={sort} onSort={onSort}>
+										Added
+									</SortableTableHead>
 									<TableHead className="w-24" />
 								</TableRow>
 							</TableHeader>
 							<TableBody>
-								{projects.data?.projects.map((p) => (
+								{sorted.map((p) => (
 									<TableRow key={p.id}>
 										<TableCell className="whitespace-nowrap font-mono text-xs">
 											<Link

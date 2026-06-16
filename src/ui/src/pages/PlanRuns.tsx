@@ -2,7 +2,13 @@ import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { planRunsApi, projectsApi } from "@/api/client.ts";
-import type { PlanRunChildState, PlanRunState, RunRow } from "@/api/types.ts";
+import type { PlanRunChildState, PlanRunRow, PlanRunState, RunRow } from "@/api/types.ts";
+import {
+	compareStrings,
+	type Comparator,
+	useClientSort,
+} from "@/hooks/use-client-sort.ts";
+import { SortableTableHead } from "@/components/ui/sortable-table-head.tsx";
 import { formatCostUsd } from "./RunDetail.tsx";
 import { PlanRunStateBadge } from "@/components/PlanRunStateBadge.tsx";
 import { Alert } from "@/components/ui/alert.tsx";
@@ -21,6 +27,8 @@ import {
 } from "@/components/ui/table.tsx";
 import { formatError } from "@/lib/format-error.ts";
 import { relativeTime } from "@/lib/utils.ts";
+
+type PlanRunSortKey = "state" | "id" | "planId" | "project" | "agentName" | "startedAt";
 
 const STATE_FILTERS: { label: string; value: "all" | PlanRunState }[] = [
 	{ label: "Active", value: "all" },
@@ -58,6 +66,27 @@ export function PlanRunsPage() {
 		for (const p of projects.data?.projects ?? []) m.set(p.id, p.gitUrl);
 		return m;
 	}, [projects.data]);
+
+	const comparators = useMemo<Record<PlanRunSortKey, Comparator<PlanRunRow>>>(
+		() => ({
+			state: (a, b) => compareStrings(a.state, b.state),
+			id: (a, b) => compareStrings(a.id, b.id),
+			planId: (a, b) => compareStrings(a.planId, b.planId),
+			project: (a, b) =>
+				compareStrings(
+					projectIndex.get(a.projectId) ?? a.projectId,
+					projectIndex.get(b.projectId) ?? b.projectId,
+				),
+			agentName: (a, b) => compareStrings(a.agentName, b.agentName),
+			startedAt: (a, b) => compareStrings(a.startedAt, b.startedAt),
+		}),
+		[projectIndex],
+	);
+	const { sorted, sort, onSort } = useClientSort(
+		planRuns.data?.planRuns ?? [],
+		comparators,
+		{ initialKey: "startedAt", initialDirection: "desc", defaultDirections: { startedAt: "desc" } },
+	);
 
 	return (
 		<div className="space-y-6">
@@ -122,18 +151,30 @@ export function PlanRunsPage() {
 						<Table>
 							<TableHeader>
 								<TableRow>
-									<TableHead className="whitespace-nowrap">State</TableHead>
-									<TableHead className="whitespace-nowrap">ID</TableHead>
-									<TableHead className="whitespace-nowrap">Plan</TableHead>
-									<TableHead className="whitespace-nowrap">Project</TableHead>
-									<TableHead className="whitespace-nowrap">Agent</TableHead>
+									<SortableTableHead columnKey="state" sort={sort} onSort={onSort}>
+										State
+									</SortableTableHead>
+									<SortableTableHead columnKey="id" sort={sort} onSort={onSort}>
+										ID
+									</SortableTableHead>
+									<SortableTableHead columnKey="planId" sort={sort} onSort={onSort}>
+										Plan
+									</SortableTableHead>
+									<SortableTableHead columnKey="project" sort={sort} onSort={onSort}>
+										Project
+									</SortableTableHead>
+									<SortableTableHead columnKey="agentName" sort={sort} onSort={onSort}>
+										Agent
+									</SortableTableHead>
 									<TableHead className="whitespace-nowrap">Children</TableHead>
 									<TableHead className="whitespace-nowrap">Cost</TableHead>
-									<TableHead className="whitespace-nowrap">Started</TableHead>
+									<SortableTableHead columnKey="startedAt" sort={sort} onSort={onSort}>
+										Started
+									</SortableTableHead>
 								</TableRow>
 							</TableHeader>
 							<TableBody>
-								{planRuns.data?.planRuns.map((pr) => (
+								{sorted.map((pr) => (
 									<PlanRunListRow
 										key={pr.id}
 										planRunId={pr.id}

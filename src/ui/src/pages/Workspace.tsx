@@ -13,6 +13,23 @@ import { NewPlotButton } from "@/components/NewPlotButton.tsx";
 import { RefreshProjectsCTA } from "@/components/RefreshProjectsCTA.tsx";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card.tsx";
 import { PageHeader } from "@/components/ui/page-header.tsx";
+import {
+	SortableTableHead,
+	type SortState,
+} from "@/components/ui/sortable-table-head.tsx";
+import {
+	Table,
+	TableBody,
+	TableCell,
+	TableHead,
+	TableHeader,
+	TableRow,
+} from "@/components/ui/table.tsx";
+import {
+	compareStrings,
+	type Comparator,
+	useClientSort,
+} from "@/hooks/use-client-sort.ts";
 import { relativeTime } from "@/lib/utils.ts";
 import { NewConversationButton } from "./leveret/new-conversation-dialog.tsx";
 
@@ -25,7 +42,12 @@ const STATUS_FILTERS: { label: string; value: "all" | PlotStatus }[] = [
 ];
 
 type SortKey = "last_event_ts" | "name" | "status";
-type SortDir = "asc" | "desc";
+
+const PLOT_COMPARATORS: Record<SortKey, Comparator<PlotSummary>> = {
+	name: (a, b) => compareStrings(a.name, b.name),
+	status: (a, b) => compareStrings(a.status, b.status),
+	last_event_ts: (a, b) => compareStrings(a.last_event_ts, b.last_event_ts),
+};
 
 const NEEDS_ATTENTION_LABELS: Record<NeedsAttentionReason, string> = {
 	paused_run: "paused run",
@@ -48,8 +70,6 @@ const NEEDS_ATTENTION_LABELS: Record<NeedsAttentionReason, string> = {
 export function WorkspacePage() {
 	const [statusFilter, setStatusFilter] = useState<"all" | PlotStatus>("all");
 	const [needsAttention, setNeedsAttention] = useState(false);
-	const [sortKey, setSortKey] = useState<SortKey>("last_event_ts");
-	const [sortDir, setSortDir] = useState<SortDir>("desc");
 
 	const plots = useQuery({
 		queryKey: ["plots", statusFilter, needsAttention ? "needs_attention" : "all"],
@@ -98,32 +118,15 @@ export function WorkspacePage() {
 		return m;
 	}, [conversations.data]);
 
-	const sortedPlots = useMemo(() => {
-		const rows = [...(plots.data?.plots ?? [])];
-		const dir = sortDir === "asc" ? 1 : -1;
-		rows.sort((a, b) => {
-			let cmp = 0;
-			if (sortKey === "last_event_ts") cmp = a.last_event_ts.localeCompare(b.last_event_ts);
-			else if (sortKey === "name") cmp = a.name.localeCompare(b.name);
-			else cmp = a.status.localeCompare(b.status);
-			return cmp * dir;
-		});
-		return rows;
-	}, [plots.data, sortKey, sortDir]);
-
-	const handleSort = (key: SortKey): void => {
-		if (sortKey === key) {
-			setSortDir(sortDir === "asc" ? "desc" : "asc");
-		} else {
-			setSortKey(key);
-			setSortDir(key === "last_event_ts" ? "desc" : "asc");
-		}
-	};
-
-	const sortIndicator = (key: SortKey): string => {
-		if (sortKey !== key) return "";
-		return sortDir === "asc" ? " ↑" : " ↓";
-	};
+	const {
+		sorted: sortedPlots,
+		sort,
+		onSort,
+	} = useClientSort(plots.data?.plots ?? [], PLOT_COMPARATORS, {
+		initialKey: "last_event_ts",
+		initialDirection: "desc",
+		defaultDirections: { last_event_ts: "desc" },
+	});
 
 	return (
 		<div className="space-y-6">
@@ -192,8 +195,8 @@ export function WorkspacePage() {
 							plots={sortedPlots}
 							projectLabel={(id) => projectIndex.get(id) ?? id}
 							activeConversation={(id) => activeConversationByPlot.get(id)}
-							sortIndicator={sortIndicator}
-							onSort={handleSort}
+							sort={sort}
+							onSort={onSort}
 						/>
 					)}
 				</CardContent>
@@ -241,116 +244,96 @@ function WorkspaceTable({
 	plots,
 	projectLabel,
 	activeConversation,
-	sortIndicator,
+	sort,
 	onSort,
 }: {
 	plots: PlotSummary[];
 	projectLabel: (projectId: string) => string;
 	activeConversation: (plotId: string) => ConversationRow | undefined;
-	sortIndicator: (key: SortKey) => string;
+	sort: SortState<SortKey>;
 	onSort: (key: SortKey) => void;
 }) {
 	return (
-		<div className="relative w-full overflow-auto">
-			<table className="w-full caption-bottom text-sm">
-				<thead className="border-b">
-					<tr className="text-left text-(--color-muted-foreground)">
-						<th className="h-10 whitespace-nowrap px-4 font-medium">
-							<button
-								type="button"
-								onClick={() => onSort("name")}
-								className="hover:text-(--color-foreground)"
-							>
-								Name{sortIndicator("name")}
-							</button>
-						</th>
-						<th className="h-10 whitespace-nowrap px-4 font-medium">Project</th>
-						<th className="h-10 whitespace-nowrap px-4 font-medium">
-							<button
-								type="button"
-								onClick={() => onSort("status")}
-								className="hover:text-(--color-foreground)"
-							>
-								Status{sortIndicator("status")}
-							</button>
-						</th>
-						<th className="h-10 whitespace-nowrap px-4 font-medium">Intent</th>
-						<th className="h-10 whitespace-nowrap px-4 font-medium">Conversation</th>
-						<th className="h-10 whitespace-nowrap px-4 font-medium">
-							<button
-								type="button"
-								onClick={() => onSort("last_event_ts")}
-								className="hover:text-(--color-foreground)"
-							>
-								Last activity{sortIndicator("last_event_ts")}
-							</button>
-						</th>
-					</tr>
-				</thead>
-				<tbody>
-					{plots.map((p) => {
-						const convo = activeConversation(p.id);
-						return (
-							<tr key={`${p.project_id}::${p.id}`} className="border-b last:border-0">
-								<td className="whitespace-nowrap px-4 py-2">
-									<Link
-										to={`/workspace/${encodeURIComponent(p.id)}`}
-										className="font-medium underline-offset-2 hover:underline"
-									>
-										{p.name}
-									</Link>
-									<div className="font-mono text-xs text-(--color-muted-foreground)">
-										{p.id}
-									</div>
-								</td>
-								<td className="whitespace-nowrap px-4 py-2 font-mono text-xs">
-									{projectLabel(p.project_id)}
-								</td>
-								<td className="whitespace-nowrap px-4 py-2">
-									<div className="flex flex-wrap items-center gap-1">
-										<span className="rounded-full border px-2 py-0.5 text-xs">
-											{p.status}
-										</span>
-										{p.reasons?.map((r) => (
-											<span
-												key={r}
-												className="rounded-full bg-(--color-primary)/15 px-2 py-0.5 text-xs text-(--color-primary)"
-												title={`Needs you: ${r}`}
-											>
-												{NEEDS_ATTENTION_LABELS[r]}
-											</span>
-										))}
-									</div>
-								</td>
-								<td className="max-w-[16rem] truncate px-4 py-2 text-(--color-muted-foreground)">
-									{p.intent_goal_preview || "—"}
-								</td>
-								<td className="whitespace-nowrap px-4 py-2">
-									{convo ? (
-										<Link
-											to={`/workspace/${encodeURIComponent(p.id)}?tab=shape`}
-											className="inline-flex items-center gap-1.5 text-xs underline-offset-2 hover:underline"
-											title={convo.title ?? "Active conversation"}
+		<Table>
+			<TableHeader>
+				<TableRow>
+					<SortableTableHead columnKey="name" sort={sort} onSort={onSort}>
+						Name
+					</SortableTableHead>
+					<TableHead className="whitespace-nowrap">Project</TableHead>
+					<SortableTableHead columnKey="status" sort={sort} onSort={onSort}>
+						Status
+					</SortableTableHead>
+					<TableHead className="whitespace-nowrap">Intent</TableHead>
+					<TableHead className="whitespace-nowrap">Conversation</TableHead>
+					<SortableTableHead columnKey="last_event_ts" sort={sort} onSort={onSort}>
+						Last activity
+					</SortableTableHead>
+				</TableRow>
+			</TableHeader>
+			<TableBody>
+				{plots.map((p) => {
+					const convo = activeConversation(p.id);
+					return (
+						<TableRow key={`${p.project_id}::${p.id}`}>
+							<TableCell className="whitespace-nowrap">
+								<Link
+									to={`/workspace/${encodeURIComponent(p.id)}`}
+									className="font-medium underline-offset-2 hover:underline"
+								>
+									{p.name}
+								</Link>
+								<div className="font-mono text-xs text-(--color-muted-foreground)">
+									{p.id}
+								</div>
+							</TableCell>
+							<TableCell className="whitespace-nowrap font-mono text-xs">
+								{projectLabel(p.project_id)}
+							</TableCell>
+							<TableCell className="whitespace-nowrap">
+								<div className="flex flex-wrap items-center gap-1">
+									<span className="rounded-full border px-2 py-0.5 text-xs">
+										{p.status}
+									</span>
+									{p.reasons?.map((r) => (
+										<span
+											key={r}
+											className="rounded-full bg-(--color-primary)/15 px-2 py-0.5 text-xs text-(--color-primary)"
+											title={`Needs you: ${r}`}
 										>
-											<span
-												aria-hidden="true"
-												className="inline-block h-2 w-2 rounded-full bg-(--color-primary)"
-											/>
-											{convo.title || "Active"}
-										</Link>
-									) : (
-										<span className="text-xs text-(--color-muted-foreground)">—</span>
-									)}
-								</td>
-								<td className="whitespace-nowrap px-4 py-2 text-(--color-muted-foreground)">
-									<div>{relativeTime(p.last_event_ts)}</div>
-									<div className="font-mono text-xs">{p.last_event_actor}</div>
-								</td>
-							</tr>
-						);
-					})}
-				</tbody>
-			</table>
-		</div>
+											{NEEDS_ATTENTION_LABELS[r]}
+										</span>
+									))}
+								</div>
+							</TableCell>
+							<TableCell className="max-w-[16rem] truncate text-(--color-muted-foreground)">
+								{p.intent_goal_preview || "—"}
+							</TableCell>
+							<TableCell className="whitespace-nowrap">
+								{convo ? (
+									<Link
+										to={`/workspace/${encodeURIComponent(p.id)}?tab=shape`}
+										className="inline-flex items-center gap-1.5 text-xs underline-offset-2 hover:underline"
+										title={convo.title ?? "Active conversation"}
+									>
+										<span
+											aria-hidden="true"
+											className="inline-block h-2 w-2 rounded-full bg-(--color-primary)"
+										/>
+										{convo.title || "Active"}
+									</Link>
+								) : (
+									<span className="text-xs text-(--color-muted-foreground)">—</span>
+								)}
+							</TableCell>
+							<TableCell className="whitespace-nowrap text-(--color-muted-foreground)">
+								<div>{relativeTime(p.last_event_ts)}</div>
+								<div className="font-mono text-xs">{p.last_event_actor}</div>
+							</TableCell>
+						</TableRow>
+					);
+				})}
+			</TableBody>
+		</Table>
 	);
 }
