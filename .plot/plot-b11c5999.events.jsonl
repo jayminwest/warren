@@ -11,3 +11,4 @@
 {"type":"status_changed","actor":"user:operator","at":"2026-06-14T05:58:05.982Z","data":{"from":"drafting","to":"ready"}}
 {"type":"plan_run_dispatched","actor":"user:operator","at":"2026-06-16T02:47:00.581Z","data":{"plan_run_id":"plnr_t85q207srq5c","plan_id":"pl-2e59","children_count":4}}
 {"type":"run_dispatched","actor":"user:operator","at":"2026-06-16T02:47:02.972Z","data":{"run_id":"run_mqpjexh9zf3c","agent":"pi","model":"claude-opus-4-8","project":"prj_z07y6ssfjfpk"}}
+{"type":"run_dispatched","actor":"user:operator","at":"2026-06-16T02:57:44.243Z","data":{"run_id":"run_90fqekdeztrt","agent":"pi","model":"claude-opus-4-8","project":"prj_z07y6ssfjfpk"}}
