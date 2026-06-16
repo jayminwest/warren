@@ -23,6 +23,10 @@ import { StatusIndicator } from "@/components/StatusIndicator.tsx";
 import { Alert } from "@/components/ui/alert.tsx";
 import { Badge } from "@/components/ui/badge.tsx";
 import { Button } from "@/components/ui/button.tsx";
+import {
+	responsiveFooterActions,
+	responsiveFooterButton,
+} from "@/components/ui/responsive.ts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card.tsx";
 import { Label } from "@/components/ui/label.tsx";
 import { AnimatePresence, StreamItem } from "@/components/ui/motion.tsx";
@@ -1046,10 +1050,11 @@ function SteerForm({ runId, disabled }: { runId: string; disabled: boolean }) {
 							Steering message delivered.
 						</p>
 					) : null}
-					<div className="flex justify-end">
+					<div className={responsiveFooterActions}>
 						<Button
 							type="submit"
 							disabled={disabled || steer.isPending || body.trim().length === 0}
+							className={responsiveFooterButton}
 						>
 							<Send className="h-4 w-4" />
 							{steer.isPending ? "Sending…" : "Send"}

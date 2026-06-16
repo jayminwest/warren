@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/button.tsx";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card.tsx";
 import { EmptyState } from "@/components/ui/empty-state.tsx";
 import { PageHeader } from "@/components/ui/page-header.tsx";
+import { responsiveCardHeaderRow } from "@/components/ui/responsive.ts";
 import { Spinner } from "@/components/ui/spinner.tsx";
 import {
 	Dialog,
@@ -101,7 +102,7 @@ export function ProjectsPage() {
 			/>
 
 			<Card>
-				<CardHeader className="flex flex-row items-center justify-between">
+				<CardHeader className={responsiveCardHeaderRow}>
 					<CardTitle>{projects.data?.projects.length ?? 0} projects</CardTitle>
 					<RefreshProjectsCTA label="Sync all" />
 				</CardHeader>

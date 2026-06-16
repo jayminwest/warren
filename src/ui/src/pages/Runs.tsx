@@ -11,6 +11,7 @@ import { EmptyState } from "@/components/ui/empty-state.tsx";
 import { FilterPill } from "@/components/ui/filter-pill.tsx";
 import { FadeInItem, StaggerList } from "@/components/ui/motion.tsx";
 import { PageHeader } from "@/components/ui/page-header.tsx";
+import { responsiveCardHeaderRow } from "@/components/ui/responsive.ts";
 import { SortableTableHead } from "@/components/ui/sortable-table-head.tsx";
 import { Spinner } from "@/components/ui/spinner.tsx";
 import {
@@ -192,7 +193,7 @@ export function RunsPage() {
 			</StaggerList>
 
 			<Card>
-				<CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2 space-y-0">
+				<CardHeader className={responsiveCardHeaderRow}>
 					<CardTitle>{totalRuns} runs</CardTitle>
 					{showCost && costTotals.priced > 0 ? (
 						<span

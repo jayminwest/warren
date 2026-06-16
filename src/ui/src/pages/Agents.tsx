@@ -10,6 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card.t
 import { EmptyState } from "@/components/ui/empty-state.tsx";
 import { Label } from "@/components/ui/label.tsx";
 import { PageHeader } from "@/components/ui/page-header.tsx";
+import { responsiveFormControl } from "@/components/ui/responsive.ts";
 import { Spinner } from "@/components/ui/spinner.tsx";
 import {
 	Table,
@@ -99,7 +100,7 @@ export function AgentsPage() {
 							id="agent-project-filter"
 							value={projectFilter}
 							onChange={(e) => setProjectFilter(e.target.value)}
-							className="flex h-9 min-w-[14rem] rounded-md border bg-(--color-card) px-3 py-1 text-sm shadow-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-ring)"
+							className={`flex min-w-[14rem] rounded-md border bg-(--color-card) px-3 py-1 shadow-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-ring) ${responsiveFormControl}`}
 						>
 							<option value="">Global only</option>
 							{projects.data?.projects.map((p) => (

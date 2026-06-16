@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/dialog.tsx";
 import { Input } from "@/components/ui/input.tsx";
 import { Label } from "@/components/ui/label.tsx";
+import { responsiveCardHeaderRow } from "@/components/ui/responsive.ts";
 import { relativeTime } from "@/lib/utils.ts";
 import {
 	BatchDispatchAllButton,
@@ -50,7 +51,7 @@ export function SubstratePanel({ plot }: { plot: PlotEnvelope }) {
 
 	return (
 		<Card>
-			<CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2 space-y-0">
+			<CardHeader className={responsiveCardHeaderRow}>
 				<CardTitle>Substrate</CardTitle>
 				<div className="flex flex-wrap items-center gap-2">
 					{batchTargets.length > 0 ? (

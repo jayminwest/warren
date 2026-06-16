@@ -30,6 +30,10 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card.tsx";
 import { PageHeader } from "@/components/ui/page-header.tsx";
 import {
+	responsiveCardHeaderRow,
+	responsiveFormControl,
+} from "@/components/ui/responsive.ts";
+import {
 	Table,
 	TableBody,
 	TableCell,
@@ -127,7 +131,7 @@ export function CostAnalyticsPage() {
 								type="date"
 								value={from}
 								onChange={(e) => updateParam("from", e.target.value)}
-								className="rounded border border-(--color-border) bg-transparent px-2 py-1 text-sm"
+								className={`rounded border border-(--color-border) bg-transparent px-2 ${responsiveFormControl}`}
 							/>
 						</div>
 						<div className="flex flex-col gap-1">
@@ -142,7 +146,7 @@ export function CostAnalyticsPage() {
 								type="date"
 								value={to}
 								onChange={(e) => updateParam("to", e.target.value)}
-								className="rounded border border-(--color-border) bg-transparent px-2 py-1 text-sm"
+								className={`rounded border border-(--color-border) bg-transparent px-2 ${responsiveFormControl}`}
 							/>
 						</div>
 						<div className="flex flex-col gap-1">
@@ -156,7 +160,7 @@ export function CostAnalyticsPage() {
 								id="ca-project"
 								value={projectId}
 								onChange={(e) => updateParam("projectId", e.target.value)}
-								className="rounded border border-(--color-border) bg-transparent px-2 py-1 text-sm"
+								className={`rounded border border-(--color-border) bg-transparent px-2 ${responsiveFormControl}`}
 							>
 								<option value="">All projects</option>
 								{projects.data?.projects.map((p) => (
@@ -171,7 +175,7 @@ export function CostAnalyticsPage() {
 			</Card>
 
 			<Card>
-				<CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2 space-y-0">
+				<CardHeader className={responsiveCardHeaderRow}>
 					<CardTitle>
 						{totals === undefined
 							? "Loading…"

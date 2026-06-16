@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/button.tsx";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card.tsx";
 import { EmptyState } from "@/components/ui/empty-state.tsx";
 import { PageHeader } from "@/components/ui/page-header.tsx";
+import { responsiveTrailingControl } from "@/components/ui/responsive.ts";
 import { Spinner } from "@/components/ui/spinner.tsx";
 import {
 	Table,
@@ -118,7 +119,7 @@ export function PlanRunsPage() {
 				<select
 					value={projectFilter}
 					onChange={(e) => setProjectFilter(e.target.value)}
-					className="h-8 w-full rounded-md border bg-(--color-card) px-2 text-xs sm:ml-auto sm:w-auto"
+					className={`h-8 rounded-md border bg-(--color-card) px-2 text-xs ${responsiveTrailingControl}`}
 				>
 					<option value="">All projects</option>
 					{projects.data?.projects.map((p) => (
