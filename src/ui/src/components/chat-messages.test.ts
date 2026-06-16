@@ -106,6 +106,46 @@ describe("buildChatMessages", () => {
 		]);
 	});
 
+	test("interleaves transcript and stream chronologically by timestamp, not by source", () => {
+		// Transcript seq and event seq are independent numbering systems, so a
+		// concat-of-two-seq-sorted-groups merge would mis-order any turn that
+		// straddles the boundary. Here the streamed user turn happens BETWEEN
+		// two transcript turns in wall-clock time and must render in the middle.
+		const transcript: MessageRow[] = [
+			row({ id: "msg_1", seq: 1, role: "user", content: "first ask", createdAt: "2026-06-07T00:00:00.000Z" }),
+			row({ id: "msg_2", seq: 2, role: "assistant", content: "final reply", createdAt: "2026-06-07T00:00:30.000Z" }),
+		];
+		const events: RunEvent[] = [
+			event({
+				id: 10,
+				seq: 1,
+				kind: "user_message",
+				ts: "2026-06-07T00:00:15.000Z",
+				payload: { actor: "user", content: "mid-run steer" },
+			}),
+		];
+
+		const result = buildChatMessages(transcript, events);
+
+		expect(result.map((m) => m.content)).toEqual(["first ask", "mid-run steer", "final reply"]);
+	});
+
+	test("collapses a streamed assistant turn and its persisted transcript copy into one bubble", () => {
+		// The persisted assistant row and the streamed pi `text` event carry the
+		// same content; they must render once, keeping the persisted copy.
+		const transcript: MessageRow[] = [
+			row({ id: "msg_1", seq: 1, role: "assistant", content: "all done", createdAt: "2026-06-07T00:00:05.000Z" }),
+		];
+		const events: RunEvent[] = [
+			event({ id: 20, seq: 1, kind: "text", ts: "2026-06-07T00:00:05.000Z", payload: { text: "all done" } }),
+		];
+
+		const result = buildChatMessages(transcript, events);
+
+		expect(result).toHaveLength(1);
+		expect(result[0]).toMatchObject({ id: "msg_1", kind: "agent", content: "all done" });
+	});
+
 	test("omits system and tool transcript rows", () => {
 		const transcript: MessageRow[] = [
 			row({ id: "msg_1", seq: 1, role: "system", content: "boot" }),

@@ -165,33 +165,56 @@ export function toMessage(evt: RunEvent): ChatMessage | null {
 }
 
 /**
+ * Source tag used only to break ordering ties deterministically: when a
+ * transcript row and a streamed event carry the same timestamp (e.g. a
+ * persisted turn and its just-streamed copy), the transcript — the
+ * persisted, authoritative history — sorts first so it is the bubble we
+ * keep and the streamed duplicate is the one dropped.
+ */
+const SOURCE_TRANSCRIPT = 0;
+const SOURCE_STREAM = 1;
+
+/**
  * Merge the persisted transcript (history) with the live event stream
- * into the ordered bubble list the chat renders. Transcript rows render
- * even when the stream yields no message events (e.g. a never_started
- * anchoring run), and a transcript row whose (kind, content) matches a
- * streamed event is rendered once rather than duplicated. The transcript
- * renders first (it is the persisted history); stream messages not
- * already in the transcript follow.
+ * into the ordered bubble list the chat renders, on a single unified
+ * ordering key — the wall-clock timestamp (`ts`) — so the two sources
+ * interleave chronologically instead of the transcript being concatenated
+ * wholesale ahead of the stream. (Transcript `seq` and event `seq` are
+ * independent numbering systems, so the old concat-of-two-seq-sorted-groups
+ * approach mis-ordered any turn that straddled the boundary.)
+ *
+ * Transcript rows render even when the stream yields no message events
+ * (e.g. a never_started anchoring run). A turn whose (kind, content)
+ * matches across the boundary — a streamed assistant turn and its
+ * persisted transcript copy — collapses to a single bubble: the first
+ * occurrence in chronological order wins, with transcript breaking ties
+ * so the persisted copy is the survivor.
  */
 export function buildChatMessages(
 	transcript: readonly MessageRow[] | undefined,
 	events: readonly RunEvent[],
 ): ChatMessage[] {
-	const streamMessages = events
-		.map(toMessage)
-		.filter((m): m is ChatMessage => m !== null)
-		.sort((a, b) => a.seq - b.seq);
-	const transcriptMessages = (transcript ?? [])
-		.map(transcriptRowToMessage)
-		.filter((m): m is ChatMessage => m !== null)
-		.sort((a, b) => a.seq - b.seq);
-	const seen = new Set(transcriptMessages.map(messageDedupeKey));
-	const merged = [...transcriptMessages];
-	for (const m of streamMessages) {
-		const key = messageDedupeKey(m);
+	const tagged: Array<{ message: ChatMessage; source: number }> = [];
+	for (const row of transcript ?? []) {
+		const message = transcriptRowToMessage(row);
+		if (message !== null) tagged.push({ message, source: SOURCE_TRANSCRIPT });
+	}
+	for (const evt of events) {
+		const message = toMessage(evt);
+		if (message !== null) tagged.push({ message, source: SOURCE_STREAM });
+	}
+	tagged.sort((a, b) => {
+		if (a.message.ts !== b.message.ts) return a.message.ts < b.message.ts ? -1 : 1;
+		if (a.source !== b.source) return a.source - b.source;
+		return a.message.seq - b.message.seq;
+	});
+	const seen = new Set<string>();
+	const merged: ChatMessage[] = [];
+	for (const { message } of tagged) {
+		const key = messageDedupeKey(message);
 		if (seen.has(key)) continue;
 		seen.add(key);
-		merged.push(m);
+		merged.push(message);
 	}
 	return merged;
 }
