@@ -7,3 +7,5 @@
 {"type":"intent_edited","actor":"user:leveret","at":"2026-06-16T07:07:45.459Z","data":{"field":"constraints","value":["The final seed of this Plot must be a patch version bump executed via the .claude/commands/release.md flow (bump package.json + src/index.ts in sync, update CHANGELOG.md, commit)"]}}
 {"type":"run_dispatched","actor":"user:operator","at":"2026-06-16T07:10:00.511Z","data":{"run_id":"run_g81hvn4sw2mh","agent":"planner","model":"claude-opus-4-8","project":"prj_z07y6ssfjfpk"}}
 {"type":"run_dispatched","actor":"user:operator","at":"2026-06-16T07:15:35.284Z","data":{"run_id":"run_bmw7vherm6ag","agent":"planner","model":"claude-opus-4-8","project":"prj_z07y6ssfjfpk"}}
+{"type":"plan_run_dispatched","actor":"user:operator","at":"2026-06-16T07:22:25.435Z","data":{"plan_run_id":"plnr_etb999y3ymhm","plan_id":"pl-dfb5","children_count":7}}
+{"type":"run_dispatched","actor":"user:operator","at":"2026-06-16T07:22:31.316Z","data":{"run_id":"run_tdvc05m5zjbe","agent":"pi","model":"claude-opus-4-8","project":"prj_z07y6ssfjfpk"}}
