@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.1] — 2026-06-16
+
+Low-risk cleanup batch for the **Workspace** surface (plan pl-2e59): chat
+ordering/dedup correctness, bounded transcript scrolling, and removal of a
+leaked agent transcript.
+
+### Fixed
+
+- **`fix(ui)`** — workspace chat ordering + dedup (warren-f4b8). Transcript
+  and stream bubbles now merge on a single unified chronological ordering key
+  across the transcript/stream boundary instead of concatenating two
+  seq-sorted groups, and `buildChatMessages` dedupe collapses a streamed
+  assistant turn and its persisted transcript copy into one bubble
+  (`src/ui/src/components/chat-messages.ts`).
+- **`fix(ui)`** — unbounded `/workspaces` page growth (warren-5755). The
+  conversation card's ancestor height is bounded so `Chat.tsx`'s internal
+  `flex-1 min-h-0 overflow-y-auto` engages and the transcript scrolls
+  internally instead of growing the page
+  (`src/ui/src/pages/conversation-detail/conversation-surface.tsx`).
+
+### Removed
+
+- **`chore`** — a stray `.pi/sessions` agent transcript committed by PR #340
+  that was not named in its title (warren-4c8d).
+
 ## [0.9.0] — 2026-06-14
 
 Leveret and Plots collapse into a single tabbed **Workspace** surface, and
