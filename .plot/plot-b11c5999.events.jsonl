@@ -9,3 +9,5 @@
 {"type":"intent_edited","actor":"user:leveret","at":"2026-06-14T05:47:18.479Z","data":{"field":"goal","value":"Land a low-risk cleanup batch — the full logging/traceability hardening set, fixes for the workspace chat surface (unbounded growth, out-of-order turns, and duplicated assistant messages), and removal of the leaked agent-session transcript from PR #340 — capped by a patch version bump to 0.9.1."}}
 {"type":"run_dispatched","actor":"user:operator","at":"2026-06-14T05:49:39.115Z","data":{"run_id":"run_vcvyhmesznvd","agent":"planner","model":"claude-opus-4-8","project":"prj_z07y6ssfjfpk"}}
 {"type":"status_changed","actor":"user:operator","at":"2026-06-14T05:58:05.982Z","data":{"from":"drafting","to":"ready"}}
+{"type":"plan_run_dispatched","actor":"user:operator","at":"2026-06-16T02:47:00.581Z","data":{"plan_run_id":"plnr_t85q207srq5c","plan_id":"pl-2e59","children_count":4}}
+{"type":"run_dispatched","actor":"user:operator","at":"2026-06-16T02:47:02.972Z","data":{"run_id":"run_mqpjexh9zf3c","agent":"pi","model":"claude-opus-4-8","project":"prj_z07y6ssfjfpk"}}

@@ -1,0 +1,4 @@
+{"type":"plot_created","actor":"user:operator","at":"2026-06-16T02:49:15.639Z","data":{"name":"UI Nits"}}
+{"type":"run_dispatched","actor":"user:operator","at":"2026-06-16T02:49:17.245Z","data":{"run_id":"run_ge8f5gwbjdhh","agent":"leveret","model":"claude-opus-4-8","project":"prj_z07y6ssfjfpk"}}
+{"type":"intent_edited","actor":"user:leveret","at":"2026-06-16T02:49:42.922Z","data":{"field":"goal","value":"Eliminate a batch of warren UI papercuts so tables and run-launch flows behave consistently and reduce manual steps for the operator."}}
+{"type":"intent_edited","actor":"user:leveret","at":"2026-06-16T02:49:42.922Z","data":{"field":"success_criteria","value":["Sortable tables across all pages share consistent sort affordances and behavior for common columns (e.g. date/started, status)","Triggering a plan run after a planner finishes auto-populates the plan_id, mirroring how plot_id is prefilled for workspace runs"]}}
