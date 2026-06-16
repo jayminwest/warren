@@ -11,3 +11,5 @@
 {"type":"run_dispatched","actor":"user:operator","at":"2026-06-16T07:22:31.316Z","data":{"run_id":"run_tdvc05m5zjbe","agent":"pi","model":"claude-opus-4-8","project":"prj_z07y6ssfjfpk"}}
 {"type":"run_dispatched","actor":"user:operator","at":"2026-06-16T07:32:11.682Z","data":{"run_id":"run_xnz33z1cj5r0","agent":"pi","model":"claude-opus-4-8","project":"prj_z07y6ssfjfpk"}}
 {"type":"run_dispatched","actor":"user:operator","at":"2026-06-16T07:50:12.084Z","data":{"run_id":"run_wvh25jv2b7k5","agent":"pi","model":"claude-opus-4-8","project":"prj_z07y6ssfjfpk"}}
+{"type":"plan_run_dispatched","actor":"user:operator","at":"2026-06-16T09:51:32.729Z","data":{"plan_run_id":"plnr_kmzsefq78mc4","plan_id":"pl-dfb5","children_count":7}}
+{"type":"run_dispatched","actor":"user:operator","at":"2026-06-16T09:51:38.184Z","data":{"run_id":"run_gs3jk398axz7","agent":"pi","model":"claude-opus-4-8","project":"prj_z07y6ssfjfpk"}}
