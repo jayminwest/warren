@@ -1,0 +1,20 @@
+{
+  "attachments": [],
+  "created_at": "2026-06-16T07:03:45.515Z",
+  "id": "plot-9f03348c",
+  "intent": {
+    "constraints": [
+      "The final seed of this Plot must be a patch version bump executed via the .claude/commands/release.md flow (bump package.json + src/index.ts in sync, update CHANGELOG.md, commit)"
+    ],
+    "goal": "Eliminate a batch of warren UI papercuts \\u2014 inconsistent table sorting, manual plan_id entry on plan runs, and poor mobile readiness \\u2014 so tables and run-launch flows behave consistently and every page works well on phones.",
+    "non_goals": [
+      "Native mobile app or PWA work — this is responsive-web polish only",
+      "Visual redesign/restyling beyond fixing the named papercuts (sorting, plan_id prefill, mobile breakage)"
+    ],
+    "success_criteria": []
+  },
+  "name": "UI Nits Redux",
+  "schema_version": 1,
+  "status": "drafting",
+  "updated_at": "2026-06-16T07:07:45.459Z"
+}
