@@ -13,7 +13,6 @@
 		"src/plan-runs/coordinator.completion.test.ts": 613,
 		"src/plan-runs/coordinator.ts": 587,
 		"src/plots/aggregate.ts": 506,
-		"src/runs/pause.test.ts": 616,
 		"src/runs/pr.test.ts": 604,
 		"src/runs/pr.ts": 659,
 		"src/runs/reap/run.ts": 527,
