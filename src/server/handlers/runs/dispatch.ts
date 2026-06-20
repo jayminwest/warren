@@ -147,6 +147,7 @@ export function createRunHandler(deps: ServerDeps): RouteHandler {
 			warrenConfigs: deps.warrenConfigs,
 			runBranchPrefixDefault: deps.runBranchPrefixDefault,
 			seedsCli: deps.seedsCli,
+			logger: ctx.logger,
 		};
 
 		// warren-d525: the real dispatch — spawn and attach the bridge. Wrapped

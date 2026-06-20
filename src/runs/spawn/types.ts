@@ -16,6 +16,21 @@ import type { AgentDefinition } from "../../registry/schema.ts";
 import type { SeedsCliDeps } from "../../seeds-cli/index.ts";
 import type { WarrenConfigCache } from "../../warren-config/index.ts";
 
+/**
+ * Narrow structured logger for the spawn flow (warren-c686 / pl-f700
+ * step 1). Pino-shaped so the HTTP handler can hand down its per-request
+ * child logger (already bound with `request_id` via warren-30af) and
+ * `spawnRun` re-binds `run_id` on top. Optional on the input — legacy
+ * callers and tests that don't wire a logger fall back to a no-op, so
+ * instrumentation never changes control flow.
+ */
+export interface SpawnLogger {
+	info(obj: object, msg?: string): void;
+	warn(obj: object, msg?: string): void;
+	error(obj: object, msg?: string): void;
+	child?(bindings: object): SpawnLogger;
+}
+
 export interface SpawnRunInput {
 	readonly repos: Repos;
 	/**
@@ -200,6 +215,14 @@ export interface SpawnRunInput {
 	 * payload without touching disk.
 	 */
 	readonly plotAppender?: SpawnPlotAppender;
+	/**
+	 * Structured logger for the spawn flow (warren-c686 / pl-f700 step 1).
+	 * The HTTP handlers pass `ctx.logger` (pre-bound with `request_id`);
+	 * `spawnRun` re-binds `run_id` so every spawn log line correlates back
+	 * to both the run row and the originating request. Omitted by tests and
+	 * CLI paths that don't care — the flow degrades to a no-op logger.
+	 */
+	readonly logger?: SpawnLogger;
 }
 
 export interface AppendPlotRunDispatchedInput {

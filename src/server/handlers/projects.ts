@@ -287,6 +287,7 @@ export function runProjectTriggerHandler(deps: ServerDeps): RouteHandler {
 				? { runBranchPrefixDefault: deps.runBranchPrefixDefault }
 				: {}),
 			...(deps.seedsCli !== undefined ? { seedsCli: deps.seedsCli } : {}),
+			logger: ctx.logger,
 		});
 
 		// Hand off to the bridge so events start flowing into warren.events —
