@@ -47,6 +47,15 @@ export interface SpawnRunInput {
 	 * burrow provisioning path is unaffected — it always uses `projectId`.
 	 */
 	readonly seedProjectId?: string;
+	/**
+	 * Legibility-only repo ref for the cross-repo plan-run path (pl-fb43
+	 * step 5 / warren-d9f3). When the child was routed to a different
+	 * execution repo than the coordination project, this carries the raw
+	 * `extensions.repo` string so the `run_dispatched` Plot mirror on the
+	 * coordination project is self-describing about which repo the run
+	 * actually targeted. Omitted on same-repo dispatches.
+	 */
+	readonly executionRepo?: string;
 	readonly prompt: string;
 	readonly trigger?: string;
 	/**
@@ -201,6 +210,8 @@ export interface AppendPlotRunDispatchedInput {
 	readonly agentName: string;
 	readonly model: string | null;
 	readonly projectId: string;
+	/** pl-fb43 step 5: execution repo ref when it differs from coordination. */
+	readonly executionRepo?: string;
 }
 
 export interface SpawnPlotAppender {

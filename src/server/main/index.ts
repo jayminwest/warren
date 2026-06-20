@@ -40,6 +40,7 @@ import {
 	bootPlanRunCoordinator,
 	createPlanRunSpawn,
 	createPrMergeChecker,
+	createResolveExecution,
 	defaultPlotStatusSetter,
 	loadPlanRunCoordinatorConfigFromEnv,
 } from "../../plan-runs/index.ts";
@@ -301,6 +302,7 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 			return showSeed(seedsCli, project.localPath, seedId);
 		},
 		checkPrMerged: createPrMergeChecker({ token: autoOpenPr.token }),
+		resolveExecution: createResolveExecution(repos), // pl-fb43 step 5: per-child execution repo
 		reopenPr:
 			autoOpenPr.enabled && autoOpenPr.token !== ""
 				? async (runId: string): Promise<string | null> => {
@@ -366,10 +368,8 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 			...(opts.now !== undefined ? { now: opts.now } : {}),
 		}),
 		// warren-b290 / pl-7937 step 5: auto-transition the bound Plot from
-		// `active` → `done` when every child of a Plot-bound PlanRun reaches
-		// a terminal state. Best-effort — the wrapper logs every outcome
-		// (transitioned / skipped / failed) and the coordinator emits a
-		// `plan_run.plot_*` system event on the anchor child run.
+		// `active` → `done` when every child of a Plot-bound PlanRun reaches a
+		// terminal state. Best-effort — see autoTransitionPlotToDone.
 		transitionPlot: async (planRun) => {
 			if (planRun.plotId === null) {
 				// Coordinator already guards on plotId, but narrow defensively

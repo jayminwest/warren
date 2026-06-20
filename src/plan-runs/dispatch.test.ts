@@ -140,6 +140,82 @@ describe("createPlanRunSpawn", () => {
 		expect(captured[0]?.dispatcherHandle).toBe(planRun.dispatcherHandle);
 	});
 
+	test("routes spawn to the execution project and pins seedProjectId to coordination (warren-d9f3)", async () => {
+		// Register a second project to act as the child's execution repo.
+		const childProject = await repos.projects.create({
+			gitUrl: "https://github.com/x/child.git",
+			localPath: "/data/projects/x/child",
+			defaultBranch: "trunk",
+		});
+		const { planRun } = await repos.planRuns.create({
+			planId: "pl-route",
+			projectId,
+			agentName: "claude-code",
+			children: [{ seq: 1, seedId: "warren-a" }],
+			now: NOW,
+		});
+		const child = (await repos.planRuns.listChildren(planRun.id))[0];
+		if (child === undefined) throw new Error("child seq=1 missing");
+
+		const captured: SpawnRunInput[] = [];
+		const spawnRunFn = async (input: SpawnRunInput): Promise<SpawnRunResult> => {
+			captured.push(input);
+			const run = await repos.runs.create({
+				agentName: input.agentName,
+				projectId: input.projectId,
+				prompt: input.prompt,
+				renderedAgentJson: { sections: {} },
+				trigger: input.trigger ?? "manual",
+				now: NOW,
+			});
+			return {
+				run,
+				burrow: { id: "bur_r", workspacePath: "/ws" } as Burrow,
+				burrowRun: { id: "rb_r" } as BurrowRun,
+				agent: { name: input.agentName, sections: {} } as never,
+			};
+		};
+
+		const spawn = createPlanRunSpawn({
+			repos,
+			burrowClientPool: await makePool(repos),
+			bridges: makeBridges(),
+			warrenConfigs: createWarrenConfigCache({
+				load: async () => ({
+					triggers: null,
+					defaults: null,
+					prTemplate: null,
+					errors: [],
+					warnings: [],
+				}),
+			}),
+			projectsConfig: { root: "/data/projects", gitBinary: "git" },
+			projectSpawn: (async () => ({ stdout: "", stderr: "", exitCode: 0 })) as SpawnFn,
+			seedsCli: {
+				sdBinary: "sd",
+				spawn: (async () => ({ stdout: "", stderr: "", exitCode: 0 })) as SpawnFn,
+			},
+			spawnRunFn,
+			now: () => NOW,
+		});
+
+		await spawn({
+			planRun,
+			child,
+			prompt: "work on sd warren-a",
+			execution: { executionProjectId: childProject.id, repoRef: "x/child" },
+		});
+
+		expect(captured).toHaveLength(1);
+		// workspace clones the execution project; ref derives from its default branch
+		expect(captured[0]?.projectId).toBe(childProject.id);
+		expect(captured[0]?.ref).toBe("trunk");
+		// coordination project owns the seed stamp + Plot append
+		expect(captured[0]?.seedProjectId).toBe(projectId);
+		// raw repo ref rides through for the Plot mirror's legibility
+		expect(captured[0]?.executionRepo).toBe("x/child");
+	});
+
 	test("omits plotId from spawnRun input when the PlanRun has no plot binding", async () => {
 		const { planRun } = await repos.planRuns.create({
 			planId: "pl-noplot",

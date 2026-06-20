@@ -45,6 +45,7 @@ export {
 	showSeed,
 } from "./show.ts";
 export {
+	readTargetRepo,
 	type WarrenExtensions,
 	WarrenExtensionsSchema,
 	WarrenTriggerKind,

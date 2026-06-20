@@ -29,7 +29,12 @@ export {
 	PLAN_RUN_EVENT_KINDS,
 	type PlanRunEventKind,
 } from "./coordinator.ts";
-export { type CreatePlanRunSpawnInput, createPlanRunSpawn } from "./dispatch.ts";
+export {
+	type CreatePlanRunSpawnInput,
+	createPlanRunSpawn,
+	createResolveExecution,
+	resolveChildExecution,
+} from "./dispatch.ts";
 export {
 	PlanHasNoOpenChildrenError,
 	PlanRunDispatchError,

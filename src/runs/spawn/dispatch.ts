@@ -274,9 +274,8 @@ export async function spawnRun(input: SpawnRunInput): Promise<SpawnRunResult> {
 				now: input.now?.() ?? new Date(),
 			});
 		}
-		// warren-e848 / pl-2047 step 5: append a `run_dispatched` event to
-		// the originating Plot. Fire-and-log — same non-rollback posture as
-		// writeSeedExtensions above.
+		// warren-e848 / pl-2047 step 5: append a `run_dispatched` event to the
+		// originating Plot. Fire-and-log — same posture as writeSeedExtensions.
 		if (updated.plotId !== null && updated.plotId !== "") {
 			await emitRunDispatchedToPlot({
 				repos: input.repos,
@@ -287,6 +286,7 @@ export async function spawnRun(input: SpawnRunInput): Promise<SpawnRunResult> {
 				agentName: agent.name,
 				model: extractModel(agent.frontmatter),
 				projectId: coordinationProject.id,
+				...(input.executionRepo !== undefined ? { executionRepo: input.executionRepo } : {}),
 				appender: input.plotAppender ?? defaultPlotAppender,
 				now: input.now?.() ?? new Date(),
 			});
