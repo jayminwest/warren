@@ -99,25 +99,81 @@ function errorMessage(err: unknown): string {
 	return err instanceof Error ? err.message : String(err);
 }
 
+/**
+ * warren-fc6e / pl-f700 step 2: persist a spawn failure durably so
+ * RunDetail can surface the cause without a special case.
+ *
+ * Two writes, mirroring the `reap_failed` pattern:
+ *
+ *   1. Append a `spawn_failed` system event carrying `{ step, message,
+ *      burrowId? }`. The events pane's generic fallback renders the
+ *      `message` field, so the cause shows up "for free" the same way a
+ *      `reap_failed` step does.
+ *   2. Finalize the run `failed` with `failure_reason = never_started`
+ *      instead of a bare `cancelled` row — a spawn that never reached
+ *      dispatch is, by definition, a run that never started. The row was
+ *      created `queued`, so we walk `queued → running → failed` (the
+ *      same shape reap's `transitionToTerminal` uses) because `finalize`
+ *      only persists `failure_reason` on a `failed` transition and
+ *      `queued → failed` is not an allowed edge.
+ *
+ * Both writes are best-effort: a failure here is logged but never masks
+ * the original spawn error the caller is about to see rethrown.
+ */
+async function persistSpawnFailure(
+	input: SpawnRunInput,
+	runId: string,
+	burrow: Burrow | null,
+	err: unknown,
+	log: SpawnLogger,
+): Promise<void> {
+	const message = errorMessage(err);
+	const now = input.now?.() ?? new Date();
+	try {
+		const seq = ((await input.repos.events.maxSeqForRun(runId)) ?? 0) + 1;
+		await input.repos.events.append({
+			runId,
+			burrowEventSeq: seq,
+			ts: now.toISOString(),
+			kind: "spawn_failed",
+			stream: "system",
+			payload: { step: "spawn", message, ...(burrow !== null ? { burrowId: burrow.id } : {}) },
+		});
+	} catch (eventErr) {
+		log.error(
+			{ event: "spawn.rollback.event_append_failed", error: errorMessage(eventErr) },
+			"spawn rollback: spawn_failed event append failed",
+		);
+	}
+	try {
+		const current = await input.repos.runs.require(runId);
+		// queued → running → failed: finalize only persists failure_reason
+		// on a `failed` row, and queued → failed is not an allowed edge.
+		if (current.state === "queued") {
+			await input.repos.runs.markRunning(runId, now);
+		}
+		await input.repos.runs.finalize(runId, "failed", now, "never_started");
+	} catch (finalizeErr) {
+		// Either the row was already terminal (shouldn't happen on this path)
+		// or the db handle is gone — either way, nothing to recover here.
+		// warren-c686: previously swallowed silently; surface it so a stuck
+		// `queued` row left behind by a failed finalize is debuggable.
+		log.error(
+			{ event: "spawn.rollback.finalize_failed", error: errorMessage(finalizeErr) },
+			"spawn rollback: runs.finalize failed",
+		);
+	}
+}
+
 export async function rollback(
 	input: SpawnRunInput,
 	runId: string,
 	burrow: Burrow | null,
 	client: BurrowClient,
 	log: SpawnLogger,
+	err: unknown,
 ): Promise<void> {
-	try {
-		await input.repos.runs.finalize(runId, "cancelled", input.now?.());
-	} catch (err) {
-		// Either the row was already terminal (shouldn't happen on this path)
-		// or the db handle is gone — either way, nothing to recover here.
-		// warren-c686: previously swallowed silently; surface it so a stuck
-		// `queued` row left behind by a failed finalize is debuggable.
-		log.error(
-			{ event: "spawn.rollback.finalize_failed", error: errorMessage(err) },
-			"spawn rollback: runs.finalize failed",
-		);
-	}
+	await persistSpawnFailure(input, runId, burrow, err, log);
 	if (burrow !== null) {
 		try {
 			await withTransportMapping(client.config, () =>

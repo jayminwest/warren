@@ -421,7 +421,7 @@ describe("spawnRun: rollback", () => {
 
 		const rows = await repos.runs.listAll();
 		expect(rows).toHaveLength(1);
-		expect(rows[0]?.state).toBe("cancelled");
+		expect(rows[0]?.state).toBe("failed");
 		expect(rows[0]?.burrowId).toBeNull();
 		expect(rows[0]?.burrowRunId).toBeNull();
 
@@ -446,7 +446,7 @@ describe("spawnRun: rollback", () => {
 
 		const rows = await repos.runs.listAll();
 		expect(rows).toHaveLength(1);
-		expect(rows[0]?.state).toBe("cancelled");
+		expect(rows[0]?.state).toBe("failed");
 		expect(rows[0]?.burrowId).toBe("bur_aaaaaaaaaaaa");
 		expect(rows[0]?.burrowRunId).toBeNull();
 		const methods = calls.map((c) => `${c.method} ${c.path}`);
@@ -475,7 +475,7 @@ describe("spawnRun: rollback", () => {
 
 		const rows = await repos.runs.listAll();
 		expect(rows).toHaveLength(1);
-		expect(rows[0]?.state).toBe("cancelled");
+		expect(rows[0]?.state).toBe("failed");
 		expect(rows[0]?.burrowId).toBeNull();
 	});
 });
