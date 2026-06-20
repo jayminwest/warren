@@ -113,6 +113,12 @@ const SeedShowIssueSchema = z
 	.object({
 		id: z.string().min(1),
 		status: z.string().min(1),
+		// `title` + `description` carry the human-readable seed text. They are
+		// inlined into the dispatch prompt (warren-92dd) so a cross-repo
+		// executor needs no in-workspace `.seeds/` access. Optional because
+		// not every `sd show` payload populates them.
+		title: z.string().optional(),
+		description: z.string().optional(),
 		blockedBy: z.array(z.string().min(1)).optional(),
 		extensions: z.record(z.string(), z.unknown()).optional(),
 	})

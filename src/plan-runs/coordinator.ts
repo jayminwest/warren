@@ -40,6 +40,7 @@ import {
 	type PlanRunChildState,
 	type PlanRunRow,
 } from "../db/schema.ts";
+import { buildDispatchPrompt } from "../runs/dispatch-prompt.ts";
 import { SeedNotFoundError, type SeedShowResult } from "../seeds-cli/index.ts";
 import {
 	type CoordinatorReopenPrFn,
@@ -270,8 +271,11 @@ export async function advancePlanRun(input: AdvancePlanRunInput): Promise<Advanc
 			continue;
 		}
 
-		// Dispatch the next child.
-		const prompt = substituteSeedId(planRun.promptTemplate, next.seedId);
+		// Dispatch the next child; seed text inlined via the shared builder.
+		const prompt = buildDispatchPrompt({
+			template: planRun.promptTemplate,
+			seed: { id: next.seedId, title: seedShow.title, body: seedShow.description },
+		});
 		let spawnResult: CoordinatorSpawnResult;
 		try {
 			spawnResult = await input.spawn({ planRun, child: next, prompt });
@@ -555,10 +559,6 @@ function mostRecentDispatchedRunId(children: readonly PlanRunChildRow[]): string
 		if (child !== undefined && child.runId !== null) return child.runId;
 	}
 	return null;
-}
-
-function substituteSeedId(template: string, seedId: string): string {
-	return template.replace(/\{seed_id\}/g, seedId);
 }
 
 function formatError(err: unknown): string {
