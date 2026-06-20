@@ -15,6 +15,7 @@ export type RunFailureReason =
 	| "crashed"
 	| "timed_out"
 	| "burrow_run_lost"
+	| "burrow_unreachable"
 	| "dropped_commit";
 
 /**

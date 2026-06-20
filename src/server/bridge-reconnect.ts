@@ -3,14 +3,15 @@
  * (`./bridges.ts`). Extracted to keep both files under the file-size
  * ratchet (warren-4553). `runWithReconnect` runs `bridgeRunStream` in a
  * backoff loop, surfaces degraded state via `bridge_stalled` /
- * `bridge_recovered` system events (warren-6376), reaps inline on
- * terminal-detect, and reconciles ghost runs (warren-b1a9) via
- * `reconcileLostBurrowRun`, which `bootBridges` also calls at boot.
+ * `bridge_recovered` system events (warren-6376), gives up and finalizes
+ * `failed`/`burrow_unreachable` past a hard stall ceiling (warren-af76),
+ * reaps inline on terminal-detect, and reconciles ghost runs (warren-b1a9)
+ * via `reconcileLostBurrowRun`, which `bootBridges` also calls at boot.
  */
 
 import type { BurrowClientPool } from "../burrow-client/pool.ts";
 import type { Repos } from "../db/repos/index.ts";
-import type { EventRow, RunMode, RunState } from "../db/schema.ts";
+import type { EventRow, RunFailureReason, RunMode, RunState } from "../db/schema.ts";
 import type { PreviewLaunchConfig } from "../preview/launch/index.ts";
 import type { PreviewPortAllocator } from "../preview/port-allocator.ts";
 import type {
@@ -45,6 +46,13 @@ export interface RunWithReconnectInput {
 	readonly reap: (input: ReapRunInput) => Promise<ReapRunResult>;
 	readonly backoff: readonly number[];
 	readonly stallThreshold: number;
+	/**
+	 * warren-af76: hard ceiling on consecutive errored reconnects with no
+	 * forward progress. Past it the bridge stops looping against an
+	 * unresponsive-but-present burrow and finalizes the run `failed` with
+	 * `failure_reason='burrow_unreachable'`. Must be `>= stallThreshold`.
+	 */
+	readonly stallCeiling: number;
 	readonly sleep: (ms: number, signal: AbortSignal) => Promise<void>;
 	/**
 	 * Run mode (warren-df71). Threaded into every `bridgeRunStream` pass so a
@@ -235,6 +243,24 @@ export async function runWithReconnect(
 			);
 			stalled = true;
 		}
+		// warren-af76: hard stall ceiling. Without this, an up-but-unresponsive
+		// burrow (socket probe times out ⇒ `burrowRunMissing:false`) reconnects
+		// forever and the run wedges in `running`; finalize `burrow_unreachable`.
+		if (attempt >= input.stallCeiling) {
+			input.logger?.error?.(
+				{ runId: input.runId, burrowRunId: input.burrowRunId, attempts: attempt },
+				"bridge giving up: burrow unreachable past stall ceiling; finalizing run as failed",
+			);
+			await reconcileLostBurrowRun({
+				runId: input.runId,
+				burrowRunId: input.burrowRunId,
+				repos: input.repos,
+				broker: input.broker,
+				failureReason: "burrow_unreachable",
+				...(input.logger !== undefined ? { logger: input.logger } : {}),
+			});
+			return { written: totalWritten, skipped: totalSkipped, errored: true };
+		}
 		try {
 			await input.sleep(delayMs, input.signal);
 		} catch {
@@ -373,6 +399,12 @@ interface ReconcileLostBurrowRunInput {
 	readonly broker: RunEventBroker;
 	readonly logger?: BridgeLogger;
 	readonly now?: () => Date;
+	/**
+	 * warren-af76: failure reason for `runs.finalize` + `bridge_lost`.
+	 * Default `'burrow_run_lost'`; stall-ceiling caller passes
+	 * `'burrow_unreachable'`.
+	 */
+	readonly failureReason?: RunFailureReason;
 }
 
 /**
@@ -388,6 +420,7 @@ interface ReconcileLostBurrowRunInput {
  */
 export async function reconcileLostBurrowRun(input: ReconcileLostBurrowRunInput): Promise<void> {
 	const now = (input.now ?? (() => new Date()))();
+	const failureReason: RunFailureReason = input.failureReason ?? "burrow_run_lost";
 	let finalized = false;
 	try {
 		const run = await input.repos.runs.get(input.runId);
@@ -403,7 +436,7 @@ export async function reconcileLostBurrowRun(input: ReconcileLostBurrowRunInput)
 			if (run.state === "queued") {
 				await input.repos.runs.markRunning(input.runId, now);
 			}
-			await input.repos.runs.finalize(input.runId, "failed", now, "burrow_run_lost");
+			await input.repos.runs.finalize(input.runId, "failed", now, failureReason);
 			finalized = true;
 		}
 	} catch (err) {
@@ -426,7 +459,7 @@ export async function reconcileLostBurrowRun(input: ReconcileLostBurrowRunInput)
 			stream: "system",
 			payload: {
 				burrowRunId: input.burrowRunId,
-				reason: "burrow_run_lost",
+				reason: failureReason,
 				finalized,
 			},
 		});

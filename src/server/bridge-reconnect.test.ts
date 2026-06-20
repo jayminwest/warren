@@ -99,6 +99,43 @@ describe("runWithReconnect bridge_stalled/bridge_recovered (warren-6376)", () =>
 		expect(kinds.indexOf("bridge_stalled")).toBeLessThan(kinds.indexOf("bridge_recovered"));
 	});
 
+	test("finalizes run as failed/burrow_unreachable once stall ceiling is crossed", async () => {
+		const runId = await seedRun();
+		let calls = 0;
+		const registry = createBridgeRegistry({
+			repos,
+			broker: new RunEventBroker(),
+			burrowClientPool: await makePool(repos),
+			// Burrow is up but unresponsive: every reconnect errors with
+			// burrowRunMissing:false, so the loop would spin forever without
+			// the hard ceiling (warren-af76).
+			bridge: async () => {
+				calls += 1;
+				return { written: 0, skipped: 0, errored: true };
+			},
+			reconnectBackoffMs: [0],
+			stallThreshold: 2,
+			stallCeiling: 4,
+		});
+
+		registry.start(runId, "rb_a", "bur_a");
+		while (registry.size() > 0) await new Promise((r) => setTimeout(r, 0));
+
+		// The loop gave up instead of reconnecting indefinitely.
+		expect(calls).toBe(4);
+
+		const run = await repos.runs.get(runId);
+		expect(run?.state).toBe("failed");
+		expect(run?.failureReason).toBe("burrow_unreachable");
+
+		const events = await repos.events.listByRun(runId);
+		expect(events.filter((e) => e.kind === "bridge_stalled").length).toBe(1);
+		const lost = events.filter((e) => e.kind === "bridge_lost");
+		expect(lost.length).toBe(1);
+		expect((lost[0]?.payloadJson as { reason: string }).reason).toBe("burrow_unreachable");
+		expect((lost[0]?.payloadJson as { finalized: boolean }).finalized).toBe(true);
+	});
+
 	test("no bridge_stalled when reconnects stay under threshold", async () => {
 		const runId = await seedRun();
 		let calls = 0;
