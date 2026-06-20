@@ -42,6 +42,7 @@ import type {
 	PreviewConfigResponse,
 	PreviewTeardownResponse,
 	ProjectRow,
+	ReadyPlansResponse,
 	ReadyzResponse,
 	RefreshAgentsResponse,
 	RefreshProjectAgentsResponse,
@@ -239,6 +240,16 @@ export const projectsApi = {
 	 */
 	seedPlans: (id: string, signal?: AbortSignal) =>
 		request<SeedPlansResponse>(`/projects/${encodeURIComponent(id)}/seeds/plans`, {
+			...(signal ? { signal } : {}),
+		}),
+
+	/**
+	 * `GET /projects/:id/ready-plans` — approved plans with ≥1 open child
+	 * seed that have not yet been dispatched (warren-7937). Powers the
+	 * "Ready to dispatch" operator surface.
+	 */
+	readyPlans: (id: string, signal?: AbortSignal) =>
+		request<ReadyPlansResponse>(`/projects/${encodeURIComponent(id)}/ready-plans`, {
 			...(signal ? { signal } : {}),
 		}),
 };

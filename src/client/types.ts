@@ -163,11 +163,8 @@ export interface CreateRunInput {
 	cloneFromRunId?: string;
 }
 
-/**
- * Ergonomic input for {@link WarrenClient.dispatch}. Mirrors
- * {@link CreateRunInput} but uses the user-facing field names (`model`,
- * `branch`, `provider`) from `warren run` CLI flags, mapped at request time.
- */
+/** Ergonomic input for {@link WarrenClient.dispatch}: mirrors {@link CreateRunInput} with
+ * `warren run` CLI field names (`model`/`branch`/`provider`), mapped at request time. */
 export interface DispatchRunInput {
 	agent: string;
 	project: string;
@@ -202,6 +199,18 @@ export interface ListProjectsResponse {
 export interface CreateProjectInput {
 	gitUrl: string;
 	defaultBranch?: string;
+}
+
+/** A plan from `GET /projects/:id/ready-plans` — approved, undispatched, ≥1 open child (warren-7937). */
+export interface ReadyPlan {
+	id: string;
+	name?: string;
+	status: string;
+	openChildCount: number;
+}
+
+export interface ListReadyPlansResponse {
+	plans: ReadyPlan[];
 }
 
 export interface RefreshProjectInput {
@@ -252,14 +261,11 @@ export interface ListRunsResponse {
 }
 
 /* ----------------------------------------------------------------------- */
-/* Plots — typed facade over /plots endpoints (warren-8ffc).               */
-/*                                                                          */
-/* The wire envelope under /plots is snake_case end-to-end (mirror of the  */
-/* @os-eco/plot-cli on-disk shape); the client surfaces it verbatim so     */
-/* readers can hand a `PlotEnvelope` straight to a Plot library consumer   */
-/* without re-keying. Inputs accept camelCase for ergonomics and the       */
-/* client maps to snake_case at the request boundary (parallel to          */
-/* `dispatch()` mapping `branch/model/provider` onto the runs wire).       */
+/* Plots — typed facade over /plots endpoints (warren-8ffc). Wire envelope */
+/* is snake_case end-to-end (mirror of @os-eco/plot-cli) and surfaced      */
+/* verbatim; inputs accept camelCase and map to snake_case at the boundary */
+/* (parallel to dispatch() mapping branch/model/provider onto the runs     */
+/* wire).                                                                   */
 /* ----------------------------------------------------------------------- */
 
 export type PlotStatus = "drafting" | "ready" | "active" | "done" | "archived";

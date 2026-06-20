@@ -58,6 +58,14 @@ primary_region = "sjc"
   # the happy path silently stalls and operators must hand-dispatch the
   # planner (which then never links back to the conversation).
   WARREN_MERGE_POLLER_ENABLED = "1"
+  # Run heartbeat watchdog (warren-285d): force-fail a `running` run that
+  # goes silent-but-busy past this budget (newest event / started_at
+  # older than the timeout), reaping it `failed` (timed_out) so the burrow
+  # workspace + runaway bwrap tree is torn down instead of pinning CPU
+  # forever. On by default in code (warren-b2dc) with a 45-min built-in
+  # budget; pinned explicitly here so the deploy-config layer is the
+  # source of truth. Opt out with WARREN_WATCHDOG_DISABLED=1.
+  WARREN_RUN_HEARTBEAT_TIMEOUT_MS = "2700000"
 
 [[mounts]]
   source = "warren_data"

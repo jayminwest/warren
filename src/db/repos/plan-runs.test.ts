@@ -303,6 +303,49 @@ function suite(dialect: "sqlite" | "postgres"): void {
 			}
 		});
 
+		test("listDispatchedPlanIds returns empty for a project with no plan-runs", async () => {
+			const { handle, repo, projectId } = await open();
+			try {
+				expect(await repo.listDispatchedPlanIds(projectId)).toEqual([]);
+			} finally {
+				await handle.close();
+			}
+		});
+
+		test("listDispatchedPlanIds collapses multiple plan-runs for one plan id", async () => {
+			const { handle, repo, agentName, projectId } = await open();
+			try {
+				await repo.create({ ...seed({ agentName, projectId }), planId: "pl-dup" });
+				await repo.create({ ...seed({ agentName, projectId }), planId: "pl-dup" });
+				await repo.create({ ...seed({ agentName, projectId }), planId: "pl-other" });
+				const ids = await repo.listDispatchedPlanIds(projectId);
+				expect(ids.sort()).toEqual(["pl-dup", "pl-other"]);
+			} finally {
+				await handle.close();
+			}
+		});
+
+		test("listDispatchedPlanIds scopes to the requested project", async () => {
+			const { handle, repo, projects, agentName, projectId } = await open();
+			try {
+				const other = await projects.create({
+					gitUrl: "https://github.com/x/z.git",
+					localPath: "/data/projects/x/z",
+					defaultBranch: "main",
+				});
+				await repo.create({ ...seed({ agentName, projectId }), planId: "pl-here" });
+				await repo.create({
+					...seed({ agentName, projectId: other.id }),
+					planId: "pl-there",
+				});
+				expect(await repo.listDispatchedPlanIds(projectId)).toEqual(["pl-here"]);
+				expect(await repo.listDispatchedPlanIds(other.id)).toEqual(["pl-there"]);
+				expect(await repo.listDispatchedPlanIds("prj_nope")).toEqual([]);
+			} finally {
+				await handle.close();
+			}
+		});
+
 		test("deleting the parent cascades to children", async () => {
 			const { handle, adapter, repo, agentName, projectId } = await open();
 			try {

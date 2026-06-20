@@ -553,6 +553,22 @@ export interface SeedPlansResponse {
 }
 
 /**
+ * A plan surfaced by `GET /projects/:id/ready-plans` — approved, with at
+ * least one open child seed, and not yet dispatched (warren-7937).
+ */
+export interface ReadyPlan {
+	id: string;
+	name?: string;
+	status: string;
+	/** Number of child seeds that are still open (non-closed). */
+	openChildCount: number;
+}
+
+export interface ReadyPlansResponse {
+	plans: ReadyPlan[];
+}
+
+/**
  * `POST /projects/:id/triggers/:triggerId/run` returns the spawned run row
  * plus the burrow summary — same envelope as `POST /runs` (mx-f3b48d).
  */

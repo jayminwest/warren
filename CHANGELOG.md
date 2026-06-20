@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **`chore(deps)`** — bumped the pinned `@os-eco/seeds-cli` Docker image
+  install from 0.5.11 to 0.5.13, which fixes a critical bug in warren's
+  agent runtimes.
+
+- **`feat(runs)`** — the run heartbeat watchdog (warren-285d) is now **on by
+  default** (warren-b2dc) with a generous 45-minute built-in budget, instead
+  of arming only when `WARREN_RUN_HEARTBEAT_TIMEOUT_MS` was set. A fresh
+  deploy is now protected from silent-but-busy runaway runs without an
+  explicit env var, mirroring the conversation-idle coordinator. Tune the
+  budget via `WARREN_RUN_HEARTBEAT_TIMEOUT_MS`; opt out with
+  `WARREN_WATCHDOG_DISABLED=1` (or by pinning the budget to 0). `fly.toml`
+  pins the budget explicitly at the deploy-config layer.
+
 ### Added
 
 - **`ci(pr-fixer)`** — the polling CI-fixer is wired into the scheduler

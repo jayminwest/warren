@@ -609,6 +609,23 @@ paths:
           required: true
           schema:
             type: string
+  /projects/{id}/ready-plans:
+    get:
+      operationId: listReadyPlansHandler
+      tags:
+        - projects
+      summary: GET /projects/:id/ready-plans
+      responses:
+        '200':
+          description: Successful response.
+        default:
+          description: Error response (see `src/core/errors.ts`).
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
   /projects/{id}/refresh:
     post:
       operationId: refreshProjectHandler

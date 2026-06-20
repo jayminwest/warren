@@ -9,10 +9,13 @@
  *   Opt-in via `WARREN_PAUSE_DETECTOR_ENABLED=1`. The respawn seam is a
  *   logging no-op until the interactive primitive consumes it.
  * - `bootWatchdogFromEnv` (warren-285d): force-fails `running` runs that
- *   go silent-but-busy past `WARREN_RUN_HEARTBEAT_TIMEOUT_MS`, routing the
- *   timeout through reap so the burrow workspace + bwrap process tree is
- *   torn down. Opt-in: arms only on a positive timeout. See
- *   `src/runs/watchdog.ts`.
+ *   go silent-but-busy past the heartbeat budget, routing the timeout
+ *   through reap so the burrow workspace + bwrap process tree is torn
+ *   down. On by default (warren-b2dc) with a generous built-in budget
+ *   (`DEFAULT_WATCHDOG_HEARTBEAT_TIMEOUT_MS`, 45 min) so a fresh deploy is
+ *   protected without an explicit env var; tune via
+ *   `WARREN_RUN_HEARTBEAT_TIMEOUT_MS`, opt out via
+ *   `WARREN_WATCHDOG_DISABLED=1`. See `src/runs/watchdog.ts`.
  * - `bootConversationMergePollerFromEnv` (warren-b872): polls GitHub for
  *   sent-off conversations whose plotSync PR has merged and auto-dispatches
  *   the planner run keyed on `plot_id`. On by default (warren-157a) — like
@@ -218,7 +221,7 @@ export function bootWatchdogFromEnv(input: WatchdogWiringInput): WatchdogHandle 
 		...(input.now !== undefined ? { now: input.now } : {}),
 	});
 	if (!config.enabled) {
-		logger.info({}, "run watchdog disabled (set WARREN_RUN_HEARTBEAT_TIMEOUT_MS to arm)");
+		logger.info({}, "run watchdog disabled via WARREN_WATCHDOG_DISABLED (or budget pinned to 0)");
 	} else {
 		logger.info(
 			{ tickMs: config.tickMs, heartbeatTimeoutMs: config.heartbeatTimeoutMs },
@@ -259,7 +262,7 @@ export interface BackgroundDetectorHandles {
 /**
  * Boot all four background detectors in one call. Each is independently
  * gated by its own env flag inside the per-detector boot (the pause
- * detector and watchdog are opt-in; the conversation idle detector and the
+ * detector is opt-in; the watchdog, conversation idle detector, and
  * send-off merge poller are on-by-default opt-outs); this wrapper just
  * collapses the shared dep-plumbing so `bootServer` stays under the
  * file-size ratchet.
