@@ -1,0 +1,15 @@
+{
+  "attachments": [],
+  "created_at": "2026-06-19T11:41:52.892Z",
+  "id": "plot-d6a3976e",
+  "intent": {
+    "constraints": [],
+    "goal": "",
+    "non_goals": [],
+    "success_criteria": []
+  },
+  "name": "Better agent signals",
+  "schema_version": 1,
+  "status": "drafting",
+  "updated_at": "2026-06-19T11:41:52.892Z"
+}

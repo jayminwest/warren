@@ -1,0 +1,2 @@
+{"type":"plot_created","actor":"user:operator","at":"2026-06-19T11:41:52.892Z","data":{"name":"Better agent signals"}}
+{"type":"run_dispatched","actor":"user:operator","at":"2026-06-19T11:41:54.285Z","data":{"run_id":"run_z5d2wmp5451m","agent":"leveret","model":"claude-opus-4-8","project":"prj_z07y6ssfjfpk"}}
