@@ -2778,6 +2778,86 @@ composes scenarios 25 + 27 + 29 against a real warren+burrow stack:
   seeds-cli contract above explicitly rejects this; revisit when
   the org-readiness work (§11.J) lights up multi-project Plots.
 
+### 11.R Ready-to-dispatch surface (pl-3fc4, 2026-06-20)
+
+A read-only, operator-gated companion to the §11.P PlanRun dispatch
+path. It answers one question for the operator: *which approved plans
+are actually ready to become a PlanRun right now?* — and surfaces them
+as a one-click dispatch list. It mints nothing on its own: there is no
+background loop, no auto-dispatch, no new sandbox or burrow surface.
+The operator stays in the loop; the surface only computes and displays.
+
+**Read-on-demand, not a dispatcher (Approach A deferred).** Two shapes
+were considered. *Approach A* — a background worker that polls plans
+and auto-dispatches anything that becomes ready — is **explicitly
+deferred**: it would dispatch real sandboxed runs (cost, side effects,
+branch churn) with no human in the loop, contradicting warren's
+operator-gated posture (§11.D, the no-half-spawned-state policy shared
+with Plot's `hasPlot` gate and PlanRun's `.seeds/` gate). *Approach B*
+— the shipped design — computes readiness only when the operator reads
+the endpoint, so the same request that surfaces a ready plan is the one
+the operator chose to make. Dispatch remains the unchanged, explicit
+`POST /plan-runs` call (§11.P), fired from the one-click button.
+
+**Endpoint.** `GET /projects/:id/ready-plans` — per-project (readiness
+is seeds-scoped, so the surface is too). Gated exactly like
+`GET /projects/:id/seed-plans` (`listProjectSeedPlansHandler`): project
+404 → 404; project lacking `.seeds/` → typed 400; no seeds-cli
+configured → typed 400. No new auth or sandbox surface — it composes
+existing host-side `sd` readers plus one dedup query. Response is
+`{ plans: ReadyPlan[] }`, each entry `{ id, name?, status,
+openChildCount }`.
+
+**Readiness criteria.** A plan is *ready to dispatch* iff all three
+hold (the pure `computeReadyPlans` filter, `src/plan-runs/ready-plans.ts`,
+mx-3b5b7c):
+
+1. **approved** — `status === 'approved'`. Draft / unapproved plans
+   are never dispatch candidates.
+2. **has at least one open child** — at least one child seed is
+   non-closed (`openChildCount ≥ 1`). A plan whose children have all
+   merged/closed has nothing left to dispatch and is excluded. The
+   per-seed status map comes from `listSeedStatuses` (`sd list
+   --format json`, warren-6807).
+3. **not already dispatched** — the plan id is absent from
+   `PlanRunsRepo.listDispatchedPlanIds(projectId)` (the
+   `SELECT DISTINCT plan_id` dedup primitive, warren-34df). Once any
+   `plan_run` row exists for the plan it drops off the surface, so the
+   operator never double-dispatches the same plan from this list.
+
+**Composition.** The handler (`listReadyPlansHandler`,
+`src/server/handlers/projects.ts`) orchestrates only existing readers:
+`listPlans` → filter to `approved` → resolve each approved plan's
+children via `showPlan` → build the status map via `listSeedStatuses`
+→ fetch dispatched ids via `repos.planRuns.listDispatchedPlanIds` →
+return `computeReadyPlans(...)`. Typed client facades:
+`client.listReadyPlans` (`src/client/`) and `projectsApi.readyPlans`
+(`src/ui/src/api/`), mirroring the `seedPlans` facade shape.
+
+**UI surface.** `PlanRuns.tsx` gains a *Ready to dispatch* tab beside
+the existing plan-runs table. For the selected project it polls
+`projectsApi.readyPlans` (5s refetch) and renders the ready plans;
+each row's one-click Dispatch button opens the generalized
+`DispatchPlanDialog` (warren-585d) pre-filled with that plan id +
+project (+ `plot_id` when the project ships `.plot/`). Dispatch still
+goes over `POST /plan-runs` unchanged. Because readiness is
+per-project, the tab prompts the operator to pick a project when none
+is selected. Acceptance scenario
+`scripts/acceptance/scenarios/NN-ready-to-dispatch-plans.ts`
+(warren-f16c) proves the round-trip: an approved plan with one open
+child surfaces with `openChildCount` 1, then disappears once a
+`plan_run` is dispatched (dedup confirmed).
+
+**Deferred.**
+
+- Approach A background auto-dispatch (above) — the operator-gated
+  read-on-demand model is the V1 contract; auto-dispatch is out of
+  scope until there is a human-in-the-loop policy for unattended
+  cost/side-effects.
+- Cross-project / global ready-plans aggregation — the surface is
+  per-project by construction; a fan-out view revisits when the
+  org-readiness work (§11.J) lights up multi-project operation.
+
 ---
 
 ## 12. Relationship to other os-eco tools
