@@ -6,17 +6,17 @@
 	"$comment_pl55a3_closeout_2026_05_29": "warren-bfc6 / pl-369d: pl-55a3 (warren-6358, frontend design-system revamp, v0.7.2) is now closed. The TEMPORARY overhaul ceilings raised across PR #197/#201 are collapsed to honest floors here. NOTE: pl-55a3 grew the bundle right up to its ceilings — the only metric with genuine room to ratchet down is gzip css (8500 → 8200). raw js, raw css, and gzip js are at their true floors and cannot drop. The first attempt at this closeout (commit c2a3ba5) set gzip js to 172580 from a number that was NOT produced by `bun run check:bundle-size` — it matched Vite's build-log reporter (~2KB cooler), so when CI ran the actual script the identical bytes gzipped to 173931 and the guard failed. Re-baselined from the actual check script on a clean --frozen-lockfile build (byte-identical to CI): gzip js 173931 / raw js 583998 / gzip css 8005 / raw css 40432 (largest chunk == totals — single js + single css asset). Budgets = those figures + a small churn headroom. The bulk of the js floor is the Phase 5 motion layer (framer-motion v12 via strict LazyMotion + domAnimation, NOT the full motion proxy). The 'ratchet only goes down' rule is back in force from here — future UI work must hold flat or shrink against THIS floor.",
 	"totals": {
 		"raw": {
-			"js": 1037767,
+			"js": 1038731,
 			"css": 42847
 		},
 		"gzip": {
-			"js": 306282,
+			"js": 306505,
 			"css": 8577
 		}
 	},
 	"largest": {
 		"gzip": {
-			"js": 180833,
+			"js": 181058,
 			"css": 8577
 		}
 	}

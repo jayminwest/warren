@@ -380,17 +380,12 @@ export const planRuns = sqliteTable(
 		dispatcherHandle: text("dispatcher_handle").notNull().default("operator"),
 		trigger: text("trigger").notNull().default("manual"),
 		// Optional back-link to the Plot this plan-run was dispatched against
-		// (warren-06dc / pl-7937 Phase 2; mirrors `runs.plot_id` from
-		// warren-a8c3). Gated on the owning project's `hasPlot` flag at
-		// handler level — POST /plan-runs rejects a plot_id when the project
-		// has no `.plot/` directory. When set, the coordinator forwards it to
-		// every child run's spawn input so PLOT_ID/PLOT_ACTOR injection and
-		// per-child `run_dispatched` emission light up via the unchanged
-		// Phase 1 path, and the coordinator auto-transitions the bound Plot
-		// to `done` when every child reaches a terminal state. Nullable: legacy
-		// rows and plan-runs dispatched without a Plot leave it null. Plain
-		// text, no FK — Plots live in the project workspace, not in warren's
-		// database.
+		// (warren-06dc / pl-7937 Phase 2; mirrors `runs.plot_id`). Gated on the
+		// owning project's `hasPlot` flag at handler level. When set, the
+		// coordinator forwards it to every child run's spawn input (PLOT_ID/
+		// PLOT_ACTOR injection, per-child `run_dispatched`) and auto-transitions
+		// the bound Plot to `done` once every child is terminal. Nullable;
+		// plain text, no FK — Plots live in the project workspace.
 		plotId: text("plot_id"),
 		// Back-link to the parent run that created this plan-run via
 		// auto_plan_run (warren-d9a2). When set, the coordinator gates on
@@ -435,6 +430,9 @@ export const planRunChildren = sqliteTable(
 		seq: integer("seq").notNull(),
 		seedId: text("seed_id").notNull(),
 		runId: text("run_id").references(() => runs.id, { onDelete: "set null" }),
+		// Execution project the coordinator routed this child to (pl-fb43
+		// step 6 / warren-57f6). Nullable (pending/skipped + legacy rows).
+		executionProjectId: text("execution_project_id"),
 		state: text("state", { enum: PLAN_RUN_CHILD_STATES }).notNull(),
 		createdAt: text("created_at").notNull(),
 		updatedAt: text("updated_at").notNull(),

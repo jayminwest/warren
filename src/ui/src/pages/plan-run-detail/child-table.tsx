@@ -49,6 +49,7 @@ export function PlanRunChildTable({
 								<TableHead>Seq</TableHead>
 								<TableHead>State</TableHead>
 								<TableHead>Seed</TableHead>
+								<TableHead>Repo</TableHead>
 								<TableHead>Run</TableHead>
 								<TableHead>Started</TableHead>
 								<TableHead>Ended</TableHead>
@@ -67,6 +68,13 @@ export function PlanRunChildTable({
 											<PlanRunChildStateBadge state={c.state} />
 										</TableCell>
 										<TableCell className="font-mono text-xs">{c.seedId}</TableCell>
+										<TableCell className="font-mono text-xs">
+											{c.executionProjectId !== null ? (
+												<span title="execution repo">{c.executionProjectId}</span>
+											) : (
+												<span className="text-(--color-muted-foreground)">—</span>
+											)}
+										</TableCell>
 										<TableCell className="font-mono text-xs">
 											{c.runId !== null ? (
 												<Link

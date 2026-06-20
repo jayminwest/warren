@@ -248,6 +248,9 @@ export const planRunChildren = pgTable(
 		seq: integer("seq").notNull(),
 		seedId: text("seed_id").notNull(),
 		runId: text("run_id").references(() => runs.id, { onDelete: "set null" }),
+		// Execution project this child was routed to (pl-fb43 step 6 /
+		// warren-57f6) — mirror of sqlite. See sqlite.ts for intent.
+		executionProjectId: text("execution_project_id"),
 		state: text("state", { enum: PLAN_RUN_CHILD_STATES }).notNull(),
 		createdAt: text("created_at").notNull(),
 		updatedAt: text("updated_at").notNull(),

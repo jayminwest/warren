@@ -101,6 +101,7 @@ export interface UpdateChildInput {
 
 export interface PlanRunChildPatch {
 	runId?: string | null;
+	executionProjectId?: string | null;
 	state?: PlanRunChildState;
 	startedAt?: string | null;
 	endedAt?: string | null;
@@ -110,6 +111,7 @@ export interface PlanRunChildPatch {
 
 const CHILD_PATCH_KEYS = [
 	"runId",
+	"executionProjectId",
 	"state",
 	"startedAt",
 	"endedAt",
@@ -169,6 +171,7 @@ export class PlanRunsRepo {
 			seq: c.seq,
 			seedId: c.seedId,
 			runId: null,
+			executionProjectId: null,
 			state: c.state ?? "pending",
 			createdAt: nowIso,
 			updatedAt: nowIso,

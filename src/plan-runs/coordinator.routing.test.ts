@@ -136,6 +136,10 @@ describe("advancePlanRun — per-child execution routing (warren-d9f3)", () => {
 		const exec = captured[0]?.execution as ChildExecution;
 		expect(exec.executionProjectId).toBe(ctx.childProjectId);
 		expect(exec.repoRef).toBe("acme/service");
+		// pl-fb43 step 6 / warren-57f6: the resolved execution project is
+		// persisted on the child row so the detail API + UI can show it.
+		const children = await ctx.repos.planRuns.listChildren(ctx.planRun.id);
+		expect(children[0]?.executionProjectId).toBe(ctx.childProjectId);
 	});
 
 	test("untagged child falls back to the coordination project", async () => {

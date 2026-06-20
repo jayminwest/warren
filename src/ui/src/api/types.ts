@@ -637,6 +637,14 @@ export interface PlanRunChildRow {
 	seq: number;
 	seedId: string;
 	runId: string | null;
+	/**
+	 * Execution project this child was routed to (pl-fb43 step 6 /
+	 * warren-57f6). The repo whose clone the child works in — the
+	 * coordination project for an untagged child, or the project a child
+	 * seed's `extensions.repo` resolved to. Null until the child is
+	 * dispatched (and on legacy rows).
+	 */
+	executionProjectId: string | null;
 	state: PlanRunChildState;
 	createdAt: string;
 	updatedAt: string;

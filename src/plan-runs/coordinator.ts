@@ -361,6 +361,10 @@ export async function advancePlanRun(input: AdvancePlanRunInput): Promise<Advanc
 			seq: next.seq,
 			patch: {
 				runId: spawnResult.runId,
+				// pl-fb43 step 6 / warren-57f6: persist the resolved execution
+				// project so the detail API + UI can show which repo this child
+				// targeted without re-reading the seed's `extensions.repo`.
+				executionProjectId: execution.executionProjectId,
 				state: "dispatched",
 				startedAt: nowFn().toISOString(),
 			},
