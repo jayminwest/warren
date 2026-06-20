@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.4] — 2026-06-20
+
 ### Changed
 
 - **`chore(deps)`** — bumped the pinned `@os-eco/seeds-cli` Docker image
@@ -34,6 +36,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `ci_fixer.dispatched` system event on the opener run. The PR-head
   `targetBranch` push and CI-log extraction land in warren-a993
   (warren-0b75).
+
+## [0.9.3] — 2026-06-16
 
 The remaining pl-dfb5 papercuts land: a project-scoped seeds-plan read
 endpoint feeding a populated plan selector on the dispatch form, plus a
