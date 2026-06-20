@@ -29,6 +29,24 @@ export interface SpawnRunInput {
 	readonly burrowClientPool: BurrowClientPool;
 	readonly agentName: string;
 	readonly projectId: string;
+	/**
+	 * Coordination project id (warren-c1a4 / pl-fb43 step 3). Splits the
+	 * single project identity into two roles:
+	 *
+	 *   - `projectId` (execution) selects the repo cloned into the burrow
+	 *     workspace — where the agent actually does its work.
+	 *   - `seedProjectId` (coordination) selects the *host* project clone
+	 *     used for the post-dispatch bookkeeping: the seeds
+	 *     `updateExtensions` stamp (`role`/`lastRunId`/`lastRunAt`) and the
+	 *     `run_dispatched` Plot append/mirror.
+	 *
+	 * Defaults to `projectId` when unset/empty, so a same-repo run is
+	 * byte-identical to the pre-split behavior. When it differs, the seed
+	 * stamp and Plot operations target the coordination project's clone
+	 * while the workspace still clones the execution `projectId`. The
+	 * burrow provisioning path is unaffected — it always uses `projectId`.
+	 */
+	readonly seedProjectId?: string;
 	readonly prompt: string;
 	readonly trigger?: string;
 	/**

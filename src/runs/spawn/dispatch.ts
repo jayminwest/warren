@@ -24,28 +24,19 @@
  * picks a worker BEFORE the warren row is created so `runs.worker_id`
  * lands at row-creation time and the same `BurrowClient` services
  * provision, dispatch, and rollback. A `burrows` row capturing the
- * burrow → worker pinning is written in the same turn as
- * `attachBurrow`, so sticky-by-burrow (cancel / steer / reap / fan-out
- * reads via `pool.clientFor`) has a durable mapping to resolve against.
+ * burrow → worker pinning is written in the same turn as `attachBurrow`
+ * (sticky-by-burrow for cancel / steer / reap / fan-out reads).
  *
  * The warren run row is created BEFORE any burrow call, with both
  * burrow IDs nulled — `attachBurrow` writes them back as each call
- * succeeds. That lets us carry the warren `run_xxx` id through the
- * flow (so log lines, error messages, and event payloads can reference
- * it) without a chicken-and-egg between the two systems' IDs.
+ * succeeds, so the warren `run_xxx` id is in hand throughout the flow.
  *
- * Failure handling:
- *   - Anything before step 2 (agent/project lookup, agent JSON
- *     re-validation, seed-payload validation) just throws — no warren
- *     row was created.
- *   - Failures from step 2 onward are caught: the warren row is
- *     transitioned `queued → cancelled` (allowed by the runs state
- *     machine), and if a burrow was provisioned we best-effort destroy
- *     it so it doesn't sit as a stranded sandbox. A seed-validation
- *     failure inside `burrows.up` rolls back on burrow's side before
- *     warren ever observes a burrow id — `burrow` stays `null` so no
- *     destroy call fires. The original error is rethrown so the caller
- *     (HTTP route, CLI) can surface it.
+ * Failure handling: anything before step 2 just throws (no warren row
+ * exists). Failures from step 2 onward are caught — the warren row is
+ * transitioned `queued → cancelled` and any provisioned burrow is
+ * best-effort destroyed; a seed-validation failure inside `burrows.up`
+ * rolls back on burrow's side before warren observes a burrow id. The
+ * original error is rethrown for the caller (HTTP route, CLI).
  */
 
 import { join } from "node:path";
@@ -77,6 +68,7 @@ import {
 } from "./plot-append.ts";
 import { writeSeedExtensions } from "./seed-extensions.ts";
 import type { SpawnRunInput, SpawnRunResult } from "./types.ts";
+import { resolveCoordinationProject } from "./util.ts";
 
 export async function spawnRun(input: SpawnRunInput): Promise<SpawnRunResult> {
 	if (input.prompt.trim() === "") {
@@ -142,6 +134,14 @@ export async function spawnRun(input: SpawnRunInput): Promise<SpawnRunResult> {
 				})
 			: null;
 	const projectAfterRefresh = refreshed?.project ?? project;
+
+	// warren-c1a4: coordination project — host clone the post-dispatch
+	// seed stamp + Plot append target (defaults to the execution project).
+	const coordinationProject = await resolveCoordinationProject(
+		input.repos,
+		input.seedProjectId,
+		projectAfterRefresh,
+	);
 
 	// warren-618b: fold per-project provider/model defaults onto the agent
 	// frontmatter, operator per-run override winning. Order: operator
@@ -266,7 +266,7 @@ export async function spawnRun(input: SpawnRunInput): Promise<SpawnRunResult> {
 			await writeSeedExtensions({
 				repos: input.repos,
 				seedsCli: input.seedsCli,
-				projectPath: projectAfterRefresh.localPath,
+				projectPath: coordinationProject.localPath,
 				seedId: input.seedId,
 				runId: run.id,
 				agentName: agent.name,
@@ -281,12 +281,12 @@ export async function spawnRun(input: SpawnRunInput): Promise<SpawnRunResult> {
 			await emitRunDispatchedToPlot({
 				repos: input.repos,
 				runId: run.id,
-				plotDir: join(projectAfterRefresh.localPath, ".plot"),
+				plotDir: join(coordinationProject.localPath, ".plot"),
 				plotId: updated.plotId,
 				handle: resolveDispatcherHandle(input.dispatcherHandle),
 				agentName: agent.name,
 				model: extractModel(agent.frontmatter),
-				projectId: projectAfterRefresh.id,
+				projectId: coordinationProject.id,
 				appender: input.plotAppender ?? defaultPlotAppender,
 				now: input.now?.() ?? new Date(),
 			});
