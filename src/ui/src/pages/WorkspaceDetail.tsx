@@ -249,7 +249,6 @@ function ShapeConversation({ conversation }: { conversation: ConversationRow }) 
 					<DispatchPlanButton
 						projectId={conversation.projectId}
 						plotId={conversation.plotId}
-						plannerRunId={conversation.plannerRunId}
 					/>
 				) : null}
 			</div>
@@ -408,11 +407,7 @@ function PlanHandoff({
 						</label>
 						<div>
 							{signedOff && projectId !== null ? (
-								<DispatchPlanButton
-									projectId={projectId}
-									plotId={plotId}
-									plannerRunId={plannerRunId}
-								/>
+								<DispatchPlanButton projectId={projectId} plotId={plotId} />
 							) : (
 								<p className="text-xs text-(--color-muted-foreground)">
 									{projectId === null
