@@ -20,6 +20,7 @@ import {
 	type ListPlotsFilter,
 	type ListPlotsResponse,
 	type ListProjectsResponse,
+	type ListReadyPlansResponse,
 	type ListRunsResponse,
 	type PlanRunDetailResponse,
 	type PlotEnvelope,
@@ -134,6 +135,12 @@ export class WarrenClient {
 		return this.request<ListProjectsResponse>("/projects");
 	}
 
+	/** `GET /projects/:id/ready-plans` — approved, undispatched plans with an open child (warren-7937). */
+	async listReadyPlans(projectId: string, signal?: AbortSignal): Promise<ListReadyPlansResponse> {
+		const path = `/projects/${encodeURIComponent(projectId)}/ready-plans`;
+		return this.request<ListReadyPlansResponse>(path, signal ? { signal } : {});
+	}
+
 	async createProject(input: CreateProjectInput): Promise<ProjectRow> {
 		return this.request<ProjectRow>("/projects", {
 			method: "POST",
@@ -211,15 +218,11 @@ export class WarrenClient {
 
 	/**
 	 * `POST /runs/:id/steer` — mid-run steering. Forwards an operator
-	 * message into the burrow inbox; the next agent turn on the run's
-	 * burrow receives it. Valid only while the run is non-terminal AND a
-	 * burrow is attached (the spawn-rollback window throws
-	 * `ValidationError` server-side).
-	 *
-	 * For batch runs this path delivers nudges, but blocking-question
-	 * `pause ↔ resume` is driven server-side by Plot `question_answered`
-	 * events (`src/runs/pause.ts`), not by this endpoint — callers do not
-	 * need to issue an explicit "resume" after a steer.
+	 * message into the burrow inbox; valid only while the run is
+	 * non-terminal AND a burrow is attached (else `ValidationError`).
+	 * Batch runs get nudges here, but blocking-question `pause ↔ resume`
+	 * is driven server-side by Plot `question_answered` events
+	 * (`src/runs/pause.ts`) — no explicit "resume" needed after a steer.
 	 */
 	async steer(runId: string, input: SteerRunInput): Promise<SteerRunResponse> {
 		const body: Record<string, unknown> = { body: input.body };
