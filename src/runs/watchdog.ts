@@ -35,9 +35,14 @@
  * is dropped, per-run errors are isolated so one bad row can't tear down
  * the loop, and `stop()` drains the in-flight tick before resolving.
  *
- * Disabled by default — set `WARREN_RUN_HEARTBEAT_TIMEOUT_MS` to a
- * positive value to arm it. The budget should be generous (well above any
- * legitimately slow-but-silent tool such as a cold `bun install`); the
+ * On by default (warren-b2dc) — like the conversation-idle coordinator,
+ * this is a lifecycle-reclaim safety net that must not depend on an
+ * operator remembering an env var, so a fresh deploy is protected without
+ * one. The built-in budget (`DEFAULT_WATCHDOG_HEARTBEAT_TIMEOUT_MS`, 45
+ * min) is deliberately generous — well above any legitimately
+ * slow-but-silent tool such as a cold `bun install` — and can be tuned via
+ * `WARREN_RUN_HEARTBEAT_TIMEOUT_MS`. Opt out entirely with
+ * `WARREN_WATCHDOG_DISABLED=1` (or by pinning the budget to 0). The
  * default tick cadence is 30s.
  */
 
@@ -56,6 +61,15 @@ export const WATCHDOG_TIMED_OUT_KIND = "watchdog.timed_out";
 
 /** Default tick cadence for the heartbeat watchdog (ms). */
 export const DEFAULT_WATCHDOG_TICK_MS = 30_000;
+
+/**
+ * Built-in heartbeat budget when the watchdog is left on-by-default
+ * (warren-b2dc): 45 minutes. Generous on purpose — comfortably above any
+ * legitimately slow-but-silent tool (cold `bun install`, large clone) so a
+ * healthy run is never mistaken for a hung one. Override with
+ * `WARREN_RUN_HEARTBEAT_TIMEOUT_MS`.
+ */
+export const DEFAULT_WATCHDOG_HEARTBEAT_TIMEOUT_MS = 2_700_000;
 
 export interface WatchdogTickDeps {
 	readonly repos: Repos;
@@ -219,7 +233,10 @@ function formatError(err: unknown): string {
 /* -------------------------------------------------------------------- */
 
 export interface WatchdogConfig {
-	/** Armed iff `heartbeatTimeoutMs > 0`. */
+	/**
+	 * Armed unless explicitly opted out (`WARREN_WATCHDOG_DISABLED`) or the
+	 * budget is pinned to 0. On by default (warren-b2dc).
+	 */
 	readonly enabled: boolean;
 	readonly heartbeatTimeoutMs: number;
 	readonly tickMs: number;
@@ -228,26 +245,36 @@ export interface WatchdogConfig {
 interface WatchdogEnvLike {
 	readonly WARREN_RUN_HEARTBEAT_TIMEOUT_MS?: string;
 	readonly WARREN_WATCHDOG_TICK_MS?: string;
+	readonly WARREN_WATCHDOG_DISABLED?: string;
 }
 
 /**
- * Resolve watchdog config from env. The detector is opt-in: it arms only
- * when `WARREN_RUN_HEARTBEAT_TIMEOUT_MS` is a positive integer. An invalid
- * value throws so a typo in a deploy config fails loud rather than
- * silently disabling the safety net.
+ * Resolve watchdog config from env. The detector is on by default
+ * (warren-b2dc): when `WARREN_RUN_HEARTBEAT_TIMEOUT_MS` is unset it arms
+ * with the generous built-in `DEFAULT_WATCHDOG_HEARTBEAT_TIMEOUT_MS`
+ * budget. Operators opt out with `WARREN_WATCHDOG_DISABLED=1` (or by
+ * pinning the budget to 0). An invalid timeout/tick throws so a typo in a
+ * deploy config fails loud rather than silently mis-arming the safety net.
  */
 export function loadWatchdogConfigFromEnv(env: WatchdogEnvLike): WatchdogConfig {
 	const heartbeatTimeoutMs = parseNonNegativeInt(
 		env.WARREN_RUN_HEARTBEAT_TIMEOUT_MS,
 		"WARREN_RUN_HEARTBEAT_TIMEOUT_MS",
-		0,
+		DEFAULT_WATCHDOG_HEARTBEAT_TIMEOUT_MS,
 	);
 	const tickMs = parsePositiveInt(
 		env.WARREN_WATCHDOG_TICK_MS,
 		"WARREN_WATCHDOG_TICK_MS",
 		DEFAULT_WATCHDOG_TICK_MS,
 	);
-	return { enabled: heartbeatTimeoutMs > 0, heartbeatTimeoutMs, tickMs };
+	const optedOut = parseDisabledFlag(env.WARREN_WATCHDOG_DISABLED);
+	return { enabled: !optedOut && heartbeatTimeoutMs > 0, heartbeatTimeoutMs, tickMs };
+}
+
+function parseDisabledFlag(raw: string | undefined): boolean {
+	if (raw === undefined) return false;
+	const t = raw.trim().toLowerCase();
+	return t === "1" || t === "true" || t === "yes" || t === "on";
 }
 
 function parseNonNegativeInt(raw: string | undefined, name: string, fallback: number): number {

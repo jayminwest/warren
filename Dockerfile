@@ -91,7 +91,7 @@ ENV BUN_INSTALL=/usr/local
 RUN bun install -g \
     @os-eco/burrow-cli@0.3.12 \
     @os-eco/canopy-cli@0.2.4 \
-    @os-eco/seeds-cli@0.5.11 \
+    @os-eco/seeds-cli@0.5.13 \
     @os-eco/mulch-cli@0.10.7 \
     @os-eco/sapling-cli@0.3.2 \
     @os-eco/plot-cli@0.4.0 \
