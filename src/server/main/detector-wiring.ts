@@ -32,6 +32,7 @@
  */
 
 import type { BurrowClientPool } from "../../burrow-client/pool.ts";
+import type { DrizzleAdapter } from "../../db/repos/drizzle-adapter.ts";
 import type { Repos } from "../../db/repos/index.ts";
 import { createPrMergeChecker } from "../../plan-runs/index.ts";
 import type { SpawnFn } from "../../projects/clone.ts";
@@ -52,6 +53,7 @@ import {
 	type RunEventBroker,
 	type WatchdogHandle,
 } from "../../runs/index.ts";
+import { bootOpsStatsWorker, type OpsStatsWorkerHandle } from "../../runs/ops-stats.ts";
 import type { SeedsCliDeps } from "../../seeds-cli/index.ts";
 import type { WarrenConfigCache } from "../../warren-config/index.ts";
 import type { EnvLike } from "../config.ts";
@@ -238,6 +240,7 @@ export function bootWatchdogFromEnv(input: WatchdogWiringInput): WatchdogHandle 
  */
 export interface BackgroundDetectorWiringInput {
 	readonly env: EnvLike;
+	readonly adapter: DrizzleAdapter;
 	readonly repos: Repos;
 	readonly burrowClientPool: BurrowClientPool;
 	readonly broker: RunEventBroker;
@@ -257,6 +260,8 @@ export interface BackgroundDetectorHandles {
 	readonly watchdog: WatchdogHandle;
 	readonly mergePoller: MergePollerHandle;
 	readonly conversationIdleDetector: ConversationIdleDetectorHandle;
+	/** Periodic operational-stats log line (warren-b2dd / pl-f700 step 6). */
+	readonly opsStatsWorker: OpsStatsWorkerHandle;
 }
 
 /**
@@ -310,5 +315,14 @@ export function bootBackgroundDetectors(
 		logger: input.logger,
 		...now,
 	});
-	return { pauseDetector, watchdog, mergePoller, conversationIdleDetector };
+	// Read-only observability: one `ops.stats` line per tick with runs-by-
+	// state, active bridge count, and cost aggregates — all from data
+	// already in SQLite plus the in-process bridge registry size.
+	const opsStatsWorker = bootOpsStatsWorker({
+		adapter: input.adapter,
+		bridges: input.bridges,
+		logger: input.logger,
+		env: input.env,
+	});
+	return { pauseDetector, watchdog, mergePoller, conversationIdleDetector, opsStatsWorker };
 }

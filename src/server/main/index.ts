@@ -30,7 +30,6 @@
  */
 
 import { join } from "node:path";
-import pino from "pino";
 import { BurrowClientPool } from "../../burrow-client/index.ts";
 import { openDatabase } from "../../db/client.ts";
 import { DrizzleAdapter } from "../../db/repos/drizzle-adapter.ts";
@@ -82,6 +81,7 @@ import { buildServerDeps } from "./deps.ts";
 import { bootBackgroundDetectors } from "./detector-wiring.ts";
 import {
 	bridgeLoggerFromPino,
+	createWarrenLogger,
 	planRunLoggerFromPino,
 	previewEvictionLoggerFromPino,
 	probeLoggerFromPino,
@@ -111,7 +111,7 @@ export interface WarrenServerHandle extends ServeHandle {
 
 export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenServerHandle> {
 	const env = opts.env ?? process.env;
-	const logger = pino({ name: "warren", level: env.WARREN_LOG_LEVEL ?? "info" });
+	const logger = createWarrenLogger(env);
 
 	const serverConfig = loadServerConfigFromEnv({
 		env,
@@ -193,7 +193,8 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 	// Dialect-polymorphic allocator (warren-adfb): sqlite uses BEGIN/COMMIT
 	// + per-instance mutex; postgres adds `pg_advisory_xact_lock` for cross-
 	// process serialization. Constructed unconditionally for both dialects.
-	const portAllocator = new PreviewPortAllocator(DrizzleAdapter.for(db), previewPortRange);
+	const adapter = DrizzleAdapter.for(db);
+	const portAllocator = new PreviewPortAllocator(adapter, previewPortRange);
 	const previewLaunchConfig = loadPreviewLaunchConfigFromEnv(env);
 	const previewEvictionConfig = loadPreviewEvictionConfigFromEnv(env);
 	const workspaceGcConfig = loadWorkspaceGcConfigFromEnv(env);
@@ -227,12 +228,7 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 		);
 	}
 
-	// Best-effort startup probe so the operator sees a clear error if any
-	// worker's burrow is down at boot — but we don't refuse to start, since
-	// /readyz reports the live state and a freshly-installed warren often
-	// boots before burrow's socket lands. `pool.probe()` aggregates per-
-	// worker results without throwing, so a degraded multi-worker pool
-	// surfaces every failing worker on one log line.
+	// Best-effort startup probe (non-fatal; /readyz reports live state).
 	burrowClientPool.probe().then((results) => {
 		const failed = results.filter((r) => !r.ok);
 		if (failed.length > 0) {
@@ -405,9 +401,10 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 	// idle-timeout coordinator (warren-005d, finalizes an idle conversation's
 	// anchoring run; the conversation itself stays active). See
 	// detector-wiring.ts.
-	const { pauseDetector, watchdog, mergePoller, conversationIdleDetector } =
+	const { pauseDetector, watchdog, mergePoller, conversationIdleDetector, opsStatsWorker } =
 		bootBackgroundDetectors({
 			env,
+			adapter,
 			repos,
 			burrowClientPool,
 			broker,
@@ -524,6 +521,7 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 			await scheduler.stop();
 			await previewEvictionWorker.stop();
 			await workspaceGcWorker.stop();
+			await opsStatsWorker.stop();
 			await workerProbe.stop();
 			await bridgesBoot.registry.stopAll();
 			await burrowClientPool.close();
