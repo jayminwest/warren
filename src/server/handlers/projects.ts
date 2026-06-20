@@ -7,9 +7,10 @@
 
 import { NotFoundError, ValidationError } from "../../core/errors.ts";
 import { ProjectLacksSeedsError } from "../../plan-runs/errors.ts";
+import { computeReadyPlans, type ReadyPlanInput } from "../../plan-runs/index.ts";
 import { addProject, deleteProject, listProjects, refreshProject } from "../../projects/index.ts";
 import { spawnRun } from "../../runs/index.ts";
-import { listPlans, showSeed } from "../../seeds-cli/index.ts";
+import { listPlans, listSeedStatuses, showPlan, showSeed } from "../../seeds-cli/index.ts";
 import { buildTriggerSummaries, parseCron, resolveCronPrompt } from "../../triggers/index.ts";
 import {
 	type CronTrigger,
@@ -160,6 +161,59 @@ export function listProjectSeedPlansHandler(deps: ServerDeps): RouteHandler {
 		}
 		const plans = await listPlans(deps.seedsCli, project.localPath);
 		return jsonResponse(200, { plans });
+	};
+}
+
+/**
+ * `GET /projects/:id/ready-plans` — list a project's approved plans that
+ * are ready to dispatch (warren-f716 / pl-3fc4 step 4).
+ *
+ * Read-on-demand composition of existing seeds-cli readers plus the
+ * plan-runs dedup query: `listPlans` → filter to `approved` → resolve each
+ * approved plan's children via `showPlan` → build the project-wide status
+ * map via `listSeedStatuses` → fetch already-dispatched plan ids via
+ * `repos.planRuns.listDispatchedPlanIds` → return `{ plans }` from the pure
+ * `computeReadyPlans` helper (approved + ≥1 open child + not dispatched).
+ *
+ * Gates mirror `listProjectSeedPlansHandler`: project 404 via
+ * `projects.require`, `hasSeeds` gate (ProjectLacksSeedsError → 400),
+ * `seedsCli` configured (ValidationError → 400), and SeedsCliError from
+ * any reader bubbles up as 500.
+ */
+export function listReadyPlansHandler(deps: ServerDeps): RouteHandler {
+	return async (ctx) => {
+		const id = requireParam(ctx, "id");
+		const project = await deps.repos.projects.require(id);
+		if (!project.hasSeeds) {
+			throw new ProjectLacksSeedsError(
+				`project ${project.id} has no .seeds/ directory; ready plans are not available`,
+				{ recoveryHint: "add a .seeds/ directory to the project clone and refresh" },
+			);
+		}
+		if (deps.seedsCli === undefined) {
+			throw new ValidationError(
+				"seeds CLI is not configured on this warren; ready plans require sd",
+				{ recoveryHint: "set WARREN_SD_BINARY (or install sd on PATH) and restart" },
+			);
+		}
+		const seedsCli = deps.seedsCli;
+		const allPlans = await listPlans(seedsCli, project.localPath);
+		const approved = allPlans.filter((plan) => plan.status === "approved");
+		const plans: ReadyPlanInput[] = await Promise.all(
+			approved.map(async (plan) => {
+				const detail = await showPlan(seedsCli, project.localPath, plan.id);
+				return {
+					id: plan.id,
+					...(plan.name === undefined ? {} : { name: plan.name }),
+					status: plan.status,
+					children: detail.children,
+				};
+			}),
+		);
+		const seedStatusById = await listSeedStatuses(seedsCli, project.localPath);
+		const dispatchedPlanIds = new Set(await deps.repos.planRuns.listDispatchedPlanIds(project.id));
+		const ready = computeReadyPlans({ plans, seedStatusById, dispatchedPlanIds });
+		return jsonResponse(200, { plans: ready });
 	};
 }
 
