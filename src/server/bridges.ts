@@ -53,6 +53,7 @@ import {
 	type BridgeLogger,
 	type BridgeRunStreamInput,
 	type BridgeRunStreamResult,
+	bindBridgeLogger,
 	bridgeRunStream,
 	type ReapRunInput,
 	type ReapRunResult,
@@ -380,7 +381,10 @@ export async function bootBridges(input: CreateBridgeRegistryInput): Promise<Boo
 					burrowRunId: run.burrowRunId,
 					repos: input.repos,
 					broker: input.broker,
-					...(input.logger !== undefined ? { logger: input.logger } : {}),
+					logger: bindBridgeLogger(input.logger, {
+						run_id: run.id,
+						burrow_run_id: run.burrowRunId,
+					}),
 				});
 				continue;
 			}

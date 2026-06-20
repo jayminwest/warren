@@ -54,7 +54,7 @@ import type { RunRow } from "../db/schema.ts";
 import type { RunEventBroker } from "./events.ts";
 import type { AutoOpenPrConfig } from "./pr.ts";
 import { type ReapRunInput, type ReapRunResult, reapRun } from "./reap/index.ts";
-import type { BridgeLogger } from "./stream/index.ts";
+import { type BridgeLogger, bindBridgeLogger } from "./stream/index.ts";
 
 /** Event kind emitted on the run row when the watchdog force-fails a hung run. */
 export const WATCHDOG_TIMED_OUT_KIND = "watchdog.timed_out";
@@ -141,9 +141,9 @@ export async function tickWatchdog(deps: WatchdogTickDeps): Promise<WatchdogTick
 			timedOut.push({ runId: run.id, idleMs });
 		} catch (err) {
 			errors.push({ runId: run.id, reason: formatError(err) });
-			deps.logger?.error?.(
-				{ runId: run.id, reason: formatError(err) },
-				"watchdog.force_fail_failed",
+			bindBridgeLogger(deps.logger, { run_id: run.id }).error(
+				{ event: "watchdog.force_fail_failed", reason: formatError(err) },
+				"watchdog force-fail failed",
 			);
 		}
 	}
@@ -157,8 +157,14 @@ async function forceFail(
 	idleMs: number,
 	now: Date,
 ): Promise<void> {
+	// warren-9f06: bind run_id (+ burrow_run_id when present) once per
+	// force-fail so the timeout/cancel lines share correlation fields.
+	const log = bindBridgeLogger(deps.logger, {
+		run_id: run.id,
+		...(run.burrowRunId !== null ? { burrow_run_id: run.burrowRunId } : {}),
+	});
 	await emitTimedOutEvent(deps, run, idleMs, now);
-	await cancelBurrowRun(deps, run);
+	await cancelBurrowRun(deps, run, log);
 
 	const reap = deps.reap ?? reapRun;
 	await reap({
@@ -173,9 +179,13 @@ async function forceFail(
 		...(deps.autoOpenPr !== undefined ? { autoOpenPr: deps.autoOpenPr } : {}),
 	});
 
-	deps.logger?.info?.(
-		{ runId: run.id, idleMs, heartbeatTimeoutMs: deps.heartbeatTimeoutMs },
-		WATCHDOG_TIMED_OUT_KIND,
+	log.info(
+		{
+			event: WATCHDOG_TIMED_OUT_KIND,
+			idleMs,
+			heartbeatTimeoutMs: deps.heartbeatTimeoutMs,
+		},
+		"watchdog force-failed hung run",
 	);
 }
 
@@ -185,7 +195,11 @@ async function forceFail(
  * run) and transport failures — reap's `workspace_destroy` is the real
  * teardown, and a failed cancel must never block the force-fail.
  */
-async function cancelBurrowRun(deps: WatchdogTickDeps, run: RunRow): Promise<void> {
+async function cancelBurrowRun(
+	deps: WatchdogTickDeps,
+	run: RunRow,
+	log: ReturnType<typeof bindBridgeLogger>,
+): Promise<void> {
 	if (run.burrowId === null || run.burrowRunId === null) return;
 	const burrowRunId = run.burrowRunId;
 	try {
@@ -195,9 +209,9 @@ async function cancelBurrowRun(deps: WatchdogTickDeps, run: RunRow): Promise<voi
 		);
 	} catch (err) {
 		if (err instanceof BurrowNotFoundError) return;
-		deps.logger?.error?.(
-			{ runId: run.id, burrowRunId, reason: formatError(err) },
-			"watchdog.cancel_failed",
+		log.error(
+			{ event: "watchdog.cancel_failed", reason: formatError(err) },
+			"watchdog burrow-cancel failed",
 		);
 	}
 }
@@ -337,7 +351,10 @@ export function bootWatchdog(input: BootWatchdogInput): WatchdogHandle {
 	const fire = async (): Promise<WatchdogTickResult | null> => {
 		if (stopped) return null;
 		if (inFlight !== null) {
-			input.logger?.info?.({}, "watchdog.tick_skipped");
+			input.logger?.info?.(
+				{ event: "watchdog.tick_skipped" },
+				"watchdog tick skipped: prior tick still in flight",
+			);
 			return null;
 		}
 		const promise = (async () => {
@@ -346,7 +363,10 @@ export function bootWatchdog(input: BootWatchdogInput): WatchdogHandle {
 				ticks += 1;
 				return result;
 			} catch (err) {
-				input.logger?.error?.({ reason: formatError(err) }, "watchdog.tick_failed");
+				input.logger?.error?.(
+					{ event: "watchdog.tick_failed", reason: formatError(err) },
+					"watchdog tick failed",
+				);
 				return null;
 			} finally {
 				inFlight = null;

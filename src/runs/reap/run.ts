@@ -3,6 +3,7 @@ import type { BurrowClient } from "../../burrow-client/client.ts";
 import { withTransportMapping } from "../../burrow-client/client.ts";
 import type { EventRow, RunFailureReason, RunTerminalState } from "../../db/schema.ts";
 import { openPullRequest } from "../pr.ts";
+import { bindBridgeLogger } from "../stream/index.ts";
 import { dispatchAutoPlanRuns, hasAutoPlanRunFrontmatter, parsePlanIds } from "./auto-plan-run.ts";
 import { runWorkspaceDestroy } from "./destroy.ts";
 import { mergeMulch } from "./mulch.ts";
@@ -27,11 +28,9 @@ export async function reapRun(input: ReapRunInput): Promise<ReapRunResult> {
 	const now = input.now ?? (() => new Date());
 
 	const run = await input.repos.runs.require(input.runId);
+	const log = bindBridgeLogger(input.logger, { run_id: run.id }); // warren-9f06: bind run_id once
 	if (isTerminal(run.state)) {
-		input.logger?.info?.(
-			{ runId: run.id, state: run.state },
-			"reap skipped: run already in terminal state",
-		);
+		log.info({ event: "reap.skipped", state: run.state }, "reap skipped: run already terminal");
 		return buildAlreadyTerminalResult(run);
 	}
 
@@ -66,7 +65,7 @@ export async function reapRun(input: ReapRunInput): Promise<ReapRunResult> {
 			path !== undefined ? { step, message, path } : { step, message };
 		errors.push(stepError);
 		await emit("reap_failed", stepError);
-		input.logger?.error?.({ runId: run.id, step, err: message, path }, "reap step failed");
+		log.error({ event: "reap.step_failed", step, err: message, path }, "reap step failed");
 	};
 
 	let mulchUpdated = 0;
@@ -304,9 +303,10 @@ export async function reapRun(input: ReapRunInput): Promise<ReapRunResult> {
 				const parsed = Number.parseInt(out.stdout.trim(), 10);
 				commitsAhead = Number.isFinite(parsed) ? parsed : null;
 			} catch (err) {
-				input.logger?.info?.(
-					{ runId: run.id, err: err instanceof Error ? err.message : String(err) },
-					"reap commits-ahead count failed; continuing",
+				const reason = err instanceof Error ? err.message : String(err);
+				log.info(
+					{ event: "reap.commits_ahead_failed", err: reason },
+					"reap commits-ahead count failed",
 				);
 			}
 			if (commitsAhead === 0) {
@@ -467,9 +467,9 @@ export async function reapRun(input: ReapRunInput): Promise<ReapRunResult> {
 
 	if (input.broker !== undefined) input.broker.close(run.id);
 
-	input.logger?.info?.(
+	log.info(
 		{
-			runId: run.id,
+			event: "reap.completed",
 			state: finalState,
 			failureReason,
 			mulchUpdated,
