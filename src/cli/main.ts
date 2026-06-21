@@ -30,6 +30,7 @@ import { runRun } from "./commands/run.ts";
 import { runServe } from "./commands/serve.ts";
 import { withCliDb } from "./context.ts";
 import { type CliContext, defaultSpawn, formatError, PROCESS_STDIO } from "./output.ts";
+import type { PlanRunOutput } from "./plan-run-renderer.ts";
 
 export function buildProgram(context: CliContext): Command {
 	const program = new Command();
@@ -301,6 +302,7 @@ export function buildProgram(context: CliContext): Command {
 		.option("--model <name>", "per-run override of agent frontmatter.model")
 		.option("--plot <id>", "associate the plan-run with a Plot (plt_xxx)")
 		.option("--no-follow", "dispatch and exit without tailing events")
+		.option("--output <mode>", "output mode: ndjson (default) or pretty", "ndjson")
 		.action(
 			async (
 				planId: string,
@@ -313,6 +315,7 @@ export function buildProgram(context: CliContext): Command {
 					model?: string;
 					plot?: string;
 					follow: boolean;
+					output?: string;
 				},
 			) => {
 				const client = WarrenClient.fromEnv(context.env);
@@ -324,6 +327,7 @@ export function buildProgram(context: CliContext): Command {
 						project: opts.project,
 						agent: opts.agent,
 						follow: opts.follow,
+						output: parsePlanRunOutput(opts.output),
 						...(opts.promptTemplate !== undefined ? { promptTemplate: opts.promptTemplate } : {}),
 						...(opts.ref !== undefined ? { ref: opts.ref } : {}),
 						...(opts.provider !== undefined ? { provider: opts.provider } : {}),
@@ -338,9 +342,14 @@ export function buildProgram(context: CliContext): Command {
 		.command("cancel")
 		.description("cancel a remote plan-run and its in-flight child run")
 		.argument("<plan-run-id>", "plan-run id")
-		.action(async (planRunId: string) => {
+		.option("--output <mode>", "output mode: ndjson (default) or pretty", "ndjson")
+		.action(async (planRunId: string, opts: { output?: string }) => {
 			const client = WarrenClient.fromEnv(context.env);
-			const result = await runPlanCancel(context, { client }, { planRunId });
+			const result = await runPlanCancel(
+				context,
+				{ client },
+				{ planRunId, output: parsePlanRunOutput(opts.output) },
+			);
 			process.exit(result.exitCode);
 		});
 
@@ -354,6 +363,11 @@ export function buildProgram(context: CliContext): Command {
 		});
 
 	return program;
+}
+
+/** Coerce a `--output` flag value to a {@link PlanRunOutput}, defaulting `ndjson`. */
+export function parsePlanRunOutput(value: string | undefined): PlanRunOutput {
+	return value === "pretty" ? "pretty" : "ndjson";
 }
 
 if (import.meta.main) {

@@ -202,6 +202,37 @@ describe("runPlanRun", () => {
 		expect(lines.map((l) => l.event)).toEqual(["plan_run.dispatched"]);
 	});
 
+	test("pretty-output-renders-human-readable-lines", async () => {
+		const { context, out } = captureContext();
+		const res = await runPlanRun(
+			context,
+			{
+				client: fakeClient({
+					streamEvents: async function* () {
+						yield {
+							id: 1,
+							runId: "run-a",
+							seq: 1,
+							ts: "2026-06-21T08:09:10.000Z",
+							kind: "text",
+							stream: "stdout",
+							payload: { text: "working on it" },
+							plotId: null,
+						};
+					},
+				}),
+			},
+			baseArgs({ output: "pretty" }),
+		);
+		expect(res.exitCode).toBe(0);
+		const text = out.join("");
+		expect(text).toContain("▶ plan-run pr-1 dispatched");
+		expect(text).toContain("[08:09:10] assistant: working on it");
+		expect(text).toContain("✔ plan-run pr-1 succeeded");
+		// pretty mode must not emit NDJSON envelopes.
+		expect(text).not.toContain('"event":"plan_run');
+	});
+
 	test("forwards-optional-overrides-into-create-body", async () => {
 		const { context } = captureContext();
 		let observed: CreatePlanRunInput | undefined;

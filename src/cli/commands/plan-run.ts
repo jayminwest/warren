@@ -21,9 +21,10 @@
  */
 
 import type { WarrenClient } from "../../client/index.ts";
-import type { PlanRunState, RunEvent } from "../../client/types.ts";
+import type { PlanRunState } from "../../client/types.ts";
 import type { CliContext } from "../output.ts";
-import { formatError, writeJsonLine } from "../output.ts";
+import { formatError } from "../output.ts";
+import { createRenderer, type PlanRunOutput, type PlanRunRenderer } from "../plan-run-renderer.ts";
 
 /** Exit code emitted when the operator detaches a live tail with SIGINT. */
 const SIGINT_EXIT_CODE = 130;
@@ -39,10 +40,14 @@ export interface PlanRunArgs {
 	readonly plot?: string;
 	/** Tail events until terminal (default). `--no-follow` dispatches and exits. */
 	readonly follow: boolean;
+	/** Output mode for the dispatch summary + event stream. Default `ndjson`. */
+	readonly output?: PlanRunOutput;
 }
 
 export interface PlanCancelArgs {
 	readonly planRunId: string;
+	/** Output mode for the cancellation summary. Default `ndjson`. */
+	readonly output?: PlanRunOutput;
 }
 
 /** Disposer returned by {@link PlanRunDeps.onSigint}. */
@@ -116,6 +121,8 @@ export async function runPlanRun(
 		return { exitCode: 1 };
 	}
 
+	const renderer = createRenderer(args.output ?? "ndjson", context.stdio.stdout);
+
 	let planRunId: string;
 	try {
 		const created = await deps.client.createPlanRun({
@@ -129,11 +136,7 @@ export async function runPlanRun(
 			...(args.plot !== undefined ? { plotId: args.plot } : {}),
 		});
 		planRunId = created.planRun.id;
-		writeJsonLine(context.stdio.stdout, {
-			event: "plan_run.dispatched",
-			planRun: created.planRun,
-			children: created.children,
-		});
+		renderer.dispatched(created.planRun, created.children);
 	} catch (err) {
 		context.stdio.stderr.write(`warren: ${formatError(err)}\n`);
 		return { exitCode: 1 };
@@ -143,7 +146,7 @@ export async function runPlanRun(
 		return { exitCode: 0, planRunId };
 	}
 
-	return tailUntilTerminal(context, deps, planRunId);
+	return tailUntilTerminal(context, deps, renderer, planRunId);
 }
 
 /**
@@ -154,6 +157,7 @@ export async function runPlanRun(
 async function tailUntilTerminal(
 	context: CliContext,
 	deps: PlanRunDeps,
+	renderer: PlanRunRenderer,
 	planRunId: string,
 ): Promise<PlanRunResult> {
 	const onSigint = deps.onSigint ?? defaultOnSigint;
@@ -180,7 +184,7 @@ async function tailUntilTerminal(
 			follow: true,
 			signal: tailAbort.signal,
 		})) {
-			emitEvent(context, event);
+			renderer.event(event);
 		}
 	} catch (err) {
 		if (!interrupted) {
@@ -197,32 +201,20 @@ async function tailUntilTerminal(
 		return { exitCode: SIGINT_EXIT_CODE, planRunId };
 	}
 
-	return resolveTerminal(context, deps, planRunId);
-}
-
-/** One NDJSON line per child-run event, mirroring `warren run`'s `run.event`. */
-function emitEvent(context: CliContext, event: RunEvent): void {
-	writeJsonLine(context.stdio.stdout, {
-		event: "plan_run.event",
-		runId: event.runId,
-		seq: event.seq,
-		ts: event.ts,
-		kind: event.kind,
-		stream: event.stream,
-		payload: event.payload,
-	});
+	return resolveTerminal(context, deps, renderer, planRunId);
 }
 
 /** Fetch the terminal plan-run state and map it to an exit code. */
 async function resolveTerminal(
 	context: CliContext,
 	deps: PlanRunDeps,
+	renderer: PlanRunRenderer,
 	planRunId: string,
 ): Promise<PlanRunResult> {
 	try {
 		const detail = await deps.client.getPlanRun(planRunId);
 		const state = detail.planRun.state;
-		writeJsonLine(context.stdio.stdout, { event: "plan_run.terminal", planRunId, state });
+		renderer.terminal(planRunId, state);
 		return { exitCode: state === "succeeded" ? 0 : 1, planRunId, state };
 	} catch (err) {
 		context.stdio.stderr.write(`warren: failed to read plan-run state: ${formatError(err)}\n`);
@@ -246,12 +238,8 @@ export async function runPlanCancel(
 
 	try {
 		const result = await deps.client.cancelPlanRun(args.planRunId);
-		writeJsonLine(context.stdio.stdout, {
-			event: "plan_run.cancelled",
-			planRun: result.planRun,
-			cancelledChild: result.cancelledChild,
-			alreadyTerminal: result.alreadyTerminal,
-		});
+		const renderer = createRenderer(args.output ?? "ndjson", context.stdio.stdout);
+		renderer.cancelled(result);
 		return { exitCode: 0, planRunId: args.planRunId };
 	} catch (err) {
 		context.stdio.stderr.write(`warren: ${formatError(err)}\n`);
