@@ -1,5 +1,5 @@
 {
 	"_comment": "Coverage floors enforced by scripts/check-coverage.ts (warren-e4b1, pl-7b06 step 17). Set just below the current baseline (functions 88.85%, lines 91.79% as of 2026-06-12, ratchetwatch) to absorb measurement noise. The ratchet only goes UP — raise these numbers as coverage improves; never lower them. To grow past a budget: add tests first, then raise the floor.",
-	"functions": 88.6,
+	"functions": 89.36,
 	"lines": 91.54
 }

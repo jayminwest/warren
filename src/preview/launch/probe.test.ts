@@ -1,5 +1,32 @@
 import { describe, expect, test } from "bun:test";
-import { tcpConnectOnce } from "./probe.ts";
+import { probeOnce, tcpConnectOnce } from "./probe.ts";
+
+// Build a fetch stand-in that returns a Response with the given status, or
+// throws to simulate a transport-level failure (refused/abort).
+function fakeFetch(status: number | "throw"): typeof fetch {
+	return (async () => {
+		if (status === "throw") throw new Error("ECONNREFUSED");
+		return new Response("body", { status });
+	}) as unknown as typeof fetch;
+}
+
+describe("probeOnce (warren-9b15)", () => {
+	test("returns 'ready' for a 2xx response", async () => {
+		expect(await probeOnce(fakeFetch(200), "http://x", 100)).toBe("ready");
+	});
+
+	test("treats a 3xx redirect as 'ready'", async () => {
+		expect(await probeOnce(fakeFetch(302), "http://x", 100)).toBe("ready");
+	});
+
+	test("returns 'http_response' for a non-2xx/3xx response", async () => {
+		expect(await probeOnce(fakeFetch(503), "http://x", 100)).toBe("http_response");
+	});
+
+	test("returns 'not_connected' when fetch throws", async () => {
+		expect(await probeOnce(fakeFetch("throw"), "http://x", 100)).toBe("not_connected");
+	});
+});
 
 // warren-f04c / pl-592f step 3: direct unit tests for the phase-1 TCP-only
 // probe helper. These exercise the real Bun.connect path (not an injected
