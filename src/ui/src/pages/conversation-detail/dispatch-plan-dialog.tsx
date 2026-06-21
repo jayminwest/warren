@@ -2,7 +2,6 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { agentsApi, ApiError, planRunsApi, projectsApi } from "@/api/client.ts";
-import type { CreatePlanRunInput } from "@/api/types.ts";
 import { Button } from "@/components/ui/button.tsx";
 import {
 	Dialog,
@@ -15,39 +14,47 @@ import {
 import { Input } from "@/components/ui/input.tsx";
 import { Label } from "@/components/ui/label.tsx";
 import { Textarea } from "@/components/ui/textarea.tsx";
+import {
+	buildPlanRunInput,
+	computeBindablePlot,
+	computeSubmittable,
+	DEFAULT_PROMPT_TEMPLATE,
+	readFrontmatter,
+} from "./dispatch-plan-dialog.helpers.ts";
 
 /**
- * Operator-gated "Dispatch plan" popup (warren-6e45, build-phase 5).
+ * Operator-gated "Dispatch plan" popup (warren-6e45, build-phase 5;
+ * generalized in warren-585d / pl-3fc4 step 6).
  *
  * Plan-run dispatch stays OPERATOR-GATED in v1 — there is no auto-dispatch
- * (this preserves the SPEC §10.4 approval-gate taste signal). Once the
- * send-off poller has dispatched the planner (`conversation.plannerRunId !=
- * null`), the planner emits a structured seeds plan and STOPS. This popup is
- * the manual hand-off: it MIRRORS the `/plan-runs/new` fields — pre-filled
- * from the conversation's Plot/project context — and dispatches a plan-run
- * over the EXISTING `planRunsApi.create` (`POST /plan-runs`) path. No new
- * dispatch path is introduced; this is byte-for-byte a manual plan-run
- * dispatch keyed on the conversation's Plot.
+ * (this preserves the SPEC §10.4 approval-gate taste signal). This popup is
+ * the manual hand-off: it MIRRORS the `/plan-runs/new` fields and dispatches a
+ * plan-run over the EXISTING `planRunsApi.create` (`POST /plan-runs`) path. No
+ * new dispatch path is introduced.
  *
- * The synthesized plan id is surfaced by the planner run, so the operator
- * pastes it in (the field is required); project + plot are locked to the
- * conversation's bindings, and agent/provider/model auto-fill from the
- * project defaults exactly like `/plan-runs/new`.
+ * It is now reusable OUTSIDE a conversation: callers pass a `projectId`, an
+ * optional pre-fillable (and optionally locked) `planId`, and an optional
+ * `plotId`. The conversation caller leaves `planId` empty + unlocked so the
+ * operator pastes the synthesized plan id surfaced by the planner run; the
+ * "Ready to dispatch" surface (warren-ce62) pre-fills + locks it.
  */
 
-const DEFAULT_PROMPT_TEMPLATE = "work on sd {seed_id}";
-
-/** Mirror server-side `^plot-[a-z0-9]+$` (src/plots/id-validator.ts). */
-const PLOT_ID_RE = /^plot-[a-z0-9]+$/;
-
-export function DispatchPlanButton({
-	projectId,
-	plotId,
-	plannerRunId,
-}: {
+export interface DispatchPlanDialogProps {
 	projectId: string;
-	plotId: string | null;
-	plannerRunId: string;
+	/** Pre-fill for the Plan ID field. Empty = operator pastes it. */
+	planId?: string;
+	/** When true the Plan ID field is locked (read-only, caller-supplied). */
+	planIdLocked?: boolean;
+	/** Plot back-link; omitted/null dispatches unbound. */
+	plotId?: string | null;
+	onOpenChange: (open: boolean) => void;
+}
+
+export function DispatchPlanButton(props: {
+	projectId: string;
+	planId?: string;
+	planIdLocked?: boolean;
+	plotId?: string | null;
 }): JSX.Element {
 	const [open, setOpen] = useState(false);
 	return (
@@ -57,9 +64,10 @@ export function DispatchPlanButton({
 			</Button>
 			{open ? (
 				<DispatchPlanDialog
-					projectId={projectId}
-					plotId={plotId}
-					plannerRunId={plannerRunId}
+					projectId={props.projectId}
+					planId={props.planId}
+					planIdLocked={props.planIdLocked}
+					plotId={props.plotId}
 					onOpenChange={setOpen}
 				/>
 			) : null}
@@ -67,28 +75,17 @@ export function DispatchPlanButton({
 	);
 }
 
-function readFrontmatter(renderedJson: unknown): Record<string, unknown> {
-	if (typeof renderedJson !== "object" || renderedJson === null) return {};
-	const fm = (renderedJson as { frontmatter?: unknown }).frontmatter;
-	if (typeof fm !== "object" || fm === null || Array.isArray(fm)) return {};
-	return fm as Record<string, unknown>;
-}
-
-function DispatchPlanDialog({
+export function DispatchPlanDialog({
 	projectId,
-	plotId,
-	plannerRunId,
+	planId: initialPlanId = "",
+	planIdLocked = false,
+	plotId = null,
 	onOpenChange,
-}: {
-	projectId: string;
-	plotId: string | null;
-	plannerRunId: string;
-	onOpenChange: (open: boolean) => void;
-}): JSX.Element {
+}: DispatchPlanDialogProps): JSX.Element {
 	const navigate = useNavigate();
 	const qc = useQueryClient();
 
-	const [planId, setPlanId] = useState("");
+	const [planId, setPlanId] = useState(initialPlanId);
 	const [agent, setAgent] = useState("");
 	const [agentTouched, setAgentTouched] = useState(false);
 	const [promptTemplate, setPromptTemplate] = useState(DEFAULT_PROMPT_TEMPLATE);
@@ -150,7 +147,7 @@ function DispatchPlanDialog({
 	}, [modelTouched, modelAutoFill, modelOverride]);
 
 	const dispatch = useMutation({
-		mutationFn: (input: CreatePlanRunInput) => planRunsApi.create(input),
+		mutationFn: planRunsApi.create,
 		onSuccess: (data) => {
 			qc.invalidateQueries({ queryKey: ["plan-runs"] });
 			if (plotId !== null) qc.invalidateQueries({ queryKey: ["plot", plotId] });
@@ -158,29 +155,24 @@ function DispatchPlanDialog({
 		},
 	});
 
-	const trimmedPlanId = planId.trim();
-	const trimmedPrompt = promptTemplate.trim();
-	const bindablePlot = hasPlot && plotId !== null && PLOT_ID_RE.test(plotId);
+	const bindablePlot = computeBindablePlot(hasPlot, plotId);
 	const submittable =
-		!dispatch.isPending &&
-		hasSeeds &&
-		agent.length > 0 &&
-		trimmedPlanId.length > 0 &&
-		trimmedPrompt.length > 0;
+		computeSubmittable({ isPending: dispatch.isPending, hasSeeds, agent, planId, promptTemplate });
 
 	const handleDispatch = (): void => {
 		if (!submittable) return;
-		const trimmedProvider = providerOverride.trim();
-		const trimmedModel = modelOverride.trim();
-		dispatch.mutate({
-			project: projectId,
-			planId: trimmedPlanId,
-			agent,
-			promptTemplate: trimmedPrompt,
-			...(trimmedProvider.length > 0 ? { providerOverride: trimmedProvider } : {}),
-			...(trimmedModel.length > 0 ? { modelOverride: trimmedModel } : {}),
-			...(bindablePlot ? { plotId: plotId as string } : {}),
-		});
+		dispatch.mutate(
+			buildPlanRunInput({
+				projectId,
+				planId,
+				agent,
+				promptTemplate,
+				providerOverride,
+				modelOverride,
+				plotId,
+				bindablePlot,
+			}),
+		);
 	};
 
 	const loading = projects.isLoading || warrenConfig.isLoading || agents.isLoading;
@@ -204,11 +196,10 @@ function DispatchPlanDialog({
 				<DialogHeader>
 					<DialogTitle>Dispatch plan</DialogTitle>
 					<DialogDescription>
-						The planner emitted a seeds plan from this conversation's Plot intent and
-						stopped — dispatch is operator-gated. Paste the plan id (from planner run{" "}
-						<code className="font-mono">{plannerRunId}</code>) and dispatch a plan-run
-						over the same path as <code className="font-mono">/plan-runs/new</code>.
-						Each open child seed runs sequentially.
+						Dispatch is operator-gated. Provide the approved plan id and dispatch a
+						plan-run over the same path as{" "}
+						<code className="font-mono">/plan-runs/new</code>. Each open child seed runs
+						sequentially.
 					</DialogDescription>
 				</DialogHeader>
 
@@ -232,13 +223,16 @@ function DispatchPlanDialog({
 							value={planId}
 							onChange={(e) => setPlanId(e.target.value)}
 							placeholder="pl-…"
-							disabled={!hasSeeds || dispatch.isPending}
+							readOnly={planIdLocked}
+							disabled={planIdLocked || !hasSeeds || dispatch.isPending}
 							autoComplete="off"
 							spellCheck={false}
-							className="h-9 text-sm"
+							className={planIdLocked ? "h-9 font-mono text-sm" : "h-9 text-sm"}
 						/>
 						<p className="text-xs text-(--color-muted-foreground)">
-							The synthesized plan id, surfaced by the planner run.
+							{planIdLocked
+								? "The approved plan selected for dispatch."
+								: "The synthesized plan id, surfaced by the planner run."}
 						</p>
 					</div>
 

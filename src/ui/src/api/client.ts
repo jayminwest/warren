@@ -42,6 +42,7 @@ import type {
 	PreviewConfigResponse,
 	PreviewTeardownResponse,
 	ProjectRow,
+	ReadyPlansResponse,
 	ReadyzResponse,
 	RefreshAgentsResponse,
 	RefreshProjectAgentsResponse,
@@ -49,6 +50,7 @@ import type {
 	RunEvent,
 	RunRow,
 	RunTriggerResponse,
+	SeedPlansResponse,
 	SeedStatusResponse,
 	SendRunMessageInput,
 	SendRunMessageResponse,
@@ -231,6 +233,25 @@ export const projectsApi = {
 			`/projects/${encodeURIComponent(id)}/seeds/${encodeURIComponent(seedId)}`,
 			{ ...(signal ? { signal } : {}) },
 		),
+	/**
+	 * `GET /projects/:id/seeds/plans` — list the project's seeds plans
+	 * (warren-9b49). Populates the plan-run dispatch form's plan-id
+	 * selector with a manual-entry fallback.
+	 */
+	seedPlans: (id: string, signal?: AbortSignal) =>
+		request<SeedPlansResponse>(`/projects/${encodeURIComponent(id)}/seeds/plans`, {
+			...(signal ? { signal } : {}),
+		}),
+
+	/**
+	 * `GET /projects/:id/ready-plans` — approved plans with ≥1 open child
+	 * seed that have not yet been dispatched (warren-7937). Powers the
+	 * "Ready to dispatch" operator surface.
+	 */
+	readyPlans: (id: string, signal?: AbortSignal) =>
+		request<ReadyPlansResponse>(`/projects/${encodeURIComponent(id)}/ready-plans`, {
+			...(signal ? { signal } : {}),
+		}),
 };
 
 /* ----------------------------------------------------------------------- */

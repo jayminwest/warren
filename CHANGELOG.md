@@ -7,6 +7,112 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.4] — 2026-06-20
+
+### Changed
+
+- **`chore(deps)`** — bumped the pinned `@os-eco/seeds-cli` Docker image
+  install from 0.5.11 to 0.5.13, which fixes a critical bug in warren's
+  agent runtimes.
+
+- **`feat(runs)`** — the run heartbeat watchdog (warren-285d) is now **on by
+  default** (warren-b2dc) with a generous 45-minute built-in budget, instead
+  of arming only when `WARREN_RUN_HEARTBEAT_TIMEOUT_MS` was set. A fresh
+  deploy is now protected from silent-but-busy runaway runs without an
+  explicit env var, mirroring the conversation-idle coordinator. Tune the
+  budget via `WARREN_RUN_HEARTBEAT_TIMEOUT_MS`; opt out with
+  `WARREN_WATCHDOG_DISABLED=1` (or by pinning the budget to 0). `fly.toml`
+  pins the budget explicitly at the deploy-config layer.
+
+### Added
+
+- **`ci(pr-fixer)`** — the polling CI-fixer is wired into the scheduler
+  tick. Each tick, projects with `ciFixer.enabled` enumerate their open-PR
+  candidates (`RunsRepo.listPrCandidatesByProject`, indexed by the new
+  `runs_pr_url_idx`), classify each PR's check-runs, and dispatch a
+  `ci-fixer` run against the failing PR — gated by the per-PR retry +
+  cooldown history (`RunsRepo.fixAttemptHistoryByPrUrl`) and back-linked to
+  the PR's opener via `parentRunId`. Dispatched fixers stamp a
+  `ci_fixer.dispatched` system event on the opener run. The PR-head
+  `targetBranch` push and CI-log extraction land in warren-a993
+  (warren-0b75).
+
+## [0.9.3] — 2026-06-16
+
+The remaining pl-dfb5 papercuts land: a project-scoped seeds-plan read
+endpoint feeding a populated plan selector on the dispatch form, plus a
+standardized responsive contract applied across every page so the UI is
+phone-ready.
+
+### Added
+
+- **`feat(server)`** — `GET /projects/:id/seeds/plans` read endpoint plus a
+  `projectsApi.seedPlans` client method. The seeds-cli facade gains
+  `listPlans` (`sd plan list --json`) returning wire-lean `PlanSummary[]`
+  with the heavyweight body sections stripped; the route is registered
+  before `/seeds/:seedId` so the param route doesn't swallow `plans`
+  (#413, warren-9b49).
+- **`feat(ui)`** — the plan-run dispatch form's free-text Plan ID input is
+  replaced with a `<select>` populated from `projectsApi.seedPlans`, each
+  option labelled `name (id) — status`. A trailing "Enter plan ID
+  manually…" option flips back to free-text, and the form auto-falls back
+  to manual entry when the plan list fails to load or is empty so
+  plan-less projects still dispatch (#415, warren-c030).
+
+### Changed
+
+- **`feat(ui)`** — standardized responsive contract: canonical breakpoints
+  (~393px down to ~360px) and reusable wide-table-on-mobile tokens
+  (`responsive.ts`), applied across all pages so every surface works on
+  phones (#416 warren-3315, #417 warren-42ba).
+
+## [0.9.2] — 2026-06-16
+
+A shared sortable-table primitive lands across the list surfaces, plus a
+seeds-cli image bump.
+
+### Added
+
+- **`feat(ui)`** — a canonical `SortableTableHead` column-header primitive
+  (`src/ui/src/components/ui/sortable-table-head.tsx`) with pure, react-free
+  helpers (`ariaSortFor`, `nextSortState`) that unit-test under the root bun
+  runner (#408, warren-9440). A companion `useClientSort` hook +
+  `applySort` / `compareStrings` helpers pair it with client-side data and
+  are adopted across the Projects, PlanRuns, Agents, and Workspace tables;
+  Workspace's hand-rolled `<table>` / arrow-indicator markup migrates onto
+  the shared Table + `SortableTableHead` family. Runs keeps its existing
+  server-driven sort (#409, warren-5562).
+
+### Changed
+
+- **`chore(deps)`** — bumped the pinned `@os-eco/seeds-cli` Docker image
+  install to `0.5.11`.
+
+## [0.9.1] — 2026-06-16
+
+Low-risk cleanup batch for the **Workspace** surface (plan pl-2e59): chat
+ordering/dedup correctness, bounded transcript scrolling, and removal of a
+leaked agent transcript.
+
+### Fixed
+
+- **`fix(ui)`** — workspace chat ordering + dedup (warren-f4b8). Transcript
+  and stream bubbles now merge on a single unified chronological ordering key
+  across the transcript/stream boundary instead of concatenating two
+  seq-sorted groups, and `buildChatMessages` dedupe collapses a streamed
+  assistant turn and its persisted transcript copy into one bubble
+  (`src/ui/src/components/chat-messages.ts`).
+- **`fix(ui)`** — unbounded `/workspaces` page growth (warren-5755). The
+  conversation card's ancestor height is bounded so `Chat.tsx`'s internal
+  `flex-1 min-h-0 overflow-y-auto` engages and the transcript scrolls
+  internally instead of growing the page
+  (`src/ui/src/pages/conversation-detail/conversation-surface.tsx`).
+
+### Removed
+
+- **`chore`** — a stray `.pi/sessions` agent transcript committed by PR #340
+  that was not named in its title (warren-4c8d).
+
 ## [0.9.0] — 2026-06-14
 
 Leveret and Plots collapse into a single tabbed **Workspace** surface, and

@@ -9,6 +9,11 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card.t
 import { Input } from "@/components/ui/input.tsx";
 import { Label } from "@/components/ui/label.tsx";
 import { PageHeader } from "@/components/ui/page-header.tsx";
+import {
+	responsiveFooterActions,
+	responsiveFooterButton,
+	responsiveFormControl,
+} from "@/components/ui/responsive.ts";
 import { Textarea } from "@/components/ui/textarea.tsx";
 
 const DEFAULT_PROMPT_TEMPLATE = "work on sd {seed_id}";
@@ -28,6 +33,7 @@ export function NewPlanRunPage() {
 	const [agent, setAgent] = useState("");
 	const [agentTouched, setAgentTouched] = useState(false);
 	const [planId, setPlanId] = useState("");
+	const [planIdManual, setPlanIdManual] = useState(false);
 	const [plotId, setPlotId] = useState("");
 	const [promptTemplate, setPromptTemplate] = useState(DEFAULT_PROMPT_TEMPLATE);
 	const [promptTouched, setPromptTouched] = useState(false);
@@ -54,6 +60,17 @@ export function NewPlanRunPage() {
 
 	const selectedProject = projects.data?.projects.find((p) => p.id === project);
 	const hasSeeds = selectedProject?.hasSeeds ?? false;
+	const plans = useQuery({
+		queryKey: ["projects", project, "seed-plans"],
+		queryFn: ({ signal }) => projectsApi.seedPlans(project, signal),
+		enabled: project.length > 0 && hasSeeds,
+	});
+	const planOptions = plans.data?.plans ?? [];
+	// Fall back to free-text entry when the selector can't be populated:
+	// the project's plan list failed to load, or there are no plans yet.
+	const planSelectorUnavailable = plans.isError || (!plans.isLoading && planOptions.length === 0);
+	const useManualPlanId = planIdManual || planSelectorUnavailable;
+	const knownPlanId = planOptions.some((p) => p.id === planId);
 	const hasPlot = selectedProject?.hasPlot ?? false;
 
 	const defaultRole = warrenConfig.data?.defaults?.defaultRole;
@@ -206,7 +223,7 @@ export function NewPlanRunPage() {
 								required
 								value={project}
 								onChange={(e) => setProject(e.target.value)}
-								className="flex h-11 sm:h-9 w-full rounded-md border bg-(--color-card) px-3 py-1 text-base sm:text-sm shadow-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-ring)"
+								className={`flex w-full rounded-md border bg-(--color-card) px-3 py-1 shadow-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-ring) ${responsiveFormControl}`}
 							>
 								<option value="" disabled>
 									Pick a project…
@@ -231,7 +248,7 @@ export function NewPlanRunPage() {
 									setAgentTouched(true);
 								}}
 								disabled={!hasSeeds}
-								className="flex h-11 sm:h-9 w-full rounded-md border bg-(--color-card) px-3 py-1 text-base sm:text-sm shadow-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-ring) disabled:cursor-not-allowed disabled:opacity-60"
+								className={`flex w-full rounded-md border bg-(--color-card) px-3 py-1 shadow-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-ring) disabled:cursor-not-allowed disabled:opacity-60 ${responsiveFormControl}`}
 							>
 								<option value="" disabled>
 									Pick an agent…
@@ -252,20 +269,54 @@ export function NewPlanRunPage() {
 
 						<div className="space-y-1.5">
 							<Label htmlFor="planId">Plan ID</Label>
-							<Input
-								id="planId"
-								required
-								value={planId}
-								onChange={(e) => setPlanId(e.target.value)}
-								placeholder="pl-a258"
-								disabled={!hasSeeds}
-								autoComplete="off"
-								spellCheck={false}
-								className="h-11 sm:h-9 text-base sm:text-sm"
-							/>
+							{useManualPlanId ? (
+								<Input
+									id="planId"
+									required
+									value={planId}
+									onChange={(e) => setPlanId(e.target.value)}
+									placeholder="pl-a258"
+									disabled={!hasSeeds}
+									autoComplete="off"
+									spellCheck={false}
+									className={responsiveFormControl}
+								/>
+							) : (
+								<select
+									id="planId"
+									required
+									value={knownPlanId ? planId : ""}
+									onChange={(e) => {
+										if (e.target.value === "__manual__") {
+											setPlanIdManual(true);
+											setPlanId("");
+											return;
+										}
+										setPlanId(e.target.value);
+									}}
+									disabled={!hasSeeds}
+									className={`flex w-full rounded-md border bg-(--color-card) px-3 py-1 shadow-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-ring) disabled:cursor-not-allowed disabled:opacity-60 ${responsiveFormControl}`}
+								>
+									<option value="" disabled>
+										{plans.isLoading ? "Loading plans…" : "Pick a plan…"}
+									</option>
+									{planOptions.map((p) => (
+										<option key={p.id} value={p.id}>
+											{p.name ? `${p.name} (${p.id})` : p.id}
+											{p.status ? ` — ${p.status}` : ""}
+										</option>
+									))}
+									<option value="__manual__">Enter plan ID manually…</option>
+								</select>
+							)}
 							<p className="text-xs text-(--color-muted-foreground)">
-								Seeds plan id (run <code className="font-mono">sd plan</code> in
-								the project to list).
+								{planSelectorUnavailable
+									? plans.isError
+										? "Couldn't load plans — enter the seeds plan id manually."
+										: "No plans found — enter the seeds plan id manually."
+									: useManualPlanId
+										? "Manual entry. Seeds plan id (e.g. pl-a258)."
+										: "Pick a seeds plan, or choose manual entry to type one."}
 							</p>
 						</div>
 
@@ -279,7 +330,7 @@ export function NewPlanRunPage() {
 									placeholder="plot-…"
 									autoComplete="off"
 									spellCheck={false}
-									className="h-11 sm:h-9 text-base sm:text-sm"
+									className={responsiveFormControl}
 								/>
 								<p className="text-xs text-(--color-muted-foreground)">
 									Bind this plan run to a Plot. Each child run inherits
@@ -328,7 +379,7 @@ export function NewPlanRunPage() {
 								disabled={!hasSeeds}
 								autoComplete="off"
 								spellCheck={false}
-								className="h-11 sm:h-9 text-base sm:text-sm"
+								className={responsiveFormControl}
 							/>
 							<p className="text-xs text-(--color-muted-foreground)">
 								Leave blank to use the project's default branch.
@@ -353,7 +404,7 @@ export function NewPlanRunPage() {
 									disabled={!hasSeeds}
 									autoComplete="off"
 									spellCheck={false}
-									className="h-11 sm:h-9 text-base sm:text-sm"
+									className={responsiveFormControl}
 								/>
 							</div>
 							<div className="space-y-1.5">
@@ -373,7 +424,7 @@ export function NewPlanRunPage() {
 									disabled={!hasSeeds}
 									autoComplete="off"
 									spellCheck={false}
-									className="h-11 sm:h-9 text-base sm:text-sm"
+									className={responsiveFormControl}
 								/>
 							</div>
 						</div>
@@ -386,20 +437,20 @@ export function NewPlanRunPage() {
 							</p>
 						) : null}
 
-						<div className="flex flex-col sm:flex-row sm:justify-end gap-2">
+						<div className={responsiveFooterActions}>
 							<Button
 								type="button"
 								variant="outline"
 								onClick={() => navigate("/plan-runs")}
 								disabled={dispatch.isPending}
-								className="h-11 w-full sm:h-9 sm:w-auto"
+								className={`h-11 sm:h-9 ${responsiveFooterButton}`}
 							>
 								Cancel
 							</Button>
 							<Button
 								type="submit"
 								disabled={dispatch.isPending || !submittable}
-								className="h-11 w-full sm:h-9 sm:w-auto"
+								className={`h-11 sm:h-9 ${responsiveFooterButton}`}
 							>
 								{dispatch.isPending ? "Dispatching…" : "Dispatch"}
 							</Button>

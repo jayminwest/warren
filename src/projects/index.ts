@@ -19,7 +19,7 @@ export {
 	loadProjectsConfigFromEnv,
 	type ProjectsConfig,
 } from "./config.ts";
-export { ProjectUnavailableError } from "./errors.ts";
+export { ProjectUnavailableError, TargetProjectUnresolvedError } from "./errors.ts";
 export {
 	type AddProjectInput,
 	addProject,
@@ -38,4 +38,8 @@ export {
 	type RefreshProjectCloneResult,
 	refreshProjectClone,
 } from "./refresh.ts";
+export {
+	type ResolveTargetRepos,
+	resolveTargetProject,
+} from "./resolve-target.ts";
 export { type ParsedGitHubUrl, parseGitHubUrl } from "./url.ts";

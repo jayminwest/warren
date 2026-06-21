@@ -24,6 +24,7 @@ import type {
 	RunTerminalState,
 } from "../schema.ts";
 import type { DrizzleAdapter } from "./drizzle-adapter.ts";
+import { fixAttemptHistoryByPrUrl, listPrCandidatesByProject } from "./runs-ci-fixer.ts";
 
 const ALLOWED_TRANSITIONS: Record<RunState, readonly RunState[]> = {
 	queued: ["running", "cancelled"],
@@ -54,18 +55,9 @@ export interface CreateRunInput {
 	trigger: string;
 	burrowId?: string | null;
 	burrowRunId?: string | null;
-	/**
-	 * Worker that will host the burrow for this run (warren-135b). Resolved
-	 * by the spawn flow's `placeFor` (pl-9ba1 step 4) and denormalized here
-	 * so streaming / cancel / steer route without joining `burrows`.
-	 */
+	/** Worker hosting the burrow (warren-135b); denormalized for run routing. */
 	workerId?: string | null;
-	/**
-	 * Back-link to the seeds issue this run was dispatched against (pl-bb70
-	 * step 3). Null encodes "no seed". Persisted so the post-dispatch
-	 * `updateExtensions` write (step 4) has a seed to merge into and the Run
-	 * API can surface a back-link on RunDetail (step 6).
-	 */
+	/** Seeds issue back-link (pl-bb70 step 3); null = no seed. */
 	seedId?: string | null;
 	/**
 	 * Run mode (pl-0344 step 1 / warren-67b6). `batch` (default) is the
@@ -581,6 +573,15 @@ export class RunsRepo {
 			if (r.workerId !== null) out.set(r.workerId, Number(r.count));
 		}
 		return out;
+	}
+
+	/** CI-fixer queries (warren-0b75); bodies live in runs-ci-fixer.ts. */
+	listPrCandidatesByProject(projectId: string, limit = 25) {
+		return listPrCandidatesByProject(this.adapter, projectId, limit);
+	}
+
+	fixAttemptHistoryByPrUrl(prUrl: string) {
+		return fixAttemptHistoryByPrUrl(this.adapter, prUrl);
 	}
 
 	/**

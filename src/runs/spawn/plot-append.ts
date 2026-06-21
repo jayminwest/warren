@@ -60,6 +60,7 @@ export interface EmitRunDispatchedToPlotInput {
 	readonly agentName: string;
 	readonly model: string | null;
 	readonly projectId: string;
+	readonly executionRepo?: string;
 	readonly appender: SpawnPlotAppender;
 	readonly now: Date;
 }
@@ -83,6 +84,7 @@ export async function emitRunDispatchedToPlot(input: EmitRunDispatchedToPlotInpu
 			agentName: input.agentName,
 			model: input.model,
 			projectId: input.projectId,
+			...(input.executionRepo !== undefined ? { executionRepo: input.executionRepo } : {}),
 		});
 	} catch (err) {
 		await recordPlotAppendFailure(
@@ -141,6 +143,7 @@ export const defaultPlotAppender: SpawnPlotAppender = {
 				agent: input.agentName,
 				model: input.model,
 				project: input.projectId,
+				...(input.executionRepo !== undefined ? { execution_repo: input.executionRepo } : {}),
 			};
 			try {
 				await plot.append({ type: "run_dispatched", data });

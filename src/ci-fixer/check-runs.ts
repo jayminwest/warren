@@ -139,6 +139,74 @@ export function classifyCheckRuns(checkRuns: readonly CheckRun[]): ClassifyCheck
 	return { verdict: "passing", failures: [] };
 }
 
+/**
+ * Parse the GitHub Actions job id from a check-run's `details_url`. Actions
+ * check-runs link to `.../actions/runs/<run_id>/job/<job_id>`; the trailing
+ * job id is what `GET /actions/jobs/:id/logs` needs. Falls back to the
+ * check-run `id` when the URL has no `job/<id>` segment (third-party CI, or a
+ * malformed url) — the logs fetch then resolves against that id or degrades
+ * to null, which the caller already handles.
+ */
+export function extractJobId(detailsUrl: string | null, fallbackId: number): number {
+	if (detailsUrl !== null) {
+		const match = /\/job\/(\d+)/.exec(detailsUrl);
+		if (match?.[1] !== undefined) {
+			const parsed = Number.parseInt(match[1], 10);
+			if (Number.isFinite(parsed)) return parsed;
+		}
+	}
+	return fallbackId;
+}
+
+export interface FetchJobLogInput {
+	readonly owner: string;
+	readonly repo: string;
+	readonly jobId: number;
+	readonly token: string;
+	readonly fetch?: typeof fetch;
+}
+
+export type FetchJobLogTailFn = (
+	input: FetchJobLogInput,
+	tailLines: number,
+) => Promise<string | null>;
+
+/**
+ * Fetch the tail of a GitHub Actions job log so the fixer prompt carries the
+ * failure context without the multi-megabyte full log. `GET
+ * /actions/jobs/:id/logs` 302-redirects to a plaintext download; fetch
+ * follows the redirect and we keep the last `tailLines` lines. Returns null
+ * on any failure (missing token, non-2xx — e.g. 410 for expired logs,
+ * network error, empty body); `buildFixerPrompt` handles a null tail by
+ * telling the agent to diagnose from the check names instead.
+ */
+export async function fetchJobLogTail(
+	input: FetchJobLogInput,
+	tailLines: number,
+): Promise<string | null> {
+	if (input.token === "" || tailLines <= 0) return null;
+	const fetchImpl = input.fetch ?? globalThis.fetch;
+	const url = `${GITHUB_API_BASE}/repos/${input.owner}/${input.repo}/actions/jobs/${input.jobId}/logs`;
+	let res: Response;
+	try {
+		res = await fetchImpl(url, { method: "GET", headers: buildHeaders(input.token) });
+	} catch {
+		return null;
+	}
+	if (!res.ok) return null;
+	return tailLog(await readText(res), tailLines);
+}
+
+/** Keep the last `tailLines` lines of `text`, trimming trailing whitespace.
+ * Returns null for an effectively empty log so the caller skips the block. */
+function tailLog(text: string, tailLines: number): string | null {
+	const trimmed = text.replace(/\s+$/, "");
+	if (trimmed === "") return null;
+	const lines = trimmed.split("\n");
+	if (lines.length <= tailLines) return trimmed;
+	return lines.slice(lines.length - tailLines).join("\n");
+}
+
 function buildHeaders(token: string): Record<string, string> {
 	return {
 		accept: "application/vnd.github+json",

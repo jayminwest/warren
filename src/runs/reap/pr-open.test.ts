@@ -378,4 +378,36 @@ describe("runPrOpen retry (warren-70c6)", () => {
 		expect(pr.calls).toHaveLength(1); // no retry
 		expect(result.errors.map((x) => x.step)).toContain("pr_open");
 	});
+
+	test("ci-fixer run self-skips pr_open and emits reap.pr_open_skipped (warren-a993)", async () => {
+		const parent = await ctx.repos.runs.require(ctx.runId);
+		const fixer = await ctx.repos.runs.create({
+			agentName: "refactor-bot",
+			projectId: parent.projectId as string,
+			prompt: "fix ci",
+			renderedAgentJson: {},
+			trigger: "ci-fixer",
+			burrowId: "bur_aaaaaaaaaaaa",
+			burrowRunId: "run_yyyyyyyyyyyy",
+		});
+		await ctx.repos.runs.markRunning(fixer.id);
+		const pr = fakeOpenPr([]);
+		const result = await reapRun({
+			runId: fixer.id,
+			outcome: "succeeded",
+			repos: ctx.repos,
+			burrowClientPool: await makePool(fakeBurrowClient(makeBurrow()), ctx.repos),
+			fs: fakeFs().fs,
+			exec: fakeExec({ revListCount: "1" }).exec,
+			autoOpenPr: { enabled: true, token: "ghp_xyz", warrenBaseUrl: null },
+			openPr: pr.openPr,
+		});
+		expect(result.branchPushed).toBe(true);
+		expect(result.prUrl).toBeNull();
+		expect(pr.calls).toHaveLength(0);
+		const skipped = (await ctx.repos.events.listByRun(fixer.id)).find(
+			(ev) => ev.kind === "reap.pr_open_skipped",
+		);
+		expect(skipped?.payloadJson).toMatchObject({ reason: "ci_fixer_run" });
+	});
 });

@@ -34,6 +34,8 @@ import {
 	type SchedulerHandle,
 	type SchedulerTimerHandle,
 	startScheduler,
+	type TickCiFixerSpawnFn,
+	type TickCiFixerSpawnInput,
 	type TickLogger,
 	type TriggerSchedulerConfig,
 } from "../triggers/index.ts";
@@ -56,6 +58,12 @@ export interface BootSchedulerInput {
 	 * the same `WARREN_RUN_BRANCH_PREFIX` the HTTP `POST /runs` path uses.
 	 */
 	readonly runBranchPrefixDefault?: string;
+	/**
+	 * `GITHUB_TOKEN` for the CI-fixer poller's check-runs fetch (warren-0b75).
+	 * Resolved from the same env the reap pr-open path reads. Defaults to the
+	 * empty string; the poller surfaces per-PR `error` results when unset.
+	 */
+	readonly githubToken?: string;
 	/** Override the spawnRun seam (tests). Defaults to the live `spawnRun`. */
 	readonly spawnRunFn?: typeof spawnRun;
 	/** Test override for setInterval (forwarded to `startScheduler`). */
@@ -100,6 +108,38 @@ export function bootScheduler(input: BootSchedulerInput): SchedulerHandle {
 		return { runId: result.run.id };
 	};
 
+	// warren-0b75: CI-fixer dispatch wraps `spawnRun` like the cron path,
+	// pinning trigger="ci-fixer" (the discriminator fixAttemptHistoryByPrUrl
+	// counts) and back-linking the fixer to the PR's opener via parentRunId so
+	// the fixer's workspace forks from the opener's pushed branch. warren-a993:
+	// `targetBranch` pins the burrow branch to the PR head ref so the fixer's
+	// commits push back onto the open PR (re-running its CI) instead of opening
+	// a fresh `${prefix}/run_xxx` branch; reap honors the same branch on push.
+	const ciFixerSpawn: TickCiFixerSpawnFn = async (
+		args: TickCiFixerSpawnInput,
+	): Promise<{ runId: string }> => {
+		const result = await spawnRunFn({
+			repos: input.repos,
+			burrowClientPool: input.burrowClientPool,
+			agentName: args.agentName,
+			projectId: args.projectId,
+			prompt: args.prompt,
+			trigger: "ci-fixer",
+			parentRunId: args.parentRunId,
+			targetBranch: args.targetBranch,
+			projectsConfig: input.projectsConfig,
+			projectSpawn: input.projectSpawn,
+			warrenConfigs: input.warrenConfigs,
+			seedsCli: seedsDeps,
+			...(input.runBranchPrefixDefault !== undefined
+				? { runBranchPrefixDefault: input.runBranchPrefixDefault }
+				: {}),
+			...(input.now !== undefined ? { now: input.now } : {}),
+		});
+		input.bridges.start(result.run.id, result.burrowRun.id, result.burrow.id);
+		return { runId: result.run.id };
+	};
+
 	return startScheduler({
 		tickMs: input.config.tickMs,
 		disabled: input.config.disabled,
@@ -109,6 +149,13 @@ export function bootScheduler(input: BootSchedulerInput): SchedulerHandle {
 		updateExtensions: (projectPath, seedId, extensions) =>
 			updateExtensions(seedsDeps, projectPath, seedId, extensions),
 		spawn: spawnDispatch,
+		ciFixer: {
+			githubToken: input.githubToken ?? "",
+			spawn: ciFixerSpawn,
+			...(input.runBranchPrefixDefault !== undefined
+				? { runBranchPrefixDefault: input.runBranchPrefixDefault }
+				: {}),
+		},
 		...(input.logger !== undefined ? { logger: input.logger } : {}),
 		...(input.now !== undefined ? { now: input.now } : {}),
 		...(input.setInterval !== undefined ? { setInterval: input.setInterval } : {}),

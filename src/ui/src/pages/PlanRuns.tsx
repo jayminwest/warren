@@ -2,7 +2,13 @@ import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { planRunsApi, projectsApi } from "@/api/client.ts";
-import type { PlanRunChildState, PlanRunState, RunRow } from "@/api/types.ts";
+import type { PlanRunChildState, PlanRunRow, PlanRunState, RunRow } from "@/api/types.ts";
+import {
+	compareStrings,
+	type Comparator,
+	useClientSort,
+} from "@/hooks/use-client-sort.ts";
+import { SortableTableHead } from "@/components/ui/sortable-table-head.tsx";
 import { formatCostUsd } from "./RunDetail.tsx";
 import { PlanRunStateBadge } from "@/components/PlanRunStateBadge.tsx";
 import { Alert } from "@/components/ui/alert.tsx";
@@ -10,6 +16,7 @@ import { Button } from "@/components/ui/button.tsx";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card.tsx";
 import { EmptyState } from "@/components/ui/empty-state.tsx";
 import { PageHeader } from "@/components/ui/page-header.tsx";
+import { responsiveTrailingControl } from "@/components/ui/responsive.ts";
 import { Spinner } from "@/components/ui/spinner.tsx";
 import {
 	Table,
@@ -21,6 +28,16 @@ import {
 } from "@/components/ui/table.tsx";
 import { formatError } from "@/lib/format-error.ts";
 import { relativeTime } from "@/lib/utils.ts";
+import { ReadyPlansView } from "./ready-plans.tsx";
+
+type PlanRunsTab = "plan-runs" | "ready";
+
+type PlanRunSortKey = "state" | "id" | "planId" | "project" | "agentName" | "startedAt";
+
+const TABS: { label: string; value: PlanRunsTab }[] = [
+	{ label: "Plan runs", value: "plan-runs" },
+	{ label: "Ready to dispatch", value: "ready" },
+];
 
 const STATE_FILTERS: { label: string; value: "all" | PlanRunState }[] = [
 	{ label: "Active", value: "all" },
@@ -32,6 +49,7 @@ const STATE_FILTERS: { label: string; value: "all" | PlanRunState }[] = [
 ];
 
 export function PlanRunsPage() {
+	const [tab, setTab] = useState<PlanRunsTab>("plan-runs");
 	const [stateFilter, setStateFilter] = useState<"all" | PlanRunState>("all");
 	const [projectFilter, setProjectFilter] = useState<string>("");
 
@@ -59,6 +77,29 @@ export function PlanRunsPage() {
 		return m;
 	}, [projects.data]);
 
+	const selectedProject = projects.data?.projects.find((p) => p.id === projectFilter);
+
+	const comparators = useMemo<Record<PlanRunSortKey, Comparator<PlanRunRow>>>(
+		() => ({
+			state: (a, b) => compareStrings(a.state, b.state),
+			id: (a, b) => compareStrings(a.id, b.id),
+			planId: (a, b) => compareStrings(a.planId, b.planId),
+			project: (a, b) =>
+				compareStrings(
+					projectIndex.get(a.projectId) ?? a.projectId,
+					projectIndex.get(b.projectId) ?? b.projectId,
+				),
+			agentName: (a, b) => compareStrings(a.agentName, b.agentName),
+			startedAt: (a, b) => compareStrings(a.startedAt, b.startedAt),
+		}),
+		[projectIndex],
+	);
+	const { sorted, sort, onSort } = useClientSort(
+		planRuns.data?.planRuns ?? [],
+		comparators,
+		{ initialKey: "startedAt", initialDirection: "desc", defaultDirections: { startedAt: "desc" } },
+	);
+
 	return (
 		<div className="space-y-6">
 			<PageHeader
@@ -72,24 +113,43 @@ export function PlanRunsPage() {
 			/>
 
 			<div className="flex flex-wrap items-center gap-2">
-				{STATE_FILTERS.map((f) => (
+				{TABS.map((t) => (
 					<button
-						key={f.value}
+						key={t.value}
 						type="button"
-						onClick={() => setStateFilter(f.value)}
-						className={`rounded-full border px-3 py-1 text-xs transition-colors ${
-							stateFilter === f.value
+						onClick={() => setTab(t.value)}
+						className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
+							tab === t.value
 								? "bg-(--color-primary) text-(--color-primary-foreground)"
 								: "bg-(--color-card) hover:bg-(--color-accent)"
 						}`}
 					>
-						{f.label}
+						{t.label}
 					</button>
 				))}
+			</div>
+
+			<div className="flex flex-wrap items-center gap-2">
+				{tab === "plan-runs"
+					? STATE_FILTERS.map((f) => (
+							<button
+								key={f.value}
+								type="button"
+								onClick={() => setStateFilter(f.value)}
+								className={`rounded-full border px-3 py-1 text-xs transition-colors ${
+									stateFilter === f.value
+										? "bg-(--color-primary) text-(--color-primary-foreground)"
+										: "bg-(--color-card) hover:bg-(--color-accent)"
+								}`}
+							>
+								{f.label}
+							</button>
+						))
+					: null}
 				<select
 					value={projectFilter}
 					onChange={(e) => setProjectFilter(e.target.value)}
-					className="h-8 w-full rounded-md border bg-(--color-card) px-2 text-xs sm:ml-auto sm:w-auto"
+					className={`h-8 rounded-md border bg-(--color-card) px-2 text-xs ${responsiveTrailingControl}`}
 				>
 					<option value="">All projects</option>
 					{projects.data?.projects.map((p) => (
@@ -100,6 +160,9 @@ export function PlanRunsPage() {
 				</select>
 			</div>
 
+			{tab === "ready" ? (
+				<ReadyPlansView projectId={projectFilter} project={selectedProject} />
+			) : (
 			<Card>
 				<CardHeader>
 					<CardTitle>{planRuns.data?.planRuns.length ?? 0} plan runs</CardTitle>
@@ -122,18 +185,30 @@ export function PlanRunsPage() {
 						<Table>
 							<TableHeader>
 								<TableRow>
-									<TableHead className="whitespace-nowrap">State</TableHead>
-									<TableHead className="whitespace-nowrap">ID</TableHead>
-									<TableHead className="whitespace-nowrap">Plan</TableHead>
-									<TableHead className="whitespace-nowrap">Project</TableHead>
-									<TableHead className="whitespace-nowrap">Agent</TableHead>
+									<SortableTableHead columnKey="state" sort={sort} onSort={onSort}>
+										State
+									</SortableTableHead>
+									<SortableTableHead columnKey="id" sort={sort} onSort={onSort}>
+										ID
+									</SortableTableHead>
+									<SortableTableHead columnKey="planId" sort={sort} onSort={onSort}>
+										Plan
+									</SortableTableHead>
+									<SortableTableHead columnKey="project" sort={sort} onSort={onSort}>
+										Project
+									</SortableTableHead>
+									<SortableTableHead columnKey="agentName" sort={sort} onSort={onSort}>
+										Agent
+									</SortableTableHead>
 									<TableHead className="whitespace-nowrap">Children</TableHead>
 									<TableHead className="whitespace-nowrap">Cost</TableHead>
-									<TableHead className="whitespace-nowrap">Started</TableHead>
+									<SortableTableHead columnKey="startedAt" sort={sort} onSort={onSort}>
+										Started
+									</SortableTableHead>
 								</TableRow>
 							</TableHeader>
 							<TableBody>
-								{planRuns.data?.planRuns.map((pr) => (
+								{sorted.map((pr) => (
 									<PlanRunListRow
 										key={pr.id}
 										planRunId={pr.id}
@@ -149,6 +224,7 @@ export function PlanRunsPage() {
 					)}
 				</CardContent>
 			</Card>
+			)}
 		</div>
 	);
 }

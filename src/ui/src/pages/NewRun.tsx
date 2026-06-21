@@ -10,6 +10,11 @@ import { Input } from "@/components/ui/input.tsx";
 import { Field } from "@/components/ui/field.tsx";
 import { Label } from "@/components/ui/label.tsx";
 import { PageHeader } from "@/components/ui/page-header.tsx";
+import {
+	responsiveFooterActions,
+	responsiveFooterButton,
+	responsiveFormControl,
+} from "@/components/ui/responsive.ts";
 import { Textarea } from "@/components/ui/textarea.tsx";
 import { classifyAgentSource } from "@/lib/agent-source.ts";
 
@@ -276,7 +281,7 @@ export function NewRunPage() {
 									setAgent(e.target.value);
 									setAgentTouched(true);
 								}}
-								className="flex h-11 sm:h-9 w-full rounded-md border bg-(--color-card) px-3 py-1 text-base sm:text-sm shadow-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-ring)"
+								className={`flex w-full rounded-md border bg-(--color-card) px-3 py-1 shadow-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-ring) ${responsiveFormControl}`}
 							>
 								<option value="" disabled>
 									Pick an agent…
@@ -312,7 +317,7 @@ export function NewRunPage() {
 								required
 								value={project}
 								onChange={(e) => setProject(e.target.value)}
-								className="flex h-11 sm:h-9 w-full rounded-md border bg-(--color-card) px-3 py-1 text-base sm:text-sm shadow-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-ring)"
+								className={`flex w-full rounded-md border bg-(--color-card) px-3 py-1 shadow-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-ring) ${responsiveFormControl}`}
 							>
 								<option value="" disabled>
 									Pick a project…
@@ -337,7 +342,7 @@ export function NewRunPage() {
 								placeholder={selectedProject?.defaultBranch ?? "default branch"}
 								autoComplete="off"
 								spellCheck={false}
-								className="h-11 sm:h-9 text-base sm:text-sm"
+								className={responsiveFormControl}
 							/>
 						</Field>
 
@@ -369,7 +374,7 @@ export function NewRunPage() {
 									placeholder="plot-…"
 									autoComplete="off"
 									spellCheck={false}
-									className="h-11 sm:h-9 text-base sm:text-sm"
+									className={responsiveFormControl}
 								/>
 							</Field>
 						) : null}
@@ -389,7 +394,7 @@ export function NewRunPage() {
 									}
 									autoComplete="off"
 									spellCheck={false}
-									className="h-11 sm:h-9 text-base sm:text-sm"
+									className={responsiveFormControl}
 								/>
 								{providerFromProjectDefault ? (
 									<p className="text-xs text-(--color-muted-foreground)">
@@ -420,7 +425,7 @@ export function NewRunPage() {
 									}
 									autoComplete="off"
 									spellCheck={false}
-									className="h-11 sm:h-9 text-base sm:text-sm"
+									className={responsiveFormControl}
 								/>
 								{modelFromProjectDefault ? (
 									<p className="text-xs text-(--color-muted-foreground)">
@@ -465,13 +470,13 @@ export function NewRunPage() {
 							</p>
 						) : null}
 
-						<div className="flex flex-col sm:flex-row sm:justify-end gap-2">
+						<div className={responsiveFooterActions}>
 							<Button
 								type="button"
 								variant="outline"
 								onClick={() => navigate("/runs")}
 								disabled={spawn.isPending}
-								className="h-11 w-full sm:h-9 sm:w-auto"
+								className={`h-11 sm:h-9 ${responsiveFooterButton}`}
 							>
 								Cancel
 							</Button>
@@ -484,7 +489,7 @@ export function NewRunPage() {
 									prompt.trim().length === 0 ||
 									plotIdMalformed
 								}
-								className="h-11 w-full sm:h-9 sm:w-auto"
+								className={`h-11 sm:h-9 ${responsiveFooterButton}`}
 							>
 								{spawn.isPending ? "Dispatching…" : "Dispatch"}
 							</Button>

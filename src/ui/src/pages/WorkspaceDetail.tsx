@@ -101,8 +101,8 @@ export function WorkspaceDetailPage() {
 	const plot = query.data;
 
 	return (
-		<div className="space-y-6">
-			<header className="flex flex-wrap items-start justify-between gap-4">
+		<div className="flex h-full flex-col gap-6">
+			<header className="flex shrink-0 flex-wrap items-start justify-between gap-4">
 				<div className="space-y-1">
 					<PlotNameEditor plot={plot} />
 					<div className="font-mono text-xs text-(--color-muted-foreground)">
@@ -130,7 +130,7 @@ export function WorkspaceDetailPage() {
 
 			<nav
 				aria-label="Workspace tabs"
-				className="flex flex-wrap items-center gap-1 border-b"
+				className="flex shrink-0 flex-wrap items-center gap-1 border-b"
 			>
 				{TABS.map((t) => (
 					<button
@@ -150,11 +150,23 @@ export function WorkspaceDetailPage() {
 				))}
 			</nav>
 
-			<section role="tabpanel">
+			<section role="tabpanel" className="flex min-h-0 flex-1 flex-col">
 				{activeTab === "shape" && <ShapeTab plot={plot} />}
-				{activeTab === "plan" && <PlanTab plot={plot} />}
-				{activeTab === "run" && <RunTab plot={plot} />}
-				{activeTab === "activity" && <ActivityTab plot={plot} />}
+				{activeTab === "plan" && (
+					<div className="min-h-0 flex-1 overflow-y-auto">
+						<PlanTab plot={plot} />
+					</div>
+				)}
+				{activeTab === "run" && (
+					<div className="min-h-0 flex-1 overflow-y-auto">
+						<RunTab plot={plot} />
+					</div>
+				)}
+				{activeTab === "activity" && (
+					<div className="min-h-0 flex-1 overflow-y-auto">
+						<ActivityTab plot={plot} />
+					</div>
+				)}
 			</section>
 		</div>
 	);
@@ -225,8 +237,8 @@ function ShapeConversation({ conversation }: { conversation: ConversationRow }) 
 		anchoringRun.data !== undefined && RUN_TERMINAL_STATES.includes(anchoringRun.data.state);
 
 	return (
-		<div className="space-y-4">
-			<div className="flex flex-wrap items-center justify-end gap-2">
+		<div className="flex h-full flex-col gap-4">
+			<div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
 				<RewakeButton
 					conversation={conversation}
 					isAnchoringRunTerminal={isAnchoringRunTerminal}
@@ -237,11 +249,12 @@ function ShapeConversation({ conversation }: { conversation: ConversationRow }) 
 					<DispatchPlanButton
 						projectId={conversation.projectId}
 						plotId={conversation.plotId}
-						plannerRunId={conversation.plannerRunId}
 					/>
 				) : null}
 			</div>
-			<ConversationSplitView conversationId={conversation.id} />
+			<div className="min-h-0 flex-1">
+				<ConversationSplitView conversationId={conversation.id} />
+			</div>
 		</div>
 	);
 }
@@ -394,11 +407,7 @@ function PlanHandoff({
 						</label>
 						<div>
 							{signedOff && projectId !== null ? (
-								<DispatchPlanButton
-									projectId={projectId}
-									plotId={plotId}
-									plannerRunId={plannerRunId}
-								/>
+								<DispatchPlanButton projectId={projectId} plotId={plotId} />
 							) : (
 								<p className="text-xs text-(--color-muted-foreground)">
 									{projectId === null

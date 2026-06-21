@@ -10,6 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card.t
 import { EmptyState } from "@/components/ui/empty-state.tsx";
 import { Label } from "@/components/ui/label.tsx";
 import { PageHeader } from "@/components/ui/page-header.tsx";
+import { responsiveFormControl } from "@/components/ui/responsive.ts";
 import { Spinner } from "@/components/ui/spinner.tsx";
 import {
 	Table,
@@ -19,9 +20,25 @@ import {
 	TableHeader,
 	TableRow,
 } from "@/components/ui/table.tsx";
+import {
+	compareStrings,
+	type Comparator,
+	useClientSort,
+} from "@/hooks/use-client-sort.ts";
+import { SortableTableHead } from "@/components/ui/sortable-table-head.tsx";
 import { type AgentSourceTier, classifyAgentSource } from "@/lib/agent-source.ts";
 import { formatError } from "@/lib/format-error.ts";
 import { formatTimestamp } from "@/lib/utils.ts";
+
+type AgentSortKey = "name" | "source" | "registeredAt" | "lastRefreshed";
+
+const AGENT_COMPARATORS: Record<AgentSortKey, Comparator<AgentRow>> = {
+	name: (a, b) => compareStrings(a.name, b.name),
+	source: (a, b) =>
+		compareStrings(classifyAgentSource(a.source).label, classifyAgentSource(b.source).label),
+	registeredAt: (a, b) => compareStrings(a.registeredAt, b.registeredAt),
+	lastRefreshed: (a, b) => compareStrings(a.lastRefreshed, b.lastRefreshed),
+};
 
 export function AgentsPage() {
 	const qc = useQueryClient();
@@ -51,6 +68,14 @@ export function AgentsPage() {
 		onSuccess: () => qc.invalidateQueries({ queryKey: ["agents"] }),
 	});
 	const [openName, setOpenName] = useState<string | null>(null);
+	const { sorted, sort, onSort } = useClientSort(
+		agents.data?.agents ?? [],
+		AGENT_COMPARATORS,
+		{
+			initialKey: "name",
+			defaultDirections: { registeredAt: "desc", lastRefreshed: "desc" },
+		},
+	);
 
 	return (
 		<div className="space-y-6">
@@ -75,7 +100,7 @@ export function AgentsPage() {
 							id="agent-project-filter"
 							value={projectFilter}
 							onChange={(e) => setProjectFilter(e.target.value)}
-							className="flex h-9 min-w-[14rem] rounded-md border bg-(--color-card) px-3 py-1 text-sm shadow-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-ring)"
+							className={`flex min-w-[14rem] rounded-md border bg-(--color-card) px-3 py-1 shadow-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-ring) ${responsiveFormControl}`}
 						>
 							<option value="">Global only</option>
 							{projects.data?.projects.map((p) => (
@@ -200,14 +225,22 @@ export function AgentsPage() {
 							<TableHeader>
 								<TableRow>
 									<TableHead className="w-8" />
-									<TableHead>Name</TableHead>
-									<TableHead>Source</TableHead>
-									<TableHead>Registered</TableHead>
-									<TableHead>Last refreshed</TableHead>
+									<SortableTableHead columnKey="name" sort={sort} onSort={onSort}>
+										Name
+									</SortableTableHead>
+									<SortableTableHead columnKey="source" sort={sort} onSort={onSort}>
+										Source
+									</SortableTableHead>
+									<SortableTableHead columnKey="registeredAt" sort={sort} onSort={onSort}>
+										Registered
+									</SortableTableHead>
+									<SortableTableHead columnKey="lastRefreshed" sort={sort} onSort={onSort}>
+										Last refreshed
+									</SortableTableHead>
 								</TableRow>
 							</TableHeader>
 							<TableBody>
-								{agents.data?.agents.map((a) => (
+								{sorted.map((a) => (
 									<AgentDisplayRow
 										key={agentRowKey(a)}
 										agent={a}

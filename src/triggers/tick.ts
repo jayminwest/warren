@@ -39,6 +39,7 @@ import type { Repos } from "../db/repos/index.ts";
 import type { ProjectRow } from "../db/schema.ts";
 import type { ScheduledSeed, WarrenExtensions } from "../seeds-cli/index.ts";
 import type { LoadedWarrenConfig } from "../warren-config/index.ts";
+import { runCiFixerPass, type TickCiFixerDeps } from "./ci-fixer-pass.ts";
 import {
 	type DispatchCronResult,
 	type DispatchScheduledResult,
@@ -46,6 +47,12 @@ import {
 	dispatchCronTrigger,
 	dispatchScheduledSeed,
 } from "./dispatch.ts";
+
+export type {
+	TickCiFixerDeps,
+	TickCiFixerSpawnFn,
+	TickCiFixerSpawnInput,
+} from "./ci-fixer-pass.ts";
 
 export type LoadWarrenConfigFn = (
 	projectId: string,
@@ -82,6 +89,7 @@ export interface TickDeps {
 	readonly listScheduledSeeds: ListScheduledSeedsFn;
 	readonly updateExtensions: UpdateSeedExtensionsFn;
 	readonly spawn: DispatchSpawnFn;
+	readonly ciFixer?: TickCiFixerDeps;
 	readonly now?: () => Date;
 	readonly logger?: TickLogger;
 }
@@ -159,6 +167,19 @@ async function runProjectTick(input: RunProjectTickInput): Promise<void> {
 		});
 		cron.push(result);
 		logCronResult(deps.logger, project.id, trigger.id, result);
+	}
+
+	// warren-0b75: CI-fixer poll. Independent of the seeds shell-out below,
+	// so it runs before the `return` on an `sd list` failure can skip it.
+	if (deps.ciFixer !== undefined) {
+		await runCiFixerPass({
+			repos: deps.repos,
+			ciFixer: deps.ciFixer,
+			project,
+			config,
+			now,
+			...(deps.logger !== undefined ? { logger: deps.logger } : {}),
+		});
 	}
 
 	let seedsResult: Awaited<ReturnType<ListScheduledSeedsFn>>;

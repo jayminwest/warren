@@ -79,6 +79,7 @@
 				"src/db/repos/triggers.ts",
 				"src/diagnostics/checks.ts",
 				"src/plan-runs/coordinator.ts",
+				"src/plan-runs/in-flight.ts",
 				"src/plots/formalize.ts",
 				"src/plots/needs-attention.ts",
 				"src/plots/summary.ts",

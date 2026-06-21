@@ -27,6 +27,7 @@ import { useSearchParams } from "react-router-dom";
 import { projectsApi, runAnalyticsApi } from "@/api/client.ts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card.tsx";
 import { PageHeader } from "@/components/ui/page-header.tsx";
+import { responsiveFormControl } from "@/components/ui/responsive.ts";
 import {
 	AvgContextPerAgentChart,
 	FailureReasonChart,
@@ -116,7 +117,7 @@ export function RunAnalyticsPage() {
 								type="date"
 								value={from}
 								onChange={(e) => updateParam("from", e.target.value)}
-								className="rounded border border-(--color-border) bg-transparent px-2 py-1 text-sm"
+								className={`rounded border border-(--color-border) bg-transparent px-2 ${responsiveFormControl}`}
 							/>
 						</div>
 						<div className="flex flex-col gap-1">
@@ -128,7 +129,7 @@ export function RunAnalyticsPage() {
 								type="date"
 								value={to}
 								onChange={(e) => updateParam("to", e.target.value)}
-								className="rounded border border-(--color-border) bg-transparent px-2 py-1 text-sm"
+								className={`rounded border border-(--color-border) bg-transparent px-2 ${responsiveFormControl}`}
 							/>
 						</div>
 						<div className="flex flex-col gap-1">
@@ -139,7 +140,7 @@ export function RunAnalyticsPage() {
 								id="ra-project"
 								value={projectId}
 								onChange={(e) => updateParam("projectId", e.target.value)}
-								className="rounded border border-(--color-border) bg-transparent px-2 py-1 text-sm"
+								className={`rounded border border-(--color-border) bg-transparent px-2 ${responsiveFormControl}`}
 							>
 								<option value="">All projects</option>
 								{projects.data?.projects.map((p) => (

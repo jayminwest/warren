@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import type { SpawnFn, SpawnResult } from "../projects/clone.ts";
 import { SeedNotFoundError, SeedsCliError } from "./errors.ts";
-import { showPlan, showSeed } from "./show.ts";
+import { listPlans, showPlan, showSeed } from "./show.ts";
+import { readTargetRepo } from "./warren-extensions.ts";
 
 function ok(stdout: string): SpawnResult {
 	return { stdout, stderr: "", exitCode: 0 };
@@ -162,6 +163,46 @@ describe("showSeed", () => {
 		expect(result.extensions?.role).toBe("claude-code");
 	});
 
+	test("round-trips extensions.repo through the show envelope into readTargetRepo", async () => {
+		const envelope = JSON.stringify({
+			success: true,
+			command: "show",
+			issue: {
+				id: "warren-5094",
+				status: "open",
+				extensions: {
+					role: "claude-code",
+					repo: "git@github.com:os-eco/child-repo.git",
+				},
+			},
+		});
+		const spawn: SpawnFn = async () => ok(envelope);
+		const result = await showSeed({ spawn, sdBinary: "sd" }, "/p", "warren-5094");
+		expect(result.extensions?.repo).toBe("git@github.com:os-eco/child-repo.git");
+		expect(readTargetRepo(result.extensions)).toBe("git@github.com:os-eco/child-repo.git");
+	});
+
+	test("a seed without extensions.repo reads back as an undefined target repo", async () => {
+		const envelope = JSON.stringify({
+			success: true,
+			issue: { id: "warren-x", status: "open", extensions: { role: "claude-code" } },
+		});
+		const spawn: SpawnFn = async () => ok(envelope);
+		const result = await showSeed({ spawn, sdBinary: "sd" }, "/p", "warren-x");
+		expect(readTargetRepo(result.extensions)).toBeUndefined();
+	});
+
+	test("a seed with an empty-string extensions.repo reads back as undefined", async () => {
+		const envelope = JSON.stringify({
+			success: true,
+			issue: { id: "warren-x", status: "open", extensions: { repo: "" } },
+		});
+		const spawn: SpawnFn = async () => ok(envelope);
+		const result = await showSeed({ spawn, sdBinary: "sd" }, "/p", "warren-x");
+		expect(result.extensions?.repo).toBe("");
+		expect(readTargetRepo(result.extensions)).toBeUndefined();
+	});
+
 	test("parses a closed seed with no blockedBy field (passthrough tolerates omission)", async () => {
 		const envelope = JSON.stringify({
 			success: true,
@@ -231,5 +272,91 @@ describe("showSeed", () => {
 		await expect(showSeed({ spawn, sdBinary: "sd" }, "/p", "warren-z")).rejects.toBeInstanceOf(
 			SeedsCliError,
 		);
+	});
+});
+
+describe("listPlans", () => {
+	test("shells out with the configured sd binary and project cwd", async () => {
+		const calls: { cmd: readonly string[]; cwd: string }[] = [];
+		const spawn: SpawnFn = async (cmd, opts) => {
+			calls.push({ cmd, cwd: opts.cwd });
+			return ok(JSON.stringify({ success: true, plans: [] }));
+		};
+		await listPlans({ spawn, sdBinary: "/opt/sd" }, "/data/projects/x/y");
+		expect(calls).toEqual([
+			{ cmd: ["/opt/sd", "plan", "list", "--json"], cwd: "/data/projects/x/y" },
+		]);
+	});
+
+	test("projects to a lean summary and drops the heavyweight sections body", async () => {
+		const envelope = JSON.stringify({
+			success: true,
+			command: "plan list",
+			count: 1,
+			plans: [
+				{
+					id: "pl-dfb5",
+					seed: "warren-1551",
+					template: "feature",
+					status: "approved",
+					revision: 1,
+					name: "UI Nits Redux",
+					children: ["warren-9440", "warren-5562", "warren-9b49"],
+					createdAt: "2026-06-16T07:18:51.397Z",
+					updatedAt: "2026-06-16T07:18:51.397Z",
+					sections: { context: "a very long body".repeat(500) },
+				},
+			],
+		});
+		const spawn: SpawnFn = async () => ok(envelope);
+		const plans = await listPlans({ spawn, sdBinary: "sd" }, "/p");
+		expect(plans).toEqual([
+			{
+				id: "pl-dfb5",
+				status: "approved",
+				seed: "warren-1551",
+				template: "feature",
+				revision: 1,
+				name: "UI Nits Redux",
+				childCount: 3,
+				createdAt: "2026-06-16T07:18:51.397Z",
+				updatedAt: "2026-06-16T07:18:51.397Z",
+			},
+		]);
+		expect((plans[0] as unknown as Record<string, unknown>).sections).toBeUndefined();
+	});
+
+	test("childCount defaults to 0 when children is absent", async () => {
+		const spawn: SpawnFn = async () =>
+			ok(JSON.stringify({ plans: [{ id: "pl-x", status: "draft" }] }));
+		const plans = await listPlans({ spawn, sdBinary: "sd" }, "/p");
+		expect(plans).toEqual([{ id: "pl-x", status: "draft", childCount: 0 }]);
+	});
+
+	test("returns an empty array when the project has no plans", async () => {
+		const spawn: SpawnFn = async () => ok(JSON.stringify({ success: true, plans: [] }));
+		expect(await listPlans({ spawn, sdBinary: "sd" }, "/p")).toEqual([]);
+	});
+
+	test("throws SeedsCliError with a recoveryHint on a non-zero exit", async () => {
+		const spawn: SpawnFn = async () => fail("seeds: boom");
+		let caught: unknown;
+		try {
+			await listPlans({ spawn, sdBinary: "sd" }, "/p");
+		} catch (err) {
+			caught = err;
+		}
+		expect(caught).toBeInstanceOf(SeedsCliError);
+		expect((caught as SeedsCliError).recoveryHint).toBe("run `sd plan list` in /p to diagnose");
+	});
+
+	test("throws SeedsCliError on non-JSON stdout", async () => {
+		const spawn: SpawnFn = async () => ok("not json");
+		await expect(listPlans({ spawn, sdBinary: "sd" }, "/p")).rejects.toBeInstanceOf(SeedsCliError);
+	});
+
+	test("throws SeedsCliError when the envelope shape doesn't match", async () => {
+		const spawn: SpawnFn = async () => ok(JSON.stringify({ success: true }));
+		await expect(listPlans({ spawn, sdBinary: "sd" }, "/p")).rejects.toBeInstanceOf(SeedsCliError);
 	});
 });

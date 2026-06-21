@@ -75,6 +75,7 @@ export function startServer(deps: ServerDeps, opts: ServeOptions = {}): ServeHan
 		// produced the Response.
 		const requestId = extractOrGenerateRequestId(request);
 		const requestLogger = bindRequestIdLogger(logger, requestId);
+		const startedAt = performance.now();
 		const response = await handleRequest(
 			request,
 			routes,
@@ -82,6 +83,19 @@ export function startServer(deps: ServerDeps, opts: ServeOptions = {}): ServeHan
 			requestLogger,
 			previewProxy,
 			requestId,
+		);
+		// Access log (warren-26c2 / pl-f700 step 4): one info line per
+		// request. request_id is already bound onto requestLogger, so the
+		// correlation id rides along without re-threading it here.
+		const url = new URL(request.url);
+		requestLogger.info(
+			{
+				method: request.method,
+				path: url.pathname,
+				status: response.status,
+				duration_ms: Math.round((performance.now() - startedAt) * 1000) / 1000,
+			},
+			"server.request",
 		);
 		return stampRequestId(response, requestId);
 	};
@@ -203,7 +217,7 @@ async function handleRequest(
 
 	if (!isAuthExempt(url.pathname)) {
 		const result = auth.authorize(request);
-		if (!result.ok) return denyResponse(result);
+		if (!result.ok) return denyResponse(result, logger, request, url);
 	}
 
 	const match = matchRoute(routes, request.method, url.pathname);
@@ -276,7 +290,19 @@ async function handleRequest(
 	return jsonResponse(rendered.status, rendered.envelope);
 }
 
-function denyResponse(result: AuthDenied): Response {
+function denyResponse(result: AuthDenied, logger: Logger, request: Request, url: URL): Response {
+	// Auth-denial log (warren-26c2 / pl-f700 step 4): warn on every
+	// rejected request so blocked traffic is visible without leaking the
+	// presented token. request_id is bound onto the logger upstream.
+	logger.warn(
+		{
+			method: request.method,
+			path: url.pathname,
+			status: result.status,
+			code: result.code,
+		},
+		"server.auth_denied",
+	);
 	const envelope = {
 		error: { code: result.code, message: result.message },
 	};

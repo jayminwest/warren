@@ -19,12 +19,16 @@ export {
 	type SeedsCliDeps,
 	updateExtensions,
 } from "./extensions.ts";
+export { listSeedStatuses } from "./list.ts";
 export {
 	type ParseScheduledSeedsResult,
+	type PlanListEnvelope,
+	PlanListEnvelopeSchema,
 	type PlanShowEnvelope,
 	PlanShowEnvelopeSchema,
 	type PlanShowPlan,
 	type PlanShowStep,
+	type PlanSummary,
 	parseScheduledSeeds,
 	type ScheduledSeed,
 	type SeedRow,
@@ -35,12 +39,14 @@ export {
 	SeedsListEnvelopeSchema,
 } from "./schema.ts";
 export {
+	listPlans,
 	type PlanShowResult,
 	type SeedShowResult,
 	showPlan,
 	showSeed,
 } from "./show.ts";
 export {
+	readTargetRepo,
 	type WarrenExtensions,
 	WarrenExtensionsSchema,
 	WarrenTriggerKind,

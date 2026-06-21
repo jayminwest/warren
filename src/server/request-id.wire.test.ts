@@ -22,6 +22,17 @@ const silentLogger = {
 	debug() {},
 };
 
+// Capture a single log level into `events` while staying silent elsewhere.
+function captureLogger(level: "info" | "warn") {
+	const events: Array<{ obj: Record<string, unknown>; msg?: string }> = [];
+	const logger = {
+		...silentLogger,
+		[level]: (obj: object, msg?: string) =>
+			events.push({ obj: obj as Record<string, unknown>, msg }),
+	};
+	return { events, logger };
+}
+
 function stubFetch(): typeof fetch {
 	return (async () => new Response(JSON.stringify({ ok: true }), { status: 200 })) as never;
 }
@@ -123,6 +134,32 @@ describe("X-Request-ID wire integration (warren-30af)", () => {
 		});
 		expect(res.status).toBe(401);
 		expect(res.headers.get("x-request-id")).toBe("deny-trace");
+	});
+
+	test("emits one access log line per request (warren-26c2)", async () => {
+		const { events, logger } = captureLogger("info");
+		handle = startServer(await depsFor(repos), {
+			transport: { kind: "tcp", hostname: "127.0.0.1", port: 0 },
+			auth: NO_AUTH,
+			logger,
+		});
+		await fetch(`${tcpUrl(handle)}/projects`);
+		const obj = events.find((e) => e.msg === "server.request")?.obj;
+		expect(obj).toMatchObject({ method: "GET", path: "/projects", status: 200 });
+		expect(typeof obj?.duration_ms).toBe("number");
+	});
+
+	test("warns on every auth denial (warren-26c2)", async () => {
+		const { events, logger } = captureLogger("warn");
+		handle = startServer(await depsFor(repos), {
+			transport: { kind: "tcp", hostname: "127.0.0.1", port: 0 },
+			auth: bearerAuth("secret"),
+			logger,
+		});
+		const res = await fetch(`${tcpUrl(handle)}/projects`);
+		expect(res.status).toBe(401);
+		const obj = events.find((e) => e.msg === "server.auth_denied")?.obj;
+		expect(obj).toMatchObject({ path: "/projects", status: 401 });
 	});
 
 	test("stamps the id on api 404 responses", async () => {

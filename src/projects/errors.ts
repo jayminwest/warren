@@ -16,3 +16,15 @@ import { WarrenError } from "../core/errors.ts";
 export class ProjectUnavailableError extends WarrenError {
 	readonly code = "project_unavailable";
 }
+
+/**
+ * Raised by `resolveTargetProject` (cross-repo plan-runs, pl-fb43 step 2)
+ * when a seed's `extensions.repo` (a project slug or git remote URL) does
+ * not map to any registered project. Pure lookup failure — distinct from
+ * `ProjectUnavailableError` (host/git failure) and `NotFoundError`
+ * (lookup by warren project id) — so callers can route it to the
+ * plan-failed path with a clear "register this repo first" hint.
+ */
+export class TargetProjectUnresolvedError extends WarrenError {
+	readonly code = "target_project_unresolved";
+}

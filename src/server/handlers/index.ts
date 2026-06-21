@@ -80,7 +80,9 @@ import {
 	getProjectSeedHandler,
 	getProjectTriggersHandler,
 	getProjectWarrenConfigHandler,
+	listProjectSeedPlansHandler,
 	listProjectsHandler,
+	listReadyPlansHandler,
 	refreshProjectHandler,
 	runProjectTriggerHandler,
 } from "./projects.ts";
@@ -261,6 +263,10 @@ const ROUTE_TABLE: readonly RouteEntry[] = [
 	{ method: "POST", pattern: "/projects", build: createProjectHandler },
 	{ method: "GET", pattern: "/projects/:id/warren-config", build: getProjectWarrenConfigHandler },
 	{ method: "GET", pattern: "/projects/:id/triggers", build: getProjectTriggersHandler },
+	// Static path — must precede `/projects/:id/seeds/:seedId` so the param
+	// route doesn't swallow `plans` as a seed id.
+	{ method: "GET", pattern: "/projects/:id/seeds/plans", build: listProjectSeedPlansHandler },
+	{ method: "GET", pattern: "/projects/:id/ready-plans", build: listReadyPlansHandler },
 	{ method: "GET", pattern: "/projects/:id/seeds/:seedId", build: getProjectSeedHandler },
 	{
 		method: "POST",

@@ -3,19 +3,15 @@
 	"threshold": 500,
 	"budgets": {
 		"scripts/acceptance/scenarios/20-preview-path.ts": 560,
-		"scripts/acceptance/scenarios/20-preview.ts": 658,
 		"scripts/acceptance/scenarios/25-plot-roundtrip.ts": 556,
 		"scripts/acceptance/scenarios/26-plan-run-roundtrip.ts": 563,
 		"scripts/acceptance/scenarios/28-plot-list-and-create.ts": 559,
 		"src/client/client.ts": 569,
 		"src/db/repos/runs.ts": 610,
 		"src/db/schema/sqlite.ts": 564,
-		"src/diagnostics/checks.test.ts": 653,
 		"src/diagnostics/checks.ts": 616,
 		"src/plan-runs/coordinator.completion.test.ts": 613,
-		"src/plan-runs/coordinator.ts": 587,
 		"src/plots/aggregate.ts": 506,
-		"src/runs/pause.test.ts": 616,
 		"src/runs/pr.test.ts": 604,
 		"src/runs/pr.ts": 659,
 		"src/runs/reap/run.ts": 527,
@@ -23,7 +19,6 @@
 		"src/server/bridges.test.ts": 557,
 		"src/server/handlers/agents.test.ts": 533,
 		"src/server/main/index.ts": 548,
-		"src/server/handlers/plot-plan-runs.test.ts": 640,
 		"src/server/integration.multi-worker.test.ts": 553,
 		"src/server/server.test.ts": 536
 	}

@@ -29,7 +29,7 @@
  *
  * The `project_lacks_seeds` arm is unit-test-only here: a project with
  * `.plot/` but no `.seeds/` requires a third fixture clone for one
- * assertion already covered by `handlers.plot-plan-runs.test.ts`.
+ * assertion already covered by `plot-plan-runs.validation.test.ts`.
  *
  * Topology: in-proc only, per-scenario stack so the
  * `WARREN_GH_FETCH_OVERRIDE=merged` / `WARREN_STUB_NO_COMMIT_SEEDS`

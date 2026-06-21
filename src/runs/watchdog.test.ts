@@ -4,8 +4,10 @@
  * Coverage:
  *   - `computeIdleMs` anchors on the newest event ts, falling back to
  *     `startedAt`, and returns null when neither is parseable.
- *   - `loadWatchdogConfigFromEnv` arms only on a positive timeout and
- *     rejects malformed values.
+ *   - `loadWatchdogConfigFromEnv` is on by default with the built-in
+ *     budget, honours an explicit timeout, opts out via
+ *     `WARREN_WATCHDOG_DISABLED` (or a 0 budget), and rejects malformed
+ *     values.
  *   - a running run past the heartbeat budget is force-failed: a
  *     `watchdog.timed_out` event is emitted, the burrow run is cancelled,
  *     and reap is called with `outcome: failed` / `failureReason:
@@ -24,6 +26,7 @@ import type { ReapRunInput, ReapRunResult } from "./reap/index.ts";
 import {
 	bootWatchdog,
 	computeIdleMs,
+	DEFAULT_WATCHDOG_HEARTBEAT_TIMEOUT_MS,
 	loadWatchdogConfigFromEnv,
 	tickWatchdog,
 	WATCHDOG_TIMED_OUT_KIND,
@@ -169,14 +172,14 @@ describe("computeIdleMs", () => {
 });
 
 describe("loadWatchdogConfigFromEnv", () => {
-	test("disabled by default", () => {
+	test("on by default with the built-in budget", () => {
 		const cfg = loadWatchdogConfigFromEnv({});
-		expect(cfg.enabled).toBe(false);
-		expect(cfg.heartbeatTimeoutMs).toBe(0);
+		expect(cfg.enabled).toBe(true);
+		expect(cfg.heartbeatTimeoutMs).toBe(DEFAULT_WATCHDOG_HEARTBEAT_TIMEOUT_MS);
 		expect(cfg.tickMs).toBe(30_000);
 	});
 
-	test("arms on a positive timeout", () => {
+	test("honours an explicit timeout", () => {
 		const cfg = loadWatchdogConfigFromEnv({
 			WARREN_RUN_HEARTBEAT_TIMEOUT_MS: "600000",
 			WARREN_WATCHDOG_TICK_MS: "10000",
@@ -184,6 +187,18 @@ describe("loadWatchdogConfigFromEnv", () => {
 		expect(cfg.enabled).toBe(true);
 		expect(cfg.heartbeatTimeoutMs).toBe(600_000);
 		expect(cfg.tickMs).toBe(10_000);
+	});
+
+	test("opts out via WARREN_WATCHDOG_DISABLED", () => {
+		const cfg = loadWatchdogConfigFromEnv({ WARREN_WATCHDOG_DISABLED: "1" });
+		expect(cfg.enabled).toBe(false);
+		expect(cfg.heartbeatTimeoutMs).toBe(DEFAULT_WATCHDOG_HEARTBEAT_TIMEOUT_MS);
+	});
+
+	test("opts out when the budget is pinned to 0", () => {
+		const cfg = loadWatchdogConfigFromEnv({ WARREN_RUN_HEARTBEAT_TIMEOUT_MS: "0" });
+		expect(cfg.enabled).toBe(false);
+		expect(cfg.heartbeatTimeoutMs).toBe(0);
 	});
 
 	test("rejects a malformed timeout", () => {

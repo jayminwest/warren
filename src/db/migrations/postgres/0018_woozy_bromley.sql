@@ -1,0 +1,1 @@
+CREATE INDEX "runs_pr_url_idx" ON "runs" USING btree ("pr_url");
