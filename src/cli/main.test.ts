@@ -23,10 +23,24 @@ describe("buildProgram", () => {
 			"db",
 			"doctor",
 			"init",
+			"plan",
 			"register-agent",
 			"run",
 			"serve",
 		]);
+	});
+
+	test("`plan run` + `plan cancel` are registered under the plan group (warren-ec6a)", () => {
+		const program = buildProgram(silentContext());
+		const planCmd = program.commands.find((c) => c.name() === "plan");
+		expect(planCmd).toBeDefined();
+		const subNames = planCmd?.commands.map((c) => c.name()).sort() ?? [];
+		expect(subNames).toEqual(["cancel", "run"]);
+		const runCmd = planCmd?.commands.find((c) => c.name() === "run");
+		expect(runCmd?.options.find((o) => o.long === "--project")?.mandatory).toBe(true);
+		expect(runCmd?.options.find((o) => o.long === "--agent")?.mandatory).toBe(true);
+		// commander models `--no-follow` as a boolean `follow` option defaulting to true.
+		expect(runCmd?.options.find((o) => o.long === "--no-follow")).toBeDefined();
 	});
 
 	test("`db migrate-to-postgres` is registered under the db group", () => {

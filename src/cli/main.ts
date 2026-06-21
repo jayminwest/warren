@@ -12,6 +12,7 @@
 
 import { Command } from "commander";
 import { BurrowClientPool } from "../burrow-client/pool.ts";
+import { WarrenClient } from "../client/index.ts";
 import { openDatabase } from "../db/client.ts";
 import { parseDatabaseUrl } from "../db/url.ts";
 import { VERSION } from "../index.ts";
@@ -23,6 +24,7 @@ import { runConfigMigrate } from "./commands/config-migrate.ts";
 import { runMigrateToPostgres } from "./commands/db.ts";
 import { runDoctor } from "./commands/doctor.ts";
 import { runInit } from "./commands/init.ts";
+import { runPlanCancel, runPlanRun } from "./commands/plan-run.ts";
 import { runRegisterAgent } from "./commands/register-agent.ts";
 import { runRun } from "./commands/run.ts";
 import { runServe } from "./commands/serve.ts";
@@ -281,6 +283,65 @@ export function buildProgram(context: CliContext): Command {
 				await source.close().catch(() => undefined);
 				await target.close().catch(() => undefined);
 			}
+		});
+
+	// `plan` is a thin HTTP-client subcommand group (warren-ec6a, pl-55df) —
+	// the first command family that talks to a remote warren via
+	// WarrenClient.fromEnv rather than opening a local DB with withCliDb.
+	const planGroup = program.command("plan").description("dispatch and steer cloud plan-runs");
+	planGroup
+		.command("run")
+		.description("dispatch a serial plan-run against a remote warren and tail events as NDJSON")
+		.argument("<plan-id>", "seeds plan id (pl_xxx)")
+		.requiredOption("--project <id>", "project id (prj_xxx)")
+		.requiredOption("--agent <name>", "registered agent name")
+		.option("--prompt-template <text>", "per-child prompt template override")
+		.option("--ref <git-ref>", "git ref to clone child workspaces from")
+		.option("--provider <name>", "per-run override of agent frontmatter.provider")
+		.option("--model <name>", "per-run override of agent frontmatter.model")
+		.option("--plot <id>", "associate the plan-run with a Plot (plt_xxx)")
+		.option("--no-follow", "dispatch and exit without tailing events")
+		.action(
+			async (
+				planId: string,
+				opts: {
+					project: string;
+					agent: string;
+					promptTemplate?: string;
+					ref?: string;
+					provider?: string;
+					model?: string;
+					plot?: string;
+					follow: boolean;
+				},
+			) => {
+				const client = WarrenClient.fromEnv(context.env);
+				const result = await runPlanRun(
+					context,
+					{ client },
+					{
+						planId,
+						project: opts.project,
+						agent: opts.agent,
+						follow: opts.follow,
+						...(opts.promptTemplate !== undefined ? { promptTemplate: opts.promptTemplate } : {}),
+						...(opts.ref !== undefined ? { ref: opts.ref } : {}),
+						...(opts.provider !== undefined ? { provider: opts.provider } : {}),
+						...(opts.model !== undefined ? { model: opts.model } : {}),
+						...(opts.plot !== undefined ? { plot: opts.plot } : {}),
+					},
+				);
+				process.exit(result.exitCode);
+			},
+		);
+	planGroup
+		.command("cancel")
+		.description("cancel a remote plan-run and its in-flight child run")
+		.argument("<plan-run-id>", "plan-run id")
+		.action(async (planRunId: string) => {
+			const client = WarrenClient.fromEnv(context.env);
+			const result = await runPlanCancel(context, { client }, { planRunId });
+			process.exit(result.exitCode);
 		});
 
 	program
