@@ -28,8 +28,16 @@ import {
 } from "@/components/ui/table.tsx";
 import { formatError } from "@/lib/format-error.ts";
 import { relativeTime } from "@/lib/utils.ts";
+import { ReadyPlansView } from "./ready-plans.tsx";
+
+type PlanRunsTab = "plan-runs" | "ready";
 
 type PlanRunSortKey = "state" | "id" | "planId" | "project" | "agentName" | "startedAt";
+
+const TABS: { label: string; value: PlanRunsTab }[] = [
+	{ label: "Plan runs", value: "plan-runs" },
+	{ label: "Ready to dispatch", value: "ready" },
+];
 
 const STATE_FILTERS: { label: string; value: "all" | PlanRunState }[] = [
 	{ label: "Active", value: "all" },
@@ -41,6 +49,7 @@ const STATE_FILTERS: { label: string; value: "all" | PlanRunState }[] = [
 ];
 
 export function PlanRunsPage() {
+	const [tab, setTab] = useState<PlanRunsTab>("plan-runs");
 	const [stateFilter, setStateFilter] = useState<"all" | PlanRunState>("all");
 	const [projectFilter, setProjectFilter] = useState<string>("");
 
@@ -67,6 +76,8 @@ export function PlanRunsPage() {
 		for (const p of projects.data?.projects ?? []) m.set(p.id, p.gitUrl);
 		return m;
 	}, [projects.data]);
+
+	const selectedProject = projects.data?.projects.find((p) => p.id === projectFilter);
 
 	const comparators = useMemo<Record<PlanRunSortKey, Comparator<PlanRunRow>>>(
 		() => ({
@@ -102,20 +113,39 @@ export function PlanRunsPage() {
 			/>
 
 			<div className="flex flex-wrap items-center gap-2">
-				{STATE_FILTERS.map((f) => (
+				{TABS.map((t) => (
 					<button
-						key={f.value}
+						key={t.value}
 						type="button"
-						onClick={() => setStateFilter(f.value)}
-						className={`rounded-full border px-3 py-1 text-xs transition-colors ${
-							stateFilter === f.value
+						onClick={() => setTab(t.value)}
+						className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
+							tab === t.value
 								? "bg-(--color-primary) text-(--color-primary-foreground)"
 								: "bg-(--color-card) hover:bg-(--color-accent)"
 						}`}
 					>
-						{f.label}
+						{t.label}
 					</button>
 				))}
+			</div>
+
+			<div className="flex flex-wrap items-center gap-2">
+				{tab === "plan-runs"
+					? STATE_FILTERS.map((f) => (
+							<button
+								key={f.value}
+								type="button"
+								onClick={() => setStateFilter(f.value)}
+								className={`rounded-full border px-3 py-1 text-xs transition-colors ${
+									stateFilter === f.value
+										? "bg-(--color-primary) text-(--color-primary-foreground)"
+										: "bg-(--color-card) hover:bg-(--color-accent)"
+								}`}
+							>
+								{f.label}
+							</button>
+						))
+					: null}
 				<select
 					value={projectFilter}
 					onChange={(e) => setProjectFilter(e.target.value)}
@@ -130,6 +160,9 @@ export function PlanRunsPage() {
 				</select>
 			</div>
 
+			{tab === "ready" ? (
+				<ReadyPlansView projectId={projectFilter} project={selectedProject} />
+			) : (
 			<Card>
 				<CardHeader>
 					<CardTitle>{planRuns.data?.planRuns.length ?? 0} plan runs</CardTitle>
@@ -191,6 +224,7 @@ export function PlanRunsPage() {
 					)}
 				</CardContent>
 			</Card>
+			)}
 		</div>
 	);
 }

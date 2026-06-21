@@ -1,3 +1,4 @@
+import { CI_FIXER_TRIGGER } from "../../ci-fixer/poller.ts";
 import { parseGitHubUrl } from "../../projects/url.ts";
 import {
 	type AutoOpenPrConfig,
@@ -214,7 +215,7 @@ export interface RunPrOpenInput {
 		defaultBranch: string;
 		localPath: string;
 	};
-	readonly run: TryOpenPrInput["run"] & { prompt: string };
+	readonly run: TryOpenPrInput["run"] & { prompt: string; trigger?: string };
 	readonly branch: string;
 	readonly baseBranch: string | null;
 	readonly workspacePath: string;
@@ -236,6 +237,13 @@ export interface RunPrOpenInput {
  * `reap_failed` step=pr_open and never fail the run.
  */
 export async function runPrOpen(input: RunPrOpenInput): Promise<string | null> {
+	// warren-a993: a CI-fixer run pushed its fix onto the open PR's head branch
+	// (targetBranch), which re-runs that PR's CI. A fresh PR would duplicate the
+	// existing one, so self-skip here and record the reason for traceability.
+	if (input.run.trigger === CI_FIXER_TRIGGER) {
+		await input.emit("reap.pr_open_skipped", { reason: "ci_fixer_run", branch: input.branch });
+		return null;
+	}
 	try {
 		const prContext = await gatherPrContext({
 			workspacePath: input.workspacePath,

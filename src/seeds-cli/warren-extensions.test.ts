@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { WarrenExtensionsSchema, WarrenTriggerKind } from "./warren-extensions.ts";
+import { readTargetRepo, WarrenExtensionsSchema, WarrenTriggerKind } from "./warren-extensions.ts";
 
 describe("WarrenTriggerKind", () => {
 	test("accepts the canonical trigger set", () => {
@@ -69,5 +69,57 @@ describe("WarrenExtensionsSchema", () => {
 		expect(WarrenExtensionsSchema.safeParse({ role: "" }).success).toBe(false);
 		expect(WarrenExtensionsSchema.safeParse({ lastRunId: "" }).success).toBe(false);
 		expect(WarrenExtensionsSchema.safeParse({ lastRunAt: "" }).success).toBe(false);
+	});
+
+	test("parses a slug repo pointer", () => {
+		expect(WarrenExtensionsSchema.safeParse({ repo: "warren" }).success).toBe(true);
+	});
+
+	test("parses a git remote URL repo pointer", () => {
+		expect(
+			WarrenExtensionsSchema.safeParse({ repo: "https://github.com/os-eco/warren.git" }).success,
+		).toBe(true);
+	});
+
+	test("allows the repo key to be absent", () => {
+		expect(WarrenExtensionsSchema.safeParse({ role: "claude-code" }).success).toBe(true);
+	});
+
+	test("rejects an empty-string repo pointer", () => {
+		expect(WarrenExtensionsSchema.safeParse({ repo: "" }).success).toBe(false);
+	});
+});
+
+describe("readTargetRepo", () => {
+	test("returns a present slug repo pointer", () => {
+		expect(readTargetRepo({ repo: "child-repo" })).toBe("child-repo");
+	});
+
+	test("returns a present git remote URL repo pointer", () => {
+		expect(readTargetRepo({ repo: "git@github.com:os-eco/warren.git" })).toBe(
+			"git@github.com:os-eco/warren.git",
+		);
+	});
+
+	test("trims surrounding whitespace", () => {
+		expect(readTargetRepo({ repo: "  child-repo  " })).toBe("child-repo");
+	});
+
+	test("returns undefined when the repo key is absent", () => {
+		expect(readTargetRepo({ role: "claude-code" })).toBeUndefined();
+	});
+
+	test("returns undefined for an empty / whitespace-only string", () => {
+		expect(readTargetRepo({ repo: "" })).toBeUndefined();
+		expect(readTargetRepo({ repo: "   " })).toBeUndefined();
+	});
+
+	test("returns undefined for a non-string repo value", () => {
+		expect(readTargetRepo({ repo: 42 } as unknown as Record<string, unknown>)).toBeUndefined();
+	});
+
+	test("returns undefined for absent / null extensions", () => {
+		expect(readTargetRepo(undefined)).toBeUndefined();
+		expect(readTargetRepo(null)).toBeUndefined();
 	});
 });

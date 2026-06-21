@@ -76,6 +76,12 @@ export {
 	LEVERET_PLOT_ACTOR,
 } from "./conversation-turn.ts";
 export {
+	type BoundBridgeLogger,
+	type BridgeLoggerBindings,
+	bindBridgeLogger,
+	NOOP_BRIDGE_LOGGER,
+} from "./logger.ts";
+export {
 	type ActiveBridge,
 	type RecoverActiveRunStreamsInput,
 	type RecoverActiveRunStreamsResult,

@@ -23,13 +23,51 @@
 
 import type { BurrowClientPool } from "../burrow-client/pool.ts";
 import type { Repos } from "../db/repos/index.ts";
+import type { PlanRunRow } from "../db/schema.ts";
 import type { SpawnFn } from "../projects/clone.ts";
 import type { ProjectsConfig } from "../projects/config.ts";
+import { resolveTargetProject } from "../projects/resolve-target.ts";
 import { spawnRun } from "../runs/index.ts";
-import type { SeedsCliDeps } from "../seeds-cli/index.ts";
+import { readTargetRepo, type SeedsCliDeps } from "../seeds-cli/index.ts";
 import type { BridgeRegistry } from "../server/types.ts";
 import type { WarrenConfigCache } from "../warren-config/index.ts";
-import type { CoordinatorSpawnFn } from "./coordinator.ts";
+import type {
+	ChildExecution,
+	CoordinatorResolveExecutionFn,
+	CoordinatorSpawnFn,
+} from "./coordinator.ts";
+
+/**
+ * Resolve a child's execution project from its seed `extensions.repo`
+ * (pl-fb43 step 5 / warren-d9f3). An absent tag falls back to the
+ * coordination project (`planRun.projectId`); a present tag is resolved
+ * to a registered project via `resolveTargetProject`, which throws
+ * `TargetProjectUnresolvedError` when nothing matches. Pure lookup — no
+ * clone, no git I/O.
+ */
+export async function resolveChildExecution(
+	repos: Pick<Repos, "projects">,
+	planRun: Pick<PlanRunRow, "projectId">,
+	seedExtensions: Record<string, unknown> | undefined,
+): Promise<ChildExecution> {
+	const repoRef = readTargetRepo(seedExtensions);
+	if (repoRef === undefined) {
+		return { executionProjectId: planRun.projectId, repoRef: null };
+	}
+	const executionProjectId = await resolveTargetProject(repos, repoRef);
+	return { executionProjectId, repoRef };
+}
+
+/**
+ * Build the coordinator's per-child execution resolver bound to `repos`
+ * (pl-fb43 step 5). Wired into `bootPlanRunCoordinator` so the dispatch
+ * arm and the merged-event legibility path share one resolution policy.
+ */
+export function createResolveExecution(
+	repos: Pick<Repos, "projects">,
+): CoordinatorResolveExecutionFn {
+	return (planRun, seedExtensions) => resolveChildExecution(repos, planRun, seedExtensions);
+}
 
 export interface CreatePlanRunSpawnInput {
 	readonly repos: Repos;
@@ -47,14 +85,24 @@ export interface CreatePlanRunSpawnInput {
 
 export function createPlanRunSpawn(input: CreatePlanRunSpawnInput): CoordinatorSpawnFn {
 	const spawnRunFn = input.spawnRunFn ?? spawnRun;
-	return async ({ planRun, child, prompt }) => {
-		const project = await input.repos.projects.require(planRun.projectId);
+	return async ({ planRun, child, prompt, execution }) => {
+		// pl-fb43 step 5: clone the child's *execution* repo into the
+		// workspace while `seedProjectId` keeps the post-dispatch seed stamp +
+		// Plot append pointed at the coordination project. Defaults to the
+		// coordination project so an untagged child is byte-identical.
+		const exec: ChildExecution = execution ?? {
+			executionProjectId: planRun.projectId,
+			repoRef: null,
+		};
+		const project = await input.repos.projects.require(exec.executionProjectId);
 		const ref = planRun.ref ?? project.defaultBranch;
 		const result = await spawnRunFn({
 			repos: input.repos,
 			burrowClientPool: input.burrowClientPool,
 			agentName: planRun.agentName,
-			projectId: planRun.projectId,
+			projectId: exec.executionProjectId,
+			seedProjectId: planRun.projectId,
+			...(exec.repoRef !== null ? { executionRepo: exec.repoRef } : {}),
 			prompt,
 			trigger: "plan-run",
 			seedId: child.seedId,

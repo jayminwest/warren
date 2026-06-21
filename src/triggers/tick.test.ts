@@ -230,6 +230,105 @@ describe("runTick", () => {
 		expect(payload.reason).toContain("sd update exit 1");
 	});
 
+	test("ci-fixer pass dispatches a fixer for a failing PR and stamps a system event", async () => {
+		const opener = await repos.runs.create({
+			agentName: "claude-code",
+			projectId,
+			prompt: "open the PR",
+			renderedAgentJson: { sections: {} },
+			trigger: "manual",
+		});
+		await repos.runs.markRunning(opener.id, NOW);
+		await repos.runs.setPrUrl(opener.id, "https://github.com/x/y/pull/9");
+
+		const failingFetch = (async () =>
+			new Response(
+				JSON.stringify({
+					check_runs: [{ id: 1, name: "test", status: "completed", conclusion: "failure" }],
+				}),
+				{ status: 200 },
+			)) as unknown as typeof fetch;
+		const spawnCalls: { projectId: string; agentName: string; parentRunId: string }[] = [];
+
+		await runTick({
+			repos,
+			now: () => NOW,
+			loadWarrenConfig: async () => ({
+				triggers: null,
+				defaults: {
+					ciFixer: {
+						enabled: true,
+						maxRetries: 2,
+						cooldownMinutes: 10,
+						logTailLines: 200,
+						role: "pr-fixer",
+					},
+				},
+				prTemplate: null,
+				errors: [],
+				warnings: [],
+			}),
+			listScheduledSeeds: async () => ({ scheduled: [], errors: [] }),
+			updateExtensions: async () => {},
+			spawn: async () => ({ runId: "unused" }),
+			ciFixer: {
+				githubToken: "tok",
+				fetch: failingFetch,
+				spawn: async (i) => {
+					spawnCalls.push({
+						projectId: i.projectId,
+						agentName: i.agentName,
+						parentRunId: i.parentRunId,
+					});
+					return { runId: "run_fixer" };
+				},
+			},
+		});
+
+		expect(spawnCalls).toEqual([{ projectId, agentName: "pr-fixer", parentRunId: opener.id }]);
+		const events = await repos.events.listByRun(opener.id);
+		expect(events).toHaveLength(1);
+		expect(events[0]?.kind).toBe("ci_fixer.dispatched");
+		expect(events[0]?.stream).toBe("system");
+		const payload = events[0]?.payloadJson as { prUrl: string; fixerRunId: string };
+		expect(payload).toEqual({ prUrl: "https://github.com/x/y/pull/9", fixerRunId: "run_fixer" });
+	});
+
+	test("ci-fixer pass is a no-op when the project hasn't opted in", async () => {
+		const opener = await repos.runs.create({
+			agentName: "claude-code",
+			projectId,
+			prompt: "open the PR",
+			renderedAgentJson: { sections: {} },
+			trigger: "manual",
+		});
+		await repos.runs.markRunning(opener.id, NOW);
+		await repos.runs.setPrUrl(opener.id, "https://github.com/x/y/pull/9");
+
+		let spawned = 0;
+		await runTick({
+			repos,
+			now: () => NOW,
+			loadWarrenConfig: async () => emptyConfig(),
+			listScheduledSeeds: async () => ({ scheduled: [], errors: [] }),
+			updateExtensions: async () => {},
+			spawn: async () => ({ runId: "unused" }),
+			ciFixer: {
+				githubToken: "tok",
+				fetch: (async () => {
+					throw new Error("fetch should not run");
+				}) as unknown as typeof fetch,
+				spawn: async () => {
+					spawned += 1;
+					return { runId: "run_fixer" };
+				},
+			},
+		});
+
+		expect(spawned).toBe(0);
+		expect(await repos.events.listByRun(opener.id)).toHaveLength(0);
+	});
+
 	test("sd list failure on one project does not stop the tick", async () => {
 		const other = await repos.projects.create({
 			gitUrl: "https://github.com/x/z.git",

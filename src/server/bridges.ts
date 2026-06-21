@@ -53,6 +53,7 @@ import {
 	type BridgeLogger,
 	type BridgeRunStreamInput,
 	type BridgeRunStreamResult,
+	bindBridgeLogger,
 	bridgeRunStream,
 	type ReapRunInput,
 	type ReapRunResult,
@@ -89,6 +90,19 @@ export const DEFAULT_RECONNECT_BACKOFF_MS: readonly number[] = [
  */
 export const BRIDGE_STALL_THRESHOLD = 3;
 
+/**
+ * warren-af76: hard ceiling on consecutive errored reconnects with no
+ * forward progress. Past this count, `runWithReconnect` stops looping
+ * against an up-but-unresponsive burrow (socket probe times out, so the
+ * bridge never sees a clean 404) and finalizes the warren run as `failed`
+ * with `failure_reason='burrow_unreachable'`. Sized so `bridge_stalled`
+ * (at `BRIDGE_STALL_THRESHOLD`) fires well before we give up, and so the
+ * wall-clock budget under `DEFAULT_RECONNECT_BACKOFF_MS` is roughly four
+ * minutes of backoff before finalize. Exposed via the registry input so
+ * tests can lower it.
+ */
+export const BRIDGE_STALL_CEILING = 10;
+
 export interface CreateBridgeRegistryInput {
 	readonly repos: Repos;
 	readonly broker: RunEventBroker;
@@ -123,6 +137,14 @@ export interface CreateBridgeRegistryInput {
 	 * `BRIDGE_STALL_THRESHOLD`; tests lower it to exercise the path.
 	 */
 	readonly stallThreshold?: number;
+	/**
+	 * Consecutive errored-reconnect count after which the bridge gives up
+	 * and finalizes the run as `failed` / `burrow_unreachable` (warren-af76)
+	 * rather than reconnecting forever against an unresponsive burrow.
+	 * Defaults to `BRIDGE_STALL_CEILING`; tests lower it to exercise the
+	 * path.
+	 */
+	readonly stallCeiling?: number;
 	/** Override the sleep primitive (tests). Default: `setTimeout`-based. */
 	readonly sleep?: (ms: number, signal: AbortSignal) => Promise<void>;
 	/**
@@ -173,6 +195,7 @@ export function createBridgeRegistry(input: CreateBridgeRegistryInput): BridgeRe
 	const reap = input.reap ?? reapRun;
 	const backoff = input.reconnectBackoffMs ?? DEFAULT_RECONNECT_BACKOFF_MS;
 	const stallThreshold = input.stallThreshold ?? BRIDGE_STALL_THRESHOLD;
+	const stallCeiling = input.stallCeiling ?? BRIDGE_STALL_CEILING;
 	const sleep = input.sleep ?? defaultSleep;
 	const conversationTurn =
 		input.conversationTurn ??
@@ -196,6 +219,7 @@ export function createBridgeRegistry(input: CreateBridgeRegistryInput): BridgeRe
 			reap,
 			backoff,
 			stallThreshold,
+			stallCeiling,
 			sleep,
 			conversationTurn,
 			...(mode !== undefined ? { mode } : {}),
@@ -357,7 +381,10 @@ export async function bootBridges(input: CreateBridgeRegistryInput): Promise<Boo
 					burrowRunId: run.burrowRunId,
 					repos: input.repos,
 					broker: input.broker,
-					...(input.logger !== undefined ? { logger: input.logger } : {}),
+					logger: bindBridgeLogger(input.logger, {
+						run_id: run.id,
+						burrow_run_id: run.burrowRunId,
+					}),
 				});
 				continue;
 			}

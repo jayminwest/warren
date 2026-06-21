@@ -101,6 +101,7 @@ export interface UpdateChildInput {
 
 export interface PlanRunChildPatch {
 	runId?: string | null;
+	executionProjectId?: string | null;
 	state?: PlanRunChildState;
 	startedAt?: string | null;
 	endedAt?: string | null;
@@ -110,6 +111,7 @@ export interface PlanRunChildPatch {
 
 const CHILD_PATCH_KEYS = [
 	"runId",
+	"executionProjectId",
 	"state",
 	"startedAt",
 	"endedAt",
@@ -169,6 +171,7 @@ export class PlanRunsRepo {
 			seq: c.seq,
 			seedId: c.seedId,
 			runId: null,
+			executionProjectId: null,
 			state: c.state ?? "pending",
 			createdAt: nowIso,
 			updatedAt: nowIso,
@@ -257,6 +260,25 @@ export class PlanRunsRepo {
 		return this.adapter.pickAll(
 			this.db.select().from(this.planRuns).where(where).orderBy(asc(this.planRuns.createdAt)),
 		);
+	}
+
+	/**
+	 * Distinct set of `plan_id`s that already have at least one `plan_run`
+	 * row for the given project — the dedup primitive behind the
+	 * ready-to-dispatch operator surface (warren-34df / pl-3fc4 step 1). A
+	 * plan that has been dispatched (regardless of plan-run state) should
+	 * not be re-offered, so this collapses N plan-runs for one plan id to a
+	 * single entry. Project-scoped: a plan dispatched under another project
+	 * never leaks across.
+	 */
+	async listDispatchedPlanIds(projectId: string): Promise<string[]> {
+		const rows = await this.adapter.pickAll(
+			this.db
+				.selectDistinct({ planId: this.planRuns.planId })
+				.from(this.planRuns)
+				.where(eq(this.planRuns.projectId, projectId)),
+		);
+		return rows.map((r) => r.planId);
 	}
 
 	/**

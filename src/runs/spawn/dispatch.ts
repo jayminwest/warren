@@ -24,28 +24,19 @@
  * picks a worker BEFORE the warren row is created so `runs.worker_id`
  * lands at row-creation time and the same `BurrowClient` services
  * provision, dispatch, and rollback. A `burrows` row capturing the
- * burrow → worker pinning is written in the same turn as
- * `attachBurrow`, so sticky-by-burrow (cancel / steer / reap / fan-out
- * reads via `pool.clientFor`) has a durable mapping to resolve against.
+ * burrow → worker pinning is written in the same turn as `attachBurrow`
+ * (sticky-by-burrow for cancel / steer / reap / fan-out reads).
  *
  * The warren run row is created BEFORE any burrow call, with both
  * burrow IDs nulled — `attachBurrow` writes them back as each call
- * succeeds. That lets us carry the warren `run_xxx` id through the
- * flow (so log lines, error messages, and event payloads can reference
- * it) without a chicken-and-egg between the two systems' IDs.
+ * succeeds, so the warren `run_xxx` id is in hand throughout the flow.
  *
- * Failure handling:
- *   - Anything before step 2 (agent/project lookup, agent JSON
- *     re-validation, seed-payload validation) just throws — no warren
- *     row was created.
- *   - Failures from step 2 onward are caught: the warren row is
- *     transitioned `queued → cancelled` (allowed by the runs state
- *     machine), and if a burrow was provisioned we best-effort destroy
- *     it so it doesn't sit as a stranded sandbox. A seed-validation
- *     failure inside `burrows.up` rolls back on burrow's side before
- *     warren ever observes a burrow id — `burrow` stays `null` so no
- *     destroy call fires. The original error is rethrown so the caller
- *     (HTTP route, CLI) can surface it.
+ * Failure handling: anything before step 2 just throws (no warren row
+ * exists). Failures from step 2 onward are caught — the warren row is
+ * transitioned `queued → cancelled` and any provisioned burrow is
+ * best-effort destroyed; a seed-validation failure inside `burrows.up`
+ * rolls back on burrow's side before warren observes a burrow id. The
+ * original error is rethrown for the caller (HTTP route, CLI).
  */
 
 import { join } from "node:path";
@@ -75,8 +66,17 @@ import {
 	extractModel,
 	resolveDispatcherHandle,
 } from "./plot-append.ts";
+import {
+	bindRunLogger,
+	logDispatched,
+	logPlacement,
+	logProvisioned,
+	logSpawnFailed,
+	rollback,
+} from "./rollback.ts";
 import { writeSeedExtensions } from "./seed-extensions.ts";
 import type { SpawnRunInput, SpawnRunResult } from "./types.ts";
+import { resolveCoordinationProject } from "./util.ts";
 
 export async function spawnRun(input: SpawnRunInput): Promise<SpawnRunResult> {
 	if (input.prompt.trim() === "") {
@@ -143,6 +143,14 @@ export async function spawnRun(input: SpawnRunInput): Promise<SpawnRunResult> {
 			: null;
 	const projectAfterRefresh = refreshed?.project ?? project;
 
+	// warren-c1a4: coordination project — host clone the post-dispatch
+	// seed stamp + Plot append target (defaults to the execution project).
+	const coordinationProject = await resolveCoordinationProject(
+		input.repos,
+		input.seedProjectId,
+		projectAfterRefresh,
+	);
+
 	// warren-618b: fold per-project provider/model defaults onto the agent
 	// frontmatter, operator per-run override winning. Order: operator
 	// override > .warren/defaults.json > agent frontmatter, all riding the
@@ -179,6 +187,7 @@ export async function spawnRun(input: SpawnRunInput): Promise<SpawnRunResult> {
 	// nothing is placeable, which the caller surfaces as a structured
 	// error.
 	const placement = await input.burrowClientPool.placeFor({ projectId: projectAfterRefresh.id });
+	logPlacement(input.logger, placement.workerName, projectAfterRefresh.id);
 
 	const run = await input.repos.runs.create({
 		agentName: agent.name,
@@ -196,16 +205,16 @@ export async function spawnRun(input: SpawnRunInput): Promise<SpawnRunResult> {
 		now: input.now?.(),
 	});
 
-	// warren-9993: compose the burrow workspace branch as `${prefix}/${run.id}`
-	// so the branch traces back to the warren run on `git log` / PR review.
-	// Precedence project default > env > "burrow" (the legacy default,
-	// preserved for backward compatibility).
+	// warren-9993/a993: burrow branch = `${prefix}/${run.id}` (prefix precedence
+	// project default > env > "burrow"); a CI-fixer run's `targetBranch` pins it
+	// to the open PR head ref instead, so the fixer's commits re-run that PR's CI.
 	const branch = composeRunBranch(
 		resolveRunBranchPrefix({
 			projectDefault: projectDefaults?.runBranchPrefix,
 			envDefault: input.runBranchPrefixDefault,
 		}),
 		run.id,
+		input.targetBranch,
 	);
 
 	// warren-e26f: when the run is bound to a Plot, inject the env vars the
@@ -223,8 +232,10 @@ export async function spawnRun(input: SpawnRunInput): Promise<SpawnRunResult> {
 	// stays honest as 'builtin'.
 	const runtimeOverride = interactiveRuntimeOverride(agent.name, projectDefaults);
 
+	const log = bindRunLogger(input.logger, run.id);
 	let burrow: Burrow | null = null;
 	try {
+		const provisionStart = Date.now();
 		burrow = await provisionBurrow(
 			placement.client,
 			projectAfterRefresh.localPath,
@@ -235,6 +246,7 @@ export async function spawnRun(input: SpawnRunInput): Promise<SpawnRunResult> {
 			branch,
 			runEnv,
 		);
+		logProvisioned(log, burrow.id, placement.workerName, provisionStart);
 		// warren-39c3: persist the burrow → worker mapping (sticky-by-burrow)
 		// so cancel / steer / reap reads resolve the owning worker via
 		// `pool.clientFor({burrowId})`. Same turn as `attachBurrow` so a crash
@@ -249,6 +261,7 @@ export async function spawnRun(input: SpawnRunInput): Promise<SpawnRunResult> {
 		// warren-ebca / warren-16f8: dispatch onto the burrow runtime id
 		// (`readRuntimeId`: frontmatter.runtime pin, else the pi default),
 		// not the canopy agent name.
+		const dispatchStart = Date.now();
 		const burrowRun = await dispatchRun(
 			placement.client,
 			burrow.id,
@@ -257,6 +270,7 @@ export async function spawnRun(input: SpawnRunInput): Promise<SpawnRunResult> {
 			composeBurrowMetadata(input.metadata, agent.frontmatter),
 		);
 		const updated = await input.repos.runs.attachBurrow(run.id, { burrowRunId: burrowRun.id });
+		logDispatched(log, burrow.id, burrowRun.id, dispatchStart);
 		// pl-bb70 step 4: stamp the seed's warren-namespaced extensions after
 		// dispatch lands. Fire-and-log — anything that throws here (sd not
 		// on PATH, project clone vanished, write race) emits a system event
@@ -266,7 +280,7 @@ export async function spawnRun(input: SpawnRunInput): Promise<SpawnRunResult> {
 			await writeSeedExtensions({
 				repos: input.repos,
 				seedsCli: input.seedsCli,
-				projectPath: projectAfterRefresh.localPath,
+				projectPath: coordinationProject.localPath,
 				seedId: input.seedId,
 				runId: run.id,
 				agentName: agent.name,
@@ -274,26 +288,27 @@ export async function spawnRun(input: SpawnRunInput): Promise<SpawnRunResult> {
 				now: input.now?.() ?? new Date(),
 			});
 		}
-		// warren-e848 / pl-2047 step 5: append a `run_dispatched` event to
-		// the originating Plot. Fire-and-log — same non-rollback posture as
-		// writeSeedExtensions above.
+		// warren-e848 / pl-2047 step 5: append a `run_dispatched` event to the
+		// originating Plot. Fire-and-log — same posture as writeSeedExtensions.
 		if (updated.plotId !== null && updated.plotId !== "") {
 			await emitRunDispatchedToPlot({
 				repos: input.repos,
 				runId: run.id,
-				plotDir: join(projectAfterRefresh.localPath, ".plot"),
+				plotDir: join(coordinationProject.localPath, ".plot"),
 				plotId: updated.plotId,
 				handle: resolveDispatcherHandle(input.dispatcherHandle),
 				agentName: agent.name,
 				model: extractModel(agent.frontmatter),
-				projectId: projectAfterRefresh.id,
+				projectId: coordinationProject.id,
+				...(input.executionRepo !== undefined ? { executionRepo: input.executionRepo } : {}),
 				appender: input.plotAppender ?? defaultPlotAppender,
 				now: input.now?.() ?? new Date(),
 			});
 		}
 		return { run: updated, burrow, burrowRun, agent };
 	} catch (err) {
-		await rollback(input, run.id, burrow, placement.client);
+		logSpawnFailed(log, burrow?.id ?? null, err);
+		await rollback(input, run.id, burrow, placement.client, log, err);
 		throw err;
 	}
 }
@@ -472,29 +487,4 @@ function composeBurrowMetadata(
 			? (operatorMetadata as Record<string, unknown>)
 			: {};
 	return { ...base, frontmatter };
-}
-
-async function rollback(
-	input: SpawnRunInput,
-	runId: string,
-	burrow: Burrow | null,
-	client: BurrowClient,
-): Promise<void> {
-	try {
-		await input.repos.runs.finalize(runId, "cancelled", input.now?.());
-	} catch {
-		// Either the row was already terminal (shouldn't happen on this path)
-		// or the db handle is gone — either way, nothing to recover here.
-	}
-	if (burrow !== null) {
-		try {
-			await withTransportMapping(client.config, () =>
-				client.http.burrows.destroy(burrow.id, { archive: false }),
-			);
-		} catch {
-			// Best-effort cleanup. The operator can list stranded burrows via
-			// burrow's own UI / CLI; we don't want a cleanup failure to mask
-			// the original error the caller is about to see rethrown.
-		}
-	}
 }

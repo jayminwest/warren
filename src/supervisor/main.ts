@@ -395,9 +395,11 @@ function parseArgsEnv(raw: string | undefined): string[] {
 
 if (import.meta.main) {
 	const { default: pino } = await import("pino");
+	const { LOG_REDACT_OPTIONS } = await import("../server/main/redact.ts");
 	const logger = pino({
 		name: "warren-supervisor",
 		level: process.env.WARREN_LOG_LEVEL ?? "info",
+		redact: LOG_REDACT_OPTIONS,
 	});
 	const cmd = resolveCommandFromEnv();
 	try {

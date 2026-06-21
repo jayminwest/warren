@@ -1,5 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { type CheckRun, classifyCheckRuns, fetchCheckRuns } from "./check-runs.ts";
+import {
+	type CheckRun,
+	classifyCheckRuns,
+	extractJobId,
+	fetchCheckRuns,
+	fetchJobLogTail,
+} from "./check-runs.ts";
 
 function checkRun(over: Partial<CheckRun>): CheckRun {
 	return {
@@ -137,5 +143,57 @@ describe("fetchCheckRuns", () => {
 			expect(result.checkRuns).toHaveLength(1);
 			expect(result.checkRuns[0]?.id).toBe(9);
 		}
+	});
+});
+
+describe("extractJobId", () => {
+	test("parses the job id from an Actions details_url", () => {
+		expect(extractJobId("https://github.com/o/r/actions/runs/123/job/456", 9)).toBe(456);
+	});
+
+	test("falls back to the check-run id when the url has no job segment", () => {
+		expect(extractJobId("https://example-ci.test/build/42", 9)).toBe(9);
+		expect(extractJobId(null, 9)).toBe(9);
+	});
+});
+
+describe("fetchJobLogTail", () => {
+	const base = { owner: "o", repo: "r", jobId: 456 };
+
+	test("returns null when the token is empty or tailLines <= 0", async () => {
+		expect(await fetchJobLogTail({ ...base, token: "" }, 10)).toBeNull();
+		expect(await fetchJobLogTail({ ...base, token: "t" }, 0)).toBeNull();
+	});
+
+	test("returns the last N lines of the resolved log", async () => {
+		const fetchImpl = (async () =>
+			new Response("l1\nl2\nl3\nl4\n", { status: 200 })) as unknown as typeof fetch;
+		const tail = await fetchJobLogTail({ ...base, token: "t", fetch: fetchImpl }, 2);
+		expect(tail).toBe("l3\nl4");
+	});
+
+	test("returns the whole (trimmed) log when it has fewer lines than the tail", async () => {
+		const fetchImpl = (async () =>
+			new Response("only\n", { status: 200 })) as unknown as typeof fetch;
+		expect(await fetchJobLogTail({ ...base, token: "t", fetch: fetchImpl }, 200)).toBe("only");
+	});
+
+	test("returns null on a non-2xx (e.g. 410 expired logs)", async () => {
+		const fetchImpl = (async () =>
+			new Response("gone", { status: 410 })) as unknown as typeof fetch;
+		expect(await fetchJobLogTail({ ...base, token: "t", fetch: fetchImpl }, 10)).toBeNull();
+	});
+
+	test("returns null when the fetch throws", async () => {
+		const fetchImpl = (async () => {
+			throw new Error("network");
+		}) as unknown as typeof fetch;
+		expect(await fetchJobLogTail({ ...base, token: "t", fetch: fetchImpl }, 10)).toBeNull();
+	});
+
+	test("returns null for an empty log body", async () => {
+		const fetchImpl = (async () =>
+			new Response("  \n ", { status: 200 })) as unknown as typeof fetch;
+		expect(await fetchJobLogTail({ ...base, token: "t", fetch: fetchImpl }, 10)).toBeNull();
 	});
 });

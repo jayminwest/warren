@@ -114,6 +114,34 @@ describe("spawnRun: continuation (warren-4b11)", () => {
 		expect(refreshRef).toBe(`burrow/${parentId}`);
 	});
 
+	test("targetBranch pins the burrow branch to the PR head ref (warren-a993)", async () => {
+		const parentId = await makeParent();
+		const { client, calls } = makeBurrowClient();
+		await spawnRun({
+			repos,
+			burrowClientPool: await makePool(repos, client),
+			agentName: "refactor-bot",
+			projectId: "prj_xxxxxxxxxxxx",
+			prompt: "fix ci",
+			parentRunId: parentId,
+			targetBranch: `burrow/${parentId}`,
+			projectsConfig: { root: "/data/projects", gitBinary: "git" },
+			projectSpawn: async () => ({ stdout: "", stderr: "", exitCode: 0 }),
+			refreshProjectFn: async (input) => {
+				const updated = await repos.projects.recordRefresh({
+					id: input.id,
+					headSha: "feedface".repeat(5),
+				});
+				return { project: updated, headSha: "feedface".repeat(5), ref: input.ref ?? "main" };
+			},
+		});
+
+		// The burrow workspace branch is the PR head (parent's branch), not a
+		// fresh `burrow/<fixerRunId>` — so reap pushes back onto the open PR.
+		const up = calls.find((c) => c.method === "POST" && c.path === "/burrows");
+		expect((up?.body as { branch?: string }).branch).toBe(`burrow/${parentId}`);
+	});
+
 	test("rejects a parent run from a different project", async () => {
 		await repos.projects.create({
 			id: "prj_yyyyyyyyyyyy",

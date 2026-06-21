@@ -140,6 +140,7 @@ export function createConversationHandler(deps: ServerDeps): RouteHandler {
 			warrenConfigs: deps.warrenConfigs,
 			runBranchPrefixDefault: deps.runBranchPrefixDefault,
 			seedsCli: deps.seedsCli,
+			logger: ctx.logger,
 			...(deps.now !== undefined ? { now: deps.now } : {}),
 		});
 

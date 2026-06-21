@@ -15,6 +15,7 @@ export type RunFailureReason =
 	| "crashed"
 	| "timed_out"
 	| "burrow_run_lost"
+	| "burrow_unreachable"
 	| "dropped_commit";
 
 /**
@@ -553,6 +554,22 @@ export interface SeedPlansResponse {
 }
 
 /**
+ * A plan surfaced by `GET /projects/:id/ready-plans` — approved, with at
+ * least one open child seed, and not yet dispatched (warren-7937).
+ */
+export interface ReadyPlan {
+	id: string;
+	name?: string;
+	status: string;
+	/** Number of child seeds that are still open (non-closed). */
+	openChildCount: number;
+}
+
+export interface ReadyPlansResponse {
+	plans: ReadyPlan[];
+}
+
+/**
  * `POST /projects/:id/triggers/:triggerId/run` returns the spawned run row
  * plus the burrow summary — same envelope as `POST /runs` (mx-f3b48d).
  */
@@ -621,6 +638,14 @@ export interface PlanRunChildRow {
 	seq: number;
 	seedId: string;
 	runId: string | null;
+	/**
+	 * Execution project this child was routed to (pl-fb43 step 6 /
+	 * warren-57f6). The repo whose clone the child works in — the
+	 * coordination project for an untagged child, or the project a child
+	 * seed's `extensions.repo` resolved to. Null until the child is
+	 * dispatched (and on legacy rows).
+	 */
+	executionProjectId: string | null;
 	state: PlanRunChildState;
 	createdAt: string;
 	updatedAt: string;
