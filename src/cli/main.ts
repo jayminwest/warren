@@ -13,6 +13,7 @@
 import { Command } from "commander";
 import { BurrowClientPool } from "../burrow-client/pool.ts";
 import { WarrenClient } from "../client/index.ts";
+import type { PlanRunState } from "../client/types.ts";
 import { openDatabase } from "../db/client.ts";
 import { parseDatabaseUrl } from "../db/url.ts";
 import { VERSION } from "../index.ts";
@@ -25,6 +26,7 @@ import { runMigrateToPostgres } from "./commands/db.ts";
 import { runDoctor } from "./commands/doctor.ts";
 import { runInit } from "./commands/init.ts";
 import { runPlanCancel, runPlanRun } from "./commands/plan-run.ts";
+import { runPlanList, runPlanStatus } from "./commands/plan-status.ts";
 import { runRegisterAgent } from "./commands/register-agent.ts";
 import { runRun } from "./commands/run.ts";
 import { runServe } from "./commands/serve.ts";
@@ -352,6 +354,44 @@ export function buildProgram(context: CliContext): Command {
 			);
 			process.exit(result.exitCode);
 		});
+	planGroup
+		.command("status")
+		.description("render a plan-run's child-state table with per-child cost + duration")
+		.argument("<plan-run-id>", "plan-run id")
+		.option("--output <mode>", "output mode: ndjson (default) or pretty", "ndjson")
+		.action(async (planRunId: string, opts: { output?: string }) => {
+			const client = WarrenClient.fromEnv(context.env);
+			const result = await runPlanStatus(
+				context,
+				{ client },
+				{ planRunId, output: parsePlanRunOutput(opts.output) },
+			);
+			process.exit(result.exitCode);
+		});
+	planGroup
+		.command("list")
+		.description("list plan-runs, optionally filtered by project / state")
+		.option("--project <id>", "only plan-runs for this project (prj_xxx)")
+		.option(
+			"--state <state>",
+			"only plan-runs in this state (queued|running|succeeded|failed|cancelled)",
+		)
+		.option("--output <mode>", "output mode: ndjson (default) or pretty", "ndjson")
+		.action(async (opts: { project?: string; state?: string; output?: string }) => {
+			const client = WarrenClient.fromEnv(context.env);
+			const result = await runPlanList(
+				context,
+				{ client },
+				{
+					output: parsePlanRunOutput(opts.output),
+					...(opts.project !== undefined ? { project: opts.project } : {}),
+					...(parsePlanRunState(opts.state) !== undefined
+						? { state: parsePlanRunState(opts.state) }
+						: {}),
+				},
+			);
+			process.exit(result.exitCode);
+		});
 
 	program
 		.command("serve")
@@ -368,6 +408,20 @@ export function buildProgram(context: CliContext): Command {
 /** Coerce a `--output` flag value to a {@link PlanRunOutput}, defaulting `ndjson`. */
 export function parsePlanRunOutput(value: string | undefined): PlanRunOutput {
 	return value === "pretty" ? "pretty" : "ndjson";
+}
+
+/** The set of recognised plan-run states for the `plan list --state` filter. */
+const PLAN_RUN_STATES: ReadonlySet<string> = new Set([
+	"queued",
+	"running",
+	"succeeded",
+	"failed",
+	"cancelled",
+]);
+
+/** Coerce a `--state` flag value to a {@link PlanRunState}, or undefined when unset/invalid. */
+export function parsePlanRunState(value: string | undefined): PlanRunState | undefined {
+	return value !== undefined && PLAN_RUN_STATES.has(value) ? (value as PlanRunState) : undefined;
 }
 
 if (import.meta.main) {

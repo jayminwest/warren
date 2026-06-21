@@ -252,6 +252,10 @@ The `warren` (or `wr`) admin CLI is for ops; the web UI is daily.
 | `warren register-agent <name>` | Refresh canopy + register one agent |
 | `warren add-project <git-url>` | Clone a project under `/data/projects` |
 | `warren run <agent> <project> -p "..."` | One-shot run, no UI |
+| `warren plan run <plan-id> --project <id> --agent <name>` | Dispatch a serial plan-run, tail events as NDJSON |
+| `warren plan cancel <plan-run-id>` | Cancel a plan-run and its in-flight child |
+| `warren plan status <plan-run-id>` | Child-state table with per-child cost + duration |
+| `warren plan list [--project --state]` | List plan-runs, optionally filtered |
 | `warren init` | Scaffold a `.warren/` directory in a project |
 | `warren doctor` | Runtime reachable? Bwrap working? DB reachable? |
 | `warren serve` | Start the HTTP server (default in entrypoint) |
@@ -398,12 +402,22 @@ const { plots } = await warren.listPlots({ status: "active" });
 const plot = await warren.getPlot(plots[0].id);
 
 // Dispatch a serial plan-run against a seeds plan
-const { planRun } = await warren.createPlanRun({
+const { planRun, children } = await warren.createPlanRun({
   project: "my-project",
   planId: "pl-abc123",
   agent: "claude-code",
   plotId: plot.id,  // optional: compose onto the plot
 });
+
+// Inspect a plan-run's child-state + fanned-out child runs[]
+const detail = await warren.getPlanRun(planRun.id);
+for (const child of detail.children) {
+  const run = detail.runs.find((r) => r.id === child.runId);
+  console.log(`#${child.seq} ${child.seedId} [${child.state}] cost=${run?.costUsd ?? "—"}`);
+}
+
+// List plan-runs, optionally filtered by project / state
+const { planRuns } = await warren.listPlanRuns({ project: "my-project", state: "running" });
 ```
 
 ### Error handling

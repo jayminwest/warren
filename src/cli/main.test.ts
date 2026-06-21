@@ -30,12 +30,12 @@ describe("buildProgram", () => {
 		]);
 	});
 
-	test("`plan run` + `plan cancel` are registered under the plan group (warren-ec6a)", () => {
+	test("`plan` group registers run/cancel/status/list (warren-ec6a, warren-5e3f)", () => {
 		const program = buildProgram(silentContext());
 		const planCmd = program.commands.find((c) => c.name() === "plan");
 		expect(planCmd).toBeDefined();
 		const subNames = planCmd?.commands.map((c) => c.name()).sort() ?? [];
-		expect(subNames).toEqual(["cancel", "run"]);
+		expect(subNames).toEqual(["cancel", "list", "run", "status"]);
 		const runCmd = planCmd?.commands.find((c) => c.name() === "run");
 		expect(runCmd?.options.find((o) => o.long === "--project")?.mandatory).toBe(true);
 		expect(runCmd?.options.find((o) => o.long === "--agent")?.mandatory).toBe(true);
