@@ -9,7 +9,6 @@
 		"src/client/client.ts": 569,
 		"src/db/repos/runs.ts": 610,
 		"src/db/schema/sqlite.ts": 564,
-		"src/diagnostics/checks.ts": 616,
 		"src/plan-runs/coordinator.completion.test.ts": 613,
 		"src/plots/aggregate.ts": 506,
 		"src/runs/pr.test.ts": 604,
