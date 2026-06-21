@@ -35,9 +35,14 @@
  * is dropped, per-run errors are isolated so one bad row can't tear down
  * the loop, and `stop()` drains the in-flight tick before resolving.
  *
- * Disabled by default — set `WARREN_RUN_HEARTBEAT_TIMEOUT_MS` to a
- * positive value to arm it. The budget should be generous (well above any
- * legitimately slow-but-silent tool such as a cold `bun install`); the
+ * On by default (warren-b2dc) — like the conversation-idle coordinator,
+ * this is a lifecycle-reclaim safety net that must not depend on an
+ * operator remembering an env var, so a fresh deploy is protected without
+ * one. The built-in budget (`DEFAULT_WATCHDOG_HEARTBEAT_TIMEOUT_MS`, 45
+ * min) is deliberately generous — well above any legitimately
+ * slow-but-silent tool such as a cold `bun install` — and can be tuned via
+ * `WARREN_RUN_HEARTBEAT_TIMEOUT_MS`. Opt out entirely with
+ * `WARREN_WATCHDOG_DISABLED=1` (or by pinning the budget to 0). The
  * default tick cadence is 30s.
  */
 
@@ -49,13 +54,22 @@ import type { RunRow } from "../db/schema.ts";
 import type { RunEventBroker } from "./events.ts";
 import type { AutoOpenPrConfig } from "./pr.ts";
 import { type ReapRunInput, type ReapRunResult, reapRun } from "./reap/index.ts";
-import type { BridgeLogger } from "./stream/index.ts";
+import { type BridgeLogger, bindBridgeLogger } from "./stream/index.ts";
 
 /** Event kind emitted on the run row when the watchdog force-fails a hung run. */
 export const WATCHDOG_TIMED_OUT_KIND = "watchdog.timed_out";
 
 /** Default tick cadence for the heartbeat watchdog (ms). */
 export const DEFAULT_WATCHDOG_TICK_MS = 30_000;
+
+/**
+ * Built-in heartbeat budget when the watchdog is left on-by-default
+ * (warren-b2dc): 45 minutes. Generous on purpose — comfortably above any
+ * legitimately slow-but-silent tool (cold `bun install`, large clone) so a
+ * healthy run is never mistaken for a hung one. Override with
+ * `WARREN_RUN_HEARTBEAT_TIMEOUT_MS`.
+ */
+export const DEFAULT_WATCHDOG_HEARTBEAT_TIMEOUT_MS = 2_700_000;
 
 export interface WatchdogTickDeps {
 	readonly repos: Repos;
@@ -127,9 +141,9 @@ export async function tickWatchdog(deps: WatchdogTickDeps): Promise<WatchdogTick
 			timedOut.push({ runId: run.id, idleMs });
 		} catch (err) {
 			errors.push({ runId: run.id, reason: formatError(err) });
-			deps.logger?.error?.(
-				{ runId: run.id, reason: formatError(err) },
-				"watchdog.force_fail_failed",
+			bindBridgeLogger(deps.logger, { run_id: run.id }).error(
+				{ event: "watchdog.force_fail_failed", reason: formatError(err) },
+				"watchdog force-fail failed",
 			);
 		}
 	}
@@ -143,8 +157,14 @@ async function forceFail(
 	idleMs: number,
 	now: Date,
 ): Promise<void> {
+	// warren-9f06: bind run_id (+ burrow_run_id when present) once per
+	// force-fail so the timeout/cancel lines share correlation fields.
+	const log = bindBridgeLogger(deps.logger, {
+		run_id: run.id,
+		...(run.burrowRunId !== null ? { burrow_run_id: run.burrowRunId } : {}),
+	});
 	await emitTimedOutEvent(deps, run, idleMs, now);
-	await cancelBurrowRun(deps, run);
+	await cancelBurrowRun(deps, run, log);
 
 	const reap = deps.reap ?? reapRun;
 	await reap({
@@ -159,9 +179,13 @@ async function forceFail(
 		...(deps.autoOpenPr !== undefined ? { autoOpenPr: deps.autoOpenPr } : {}),
 	});
 
-	deps.logger?.info?.(
-		{ runId: run.id, idleMs, heartbeatTimeoutMs: deps.heartbeatTimeoutMs },
-		WATCHDOG_TIMED_OUT_KIND,
+	log.info(
+		{
+			event: WATCHDOG_TIMED_OUT_KIND,
+			idleMs,
+			heartbeatTimeoutMs: deps.heartbeatTimeoutMs,
+		},
+		"watchdog force-failed hung run",
 	);
 }
 
@@ -171,7 +195,11 @@ async function forceFail(
  * run) and transport failures — reap's `workspace_destroy` is the real
  * teardown, and a failed cancel must never block the force-fail.
  */
-async function cancelBurrowRun(deps: WatchdogTickDeps, run: RunRow): Promise<void> {
+async function cancelBurrowRun(
+	deps: WatchdogTickDeps,
+	run: RunRow,
+	log: ReturnType<typeof bindBridgeLogger>,
+): Promise<void> {
 	if (run.burrowId === null || run.burrowRunId === null) return;
 	const burrowRunId = run.burrowRunId;
 	try {
@@ -181,9 +209,9 @@ async function cancelBurrowRun(deps: WatchdogTickDeps, run: RunRow): Promise<voi
 		);
 	} catch (err) {
 		if (err instanceof BurrowNotFoundError) return;
-		deps.logger?.error?.(
-			{ runId: run.id, burrowRunId, reason: formatError(err) },
-			"watchdog.cancel_failed",
+		log.error(
+			{ event: "watchdog.cancel_failed", reason: formatError(err) },
+			"watchdog burrow-cancel failed",
 		);
 	}
 }
@@ -219,7 +247,10 @@ function formatError(err: unknown): string {
 /* -------------------------------------------------------------------- */
 
 export interface WatchdogConfig {
-	/** Armed iff `heartbeatTimeoutMs > 0`. */
+	/**
+	 * Armed unless explicitly opted out (`WARREN_WATCHDOG_DISABLED`) or the
+	 * budget is pinned to 0. On by default (warren-b2dc).
+	 */
 	readonly enabled: boolean;
 	readonly heartbeatTimeoutMs: number;
 	readonly tickMs: number;
@@ -228,26 +259,36 @@ export interface WatchdogConfig {
 interface WatchdogEnvLike {
 	readonly WARREN_RUN_HEARTBEAT_TIMEOUT_MS?: string;
 	readonly WARREN_WATCHDOG_TICK_MS?: string;
+	readonly WARREN_WATCHDOG_DISABLED?: string;
 }
 
 /**
- * Resolve watchdog config from env. The detector is opt-in: it arms only
- * when `WARREN_RUN_HEARTBEAT_TIMEOUT_MS` is a positive integer. An invalid
- * value throws so a typo in a deploy config fails loud rather than
- * silently disabling the safety net.
+ * Resolve watchdog config from env. The detector is on by default
+ * (warren-b2dc): when `WARREN_RUN_HEARTBEAT_TIMEOUT_MS` is unset it arms
+ * with the generous built-in `DEFAULT_WATCHDOG_HEARTBEAT_TIMEOUT_MS`
+ * budget. Operators opt out with `WARREN_WATCHDOG_DISABLED=1` (or by
+ * pinning the budget to 0). An invalid timeout/tick throws so a typo in a
+ * deploy config fails loud rather than silently mis-arming the safety net.
  */
 export function loadWatchdogConfigFromEnv(env: WatchdogEnvLike): WatchdogConfig {
 	const heartbeatTimeoutMs = parseNonNegativeInt(
 		env.WARREN_RUN_HEARTBEAT_TIMEOUT_MS,
 		"WARREN_RUN_HEARTBEAT_TIMEOUT_MS",
-		0,
+		DEFAULT_WATCHDOG_HEARTBEAT_TIMEOUT_MS,
 	);
 	const tickMs = parsePositiveInt(
 		env.WARREN_WATCHDOG_TICK_MS,
 		"WARREN_WATCHDOG_TICK_MS",
 		DEFAULT_WATCHDOG_TICK_MS,
 	);
-	return { enabled: heartbeatTimeoutMs > 0, heartbeatTimeoutMs, tickMs };
+	const optedOut = parseDisabledFlag(env.WARREN_WATCHDOG_DISABLED);
+	return { enabled: !optedOut && heartbeatTimeoutMs > 0, heartbeatTimeoutMs, tickMs };
+}
+
+function parseDisabledFlag(raw: string | undefined): boolean {
+	if (raw === undefined) return false;
+	const t = raw.trim().toLowerCase();
+	return t === "1" || t === "true" || t === "yes" || t === "on";
 }
 
 function parseNonNegativeInt(raw: string | undefined, name: string, fallback: number): number {
@@ -310,7 +351,10 @@ export function bootWatchdog(input: BootWatchdogInput): WatchdogHandle {
 	const fire = async (): Promise<WatchdogTickResult | null> => {
 		if (stopped) return null;
 		if (inFlight !== null) {
-			input.logger?.info?.({}, "watchdog.tick_skipped");
+			input.logger?.info?.(
+				{ event: "watchdog.tick_skipped" },
+				"watchdog tick skipped: prior tick still in flight",
+			);
 			return null;
 		}
 		const promise = (async () => {
@@ -319,7 +363,10 @@ export function bootWatchdog(input: BootWatchdogInput): WatchdogHandle {
 				ticks += 1;
 				return result;
 			} catch (err) {
-				input.logger?.error?.({ reason: formatError(err) }, "watchdog.tick_failed");
+				input.logger?.error?.(
+					{ event: "watchdog.tick_failed", reason: formatError(err) },
+					"watchdog tick failed",
+				);
 				return null;
 			} finally {
 				inFlight = null;

@@ -252,6 +252,10 @@ export function RunDetailPage() {
 						>
 							{r.seedId}
 						</span>
+						<p className="mt-1 text-xs text-(--color-muted-foreground)">
+							The seed lives in the coordination project; for a cross-repo plan-run
+							child this may differ from the execution repo above.
+						</p>
 					</MetaCard>
 				) : null}
 				{r.prUrl !== null ? (

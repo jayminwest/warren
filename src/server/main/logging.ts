@@ -7,7 +7,23 @@
  * exist only to satisfy the structural subtype.
  */
 
+import pino from "pino";
+import type { EnvLike } from "../config.ts";
 import type { Logger } from "../types.ts";
+import { LOG_REDACT_OPTIONS } from "./redact.ts";
+
+/**
+ * Construct warren's root pino logger with the shared secret-redaction
+ * policy (warren-b2dd / pl-f700 step 6) applied centrally, so every boot
+ * path gets identical token-shaped-field censoring.
+ */
+export function createWarrenLogger(env: EnvLike): Logger {
+	return pino({
+		name: "warren",
+		level: env.WARREN_LOG_LEVEL ?? "info",
+		redact: LOG_REDACT_OPTIONS,
+	});
+}
 
 type ObjectLogger = {
 	info(obj: object, msg?: string): void;

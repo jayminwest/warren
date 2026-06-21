@@ -12,6 +12,10 @@
  *   - `lastRunAt`        ISO 8601 timestamp the dispatch was created
  *   - `scheduledFor`     ISO 8601, set by operators / cleared (null) by warren
  *   - `lastScheduledRun` warren-side run id of the most recent scheduled fire
+ *   - `repo`             the project slug or git remote URL a seed's work
+ *                        targets (cross-repo plan-runs, pl-fb43): names the
+ *                        execution repo a child seed should be dispatched
+ *                        against, distinct from the coordination project
  *
  * Acceptance criteria for the R-01 producer side (pl-bb70):
  *   - manual POST /runs → `{role, trigger:'manual', lastRunId, lastRunAt}`
@@ -60,6 +64,26 @@ export const WarrenExtensionsSchema = z
 		lastRunAt: IsoTimestamp.optional(),
 		scheduledFor: IsoTimestamp.nullable().optional(),
 		lastScheduledRun: z.string().min(1).nullable().optional(),
+		repo: z.string().min(1).optional(),
 	})
 	.strict();
 export type WarrenExtensions = z.infer<typeof WarrenExtensionsSchema>;
+
+/**
+ * Typed reader for the cross-repo `extensions.repo` pointer (pl-fb43 step 1).
+ *
+ * Reads operate on the permissive `extensions` record that rides through
+ * `sd show --json` (`schema.ts` keeps it as `z.record(z.string(),
+ * z.unknown())`), so this accepts the raw record and returns the repo ref
+ * only when it is a present, non-empty string. An absent key, a non-string
+ * value, or an empty/whitespace-only string all read as `undefined` — the
+ * caller's signal to fall back to the coordination project.
+ */
+export function readTargetRepo(
+	extensions: Record<string, unknown> | undefined | null,
+): string | undefined {
+	const raw = extensions?.repo;
+	if (typeof raw !== "string") return undefined;
+	const trimmed = raw.trim();
+	return trimmed.length > 0 ? trimmed : undefined;
+}

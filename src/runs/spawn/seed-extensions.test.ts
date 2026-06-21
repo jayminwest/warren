@@ -54,6 +54,54 @@ describe("spawnRun: post-dispatch seed extension write (pl-bb70)", () => {
 		expect(await repos.events.countByRun(result.run.id)).toBe(0);
 	});
 
+	test("routes the sd update to seedProjectId while the workspace clones projectId (warren-c1a4)", async () => {
+		// Register a second, coordination project distinct from the execution
+		// project the workspace clones.
+		await repos.projects.create({
+			id: "prj_meta00000000",
+			gitUrl: "https://github.com/x/meta.git",
+			localPath: "/data/projects/x/meta",
+			defaultBranch: "main",
+		});
+		const { client, calls } = makeBurrowClient();
+		const sdCalls: { cmd: readonly string[]; cwd: string }[] = [];
+		const seedsSpawn: ProjectSpawnFn = async (cmd, opts) => {
+			sdCalls.push({ cmd, cwd: opts.cwd });
+			return { stdout: "{}", stderr: "", exitCode: 0 } satisfies SpawnResult;
+		};
+		const fixedNow = new Date("2026-05-15T17:00:00.000Z");
+		const result = await spawnRun({
+			repos,
+			burrowClientPool: await makePool(repos, client),
+			agentName: "refactor-bot",
+			projectId: "prj_xxxxxxxxxxxx",
+			seedProjectId: "prj_meta00000000",
+			prompt: "fix it",
+			seedId: "warren-abc",
+			seedsCli: { sdBinary: "/opt/sd", spawn: seedsSpawn },
+			now: () => fixedNow,
+		});
+
+		// The seed stamp ran against the COORDINATION project clone.
+		expect(sdCalls).toHaveLength(1);
+		const call = sdCalls[0];
+		if (call === undefined) throw new Error("expected one sd call");
+		expect(call.cwd).toBe("/data/projects/x/meta");
+		expect(call.cmd[2]).toBe("warren-abc");
+		expect(JSON.parse(call.cmd[4] ?? "{}")).toEqual({
+			role: "refactor-bot",
+			trigger: "manual",
+			lastRunId: result.run.id,
+			lastRunAt: fixedNow.toISOString(),
+		});
+
+		// The burrow workspace still cloned the EXECUTION project, and the run
+		// row records the execution project id.
+		expect(result.run.projectId).toBe("prj_xxxxxxxxxxxx");
+		const up = calls.find((c) => c.method === "POST" && c.path === "/burrows");
+		expect((up?.body as { projectRoot?: string })?.projectRoot).toBe("/data/projects/x/y");
+	});
+
 	test("seedId without seedsCli is a no-op extension write (legacy callers, CLI)", async () => {
 		const { client } = makeBurrowClient();
 		const result = await spawnRun({

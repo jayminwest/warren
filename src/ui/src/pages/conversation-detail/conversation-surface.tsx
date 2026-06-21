@@ -78,8 +78,8 @@ export function ConversationSplitView({
 	}
 
 	return (
-		<div className="grid gap-4 lg:grid-cols-2">
-			<Card className="flex min-h-[60vh] flex-col">
+		<div className="grid h-full min-h-0 gap-4 overflow-y-auto lg:auto-rows-fr lg:grid-cols-2 lg:overflow-hidden">
+			<Card className="flex min-h-[60vh] flex-col lg:min-h-0">
 				<CardHeader className="shrink-0">
 					<CardTitle className="flex flex-wrap items-center gap-2">
 						<span>Conversation</span>
@@ -244,7 +244,7 @@ function IntentPane({ conversation }: { conversation: ConversationRow }): JSX.El
 	}
 
 	return (
-		<Card className="flex min-h-[60vh] flex-col">
+		<Card className="flex min-h-[60vh] flex-col lg:min-h-0">
 			<CardHeader className="shrink-0">
 				<CardTitle className="flex flex-wrap items-center justify-between gap-2">
 					<span className="flex items-center gap-2">

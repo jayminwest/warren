@@ -18,6 +18,40 @@ describe("WarrenClient projects/agents", () => {
 		expect(res.projects.length).toBe(1);
 	});
 
+	test("listReadyPlans GETs /projects/:id/ready-plans and parses shape", async () => {
+		let observedUrl: string | undefined;
+		const stubFetch = stub(async (input) => {
+			observedUrl = String(input);
+			return jsonResponse(200, {
+				plans: [{ id: "pl-1", name: "Ship it", status: "approved", openChildCount: 2 }],
+			});
+		});
+		const c = new WarrenClient({
+			config: { baseUrl: "https://w.local" },
+			fetch: stubFetch,
+		});
+		const res = await c.listReadyPlans("p 1");
+		expect(observedUrl).toBe("https://w.local/projects/p%201/ready-plans");
+		expect(res.plans).toEqual([
+			{ id: "pl-1", name: "Ship it", status: "approved", openChildCount: 2 },
+		]);
+	});
+
+	test("listReadyPlans forwards an AbortSignal", async () => {
+		let observedSignal: AbortSignal | null | undefined;
+		const stubFetch = stub(async (_input, init) => {
+			observedSignal = init?.signal;
+			return jsonResponse(200, { plans: [] });
+		});
+		const c = new WarrenClient({
+			config: { baseUrl: "https://w.local" },
+			fetch: stubFetch,
+		});
+		const ctrl = new AbortController();
+		await c.listReadyPlans("p1", ctrl.signal);
+		expect(observedSignal).toBe(ctrl.signal);
+	});
+
 	test("createProject POSTs gitUrl + defaultBranch", async () => {
 		let observedUrl: string | undefined;
 		let observedMethod: string | undefined;

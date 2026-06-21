@@ -114,6 +114,14 @@ export type CloneKind = (typeof CLONE_KINDS)[number];
  *     wiped burrow's in-memory run state. The reconciler (bootBridges)
  *     and the bridge's mid-stream 404 catch both mark the warren row
  *     `failed` with this reason instead of looping forever.
+ *   - `burrow_unreachable` (warren-af76) means burrow stayed up but
+ *     unresponsive — the socket probe timed out, so the bridge errored
+ *     with `burrowRunMissing:false` and reconnected with no forward
+ *     progress past `BRIDGE_STALL_CEILING` consecutive attempts. The
+ *     reconnect loop gives up and finalizes the warren row `failed` with
+ *     this reason instead of spinning forever (the run otherwise wedges
+ *     in `running`). Distinct from `burrow_run_lost`, which is a clean
+ *     404; here burrow never answered at all.
  *   - `dropped_commit` (warren-72b9) means reap's `git push` landed zero
  *     commits ahead of the base branch (`reap.empty_push`) AND the
  *     workspace tree was still dirty at reap — the agent edited/staged
@@ -132,6 +140,7 @@ export const RUN_FAILURE_REASONS = [
 	"crashed",
 	"timed_out",
 	"burrow_run_lost",
+	"burrow_unreachable",
 	"dropped_commit",
 ] as const;
 export type RunFailureReason = (typeof RUN_FAILURE_REASONS)[number];
@@ -290,6 +299,11 @@ export const INDEX_NAMES = {
 	runsWorkerState: "runs_worker_state_idx",
 	runsPlotId: "runs_plot_id_idx",
 	runsMode: "runs_mode_idx",
+	// warren-0b75: the CI-fixer poller counts prior fixer attempts per PR by
+	// `runs.pr_url` (fixAttemptHistoryByPrUrl) and enumerates PR candidates by
+	// project. Index the column the poller filters on so the per-tick attempt
+	// count stays a covered lookup instead of a full-table scan.
+	runsPrUrl: "runs_pr_url_idx",
 	eventsRunSeq: "events_run_seq_idx",
 	eventsRunTs: "events_run_ts_idx",
 	triggersProject: "triggers_project_idx",

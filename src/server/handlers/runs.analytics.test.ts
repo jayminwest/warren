@@ -39,6 +39,12 @@ function tcpUrl(handle: ServeHandle): string {
 	return `http://${handle.transport.hostname}:${handle.transport.port}`;
 }
 
+// warren-ec44: these suites seed runs at fixed 2026-05 dates, so they must
+// pin an explicit ?from/?to window rather than rely on the handler's default
+// "last 30 days" relative to the system clock (which excludes the data once
+// the wall clock advances past it).
+const WINDOW = "from=2026-05-01T00:00:00.000Z&to=2026-06-01T00:00:00.000Z";
+
 interface SeedRunOpts {
 	projectId: string;
 	agentName: string;
@@ -168,7 +174,7 @@ describe("GET /analytics/runs", () => {
 			endedAt: "2026-05-21T10:02:00.000Z",
 		});
 		start();
-		const res = await fetch(`${tcpUrl(handle as ServeHandle)}/analytics/runs`);
+		const res = await fetch(`${tcpUrl(handle as ServeHandle)}/analytics/runs?${WINDOW}`);
 		expect(res.status).toBe(200);
 		const body = (await res.json()) as {
 			totals: { runs: number; succeeded: number; failed: number; successRate: number };
@@ -250,7 +256,7 @@ describe("GET /analytics/runs", () => {
 			endedAt: "2026-05-21T12:02:00.000Z",
 		});
 		start();
-		const res = await fetch(`${tcpUrl(handle as ServeHandle)}/analytics/runs`);
+		const res = await fetch(`${tcpUrl(handle as ServeHandle)}/analytics/runs?${WINDOW}`);
 		expect(res.status).toBe(200);
 		const body = (await res.json()) as {
 			tokens: {
@@ -327,7 +333,7 @@ describe("GET /analytics/runs", () => {
 		});
 		start();
 		const res = await fetch(
-			`${tcpUrl(handle as ServeHandle)}/analytics/runs?projectId=${projectId}`,
+			`${tcpUrl(handle as ServeHandle)}/analytics/runs?projectId=${projectId}&${WINDOW}`,
 		);
 		expect(res.status).toBe(200);
 		const body = (await res.json()) as {
@@ -460,7 +466,7 @@ describe("GET /analytics/behavior", () => {
 		await toolResult(runId, 6, "u3", false);
 
 		start();
-		const res = await fetch(`${tcpUrl(handle as ServeHandle)}/analytics/behavior`);
+		const res = await fetch(`${tcpUrl(handle as ServeHandle)}/analytics/behavior?${WINDOW}`);
 		expect(res.status).toBe(200);
 		const body = (await res.json()) as {
 			mining: {

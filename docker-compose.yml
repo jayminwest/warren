@@ -37,6 +37,16 @@ services:
     ports:
       - "8080:8080"
 
+    # Cap and rotate container logs (warren-26c2 / pl-f700 step 4) so the
+    # per-request access log can't fill the host disk. json-file is the
+    # default driver; the options bound each file to 10MB and keep 5
+    # rotated files (50MB ceiling per container).
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+
     env_file:
       - .env
 

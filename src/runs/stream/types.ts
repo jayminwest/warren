@@ -23,6 +23,12 @@ export interface BridgeLogger {
 	info?(obj: object, msg?: string): void;
 	warn?(obj: object, msg?: string): void;
 	error?(obj: object, msg?: string): void;
+	/**
+	 * pino's `.child(bindings)` — present on real loggers, optional here so
+	 * tests can pass a partial logger. `bindBridgeLogger` (./logger.ts) uses
+	 * it to bind `run_id` / `burrow_run_id` / `worker` once per run.
+	 */
+	child?(bindings: object): BridgeLogger;
 }
 
 /**

@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.4] — 2026-06-20
+
+### Changed
+
+- **`chore(deps)`** — bumped the pinned `@os-eco/seeds-cli` Docker image
+  install from 0.5.11 to 0.5.13, which fixes a critical bug in warren's
+  agent runtimes.
+
+- **`feat(runs)`** — the run heartbeat watchdog (warren-285d) is now **on by
+  default** (warren-b2dc) with a generous 45-minute built-in budget, instead
+  of arming only when `WARREN_RUN_HEARTBEAT_TIMEOUT_MS` was set. A fresh
+  deploy is now protected from silent-but-busy runaway runs without an
+  explicit env var, mirroring the conversation-idle coordinator. Tune the
+  budget via `WARREN_RUN_HEARTBEAT_TIMEOUT_MS`; opt out with
+  `WARREN_WATCHDOG_DISABLED=1` (or by pinning the budget to 0). `fly.toml`
+  pins the budget explicitly at the deploy-config layer.
+
+### Added
+
+- **`ci(pr-fixer)`** — the polling CI-fixer is wired into the scheduler
+  tick. Each tick, projects with `ciFixer.enabled` enumerate their open-PR
+  candidates (`RunsRepo.listPrCandidatesByProject`, indexed by the new
+  `runs_pr_url_idx`), classify each PR's check-runs, and dispatch a
+  `ci-fixer` run against the failing PR — gated by the per-PR retry +
+  cooldown history (`RunsRepo.fixAttemptHistoryByPrUrl`) and back-linked to
+  the PR's opener via `parentRunId`. Dispatched fixers stamp a
+  `ci_fixer.dispatched` system event on the opener run. The PR-head
+  `targetBranch` push and CI-log extraction land in warren-a993
+  (warren-0b75).
+
 ## [0.9.3] — 2026-06-16
 
 The remaining pl-dfb5 papercuts land: a project-scoped seeds-plan read

@@ -31,7 +31,7 @@ const PAGE_SOURCE = readFileSync(PAGE_PATH, "utf8");
 describe("WorkspaceDetail Run tab (warren-d17f)", () => {
 	test("is wired into the tabbed shell", () => {
 		expect(PAGE_SOURCE).toContain('from "@/pages/workspace-detail/run-tab.tsx"');
-		expect(PAGE_SOURCE).toMatch(/activeTab === "run" && <RunTab/);
+		expect(PAGE_SOURCE).toMatch(/activeTab === "run" &&[\s\S]*?<RunTab/);
 	});
 
 	test("resolves the dispatched plan-run from the Plot via the plotId back-link", () => {

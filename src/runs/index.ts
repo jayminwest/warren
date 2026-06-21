@@ -151,10 +151,14 @@ export {
 export { type SteerRunInput, type SteerRunResult, steerRun } from "./steer.ts";
 export {
 	type ActiveBridge,
+	type BoundBridgeLogger,
 	type BridgeLogger,
+	type BridgeLoggerBindings,
 	type BridgeRunStreamInput,
 	type BridgeRunStreamResult,
+	bindBridgeLogger,
 	bridgeRunStream,
+	NOOP_BRIDGE_LOGGER,
 	type PiStatsClient,
 	type RecoverActiveRunStreamsInput,
 	type RecoverActiveRunStreamsResult,
