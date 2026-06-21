@@ -1,8 +1,10 @@
 import { type EnvLike, loadWarrenClientConfigFromEnv, type WarrenClientConfig } from "./config.ts";
 import { WarrenClientError, WarrenUnreachableError } from "./errors.ts";
+import { errorFromResponse, readNdjsonStream } from "./ndjson.ts";
+import * as plots from "./plots.ts";
 import {
 	type AgentRow,
-	type ApiErrorEnvelope,
+	type CancelPlanRunResponse,
 	type ChangePlotStatusInput,
 	type ChangePlotStatusResponse,
 	type CreatePlanRunInput,
@@ -12,6 +14,7 @@ import {
 	type CreateRunInput,
 	type DispatchRunInput,
 	type EditPlotIntentInput,
+	isTerminalPlanRunState,
 	isTerminalRunState,
 	type ListAgentsQuery,
 	type ListAgentsResponse,
@@ -23,6 +26,7 @@ import {
 	type ListReadyPlansResponse,
 	type ListRunsResponse,
 	type PlanRunDetailResponse,
+	type PlanRunRow,
 	type PlotEnvelope,
 	type PlotSummary,
 	type PlotSyncResponse,
@@ -36,6 +40,7 @@ import {
 	type SpawnRunResponse,
 	type SteerRunInput,
 	type SteerRunResponse,
+	type StreamPlanRunEventsOptions,
 	type StreamRunEventsOptions,
 } from "./types.ts";
 
@@ -56,6 +61,17 @@ export interface WaitForRunOptions {
 	readonly signal?: AbortSignal;
 	/** Optional callback invoked after each poll for observability. */
 	readonly onTick?: (row: RunRow) => void;
+}
+
+export interface WaitForPlanRunOptions {
+	/** Poll cadence. Defaults to {@link DEFAULT_POLL_INTERVAL_MS}. */
+	readonly intervalMs?: number;
+	/** Overall budget. Defaults to {@link DEFAULT_POLL_TIMEOUT_MS}. */
+	readonly timeoutMs?: number;
+	/** External abort. */
+	readonly signal?: AbortSignal;
+	/** Optional callback invoked after each poll for observability. */
+	readonly onTick?: (row: PlanRunRow) => void;
 }
 
 export interface WarrenClientOptions {
@@ -109,17 +125,7 @@ export class WarrenClient {
 		return this.withTransportMapping(async () => {
 			const res = await this.requestRaw(path, init);
 			if (!res.ok) {
-				let envelope: ApiErrorEnvelope | null = null;
-				try {
-					envelope = (await res.json()) as ApiErrorEnvelope;
-				} catch {
-					// Non-JSON or malformed body
-				}
-				const code = envelope?.error?.code ?? `http_${res.status}`;
-				const message =
-					envelope?.error?.message ?? `warren request failed with status ${res.status}`;
-				const hint = envelope?.error?.hint;
-				throw new WarrenClientError(res.status, code, message, hint);
+				throw await errorFromResponse(res);
 			}
 			const text = await res.text();
 			if (text.length === 0) return undefined as T;
@@ -252,25 +258,14 @@ export class WarrenClient {
 	 * an open connection.
 	 */
 	async waitForRun(runId: string, opts: WaitForRunOptions = {}): Promise<RunRow> {
-		const interval = opts.intervalMs ?? DEFAULT_POLL_INTERVAL_MS;
-		const timeout = opts.timeoutMs ?? DEFAULT_POLL_TIMEOUT_MS;
-		const deadline = Date.now() + timeout;
-		for (;;) {
-			if (opts.signal?.aborted) {
-				throw new DOMException("waitForRun aborted", "AbortError");
-			}
-			const row = await this.getRun(runId);
-			opts.onTick?.(row);
-			if (isTerminalRunState(row.state)) return row;
-			if (Date.now() + interval >= deadline) {
-				throw new WarrenClientError(
-					408,
-					"wait_timeout",
-					`run ${runId} did not reach a terminal state within ${timeout}ms (last state: ${row.state})`,
-				);
-			}
-			await sleepWithSignal(interval, opts.signal);
-		}
+		return pollUntilTerminal({
+			label: "run",
+			id: runId,
+			opts,
+			fetchRow: () => this.getRun(runId),
+			isTerminal: (row) => isTerminalRunState(row.state),
+			stateOf: (row) => row.state,
+		});
 	}
 
 	/**
@@ -299,160 +294,52 @@ export class WarrenClient {
 		const qs = params.toString();
 		const path = `/runs/${encodeURIComponent(runId)}/events${qs.length > 0 ? `?${qs}` : ""}`;
 
+		yield* this.streamNdjson<RunEvent>(path, opts.signal);
+	}
+
+	/**
+	 * Open `path` as an NDJSON tail and yield one parsed `T` per line.
+	 * Backs {@link streamRunEvents} and {@link streamPlanRunEvents}; the
+	 * reader loop + error mapping live in `./ndjson.ts`.
+	 */
+	private streamNdjson<T>(path: string, signal?: AbortSignal): AsyncGenerator<T, void, void> {
 		const init: RequestInit = { headers: { accept: "application/x-ndjson" } };
-		if (opts.signal) init.signal = opts.signal;
-
-		const res = await this.withTransportMapping(() => this.requestRaw(path, init));
-		if (!res.ok) {
-			let envelope: ApiErrorEnvelope | null = null;
-			try {
-				envelope = (await res.json()) as ApiErrorEnvelope;
-			} catch {
-				// Non-JSON or malformed body — fall through to the default code/message.
-			}
-			const code = envelope?.error?.code ?? `http_${res.status}`;
-			const message = envelope?.error?.message ?? `warren request failed with status ${res.status}`;
-			const hint = envelope?.error?.hint;
-			throw new WarrenClientError(res.status, code, message, hint);
-		}
-		if (res.body === null) return;
-
-		const reader = res.body.getReader();
-		const decoder = new TextDecoder();
-		let buf = "";
-		try {
-			while (true) {
-				const { done, value } = await reader.read();
-				if (done) break;
-				buf += decoder.decode(value, { stream: true });
-				let nl = buf.indexOf("\n");
-				while (nl !== -1) {
-					const line = buf.slice(0, nl);
-					buf = buf.slice(nl + 1);
-					if (line.length > 0) {
-						try {
-							yield JSON.parse(line) as RunEvent;
-						} catch {
-							// drop malformed line; keep streaming
-						}
-					}
-					nl = buf.indexOf("\n");
-				}
-			}
-			const tail = buf.trim();
-			if (tail.length > 0) {
-				try {
-					yield JSON.parse(tail) as RunEvent;
-				} catch {
-					// drop
-				}
-			}
-		} finally {
-			try {
-				reader.releaseLock();
-			} catch {
-				// ignore — releaseLock can throw if we already errored out
-			}
-		}
+		if (signal) init.signal = signal;
+		return readNdjsonStream<T>(() => this.withTransportMapping(() => this.requestRaw(path, init)));
 	}
 
 	/* --------------------------------------------------------------- */
-	/* Plots — warren-8ffc.                                            */
-	/*                                                                  */
-	/* Inputs accept camelCase for ergonomics; the request bodies map  */
-	/* to the wire's snake_case (`project_id`, `dispatcher_handle`,    */
-	/* `plot_id`) at the boundary. Responses pass through unchanged    */
-	/* — the wire envelope under /plots is snake_case end-to-end       */
-	/* (mirror of the on-disk @os-eco/plot-cli shape).                 */
+	/* Plots — warren-8ffc. Implementations live in `./plots.ts` as    */
+	/* free functions (warren-fcc8) so this class stays under budget;  */
+	/* see that module for per-method docs + the camelCase→snake_case  */
+	/* wire mapping.                                                    */
 	/* --------------------------------------------------------------- */
 
-	/**
-	 * `GET /plots[?status=&filter=needs_attention]` — cross-project
-	 * Plot list. Unknown status or filter values are rejected
-	 * server-side with 400. Empty result set when no `hasPlot=true`
-	 * projects exist.
-	 */
-	async listPlots(filter: ListPlotsFilter = {}): Promise<ListPlotsResponse> {
-		const params = new URLSearchParams();
-		if (filter.status !== undefined) params.set("status", filter.status);
-		if (filter.needsAttention === true) params.set("filter", "needs_attention");
-		const qs = params.toString();
-		return this.request<ListPlotsResponse>(`/plots${qs.length > 0 ? `?${qs}` : ""}`);
+	listPlots(filter: ListPlotsFilter = {}): Promise<ListPlotsResponse> {
+		return plots.listPlots(this, filter);
 	}
 
-	/** `GET /plots/:id` — full Plot envelope (intent + attachments + event log). */
-	async getPlot(plotId: string): Promise<PlotEnvelope> {
-		return this.request<PlotEnvelope>(`/plots/${encodeURIComponent(plotId)}`);
+	getPlot(plotId: string): Promise<PlotEnvelope> {
+		return plots.getPlot(this, plotId);
 	}
 
-	/**
-	 * `POST /plots` — create a draft Plot in the named project's
-	 * `.plot/` directory. Server requires `project.hasPlot === true`
-	 * (otherwise 400 `project_lacks_plot`). Empty `name` is rejected;
-	 * omit the field to accept the `"Untitled Plot"` default. The
-	 * optional `intent` patch is applied on top of `PlotStore.create`
-	 * defaults.
-	 */
-	async createPlot(input: CreatePlotInput): Promise<PlotSummary> {
-		const body: Record<string, unknown> = { project_id: input.projectId };
-		if (input.name !== undefined) body.name = input.name;
-		if (input.intent !== undefined) body.intent = input.intent;
-		if (input.dispatcherHandle !== undefined) body.dispatcher_handle = input.dispatcherHandle;
-		return this.request<PlotSummary>("/plots", {
-			method: "POST",
-			headers: { "content-type": "application/json" },
-			body: JSON.stringify(body),
-		});
+	createPlot(input: CreatePlotInput): Promise<PlotSummary> {
+		return plots.createPlot(this, input);
 	}
 
-	/**
-	 * `POST /plots/:id/intent` — edit the intent block. Flat top-level
-	 * fields (no `intent:` wrapper, unlike createPlot). Omitted fields
-	 * are left untouched; an empty patch is accepted as a no-op.
-	 * Returns the refreshed `PlotEnvelope`.
-	 */
-	async editPlotIntent(plotId: string, input: EditPlotIntentInput = {}): Promise<PlotEnvelope> {
-		const body: Record<string, unknown> = {};
-		if (input.goal !== undefined) body.goal = input.goal;
-		if (input.non_goals !== undefined) body.non_goals = input.non_goals;
-		if (input.constraints !== undefined) body.constraints = input.constraints;
-		if (input.success_criteria !== undefined) body.success_criteria = input.success_criteria;
-		if (input.dispatcherHandle !== undefined) body.dispatcher_handle = input.dispatcherHandle;
-		return this.request<PlotEnvelope>(`/plots/${encodeURIComponent(plotId)}/intent`, {
-			method: "POST",
-			headers: { "content-type": "application/json" },
-			body: JSON.stringify(body),
-		});
+	editPlotIntent(plotId: string, input: EditPlotIntentInput = {}): Promise<PlotEnvelope> {
+		return plots.editPlotIntent(this, plotId, input);
 	}
 
-	/**
-	 * `POST /plots/:id/status` — transition the Plot status. Server
-	 * validates the SPEC §6.5 transition matrix; invalid transitions
-	 * return 400 with a typed code.
-	 */
-	async changePlotStatus(
+	changePlotStatus(
 		plotId: string,
 		input: ChangePlotStatusInput,
 	): Promise<ChangePlotStatusResponse> {
-		const body: Record<string, unknown> = { next: input.next };
-		if (input.dispatcherHandle !== undefined) body.dispatcher_handle = input.dispatcherHandle;
-		return this.request<ChangePlotStatusResponse>(`/plots/${encodeURIComponent(plotId)}/status`, {
-			method: "POST",
-			headers: { "content-type": "application/json" },
-			body: JSON.stringify(body),
-		});
+		return plots.changePlotStatus(this, plotId, input);
 	}
 
-	/**
-	 * `POST /plots/:id/sync` — trigger a manual sync of the Plot's
-	 * on-disk state to GitHub. Returns `{kind:'no_op'}` when the
-	 * working tree is clean, or `{kind:'synced', ...}` with PR details
-	 * when a sync branch was opened/updated.
-	 */
-	async syncPlot(plotId: string): Promise<PlotSyncResponse> {
-		return this.request<PlotSyncResponse>(`/plots/${encodeURIComponent(plotId)}/sync`, {
-			method: "POST",
-		});
+	syncPlot(plotId: string): Promise<PlotSyncResponse> {
+		return plots.syncPlot(this, plotId);
 	}
 
 	/* --------------------------------------------------------------- */
@@ -499,6 +386,62 @@ export class WarrenClient {
 		return this.request<ListPlanRunsResponse>(`/plan-runs${qs.length > 0 ? `?${qs}` : ""}`);
 	}
 
+	/**
+	 * `POST /plan-runs/:id/cancel` — flip the plan-run to `cancelled`
+	 * and best-effort cancel its in-flight child run. Idempotent: a
+	 * plan-run already in a terminal state returns
+	 * `{ alreadyTerminal: true, cancelledChild: null }` without firing a
+	 * second cancel.
+	 */
+	async cancelPlanRun(planRunId: string): Promise<CancelPlanRunResponse> {
+		return this.request<CancelPlanRunResponse>(
+			`/plan-runs/${encodeURIComponent(planRunId)}/cancel`,
+			{ method: "POST" },
+		);
+	}
+
+	/**
+	 * Async iterator over `GET /plan-runs/:id/events` (NDJSON tail). One
+	 * yield per child-run event row, parsed as {@link RunEvent}. Shares
+	 * the same wire shape and reader as {@link streamRunEvents}; each
+	 * envelope carries its originating `runId` discriminator.
+	 *
+	 * - `follow: true` keeps the connection open until the client
+	 *   disconnects or the plan-run reaches a terminal state; without it
+	 *   the server replays the current snapshot then closes.
+	 * - `signal` aborts the underlying fetch.
+	 *
+	 * There is **no `sinceSeq`** — the endpoint replays the full union
+	 * snapshot from the top on every (re)open. On reconnect, dedupe
+	 * client-side by `(runId, seq)` to drop events already seen.
+	 */
+	async *streamPlanRunEvents(
+		planRunId: string,
+		opts: StreamPlanRunEventsOptions = {},
+	): AsyncGenerator<RunEvent, void, void> {
+		const params = new URLSearchParams();
+		if (opts.follow) params.set("follow", "1");
+		const qs = params.toString();
+		const path = `/plan-runs/${encodeURIComponent(planRunId)}/events${qs.length > 0 ? `?${qs}` : ""}`;
+		yield* this.streamNdjson<RunEvent>(path, opts.signal);
+	}
+
+	/**
+	 * Poll `GET /plan-runs/:id` until the plan-run reaches a terminal
+	 * state (`succeeded` | `failed` | `cancelled`) or the timeout/abort
+	 * fires. Mirrors {@link waitForRun} for serial plan executions.
+	 */
+	async waitForPlanRun(planRunId: string, opts: WaitForPlanRunOptions = {}): Promise<PlanRunRow> {
+		return pollUntilTerminal({
+			label: "plan-run",
+			id: planRunId,
+			opts,
+			fetchRow: async () => (await this.getPlanRun(planRunId)).planRun,
+			isTerminal: (row) => isTerminalPlanRunState(row.state),
+			stateOf: (row) => row.state,
+		});
+	}
+
 	async close(): Promise<void> {
 		// No-op for now, but adheres to BurrowClient's shape.
 	}
@@ -541,6 +484,48 @@ export class WarrenClient {
 			}
 			throw err;
 		}
+	}
+}
+
+interface PollUntilTerminalInput<Row> {
+	readonly label: string;
+	readonly id: string;
+	readonly opts: {
+		intervalMs?: number;
+		timeoutMs?: number;
+		signal?: AbortSignal;
+		onTick?: (row: Row) => void;
+	};
+	readonly fetchRow: () => Promise<Row>;
+	readonly isTerminal: (row: Row) => boolean;
+	readonly stateOf: (row: Row) => string;
+}
+
+/**
+ * Generic poll loop shared by {@link WarrenClient.waitForRun} and
+ * {@link WarrenClient.waitForPlanRun}: fetch a row, fire `onTick`, return
+ * once terminal, else sleep and retry until the timeout/abort fires.
+ */
+async function pollUntilTerminal<Row>(input: PollUntilTerminalInput<Row>): Promise<Row> {
+	const { label, id, opts } = input;
+	const interval = opts.intervalMs ?? DEFAULT_POLL_INTERVAL_MS;
+	const timeout = opts.timeoutMs ?? DEFAULT_POLL_TIMEOUT_MS;
+	const deadline = Date.now() + timeout;
+	for (;;) {
+		if (opts.signal?.aborted) {
+			throw new DOMException(`waitFor ${label} aborted`, "AbortError");
+		}
+		const row = await input.fetchRow();
+		opts.onTick?.(row);
+		if (input.isTerminal(row)) return row;
+		if (Date.now() + interval >= deadline) {
+			throw new WarrenClientError(
+				408,
+				"wait_timeout",
+				`${label} ${id} did not reach a terminal state within ${timeout}ms (last state: ${input.stateOf(row)})`,
+			);
+		}
+		await sleepWithSignal(interval, opts.signal);
 	}
 }
 
