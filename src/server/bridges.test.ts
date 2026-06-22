@@ -498,9 +498,9 @@ describe("bootBridges", () => {
 		expect(run.state).toBe("failed");
 		expect(run.failureReason).toBe("burrow_run_lost");
 		const events = await repos.events.listByRun(r.id);
-		expect(events.length).toBe(1);
 		expect(events[0]?.kind).toBe("bridge_lost");
 		expect((events[0]?.payloadJson as { reason: string }).reason).toBe("burrow_run_lost");
+		expect(events.map((e) => e.kind)).toContain("reap.workspace_destroy_failed"); // warren-4f01
 		await result.registry.stopAll();
 	});
 

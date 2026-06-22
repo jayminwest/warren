@@ -25,6 +25,10 @@ import {
 	type ReapRunResult,
 	type RunEventBroker,
 } from "../runs/index.ts";
+import {
+	type DestroyBurrowWorkspaceByIdInput,
+	destroyBurrowWorkspaceById,
+} from "../runs/reap/destroy.ts";
 import type { ConversationTurnHandler } from "../runs/stream/conversation-turn.ts";
 import type { SeedsCliDeps } from "../seeds-cli/index.ts";
 import type { WarrenConfigCache } from "../warren-config/index.ts";
@@ -151,6 +155,7 @@ export async function runWithReconnect(
 				burrowRunId: input.burrowRunId,
 				repos: input.repos,
 				broker: input.broker,
+				burrowClientPool: input.burrowClientPool,
 				logger: log,
 			});
 			return { written: totalWritten, skipped: totalSkipped, errored: false };
@@ -264,6 +269,7 @@ export async function runWithReconnect(
 				burrowRunId: input.burrowRunId,
 				repos: input.repos,
 				broker: input.broker,
+				burrowClientPool: input.burrowClientPool,
 				failureReason: "burrow_unreachable",
 				logger: log,
 			});
@@ -334,6 +340,15 @@ interface ReconcileLostBurrowRunInput {
 	 * `'burrow_unreachable'`.
 	 */
 	readonly failureReason?: RunFailureReason;
+	/**
+	 * warren-4f01: pool used to tear down the burrow workspace after the run
+	 * is finalized, so a wedged run's bwrap/pi sandbox doesn't leak on the
+	 * host. Omitted by callers/tests that can't resolve a worker; teardown is
+	 * then skipped.
+	 */
+	readonly burrowClientPool?: BurrowClientPool;
+	/** Override the workspace-destroy seam (tests). */
+	readonly destroyWorkspace?: (input: DestroyBurrowWorkspaceByIdInput) => Promise<boolean>;
 }
 
 /**
@@ -356,10 +371,14 @@ export async function reconcileLostBurrowRun(input: ReconcileLostBurrowRunInput)
 		burrow_run_id: input.burrowRunId,
 	});
 	let finalized = false;
+	let burrowToDestroy: { id: string; mode: RunMode } | null = null;
 	try {
 		const run = await input.repos.runs.get(input.runId);
 		if (run === null) {
 			return;
+		}
+		if (run.burrowId !== null) {
+			burrowToDestroy = { id: run.burrowId, mode: run.mode };
 		}
 		if (TERMINAL_RUN_STATES.has(run.state)) {
 			log.info(
@@ -405,6 +424,40 @@ export async function reconcileLostBurrowRun(input: ReconcileLostBurrowRunInput)
 			},
 			"reconcileLostBurrowRun: failed to emit bridge_lost event",
 		);
+	}
+	// warren-4f01: tear down the burrow workspace so its bwrap/pi sandbox
+	// doesn't leak on the host. The run is now terminal, which means a later
+	// `reapRun` short-circuits (`buildAlreadyTerminalResult`) without
+	// destroying the workspace — so the teardown must happen here. Best-effort
+	// and gated on a resolvable pool; conversation runs keep their workspace.
+	if (input.burrowClientPool !== undefined && burrowToDestroy !== null) {
+		const destroy = input.destroyWorkspace ?? destroyBurrowWorkspaceById;
+		try {
+			await destroy({
+				burrowId: burrowToDestroy.id,
+				mode: burrowToDestroy.mode,
+				burrowClientPool: input.burrowClientPool,
+				repos: input.repos,
+				emit: async (kind, payload) => {
+					await emitBridgeSystemEvent({
+						runId: input.runId,
+						repos: input.repos,
+						broker: input.broker,
+						kind,
+						payload: payload as Record<string, unknown>,
+						logger: log,
+					});
+				},
+			});
+		} catch (err) {
+			log.error(
+				{
+					event: "bridge.workspace_destroy_failed",
+					err: err instanceof Error ? err.message : String(err),
+				},
+				"reconcileLostBurrowRun: best-effort workspace destroy threw",
+			);
+		}
 	}
 	log.warn(
 		{ event: "bridge.reconciled", finalized },

@@ -381,6 +381,7 @@ export async function bootBridges(input: CreateBridgeRegistryInput): Promise<Boo
 					burrowRunId: run.burrowRunId,
 					repos: input.repos,
 					broker: input.broker,
+					burrowClientPool: input.burrowClientPool,
 					logger: bindBridgeLogger(input.logger, {
 						run_id: run.id,
 						burrow_run_id: run.burrowRunId,

@@ -2,6 +2,8 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { openDatabase, type WarrenDb } from "../db/client.ts";
 import { createRepos, type Repos } from "../db/repos/index.ts";
 import { RunEventBroker } from "../runs/index.ts";
+import type { DestroyBurrowWorkspaceByIdInput } from "../runs/reap/destroy.ts";
+import { reconcileLostBurrowRun } from "./bridge-reconnect.ts";
 import { makePool } from "./bridges.test-helpers.ts";
 import { createBridgeRegistry } from "./bridges.ts";
 
@@ -134,6 +136,54 @@ describe("runWithReconnect bridge_stalled/bridge_recovered (warren-6376)", () =>
 		expect(lost.length).toBe(1);
 		expect((lost[0]?.payloadJson as { reason: string }).reason).toBe("burrow_unreachable");
 		expect((lost[0]?.payloadJson as { finalized: boolean }).finalized).toBe(true);
+	});
+
+	test("tears down the burrow workspace after finalizing (warren-4f01)", async () => {
+		const runId = await seedRun();
+		const pool = await makePool(repos);
+		const seen: DestroyBurrowWorkspaceByIdInput[] = [];
+		await reconcileLostBurrowRun({
+			runId,
+			burrowRunId: "rb_a",
+			repos,
+			broker: new RunEventBroker(),
+			burrowClientPool: pool,
+			failureReason: "burrow_unreachable",
+			destroyWorkspace: async (input) => {
+				seen.push(input);
+				await input.emit("reap.workspace_destroyed", { burrowId: input.burrowId });
+				return true;
+			},
+		});
+
+		// Run finalized terminal, AND the workspace teardown fired with the
+		// run's burrow + mode so the bwrap/pi sandbox doesn't leak on the host.
+		const run = await repos.runs.get(runId);
+		expect(run?.state).toBe("failed");
+		expect(seen).toHaveLength(1);
+		expect(seen[0]?.burrowId).toBe("bur_a");
+		expect(seen[0]?.mode).toBe("batch");
+		expect(seen[0]?.burrowClientPool).toBe(pool);
+
+		const kinds = (await repos.events.listByRun(runId)).map((e) => e.kind);
+		expect(kinds).toContain("reap.workspace_destroyed");
+	});
+
+	test("skips teardown when no pool is supplied (warren-4f01)", async () => {
+		const runId = await seedRun();
+		let called = false;
+		await reconcileLostBurrowRun({
+			runId,
+			burrowRunId: "rb_a",
+			repos,
+			broker: new RunEventBroker(),
+			destroyWorkspace: async () => {
+				called = true;
+				return true;
+			},
+		});
+		expect(called).toBe(false);
+		expect((await repos.runs.get(runId))?.state).toBe("failed");
 	});
 
 	test("no bridge_stalled when reconnects stay under threshold", async () => {
