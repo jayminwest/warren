@@ -13,7 +13,6 @@
 		"src/plots/aggregate.ts": 506,
 		"src/runs/pr.test.ts": 604,
 		"src/runs/pr.ts": 659,
-		"src/runs/stream/bridge.test.ts": 521,
 		"src/server/bridges.test.ts": 557,
 		"src/server/handlers/agents.test.ts": 533,
 		"src/server/main/index.ts": 548,
