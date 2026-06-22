@@ -89,7 +89,10 @@ describe("GET /metrics", () => {
 		const body = await res.text();
 		expect(body).toContain("# TYPE warren_runs gauge");
 		expect(body).toContain("warren_active_bridges 0");
-		expect(body).toContain("warren_cost_usd_total 0");
+		expect(body).toContain("warren_cost_usd 0");
+		expect(body).toContain("warren_tokens_input 0");
+		expect(body).toContain("warren_tokens_output 0");
+		// Genuine counter keeps its _total suffix.
 		expect(body).toContain('warren_log_messages_total{level="warn"} 1');
 		expect(body).toContain('warren_log_messages_total{level="error"} 1');
 	});

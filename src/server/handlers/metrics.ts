@@ -45,13 +45,9 @@ export function metricsHandler(deps: ServerDeps): RouteHandler {
 				type: "gauge",
 				samples: Object.entries(byState).map(([state, value]) => ({ labels: { state }, value })),
 			});
-			metrics.push(gauge("warren_cost_usd_total", "Cumulative agent cost in USD.", cost.costUsd));
-			metrics.push(
-				gauge("warren_tokens_input_total", "Cumulative input tokens.", cost.tokensInput),
-			);
-			metrics.push(
-				gauge("warren_tokens_output_total", "Cumulative output tokens.", cost.tokensOutput),
-			);
+			metrics.push(gauge("warren_cost_usd", "Cumulative agent cost in USD.", cost.costUsd));
+			metrics.push(gauge("warren_tokens_input", "Cumulative input tokens.", cost.tokensInput));
+			metrics.push(gauge("warren_tokens_output", "Cumulative output tokens.", cost.tokensOutput));
 		}
 
 		metrics.push(
