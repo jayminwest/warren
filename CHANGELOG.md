@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.5] — 2026-06-22
+
+### Added
+
+- **`feat(observability)`** — Phase 1 observability instrumentation:
+  optional Sentry error tracking (active only when `SENTRY_DSN` is set) and a
+  Prometheus `GET /metrics` endpoint exposing run-state, cost, token,
+  bridge, and log-rate series in valid v0.0.4 exposition text
+  (commit 29c09f4a).
+
+### Fixed
+
+- **`fix(observability)`** — the Sentry event scrubber now recurses one
+  level into nested record values, matching the pino `*.<field>` redact
+  policy in `src/server/main/redact.ts`. A secret nested one level deep in
+  `event.extra` or `event.request.headers` (e.g. `{ extra: { config: {
+  token } } }`) is now redacted before it reaches Sentry, closing a
+  defense-in-depth gap where nested secrets leaked even though the same
+  field was censored in the log line (warren-3ca4).
+- **`fix(metrics)`** — the live cost/token gauges in `GET /metrics` no
+  longer carry the `_total` suffix Prometheus reserves for counters. These
+  sums can decrease when runs are reaped, so they are renamed
+  `warren_cost_usd`, `warren_tokens_input`, and `warren_tokens_output`; the
+  genuine counter `warren_log_messages_total` keeps its suffix (warren-00bd).
+- **`fix(metrics)`** — `countersToMetrics()` builds its `PromMetric`
+  samples without mutating a `readonly PromSample[]` via a double-cast,
+  accumulating samples in a mutable map keyed by metric name instead
+  (warren-91db).
+
 ## [0.9.4] — 2026-06-20
 
 ### Changed
