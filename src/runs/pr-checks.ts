@@ -269,60 +269,65 @@ export async function mergePullRequest(
 		};
 	}
 
-	if (res.status === 200) {
-		const payload = (await readJson(res)) as {
-			merged?: unknown;
-			sha?: unknown;
-			message?: unknown;
-		} | null;
-		const merged = payload?.merged === true;
-		const sha = typeof payload?.sha === "string" ? payload.sha : "";
-		if (merged) {
-			return { kind: "merged", sha };
-		}
-		const message = typeof payload?.message === "string" ? payload.message : "PR not merged";
-		return { kind: "not_mergeable", message };
-	}
+	return interpretMergeResponse(res);
+}
 
+/**
+ * `interpretMergeResponse` — map a `PUT /merge` HTTP response onto a
+ * `MergePullRequestResult`. Split out of `mergePullRequest` to keep both
+ * functions under the cognitive-complexity ceiling (warren-05bb): the
+ * caller owns request construction + network handling, this owns the
+ * status-code → result-variant mapping.
+ */
+async function interpretMergeResponse(res: Response): Promise<MergePullRequestResult> {
+	if (res.status === 200) return interpretMergeOk(res);
 	// Rate limit: GitHub surfaces 403 with x-ratelimit-remaining: 0, or 429.
 	if (res.status === 429 || (res.status === 403 && isRateLimited(res))) {
-		const reset = res.headers.get("x-ratelimit-reset");
-		const resetAt =
-			reset !== null && /^\d+$/.test(reset)
-				? new Date(Number.parseInt(reset, 10) * 1000).toISOString()
-				: null;
-		const text = await readText(res);
-		return {
-			kind: "rate_limited",
-			message: truncate(text, 500),
-			resetAt,
-		};
+		return interpretRateLimited(res);
 	}
-
 	if (res.status === 404) {
-		const text = await readText(res);
-		return { kind: "not_found", message: truncate(text, 500) };
+		return { kind: "not_found", message: truncate(await readText(res), 500) };
 	}
-
 	// 405 "Method Not Allowed" with `message: "Pull Request is not mergeable"`
 	// is the standard "can't merge right now" shape. 409 is base SHA mismatch.
 	// Both also cover "already merged" — distinguish via the body message.
-	if (res.status === 405 || res.status === 409) {
-		const payload = (await readJson(res)) as { message?: unknown } | null;
-		const message =
-			typeof payload?.message === "string" ? payload.message : `${res.status} from PUT /merge`;
-		if (/already merged/i.test(message)) {
-			return { kind: "already_merged" };
-		}
-		return { kind: "not_mergeable", message };
-	}
-
-	const text = await readText(res);
+	if (res.status === 405 || res.status === 409) return interpretMergeConflict(res);
 	return {
 		kind: "http_error",
 		status: res.status,
-		message: `PUT /merge returned ${res.status}: ${truncate(text, 500)}`,
+		message: `PUT /merge returned ${res.status}: ${truncate(await readText(res), 500)}`,
 	};
+}
+
+async function interpretMergeOk(res: Response): Promise<MergePullRequestResult> {
+	const payload = (await readJson(res)) as {
+		merged?: unknown;
+		sha?: unknown;
+		message?: unknown;
+	} | null;
+	if (payload?.merged === true) {
+		return { kind: "merged", sha: typeof payload.sha === "string" ? payload.sha : "" };
+	}
+	const message = typeof payload?.message === "string" ? payload.message : "PR not merged";
+	return { kind: "not_mergeable", message };
+}
+
+async function interpretRateLimited(res: Response): Promise<MergePullRequestResult> {
+	const reset = res.headers.get("x-ratelimit-reset");
+	const resetAt =
+		reset !== null && /^\d+$/.test(reset)
+			? new Date(Number.parseInt(reset, 10) * 1000).toISOString()
+			: null;
+	return { kind: "rate_limited", message: truncate(await readText(res), 500), resetAt };
+}
+
+async function interpretMergeConflict(res: Response): Promise<MergePullRequestResult> {
+	const payload = (await readJson(res)) as { message?: unknown } | null;
+	const message =
+		typeof payload?.message === "string" ? payload.message : `${res.status} from PUT /merge`;
+	return /already merged/i.test(message)
+		? { kind: "already_merged" }
+		: { kind: "not_mergeable", message };
 }
 
 export function isRateLimited(res: Response): boolean {

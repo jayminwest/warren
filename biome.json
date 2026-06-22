@@ -95,7 +95,6 @@
 				"src/runs/cost-analytics.ts",
 				"src/runs/interactive.ts",
 				"src/runs/pause.ts",
-				"src/runs/pr-checks.ts",
 				"src/runs/pr-template.ts",
 				"src/runs/pr.ts",
 				"src/runs/reap/mulch.ts",
