@@ -141,6 +141,13 @@
 			"when": 1781986482445,
 			"tag": "0019_silky_alice",
 			"breakpoints": true
+		},
+		{
+			"idx": 20,
+			"version": "7",
+			"when": 1782345600000,
+			"tag": "0020_enable_rls_conversations_messages",
+			"breakpoints": true
 		}
 	]
 }
