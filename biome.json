@@ -77,7 +77,6 @@
 				"src/cli/commands/run.ts",
 				"src/client/client.ts",
 				"src/db/repos/triggers.ts",
-				"src/diagnostics/checks-config.ts",
 				"src/plan-runs/coordinator.ts",
 				"src/plots/formalize.ts",
 				"src/plots/needs-attention.ts",

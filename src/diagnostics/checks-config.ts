@@ -59,16 +59,9 @@ export async function checkWarrenConfig(deps: CheckWarrenConfigDeps): Promise<Di
 	for (const project of deps.projects) {
 		let loaded: LoadedWarrenConfig;
 		try {
-			loaded =
-				deps.cache !== undefined
-					? await deps.cache.get(project.id, project.localPath)
-					: await (deps.load ?? defaultWarrenConfigLoad)(project.localPath);
+			loaded = await loadProjectConfig(deps, project);
 		} catch (err) {
-			if (err instanceof WarrenConfigUnavailableError) {
-				failures.push(`${project.id}: ${err.message}`);
-				continue;
-			}
-			failures.push(`${project.id}: ${err instanceof Error ? err.message : String(err)}`);
+			failures.push(`${project.id}: ${configLoadFailureMessage(err)}`);
 			continue;
 		}
 		validated += 1;
@@ -95,6 +88,30 @@ export async function checkWarrenConfig(deps: CheckWarrenConfigDeps): Promise<Di
 
 function defaultWarrenConfigLoad(projectPath: string): Promise<LoadedWarrenConfig> {
 	return loadWarrenConfig({ projectPath });
+}
+
+/**
+ * Resolve a single project's `.warren/` config, reading through the
+ * cache when one is wired and otherwise using the (test-injectable)
+ * loader. Shared by the errors-only and deprecation checks so they
+ * reuse a cached parse within one doctor run.
+ */
+function loadProjectConfig(
+	deps: CheckWarrenConfigDeps,
+	project: WarrenConfigCheckProject,
+): Promise<LoadedWarrenConfig> {
+	if (deps.cache !== undefined) {
+		return deps.cache.get(project.id, project.localPath);
+	}
+	return (deps.load ?? defaultWarrenConfigLoad)(project.localPath);
+}
+
+/** Operator-facing message for a fatal `.warren/` load failure. */
+function configLoadFailureMessage(err: unknown): string {
+	if (err instanceof WarrenConfigUnavailableError) {
+		return err.message;
+	}
+	return err instanceof Error ? err.message : String(err);
 }
 
 /**
@@ -125,10 +142,7 @@ export async function checkWarrenConfigDeprecations(
 	for (const project of deps.projects) {
 		let loaded: LoadedWarrenConfig;
 		try {
-			loaded =
-				deps.cache !== undefined
-					? await deps.cache.get(project.id, project.localPath)
-					: await (deps.load ?? defaultWarrenConfigLoad)(project.localPath);
+			loaded = await loadProjectConfig(deps, project);
 		} catch {
 			// Fatal load failures show up in `checkWarrenConfig`. Skip them
 			// here so this advisory check stays clean — operator-visible
@@ -173,7 +187,9 @@ export async function checkWarrenConfigDeprecations(
 export function checkWarrenDb(deps: { readonly env: EnvLike }): DiagnosticCheck {
 	const url = deps.env.WARREN_DB_URL;
 	const path = deps.env.WARREN_DB_PATH;
-	if ((url === undefined || url === "") && (path === undefined || path === "")) {
+	const hasUrl = url !== undefined && url !== "";
+	const hasPath = path !== undefined && path !== "";
+	if (!hasUrl && !hasPath) {
 		return {
 			name: "warren_db",
 			ok: true,
@@ -181,18 +197,42 @@ export function checkWarrenDb(deps: { readonly env: EnvLike }): DiagnosticCheck 
 				"no WARREN_DB_URL / WARREN_DB_PATH set (will default to sqlite under WARREN_DATA_DIR)",
 		};
 	}
-	if (url !== undefined && url !== "" && path !== undefined && path !== "") {
-		const synthesized = sqliteUrlForPath(path);
-		if (synthesized !== url) {
-			return {
-				name: "warren_db",
-				ok: false,
-				message: `WARREN_DB_URL (${url}) and WARREN_DB_PATH (${path}) disagree`,
-				hint: "unset WARREN_DB_PATH or align it with WARREN_DB_URL — WARREN_DB_URL wins at boot",
-			};
-		}
+	const mismatch = warrenDbMismatch(hasUrl, hasPath, url, path);
+	if (mismatch !== undefined) {
+		return mismatch;
 	}
-	const effective = url !== undefined && url !== "" ? url : sqliteUrlForPath(path ?? "");
+	const effective = hasUrl ? (url as string) : sqliteUrlForPath(path ?? "");
+	return warrenDbFromUrl(effective);
+}
+
+/**
+ * Flag the foot-gun where WARREN_DB_URL and WARREN_DB_PATH are both set
+ * but resolve to different sqlite URLs. Returns `undefined` when they
+ * agree (or only one is set), so the caller proceeds to parse.
+ */
+function warrenDbMismatch(
+	hasUrl: boolean,
+	hasPath: boolean,
+	url: string | undefined,
+	path: string | undefined,
+): DiagnosticCheck | undefined {
+	if (!hasUrl || !hasPath) {
+		return undefined;
+	}
+	const synthesized = sqliteUrlForPath(path ?? "");
+	if (synthesized === url) {
+		return undefined;
+	}
+	return {
+		name: "warren_db",
+		ok: false,
+		message: `WARREN_DB_URL (${url}) and WARREN_DB_PATH (${path}) disagree`,
+		hint: "unset WARREN_DB_PATH or align it with WARREN_DB_URL — WARREN_DB_URL wins at boot",
+	};
+}
+
+/** Parse the effective DB URL and report the resolved dialect (or the parse failure). */
+function warrenDbFromUrl(effective: string): DiagnosticCheck {
 	try {
 		const parsed = parseDatabaseUrl(effective);
 		const display = parsed.dialect === "sqlite" ? `sqlite ${parsed.path}` : "postgres";
