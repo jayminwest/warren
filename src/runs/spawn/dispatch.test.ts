@@ -344,10 +344,9 @@ describe("spawnRun: sandbox env (warren-b893)", () => {
 	});
 
 	test("always injects BUN_INSTALL_CACHE_DIR into the burrow env (warren-b893)", async () => {
-		// Bun's default cache dir is <cwd>/.bun/install/cache; inside the
-		// workspace that means agents doing `git add .` sweep ~5k cache files
-		// into their commits. Pinning BUN_INSTALL_CACHE_DIR to /tmp keeps it
-		// off the git index for every project, every agent.
+		// Bun's default cache dir is <cwd>/.bun/install/cache, so agents doing
+		// `git add .` sweep ~5k cache files into commits; pinning it to /tmp
+		// keeps it off the git index for every project, every agent.
 		const { client, calls } = makeBurrowClient();
 		await spawnRun({
 			repos,
@@ -355,12 +354,14 @@ describe("spawnRun: sandbox env (warren-b893)", () => {
 			agentName: "refactor-bot",
 			projectId: "prj_xxxxxxxxxxxx",
 			prompt: "fix it",
+			serverEnv: { WARREN_API_TOKEN: "tok_secret", WARREN_BIND_PORT: "9090" },
 		});
 		const up = calls.find((c) => c.path === "/burrows");
 		expect(up).toBeDefined();
 		const env = (up?.body as { env?: Record<string, string> }).env;
 		expect(env).toBeDefined();
 		expect(env?.BUN_INSTALL_CACHE_DIR).toBe("/tmp/bun-install-cache");
+		expect(env?.WARREN_API_TOKEN).toBe("tok_secret"); // warren-f248: threaded via serverEnv
 	});
 
 	test("BUN_INSTALL_CACHE_DIR is still set when plot env vars are also injected (warren-b893)", async () => {

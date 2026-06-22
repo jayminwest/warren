@@ -185,6 +185,15 @@ export interface SpawnRunInput {
 	 */
 	readonly runBranchPrefixDefault?: string;
 	/**
+	 * Server-process environment used to derive the warren API callback
+	 * vars injected into the sandbox (`WARREN_API_TOKEN` + `WARREN_API_URL`,
+	 * warren-f248). Defaults to `process.env` when omitted, so production
+	 * call sites need not thread it; tests substitute a fixture env to
+	 * assert the injected (or skipped) callback credential without touching
+	 * the real process environment.
+	 */
+	readonly serverEnv?: Readonly<Record<string, string | undefined>>;
+	/**
 	 * Seeds CLI shell-out deps for the post-dispatch extension write
 	 * (pl-bb70 step 4, warren-46cd). When both `seedId` and this are
 	 * provided, spawnRun fires a single `sd update --extensions` after
