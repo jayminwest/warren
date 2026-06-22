@@ -50,6 +50,26 @@ describe("scrubSentryEvent", () => {
 		});
 	});
 
+	test("redacts secrets nested one level deep in extra", () => {
+		const event = scrubSentryEvent({
+			extra: { config: { token: "abc", host: "example.com" }, runId: "r1" },
+		});
+		expect(event.extra).toEqual({
+			config: { token: "[Redacted]", host: "example.com" },
+			runId: "r1",
+		});
+	});
+
+	test("redacts secrets nested one level deep in request headers", () => {
+		const event = scrubSentryEvent({
+			request: { headers: { meta: { authorization: "Bearer t" }, "content-type": "text/plain" } },
+		});
+		expect((event.request as { headers: Record<string, unknown> }).headers).toEqual({
+			meta: { authorization: "[Redacted]" },
+			"content-type": "text/plain",
+		});
+	});
+
 	test("leaves events without extra/request untouched", () => {
 		const event = scrubSentryEvent({ message: "hello" });
 		expect(event).toEqual({ message: "hello" });

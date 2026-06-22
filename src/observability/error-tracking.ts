@@ -103,10 +103,22 @@ export function scrubSentryEvent(event: Record<string, unknown>): Record<string,
 	return event;
 }
 
-function scrubRecord(record: Record<string, unknown>): Record<string, unknown> {
+/**
+ * Redact secret-shaped keys from a record. Recurses exactly one level into
+ * nested record values so that `{ config: { token } }` is censored, matching
+ * the central pino policy (top-level fields plus the `*.<field>` wildcard in
+ * `LOG_REDACT_PATHS`). pino redact is not deep-recursive, so neither is this.
+ */
+function scrubRecord(record: Record<string, unknown>, depth = 0): Record<string, unknown> {
 	const out: Record<string, unknown> = {};
 	for (const [key, value] of Object.entries(record)) {
-		out[key] = SECRET_FIELD_SET.has(key.toLowerCase()) ? REDACTED : value;
+		if (SECRET_FIELD_SET.has(key.toLowerCase())) {
+			out[key] = REDACTED;
+		} else if (depth === 0 && isRecord(value)) {
+			out[key] = scrubRecord(value, depth + 1);
+		} else {
+			out[key] = value;
+		}
 	}
 	return out;
 }
