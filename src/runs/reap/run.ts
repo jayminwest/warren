@@ -1,26 +1,12 @@
-import { join } from "node:path";
 import type { BurrowClient } from "../../burrow-client/client.ts";
 import { withTransportMapping } from "../../burrow-client/client.ts";
 import type { EventRow, RunFailureReason, RunTerminalState } from "../../db/schema.ts";
-import { openPullRequest } from "../pr.ts";
 import { bindBridgeLogger } from "../stream/index.ts";
-import { dispatchAutoPlanRuns, hasAutoPlanRunFrontmatter, parsePlanIds } from "./auto-plan-run.ts";
 import { runWorkspaceDestroy } from "./destroy.ts";
-import { mergeMulch } from "./mulch.ts";
-import { mergePlot } from "./plot-merge.ts";
-import { runPrOpen } from "./pr-open.ts";
-import { runPreviewAnnotate, runPreviewLaunch } from "./preview.ts";
-import { closeRunSeedId, mirrorPlans, mirrorSeeds } from "./seeds.ts";
-import { stagePlotForCommit, stageSeedsForCommit } from "./stage.ts";
+import { createPipelineState, runReapPipeline } from "./pipeline.ts";
 import { inferFailureReason, isTerminal, transitionToTerminal } from "./state.ts";
 import type { ReapRunInput, ReapRunResult, ReapStep, ReapStepError } from "./types.ts";
-import {
-	buildAlreadyTerminalResult,
-	createSeqAllocator,
-	defaultExec,
-	defaultFs,
-	isWorkspaceDirty,
-} from "./util.ts";
+import { buildAlreadyTerminalResult, createSeqAllocator, defaultExec, defaultFs } from "./util.ts";
 
 export async function reapRun(input: ReapRunInput): Promise<ReapRunResult> {
 	const fs = input.fs ?? defaultFs;
@@ -68,27 +54,7 @@ export async function reapRun(input: ReapRunInput): Promise<ReapRunResult> {
 		log.error({ event: "reap.step_failed", step, err: message, path }, "reap step failed");
 	};
 
-	let mulchUpdated = 0;
-	let mulchSkipped = 0;
-	let mulchAppended = 0;
-	let seedsClosed = 0;
-	let seedsCreated = 0;
-	let seedIdClosed = false;
-	let plotEventsAppended = 0;
-	let plotsUpdated = 0;
-	let plotEventsMirrored = 0;
-	let plotCommitted = false;
-	let seedsCommitted = false;
-	let branchPushed = false;
-	let commitsAhead: number | null = null;
-	let droppedCommit = false;
-	let prUrl: string | null = null;
-	let previewLaunchState: "live" | "failed" | null = null;
-	let previewLaunchPort: number | null = null;
-	let previewUrl: string | null = null;
-	let autoPlanRunCreated = false;
-	let autoPlanRunId: string | null = null;
-	let autoPlanRunPlanId: string | null = null;
+	const state = createPipelineState();
 
 	let workspacePath: string | null = null;
 	let branch: string | null = null;
@@ -120,288 +86,24 @@ export async function reapRun(input: ReapRunInput): Promise<ReapRunResult> {
 	} else if (stateOnEntry === "queued" && workspacePath !== null && project !== null) {
 		await emit("reap.never_started_skip", { message: "agent never ran; skipping pipeline" });
 	} else if (stateOnEntry !== "queued" && workspacePath !== null && project !== null) {
-		try {
-			const result = await mergeMulch(workspacePath, project.localPath, fs, emit, fail);
-			mulchUpdated = result.updated;
-			mulchSkipped = result.skipped;
-			mulchAppended = result.appended;
-		} catch (err) {
-			await fail("mulch_merge", err);
-		}
-
-		try {
-			// workerClient is set whenever workspacePath !== null (both land in
-			// the same try-block above), so the cast is sound.
-			const mirrorResult = await mirrorSeeds({
-				burrowClient: workerClient as BurrowClient,
-				burrowId: run.burrowId as string,
-				projectPath: project.localPath,
-				fs,
-				emit,
-			});
-			seedsClosed = mirrorResult.closed;
-			seedsCreated = mirrorResult.created;
-		} catch (err) {
-			await fail("seeds_close", err);
-		}
-
-		// warren-a32a: snapshot the project-clone baseline plans.jsonl BEFORE
-		// mirrorPlans so auto_plan_run can diff workspace vs baseline. Must
-		// happen here because mirrorPlans appends workspace plans into the
-		// project clone, which would make the baseline identical to the
-		// workspace and defeat the diff (warren-d9a2 ordering bug).
-		let baselinePlanIds: Set<string> | null = null;
-		if (project.hasSeeds && input.outcome === "succeeded" && hasAutoPlanRunFrontmatter(run)) {
-			try {
-				const baselineBody =
-					(await fs.readFile(join(project.localPath, ".seeds", "plans.jsonl"))) ?? "";
-				baselinePlanIds = parsePlanIds(baselineBody);
-			} catch {
-				// Non-fatal — detection failure degrades to no auto-dispatch.
-			}
-		}
-
-		// warren-d9a2: mirror plans.jsonl from workspace → project clone,
-		// same shape as mirrorSeeds above. Without this, stageSeedsForCommit
-		// copies the OLD project baseline plans.jsonl into the workspace,
-		// overwriting the agent's newly-created plans.
-		try {
-			await mirrorPlans({
-				burrowClient: workerClient as BurrowClient,
-				burrowId: run.burrowId as string,
-				projectPath: project.localPath,
-				fs,
-				emit,
-			});
-		} catch (err) {
-			await fail("plans_mirror", err);
-		}
-
-		try {
-			const result = await mergePlot(workspacePath, project.localPath, fs, emit, fail);
-			plotEventsAppended = result.eventsAppended;
-			plotsUpdated = result.plotsUpdated;
-			plotEventsMirrored = result.mirrored;
-		} catch (err) {
-			await fail("plot_merge", err);
-		}
-
-		// warren-343a / shape (a) commit-through-reap: replicate the merged
-		// `.plot/` from the project clone into the workspace and author a
-		// `chore(warren): plot state` commit when there's a staged delta the
-		// agent never committed. This is the carrier for host-side appender
-		// writes (defaultPlotAppender, defaultPlanRunPlotAppender,
-		// autoTransitionPlotToDone — see SPEC §11.O) and for any
-		// agent-emitted `.plot/` lines that the agent left uncommitted.
-		// Skipped when the project has no `.plot/`. Best-effort: failures
-		// emit `reap_failed` step=`plot_commit` and do not fail the run.
-		if (project.hasPlot) {
-			try {
-				plotCommitted = await stagePlotForCommit({
-					workspacePath,
-					projectPath: project.localPath,
-					fs,
-					exec,
-					emit,
-				});
-			} catch (err) {
-				await fail("plot_commit", err, join(workspacePath, ".plot"));
-			}
-		}
-
-		// warren-7ecc: seeds commit-through-reap. See stageSeedsForCommit.
-
-		// warren-a32a: snapshot the workspace's plans.jsonl BEFORE
-		// stageSeedsForCommit (which copies project→workspace). Baseline
-		// was already captured above mirrorPlans.
-		let workspacePlanIds: Set<string> | null = null;
-		let workspacePlansBody: string | null = null;
-		if (baselinePlanIds !== null) {
-			try {
-				workspacePlansBody =
-					(await fs.readFile(join(workspacePath, ".seeds", "plans.jsonl"))) ?? "";
-				workspacePlanIds = parsePlanIds(workspacePlansBody);
-			} catch {
-				// Non-fatal — detection failure degrades to no auto-dispatch.
-			}
-		}
-
-		// warren-0d2d: host-side safety net — close the run's associated seed
-		// after a successful reap even if the agent didn't call `sd close`.
-		// Runs after mirrorSeeds (workspace → project clone) so an agent-side
-		// close is already reflected; `sd close` is idempotent. Runs before
-		// stageSeedsForCommit so the updated issues.jsonl is picked up into
-		// the workspace commit and lands on origin via branch_push.
-		if (
-			input.outcome === "succeeded" &&
-			run.seedId !== null &&
-			project.hasSeeds &&
-			input.seedsCli !== undefined
-		) {
-			try {
-				seedIdClosed = await closeRunSeedId({
-					seedId: run.seedId,
-					projectPath: project.localPath,
-					seedsCli: input.seedsCli,
-					emit,
-				});
-			} catch (err) {
-				await fail("seed_id_close", err);
-			}
-		}
-
-		if (project.hasSeeds) {
-			try {
-				seedsCommitted = await stageSeedsForCommit({
-					workspacePath,
-					projectPath: project.localPath,
-					fs,
-					exec,
-					emit,
-				});
-			} catch (err) {
-				await fail("seeds_commit", err, join(workspacePath, ".seeds"));
-			}
-		}
-
-		const autoDispatch = await dispatchAutoPlanRuns({
-			run,
-			project,
-			workspacePlanIds,
-			baselinePlanIds,
-			workspacePlansBody,
-			planRuns: input.repos.planRuns as unknown as {
-				create: (i: unknown) => Promise<{ planRun: { id: string } }>;
-			},
-			emit,
-			fail: (step, err) => fail(step, err),
-			...(input.seedsCli !== undefined ? { seedsCli: input.seedsCli } : {}),
-		});
-		autoPlanRunCreated = autoDispatch.created;
-		autoPlanRunId = autoDispatch.id;
-		autoPlanRunPlanId = autoDispatch.planId;
-
-		try {
-			await exec.run("git", ["push", "origin", branch !== null ? `HEAD:${branch}` : "HEAD"], {
-				cwd: workspacePath,
-				timeoutMs: 60_000,
-			});
-			branchPushed = true;
-		} catch (err) {
-			await fail("branch_push", err, workspacePath);
-		}
-
-		// Empty-push observability (warren-f3bb): count commits ahead of
-		// defaultBranch, surface zero as `reap.empty_push`, pin on
-		// `commitsAhead`; rev-list failure degrades to `commitsAhead: null`.
-		if (branchPushed && baseBranch !== null) {
-			try {
-				const out = await exec.run("git", ["rev-list", "--count", `${baseBranch}..HEAD`], {
-					cwd: workspacePath,
-					timeoutMs: 10_000,
-				});
-				const parsed = Number.parseInt(out.stdout.trim(), 10);
-				commitsAhead = Number.isFinite(parsed) ? parsed : null;
-			} catch (err) {
-				const reason = err instanceof Error ? err.message : String(err);
-				log.info(
-					{ event: "reap.commits_ahead_failed", err: reason },
-					"reap commits-ahead count failed",
-				);
-			}
-			if (commitsAhead === 0) {
-				// warren-72b9: dirty tree + zero commits = staged-but-uncommitted.
-				const dirty = await isWorkspaceDirty(exec, workspacePath);
-				droppedCommit = dirty && input.outcome === "succeeded";
-				await emit("reap.empty_push", {
-					branch,
-					baseBranch,
-					dirty,
-					droppedCommit,
-					message: dirty
-						? "git push exited zero and the workspace still has uncommitted changes — agent staged work but never committed"
-						: "git push exited zero but the branch landed no new commits — agent did not commit",
-				});
-			}
-		}
-
-		// Auto-open PR (warren-f6af); a CI-fixer run self-skips inside runPrOpen (warren-a993).
-		if (
-			input.autoOpenPr?.enabled === true &&
-			input.outcome === "succeeded" &&
-			branchPushed &&
-			commitsAhead !== null &&
-			commitsAhead > 0 &&
-			branch !== null &&
-			branch !== project.defaultBranch
-		) {
-			prUrl = await runPrOpen({
-				autoOpen: input.autoOpenPr,
-				project,
+		await runReapPipeline(
+			{
+				input,
 				run,
+				project,
+				workspacePath,
 				branch,
 				baseBranch,
-				workspacePath: workspacePath as string,
-				previewOptedIn: input.previewConfig !== undefined,
-				exec,
-				emit,
-				fail: (step, err) => fail(step, err),
-				setPrUrl: (id, url) => input.repos.runs.setPrUrl(id, url),
-				openPr: input.openPr ?? openPullRequest,
-				...(input.prTemplate !== undefined ? { prTemplate: input.prTemplate } : {}),
-				...(input.sleep !== undefined ? { sleep: input.sleep } : {}),
-			});
-		}
-
-		// Preview launch (warren-f156 / SPEC §11.L). See runPreviewLaunch +
-		// runPreviewAnnotate for the gate semantics. Skipped on a dropped
-		// commit (warren-72b9).
-		if (
-			input.outcome === "succeeded" &&
-			!droppedCommit &&
-			input.previewConfig !== undefined &&
-			input.portAllocator !== undefined &&
-			workerClient !== null &&
-			run.burrowId !== null
-		) {
-			const pv = await runPreviewLaunch({
-				runId: run.id,
-				burrowId: run.burrowId,
-				workerId: run.workerId,
-				outcome: input.outcome,
-				previewConfig: input.previewConfig,
-				portAllocator: input.portAllocator,
 				workerClient,
-				repos: input.repos,
+				fs,
+				exec,
 				now,
+				log,
 				emit,
 				fail,
-				...(input.launchPreview !== undefined ? { launchPreviewFn: input.launchPreview } : {}),
-			});
-			previewLaunchState = pv.state;
-			previewLaunchPort = pv.port;
-		}
-
-		if (
-			prUrl !== null &&
-			previewLaunchState !== null &&
-			input.autoOpenPr?.enabled === true &&
-			input.autoOpenPr.token !== ""
-		) {
-			previewUrl = await runPreviewAnnotate({
-				runId: run.id,
-				prUrl,
-				previewLaunchState,
-				autoOpenPr: input.autoOpenPr,
-				previewLaunchConfig: input.previewLaunchConfig,
-				repos: input.repos,
-				emit,
-				fail,
-				...(input.annotatePrPreview !== undefined
-					? { annotatePrPreviewFn: input.annotatePrPreview }
-					: {}),
-			});
-		}
+			},
+			state,
+		);
 	} else if (workspacePath !== null && project === null) {
 		await emit("reap.orphaned", {
 			projectId: run.projectId,
@@ -411,10 +113,10 @@ export async function reapRun(input: ReapRunInput): Promise<ReapRunResult> {
 
 	// warren-72b9: `droppedCommit` flips an otherwise-succeeded run to
 	// `failed`/`dropped_commit` so it can't masquerade as success.
-	const effectiveOutcome: RunTerminalState = droppedCommit ? "failed" : input.outcome;
+	const effectiveOutcome: RunTerminalState = state.droppedCommit ? "failed" : input.outcome;
 
 	let failureReason: RunFailureReason | null = null;
-	if (droppedCommit) {
+	if (state.droppedCommit) {
 		failureReason = "dropped_commit";
 	} else if (effectiveOutcome === "failed") {
 		failureReason =
@@ -433,21 +135,34 @@ export async function reapRun(input: ReapRunInput): Promise<ReapRunResult> {
 	await emit("reap.completed", {
 		state: finalState,
 		failureReason,
-		mulch: { updated: mulchUpdated, skipped: mulchSkipped, appended: mulchAppended },
-		seeds: { closed: seedsClosed, created: seedsCreated, seedIdClosed, committed: seedsCommitted },
-		plot: {
-			eventsAppended: plotEventsAppended,
-			plotsUpdated,
-			mirrored: plotEventsMirrored,
-			committed: plotCommitted,
+		mulch: {
+			updated: state.mulchUpdated,
+			skipped: state.mulchSkipped,
+			appended: state.mulchAppended,
 		},
-		branchPushed,
-		commitsAhead,
-		prUrl,
-		previewState: previewLaunchState,
-		previewPort: previewLaunchPort,
-		previewUrl,
-		autoPlanRun: { created: autoPlanRunCreated, id: autoPlanRunId, planId: autoPlanRunPlanId },
+		seeds: {
+			closed: state.seedsClosed,
+			created: state.seedsCreated,
+			seedIdClosed: state.seedIdClosed,
+			committed: state.seedsCommitted,
+		},
+		plot: {
+			eventsAppended: state.plotEventsAppended,
+			plotsUpdated: state.plotsUpdated,
+			mirrored: state.plotEventsMirrored,
+			committed: state.plotCommitted,
+		},
+		branchPushed: state.branchPushed,
+		commitsAhead: state.commitsAhead,
+		prUrl: state.prUrl,
+		previewState: state.previewLaunchState,
+		previewPort: state.previewLaunchPort,
+		previewUrl: state.previewUrl,
+		autoPlanRun: {
+			created: state.autoPlanRunCreated,
+			id: state.autoPlanRunId,
+			planId: state.autoPlanRunPlanId,
+		},
 		errors,
 	});
 
@@ -458,7 +173,7 @@ export async function reapRun(input: ReapRunInput): Promise<ReapRunResult> {
 	// the terminal-state transition above.
 	const workspaceDestroyed = await runWorkspaceDestroy({
 		run,
-		previewLaunchState,
+		previewLaunchState: state.previewLaunchState,
 		workerClient,
 		repos: input.repos,
 		emit,
@@ -472,25 +187,25 @@ export async function reapRun(input: ReapRunInput): Promise<ReapRunResult> {
 			event: "reap.completed",
 			state: finalState,
 			failureReason,
-			mulchUpdated,
-			mulchSkipped,
-			mulchAppended,
-			seedsClosed,
-			seedsCreated,
-			seedIdClosed,
-			seedsCommitted,
-			plotEventsAppended,
-			plotsUpdated,
-			plotEventsMirrored,
-			plotCommitted,
-			branchPushed,
-			commitsAhead,
-			prUrl,
-			previewState: previewLaunchState,
-			previewPort: previewLaunchPort,
-			previewUrl,
-			autoPlanRunCreated,
-			autoPlanRunId,
+			mulchUpdated: state.mulchUpdated,
+			mulchSkipped: state.mulchSkipped,
+			mulchAppended: state.mulchAppended,
+			seedsClosed: state.seedsClosed,
+			seedsCreated: state.seedsCreated,
+			seedIdClosed: state.seedIdClosed,
+			seedsCommitted: state.seedsCommitted,
+			plotEventsAppended: state.plotEventsAppended,
+			plotsUpdated: state.plotsUpdated,
+			plotEventsMirrored: state.plotEventsMirrored,
+			plotCommitted: state.plotCommitted,
+			branchPushed: state.branchPushed,
+			commitsAhead: state.commitsAhead,
+			prUrl: state.prUrl,
+			previewState: state.previewLaunchState,
+			previewPort: state.previewLaunchPort,
+			previewUrl: state.previewUrl,
+			autoPlanRunCreated: state.autoPlanRunCreated,
+			autoPlanRunId: state.autoPlanRunId,
 			workspaceDestroyed,
 			errored: errors.length > 0,
 		},
@@ -500,26 +215,26 @@ export async function reapRun(input: ReapRunInput): Promise<ReapRunResult> {
 	return {
 		state: finalState,
 		failureReason,
-		mulchUpdated,
-		mulchSkipped,
-		mulchAppended,
-		seedsClosed,
-		seedsCreated,
-		seedIdClosed,
-		plotEventsAppended,
-		plotsUpdated,
-		plotEventsMirrored,
-		plotCommitted,
-		seedsCommitted,
-		branchPushed,
-		commitsAhead,
-		prUrl,
-		previewState: previewLaunchState,
-		previewPort: previewLaunchPort,
-		previewUrl,
-		autoPlanRunCreated,
-		autoPlanRunId,
-		autoPlanRunPlanId,
+		mulchUpdated: state.mulchUpdated,
+		mulchSkipped: state.mulchSkipped,
+		mulchAppended: state.mulchAppended,
+		seedsClosed: state.seedsClosed,
+		seedsCreated: state.seedsCreated,
+		seedIdClosed: state.seedIdClosed,
+		plotEventsAppended: state.plotEventsAppended,
+		plotsUpdated: state.plotsUpdated,
+		plotEventsMirrored: state.plotEventsMirrored,
+		plotCommitted: state.plotCommitted,
+		seedsCommitted: state.seedsCommitted,
+		branchPushed: state.branchPushed,
+		commitsAhead: state.commitsAhead,
+		prUrl: state.prUrl,
+		previewState: state.previewLaunchState,
+		previewPort: state.previewLaunchPort,
+		previewUrl: state.previewUrl,
+		autoPlanRunCreated: state.autoPlanRunCreated,
+		autoPlanRunId: state.autoPlanRunId,
+		autoPlanRunPlanId: state.autoPlanRunPlanId,
 		workspaceDestroyed,
 		errors,
 		alreadyTerminal: false,
