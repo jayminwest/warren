@@ -67,22 +67,24 @@ function gauge(name: string, help: string, value: number): PromMetric {
 }
 
 function countersToMetrics(snapshots: readonly CounterSnapshot[]): PromMetric[] {
-	const byName = new Map<string, PromMetric>();
+	const samplesByName = new Map<
+		string,
+		{ labels: Readonly<Record<string, string>>; value: number }[]
+	>();
+	const order: string[] = [];
 	for (const snap of snapshots) {
-		const existing = byName.get(snap.name);
-		const sample = { labels: snap.labels, value: snap.value };
-		if (existing === undefined) {
-			byName.set(snap.name, {
-				name: snap.name,
-				help: `Warren counter ${snap.name}.`,
-				type: "counter",
-				samples: [sample],
-			});
-		} else {
-			(existing.samples as { labels: Readonly<Record<string, string>>; value: number }[]).push(
-				sample,
-			);
+		let samples = samplesByName.get(snap.name);
+		if (samples === undefined) {
+			samples = [];
+			samplesByName.set(snap.name, samples);
+			order.push(snap.name);
 		}
+		samples.push({ labels: snap.labels, value: snap.value });
 	}
-	return [...byName.values()];
+	return order.map((name) => ({
+		name,
+		help: `Warren counter ${name}.`,
+		type: "counter",
+		samples: samplesByName.get(name) ?? [],
+	}));
 }
