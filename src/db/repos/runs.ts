@@ -10,7 +10,7 @@
  * the burrow IDs are written back once we have them.
  */
 
-import { and, asc, desc, eq, gte, inArray, isNotNull, lte, ne, type SQL, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNotNull, sql } from "drizzle-orm";
 import { NotFoundError, StateTransitionError, ValidationError } from "../../core/errors.ts";
 import { generateId } from "../../core/ids.ts";
 import type { SqliteDrizzleDb } from "../client.ts";
@@ -25,6 +25,16 @@ import type {
 } from "../schema.ts";
 import type { DrizzleAdapter } from "./drizzle-adapter.ts";
 import { fixAttemptHistoryByPrUrl, listPrCandidatesByProject } from "./runs-ci-fixer.ts";
+import {
+	aggregate,
+	listAll,
+	listByAgent,
+	listByIds,
+	listByPlotId,
+	listByProject,
+	listByState,
+	listForAnalytics,
+} from "./runs-queries.ts";
 
 const ALLOWED_TRANSITIONS: Record<RunState, readonly RunState[]> = {
 	queued: ["running", "cancelled"],
@@ -166,26 +176,8 @@ export class RunsRepo {
 		return row;
 	}
 
-	/**
-	 * Order key for the listAll / listByProject / listByAgent triplet
-	 * (warren-fd4b). 'started' = startedAt DESC, the historical default
-	 * (covered by runsProjectStarted). 'cost' = costUsd, with explicit
-	 * NULLS LAST in both directions so unbilled runs always sink — the
-	 * "spot expensive runs" goal cares about the populated tail, and a
-	 * pile of NULLs at the top of a DESC sort would defeat the feature.
-	 * id ASC remains the stable tiebreaker.
-	 */
-	private orderByClause(sort: "started" | "cost" = "started", dir: "asc" | "desc" = "desc"): SQL[] {
-		if (sort === "cost") {
-			const col = this.runs.costUsd;
-			const primary = dir === "asc" ? sql`${col} ASC NULLS LAST` : sql`${col} DESC NULLS LAST`;
-			return [primary, asc(this.runs.id)];
-		}
-		const col = this.runs.startedAt;
-		return [dir === "asc" ? asc(col) : desc(col), asc(this.runs.id)];
-	}
-
-	async listAll(
+	/** Read/query methods (warren-ac7f); bodies live in runs-queries.ts. */
+	listAll(
 		options: {
 			limit?: number;
 			offset?: number;
@@ -193,19 +185,10 @@ export class RunsRepo {
 			dir?: "asc" | "desc";
 		} = {},
 	): Promise<RunRow[]> {
-		const { limit = 100, offset = 0, sort = "started", dir = "desc" } = options;
-		return this.adapter.pickAll(
-			this.db
-				.select()
-				.from(this.runs)
-				.where(ne(this.runs.mode, "conversation"))
-				.orderBy(...this.orderByClause(sort, dir))
-				.limit(limit)
-				.offset(offset),
-		);
+		return listAll(this.adapter, options);
 	}
 
-	async listByProject(
+	listByProject(
 		projectId: string,
 		options: {
 			limit?: number;
@@ -214,36 +197,14 @@ export class RunsRepo {
 			dir?: "asc" | "desc";
 		} = {},
 	): Promise<RunRow[]> {
-		const { limit = 100, offset = 0, sort = "started", dir = "desc" } = options;
-		return this.adapter.pickAll(
-			this.db
-				.select()
-				.from(this.runs)
-				.where(and(eq(this.runs.projectId, projectId), ne(this.runs.mode, "conversation")))
-				.orderBy(...this.orderByClause(sort, dir))
-				.limit(limit)
-				.offset(offset),
-		);
+		return listByProject(this.adapter, projectId, options);
 	}
 
-	/**
-	 * Every run row bound to a given `plotId`, ordered by id (stable for
-	 * tests). Powers the Plot detail/summary surfaces that enumerate every
-	 * run bound to a Plot — callers re-sort the underlying events by `ts`
-	 * so dispatch-order surprises don't affect the result. The
-	 * `runs_plot_id` index (sqlite + postgres) covers the predicate.
-	 */
-	async listByPlotId(plotId: string): Promise<RunRow[]> {
-		return this.adapter.pickAll(
-			this.db
-				.select()
-				.from(this.runs)
-				.where(eq(this.runs.plotId, plotId))
-				.orderBy(asc(this.runs.id)),
-		);
+	listByPlotId(plotId: string): Promise<RunRow[]> {
+		return listByPlotId(this.adapter, plotId);
 	}
 
-	async listByAgent(
+	listByAgent(
 		agentName: string,
 		options: {
 			limit?: number;
@@ -252,106 +213,29 @@ export class RunsRepo {
 			dir?: "asc" | "desc";
 		} = {},
 	): Promise<RunRow[]> {
-		const { limit = 100, offset = 0, sort = "started", dir = "desc" } = options;
-		return this.adapter.pickAll(
-			this.db
-				.select()
-				.from(this.runs)
-				.where(and(eq(this.runs.agentName, agentName), ne(this.runs.mode, "conversation")))
-				.orderBy(...this.orderByClause(sort, dir))
-				.limit(limit)
-				.offset(offset),
-		);
+		return listByAgent(this.adapter, agentName, options);
 	}
 
-	/**
-	 * Filtered-set aggregates for the Runs page header (warren-ee50 /
-	 * pl-b0c0 step 1). Returns the full `total` count + cost rollup for the
-	 * same predicate the list*() siblings page over. `costTotalUsd` sums
-	 * runs.cost_usd where non-null; `costPricedCount` counts those rows.
-	 * Ghost runs whose cost is only recoverable via in-stream extraction
-	 * (hydrateRunsUsage) are NOT folded in — a deliberate trade-off to keep
-	 * the header cheap (single DB pass) at a small underestimate.
-	 */
-	async aggregate(filter: { projectId?: string; agentName?: string } = {}): Promise<{
+	aggregate(filter: { projectId?: string; agentName?: string } = {}): Promise<{
 		total: number;
 		costTotalUsd: number;
 		costPricedCount: number;
 	}> {
-		const conds: SQL[] = [ne(this.runs.mode, "conversation")];
-		if (filter.projectId !== undefined) {
-			conds.push(eq(this.runs.projectId, filter.projectId));
-		}
-		if (filter.agentName !== undefined) {
-			conds.push(eq(this.runs.agentName, filter.agentName));
-		}
-		const where = conds.length === 1 ? conds[0] : and(...conds);
-		const baseQuery = this.db
-			.select({
-				total: sql<number>`count(*)`,
-				costTotalUsd: sql<number | null>`sum(${this.runs.costUsd})`,
-				costPricedCount: sql<number>`count(${this.runs.costUsd})`,
-			})
-			.from(this.runs);
-		const rows = await this.adapter.pickAll(
-			where === undefined ? baseQuery : baseQuery.where(where),
-		);
-		const row = rows[0];
-		return {
-			total: Number(row?.total ?? 0),
-			costTotalUsd: Number(row?.costTotalUsd ?? 0),
-			costPricedCount: Number(row?.costPricedCount ?? 0),
-		};
+		return aggregate(this.adapter, filter);
 	}
 
-	/**
-	 * Filtered listing for the cost analytics endpoint (warren-cf63 /
-	 * pl-b0c0 step 6). `from`/`to` clip on `startedAt` as ISO8601 strings
-	 * (lexicographic == chronological). Both optional; omitting both returns
-	 * every row (the endpoint defaults to the last 30 days). Rows with a null
-	 * `startedAt` are excluded when either bound is set, mirroring SQL.
-	 */
-	async listForAnalytics(
+	listForAnalytics(
 		filter: { projectId?: string; from?: string; to?: string } = {},
 	): Promise<RunRow[]> {
-		const conds: SQL[] = [];
-		if (filter.projectId !== undefined) {
-			conds.push(eq(this.runs.projectId, filter.projectId));
-		}
-		if (filter.from !== undefined) {
-			conds.push(gte(this.runs.startedAt, filter.from));
-		}
-		if (filter.to !== undefined) {
-			conds.push(lte(this.runs.startedAt, filter.to));
-		}
-		const where = conds.length === 0 ? undefined : conds.length === 1 ? conds[0] : and(...conds);
-		const baseQuery = this.db.select().from(this.runs).orderBy(desc(this.runs.startedAt));
-		return this.adapter.pickAll(where === undefined ? baseQuery : baseQuery.where(where));
+		return listForAnalytics(this.adapter, filter);
 	}
 
-	/**
-	 * Fetch the rows matching `ids` in a single query. Missing ids are
-	 * silently omitted — the caller decides whether a partial result is
-	 * an error. Used by `GET /plan-runs/:id` (warren-f923) to fan child
-	 * runIds out into the detail payload without an N+1 round-trip.
-	 */
-	async listByIds(ids: readonly string[]): Promise<RunRow[]> {
-		if (ids.length === 0) return [];
-		return this.adapter.pickAll(
-			this.db
-				.select()
-				.from(this.runs)
-				.where(inArray(this.runs.id, ids as string[])),
-		);
+	listByIds(ids: readonly string[]): Promise<RunRow[]> {
+		return listByIds(this.adapter, ids);
 	}
 
-	async listByState(state: RunState | RunState[]): Promise<RunRow[]> {
-		const where = Array.isArray(state)
-			? inArray(this.runs.state, state)
-			: eq(this.runs.state, state);
-		return this.adapter.pickAll(
-			this.db.select().from(this.runs).where(where).orderBy(asc(this.runs.id)),
-		);
+	listByState(state: RunState | RunState[]): Promise<RunRow[]> {
+		return listByState(this.adapter, state);
 	}
 
 	/**
