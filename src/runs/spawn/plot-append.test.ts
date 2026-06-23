@@ -71,6 +71,10 @@ describe("spawnRun: plotId gating + PLOT env injection (warren-a8c3 / warren-e26
 			projectId: "prj_xxxxxxxxxxxx",
 			prompt: "fix it",
 			plotId: "plot-2047abc1",
+			// Pass an explicit empty serverEnv so injectWarrenCallbackEnv has no
+			// ambient WARREN_API_TOKEN/WARREN_API_URL to copy onto the up-call env;
+			// otherwise this assertion depends on the host environment (warren-2347).
+			serverEnv: {},
 		});
 
 		const up = calls.find((c) => c.method === "POST" && c.path === "/burrows");
@@ -93,6 +97,11 @@ describe("spawnRun: plotId gating + PLOT env injection (warren-a8c3 / warren-e26
 			agentName: "refactor-bot",
 			projectId: "prj_xxxxxxxxxxxx",
 			prompt: "fix it",
+			// Explicit empty serverEnv keeps this deterministic: in production
+			// injectWarrenCallbackEnv also copies WARREN_API_TOKEN/WARREN_API_URL
+			// from serverEnv onto the up-call env, which would otherwise leak the
+			// ambient host vars into this assertion (warren-2347).
+			serverEnv: {},
 		});
 
 		const up = calls.find((c) => c.method === "POST" && c.path === "/burrows");
