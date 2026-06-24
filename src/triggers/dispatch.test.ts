@@ -3,14 +3,8 @@ import { NotFoundError } from "../core/errors.ts";
 import { openDatabase, type WarrenDb } from "../db/client.ts";
 import { createRepos, type Repos } from "../db/repos/index.ts";
 import { agents } from "../db/schema.ts";
-import type { ScheduledSeed } from "../seeds-cli/index.ts";
 import type { CronTrigger, DefaultsConfig } from "../warren-config/index.ts";
-import {
-	type DispatchSpawnFn,
-	dispatchCronTrigger,
-	dispatchScheduledSeed,
-	isPermanentSpawnFailure,
-} from "./dispatch.ts";
+import { type DispatchSpawnFn, dispatchCronTrigger, isPermanentSpawnFailure } from "./dispatch.ts";
 
 const TRIGGER_ID = "nightly";
 
@@ -310,6 +304,109 @@ describe("dispatchCronTrigger", () => {
 		if (result.kind === "error") expect(result.permanent).toBe(true);
 	});
 
+	test("permanent agent-not-found failure consumes the cron slot (advances the row)", async () => {
+		await repos.triggers.upsert({
+			projectId,
+			triggerId: TRIGGER_ID,
+			lastFiredAt: "2026-05-10T12:00:00.000Z",
+		});
+		const now = new Date("2026-05-11T00:05:00.000Z");
+		const result = await dispatchCronTrigger({
+			projectId,
+			trigger: cronTrigger(),
+			now,
+			repos,
+			spawn: spawnThrowing(new NotFoundError("agent not found: warden-digest")),
+		});
+		expect(result.kind).toBe("error");
+		if (result.kind === "error") expect(result.permanent).toBe(true);
+
+		// The slot is consumed: lastFiredAt advances to `now` and nextFireAt
+		// rolls forward to the next slot, but no run was recorded.
+		const row = await repos.triggers.require({ projectId, triggerId: TRIGGER_ID });
+		expect(row.lastFiredAt).toBe(now.toISOString());
+		expect(row.nextFireAt).toBe("2026-05-12T00:00:00.000Z");
+		expect(row.lastRunId).toBeNull();
+	});
+
+	test("two ticks across one elapsed slot dispatch an unregistered agent at most once", async () => {
+		await repos.triggers.upsert({
+			projectId,
+			triggerId: TRIGGER_ID,
+			lastFiredAt: "2026-05-10T12:00:00.000Z",
+		});
+		const calls: unknown[] = [];
+		const spawn: DispatchSpawnFn = async (spawnInput) => {
+			calls.push(spawnInput.agentName);
+			throw new NotFoundError("agent not found: warden-digest");
+		};
+
+		// First tick: a new slot elapsed, so we attempt the spawn (and fail
+		// permanently), consuming the slot.
+		const first = await dispatchCronTrigger({
+			projectId,
+			trigger: cronTrigger(),
+			now: new Date("2026-05-11T00:05:00.000Z"),
+			repos,
+			spawn,
+		});
+		expect(first.kind).toBe("error");
+		if (first.kind === "error") expect(first.permanent).toBe(true);
+		expect(calls).toHaveLength(1);
+
+		// Second tick within the SAME slot: the row was advanced, so prev <=
+		// last and the dispatcher skips without re-attempting the spawn.
+		const second = await dispatchCronTrigger({
+			projectId,
+			trigger: cronTrigger(),
+			now: new Date("2026-05-11T00:06:00.000Z"),
+			repos,
+			spawn,
+		});
+		expect(second.kind).toBe("skipped");
+		// No second dispatch — warn-once-per-slot, not every tick.
+		expect(calls).toHaveLength(1);
+	});
+
+	test("transient spawn failure is retried on the next tick within the same slot", async () => {
+		await repos.triggers.upsert({
+			projectId,
+			triggerId: TRIGGER_ID,
+			lastFiredAt: "2026-05-10T12:00:00.000Z",
+		});
+		const calls: unknown[] = [];
+		const spawn: DispatchSpawnFn = async (spawnInput) => {
+			calls.push(spawnInput.agentName);
+			throw new Error("burrow unreachable");
+		};
+
+		// First tick: transient failure leaves the row untouched.
+		const first = await dispatchCronTrigger({
+			projectId,
+			trigger: cronTrigger(),
+			now: new Date("2026-05-11T00:05:00.000Z"),
+			repos,
+			spawn,
+		});
+		expect(first.kind).toBe("error");
+		if (first.kind === "error") expect(first.permanent).toBe(false);
+		expect(calls).toHaveLength(1);
+		const afterFirst = await repos.triggers.require({ projectId, triggerId: TRIGGER_ID });
+		expect(afterFirst.lastFiredAt).toBe("2026-05-10T12:00:00.000Z");
+
+		// Second tick within the same slot: prev > last still holds, so the
+		// dispatcher RE-attempts the spawn (transient errors retry).
+		const second = await dispatchCronTrigger({
+			projectId,
+			trigger: cronTrigger(),
+			now: new Date("2026-05-11T00:06:00.000Z"),
+			repos,
+			spawn,
+		});
+		expect(second.kind).toBe("error");
+		expect(calls).toHaveLength(2);
+	});
+
 	test("explicit trigger.prompt overrides the canonical fallback", async () => {
 		await repos.triggers.upsert({
 			projectId,
@@ -363,110 +460,5 @@ describe("dispatchCronTrigger", () => {
 		expect(calls[0]?.prompt).toBe("Run cron trigger nightly.");
 		const meta = calls[0]?.metadata as Record<string, unknown>;
 		expect(meta.seed).toBeUndefined();
-	});
-});
-
-describe("dispatchScheduledSeed", () => {
-	let db: WarrenDb;
-	let repos: Repos;
-	let projectId: string;
-
-	beforeEach(async () => {
-		db = await openDatabase({ path: ":memory:" });
-		db.drizzle
-			.insert(agents)
-			.values({
-				name: "claude-code",
-				renderedJson: { sections: {} },
-				registeredAt: "2026-05-10T00:00:00.000Z",
-				lastRefreshed: "2026-05-10T00:00:00.000Z",
-			})
-			.run();
-		repos = createRepos(db);
-		const project = await repos.projects.create({
-			gitUrl: "https://github.com/x/y.git",
-			localPath: "/data/projects/x/y",
-			defaultBranch: "main",
-		});
-		projectId = project.id;
-	});
-
-	afterEach(async () => {
-		await db.close();
-	});
-
-	function seed(scheduledFor: string, status = "open", id = "warren-s1"): ScheduledSeed {
-		return { id, status, scheduledFor: new Date(scheduledFor), title: "sched seed" };
-	}
-
-	test("skips a seed scheduled in the future", async () => {
-		const { spawn, calls } = spawnRecorder(repos, projectId);
-		const result = await dispatchScheduledSeed({
-			projectId,
-			seed: seed("2026-06-01T00:00:00.000Z"),
-			defaults: { defaultRole: "claude-code" },
-			now: new Date("2026-05-10T12:00:00.000Z"),
-			spawn,
-		});
-		expect(result.kind).toBe("skipped");
-		expect(calls).toHaveLength(0);
-	});
-
-	test("dispatches a past-due seed with trigger='scheduled' and surfaces the resolved role", async () => {
-		const { spawn, calls, lastRunId } = spawnRecorder(repos, projectId);
-		const result = await dispatchScheduledSeed({
-			projectId,
-			seed: seed("2026-05-10T10:00:00.000Z"),
-			defaults: { defaultRole: "claude-code", defaultPrompt: "Sched body." },
-			now: new Date("2026-05-10T12:00:00.000Z"),
-			spawn,
-		});
-		expect(result.kind).toBe("fired");
-		if (result.kind !== "fired") return;
-		expect(result.runId).toBe(lastRunId() ?? "");
-		// pl-bb70 step 5: role is exposed on the fired result so the tick's
-		// post-fire updateExtensions merge can include `role` alongside
-		// `{trigger:'scheduled', lastRunId, lastRunAt, scheduledFor:null,
-		// lastScheduledRun}` in a single sd update.
-		expect(result.role).toBe("claude-code");
-		expect(calls[0]?.trigger).toBe("scheduled");
-		expect(calls[0]?.agentName).toBe("claude-code");
-		expect(calls[0]?.prompt).toBe("Sched body.");
-	});
-
-	test("falls back to canonical prompt when no defaultPrompt is set", async () => {
-		const { spawn, calls } = spawnRecorder(repos, projectId);
-		await dispatchScheduledSeed({
-			projectId,
-			seed: seed("2026-05-10T10:00:00.000Z"),
-			defaults: { defaultRole: "claude-code" },
-			now: new Date("2026-05-10T12:00:00.000Z"),
-			spawn,
-		});
-		expect(calls[0]?.prompt).toBe("Work on seed warren-s1 (sched seed).");
-	});
-
-	test("returns error when defaults.defaultRole is missing", async () => {
-		const { spawn, calls } = spawnRecorder(repos, projectId);
-		const result = await dispatchScheduledSeed({
-			projectId,
-			seed: seed("2026-05-10T10:00:00.000Z"),
-			defaults: {},
-			now: new Date("2026-05-10T12:00:00.000Z"),
-			spawn,
-		});
-		expect(result.kind).toBe("error");
-		expect(calls).toHaveLength(0);
-	});
-
-	test("returns error when spawn throws", async () => {
-		const result = await dispatchScheduledSeed({
-			projectId,
-			seed: seed("2026-05-10T10:00:00.000Z"),
-			defaults: { defaultRole: "claude-code" },
-			now: new Date("2026-05-10T12:00:00.000Z"),
-			spawn: spawnFailure("boom"),
-		});
-		expect(result.kind).toBe("error");
 	});
 });
