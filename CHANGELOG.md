@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.6] — 2026-06-24
+
+### Fixed
+
+- **`fix(cron)`** — `dispatchCronTrigger` now distinguishes permanent
+  spawn failures from transient ones. When a spawn fails with an
+  agent-not-found error (a `NotFoundError` matching the `agent not
+  found:` shape), the cron slot is consumed by advancing the trigger
+  row instead of retrying every tick, stopping the warden-digest cron
+  from failing every 60s on deployed instances where the agent is
+  absent. Transient failures still retry. Includes regression tests for
+  the permanent-vs-transient dispatch paths (warren-c36a, plan pl-91db:
+  warren-e9e6 / warren-17cc / warren-6fda).
+
 ## [0.9.5] — 2026-06-22
 
 ### Added
