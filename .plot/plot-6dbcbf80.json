@@ -1,0 +1,15 @@
+{
+  "attachments": [],
+  "created_at": "2026-06-24T05:20:52.185Z",
+  "id": "plot-6dbcbf80",
+  "intent": {
+    "constraints": [],
+    "goal": "",
+    "non_goals": [],
+    "success_criteria": []
+  },
+  "name": "Fix open GH issues",
+  "schema_version": 1,
+  "status": "drafting",
+  "updated_at": "2026-06-24T05:20:52.185Z"
+}
