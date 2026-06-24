@@ -167,14 +167,29 @@ export async function dispatchCronTrigger(input: DispatchCronInput): Promise<Dis
 		runId = spawned.runId;
 	} catch (err) {
 		// Per pl-2f15 risk #5 we keep dispatch failures per-trigger; surface
-		// the reason for the tick log without touching the row. For a
-		// transient failure the next tick recomputes prev > last and retries;
-		// a permanent (agent-not-found) failure is flagged so the caller can
-		// consume the slot instead of retrying every tick (warren-e9e6).
+		// the reason for the tick log without tearing down the scheduler.
+		const permanent = isPermanentSpawnFailure(err);
+		if (permanent) {
+			// Permanent (agent-not-found) failure: the role won't resolve for
+			// the rest of this slot window, so advance the trigger row to
+			// consume the elapsed slot (lastFiredAt=now, nextFireAt=nextRun).
+			// This stops the every-tick retry — the next tick sees prev <= last
+			// and skips until the next genuine slot — so an unregistered agent
+			// warns once-per-slot instead of every tick (warren-17cc). No runId
+			// is recorded because no run was spawned.
+			await input.repos.triggers.upsert({
+				projectId: input.projectId,
+				triggerId: input.trigger.id,
+				lastFiredAt: input.now.toISOString(),
+				nextFireAt: nextFireAt?.toISOString() ?? null,
+			});
+		}
+		// Transient failures leave the row untouched so the next tick recomputes
+		// prev > last and retries within the same slot.
 		return {
 			kind: "error",
 			reason: `spawnRun failed: ${formatError(err)}`,
-			permanent: isPermanentSpawnFailure(err),
+			permanent,
 		};
 	}
 
