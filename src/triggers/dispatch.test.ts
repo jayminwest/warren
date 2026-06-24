@@ -1,10 +1,16 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { NotFoundError } from "../core/errors.ts";
 import { openDatabase, type WarrenDb } from "../db/client.ts";
 import { createRepos, type Repos } from "../db/repos/index.ts";
 import { agents } from "../db/schema.ts";
 import type { ScheduledSeed } from "../seeds-cli/index.ts";
 import type { CronTrigger, DefaultsConfig } from "../warren-config/index.ts";
-import { type DispatchSpawnFn, dispatchCronTrigger, dispatchScheduledSeed } from "./dispatch.ts";
+import {
+	type DispatchSpawnFn,
+	dispatchCronTrigger,
+	dispatchScheduledSeed,
+	isPermanentSpawnFailure,
+} from "./dispatch.ts";
 
 const TRIGGER_ID = "nightly";
 
@@ -69,6 +75,26 @@ function spawnFailure(message: string): DispatchSpawnFn {
 		throw new Error(message);
 	};
 }
+
+function spawnThrowing(err: unknown): DispatchSpawnFn {
+	return async () => {
+		throw err;
+	};
+}
+
+describe("isPermanentSpawnFailure", () => {
+	test("classifies an agent-not-found NotFoundError as permanent", () => {
+		expect(isPermanentSpawnFailure(new NotFoundError("agent not found: warden-digest"))).toBe(true);
+	});
+
+	test("classifies a transient Error as not permanent", () => {
+		expect(isPermanentSpawnFailure(new Error("burrow unreachable"))).toBe(false);
+	});
+
+	test("classifies an unrelated NotFoundError as not permanent", () => {
+		expect(isPermanentSpawnFailure(new NotFoundError("project not found: prj_x"))).toBe(false);
+	});
+});
 
 describe("dispatchCronTrigger", () => {
 	let db: WarrenDb;
@@ -260,10 +286,28 @@ describe("dispatchCronTrigger", () => {
 			spawn: spawnFailure("burrow unreachable"),
 		});
 		expect(result.kind).toBe("error");
+		if (result.kind === "error") expect(result.permanent).toBe(false);
 
 		const row = await repos.triggers.require({ projectId, triggerId: TRIGGER_ID });
 		expect(row.lastFiredAt).toBe("2026-05-10T12:00:00.000Z");
 		expect(row.lastRunId).toBeNull();
+	});
+
+	test("flags an agent-not-found spawn failure as permanent", async () => {
+		await repos.triggers.upsert({
+			projectId,
+			triggerId: TRIGGER_ID,
+			lastFiredAt: "2026-05-10T12:00:00.000Z",
+		});
+		const result = await dispatchCronTrigger({
+			projectId,
+			trigger: cronTrigger(),
+			now: new Date("2026-05-11T00:05:00.000Z"),
+			repos,
+			spawn: spawnThrowing(new NotFoundError("agent not found: warden-digest")),
+		});
+		expect(result.kind).toBe("error");
+		if (result.kind === "error") expect(result.permanent).toBe(true);
 	});
 
 	test("explicit trigger.prompt overrides the canonical fallback", async () => {

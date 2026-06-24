@@ -27,6 +27,7 @@
  * tear down the scheduler.
  */
 
+import { NotFoundError } from "../core/errors.ts";
 import type { Repos } from "../db/repos/index.ts";
 import type { ScheduledSeed } from "../seeds-cli/index.ts";
 import type { CronTrigger, DefaultsConfig } from "../warren-config/index.ts";
@@ -87,6 +88,15 @@ export type DispatchCronResult =
 	| {
 			readonly kind: "error";
 			readonly reason: string;
+			/**
+			 * True when the spawn failure is deterministic for this slot
+			 * (the agent role won't resolve until the registry changes) — an
+			 * `agent not found` NotFoundError. Transient failures (burrow
+			 * briefly down, etc.) leave this false so the next tick retries.
+			 * Step 2 (warren-17cc) consumes the cron slot when this is set so
+			 * an unregistered agent warns once-per-slot instead of every tick.
+			 */
+			readonly permanent: boolean;
 	  };
 
 export async function dispatchCronTrigger(input: DispatchCronInput): Promise<DispatchCronResult> {
@@ -96,7 +106,11 @@ export async function dispatchCronTrigger(input: DispatchCronInput): Promise<Dis
 	};
 	const parsed = parseCron(parseInput);
 	if (!parsed.ok) {
-		return { kind: "error", reason: `cron parse failed: ${parsed.message}` };
+		// A bad cron expression won't fix itself tick-to-tick, but the slot
+		// machinery never advances here (no row read yet), so treat it as
+		// non-permanent for slot-consumption purposes — the noise floor for a
+		// malformed expression is one log per tick regardless.
+		return { kind: "error", reason: `cron parse failed: ${parsed.message}`, permanent: false };
 	}
 
 	const row = await input.repos.triggers.get({
@@ -153,9 +167,15 @@ export async function dispatchCronTrigger(input: DispatchCronInput): Promise<Dis
 		runId = spawned.runId;
 	} catch (err) {
 		// Per pl-2f15 risk #5 we keep dispatch failures per-trigger; surface
-		// the reason for the tick log without touching the row. Next tick
-		// will recompute prev > last and retry.
-		return { kind: "error", reason: `spawnRun failed: ${formatError(err)}` };
+		// the reason for the tick log without touching the row. For a
+		// transient failure the next tick recomputes prev > last and retries;
+		// a permanent (agent-not-found) failure is flagged so the caller can
+		// consume the slot instead of retrying every tick (warren-e9e6).
+		return {
+			kind: "error",
+			reason: `spawnRun failed: ${formatError(err)}`,
+			permanent: isPermanentSpawnFailure(err),
+		};
 	}
 
 	// Risk #4: stamp last_fired_at BEFORE any side-effect that might fail
@@ -271,6 +291,23 @@ function resolveScheduledPrompt(
 	}
 	const titleSuffix = seed.title ? ` (${seed.title})` : "";
 	return `Work on seed ${seed.id}${titleSuffix}.`;
+}
+
+/**
+ * Classify a spawn failure as permanent for the current cron slot.
+ *
+ * A spawn that throws `NotFoundError('agent not found: <role>')` (from
+ * `spawnRun` when `repos.agents.resolve` returns null) will keep failing
+ * the same way for the entire slot window — the role isn't registered.
+ * Retrying it every tick is pure noise, so the dispatcher treats it as
+ * permanent and (step 2) advances the trigger row to consume the slot.
+ *
+ * Transient failures (burrow down, DB hiccup) are NOT permanent: they
+ * may succeed on a later tick within the same slot, so they keep the
+ * existing retry-next-tick behaviour.
+ */
+export function isPermanentSpawnFailure(err: unknown): boolean {
+	return err instanceof NotFoundError && err.message.startsWith("agent not found:");
 }
 
 function formatError(err: unknown): string {
