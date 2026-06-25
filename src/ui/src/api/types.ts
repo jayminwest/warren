@@ -478,6 +478,11 @@ export interface WarrenConfigResponse {
 	triggers: Trigger[] | null;
 	/** Parsed defaults, or `null` when the file is absent or malformed. */
 	defaults: DefaultsConfig | null;
+	/**
+	 * Path of the config source file that was loaded (`.warren/config.yaml`
+	 * or the legacy `.warren/defaults.json`), or `null` when neither exists.
+	 */
+	sourceFile: string | null;
 	/** Per-file failures collected during this load. Empty on full success. */
 	errors: WarrenConfigFileError[];
 	/**

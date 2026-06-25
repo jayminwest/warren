@@ -105,7 +105,7 @@ export function NewRunPage() {
 	const [modelOverride, setModelOverride] = useState("");
 	const [modelTouched, setModelTouched] = useState(false);
 
-	// Per-project defaults from `.warren/defaults.json` (R-02). When the project
+	// Per-project defaults from `.warren/config.yaml` (R-02). When the project
 	// declares a `defaultRole` that matches a registered agent, auto-fill the
 	// agent picker; when it declares a `defaultPrompt`, pre-fill the prompt
 	// textarea — unless the user has already taken control of either.
@@ -118,6 +118,7 @@ export function NewRunPage() {
 	const defaultPrompt = warrenConfig.data?.defaults?.defaultPrompt;
 	const defaultProvider = warrenConfig.data?.defaults?.defaultProvider;
 	const defaultModel = warrenConfig.data?.defaults?.defaultModel;
+	const configSourceFile = warrenConfig.data?.sourceFile ?? ".warren/config.yaml";
 	const registeredAgents = agents.data?.agents ?? [];
 	const defaultRoleRegistered =
 		defaultRole !== undefined && registeredAgents.some((a) => a.name === defaultRole);
@@ -144,7 +145,7 @@ export function NewRunPage() {
 	// (warren-f8c0). Both are free-text strings — runtimes that don't
 	// support multi-provider just ignore them. Auto-fill stops once the
 	// operator types in either field. Per warren-618b, when the project
-	// declares `.warren/defaults.json.defaultProvider` / `defaultModel`,
+	// declares `.warren/config.yaml.defaultProvider` / `defaultModel`,
 	// those win over the agent's frontmatter — the form surfaces the same
 	// precedence the server applies (operator override > project default >
 	// agent frontmatter).
@@ -299,7 +300,7 @@ export function NewRunPage() {
 							{agentFromDefault ? (
 								<p className="text-xs text-(--color-muted-foreground)">
 									Defaulted from this project's{" "}
-									<code className="font-mono">.warren/defaults.json</code>.
+									<code className="font-mono">{configSourceFile}</code>.
 								</p>
 							) : defaultRole !== undefined && !defaultRoleRegistered ? (
 								<p className="text-xs text-(--color-destructive)">
@@ -399,7 +400,7 @@ export function NewRunPage() {
 								{providerFromProjectDefault ? (
 									<p className="text-xs text-(--color-muted-foreground)">
 										Defaulted from this project's{" "}
-										<code className="font-mono">.warren/defaults.json</code>.
+										<code className="font-mono">{configSourceFile}</code>.
 									</p>
 								) : !providerTouched && agentProvider.length > 0 ? (
 									<p className="text-xs text-(--color-muted-foreground)">
@@ -430,7 +431,7 @@ export function NewRunPage() {
 								{modelFromProjectDefault ? (
 									<p className="text-xs text-(--color-muted-foreground)">
 										Defaulted from this project's{" "}
-										<code className="font-mono">.warren/defaults.json</code>.
+										<code className="font-mono">{configSourceFile}</code>.
 									</p>
 								) : !modelTouched && agentModel.length > 0 ? (
 									<p className="text-xs text-(--color-muted-foreground)">
@@ -457,7 +458,7 @@ export function NewRunPage() {
 							{promptFromDefault ? (
 								<p className="text-xs text-(--color-muted-foreground)">
 									Defaulted from this project's{" "}
-									<code className="font-mono">.warren/defaults.json</code>.
+									<code className="font-mono">{configSourceFile}</code>.
 								</p>
 							) : null}
 						</div>

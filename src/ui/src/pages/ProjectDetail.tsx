@@ -165,7 +165,7 @@ function WarrenConfigPanel({
 				) : query === undefined ? null : (
 					<>
 						<TriggersBlock projectId={projectId} />
-						<DefaultsBlock defaults={query.defaults} />
+						<DefaultsBlock defaults={query.defaults} sourceFile={query.sourceFile} />
 						{query.errors.length > 0 ? <ErrorsBlock errors={query.errors} /> : null}
 					</>
 				)}
@@ -336,7 +336,10 @@ function TriggerRow({
 	);
 }
 
-function DefaultsBlock({ defaults }: { defaults: DefaultsConfig | null }) {
+function DefaultsBlock({
+	defaults,
+	sourceFile,
+}: { defaults: DefaultsConfig | null; sourceFile: string | null }) {
 	const isEmpty =
 		defaults !== null &&
 		defaults.defaultRole === undefined &&
@@ -345,7 +348,7 @@ function DefaultsBlock({ defaults }: { defaults: DefaultsConfig | null }) {
 	return (
 		<section>
 			<h3 className="mb-2 text-sm font-semibold">
-				<code className="font-mono">.warren/defaults.json</code>
+				<code className="font-mono">{sourceFile ?? ".warren/config.yaml"}</code>
 			</h3>
 			{defaults === null ? (
 				<EmptyHint text="Not present (or last load failed — see errors below)." />
