@@ -171,6 +171,8 @@ export const runs = sqliteTable(
 		// branch == defaultBranch, no commits ahead, or the GitHub call itself
 		// errored (recorded as a `reap_failed` event with step=pr_open).
 		prUrl: text("pr_url"),
+		// Operator-requested target branch (warren-1f81, #419); null = none.
+		targetBranch: text("target_branch"),
 		// Per-run cost + token accounting (warren-a7dc). All nullable: only the
 		// pi runtime reports session-cumulative stats via get_session_stats today,
 		// and even there the value is best-effort (null when the bridge can't

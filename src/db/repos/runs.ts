@@ -89,6 +89,11 @@ export interface CreateRunInput {
 	parentRunId?: string | null;
 	/** Chain kind (warren-e96f); null for root runs. */
 	cloneKind?: CloneKind | null;
+	/**
+	 * Operator-requested target branch the run was dispatched against
+	 * (warren-1f81, #419). Null/omitted = no explicit target branch.
+	 */
+	targetBranch?: string | null;
 	now?: Date;
 }
 
@@ -145,6 +150,7 @@ export class RunsRepo {
 			prompt: input.prompt,
 			trigger: input.trigger,
 			prUrl: null,
+			targetBranch: input.targetBranch ?? null,
 			costUsd: null,
 			tokensInput: null,
 			tokensOutput: null,

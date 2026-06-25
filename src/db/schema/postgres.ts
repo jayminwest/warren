@@ -113,6 +113,7 @@ export const runs = pgTable(
 		prompt: text("prompt").notNull(),
 		trigger: text("trigger").notNull(),
 		prUrl: text("pr_url"),
+		targetBranch: text("target_branch"),
 		costUsd: doublePrecision("cost_usd"),
 		tokensInput: integer("tokens_input"),
 		tokensOutput: integer("tokens_output"),
