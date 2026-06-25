@@ -203,6 +203,7 @@ export async function spawnRun(input: SpawnRunInput): Promise<SpawnRunResult> {
 		...(input.parentRunId !== undefined && input.parentRunId !== ""
 			? { parentRunId: input.parentRunId, cloneKind: input.cloneKind ?? "continue" }
 			: {}),
+		...(input.targetBranch?.trim() ? { targetBranch: input.targetBranch } : {}),
 		now: input.now?.(),
 	});
 
@@ -324,8 +325,8 @@ export async function spawnRun(input: SpawnRunInput): Promise<SpawnRunResult> {
  * Resolve the git ref the project clone should be refreshed to before the
  * burrow forks the new run branch (warren-4b11).
  *
- * - No `parentRunId` → the caller's explicit `ref` (or undefined, which
- *   refreshProject resolves to the project's tracked default branch).
+ * - No `parentRunId` → explicit `ref`, else the `targetBranch` push target
+ *   (warren-709e), else undefined → refreshProject's project default branch.
  * - `parentRunId` set with `cloneKind: "replicate"` (warren-e96f) → the
  *   caller's explicit `ref` (or the project default branch). A replicate is a
  *   fresh re-dispatch of the parent's config, NOT a continuation, so it must
@@ -348,7 +349,7 @@ async function resolveContinuationRef(
 	input: SpawnRunInput,
 	project: { id: string; localPath: string },
 ): Promise<string | undefined> {
-	if (input.parentRunId === undefined || input.parentRunId === "") return input.ref;
+	if (!input.parentRunId) return input.ref ?? input.targetBranch; // warren-709e
 	// Replicate (warren-e96f): fresh re-dispatch against the explicit ref /
 	// project default base, not the parent's pushed branch. We still validate
 	// the parent below (same-project guard), but the base ref is the caller's.

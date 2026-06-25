@@ -147,6 +147,50 @@ describe("POST /runs — spawn flow", () => {
 		expect(persisted.seedId).toBe("seed-123");
 	});
 
+	test("optional targetBranch persists onto runs.target_branch and pins the burrow branch (warren-709e)", async () => {
+		const project = (await repos.projects.listAll())[0];
+		if (!project) throw new Error("project missing");
+
+		const { mkdtemp } = await import("node:fs/promises");
+		const { tmpdir } = await import("node:os");
+		const { join } = await import("node:path");
+		const tmpWs = await mkdtemp(join(tmpdir(), "warren-handlers-target-"));
+
+		const calls: { method: string; path: string; body: unknown }[] = [];
+		const burrowClient = makeBurrowClient(
+			{ burrowId: "bur_target000000", burrowRunId: "run_targetrun000", workspacePath: tmpWs },
+			calls,
+		);
+		const deps = await depsFor(repos, burrowClient);
+		handle = startServer(deps, {
+			transport: { kind: "tcp", hostname: "127.0.0.1", port: 0 },
+			auth: NO_AUTH,
+			logger: silentLogger,
+		});
+
+		const res = await fetch(`${tcpUrl(handle)}/runs`, {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({
+				agent: "refactor-bot",
+				project: project.id,
+				prompt: "hello",
+				targetBranch: "fix/pr-head",
+			}),
+		});
+		expect(res.status).toBe(201);
+		const body = (await res.json()) as { run: { id: string; targetBranch: string | null } };
+		expect(body.run.targetBranch).toBe("fix/pr-head");
+
+		const persisted = await repos.runs.require(body.run.id);
+		expect(persisted.targetBranch).toBe("fix/pr-head");
+
+		// targetBranch short-circuits the composed `${prefix}/${runId}` branch:
+		// the burrow workspace branch equals the push target.
+		const up = calls.find((c) => c.method === "POST" && c.path === "/burrows");
+		expect((up?.body as { branch?: string } | undefined)?.branch).toBe("fix/pr-head");
+	});
+
 	test("continueFromRunId persists onto runs.parent_run_id (warren-4b11)", async () => {
 		const project = (await repos.projects.listAll())[0];
 		if (!project) throw new Error("project missing");

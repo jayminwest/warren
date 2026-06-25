@@ -112,6 +112,11 @@ export function createRunHandler(deps: ServerDeps): RouteHandler {
 		const seedId = optionalString(body, "seedId");
 		const plotId = optionalString(body, "plotId");
 		const ref = optionalString(body, "ref");
+		// warren-709e (#419): an explicit target branch the run must push to
+		// instead of the composed `${prefix}/${runId}`. Persisted on the run row
+		// and used both to pin the burrow workspace branch (composeRunBranch) and
+		// to default the root-run base ref when no `ref` is supplied.
+		const targetBranch = optionalString(body, "targetBranch");
 		const dispatcherHandle = optionalString(body, "dispatcherHandle");
 		const {
 			agentName,
@@ -141,6 +146,7 @@ export function createRunHandler(deps: ServerDeps): RouteHandler {
 			modelOverride,
 			seedId,
 			plotId,
+			...(targetBranch !== undefined ? { targetBranch } : {}),
 			...(parentRunId !== undefined ? { parentRunId } : {}),
 			...(cloneKind !== undefined ? { cloneKind } : {}),
 			dispatcherHandle,
