@@ -249,7 +249,7 @@ export async function dispatchScheduledSeed(
 		return {
 			kind: "error",
 			seedId: input.seed.id,
-			reason: "no agent to dispatch — set defaults.defaultRole in .warren/defaults.json",
+			reason: "no agent to dispatch — set defaultRole in .warren/config.yaml",
 		};
 	}
 
