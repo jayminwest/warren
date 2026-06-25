@@ -23,6 +23,7 @@ export function recordingCache(): RecordingCache {
 			triggers: null,
 			defaults: null,
 			prTemplate: null,
+			sourceFile: null,
 			errors: [],
 			warnings: [],
 		}),

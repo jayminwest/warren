@@ -54,7 +54,14 @@ function stubReader(candidates: readonly IdleConversationCandidate[]): IdleConve
 }
 
 function emptyDefaults(): LoadedWarrenConfig {
-	return { defaults: {}, triggers: null, prTemplate: null, errors: [], warnings: [] };
+	return {
+		defaults: {},
+		triggers: null,
+		prTemplate: null,
+		sourceFile: null,
+		errors: [],
+		warnings: [],
+	};
 }
 
 describe("tickConversationIdleDetector", () => {
@@ -137,6 +144,7 @@ describe("tickConversationIdleDetector", () => {
 					defaults: { conversation: { idleTimeoutMs: 60_000 } },
 					triggers: null,
 					prTemplate: null,
+					sourceFile: null,
 					errors: [],
 					warnings: [],
 				};

@@ -217,11 +217,10 @@ describe("spawnRun: burrow_config + runtime + metadata", () => {
 	});
 
 	test("dispatch uses frontmatter.runtime as the burrow runtime id when set (warren-ebca)", async () => {
-		// Planner is a canopy agent whose name (`planner`)
-		// is NOT a burrow runtime id; without `frontmatter.runtime`,
-		// dispatchRun would send `"planner"` and burrow would fail the
-		// run with `agent 'planner' is not registered`. The fix routes
-		// the dispatch onto the declared runtime instead.
+		// Planner is a canopy agent whose name (`planner`) is NOT a burrow
+		// runtime id; without `frontmatter.runtime`, dispatchRun would send
+		// `"planner"` and burrow would fail with `agent 'planner' is not
+		// registered`. The fix routes the dispatch onto the declared runtime.
 		await repos.agents.upsert({
 			name: "planner",
 			renderedJson: makeAgentJson({
@@ -315,6 +314,7 @@ describe("spawnRun: burrow_config + runtime + metadata", () => {
 					triggers: null,
 					defaults: { defaultProvider: "anthropic", defaultModel: "claude-opus-4-7" },
 					prTemplate: null,
+					sourceFile: null,
 					errors: [],
 					warnings: [],
 				}),

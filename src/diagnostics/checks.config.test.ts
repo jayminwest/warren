@@ -13,6 +13,7 @@ describe("checkWarrenConfig", () => {
 		triggers: null,
 		defaults: null,
 		prTemplate: null,
+		sourceFile: null,
 		errors: [],
 		warnings: [],
 	};
@@ -20,6 +21,7 @@ describe("checkWarrenConfig", () => {
 		triggers: [],
 		defaults: { defaultBranch: "main" },
 		prTemplate: null,
+		sourceFile: null,
 		errors: [],
 		warnings: [],
 	};
@@ -53,6 +55,7 @@ describe("checkWarrenConfig", () => {
 			triggers: null,
 			defaults: { defaultBranch: "main" },
 			prTemplate: null,
+			sourceFile: null,
 			errors: [
 				{
 					file: ".warren/triggers.yaml",
@@ -92,6 +95,7 @@ describe("checkWarrenConfig", () => {
 			triggers: null,
 			defaults: null,
 			prTemplate: null,
+			sourceFile: null,
 			errors: [
 				{
 					file: ".warren/defaults.json",
@@ -139,6 +143,7 @@ describe("checkWarrenConfig", () => {
 			triggers: null,
 			defaults: { defaultBranch: "main" },
 			prTemplate: null,
+			sourceFile: null,
 			errors: [],
 			warnings: [
 				{
@@ -161,6 +166,7 @@ describe("checkWarrenConfigDeprecations", () => {
 		triggers: null,
 		defaults: null,
 		prTemplate: null,
+		sourceFile: null,
 		errors: [],
 		warnings: [],
 	};
@@ -168,6 +174,7 @@ describe("checkWarrenConfigDeprecations", () => {
 		triggers: null,
 		defaults: { defaultBranch: "main" },
 		prTemplate: null,
+		sourceFile: null,
 		errors: [],
 		warnings: [
 			{

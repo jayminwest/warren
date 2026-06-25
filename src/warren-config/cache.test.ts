@@ -11,6 +11,7 @@ function envelope(overrides: Partial<LoadedWarrenConfig> = {}): LoadedWarrenConf
 		triggers: overrides.triggers ?? null,
 		defaults: overrides.defaults ?? null,
 		prTemplate: overrides.prTemplate ?? null,
+		sourceFile: overrides.sourceFile ?? null,
 		errors: overrides.errors ?? [],
 		warnings: overrides.warnings ?? [],
 	};

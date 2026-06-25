@@ -56,10 +56,12 @@ describe("GET /projects/:id/warren-config — per-project .warren/ envelope (war
 		const body = (await res.json()) as {
 			triggers: unknown;
 			defaults: unknown;
+			sourceFile: unknown;
 			errors: unknown[];
 		};
 		expect(body.triggers).toBeNull();
 		expect(body.defaults).toBeNull();
+		expect(body.sourceFile).toBeNull();
 		expect(body.errors).toEqual([]);
 	});
 
@@ -92,6 +94,7 @@ describe("GET /projects/:id/warren-config — per-project .warren/ envelope (war
 		const body = (await res.json()) as {
 			triggers: { id: string; kind: string; cron: string }[] | null;
 			defaults: { defaultBranch?: string; defaultRole?: string } | null;
+			sourceFile: string | null;
 			errors: unknown[];
 		};
 		expect(body.errors).toEqual([]);
@@ -99,6 +102,8 @@ describe("GET /projects/:id/warren-config — per-project .warren/ envelope (war
 		expect(body.triggers?.[0]?.cron).toBe("0 2 * * *");
 		expect(body.defaults?.defaultBranch).toBe("main");
 		expect(body.defaults?.defaultRole).toBe("refactor-bot");
+		// only legacy defaults.json present → sourceFile points at it
+		expect(body.sourceFile).toBe(".warren/defaults.json");
 	});
 
 	test("collects per-file errors when a file is malformed", async () => {

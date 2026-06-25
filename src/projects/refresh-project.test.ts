@@ -383,6 +383,7 @@ describe("refreshProject git-hooks knob (warren-8f4c)", () => {
 				triggers: null,
 				defaults: { agent: { pauseTimeoutMs: 1_800_000, skipGitHooks: true } },
 				prTemplate: null,
+				sourceFile: null,
 				errors: [],
 				warnings: [],
 			}),

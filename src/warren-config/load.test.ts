@@ -51,6 +51,7 @@ describe("loadWarrenConfig", () => {
 		});
 		expect(result.triggers).toBeNull();
 		expect(result.defaults).toBeNull();
+		expect(result.sourceFile).toBeNull();
 		expect(result.errors).toEqual([]);
 		expect(result.warnings).toEqual([]);
 	});
@@ -62,6 +63,7 @@ describe("loadWarrenConfig", () => {
 		});
 		expect(result.triggers).toBeNull();
 		expect(result.defaults).toBeNull();
+		expect(result.sourceFile).toBeNull();
 		expect(result.errors).toEqual([]);
 		expect(result.warnings).toEqual([]);
 	});
@@ -90,6 +92,7 @@ defaultPrompt: Read the issue, plan, execute.
 		expect(result.triggers?.[0]?.id).toBe("nightly-refactor");
 		expect(result.defaults?.defaultRole).toBe("claude-code");
 		expect(result.defaults?.defaultBranch).toBe("main");
+		expect(result.sourceFile).toBe(`${WARREN_CONFIG_DIR}/${WARREN_CONFIG_FILES.config}`);
 	});
 
 	test("legacy defaults.json with no config.yaml → parsed, emits deprecation warning", async () => {
@@ -101,6 +104,7 @@ defaultPrompt: Read the issue, plan, execute.
 		});
 		expect(result.errors).toEqual([]);
 		expect(result.defaults?.defaultRole).toBe("claude-code");
+		expect(result.sourceFile).toBe(`${WARREN_CONFIG_DIR}/${WARREN_CONFIG_FILES.defaults}`);
 		expect(result.warnings).toHaveLength(1);
 		const warning = result.warnings[0];
 		expect(warning?.code).toBe(WARREN_CONFIG_FILE_ERROR_CODES.deprecated);
@@ -119,6 +123,7 @@ defaultPrompt: Read the issue, plan, execute.
 		expect(result.errors).toEqual([]);
 		expect(result.defaults?.defaultRole).toBe("from-yaml");
 		expect(result.defaults?.defaultBranch).toBeUndefined();
+		expect(result.sourceFile).toBe(`${WARREN_CONFIG_DIR}/${WARREN_CONFIG_FILES.config}`);
 		expect(result.warnings).toHaveLength(1);
 		expect(result.warnings[0]?.code).toBe(WARREN_CONFIG_FILE_ERROR_CODES.deprecated);
 		expect(result.warnings[0]?.message).toMatch(/superseded/);
@@ -162,6 +167,7 @@ defaultPrompt: Read the issue, plan, execute.
 		});
 		expect(result.triggers).toEqual([]);
 		expect(result.defaults).toBeNull();
+		expect(result.sourceFile).toBe(`${WARREN_CONFIG_DIR}/${WARREN_CONFIG_FILES.config}`);
 		expect(result.errors).toHaveLength(1);
 		expect(result.errors[0]?.code).toBe(WARREN_CONFIG_FILE_ERROR_CODES.parseError);
 		expect(result.errors[0]?.file).toBe(`${WARREN_CONFIG_DIR}/${WARREN_CONFIG_FILES.config}`);

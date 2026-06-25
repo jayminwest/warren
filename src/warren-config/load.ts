@@ -71,6 +71,14 @@ export interface LoadedWarrenConfig {
 	 * markers) surface via `errors` with `code: schemaError`.
 	 */
 	readonly prTemplate: PrTemplateOverrides | null;
+	/**
+	 * Relative path of the file the global defaults were loaded from
+	 * (warren-489c, issue #486): `.warren/config.yaml` when it exists,
+	 * else `.warren/defaults.json` when only the legacy file is present,
+	 * else `null` when neither tier exists. Lets the API/UI render the
+	 * dynamic config source instead of a hardcoded label.
+	 */
+	readonly sourceFile: string | null;
 	/** Per-file failures collected during this load. Empty on full success. */
 	readonly errors: readonly WarrenConfigFileError[];
 	/**
@@ -113,7 +121,14 @@ export async function loadWarrenConfig(input: LoadWarrenConfigInput): Promise<Lo
 	if (!exists(dirPath)) {
 		// No `.warren/` at all is the bootstrap shape — existing projects keep
 		// working unchanged. All fields null, no errors or warnings.
-		return { triggers: null, defaults: null, prTemplate: null, errors, warnings };
+		return {
+			triggers: null,
+			defaults: null,
+			prTemplate: null,
+			sourceFile: null,
+			errors,
+			warnings,
+		};
 	}
 
 	const triggers = await loadTriggers({ projectPath, exists, read, errors });
@@ -122,7 +137,8 @@ export async function loadWarrenConfig(input: LoadWarrenConfigInput): Promise<Lo
 	const prTemplate = await loadPrTemplate({ projectPath, exists, read, errors });
 
 	const merged = mergePreviewOverride(defaults, previewOverride);
-	return { triggers, defaults: merged, prTemplate, errors, warnings };
+	const sourceFile = resolveDefaultsSourceFile({ projectPath, exists });
+	return { triggers, defaults: merged, prTemplate, sourceFile, errors, warnings };
 }
 
 interface LoadOneInput {
@@ -194,6 +210,27 @@ async function loadTriggers(input: LoadOneInput): Promise<TriggersConfig | null>
  * roll over to the other tier — we want operators to see the parse / schema
  * failure rather than have it masked by a silent fallback.
  */
+/**
+ * Resolve which file the global defaults were (or would be) loaded from,
+ * mirroring `loadDefaults`'s precedence: `config.yaml` wins, else the
+ * legacy `defaults.json`, else `null`. Pure existence check — does not
+ * read or parse — so a malformed file still reports its own source path.
+ */
+function resolveDefaultsSourceFile(input: {
+	readonly projectPath: string;
+	readonly exists: ExistsFn;
+}): string | null {
+	const configAbs = join(input.projectPath, WARREN_CONFIG_DIR, WARREN_CONFIG_FILES.config);
+	if (input.exists(configAbs)) {
+		return warrenConfigRelativePath("config");
+	}
+	const defaultsAbs = join(input.projectPath, WARREN_CONFIG_DIR, WARREN_CONFIG_FILES.defaults);
+	if (input.exists(defaultsAbs)) {
+		return warrenConfigRelativePath("defaults");
+	}
+	return null;
+}
+
 async function loadDefaults(input: LoadDefaultsInput): Promise<DefaultsConfig | null> {
 	const configAbs = join(input.projectPath, WARREN_CONFIG_DIR, WARREN_CONFIG_FILES.config);
 	const defaultsAbs = join(input.projectPath, WARREN_CONFIG_DIR, WARREN_CONFIG_FILES.defaults);

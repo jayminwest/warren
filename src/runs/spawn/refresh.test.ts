@@ -168,6 +168,7 @@ describe("spawnRun: burrow branch composition (warren-9993)", () => {
 					triggers: null,
 					defaults: { runBranchPrefix: "bot" },
 					prTemplate: null,
+					sourceFile: null,
 					errors: [],
 					warnings: [],
 				}),
