@@ -32,7 +32,6 @@ import type { Repos } from "../db/repos/index.ts";
 import type { ScheduledSeed } from "../seeds-cli/index.ts";
 import type { CronTrigger, DefaultsConfig } from "../warren-config/index.ts";
 import { parseCron } from "./cron.ts";
-import { TriggerDispatchError } from "./errors.ts";
 
 export interface DispatchSpawnInput {
 	readonly agentName: string;
@@ -327,6 +326,5 @@ export function isPermanentSpawnFailure(err: unknown): boolean {
 
 function formatError(err: unknown): string {
 	if (err instanceof Error) return err.message;
-	if (err instanceof TriggerDispatchError) return err.message;
 	return String(err);
 }
