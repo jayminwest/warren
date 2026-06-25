@@ -17,7 +17,7 @@ jobs:
       release: ${{ steps.version-check.outputs.release }}
       version: ${{ steps.version-check.outputs.version }}
     steps:
-      - uses: actions/checkout@v6.0.2
+      - uses: actions/checkout@v7.0.0
         with:
           fetch-depth: 0
 
@@ -113,7 +113,7 @@ jobs:
       group: fly-deploy-warren-deployed
       cancel-in-progress: false
     steps:
-      - uses: actions/checkout@v6.0.2
+      - uses: actions/checkout@v7.0.0
 
       - uses: superfly/flyctl-actions/setup-flyctl@master
 

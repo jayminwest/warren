@@ -34,7 +34,7 @@ jobs:
   sync:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6.0.2
+      - uses: actions/checkout@v7.0.0
 
       # Pull-request runs are always dry-run: we want to see the diff in
       # the workflow logs before merging, but we never mutate the repo's

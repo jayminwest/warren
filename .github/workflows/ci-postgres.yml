@@ -42,7 +42,7 @@ jobs:
       WARREN_TEST_DIALECT: postgres
       WARREN_TEST_PG_URL: postgres://warren:warren@127.0.0.1:5432/warren_test
     steps:
-      - uses: actions/checkout@v6.0.2
+      - uses: actions/checkout@v7.0.0
 
       - uses: oven-sh/setup-bun@v2
         with:
