@@ -98,11 +98,47 @@ describe("reapRun commit-through-reap sub-steps (warren-343a + warren-7ecc)", ()
 				"user.email=warren@os-eco.dev",
 				"commit",
 				"--no-verify",
+				"--only",
 				"-m",
 				"chore(warren): plot state",
+				"--",
+				".plot/",
 			]);
 			const events = await plotCtx.repos.events.listByRun(plotCtx.runId);
 			expect(events.find((ev) => ev.kind === "reap.plot_committed")).toBeDefined();
+		} finally {
+			await plotCtx.db.close();
+		}
+	});
+
+	test("path-limits the plot commit to .plot/ so pre-staged unrelated files aren't swept in (warren-be12)", async () => {
+		const plotCtx = await setupWithPlot();
+		try {
+			const f = fakeFs({
+				"/data/projects/x/y/.plot/plot-abc.events.jsonl":
+					'{"type":"run_dispatched","actor":"user:operator","at":"2026-05-18T10:00:00Z","data":{}}\n',
+			});
+			const e = fakeExec({ stagedDelta: true });
+
+			await reapRun({
+				runId: plotCtx.runId,
+				outcome: "succeeded",
+				repos: plotCtx.repos,
+				burrowClientPool: await makePool(fakeBurrowClient(makeBurrow()), plotCtx.repos),
+				fs: f.fs,
+				exec: e.exec,
+			});
+
+			const commit = e.calls
+				.filter((c) => c.cmd === "git")
+				.map((c) => c.args)
+				.find((a) => a[0] === "-c" && a.includes("commit"));
+			// `--only -- .plot/` confines the commit to the .plot/ pathspec, so
+			// git ignores anything else an earlier step left in the index.
+			expect(commit).toContain("--only");
+			const dashDash = commit?.indexOf("--") ?? -1;
+			expect(dashDash).toBeGreaterThan(-1);
+			expect(commit?.slice(dashDash + 1)).toEqual([".plot/"]);
 		} finally {
 			await plotCtx.db.close();
 		}
@@ -278,7 +314,14 @@ describe("reapRun commit-through-reap sub-steps (warren-343a + warren-7ecc)", ()
 			expect(f.files.get("/data/burrow/ws/.seeds/plans.jsonl")).toContain("pl-abcd");
 			const gitArgs = e.calls.filter((c) => c.cmd === "git").map((c) => c.args);
 			expect(gitArgs).toContainEqual(["add", "--", ".seeds/"]);
-			expect(gitArgs).toContainEqual(["diff", "--cached", "--quiet", "--", ".seeds/"]);
+			expect(gitArgs).toContainEqual([
+				"diff",
+				"--cached",
+				"--quiet",
+				"--",
+				".seeds/issues.jsonl",
+				".seeds/plans.jsonl",
+			]);
 			const commit = gitArgs.find((a) => a[0] === "-c" && a.includes("commit"));
 			expect(commit).toEqual([
 				"-c",
@@ -287,11 +330,50 @@ describe("reapRun commit-through-reap sub-steps (warren-343a + warren-7ecc)", ()
 				"user.email=warren@os-eco.dev",
 				"commit",
 				"--no-verify",
+				"--only",
 				"-m",
 				"chore(warren): seeds state",
+				"--",
+				".seeds/issues.jsonl",
+				".seeds/plans.jsonl",
 			]);
 			const events = await seedsCtx.repos.events.listByRun(seedsCtx.runId);
 			expect(events.find((ev) => ev.kind === "reap.seeds_committed")).toBeDefined();
+		} finally {
+			await seedsCtx.db.close();
+		}
+	});
+
+	test("path-limits the seeds commit to the two carriers so pre-staged unrelated files aren't swept in (warren-be12)", async () => {
+		const seedsCtx = await setupWithSeeds();
+		try {
+			const f = fakeFs({
+				"/data/projects/x/y/.seeds/issues.jsonl":
+					'{"id":"warren-1234","status":"open","updatedAt":"2026-05-22T10:00:00Z"}\n',
+				"/data/projects/x/y/.seeds/plans.jsonl":
+					'{"id":"pl-abcd","status":"open","updatedAt":"2026-05-22T10:00:00Z"}\n',
+			});
+			const e = fakeExec({ stagedDelta: true });
+
+			await reapRun({
+				runId: seedsCtx.runId,
+				outcome: "succeeded",
+				repos: seedsCtx.repos,
+				burrowClientPool: await makePool(fakeBurrowClient(makeBurrow()), seedsCtx.repos),
+				fs: f.fs,
+				exec: e.exec,
+			});
+
+			const commit = e.calls
+				.filter((c) => c.cmd === "git")
+				.map((c) => c.args)
+				.find((a) => a[0] === "-c" && a.includes("commit"));
+			// `--only -- .seeds/issues.jsonl .seeds/plans.jsonl` confines the
+			// commit to the two carriers, never an unrelated pre-staged file.
+			expect(commit).toContain("--only");
+			const dashDash = commit?.indexOf("--") ?? -1;
+			expect(dashDash).toBeGreaterThan(-1);
+			expect(commit?.slice(dashDash + 1)).toEqual([".seeds/issues.jsonl", ".seeds/plans.jsonl"]);
 		} finally {
 			await seedsCtx.db.close();
 		}

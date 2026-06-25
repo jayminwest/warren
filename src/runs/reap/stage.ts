@@ -97,8 +97,15 @@ export async function stagePlotForCommit(input: StagePlotForCommitInput): Promis
 			// the project's git hooks (e.g. a pre-commit hook running the full
 			// check:all gauntlet). --no-verify skips pre-commit / commit-msg.
 			"--no-verify",
+			// warren-be12 (#420): path-limit the commit to `.plot/` via
+			// `--only` so any unrelated files an earlier step pre-staged in
+			// the workspace index are not swept into the warren bookkeeping
+			// commit.
+			"--only",
 			"-m",
 			"chore(warren): plot state",
+			"--",
+			".plot/",
 		],
 		{ cwd: workspacePath, timeoutMs: 10_000 },
 	);
@@ -176,9 +183,13 @@ export async function stageSeedsForCommit(input: StageSeedsForCommitInput): Prom
 		timeoutMs: 10_000,
 	});
 
+	// warren-be12 (#420): narrow the staged-delta guard to the two
+	// committable carriers (symmetry with the `--only` pathspecs below) so
+	// an unrelated pre-staged file under `.seeds/` can't spoof a delta.
+	const seedsPathspecs = SEEDS_COMMITTABLE_FILES.map((name) => join(".seeds", name));
 	let hasStagedDelta: boolean;
 	try {
-		await exec.run("git", ["diff", "--cached", "--quiet", "--", ".seeds/"], {
+		await exec.run("git", ["diff", "--cached", "--quiet", "--", ...seedsPathspecs], {
 			cwd: workspacePath,
 			timeoutMs: 10_000,
 		});
@@ -195,8 +206,14 @@ export async function stageSeedsForCommit(input: StageSeedsForCommitInput): Prom
 			"commit",
 			// warren-27d3: skip project git hooks for warren's bookkeeping commit.
 			"--no-verify",
+			// warren-be12 (#420): path-limit the commit to the two seeds
+			// carriers via `--only` so pre-staged unrelated files are not
+			// swept into the warren bookkeeping commit.
+			"--only",
 			"-m",
 			"chore(warren): seeds state",
+			"--",
+			...seedsPathspecs,
 		],
 		{ cwd: workspacePath, timeoutMs: 10_000 },
 	);
