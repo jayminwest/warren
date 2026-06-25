@@ -23,6 +23,7 @@ jobs:
       - run: bun run check:size
       - run: bun run check:debt
       - run: bun run check:dups
+      - run: bun run check:ci-parity
       - run: bun run ui:install
       - run: bun run check:deps
       - run: bun run build:ui
