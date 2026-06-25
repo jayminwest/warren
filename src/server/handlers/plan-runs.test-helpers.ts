@@ -2,7 +2,9 @@ import { BurrowClient, BurrowClientPool } from "../../burrow-client/index.ts";
 import { openDatabase, type WarrenDb } from "../../db/client.ts";
 import { createRepos, type Repos } from "../../db/repos/index.ts";
 import type {
+	ActivatePlanRunPlotInput,
 	AppendPlanRunDispatchedInput,
+	PlanRunPlotActivator,
 	PlanRunPlotAppender,
 } from "../../plan-runs/plot-appender.ts";
 import type { SpawnFn, SpawnOptions, SpawnResult } from "../../projects/clone.ts";
@@ -88,6 +90,7 @@ export interface BuildDepsInput {
 	sdSpawn: SpawnFn;
 	bridges?: BridgeRegistry;
 	planRunPlotAppender?: PlanRunPlotAppender;
+	planRunPlotActivator?: PlanRunPlotActivator;
 	logger?: Logger;
 	plotResolver?: import("../../plots/index.ts").PlotResolver;
 }
@@ -114,6 +117,9 @@ export async function depsFor(input: BuildDepsInput): Promise<ServerDeps> {
 		...(input.planRunPlotAppender !== undefined
 			? { planRunPlotAppender: input.planRunPlotAppender }
 			: {}),
+		...(input.planRunPlotActivator !== undefined
+			? { planRunPlotActivator: input.planRunPlotActivator }
+			: {}),
 		...(input.plotResolver !== undefined ? { plotResolver: input.plotResolver } : {}),
 	};
 }
@@ -126,6 +132,22 @@ export function makePlanRunAppender(
 		async appendPlanRunDispatched(input) {
 			calls.push(input);
 			if (opts.throws) throw opts.throws;
+		},
+	};
+}
+
+export function makePlanRunActivator(
+	opts: { calls?: ActivatePlanRunPlotInput[]; throws?: Error; currentStatus?: string } = {},
+): PlanRunPlotActivator {
+	const calls = opts.calls ?? [];
+	return {
+		async activatePlanRunPlot(input) {
+			calls.push(input);
+			if (opts.throws) throw opts.throws;
+			if (opts.currentStatus !== undefined && opts.currentStatus !== "ready") {
+				return { kind: "skipped", currentStatus: opts.currentStatus };
+			}
+			return { kind: "activated", previousStatus: "ready" };
 		},
 	};
 }

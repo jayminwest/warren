@@ -18,8 +18,10 @@ import {
 	ProjectLacksSeedsError,
 } from "../../plan-runs/errors.ts";
 import {
+	defaultPlanRunPlotActivator,
 	defaultPlanRunPlotAppender,
 	emitPlanRunDispatchedToPlot,
+	promotePlotToActiveOnDispatch,
 } from "../../plan-runs/plot-appender.ts";
 import { cancelRun, resolveDispatcherHandle } from "../../runs/index.ts";
 import { showPlan, showSeed } from "../../seeds-cli/index.ts";
@@ -215,6 +217,19 @@ export function createPlanRunHandler(deps: ServerDeps): RouteHandler {
 				planRunId: result.planRun.id,
 				planId: result.planRun.planId,
 				childrenCount: result.children.length,
+			});
+
+			// (6c) warren-dfff / pl-e381 step 2: promote the bound Plot
+			// `ready` → `active` at dispatch so the auto-done guard
+			// (`status === 'active'`) is reachable via dispatch as well as
+			// operator action. Fire-and-log; never affects the 201.
+			await promotePlotToActiveOnDispatch({
+				activator: deps.planRunPlotActivator ?? defaultPlanRunPlotActivator,
+				logger: deps.logger,
+				plotDir: join(project.localPath, ".plot"),
+				plotId: result.planRun.plotId,
+				handle: resolveDispatcherHandle(result.planRun.dispatcherHandle),
+				planRunId: result.planRun.id,
 			});
 		}
 

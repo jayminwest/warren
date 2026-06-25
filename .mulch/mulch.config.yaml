@@ -31,6 +31,7 @@ domains:
   sandbox: {}
   reap: {}
   quality: {}
+  plan-runs: {}
 governance:
   max_entries: 100
   warn_entries: 150

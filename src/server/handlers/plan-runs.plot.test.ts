@@ -1,7 +1,10 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { WarrenDb } from "../../db/client.ts";
 import type { Repos } from "../../db/repos/index.ts";
-import type { AppendPlanRunDispatchedInput } from "../../plan-runs/plot-appender.ts";
+import type {
+	ActivatePlanRunPlotInput,
+	AppendPlanRunDispatchedInput,
+} from "../../plan-runs/plot-appender.ts";
 import { NO_AUTH } from "../auth.ts";
 import { startServer } from "../server.ts";
 import type { ServeHandle } from "../types.ts";
@@ -9,6 +12,7 @@ import {
 	type CapturedLog,
 	depsFor,
 	makeCaptureLogger,
+	makePlanRunActivator,
 	makePlanRunAppender,
 	makeSdSpawn,
 	planShowResult,
@@ -62,10 +66,12 @@ describe("POST /plan-runs — Plot integration (warren-b89f)", () => {
 			],
 		);
 		const appendCalls: AppendPlanRunDispatchedInput[] = [];
+		const activateCalls: ActivatePlanRunPlotInput[] = [];
 		const deps = await depsFor({
 			repos,
 			sdSpawn,
 			planRunPlotAppender: makePlanRunAppender({ calls: appendCalls }),
+			planRunPlotActivator: makePlanRunActivator({ calls: activateCalls }),
 		});
 		handle = startServer(deps, {
 			transport: { kind: "tcp", hostname: "127.0.0.1", port: 0 },
@@ -96,6 +102,12 @@ describe("POST /plan-runs — Plot integration (warren-b89f)", () => {
 		expect(call.planRunId).toBe(body.planRun.id);
 		expect(call.planId).toBe("pl-emit");
 		expect(call.childrenCount).toBe(3);
+
+		// warren-dfff: dispatch promotes the bound Plot ready → active.
+		expect(activateCalls).toHaveLength(1);
+		expect(activateCalls[0]?.plotDir).toBe("/tmp/plotted/.plot");
+		expect(activateCalls[0]?.plotId).toBe("plot-emit1");
+		expect(activateCalls[0]?.handle).toBe("alice");
 	});
 
 	test("does NOT emit plan_run_dispatched when plotId is omitted (warren-b89f)", async () => {
@@ -113,10 +125,12 @@ describe("POST /plan-runs — Plot integration (warren-b89f)", () => {
 			],
 		);
 		const appendCalls: AppendPlanRunDispatchedInput[] = [];
+		const activateCalls: ActivatePlanRunPlotInput[] = [];
 		const deps = await depsFor({
 			repos,
 			sdSpawn,
 			planRunPlotAppender: makePlanRunAppender({ calls: appendCalls }),
+			planRunPlotActivator: makePlanRunActivator({ calls: activateCalls }),
 		});
 		handle = startServer(deps, {
 			transport: { kind: "tcp", hostname: "127.0.0.1", port: 0 },
@@ -135,6 +149,8 @@ describe("POST /plan-runs — Plot integration (warren-b89f)", () => {
 		});
 		expect(res.status).toBe(201);
 		expect(appendCalls).toHaveLength(0);
+		// No plotId → no promotion either.
+		expect(activateCalls).toHaveLength(0);
 	});
 
 	test("defaults to handle 'operator' when dispatcherHandle is omitted (warren-b89f)", async () => {
@@ -273,6 +289,96 @@ describe("POST /plan-runs — Plot integration (warren-b89f)", () => {
 		// Row still persists — failure was non-fatal.
 		const persisted = await repos.planRuns.require(body.planRun.id);
 		expect(persisted.plotId).toBe("plot-f");
+	});
+
+	test("logs plan_run.plot_activation_failed when the activator throws; POST still returns 201 (warren-dfff)", async () => {
+		const sdSpawn = makeSdSpawn(
+			[],
+			[
+				{
+					match: (cmd) => cmd[1] === "plan" && cmd[2] === "show",
+					result: planShowResult("pl-act-fail", "active", ["wa-a"]),
+				},
+				{
+					match: (cmd) => cmd[1] === "show" && cmd[2] === "wa-a",
+					result: seedShowResult("wa-a", "open"),
+				},
+			],
+		);
+		const captured: CapturedLog[] = [];
+		const deps = await depsFor({
+			repos,
+			sdSpawn,
+			planRunPlotAppender: makePlanRunAppender({}),
+			planRunPlotActivator: makePlanRunActivator({ throws: new Error("plot locked") }),
+			logger: makeCaptureLogger(captured),
+		});
+		handle = startServer(deps, {
+			transport: { kind: "tcp", hostname: "127.0.0.1", port: 0 },
+			auth: NO_AUTH,
+			logger: silentLogger,
+		});
+
+		const res = await fetch(`${tcpUrl(handle)}/plan-runs`, {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({
+				project: plottedProjectId,
+				planId: "pl-act-fail",
+				agent: "claude-code",
+				plotId: "plot-af",
+			}),
+		});
+		expect(res.status).toBe(201);
+		const failureLog = captured.find((c) => c.msg === "plan_run.plot_activation_failed");
+		expect(failureLog).toBeDefined();
+		expect(failureLog?.level).toBe("warn");
+		expect((failureLog?.obj as { err?: string }).err).toContain("plot locked");
+	});
+
+	test("logs plan_run.plot_activation_skipped when the Plot is not ready (warren-dfff)", async () => {
+		const sdSpawn = makeSdSpawn(
+			[],
+			[
+				{
+					match: (cmd) => cmd[1] === "plan" && cmd[2] === "show",
+					result: planShowResult("pl-act-skip", "active", ["wa-a"]),
+				},
+				{
+					match: (cmd) => cmd[1] === "show" && cmd[2] === "wa-a",
+					result: seedShowResult("wa-a", "open"),
+				},
+			],
+		);
+		const captured: CapturedLog[] = [];
+		const deps = await depsFor({
+			repos,
+			sdSpawn,
+			planRunPlotAppender: makePlanRunAppender({}),
+			planRunPlotActivator: makePlanRunActivator({ currentStatus: "active" }),
+			logger: makeCaptureLogger(captured),
+		});
+		handle = startServer(deps, {
+			transport: { kind: "tcp", hostname: "127.0.0.1", port: 0 },
+			auth: NO_AUTH,
+			logger: silentLogger,
+		});
+
+		const res = await fetch(`${tcpUrl(handle)}/plan-runs`, {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({
+				project: plottedProjectId,
+				planId: "pl-act-skip",
+				agent: "claude-code",
+				plotId: "plot-as",
+			}),
+		});
+		expect(res.status).toBe(201);
+		const skipLog = captured.find((c) => c.msg === "plan_run.plot_activation_skipped");
+		expect(skipLog).toBeDefined();
+		expect(skipLog?.level).toBe("warn");
+		expect((skipLog?.obj as { currentStatus?: string }).currentStatus).toBe("active");
 	});
 });
 

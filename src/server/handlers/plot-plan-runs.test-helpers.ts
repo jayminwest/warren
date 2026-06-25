@@ -12,7 +12,7 @@ import type { Attachment } from "@os-eco/plot-cli";
 import { BurrowClient, BurrowClientPool } from "../../burrow-client/index.ts";
 import type { Repos } from "../../db/repos/index.ts";
 import type { ProjectRow } from "../../db/schema.ts";
-import type { PlanRunPlotAppender } from "../../plan-runs/plot-appender.ts";
+import type { PlanRunPlotActivator, PlanRunPlotAppender } from "../../plan-runs/plot-appender.ts";
 import type {
 	PlanSynthesizer,
 	SynthesizePlanInput,
@@ -162,6 +162,7 @@ export interface BuildDepsInput {
 	sdSpawn: SpawnFn;
 	bridges?: BridgeRegistry;
 	planRunPlotAppender?: PlanRunPlotAppender;
+	planRunPlotActivator?: PlanRunPlotActivator;
 	planSynthesizer?: PlanSynthesizer;
 	plotReader?: PlotReader;
 	plotResolver?: PlotResolver;
@@ -189,6 +190,9 @@ export async function depsFor(input: BuildDepsInput): Promise<ServerDeps> {
 		seedsCli: { sdBinary: "sd", spawn: input.sdSpawn },
 		...(input.planRunPlotAppender !== undefined
 			? { planRunPlotAppender: input.planRunPlotAppender }
+			: {}),
+		...(input.planRunPlotActivator !== undefined
+			? { planRunPlotActivator: input.planRunPlotActivator }
 			: {}),
 		...(input.planSynthesizer !== undefined ? { planSynthesizer: input.planSynthesizer } : {}),
 		...(input.plotReader !== undefined ? { plotReader: input.plotReader } : {}),

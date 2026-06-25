@@ -13,7 +13,7 @@ import type { BurrowClientPool } from "../burrow-client/pool.ts";
 import type { AnyWarrenDb } from "../db/client.ts";
 import type { Repos } from "../db/repos/index.ts";
 import type { RunMode } from "../db/schema.ts";
-import type { PlanRunPlotAppender } from "../plan-runs/plot-appender.ts";
+import type { PlanRunPlotActivator, PlanRunPlotAppender } from "../plan-runs/plot-appender.ts";
 import type { PlanSynthesizer } from "../plot-plan-runs/index.ts";
 import type { PreviewAuth } from "../preview/cookie.ts";
 import type { SpawnFn } from "../projects/clone.ts";
@@ -243,6 +243,13 @@ export interface ServerDeps {
 	 * without touching disk.
 	 */
 	readonly planRunPlotAppender?: PlanRunPlotAppender;
+	/**
+	 * Test seam for the dispatch-time `ready` → `active` Plot promotion in
+	 * the plan-run handlers (warren-dfff / pl-e381 step 2). Production omits
+	 * this; falls back to `defaultPlanRunPlotActivator` so the auto-done
+	 * guard (`status === 'active'`) is reachable via dispatch.
+	 */
+	readonly planRunPlotActivator?: PlanRunPlotActivator;
 	/**
 	 * Server-side Plot aggregator (warren-c167 / pl-9d6a step 2). Used by
 	 * `GET /plots` to fan out `UserPlotClient.query` across every

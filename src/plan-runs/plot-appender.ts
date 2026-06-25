@@ -73,6 +73,108 @@ export const defaultPlanRunPlotAppender: PlanRunPlotAppender = {
 	},
 };
 
+export interface ActivatePlanRunPlotInput {
+	readonly plotDir: string;
+	readonly plotId: string;
+	readonly handle: string;
+}
+
+export type PlanRunPlotActivationResult =
+	| { readonly kind: "activated"; readonly previousStatus: "ready" }
+	| { readonly kind: "skipped"; readonly currentStatus: string }
+	| { readonly kind: "failed"; readonly reason: string };
+
+export interface PlanRunPlotActivator {
+	/**
+	 * Read the Plot's current status; if `ready`, call `setStatus('active')`
+	 * and return `kind: 'activated'`. Any other status returns
+	 * `kind: 'skipped'` with the observed status so warren never tramples an
+	 * operator-driven transition. Any throw bubbles to the wrapper, which
+	 * converts it to `kind: 'failed'`.
+	 */
+	activatePlanRunPlot(input: ActivatePlanRunPlotInput): Promise<PlanRunPlotActivationResult>;
+}
+
+/**
+ * Default activator — opens a `UserPlotClient` against the project's
+ * `.plot/`, reads status, and promotes `ready` → `active` so the
+ * auto-done guard (`status === 'active'`) is reachable via dispatch as
+ * well as operator action. Mirrors `defaultPlotStatusSetter` in
+ * src/plan-runs/plot-transition.ts.
+ */
+export const defaultPlanRunPlotActivator: PlanRunPlotActivator = {
+	async activatePlanRunPlot(input) {
+		const client = new UserPlotClient({
+			dir: input.plotDir,
+			actor: { kind: "user", handle: input.handle, raw: `user:${input.handle}` },
+		});
+		try {
+			const plot = client.get(input.plotId);
+			const snapshot = await plot.read();
+			if (snapshot.status !== "ready") {
+				return { kind: "skipped", currentStatus: snapshot.status };
+			}
+			await plot.setStatus("active");
+			return { kind: "activated", previousStatus: "ready" };
+		} finally {
+			client.close();
+		}
+	},
+};
+
+export interface PromotePlotToActiveInput {
+	readonly activator: PlanRunPlotActivator;
+	readonly logger: Logger;
+	readonly plotDir: string;
+	readonly plotId: string;
+	readonly handle: string;
+	readonly planRunId: string;
+}
+
+/**
+ * Best-effort wrapper around the `ready` → `active` promotion. Logs
+ * `plan_run.plot_activated` (info, transitioned), `plan_run.plot_activation_skipped`
+ * (warn, non-`ready` status), or `plan_run.plot_activation_failed` (warn,
+ * threw). Called at dispatch time right after `emitPlanRunDispatchedToPlot`;
+ * a failure never affects the POST /plan-runs response, mirroring the
+ * append posture.
+ */
+export async function promotePlotToActiveOnDispatch(
+	input: PromotePlotToActiveInput,
+): Promise<PlanRunPlotActivationResult> {
+	let result: PlanRunPlotActivationResult;
+	try {
+		result = await input.activator.activatePlanRunPlot({
+			plotDir: input.plotDir,
+			plotId: input.plotId,
+			handle: input.handle,
+		});
+	} catch (err) {
+		const reason = err instanceof Error ? err.message : String(err);
+		input.logger.warn(
+			{ planRunId: input.planRunId, plotId: input.plotId, err: reason },
+			"plan_run.plot_activation_failed",
+		);
+		return { kind: "failed", reason };
+	}
+	if (result.kind === "skipped") {
+		input.logger.warn(
+			{
+				planRunId: input.planRunId,
+				plotId: input.plotId,
+				currentStatus: result.currentStatus,
+			},
+			"plan_run.plot_activation_skipped",
+		);
+	} else if (result.kind === "activated") {
+		input.logger.info(
+			{ planRunId: input.planRunId, plotId: input.plotId },
+			"plan_run.plot_activated",
+		);
+	}
+	return result;
+}
+
 export interface EmitPlanRunDispatchedInput {
 	readonly appender: PlanRunPlotAppender;
 	readonly logger: Logger;

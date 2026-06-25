@@ -17,7 +17,10 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { openDatabase, type WarrenDb } from "../../db/client.ts";
 import { createRepos, type Repos } from "../../db/repos/index.ts";
 import type { ProjectRow } from "../../db/schema.ts";
-import type { AppendPlanRunDispatchedInput } from "../../plan-runs/plot-appender.ts";
+import type {
+	ActivatePlanRunPlotInput,
+	AppendPlanRunDispatchedInput,
+} from "../../plan-runs/plot-appender.ts";
 import { NO_AUTH } from "../auth.ts";
 import { startServer } from "../server.ts";
 import type { ServeHandle } from "../types.ts";
@@ -97,6 +100,7 @@ describe("POST /plot-plan-runs", () => {
 		]);
 		const synthesizeCalls: SynthesizeCall[] = [];
 		const appendCalls: AppendPlanRunDispatchedInput[] = [];
+		const activateCalls: ActivatePlanRunPlotInput[] = [];
 		const deps = await depsFor({
 			repos,
 			sdSpawn,
@@ -121,6 +125,12 @@ describe("POST /plot-plan-runs", () => {
 			planRunPlotAppender: {
 				async appendPlanRunDispatched(input) {
 					appendCalls.push(input);
+				},
+			},
+			planRunPlotActivator: {
+				async activatePlanRunPlot(input) {
+					activateCalls.push(input);
+					return { kind: "activated", previousStatus: "ready" };
 				},
 			},
 		});
@@ -161,6 +171,10 @@ describe("POST /plot-plan-runs", () => {
 		expect(appendCalls[0]?.plotId).toBe("plot-deadbeef");
 		expect(appendCalls[0]?.handle).toBe("alice");
 		expect(appendCalls[0]?.childrenCount).toBe(3);
+
+		expect(activateCalls).toHaveLength(1);
+		expect(activateCalls[0]?.plotId).toBe("plot-deadbeef");
+		expect(activateCalls[0]?.handle).toBe("alice");
 	});
 
 	test("filters closed seeds + sd_plan attachments before synthesis", async () => {

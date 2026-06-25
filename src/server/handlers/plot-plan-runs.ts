@@ -15,8 +15,10 @@ import {
 	ProjectLacksSeedsError,
 } from "../../plan-runs/errors.ts";
 import {
+	defaultPlanRunPlotActivator,
 	defaultPlanRunPlotAppender,
 	emitPlanRunDispatchedToPlot,
+	promotePlotToActiveOnDispatch,
 } from "../../plan-runs/plot-appender.ts";
 import { NoDispatchableSeedsError } from "../../plot-plan-runs/index.ts";
 import {
@@ -254,6 +256,18 @@ function createPlotPlanRunHandler(deps: ServerDeps): RouteHandler {
 			planRunId: result.planRun.id,
 			planId: result.planRun.planId,
 			childrenCount: result.children.length,
+		});
+
+		// Promote the bound Plot `ready` → `active` at dispatch (warren-dfff
+		// / pl-e381 step 2) so the auto-done guard is reachable via dispatch.
+		// Fire-and-log; mirrors POST /plan-runs and never affects the 201.
+		await promotePlotToActiveOnDispatch({
+			activator: deps.planRunPlotActivator ?? defaultPlanRunPlotActivator,
+			logger: deps.logger,
+			plotDir: join(project.localPath, ".plot"),
+			plotId,
+			handle: resolveDispatcherHandle(result.planRun.dispatcherHandle),
+			planRunId: result.planRun.id,
 		});
 
 		// (10) response — POST /plan-runs's `{planRun, children}` shape,

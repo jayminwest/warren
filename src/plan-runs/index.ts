@@ -42,11 +42,17 @@ export {
 	ProjectLacksSeedsError,
 } from "./errors.ts";
 export {
+	type ActivatePlanRunPlotInput,
 	type AppendPlanRunDispatchedInput,
+	defaultPlanRunPlotActivator,
 	defaultPlanRunPlotAppender,
 	type EmitPlanRunDispatchedInput,
 	emitPlanRunDispatchedToPlot,
+	type PlanRunPlotActivationResult,
+	type PlanRunPlotActivator,
 	type PlanRunPlotAppender,
+	type PromotePlotToActiveInput,
+	promotePlotToActiveOnDispatch,
 } from "./plot-appender.ts";
 export {
 	type AutoTransitionPlotToDoneInput,

@@ -9,9 +9,13 @@
 import { describe, expect, test } from "bun:test";
 import type { Logger } from "../server/types.ts";
 import {
+	type ActivatePlanRunPlotInput,
 	type AppendPlanRunDispatchedInput,
 	emitPlanRunDispatchedToPlot,
+	type PlanRunPlotActivationResult,
+	type PlanRunPlotActivator,
 	type PlanRunPlotAppender,
+	promotePlotToActiveOnDispatch,
 } from "./plot-appender.ts";
 
 interface CapturedLog {
@@ -113,5 +117,86 @@ describe("emitPlanRunDispatchedToPlot", () => {
 		const failure = captured.find((c) => c.msg === "plan_run.plot_append_failed");
 		expect(failure).toBeDefined();
 		expect((failure?.obj as { err?: string }).err).toBe("stringy failure");
+	});
+});
+
+function makeActivator(opts: {
+	calls?: ActivatePlanRunPlotInput[];
+	result?: PlanRunPlotActivationResult;
+	throws?: unknown;
+}): PlanRunPlotActivator {
+	const calls = opts.calls ?? [];
+	return {
+		async activatePlanRunPlot(input) {
+			calls.push(input);
+			if (opts.throws !== undefined) throw opts.throws;
+			return opts.result ?? { kind: "activated", previousStatus: "ready" };
+		},
+	};
+}
+
+describe("promotePlotToActiveOnDispatch", () => {
+	test("forwards input and logs plan_run.plot_activated on transition", async () => {
+		const calls: ActivatePlanRunPlotInput[] = [];
+		const captured: CapturedLog[] = [];
+		const result = await promotePlotToActiveOnDispatch({
+			activator: makeActivator({ calls }),
+			logger: makeLogger(captured),
+			plotDir: "/tmp/p/.plot",
+			plotId: "plot_x",
+			handle: "alice",
+			planRunId: "plr_1",
+		});
+		expect(result).toEqual({ kind: "activated", previousStatus: "ready" });
+		expect(calls[0]).toEqual({ plotDir: "/tmp/p/.plot", plotId: "plot_x", handle: "alice" });
+		const log = captured.find((c) => c.msg === "plan_run.plot_activated");
+		expect(log?.level).toBe("info");
+	});
+
+	test("logs plan_run.plot_activation_skipped when status is not ready", async () => {
+		const captured: CapturedLog[] = [];
+		const result = await promotePlotToActiveOnDispatch({
+			activator: makeActivator({ result: { kind: "skipped", currentStatus: "drafting" } }),
+			logger: makeLogger(captured),
+			plotDir: "/tmp/p/.plot",
+			plotId: "plot_x",
+			handle: "alice",
+			planRunId: "plr_1",
+		});
+		expect(result).toEqual({ kind: "skipped", currentStatus: "drafting" });
+		const log = captured.find((c) => c.msg === "plan_run.plot_activation_skipped");
+		expect(log?.level).toBe("warn");
+		expect((log?.obj as { currentStatus?: string }).currentStatus).toBe("drafting");
+	});
+
+	test("logs plan_run.plot_activation_failed and swallows when activator throws", async () => {
+		const captured: CapturedLog[] = [];
+		const result = await promotePlotToActiveOnDispatch({
+			activator: makeActivator({ throws: new Error("boom") }),
+			logger: makeLogger(captured),
+			plotDir: "/tmp/p/.plot",
+			plotId: "plot_x",
+			handle: "alice",
+			planRunId: "plr_1",
+		});
+		expect(result).toEqual({ kind: "failed", reason: "boom" });
+		const log = captured.find((c) => c.msg === "plan_run.plot_activation_failed");
+		expect(log?.level).toBe("warn");
+		expect((log?.obj as { err?: string }).err).toBe("boom");
+	});
+
+	test("stringifies a non-Error throw value for the failure log", async () => {
+		const captured: CapturedLog[] = [];
+		const result = await promotePlotToActiveOnDispatch({
+			activator: makeActivator({ throws: "stringy" }),
+			logger: makeLogger(captured),
+			plotDir: "/tmp/p/.plot",
+			plotId: "plot_y",
+			handle: "op",
+			planRunId: "plr_2",
+		});
+		expect(result).toEqual({ kind: "failed", reason: "stringy" });
+		const log = captured.find((c) => c.msg === "plan_run.plot_activation_failed");
+		expect((log?.obj as { err?: string }).err).toBe("stringy");
 	});
 });
