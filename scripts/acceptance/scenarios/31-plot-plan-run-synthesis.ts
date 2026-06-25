@@ -15,7 +15,9 @@
  *      POST-time, every child run inherits `PLOT_ID`+`PLOT_ACTOR` env
  *      injection (acceptance-soft-skip on warren-a346 today, same as
  *      scenarios 25/27/29), per-child `run_dispatched` appends to the
- *      Plot events.jsonl, and the Plot auto-transitions
+ *      Plot events.jsonl. The bound Plot starts at `ready`; dispatch
+ *      promotes it `ready → active` (promotePlotToActiveOnDispatch,
+ *      warren-dfff / #487), then the Plot auto-transitions
  *      `active → done` on `plan_succeeded`.
  *   3. Re-dispatching the same Plot mints a SECOND synthesized plan
  *      (no clobber, no idempotency) — SPEC §11.Q acceptance #6.
@@ -47,6 +49,7 @@ import { AcceptanceError, assertEqual, assertTrue, type Scenario } from "../lib/
 import { WarrenHttp } from "../lib/http.ts";
 import { type BootHandle, bootInProc } from "../lib/inproc.ts";
 import {
+	assertPlotPromotedToActiveOnDispatch,
 	fetchAllPlanRunEvents,
 	fetchAllRunEvents,
 	findTextEvent,
@@ -272,6 +275,17 @@ export const scenario: Scenario = {
 				typeof created.parentSeedId === "string" && created.parentSeedId.length > 0,
 				`synthesis happy path: parentSeedId is a non-empty string (got '${created.parentSeedId}')`,
 			);
+
+			// Dispatch promotes the Plot `ready` → `active` at POST time
+			// (promotePlotToActiveOnDispatch, warren-dfff / #487) so the
+			// auto-done guard (status === 'active') is reachable via dispatch
+			// as well as operator action.
+			await assertPlotPromotedToActiveOnDispatch({
+				plotJsonPath,
+				plotEventsPath,
+				timeoutMs: PLOT_FILE_POLL_TIMEOUT_MS,
+				label: "synthesis happy path",
+			});
 
 			// Children equal the OPEN, non-sd_plan attachments only —
 			// closed (SEED_CLOSED) and sd_plan (SD_PLAN_REF) refs were

@@ -2446,6 +2446,12 @@ POST /plan-runs { plot_id }
    │    └─►  appends `plan_run_dispatched` to the bound Plot
    │         actor=user:<dispatcherHandle>, payload={plan_run_id, plan_id, children_count}
    │
+   ├─►  promotePlotToActiveOnDispatch     (fire-and-log; failure ≠ POST failure)
+   │    └─►  read status; if `ready` → setStatus('active') as user:<dispatcherHandle>
+   │         (any other status skips; this is what makes the auto-done
+   │          guard `status === 'active'` reachable via dispatch as well
+   │          as operator action)
+   │
    ▼
 [ coordinator ticks ]
    │
@@ -2499,6 +2505,20 @@ PlanRun creation because `events` is keyed by `run_id` and no child
 run exists yet — logger-level surfacing mirrors the
 `plan_run.cancel_child_failed` posture in `src/server/handlers.ts`.
 
+**`ready` → `active` promotion at dispatch.** Immediately after
+`emitPlanRunDispatchedToPlot`, the handler edge fires
+`promotePlotToActiveOnDispatch` (`src/plan-runs/plot-appender.ts`).
+It opens a `UserPlotClient`, reads the bound Plot's status, and — if
+still `ready` — calls `setStatus('active')` as
+`user:<dispatcherHandle>`. Any other status is left untouched
+(`kind: 'skipped'`). This is best-effort with the same fire-and-log
+posture as the append: `plan_run.plot_activated` (info, transitioned),
+`plan_run.plot_activation_skipped` (warn, non-`ready` status), or
+`plan_run.plot_activation_failed` (warn, threw); none affect the
+`POST /plan-runs` response. The promotion exists so a Plot dispatched
+straight from `ready` reaches `active` automatically, making the
+auto-done guard below reachable without a separate operator action.
+
 **Auto-done transition contract.** When the coordinator reaches
 `plan_succeeded` on a PlanRun with a non-null `plot_id`, the
 post-transition hook fires `autoTransitionPlotToDone`
@@ -2509,7 +2529,10 @@ post-transition hook fires `autoTransitionPlotToDone`
    ACL (plot SPEC §6) without needing a synthetic `system:warren`
    actor (rejected alternative #2 on `pl-7937`).
 2. Read the Plot's current status. **Guard:**
-   `plot.status === 'active'`. Any other status — `drafting`, `ready`,
+   `plot.status === 'active'`. The Plot reaches `active` either by an
+   operator transition or by the `ready` → `active` dispatch promotion
+   above, so a Plot dispatched straight from `ready` still satisfies
+   this guard at completion. Any other status — `drafting`, `ready`,
    `done`, `archived` — yields `kind: 'skipped'` and a
    `plan_run.plot_status_skipped` warren event with `{planRunId,
    plotId, currentStatus}` so warren never tramples an operator-driven

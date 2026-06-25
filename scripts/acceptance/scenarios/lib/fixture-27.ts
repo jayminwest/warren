@@ -25,7 +25,9 @@ export interface BuildPlanRunPlotFixtureInput {
 /**
  * Build a fixture mirroring scenario 26's `.seeds/`-enabled layout plus a
  * committed `.plot/` directory holding one Plot pre-transitioned to
- * `active`. Returns the plot id so the scenario can dispatch with it.
+ * `ready`. The scenario asserts dispatch promotes it `ready` → `active`,
+ * then the final child merge flips it `active` → `done`. Returns the plot
+ * id so the scenario can dispatch with it.
  *
  * Two plans land in `.seeds/plans.jsonl` so the scenario can hit both
  * dispatch shapes against the same project without re-cloning.
@@ -71,10 +73,11 @@ export async function buildPlanRunPlotFixture(
 	await runIn(input.fixturePath, ["chmod", "+x", "tools/claude-code-stub-agent.sh"], env);
 
 	// `plot init` with a user actor (Plot SPEC §6 forbids agent actors on
-	// plot_created). Then transition drafting → ready → active so the
-	// coordinator's auto-done has an `active` plot to terminate. Without
-	// this the auto-done would correctly skip-with-currentStatus=drafting,
-	// which is a different code path (acceptance #9).
+	// plot_created). Then transition drafting → ready and STOP: dispatch
+	// itself promotes `ready` → `active` (promotePlotToActiveOnDispatch,
+	// warren-dfff), and the coordinator's auto-done flips `active` → `done`.
+	// Leaving the Plot at `ready` exercises the full promotion chain rather
+	// than pre-seeding `active`.
 	const plotEnv: Record<string, string> = { ...env, PLOT_ACTOR: "user:acceptance" };
 	await runIn(input.fixturePath, ["plot", "init", "scenario-27"], plotEnv);
 	const list = await runIn(input.fixturePath, ["plot", "list", "--json"], plotEnv);
@@ -89,7 +92,6 @@ export async function buildPlanRunPlotFixture(
 		throw new AcceptanceError(`scenario-27 fixture: plot list --json missing id: ${list.stdout}`);
 	}
 	await runIn(input.fixturePath, ["plot", "status", plotId, "ready"], plotEnv);
-	await runIn(input.fixturePath, ["plot", "status", plotId, "active"], plotEnv);
 
 	await runIn(input.fixturePath, ["git", "add", "."], env);
 	await runIn(

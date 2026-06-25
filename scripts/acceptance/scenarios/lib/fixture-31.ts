@@ -85,7 +85,10 @@ export async function buildPlottedFixture(
 
 	const plotEnv: Record<string, string> = { ...env, PLOT_ACTOR: "user:acceptance" };
 
-	// Happy Plot: 3 open + 1 closed + 1 sd_plan-shaped attachments.
+	// Happy Plot: 3 open + 1 closed + 1 sd_plan-shaped attachments. Left at
+	// `ready`: POST /plot-plan-runs promotes it `ready` → `active` at dispatch
+	// (promotePlotToActiveOnDispatch, warren-dfff), then auto-done flips it to
+	// `done` — exercising the full promotion chain.
 	await runIn(input.fixturePath, ["plot", "init", "scenario-31-happy"], plotEnv);
 	const happyList = await runIn(input.fixturePath, ["plot", "list", "--json"], plotEnv);
 	const happyPlots = JSON.parse(happyList.stdout) as ReadonlyArray<{ id: string }>;
@@ -96,7 +99,6 @@ export async function buildPlottedFixture(
 		);
 	}
 	await runIn(input.fixturePath, ["plot", "status", happyPlotId, "ready"], plotEnv);
-	await runIn(input.fixturePath, ["plot", "status", happyPlotId, "active"], plotEnv);
 	await runIn(
 		input.fixturePath,
 		["plot", "attach", happyPlotId, `seeds_issue:${SEED_A}`, "--role", "primary"],

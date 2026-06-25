@@ -1,6 +1,41 @@
 import { readFile } from "node:fs/promises";
+import { AcceptanceError, assertEqual } from "../../lib/assert.ts";
 import type { WarrenHttp } from "../../lib/http.ts";
+import { waitForPlotStatus } from "./poll-helpers.ts";
 import type { EventRow, ParsedPlotEvent } from "./types.ts";
+
+/**
+ * Assert the dispatch-time `ready` → `active` Plot promotion
+ * (promotePlotToActiveOnDispatch, warren-dfff / #487): the `<plotId>.json`
+ * snapshot reaches `active` and a `status_changed → active` event authored
+ * by `user:operator` lands in the on-disk events.jsonl. This is what makes
+ * the auto-done guard (`status === 'active'`) reachable via dispatch as well
+ * as operator action.
+ */
+export async function assertPlotPromotedToActiveOnDispatch(input: {
+	readonly plotJsonPath: string;
+	readonly plotEventsPath: string;
+	readonly timeoutMs: number;
+	readonly label: string;
+}): Promise<void> {
+	const snapshot = await waitForPlotStatus(input.plotJsonPath, "active", input.timeoutMs);
+	assertEqual(
+		snapshot.status,
+		"active",
+		`${input.label}: dispatch promoted .plot/<id>.json status ready → active (warren-dfff)`,
+	);
+	const promoted = parsePlotLines(await readPlotEventLines(input.plotEventsPath)).find((ev) => {
+		if (ev.type !== "status_changed") return false;
+		if (ev.actor !== "user:operator") return false;
+		const data = ev.data as { to?: unknown; status?: unknown } | null;
+		return (data?.to ?? data?.status) === "active";
+	});
+	if (promoted === undefined) {
+		throw new AcceptanceError(
+			`${input.label}: missing dispatch-time 'status_changed' → active by user:operator in on-disk events.jsonl`,
+		);
+	}
+}
 
 export async function fetchAllPlanRunEvents(
 	http: WarrenHttp,

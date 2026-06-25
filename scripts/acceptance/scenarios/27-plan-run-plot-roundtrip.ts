@@ -20,8 +20,9 @@
  * `WARREN_GH_FETCH_OVERRIDE=merged` shim and `WARREN_STUB_NO_COMMIT_SEEDS`
  * knob stay scoped. The fixture commits both a `.seeds/` directory (config
  * + issues + plans) and a `.plot/` directory (one pre-init Plot transitioned
- * through drafting → ready → active so the auto-done transition is the only
- * `active → done` step left).
+ * through drafting → ready and left there: dispatch promotes it `ready` →
+ * `active` (promotePlotToActiveOnDispatch, warren-dfff) and the coordinator's
+ * auto-done flips it `active` → `done`, exercising the full promotion chain).
  *
  * Two plans live in the fixture so we can hit both the plot-bound dispatch
  * and the byte-identical baseline against the same project:
@@ -34,15 +35,12 @@
  * Plot append durability: host-side appenders (the `plan_run_dispatched`
  * write in createPlanRunHandler and the per-child `run_dispatched` write
  * in spawnRun's defaultPlotAppender) write to the project clone's
- * `.plot/<plotId>.events.jsonl` WITHOUT committing. Historically
- * `spawnRun`'s pre-child `refreshProject` (`git reset --hard origin/<ref>`)
- * wiped those uncommitted lines, so the scenario tailed the file every
- * 100ms to accumulate transient writes. That workaround is gone: as of
- * warren-fdd2 (pl-d4d6 step 1) refreshProjectClone snapshots `.plot/`
- * out-of-tree before the reset and restores it after, so every host-side
- * append persists across child dispatches and assertions read directly
- * from the on-disk events.jsonl at the end of the plan-run
- * (warren-aa63 / pl-d4d6 step 3 removes the tail).
+ * `.plot/<plotId>.events.jsonl` WITHOUT committing. As of warren-fdd2
+ * (pl-d4d6 step 1) refreshProjectClone snapshots `.plot/` out-of-tree
+ * before spawnRun's pre-child `git reset --hard` and restores it after,
+ * so every host-side append persists across child dispatches and
+ * assertions read directly from the on-disk events.jsonl at the end of
+ * the plan-run (warren-aa63 / pl-d4d6 step 3 removed the earlier tail).
  *
  * Assertions:
  *   1. POST /plan-runs with plot_id → 201 with planRun.plotId set; the
@@ -56,12 +54,15 @@
  *   4. Per-child `run_dispatched` lands in events.jsonl for every child —
  *      including the trivial-merge case — via the unchanged Phase 1
  *      host-side appender (acceptance #7, warren-e848).
- *   5. Plot status flips `active → done` after the coordinator's
- *      `plan_succeeded` arm, verified two ways: (a) the persisted
- *      `<plotId>.json` snapshot's `status` field, and (b) a
- *      `status_changed` event in events.jsonl authored by `user:operator`
- *      (acceptance #8, warren-b290). The events stream on the anchor
- *      child run surfaces `plan_run.plot_auto_done`.
+ *   5a. Dispatch promotes the Plot `ready → active` at POST time
+ *      (promotePlotToActiveOnDispatch, warren-dfff / #487) — snapshot
+ *      reaches `active` and a `status_changed → active` by `user:operator`
+ *      lands, making the auto-done guard reachable via dispatch.
+ *   5b. Plot status flips `active → done` after the coordinator's
+ *      `plan_succeeded` arm: (a) the persisted `<plotId>.json` snapshot,
+ *      and (b) a `status_changed` by `user:operator` in events.jsonl
+ *      (acceptance #8, warren-b290). The anchor child run's event stream
+ *      surfaces `plan_run.plot_auto_done`.
  *   6. SOFT_SKIP (warren-a346, shared with scenario 25): the per-child
  *      sandbox carrying `PLOT_ID=<id>` + `PLOT_ACTOR=agent:<agent>:<run-id>`.
  *      The claude-stub agent emits these as a `text` envelope when present;
@@ -90,6 +91,7 @@ import { AcceptanceError, assertEqual, assertTrue, type Scenario } from "../lib/
 import { WarrenHttp } from "../lib/http.ts";
 import { type BootHandle, bootInProc } from "../lib/inproc.ts";
 import {
+	assertPlotPromotedToActiveOnDispatch,
 	fetchAllPlanRunEvents,
 	fetchAllRunEvents,
 	findTextEvent,
@@ -267,6 +269,17 @@ export const scenario: Scenario = {
 					"plot-bound PlanRun: plan_run_dispatched actor is user:<dispatcherHandle> (default 'operator')",
 				);
 
+				// (warren-dfff / #487) dispatch promoted the Plot ready → active
+				// at POST time via promotePlotToActiveOnDispatch — so the
+				// auto-done guard (status === 'active') is reachable without
+				// any operator transition.
+				await assertPlotPromotedToActiveOnDispatch({
+					plotJsonPath,
+					plotEventsPath,
+					timeoutMs: PLOT_FILE_POLL_TIMEOUT_MS,
+					label: "plot-bound PlanRun",
+				});
+
 				// (warren-e848 unchanged path) per-child run_dispatched
 				// events accumulate for every child including the
 				// trivial-merge SEED_C — defaultPlotAppender fires at spawn,
@@ -298,13 +311,11 @@ export const scenario: Scenario = {
 				}
 				// Post-warren-343a: even when the agent commits nothing,
 				// reap's stagePlotForCommit lands a `chore(warren): plot
-				// state` commit on the workspace branch carrying the
-				// per-child `run_dispatched` line (and any other host-side
-				// appender writes) back to origin. commitsAhead is therefore
-				// ≥ 1 and reap opens a PR — the "trivial-merge no-PR"
-				// contract only holds for plot-less projects (scenario 26
-				// covers that path). The child still reaches `merged` via
-				// the WARREN_GH_FETCH_OVERRIDE=merged stub.
+				// state` commit carrying the per-child `run_dispatched` line
+				// back to origin. commitsAhead is therefore ≥ 1 and reap
+				// opens a PR — the "trivial-merge no-PR" contract only holds
+				// for plot-less projects (scenario 26). The child still
+				// reaches `merged` via WARREN_GH_FETCH_OVERRIDE=merged.
 				assertTrue(
 					typeof noAgentCommitRun.prUrl === "string" && noAgentCommitRun.prUrl.length > 0,
 					`plot-bound PlanRun: ${SEED_C} run opens a PR even with no agent commit — stagePlotForCommit authors a 'chore(warren): plot state' commit for the host-side .plot/ delta (warren-343a) so commitsAhead > 0`,
