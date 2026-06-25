@@ -6,3 +6,4 @@
 {"type":"intent_edited","actor":"user:leveret","at":"2026-06-16T02:54:03.254Z","data":{"field":"constraints","value":["Prefer a single shared sortable-table primitive over per-page sort logic — minimize duplicated/maintained code"]}}
 {"type":"intent_edited","actor":"user:leveret","at":"2026-06-16T02:54:03.254Z","data":{"field":"success_criteria","value":["Sortable tables are driven by one shared primitive/hook; per-page bespoke sort logic (e.g. Runs.tsx SortHeader/toggleSort) is removed"]}}
 {"type":"run_dispatched","actor":"user:operator","at":"2026-06-16T03:08:14.607Z","data":{"run_id":"run_17e27315wd04","agent":"planner","model":"claude-opus-4-8","project":"prj_z07y6ssfjfpk"}}
+{"type":"status_changed","actor":"user:operator","at":"2026-06-25T21:41:11.409Z","data":{"from":"drafting","to":"archived"}}
