@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.8] — 2026-06-26
+
+### Changed
+
+- **`refactor(plot)`** — `stagePlotForCommit` is now path-limited to
+  `.plot/` carrier files, symmetric with `stageSeedsForCommit`, so
+  plot-state commits no longer sweep in unrelated working-tree changes
+  (#420, warren-be12, #516).
+
+### Fixed
+
+- **`fix(alerts)`** — removed the unreachable `UnparseableAlertError`
+  throw in `normalizeAlert` and reconciled the `alert.ts` header doc with
+  the actual behavior (#515).
+
 ## [0.9.7] — 2026-06-25
 
 ### Added
