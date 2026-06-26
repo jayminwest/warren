@@ -45,9 +45,14 @@ interface StagePlotForCommitInput {
  * full carrier surface; filtering keeps stray dotfiles out of the warren
  * commit.
  *
- * `git add .plot/` honors a project-level `.gitignore` of `.plot/` — a
- * project that gitignored the directory has opted out of committing
- * Plot state, and the staged-changes check below sees no entries.
+ * The `git add` / staged-delta / `--only` commit pathspecs are limited
+ * to the actually-copied carrier files (warren-c55e, symmetric with
+ * stageSeedsForCommit / #420) so a pre-staged unrelated file — even one
+ * under `.plot/` — can neither spoof a staged delta nor be swept into
+ * the warren bookkeeping commit. The add still honors a project-level
+ * `.gitignore` of `.plot/`: a project that gitignored the directory has
+ * opted out of committing Plot state, the copied carriers stage nothing,
+ * and the staged-changes check below sees no entries.
  */
 export async function stagePlotForCommit(input: StagePlotForCommitInput): Promise<boolean> {
 	const { workspacePath, projectPath, fs, exec, emit } = input;
@@ -55,30 +60,35 @@ export async function stagePlotForCommit(input: StagePlotForCommitInput): Promis
 	const workspacePlotDir = join(workspacePath, ".plot");
 
 	const entries = await fs.readdir(projectPlotDir);
-	let copied = 0;
+	const copiedPathspecs: string[] = [];
 	for (const name of entries) {
 		if (name.startsWith(PLOT_INDEX_SKIP_PREFIX)) continue;
 		if (!name.startsWith("plot-")) continue;
 		if (!name.endsWith(".json") && !name.endsWith(".events.jsonl")) continue;
 		const contents = await fs.readFile(join(projectPlotDir, name));
 		if (contents === null) continue;
-		if (copied === 0) await fs.mkdirp(workspacePlotDir);
+		if (copiedPathspecs.length === 0) await fs.mkdirp(workspacePlotDir);
 		await fs.writeFile(join(workspacePlotDir, name), contents);
-		copied += 1;
+		copiedPathspecs.push(join(".plot", name));
 	}
+	const copied = copiedPathspecs.length;
 	if (copied === 0) return false;
 
-	await exec.run("git", ["add", "--", ".plot/"], {
+	await exec.run("git", ["add", "--", ...copiedPathspecs], {
 		cwd: workspacePath,
 		timeoutMs: 10_000,
 	});
 
-	// `git diff --cached --quiet -- .plot/` exits non-zero when there are
-	// staged changes under .plot/ — the natural primitive for "did the
-	// add actually pick up a delta the agent hadn't already committed".
+	// warren-be12 (#420) / warren-c55e: narrow the staged-delta guard to the
+	// actually-copied `.plot/` carriers (symmetry with the `--only`
+	// pathspecs below, and with stageSeedsForCommit) so an unrelated
+	// pre-staged file under `.plot/` can't spoof a delta. `git diff
+	// --cached --quiet` exits non-zero when there's a staged change — the
+	// natural primitive for "did the add pick up a delta the agent hadn't
+	// already committed".
 	let hasStagedDelta: boolean;
 	try {
-		await exec.run("git", ["diff", "--cached", "--quiet", "--", ".plot/"], {
+		await exec.run("git", ["diff", "--cached", "--quiet", "--", ...copiedPathspecs], {
 			cwd: workspacePath,
 			timeoutMs: 10_000,
 		});
@@ -97,15 +107,16 @@ export async function stagePlotForCommit(input: StagePlotForCommitInput): Promis
 			// the project's git hooks (e.g. a pre-commit hook running the full
 			// check:all gauntlet). --no-verify skips pre-commit / commit-msg.
 			"--no-verify",
-			// warren-be12 (#420): path-limit the commit to `.plot/` via
-			// `--only` so any unrelated files an earlier step pre-staged in
-			// the workspace index are not swept into the warren bookkeeping
+			// warren-be12 (#420) / warren-c55e: path-limit the commit to the
+			// actually-copied `.plot/` carriers via `--only` so any unrelated
+			// files an earlier step pre-staged in the workspace index — even
+			// ones under `.plot/` — are not swept into the warren bookkeeping
 			// commit.
 			"--only",
 			"-m",
 			"chore(warren): plot state",
 			"--",
-			".plot/",
+			...copiedPathspecs,
 		],
 		{ cwd: workspacePath, timeoutMs: 10_000 },
 	);

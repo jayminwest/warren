@@ -88,8 +88,10 @@ describe("reapRun commit-through-reap sub-steps (warren-343a + warren-7ecc)", ()
 			);
 			expect(f.files.get("/data/burrow/ws/.plot/plot-abc.json")).toContain('"status":"active"');
 			const gitArgs = e.calls.filter((c) => c.cmd === "git").map((c) => c.args);
-			expect(gitArgs).toContainEqual(["add", "--", ".plot/"]);
-			expect(gitArgs).toContainEqual(["diff", "--cached", "--quiet", "--", ".plot/"]);
+			// warren-c55e: per-carrier pathspecs (sorted), symmetric with seeds.
+			const paths = [".plot/plot-abc.events.jsonl", ".plot/plot-abc.json"];
+			expect(gitArgs).toContainEqual(["add", "--", ...paths]);
+			expect(gitArgs).toContainEqual(["diff", "--cached", "--quiet", "--", ...paths]);
 			const commit = gitArgs.find((a) => a[0] === "-c" && a.includes("commit"));
 			expect(commit).toEqual([
 				"-c",
@@ -102,7 +104,7 @@ describe("reapRun commit-through-reap sub-steps (warren-343a + warren-7ecc)", ()
 				"-m",
 				"chore(warren): plot state",
 				"--",
-				".plot/",
+				...paths,
 			]);
 			const events = await plotCtx.repos.events.listByRun(plotCtx.runId);
 			expect(events.find((ev) => ev.kind === "reap.plot_committed")).toBeDefined();
@@ -133,12 +135,14 @@ describe("reapRun commit-through-reap sub-steps (warren-343a + warren-7ecc)", ()
 				.filter((c) => c.cmd === "git")
 				.map((c) => c.args)
 				.find((a) => a[0] === "-c" && a.includes("commit"));
-			// `--only -- .plot/` confines the commit to the .plot/ pathspec, so
-			// git ignores anything else an earlier step left in the index.
+			// `--only -- .plot/plot-abc.events.jsonl` confines the commit to the
+			// actually-copied carrier, so git ignores anything else an earlier
+			// step left in the index — even another file under `.plot/`
+			// (warren-c55e).
 			expect(commit).toContain("--only");
 			const dashDash = commit?.indexOf("--") ?? -1;
 			expect(dashDash).toBeGreaterThan(-1);
-			expect(commit?.slice(dashDash + 1)).toEqual([".plot/"]);
+			expect(commit?.slice(dashDash + 1)).toEqual([".plot/plot-abc.events.jsonl"]);
 		} finally {
 			await plotCtx.db.close();
 		}
