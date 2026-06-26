@@ -12,8 +12,9 @@
  *
  * The adapters are intentionally defensive: third-party webhook payloads
  * drift, so every field beyond a derivable fingerprint is optional and
- * coerced rather than asserted. A payload we can't even fingerprint
- * raises `UnparseableAlertError`, surfaced as a 400 at the handler edge.
+ * coerced rather than asserted. A fingerprint is always derivable: the
+ * title defaults to `'alert'` and the fingerprint falls back to
+ * `sentry:${title}` / `grafana:${title}`, so normalization never fails.
  */
 
 export type HealAlertSource = "sentry" | "grafana";
@@ -33,13 +34,6 @@ export interface HealAlert {
 	readonly source: HealAlertSource;
 	/** Inferred `owner/repo` for the project-routing fallback; null when none. */
 	readonly repo: string | null;
-}
-
-export class UnparseableAlertError extends Error {
-	constructor(message: string) {
-		super(message);
-		this.name = "UnparseableAlertError";
-	}
 }
 
 type Json = Record<string, unknown>;
@@ -135,12 +129,7 @@ export function normalizeGrafanaAlert(payload: unknown): HealAlert {
 
 /** Dispatch a raw webhook payload to its source-specific adapter. */
 export function normalizeAlert(source: HealAlertSource, payload: unknown): HealAlert {
-	const alert =
-		source === "sentry" ? normalizeSentryAlert(payload) : normalizeGrafanaAlert(payload);
-	if (alert.fingerprint.trim() === "") {
-		throw new UnparseableAlertError(`could not derive a fingerprint from the ${source} payload`);
-	}
-	return alert;
+	return source === "sentry" ? normalizeSentryAlert(payload) : normalizeGrafanaAlert(payload);
 }
 
 /** Type guard for the `?source=` query param. */

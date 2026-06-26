@@ -5,7 +5,6 @@ import {
 	normalizeAlert,
 	normalizeGrafanaAlert,
 	normalizeSentryAlert,
-	UnparseableAlertError,
 } from "./alert.ts";
 
 describe("normalizeSentryAlert", () => {
@@ -103,11 +102,5 @@ describe("isHealAlertSource", () => {
 		expect(isHealAlertSource("grafana")).toBe(true);
 		expect(isHealAlertSource("datadog")).toBe(false);
 		expect(isHealAlertSource(null)).toBe(false);
-	});
-});
-
-describe("UnparseableAlertError", () => {
-	test("is exported for the handler edge", () => {
-		expect(new UnparseableAlertError("x")).toBeInstanceOf(Error);
 	});
 });
