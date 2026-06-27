@@ -3,7 +3,6 @@
 	"threshold": 500,
 	"budgets": {
 		"scripts/acceptance/scenarios/25-plot-roundtrip.ts": 556,
-		"scripts/acceptance/scenarios/28-plot-list-and-create.ts": 559,
 		"src/client/client.ts": 569,
 		"src/db/schema/sqlite.ts": 564,
 		"src/plots/aggregate.ts": 506,
