@@ -2,7 +2,6 @@
 	"_comment": "Per-file line-count budgets (warren-4553). New files default to `threshold`. Listed files are grandfathered at their commit-time line count and may not grow beyond it. Refactor + lower budgets over time; ratchet only goes down.",
 	"threshold": 500,
 	"budgets": {
-		"scripts/acceptance/scenarios/25-plot-roundtrip.ts": 556,
 		"src/client/client.ts": 569,
 		"src/db/schema/sqlite.ts": 564,
 		"src/plots/aggregate.ts": 506,
