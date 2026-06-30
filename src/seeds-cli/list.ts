@@ -18,8 +18,7 @@
 import { SeedsCliError } from "./errors.ts";
 import type { SeedsCliDeps } from "./extensions.ts";
 import { SeedsListEnvelopeSchema } from "./schema.ts";
-
-const DEFAULT_SD_TIMEOUT_MS = 30_000;
+import { DEFAULT_SD_TIMEOUT_MS, truncate } from "./util.ts";
 
 /**
  * Resolve a `seedId → status` map for every issue in a project via
@@ -66,12 +65,6 @@ export async function listSeedStatuses(
 		statuses.set(row.id, row.status);
 	}
 	return statuses;
-}
-
-function truncate(raw: string, limit = 500): string {
-	const trimmed = raw.trim();
-	if (trimmed.length <= limit) return trimmed;
-	return `${trimmed.slice(0, limit)}… [truncated]`;
 }
 
 function formatError(err: unknown): string {

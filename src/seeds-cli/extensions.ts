@@ -28,6 +28,7 @@ import {
 	parseScheduledSeeds,
 	SeedsListEnvelopeSchema,
 } from "./schema.ts";
+import { DEFAULT_SD_TIMEOUT_MS, truncate } from "./util.ts";
 import { type WarrenExtensions, WarrenExtensionsSchema } from "./warren-extensions.ts";
 
 export interface SeedsCliDeps {
@@ -35,8 +36,6 @@ export interface SeedsCliDeps {
 	readonly spawn: SpawnFn;
 	readonly timeoutMs?: number;
 }
-
-const DEFAULT_SD_TIMEOUT_MS = 30_000;
 
 /**
  * Resolve the scheduled-for seeds for a single project. The caller (the
@@ -158,12 +157,6 @@ export async function updateExtensions(
 			`sd update ${seedId} exited ${result.exitCode}: ${truncate(result.stderr || result.stdout)}`,
 		);
 	}
-}
-
-function truncate(raw: string, limit = 500): string {
-	const trimmed = raw.trim();
-	if (trimmed.length <= limit) return trimmed;
-	return `${trimmed.slice(0, limit)}… [truncated]`;
 }
 
 function formatError(err: unknown): string {
