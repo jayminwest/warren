@@ -12,9 +12,9 @@
     "tags": [
       "agent"
     ],
-    "model": "claude-opus-4-8",
+    "model": "glm-5.2",
     "source": "builtin",
     "runtime": "pi",
-    "provider": "anthropic"
+    "provider": "zai"
   }
 }
