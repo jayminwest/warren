@@ -300,9 +300,7 @@ async function autoDispatchStep(
 		workspacePlanIds: plans.ids,
 		baselinePlanIds: plans.baseline,
 		workspacePlansBody: plans.body,
-		planRuns: ctx.input.repos.planRuns as unknown as {
-			create: (i: unknown) => Promise<{ planRun: { id: string } }>;
-		},
+		planRuns: ctx.input.repos.planRuns,
 		emit: ctx.emit,
 		fail: (step, err) => ctx.fail(step, err),
 		...(ctx.input.seedsCli !== undefined ? { seedsCli: ctx.input.seedsCli } : {}),

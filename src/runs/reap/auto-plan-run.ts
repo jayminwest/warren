@@ -1,3 +1,4 @@
+import type { CreatePlanRunInput } from "../../db/repos/plan-runs.ts";
 import { readAutoPlanRunAgent } from "../../registry/schema.ts";
 import { SeedNotFoundError, type SeedsCliDeps, showSeed } from "../../seeds-cli/index.ts";
 import { splitLines } from "./util.ts";
@@ -86,7 +87,9 @@ export interface DispatchAutoPlanRunsInput {
 	readonly workspacePlanIds: Set<string> | null;
 	readonly baselinePlanIds: Set<string> | null;
 	readonly workspacePlansBody: string | null;
-	readonly planRuns: { create: (input: unknown) => Promise<{ planRun: { id: string } }> };
+	readonly planRuns: {
+		create: (input: CreatePlanRunInput) => Promise<{ planRun: { id: string } }>;
+	};
 	readonly emit: (kind: string, payload: unknown) => Promise<unknown>;
 	readonly fail: (step: "auto_plan_run", err: unknown) => Promise<void>;
 	/**
