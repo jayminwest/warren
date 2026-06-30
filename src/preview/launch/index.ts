@@ -48,7 +48,7 @@
  *                        HTTP).
  *   - `helpers.ts`     — shared helpers: `captureFailureTail`,
  *                        `safeDeleteSidecar`, `composeFailureMessage`,
- *                        `truncate`, `defaultSleep`, `defaultSidecarEnv`.
+ *                        `headTruncate`, `defaultSleep`, `defaultSidecarEnv`.
  *   - `setup.ts`       — `runSetupStep` for the optional setup pre-step
  *                        (warren-d9e7).
  *   - `orchestrate.ts` — `launchPreview` state machine.

@@ -6,7 +6,7 @@
  * `./orchestrate.ts` via `./helpers.ts`.
  */
 
-import { captureFailureTail, safeDeleteSidecar, truncate } from "./helpers.ts";
+import { captureFailureTail, headTruncate, safeDeleteSidecar } from "./helpers.ts";
 import { type LaunchPreviewInput, PREVIEW_FAILURE_TAIL_BYTES } from "./types.ts";
 
 interface SetupStepFailure {
@@ -39,7 +39,7 @@ export async function runSetupStep(args: {
 		return {
 			ok: false,
 			reason: "setup_failed",
-			message: `setup spawn failed: ${truncate(message, PREVIEW_FAILURE_TAIL_BYTES)}`,
+			message: `setup spawn failed: ${headTruncate(message, PREVIEW_FAILURE_TAIL_BYTES)}`,
 			failureTail: "",
 		};
 	}

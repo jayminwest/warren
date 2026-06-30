@@ -14,8 +14,8 @@ import {
 	composeFailureMessage,
 	defaultSidecarEnv,
 	defaultSleep,
+	headTruncate,
 	safeDeleteSidecar,
-	truncate,
 } from "./helpers.ts";
 import { probeOnce, tcpConnectOnce } from "./probe.ts";
 import { runSetupStep } from "./setup.ts";
@@ -94,7 +94,7 @@ export async function launchPreview(input: LaunchPreviewInput): Promise<LaunchPr
 		await input.repos.runs.attachPreview(input.runId, {
 			previewState: "failed",
 			previewPort: null,
-			previewFailureMessage: `sidecar create failed: ${truncate(message, PREVIEW_FAILURE_TAIL_BYTES)}`,
+			previewFailureMessage: `sidecar create failed: ${headTruncate(message, PREVIEW_FAILURE_TAIL_BYTES)}`,
 		});
 		return {
 			ok: false,

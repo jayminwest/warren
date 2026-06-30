@@ -40,7 +40,7 @@ export async function captureFailureTail(
 			tailBytes: PREVIEW_FAILURE_TAIL_BYTES,
 		});
 		const tail = logs.stderr.trim() !== "" ? logs.stderr : logs.stdout;
-		return truncate(tail, PREVIEW_FAILURE_TAIL_BYTES);
+		return headTruncate(tail, PREVIEW_FAILURE_TAIL_BYTES);
 	} catch {
 		return "";
 	}
@@ -63,9 +63,15 @@ export function composeFailureMessage(headline: string, tail: string): string {
 	return `${headline}\n\n${tail}`;
 }
 
-export function truncate(input: string, max: number): string {
+/**
+ * Truncate from the tail, keeping the first `max` characters (warren-3129
+ * / #535). Error/log output is most useful at the head — the actual
+ * exception message or first failing line — so cutting from the front
+ * was discarding the signal and keeping boilerplate trailing output.
+ */
+export function headTruncate(input: string, max: number): string {
 	if (input.length <= max) return input;
-	return `${input.slice(input.length - max)}`;
+	return input.slice(0, max);
 }
 
 export function defaultSleep(ms: number): Promise<void> {
