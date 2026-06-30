@@ -21,6 +21,7 @@
  * ourselves.
  */
 
+import { formatError } from "../core/errors.ts";
 import type { SpawnFn } from "../projects/clone.ts";
 import { SeedsCliError } from "./errors.ts";
 import {
@@ -157,9 +158,4 @@ export async function updateExtensions(
 			`sd update ${seedId} exited ${result.exitCode}: ${truncate(result.stderr || result.stdout)}`,
 		);
 	}
-}
-
-function formatError(err: unknown): string {
-	if (err instanceof Error) return err.message;
-	return String(err);
 }

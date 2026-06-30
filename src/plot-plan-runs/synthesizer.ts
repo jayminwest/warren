@@ -30,6 +30,7 @@
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { formatError } from "../core/errors.ts";
 import type { SeedsCliDeps } from "../seeds-cli/index.ts";
 import { SdPlanSynthesisError } from "./errors.ts";
 
@@ -227,9 +228,4 @@ function truncate(raw: string, limit = 500): string {
 	const trimmed = raw.trim();
 	if (trimmed.length <= limit) return trimmed;
 	return `${trimmed.slice(0, limit)}… [truncated]`;
-}
-
-function formatError(err: unknown): string {
-	if (err instanceof Error) return err.message;
-	return String(err);
 }

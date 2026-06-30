@@ -35,6 +35,7 @@
  * this into WarrenServerHandle.stop (R-06 step 4).
  */
 
+import { formatError } from "../core/errors.ts";
 import type { Repos } from "../db/repos/index.ts";
 import type { ProjectRow } from "../db/schema.ts";
 import type { ScheduledSeed, WarrenExtensions } from "../seeds-cli/index.ts";
@@ -388,9 +389,4 @@ export function startScheduler(input: StartSchedulerInput): SchedulerHandle {
 		runOnce: fire,
 		tickCount: () => ticks,
 	};
-}
-
-function formatError(err: unknown): string {
-	if (err instanceof Error) return err.message;
-	return String(err);
 }

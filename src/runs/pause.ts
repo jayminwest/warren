@@ -54,6 +54,7 @@
 
 import { join } from "node:path";
 import type { PlotEvent } from "@os-eco/plot-cli";
+import { formatError } from "../core/errors.ts";
 import type { Repos } from "../db/repos/index.ts";
 import { assertRunTransition } from "../db/repos/runs.ts";
 import type { RunRow } from "../db/schema.ts";
@@ -397,10 +398,6 @@ async function resolveBudget(deps: PauseTickDeps, run: RunRow): Promise<number> 
 	} catch {
 		return DEFAULT_AGENT_PAUSE_TIMEOUT_MS;
 	}
-}
-
-function formatError(err: unknown): string {
-	return err instanceof Error ? err.message : String(err);
 }
 
 /* -------------------------------------------------------------------- */

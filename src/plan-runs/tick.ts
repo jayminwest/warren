@@ -22,6 +22,7 @@
  *                                truthy set as WARREN_SCHEDULER_DISABLED.
  */
 
+import { formatError } from "../core/errors.ts";
 import type { Repos } from "../db/repos/index.ts";
 import type { PlanRunRow } from "../db/schema.ts";
 import {
@@ -243,9 +244,4 @@ export function bootPlanRunCoordinator(
 		runOnce: fire,
 		tickCount: () => ticks,
 	};
-}
-
-function formatError(err: unknown): string {
-	if (err instanceof Error) return err.message;
-	return String(err);
 }

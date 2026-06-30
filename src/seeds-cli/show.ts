@@ -19,6 +19,7 @@
  * 50–60 of extensions.ts.
  */
 
+import { formatError } from "../core/errors.ts";
 import { SeedNotFoundError, SeedsCliError } from "./errors.ts";
 import type { SeedsCliDeps } from "./extensions.ts";
 import {
@@ -176,9 +177,4 @@ export async function showSeed(
  */
 function isNotFoundMessage(detail: string): boolean {
 	return /not found|no such/i.test(detail);
-}
-
-function formatError(err: unknown): string {
-	if (err instanceof Error) return err.message;
-	return String(err);
 }

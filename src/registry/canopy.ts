@@ -33,6 +33,7 @@
  */
 
 import { z } from "zod";
+import { formatError } from "../core/errors.ts";
 import type { CanopyRegistryConfig } from "./config.ts";
 import { CanopyUnavailableError } from "./errors.ts";
 
@@ -335,14 +336,6 @@ function formatStderr(result: SpawnResult): string {
 
 function truncate(s: string, max: number): string {
 	return s.length <= max ? s : `${s.slice(0, max)}…`;
-}
-
-function formatError(err: unknown): string {
-	if (err instanceof Error) {
-		const code = (err as Error & { code?: string }).code;
-		return code !== undefined ? `${code}: ${err.message}` : err.message;
-	}
-	return String(err);
 }
 
 const defaultSpawn: SpawnFn = async (cmd, opts) => {

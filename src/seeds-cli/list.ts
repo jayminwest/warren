@@ -15,6 +15,7 @@
  * reuse the same stubs.
  */
 
+import { formatError } from "../core/errors.ts";
 import { SeedsCliError } from "./errors.ts";
 import type { SeedsCliDeps } from "./extensions.ts";
 import { SeedsListEnvelopeSchema } from "./schema.ts";
@@ -65,9 +66,4 @@ export async function listSeedStatuses(
 		statuses.set(row.id, row.status);
 	}
 	return statuses;
-}
-
-function formatError(err: unknown): string {
-	if (err instanceof Error) return err.message;
-	return String(err);
 }

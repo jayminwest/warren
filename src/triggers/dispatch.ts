@@ -27,7 +27,7 @@
  * tear down the scheduler.
  */
 
-import { NotFoundError } from "../core/errors.ts";
+import { formatError, NotFoundError } from "../core/errors.ts";
 import type { Repos } from "../db/repos/index.ts";
 import type { ScheduledSeed } from "../seeds-cli/index.ts";
 import type { CronTrigger, DefaultsConfig } from "../warren-config/index.ts";
@@ -322,9 +322,4 @@ function resolveScheduledPrompt(
  */
 export function isPermanentSpawnFailure(err: unknown): boolean {
 	return err instanceof NotFoundError && err.message.startsWith("agent not found:");
-}
-
-function formatError(err: unknown): string {
-	if (err instanceof Error) return err.message;
-	return String(err);
 }

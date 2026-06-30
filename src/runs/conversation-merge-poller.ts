@@ -42,6 +42,7 @@
  * one).
  */
 
+import { formatError } from "../core/errors.ts";
 import type { Repos } from "../db/repos/index.ts";
 import type { PrMergeChecker } from "../plan-runs/pr-merge.ts";
 
@@ -251,10 +252,6 @@ async function appendDispatchEvent(
 		// Logging-only trail; a failure here must not unwind a successful
 		// dispatch. Mirrors appendRewakeEvent in conversation-rewake.ts.
 	}
-}
-
-function formatError(err: unknown): string {
-	return err instanceof Error ? err.message : String(err);
 }
 
 /* -------------------------------------------------------------------- */

@@ -11,6 +11,7 @@
  * manually.
  */
 
+import { formatError } from "../../core/errors.ts";
 import type { Repos } from "../../db/repos/index.ts";
 import {
 	type SeedsCliDeps,
@@ -18,7 +19,6 @@ import {
 	type WarrenExtensions,
 	WarrenTriggerKind,
 } from "../../seeds-cli/index.ts";
-import { formatError } from "./util.ts";
 
 export interface WriteSeedExtensionsInput {
 	readonly repos: Repos;

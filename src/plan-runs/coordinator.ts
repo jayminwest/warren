@@ -33,6 +33,7 @@
  * can't tear down the loop.
  */
 
+import { formatError } from "../core/errors.ts";
 import type { Repos } from "../db/repos/index.ts";
 import {
 	PLAN_RUN_CHILD_TERMINAL_STATES,
@@ -402,11 +403,6 @@ function mostRecentDispatchedRunId(children: readonly PlanRunChildRow[]): string
 		if (child !== undefined && child.runId !== null) return child.runId;
 	}
 	return null;
-}
-
-function formatError(err: unknown): string {
-	if (err instanceof Error) return err.message;
-	return String(err);
 }
 
 /**

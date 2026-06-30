@@ -23,6 +23,7 @@
 import { existsSync } from "node:fs";
 import { mkdir, rm } from "node:fs/promises";
 import { dirname, join } from "node:path";
+import { formatError } from "../core/errors.ts";
 import type { ProjectsConfig } from "./config.ts";
 import { ProjectUnavailableError } from "./errors.ts";
 
@@ -184,11 +185,6 @@ function formatStderr(result: SpawnResult): string {
 	const trimmed = result.stderr.trim();
 	if (trimmed !== "") return trimmed.length <= 500 ? trimmed : `${trimmed.slice(0, 500)}…`;
 	return "<no stderr>";
-}
-
-function formatError(err: unknown): string {
-	if (err instanceof Error) return err.message;
-	return String(err);
 }
 
 const defaultMkdirp = async (path: string): Promise<void> => {

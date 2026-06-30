@@ -49,6 +49,7 @@
 import { NotFoundError as BurrowNotFoundError } from "@os-eco/burrow-cli";
 import { withTransportMapping } from "../burrow-client/client.ts";
 import type { BurrowClientPool } from "../burrow-client/pool.ts";
+import { formatError } from "../core/errors.ts";
 import type { Repos } from "../db/repos/index.ts";
 import type { RunRow } from "../db/schema.ts";
 import type { RunEventBroker } from "./events.ts";
@@ -236,10 +237,6 @@ async function emitTimedOutEvent(
 		},
 	});
 	deps.broker?.publish(run.id, row);
-}
-
-function formatError(err: unknown): string {
-	return err instanceof Error ? err.message : String(err);
 }
 
 /* -------------------------------------------------------------------- */

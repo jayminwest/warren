@@ -36,6 +36,7 @@ import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import yaml from "js-yaml";
+import { formatError } from "../core/errors.ts";
 import { type PrTemplateOverrides, parsePrTemplate } from "../runs/pr-template.ts";
 import { WARREN_CONFIG_DIR, WARREN_CONFIG_FILES, warrenConfigRelativePath } from "./config.ts";
 import {
@@ -458,9 +459,4 @@ async function loadPrTemplate(input: LoadOneInput): Promise<PrTemplateOverrides 
 
 function defaultReadFile(path: string): Promise<string> {
 	return readFile(path, "utf8");
-}
-
-function formatError(err: unknown): string {
-	if (err instanceof Error) return err.message;
-	return String(err);
 }

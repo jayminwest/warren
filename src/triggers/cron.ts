@@ -19,6 +19,7 @@
  */
 
 import { Cron } from "croner";
+import { formatError } from "../core/errors.ts";
 
 export const DEFAULT_TIMEZONE = "UTC";
 
@@ -86,9 +87,4 @@ export function parseCron(input: ParseCronInput): ParseCronResult {
 			},
 		},
 	};
-}
-
-function formatError(err: unknown): string {
-	if (err instanceof Error) return err.message;
-	return String(err);
 }

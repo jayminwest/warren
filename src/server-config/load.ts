@@ -29,7 +29,7 @@
 
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
-import { ValidationError } from "../core/errors.ts";
+import { formatError, ValidationError } from "../core/errors.ts";
 import { type EnvLike, resolveWarrenConfigFilePath, WARREN_CONFIG_FILE_ENV } from "./config.ts";
 import { parseWarrenServerFileConfig, type WarrenServerFileConfig } from "./schema.ts";
 import { type ParsedWorkerEntry, validateWorkerEntries } from "./workers.ts";
@@ -119,9 +119,4 @@ export async function loadWarrenServerConfigFromFile(
 
 function defaultReadFile(path: string): Promise<string> {
 	return readFile(path, "utf8");
-}
-
-function formatError(err: unknown): string {
-	if (err instanceof Error) return err.message;
-	return String(err);
 }

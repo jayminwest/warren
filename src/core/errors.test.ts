@@ -1,5 +1,30 @@
 import { describe, expect, test } from "bun:test";
-import { NotFoundError, StateTransitionError, ValidationError, WarrenError } from "./errors.ts";
+import {
+	formatError,
+	NotFoundError,
+	StateTransitionError,
+	ValidationError,
+	WarrenError,
+} from "./errors.ts";
+
+describe("formatError", () => {
+	test("returns the message for Error instances", () => {
+		expect(formatError(new Error("boom"))).toBe("boom");
+	});
+
+	test("returns just the message for WarrenError, without code or hint", () => {
+		const err = new ValidationError("bad input", { recoveryHint: "fix it" });
+		expect(formatError(err)).toBe("bad input");
+	});
+
+	test("coerces non-Error values via String()", () => {
+		expect(formatError("plain string")).toBe("plain string");
+		expect(formatError(42)).toBe("42");
+		expect(formatError({ a: 1 })).toBe("[object Object]");
+		expect(formatError(null)).toBe("null");
+		expect(formatError(undefined)).toBe("undefined");
+	});
+});
 
 describe("WarrenError", () => {
 	test("exposes a stable code and class name on each subclass", () => {

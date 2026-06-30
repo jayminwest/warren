@@ -27,7 +27,7 @@
 import { existsSync } from "node:fs";
 import { rm } from "node:fs/promises";
 import { resolve, sep } from "node:path";
-import { ValidationError } from "../core/errors.ts";
+import { formatError, ValidationError } from "../core/errors.ts";
 import type { ProjectsRepo } from "../db/repos/projects.ts";
 import type { ProjectRow } from "../db/schema.ts";
 import type { BridgeLogger } from "../runs/stream/index.ts";
@@ -244,11 +244,6 @@ function assertPathUnderRoot(localPath: string, root: string): void {
 			{ recoveryHint: "manually remove the project's files and the row from the db" },
 		);
 	}
-}
-
-function formatError(err: unknown): string {
-	if (err instanceof Error) return err.message;
-	return String(err);
 }
 
 const defaultRmrf = async (path: string): Promise<void> => {

@@ -9,10 +9,10 @@
  * back over a Plot-append failure would be unambiguously worse.
  */
 
+import { formatError } from "../../core/errors.ts";
 import type { Repos } from "../../db/repos/index.ts";
 import { UserPlotClient } from "../../plot-client/index.ts";
 import type { SpawnPlotAppender } from "./types.ts";
-import { formatError } from "./util.ts";
 
 /**
  * Default user handle used for the `run_dispatched` Plot event when the

@@ -37,6 +37,7 @@
  * `bootPauseDetector`: an overlapping tick is dropped, never stacked.
  */
 
+import { formatError } from "../core/errors.ts";
 import type { Repos } from "../db/repos/index.ts";
 import { assertRunTransition } from "../db/repos/runs.ts";
 import {
@@ -239,10 +240,6 @@ async function resolveIdleBudget(
 	} catch {
 		return DEFAULT_CONVERSATION_IDLE_TIMEOUT_MS;
 	}
-}
-
-function formatError(err: unknown): string {
-	return err instanceof Error ? err.message : String(err);
 }
 
 /* -------------------------------------------------------------------- */

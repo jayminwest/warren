@@ -42,6 +42,7 @@
  */
 
 import type { HttpWorkspaceFile } from "@os-eco/burrow-cli";
+import { formatError } from "../core/errors.ts";
 import type { AgentDefinition } from "../registry/schema.ts";
 import { RunSpawnError } from "./errors.ts";
 
@@ -253,9 +254,4 @@ function isSafeArtifactName(name: string): boolean {
 
 function truncate(s: string, max: number): string {
 	return s.length <= max ? s : `${s.slice(0, max)}…`;
-}
-
-function formatError(err: unknown): string {
-	if (err instanceof Error) return err.message;
-	return String(err);
 }
