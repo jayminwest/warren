@@ -271,7 +271,7 @@ export async function bridgeRunStream(input: BridgeRunStreamInput): Promise<Brid
 					} else if (piUsage.seen) {
 						// Prefer pi if observed (mixed-shape stream); claude-code
 						// usage is the fallback when no pi `turn_end` ever fired.
-						persistInStreamUsage({
+						await persistInStreamUsage({
 							usage: piUsage,
 							runtime: "pi",
 							runId,
@@ -280,7 +280,7 @@ export async function bridgeRunStream(input: BridgeRunStreamInput): Promise<Brid
 							logger: input.logger,
 						});
 					} else {
-						persistInStreamUsage({
+						await persistInStreamUsage({
 							usage: claudeUsage,
 							runtime: "claude",
 							runId,
