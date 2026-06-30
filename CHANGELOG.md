@@ -7,6 +7,72 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.9] — 2026-06-30
+
+Patch release landing the code-quality cleanup batch (#533–#542, plan
+pl-4d2e / parent warren-150b) together with the supporting changes that
+merged to main since v0.9.8.
+
+### Fixed
+
+- **`fix(cli)`** — `register-agent` now writes its JSON-line error
+  responses to stdout instead of stderr, so callers parsing stdout for
+  the agent JSON are no longer split across streams; exit codes and
+  payloads are unchanged (#533, warren-524c, #545).
+- **`fix(bridge)`** — both `persistInStreamUsage` calls in the
+  runtime-terminal stream path are now awaited, closing a dropped
+  usage-record race when the terminal path tears down (#538,
+  warren-09ed, #546).
+- **`fix(migrations)`** — stripped the redundant `"public".` qualifier
+  from the FK `REFERENCES` clauses in postgres migrations 0014/0015 so
+  they resolve under a non-public `search_path` (#534, warren-be40,
+  #547).
+- **`fix(preview)`** — preview error messages longer than 4096 chars
+  are now truncated from the front via `headTruncate` instead of the
+  tail, so the leading cause (exception type + message) survives
+  (#535, warren-3129, #548).
+- **`fix(auto-plan-run)`** — new plans are now detected by ID, removing
+  the redundant `workspacePlanIds.size <= baselinePlanIds.size`
+  early-exit clause that could mask a freshly-submitted plan as
+  "no new work" (#537, warren-c40e, #550).
+- **`fix(dispatch)`** — `POST /plan-runs` and `POST /plot-plan-runs`
+  now refresh the project host clone before reading seeds/plan state,
+  so a plan pushed just before dispatch is no longer walked against
+  stale on-disk state; brings the plan-run handlers to parity with the
+  single-run refresh inside `spawnRun` (warren-6d60, cdbf1667).
+
+### Changed
+
+- **`refactor(core)`** — consolidated the ~20 private `formatError`
+  copies into a single canonical export in `src/core/errors.ts`; the
+  richer `cli/output.ts` and `ui/src/lib/format-error.ts` variants are
+  intentionally left untouched (#540, warren-bd4f, #553).
+- **`refactor(seeds-cli)`** — consolidated the four byte-identical
+  `truncate` + `DEFAULT_SD_TIMEOUT_MS` copies into one
+  `src/seeds-cli/util.ts` (#539, warren-56a0, #549).
+- **`fix(types)`** — `DispatchAutoPlanRunsInput` now uses the exported
+  `CreatePlanRunInput` instead of `unknown`, and the `as unknown as`
+  cast in `pipeline.ts` is dropped (#536, warren-e4f0, #551).
+- **`chore(server)`** — removed the stale `// eslint-disable-next-line
+  no-console` comment at `src/server/main/index.ts:544` (#541,
+  warren-1d4c, #544).
+- **`deps`** — bumped `@os-eco/burrow-cli` 0.3.12 → 0.3.14 (package.json
+  pin, Dockerfile global install, and `bun.lock`) to pick up burrow's
+  pi `zai` provider key so `provider=zai` runs forward `ZAI_API_KEY`
+  into the sandbox for Z.AI GLM models (45676e82).
+- **`config`** — the default provider/model is now `zai` / `glm-5.2`
+  (0b751421).
+- **`test(auto-plan-run)`** — added unit tests covering the
+  `parsePlanIds` and `parsePlanChildren` branches (malformed / missing
+  / wrong-type / empty) (#542, warren-3add, #552).
+- **`chore(test)`** — file-size-budget ratchet batch: split
+  `src/server/bridges.test.ts` along its two top-level describe seams
+  into `bridges.boot.test.ts`, and extracted the file-local helper
+  groups out of acceptance scenarios 20 / 25 / 28 into sibling
+  `*.helpers.ts` files, dropping the now-oversized entries from
+  `scripts/file-size-budgets.json` (#519, #520, #523, #524, #527,
+  #528, #531, #532).
+
 ## [0.9.8] — 2026-06-26
 
 ### Changed
