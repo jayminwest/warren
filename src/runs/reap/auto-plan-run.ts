@@ -205,17 +205,15 @@ export async function dispatchAutoPlanRuns(
 	input: DispatchAutoPlanRunsInput,
 ): Promise<DispatchAutoPlanRunsResult> {
 	const { workspacePlanIds, baselinePlanIds, workspacePlansBody } = input;
-	if (
-		workspacePlanIds === null ||
-		baselinePlanIds === null ||
-		workspacePlansBody === null ||
-		workspacePlanIds.size <= baselinePlanIds.size
-	) {
+	if (workspacePlanIds === null || baselinePlanIds === null || workspacePlansBody === null) {
 		return { created: false, id: null, planId: null };
 	}
 	let created = false;
 	let id: string | null = null;
 	let planIdOut: string | null = null;
+	// Detect new plans by ID, not set size: a plan replaced during the run
+	// (one closed + one created) leaves the count unchanged, so a size-based
+	// early-exit would drop the genuinely new plan (warren-c40e).
 	for (const planId of workspacePlanIds) {
 		if (baselinePlanIds.has(planId)) continue;
 		try {
