@@ -541,7 +541,6 @@ if (import.meta.main) {
 	bootServer().catch(async (err) => {
 		const message = err instanceof Error ? err.message : String(err);
 		await captureBootFailure(err);
-		// eslint-disable-next-line no-console
 		console.error(`warren: ${message}`);
 		process.exit(1);
 	});
