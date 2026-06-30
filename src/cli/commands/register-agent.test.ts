@@ -126,8 +126,8 @@ describe("runRegisterAgent", () => {
 		);
 
 		expect(result.exitCode).toBe(1);
-		expect(out).toHaveLength(0);
-		const line = JSON.parse(err[0] as string);
+		expect(err).toHaveLength(0);
+		const line = JSON.parse(out[0] as string);
 		expect(line.code).toBe("agent_not_found");
 		expect(await agents.listAll()).toHaveLength(0);
 	});
@@ -145,7 +145,7 @@ describe("runRegisterAgent", () => {
 			},
 		);
 		const client = CanopyClient.forLibrary({ config: CFG, spawn });
-		const { context, err } = captureContext();
+		const { context, out, err } = captureContext();
 
 		const result = await runRegisterAgent(
 			context,
@@ -154,7 +154,8 @@ describe("runRegisterAgent", () => {
 		);
 
 		expect(result.exitCode).toBe(1);
-		const line = JSON.parse(err[0] as string);
+		expect(err).toHaveLength(0);
+		const line = JSON.parse(out[0] as string);
 		expect(line.ok).toBe(false);
 		expect(line.code).toBe("agent_schema_error");
 	});

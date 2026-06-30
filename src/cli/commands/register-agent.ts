@@ -80,7 +80,7 @@ export async function runRegisterAgent(
 	}
 
 	if (skipped !== undefined) {
-		writeJsonLine(context.stdio.stderr, {
+		writeJsonLine(context.stdio.stdout, {
 			ok: false,
 			agent: args.name,
 			code: skipped.code,
@@ -89,7 +89,7 @@ export async function runRegisterAgent(
 		return { exitCode: 1 };
 	}
 
-	writeJsonLine(context.stdio.stderr, {
+	writeJsonLine(context.stdio.stdout, {
 		ok: false,
 		agent: args.name,
 		code: "agent_not_found",
