@@ -7,6 +7,57 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.10] — 2026-07-01
+
+Patch release landing the plan-run merge-gate transient-4xx fix
+(plan pl-30ae / parent warren-eccd) together with the reap provider-error
+safety net and the system-event timestamp-consistency fix that merged
+to main since v0.9.9.
+
+### Fixed
+
+- **`fix(plan-runs)`** — `isFatalHttpError` (src/plan-runs/merge-gate.ts)
+  now treats only HTTP 404 (Not Found) and 410 (Gone) as a fatal "the PR
+  is gone" signal. Transient 401/403/429 (auth blip / rate limit) on the
+  PR merge-status poll now fall through to keep-waiting in both consumers
+  (`checkParentRunMerged` and `pollMergeState`), bounded by the merge-wait
+  budget (warren-3937). Previously a single intermittent 401 terminally
+  failed the plan-run with `pr_closed_without_merge` /
+  `parent_pr_not_merged` even though the PR was open and mergeable; a
+  permanently-bad token still fails eventually via
+  `child_pr_merge_timeout` / `parent_pr_merge_timeout` (#562, warren-5fa4 /
+  warren-eccd, pl-30ae; regression tests #563 warren-b4eb, #564 warren-0902).
+- **`fix(reap)`** — runs whose terminal model turn ended with
+  `stopReason === "error"` and a non-empty provider `errorMessage` (e.g.
+  Anthropic `400` "Your credit balance is too low to access the Anthropic
+  API") are now flipped from `succeeded` to `failed`/`provider_error` at
+  reap time. Burrow sees the agent process exit 0 and marks the run
+  `succeeded`, and the in-stream terminal detect (warren-e281 / pl-5516,
+  keyed off the `agent_end` envelope) misses it when the error signal
+  rides the per-turn `turn_end` envelope — so the run previously reaped
+  `succeeded`, shipped a bookkeeping-only PR, closed the seed, advanced the
+  plan-run, and discarded the agent's uncommitted edits via
+  `workspace_destroyed`. The reap safety net (src/runs/reap/provider-error.ts)
+  scans the persisted event log for the terminal error turn (last
+  turn_end/agent_end carrying a `stopReason` wins, so a retried-then-
+  succeeded run is NOT tripped) and overrides only otherwise-`succeeded`
+  outcomes; the overridden outcome threads into the success pipeline so
+  PR-open / seed-close / preview / auto-dispatch skip. `failure_reason`
+  gains a `provider_error` enum value (no migration — the column is
+  enum-narrowed TEXT with no SQL CHECK, same as `dropped_commit`); the
+  provider message is surfaced on a `reap.provider_error` event (#555,
+  warren-edc3).
+- **`fix(system-events)`** — the five private system-event appender helpers
+  (`conversation-idle` `appendSystemEvent`, `pause` `appendSystemEvent`,
+  `conversation-rewake` `appendRewakeEvent`, `conversation-merge-poller`
+  `appendDispatchEvent`, `spawn/seed-extensions`
+  `recordExtensionWriteFailure`) now stamp the envelope `ts` from the
+  in-scope injected `now` clock, matching the payload timestamp written
+  in the same append. `conversation-merge-poller` additionally resolves
+  `nowDate = now()` once so the envelope `ts` and payload `dispatchedAt`
+  are byte-identical rather than two separate clock reads (warren-96fd,
+  #557).
+
 ## [0.9.9] — 2026-06-30
 
 Patch release landing the code-quality cleanup batch (#533–#542, plan
