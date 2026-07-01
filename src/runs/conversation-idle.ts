@@ -195,7 +195,7 @@ async function finalizeIdleRun(
 	}
 	assertRunTransition(run.state, "succeeded");
 	await deps.repos.runs.finalize(run.id, "succeeded", now);
-	await appendSystemEvent(deps, run.id, CONVERSATION_IDLE_FINALIZED_KIND, {
+	await appendSystemEvent(deps, run.id, CONVERSATION_IDLE_FINALIZED_KIND, now, {
 		conversationId: candidate.conversationId,
 		lastActivityAt: candidate.lastActivityAt,
 		finalizedAt: now.toISOString(),
@@ -211,13 +211,14 @@ async function appendSystemEvent(
 	deps: ConversationIdleTickDeps,
 	runId: string,
 	kind: string,
+	now: Date,
 	payload: Record<string, unknown>,
 ): Promise<void> {
 	const seq = ((await deps.repos.events.maxSeqForRun(runId)) ?? 0) + 1;
 	await deps.repos.events.append({
 		runId,
 		burrowEventSeq: seq,
-		ts: new Date().toISOString(),
+		ts: now.toISOString(),
 		kind,
 		stream: "system",
 		payload,

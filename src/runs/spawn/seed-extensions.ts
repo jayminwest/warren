@@ -50,7 +50,13 @@ export async function writeSeedExtensions(input: WriteSeedExtensionsInput): Prom
 	try {
 		await updateExtensions(input.seedsCli, input.projectPath, input.seedId, payload);
 	} catch (err) {
-		await recordExtensionWriteFailure(input.repos, input.runId, input.seedId, formatError(err));
+		await recordExtensionWriteFailure(
+			input.repos,
+			input.runId,
+			input.seedId,
+			formatError(err),
+			input.now,
+		);
 	}
 }
 
@@ -59,13 +65,14 @@ async function recordExtensionWriteFailure(
 	runId: string,
 	seedId: string,
 	reason: string,
+	now: Date,
 ): Promise<void> {
 	try {
 		const seq = ((await repos.events.maxSeqForRun(runId)) ?? 0) + 1;
 		await repos.events.append({
 			runId,
 			burrowEventSeq: seq,
-			ts: new Date().toISOString(),
+			ts: now.toISOString(),
 			kind: "seeds_extension_write_failed",
 			stream: "system",
 			payload: { seedId, reason },

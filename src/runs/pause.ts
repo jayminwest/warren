@@ -328,7 +328,7 @@ async function pauseRun(
 ): Promise<void> {
 	assertRunTransition(run.state, "paused");
 	await deps.repos.runs.markPaused(run.id, questionEventId, now);
-	await appendSystemEvent(deps, run.id, PAUSE_DETECTED_KIND, {
+	await appendSystemEvent(deps, run.id, PAUSE_DETECTED_KIND, now, {
 		plotId: run.plotId,
 		questionEventId,
 		pausedAt: now.toISOString(),
@@ -347,7 +347,7 @@ async function resumeRun(
 	assertRunTransition(run.state, "running");
 	await deps.repos.runs.markResumedFromPause(run.id);
 	const kind = reason === "answered" ? PAUSE_RESUMED_KIND : PAUSE_TIMED_OUT_KIND;
-	await appendSystemEvent(deps, run.id, kind, {
+	await appendSystemEvent(deps, run.id, kind, now, {
 		plotId: run.plotId,
 		questionEventId,
 		reason,
@@ -372,13 +372,14 @@ async function appendSystemEvent(
 	deps: PauseTickDeps,
 	runId: string,
 	kind: string,
+	now: Date,
 	payload: Record<string, unknown>,
 ): Promise<void> {
 	const seq = ((await deps.repos.events.maxSeqForRun(runId)) ?? 0) + 1;
 	await deps.repos.events.append({
 		runId,
 		burrowEventSeq: seq,
-		ts: new Date().toISOString(),
+		ts: now.toISOString(),
 		kind,
 		stream: "system",
 		payload,

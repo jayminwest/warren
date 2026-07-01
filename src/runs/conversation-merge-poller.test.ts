@@ -34,7 +34,7 @@ interface Harness {
 	readonly deps: MergePollTickDeps;
 	readonly dispatchCalls: PlannerDispatchInput[];
 	readonly recordCalls: { id: string; runId: string }[];
-	readonly events: { runId: string; kind: string; payload: Record<string, unknown> }[];
+	readonly events: { runId: string; kind: string; ts: string; payload: Record<string, unknown> }[];
 }
 
 function harness(input: {
@@ -45,7 +45,8 @@ function harness(input: {
 }): Harness {
 	const dispatchCalls: PlannerDispatchInput[] = [];
 	const recordCalls: { id: string; runId: string }[] = [];
-	const events: { runId: string; kind: string; payload: Record<string, unknown> }[] = [];
+	const events: { runId: string; kind: string; ts: string; payload: Record<string, unknown> }[] =
+		[];
 	let rows = input.rows;
 	const deps: MergePollTickDeps = {
 		repos: {
@@ -61,10 +62,11 @@ function harness(input: {
 			},
 			events: {
 				maxSeqForRun: async () => 0,
-				append: async (e: { runId: string; kind: string; payload: unknown }) => {
+				append: async (e: { runId: string; kind: string; ts: string; payload: unknown }) => {
 					events.push({
 						runId: e.runId,
 						kind: e.kind,
+						ts: e.ts,
 						payload: e.payload as Record<string, unknown>,
 					});
 					return undefined as never;
@@ -115,6 +117,10 @@ describe("tickConversationMergePoller", () => {
 		expect(h.events[0]?.kind).toBe(CONVERSATION_PLANNER_DISPATCHED_KIND);
 		expect(h.events[0]?.runId).toBe("run_planner");
 		expect(h.events[0]?.payload.plotId).toBe("plot-abc");
+		// The envelope `ts` is stamped from the injected `now` clock (warren-96fd),
+		// matching the payload's `dispatchedAt` written in the same append.
+		expect(h.events[0]?.ts).toBe("2026-06-07T00:00:00.000Z");
+		expect(h.events[0]?.payload.dispatchedAt).toBe("2026-06-07T00:00:00.000Z");
 	});
 
 	test("honors a pinned planner agent from the send-off", async () => {

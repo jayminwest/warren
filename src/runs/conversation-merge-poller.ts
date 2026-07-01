@@ -219,12 +219,13 @@ async function pollOne(
 		return;
 	}
 
-	await appendDispatchEvent(deps, result.runId, {
+	const nowDate = now();
+	await appendDispatchEvent(deps, result.runId, nowDate, {
 		conversationId: conv.id,
 		plotId,
 		plannerAgent,
 		prUrl,
-		dispatchedAt: now().toISOString(),
+		dispatchedAt: nowDate.toISOString(),
 	});
 	sinks.dispatched.push({ conversationId: conv.id, plotId, plannerRunId: result.runId });
 	deps.logger?.info?.(
@@ -236,6 +237,7 @@ async function pollOne(
 async function appendDispatchEvent(
 	deps: Pick<MergePollTickDeps, "repos">,
 	runId: string,
+	now: Date,
 	payload: Record<string, unknown>,
 ): Promise<void> {
 	try {
@@ -243,7 +245,7 @@ async function appendDispatchEvent(
 		await deps.repos.events.append({
 			runId,
 			burrowEventSeq: seq,
-			ts: new Date().toISOString(),
+			ts: now.toISOString(),
 			kind: CONVERSATION_PLANNER_DISPATCHED_KIND,
 			stream: "system",
 			payload,

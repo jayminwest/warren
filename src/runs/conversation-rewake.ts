@@ -290,7 +290,7 @@ export async function rewakeConversation(
 		newRunId: turn.run.id,
 		now,
 	});
-	await appendRewakeEvent(input, turn.run.id, {
+	await appendRewakeEvent(input, turn.run.id, now, {
 		conversationId: conversation.id,
 		priorRunId: priorRun.id,
 		replayedMessageCount: messages.length,
@@ -308,6 +308,7 @@ export async function rewakeConversation(
 async function appendRewakeEvent(
 	input: Pick<RewakeConversationInput, "repos">,
 	runId: string,
+	now: Date,
 	payload: Record<string, unknown>,
 ): Promise<void> {
 	try {
@@ -315,7 +316,7 @@ async function appendRewakeEvent(
 		await input.repos.events.append({
 			runId,
 			burrowEventSeq: seq,
-			ts: new Date().toISOString(),
+			ts: now.toISOString(),
 			kind: CONVERSATION_REWAKE_REPLAYED_KIND,
 			stream: "system",
 			payload,

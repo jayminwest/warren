@@ -120,6 +120,10 @@ describe("tickConversationIdleDetector", () => {
 		const idle = events.find((e) => e.kind === CONVERSATION_IDLE_FINALIZED_KIND);
 		expect(idle).toBeDefined();
 		expect((idle?.payloadJson as { conversationId?: string })?.conversationId).toBe("cnv-1");
+		// The envelope `ts` is stamped from the injected `now` clock (warren-96fd),
+		// matching the payload's `finalizedAt` written in the same append.
+		expect(idle?.ts).toBe(NOW.toISOString());
+		expect((idle?.payloadJson as { finalizedAt?: string })?.finalizedAt).toBe(NOW.toISOString());
 	});
 
 	test("leaves a not-yet-idle conversation untouched", async () => {

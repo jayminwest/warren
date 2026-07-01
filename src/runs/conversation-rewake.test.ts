@@ -288,6 +288,9 @@ describe("rewakeConversation", () => {
 		expect(payload?.priorRunId).toBe(priorId);
 		expect(payload?.replayedMessageCount).toBe(3);
 		expect(payload?.conversationId).toBe(CONVERSATION_ID);
+		// The envelope `ts` is stamped from the injected `now` clock (warren-96fd),
+		// matching the payload's `rewokenAt` written in the same append.
+		expect(replay?.ts).toBe(NOW.toISOString());
 	});
 
 	test("re-wakes a terminal-failed anchoring run too (any terminal state qualifies)", async () => {

@@ -99,6 +99,12 @@ describe("tickPauseDetector", () => {
 		expect((detected?.payloadJson as { questionEventId?: string }).questionEventId).toBe(
 			"2026-05-23T00:00:01Z",
 		);
+		// The envelope `ts` is stamped from the injected `now` clock (warren-96fd),
+		// matching the payload's `pausedAt` written in the same append.
+		expect(detected?.ts).toBe("2026-05-23T00:00:10.000Z");
+		expect((detected?.payloadJson as { pausedAt?: string }).pausedAt).toBe(
+			"2026-05-23T00:00:10.000Z",
+		);
 		expect(respawns).toEqual([]); // pause does NOT respawn
 	});
 
@@ -180,6 +186,12 @@ describe("tickPauseDetector", () => {
 		expect(resumed).toBeDefined();
 		expect((resumed?.payloadJson as { reason?: string }).reason).toBe("answered");
 		expect((resumed?.payloadJson as { answer?: string }).answer).toBe("yes please proceed");
+		// The envelope `ts` is stamped from the injected `now` clock (warren-96fd),
+		// matching the payload's `resumedAt` written in the same append.
+		expect(resumed?.ts).toBe("2026-05-23T00:00:20.000Z");
+		expect((resumed?.payloadJson as { resumedAt?: string }).resumedAt).toBe(
+			"2026-05-23T00:00:20.000Z",
+		);
 
 		expect(respawns).toHaveLength(1);
 		const r = respawns[0];
@@ -276,6 +288,12 @@ describe("tickPauseDetector", () => {
 		const events = await repos.events.listByRun(runId);
 		const timedOut = events.find((e) => e.kind === PAUSE_TIMED_OUT_KIND);
 		expect(timedOut).toBeDefined();
+		// The envelope `ts` is stamped from the injected `now` clock (warren-96fd),
+		// matching the payload's `resumedAt` written in the same append.
+		expect(timedOut?.ts).toBe("2026-05-23T00:00:12.000Z");
+		expect((timedOut?.payloadJson as { resumedAt?: string }).resumedAt).toBe(
+			"2026-05-23T00:00:12.000Z",
+		);
 
 		expect(respawns).toHaveLength(1);
 		const r = respawns[0];

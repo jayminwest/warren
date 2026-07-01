@@ -141,6 +141,7 @@ describe("spawnRun: post-dispatch seed extension write (pl-bb70)", () => {
 			stderr: "seeds: no such issue warren-abc",
 			exitCode: 1,
 		});
+		const fixedNow = new Date("2026-05-15T17:00:00.000Z");
 		const result = await spawnRun({
 			repos,
 			burrowClientPool: await makePool(repos, client),
@@ -149,6 +150,7 @@ describe("spawnRun: post-dispatch seed extension write (pl-bb70)", () => {
 			prompt: "fix it",
 			seedId: "warren-abc",
 			seedsCli: { sdBinary: "sd", spawn: seedsSpawn },
+			now: () => fixedNow,
 		});
 
 		// Run survived the extension-write failure — burrow row is attached,
@@ -170,6 +172,9 @@ describe("spawnRun: post-dispatch seed extension write (pl-bb70)", () => {
 		const payload = evt.payloadJson as { seedId: string; reason: string };
 		expect(payload.seedId).toBe("warren-abc");
 		expect(payload.reason).toContain("sd update");
+		// The envelope `ts` is stamped from the injected `now` clock (warren-96fd) —
+		// the same clock that seeds the success-path `lastRunAt` extension write.
+		expect(evt.ts).toBe(fixedNow.toISOString());
 	});
 
 	test("drops an unrecognized trigger string but still writes role/lastRunId/lastRunAt (src/server/handlers/projects.ts 'manual-trigger')", async () => {
