@@ -174,6 +174,69 @@ describe("advancePlanRun — parentRunId gate (warren-d9a2)", () => {
 		expect(reloaded.failureReason).toBe("parent_pr_not_merged");
 	});
 
+	test.each<[number, string]>([
+		[404, "Not Found"],
+		[410, "Gone"],
+	])("parent PR http %i poll → plan_failed parent_pr_not_merged (warren-eccd)", async (status, message) => {
+		const parentRunId = await h.makeRun("warren-parent");
+		await h.repos.runs.markRunning(parentRunId, NOW);
+		await h.repos.runs.finalize(parentRunId, "succeeded", NOW);
+		await h.repos.runs.setPrUrl(parentRunId, "https://github.com/x/y/pull/99");
+		const pr = await createPlanRunWithParent(parentRunId);
+		const result = await advancePlanRun({
+			planRun: pr,
+			repos: h.repos,
+			showSeed: h.showSeedStub("open"),
+			checkPrMerged: async () => ({ kind: "http_error", status, message }),
+			spawn: h.spawnStub(() => "unused"),
+			emit: h.emit,
+			now: () => NOW,
+		});
+		// 404/410 mean the parent PR is genuinely gone → fail the gate.
+		expect(result.kind).toBe("plan_failed");
+		if (result.kind === "plan_failed") {
+			expect(result.reason).toBe("parent_pr_not_merged");
+		}
+		const reloaded = await h.repos.planRuns.require(pr.id);
+		expect(reloaded.state).toBe("failed");
+		expect(reloaded.failureReason).toBe("parent_pr_not_merged");
+		// Surfaced on the parent run's event stream so the operator sees why.
+		const failedEvent = h.events.find(
+			(e) => e.runId === parentRunId && e.kind === "plan_run.failed",
+		);
+		expect(failedEvent?.payload.reason).toBe("parent_pr_not_merged");
+	});
+
+	test.each<[number, string]>([
+		[401, "Unauthorized"],
+		[403, "Forbidden"],
+		[429, "rate limit"],
+	])("parent PR http %i poll keeps waiting, not parent_pr_not_merged (warren-eccd)", async (status, message) => {
+		const parentRunId = await h.makeRun("warren-parent");
+		await h.repos.runs.markRunning(parentRunId, NOW);
+		await h.repos.runs.finalize(parentRunId, "succeeded", NOW);
+		await h.repos.runs.setPrUrl(parentRunId, "https://github.com/x/y/pull/99");
+		const pr = await createPlanRunWithParent(parentRunId);
+		const result = await advancePlanRun({
+			planRun: pr,
+			repos: h.repos,
+			showSeed: h.showSeedStub("open"),
+			checkPrMerged: async () => ({ kind: "http_error", status, message }),
+			spawn: h.spawnStub(() => "unused"),
+			emit: h.emit,
+			now: () => NOW,
+		});
+		// 401/403/429 are "cannot verify right now" (auth blip / rate
+		// limit) — keep waiting for the parent merge, bounded by the
+		// merge-wait budget (warren-3937). Do NOT fail the gate; no
+		// plan_run.failed event.
+		expect(result.kind).toBe("waiting_for_parent_merge");
+		const reloaded = await h.repos.planRuns.require(pr.id);
+		expect(reloaded.state).toBe("running");
+		expect(reloaded.failureReason).toBeNull();
+		expect(h.events.some((e) => e.kind === "plan_run.failed")).toBe(false);
+	});
+
 	test("parentRunId set, parent has no PR + empty_push → trivial merge, gate passes", async () => {
 		const parentRunId = await h.makeRun("warren-parent");
 		await h.repos.runs.markRunning(parentRunId, NOW);
