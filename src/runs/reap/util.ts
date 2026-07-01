@@ -18,6 +18,7 @@ export function buildAlreadyTerminalResult(run: RunRow): ReapRunResult {
 	return {
 		state: run.state as RunTerminalState,
 		failureReason: run.failureReason,
+		providerError: null,
 		mulchUpdated: 0,
 		mulchSkipped: 0,
 		mulchAppended: 0,

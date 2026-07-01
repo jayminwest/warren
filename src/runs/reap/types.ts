@@ -172,6 +172,15 @@ export interface ReapRunResult {
 	 * shared an observable shape before this field existed.
 	 */
 	readonly failureReason: RunFailureReason | null;
+	/**
+	 * The provider `errorMessage` captured when a terminal model turn ended
+	 * with `stopReason === "error"` (warren-edc3), else `null`. Set iff
+	 * `failureReason === "provider_error"`; the run row's `failure_reason`
+	 * carries only the enum discriminator (the column is enum-narrowed), so
+	 * this field is the only reap surface for the human-readable provider
+	 * message (also emitted on the `reap.provider_error` event).
+	 */
+	readonly providerError: string | null;
 	readonly mulchUpdated: number;
 	readonly mulchSkipped: number;
 	readonly mulchAppended: number;

@@ -48,6 +48,7 @@ function fakeReapResult(state: ReapRunResult["state"]): ReapRunResult {
 	return {
 		state,
 		failureReason: state === "failed" ? "timed_out" : null,
+		providerError: null,
 		mulchUpdated: 0,
 		mulchSkipped: 0,
 		mulchAppended: 0,

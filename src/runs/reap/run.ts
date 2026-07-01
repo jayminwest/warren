@@ -4,6 +4,7 @@ import type { EventRow, RunFailureReason, RunTerminalState } from "../../db/sche
 import { bindBridgeLogger } from "../stream/index.ts";
 import { runWorkspaceDestroy } from "./destroy.ts";
 import { createPipelineState, runReapPipeline } from "./pipeline.ts";
+import { detectTerminalProviderError } from "./provider-error.ts";
 import { inferFailureReason, isTerminal, transitionToTerminal } from "./state.ts";
 import type { ReapRunInput, ReapRunResult, ReapStep, ReapStepError } from "./types.ts";
 import { buildAlreadyTerminalResult, createSeqAllocator, defaultExec, defaultFs } from "./util.ts";
@@ -23,6 +24,26 @@ export async function reapRun(input: ReapRunInput): Promise<ReapRunResult> {
 	// State on entry is the discriminator: still `queued` means the bridge
 	// never claimed it (no events flowed from burrow) — "never started" (warren-5e53).
 	const stateOnEntry = run.state;
+
+	// warren-edc3: a terminal provider error (the agent's final model turn
+	// ended with `stopReason === "error"` + a non-empty `errorMessage`, e.g.
+	// Anthropic "credit balance too low" 400) flips an otherwise-`succeeded`
+	// run to `failed`. Burrow sees the agent exit 0 and marks the run
+	// succeeded, and the in-stream terminal detect (warren-e281 / pl-5516)
+	// keys off the `agent_end` envelope, so the error signal on the per-turn
+	// `turn_end` envelope slips through. This reap-time scan of the
+	// persisted event log is the safety net; the provider message is
+	// surfaced on the `reap.provider_error` event.
+	const providerError = await detectTerminalProviderError(input.repos, run.id);
+	const providerErrorMessage = providerError?.message ?? null;
+	const failedFromProviderError = providerError !== null && input.outcome !== "cancelled";
+	// The success pipeline gates PR-open / seed-close / preview / auto-dispatch
+	// on `outcome === "succeeded"`, so thread the overridden outcome in so a
+	// provider-error run skips them (no bookkeeping-only PR, no seed close,
+	// no plan-run advance) — same posture as a normal bridge-failed run.
+	const pipelineInput: ReapRunInput = failedFromProviderError
+		? { ...input, outcome: "failed" }
+		: input;
 
 	// `run.projectId` is null when the project was deleted while the run
 	// existed (warren-5f19): the FK is `ON DELETE SET NULL`, so the run
@@ -88,7 +109,7 @@ export async function reapRun(input: ReapRunInput): Promise<ReapRunResult> {
 	} else if (stateOnEntry !== "queued" && workspacePath !== null && project !== null) {
 		await runReapPipeline(
 			{
-				input,
+				input: pipelineInput,
 				run,
 				project,
 				workspacePath,
@@ -113,11 +134,21 @@ export async function reapRun(input: ReapRunInput): Promise<ReapRunResult> {
 
 	// warren-72b9: `droppedCommit` flips an otherwise-succeeded run to
 	// `failed`/`dropped_commit` so it can't masquerade as success.
-	const effectiveOutcome: RunTerminalState = state.droppedCommit ? "failed" : input.outcome;
+	// warren-edc3: a terminal provider error does the same — and blocks the
+	// bookkeeping-only PR / seed close / plan-run advance that would
+	// otherwise ship a no-code PR and discard the agent's uncommitted edits.
+	const effectiveOutcome: RunTerminalState =
+		state.droppedCommit || failedFromProviderError ? "failed" : input.outcome;
+
+	if (failedFromProviderError) {
+		await emit("reap.provider_error", { message: providerErrorMessage });
+	}
 
 	let failureReason: RunFailureReason | null = null;
 	if (state.droppedCommit) {
 		failureReason = "dropped_commit";
+	} else if (failedFromProviderError) {
+		failureReason = "provider_error";
 	} else if (effectiveOutcome === "failed") {
 		failureReason =
 			input.failureReason ?? (await inferFailureReason(input.repos, run.id, stateOnEntry));
@@ -135,6 +166,7 @@ export async function reapRun(input: ReapRunInput): Promise<ReapRunResult> {
 	await emit("reap.completed", {
 		state: finalState,
 		failureReason,
+		providerError: failedFromProviderError ? providerErrorMessage : null,
 		mulch: {
 			updated: state.mulchUpdated,
 			skipped: state.mulchSkipped,
@@ -187,6 +219,7 @@ export async function reapRun(input: ReapRunInput): Promise<ReapRunResult> {
 			event: "reap.completed",
 			state: finalState,
 			failureReason,
+			providerError: failedFromProviderError ? providerErrorMessage : null,
 			mulchUpdated: state.mulchUpdated,
 			mulchSkipped: state.mulchSkipped,
 			mulchAppended: state.mulchAppended,
@@ -215,6 +248,7 @@ export async function reapRun(input: ReapRunInput): Promise<ReapRunResult> {
 	return {
 		state: finalState,
 		failureReason,
+		providerError: failedFromProviderError ? providerErrorMessage : null,
 		mulchUpdated: state.mulchUpdated,
 		mulchSkipped: state.mulchSkipped,
 		mulchAppended: state.mulchAppended,

@@ -18,6 +18,7 @@ export function makeReapRunResult(overrides: Partial<ReapRunResult> = {}): ReapR
 	return {
 		state: "succeeded" as RunTerminalState,
 		failureReason: null,
+		providerError: null,
 		mulchUpdated: 0,
 		mulchSkipped: 0,
 		mulchAppended: 0,
