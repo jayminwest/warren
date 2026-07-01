@@ -171,16 +171,22 @@ export function mergeDeadlineExceeded(
 	return now().getTime() - ended >= timeoutMs;
 }
 
+/**
+ * Classify a PR-merge poll result as a *fatal* "the PR is gone" signal
+ * (warren-eccd / pl-30ae). Only HTTP 404 (Not Found) and 410 (Gone)
+ * genuinely mean the PR no longer exists; GitHub's 401/403/429 are
+ * "cannot verify right now" (auth blip / rate limit) and must fall
+ * through to keep-waiting in both consumers (`checkParentRunMerged` and
+ * `pollMergeState`), bounded by the merge-wait budget (warren-3937). A
+ * permanently-bad token still fails eventually via
+ * `child_pr_merge_timeout` / `parent_pr_merge_timeout` rather than
+ * hanging forever.
+ */
 export function isFatalHttpError(result: {
 	kind: string;
 	status?: number;
 }): result is { kind: "http_error"; status: number; message: string } {
-	return (
-		result.kind === "http_error" &&
-		typeof result.status === "number" &&
-		result.status >= 400 &&
-		result.status < 500
-	);
+	return result.kind === "http_error" && (result.status === 404 || result.status === 410);
 }
 
 export function isTerminalRun(run: RunRow): boolean {

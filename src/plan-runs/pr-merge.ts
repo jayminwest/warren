@@ -7,9 +7,10 @@
  * Retry policy:
  *   - `http_error` with status 0 (fetch threw) OR status 5xx → retry up
  *     to `maxRetries` times with a short fixed delay.
- *   - `http_error` with status 4xx → return immediately. The coordinator
- *     reads 4xx as `closed_unmerged` (e.g. 404 because the PR was
- *     hard-deleted) and fails the plan with `pr_closed_without_merge`.
+ *   - `http_error` with status 4xx → return immediately (not retried).
+ *     The coordinator treats only 404/410 as a fatal "PR is gone" signal
+ *     (warren-eccd); 401/403/429 fall through to keep-waiting, bounded
+ *     by the merge-wait budget (warren-3937).
  *   - any other shape (`merged`, `open`, `closed_unmerged`,
  *     `missing_token`) returns immediately.
  *
