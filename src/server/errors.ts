@@ -3,10 +3,10 @@
  * server (SPEC §8.1 + §11.D).
  *
  * Three error families flow through here:
- *   - `WarrenError` subclasses (NotFoundError, ValidationError,
- *      StateTransitionError, BurrowUnreachableError, RunSpawnError,
- *      AgentSchemaError, CanopyUnavailableError, ProjectUnavailableError)
- *      → mapped to a stable status by class.
+ *   - `WarrenError` subclasses → mapped to a stable status by class.
+ *      `warrenStatusFor` is the authoritative status table; the subclass
+ *      set spans many modules and grows over time, so it is intentionally
+ *      not enumerated here to avoid drift.
  *   - `BurrowError` subclasses from `@os-eco/burrow-cli` (the rehydrated
  *      server envelope from the burrow HTTP API) → forwarded with the
  *      same code/hint and a status table shaped like burrow's own. The
