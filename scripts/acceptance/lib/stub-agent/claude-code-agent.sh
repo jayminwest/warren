@@ -11,7 +11,7 @@
 #
 # Key envelope is the terminal `result` carrying `total_cost_usd` +
 # `usage.{input_tokens,output_tokens,cache_read_input_tokens,
-# cache_creation_input_tokens}` — warren's bridge (src/runs/stream.ts)
+# cache_creation_input_tokens}` — warren's bridge (src/runs/stream/bridge.ts)
 # `extractClaudeUsage` reads it on terminal detection and persists into
 # `runs.cost_usd` / `runs.tokens_*`. Scenario 17 asserts the columns
 # are non-null after this script exits.

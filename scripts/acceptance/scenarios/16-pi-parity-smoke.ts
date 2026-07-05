@@ -16,7 +16,7 @@
  *      = "builtin").
  *   2. POST /runs accepts agentName='pi' and dispatches through burrow —
  *      burrowId + burrowRunId are populated on the 201 (proving burrow.up
- *      was invoked with `agents: ['pi']` per src/runs/spawn.ts:196).
+ *      was invoked with `agents: ['pi']` per src/runs/spawn/dispatch.ts:414).
  *   3. The run's renderedAgentJson is frozen from the pi built-in
  *      (name='pi', frontmatter.source='builtin').
  *   4. At least one event lands in the events table — the durable signal
@@ -38,7 +38,7 @@
  * cost_usd / tokens_input / tokens_output columns are non-null after
  * the run completes. The pi stub emits a `turn_end` envelope carrying
  * `message.usage.cost.total` + token counts and an `agent_end` envelope
- * — warren's bridge (src/runs/stream.ts) accumulates the usage and
+ * — warren's bridge (src/runs/stream/bridge.ts) accumulates the usage and
  * persists via `RunsRepo.attachStats`. End-to-end proof that pi cost
  * tracking works through the public HTTP surface, not just unit tests.
  */
@@ -183,7 +183,7 @@ export const scenario: Scenario = {
 			// dispatches `tools/pi-stub-agent.sh`, which emits a pi RPC
 			// `turn_end` envelope with `message.usage.cost.total=0.000666`
 			// plus token counts, followed by `agent_end`. Warren's bridge
-			// (src/runs/stream.ts) accumulates `turn_end` usage and calls
+			// (src/runs/stream/bridge.ts) accumulates `turn_end` usage and calls
 			// `RunsRepo.attachStats` on `agent_end` — so by the time the
 			// run reaches a terminal state, cost_usd / tokens_input /
 			// tokens_output MUST be non-null. This is the assertion the

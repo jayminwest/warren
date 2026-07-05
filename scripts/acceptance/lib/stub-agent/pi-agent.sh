@@ -7,7 +7,7 @@
 # whose parseEvents reads parsePiEvents, so each line below lands as a
 # state_change/telemetry event in burrow's event stream and flows through
 # warren's bridge. The `turn_end` envelope carries `message.usage.cost.total`
-# + token counts, which warren's accumulatePiUsage (src/runs/stream.ts)
+# + token counts, which warren's accumulatePiUsage (src/runs/stream/bridge.ts)
 # extracts and persists into runs.cost_usd / tokens_input / tokens_output
 # when it sees the `agent_end` envelope (warren-17a4).
 #

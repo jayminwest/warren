@@ -13,7 +13,7 @@
  *      folds it into the run's renderedAgentJson.frontmatter.provider
  *      (registry/schema.ts withProviderOverrides), and writes
  *      frontmatter into burrow's run metadata via composeBurrowMetadata
- *      (src/runs/spawn.ts:387).
+ *      (src/runs/spawn/dispatch.ts:composeBurrowMetadata).
  *   2. Burrow's dispatcher reads `Run.metadataJson.frontmatter`, calls
  *      `piEnvPassthrough({frontmatter})`, and unions the matching
  *      provider key (OPENAI_API_KEY for provider='openai') onto the

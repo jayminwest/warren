@@ -7,7 +7,7 @@
  *   final events table mirrors burrow's stream end-to-end with no
  *   gaps in seq."
  *
- * Wire summary (re-derived from src/runs/stream.ts + src/server/bridges.ts):
+ * Wire summary (re-derived from src/runs/stream/bridge.ts + src/server/bridges.ts):
  *   - warren's bridge polls burrow's `/runs/:burrowRunId/stream` and writes
  *     each event to `events` table BEFORE publishing on the broker.
  *   - On warren restart, `bootBridges()` walks runs in {queued, running}

@@ -3,7 +3,7 @@
  * acceptance #8, warren-d725).
  *
  * Operator-driven counterpart to the TTL+LRU eviction worker
- * (`src/preview/eviction.ts`, warren-ea6b). Same end-state on the runs
+ * (`src/preview/eviction/`, warren-ea6b). Same end-state on the runs
  * row (`preview_state='torn-down'`, `preview_port=null`), same
  * best-effort sidecar stop on burrow, but the trigger is a human via
  * the UI / curl rather than a periodic sweep.
@@ -76,7 +76,7 @@ export interface TeardownPreviewInput {
 	 */
 	readonly actor?: string;
 	/** Override the sidecar resolver (tests). Defaults to the pool-backed
-	 *  resolver from `src/preview/eviction.ts` (shared with the worker). */
+	 *  resolver from `src/preview/eviction/sidecar.ts` (shared with the worker). */
 	readonly resolveSidecar?: SidecarResolver;
 }
 

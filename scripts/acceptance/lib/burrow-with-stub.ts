@@ -190,7 +190,7 @@ function buildPiAcceptanceRuntime(): AgentRuntime {
 // AgentRegistry (burrow `src/runtime/registry.ts`) overrides cleanly.
 // The stub script emits stream-json with a terminal `result` envelope
 // carrying `total_cost_usd` + `usage.*_tokens`; warren's bridge
-// (src/runs/stream.ts:extractClaudeUsage) reads it on terminal
+// (src/runs/stream/bridge.ts:extractClaudeUsage) reads it on terminal
 // detection. Scenario 17 asserts the resulting cost/token columns are
 // non-null.
 const CLAUDE_AGENT_CONFIG = {

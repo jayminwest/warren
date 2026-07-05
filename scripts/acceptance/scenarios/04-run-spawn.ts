@@ -6,7 +6,7 @@
  *   the warren run row with `renderedAgentJson` populated; the column
  *   is frozen at spawn time and not re-read mid-run."
  *
- * The spawn path (src/runs/spawn.ts) reads the agent definition from
+ * The spawn path (src/runs/spawn/dispatch.ts) reads the agent definition from
  * the agents-table cache and writes it onto runs.rendered_agent_json
  * before any burrow call. Re-rendering at run time would (a) shell out
  * to `cn` on every dispatch, and (b) drift the run's frozen prompt

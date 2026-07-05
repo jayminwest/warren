@@ -136,7 +136,7 @@ describe("PreviewConfigSchema", () => {
 
 	// warren-d9e7: setup splits dependency-install from dev-server bind so each
 	// phase has its own timeout and failure reason. Schema accepts the field at
-	// the parser layer; launcher (src/preview/launch.ts) skips the pre-step
+	// the parser layer; launcher (src/preview/launch/) skips the pre-step
 	// when the field is absent so existing projects keep working unchanged.
 	test("accepts a server preview with setup + setup_timeout (warren-d9e7)", () => {
 		const parsed = PreviewConfigSchema.safeParse({
