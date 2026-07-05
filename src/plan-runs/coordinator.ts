@@ -35,12 +35,7 @@
 
 import { formatError } from "../core/errors.ts";
 import type { Repos } from "../db/repos/index.ts";
-import {
-	PLAN_RUN_CHILD_TERMINAL_STATES,
-	type PlanRunChildRow,
-	type PlanRunChildState,
-	type PlanRunRow,
-} from "../db/schema.ts";
+import type { PlanRunChildRow, PlanRunChildState, PlanRunRow } from "../db/schema.ts";
 import { buildDispatchPrompt } from "../runs/dispatch-prompt.ts";
 import { SeedNotFoundError, type SeedShowResult } from "../seeds-cli/index.ts";
 import {
@@ -403,14 +398,6 @@ function mostRecentDispatchedRunId(children: readonly PlanRunChildRow[]): string
 		if (child !== undefined && child.runId !== null) return child.runId;
 	}
 	return null;
-}
-
-/**
- * Exported for the API handler (warren-f923) to compute "is this plan-run
- * still advancing?" without re-loading every child.
- */
-export function isChildTerminal(state: PlanRunChildState): boolean {
-	return (PLAN_RUN_CHILD_TERMINAL_STATES as readonly string[]).includes(state);
 }
 
 function transitionPlotEventKind(result: AutoTransitionResult): PlanRunEventKind {

@@ -25,7 +25,6 @@ export {
 	type CoordinatorSpawnResult,
 	type CoordinatorTransitionPlotFn,
 	DEFAULT_MERGE_TIMEOUT_MS,
-	isChildTerminal,
 	PLAN_RUN_EVENT_KINDS,
 	type PlanRunEventKind,
 } from "./coordinator.ts";
@@ -37,7 +36,6 @@ export {
 } from "./dispatch.ts";
 export {
 	PlanHasNoOpenChildrenError,
-	PlanRunDispatchError,
 	ProjectLacksPlotError,
 	ProjectLacksSeedsError,
 } from "./errors.ts";
