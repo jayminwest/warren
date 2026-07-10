@@ -87,6 +87,14 @@ export interface BurrowFetchPlan {
 	destroyStatus?: number;
 	destroyBody?: unknown;
 	/**
+	 * `POST /runs/:id/cancel` (graceful cancel — the cancel source). Provide
+	 * `cancelRun` to shape the returned post-cancel run row; `cancelStatus`
+	 * overrides the response status and `cancelBody` the whole body (error paths).
+	 */
+	cancelRun?: Partial<BurrowRun>;
+	cancelStatus?: number;
+	cancelBody?: unknown;
+	/**
 	 * `POST /burrows/:id/inbox` (inbox send — the sendMessage source). Provide
 	 * `inboxSend` to shape the returned message row; `inboxSendStatus` overrides
 	 * the response status and `inboxSendBody` the whole body (for error paths).
@@ -111,6 +119,12 @@ export interface RecordedCall {
 	method: string;
 	path: string;
 	body: unknown;
+	/**
+	 * The request URL's raw query string (e.g. `?archive=true`), for query-param
+	 * assertions. Omitted when the URL carried no query, so existing exact
+	 * `toEqual` call-match assertions stay unaffected.
+	 */
+	search?: string;
 }
 
 function defaultBurrow(plan: BurrowFetchPlan): Burrow {
@@ -190,7 +204,18 @@ function routeWriteFetch(plan: BurrowFetchPlan, method: string, path: string): R
 			plan.destroyBody ?? { burrowId: "bur_aaaaaaaaaaaa", archived: false },
 		);
 	}
-	return routeInboxSend(plan, method, path);
+	return routeRunCancel(plan, method, path) ?? routeInboxSend(plan, method, path);
+}
+
+/** `POST /runs/:id/cancel` — the cancel source (cancel.test.ts). */
+function routeRunCancel(plan: BurrowFetchPlan, method: string, path: string): Response | null {
+	if (method === "POST" && /^\/runs\/[^/]+\/cancel$/.test(path)) {
+		return jsonResponse(
+			plan.cancelStatus ?? 200,
+			plan.cancelBody ?? serializeRun(defaultBurrowRun({ run: plan.cancelRun })),
+		);
+	}
+	return null;
 }
 
 /** `POST /burrows/:id/inbox` — the sendMessage source (send-message.test.ts). */
@@ -254,7 +279,7 @@ export function makeBurrowClient(plan: BurrowFetchPlan = {}): {
 		const path = url.pathname;
 		const method = init?.method ?? "GET";
 		const body = typeof init?.body === "string" ? JSON.parse(init.body) : undefined;
-		calls.push({ method, path, body });
+		calls.push({ method, path, body, ...(url.search !== "" ? { search: url.search } : {}) });
 		const routed = routeBurrowFetch(plan, method, path);
 		if (routed !== null) return routed;
 		return jsonResponse(404, {

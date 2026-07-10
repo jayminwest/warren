@@ -43,9 +43,11 @@ import type {
 	TeardownResult,
 } from "../contract.ts";
 import { RuntimeNotImplementedError, RuntimeProviderError } from "../errors.ts";
+import { cancelLocalRun } from "./cancel.ts";
 import { sendLocalMessage } from "./send-message.ts";
 import { localRunStatus } from "./status.ts";
 import { streamLocalEvents } from "./stream.ts";
+import { terminateLocalRun } from "./teardown.ts";
 
 /** Dependencies the burrow-backed provider methods wrap. */
 export interface LocalProviderDeps {
@@ -227,16 +229,37 @@ export class LocalProvider implements RuntimeProvider {
 		return sendLocalMessage(this.resolveClient(), handle, msg);
 	}
 
-	cancel(_handle: RunHandle, _reason?: string): Promise<void> {
-		return notImplemented("cancel");
+	/**
+	 * Forward a graceful cancel to the run's burrow — burrow's
+	 * `POST /runs/:id/cancel`, the same call `src/runs/cancel.ts` and the
+	 * watchdog make today (the domain call-sites are untouched until step 13).
+	 * Distinct from `terminate`: cancel stops the AGENT, terminate tears down the
+	 * sandbox. Best-effort and reason-faithful — `reason` rides only when
+	 * supplied; burrow's cancel is itself idempotent on an already-terminal run.
+	 * The post-cancel `Run` row is discarded (the seam returns `void`); the
+	 * domain's reap-decision + audit-event stay at the call-site. See
+	 * `./cancel.ts`.
+	 */
+	cancel(handle: RunHandle, reason?: string): Promise<void> {
+		return cancelLocalRun(this.resolveClient(), handle, reason);
 	}
 
 	finalize(_handle: RunHandle, _intent: FinalizeIntent): Promise<FinalizeResult> {
 		return notImplemented("finalize");
 	}
 
-	terminate(_handle: RunHandle): Promise<TeardownResult> {
-		return notImplemented("terminate");
+	/**
+	 * Tear down the run's burrow sandbox and archive+prune its ephemeral store —
+	 * burrow's `DELETE /burrows/:id` with `archive: true`, the same reap-time
+	 * teardown `src/runs/reap/destroy.ts` makes today. Distinct from `cancel`:
+	 * terminate reclaims the WORKSPACE (create()'s partial-failure cleanup uses
+	 * `archive: false`; this reap path archives). Returns a `TeardownResult`
+	 * mapped from burrow's `DestroyBurrowResult` (archived boolean + pruned-row
+	 * counts). The domain calls this only after `finalize()` (§4). See
+	 * `./teardown.ts`.
+	 */
+	terminate(handle: RunHandle): Promise<TeardownResult> {
+		return terminateLocalRun(this.resolveClient(), handle);
 	}
 }
 

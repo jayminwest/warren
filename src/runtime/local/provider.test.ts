@@ -35,24 +35,15 @@ describe("LocalProvider", () => {
 		expect(Object.isFrozen(LOCAL_PROVIDER_CAPABILITIES)).toBe(true);
 	});
 
-	// streamEvents() + status() (pl-829f step 9) and sendMessage() (step 10) are no
-	// longer stubs — their real bodies are covered in stream.test.ts /
-	// status.test.ts / send-message.test.ts.
-
-	test("cancel() is a stub", () => {
-		const provider = new LocalProvider(deps);
-		expect(() => provider.cancel(handle)).toThrow(RuntimeNotImplementedError);
-	});
+	// streamEvents() + status() (pl-829f step 9), sendMessage() (step 10), and
+	// cancel() + terminate() (step 11) are no longer stubs — their real bodies are
+	// covered in stream.test.ts / status.test.ts / send-message.test.ts /
+	// cancel.test.ts / teardown.test.ts.
 
 	test("finalize() is a stub", () => {
 		const provider = new LocalProvider(deps);
 		expect(() =>
 			provider.finalize(handle, { branch: "warren/r1", push: true, mirror: [] }),
 		).toThrow(RuntimeNotImplementedError);
-	});
-
-	test("terminate() is a stub", () => {
-		const provider = new LocalProvider(deps);
-		expect(() => provider.terminate(handle)).toThrow(RuntimeNotImplementedError);
 	});
 });
