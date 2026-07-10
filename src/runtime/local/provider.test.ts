@@ -1,21 +1,19 @@
 import { describe, expect, test } from "bun:test";
 import type { BurrowClientPool } from "../../burrow-client/index.ts";
-import type { RunHandle } from "../contract.ts";
-import { RuntimeNotImplementedError } from "../errors.ts";
 import { LOCAL_PROVIDER_CAPABILITIES, LocalProvider, type LocalProviderDeps } from "./provider.ts";
 
 /**
- * Hermetic deps for the still-stubbed methods: the factory throws if the stub
- * ever touches the pool. (`create()`'s live path is covered in `create.test.ts`
- * with a real fake pool.)
+ * Hermetic deps for the capability assertions below: the factory throws if a
+ * method ever touches the pool. Every method now has a real body — the live
+ * paths are covered per-method (`create.test.ts`, `stream.test.ts`,
+ * `status.test.ts`, `send-message.test.ts`, `cancel.test.ts`,
+ * `teardown.test.ts`, `finalize.test.ts`).
  */
 const deps: LocalProviderDeps = {
 	burrowClientPool: (): BurrowClientPool => {
 		throw new Error("burrowClientPool factory must not be called by a LocalProvider stub");
 	},
 };
-
-const handle: RunHandle = { runId: "r1", sandboxId: "s1", providerRunId: "p1" };
 
 describe("LocalProvider", () => {
 	test("advertises the full burrow capability set", () => {
@@ -33,17 +31,5 @@ describe("LocalProvider", () => {
 
 	test("capabilities are frozen", () => {
 		expect(Object.isFrozen(LOCAL_PROVIDER_CAPABILITIES)).toBe(true);
-	});
-
-	// streamEvents() + status() (pl-829f step 9), sendMessage() (step 10), and
-	// cancel() + terminate() (step 11) are no longer stubs — their real bodies are
-	// covered in stream.test.ts / status.test.ts / send-message.test.ts /
-	// cancel.test.ts / teardown.test.ts.
-
-	test("finalize() is a stub", () => {
-		const provider = new LocalProvider(deps);
-		expect(() =>
-			provider.finalize(handle, { branch: "warren/r1", push: true, mirror: [] }),
-		).toThrow(RuntimeNotImplementedError);
 	});
 });

@@ -26,6 +26,7 @@ import {
 	LOCAL_WORKER_NAME,
 	withTransportMapping,
 } from "../../burrow-client/index.ts";
+import type { ReapExec, ReapFs } from "../../runs/reap/types.ts";
 import type { EnvLike } from "../../runs/spawn/callback-env.ts";
 import { loopbackApiUrl } from "../../runs/spawn/callback-env.ts";
 import type {
@@ -42,8 +43,9 @@ import type {
 	StreamOpts,
 	TeardownResult,
 } from "../contract.ts";
-import { RuntimeNotImplementedError, RuntimeProviderError } from "../errors.ts";
+import { RuntimeProviderError } from "../errors.ts";
 import { cancelLocalRun } from "./cancel.ts";
+import { finalizeLocalRun } from "./finalize.ts";
 import { sendLocalMessage } from "./send-message.ts";
 import { localRunStatus } from "./status.ts";
 import { streamLocalEvents } from "./stream.ts";
@@ -66,6 +68,15 @@ export interface LocalProviderDeps {
 	 * backend would replace with Service DNS.
 	 */
 	readonly serverEnv?: EnvLike;
+	/**
+	 * Disk/shell seam `finalize()` runs the reap merge functions over. Defaults
+	 * to the real `defaultFs` / `defaultExec` (`src/runs/reap/util.ts`) — the
+	 * same host FS + `git` the reap pipeline uses today. Injectable so a test can
+	 * drive finalize without touching disk or spawning git (see
+	 * `finalize.test.ts`). Only `finalize()` consumes them.
+	 */
+	readonly fs?: ReapFs;
+	readonly exec?: ReapExec;
 }
 
 /**
@@ -90,15 +101,6 @@ export const LOCAL_PROVIDER_CAPABILITIES: RuntimeCapabilities = Object.freeze({
  * `src/runs/spawn/dispatch.ts` injects today so behavior is unchanged.
  */
 const BUN_INSTALL_CACHE_DIR = "/tmp/bun-install-cache";
-
-/** Raise the standard stub error, naming the method and the step that fills it. */
-function notImplemented(method: string): never {
-	throw new RuntimeNotImplementedError(`LocalProvider.${method}() is not implemented yet`, {
-		recoveryHint:
-			"Filled in a later step of the LocalProvider checkpoint (pl-829f, phase CONTRACT) — " +
-			"the method wraps src/burrow-client/. This shell only fixes the contract shape.",
-	});
-}
 
 export class LocalProvider implements RuntimeProvider {
 	readonly capabilities: RuntimeCapabilities = LOCAL_PROVIDER_CAPABILITIES;
@@ -244,8 +246,21 @@ export class LocalProvider implements RuntimeProvider {
 		return cancelLocalRun(this.resolveClient(), handle, reason);
 	}
 
-	finalize(_handle: RunHandle, _intent: FinalizeIntent): Promise<FinalizeResult> {
-		return notImplemented("finalize");
+	/**
+	 * Run the workspace-DEPENDENT half of reap over the run's live burrow
+	 * workspace (§4) — a THIN wrapper over the existing reap merge functions
+	 * (`mergeMulch` / `mirrorSeeds` / `mirrorPlans` / `mergePlot` / `stage*`),
+	 * with the branch push + commits-ahead count, returning the structured
+	 * mirror deltas the domain applies. Zero behavior change vs today's reap;
+	 * `reapRun` is not yet routed through it (step 13). The disk/shell seam
+	 * comes from `deps.fs`/`deps.exec` (default real host FS + git). See
+	 * `./finalize.ts`.
+	 */
+	finalize(handle: RunHandle, intent: FinalizeIntent): Promise<FinalizeResult> {
+		return finalizeLocalRun(this.resolveClient(), handle, intent, {
+			...(this.deps.fs !== undefined ? { fs: this.deps.fs } : {}),
+			...(this.deps.exec !== undefined ? { exec: this.deps.exec } : {}),
+		});
 	}
 
 	/**

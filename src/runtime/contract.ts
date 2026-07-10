@@ -180,18 +180,106 @@ export interface TeardownResult {
 }
 
 /**
- * Artifact-set diffs `finalize` extracts from the live workspace and returns for
- * the domain to apply to its project clone.
+ * Artifact-set deltas `finalize` extracts from the live workspace and returns
+ * for the domain to apply to its project clone. PINNED (pl-829f step 12 /
+ * warren-371a) by SERIALIZING what today's in-process reap merge functions
+ * (`src/runs/reap/{mulch,seeds,plot-merge}.ts`) actually produce — grounded in
+ * their real return values, not a speculative shape.
  *
- * Exact shapes are the §4 open sub-question for the finalize spike — worked out
- * empirically during the LocalProvider checkpoint by serializing the current
- * in-process merge logic across the seam. Left as deferred placeholders so the
- * core contract compiles without inventing a shape the design doc doesn't fix.
+ * Contract guarantees for every delta:
+ *   - **JSON-serializable** — round-trips through `JSON.parse(JSON.stringify(x))`
+ *     unchanged. These are the wire format the K8s in-pod finalize (plan step
+ *     20) emits over its callback, so no `Map`/`Set`/`Date`/`undefined` slots.
+ *   - **`version`-tagged** so the wire format can evolve unambiguously.
+ *   - **Apply-complete without filesystem access** — mulch / seeds / plans each
+ *     carry the full post-merge JSONL body, so the domain applies by overwriting
+ *     the target file; it never has to read the (by-then-destroyed) workspace.
+ *     The counts mirror each merge function's own return value.
+ *
+ * PlotDelta is deliberately the exception — see its doc.
  */
-export type MulchDelta = unknown;
-export type SeedsDelta = unknown;
-export type PlansDelta = unknown;
-export type PlotDelta = unknown;
+
+/** One domain's post-merge mulch expertise file. */
+export interface MulchDeltaFile {
+	/** expertise filename minus `.jsonl` (e.g. `build`) */
+	domain: string;
+	/** clone-relative (posix) target path: `.mulch/expertise/<domain>.jsonl` */
+	path: string;
+	/** full merged JSONL body — the domain writes it verbatim */
+	mergedBody: string;
+}
+
+/**
+ * mulch expertise LWW-merge result — mirrors `MulchMergeResult`
+ * (`{updated,skipped,appended}`) plus the per-file merged bodies
+ * `mergeMulchFile` produces. "real effort" per `data-plane-trajectory.md`:
+ * mulch is the memory layer, so its delta is complete.
+ */
+export interface MulchDelta {
+	version: 1;
+	/** records replaced because the incoming `recorded_at` was newer */
+	updated: number;
+	/** records dropped because the incoming was older-or-equal */
+	skipped: number;
+	/** brand-new records appended */
+	appended: number;
+	/** one entry per workspace expertise file, carrying its merged body */
+	files: MulchDeltaFile[];
+}
+
+/**
+ * seeds issue-tracker close/create mirror — mirrors `MirrorSeedsResult`
+ * (`{closed,created}`) plus the merged `issues.jsonl`. Connector-shaped per
+ * `data-plane-trajectory.md` (seeds is a swappable tracker), so this is done
+ * properly: the full merged body travels for a filesystem-free apply.
+ */
+export interface SeedsDelta {
+	version: 1;
+	/** rows transitioned to `closed` (added-as-closed or status-updated) */
+	closed: number;
+	/** brand-new rows (e.g. planner-created) added to the clone */
+	created: number;
+	/** clone-relative (posix) target path: `.seeds/issues.jsonl` */
+	path: string;
+	/**
+	 * full merged issues.jsonl, or `null` when the mirror was a no-op (the
+	 * workspace had no `.seeds/issues.jsonl`, or it produced no delta).
+	 */
+	mergedBody: string | null;
+}
+
+/**
+ * seeds plan mirror — append-only (plans are immutable once submitted).
+ * Mirrors `mirrorPlans`'s `added` count plus the merged `plans.jsonl`.
+ */
+export interface PlansDelta {
+	version: 1;
+	/** plan rows appended to the clone */
+	appended: number;
+	/** clone-relative (posix) target path: `.seeds/plans.jsonl` */
+	path: string;
+	/** full merged plans.jsonl, or `null` when nothing was appended */
+	mergedBody: string | null;
+}
+
+/**
+ * Plot event/state mirror — deliberately THIN and disposable.
+ * `data-plane-trajectory.md` marks plot the FIRST tool to go ("keep its
+ * `finalize()` mirror delta thin and disposable"), so this carries only the
+ * `PlotMergeResult` counts — NO merged bodies, NO per-event contents. The plot
+ * files themselves still ride to origin on the pushed branch (the
+ * `chore(warren): plot state` bookkeeping commit); this delta is pure
+ * observability, and intentionally NOT apply-complete on its own.
+ */
+export interface PlotDelta {
+	version: 1;
+	/** event-log lines appended across all plots */
+	eventsAppended: number;
+	/** `plot-*.json` state docs overwritten (LWW on `updated_at`) */
+	plotsUpdated: number;
+	/** agent-emitted decision/question/artifact events worth surfacing */
+	mirrored: number;
+}
 
 /**
  * The reap-where-the-workspace-is seam (§4). `finalize` runs the
@@ -208,22 +296,79 @@ export interface FinalizeIntent {
 	push: boolean;
 	/** which artifact sets to extract */
 	mirror: ("mulch" | "seeds" | "plans" | "plot")[];
+	/**
+	 * Base ref for the commits-ahead / empty-push count
+	 * (`git rev-list --count <baseBranch>..HEAD`). A provider-NEUTRAL git ref
+	 * (RunSpec.baseBranch was promoted first-class, §6.2), NOT a host path.
+	 * Omitted ⇒ the count is skipped and `commitsAhead` is `null` — the same
+	 * way reap degrades when burrow exposed no base branch (warren-f3bb).
+	 */
+	baseBranch?: string;
+	/**
+	 * SEAM SIGNAL (mirrors `RunSpec.hostClonePathHint`): the host path of the
+	 * project clone the LocalProvider merges each tracker INTO — a host path
+	 * with no provider-neutral home. REQUIRED by the burrow backend whenever
+	 * `mirror` is non-empty (it does the merge host-side against the shared
+	 * disk, exactly as reap does today); the K8s backend IGNORES it (the in-pod
+	 * finalize has no clone — it emits the deltas above and the control plane
+	 * applies them, plan step 20).
+	 */
+	projectClonePathHint?: string;
 	closeSeedId?: string;
 }
 
 export interface FinalizeResult {
 	pushed: boolean;
-	commitsAhead: number;
-	/** dropped-commit detection */
+	/**
+	 * Commits the pushed branch is ahead of `intent.baseBranch`. WIDENED from
+	 * the design-doc's `number` to `number | null` to match reap's real shape
+	 * (warren-f3bb): the count is genuinely uncomputable when the push was
+	 * skipped/failed, no `baseBranch` was supplied, or `git rev-list` failed,
+	 * and collapsing that to `0` would masquerade a failed count as an empty
+	 * push. `0` means the push landed no new commits; positive means real work.
+	 */
+	commitsAhead: number | null;
+	/** dropped-commit detection: pushed but zero commits ahead of the base */
 	emptyPush: boolean;
-	/** artifact diffs the domain applies to the project clone */
+	/** artifact deltas the domain applies to the project clone */
 	mirror: {
 		mulch?: MulchDelta;
 		seeds?: SeedsDelta;
 		plans?: PlansDelta;
 		plot?: PlotDelta;
 	};
+	/**
+	 * The pushed branch when it carries real work ready for a PR
+	 * (`pushed && commitsAhead > 0`), else `null`. finalize does NOT open the
+	 * PR — that stays domain orchestration (§4); this only signals readiness.
+	 */
 	prBranch: string | null;
+	/**
+	 * Per-stage outcome trail — a REFINEMENT over the design-doc shape (which
+	 * omitted it). Grounds in reap's best-effort `ReapStepError[]`: every
+	 * workspace-touching stage is best-effort, so the domain must see which
+	 * merged, which were skipped, and which failed (with the message) without
+	 * reverse-engineering it from the deltas.
+	 */
+	stages: FinalizeStageOutcome[];
+}
+
+/** The workspace-touching stages `finalize` runs, in pipeline order. */
+export type FinalizeStage =
+	| "mulch_merge"
+	| "seeds_mirror"
+	| "plans_mirror"
+	| "plot_merge"
+	| "plot_commit"
+	| "seeds_commit"
+	| "branch_push"
+	| "commits_ahead";
+
+export interface FinalizeStageOutcome {
+	stage: FinalizeStage;
+	status: "ok" | "skipped" | "failed";
+	/** present only when `status === "failed"` — the error message */
+	error?: string;
 }
 
 /**
