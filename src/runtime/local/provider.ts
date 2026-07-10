@@ -43,6 +43,8 @@ import type {
 	TeardownResult,
 } from "../contract.ts";
 import { RuntimeNotImplementedError, RuntimeProviderError } from "../errors.ts";
+import { localRunStatus } from "./status.ts";
+import { streamLocalEvents } from "./stream.ts";
 
 /** Dependencies the burrow-backed provider methods wrap. */
 export interface LocalProviderDeps {
@@ -189,12 +191,26 @@ export class LocalProvider implements RuntimeProvider {
 		return env;
 	}
 
-	streamEvents(_handle: RunHandle, _opts?: StreamOpts): AsyncIterable<NormalizedEvent> {
-		return notImplemented("streamEvents");
+	/**
+	 * Wrap burrow's `GET /runs/:id/stream` NDJSON stream (the same endpoint
+	 * `src/runs/stream/bridge.ts` consumes) as the seam's ordered, resumable,
+	 * lossless `NormalizedEvent` stream. Resume rides `opts.sinceSeq` (client-side
+	 * dedup — burrow has no server-side cursor), abort rides the async-iterator
+	 * protocol. See `./stream.ts` for the full contract mapping.
+	 */
+	streamEvents(handle: RunHandle, opts?: StreamOpts): AsyncIterable<NormalizedEvent> {
+		return streamLocalEvents(this.resolveClient(), handle.providerRunId, opts);
 	}
 
-	status(_handle: RunHandle): Promise<RunStatus> {
-		return notImplemented("status");
+	/**
+	 * Wrap burrow's `runs.get` into the out-of-band `RunStatus` reconcile
+	 * snapshot. NEVER throws on a missing run — a burrow 404 returns
+	 * `exists:false` + `terminalReason:"lost"` (§6.7). Recovers the `oom_killed`
+	 * signal burrow stamps onto a failed run's `errorMessage` (§6.5). See
+	 * `./status.ts` for the full burrow-state → phase/terminalReason table.
+	 */
+	status(handle: RunHandle): Promise<RunStatus> {
+		return localRunStatus(this.resolveClient(), handle);
 	}
 
 	sendMessage(_handle: RunHandle, _msg: OutboundMessage): Promise<Message> {

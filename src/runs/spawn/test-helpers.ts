@@ -67,6 +67,16 @@ export function jsonResponse(status: number, body: unknown): Response {
 	});
 }
 
+/** A partial burrow event envelope for the NDJSON stub streams (seq defaulted). */
+export interface StubEventInput {
+	seq: number;
+	kind?: string;
+	stream?: string;
+	payload?: unknown;
+	ts?: string;
+	runId?: string | null;
+}
+
 export interface BurrowFetchPlan {
 	burrow?: Partial<Burrow>;
 	run?: Partial<BurrowRun>;
@@ -76,6 +86,17 @@ export interface BurrowFetchPlan {
 	runsCreateBody?: unknown;
 	destroyStatus?: number;
 	destroyBody?: unknown;
+	/**
+	 * `GET /runs/:id` (status). Provide `runGet` to route it; omitted leaves the
+	 * route unmatched → 404 (so `runs.tryGet` returns null, i.e. exists:false).
+	 * `runGetStatus` overrides the response status (e.g. 404, 500).
+	 */
+	runGet?: Partial<BurrowRun>;
+	runGetStatus?: number;
+	/** NDJSON events yielded by `GET /runs/:id/stream` (streamEvents source). */
+	streamEvents?: StubEventInput[];
+	/** NDJSON events yielded by `GET /burrows/:id/events` (status cursor replay). */
+	replayEvents?: StubEventInput[];
 }
 
 export interface RecordedCall {
@@ -123,6 +144,11 @@ function defaultBurrowRun(plan: BurrowFetchPlan): BurrowRun {
 }
 
 function routeBurrowFetch(plan: BurrowFetchPlan, method: string, path: string): Response | null {
+	return routeWriteFetch(plan, method, path) ?? routeReadFetch(plan, method, path);
+}
+
+/** The dispatch/provision/teardown mutations (create.test.ts). */
+function routeWriteFetch(plan: BurrowFetchPlan, method: string, path: string): Response | null {
 	if (method === "POST" && path === "/burrows") {
 		return jsonResponse(
 			plan.burrowsUpStatus ?? 201,
@@ -142,6 +168,46 @@ function routeBurrowFetch(plan: BurrowFetchPlan, method: string, path: string): 
 		);
 	}
 	return null;
+}
+
+/** The read surfaces streamEvents/status wrap (stream.test.ts / status.test.ts). */
+function routeReadFetch(plan: BurrowFetchPlan, method: string, path: string): Response | null {
+	if (method !== "GET") return null;
+	// `/runs/:id/stream` MUST be matched before `/runs/:id` (prefix overlap).
+	if (/^\/runs\/[^/]+\/stream$/.test(path)) return ndjsonResponse(plan.streamEvents ?? []);
+	if (/^\/burrows\/[^/]+\/events$/.test(path)) return ndjsonResponse(plan.replayEvents ?? []);
+	if (/^\/runs\/[^/]+$/.test(path)) return routeRunGet(plan);
+	return null;
+}
+
+/** `GET /runs/:id` — omitted from the plan leaves it unmatched (→ 404). */
+function routeRunGet(plan: BurrowFetchPlan): Response | null {
+	if (plan.runGet === undefined && plan.runGetStatus === undefined) return null;
+	const status = plan.runGetStatus ?? 200;
+	if (status !== 200) {
+		return jsonResponse(status, { error: { code: "not_found", message: "run gone" } });
+	}
+	return jsonResponse(status, serializeRun(defaultBurrowRun({ run: plan.runGet })));
+}
+
+/** Build an NDJSON `Response` of burrow event envelopes for the stub streams. */
+export function ndjsonResponse(events: StubEventInput[]): Response {
+	const body = events.map((e) => JSON.stringify(toEnvelope(e))).join("\n");
+	return new Response(body, { status: 200, headers: { "content-type": "application/x-ndjson" } });
+}
+
+/** Shape a partial stub event into burrow's wire `EventEnvelope`. */
+function toEnvelope(e: StubEventInput): Record<string, unknown> {
+	return {
+		type: "event",
+		ts: e.ts ?? "2026-05-08T12:00:05.000Z",
+		burrowId: "bur_aaaaaaaaaaaa",
+		runId: e.runId === undefined ? "run_zzzzzzzzzzzz" : e.runId,
+		seq: e.seq,
+		kind: e.kind ?? "log",
+		stream: e.stream ?? "stdout",
+		payload: e.payload ?? {},
+	};
 }
 
 export function makeBurrowClient(plan: BurrowFetchPlan = {}): {
