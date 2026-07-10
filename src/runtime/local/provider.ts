@@ -43,6 +43,7 @@ import type {
 	TeardownResult,
 } from "../contract.ts";
 import { RuntimeNotImplementedError, RuntimeProviderError } from "../errors.ts";
+import { sendLocalMessage } from "./send-message.ts";
 import { localRunStatus } from "./status.ts";
 import { streamLocalEvents } from "./stream.ts";
 
@@ -213,8 +214,17 @@ export class LocalProvider implements RuntimeProvider {
 		return localRunStatus(this.resolveClient(), handle);
 	}
 
-	sendMessage(_handle: RunHandle, _msg: OutboundMessage): Promise<Message> {
-		return notImplemented("sendMessage");
+	/**
+	 * Enqueue a steering message onto the run's burrow inbox — burrow's
+	 * `POST /burrows/:id/inbox`, the same call `src/runs/steer.ts` makes today
+	 * (the domain call-site is untouched until step 13). Preserves burrow's
+	 * priority-desc-then-FIFO claim ordering and unread→delivered→failed
+	 * lifecycle by inventing no defaults: `priority`/`fromActor` ride only when
+	 * supplied, exactly as steer sends them. See `./send-message.ts` for the
+	 * full param + `Message`-row mapping.
+	 */
+	sendMessage(handle: RunHandle, msg: OutboundMessage): Promise<Message> {
+		return sendLocalMessage(this.resolveClient(), handle, msg);
 	}
 
 	cancel(_handle: RunHandle, _reason?: string): Promise<void> {

@@ -1,4 +1,4 @@
-import type { Burrow, Run as BurrowRun } from "@os-eco/burrow-cli";
+import type { Burrow, Message as BurrowMessage, Run as BurrowRun } from "@os-eco/burrow-cli";
 import { BurrowClient, BurrowClientPool } from "../../burrow-client/index.ts";
 import { openDatabase, type WarrenDb } from "../../db/client.ts";
 import { createRepos, type Repos } from "../../db/repos/index.ts";
@@ -87,6 +87,14 @@ export interface BurrowFetchPlan {
 	destroyStatus?: number;
 	destroyBody?: unknown;
 	/**
+	 * `POST /burrows/:id/inbox` (inbox send — the sendMessage source). Provide
+	 * `inboxSend` to shape the returned message row; `inboxSendStatus` overrides
+	 * the response status and `inboxSendBody` the whole body (for error paths).
+	 */
+	inboxSend?: Partial<BurrowMessage>;
+	inboxSendStatus?: number;
+	inboxSendBody?: unknown;
+	/**
 	 * `GET /runs/:id` (status). Provide `runGet` to route it; omitted leaves the
 	 * route unmatched → 404 (so `runs.tryGet` returns null, i.e. exists:false).
 	 * `runGetStatus` overrides the response status (e.g. 404, 500).
@@ -143,6 +151,21 @@ function defaultBurrowRun(plan: BurrowFetchPlan): BurrowRun {
 	};
 }
 
+function defaultBurrowMessage(overrides: Partial<BurrowMessage>): BurrowMessage {
+	return {
+		id: "msg_aaaaaaaaaaaa",
+		burrowId: "bur_aaaaaaaaaaaa",
+		fromActor: "operator",
+		body: "focus on the failing test",
+		priority: "normal",
+		state: "unread",
+		deliveredAtRunId: null,
+		createdAt: new Date("2026-05-08T12:00:10Z"),
+		deliveredAt: null,
+		...overrides,
+	};
+}
+
 function routeBurrowFetch(plan: BurrowFetchPlan, method: string, path: string): Response | null {
 	return routeWriteFetch(plan, method, path) ?? routeReadFetch(plan, method, path);
 }
@@ -165,6 +188,17 @@ function routeWriteFetch(plan: BurrowFetchPlan, method: string, path: string): R
 		return jsonResponse(
 			plan.destroyStatus ?? 200,
 			plan.destroyBody ?? { burrowId: "bur_aaaaaaaaaaaa", archived: false },
+		);
+	}
+	return routeInboxSend(plan, method, path);
+}
+
+/** `POST /burrows/:id/inbox` — the sendMessage source (send-message.test.ts). */
+function routeInboxSend(plan: BurrowFetchPlan, method: string, path: string): Response | null {
+	if (method === "POST" && /^\/burrows\/[^/]+\/inbox$/.test(path)) {
+		return jsonResponse(
+			plan.inboxSendStatus ?? 201,
+			plan.inboxSendBody ?? serializeMessage(defaultBurrowMessage(plan.inboxSend ?? {})),
 		);
 	}
 	return null;
@@ -249,6 +283,14 @@ function serializeRun(r: BurrowRun): unknown {
 		queuedAt: r.queuedAt.toISOString(),
 		startedAt: r.startedAt?.toISOString() ?? null,
 		completedAt: r.completedAt?.toISOString() ?? null,
+	};
+}
+
+function serializeMessage(m: BurrowMessage): unknown {
+	return {
+		...m,
+		createdAt: m.createdAt.toISOString(),
+		deliveredAt: m.deliveredAt?.toISOString() ?? null,
 	};
 }
 
