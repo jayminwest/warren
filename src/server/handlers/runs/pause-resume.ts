@@ -1,5 +1,6 @@
 import type { MessagePriority } from "@os-eco/burrow-cli";
 import { cancelRun, steerRun } from "../../../runs/index.ts";
+import { resolveRuntimeProvider } from "../../../runtime/registry.ts";
 import { jsonResponse } from "../../response.ts";
 import type { RouteHandler, ServerDeps } from "../../types.ts";
 import {
@@ -18,7 +19,9 @@ export function steerRunHandler(deps: ServerDeps): RouteHandler {
 			runId: id,
 			body: requireString(body, "body"),
 			repos: deps.repos,
-			burrowClientPool: deps.burrowClientPool,
+			runtimeProvider:
+				deps.runtimeProvider ??
+				resolveRuntimeProvider({ burrowClientPool: () => deps.burrowClientPool }),
 			broker: deps.broker,
 			...(optionalString(body, "priority") !== undefined
 				? { priority: optionalString(body, "priority") as MessagePriority }

@@ -4,6 +4,8 @@ import { BurrowClient, BurrowClientPool, BurrowUnreachableError } from "../burro
 import { NotFoundError, ValidationError } from "../core/errors.ts";
 import { openDatabase, type WarrenDb } from "../db/client.ts";
 import { createRepos, type Repos } from "../db/repos/index.ts";
+import type { RuntimeProvider } from "../runtime/contract.ts";
+import { resolveRuntimeProvider } from "../runtime/registry.ts";
 import { RunEventBroker } from "./events.ts";
 import { steerRun } from "./steer.ts";
 
@@ -21,6 +23,17 @@ async function makePool(
 	const pool = new BurrowClientPool({ repos });
 	pool.register(workerName, client);
 	return pool;
+}
+
+/**
+ * Build the runtime-provider seam over the same single-`local`-worker pool
+ * (pl-829f step 13). The LocalProvider resolves the sole burrow worker itself,
+ * so `sendMessage` reaches the stub client exactly as the pre-seam
+ * `pool.clientFor` did. Mechanical injection-shape update — no behavior change.
+ */
+async function makeProvider(client: BurrowClient, repos: Repos): Promise<RuntimeProvider> {
+	const pool = await makePool(client, repos);
+	return resolveRuntimeProvider({ burrowClientPool: () => pool });
 }
 
 function stub(
@@ -144,7 +157,7 @@ describe("steerRun", () => {
 		const runId = await createRunningRun();
 		const { client, calls } = makeBurrowClient();
 		await expect(
-			steerRun({ runId, body: "   ", repos, burrowClientPool: await makePool(client, repos) }),
+			steerRun({ runId, body: "   ", repos, runtimeProvider: await makeProvider(client, repos) }),
 		).rejects.toBeInstanceOf(ValidationError);
 		expect(calls).toHaveLength(0);
 		expect(await repos.events.countByRun(runId)).toBe(0);
@@ -157,7 +170,7 @@ describe("steerRun", () => {
 				runId: "run_doesnotexist",
 				body: "hi",
 				repos,
-				burrowClientPool: await makePool(client, repos),
+				runtimeProvider: await makeProvider(client, repos),
 			}),
 		).rejects.toBeInstanceOf(NotFoundError);
 		expect(calls).toHaveLength(0);
@@ -175,7 +188,7 @@ describe("steerRun", () => {
 		).id;
 		const { client, calls } = makeBurrowClient();
 		await expect(
-			steerRun({ runId, body: "hi", repos, burrowClientPool: await makePool(client, repos) }),
+			steerRun({ runId, body: "hi", repos, runtimeProvider: await makeProvider(client, repos) }),
 		).rejects.toBeInstanceOf(ValidationError);
 		expect(calls).toHaveLength(0);
 	});
@@ -185,7 +198,7 @@ describe("steerRun", () => {
 		await repos.runs.finalize(runId, "succeeded");
 		const { client, calls } = makeBurrowClient();
 		await expect(
-			steerRun({ runId, body: "hi", repos, burrowClientPool: await makePool(client, repos) }),
+			steerRun({ runId, body: "hi", repos, runtimeProvider: await makeProvider(client, repos) }),
 		).rejects.toBeInstanceOf(ValidationError);
 		expect(calls).toHaveLength(0);
 	});
@@ -201,7 +214,7 @@ describe("steerRun", () => {
 			priority: "high",
 			fromActor: "alice",
 			repos,
-			burrowClientPool: await makePool(client, repos),
+			runtimeProvider: await makeProvider(client, repos),
 		});
 		expect(result.message.id).toBe("msg_aaaaaaaaaaaa");
 		expect(calls).toEqual([
@@ -225,7 +238,7 @@ describe("steerRun", () => {
 			body: "remember to lint",
 			priority: "urgent",
 			repos,
-			burrowClientPool: await makePool(client, repos),
+			runtimeProvider: await makeProvider(client, repos),
 		});
 		const events = await repos.events.listByRun(runId);
 		expect(events).toHaveLength(1);
@@ -257,7 +270,12 @@ describe("steerRun", () => {
 			payload: {},
 		});
 		const { client } = makeBurrowClient();
-		await steerRun({ runId, body: "hi", repos, burrowClientPool: await makePool(client, repos) });
+		await steerRun({
+			runId,
+			body: "hi",
+			repos,
+			runtimeProvider: await makeProvider(client, repos),
+		});
 		const events = await repos.events.listByRun(runId);
 		const sent = events.find((e) => e.kind === "steer.sent");
 		expect(sent).toBeDefined();
@@ -280,7 +298,7 @@ describe("steerRun", () => {
 			runId,
 			body: "hi",
 			repos,
-			burrowClientPool: await makePool(client, repos),
+			runtimeProvider: await makeProvider(client, repos),
 			broker,
 		});
 		await consumer;
@@ -290,7 +308,12 @@ describe("steerRun", () => {
 	test("does not change the run's state", async () => {
 		const runId = await createRunningRun();
 		const { client } = makeBurrowClient();
-		await steerRun({ runId, body: "hi", repos, burrowClientPool: await makePool(client, repos) });
+		await steerRun({
+			runId,
+			body: "hi",
+			repos,
+			runtimeProvider: await makeProvider(client, repos),
+		});
 		expect((await repos.runs.require(runId)).state).toBe("running");
 	});
 
@@ -309,7 +332,7 @@ describe("steerRun", () => {
 			runId: run.id,
 			body: "hi",
 			repos,
-			burrowClientPool: await makePool(client, repos),
+			runtimeProvider: await makeProvider(client, repos),
 		});
 		expect(calls[0]?.path).toBe("/burrows/bur_aaaaaaaaaaaa/inbox");
 		expect((await repos.runs.require(run.id)).state).toBe("queued");
@@ -325,7 +348,7 @@ describe("steerRun", () => {
 			fetch: fetchImpl,
 		});
 		await expect(
-			steerRun({ runId, body: "hi", repos, burrowClientPool: await makePool(client, repos) }),
+			steerRun({ runId, body: "hi", repos, runtimeProvider: await makeProvider(client, repos) }),
 		).rejects.toBeInstanceOf(BurrowUnreachableError);
 		// No audit event was emitted for a failed forward.
 		expect(await repos.events.countByRun(runId)).toBe(0);
@@ -338,7 +361,7 @@ describe("steerRun", () => {
 			body: { error: { code: "validation_error", message: "body too long" } },
 		});
 		await expect(
-			steerRun({ runId, body: "hi", repos, burrowClientPool: await makePool(client, repos) }),
+			steerRun({ runId, body: "hi", repos, runtimeProvider: await makeProvider(client, repos) }),
 		).rejects.toThrow();
 		expect(await repos.events.countByRun(runId)).toBe(0);
 	});
@@ -350,7 +373,7 @@ describe("steerRun", () => {
 			body: { error: { code: "not_found", message: "burrow bur_aaaaaaaaaaaa not found" } },
 		});
 		await expect(
-			steerRun({ runId, body: "hi", repos, burrowClientPool: await makePool(client, repos) }),
+			steerRun({ runId, body: "hi", repos, runtimeProvider: await makeProvider(client, repos) }),
 		).rejects.toBeInstanceOf(ValidationError);
 		// No audit event — steering a ghost run is rejected, not recorded.
 		expect(await repos.events.countByRun(runId)).toBe(0);

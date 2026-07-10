@@ -22,6 +22,7 @@ import type { refreshProject } from "../projects/manage.ts";
 import type { CanopyRegistryConfig } from "../registry/config.ts";
 import type { RunEventBroker } from "../runs/events.ts";
 import type { AutoOpenPrConfig } from "../runs/pr.ts";
+import type { RuntimeProvider } from "../runtime/contract.ts";
 import type { SeedsCliDeps } from "../seeds-cli/index.ts";
 import type { PreviewMode, WarrenConfigCache } from "../warren-config/index.ts";
 import type { IdempotencyStore } from "./idempotency.ts";
@@ -121,27 +122,26 @@ export interface Logger {
 export interface ServerDeps {
 	readonly repos: Repos;
 	/**
-	 * Live db handle — used by the `/readyz` `db_reachable` probe
-	 * (R-13 pl-f17e step 5, warren-e2ea) so the diagnostic envelope
-	 * reports the active dialect. Tests can omit; the probe degrades
-	 * to `ok: true` with a "no db wired" message when absent.
+	 * Live db handle — used by the `/readyz` `db_reachable` probe (R-13 pl-f17e
+	 * step 5, warren-e2ea) so the diagnostic envelope reports the active dialect.
+	 * Tests can omit; the probe degrades to `ok: true`/"no db wired" when absent.
 	 */
 	readonly db?: AnyWarrenDb;
 	/**
 	 * Multi-worker burrow client pool (warren-39c3 / warren-c0c9 / pl-9ba1).
 	 * Every burrow-targeting handler routes through this: `placeFor` for new
-	 * burrows, `clientFor` for per-resource reads (cancel / steer / reap /
-	 * bridges / GET /burrows/:id), and `probe()` for /readyz.
+	 * burrows, `clientFor` for per-resource reads, and `probe()` for /readyz.
 	 */
 	readonly burrowClientPool: BurrowClientPool;
+	/** Runtime-provider seam (pl-829f step 13); optional — prod always sets it. */
+	readonly runtimeProvider?: RuntimeProvider;
 	readonly broker: RunEventBroker;
 	readonly bridges: BridgeRegistry;
 	/**
 	 * Canopy library config — undefined when `CANOPY_REPO_URL` is unset
-	 * (warren-d3e9). `POST /agents/refresh` and the canopy clone /
-	 * canopy clean readyz probes are gated on this being defined.
-	 * Built-in agents in `src/registry/builtins/` cover the common
-	 * "no library configured" case.
+	 * (warren-d3e9). `POST /agents/refresh` and the canopy clone / canopy clean
+	 * readyz probes are gated on this being defined. Built-in agents in
+	 * `src/registry/builtins/` cover the common "no library configured" case.
 	 */
 	readonly canopyConfig?: CanopyRegistryConfig;
 	readonly projectsConfig: ProjectsConfig;

@@ -34,6 +34,7 @@ import { ProjectLacksPlotError } from "../../plan-runs/errors.ts";
 import { defaultPlotCreator, defaultPlotSyncer } from "../../plots/index.ts";
 import { rewakeConversation } from "../../runs/conversation-rewake.ts";
 import { resolveDispatcherHandle, spawnRun, steerRun } from "../../runs/index.ts";
+import { resolveRuntimeProvider } from "../../runtime/registry.ts";
 import { loadWarrenConfig } from "../../warren-config/index.ts";
 import { jsonResponse } from "../response.ts";
 import type { RouteHandler, ServerDeps } from "../types.ts";
@@ -245,7 +246,9 @@ export function postConversationMessageHandler(deps: ServerDeps): RouteHandler {
 			runId: conversation.anchoringRunId,
 			body: message,
 			repos: deps.repos,
-			burrowClientPool: deps.burrowClientPool,
+			runtimeProvider:
+				deps.runtimeProvider ??
+				resolveRuntimeProvider({ burrowClientPool: () => deps.burrowClientPool }),
 			broker: deps.broker,
 			...(fromActor !== undefined ? { fromActor } : {}),
 			...(deps.now !== undefined ? { now: deps.now } : {}),

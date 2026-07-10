@@ -30,6 +30,7 @@ import type { loadPreviewPortRangeFromEnv } from "../../preview/port-allocator.t
 import type { ProjectsConfig } from "../../projects/config.ts";
 import type { loadCanopyRegistryConfigFromEnv } from "../../registry/config.ts";
 import type { loadAutoOpenPrConfigFromEnv, RunEventBroker } from "../../runs/index.ts";
+import { resolveRuntimeProvider } from "../../runtime/registry.ts";
 import type { createWarrenConfigCache } from "../../warren-config/index.ts";
 import { IdempotencyStore } from "../idempotency.ts";
 import type { BridgeRegistry, Logger, ServerDeps } from "../types.ts";
@@ -106,10 +107,17 @@ export function buildServerDeps(input: BuildServerDepsInput): ServerDeps {
 	const previewHostForDeps =
 		previewLaunchConfig.host !== null ? previewLaunchConfig.host : undefined;
 
+	// Runtime-provider seam (K8s migration pl-829f step 13 / warren-1f56).
+	// Resolved once here — the sole composition point — on `WARREN_RUNTIME`
+	// (default `local` → the burrow-backed `LocalProvider` over this same pool,
+	// passed as a factory so it resolves its container worker lazily).
+	const runtimeProvider = resolveRuntimeProvider({ burrowClientPool: () => burrowClientPool });
+
 	return {
 		repos,
 		db,
 		burrowClientPool,
+		runtimeProvider,
 		broker,
 		bridges,
 		...(canopyConfig !== null ? { canopyConfig } : {}),
