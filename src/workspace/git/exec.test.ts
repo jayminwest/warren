@@ -12,7 +12,9 @@ import { runGit, runGitOrThrow } from "./exec.ts";
  * environment and would otherwise make "outside a repo" assertions resolve to
  * the worktree's own .git.
  */
-function cleanGitEnv(extra: Record<string, string | undefined> = {}): Record<string, string> {
+export function cleanGitEnv(
+	extra: Record<string, string | undefined> = {},
+): Record<string, string> {
 	const out: Record<string, string> = {};
 	for (const [k, v] of Object.entries(process.env)) {
 		if (v !== undefined && !k.startsWith("GIT_")) out[k] = v;
