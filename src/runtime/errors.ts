@@ -39,3 +39,18 @@ export class UnknownRuntimeError extends WarrenError {
 export class RuntimeProviderError extends WarrenError {
 	readonly code = "runtime_provider_error";
 }
+
+/**
+ * Provider-neutral "the run/sandbox this handle points at no longer exists" —
+ * the seam's replacement for burrow's `NotFoundError` (K8s: a GC'd pod). A
+ * provider raises this from `sendMessage` / `cancel` when the backend reports
+ * the run is gone (LocalProvider maps burrow's 404 onto it); `status()` reports
+ * the same condition as `exists:false` rather than throwing. The domain
+ * call-sites (`steerRun`, `cancelRun`) catch THIS instead of importing burrow's
+ * error class, so the error taxonomy stops leaking the backend across the seam
+ * (warren-1f56). Distinct from `RuntimeProviderError` (warren-side, before the
+ * request leaves) and `BurrowUnreachableError` (transport).
+ */
+export class RuntimeRunNotFoundError extends WarrenError {
+	readonly code = "runtime_run_not_found";
+}

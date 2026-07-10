@@ -17,11 +17,11 @@
  *     lifecycle burrow enforces on its own side. Distorting the defaults here
  *     would silently re-rank the queue.
  *   - Transport: wrapped in `withTransportMapping` so a dead socket surfaces as
- *     `BurrowUnreachableError` (steer does the same). Burrow-side errors
- *     (`BurrowError` subclasses, e.g. `NotFoundError` for a ghost burrow)
- *     propagate UNCHANGED — the domain call-site owns any mapping onto its HTTP
- *     envelope (steer maps `NotFoundError` → `ValidationError`); the provider
- *     stays backend-neutral.
+ *     `BurrowUnreachableError` (steer does the same). A burrow 404 (ghost
+ *     burrow) is NEUTRALIZED at the seam (warren-1f56): it re-throws as the
+ *     provider-neutral `RuntimeRunNotFoundError` so `steerRun` maps it onto its
+ *     `ValidationError` HTTP envelope without importing `@os-eco/burrow-cli`'s
+ *     error class. Other `BurrowError` subclasses propagate unchanged.
  *
  * ## burrow `Message` (MessageRow) → seam `Message`
  *
@@ -42,9 +42,13 @@
  * unread row a send returns, populated once a later turn claims the message.
  */
 
-import type { Message as BurrowMessage } from "@os-eco/burrow-cli";
+import {
+	type Message as BurrowMessage,
+	NotFoundError as BurrowNotFoundError,
+} from "@os-eco/burrow-cli";
 import { type BurrowClient, withTransportMapping } from "../../burrow-client/index.ts";
 import type { Message, OutboundMessage, RunHandle } from "../contract.ts";
+import { RuntimeRunNotFoundError } from "../errors.ts";
 
 /**
  * Enqueue a steering message onto the run's burrow inbox and return the
@@ -57,14 +61,27 @@ export async function sendLocalMessage(
 	handle: RunHandle,
 	msg: OutboundMessage,
 ): Promise<Message> {
-	const row = await withTransportMapping(client.config, () =>
-		client.http.inbox.send({
-			burrowId: handle.sandboxId,
-			body: msg.body,
-			...(msg.priority !== undefined ? { priority: msg.priority } : {}),
-			...(msg.fromActor !== undefined ? { fromActor: msg.fromActor } : {}),
-		}),
-	);
+	let row: BurrowMessage;
+	try {
+		row = await withTransportMapping(client.config, () =>
+			client.http.inbox.send({
+				burrowId: handle.sandboxId,
+				body: msg.body,
+				...(msg.priority !== undefined ? { priority: msg.priority } : {}),
+				...(msg.fromActor !== undefined ? { fromActor: msg.fromActor } : {}),
+			}),
+		);
+	} catch (err) {
+		// Neutralize burrow's 404 at the seam (warren-1f56): a ghost burrow
+		// surfaces to the domain as the provider-neutral `RuntimeRunNotFoundError`
+		// so `steerRun` never imports `@os-eco/burrow-cli`'s error class.
+		if (err instanceof BurrowNotFoundError) {
+			throw new RuntimeRunNotFoundError(err.message, {
+				recoveryHint: "the run is likely lost; the bridge will reconcile it to failed",
+			});
+		}
+		throw err;
+	}
 	return toSeamMessage(row);
 }
 

@@ -29,15 +29,18 @@
  *     already-terminal short-circuit (answering locally without a wire call) is
  *     a warren-side optimization, not something the provider needs to reproduce.
  *   - Transport: wrapped in `withTransportMapping` so a dead socket surfaces as
- *     `BurrowUnreachableError` (`cancelRun` does the same). Burrow-side errors
- *     (`BurrowError` subclasses, e.g. `NotFoundError` for a run burrow has no
- *     record of) propagate UNCHANGED — the domain call-site owns any mapping
- *     (`cancelRun` maps `NotFoundError` → terminalize-the-row); the provider
- *     stays backend-neutral.
+ *     `BurrowUnreachableError` (`cancelRun` does the same). A burrow 404 (the
+ *     run is a ghost) is NEUTRALIZED at the seam (warren-1f56): it re-throws as
+ *     the provider-neutral `RuntimeRunNotFoundError` so the domain
+ *     (`cancelRun` → terminalize-the-row; the watchdog → swallow) recognizes a
+ *     lost run without importing `@os-eco/burrow-cli`'s error class. Other
+ *     `BurrowError` subclasses propagate unchanged.
  */
 
+import { NotFoundError as BurrowNotFoundError } from "@os-eco/burrow-cli";
 import { type BurrowClient, withTransportMapping } from "../../burrow-client/index.ts";
 import type { RunHandle } from "../contract.ts";
+import { RuntimeRunNotFoundError } from "../errors.ts";
 
 /**
  * Forward a graceful cancel to burrow's `POST /runs/:id/cancel` for the run this
@@ -51,7 +54,20 @@ export async function cancelLocalRun(
 	handle: RunHandle,
 	reason?: string,
 ): Promise<void> {
-	await withTransportMapping(client.config, () =>
-		client.http.runs.cancel(handle.providerRunId, reason !== undefined ? { reason } : {}),
-	);
+	try {
+		await withTransportMapping(client.config, () =>
+			client.http.runs.cancel(handle.providerRunId, reason !== undefined ? { reason } : {}),
+		);
+	} catch (err) {
+		// Neutralize burrow's 404 at the seam (warren-1f56): a ghost run surfaces
+		// to the domain as the provider-neutral `RuntimeRunNotFoundError` so
+		// `cancelRun` / the watchdog never import `@os-eco/burrow-cli`'s error
+		// class to recognize a lost run.
+		if (err instanceof BurrowNotFoundError) {
+			throw new RuntimeRunNotFoundError(err.message, {
+				recoveryHint: "the run is unknown to the backend; terminalize the warren row",
+			});
+		}
+		throw err;
+	}
 }

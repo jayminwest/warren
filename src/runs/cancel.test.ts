@@ -59,6 +59,21 @@ function makeBurrowClient(plan: CancelFetchPlan = {}): {
 	calls: RecordedCall[];
 } {
 	const calls: RecordedCall[] = [];
+	const run: BurrowRun = {
+		id: "run_zzzzzzzzzzzz",
+		burrowId: "bur_aaaaaaaaaaaa",
+		agentId: "refactor-bot",
+		prompt: "p",
+		resumeOfRunId: null,
+		state: "cancelled",
+		exitCode: null,
+		errorMessage: null,
+		metadataJson: null,
+		queuedAt: new Date("2026-05-08T12:00:00Z"),
+		startedAt: null,
+		completedAt: new Date("2026-05-08T12:00:01Z"),
+		...plan.run,
+	};
 	const fetchImpl = stub(async (input, init) => {
 		const url = new URL(String(input), "http://localhost");
 		const path = url.pathname;
@@ -66,22 +81,17 @@ function makeBurrowClient(plan: CancelFetchPlan = {}): {
 		const reqBody = typeof init?.body === "string" ? JSON.parse(init.body) : undefined;
 		calls.push({ method, path, body: reqBody });
 		if (method === "POST" && path.match(/^\/runs\/[^/]+\/cancel$/)) {
-			const run: BurrowRun = {
-				id: "run_zzzzzzzzzzzz",
-				burrowId: "bur_aaaaaaaaaaaa",
-				agentId: "refactor-bot",
-				prompt: "p",
-				resumeOfRunId: null,
-				state: "cancelled",
-				exitCode: null,
-				errorMessage: null,
-				metadataJson: null,
-				queuedAt: new Date("2026-05-08T12:00:00Z"),
-				startedAt: null,
-				completedAt: new Date("2026-05-08T12:00:01Z"),
-				...plan.run,
-			};
 			return jsonResponse(plan.status ?? 200, plan.body ?? serializeRun(run));
+		}
+		// warren-1f56: cancel now re-reads the post-cancel phase via
+		// `provider.status()`, which drives `runs.get` + a bounded `events`
+		// replay. Route both so the status snapshot resolves against the same
+		// (post-cancel) run row.
+		if (method === "GET" && /^\/burrows\/[^/]+\/events$/.test(path)) {
+			return new Response("", { status: 200, headers: { "content-type": "application/x-ndjson" } });
+		}
+		if (method === "GET" && /^\/runs\/[^/]+$/.test(path)) {
+			return jsonResponse(200, serializeRun(run));
 		}
 		return jsonResponse(404, {
 			error: { code: "not_found", message: `unmatched ${method} ${path}` },
@@ -179,13 +189,13 @@ describe("cancelRun", () => {
 		});
 		expect(result.alreadyTerminal).toBe(false);
 		expect(result.burrowRun?.state).toBe("cancelled");
-		expect(calls).toEqual([
-			{
-				method: "POST",
-				path: "/runs/run_zzzzzzzzzzzz/cancel",
-				body: { reason: "operator changed their mind" },
-			},
-		]);
+		// The graceful cancel POST rides the seam (warren-1f56); the status
+		// re-read (runs.get + events replay) follows it.
+		expect(calls).toContainEqual({
+			method: "POST",
+			path: "/runs/run_zzzzzzzzzzzz/cancel",
+			body: { reason: "operator changed their mind" },
+		});
 		const events = await repos.events.listByRun(runId);
 		expect(events).toHaveLength(1);
 		const event = events[0];

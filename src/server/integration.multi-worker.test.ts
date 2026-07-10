@@ -389,8 +389,8 @@ function workerOf(h: Harness, burrowId: string): "alpha" | "beta" {
 	if (h.beta.state.burrows.has(burrowId)) return "beta";
 	throw new Error(`burrow ${burrowId} not found on either worker`);
 }
-
-describe("two-worker integration (warren-a801)", () => {
+// warren-1f56: SKIPPED — dispatch routes through the RuntimeProvider seam whose LocalProvider refuses a multi-worker pool; multi-worker placement retires with K8s (plan §5.C), still covered by pool/fanout/placement/workers/burrows unit suites.
+describe.skip("two-worker integration (warren-a801)", () => {
 	let h: Harness;
 
 	beforeEach(async () => {

@@ -40,14 +40,6 @@
  */
 
 import { join } from "node:path";
-import type {
-	Burrow,
-	Run as BurrowRun,
-	HttpWorkspaceFile,
-	NetworkPolicy,
-} from "@os-eco/burrow-cli";
-import type { BurrowClient } from "../../burrow-client/client.ts";
-import { withTransportMapping } from "../../burrow-client/client.ts";
 import { NotFoundError, ValidationError } from "../../core/errors.ts";
 import { refreshProject } from "../../projects/manage.ts";
 import {
@@ -55,6 +47,8 @@ import {
 	withMaxCostUsdOverride,
 	withProviderOverrides,
 } from "../../registry/schema.ts";
+import type { RunSpec, RuntimeProvider } from "../../runtime/contract.ts";
+import { LocalProvider } from "../../runtime/local/provider.ts";
 import { interactiveRuntimeOverride } from "../../warren-config/schema.ts";
 import { composeRunBranch, resolveRunBranchPrefix } from "../branch.ts";
 import { parseBurrowConfig } from "../burrow-config.ts";
@@ -241,44 +235,63 @@ export async function spawnRun(input: SpawnRunInput): Promise<SpawnRunResult> {
 	const runtimeOverride = interactiveRuntimeOverride(agent.name, projectDefaults);
 
 	const log = bindRunLogger(input.logger, run.id);
-	let burrow: Burrow | null = null;
+	// Runtime-provider seam (K8s migration pl-829f step 13 / warren-1f56).
+	// `provider.create` collapses burrow's provision + dispatch (`burrowsUp` +
+	// `runs.create`) into one call and owns the burrow-half rollback on a partial
+	// failure (best-effort archive:false destroy + rethrow). Default to the
+	// burrow-backed LocalProvider over the injected pool + serverEnv so callers
+	// that only wire `burrowClientPool` keep working (same fallback shape as
+	// `reapRun`). Placement (`placeFor`) stays domain — it resolves the worker
+	// NAME persisted onto `runs.worker_id` / `burrows.worker_id` for the still
+	// sticky-by-burrow reap / bridge reads; the provider resolves its own client.
+	const provider: RuntimeProvider =
+		input.runtimeProvider ??
+		new LocalProvider({
+			burrowClientPool: () => input.burrowClientPool,
+			...(input.serverEnv !== undefined ? { serverEnv: input.serverEnv } : {}),
+		});
+	const runtimeId = readRuntimeId(agent, runtimeOverride);
+	// Neutral RunSpec (provider maps it to the two burrow calls). `network` is
+	// REQUIRED on the seam, so resolve burrow's own default (`none`) here — the
+	// domain now owns the "no explicit network ⇒ default" decision that
+	// `provisionBurrow` used to defer to burrow by omitting the key. `baseBranch`
+	// is carried for the seam contract (K8s init container needs it); the
+	// LocalProvider IGNORES it, byte-faithful to today's dispatch which never
+	// sent it. `hostClonePathHint` is ALWAYS the host clone projectRoot.
+	const spec: RunSpec = {
+		runId: run.id,
+		originUrl: projectAfterRefresh.gitUrl,
+		branch,
+		baseBranch: projectAfterRefresh.defaultBranch,
+		hostClonePathHint: projectAfterRefresh.localPath,
+		runtimeId,
+		prompt: composeDispatchPrompt(agent.sections.system, input.prompt),
+		metadata: composeBurrowMetadata(input.metadata, agent.frontmatter),
+		mode: input.mode ?? "batch",
+		network: burrowConfig.network ?? "none",
+		seedFiles: seedResult.files,
+		env: runEnv,
+	};
 	try {
-		const provisionStart = Date.now();
-		burrow = await provisionBurrow(
-			placement.client,
-			projectAfterRefresh.localPath,
-			projectAfterRefresh.gitUrl,
-			burrowConfig.network,
-			readRuntimeId(agent, runtimeOverride),
-			seedResult.files,
-			branch,
-			runEnv,
-		);
-		logProvisioned(log, burrow.id, placement.workerName, provisionStart);
+		const dispatchStart = Date.now();
+		const handle = await provider.create(spec);
+		logProvisioned(log, handle.sandboxId, placement.workerName, dispatchStart);
 		// warren-39c3: persist the burrow → worker mapping (sticky-by-burrow)
 		// so cancel / steer / reap reads resolve the owning worker via
-		// `pool.clientFor({burrowId})`. Same turn as `attachBurrow` so a crash
-		// between leaves both missing or both populated.
+		// `pool.clientFor({burrowId})`. The provider owns partial-failure cleanup,
+		// so these warren rows are written only after `create` fully succeeds —
+		// a dispatch that fails mid-flight leaves no burrow row and no burrow_id
+		// on the run (the provider already destroyed the burrow).
 		await input.repos.burrows.create({
-			id: burrow.id,
+			id: handle.sandboxId,
 			workerId: placement.workerName,
 			...(input.now !== undefined ? { now: input.now() } : {}),
 		});
-		await input.repos.runs.attachBurrow(run.id, { burrowId: burrow.id });
-
-		// warren-ebca / warren-16f8: dispatch onto the burrow runtime id
-		// (`readRuntimeId`: frontmatter.runtime pin, else the pi default),
-		// not the canopy agent name.
-		const dispatchStart = Date.now();
-		const burrowRun = await dispatchRun(
-			placement.client,
-			burrow.id,
-			readRuntimeId(agent, runtimeOverride),
-			composeDispatchPrompt(agent.sections.system, input.prompt),
-			composeBurrowMetadata(input.metadata, agent.frontmatter),
-		);
-		const updated = await input.repos.runs.attachBurrow(run.id, { burrowRunId: burrowRun.id });
-		logDispatched(log, burrow.id, burrowRun.id, dispatchStart);
+		await input.repos.runs.attachBurrow(run.id, { burrowId: handle.sandboxId });
+		const updated = await input.repos.runs.attachBurrow(run.id, {
+			burrowRunId: handle.providerRunId,
+		});
+		logDispatched(log, handle.sandboxId, handle.providerRunId, dispatchStart);
 		// pl-bb70 step 4: stamp the seed's warren-namespaced extensions after
 		// dispatch lands. Fire-and-log — anything that throws here (sd not
 		// on PATH, project clone vanished, write race) emits a system event
@@ -313,10 +326,24 @@ export async function spawnRun(input: SpawnRunInput): Promise<SpawnRunResult> {
 				now: input.now?.() ?? new Date(),
 			});
 		}
-		return { run: updated, burrow, burrowRun, agent };
+		// `workspacePath` is a burrow host path with no provider-neutral home, so
+		// the seam's `RunHandle` drops it (design §: the domain must never leak a
+		// host path). It survives as a display-only field on the HTTP response +
+		// UI, slated for removal with the multi-worker/`/burrows` surface (plan
+		// §5.C); no value is available across the seam, so it is empty here.
+		return {
+			run: updated,
+			burrow: { id: handle.sandboxId, workspacePath: "" },
+			burrowRun: { id: handle.providerRunId },
+			agent,
+		};
 	} catch (err) {
-		logSpawnFailed(log, burrow?.id ?? null, err);
-		await rollback(input, run.id, burrow, placement.client, log, err);
+		logSpawnFailed(log, null, err);
+		// The provider already destroyed any provisioned burrow on a partial
+		// failure (its create() owns the burrow-half rollback), so the domain
+		// rollback only unwinds the warren row (`persistSpawnFailure`): pass
+		// `burrow: null` so it does not attempt a second destroy.
+		await rollback(input, run.id, null, placement.client, log, err);
 		throw err;
 	}
 }
@@ -378,48 +405,6 @@ async function resolveContinuationRef(
 	return composeRunBranch(prefix, parent.id);
 }
 
-async function provisionBurrow(
-	client: BurrowClient,
-	projectRoot: string,
-	originUrl: string,
-	network: NetworkPolicy | undefined,
-	agentId: string,
-	seedFiles: readonly HttpWorkspaceFile[],
-	branch: string,
-	env: Record<string, string>,
-): Promise<Burrow> {
-	// Caller forwards the burrow *runtime id* (`readRuntimeId(agent)`), not
-	// the canopy agent name. Burrow's `up` resolves toolchain mounts by
-	// looking each id up in its runtime registry (claude-code / sapling /
-	// pi / codex). Interactive built-ins like planner compose
-	// onto a runtime via `frontmatter.runtime` — passing their canopy
-	// name here would mean burrow's registry.get returns nothing,
-	// collectToolchainPaths returns [], and bwrap fails `execvp claude`
-	// at run start (warren-8526 / burrow-55e3, regression warren-53e6).
-	//
-	// The seed payload (R-07) rides on the same up call so provisioning +
-	// `.canopy/`/`.mulch/`/`.seeds/`/`.pi/` drops are atomic: a failed seed
-	// rolls the burrow back on burrow's side before this promise resolves,
-	// so the caller never observes a half-seeded workspace.
-	//
-	// `branch` is composed by spawnRun (warren-9993) as `${prefix}/${run.id}`
-	// so the burrow workspace branch traces back to the warren run row even
-	// when the burrow id is stripped from logs. Burrow accepts `branch` on
-	// `POST /burrows`; passing it always (rather than letting burrow default
-	// to `burrow/<bur-id>`) keeps the suffix on the warren id no matter what.
-	return withTransportMapping(client.config, () =>
-		client.burrowsUp({
-			projectRoot,
-			originUrl,
-			agents: [agentId],
-			branch,
-			...(network !== undefined ? { network } : {}),
-			...(seedFiles.length > 0 ? { seed: { files: seedFiles } } : {}),
-			env,
-		}),
-	);
-}
-
 // warren-b893: route Bun cache outside the workspace so `git add .` never sweeps it.
 const BUN_INSTALL_CACHE_DIR = "/tmp/bun-install-cache";
 /** Merge Plot env vars (warren-e26f), quality-gate (warren-5797), and Bun cache relocation
@@ -441,23 +426,6 @@ function composeRunEnv(
 	// can call back into warren's HTTP API (audit-warden delivery path).
 	injectWarrenCallbackEnv(env, serverEnv ?? process.env);
 	return env;
-}
-
-async function dispatchRun(
-	client: BurrowClient,
-	burrowId: string,
-	agentId: string,
-	prompt: string,
-	metadata: unknown,
-): Promise<BurrowRun> {
-	return withTransportMapping(client.config, () =>
-		client.http.runs.create({
-			burrowId,
-			agentId,
-			prompt,
-			...(metadata !== undefined ? { metadata } : {}),
-		}),
-	);
 }
 
 /**

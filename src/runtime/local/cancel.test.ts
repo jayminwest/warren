@@ -8,7 +8,6 @@
  */
 
 import { afterEach, describe, expect, test } from "bun:test";
-import { NotFoundError } from "@os-eco/burrow-cli";
 import { BurrowClient, BurrowUnreachableError } from "../../burrow-client/index.ts";
 import type { WarrenDb } from "../../db/client.ts";
 import type { Repos } from "../../db/repos/index.ts";
@@ -21,6 +20,7 @@ import {
 	stub,
 } from "../../runs/spawn/test-helpers.ts";
 import type { RunHandle } from "../contract.ts";
+import { RuntimeRunNotFoundError } from "../errors.ts";
 import { LocalProvider } from "./provider.ts";
 
 let openDb: WarrenDb | null = null;
@@ -105,12 +105,12 @@ describe("LocalProvider.cancel — idempotency", () => {
 });
 
 describe("LocalProvider.cancel — error propagation", () => {
-	test("burrow NotFoundError propagates unchanged (domain owns terminalize)", async () => {
+	test("burrow NotFoundError is neutralized to RuntimeRunNotFoundError (warren-1f56)", async () => {
 		const { provider } = await localProvider({
 			cancelStatus: 404,
 			cancelBody: { error: { code: "not_found", message: "run gone" } },
 		});
-		await expect(provider.cancel(HANDLE)).rejects.toBeInstanceOf(NotFoundError);
+		await expect(provider.cancel(HANDLE)).rejects.toBeInstanceOf(RuntimeRunNotFoundError);
 	});
 
 	test("a dead socket surfaces as BurrowUnreachableError", async () => {

@@ -46,12 +46,13 @@
  * default tick cadence is 30s.
  */
 
-import { NotFoundError as BurrowNotFoundError } from "@os-eco/burrow-cli";
-import { withTransportMapping } from "../burrow-client/client.ts";
 import type { BurrowClientPool } from "../burrow-client/pool.ts";
 import { formatError } from "../core/errors.ts";
 import type { Repos } from "../db/repos/index.ts";
 import type { RunRow } from "../db/schema.ts";
+import type { RunHandle, RuntimeProvider } from "../runtime/contract.ts";
+import { RuntimeRunNotFoundError } from "../runtime/errors.ts";
+import { LocalProvider } from "../runtime/local/provider.ts";
 import type { RunEventBroker } from "./events.ts";
 import type { AutoOpenPrConfig } from "./pr.ts";
 import { type ReapRunInput, type ReapRunResult, reapRun } from "./reap/index.ts";
@@ -75,6 +76,16 @@ export const DEFAULT_WATCHDOG_HEARTBEAT_TIMEOUT_MS = 2_700_000;
 export interface WatchdogTickDeps {
 	readonly repos: Repos;
 	readonly burrowClientPool: BurrowClientPool;
+	/**
+	 * Runtime-provider seam (K8s migration pl-829f step 13 / warren-1f56). Only
+	 * the burrow-cancel step routes through it (`provider.cancel(handle)`);
+	 * mode-exclusion, heartbeat, and failure_reason derivation stay domain. The
+	 * reap the tick force-fails through still resolves its workspace via
+	 * `burrowClientPool`. Optional: defaults to a burrow-backed `LocalProvider`
+	 * over `burrowClientPool` (same fallback shape as `reapRun`) so callers that
+	 * only wire the pool keep working.
+	 */
+	readonly runtimeProvider?: RuntimeProvider;
 	/**
 	 * Heartbeat budget in ms. A `running` run whose newest event (or
 	 * `startedAt` fallback) is older than this is force-failed. Must be
@@ -191,10 +202,11 @@ async function forceFail(
 }
 
 /**
- * Best-effort `POST /runs/:burrow_run_id/cancel` so burrow stops the
- * agent turn before reap destroys the workspace. Swallows a 404 (ghost
- * run) and transport failures — reap's `workspace_destroy` is the real
- * teardown, and a failed cancel must never block the force-fail.
+ * Best-effort graceful cancel (seam `provider.cancel`) so the backend stops the
+ * agent turn before reap destroys the workspace. Swallows a lost run
+ * (`RuntimeRunNotFoundError`, the neutralized backend 404) and transport
+ * failures — reap's `workspace_destroy` is the real teardown, and a failed
+ * cancel must never block the force-fail.
  */
 async function cancelBurrowRun(
 	deps: WatchdogTickDeps,
@@ -202,14 +214,17 @@ async function cancelBurrowRun(
 	log: ReturnType<typeof bindBridgeLogger>,
 ): Promise<void> {
 	if (run.burrowId === null || run.burrowRunId === null) return;
-	const burrowRunId = run.burrowRunId;
+	const provider: RuntimeProvider =
+		deps.runtimeProvider ?? new LocalProvider({ burrowClientPool: () => deps.burrowClientPool });
+	const handle: RunHandle = {
+		runId: run.id,
+		sandboxId: run.burrowId,
+		providerRunId: run.burrowRunId,
+	};
 	try {
-		const { client } = await deps.burrowClientPool.clientFor({ burrowId: run.burrowId });
-		await withTransportMapping(client.config, () =>
-			client.http.runs.cancel(burrowRunId, { reason: "watchdog heartbeat timeout" }),
-		);
+		await provider.cancel(handle, "watchdog heartbeat timeout");
 	} catch (err) {
-		if (err instanceof BurrowNotFoundError) return;
+		if (err instanceof RuntimeRunNotFoundError) return;
 		log.error(
 			{ event: "watchdog.cancel_failed", reason: formatError(err) },
 			"watchdog burrow-cancel failed",

@@ -96,9 +96,13 @@ describe("spawnRun: instrumentation (warren-c686)", () => {
 		expect(typeof failed?.obj.run_id).toBe("string");
 	});
 
-	test("surfaces a swallowed burrow-destroy failure during rollback", async () => {
-		// Provision succeeds, dispatch fails (→ rollback), and the destroy call
-		// throws at the transport layer so the previously-swallowed branch logs.
+	test("logs spawn.failed and rolls back when provision succeeds but dispatch fails", async () => {
+		// warren-1f56: provision+dispatch are collapsed into `provider.create`,
+		// which owns the burrow-half rollback (best-effort DELETE) and swallows a
+		// destroy failure ITSELF — so the domain no longer emits
+		// `spawn.rollback.burrow_destroy_failed`. Provision succeeds, dispatch AND
+		// the provider's cleanup DELETE both throw; the domain surfaces the
+		// original failure as `spawn.failed` and unwinds the warren row.
 		let call = 0;
 		const fetchImpl = stub(async (input, init) => {
 			const path = new URL(String(input), "http://localhost").pathname;
@@ -146,9 +150,19 @@ describe("spawnRun: instrumentation (warren-c686)", () => {
 			}),
 		).rejects.toBeDefined();
 
+		// burrowsUp + runs.create + the provider's cleanup DELETE all fired.
 		expect(call).toBeGreaterThan(1);
-		const destroyFailed = lines.find((l) => l.obj.event === "spawn.rollback.burrow_destroy_failed");
-		expect(destroyFailed?.level).toBe("error");
-		expect(destroyFailed?.obj.burrow_id).toBe("bur_aaaaaaaaaaaa");
+		// The domain surfaces the dispatch failure it saw rethrown…
+		const failed = lines.find((l) => l.obj.event === "spawn.failed");
+		expect(failed?.level).toBe("warn");
+		// …and does NOT log a burrow-destroy failure — that cleanup is now the
+		// provider's, which swallows it silently (see create.test.ts).
+		expect(
+			lines.find((l) => l.obj.event === "spawn.rollback.burrow_destroy_failed"),
+		).toBeUndefined();
+		// The warren row was rolled back to failed with no burrow attached.
+		const rows = await repos.runs.listAll();
+		expect(rows[0]?.state).toBe("failed");
+		expect(rows[0]?.burrowId).toBeNull();
 	});
 });

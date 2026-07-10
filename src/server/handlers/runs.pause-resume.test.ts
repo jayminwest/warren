@@ -66,6 +66,74 @@ function serializeRun(r: BurrowRun): unknown {
  * assert on the forwarded wire body. Anything else falls through to a 404
  * so an accidental extra wire call surfaces loudly.
  */
+/** A non-terminal (`running`) burrow run — keeps cancel off the inline reap path. */
+function runningBurrowRun(fix: PauseResumeFixture): BurrowRun {
+	return {
+		id: fix.burrowRunId,
+		burrowId: fix.burrowId,
+		agentId: "refactor-bot",
+		prompt: "p",
+		resumeOfRunId: null,
+		state: "running",
+		exitCode: null,
+		errorMessage: null,
+		metadataJson: null,
+		queuedAt: new Date("2026-05-08T12:00:00Z"),
+		startedAt: null,
+		completedAt: null,
+	};
+}
+
+/** Burrow inbox-send response for the steer path. */
+function inboxSendResponse(fix: PauseResumeFixture, reqBody: unknown): Response {
+	const body =
+		typeof reqBody === "object" && reqBody !== null
+			? String((reqBody as { body?: unknown }).body ?? "")
+			: "";
+	const message: Message = {
+		id: "msg_aaaaaaaaaaaa",
+		burrowId: fix.burrowId,
+		fromActor: "operator",
+		body,
+		priority: "normal",
+		state: "unread",
+		deliveredAtRunId: null,
+		createdAt: new Date("2026-05-08T12:00:00Z"),
+		deliveredAt: null,
+	};
+	return jsonResponse(201, serializeMessage(message));
+}
+
+/**
+ * Route one burrow request for the pause/resume handler tests. Steer hits the
+ * inbox; cancel hits `POST /runs/:id/cancel` then re-reads phase via
+ * `provider.status()` (runs.get + a bounded events replay, warren-1f56) — both
+ * resolve the run as still `running` to keep these tests off the inline-reap
+ * path (warren-a69a).
+ */
+function routePauseResume(
+	fix: PauseResumeFixture,
+	method: string,
+	path: string,
+	reqBody: unknown,
+): Response {
+	if (method === "POST" && path === `/burrows/${fix.burrowId}/inbox`) {
+		return inboxSendResponse(fix, reqBody);
+	}
+	if (method === "POST" && path === `/runs/${fix.burrowRunId}/cancel`) {
+		return jsonResponse(200, serializeRun(runningBurrowRun(fix)));
+	}
+	if (method === "GET" && path === `/burrows/${fix.burrowId}/events`) {
+		return new Response("", { status: 200, headers: { "content-type": "application/x-ndjson" } });
+	}
+	if (method === "GET" && path === `/runs/${fix.burrowRunId}`) {
+		return jsonResponse(200, serializeRun(runningBurrowRun(fix)));
+	}
+	return jsonResponse(404, {
+		error: { code: "not_found", message: `unmatched ${method} ${path}` },
+	});
+}
+
 function makePauseResumeClient(fix: PauseResumeFixture, calls: RecordedCall[]): BurrowClient {
 	return new BurrowClient({
 		config: { transport: { kind: "unix", path: "/tmp/x.sock" } },
@@ -75,45 +143,7 @@ function makePauseResumeClient(fix: PauseResumeFixture, calls: RecordedCall[]): 
 			const method = init?.method ?? "GET";
 			const reqBody = typeof init?.body === "string" ? JSON.parse(init.body) : undefined;
 			calls.push({ method, path, body: reqBody });
-			if (method === "POST" && path === `/burrows/${fix.burrowId}/inbox`) {
-				const message: Message = {
-					id: "msg_aaaaaaaaaaaa",
-					burrowId: fix.burrowId,
-					fromActor: "operator",
-					body:
-						typeof reqBody === "object" && reqBody !== null
-							? String((reqBody as { body?: unknown }).body ?? "")
-							: "",
-					priority: "normal",
-					state: "unread",
-					deliveredAtRunId: null,
-					createdAt: new Date("2026-05-08T12:00:00Z"),
-					deliveredAt: null,
-				};
-				return jsonResponse(201, serializeMessage(message));
-			}
-			if (method === "POST" && path === `/runs/${fix.burrowRunId}/cancel`) {
-				// Non-terminal state keeps cancelRun off the inline reap path
-				// (warren-a69a) so these handler tests stay reap-isolated.
-				const run: BurrowRun = {
-					id: fix.burrowRunId,
-					burrowId: fix.burrowId,
-					agentId: "refactor-bot",
-					prompt: "p",
-					resumeOfRunId: null,
-					state: "running",
-					exitCode: null,
-					errorMessage: null,
-					metadataJson: null,
-					queuedAt: new Date("2026-05-08T12:00:00Z"),
-					startedAt: null,
-					completedAt: null,
-				};
-				return jsonResponse(200, serializeRun(run));
-			}
-			return jsonResponse(404, {
-				error: { code: "not_found", message: `unmatched ${method} ${path}` },
-			});
+			return routePauseResume(fix, method, path, reqBody);
 		}),
 	});
 }
@@ -269,14 +299,13 @@ describe("POST /runs/:id/steer and POST /runs/:id/cancel — HTTP handlers", () 
 			expect(body.burrowRun?.id).toBe(fix.burrowRunId);
 			expect(body.burrowRun?.state).toBe("running");
 			// No reason key on the wire — `HttpRunsClient.cancel` omits the
-			// jsonBody entirely when `opts.reason` is undefined.
-			expect(calls).toEqual([
-				{
-					method: "POST",
-					path: `/runs/${fix.burrowRunId}/cancel`,
-					body: undefined,
-				},
-			]);
+			// jsonBody entirely when `opts.reason` is undefined. The graceful
+			// cancel POST rides the seam; the status re-read follows it (warren-1f56).
+			expect(calls).toContainEqual({
+				method: "POST",
+				path: `/runs/${fix.burrowRunId}/cancel`,
+				body: undefined,
+			});
 		});
 
 		test("forwards the reason onto the burrow cancel call", async () => {
@@ -301,13 +330,11 @@ describe("POST /runs/:id/steer and POST /runs/:id/cancel — HTTP handlers", () 
 				body: JSON.stringify({ reason: "operator changed their mind" }),
 			});
 			expect(res.status).toBe(200);
-			expect(calls).toEqual([
-				{
-					method: "POST",
-					path: `/runs/${fix.burrowRunId}/cancel`,
-					body: { reason: "operator changed their mind" },
-				},
-			]);
+			expect(calls).toContainEqual({
+				method: "POST",
+				path: `/runs/${fix.burrowRunId}/cancel`,
+				body: { reason: "operator changed their mind" },
+			});
 		});
 
 		test("returns alreadyTerminal passthrough for a terminal run with no burrow call", async () => {

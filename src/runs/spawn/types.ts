@@ -5,7 +5,6 @@
  * without dragging in the full `spawnRun` implementation graph.
  */
 
-import type { Burrow, Run as BurrowRun } from "@os-eco/burrow-cli";
 import type { BurrowClientPool } from "../../burrow-client/pool.ts";
 import type { Repos } from "../../db/repos/index.ts";
 import type { CloneKind, RunMode, RunRow } from "../../db/schema.ts";
@@ -13,6 +12,7 @@ import type { SpawnFn as ProjectSpawnFn } from "../../projects/clone.ts";
 import type { ProjectsConfig } from "../../projects/config.ts";
 import type { refreshProject } from "../../projects/manage.ts";
 import type { AgentDefinition } from "../../registry/schema.ts";
+import type { RuntimeProvider } from "../../runtime/contract.ts";
 import type { SeedsCliDeps } from "../../seeds-cli/index.ts";
 import type { WarrenConfigCache } from "../../warren-config/index.ts";
 
@@ -42,6 +42,17 @@ export interface SpawnRunInput {
 	 * dispatch + rollback so a single run never crosses workers.
 	 */
 	readonly burrowClientPool: BurrowClientPool;
+	/**
+	 * Runtime-provider seam (K8s migration pl-829f step 13 / warren-1f56).
+	 * `spawnRun` dispatches through `provider.create(spec)` (burrow's
+	 * `burrowsUp` + `runs.create` collapsed into one). Optional: defaults to a
+	 * burrow-backed `LocalProvider` over `burrowClientPool` (+ `serverEnv`) so
+	 * callers that only wire the pool keep working — same fallback shape as
+	 * `reapRun`. Placement still resolves the worker NAME via
+	 * `burrowClientPool.placeFor` for the sticky-by-burrow `runs.worker_id` /
+	 * `burrows.worker_id` bookkeeping the reap / bridge reads still depend on.
+	 */
+	readonly runtimeProvider?: RuntimeProvider;
 	readonly agentName: string;
 	readonly projectId: string;
 	/**
@@ -252,7 +263,15 @@ export interface SpawnPlotAppender {
 
 export interface SpawnRunResult {
 	readonly run: RunRow;
-	readonly burrow: Burrow;
-	readonly burrowRun: BurrowRun;
+	/**
+	 * Narrowed from burrow's full `Run`/`Burrow` rows (warren-1f56) to just the
+	 * ids the callers use (`bridges.start`, the HTTP response). The runtime seam
+	 * returns only an opaque `RunHandle`, so `burrow.workspacePath` — a host path
+	 * with no provider-neutral home — is a display-only carry-over (empty on the
+	 * real dispatch path) kept for wire/UI compatibility until the `/burrows`
+	 * surface is retired (plan §5.C).
+	 */
+	readonly burrow: { readonly id: string; readonly workspacePath: string };
+	readonly burrowRun: { readonly id: string };
 	readonly agent: AgentDefinition;
 }

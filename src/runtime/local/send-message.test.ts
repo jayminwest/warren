@@ -8,7 +8,6 @@
  */
 
 import { afterEach, describe, expect, test } from "bun:test";
-import { NotFoundError } from "@os-eco/burrow-cli";
 import type { WarrenDb } from "../../db/client.ts";
 import type { Repos } from "../../db/repos/index.ts";
 import {
@@ -19,6 +18,7 @@ import {
 	setupRepos,
 } from "../../runs/spawn/test-helpers.ts";
 import type { OutboundMessage, RunHandle } from "../contract.ts";
+import { RuntimeRunNotFoundError } from "../errors.ts";
 import { LocalProvider } from "./provider.ts";
 
 let openDb: WarrenDb | null = null;
@@ -157,13 +157,13 @@ describe("LocalProvider.sendMessage — Message row mapping from response", () =
 });
 
 describe("LocalProvider.sendMessage — error propagation", () => {
-	test("burrow NotFoundError propagates unchanged (domain owns the mapping)", async () => {
+	test("burrow NotFoundError is neutralized to RuntimeRunNotFoundError (warren-1f56)", async () => {
 		const { provider } = await localProvider({
 			inboxSendStatus: 404,
 			inboxSendBody: { error: { code: "not_found", message: "burrow gone" } },
 		});
 		await expect(provider.sendMessage(HANDLE, { body: "hi" })).rejects.toBeInstanceOf(
-			NotFoundError,
+			RuntimeRunNotFoundError,
 		);
 	});
 });

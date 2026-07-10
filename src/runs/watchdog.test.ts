@@ -22,6 +22,7 @@ import type { BurrowClientPool } from "../burrow-client/pool.ts";
 import { openDatabase, type WarrenDb } from "../db/client.ts";
 import { createRepos, type Repos } from "../db/repos/index.ts";
 import type { RunMode } from "../db/schema.ts";
+import type { RunHandle, RuntimeProvider } from "../runtime/contract.ts";
 import type { ReapRunInput, ReapRunResult } from "./reap/index.ts";
 import {
 	bootWatchdog,
@@ -76,23 +77,17 @@ function fakeReapResult(state: ReapRunResult["state"]): ReapRunResult {
 }
 
 /** Minimal pool stub recording cancel calls. */
-function makeCancelPool(cancels: string[]): BurrowClientPool {
+/**
+ * Fake `RuntimeProvider` that records the graceful-cancel target (warren-1f56).
+ * The watchdog burrow-cancel now rides the seam (`provider.cancel(handle)`), so
+ * the test injects a provider whose `cancel` pushes the run's `providerRunId`.
+ */
+function makeCancelProvider(cancels: string[]): RuntimeProvider {
 	return {
-		clientFor: async () => ({
-			workerName: "local",
-			client: {
-				config: { transport: { kind: "unix", path: "/tmp/x.sock" }, token: undefined },
-				http: {
-					runs: {
-						cancel: async (id: string) => {
-							cancels.push(id);
-							return {} as never;
-						},
-					},
-				},
-			},
-		}),
-	} as unknown as BurrowClientPool;
+		cancel: async (handle: RunHandle) => {
+			cancels.push(handle.providerRunId);
+		},
+	} as unknown as RuntimeProvider;
 }
 
 const NEVER_POOL = {
@@ -267,7 +262,8 @@ describe("tickWatchdog", () => {
 
 		const result = await tickWatchdog({
 			repos,
-			burrowClientPool: makeCancelPool(cancels),
+			burrowClientPool: NEVER_POOL,
+			runtimeProvider: makeCancelProvider(cancels),
 			heartbeatTimeoutMs: 5 * 60_000,
 			now: () => new Date("2026-06-05T00:10:00Z"),
 			reap: async (input) => {

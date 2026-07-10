@@ -448,7 +448,7 @@ describe("spawnRun: rollback", () => {
 		const rows = await repos.runs.listAll();
 		expect(rows).toHaveLength(1);
 		expect(rows[0]?.state).toBe("failed");
-		expect(rows[0]?.burrowId).toBe("bur_aaaaaaaaaaaa");
+		expect(rows[0]?.burrowId).toBeNull(); // warren-1f56: provider owns burrow-half rollback
 		expect(rows[0]?.burrowRunId).toBeNull();
 		const methods = calls.map((c) => `${c.method} ${c.path}`);
 		expect(methods).toContain("DELETE /burrows/bur_aaaaaaaaaaaa");

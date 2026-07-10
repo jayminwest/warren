@@ -44,6 +44,9 @@ export function cancelRunHandler(deps: ServerDeps): RouteHandler {
 			runId: id,
 			repos: deps.repos,
 			burrowClientPool: deps.burrowClientPool,
+			runtimeProvider:
+				deps.runtimeProvider ??
+				resolveRuntimeProvider({ burrowClientPool: () => deps.burrowClientPool }),
 			broker: deps.broker,
 			...(reason !== undefined ? { reason } : {}),
 			...(deps.now !== undefined ? { now: deps.now } : {}),

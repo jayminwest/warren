@@ -36,17 +36,19 @@
  *      from. Idempotent against a concurrent spawn rollback because
  *      the state-machine guard catches the race.
  *
- * Errors from burrow (`BurrowError`) and the transport layer
- * (`BurrowUnreachableError`) pass through unchanged so the HTTP route can
- * map them onto the response envelope.
+ * Errors from the transport layer (`BurrowUnreachableError`) pass through
+ * unchanged so the HTTP route can map them onto the response envelope; a lost
+ * run (backend 404) is neutralized by the seam into `RuntimeRunNotFoundError`
+ * and terminalized here (warren-1f56).
  */
 
-import { NotFoundError as BurrowNotFoundError, type Run as BurrowRun } from "@os-eco/burrow-cli";
-import { withTransportMapping } from "../burrow-client/client.ts";
 import type { BurrowClientPool } from "../burrow-client/pool.ts";
 import { ValidationError } from "../core/errors.ts";
 import type { Repos } from "../db/repos/index.ts";
 import { RUN_TERMINAL_STATES, type RunState, type RunTerminalState } from "../db/schema.ts";
+import type { RunHandle, RuntimeProvider } from "../runtime/contract.ts";
+import { RuntimeRunNotFoundError } from "../runtime/errors.ts";
+import { LocalProvider } from "../runtime/local/provider.ts";
 import type { RunEventBroker } from "./events.ts";
 import type { AutoOpenPrConfig } from "./pr.ts";
 import { type ReapRunInput, type ReapRunResult, reapRun } from "./reap/index.ts";
@@ -57,13 +59,21 @@ export interface CancelRunInput {
 	readonly reason?: string;
 	readonly repos: Repos;
 	/**
-	 * Multi-worker burrow pool (warren-c0c9 / pl-9ba1 step 5). cancel resolves
-	 * the owning worker via `pool.clientFor({burrowId: run.burrowId})` so the
-	 * cancel POST routes to the worker that hosts the burrow. Propagates
-	 * `StickyWorkerUnreachableError` (503 via src/server/errors.ts) when the
-	 * pinned worker is `unreachable`.
+	 * Burrow-client pool (warren-c0c9 / pl-9ba1 step 5). Still threaded because
+	 * the inline `reap` it forwards to resolves the burrow workspace through it,
+	 * and it backs the default `runtimeProvider` fallback below.
 	 */
 	readonly burrowClientPool: BurrowClientPool;
+	/**
+	 * Runtime-provider seam (K8s migration pl-829f step 13 / warren-1f56). The
+	 * graceful cancel is `provider.cancel(handle, reason?)` and the post-cancel
+	 * state re-read is `provider.status(handle)` — the provider owns resolving
+	 * its backend (LocalProvider resolves the sole burrow worker; placement is
+	 * retired at the seam). Optional: defaults to a burrow-backed `LocalProvider`
+	 * over `burrowClientPool` so callers that only wire the pool keep working
+	 * (same fallback shape as `reapRun`).
+	 */
+	readonly runtimeProvider?: RuntimeProvider;
 	/** If supplied, the audit event is published here too. */
 	readonly broker?: RunEventBroker;
 	readonly now?: () => Date;
@@ -87,8 +97,16 @@ export interface CancelRunInput {
 export interface CancelRunResult {
 	/** Warren run state after the call. Unchanged for the common path; only updated for the no-burrow_run_id direct cancel. */
 	readonly state: RunState;
-	/** The burrow run row returned by burrow's cancel endpoint, or null when the call was bypassed (terminal / no burrow_run_id). */
-	readonly burrowRun: BurrowRun | null;
+	/**
+	 * Post-cancel backend run snapshot, or null when the wire call was bypassed
+	 * (already-terminal / no-burrow_run_id / lost). Narrowed from burrow's full
+	 * `Run` row to `{ id, state }` (warren-1f56) — the only fields the HTTP
+	 * response and the UI (`CancelRunResponse.burrowRun`) read. `id` is the
+	 * (warren-side) burrowRunId; `state` is sourced from `provider.status()`,
+	 * since the seam returns `void` from `cancel()` and the domain re-reads the
+	 * phase out-of-band.
+	 */
+	readonly burrowRun: { readonly id: string; readonly state: RunState } | null;
 	/** True when the warren row was already terminal on entry — no work was done. */
 	readonly alreadyTerminal: boolean;
 }
@@ -123,18 +141,23 @@ export async function cancelRun(input: CancelRunInput): Promise<CancelRunResult>
 			`run '${run.id}' has burrow_run_id but no burrow_id; cannot resolve worker`,
 		);
 	}
-	const { client } = await input.burrowClientPool.clientFor({ burrowId: run.burrowId });
-	let burrowRun: BurrowRun;
+	// Runtime-provider seam (warren-1f56). Default to the burrow-backed
+	// LocalProvider over the injected pool so callers that only pass
+	// `burrowClientPool` keep their behavior (same fallback shape as `reapRun`).
+	const provider: RuntimeProvider =
+		input.runtimeProvider ?? new LocalProvider({ burrowClientPool: () => input.burrowClientPool });
+	// The seam handle: `sandboxId` is the burrowId, `providerRunId` the burrowRunId
+	// cancel is scoped to.
+	const handle: RunHandle = {
+		runId: run.id,
+		sandboxId: run.burrowId,
+		providerRunId: burrowRunId,
+	};
 	try {
-		burrowRun = await withTransportMapping(client.config, () =>
-			client.http.runs.cancel(
-				burrowRunId,
-				input.reason !== undefined ? { reason: input.reason } : {},
-			),
-		);
+		await provider.cancel(handle, input.reason);
 	} catch (err) {
-		if (err instanceof BurrowNotFoundError) {
-			// warren-b1a9: burrow has no record of this run (ghost). Treat the
+		if (err instanceof RuntimeRunNotFoundError) {
+			// warren-b1a9: the backend has no record of this run (ghost). Treat the
 			// cancel intent as "terminalize this row now" — the user clicked
 			// Cancel, the run is unrecoverable, give them a clean response
 			// instead of the raw `run not found: run_xxx`.
@@ -153,25 +176,31 @@ export async function cancelRun(input: CancelRunInput): Promise<CancelRunResult>
 		throw err;
 	}
 
+	// The seam's `cancel()` returns void (it discards burrow's post-cancel row),
+	// so re-read the run's phase out-of-band via `status()` — the domain needs it
+	// for the inline-reap decision and the HTTP response's `burrowRun.state`.
+	const status = await provider.status(handle);
+	const burrowState = status.phase;
+
 	await emitCancelEvent(input, run.id, {
 		reason: input.reason,
 		mode: "forwarded",
 		burrowRunId,
-		burrowRunState: burrowRun.state,
+		burrowRunState: burrowState,
 	});
 
-	// warren-a69a: when burrow returns a terminal state for the cancelled
+	// warren-a69a: when the backend reports a terminal state for the cancelled
 	// run, finalize the warren row inline rather than waiting for a
 	// separate reap scheduler. reap is idempotent and best-effort, so
 	// failures land on the run's event log without escaping the cancel
 	// response.
 	let stateAfter: RunState = run.state;
-	if (isTerminalRunState(burrowRun.state)) {
+	if (isTerminalRunState(burrowState)) {
 		const reap = input.reap ?? reapRun;
 		try {
 			const result = await reap({
 				runId: run.id,
-				outcome: burrowRun.state,
+				outcome: burrowState,
 				repos: input.repos,
 				burrowClientPool: input.burrowClientPool,
 				...(input.broker !== undefined ? { broker: input.broker } : {}),
@@ -192,7 +221,11 @@ export async function cancelRun(input: CancelRunInput): Promise<CancelRunResult>
 		}
 	}
 
-	return { state: stateAfter, burrowRun, alreadyTerminal: false };
+	return {
+		state: stateAfter,
+		burrowRun: { id: burrowRunId, state: burrowState },
+		alreadyTerminal: false,
+	};
 }
 
 function isTerminalRunState(state: RunState): state is RunTerminalState {

@@ -28,15 +28,13 @@
  * route can map them onto the appropriate response envelope.
  */
 
-// The provider propagates burrow's `NotFoundError` across the seam unchanged
-// (contract §: backend errors are not neutralized), so steer still catches it
-// by type to map a ghost run onto a clean ValidationError. This is the ONE
-// remaining `@os-eco/burrow-cli` coupling at this call-site — an
-// error-taxonomy seam leak flagged in the CHECKPOINT 2 report.
-import { NotFoundError as BurrowNotFoundError } from "@os-eco/burrow-cli";
 import { ValidationError } from "../core/errors.ts";
 import type { Repos } from "../db/repos/index.ts";
 import type { Message, MessagePriority, RuntimeProvider } from "../runtime/contract.ts";
+// The seam neutralizes burrow's `NotFoundError` into the provider-neutral
+// `RuntimeRunNotFoundError` (warren-1f56), so steer catches THAT to map a ghost
+// run onto a clean ValidationError — no `@os-eco/burrow-cli` import remains.
+import { RuntimeRunNotFoundError } from "../runtime/errors.ts";
 import type { RunEventBroker } from "./events.ts";
 
 export interface SteerRunInput {
@@ -95,8 +93,8 @@ export async function steerRun(input: SteerRunInput): Promise<SteerRunResult> {
 			...(input.fromActor !== undefined ? { fromActor: input.fromActor } : {}),
 		});
 	} catch (err) {
-		if (err instanceof BurrowNotFoundError) {
-			// warren-b1a9: burrow has no record of this burrow (ghost). Steering
+		if (err instanceof RuntimeRunNotFoundError) {
+			// warren-b1a9: the backend has no record of this run (ghost). Steering
 			// is meaningless against a lost run; reject with a clean
 			// ValidationError so the UI knows to refresh — the bridge or the
 			// next bootBridges pass will reconcile the warren row to `failed`.
