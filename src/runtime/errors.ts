@@ -27,3 +27,15 @@ export class RuntimeNotImplementedError extends WarrenError {
 export class UnknownRuntimeError extends WarrenError {
 	readonly code = "unknown_runtime";
 }
+
+/**
+ * Thrown when a provider cannot satisfy a `RunSpec` it was handed — the
+ * neutral intent is missing something the backend requires (e.g. LocalProvider
+ * needs a host clone path but `hostClonePathHint` was omitted), or the backing
+ * client pool has no resolvable worker. Distinct from a transport failure
+ * (`BurrowUnreachableError`) or a burrow-side validation error: this fires on
+ * warren's side, before the request leaves the process.
+ */
+export class RuntimeProviderError extends WarrenError {
+	readonly code = "runtime_provider_error";
+}

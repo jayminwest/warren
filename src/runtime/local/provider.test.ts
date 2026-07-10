@@ -1,32 +1,21 @@
 import { describe, expect, test } from "bun:test";
 import type { BurrowClientPool } from "../../burrow-client/index.ts";
-import type { RunHandle, RunSpec } from "../contract.ts";
+import type { RunHandle } from "../contract.ts";
 import { RuntimeNotImplementedError } from "../errors.ts";
 import { LOCAL_PROVIDER_CAPABILITIES, LocalProvider, type LocalProviderDeps } from "./provider.ts";
 
-/** Hermetic deps: the factory throws if the shell ever touches the pool. */
+/**
+ * Hermetic deps for the still-stubbed methods: the factory throws if the stub
+ * ever touches the pool. (`create()`'s live path is covered in `create.test.ts`
+ * with a real fake pool.)
+ */
 const deps: LocalProviderDeps = {
 	burrowClientPool: (): BurrowClientPool => {
-		throw new Error("burrowClientPool factory must not be called by the LocalProvider shell");
+		throw new Error("burrowClientPool factory must not be called by a LocalProvider stub");
 	},
 };
 
 const handle: RunHandle = { runId: "r1", sandboxId: "s1", providerRunId: "p1" };
-
-function newSpec(): RunSpec {
-	return {
-		runId: "r1",
-		originUrl: "https://github.com/o/r.git",
-		branch: "warren/r1",
-		baseBranch: "main",
-		runtimeId: "claude-code",
-		prompt: "do the thing",
-		mode: "batch",
-		network: "restricted",
-		seedFiles: [],
-		env: {},
-	};
-}
 
 describe("LocalProvider", () => {
 	test("advertises the full burrow capability set", () => {
@@ -44,12 +33,6 @@ describe("LocalProvider", () => {
 
 	test("capabilities are frozen", () => {
 		expect(Object.isFrozen(LOCAL_PROVIDER_CAPABILITIES)).toBe(true);
-	});
-
-	test("create() is a stub that names the method", () => {
-		const provider = new LocalProvider(deps);
-		expect(() => provider.create(newSpec())).toThrow(RuntimeNotImplementedError);
-		expect(() => provider.create(newSpec())).toThrow(/create/);
 	});
 
 	test("status() is a stub", () => {

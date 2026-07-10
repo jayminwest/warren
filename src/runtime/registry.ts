@@ -22,6 +22,7 @@
  */
 
 import type { BurrowClientPool } from "../burrow-client/index.ts";
+import type { EnvLike } from "../runs/spawn/callback-env.ts";
 import type { RuntimeProvider } from "./contract.ts";
 import { RuntimeNotImplementedError, UnknownRuntimeError } from "./errors.ts";
 import { LocalProvider } from "./local/provider.ts";
@@ -46,6 +47,13 @@ export type RuntimeEnv = Readonly<Record<string, string | undefined>>;
  */
 export interface RuntimeProviderDeps {
 	readonly burrowClientPool: () => BurrowClientPool;
+	/**
+	 * Server-process env a provider reads to compute its own plumbing (the
+	 * LocalProvider's loopback callback URL, §6.3). Optional — providers
+	 * default to `process.env`. Kept on the shared bag so the selector's
+	 * signature is stable as backends are added.
+	 */
+	readonly serverEnv?: EnvLike;
 }
 
 /**
@@ -77,7 +85,10 @@ export function resolveRuntimeProvider(
 	const kind = resolveRuntimeKind(env);
 	switch (kind) {
 		case "local":
-			return new LocalProvider({ burrowClientPool: deps.burrowClientPool });
+			return new LocalProvider({
+				burrowClientPool: deps.burrowClientPool,
+				...(deps.serverEnv !== undefined ? { serverEnv: deps.serverEnv } : {}),
+			});
 		case "k8s":
 			throw new RuntimeNotImplementedError(
 				'WARREN_RUNTIME="k8s" is not implemented until phase 3 of the K8s migration',
