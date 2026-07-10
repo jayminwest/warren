@@ -356,3 +356,145 @@ describe("finalize — error capture + guards", () => {
 		expect(result.stages.map((s) => s.stage)).toEqual(["branch_push", "commits_ahead"]);
 	});
 });
+
+/* 5. Collected events (warren-1f56) — for the domain to re-emit */
+describe("finalize — collected events", () => {
+	test("collects every per-record merge event in pipeline order", async () => {
+		const fs = fakeFs(fullSeed());
+		const p = await provider({
+			fs,
+			exec: fakeExec(),
+			seedsIssuesBody:
+				'{"id":"sd-1","status":"closed","updatedAt":"2026-05-08T22:00:00Z","title":"x"}\n' +
+				'{"id":"sd-2","status":"open","updatedAt":"2026-05-08T22:00:00Z","title":"y"}\n',
+			seedsPlansBody: '{"id":"pl-1","title":"a plan"}\n',
+		});
+		const { events } = await p.finalize(HANDLE, intent());
+		const kinds = events.map((e) => e.kind);
+		expect(kinds).toContain("mulch.record.added");
+		expect(kinds).toContain("seeds.closed");
+		expect(kinds).toContain("seeds.created");
+		expect(kinds).toContain("seeds.plan_mirrored");
+		expect(kinds).toContain("plot.decision_made");
+		// mulch (merge) precedes seeds (mirror) precedes plot (merge).
+		expect(kinds.indexOf("mulch.record.added")).toBeLessThan(kinds.indexOf("seeds.closed"));
+		expect(kinds.indexOf("seeds.created")).toBeLessThan(kinds.indexOf("plot.decision_made"));
+	});
+
+	test("event payloads are JSON-serializable (round-trip deep-equal)", async () => {
+		const fs = fakeFs(fullSeed());
+		const p = await provider({ fs, exec: fakeExec() });
+		const { events } = await p.finalize(HANDLE, intent({ mirror: ["mulch"] }));
+		const roundTripped = JSON.parse(JSON.stringify(events));
+		expect(roundTripped).toEqual(events);
+		const added = events.find((e) => e.kind === "mulch.record.added");
+		expect(added?.payload).toEqual({ domain: "build", id: "mx-1" });
+	});
+
+	test("a failing branch push is collected as a reap_failed event", async () => {
+		const fs = fakeFs(fullSeed());
+		const p = await provider({ fs, exec: fakeExec({ fail: "push rejected" }) });
+		const { events } = await p.finalize(HANDLE, intent({ mirror: [] }));
+		const failed = events.find((e) => e.kind === "reap_failed");
+		expect(failed).toBeDefined();
+		expect(failed?.payload).toMatchObject({ step: "branch_push" });
+	});
+
+	test("a rev-list failure emits NO reap_failed event (log-only in reap)", async () => {
+		const fs = fakeFs(fullSeed());
+		const p = await provider({ fs, exec: fakeExec({ failRevList: "bad revision" }) });
+		const { events } = await p.finalize(HANDLE, intent({ mirror: [] }));
+		expect(events.some((e) => e.kind === "reap_failed")).toBe(false);
+	});
+});
+
+/* 6. dirty probe (warren-1f56) — the domain's droppedCommit signal */
+describe("finalize — dirty probe", () => {
+	test("zero-commit push + dirty tree → dirty true", async () => {
+		const fs = fakeFs(fullSeed());
+		const p = await provider({
+			fs,
+			exec: fakeExec({ revListCount: "0", gitStatus: " M src/foo.ts\n" }),
+		});
+		const result = await p.finalize(HANDLE, intent({ mirror: [] }));
+		expect(result.commitsAhead).toBe(0);
+		expect(result.emptyPush).toBe(true);
+		expect(result.dirty).toBe(true);
+	});
+
+	test("zero-commit push + clean tree → dirty false", async () => {
+		const fs = fakeFs(fullSeed());
+		const p = await provider({ fs, exec: fakeExec({ revListCount: "0" }) });
+		const result = await p.finalize(HANDLE, intent({ mirror: [] }));
+		expect(result.emptyPush).toBe(true);
+		expect(result.dirty).toBe(false);
+	});
+
+	test("non-empty push does NOT probe dirtiness (no extra git call)", async () => {
+		const fs = fakeFs(fullSeed());
+		const exec = fakeExec({ revListCount: "3" });
+		const result = await (await provider({ fs, exec })).finalize(HANDLE, intent({ mirror: [] }));
+		expect(result.dirty).toBe(false);
+		// push + rev-list only — no `git status --porcelain`.
+		expect(exec.calls.some((c) => c.args.includes("status"))).toBe(false);
+	});
+});
+
+/* 7. commit decoupling + workspacePlansBody (warren-1f56) */
+describe("finalize — commit decoupling", () => {
+	test("mirror:[seeds] commit:[] runs the merge but skips the seeds commit", async () => {
+		const fs = fakeFs({
+			[`${CLONE}/.seeds/issues.jsonl`]:
+				'{"id":"sd-1","status":"open","updatedAt":"2026-05-08T19:00:00Z","title":"x"}\n',
+		});
+		const exec = fakeExec({ stagedDelta: true });
+		const p = await provider({
+			fs,
+			exec,
+			seedsIssuesBody:
+				'{"id":"sd-1","status":"closed","updatedAt":"2026-05-08T22:00:00Z","title":"x"}\n',
+		});
+		const result = await p.finalize(HANDLE, intent({ mirror: ["seeds"], commit: [] }));
+		// merge ran → closed count present …
+		expect(result.mirror.seeds?.closed).toBe(1);
+		// … but no seeds_commit stage and no `git add -- .seeds/`.
+		expect(result.stages.map((s) => s.stage)).not.toContain("seeds_commit");
+		expect(exec.calls.some((c) => c.args.includes(".seeds/"))).toBe(false);
+	});
+
+	test("commit:[seeds] authors the seeds bookkeeping commit", async () => {
+		const fs = fakeFs({
+			[`${CLONE}/.seeds/issues.jsonl`]:
+				'{"id":"sd-1","status":"open","updatedAt":"2026-05-08T19:00:00Z","title":"x"}\n',
+		});
+		const exec = fakeExec({ stagedDelta: true });
+		const p = await provider({ fs, exec });
+		const result = await p.finalize(
+			HANDLE,
+			intent({ mirror: ["seeds"], commit: ["seeds"], push: false }),
+		);
+		expect(result.stages.map((s) => s.stage)).toContain("seeds_commit");
+		expect(exec.calls.some((c) => c.cmd === "git" && c.args.includes(".seeds/"))).toBe(true);
+	});
+});
+
+describe("finalize — workspacePlansBody snapshot", () => {
+	test("returns the workspace plans.jsonl captured before the seeds commit", async () => {
+		const workspacePlans = '{"id":"pl-new","status":"approved","children":["warren-a"]}\n';
+		const fs = fakeFs({
+			[`${WS}/.seeds/plans.jsonl`]: workspacePlans,
+			[`${CLONE}/.seeds/issues.jsonl`]: "",
+			[`${CLONE}/.seeds/plans.jsonl`]: "",
+		});
+		const p = await provider({ fs, exec: fakeExec({ stagedDelta: true }) });
+		const result = await p.finalize(HANDLE, intent({ mirror: ["seeds"], commit: ["seeds"] }));
+		expect(result.workspacePlansBody).toBe(workspacePlans);
+	});
+
+	test("null when the workspace has no plans.jsonl", async () => {
+		const fs = fakeFs(fullSeed());
+		const p = await provider({ fs, exec: fakeExec() });
+		const result = await p.finalize(HANDLE, intent({ mirror: [] }));
+		expect(result.workspacePlansBody).toBeNull();
+	});
+});

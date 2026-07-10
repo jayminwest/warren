@@ -1,6 +1,8 @@
 import type { BurrowClient } from "../../burrow-client/client.ts";
 import { withTransportMapping } from "../../burrow-client/client.ts";
 import type { EventRow, RunFailureReason, RunTerminalState } from "../../db/schema.ts";
+import type { RunHandle, RuntimeProvider } from "../../runtime/contract.ts";
+import { LocalProvider } from "../../runtime/local/provider.ts";
 import { bindBridgeLogger } from "../stream/index.ts";
 import { runWorkspaceDestroy } from "./destroy.ts";
 import { createPipelineState, runReapPipeline } from "./pipeline.ts";
@@ -13,6 +15,13 @@ export async function reapRun(input: ReapRunInput): Promise<ReapRunResult> {
 	const fs = input.fs ?? defaultFs;
 	const exec = input.exec ?? defaultExec;
 	const now = input.now ?? (() => new Date());
+	// Runtime-provider seam (warren-1f56). The workspace-dependent half of reap
+	// (finalize) + the sandbox teardown (terminate) route through this. Default
+	// to the burrow-backed LocalProvider over the same pool + fs/exec, so callers
+	// and tests that only pass `burrowClientPool` keep their behavior.
+	const provider: RuntimeProvider =
+		input.runtimeProvider ??
+		new LocalProvider({ burrowClientPool: () => input.burrowClientPool, fs, exec });
 
 	const run = await input.repos.runs.require(input.runId);
 	const log = bindBridgeLogger(input.logger, { run_id: run.id }); // warren-9f06: bind run_id once
@@ -74,6 +83,13 @@ export async function reapRun(input: ReapRunInput): Promise<ReapRunResult> {
 		await emit("reap_failed", stepError);
 		log.error({ event: "reap.step_failed", step, err: message, path }, "reap step failed");
 	};
+	// Fold a finalize failed-stage into `errors[]` WITHOUT re-emitting — the
+	// matching `reap_failed` event already rode `FinalizeResult.events` and was
+	// re-emitted by the pipeline (warren-1f56).
+	const recordError = (step: ReapStep, message: string): void => {
+		errors.push({ step, message });
+		log.error({ event: "reap.step_failed", step, err: message }, "reap step failed");
+	};
 
 	const state = createPipelineState();
 
@@ -116,12 +132,14 @@ export async function reapRun(input: ReapRunInput): Promise<ReapRunResult> {
 				branch,
 				baseBranch,
 				workerClient,
+				provider,
 				fs,
 				exec,
 				now,
 				log,
 				emit,
 				fail,
+				recordError,
 			},
 			state,
 		);
@@ -203,10 +221,21 @@ export async function reapRun(input: ReapRunInput): Promise<ReapRunResult> {
 	// skipped for conversation runs and still-live previews, and a failure
 	// surfaces as `reap_failed` step=`workspace_destroy` without blocking
 	// the terminal-state transition above.
+	// Route the sandbox teardown through the provider seam (warren-1f56). The
+	// `terminate` closure is null when the run has no burrow or reap never
+	// resolved the worker — the same skip the old `workerClient === null` gate had.
+	const workspaceHandle: RunHandle | null =
+		run.burrowId !== null
+			? { runId: run.id, sandboxId: run.burrowId, providerRunId: run.burrowRunId ?? "" }
+			: null;
+	const terminate =
+		workspaceHandle !== null && workerClient !== null
+			? () => provider.terminate(workspaceHandle)
+			: null;
 	const workspaceDestroyed = await runWorkspaceDestroy({
 		run,
 		previewLaunchState: state.previewLaunchState,
-		workerClient,
+		terminate,
 		repos: input.repos,
 		emit,
 		fail: (step, err) => fail(step, err),

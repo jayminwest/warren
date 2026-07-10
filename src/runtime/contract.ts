@@ -294,8 +294,19 @@ export interface FinalizeIntent {
 	branch: string;
 	/** push HEAD:branch from inside the workspace */
 	push: boolean;
-	/** which artifact sets to extract */
+	/** which artifact sets to extract (the MERGE half — always run in reap) */
 	mirror: ("mulch" | "seeds" | "plans" | "plot")[];
+	/**
+	 * Which bookkeeping COMMITS to author before the push (warren-1f56). The
+	 * reap pipeline runs the tracker merges unconditionally but gates the
+	 * `chore(warren): {plot,seeds} state` commits on `project.hasPlot` /
+	 * `project.hasSeeds` — so merge-gating (`mirror`) and commit-gating cannot
+	 * be one set. `commit` decouples them: finalize authors the plot bookkeeping
+	 * commit iff this includes `"plot"`, the seeds one iff it includes `"seeds"`.
+	 * OMITTED ⇒ defaults to `mirror` (commit whatever we merge) so callers that
+	 * only ever passed `mirror` keep their existing behavior.
+	 */
+	commit?: ("plot" | "seeds")[];
 	/**
 	 * Base ref for the commits-ahead / empty-push count
 	 * (`git rev-list --count <baseBranch>..HEAD`). A provider-NEUTRAL git ref
@@ -317,6 +328,22 @@ export interface FinalizeIntent {
 	closeSeedId?: string;
 }
 
+/**
+ * One user-visible event a merge stage emitted, captured by finalize's
+ * collecting emit/fail and returned for the domain to re-emit through its REAL
+ * event surface (warren-1f56). The reap merge functions emit ~10 per-record
+ * kinds (`mulch.record.*`, `seeds.closed/created`, `seeds.plan_mirrored`,
+ * `plot.*`, `reap.{plot,seeds}_committed`) plus per-line/stage `reap_failed`;
+ * finalize returns `FinalizeResult` counts, so those events are unreconstructable
+ * unless carried here. K8s-friendly: this array rides the callback wire from the
+ * in-pod finalize later (plan step 20), so `payload` MUST be JSON-serializable
+ * (plain objects only — same posture as `NormalizedEvent.payload`).
+ */
+export interface FinalizeEvent {
+	kind: string;
+	payload: unknown;
+}
+
 export interface FinalizeResult {
 	pushed: boolean;
 	/**
@@ -330,6 +357,34 @@ export interface FinalizeResult {
 	commitsAhead: number | null;
 	/** dropped-commit detection: pushed but zero commits ahead of the base */
 	emptyPush: boolean;
+	/**
+	 * Workspace-dirtiness at push time (warren-1f56): `git status --porcelain`
+	 * was non-empty. Probed ONLY when `pushed && commitsAhead === 0` (matching
+	 * reap's `commitsAheadStep`), `false` otherwise. The domain owns the
+	 * `droppedCommit` derivation (`dirty && outcome === "succeeded"`) and the
+	 * `reap.empty_push` emission — both need the run outcome, a domain concern
+	 * the provider seam does not carry, and the workspace is provider-owned +
+	 * destroyed by `terminate`, so the domain cannot re-probe post-finalize.
+	 */
+	dirty: boolean;
+	/**
+	 * The workspace `.seeds/plans.jsonl` body snapshotted just before the seeds
+	 * bookkeeping commit overwrote it with the clone-union (warren-1f56). This is
+	 * exactly what reap's `snapshotWorkspacePlans` reads off the live workspace to
+	 * feed auto-plan-run detection; the workspace is provider-owned and destroyed
+	 * by `terminate`, so finalize must capture it and hand it back. `null` when
+	 * the file was absent or unreadable. The domain parses plan ids from it (gated
+	 * on its own auto-dispatch frontmatter checks).
+	 */
+	workspacePlansBody: string | null;
+	/**
+	 * The per-record + per-line/stage events the merge functions emitted,
+	 * captured verbatim for the domain to re-emit through its real event surface
+	 * (warren-1f56 — see `FinalizeEvent`). In pipeline order. Does NOT include
+	 * `reap.empty_push` (domain-emitted, needs the run outcome) nor
+	 * `reap.workspace_destroyed` (a `terminate` concern).
+	 */
+	events: FinalizeEvent[];
 	/** artifact deltas the domain applies to the project clone */
 	mirror: {
 		mulch?: MulchDelta;

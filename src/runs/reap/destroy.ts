@@ -2,6 +2,7 @@ import type { DestroyBurrowResult } from "@os-eco/burrow-cli";
 import type { BurrowClient } from "../../burrow-client/client.ts";
 import { withTransportMapping } from "../../burrow-client/client.ts";
 import type { PreviewState, RunMode } from "../../db/schema.ts";
+import type { TeardownResult } from "../../runtime/contract.ts";
 
 /* ----------------------------------------------------------------------- */
 /* Workspace destroy (warren-0d89)                                          */
@@ -55,22 +56,26 @@ export interface RunWorkspaceDestroyInput {
 	 * eviction worker.
 	 */
 	readonly previewLaunchState: "live" | "failed" | null;
-	/** Worker client that owns the burrow; null when reap couldn't resolve it. */
-	readonly workerClient: BurrowClient | null;
+	/**
+	 * The RuntimeProvider `terminate(handle)` seam bound to this run (warren-1f56)
+	 * — reap calls it to tear the sandbox down. `null` when the run has no burrow
+	 * or reap never resolved the worker (mirrors the old `workerClient === null`
+	 * skip). The domain owns the best-effort try/catch here; the provider
+	 * propagates errors.
+	 */
+	readonly terminate: (() => Promise<TeardownResult>) | null;
 	readonly repos: BurrowDeleteRepos;
 	readonly emit: (kind: string, payload: unknown) => Promise<unknown>;
 	readonly fail: (step: "workspace_destroy", err: unknown) => Promise<void>;
-	/**
-	 * Override the burrow destroy seam (tests). Defaults to the live
-	 * `client.http.burrows.destroy`.
-	 */
-	readonly destroyBurrow?: (client: BurrowClient, burrowId: string) => Promise<DestroyBurrowResult>;
 }
 
 /**
  * Final reap sub-step (warren-0d89): destroy the burrow workspace once all
  * data has been extracted and the branch pushed, so workspaces don't
  * accumulate on the persistent volume (the 2026-05-27 disk-full incident).
+ * The teardown itself goes through `provider.terminate` (warren-1f56); this
+ * function owns the reap-side gating, the `burrows` row delete, the
+ * `reap.workspace_destroyed` event, and the best-effort try/catch.
  *
  * Skipped — without an error — when:
  *   - the run has no burrow to destroy, or reap never resolved the worker;
@@ -87,8 +92,8 @@ export interface RunWorkspaceDestroyInput {
  * `reap.workspace_destroyed` event is emitted.
  */
 export async function runWorkspaceDestroy(input: RunWorkspaceDestroyInput): Promise<boolean> {
-	const { run, workerClient } = input;
-	if (run.burrowId === null || workerClient === null) return false;
+	const { run, terminate } = input;
+	if (run.burrowId === null || terminate === null) return false;
 
 	// warren-c770: a conversation anchors a still-open pi-chat session whose
 	// workspace must survive across turns; destroying it would strand the live
@@ -114,12 +119,14 @@ export async function runWorkspaceDestroy(input: RunWorkspaceDestroyInput): Prom
 	}
 
 	try {
-		await executeBurrowDestroy({
-			workerClient,
+		const result = await terminate();
+		await input.repos.burrows.delete(run.burrowId);
+		await input.emit("reap.workspace_destroyed", {
 			burrowId: run.burrowId,
-			repos: input.repos,
-			emit: input.emit,
-			destroyFn: input.destroyBurrow ?? defaultDestroyFn,
+			archived: result.archived,
+			deletedEvents: result.deletedEvents,
+			deletedMessages: result.deletedMessages,
+			deletedRuns: result.deletedRuns,
 		});
 		return true;
 	} catch (err) {

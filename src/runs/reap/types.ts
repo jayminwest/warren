@@ -7,6 +7,7 @@ import type {
 	PreviewLaunchConfig,
 } from "../../preview/launch/index.ts";
 import type { PreviewPortAllocator } from "../../preview/port-allocator.ts";
+import type { RuntimeProvider } from "../../runtime/contract.ts";
 import type { SeedsCliDeps } from "../../seeds-cli/index.ts";
 import type { ServerPreviewConfig } from "../../warren-config/index.ts";
 import type { RunEventBroker } from "../events.ts";
@@ -51,6 +52,16 @@ export interface ReapRunInput {
 	 * pinned worker is `unreachable`.
 	 */
 	readonly burrowClientPool: BurrowClientPool;
+	/**
+	 * Runtime-provider seam (K8s migration pl-829f step 13 / warren-1f56). The
+	 * workspace-dependent half of reap runs as `provider.finalize(handle, intent)`
+	 * followed by `provider.terminate(handle)`. Optional: when omitted, reap
+	 * builds the burrow-backed `LocalProvider` over `burrowClientPool` (+ the same
+	 * `fs`/`exec`), so pre-existing callers and tests that only pass the pool are
+	 * unchanged. Production dispatchers thread `deps.runtimeProvider` through so a
+	 * future K8sProvider is honored.
+	 */
+	readonly runtimeProvider?: RuntimeProvider;
 	/** If supplied, every reap-emitted event is published here too. */
 	readonly broker?: RunEventBroker;
 	readonly fs?: ReapFs;

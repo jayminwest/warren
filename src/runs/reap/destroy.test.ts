@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type { DestroyBurrowResult } from "@os-eco/burrow-cli";
 import type { BurrowClient } from "../../burrow-client/client.ts";
 import type { PreviewState, RunMode } from "../../db/schema.ts";
+import type { TeardownResult } from "../../runtime/contract.ts";
 import { destroyBurrowWorkspaceById, runWorkspaceDestroy } from "./destroy.ts";
 
 function fakeClient(): BurrowClient {
@@ -19,6 +20,11 @@ function fakeResult(over: Partial<DestroyBurrowResult> = {}): DestroyBurrowResul
 		deletedRuns: 2,
 		...over,
 	};
+}
+
+/** The seam `runWorkspaceDestroy` now consumes: `provider.terminate`'s result. */
+function fakeTeardown(over: Partial<TeardownResult> = {}): TeardownResult {
+	return { archived: true, deletedEvents: 3, deletedMessages: 1, deletedRuns: 2, ...over };
 }
 
 interface Harness {
@@ -67,8 +73,7 @@ describe("runWorkspaceDestroy", () => {
 		const destroyed = await runWorkspaceDestroy({
 			run: run(),
 			previewLaunchState: null,
-			workerClient: fakeClient(),
-			destroyBurrow: async () => fakeResult(),
+			terminate: async () => fakeTeardown(),
 			...deps(h),
 		});
 		expect(destroyed).toBe(true);
@@ -85,13 +90,12 @@ describe("runWorkspaceDestroy", () => {
 		expect(h.failures).toEqual([]);
 	});
 
-	test("reports archived:false when the destroy result carries no archive", async () => {
+	test("reports archived:false when the teardown carries no archive", async () => {
 		const h = harness();
 		await runWorkspaceDestroy({
 			run: run(),
 			previewLaunchState: null,
-			workerClient: fakeClient(),
-			destroyBurrow: async () => fakeResult({ archived: null }),
+			terminate: async () => fakeTeardown({ archived: false }),
 			...deps(h),
 		});
 		expect(h.events[0]?.payload).toMatchObject({ archived: false });
@@ -102,8 +106,7 @@ describe("runWorkspaceDestroy", () => {
 		const destroyed = await runWorkspaceDestroy({
 			run: run({ burrowId: null }),
 			previewLaunchState: null,
-			workerClient: fakeClient(),
-			destroyBurrow: async () => fakeResult(),
+			terminate: async () => fakeTeardown(),
 			...deps(h),
 		});
 		expect(destroyed).toBe(false);
@@ -111,13 +114,12 @@ describe("runWorkspaceDestroy", () => {
 		expect(h.deleted).toEqual([]);
 	});
 
-	test("skips without an event when the worker client is unresolved", async () => {
+	test("skips without an event when the terminate seam is unresolved", async () => {
 		const h = harness();
 		const destroyed = await runWorkspaceDestroy({
 			run: run(),
 			previewLaunchState: null,
-			workerClient: null,
-			destroyBurrow: async () => fakeResult(),
+			terminate: null,
 			...deps(h),
 		});
 		expect(destroyed).toBe(false);
@@ -129,8 +131,7 @@ describe("runWorkspaceDestroy", () => {
 		const destroyed = await runWorkspaceDestroy({
 			run: run({ mode: "conversation" }),
 			previewLaunchState: null,
-			workerClient: fakeClient(),
-			destroyBurrow: async () => fakeResult(),
+			terminate: async () => fakeTeardown(),
 			...deps(h),
 		});
 		expect(destroyed).toBe(false);
@@ -144,8 +145,7 @@ describe("runWorkspaceDestroy", () => {
 		const destroyed = await runWorkspaceDestroy({
 			run: run(),
 			previewLaunchState: "live",
-			workerClient: fakeClient(),
-			destroyBurrow: async () => fakeResult(),
+			terminate: async () => fakeTeardown(),
 			...deps(h),
 		});
 		expect(destroyed).toBe(false);
@@ -158,8 +158,7 @@ describe("runWorkspaceDestroy", () => {
 			const destroyed = await runWorkspaceDestroy({
 				run: run({ previewState }),
 				previewLaunchState: null,
-				workerClient: fakeClient(),
-				destroyBurrow: async () => fakeResult(),
+				terminate: async () => fakeTeardown(),
 				...deps(h),
 			});
 			expect(destroyed).toBe(false);
@@ -172,8 +171,7 @@ describe("runWorkspaceDestroy", () => {
 		const destroyed = await runWorkspaceDestroy({
 			run: run(),
 			previewLaunchState: "failed",
-			workerClient: fakeClient(),
-			destroyBurrow: async () => fakeResult(),
+			terminate: async () => fakeTeardown(),
 			...deps(h),
 		});
 		expect(destroyed).toBe(true);
@@ -185,8 +183,7 @@ describe("runWorkspaceDestroy", () => {
 		const destroyed = await runWorkspaceDestroy({
 			run: run(),
 			previewLaunchState: null,
-			workerClient: fakeClient(),
-			destroyBurrow: async () => {
+			terminate: async () => {
 				throw new Error("burrow unreachable");
 			},
 			...deps(h),

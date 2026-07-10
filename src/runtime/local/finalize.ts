@@ -1,43 +1,31 @@
 /**
- * `LocalProvider.finalize` body (pl-829f step 12 / warren-371a, phase
- * CONTRACT) — the load-bearing §4 seam. Runs the workspace-DEPENDENT half of
- * reap while the burrow workspace is still live and returns structured deltas
- * the domain applies to its project clone.
+ * `LocalProvider.finalize` body (pl-829f step 12 / warren-371a; events+dirty+
+ * plans parity refinement warren-1f56, step 13) — the load-bearing §4 seam.
+ * Runs the workspace-DEPENDENT half of reap while the burrow workspace is still
+ * live and returns structured deltas the domain applies to its project clone.
  *
- * This is a THIN host-side WRAPPER over the EXISTING reap merge functions —
- * it imports and calls them, it does NOT fork their logic:
+ * A THIN host-side WRAPPER over the EXISTING reap merge functions (`mergeMulch`,
+ * `mirrorSeeds`/`mirrorPlans`, `mergePlot`, `stage{Plot,Seeds}ForCommit`) — it
+ * imports and calls them, it does NOT fork their logic; the pushed branch stays
+ * byte-identical to reap's.
  *
- *   - `mergeMulch`  (`src/runs/reap/mulch.ts`)      — expertise LWW merge
- *   - `mirrorSeeds` / `mirrorPlans` (`.../seeds.ts`) — issue + plan mirror
- *   - `mergePlot`   (`.../plot-merge.ts`)            — plot event/state replay
- *   - `stagePlotForCommit` / `stageSeedsForCommit` (`.../stage.ts`) — the
- *     `chore(warren): {plot,seeds} state` bookkeeping commits that reap authors
- *     before `git push`, so the pushed branch is byte-identical to reap's.
- *
- * ZERO BEHAVIOR CHANGE for existing reap: `reapRun` / `runReapPipeline` are
- * untouched. finalize is a PARALLEL, independently-tested entry point (step 12);
- * step 13 routes the domain reap call-site through it. Under LocalProvider the
- * merges write host-side into the project clone (the shared disk), exactly as
- * reap does; the returned deltas ALSO capture the merged result so the shape is
- * exercised for the K8s in-pod finalize (step 20), where there is no clone in
- * the pod and the control plane applies the deltas instead.
- *
- * ## What finalize deliberately does NOT do
- *
- *   - **PR open / preview / auto-plan-run / terminal-state transition** — these
- *     are DOMAIN orchestration (design §4: "when to reap, whether to open a PR,
- *     plan-run chaining" stay in the domain). finalize only crosses the seam
- *     with the workspace-touching execution.
- *   - **`intent.closeSeedId` (`sd close` safety net)** — reap's `closeRunSeedId`
- *     runs the seeds CLI against the CLONE, a domain integration (`SeedsCliDeps`)
- *     with no home in the provider seam. Carried on the intent as a forward
- *     declaration; the domain still performs it at the call-site (step 13). This
- *     mirrors how `create()` left the warren-row unwind to the domain.
- *   - **Soft per-file merge failures** — the reap merge helpers swallow
- *     individual malformed lines best-effort (a `reap_failed` event in reap).
- *     finalize passes them a discarding `fail`, so the stage trail records only
- *     the top-level outcome (did the whole stage throw). Same best-effort
- *     posture as reap; the domain owns fine-grained failure inference (§3).
+ * - **Event capture**: the merge functions emit ~10 per-record kinds
+ *   (`mulch.record.*`, `seeds.closed/created`, `seeds.plan_mirrored`, `plot.*`,
+ *   `reap.{plot,seeds}_committed`) plus per-line/stage `reap_failed`. finalize
+ *   hands them a COLLECTING emit/fail (was `discardEmit`/`discardFail`) that
+ *   appends `{kind, payload}` to `FinalizeResult.events` for the domain to
+ *   re-emit; the counts still ride the mirror deltas.
+ * - **Merge vs commit gating**: reap runs the four MERGES unconditionally but
+ *   gates the two bookkeeping COMMITS on `project.hasPlot`/`hasSeeds`.
+ *   `intent.mirror` gates the merges; `intent.commit` gates the commits
+ *   (defaulting to `mirror`), so the domain passes `mirror:[all four]` while
+ *   gating commits on the flags — byte-for-byte with reap.
+ * - **Deliberately NOT here** (domain-owned, §4): PR-open / preview /
+ *   auto-plan-run / terminal-state; `reap.empty_push` (needs the run outcome —
+ *   finalize returns `dirty` for it); `intent.closeSeedId` (`sd close` via
+ *   `SeedsCliDeps`, no provider-seam home). finalize DOES capture
+ *   `workspacePlansBody` (what `snapshotWorkspacePlans` reads before the seeds
+ *   commit overwrites it) so auto-plan-run detection survives `terminate`.
  */
 
 import { join } from "node:path";
@@ -47,9 +35,10 @@ import { mergeMulch } from "../../runs/reap/mulch.ts";
 import { mergePlot } from "../../runs/reap/plot-merge.ts";
 import { mirrorPlans, mirrorSeeds } from "../../runs/reap/seeds.ts";
 import { stagePlotForCommit, stageSeedsForCommit } from "../../runs/reap/stage.ts";
-import type { ReapExec, ReapFs } from "../../runs/reap/types.ts";
-import { defaultExec, defaultFs } from "../../runs/reap/util.ts";
+import type { ReapExec, ReapFs, ReapStep } from "../../runs/reap/types.ts";
+import { defaultExec, defaultFs, isWorkspaceDirty } from "../../runs/reap/util.ts";
 import type {
+	FinalizeEvent,
 	FinalizeIntent,
 	FinalizeResult,
 	FinalizeStage,
@@ -69,18 +58,31 @@ const SEEDS_ISSUES_REL = ".seeds/issues.jsonl";
 const SEEDS_PLANS_REL = ".seeds/plans.jsonl";
 
 /**
- * The reap merge helpers `await emit(...)` / `await fail(...)` but finalize
- * never reads the returned row and discards the events (the seam returns
- * structured deltas, not a warren event stream). A placeholder cast is sound —
- * every callee ignores the `emit` return value. Verified against `mergeMulch`,
- * `mirrorSeeds`, `mirrorPlans`, `mergePlot`, and both `stage*` helpers.
+ * The reap merge helpers `await emit(...)` / `await fail(...)` but never read
+ * the returned row. A placeholder cast is sound — every callee ignores the
+ * `emit` return value.
  */
 const DISCARDED_EVENT_ROW = {} as unknown as EventRow;
-async function discardEmit(): Promise<EventRow> {
-	return DISCARDED_EVENT_ROW;
-}
-async function discardFail(): Promise<void> {
-	// best-effort swallow — see module doc "Soft per-file merge failures".
+
+/**
+ * Collects the merge functions' `emit`/`fail` emissions into
+ * `FinalizeResult.events` so the domain can re-emit them (warren-1f56). `emit`
+ * captures per-record events verbatim; `fail` captures a `reap_failed` event
+ * with the SAME payload shape reap's `fail` builds (`{step, message[, path]}`).
+ */
+class EventCollector {
+	readonly events: FinalizeEvent[] = [];
+	emit = async (kind: string, payload: unknown): Promise<EventRow> => {
+		this.events.push({ kind, payload });
+		return DISCARDED_EVENT_ROW;
+	};
+	fail = async (step: ReapStep, err: unknown, path?: string): Promise<void> => {
+		const message = err instanceof Error ? err.message : String(err);
+		this.events.push({
+			kind: "reap_failed",
+			payload: path !== undefined ? { step, message, path } : { step, message },
+		});
+	};
 }
 
 /** Collects per-stage outcomes for `FinalizeResult.stages`. */
@@ -121,33 +123,42 @@ export async function finalizeLocalRun(
 	const fs = deps.fs ?? defaultFs;
 	const exec = deps.exec ?? defaultExec;
 	const trail = new StageTrail();
+	const collector = new EventCollector();
 	const mirror = new Set(intent.mirror);
+	// Commit-gating decouples from merge-gating (warren-1f56); default to
+	// `mirror` so pre-existing callers that only passed `mirror` are unchanged.
+	const commit = new Set(intent.commit ?? intent.mirror);
 	const workspacePath = await resolveWorkspacePath(client, handle.sandboxId);
 	const clonePath = resolveClonePath(intent, mirror);
 
 	const mulch = mirror.has("mulch")
-		? await finalizeMulch(workspacePath, clonePath, fs, trail)
+		? await finalizeMulch(workspacePath, clonePath, fs, trail, collector)
 		: undefined;
 	const seeds = mirror.has("seeds")
-		? await finalizeSeeds(client, handle.sandboxId, clonePath, fs, trail)
+		? await finalizeSeeds(client, handle.sandboxId, clonePath, fs, trail, collector)
 		: undefined;
 	const plans = mirror.has("plans")
-		? await finalizePlans(client, handle.sandboxId, clonePath, fs, trail)
+		? await finalizePlans(client, handle.sandboxId, clonePath, fs, trail, collector)
 		: undefined;
 	const plot = mirror.has("plot")
-		? await finalizePlot(workspacePath, clonePath, fs, trail)
+		? await finalizePlot(workspacePath, clonePath, fs, trail, collector)
 		: undefined;
 
 	// Bookkeeping commits BEFORE push, in reap's order (plot then seeds), so the
 	// pushed branch carries the `chore(warren): … state` commits reap authors.
-	if (mirror.has("plot")) {
-		await finalizePlotCommit(workspacePath, clonePath, fs, exec, trail);
+	if (commit.has("plot")) {
+		await finalizePlotCommit(workspacePath, clonePath, fs, exec, trail, collector);
 	}
-	if (mirror.has("seeds")) {
-		await finalizeSeedsCommit(workspacePath, clonePath, fs, exec, trail);
+	// Snapshot the workspace plans.jsonl BEFORE the seeds commit copies the
+	// clone-union over it — this is exactly what reap's `snapshotWorkspacePlans`
+	// reads for auto-plan-run detection (warren-1f56), and the workspace is gone
+	// after `terminate`, so finalize must capture it here.
+	const workspacePlansBody = await captureWorkspacePlans(workspacePath, fs);
+	if (commit.has("seeds")) {
+		await finalizeSeedsCommit(workspacePath, clonePath, fs, exec, trail, collector);
 	}
 
-	const push = await finalizePush(intent, workspacePath, exec, trail);
+	const push = await finalizePush(intent, workspacePath, exec, trail, collector);
 	const prBranch =
 		push.pushed && push.commitsAhead !== null && push.commitsAhead > 0 ? intent.branch : null;
 
@@ -155,6 +166,8 @@ export async function finalizeLocalRun(
 		pushed: push.pushed,
 		commitsAhead: push.commitsAhead,
 		emptyPush: push.emptyPush,
+		dirty: push.dirty,
+		workspacePlansBody,
 		mirror: {
 			...(mulch !== undefined ? { mulch } : {}),
 			...(seeds !== undefined ? { seeds } : {}),
@@ -163,6 +176,7 @@ export async function finalizeLocalRun(
 		},
 		prBranch,
 		stages: trail.outcomes,
+		events: collector.events,
 	};
 }
 
@@ -211,14 +225,29 @@ function resolveClonePath(intent: FinalizeIntent, mirror: Set<string>): string {
 	return hint;
 }
 
+/**
+ * Snapshot the workspace `.seeds/plans.jsonl` body for the domain's
+ * auto-plan-run detection (`FinalizeResult.workspacePlansBody`). `null` when the
+ * file is absent or the read throws — the same best-effort posture as reap's
+ * `snapshotWorkspacePlans` catch.
+ */
+async function captureWorkspacePlans(workspacePath: string, fs: ReapFs): Promise<string | null> {
+	try {
+		return await fs.readFile(join(workspacePath, ".seeds", "plans.jsonl"));
+	} catch {
+		return null;
+	}
+}
+
 async function finalizeMulch(
 	workspacePath: string,
 	clonePath: string,
 	fs: ReapFs,
 	trail: StageTrail,
+	collector: EventCollector,
 ): Promise<MulchDelta> {
 	try {
-		const result = await mergeMulch(workspacePath, clonePath, fs, discardEmit, discardFail);
+		const result = await mergeMulch(workspacePath, clonePath, fs, collector.emit, collector.fail);
 		const files = await readMergedMulchFiles(workspacePath, clonePath, fs);
 		trail.ok("mulch_merge");
 		return {
@@ -230,6 +259,7 @@ async function finalizeMulch(
 		};
 	} catch (err) {
 		trail.failed("mulch_merge", err);
+		await collector.fail("mulch_merge", err);
 		return { version: 1, updated: 0, skipped: 0, appended: 0, files: [] };
 	}
 }
@@ -266,6 +296,7 @@ async function finalizeSeeds(
 	clonePath: string,
 	fs: ReapFs,
 	trail: StageTrail,
+	collector: EventCollector,
 ): Promise<SeedsDelta> {
 	try {
 		const result = await mirrorSeeds({
@@ -273,7 +304,7 @@ async function finalizeSeeds(
 			burrowId: sandboxId,
 			projectPath: clonePath,
 			fs,
-			emit: discardEmit,
+			emit: collector.emit,
 		});
 		const changed = result.closed + result.created > 0;
 		const mergedBody = changed
@@ -289,6 +320,8 @@ async function finalizeSeeds(
 		};
 	} catch (err) {
 		trail.failed("seeds_mirror", err);
+		// reap's `mirrorSeedsStep` reports this failure as step `seeds_close`.
+		await collector.fail("seeds_close", err);
 		return { version: 1, closed: 0, created: 0, path: SEEDS_ISSUES_REL, mergedBody: null };
 	}
 }
@@ -299,6 +332,7 @@ async function finalizePlans(
 	clonePath: string,
 	fs: ReapFs,
 	trail: StageTrail,
+	collector: EventCollector,
 ): Promise<PlansDelta> {
 	try {
 		const appended = await mirrorPlans({
@@ -306,7 +340,7 @@ async function finalizePlans(
 			burrowId: sandboxId,
 			projectPath: clonePath,
 			fs,
-			emit: discardEmit,
+			emit: collector.emit,
 		});
 		const mergedBody =
 			appended > 0 ? ((await fs.readFile(join(clonePath, ".seeds", "plans.jsonl"))) ?? null) : null;
@@ -314,6 +348,7 @@ async function finalizePlans(
 		return { version: 1, appended, path: SEEDS_PLANS_REL, mergedBody };
 	} catch (err) {
 		trail.failed("plans_mirror", err);
+		await collector.fail("plans_mirror", err);
 		return { version: 1, appended: 0, path: SEEDS_PLANS_REL, mergedBody: null };
 	}
 }
@@ -323,9 +358,10 @@ async function finalizePlot(
 	clonePath: string,
 	fs: ReapFs,
 	trail: StageTrail,
+	collector: EventCollector,
 ): Promise<PlotDelta> {
 	try {
-		const result = await mergePlot(workspacePath, clonePath, fs, discardEmit, discardFail);
+		const result = await mergePlot(workspacePath, clonePath, fs, collector.emit, collector.fail);
 		trail.ok("plot_merge");
 		return {
 			version: 1,
@@ -335,6 +371,7 @@ async function finalizePlot(
 		};
 	} catch (err) {
 		trail.failed("plot_merge", err);
+		await collector.fail("plot_merge", err);
 		return { version: 1, eventsAppended: 0, plotsUpdated: 0, mirrored: 0 };
 	}
 }
@@ -345,6 +382,7 @@ async function finalizePlotCommit(
 	fs: ReapFs,
 	exec: ReapExec,
 	trail: StageTrail,
+	collector: EventCollector,
 ): Promise<void> {
 	try {
 		await stagePlotForCommit({
@@ -352,11 +390,12 @@ async function finalizePlotCommit(
 			projectPath: clonePath,
 			fs,
 			exec,
-			emit: discardEmit,
+			emit: collector.emit,
 		});
 		trail.ok("plot_commit");
 	} catch (err) {
 		trail.failed("plot_commit", err);
+		await collector.fail("plot_commit", err, join(workspacePath, ".plot"));
 	}
 }
 
@@ -366,6 +405,7 @@ async function finalizeSeedsCommit(
 	fs: ReapFs,
 	exec: ReapExec,
 	trail: StageTrail,
+	collector: EventCollector,
 ): Promise<void> {
 	try {
 		await stageSeedsForCommit({
@@ -373,11 +413,12 @@ async function finalizeSeedsCommit(
 			projectPath: clonePath,
 			fs,
 			exec,
-			emit: discardEmit,
+			emit: collector.emit,
 		});
 		trail.ok("seeds_commit");
 	} catch (err) {
 		trail.failed("seeds_commit", err);
+		await collector.fail("seeds_commit", err, join(workspacePath, ".seeds"));
 	}
 }
 
@@ -385,38 +426,49 @@ interface PushOutcome {
 	pushed: boolean;
 	commitsAhead: number | null;
 	emptyPush: boolean;
+	dirty: boolean;
 }
 
 /**
  * `git push origin HEAD:<branch>` then the commits-ahead / empty-push count —
  * faithful to reap's `pushStep` + `commitsAheadStep`. `intent.push === false`
  * skips both stages; a missing `baseBranch` skips the count (`commitsAhead:
- * null`); a `rev-list` failure degrades to `null` too.
+ * null`); a `rev-list` failure degrades to `null` too. On a zero-commit push it
+ * probes `git status --porcelain` for `dirty` (the dropped-commit signal the
+ * domain derives `droppedCommit` from). An empty branch pushes `HEAD` (reap's
+ * fallback when burrow exposed no branch).
  */
 async function finalizePush(
 	intent: FinalizeIntent,
 	workspacePath: string,
 	exec: ReapExec,
 	trail: StageTrail,
+	collector: EventCollector,
 ): Promise<PushOutcome> {
 	if (!intent.push) {
 		trail.skipped("branch_push");
 		trail.skipped("commits_ahead");
-		return { pushed: false, commitsAhead: null, emptyPush: false };
+		return { pushed: false, commitsAhead: null, emptyPush: false, dirty: false };
 	}
+	const refspec = intent.branch === "" ? "HEAD" : `HEAD:${intent.branch}`;
 	try {
-		await exec.run("git", ["push", "origin", `HEAD:${intent.branch}`], {
+		await exec.run("git", ["push", "origin", refspec], {
 			cwd: workspacePath,
 			timeoutMs: 60_000,
 		});
 		trail.ok("branch_push");
 	} catch (err) {
 		trail.failed("branch_push", err);
+		await collector.fail("branch_push", err, workspacePath);
 		trail.skipped("commits_ahead");
-		return { pushed: false, commitsAhead: null, emptyPush: false };
+		return { pushed: false, commitsAhead: null, emptyPush: false, dirty: false };
 	}
 	const commitsAhead = await countCommitsAhead(intent, workspacePath, exec, trail);
-	return { pushed: true, commitsAhead, emptyPush: commitsAhead === 0 };
+	// warren-72b9: probe dirtiness only on a zero-commit push (matching reap) so
+	// the domain can tell a dropped commit (staged-but-uncommitted) apart from a
+	// deliberate no-op. Any other case leaves `dirty` false — no extra git call.
+	const dirty = commitsAhead === 0 ? await isWorkspaceDirty(exec, workspacePath) : false;
+	return { pushed: true, commitsAhead, emptyPush: commitsAhead === 0, dirty };
 }
 
 async function countCommitsAhead(
@@ -438,6 +490,8 @@ async function countCommitsAhead(
 		trail.ok("commits_ahead");
 		return Number.isFinite(parsed) ? parsed : null;
 	} catch (err) {
+		// reap logs the rev-list failure but emits NO `reap_failed` event — the
+		// count degrades to null. Record the stage outcome only.
 		trail.failed("commits_ahead", err);
 		return null;
 	}
