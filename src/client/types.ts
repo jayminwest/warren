@@ -21,7 +21,8 @@ export type RunFailureReason =
 	| "burrow_run_lost"
 	| "burrow_unreachable"
 	| "dropped_commit"
-	| "provider_error";
+	| "provider_error"
+	| "oom_killed";
 
 export type PreviewState = "starting" | "live" | "failed" | "torn-down";
 

@@ -17,7 +17,8 @@ export type RunFailureReason =
 	| "burrow_run_lost"
 	| "burrow_unreachable"
 	| "dropped_commit"
-	| "provider_error";
+	| "provider_error"
+	| "oom_killed";
 
 /**
  * Preview environment lifecycle (R-19 / SPEC §11.L). Null on rows whose

@@ -156,6 +156,7 @@ export const RUN_FAILURE_REASONS = [
 	"burrow_unreachable",
 	"dropped_commit",
 	"provider_error",
+	"oom_killed",
 ] as const;
 export type RunFailureReason = (typeof RUN_FAILURE_REASONS)[number];
 

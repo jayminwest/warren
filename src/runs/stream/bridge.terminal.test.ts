@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { NotFoundError as BurrowNotFoundError, type RunEvent } from "@os-eco/burrow-cli";
+import type { RunEvent } from "@os-eco/burrow-cli";
 import { openDatabase, type WarrenDb } from "../../db/client.ts";
 import { createRepos, type Repos } from "../../db/repos/index.ts";
+import { RuntimeRunNotFoundError } from "../../runtime/errors.ts";
 import { RunEventBroker } from "../events.ts";
 import { bridgeRunStream } from "./bridge.ts";
 import { evt, makePool, seedBridgeRun, source } from "./test-helpers.ts";
@@ -122,12 +123,14 @@ describe("bridgeRunStream — in-stream terminal detection", () => {
 		expect(result.terminalDetected).toBeUndefined();
 	});
 
-	test("warren-b1a9: BurrowNotFoundError from source sets burrowRunMissing, not errored", async () => {
+	test("warren-b1a9: RuntimeRunNotFoundError from source sets burrowRunMissing, not errored", async () => {
+		// The seam neutralizes burrow's raw 404 into `RuntimeRunNotFoundError`
+		// (warren-1f56); the bridge's ghost-run catch keys off the neutral class.
 		const missingSource = (): AsyncIterable<RunEvent> => ({
 			[Symbol.asyncIterator](): AsyncIterator<RunEvent> {
 				return {
 					next: async () => {
-						throw new BurrowNotFoundError(`run not found: ${burrowRunId}`);
+						throw new RuntimeRunNotFoundError(`run not found: ${burrowRunId}`);
 					},
 				};
 			},

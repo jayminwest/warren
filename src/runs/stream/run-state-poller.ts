@@ -10,24 +10,44 @@
  * failures.
  */
 
-import type { BurrowClient } from "../../burrow-client/client.ts";
-import { withTransportMapping } from "../../burrow-client/client.ts";
 import type { RunTerminalState } from "../../db/schema.ts";
+import type { RunHandle, RuntimeProvider, TerminalReason } from "../../runtime/contract.ts";
 import type { BridgeLogger, BurrowTerminalSnapshot, RunStateProbe } from "./types.ts";
 
 const BURROW_TERMINAL_STATES = new Set<RunTerminalState>(["succeeded", "failed", "cancelled"]);
 
 /**
- * Default run-state probe: project burrow's `runs.get` to the
- * {state, exitCode} pair the poller needs. `BurrowNotFoundError` bubbles
- * up so the bridge's main catch block records `burrowRunMissing` exactly
- * once instead of fighting with the stream's own 404. Other transport
- * errors return null and the poller retries on the next tick.
+ * Default run-state probe (warren-1f56): project the run's
+ * `provider.status(handle)` reconcile snapshot to the {state, exitCode,
+ * terminalReason} triple the poller needs — the seam replacement for the raw
+ * `runs.get` this used to call. `status()` never throws on a missing run: it
+ * returns `exists:false`, which the probe maps to `null` so the poller keeps
+ * polling (transient) and the event stream's own 404 path (now the neutralized
+ * `RuntimeRunNotFoundError` → `burrowRunMissing`) stays authoritative for the
+ * ghost-run reconciliation — exactly as burrow's 404 bubbled before. Real
+ * transport failures (`BurrowUnreachableError`) still throw out of `status()`
+ * and are swallowed + retried by the poller's own catch. `terminalReason` rides
+ * through so the poller can surface `oom_killed` (warren-9cce).
+ *
+ * SEAM SIGNAL (step 13): `provider.status()` pays an EXTRA burrow events replay
+ * to compute its `lastEventSeq` cursor, which this poller does not consume (the
+ * warren DB's `maxSeqForRun` is the authoritative resume cursor). The poll
+ * cadence is deliberately light (1 status/run/2s), so the drain cost is
+ * acceptable for the LocalProvider; a K8s backend would carry the state as cheap
+ * pod metadata instead.
  */
-export function defaultRunStateProbe(client: BurrowClient): RunStateProbe {
-	return async (burrowRunId, _signal) => {
-		const run = await withTransportMapping(client.config, () => client.http.runs.get(burrowRunId));
-		return { state: run.state, exitCode: run.exitCode };
+export function defaultRunStateProbe(provider: RuntimeProvider, handle: RunHandle): RunStateProbe {
+	return async (_burrowRunId, _signal) => {
+		const status = await provider.status(handle);
+		// `exists:false` ⇒ the backend lost the run. Return null (transient) and
+		// let the stream's own ghost-run path finalize it, mirroring today's
+		// "probe 404 bubbles/swallowed; stream sets burrowRunMissing" split.
+		if (!status.exists) return null;
+		return {
+			state: status.phase,
+			exitCode: status.exitCode,
+			...(status.terminalReason !== undefined ? { terminalReason: status.terminalReason } : {}),
+		};
 	};
 }
 
@@ -55,9 +75,15 @@ export async function runStatePoller(input: RunStatePollerInput): Promise<void> 
 		try {
 			const row = await probe(burrowRunId, ctrl.signal);
 			if (row !== null && isBurrowTerminal(row.state)) {
-				observed.value = { state: row.state, exitCode: row.exitCode };
+				observed.value = toTerminalSnapshot(row.state, row.exitCode, row.terminalReason);
 				logger?.info?.(
-					{ runId, burrowRunId, burrowState: row.state, exitCode: row.exitCode },
+					{
+						runId,
+						burrowRunId,
+						burrowState: row.state,
+						exitCode: row.exitCode,
+						terminalReason: row.terminalReason,
+					},
 					"run-state poller observed burrow terminal; draining stream before abort",
 				);
 				await sleepMs(drainMs, ctrl.signal);
@@ -84,6 +110,25 @@ export async function runStatePoller(input: RunStatePollerInput): Promise<void> 
 
 function isBurrowTerminal(state: string): state is RunTerminalState {
 	return BURROW_TERMINAL_STATES.has(state as RunTerminalState);
+}
+
+/**
+ * Build the terminal snapshot the poller records, distilling the seam's coarse
+ * `terminalReason` into a domain `failure_reason` (warren-9cce). Only
+ * `oom_killed` is load-bearing today — burrow's OOM kill (previously collapsed
+ * into an anonymous error) now rides through to the finalized run's
+ * `failure_reason`; every other reason is already covered by `state`.
+ */
+function toTerminalSnapshot(
+	state: RunTerminalState,
+	exitCode: number | null,
+	terminalReason: TerminalReason | undefined,
+): BurrowTerminalSnapshot {
+	return {
+		state,
+		exitCode,
+		...(terminalReason === "oom_killed" ? { failureReason: "oom_killed" as const } : {}),
+	};
 }
 
 /** Resolve after `ms` or return true when the signal fires first. */

@@ -12,8 +12,8 @@
  *     trigger the pi-specific terminal snapshot.
  */
 
-import type { RunEvent } from "@os-eco/burrow-cli";
 import type { RunTerminalState } from "../../db/schema.ts";
+import type { StreamEventView } from "./types.ts";
 
 /**
  * Inspect a burrow event for a runtime-terminal shape (warren-a69a,
@@ -37,7 +37,7 @@ import type { RunTerminalState } from "../../db/schema.ts";
  * is handled by `cancelRun`. Future runtimes extend this dispatch by
  * adding their runtime-specific terminal shape.
  */
-export function detectRuntimeTerminal(event: RunEvent): RunTerminalState | null {
+export function detectRuntimeTerminal(event: StreamEventView): RunTerminalState | null {
 	if (event.kind !== "state_change") return null;
 	if (event.stream !== "system") return null;
 	const payload = event.payload;
@@ -63,7 +63,7 @@ export function detectRuntimeTerminal(event: RunEvent): RunTerminalState | null 
  * `detectRuntimeTerminal`, which also accepts claude-code's `result`
  * envelope — piStats is a pi-only concern.
  */
-export function isPiAgentEnd(event: RunEvent): boolean {
+export function isPiAgentEnd(event: StreamEventView): boolean {
 	if (event.kind !== "state_change") return false;
 	if (event.stream !== "system") return false;
 	const payload = event.payload;

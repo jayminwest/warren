@@ -183,6 +183,12 @@ export async function runWithReconnect(
 					burrowClientPool: input.burrowClientPool,
 					broker: input.broker,
 					logger: log,
+					// warren-9cce: carry the poller's distilled `failure_reason`
+					// (`oom_killed`) so reap finalizes with it instead of inferring an
+					// anonymous crash. Absent for the in-stream terminal path.
+					...(result.terminalDetected.failureReason !== undefined
+						? { failureReason: result.terminalDetected.failureReason }
+						: {}),
 					...(input.autoOpenPr !== undefined ? { autoOpenPr: input.autoOpenPr } : {}),
 					...(previewConfig !== undefined ? { previewConfig } : {}),
 					...(input.portAllocator !== undefined ? { portAllocator: input.portAllocator } : {}),

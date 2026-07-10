@@ -23,7 +23,6 @@
  */
 
 import { join } from "node:path";
-import type { RunEvent } from "@os-eco/burrow-cli";
 import type { Repos } from "../../db/repos/index.ts";
 import {
 	createPlotsProjectionSink,
@@ -31,7 +30,7 @@ import {
 	type EditPlotIntentPatch,
 	type PlotIntentEditor,
 } from "../../plots/index.ts";
-import type { BridgeLogger } from "./types.ts";
+import type { BridgeLogger, StreamEventView } from "./types.ts";
 
 /**
  * Plot actor warren records when applying a leveret `propose_intent` patch
@@ -113,7 +112,7 @@ export function createConversationTurnHandler(
  * `kind:'text', stream:'stdout', payload:{text}`. Returns the non-empty text,
  * or null for any other event shape.
  */
-export function extractAssistantText(event: RunEvent): string | null {
+export function extractAssistantText(event: StreamEventView): string | null {
 	if (event.kind !== "text" || event.stream !== "stdout") return null;
 	const payload = event.payload;
 	if (payload === null || typeof payload !== "object") return null;
@@ -129,7 +128,7 @@ export function extractAssistantText(event: RunEvent): string | null {
  * `payload.result.details.intent_patch`. Returns a normalized patch with only
  * the four known intent fields, or null when none are present / well-formed.
  */
-export function extractIntentPatch(event: RunEvent): EditPlotIntentPatch | null {
+export function extractIntentPatch(event: StreamEventView): EditPlotIntentPatch | null {
 	if (event.kind !== "state_change" || event.stream !== "system") return null;
 	const payload = event.payload;
 	if (payload === null || typeof payload !== "object") return null;

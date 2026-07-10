@@ -7,7 +7,8 @@
  * Faithful to `bridge.ts`'s burrow-touching half:
  *   - Source: `client.http.runs.stream(burrowRunId, { signal })`, wrapped in
  *     `withTransportMapping` so a dead socket surfaces as
- *     `BurrowUnreachableError` (bridge's `defaultSource` does the same).
+ *     `BurrowUnreachableError` (this is now the bridge's production stream source
+ *     — the domain routes through `provider.streamEvents`, warren-1f56).
  *   - Resume: burrow's `runs.stream` has NO server-side `since` param — it
  *     replays from the run's first event every time — so resume is the SAME
  *     client-side dedup bridge does: skip `event.seq <= sinceSeq` (contract
@@ -24,10 +25,11 @@
  * `streamRunEvents` listens on the passed signal and cancels the fetch reader).
  */
 
-import type { RunEvent } from "@os-eco/burrow-cli";
+import { NotFoundError as BurrowNotFoundError, type RunEvent } from "@os-eco/burrow-cli";
 import type { BurrowClient } from "../../burrow-client/index.ts";
 import { withTransportMapping } from "../../burrow-client/index.ts";
 import type { NormalizedEvent, StreamOpts } from "../contract.ts";
+import { RuntimeRunNotFoundError } from "../errors.ts";
 
 /** The three stream tags the seam recognizes; anything else coerces to `null`. */
 const NORMALIZED_STREAMS = ["stdout", "stderr", "system"] as const;
@@ -56,7 +58,23 @@ async function* pumpLocalEvents(
 		for (;;) {
 			// Transport-map each pull: the initial fetch is lazy (fires on the first
 			// `.next()`), so a dead socket must surface here as BurrowUnreachableError.
-			const next = await withTransportMapping(client.config, () => source.next());
+			// A burrow 404 (the run vanished mid-stream — machine restart wiped
+			// burrow's in-memory store, deliberate cleanup) is NEUTRALIZED at the
+			// seam (warren-1f56): re-thrown as the provider-neutral
+			// `RuntimeRunNotFoundError` so the domain bridge recognizes a ghost run
+			// without importing `@os-eco/burrow-cli`'s error class. Mirrors the same
+			// neutralization `./cancel.ts` / `./send-message.ts` do.
+			let next: IteratorResult<RunEvent, void>;
+			try {
+				next = await withTransportMapping(client.config, () => source.next());
+			} catch (err) {
+				if (err instanceof BurrowNotFoundError) {
+					throw new RuntimeRunNotFoundError(err.message, {
+						recoveryHint: "the run is unknown to the backend; reconcile the warren row as lost",
+					});
+				}
+				throw err;
+			}
 			if (next.done === true) break;
 			const event = next.value;
 			// Resume dedup — client-side skip, exactly as bridge.ts does.
