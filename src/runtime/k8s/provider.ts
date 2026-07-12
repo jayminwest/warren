@@ -43,6 +43,7 @@ import type {
 	TeardownResult,
 } from "../contract.ts";
 import { RuntimeNotImplementedError, RuntimeProviderError } from "../errors.ts";
+import { mapApiError } from "./api-error.ts";
 import { defaultLogFollowFactory } from "./log-follow.ts";
 import {
 	isTerminalPhase,
@@ -64,6 +65,7 @@ import type { PodCacheReader } from "./pod-watcher.ts";
 import { buildSeedConfigMap, seedConfigMapName } from "./seed-configmap.ts";
 import { type K8sInboxStore, sendK8sMessage } from "./send-message.ts";
 import { mapPodToRunStatus, runLostStatus } from "./status-map.ts";
+import { cancelK8sRun, terminateK8sRun } from "./teardown.ts";
 
 /** Dependencies the K8s-backed provider methods wrap in later steps. */
 export interface K8sProviderDeps {
@@ -154,48 +156,6 @@ export function defaultCoreApiFactory(): () => CoreV1Api {
 		}
 		return cached;
 	};
-}
-
-/**
- * Extract a human message from a K8s `ApiException` — its `body` is the API's
- * `Status` object (`{ message, reason, code }`), sometimes still a JSON string.
- * Falls back to the exception's own message.
- */
-function apiErrorMessage(err: ApiException<unknown>): string {
-	let body: unknown = err.body;
-	if (typeof body === "string") {
-		const raw = body;
-		try {
-			body = JSON.parse(raw);
-		} catch {
-			return raw;
-		}
-	}
-	if (typeof body === "object" && body !== null && "message" in body) {
-		const msg = (body as { message?: unknown }).message;
-		if (typeof msg === "string" && msg !== "") return msg;
-	}
-	return err.message;
-}
-
-/**
- * Map a K8s API failure onto the seam's structured `RuntimeProviderError`
- * (namespace-missing, RBAC-forbidden, quota, transport). Non-`ApiException`
- * errors (a bug in our own code) rethrow unchanged rather than being disguised
- * as a provider error.
- */
-function mapApiError(err: unknown, context: string): Error {
-	if (err instanceof ApiException) {
-		return new RuntimeProviderError(
-			`K8s ${context} failed (HTTP ${err.code}): ${apiErrorMessage(err)}`,
-			{
-				cause: err,
-				recoveryHint:
-					"verify the warren-runs namespace exists, the run ServiceAccount has pods/configmaps create RBAC, and no ResourceQuota is exhausted (plan step 26 provisions these).",
-			},
-		);
-	}
-	return err instanceof Error ? err : new Error(String(err));
 }
 
 /**
@@ -437,15 +397,38 @@ export class K8sProvider implements RuntimeProvider {
 		return sendK8sMessage(this.deps.runInbox?.(), handle, msg);
 	}
 
-	cancel(_handle: RunHandle, _reason?: string): Promise<void> {
-		return notImplemented("cancel", "step 19 (warren-31d4)");
+	/**
+	 * Graceful stop of the agent (contract §3/§4) — delete the pod with the
+	 * configured SIGTERM grace (`WARREN_K8S_CANCEL_GRACE_SECONDS`, default 30s),
+	 * which is kubelet-native SIGTERM → grace → SIGKILL. Best-effort; the domain
+	 * still reaps + terminates afterward. `reason` has no K8s carrier (there is no
+	 * cancel RPC, only a pod delete) so it is accepted and dropped — the domain
+	 * records the reason on its own `cancel.requested` event.
+	 *
+	 * A positive grace is deliberate: during the window the pod lingers
+	 * `Terminating` (phase still `Running`), so the domain's `cancelRun` `status()`
+	 * re-read sees a non-terminal phase and does NOT prematurely reap the run as
+	 * `lost`. A 404 (pod already gone) becomes `RuntimeRunNotFoundError`, which
+	 * `cancelRun` catches to terminalize the ghost row (mirrors LocalProvider).
+	 */
+	cancel(handle: RunHandle, _reason?: string): Promise<void> {
+		const config = resolveK8sPodConfig(this.deps.serverEnv ?? process.env);
+		return cancelK8sRun(this.deps.coreApi(), config, handle);
 	}
 
 	finalize(_handle: RunHandle, _intent: FinalizeIntent): Promise<FinalizeResult> {
 		return notImplemented("finalize", "step 20 (warren-0d35)");
 	}
 
-	terminate(_handle: RunHandle): Promise<TeardownResult> {
-		return notImplemented("terminate", "step 19 (warren-31d4)");
+	/**
+	 * Destroy the sandbox (contract §4 — called ONLY after `finalize`). Force-
+	 * deletes the pod (`WARREN_K8S_TERMINATE_GRACE_SECONDS`, default 0) and deletes
+	 * the run's seed ConfigMap(s) by label, returning the `TeardownResult` reap
+	 * emits. Idempotent + best-effort — an already-gone pod is not an error. See
+	 * `./teardown.ts` for the K8s ⇄ burrow-shaped `TeardownResult` mapping.
+	 */
+	terminate(handle: RunHandle): Promise<TeardownResult> {
+		const config = resolveK8sPodConfig(this.deps.serverEnv ?? process.env);
+		return terminateK8sRun(this.deps.coreApi(), config, handle);
 	}
 }

@@ -64,7 +64,7 @@ describe("K8sProvider", () => {
 		expect(() => new K8sProvider(deps)).not.toThrow();
 	});
 
-	describe("every method is a not-implemented stub naming its method + plan step", () => {
+	describe("finalize remains a not-implemented stub naming its method + plan step", () => {
 		const provider = new K8sProvider(deps);
 
 		/** Capture the thrown error so we can assert on both message + recoveryHint. */
@@ -78,23 +78,13 @@ describe("K8sProvider", () => {
 			throw new Error("expected the stub to throw RuntimeNotImplementedError");
 		}
 
-		const cases: ReadonlyArray<[string, string, () => unknown]> = [
-			["cancel", "step 19", () => provider.cancel(handle)],
-			[
-				"finalize",
-				"step 20",
-				() => provider.finalize(handle, { branch: "b", push: false, mirror: [] }),
-			],
-			["terminate", "step 19", () => provider.terminate(handle)],
-		];
-
-		for (const [method, step, invoke] of cases) {
-			test(`${method} → ${step}`, () => {
-				const err = capture(invoke);
-				expect(err.message).toContain(`K8sProvider.${method}()`);
-				expect(err.recoveryHint).toContain(step);
-			});
-		}
+		test("finalize → step 20", () => {
+			const err = capture(() =>
+				provider.finalize(handle, { branch: "b", push: false, mirror: [] }),
+			);
+			expect(err.message).toContain("K8sProvider.finalize()");
+			expect(err.recoveryHint).toContain("step 20");
+		});
 	});
 });
 

@@ -119,6 +119,27 @@ export const DEFAULT_K8S_CALLBACK_PORT = "8080";
 export const DEFAULT_K8S_GIT_SECRET_NAME = "warren-git-token";
 export const DEFAULT_K8S_GIT_SECRET_KEY = "token";
 
+/**
+ * SIGTERM grace on `cancel()` (pl-829f step 19 / warren-31d4). `cancel` is the
+ * seam's GRACEFUL stop: it deletes the pod with this `gracePeriodSeconds`, so
+ * the kubelet delivers SIGTERM and waits this long before SIGKILL — giving the
+ * agent a window to flush. A positive default matters: during the window the
+ * pod lingers `Terminating` (phase still `Running`), so a `status()` re-read
+ * from the domain's `cancelRun` sees a NON-terminal phase and does NOT
+ * prematurely reap the run as `lost`/`failed` (grace=0 would risk the pod
+ * vanishing before the domain records the cancel). Overridable via
+ * `WARREN_K8S_CANCEL_GRACE_SECONDS`.
+ */
+export const DEFAULT_K8S_CANCEL_GRACE_SECONDS = 30;
+/**
+ * Grace on `terminate()` (pl-829f step 19 / warren-31d4). `terminate` reclaims
+ * the sandbox AFTER `finalize` already ran (contract §6.8 ordering), so the
+ * workspace-dependent work is done and there is nothing to flush — the pod is
+ * force-deleted immediately (`gracePeriodSeconds: 0`). Overridable via
+ * `WARREN_K8S_TERMINATE_GRACE_SECONDS`.
+ */
+export const DEFAULT_K8S_TERMINATE_GRACE_SECONDS = 0;
+
 /** A fully-resolved memory+cpu pair (whole MiB / millicores). */
 export interface ResolvedResourceQuantities {
 	memoryMiB: number;
@@ -143,6 +164,10 @@ export interface K8sPodConfig {
 	callback: { service: string; namespace: string; port: string };
 	/** K8s Secret the init container's git token is sourced from (§6.3). */
 	gitTokenSecret: { name: string; key: string };
+	/** SIGTERM grace (seconds) `cancel()` deletes the pod with (step 19). */
+	cancelGracePeriodSeconds: number;
+	/** Grace (seconds) `terminate()` force-deletes the pod with; 0 = immediate (step 19). */
+	terminateGracePeriodSeconds: number;
 	/** optional ServiceAccount for the run pod (RBAC step). */
 	serviceAccountName?: string;
 }
@@ -153,6 +178,18 @@ export type K8sPodConfigEnv = Readonly<Record<string, string | undefined>>;
 function pickString(env: K8sPodConfigEnv, key: string, fallback: string): string {
 	const raw = env[key]?.trim();
 	return raw === undefined || raw === "" ? fallback : raw;
+}
+
+/**
+ * Read a non-negative integer env override (grace-period seconds). A blank,
+ * missing, non-numeric, negative, or non-integer value falls back to `fallback`
+ * rather than propagating a nonsensical grace to the K8s API.
+ */
+function pickNonNegativeInt(env: K8sPodConfigEnv, key: string, fallback: number): number {
+	const raw = env[key]?.trim();
+	if (raw === undefined || raw === "") return fallback;
+	const n = Number(raw);
+	return Number.isInteger(n) && n >= 0 ? n : fallback;
 }
 
 /**
@@ -191,6 +228,16 @@ export function resolveK8sPodConfig(
 			name: pickString(env, "WARREN_K8S_GIT_SECRET_NAME", DEFAULT_K8S_GIT_SECRET_NAME),
 			key: pickString(env, "WARREN_K8S_GIT_SECRET_KEY", DEFAULT_K8S_GIT_SECRET_KEY),
 		},
+		cancelGracePeriodSeconds: pickNonNegativeInt(
+			env,
+			"WARREN_K8S_CANCEL_GRACE_SECONDS",
+			DEFAULT_K8S_CANCEL_GRACE_SECONDS,
+		),
+		terminateGracePeriodSeconds: pickNonNegativeInt(
+			env,
+			"WARREN_K8S_TERMINATE_GRACE_SECONDS",
+			DEFAULT_K8S_TERMINATE_GRACE_SECONDS,
+		),
 	};
 	const sa = env.WARREN_K8S_SERVICE_ACCOUNT?.trim();
 	if (sa !== undefined && sa !== "") config.serviceAccountName = sa;

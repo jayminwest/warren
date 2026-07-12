@@ -91,6 +91,36 @@ describe("resolveK8sPodConfig", () => {
 		});
 	});
 
+	test("teardown grace periods default to 30s (cancel) / 0s (terminate)", () => {
+		const c = resolveK8sPodConfig({});
+		expect(c.cancelGracePeriodSeconds).toBe(30);
+		expect(c.terminateGracePeriodSeconds).toBe(0);
+	});
+
+	test("teardown grace periods read non-negative integers from env", () => {
+		const c = resolveK8sPodConfig({
+			WARREN_K8S_CANCEL_GRACE_SECONDS: "12",
+			WARREN_K8S_TERMINATE_GRACE_SECONDS: "3",
+		});
+		expect(c.cancelGracePeriodSeconds).toBe(12);
+		expect(c.terminateGracePeriodSeconds).toBe(3);
+	});
+
+	test("invalid grace env (negative / non-integer / blank) falls back to the default", () => {
+		expect(
+			resolveK8sPodConfig({ WARREN_K8S_CANCEL_GRACE_SECONDS: "-5" }).cancelGracePeriodSeconds,
+		).toBe(30);
+		expect(
+			resolveK8sPodConfig({ WARREN_K8S_CANCEL_GRACE_SECONDS: "1.5" }).cancelGracePeriodSeconds,
+		).toBe(30);
+		expect(
+			resolveK8sPodConfig({ WARREN_K8S_CANCEL_GRACE_SECONDS: "  " }).cancelGracePeriodSeconds,
+		).toBe(30);
+		expect(
+			resolveK8sPodConfig({ WARREN_K8S_CANCEL_GRACE_SECONDS: "abc" }).cancelGracePeriodSeconds,
+		).toBe(30);
+	});
+
 	test("callback + git-secret read from env", () => {
 		const c = resolveK8sPodConfig({
 			WARREN_K8S_CALLBACK_SERVICE: "cp",

@@ -38,6 +38,13 @@ export const METRIC_INIT_FAILURES_TOTAL = "warren_workspace_init_failures_total"
  * stream; this counter makes that loss observable instead of silent.
  */
 export const METRIC_LOG_PARSE_FAILURES_TOTAL = "warren_pod_log_parse_failures_total";
+/**
+ * Total resources reclaimed by the pod-GC loop (pl-829f step 19 / warren-31d4),
+ * labelled `{resource}` (`pod` | `configmap`). The GC sweeps terminal pods older
+ * than the retention window plus their (and orphaned) seed ConfigMaps to bound
+ * log retention (design k8s-migration.md R6); this makes the reclaim observable.
+ */
+export const METRIC_POD_GC_DELETIONS_TOTAL = "warren_pod_gc_deletions_total";
 
 // --- Gauge names (computed at scrape from the watcher cache) ----------------
 
