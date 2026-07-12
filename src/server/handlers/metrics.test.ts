@@ -94,6 +94,43 @@ describe("GET /metrics", () => {
 		expect(body).toContain('warren_log_messages_total{level="error"} 1');
 	});
 
+	test("appends K8s pod-phase gauges when a pod-metrics source is wired", async () => {
+		const deps: ServerDeps = {
+			...(await depsFor(repos, db)),
+			podMetrics: {
+				metricsSnapshot: () => ({
+					phaseCounts: { Pending: 2, Running: 3 },
+					pendingDurationSeconds: 17,
+					lastInitDurationSeconds: 4.5,
+				}),
+			},
+		};
+		handle = startServer(deps, {
+			transport: { kind: "tcp", hostname: "127.0.0.1", port: 0 },
+			auth: bearerAuth(TOKEN),
+			logger: silentLogger,
+		});
+		const res = await fetch(`${tcpUrl(handle)}/metrics`);
+		const body = await res.text();
+		expect(body).toContain("# TYPE warren_run_pod_phase gauge");
+		expect(body).toContain('warren_run_pod_phase{phase="Pending"} 2');
+		expect(body).toContain('warren_run_pod_phase{phase="Running"} 3');
+		expect(body).toContain("warren_pod_pending_duration_seconds 17");
+		expect(body).toContain("warren_workspace_init_duration_seconds 4.5");
+	});
+
+	test("omits pod-phase gauges when no pod-metrics source is wired (LocalProvider)", async () => {
+		const deps = await depsFor(repos, db);
+		handle = startServer(deps, {
+			transport: { kind: "tcp", hostname: "127.0.0.1", port: 0 },
+			auth: bearerAuth(TOKEN),
+			logger: silentLogger,
+		});
+		const res = await fetch(`${tcpUrl(handle)}/metrics`);
+		const body = await res.text();
+		expect(body).not.toContain("warren_run_pod_phase");
+	});
+
 	test("rejects non-GET with a 405 JSON envelope", async () => {
 		const deps = await depsFor(repos, db);
 		handle = startServer(deps, {

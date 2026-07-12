@@ -26,6 +26,7 @@ import {
 	type PromMetric,
 	renderPrometheus,
 } from "../../observability/prometheus.ts";
+import { buildPodPhaseMetrics } from "../../runtime/k8s/pod-metrics.ts";
 import { textResponse } from "../response.ts";
 import type { RouteHandler, ServerDeps } from "../types.ts";
 
@@ -53,6 +54,12 @@ export function metricsHandler(deps: ServerDeps): RouteHandler {
 		metrics.push(
 			gauge("warren_active_bridges", "Currently-attached run-stream bridges.", deps.bridges.size()),
 		);
+
+		if (deps.podMetrics !== undefined) {
+			// K8s pod-phase gauges, read live from the pod-watcher cache at scrape
+			// (pl-829f step 16). Absent under LocalProvider — nothing appended.
+			metrics.push(...buildPodPhaseMetrics(deps.podMetrics.metricsSnapshot()));
+		}
 
 		if (deps.metricsRegistry !== undefined) {
 			metrics.push(...countersToMetrics(deps.metricsRegistry.snapshot()));

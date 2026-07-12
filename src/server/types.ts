@@ -427,13 +427,13 @@ export interface ServerDeps {
 	 */
 	readonly idempotencyStore?: IdempotencyStore;
 	/**
-	 * In-process counter registry backing `GET /metrics` (warren
-	 * observability Phase 1). `bootServer` wires one and also threads it
-	 * into the root logger's sink hook so warn/error log rates are counted.
-	 * Undefined → the metrics endpoint omits counters (tests, or a
-	 * deployment that didn't wire it).
+	 * Counter registry for `GET /metrics` (observability Phase 1); undefined omits the counters.
 	 */
 	readonly metricsRegistry?: import("../observability/metrics-registry.ts").MetricsRegistry;
+	/**
+	 * K8s pod-phase gauge source for `GET /metrics` (pl-829f step 16); set under WARREN_RUNTIME=k8s.
+	 */
+	readonly podMetrics?: import("../runtime/k8s/pod-metrics.ts").PodMetricsSource;
 }
 
 /**

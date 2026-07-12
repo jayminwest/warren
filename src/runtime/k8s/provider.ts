@@ -5,13 +5,14 @@
  * streaming — the strategic fix for the co-tenancy OOM crash loop that motivated
  * the migration (docs/design/k8s-migration.md §Motivation).
  *
- * `create()` (pl-829f step 15 / warren-2181) is the first real body: it
- * materializes the workspace in an init container, ships seed files as a
- * ConfigMap, points the agent at warren over Service DNS, and creates the pod.
- * The remaining methods stay deliberate `RuntimeNotImplementedError` stubs that
- * name the plan step that fills each:
+ * `create()` (pl-829f step 15 / warren-2181) and `status()` (step 16 /
+ * warren-a7ff) are the first real bodies: `create` materializes the workspace in
+ * an init container, ships seed files as a ConfigMap, points the agent at warren
+ * over Service DNS, and creates the pod; `status` reconciles the pod's
+ * phase/container state onto the seam's `RunStatus` (OOMKilled → `oom_killed`,
+ * absent pod → `exists:false`). The remaining methods stay deliberate
+ * `RuntimeNotImplementedError` stubs that name the plan step that fills each:
  *
- *   - `status`       → step 16 (warren-a7ff): pod-watcher informer → phase reconciliation.
  *   - `streamEvents` → step 17 (warren-026c): follow pod logs, synthesize the seq cursor.
  *   - `sendMessage`  → step 18 (warren-3d0b): `run_inbox` table + poll endpoint.
  *   - `cancel`/`terminate` → step 19 (warren-31d4): delete pod + SIGTERM grace + GC.
@@ -44,11 +45,14 @@ import { RuntimeNotImplementedError, RuntimeProviderError } from "../errors.ts";
 import {
 	buildRunPod,
 	type K8sPodConfig,
+	LABEL_RUN_ID,
 	podNameForRun,
 	resolveK8sPodConfig,
 	serviceDnsCallbackUrl,
 } from "./pod-spec.ts";
+import type { PodCacheReader } from "./pod-watcher.ts";
 import { buildSeedConfigMap, seedConfigMapName } from "./seed-configmap.ts";
+import { mapPodToRunStatus, runLostStatus } from "./status-map.ts";
 
 /** Dependencies the K8s-backed provider methods wrap in later steps. */
 export interface K8sProviderDeps {
@@ -66,6 +70,14 @@ export interface K8sProviderDeps {
 	 * Defaults to `process.env`.
 	 */
 	readonly serverEnv?: EnvLike;
+	/**
+	 * OPTIONAL live pod cache the pod-watcher (`./pod-watcher.ts`) maintains
+	 * (pl-829f step 16). `status()` consults it as an optimization to skip a
+	 * list-by-label round-trip; when absent — or on a cache miss — `status()`
+	 * still works cache-cold by listing the run's pod itself. The watcher is
+	 * provider-internal plumbing, so wiring this stays optional.
+	 */
+	readonly podCache?: PodCacheReader;
 }
 
 /**
@@ -151,6 +163,22 @@ function mapApiError(err: unknown, context: string): Error {
 		);
 	}
 	return err instanceof Error ? err : new Error(String(err));
+}
+
+/**
+ * Choose the pod for a run from a label-filtered list. The deterministic pod
+ * name makes >1 live pod per runId impossible, but a handle carrying a specific
+ * pod uid (`providerRunId`) prefers the exact match so a stale-then-recreated
+ * pod can't be mistaken for the current one; otherwise the sole item. Empty ⇒
+ * `undefined` (the caller maps that to run-lost).
+ */
+function pickPodForRun(items: V1Pod[], handle: RunHandle): V1Pod | undefined {
+	if (items.length === 0) return undefined;
+	if (handle.providerRunId !== "") {
+		const exact = items.find((p) => p.metadata?.uid === handle.providerRunId);
+		if (exact !== undefined) return exact;
+	}
+	return items[0];
 }
 
 /** Raise the standard stub error, naming the method and the plan step that fills it. */
@@ -283,8 +311,41 @@ export class K8sProvider implements RuntimeProvider {
 		return notImplemented("streamEvents", "step 17 (warren-026c)");
 	}
 
-	status(_handle: RunHandle): Promise<RunStatus> {
-		return notImplemented("status", "step 16 (warren-a7ff)");
+	/**
+	 * Out-of-band reconcile snapshot (contract §6.7) — what the watchdog /
+	 * recovery / pod-watcher read. NEVER throws on a missing run: an absent pod
+	 * returns `exists:false` + `terminalReason:"lost"` (`runLostStatus`), a value
+	 * not a throw.
+	 *
+	 * Correlation is by the `warren.io/run-id` LABEL (the exact runId), never by
+	 * pod name — the pod name is a DNS-sanitized derivative (`podNameForRun`),
+	 * whereas the label carries the runId verbatim (contract-preserving, step 15).
+	 *
+	 * A wired pod-watcher cache short-circuits the list; on a miss (or no cache)
+	 * we list the run's pod by label — so `status()` works cache-cold. The pure
+	 * `mapPodToRunStatus` (`./status-map.ts`) does the phase/container →
+	 * `RunStatus` mapping, surfacing OOMKilled as `oom_killed` FAST (design §3.2).
+	 */
+	async status(handle: RunHandle): Promise<RunStatus> {
+		const cached = this.deps.podCache?.getByRunId(handle.runId);
+		if (cached !== undefined) return mapPodToRunStatus(cached);
+
+		const api = this.deps.coreApi();
+		const env = this.deps.serverEnv ?? process.env;
+		const config = resolveK8sPodConfig(env);
+		let items: V1Pod[];
+		try {
+			const list = await api.listNamespacedPod({
+				namespace: config.namespace,
+				labelSelector: `${LABEL_RUN_ID}=${handle.runId}`,
+			});
+			items = list.items;
+		} catch (err) {
+			throw mapApiError(err, `pod status list for run ${handle.runId}`);
+		}
+		const pod = pickPodForRun(items, handle);
+		if (pod === undefined) return runLostStatus();
+		return mapPodToRunStatus(pod);
 	}
 
 	sendMessage(_handle: RunHandle, _msg: OutboundMessage): Promise<Message> {

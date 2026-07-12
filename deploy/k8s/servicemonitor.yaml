@@ -1,0 +1,47 @@
+# Prometheus Operator ServiceMonitor for warren's control-plane /metrics
+# endpoint (pl-829f step 16 / warren-a7ff, design doc k8s-migration.md §5.2).
+#
+# Scrapes warren's auth-exempt `GET /metrics` (the same endpoint Fly's managed
+# Prometheus scraped via fly.toml's `[[metrics]]` block) so the pod-watcher's
+# pod-phase / OOM / pending / init metrics land in Prometheus once warren runs on
+# Kubernetes. The endpoint carries no secrets (aggregate counts + counters), so
+# no scrape auth is configured.
+#
+# NOTE: this is a standalone drop so the metric surface added in this step has a
+# home. The full manifest set — warren-runs namespace, ServiceAccount + RBAC,
+# ResourceQuota, Deployment/Service/Ingress/Secrets/PVCs, and the warren Service
+# this selector targets — is consolidated by plan step 26 (warren-74b5). It
+# assumes:
+#   - warren's control-plane Service is labelled `app.kubernetes.io/name: warren`
+#     and exposes a named port `http` (container port 8080, matching fly.toml).
+#   - the Prometheus Operator is installed and its Prometheus selects
+#     ServiceMonitors carrying `release: prometheus` (adjust to your operator's
+#     `serviceMonitorSelector`).
+#
+# Requires the Prometheus Operator CRDs (monitoring.coreos.com/v1). On a
+# standalone Prometheus without the operator, configure an equivalent static
+# scrape_config against the warren Service instead.
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: warren
+  namespace: warren
+  labels:
+    app.kubernetes.io/name: warren
+    app.kubernetes.io/component: control-plane
+    # Match your Prometheus' serviceMonitorSelector; `release` is the kube-
+    # prometheus-stack default.
+    release: prometheus
+spec:
+  namespaceSelector:
+    matchNames:
+      - warren
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: warren
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 15s
+      scrapeTimeout: 10s
+      scheme: http

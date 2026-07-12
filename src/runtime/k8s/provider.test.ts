@@ -80,7 +80,6 @@ describe("K8sProvider", () => {
 
 		const cases: ReadonlyArray<[string, string, () => unknown]> = [
 			["streamEvents", "step 17", () => provider.streamEvents(handle)],
-			["status", "step 16", () => provider.status(handle)],
 			["sendMessage", "step 18", () => provider.sendMessage(handle, { body: "hi" })],
 			["cancel", "step 19", () => provider.cancel(handle)],
 			[
