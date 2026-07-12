@@ -30,7 +30,8 @@
  */
 
 import { join } from "node:path";
-import { BurrowClientPool } from "../../burrow-client/index.ts";
+import type { Transport } from "@os-eco/burrow-cli";
+import { BurrowClient, LOCAL_WORKER_NAME, probeBurrowClient } from "../../burrow-client/index.ts";
 import { openDatabase } from "../../db/client.ts";
 import { DrizzleAdapter } from "../../db/repos/drizzle-adapter.ts";
 import { createRepos } from "../../db/repos/index.ts";
@@ -64,10 +65,7 @@ import {
 import { buildPrContent, openPullRequest } from "../../runs/pr.ts";
 import { loadWorkspaceGcConfigFromEnv, startWorkspaceGcWorker } from "../../runs/reap/gc.ts";
 import { showSeed } from "../../seeds-cli/index.ts";
-import {
-	loadWarrenServerConfigFromFile,
-	requireSharedBurrowToken,
-} from "../../server-config/index.ts";
+import { loadWarrenServerConfigFromFile } from "../../server-config/index.ts";
 import { loadTriggerSchedulerConfigFromEnv } from "../../triggers/index.ts";
 import { createWarrenConfigCache } from "../../warren-config/index.ts";
 import { NO_AUTH, resolveAuth } from "../auth.ts";
@@ -135,25 +133,19 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 	const repos = createRepos(db);
 
 	// Load the operator-facing TOML config (pl-9ba1 step 7 / warren-3909).
-	// `workers` is `[]` when `[workers]` is absent — the zero-config path
-	// still materializes a single synthetic `local` worker from
-	// WARREN_BURROW_* env vars (acceptance #1: identical behavior). When
-	// `[workers]` is declared, the file-driven `fromConfig` factory takes
-	// over and acceptance #8 requires the shared bearer token to be set.
 	const fileConfig = await loadWarrenServerConfigFromFile({ env });
-	const burrowClientPool =
-		fileConfig.workers.length > 0
-			? await BurrowClientPool.fromConfig({
-					repos,
-					workers: fileConfig.workers,
-					token: requireSharedBurrowToken(env),
-					...(opts.now !== undefined ? { now: opts.now } : {}),
-				})
-			: await BurrowClientPool.fromEnv({
-					env,
-					repos,
-					...(opts.now !== undefined ? { now: opts.now } : {}),
-				});
+	// warren-76c5: multi-worker pooling is retired with the K8s migration — the
+	// self-host backend is a single local burrow built from WARREN_BURROW_* env
+	// vars. Any `[workers]` block in the TOML is now ignored (the loader + the
+	// /workers surface are removed in step 23, warren-288f). Record the vestigial
+	// `local` worker row so /workers + the probe loop stay well-formed (the
+	// workers table lives until step 24, warren-3743).
+	const burrowClient = BurrowClient.fromEnv(env);
+	await repos.workers.upsert({
+		name: LOCAL_WORKER_NAME,
+		url: transportToUrl(burrowClient.config.transport),
+		...(opts.now !== undefined ? { now: opts.now() } : {}),
+	});
 	const broker = new RunEventBroker();
 
 	logger.info(
@@ -207,7 +199,7 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 	const bridgesBoot = await bootBridges({
 		repos,
 		broker,
-		burrowClientPool,
+		burrowClient,
 		logger: bridgeLoggerFromPino(logger),
 		autoOpenPr,
 		warrenConfigs,
@@ -229,16 +221,10 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 	}
 
 	// Best-effort startup probe (non-fatal; /readyz reports live state).
-	burrowClientPool.probe().then((results) => {
-		const failed = results.filter((r) => !r.ok);
-		if (failed.length > 0) {
+	probeBurrowClient(burrowClient).then((result) => {
+		if (!result.ok) {
 			logger.warn(
-				{
-					failed: failed.map((r) => ({
-						worker: r.workerName,
-						err: r.error?.message ?? "unknown",
-					})),
-				},
+				{ worker: result.workerName, err: result.error?.message ?? "unknown" },
 				"burrow probe failed at boot — /readyz will reflect this",
 			);
 		}
@@ -246,7 +232,7 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 
 	const probeConfig = loadWorkerProbeConfigFromEnv(env);
 	const workerProbe = startWorkerProbe({
-		pool: burrowClientPool,
+		pool: burrowClient,
 		workers: repos.workers,
 		config: probeConfig,
 		logger: probeLoggerFromPino(logger),
@@ -265,7 +251,7 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 
 	const scheduler = bootScheduler({
 		repos,
-		burrowClientPool,
+		burrowClient,
 		bridges: bridgesBoot.registry,
 		warrenConfigs,
 		projectsConfig,
@@ -354,7 +340,7 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 				: undefined,
 		spawn: createPlanRunSpawn({
 			repos,
-			burrowClientPool,
+			burrowClient,
 			bridges: bridgesBoot.registry,
 			warrenConfigs,
 			projectsConfig,
@@ -406,7 +392,7 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 			env,
 			adapter,
 			repos,
-			burrowClientPool,
+			burrowClient,
 			broker,
 			bridges: bridgesBoot.registry,
 			warrenConfigs,
@@ -425,7 +411,7 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 	const previewEvictionWorker = startPreviewEvictionWorker({
 		db,
 		repos,
-		burrowClientPool,
+		burrowClient,
 		warrenConfigs,
 		config: previewEvictionConfig,
 		logger: previewEvictionLoggerFromPino(logger),
@@ -451,7 +437,7 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 	// force-kill that never got a reap.
 	const workspaceGcWorker = startWorkspaceGcWorker({
 		repos,
-		burrowClientPool,
+		burrowClient,
 		config: workspaceGcConfig,
 		logger: workspaceGcLoggerFromPino(logger),
 		...(opts.now !== undefined ? { now: opts.now } : {}),
@@ -473,7 +459,7 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 	const deps = buildServerDeps({
 		repos,
 		db,
-		burrowClientPool,
+		burrowClient,
 		broker,
 		bridges: bridgesBoot.registry,
 		canopyConfig,
@@ -525,10 +511,19 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 			await opsStatsWorker.stop();
 			await workerProbe.stop();
 			await bridgesBoot.registry.stopAll();
-			await burrowClientPool.close();
+			await burrowClient.close();
 			await closeDatabase(db);
 		},
 	};
+}
+
+/**
+ * Render a burrow `Transport` as the operator-facing URL stored on the
+ * vestigial `workers.url` column (warren-76c5). Diagnostics only — the actual
+ * transport stays in `BurrowClient.config`.
+ */
+function transportToUrl(t: Transport): string {
+	return t.kind === "unix" ? `unix://${t.path}` : `http://${t.hostname}:${t.port}`;
 }
 
 /**

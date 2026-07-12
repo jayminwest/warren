@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { BurrowClient, BurrowClientPool } from "../../burrow-client/index.ts";
+import { BurrowClient } from "../../burrow-client/index.ts";
 import { openDatabase, type WarrenDb } from "../../db/client.ts";
 import { createRepos, type Repos } from "../../db/repos/index.ts";
 import type { PlotCreator, PlotResolver, PlotSyncer } from "../../plots/index.ts";
@@ -108,11 +108,9 @@ function makeBurrowClient(
 	});
 }
 
-async function poolFor(repos: Repos, client: BurrowClient): Promise<BurrowClientPool> {
+async function poolFor(repos: Repos, client: BurrowClient): Promise<BurrowClient> {
 	await repos.workers.upsert({ name: "local", url: "unix:///tmp/x.sock" });
-	const pool = new BurrowClientPool({ repos });
-	pool.register("local", client);
-	return pool;
+	return client;
 }
 
 interface DepsExtras {
@@ -128,15 +126,15 @@ async function depsFor(
 	extras: DepsExtras = {},
 ): Promise<ServerDeps> {
 	const broker = new RunEventBroker();
-	const burrowClientPool = await poolFor(repos, burrowClient);
+	await poolFor(repos, burrowClient);
 	return {
 		repos,
-		burrowClientPool,
+		burrowClient,
 		broker,
 		bridges: createBridgeRegistry({
 			repos,
 			broker,
-			burrowClientPool,
+			burrowClient,
 			bridge: async () => ({ written: 0, skipped: 0, errored: false }),
 		}),
 		canopyConfig: {

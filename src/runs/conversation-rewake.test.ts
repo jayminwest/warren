@@ -141,7 +141,7 @@ describe("rewakeConversation", () => {
 		await expect(
 			rewakeConversation({
 				repos,
-				burrowClientPool: undefined as never,
+				burrowClient: undefined as never,
 				conversationId: CONVERSATION_ID,
 				reader: stubReader(null),
 				rotator,
@@ -157,7 +157,7 @@ describe("rewakeConversation", () => {
 		await expect(
 			rewakeConversation({
 				repos,
-				burrowClientPool: undefined as never,
+				burrowClient: undefined as never,
 				conversationId: CONVERSATION_ID,
 				reader: stubReader({ ...activeConversation("run_x"), status: "closed" }),
 				rotator,
@@ -172,7 +172,7 @@ describe("rewakeConversation", () => {
 		await expect(
 			rewakeConversation({
 				repos,
-				burrowClientPool: undefined as never,
+				burrowClient: undefined as never,
 				conversationId: CONVERSATION_ID,
 				reader: stubReader({ ...activeConversation("run_x"), projectId: null }),
 				rotator,
@@ -187,7 +187,7 @@ describe("rewakeConversation", () => {
 		await expect(
 			rewakeConversation({
 				repos,
-				burrowClientPool: undefined as never,
+				burrowClient: undefined as never,
 				conversationId: CONVERSATION_ID,
 				reader: stubReader(activeConversation(null)),
 				rotator,
@@ -202,7 +202,7 @@ describe("rewakeConversation", () => {
 		await expect(
 			rewakeConversation({
 				repos,
-				burrowClientPool: undefined as never,
+				burrowClient: undefined as never,
 				conversationId: CONVERSATION_ID,
 				reader: stubReader(activeConversation("run_missing")),
 				rotator,
@@ -227,7 +227,7 @@ describe("rewakeConversation", () => {
 		await expect(
 			rewakeConversation({
 				repos,
-				burrowClientPool: undefined as never,
+				burrowClient: undefined as never,
 				conversationId: CONVERSATION_ID,
 				reader: stubReader(activeConversation(row.id)),
 				rotator,
@@ -248,7 +248,7 @@ describe("rewakeConversation", () => {
 		const calls: SpawnRunInput[] = [];
 		const result = await rewakeConversation({
 			repos,
-			burrowClientPool: undefined as never,
+			burrowClient: undefined as never,
 			conversationId: CONVERSATION_ID,
 			reader: stubReader(activeConversation(priorId), transcript),
 			rotator,
@@ -298,7 +298,7 @@ describe("rewakeConversation", () => {
 		const calls: SpawnRunInput[] = [];
 		const result = await rewakeConversation({
 			repos,
-			burrowClientPool: undefined as never,
+			burrowClient: undefined as never,
 			conversationId: CONVERSATION_ID,
 			reader: stubReader(activeConversation(priorId), [{ seq: 1, role: "user", content: "hi" }]),
 			rotator,
@@ -315,7 +315,7 @@ describe("rewakeConversation", () => {
 		const calls: SpawnRunInput[] = [];
 		const result = await rewakeConversation({
 			repos,
-			burrowClientPool: undefined as never,
+			burrowClient: undefined as never,
 			conversationId: CONVERSATION_ID,
 			reader: stubReader(activeConversation(priorId), []),
 			rotator,

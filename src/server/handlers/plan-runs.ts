@@ -337,7 +337,7 @@ export function cancelPlanRunHandler(deps: ServerDeps): RouteHandler {
 				await cancelRun({
 					runId: inFlight.runId,
 					repos: deps.repos,
-					burrowClientPool: deps.burrowClientPool,
+					burrowClient: deps.burrowClient,
 					broker: deps.broker,
 					reason: `plan_run_cancelled:${planRun.id}`,
 					...(deps.now !== undefined ? { now: deps.now } : {}),

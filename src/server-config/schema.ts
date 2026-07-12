@@ -43,7 +43,7 @@ export type WorkerEntry = z.infer<typeof WorkerEntrySchema>;
  * `workers` is `optional()` rather than `default([])` so a TOML file with
  * no `[[workers]]` block round-trips back as `{}` rather than
  * `{ workers: [] }`. Both shapes mean the same thing to the boot path —
- * zero workers, fall back to env-driven `BurrowClientPool.fromEnv`.
+ * zero workers, fall back to env-driven `BurrowClient.fromEnv`.
  */
 export const WarrenServerFileConfigSchema = z
 	.object({

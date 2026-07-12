@@ -55,7 +55,7 @@ describe("bootBridges", () => {
 		const result = await bootBridges({
 			repos,
 			broker: new RunEventBroker(),
-			burrowClientPool: await makePool(repos),
+			burrowClient: await makePool(repos),
 			bridge: async (input) => {
 				calls.push(input.runId);
 				return { written: 0, skipped: 0, errored: false };
@@ -103,7 +103,7 @@ describe("bootBridges", () => {
 		const result = await bootBridges({
 			repos,
 			broker: new RunEventBroker(),
-			burrowClientPool: await makePool(repos),
+			burrowClient: await makePool(repos),
 			bridge: async (input) => {
 				calls.push(input.runId);
 				return { written: 0, skipped: 0, errored: false };
@@ -153,7 +153,7 @@ describe("bootBridges", () => {
 		const result = await bootBridges({
 			repos,
 			broker: new RunEventBroker(),
-			burrowClientPool: pool,
+			burrowClient: pool,
 			bridge: async (input) => {
 				calls.push(input.runId);
 				return { written: 0, skipped: 0, errored: false };
@@ -194,7 +194,7 @@ describe("bootBridges", () => {
 		const registry = createBridgeRegistry({
 			repos,
 			broker: new RunEventBroker(),
-			burrowClientPool: await makePool(repos),
+			burrowClient: await makePool(repos),
 			bridge: async () => {
 				calls += 1;
 				return { written: 0, skipped: 0, errored: false, burrowRunMissing: true as const };
@@ -216,7 +216,7 @@ describe("bootBridges", () => {
 		const result = await bootBridges({
 			repos,
 			broker: new RunEventBroker(),
-			burrowClientPool: await makePool(repos),
+			burrowClient: await makePool(repos),
 		});
 		expect(result.resumed.length).toBe(0);
 		expect(result.skipped.length).toBe(0);

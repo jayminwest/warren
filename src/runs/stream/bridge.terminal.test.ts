@@ -40,7 +40,7 @@ describe("bridgeRunStream — in-stream terminal detection", () => {
 			repos,
 			broker,
 			burrowId: "bur_aaaaaaaaaaaa",
-			burrowClientPool: await makePool(repos),
+			burrowClient: await makePool(repos),
 			source: source([claudeResultEvt, trailing]),
 		});
 		expect(result.terminalDetected).toEqual({ outcome: "succeeded" });
@@ -60,7 +60,7 @@ describe("bridgeRunStream — in-stream terminal detection", () => {
 			repos,
 			broker,
 			burrowId: "bur_aaaaaaaaaaaa",
-			burrowClientPool: await makePool(repos),
+			burrowClient: await makePool(repos),
 			source: source([claudeFail]),
 		});
 		expect(result.terminalDetected).toEqual({ outcome: "failed" });
@@ -78,7 +78,7 @@ describe("bridgeRunStream — in-stream terminal detection", () => {
 			repos,
 			broker,
 			burrowId: "bur_aaaaaaaaaaaa",
-			burrowClientPool: await makePool(repos),
+			burrowClient: await makePool(repos),
 			source: source([init]),
 		});
 		expect(result.terminalDetected).toBeUndefined();
@@ -97,7 +97,7 @@ describe("bridgeRunStream — in-stream terminal detection", () => {
 			repos,
 			broker,
 			burrowId: "bur_aaaaaaaaaaaa",
-			burrowClientPool: await makePool(repos),
+			burrowClient: await makePool(repos),
 			source: source([piEnd, trailing]),
 		});
 		expect(result.terminalDetected).toEqual({ outcome: "succeeded" });
@@ -117,7 +117,7 @@ describe("bridgeRunStream — in-stream terminal detection", () => {
 			repos,
 			broker,
 			burrowId: "bur_aaaaaaaaaaaa",
-			burrowClientPool: await makePool(repos),
+			burrowClient: await makePool(repos),
 			source: source([offStream]),
 		});
 		expect(result.terminalDetected).toBeUndefined();
@@ -141,7 +141,7 @@ describe("bridgeRunStream — in-stream terminal detection", () => {
 			repos,
 			broker,
 			burrowId: "bur_aaaaaaaaaaaa",
-			burrowClientPool: await makePool(repos),
+			burrowClient: await makePool(repos),
 			source: missingSource,
 		});
 		expect(result.burrowRunMissing).toBe(true);
@@ -165,7 +165,7 @@ describe("bridgeRunStream — in-stream terminal detection", () => {
 			repos,
 			broker,
 			burrowId: "bur_aaaaaaaaaaaa",
-			burrowClientPool: await makePool(repos),
+			burrowClient: await makePool(repos),
 			source: transportSource,
 		});
 		expect(result.burrowRunMissing).toBeUndefined();
@@ -238,7 +238,7 @@ describe("bridgeRunStream — conversation keep-alive (warren-df71)", () => {
 			repos,
 			broker,
 			burrowId: "bur_aaaaaaaaaaaa",
-			burrowClientPool: await makePool(repos),
+			burrowClient: await makePool(repos),
 			mode: "conversation",
 			conversationTurn: stub.handler,
 			source: source(events),
@@ -269,7 +269,7 @@ describe("bridgeRunStream — conversation keep-alive (warren-df71)", () => {
 			repos,
 			broker,
 			burrowId: "bur_aaaaaaaaaaaa",
-			burrowClientPool: await makePool(repos),
+			burrowClient: await makePool(repos),
 			conversationTurn: stub.handler,
 			source: source(events),
 		});

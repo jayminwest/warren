@@ -20,12 +20,11 @@
  *
  *   3. Dispatch via `POST /burrows/:id/runs`.
  *
- * Placement (warren-39c3 / pl-9ba1 step 4): `BurrowClientPool.placeFor`
- * picks a worker BEFORE the warren row is created so `runs.worker_id`
- * lands at row-creation time and the same `BurrowClient` services
- * provision, dispatch, and rollback. A `burrows` row capturing the
- * burrow → worker pinning is written in the same turn as `attachBurrow`
- * (sticky-by-burrow for cancel / steer / reap / fan-out reads).
+ * Placement was retired with the K8s migration (warren-76c5): the self-host
+ * backend is a single local burrow, so `runs.worker_id` / `burrows.worker_id`
+ * record the vestigial `LOCAL_WORKER_NAME` and the same one `BurrowClient`
+ * services provision, dispatch, and rollback. A `burrows` row is still written
+ * in the same turn as `attachBurrow` (the tables survive until step 24).
  *
  * The warren run row is created BEFORE any burrow call, with both
  * burrow IDs nulled — `attachBurrow` writes them back as each call
@@ -40,6 +39,7 @@
  */
 
 import { join } from "node:path";
+import { LOCAL_WORKER_NAME } from "../../burrow-client/index.ts";
 import { NotFoundError, ValidationError } from "../../core/errors.ts";
 import { refreshProject } from "../../projects/manage.ts";
 import {
@@ -175,14 +175,11 @@ export async function spawnRun(input: SpawnRunInput): Promise<SpawnRunResult> {
 	// burrow rejects later still rolls back via the try/catch below.
 	const seedResult = buildSeedFiles(agent);
 
-	// warren-39c3: resolve placement BEFORE creating the warren row so
-	// `runs.worker_id` lands at row-creation time. `placeFor` reads the
-	// `workers` table — affinity → least-loaded → alphabetical tiebreak
-	// across `healthy` workers — and raises `NoEligibleWorkerError` if
-	// nothing is placeable, which the caller surfaces as a structured
-	// error.
-	const placement = await input.burrowClientPool.placeFor({ projectId: projectAfterRefresh.id });
-	logPlacement(input.logger, placement.workerName, projectAfterRefresh.id);
+	// warren-76c5: multi-worker placement is retired — the self-host backend
+	// is a single local burrow. `runs.worker_id` records the vestigial
+	// `LOCAL_WORKER_NAME` (the workers/burrows tables survive until step 24)
+	// so cancel / steer / reap reads stay well-formed.
+	logPlacement(input.logger, LOCAL_WORKER_NAME, projectAfterRefresh.id);
 
 	const run = await input.repos.runs.create({
 		agentName: agent.name,
@@ -190,7 +187,7 @@ export async function spawnRun(input: SpawnRunInput): Promise<SpawnRunResult> {
 		prompt: input.prompt,
 		renderedAgentJson: agent,
 		trigger: input.trigger ?? "manual",
-		workerId: placement.workerName,
+		workerId: LOCAL_WORKER_NAME,
 		...(input.seedId !== undefined ? { seedId: input.seedId } : {}),
 		...(input.plotId !== undefined && input.plotId !== "" ? { plotId: input.plotId } : {}),
 		...(input.mode !== undefined ? { mode: input.mode } : {}),
@@ -239,15 +236,13 @@ export async function spawnRun(input: SpawnRunInput): Promise<SpawnRunResult> {
 	// `provider.create` collapses burrow's provision + dispatch (`burrowsUp` +
 	// `runs.create`) into one call and owns the burrow-half rollback on a partial
 	// failure (best-effort archive:false destroy + rethrow). Default to the
-	// burrow-backed LocalProvider over the injected pool + serverEnv so callers
-	// that only wire `burrowClientPool` keep working (same fallback shape as
-	// `reapRun`). Placement (`placeFor`) stays domain — it resolves the worker
-	// NAME persisted onto `runs.worker_id` / `burrows.worker_id` for the still
-	// sticky-by-burrow reap / bridge reads; the provider resolves its own client.
+	// burrow-backed LocalProvider over the injected single client + serverEnv so
+	// callers that only wire `burrowClient` keep working (same fallback shape as
+	// `reapRun`).
 	const provider: RuntimeProvider =
 		input.runtimeProvider ??
 		new LocalProvider({
-			burrowClientPool: () => input.burrowClientPool,
+			burrowClient: () => input.burrowClient,
 			...(input.serverEnv !== undefined ? { serverEnv: input.serverEnv } : {}),
 		});
 	const runtimeId = readRuntimeId(agent, runtimeOverride);
@@ -275,16 +270,16 @@ export async function spawnRun(input: SpawnRunInput): Promise<SpawnRunResult> {
 	try {
 		const dispatchStart = Date.now();
 		const handle = await provider.create(spec);
-		logProvisioned(log, handle.sandboxId, placement.workerName, dispatchStart);
-		// warren-39c3: persist the burrow → worker mapping (sticky-by-burrow)
-		// so cancel / steer / reap reads resolve the owning worker via
-		// `pool.clientFor({burrowId})`. The provider owns partial-failure cleanup,
-		// so these warren rows are written only after `create` fully succeeds —
-		// a dispatch that fails mid-flight leaves no burrow row and no burrow_id
-		// on the run (the provider already destroyed the burrow).
+		logProvisioned(log, handle.sandboxId, LOCAL_WORKER_NAME, dispatchStart);
+		// warren-76c5: persist the burrow row under the vestigial local worker
+		// name (the workers/burrows tables survive until step 24). The provider
+		// owns partial-failure cleanup, so these warren rows are written only
+		// after `create` fully succeeds — a dispatch that fails mid-flight leaves
+		// no burrow row and no burrow_id on the run (the provider already
+		// destroyed the burrow).
 		await input.repos.burrows.create({
 			id: handle.sandboxId,
-			workerId: placement.workerName,
+			workerId: LOCAL_WORKER_NAME,
 			...(input.now !== undefined ? { now: input.now() } : {}),
 		});
 		await input.repos.runs.attachBurrow(run.id, { burrowId: handle.sandboxId });
@@ -343,7 +338,7 @@ export async function spawnRun(input: SpawnRunInput): Promise<SpawnRunResult> {
 		// failure (its create() owns the burrow-half rollback), so the domain
 		// rollback only unwinds the warren row (`persistSpawnFailure`): pass
 		// `burrow: null` so it does not attempt a second destroy.
-		await rollback(input, run.id, null, placement.client, log, err);
+		await rollback(input, run.id, null, input.burrowClient, log, err);
 		throw err;
 	}
 }

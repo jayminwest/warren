@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { CoreV1Api } from "@kubernetes/client-node";
-import type { BurrowClientPool } from "../burrow-client/index.ts";
+import type { BurrowClient } from "../burrow-client/index.ts";
 import { UnknownRuntimeError } from "./errors.ts";
 import { K8sProvider } from "./k8s/provider.ts";
 import { LocalProvider } from "./local/provider.ts";
@@ -16,8 +16,8 @@ import {
  * resolution + capability reads never touch burrow — no socket, no DB.
  */
 const deps: RuntimeProviderDeps = {
-	burrowClientPool: (): BurrowClientPool => {
-		throw new Error("burrowClientPool factory must not be called by the LocalProvider shell");
+	burrowClient: (): BurrowClient => {
+		throw new Error("burrowClient factory must not be called by the LocalProvider shell");
 	},
 	// Fake K8s client factory: throws if invoked. No shell method calls it, so
 	// building a K8sProvider off WARREN_RUNTIME=k8s never touches a cluster.

@@ -197,15 +197,6 @@ describe("runWorkspaceDestroy", () => {
 	});
 });
 
-function poolFor(client: BurrowClient | (() => never)) {
-	return {
-		clientFor: async () => {
-			if (typeof client === "function") client();
-			return { client: client as BurrowClient };
-		},
-	};
-}
-
 function byIdDeps(h: Harness) {
 	const { repos, emit } = deps(h);
 	return { repos, emit };
@@ -217,7 +208,7 @@ describe("destroyBurrowWorkspaceById (warren-4f01)", () => {
 		const destroyed = await destroyBurrowWorkspaceById({
 			burrowId: "bur_x",
 			mode: "batch",
-			burrowClientPool: poolFor(fakeClient()),
+			burrowClient: fakeClient(),
 			destroyBurrow: async () => fakeResult(),
 			...byIdDeps(h),
 		});
@@ -226,42 +217,18 @@ describe("destroyBurrowWorkspaceById (warren-4f01)", () => {
 		expect(h.events[0]?.kind).toBe("reap.workspace_destroyed");
 	});
 
-	test("skips conversation runs without resolving a worker (warren-c770)", async () => {
+	test("skips conversation runs without touching the burrow (warren-c770)", async () => {
 		const h = harness();
-		let resolved = false;
 		const destroyed = await destroyBurrowWorkspaceById({
 			burrowId: "bur_x",
 			mode: "conversation",
-			burrowClientPool: {
-				clientFor: async () => {
-					resolved = true;
-					return { client: fakeClient() };
-				},
-			},
+			burrowClient: fakeClient(),
 			destroyBurrow: async () => fakeResult(),
 			...byIdDeps(h),
 		});
 		expect(destroyed).toBe(false);
-		expect(resolved).toBe(false);
 		expect(h.deleted).toEqual([]);
 		expect(h.events[0]?.kind).toBe("reap.workspace_destroy_skipped");
-	});
-
-	test("a worker-resolution failure degrades to a destroy_failed event", async () => {
-		const h = harness();
-		const destroyed = await destroyBurrowWorkspaceById({
-			burrowId: "bur_x",
-			mode: "batch",
-			burrowClientPool: poolFor(() => {
-				throw new Error("worker unreachable");
-			}),
-			destroyBurrow: async () => fakeResult(),
-			...byIdDeps(h),
-		});
-		expect(destroyed).toBe(false);
-		expect(h.deleted).toEqual([]);
-		expect(h.events[0]?.kind).toBe("reap.workspace_destroy_failed");
-		expect(h.events[0]?.payload).toMatchObject({ step: "resolve_worker" });
 	});
 
 	test("a destroy failure degrades to a destroy_failed event, no row delete", async () => {
@@ -269,7 +236,7 @@ describe("destroyBurrowWorkspaceById (warren-4f01)", () => {
 		const destroyed = await destroyBurrowWorkspaceById({
 			burrowId: "bur_x",
 			mode: "batch",
-			burrowClientPool: poolFor(fakeClient()),
+			burrowClient: fakeClient(),
 			destroyBurrow: async () => {
 				throw new Error("destroy rejected");
 			},

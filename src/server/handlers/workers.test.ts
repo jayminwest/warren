@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { BurrowClient, BurrowClientPool } from "../../burrow-client/index.ts";
+import { BurrowClient } from "../../burrow-client/index.ts";
 import { openDatabase, type WarrenDb } from "../../db/client.ts";
 import { createRepos, type Repos } from "../../db/repos/index.ts";
 import { RunEventBroker } from "../../runs/index.ts";
@@ -62,36 +62,44 @@ function makeAdminClient(opts: {
 	});
 }
 
-async function poolWith(
+/**
+ * warren-76c5: multi-worker pooling is retired — the self-host backend is a
+ * single local burrow. Tests upsert `workers` rows directly (the table lives
+ * until step 24) and the handler forwards drain to the one injected client.
+ */
+async function upsertWorkers(
 	repos: Repos,
 	workers: readonly {
 		name: string;
-		client: BurrowClient;
 		state?: "healthy" | "draining" | "unreachable";
 	}[],
-): Promise<BurrowClientPool> {
-	const pool = new BurrowClientPool({ repos });
+): Promise<void> {
 	for (const w of workers) {
 		await repos.workers.upsert({
 			name: w.name,
 			url: `unix:///tmp/${w.name}.sock`,
 			...(w.state !== undefined ? { state: w.state } : {}),
 		});
-		pool.register(w.name, w.client);
 	}
-	return pool;
 }
 
-function depsFor(repos: Repos, pool: BurrowClientPool): ServerDeps {
+function stubClient(): BurrowClient {
+	return new BurrowClient({
+		config: { transport: { kind: "unix", path: "/tmp/x.sock" } },
+		fetch: stub(async () => jsonResponse(404, { error: { code: "not_found", message: "stub" } })),
+	});
+}
+
+function depsFor(repos: Repos, pool: BurrowClient): ServerDeps {
 	const broker = new RunEventBroker();
 	return {
 		repos,
-		burrowClientPool: pool,
+		burrowClient: pool,
 		broker,
 		bridges: createBridgeRegistry({
 			repos,
 			broker,
-			burrowClientPool: pool,
+			burrowClient: pool,
 			bridge: async () => ({ written: 0, skipped: 0, errored: false }),
 		}),
 		projectsConfig: { root: "/tmp/projects", gitBinary: "git" },
@@ -123,20 +131,14 @@ describe("GET /workers", () => {
 		await db.close();
 	});
 
-	test("returns the full workers table with registration flag", async () => {
-		const calls: AdminCall[] = [];
-		const alpha = makeAdminClient({ calls });
-		const beta = makeAdminClient({ calls });
-		const pool = await poolWith(repos, [
-			{ name: "alpha", client: alpha },
-			{ name: "beta", client: beta, state: "draining" },
+	test("marks only the local worker registered; surviving rows report registered=false", async () => {
+		await upsertWorkers(repos, [
+			{ name: "local" },
+			{ name: "beta", state: "draining" },
+			{ name: "ghost" },
 		]);
-		// Add a row that's in the workers table but not in the pool — simulates
-		// drift between `[workers]` config and pool registration so the
-		// operator-facing list shows registered=false.
-		await repos.workers.upsert({ name: "ghost", url: "unix:///tmp/ghost.sock" });
 
-		handle = startServer(depsFor(repos, pool), {
+		handle = startServer(depsFor(repos, stubClient()), {
 			transport: { kind: "tcp", hostname: "127.0.0.1", port: 0 },
 			auth: NO_AUTH,
 			logger: silentLogger,
@@ -150,15 +152,14 @@ describe("GET /workers", () => {
 		expect(
 			body.workers.map((w) => ({ name: w.name, state: w.state, registered: w.registered })),
 		).toEqual([
-			{ name: "alpha", state: "healthy", registered: true },
-			{ name: "beta", state: "draining", registered: true },
+			{ name: "beta", state: "draining", registered: false },
 			{ name: "ghost", state: "healthy", registered: false },
+			{ name: "local", state: "healthy", registered: true },
 		]);
 	});
 
 	test("returns an empty array when no workers are registered", async () => {
-		const pool = new BurrowClientPool({ repos });
-		handle = startServer(depsFor(repos, pool), {
+		handle = startServer(depsFor(repos, stubClient()), {
 			transport: { kind: "tcp", hostname: "127.0.0.1", port: 0 },
 			auth: NO_AUTH,
 			logger: silentLogger,
@@ -191,8 +192,8 @@ describe("POST /workers/:name/drain", () => {
 	test("default body drains the worker: forwards /admin/drain and flips state to draining", async () => {
 		const calls: AdminCall[] = [];
 		const alpha = makeAdminClient({ calls });
-		const pool = await poolWith(repos, [{ name: "alpha", client: alpha }]);
-		handle = startServer(depsFor(repos, pool), {
+		await upsertWorkers(repos, [{ name: "alpha" }]);
+		handle = startServer(depsFor(repos, alpha), {
 			transport: { kind: "tcp", hostname: "127.0.0.1", port: 0 },
 			auth: NO_AUTH,
 			logger: silentLogger,
@@ -214,8 +215,8 @@ describe("POST /workers/:name/drain", () => {
 	test("`{drain: false}` un-drains: forwards drain=false and flips state to healthy", async () => {
 		const calls: AdminCall[] = [];
 		const alpha = makeAdminClient({ calls });
-		const pool = await poolWith(repos, [{ name: "alpha", client: alpha, state: "draining" }]);
-		handle = startServer(depsFor(repos, pool), {
+		await upsertWorkers(repos, [{ name: "alpha", state: "draining" }]);
+		handle = startServer(depsFor(repos, alpha), {
 			transport: { kind: "tcp", hostname: "127.0.0.1", port: 0 },
 			auth: NO_AUTH,
 			logger: silentLogger,
@@ -235,8 +236,8 @@ describe("POST /workers/:name/drain", () => {
 	test("404 when warren has no row for the named worker", async () => {
 		const calls: AdminCall[] = [];
 		const alpha = makeAdminClient({ calls });
-		const pool = await poolWith(repos, [{ name: "alpha", client: alpha }]);
-		handle = startServer(depsFor(repos, pool), {
+		await upsertWorkers(repos, [{ name: "alpha" }]);
+		handle = startServer(depsFor(repos, alpha), {
 			transport: { kind: "tcp", hostname: "127.0.0.1", port: 0 },
 			auth: NO_AUTH,
 			logger: silentLogger,
@@ -256,8 +257,8 @@ describe("POST /workers/:name/drain", () => {
 					error: { code: "not_found", message: "no route matches /admin/drain" },
 				}),
 		});
-		const pool = await poolWith(repos, [{ name: "alpha", client: alpha }]);
-		handle = startServer(depsFor(repos, pool), {
+		await upsertWorkers(repos, [{ name: "alpha" }]);
+		handle = startServer(depsFor(repos, alpha), {
 			transport: { kind: "tcp", hostname: "127.0.0.1", port: 0 },
 			auth: NO_AUTH,
 			logger: silentLogger,
@@ -271,8 +272,8 @@ describe("POST /workers/:name/drain", () => {
 	test("400 when `drain` body field is not a boolean", async () => {
 		const calls: AdminCall[] = [];
 		const alpha = makeAdminClient({ calls });
-		const pool = await poolWith(repos, [{ name: "alpha", client: alpha }]);
-		handle = startServer(depsFor(repos, pool), {
+		await upsertWorkers(repos, [{ name: "alpha" }]);
+		handle = startServer(depsFor(repos, alpha), {
 			transport: { kind: "tcp", hostname: "127.0.0.1", port: 0 },
 			auth: NO_AUTH,
 			logger: silentLogger,

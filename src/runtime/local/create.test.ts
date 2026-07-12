@@ -61,7 +61,7 @@ async function localProvider(
 	const r = await repos();
 	const { client, calls } = makeBurrowClient(plan);
 	const pool = await makePool(r, client);
-	const provider = new LocalProvider({ burrowClientPool: () => pool, serverEnv });
+	const provider = new LocalProvider({ burrowClient: () => pool, serverEnv });
 	return { provider, calls };
 }
 
@@ -199,19 +199,9 @@ describe("LocalProvider.create", () => {
 		const r = await repos();
 		const { client, calls } = makeBurrowClient();
 		const pool = await makePool(r, client, "worker-a"); // non-`local` name
-		const provider = new LocalProvider({ burrowClientPool: () => pool });
+		const provider = new LocalProvider({ burrowClient: () => pool });
 		const handle = await provider.create(newSpec());
 		expect(handle.sandboxId).toBe("bur_aaaaaaaaaaaa");
 		expect(calls[0]?.path).toBe("/burrows");
-	});
-
-	test("refuses a multi-worker pool — placement is retired at the seam", async () => {
-		const r = await repos();
-		const { client } = makeBurrowClient();
-		const pool = await makePool(r, client, "worker-a");
-		const { client: client2 } = makeBurrowClient();
-		pool.register("worker-b", client2);
-		const provider = new LocalProvider({ burrowClientPool: () => pool });
-		await expect(provider.create(newSpec())).rejects.toThrow(RuntimeProviderError);
 	});
 });

@@ -1,4 +1,4 @@
-import { BurrowClient, BurrowClientPool } from "../burrow-client/index.ts";
+import { BurrowClient } from "../burrow-client/index.ts";
 import type { Repos } from "../db/repos/index.ts";
 import type { RunTerminalState } from "../db/schema.ts";
 import type { ReapRunResult } from "../runs/index.ts";
@@ -21,11 +21,9 @@ export async function makePool(
 	repos: Repos,
 	client?: BurrowClient,
 	workerName = "local",
-): Promise<BurrowClientPool> {
+): Promise<BurrowClient> {
 	await repos.workers.upsert({ name: workerName, url: "unix:///tmp/x.sock" });
-	const pool = new BurrowClientPool({ repos });
-	pool.register(workerName, client ?? makeBurrowClient());
-	return pool;
+	return client ?? makeBurrowClient();
 }
 
 export function reapStub(outcome: RunTerminalState): ReapRunResult {

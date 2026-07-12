@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { BurrowClient, BurrowClientPool } from "../../burrow-client/index.ts";
+import { BurrowClient } from "../../burrow-client/index.ts";
 import { openDatabase, type WarrenDb } from "../../db/client.ts";
 import { createRepos, type Repos } from "../../db/repos/index.ts";
 import { RunEventBroker } from "../../runs/index.ts";
@@ -109,36 +109,33 @@ function burrowWire(r: BurrowFixture): Record<string, unknown> {
 	};
 }
 
-interface PoolInput {
-	readonly workers: readonly { readonly name: string; readonly client: BurrowClient }[];
-}
-
-async function poolOf(repos: Repos, input: PoolInput): Promise<BurrowClientPool> {
-	const pool = new BurrowClientPool({ repos });
-	for (const w of input.workers) {
-		await repos.workers.upsert({ name: w.name, url: `unix:///tmp/${w.name}.sock` });
-		pool.register(w.name, w.client);
-	}
-	return pool;
+/**
+ * warren-76c5: multi-worker fan-out is retired — the self-host backend is a
+ * single local burrow. Tests inject one client; the handlers list / fetch
+ * against it directly. The `workers`/`burrows` tables live until step 24.
+ */
+async function localClient(repos: Repos, client: BurrowClient): Promise<BurrowClient> {
+	await repos.workers.upsert({ name: "local", url: "unix:///tmp/local.sock" });
+	return client;
 }
 
 function depsFor(
 	repos: Repos,
-	pool: BurrowClientPool,
+	client: BurrowClient,
 	logger: Logger = silentLogger,
 	bridges?: BridgeRegistry,
 ): ServerDeps {
 	const broker = new RunEventBroker();
 	return {
 		repos,
-		burrowClientPool: pool,
+		burrowClient: client,
 		broker,
 		bridges:
 			bridges ??
 			createBridgeRegistry({
 				repos,
 				broker,
-				burrowClientPool: pool,
+				burrowClient: client,
 				bridge: async () => ({ written: 0, skipped: 0, errored: false }),
 			}),
 		projectsConfig: { root: "/tmp/projects", gitBinary: "git" },
@@ -152,7 +149,7 @@ function tcpUrl(handle: ServeHandle): string {
 	return `http://${handle.transport.hostname}:${handle.transport.port}`;
 }
 
-describe("GET /burrows — fan-out across workers (warren-14ad)", () => {
+describe("GET /burrows — single local burrow (warren-76c5)", () => {
 	let db: WarrenDb;
 	let repos: Repos;
 	let handle: ServeHandle | null = null;
@@ -170,24 +167,15 @@ describe("GET /burrows — fan-out across workers (warren-14ad)", () => {
 		await db.close();
 	});
 
-	test("unions burrows from every worker and sorts by createdAt ascending", async () => {
-		const alpha = makeWorkerClient({
-			rows: [{ id: "bur_a1", createdAt: "2026-05-10T01:00:00Z" }],
-		});
-		const beta = makeWorkerClient({
+	test("lists the local burrow's burrows sorted by createdAt ascending", async () => {
+		const client = makeWorkerClient({
 			rows: [
+				{ id: "bur_a1", createdAt: "2026-05-10T01:00:00Z" },
 				{ id: "bur_b1", createdAt: "2026-05-10T00:30:00Z" },
 				{ id: "bur_b2", createdAt: "2026-05-10T02:00:00Z" },
 			],
 		});
-		const pool = await poolOf(repos, {
-			workers: [
-				{ name: "alpha", client: alpha },
-				{ name: "beta", client: beta },
-			],
-		});
-
-		handle = startServer(depsFor(repos, pool), {
+		handle = startServer(depsFor(repos, await localClient(repos, client)), {
 			transport: { kind: "tcp", hostname: "127.0.0.1", port: 0 },
 			auth: NO_AUTH,
 			logger: silentLogger,
@@ -203,12 +191,8 @@ describe("GET /burrows — fan-out across workers (warren-14ad)", () => {
 		expect(body.workerErrors).toEqual([]);
 	});
 
-	test("returns partial results + workerErrors envelope when a worker is unreachable", async () => {
-		const alpha = makeWorkerClient({
-			rows: [{ id: "bur_a1", createdAt: "2026-05-10T01:00:00Z" }],
-		});
-		const beta = makeWorkerClient({ rows: [], failList: true });
-
+	test("returns empty burrows + a workerErrors envelope when the burrow is unreachable", async () => {
+		const client = makeWorkerClient({ rows: [], failList: true });
 		const warnings: { obj: object; msg: string | undefined }[] = [];
 		const logger: Logger = {
 			info() {},
@@ -218,14 +202,7 @@ describe("GET /burrows — fan-out across workers (warren-14ad)", () => {
 			error() {},
 		};
 
-		const pool = await poolOf(repos, {
-			workers: [
-				{ name: "alpha", client: alpha },
-				{ name: "beta", client: beta },
-			],
-		});
-
-		handle = startServer(depsFor(repos, pool, logger), {
+		handle = startServer(depsFor(repos, await localClient(repos, client), logger), {
 			transport: { kind: "tcp", hostname: "127.0.0.1", port: 0 },
 			auth: NO_AUTH,
 			logger: silentLogger,
@@ -237,33 +214,21 @@ describe("GET /burrows — fan-out across workers (warren-14ad)", () => {
 			burrows: { id: string }[];
 			workerErrors: { worker: string; message: string }[];
 		};
-		expect(body.burrows.map((b) => b.id)).toEqual(["bur_a1"]);
+		expect(body.burrows).toEqual([]);
 		expect(body.workerErrors).toHaveLength(1);
-		expect(body.workerErrors[0]?.worker).toBe("beta");
+		expect(body.workerErrors[0]?.worker).toBe("local");
 
 		const warn = warnings.find((w) => w.msg === "worker_unreachable");
-		expect(warn?.obj).toMatchObject({ workerName: "beta", op: "burrows.list" });
+		expect(warn?.obj).toMatchObject({ op: "burrows.list" });
 	});
 
-	test("forwards kind / state / projectRoot filters to every worker", async () => {
-		const alphaCalls: { method: string; path: string; query?: string }[] = [];
-		const betaCalls: { method: string; path: string; query?: string }[] = [];
-		const alpha = makeWorkerClient({
+	test("forwards kind / state / projectRoot filters to the local burrow", async () => {
+		const calls: { method: string; path: string; query?: string }[] = [];
+		const client = makeWorkerClient({
 			rows: [{ id: "bur_a1", createdAt: "2026-05-10T01:00:00Z", kind: "task", state: "active" }],
-			calls: alphaCalls,
+			calls,
 		});
-		const beta = makeWorkerClient({
-			rows: [{ id: "bur_b1", createdAt: "2026-05-10T02:00:00Z", kind: "task", state: "active" }],
-			calls: betaCalls,
-		});
-		const pool = await poolOf(repos, {
-			workers: [
-				{ name: "alpha", client: alpha },
-				{ name: "beta", client: beta },
-			],
-		});
-
-		handle = startServer(depsFor(repos, pool), {
+		handle = startServer(depsFor(repos, await localClient(repos, client)), {
 			transport: { kind: "tcp", hostname: "127.0.0.1", port: 0 },
 			auth: NO_AUTH,
 			logger: silentLogger,
@@ -271,14 +236,12 @@ describe("GET /burrows — fan-out across workers (warren-14ad)", () => {
 
 		const res = await fetch(`${tcpUrl(handle)}/burrows?kind=task&state=active&projectRoot=/x/y`);
 		expect(res.status).toBe(200);
-		expect(alphaCalls[0]?.query).toBe("?kind=task&state=active&projectRoot=%2Fx%2Fy");
-		expect(betaCalls[0]?.query).toBe("?kind=task&state=active&projectRoot=%2Fx%2Fy");
+		expect(calls[0]?.query).toBe("?kind=task&state=active&projectRoot=%2Fx%2Fy");
 	});
 
 	test("rejects an unknown ?kind value with 400 validation_error", async () => {
-		const alpha = makeWorkerClient({ rows: [] });
-		const pool = await poolOf(repos, { workers: [{ name: "alpha", client: alpha }] });
-		handle = startServer(depsFor(repos, pool), {
+		const client = makeWorkerClient({ rows: [] });
+		handle = startServer(depsFor(repos, await localClient(repos, client)), {
 			transport: { kind: "tcp", hostname: "127.0.0.1", port: 0 },
 			auth: NO_AUTH,
 			logger: silentLogger,
@@ -289,9 +252,9 @@ describe("GET /burrows — fan-out across workers (warren-14ad)", () => {
 		expect(body.error.code).toBe("validation_error");
 	});
 
-	test("returns empty arrays for an empty pool", async () => {
-		const pool = new BurrowClientPool({ repos });
-		handle = startServer(depsFor(repos, pool), {
+	test("returns empty arrays when the local burrow has none", async () => {
+		const client = makeWorkerClient({ rows: [] });
+		handle = startServer(depsFor(repos, await localClient(repos, client)), {
 			transport: { kind: "tcp", hostname: "127.0.0.1", port: 0 },
 			auth: NO_AUTH,
 			logger: silentLogger,
@@ -307,7 +270,7 @@ describe("GET /burrows — fan-out across workers (warren-14ad)", () => {
 	});
 });
 
-describe("GET /burrows/:id — sticky-by-burrow (warren-14ad)", () => {
+describe("GET /burrows/:id — single local burrow (warren-76c5)", () => {
 	let db: WarrenDb;
 	let repos: Repos;
 	let handle: ServeHandle | null = null;
@@ -325,26 +288,17 @@ describe("GET /burrows/:id — sticky-by-burrow (warren-14ad)", () => {
 		await db.close();
 	});
 
-	test("routes to the worker pinned on burrows.worker_id", async () => {
-		const alphaCalls: { method: string; path: string; query?: string }[] = [];
-		const betaCalls: { method: string; path: string; query?: string }[] = [];
+	test("forwards GET to the local burrow when warren has a burrows row", async () => {
+		const calls: { method: string; path: string; query?: string }[] = [];
 		const fix: BurrowFixture = { id: "bur_b1", createdAt: "2026-05-10T02:00:00Z" };
-		const alpha = makeWorkerClient({ rows: [], calls: alphaCalls });
-		const beta = makeWorkerClient({
+		const client = makeWorkerClient({
 			rows: [fix],
 			getById: new Map([[fix.id, fix]]),
-			calls: betaCalls,
+			calls,
 		});
+		await repos.burrows.create({ id: fix.id, workerId: "local" });
 
-		const pool = await poolOf(repos, {
-			workers: [
-				{ name: "alpha", client: alpha },
-				{ name: "beta", client: beta },
-			],
-		});
-		await repos.burrows.create({ id: fix.id, workerId: "beta" });
-
-		handle = startServer(depsFor(repos, pool), {
+		handle = startServer(depsFor(repos, await localClient(repos, client)), {
 			transport: { kind: "tcp", hostname: "127.0.0.1", port: 0 },
 			auth: NO_AUTH,
 			logger: silentLogger,
@@ -353,15 +307,12 @@ describe("GET /burrows/:id — sticky-by-burrow (warren-14ad)", () => {
 		expect(res.status).toBe(200);
 		const body = (await res.json()) as { id: string };
 		expect(body.id).toBe(fix.id);
-		// Only the pinned worker was hit; alpha never saw the request.
-		expect(alphaCalls).toHaveLength(0);
-		expect(betaCalls.some((c) => c.method === "GET" && c.path === `/burrows/${fix.id}`)).toBe(true);
+		expect(calls.some((c) => c.method === "GET" && c.path === `/burrows/${fix.id}`)).toBe(true);
 	});
 
-	test("404 when warren has no placement row for the burrow id", async () => {
-		const alpha = makeWorkerClient({ rows: [] });
-		const pool = await poolOf(repos, { workers: [{ name: "alpha", client: alpha }] });
-		handle = startServer(depsFor(repos, pool), {
+	test("404 when warren has no burrows row for the id", async () => {
+		const client = makeWorkerClient({ rows: [] });
+		handle = startServer(depsFor(repos, await localClient(repos, client)), {
 			transport: { kind: "tcp", hostname: "127.0.0.1", port: 0 },
 			auth: NO_AUTH,
 			logger: silentLogger,
@@ -370,26 +321,5 @@ describe("GET /burrows/:id — sticky-by-burrow (warren-14ad)", () => {
 		expect(res.status).toBe(404);
 		const body = (await res.json()) as { error: { code: string } };
 		expect(body.error.code).toBe("not_found");
-	});
-
-	test("503 sticky_worker_unreachable when the pinned worker is unreachable", async () => {
-		const alpha = makeWorkerClient({ rows: [] });
-		const pool = await poolOf(repos, { workers: [{ name: "alpha", client: alpha }] });
-		await repos.workers.upsert({
-			name: "alpha",
-			url: "unix:///tmp/alpha.sock",
-			state: "unreachable",
-		});
-		await repos.burrows.create({ id: "bur_stranded", workerId: "alpha" });
-
-		handle = startServer(depsFor(repos, pool), {
-			transport: { kind: "tcp", hostname: "127.0.0.1", port: 0 },
-			auth: NO_AUTH,
-			logger: silentLogger,
-		});
-
-		const res = await fetch(`${tcpUrl(handle)}/burrows/bur_stranded`);
-		const body = (await res.json()) as { error: { code: string } };
-		expect(body.error.code).toBe("sticky_worker_unreachable");
 	});
 });

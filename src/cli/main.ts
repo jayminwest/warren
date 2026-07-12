@@ -11,7 +11,7 @@
  */
 
 import { Command } from "commander";
-import { BurrowClientPool } from "../burrow-client/pool.ts";
+import { BurrowClient } from "../burrow-client/index.ts";
 import { WarrenClient } from "../client/index.ts";
 import type { PlanRunState } from "../client/types.ts";
 import { openDatabase } from "../db/client.ts";
@@ -116,20 +116,14 @@ export function buildProgram(context: CliContext): Command {
 					// a canopy library (warren-d3e9). Idempotent against existing
 					// rows.
 					await seedBuiltinAgents(repos.agents, undefined, context.now);
-					// warren-39c3 / warren-c0c9: build a single-worker pool from env
-					// so spawnRun can resolve placement and the bridge/reap/state-
-					// fetch paths can resolve per-burrow workers via `clientFor`.
-					// The pool registers a synthetic `local` row in `workers` and
-					// forwards the env-derived BurrowClient as its only entry,
-					// mirroring the zero-config bootServer path.
-					const burrowClientPool = await BurrowClientPool.fromEnv({
-						env: context.env,
-						repos,
-					});
+					// warren-76c5: multi-worker pooling is retired — the self-host
+					// backend is a single local burrow built from WARREN_BURROW_* env
+					// vars, which spawn / bridge / reap / state-fetch all share.
+					const burrowClient = BurrowClient.fromEnv(context.env);
 					try {
 						const result = await runRun(
 							context,
-							{ repos, burrowClientPool },
+							{ repos, burrowClient },
 							{
 								agent,
 								project,
@@ -141,7 +135,7 @@ export function buildProgram(context: CliContext): Command {
 						);
 						return result.exitCode;
 					} finally {
-						await burrowClientPool.close().catch(() => undefined);
+						await burrowClient.close().catch(() => undefined);
 					}
 				});
 				process.exit(exitCode);

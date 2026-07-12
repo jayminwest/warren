@@ -65,7 +65,7 @@ describe("bridgeRunStream — PiStatsClient (warren-a7dc)", () => {
 			repos,
 			broker,
 			burrowId: "bur_aaaaaaaaaaaa",
-			burrowClientPool: await makePool(repos),
+			burrowClient: await makePool(repos),
 			piStats,
 			source: source([
 				evt(burrowRunId, 1, { kind: "agent_start" }),
@@ -89,7 +89,7 @@ describe("bridgeRunStream — PiStatsClient (warren-a7dc)", () => {
 			repos,
 			broker,
 			burrowId: "bur_aaaaaaaaaaaa",
-			burrowClientPool: await makePool(repos),
+			burrowClient: await makePool(repos),
 			source: source([evt(burrowRunId, 1, { kind: "agent_start" }), piAgentEnd(burrowRunId, 2)]),
 		});
 		const after = await repos.runs.require(runId);
@@ -117,7 +117,7 @@ describe("bridgeRunStream — PiStatsClient (warren-a7dc)", () => {
 			repos,
 			broker,
 			burrowId: "bur_aaaaaaaaaaaa",
-			burrowClientPool: await makePool(repos),
+			burrowClient: await makePool(repos),
 			piStats,
 			source: source([
 				evt(burrowRunId, 1, { kind: "agent_start" }),
@@ -152,7 +152,7 @@ describe("bridgeRunStream — PiStatsClient (warren-a7dc)", () => {
 			repos,
 			broker,
 			burrowId: "bur_aaaaaaaaaaaa",
-			burrowClientPool: await makePool(repos),
+			burrowClient: await makePool(repos),
 			piStats,
 			logger: {
 				warn(obj: object) {
@@ -190,7 +190,7 @@ describe("bridgeRunStream — PiStatsClient (warren-a7dc)", () => {
 			repos,
 			broker,
 			burrowId: "bur_aaaaaaaaaaaa",
-			burrowClientPool: await makePool(repos),
+			burrowClient: await makePool(repos),
 			piStats,
 			source: source([evt(burrowRunId, 1, { kind: "agent_start" }), piAgentEnd(burrowRunId, 2)]),
 		});
@@ -210,7 +210,7 @@ describe("bridgeRunStream — PiStatsClient (warren-a7dc)", () => {
 			repos,
 			broker,
 			burrowId: "bur_aaaaaaaaaaaa",
-			burrowClientPool: await makePool(repos),
+			burrowClient: await makePool(repos),
 			piStats: {
 				async fetch() {
 					terminalCalled = true;
@@ -256,7 +256,7 @@ describe("bridgeRunStream — in-stream pi cost extraction (warren-17a4)", () =>
 			repos,
 			broker,
 			burrowId: "bur_aaaaaaaaaaaa",
-			burrowClientPool: await makePool(repos),
+			burrowClient: await makePool(repos),
 			source: source([
 				evt(burrowRunId, 1, { kind: "agent_start" }),
 				piTurnEnd(burrowRunId, 2, { input: 446, output: 44, costTotal: 0.000666 }),
@@ -278,7 +278,7 @@ describe("bridgeRunStream — in-stream pi cost extraction (warren-17a4)", () =>
 			repos,
 			broker,
 			burrowId: "bur_aaaaaaaaaaaa",
-			burrowClientPool: await makePool(repos),
+			burrowClient: await makePool(repos),
 			source: source([
 				evt(burrowRunId, 1, { kind: "agent_start" }),
 				piTurnEnd(burrowRunId, 2, { input: 1658, output: 128, costTotal: 0.002298 }),
@@ -299,7 +299,7 @@ describe("bridgeRunStream — in-stream pi cost extraction (warren-17a4)", () =>
 			repos,
 			broker,
 			burrowId: "bur_aaaaaaaaaaaa",
-			burrowClientPool: await makePool(repos),
+			burrowClient: await makePool(repos),
 			source: source([evt(burrowRunId, 1, { kind: "agent_start" }), piAgentEnd(burrowRunId, 2)]),
 		});
 		const after = await repos.runs.require(runId);
@@ -325,7 +325,7 @@ describe("bridgeRunStream — in-stream pi cost extraction (warren-17a4)", () =>
 			repos,
 			broker,
 			burrowId: "bur_aaaaaaaaaaaa",
-			burrowClientPool: await makePool(repos),
+			burrowClient: await makePool(repos),
 			piStats,
 			source: source([
 				piTurnEnd(burrowRunId, 1, { input: 500, output: 200, costTotal: 0.123 }),
@@ -344,7 +344,7 @@ describe("bridgeRunStream — in-stream pi cost extraction (warren-17a4)", () =>
 			repos,
 			broker,
 			burrowId: "bur_aaaaaaaaaaaa",
-			burrowClientPool: await makePool(repos),
+			burrowClient: await makePool(repos),
 			source: source([
 				piTurnEnd(burrowRunId, 1, { input: 100, output: 25, costTotal: 0.001 }),
 				evt(burrowRunId, 2, {
@@ -366,7 +366,7 @@ describe("bridgeRunStream — in-stream pi cost extraction (warren-17a4)", () =>
 			repos,
 			broker,
 			burrowId: "bur_aaaaaaaaaaaa",
-			burrowClientPool: await makePool(repos),
+			burrowClient: await makePool(repos),
 			source: source([
 				evt(burrowRunId, 1, {
 					kind: "state_change",
@@ -409,7 +409,7 @@ describe("bridgeRunStream — in-stream claude cost extraction (warren-87f9)", (
 			repos,
 			broker,
 			burrowId: "bur_aaaaaaaaaaaa",
-			burrowClientPool: await makePool(repos),
+			burrowClient: await makePool(repos),
 			source: source([
 				evt(burrowRunId, 1, { kind: "agent_start" }),
 				claudeResult(burrowRunId, 2, {
@@ -436,7 +436,7 @@ describe("bridgeRunStream — in-stream claude cost extraction (warren-87f9)", (
 			repos,
 			broker,
 			burrowId: "bur_aaaaaaaaaaaa",
-			burrowClientPool: await makePool(repos),
+			burrowClient: await makePool(repos),
 			source: source([
 				evt(burrowRunId, 1, { kind: "agent_start" }),
 				evt(burrowRunId, 2, {
@@ -458,7 +458,7 @@ describe("bridgeRunStream — in-stream claude cost extraction (warren-87f9)", (
 			repos,
 			broker,
 			burrowId: "bur_aaaaaaaaaaaa",
-			burrowClientPool: await makePool(repos),
+			burrowClient: await makePool(repos),
 			source: source([
 				claudeResult(burrowRunId, 1, {
 					inputTokens: 50,
@@ -480,7 +480,7 @@ describe("bridgeRunStream — in-stream claude cost extraction (warren-87f9)", (
 			repos,
 			broker,
 			burrowId: "bur_aaaaaaaaaaaa",
-			burrowClientPool: await makePool(repos),
+			burrowClient: await makePool(repos),
 			source: source([
 				piTurnEnd(burrowRunId, 1, { input: 100, output: 25, costTotal: 0.005 }),
 				claudeResult(burrowRunId, 2, {

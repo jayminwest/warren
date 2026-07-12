@@ -198,13 +198,10 @@ export interface WorkspaceGcReposLike {
 	};
 }
 
-export interface WorkspaceGcPoolLike {
-	clientFor(input: { burrowId: string }): Promise<{ client: BurrowClient }>;
-}
-
 export interface WorkspaceGcTickInput {
 	readonly repos: WorkspaceGcReposLike;
-	readonly burrowClientPool: WorkspaceGcPoolLike;
+	/** The single local burrow client (warren-76c5). */
+	readonly burrowClient: BurrowClient;
 	readonly config: WorkspaceGcConfig;
 	readonly now?: () => Date;
 	readonly logger?: WorkspaceGcLogger;
@@ -273,7 +270,7 @@ async function destroyOne(
 	destroyFn: (client: BurrowClient, burrowId: string) => Promise<DestroyBurrowResult>,
 ): Promise<boolean> {
 	try {
-		const { client } = await input.burrowClientPool.clientFor({ burrowId: candidate.burrowId });
+		const client = input.burrowClient;
 		const result = await withTransportMapping(client.config, () =>
 			destroyFn(client, candidate.burrowId),
 		);

@@ -90,7 +90,7 @@ async function provider(opts: {
 	if (opts.filesRead !== undefined) clientOpts.filesRead = opts.filesRead;
 	const client = fakeBurrowClient(makeBurrow({ workspacePath: WS }), clientOpts);
 	const pool = await makePool(client, repos);
-	return new LocalProvider({ burrowClientPool: () => pool, fs: opts.fs.fs, exec: opts.exec.exec });
+	return new LocalProvider({ burrowClient: () => pool, fs: opts.fs.fs, exec: opts.exec.exec });
 }
 
 /* ----------------------------------------------------------------------- */

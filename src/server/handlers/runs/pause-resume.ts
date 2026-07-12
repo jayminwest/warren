@@ -20,8 +20,7 @@ export function steerRunHandler(deps: ServerDeps): RouteHandler {
 			body: requireString(body, "body"),
 			repos: deps.repos,
 			runtimeProvider:
-				deps.runtimeProvider ??
-				resolveRuntimeProvider({ burrowClientPool: () => deps.burrowClientPool }),
+				deps.runtimeProvider ?? resolveRuntimeProvider({ burrowClient: () => deps.burrowClient }),
 			broker: deps.broker,
 			...(optionalString(body, "priority") !== undefined
 				? { priority: optionalString(body, "priority") as MessagePriority }
@@ -43,10 +42,9 @@ export function cancelRunHandler(deps: ServerDeps): RouteHandler {
 		const result = await cancelRun({
 			runId: id,
 			repos: deps.repos,
-			burrowClientPool: deps.burrowClientPool,
+			burrowClient: deps.burrowClient,
 			runtimeProvider:
-				deps.runtimeProvider ??
-				resolveRuntimeProvider({ burrowClientPool: () => deps.burrowClientPool }),
+				deps.runtimeProvider ?? resolveRuntimeProvider({ burrowClient: () => deps.burrowClient }),
 			broker: deps.broker,
 			...(reason !== undefined ? { reason } : {}),
 			...(deps.now !== undefined ? { now: deps.now } : {}),

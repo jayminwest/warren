@@ -17,11 +17,11 @@ export async function reapRun(input: ReapRunInput): Promise<ReapRunResult> {
 	const now = input.now ?? (() => new Date());
 	// Runtime-provider seam (warren-1f56). The workspace-dependent half of reap
 	// (finalize) + the sandbox teardown (terminate) route through this. Default
-	// to the burrow-backed LocalProvider over the same pool + fs/exec, so callers
-	// and tests that only pass `burrowClientPool` keep their behavior.
+	// to the burrow-backed LocalProvider over the same single client + fs/exec,
+	// so callers and tests that only pass `burrowClient` keep their behavior.
 	const provider: RuntimeProvider =
 		input.runtimeProvider ??
-		new LocalProvider({ burrowClientPool: () => input.burrowClientPool, fs, exec });
+		new LocalProvider({ burrowClient: () => input.burrowClient, fs, exec });
 
 	const run = await input.repos.runs.require(input.runId);
 	const log = bindBridgeLogger(input.logger, { run_id: run.id }); // warren-9f06: bind run_id once
@@ -100,7 +100,7 @@ export async function reapRun(input: ReapRunInput): Promise<ReapRunResult> {
 		await fail("workspace_lookup", new Error("run has no burrow_id; nothing to reap from"));
 	} else {
 		try {
-			workerClient = (await input.burrowClientPool.clientFor({ burrowId: run.burrowId })).client;
+			workerClient = input.burrowClient;
 			const burrow = await withTransportMapping(workerClient.config, () =>
 				(workerClient as BurrowClient).http.burrows.get(run.burrowId as string),
 			);

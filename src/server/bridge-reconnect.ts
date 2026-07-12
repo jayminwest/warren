@@ -9,7 +9,7 @@
  * via `reconcileLostBurrowRun`, which `bootBridges` also calls at boot.
  */
 
-import type { BurrowClientPool } from "../burrow-client/pool.ts";
+import type { BurrowClient } from "../burrow-client/index.ts";
 import type { Repos } from "../db/repos/index.ts";
 import type { EventRow, RunFailureReason, RunMode, RunState } from "../db/schema.ts";
 import type { PreviewLaunchConfig } from "../preview/launch/index.ts";
@@ -49,7 +49,7 @@ export interface RunWithReconnectInput {
 	readonly burrowId: string;
 	readonly repos: Repos;
 	readonly broker: RunEventBroker;
-	readonly burrowClientPool: BurrowClientPool;
+	readonly burrowClient: BurrowClient;
 	readonly signal: AbortSignal;
 	readonly bridge: (input: BridgeRunStreamInput) => Promise<BridgeRunStreamResult>;
 	readonly reap: (input: ReapRunInput) => Promise<ReapRunResult>;
@@ -112,7 +112,7 @@ export async function runWithReconnect(
 			burrowId: input.burrowId,
 			repos: input.repos,
 			broker: input.broker,
-			burrowClientPool: input.burrowClientPool,
+			burrowClient: input.burrowClient,
 			signal: input.signal,
 			...(input.mode !== undefined ? { mode: input.mode } : {}),
 			...(input.conversationTurn !== undefined ? { conversationTurn: input.conversationTurn } : {}),
@@ -155,7 +155,7 @@ export async function runWithReconnect(
 				burrowRunId: input.burrowRunId,
 				repos: input.repos,
 				broker: input.broker,
-				burrowClientPool: input.burrowClientPool,
+				burrowClient: input.burrowClient,
 				logger: log,
 			});
 			return { written: totalWritten, skipped: totalSkipped, errored: false };
@@ -180,7 +180,7 @@ export async function runWithReconnect(
 					runId: input.runId,
 					outcome: result.terminalDetected.outcome,
 					repos: input.repos,
-					burrowClientPool: input.burrowClientPool,
+					burrowClient: input.burrowClient,
 					broker: input.broker,
 					logger: log,
 					// warren-9cce: carry the poller's distilled `failure_reason`
@@ -275,7 +275,7 @@ export async function runWithReconnect(
 				burrowRunId: input.burrowRunId,
 				repos: input.repos,
 				broker: input.broker,
-				burrowClientPool: input.burrowClientPool,
+				burrowClient: input.burrowClient,
 				failureReason: "burrow_unreachable",
 				logger: log,
 			});
@@ -352,7 +352,7 @@ interface ReconcileLostBurrowRunInput {
 	 * host. Omitted by callers/tests that can't resolve a worker; teardown is
 	 * then skipped.
 	 */
-	readonly burrowClientPool?: BurrowClientPool;
+	readonly burrowClient?: BurrowClient;
 	/** Override the workspace-destroy seam (tests). */
 	readonly destroyWorkspace?: (input: DestroyBurrowWorkspaceByIdInput) => Promise<boolean>;
 }
@@ -436,13 +436,13 @@ export async function reconcileLostBurrowRun(input: ReconcileLostBurrowRunInput)
 	// `reapRun` short-circuits (`buildAlreadyTerminalResult`) without
 	// destroying the workspace — so the teardown must happen here. Best-effort
 	// and gated on a resolvable pool; conversation runs keep their workspace.
-	if (input.burrowClientPool !== undefined && burrowToDestroy !== null) {
+	if (input.burrowClient !== undefined && burrowToDestroy !== null) {
 		const destroy = input.destroyWorkspace ?? destroyBurrowWorkspaceById;
 		try {
 			await destroy({
 				burrowId: burrowToDestroy.id,
 				mode: burrowToDestroy.mode,
-				burrowClientPool: input.burrowClientPool,
+				burrowClient: input.burrowClient,
 				repos: input.repos,
 				emit: async (kind, payload) => {
 					await emitBridgeSystemEvent({

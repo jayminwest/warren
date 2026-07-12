@@ -7,7 +7,7 @@
  *
  *   - `parseWorkerUrl` accepts `unix:///path` or `http(s)://host:port` and
  *     returns the burrow `Transport` warren's `BurrowClient` consumes.
- *     The format mirrors `transportToUrl` in burrow-client/pool.ts so a
+ *     The format mirrors `transportToUrl` in burrow-client/index.ts so a
  *     `[workers]` row round-trips through the worker row's `url` column.
  *   - `validateWorkerEntries` enforces name regex + uniqueness + URL
  *     parseability across the array. Failures collapse into a single
@@ -53,8 +53,8 @@ const WORKER_NAME_RE = /^[a-zA-Z0-9][a-zA-Z0-9_-]*$/;
  *   unix:///absolute/path  → { kind: 'unix', path: '/absolute/path' }
  *   http://host:port       → { kind: 'tcp', hostname, port }
  *
- * Mirrors the inverse of `transportToUrl` in burrow-client/pool.ts so a
- * worker row written by `BurrowClientPool.fromConfig` can be re-derived
+ * Mirrors the inverse of `transportToUrl` in burrow-client/index.ts so a
+ * worker row written by `BurrowClient.fromConfig` can be re-derived
  * from its stored `url` column with no other context. `https://` is not
  * accepted — burrow V1 binds plain HTTP on unix sockets or loopback TCP
  * inside a VPC; operator-supplied TLS is out of scope until a real
@@ -118,7 +118,7 @@ export type ValidateWorkersResult =
  * Validate the raw `[workers]` array post-Zod: each `name` matches the
  * URL-safe regex, names are unique across the array, every `url` parses
  * to a `Transport`. Returns the parsed array (one `ParsedWorkerEntry`
- * per row) so the loader can hand burrow-client/pool.ts a ready-to-bind
+ * per row) so the loader can hand burrow-client/index.ts a ready-to-bind
  * transport without re-parsing.
  */
 export function validateWorkerEntries(entries: readonly WorkerEntry[]): ValidateWorkersResult {

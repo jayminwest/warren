@@ -31,7 +31,7 @@
  *   recovery. Opt-out via `WARREN_CONVERSATION_IDLE_DISABLED=1`.
  */
 
-import type { BurrowClientPool } from "../../burrow-client/pool.ts";
+import type { BurrowClient } from "../../burrow-client/index.ts";
 import type { DrizzleAdapter } from "../../db/repos/drizzle-adapter.ts";
 import type { Repos } from "../../db/repos/index.ts";
 import { createPrMergeChecker } from "../../plan-runs/index.ts";
@@ -99,7 +99,7 @@ export function bootPauseDetectorFromEnv(input: PauseDetectorWiringInput): Pause
 export interface MergePollerWiringInput {
 	readonly env: EnvLike;
 	readonly repos: Repos;
-	readonly burrowClientPool: BurrowClientPool;
+	readonly burrowClient: BurrowClient;
 	readonly bridges: BridgeRegistry;
 	readonly warrenConfigs: WarrenConfigCache;
 	readonly projectsConfig: ProjectsConfig;
@@ -128,7 +128,7 @@ export function bootConversationMergePollerFromEnv(
 	const tickMs = parseIntEnv(env, "WARREN_MERGE_POLLER_TICK_MS", 30_000);
 	const dispatch = createMergePollerDispatch({
 		repos: input.repos,
-		burrowClientPool: input.burrowClientPool,
+		burrowClient: input.burrowClient,
 		bridges: input.bridges,
 		warrenConfigs: input.warrenConfigs,
 		projectsConfig: input.projectsConfig,
@@ -201,7 +201,7 @@ export function bootConversationIdleDetectorFromEnv(
 export interface WatchdogWiringInput {
 	readonly env: EnvLike;
 	readonly repos: Repos;
-	readonly burrowClientPool: BurrowClientPool;
+	readonly burrowClient: BurrowClient;
 	readonly broker: RunEventBroker;
 	readonly autoOpenPr: AutoOpenPrConfig;
 	readonly logger: Logger;
@@ -213,7 +213,7 @@ export function bootWatchdogFromEnv(input: WatchdogWiringInput): WatchdogHandle 
 	const config = loadWatchdogConfigFromEnv(env);
 	const handle = bootWatchdog({
 		repos: input.repos,
-		burrowClientPool: input.burrowClientPool,
+		burrowClient: input.burrowClient,
 		broker: input.broker,
 		autoOpenPr: input.autoOpenPr,
 		heartbeatTimeoutMs: config.heartbeatTimeoutMs,
@@ -242,7 +242,7 @@ export interface BackgroundDetectorWiringInput {
 	readonly env: EnvLike;
 	readonly adapter: DrizzleAdapter;
 	readonly repos: Repos;
-	readonly burrowClientPool: BurrowClientPool;
+	readonly burrowClient: BurrowClient;
 	readonly broker: RunEventBroker;
 	readonly bridges: BridgeRegistry;
 	readonly warrenConfigs: WarrenConfigCache;
@@ -286,7 +286,7 @@ export function bootBackgroundDetectors(
 	const watchdog = bootWatchdogFromEnv({
 		env: input.env,
 		repos: input.repos,
-		burrowClientPool: input.burrowClientPool,
+		burrowClient: input.burrowClient,
 		broker: input.broker,
 		autoOpenPr: input.autoOpenPr,
 		logger: input.logger,
@@ -295,7 +295,7 @@ export function bootBackgroundDetectors(
 	const mergePoller = bootConversationMergePollerFromEnv({
 		env: input.env,
 		repos: input.repos,
-		burrowClientPool: input.burrowClientPool,
+		burrowClient: input.burrowClient,
 		bridges: input.bridges,
 		warrenConfigs: input.warrenConfigs,
 		projectsConfig: input.projectsConfig,

@@ -26,7 +26,7 @@ describe("spawnRun: post-dispatch seed extension write (pl-bb70)", () => {
 		const fixedNow = new Date("2026-05-15T17:00:00.000Z");
 		const result = await spawnRun({
 			repos,
-			burrowClientPool: await makePool(repos, client),
+			burrowClient: await makePool(repos, client),
 			agentName: "refactor-bot",
 			projectId: "prj_xxxxxxxxxxxx",
 			prompt: "fix it",
@@ -72,7 +72,7 @@ describe("spawnRun: post-dispatch seed extension write (pl-bb70)", () => {
 		const fixedNow = new Date("2026-05-15T17:00:00.000Z");
 		const result = await spawnRun({
 			repos,
-			burrowClientPool: await makePool(repos, client),
+			burrowClient: await makePool(repos, client),
 			agentName: "refactor-bot",
 			projectId: "prj_xxxxxxxxxxxx",
 			seedProjectId: "prj_meta00000000",
@@ -106,7 +106,7 @@ describe("spawnRun: post-dispatch seed extension write (pl-bb70)", () => {
 		const { client } = makeBurrowClient();
 		const result = await spawnRun({
 			repos,
-			burrowClientPool: await makePool(repos, client),
+			burrowClient: await makePool(repos, client),
 			agentName: "refactor-bot",
 			projectId: "prj_xxxxxxxxxxxx",
 			prompt: "fix it",
@@ -125,7 +125,7 @@ describe("spawnRun: post-dispatch seed extension write (pl-bb70)", () => {
 		};
 		await spawnRun({
 			repos,
-			burrowClientPool: await makePool(repos, client),
+			burrowClient: await makePool(repos, client),
 			agentName: "refactor-bot",
 			projectId: "prj_xxxxxxxxxxxx",
 			prompt: "fix it",
@@ -144,7 +144,7 @@ describe("spawnRun: post-dispatch seed extension write (pl-bb70)", () => {
 		const fixedNow = new Date("2026-05-15T17:00:00.000Z");
 		const result = await spawnRun({
 			repos,
-			burrowClientPool: await makePool(repos, client),
+			burrowClient: await makePool(repos, client),
 			agentName: "refactor-bot",
 			projectId: "prj_xxxxxxxxxxxx",
 			prompt: "fix it",
@@ -187,7 +187,7 @@ describe("spawnRun: post-dispatch seed extension write (pl-bb70)", () => {
 		const fixedNow = new Date("2026-05-15T17:00:00.000Z");
 		const result = await spawnRun({
 			repos,
-			burrowClientPool: await makePool(repos, client),
+			burrowClient: await makePool(repos, client),
 			agentName: "refactor-bot",
 			projectId: "prj_xxxxxxxxxxxx",
 			prompt: "fix it",

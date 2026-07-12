@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { BurrowClientPool } from "../../burrow-client/index.ts";
+import type { BurrowClient } from "../../burrow-client/index.ts";
 import { LOCAL_PROVIDER_CAPABILITIES, LocalProvider, type LocalProviderDeps } from "./provider.ts";
 
 /**
@@ -10,8 +10,8 @@ import { LOCAL_PROVIDER_CAPABILITIES, LocalProvider, type LocalProviderDeps } fr
  * `teardown.test.ts`, `finalize.test.ts`).
  */
 const deps: LocalProviderDeps = {
-	burrowClientPool: (): BurrowClientPool => {
-		throw new Error("burrowClientPool factory must not be called by a LocalProvider stub");
+	burrowClient: (): BurrowClient => {
+		throw new Error("burrowClient factory must not be called by a LocalProvider stub");
 	},
 };
 

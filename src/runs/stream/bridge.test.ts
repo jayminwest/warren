@@ -33,7 +33,7 @@ describe("bridgeRunStream — event flow", () => {
 			repos,
 			broker,
 			burrowId: "bur_aaaaaaaaaaaa",
-			burrowClientPool: await makePool(repos),
+			burrowClient: await makePool(repos),
 			source: source([evt(burrowRunId, 1), evt(burrowRunId, 2), evt(burrowRunId, 3)]),
 		});
 		expect(result.written).toBe(3);
@@ -59,7 +59,7 @@ describe("bridgeRunStream — event flow", () => {
 			repos,
 			broker,
 			burrowId: "bur_aaaaaaaaaaaa",
-			burrowClientPool: await makePool(repos),
+			burrowClient: await makePool(repos),
 			source: source([evt(burrowRunId, 1), evt(burrowRunId, 2)]),
 		});
 		await consumer;
@@ -92,7 +92,7 @@ describe("bridgeRunStream — event flow", () => {
 			repos,
 			broker,
 			burrowId: "bur_aaaaaaaaaaaa",
-			burrowClientPool: await makePool(repos),
+			burrowClient: await makePool(repos),
 			source: source([
 				evt(burrowRunId, 1),
 				evt(burrowRunId, 2),
@@ -113,7 +113,7 @@ describe("bridgeRunStream — event flow", () => {
 			repos,
 			broker,
 			burrowId: "bur_aaaaaaaaaaaa",
-			burrowClientPool: await makePool(repos),
+			burrowClient: await makePool(repos),
 			source: source([evt(burrowRunId, 1, { stream: "weird" as unknown as RunEvent["stream"] })]),
 		});
 		const row = (await repos.events.listByRun(runId))[0];
@@ -134,7 +134,7 @@ describe("bridgeRunStream — event flow", () => {
 			repos,
 			broker,
 			burrowId: "bur_aaaaaaaaaaaa",
-			burrowClientPool: await makePool(repos),
+			burrowClient: await makePool(repos),
 			source: () => errSource(),
 			logger: {
 				error(obj: object) {
@@ -165,7 +165,7 @@ describe("bridgeRunStream — event flow", () => {
 			repos,
 			broker,
 			burrowId: "bur_aaaaaaaaaaaa",
-			burrowClientPool: await makePool(repos),
+			burrowClient: await makePool(repos),
 			signal: ctrl.signal,
 			source: (s: AbortSignal) => infinite(s),
 		});
@@ -187,7 +187,7 @@ describe("bridgeRunStream — event flow", () => {
 			repos,
 			broker,
 			burrowId: "bur_aaaaaaaaaaaa",
-			burrowClientPool: await makePool(repos),
+			burrowClient: await makePool(repos),
 			source: source([evt(burrowRunId, 1)]),
 		});
 
@@ -203,7 +203,7 @@ describe("bridgeRunStream — event flow", () => {
 			repos,
 			broker,
 			burrowId: "bur_aaaaaaaaaaaa",
-			burrowClientPool: await makePool(repos),
+			burrowClient: await makePool(repos),
 			source: source([]),
 		});
 		const after = await repos.runs.require(runId);
@@ -222,7 +222,7 @@ describe("bridgeRunStream — event flow", () => {
 			repos,
 			broker,
 			burrowId: "bur_aaaaaaaaaaaa",
-			burrowClientPool: await makePool(repos),
+			burrowClient: await makePool(repos),
 			source: source([evt(burrowRunId, 1)]),
 		});
 
@@ -243,7 +243,7 @@ describe("bridgeRunStream — event flow", () => {
 			repos,
 			broker,
 			burrowId: "bur_aaaaaaaaaaaa",
-			burrowClientPool: await makePool(repos),
+			burrowClient: await makePool(repos),
 			source: source([evt(burrowRunId, 1)]),
 		});
 		await consumer;

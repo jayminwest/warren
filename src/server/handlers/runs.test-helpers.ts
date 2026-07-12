@@ -1,4 +1,4 @@
-import { BurrowClient, BurrowClientPool } from "../../burrow-client/index.ts";
+import { BurrowClient } from "../../burrow-client/index.ts";
 import type { Repos } from "../../db/repos/index.ts";
 import { RunEventBroker } from "../../runs/index.ts";
 import { createBridgeRegistry } from "../bridges.ts";
@@ -8,11 +8,9 @@ import type { BridgeRegistry, ServeHandle, ServerDeps } from "../types.ts";
  * Shared test helpers and stubs for run-related handler tests (warren-6566).
  */
 
-export async function poolFor(repos: Repos, client: BurrowClient): Promise<BurrowClientPool> {
+export async function poolFor(repos: Repos, client: BurrowClient): Promise<BurrowClient> {
 	await repos.workers.upsert({ name: "local", url: "unix:///tmp/x.sock" });
-	const pool = new BurrowClientPool({ repos });
-	pool.register("local", client);
-	return pool;
+	return client;
 }
 
 export const silentLogger = {
@@ -104,17 +102,17 @@ export async function depsFor(
 	extras?: { plotResolver?: import("../../plots/index.ts").PlotResolver },
 ): Promise<ServerDeps> {
 	const broker = new RunEventBroker();
-	const burrowClientPool = await poolFor(repos, burrowClient);
+	await poolFor(repos, burrowClient);
 	return {
 		repos,
-		burrowClientPool,
+		burrowClient,
 		broker,
 		bridges:
 			bridges ??
 			createBridgeRegistry({
 				repos,
 				broker,
-				burrowClientPool,
+				burrowClient,
 				bridge: async () => ({ written: 0, skipped: 0, errored: false }),
 			}),
 		canopyConfig: {

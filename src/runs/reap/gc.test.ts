@@ -149,9 +149,7 @@ function tickInput(
 				listByState: async () => [],
 			},
 		},
-		burrowClientPool: {
-			clientFor: async () => ({ client: fakeClient() }),
-		},
+		burrowClient: fakeClient(),
 		config: { ttlMs: 60 * 60_000, tickMs: 1000, disabled: false, ...config },
 		now: () => NOW,
 		destroyBurrow: async (_client, burrowId) => {
@@ -250,7 +248,7 @@ describe("runWorkspaceGcTick", () => {
 		expect(logs.some((m) => m.includes("already_gone") || m.includes("bur_old"))).toBe(true);
 	});
 
-	test("counts a clientFor failure as a failed destroy", async () => {
+	test("counts a burrow destroy failure as a failed destroy", async () => {
 		const h: Harness = {
 			burrows: [burrow("bur_old", "2026-05-29T09:00:00.000Z")],
 			deleted: [],
@@ -258,10 +256,8 @@ describe("runWorkspaceGcTick", () => {
 		};
 		const result = await runWorkspaceGcTick(
 			tickInput(h, {
-				burrowClientPool: {
-					clientFor: async () => {
-						throw new Error("no placement row");
-					},
+				destroyBurrow: async () => {
+					throw new Error("burrow unreachable");
 				},
 			}),
 		);

@@ -38,7 +38,7 @@ describe("spawnRun: continuation (warren-4b11)", () => {
 		let refreshRef: string | undefined;
 		const { run } = await spawnRun({
 			repos,
-			burrowClientPool: await makePool(repos, client),
+			burrowClient: await makePool(repos, client),
 			agentName: "refactor-bot",
 			projectId: "prj_xxxxxxxxxxxx",
 			prompt: "follow up",
@@ -66,7 +66,7 @@ describe("spawnRun: continuation (warren-4b11)", () => {
 		let refreshRef: string | undefined;
 		await spawnRun({
 			repos,
-			burrowClientPool: await makePool(repos, client),
+			burrowClient: await makePool(repos, client),
 			agentName: "refactor-bot",
 			projectId: "prj_xxxxxxxxxxxx",
 			prompt: "follow up",
@@ -93,7 +93,7 @@ describe("spawnRun: continuation (warren-4b11)", () => {
 		let refreshRef: string | undefined;
 		await spawnRun({
 			repos,
-			burrowClientPool: await makePool(repos, client),
+			burrowClient: await makePool(repos, client),
 			agentName: "refactor-bot",
 			projectId: "prj_xxxxxxxxxxxx",
 			prompt: "follow up",
@@ -119,7 +119,7 @@ describe("spawnRun: continuation (warren-4b11)", () => {
 		const { client, calls } = makeBurrowClient();
 		await spawnRun({
 			repos,
-			burrowClientPool: await makePool(repos, client),
+			burrowClient: await makePool(repos, client),
 			agentName: "refactor-bot",
 			projectId: "prj_xxxxxxxxxxxx",
 			prompt: "fix ci",
@@ -160,7 +160,7 @@ describe("spawnRun: continuation (warren-4b11)", () => {
 		await expect(
 			spawnRun({
 				repos,
-				burrowClientPool: await makePool(repos, client),
+				burrowClient: await makePool(repos, client),
 				agentName: "refactor-bot",
 				projectId: "prj_xxxxxxxxxxxx",
 				prompt: "follow up",
@@ -174,7 +174,7 @@ describe("spawnRun: continuation (warren-4b11)", () => {
 		await expect(
 			spawnRun({
 				repos,
-				burrowClientPool: await makePool(repos, client),
+				burrowClient: await makePool(repos, client),
 				agentName: "refactor-bot",
 				projectId: "prj_xxxxxxxxxxxx",
 				prompt: "follow up",
@@ -187,7 +187,7 @@ describe("spawnRun: continuation (warren-4b11)", () => {
 		const { client } = makeBurrowClient();
 		const { run } = await spawnRun({
 			repos,
-			burrowClientPool: await makePool(repos, client),
+			burrowClient: await makePool(repos, client),
 			agentName: "refactor-bot",
 			projectId: "prj_xxxxxxxxxxxx",
 			prompt: "fresh",

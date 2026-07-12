@@ -14,18 +14,17 @@
  * `RuntimeNotImplementedError`; later steps of the LocalProvider checkpoint
  * fill each one.
  *
- * The dependency is taken as a FACTORY (`() => BurrowClientPool`) rather than a
- * live pool: at boot the pool already exists so wiring is `() => pool`, but the
- * lazy shape keeps the provider — and the registry that builds it — testable
- * without standing up a pool at construction time.
+ * The dependency is taken as a FACTORY (`() => BurrowClient`) rather than a
+ * live client: at boot the client already exists so wiring is `() => client`,
+ * but the lazy shape keeps the provider — and the registry that builds it —
+ * testable without standing up a client at construction time.
+ *
+ * Multi-worker placement / pooling was retired with the K8s migration
+ * (warren-76c5): the self-host backend is exactly one local burrow, so the
+ * provider wraps a single {@link BurrowClient} — there is nothing to place.
  */
 
-import {
-	type BurrowClient,
-	type BurrowClientPool,
-	LOCAL_WORKER_NAME,
-	withTransportMapping,
-} from "../../burrow-client/index.ts";
+import { type BurrowClient, withTransportMapping } from "../../burrow-client/index.ts";
 import type { ReapExec, ReapFs } from "../../runs/reap/types.ts";
 import type { EnvLike } from "../../runs/spawn/callback-env.ts";
 import { loopbackApiUrl } from "../../runs/spawn/callback-env.ts";
@@ -54,12 +53,13 @@ import { terminateLocalRun } from "./teardown.ts";
 /** Dependencies the burrow-backed provider methods wrap. */
 export interface LocalProviderDeps {
 	/**
-	 * Lazily supplies the burrow-client pool the real methods adapt (placement
-	 * is deleted at the seam — design §3 — so `create()` resolves the sole
-	 * single-container worker, not a project-affinity placement). A factory so
-	 * the provider can be built before — or without — a live pool.
+	 * Lazily supplies the single burrow client the real methods adapt.
+	 * Placement / worker pooling is retired (warren-76c5) — the self-host
+	 * backend has exactly one local burrow — so this is one client, not a
+	 * pool. A factory so the provider can be built before — or without — a
+	 * live client.
 	 */
-	readonly burrowClientPool: () => BurrowClientPool;
+	readonly burrowClient: () => BurrowClient;
 	/**
 	 * Server-process env the provider reads to compute its OWN plumbing — today
 	 * just the loopback callback URL (`WARREN_API_URL`, §6.3). Defaults to
@@ -146,31 +146,12 @@ export class LocalProvider implements RuntimeProvider {
 
 	/**
 	 * Resolve the single burrow client this run dispatches against. Placement /
-	 * worker routing is deleted at the seam (design §3) — the single-container
-	 * LocalProvider has exactly one burrow worker, so there is nothing to place.
-	 * Prefer the synthetic `local` worker `BurrowClientPool.fromEnv` registers;
-	 * fall back to the sole worker when the pool was booted with a single
-	 * differently-named entry.
-	 *
-	 * SEAM SIGNAL (step 13): `RunSpec` carries no `projectId`, so a multi-worker
-	 * pool has no project-affinity answer here — a pool with >1 worker throws.
-	 * That is intentional: multi-worker burrow placement is being retired with
-	 * the K8s migration (plan §5.C); it is not smuggled back across the seam.
+	 * worker routing was retired with the K8s migration (warren-76c5) — the
+	 * self-host LocalProvider has exactly one local burrow, so there is nothing
+	 * to place: the injected factory yields that one client.
 	 */
 	private resolveClient(): BurrowClient {
-		const pool = this.deps.burrowClientPool();
-		if (pool.has(LOCAL_WORKER_NAME)) return pool.get(LOCAL_WORKER_NAME);
-		const entries = pool.entries();
-		const only = entries.length === 1 ? entries[0] : undefined;
-		if (only !== undefined) return only.client;
-		throw new RuntimeProviderError(
-			`LocalProvider cannot resolve a single burrow worker (pool has ${entries.length})`,
-			{
-				recoveryHint:
-					"the single-container backend expects one worker (the synthetic 'local'); " +
-					"multi-worker placement is retired with the K8s migration",
-			},
-		);
+		return this.deps.burrowClient();
 	}
 
 	/**

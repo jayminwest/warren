@@ -27,7 +27,7 @@ describe("createBridgeRegistry", () => {
 		const registry = createBridgeRegistry({
 			repos,
 			broker: new RunEventBroker(),
-			burrowClientPool: await makePool(repos),
+			burrowClient: await makePool(repos),
 			bridge: async (input) => {
 				calls.push(input);
 				return { written: 0, skipped: 0, errored: false };
@@ -47,7 +47,7 @@ describe("createBridgeRegistry", () => {
 		const registry = createBridgeRegistry({
 			repos,
 			broker: new RunEventBroker(),
-			burrowClientPool: await makePool(repos),
+			burrowClient: await makePool(repos),
 			bridge: () =>
 				new Promise<BridgeRunStreamResult>((resolve) => {
 					resolvers.push(() => resolve({ written: 0, skipped: 0, errored: false }));
@@ -67,7 +67,7 @@ describe("createBridgeRegistry", () => {
 		const registry = createBridgeRegistry({
 			repos,
 			broker: new RunEventBroker(),
-			burrowClientPool: await makePool(repos),
+			burrowClient: await makePool(repos),
 			bridge: (input) =>
 				new Promise<BridgeRunStreamResult>((resolve) => {
 					input.signal?.addEventListener("abort", () => {
@@ -104,7 +104,7 @@ describe("createBridgeRegistry", () => {
 		const registry = createBridgeRegistry({
 			repos,
 			broker: new RunEventBroker(),
-			burrowClientPool: await makePool(repos),
+			burrowClient: await makePool(repos),
 			bridge: async () => {
 				calls += 1;
 				// First two attempts fail mid-stream (e.g., burrow's 10s
@@ -143,7 +143,7 @@ describe("createBridgeRegistry", () => {
 		const registry = createBridgeRegistry({
 			repos,
 			broker: new RunEventBroker(),
-			burrowClientPool: await makePool(repos),
+			burrowClient: await makePool(repos),
 			bridge: async () => {
 				calls += 1;
 				// Simulate the reaper finalizing between the first errored
@@ -185,7 +185,7 @@ describe("createBridgeRegistry", () => {
 		const registry = createBridgeRegistry({
 			repos,
 			broker: new RunEventBroker(),
-			burrowClientPool: await makePool(repos),
+			burrowClient: await makePool(repos),
 			bridge: async () => {
 				bridgeCalls += 1;
 				return {
@@ -228,7 +228,7 @@ describe("createBridgeRegistry", () => {
 		const registry = createBridgeRegistry({
 			repos,
 			broker: new RunEventBroker(),
-			burrowClientPool: await makePool(repos),
+			burrowClient: await makePool(repos),
 			bridge: async () => ({
 				written: 1,
 				skipped: 0,
@@ -268,7 +268,7 @@ describe("createBridgeRegistry", () => {
 		const registry = createBridgeRegistry({
 			repos,
 			broker: new RunEventBroker(),
-			burrowClientPool: await makePool(repos),
+			burrowClient: await makePool(repos),
 			bridge: async () => {
 				throw new Error("burrow has no placement record: bur_a");
 			},
@@ -319,7 +319,7 @@ describe("createBridgeRegistry", () => {
 		const registry = createBridgeRegistry({
 			repos,
 			broker: new RunEventBroker(),
-			burrowClientPool: await makePool(repos),
+			burrowClient: await makePool(repos),
 			bridge: async () => {
 				calls += 1;
 				return { written: 0, skipped: 0, errored: true };

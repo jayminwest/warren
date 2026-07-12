@@ -21,7 +21,7 @@ describe("spawnRun: project refresh (warren-1bb6)", () => {
 		let refreshRef: string | undefined;
 		await spawnRun({
 			repos,
-			burrowClientPool: await makePool(repos, client),
+			burrowClient: await makePool(repos, client),
 			agentName: "refactor-bot",
 			projectId: "prj_xxxxxxxxxxxx",
 			prompt: "p",
@@ -52,7 +52,7 @@ describe("spawnRun: project refresh (warren-1bb6)", () => {
 		let receivedRef: string | undefined;
 		await spawnRun({
 			repos,
-			burrowClientPool: await makePool(repos, client),
+			burrowClient: await makePool(repos, client),
 			agentName: "refactor-bot",
 			projectId: "prj_xxxxxxxxxxxx",
 			prompt: "p",
@@ -76,7 +76,7 @@ describe("spawnRun: project refresh (warren-1bb6)", () => {
 		await expect(
 			spawnRun({
 				repos,
-				burrowClientPool: await makePool(repos, client),
+				burrowClient: await makePool(repos, client),
 				agentName: "refactor-bot",
 				projectId: "prj_xxxxxxxxxxxx",
 				prompt: "p",
@@ -97,7 +97,7 @@ describe("spawnRun: project refresh (warren-1bb6)", () => {
 		let refreshCalled = false;
 		await spawnRun({
 			repos,
-			burrowClientPool: await makePool(repos, client),
+			burrowClient: await makePool(repos, client),
 			agentName: "refactor-bot",
 			projectId: "prj_xxxxxxxxxxxx",
 			prompt: "p",
@@ -131,7 +131,7 @@ describe("spawnRun: burrow branch composition (warren-9993)", () => {
 		const { client, calls } = makeBurrowClient();
 		const result = await spawnRun({
 			repos,
-			burrowClientPool: await makePool(repos, client),
+			burrowClient: await makePool(repos, client),
 			agentName: "refactor-bot",
 			projectId: "prj_xxxxxxxxxxxx",
 			prompt: "p",
@@ -144,7 +144,7 @@ describe("spawnRun: burrow branch composition (warren-9993)", () => {
 		const { client, calls } = makeBurrowClient();
 		const result = await spawnRun({
 			repos,
-			burrowClientPool: await makePool(repos, client),
+			burrowClient: await makePool(repos, client),
 			agentName: "refactor-bot",
 			projectId: "prj_xxxxxxxxxxxx",
 			prompt: "p",
@@ -158,7 +158,7 @@ describe("spawnRun: burrow branch composition (warren-9993)", () => {
 		const { client, calls } = makeBurrowClient();
 		const result = await spawnRun({
 			repos,
-			burrowClientPool: await makePool(repos, client),
+			burrowClient: await makePool(repos, client),
 			agentName: "refactor-bot",
 			projectId: "prj_xxxxxxxxxxxx",
 			prompt: "p",

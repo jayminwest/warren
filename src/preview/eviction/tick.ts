@@ -34,7 +34,7 @@ export async function runPreviewEvictionTick(
 ): Promise<PreviewEvictionTickResult> {
 	const now = input.now?.() ?? new Date();
 	const previews = input.previews ?? createRunPreviewsRepo(input.db);
-	const resolveSidecar = input.resolveSidecar ?? createPoolSidecarResolver(input.burrowClientPool);
+	const resolveSidecar = input.resolveSidecar ?? createPoolSidecarResolver(input.burrowClient);
 
 	const rows = await previews.listActivePreviews();
 	const evicted: { runId: string; reason: EvictionReason }[] = [];

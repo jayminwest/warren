@@ -182,7 +182,7 @@ export function previewTeardownHandler(deps: ServerDeps): RouteHandler {
 			runId,
 			repos: deps.repos,
 			previews,
-			burrowClientPool: deps.burrowClientPool,
+			burrowClient: deps.burrowClient,
 			broker: deps.broker,
 			...(actor !== undefined ? { actor } : {}),
 			...(deps.now !== undefined ? { now: deps.now } : {}),

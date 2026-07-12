@@ -59,7 +59,6 @@ import {
 import { ProjectUnavailableError } from "../projects/errors.ts";
 import { AgentSchemaError, CanopyUnavailableError } from "../registry/errors.ts";
 import { RunSpawnError } from "../runs/errors.ts";
-import { NoEligibleWorkerError, StickyWorkerUnreachableError } from "../runs/placement.ts";
 import { WarrenConfigUnavailableError } from "../warren-config/errors.ts";
 import type { ErrorEnvelope } from "./types.ts";
 
@@ -141,13 +140,11 @@ function warrenStatusFor(err: WarrenError): number {
 	if (err instanceof CanopyUnavailableError) return 503;
 	if (err instanceof ProjectUnavailableError) return 503;
 	if (err instanceof WarrenConfigUnavailableError) return 503;
-	// Placement errors (warren-14ad / pl-9ba1): both surface as 503 since
-	// they signal a worker-side capacity / reachability problem on a route
-	// that depended on a healthy worker. NotFoundError handles the "warren
-	// never recorded this burrow id" case before placement is consulted —
-	// see `getBurrowHandler` in handlers/burrows.ts.
-	if (err instanceof NoEligibleWorkerError) return 503;
-	if (err instanceof StickyWorkerUnreachableError) return 503;
+	// Multi-worker placement errors were retired with the K8s migration
+	// (warren-76c5): the self-host backend is a single local burrow, so there
+	// is no placement/sticky-worker failure to map. NotFoundError still handles
+	// the "warren never recorded this burrow id" case — see `getBurrowHandler`
+	// in handlers/burrows.ts.
 	if (err instanceof AgentSchemaError) return 422;
 	if (err instanceof RunSpawnError) return 500;
 	return 500;

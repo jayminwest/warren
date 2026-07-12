@@ -2,7 +2,7 @@
  * Worker probe loop (warren-0f0c / pl-9ba1 step 6, parent warren-6747).
  *
  * Runs every `WARREN_WORKER_PROBE_INTERVAL_MS` (default 30s), asks every
- * registered client in the {@link BurrowClientPool} for a `/healthz`,
+ * registered client in the {@link BurrowClient} for a `/healthz`,
  * and flips the `workers.state` column based on the result:
  *
  *   - probe ok      ⇒ `healthy`     (transitioning back from `unreachable`)
@@ -22,13 +22,13 @@
  * loudly as `worker_probe.tick_failed` rather than killing the loop.
  *
  * Why this lives next to bridges.ts / scheduler.ts: like those, it is a
- * boot-time background loop that depends on the same `BurrowClientPool`
+ * boot-time background loop that depends on the same `BurrowClient`
  * / `WorkersRepo` seams, has its own stop() on the teardown chain, and
  * exposes a `runOnce` test surface. Probe is read-only from the pool's
  * POV; it never mutates the pool.
  */
 
-import type { BurrowClientPool, ProbeResult } from "../burrow-client/pool.ts";
+import { type BurrowClient, type ProbeResult, probeBurrowClient } from "../burrow-client/index.ts";
 import type { WorkersRepo } from "../db/repos/workers.ts";
 import type { WorkerState } from "../db/schema.ts";
 import { parseTrueEnv } from "./main/utils.ts";
@@ -92,7 +92,7 @@ function parsePositiveInt(raw: string | undefined, label: string): number | unde
 export type WorkerProbeTimerHandle = object;
 
 export interface StartWorkerProbeInput {
-	readonly pool: BurrowClientPool;
+	readonly pool: BurrowClient;
 	readonly workers: WorkersRepo;
 	readonly config?: WorkerProbeConfig;
 	readonly logger?: WorkerProbeLogger;
@@ -194,25 +194,21 @@ export function startWorkerProbe(input: StartWorkerProbeInput): WorkerProbeHandl
 }
 
 interface RunProbeTickInput {
-	readonly pool: BurrowClientPool;
+	readonly pool: BurrowClient;
 	readonly workers: WorkersRepo;
 	readonly timeoutMs: number;
 	readonly logger?: WorkerProbeLogger;
 }
 
 /**
- * One probe pass. Calls `pool.probe()`, then for each result reconciles
- * the corresponding `workers` row's state. Returns the raw probes plus
- * a tidy list of state transitions for tests / observability.
- *
- * Workers in the pool that have no `workers` row (e.g. the synthetic
- * `local` row was deleted out from under us) are skipped — the probe
- * still runs against the client but nothing to write. Workers in the
- * `workers` table with no pool entry are out of scope; the fan-out
- * iterates the pool, not the table.
+ * One probe pass. Probes the single local burrow (warren-76c5 — multi-worker
+ * pooling is retired), then reconciles the matching `workers` row's state.
+ * Returns the raw probe plus a tidy list of state transitions for tests /
+ * observability. The probe writes nothing if the local `workers` row was
+ * deleted out from under us (the table lives until step 24).
  */
 export async function runProbeTick(input: RunProbeTickInput): Promise<WorkerProbeTickResult> {
-	const probes = await input.pool.probe(input.timeoutMs);
+	const probes: readonly ProbeResult[] = [await probeBurrowClient(input.pool, input.timeoutMs)];
 	const transitions: WorkerProbeTransition[] = [];
 
 	for (const probe of probes) {

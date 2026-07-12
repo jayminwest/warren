@@ -1,4 +1,4 @@
-import type { BurrowClientPool } from "../../burrow-client/pool.ts";
+import type { BurrowClient } from "../../burrow-client/index.ts";
 import type { Repos } from "../../db/repos/index.ts";
 import type { RunFailureReason, RunTerminalState } from "../../db/schema.ts";
 import type {
@@ -45,21 +45,20 @@ export interface ReapRunInput {
 	readonly outcome: RunTerminalState;
 	readonly repos: Repos;
 	/**
-	 * Multi-worker burrow pool (warren-c0c9 / pl-9ba1 step 5). reap resolves
-	 * the owning worker via `pool.clientFor({burrowId: run.burrowId})` for
-	 * the workspace lookup + seeds-close mirror http calls. Propagates
-	 * `StickyWorkerUnreachableError` (503 via src/server/errors.ts) when the
-	 * pinned worker is `unreachable`.
+	 * The single local burrow client (warren-76c5). reap reads the burrow's
+	 * workspace path + branch through it for the workspace lookup + seeds-close
+	 * mirror http calls. Multi-worker placement was retired with the K8s
+	 * migration — the self-host backend is one local burrow.
 	 */
-	readonly burrowClientPool: BurrowClientPool;
+	readonly burrowClient: BurrowClient;
 	/**
 	 * Runtime-provider seam (K8s migration pl-829f step 13 / warren-1f56). The
 	 * workspace-dependent half of reap runs as `provider.finalize(handle, intent)`
 	 * followed by `provider.terminate(handle)`. Optional: when omitted, reap
-	 * builds the burrow-backed `LocalProvider` over `burrowClientPool` (+ the same
-	 * `fs`/`exec`), so pre-existing callers and tests that only pass the pool are
-	 * unchanged. Production dispatchers thread `deps.runtimeProvider` through so a
-	 * future K8sProvider is honored.
+	 * builds the burrow-backed `LocalProvider` over `burrowClient` (+ the same
+	 * `fs`/`exec`), so pre-existing callers and tests that only pass the client
+	 * are unchanged. Production dispatchers thread `deps.runtimeProvider` through
+	 * so a future K8sProvider is honored.
 	 */
 	readonly runtimeProvider?: RuntimeProvider;
 	/** If supplied, every reap-emitted event is published here too. */

@@ -8,7 +8,7 @@
  * runtime cycle.
  */
 
-import type { BurrowClientPool } from "../../burrow-client/pool.ts";
+import type { BurrowClient } from "../../burrow-client/index.ts";
 import type { Repos } from "../../db/repos/index.ts";
 import type { RunFailureReason, RunMode, RunTerminalState } from "../../db/schema.ts";
 import type { RuntimeProvider, TerminalReason } from "../../runtime/contract.ts";
@@ -130,7 +130,7 @@ export interface BridgeRunStreamInput {
 	readonly burrowRunId: string;
 	/**
 	 * Burrow's burrow id (column `runs.burrow_id`). The bridge uses this to
-	 * resolve the owning worker via `burrowClientPool.clientFor({burrowId})`
+	 * resolve the owning worker via `burrowClient.clientFor({burrowId})`
 	 * so the stream poll lands on the same worker that hosts the burrow.
 	 */
 	readonly burrowId: string;
@@ -142,7 +142,7 @@ export interface BridgeRunStreamInput {
 	 * `http.runs.stream` poll. Propagates `StickyWorkerUnreachableError`
 	 * (503 via src/server/errors.ts) when the pinned worker is `unreachable`.
 	 */
-	readonly burrowClientPool: BurrowClientPool;
+	readonly burrowClient: BurrowClient;
 	/**
 	 * Runtime-provider seam (K8s migration pl-829f step 13 / warren-1f56). The
 	 * bridge's three burrow touchpoints route through it: the event stream is
@@ -151,7 +151,7 @@ export interface BridgeRunStreamInput {
 	 * `provider.cancel(handle)`. Event persistence + warren seq bookkeeping,
 	 * poller cadence, and terminal-reconciliation decisions stay DOMAIN (they run
 	 * over the seam's output). Optional: defaults to a burrow-backed
-	 * `LocalProvider` over `burrowClientPool` when absent (same fallback shape as
+	 * `LocalProvider` over `burrowClient` when absent (same fallback shape as
 	 * `reapRun` / `cancelRun` / the watchdog), so callers that only wire the pool
 	 * keep working. Ignored when a test `source` overrides the stream.
 	 */

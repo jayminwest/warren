@@ -113,7 +113,7 @@ describe("reapRun plot_merge sub-step (warren-7e0f / pl-2047 step 6)", () => {
 			runId: ctx.runId,
 			outcome: "succeeded",
 			repos: ctx.repos,
-			burrowClientPool: await makePool(fakeBurrowClient(makeBurrow()), ctx.repos),
+			burrowClient: await makePool(fakeBurrowClient(makeBurrow()), ctx.repos),
 			broker: ctx.broker,
 			fs: f.fs,
 			exec: fakeExec().exec,
@@ -157,7 +157,7 @@ describe("reapRun plot_merge sub-step (warren-7e0f / pl-2047 step 6)", () => {
 			runId: ctx.runId,
 			outcome: "succeeded",
 			repos: ctx.repos,
-			burrowClientPool: await makePool(fakeBurrowClient(makeBurrow()), ctx.repos),
+			burrowClient: await makePool(fakeBurrowClient(makeBurrow()), ctx.repos),
 			broker: ctx.broker,
 			fs: f.fs,
 			exec: fakeExec().exec,
@@ -182,7 +182,7 @@ describe("reapRun plot_merge sub-step (warren-7e0f / pl-2047 step 6)", () => {
 			runId: fresh.id,
 			outcome: "succeeded",
 			repos: ctx.repos,
-			burrowClientPool: await makePool(fakeBurrowClient(makeBurrow()), ctx.repos),
+			burrowClient: await makePool(fakeBurrowClient(makeBurrow()), ctx.repos),
 			fs: f.fs,
 			exec: fakeExec().exec,
 		});
@@ -220,7 +220,7 @@ describe("reapRun plot_merge sub-step (warren-7e0f / pl-2047 step 6)", () => {
 			runId: ctx.runId,
 			outcome: "succeeded",
 			repos: ctx.repos,
-			burrowClientPool: await makePool(fakeBurrowClient(makeBurrow()), ctx.repos),
+			burrowClient: await makePool(fakeBurrowClient(makeBurrow()), ctx.repos),
 			fs: f.fs,
 			exec: fakeExec().exec,
 		});
@@ -247,7 +247,7 @@ describe("reapRun plot_merge sub-step (warren-7e0f / pl-2047 step 6)", () => {
 			runId: ctx.runId,
 			outcome: "succeeded",
 			repos: ctx.repos,
-			burrowClientPool: await makePool(fakeBurrowClient(makeBurrow()), ctx.repos),
+			burrowClient: await makePool(fakeBurrowClient(makeBurrow()), ctx.repos),
 			fs: f.fs,
 			exec: fakeExec().exec,
 		});
@@ -266,7 +266,7 @@ describe("reapRun plot_merge sub-step (warren-7e0f / pl-2047 step 6)", () => {
 			runId: ctx.runId,
 			outcome: "succeeded",
 			repos: ctx.repos,
-			burrowClientPool: await makePool(fakeBurrowClient(makeBurrow()), ctx.repos),
+			burrowClient: await makePool(fakeBurrowClient(makeBurrow()), ctx.repos),
 			fs: f.fs,
 			exec: fakeExec().exec,
 		});
@@ -290,7 +290,7 @@ describe("reapRun plot_merge sub-step (warren-7e0f / pl-2047 step 6)", () => {
 			runId: ctx.runId,
 			outcome: "succeeded",
 			repos: ctx.repos,
-			burrowClientPool: await makePool(fakeBurrowClient(makeBurrow()), ctx.repos),
+			burrowClient: await makePool(fakeBurrowClient(makeBurrow()), ctx.repos),
 			fs: f.fs,
 			exec: fakeExec().exec,
 		});
@@ -314,7 +314,7 @@ describe("reapRun plot_merge sub-step (warren-7e0f / pl-2047 step 6)", () => {
 			runId: ctx.runId,
 			outcome: "succeeded",
 			repos: ctx.repos,
-			burrowClientPool: await makePool(fakeBurrowClient(makeBurrow()), ctx.repos),
+			burrowClient: await makePool(fakeBurrowClient(makeBurrow()), ctx.repos),
 			fs: fakeFs().fs,
 			exec: fakeExec().exec,
 		});

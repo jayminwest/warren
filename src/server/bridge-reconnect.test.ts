@@ -51,7 +51,7 @@ describe("runWithReconnect bridge_stalled/bridge_recovered (warren-6376)", () =>
 		const registry = createBridgeRegistry({
 			repos,
 			broker: new RunEventBroker(),
-			burrowClientPool: await makePool(repos),
+			burrowClient: await makePool(repos),
 			bridge: async () => {
 				calls += 1;
 				// Five errored reconnects with no progress, then a clean end.
@@ -79,7 +79,7 @@ describe("runWithReconnect bridge_stalled/bridge_recovered (warren-6376)", () =>
 		const registry = createBridgeRegistry({
 			repos,
 			broker: new RunEventBroker(),
-			burrowClientPool: await makePool(repos),
+			burrowClient: await makePool(repos),
 			bridge: async () => {
 				calls += 1;
 				// 3 errored (→ stall), then a reconnect that streams events
@@ -107,7 +107,7 @@ describe("runWithReconnect bridge_stalled/bridge_recovered (warren-6376)", () =>
 		const registry = createBridgeRegistry({
 			repos,
 			broker: new RunEventBroker(),
-			burrowClientPool: await makePool(repos),
+			burrowClient: await makePool(repos),
 			// Burrow is up but unresponsive: every reconnect errors with
 			// burrowRunMissing:false, so the loop would spin forever without
 			// the hard ceiling (warren-af76).
@@ -147,7 +147,7 @@ describe("runWithReconnect bridge_stalled/bridge_recovered (warren-6376)", () =>
 			burrowRunId: "rb_a",
 			repos,
 			broker: new RunEventBroker(),
-			burrowClientPool: pool,
+			burrowClient: pool,
 			failureReason: "burrow_unreachable",
 			destroyWorkspace: async (input) => {
 				seen.push(input);
@@ -163,7 +163,7 @@ describe("runWithReconnect bridge_stalled/bridge_recovered (warren-6376)", () =>
 		expect(seen).toHaveLength(1);
 		expect(seen[0]?.burrowId).toBe("bur_a");
 		expect(seen[0]?.mode).toBe("batch");
-		expect(seen[0]?.burrowClientPool).toBe(pool);
+		expect(seen[0]?.burrowClient).toBe(pool);
 
 		const kinds = (await repos.events.listByRun(runId)).map((e) => e.kind);
 		expect(kinds).toContain("reap.workspace_destroyed");
@@ -192,7 +192,7 @@ describe("runWithReconnect bridge_stalled/bridge_recovered (warren-6376)", () =>
 		const registry = createBridgeRegistry({
 			repos,
 			broker: new RunEventBroker(),
-			burrowClientPool: await makePool(repos),
+			burrowClient: await makePool(repos),
 			bridge: async () => {
 				calls += 1;
 				return calls <= 2

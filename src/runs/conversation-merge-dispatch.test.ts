@@ -34,7 +34,7 @@ describe("createMergePollerDispatch", () => {
 				// biome-ignore lint/suspicious/noExplicitAny: narrow test stub
 			} as any,
 			// biome-ignore lint/suspicious/noExplicitAny: unused by the spawn stub
-			burrowClientPool: {} as any,
+			burrowClient: {} as any,
 			bridges,
 			// biome-ignore lint/suspicious/noExplicitAny: unused by the spawn stub
 			warrenConfigs: {} as any,

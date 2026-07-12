@@ -42,7 +42,7 @@
  * and terminalized here (warren-1f56).
  */
 
-import type { BurrowClientPool } from "../burrow-client/pool.ts";
+import type { BurrowClient } from "../burrow-client/index.ts";
 import { ValidationError } from "../core/errors.ts";
 import type { Repos } from "../db/repos/index.ts";
 import { RUN_TERMINAL_STATES, type RunState, type RunTerminalState } from "../db/schema.ts";
@@ -63,14 +63,14 @@ export interface CancelRunInput {
 	 * the inline `reap` it forwards to resolves the burrow workspace through it,
 	 * and it backs the default `runtimeProvider` fallback below.
 	 */
-	readonly burrowClientPool: BurrowClientPool;
+	readonly burrowClient: BurrowClient;
 	/**
 	 * Runtime-provider seam (K8s migration pl-829f step 13 / warren-1f56). The
 	 * graceful cancel is `provider.cancel(handle, reason?)` and the post-cancel
 	 * state re-read is `provider.status(handle)` — the provider owns resolving
 	 * its backend (LocalProvider resolves the sole burrow worker; placement is
 	 * retired at the seam). Optional: defaults to a burrow-backed `LocalProvider`
-	 * over `burrowClientPool` so callers that only wire the pool keep working
+	 * over `burrowClient` so callers that only wire the pool keep working
 	 * (same fallback shape as `reapRun`).
 	 */
 	readonly runtimeProvider?: RuntimeProvider;
@@ -143,9 +143,9 @@ export async function cancelRun(input: CancelRunInput): Promise<CancelRunResult>
 	}
 	// Runtime-provider seam (warren-1f56). Default to the burrow-backed
 	// LocalProvider over the injected pool so callers that only pass
-	// `burrowClientPool` keep their behavior (same fallback shape as `reapRun`).
+	// `burrowClient` keep their behavior (same fallback shape as `reapRun`).
 	const provider: RuntimeProvider =
-		input.runtimeProvider ?? new LocalProvider({ burrowClientPool: () => input.burrowClientPool });
+		input.runtimeProvider ?? new LocalProvider({ burrowClient: () => input.burrowClient });
 	// The seam handle: `sandboxId` is the burrowId, `providerRunId` the burrowRunId
 	// cancel is scoped to.
 	const handle: RunHandle = {
@@ -202,7 +202,7 @@ export async function cancelRun(input: CancelRunInput): Promise<CancelRunResult>
 				runId: run.id,
 				outcome: burrowState,
 				repos: input.repos,
-				burrowClientPool: input.burrowClientPool,
+				burrowClient: input.burrowClient,
 				...(input.broker !== undefined ? { broker: input.broker } : {}),
 				...(input.now !== undefined ? { now: input.now } : {}),
 				...(input.logger !== undefined ? { logger: input.logger } : {}),

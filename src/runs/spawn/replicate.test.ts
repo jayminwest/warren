@@ -50,7 +50,7 @@ describe("spawnRun: replicate (warren-e96f)", () => {
 		let refreshRef: string | undefined = "sentinel";
 		const { run } = await spawnRun({
 			repos,
-			burrowClientPool: await makePool(repos, client),
+			burrowClient: await makePool(repos, client),
 			agentName: "refactor-bot",
 			projectId: "prj_xxxxxxxxxxxx",
 			prompt: "first pass",
@@ -77,7 +77,7 @@ describe("spawnRun: replicate (warren-e96f)", () => {
 		let refreshRef: string | undefined;
 		await spawnRun({
 			repos,
-			burrowClientPool: await makePool(repos, client),
+			burrowClient: await makePool(repos, client),
 			agentName: "refactor-bot",
 			projectId: "prj_xxxxxxxxxxxx",
 			prompt: "first pass",
@@ -112,7 +112,7 @@ describe("spawnRun: replicate (warren-e96f)", () => {
 		await expect(
 			spawnRun({
 				repos,
-				burrowClientPool: await makePool(repos, client),
+				burrowClient: await makePool(repos, client),
 				agentName: "refactor-bot",
 				projectId: "prj_xxxxxxxxxxxx",
 				prompt: "first pass",
@@ -127,7 +127,7 @@ describe("spawnRun: replicate (warren-e96f)", () => {
 		const { client } = makeBurrowClient();
 		const { run } = await spawnRun({
 			repos,
-			burrowClientPool: await makePool(repos, client),
+			burrowClient: await makePool(repos, client),
 			agentName: "refactor-bot",
 			projectId: "prj_xxxxxxxxxxxx",
 			prompt: "follow up",
@@ -140,7 +140,7 @@ describe("spawnRun: replicate (warren-e96f)", () => {
 		const { client } = makeBurrowClient();
 		const { run } = await spawnRun({
 			repos,
-			burrowClientPool: await makePool(repos, client),
+			burrowClient: await makePool(repos, client),
 			agentName: "refactor-bot",
 			projectId: "prj_xxxxxxxxxxxx",
 			prompt: "fresh",

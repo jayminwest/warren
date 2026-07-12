@@ -57,7 +57,7 @@
  * so unit tests don't touch real sockets or wait on real timers.
  */
 
-import { LOCAL_WORKER_NAME } from "../../burrow-client/pool.ts";
+import { LOCAL_WORKER_NAME } from "../../burrow-client/index.ts";
 import type { PreviewMode } from "../../warren-config/index.ts";
 import { DEFAULT_DEBOUNCE_MS, forwardToUpstream, maybeFlushLastHit } from "./forward.ts";
 import { previewError, previewUnauthorized } from "./responses.ts";

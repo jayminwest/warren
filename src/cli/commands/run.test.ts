@@ -1,7 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Burrow, Run as BurrowRun } from "@os-eco/burrow-cli";
-import { BurrowClient } from "../../burrow-client/client.ts";
-import { BurrowClientPool } from "../../burrow-client/pool.ts";
+import { BurrowClient } from "../../burrow-client/index.ts";
 import { openDatabase, type WarrenDb } from "../../db/client.ts";
 import { createRepos, type Repos } from "../../db/repos/index.ts";
 import type { RunRow, RunTerminalState } from "../../db/schema.ts";
@@ -37,13 +36,10 @@ function fakeBurrowClient(): BurrowClient {
 
 async function fakeBurrowDeps(repos: Repos): Promise<{
 	burrowClient: BurrowClient;
-	burrowClientPool: BurrowClientPool;
 }> {
 	const burrowClient = fakeBurrowClient();
 	await repos.workers.upsert({ name: "local", url: "unix:///tmp/x.sock" });
-	const burrowClientPool = new BurrowClientPool({ repos });
-	burrowClientPool.register("local", burrowClient);
-	return { burrowClient, burrowClientPool };
+	return { burrowClient };
 }
 
 function buildSpawnStub(repos: Repos, agentName: string, projectId: string) {

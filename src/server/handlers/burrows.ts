@@ -8,7 +8,7 @@
 
 import type { Burrow, BurrowKind, BurrowState, HttpBurrowListFilter } from "@os-eco/burrow-cli";
 import { withTransportMapping } from "../../burrow-client/client.ts";
-import { fanOutAcrossWorkers } from "../../burrow-client/fanout.ts";
+import { LOCAL_WORKER_NAME } from "../../burrow-client/index.ts";
 import { NotFoundError, ValidationError } from "../../core/errors.ts";
 import { jsonResponse } from "../response.ts";
 import type { RouteHandler, ServerDeps } from "../types.ts";
@@ -46,17 +46,12 @@ function parseBurrowState(raw: string | null): BurrowState | undefined {
 }
 
 /**
- * Fan-out `GET /burrows` (warren-14ad, plan acceptance #4). Calls
- * `http.burrows.list(filter)` against every registered worker via
- * `fanOutAcrossWorkers`, unions the rows, and sorts the wire output by
- * `createdAt` ascending (oldest first; same order operators get from a
- * single-worker `burrow burrows list`).
- *
- * Per-worker rejections do not fail the response: the helper logs a
- * `worker_unreachable` warn line per drop-out and the handler surfaces
- * the same set in a `workerErrors` envelope so consumers see which
- * workers contributed and which fell out. Empty pool → 200 with empty
- * arrays.
+ * `GET /burrows` — list the single local burrow's burrows (warren-76c5).
+ * Multi-worker fan-out was retired with the K8s migration: warren's self-host
+ * backend is exactly one local burrow, so this lists that one client's burrows
+ * and sorts by `createdAt` ascending (oldest first). A transport failure lands
+ * in the `workerErrors` envelope (shape preserved) rather than failing the
+ * response.
  */
 export function listBurrowsHandler(deps: ServerDeps): RouteHandler {
 	return async (ctx) => {
@@ -69,47 +64,43 @@ export function listBurrowsHandler(deps: ServerDeps): RouteHandler {
 			...(projectRoot !== null ? { projectRoot } : {}),
 		};
 
-		const fan = await fanOutAcrossWorkers(
-			deps.burrowClientPool,
-			(client) => withTransportMapping(client.config, () => client.http.burrows.list(filter)),
-			{ logger: deps.logger, op: "burrows.list" },
-		);
-
-		const burrows: Burrow[] = fan.results
-			.flatMap((r) => r.value.map((b) => ({ burrow: b, workerName: r.workerName })))
-			.sort((a, b) => a.burrow.createdAt.getTime() - b.burrow.createdAt.getTime())
-			.map((entry) => entry.burrow);
-
-		const workerErrors = fan.errors.map((e) => ({
-			worker: e.workerName,
-			message: e.error.message,
-		}));
-
-		return jsonResponse(200, { burrows, workerErrors });
+		const client = deps.burrowClient;
+		try {
+			const rows = await withTransportMapping(client.config, () =>
+				client.http.burrows.list(filter),
+			);
+			const burrows: Burrow[] = [...rows].sort(
+				(a, b) => a.createdAt.getTime() - b.createdAt.getTime(),
+			);
+			return jsonResponse(200, { burrows, workerErrors: [] });
+		} catch (err) {
+			const message = err instanceof Error ? err.message : String(err);
+			deps.logger?.warn?.({ op: "burrows.list", err: message }, "worker_unreachable");
+			return jsonResponse(200, {
+				burrows: [],
+				workerErrors: [{ worker: LOCAL_WORKER_NAME, message }],
+			});
+		}
 	};
 }
 
 /**
- * Targeted `GET /burrows/:id` (warren-14ad). Resolves the owning worker
- * via `pool.clientFor({burrowId})` (sticky-by-burrow) and forwards the
- * call. Burrows warren has no placement row for return 404 — they are
- * not warren-managed even if a worker has them on disk. A pinned-but-
- * unreachable worker falls through as `StickyWorkerUnreachableError`
- * (503) rather than silently re-placing on another worker (plan risk #5).
+ * Targeted `GET /burrows/:id` (warren-76c5). Forwards to the single local
+ * burrow client. Burrows warren has no `burrows` row for return 404 — they are
+ * not warren-managed even if the burrow has them on disk.
  */
 export function getBurrowHandler(deps: ServerDeps): RouteHandler {
 	return async (ctx) => {
 		const id = requireParam(ctx, "id");
-		// 404 fast for burrows warren never recorded — `placeForBurrow` would
-		// otherwise raise `NoEligibleWorkerError` and the generic 503 mapping
-		// would lose the not-found semantics.
+		// 404 fast for burrows warren never recorded, preserving not-found
+		// semantics rather than surfacing a raw burrow error.
 		if ((await deps.repos.burrows.get(id)) === null) {
 			throw new NotFoundError(`burrow not found: ${id}`, {
 				recoveryHint:
-					"warren has no placement record for this burrow id; it may belong to another control plane",
+					"warren has no record for this burrow id; it may belong to another control plane",
 			});
 		}
-		const { client } = await deps.burrowClientPool.clientFor({ burrowId: id });
+		const client = deps.burrowClient;
 		const burrow = await withTransportMapping(client.config, () => client.http.burrows.get(id));
 		return jsonResponse(200, burrow);
 	};

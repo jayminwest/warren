@@ -73,9 +73,9 @@ export async function bridgeRunStream(input: BridgeRunStreamInput): Promise<Brid
 	// injected pool (same fallback shape as reap/cancel/watchdog) so callers that
 	// only wire the pool keep working; the provider resolves the sole worker
 	// internally (placement retired at the seam), so the bridge no longer touches
-	// `burrowClientPool.clientFor` itself.
+	// `burrowClient.clientFor` itself.
 	const provider: RuntimeProvider =
-		input.runtimeProvider ?? new LocalProvider({ burrowClientPool: () => input.burrowClientPool });
+		input.runtimeProvider ?? new LocalProvider({ burrowClient: () => input.burrowClient });
 	// Seam handle: `sandboxId` is the burrowId, `providerRunId` the burrowRunId.
 	const handle: RunHandle = {
 		runId,

@@ -53,7 +53,7 @@ export interface LoadedWarrenServerConfig {
 	/**
 	 * Post-validation `[workers]` entries with parsed transports. Empty
 	 * array when no `[[workers]]` block was declared — the boot path
-	 * uses `workers.length > 0` to decide between `BurrowClientPool.
+	 * uses `workers.length > 0` to decide between `BurrowClient.
 	 * fromConfig` (file-driven) and `fromEnv` (zero-config back-compat).
 	 */
 	readonly workers: readonly ParsedWorkerEntry[];

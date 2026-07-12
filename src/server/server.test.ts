@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { BurrowClient, BurrowClientPool } from "../burrow-client/index.ts";
+import { BurrowClient } from "../burrow-client/index.ts";
 import { ValidationError } from "../core/errors.ts";
 import { openDatabase, type WarrenDb } from "../db/client.ts";
 import { createRepos, type Repos } from "../db/repos/index.ts";
@@ -60,20 +60,18 @@ async function depsFor(
 ): Promise<ServerDeps> {
 	const burrowClient = makeBurrowClient();
 	await repos.workers.upsert({ name: "local", url: "unix:///tmp/x.sock" });
-	const burrowClientPool = new BurrowClientPool({ repos });
-	burrowClientPool.register("local", burrowClient);
 	const broker = new RunEventBroker();
 	return {
 		repos,
 		...(overrides.db !== undefined ? { db: overrides.db } : {}),
-		burrowClientPool,
+		burrowClient,
 		broker,
 		bridges:
 			bridges ??
 			createBridgeRegistry({
 				repos,
 				broker,
-				burrowClientPool,
+				burrowClient,
 				bridge: async () => ({ written: 0, skipped: 0, errored: false }),
 			}),
 		canopyConfig: {

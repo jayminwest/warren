@@ -53,7 +53,7 @@ export function readyzHandler(deps: ServerDeps): RouteHandler {
 		checks.push(
 			await checkDatabaseReachable({ ...(deps.db !== undefined ? { db: deps.db } : {}) }),
 		);
-		checks.push(await checkBurrowPoolReachable(deps.burrowClientPool));
+		checks.push(await checkBurrowPoolReachable(deps.burrowClient));
 		checks.push(await checkAgentsRegistered(deps));
 		checks.push(checkCanopyClone({ env }));
 		checks.push(await checkCanopyClean({ env, spawn }));

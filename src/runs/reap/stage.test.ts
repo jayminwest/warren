@@ -77,7 +77,7 @@ describe("reapRun commit-through-reap sub-steps (warren-343a + warren-7ecc)", ()
 				runId: plotCtx.runId,
 				outcome: "succeeded",
 				repos: plotCtx.repos,
-				burrowClientPool: await makePool(fakeBurrowClient(makeBurrow()), plotCtx.repos),
+				burrowClient: await makePool(fakeBurrowClient(makeBurrow()), plotCtx.repos),
 				fs: f.fs,
 				exec: e.exec,
 			});
@@ -126,7 +126,7 @@ describe("reapRun commit-through-reap sub-steps (warren-343a + warren-7ecc)", ()
 				runId: plotCtx.runId,
 				outcome: "succeeded",
 				repos: plotCtx.repos,
-				burrowClientPool: await makePool(fakeBurrowClient(makeBurrow()), plotCtx.repos),
+				burrowClient: await makePool(fakeBurrowClient(makeBurrow()), plotCtx.repos),
 				fs: f.fs,
 				exec: e.exec,
 			});
@@ -161,7 +161,7 @@ describe("reapRun commit-through-reap sub-steps (warren-343a + warren-7ecc)", ()
 				runId: plotCtx.runId,
 				outcome: "succeeded",
 				repos: plotCtx.repos,
-				burrowClientPool: await makePool(fakeBurrowClient(makeBurrow()), plotCtx.repos),
+				burrowClient: await makePool(fakeBurrowClient(makeBurrow()), plotCtx.repos),
 				fs: f.fs,
 				exec: e.exec,
 			});
@@ -191,7 +191,7 @@ describe("reapRun commit-through-reap sub-steps (warren-343a + warren-7ecc)", ()
 				runId: plotCtx.runId,
 				outcome: "succeeded",
 				repos: plotCtx.repos,
-				burrowClientPool: await makePool(fakeBurrowClient(makeBurrow()), plotCtx.repos),
+				burrowClient: await makePool(fakeBurrowClient(makeBurrow()), plotCtx.repos),
 				fs: f.fs,
 				exec: e.exec,
 			});
@@ -218,7 +218,7 @@ describe("reapRun commit-through-reap sub-steps (warren-343a + warren-7ecc)", ()
 				runId: plotCtx.runId,
 				outcome: "succeeded",
 				repos: plotCtx.repos,
-				burrowClientPool: await makePool(fakeBurrowClient(makeBurrow()), plotCtx.repos),
+				burrowClient: await makePool(fakeBurrowClient(makeBurrow()), plotCtx.repos),
 				fs: f.fs,
 				exec: e.exec,
 			});
@@ -243,7 +243,7 @@ describe("reapRun commit-through-reap sub-steps (warren-343a + warren-7ecc)", ()
 			runId: ctx.runId,
 			outcome: "succeeded",
 			repos: ctx.repos,
-			burrowClientPool: await makePool(fakeBurrowClient(makeBurrow()), ctx.repos),
+			burrowClient: await makePool(fakeBurrowClient(makeBurrow()), ctx.repos),
 			fs: f.fs,
 			exec: e.exec,
 		});
@@ -308,7 +308,7 @@ describe("reapRun commit-through-reap sub-steps (warren-343a + warren-7ecc)", ()
 				runId: seedsCtx.runId,
 				outcome: "succeeded",
 				repos: seedsCtx.repos,
-				burrowClientPool: await makePool(fakeBurrowClient(makeBurrow()), seedsCtx.repos),
+				burrowClient: await makePool(fakeBurrowClient(makeBurrow()), seedsCtx.repos),
 				fs: f.fs,
 				exec: e.exec,
 			});
@@ -363,7 +363,7 @@ describe("reapRun commit-through-reap sub-steps (warren-343a + warren-7ecc)", ()
 				runId: seedsCtx.runId,
 				outcome: "succeeded",
 				repos: seedsCtx.repos,
-				burrowClientPool: await makePool(fakeBurrowClient(makeBurrow()), seedsCtx.repos),
+				burrowClient: await makePool(fakeBurrowClient(makeBurrow()), seedsCtx.repos),
 				fs: f.fs,
 				exec: e.exec,
 			});
@@ -396,7 +396,7 @@ describe("reapRun commit-through-reap sub-steps (warren-343a + warren-7ecc)", ()
 				runId: seedsCtx.runId,
 				outcome: "succeeded",
 				repos: seedsCtx.repos,
-				burrowClientPool: await makePool(fakeBurrowClient(makeBurrow()), seedsCtx.repos),
+				burrowClient: await makePool(fakeBurrowClient(makeBurrow()), seedsCtx.repos),
 				fs: f.fs,
 				exec: e.exec,
 			});
@@ -426,7 +426,7 @@ describe("reapRun commit-through-reap sub-steps (warren-343a + warren-7ecc)", ()
 				runId: seedsCtx.runId,
 				outcome: "succeeded",
 				repos: seedsCtx.repos,
-				burrowClientPool: await makePool(fakeBurrowClient(makeBurrow()), seedsCtx.repos),
+				burrowClient: await makePool(fakeBurrowClient(makeBurrow()), seedsCtx.repos),
 				fs: f.fs,
 				exec: e.exec,
 			});
@@ -454,7 +454,7 @@ describe("reapRun commit-through-reap sub-steps (warren-343a + warren-7ecc)", ()
 				runId: seedsCtx.runId,
 				outcome: "succeeded",
 				repos: seedsCtx.repos,
-				burrowClientPool: await makePool(fakeBurrowClient(makeBurrow()), seedsCtx.repos),
+				burrowClient: await makePool(fakeBurrowClient(makeBurrow()), seedsCtx.repos),
 				fs: f.fs,
 				exec: e.exec,
 			});
@@ -479,7 +479,7 @@ describe("reapRun commit-through-reap sub-steps (warren-343a + warren-7ecc)", ()
 			runId: ctx.runId,
 			outcome: "succeeded",
 			repos: ctx.repos,
-			burrowClientPool: await makePool(fakeBurrowClient(makeBurrow()), ctx.repos),
+			burrowClient: await makePool(fakeBurrowClient(makeBurrow()), ctx.repos),
 			fs: f.fs,
 			exec: e.exec,
 		});

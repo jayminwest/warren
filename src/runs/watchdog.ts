@@ -46,7 +46,7 @@
  * default tick cadence is 30s.
  */
 
-import type { BurrowClientPool } from "../burrow-client/pool.ts";
+import type { BurrowClient } from "../burrow-client/index.ts";
 import { formatError } from "../core/errors.ts";
 import type { Repos } from "../db/repos/index.ts";
 import type { RunRow } from "../db/schema.ts";
@@ -75,14 +75,14 @@ export const DEFAULT_WATCHDOG_HEARTBEAT_TIMEOUT_MS = 2_700_000;
 
 export interface WatchdogTickDeps {
 	readonly repos: Repos;
-	readonly burrowClientPool: BurrowClientPool;
+	readonly burrowClient: BurrowClient;
 	/**
 	 * Runtime-provider seam (K8s migration pl-829f step 13 / warren-1f56). Only
 	 * the burrow-cancel step routes through it (`provider.cancel(handle)`);
 	 * mode-exclusion, heartbeat, and failure_reason derivation stay domain. The
 	 * reap the tick force-fails through still resolves its workspace via
-	 * `burrowClientPool`. Optional: defaults to a burrow-backed `LocalProvider`
-	 * over `burrowClientPool` (same fallback shape as `reapRun`) so callers that
+	 * `burrowClient`. Optional: defaults to a burrow-backed `LocalProvider`
+	 * over `burrowClient` (same fallback shape as `reapRun`) so callers that
 	 * only wire the pool keep working.
 	 */
 	readonly runtimeProvider?: RuntimeProvider;
@@ -184,7 +184,7 @@ async function forceFail(
 		outcome: "failed",
 		failureReason: "timed_out",
 		repos: deps.repos,
-		burrowClientPool: deps.burrowClientPool,
+		burrowClient: deps.burrowClient,
 		...(deps.broker !== undefined ? { broker: deps.broker } : {}),
 		...(deps.now !== undefined ? { now: deps.now } : {}),
 		...(deps.logger !== undefined ? { logger: deps.logger } : {}),
@@ -215,7 +215,7 @@ async function cancelBurrowRun(
 ): Promise<void> {
 	if (run.burrowId === null || run.burrowRunId === null) return;
 	const provider: RuntimeProvider =
-		deps.runtimeProvider ?? new LocalProvider({ burrowClientPool: () => deps.burrowClientPool });
+		deps.runtimeProvider ?? new LocalProvider({ burrowClient: () => deps.burrowClient });
 	const handle: RunHandle = {
 		runId: run.id,
 		sandboxId: run.burrowId,

@@ -19,7 +19,7 @@
  *   - `finalize`     → step 20 (warren-0d35): in-pod post-agent reap emitting deltas.
  *
  * The K8s API client is taken as a FACTORY (`() => CoreV1Api`) rather than a live
- * client — mirroring `LocalProvider`'s `() => BurrowClientPool`. Construction
+ * client — mirroring `LocalProvider`'s `() => BurrowClient`. Construction
  * never touches a cluster (no stub invokes the factory), so the registry can
  * build a `K8sProvider` off `WARREN_RUNTIME=k8s` in any environment; only the
  * real method bodies (later steps) need in-cluster config.

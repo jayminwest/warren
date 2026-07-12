@@ -26,7 +26,7 @@ describe("spawnRun: targetBranch (warren-709e)", () => {
 		const { client, calls } = makeBurrowClient();
 		const { run } = await spawnRun({
 			repos,
-			burrowClientPool: await makePool(repos, client),
+			burrowClient: await makePool(repos, client),
 			agentName: "refactor-bot",
 			projectId: "prj_xxxxxxxxxxxx",
 			prompt: "rerun ci",
@@ -48,7 +48,7 @@ describe("spawnRun: targetBranch (warren-709e)", () => {
 		let refreshRef: string | undefined;
 		await spawnRun({
 			repos,
-			burrowClientPool: await makePool(repos, client),
+			burrowClient: await makePool(repos, client),
 			agentName: "refactor-bot",
 			projectId: "prj_xxxxxxxxxxxx",
 			prompt: "rerun ci",
@@ -73,7 +73,7 @@ describe("spawnRun: targetBranch (warren-709e)", () => {
 		let refreshRef: string | undefined;
 		await spawnRun({
 			repos,
-			burrowClientPool: await makePool(repos, client),
+			burrowClient: await makePool(repos, client),
 			agentName: "refactor-bot",
 			projectId: "prj_xxxxxxxxxxxx",
 			prompt: "rerun ci",
@@ -98,7 +98,7 @@ describe("spawnRun: targetBranch (warren-709e)", () => {
 		const { client, calls } = makeBurrowClient();
 		const { run } = await spawnRun({
 			repos,
-			burrowClientPool: await makePool(repos, client),
+			burrowClient: await makePool(repos, client),
 			agentName: "refactor-bot",
 			projectId: "prj_xxxxxxxxxxxx",
 			prompt: "rerun ci",

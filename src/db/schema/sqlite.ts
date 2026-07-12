@@ -136,7 +136,7 @@ export const runs = sqliteTable(
 		// Plain text (no FK to `workers.name`) because the zero-config single-
 		// worker deploy uses a synthetic local worker that has no row in the
 		// `workers` table. Nullable for back-compat with rows written before
-		// this column landed; new rows always set it once `BurrowClientPool`
+		// this column landed; new rows always set it once `BurrowClient`
 		// (step 3) and the spawn wiring (step 4) land.
 		workerId: text("worker_id"),
 		// Optional back-link to the seeds issue this run was dispatched against
@@ -295,7 +295,7 @@ export const triggers = sqliteTable(
  * operator-chosen handle (used in URLs like `POST /workers/:name/drain` and
  * referenced by `burrows.worker_id` / `runs.worker_id` once those columns
  * land in step 2). `url` is the transport target (`unix:///var/run/burrow.sock`
- * or `http://host:port`); `BurrowClientPool` (step 3) builds an `HttpClient`
+ * or `http://host:port`); `BurrowClient` (step 3) builds an `HttpClient`
  * per row keyed by name.
  *
  * The bearer token is intentionally NOT stored here: the deploy uses a single
@@ -303,7 +303,7 @@ export const triggers = sqliteTable(
  * VPC-private threat model; rotation = one env-var update across the fleet).
  *
  * Zero-row table is the steady state for today's single-worker deploys —
- * `BurrowClientPool` synthesizes a local row from `WARREN_BURROW_*` env vars
+ * `BurrowClient` synthesizes a local row from `WARREN_BURROW_*` env vars
  * when this table is empty, preserving back-compat (acceptance #1). Operators
  * with a `[workers]` block in warren config materialize rows here at boot
  * (step 7 lands that loader).

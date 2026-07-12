@@ -5,7 +5,7 @@
  * inputs the orchestrator has already wired.
  */
 
-import type { BurrowClientPool } from "../../burrow-client/index.ts";
+import type { BurrowClient } from "../../burrow-client/index.ts";
 import type { AnyWarrenDb } from "../../db/client.ts";
 import type { Repos } from "../../db/repos/index.ts";
 import type { MetricsRegistry } from "../../observability/metrics-registry.ts";
@@ -46,7 +46,7 @@ type PreviewPortRange = ReturnType<typeof loadPreviewPortRangeFromEnv>;
 export interface BuildServerDepsInput {
 	readonly repos: Repos;
 	readonly db: AnyWarrenDb;
-	readonly burrowClientPool: BurrowClientPool;
+	readonly burrowClient: BurrowClient;
 	readonly broker: RunEventBroker;
 	readonly bridges: BridgeRegistry;
 	readonly canopyConfig: CanopyConfig;
@@ -70,7 +70,7 @@ export function buildServerDeps(input: BuildServerDepsInput): ServerDeps {
 	const {
 		repos,
 		db,
-		burrowClientPool,
+		burrowClient,
 		broker,
 		bridges,
 		canopyConfig,
@@ -111,12 +111,12 @@ export function buildServerDeps(input: BuildServerDepsInput): ServerDeps {
 	// Resolved once here — the sole composition point — on `WARREN_RUNTIME`
 	// (default `local` → the burrow-backed `LocalProvider` over this same pool,
 	// passed as a factory so it resolves its container worker lazily).
-	const runtimeProvider = resolveRuntimeProvider({ burrowClientPool: () => burrowClientPool });
+	const runtimeProvider = resolveRuntimeProvider({ burrowClient: () => burrowClient });
 
 	return {
 		repos,
 		db,
-		burrowClientPool,
+		burrowClient,
 		runtimeProvider,
 		broker,
 		bridges,

@@ -43,7 +43,7 @@
 
 import { NotFoundError as BurrowNotFoundError } from "@os-eco/burrow-cli";
 import { withTransportMapping } from "../burrow-client/client.ts";
-import type { BurrowClientPool } from "../burrow-client/pool.ts";
+import type { BurrowClient } from "../burrow-client/index.ts";
 import type { Repos } from "../db/repos/index.ts";
 import type { RunMode } from "../db/schema.ts";
 import type { PreviewLaunchConfig } from "../preview/launch/index.ts";
@@ -112,7 +112,7 @@ export interface CreateBridgeRegistryInput {
 	 * resolve the owning worker via `pool.clientFor({burrowId})`. The inline
 	 * reap path on `terminalDetected` consumes the same pool.
 	 */
-	readonly burrowClientPool: BurrowClientPool;
+	readonly burrowClient: BurrowClient;
 	readonly logger?: BridgeLogger;
 	/**
 	 * Override the per-run bridge factory (tests). Defaults to the live
@@ -213,7 +213,7 @@ export function createBridgeRegistry(input: CreateBridgeRegistryInput): BridgeRe
 			burrowId,
 			repos: input.repos,
 			broker: input.broker,
-			burrowClientPool: input.burrowClientPool,
+			burrowClient: input.burrowClient,
 			signal: abort.signal,
 			bridge,
 			reap,
@@ -356,7 +356,7 @@ export async function bootBridges(input: CreateBridgeRegistryInput): Promise<Boo
 		// cheap (one GET per active run at boot) and gives operators a clean
 		// `skipped: 'burrow_run_lost'` signal in the result.
 		try {
-			const { client } = await input.burrowClientPool.clientFor({ burrowId: run.burrowId });
+			const client = input.burrowClient;
 			await withTransportMapping(client.config, () => client.http.runs.get(run.burrowRunId ?? ""));
 		} catch (err) {
 			if (err instanceof BurrowNotFoundError) {
@@ -381,7 +381,7 @@ export async function bootBridges(input: CreateBridgeRegistryInput): Promise<Boo
 					burrowRunId: run.burrowRunId,
 					repos: input.repos,
 					broker: input.broker,
-					burrowClientPool: input.burrowClientPool,
+					burrowClient: input.burrowClient,
 					logger: bindBridgeLogger(input.logger, {
 						run_id: run.id,
 						burrow_run_id: run.burrowRunId,

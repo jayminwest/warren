@@ -47,7 +47,7 @@ describe("bridgeRunStream — spend-cap enforcement (warren-a63d)", () => {
 			repos,
 			broker,
 			burrowId: "bur_aaaaaaaaaaaa",
-			burrowClientPool: await makePool(repos),
+			burrowClient: await makePool(repos),
 			costCapUsd: 1,
 			cancelBurrowRun: async (reason) => {
 				cancels.push(reason);
@@ -78,7 +78,7 @@ describe("bridgeRunStream — spend-cap enforcement (warren-a63d)", () => {
 			repos,
 			broker,
 			burrowId: "bur_aaaaaaaaaaaa",
-			burrowClientPool: await makePool(repos),
+			burrowClient: await makePool(repos),
 			costCapUsd: 5,
 			cancelBurrowRun: async (reason) => {
 				cancels.push(reason);
@@ -98,7 +98,7 @@ describe("bridgeRunStream — spend-cap enforcement (warren-a63d)", () => {
 			repos,
 			broker,
 			burrowId: "bur_aaaaaaaaaaaa",
-			burrowClientPool: await makePool(repos),
+			burrowClient: await makePool(repos),
 			cancelBurrowRun: async (reason) => {
 				cancels.push(reason);
 			},

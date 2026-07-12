@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Message } from "@os-eco/burrow-cli";
-import { BurrowClient, BurrowClientPool, BurrowUnreachableError } from "../burrow-client/index.ts";
+import { BurrowClient, BurrowUnreachableError } from "../burrow-client/index.ts";
 import { NotFoundError, ValidationError } from "../core/errors.ts";
 import { openDatabase, type WarrenDb } from "../db/client.ts";
 import { createRepos, type Repos } from "../db/repos/index.ts";
@@ -18,11 +18,9 @@ async function makePool(
 	client: BurrowClient,
 	repos: Repos,
 	workerName = "local",
-): Promise<BurrowClientPool> {
+): Promise<BurrowClient> {
 	await repos.workers.upsert({ name: workerName, url: "unix:///tmp/x.sock" });
-	const pool = new BurrowClientPool({ repos });
-	pool.register(workerName, client);
-	return pool;
+	return client;
 }
 
 /**
@@ -33,7 +31,7 @@ async function makePool(
  */
 async function makeProvider(client: BurrowClient, repos: Repos): Promise<RuntimeProvider> {
 	const pool = await makePool(client, repos);
-	return resolveRuntimeProvider({ burrowClientPool: () => pool });
+	return resolveRuntimeProvider({ burrowClient: () => pool });
 }
 
 function stub(

@@ -37,7 +37,7 @@
  * own JSON shaping (`src/server/handlers/`).
  */
 
-import type { BurrowClientPool } from "../burrow-client/pool.ts";
+import type { BurrowClient } from "../burrow-client/index.ts";
 import type { Repos } from "../db/repos/index.ts";
 import type { PreviewState } from "../db/schema.ts";
 import type { RunEventBroker } from "../runs/events.ts";
@@ -64,7 +64,7 @@ export interface TeardownPreviewInput {
 	 * eviction worker / port allocator posture, mx-b82a55).
 	 */
 	readonly previews: RunPreviewsRepo;
-	readonly burrowClientPool: BurrowClientPool;
+	readonly burrowClient: BurrowClient;
 	readonly broker?: RunEventBroker;
 	readonly now?: () => Date;
 	readonly logger?: PreviewEvictionLogger;
@@ -105,7 +105,7 @@ export async function teardownPreview(input: TeardownPreviewInput): Promise<Tear
 	// `never-launched` rather than re-raising 404 from inside the txn.
 	await input.repos.runs.require(input.runId);
 
-	const resolveSidecar = input.resolveSidecar ?? createPoolSidecarResolver(input.burrowClientPool);
+	const resolveSidecar = input.resolveSidecar ?? createPoolSidecarResolver(input.burrowClient);
 
 	const claim = await input.previews.claimTeardown({ runId: input.runId });
 	if (claim.status !== "torn-down") {

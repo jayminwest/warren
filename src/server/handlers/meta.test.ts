@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { BurrowClient, BurrowClientPool } from "../../burrow-client/index.ts";
+import { BurrowClient } from "../../burrow-client/index.ts";
 import { type AnyWarrenDb, openDatabase, type WarrenDb } from "../../db/client.ts";
 import { createRepos, type Repos } from "../../db/repos/index.ts";
 import { createPreviewAuth, type PreviewAuth } from "../../preview/cookie.ts";
@@ -32,15 +32,13 @@ async function depsFor(
 	db?: AnyWarrenDb,
 	previewMode: "subdomain" | "path" = "subdomain",
 ): Promise<{ deps: ServerDeps; bridges: BridgeRegistry }> {
-	const client = makeBurrowClient();
 	await repos.workers.upsert({ name: "local", url: "unix:///tmp/x.sock" });
-	const burrowClientPool = new BurrowClientPool({ repos });
-	burrowClientPool.register("local", client);
+	const burrowClient = makeBurrowClient();
 	const broker = new RunEventBroker();
 	const bridges = createBridgeRegistry({
 		repos,
 		broker,
-		burrowClientPool,
+		burrowClient,
 		bridge: async () => ({ written: 0, skipped: 0, errored: false }),
 	});
 	const previewExtras =
@@ -51,7 +49,7 @@ async function depsFor(
 				: { previewAuth, previewMode: "subdomain" as const, previewHost: HOST };
 	const deps: ServerDeps = {
 		repos,
-		burrowClientPool,
+		burrowClient,
 		broker,
 		bridges,
 		projectsConfig: { root: "/tmp/projects", gitBinary: "git" },

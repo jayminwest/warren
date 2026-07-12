@@ -3,7 +3,7 @@
  * warren-6747).
  *
  * Source of truth for `{burrow_id → worker_id}` — the mapping that lets
- * `BurrowClientPool.clientFor({burrowId})` (step 3) pick the worker that
+ * `BurrowClient.clientFor({burrowId})` (step 3) pick the worker that
  * owns a burrow's sandbox + burrow-side SQLite row. One row is created at
  * burrow-provision time (step 4 wires the spawn flow); the row outlives the
  * burrow's lifecycle on the warren side so reap / pr_open / fan-out reads

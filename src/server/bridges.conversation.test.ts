@@ -73,7 +73,7 @@ describe("bootBridges — conversation crash-recovery", () => {
 		const result = await bootBridges({
 			repos,
 			broker: new RunEventBroker(),
-			burrowClientPool: pool,
+			burrowClient: pool,
 			bridge: async (input) => {
 				calls.push(input.runId);
 				return { written: 0, skipped: 0, errored: false };

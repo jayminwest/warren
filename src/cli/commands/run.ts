@@ -21,7 +21,7 @@
  */
 
 import { withTransportMapping } from "../../burrow-client/client.ts";
-import type { BurrowClientPool } from "../../burrow-client/pool.ts";
+import type { BurrowClient } from "../../burrow-client/index.ts";
 import type { Repos } from "../../db/repos/index.ts";
 import type { RunTerminalState } from "../../db/schema.ts";
 import {
@@ -61,12 +61,11 @@ export interface RunArgs {
 export interface RunDeps {
 	readonly repos: Repos;
 	/**
-	 * Multi-worker burrow pool (warren-39c3 / warren-c0c9 / pl-9ba1).
-	 * `spawnRun` consumes it for placement; `bridgeRunStream`, `reapRun`,
-	 * and `fetchBurrowRunState` resolve the owning worker via
-	 * `pool.clientFor({burrowId})`.
+	 * The single local burrow client (warren-76c5). Shared by `spawnRun`,
+	 * `bridgeRunStream`, `reapRun`, and `fetchBurrowRunState` — multi-worker
+	 * pooling was retired with the K8s migration.
 	 */
-	readonly burrowClientPool: BurrowClientPool;
+	readonly burrowClient: BurrowClient;
 	/** Optional broker injection — defaults to a fresh broker per run. */
 	readonly broker?: RunEventBroker;
 	/** Override the bridge factory (tests). Defaults to the live `bridgeRunStream`. */
@@ -137,7 +136,7 @@ export async function runRun(
 			? undefined
 			: (deps.runBranchPrefixDefault ?? loadRunBranchPrefixFromEnv());
 	const fetchBurrowRunState =
-		deps.fetchBurrowRunState ?? defaultFetchBurrowRunState(deps.burrowClientPool);
+		deps.fetchBurrowRunState ?? defaultFetchBurrowRunState(deps.burrowClient);
 	const seedsCli: SeedsCliDeps = deps.seedsCli ?? {
 		sdBinary: loadTriggerSchedulerConfigFromEnv().sdBinary,
 		spawn: defaultSpawn,
@@ -147,7 +146,7 @@ export async function runRun(
 	try {
 		spawnResult = await spawn({
 			repos: deps.repos,
-			burrowClientPool: deps.burrowClientPool,
+			burrowClient: deps.burrowClient,
 			agentName: args.agent,
 			projectId: args.project,
 			prompt: args.prompt,
@@ -182,7 +181,7 @@ export async function runRun(
 		burrowId: spawnResult.burrow.id,
 		repos: deps.repos,
 		broker,
-		burrowClientPool: deps.burrowClientPool,
+		burrowClient: deps.burrowClient,
 		signal: bridgeAbort.signal,
 	});
 
@@ -234,7 +233,7 @@ export async function runRun(
 			runId,
 			outcome,
 			repos: deps.repos,
-			burrowClientPool: deps.burrowClientPool,
+			burrowClient: deps.burrowClient,
 			broker,
 			autoOpenPr,
 			seedsCli,
@@ -271,30 +270,15 @@ export async function runRun(
 }
 
 function defaultFetchBurrowRunState(
-	pool: BurrowClientPool,
+	client: BurrowClient,
 ): (burrowRunId: string) => Promise<RunTerminalState> {
 	return async (burrowRunId) => {
-		// warren-c0c9: the CLI deploy registers exactly one worker via
-		// `BurrowClientPool.fromEnv`, but rather than special-case the
-		// single-entry shape, walk every registered client and use whichever
-		// owns the run. The zero-config CLI path has one entry today; the
-		// fan-out keeps the lookup correct under any future multi-worker CLI.
-		const errors: unknown[] = [];
-		for (const { client } of pool.entries()) {
-			try {
-				const row = await withTransportMapping(client.config, () =>
-					client.http.runs.get(burrowRunId),
-				);
-				const state = row.state;
-				if (state === "succeeded" || state === "failed" || state === "cancelled") return state;
-				return "failed";
-			} catch (err) {
-				errors.push(err);
-			}
-		}
-		// Surface the most-recent transport failure rather than masking it as
-		// "failed" — `runRun` translates the throw into a non-zero exit code
-		// and a stderr line.
-		throw errors[errors.length - 1] ?? new Error("no workers registered");
+		// warren-76c5: the self-host backend is a single local burrow — fetch the
+		// run's terminal state directly from the one client. A transport failure
+		// propagates so `runRun` maps it to a non-zero exit + stderr line.
+		const row = await withTransportMapping(client.config, () => client.http.runs.get(burrowRunId));
+		const state = row.state;
+		if (state === "succeeded" || state === "failed" || state === "cancelled") return state;
+		return "failed";
 	};
 }

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { BurrowClient, BurrowClientPool } from "../../burrow-client/index.ts";
+import { BurrowClient } from "../../burrow-client/index.ts";
 import { openDatabase, type WarrenDb } from "../../db/client.ts";
 import { createRepos, type Repos } from "../../db/repos/index.ts";
 import { MetricsRegistry } from "../../observability/metrics-registry.ts";
@@ -25,21 +25,19 @@ async function depsFor(
 	db: WarrenDb,
 	registry?: MetricsRegistry,
 ): Promise<ServerDeps> {
-	const client = makeBurrowClient();
 	await repos.workers.upsert({ name: "local", url: "unix:///tmp/x.sock" });
-	const burrowClientPool = new BurrowClientPool({ repos });
-	burrowClientPool.register("local", client);
+	const burrowClient = makeBurrowClient();
 	const broker = new RunEventBroker();
 	const bridges = createBridgeRegistry({
 		repos,
 		broker,
-		burrowClientPool,
+		burrowClient,
 		bridge: async () => ({ written: 0, skipped: 0, errored: false }),
 	});
 	return {
 		repos,
 		db,
-		burrowClientPool,
+		burrowClient,
 		broker,
 		bridges,
 		projectsConfig: { root: "/tmp/projects", gitBinary: "git" },

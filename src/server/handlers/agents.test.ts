@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { BurrowClient, BurrowClientPool } from "../../burrow-client/index.ts";
+import { BurrowClient } from "../../burrow-client/index.ts";
 import { openDatabase, type WarrenDb } from "../../db/client.ts";
 import { createRepos, type Repos } from "../../db/repos/index.ts";
 import { RunEventBroker } from "../../runs/index.ts";
@@ -9,17 +9,15 @@ import { startServer } from "../server.ts";
 import type { BridgeRegistry, ServeHandle, ServerDeps } from "../types.ts";
 
 /**
- * Build a single-worker `BurrowClientPool` from a stubbed `BurrowClient`
+ * Build a single-worker `BurrowClient` from a stubbed `BurrowClient`
  * so `POST /runs` and `POST /projects/:id/triggers/:triggerId/run` can
  * route through `spawnRun`'s placement seam (warren-39c3). Upserts the
  * synthetic `local` worker row so `placeForProject` has a healthy
  * candidate.
  */
-async function poolFor(repos: Repos, client: BurrowClient): Promise<BurrowClientPool> {
+async function poolFor(repos: Repos, client: BurrowClient): Promise<BurrowClient> {
 	await repos.workers.upsert({ name: "local", url: "unix:///tmp/x.sock" });
-	const pool = new BurrowClientPool({ repos });
-	pool.register("local", client);
-	return pool;
+	return client;
 }
 
 const silentLogger = {
@@ -41,17 +39,17 @@ async function depsFor(
 	extras?: { plotResolver?: import("../../plots/index.ts").PlotResolver },
 ): Promise<ServerDeps> {
 	const broker = new RunEventBroker();
-	const burrowClientPool = await poolFor(repos, burrowClient);
+	await poolFor(repos, burrowClient);
 	return {
 		repos,
-		burrowClientPool,
+		burrowClient,
 		broker,
 		bridges:
 			bridges ??
 			createBridgeRegistry({
 				repos,
 				broker,
-				burrowClientPool,
+				burrowClient,
 				bridge: async () => ({ written: 0, skipped: 0, errored: false }),
 			}),
 		canopyConfig: {
@@ -185,7 +183,7 @@ describe("POST /agents/refresh without canopy library (warren-d3e9)", () => {
 		// Strip canopyConfig — equivalent to booting without CANOPY_REPO_URL.
 		const noCanopyDeps: ServerDeps = {
 			repos: deps.repos,
-			burrowClientPool: deps.burrowClientPool,
+			burrowClient: deps.burrowClient,
 			broker: deps.broker,
 			bridges: deps.bridges,
 			projectsConfig: deps.projectsConfig,

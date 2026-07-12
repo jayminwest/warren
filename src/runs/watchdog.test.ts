@@ -18,7 +18,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import type { BurrowClientPool } from "../burrow-client/pool.ts";
+import type { BurrowClient } from "../burrow-client/index.ts";
 import { openDatabase, type WarrenDb } from "../db/client.ts";
 import { createRepos, type Repos } from "../db/repos/index.ts";
 import type { RunMode } from "../db/schema.ts";
@@ -94,7 +94,7 @@ const NEVER_POOL = {
 	clientFor: async () => {
 		throw new Error("clientFor should not be called");
 	},
-} as unknown as BurrowClientPool;
+} as unknown as BurrowClient;
 
 describe("computeIdleMs", () => {
 	let db: WarrenDb;
@@ -262,7 +262,7 @@ describe("tickWatchdog", () => {
 
 		const result = await tickWatchdog({
 			repos,
-			burrowClientPool: NEVER_POOL,
+			burrowClient: NEVER_POOL,
 			runtimeProvider: makeCancelProvider(cancels),
 			heartbeatTimeoutMs: 5 * 60_000,
 			now: () => new Date("2026-06-05T00:10:00Z"),
@@ -296,7 +296,7 @@ describe("tickWatchdog", () => {
 
 		const result = await tickWatchdog({
 			repos,
-			burrowClientPool: NEVER_POOL,
+			burrowClient: NEVER_POOL,
 			heartbeatTimeoutMs: 5 * 60_000,
 			// 10min idle — well past budget; a batch run here would force-fail.
 			now: () => new Date("2026-06-05T00:10:00Z"),
@@ -316,7 +316,7 @@ describe("tickWatchdog", () => {
 
 		const result = await tickWatchdog({
 			repos,
-			burrowClientPool: NEVER_POOL,
+			burrowClient: NEVER_POOL,
 			heartbeatTimeoutMs: 5 * 60_000,
 			now: () => new Date("2026-06-05T00:02:00Z"),
 			reap: async (input) => {
@@ -335,7 +335,7 @@ describe("tickWatchdog", () => {
 
 		const result = await tickWatchdog({
 			repos,
-			burrowClientPool: NEVER_POOL,
+			burrowClient: NEVER_POOL,
 			heartbeatTimeoutMs: 60_000,
 			now: () => new Date("2026-06-05T00:10:00Z"),
 			reap: async (input) => {
@@ -353,7 +353,7 @@ describe("tickWatchdog", () => {
 
 		const result = await tickWatchdog({
 			repos,
-			burrowClientPool: NEVER_POOL,
+			burrowClient: NEVER_POOL,
 			heartbeatTimeoutMs: 60_000,
 			now: () => new Date("2026-06-05T00:10:00Z"),
 			reap: async () => {
@@ -371,7 +371,7 @@ describe("bootWatchdog", () => {
 		let ticked = false;
 		const handle = bootWatchdog({
 			repos: { runs: { listByState: async () => [] } } as unknown as Repos,
-			burrowClientPool: NEVER_POOL,
+			burrowClient: NEVER_POOL,
 			heartbeatTimeoutMs: 60_000,
 			tickMs: 1000,
 			disabled: true,
@@ -388,7 +388,7 @@ describe("bootWatchdog", () => {
 	test("runOnce ticks and tickCount increments", async () => {
 		const handle = bootWatchdog({
 			repos: { runs: { listByState: async () => [] } } as unknown as Repos,
-			burrowClientPool: NEVER_POOL,
+			burrowClient: NEVER_POOL,
 			heartbeatTimeoutMs: 60_000,
 			tickMs: 1000,
 			disabled: true,
@@ -413,7 +413,7 @@ describe("bootWatchdog", () => {
 					},
 				},
 			} as unknown as Repos,
-			burrowClientPool: NEVER_POOL,
+			burrowClient: NEVER_POOL,
 			heartbeatTimeoutMs: 60_000,
 			tickMs: 1000,
 			disabled: true,

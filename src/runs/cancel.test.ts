@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Run as BurrowRun } from "@os-eco/burrow-cli";
-import { BurrowClient, BurrowClientPool, BurrowUnreachableError } from "../burrow-client/index.ts";
+import { BurrowClient, BurrowUnreachableError } from "../burrow-client/index.ts";
 import { NotFoundError, ValidationError } from "../core/errors.ts";
 import { openDatabase, type WarrenDb } from "../db/client.ts";
 import { createRepos, type Repos } from "../db/repos/index.ts";
@@ -18,11 +18,9 @@ async function makePool(
 	client: BurrowClient,
 	repos: Repos,
 	workerName = "local",
-): Promise<BurrowClientPool> {
+): Promise<BurrowClient> {
 	await repos.workers.upsert({ name: workerName, url: "unix:///tmp/x.sock" });
-	const pool = new BurrowClientPool({ repos });
-	pool.register(workerName, client);
-	return pool;
+	return client;
 }
 
 function reapStub(outcome: RunTerminalState): ReapRunResult {
@@ -167,7 +165,7 @@ describe("cancelRun", () => {
 			cancelRun({
 				runId: "run_doesnotexist",
 				repos,
-				burrowClientPool: await makePool(client, repos),
+				burrowClient: await makePool(client, repos),
 			}),
 		).rejects.toBeInstanceOf(NotFoundError);
 		expect(calls).toHaveLength(0);
@@ -181,7 +179,7 @@ describe("cancelRun", () => {
 			runId,
 			reason: "operator changed their mind",
 			repos,
-			burrowClientPool: await makePool(client, repos),
+			burrowClient: await makePool(client, repos),
 			reap: async (input) => {
 				reapCalls.push({ runId: input.runId, outcome: input.outcome });
 				return reapStub(input.outcome);
@@ -220,7 +218,7 @@ describe("cancelRun", () => {
 		const result = await cancelRun({
 			runId,
 			repos,
-			burrowClientPool: await makePool(client, repos),
+			burrowClient: await makePool(client, repos),
 			reap: async (input) => {
 				reapCalls.push({ runId: input.runId, outcome: input.outcome });
 				return reapStub(input.outcome);
@@ -237,7 +235,7 @@ describe("cancelRun", () => {
 		await cancelRun({
 			runId,
 			repos,
-			burrowClientPool: await makePool(client, repos),
+			burrowClient: await makePool(client, repos),
 			reap: async (input) => {
 				reapCalls.push({ runId: input.runId, outcome: input.outcome });
 				return reapStub(input.outcome);
@@ -253,7 +251,7 @@ describe("cancelRun", () => {
 		const result = await cancelRun({
 			runId,
 			repos,
-			burrowClientPool: await makePool(client, repos),
+			burrowClient: await makePool(client, repos),
 			reap: async (input) => {
 				reapCalls.push({ runId: input.runId });
 				return reapStub("cancelled");
@@ -270,7 +268,7 @@ describe("cancelRun", () => {
 		const result = await cancelRun({
 			runId,
 			repos,
-			burrowClientPool: await makePool(client, repos),
+			burrowClient: await makePool(client, repos),
 			reap: async () => {
 				throw new Error("disk full");
 			},
@@ -284,7 +282,7 @@ describe("cancelRun", () => {
 	test("omits the reason field on the wire when unset", async () => {
 		const runId = await createRun({ state: "running" });
 		const { client, calls } = makeBurrowClient();
-		await cancelRun({ runId, repos, burrowClientPool: await makePool(client, repos) });
+		await cancelRun({ runId, repos, burrowClient: await makePool(client, repos) });
 		expect(calls[0]?.body).toBeUndefined();
 	});
 
@@ -295,7 +293,7 @@ describe("cancelRun", () => {
 		const result = await cancelRun({
 			runId,
 			repos,
-			burrowClientPool: await makePool(client, repos),
+			burrowClient: await makePool(client, repos),
 		});
 		expect(result.alreadyTerminal).toBe(true);
 		expect(result.state).toBe("succeeded");
@@ -320,7 +318,7 @@ describe("cancelRun", () => {
 			runId: run.id,
 			reason: "abort",
 			repos,
-			burrowClientPool: await makePool(client, repos),
+			burrowClient: await makePool(client, repos),
 		});
 		expect(result.alreadyTerminal).toBe(false);
 		expect(result.burrowRun).toBeNull();
@@ -351,7 +349,7 @@ describe("cancelRun", () => {
 		await repos.runs.markRunning(run.id);
 		const { client, calls } = makeBurrowClient();
 		await expect(
-			cancelRun({ runId: run.id, repos, burrowClientPool: await makePool(client, repos) }),
+			cancelRun({ runId: run.id, repos, burrowClient: await makePool(client, repos) }),
 		).rejects.toBeInstanceOf(ValidationError);
 		expect(calls).toHaveLength(0);
 	});
@@ -368,7 +366,7 @@ describe("cancelRun", () => {
 			}
 		})();
 		const { client } = makeBurrowClient();
-		await cancelRun({ runId, repos, burrowClientPool: await makePool(client, repos), broker });
+		await cancelRun({ runId, repos, burrowClient: await makePool(client, repos), broker });
 		await consumer;
 		expect(consumed).toEqual(["cancel.requested"]);
 	});
@@ -384,7 +382,7 @@ describe("cancelRun", () => {
 			payload: {},
 		});
 		const { client } = makeBurrowClient();
-		await cancelRun({ runId, repos, burrowClientPool: await makePool(client, repos) });
+		await cancelRun({ runId, repos, burrowClient: await makePool(client, repos) });
 		const events = await repos.events.listByRun(runId);
 		const requested = events.find((e) => e.kind === "cancel.requested");
 		expect(requested?.burrowEventSeq).toBe(13);
@@ -400,7 +398,7 @@ describe("cancelRun", () => {
 			fetch: fetchImpl,
 		});
 		await expect(
-			cancelRun({ runId, repos, burrowClientPool: await makePool(client, repos) }),
+			cancelRun({ runId, repos, burrowClient: await makePool(client, repos) }),
 		).rejects.toBeInstanceOf(BurrowUnreachableError);
 		// No audit event was emitted, and the run is still running.
 		expect(await repos.events.countByRun(runId)).toBe(0);
@@ -416,7 +414,7 @@ describe("cancelRun", () => {
 		const result = await cancelRun({
 			runId,
 			repos,
-			burrowClientPool: await makePool(client, repos),
+			burrowClient: await makePool(client, repos),
 		});
 		expect(result.state).toBe("failed");
 		expect(result.burrowRun).toBeNull();
@@ -438,7 +436,7 @@ describe("cancelRun", () => {
 			body: { error: { code: "internal", message: "boom" } },
 		});
 		await expect(
-			cancelRun({ runId, repos, burrowClientPool: await makePool(client, repos) }),
+			cancelRun({ runId, repos, burrowClient: await makePool(client, repos) }),
 		).rejects.toThrow();
 		expect(await repos.events.countByRun(runId)).toBe(0);
 	});

@@ -138,10 +138,8 @@ export async function runWorkspaceDestroy(input: RunWorkspaceDestroyInput): Prom
 export interface DestroyBurrowWorkspaceByIdInput {
 	readonly burrowId: string;
 	readonly mode: RunMode;
-	/** Pool used to resolve the worker pinned to this burrow. */
-	readonly burrowClientPool: {
-		clientFor(input: { burrowId: string }): Promise<{ client: BurrowClient }>;
-	};
+	/** The single local burrow client (warren-76c5). */
+	readonly burrowClient: BurrowClient;
 	readonly repos: BurrowDeleteRepos;
 	readonly emit: (kind: string, payload: unknown) => Promise<unknown>;
 	/** Override the burrow destroy seam (tests). */
@@ -171,17 +169,7 @@ export async function destroyBurrowWorkspaceById(
 		return false;
 	}
 
-	let workerClient: BurrowClient;
-	try {
-		workerClient = (await input.burrowClientPool.clientFor({ burrowId: input.burrowId })).client;
-	} catch (err) {
-		await input.emit("reap.workspace_destroy_failed", {
-			burrowId: input.burrowId,
-			step: "resolve_worker",
-			message: err instanceof Error ? err.message : String(err),
-		});
-		return false;
-	}
+	const workerClient: BurrowClient = input.burrowClient;
 
 	try {
 		await executeBurrowDestroy({

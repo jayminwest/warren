@@ -11,7 +11,7 @@
 import { existsSync } from "node:fs";
 import type { BurrowClient } from "../burrow-client/client.ts";
 import { withTransportMapping } from "../burrow-client/client.ts";
-import type { BurrowClientPool } from "../burrow-client/pool.ts";
+import { probeBurrowClient } from "../burrow-client/index.ts";
 import type { SpawnFn } from "../projects/clone.ts";
 import { type CanopyRegistryConfig, loadCanopyRegistryConfigFromEnv } from "../registry/config.ts";
 import type { DiagnosticCheck, EnvLike, ExistsFn } from "./checks.ts";
@@ -198,24 +198,20 @@ export async function checkBurrowReachable(deps: {
 }
 
 /**
- * Aggregate `BurrowClientPool.probe()` across every registered worker
- * (warren-c0c9 / pl-9ba1 step 5). One ok=true iff every worker probed
- * cleanly; on partial failure the message lists every failing worker by
- * name. Used by the server's /readyz handler so a single failing worker
- * in a multi-worker deploy degrades the global readyz envelope without
- * masking the healthy workers' probe results.
+ * Probe the single local burrow for the server's /readyz handler (warren-76c5).
+ * Multi-worker aggregation was retired with the K8s migration — the self-host
+ * backend is one local burrow — so this is a single `/healthz` probe shaped as
+ * the readyz check envelope.
  */
-export async function checkBurrowPoolReachable(pool: BurrowClientPool): Promise<DiagnosticCheck> {
-	const results = await pool.probe();
-	const failed = results.filter((r) => !r.ok);
-	if (failed.length === 0) {
+export async function checkBurrowPoolReachable(client: BurrowClient): Promise<DiagnosticCheck> {
+	const result = await probeBurrowClient(client);
+	if (result.ok) {
 		return { name: "burrow_reachable", ok: true };
 	}
-	const message = failed.map((r) => `${r.workerName}: ${r.error?.message ?? "unknown"}`).join("; ");
 	return {
 		name: "burrow_reachable",
 		ok: false,
-		message,
-		hint: "check `GET /workers` for state; bring the listed workers back online or drain them",
+		message: `${result.workerName}: ${result.error?.message ?? "unknown"}`,
+		hint: "check that burrow serve is running and WARREN_BURROW_SOCKET / WARREN_BURROW_HOST point to it",
 	};
 }

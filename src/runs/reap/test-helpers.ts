@@ -1,5 +1,5 @@
 import { type Burrow, NotFoundError } from "@os-eco/burrow-cli";
-import { BurrowClient, BurrowClientPool } from "../../burrow-client/index.ts";
+import { BurrowClient } from "../../burrow-client/index.ts";
 import { openDatabase, type WarrenDb } from "../../db/client.ts";
 import { createRepos, type Repos } from "../../db/repos/index.ts";
 import type { RunTerminalState } from "../../db/schema.ts";
@@ -54,11 +54,9 @@ export async function makePool(
 	client: BurrowClient,
 	repos: Repos,
 	workerName = "local",
-): Promise<BurrowClientPool> {
+): Promise<BurrowClient> {
 	await repos.workers.upsert({ name: workerName, url: "unix:///tmp/x.sock" });
-	const pool = new BurrowClientPool({ repos });
-	pool.register(workerName, client);
-	return pool;
+	return client;
 }
 
 export interface FakeFs {
@@ -296,12 +294,4 @@ export function fakeOpenPr(
 	return { openPr, calls };
 }
 
-export {
-	type Burrow,
-	BurrowClient,
-	BurrowClientPool,
-	createRepos,
-	NotFoundError,
-	openDatabase,
-	RunEventBroker,
-};
+export { type Burrow, BurrowClient, createRepos, NotFoundError, openDatabase, RunEventBroker };

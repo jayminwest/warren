@@ -9,7 +9,6 @@
 		"src/server/handlers/agents.test.ts": 533,
 		"src/server/handlers/plan-runs.ts": 505,
 		"src/server/main/index.ts": 548,
-		"src/server/integration.multi-worker.test.ts": 553,
 		"src/server/server.test.ts": 536,
 		"src/server/types.ts": 508
 	}

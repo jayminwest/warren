@@ -5,6 +5,7 @@
  */
 
 import { withTransportMapping } from "../../burrow-client/client.ts";
+import { LOCAL_WORKER_NAME } from "../../burrow-client/index.ts";
 import { ValidationError } from "../../core/errors.ts";
 import { jsonResponse } from "../response.ts";
 import type { RouteHandler, ServerDeps } from "../types.ts";
@@ -20,13 +21,15 @@ import { readJsonBodyOrEmpty, requireParam } from "./index.ts";
 export function listWorkersHandler(deps: ServerDeps): RouteHandler {
 	return async () => {
 		const rows = await deps.repos.workers.listAll();
-		const registered = new Set(deps.burrowClientPool.names());
+		// warren-76c5: multi-worker pooling is retired — the self-host backend
+		// is a single local burrow. Any surviving `workers` row (the table lives
+		// until step 24) reports `registered` iff it is the local worker.
 		const workers = rows.map((row) => ({
 			name: row.name,
 			url: row.url,
 			state: row.state,
 			addedAt: row.addedAt,
-			registered: registered.has(row.name),
+			registered: row.name === LOCAL_WORKER_NAME,
 		}));
 		return jsonResponse(200, { workers });
 	};
@@ -60,7 +63,9 @@ export function drainWorkerHandler(deps: ServerDeps): RouteHandler {
 		const drain = body !== null ? parseDrainFlag(body) : true;
 
 		const row = await deps.repos.workers.require(name);
-		const client = deps.burrowClientPool.get(row.name);
+		// warren-76c5: single local burrow — the drain bit forwards to the one
+		// client regardless of which surviving `workers` row was named.
+		const client = deps.burrowClient;
 
 		await withTransportMapping(client.config, () => client.setDrain(drain));
 

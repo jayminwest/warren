@@ -6,7 +6,7 @@
  * to a run we already have full history for is harmless.
  */
 
-import type { BurrowClientPool } from "../../burrow-client/pool.ts";
+import type { BurrowClient } from "../../burrow-client/index.ts";
 import type { Repos } from "../../db/repos/index.ts";
 import type { RunEventBroker } from "../events.ts";
 import { bridgeRunStream } from "./bridge.ts";
@@ -15,7 +15,7 @@ import type { BridgeLogger, BridgeRunStreamInput, BridgeRunStreamResult } from "
 export interface RecoverActiveRunStreamsInput {
 	readonly repos: Repos;
 	readonly broker: RunEventBroker;
-	readonly burrowClientPool: BurrowClientPool;
+	readonly burrowClient: BurrowClient;
 	readonly logger?: BridgeLogger;
 	/** Override the bridge factory (tests). Defaults to `bridgeRunStream`. */
 	readonly bridge?: (input: BridgeRunStreamInput) => Promise<BridgeRunStreamResult>;
@@ -51,7 +51,7 @@ export interface RecoverActiveRunStreamsResult {
 export async function recoverActiveRunStreams(
 	input: RecoverActiveRunStreamsInput,
 ): Promise<RecoverActiveRunStreamsResult> {
-	const { repos, broker, burrowClientPool, logger } = input;
+	const { repos, broker, burrowClient, logger } = input;
 	const bridge = input.bridge ?? bridgeRunStream;
 	const candidates = await repos.runs.listByState(["queued", "running"]);
 
@@ -85,7 +85,7 @@ export async function recoverActiveRunStreams(
 			burrowId: run.burrowId,
 			repos,
 			broker,
-			burrowClientPool,
+			burrowClient,
 			signal: abort.signal,
 			...(logger !== undefined ? { logger } : {}),
 		};

@@ -9,7 +9,7 @@
  * `db/repos/` — this file just declares the seams the wiring rides on.
  */
 
-import type { BurrowClientPool } from "../burrow-client/pool.ts";
+import type { BurrowClient } from "../burrow-client/index.ts";
 import type { AnyWarrenDb } from "../db/client.ts";
 import type { Repos } from "../db/repos/index.ts";
 import type { RunMode } from "../db/schema.ts";
@@ -132,7 +132,7 @@ export interface ServerDeps {
 	 * Every burrow-targeting handler routes through this: `placeFor` for new
 	 * burrows, `clientFor` for per-resource reads, and `probe()` for /readyz.
 	 */
-	readonly burrowClientPool: BurrowClientPool;
+	readonly burrowClient: BurrowClient;
 	/** Runtime-provider seam (pl-829f step 13); optional — prod always sets it. */
 	readonly runtimeProvider?: RuntimeProvider;
 	readonly broker: RunEventBroker;
@@ -446,7 +446,7 @@ export interface BridgeRegistry {
 	/**
 	 * Start a bridge for the given run; idempotent against a running bridge.
 	 * `burrowId` is required so the bridge can resolve the owning worker via
-	 * `BurrowClientPool.clientFor` (warren-c0c9). `mode` (warren-df71) makes a
+	 * `BurrowClient.clientFor` (warren-c0c9). `mode` (warren-df71) makes a
 	 * `'conversation'` run keep-alive across pi `agent_end` turn boundaries;
 	 * omit / `'batch'` retains the prior one-shot terminal behaviour.
 	 */

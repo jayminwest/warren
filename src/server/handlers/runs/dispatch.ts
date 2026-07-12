@@ -132,7 +132,7 @@ export function createRunHandler(deps: ServerDeps): RouteHandler {
 
 		const options: Parameters<typeof spawnRun>[0] = {
 			repos: deps.repos,
-			burrowClientPool: deps.burrowClientPool,
+			burrowClient: deps.burrowClient,
 			agentName,
 			projectId,
 			prompt,

@@ -1,5 +1,5 @@
 import type { Burrow, Message as BurrowMessage, Run as BurrowRun } from "@os-eco/burrow-cli";
-import { BurrowClient, BurrowClientPool } from "../../burrow-client/index.ts";
+import { BurrowClient } from "../../burrow-client/index.ts";
 import { openDatabase, type WarrenDb } from "../../db/client.ts";
 import { createRepos, type Repos } from "../../db/repos/index.ts";
 import type { AgentDefinition } from "../../registry/schema.ts";
@@ -36,7 +36,7 @@ export function makeAppender(
 }
 
 /**
- * Wrap a stubbed `BurrowClient` in a single-worker `BurrowClientPool`
+ * Wrap a stubbed `BurrowClient` in a single-worker `BurrowClient`
  * so the spawn flow can resolve placement (warren-39c3). Upserts a
  * synthetic `local` worker row so `placeForProject` has a healthy
  * candidate to pick.
@@ -45,11 +45,9 @@ export async function makePool(
 	repos: Repos,
 	client: BurrowClient,
 	workerName = "local",
-): Promise<BurrowClientPool> {
+): Promise<BurrowClient> {
 	await repos.workers.upsert({ name: workerName, url: "unix:///tmp/x.sock" });
-	const pool = new BurrowClientPool({ repos });
-	pool.register(workerName, client);
-	return pool;
+	return client;
 }
 
 // `typeof fetch` requires a `preconnect` method we don't exercise in tests; cast

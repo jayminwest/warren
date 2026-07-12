@@ -8,7 +8,7 @@
  * SPEC §11.L for the design lock.
  */
 
-import type { BurrowClientPool } from "../../burrow-client/pool.ts";
+import type { BurrowClient } from "../../burrow-client/index.ts";
 import type { AnyWarrenDb } from "../../db/client.ts";
 import type { Repos } from "../../db/repos/index.ts";
 import type { PreviewState } from "../../db/schema.ts";
@@ -110,7 +110,7 @@ export interface RunPreviewsRepo {
 export interface PreviewEvictionTickInput {
 	readonly db: AnyWarrenDb;
 	readonly repos: Repos;
-	readonly burrowClientPool: BurrowClientPool;
+	readonly burrowClient: BurrowClient;
 	readonly warrenConfigs: WarrenConfigCache;
 	readonly broker?: RunEventBroker;
 	readonly config: PreviewEvictionConfig;

@@ -79,7 +79,7 @@ describe("recoverActiveRunStreams", () => {
 		const result = await recoverActiveRunStreams({
 			repos,
 			broker,
-			burrowClientPool: await makePool(repos),
+			burrowClient: await makePool(repos),
 			bridge: async (input: BridgeRunStreamInput) => {
 				calls.push({ runId: input.runId, burrowRunId: input.burrowRunId });
 				return { written: 0, skipped: 0, errored: false };
@@ -96,7 +96,7 @@ describe("recoverActiveRunStreams", () => {
 		const result = await recoverActiveRunStreams({
 			repos,
 			broker,
-			burrowClientPool: await makePool(repos),
+			burrowClient: await makePool(repos),
 			bridge: async (input: BridgeRunStreamInput) => {
 				await new Promise<void>((resolve) => {
 					if (input.signal === undefined) {

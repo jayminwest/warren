@@ -6,7 +6,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { BurrowClient, BurrowClientPool } from "../burrow-client/index.ts";
+import { BurrowClient } from "../burrow-client/index.ts";
 import { openDatabase, type WarrenDb } from "../db/client.ts";
 import { createRepos, type Repos } from "../db/repos/index.ts";
 import { RunEventBroker } from "../runs/index.ts";
@@ -43,17 +43,15 @@ async function depsFor(repos: Repos): Promise<ServerDeps> {
 		fetch: stubFetch(),
 	});
 	await repos.workers.upsert({ name: "local", url: "unix:///tmp/x.sock" });
-	const burrowClientPool = new BurrowClientPool({ repos });
-	burrowClientPool.register("local", burrowClient);
 	const broker = new RunEventBroker();
 	return {
 		repos,
-		burrowClientPool,
+		burrowClient,
 		broker,
 		bridges: createBridgeRegistry({
 			repos,
 			broker,
-			burrowClientPool,
+			burrowClient,
 			bridge: async () => ({ written: 0, skipped: 0, errored: false }),
 		}),
 		projectsConfig: { root: "/tmp/projects", gitBinary: "git" },

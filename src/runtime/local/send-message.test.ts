@@ -46,7 +46,7 @@ async function localProvider(
 	const r = await repos();
 	const { client, calls } = makeBurrowClient(plan);
 	const pool = await makePool(r, client);
-	const provider = new LocalProvider({ burrowClientPool: () => pool });
+	const provider = new LocalProvider({ burrowClient: () => pool });
 	return { provider, calls };
 }
 

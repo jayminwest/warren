@@ -128,7 +128,7 @@ export function createConversationHandler(deps: ServerDeps): RouteHandler {
 
 		const result = await spawnRun({
 			repos: deps.repos,
-			burrowClientPool: deps.burrowClientPool,
+			burrowClient: deps.burrowClient,
 			agentName,
 			projectId,
 			prompt: opening,
@@ -247,8 +247,7 @@ export function postConversationMessageHandler(deps: ServerDeps): RouteHandler {
 			body: message,
 			repos: deps.repos,
 			runtimeProvider:
-				deps.runtimeProvider ??
-				resolveRuntimeProvider({ burrowClientPool: () => deps.burrowClientPool }),
+				deps.runtimeProvider ?? resolveRuntimeProvider({ burrowClient: () => deps.burrowClient }),
 			broker: deps.broker,
 			...(fromActor !== undefined ? { fromActor } : {}),
 			...(deps.now !== undefined ? { now: deps.now } : {}),
@@ -429,7 +428,7 @@ export function rewakeConversationHandler(deps: ServerDeps): RouteHandler {
 
 		const result = await rewakeConversation({
 			repos: deps.repos,
-			burrowClientPool: deps.burrowClientPool,
+			burrowClient: deps.burrowClient,
 			conversationId: id,
 			reader: {
 				async readConversation(conversationId: string) {

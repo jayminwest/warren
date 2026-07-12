@@ -270,7 +270,7 @@ export function runProjectTriggerHandler(deps: ServerDeps): RouteHandler {
 
 		const result = await spawnRun({
 			repos: deps.repos,
-			burrowClientPool: deps.burrowClientPool,
+			burrowClient: deps.burrowClient,
 			agentName: trigger.role,
 			projectId: project.id,
 			prompt,

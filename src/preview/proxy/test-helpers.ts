@@ -1,4 +1,4 @@
-import { LOCAL_WORKER_NAME } from "../../burrow-client/pool.ts";
+import { LOCAL_WORKER_NAME } from "../../burrow-client/index.ts";
 import { openDatabase, type WarrenDb } from "../../db/client.ts";
 import { createRepos, type Repos } from "../../db/repos/index.ts";
 import { createPreviewAuth, type PreviewAuth } from "../cookie.ts";

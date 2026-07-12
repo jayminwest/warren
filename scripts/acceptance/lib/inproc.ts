@@ -311,7 +311,7 @@ export async function bootInProcMulti(opts: MultiBurrowBootOptions): Promise<Mul
 
 	// warren.toml: one `[[workers]]` row per burrow. The loader
 	// (src/server-config/load.ts) reads this via WARREN_CONFIG_FILE; the
-	// boot path branches to BurrowClientPool.fromConfig because
+	// boot path branches to BurrowClient.fromConfig because
 	// workers.length > 0.
 	const tomlLines: string[] = [];
 	for (const w of workerLayout) {
@@ -414,7 +414,7 @@ function spawnBurrowMulti(socketPath: string, env: Record<string, string>): Spaw
 	const wrapperEntry = new URL("./burrow-with-stub.ts", import.meta.url).pathname;
 	// Auth ON: no `--no-auth`. Burrow reads BURROW_API_TOKEN from env and
 	// requires every HTTP call to carry `Authorization: Bearer <token>`;
-	// warren's BurrowClientPool.fromConfig threads the matching
+	// warren's BurrowClient.fromConfig threads the matching
 	// WARREN_BURROW_TOKEN. This is the R-12 cross-host shape — no
 	// implicit trust between warren and its workers.
 	const proc = Bun.spawn({

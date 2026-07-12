@@ -14,15 +14,13 @@
  *   - anything else → `UnknownRuntimeError` (fail loud — never silently fall
  *     back to the default, so a typo can't route runs onto the wrong backend).
  *
- * Call sites are NOT routed through the provider yet — that wiring is a later
- * step. The natural composition point is `src/server/main/index.ts`
- * (`bootServer`), where the `burrowClientPool` is already built and threaded
- * into `buildServerDeps`; a `resolveRuntimeProvider(env, { burrowClientPool:
- * () => pool })` call there hands the provider onto `ServerDeps` for the domain.
+ * Composition point: `src/server/main/index.ts` (`bootServer`) builds the
+ * single `burrowClient` and threads a `resolveRuntimeProvider({ burrowClient:
+ * () => client })` provider onto `ServerDeps` for the domain.
  */
 
 import type { CoreV1Api } from "@kubernetes/client-node";
-import type { BurrowClientPool } from "../burrow-client/index.ts";
+import type { BurrowClient } from "../burrow-client/index.ts";
 import type { EnvLike } from "../runs/spawn/callback-env.ts";
 import type { RuntimeProvider } from "./contract.ts";
 import { UnknownRuntimeError } from "./errors.ts";
@@ -44,11 +42,11 @@ export type RuntimeEnv = Readonly<Record<string, string | undefined>>;
 /**
  * Dependencies every provider the registry can build is threaded. Kept as a
  * single bag so adding the `k8s` backend later doesn't change the selector's
- * signature. The pool is a factory so the registry needn't own a live pool (see
- * `LocalProviderDeps`).
+ * signature. The client is a factory so the registry needn't own a live client
+ * (see `LocalProviderDeps`).
  */
 export interface RuntimeProviderDeps {
-	readonly burrowClientPool: () => BurrowClientPool;
+	readonly burrowClient: () => BurrowClient;
 	/**
 	 * Server-process env a provider reads to compute its own plumbing (the
 	 * LocalProvider's loopback callback URL, §6.3). Optional — providers
@@ -96,7 +94,7 @@ export function resolveRuntimeProvider(
 	switch (kind) {
 		case "local":
 			return new LocalProvider({
-				burrowClientPool: deps.burrowClientPool,
+				burrowClient: deps.burrowClient,
 				...(deps.serverEnv !== undefined ? { serverEnv: deps.serverEnv } : {}),
 			});
 		case "k8s":

@@ -17,7 +17,7 @@
  *      into `warren.events` like every other run.
  */
 
-import type { BurrowClientPool } from "../burrow-client/pool.ts";
+import type { BurrowClient } from "../burrow-client/index.ts";
 import type { Repos } from "../db/repos/index.ts";
 import type { SpawnFn } from "../projects/clone.ts";
 import type { ProjectsConfig } from "../projects/config.ts";
@@ -29,7 +29,7 @@ import { spawnRun } from "./spawn/index.ts";
 
 export interface CreateMergePollerDispatchInput {
 	readonly repos: Repos;
-	readonly burrowClientPool: BurrowClientPool;
+	readonly burrowClient: BurrowClient;
 	readonly bridges: BridgeRegistry;
 	readonly warrenConfigs: WarrenConfigCache;
 	readonly projectsConfig: ProjectsConfig;
@@ -49,7 +49,7 @@ export function createMergePollerDispatch(
 		const project = await input.repos.projects.require(projectId);
 		const result = await spawnRunFn({
 			repos: input.repos,
-			burrowClientPool: input.burrowClientPool,
+			burrowClient: input.burrowClient,
 			agentName: plannerAgent,
 			projectId,
 			prompt: buildPlannerDispatchPrompt(plotId),

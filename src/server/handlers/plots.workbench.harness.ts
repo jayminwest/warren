@@ -1,5 +1,5 @@
 import type { PlotEvent } from "@os-eco/plot-cli";
-import { BurrowClient, BurrowClientPool } from "../../burrow-client/index.ts";
+import { BurrowClient } from "../../burrow-client/index.ts";
 import type { Repos } from "../../db/repos/index.ts";
 import type { ProjectRow } from "../../db/schema.ts";
 import type {
@@ -33,15 +33,13 @@ function jsonRes(status: number, body: unknown): Response {
 	});
 }
 
-async function poolFor(repos: Repos): Promise<BurrowClientPool> {
+async function poolFor(repos: Repos): Promise<BurrowClient> {
 	await repos.workers.upsert({ name: "local", url: "unix:///tmp/x.sock" });
-	const pool = new BurrowClientPool({ repos });
 	const client = new BurrowClient({
 		config: { transport: { kind: "unix", path: "/tmp/x.sock" } },
 		fetch: stubFetch(async () => jsonRes(404, { error: { code: "not_found", message: "stub" } })),
 	});
-	pool.register("local", client);
-	return pool;
+	return client;
 }
 
 export interface BuildDepsInput {
@@ -56,12 +54,12 @@ export async function depsFor(input: BuildDepsInput): Promise<ServerDeps> {
 	const pool = await poolFor(input.repos);
 	return {
 		repos: input.repos,
-		burrowClientPool: pool,
+		burrowClient: pool,
 		broker,
 		bridges: createBridgeRegistry({
 			repos: input.repos,
 			broker,
-			burrowClientPool: pool,
+			burrowClient: pool,
 			bridge: async () => ({ written: 0, skipped: 0, errored: false }),
 		}),
 		projectsConfig: { root: "/tmp/projects", gitBinary: "git" },

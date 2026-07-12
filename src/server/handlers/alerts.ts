@@ -165,7 +165,7 @@ async function dispatchHealer(
 ): Promise<string> {
 	const result = await spawnRun({
 		repos: deps.repos,
-		burrowClientPool: deps.burrowClientPool,
+		burrowClient: deps.burrowClient,
 		agentName: candidate.role,
 		projectId: candidate.projectId,
 		prompt: buildHealPrompt(alert),

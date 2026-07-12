@@ -1,6 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { BurrowClient } from "../burrow-client/client.ts";
-import { BurrowClientPool } from "../burrow-client/pool.ts";
+import { BurrowClient } from "../burrow-client/index.ts";
 import { openDatabase, type WarrenDb } from "../db/client.ts";
 import { createRepos, type Repos } from "../db/repos/index.ts";
 import {
@@ -96,88 +95,79 @@ describe("runProbeTick", () => {
 		await db.close();
 	});
 
-	test("flips a healthy worker to unreachable when probe fails", async () => {
-		await repos.workers.upsert({ name: "alpha", url: "tcp://down:1" });
-		const pool = new BurrowClientPool({ repos });
-		pool.register("alpha", failingClient());
+	test("flips the local worker to unreachable when probe fails", async () => {
+		await repos.workers.upsert({ name: "local", url: "tcp://down:1" });
 
-		const result = await runProbeTick({ pool, workers: repos.workers, timeoutMs: 100 });
-		expect((await repos.workers.require("alpha")).state).toBe("unreachable");
+		const result = await runProbeTick({
+			pool: failingClient(),
+			workers: repos.workers,
+			timeoutMs: 100,
+		});
+		expect((await repos.workers.require("local")).state).toBe("unreachable");
 		expect(result.transitions).toEqual([
-			{ workerName: "alpha", from: "healthy", to: "unreachable", reason: "probe_failed" },
+			{ workerName: "local", from: "healthy", to: "unreachable", reason: "probe_failed" },
 		]);
 	});
 
-	test("flips an unreachable worker back to healthy on a successful probe", async () => {
+	test("flips the local worker back to healthy on a successful probe", async () => {
 		await repos.workers.upsert({
-			name: "alpha",
+			name: "local",
 			url: "unix:///tmp/ok.sock",
 			state: "unreachable",
 		});
-		const pool = new BurrowClientPool({ repos });
-		pool.register("alpha", okClient());
 
-		const result = await runProbeTick({ pool, workers: repos.workers, timeoutMs: 100 });
-		expect((await repos.workers.require("alpha")).state).toBe("healthy");
+		const result = await runProbeTick({
+			pool: okClient(),
+			workers: repos.workers,
+			timeoutMs: 100,
+		});
+		expect((await repos.workers.require("local")).state).toBe("healthy");
 		expect(result.transitions).toEqual([
-			{ workerName: "alpha", from: "unreachable", to: "healthy", reason: "probe_ok" },
+			{ workerName: "local", from: "unreachable", to: "healthy", reason: "probe_ok" },
 		]);
 	});
 
 	test("leaves a draining worker alone even when probe succeeds", async () => {
-		await repos.workers.upsert({ name: "alpha", url: "unix:///tmp/ok.sock", state: "draining" });
-		const pool = new BurrowClientPool({ repos });
-		pool.register("alpha", okClient());
+		await repos.workers.upsert({ name: "local", url: "unix:///tmp/ok.sock", state: "draining" });
 
-		const result = await runProbeTick({ pool, workers: repos.workers, timeoutMs: 100 });
-		expect((await repos.workers.require("alpha")).state).toBe("draining");
+		const result = await runProbeTick({
+			pool: okClient(),
+			workers: repos.workers,
+			timeoutMs: 100,
+		});
+		expect((await repos.workers.require("local")).state).toBe("draining");
 		expect(result.transitions).toEqual([]);
 	});
 
 	test("leaves a draining worker alone even when probe fails", async () => {
-		await repos.workers.upsert({ name: "alpha", url: "tcp://down:1", state: "draining" });
-		const pool = new BurrowClientPool({ repos });
-		pool.register("alpha", failingClient());
+		await repos.workers.upsert({ name: "local", url: "tcp://down:1", state: "draining" });
 
-		await runProbeTick({ pool, workers: repos.workers, timeoutMs: 100 });
-		expect((await repos.workers.require("alpha")).state).toBe("draining");
+		await runProbeTick({ pool: failingClient(), workers: repos.workers, timeoutMs: 100 });
+		expect((await repos.workers.require("local")).state).toBe("draining");
 	});
 
 	test("no transition when probe result matches current state", async () => {
-		await repos.workers.upsert({ name: "alpha", url: "unix:///tmp/ok.sock", state: "healthy" });
-		const pool = new BurrowClientPool({ repos });
-		pool.register("alpha", okClient());
+		await repos.workers.upsert({ name: "local", url: "unix:///tmp/ok.sock", state: "healthy" });
 
-		const result = await runProbeTick({ pool, workers: repos.workers, timeoutMs: 100 });
+		const result = await runProbeTick({
+			pool: okClient(),
+			workers: repos.workers,
+			timeoutMs: 100,
+		});
 		expect(result.transitions).toEqual([]);
 	});
 
-	test("skips pool entries with no `workers` row", async () => {
-		// Pool has alpha but no row in `workers` (drift scenario).
-		const pool = new BurrowClientPool({ repos });
-		pool.register("alpha", okClient());
-
+	test("skips reconciliation when the local `workers` row is missing", async () => {
+		// No `local` row in `workers` (drift scenario) — probe runs but writes nothing.
 		const warnings: object[] = [];
 		const result = await runProbeTick({
-			pool,
+			pool: okClient(),
 			workers: repos.workers,
 			timeoutMs: 100,
 			logger: { warn: (obj) => void warnings.push(obj) },
 		});
 		expect(result.transitions).toEqual([]);
-		expect(warnings).toEqual([{ workerName: "alpha" }]);
-	});
-
-	test("reconciles multiple workers in one tick", async () => {
-		await repos.workers.upsert({ name: "alpha", url: "unix:///tmp/ok.sock" });
-		await repos.workers.upsert({ name: "beta", url: "tcp://down:1" });
-		const pool = new BurrowClientPool({ repos });
-		pool.register("alpha", okClient());
-		pool.register("beta", failingClient());
-
-		await runProbeTick({ pool, workers: repos.workers, timeoutMs: 100 });
-		expect((await repos.workers.require("alpha")).state).toBe("healthy");
-		expect((await repos.workers.require("beta")).state).toBe("unreachable");
+		expect(warnings).toEqual([{ workerName: "local" }]);
 	});
 });
 
@@ -195,13 +185,11 @@ describe("startWorkerProbe", () => {
 	});
 
 	test("runOnce drives one probe + reconciliation pass", async () => {
-		await repos.workers.upsert({ name: "alpha", url: "tcp://down:1" });
-		const pool = new BurrowClientPool({ repos });
-		pool.register("alpha", failingClient());
+		await repos.workers.upsert({ name: "local", url: "tcp://down:1" });
 
 		let intervalScheduled = false;
 		const handle = startWorkerProbe({
-			pool,
+			pool: failingClient(),
 			workers: repos.workers,
 			setInterval: () => {
 				intervalScheduled = true;
@@ -214,19 +202,17 @@ describe("startWorkerProbe", () => {
 		const result = await handle.runOnce();
 		expect(handle.tickCount()).toBe(1);
 		expect(result?.transitions).toEqual([
-			{ workerName: "alpha", from: "healthy", to: "unreachable", reason: "probe_failed" },
+			{ workerName: "local", from: "healthy", to: "unreachable", reason: "probe_failed" },
 		]);
 		await handle.stop();
 	});
 
 	test("disabled loop never schedules an interval but still permits runOnce", async () => {
-		await repos.workers.upsert({ name: "alpha", url: "unix:///tmp/ok.sock" });
-		const pool = new BurrowClientPool({ repos });
-		pool.register("alpha", okClient());
+		await repos.workers.upsert({ name: "local", url: "unix:///tmp/ok.sock" });
 
 		let intervalScheduled = false;
 		const handle = startWorkerProbe({
-			pool,
+			pool: okClient(),
 			workers: repos.workers,
 			config: { disabled: true },
 			setInterval: () => {
@@ -244,9 +230,8 @@ describe("startWorkerProbe", () => {
 	});
 
 	test("runOnce returns null when fired after stop()", async () => {
-		const pool = new BurrowClientPool({ repos });
 		const handle = startWorkerProbe({
-			pool,
+			pool: okClient(),
 			workers: repos.workers,
 			setInterval: () => ({}),
 			clearInterval: () => {},
@@ -256,12 +241,10 @@ describe("startWorkerProbe", () => {
 	});
 
 	test("concurrent runOnce calls are coalesced (single-flight)", async () => {
-		await repos.workers.upsert({ name: "alpha", url: "unix:///tmp/ok.sock" });
-		const pool = new BurrowClientPool({ repos });
-		pool.register("alpha", okClient());
+		await repos.workers.upsert({ name: "local", url: "unix:///tmp/ok.sock" });
 
 		const handle = startWorkerProbe({
-			pool,
+			pool: okClient(),
 			workers: repos.workers,
 			setInterval: () => ({}),
 			clearInterval: () => {},

@@ -5,7 +5,7 @@
  * without dragging in the full `spawnRun` implementation graph.
  */
 
-import type { BurrowClientPool } from "../../burrow-client/pool.ts";
+import type { BurrowClient } from "../../burrow-client/index.ts";
 import type { Repos } from "../../db/repos/index.ts";
 import type { CloneKind, RunMode, RunRow } from "../../db/schema.ts";
 import type { SpawnFn as ProjectSpawnFn } from "../../projects/clone.ts";
@@ -34,23 +34,20 @@ export interface SpawnLogger {
 export interface SpawnRunInput {
 	readonly repos: Repos;
 	/**
-	 * Multi-worker successor to the legacy `burrowClient` parameter
-	 * (warren-39c3 / pl-9ba1 step 4, parent warren-6747). `spawnRun`
-	 * resolves placement via `pool.placeFor({projectId})` so the chosen
-	 * worker name lands on `runs.worker_id` AND `burrows.worker_id`
-	 * before any burrow HTTP call. The same client services provision +
-	 * dispatch + rollback so a single run never crosses workers.
+	 * The single local burrow client (warren-76c5). Multi-worker placement /
+	 * pooling was retired with the K8s migration — the self-host backend is
+	 * exactly one local burrow — so `runs.worker_id` / `burrows.worker_id`
+	 * record the vestigial `LOCAL_WORKER_NAME` and the same client services
+	 * provision + dispatch + rollback.
 	 */
-	readonly burrowClientPool: BurrowClientPool;
+	readonly burrowClient: BurrowClient;
 	/**
 	 * Runtime-provider seam (K8s migration pl-829f step 13 / warren-1f56).
 	 * `spawnRun` dispatches through `provider.create(spec)` (burrow's
 	 * `burrowsUp` + `runs.create` collapsed into one). Optional: defaults to a
-	 * burrow-backed `LocalProvider` over `burrowClientPool` (+ `serverEnv`) so
-	 * callers that only wire the pool keep working — same fallback shape as
-	 * `reapRun`. Placement still resolves the worker NAME via
-	 * `burrowClientPool.placeFor` for the sticky-by-burrow `runs.worker_id` /
-	 * `burrows.worker_id` bookkeeping the reap / bridge reads still depend on.
+	 * burrow-backed `LocalProvider` over `burrowClient` (+ `serverEnv`) so
+	 * callers that only wire the client keep working — same fallback shape as
+	 * `reapRun`.
 	 */
 	readonly runtimeProvider?: RuntimeProvider;
 	readonly agentName: string;

@@ -2,7 +2,7 @@
  * Repository for the `workers` table (warren-b0a3 / pl-9ba1 step 1, parent
  * warren-6747).
  *
- * Each row is a burrow worker the `BurrowClientPool` (step 3) can dispatch to.
+ * Each row is a burrow worker the `BurrowClient` (step 3) can dispatch to.
  * `name` is the operator-chosen handle and the URL identity used by
  * `POST /workers/:name/drain`; `url` is the transport target consumed by
  * `HttpClient`. The bearer token is shared across the pool via the single
