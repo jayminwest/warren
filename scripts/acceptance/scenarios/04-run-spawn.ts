@@ -138,9 +138,16 @@ export const scenario: Scenario = {
 			typeof r1Body.burrow?.id === "string" && r1Body.burrow.id === r1.burrowId,
 			"POST /runs response.burrow.id matches run.burrowId",
 		);
+		// workspacePath is intentionally an empty string post-RuntimeProvider
+		// seam (warren-1f56): a burrow host path has no provider-neutral home,
+		// so the seam's RunHandle drops it and dispatch returns
+		// `workspacePath: ""` (src/runs/spawn/dispatch.ts). It survives only as
+		// a display-only field slated for removal with the multi-worker /
+		// `/burrows` surface (design §5.C). Re-tighten this to assert a real
+		// path if/when §5.C reinstates a provider-neutral workspace handle.
 		assertTrue(
-			typeof r1Body.burrow?.workspacePath === "string" && r1Body.burrow.workspacePath.length > 0,
-			"POST /runs response.burrow.workspacePath is populated",
+			typeof r1Body.burrow?.workspacePath === "string",
+			"POST /runs response.burrow.workspacePath is a string (empty until §5.C — warren-1f56 seam)",
 		);
 
 		// rendered_agent_json populated and matches the cached envelope.

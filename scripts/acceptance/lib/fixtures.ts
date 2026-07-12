@@ -133,6 +133,15 @@ async function buildCanopyRepo(repoPath: string): Promise<void> {
 			`system=${systemSection}`,
 			"--section",
 			`burrow_config=${burrowConfigSection}`,
+			// Pin the burrow runtime to the declarative stub-shell runtime
+			// (agent.sh — honors the [sleep_ms]/[mulch_*]/[seed_*] prompt
+			// knobs). Without this, readRuntimeId() (src/registry/schema.ts)
+			// falls back to DEFAULT_RUNTIME_ID="pi", so warren dispatches
+			// stub-shell runs onto the pi runtime (pi-agent.sh), which ignores
+			// those knobs — completing before cancel can land (scenario 08) and
+			// writing no mulch/seeds mirror output (09/10). warren-83b5.
+			"--fm",
+			`runtime=${STUB_AGENT_NAME}`,
 		],
 		env,
 	);
