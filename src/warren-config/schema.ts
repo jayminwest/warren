@@ -42,7 +42,7 @@
 import { z } from "zod";
 import { parseDurationMs } from "../preview/duration.ts";
 import { CiFixerConfigSchema, HealerConfigSchema } from "./feature-loop-config.ts";
-import { ResourcesConfigSchema } from "./resources-config.ts";
+import { AdmissionConfigSchema, ResourcesConfigSchema } from "./resources-config.ts";
 
 // warren-3db0: re-exported so the historical import sites (and
 // `warren-config/index.ts`) keep resolving these from `./schema.ts`
@@ -63,6 +63,8 @@ export {
 // warren-ac7a / pl-829f step 14: K8s resource + network defaults re-exported
 // from `resources-config.ts` (extracted for the file-size budget).
 export {
+	type AdmissionConfig,
+	AdmissionConfigSchema,
 	DEFAULT_K8S_CPU_LIMIT_MILLICORES,
 	DEFAULT_K8S_CPU_REQUEST_MILLICORES,
 	DEFAULT_K8S_MEMORY_LIMIT_MIB,
@@ -409,6 +411,8 @@ export const DefaultsConfigSchema = z
 		// warren-ac7a / pl-829f step 14: K8s pod resource + network defaults
 		// (design §3.1). Absent → the pod-spec builder uses DEFAULT_K8S_* constants.
 		resources: ResourcesConfigSchema.optional(),
+		// warren-b6f2: per-project admission control (K8s, design §3.3).
+		admission: AdmissionConfigSchema.optional(),
 		// warren-cd22: per-project plot-sync-to-GitHub configuration.
 		plotSync: PlotSyncConfigSchema.optional(),
 		// warren-05ea: opt-in polling CI-fixer; missing block → poller skips it.

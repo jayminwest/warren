@@ -5,7 +5,12 @@ import {
 	METRIC_OOM_KILLED_TOTAL,
 	METRIC_WATCH_RECONNECTS_TOTAL,
 } from "./pod-metrics.ts";
-import { AGENT_CONTAINER_NAME, INIT_CONTAINER_NAME, LABEL_RUN_ID } from "./pod-spec.ts";
+import {
+	AGENT_CONTAINER_NAME,
+	INIT_CONTAINER_NAME,
+	LABEL_PROJECT,
+	LABEL_RUN_ID,
+} from "./pod-spec.ts";
 import {
 	type CounterSink,
 	type PodListFn,
@@ -344,5 +349,46 @@ describe("PodWatcher — lifecycle", () => {
 		watcher.start();
 		await watcher.stop();
 		expect(true).toBe(true);
+	});
+});
+
+describe("PodWatcher.admissionSnapshot (warren-b6f2)", () => {
+	function runPod(runId: string, phase: string, projectId?: string): V1Pod {
+		return {
+			metadata: {
+				name: `run-${runId}`,
+				labels: {
+					[LABEL_RUN_ID]: runId,
+					...(projectId !== undefined ? { [LABEL_PROJECT]: projectId } : {}),
+				},
+			},
+			status: { phase },
+		};
+	}
+
+	test("tallies non-terminal / pending / per-project counts off the live cache", async () => {
+		const list = listReturning(
+			[
+				runPod("run_a", "Pending", "proj_hot"),
+				runPod("run_b", "Running", "proj_hot"),
+				runPod("run_c", "Running", "proj_cold"),
+				runPod("run_d", "Succeeded", "proj_hot"),
+				runPod("run_e", "Failed", "proj_hot"),
+			],
+			"100",
+		);
+		const watch = new FakeWatch();
+		const watcher = makeWatcher(list.fn, watch, new FakeCounters());
+		watcher.start();
+		await waitForConnections(watch, 1);
+
+		expect(watcher.admissionSnapshot("proj_hot")).toEqual({
+			nonTerminalPods: 3, // a (Pending) + b + c (Running); terminals excluded
+			pendingPods: 1, // a
+			projectNonTerminalPods: 2, // a + b (proj_hot terminals excluded)
+		});
+		// A project with no active pods → zero project count, same cluster totals.
+		expect(watcher.admissionSnapshot("proj_none").projectNonTerminalPods).toBe(0);
+		await watcher.stop();
 	});
 });

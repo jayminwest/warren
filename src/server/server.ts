@@ -211,7 +211,11 @@ async function handleRequest(
 				{ err, route: "preview proxy", status: rendered.status },
 				"server: preview proxy threw",
 			);
-			return jsonResponse(rendered.status, rendered.envelope);
+			return jsonResponse(
+				rendered.status,
+				rendered.envelope,
+				rendered.headers !== undefined ? { headers: rendered.headers } : undefined,
+			);
 		}
 	}
 
@@ -241,7 +245,11 @@ async function handleRequest(
 				},
 				"server: handler threw",
 			);
-			return jsonResponse(rendered.status, rendered.envelope);
+			return jsonResponse(
+				rendered.status,
+				rendered.envelope,
+				rendered.headers !== undefined ? { headers: rendered.headers } : undefined,
+			);
 		}
 	}
 
@@ -253,7 +261,11 @@ async function handleRequest(
 		const rendered = pathExists(routes, url.pathname)
 			? methodNotAllowed(request.method, url.pathname)
 			: notFound(url.pathname);
-		return jsonResponse(rendered.status, rendered.envelope);
+		return jsonResponse(
+			rendered.status,
+			rendered.envelope,
+			rendered.headers !== undefined ? { headers: rendered.headers } : undefined,
+		);
 	}
 
 	// If the route is a GET with a UI handler available, fall
@@ -280,7 +292,11 @@ async function handleRequest(
 				{ err, route: "GET (ui fallback)", status: rendered.status },
 				"server: ui handler threw",
 			);
-			return jsonResponse(rendered.status, rendered.envelope);
+			return jsonResponse(
+				rendered.status,
+				rendered.envelope,
+				rendered.headers !== undefined ? { headers: rendered.headers } : undefined,
+			);
 		}
 	}
 

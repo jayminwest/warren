@@ -69,3 +69,21 @@ export const ResourcesConfigSchema = z
 	.strict();
 
 export type ResourcesConfig = z.infer<typeof ResourcesConfigSchema>;
+
+// warren-b6f2 / pl-829f step 21: per-project admission control (design §3.3).
+// `maxConcurrentRuns` caps this project's simultaneous non-terminal runs on the
+// K8s backend — the provider enforces it as a soft admission gate (429 on
+// exceed), stopping one busy project from starving others. Absent block ⇒ the
+// global default `WARREN_K8S_MAX_PROJECT_CONCURRENCY`, else unlimited. Ignored
+// by LocalProvider. Housed here (not `schema.ts`) for the file-size budget.
+export const AdmissionConfigSchema = z
+	.object({
+		maxConcurrentRuns: z
+			.number()
+			.int("admission.maxConcurrentRuns must be a positive integer")
+			.positive("admission.maxConcurrentRuns must be a positive integer")
+			.optional(),
+	})
+	.strict();
+
+export type AdmissionConfig = z.infer<typeof AdmissionConfigSchema>;

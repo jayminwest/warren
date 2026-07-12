@@ -116,6 +116,9 @@ export function buildServerDeps(input: BuildServerDepsInput): ServerDeps {
 		// run_inbox steering store for the K8s backend (pl-829f step 18 /
 		// warren-3d0b); ignored by LocalProvider.
 		k8sRunInbox: () => repos.runInbox,
+		// admission-rejection metric sink for the K8s backend (pl-829f step 21 /
+		// warren-b6f2); ignored by LocalProvider. Absent registry ⇒ uncounted.
+		...(metricsRegistry !== undefined ? { k8sAdmissionMetrics: metricsRegistry } : {}),
 	});
 
 	return {

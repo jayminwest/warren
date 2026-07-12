@@ -15,6 +15,7 @@ import {
 	LABEL_MANAGED_BY,
 	LABEL_MODE,
 	LABEL_NETWORK,
+	LABEL_PROJECT,
 	LABEL_RUN_ID,
 	LABEL_RUNTIME,
 	MANAGED_BY_VALUE,
@@ -24,6 +25,7 @@ import {
 	SEED_MANIFEST_PATH,
 	SEED_MOUNT_PATH,
 	SEED_VOLUME_NAME,
+	sanitizeLabelValue,
 	serviceDnsCallbackUrl,
 	WARREN_POD_GID,
 	WARREN_POD_UID,
@@ -179,6 +181,15 @@ describe("podLabelsForRun", () => {
 		expect(labels[LABEL_MANAGED_BY]).toBe(MANAGED_BY_VALUE);
 	});
 
+	test("omits the project label when the RunSpec has no projectId (warren-b6f2)", () => {
+		expect(podLabelsForRun(baseSpec(), config)[LABEL_PROJECT]).toBeUndefined();
+	});
+
+	test("stamps the project label from RunSpec.projectId (warren-b6f2)", () => {
+		const labels = podLabelsForRun(baseSpec({ projectId: "proj_01hxyz" }), config);
+		expect(labels[LABEL_PROJECT]).toBe("proj_01hxyz");
+	});
+
 	test("network label reflects the resolved config network, not the RunSpec intent", () => {
 		const defaults: DefaultsConfig = {
 			resources: {
@@ -190,6 +201,24 @@ describe("podLabelsForRun", () => {
 		const c = resolveK8sPodConfig({}, defaults);
 		const labels = podLabelsForRun(baseSpec({ network: "none" }), c);
 		expect(labels[LABEL_NETWORK]).toBe("open");
+	});
+});
+
+describe("sanitizeLabelValue", () => {
+	test("passes a normal project id through unchanged", () => {
+		expect(sanitizeLabelValue("proj_01hxyz")).toBe("proj_01hxyz");
+	});
+	test("collapses illegal chars to '-' and trims edges", () => {
+		expect(sanitizeLabelValue("a/b c!d")).toBe("a-b-c-d");
+		expect(sanitizeLabelValue("--x--")).toBe("x");
+	});
+	test("blank / all-illegal input yields undefined (no label stamped)", () => {
+		expect(sanitizeLabelValue(undefined)).toBeUndefined();
+		expect(sanitizeLabelValue("")).toBeUndefined();
+		expect(sanitizeLabelValue("///")).toBeUndefined();
+	});
+	test("truncates to 63 chars", () => {
+		expect(sanitizeLabelValue("a".repeat(80))).toHaveLength(63);
 	});
 });
 

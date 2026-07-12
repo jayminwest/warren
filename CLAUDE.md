@@ -91,6 +91,15 @@ and is surfaced by `loadWarrenConfig()`. Notable knobs:
   controls whether sync PRs are auto-merged; `targetBranch` overrides
   the project's `defaultBranch` for the PR base. `POST /plots/:id/sync`
   triggers manually; formalize and status-change fire background syncs.
+- `admission.maxConcurrentRuns` — per-project cap on simultaneous
+  non-terminal runs, enforced by the K8s runtime's admission gate
+  (`WARREN_RUNTIME=k8s`); exceeding it rejects the dispatch with HTTP 429
+  (`Retry-After`) and reason `project_concurrency_exceeded`. Absent → the
+  global default `WARREN_K8S_MAX_PROJECT_CONCURRENCY`, else unlimited. Two
+  cluster-wide env knobs pair with it: `WARREN_K8S_MAX_QUEUE_DEPTH`
+  (total non-terminal pods, default 50) and `WARREN_K8S_MAX_PENDING_PODS`
+  (Pending pods, default 20); `0` disables a cap. Ignored by LocalProvider.
+  SPEC §3.3 (warren-b6f2, supersedes warren-b01e + warren-ea4f).
 
 ## Relationship to burrow
 

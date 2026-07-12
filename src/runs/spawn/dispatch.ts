@@ -260,6 +260,13 @@ export async function spawnRun(input: SpawnRunInput): Promise<SpawnRunResult> {
 		branch,
 		baseBranch: projectAfterRefresh.defaultBranch,
 		hostClonePathHint: projectAfterRefresh.localPath,
+		// warren-b6f2: project identity + per-project concurrency cap for K8s
+		// admission control (design §3.3). The provider stamps the project label
+		// and gates on the cap; LocalProvider ignores both.
+		projectId: projectAfterRefresh.id,
+		...(projectDefaults?.admission?.maxConcurrentRuns !== undefined
+			? { maxProjectConcurrency: projectDefaults.admission.maxConcurrentRuns }
+			: {}),
 		runtimeId,
 		prompt: composeDispatchPrompt(agent.sections.system, input.prompt),
 		metadata: composeBurrowMetadata(input.metadata, agent.frontmatter),

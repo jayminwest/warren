@@ -83,6 +83,9 @@ export const LABEL_RUN_ID = "warren.io/run-id";
 export const LABEL_RUNTIME = "warren.io/runtime";
 export const LABEL_MANAGED_BY = "warren.io/managed-by";
 export const LABEL_MODE = "warren.io/mode";
+/** The warren project id (from `RunSpec.projectId`) — the per-project admission
+ * gate counts non-terminal pods on this label (warren-b6f2). Omitted if unset. */
+export const LABEL_PROJECT = "warren.io/project";
 /** Coarse network intent (§5 `networkPolicy: "coarse"`) — the standalone K8s
  * `NetworkPolicy` resource (manifests step) selects pods on this. */
 export const LABEL_NETWORK = "warren.io/network";
@@ -422,13 +425,36 @@ function buildAgentContainer(spec: RunSpec, config: K8sPodConfig): V1Container {
 
 /** Labels stamped on every run pod. `warren.io/run-id` is the informer selector. */
 export function podLabelsForRun(spec: RunSpec, config: K8sPodConfig): Record<string, string> {
-	return {
+	const labels: Record<string, string> = {
 		[LABEL_RUN_ID]: spec.runId,
 		[LABEL_RUNTIME]: spec.runtimeId,
 		[LABEL_MODE]: spec.mode,
 		[LABEL_NETWORK]: config.network,
 		[LABEL_MANAGED_BY]: MANAGED_BY_VALUE,
 	};
+	// warren-b6f2: stamp the project id so the per-project admission gate can
+	// count pods by project. Sanitized to a valid K8s label VALUE (DNS-safe,
+	// ≤63) — a normal `proj_<ulid>` id passes through byte-for-byte.
+	const project = sanitizeLabelValue(spec.projectId);
+	if (project !== undefined) labels[LABEL_PROJECT] = project;
+	return labels;
+}
+
+/**
+ * Coerce a value into a legal K8s label VALUE: ≤63 chars of `[A-Za-z0-9._-]`,
+ * beginning and ending with an alphanumeric. Illegal chars collapse to `-`;
+ * blank/all-illegal input ⇒ `undefined` (no label stamped). Warren project ids
+ * (`proj_<ulid>`) are already legal, so this is a defensive normalizer, not a
+ * transform of the common case.
+ */
+export function sanitizeLabelValue(raw: string | undefined): string | undefined {
+	if (raw === undefined || raw === "") return undefined;
+	const collapsed = raw
+		.replace(/[^A-Za-z0-9._-]/g, "-")
+		.replace(/-+/g, "-")
+		.slice(0, 63);
+	const trimmed = collapsed.replace(/^[._-]+|[._-]+$/g, "");
+	return trimmed === "" ? undefined : trimmed;
 }
 
 /**

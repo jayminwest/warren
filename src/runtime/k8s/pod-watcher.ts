@@ -38,13 +38,18 @@
 
 import type { V1Pod } from "@kubernetes/client-node";
 import {
+	type AdmissionCounts,
+	countPodsForAdmission,
+	type PodAdmissionSource,
+} from "./admission.ts";
+import {
 	METRIC_INIT_FAILURES_TOTAL,
 	METRIC_OOM_KILLED_TOTAL,
 	METRIC_WATCH_RECONNECTS_TOTAL,
 	type PodMetricsSnapshot,
 	type PodMetricsSource,
 } from "./pod-metrics.ts";
-import { INIT_CONTAINER_NAME, LABEL_RUN_ID } from "./pod-spec.ts";
+import { INIT_CONTAINER_NAME, LABEL_PROJECT, LABEL_RUN_ID } from "./pod-spec.ts";
 import { mapPodToRunStatus } from "./status-map.ts";
 
 /** kubelet's `terminated.reason` for a cgroup OOM kill. */
@@ -114,7 +119,7 @@ const DEFAULT_BACKOFF_MAX_MS = 30_000;
  * `start()` to seed the cache + begin watching, `stop()` to abort. Implements
  * both `PodCacheReader` (for `status()`) and `PodMetricsSource` (for `/metrics`).
  */
-export class PodWatcher implements PodCacheReader, PodMetricsSource {
+export class PodWatcher implements PodCacheReader, PodMetricsSource, PodAdmissionSource {
 	private readonly cache = new Map<string, V1Pod>();
 	/** runIds whose OOM kill we have already counted (count once, not per event). */
 	private readonly oomCounted = new Set<string>();
@@ -161,6 +166,18 @@ export class PodWatcher implements PodCacheReader, PodMetricsSource {
 
 	getByRunId(runId: string): V1Pod | undefined {
 		return this.cache.get(runId);
+	}
+
+	// --- PodAdmissionSource --------------------------------------------------
+
+	/**
+	 * Point-in-time admission counts off the live cache (warren-b6f2) — the K8s
+	 * provider's `create()` reads these to gate on queue-depth / max-pending /
+	 * per-project caps without an API round-trip. Shares the pure
+	 * `countPodsForAdmission` tally the cache-cold list path also uses.
+	 */
+	admissionSnapshot(projectId: string | undefined): AdmissionCounts {
+		return countPodsForAdmission([...this.cache.values()], projectId, LABEL_PROJECT);
 	}
 
 	// --- PodMetricsSource ----------------------------------------------------

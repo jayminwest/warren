@@ -8,6 +8,7 @@ import { NotFoundError, StateTransitionError, ValidationError } from "../core/er
 import { ProjectUnavailableError } from "../projects/errors.ts";
 import { AgentSchemaError, CanopyUnavailableError } from "../registry/errors.ts";
 import { RunSpawnError } from "../runs/errors.ts";
+import { RuntimeAdmissionError } from "../runtime/errors.ts";
 import { WarrenConfigUnavailableError } from "../warren-config/errors.ts";
 import { methodNotAllowed, notFound, notImplemented, renderError } from "./errors.ts";
 
@@ -27,6 +28,21 @@ describe("renderError — WarrenError mapping", () => {
 
 	test("StateTransitionError → 409", () => {
 		expect(renderError(new StateTransitionError("nope")).status).toBe(409);
+	});
+
+	test("RuntimeAdmissionError → 429 with Retry-After header + reason hint (warren-b6f2)", () => {
+		const r = renderError(
+			new RuntimeAdmissionError("run rejected: cluster busy", {
+				reason: "cluster_pending_saturated",
+				retryAfterSeconds: 30,
+				recoveryHint: "retry after 30s",
+			}),
+		);
+		expect(r.status).toBe(429);
+		expect(r.envelope.error.code).toBe("runtime_admission_rejected");
+		expect(r.envelope.error.message).toContain("cluster busy");
+		expect(r.envelope.error.hint).toBe("retry after 30s");
+		expect(r.headers).toEqual({ "Retry-After": "30" });
 	});
 
 	test("BurrowUnreachableError → 503", () => {

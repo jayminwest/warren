@@ -45,6 +45,19 @@ export interface RunSpec {
 	/** optional burrow worktree optimization; K8s ignores it. */
 	hostClonePathHint?: string;
 
+	/**
+	 * OPTIONAL project identity (the warren `projects.id`). K8s stamps it onto the
+	 * pod (`warren.io/project`) and counts by it for the per-project admission cap
+	 * (warren-b6f2); LocalProvider ignores it.
+	 */
+	projectId?: string;
+	/**
+	 * OPTIONAL per-project concurrency cap — max simultaneous non-terminal run
+	 * pods for this project, from `.warren/config.yaml` `admission.maxConcurrentRuns`
+	 * (warren-b6f2). K8s enforces it; LocalProvider ignores it.
+	 */
+	maxProjectConcurrency?: number;
+
 	// Agent.
 	/** claude-code | pi | codex | sapling — selects image/toolchain */
 	runtimeId: string;

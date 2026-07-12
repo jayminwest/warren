@@ -6,10 +6,12 @@
 		"src/db/schema/sqlite.ts": 564,
 		"src/plots/aggregate.ts": 506,
 		"src/runs/pr.ts": 659,
+		"src/runtime/k8s/provider.ts": 507,
 		"src/server/handlers/agents.test.ts": 533,
 		"src/server/handlers/plan-runs.ts": 505,
 		"src/server/main/index.ts": 548,
 		"src/server/server.test.ts": 536,
-		"src/server/types.ts": 508
+		"src/server/types.ts": 508,
+		"src/warren-config/schema.ts": 504
 	}
 }

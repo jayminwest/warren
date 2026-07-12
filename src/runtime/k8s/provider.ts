@@ -43,6 +43,8 @@ import type {
 	TeardownResult,
 } from "../contract.ts";
 import { RuntimeProviderError } from "../errors.ts";
+import type { AdmissionCounterSink, PodAdmissionSource } from "./admission.ts";
+import { admitK8sCreate } from "./admit.ts";
 import { mapApiError } from "./api-error.ts";
 import { finalizeK8sRun } from "./finalize.ts";
 import { type FinalizeCoordinator, sharedFinalizeCoordinator } from "./finalize-coordinator.ts";
@@ -93,6 +95,17 @@ export interface K8sProviderDeps {
 	 * provider-internal plumbing, so wiring this stays optional.
 	 */
 	readonly podCache?: PodCacheReader;
+	/**
+	 * OPTIONAL live admission-count source (the pod-watcher, warren-b6f2).
+	 * `create()` reads counts off it to gate a dispatch; absent, it lists pods
+	 * by label instead (cache-cold).
+	 */
+	readonly podAdmission?: PodAdmissionSource;
+	/**
+	 * OPTIONAL sink for the `warren_run_admission_rejections_total{reason}` metric
+	 * (the shared `MetricsRegistry`). Absent ⇒ rejections still throw, uncounted.
+	 */
+	readonly admissionMetrics?: AdmissionCounterSink;
 	/**
 	 * OPTIONAL injectable pod-log follow seam `streamEvents` drives (pl-829f step
 	 * 17). A factory-free direct fn (mirrors the pod-watcher's `WatchFn`) so tests
@@ -228,6 +241,18 @@ export class K8sProvider implements RuntimeProvider {
 			...spec,
 			env: this.composeAgentEnv(spec.env, config),
 		};
+
+		// Admission control (warren-b6f2, design §3.3): refuse the dispatch BEFORE
+		// any API write when a cap is exceeded — the caller sees a 429, not a
+		// stranded pod, and there is nothing to roll back on a rejection.
+		await admitK8sCreate({
+			api,
+			namespace: config.namespace,
+			env,
+			spec,
+			podAdmission: this.deps.podAdmission,
+			metrics: this.deps.admissionMetrics,
+		});
 
 		let seedCmName: string | undefined;
 		if (spec.seedFiles.length > 0) {

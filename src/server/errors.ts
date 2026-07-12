@@ -59,15 +59,34 @@ import {
 import { ProjectUnavailableError } from "../projects/errors.ts";
 import { AgentSchemaError, CanopyUnavailableError } from "../registry/errors.ts";
 import { RunSpawnError } from "../runs/errors.ts";
+import { RuntimeAdmissionError } from "../runtime/errors.ts";
 import { WarrenConfigUnavailableError } from "../warren-config/errors.ts";
 import type { ErrorEnvelope } from "./types.ts";
 
 export interface RenderedError {
 	readonly status: number;
 	readonly envelope: ErrorEnvelope;
+	/**
+	 * Extra HTTP response headers to emit alongside the envelope (e.g.
+	 * `Retry-After` on a 429 admission rejection). Absent for most errors — the
+	 * server forwards these to `jsonResponse` when present.
+	 */
+	readonly headers?: Readonly<Record<string, string>>;
 }
 
 export function renderError(err: unknown): RenderedError {
+	if (err instanceof RuntimeAdmissionError) {
+		// 429 + Retry-After (warren-b6f2): the cluster/project is at capacity. The
+		// header advertises the backoff the provider chose; the envelope carries
+		// the machine-readable reason in the hint so a caller can distinguish
+		// "cluster busy" from "project at cap".
+		const envelope = buildEnvelope(err.code, err.message, err.recoveryHint);
+		return {
+			status: 429,
+			envelope,
+			headers: { "Retry-After": String(err.retryAfterSeconds) },
+		};
+	}
 	if (err instanceof WarrenError) {
 		const envelope = buildEnvelope(err.code, err.message, err.recoveryHint);
 		return { status: warrenStatusFor(err), envelope };

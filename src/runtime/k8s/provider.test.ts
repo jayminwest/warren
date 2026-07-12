@@ -7,8 +7,14 @@ import {
 } from "@kubernetes/client-node";
 import type { EnvLike } from "../../runs/spawn/callback-env.ts";
 import type { RunSpec } from "../contract.ts";
-import { RuntimeProviderError } from "../errors.ts";
-import { SEED_MANIFEST_KEY } from "./pod-spec.ts";
+import { RuntimeAdmissionError, RuntimeProviderError } from "../errors.ts";
+import {
+	type AdmissionCounterSink,
+	type AdmissionCounts,
+	METRIC_ADMISSION_REJECTIONS_TOTAL,
+	type PodAdmissionSource,
+} from "./admission.ts";
+import { LABEL_PROJECT, SEED_MANIFEST_KEY } from "./pod-spec.ts";
 import { K8S_PROVIDER_CAPABILITIES, K8sProvider, type K8sProviderDeps } from "./provider.ts";
 
 /**
@@ -79,16 +85,36 @@ interface CmCall {
  * recorded so tests can assert ordering + payloads. Cast through `unknown` — we
  * implement only the three methods `create()` uses.
  */
-function fakeApi(opts: { podError?: unknown; podUid?: string; cmError?: unknown } = {}): {
+function fakeApi(
+	opts: {
+		podError?: unknown;
+		podUid?: string;
+		cmError?: unknown;
+		listItems?: V1Pod[];
+		listError?: unknown;
+	} = {},
+): {
 	api: CoreV1Api;
 	pods: PodCall[];
 	cms: CmCall[];
 	deletedCms: string[];
+	listCalls: number;
 } {
 	const pods: PodCall[] = [];
 	const cms: CmCall[] = [];
 	const deletedCms: string[] = [];
+	const box = { listCalls: 0 };
 	const api = {
+		// Admission's cache-cold count source (warren-b6f2). Default: no run pods
+		// (so create() admits and proceeds, matching pre-admission behavior).
+		listNamespacedPod: (_param: {
+			namespace: string;
+			labelSelector?: string;
+		}): Promise<{ items: V1Pod[] }> => {
+			box.listCalls += 1;
+			if (opts.listError !== undefined) return Promise.reject(opts.listError);
+			return Promise.resolve({ items: opts.listItems ?? [] });
+		},
 		createNamespacedPod: (param: PodCall): Promise<V1Pod> => {
 			pods.push(param);
 			if (opts.podError !== undefined) return Promise.reject(opts.podError);
@@ -106,7 +132,15 @@ function fakeApi(opts: { podError?: unknown; podUid?: string; cmError?: unknown 
 			return Promise.resolve({});
 		},
 	} as unknown as CoreV1Api;
-	return { api, pods, cms, deletedCms };
+	return {
+		api,
+		pods,
+		cms,
+		deletedCms,
+		get listCalls() {
+			return box.listCalls;
+		},
+	};
 }
 
 function makeProvider(fake: ReturnType<typeof fakeApi>, serverEnv: EnvLike = {}): K8sProvider {
@@ -239,5 +273,146 @@ describe("K8sProvider.create", () => {
 			makeProvider(fake).create({ ...spec, seedFiles: [{ path: "a", contents: "b" }] }),
 		).rejects.toThrow(RuntimeProviderError);
 		expect(fake.pods).toHaveLength(0);
+	});
+
+	test("stamps the warren.io/project label from the RunSpec projectId", async () => {
+		const fake = fakeApi();
+		await makeProvider(fake).create({ ...spec, projectId: "proj_abc" });
+		expect(fake.pods[0]?.body.metadata?.labels?.[LABEL_PROJECT]).toBe("proj_abc");
+	});
+});
+
+// --- create() admission control (warren-b6f2) -------------------------------
+
+/** A Pending run pod carrying an optional project label. */
+function pendingPod(projectId?: string): V1Pod {
+	return {
+		status: { phase: "Pending" },
+		metadata: projectId !== undefined ? { labels: { [LABEL_PROJECT]: projectId } } : {},
+	};
+}
+/** A Running (non-terminal, not Pending) run pod. */
+function runningPod(projectId?: string): V1Pod {
+	return {
+		status: { phase: "Running" },
+		metadata: projectId !== undefined ? { labels: { [LABEL_PROJECT]: projectId } } : {},
+	};
+}
+
+class RecordingMetrics implements AdmissionCounterSink {
+	readonly calls: Array<{ name: string; labels?: Record<string, string> }> = [];
+	increment(name: string, labels?: Readonly<Record<string, string>>): void {
+		this.calls.push({ name, ...(labels !== undefined ? { labels: { ...labels } } : {}) });
+	}
+}
+
+describe("K8sProvider.create admission", () => {
+	test("admits and creates the pod when under every cap (cache-cold list)", async () => {
+		const fake = fakeApi({ listItems: [pendingPod(), runningPod()] });
+		await makeProvider(fake).create(spec);
+		expect(fake.listCalls).toBe(1); // cache-cold: listed by label
+		expect(fake.pods).toHaveLength(1);
+	});
+
+	test("rejects with 429-shaped RuntimeAdmissionError when pending pods hit the cap", async () => {
+		const items = Array.from({ length: 20 }, () => pendingPod());
+		const fake = fakeApi({ listItems: items });
+		const metrics = new RecordingMetrics();
+		const provider = new K8sProvider({
+			coreApi: () => fake.api,
+			serverEnv: {},
+			admissionMetrics: metrics,
+		});
+		const err = (await provider.create(spec).catch((e) => e)) as RuntimeAdmissionError;
+		expect(err).toBeInstanceOf(RuntimeAdmissionError);
+		expect(err.reason).toBe("cluster_pending_saturated");
+		expect(err.retryAfterSeconds).toBe(30);
+		// Rejected BEFORE any pod/configmap write.
+		expect(fake.pods).toHaveLength(0);
+		expect(fake.cms).toHaveLength(0);
+		expect(metrics.calls).toEqual([
+			{ name: METRIC_ADMISSION_REJECTIONS_TOTAL, labels: { reason: "cluster_pending_saturated" } },
+		]);
+	});
+
+	test("rejects on the per-project concurrency cap with a distinct reason", async () => {
+		// 3 active pods for this project, cap of 3 → reject. Other pods present but
+		// under the (default) cluster caps so only the project cap trips.
+		const items = [
+			runningPod("proj_hot"),
+			pendingPod("proj_hot"),
+			runningPod("proj_hot"),
+			runningPod("proj_other"),
+		];
+		const fake = fakeApi({ listItems: items });
+		const err = (await makeProvider(fake)
+			.create({ ...spec, projectId: "proj_hot", maxProjectConcurrency: 3 })
+			.catch((e) => e)) as RuntimeAdmissionError;
+		expect(err).toBeInstanceOf(RuntimeAdmissionError);
+		expect(err.reason).toBe("project_concurrency_exceeded");
+		expect(fake.pods).toHaveLength(0);
+	});
+
+	test("rejects on queue-depth when total non-terminal pods hit the cap", async () => {
+		// 50 Running pods (none Pending, so pending cap is not hit first) → the
+		// queue-depth cap (default 50) trips.
+		const items = Array.from({ length: 50 }, () => runningPod());
+		const fake = fakeApi({ listItems: items });
+		const err = (await makeProvider(fake)
+			.create(spec)
+			.catch((e) => e)) as RuntimeAdmissionError;
+		expect(err.reason).toBe("queue_depth_exceeded");
+		expect(fake.pods).toHaveLength(0);
+	});
+
+	test("prefers a wired pod-watcher snapshot over a cache-cold list", async () => {
+		const fake = fakeApi(); // list would return [] (admit) — but snapshot rejects
+		const snapshotSource: PodAdmissionSource = {
+			admissionSnapshot: (): AdmissionCounts => ({
+				nonTerminalPods: 25,
+				pendingPods: 25,
+				projectNonTerminalPods: 0,
+			}),
+		};
+		const provider = new K8sProvider({
+			coreApi: () => fake.api,
+			serverEnv: {},
+			podAdmission: snapshotSource,
+		});
+		const err = (await provider.create(spec).catch((e) => e)) as RuntimeAdmissionError;
+		expect(err.reason).toBe("cluster_pending_saturated");
+		expect(fake.listCalls).toBe(0); // snapshot used — no API round-trip
+	});
+
+	test("skips counting entirely when every cap is disabled via env", async () => {
+		const fake = fakeApi({ listItems: Array.from({ length: 99 }, () => pendingPod()) });
+		const provider = new K8sProvider({
+			coreApi: () => fake.api,
+			serverEnv: {
+				WARREN_K8S_MAX_QUEUE_DEPTH: "0",
+				WARREN_K8S_MAX_PENDING_PODS: "0",
+			},
+		});
+		await provider.create(spec);
+		expect(fake.listCalls).toBe(0); // admission off → no count round-trip
+		expect(fake.pods).toHaveLength(1);
+	});
+
+	test("maps a cache-cold list failure onto RuntimeProviderError (no pod created)", async () => {
+		const fake = fakeApi({
+			listError: new ApiException(403, "forbidden", { message: "no rbac" }, {}),
+		});
+		await expect(makeProvider(fake).create(spec)).rejects.toThrow(RuntimeProviderError);
+		expect(fake.pods).toHaveLength(0);
+	});
+
+	test("honors env-raised caps (a higher max-pending-pods admits)", async () => {
+		const fake = fakeApi({ listItems: Array.from({ length: 20 }, () => pendingPod()) });
+		const provider = new K8sProvider({
+			coreApi: () => fake.api,
+			serverEnv: { WARREN_K8S_MAX_PENDING_PODS: "50" },
+		});
+		await provider.create(spec);
+		expect(fake.pods).toHaveLength(1);
 	});
 });

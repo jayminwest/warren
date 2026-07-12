@@ -24,6 +24,7 @@ import type { BurrowClient } from "../burrow-client/index.ts";
 import type { EnvLike } from "../runs/spawn/callback-env.ts";
 import type { RuntimeProvider } from "./contract.ts";
 import { UnknownRuntimeError } from "./errors.ts";
+import type { AdmissionCounterSink } from "./k8s/admission.ts";
 import type { FinalizeCoordinator } from "./k8s/finalize-coordinator.ts";
 import { defaultCoreApiFactory, K8sProvider } from "./k8s/provider.ts";
 import type { K8sInboxStore } from "./k8s/send-message.ts";
@@ -80,6 +81,13 @@ export interface RuntimeProviderDeps {
 	 * explicit wiring. A test injects a private instance into both sides.
 	 */
 	readonly k8sFinalizeCoordinator?: FinalizeCoordinator;
+	/**
+	 * OPTIONAL counter sink for the K8s admission-rejection metric
+	 * (`warren_run_admission_rejections_total`, pl-829f step 21 / warren-b6f2) —
+	 * only consulted for `WARREN_RUNTIME=k8s`. Boot threads the shared
+	 * `MetricsRegistry`; absent, rejections still throw but aren't counted.
+	 */
+	readonly k8sAdmissionMetrics?: AdmissionCounterSink;
 }
 
 /**
@@ -122,6 +130,9 @@ export function resolveRuntimeProvider(
 				...(deps.k8sRunInbox !== undefined ? { runInbox: deps.k8sRunInbox } : {}),
 				...(deps.k8sFinalizeCoordinator !== undefined
 					? { finalizeCoordinator: deps.k8sFinalizeCoordinator }
+					: {}),
+				...(deps.k8sAdmissionMetrics !== undefined
+					? { admissionMetrics: deps.k8sAdmissionMetrics }
 					: {}),
 			});
 	}

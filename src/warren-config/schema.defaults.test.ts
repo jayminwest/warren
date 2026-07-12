@@ -36,6 +36,32 @@ describe("DefaultsConfigSchema", () => {
 		expect(parsed.success).toBe(false);
 	});
 
+	test("accepts an admission block with a positive maxConcurrentRuns (warren-b6f2)", () => {
+		const parsed = DefaultsConfigSchema.safeParse({ admission: { maxConcurrentRuns: 3 } });
+		expect(parsed.success).toBe(true);
+		if (parsed.success) expect(parsed.data.admission?.maxConcurrentRuns).toBe(3);
+	});
+
+	test("accepts an empty admission block (uses the provider default)", () => {
+		expect(DefaultsConfigSchema.safeParse({ admission: {} }).success).toBe(true);
+	});
+
+	test("rejects a non-positive / non-integer maxConcurrentRuns (warren-b6f2)", () => {
+		expect(DefaultsConfigSchema.safeParse({ admission: { maxConcurrentRuns: 0 } }).success).toBe(
+			false,
+		);
+		expect(DefaultsConfigSchema.safeParse({ admission: { maxConcurrentRuns: -1 } }).success).toBe(
+			false,
+		);
+		expect(DefaultsConfigSchema.safeParse({ admission: { maxConcurrentRuns: 2.5 } }).success).toBe(
+			false,
+		);
+	});
+
+	test("rejects unknown keys inside the admission block", () => {
+		expect(DefaultsConfigSchema.safeParse({ admission: { maxConcurrent: 3 } }).success).toBe(false);
+	});
+
 	test("rejects empty-string overrides", () => {
 		expect(DefaultsConfigSchema.safeParse({ defaultRole: "" }).success).toBe(false);
 		expect(DefaultsConfigSchema.safeParse({ defaultBranch: "" }).success).toBe(false);

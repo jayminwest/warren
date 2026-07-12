@@ -54,3 +54,39 @@ export class RuntimeProviderError extends WarrenError {
 export class RuntimeRunNotFoundError extends WarrenError {
 	readonly code = "runtime_run_not_found";
 }
+
+/**
+ * Admission rejection — the provider refused a `create()` because a capacity
+ * cap is exceeded (pl-829f step 21 / warren-b6f2, K8s-native admission control,
+ * design §3.3). A soft control that sits in front of the scheduler: cluster
+ * queue-depth / max-pending-pods saturation, or a per-project concurrency cap.
+ * The HTTP layer maps this to `429 Too Many Requests` + a `Retry-After` header
+ * (`src/server/errors.ts`); the `reason` discriminates which cap tripped so a
+ * caller can distinguish "the cluster is busy" from "your project is at its
+ * cap". `reason` is a plain string here so this backend-neutral error file
+ * doesn't couple to the K8s admission module's `AdmissionRejectReason`.
+ */
+export class RuntimeAdmissionError extends WarrenError {
+	readonly code = "runtime_admission_rejected";
+	/** Machine-readable cap that tripped (an `AdmissionRejectReason`). */
+	readonly reason: string;
+	/** Seconds the caller should back off before retrying (the `Retry-After`). */
+	readonly retryAfterSeconds: number;
+
+	constructor(
+		message: string,
+		options: {
+			reason: string;
+			retryAfterSeconds: number;
+			cause?: unknown;
+			recoveryHint?: string;
+		},
+	) {
+		super(message, {
+			...(options.cause !== undefined ? { cause: options.cause } : {}),
+			...(options.recoveryHint !== undefined ? { recoveryHint: options.recoveryHint } : {}),
+		});
+		this.reason = options.reason;
+		this.retryAfterSeconds = options.retryAfterSeconds;
+	}
+}

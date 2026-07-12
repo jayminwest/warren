@@ -244,23 +244,44 @@ pod is gone but the run row is still `running`.
 
 The scheduler owns capacity (postmortem item #3). Warren no longer needs a
 least-loaded heuristic (`leastLoaded` in `src/runs/placement.ts`). What warren
-keeps:
+keeps (implemented in `src/runtime/k8s/admission.ts`, gated in
+`K8sProvider.create()` before any pod write — warren-b6f2):
 
-**Queue depth limit:** refuse `POST /runs` when `state='queued'` count exceeds
-a configured threshold (default: 50). This prevents the work queue from growing
-unboundedly when the cluster is at capacity. Return 429 with a structured error.
+The three caps are evaluated against pod counts the K8s API / pod-watcher
+already exposes — in the pod-per-run model the **pods are the queue**, so there
+is no separate `state='queued'` runs-table read. `create()` reads counts off a
+wired pod-watcher snapshot (`PodWatcher.admissionSnapshot`), or a cache-cold
+`list`-by-label when the watcher isn't wired. A rejection throws
+`RuntimeAdmissionError`, mapped to **429** + a `Retry-After: 30` header in
+`src/server/errors.ts`, with a `reason` naming which cap tripped. The
+`warren_run_admission_rejections_total{reason}` counter makes rejections
+observable. Every cap counts inclusively (count ≥ cap rejects).
 
-**Max pending pods:** refuse new dispatches when more than N pods exist in
-`Pending` phase in the `warren-runs` namespace (default: 20). A large `Pending`
-count means the cluster is already oversubscribed; adding more pods just extends
-the queue.
+**Queue depth limit:** refuse when total **non-terminal** run pods in the
+`warren-runs` namespace reach a threshold (default 50, `WARREN_K8S_MAX_QUEUE_DEPTH`;
+`0` disables). Bounds the work queue when the cluster is oversubscribed. Reason
+`queue_depth_exceeded`.
 
-**Per-project concurrency cap:** optional per-project limit (configurable in
-`.warren/defaults.json`, default unlimited). Prevents one active project from
-starving others.
+**Max pending pods:** refuse when run pods in `Pending` phase reach a threshold
+(default 20, `WARREN_K8S_MAX_PENDING_PODS`; `0` disables). A large `Pending`
+count means the cluster can't schedule what it already has; adding more just
+extends the wait. Reason `cluster_pending_saturated`.
 
-These are soft controls that sit in front of the scheduler, not instead of it.
-The `workers` table, `placeForProject`, `placeForBurrow`, and `BurrowClientPool`
+**Per-project concurrency cap:** optional per-project limit on simultaneous
+non-terminal run pods for one project (default unlimited). Configured per-project
+in `.warren/config.yaml` under `admission.maxConcurrentRuns`, with a global
+default via `WARREN_K8S_MAX_PROJECT_CONCURRENCY`; the resolved value rides the
+`RunSpec` and the provider counts pods by the `warren.io/project` label
+(stamped from `RunSpec.projectId`). Prevents one active project from starving
+others. Reason `project_concurrency_exceeded` (checked first — the most specific
+cap). Fail-fast on a stuck run is inherent to pod-per-run (the pod-watcher sees
+`OOMKilled` in ~1-2s), so this **supersedes** the burrow-era postmortem items
+warren-b01e (host-RAM-derived per-worker concurrency) and warren-ea4f
+(bridge-fatal 45-min watchdog).
+
+These are soft controls that sit in front of the scheduler, not instead of it;
+the cluster-level `ResourceQuota` (manifests step) is the hard backstop. The
+`workers` table, `placeForProject`, `placeForBurrow`, and `BurrowClientPool`
 are all deleted.
 
 ---
