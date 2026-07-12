@@ -23,6 +23,7 @@ import {
 	planRuns as pgPlanRuns,
 	plots as pgPlots,
 	projects as pgProjects,
+	runInbox as pgRunInbox,
 	runs as pgRuns,
 	triggers as pgTriggers,
 } from "./postgres.ts";
@@ -35,6 +36,7 @@ import {
 	planRuns as sqlitePlanRuns,
 	plots as sqlitePlots,
 	projects as sqliteProjects,
+	runInbox as sqliteRunInbox,
 	runs as sqliteRuns,
 	triggers as sqliteTriggers,
 } from "./sqlite.ts";
@@ -50,6 +52,7 @@ const SQLITE_TABLES: Record<string, SQLiteTable> = {
 	plots: sqlitePlots,
 	conversations: sqliteConversations,
 	messages: sqliteMessages,
+	runInbox: sqliteRunInbox,
 };
 
 const PG_TABLES: Record<string, PgTable> = {
@@ -63,6 +66,7 @@ const PG_TABLES: Record<string, PgTable> = {
 	plots: pgPlots,
 	conversations: pgConversations,
 	messages: pgMessages,
+	runInbox: pgRunInbox,
 };
 
 type AnyTable = keyof typeof SQLITE_TABLES;
@@ -204,6 +208,7 @@ const TABLE_KEYS: AnyTable[] = [
 	"plots",
 	"conversations",
 	"messages",
+	"runInbox",
 ];
 
 describe("schema dialect parity (sqlite ↔ postgres)", () => {

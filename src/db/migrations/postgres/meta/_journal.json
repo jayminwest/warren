@@ -162,6 +162,13 @@
 			"when": 1783878587571,
 			"tag": "0022_woozy_kylun",
 			"breakpoints": true
+		},
+		{
+			"idx": 23,
+			"version": "7",
+			"when": 1783885153191,
+			"tag": "0023_nervous_blazing_skull",
+			"breakpoints": true
 		}
 	]
 }

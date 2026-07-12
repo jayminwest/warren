@@ -821,6 +821,26 @@ paths:
           required: true
           schema:
             type: string
+  /runs/{id}/inbox:
+    get:
+      operationId: pollRunInboxHandler
+      tags:
+        - runs
+      summary: GET /runs/:id/inbox
+      responses:
+        '200':
+          description: Successful response.
+        default:
+          description: Error response (see `src/core/errors.ts`).
+      description: >-
+        warren-3d0b: the in-pod steering poll for the K8s backend. Bearer-gated like every /runs
+        route; the pod carries WARREN_API_TOKEN.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
   /runs/{id}/preview/login:
     get:
       operationId: previewLoginHandler

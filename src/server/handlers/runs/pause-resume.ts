@@ -1,5 +1,5 @@
 import type { MessagePriority } from "@os-eco/burrow-cli";
-import { cancelRun, steerRun } from "../../../runs/index.ts";
+import { cancelRun, pollRunInbox, steerRun } from "../../../runs/index.ts";
 import { resolveRuntimeProvider } from "../../../runtime/registry.ts";
 import { jsonResponse } from "../../response.ts";
 import type { RouteHandler, ServerDeps } from "../../types.ts";
@@ -20,7 +20,11 @@ export function steerRunHandler(deps: ServerDeps): RouteHandler {
 			body: requireString(body, "body"),
 			repos: deps.repos,
 			runtimeProvider:
-				deps.runtimeProvider ?? resolveRuntimeProvider({ burrowClient: () => deps.burrowClient }),
+				deps.runtimeProvider ??
+				resolveRuntimeProvider({
+					burrowClient: () => deps.burrowClient,
+					k8sRunInbox: () => deps.repos.runInbox,
+				}),
 			broker: deps.broker,
 			...(optionalString(body, "priority") !== undefined
 				? { priority: optionalString(body, "priority") as MessagePriority }
@@ -31,6 +35,25 @@ export function steerRunHandler(deps: ServerDeps): RouteHandler {
 			...(deps.now !== undefined ? { now: deps.now } : {}),
 		});
 		return jsonResponse(200, { message: result.message });
+	};
+}
+
+/**
+ * `GET /runs/:id/inbox` — the in-pod steering poll (pl-829f step 18 /
+ * warren-3d0b). The K8s agent harness drains steering messages here; the claim
+ * is poll-consume (atomically flips unread → delivered, race-safe). Gated by
+ * the standard `WARREN_API_TOKEN` bearer like every other `/runs` route — the
+ * pod carries the token warren injected at create time.
+ */
+export function pollRunInboxHandler(deps: ServerDeps): RouteHandler {
+	return async (ctx) => {
+		const id = requireParam(ctx, "id");
+		const result = await pollRunInbox({
+			runId: id,
+			repos: deps.repos,
+			...(deps.now !== undefined ? { now: deps.now } : {}),
+		});
+		return jsonResponse(200, { messages: result.messages });
 	};
 }
 

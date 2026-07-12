@@ -17,6 +17,7 @@ export {
 } from "./lifecycle.ts";
 export {
 	cancelRunHandler,
+	pollRunInboxHandler,
 	steerRunHandler,
 } from "./pause-resume.ts";
 export {

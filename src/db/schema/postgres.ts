@@ -40,6 +40,8 @@ import {
 	CLONE_KINDS,
 	CONVERSATION_STATES,
 	EVENT_STREAMS,
+	INBOX_PRIORITIES,
+	INBOX_STATES,
 	INDEX_NAMES,
 	MESSAGE_ROLES,
 	PLAN_RUN_CHILD_STATES,
@@ -333,6 +335,28 @@ export const messages = pgTable(
 	(t) => [index(INDEX_NAMES.messagesConversationSeq).on(t.conversationId, t.seq)],
 );
 
+/**
+ * Run inbox (warren-3d0b) — mirror of sqlite. See sqlite.ts for the pod-per-run
+ * steering-channel intent + delivery semantics.
+ */
+export const runInbox = pgTable(
+	TABLE_NAMES.runInbox,
+	{
+		id: text("id").primaryKey(),
+		runId: text("run_id")
+			.notNull()
+			.references(() => runs.id, { onDelete: "cascade" }),
+		seq: integer("seq").notNull(),
+		body: text("body").notNull(),
+		priority: text("priority", { enum: INBOX_PRIORITIES }).notNull().default("normal"),
+		fromActor: text("from_actor").notNull().default("operator"),
+		state: text("state", { enum: INBOX_STATES }).notNull().default("unread"),
+		createdAt: text("created_at").notNull(),
+		deliveredAt: text("delivered_at"),
+	},
+	(t) => [index(INDEX_NAMES.runInboxRunState).on(t.runId, t.state)],
+);
+
 export type PlanRunRow = typeof planRuns.$inferSelect;
 export type PlanRunInsert = typeof planRuns.$inferInsert;
 export type PlanRunChildRow = typeof planRunChildren.$inferSelect;
@@ -342,4 +366,6 @@ export type PlotInsert = typeof plots.$inferInsert;
 export type ConversationRow = typeof conversations.$inferSelect;
 export type ConversationInsert = typeof conversations.$inferInsert;
 export type MessageRow = typeof messages.$inferSelect;
+export type RunInboxRow = typeof runInbox.$inferSelect;
+export type RunInboxInsert = typeof runInbox.$inferInsert;
 export type MessageInsert = typeof messages.$inferInsert;

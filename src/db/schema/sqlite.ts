@@ -35,6 +35,8 @@ import {
 	CLONE_KINDS,
 	CONVERSATION_STATES,
 	EVENT_STREAMS,
+	INBOX_PRIORITIES,
+	INBOX_STATES,
 	INDEX_NAMES,
 	MESSAGE_ROLES,
 	PLAN_RUN_CHILD_STATES,
@@ -494,6 +496,40 @@ export const messages = sqliteTable(
 	(t) => [index(INDEX_NAMES.messagesConversationSeq).on(t.conversationId, t.seq)],
 );
 
+/**
+ * Run inbox (warren-3d0b, pl-829f step 18). The durable steering channel for
+ * pod-per-run K8s runs: with no live socket into the sandbox, warren persists
+ * each steering message here and the in-pod agent harness polls
+ * `GET /runs/:id/inbox` over the Service-DNS callback URL to drain it. The
+ * K8sProvider's `sendMessage` writes the row; the poll endpoint claims unread
+ * rows priority-desc then FIFO-by-`seq` and atomically flips them `delivered`.
+ *
+ * `run_id` FKs `runs.id` ON DELETE CASCADE (a run's undelivered steers die with
+ * it). `seq` is monotonic per run (allocated max+1 under the enqueue
+ * transaction, mirroring `messages.seq`) so FIFO ordering within a priority
+ * class is deterministic even when two rows share a `created_at` millisecond.
+ * `state` defaults to `unread`; `delivered_at` is the ISO-8601 claim timestamp,
+ * null until a poll delivers the row. Mirrors the seam `Message` shape
+ * (`src/runtime/contract.ts`) so the provider maps a row onto it without loss.
+ */
+export const runInbox = sqliteTable(
+	TABLE_NAMES.runInbox,
+	{
+		id: text("id").primaryKey(),
+		runId: text("run_id")
+			.notNull()
+			.references(() => runs.id, { onDelete: "cascade" }),
+		seq: integer("seq").notNull(),
+		body: text("body").notNull(),
+		priority: text("priority", { enum: INBOX_PRIORITIES }).notNull().default("normal"),
+		fromActor: text("from_actor").notNull().default("operator"),
+		state: text("state", { enum: INBOX_STATES }).notNull().default("unread"),
+		createdAt: text("created_at").notNull(),
+		deliveredAt: text("delivered_at"),
+	},
+	(t) => [index(INDEX_NAMES.runInboxRunState).on(t.runId, t.state)],
+);
+
 export type PlanRunRow = typeof planRuns.$inferSelect;
 export type PlanRunInsert = typeof planRuns.$inferInsert;
 export type PlanRunChildRow = typeof planRunChildren.$inferSelect;
@@ -504,3 +540,5 @@ export type ConversationRow = typeof conversations.$inferSelect;
 export type ConversationInsert = typeof conversations.$inferInsert;
 export type MessageRow = typeof messages.$inferSelect;
 export type MessageInsert = typeof messages.$inferInsert;
+export type RunInboxRow = typeof runInbox.$inferSelect;
+export type RunInboxInsert = typeof runInbox.$inferInsert;

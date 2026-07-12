@@ -14,7 +14,8 @@
  * `RuntimeNotImplementedError` stubs that name the plan step that fills each:
  *
  *   - `streamEvents` → step 17 (warren-026c): follow pod logs, synthesize the seq cursor.
- *   - `sendMessage`  → step 18 (warren-3d0b): `run_inbox` table + poll endpoint.
+ *   - `sendMessage`  → step 18 (warren-3d0b): persist into `run_inbox`; the in-pod
+ *     harness drains it via the `GET /runs/:id/inbox` poll endpoint.
  *   - `cancel`/`terminate` → step 19 (warren-31d4): delete pod + SIGTERM grace + GC.
  *   - `finalize`     → step 20 (warren-0d35): in-pod post-agent reap emitting deltas.
  *
@@ -61,6 +62,7 @@ import {
 } from "./pod-spec.ts";
 import type { PodCacheReader } from "./pod-watcher.ts";
 import { buildSeedConfigMap, seedConfigMapName } from "./seed-configmap.ts";
+import { type K8sInboxStore, sendK8sMessage } from "./send-message.ts";
 import { mapPodToRunStatus, runLostStatus } from "./status-map.ts";
 
 /** Dependencies the K8s-backed provider methods wrap in later steps. */
@@ -101,6 +103,14 @@ export interface K8sProviderDeps {
 	 * only the observability counter is skipped.
 	 */
 	readonly metrics?: StreamCounterSink;
+	/**
+	 * Lazy run_inbox store `sendMessage` writes steering messages into (pl-829f
+	 * step 18 / warren-3d0b). A factory — mirroring `coreApi` — so the provider
+	 * builds without a DB handle in environments that never steer; `sendMessage`
+	 * raises `RuntimeProviderError` if it is called without one. Boot threads
+	 * `() => repos.runInbox` here (src/server/main/deps.ts).
+	 */
+	readonly runInbox?: () => K8sInboxStore;
 }
 
 /**
@@ -415,8 +425,16 @@ export class K8sProvider implements RuntimeProvider {
 		return mapPodToRunStatus(pod);
 	}
 
-	sendMessage(_handle: RunHandle, _msg: OutboundMessage): Promise<Message> {
-		return notImplemented("sendMessage", "step 18 (warren-3d0b)");
+	/**
+	 * Enqueue a steering message onto the run's `run_inbox` (contract §5
+	 * midRunSteering=false: folded in at the next poll, not delivered mid-turn).
+	 * Pod-per-run has no live socket, so the message is persisted here and the
+	 * in-pod harness drains it via `GET /runs/:id/inbox` — the K8s analogue of
+	 * LocalProvider's burrow inbox. Delivery timing (~5s poll) is the only
+	 * behavioral difference; ordering + lifecycle match. See `./send-message.ts`.
+	 */
+	sendMessage(handle: RunHandle, msg: OutboundMessage): Promise<Message> {
+		return sendK8sMessage(this.deps.runInbox?.(), handle, msg);
 	}
 
 	cancel(_handle: RunHandle, _reason?: string): Promise<void> {

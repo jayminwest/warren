@@ -101,6 +101,11 @@ export {
 	tailRunEvents,
 } from "./events.ts";
 export {
+	type PollRunInboxInput,
+	type PollRunInboxResult,
+	pollRunInbox,
+} from "./inbox.ts";
+export {
 	bootPauseDetector,
 	defaultPlotEventReader,
 	extractAnswerText,

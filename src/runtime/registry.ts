@@ -25,6 +25,7 @@ import type { EnvLike } from "../runs/spawn/callback-env.ts";
 import type { RuntimeProvider } from "./contract.ts";
 import { UnknownRuntimeError } from "./errors.ts";
 import { defaultCoreApiFactory, K8sProvider } from "./k8s/provider.ts";
+import type { K8sInboxStore } from "./k8s/send-message.ts";
 import { LocalProvider } from "./local/provider.ts";
 
 /** Runtime backends the selector understands. */
@@ -62,6 +63,14 @@ export interface RuntimeProviderDeps {
 	 * `K8sProvider` without a cluster.
 	 */
 	readonly k8sCoreApi?: () => CoreV1Api;
+	/**
+	 * Lazy run_inbox store the `K8sProvider.sendMessage` persists steering
+	 * messages into (pl-829f step 18 / warren-3d0b) — only consulted for
+	 * `WARREN_RUNTIME=k8s`. Optional so `local` callers (and tests that never
+	 * steer a K8s run) needn't supply one; a K8sProvider built without it raises
+	 * `RuntimeProviderError` on `sendMessage`. Boot threads `() => repos.runInbox`.
+	 */
+	readonly k8sRunInbox?: () => K8sInboxStore;
 }
 
 /**
@@ -101,6 +110,7 @@ export function resolveRuntimeProvider(
 			return new K8sProvider({
 				coreApi: deps.k8sCoreApi ?? defaultCoreApiFactory(),
 				...(deps.serverEnv !== undefined ? { serverEnv: deps.serverEnv } : {}),
+				...(deps.k8sRunInbox !== undefined ? { runInbox: deps.k8sRunInbox } : {}),
 			});
 	}
 }

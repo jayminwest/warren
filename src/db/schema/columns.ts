@@ -70,6 +70,27 @@ export const MESSAGE_ROLES = ["user", "assistant", "system", "tool"] as const;
 export type MessageRole = (typeof MESSAGE_ROLES)[number];
 
 /**
+ * Steering-message priority classes for the `run_inbox` table (warren-3d0b,
+ * pl-829f step 18). Mirrors the seam's `MessagePriority`
+ * (`src/runtime/contract.ts`) verbatim so the K8sProvider can forward the
+ * contract value straight onto a row without translation. Ordering is
+ * `urgent > high > normal > low`; the poll endpoint claims priority-desc then
+ * FIFO-by-`seq` within a class. TS-only narrowing — no SQL CHECK (mx-2ab984).
+ */
+export const INBOX_PRIORITIES = ["low", "normal", "high", "urgent"] as const;
+export type InboxPriority = (typeof INBOX_PRIORITIES)[number];
+
+/**
+ * Delivery lifecycle for a `run_inbox` row (warren-3d0b). Mirrors the seam
+ * `Message.state` union: a fresh steering message is `unread`; the in-pod
+ * poll (`GET /runs/:id/inbox`) atomically flips claimed rows to `delivered`;
+ * `failed` is reserved for a delivery that could not be completed (symmetry
+ * with burrow's inbox lifecycle — LocalProvider parity). TS-only narrowing.
+ */
+export const INBOX_STATES = ["unread", "delivered", "failed"] as const;
+export type InboxState = (typeof INBOX_STATES)[number];
+
+/**
  * Chain-kind discriminator for a run that carries a `parent_run_id`
  * (warren-e96f). Both kinds share the parent back-link column but differ in
  * workspace semantics:
@@ -280,6 +301,7 @@ export const TABLE_NAMES = {
 	plots: "plots",
 	conversations: "conversations",
 	messages: "messages",
+	runInbox: "run_inbox",
 } as const;
 
 /**
@@ -334,6 +356,11 @@ export const INDEX_NAMES = {
 	conversationsProject: "conversations_project_idx",
 	conversationsPlot: "conversations_plot_idx",
 	messagesConversationSeq: "messages_conversation_seq_idx",
+	// warren-3d0b. The run_inbox poll claims unread rows for one run
+	// (`GET /runs/:id/inbox`): the composite (run_id, state) makes the
+	// undelivered-per-run claim a covered index scan instead of a full-table
+	// filter, and FIFO ordering within the claimed set is done in-app by seq.
+	runInboxRunState: "run_inbox_run_state_idx",
 } as const;
 
 /**

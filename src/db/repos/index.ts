@@ -12,6 +12,7 @@ import { MessagesRepo } from "./messages.ts";
 import { PlanRunsRepo } from "./plan-runs.ts";
 import { PlotsRepo } from "./plots.ts";
 import { ProjectsRepo } from "./projects.ts";
+import { RunInboxRepo } from "./run-inbox.ts";
 import { RunsRepo } from "./runs.ts";
 import { TriggersRepo } from "./triggers.ts";
 
@@ -25,6 +26,7 @@ export interface Repos {
 	plots: PlotsRepo;
 	conversations: ConversationsRepo;
 	messages: MessagesRepo;
+	runInbox: RunInboxRepo;
 }
 
 export function createRepos(db: AnyWarrenDb): Repos {
@@ -39,6 +41,7 @@ export function createRepos(db: AnyWarrenDb): Repos {
 		plots: new PlotsRepo(adapter),
 		conversations: new ConversationsRepo(adapter),
 		messages: new MessagesRepo(adapter),
+		runInbox: new RunInboxRepo(adapter),
 	};
 }
 
@@ -50,6 +53,7 @@ export {
 	PlanRunsRepo,
 	PlotsRepo,
 	ProjectsRepo,
+	RunInboxRepo,
 	RunsRepo,
 	TriggersRepo,
 };

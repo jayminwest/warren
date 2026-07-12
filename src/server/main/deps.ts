@@ -111,7 +111,12 @@ export function buildServerDeps(input: BuildServerDepsInput): ServerDeps {
 	// Resolved once here — the sole composition point — on `WARREN_RUNTIME`
 	// (default `local` → the burrow-backed `LocalProvider` over this same pool,
 	// passed as a factory so it resolves its container worker lazily).
-	const runtimeProvider = resolveRuntimeProvider({ burrowClient: () => burrowClient });
+	const runtimeProvider = resolveRuntimeProvider({
+		burrowClient: () => burrowClient,
+		// run_inbox steering store for the K8s backend (pl-829f step 18 /
+		// warren-3d0b); ignored by LocalProvider.
+		k8sRunInbox: () => repos.runInbox,
+	});
 
 	return {
 		repos,
