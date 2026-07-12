@@ -33,6 +33,8 @@ import type {
 	V1PodSecurityContext,
 	V1ResourceRequirements,
 	V1SecurityContext,
+	V1Volume,
+	V1VolumeMount,
 } from "@kubernetes/client-node";
 import {
 	DEFAULT_K8S_CPU_LIMIT_MILLICORES,
@@ -58,6 +60,22 @@ export const WORKSPACE_MOUNT_PATH = "/workspace";
 export const INIT_CONTAINER_NAME = "workspace-init";
 export const AGENT_CONTAINER_NAME = "agent";
 
+/**
+ * The init container's entry command. Runs warren's `workspace:init` package
+ * script (`src/runtime/k8s/workspace-init.ts`) so the path resolves against the
+ * init image's WORKDIR rather than being hard-coded; the image is built with
+ * warren's source + bun (manifests step, warren-74b5).
+ */
+export const K8S_INIT_COMMAND: readonly string[] = ["bun", "run", "workspace:init"];
+
+/** ConfigMap-backed seed drop shared into the init container (see `./seed-configmap.ts`). */
+export const SEED_VOLUME_NAME = "seeds";
+export const SEED_MOUNT_PATH = "/seeds";
+/** Single manifest key the whole seed set travels under (§4.2). */
+export const SEED_MANIFEST_KEY = "seeds.json";
+/** Absolute path the init container reads the manifest from (mount + key). */
+export const SEED_MANIFEST_PATH = `${SEED_MOUNT_PATH}/${SEED_MANIFEST_KEY}`;
+
 // --- Label keys (all under the `warren.io/` namespace) ---------------------
 
 /** Selected by the pod-watcher informer (§1.3). Value is the exact `runId`. */
@@ -79,6 +97,28 @@ export const DEFAULT_K8S_AGENT_IMAGE = "warren-agent:latest";
 /** Lightweight bun+git image the init container runs (§4.2). `WARREN_K8S_INIT_IMAGE`. */
 export const DEFAULT_K8S_INIT_IMAGE = "warren-workspace-init:latest";
 
+/**
+ * Warren control-plane Service the in-pod agent dials for its callback
+ * (event/finalize POSTs). K8s replaces LocalProvider's `http://localhost:PORT`
+ * loopback (co-tenancy assumption) with in-cluster Service DNS
+ * (`<service>.<namespace>.svc.cluster.local:<port>`, contract §6.3). The
+ * namespace is the CONTROL-PLANE namespace (where warren runs), NOT
+ * `warren-runs` (where the pods run). All three overridable via env.
+ */
+export const DEFAULT_K8S_CALLBACK_SERVICE = "warren";
+export const DEFAULT_K8S_CALLBACK_NAMESPACE = "warren";
+export const DEFAULT_K8S_CALLBACK_PORT = "8080";
+
+/**
+ * K8s Secret the init container's `WARREN_GIT_TOKEN` is sourced from (design
+ * §6.3 `github-token`). Referenced as an OPTIONAL secretKeyRef so public repos
+ * still clone when no secret is present. Overridable via
+ * `WARREN_K8S_GIT_SECRET_NAME` / `WARREN_K8S_GIT_SECRET_KEY`; the actual Secret
+ * is provisioned by the manifests step (warren-74b5).
+ */
+export const DEFAULT_K8S_GIT_SECRET_NAME = "warren-git-token";
+export const DEFAULT_K8S_GIT_SECRET_KEY = "token";
+
 /** A fully-resolved memory+cpu pair (whole MiB / millicores). */
 export interface ResolvedResourceQuantities {
 	memoryMiB: number;
@@ -99,6 +139,10 @@ export interface K8sPodConfig {
 	requests: ResolvedResourceQuantities;
 	limits: ResolvedResourceQuantities;
 	network: NetworkPolicy;
+	/** In-cluster Service DNS coordinates for the agent's warren callback (§6.3). */
+	callback: { service: string; namespace: string; port: string };
+	/** K8s Secret the init container's git token is sourced from (§6.3). */
+	gitTokenSecret: { name: string; key: string };
 	/** optional ServiceAccount for the run pod (RBAC step). */
 	serviceAccountName?: string;
 }
@@ -138,10 +182,29 @@ export function resolveK8sPodConfig(
 			cpuMillicores: resources?.limits?.cpuMillicores ?? DEFAULT_K8S_CPU_LIMIT_MILLICORES,
 		},
 		network: resources?.network ?? DEFAULT_K8S_NETWORK,
+		callback: {
+			service: pickString(env, "WARREN_K8S_CALLBACK_SERVICE", DEFAULT_K8S_CALLBACK_SERVICE),
+			namespace: pickString(env, "WARREN_K8S_CALLBACK_NAMESPACE", DEFAULT_K8S_CALLBACK_NAMESPACE),
+			port: pickString(env, "WARREN_K8S_CALLBACK_PORT", DEFAULT_K8S_CALLBACK_PORT),
+		},
+		gitTokenSecret: {
+			name: pickString(env, "WARREN_K8S_GIT_SECRET_NAME", DEFAULT_K8S_GIT_SECRET_NAME),
+			key: pickString(env, "WARREN_K8S_GIT_SECRET_KEY", DEFAULT_K8S_GIT_SECRET_KEY),
+		},
 	};
 	const sa = env.WARREN_K8S_SERVICE_ACCOUNT?.trim();
 	if (sa !== undefined && sa !== "") config.serviceAccountName = sa;
 	return config;
+}
+
+/**
+ * Derive the in-cluster callback URL the agent dials to POST events/finalize
+ * back to warren (contract §6.3). Kubernetes Service DNS — reachable from the
+ * run pod, unlike LocalProvider's `http://localhost:PORT`. Pure.
+ */
+export function serviceDnsCallbackUrl(config: K8sPodConfig): string {
+	const { service, namespace, port } = config.callback;
+	return `http://${service}.${namespace}.svc.cluster.local:${port}`;
 }
 
 // --- Name sanitization -----------------------------------------------------
@@ -223,24 +286,69 @@ function toEnvVars(env: Record<string, string>): V1EnvVar[] {
 		.map((name) => ({ name, value: env[name] ?? "" }));
 }
 
+/** Options threaded from `create()` that shape the seed-delivery wiring. */
+export interface BuildRunPodOptions {
+	/** When set, mount this ConfigMap's seed manifest into the init container. */
+	seedConfigMapName?: string;
+}
+
 /**
- * The `workspace-init` init container (§4.2). This step only REFERENCES it — the
- * materialization body (clone/worktree via `src/workspace/`) lands in plan step
- * 15. It receives the git coordinates the materializer needs and shares the
- * `/workspace` emptyDir with the agent container.
+ * The init container's env — the git coordinates the materializer needs, the
+ * workspace mount path, an OPTIONAL `WARREN_GIT_TOKEN` from a Secret, and (when
+ * seeds ride a ConfigMap) the manifest path. Name-sorted for a stable spec; the
+ * secret ref sorts by name alongside the plain values.
  */
-function buildInitContainer(spec: RunSpec, config: K8sPodConfig): V1Container {
-	const initEnv: Record<string, string> = {
+function buildInitEnv(spec: RunSpec, config: K8sPodConfig, opts: BuildRunPodOptions): V1EnvVar[] {
+	const plain: Record<string, string> = {
 		WARREN_RUN_ID: spec.runId,
 		WARREN_REPO_URL: spec.originUrl,
 		WARREN_BRANCH: spec.branch,
 		WARREN_BASE_BRANCH: spec.baseBranch,
+		WARREN_WORKSPACE_PATH: WORKSPACE_MOUNT_PATH,
 	};
+	if (opts.seedConfigMapName !== undefined) plain.WARREN_SEED_MANIFEST = SEED_MANIFEST_PATH;
+	const vars: V1EnvVar[] = Object.entries(plain).map(([name, value]) => ({ name, value }));
+	vars.push({
+		name: "WARREN_GIT_TOKEN",
+		valueFrom: {
+			secretKeyRef: {
+				name: config.gitTokenSecret.name,
+				key: config.gitTokenSecret.key,
+				optional: true,
+			},
+		},
+	});
+	return vars.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+}
+
+function buildInitVolumeMounts(opts: BuildRunPodOptions): V1VolumeMount[] {
+	const mounts: V1VolumeMount[] = [
+		{ name: WORKSPACE_VOLUME_NAME, mountPath: WORKSPACE_MOUNT_PATH },
+	];
+	if (opts.seedConfigMapName !== undefined) {
+		mounts.push({ name: SEED_VOLUME_NAME, mountPath: SEED_MOUNT_PATH, readOnly: true });
+	}
+	return mounts;
+}
+
+/**
+ * The `workspace-init` init container (§4.2). Runs warren's `workspace:init`
+ * entry (`./workspace-init.ts`), which clones the base branch fresh, carves the
+ * per-run branch, and drops the seed files — all onto the `/workspace` emptyDir
+ * the agent container then mounts. A clone failure surfaces as a distinct
+ * `Init:Error` pod condition before the agent ever starts.
+ */
+function buildInitContainer(
+	spec: RunSpec,
+	config: K8sPodConfig,
+	opts: BuildRunPodOptions,
+): V1Container {
 	return {
 		name: INIT_CONTAINER_NAME,
 		image: config.initImage,
-		env: toEnvVars(initEnv),
-		volumeMounts: [{ name: WORKSPACE_VOLUME_NAME, mountPath: WORKSPACE_MOUNT_PATH }],
+		command: [...K8S_INIT_COMMAND],
+		env: buildInitEnv(spec, config, opts),
+		volumeMounts: buildInitVolumeMounts(opts),
 		securityContext: containerSecurityContext(config),
 	};
 }
@@ -277,11 +385,22 @@ export function podLabelsForRun(spec: RunSpec, config: K8sPodConfig): Record<str
 }
 
 /**
- * Build the bare `V1Pod` for a run. Pure: a function of `(spec, config)` only.
- * `restartPolicy: Never`, hardened securityContext, an init container reference,
- * and the `/workspace` emptyDir shared between init + agent.
+ * Build the bare `V1Pod` for a run. Pure: a function of `(spec, config, opts)`.
+ * `restartPolicy: Never`, hardened securityContext, the workspace-init init
+ * container, and the `/workspace` emptyDir shared between init + agent. When
+ * `opts.seedConfigMapName` is set, a read-only ConfigMap volume carries the seed
+ * manifest into the init container. The agent's callback env is expected to be
+ * folded into `spec.env` by the caller (`create()` owns the provider plumbing).
  */
-export function buildRunPod(spec: RunSpec, config: K8sPodConfig): V1Pod {
+export function buildRunPod(
+	spec: RunSpec,
+	config: K8sPodConfig,
+	opts: BuildRunPodOptions = {},
+): V1Pod {
+	const volumes: V1Volume[] = [{ name: WORKSPACE_VOLUME_NAME, emptyDir: {} }];
+	if (opts.seedConfigMapName !== undefined) {
+		volumes.push({ name: SEED_VOLUME_NAME, configMap: { name: opts.seedConfigMapName } });
+	}
 	const pod: V1Pod = {
 		apiVersion: "v1",
 		kind: "Pod",
@@ -294,9 +413,9 @@ export function buildRunPod(spec: RunSpec, config: K8sPodConfig): V1Pod {
 			restartPolicy: "Never",
 			automountServiceAccountToken: false,
 			securityContext: podSecurityContext(config),
-			initContainers: [buildInitContainer(spec, config)],
+			initContainers: [buildInitContainer(spec, config, opts)],
 			containers: [buildAgentContainer(spec, config)],
-			volumes: [{ name: WORKSPACE_VOLUME_NAME, emptyDir: {} }],
+			volumes,
 		},
 	};
 	if (config.serviceAccountName !== undefined && pod.spec !== undefined) {

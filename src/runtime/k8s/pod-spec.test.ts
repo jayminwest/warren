@@ -5,9 +5,12 @@ import {
 	AGENT_CONTAINER_NAME,
 	buildRunPod,
 	DEFAULT_K8S_AGENT_IMAGE,
+	DEFAULT_K8S_GIT_SECRET_KEY,
+	DEFAULT_K8S_GIT_SECRET_NAME,
 	DEFAULT_K8S_INIT_IMAGE,
 	DEFAULT_K8S_NAMESPACE,
 	INIT_CONTAINER_NAME,
+	K8S_INIT_COMMAND,
 	type K8sPodConfig,
 	LABEL_MANAGED_BY,
 	LABEL_MODE,
@@ -18,6 +21,10 @@ import {
 	podLabelsForRun,
 	podNameForRun,
 	resolveK8sPodConfig,
+	SEED_MANIFEST_PATH,
+	SEED_MOUNT_PATH,
+	SEED_VOLUME_NAME,
+	serviceDnsCallbackUrl,
 	WARREN_POD_GID,
 	WARREN_POD_UID,
 	WORKSPACE_MOUNT_PATH,
@@ -73,6 +80,27 @@ describe("resolveK8sPodConfig", () => {
 		const c = resolveK8sPodConfig({ WARREN_K8S_NAMESPACE: "   ", WARREN_K8S_SERVICE_ACCOUNT: "" });
 		expect(c.namespace).toBe(DEFAULT_K8S_NAMESPACE);
 		expect(c.serviceAccountName).toBeUndefined();
+	});
+
+	test("callback + git-secret fall back to defaults", () => {
+		const c = resolveK8sPodConfig({});
+		expect(c.callback).toEqual({ service: "warren", namespace: "warren", port: "8080" });
+		expect(c.gitTokenSecret).toEqual({
+			name: DEFAULT_K8S_GIT_SECRET_NAME,
+			key: DEFAULT_K8S_GIT_SECRET_KEY,
+		});
+	});
+
+	test("callback + git-secret read from env", () => {
+		const c = resolveK8sPodConfig({
+			WARREN_K8S_CALLBACK_SERVICE: "cp",
+			WARREN_K8S_CALLBACK_NAMESPACE: "sys",
+			WARREN_K8S_CALLBACK_PORT: "9000",
+			WARREN_K8S_GIT_SECRET_NAME: "gh",
+			WARREN_K8S_GIT_SECRET_KEY: "pat",
+		});
+		expect(serviceDnsCallbackUrl(c)).toBe("http://cp.sys.svc.cluster.local:9000");
+		expect(c.gitTokenSecret).toEqual({ name: "gh", key: "pat" });
 	});
 
 	test("sources resources + network from the .warren/config.yaml resources block", () => {
@@ -244,5 +272,48 @@ describe("buildRunPod", () => {
 		const pod = buildRunPod(baseSpec(), c);
 		expect(pod.spec?.serviceAccountName).toBe("warren-run");
 		expect(pod.spec?.automountServiceAccountToken).toBe(true);
+	});
+
+	test("the init container runs the workspace:init entry command", () => {
+		const init = buildRunPod(baseSpec(), config).spec?.initContainers?.[0];
+		expect(init?.command).toEqual([...K8S_INIT_COMMAND]);
+	});
+
+	test("the init container carries the workspace path + an OPTIONAL git-token secret ref", () => {
+		const init = buildRunPod(baseSpec(), config).spec?.initContainers?.[0];
+		const env = Object.fromEntries((init?.env ?? []).map((e) => [e.name, e.value]));
+		expect(env.WARREN_WORKSPACE_PATH).toBe(WORKSPACE_MOUNT_PATH);
+		const tokenVar = (init?.env ?? []).find((e) => e.name === "WARREN_GIT_TOKEN");
+		expect(tokenVar?.valueFrom?.secretKeyRef).toEqual({
+			name: DEFAULT_K8S_GIT_SECRET_NAME,
+			key: DEFAULT_K8S_GIT_SECRET_KEY,
+			optional: true,
+		});
+	});
+
+	test("init env is name-sorted for a deterministic spec", () => {
+		const init = buildRunPod(baseSpec(), config).spec?.initContainers?.[0];
+		const names = (init?.env ?? []).map((e) => e.name);
+		expect(names).toEqual([...names].sort());
+	});
+
+	test("no seed volume/mount + no manifest env when there is no seed ConfigMap", () => {
+		const pod = buildRunPod(baseSpec(), config);
+		expect(pod.spec?.volumes?.some((v) => v.name === SEED_VOLUME_NAME)).toBe(false);
+		const init = pod.spec?.initContainers?.[0];
+		expect(init?.volumeMounts?.some((m) => m.name === SEED_VOLUME_NAME)).toBe(false);
+		const env = Object.fromEntries((init?.env ?? []).map((e) => [e.name, e.value]));
+		expect(env.WARREN_SEED_MANIFEST).toBeUndefined();
+	});
+
+	test("opts.seedConfigMapName wires a read-only ConfigMap volume + init mount + manifest env", () => {
+		const pod = buildRunPod(baseSpec(), config, { seedConfigMapName: "run-run-x-seeds" });
+		const vol = pod.spec?.volumes?.find((v) => v.name === SEED_VOLUME_NAME);
+		expect(vol?.configMap?.name).toBe("run-run-x-seeds");
+		const init = pod.spec?.initContainers?.[0];
+		const mount = init?.volumeMounts?.find((m) => m.name === SEED_VOLUME_NAME);
+		expect(mount).toEqual({ name: SEED_VOLUME_NAME, mountPath: SEED_MOUNT_PATH, readOnly: true });
+		const env = Object.fromEntries((init?.env ?? []).map((e) => [e.name, e.value]));
+		expect(env.WARREN_SEED_MANIFEST).toBe(SEED_MANIFEST_PATH);
 	});
 });
