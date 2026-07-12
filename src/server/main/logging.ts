@@ -50,10 +50,6 @@ type ObjectLogger = {
 	error(obj: object, msg?: string): void;
 };
 
-type ObjectLoggerWithDebug = ObjectLogger & {
-	debug?(obj: object, msg?: string): void;
-};
-
 type RecordLogger = {
 	info(obj: Record<string, unknown>, msg?: string): void;
 	warn(obj: Record<string, unknown>, msg?: string): void;
@@ -65,15 +61,6 @@ export function bridgeLoggerFromPino(logger: Logger): Partial<ObjectLogger> {
 		info: (obj, msg) => logger.info(obj, msg),
 		warn: (obj, msg) => logger.warn(obj, msg),
 		error: (obj, msg) => logger.error(obj, msg),
-	};
-}
-
-export function probeLoggerFromPino(logger: Logger): ObjectLoggerWithDebug {
-	return {
-		info: (obj, msg) => logger.info(obj, msg),
-		warn: (obj, msg) => logger.warn(obj, msg),
-		error: (obj, msg) => logger.error(obj, msg),
-		debug: (obj, msg) => logger.debug?.(obj, msg),
 	};
 }
 

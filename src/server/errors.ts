@@ -142,9 +142,9 @@ function warrenStatusFor(err: WarrenError): number {
 	if (err instanceof WarrenConfigUnavailableError) return 503;
 	// Multi-worker placement errors were retired with the K8s migration
 	// (warren-76c5): the self-host backend is a single local burrow, so there
-	// is no placement/sticky-worker failure to map. NotFoundError still handles
-	// the "warren never recorded this burrow id" case — see `getBurrowHandler`
-	// in handlers/burrows.ts.
+	// is no placement/sticky-worker failure to map. The /workers + /burrows
+	// admin surface was likewise removed (warren-288f); NotFoundError now only
+	// maps the run/project/plot not-found cases below.
 	if (err instanceof AgentSchemaError) return 422;
 	if (err instanceof RunSpawnError) return 500;
 	return 500;

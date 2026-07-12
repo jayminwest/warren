@@ -7,7 +7,7 @@ This page enumerates every HTTP route registered by warren's `Bun.serve` router.
 
 To refresh: `bun run gen:docs`. To check (CI mode): `bun run gen:docs:check`.
 
-Total routes: **60**.
+Total routes: **56**.
 
 ## /agents
 
@@ -30,13 +30,6 @@ Total routes: **60**.
 | `GET` | `/analytics/cost` | `listCostAnalyticsHandler` |  |
 | `GET` | `/analytics/runs` | `listRunAnalyticsHandler` |  |
 | `GET` | `/analytics/behavior` | `listBehaviorAnalyticsHandler` |  |
-
-## /burrows
-
-| Method | Pattern | Handler | Notes |
-| --- | --- | --- | --- |
-| `GET` | `/burrows` | `listBurrowsHandler` |  |
-| `GET` | `/burrows/:id` | `getBurrowHandler` |  |
 
 ## /conversations
 
@@ -141,10 +134,3 @@ Total routes: **60**.
 | Method | Pattern | Handler | Notes |
 | --- | --- | --- | --- |
 | `GET` | `/version` | `versionHandler` |  |
-
-## /workers
-
-| Method | Pattern | Handler | Notes |
-| --- | --- | --- | --- |
-| `GET` | `/workers` | `listWorkersHandler` |  |
-| `POST` | `/workers/:name/drain` | `drainWorkerHandler` |  |

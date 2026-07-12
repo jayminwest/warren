@@ -30,8 +30,7 @@
  */
 
 import { join } from "node:path";
-import type { Transport } from "@os-eco/burrow-cli";
-import { BurrowClient, LOCAL_WORKER_NAME, probeBurrowClient } from "../../burrow-client/index.ts";
+import { BurrowClient, probeBurrowClient } from "../../burrow-client/index.ts";
 import { openDatabase } from "../../db/client.ts";
 import { DrizzleAdapter } from "../../db/repos/drizzle-adapter.ts";
 import { createRepos } from "../../db/repos/index.ts";
@@ -71,7 +70,6 @@ import { createWarrenConfigCache } from "../../warren-config/index.ts";
 import { NO_AUTH, resolveAuth } from "../auth.ts";
 import { bootBridges } from "../bridges.ts";
 import { type EnvLike, loadServerConfigFromEnv } from "../config.ts";
-import { loadWorkerProbeConfigFromEnv, startWorkerProbe } from "../probe.ts";
 import { bootScheduler } from "../scheduler.ts";
 import { startServer } from "../server.ts";
 import type { AuthProvider, ServeHandle } from "../types.ts";
@@ -81,7 +79,6 @@ import {
 	bridgeLoggerFromPino,
 	planRunLoggerFromPino,
 	previewEvictionLoggerFromPino,
-	probeLoggerFromPino,
 	schedulerLoggerFromPino,
 	workspaceGcLoggerFromPino,
 } from "./logging.ts";
@@ -134,18 +131,12 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 
 	// Load the operator-facing TOML config (pl-9ba1 step 7 / warren-3909).
 	const fileConfig = await loadWarrenServerConfigFromFile({ env });
-	// warren-76c5: multi-worker pooling is retired with the K8s migration — the
+	// warren-288f: multi-worker pooling is retired with the K8s migration — the
 	// self-host backend is a single local burrow built from WARREN_BURROW_* env
-	// vars. Any `[workers]` block in the TOML is now ignored (the loader + the
-	// /workers surface are removed in step 23, warren-288f). Record the vestigial
-	// `local` worker row so /workers + the probe loop stay well-formed (the
-	// workers table lives until step 24, warren-3743).
+	// vars. The `[workers]` TOML block, the /workers + /burrows surfaces, and the
+	// worker-probe loop are all gone; the workers table itself is dropped in
+	// step 24 (warren-3743).
 	const burrowClient = BurrowClient.fromEnv(env);
-	await repos.workers.upsert({
-		name: LOCAL_WORKER_NAME,
-		url: transportToUrl(burrowClient.config.transport),
-		...(opts.now !== undefined ? { now: opts.now() } : {}),
-	});
 	const broker = new RunEventBroker();
 
 	logger.info(
@@ -157,10 +148,7 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 		"warren server starting",
 	);
 	if (fileConfig.path !== null) {
-		logger.info(
-			{ path: fileConfig.path, workers: fileConfig.workers.length },
-			"loaded warren.toml",
-		);
+		logger.info({ path: fileConfig.path }, "loaded warren.toml");
 	}
 
 	// Seed built-in agents (warren-d3e9). Idempotent: existing rows
@@ -229,25 +217,6 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 			);
 		}
 	});
-
-	const probeConfig = loadWorkerProbeConfigFromEnv(env);
-	const workerProbe = startWorkerProbe({
-		pool: burrowClient,
-		workers: repos.workers,
-		config: probeConfig,
-		logger: probeLoggerFromPino(logger),
-	});
-	if (probeConfig.disabled === true) {
-		logger.info({}, "worker probe disabled via WARREN_WORKER_PROBE_DISABLED");
-	} else {
-		logger.info(
-			{
-				intervalMs: probeConfig.intervalMs ?? 30_000,
-				timeoutMs: probeConfig.timeoutMs ?? 2_000,
-			},
-			"worker probe running",
-		);
-	}
 
 	const scheduler = bootScheduler({
 		repos,
@@ -509,21 +478,11 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 			await previewEvictionWorker.stop();
 			await workspaceGcWorker.stop();
 			await opsStatsWorker.stop();
-			await workerProbe.stop();
 			await bridgesBoot.registry.stopAll();
 			await burrowClient.close();
 			await closeDatabase(db);
 		},
 	};
-}
-
-/**
- * Render a burrow `Transport` as the operator-facing URL stored on the
- * vestigial `workers.url` column (warren-76c5). Diagnostics only — the actual
- * transport stays in `BurrowClient.config`.
- */
-function transportToUrl(t: Transport): string {
-	return t.kind === "unix" ? `unix://${t.path}` : `http://${t.hostname}:${t.port}`;
 }
 
 /**

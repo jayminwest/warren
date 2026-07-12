@@ -1,7 +1,6 @@
 /**
  * Loader for warren's server-level TOML config
- * (pl-9ba1 step 7 / warren-3909; `[workers]` validation added in step 8
- * / warren-272c).
+ * (pl-9ba1 step 7 / warren-3909).
  *
  * Contract:
  *   WARREN_CONFIG_FILE unset  → empty config; identical to env-only boot.
@@ -9,10 +8,14 @@
  *   file empty                → empty config (Bun.TOML.parse("") returns {}).
  *   malformed TOML            → `ValidationError` with parse-error detail.
  *   schema rejection          → `ValidationError` with field-level detail.
- *   invalid [workers] entry   → `ValidationError` with `workers[i].field` path.
- *   valid file                → parsed `WarrenServerFileConfig` plus the
- *                               post-validated `workers: ParsedWorkerEntry[]`
- *                               (empty array when no `[[workers]]` block).
+ *   valid file                → parsed `WarrenServerFileConfig`.
+ *
+ * The schema is currently an empty `.strict()` object — the `[[workers]]`
+ * block was retired with the K8s migration (warren-288f; multi-worker
+ * pooling is gone, warren's self-host backend is a single local burrow
+ * built from `WARREN_BURROW_*` env vars). The loader scaffolding is kept
+ * so a future top-level config key can grow the schema on a tested
+ * foundation without re-plumbing the boot path.
  *
  * I/O is injected so tests don't touch disk and so the boot path can
  * swap to a different reader if `warren.toml` ever needs to load from
@@ -21,10 +24,7 @@
  *
  * The loader does NOT merge with env vars — the merge precedence
  * (operator override > file > built-in) is per-consumer and lives next
- * to the consumer. The `BURROW_API_TOKEN` requirement when `[workers]`
- * is non-empty (acceptance #8) is enforced at boot via
- * `requireSharedBurrowToken` (workers.ts), not here — the loader's job
- * is to surface what the file says, not to gate on env vars.
+ * to the consumer.
  */
 
 import { existsSync } from "node:fs";
@@ -32,7 +32,6 @@ import { readFile } from "node:fs/promises";
 import { formatError, ValidationError } from "../core/errors.ts";
 import { type EnvLike, resolveWarrenConfigFilePath, WARREN_CONFIG_FILE_ENV } from "./config.ts";
 import { parseWarrenServerFileConfig, type WarrenServerFileConfig } from "./schema.ts";
-import { type ParsedWorkerEntry, validateWorkerEntries } from "./workers.ts";
 
 export type ReadFileFn = (path: string) => Promise<string>;
 export type ExistsFn = (path: string) => boolean;
@@ -50,13 +49,6 @@ export interface LoadedWarrenServerConfig {
 	/** Absolute path the loader read from, or `null` for the no-file path. */
 	readonly path: string | null;
 	readonly config: WarrenServerFileConfig;
-	/**
-	 * Post-validation `[workers]` entries with parsed transports. Empty
-	 * array when no `[[workers]]` block was declared — the boot path
-	 * uses `workers.length > 0` to decide between `BurrowClient.
-	 * fromConfig` (file-driven) and `fromEnv` (zero-config back-compat).
-	 */
-	readonly workers: readonly ParsedWorkerEntry[];
 }
 
 export async function loadWarrenServerConfigFromFile(
@@ -68,7 +60,7 @@ export async function loadWarrenServerConfigFromFile(
 
 	const path = input.path ?? resolveWarrenConfigFilePath(env);
 	if (path === null || path === "") {
-		return { path: null, config: {}, workers: [] };
+		return { path: null, config: {} };
 	}
 
 	if (!exists(path)) {
@@ -107,14 +99,7 @@ export async function loadWarrenServerConfigFromFile(
 		});
 	}
 
-	const validatedWorkers = validateWorkerEntries(result.value.workers ?? []);
-	if (!validatedWorkers.ok) {
-		throw new ValidationError(`invalid config in ${path}: ${validatedWorkers.message}`, {
-			recoveryHint: `fix the offending [[workers]] entry in ${path}`,
-		});
-	}
-
-	return { path, config: result.value, workers: validatedWorkers.workers };
+	return { path, config: result.value };
 }
 
 function defaultReadFile(path: string): Promise<string> {

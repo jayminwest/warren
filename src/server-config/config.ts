@@ -6,9 +6,10 @@
  * directories from each cloned repo) and from `src/server/config.ts`
  * (which reads the warren server's own env vars). This module owns the
  * operator-facing config FILE that lives next to the warren deployment
- * — `warren.toml` — where blocks like `[workers]` (added by step 8 /
- * warren-272c) declare cluster-shaped state that doesn't fit cleanly in
- * env vars.
+ * — `warren.toml`. The schema is empty today: the `[[workers]]` block it
+ * once carried was retired with the K8s migration (warren-288f). The
+ * loader scaffolding is kept so a future top-level key can grow the
+ * schema without re-plumbing the boot path.
  *
  * No default path: V1 ships zero-config-back-compat (parent plan
  * acceptance #1), so a warren deploy with `WARREN_CONFIG_FILE` unset

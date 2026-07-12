@@ -22,17 +22,4 @@ export {
 	parseWarrenServerFileConfig,
 	type WarrenServerFileConfig,
 	WarrenServerFileConfigSchema,
-	type WorkerEntry,
-	WorkerEntrySchema,
 } from "./schema.ts";
-export {
-	type ParsedWorkerEntry,
-	type ParseUrlResult,
-	parseWorkerUrl,
-	requireSharedBurrowToken,
-	SHARED_BURROW_TOKEN_HINT,
-	UNIX_URL_PREFIX,
-	type ValidateWorkersResult,
-	validateWorkerEntries,
-	WARREN_BURROW_TOKEN_ENV,
-} from "./workers.ts";

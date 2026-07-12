@@ -14,7 +14,6 @@ import {
 	pauseLoggerFromPino,
 	planRunLoggerFromPino,
 	previewEvictionLoggerFromPino,
-	probeLoggerFromPino,
 	schedulerLoggerFromPino,
 } from "./logging.ts";
 
@@ -49,30 +48,6 @@ describe("bridgeLoggerFromPino", () => {
 			{ level: "warn", obj: { b: 2 }, msg: undefined },
 			{ level: "error", obj: { c: 3 }, msg: "fail" },
 		]);
-	});
-});
-
-describe("probeLoggerFromPino", () => {
-	test("forwards all four levels (info/warn/error/debug)", () => {
-		const { logger, calls } = makeRecorder();
-		const adapter = probeLoggerFromPino(logger);
-		adapter.info({ a: 1 });
-		adapter.warn({ b: 2 });
-		adapter.error({ c: 3 });
-		adapter.debug?.({ d: 4 }, "dbg");
-		expect(calls.map((c) => c.level)).toEqual(["info", "warn", "error", "debug"]);
-		expect(calls[3]?.msg).toBe("dbg");
-	});
-
-	test("debug is a no-op when the underlying logger has no debug method", () => {
-		const adapter = probeLoggerFromPino({
-			info: () => {},
-			warn: () => {},
-			error: () => {},
-		} as unknown as Logger);
-		// `debug?` is an optional method — when source logger lacks it,
-		// calling through is still safe via optional chaining.
-		expect(() => adapter.debug?.({ d: 1 })).not.toThrow();
 	});
 });
 

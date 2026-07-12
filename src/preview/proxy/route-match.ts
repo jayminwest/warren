@@ -36,8 +36,6 @@ export const WARREN_API_PATH_PREFIXES: readonly string[] = [
 	"/runs",
 	"/projects",
 	"/agents",
-	"/burrows",
-	"/workers",
 	"/healthz",
 	"/readyz",
 	"/version",

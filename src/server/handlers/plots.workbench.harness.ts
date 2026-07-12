@@ -33,8 +33,7 @@ function jsonRes(status: number, body: unknown): Response {
 	});
 }
 
-async function poolFor(repos: Repos): Promise<BurrowClient> {
-	await repos.workers.upsert({ name: "local", url: "unix:///tmp/x.sock" });
+async function poolFor(): Promise<BurrowClient> {
 	const client = new BurrowClient({
 		config: { transport: { kind: "unix", path: "/tmp/x.sock" } },
 		fetch: stubFetch(async () => jsonRes(404, { error: { code: "not_found", message: "stub" } })),
@@ -51,7 +50,7 @@ export interface BuildDepsInput {
 
 export async function depsFor(input: BuildDepsInput): Promise<ServerDeps> {
 	const broker = new RunEventBroker();
-	const pool = await poolFor(input.repos);
+	const pool = await poolFor();
 	return {
 		repos: input.repos,
 		burrowClient: pool,

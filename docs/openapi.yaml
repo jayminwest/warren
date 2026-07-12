@@ -15,8 +15,6 @@ tags:
     description: '`/alerts` routes.'
   - name: analytics
     description: '`/analytics` routes.'
-  - name: burrows
-    description: '`/burrows` routes.'
   - name: conversations
     description: '`/conversations` routes.'
   - name: meta
@@ -35,8 +33,6 @@ tags:
     description: '`/projects` routes.'
   - name: runs
     description: '`/runs` routes.'
-  - name: workers
-    description: '`/workers` routes.'
 paths:
   /agents:
     get:
@@ -124,34 +120,6 @@ paths:
           description: Successful response.
         default:
           description: Error response (see `src/core/errors.ts`).
-  /burrows:
-    get:
-      operationId: listBurrowsHandler
-      tags:
-        - burrows
-      summary: GET /burrows
-      responses:
-        '200':
-          description: Successful response.
-        default:
-          description: Error response (see `src/core/errors.ts`).
-  /burrows/{id}:
-    get:
-      operationId: getBurrowHandler
-      tags:
-        - burrows
-      summary: GET /burrows/:id
-      responses:
-        '200':
-          description: Successful response.
-        default:
-          description: Error response (see `src/core/errors.ts`).
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
   /conversations:
     get:
       operationId: listConversationsHandler
@@ -915,31 +883,3 @@ paths:
           description: Successful response.
         default:
           description: Error response (see `src/core/errors.ts`).
-  /workers:
-    get:
-      operationId: listWorkersHandler
-      tags:
-        - workers
-      summary: GET /workers
-      responses:
-        '200':
-          description: Successful response.
-        default:
-          description: Error response (see `src/core/errors.ts`).
-  /workers/{name}/drain:
-    post:
-      operationId: drainWorkerHandler
-      tags:
-        - workers
-      summary: POST /workers/:name/drain
-      responses:
-        '200':
-          description: Successful response.
-        default:
-          description: Error response (see `src/core/errors.ts`).
-      parameters:
-        - name: name
-          in: path
-          required: true
-          schema:
-            type: string

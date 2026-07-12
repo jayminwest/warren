@@ -41,7 +41,6 @@ import {
 	refreshProjectAgentsHandler,
 } from "./agents.ts";
 import { healAlertHandler } from "./alerts.ts";
-import { getBurrowHandler, listBurrowsHandler } from "./burrows.ts";
 import {
 	createConversationHandler,
 	getConversationHandler,
@@ -101,7 +100,6 @@ import {
 	steerRunHandler,
 	streamRunEventsHandler,
 } from "./runs/index.ts";
-import { drainWorkerHandler, listWorkersHandler } from "./workers.ts";
 
 /**
  * Default `Bun.spawn` adaptor matching the SpawnFn shape the registry +
@@ -288,12 +286,6 @@ const ROUTE_TABLE: readonly RouteEntry[] = [
 	},
 	{ method: "DELETE", pattern: "/projects/:id", build: deleteProjectHandler },
 
-	{ method: "GET", pattern: "/burrows", build: listBurrowsHandler },
-	{ method: "GET", pattern: "/burrows/:id", build: getBurrowHandler },
-
-	{ method: "GET", pattern: "/workers", build: listWorkersHandler },
-	{ method: "POST", pattern: "/workers/:name/drain", build: drainWorkerHandler },
-
 	{ method: "GET", pattern: "/analytics/cost", build: listCostAnalyticsHandler },
 	{ method: "GET", pattern: "/analytics/runs", build: listRunAnalyticsHandler },
 	{ method: "GET", pattern: "/analytics/behavior", build: listBehaviorAnalyticsHandler },
@@ -399,11 +391,9 @@ export const API_PREFIXES: readonly string[] = [
 	"/agents",
 	"/alerts",
 	"/analytics",
-	"/burrows",
 	"/conversations",
 	"/projects",
 	"/runs",
-	"/workers",
 	"/healthz",
 	"/readyz",
 	"/version",

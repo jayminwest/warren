@@ -39,17 +39,6 @@ export {
 	bootServer,
 	type WarrenServerHandle,
 } from "./main/index.ts";
-export {
-	DEFAULT_WORKER_PROBE_INTERVAL_MS,
-	DEFAULT_WORKER_PROBE_TIMEOUT_MS,
-	loadWorkerProbeConfigFromEnv,
-	runProbeTick,
-	startWorkerProbe,
-	type WorkerProbeConfig,
-	type WorkerProbeHandle,
-	type WorkerProbeTickResult,
-	type WorkerProbeTransition,
-} from "./probe.ts";
 export { jsonResponse, ndjsonResponse } from "./response.ts";
 export { compilePattern, matchRoute, pathExists } from "./router.ts";
 export { startServer } from "./server.ts";
