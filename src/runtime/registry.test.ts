@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
+import type { CoreV1Api } from "@kubernetes/client-node";
 import type { BurrowClientPool } from "../burrow-client/index.ts";
-import { RuntimeNotImplementedError, UnknownRuntimeError } from "./errors.ts";
+import { UnknownRuntimeError } from "./errors.ts";
+import { K8sProvider } from "./k8s/provider.ts";
 import { LocalProvider } from "./local/provider.ts";
 import {
 	DEFAULT_RUNTIME_KIND,
@@ -16,6 +18,11 @@ import {
 const deps: RuntimeProviderDeps = {
 	burrowClientPool: (): BurrowClientPool => {
 		throw new Error("burrowClientPool factory must not be called by the LocalProvider shell");
+	},
+	// Fake K8s client factory: throws if invoked. No shell method calls it, so
+	// building a K8sProvider off WARREN_RUNTIME=k8s never touches a cluster.
+	k8sCoreApi: (): CoreV1Api => {
+		throw new Error("k8sCoreApi factory must not be called by the K8sProvider shell");
 	},
 };
 
@@ -66,11 +73,27 @@ describe("resolveRuntimeProvider", () => {
 		});
 	});
 
-	test("k8s selector throws a clear not-implemented error (phase 3)", () => {
-		expect(() => resolveRuntimeProvider(deps, { WARREN_RUNTIME: "k8s" })).toThrow(
-			RuntimeNotImplementedError,
-		);
-		expect(() => resolveRuntimeProvider(deps, { WARREN_RUNTIME: "k8s" })).toThrow(/phase 3/);
+	test("resolves K8sProvider for WARREN_RUNTIME=k8s (skeleton, phase K8S)", () => {
+		const provider = resolveRuntimeProvider(deps, { WARREN_RUNTIME: "k8s" });
+		expect(provider).toBeInstanceOf(K8sProvider);
+	});
+
+	test("builds K8sProvider without a cluster — the coreApi factory is not invoked at construction", () => {
+		// The fake k8sCoreApi throws if called; construction succeeding proves the
+		// shell never touches the cluster (mirrors the LocalProvider pool posture).
+		expect(() => resolveRuntimeProvider(deps, { WARREN_RUNTIME: "k8s" })).not.toThrow();
+	});
+
+	test("K8sProvider advertises the degraded K8s v1 capability set", () => {
+		const provider = resolveRuntimeProvider(deps, { WARREN_RUNTIME: "k8s" });
+		expect(provider.capabilities).toEqual({
+			previewPorts: false,
+			networkPolicy: "coarse",
+			longLived: false,
+			midRunSteering: false,
+			enforcedResourceLimits: true,
+			workspaceArchive: false,
+		});
 	});
 
 	test("garbage selector throws UnknownRuntimeError", () => {

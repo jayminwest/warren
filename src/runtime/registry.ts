@@ -2,15 +2,15 @@
  * Runtime-provider registry + the `WARREN_RUNTIME` selector.
  *
  * One place resolves which `RuntimeProvider` (contract in `./contract.ts`) a
- * warren process runs against, exactly once at boot. Today that is always the
- * burrow-backed `LocalProvider`; the `k8s` backend arrives in phase 3 of the
- * K8s migration (design doc / plan pl-829f) and is reserved here so the
- * selector is stable ahead of it.
+ * warren process runs against, exactly once at boot. The default is the
+ * burrow-backed `LocalProvider`; the `k8s` backend (`K8sProvider`, pl-829f phase
+ * K8S) is opt-in behind `WARREN_RUNTIME=k8s`.
  *
  * Selection rules (design doc §5 registry/selector semantics):
  *   - `WARREN_RUNTIME` unset (or blank) → `local` (the default backend).
  *   - `local` → burrow-backed `LocalProvider`.
- *   - `k8s`   → recognized but not yet implemented → throws (fail loud).
+ *   - `k8s`   → `K8sProvider` (skeleton at step 14 — the pod-spec builder is real,
+ *     the method bodies land in later steps and throw until then).
  *   - anything else → `UnknownRuntimeError` (fail loud — never silently fall
  *     back to the default, so a typo can't route runs onto the wrong backend).
  *
@@ -21,10 +21,12 @@
  * () => pool })` call there hands the provider onto `ServerDeps` for the domain.
  */
 
+import type { CoreV1Api } from "@kubernetes/client-node";
 import type { BurrowClientPool } from "../burrow-client/index.ts";
 import type { EnvLike } from "../runs/spawn/callback-env.ts";
 import type { RuntimeProvider } from "./contract.ts";
-import { RuntimeNotImplementedError, UnknownRuntimeError } from "./errors.ts";
+import { UnknownRuntimeError } from "./errors.ts";
+import { defaultCoreApiFactory, K8sProvider } from "./k8s/provider.ts";
 import { LocalProvider } from "./local/provider.ts";
 
 /** Runtime backends the selector understands. */
@@ -54,6 +56,14 @@ export interface RuntimeProviderDeps {
 	 * signature is stable as backends are added.
 	 */
 	readonly serverEnv?: EnvLike;
+	/**
+	 * Lazy Kubernetes core API factory the `K8sProvider` drives — only consulted
+	 * for `WARREN_RUNTIME=k8s`. Optional so `local` callers (and tests) needn't
+	 * supply one; when omitted, `defaultCoreApiFactory()` loads in-cluster /
+	 * kubeconfig config lazily. A test injects a fake here to build a
+	 * `K8sProvider` without a cluster.
+	 */
+	readonly k8sCoreApi?: () => CoreV1Api;
 }
 
 /**
@@ -90,11 +100,9 @@ export function resolveRuntimeProvider(
 				...(deps.serverEnv !== undefined ? { serverEnv: deps.serverEnv } : {}),
 			});
 		case "k8s":
-			throw new RuntimeNotImplementedError(
-				'WARREN_RUNTIME="k8s" is not implemented until phase 3 of the K8s migration',
-				{
-					recoveryHint: `Use WARREN_RUNTIME="local" (the default) until the K8sProvider lands. Recognized runtimes: ${RUNTIME_KINDS.join(", ")}.`,
-				},
-			);
+			return new K8sProvider({
+				coreApi: deps.k8sCoreApi ?? defaultCoreApiFactory(),
+				...(deps.serverEnv !== undefined ? { serverEnv: deps.serverEnv } : {}),
+			});
 	}
 }

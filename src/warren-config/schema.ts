@@ -42,6 +42,7 @@
 import { z } from "zod";
 import { parseDurationMs } from "../preview/duration.ts";
 import { CiFixerConfigSchema, HealerConfigSchema } from "./feature-loop-config.ts";
+import { ResourcesConfigSchema } from "./resources-config.ts";
 
 // warren-3db0: re-exported so the historical import sites (and
 // `warren-config/index.ts`) keep resolving these from `./schema.ts`
@@ -59,6 +60,19 @@ export {
 	type HealerConfig,
 	HealerConfigSchema,
 } from "./feature-loop-config.ts";
+// warren-ac7a / pl-829f step 14: K8s resource + network defaults re-exported
+// from `resources-config.ts` (extracted for the file-size budget).
+export {
+	DEFAULT_K8S_CPU_LIMIT_MILLICORES,
+	DEFAULT_K8S_CPU_REQUEST_MILLICORES,
+	DEFAULT_K8S_MEMORY_LIMIT_MIB,
+	DEFAULT_K8S_MEMORY_REQUEST_MIB,
+	DEFAULT_K8S_NETWORK,
+	type NetworkPolicy,
+	NetworkPolicySchema,
+	type ResourcesConfig,
+	ResourcesConfigSchema,
+} from "./resources-config.ts";
 
 const TriggerIdSchema = z
 	.string()
@@ -392,6 +406,9 @@ export const DefaultsConfigSchema = z
 		// warren-b802: override of the burrow runtime backing interactive built-in
 		// agents. Precedence: config override > agent frontmatter.runtime > name.
 		interactiveAgents: InteractiveAgentsConfigSchema.optional(),
+		// warren-ac7a / pl-829f step 14: K8s pod resource + network defaults
+		// (design §3.1). Absent → the pod-spec builder uses DEFAULT_K8S_* constants.
+		resources: ResourcesConfigSchema.optional(),
 		// warren-cd22: per-project plot-sync-to-GitHub configuration.
 		plotSync: PlotSyncConfigSchema.optional(),
 		// warren-05ea: opt-in polling CI-fixer; missing block → poller skips it.
