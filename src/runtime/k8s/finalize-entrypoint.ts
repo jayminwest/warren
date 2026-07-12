@@ -1,0 +1,236 @@
+/**
+ * The in-pod finalize entrypoint (pl-829f step 20 / warren-0d35, design
+ * `runtime-provider-contract.md` §4). Runs INSIDE the run pod as a post-agent
+ * step — the K8s counterpart to `../local/finalize.ts`, which the burrow
+ * `LocalProvider` runs host-side over the shared workspace.
+ *
+ * The lifecycle contract the agent image (step 25) wires around this:
+ *
+ *   1. the agent process runs and exits (having emitted its terminal event on
+ *      the log stream, which is how warren detects logical completion and drives
+ *      reap → `provider.finalize()` — independent of the pod phase);
+ *   2. the harness invokes THIS entrypoint, which POLLS
+ *      `GET /runs/:id/finalize-intent` until warren parks the reap intent;
+ *   3. it runs the workspace-DEPENDENT collection in place (git push + the reap
+ *      counts + the mirror-delta bodies) against the live `/workspace`;
+ *   4. it POSTs a `FinalizeResult` to `POST /runs/:id/finalize-result`, which
+ *      resolves the awaiting `finalize()`; the harness then exits and the domain
+ *      calls `terminate` (contract §6.8 ordering).
+ *
+ * ## What this step builds vs. defers (be precise — step 25 proves the rest)
+ *
+ * BUILT: the pure collection — env parse, the authenticated push (+ commits-ahead
+ * / empty-push / dirty probe faithful to reap's `pushStep`), the
+ * `workspacePlansBody` capture auto-plan-run needs, and the mirror-delta BODIES
+ * read straight off the workspace, all JSON-serialized onto the contract wire.
+ *
+ * DEFERRED to step 25's data-plane pass: the two `chore(warren): {plot,seeds}
+ * state` bookkeeping commits and the true LWW MERGE COUNTS. Both need warren's
+ * project clone to union against, which the pod does not have (design §4:
+ * "warren applies the returned deltas to its project clone"). So the in-pod
+ * deltas are WORKSPACE-TRUTH — `mergedBody` is the workspace tracker file
+ * verbatim; the merge/count reconciliation + the bookkeeping commits happen
+ * warren-side when it applies the deltas. `plot_commit`/`seeds_commit` are marked
+ * `skipped` here for that reason.
+ *
+ * The push credential arrives IN the intent (`gitToken`) — fetched over the
+ * authenticated callback after the agent exited — not the agent container's
+ * static env, so a compromised agent never held it (`provider.ts` decision).
+ */
+
+import { readdir as nodeReaddir, readFile as nodeReadFile } from "node:fs/promises";
+import {
+	collectFinalizeResult,
+	type FinalizeFs,
+	type FinalizeGitRunner,
+} from "./finalize-collect.ts";
+import type { FinalizeResultEnvelope, InPodFinalizeIntent } from "./finalize-wire.ts";
+import { IN_POD_FINALIZE_WIRE_VERSION } from "./finalize-wire.ts";
+
+/* -------------------------------------------------------------------------- */
+/* Env                                                                        */
+/* -------------------------------------------------------------------------- */
+
+export interface FinalizeEntrypointEnv {
+	runId: string;
+	apiUrl: string;
+	apiToken: string;
+	workspacePath: string;
+	/** Poll interval for the intent fetch (ms). */
+	pollIntervalMs: number;
+	/** Max wall-clock to wait for warren to park an intent before giving up (ms). */
+	maxWaitMs: number;
+}
+
+export type FinalizeEnvSource = Readonly<Record<string, string | undefined>>;
+
+function required(env: FinalizeEnvSource, key: string): string {
+	const raw = env[key]?.trim();
+	if (raw === undefined || raw === "") {
+		throw new Error(`finalize-entrypoint: missing required env ${key}`);
+	}
+	return raw;
+}
+
+function positiveIntEnv(env: FinalizeEnvSource, key: string, fallback: number): number {
+	const raw = env[key]?.trim();
+	if (raw === undefined || raw === "") return fallback;
+	const n = Number(raw);
+	return Number.isInteger(n) && n > 0 ? n : fallback;
+}
+
+/** Parse + validate the finalize entrypoint env. Pure. */
+export function parseFinalizeEntrypointEnv(env: FinalizeEnvSource): FinalizeEntrypointEnv {
+	return {
+		runId: required(env, "WARREN_RUN_ID"),
+		apiUrl: required(env, "WARREN_API_URL").replace(/\/+$/, ""),
+		apiToken: required(env, "WARREN_API_TOKEN"),
+		workspacePath: env.WARREN_WORKSPACE_PATH?.trim() || "/workspace",
+		pollIntervalMs: positiveIntEnv(env, "WARREN_FINALIZE_POLL_INTERVAL_MS", 2_000),
+		maxWaitMs: positiveIntEnv(env, "WARREN_FINALIZE_MAX_WAIT_MS", 300_000),
+	};
+}
+
+/* -------------------------------------------------------------------------- */
+/* Injectable seams (testable without a cluster / real network)               */
+/* -------------------------------------------------------------------------- */
+
+export interface FinalizeHttp {
+	get: (url: string, token: string) => Promise<{ status: number; body: unknown }>;
+	post: (url: string, token: string, body: unknown) => Promise<{ status: number }>;
+}
+
+export interface FinalizeEntrypointDeps {
+	git?: FinalizeGitRunner;
+	fs?: FinalizeFs;
+	http?: FinalizeHttp;
+	sleep?: (ms: number) => Promise<void>;
+	now?: () => number;
+	log?: (message: string) => void;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Poll + POST orchestration                                                  */
+/* -------------------------------------------------------------------------- */
+
+const defaultGit: FinalizeGitRunner = async (args, opts) => {
+	const proc = Bun.spawn(["git", ...args], {
+		cwd: opts?.cwd,
+		stdout: "pipe",
+		stderr: "pipe",
+	});
+	const [stdout, stderr, exitCode] = await Promise.all([
+		new Response(proc.stdout).text(),
+		new Response(proc.stderr).text(),
+		proc.exited,
+	]);
+	return { exitCode, stdout, stderr };
+};
+
+const defaultFs: FinalizeFs = {
+	readFile: (path) => nodeReadFile(path, "utf8"),
+	readdir: (path) => nodeReaddir(path),
+};
+
+const defaultHttp: FinalizeHttp = {
+	get: async (url, token) => {
+		const res = await fetch(url, { headers: { authorization: `Bearer ${token}` } });
+		const body = res.status === 200 ? await res.json() : null;
+		return { status: res.status, body };
+	},
+	post: async (url, token, body) => {
+		const res = await fetch(url, {
+			method: "POST",
+			headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+			body: JSON.stringify(body),
+		});
+		return { status: res.status };
+	},
+};
+
+const defaultSleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * Extract the parked intent from a `GET /finalize-intent` body. `{ intent: null }`
+ * (warren not driving finalize yet) ⇒ `null`; an intent object ⇒ it. Pure.
+ */
+export function extractIntent(body: unknown): InPodFinalizeIntent | null {
+	if (body === null || typeof body !== "object") return null;
+	const intent = (body as { intent?: unknown }).intent;
+	if (intent === null || typeof intent !== "object") return null;
+	return intent as InPodFinalizeIntent;
+}
+
+/**
+ * Poll `GET /runs/:id/finalize-intent` until warren parks an intent or `maxWaitMs`
+ * elapses. Returns the intent, or `null` on timeout (the harness then exits and
+ * warren's own finalize timeout produces a failed result).
+ */
+export async function pollForIntent(
+	env: FinalizeEntrypointEnv,
+	http: FinalizeHttp,
+	sleep: (ms: number) => Promise<void>,
+	now: () => number,
+	log: (m: string) => void,
+): Promise<InPodFinalizeIntent | null> {
+	const url = `${env.apiUrl}/runs/${env.runId}/finalize-intent`;
+	const deadline = now() + env.maxWaitMs;
+	for (;;) {
+		const res = await http.get(url, env.apiToken);
+		if (res.status === 200) {
+			const intent = extractIntent(res.body);
+			if (intent !== null) return intent;
+		}
+		if (now() >= deadline) {
+			log(`finalize-entrypoint: no intent after ${env.maxWaitMs}ms; giving up`);
+			return null;
+		}
+		await sleep(env.pollIntervalMs);
+	}
+}
+
+/**
+ * Full entrypoint: poll for the intent, run the workspace collection, and POST
+ * the `FinalizeResult`. Returns `true` when a result was POSTed, `false` when no
+ * intent arrived (nothing to do). The workspace-touching seams are injectable so
+ * the orchestration is testable without a cluster / real git / real network.
+ */
+export async function runFinalizeEntrypoint(
+	envSource: FinalizeEnvSource,
+	deps: FinalizeEntrypointDeps = {},
+): Promise<boolean> {
+	const git = deps.git ?? defaultGit;
+	const fs = deps.fs ?? defaultFs;
+	const http = deps.http ?? defaultHttp;
+	const sleep = deps.sleep ?? defaultSleep;
+	const now = deps.now ?? (() => Date.now());
+	const log = deps.log ?? ((m: string) => console.log(m));
+
+	const env = parseFinalizeEntrypointEnv(envSource);
+	const intent = await pollForIntent(env, http, sleep, now, log);
+	if (intent === null) return false;
+
+	log(`finalize-entrypoint: intent ${intent.attemptId} received; collecting`);
+	const result = await collectFinalizeResult(intent, env.workspacePath, { fs, git });
+	const envelope: FinalizeResultEnvelope = {
+		version: IN_POD_FINALIZE_WIRE_VERSION,
+		attemptId: intent.attemptId,
+		result,
+	};
+	const post = await http.post(
+		`${env.apiUrl}/runs/${env.runId}/finalize-result`,
+		env.apiToken,
+		envelope,
+	);
+	log(
+		`finalize-entrypoint: posted result for ${intent.attemptId} (HTTP ${post.status}, pushed=${result.pushed})`,
+	);
+	return true;
+}
+
+if (import.meta.main) {
+	runFinalizeEntrypoint(process.env).catch((err: unknown) => {
+		console.error(err instanceof Error ? err.message : String(err));
+		process.exit(1);
+	});
+}

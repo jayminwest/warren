@@ -1,0 +1,294 @@
+import { describe, expect, test } from "bun:test";
+import {
+	collectFinalizeResult,
+	collectMulchDelta,
+	collectPlansDelta,
+	collectSeedsDelta,
+	countJsonlRecords,
+	type FinalizeFs,
+	type FinalizeGitRunner,
+} from "./finalize-collect.ts";
+import {
+	extractIntent,
+	type FinalizeHttp,
+	parseFinalizeEntrypointEnv,
+	pollForIntent,
+	runFinalizeEntrypoint,
+} from "./finalize-entrypoint.ts";
+import {
+	IN_POD_FINALIZE_WIRE_VERSION,
+	type InPodFinalizeIntent,
+	validateFinalizeResult,
+} from "./finalize-wire.ts";
+
+/** In-memory fs seam: `files` maps absolute paths → body; `dirs` maps dir → names. */
+function fakeFs(files: Record<string, string>, dirs: Record<string, string[]> = {}): FinalizeFs {
+	return {
+		readFile: async (path) => {
+			if (path in files) return files[path] as string;
+			throw new Error(`ENOENT ${path}`);
+		},
+		readdir: async (path) => {
+			if (path in dirs) return dirs[path] as string[];
+			throw new Error(`ENOTDIR ${path}`);
+		},
+	};
+}
+
+/** Git seam recording argv, returning scripted `{exitCode,stdout,stderr}` by first arg. */
+function fakeGit(
+	script: Partial<Record<string, { exitCode?: number; stdout?: string; stderr?: string }>> = {},
+): { git: FinalizeGitRunner; calls: string[][] } {
+	const calls: string[][] = [];
+	const git: FinalizeGitRunner = async (args) => {
+		calls.push(args);
+		const key = args[0] === "remote" ? `remote ${args[1]}` : (args[0] ?? "");
+		const s = script[key] ?? {};
+		return { exitCode: s.exitCode ?? 0, stdout: s.stdout ?? "", stderr: s.stderr ?? "" };
+	};
+	return { git, calls };
+}
+
+function intent(over: Partial<InPodFinalizeIntent> = {}): InPodFinalizeIntent {
+	return {
+		version: IN_POD_FINALIZE_WIRE_VERSION,
+		attemptId: "fin_abcdefghjkmn",
+		branch: "warren/run_x",
+		push: true,
+		mirror: ["mulch", "seeds", "plans", "plot"],
+		commit: ["plot", "seeds"],
+		baseBranch: "main",
+		...over,
+	};
+}
+
+describe("parseFinalizeEntrypointEnv", () => {
+	test("parses required + defaulted env", () => {
+		const env = parseFinalizeEntrypointEnv({
+			WARREN_RUN_ID: "run_x",
+			WARREN_API_URL: "http://warren.svc:8080/",
+			WARREN_API_TOKEN: "tok",
+		});
+		expect(env.runId).toBe("run_x");
+		expect(env.apiUrl).toBe("http://warren.svc:8080"); // trailing slash stripped
+		expect(env.workspacePath).toBe("/workspace");
+		expect(env.pollIntervalMs).toBe(2_000);
+	});
+
+	test("throws on a missing required var", () => {
+		expect(() => parseFinalizeEntrypointEnv({ WARREN_RUN_ID: "run_x" })).toThrow(/WARREN_API_URL/);
+	});
+});
+
+describe("countJsonlRecords", () => {
+	test("counts non-empty lines", () => {
+		expect(countJsonlRecords('{"a":1}\n{"b":2}\n\n')).toBe(2);
+		expect(countJsonlRecords("")).toBe(0);
+	});
+});
+
+describe("mirror-delta collection (workspace-truth)", () => {
+	test("collectMulchDelta reads every expertise file with its verbatim body", async () => {
+		const fs = fakeFs(
+			{
+				"/ws/.mulch/expertise/build.jsonl": '{"id":"a"}\n{"id":"b"}\n',
+				"/ws/.mulch/expertise/ci.jsonl": '{"id":"c"}\n',
+			},
+			{ "/ws/.mulch/expertise": ["build.jsonl", "ci.jsonl", "README.md"] },
+		);
+		const d = await collectMulchDelta("/ws", fs);
+		expect(d.files.map((f) => f.domain)).toEqual(["build", "ci"]);
+		expect(d.files[0]?.path).toBe(".mulch/expertise/build.jsonl");
+		expect(d.files[0]?.mergedBody).toBe('{"id":"a"}\n{"id":"b"}\n');
+		expect(d.appended).toBe(3);
+		expect(d.updated).toBe(0);
+	});
+
+	test("collectMulchDelta is empty when .mulch/expertise is absent", async () => {
+		const d = await collectMulchDelta("/ws", fakeFs({}));
+		expect(d).toEqual({ version: 1, updated: 0, skipped: 0, appended: 0, files: [] });
+	});
+
+	test("collectSeedsDelta carries the workspace issues body; counts stay 0", async () => {
+		const fs = fakeFs({ "/ws/.seeds/issues.jsonl": '{"id":"warren-1"}\n' });
+		const d = await collectSeedsDelta("/ws", fs);
+		expect(d.mergedBody).toBe('{"id":"warren-1"}\n');
+		expect(d.closed).toBe(0);
+		expect(d.created).toBe(0);
+		expect(d.path).toBe(".seeds/issues.jsonl");
+	});
+
+	test("collectSeedsDelta mergedBody is null when the file is absent", async () => {
+		const d = await collectSeedsDelta("/ws", fakeFs({}));
+		expect(d.mergedBody).toBeNull();
+	});
+
+	test("collectPlansDelta counts appended plan records", async () => {
+		const fs = fakeFs({ "/ws/.seeds/plans.jsonl": '{"id":"pl-1"}\n{"id":"pl-2"}\n' });
+		const d = await collectPlansDelta("/ws", fs);
+		expect(d.appended).toBe(2);
+		expect(d.mergedBody).toContain("pl-1");
+	});
+});
+
+describe("collectFinalizeResult", () => {
+	test("pushes, counts commits-ahead, and assembles a contract-shaped result", async () => {
+		const fs = fakeFs(
+			{
+				"/ws/.seeds/plans.jsonl": '{"id":"pl-1"}\n',
+				"/ws/.seeds/issues.jsonl": '{"id":"warren-1"}\n',
+			},
+			{ "/ws/.mulch/expertise": ["build.jsonl"] },
+		);
+		fs.readFile = (
+			(orig) => (path: string) =>
+				path === "/ws/.mulch/expertise/build.jsonl" ? Promise.resolve('{"id":"a"}\n') : orig(path)
+		)(fs.readFile);
+		const { git, calls } = fakeGit({
+			"remote get-url": { stdout: "https://github.com/x/y.git" },
+			"rev-list": { stdout: "4" },
+		});
+
+		const r = await collectFinalizeResult(intent({ gitToken: "ghp_tok" }), "/ws", { fs, git });
+
+		expect(r.pushed).toBe(true);
+		expect(r.commitsAhead).toBe(4);
+		expect(r.emptyPush).toBe(false);
+		expect(r.prBranch).toBe("warren/run_x");
+		expect(r.workspacePlansBody).toBe('{"id":"pl-1"}\n');
+		expect(r.mirror.mulch?.files[0]?.domain).toBe("build");
+		expect(r.mirror.seeds?.mergedBody).toBe('{"id":"warren-1"}\n');
+		// The push authenticated origin then restored it.
+		const argv = calls.map((c) => c.join(" "));
+		expect(argv).toContain(
+			"remote set-url origin https://x-access-token:ghp_tok@github.com/x/y.git",
+		);
+		expect(argv).toContain("push origin HEAD:warren/run_x");
+		expect(argv).toContain("remote set-url origin https://github.com/x/y.git"); // restore
+		// Bookkeeping commits are skipped in-pod (no clone to union against).
+		const skipped = r.stages.filter((s) => s.status === "skipped").map((s) => s.stage);
+		expect(skipped).toContain("plot_commit");
+		expect(skipped).toContain("seeds_commit");
+	});
+
+	test("push:false skips the push + count and produces empty-push=false", async () => {
+		const { git } = fakeGit();
+		const r = await collectFinalizeResult(intent({ push: false }), "/ws", { fs: fakeFs({}), git });
+		expect(r.pushed).toBe(false);
+		expect(r.commitsAhead).toBeNull();
+		expect(r.stages.find((s) => s.stage === "branch_push")?.status).toBe("skipped");
+	});
+
+	test("a failed push records the failure and skips the count", async () => {
+		const { git } = fakeGit({ push: { exitCode: 1, stderr: "auth denied" } });
+		const r = await collectFinalizeResult(intent({ gitToken: undefined }), "/ws", {
+			fs: fakeFs({}),
+			git,
+		});
+		expect(r.pushed).toBe(false);
+		expect(r.stages.find((s) => s.stage === "branch_push")?.status).toBe("failed");
+		expect(r.events.some((e) => e.kind === "reap_failed")).toBe(true);
+	});
+
+	test("an empty push probes dirtiness (dropped-commit signal)", async () => {
+		const { git } = fakeGit({
+			"rev-list": { stdout: "0" },
+			status: { stdout: " M src/x.ts" },
+		});
+		const r = await collectFinalizeResult(intent({ gitToken: undefined }), "/ws", {
+			fs: fakeFs({}),
+			git,
+		});
+		expect(r.commitsAhead).toBe(0);
+		expect(r.emptyPush).toBe(true);
+		expect(r.dirty).toBe(true);
+	});
+
+	test("the collected result round-trips through the wire validator unchanged (shape parity)", async () => {
+		const fs = fakeFs(
+			{ "/ws/.seeds/issues.jsonl": '{"id":"warren-1"}\n' },
+			{ "/ws/.mulch/expertise": ["build.jsonl"] },
+		);
+		fs.readFile = (
+			(orig) => (path: string) =>
+				path === "/ws/.mulch/expertise/build.jsonl" ? Promise.resolve('{"id":"a"}\n') : orig(path)
+		)(fs.readFile);
+		const { git } = fakeGit({ "rev-list": { stdout: "2" } });
+		const r = await collectFinalizeResult(intent(), "/ws", { fs, git });
+		// Wire round-trip: JSON encode → validate → must equal the source shape.
+		const roundTripped = validateFinalizeResult(JSON.parse(JSON.stringify(r)));
+		expect(roundTripped).toEqual(r);
+	});
+});
+
+describe("extractIntent", () => {
+	test("returns null for {intent:null} and the intent object otherwise", () => {
+		expect(extractIntent({ intent: null })).toBeNull();
+		expect(extractIntent({})).toBeNull();
+		expect(extractIntent({ intent: intent() })?.attemptId).toBe("fin_abcdefghjkmn");
+	});
+});
+
+describe("pollForIntent + runFinalizeEntrypoint", () => {
+	const env = {
+		WARREN_RUN_ID: "run_x",
+		WARREN_API_URL: "http://warren:8080",
+		WARREN_API_TOKEN: "tok",
+		WARREN_WORKSPACE_PATH: "/ws",
+	};
+
+	test("polls until an intent appears, then collects and POSTs the result", async () => {
+		let getCalls = 0;
+		const posted: { url: string; body: unknown }[] = [];
+		const http: FinalizeHttp = {
+			get: async () => {
+				getCalls++;
+				// First poll: not ready; second: the intent.
+				return getCalls < 2
+					? { status: 200, body: { intent: null } }
+					: { status: 200, body: { intent: intent() } };
+			},
+			post: async (url, _t, body) => {
+				posted.push({ url, body });
+				return { status: 200 };
+			},
+		};
+		const { git } = fakeGit({ "rev-list": { stdout: "1" } });
+		const did = await runFinalizeEntrypoint(env, {
+			http,
+			git,
+			fs: fakeFs({}),
+			sleep: async () => {},
+			now: () => 0,
+			log: () => {},
+		});
+		expect(did).toBe(true);
+		expect(getCalls).toBe(2);
+		expect(posted).toHaveLength(1);
+		expect(posted[0]?.url).toBe("http://warren:8080/runs/run_x/finalize-result");
+		const env0 = posted[0]?.body as { attemptId: string; version: number };
+		expect(env0.attemptId).toBe("fin_abcdefghjkmn");
+		expect(env0.version).toBe(IN_POD_FINALIZE_WIRE_VERSION);
+	});
+
+	test("gives up (no POST) when the intent never arrives before maxWait", async () => {
+		let nowVal = 0;
+		const http: FinalizeHttp = {
+			get: async () => ({ status: 200, body: { intent: null } }),
+			post: async () => {
+				throw new Error("must not POST without an intent");
+			},
+		};
+		const parsed = parseFinalizeEntrypointEnv({ ...env, WARREN_FINALIZE_MAX_WAIT_MS: "10" });
+		const intentResult = await pollForIntent(
+			parsed,
+			http,
+			async () => {
+				nowVal += 100; // each sleep advances past the 10ms deadline
+			},
+			() => nowVal,
+			() => {},
+		);
+		expect(intentResult).toBeNull();
+	});
+});

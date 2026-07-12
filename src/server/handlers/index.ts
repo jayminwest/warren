@@ -90,12 +90,14 @@ import {
 import {
 	cancelRunHandler,
 	createRunHandler,
+	getRunFinalizeIntentHandler,
 	getRunHandler,
 	listBehaviorAnalyticsHandler,
 	listCostAnalyticsHandler,
 	listRunAnalyticsHandler,
 	listRunsHandler,
 	pollRunInboxHandler,
+	postRunFinalizeResultHandler,
 	previewLoginHandler,
 	previewTeardownHandler,
 	steerRunHandler,
@@ -297,6 +299,11 @@ const ROUTE_TABLE: readonly RouteEntry[] = [
 	// warren-3d0b: the in-pod steering poll for the K8s backend. Bearer-gated
 	// like every /runs route; the pod carries WARREN_API_TOKEN.
 	{ method: "GET", pattern: "/runs/:id/inbox", build: pollRunInboxHandler },
+	// warren-0d35: the in-pod finalize callback for the K8s backend — the pod
+	// fetches the reap intent, runs the workspace-dependent half in place, and
+	// POSTs the FinalizeResult back. Bearer-gated; the pod carries WARREN_API_TOKEN.
+	{ method: "GET", pattern: "/runs/:id/finalize-intent", build: getRunFinalizeIntentHandler },
+	{ method: "POST", pattern: "/runs/:id/finalize-result", build: postRunFinalizeResultHandler },
 	{ method: "POST", pattern: "/runs/:id/steer", build: steerRunHandler },
 	{ method: "POST", pattern: "/runs/:id/cancel", build: cancelRunHandler },
 	{ method: "GET", pattern: "/runs/:id/preview/login", build: previewLoginHandler },

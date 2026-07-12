@@ -6,8 +6,8 @@ import {
 	type V1Pod,
 } from "@kubernetes/client-node";
 import type { EnvLike } from "../../runs/spawn/callback-env.ts";
-import type { RunHandle, RunSpec } from "../contract.ts";
-import { RuntimeNotImplementedError, RuntimeProviderError } from "../errors.ts";
+import type { RunSpec } from "../contract.ts";
+import { RuntimeProviderError } from "../errors.ts";
 import { SEED_MANIFEST_KEY } from "./pod-spec.ts";
 import { K8S_PROVIDER_CAPABILITIES, K8sProvider, type K8sProviderDeps } from "./provider.ts";
 
@@ -21,12 +21,6 @@ const deps: K8sProviderDeps = {
 	coreApi: (): CoreV1Api => {
 		throw new Error("coreApi factory must not be called by a K8sProvider stub");
 	},
-};
-
-const handle: RunHandle = {
-	runId: "run_test",
-	sandboxId: "run-run-test",
-	providerRunId: "pod-uid-1",
 };
 
 const spec: RunSpec = {
@@ -64,28 +58,8 @@ describe("K8sProvider", () => {
 		expect(() => new K8sProvider(deps)).not.toThrow();
 	});
 
-	describe("finalize remains a not-implemented stub naming its method + plan step", () => {
-		const provider = new K8sProvider(deps);
-
-		/** Capture the thrown error so we can assert on both message + recoveryHint. */
-		function capture(fn: () => unknown): RuntimeNotImplementedError {
-			try {
-				fn();
-			} catch (err) {
-				if (err instanceof RuntimeNotImplementedError) return err;
-				throw err;
-			}
-			throw new Error("expected the stub to throw RuntimeNotImplementedError");
-		}
-
-		test("finalize → step 20", () => {
-			const err = capture(() =>
-				provider.finalize(handle, { branch: "b", push: false, mirror: [] }),
-			);
-			expect(err.message).toContain("K8sProvider.finalize()");
-			expect(err.recoveryHint).toContain("step 20");
-		});
-	});
+	// finalize() is implemented (pl-829f step 20 / warren-0d35) — its wiring +
+	// race semantics are covered in provider.finalize.test.ts + finalize.test.ts.
 });
 
 // --- create() ---------------------------------------------------------------

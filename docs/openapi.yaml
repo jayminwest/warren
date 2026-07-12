@@ -821,6 +821,44 @@ paths:
           required: true
           schema:
             type: string
+  /runs/{id}/finalize-intent:
+    get:
+      operationId: getRunFinalizeIntentHandler
+      tags:
+        - runs
+      summary: GET /runs/:id/finalize-intent
+      responses:
+        '200':
+          description: Successful response.
+        default:
+          description: Error response (see `src/core/errors.ts`).
+      description: >-
+        warren-0d35: the in-pod finalize callback for the K8s backend — the pod fetches the reap
+        intent, runs the workspace-dependent half in place, and POSTs the FinalizeResult back.
+        Bearer-gated; the pod carries WARREN_API_TOKEN.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+  /runs/{id}/finalize-result:
+    post:
+      operationId: postRunFinalizeResultHandler
+      tags:
+        - runs
+      summary: POST /runs/:id/finalize-result
+      responses:
+        '200':
+          description: Successful response.
+        default:
+          description: Error response (see `src/core/errors.ts`).
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
   /runs/{id}/inbox:
     get:
       operationId: pollRunInboxHandler

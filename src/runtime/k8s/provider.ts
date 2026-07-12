@@ -42,8 +42,10 @@ import type {
 	StreamOpts,
 	TeardownResult,
 } from "../contract.ts";
-import { RuntimeNotImplementedError, RuntimeProviderError } from "../errors.ts";
+import { RuntimeProviderError } from "../errors.ts";
 import { mapApiError } from "./api-error.ts";
+import { finalizeK8sRun } from "./finalize.ts";
+import { type FinalizeCoordinator, sharedFinalizeCoordinator } from "./finalize-coordinator.ts";
 import { defaultLogFollowFactory } from "./log-follow.ts";
 import {
 	isTerminalPhase,
@@ -113,6 +115,20 @@ export interface K8sProviderDeps {
 	 * `() => repos.runInbox` here (src/server/main/deps.ts).
 	 */
 	readonly runInbox?: () => K8sInboxStore;
+	/**
+	 * Correlation registry for the in-pod finalize callback (pl-829f step 20 /
+	 * warren-0d35). `finalize()` registers the intent here and awaits the pod's
+	 * result POST; the finalize HTTP endpoints resolve it. Defaults to the
+	 * process-wide `sharedFinalizeCoordinator` so the provider and the endpoints
+	 * correlate without extra wiring; tests inject a private instance.
+	 */
+	readonly finalizeCoordinator?: FinalizeCoordinator;
+	/** Wall-clock budget for the whole in-pod finalize round-trip (ms). */
+	readonly finalizeTimeoutMs?: number;
+	/** Poll interval for the pod-gone probe during finalize (ms). */
+	readonly finalizePodPollMs?: number;
+	/** Injectable timer for the finalize race — tests drive it without real delays. */
+	readonly finalizeSetTimer?: (fn: () => void, ms: number) => { cancel: () => void };
 }
 
 /**
@@ -172,16 +188,6 @@ function pickPodForRun(items: V1Pod[], handle: RunHandle): V1Pod | undefined {
 		if (exact !== undefined) return exact;
 	}
 	return items[0];
-}
-
-/** Raise the standard stub error, naming the method and the plan step that fills it. */
-function notImplemented(method: string, step: string): never {
-	throw new RuntimeNotImplementedError(`K8sProvider.${method}() is not implemented yet`, {
-		recoveryHint:
-			`Filled in ${step} of the K8s migration (pl-829f, phase K8S). This shell (step 14) ` +
-			"lands the capability set + the pure pod-spec builder (src/runtime/k8s/pod-spec.ts); " +
-			'until then run with WARREN_RUNTIME="local" (the default).',
-	});
 }
 
 /**
@@ -416,8 +422,50 @@ export class K8sProvider implements RuntimeProvider {
 		return cancelK8sRun(this.deps.coreApi(), config, handle);
 	}
 
-	finalize(_handle: RunHandle, _intent: FinalizeIntent): Promise<FinalizeResult> {
-		return notImplemented("finalize", "step 20 (warren-0d35)");
+	/**
+	 * Run the workspace-dependent half of reap (contract §4) as a post-agent step
+	 * INSIDE the pod, and return its artifacts (pl-829f step 20 / warren-0d35).
+	 * The control plane cannot reach the pod's `emptyDir`, so `finalize` registers
+	 * the neutral intent with the coordinator, the in-pod harness polls
+	 * `GET /runs/:id/finalize-intent` + POSTs its `FinalizeResult`, and this call
+	 * awaits that result — bounded by a wall-clock timeout and a pod-gone probe so
+	 * a dead pod degrades to a structured FAILED result (reap still terminates)
+	 * rather than hanging. See `./finalize.ts`.
+	 *
+	 * The short-lived git push credential rides the intent (fetched over the
+	 * authenticated callback AFTER the agent exits), NOT the agent container's
+	 * static env — a compromised agent never holds the push token (blast-radius
+	 * minimization; the agent container gets no `WARREN_GIT_TOKEN` at create,
+	 * step 15). Sourced from `WARREN_GIT_TOKEN` (falling back to `GITHUB_TOKEN`).
+	 */
+	finalize(handle: RunHandle, intent: FinalizeIntent): Promise<FinalizeResult> {
+		const env = this.deps.serverEnv ?? process.env;
+		const gitToken = this.resolvePushToken(env);
+		return finalizeK8sRun(handle, intent, {
+			coordinator: this.deps.finalizeCoordinator ?? sharedFinalizeCoordinator,
+			status: (h) => this.status(h),
+			...(gitToken !== undefined ? { gitToken } : {}),
+			...(this.deps.finalizeTimeoutMs !== undefined
+				? { timeoutMs: this.deps.finalizeTimeoutMs }
+				: {}),
+			...(this.deps.finalizePodPollMs !== undefined
+				? { podPollMs: this.deps.finalizePodPollMs }
+				: {}),
+			...(this.deps.finalizeSetTimer !== undefined ? { setTimer: this.deps.finalizeSetTimer } : {}),
+		});
+	}
+
+	/**
+	 * Resolve the short-lived git push credential for the in-pod finalize:
+	 * `WARREN_GIT_TOKEN` (the operator's push token), falling back to
+	 * `GITHUB_TOKEN` (design §6.3 maps the Fly `GITHUB_TOKEN` secret onto the
+	 * control plane + init container). Blank ⇒ `undefined` (public repos push
+	 * anonymously, matching `workspace-init`'s optional-token posture).
+	 */
+	private resolvePushToken(env: EnvLike): string | undefined {
+		const raw = env.WARREN_GIT_TOKEN ?? env.GITHUB_TOKEN;
+		const trimmed = raw?.trim();
+		return trimmed !== undefined && trimmed !== "" ? trimmed : undefined;
 	}
 
 	/**

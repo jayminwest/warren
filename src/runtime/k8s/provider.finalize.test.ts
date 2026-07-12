@@ -1,0 +1,120 @@
+import { describe, expect, test } from "bun:test";
+import type { CoreV1Api, V1PodList } from "@kubernetes/client-node";
+import type { FinalizeIntent, FinalizeResult, RunHandle } from "../contract.ts";
+import { FinalizeCoordinator } from "./finalize-coordinator.ts";
+import { K8sProvider } from "./provider.ts";
+
+const handle: RunHandle = {
+	runId: "run_prov_finalize",
+	sandboxId: "run-run-prov-finalize",
+	providerRunId: "pod-uid-9",
+};
+
+function intent(): FinalizeIntent {
+	return {
+		branch: "warren/run_prov_finalize",
+		push: true,
+		mirror: ["mulch", "seeds", "plans", "plot"],
+		commit: ["plot", "seeds"],
+		baseBranch: "main",
+		projectClonePathHint: "/data/projects/x",
+	};
+}
+
+function podResult(): FinalizeResult {
+	return {
+		pushed: true,
+		commitsAhead: 5,
+		emptyPush: false,
+		dirty: false,
+		workspacePlansBody: null,
+		events: [],
+		mirror: {},
+		prBranch: "warren/run_prov_finalize",
+		stages: [{ stage: "branch_push", status: "ok" }],
+	};
+}
+
+/** coreApi whose pod list is scriptable — empty ⇒ status() reports run-lost. */
+function fakeApi(podItems: V1PodList["items"]): CoreV1Api {
+	return {
+		listNamespacedPod: (): Promise<V1PodList> => Promise.resolve({ items: podItems } as V1PodList),
+	} as unknown as CoreV1Api;
+}
+
+/** A setTimer firing callbacks at exactly `fireMs`; others are inert. */
+function firingTimer(fireMs: number): (fn: () => void, ms: number) => { cancel: () => void } {
+	return (fn, ms) => {
+		if (ms === fireMs) queueMicrotask(fn);
+		return { cancel: () => {} };
+	};
+}
+const inertTimer = (): { cancel: () => void } => ({ cancel: () => {} });
+
+describe("K8sProvider.finalize — wiring", () => {
+	test("embeds the WARREN_GIT_TOKEN push credential into the served intent", async () => {
+		const coordinator = new FinalizeCoordinator();
+		const provider = new K8sProvider({
+			coreApi: () => fakeApi([{ metadata: { name: handle.sandboxId } }]),
+			serverEnv: { WARREN_GIT_TOKEN: "ghp_pushtoken" },
+			finalizeCoordinator: coordinator,
+			finalizeSetTimer: inertTimer,
+		});
+		const p = provider.finalize(handle, intent());
+		await Promise.resolve();
+		const parked = coordinator.peekIntent(handle.runId);
+		expect(parked?.gitToken).toBe("ghp_pushtoken");
+		// Host-only hint never crosses to the pod.
+		expect(parked && "projectClonePathHint" in parked).toBe(false);
+		coordinator.submit(handle.runId, parked?.attemptId ?? "", podResult());
+		await expect(p).resolves.toMatchObject({ pushed: true, commitsAhead: 5 });
+	});
+
+	test("falls back to GITHUB_TOKEN, and omits the token when neither is set", async () => {
+		const coordinator = new FinalizeCoordinator();
+		const provider = new K8sProvider({
+			coreApi: () => fakeApi([{ metadata: { name: handle.sandboxId } }]),
+			serverEnv: { GITHUB_TOKEN: "ghp_fallback" },
+			finalizeCoordinator: coordinator,
+			finalizeSetTimer: inertTimer,
+		});
+		const p = provider.finalize(handle, intent());
+		await Promise.resolve();
+		expect(coordinator.peekIntent(handle.runId)?.gitToken).toBe("ghp_fallback");
+		coordinator.submit(
+			handle.runId,
+			coordinator.peekIntent(handle.runId)?.attemptId ?? "",
+			podResult(),
+		);
+		await p;
+
+		const coord2 = new FinalizeCoordinator();
+		const provider2 = new K8sProvider({
+			coreApi: () => fakeApi([{ metadata: { name: handle.sandboxId } }]),
+			serverEnv: {},
+			finalizeCoordinator: coord2,
+			finalizeSetTimer: inertTimer,
+		});
+		const p2 = provider2.finalize(handle, intent());
+		await Promise.resolve();
+		const parked2 = coord2.peekIntent(handle.runId);
+		expect(parked2 && "gitToken" in parked2).toBe(false);
+		coord2.submit(handle.runId, parked2?.attemptId ?? "", podResult());
+		await p2;
+	});
+
+	test("degrades to a failed result when the pod is gone (status lists no pod)", async () => {
+		const coordinator = new FinalizeCoordinator();
+		const provider = new K8sProvider({
+			coreApi: () => fakeApi([]), // no pod ⇒ status().exists === false
+			serverEnv: {},
+			finalizeCoordinator: coordinator,
+			finalizePodPollMs: 500,
+			finalizeTimeoutMs: 999_999,
+			finalizeSetTimer: firingTimer(500),
+		});
+		const res = await provider.finalize(handle, intent());
+		expect(res.pushed).toBe(false);
+		expect((res.events[0]?.payload as { message: string }).message).toContain("pod is gone");
+	});
+});

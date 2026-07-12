@@ -33,6 +33,7 @@
 	"scripts": {
 		"test": "bun test",
 		"workspace:init": "bun run src/runtime/k8s/workspace-init.ts",
+		"finalize:run": "bun run src/runtime/k8s/finalize-entrypoint.ts",
 		"test:coverage": "bun test --coverage --coverage-reporter=text --coverage-reporter=lcov --coverage-dir=coverage",
 		"check:coverage": "bun run scripts/check-coverage.ts",
 		"check:coverage:ci": "bun run scripts/check-coverage.ts --junit",

@@ -11,6 +11,10 @@ export {
 	streamRunEventsHandler,
 } from "./events.ts";
 export {
+	getRunFinalizeIntentHandler,
+	postRunFinalizeResultHandler,
+} from "./finalize.ts";
+export {
 	getRunHandler,
 	listCostAnalyticsHandler,
 	listRunsHandler,

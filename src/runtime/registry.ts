@@ -24,6 +24,7 @@ import type { BurrowClient } from "../burrow-client/index.ts";
 import type { EnvLike } from "../runs/spawn/callback-env.ts";
 import type { RuntimeProvider } from "./contract.ts";
 import { UnknownRuntimeError } from "./errors.ts";
+import type { FinalizeCoordinator } from "./k8s/finalize-coordinator.ts";
 import { defaultCoreApiFactory, K8sProvider } from "./k8s/provider.ts";
 import type { K8sInboxStore } from "./k8s/send-message.ts";
 import { LocalProvider } from "./local/provider.ts";
@@ -71,6 +72,14 @@ export interface RuntimeProviderDeps {
 	 * `RuntimeProviderError` on `sendMessage`. Boot threads `() => repos.runInbox`.
 	 */
 	readonly k8sRunInbox?: () => K8sInboxStore;
+	/**
+	 * Correlation registry for the in-pod finalize callback (pl-829f step 20 /
+	 * warren-0d35) — only consulted for `WARREN_RUNTIME=k8s`. Optional: the
+	 * `K8sProvider` defaults to the process-wide `sharedFinalizeCoordinator`, which
+	 * the finalize HTTP endpoints also default to, so they correlate without
+	 * explicit wiring. A test injects a private instance into both sides.
+	 */
+	readonly k8sFinalizeCoordinator?: FinalizeCoordinator;
 }
 
 /**
@@ -111,6 +120,9 @@ export function resolveRuntimeProvider(
 				coreApi: deps.k8sCoreApi ?? defaultCoreApiFactory(),
 				...(deps.serverEnv !== undefined ? { serverEnv: deps.serverEnv } : {}),
 				...(deps.k8sRunInbox !== undefined ? { runInbox: deps.k8sRunInbox } : {}),
+				...(deps.k8sFinalizeCoordinator !== undefined
+					? { finalizeCoordinator: deps.k8sFinalizeCoordinator }
+					: {}),
 			});
 	}
 }

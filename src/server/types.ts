@@ -135,6 +135,9 @@ export interface ServerDeps {
 	readonly burrowClient: BurrowClient;
 	/** Runtime-provider seam (pl-829f step 13); optional — prod always sets it. */
 	readonly runtimeProvider?: RuntimeProvider;
+	/** K8s in-pod finalize correlation registry (warren-0d35); defaults to the
+	 * shared singleton, so prod needs no wiring — tests inject a private instance. */
+	readonly finalizeCoordinator?: import("../runtime/k8s/finalize-coordinator.ts").FinalizeCoordinator;
 	readonly broker: RunEventBroker;
 	readonly bridges: BridgeRegistry;
 	/**
@@ -196,26 +199,23 @@ export interface ServerDeps {
 	/**
 	 * Live-preview cap (R-19 / SPEC §11.L, warren-ea6b). Resolved from
 	 * `WARREN_PREVIEW_MAX_LIVE` at boot so `/readyz`'s `preview_max_live`
-	 * saturation probe matches the eviction worker's LRU cap. Tests may
-	 * omit; the probe falls back to `DEFAULT_MAX_LIVE` so the codepath
-	 * still exercises.
+	 * saturation probe matches the eviction worker's LRU cap. Tests may omit; the
+	 * probe falls back to `DEFAULT_MAX_LIVE` so the codepath still exercises.
 	 */
 	readonly previewMaxLive?: number;
 	/**
 	 * Fallback workspace-GC TTL in ms (warren-0a9a). Resolved from
-	 * `WARREN_WORKSPACE_GC_TTL` at boot so `/readyz`'s
-	 * `stale_burrow_workspaces` probe ages burrows on the same threshold
-	 * the GC sweeper uses. Tests may omit; the probe is skipped when
-	 * absent.
+	 * `WARREN_WORKSPACE_GC_TTL` at boot so `/readyz`'s `stale_burrow_workspaces`
+	 * probe ages burrows on the GC sweeper's threshold. Tests may omit; the probe
+	 * is skipped when absent.
 	 */
 	readonly workspaceGcTtlMs?: number;
 	/**
 	 * Operator's preview host suffix (R-19 / SPEC §11.L, warren-8a10).
 	 * Resolved at boot from `WARREN_PREVIEW_HOST`. In subdomain mode the
-	 * Host-match preview proxy preamble requires this; in path mode it
-	 * stays optional (previews ride on the warren host itself). Undefined
-	 * + subdomain mode → preview surface is off, the login handler returns
-	 * 400, and the proxy never inspects a request.
+	 * Host-match preview proxy preamble requires this; in path mode it stays
+	 * optional (previews ride on the warren host itself). Undefined + subdomain
+	 * mode → preview surface off, the login handler 400s, the proxy never inspects.
 	 */
 	readonly previewHost?: string;
 	/**

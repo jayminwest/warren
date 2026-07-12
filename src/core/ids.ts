@@ -23,6 +23,9 @@ const PREFIXES = {
 	planRun: "plnr",
 	conversation: "conv",
 	message: "msg",
+	/** One in-pod finalize attempt (pl-829f step 20 / warren-0d35). Correlates a
+	 * `K8sProvider.finalize` request with the in-pod harness's result POST. */
+	finalizeAttempt: "fin",
 } as const;
 
 export type IdKind = keyof typeof PREFIXES;
