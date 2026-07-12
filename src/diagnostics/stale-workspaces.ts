@@ -1,16 +1,17 @@
 /**
  * `stale_burrow_workspaces` diagnostic for `warren doctor` / `GET /readyz`
- * (warren-0a9a). Reports burrow placement rows whose runs are all terminal
- * and whose newest activity is older than the fallback workspace-GC TTL.
+ * (warren-0a9a). Reports burrow workspaces whose runs are all terminal and
+ * whose newest activity is older than the fallback workspace-GC TTL.
  *
  * Reuses the GC's `findStrandedBurrows` predicate so the report and the
- * sweeper agree on what "stranded" means. An informational `ok: true` when
- * nothing is stranded; warns (with a recovery hint) when the GC has work
- * pending — so an operator who disabled the worker still has a visible
- * signal that disk is leaking.
+ * sweeper agree on what "stranded" means. Since the `burrows` placement table
+ * was dropped (warren-3743), the candidate set is derived entirely from the
+ * `runs` table. An informational `ok: true` when nothing is stranded; warns
+ * (with a recovery hint) when the GC has work pending — so an operator who
+ * disabled the worker still has a visible signal that disk is leaking.
  */
 
-import type { BurrowRow, RunRow, RunState } from "../db/schema.ts";
+import type { RunRow, RunState } from "../db/schema.ts";
 import {
 	buildBurrowActivity,
 	findStrandedBurrows,
@@ -20,7 +21,6 @@ import {
 import type { DiagnosticCheck } from "./checks.ts";
 
 export interface StaleBurrowWorkspaceProbe {
-	listAll(): Promise<BurrowRow[]>;
 	listByState(state: RunState[]): Promise<RunRow[]>;
 }
 
@@ -29,12 +29,10 @@ export async function checkStaleBurrowWorkspaces(deps: {
 	readonly ttlMs: number;
 	readonly now?: Date;
 }): Promise<DiagnosticCheck> {
-	let burrows: BurrowRow[];
 	let activeRuns: RunRow[];
 	let terminalRuns: RunRow[];
 	try {
-		[burrows, activeRuns, terminalRuns] = await Promise.all([
-			deps.probe.listAll(),
+		[activeRuns, terminalRuns] = await Promise.all([
 			deps.probe.listByState([...GC_ACTIVE_RUN_STATES]),
 			deps.probe.listByState([...GC_TERMINAL_RUN_STATES]),
 		]);
@@ -43,12 +41,16 @@ export async function checkStaleBurrowWorkspaces(deps: {
 			name: "stale_burrow_workspaces",
 			ok: false,
 			message: err instanceof Error ? err.message : String(err),
-			hint: "verify the database is reachable and the burrows/runs tables exist",
+			hint: "verify the database is reachable and the runs table exists",
 		};
 	}
+	const activity = buildBurrowActivity(activeRuns, terminalRuns);
+	let tracked = 0;
+	for (const burrowId of activity.latestEndedAt.keys()) {
+		if (!activity.activeBurrowIds.has(burrowId)) tracked += 1;
+	}
 	const stranded = findStrandedBurrows({
-		burrows,
-		...buildBurrowActivity(activeRuns, terminalRuns),
+		...activity,
 		ttlMs: deps.ttlMs,
 		now: deps.now ?? new Date(),
 	});
@@ -56,7 +58,7 @@ export async function checkStaleBurrowWorkspaces(deps: {
 		return {
 			name: "stale_burrow_workspaces",
 			ok: true,
-			message: `${burrows.length} tracked burrow workspace${burrows.length === 1 ? "" : "s"}, none stranded`,
+			message: `${tracked} tracked burrow workspace${tracked === 1 ? "" : "s"}, none stranded`,
 		};
 	}
 	return {

@@ -26,8 +26,7 @@ function makeBurrowClient(): BurrowClient {
 	});
 }
 
-async function makePool(repos: Repos): Promise<BurrowClient> {
-	await repos.workers.upsert({ name: "local", url: "unix:///tmp/x.sock" });
+async function makePool(_repos: Repos): Promise<BurrowClient> {
 	return makeBurrowClient();
 }
 

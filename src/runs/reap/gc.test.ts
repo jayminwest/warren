@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { NotFoundError as BurrowNotFoundError, type DestroyBurrowResult } from "@os-eco/burrow-cli";
 import type { BurrowClient } from "../../burrow-client/client.ts";
 import { ValidationError } from "../../core/errors.ts";
-import type { BurrowRow, RunRow } from "../../db/schema.ts";
+import type { RunRow } from "../../db/schema.ts";
 import {
 	buildBurrowActivity,
 	DEFAULT_WORKSPACE_GC_TICK_MS,
@@ -17,8 +17,13 @@ import {
 
 const NOW = new Date("2026-05-29T12:00:00.000Z");
 
-function burrow(id: string, addedAt: string, workerId = "local"): BurrowRow {
-	return { id, workerId, addedAt };
+/** A terminal run row that anchors a burrow id at a given endedAt. */
+function terminalRun(burrowId: string, endedAt: string): RunRow {
+	return { burrowId, endedAt, state: "succeeded" } as unknown as RunRow;
+}
+
+function activeRun(burrowId: string): RunRow {
+	return { burrowId, endedAt: null, state: "running" } as unknown as RunRow;
 }
 
 function fakeResult(over: Partial<DestroyBurrowResult> = {}): DestroyBurrowResult {
@@ -39,11 +44,10 @@ function fakeClient(): BurrowClient {
 }
 
 describe("findStrandedBurrows", () => {
-	test("flags burrows with only-terminal runs older than the ttl", () => {
+	test("flags burrows whose newest terminal run is older than the ttl", () => {
 		const out = findStrandedBurrows({
-			burrows: [burrow("bur_old", "2026-05-29T10:00:00.000Z")],
 			activeBurrowIds: new Set(),
-			latestEndedAt: new Map(),
+			latestEndedAt: new Map([["bur_old", "2026-05-29T10:00:00.000Z"]]),
 			ttlMs: 60 * 60_000,
 			now: NOW,
 		});
@@ -53,9 +57,8 @@ describe("findStrandedBurrows", () => {
 
 	test("skips burrows with a live run", () => {
 		const out = findStrandedBurrows({
-			burrows: [burrow("bur_live", "2026-05-01T00:00:00.000Z")],
 			activeBurrowIds: new Set(["bur_live"]),
-			latestEndedAt: new Map(),
+			latestEndedAt: new Map([["bur_live", "2026-05-01T00:00:00.000Z"]]),
 			ttlMs: 60 * 60_000,
 			now: NOW,
 		});
@@ -64,7 +67,6 @@ describe("findStrandedBurrows", () => {
 
 	test("skips burrows whose latest run ended within the ttl", () => {
 		const out = findStrandedBurrows({
-			burrows: [burrow("bur_recent", "2026-05-01T00:00:00.000Z")],
 			activeBurrowIds: new Set(),
 			latestEndedAt: new Map([["bur_recent", "2026-05-29T11:30:00.000Z"]]),
 			ttlMs: 60 * 60_000,
@@ -73,26 +75,13 @@ describe("findStrandedBurrows", () => {
 		expect(out).toEqual([]);
 	});
 
-	test("ages off latest endedAt over addedAt", () => {
-		// Added long ago but a run finished 10m ago → not yet stranded.
-		const out = findStrandedBurrows({
-			burrows: [burrow("bur_x", "2026-01-01T00:00:00.000Z")],
-			activeBurrowIds: new Set(),
-			latestEndedAt: new Map([["bur_x", "2026-05-29T11:50:00.000Z"]]),
-			ttlMs: 60 * 60_000,
-			now: NOW,
-		});
-		expect(out).toEqual([]);
-	});
-
 	test("sorts oldest-first", () => {
 		const out = findStrandedBurrows({
-			burrows: [
-				burrow("bur_a", "2026-05-29T10:00:00.000Z"),
-				burrow("bur_b", "2026-05-29T06:00:00.000Z"),
-			],
 			activeBurrowIds: new Set(),
-			latestEndedAt: new Map(),
+			latestEndedAt: new Map([
+				["bur_a", "2026-05-29T10:00:00.000Z"],
+				["bur_b", "2026-05-29T06:00:00.000Z"],
+			]),
 			ttlMs: 60 * 60_000,
 			now: NOW,
 		});
@@ -101,9 +90,8 @@ describe("findStrandedBurrows", () => {
 
 	test("skips rows with an unparseable timestamp", () => {
 		const out = findStrandedBurrows({
-			burrows: [burrow("bur_bad", "not-a-date")],
 			activeBurrowIds: new Set(),
-			latestEndedAt: new Map(),
+			latestEndedAt: new Map([["bur_bad", "not-a-date"]]),
 			ttlMs: 60 * 60_000,
 			now: NOW,
 		});
@@ -127,8 +115,8 @@ describe("buildBurrowActivity", () => {
 });
 
 interface Harness {
-	burrows: BurrowRow[];
-	deleted: string[];
+	activeRuns: RunRow[];
+	terminalRuns: RunRow[];
 	destroyed: string[];
 }
 
@@ -139,14 +127,8 @@ function tickInput(
 ): WorkspaceGcTickInput {
 	return {
 		repos: {
-			burrows: {
-				listAll: async () => h.burrows,
-				delete: async (id: string) => {
-					h.deleted.push(id);
-				},
-			},
 			runs: {
-				listByState: async () => [],
+				listByState: async (states) => (states.includes("running") ? h.activeRuns : h.terminalRuns),
 			},
 		},
 		burrowClient: fakeClient(),
@@ -161,51 +143,33 @@ function tickInput(
 }
 
 describe("runWorkspaceGcTick", () => {
-	test("destroys stranded burrows and deletes their placement rows", async () => {
+	test("destroys stranded burrows", async () => {
 		const h: Harness = {
-			burrows: [burrow("bur_old", "2026-05-29T09:00:00.000Z")],
-			deleted: [],
+			activeRuns: [],
+			terminalRuns: [terminalRun("bur_old", "2026-05-29T09:00:00.000Z")],
 			destroyed: [],
 		};
 		const result = await runWorkspaceGcTick(tickInput(h));
 		expect(result).toEqual({ scanned: 1, stranded: 1, destroyed: 1, failed: 0 });
 		expect(h.destroyed).toEqual(["bur_old"]);
-		expect(h.deleted).toEqual(["bur_old"]);
 	});
 
 	test("never touches a burrow with a live run", async () => {
 		const h: Harness = {
-			burrows: [burrow("bur_live", "2026-05-29T00:00:00.000Z")],
-			deleted: [],
+			activeRuns: [activeRun("bur_live")],
+			terminalRuns: [terminalRun("bur_live", "2026-05-29T00:00:00.000Z")],
 			destroyed: [],
 		};
-		const result = await runWorkspaceGcTick(
-			tickInput(h, {
-				repos: {
-					burrows: {
-						listAll: async () => h.burrows,
-						delete: async (id: string) => {
-							h.deleted.push(id);
-						},
-					},
-					runs: {
-						listByState: async (states) =>
-							states.includes("running")
-								? [{ burrowId: "bur_live", state: "running" } as unknown as RunRow]
-								: [],
-					},
-				},
-			}),
-		);
+		const result = await runWorkspaceGcTick(tickInput(h));
+		expect(result.scanned).toBe(0);
 		expect(result.destroyed).toBe(0);
 		expect(h.destroyed).toEqual([]);
-		expect(h.deleted).toEqual([]);
 	});
 
-	test("counts a destroy failure without deleting the placement row", async () => {
+	test("counts a destroy failure", async () => {
 		const h: Harness = {
-			burrows: [burrow("bur_old", "2026-05-29T09:00:00.000Z")],
-			deleted: [],
+			activeRuns: [],
+			terminalRuns: [terminalRun("bur_old", "2026-05-29T09:00:00.000Z")],
 			destroyed: [],
 		};
 		const result = await runWorkspaceGcTick(
@@ -216,13 +180,12 @@ describe("runWorkspaceGcTick", () => {
 			}),
 		);
 		expect(result).toEqual({ scanned: 1, stranded: 1, destroyed: 0, failed: 1 });
-		expect(h.deleted).toEqual([]);
 	});
 
-	test("treats a 404 from burrow as already-gone: deletes placement row and counts as destroyed", async () => {
+	test("treats a 404 from burrow as already-gone: counts as destroyed", async () => {
 		const h: Harness = {
-			burrows: [burrow("bur_old", "2026-05-29T09:00:00.000Z")],
-			deleted: [],
+			activeRuns: [],
+			terminalRuns: [terminalRun("bur_old", "2026-05-29T09:00:00.000Z")],
 			destroyed: [],
 		};
 		const logs: string[] = [];
@@ -242,27 +205,8 @@ describe("runWorkspaceGcTick", () => {
 		);
 		// Counts as destroyed (not failed) so the metric stays accurate.
 		expect(result).toEqual({ scanned: 1, stranded: 1, destroyed: 1, failed: 0 });
-		// Placement row is pruned so the same burrow isn't retried next sweep.
-		expect(h.deleted).toEqual(["bur_old"]);
 		// Logged at info, not warn — it's not an error.
 		expect(logs.some((m) => m.includes("already_gone") || m.includes("bur_old"))).toBe(true);
-	});
-
-	test("counts a burrow destroy failure as a failed destroy", async () => {
-		const h: Harness = {
-			burrows: [burrow("bur_old", "2026-05-29T09:00:00.000Z")],
-			deleted: [],
-			destroyed: [],
-		};
-		const result = await runWorkspaceGcTick(
-			tickInput(h, {
-				destroyBurrow: async () => {
-					throw new Error("burrow unreachable");
-				},
-			}),
-		);
-		expect(result.failed).toBe(1);
-		expect(h.destroyed).toEqual([]);
 	});
 });
 
@@ -301,8 +245,8 @@ describe("loadWorkspaceGcConfigFromEnv", () => {
 describe("startWorkspaceGcWorker", () => {
 	test("runOnce fires a sweep and increments the tick count", async () => {
 		const h: Harness = {
-			burrows: [burrow("bur_old", "2026-05-29T09:00:00.000Z")],
-			deleted: [],
+			activeRuns: [],
+			terminalRuns: [terminalRun("bur_old", "2026-05-29T09:00:00.000Z")],
 			destroyed: [],
 		};
 		const worker = startWorkspaceGcWorker({
@@ -317,7 +261,7 @@ describe("startWorkspaceGcWorker", () => {
 	});
 
 	test("disabled config never schedules an interval", async () => {
-		const h: Harness = { burrows: [], deleted: [], destroyed: [] };
+		const h: Harness = { activeRuns: [], terminalRuns: [], destroyed: [] };
 		let scheduled = false;
 		const worker = startWorkspaceGcWorker({
 			...tickInput(h, {}, { disabled: true }),
@@ -333,8 +277,8 @@ describe("startWorkspaceGcWorker", () => {
 
 	test("single-flight: overlapping fire is skipped", async () => {
 		const h: Harness = {
-			burrows: [burrow("bur_old", "2026-05-29T09:00:00.000Z")],
-			deleted: [],
+			activeRuns: [],
+			terminalRuns: [terminalRun("bur_old", "2026-05-29T09:00:00.000Z")],
 			destroyed: [],
 		};
 		let release: () => void = () => {};

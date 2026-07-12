@@ -130,7 +130,6 @@ async function staleBurrowWorkspacesReadyzCheck(deps: ServerDeps): Promise<Diagn
 	}
 	return checkStaleBurrowWorkspaces({
 		probe: {
-			listAll: () => deps.repos.burrows.listAll(),
 			listByState: (state) => deps.repos.runs.listByState(state),
 		},
 		ttlMs: deps.workspaceGcTtlMs,

@@ -200,7 +200,6 @@ describe("POST /runs/:id/steer and POST /runs/:id/cancel — HTTP handlers", () 
 			burrowRunId: fix.burrowRunId,
 		});
 		await repos.runs.markRunning(run.id);
-		await repos.burrows.create({ id: fix.burrowId, workerId: "local" });
 		return run.id;
 	}
 

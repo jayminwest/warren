@@ -40,7 +40,6 @@ describe("bootBridges", () => {
 			burrowId: "bur_xxxxxxxxxxxx",
 			burrowRunId: "run_zzzzzzzzzzzz",
 		});
-		await repos.burrows.create({ id: "bur_xxxxxxxxxxxx", workerId: "local" });
 
 		const r2 = await repos.runs.create({
 			agentName: "refactor-bot",
@@ -68,11 +67,13 @@ describe("bootBridges", () => {
 		await result.registry.stopAll();
 	});
 
-	test("warren-018a: skips runs whose burrow_id has no `burrows` placement row", async () => {
+	test("warren-3743: resumes every run with burrow ids (no placement-row gate)", async () => {
 		const project = (await repos.projects.listAll())[0];
 		if (!project) throw new Error("project missing");
 
-		// r1 — placed: burrow row exists.
+		// The `burrows` placement table was dropped in warren-3743, so the old
+		// "pre-pl-9ba1 orphan" skip (reason: no_placement) no longer applies —
+		// any active run carrying a burrow_id + burrow_run_id resumes.
 		const r1 = await repos.runs.create({
 			agentName: "refactor-bot",
 			projectId: project.id,
@@ -84,9 +85,7 @@ describe("bootBridges", () => {
 			burrowId: "bur_aaaaaaaaaaaa",
 			burrowRunId: "rb_aaaaaaaaaa",
 		});
-		await repos.burrows.create({ id: "bur_aaaaaaaaaaaa", workerId: "local" });
 
-		// r2 — pre-pl-9ba1 orphan: burrow_id is set but no `burrows` row.
 		const r2 = await repos.runs.create({
 			agentName: "refactor-bot",
 			projectId: project.id,
@@ -95,8 +94,8 @@ describe("bootBridges", () => {
 			trigger: "manual",
 		});
 		await repos.runs.attachBurrow(r2.id, {
-			burrowId: "bur_orphanorphan",
-			burrowRunId: "rb_orphan_aaaa",
+			burrowId: "bur_secondsecond",
+			burrowRunId: "rb_second_aaaa",
 		});
 
 		const calls: string[] = [];
@@ -110,9 +109,9 @@ describe("bootBridges", () => {
 			},
 		});
 
-		expect(result.resumed.map((r) => r.runId)).toEqual([r1.id]);
-		expect(result.skipped).toEqual([{ runId: r2.id, reason: "no_placement" }]);
-		expect(calls).toEqual([r1.id]);
+		expect(result.resumed.map((r) => r.runId).sort()).toEqual([r1.id, r2.id].sort());
+		expect(result.skipped).toEqual([]);
+		expect(calls.sort()).toEqual([r1.id, r2.id].sort());
 		await result.registry.stopAll();
 	});
 
@@ -131,7 +130,6 @@ describe("bootBridges", () => {
 			burrowId: "bur_lostlostlost",
 			burrowRunId: "rb_ghostghost1",
 		});
-		await repos.burrows.create({ id: "bur_lostlostlost", workerId: "local" });
 		await repos.runs.markRunning(r.id);
 
 		// Burrow stub that 404s on GET /runs/:id (ghost).
@@ -187,7 +185,6 @@ describe("bootBridges", () => {
 			burrowId: "bur_a",
 			burrowRunId: "rb_a",
 		});
-		await repos.burrows.create({ id: "bur_a", workerId: "local" });
 		await repos.runs.markRunning(r.id);
 
 		let calls = 0;

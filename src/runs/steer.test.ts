@@ -16,10 +16,9 @@ import { steerRun } from "./steer.ts";
  */
 async function makePool(
 	client: BurrowClient,
-	repos: Repos,
-	workerName = "local",
+	_repos: Repos,
+	_workerName = "local",
 ): Promise<BurrowClient> {
-	await repos.workers.upsert({ name: workerName, url: "unix:///tmp/x.sock" });
 	return client;
 }
 
@@ -145,9 +144,6 @@ describe("steerRun", () => {
 			burrowRunId: opts.burrowRunId === undefined ? "run_zzzzzzzzzzzz" : opts.burrowRunId,
 		});
 		await repos.runs.markRunning(run.id);
-		if (burrowId !== null && (await repos.burrows.get(burrowId)) === null) {
-			await repos.burrows.create({ id: burrowId, workerId: "local" });
-		}
 		return run.id;
 	}
 
@@ -324,7 +320,6 @@ describe("steerRun", () => {
 			trigger: "manual",
 			burrowId: "bur_aaaaaaaaaaaa",
 		});
-		await repos.burrows.create({ id: "bur_aaaaaaaaaaaa", workerId: "local" });
 		const { client, calls } = makeBurrowClient();
 		await steerRun({
 			runId: run.id,

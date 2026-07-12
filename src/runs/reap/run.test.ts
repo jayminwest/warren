@@ -333,7 +333,6 @@ describe("reapRun", () => {
 		});
 
 		expect(result.workspaceDestroyed).toBe(true);
-		expect(await ctx.repos.burrows.get("bur_aaaaaaaaaaaa")).toBeNull();
 		const events = await ctx.repos.events.listByRun(ctx.runId);
 		const destroyed = events.find((ev) => ev.kind === "reap.workspace_destroyed");
 		expect(destroyed?.payloadJson).toMatchObject({ burrowId: "bur_aaaaaaaaaaaa" });

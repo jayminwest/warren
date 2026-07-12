@@ -287,10 +287,9 @@ describe("reapRun preview_launch + pr_annotate_preview (warren-f156)", () => {
 	});
 
 	test("skips preview launch and emits reap_failed when worker is non-local (R-12 deferral)", async () => {
-		// Re-tag the burrow + run to a non-local worker so the gate fires.
-		await ctx.repos.workers.upsert({ name: "remote", url: "http://remote:8080" });
-		await ctx.repos.burrows.delete("bur_aaaaaaaaaaaa");
-		await ctx.repos.burrows.create({ id: "bur_aaaaaaaaaaaa", workerId: "remote" });
+		// Re-tag the run to a non-local worker so the gate fires. worker_id is no
+		// longer written by dispatch (warren-3743), but the column is retained and
+		// the preview gate still reads it, so a direct attach exercises the path.
 		await ctx.repos.runs.attachBurrow(ctx.runId, { workerId: "remote" });
 		const e = fakeExec({ revListCount: "2" });
 		const launch = fakeLaunch([]);

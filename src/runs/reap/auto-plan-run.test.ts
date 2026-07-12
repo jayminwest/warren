@@ -44,7 +44,6 @@ describe("auto_plan_run (warren-a32a)", () => {
 			burrowId: "bur_aaaaaaaaaaaa",
 			burrowRunId: "run_zzzzzzzzzzzz",
 		});
-		await repos.burrows.create({ id: "bur_aaaaaaaaaaaa", workerId: "local" });
 		await repos.runs.markRunning(run.id);
 		return {
 			db,
@@ -294,7 +293,6 @@ describe("auto_plan_run (warren-a32a)", () => {
 			burrowId: "bur_aaaaaaaaaaaa",
 			burrowRunId: "run_zzzzzzzzzzzz",
 		});
-		await repos.burrows.create({ id: "bur_aaaaaaaaaaaa", workerId: "local" });
 		await repos.runs.markRunning(run.id);
 		try {
 			const f = fakeFs({
@@ -348,7 +346,6 @@ describe("auto_plan_run (warren-a32a)", () => {
 			burrowRunId: "run_zzzzzzzzzzzz",
 			plotId: "plot-abc123",
 		});
-		await repos.burrows.create({ id: "bur_aaaaaaaaaaaa", workerId: "local" });
 		await repos.runs.markRunning(run.id);
 		try {
 			const f = fakeFs({

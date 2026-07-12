@@ -47,15 +47,16 @@ export function makeReapRunResult(overrides: Partial<ReapRunResult> = {}): ReapR
 }
 
 /**
- * One-worker pool wired to a stub burrow client (warren-c0c9). Upserts a
- * `local` worker row so `pool.clientFor` resolves cleanly.
+ * Historical one-worker pool wrapper (warren-c0c9). Placement + the
+ * workers/burrows tables were retired (warren-76c5 / warren-3743), so this is
+ * now a pass-through kept for call-site stability; the `_repos` param is
+ * vestigial.
  */
 export async function makePool(
 	client: BurrowClient,
-	repos: Repos,
-	workerName = "local",
+	_repos: Repos,
+	_workerName = "local",
 ): Promise<BurrowClient> {
-	await repos.workers.upsert({ name: workerName, url: "unix:///tmp/x.sock" });
 	return client;
 }
 
@@ -265,7 +266,6 @@ export async function setup(): Promise<Ctx> {
 		burrowId: "bur_aaaaaaaaaaaa",
 		burrowRunId: "run_zzzzzzzzzzzz",
 	});
-	await repos.burrows.create({ id: "bur_aaaaaaaaaaaa", workerId: "local" });
 	await repos.runs.markRunning(run.id);
 	return {
 		db,

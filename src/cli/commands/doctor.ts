@@ -189,7 +189,6 @@ async function staleBurrowWorkspacesCheck(
 	const repos = createRepos(db);
 	return checkStaleBurrowWorkspaces({
 		probe: {
-			listAll: () => repos.burrows.listAll(),
 			listByState: (state) => repos.runs.listByState(state),
 		},
 		ttlMs,

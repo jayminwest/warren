@@ -59,7 +59,6 @@ async function depsFor(
 	} = {},
 ): Promise<ServerDeps> {
 	const burrowClient = makeBurrowClient();
-	await repos.workers.upsert({ name: "local", url: "unix:///tmp/x.sock" });
 	const broker = new RunEventBroker();
 	return {
 		repos,

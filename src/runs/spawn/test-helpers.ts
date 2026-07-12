@@ -36,17 +36,16 @@ export function makeAppender(
 }
 
 /**
- * Wrap a stubbed `BurrowClient` in a single-worker `BurrowClient`
- * so the spawn flow can resolve placement (warren-39c3). Upserts a
- * synthetic `local` worker row so `placeForProject` has a healthy
- * candidate to pick.
+ * Historical single-worker pool wrapper (warren-39c3). Placement + the
+ * workers/burrows tables were retired (warren-76c5 / warren-3743), so this is
+ * now a pass-through kept for call-site stability; the `_repos` param is
+ * vestigial.
  */
 export async function makePool(
-	repos: Repos,
+	_repos: Repos,
 	client: BurrowClient,
-	workerName = "local",
+	_workerName = "local",
 ): Promise<BurrowClient> {
-	await repos.workers.upsert({ name: workerName, url: "unix:///tmp/x.sock" });
 	return client;
 }
 

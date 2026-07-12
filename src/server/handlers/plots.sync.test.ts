@@ -29,8 +29,7 @@ function jsonRes(status: number, body: unknown): Response {
 	});
 }
 
-async function poolFor(repos: Repos): Promise<BurrowClient> {
-	await repos.workers.upsert({ name: "local", url: "unix:///tmp/x.sock" });
+async function poolFor(_repos: Repos): Promise<BurrowClient> {
 	const client = new BurrowClient({
 		config: { transport: { kind: "unix", path: "/tmp/x.sock" } },
 		fetch: stubFetch(async () => jsonRes(404, { error: { code: "not_found", message: "stub" } })),

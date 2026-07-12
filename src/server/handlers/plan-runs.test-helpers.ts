@@ -74,8 +74,7 @@ export function seedShowResult(id: string, status: "open" | "closed"): SpawnResu
 	};
 }
 
-export async function poolFor(repos: Repos): Promise<BurrowClient> {
-	await repos.workers.upsert({ name: "local", url: "unix:///tmp/x.sock" });
+export async function poolFor(_repos: Repos): Promise<BurrowClient> {
 	const client = new BurrowClient({
 		config: { transport: { kind: "unix", path: "/tmp/x.sock" } },
 		fetch: stubFetch(async () => jsonRes(404, { error: { code: "not_found", message: "stub" } })),

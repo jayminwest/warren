@@ -443,7 +443,6 @@ export async function reconcileLostBurrowRun(input: ReconcileLostBurrowRunInput)
 				burrowId: burrowToDestroy.id,
 				mode: burrowToDestroy.mode,
 				burrowClient: input.burrowClient,
-				repos: input.repos,
 				emit: async (kind, payload) => {
 					await emitBridgeSystemEvent({
 						runId: input.runId,

@@ -11,8 +11,7 @@ import type { BridgeRegistry, ServeHandle, ServerDeps } from "../types.ts";
  * synthetic `local` worker row so `placeForProject` has a healthy
  * candidate.
  */
-export async function poolFor(repos: Repos, client: BurrowClient): Promise<BurrowClient> {
-	await repos.workers.upsert({ name: "local", url: "unix:///tmp/x.sock" });
+export async function poolFor(_repos: Repos, client: BurrowClient): Promise<BurrowClient> {
 	return client;
 }
 

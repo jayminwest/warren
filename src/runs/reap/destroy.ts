@@ -13,26 +13,22 @@ type DestroyFn = (client: BurrowClient, burrowId: string) => Promise<DestroyBurr
 const defaultDestroyFn: DestroyFn = (client, burrowId) =>
 	client.http.burrows.destroy(burrowId, { archive: true });
 
-interface BurrowDeleteRepos {
-	readonly burrows: { delete: (id: string) => Promise<void> };
-}
-
 /**
- * Shared teardown core: destroy the burrow over its worker transport, drop
- * the `burrows` row, and emit `reap.workspace_destroyed`. Throws on failure
- * so each caller can map the error onto its own failure channel.
+ * Shared teardown core: destroy the burrow over its worker transport and emit
+ * `reap.workspace_destroyed`. Throws on failure so each caller can map the
+ * error onto its own failure channel. (The `burrows` placement table was
+ * dropped in warren-3743, so there is no longer a warren-side row to delete —
+ * `http.burrows.destroy` tears down the sandbox on burrow's side.)
  */
 async function executeBurrowDestroy(args: {
 	readonly workerClient: BurrowClient;
 	readonly burrowId: string;
-	readonly repos: BurrowDeleteRepos;
 	readonly emit: (kind: string, payload: unknown) => Promise<unknown>;
 	readonly destroyFn: DestroyFn;
 }): Promise<void> {
 	const result = await withTransportMapping(args.workerClient.config, () =>
 		args.destroyFn(args.workerClient, args.burrowId),
 	);
-	await args.repos.burrows.delete(args.burrowId);
 	await args.emit("reap.workspace_destroyed", {
 		burrowId: args.burrowId,
 		archived: result.archived !== null,
@@ -64,7 +60,6 @@ export interface RunWorkspaceDestroyInput {
 	 * propagates errors.
 	 */
 	readonly terminate: (() => Promise<TeardownResult>) | null;
-	readonly repos: BurrowDeleteRepos;
 	readonly emit: (kind: string, payload: unknown) => Promise<unknown>;
 	readonly fail: (step: "workspace_destroy", err: unknown) => Promise<void>;
 }
@@ -74,8 +69,8 @@ export interface RunWorkspaceDestroyInput {
  * data has been extracted and the branch pushed, so workspaces don't
  * accumulate on the persistent volume (the 2026-05-27 disk-full incident).
  * The teardown itself goes through `provider.terminate` (warren-1f56); this
- * function owns the reap-side gating, the `burrows` row delete, the
- * `reap.workspace_destroyed` event, and the best-effort try/catch.
+ * function owns the reap-side gating, the `reap.workspace_destroyed` event,
+ * and the best-effort try/catch.
  *
  * Skipped — without an error — when:
  *   - the run has no burrow to destroy, or reap never resolved the worker;
@@ -87,9 +82,8 @@ export interface RunWorkspaceDestroyInput {
  *
  * Best-effort like every other reap sub-step: a destroy failure emits
  * `reap_failed` step=`workspace_destroy` and never blocks the run's
- * terminal-state transition. On success the burrows row is removed so
- * `clientFor()` routing won't try to contact a dead workspace, and a
- * `reap.workspace_destroyed` event is emitted.
+ * terminal-state transition. On success a `reap.workspace_destroyed` event is
+ * emitted.
  */
 export async function runWorkspaceDestroy(input: RunWorkspaceDestroyInput): Promise<boolean> {
 	const { run, terminate } = input;
@@ -120,7 +114,6 @@ export async function runWorkspaceDestroy(input: RunWorkspaceDestroyInput): Prom
 
 	try {
 		const result = await terminate();
-		await input.repos.burrows.delete(run.burrowId);
 		await input.emit("reap.workspace_destroyed", {
 			burrowId: run.burrowId,
 			archived: result.archived,
@@ -140,7 +133,6 @@ export interface DestroyBurrowWorkspaceByIdInput {
 	readonly mode: RunMode;
 	/** The single local burrow client (warren-76c5). */
 	readonly burrowClient: BurrowClient;
-	readonly repos: BurrowDeleteRepos;
 	readonly emit: (kind: string, payload: unknown) => Promise<unknown>;
 	/** Override the burrow destroy seam (tests). */
 	readonly destroyBurrow?: DestroyFn;
@@ -152,9 +144,9 @@ export interface DestroyBurrowWorkspaceByIdInput {
  * `failed`/`burrow_unreachable` by `reconcileLostBurrowRun`. Once such a row
  * goes terminal a later `reapRun` short-circuits via
  * `buildAlreadyTerminalResult` (`workspaceDestroyed:false`), so the burrow's
- * bwrap/pi sandbox would otherwise leak on the host. Resolves the worker from
- * the pool, destroys the burrow, drops the `burrows` row, and emits
- * `reap.workspace_destroyed`. Conversation runs keep their workspace
+ * bwrap/pi sandbox would otherwise leak on the host. Destroys the burrow over
+ * the local client and emits `reap.workspace_destroyed`. Conversation runs
+ * keep their workspace
  * (warren-c770). Every failure degrades to a `reap.workspace_destroy_failed`
  * system event plus `false`; this never throws.
  */
@@ -175,7 +167,6 @@ export async function destroyBurrowWorkspaceById(
 		await executeBurrowDestroy({
 			workerClient,
 			burrowId: input.burrowId,
-			repos: input.repos,
 			emit: input.emit,
 			destroyFn: input.destroyBurrow ?? defaultDestroyFn,
 		});

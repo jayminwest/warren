@@ -42,7 +42,6 @@ async function depsFor(repos: Repos): Promise<ServerDeps> {
 		config: { transport: { kind: "unix", path: "/tmp/x.sock" } },
 		fetch: stubFetch(),
 	});
-	await repos.workers.upsert({ name: "local", url: "unix:///tmp/x.sock" });
 	const broker = new RunEventBroker();
 	return {
 		repos,

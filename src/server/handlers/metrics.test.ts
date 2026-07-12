@@ -25,7 +25,6 @@ async function depsFor(
 	db: WarrenDb,
 	registry?: MetricsRegistry,
 ): Promise<ServerDeps> {
-	await repos.workers.upsert({ name: "local", url: "unix:///tmp/x.sock" });
 	const burrowClient = makeBurrowClient();
 	const broker = new RunEventBroker();
 	const bridges = createBridgeRegistry({

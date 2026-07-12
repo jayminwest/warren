@@ -15,15 +15,14 @@
  * Source rows are copied in this order so a child row's parent always
  * exists in the target before the child is inserted:
  *
- *   agents, projects, workers, burrows  — no inbound FKs
+ *   agents, projects                    — no inbound FKs
  *   runs                                — refs agents.name, projects.id
  *   events                              — refs runs.id
  *   triggers                            — refs projects.id, runs.id
  *
- * `runs.worker_id` is plain text (no FK to `workers.name`, by design —
- * see schema/sqlite.ts:90), and `burrows.worker_id` likewise has no FK,
- * so workers/burrows can land in any relative order. They are placed
- * before runs purely for readability of the JSON summary.
+ * The `workers` + `burrows` placement tables were dropped in warren-3743, so
+ * they are no longer copied. `runs.worker_id` is retained but plain text
+ * (no FK) and left NULL for new runs.
  *
  * ## Shape compatibility
  *
@@ -145,44 +144,6 @@ export async function runMigrateToPostgres(
 		}
 		tables.push({
 			name: "projects",
-			sourceRows: rows.length,
-			inserted,
-			skipped: rows.length - inserted,
-		});
-	}
-
-	{
-		const rows = source.drizzle.select().from(sqliteSchema.workers).all();
-		let inserted = 0;
-		for (let i = 0; i < rows.length; i += chunkSize) {
-			const ret = await target.drizzle
-				.insert(pgSchema.workers)
-				.values(rows.slice(i, i + chunkSize))
-				.onConflictDoNothing()
-				.returning({ pk: pgSchema.workers.name });
-			inserted += ret.length;
-		}
-		tables.push({
-			name: "workers",
-			sourceRows: rows.length,
-			inserted,
-			skipped: rows.length - inserted,
-		});
-	}
-
-	{
-		const rows = source.drizzle.select().from(sqliteSchema.burrows).all();
-		let inserted = 0;
-		for (let i = 0; i < rows.length; i += chunkSize) {
-			const ret = await target.drizzle
-				.insert(pgSchema.burrows)
-				.values(rows.slice(i, i + chunkSize))
-				.onConflictDoNothing()
-				.returning({ pk: pgSchema.burrows.id });
-			inserted += ret.length;
-		}
-		tables.push({
-			name: "burrows",
 			sourceRows: rows.length,
 			inserted,
 			skipped: rows.length - inserted,

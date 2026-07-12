@@ -12,17 +12,16 @@ import { makeReapRunResult } from "../runs/reap/test-helpers.ts";
  */
 
 /**
- * One-worker pool wired to a stub burrow client (warren-c0c9). Upserts a
- * `local` worker row; tests that drive the live `runWithReconnect` need an
- * additional `burrows` row pointing burrowId → local, which the per-test
- * setup handles inline.
+ * Historical one-worker pool wrapper (warren-c0c9). Placement + the
+ * workers/burrows tables were retired (warren-76c5 / warren-3743), so this is
+ * now a pass-through kept for call-site stability; the `_repos` param is
+ * vestigial.
  */
 export async function makePool(
-	repos: Repos,
+	_repos: Repos,
 	client?: BurrowClient,
-	workerName = "local",
+	_workerName = "local",
 ): Promise<BurrowClient> {
-	await repos.workers.upsert({ name: workerName, url: "unix:///tmp/x.sock" });
 	return client ?? makeBurrowClient();
 }
 

@@ -236,7 +236,6 @@ export async function reapRun(input: ReapRunInput): Promise<ReapRunResult> {
 		run,
 		previewLaunchState: state.previewLaunchState,
 		terminate,
-		repos: input.repos,
 		emit,
 		fail: (step, err) => fail(step, err),
 	});

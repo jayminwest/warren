@@ -21,10 +21,12 @@
  *   3. Dispatch via `POST /burrows/:id/runs`.
  *
  * Placement was retired with the K8s migration (warren-76c5): the self-host
- * backend is a single local burrow, so `runs.worker_id` / `burrows.worker_id`
- * record the vestigial `LOCAL_WORKER_NAME` and the same one `BurrowClient`
- * services provision, dispatch, and rollback. A `burrows` row is still written
- * in the same turn as `attachBurrow` (the tables survive until step 24).
+ * backend is a single local burrow serviced by one `BurrowClient`. The
+ * `workers` + `burrows` placement tables were dropped in warren-3743 and
+ * `runs.worker_id` is left NULL for new runs (retained, unwritten, for
+ * historical rows only). `runs.burrow_id` / `runs.burrow_run_id` are still
+ * written: they are the LocalProvider resume correlation ids the bridge
+ * reconnect path reads after a host restart.
  *
  * The warren run row is created BEFORE any burrow call, with both
  * burrow IDs nulled — `attachBurrow` writes them back as each call
@@ -175,10 +177,10 @@ export async function spawnRun(input: SpawnRunInput): Promise<SpawnRunResult> {
 	// burrow rejects later still rolls back via the try/catch below.
 	const seedResult = buildSeedFiles(agent);
 
-	// warren-76c5: multi-worker placement is retired — the self-host backend
-	// is a single local burrow. `runs.worker_id` records the vestigial
-	// `LOCAL_WORKER_NAME` (the workers/burrows tables survive until step 24)
-	// so cancel / steer / reap reads stay well-formed.
+	// warren-76c5 / warren-3743: multi-worker placement is retired — the
+	// self-host backend is a single local burrow. `runs.worker_id` is no longer
+	// written (the workers/burrows tables were dropped); it stays NULL for new
+	// runs and every reader (preview / proxy) treats NULL as the local worker.
 	logPlacement(input.logger, LOCAL_WORKER_NAME, projectAfterRefresh.id);
 
 	const run = await input.repos.runs.create({
@@ -187,7 +189,6 @@ export async function spawnRun(input: SpawnRunInput): Promise<SpawnRunResult> {
 		prompt: input.prompt,
 		renderedAgentJson: agent,
 		trigger: input.trigger ?? "manual",
-		workerId: LOCAL_WORKER_NAME,
 		...(input.seedId !== undefined ? { seedId: input.seedId } : {}),
 		...(input.plotId !== undefined && input.plotId !== "" ? { plotId: input.plotId } : {}),
 		...(input.mode !== undefined ? { mode: input.mode } : {}),
@@ -271,17 +272,11 @@ export async function spawnRun(input: SpawnRunInput): Promise<SpawnRunResult> {
 		const dispatchStart = Date.now();
 		const handle = await provider.create(spec);
 		logProvisioned(log, handle.sandboxId, LOCAL_WORKER_NAME, dispatchStart);
-		// warren-76c5: persist the burrow row under the vestigial local worker
-		// name (the workers/burrows tables survive until step 24). The provider
-		// owns partial-failure cleanup, so these warren rows are written only
-		// after `create` fully succeeds — a dispatch that fails mid-flight leaves
-		// no burrow row and no burrow_id on the run (the provider already
-		// destroyed the burrow).
-		await input.repos.burrows.create({
-			id: handle.sandboxId,
-			workerId: LOCAL_WORKER_NAME,
-			...(input.now !== undefined ? { now: input.now() } : {}),
-		});
+		// warren-3743: the provider owns partial-failure cleanup, so the burrow
+		// correlation ids are written back onto the run only after `create` fully
+		// succeeds — a dispatch that fails mid-flight leaves no burrow_id on the
+		// run (the provider already destroyed the burrow). These ids are
+		// load-bearing for LocalProvider resume across a host restart.
 		await input.repos.runs.attachBurrow(run.id, { burrowId: handle.sandboxId });
 		const updated = await input.repos.runs.attachBurrow(run.id, {
 			burrowRunId: handle.providerRunId,

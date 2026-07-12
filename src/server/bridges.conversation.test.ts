@@ -52,7 +52,6 @@ describe("bootBridges — conversation crash-recovery", () => {
 			burrowId: "bur_convlostlost",
 			burrowRunId: "rb_convghost01",
 		});
-		await repos.burrows.create({ id: "bur_convlostlost", workerId: "local" });
 		await repos.runs.markRunning(r.id);
 
 		const ghostClient = new BurrowClient({

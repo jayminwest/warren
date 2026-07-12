@@ -80,7 +80,6 @@ describe("teardownPreview", () => {
 			defaultBranch: "main",
 		});
 		projectId = project.id;
-		await repos.workers.upsert({ name: "local", url: "unix:///tmp/x.sock" });
 	});
 
 	afterEach(async () => {

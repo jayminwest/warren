@@ -49,7 +49,6 @@ import {
 	RUN_MODES,
 	RUN_STATES,
 	TABLE_NAMES,
-	WORKER_STATES,
 } from "./columns.ts";
 
 export const agents = pgTable(
@@ -181,23 +180,6 @@ export const triggers = pgTable(
 	(t) => [index(INDEX_NAMES.triggersProject).on(t.projectId)],
 );
 
-export const workers = pgTable(TABLE_NAMES.workers, {
-	name: text("name").primaryKey(),
-	url: text("url").notNull(),
-	state: text("state", { enum: WORKER_STATES }).notNull().default("healthy"),
-	addedAt: text("added_at").notNull(),
-});
-
-export const burrows = pgTable(
-	TABLE_NAMES.burrows,
-	{
-		id: text("id").primaryKey(),
-		workerId: text("worker_id").notNull(),
-		addedAt: text("added_at").notNull(),
-	},
-	(t) => [index(INDEX_NAMES.burrowsWorker).on(t.workerId)],
-);
-
 /**
  * Plan-run coordinator state (pl-a258 step 2 / warren-4d7c) — mirror of
  * sqlite. See sqlite.ts for shape + state-machine intent.
@@ -277,10 +259,6 @@ export type EventRow = typeof events.$inferSelect;
 export type EventInsert = typeof events.$inferInsert;
 export type TriggerRow = typeof triggers.$inferSelect;
 export type TriggerInsert = typeof triggers.$inferInsert;
-export type WorkerRow = typeof workers.$inferSelect;
-export type WorkerInsert = typeof workers.$inferInsert;
-export type BurrowRow = typeof burrows.$inferSelect;
-export type BurrowInsert = typeof burrows.$inferInsert;
 /**
  * Plots projection (warren-9022) — mirror of sqlite.
  * `state_json` is `jsonb` here (vs sqlite's `text mode:"json"`); the drift

@@ -183,23 +183,6 @@ export const PREVIEW_STATES = ["starting", "live", "failed", "torn-down"] as con
 export type PreviewState = (typeof PREVIEW_STATES)[number];
 
 /**
- * Worker state machine (warren-b0a3 / pl-9ba1 step 1).
- *
- *   - `healthy`     — probe succeeded; eligible for new burrow placement.
- *   - `draining`    — operator-initiated; existing burrows continue to run,
- *                     but `placeFor` skips this worker for new placement.
- *                     Set by `POST /workers/:name/drain` (step 6).
- *   - `unreachable` — probe failed; sticky-by-burrow requests against this
- *                     worker fail loudly rather than silently migrating
- *                     (plan risk #5). Flipped back to `healthy` when probe
- *                     recovers (step 6).
- *
- * A fourth `failed` state is deferred to a future R-NN (plan step 1 prose).
- */
-export const WORKER_STATES = ["healthy", "draining", "unreachable"] as const;
-export type WorkerState = (typeof WORKER_STATES)[number];
-
-/**
  * Plan-run lifecycle (pl-a258 step 2 / warren-4d7c). One row per dispatched
  * `sd plan` walk; the coordinator (warren-2623) advances the row through
  * these states as it executes each child seed sequentially:
@@ -292,8 +275,6 @@ export const TABLE_NAMES = {
 	runs: "runs",
 	events: "events",
 	triggers: "triggers",
-	workers: "workers",
-	burrows: "burrows",
 	planRuns: "plan_runs",
 	planRunChildren: "plan_run_children",
 	plots: "plots",
@@ -322,7 +303,6 @@ export const INDEX_NAMES = {
 	eventsRunSeq: "events_run_seq_idx",
 	eventsRunTs: "events_run_ts_idx",
 	triggersProject: "triggers_project_idx",
-	burrowsWorker: "burrows_worker_idx",
 	// R-03 step 1 (pl-fef5, warren-094a): agents are addressed by (name,
 	// project_id). The composite enforces uniqueness for project-tier rows
 	// (project_id non-null). The partial index enforces a single global row

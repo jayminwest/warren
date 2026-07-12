@@ -30,22 +30,14 @@ function fakeTeardown(over: Partial<TeardownResult> = {}): TeardownResult {
 interface Harness {
 	events: { kind: string; payload: unknown }[];
 	failures: { step: string; message: string }[];
-	deleted: string[];
 }
 
 function harness(): Harness {
-	return { events: [], failures: [], deleted: [] };
+	return { events: [], failures: [] };
 }
 
 function deps(h: Harness) {
 	return {
-		repos: {
-			burrows: {
-				delete: async (id: string) => {
-					h.deleted.push(id);
-				},
-			},
-		},
 		emit: async (kind: string, payload: unknown) => {
 			h.events.push({ kind, payload });
 		},
@@ -68,7 +60,7 @@ function run(
 }
 
 describe("runWorkspaceDestroy", () => {
-	test("destroys the workspace, deletes the row, and emits workspace_destroyed", async () => {
+	test("destroys the workspace and emits workspace_destroyed", async () => {
 		const h = harness();
 		const destroyed = await runWorkspaceDestroy({
 			run: run(),
@@ -77,7 +69,6 @@ describe("runWorkspaceDestroy", () => {
 			...deps(h),
 		});
 		expect(destroyed).toBe(true);
-		expect(h.deleted).toEqual(["bur_x"]);
 		expect(h.events).toHaveLength(1);
 		expect(h.events[0]?.kind).toBe("reap.workspace_destroyed");
 		expect(h.events[0]?.payload).toMatchObject({
@@ -111,7 +102,6 @@ describe("runWorkspaceDestroy", () => {
 		});
 		expect(destroyed).toBe(false);
 		expect(h.events).toEqual([]);
-		expect(h.deleted).toEqual([]);
 	});
 
 	test("skips without an event when the terminate seam is unresolved", async () => {
@@ -135,7 +125,6 @@ describe("runWorkspaceDestroy", () => {
 			...deps(h),
 		});
 		expect(destroyed).toBe(false);
-		expect(h.deleted).toEqual([]);
 		expect(h.events[0]?.kind).toBe("reap.workspace_destroy_skipped");
 		expect(h.events[0]?.payload).toMatchObject({ reason: "conversation_run" });
 	});
@@ -178,7 +167,7 @@ describe("runWorkspaceDestroy", () => {
 		expect(h.events[0]?.kind).toBe("reap.workspace_destroyed");
 	});
 
-	test("a destroy failure is best-effort: reap_failed, no row delete", async () => {
+	test("a destroy failure is best-effort: reap_failed", async () => {
 		const h = harness();
 		const destroyed = await runWorkspaceDestroy({
 			run: run(),
@@ -189,7 +178,6 @@ describe("runWorkspaceDestroy", () => {
 			...deps(h),
 		});
 		expect(destroyed).toBe(false);
-		expect(h.deleted).toEqual([]);
 		expect(h.failures).toHaveLength(1);
 		expect(h.failures[0]?.step).toBe("workspace_destroy");
 		expect(h.failures[0]?.message).toContain("burrow unreachable");
@@ -198,12 +186,12 @@ describe("runWorkspaceDestroy", () => {
 });
 
 function byIdDeps(h: Harness) {
-	const { repos, emit } = deps(h);
-	return { repos, emit };
+	const { emit } = deps(h);
+	return { emit };
 }
 
 describe("destroyBurrowWorkspaceById (warren-4f01)", () => {
-	test("resolves the worker, destroys the burrow, deletes the row, emits destroyed", async () => {
+	test("resolves the worker, destroys the burrow, emits destroyed", async () => {
 		const h = harness();
 		const destroyed = await destroyBurrowWorkspaceById({
 			burrowId: "bur_x",
@@ -213,7 +201,6 @@ describe("destroyBurrowWorkspaceById (warren-4f01)", () => {
 			...byIdDeps(h),
 		});
 		expect(destroyed).toBe(true);
-		expect(h.deleted).toEqual(["bur_x"]);
 		expect(h.events[0]?.kind).toBe("reap.workspace_destroyed");
 	});
 
@@ -227,11 +214,10 @@ describe("destroyBurrowWorkspaceById (warren-4f01)", () => {
 			...byIdDeps(h),
 		});
 		expect(destroyed).toBe(false);
-		expect(h.deleted).toEqual([]);
 		expect(h.events[0]?.kind).toBe("reap.workspace_destroy_skipped");
 	});
 
-	test("a destroy failure degrades to a destroy_failed event, no row delete", async () => {
+	test("a destroy failure degrades to a destroy_failed event", async () => {
 		const h = harness();
 		const destroyed = await destroyBurrowWorkspaceById({
 			burrowId: "bur_x",
@@ -243,7 +229,6 @@ describe("destroyBurrowWorkspaceById (warren-4f01)", () => {
 			...byIdDeps(h),
 		});
 		expect(destroyed).toBe(false);
-		expect(h.deleted).toEqual([]);
 		expect(h.events[0]?.kind).toBe("reap.workspace_destroy_failed");
 		expect(h.events[0]?.payload).toMatchObject({ step: "destroy" });
 	});

@@ -46,7 +46,7 @@ import * as sqliteSchema from "../schema/sqlite.ts";
  * Canonical schema type repos build queries against. Typed as the sqlite
  * shape because the existing repos pre-R-13 imported sqlite tables; both
  * dialect modules export the same identifiers (agents, projects, runs,
- * events, triggers, workers, burrows) with structurally identical column
+ * events, triggers, planRuns, ...) with structurally identical column
  * shapes. The runtime object returned by `DrizzleAdapter.schema` is the
  * dialect-correct module (sqliteTable for sqlite, pgTable for pg) — drizzle
  * dispatches `db.insert(table)` against the table class's `entityKind`, so

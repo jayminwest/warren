@@ -34,11 +34,10 @@ function fakeBurrowClient(): BurrowClient {
 	});
 }
 
-async function fakeBurrowDeps(repos: Repos): Promise<{
+async function fakeBurrowDeps(_repos: Repos): Promise<{
 	burrowClient: BurrowClient;
 }> {
 	const burrowClient = fakeBurrowClient();
-	await repos.workers.upsert({ name: "local", url: "unix:///tmp/x.sock" });
 	return { burrowClient };
 }
 

@@ -29,7 +29,6 @@ export async function depsFor(
 	db?: AnyWarrenDb,
 	previewMode: "subdomain" | "path" = "subdomain",
 ): Promise<{ deps: ServerDeps; bridges: BridgeRegistry }> {
-	await repos.workers.upsert({ name: "local", url: "unix:///tmp/x.sock" });
 	const burrowClient = makeBurrowClient();
 	const broker = new RunEventBroker();
 	const bridges = createBridgeRegistry({

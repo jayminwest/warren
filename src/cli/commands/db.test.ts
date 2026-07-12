@@ -102,8 +102,6 @@ describe.skipIf(!pgEnabled)("runMigrateToPostgres", () => {
 			localPath: "/data/projects/example/repo",
 			defaultBranch: "main",
 		});
-		await sourceRepos.workers.upsert({ name: "local", url: "unix:///var/run/burrow.sock" });
-		await sourceRepos.burrows.create({ id: "bur_test", workerId: "local" });
 		const run = await sourceRepos.runs.create({
 			id: "run_test",
 			agentName: "claude-code",
@@ -147,8 +145,6 @@ describe.skipIf(!pgEnabled)("runMigrateToPostgres", () => {
 			skipped: 0,
 		});
 		expect(byName.get("projects")?.inserted).toBe(1);
-		expect(byName.get("workers")?.inserted).toBe(1);
-		expect(byName.get("burrows")?.inserted).toBe(1);
 		expect(byName.get("runs")?.inserted).toBe(1);
 		expect(byName.get("events")?.inserted).toBe(2);
 		expect(byName.get("triggers")?.inserted).toBe(1);
@@ -156,7 +152,7 @@ describe.skipIf(!pgEnabled)("runMigrateToPostgres", () => {
 		// JSON summary emitted on stdout.
 		const parsed = JSON.parse(out.join("").trim());
 		expect(parsed.ok).toBe(true);
-		expect(parsed.tables).toHaveLength(7);
+		expect(parsed.tables).toHaveLength(5);
 
 		// PKs preserved byte-for-byte on the pg target.
 		const runRows = await target.raw.query<{ id: string; state: string; project_id: string }>(

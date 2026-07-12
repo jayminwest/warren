@@ -14,8 +14,9 @@
  *   - a `workspace_destroy` sub-step failed (best-effort, never blocks the
  *     terminal transition — see `runWorkspaceDestroy`).
  *
- * This module provides a periodic sweep: walk the `burrows` placement table,
- * find rows whose runs are all terminal and whose newest activity is older
+ * This module provides a periodic sweep: derive the set of burrow ids from
+ * the `runs` table (the `burrows` placement table was dropped in warren-3743),
+ * find those whose runs are all terminal and whose newest activity is older
  * than a configurable TTL, and destroy each one. It is intentionally
  * conservative — a burrow with any non-terminal (`queued` / `running` /
  * `paused`) run is never touched, and every destroy is best-effort so one
@@ -30,7 +31,7 @@ import { NotFoundError as BurrowNotFoundError, type DestroyBurrowResult } from "
 import type { BurrowClient } from "../../burrow-client/client.ts";
 import { withTransportMapping } from "../../burrow-client/client.ts";
 import { ValidationError } from "../../core/errors.ts";
-import type { BurrowRow, RunRow, RunState } from "../../db/schema.ts";
+import type { RunRow, RunState } from "../../db/schema.ts";
 import { parseDurationMs } from "../../preview/duration.ts";
 
 /** Non-terminal run states — a burrow with one of these is never GC'd. */
@@ -113,8 +114,7 @@ function isTruthy(raw: string | undefined): boolean {
 
 export interface StrandedBurrow {
 	readonly burrowId: string;
-	readonly workerId: string;
-	/** ISO timestamp the age check ran against (latest run end, else added). */
+	/** ISO timestamp the age check ran against (latest terminal run end). */
 	readonly idleSince: string;
 	/** Age in ms at sweep time (now − idleSince), always ≥ ttlMs. */
 	readonly ageMs: number;
@@ -151,28 +151,28 @@ export function buildBurrowActivity(
 }
 
 export interface FindStrandedInput extends BurrowActivity {
-	readonly burrows: readonly BurrowRow[];
 	readonly ttlMs: number;
 	readonly now: Date;
 }
 
 /**
- * Pure predicate: which burrow rows are stranded right now. A burrow is
- * stranded when it has no live run AND its newest activity (latest terminal
- * `endedAt`, falling back to the row's `addedAt`) is at least `ttlMs` old.
- * Sorted oldest-first so a capped sweep reclaims the stalest disk first.
+ * Pure predicate: which burrows are stranded right now. Since the `burrows`
+ * placement table was dropped (warren-3743), the candidate set is derived from
+ * the `runs` table: every burrow id that carries a terminal run (keys of
+ * `latestEndedAt`). A burrow is stranded when it has no live run AND its newest
+ * terminal `endedAt` is at least `ttlMs` old. Sorted oldest-first so a capped
+ * sweep reclaims the stalest disk first.
  */
 export function findStrandedBurrows(input: FindStrandedInput): StrandedBurrow[] {
 	const nowMs = input.now.getTime();
 	const out: StrandedBurrow[] = [];
-	for (const row of input.burrows) {
-		if (input.activeBurrowIds.has(row.id)) continue;
-		const idleSince = input.latestEndedAt.get(row.id) ?? row.addedAt;
+	for (const [burrowId, idleSince] of input.latestEndedAt) {
+		if (input.activeBurrowIds.has(burrowId)) continue;
 		const idleMs = Date.parse(idleSince);
 		if (Number.isNaN(idleMs)) continue;
 		const ageMs = nowMs - idleMs;
 		if (ageMs < input.ttlMs) continue;
-		out.push({ burrowId: row.id, workerId: row.workerId, idleSince, ageMs });
+		out.push({ burrowId, idleSince, ageMs });
 	}
 	out.sort((a, b) => b.ageMs - a.ageMs);
 	return out;
@@ -189,10 +189,6 @@ export interface WorkspaceGcLogger {
 }
 
 export interface WorkspaceGcReposLike {
-	readonly burrows: {
-		listAll(): Promise<BurrowRow[]>;
-		delete(id: string): Promise<void>;
-	};
 	readonly runs: {
 		listByState(state: RunState[]): Promise<RunRow[]>;
 	};
@@ -223,9 +219,9 @@ function defaultDestroy(client: BurrowClient, burrowId: string): Promise<Destroy
 /**
  * One GC sweep: find stranded burrows and destroy each. Best-effort —
  * a destroy failure (unreachable worker, burrow already gone) is logged and
- * counted but never throws, so a single bad row can't stall the loop. On a
- * successful destroy the warren-side `burrows` placement row is deleted so
- * `clientFor()` routing won't point at a dead workspace.
+ * counted but never throws, so a single bad row can't stall the loop. The
+ * candidate universe is the set of burrow ids seen in terminal runs; a burrow
+ * already gone on burrow's side (404) is simply counted as reclaimed.
  */
 export async function runWorkspaceGcTick(
 	input: WorkspaceGcTickInput,
@@ -233,18 +229,24 @@ export async function runWorkspaceGcTick(
 	const now = (input.now ?? (() => new Date()))();
 	const destroyFn = input.destroyBurrow ?? defaultDestroy;
 
-	const [burrows, activeRuns, terminalRuns] = await Promise.all([
-		input.repos.burrows.listAll(),
+	const [activeRuns, terminalRuns] = await Promise.all([
 		input.repos.runs.listByState([...GC_ACTIVE_RUN_STATES]),
 		input.repos.runs.listByState([...GC_TERMINAL_RUN_STATES]),
 	]);
 
+	const activity = buildBurrowActivity(activeRuns, terminalRuns);
 	const stranded = findStrandedBurrows({
-		burrows,
-		...buildBurrowActivity(activeRuns, terminalRuns),
+		...activity,
 		ttlMs: input.config.ttlMs,
 		now,
 	});
+
+	// Scanned = distinct burrow ids that carry a terminal run and no live run
+	// (the candidate universe the predicate walks).
+	let scanned = 0;
+	for (const burrowId of activity.latestEndedAt.keys()) {
+		if (!activity.activeBurrowIds.has(burrowId)) scanned += 1;
+	}
 
 	let destroyed = 0;
 	let failed = 0;
@@ -256,12 +258,12 @@ export async function runWorkspaceGcTick(
 
 	if (stranded.length > 0) {
 		input.logger?.info(
-			{ scanned: burrows.length, stranded: stranded.length, destroyed, failed },
+			{ scanned, stranded: stranded.length, destroyed, failed },
 			"workspace_gc.swept",
 		);
 	}
 
-	return { scanned: burrows.length, stranded: stranded.length, destroyed, failed };
+	return { scanned, stranded: stranded.length, destroyed, failed };
 }
 
 async function destroyOne(
@@ -274,7 +276,6 @@ async function destroyOne(
 		const result = await withTransportMapping(client.config, () =>
 			destroyFn(client, candidate.burrowId),
 		);
-		await input.repos.burrows.delete(candidate.burrowId);
 		input.logger?.info(
 			{
 				burrowId: candidate.burrowId,
@@ -287,24 +288,15 @@ async function destroyOne(
 		);
 		return true;
 	} catch (err) {
-		// 404 from burrow means the workspace is already gone on burrow's side.
-		// Prune the warren-side placement row so we stop retrying on every sweep.
+		// 404 from burrow means the workspace is already gone on burrow's side —
+		// count it as reclaimed so we don't churn on it every sweep.
 		if (err instanceof BurrowNotFoundError) {
-			try {
-				await input.repos.burrows.delete(candidate.burrowId);
-			} catch {
-				// Best-effort; will be retried next sweep.
-			}
-			input.logger?.info(
-				{ burrowId: candidate.burrowId, workerId: candidate.workerId },
-				"workspace_gc.already_gone",
-			);
+			input.logger?.info({ burrowId: candidate.burrowId }, "workspace_gc.already_gone");
 			return true;
 		}
 		input.logger?.warn(
 			{
 				burrowId: candidate.burrowId,
-				workerId: candidate.workerId,
 				err: err instanceof Error ? err.message : String(err),
 			},
 			"workspace_gc.destroy_failed",
@@ -338,7 +330,7 @@ const NOOP_HANDLE = Symbol("workspace-gc-noop") as unknown as WorkspaceGcTimerHa
  * Boot the fallback workspace-GC sweep. Mirrors `startPreviewEvictionWorker`:
  * single-flight (a sweep in flight when the next interval fires is dropped,
  * not stacked) and `stop()` awaits the in-flight sweep so teardown doesn't
- * race the next `burrows.delete`.
+ * race the next burrow destroy.
  */
 export function startWorkspaceGcWorker(
 	input: StartWorkspaceGcWorkerInput,

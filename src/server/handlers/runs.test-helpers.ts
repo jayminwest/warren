@@ -8,8 +8,7 @@ import type { BridgeRegistry, ServeHandle, ServerDeps } from "../types.ts";
  * Shared test helpers and stubs for run-related handler tests (warren-6566).
  */
 
-export async function poolFor(repos: Repos, client: BurrowClient): Promise<BurrowClient> {
-	await repos.workers.upsert({ name: "local", url: "unix:///tmp/x.sock" });
+export async function poolFor(_repos: Repos, client: BurrowClient): Promise<BurrowClient> {
 	return client;
 }
 

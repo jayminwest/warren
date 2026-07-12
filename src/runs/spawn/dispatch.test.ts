@@ -120,12 +120,13 @@ describe("spawnRun: end-to-end", () => {
 		const seededPaths = (upBody.seed?.files ?? []).map((f) => f.path);
 		expect(seededPaths).toContain(".canopy/agent.json");
 
-		expect(reread.workerId).toBe("local");
-		const burrowRow = await repos.burrows.require("bur_aaaaaaaaaaaa");
-		expect(burrowRow.workerId).toBe("local");
+		// warren-3743: worker_id is nullified for new runs (the workers/burrows
+		// placement tables were dropped); the burrow correlation ids are still
+		// written for LocalProvider resume.
+		expect(reread.workerId).toBeNull();
 	});
 
-	test("records worker_id + burrows.worker_id as the vestigial local worker (warren-76c5)", async () => {
+	test("leaves worker_id NULL and writes the burrow ids for new runs (warren-3743)", async () => {
 		const { client } = makeBurrowClient();
 		const result = await spawnRun({
 			repos,
@@ -134,8 +135,10 @@ describe("spawnRun: end-to-end", () => {
 			projectId: "prj_xxxxxxxxxxxx",
 			prompt: "p",
 		});
-		expect((await repos.runs.require(result.run.id)).workerId).toBe("local");
-		expect((await repos.burrows.require(result.burrow.id)).workerId).toBe("local");
+		const stored = await repos.runs.require(result.run.id);
+		expect(stored.workerId).toBeNull();
+		expect(stored.burrowId).toBe(result.burrow.id);
+		expect(stored.burrowRunId).toBe(result.burrowRun.id);
 	});
 });
 

@@ -181,7 +181,6 @@ describe("mirrorPlans (warren-d9a2)", () => {
 			burrowId: "bur_aaaaaaaaaaaa",
 			burrowRunId: "run_zzzzzzzzzzzz",
 		});
-		await repos.burrows.create({ id: "bur_aaaaaaaaaaaa", workerId: "local" });
 		await repos.runs.markRunning(run.id);
 		return {
 			db,
@@ -338,7 +337,6 @@ describe("closeRunSeedId (warren-0d2d)", () => {
 			burrowRunId: "run_zzzzzzzzzzzz",
 			...(seedId !== null ? { seedId } : {}),
 		});
-		await repos.burrows.create({ id: "bur_aaaaaaaaaaaa", workerId: "local" });
 		await repos.runs.markRunning(run.id);
 		return { db, repos, runId: run.id };
 	}

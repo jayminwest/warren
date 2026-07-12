@@ -332,23 +332,6 @@ export async function bootBridges(input: CreateBridgeRegistryInput): Promise<Boo
 			);
 			continue;
 		}
-		// warren-018a: runs predating multi-worker placement (pl-9ba1) carry a
-		// burrow_id without a matching `burrows` row. Starting their bridge
-		// makes `pool.clientFor({burrowId})` throw NoEligibleWorkerError on
-		// the first stream call. Skip with a clean operator signal instead.
-		if ((await input.repos.burrows.get(run.burrowId)) === null) {
-			skipped.push({ runId: run.id, reason: "no_placement" });
-			input.logger?.warn?.(
-				{
-					runId: run.id,
-					state: run.state,
-					burrowRunId: run.burrowRunId,
-					burrowId: run.burrowId,
-				},
-				"skipping recovery: burrow_id has no `burrows` row (pre-pl-9ba1 orphan)",
-			);
-			continue;
-		}
 		// warren-b1a9: probe burrow for the run BEFORE starting the bridge.
 		// On a machine restart burrow may have lost in-flight runs from its
 		// in-memory store; without this pre-check the bridge would start,
