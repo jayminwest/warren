@@ -31,6 +31,13 @@ export const METRIC_OOM_KILLED_TOTAL = "warren_run_oom_killed_total";
 export const METRIC_WATCH_RECONNECTS_TOTAL = "warren_pod_watch_reconnects_total";
 /** Total workspace-init container failures (init terminated with a non-zero exit). */
 export const METRIC_INIT_FAILURES_TOTAL = "warren_workspace_init_failures_total";
+/**
+ * Total pod-log lines that failed to parse as an NDJSON event envelope during
+ * `streamEvents` (pl-829f step 17 / warren-026c). A malformed / non-JSON line
+ * (stray agent stdout, a truncated write) is dropped rather than killing the
+ * stream; this counter makes that loss observable instead of silent.
+ */
+export const METRIC_LOG_PARSE_FAILURES_TOTAL = "warren_pod_log_parse_failures_total";
 
 // --- Gauge names (computed at scrape from the watcher cache) ----------------
 

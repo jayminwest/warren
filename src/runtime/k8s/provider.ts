@@ -42,7 +42,16 @@ import type {
 	TeardownResult,
 } from "../contract.ts";
 import { RuntimeNotImplementedError, RuntimeProviderError } from "../errors.ts";
+import { defaultLogFollowFactory } from "./log-follow.ts";
 import {
+	isTerminalPhase,
+	type LogFollowFn,
+	type StreamCounterSink,
+	type StreamTerminalState,
+	streamK8sLogs,
+} from "./log-stream.ts";
+import {
+	AGENT_CONTAINER_NAME,
 	buildRunPod,
 	type K8sPodConfig,
 	LABEL_RUN_ID,
@@ -78,6 +87,20 @@ export interface K8sProviderDeps {
 	 * provider-internal plumbing, so wiring this stays optional.
 	 */
 	readonly podCache?: PodCacheReader;
+	/**
+	 * OPTIONAL injectable pod-log follow seam `streamEvents` drives (pl-829f step
+	 * 17). A factory-free direct fn (mirrors the pod-watcher's `WatchFn`) so tests
+	 * script the log source; when absent the provider lazily builds the real
+	 * `@kubernetes/client-node` `Log`-backed follow via `defaultLogFollowFactory`.
+	 */
+	readonly logFollow?: LogFollowFn;
+	/**
+	 * OPTIONAL counter sink for the pod-log parse-failure metric
+	 * (`METRIC_LOG_PARSE_FAILURES_TOTAL`) — satisfied by the shared
+	 * `MetricsRegistry`. When absent, malformed lines are still dropped safely;
+	 * only the observability counter is skipped.
+	 */
+	readonly metrics?: StreamCounterSink;
 }
 
 /**
@@ -200,6 +223,9 @@ const BUN_INSTALL_CACHE_DIR = "/tmp/bun-install-cache";
 export class K8sProvider implements RuntimeProvider {
 	readonly capabilities: RuntimeCapabilities = K8S_PROVIDER_CAPABILITIES;
 
+	/** Memoized default log-follow factory — built lazily, never at construction. */
+	private readonly defaultLogFollow = defaultLogFollowFactory();
+
 	constructor(private readonly deps: K8sProviderDeps) {}
 
 	/**
@@ -307,8 +333,49 @@ export class K8sProvider implements RuntimeProvider {
 		}
 	}
 
-	streamEvents(_handle: RunHandle, _opts?: StreamOpts): AsyncIterable<NormalizedEvent> {
-		return notImplemented("streamEvents", "step 17 (warren-026c)");
+	/**
+	 * Ordered, resumable, lossless event stream over the agent container's pod
+	 * logs (contract §6.4 — the single biggest K8s burden). The provider
+	 * SYNTHESIZES the monotonic per-run `seq` burrow gets for free: it is the
+	 * physical line index of the container's log replay, deterministic and stable
+	 * across reconnects (see `./log-stream.ts` for the full scheme + rotation
+	 * semantics). Correlation is by pod NAME (`handle.sandboxId`) + the well-known
+	 * agent container; the run-id label already pinned that pod at create.
+	 *
+	 * The log source is injectable (`deps.logFollow`); absent, the real
+	 * `Log`-backed follow is built lazily. Termination consults `status(handle)`
+	 * (which itself prefers the pod-watcher cache): a terminal phase drains the
+	 * tail then ends; a vanished pod (`exists:false` / a 404 mid-follow) throws
+	 * `RuntimeRunNotFoundError`, the seam's `lost` signal — never a crash.
+	 */
+	streamEvents(handle: RunHandle, opts?: StreamOpts): AsyncIterable<NormalizedEvent> {
+		const env = this.deps.serverEnv ?? process.env;
+		const config = resolveK8sPodConfig(env);
+		const follow = this.deps.logFollow ?? this.defaultLogFollow();
+		return streamK8sLogs({
+			follow,
+			probe: () => this.streamTerminalProbe(handle),
+			params: {
+				namespace: config.namespace,
+				podName: handle.sandboxId,
+				containerName: AGENT_CONTAINER_NAME,
+			},
+			...(opts !== undefined ? { opts } : {}),
+			...(this.deps.metrics !== undefined ? { metrics: this.deps.metrics } : {}),
+		});
+	}
+
+	/**
+	 * Project `status()` onto the log stream's terminate-vs-reconnect decision: an
+	 * absent pod ⇒ `exists:false` (the stream ends with `lost`); a terminal phase
+	 * ⇒ drain then end; anything else ⇒ a transient disconnect the stream retries.
+	 */
+	private async streamTerminalProbe(handle: RunHandle): Promise<StreamTerminalState> {
+		const status = await this.status(handle);
+		return {
+			exists: status.exists,
+			terminal: status.exists && isTerminalPhase(status.phase),
+		};
 	}
 
 	/**

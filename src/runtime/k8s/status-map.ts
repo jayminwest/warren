@@ -36,6 +36,14 @@
  * anchor read off the pod's most recent container/state timestamp (the domain
  * still owns the watchdog decision; the authoritative resume cursor is warren's
  * own `maxSeqForRun`, which the run-state poller consults instead).
+ *
+ * CONFIRMED at step 17: `lastEventSeq` STAYS `0` by design. Synthesizing it here
+ * would force a full pod-log replay on every `status()` poll (the seq is the log
+ * line index — there is no cheap "latest seq" pod field), and NO consumer reads
+ * it: the only reference is `run-state-poller.ts`, which explicitly does NOT
+ * consume `status().lastEventSeq` and resumes off warren's persisted
+ * `maxSeqForRun`. LocalProvider pays a burrow replay only because it collapses a
+ * `maxSeqForRun` query burrow offers no lighter path for; K8s has no such reason.
  */
 
 import type { V1ContainerStatus, V1Pod } from "@kubernetes/client-node";
