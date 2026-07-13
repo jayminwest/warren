@@ -5,6 +5,7 @@ import { NotFoundError, ValidationError } from "../core/errors.ts";
 import { openDatabase, type WarrenDb } from "../db/client.ts";
 import { createRepos, type Repos } from "../db/repos/index.ts";
 import type { RunTerminalState } from "../db/schema.ts";
+import type { RuntimeProvider } from "../runtime/contract.ts";
 import { cancelRun } from "./cancel.ts";
 import { RunEventBroker } from "./events.ts";
 import type { ReapRunResult } from "./reap/index.ts";
@@ -205,6 +206,35 @@ describe("cancelRun", () => {
 		expect(payload.reason).toBe("operator changed their mind");
 		expect(payload.burrowRunId).toBe("run_zzzzzzzzzzzz");
 		expect(reapCalls).toEqual([{ runId, outcome: "cancelled" }]);
+	});
+
+	test("warren-a7cb: forwards the active runtimeProvider into the inline reap", async () => {
+		const runId = await createRun({ state: "running" });
+		const { client } = makeBurrowClient();
+		const provider = {
+			cancel: async () => {},
+			status: async () => ({
+				phase: "cancelled" as const,
+				exitCode: 0,
+				lastEventSeq: 0,
+				lastEventTs: null,
+				exists: true,
+			}),
+		} as unknown as RuntimeProvider;
+		const reapProviders: (RuntimeProvider | undefined)[] = [];
+		await cancelRun({
+			runId,
+			repos,
+			burrowClient: await makePool(client, repos),
+			runtimeProvider: provider,
+			reap: async (input) => {
+				reapProviders.push(input.runtimeProvider);
+				return reapStub(input.outcome);
+			},
+		});
+		// The reap saw the SAME provider, so finalize + terminate run through the
+		// active backend rather than the default burrow-backed LocalProvider.
+		expect(reapProviders).toEqual([provider]);
 	});
 
 	test("warren-a69a: terminal burrow state triggers reap inline", async () => {

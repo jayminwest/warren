@@ -402,6 +402,10 @@ export async function bootBridges(input: CreateBridgeRegistryInput): Promise<Boo
 				repos: input.repos,
 				broker: input.broker,
 				burrowClient: input.burrowClient,
+				// warren-a7cb: route lost-run teardown through the active backend so a
+				// boot-time reconcile under WARREN_RUNTIME=k8s deletes the pod. Self-host
+				// (no runtimeProvider) keeps the burrow-only path byte-identical.
+				...(input.runtimeProvider !== undefined ? { runtimeProvider: input.runtimeProvider } : {}),
 				logger: bindBridgeLogger(input.logger, {
 					run_id: run.id,
 					burrow_run_id: run.burrowRunId,

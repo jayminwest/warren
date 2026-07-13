@@ -1,12 +1,11 @@
 /**
- * Reconnect/stall machinery for the stream-bridge registry
- * (`./bridges.ts`). Extracted to keep both files under the file-size
- * ratchet (warren-4553). `runWithReconnect` runs `bridgeRunStream` in a
- * backoff loop, surfaces degraded state via `bridge_stalled` /
- * `bridge_recovered` system events (warren-6376), gives up and finalizes
- * `failed`/`burrow_unreachable` past a hard stall ceiling (warren-af76),
- * reaps inline on terminal-detect, and reconciles ghost runs (warren-b1a9)
- * via `reconcileLostBurrowRun`, which `bootBridges` also calls at boot.
+ * Reconnect/stall machinery for the stream-bridge registry (`./bridges.ts`).
+ * Extracted to keep both files under the file-size ratchet (warren-4553).
+ * `runWithReconnect` runs `bridgeRunStream` in a backoff loop, surfaces degraded
+ * state via `bridge_stalled` / `bridge_recovered` events (warren-6376), gives up
+ * past a hard stall ceiling (warren-af76), reaps inline on terminal-detect, and
+ * reconciles ghost runs (warren-b1a9) via `reconcileLostBurrowRun` (also called
+ * at boot). Lost-run sandbox teardown lives in `./bridge-reconnect-teardown.ts`.
  */
 
 import type { BurrowClient } from "../burrow-client/index.ts";
@@ -25,10 +24,7 @@ import {
 	type ReapRunResult,
 	type RunEventBroker,
 } from "../runs/index.ts";
-import {
-	type DestroyBurrowWorkspaceByIdInput,
-	destroyBurrowWorkspaceById,
-} from "../runs/reap/destroy.ts";
+import type { DestroyBurrowWorkspaceByIdInput } from "../runs/reap/destroy.ts";
 import type { ConversationTurnHandler } from "../runs/stream/conversation-turn.ts";
 import type { RuntimeProvider } from "../runtime/contract.ts";
 import type { SeedsCliDeps } from "../seeds-cli/index.ts";
@@ -37,6 +33,7 @@ import {
 	resolveProjectPreviewConfig,
 	resolveProjectPrTemplate,
 } from "./bridge-reconnect-config.ts";
+import { teardownLostRunWorkspace } from "./bridge-reconnect-teardown.ts";
 
 export const TERMINAL_RUN_STATES: ReadonlySet<RunState> = new Set([
 	"succeeded",
@@ -165,6 +162,8 @@ export async function runWithReconnect(
 				repos: input.repos,
 				broker: input.broker,
 				burrowClient: input.burrowClient,
+				// warren-a7cb: route lost-run teardown through the active backend.
+				...(input.runtimeProvider !== undefined ? { runtimeProvider: input.runtimeProvider } : {}),
 				logger: log,
 			});
 			return { written: totalWritten, skipped: totalSkipped, errored: false };
@@ -190,6 +189,14 @@ export async function runWithReconnect(
 					outcome: result.terminalDetected.outcome,
 					repos: input.repos,
 					burrowClient: input.burrowClient,
+					// warren-a7cb: forward the active RuntimeProvider so the inline
+					// terminal-detect reap routes finalize + terminate through the
+					// ACTIVE backend (in-pod under WARREN_RUNTIME=k8s). Omitted ⇒ reap
+					// builds a burrow-backed LocalProvider, so the self-host path is
+					// byte-identical.
+					...(input.runtimeProvider !== undefined
+						? { runtimeProvider: input.runtimeProvider }
+						: {}),
 					broker: input.broker,
 					logger: log,
 					// warren-9cce: carry the poller's distilled `failure_reason`
@@ -285,6 +292,8 @@ export async function runWithReconnect(
 				repos: input.repos,
 				broker: input.broker,
 				burrowClient: input.burrowClient,
+				// warren-a7cb: route lost-run teardown through the active backend.
+				...(input.runtimeProvider !== undefined ? { runtimeProvider: input.runtimeProvider } : {}),
 				failureReason: "burrow_unreachable",
 				logger: log,
 			});
@@ -362,6 +371,11 @@ interface ReconcileLostBurrowRunInput {
 	 * then skipped.
 	 */
 	readonly burrowClient?: BurrowClient;
+	/**
+	 * warren-a7cb: active backend. When present the lost-run teardown routes
+	 * through `provider.terminate` (K8s pod / burrow); omitted ⇒ burrow fallback.
+	 */
+	readonly runtimeProvider?: RuntimeProvider;
 	/** Override the workspace-destroy seam (tests). */
 	readonly destroyWorkspace?: (input: DestroyBurrowWorkspaceByIdInput) => Promise<boolean>;
 }
@@ -370,17 +384,13 @@ interface ReconcileLostBurrowRunInput {
  * warren-b1a9: transition a non-terminal warren run to `failed` with
  * `failure_reason='burrow_run_lost'` and emit a `bridge_lost` audit event.
  * Used both by the live-bridge 404 catch and by the boot-time reconciler.
- * Idempotent: a run that's already terminal is left alone (the event is
- * still appended so the UI shows why the bridge stopped).
- *
- * The state machine doesn't allow `queued → failed` directly, so this
- * mirrors reap's `markRunning` shim for queued ghost runs (run never made
- * it to running because the bridge never claimed before burrow lost it).
+ * Idempotent: an already-terminal run is left alone (the event is still
+ * appended). The state machine forbids `queued → failed` directly, so this
+ * mirrors reap's `markRunning` shim for queued ghost runs.
  */
 export async function reconcileLostBurrowRun(input: ReconcileLostBurrowRunInput): Promise<void> {
 	const now = (input.now ?? (() => new Date()))();
 	const failureReason: RunFailureReason = input.failureReason ?? "burrow_run_lost";
-	// warren-9f06: bind here (callers may pass a bound logger or none).
 	const log = bindBridgeLogger(input.logger, {
 		run_id: input.runId,
 		burrow_run_id: input.burrowRunId,
@@ -440,38 +450,28 @@ export async function reconcileLostBurrowRun(input: ReconcileLostBurrowRunInput)
 			"reconcileLostBurrowRun: failed to emit bridge_lost event",
 		);
 	}
-	// warren-4f01: tear down the burrow workspace so its bwrap/pi sandbox
-	// doesn't leak on the host. The run is now terminal, which means a later
-	// `reapRun` short-circuits (`buildAlreadyTerminalResult`) without
-	// destroying the workspace — so the teardown must happen here. Best-effort
-	// and gated on a resolvable pool; conversation runs keep their workspace.
-	if (input.burrowClient !== undefined && burrowToDestroy !== null) {
-		const destroy = input.destroyWorkspace ?? destroyBurrowWorkspaceById;
-		try {
-			await destroy({
-				burrowId: burrowToDestroy.id,
-				mode: burrowToDestroy.mode,
-				burrowClient: input.burrowClient,
-				emit: async (kind, payload) => {
-					await emitBridgeSystemEvent({
-						runId: input.runId,
-						repos: input.repos,
-						broker: input.broker,
-						kind,
-						payload: payload as Record<string, unknown>,
-						logger: log,
-					});
-				},
-			});
-		} catch (err) {
-			log.error(
-				{
-					event: "bridge.workspace_destroy_failed",
-					err: err instanceof Error ? err.message : String(err),
-				},
-				"reconcileLostBurrowRun: best-effort workspace destroy threw",
-			);
-		}
+	// warren-4f01 / warren-a7cb: tear down the sandbox (the terminal run's later
+	// `reapRun` short-circuits without doing it) via the provider seam — see
+	// `./bridge-reconnect-teardown.ts`.
+	if (burrowToDestroy !== null) {
+		await teardownLostRunWorkspace({
+			runId: input.runId,
+			burrowRunId: input.burrowRunId,
+			burrow: burrowToDestroy,
+			...(input.runtimeProvider !== undefined ? { runtimeProvider: input.runtimeProvider } : {}),
+			...(input.burrowClient !== undefined ? { burrowClient: input.burrowClient } : {}),
+			...(input.destroyWorkspace !== undefined ? { destroyWorkspace: input.destroyWorkspace } : {}),
+			emit: (kind, payload) =>
+				emitBridgeSystemEvent({
+					runId: input.runId,
+					repos: input.repos,
+					broker: input.broker,
+					kind,
+					payload,
+					logger: log,
+				}),
+			log,
+		});
 	}
 	log.warn(
 		{ event: "bridge.reconciled", finalized },

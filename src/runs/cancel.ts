@@ -203,6 +203,10 @@ export async function cancelRun(input: CancelRunInput): Promise<CancelRunResult>
 				outcome: burrowState,
 				repos: input.repos,
 				burrowClient: input.burrowClient,
+				// warren-a7cb: route the cancel-path reap's finalize + terminate
+				// through the active backend (in-pod under WARREN_RUNTIME=k8s).
+				// Omitted ⇒ burrow-backed LocalProvider (self-host byte-identical).
+				...(input.runtimeProvider !== undefined ? { runtimeProvider: input.runtimeProvider } : {}),
 				...(input.broker !== undefined ? { broker: input.broker } : {}),
 				...(input.now !== undefined ? { now: input.now } : {}),
 				...(input.logger !== undefined ? { logger: input.logger } : {}),

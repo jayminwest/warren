@@ -185,6 +185,10 @@ async function forceFail(
 		failureReason: "timed_out",
 		repos: deps.repos,
 		burrowClient: deps.burrowClient,
+		// warren-a7cb: route the force-fail reap's finalize + terminate through the
+		// active backend (in-pod under WARREN_RUNTIME=k8s). Omitted ⇒ burrow-backed
+		// LocalProvider, so the self-host path is byte-identical.
+		...(deps.runtimeProvider !== undefined ? { runtimeProvider: deps.runtimeProvider } : {}),
 		...(deps.broker !== undefined ? { broker: deps.broker } : {}),
 		...(deps.now !== undefined ? { now: deps.now } : {}),
 		...(deps.logger !== undefined ? { logger: deps.logger } : {}),

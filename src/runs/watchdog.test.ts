@@ -286,6 +286,33 @@ describe("tickWatchdog", () => {
 		expect((timedOut?.payloadJson as { burrowRunId?: string }).burrowRunId).toBe("run_b1");
 	});
 
+	test("forwards the active runtimeProvider into the force-fail reap (warren-a7cb)", async () => {
+		const runId = await seedRunning("2026-06-05T00:00:00Z", {
+			burrowId: "bur_1",
+			burrowRunId: "run_b1",
+		});
+		const provider = makeCancelProvider([]);
+		const reapCalls: ReapRunInput[] = [];
+
+		await tickWatchdog({
+			repos,
+			burrowClient: NEVER_POOL,
+			runtimeProvider: provider,
+			heartbeatTimeoutMs: 5 * 60_000,
+			now: () => new Date("2026-06-05T00:10:00Z"),
+			reap: async (input) => {
+				reapCalls.push(input);
+				return fakeReapResult("failed");
+			},
+		});
+
+		// The reap gets the SAME provider so its finalize + terminate run through the
+		// active backend (in-pod under WARREN_RUNTIME=k8s), not the default burrow.
+		expect(reapCalls).toHaveLength(1);
+		expect(reapCalls[0]?.runtimeProvider).toBe(provider);
+		expect(runId).toBeDefined();
+	});
+
 	test("never force-fails an idle conversation run (warren-c770)", async () => {
 		await seedRunning("2026-06-05T00:00:00Z", {
 			burrowId: "bur_1",

@@ -1,11 +1,28 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { openDatabase, type WarrenDb } from "../db/client.ts";
 import { createRepos, type Repos } from "../db/repos/index.ts";
-import { RunEventBroker } from "../runs/index.ts";
+import { type ReapRunInput, type ReapRunResult, RunEventBroker } from "../runs/index.ts";
 import type { DestroyBurrowWorkspaceByIdInput } from "../runs/reap/destroy.ts";
+import type { RunHandle, RuntimeProvider, TeardownResult } from "../runtime/contract.ts";
 import { reconcileLostBurrowRun } from "./bridge-reconnect.ts";
 import { makePool } from "./bridges.test-helpers.ts";
 import { createBridgeRegistry } from "./bridges.ts";
+
+/** Minimal RuntimeProvider fake exposing only `terminate` (records handles). */
+function fakeTerminateProvider(opts: { throwErr?: Error } = {}): {
+	provider: RuntimeProvider;
+	calls: RunHandle[];
+} {
+	const calls: RunHandle[] = [];
+	const provider = {
+		terminate: async (handle: RunHandle): Promise<TeardownResult> => {
+			calls.push(handle);
+			if (opts.throwErr !== undefined) throw opts.throwErr;
+			return { archived: false, deletedEvents: 3, deletedMessages: 1, deletedRuns: 1 };
+		},
+	} as unknown as RuntimeProvider;
+	return { provider, calls };
+}
 
 /**
  * Coverage for the bridge's degraded-state signalling (warren-6376):
@@ -208,5 +225,139 @@ describe("runWithReconnect bridge_stalled/bridge_recovered (warren-6376)", () =>
 
 		const kinds = (await repos.events.listByRun(runId)).map((e) => e.kind);
 		expect(kinds).not.toContain("bridge_stalled");
+	});
+});
+
+/**
+ * warren-a7cb: reap orchestration routes through the RuntimeProvider seam.
+ * The inline terminal-detect reap forwards the active provider, and the lost-run
+ * reconcile tears down through `provider.terminate` so both backends (K8s pod
+ * delete / burrow destroy) are covered — without a direct burrow call.
+ */
+describe("reap orchestration through the provider seam (warren-a7cb)", () => {
+	let db: WarrenDb;
+	let repos: Repos;
+
+	beforeEach(async () => {
+		db = await openDatabase({ path: ":memory:" });
+		repos = createRepos(db);
+		await repos.agents.upsert({ name: "refactor-bot", renderedJson: {} });
+	});
+
+	afterEach(async () => {
+		await db.close();
+	});
+
+	async function seedRun(mode: "batch" | "conversation" = "batch"): Promise<string> {
+		const project = await repos.projects.create({
+			gitUrl: "https://github.com/x/y.git",
+			localPath: "/data/projects/x/y",
+			defaultBranch: "main",
+		});
+		const run = await repos.runs.create({
+			agentName: "refactor-bot",
+			projectId: project.id,
+			prompt: "p",
+			renderedAgentJson: {},
+			trigger: "manual",
+			burrowId: "bur_a",
+			burrowRunId: "rb_a",
+			mode,
+		});
+		return run.id;
+	}
+
+	test("inline terminal-detect reap forwards the active runtimeProvider", async () => {
+		const runId = await seedRun();
+		const { provider } = fakeTerminateProvider();
+		let seen: ReapRunInput | undefined;
+		const registry = createBridgeRegistry({
+			repos,
+			broker: new RunEventBroker(),
+			burrowClient: await makePool(repos),
+			runtimeProvider: provider,
+			bridge: async () => ({
+				written: 1,
+				skipped: 0,
+				errored: false,
+				terminalDetected: { outcome: "succeeded" },
+			}),
+			reap: async (input): Promise<ReapRunResult> => {
+				seen = input;
+				return { state: "succeeded", alreadyTerminal: false } as unknown as ReapRunResult;
+			},
+		});
+
+		registry.start(runId, "rb_a", "bur_a");
+		while (registry.size() > 0) await new Promise((r) => setTimeout(r, 0));
+
+		// The reap saw the SAME provider instance the registry was booted with, so
+		// under WARREN_RUNTIME=k8s finalize + terminate run in-pod, not over burrow.
+		expect(seen?.runtimeProvider).toBe(provider);
+	});
+
+	test("reconcile tears down via provider.terminate and emits workspace_destroyed", async () => {
+		const runId = await seedRun();
+		const { provider, calls } = fakeTerminateProvider();
+		await reconcileLostBurrowRun({
+			runId,
+			burrowRunId: "rb_a",
+			repos,
+			broker: new RunEventBroker(),
+			runtimeProvider: provider,
+			failureReason: "burrow_run_lost",
+		});
+
+		// terminate() got the seam handle (opaque ids), NOT a burrow-typed call.
+		expect(calls).toHaveLength(1);
+		expect(calls[0]).toEqual({ runId, sandboxId: "bur_a", providerRunId: "rb_a" });
+
+		const destroyed = (await repos.events.listByRun(runId)).find(
+			(e) => e.kind === "reap.workspace_destroyed",
+		);
+		expect(destroyed).toBeDefined();
+		expect(destroyed?.payloadJson).toMatchObject({
+			burrowId: "bur_a",
+			archived: false,
+			deletedEvents: 3,
+			deletedRuns: 1,
+		});
+		expect((await repos.runs.get(runId))?.state).toBe("failed");
+	});
+
+	test("reconcile skips provider.terminate for conversation runs", async () => {
+		const runId = await seedRun("conversation");
+		const { provider, calls } = fakeTerminateProvider();
+		await reconcileLostBurrowRun({
+			runId,
+			burrowRunId: "rb_a",
+			repos,
+			broker: new RunEventBroker(),
+			runtimeProvider: provider,
+		});
+
+		expect(calls).toHaveLength(0);
+		const kinds = (await repos.events.listByRun(runId)).map((e) => e.kind);
+		expect(kinds).toContain("reap.workspace_destroy_skipped");
+	});
+
+	test("reconcile degrades a terminate failure to workspace_destroy_failed", async () => {
+		const runId = await seedRun();
+		const { provider } = fakeTerminateProvider({ throwErr: new Error("pod delete 500") });
+		await reconcileLostBurrowRun({
+			runId,
+			burrowRunId: "rb_a",
+			repos,
+			broker: new RunEventBroker(),
+			runtimeProvider: provider,
+		});
+
+		const failed = (await repos.events.listByRun(runId)).find(
+			(e) => e.kind === "reap.workspace_destroy_failed",
+		);
+		expect(failed).toBeDefined();
+		expect(failed?.payloadJson).toMatchObject({ burrowId: "bur_a", step: "destroy" });
+		// The run still finalized despite the best-effort teardown failure.
+		expect((await repos.runs.get(runId))?.state).toBe("failed");
 	});
 });
