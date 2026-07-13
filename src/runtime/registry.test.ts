@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { CoreV1Api } from "@kubernetes/client-node";
+import type { CoreV1Api, V1Pod } from "@kubernetes/client-node";
 import type { BurrowClient } from "../burrow-client/index.ts";
 import { UnknownRuntimeError } from "./errors.ts";
 import { K8sProvider } from "./k8s/provider.ts";
@@ -101,5 +101,42 @@ describe("resolveRuntimeProvider", () => {
 			UnknownRuntimeError,
 		);
 		expect(() => resolveRuntimeProvider(deps, { WARREN_RUNTIME: "nomad" })).toThrow(/nomad/);
+	});
+
+	test("threads k8sPodCache onto the K8sProvider — status() reads the cache, no cluster call", async () => {
+		// The shared coreApi factory throws if invoked; a status() that resolves off
+		// the injected cache proves the pod-watcher was wired through as podCache
+		// (pl-829f step 25 / warren-7c30).
+		const pod: V1Pod = {
+			metadata: { name: "run-x", labels: { "warren.io/run-id": "x" } },
+			status: { phase: "Running" },
+		};
+		const provider = resolveRuntimeProvider(
+			{ ...deps, k8sPodCache: { getByRunId: (id) => (id === "x" ? pod : undefined) } },
+			{ WARREN_RUNTIME: "k8s" },
+		);
+		const status = await provider.status({ runId: "x", sandboxId: "run-x", providerRunId: "" });
+		expect(status.exists).toBe(true);
+		expect(status.phase).toBe("running");
+	});
+
+	test("threads k8sPodAdmission onto the K8sProvider without touching a cluster", () => {
+		// Construction accepting the admission source is enough here — the create()
+		// admission path is covered by the provider + admission unit suites.
+		expect(() =>
+			resolveRuntimeProvider(
+				{
+					...deps,
+					k8sPodAdmission: {
+						admissionSnapshot: () => ({
+							nonTerminalPods: 0,
+							pendingPods: 0,
+							projectNonTerminalPods: 0,
+						}),
+					},
+				},
+				{ WARREN_RUNTIME: "k8s" },
+			),
+		).not.toThrow();
 	});
 });

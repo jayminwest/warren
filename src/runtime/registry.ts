@@ -24,8 +24,9 @@ import type { BurrowClient } from "../burrow-client/index.ts";
 import type { EnvLike } from "../runs/spawn/callback-env.ts";
 import type { RuntimeProvider } from "./contract.ts";
 import { UnknownRuntimeError } from "./errors.ts";
-import type { AdmissionCounterSink } from "./k8s/admission.ts";
+import type { AdmissionCounterSink, PodAdmissionSource } from "./k8s/admission.ts";
 import type { FinalizeCoordinator } from "./k8s/finalize-coordinator.ts";
+import type { PodCacheReader } from "./k8s/pod-watcher.ts";
 import { defaultCoreApiFactory, K8sProvider } from "./k8s/provider.ts";
 import type { K8sInboxStore } from "./k8s/send-message.ts";
 import { LocalProvider } from "./local/provider.ts";
@@ -88,6 +89,20 @@ export interface RuntimeProviderDeps {
 	 * `MetricsRegistry`; absent, rejections still throw but aren't counted.
 	 */
 	readonly k8sAdmissionMetrics?: AdmissionCounterSink;
+	/**
+	 * OPTIONAL live pod cache the pod-watcher maintains (pl-829f step 16 /
+	 * warren-a7ff) — only consulted for `WARREN_RUNTIME=k8s`. `status()` reads it
+	 * to skip a list-by-label round-trip; absent (or on a miss) it lists cache-
+	 * cold. Boot threads the started `PodWatcher` (src/server/main/runtime-wiring.ts).
+	 */
+	readonly k8sPodCache?: PodCacheReader;
+	/**
+	 * OPTIONAL live admission-count source the pod-watcher maintains (warren-b6f2)
+	 * — only consulted for `WARREN_RUNTIME=k8s`. `create()` reads counts off it to
+	 * gate a dispatch; absent, it lists pods by label instead. Boot threads the
+	 * same started `PodWatcher` as `k8sPodCache`.
+	 */
+	readonly k8sPodAdmission?: PodAdmissionSource;
 }
 
 /**
@@ -124,16 +139,29 @@ export function resolveRuntimeProvider(
 				...(deps.serverEnv !== undefined ? { serverEnv: deps.serverEnv } : {}),
 			});
 		case "k8s":
-			return new K8sProvider({
-				coreApi: deps.k8sCoreApi ?? defaultCoreApiFactory(),
-				...(deps.serverEnv !== undefined ? { serverEnv: deps.serverEnv } : {}),
-				...(deps.k8sRunInbox !== undefined ? { runInbox: deps.k8sRunInbox } : {}),
-				...(deps.k8sFinalizeCoordinator !== undefined
-					? { finalizeCoordinator: deps.k8sFinalizeCoordinator }
-					: {}),
-				...(deps.k8sAdmissionMetrics !== undefined
-					? { admissionMetrics: deps.k8sAdmissionMetrics }
-					: {}),
-			});
+			return buildK8sProvider(deps);
 	}
+}
+
+/**
+ * Construct the `K8sProvider` from the optional K8s slices of the shared deps
+ * bag. Every field is spread conditionally so an absent slice leaves the
+ * provider's own default in place (default core-API factory, shared finalize
+ * coordinator, cache-cold status/admission). Extracted from
+ * `resolveRuntimeProvider` to keep that selector under the complexity budget.
+ */
+function buildK8sProvider(deps: RuntimeProviderDeps): K8sProvider {
+	return new K8sProvider({
+		coreApi: deps.k8sCoreApi ?? defaultCoreApiFactory(),
+		...(deps.serverEnv !== undefined ? { serverEnv: deps.serverEnv } : {}),
+		...(deps.k8sRunInbox !== undefined ? { runInbox: deps.k8sRunInbox } : {}),
+		...(deps.k8sFinalizeCoordinator !== undefined
+			? { finalizeCoordinator: deps.k8sFinalizeCoordinator }
+			: {}),
+		...(deps.k8sAdmissionMetrics !== undefined
+			? { admissionMetrics: deps.k8sAdmissionMetrics }
+			: {}),
+		...(deps.k8sPodCache !== undefined ? { podCache: deps.k8sPodCache } : {}),
+		...(deps.k8sPodAdmission !== undefined ? { podAdmission: deps.k8sPodAdmission } : {}),
+	});
 }

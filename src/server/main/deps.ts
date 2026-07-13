@@ -5,6 +5,7 @@
  * inputs the orchestrator has already wired.
  */
 
+import type { CoreV1Api } from "@kubernetes/client-node";
 import type { BurrowClient } from "../../burrow-client/index.ts";
 import type { AnyWarrenDb } from "../../db/client.ts";
 import type { Repos } from "../../db/repos/index.ts";
@@ -30,6 +31,9 @@ import type { loadPreviewPortRangeFromEnv } from "../../preview/port-allocator.t
 import type { ProjectsConfig } from "../../projects/config.ts";
 import type { loadCanopyRegistryConfigFromEnv } from "../../registry/config.ts";
 import type { loadAutoOpenPrConfigFromEnv, RunEventBroker } from "../../runs/index.ts";
+import type { PodAdmissionSource } from "../../runtime/k8s/admission.ts";
+import type { PodMetricsSource } from "../../runtime/k8s/pod-metrics.ts";
+import type { PodCacheReader } from "../../runtime/k8s/pod-watcher.ts";
 import { resolveRuntimeProvider } from "../../runtime/registry.ts";
 import type { createWarrenConfigCache } from "../../warren-config/index.ts";
 import { IdempotencyStore } from "../idempotency.ts";
@@ -63,6 +67,21 @@ export interface BuildServerDepsInput {
 	readonly previewAuth: PreviewAuth | undefined;
 	readonly sdBinary: string;
 	readonly metricsRegistry?: MetricsRegistry;
+	/**
+	 * The started K8s pod-watcher (src/server/main/runtime-wiring.ts), present
+	 * only under `WARREN_RUNTIME=k8s`. One instance satisfies three seams: the
+	 * `K8sProvider`'s status cache + admission source (threaded onto the provider
+	 * below) and the `/metrics` pod-gauge source (`ServerDeps.podMetrics`).
+	 * Absent under `local` — no pod plumbing is wired.
+	 */
+	readonly k8sPodWatcher?: PodCacheReader & PodAdmissionSource & PodMetricsSource;
+	/**
+	 * The shared lazy `CoreV1Api` factory the pod-watcher + GC drive, threaded
+	 * onto the `K8sProvider` so its own pod create/get/delete calls reuse the same
+	 * client. Present only under `WARREN_RUNTIME=k8s`; absent, the provider builds
+	 * its own default factory (unused by `local`).
+	 */
+	readonly k8sCoreApi?: () => CoreV1Api;
 	readonly now?: () => Date;
 }
 
@@ -87,6 +106,8 @@ export function buildServerDeps(input: BuildServerDepsInput): ServerDeps {
 		previewAuth,
 		sdBinary,
 		metricsRegistry,
+		k8sPodWatcher,
+		k8sCoreApi,
 		now,
 	} = input;
 
@@ -119,6 +140,15 @@ export function buildServerDeps(input: BuildServerDepsInput): ServerDeps {
 		// admission-rejection metric sink for the K8s backend (pl-829f step 21 /
 		// warren-b6f2); ignored by LocalProvider. Absent registry ⇒ uncounted.
 		...(metricsRegistry !== undefined ? { k8sAdmissionMetrics: metricsRegistry } : {}),
+		// Shared client + live pod cache/admission source from the started
+		// pod-watcher (pl-829f step 25 / warren-7c30); present only under
+		// `WARREN_RUNTIME=k8s`, ignored by LocalProvider. Threading the SAME
+		// watcher as both cache + admission source keeps the provider and the
+		// background loops on one live view.
+		...(k8sCoreApi !== undefined ? { k8sCoreApi } : {}),
+		...(k8sPodWatcher !== undefined
+			? { k8sPodCache: k8sPodWatcher, k8sPodAdmission: k8sPodWatcher }
+			: {}),
 	});
 
 	return {
@@ -162,6 +192,9 @@ export function buildServerDeps(input: BuildServerDepsInput): ServerDeps {
 		}),
 		idempotencyStore: new IdempotencyStore(now !== undefined ? { now: () => now().getTime() } : {}),
 		...(metricsRegistry !== undefined ? { metricsRegistry } : {}),
+		// `/metrics` pod-phase gauges read live from the same pod-watcher at scrape
+		// (pl-829f step 25 / warren-7c30); absent under LocalProvider.
+		...(k8sPodWatcher !== undefined ? { podMetrics: k8sPodWatcher } : {}),
 		...(now !== undefined ? { now } : {}),
 	};
 }

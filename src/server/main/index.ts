@@ -84,6 +84,7 @@ import {
 } from "./logging.ts";
 import { bootObservability, captureBootFailure } from "./observability-wiring.ts";
 import { createPreviewAuthAndProxy } from "./preview-wiring.ts";
+import { bootK8sRuntime } from "./runtime-wiring.ts";
 import { closeDatabase, defaultSpawn, redactDbUrl, resolvePgPoolMax } from "./utils.ts";
 
 // Re-export `resolvePgPoolMax` so the strict round-trip check stays
@@ -418,6 +419,18 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 			: "workspace GC worker running",
 	);
 
+	// K8s runtime background loops (pl-829f step 25 / warren-7c30). Under
+	// `WARREN_RUNTIME=k8s` this constructs + starts the pod-watcher informer and
+	// the pod-GC loop, feeding both the shared `metricsRegistry` as their counter
+	// sink. Returns `undefined` for the default `local` backend, so the self-host
+	// boot path constructs nothing new. The started watcher is threaded into
+	// `buildServerDeps` (provider status cache + admission source + `/metrics`
+	// gauges); the shared core-API factory keeps the provider on one client.
+	const k8sRuntime = bootK8sRuntime({ env, metrics: metricsRegistry, logger });
+	if (k8sRuntime !== undefined) {
+		logger.info({}, "k8s runtime: pod-watcher + pod-GC started");
+	}
+
 	const { previewAuth, previewProxy } = createPreviewAuthAndProxy({
 		token: serverConfig.token,
 		previewLaunchConfig,
@@ -445,6 +458,9 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 		previewAuth,
 		sdBinary: schedulerConfig.sdBinary,
 		metricsRegistry,
+		...(k8sRuntime !== undefined
+			? { k8sPodWatcher: k8sRuntime.podWatcher, k8sCoreApi: k8sRuntime.coreApi }
+			: {}),
 		...(opts.now !== undefined ? { now: opts.now } : {}),
 	});
 
@@ -478,6 +494,8 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 			await previewEvictionWorker.stop();
 			await workspaceGcWorker.stop();
 			await opsStatsWorker.stop();
+			// K8s runtime loops (no-op / undefined under the local backend).
+			await k8sRuntime?.stop();
 			await bridgesBoot.registry.stopAll();
 			await burrowClient.close();
 			await closeDatabase(db);
