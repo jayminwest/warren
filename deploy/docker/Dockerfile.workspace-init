@@ -1,0 +1,40 @@
+# warren-workspace-init:latest — the init-container image (warren-186c).
+#
+# Referenced by pod-spec.ts as WARREN_K8S_INIT_IMAGE (default
+# `warren-workspace-init:latest`). Runs as the run pod's init container BEFORE
+# the agent container: it clones the base branch fresh, carves the per-run
+# branch, and drops the seed files onto the shared `/workspace` emptyDir the
+# agent then mounts (`bun run workspace:init` → src/runtime/k8s/workspace-init.ts,
+# design k8s-migration.md §4.2). A clone failure surfaces as a distinct
+# `Init:Error` pod condition before the agent ever starts.
+#
+# Lightweight by design: just bun + git + the CA roots for https clone. No
+# coding-agent toolchain (that lives in warren-agent) — the init container's only
+# job is git materialization via the extracted `src/workspace/git` primitives.
+#
+# Build context is the repo root:
+#   docker build -f deploy/docker/Dockerfile.workspace-init -t warren-workspace-init:latest .
+
+FROM oven/bun:1.2
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        git \
+        ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Warren source + its dependencies. `.dockerignore` keeps node_modules / UI build
+# out of the context so we install fresh + frozen.
+COPY package.json bun.lock ./
+RUN bun install --frozen-lockfile
+COPY . /app
+
+# The init container runs unprivileged (uid 1000, pod securityContext); give it a
+# writable HOME so git's config/credential lookups don't hit a read-only /root.
+ENV HOME=/tmp
+
+# pod-spec.ts sets the container `command` explicitly (K8S_INIT_COMMAND); this
+# CMD mirrors it so the image is runnable standalone for smoke tests.
+CMD ["bun", "run", "workspace:init"]

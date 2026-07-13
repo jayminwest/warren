@@ -130,10 +130,54 @@ manifests — the object applies regardless.
 
 **Container images** (build + push separately; the manifests only reference tags):
 
-- `warren:latest` — control-plane image (boots `warren serve`).
-- `warren-agent:latest` (`WARREN_K8S_AGENT_IMAGE`) — baked agent toolchain.
-- `warren-workspace-init:latest` (`WARREN_K8S_INIT_IMAGE`) — bun+git init image
-  running `bun run workspace:init`.
+- `warren:latest` — control-plane image (root `Dockerfile`; boots `warren serve`).
+- `warren-agent:latest` (`WARREN_K8S_AGENT_IMAGE`) — the in-pod agent toolchain
+  (`deploy/docker/Dockerfile.agent`). Bakes bun + Node + the coding-agent CLIs
+  (claude-code, pi, sapling) + os-eco CLIs (canopy/seeds/mulch/plot) + warren
+  source. Runs `bun run agent:run` (`src/runtime/k8s/agent-entrypoint.ts`): it
+  resolves the selected runtime off burrow's registry, launches the agent binary
+  directly (the pod is the sandbox — no bwrap), streams NDJSON events on stdout,
+  drains the steering inbox, and execs the finalize step after the agent exits.
+- `warren-workspace-init:latest` (`WARREN_K8S_INIT_IMAGE`) — lightweight bun+git
+  init image (`deploy/docker/Dockerfile.workspace-init`) running
+  `bun run workspace:init`.
+
+Build all three (and optionally load them into a local cluster) with the helper:
+
+```bash
+# build all three images (tags default to :latest; TAG=… overrides)
+deploy/docker/build-images.sh
+
+# build + load into a running k3d / kind cluster (the local overlays pin
+# imagePullPolicy: Never, so the node must already hold the image)
+deploy/docker/build-images.sh --load-k3d  <cluster-name>
+deploy/docker/build-images.sh --load-kind <cluster-name>
+
+# build a single image
+deploy/docker/build-images.sh --only agent    # control | agent | init
+```
+
+The equivalent raw commands (build from the repo root, then import):
+
+```bash
+docker build -f deploy/docker/Dockerfile.agent          -t warren-agent:latest .
+docker build -f deploy/docker/Dockerfile.workspace-init -t warren-workspace-init:latest .
+docker build -f Dockerfile                              -t warren:latest .
+
+k3d image import warren-agent:latest warren-workspace-init:latest warren:latest --cluster <name>
+# or, for kind:
+kind load docker-image warren-agent:latest --name <name>   # repeat per image
+```
+
+For GKE, retag to your Artifact Registry path, `docker push`, and point the
+`images:` block (or `WARREN_K8S_AGENT_IMAGE` / `WARREN_K8S_INIT_IMAGE`) at the
+pushed refs.
+
+**Agent secrets.** The agent container sources `ANTHROPIC_API_KEY` from an
+OPTIONAL `secretKeyRef` (`WARREN_K8S_ANTHROPIC_SECRET_NAME` /
+`_KEY`, default Secret `warren-anthropic-key` key `api-key`) so a run whose key
+rides the dispatch env still schedules when the Secret is absent. Provision the
+Secret alongside `warren-git-token` (design §6.3).
 
 ## Prometheus
 

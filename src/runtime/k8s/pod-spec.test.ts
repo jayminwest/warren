@@ -9,7 +9,13 @@ import {
 	DEFAULT_K8S_GIT_SECRET_NAME,
 	DEFAULT_K8S_INIT_IMAGE,
 	DEFAULT_K8S_NAMESPACE,
+	ENV_AGENT_METADATA,
+	ENV_AGENT_RUNTIME,
+	ENV_PROMPT,
+	ENV_RUN_ID,
+	ENV_WORKSPACE_PATH,
 	INIT_CONTAINER_NAME,
+	K8S_AGENT_COMMAND,
 	K8S_INIT_COMMAND,
 	type K8sPodConfig,
 	LABEL_MANAGED_BY,
@@ -313,7 +319,74 @@ describe("buildRunPod", () => {
 	test("env vars are name-sorted for a deterministic spec", () => {
 		const pod = buildRunPod(baseSpec({ env: { ZED: "1", ALPHA: "2", MID: "3" } }), config);
 		const names = (pod.spec?.containers?.[0]?.env ?? []).map((e) => e.name);
-		expect(names).toEqual(["ALPHA", "MID", "ZED"]);
+		// The domain vars ride alongside the derived run-contract vars, all sorted.
+		expect(names).toEqual([...names].sort());
+		expect(names).toEqual(expect.arrayContaining(["ALPHA", "MID", "ZED"]));
+	});
+
+	test("the agent container runs the agent-runner entry command", () => {
+		const agent = buildRunPod(baseSpec(), config).spec?.containers?.[0];
+		expect(agent?.command).toEqual([...K8S_AGENT_COMMAND]);
+	});
+
+	test("agent env threads the in-pod runner contract (run-id, workspace, runtime, prompt)", () => {
+		const pod = buildRunPod(baseSpec({ runtimeId: "sapling", prompt: "fix the bug" }), config);
+		const env = Object.fromEntries(
+			(pod.spec?.containers?.[0]?.env ?? []).map((e) => [e.name, e.value]),
+		);
+		expect(env[ENV_RUN_ID]).toBe("run_01tdf3a0wg5e");
+		expect(env[ENV_WORKSPACE_PATH]).toBe(WORKSPACE_MOUNT_PATH);
+		expect(env[ENV_AGENT_RUNTIME]).toBe("sapling");
+		expect(env[ENV_PROMPT]).toBe("fix the bug");
+		// Domain env survives (the provider folds WARREN_API_URL/TOKEN into spec.env).
+		expect(env.WARREN_API_TOKEN).toBe("tok");
+		expect(env.PLOT_ID).toBe("plot_1");
+	});
+
+	test("agent env satisfies the finalize entrypoint's required contract", () => {
+		// finalize-entrypoint requires RUN_ID + API_URL + API_TOKEN + WORKSPACE_PATH.
+		const pod = buildRunPod(
+			baseSpec({
+				env: { WARREN_API_TOKEN: "tok", WARREN_API_URL: "http://warren.warren.svc:8080" },
+			}),
+			config,
+		);
+		const env = Object.fromEntries(
+			(pod.spec?.containers?.[0]?.env ?? []).map((e) => [e.name, e.value]),
+		);
+		expect(env[ENV_RUN_ID]).toBeDefined();
+		expect(env[ENV_WORKSPACE_PATH]).toBeDefined();
+		expect(env.WARREN_API_URL).toBe("http://warren.warren.svc:8080");
+		expect(env.WARREN_API_TOKEN).toBe("tok");
+	});
+
+	test("WARREN_AGENT_METADATA carries the run metadata as JSON when present", () => {
+		const pod = buildRunPod(baseSpec({ metadata: { frontmatter: { model: "opus" } } }), config);
+		const meta = (pod.spec?.containers?.[0]?.env ?? []).find((e) => e.name === ENV_AGENT_METADATA);
+		expect(meta?.value).toBe(JSON.stringify({ frontmatter: { model: "opus" } }));
+	});
+
+	test("ANTHROPIC_API_KEY rides as an optional secretKeyRef by default", () => {
+		const agent = buildRunPod(baseSpec(), config).spec?.containers?.[0];
+		const anthropic = (agent?.env ?? []).find((e) => e.name === "ANTHROPIC_API_KEY");
+		expect(anthropic?.valueFrom?.secretKeyRef).toEqual({
+			name: config.anthropicSecret.name,
+			key: config.anthropicSecret.key,
+			optional: true,
+		});
+	});
+
+	test("a domain-supplied ANTHROPIC_API_KEY is not shadowed by the secret ref", () => {
+		const pod = buildRunPod(
+			baseSpec({ env: { WARREN_API_TOKEN: "tok", ANTHROPIC_API_KEY: "sk-inline" } }),
+			config,
+		);
+		const anthropic = (pod.spec?.containers?.[0]?.env ?? []).filter(
+			(e) => e.name === "ANTHROPIC_API_KEY",
+		);
+		expect(anthropic).toHaveLength(1);
+		expect(anthropic[0]?.value).toBe("sk-inline");
+		expect(anthropic[0]?.valueFrom).toBeUndefined();
 	});
 
 	test("no ServiceAccount by default → token automount disabled", () => {

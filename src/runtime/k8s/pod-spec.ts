@@ -28,13 +28,11 @@
 
 import type {
 	V1Container,
-	V1EnvVar,
 	V1Pod,
 	V1PodSecurityContext,
 	V1ResourceRequirements,
 	V1SecurityContext,
 	V1Volume,
-	V1VolumeMount,
 } from "@kubernetes/client-node";
 import {
 	DEFAULT_K8S_CPU_LIMIT_MILLICORES,
@@ -46,6 +44,21 @@ import {
 	type ResourcesConfig,
 } from "../../warren-config/index.ts";
 import type { RunSpec } from "../contract.ts";
+import { buildAgentEnv, buildInitEnv, buildInitVolumeMounts } from "./pod-env.ts";
+
+// Re-exported so `./pod-spec.ts` stays the single import surface for the pod
+// shape; the env builders + ENV name constants live in `./pod-env.ts` (split
+// out to keep this file under the size ratchet).
+export {
+	buildAgentEnv,
+	buildInitEnv,
+	buildInitVolumeMounts,
+	ENV_AGENT_METADATA,
+	ENV_AGENT_RUNTIME,
+	ENV_PROMPT,
+	ENV_RUN_ID,
+	ENV_WORKSPACE_PATH,
+} from "./pod-env.ts";
 
 // --- Pod-shape constants ---------------------------------------------------
 
@@ -67,6 +80,16 @@ export const AGENT_CONTAINER_NAME = "agent";
  * warren's source + bun (manifests step, warren-74b5).
  */
 export const K8S_INIT_COMMAND: readonly string[] = ["bun", "run", "workspace:init"];
+
+/**
+ * The agent container's entry command (warren-186c). Runs warren's `agent:run`
+ * package script (`src/runtime/k8s/agent-entrypoint.ts`) — the in-pod runner
+ * that launches the selected agent, streams its events as NDJSON on stdout
+ * (parsed by `./log-parse.ts` off the pod log), drains the steering inbox, and
+ * execs the finalize entrypoint after the agent exits. The path resolves against
+ * the agent image's WORKDIR, same as the init command.
+ */
+export const K8S_AGENT_COMMAND: readonly string[] = ["bun", "run", "agent:run"];
 
 /** ConfigMap-backed seed drop shared into the init container (see `./seed-configmap.ts`). */
 export const SEED_VOLUME_NAME = "seeds";
@@ -123,6 +146,17 @@ export const DEFAULT_K8S_GIT_SECRET_NAME = "warren-git-token";
 export const DEFAULT_K8S_GIT_SECRET_KEY = "token";
 
 /**
+ * K8s Secret the agent container's `ANTHROPIC_API_KEY` is sourced from (design
+ * §6.3: agent pods receive `ANTHROPIC_API_KEY` from a Secret, NOT the control
+ * plane's process env). Referenced as an OPTIONAL secretKeyRef so a run whose
+ * key rides `spec.env` (or an OAuth-token flow) still schedules when the Secret
+ * is absent. Overridable via `WARREN_K8S_ANTHROPIC_SECRET_NAME` /
+ * `WARREN_K8S_ANTHROPIC_SECRET_KEY`; the Secret is provisioned by the manifests.
+ */
+export const DEFAULT_K8S_ANTHROPIC_SECRET_NAME = "warren-anthropic-key";
+export const DEFAULT_K8S_ANTHROPIC_SECRET_KEY = "api-key";
+
+/**
  * SIGTERM grace on `cancel()` (pl-829f step 19 / warren-31d4). `cancel` is the
  * seam's GRACEFUL stop: it deletes the pod with this `gracePeriodSeconds`, so
  * the kubelet delivers SIGTERM and waits this long before SIGKILL — giving the
@@ -167,6 +201,8 @@ export interface K8sPodConfig {
 	callback: { service: string; namespace: string; port: string };
 	/** K8s Secret the init container's git token is sourced from (§6.3). */
 	gitTokenSecret: { name: string; key: string };
+	/** K8s Secret the agent container's `ANTHROPIC_API_KEY` is sourced from (§6.3). */
+	anthropicSecret: { name: string; key: string };
 	/** SIGTERM grace (seconds) `cancel()` deletes the pod with (step 19). */
 	cancelGracePeriodSeconds: number;
 	/** Grace (seconds) `terminate()` force-deletes the pod with; 0 = immediate (step 19). */
@@ -229,6 +265,10 @@ export function resolveK8sPodConfig(
 		gitTokenSecret: {
 			name: pickString(env, "WARREN_K8S_GIT_SECRET_NAME", DEFAULT_K8S_GIT_SECRET_NAME),
 			key: pickString(env, "WARREN_K8S_GIT_SECRET_KEY", DEFAULT_K8S_GIT_SECRET_KEY),
+		},
+		anthropicSecret: {
+			name: pickString(env, "WARREN_K8S_ANTHROPIC_SECRET_NAME", DEFAULT_K8S_ANTHROPIC_SECRET_NAME),
+			key: pickString(env, "WARREN_K8S_ANTHROPIC_SECRET_KEY", DEFAULT_K8S_ANTHROPIC_SECRET_KEY),
 		},
 		cancelGracePeriodSeconds: pickNonNegativeInt(
 			env,
@@ -328,56 +368,10 @@ function podSecurityContext(config: K8sPodConfig): V1PodSecurityContext {
 	};
 }
 
-/** Deterministic (name-sorted) env-var list so the spec is stable across builds. */
-function toEnvVars(env: Record<string, string>): V1EnvVar[] {
-	return Object.keys(env)
-		.sort()
-		.map((name) => ({ name, value: env[name] ?? "" }));
-}
-
 /** Options threaded from `create()` that shape the seed-delivery wiring. */
 export interface BuildRunPodOptions {
 	/** When set, mount this ConfigMap's seed manifest into the init container. */
 	seedConfigMapName?: string;
-}
-
-/**
- * The init container's env — the git coordinates the materializer needs, the
- * workspace mount path, an OPTIONAL `WARREN_GIT_TOKEN` from a Secret, and (when
- * seeds ride a ConfigMap) the manifest path. Name-sorted for a stable spec; the
- * secret ref sorts by name alongside the plain values.
- */
-function buildInitEnv(spec: RunSpec, config: K8sPodConfig, opts: BuildRunPodOptions): V1EnvVar[] {
-	const plain: Record<string, string> = {
-		WARREN_RUN_ID: spec.runId,
-		WARREN_REPO_URL: spec.originUrl,
-		WARREN_BRANCH: spec.branch,
-		WARREN_BASE_BRANCH: spec.baseBranch,
-		WARREN_WORKSPACE_PATH: WORKSPACE_MOUNT_PATH,
-	};
-	if (opts.seedConfigMapName !== undefined) plain.WARREN_SEED_MANIFEST = SEED_MANIFEST_PATH;
-	const vars: V1EnvVar[] = Object.entries(plain).map(([name, value]) => ({ name, value }));
-	vars.push({
-		name: "WARREN_GIT_TOKEN",
-		valueFrom: {
-			secretKeyRef: {
-				name: config.gitTokenSecret.name,
-				key: config.gitTokenSecret.key,
-				optional: true,
-			},
-		},
-	});
-	return vars.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
-}
-
-function buildInitVolumeMounts(opts: BuildRunPodOptions): V1VolumeMount[] {
-	const mounts: V1VolumeMount[] = [
-		{ name: WORKSPACE_VOLUME_NAME, mountPath: WORKSPACE_MOUNT_PATH },
-	];
-	if (opts.seedConfigMapName !== undefined) {
-		mounts.push({ name: SEED_VOLUME_NAME, mountPath: SEED_MOUNT_PATH, readOnly: true });
-	}
-	return mounts;
 }
 
 /**
@@ -414,8 +408,9 @@ function buildAgentContainer(spec: RunSpec, config: K8sPodConfig): V1Container {
 	return {
 		name: AGENT_CONTAINER_NAME,
 		image: config.agentImage,
+		command: [...K8S_AGENT_COMMAND],
 		workingDir: WORKSPACE_MOUNT_PATH,
-		env: toEnvVars(spec.env),
+		env: buildAgentEnv(spec, config),
 		volumeMounts: [{ name: WORKSPACE_VOLUME_NAME, mountPath: WORKSPACE_MOUNT_PATH }],
 		resources: resourceRequirements(requests, limits),
 		securityContext: containerSecurityContext(config),

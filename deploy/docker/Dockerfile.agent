@@ -1,0 +1,78 @@
+# warren-agent:latest — the in-pod agent toolchain image (warren-186c).
+#
+# Referenced by pod-spec.ts as WARREN_K8S_AGENT_IMAGE (default
+# `warren-agent:latest`). One bare Pod per run mounts the `/workspace`
+# emptyDir the workspace-init container materialized, then runs this image's
+# entrypoint (`bun run agent:run` → src/runtime/k8s/agent-entrypoint.ts). The
+# runner resolves the selected runtime off burrow's registry (`@os-eco/burrow-cli`,
+# a warren dependency installed below), launches the agent binary directly (the
+# pod IS the sandbox — no bwrap), streams its events as NDJSON on stdout, and
+# execs the finalize step after the agent exits.
+#
+# Unlike the control-plane Dockerfile this image has NO supervisor, NO
+# `burrow serve`, and NO bubblewrap/uidmap — the pod boundary replaces all of
+# that (design k8s-migration.md §2.2). It bakes the agent toolchain (design §4.3):
+# bun, real Node, the coding-agent CLIs (claude-code, pi, sapling), and the
+# os-eco data-plane CLIs (canopy/seeds/mulch/plot) the agent shells out to during
+# a run.
+#
+# Build context is the repo root:
+#   docker build -f deploy/docker/Dockerfile.agent -t warren-agent:latest .
+
+FROM oven/bun:1.2
+
+# git + https CA roots for clone/push; real Node (NodeSource LTS) for agent
+# tooling whose shims are `#!/usr/bin/env node` (parity with the control-plane
+# image, warren-a82b). No bubblewrap/uidmap/netcat — the pod is the sandbox.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        git \
+        ca-certificates \
+        curl \
+        gnupg \
+    && curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
+    && apt-get install -y --no-install-recommends nodejs \
+    && rm -rf /var/lib/apt/lists/*
+
+# Baked coding-agent runtimes + os-eco data-plane CLIs. Versions track the
+# control-plane Dockerfile's pins; bump both together on a toolchain refresh.
+# BUN_INSTALL=/usr/local relocates the global store so the uid-1000 agent finds
+# the wired /usr/local/bin/{claude,sapling,pi,sd,ml,cn,plot} symlinks.
+ENV BUN_INSTALL=/usr/local
+RUN bun install -g \
+    @os-eco/canopy-cli@0.2.4 \
+    @os-eco/seeds-cli@0.5.13 \
+    @os-eco/mulch-cli@0.10.7 \
+    @os-eco/sapling-cli@0.3.2 \
+    @os-eco/plot-cli@0.4.0 \
+    @anthropic-ai/claude-code@2.1.150 \
+    @earendil-works/pi-coding-agent@0.77.0
+
+# claude-code's postinstall (download the platform-native `claude` binary) is
+# skipped by `bun install -g`; run it explicitly so /usr/local/bin/claude exists
+# before a run spawns it.
+RUN bun run /usr/local/install/global/node_modules/@anthropic-ai/claude-code/install.cjs
+
+# Pi ships a `#!/usr/bin/env node` shebang but targets bun; patch it to run under
+# bun directly (parity with the control-plane image, warren-a82b).
+RUN sed -i '1s|^#!/usr/bin/env node|#!/usr/bin/env bun|' \
+        /usr/local/install/global/node_modules/@earendil-works/pi-coding-agent/dist/cli.js
+
+WORKDIR /app
+
+# Warren source + its dependencies (incl. `@os-eco/burrow-cli`, whose runtime
+# registry the agent-entrypoint imports). `.dockerignore` keeps node_modules and
+# the UI build out of the context so we install fresh + frozen.
+COPY package.json bun.lock ./
+RUN bun install --frozen-lockfile
+COPY . /app
+
+# Route Bun's install cache outside the workspace so `git add .` never sweeps it
+# (mirrors the domain's BUN_INSTALL_CACHE_DIR). The agent runs unprivileged
+# (uid 1000, set by the pod securityContext); give it a writable HOME on /tmp.
+ENV BUN_INSTALL_CACHE_DIR=/tmp/bun-install-cache
+ENV HOME=/tmp
+
+# pod-spec.ts sets the container `command` explicitly (K8S_AGENT_COMMAND); this
+# CMD is the same entry so the image is runnable standalone for smoke tests.
+CMD ["bun", "run", "agent:run"]
