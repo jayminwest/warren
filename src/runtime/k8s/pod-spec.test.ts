@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { DefaultsConfig } from "../../warren-config/index.ts";
+import type { ResourcesConfig } from "../../warren-config/index.ts";
 import type { RunSpec } from "../contract.ts";
 import {
 	AGENT_CONTAINER_NAME,
@@ -136,14 +136,12 @@ describe("resolveK8sPodConfig", () => {
 	});
 
 	test("sources resources + network from the .warren/config.yaml resources block", () => {
-		const defaults: DefaultsConfig = {
-			resources: {
-				requests: { memoryMiB: 512, cpuMillicores: 250 },
-				limits: { memoryMiB: 8192, cpuMillicores: 8000 },
-				network: "none",
-			},
+		const resources: ResourcesConfig = {
+			requests: { memoryMiB: 512, cpuMillicores: 250 },
+			limits: { memoryMiB: 8192, cpuMillicores: 8000 },
+			network: "none",
 		};
-		const c = resolveK8sPodConfig({}, defaults);
+		const c = resolveK8sPodConfig({}, resources);
 		expect(c.requests).toEqual({ memoryMiB: 512, cpuMillicores: 250 });
 		expect(c.limits).toEqual({ memoryMiB: 8192, cpuMillicores: 8000 });
 		expect(c.network).toBe("none");
@@ -191,14 +189,12 @@ describe("podLabelsForRun", () => {
 	});
 
 	test("network label reflects the resolved config network, not the RunSpec intent", () => {
-		const defaults: DefaultsConfig = {
-			resources: {
-				requests: { memoryMiB: 2048, cpuMillicores: 1000 },
-				limits: { memoryMiB: 4096, cpuMillicores: 4000 },
-				network: "open",
-			},
+		const resources: ResourcesConfig = {
+			requests: { memoryMiB: 2048, cpuMillicores: 1000 },
+			limits: { memoryMiB: 4096, cpuMillicores: 4000 },
+			network: "open",
 		};
-		const c = resolveK8sPodConfig({}, defaults);
+		const c = resolveK8sPodConfig({}, resources);
 		const labels = podLabelsForRun(baseSpec({ network: "none" }), c);
 		expect(labels[LABEL_NETWORK]).toBe("open");
 	});

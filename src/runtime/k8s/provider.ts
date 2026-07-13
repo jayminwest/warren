@@ -235,7 +235,7 @@ export class K8sProvider implements RuntimeProvider {
 	async create(spec: RunSpec): Promise<RunHandle> {
 		const api = this.deps.coreApi();
 		const env = this.deps.serverEnv ?? process.env;
-		const config = resolveK8sPodConfig(env);
+		const config = resolveK8sPodConfig(env, spec.projectResources);
 		const podName = podNameForRun(spec.runId);
 		const composedSpec: RunSpec = {
 			...spec,

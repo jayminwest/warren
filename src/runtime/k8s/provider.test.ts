@@ -14,7 +14,7 @@ import {
 	METRIC_ADMISSION_REJECTIONS_TOTAL,
 	type PodAdmissionSource,
 } from "./admission.ts";
-import { LABEL_PROJECT, SEED_MANIFEST_KEY } from "./pod-spec.ts";
+import { LABEL_NETWORK, LABEL_PROJECT, SEED_MANIFEST_KEY } from "./pod-spec.ts";
 import { K8S_PROVIDER_CAPABILITIES, K8sProvider, type K8sProviderDeps } from "./provider.ts";
 
 /**
@@ -279,6 +279,52 @@ describe("K8sProvider.create", () => {
 		const fake = fakeApi();
 		await makeProvider(fake).create({ ...spec, projectId: "proj_abc" });
 		expect(fake.pods[0]?.body.metadata?.labels?.[LABEL_PROJECT]).toBe("proj_abc");
+	});
+
+	// warren-aedd: per-project `.warren/config.yaml` `resources` (carried on
+	// RunSpec.projectResources by the dispatch path) must reach the pod spec.
+	// Precedence: per-run spec.resources limit > projectResources > env defaults.
+	test("folds RunSpec.projectResources into the pod's requests/limits + network label", async () => {
+		const fake = fakeApi();
+		await makeProvider(fake).create({
+			...spec,
+			projectResources: {
+				requests: { memoryMiB: 512, cpuMillicores: 250 },
+				limits: { memoryMiB: 8192, cpuMillicores: 8000 },
+				network: "open",
+			},
+		});
+		const resources = fake.pods[0]?.body.spec?.containers?.[0]?.resources;
+		expect(resources?.requests).toEqual({ memory: "512Mi", cpu: "250m" });
+		expect(resources?.limits).toEqual({ memory: "8192Mi", cpu: "8000m" });
+		expect(fake.pods[0]?.body.metadata?.labels?.[LABEL_NETWORK]).toBe("open");
+	});
+
+	test("per-run spec.resources limit WINS over projectResources.limits", async () => {
+		const fake = fakeApi();
+		await makeProvider(fake).create({
+			...spec,
+			resources: { memoryMiB: 1024, cpuMillicores: 2000 },
+			projectResources: {
+				requests: { memoryMiB: 512, cpuMillicores: 250 },
+				limits: { memoryMiB: 8192, cpuMillicores: 8000 },
+			},
+		});
+		const resources = fake.pods[0]?.body.spec?.containers?.[0]?.resources;
+		// Limit reflects the per-run override, not the project block's 8192Mi/8000m.
+		expect(resources?.limits).toEqual({ memory: "1024Mi", cpu: "2000m" });
+		// Requests still come from the project block, clamped to never exceed the limit.
+		expect(resources?.limits).not.toEqual({ memory: "8192Mi", cpu: "8000m" });
+		expect(resources?.requests).toEqual({ memory: "512Mi", cpu: "250m" });
+	});
+
+	test("absent projectResources falls back to the env/global DEFAULT_K8S_* defaults", async () => {
+		const fake = fakeApi();
+		await makeProvider(fake).create(spec);
+		const resources = fake.pods[0]?.body.spec?.containers?.[0]?.resources;
+		expect(resources?.requests).toEqual({ memory: "2048Mi", cpu: "1000m" });
+		expect(resources?.limits).toEqual({ memory: "4096Mi", cpu: "4000m" });
+		expect(fake.pods[0]?.body.metadata?.labels?.[LABEL_NETWORK]).toBe("restricted");
 	});
 });
 

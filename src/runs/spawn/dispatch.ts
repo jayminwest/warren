@@ -267,6 +267,12 @@ export async function spawnRun(input: SpawnRunInput): Promise<SpawnRunResult> {
 		...(projectDefaults?.admission?.maxConcurrentRuns !== undefined
 			? { maxProjectConcurrency: projectDefaults.admission.maxConcurrentRuns }
 			: {}),
+		// warren-aedd: carry the project's `.warren/config.yaml` `resources` block
+		// (pod requests/limits/network defaults) onto the neutral RunSpec so the
+		// K8sProvider's pod-spec resolution can fold it in. LocalProvider ignores it.
+		...(projectDefaults?.resources !== undefined
+			? { projectResources: projectDefaults.resources }
+			: {}),
 		runtimeId,
 		prompt: composeDispatchPrompt(agent.sections.system, input.prompt),
 		metadata: composeBurrowMetadata(input.metadata, agent.frontmatter),

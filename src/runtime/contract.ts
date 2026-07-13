@@ -70,6 +70,18 @@ export interface RunSpec {
 	// Isolation INTENT (provider maps to SandboxProfile | pod securityContext+resources).
 	network: "none" | "restricted" | "open";
 	resources?: { memoryMiB?: number; cpuMillicores?: number };
+	/**
+	 * OPTIONAL per-project pod resource defaults from `.warren/config.yaml`
+	 * `resources` (warren-aedd) — the dispatch path reads the project config once
+	 * and carries the subset here because the provider is built at boot and can't
+	 * re-read it per run (same pattern as `maxProjectConcurrency`). Precedence:
+	 * per-run `resources` limit > `projectResources` > env defaults. K8s only.
+	 */
+	projectResources?: {
+		requests?: { memoryMiB?: number; cpuMillicores?: number };
+		limits?: { memoryMiB?: number; cpuMillicores?: number };
+		network?: "none" | "restricted" | "open";
+	};
 	timeoutMs?: number;
 
 	/** Context drops written into the workspace (.canopy/.mulch/.seeds/.pi). */

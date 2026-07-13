@@ -42,8 +42,8 @@ import {
 	DEFAULT_K8S_MEMORY_LIMIT_MIB,
 	DEFAULT_K8S_MEMORY_REQUEST_MIB,
 	DEFAULT_K8S_NETWORK,
-	type DefaultsConfig,
 	type NetworkPolicy,
+	type ResourcesConfig,
 } from "../../warren-config/index.ts";
 import type { RunSpec } from "../contract.ts";
 
@@ -197,16 +197,15 @@ function pickNonNegativeInt(env: K8sPodConfigEnv, key: string, fallback: number)
 
 /**
  * Resolve the cluster-shaped pod defaults from the server env and a project's
- * `.warren/config.yaml` `resources` block. The `resources` block, when present,
- * arrives with all inner fields `.default()`-filled by the schema; when absent
- * we fall back to the `DEFAULT_K8S_*` constants (same posture as
- * `agent.pauseTimeoutMs`). Pure — no cluster access.
+ * `.warren/config.yaml` `resources` block (carried on `RunSpec.projectResources`
+ * by the dispatch path, warren-aedd). Each field the block supplies overrides the
+ * matching env/global default; any it omits falls back to the `DEFAULT_K8S_*`
+ * constants (same posture as `agent.pauseTimeoutMs`). Pure — no cluster access.
  */
 export function resolveK8sPodConfig(
 	env: K8sPodConfigEnv,
-	defaults?: DefaultsConfig | null,
+	resources?: ResourcesConfig | null,
 ): K8sPodConfig {
-	const resources = defaults?.resources;
 	const config: K8sPodConfig = {
 		namespace: pickString(env, "WARREN_K8S_NAMESPACE", DEFAULT_K8S_NAMESPACE),
 		agentImage: pickString(env, "WARREN_K8S_AGENT_IMAGE", DEFAULT_K8S_AGENT_IMAGE),
