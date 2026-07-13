@@ -42,6 +42,7 @@ import type {
 import { openPullRequest } from "../pr.ts";
 import type { BoundBridgeLogger } from "../stream/index.ts";
 import { dispatchAutoPlanRuns, hasAutoPlanRunFrontmatter, parsePlanIds } from "./auto-plan-run.ts";
+import { applyCloneDeltas } from "./clone-apply.ts";
 import { runPrOpen } from "./pr-open.ts";
 import { runPreviewAnnotate, runPreviewLaunch } from "./preview.ts";
 import { closeRunSeedId } from "./seeds.ts";
@@ -63,6 +64,9 @@ export interface ReapPipelineState {
 	branchPushed: boolean;
 	commitsAhead: number | null;
 	droppedCommit: boolean;
+	/** warren-e9e1 (leg 2): a `chore(warren): mirror state` commit applied the K8s
+	 * finalize's mirror deltas to the clone. Always false on the local path. */
+	cloneDeltasApplied: boolean;
 	prUrl: string | null;
 	previewLaunchState: "live" | "failed" | null;
 	previewLaunchPort: number | null;
@@ -89,6 +93,7 @@ export function createPipelineState(): ReapPipelineState {
 		branchPushed: false,
 		commitsAhead: null,
 		droppedCommit: false,
+		cloneDeltasApplied: false,
 		prUrl: null,
 		previewLaunchState: null,
 		previewLaunchPort: null,
@@ -105,8 +110,9 @@ export interface ReapPipelineContext {
 	readonly run: RunRow;
 	/** Non-null in this branch: the project clone survived. */
 	readonly project: ProjectRow;
-	/** Non-null in this branch: the burrow exposed a workspace path. */
-	readonly workspacePath: string;
+	/** HOST workspace path (LocalProvider) or `null` under K8s — finalize runs
+	 * in-pod, the domain applies mirror deltas to the clone (warren-e9e1). */
+	readonly workspacePath: string | null;
 	readonly branch: string | null;
 	readonly baseBranch: string | null;
 	/** Non-null whenever `workspacePath !== null` (same try-block). */
@@ -470,6 +476,11 @@ export async function runReapPipeline(
 	recordFinalizeErrors(ctx, finalizeResult);
 	applyFinalizeToState(state, finalizeResult);
 	await emitEmptyPushIfNeeded(ctx, state, finalizeResult);
+
+	// warren-e9e1 (leg 2): K8s merged in-pod, so apply finalize's mirror deltas to
+	// the clone host-side. Gated on the K8s discriminator; the local path already
+	// merged into the clone during finalize (byte-identical). See clone-apply.ts.
+	if (ctx.workspacePath === null) await applyCloneDeltas(ctx, state, finalizeResult);
 
 	// Domain safety-net close + auto-plan-run detection off finalize's snapshot.
 	await seedIdCloseStep(ctx, state);

@@ -160,6 +160,7 @@ export type ReapStep =
 	| "seeds_close"
 	| "plans_mirror"
 	| "seed_id_close"
+	| "clone_apply"
 	| "seeds_commit"
 	| "plot_merge"
 	| "plot_commit"
