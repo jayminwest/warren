@@ -31,12 +31,37 @@ function isRfc3339(value: string): boolean {
 	return /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$/.test(value);
 }
 
-/** `a < b` on RFC3339 stamps by parsed epoch-ms (defensive lower-bound guard). */
+/**
+ * `a < b` on RFC3339(Nano) stamps at FULL nanosecond precision (defensive
+ * lower-bound guard). `Date.parse` truncates to milliseconds, but kubelet emits
+ * nanosecond stamps (`…588100297Z`); the resume-boundary dedup (`log-stream.ts`)
+ * pairs this with a nanosecond-EXACT string equality check, so a millisecond
+ * comparison here leaves lines that share the anchor's millisecond but differ in
+ * sub-millisecond nanos classified as neither "less" (skip-before) nor "equal"
+ * (skip-at-anchor) — they fall through and get re-counted with a fresh seq on
+ * every reconnect / terminal drain, duplicating events whenever ≥2 log lines land
+ * in the anchor's millisecond (warren-245d). Comparing at nanosecond precision
+ * keeps the two checks on the same granularity so the dedup stays exact.
+ */
 export function tsLess(a: string, b: string): boolean {
-	const am = Date.parse(a);
-	const bm = Date.parse(b);
-	if (Number.isNaN(am) || Number.isNaN(bm)) return false;
-	return am < bm;
+	const na = epochNanos(a);
+	const nb = epochNanos(b);
+	if (na === null || nb === null) return false;
+	return na < nb;
+}
+
+/**
+ * Parse an RFC3339(Nano) stamp into whole epoch-nanoseconds. The whole-second
+ * part is parsed via `Date.parse` (which handles the `Z`/offset zone) after the
+ * fractional group is stripped; the fractional digits are right-padded/truncated
+ * to exactly 9 to form the nanosecond remainder. `null` on an unparseable stamp.
+ */
+function epochNanos(ts: string): bigint | null {
+	const frac = ts.match(/\.(\d+)/);
+	const nanosStr = frac?.[1] !== undefined ? frac[1].padEnd(9, "0").slice(0, 9) : "000000000";
+	const wholeMs = Date.parse(ts.replace(/\.\d+/, ""));
+	if (Number.isNaN(wholeMs)) return null;
+	return BigInt(Math.trunc(wholeMs / 1000)) * 1_000_000_000n + BigInt(nanosStr);
 }
 
 /** Parse a log line's JSON content; `null` on any malformed / non-object line. */

@@ -1,6 +1,7 @@
 import { ValidationError } from "../../../core/errors.ts";
 import { readProviderFrontmatter } from "../../../registry/schema.ts";
 import { spawnRun } from "../../../runs/index.ts";
+import { resolveRuntimeProvider } from "../../../runtime/registry.ts";
 import type { IdempotentDispatch } from "../../idempotency.ts";
 import { jsonResponse } from "../../response.ts";
 import type { RouteHandler, ServerDeps } from "../../types.ts";
@@ -133,6 +134,12 @@ export function createRunHandler(deps: ServerDeps): RouteHandler {
 		const options: Parameters<typeof spawnRun>[0] = {
 			repos: deps.repos,
 			burrowClient: deps.burrowClient,
+			// warren-245d: thread the resolved runtime provider so POST /runs
+			// dispatches through the K8sProvider under WARREN_RUNTIME=k8s. Without
+			// this, spawnRun fell back to the burrow LocalProvider and every K8s
+			// dispatch 503'd `burrow_unreachable`. Mirrors conversations.ts.
+			runtimeProvider:
+				deps.runtimeProvider ?? resolveRuntimeProvider({ burrowClient: () => deps.burrowClient }),
 			agentName,
 			projectId,
 			prompt,

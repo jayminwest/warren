@@ -10,6 +10,7 @@ import { ProjectLacksSeedsError } from "../../plan-runs/errors.ts";
 import { computeReadyPlans, type ReadyPlanInput } from "../../plan-runs/index.ts";
 import { addProject, deleteProject, listProjects, refreshProject } from "../../projects/index.ts";
 import { spawnRun } from "../../runs/index.ts";
+import { resolveRuntimeProvider } from "../../runtime/registry.ts";
 import { listPlans, listSeedStatuses, showPlan, showSeed } from "../../seeds-cli/index.ts";
 import { buildTriggerSummaries, parseCron, resolveCronPrompt } from "../../triggers/index.ts";
 import {
@@ -271,6 +272,10 @@ export function runProjectTriggerHandler(deps: ServerDeps): RouteHandler {
 		const result = await spawnRun({
 			repos: deps.repos,
 			burrowClient: deps.burrowClient,
+			// warren-245d: dispatch through the resolved runtime provider so the
+			// manual-run path honors WARREN_RUNTIME=k8s (else it 503s on burrow).
+			runtimeProvider:
+				deps.runtimeProvider ?? resolveRuntimeProvider({ burrowClient: () => deps.burrowClient }),
 			agentName: trigger.role,
 			projectId: project.id,
 			prompt,

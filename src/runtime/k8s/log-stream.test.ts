@@ -306,6 +306,30 @@ describe("streamK8sLogs — resume cursor", () => {
 		expect(events.map((e) => e.kind)).toEqual(["a", "b", "c", "d"]);
 		expect(events.map((e) => e.seq)).toEqual([1, 2, 3, 4]);
 	});
+
+	test("sinceTime reconnect de-dups boundary lines that share a MILLISECOND but differ in nanos (warren-245d)", async () => {
+		// Two lines in the SAME wall-clock millisecond (.000) but distinct nanos —
+		// kubelet emits RFC3339Nano, and the sinceTime resume is second-granularity,
+		// so the reconnect re-returns BOTH. Before the fix, `tsLess`'s millisecond
+		// `Date.parse` saw ts(2,100) as NEITHER less-than nor equal-to the anchor
+		// ts(2,200) (equal by ms, unequal by nanosecond string), so it fell through
+		// and was re-counted with a fresh seq — a duplicate event. Reproduced live
+		// against k3d (3 same-ms NDJSON lines yielded 5 events instead of 3).
+		const conn1 = linesThenDrop(
+			ev(ts(2, 100), { kind: "a", payload: {} }),
+			ev(ts(2, 200), { kind: "b", payload: {} }),
+		);
+		// conn2 (sinceTime=ts(2,200)) re-returns the whole second — both counted
+		// lines — plus a genuinely new one at ts(3).
+		const conn2 = lines(
+			ev(ts(2, 100), { kind: "a", payload: {} }),
+			ev(ts(2, 200), { kind: "b", payload: {} }),
+			ev(ts(3), { kind: "c", payload: {} }),
+		);
+		const { events } = await drain(run([conn1, conn2], probeSequence(RUNNING, TERMINAL)).stream);
+		expect(events.map((e) => e.kind)).toEqual(["a", "b", "c"]);
+		expect(events.map((e) => e.seq)).toEqual([1, 2, 3]);
+	});
 });
 
 // --- Termination + drain ----------------------------------------------------

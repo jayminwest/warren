@@ -36,6 +36,7 @@ import {
 	resolveHealProject,
 } from "../../healer/index.ts";
 import { spawnRun } from "../../runs/index.ts";
+import { resolveRuntimeProvider } from "../../runtime/registry.ts";
 import {
 	DEFAULT_HEALER_ROLE,
 	type LoadedWarrenConfig,
@@ -166,6 +167,10 @@ async function dispatchHealer(
 	const result = await spawnRun({
 		repos: deps.repos,
 		burrowClient: deps.burrowClient,
+		// warren-245d: dispatch through the resolved runtime provider so the
+		// alert auto-heal path honors WARREN_RUNTIME=k8s (else it 503s on burrow).
+		runtimeProvider:
+			deps.runtimeProvider ?? resolveRuntimeProvider({ burrowClient: () => deps.burrowClient }),
 		agentName: candidate.role,
 		projectId: candidate.projectId,
 		prompt: buildHealPrompt(alert),
