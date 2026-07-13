@@ -30,6 +30,9 @@
  */
 
 import { ApiException, CoreV1Api, KubeConfig, type V1Pod, Watch } from "@kubernetes/client-node";
+import type { BurrowClient } from "../../burrow-client/index.ts";
+import type { RuntimeProvider } from "../../runtime/contract.ts";
+import type { AdmissionCounterSink } from "../../runtime/k8s/admission.ts";
 import { PodGc } from "../../runtime/k8s/pod-gc.ts";
 import { LABEL_RUN_ID, resolveK8sPodConfig } from "../../runtime/k8s/pod-spec.ts";
 import {
@@ -38,7 +41,8 @@ import {
 	PodWatcher,
 	type WatchFn,
 } from "../../runtime/k8s/pod-watcher.ts";
-import { resolveRuntimeKind } from "../../runtime/registry.ts";
+import type { K8sInboxStore } from "../../runtime/k8s/send-message.ts";
+import { resolveRuntimeKind, resolveRuntimeProvider } from "../../runtime/registry.ts";
 import type { EnvLike } from "../config.ts";
 import type { Logger } from "../types.ts";
 
@@ -127,6 +131,53 @@ export function bootK8sRuntime(input: BootK8sRuntimeInput): K8sRuntimeHandle | u
 			await podWatcher.stop();
 		},
 	};
+}
+
+export interface ResolveBootRuntimeProviderInput {
+	readonly env: EnvLike;
+	readonly burrowClient: BurrowClient;
+	/** run_inbox steering store (K8s `sendMessage`); ignored by LocalProvider. */
+	readonly runInbox: () => K8sInboxStore;
+	/** Admission-rejection metric sink (K8s, warren-b6f2); absent ⇒ uncounted. */
+	readonly admissionMetrics?: AdmissionCounterSink;
+	/**
+	 * The started K8s runtime (pod-watcher + shared client), present only under
+	 * `WARREN_RUNTIME=k8s`. Its pod-watcher is threaded as the provider's status
+	 * cache + admission source; its core-API factory keeps the provider on one
+	 * client. Absent ⇒ `resolveRuntimeProvider` builds a LocalProvider.
+	 */
+	readonly k8sRuntime?: K8sRuntimeHandle;
+}
+
+/**
+ * Resolve the runtime provider ONCE at boot (warren-c531) — the sole composition
+ * point. `bootServer` calls this BEFORE `bootBridges` so the same provider
+ * instance flows into the bridge registry, the run-state poller, the watchdog,
+ * and `ServerDeps`. Selects on `WARREN_RUNTIME`: default `local` → the
+ * burrow-backed `LocalProvider`; `k8s` → the `K8sProvider` fed the started
+ * pod-watcher. Extracted here (rather than inline in `index.ts`) to keep the
+ * orchestrator under its file-size budget and co-locate it with `bootK8sRuntime`.
+ */
+export function resolveBootRuntimeProvider(
+	input: ResolveBootRuntimeProviderInput,
+): RuntimeProvider {
+	return resolveRuntimeProvider(
+		{
+			burrowClient: () => input.burrowClient,
+			k8sRunInbox: input.runInbox,
+			...(input.admissionMetrics !== undefined
+				? { k8sAdmissionMetrics: input.admissionMetrics }
+				: {}),
+			...(input.k8sRuntime !== undefined
+				? {
+						k8sCoreApi: input.k8sRuntime.coreApi,
+						k8sPodCache: input.k8sRuntime.podWatcher,
+						k8sPodAdmission: input.k8sRuntime.podWatcher,
+					}
+				: {}),
+		},
+		input.env,
+	);
 }
 
 /**

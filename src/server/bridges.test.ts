@@ -6,6 +6,7 @@ import {
 	type BridgeRunStreamResult,
 	RunEventBroker,
 } from "../runs/index.ts";
+import type { RuntimeProvider } from "../runtime/contract.ts";
 import { makePool, reapStub } from "./bridges.test-helpers.ts";
 import { createBridgeRegistry } from "./bridges.ts";
 
@@ -20,6 +21,41 @@ describe("createBridgeRegistry", () => {
 
 	afterEach(async () => {
 		await db.close();
+	});
+
+	test("warren-c531: threads runtimeProvider into every bridge it starts", async () => {
+		const captured: (RuntimeProvider | undefined)[] = [];
+		const provider = { capabilities: {} } as unknown as RuntimeProvider;
+		const registry = createBridgeRegistry({
+			repos,
+			broker: new RunEventBroker(),
+			burrowClient: await makePool(repos),
+			runtimeProvider: provider,
+			bridge: async (input) => {
+				captured.push(input.runtimeProvider);
+				return { written: 0, skipped: 0, errored: false };
+			},
+		});
+
+		registry.start("run_aaaaaaaaaaaa", "burrow_run_xxxxxxxxxx", "bur_a");
+		await registry.stopAll();
+		expect(captured).toEqual([provider]);
+	});
+
+	test("start() omits runtimeProvider when the registry has none (local default)", async () => {
+		const captured: (RuntimeProvider | undefined)[] = [];
+		const registry = createBridgeRegistry({
+			repos,
+			broker: new RunEventBroker(),
+			burrowClient: await makePool(repos),
+			bridge: async (input) => {
+				captured.push(input.runtimeProvider);
+				return { written: 0, skipped: 0, errored: false };
+			},
+		});
+		registry.start("run_cccccccccccc", "burrow_run_zzzzzzzzzz", "bur_c");
+		await registry.stopAll();
+		expect(captured).toEqual([undefined]);
 	});
 
 	test("start() invokes the bridge factory once per runId", async () => {

@@ -41,8 +41,6 @@
  * unbounded. Tests inject a stub bridge factory to avoid a real burrow.
  */
 
-import { NotFoundError as BurrowNotFoundError } from "@os-eco/burrow-cli";
-import { withTransportMapping } from "../burrow-client/client.ts";
 import type { BurrowClient } from "../burrow-client/index.ts";
 import type { Repos } from "../db/repos/index.ts";
 import type { RunMode } from "../db/schema.ts";
@@ -64,6 +62,8 @@ import {
 	type ConversationTurnHandler,
 	createConversationTurnHandler,
 } from "../runs/stream/conversation-turn.ts";
+import type { RuntimeProvider } from "../runtime/contract.ts";
+import { LocalProvider } from "../runtime/local/provider.ts";
 import type { SeedsCliDeps } from "../seeds-cli/index.ts";
 import type { WarrenConfigCache } from "../warren-config/index.ts";
 import { defaultSleep, reconcileLostBurrowRun, runWithReconnect } from "./bridge-reconnect.ts";
@@ -113,6 +113,17 @@ export interface CreateBridgeRegistryInput {
 	 * reap path on `terminalDetected` consumes the same pool.
 	 */
 	readonly burrowClient: BurrowClient;
+	/**
+	 * Runtime-provider seam (warren-c531). Threaded into every bridge the
+	 * registry starts so `bridgeRunStream`'s event stream + run-state poller
+	 * speak the ACTIVE backend (`streamEvents`/`status`) rather than always
+	 * defaulting to the burrow-backed `LocalProvider`. Boot resolves it once
+	 * (`resolveRuntimeProvider`) and hands the same instance here; the
+	 * `bootBridges` ghost-run pre-probe reconciles via `provider.status()` too.
+	 * Omitted (tests / `local`) ⇒ a `LocalProvider` over `burrowClient`, so the
+	 * self-host path is byte-identical.
+	 */
+	readonly runtimeProvider?: RuntimeProvider;
 	readonly logger?: BridgeLogger;
 	/**
 	 * Override the per-run bridge factory (tests). Defaults to the live
@@ -222,6 +233,7 @@ export function createBridgeRegistry(input: CreateBridgeRegistryInput): BridgeRe
 			stallCeiling,
 			sleep,
 			conversationTurn,
+			...(input.runtimeProvider !== undefined ? { runtimeProvider: input.runtimeProvider } : {}),
 			...(mode !== undefined ? { mode } : {}),
 			...(input.logger !== undefined ? { logger: input.logger } : {}),
 			...(input.autoOpenPr !== undefined ? { autoOpenPr: input.autoOpenPr } : {}),
@@ -311,6 +323,13 @@ export interface BootBridgesResult {
  */
 export async function bootBridges(input: CreateBridgeRegistryInput): Promise<BootBridgesResult> {
 	const registry = createBridgeRegistry(input);
+	// warren-c531: the ghost-run pre-probe reconciles via `provider.status()` so
+	// it is runtime-aware — under `WARREN_RUNTIME=k8s` a GC'd pod surfaces as
+	// `exists:false` exactly as burrow's 404 did, with no direct burrow call. The
+	// same instance the registry threads into every bridge; default to a
+	// burrow-backed `LocalProvider` so the self-host path is unchanged.
+	const provider: RuntimeProvider =
+		input.runtimeProvider ?? new LocalProvider({ burrowClient: () => input.burrowClient });
 	const candidates = await input.repos.runs.listByState(["queued", "running"]);
 	const resumed: { runId: string; burrowRunId: string }[] = [];
 	const skipped: { runId: string; reason: string }[] = [];
@@ -332,58 +351,63 @@ export async function bootBridges(input: CreateBridgeRegistryInput): Promise<Boo
 			);
 			continue;
 		}
-		// warren-b1a9: probe burrow for the run BEFORE starting the bridge.
-		// On a machine restart burrow may have lost in-flight runs from its
-		// in-memory store; without this pre-check the bridge would start,
-		// 404 on its first poll, and only then reconcile. The pre-check is
-		// cheap (one GET per active run at boot) and gives operators a clean
-		// `skipped: 'burrow_run_lost'` signal in the result.
+		// warren-b1a9 / warren-c531: reconcile ghost runs BEFORE starting the
+		// bridge via `provider.status()`. On a machine restart the backend may
+		// have lost in-flight runs from its store; without this pre-check the
+		// bridge would start, see the run vanish on its first poll, and only then
+		// reconcile. Routing through the provider makes it runtime-aware — a
+		// burrow 404 and a GC'd pod both surface as `exists:false`, with no
+		// direct burrow call under `WARREN_RUNTIME=k8s`. `status()` never throws
+		// on a missing run; a real transport failure DOES throw, and we fall
+		// through to start the bridge (its reconnect loop is the correct place to
+		// wait for a transiently-unreachable backend).
+		let lost = false;
 		try {
-			const client = input.burrowClient;
-			await withTransportMapping(client.config, () => client.http.runs.get(run.burrowRunId ?? ""));
+			const status = await provider.status({
+				runId: run.id,
+				sandboxId: run.burrowId,
+				providerRunId: run.burrowRunId,
+			});
+			lost = !status.exists;
 		} catch (err) {
-			if (err instanceof BurrowNotFoundError) {
-				// warren-c770: a `conversation` run's burrow run legitimately
-				// disappears across a host restart (the pi-chat session lived in
-				// burrow's in-memory store). Finalizing it to `burrow_run_lost`
-				// here would tombstone a healthy conversation; instead leave the
-				// row non-terminal and skip the bridge. Re-wake (warren-6ccf) is
-				// responsible for spawning a fresh pi session that replays the
-				// persisted transcript.
-				if (run.mode === "conversation") {
-					skipped.push({ runId: run.id, reason: "conversation_burrow_lost" });
-					input.logger?.info?.(
-						{ runId: run.id, burrowRunId: run.burrowRunId },
-						"skipping recovery: conversation burrow run lost (awaiting re-wake)",
-					);
-					continue;
-				}
-				skipped.push({ runId: run.id, reason: "burrow_run_lost" });
-				await reconcileLostBurrowRun({
-					runId: run.id,
-					burrowRunId: run.burrowRunId,
-					repos: input.repos,
-					broker: input.broker,
-					burrowClient: input.burrowClient,
-					logger: bindBridgeLogger(input.logger, {
-						run_id: run.id,
-						burrow_run_id: run.burrowRunId,
-					}),
-				});
-				continue;
-			}
-			// Transport errors / pool-resolution failures: log and fall through
-			// to start the bridge anyway. The bridge's reconnect loop is the
-			// correct place to wait for a transiently-unreachable worker; the
-			// reconciler is only for the structural "burrow has no record" case.
 			input.logger?.warn?.(
 				{
 					runId: run.id,
 					burrowRunId: run.burrowRunId,
 					err: err instanceof Error ? err.message : String(err),
 				},
-				"bootBridges reconcile probe failed (non-404); starting bridge anyway",
+				"bootBridges reconcile probe failed (transport); starting bridge anyway",
 			);
+		}
+		if (lost) {
+			// warren-c770: a `conversation` run's backend run legitimately
+			// disappears across a host restart (the pi-chat session lived in the
+			// backend's in-memory store). Finalizing it to `burrow_run_lost` here
+			// would tombstone a healthy conversation; instead leave the row
+			// non-terminal and skip the bridge. Re-wake (warren-6ccf) is
+			// responsible for spawning a fresh pi session that replays the
+			// persisted transcript.
+			if (run.mode === "conversation") {
+				skipped.push({ runId: run.id, reason: "conversation_burrow_lost" });
+				input.logger?.info?.(
+					{ runId: run.id, burrowRunId: run.burrowRunId },
+					"skipping recovery: conversation burrow run lost (awaiting re-wake)",
+				);
+				continue;
+			}
+			skipped.push({ runId: run.id, reason: "burrow_run_lost" });
+			await reconcileLostBurrowRun({
+				runId: run.id,
+				burrowRunId: run.burrowRunId,
+				repos: input.repos,
+				broker: input.broker,
+				burrowClient: input.burrowClient,
+				logger: bindBridgeLogger(input.logger, {
+					run_id: run.id,
+					burrow_run_id: run.burrowRunId,
+				}),
+			});
+			continue;
 		}
 		registry.start(run.id, run.burrowRunId, run.burrowId, run.mode);
 		resumed.push({ runId: run.id, burrowRunId: run.burrowRunId });

@@ -84,7 +84,7 @@ import {
 } from "./logging.ts";
 import { bootObservability, captureBootFailure } from "./observability-wiring.ts";
 import { createPreviewAuthAndProxy } from "./preview-wiring.ts";
-import { bootK8sRuntime } from "./runtime-wiring.ts";
+import { bootK8sRuntime, resolveBootRuntimeProvider } from "./runtime-wiring.ts";
 import { closeDatabase, defaultSpawn, redactDbUrl, resolvePgPoolMax } from "./utils.ts";
 
 // Re-export `resolvePgPoolMax` so the strict round-trip check stays
@@ -185,10 +185,43 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 	const schedulerConfig = loadTriggerSchedulerConfigFromEnv(env);
 	const seedsCli = { sdBinary: schedulerConfig.sdBinary, spawn: defaultSpawn };
 
+	// K8s runtime background loops (pl-829f step 25 / warren-7c30). Under
+	// `WARREN_RUNTIME=k8s` this constructs + starts the pod-watcher informer and
+	// the pod-GC loop, feeding both the shared `metricsRegistry` as their counter
+	// sink. Returns `undefined` for the default `local` backend, so the self-host
+	// boot path constructs nothing new. The started watcher is the provider's
+	// status cache + admission source and the `/metrics` gauge source; the shared
+	// core-API factory keeps the provider on one client.
+	//
+	// warren-c531: booted HERE (before `bootBridges`) so the runtime provider can
+	// be resolved once and threaded into the bridge registry, the run-state
+	// poller, and the watchdog — all of which run before `buildServerDeps`. Until
+	// this move, the provider was resolved late (in `buildServerDeps`) and those
+	// background paths defaulted to the burrow-backed `LocalProvider`, so under
+	// `WARREN_RUNTIME=k8s` the bridge/poller spoke burrow directly and never
+	// streamed pod-log events / reconciled terminal pod status.
+	const k8sRuntime = bootK8sRuntime({ env, metrics: metricsRegistry, logger });
+	if (k8sRuntime !== undefined) {
+		logger.info({}, "k8s runtime: pod-watcher + pod-GC started");
+	}
+
+	// Resolve the runtime provider ONCE — the sole composition point (warren-c531,
+	// formerly in `buildServerDeps`). The SAME instance flows into the bridge
+	// registry, run-state poller, watchdog, and `ServerDeps`. See
+	// `resolveBootRuntimeProvider` for the `WARREN_RUNTIME` selection semantics.
+	const runtimeProvider = resolveBootRuntimeProvider({
+		env,
+		burrowClient,
+		runInbox: () => repos.runInbox,
+		...(metricsRegistry !== undefined ? { admissionMetrics: metricsRegistry } : {}),
+		...(k8sRuntime !== undefined ? { k8sRuntime } : {}),
+	});
+
 	const bridgesBoot = await bootBridges({
 		repos,
 		broker,
 		burrowClient,
+		runtimeProvider,
 		logger: bridgeLoggerFromPino(logger),
 		autoOpenPr,
 		warrenConfigs,
@@ -370,6 +403,10 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 			projectSpawn: defaultSpawn,
 			seedsCli,
 			autoOpenPr,
+			// warren-c531: the watchdog's graceful cancel routes through the same
+			// resolved provider so a hung K8s run is SIGTERM'd via the pod, not a
+			// burrow cancel.
+			runtimeProvider,
 			...(runBranchPrefixDefault !== undefined ? { runBranchPrefixDefault } : {}),
 			logger,
 			...(opts.now !== undefined ? { now: opts.now } : {}),
@@ -419,18 +456,6 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 			: "workspace GC worker running",
 	);
 
-	// K8s runtime background loops (pl-829f step 25 / warren-7c30). Under
-	// `WARREN_RUNTIME=k8s` this constructs + starts the pod-watcher informer and
-	// the pod-GC loop, feeding both the shared `metricsRegistry` as their counter
-	// sink. Returns `undefined` for the default `local` backend, so the self-host
-	// boot path constructs nothing new. The started watcher is threaded into
-	// `buildServerDeps` (provider status cache + admission source + `/metrics`
-	// gauges); the shared core-API factory keeps the provider on one client.
-	const k8sRuntime = bootK8sRuntime({ env, metrics: metricsRegistry, logger });
-	if (k8sRuntime !== undefined) {
-		logger.info({}, "k8s runtime: pod-watcher + pod-GC started");
-	}
-
 	const { previewAuth, previewProxy } = createPreviewAuthAndProxy({
 		token: serverConfig.token,
 		previewLaunchConfig,
@@ -442,6 +467,9 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 		repos,
 		db,
 		burrowClient,
+		// warren-c531: the provider resolved once above (before bootBridges) — the
+		// sole composition point; deps no longer re-resolves a second instance.
+		runtimeProvider,
 		broker,
 		bridges: bridgesBoot.registry,
 		canopyConfig,
@@ -458,9 +486,9 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 		previewAuth,
 		sdBinary: schedulerConfig.sdBinary,
 		metricsRegistry,
-		...(k8sRuntime !== undefined
-			? { k8sPodWatcher: k8sRuntime.podWatcher, k8sCoreApi: k8sRuntime.coreApi }
-			: {}),
+		// `/metrics` pod-phase gauges read live from the same pod-watcher at scrape
+		// (warren-7c30); absent under LocalProvider.
+		...(k8sRuntime !== undefined ? { k8sPodWatcher: k8sRuntime.podWatcher } : {}),
 		...(opts.now !== undefined ? { now: opts.now } : {}),
 	});
 

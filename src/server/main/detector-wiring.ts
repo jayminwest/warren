@@ -54,6 +54,7 @@ import {
 	type WatchdogHandle,
 } from "../../runs/index.ts";
 import { bootOpsStatsWorker, type OpsStatsWorkerHandle } from "../../runs/ops-stats.ts";
+import type { RuntimeProvider } from "../../runtime/contract.ts";
 import type { SeedsCliDeps } from "../../seeds-cli/index.ts";
 import type { WarrenConfigCache } from "../../warren-config/index.ts";
 import type { EnvLike } from "../config.ts";
@@ -204,6 +205,13 @@ export interface WatchdogWiringInput {
 	readonly burrowClient: BurrowClient;
 	readonly broker: RunEventBroker;
 	readonly autoOpenPr: AutoOpenPrConfig;
+	/**
+	 * Runtime-provider seam (warren-c531). Threaded into the watchdog tick so its
+	 * best-effort graceful cancel of a hung run routes through `provider.cancel()`
+	 * on the ACTIVE backend rather than always the burrow-backed `LocalProvider`.
+	 * Omitted ⇒ the tick defaults to a `LocalProvider` over `burrowClient`.
+	 */
+	readonly runtimeProvider?: RuntimeProvider;
 	readonly logger: Logger;
 	readonly now?: () => Date;
 }
@@ -216,6 +224,7 @@ export function bootWatchdogFromEnv(input: WatchdogWiringInput): WatchdogHandle 
 		burrowClient: input.burrowClient,
 		broker: input.broker,
 		autoOpenPr: input.autoOpenPr,
+		...(input.runtimeProvider !== undefined ? { runtimeProvider: input.runtimeProvider } : {}),
 		heartbeatTimeoutMs: config.heartbeatTimeoutMs,
 		tickMs: config.tickMs,
 		disabled: !config.enabled,
@@ -250,6 +259,8 @@ export interface BackgroundDetectorWiringInput {
 	readonly projectSpawn: SpawnFn;
 	readonly seedsCli: SeedsCliDeps;
 	readonly autoOpenPr: AutoOpenPrConfig;
+	/** Runtime-provider seam (warren-c531) — forwarded to the watchdog tick. */
+	readonly runtimeProvider?: RuntimeProvider;
 	readonly runBranchPrefixDefault?: string;
 	readonly logger: Logger;
 	readonly now?: () => Date;
@@ -289,6 +300,7 @@ export function bootBackgroundDetectors(
 		burrowClient: input.burrowClient,
 		broker: input.broker,
 		autoOpenPr: input.autoOpenPr,
+		...(input.runtimeProvider !== undefined ? { runtimeProvider: input.runtimeProvider } : {}),
 		logger: input.logger,
 		...now,
 	});

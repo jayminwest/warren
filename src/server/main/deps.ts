@@ -5,7 +5,6 @@
  * inputs the orchestrator has already wired.
  */
 
-import type { CoreV1Api } from "@kubernetes/client-node";
 import type { BurrowClient } from "../../burrow-client/index.ts";
 import type { AnyWarrenDb } from "../../db/client.ts";
 import type { Repos } from "../../db/repos/index.ts";
@@ -31,10 +30,10 @@ import type { loadPreviewPortRangeFromEnv } from "../../preview/port-allocator.t
 import type { ProjectsConfig } from "../../projects/config.ts";
 import type { loadCanopyRegistryConfigFromEnv } from "../../registry/config.ts";
 import type { loadAutoOpenPrConfigFromEnv, RunEventBroker } from "../../runs/index.ts";
+import type { RuntimeProvider } from "../../runtime/contract.ts";
 import type { PodAdmissionSource } from "../../runtime/k8s/admission.ts";
 import type { PodMetricsSource } from "../../runtime/k8s/pod-metrics.ts";
 import type { PodCacheReader } from "../../runtime/k8s/pod-watcher.ts";
-import { resolveRuntimeProvider } from "../../runtime/registry.ts";
 import type { createWarrenConfigCache } from "../../warren-config/index.ts";
 import { IdempotencyStore } from "../idempotency.ts";
 import type { BridgeRegistry, Logger, ServerDeps } from "../types.ts";
@@ -51,6 +50,14 @@ export interface BuildServerDepsInput {
 	readonly repos: Repos;
 	readonly db: AnyWarrenDb;
 	readonly burrowClient: BurrowClient;
+	/**
+	 * The runtime provider resolved ONCE at boot (`resolveRuntimeProvider`,
+	 * warren-c531) — the sole composition point. `bootServer` resolves it before
+	 * `bootBridges` (so the bridge registry, run-state poller, and watchdog all
+	 * share the same instance) and hands it here rather than deps re-resolving a
+	 * second instance. Under `local` it is the burrow-backed `LocalProvider`.
+	 */
+	readonly runtimeProvider: RuntimeProvider;
 	readonly broker: RunEventBroker;
 	readonly bridges: BridgeRegistry;
 	readonly canopyConfig: CanopyConfig;
@@ -75,13 +82,6 @@ export interface BuildServerDepsInput {
 	 * Absent under `local` — no pod plumbing is wired.
 	 */
 	readonly k8sPodWatcher?: PodCacheReader & PodAdmissionSource & PodMetricsSource;
-	/**
-	 * The shared lazy `CoreV1Api` factory the pod-watcher + GC drive, threaded
-	 * onto the `K8sProvider` so its own pod create/get/delete calls reuse the same
-	 * client. Present only under `WARREN_RUNTIME=k8s`; absent, the provider builds
-	 * its own default factory (unused by `local`).
-	 */
-	readonly k8sCoreApi?: () => CoreV1Api;
 	readonly now?: () => Date;
 }
 
@@ -90,6 +90,7 @@ export function buildServerDeps(input: BuildServerDepsInput): ServerDeps {
 		repos,
 		db,
 		burrowClient,
+		runtimeProvider,
 		broker,
 		bridges,
 		canopyConfig,
@@ -107,7 +108,6 @@ export function buildServerDeps(input: BuildServerDepsInput): ServerDeps {
 		sdBinary,
 		metricsRegistry,
 		k8sPodWatcher,
-		k8sCoreApi,
 		now,
 	} = input;
 
@@ -128,28 +128,9 @@ export function buildServerDeps(input: BuildServerDepsInput): ServerDeps {
 	const previewHostForDeps =
 		previewLaunchConfig.host !== null ? previewLaunchConfig.host : undefined;
 
-	// Runtime-provider seam (K8s migration pl-829f step 13 / warren-1f56).
-	// Resolved once here — the sole composition point — on `WARREN_RUNTIME`
-	// (default `local` → the burrow-backed `LocalProvider` over this same pool,
-	// passed as a factory so it resolves its container worker lazily).
-	const runtimeProvider = resolveRuntimeProvider({
-		burrowClient: () => burrowClient,
-		// run_inbox steering store for the K8s backend (pl-829f step 18 /
-		// warren-3d0b); ignored by LocalProvider.
-		k8sRunInbox: () => repos.runInbox,
-		// admission-rejection metric sink for the K8s backend (pl-829f step 21 /
-		// warren-b6f2); ignored by LocalProvider. Absent registry ⇒ uncounted.
-		...(metricsRegistry !== undefined ? { k8sAdmissionMetrics: metricsRegistry } : {}),
-		// Shared client + live pod cache/admission source from the started
-		// pod-watcher (pl-829f step 25 / warren-7c30); present only under
-		// `WARREN_RUNTIME=k8s`, ignored by LocalProvider. Threading the SAME
-		// watcher as both cache + admission source keeps the provider and the
-		// background loops on one live view.
-		...(k8sCoreApi !== undefined ? { k8sCoreApi } : {}),
-		...(k8sPodWatcher !== undefined
-			? { k8sPodCache: k8sPodWatcher, k8sPodAdmission: k8sPodWatcher }
-			: {}),
-	});
+	// Runtime-provider seam (warren-c531): the provider is resolved ONCE at boot
+	// (before `bootBridges`, so the bridge registry + poller + watchdog share it)
+	// and threaded in here, rather than deps re-resolving a second instance.
 
 	return {
 		repos,

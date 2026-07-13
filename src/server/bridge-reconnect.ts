@@ -30,6 +30,7 @@ import {
 	destroyBurrowWorkspaceById,
 } from "../runs/reap/destroy.ts";
 import type { ConversationTurnHandler } from "../runs/stream/conversation-turn.ts";
+import type { RuntimeProvider } from "../runtime/contract.ts";
 import type { SeedsCliDeps } from "../seeds-cli/index.ts";
 import type { WarrenConfigCache } from "../warren-config/index.ts";
 import {
@@ -50,6 +51,13 @@ export interface RunWithReconnectInput {
 	readonly repos: Repos;
 	readonly broker: RunEventBroker;
 	readonly burrowClient: BurrowClient;
+	/**
+	 * Runtime-provider seam (warren-c531). Forwarded into every `bridgeRunStream`
+	 * pass so the event stream + run-state poller speak the ACTIVE backend
+	 * (`streamEvents`/`status`). Omitted ⇒ `bridgeRunStream` defaults to a
+	 * burrow-backed `LocalProvider`, so the self-host path is byte-identical.
+	 */
+	readonly runtimeProvider?: RuntimeProvider;
 	readonly signal: AbortSignal;
 	readonly bridge: (input: BridgeRunStreamInput) => Promise<BridgeRunStreamResult>;
 	readonly reap: (input: ReapRunInput) => Promise<ReapRunResult>;
@@ -114,6 +122,7 @@ export async function runWithReconnect(
 			broker: input.broker,
 			burrowClient: input.burrowClient,
 			signal: input.signal,
+			...(input.runtimeProvider !== undefined ? { runtimeProvider: input.runtimeProvider } : {}),
 			...(input.mode !== undefined ? { mode: input.mode } : {}),
 			...(input.conversationTurn !== undefined ? { conversationTurn: input.conversationTurn } : {}),
 			logger: log,
