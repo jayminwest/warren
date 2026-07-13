@@ -1,7 +1,6 @@
 import type { BurrowClient } from "../../burrow-client/client.ts";
-import { withTransportMapping } from "../../burrow-client/client.ts";
 import type { EventRow, RunFailureReason, RunTerminalState } from "../../db/schema.ts";
-import type { RunHandle, RuntimeProvider } from "../../runtime/contract.ts";
+import type { RunHandle, RuntimeProvider, WorkspaceInfo } from "../../runtime/contract.ts";
 import { LocalProvider } from "../../runtime/local/provider.ts";
 import { bindBridgeLogger } from "../stream/index.ts";
 import { runWorkspaceDestroy } from "./destroy.ts";
@@ -96,16 +95,27 @@ export async function reapRun(input: ReapRunInput): Promise<ReapRunResult> {
 	let workspacePath: string | null = null;
 	let branch: string | null = null;
 	let workerClient: BurrowClient | null = null;
+	// warren-e9e1: resolve the workspace path + branch through the provider seam,
+	// not a direct `burrows.get`. LocalProvider returns the live burrow worktree
+	// path + branch (byte-identical to reap's old inline lookup); K8sProvider
+	// returns `{ workspacePath: null, branch }` — the pod's `/workspace` is
+	// host-unreachable, so there is no host path, but a succeeded K8s run must
+	// still reach the pipeline + `finalize` (which runs in-pod). `resolved`
+	// staying null means resolution FAILED (a live burrow 404 / API error); the
+	// pipeline is skipped and `workspace_lookup` is recorded, exactly as before.
+	let resolved: WorkspaceInfo | null = null;
 	if (run.burrowId === null) {
 		await fail("workspace_lookup", new Error("run has no burrow_id; nothing to reap from"));
 	} else {
+		workerClient = input.burrowClient;
 		try {
-			workerClient = input.burrowClient;
-			const burrow = await withTransportMapping(workerClient.config, () =>
-				(workerClient as BurrowClient).http.burrows.get(run.burrowId as string),
-			);
-			workspacePath = burrow.workspacePath;
-			branch = typeof burrow.branch === "string" && burrow.branch !== "" ? burrow.branch : null;
+			resolved = await provider.workspaceInfo({
+				runId: run.id,
+				sandboxId: run.burrowId,
+				providerRunId: run.burrowRunId ?? "",
+			});
+			workspacePath = resolved.workspacePath;
+			branch = resolved.branch;
 		} catch (err) {
 			await fail("workspace_lookup", err);
 		}
@@ -118,11 +128,16 @@ export async function reapRun(input: ReapRunInput): Promise<ReapRunResult> {
 
 	// warren-df71: a conversation run must NOT push a branch / commit `.plot/`
 	// / open a PR (send-off owns its plotSync PR; this pipeline made junk PRs).
-	if (run.mode === "conversation" && workspacePath !== null) {
+	// warren-e9e1: the pipeline gate keys on `resolved !== null` (workspace info
+	// resolved) rather than a host `workspacePath` existing — under K8s the path
+	// is legitimately null but the run is still finalizable in-pod. For the
+	// LocalProvider path `resolved !== null` iff the burrow lookup succeeded,
+	// which always yielded a host path, so the gate is byte-identical.
+	if (run.mode === "conversation" && resolved !== null) {
 		await emit("reap.branch_push_skipped", { reason: "conversation_run" });
-	} else if (stateOnEntry === "queued" && workspacePath !== null && project !== null) {
+	} else if (stateOnEntry === "queued" && resolved !== null && project !== null) {
 		await emit("reap.never_started_skip", { message: "agent never ran; skipping pipeline" });
-	} else if (stateOnEntry !== "queued" && workspacePath !== null && project !== null) {
+	} else if (stateOnEntry !== "queued" && resolved !== null && project !== null) {
 		await runReapPipeline(
 			{
 				input: pipelineInput,
@@ -143,7 +158,7 @@ export async function reapRun(input: ReapRunInput): Promise<ReapRunResult> {
 			},
 			state,
 		);
-	} else if (workspacePath !== null && project === null) {
+	} else if (resolved !== null && project === null) {
 		await emit("reap.orphaned", {
 			projectId: run.projectId,
 			message: "project was deleted; skipping mulch merge, seeds close, and branch push",

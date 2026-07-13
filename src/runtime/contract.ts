@@ -11,6 +11,8 @@
  * seam. Everything here is warren's *need*; providers satisfy it.
  */
 
+import type { MulchDelta, PlansDelta, PlotDelta, SeedsDelta } from "./finalize-deltas.ts";
+
 /**
  * Opaque handle — the only run reference that crosses the seam. Providers map
  * `runId` → native ids internally; the domain treats `sandboxId`/`providerRunId`
@@ -205,106 +207,42 @@ export interface TeardownResult {
 }
 
 /**
- * Artifact-set deltas `finalize` extracts from the live workspace and returns
- * for the domain to apply to its project clone. PINNED (pl-829f step 12 /
- * warren-371a) by SERIALIZING what today's in-process reap merge functions
- * (`src/runs/reap/{mulch,seeds,plot-merge}.ts`) actually produce — grounded in
- * their real return values, not a speculative shape.
+ * The provider-neutral answer to reap's "where is this run's workspace, and what
+ * branch does it push?" question (warren-e9e1). Replaces reap's direct
+ * `burrows.get` — a burrow-only call that 404s on a K8s pod name and stranded
+ * succeeded K8s runs before `finalize` ever ran.
  *
- * Contract guarantees for every delta:
- *   - **JSON-serializable** — round-trips through `JSON.parse(JSON.stringify(x))`
- *     unchanged. These are the wire format the K8s in-pod finalize (plan step
- *     20) emits over its callback, so no `Map`/`Set`/`Date`/`undefined` slots.
- *   - **`version`-tagged** so the wire format can evolve unambiguously.
- *   - **Apply-complete without filesystem access** — mulch / seeds / plans each
- *     carry the full post-merge JSONL body, so the domain applies by overwriting
- *     the target file; it never has to read the (by-then-destroyed) workspace.
- *     The counts mirror each merge function's own return value.
+ * - `workspacePath` is a HOST path when the backend runs finalize host-side over
+ *   a shared workspace (LocalProvider → the burrow worktree). It is `null` when
+ *   the workspace is unreachable from the control plane (K8sProvider → the pod's
+ *   `emptyDir`); the domain then routes finalize through the seam (in-pod) and
+ *   applies the returned mirror deltas to the project clone itself.
+ * - `branch` is the run's push branch, resolved from wherever the backend
+ *   recorded it (burrow echoes it on `GET /burrows/:id`; K8s stamps it as a pod
+ *   annotation). `null` when it could not be resolved — finalize then pushes
+ *   `HEAD` (reap's historical fallback).
  *
- * PlotDelta is deliberately the exception — see its doc.
+ * A THROW means resolution failed (a live burrow that 404'd, an API error) —
+ * the domain records `workspace_lookup` and skips the success pipeline, exactly
+ * as reap did when `burrows.get` threw. A returned value with `workspacePath:
+ * null` is NOT a failure: it is the K8s backend reporting a legitimately
+ * host-unreachable (but finalizable) workspace.
  */
-
-/** One domain's post-merge mulch expertise file. */
-export interface MulchDeltaFile {
-	/** expertise filename minus `.jsonl` (e.g. `build`) */
-	domain: string;
-	/** clone-relative (posix) target path: `.mulch/expertise/<domain>.jsonl` */
-	path: string;
-	/** full merged JSONL body — the domain writes it verbatim */
-	mergedBody: string;
+export interface WorkspaceInfo {
+	workspacePath: string | null;
+	branch: string | null;
 }
 
-/**
- * mulch expertise LWW-merge result — mirrors `MulchMergeResult`
- * (`{updated,skipped,appended}`) plus the per-file merged bodies
- * `mergeMulchFile` produces. "real effort" per `data-plane-trajectory.md`:
- * mulch is the memory layer, so its delta is complete.
- */
-export interface MulchDelta {
-	version: 1;
-	/** records replaced because the incoming `recorded_at` was newer */
-	updated: number;
-	/** records dropped because the incoming was older-or-equal */
-	skipped: number;
-	/** brand-new records appended */
-	appended: number;
-	/** one entry per workspace expertise file, carrying its merged body */
-	files: MulchDeltaFile[];
-}
-
-/**
- * seeds issue-tracker close/create mirror — mirrors `MirrorSeedsResult`
- * (`{closed,created}`) plus the merged `issues.jsonl`. Connector-shaped per
- * `data-plane-trajectory.md` (seeds is a swappable tracker), so this is done
- * properly: the full merged body travels for a filesystem-free apply.
- */
-export interface SeedsDelta {
-	version: 1;
-	/** rows transitioned to `closed` (added-as-closed or status-updated) */
-	closed: number;
-	/** brand-new rows (e.g. planner-created) added to the clone */
-	created: number;
-	/** clone-relative (posix) target path: `.seeds/issues.jsonl` */
-	path: string;
-	/**
-	 * full merged issues.jsonl, or `null` when the mirror was a no-op (the
-	 * workspace had no `.seeds/issues.jsonl`, or it produced no delta).
-	 */
-	mergedBody: string | null;
-}
-
-/**
- * seeds plan mirror — append-only (plans are immutable once submitted).
- * Mirrors `mirrorPlans`'s `added` count plus the merged `plans.jsonl`.
- */
-export interface PlansDelta {
-	version: 1;
-	/** plan rows appended to the clone */
-	appended: number;
-	/** clone-relative (posix) target path: `.seeds/plans.jsonl` */
-	path: string;
-	/** full merged plans.jsonl, or `null` when nothing was appended */
-	mergedBody: string | null;
-}
-
-/**
- * Plot event/state mirror — deliberately THIN and disposable.
- * `data-plane-trajectory.md` marks plot the FIRST tool to go ("keep its
- * `finalize()` mirror delta thin and disposable"), so this carries only the
- * `PlotMergeResult` counts — NO merged bodies, NO per-event contents. The plot
- * files themselves still ride to origin on the pushed branch (the
- * `chore(warren): plot state` bookkeeping commit); this delta is pure
- * observability, and intentionally NOT apply-complete on its own.
- */
-export interface PlotDelta {
-	version: 1;
-	/** event-log lines appended across all plots */
-	eventsAppended: number;
-	/** `plot-*.json` state docs overwritten (LWW on `updated_at`) */
-	plotsUpdated: number;
-	/** agent-emitted decision/question/artifact events worth surfacing */
-	mirrored: number;
-}
+// Artifact-set deltas `finalize` returns for the domain to apply to its project
+// clone. Extracted to `./finalize-deltas.ts` (warren-e9e1, frozen size budget);
+// re-exported here so importers keep using `../contract.ts`.
+export type {
+	MulchDelta,
+	MulchDeltaFile,
+	PlansDelta,
+	PlotDelta,
+	SeedsDelta,
+} from "./finalize-deltas.ts";
 
 /**
  * The reap-where-the-workspace-is seam (§4). `finalize` runs the
@@ -496,6 +434,17 @@ export interface RuntimeProvider {
 	 * afterward.
 	 */
 	cancel(handle: RunHandle, reason?: string): Promise<void>;
+
+	/**
+	 * Resolve the run's workspace path + push branch (warren-e9e1) — the neutral
+	 * replacement for reap's direct `burrows.get`. LocalProvider returns the live
+	 * burrow worktree path + branch; K8sProvider returns `{ workspacePath: null,
+	 * branch }` (the pod's `emptyDir` is host-unreachable). Throws only on a
+	 * genuine resolution failure — a `null` workspace path is a value, not a throw.
+	 * The domain gates its success pipeline on this resolving rather than on a
+	 * host path existing, so succeeded K8s runs reach `finalize`.
+	 */
+	workspaceInfo(handle: RunHandle): Promise<WorkspaceInfo>;
 
 	/**
 	 * Runs the workspace-DEPENDENT half of reap while the workspace is still

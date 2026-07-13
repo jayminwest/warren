@@ -41,6 +41,7 @@ import type {
 	RuntimeProvider,
 	StreamOpts,
 	TeardownResult,
+	WorkspaceInfo,
 } from "../contract.ts";
 import { RuntimeProviderError } from "../errors.ts";
 import { cancelLocalRun } from "./cancel.ts";
@@ -49,6 +50,7 @@ import { sendLocalMessage } from "./send-message.ts";
 import { localRunStatus } from "./status.ts";
 import { streamLocalEvents } from "./stream.ts";
 import { terminateLocalRun } from "./teardown.ts";
+import { localWorkspaceInfo } from "./workspace-info.ts";
 
 /** Dependencies the burrow-backed provider methods wrap. */
 export interface LocalProviderDeps {
@@ -225,6 +227,18 @@ export class LocalProvider implements RuntimeProvider {
 	 */
 	cancel(handle: RunHandle, reason?: string): Promise<void> {
 		return cancelLocalRun(this.resolveClient(), handle, reason);
+	}
+
+	/**
+	 * Resolve the run's live burrow workspace path + branch (warren-e9e1) — the
+	 * neutral replacement for reap's old inline `burrows.get`. Byte-faithful to
+	 * that resolution: `GET /burrows/:id` over the transport mapping, returning
+	 * the host worktree path + the (non-empty-or-null) branch. A burrow error
+	 * throws so the domain records `workspace_lookup` and skips the pipeline,
+	 * exactly as before. See `./workspace-info.ts`.
+	 */
+	workspaceInfo(handle: RunHandle): Promise<WorkspaceInfo> {
+		return localWorkspaceInfo(this.resolveClient(), handle);
 	}
 
 	/**

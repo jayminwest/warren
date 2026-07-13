@@ -113,6 +113,11 @@ export const LABEL_PROJECT = "warren.io/project";
  * `NetworkPolicy` resource (manifests step) selects pods on this. */
 export const LABEL_NETWORK = "warren.io/network";
 export const MANAGED_BY_VALUE = "warren";
+/** The run's push branch (`RunSpec.branch`) — an ANNOTATION not a label (branch
+ * names carry `/`, illegal in a label value). `K8sProvider.workspaceInfo` reads
+ * it back so reap builds the finalize intent without a burrow round-trip
+ * (warren-e9e1). Omitted when the spec carries no branch. */
+export const ANNOTATION_BRANCH = "warren.io/branch";
 
 // --- Config resolution -----------------------------------------------------
 
@@ -475,6 +480,8 @@ export function buildRunPod(
 			name: podNameForRun(spec.runId),
 			namespace: config.namespace,
 			labels: podLabelsForRun(spec, config),
+			// warren-e9e1: push branch → annotation (read back by workspaceInfo).
+			...(spec.branch !== "" ? { annotations: { [ANNOTATION_BRANCH]: spec.branch } } : {}),
 		},
 		spec: {
 			restartPolicy: "Never",

@@ -41,6 +41,7 @@ import type {
 	RuntimeProvider,
 	StreamOpts,
 	TeardownResult,
+	WorkspaceInfo,
 } from "../contract.ts";
 import { RuntimeProviderError } from "../errors.ts";
 import type { AdmissionCounterSink, PodAdmissionSource } from "./admission.ts";
@@ -70,6 +71,7 @@ import { buildSeedConfigMap, seedConfigMapName } from "./seed-configmap.ts";
 import { type K8sInboxStore, sendK8sMessage } from "./send-message.ts";
 import { mapPodToRunStatus, runLostStatus } from "./status-map.ts";
 import { cancelK8sRun, terminateK8sRun } from "./teardown.ts";
+import { k8sWorkspaceInfo, pickPodForRun } from "./workspace-info.ts";
 
 /** Dependencies the K8s-backed provider methods wrap in later steps. */
 export interface K8sProviderDeps {
@@ -185,22 +187,6 @@ export function defaultCoreApiFactory(): () => CoreV1Api {
 		}
 		return cached;
 	};
-}
-
-/**
- * Choose the pod for a run from a label-filtered list. The deterministic pod
- * name makes >1 live pod per runId impossible, but a handle carrying a specific
- * pod uid (`providerRunId`) prefers the exact match so a stale-then-recreated
- * pod can't be mistaken for the current one; otherwise the sole item. Empty ⇒
- * `undefined` (the caller maps that to run-lost).
- */
-function pickPodForRun(items: V1Pod[], handle: RunHandle): V1Pod | undefined {
-	if (items.length === 0) return undefined;
-	if (handle.providerRunId !== "") {
-		const exact = items.find((p) => p.metadata?.uid === handle.providerRunId);
-		if (exact !== undefined) return exact;
-	}
-	return items[0];
 }
 
 /**
@@ -445,6 +431,18 @@ export class K8sProvider implements RuntimeProvider {
 	cancel(handle: RunHandle, _reason?: string): Promise<void> {
 		const config = resolveK8sPodConfig(this.deps.serverEnv ?? process.env);
 		return cancelK8sRun(this.deps.coreApi(), config, handle);
+	}
+
+	/**
+	 * Resolve the run's workspace path + push branch (contract; warren-e9e1).
+	 * `workspacePath` is always `null` (the pod's `/workspace` is host-unreachable
+	 * — finalize runs in-pod, the domain applies the mirror deltas to the clone);
+	 * the branch comes off the `warren.io/branch` pod annotation. Best-effort so a
+	 * succeeded run always reaches finalize. See `./workspace-info.ts`.
+	 */
+	workspaceInfo(handle: RunHandle): Promise<WorkspaceInfo> {
+		// `K8sProviderDeps` is a structural superset of `K8sWorkspaceInfoDeps`.
+		return k8sWorkspaceInfo(this.deps, handle);
 	}
 
 	/**

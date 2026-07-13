@@ -239,6 +239,16 @@ describe("buildRunPod", () => {
 		expect(pod.metadata?.labels?.[LABEL_RUN_ID]).toBe("run_01tdf3a0wg5e");
 	});
 
+	test("stamps the run branch as the warren.io/branch annotation (warren-e9e1)", () => {
+		const pod = buildRunPod(baseSpec(), config);
+		expect(pod.metadata?.annotations?.["warren.io/branch"]).toBe("warren/run_01tdf3a0wg5e");
+	});
+
+	test("omits the branch annotation when the spec carries no branch", () => {
+		const pod = buildRunPod(baseSpec({ branch: "" }), config);
+		expect(pod.metadata?.annotations?.["warren.io/branch"]).toBeUndefined();
+	});
+
 	test("pod-level securityContext is non-root uid/gid 1000 + RuntimeDefault seccomp", () => {
 		const sc = buildRunPod(baseSpec(), config).spec?.securityContext;
 		expect(sc?.runAsNonRoot).toBe(true);

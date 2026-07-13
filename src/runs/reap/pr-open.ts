@@ -110,7 +110,13 @@ export async function tryOpenPr(input: TryOpenPrInput): Promise<OpenPullRequestR
 /* ----------------------------------------------------------------------- */
 
 export interface GatherPrContextInput {
-	readonly workspacePath: string;
+	/**
+	 * Host workspace path for the commits / diff-stat git reads. `null` under K8s
+	 * (the pod workspace is host-unreachable, warren-e9e1) — those two sub-calls
+	 * then degrade to empty and the PR body omits the commit/file sections. The
+	 * seed section still resolves off the project clone (`projectPath`).
+	 */
+	readonly workspacePath: string | null;
 	readonly projectPath: string;
 	readonly baseBranch: string;
 	readonly prompt: string;
@@ -130,9 +136,12 @@ export interface PrContext {
  * failing the PR open.
  */
 export async function gatherPrContext(input: GatherPrContextInput): Promise<PrContext> {
+	// warren-e9e1: no host workspace under K8s — skip the workspace-git reads and
+	// degrade to empty commits / diff-stat rather than passing a null cwd to git.
+	const ws = input.workspacePath;
 	const [commits, diffStat, seed] = await Promise.all([
-		collectCommits(input.workspacePath, input.baseBranch, input.exec),
-		collectDiffStat(input.workspacePath, input.baseBranch, input.exec),
+		ws !== null ? collectCommits(ws, input.baseBranch, input.exec) : Promise.resolve([]),
+		ws !== null ? collectDiffStat(ws, input.baseBranch, input.exec) : Promise.resolve(""),
 		resolveSeed(input.prompt, input.projectPath, input.exec),
 	]);
 	return { commits, diffStat, seed };
@@ -218,7 +227,8 @@ export interface RunPrOpenInput {
 	readonly run: TryOpenPrInput["run"] & { prompt: string; trigger?: string };
 	readonly branch: string;
 	readonly baseBranch: string | null;
-	readonly workspacePath: string;
+	/** Host workspace path, or `null` under K8s (PR-context git reads degrade). */
+	readonly workspacePath: string | null;
 	readonly previewOptedIn: boolean;
 	readonly exec: ReapExec;
 	readonly emit: (kind: string, payload: unknown) => Promise<unknown>;

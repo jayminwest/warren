@@ -11,6 +11,7 @@ import type {
 	RuntimeCapabilities,
 	RuntimeProvider,
 	TeardownResult,
+	WorkspaceInfo,
 } from "../../runtime/contract.ts";
 import { RunEventBroker } from "../events.ts";
 import { bridgeRunStream } from "./bridge.ts";
@@ -77,6 +78,10 @@ class FakeRuntimeProvider implements RuntimeProvider {
 
 	cancel(_handle: RunHandle): Promise<void> {
 		return Promise.resolve();
+	}
+
+	workspaceInfo(_handle: RunHandle): Promise<WorkspaceInfo> {
+		throw new Error("unused");
 	}
 
 	finalize(_handle: RunHandle): Promise<FinalizeResult> {
