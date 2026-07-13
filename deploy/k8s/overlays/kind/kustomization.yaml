@@ -1,0 +1,37 @@
+# Local-cluster overlay: kind (also works on k3d — see README note on ingress).
+#
+# Differences from base:
+#   - Ingress class `nginx` (deploy ingress-nginx first) + a wildcard-DNS host
+#     (warren.localtest.me resolves to 127.0.0.1 with no /etc/hosts edit).
+#   - imagePullPolicy Never: images are `kind load`-ed / `k3d image import`-ed
+#     into the node, never pulled from a registry.
+#   - Smaller repo-cache PVC (5Gi) so a laptop's local-path provisioner binds it.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../../base
+patches:
+  - target:
+      kind: Ingress
+      name: warren
+    patch: |
+      - op: add
+        path: /spec/ingressClassName
+        value: nginx
+      - op: replace
+        path: /spec/rules/0/host
+        value: warren.localtest.me
+  - target:
+      kind: Deployment
+      name: warren
+    patch: |
+      - op: replace
+        path: /spec/template/spec/containers/0/imagePullPolicy
+        value: Never
+  - target:
+      kind: PersistentVolumeClaim
+      name: warren-repo-cache
+    patch: |
+      - op: replace
+        path: /spec/resources/requests/storage
+        value: 5Gi

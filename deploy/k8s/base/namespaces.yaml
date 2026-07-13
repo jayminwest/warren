@@ -1,0 +1,29 @@
+# Warren's two namespaces (pl-829f step 26 / warren-74b5).
+#
+#   - `warren`      — the control plane (Deployment, Service, Ingress, its data
+#                     PVC + control-plane Secret). One long-lived Deployment.
+#   - `warren-runs` — ephemeral pod-per-run sandboxes (design k8s-migration.md
+#                     §1.1). The control plane's ServiceAccount is granted a
+#                     namespace-scoped Role here (rbac.yaml) and NOWHERE else, so
+#                     a compromised control plane can only touch run pods, never
+#                     cluster-wide resources (design R5 / Q4).
+#
+# `WARREN_K8S_NAMESPACE` (src/runtime/k8s/pod-spec.ts DEFAULT_K8S_NAMESPACE)
+# defaults to `warren-runs`; the control-plane callback namespace
+# (DEFAULT_K8S_CALLBACK_NAMESPACE) defaults to `warren`. Keep these names in sync
+# with the Deployment env below if you rename either namespace.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: warren
+  labels:
+    app.kubernetes.io/name: warren
+    app.kubernetes.io/component: control-plane
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: warren-runs
+  labels:
+    app.kubernetes.io/name: warren
+    app.kubernetes.io/component: runs

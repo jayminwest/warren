@@ -1,0 +1,29 @@
+# External entry to the warren HTTP API + UI (warren-74b5).
+#
+# Base is controller-agnostic: no ingressClassName, host as a placeholder. The
+# overlays set the class + host for their environment:
+#   - kind: nginx (ingress-nginx), host warren.localtest.me
+#   - gke:  gce  (GKE load balancer), host + ManagedCertificate patched in
+#
+# TLS is intentionally NOT configured here — terminate at the controller
+# (cert-manager on kind, a GKE ManagedCertificate on Autopilot). See README.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: warren
+  namespace: warren
+  labels:
+    app.kubernetes.io/name: warren
+    app.kubernetes.io/component: control-plane
+spec:
+  rules:
+    - host: warren.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: warren
+                port:
+                  name: http

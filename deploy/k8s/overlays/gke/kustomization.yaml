@@ -1,0 +1,59 @@
+# GKE Autopilot overlay (design k8s-migration-plan.md §3.2 — the hosted target).
+#
+# Differences from base:
+#   - Images pulled from Artifact Registry (edit `images` below to your project's
+#     registry path + immutable digest/tag; `:latest` + IfNotPresent is a
+#     placeholder). imagePullPolicy stays IfNotPresent for registry pulls.
+#   - Service → NodePort: the classic GCE Ingress (ingressClassName: gce) needs a
+#     NodePort backend. For container-native LB via NEGs instead, keep ClusterIP
+#     and add the `cloud.google.com/neg` annotation.
+#   - Ingress class `gce` + a real host. Attach a Google ManagedCertificate for
+#     TLS (create the CRD object separately, then annotate the Ingress).
+#   - Autopilot ignores fixed storageClassName choices for some tiers; the default
+#     `standard-rwo` binds the PVCs. For a multi-node repo-cache you need an RWM
+#     class (Filestore) — see README (design R2).
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../../base
+# Replace with your Artifact Registry paths + pinned digests before deploying.
+images:
+  - name: warren
+    newName: LOCATION-docker.pkg.dev/PROJECT/warren/warren
+    newTag: latest
+patches:
+  - target:
+      kind: Service
+      name: warren
+    patch: |
+      - op: replace
+        path: /spec/type
+        value: NodePort
+  - target:
+      kind: Ingress
+      name: warren
+    patch: |
+      - op: add
+        path: /spec/ingressClassName
+        value: gce
+      - op: replace
+        path: /spec/rules/0/host
+        value: warren.example.com
+  # Strategic-merge (keyed by env `name`) so the agent/init image env vars are
+  # overridden regardless of list position.
+  - patch: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: warren
+        namespace: warren
+      spec:
+        template:
+          spec:
+            containers:
+              - name: warren
+                env:
+                  - name: WARREN_K8S_AGENT_IMAGE
+                    value: LOCATION-docker.pkg.dev/PROJECT/warren/warren-agent:latest
+                  - name: WARREN_K8S_INIT_IMAGE
+                    value: LOCATION-docker.pkg.dev/PROJECT/warren/warren-workspace-init:latest

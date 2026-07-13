@@ -1,0 +1,169 @@
+# Warren control-plane Deployment (design k8s-migration.md §1.1, warren-74b5).
+#
+# One replica. NO supervisor / no co-resident `burrow serve` on the K8s path — the
+# warren server boots directly (`warren serve`, src/cli/commands/serve.ts →
+# bootServer). Isolation is the pod boundary + kubelet cgroup v2; the four
+# bwrap security_opt flags are gone (design §2). Under WARREN_RUNTIME=k8s the boot
+# wiring (src/server/main/runtime-wiring.ts) starts the pod-watcher + pod-GC and
+# the K8sProvider dispatches pod-per-run into `warren-runs`.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: warren
+  namespace: warren
+  labels:
+    app.kubernetes.io/name: warren
+    app.kubernetes.io/component: control-plane
+spec:
+  replicas: 1
+  # SSE sessions are sticky to one replica today (design §1.1); do not scale >1
+  # until a shared event broker lands. Recreate avoids two replicas racing the
+  # same warren-data RWO PVC during a rollout.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: warren
+      app.kubernetes.io/component: control-plane
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: warren
+        app.kubernetes.io/component: control-plane
+    spec:
+      serviceAccountName: warren
+      # The control plane DOES need its projected SA token (this is what
+      # @kubernetes/client-node reads for in-cluster config) — unlike run pods,
+      # which set automountServiceAccountToken:false.
+      automountServiceAccountToken: true
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: warren
+          image: warren:latest
+          imagePullPolicy: IfNotPresent
+          command: ["warren", "serve"]
+          ports:
+            - name: http
+              containerPort: 8080
+          env:
+            # --- runtime selection + K8s backend wiring ---
+            - name: WARREN_RUNTIME
+              value: "k8s"
+            - name: WARREN_K8S_NAMESPACE
+              value: "warren-runs"
+            # Agent + init images the provider stamps into each run pod. Build and
+            # push these separately (see README); tags are overridable per env.
+            - name: WARREN_K8S_AGENT_IMAGE
+              value: "warren-agent:latest"
+            - name: WARREN_K8S_INIT_IMAGE
+              value: "warren-workspace-init:latest"
+            # In-cluster Service DNS the in-pod agent dials for event/finalize
+            # callbacks (pod-spec.ts serviceDnsCallbackUrl). Must match the
+            # Service name/namespace/port below.
+            - name: WARREN_K8S_CALLBACK_SERVICE
+              value: "warren"
+            - name: WARREN_K8S_CALLBACK_NAMESPACE
+              value: "warren"
+            - name: WARREN_K8S_CALLBACK_PORT
+              value: "8080"
+            # --- soft admission caps (design §3.3). 0 disables a cap. ---
+            - name: WARREN_K8S_MAX_QUEUE_DEPTH
+              value: "50"
+            - name: WARREN_K8S_MAX_PENDING_PODS
+              value: "20"
+            # Global per-project cap; per-project override via .warren/config.yaml
+            # admission.maxConcurrentRuns. Empty ⇒ unlimited.
+            - name: WARREN_K8S_MAX_PROJECT_CONCURRENCY
+              value: ""
+            # --- bind + data ---
+            - name: WARREN_BIND_HOST
+              value: "0.0.0.0"
+            - name: WARREN_BIND_PORT
+              value: "8080"
+            - name: WARREN_DATA_DIR
+              value: "/data"
+            # --- secrets (see secrets.yaml). optional:true so a missing key
+            #     (e.g. no Postgres → SQLite fallback; no Sentry) doesn't block boot. ---
+            - name: WARREN_API_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: warren-secrets
+                  key: warren-api-token
+            - name: WARREN_DB_URL
+              valueFrom:
+                secretKeyRef:
+                  name: warren-secrets
+                  key: warren-db-url
+                  optional: true
+            - name: GITHUB_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: warren-secrets
+                  key: github-token
+                  optional: true
+            # Injected into agent pod env by the control plane (pod-spec builds
+            # spec.env as plain values), so the control plane must hold it.
+            - name: ANTHROPIC_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: warren-secrets
+                  key: anthropic-api-key
+                  optional: true
+            - name: SENTRY_DSN
+              valueFrom:
+                secretKeyRef:
+                  name: warren-secrets
+                  key: sentry-dsn
+                  optional: true
+          volumeMounts:
+            - name: data
+              mountPath: /data
+          # /healthz is auth-exempt and returns 200 once the server is serving
+          # (src/server/handlers/index.ts). Used for all three probes. Deeper
+          # readiness (/readyz) requires the bearer token and is left to operators
+          # who wire an Authorization header (see README).
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 5
+            failureThreshold: 30
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 15
+            timeoutSeconds: 3
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: "250m"
+              memory: 512Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            # Root filesystem stays writable: warren writes clones/SQLite under
+            # /data (a PVC) but also uses working dirs; leave rootfs RW to avoid
+            # surprising the git/canopy shell-outs.
+            readOnlyRootFilesystem: false
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: warren-data

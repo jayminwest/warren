@@ -1,0 +1,30 @@
+# Warren control-plane Service (warren-74b5).
+#
+# Two roles:
+#   1. The in-cluster callback target run pods dial — the agent POSTs
+#      events/finalize to `http://warren.warren.svc.cluster.local:8080`
+#      (pod-spec.ts serviceDnsCallbackUrl). The `warren-runs` RBAC does NOT grant
+#      network policy; reachability is standard cluster DNS + flat pod network.
+#   2. The backend the Ingress routes external traffic to, and the target the
+#      Prometheus ServiceMonitor (servicemonitor.yaml) selects via
+#      `app.kubernetes.io/name: warren` + named port `http`.
+#
+# ClusterIP by default; the GKE overlay flips this to NodePort for the GCE Ingress.
+apiVersion: v1
+kind: Service
+metadata:
+  name: warren
+  namespace: warren
+  labels:
+    app.kubernetes.io/name: warren
+    app.kubernetes.io/component: control-plane
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: warren
+    app.kubernetes.io/component: control-plane
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+      protocol: TCP

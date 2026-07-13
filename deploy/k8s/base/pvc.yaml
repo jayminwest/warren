@@ -1,0 +1,44 @@
+# Persistent storage (design k8s-migration.md §6.2, §4.3).
+#
+#   warren-data (5Gi, RWO, ns=warren) — warren's SQLite DB (when WARREN_DB_URL is
+#     unset), warren config, and the canopy clone. Mounted at /data
+#     (WARREN_DATA_DIR) by the control-plane Deployment. On Postgres deploys this
+#     still holds config + canopy clone.
+#
+#   warren-repo-cache (50Gi, RWO, ns=warren-runs) — the per-project "host clone"
+#     cache the init container fetches into instead of a full clone
+#     (discoverHostClone pattern, §4.3). Forward-provisioned here: the current
+#     pod spec materializes onto an emptyDir (pod-spec.ts WORKSPACE_VOLUME_NAME),
+#     so nothing mounts this PVC yet — wiring the init container to it is a
+#     follow-up. RWO means single-node only (design R2); a multi-node cluster
+#     needs a ReadWriteMany class (see README).
+#
+# storageClassName is intentionally OMITTED so each cluster's default class binds
+# (local-path on kind/k3d; standard-rwo on GKE). Overlays may pin a class.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: warren-data
+  namespace: warren
+  labels:
+    app.kubernetes.io/name: warren
+    app.kubernetes.io/component: control-plane
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: warren-repo-cache
+  namespace: warren-runs
+  labels:
+    app.kubernetes.io/name: warren
+    app.kubernetes.io/component: runs
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 50Gi

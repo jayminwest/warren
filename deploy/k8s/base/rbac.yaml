@@ -1,0 +1,65 @@
+# Namespace-scoped RBAC for the warren control plane over run pods (warren-74b5,
+# design k8s-migration.md §3.3 admission, R5, Q4).
+#
+# The verb set is derived DIRECTLY from what src/runtime/k8s/ exercises — nothing
+# wider:
+#
+#   pods:                                                    | K8s call
+#     create   K8sProvider.create()  -> createNamespacedPod  | pod-per-run dispatch
+#     delete   cancel/terminate/GC   -> deleteNamespacedPod  | reap + pod-GC
+#     get      status() single-pod read (defensive)          | reconcile
+#     list     admission + informer relist + GC              | listNamespacedPod
+#     watch    PodWatcher informer (Watch.watch on .../pods) | phase reconcile
+#
+#   pods/log:                                                | Log.log(follow)
+#     get, watch  pod-log NDJSON event stream (§5.1)         | log-follow.ts
+#
+#   configmaps:                                              | seed-configmap.ts
+#     create   K8sProvider.create() seed-file drop           | createNamespacedConfigMap
+#     delete   pod-GC reclaims seed ConfigMaps               | deleteNamespacedConfigMap
+#     get, list  GC enumerates labelled seed ConfigMaps      | listNamespacedConfigMap
+#
+# ConfigMap verbs are present because K8sProvider.create() DOES ship seed files as
+# a ConfigMap volume (see src/runtime/k8s/seed-configmap.ts + pod-spec.ts
+# SEED_VOLUME_NAME). No `update`/`patch` on anything — warren never mutates a live
+# pod or ConfigMap; it replaces by delete+create. NO ClusterRole, NO nodes, NO
+# secrets read (agent secrets are injected as pod env by the control plane, not
+# read from the API by run pods).
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: warren-run-pods
+  namespace: warren-runs
+  labels:
+    app.kubernetes.io/name: warren
+    app.kubernetes.io/component: rbac
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch", "create", "delete"]
+  - apiGroups: [""]
+    resources: ["pods/log"]
+    verbs: ["get", "watch"]
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "list", "create", "delete"]
+---
+# Binds the control-plane SA (in the `warren` namespace) to the Role in
+# `warren-runs`. A RoleBinding's subject may live in a different namespace than
+# the binding; the grant still applies ONLY within `warren-runs`.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: warren-run-pods
+  namespace: warren-runs
+  labels:
+    app.kubernetes.io/name: warren
+    app.kubernetes.io/component: rbac
+subjects:
+  - kind: ServiceAccount
+    name: warren
+    namespace: warren
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: warren-run-pods

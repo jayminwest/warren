@@ -1,0 +1,47 @@
+# Hard cluster-side backstop on the run namespace (design k8s-migration.md R5:
+# "max 50 pods, 100 CPU, 200 Gi memory"). This sits BEHIND warren's own soft
+# admission caps (WARREN_K8S_MAX_QUEUE_DEPTH / _MAX_PENDING_PODS /
+# _MAX_PROJECT_CONCURRENCY, §3.3) — if a bug lets warren over-dispatch, the quota
+# refuses the pod at the API rather than letting the node OOM (the exact failure
+# the migration exists to kill).
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: warren-runs-quota
+  namespace: warren-runs
+  labels:
+    app.kubernetes.io/name: warren
+    app.kubernetes.io/component: runs
+spec:
+  hard:
+    pods: "50"
+    requests.cpu: "100"
+    requests.memory: 200Gi
+    limits.cpu: "200"
+    limits.memory: 200Gi
+---
+# A compute ResourceQuota (above) rejects any pod whose containers don't ALL
+# declare requests + limits. warren's agent container sets them
+# (pod-spec.ts buildAgentContainer), but the `workspace-init` init container does
+# NOT (buildInitContainer has no `resources`). This LimitRange supplies defaults
+# so the init container inherits requests/limits and the pod admits under the
+# quota — without it, every dispatch would be rejected with
+# "must specify requests.cpu". The `default`/`defaultRequest` values are small
+# (the init container only clones a repo).
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: warren-runs-defaults
+  namespace: warren-runs
+  labels:
+    app.kubernetes.io/name: warren
+    app.kubernetes.io/component: runs
+spec:
+  limits:
+    - type: Container
+      default:
+        cpu: "1"
+        memory: 512Mi
+      defaultRequest:
+        cpu: 100m
+        memory: 128Mi
