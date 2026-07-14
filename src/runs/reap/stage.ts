@@ -1,5 +1,9 @@
 import { join } from "node:path";
-import { warrenCommitIdentityArgs, warrenCommitIdentityEnv } from "../../bot-identity.ts";
+import {
+	gitRepoContextScrubEnv,
+	warrenCommitIdentityArgs,
+	warrenCommitIdentityEnv,
+} from "../../bot-identity.ts";
 import type { EventRow } from "../../db/schema.ts";
 import type { ReapExec, ReapFs } from "./types.ts";
 
@@ -74,9 +78,14 @@ export async function stagePlotForCommit(input: StagePlotForCommitInput): Promis
 	const copied = copiedPathspecs.length;
 	if (copied === 0) return false;
 
+	// warren-23dd: scrub the inherited repo-context GIT_* (GIT_DIR /
+	// GIT_INDEX_FILE / …) on every git call in this flow so an env leaked by a
+	// parent `git commit`'s hook can't divert the add/diff/commit out of
+	// `workspacePath` into the parent repo — mirrors clone-apply.ts.
 	await exec.run("git", ["add", "--", ...copiedPathspecs], {
 		cwd: workspacePath,
 		timeoutMs: 10_000,
+		env: gitRepoContextScrubEnv(),
 	});
 
 	// warren-be12 (#420) / warren-c55e: narrow the staged-delta guard to the
@@ -91,6 +100,7 @@ export async function stagePlotForCommit(input: StagePlotForCommitInput): Promis
 		await exec.run("git", ["diff", "--cached", "--quiet", "--", ...copiedPathspecs], {
 			cwd: workspacePath,
 			timeoutMs: 10_000,
+			env: gitRepoContextScrubEnv(),
 		});
 		hasStagedDelta = false;
 	} catch {
@@ -120,7 +130,14 @@ export async function stagePlotForCommit(input: StagePlotForCommitInput): Promis
 		],
 		// warren-035c: pin the bot identity in env too so an inherited
 		// GIT_AUTHOR_*/GIT_COMMITTER_* can't out-rank the `-c user.*` config.
-		{ cwd: workspacePath, timeoutMs: 10_000, env: warrenCommitIdentityEnv() },
+		// warren-23dd: scrub the inherited repo-context GIT_* so the commit
+		// can't escape `workspacePath` into the parent repo; identity wins over
+		// the scrub — the two key families don't overlap.
+		{
+			cwd: workspacePath,
+			timeoutMs: 10_000,
+			env: { ...gitRepoContextScrubEnv(), ...warrenCommitIdentityEnv() },
+		},
 	);
 	await emit("reap.plot_committed", {
 		message: "chore(warren): plot state",
@@ -191,9 +208,14 @@ export async function stageSeedsForCommit(input: StageSeedsForCommitInput): Prom
 	}
 	if (copied === 0) return false;
 
+	// warren-23dd: scrub the inherited repo-context GIT_* on every git call in
+	// this flow (mirrors clone-apply.ts / stagePlotForCommit) so a leaked
+	// GIT_DIR / GIT_INDEX_FILE can't divert the add/diff/commit out of
+	// `workspacePath` into the parent repo.
 	await exec.run("git", ["add", "--", ".seeds/"], {
 		cwd: workspacePath,
 		timeoutMs: 10_000,
+		env: gitRepoContextScrubEnv(),
 	});
 
 	// warren-be12 (#420): narrow the staged-delta guard to the two
@@ -205,6 +227,7 @@ export async function stageSeedsForCommit(input: StageSeedsForCommitInput): Prom
 		await exec.run("git", ["diff", "--cached", "--quiet", "--", ...seedsPathspecs], {
 			cwd: workspacePath,
 			timeoutMs: 10_000,
+			env: gitRepoContextScrubEnv(),
 		});
 		hasStagedDelta = false;
 	} catch {
@@ -230,7 +253,13 @@ export async function stageSeedsForCommit(input: StageSeedsForCommitInput): Prom
 		],
 		// warren-035c: pin the bot identity in env too so an inherited
 		// GIT_AUTHOR_*/GIT_COMMITTER_* can't out-rank the `-c user.*` config.
-		{ cwd: workspacePath, timeoutMs: 10_000, env: warrenCommitIdentityEnv() },
+		// warren-23dd: scrub the inherited repo-context GIT_* so the commit
+		// can't escape `workspacePath`; identity wins over the scrub.
+		{
+			cwd: workspacePath,
+			timeoutMs: 10_000,
+			env: { ...gitRepoContextScrubEnv(), ...warrenCommitIdentityEnv() },
+		},
 	);
 	await emit("reap.seeds_committed", {
 		message: "chore(warren): seeds state",

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { warrenCommitIdentityEnv } from "../../bot-identity.ts";
+import { gitRepoContextScrubEnv, warrenCommitIdentityEnv } from "../../bot-identity.ts";
 import { reapRun } from "./index.ts";
 import {
 	type Ctx,
@@ -110,8 +110,21 @@ describe("reapRun commit-through-reap sub-steps (warren-343a + warren-7ecc)", ()
 			expect(events.find((ev) => ev.kind === "reap.plot_committed")).toBeDefined();
 			// warren-035c: the commit spawn also pins the identity in env so an
 			// inherited GIT_AUTHOR_*/GIT_COMMITTER_* can't out-rank the `-c` config.
+			// warren-23dd: it also carries the repo-context GIT_* scrub (keys
+			// present-and-undefined) so a leaked GIT_DIR can't divert the commit.
 			const commitCall = e.calls.find((c) => c.cmd === "git" && c.args.includes("commit"));
-			expect(commitCall?.env).toEqual(warrenCommitIdentityEnv());
+			expect(commitCall?.env).toEqual({
+				...gitRepoContextScrubEnv(),
+				...warrenCommitIdentityEnv(),
+			});
+			// warren-23dd: the non-commit git calls (add / diff --cached) in the
+			// same flow carry the scrub alone, mirroring clone-apply.ts.
+			const addCall = e.calls.find((c) => c.cmd === "git" && c.args[0] === "add");
+			expect(addCall?.env).toEqual(gitRepoContextScrubEnv());
+			const diffCall = e.calls.find(
+				(c) => c.cmd === "git" && c.args[0] === "diff" && c.args.includes("--cached"),
+			);
+			expect(diffCall?.env).toEqual(gitRepoContextScrubEnv());
 		} finally {
 			await plotCtx.db.close();
 		}
@@ -348,8 +361,21 @@ describe("reapRun commit-through-reap sub-steps (warren-343a + warren-7ecc)", ()
 			expect(events.find((ev) => ev.kind === "reap.seeds_committed")).toBeDefined();
 			// warren-035c: the commit spawn also pins the identity in env so an
 			// inherited GIT_AUTHOR_*/GIT_COMMITTER_* can't out-rank the `-c` config.
+			// warren-23dd: it also carries the repo-context GIT_* scrub (keys
+			// present-and-undefined) so a leaked GIT_DIR can't divert the commit.
 			const commitCall = e.calls.find((c) => c.cmd === "git" && c.args.includes("commit"));
-			expect(commitCall?.env).toEqual(warrenCommitIdentityEnv());
+			expect(commitCall?.env).toEqual({
+				...gitRepoContextScrubEnv(),
+				...warrenCommitIdentityEnv(),
+			});
+			// warren-23dd: the non-commit git calls (add / diff --cached) in the
+			// same flow carry the scrub alone, mirroring clone-apply.ts.
+			const addCall = e.calls.find((c) => c.cmd === "git" && c.args[0] === "add");
+			expect(addCall?.env).toEqual(gitRepoContextScrubEnv());
+			const diffCall = e.calls.find(
+				(c) => c.cmd === "git" && c.args[0] === "diff" && c.args.includes("--cached"),
+			);
+			expect(diffCall?.env).toEqual(gitRepoContextScrubEnv());
 		} finally {
 			await seedsCtx.db.close();
 		}

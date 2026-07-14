@@ -1,7 +1,11 @@
 import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { warrenCommitIdentityArgs, warrenCommitIdentityEnv } from "../bot-identity.ts";
+import {
+	gitRepoContextScrubEnv,
+	warrenCommitIdentityArgs,
+	warrenCommitIdentityEnv,
+} from "../bot-identity.ts";
 import type { SpawnFn } from "../projects/index.ts";
 import { parseGitHubUrl } from "../projects/url.ts";
 import { mergePullRequest, openPullRequest, parsePullRequestRef } from "../runs/pr.ts";
@@ -36,7 +40,7 @@ export interface PlotSyncer {
 async function trySpawn(
 	spawn: SpawnFn,
 	cmd: readonly string[],
-	opts: { cwd: string; timeoutMs?: number; env?: Record<string, string> },
+	opts: { cwd: string; timeoutMs?: number; env?: Record<string, string | undefined> },
 ): Promise<{ readonly stdout: string; readonly stderr: string; readonly exitCode: number }> {
 	try {
 		return await spawn(cmd, opts);
@@ -87,9 +91,19 @@ export const defaultPlotSyncer: PlotSyncer = {
 			input;
 		const fetchImpl = input.fetch ?? globalThis.fetch;
 
+		// warren-23dd: scrub the inherited repo-context GIT_* (GIT_DIR /
+		// GIT_INDEX_FILE / …) on every git call in this sync flow. A parent
+		// `git commit`'s hook exports them, and any inherited value would make a
+		// git subprocess ignore its `cwd` and operate on the parent repo instead
+		// of `projectPath` / the temp worktree — the same latent leak
+		// clone-apply.ts defends against. The commit additionally composes the
+		// bot identity over the scrub (the two key families don't overlap).
+		const scrub = gitRepoContextScrubEnv();
+
 		// 1. Detect if .plot/ files are dirty
 		const statusRes = await trySpawn(spawn, [gitBinary, "status", "--porcelain", "--", ".plot/"], {
 			cwd: projectPath,
+			env: scrub,
 		});
 		if (statusRes.exitCode !== 0) {
 			throw new Error(`git status failed (exit ${statusRes.exitCode}): ${statusRes.stderr}`);
@@ -105,6 +119,7 @@ export const defaultPlotSyncer: PlotSyncer = {
 		// 3. Fetch from origin to be up to date
 		const fetchRes = await trySpawn(spawn, [gitBinary, "fetch", "--prune", "origin"], {
 			cwd: projectPath,
+			env: scrub,
 		});
 		if (fetchRes.exitCode !== 0) {
 			// Best-effort in offline/test mode: warn but don't hard crash if it's local branch only
@@ -124,13 +139,13 @@ export const defaultPlotSyncer: PlotSyncer = {
 			let worktreeAddRes = await trySpawn(
 				spawn,
 				[gitBinary, "worktree", "add", "-b", branchName, worktreePath, `origin/${targetBranch}`],
-				{ cwd: projectPath },
+				{ cwd: projectPath, env: scrub },
 			);
 			if (worktreeAddRes.exitCode !== 0) {
 				worktreeAddRes = await trySpawn(
 					spawn,
 					[gitBinary, "worktree", "add", "-b", branchName, worktreePath, targetBranch],
-					{ cwd: projectPath },
+					{ cwd: projectPath, env: scrub },
 				);
 			}
 			if (worktreeAddRes.exitCode !== 0) {
@@ -143,7 +158,10 @@ export const defaultPlotSyncer: PlotSyncer = {
 			await copyPlotDir(join(projectPath, ".plot"), join(worktreePath, ".plot"));
 
 			// 8. Stage, commit, and push
-			const addRes = await trySpawn(spawn, [gitBinary, "add", ".plot/"], { cwd: worktreePath });
+			const addRes = await trySpawn(spawn, [gitBinary, "add", ".plot/"], {
+				cwd: worktreePath,
+				env: scrub,
+			});
 			if (addRes.exitCode !== 0) {
 				throw new Error(
 					`Failed to stage changes in worktree (exit ${addRes.exitCode}): ${addRes.stderr}`,
@@ -164,7 +182,9 @@ export const defaultPlotSyncer: PlotSyncer = {
 				],
 				// warren-035c: pin the bot identity in env too so an inherited
 				// GIT_AUTHOR_*/GIT_COMMITTER_* can't out-rank the `-c user.*` config.
-				{ cwd: worktreePath, env: warrenCommitIdentityEnv() },
+				// warren-23dd: scrub the inherited repo-context GIT_* so the commit
+				// can't escape the temp worktree; identity wins over the scrub.
+				{ cwd: worktreePath, env: { ...scrub, ...warrenCommitIdentityEnv() } },
 			);
 			if (commitRes.exitCode !== 0) {
 				throw new Error(
@@ -174,6 +194,7 @@ export const defaultPlotSyncer: PlotSyncer = {
 
 			const pushRes = await trySpawn(spawn, [gitBinary, "push", "origin", branchName], {
 				cwd: worktreePath,
+				env: scrub,
 			});
 			if (pushRes.exitCode !== 0) {
 				throw new Error(
@@ -184,6 +205,7 @@ export const defaultPlotSyncer: PlotSyncer = {
 			// 9. Clean up worktree definition and directory
 			await trySpawn(spawn, [gitBinary, "worktree", "remove", "--force", worktreePath], {
 				cwd: projectPath,
+				env: scrub,
 			});
 			await rm(worktreePath, { recursive: true, force: true }).catch(() => {});
 		}

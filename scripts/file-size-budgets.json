@@ -8,6 +8,7 @@
 		"src/plots/aggregate.ts": 506,
 		"src/runs/pr.ts": 659,
 		"src/runs/reap/pipeline.ts": 528,
+		"src/runs/reap/stage.test.ts": 526,
 		"src/runtime/contract.ts": 512,
 		"src/runtime/k8s/pod-spec.ts": 529,
 		"src/runtime/k8s/provider.ts": 507,
