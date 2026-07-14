@@ -1,15 +1,49 @@
 # GKE Autopilot overlay (design k8s-migration-plan.md §3.2 — the hosted target).
 #
+# This overlay is a TEMPLATE — the LOCATION/PROJECT registry paths and the git
+# identity are placeholders. Do not put real deployment values here; create a
+# gitignored sibling overlay instead (convention: `overlays/gke-live/`) that
+# builds on this one and overrides the images + env:
+#
+#   # deploy/k8s/overlays/gke-live/kustomization.yaml  (gitignored)
+#   apiVersion: kustomize.config.k8s.io/v1beta1
+#   kind: Kustomization
+#   resources: [../gke]
+#   images:
+#     - name: LOCATION-docker.pkg.dev/PROJECT/warren/warren
+#       newName: us-west1-docker.pkg.dev/<your-project>/warren/warren
+#       newTag: <git-sha>
+#   patches:
+#     - patch: |
+#         apiVersion: apps/v1
+#         kind: Deployment
+#         metadata: {name: warren, namespace: warren}
+#         spec:
+#           template:
+#             spec:
+#               containers:
+#                 - name: warren
+#                   env:
+#                     - {name: WARREN_K8S_AGENT_IMAGE, value: us-west1-docker.pkg.dev/<your-project>/warren/warren-agent:<git-sha>}
+#                     - {name: WARREN_K8S_INIT_IMAGE, value: us-west1-docker.pkg.dev/<your-project>/warren/warren-workspace-init:<git-sha>}
+#                     - {name: WARREN_GIT_AUTHOR_NAME, value: warren}
+#                     - {name: WARREN_GIT_AUTHOR_EMAIL, value: <id>+warren@users.noreply.github.com}
+#
+# Then: kubectl apply -k deploy/k8s/overlays/gke-live
+#
 # Differences from base:
-#   - Images pulled from Artifact Registry (warren-502318/us-west1), pinned to
-#     the deployed git SHA tag.
-#   - Ingress is DELETED for now — exposure is `kubectl -n warren port-forward
-#     svc/warren 8080:8080` until the smoke test passes and a domain + TLS are
-#     chosen (gke-deploy-prep.md §6). When adding it back: ingressClassName
-#     `gce`, Service → NodePort (or ClusterIP + NEG annotation), attach a
+#   - Images pulled from Artifact Registry, pinned to the deployed git SHA tag.
+#   - The placeholder Secret templates are DELETED from the render (real
+#     secrets are created imperatively — see ../../README.md).
+#   - Ingress is DELETED — first exposure is `kubectl -n warren port-forward
+#     svc/warren 8080:8080`. When adding it back: ingressClassName `gce`,
+#     Service → NodePort (or ClusterIP + NEG annotation), attach a
 #     ManagedCertificate.
-#   - CANOPY_REPO_URL is wired from warren-secrets (the Fly deploy had it; it
-#     activates the canopy prompt-library agents).
+#   - CANOPY_REPO_URL is wired from warren-secrets (optional — activates the
+#     canopy prompt-library agents).
+#   - WARREN_GIT_AUTHOR_NAME/EMAIL feed run pods' GIT_AUTHOR_*/GIT_COMMITTER_*
+#     (composeRunEnv, warren-4e36) — without them every in-pod `git commit`
+#     fails with "Author identity unknown".
 #   - Autopilot ignores fixed storageClassName choices for some tiers; the
 #     default `standard-rwo` binds the PVCs. For a multi-node repo-cache you
 #     need an RWM class (Filestore) — see README (design R2).
@@ -19,8 +53,8 @@ resources:
   - ../../base
 images:
   - name: warren
-    newName: us-west1-docker.pkg.dev/warren-502318/warren/warren
-    newTag: eb37a337
+    newName: LOCATION-docker.pkg.dev/PROJECT/warren/warren
+    newTag: latest
 patches:
   # base/secrets.yaml is a placeholder TEMPLATE (README: "do not apply as-is").
   # The real secrets are created imperatively; applying the templates here
@@ -71,9 +105,9 @@ patches:
               - name: warren
                 env:
                   - name: WARREN_K8S_AGENT_IMAGE
-                    value: us-west1-docker.pkg.dev/warren-502318/warren/warren-agent:eb37a337
+                    value: LOCATION-docker.pkg.dev/PROJECT/warren/warren-agent:latest
                   - name: WARREN_K8S_INIT_IMAGE
-                    value: us-west1-docker.pkg.dev/warren-502318/warren/warren-workspace-init:eb37a337
+                    value: LOCATION-docker.pkg.dev/PROJECT/warren/warren-workspace-init:latest
                   - name: CANOPY_REPO_URL
                     valueFrom:
                       secretKeyRef:
@@ -88,4 +122,4 @@ patches:
                   - name: WARREN_GIT_AUTHOR_NAME
                     value: warren
                   - name: WARREN_GIT_AUTHOR_EMAIL
-                    value: jayminwest+warren@users.noreply.github.com
+                    value: CHANGE_ME+warren@users.noreply.github.com

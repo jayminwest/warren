@@ -80,7 +80,9 @@ export function makeLogFollow(log: Log): LogFollowFn {
 		// errors into the same single-settle `finish`: an AbortError (expected
 		// teardown, or a race with our own abort) closes cleanly; every other
 		// source error propagates to the pump exactly like a sink error.
+		let source: Readable | undefined;
 		sink.on("pipe", (src: Readable) => {
+			source = src;
 			src.on("error", (err) => {
 				finish(aborting || isAbortError(err) ? undefined : err);
 			});
@@ -109,19 +111,28 @@ export function makeLogFollow(log: Log): LogFollowFn {
 		}
 		return {
 			abort: () => {
-				// Mark the teardown BEFORE aborting: `abort.abort()` synchronously
-				// drives node-fetch to emit an AbortError on the piped source, and the
-				// `pipe`-captured error listener above must see `aborting` so it treats
-				// that error as an expected clean close rather than a stream failure.
+				// Mark the teardown BEFORE closing anything: the `pipe`-captured error
+				// listener above must see `aborting` so any error the close produces is
+				// treated as an expected clean end rather than a stream failure.
 				aborting = true;
-				// Under Bun the AbortError can ALSO propagate synchronously out of
-				// `abort.abort()` itself (the abort-event listener's throw surfaces
-				// through the dispatching frame — observed live on GKE, warren-4e36;
-				// the pipe-source listener alone was not enough). Never let teardown
-				// throw: swallow the expected abort, route anything else into the
-				// single-settle `finish` like a stream error.
+				// NEVER dispatch `abort.abort()` when the response source is in hand:
+				// under Bun the abort-event dispatch constructs an AbortError
+				// DOMException that surfaces as an UNCAUGHT exception OUTSIDE any
+				// try/catch on this frame (8 crash-loop restarts on live GKE,
+				// warren-4e36; the warren-595f pipe-listener alone did not stop it and
+				// a try/catch around abort() does not either — the throw is async).
+				// Destroying the piped source Readable closes the HTTP stream through
+				// node-fetch's own teardown WITHOUT ever firing the abort signal; our
+				// source error listener + `aborting` turn any resulting error into a
+				// clean single-settle finish. The signal abort stays only as the
+				// fallback for the (unreachable in practice) no-source case, still
+				// guarded so teardown can never throw.
 				try {
-					abort.abort();
+					if (source !== undefined) {
+						source.destroy();
+					} else {
+						abort.abort();
+					}
 				} catch (err) {
 					if (!isAbortError(err)) {
 						finish(err);

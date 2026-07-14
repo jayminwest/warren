@@ -89,9 +89,46 @@ export interface K8sRuntimeHandle {
  * `undefined` otherwise (the loops are meaningless for `local`). Starts the
  * watcher + GC before returning.
  */
+/** One-shot guard so repeated boots (tests) install the backstop only once. */
+let abortBackstopInstalled = false;
+
+/**
+ * Last-line-of-defense against the K8s log-follow teardown AbortError
+ * (warren-4e36, third recurrence of warren-595f's crash class). Under Bun the
+ * abort-event dispatch can surface an AbortError DOMException as an UNCAUGHT
+ * exception that no try/catch on the teardown path reaches — live on GKE it
+ * crash-looped the control plane 8 times before this backstop. `log-follow.ts`
+ * now avoids dispatching the signal at all (it destroys the piped source
+ * instead), but this class of escape has recurred through two targeted fixes,
+ * so the K8s boot also refuses to die for ANY stray AbortError: expected
+ * teardown noise is logged and swallowed; every other error keeps Bun's
+ * fail-fast default (exit for exceptions, log for rejections).
+ */
+function installAbortErrorBackstop(logger: Logger): void {
+	if (abortBackstopInstalled) return;
+	abortBackstopInstalled = true;
+	const isAbort = (err: unknown): boolean => err instanceof Error && err.name === "AbortError";
+	process.on("uncaughtException", (err) => {
+		if (isAbort(err)) {
+			logger.warn({ err: String(err) }, "swallowed uncaught AbortError (K8s stream teardown)");
+			return;
+		}
+		logger.error({ err }, "uncaught exception; exiting");
+		process.exit(1);
+	});
+	process.on("unhandledRejection", (err) => {
+		if (isAbort(err)) {
+			logger.warn({ err: String(err) }, "swallowed AbortError rejection (K8s stream teardown)");
+			return;
+		}
+		logger.error({ err }, "unhandled promise rejection");
+	});
+}
+
 export function bootK8sRuntime(input: BootK8sRuntimeInput): K8sRuntimeHandle | undefined {
 	if (resolveRuntimeKind(input.env) !== "k8s") return undefined;
 
+	installAbortErrorBackstop(input.logger);
 	const config = resolveK8sPodConfig(input.env);
 	const namespace = config.namespace;
 	const clients = resolveK8sClients(input);

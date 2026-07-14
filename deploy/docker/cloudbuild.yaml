@@ -6,13 +6,15 @@
 #   gcloud builds submit --config deploy/docker/cloudbuild.yaml \
 #     --substitutions _TAG=$(git rev-parse --short HEAD) .
 #
-# _AR defaults to the warren-502318 us-west1 registry; override for another
-# project. Steps run in parallel (waitFor: ['-']) on one high-cpu worker.
+# _AR defaults to the submitting project's us-west1 registry (dynamic
+# substitution off the builtin PROJECT_ID); override _AR for another
+# location/repo. Steps run in parallel (waitFor: ['-']) on one high-cpu worker.
 substitutions:
-  _AR: us-west1-docker.pkg.dev/warren-502318/warren
+  _AR: us-west1-docker.pkg.dev/${PROJECT_ID}/warren
   _TAG: latest
 options:
   machineType: E2_HIGHCPU_8
+  dynamicSubstitutions: true
 timeout: 2400s
 steps:
   - id: control

@@ -144,12 +144,13 @@ describe("makeLogFollow", () => {
 		expect(doneCount).toBe(1);
 	});
 
-	test("abort during an active follow swallows the source AbortError — no unhandled crash, finishes once", async () => {
-		// warren-595f: aborting the follow makes node-fetch emit an AbortError on the
-		// piped source; with no listener that emit surfaces as an UNCAUGHT exception
-		// via the signal's abort-event dispatch and crash-loops the control plane.
-		// A temporary uncaughtException/unhandledRejection guard captures any escape;
-		// with the fix the AbortError is caught on the source and finished cleanly.
+	test("abort during an active follow tears down via source.destroy — the abort signal is NEVER dispatched (warren-4e36)", async () => {
+		// warren-595f → warren-4e36: dispatching `abort.abort()` makes node-fetch
+		// raise an AbortError that (under Bun) escapes every try/catch as an
+		// UNCAUGHT exception and crash-loops the control plane. The teardown now
+		// destroys the captured piped source instead — node-fetch's own stream
+		// teardown closes the HTTP body with no abort-event dispatch at all.
+		// A temporary uncaughtException/unhandledRejection guard captures any escape.
 		const fake = fakePipedLog();
 		const escapes: unknown[] = [];
 		const onEscape = (e: unknown): void => {
@@ -171,7 +172,10 @@ describe("makeLogFollow", () => {
 			controller.abort();
 			// Let the (previously crashing) async uncaught-exception path settle.
 			await new Promise((resolve) => setTimeout(resolve, 10));
-			expect(fake.abort.signal.aborted).toBe(true);
+			// The signal must never be dispatched (that dispatch IS the crash);
+			// teardown goes through source.destroy() instead.
+			expect(fake.abort.signal.aborted).toBe(false);
+			expect(fake.source.destroyed).toBe(true);
 			expect(doneCount).toBe(1);
 			expect(endErr).toBeUndefined();
 			expect(escapes).toEqual([]);
