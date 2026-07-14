@@ -17,10 +17,7 @@
  * own the SIGTERM/SIGINT plumbing — this entry just exposes the stop
  * function so an integration test or the CLI can call it directly.
  *
- * `bootServer` is async because the burrow probe at startup (used to
- * fail-fast when the socket is unreachable) is async. The probe is
- * non-fatal — warren will still start if burrow is down so /readyz
- * can report it — but logged.
+ * `bootServer` is async because the startup burrow probe is async.
  *
  * Split into a `main/` subdirectory (warren-8d3d / pl-9088 step 10):
  * - `./utils.ts`         — env/process/db helpers (incl. `defaultSpawn`,
@@ -63,6 +60,7 @@ import {
 } from "../../runs/index.ts";
 import { buildPrContent, openPullRequest } from "../../runs/pr.ts";
 import { loadWorkspaceGcConfigFromEnv, startWorkspaceGcWorker } from "../../runs/reap/gc.ts";
+import { resolveRuntimeKind } from "../../runtime/registry.ts";
 import { showSeed } from "../../seeds-cli/index.ts";
 import { loadWarrenServerConfigFromFile } from "../../server-config/index.ts";
 import { loadTriggerSchedulerConfigFromEnv } from "../../triggers/index.ts";
@@ -243,15 +241,17 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 		);
 	}
 
-	// Best-effort startup probe (non-fatal; /readyz reports live state).
-	probeBurrowClient(burrowClient).then((result) => {
-		if (!result.ok) {
-			logger.warn(
-				{ worker: result.workerName, err: result.error?.message ?? "unknown" },
-				"burrow probe failed at boot — /readyz will reflect this",
-			);
-		}
-	});
+	// Startup burrow probe — local backend only; k8s has no socket (warren-c128).
+	if (resolveRuntimeKind(env) === "local") {
+		probeBurrowClient(burrowClient).then((result) => {
+			if (!result.ok) {
+				logger.warn(
+					{ worker: result.workerName, err: result.error?.message ?? "unknown" },
+					"burrow probe failed at boot — /readyz will reflect this",
+				);
+			}
+		});
+	}
 
 	const scheduler = bootScheduler({
 		repos,

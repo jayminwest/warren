@@ -24,6 +24,7 @@ import { checkStaleBurrowWorkspaces } from "../../diagnostics/stale-workspaces.t
 import { createRunPreviewsRepo, DEFAULT_MAX_LIVE } from "../../preview/eviction/index.ts";
 import { DEFAULT_PREVIEW_PORT_RANGE, PreviewPortAllocator } from "../../preview/port-allocator.ts";
 import type { SpawnFn } from "../../projects/clone.ts";
+import { resolveRuntimeKind } from "../../runtime/registry.ts";
 import { jsonResponse } from "../response.ts";
 import type { RouteHandler, ServerDeps } from "../types.ts";
 import { defaultSpawn } from "./index.ts";
@@ -53,11 +54,15 @@ export function readyzHandler(deps: ServerDeps): RouteHandler {
 		checks.push(
 			await checkDatabaseReachable({ ...(deps.db !== undefined ? { db: deps.db } : {}) }),
 		);
-		checks.push(await checkBurrowPoolReachable(deps.burrowClient));
+		// The burrow socket, bwrap, and stale-burrow-workspace probes only make
+		// sense for the local backend, where warren co-tenants a burrow daemon.
+		// Under `WARREN_RUNTIME=k8s` there is no burrow at all (agents run in pods),
+		// so probing it just reports "burrow unreachable" and needlessly degrades
+		// readiness (warren-c128). `burrowReadyzChecks` returns [] under k8s.
+		checks.push(...(await burrowReadyzChecks(deps, spawn)));
 		checks.push(await checkAgentsRegistered(deps));
 		checks.push(checkCanopyClone({ env }));
 		checks.push(await checkCanopyClean({ env, spawn }));
-		checks.push(await checkBwrap({ spawn }));
 		const warrenConfigProjects = (await deps.repos.projects.listAll()).map((p) => ({
 			id: p.id,
 			localPath: p.localPath,
@@ -70,7 +75,6 @@ export function readyzHandler(deps: ServerDeps): RouteHandler {
 		checks.push(await checkWarrenConfigDeprecations(warrenConfigArgs));
 		checks.push(await previewPortAllocatorReadyzCheck(deps));
 		checks.push(await previewMaxLiveReadyzCheck(deps));
-		checks.push(await staleBurrowWorkspacesReadyzCheck(deps));
 		// Auth-strength probe (R-19 / SPEC §11.L, warren-8a10) reads from
 		// process.env directly: server boot already validated the token shape,
 		// so /readyz only needs to surface the strength heuristic against the
@@ -84,6 +88,24 @@ export function readyzHandler(deps: ServerDeps): RouteHandler {
 			checks,
 		});
 	};
+}
+
+/**
+ * The burrow-specific readyz probes — socket reachability, bwrap bring-up, and
+ * stale burrow workspaces. Only meaningful under the local backend: the K8s
+ * runtime (`WARREN_RUNTIME=k8s`) runs agents in pods with no co-tenanted burrow
+ * daemon, so these would only ever report "burrow unreachable" and degrade an
+ * otherwise-healthy control plane (warren-c128). Returns `[]` under k8s. Reads
+ * `WARREN_RUNTIME` off `process.env` directly, mirroring the auth-strength probe
+ * above (server boot already validated the value via `resolveRuntimeProvider`).
+ */
+async function burrowReadyzChecks(deps: ServerDeps, spawn: SpawnFn): Promise<DiagnosticCheck[]> {
+	if (resolveRuntimeKind() !== "local") return [];
+	return [
+		await checkBurrowPoolReachable(deps.burrowClient),
+		await checkBwrap({ spawn }),
+		await staleBurrowWorkspacesReadyzCheck(deps),
+	];
 }
 
 async function previewPortAllocatorReadyzCheck(deps: ServerDeps): Promise<DiagnosticCheck> {
