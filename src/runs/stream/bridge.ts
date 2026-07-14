@@ -21,7 +21,7 @@ import type { EventStream, RunTerminalState } from "../../db/schema.ts";
 import { EVENT_STREAMS } from "../../db/schema.ts";
 import type { RunHandle, RuntimeProvider } from "../../runtime/contract.ts";
 import { RuntimeRunNotFoundError } from "../../runtime/errors.ts";
-import { LocalProvider } from "../../runtime/local/provider.ts";
+import { resolveRuntimeProvider } from "../../runtime/registry.ts";
 import { resolveCostCapUsd } from "../cost-cap.ts";
 import {
 	accumulatePiUsage,
@@ -75,7 +75,7 @@ export async function bridgeRunStream(input: BridgeRunStreamInput): Promise<Brid
 	// internally (placement retired at the seam), so the bridge no longer touches
 	// `burrowClient.clientFor` itself.
 	const provider: RuntimeProvider =
-		input.runtimeProvider ?? new LocalProvider({ burrowClient: () => input.burrowClient });
+		input.runtimeProvider ?? resolveRuntimeProvider({ burrowClient: () => input.burrowClient });
 	// Seam handle: `sandboxId` is the burrowId, `providerRunId` the burrowRunId.
 	const handle: RunHandle = {
 		runId,

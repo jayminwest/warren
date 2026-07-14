@@ -50,7 +50,7 @@ import {
 	withProviderOverrides,
 } from "../../registry/schema.ts";
 import type { RunSpec, RuntimeProvider } from "../../runtime/contract.ts";
-import { LocalProvider } from "../../runtime/local/provider.ts";
+import { resolveRuntimeProvider } from "../../runtime/registry.ts";
 import { interactiveRuntimeOverride } from "../../warren-config/schema.ts";
 import { composeRunBranch, resolveRunBranchPrefix } from "../branch.ts";
 import { parseBurrowConfig } from "../burrow-config.ts";
@@ -236,13 +236,15 @@ export async function spawnRun(input: SpawnRunInput): Promise<SpawnRunResult> {
 	// Runtime-provider seam (K8s migration pl-829f step 13 / warren-1f56).
 	// `provider.create` collapses burrow's provision + dispatch (`burrowsUp` +
 	// `runs.create`) into one call and owns the burrow-half rollback on a partial
-	// failure (best-effort archive:false destroy + rethrow). Default to the
-	// burrow-backed LocalProvider over the injected single client + serverEnv so
-	// callers that only wire `burrowClient` keep working (same fallback shape as
-	// `reapRun`).
+	// failure (best-effort archive:false destroy + rethrow). Production dispatchers
+	// thread the boot-resolved provider (warren-c531); when absent, resolve through
+	// the single registry selector (warren-aa4a) — honoring `WARREN_RUNTIME` over
+	// the injected single client + serverEnv — instead of hardcoding a
+	// LocalProvider, so callers that only wire `burrowClient` keep working (same
+	// fallback shape as `reapRun`).
 	const provider: RuntimeProvider =
 		input.runtimeProvider ??
-		new LocalProvider({
+		resolveRuntimeProvider({
 			burrowClient: () => input.burrowClient,
 			...(input.serverEnv !== undefined ? { serverEnv: input.serverEnv } : {}),
 		});

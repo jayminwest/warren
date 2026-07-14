@@ -52,7 +52,7 @@ import type { Repos } from "../db/repos/index.ts";
 import type { RunRow } from "../db/schema.ts";
 import type { RunHandle, RuntimeProvider } from "../runtime/contract.ts";
 import { RuntimeRunNotFoundError } from "../runtime/errors.ts";
-import { LocalProvider } from "../runtime/local/provider.ts";
+import { resolveRuntimeProvider } from "../runtime/registry.ts";
 import type { RunEventBroker } from "./events.ts";
 import type { AutoOpenPrConfig } from "./pr.ts";
 import { type ReapRunInput, type ReapRunResult, reapRun } from "./reap/index.ts";
@@ -219,7 +219,7 @@ async function cancelBurrowRun(
 ): Promise<void> {
 	if (run.burrowId === null || run.burrowRunId === null) return;
 	const provider: RuntimeProvider =
-		deps.runtimeProvider ?? new LocalProvider({ burrowClient: () => deps.burrowClient });
+		deps.runtimeProvider ?? resolveRuntimeProvider({ burrowClient: () => deps.burrowClient });
 	const handle: RunHandle = {
 		runId: run.id,
 		sandboxId: run.burrowId,

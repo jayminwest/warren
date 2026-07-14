@@ -21,6 +21,7 @@
 
 import type { CoreV1Api } from "@kubernetes/client-node";
 import type { BurrowClient } from "../burrow-client/index.ts";
+import type { ReapExec, ReapFs } from "../runs/reap/types.ts";
 import type { EnvLike } from "../runs/spawn/callback-env.ts";
 import type { RuntimeProvider } from "./contract.ts";
 import { UnknownRuntimeError } from "./errors.ts";
@@ -59,6 +60,17 @@ export interface RuntimeProviderDeps {
 	 * signature is stable as backends are added.
 	 */
 	readonly serverEnv?: EnvLike;
+	/**
+	 * Disk/shell seam the burrow-backed `LocalProvider.finalize()` runs the reap
+	 * merge functions over (`ReapFs` / `ReapExec`, `src/runs/reap/types.ts`) —
+	 * only consulted for `WARREN_RUNTIME=local`; the `K8sProvider` ignores them.
+	 * Optional so callers (and tests) that accept the real `defaultFs` /
+	 * `defaultExec` needn't supply them. Kept on the shared bag so the reap
+	 * pipeline can route its fallback provider through `resolveRuntimeProvider`
+	 * (warren-aa4a) instead of constructing a `LocalProvider` inline.
+	 */
+	readonly fs?: ReapFs;
+	readonly exec?: ReapExec;
 	/**
 	 * Lazy Kubernetes core API factory the `K8sProvider` drives — only consulted
 	 * for `WARREN_RUNTIME=k8s`. Optional so `local` callers (and tests) needn't
@@ -145,6 +157,8 @@ export function resolveRuntimeProvider(
 			return new LocalProvider({
 				burrowClient: deps.burrowClient,
 				...(deps.serverEnv !== undefined ? { serverEnv: deps.serverEnv } : {}),
+				...(deps.fs !== undefined ? { fs: deps.fs } : {}),
+				...(deps.exec !== undefined ? { exec: deps.exec } : {}),
 			});
 		case "k8s":
 			return buildK8sProvider(deps);

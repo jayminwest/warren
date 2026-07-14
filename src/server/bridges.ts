@@ -63,7 +63,7 @@ import {
 	createConversationTurnHandler,
 } from "../runs/stream/conversation-turn.ts";
 import type { RuntimeProvider } from "../runtime/contract.ts";
-import { LocalProvider } from "../runtime/local/provider.ts";
+import { resolveRuntimeProvider } from "../runtime/registry.ts";
 import type { SeedsCliDeps } from "../seeds-cli/index.ts";
 import type { WarrenConfigCache } from "../warren-config/index.ts";
 import { defaultSleep, reconcileLostBurrowRun, runWithReconnect } from "./bridge-reconnect.ts";
@@ -326,10 +326,11 @@ export async function bootBridges(input: CreateBridgeRegistryInput): Promise<Boo
 	// warren-c531: the ghost-run pre-probe reconciles via `provider.status()` so
 	// it is runtime-aware — under `WARREN_RUNTIME=k8s` a GC'd pod surfaces as
 	// `exists:false` exactly as burrow's 404 did, with no direct burrow call. The
-	// same instance the registry threads into every bridge; default to a
-	// burrow-backed `LocalProvider` so the self-host path is unchanged.
+	// same instance the registry threads into every bridge; when absent, resolve
+	// through the single registry selector (warren-aa4a) — honoring `WARREN_RUNTIME`
+	// — instead of hardcoding a `LocalProvider`, so the self-host path is unchanged.
 	const provider: RuntimeProvider =
-		input.runtimeProvider ?? new LocalProvider({ burrowClient: () => input.burrowClient });
+		input.runtimeProvider ?? resolveRuntimeProvider({ burrowClient: () => input.burrowClient });
 	const candidates = await input.repos.runs.listByState(["queued", "running"]);
 	const resumed: { runId: string; burrowRunId: string }[] = [];
 	const skipped: { runId: string; reason: string }[] = [];

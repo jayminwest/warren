@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { CoreV1Api, V1Pod } from "@kubernetes/client-node";
 import type { BurrowClient } from "../burrow-client/index.ts";
+import type { ReapExec, ReapFs } from "../runs/reap/types.ts";
 import { UnknownRuntimeError } from "./errors.ts";
 import { K8sProvider } from "./k8s/provider.ts";
 import { LocalProvider } from "./local/provider.ts";
@@ -58,6 +59,24 @@ describe("resolveRuntimeProvider", () => {
 
 	test("resolves LocalProvider for explicit WARREN_RUNTIME=local", () => {
 		const provider = resolveRuntimeProvider(deps, { WARREN_RUNTIME: "local" });
+		expect(provider).toBeInstanceOf(LocalProvider);
+	});
+
+	test("accepts the LocalProvider fs/exec seam so reap's fallback can route through the registry", () => {
+		// warren-aa4a: the reap pipeline's fallback resolves through
+		// `resolveRuntimeProvider({ burrowClient, fs, exec })` instead of
+		// constructing a LocalProvider inline. The fs/exec slices are LocalProvider-
+		// only (finalize's disk/shell seam) and must not disturb resolution.
+		const fs: ReapFs = {
+			mkdirp: () => Promise.resolve(),
+			readFile: () => Promise.resolve(null),
+			writeFile: () => Promise.resolve(),
+			readdir: () => Promise.resolve([]),
+		};
+		const exec: ReapExec = {
+			run: () => Promise.resolve({ stdout: "", stderr: "" }),
+		};
+		const provider = resolveRuntimeProvider({ ...deps, fs, exec }, {});
 		expect(provider).toBeInstanceOf(LocalProvider);
 	});
 

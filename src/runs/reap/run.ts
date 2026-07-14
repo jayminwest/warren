@@ -1,7 +1,7 @@
 import type { BurrowClient } from "../../burrow-client/client.ts";
 import type { EventRow, RunFailureReason, RunTerminalState } from "../../db/schema.ts";
 import type { RunHandle, RuntimeProvider, WorkspaceInfo } from "../../runtime/contract.ts";
-import { LocalProvider } from "../../runtime/local/provider.ts";
+import { resolveRuntimeProvider } from "../../runtime/registry.ts";
 import { bindBridgeLogger } from "../stream/index.ts";
 import { runWorkspaceDestroy } from "./destroy.ts";
 import { createPipelineState, runReapPipeline } from "./pipeline.ts";
@@ -15,12 +15,15 @@ export async function reapRun(input: ReapRunInput): Promise<ReapRunResult> {
 	const exec = input.exec ?? defaultExec;
 	const now = input.now ?? (() => new Date());
 	// Runtime-provider seam (warren-1f56). The workspace-dependent half of reap
-	// (finalize) + the sandbox teardown (terminate) route through this. Default
-	// to the burrow-backed LocalProvider over the same single client + fs/exec,
-	// so callers and tests that only pass `burrowClient` keep their behavior.
+	// (finalize) + the sandbox teardown (terminate) route through this. Production
+	// dispatchers thread the boot-resolved provider (warren-c531); when absent,
+	// resolve through the single registry selector (warren-aa4a) — honoring
+	// `WARREN_RUNTIME` over the same client + fs/exec — instead of hardcoding a
+	// LocalProvider, so callers and tests that only pass `burrowClient` keep their
+	// behavior.
 	const provider: RuntimeProvider =
 		input.runtimeProvider ??
-		new LocalProvider({ burrowClient: () => input.burrowClient, fs, exec });
+		resolveRuntimeProvider({ burrowClient: () => input.burrowClient, fs, exec });
 
 	const run = await input.repos.runs.require(input.runId);
 	const log = bindBridgeLogger(input.logger, { run_id: run.id }); // warren-9f06: bind run_id once

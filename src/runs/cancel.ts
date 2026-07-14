@@ -48,7 +48,7 @@ import type { Repos } from "../db/repos/index.ts";
 import { RUN_TERMINAL_STATES, type RunState, type RunTerminalState } from "../db/schema.ts";
 import type { RunHandle, RuntimeProvider } from "../runtime/contract.ts";
 import { RuntimeRunNotFoundError } from "../runtime/errors.ts";
-import { LocalProvider } from "../runtime/local/provider.ts";
+import { resolveRuntimeProvider } from "../runtime/registry.ts";
 import type { RunEventBroker } from "./events.ts";
 import type { AutoOpenPrConfig } from "./pr.ts";
 import { type ReapRunInput, type ReapRunResult, reapRun } from "./reap/index.ts";
@@ -141,11 +141,12 @@ export async function cancelRun(input: CancelRunInput): Promise<CancelRunResult>
 			`run '${run.id}' has burrow_run_id but no burrow_id; cannot resolve worker`,
 		);
 	}
-	// Runtime-provider seam (warren-1f56). Default to the burrow-backed
-	// LocalProvider over the injected pool so callers that only pass
+	// Runtime-provider seam (warren-1f56). When no provider is threaded, resolve
+	// through the single registry selector (warren-aa4a) — honoring `WARREN_RUNTIME`
+	// — instead of hardcoding a LocalProvider, so callers that only pass
 	// `burrowClient` keep their behavior (same fallback shape as `reapRun`).
 	const provider: RuntimeProvider =
-		input.runtimeProvider ?? new LocalProvider({ burrowClient: () => input.burrowClient });
+		input.runtimeProvider ?? resolveRuntimeProvider({ burrowClient: () => input.burrowClient });
 	// The seam handle: `sandboxId` is the burrowId, `providerRunId` the burrowRunId
 	// cancel is scoped to.
 	const handle: RunHandle = {
