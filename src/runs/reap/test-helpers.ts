@@ -94,7 +94,12 @@ export function fakeFs(seed: Record<string, string> = {}): FakeFs {
 
 export interface FakeExec {
 	readonly exec: ReapExec;
-	readonly calls: { cmd: string; args: readonly string[]; cwd: string }[];
+	readonly calls: {
+		cmd: string;
+		args: readonly string[];
+		cwd: string;
+		env?: Record<string, string>;
+	}[];
 	readonly fail: { reason: string } | null;
 }
 
@@ -150,7 +155,12 @@ function handleDiffCached(stagedDelta: boolean): ExecResult {
 }
 
 export function fakeExec(opts: FakeExecOpts = {}): FakeExec {
-	const calls: { cmd: string; args: readonly string[]; cwd: string }[] = [];
+	const calls: {
+		cmd: string;
+		args: readonly string[];
+		cwd: string;
+		env?: Record<string, string>;
+	}[] = [];
 	const fail = opts.fail !== undefined ? { reason: opts.fail } : null;
 	const failRevList = opts.failRevList ?? null;
 	const revListCount = opts.revListCount ?? "1";
@@ -159,7 +169,7 @@ export function fakeExec(opts: FakeExecOpts = {}): FakeExec {
 	const failGitStatus = opts.failGitStatus ?? null;
 	const exec: ReapExec = {
 		run: async (cmd, args, opt) => {
-			calls.push({ cmd, args, cwd: opt.cwd });
+			calls.push({ cmd, args, cwd: opt.cwd, env: opt.env });
 			if (isGitSub(cmd, args, "rev-list")) return handleRevList(failRevList, revListCount);
 			if (isGitSub(cmd, args, "status") && args.includes("--porcelain")) {
 				return handleStatus(failGitStatus, gitStatus);

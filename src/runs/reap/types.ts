@@ -31,11 +31,16 @@ export interface ReapFs {
 
 export interface ReapExec {
 	/** Run a command; resolves on exit-0, rejects with an `Error` whose
-	 * `message` carries stderr otherwise. Mirrors `child_process.execFile`. */
+	 * `message` carries stderr otherwise. Mirrors `child_process.execFile`.
+	 *
+	 * `env` (warren-035c) is merged OVER the inherited process environment at
+	 * the spawn — the commit sites pass `warrenCommitIdentityEnv()` so an
+	 * inherited `GIT_AUTHOR_*` / `GIT_COMMITTER_*` can't out-rank the pinned
+	 * bot identity. Omitted ⇒ plain inheritance, behavior unchanged. */
 	readonly run: (
 		cmd: string,
 		args: readonly string[],
-		opts: { cwd: string; timeoutMs?: number },
+		opts: { cwd: string; timeoutMs?: number; env?: Record<string, string> },
 	) => Promise<{ stdout: string; stderr: string }>;
 }
 

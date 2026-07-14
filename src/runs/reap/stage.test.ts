@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { warrenCommitIdentityEnv } from "../../bot-identity.ts";
 import { reapRun } from "./index.ts";
 import {
 	type Ctx,
@@ -107,6 +108,10 @@ describe("reapRun commit-through-reap sub-steps (warren-343a + warren-7ecc)", ()
 			]);
 			const events = await plotCtx.repos.events.listByRun(plotCtx.runId);
 			expect(events.find((ev) => ev.kind === "reap.plot_committed")).toBeDefined();
+			// warren-035c: the commit spawn also pins the identity in env so an
+			// inherited GIT_AUTHOR_*/GIT_COMMITTER_* can't out-rank the `-c` config.
+			const commitCall = e.calls.find((c) => c.cmd === "git" && c.args.includes("commit"));
+			expect(commitCall?.env).toEqual(warrenCommitIdentityEnv());
 		} finally {
 			await plotCtx.db.close();
 		}
@@ -341,6 +346,10 @@ describe("reapRun commit-through-reap sub-steps (warren-343a + warren-7ecc)", ()
 			]);
 			const events = await seedsCtx.repos.events.listByRun(seedsCtx.runId);
 			expect(events.find((ev) => ev.kind === "reap.seeds_committed")).toBeDefined();
+			// warren-035c: the commit spawn also pins the identity in env so an
+			// inherited GIT_AUTHOR_*/GIT_COMMITTER_* can't out-rank the `-c` config.
+			const commitCall = e.calls.find((c) => c.cmd === "git" && c.args.includes("commit"));
+			expect(commitCall?.env).toEqual(warrenCommitIdentityEnv());
 		} finally {
 			await seedsCtx.db.close();
 		}

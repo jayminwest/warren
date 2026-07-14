@@ -116,8 +116,15 @@ export async function isWorkspaceDirty(exec: ReapExec, workspacePath: string): P
 
 export const defaultExec: ReapExec = {
 	run: async (cmd, args, opts) => {
-		const execOpts: { cwd: string; timeout?: number } = { cwd: opts.cwd };
+		const execOpts: {
+			cwd: string;
+			timeout?: number;
+			env?: NodeJS.ProcessEnv;
+		} = { cwd: opts.cwd };
 		if (opts.timeoutMs !== undefined) execOpts.timeout = opts.timeoutMs;
+		// warren-035c: merge the caller's env OVER the inherited process env so
+		// a pinned GIT_AUTHOR_*/GIT_COMMITTER_* identity beats an inherited one.
+		if (opts.env !== undefined) execOpts.env = { ...process.env, ...opts.env };
 		const { stdout, stderr } = await execFileAsync(cmd, [...args], execOpts);
 		return { stdout, stderr };
 	},

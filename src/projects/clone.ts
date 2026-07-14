@@ -38,6 +38,13 @@ export interface SpawnResult {
 export interface SpawnOptions {
 	readonly cwd: string;
 	readonly timeoutMs?: number;
+	/**
+	 * Extra environment merged OVER the inherited process environment at the
+	 * spawn (warren-035c). Commit sites pass `warrenCommitIdentityEnv()` so an
+	 * inherited `GIT_AUTHOR_*` / `GIT_COMMITTER_*` can't out-rank the pinned
+	 * warren bot identity. Omitted ⇒ plain inheritance, behavior unchanged.
+	 */
+	readonly env?: Record<string, string>;
 }
 
 export type SpawnFn = (cmd: readonly string[], opts: SpawnOptions) => Promise<SpawnResult>;

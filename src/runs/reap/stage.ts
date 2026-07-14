@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import { warrenCommitIdentityArgs } from "../../bot-identity.ts";
+import { warrenCommitIdentityArgs, warrenCommitIdentityEnv } from "../../bot-identity.ts";
 import type { EventRow } from "../../db/schema.ts";
 import type { ReapExec, ReapFs } from "./types.ts";
 
@@ -118,7 +118,9 @@ export async function stagePlotForCommit(input: StagePlotForCommitInput): Promis
 			"--",
 			...copiedPathspecs,
 		],
-		{ cwd: workspacePath, timeoutMs: 10_000 },
+		// warren-035c: pin the bot identity in env too so an inherited
+		// GIT_AUTHOR_*/GIT_COMMITTER_* can't out-rank the `-c user.*` config.
+		{ cwd: workspacePath, timeoutMs: 10_000, env: warrenCommitIdentityEnv() },
 	);
 	await emit("reap.plot_committed", {
 		message: "chore(warren): plot state",
@@ -226,7 +228,9 @@ export async function stageSeedsForCommit(input: StageSeedsForCommitInput): Prom
 			"--",
 			...seedsPathspecs,
 		],
-		{ cwd: workspacePath, timeoutMs: 10_000 },
+		// warren-035c: pin the bot identity in env too so an inherited
+		// GIT_AUTHOR_*/GIT_COMMITTER_* can't out-rank the `-c user.*` config.
+		{ cwd: workspacePath, timeoutMs: 10_000, env: warrenCommitIdentityEnv() },
 	);
 	await emit("reap.seeds_committed", {
 		message: "chore(warren): seeds state",

@@ -60,6 +60,8 @@ export const defaultSpawn: CliSpawn = async (cmd, opts) => {
 		cwd: opts.cwd,
 		stdout: "pipe",
 		stderr: "pipe",
+		// warren-035c: merge caller env OVER process.env so a pinned identity wins.
+		...(opts.env !== undefined ? { env: { ...process.env, ...opts.env } } : {}),
 	});
 	const timer =
 		opts.timeoutMs !== undefined && opts.timeoutMs > 0

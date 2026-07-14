@@ -37,7 +37,7 @@
  */
 
 import { dirname, join } from "node:path";
-import { warrenCommitIdentityArgs } from "../../bot-identity.ts";
+import { warrenCommitIdentityArgs, warrenCommitIdentityEnv } from "../../bot-identity.ts";
 import type { FinalizeResult } from "../../runtime/contract.ts";
 import type { ReapPipelineContext, ReapPipelineState } from "./pipeline.ts";
 
@@ -123,7 +123,9 @@ export async function applyCloneDeltas(
 				"--",
 				...pathspecs,
 			],
-			{ cwd: clonePath, timeoutMs: 10_000 },
+			// warren-035c: pin the bot identity in env too so an inherited
+			// GIT_AUTHOR_*/GIT_COMMITTER_* can't out-rank the `-c user.*` config.
+			{ cwd: clonePath, timeoutMs: 10_000, env: warrenCommitIdentityEnv() },
 		);
 		state.cloneDeltasApplied = true;
 		await ctx.emit("reap.clone_deltas_applied", {

@@ -1,7 +1,7 @@
 import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { warrenCommitIdentityArgs } from "../bot-identity.ts";
+import { warrenCommitIdentityArgs, warrenCommitIdentityEnv } from "../bot-identity.ts";
 import type { SpawnFn } from "../projects/index.ts";
 import { parseGitHubUrl } from "../projects/url.ts";
 import { mergePullRequest, openPullRequest, parsePullRequestRef } from "../runs/pr.ts";
@@ -36,7 +36,7 @@ export interface PlotSyncer {
 async function trySpawn(
 	spawn: SpawnFn,
 	cmd: readonly string[],
-	opts: { cwd: string; timeoutMs?: number },
+	opts: { cwd: string; timeoutMs?: number; env?: Record<string, string> },
 ): Promise<{ readonly stdout: string; readonly stderr: string; readonly exitCode: number }> {
 	try {
 		return await spawn(cmd, opts);
@@ -162,7 +162,9 @@ export const defaultPlotSyncer: PlotSyncer = {
 					"-m",
 					"plot sync: update plot metadata",
 				],
-				{ cwd: worktreePath },
+				// warren-035c: pin the bot identity in env too so an inherited
+				// GIT_AUTHOR_*/GIT_COMMITTER_* can't out-rank the `-c user.*` config.
+				{ cwd: worktreePath, env: warrenCommitIdentityEnv() },
 			);
 			if (commitRes.exitCode !== 0) {
 				throw new Error(

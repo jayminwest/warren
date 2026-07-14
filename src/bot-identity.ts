@@ -27,6 +27,14 @@ export const WARREN_BOT_IDENTITY = {
  * `-c user.name=… -c user.email=…` arguments that pin the canonical warren
  * bot identity on a single `git` invocation. Returned as a fresh array so
  * callers can splice it into an argv without sharing mutable state.
+ *
+ * NOTE: `-c user.name` / `user.email` are config, and git's
+ * `GIT_AUTHOR_NAME` / `GIT_AUTHOR_EMAIL` / `GIT_COMMITTER_*` env vars take
+ * precedence over config. Any warren process that inherited those vars (a
+ * parent `git commit` exports them to its hooks, so this repo's own
+ * pre-commit gate carries them) would mis-author the bookkeeping commit as
+ * the operator. Pair this with `warrenCommitIdentityEnv()` at every commit
+ * site so inherited env can never win (warren-035c).
  */
 export function warrenCommitIdentityArgs(): string[] {
 	return [
@@ -35,4 +43,21 @@ export function warrenCommitIdentityArgs(): string[] {
 		"-c",
 		`user.email=${WARREN_BOT_IDENTITY.email}`,
 	];
+}
+
+/**
+ * Explicit `GIT_AUTHOR_*` / `GIT_COMMITTER_*` env for the canonical warren
+ * bot identity. Merge this over the inherited environment at a commit spawn
+ * so an inherited `GIT_AUTHOR_NAME` (etc.) can't override the config pinned
+ * by `warrenCommitIdentityArgs()` (warren-035c). Derived from the single
+ * `WARREN_BOT_IDENTITY` source of truth — never re-spell the literals.
+ * Returned as a fresh object so callers can splice it without sharing state.
+ */
+export function warrenCommitIdentityEnv(): Record<string, string> {
+	return {
+		GIT_AUTHOR_NAME: WARREN_BOT_IDENTITY.name,
+		GIT_AUTHOR_EMAIL: WARREN_BOT_IDENTITY.email,
+		GIT_COMMITTER_NAME: WARREN_BOT_IDENTITY.name,
+		GIT_COMMITTER_EMAIL: WARREN_BOT_IDENTITY.email,
+	};
 }
