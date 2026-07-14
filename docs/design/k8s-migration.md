@@ -606,7 +606,15 @@ one-operator deployment; upgrade to 3-node etcd HA when uptime SLA requires it.
 `ReadWriteOnce` on a single node — fine until a second worker node is added.
 At that point, init containers may schedule on a node that can't mount the PVC.
 Mitigation: start with local-path provisioner (single-node) and migrate to
-Longhorn `ReadWriteMany` before adding a second worker node.
+Longhorn / Filestore `ReadWriteMany` before adding a second worker node.
+
+*Status (warren-e908):* the cache is now WIRED — the init container mounts the
+claim at `/repo-cache` when `WARREN_K8S_REPO_CACHE_PVC` names it, keeps a
+per-repo bare mirror (`<sha256(url)>.git`, `git clone --mirror` then `git fetch`
+on re-use), and local-clones the run workspace out of the mirror onto the
+`emptyDir` (see `src/runtime/k8s/workspace-init.ts`). Any cache failure falls
+back to a direct network clone, so a wedged mirror never blocks a run. The RWX
+storage-class migration above is still OUTSTANDING and gates going multi-node.
 
 **R3 — Cold-start latency.** A fresh pod + image pull + git clone adds 10–60s
 to run start time (depending on image cache hit and repo size). Currently burrow

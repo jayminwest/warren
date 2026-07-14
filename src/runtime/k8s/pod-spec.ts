@@ -32,7 +32,6 @@ import type {
 	V1PodSecurityContext,
 	V1ResourceRequirements,
 	V1SecurityContext,
-	V1Volume,
 } from "@kubernetes/client-node";
 import {
 	DEFAULT_K8S_CPU_LIMIT_MILLICORES,
@@ -44,7 +43,13 @@ import {
 	type ResourcesConfig,
 } from "../../warren-config/index.ts";
 import type { RunSpec } from "../contract.ts";
-import { buildAgentEnv, buildInitEnv, buildInitVolumeMounts } from "./pod-env.ts";
+import {
+	buildAgentEnv,
+	buildInitEnv,
+	buildInitVolumeMounts,
+	buildRunPodVolumes,
+	resolveRepoCacheConfig,
+} from "./pod-env.ts";
 
 // Re-exported so `./pod-spec.ts` stays the single import surface for the pod
 // shape; the env builders + ENV name constants live in `./pod-env.ts` (split
@@ -58,6 +63,7 @@ export {
 	ENV_PROMPT,
 	ENV_RUN_ID,
 	ENV_WORKSPACE_PATH,
+	serviceDnsCallbackUrl,
 } from "./pod-env.ts";
 
 // --- Pod-shape constants ---------------------------------------------------
@@ -208,6 +214,8 @@ export interface K8sPodConfig {
 	gitTokenSecret: { name: string; key: string };
 	/** K8s Secret the agent container's `ANTHROPIC_API_KEY` is sourced from (§6.3). */
 	anthropicSecret: { name: string; key: string };
+	/** Optional PVC-backed git-mirror cache on the init container (§4.3, pod-env.ts). */
+	repoCache?: { claimName: string; mountPath: string };
 	/** SIGTERM grace (seconds) `cancel()` deletes the pod with (step 19). */
 	cancelGracePeriodSeconds: number;
 	/** Grace (seconds) `terminate()` force-deletes the pod with; 0 = immediate (step 19). */
@@ -297,6 +305,8 @@ export function resolveK8sPodConfig(
 	if (sa !== undefined && sa !== "") config.serviceAccountName = sa;
 	const pullPolicy = pickImagePullPolicy(env);
 	if (pullPolicy !== undefined) config.imagePullPolicy = pullPolicy;
+	const repoCache = resolveRepoCacheConfig(env);
+	if (repoCache !== undefined) config.repoCache = repoCache;
 	return config;
 }
 
@@ -312,16 +322,6 @@ function pickImagePullPolicy(env: K8sPodConfigEnv): string | undefined {
 	const raw = env.WARREN_K8S_IMAGE_PULL_POLICY?.trim();
 	if (raw === undefined || raw === "") return undefined;
 	return IMAGE_PULL_POLICIES.has(raw) ? raw : undefined;
-}
-
-/**
- * Derive the in-cluster callback URL the agent dials to POST events/finalize
- * back to warren (contract §6.3). Kubernetes Service DNS — reachable from the
- * run pod, unlike LocalProvider's `http://localhost:PORT`. Pure.
- */
-export function serviceDnsCallbackUrl(config: K8sPodConfig): string {
-	const { service, namespace, port } = config.callback;
-	return `http://${service}.${namespace}.svc.cluster.local:${port}`;
 }
 
 // --- Name sanitization -----------------------------------------------------
@@ -420,7 +420,7 @@ function buildInitContainer(
 		...(config.imagePullPolicy !== undefined ? { imagePullPolicy: config.imagePullPolicy } : {}),
 		command: [...K8S_INIT_COMMAND],
 		env: buildInitEnv(spec, config, opts),
-		volumeMounts: buildInitVolumeMounts(opts),
+		volumeMounts: buildInitVolumeMounts(config, opts),
 		securityContext: containerSecurityContext(config),
 	};
 }
@@ -498,10 +498,9 @@ export function buildRunPod(
 	config: K8sPodConfig,
 	opts: BuildRunPodOptions = {},
 ): V1Pod {
-	const volumes: V1Volume[] = [{ name: WORKSPACE_VOLUME_NAME, emptyDir: {} }];
-	if (opts.seedConfigMapName !== undefined) {
-		volumes.push({ name: SEED_VOLUME_NAME, configMap: { name: opts.seedConfigMapName } });
-	}
+	// Workspace emptyDir + optional seed ConfigMap + optional repo-cache PVC
+	// (§4.3/R2 — the cache mounts on the init container only, never the agent).
+	const volumes = buildRunPodVolumes(config, opts);
 	const pod: V1Pod = {
 		apiVersion: "v1",
 		kind: "Pod",

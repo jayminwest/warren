@@ -26,12 +26,37 @@
  *   - `WARREN_SEED_MANIFEST`  — optional; path to the JSON seed manifest mounted
  *     from the run's ConfigMap. When set, each entry is written into the
  *     workspace at its (posix) path after checkout.
+ *   - `WARREN_REPO_CACHE_DIR` — optional; a PVC-backed dir (design §4.3, R2) the
+ *     init container keeps a per-repo bare MIRROR under. When set, the workspace
+ *     is materialized from a local clone of the mirror (`git fetch` on re-use,
+ *     `git clone --mirror` on first sight) instead of a fresh network clone —
+ *     turning cold-start clones into seconds-long local copies. Any failure in
+ *     the cache path falls back to a direct network clone with a structured
+ *     warning, so the cache is a pure optimization, never a hard dependency.
  *
- * The pure helpers (`parseInitEnv`, `authenticatedCloneUrl`) are unit-tested
- * without a cluster or a real git; `runWorkspaceInit` takes injectable git/fs
- * seams so the orchestration is testable by recording the git argv.
+ * The pure helpers (`parseInitEnv`, `authenticatedCloneUrl`, `mirrorPathFor`)
+ * are unit-tested without a cluster or a real git; `runWorkspaceInit` takes
+ * injectable git/fs seams so the orchestration is testable by recording the
+ * git argv.
+ *
+ * ## Credential hygiene
+ * The PVC mirror is shared across runs, so a token must NEVER persist in it or
+ * in the run workspace: the mirror path is derived from the CLEAN (token-free)
+ * repo URL; `git fetch` passes the authenticated URL as a positional argument
+ * (never saved to `origin`); the mirror's saved `origin` is reset to the clean
+ * URL right after `clone --mirror`; and the workspace clone's `origin` is reset
+ * to the clean remote (the local mirror path is never a push target anyway).
+ *
+ * ## Concurrency
+ * Two init containers may hit the same mirror at once. Concurrent `git fetch`
+ * into one object DB is safe (git locks refs/packs). A first-sight race where
+ * two pods both `clone --mirror` the same path is resolved by the loser's clone
+ * failing on the non-empty dir → it falls through to a direct network clone. A
+ * corrupt/partial mirror likewise fails the probe/fetch and falls back rather
+ * than being blindly reused, so a bad cache entry never wedges a run.
  */
 
+import { createHash } from "node:crypto";
 import {
 	mkdir as nodeMkdir,
 	readFile as nodeReadFile,
@@ -50,6 +75,7 @@ export interface InitEnv {
 	workspacePath: string;
 	token?: string;
 	seedManifestPath?: string;
+	repoCacheDir?: string;
 }
 
 /** Minimal env surface `parseInitEnv` reads. */
@@ -75,6 +101,7 @@ function nonEmpty(raw: string | undefined): string | undefined {
 export function parseInitEnv(env: InitEnvSource): InitEnv {
 	const token = nonEmpty(env.WARREN_GIT_TOKEN);
 	const seedManifestPath = nonEmpty(env.WARREN_SEED_MANIFEST);
+	const repoCacheDir = nonEmpty(env.WARREN_REPO_CACHE_DIR);
 	return {
 		repoUrl: required(env, "WARREN_REPO_URL"),
 		branch: required(env, "WARREN_BRANCH"),
@@ -82,7 +109,19 @@ export function parseInitEnv(env: InitEnvSource): InitEnv {
 		workspacePath: nonEmpty(env.WARREN_WORKSPACE_PATH) ?? "/workspace",
 		...(token !== undefined ? { token } : {}),
 		...(seedManifestPath !== undefined ? { seedManifestPath } : {}),
+		...(repoCacheDir !== undefined ? { repoCacheDir } : {}),
 	};
+}
+
+/**
+ * Resolve the per-repo bare-mirror path under the PVC cache dir. Derived from a
+ * SHA-256 of the CLEAN (token-free) repo URL so (a) an operator token never
+ * lands in a filesystem path and (b) the same repo maps to one stable mirror
+ * across runs regardless of which run's token authenticated the fetch. Pure.
+ */
+export function mirrorPathFor(cacheDir: string, repoUrl: string): string {
+	const hash = createHash("sha256").update(repoUrl).digest("hex");
+	return join(cacheDir, `${hash}.git`);
 }
 
 /**
@@ -148,6 +187,107 @@ async function gitOrThrow(
 }
 
 /**
+ * Probe whether `mirrorPath` is a usable bare git repo. Non-throwing: a missing
+ * dir or corrupt/partial mirror returns `false` (git exits non-zero), so the
+ * caller treats it as "absent" and re-clones rather than reusing a bad cache.
+ */
+async function mirrorIsUsable(git: InitGitRunner, mirrorPath: string): Promise<boolean> {
+	// `--git-dir` (not `cwd`) so the probe runs from a valid working dir even when
+	// the mirror path does not exist yet — a missing/corrupt mirror returns a
+	// non-zero exit ("not a git repository") rather than throwing on a bad cwd.
+	const res = await git(["--git-dir", mirrorPath, "rev-parse", "--is-bare-repository"]);
+	return res.exitCode === 0 && res.stdout.trim() === "true";
+}
+
+/**
+ * Bring the shared bare mirror at `mirrorPath` up to date, creating it on first
+ * sight. Credential hygiene: `clone --mirror` embeds the auth URL in `origin`,
+ * so we immediately reset it to the clean URL; subsequent `fetch` passes the
+ * auth URL positionally and never persists it.
+ */
+async function ensureMirror(
+	git: InitGitRunner,
+	fs: InitFs,
+	cfg: InitEnv,
+	mirrorPath: string,
+	authUrl: string,
+	log: (m: string) => void,
+): Promise<void> {
+	if (await mirrorIsUsable(git, mirrorPath)) {
+		log(`workspace-init: updating repo-cache mirror ${mirrorPath}`);
+		await gitOrThrow(
+			git,
+			["fetch", "--prune", authUrl, "+refs/heads/*:refs/heads/*", "+refs/tags/*:refs/tags/*"],
+			{ cwd: mirrorPath },
+		);
+		return;
+	}
+	log(`workspace-init: creating repo-cache mirror ${mirrorPath}`);
+	// `git clone` does not create missing parent dirs — ensure the cache root.
+	await fs.mkdir(dirname(mirrorPath), { recursive: true });
+	await gitOrThrow(git, ["clone", "--mirror", authUrl, mirrorPath]);
+	if (cfg.token !== undefined) {
+		// Strip the embedded token from the mirror's saved remote (shared PVC).
+		await gitOrThrow(git, ["remote", "set-url", "origin", cfg.repoUrl], { cwd: mirrorPath });
+	}
+}
+
+/**
+ * Materialize the workspace from the PVC-backed mirror: ensure/update the shared
+ * bare mirror, then LOCAL-clone the base branch out of it into the emptyDir and
+ * carve the per-run branch. The workspace `origin` is reset to the clean remote
+ * so finalize pushes to GitHub, not the local mirror path. Returns `true` on
+ * success; on ANY failure it logs a structured warning and returns `false` so
+ * the caller falls back to a direct network clone (the cache is best-effort).
+ */
+async function materializeViaCache(
+	git: InitGitRunner,
+	fs: InitFs,
+	cfg: InitEnv,
+	log: (m: string) => void,
+): Promise<boolean> {
+	if (cfg.repoCacheDir === undefined) return false;
+	const mirrorPath = mirrorPathFor(cfg.repoCacheDir, cfg.repoUrl);
+	const authUrl = authenticatedCloneUrl(cfg.repoUrl, cfg.token);
+	try {
+		await ensureMirror(git, fs, cfg, mirrorPath, authUrl, log);
+		// Local clone from the mirror path — no network, no credentials.
+		await gitOrThrow(git, ["clone", "--branch", cfg.baseBranch, mirrorPath, cfg.workspacePath]);
+		// Point origin at the real remote (the mirror path is never a push target).
+		await gitOrThrow(git, ["remote", "set-url", "origin", cfg.repoUrl], { cwd: cfg.workspacePath });
+		await gitOrThrow(git, ["switch", "-c", cfg.branch], { cwd: cfg.workspacePath });
+		log(`workspace-init: materialized ${cfg.branch} from repo-cache mirror`);
+		return true;
+	} catch (err) {
+		const reason = err instanceof Error ? err.message : String(err);
+		log(
+			`workspace-init: WARN repo-cache path failed (${reason}); falling back to a direct network clone`,
+		);
+		return false;
+	}
+}
+
+/**
+ * Direct network clone of the base branch into the workspace, carve the per-run
+ * branch, and strip any embedded token from the saved remote. The original
+ * (pre-cache) materialization path — also the fallback when the cache misses.
+ */
+async function directClone(
+	git: InitGitRunner,
+	cfg: InitEnv,
+	log: (m: string) => void,
+): Promise<void> {
+	const cloneUrl = authenticatedCloneUrl(cfg.repoUrl, cfg.token);
+	log(`workspace-init: cloning ${cfg.repoUrl} (${cfg.baseBranch}) into ${cfg.workspacePath}`);
+	await gitOrThrow(git, ["clone", "--branch", cfg.baseBranch, cloneUrl, cfg.workspacePath]);
+	await gitOrThrow(git, ["switch", "-c", cfg.branch], { cwd: cfg.workspacePath });
+	// Strip the embedded token so it never persists in the workspace .git/config.
+	if (cfg.token !== undefined) {
+		await gitOrThrow(git, ["remote", "set-url", "origin", cfg.repoUrl], { cwd: cfg.workspacePath });
+	}
+}
+
+/**
  * Reject seed paths that would escape the workspace (absolute or `..`) — the
  * manifest is operator-authored but the pod is a trust boundary, so a
  * defensive check keeps a bad `.canopy` drop from writing outside `/workspace`.
@@ -181,8 +321,11 @@ async function writeSeedFiles(cfg: InitEnv, fs: InitFs, log: (m: string) => void
 }
 
 /**
- * Materialize the workspace: clone the base branch fresh, carve the per-run
- * branch locally, strip any token from the remote, then drop the seed files.
+ * Materialize the workspace, then drop the seed files. When a PVC-backed repo
+ * cache is configured (`WARREN_REPO_CACHE_DIR`), materialize from the shared
+ * bare mirror (local clone, `git fetch` on re-use); otherwise — or if the cache
+ * path fails — clone the base branch fresh over the network. Either way the
+ * per-run branch is carved locally and no token persists in the workspace.
  * The workspace-touching seams (`git`, `fs`) are injectable for tests.
  */
 export async function runWorkspaceInit(
@@ -194,14 +337,8 @@ export async function runWorkspaceInit(
 	const log = deps.log ?? ((m: string) => console.log(m));
 	const cfg = parseInitEnv(env);
 
-	const cloneUrl = authenticatedCloneUrl(cfg.repoUrl, cfg.token);
-	log(`workspace-init: cloning ${cfg.repoUrl} (${cfg.baseBranch}) into ${cfg.workspacePath}`);
-	await gitOrThrow(git, ["clone", "--branch", cfg.baseBranch, cloneUrl, cfg.workspacePath]);
-	await gitOrThrow(git, ["switch", "-c", cfg.branch], { cwd: cfg.workspacePath });
-	// Strip the embedded token so it never persists in the workspace .git/config.
-	if (cfg.token !== undefined) {
-		await gitOrThrow(git, ["remote", "set-url", "origin", cfg.repoUrl], { cwd: cfg.workspacePath });
-	}
+	const usedCache = await materializeViaCache(git, fs, cfg, log);
+	if (!usedCache) await directClone(git, cfg, log);
 	await writeSeedFiles(cfg, fs, log);
 	log(`workspace-init: checked out ${cfg.branch} off ${cfg.baseBranch}`);
 	return cfg;

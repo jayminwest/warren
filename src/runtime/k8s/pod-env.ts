@@ -10,17 +10,81 @@
  * called), so the module pairing carries no initialization-order coupling.
  */
 
-import type { V1EnvVar, V1VolumeMount } from "@kubernetes/client-node";
+import type { V1EnvVar, V1Volume, V1VolumeMount } from "@kubernetes/client-node";
 import type { RunSpec } from "../contract.ts";
 import {
 	type BuildRunPodOptions,
 	type K8sPodConfig,
+	type K8sPodConfigEnv,
 	SEED_MANIFEST_PATH,
 	SEED_MOUNT_PATH,
 	SEED_VOLUME_NAME,
 	WORKSPACE_MOUNT_PATH,
 	WORKSPACE_VOLUME_NAME,
 } from "./pod-spec.ts";
+
+/**
+ * Derive the in-cluster callback URL the agent dials to POST events/finalize
+ * back to warren (contract §6.3). Kubernetes Service DNS — reachable from the
+ * run pod, unlike LocalProvider's `http://localhost:PORT`. Pure.
+ */
+export function serviceDnsCallbackUrl(config: K8sPodConfig): string {
+	const { service, namespace, port } = config.callback;
+	return `http://${service}.${namespace}.svc.cluster.local:${port}`;
+}
+
+// --- Repo-cache PVC (design §4.3, R2 — warren-e908) -------------------------
+
+/**
+ * Optional PVC-backed git-mirror cache the init container fetches into instead
+ * of a full clone. Mounted ONLY on the init container at `config.repoCache
+ * .mountPath`; the run workspace itself stays on the per-pod `emptyDir` (pods
+ * must never share a working tree). Wired only when `WARREN_K8S_REPO_CACHE_PVC`
+ * names the claim — absent ⇒ every run clones fresh over the network. The claim
+ * is RWO today (single node); a multi-node cluster needs an RWX class first
+ * (see deploy README).
+ */
+export const REPO_CACHE_VOLUME_NAME = "repo-cache";
+export const DEFAULT_REPO_CACHE_MOUNT_PATH = "/repo-cache";
+
+/** The mirror-cache mount that the workspace-init materializer keys off. */
+export const ENV_REPO_CACHE_DIR = "WARREN_REPO_CACHE_DIR";
+
+/**
+ * Resolve the repo-cache claim + mount path from env, or `undefined` when the
+ * cache is off (no/blank `WARREN_K8S_REPO_CACHE_PVC`). Mount path overridable
+ * via `WARREN_K8S_REPO_CACHE_PATH` (default `/repo-cache`). Pure.
+ */
+export function resolveRepoCacheConfig(
+	env: K8sPodConfigEnv,
+): { claimName: string; mountPath: string } | undefined {
+	const claim = env.WARREN_K8S_REPO_CACHE_PVC?.trim();
+	if (claim === undefined || claim === "") return undefined;
+	const path = env.WARREN_K8S_REPO_CACHE_PATH?.trim();
+	return {
+		claimName: claim,
+		mountPath: path === undefined || path === "" ? DEFAULT_REPO_CACHE_MOUNT_PATH : path,
+	};
+}
+
+/**
+ * The run pod's volumes: the `/workspace` emptyDir the init container
+ * materializes and the agent mounts, an optional read-only seed ConfigMap, and
+ * the optional repo-cache PVC (init-only mount — see `buildInitVolumeMounts`).
+ */
+export function buildRunPodVolumes(config: K8sPodConfig, opts: BuildRunPodOptions): V1Volume[] {
+	const volumes: V1Volume[] = [{ name: WORKSPACE_VOLUME_NAME, emptyDir: {} }];
+	if (opts.seedConfigMapName !== undefined) {
+		volumes.push({ name: SEED_VOLUME_NAME, configMap: { name: opts.seedConfigMapName } });
+	}
+	if (config.repoCache !== undefined) {
+		volumes.push({
+			name: REPO_CACHE_VOLUME_NAME,
+			persistentVolumeClaim: { claimName: config.repoCache.claimName },
+		});
+	}
+	return volumes;
+}
 
 // --- Agent env-var names (the in-pod runner's contract, warren-186c) --------
 
@@ -59,6 +123,7 @@ export function buildInitEnv(
 		WARREN_WORKSPACE_PATH: WORKSPACE_MOUNT_PATH,
 	};
 	if (opts.seedConfigMapName !== undefined) plain.WARREN_SEED_MANIFEST = SEED_MANIFEST_PATH;
+	if (config.repoCache !== undefined) plain[ENV_REPO_CACHE_DIR] = config.repoCache.mountPath;
 	const vars: V1EnvVar[] = Object.entries(plain).map(([name, value]) => ({ name, value }));
 	vars.push({
 		name: "WARREN_GIT_TOKEN",
@@ -73,12 +138,19 @@ export function buildInitEnv(
 	return sortByName(vars);
 }
 
-export function buildInitVolumeMounts(opts: BuildRunPodOptions): V1VolumeMount[] {
+export function buildInitVolumeMounts(
+	config: K8sPodConfig,
+	opts: BuildRunPodOptions,
+): V1VolumeMount[] {
 	const mounts: V1VolumeMount[] = [
 		{ name: WORKSPACE_VOLUME_NAME, mountPath: WORKSPACE_MOUNT_PATH },
 	];
 	if (opts.seedConfigMapName !== undefined) {
 		mounts.push({ name: SEED_VOLUME_NAME, mountPath: SEED_MOUNT_PATH, readOnly: true });
+	}
+	// §4.3/R2: mirror cache is init-only (the agent container never mounts it).
+	if (config.repoCache !== undefined) {
+		mounts.push({ name: REPO_CACHE_VOLUME_NAME, mountPath: config.repoCache.mountPath });
 	}
 	return mounts;
 }

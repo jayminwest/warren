@@ -5,13 +5,17 @@
 #     (WARREN_DATA_DIR) by the control-plane Deployment. On Postgres deploys this
 #     still holds config + canopy clone.
 #
-#   warren-repo-cache (50Gi, RWO, ns=warren-runs) — the per-project "host clone"
+#   warren-repo-cache (50Gi, RWO, ns=warren-runs) — the per-project git-mirror
 #     cache the init container fetches into instead of a full clone
-#     (discoverHostClone pattern, §4.3). Forward-provisioned here: the current
-#     pod spec materializes onto an emptyDir (pod-spec.ts WORKSPACE_VOLUME_NAME),
-#     so nothing mounts this PVC yet — wiring the init container to it is a
-#     follow-up. RWO means single-node only (design R2); a multi-node cluster
-#     needs a ReadWriteMany class (see README).
+#     (discoverHostClone pattern, §4.3). Wired in warren-e908: the init container
+#     mounts this claim at /repo-cache when WARREN_K8S_REPO_CACHE_PVC names it
+#     (set in deployment.yaml), keeps a per-repo bare mirror under it, and
+#     local-clones the run workspace out of the mirror onto the emptyDir
+#     (pod-spec.ts WORKSPACE_VOLUME_NAME) — so the emptyDir is still the per-run
+#     working tree, never shared. RWO means single-node ONLY (design R2): the
+#     mirror is a ReadWriteOnce volume, so two init pods on different nodes
+#     cannot both mount it. Switch to a ReadWriteMany class (e.g. GKE Filestore
+#     CSI / Longhorn) BEFORE adding a second worker node (see README).
 #
 # storageClassName is intentionally OMITTED so each cluster's default class binds
 # (local-path on kind/k3d; standard-rwo on GKE). Overlays may pin a class.

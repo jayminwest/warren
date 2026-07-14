@@ -192,14 +192,24 @@ kubectl apply -f deploy/k8s/servicemonitor.yaml
 
 ## Known follow-ups
 
-- **`warren-repo-cache` is forward-provisioned.** The current pod spec
-  materializes the workspace onto an `emptyDir`; wiring the init container to
-  fetch into this PVC (the `discoverHostClone` cache, design §4.3) is a follow-up.
-  On local-path it stays `Pending` (WaitForFirstConsumer) until something mounts
-  it — expected, not an error.
-- **RWO on multi-node.** `warren-repo-cache` is `ReadWriteOnce`; a second worker
-  node needs an RWM class (Filestore on GKE, Longhorn on bare metal) before init
-  containers can schedule off the PVC's node (design R2).
+- **Repo cache PVC (`warren-repo-cache`).** Wired in warren-e908: the init
+  container mounts this claim at `/repo-cache` (set by `WARREN_K8S_REPO_CACHE_PVC`
+  in `deployment.yaml`) and keeps a per-repo bare git mirror under it, so a run
+  is a `git fetch` + fast local clone instead of a full network clone (design
+  §4.3, R2). The run workspace itself still lives on the per-pod `emptyDir` — the
+  PVC is a *shared clone cache*, never the working tree. Turn the cache OFF by
+  clearing `WARREN_K8S_REPO_CACHE_PVC` (every run then clones fresh); any cache
+  failure also falls back to a direct clone automatically, so a wedged mirror
+  never blocks a run. Override the mount path with `WARREN_K8S_REPO_CACHE_PATH`
+  (default `/repo-cache`). On local-path the PVC stays `Pending`
+  (WaitForFirstConsumer) until the first run pod mounts it — expected, not an error.
+- **RWO on multi-node — switch to RWX BEFORE a second node.** `warren-repo-cache`
+  is `ReadWriteOnce`, so only pods on the PVC's node can mount it. This is fine
+  single-node, but the moment you add a second worker node an init container may
+  schedule where it cannot mount the cache. Before scaling out, migrate the claim
+  to a `ReadWriteMany` class (GKE Filestore CSI; Longhorn on bare metal) and pin
+  it via an overlay `storageClassName` (design R2). Do NOT provision Filestore
+  just to run single-node — the default class is sufficient until then.
 - **`/readyz` probes.** Deployment probes use the auth-exempt `/healthz`. Deeper
   readiness (`/readyz`, which mirrors DB/canopy checks) requires the bearer token;
   wire it via a probe `httpHeaders: [{name: Authorization, value: "Bearer …"}]`
