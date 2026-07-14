@@ -60,6 +60,15 @@ export interface FinalizeEntrypointEnv {
 	pollIntervalMs: number;
 	/** Max wall-clock to wait for warren to park an intent before giving up (ms). */
 	maxWaitMs: number;
+	/**
+	 * Max attempts for the result POST before giving up (warren-fd08). A transient
+	 * "Unable to connect" / non-2xx must not silently lose the collected result —
+	 * the reap deltas the pod computed are otherwise unrecoverable (warren then
+	 * falls to its finalize timeout and terminalizes the run FAILED).
+	 */
+	postMaxAttempts: number;
+	/** Base backoff between result-POST retries (ms); doubles each attempt. */
+	postRetryBaseMs: number;
 }
 
 export type FinalizeEnvSource = Readonly<Record<string, string | undefined>>;
@@ -88,6 +97,8 @@ export function parseFinalizeEntrypointEnv(env: FinalizeEnvSource): FinalizeEntr
 		workspacePath: env.WARREN_WORKSPACE_PATH?.trim() || "/workspace",
 		pollIntervalMs: positiveIntEnv(env, "WARREN_FINALIZE_POLL_INTERVAL_MS", 2_000),
 		maxWaitMs: positiveIntEnv(env, "WARREN_FINALIZE_MAX_WAIT_MS", 300_000),
+		postMaxAttempts: positiveIntEnv(env, "WARREN_FINALIZE_POST_MAX_ATTEMPTS", 5),
+		postRetryBaseMs: positiveIntEnv(env, "WARREN_FINALIZE_POST_RETRY_BASE_MS", 1_000),
 	};
 }
 
@@ -189,6 +200,54 @@ export async function pollForIntent(
 	}
 }
 
+/** A result POST is delivered iff warren answers 2xx (its intake is idempotent). */
+function postAccepted(status: number): boolean {
+	return status >= 200 && status < 300;
+}
+
+/**
+ * POST the result envelope with bounded retry + exponential backoff (warren-fd08).
+ * A single transient "Unable to connect" (thrown by `fetch`) or a non-2xx answer
+ * must not lose the collected reap deltas — warren's finalize intake is
+ * idempotent (duplicate/stale/unknown all 200), so re-POSTing is always safe.
+ * Returns whether the result was ultimately accepted; the caller logs either way
+ * (a give-up leaves warren's own finalize timeout to terminalize the run).
+ */
+export async function postResultWithRetry(
+	env: FinalizeEntrypointEnv,
+	http: FinalizeHttp,
+	sleep: (ms: number) => Promise<void>,
+	log: (m: string) => void,
+	url: string,
+	envelope: FinalizeResultEnvelope,
+): Promise<boolean> {
+	let backoff = env.postRetryBaseMs;
+	for (let attempt = 1; attempt <= env.postMaxAttempts; attempt += 1) {
+		try {
+			const res = await http.post(url, env.apiToken, envelope);
+			if (postAccepted(res.status)) {
+				if (attempt > 1) {
+					log(`finalize-entrypoint: result POST succeeded on attempt ${attempt}`);
+				}
+				return true;
+			}
+			log(
+				`finalize-entrypoint: result POST attempt ${attempt}/${env.postMaxAttempts} got HTTP ${res.status}`,
+			);
+		} catch (err) {
+			log(
+				`finalize-entrypoint: result POST attempt ${attempt}/${env.postMaxAttempts} failed (${err instanceof Error ? err.message : String(err)})`,
+			);
+		}
+		if (attempt < env.postMaxAttempts) {
+			await sleep(backoff);
+			backoff *= 2;
+		}
+	}
+	log(`finalize-entrypoint: result POST gave up after ${env.postMaxAttempts} attempts`);
+	return false;
+}
+
 /**
  * Full entrypoint: poll for the intent, run the workspace collection, and POST
  * the `FinalizeResult`. Returns `true` when a result was POSTed, `false` when no
@@ -217,15 +276,12 @@ export async function runFinalizeEntrypoint(
 		attemptId: intent.attemptId,
 		result,
 	};
-	const post = await http.post(
-		`${env.apiUrl}/runs/${env.runId}/finalize-result`,
-		env.apiToken,
-		envelope,
-	);
+	const url = `${env.apiUrl}/runs/${env.runId}/finalize-result`;
+	const delivered = await postResultWithRetry(env, http, sleep, log, url, envelope);
 	log(
-		`finalize-entrypoint: posted result for ${intent.attemptId} (HTTP ${post.status}, pushed=${result.pushed})`,
+		`finalize-entrypoint: result for ${intent.attemptId} delivered=${delivered} (pushed=${result.pushed})`,
 	);
-	return true;
+	return delivered;
 }
 
 if (import.meta.main) {

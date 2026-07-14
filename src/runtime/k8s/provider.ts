@@ -47,13 +47,14 @@ import { RuntimeProviderError } from "../errors.ts";
 import type { AdmissionCounterSink, PodAdmissionSource } from "./admission.ts";
 import { admitK8sCreate } from "./admit.ts";
 import { mapApiError } from "./api-error.ts";
-import { finalizeK8sRun } from "./finalize.ts";
+import { finalizeK8sRun, resolveFinalizeBudgets } from "./finalize.ts";
 import { type FinalizeCoordinator, sharedFinalizeCoordinator } from "./finalize-coordinator.ts";
 import { defaultLogFollowFactory } from "./log-follow.ts";
 import {
 	isTerminalPhase,
 	type LogFollowFn,
 	type StreamCounterSink,
+	type StreamLogger,
 	type StreamTerminalState,
 	streamK8sLogs,
 } from "./log-stream.ts";
@@ -122,6 +123,8 @@ export interface K8sProviderDeps {
 	 * only the observability counter is skipped.
 	 */
 	readonly metrics?: StreamCounterSink;
+	/** Logger for the pod-log stream pump — surfaces its backoff/parse warnings (warren-72a8). */
+	readonly logger?: StreamLogger;
 	/**
 	 * Lazy run_inbox store `sendMessage` writes steering messages into (pl-829f
 	 * step 18 / warren-3d0b). A factory — mirroring `coreApi` — so the provider
@@ -138,9 +141,9 @@ export interface K8sProviderDeps {
 	 * correlate without extra wiring; tests inject a private instance.
 	 */
 	readonly finalizeCoordinator?: FinalizeCoordinator;
-	/** Wall-clock budget for the whole in-pod finalize round-trip (ms). */
+	/** Explicit finalize round-trip budget (ms); overrides `WARREN_K8S_FINALIZE_TIMEOUT_MS`. */
 	readonly finalizeTimeoutMs?: number;
-	/** Poll interval for the pod-gone probe during finalize (ms). */
+	/** Explicit finalize pod-probe interval (ms); overrides `WARREN_K8S_FINALIZE_POD_POLL_MS`. */
 	readonly finalizePodPollMs?: number;
 	/** Injectable timer for the finalize race — tests drive it without real delays. */
 	readonly finalizeSetTimer?: (fn: () => void, ms: number) => { cancel: () => void };
@@ -349,6 +352,7 @@ export class K8sProvider implements RuntimeProvider {
 			},
 			...(opts !== undefined ? { opts } : {}),
 			...(this.deps.metrics !== undefined ? { metrics: this.deps.metrics } : {}),
+			...(this.deps.logger !== undefined ? { logger: this.deps.logger } : {}), // warren-72a8
 		});
 	}
 
@@ -451,29 +455,27 @@ export class K8sProvider implements RuntimeProvider {
 	 * The control plane cannot reach the pod's `emptyDir`, so `finalize` registers
 	 * the neutral intent with the coordinator, the in-pod harness polls
 	 * `GET /runs/:id/finalize-intent` + POSTs its `FinalizeResult`, and this call
-	 * awaits that result — bounded by a wall-clock timeout and a pod-gone probe so
-	 * a dead pod degrades to a structured FAILED result (reap still terminates)
-	 * rather than hanging. See `./finalize.ts`.
+	 * awaits that result — bounded by a wall-clock timeout and a pod terminal-or-gone
+	 * probe so a dead/crashed pod degrades to a FAILED result (reap still
+	 * terminates) rather than hanging. See `./finalize.ts`.
 	 *
 	 * The short-lived git push credential rides the intent (fetched over the
 	 * authenticated callback AFTER the agent exits), NOT the agent container's
 	 * static env — a compromised agent never holds the push token (blast-radius
-	 * minimization; the agent container gets no `WARREN_GIT_TOKEN` at create,
-	 * step 15). Sourced from `WARREN_GIT_TOKEN` (falling back to `GITHUB_TOKEN`).
+	 * minimization). Sourced from `WARREN_GIT_TOKEN` (falling back to `GITHUB_TOKEN`).
 	 */
 	finalize(handle: RunHandle, intent: FinalizeIntent): Promise<FinalizeResult> {
 		const env = this.deps.serverEnv ?? process.env;
 		const gitToken = this.resolvePushToken(env);
+		const budgets = resolveFinalizeBudgets(env, {
+			timeoutMs: this.deps.finalizeTimeoutMs, // warren-fd08: env-tunable, explicit dep wins
+			podPollMs: this.deps.finalizePodPollMs,
+		});
 		return finalizeK8sRun(handle, intent, {
 			coordinator: this.deps.finalizeCoordinator ?? sharedFinalizeCoordinator,
 			status: (h) => this.status(h),
 			...(gitToken !== undefined ? { gitToken } : {}),
-			...(this.deps.finalizeTimeoutMs !== undefined
-				? { timeoutMs: this.deps.finalizeTimeoutMs }
-				: {}),
-			...(this.deps.finalizePodPollMs !== undefined
-				? { podPollMs: this.deps.finalizePodPollMs }
-				: {}),
+			...budgets,
 			...(this.deps.finalizeSetTimer !== undefined ? { setTimer: this.deps.finalizeSetTimer } : {}),
 		});
 	}

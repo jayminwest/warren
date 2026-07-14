@@ -103,6 +103,34 @@ describe("K8sProvider.finalize — wiring", () => {
 		await p2;
 	});
 
+	test("reads WARREN_K8S_FINALIZE_TIMEOUT_MS from env as the timeout budget", async () => {
+		// The env knob (warren-fd08) must reach `finalizeK8sRun` as `timeoutMs`. Prove
+		// it by firing ONLY the timer scheduled at the env value; the pod stays
+		// present (a pod is listed) so the pod-gone probe never resolves.
+		const coordinator = new FinalizeCoordinator();
+		const provider = new K8sProvider({
+			coreApi: () => fakeApi([{ metadata: { name: handle.sandboxId } }]),
+			serverEnv: { WARREN_K8S_FINALIZE_TIMEOUT_MS: "4321" },
+			finalizeCoordinator: coordinator,
+			finalizeSetTimer: firingTimer(4321),
+		});
+		const res = await provider.finalize(handle, intent());
+		expect((res.events[0]?.payload as { message: string }).message).toContain("4321ms");
+	});
+
+	test("an explicit finalizeTimeoutMs dep wins over the env knob", async () => {
+		const coordinator = new FinalizeCoordinator();
+		const provider = new K8sProvider({
+			coreApi: () => fakeApi([{ metadata: { name: handle.sandboxId } }]),
+			serverEnv: { WARREN_K8S_FINALIZE_TIMEOUT_MS: "4321" },
+			finalizeCoordinator: coordinator,
+			finalizeTimeoutMs: 777,
+			finalizeSetTimer: firingTimer(777),
+		});
+		const res = await provider.finalize(handle, intent());
+		expect((res.events[0]?.payload as { message: string }).message).toContain("777ms");
+	});
+
 	test("degrades to a failed result when the pod is gone (status lists no pod)", async () => {
 		const coordinator = new FinalizeCoordinator();
 		const provider = new K8sProvider({

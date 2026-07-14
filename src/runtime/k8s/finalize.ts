@@ -15,10 +15,14 @@
  *   2. The in-pod harness polls `GET /runs/:id/finalize-intent`, runs the
  *      collection, and POSTs a `FinalizeResult` to `POST /runs/:id/finalize-result`;
  *      the endpoint hands it to the coordinator, resolving our await.
- *   3. Race that result against a wall-clock timeout AND a pod-gone probe so a
- *      dead/crashed pod can never hang reap. Timeout or pod-gone ⇒ a structured
- *      FAILED `FinalizeResult` (not a throw): reap records the stage failures and
- *      still proceeds to `terminate` (contract §6.8 ordering). A genuine
+ *   3. Race that result against a wall-clock timeout AND a pod terminal-or-gone
+ *      probe so a dead/crashed/GC'd pod can never hang reap. The probe fast-fails
+ *      the moment the pod vanishes (`exists:false`) OR reaches a terminal phase
+ *      (Failed/Succeeded/Cancelled) — in either state the in-pod
+ *      finalize-entrypoint can no longer POST, so waiting the full timeout is
+ *      pointless (warren-fd08). Timeout / terminal / gone ⇒ a structured FAILED
+ *      `FinalizeResult` (not a throw): reap records the stage failures and still
+ *      proceeds to `terminate` (contract §6.8 ordering). A genuine
  *      misconfiguration (no coordinator) throws `RuntimeProviderError`.
  *
  * The push credential travels in the intent (fetched over the authenticated
@@ -26,6 +30,7 @@
  * so a compromised agent never holds it — see the decision note in `provider.ts`.
  */
 
+import type { EnvLike } from "../../runs/spawn/callback-env.ts";
 import type {
 	FinalizeIntent,
 	FinalizeResult,
@@ -37,6 +42,7 @@ import { RuntimeProviderError } from "../errors.ts";
 import type { FinalizeCoordinator } from "./finalize-coordinator.ts";
 import type { InPodFinalizeIntent } from "./finalize-wire.ts";
 import { IN_POD_FINALIZE_WIRE_VERSION } from "./finalize-wire.ts";
+import { isTerminalPhase } from "./log-stream.ts";
 
 /**
  * Default wall-clock budget for the whole in-pod finalize round-trip (poll the
@@ -44,8 +50,35 @@ import { IN_POD_FINALIZE_WIRE_VERSION } from "./finalize-wire.ts";
  * push can be slow. Overridable via `WARREN_K8S_FINALIZE_TIMEOUT_MS`.
  */
 export const DEFAULT_K8S_FINALIZE_TIMEOUT_MS = 120_000;
-/** How often to re-probe `status()` for a vanished pod while awaiting the result. */
+/**
+ * How often to re-probe `status()` for a vanished OR terminal pod while awaiting
+ * the result. Overridable via `WARREN_K8S_FINALIZE_POD_POLL_MS`.
+ */
 export const DEFAULT_K8S_FINALIZE_POD_POLL_MS = 3_000;
+
+/**
+ * Resolve the finalize wall-clock budgets, letting explicit overrides (tests) win
+ * over the `WARREN_K8S_FINALIZE_*` env knobs (warren-fd08); a blank/invalid env
+ * value falls through to `finalizeK8sRun`'s module defaults. Returns only the keys
+ * that resolved so an absent knob leaves the default in place.
+ */
+export function resolveFinalizeBudgets(
+	env: EnvLike,
+	over: { timeoutMs: number | undefined; podPollMs: number | undefined },
+): { timeoutMs?: number; podPollMs?: number } {
+	const positiveInt = (key: string): number | undefined => {
+		const raw = env[key]?.trim();
+		if (raw === undefined || raw === "") return undefined;
+		const n = Number(raw);
+		return Number.isInteger(n) && n > 0 ? n : undefined;
+	};
+	const timeoutMs = over.timeoutMs ?? positiveInt("WARREN_K8S_FINALIZE_TIMEOUT_MS");
+	const podPollMs = over.podPollMs ?? positiveInt("WARREN_K8S_FINALIZE_POD_POLL_MS");
+	return {
+		...(timeoutMs !== undefined ? { timeoutMs } : {}),
+		...(podPollMs !== undefined ? { podPollMs } : {}),
+	};
+}
 
 /** Injectable seams so the finalize race is unit-testable without a cluster. */
 export interface K8sFinalizeDeps {
@@ -131,12 +164,64 @@ export function toInPodIntent(
 type RaceOutcome =
 	| { kind: "result"; result: FinalizeResult }
 	| { kind: "timeout" }
-	| { kind: "lost" };
+	| { kind: "lost"; reason: "gone" | "terminal" };
 
 const defaultSetTimer = (fn: () => void, ms: number): { cancel: () => void } => {
 	const id = setTimeout(fn, ms);
 	return { cancel: () => clearTimeout(id) };
 };
+
+/**
+ * Classify a `status()` probe into the fast-fail signal it carries, or `null`
+ * when the pod is still live. A VANISHED pod (`exists:false`, GC'd) or one in a
+ * TERMINAL phase (Failed/Succeeded/Cancelled) can no longer run the in-pod
+ * finalize-entrypoint, so its result POST will never arrive (warren-fd08).
+ */
+function podLostReason(status: RunStatus): "gone" | "terminal" | null {
+	if (!status.exists) return "gone";
+	if (isTerminalPhase(status.phase)) return "terminal";
+	return null;
+}
+
+/** The failed-finalize message for a lost pod, by fast-fail reason. */
+function lostMessage(reason: "gone" | "terminal"): string {
+	return reason === "gone"
+		? "run pod is gone; in-pod finalize could not run"
+		: "run pod reached a terminal phase without posting a finalize result; in-pod finalize could not run";
+}
+
+/**
+ * A repeating `status()` probe that resolves the moment the pod is observed
+ * terminal-or-gone (see `podLostReason`). Re-polls every `podPollMs` until a
+ * fast-fail signal appears or the race settles. Race-safe: a successful result
+ * POST is processed in-process by `submit()` — resolving `pending.result`
+ * synchronously on HTTP receipt — BEFORE the entrypoint's container exits and the
+ * pod can be OBSERVED terminal, so `resultRace` always wins when the POST landed.
+ */
+function schedulePodProbe(
+	deps: K8sFinalizeDeps,
+	handle: RunHandle,
+	schedule: (fn: () => void, ms: number) => void,
+	isSettled: () => boolean,
+	podPollMs: number,
+): Promise<RaceOutcome> {
+	return new Promise((resolve) => {
+		const tick = async (): Promise<void> => {
+			if (isSettled()) return;
+			try {
+				const reason = podLostReason(await deps.status(handle));
+				if (!isSettled() && reason !== null) {
+					resolve({ kind: "lost", reason });
+					return;
+				}
+			} catch {
+				// swallow — a transient status error is retried, not treated as lost.
+			}
+			schedule(() => void tick(), podPollMs);
+		};
+		schedule(() => void tick(), podPollMs);
+	});
+}
 
 /**
  * Drive the in-pod finalize and return its `FinalizeResult`. Registers the intent
@@ -177,30 +262,15 @@ export async function finalizeK8sRun(
 	const timeout = new Promise<RaceOutcome>((resolve) => {
 		schedule(() => resolve({ kind: "timeout" }), timeoutMs);
 	});
-	const podGone = new Promise<RaceOutcome>((resolve) => {
-		const tick = async (): Promise<void> => {
-			if (settled) return;
-			try {
-				const s = await deps.status(handle);
-				if (!settled && !s.exists) {
-					resolve({ kind: "lost" });
-					return;
-				}
-			} catch {
-				// swallow — a transient status error is retried, not treated as lost.
-			}
-			schedule(() => void tick(), podPollMs);
-		};
-		schedule(() => void tick(), podPollMs);
-	});
+	// Fast-fail the wall-clock timeout the moment the pod is terminal-or-gone so
+	// reap terminalizes in ~podPollMs instead of hanging the full budget (warren-fd08).
+	const podTerminalOrGone = schedulePodProbe(deps, handle, schedule, () => settled, podPollMs);
 	const resultRace = pending.result.then((result): RaceOutcome => ({ kind: "result", result }));
 
 	try {
-		const outcome = await Promise.race([resultRace, timeout, podGone]);
+		const outcome = await Promise.race([resultRace, timeout, podTerminalOrGone]);
 		if (outcome.kind === "result") return outcome.result;
-		if (outcome.kind === "lost") {
-			return failedFinalizeResult(intent, "run pod is gone; in-pod finalize could not run");
-		}
+		if (outcome.kind === "lost") return failedFinalizeResult(intent, lostMessage(outcome.reason));
 		return failedFinalizeResult(intent, `in-pod finalize timed out after ${timeoutMs}ms`);
 	} finally {
 		settle();

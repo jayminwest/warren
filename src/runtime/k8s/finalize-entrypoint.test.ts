@@ -13,6 +13,7 @@ import {
 	type FinalizeHttp,
 	parseFinalizeEntrypointEnv,
 	pollForIntent,
+	postResultWithRetry,
 	runFinalizeEntrypoint,
 } from "./finalize-entrypoint.ts";
 import {
@@ -269,6 +270,70 @@ describe("pollForIntent + runFinalizeEntrypoint", () => {
 		const env0 = posted[0]?.body as { attemptId: string; version: number };
 		expect(env0.attemptId).toBe("fin_abcdefghjkmn");
 		expect(env0.version).toBe(IN_POD_FINALIZE_WIRE_VERSION);
+	});
+
+	test("retries the result POST on a transient connect error, then succeeds", async () => {
+		let getCalls = 0;
+		let postCalls = 0;
+		const sleeps: number[] = [];
+		const http: FinalizeHttp = {
+			get: async () => {
+				getCalls++;
+				return { status: 200, body: { intent: intent() } };
+			},
+			post: async () => {
+				postCalls++;
+				// First two attempts fail with a connect error (fetch throws), third 200s.
+				if (postCalls < 3)
+					throw new Error("Unable to connect. Is the computer able to access the url?");
+				return { status: 200 };
+			},
+		};
+		const { git } = fakeGit({ "rev-list": { stdout: "1" } });
+		const did = await runFinalizeEntrypoint(
+			{ ...env, WARREN_FINALIZE_POST_RETRY_BASE_MS: "5" },
+			{
+				http,
+				git,
+				fs: fakeFs({}),
+				sleep: async (ms) => {
+					sleeps.push(ms);
+				},
+				now: () => 0,
+				log: () => {},
+			},
+		);
+		expect(did).toBe(true);
+		expect(postCalls).toBe(3);
+		// Exponential backoff between the three attempts: 5ms then 10ms.
+		expect(sleeps).toEqual([5, 10]);
+		expect(getCalls).toBeGreaterThanOrEqual(1);
+	});
+
+	test("postResultWithRetry gives up after max attempts and returns false", async () => {
+		let postCalls = 0;
+		const http: FinalizeHttp = {
+			get: async () => ({ status: 200, body: { intent: null } }),
+			post: async () => {
+				postCalls++;
+				return { status: 503 }; // non-2xx every time
+			},
+		};
+		const parsed = parseFinalizeEntrypointEnv({
+			...env,
+			WARREN_FINALIZE_POST_MAX_ATTEMPTS: "3",
+			WARREN_FINALIZE_POST_RETRY_BASE_MS: "1",
+		});
+		const delivered = await postResultWithRetry(
+			parsed,
+			http,
+			async () => {},
+			() => {},
+			"http://warren:8080/runs/run_x/finalize-result",
+			{ version: IN_POD_FINALIZE_WIRE_VERSION, attemptId: "fin_x", result: {} as never },
+		);
+		expect(delivered).toBe(false);
+		expect(postCalls).toBe(3); // exactly max attempts, no more
 	});
 
 	test("gives up (no POST) when the intent never arrives before maxWait", async () => {

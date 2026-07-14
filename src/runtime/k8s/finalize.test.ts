@@ -53,6 +53,15 @@ const gone: RunStatus = {
 	lastEventTs: null,
 	exists: false,
 };
+/** Terminal phase but pod still PRESENT (crashed/Failed, not yet GC'd). */
+const terminalPresent: RunStatus = {
+	phase: "failed",
+	exitCode: 1,
+	terminalReason: "error",
+	lastEventSeq: 0,
+	lastEventTs: null,
+	exists: true,
+};
 
 /** A setTimer that fires callbacks scheduled at exactly `fireMs`, no-ops others. */
 function firingTimer(fireMs: number): K8sFinalizeDeps["setTimer"] {
@@ -153,6 +162,24 @@ describe("finalizeK8sRun", () => {
 		});
 		expect(res.pushed).toBe(false);
 		expect((res.events[0]?.payload as { message: string }).message).toContain("pod is gone");
+		expect(coordinator.pendingCount).toBe(0);
+	});
+
+	test("degrades to a failed result when the pod is terminal but still present (no POST)", async () => {
+		// warren-fd08: a crashed pod (Failed phase, not yet GC'd so `exists:true`) can
+		// no longer run the in-pod finalize-entrypoint. The probe must fast-fail on the
+		// terminal phase rather than waiting the full wall-clock timeout.
+		const coordinator = new FinalizeCoordinator();
+		const res = await finalizeK8sRun(HANDLE, intent(), {
+			coordinator,
+			status: async () => terminalPresent,
+			podPollMs: 1_000,
+			timeoutMs: 999_999, // would hang ~forever if terminal weren't fast-failed
+			setTimer: firingTimer(1_000),
+		});
+		expect(res.pushed).toBe(false);
+		expect(res.stages.every((s) => s.status === "failed")).toBe(true);
+		expect((res.events[0]?.payload as { message: string }).message).toContain("terminal phase");
 		expect(coordinator.pendingCount).toBe(0);
 	});
 
