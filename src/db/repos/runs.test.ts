@@ -4,6 +4,7 @@ import { isId } from "../../core/ids.ts";
 import { isPostgresTestEnabled, withDb } from "../testing.ts";
 import { AgentsRepo } from "./agents.ts";
 import { DrizzleAdapter } from "./drizzle-adapter.ts";
+import { EventsRepo } from "./events.ts";
 import { ProjectsRepo } from "./projects.ts";
 import { assertRunTransition, RunsRepo } from "./runs.ts";
 
@@ -341,6 +342,58 @@ function suite(dialect: "sqlite" | "postgres"): void {
 			try {
 				const row = await spawn(repo, agentName, projectId);
 				expect(repo.finalize(row.id, "succeeded")).rejects.toThrow(StateTransitionError);
+			} finally {
+				await handle.close();
+			}
+		});
+
+		test("deleteNeverStarted drops a never_started row and its events (warren-a0a2)", async () => {
+			const { handle, repo, agentName, projectId } = await open();
+			try {
+				const events = new EventsRepo(DrizzleAdapter.for(handle.db));
+				const row = await spawn(repo, agentName, projectId);
+				await repo.markRunning(row.id);
+				await repo.finalize(row.id, "failed", new Date(), "never_started");
+				await events.append({
+					runId: row.id,
+					burrowEventSeq: 1,
+					ts: "2026-05-08T13:00:00.000Z",
+					kind: "spawn_failed",
+					stream: "system",
+					payload: { message: "burrow unreachable" },
+				});
+
+				expect(await repo.deleteNeverStarted(row.id)).toBe(true);
+				expect(await repo.get(row.id)).toBeNull();
+				expect(await events.listByRun(row.id)).toHaveLength(0);
+			} finally {
+				await handle.close();
+			}
+		});
+
+		test("deleteNeverStarted refuses a run that actually dispatched (guarded)", async () => {
+			const { handle, repo, agentName, projectId } = await open();
+			try {
+				const row = await spawn(repo, agentName, projectId);
+				await repo.markRunning(row.id);
+				// A real terminal failure — dispatched then failed, NOT never_started.
+				await repo.finalize(row.id, "failed", new Date(), "crashed");
+				expect(await repo.deleteNeverStarted(row.id)).toBe(false);
+				expect(await repo.get(row.id)).not.toBeNull();
+
+				// A queued (not-yet-terminal) row is likewise refused.
+				const queued = await spawn(repo, agentName, projectId);
+				expect(await repo.deleteNeverStarted(queued.id)).toBe(false);
+				expect((await repo.get(queued.id))?.state).toBe("queued");
+			} finally {
+				await handle.close();
+			}
+		});
+
+		test("deleteNeverStarted returns false for a missing id", async () => {
+			const { handle, repo } = await open();
+			try {
+				expect(await repo.deleteNeverStarted("run_does_not_exist")).toBe(false);
 			} finally {
 				await handle.close();
 			}

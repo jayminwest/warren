@@ -41,6 +41,7 @@ import type { ProjectRow } from "../db/schema.ts";
 import type { ScheduledSeed, WarrenExtensions } from "../seeds-cli/index.ts";
 import type { LoadedWarrenConfig } from "../warren-config/index.ts";
 import { runCiFixerPass, type TickCiFixerDeps } from "./ci-fixer-pass.ts";
+import type { CronRetryTracker } from "./cron-retry.ts";
 import {
 	type DispatchCronResult,
 	type DispatchScheduledResult,
@@ -91,6 +92,19 @@ export interface TickDeps {
 	readonly updateExtensions: UpdateSeedExtensionsFn;
 	readonly spawn: DispatchSpawnFn;
 	readonly ciFixer?: TickCiFixerDeps;
+	/**
+	 * Per-trigger bounded-retry memory (warren-a0a2). Constructed once by
+	 * `bootScheduler` so it survives across ticks; the cron dispatcher caps
+	 * consecutive transient spawn failures per slot against it. Omitted in unit
+	 * tests that don't exercise the bound.
+	 */
+	readonly cronRetryTracker?: CronRetryTracker;
+	/**
+	 * GC seam for the scheduler's transient `never_started` rows (warren-a0a2),
+	 * wired to `repos.runs.deleteNeverStarted`. Threaded onto the cron
+	 * dispatcher so a failing slot doesn't flood the runs list.
+	 */
+	readonly deleteNeverStartedRun?: (runId: string) => Promise<void>;
 	readonly now?: () => Date;
 	readonly logger?: TickLogger;
 }
@@ -142,6 +156,22 @@ interface RunProjectTickInput {
 	readonly scheduled: DispatchScheduledResult[];
 }
 
+/**
+ * warren-a0a2: the optional bounded-retry seams the cron dispatcher takes.
+ * Built once per project tick so the dispatch call site stays flat (keeps
+ * `runProjectTick` under the cognitive-complexity gate).
+ */
+function cronDispatchExtras(
+	deps: TickDeps,
+): Pick<Parameters<typeof dispatchCronTrigger>[0], "retryTracker" | "deleteNeverStartedRun"> {
+	return {
+		...(deps.cronRetryTracker !== undefined ? { retryTracker: deps.cronRetryTracker } : {}),
+		...(deps.deleteNeverStartedRun !== undefined
+			? { deleteNeverStartedRun: deps.deleteNeverStartedRun }
+			: {}),
+	};
+}
+
 async function runProjectTick(input: RunProjectTickInput): Promise<void> {
 	const { deps, project, now, cron, scheduled } = input;
 	const nowIso = now.toISOString();
@@ -157,6 +187,7 @@ async function runProjectTick(input: RunProjectTickInput): Promise<void> {
 		);
 	}
 
+	const cronExtras = cronDispatchExtras(deps);
 	for (const trigger of config.triggers ?? []) {
 		const result = await dispatchCronTrigger({
 			projectId: project.id,
@@ -165,6 +196,7 @@ async function runProjectTick(input: RunProjectTickInput): Promise<void> {
 			now,
 			repos: deps.repos,
 			spawn: deps.spawn,
+			...cronExtras,
 		});
 		cron.push(result);
 		logCronResult(deps.logger, project.id, trigger.id, result);
@@ -251,6 +283,20 @@ function logCronResult(
 		logger?.info(
 			{ projectId, triggerId, runId: result.runId, nextFireAt: result.nextFireAt?.toISOString() },
 			"scheduler.cron_fired",
+		);
+	} else if (result.kind === "gave_up") {
+		// warren-a0a2: N consecutive transient failures consumed the slot.
+		// error-level — a persistently-unreachable runtime needs operator eyes,
+		// but the noise floor is now once-per-slot, not once-per-tick.
+		logger?.error(
+			{
+				projectId,
+				triggerId,
+				attempts: result.attempts,
+				reason: result.reason,
+				nextFireAt: result.nextFireAt?.toISOString(),
+			},
+			"scheduler.cron_gave_up",
 		);
 	} else if (result.kind === "error") {
 		logger?.warn({ projectId, triggerId, reason: result.reason }, "scheduler.cron_failed");

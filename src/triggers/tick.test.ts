@@ -4,6 +4,7 @@ import { createRepos, type Repos } from "../db/repos/index.ts";
 import { agents } from "../db/schema.ts";
 import type { WarrenExtensions } from "../seeds-cli/index.ts";
 import type { LoadedWarrenConfig } from "../warren-config/index.ts";
+import { CronRetryTracker, MAX_CRON_TRANSIENT_RETRIES } from "./cron-retry.ts";
 import type { DispatchSpawnFn } from "./dispatch.ts";
 import { runTick, startScheduler } from "./tick.ts";
 
@@ -134,6 +135,64 @@ describe("runTick", () => {
 
 		const row = await repos.triggers.require({ projectId, triggerId: "nightly" });
 		expect(row.lastRunId).toBe(createdRunId);
+	});
+
+	test("logs scheduler.cron_gave_up and GCs never_started rows after N transient failures (warren-a0a2)", async () => {
+		await repos.triggers.upsert({
+			projectId,
+			triggerId: "nightly",
+			lastFiredAt: "2026-05-10T12:00:00.000Z",
+		});
+		const cronRetryTracker = new CronRetryTracker();
+		const deleteNeverStartedRun = async (runId: string): Promise<void> => {
+			await repos.runs.deleteNeverStarted(runId);
+		};
+		// Spawn always fails transiently, minting a never_started row each time.
+		const spawn: DispatchSpawnFn = async (input) => {
+			const run = await repos.runs.create({
+				agentName: input.agentName,
+				projectId,
+				prompt: input.prompt,
+				renderedAgentJson: { sections: {} },
+				trigger: input.trigger,
+			});
+			input.onRowCreated?.(run.id);
+			await repos.runs.markRunning(run.id);
+			await repos.runs.finalize(run.id, "failed", NOW, "never_started");
+			throw new Error("burrow unreachable");
+		};
+		const config = {
+			triggers: [{ id: "nightly", kind: "cron" as const, cron: "0 0 * * *", role: "claude-code" }],
+			defaults: null,
+			prTemplate: null,
+			sourceFile: null,
+			errors: [],
+			warnings: [],
+		};
+
+		const logger = makeLogger();
+		for (let i = 0; i < MAX_CRON_TRANSIENT_RETRIES; i += 1) {
+			await runTick({
+				repos,
+				now: () => new Date(`2026-05-11T00:0${5 + i}:00.000Z`),
+				loadWarrenConfig: async () => config,
+				listScheduledSeeds: async () => ({ scheduled: [], errors: [] }),
+				updateExtensions: async () => {},
+				spawn,
+				cronRetryTracker,
+				deleteNeverStartedRun,
+				logger,
+			});
+		}
+
+		expect(logger.logs.some((l) => l.msg === "scheduler.cron_gave_up")).toBe(true);
+		const gaveUp = logger.logs.find((l) => l.msg === "scheduler.cron_gave_up");
+		expect(gaveUp?.obj.attempts).toBe(MAX_CRON_TRANSIENT_RETRIES);
+		// Flood mitigation: at most one never_started row survives the slot.
+		const survivors = (await repos.runs.listAll({})).filter(
+			(r) => r.failureReason === "never_started",
+		);
+		expect(survivors).toHaveLength(1);
 	});
 
 	test("fires past-due scheduled seeds and merges all warren extension keys in one write", async () => {

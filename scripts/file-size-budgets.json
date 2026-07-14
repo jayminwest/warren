@@ -3,6 +3,7 @@
 	"threshold": 500,
 	"budgets": {
 		"src/client/client.ts": 569,
+		"src/db/repos/runs.test.ts": 538,
 		"src/db/schema/sqlite.ts": 564,
 		"src/plots/aggregate.ts": 506,
 		"src/runs/pr.ts": 659,
@@ -13,6 +14,7 @@
 		"src/server/handlers/agents.test.ts": 533,
 		"src/server/handlers/plan-runs.ts": 505,
 		"src/server/main/index.ts": 548,
+		"src/triggers/tick.test.ts": 539,
 		"src/server/server.test.ts": 536,
 		"src/server/types.ts": 508,
 		"src/warren-config/schema.ts": 504

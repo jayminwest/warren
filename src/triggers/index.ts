@@ -23,6 +23,11 @@ export {
 	parseCron,
 } from "./cron.ts";
 export {
+	type CronRetryState,
+	CronRetryTracker,
+	MAX_CRON_TRANSIENT_RETRIES,
+} from "./cron-retry.ts";
+export {
 	type DispatchCronInput,
 	type DispatchCronResult,
 	type DispatchScheduledInput,

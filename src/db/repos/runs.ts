@@ -182,6 +182,42 @@ export class RunsRepo {
 		return row;
 	}
 
+	/**
+	 * Hard-delete a run row that never reached the runtime (warren-a0a2).
+	 *
+	 * The scheduler's bounded-retry GC calls this to drop the transient
+	 * `never_started` rows a persistently-unreachable runtime would otherwise
+	 * mint one-per-tick, so the runs list isn't flooded during an outage. It
+	 * is deliberately narrow:
+	 *
+	 *   - Guarded to `state=failed` + `failureReason=never_started`. Any other
+	 *     row (a real queued/running/succeeded run, or a `failed` run that
+	 *     actually dispatched) is left untouched and the method returns false.
+	 *   - `events.run_id` carries no `ON DELETE` cascade, so the write-through
+	 *     event rows are cleared first, then the run row, inside one
+	 *     transaction. `triggers.last_run_id` / `plan_run_children.run_id`
+	 *     (both `ON DELETE SET NULL`) and `run_inbox` (`CASCADE`) fall away on
+	 *     their own; a never_started cron retry has none of them anyway.
+	 *
+	 * Returns true when a row was deleted, false when the id was missing or
+	 * the guard rejected it.
+	 */
+	async deleteNeverStarted(id: string): Promise<boolean> {
+		return this.adapter.runInTransaction(async (tx) => {
+			const txDb = tx.drizzle as SqliteDrizzleDb;
+			const runs = tx.schema.runs;
+			const events = tx.schema.events;
+			const existing = await tx.pickOne<RunRow>(txDb.select().from(runs).where(eq(runs.id, id)));
+			if (!existing) return false;
+			if (existing.state !== "failed" || existing.failureReason !== "never_started") {
+				return false;
+			}
+			await tx.runWrite(txDb.delete(events).where(eq(events.runId, id)));
+			await tx.runWrite(txDb.delete(runs).where(eq(runs.id, id)));
+			return true;
+		});
+	}
+
 	/** Read/query methods (warren-ac7f); bodies live in runs-queries.ts. */
 	listAll(
 		options: {

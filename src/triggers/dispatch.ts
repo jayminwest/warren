@@ -32,6 +32,11 @@ import type { Repos } from "../db/repos/index.ts";
 import type { ScheduledSeed } from "../seeds-cli/index.ts";
 import type { CronTrigger, DefaultsConfig } from "../warren-config/index.ts";
 import { parseCron } from "./cron.ts";
+import {
+	type CronRetryState,
+	type CronRetryTracker,
+	MAX_CRON_TRANSIENT_RETRIES,
+} from "./cron-retry.ts";
 
 export interface DispatchSpawnInput {
 	readonly agentName: string;
@@ -45,6 +50,14 @@ export interface DispatchSpawnInput {
 	 * agent's own cap. Omitted when the trigger declares none.
 	 */
 	readonly maxCostUsd?: number;
+	/**
+	 * Fired once with the warren run id the moment the row is created, before
+	 * runtime contact (warren-a0a2). Lets the cron dispatcher learn the row id
+	 * even when the spawn later throws, so its bounded-retry GC can reclaim the
+	 * transient never_started row. The production wiring forwards this onto
+	 * `spawnRun`'s `onRunRowCreated`.
+	 */
+	readonly onRowCreated?: (runId: string) => void;
 }
 
 export interface DispatchSpawnResult {
@@ -66,6 +79,21 @@ export interface DispatchCronInput {
 	readonly now: Date;
 	readonly repos: Pick<Repos, "triggers">;
 	readonly spawn: DispatchSpawnFn;
+	/**
+	 * Per-trigger consecutive-transient-failure memory (warren-a0a2). When
+	 * provided, the dispatcher caps in-slot transient retries at
+	 * {@link MAX_CRON_TRANSIENT_RETRIES}, then consumes the slot and returns a
+	 * `gave_up` result. Omitted by unit tests that don't exercise the bound —
+	 * without it the legacy unbounded retry-every-tick behaviour holds.
+	 */
+	readonly retryTracker?: CronRetryTracker;
+	/**
+	 * GC seam for the transient `never_started` rows a failing slot mints
+	 * (warren-a0a2). Wired to `repos.runs.deleteNeverStarted` in production; the
+	 * dispatcher deletes the previous attempt's row on each retry (and on
+	 * recovery), so a failed slot leaves at most one never_started row behind.
+	 */
+	readonly deleteNeverStartedRun?: (runId: string) => Promise<void>;
 }
 
 export type DispatchCronResult =
@@ -83,6 +111,20 @@ export type DispatchCronResult =
 			readonly kind: "skipped";
 			readonly nextFireAt: Date | null;
 			readonly reason: string;
+	  }
+	| {
+			/**
+			 * warren-a0a2: the slot hit {@link MAX_CRON_TRANSIENT_RETRIES}
+			 * consecutive transient spawn failures, so the dispatcher gave up on
+			 * it — the trigger row was advanced (slot consumed) exactly like the
+			 * permanent-failure path, and the tick logs `scheduler.cron_gave_up`.
+			 * The next genuine slot fires normally: give-up consumes THIS slot
+			 * only, it never disables the trigger.
+			 */
+			readonly kind: "gave_up";
+			readonly reason: string;
+			readonly nextFireAt: Date | null;
+			readonly attempts: number;
 	  }
 	| {
 			readonly kind: "error";
@@ -148,7 +190,14 @@ export async function dispatchCronTrigger(input: DispatchCronInput): Promise<Dis
 		};
 	}
 
+	// warren-a0a2: per-trigger bounded-retry memory for THIS slot. slotKey is
+	// the row's lastFiredAt — stable while a slot's attempts keep failing (the
+	// transient path leaves the row untouched), advancing the instant the slot
+	// fires or is consumed, so `forSlot` resets the counter on a fresh slot.
+	const retry = input.retryTracker?.forSlot(input.projectId, input.trigger.id, row.lastFiredAt);
+
 	const prompt = resolveCronPrompt(input.trigger, input.defaults);
+	let createdRunId: string | null = null;
 	let runId: string;
 	try {
 		const spawned = await input.spawn({
@@ -162,34 +211,21 @@ export async function dispatchCronTrigger(input: DispatchCronInput): Promise<Dis
 				...(input.trigger.seed !== undefined ? { seed: input.trigger.seed } : {}),
 			},
 			...(input.trigger.maxCostUsd !== undefined ? { maxCostUsd: input.trigger.maxCostUsd } : {}),
+			// Learn the row id even if the spawn throws — the GC below reclaims it.
+			onRowCreated: (id) => {
+				createdRunId = id;
+			},
 		});
 		runId = spawned.runId;
 	} catch (err) {
-		// Per pl-2f15 risk #5 we keep dispatch failures per-trigger; surface
-		// the reason for the tick log without tearing down the scheduler.
-		const permanent = isPermanentSpawnFailure(err);
-		if (permanent) {
-			// Permanent (agent-not-found) failure: the role won't resolve for
-			// the rest of this slot window, so advance the trigger row to
-			// consume the elapsed slot (lastFiredAt=now, nextFireAt=nextRun).
-			// This stops the every-tick retry — the next tick sees prev <= last
-			// and skips until the next genuine slot — so an unregistered agent
-			// warns once-per-slot instead of every tick (warren-17cc). No runId
-			// is recorded because no run was spawned.
-			await input.repos.triggers.upsert({
-				projectId: input.projectId,
-				triggerId: input.trigger.id,
-				lastFiredAt: input.now.toISOString(),
-				nextFireAt: nextFireAt?.toISOString() ?? null,
-			});
-		}
-		// Transient failures leave the row untouched so the next tick recomputes
-		// prev > last and retries within the same slot.
-		return {
-			kind: "error",
-			reason: `spawnRun failed: ${formatError(err)}`,
-			permanent,
-		};
+		return handleCronSpawnFailure({ input, retry, nextFireAt, createdRunId, err });
+	}
+
+	// Recovered within the slot: drop the transient failure's row so only the
+	// successful run remains in the runs list, then forget the slot.
+	if (retry !== undefined) {
+		await gcPriorFailure(input, retry.lastFailedRunId);
+		input.retryTracker?.clear(input.projectId, input.trigger.id);
 	}
 
 	// Risk #4: stamp last_fired_at BEFORE any side-effect that might fail
@@ -322,4 +358,81 @@ function resolveScheduledPrompt(
  */
 export function isPermanentSpawnFailure(err: unknown): boolean {
 	return err instanceof NotFoundError && err.message.startsWith("agent not found:");
+}
+
+/**
+ * Best-effort GC of a prior attempt's `never_started` row (warren-a0a2). A
+ * null id (the failure happened before the row was created) or a missing GC
+ * seam is a no-op; the `deleteNeverStartedRun` seam itself is guarded to only
+ * ever delete a genuine never_started row, so a stray call can never drop a
+ * real run.
+ */
+async function gcPriorFailure(input: DispatchCronInput, runId: string | null): Promise<void> {
+	if (runId === null || input.deleteNeverStartedRun === undefined) return;
+	await input.deleteNeverStartedRun(runId);
+}
+
+/**
+ * Advance the trigger row to consume the elapsed slot (lastFiredAt=now,
+ * nextFireAt=nextRun) and forget its retry memory. Shared by the
+ * permanent-failure (warren-17cc) and give-up (warren-a0a2) paths: after this
+ * the next tick sees `prev <= last` and skips until the next genuine slot.
+ */
+async function consumeCronSlot(input: DispatchCronInput, nextFireAt: Date | null): Promise<void> {
+	await input.repos.triggers.upsert({
+		projectId: input.projectId,
+		triggerId: input.trigger.id,
+		lastFiredAt: input.now.toISOString(),
+		nextFireAt: nextFireAt?.toISOString() ?? null,
+	});
+	input.retryTracker?.clear(input.projectId, input.trigger.id);
+}
+
+interface CronSpawnFailureInput {
+	readonly input: DispatchCronInput;
+	readonly retry: CronRetryState | undefined;
+	readonly nextFireAt: Date | null;
+	readonly createdRunId: string | null;
+	readonly err: unknown;
+}
+
+/**
+ * Classify + handle a cron spawn failure without tearing down the scheduler
+ * (pl-2f15 risk #5):
+ *
+ *   - permanent (agent-not-found): consume the slot so an unregistered agent
+ *     warns once-per-slot, not every tick (warren-17cc). No row was minted.
+ *   - transient under the cap: GC the previous attempt's never_started row
+ *     (a failing slot keeps at most one), leave the trigger row untouched so
+ *     the next tick retries within the slot.
+ *   - transient at the cap (warren-a0a2): give up on THIS slot — consume it
+ *     and surface `gave_up` so the tick logs `scheduler.cron_gave_up`. The
+ *     next genuine slot still fires; the trigger is never disabled.
+ */
+async function handleCronSpawnFailure(args: CronSpawnFailureInput): Promise<DispatchCronResult> {
+	const { input, retry, nextFireAt, createdRunId, err } = args;
+	if (isPermanentSpawnFailure(err)) {
+		await consumeCronSlot(input, nextFireAt);
+		return { kind: "error", reason: `spawnRun failed: ${formatError(err)}`, permanent: true };
+	}
+
+	if (retry !== undefined) {
+		// GC the previous attempt's row; retain the current one (reclaimed by
+		// the next retry / recovery, or kept as the give-up record).
+		await gcPriorFailure(input, retry.lastFailedRunId);
+		retry.consecutiveFailures += 1;
+		retry.lastFailedRunId = createdRunId;
+		if (retry.consecutiveFailures >= MAX_CRON_TRANSIENT_RETRIES) {
+			const attempts = retry.consecutiveFailures;
+			await consumeCronSlot(input, nextFireAt);
+			return {
+				kind: "gave_up",
+				reason: `spawnRun failed ${attempts}x consecutively: ${formatError(err)}`,
+				nextFireAt,
+				attempts,
+			};
+		}
+	}
+	// Under the cap: leave the row untouched so the next tick retries the slot.
+	return { kind: "error", reason: `spawnRun failed: ${formatError(err)}`, permanent: false };
 }

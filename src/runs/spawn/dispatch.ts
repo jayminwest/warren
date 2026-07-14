@@ -198,6 +198,9 @@ export async function spawnRun(input: SpawnRunInput): Promise<SpawnRunResult> {
 		...(input.targetBranch?.trim() ? { targetBranch: input.targetBranch } : {}),
 		now: input.now?.(),
 	});
+	// warren-a0a2: expose the run id the instant the row exists so the cron
+	// bounded-retry GC can reclaim it if the dispatch below throws (see types).
+	input.onRunRowCreated?.(run.id);
 
 	// warren-9993/a993: burrow branch = `${prefix}/${run.id}` (prefix precedence
 	// project default > env > "burrow"); a CI-fixer run's `targetBranch` pins it

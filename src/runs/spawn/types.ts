@@ -240,6 +240,16 @@ export interface SpawnRunInput {
 	 * CLI paths that don't care — the flow degrades to a no-op logger.
 	 */
 	readonly logger?: SpawnLogger;
+	/**
+	 * Fired once with the freshly-minted warren run id, right after the run
+	 * row is created and before any runtime contact (warren-a0a2). Lets a
+	 * caller learn the row id even when `spawnRun` later throws (the row is
+	 * finalized `failed`/`never_started` on a pre-dispatch failure). The
+	 * scheduler's bounded-retry GC uses this to drop the transient
+	 * never_started rows a persistently-unreachable runtime would flood the
+	 * runs list with. Best-effort: the callback must not throw.
+	 */
+	readonly onRunRowCreated?: (runId: string) => void;
 }
 
 export interface AppendPlotRunDispatchedInput {
