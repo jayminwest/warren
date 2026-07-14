@@ -179,6 +179,79 @@ OPTIONAL `secretKeyRef` (`WARREN_K8S_ANTHROPIC_SECRET_NAME` /
 rides the dispatch env still schedules when the Secret is absent. Provision the
 Secret alongside `warren-git-token` (design §6.3).
 
+## Host-mode local dev: kubeconfig 401 with client-cert clusters
+
+Warren loads cluster auth via `@kubernetes/client-node`'s
+`KubeConfig.loadFromDefault()` (`src/runtime/k8s/provider.ts`,
+`log-follow.ts`). In a pod that resolves to the mounted ServiceAccount
+(CA + bearer token); off-cluster it falls back to `KUBECONFIG` /
+`~/.kube/config`.
+
+**Symptom.** Running the control plane on your host with
+`WARREN_RUNTIME=k8s` against a **k3d / kind** cluster — whose default
+kubeconfig uses **client-certificate** auth against a **self-signed**
+cluster CA — every Kubernetes API call fails with **HTTP 401**, so no run
+pod ever dispatches.
+
+**Cause.** Bun's `fetch` (the transport `@kubernetes/client-node` uses)
+does not present the kubeconfig's client certificate and rejects the
+self-signed cluster CA, so mTLS kubeconfig auth never completes. This is a
+host-mode-only limitation: **in-cluster ServiceAccount bearer-token auth
+is unaffected** — a warren pod deployed via these manifests authenticates
+normally, which is the supported production path. Only off-cluster
+`kubectl`-style client-cert kubeconfigs hit this.
+
+**Workarounds** (local dev only — pick one):
+
+*Option A — `kubectl proxy` (simplest; plain HTTP, no TLS/client-cert):*
+
+```bash
+# Terminal 1: proxy authenticates with your real kubeconfig,
+# re-exposing the API over plain HTTP on localhost.
+kubectl proxy --port=8001
+
+# Terminal 2: throwaway kubeconfig that points warren at the proxy.
+cat > /tmp/warren-proxy.kubeconfig <<'EOF'
+apiVersion: v1
+kind: Config
+clusters:
+  - name: proxy
+    cluster: { server: http://127.0.0.1:8001 }
+contexts:
+  - name: proxy
+    context: { cluster: proxy, user: "" }
+current-context: proxy
+EOF
+
+KUBECONFIG=/tmp/warren-proxy.kubeconfig WARREN_RUNTIME=k8s warren serve
+```
+
+*Option B — token-based kubeconfig (bearer token + skip TLS verify):*
+
+```bash
+# ServiceAccount + short-lived token (TokenRequest API; kubectl >= 1.24).
+kubectl -n warren create serviceaccount warren-host 2>/dev/null || true
+kubectl create clusterrolebinding warren-host-admin \
+  --clusterrole=cluster-admin \
+  --serviceaccount=warren:warren-host 2>/dev/null || true
+TOKEN=$(kubectl -n warren create token warren-host --duration=24h)
+SERVER=$(kubectl config view --minify -o jsonpath='{.clusters[0].cluster.server}')
+
+# --insecure-skip-tls-verify dodges Bun's self-signed-CA rejection.
+KC=/tmp/warren-token.kubeconfig
+kubectl config set-cluster local --server="$SERVER" \
+  --insecure-skip-tls-verify=true --kubeconfig="$KC"
+kubectl config set-credentials warren-host --token="$TOKEN" --kubeconfig="$KC"
+kubectl config set-context local --cluster=local --user=warren-host --kubeconfig="$KC"
+kubectl config use-context local --kubeconfig="$KC"
+
+KUBECONFIG="$KC" WARREN_RUNTIME=k8s warren serve
+```
+
+Both leave your real `~/.kube/config` untouched. `cluster-admin` is
+convenient for local dev; to mirror production least-privilege, bind the
+`base/rbac.yaml` Role in `warren-runs` to `warren-host` instead.
+
 ## Prometheus
 
 `servicemonitor.yaml` is kept **out** of the kustomize base because it needs the
