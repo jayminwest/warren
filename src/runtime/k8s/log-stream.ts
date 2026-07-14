@@ -179,11 +179,14 @@ async function* pump(deps: K8sLogStreamDeps): AsyncGenerator<NormalizedEvent, vo
 	for (;;) {
 		const resumeViaSinceTime = !firstConnection && state.anchorTs !== undefined;
 		const conn = new LogConnection(state, deps, resumeViaSinceTime);
-		const result = await openAndConsume(deps, conn, followExtra(true, resumeViaSinceTime, state));
-		yield* result.events;
+		// Stream events out as each chunk is parsed — a live `follow:true`
+		// connection stays open for the pod's whole lifetime, so events MUST be
+		// yielded incrementally (not batched at connection close, warren-245d).
+		// The generator's RETURN value carries the connection's end error.
+		const endErr = yield* openAndConsume(deps, conn, followExtra(true, resumeViaSinceTime, state));
 
 		// A pod deleted out from under the follow (404) is the seam's `lost` signal.
-		if (isNotFound(result.endErr)) throw runNotFound(deps.params.podName);
+		if (isNotFound(endErr)) throw runNotFound(deps.params.podName);
 
 		const gap = coldResumeGap(state, firstConnection, sinceSeq);
 		if (gap !== null) yield gap;
@@ -251,44 +254,42 @@ async function* drainTail(
 ): AsyncGenerator<NormalizedEvent> {
 	const resumeViaSinceTime = state.anchorTs !== undefined;
 	const conn = new LogConnection(state, deps, resumeViaSinceTime);
-	const result = await openAndConsume(deps, conn, followExtra(false, resumeViaSinceTime, state));
-	yield* result.events;
-	// A 404 on the drain read means the pod was GC'd right at termination — the
-	// events we already yielded stand; ending normally is correct (terminal seen).
-}
-
-interface ConnectionResult {
-	readonly events: NormalizedEvent[];
-	readonly endErr: unknown;
+	// Non-follow read: the connection ends on its own (EOF); its end error is
+	// intentionally ignored — a 404 on the drain read means the pod was GC'd right
+	// at termination, and the events we already yielded stand (terminal seen).
+	yield* openAndConsume(deps, conn, followExtra(false, resumeViaSinceTime, state));
 }
 
 /**
- * Open a follow/drain connection, pull its chunks through the line parser, and
- * collect the yielded events. Buffers partial lines across chunk boundaries; on a
- * clean EOF flushes a trailing newline-less line (a complete final write), on a
- * transient error discards it (the reconnect re-reads it in full).
+ * Open a follow/drain connection and pull its chunks through the line parser,
+ * YIELDING each parsed event as it arrives — a live `follow:true` connection
+ * stays open for the pod's lifetime, so events must stream out incrementally
+ * rather than be batched at close (warren-245d). Buffers partial lines across
+ * chunk boundaries; on a clean EOF flushes a trailing newline-less line (a
+ * complete final write), on a transient error discards it (the reconnect
+ * re-reads it in full). The generator's RETURN value is the connection's end
+ * error (`undefined` on a clean EOF), which the caller classifies.
  */
-async function openAndConsume(
+async function* openAndConsume(
 	deps: K8sLogStreamDeps,
 	conn: LogConnection,
 	extra: { follow: boolean; sinceTime?: string },
-): Promise<ConnectionResult> {
+): AsyncGenerator<NormalizedEvent, unknown, void> {
 	const queue = new ChunkQueue();
 	const controller = await openFollow(deps, extra, queue);
-	const events: NormalizedEvent[] = [];
 	try {
 		for (;;) {
 			const item = await queue.pull();
 			if (!item.done) {
-				for (const ev of conn.consume(item.chunk)) events.push(ev);
+				yield* conn.consume(item.chunk);
 				continue;
 			}
 			// Clean EOF ⇒ flush a complete-but-unterminated final line; a transient
 			// error discards the partial (the reconnect re-reads it in full).
 			if (item.err === undefined || item.err === null) {
-				for (const ev of conn.flush()) events.push(ev);
+				yield* conn.flush();
 			}
-			return { events, endErr: item.err };
+			return item.err;
 		}
 	} finally {
 		controller?.abort();

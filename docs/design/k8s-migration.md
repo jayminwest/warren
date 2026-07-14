@@ -385,10 +385,12 @@ API for the pod TTL.
   reusable against a pod log stream; the structural change is the source
   (K8s log stream vs. burrow SSE endpoint), not the parsing.
 
-Limitation: pod log streaming buffers up to 10s by default. For live-stream UI
-fidelity, configure the K8s API log stream with `sinceSeconds: 0&follow=true`
-and stream immediately. Add option B (direct push) as a later optimization if
-log-stream latency proves inadequate.
+For live-stream fidelity, configure the K8s API log stream with `follow=true`
+and no `since*`/`tailLines` — it replays the container's retained log then tails
+immediately. NOTE (warren-245d): do NOT pass `sinceSeconds: 0`; the apiserver
+validates `sinceSeconds > 0` and rejects `0` with HTTP 422, which silently wedges
+the follow. Add option B (direct push) as a later optimization if log-stream
+latency proves inadequate.
 
 ### 5.2 Prometheus
 

@@ -214,6 +214,13 @@ export interface K8sPodConfig {
 	terminateGracePeriodSeconds: number;
 	/** optional ServiceAccount for the run pod (RBAC step). */
 	serviceAccountName?: string;
+	/**
+	 * `imagePullPolicy` for BOTH run-pod containers (`WARREN_K8S_IMAGE_PULL_POLICY`).
+	 * Absent ⇒ omit ⇒ K8s default (`Always` for `:latest`). On kind/k3d the images
+	 * are `k3d image import`-ed onto the node, so a local overlay MUST set this to
+	 * `IfNotPresent`/`Never` or every dispatch ImagePullBackOffs (warren-245d).
+	 */
+	imagePullPolicy?: string;
 }
 
 /** Minimal env surface `resolveK8sPodConfig` reads. */
@@ -288,7 +295,23 @@ export function resolveK8sPodConfig(
 	};
 	const sa = env.WARREN_K8S_SERVICE_ACCOUNT?.trim();
 	if (sa !== undefined && sa !== "") config.serviceAccountName = sa;
+	const pullPolicy = pickImagePullPolicy(env);
+	if (pullPolicy !== undefined) config.imagePullPolicy = pullPolicy;
 	return config;
+}
+
+/** Valid K8s `imagePullPolicy` values; anything else is ignored (field omitted). */
+const IMAGE_PULL_POLICIES = new Set(["Always", "IfNotPresent", "Never"]);
+
+/**
+ * Resolve `WARREN_K8S_IMAGE_PULL_POLICY` to a valid K8s `imagePullPolicy`, or
+ * `undefined` (omit the field ⇒ K8s default). A blank/missing/invalid value maps
+ * to `undefined` rather than propagating an invalid policy the API would reject.
+ */
+function pickImagePullPolicy(env: K8sPodConfigEnv): string | undefined {
+	const raw = env.WARREN_K8S_IMAGE_PULL_POLICY?.trim();
+	if (raw === undefined || raw === "") return undefined;
+	return IMAGE_PULL_POLICIES.has(raw) ? raw : undefined;
 }
 
 /**
@@ -394,6 +417,7 @@ function buildInitContainer(
 	return {
 		name: INIT_CONTAINER_NAME,
 		image: config.initImage,
+		...(config.imagePullPolicy !== undefined ? { imagePullPolicy: config.imagePullPolicy } : {}),
 		command: [...K8S_INIT_COMMAND],
 		env: buildInitEnv(spec, config, opts),
 		volumeMounts: buildInitVolumeMounts(opts),
@@ -413,8 +437,13 @@ function buildAgentContainer(spec: RunSpec, config: K8sPodConfig): V1Container {
 	return {
 		name: AGENT_CONTAINER_NAME,
 		image: config.agentImage,
+		...(config.imagePullPolicy !== undefined ? { imagePullPolicy: config.imagePullPolicy } : {}),
+		// NO `workingDir` override (warren-245d): the container starts in the image
+		// WORKDIR (`/app`) so `bun run agent:run` resolves — `bun run` reads the
+		// CWD's package.json and does NOT walk up, so a `/workspace` CWD (the clone
+		// has no package.json) fails "Script not found". The agent still runs in
+		// `/workspace`: agent-entrypoint spawns it with `cwd: WARREN_WORKSPACE_PATH`.
 		command: [...K8S_AGENT_COMMAND],
-		workingDir: WORKSPACE_MOUNT_PATH,
 		env: buildAgentEnv(spec, config),
 		volumeMounts: [{ name: WORKSPACE_VOLUME_NAME, mountPath: WORKSPACE_MOUNT_PATH }],
 		resources: resourceRequirements(requests, limits),

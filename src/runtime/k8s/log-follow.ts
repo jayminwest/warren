@@ -11,9 +11,8 @@
  * stream-shaped surface onto the seam's `(onData, onDone)` callbacks: each write
  * becomes an `onData(chunk)`, and the stream's `finish` / `close` / `error`
  * becomes a single `onDone(err)`. `timestamps` is forced on (the RFC3339 prefix
- * is the resume anchor + seq witness) and `sinceSeconds: 0` is set on a
- * from-start follow so the kubelet streams immediately rather than buffering
- * (design doc §5.1 live-fidelity note).
+ * is the resume anchor + seq witness). A from-start follow passes NEITHER
+ * `sinceTime` nor `sinceSeconds`; a resume passes the explicit `sinceTime` anchor.
  */
 
 import { Writable } from "node:stream";
@@ -57,17 +56,19 @@ export function makeLogFollow(log: Log): LogFollowFn {
 		sink.on("close", () => finish(undefined));
 		sink.on("error", (err) => finish(err));
 
-		// `sinceSeconds` and `sinceTime` are mutually exclusive (LogOptions): prefer
-		// the explicit resume `sinceTime`; else `sinceSeconds: 0` on a from-start
-		// follow makes the kubelet stream immediately (design doc §5.1).
+		// A resume passes the explicit `sinceTime` anchor; a from-start follow
+		// passes NEITHER `sinceTime` nor `sinceSeconds`. `follow:true` with no
+		// `since*`/`tailLines` replays the container's full retained log then tails
+		// live — exactly the from-start-then-follow behavior we want. We must NOT
+		// send `sinceSeconds: 0`: the apiserver validates `sinceSeconds > 0` and
+		// rejects `0` with HTTP 422 ("must be greater than 0"). That 422 is not a
+		// 404, so `log-stream.ts` treats it as a transient disconnect and re-sends
+		// the same invalid request forever — the stream delivers zero bytes and the
+		// run wedges in `queued` (warren-245d live k3d validation).
 		const options: LogOptions = {
 			follow: params.follow,
 			timestamps: true,
-			...(params.sinceTime !== undefined
-				? { sinceTime: params.sinceTime }
-				: params.follow
-					? { sinceSeconds: 0 }
-					: {}),
+			...(params.sinceTime !== undefined ? { sinceTime: params.sinceTime } : {}),
 		};
 		let abort: AbortController;
 		try {

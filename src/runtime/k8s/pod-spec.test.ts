@@ -90,6 +90,22 @@ describe("resolveK8sPodConfig", () => {
 		expect(c.serviceAccountName).toBeUndefined();
 	});
 
+	test("imagePullPolicy: absent env ⇒ undefined; valid ⇒ set; invalid/blank ⇒ undefined (warren-245d)", () => {
+		expect(resolveK8sPodConfig({}).imagePullPolicy).toBeUndefined();
+		expect(
+			resolveK8sPodConfig({ WARREN_K8S_IMAGE_PULL_POLICY: "IfNotPresent" }).imagePullPolicy,
+		).toBe("IfNotPresent");
+		expect(resolveK8sPodConfig({ WARREN_K8S_IMAGE_PULL_POLICY: "Never" }).imagePullPolicy).toBe(
+			"Never",
+		);
+		expect(
+			resolveK8sPodConfig({ WARREN_K8S_IMAGE_PULL_POLICY: "bogus" }).imagePullPolicy,
+		).toBeUndefined();
+		expect(
+			resolveK8sPodConfig({ WARREN_K8S_IMAGE_PULL_POLICY: "  " }).imagePullPolicy,
+		).toBeUndefined();
+	});
+
 	test("callback + git-secret fall back to defaults", () => {
 		const c = resolveK8sPodConfig({});
 		expect(c.callback).toEqual({ service: "warren", namespace: "warren", port: "8080" });
@@ -249,6 +265,17 @@ describe("buildRunPod", () => {
 		expect(pod.metadata?.annotations?.["warren.io/branch"]).toBeUndefined();
 	});
 
+	test("imagePullPolicy: omitted by default, applied to BOTH containers when set (warren-245d)", () => {
+		const bare = buildRunPod(baseSpec(), config);
+		expect(bare.spec?.initContainers?.[0]?.imagePullPolicy).toBeUndefined();
+		expect(bare.spec?.containers?.[0]?.imagePullPolicy).toBeUndefined();
+
+		const local = resolveK8sPodConfig({ WARREN_K8S_IMAGE_PULL_POLICY: "IfNotPresent" });
+		const pod = buildRunPod(baseSpec(), local);
+		expect(pod.spec?.initContainers?.[0]?.imagePullPolicy).toBe("IfNotPresent");
+		expect(pod.spec?.containers?.[0]?.imagePullPolicy).toBe("IfNotPresent");
+	});
+
 	test("pod-level securityContext is non-root uid/gid 1000 + RuntimeDefault seccomp", () => {
 		const sc = buildRunPod(baseSpec(), config).spec?.securityContext;
 		expect(sc?.runAsNonRoot).toBe(true);
@@ -296,7 +323,10 @@ describe("buildRunPod", () => {
 		expect(vol?.emptyDir).toBeDefined();
 		const agent = pod.spec?.containers?.[0];
 		expect(agent?.name).toBe(AGENT_CONTAINER_NAME);
-		expect(agent?.workingDir).toBe(WORKSPACE_MOUNT_PATH);
+		// warren-245d: the agent container must NOT override workingDir — it starts
+		// in the image WORKDIR (/app) so `bun run agent:run` resolves; the agent is
+		// spawned in /workspace by agent-entrypoint (cwd: WARREN_WORKSPACE_PATH).
+		expect(agent?.workingDir).toBeUndefined();
 		expect(agent?.volumeMounts?.[0]?.mountPath).toBe(WORKSPACE_MOUNT_PATH);
 	});
 

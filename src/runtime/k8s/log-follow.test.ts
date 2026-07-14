@@ -65,10 +65,15 @@ describe("makeLogFollow", () => {
 		expect(endErr).toBeUndefined();
 	});
 
-	test("a from-start follow sets sinceSeconds:0 + timestamps, no sinceTime", async () => {
+	test("a from-start follow sets timestamps only — NO sinceSeconds, no sinceTime", async () => {
+		// warren-245d: the apiserver rejects `sinceSeconds: 0` with HTTP 422
+		// ("must be greater than 0"), which silently wedges the follow. A from-start
+		// follow must therefore omit `sinceSeconds` entirely (a bare `follow:true`
+		// replays the retained log then tails).
 		const fake = fakeLog((sink) => sink.end());
 		await drive(makeLogFollow(fake.log), PARAMS);
-		expect(fake.calls[0]).toMatchObject({ follow: true, timestamps: true, sinceSeconds: 0 });
+		expect(fake.calls[0]).toMatchObject({ follow: true, timestamps: true });
+		expect(fake.calls[0]?.sinceSeconds).toBeUndefined();
 		expect(fake.calls[0]?.sinceTime).toBeUndefined();
 	});
 

@@ -138,6 +138,53 @@ function run(
 	return { log, stream };
 }
 
+// --- live-follow incremental delivery (warren-245d) -------------------------
+
+describe("streamK8sLogs — live-follow incremental delivery", () => {
+	test("yields events from a connection that stays OPEN, before it ever closes", async () => {
+		// A live `follow:true` connection stays open for the pod's whole lifetime:
+		// it pushes the retained log, then streams, and only closes at pod
+		// termination. Events MUST arrive incrementally. The pre-fix code buffered
+		// every event until the connection CLOSED, so a running pod's events (incl.
+		// its terminal `result`) never reached the bridge — the run deadlocked in
+		// `queued` and finalize was never triggered (warren-245d live k3d finding).
+		const stayOpen: ConnScript = (onData, _onDone) => {
+			onData(`${ev(ts(1), { type: "event", kind: "text", stream: "stdout", payload: "one" })}\n`);
+			onData(`${ev(ts(2), { type: "event", kind: "text", stream: "stdout", payload: "two" })}\n`);
+			// deliberately NO onDone(): the follow connection remains open.
+		};
+		const log = new ScriptedLog([stayOpen]);
+		const gen = streamK8sLogs({
+			follow: log.follow,
+			probe: probeSequence(RUNNING),
+			params: PARAMS,
+			backoffBaseMs: 1,
+			backoffMaxMs: 2,
+		});
+		const withTimeout = <T>(p: Promise<T>): Promise<T> =>
+			Promise.race([
+				p,
+				new Promise<T>((_r, reject) =>
+					setTimeout(
+						() =>
+							reject(new Error("timed out — events not yielded from an OPEN follow (regression)")),
+						1000,
+					),
+				),
+			]);
+		try {
+			const first = await withTimeout(gen.next());
+			const second = await withTimeout(gen.next());
+			expect(first.done).toBe(false);
+			expect(second.done).toBe(false);
+			expect(first.value?.seq).toBe(1);
+			expect(second.value?.seq).toBe(2);
+		} finally {
+			await gen.return(undefined);
+		}
+	});
+});
+
 // --- NDJSON parsing + seq synthesis -----------------------------------------
 
 describe("streamK8sLogs — NDJSON parse + synthesized seq", () => {
