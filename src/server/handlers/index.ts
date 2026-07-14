@@ -32,7 +32,12 @@
 
 import { ValidationError } from "../../core/errors.ts";
 import { isValidPlotIdFormat, PlotIdInvalidError, PlotIdNotFoundError } from "../../plots/index.ts";
-import type { SpawnFn, SpawnOptions, SpawnResult } from "../../projects/clone.ts";
+import {
+	resolveSpawnEnv,
+	type SpawnFn,
+	type SpawnOptions,
+	type SpawnResult,
+} from "../../projects/clone.ts";
 import type { Route, RouteContext, RouteHandler, ServerDeps } from "../types.ts";
 import {
 	getAgentHandler,
@@ -119,8 +124,9 @@ export const defaultSpawn: SpawnFn = async (
 		cwd: opts.cwd,
 		stdout: "pipe",
 		stderr: "pipe",
-		// warren-035c: merge caller env OVER process.env so a pinned identity wins.
-		...(opts.env !== undefined ? { env: { ...process.env, ...opts.env } } : {}),
+		// warren-035c/fa84: merge caller env OVER process.env (pinned identity
+		// wins); an `undefined` override unsets an inherited var. See resolveSpawnEnv.
+		...(opts.env !== undefined ? { env: resolveSpawnEnv(opts.env) } : {}),
 	});
 	const timer =
 		opts.timeoutMs !== undefined && opts.timeoutMs > 0

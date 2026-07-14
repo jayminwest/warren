@@ -98,7 +98,7 @@ export interface FakeExec {
 		cmd: string;
 		args: readonly string[];
 		cwd: string;
-		env?: Record<string, string>;
+		env?: Record<string, string | undefined>;
 	}[];
 	readonly fail: { reason: string } | null;
 }
@@ -159,7 +159,7 @@ export function fakeExec(opts: FakeExecOpts = {}): FakeExec {
 		cmd: string;
 		args: readonly string[];
 		cwd: string;
-		env?: Record<string, string>;
+		env?: Record<string, string | undefined>;
 	}[] = [];
 	const fail = opts.fail !== undefined ? { reason: opts.fail } : null;
 	const failRevList = opts.failRevList ?? null;

@@ -43,6 +43,42 @@ import type { ReapPipelineContext, ReapPipelineState } from "./pipeline.ts";
 
 const COMMIT_MESSAGE = "chore(warren): mirror state";
 
+/**
+ * Git environment variables that pin repo discovery / index / object storage to
+ * a specific worktree. A parent `git commit` exports these to its hooks
+ * (`GIT_INDEX_FILE`, `GIT_PREFIX`, and — when the invocation was already inside
+ * a git dir — `GIT_DIR`), so warren's OWN pre-commit gate, which runs the test
+ * suite, carries them. If a git subprocess spawned below inherited them it would
+ * ignore its `cwd` and read/write the PARENT repo instead of the project clone:
+ * warren-fa84 saw a leaked repo-context env write a stray `chore(warren)` commit
+ * into the real repo (and warren-e9e1 earlier saw it flip `core.bare`). We scrub
+ * the whole dangerous family at every spawn so hermeticity never depends on the
+ * caller's environment or on test-level env clearing.
+ */
+const GIT_REPO_CONTEXT_ENV_KEYS = [
+	"GIT_DIR",
+	"GIT_WORK_TREE",
+	"GIT_INDEX_FILE",
+	"GIT_COMMON_DIR",
+	"GIT_PREFIX",
+	"GIT_OBJECT_DIRECTORY",
+	"GIT_ALTERNATE_OBJECT_DIRECTORIES",
+	"GIT_NAMESPACE",
+	"GIT_CEILING_DIRECTORIES",
+] as const;
+
+/**
+ * An `env` override map that unsets the repo-context `GIT_*` vars in the child
+ * environment (the exec adaptor treats an `undefined` value as "remove this
+ * key" — see `resolveSpawnEnv`). Merge identity/other entries OVER this to keep
+ * them; the two families don't overlap.
+ */
+export function gitRepoContextScrubEnv(): Record<string, string | undefined> {
+	const env: Record<string, string | undefined> = {};
+	for (const key of GIT_REPO_CONTEXT_ENV_KEYS) env[key] = undefined;
+	return env;
+}
+
 /** One clone-relative file to overwrite with the finalize-supplied merged body. */
 interface CloneWrite {
 	/** clone-relative (posix) path, e.g. `.mulch/expertise/build.jsonl` */
@@ -95,6 +131,7 @@ export async function applyCloneDeltas(
 		await ctx.exec.run("git", ["add", "--", ...pathspecs], {
 			cwd: clonePath,
 			timeoutMs: 10_000,
+			env: gitRepoContextScrubEnv(),
 		});
 		// `git diff --cached --quiet` exits non-zero iff the add picked up a real
 		// delta the clone didn't already have — the same staged-delta primitive the
@@ -104,6 +141,7 @@ export async function applyCloneDeltas(
 			await ctx.exec.run("git", ["diff", "--cached", "--quiet", "--", ...pathspecs], {
 				cwd: clonePath,
 				timeoutMs: 10_000,
+				env: gitRepoContextScrubEnv(),
 			});
 			hasStagedDelta = false;
 		} catch {
@@ -123,9 +161,17 @@ export async function applyCloneDeltas(
 				"--",
 				...pathspecs,
 			],
-			// warren-035c: pin the bot identity in env too so an inherited
+			// warren-035c: pin the bot identity in env so an inherited
 			// GIT_AUTHOR_*/GIT_COMMITTER_* can't out-rank the `-c user.*` config.
-			{ cwd: clonePath, timeoutMs: 10_000, env: warrenCommitIdentityEnv() },
+			// warren-fa84: scrub the inherited repo-context GIT_* (GIT_DIR /
+			// GIT_INDEX_FILE / …) so this commit can't escape `clonePath` into the
+			// parent repo when a hook exported them. Identity wins over the scrub —
+			// the two key families don't overlap.
+			{
+				cwd: clonePath,
+				timeoutMs: 10_000,
+				env: { ...gitRepoContextScrubEnv(), ...warrenCommitIdentityEnv() },
+			},
 		);
 		state.cloneDeltasApplied = true;
 		await ctx.emit("reap.clone_deltas_applied", {

@@ -164,6 +164,54 @@ describe("applyCloneDeltas (leg 2, real git clone)", () => {
 		await expect(git(dir, "rev-parse", "HEAD")).rejects.toThrow();
 	});
 
+	test("hermetic: hostile GIT_DIR/GIT_INDEX_FILE can't divert the commit to another repo", async () => {
+		// Simulate the pre-commit-hook leak the spawn-site scrub defends against
+		// (warren-fa84): a parent `git commit` exports repo-context GIT_* into the
+		// environment. Point them at a decoy repo AFTER the beforeEach cleared them
+		// — proving hermeticity comes from clone-apply's spawn-site scrub, not from
+		// test-level env clearing. Without the scrub the commit lands in the decoy.
+		const decoy = await mkdtemp(join(tmpdir(), "warren-clone-apply-decoy-"));
+		try {
+			await git(decoy, "init", "-q");
+			await git(
+				decoy,
+				"-c",
+				"user.name=d",
+				"-c",
+				"user.email=d@d",
+				"commit",
+				"--allow-empty",
+				"-q",
+				"-m",
+				"decoy base",
+			);
+			const decoyHeadBefore = (await git(decoy, "rev-parse", "HEAD")).trim();
+
+			process.env.GIT_DIR = join(decoy, ".git");
+			process.env.GIT_INDEX_FILE = join(decoy, ".git", "index");
+			process.env.GIT_PREFIX = "";
+
+			const state = createPipelineState();
+			const committed = await applyCloneDeltas(makeCtx(dir, [], []), state, resultWithDeltas());
+
+			// Drop the hostile env before assertions so this test's own git() calls
+			// (which don't scrub) read each repo through its `cwd` again.
+			delete process.env.GIT_DIR;
+			delete process.env.GIT_INDEX_FILE;
+			delete process.env.GIT_PREFIX;
+
+			expect(committed).toBe(true);
+			// The commit landed in the CLONE, authored by the warren bot.
+			const cloneSubject = (await git(dir, "log", "-1", "--format=%s")).trim();
+			expect(cloneSubject).toBe("chore(warren): mirror state");
+			// The decoy repo is untouched — no diverted commit.
+			const decoyHeadAfter = (await git(decoy, "rev-parse", "HEAD")).trim();
+			expect(decoyHeadAfter).toBe(decoyHeadBefore);
+		} finally {
+			await rm(decoy, { recursive: true, force: true });
+		}
+	});
+
 	test("idempotent: a second apply of identical bodies commits nothing", async () => {
 		const emitted: { kind: string; payload: unknown }[] = [];
 		const failed: { step: ReapStep; message: string }[] = [];

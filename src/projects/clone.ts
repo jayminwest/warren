@@ -42,12 +42,38 @@ export interface SpawnOptions {
 	 * Extra environment merged OVER the inherited process environment at the
 	 * spawn (warren-035c). Commit sites pass `warrenCommitIdentityEnv()` so an
 	 * inherited `GIT_AUTHOR_*` / `GIT_COMMITTER_*` can't out-rank the pinned
-	 * warren bot identity. Omitted ⇒ plain inheritance, behavior unchanged.
+	 * warren bot identity. A key mapped to `undefined` is REMOVED from the
+	 * child environment (warren-fa84) — the only way to unset an inherited var,
+	 * e.g. clone-apply scrubbing repo-context `GIT_*` leaked by a parent
+	 * `git commit`'s hook. Omitted ⇒ plain inheritance, behavior unchanged.
 	 */
-	readonly env?: Record<string, string>;
+	readonly env?: Record<string, string | undefined>;
 }
 
 export type SpawnFn = (cmd: readonly string[], opts: SpawnOptions) => Promise<SpawnResult>;
+
+/**
+ * Resolve the child-process environment for a spawn given the caller's `env`
+ * overrides. Merges `overrides` OVER the inherited `process.env` (warren-035c:
+ * a pinned identity beats an inherited one), then drops every key whose
+ * override value is `undefined` — the single way a caller can UNSET an
+ * inherited variable (warren-fa84: clone-apply scrubs repo-context `GIT_*`
+ * vars a parent `git commit`'s hook exports so its subprocesses can't escape
+ * their `cwd`). A plain object spread can't remove keys, hence the filter.
+ *
+ * Shared by the execFile adaptor (`src/runs/reap/util.ts`) and all three
+ * `Bun.spawn` adaptors so the merge semantics can never drift between them.
+ */
+export function resolveSpawnEnv(
+	overrides: Record<string, string | undefined>,
+): Record<string, string> {
+	const merged: Record<string, string | undefined> = { ...process.env, ...overrides };
+	const out: Record<string, string> = {};
+	for (const [key, value] of Object.entries(merged)) {
+		if (value !== undefined) out[key] = value;
+	}
+	return out;
+}
 
 export interface CloneProjectInput {
 	readonly config: ProjectsConfig;

@@ -2,6 +2,7 @@ import { execFile } from "node:child_process";
 import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { promisify } from "node:util";
 import type { RunRow, RunTerminalState } from "../../db/schema.ts";
+import { resolveSpawnEnv } from "../../projects/clone.ts";
 import type { ReapExec, ReapFs, ReapRunResult } from "./types.ts";
 
 const execFileAsync = promisify(execFile);
@@ -122,9 +123,10 @@ export const defaultExec: ReapExec = {
 			env?: NodeJS.ProcessEnv;
 		} = { cwd: opts.cwd };
 		if (opts.timeoutMs !== undefined) execOpts.timeout = opts.timeoutMs;
-		// warren-035c: merge the caller's env OVER the inherited process env so
-		// a pinned GIT_AUTHOR_*/GIT_COMMITTER_* identity beats an inherited one.
-		if (opts.env !== undefined) execOpts.env = { ...process.env, ...opts.env };
+		// warren-035c/fa84: merge the caller's env OVER the inherited process env
+		// (a pinned GIT_AUTHOR_*/GIT_COMMITTER_* identity beats an inherited one);
+		// an `undefined` override unsets an inherited var. See resolveSpawnEnv.
+		if (opts.env !== undefined) execOpts.env = resolveSpawnEnv(opts.env);
 		const { stdout, stderr } = await execFileAsync(cmd, [...args], execOpts);
 		return { stdout, stderr };
 	},

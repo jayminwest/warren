@@ -36,11 +36,13 @@ export interface ReapExec {
 	 * `env` (warren-035c) is merged OVER the inherited process environment at
 	 * the spawn — the commit sites pass `warrenCommitIdentityEnv()` so an
 	 * inherited `GIT_AUTHOR_*` / `GIT_COMMITTER_*` can't out-rank the pinned
-	 * bot identity. Omitted ⇒ plain inheritance, behavior unchanged. */
+	 * bot identity. A key mapped to `undefined` is REMOVED from the child env
+	 * (warren-fa84) — how clone-apply scrubs repo-context `GIT_*` a parent
+	 * hook leaked. Omitted ⇒ plain inheritance, behavior unchanged. */
 	readonly run: (
 		cmd: string,
 		args: readonly string[],
-		opts: { cwd: string; timeoutMs?: number; env?: Record<string, string> },
+		opts: { cwd: string; timeoutMs?: number; env?: Record<string, string | undefined> },
 	) => Promise<{ stdout: string; stderr: string }>;
 }
 

@@ -70,10 +70,10 @@ describe("defaultPlotSyncer.sync", () => {
 		writeFileSync(join(plotDir, "plot-1.events.jsonl"), '{"event":"created"}\n');
 
 		const spawnCalls: string[][] = [];
-		const commitEnvs: (Record<string, string> | undefined)[] = [];
+		const commitEnvs: (Record<string, string | undefined> | undefined)[] = [];
 		const spawn = async (
 			cmd: readonly string[],
-			opts: { cwd: string; timeoutMs?: number; env?: Record<string, string> },
+			opts: { cwd: string; timeoutMs?: number; env?: Record<string, string | undefined> },
 		) => {
 			spawnCalls.push(cmd as string[]);
 			if (cmd.includes("commit")) commitEnvs.push(opts.env);
