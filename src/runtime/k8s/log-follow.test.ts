@@ -181,6 +181,64 @@ describe("makeLogFollow", () => {
 		}
 	});
 
+	test("an AbortError thrown synchronously OUT of abort.abort() is swallowed (warren-4e36)", async () => {
+		// Under Bun the abort-event listener's AbortError can propagate through the
+		// `abort.abort()` dispatching frame itself (observed live on GKE) — the
+		// pipe-source listener never sees it. Teardown must not throw and must
+		// still finish exactly once, cleanly.
+		const throwingAbort = {
+			abort: () => {
+				const err = new Error("The operation was aborted.");
+				err.name = "AbortError";
+				throw err;
+			},
+		} as unknown as AbortController;
+		const log = {
+			log: (_ns: string, _pod: string, _c: string, sink: Writable) => {
+				sink.write("partial");
+				return Promise.resolve(throwingAbort);
+			},
+		} as unknown as Log;
+		let doneCount = 0;
+		let endErr: unknown = "unset";
+		const controller = await makeLogFollow(log)(
+			PARAMS,
+			() => {},
+			(err) => {
+				doneCount += 1;
+				endErr = err;
+			},
+		);
+		expect(() => controller.abort()).not.toThrow();
+		expect(doneCount).toBe(1);
+		expect(endErr).toBeUndefined();
+	});
+
+	test("a NON-abort error thrown out of abort.abort() routes to onDone(err), never throws", async () => {
+		const throwingAbort = {
+			abort: () => {
+				throw new Error("socket already destroyed");
+			},
+		} as unknown as AbortController;
+		const log = {
+			log: (_ns: string, _pod: string, _c: string, sink: Writable) => {
+				sink.write("partial");
+				return Promise.resolve(throwingAbort);
+			},
+		} as unknown as Log;
+		let endErr: unknown = "unset";
+		const controller = await makeLogFollow(log)(
+			PARAMS,
+			() => {},
+			(err) => {
+				endErr = err;
+			},
+		);
+		expect(() => controller.abort()).not.toThrow();
+		expect(endErr).toBeInstanceOf(Error);
+		expect((endErr as Error).message).toBe("socket already destroyed");
+	});
+
 	test("a non-abort source error still propagates to onDone(err) for the pump to back off", async () => {
 		// The swallow is scoped to AbortError only: a genuine mid-stream failure must
 		// keep flowing into the pump so its reconnect/backoff (and 404 → lost) logic

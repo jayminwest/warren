@@ -1,0 +1,60 @@
+# Cloud Build config: build + push the three warren images to Artifact
+# Registry on native amd64 (warren-4e36). Local Apple Silicon builds produce
+# arm64 images that CrashLoop on GKE Autopilot with `exec format error`;
+# Cloud Build sidesteps the emulation entirely.
+#
+#   gcloud builds submit --config deploy/docker/cloudbuild.yaml \
+#     --substitutions _TAG=$(git rev-parse --short HEAD) .
+#
+# _AR defaults to the warren-502318 us-west1 registry; override for another
+# project. Steps run in parallel (waitFor: ['-']) on one high-cpu worker.
+substitutions:
+  _AR: us-west1-docker.pkg.dev/warren-502318/warren
+  _TAG: latest
+options:
+  machineType: E2_HIGHCPU_8
+timeout: 2400s
+steps:
+  - id: control
+    name: gcr.io/cloud-builders/docker
+    waitFor: ['-']
+    args:
+      - build
+      - -f
+      - Dockerfile
+      - -t
+      - ${_AR}/warren:${_TAG}
+      - -t
+      - ${_AR}/warren:latest
+      - .
+  - id: agent
+    name: gcr.io/cloud-builders/docker
+    waitFor: ['-']
+    args:
+      - build
+      - -f
+      - deploy/docker/Dockerfile.agent
+      - -t
+      - ${_AR}/warren-agent:${_TAG}
+      - -t
+      - ${_AR}/warren-agent:latest
+      - .
+  - id: init
+    name: gcr.io/cloud-builders/docker
+    waitFor: ['-']
+    args:
+      - build
+      - -f
+      - deploy/docker/Dockerfile.workspace-init
+      - -t
+      - ${_AR}/warren-workspace-init:${_TAG}
+      - -t
+      - ${_AR}/warren-workspace-init:latest
+      - .
+images:
+  - ${_AR}/warren:${_TAG}
+  - ${_AR}/warren:latest
+  - ${_AR}/warren-agent:${_TAG}
+  - ${_AR}/warren-agent:latest
+  - ${_AR}/warren-workspace-init:${_TAG}
+  - ${_AR}/warren-workspace-init:latest

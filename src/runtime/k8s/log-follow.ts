@@ -114,7 +114,20 @@ export function makeLogFollow(log: Log): LogFollowFn {
 				// `pipe`-captured error listener above must see `aborting` so it treats
 				// that error as an expected clean close rather than a stream failure.
 				aborting = true;
-				abort.abort();
+				// Under Bun the AbortError can ALSO propagate synchronously out of
+				// `abort.abort()` itself (the abort-event listener's throw surfaces
+				// through the dispatching frame — observed live on GKE, warren-4e36;
+				// the pipe-source listener alone was not enough). Never let teardown
+				// throw: swallow the expected abort, route anything else into the
+				// single-settle `finish` like a stream error.
+				try {
+					abort.abort();
+				} catch (err) {
+					if (!isAbortError(err)) {
+						finish(err);
+						return;
+					}
+				}
 				finish(undefined);
 			},
 		} satisfies LogFollowController;

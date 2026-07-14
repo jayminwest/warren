@@ -295,7 +295,15 @@ async function* openAndConsume(
 			return item.err;
 		}
 	} finally {
-		controller?.abort();
+		// Teardown must never throw out of this finally — an escaped AbortError
+		// here crashed the control plane on GKE (warren-4e36). The production
+		// follower swallows its own abort noise (log-follow.ts), but guard the
+		// seam too so no `LogFollowFn` impl can take down the pump.
+		try {
+			controller?.abort();
+		} catch {
+			// expected teardown noise; the stream is already ending
+		}
 	}
 }
 

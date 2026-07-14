@@ -1,0 +1,35 @@
+# Cloud Build source-upload ignore (warren-4e36). Keep in sync with
+# .dockerignore — the build steps run `docker build` against this upload,
+# so anything the Dockerfiles don't need stays out. Secrets NEVER upload.
+.git
+.github
+.gcloudignore
+
+# secrets — never upload
+.env
+.env.*
+.factory/mcp.json
+
+# dev-loop / build artefacts (mirrors .dockerignore + .gitignore)
+node_modules/
+src/ui/node_modules/
+src/ui/dist/
+src/ui/*.tsbuildinfo
+.bun/
+dist/
+data/
+*.log
+.DS_Store
+bun.lockb.bak
+.run-plan-logs/
+supabase/
+.plot/.index.db
+.plot/.index.db-shm
+.plot/.index.db-wal
+.claude/settings.local.json
+.pi/sessions/
+.idea/
+.vscode/
+test-results/
+coverage/
+.mulch/archive

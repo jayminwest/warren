@@ -56,7 +56,7 @@ import { composeRunBranch, resolveRunBranchPrefix } from "../branch.ts";
 import { parseBurrowConfig } from "../burrow-config.ts";
 import { buildSeedFiles } from "../seed.ts";
 import { readCachedAgent, readProjectDefaults, resolveOverride } from "./agent-cache.ts";
-import { injectWarrenCallbackEnv } from "./callback-env.ts";
+import { type EnvLike, injectWarrenCallbackEnv } from "./callback-env.ts";
 import {
 	defaultPlotAppender,
 	emitRunDispatchedToPlot,
@@ -428,7 +428,30 @@ function composeRunEnv(
 	// warren-f248: forward the warren API token + loopback URL so the agent
 	// can call back into warren's HTTP API (audit-warden delivery path).
 	injectWarrenCallbackEnv(env, serverEnv ?? process.env);
+	injectGitIdentityEnv(env, serverEnv ?? process.env);
 	return env;
+}
+
+/**
+ * Forward the operator's agent-commit identity (`WARREN_GIT_AUTHOR_NAME` /
+ * `WARREN_GIT_AUTHOR_EMAIL`, see `.env.example`) into the sandbox as the four
+ * `GIT_AUTHOR_*` / `GIT_COMMITTER_*` env vars git reads ahead of any config.
+ *
+ * On the Local path the supervisor already exports these into its own process
+ * env (`src/supervisor/git-identity.ts`) and burrow passes them through, so
+ * this is a no-op re-assertion of the same values. On the K8s path there is NO
+ * supervisor and the run pod has no gitconfig at all — without this every
+ * agent `git commit` dies with "Author identity unknown" exit 128 (hit live on
+ * GKE, warren-4e36). Mirrors the supervisor's rule: both halves or nothing.
+ */
+function injectGitIdentityEnv(env: Record<string, string>, serverEnv: EnvLike): void {
+	const name = serverEnv.WARREN_GIT_AUTHOR_NAME?.trim();
+	const email = serverEnv.WARREN_GIT_AUTHOR_EMAIL?.trim();
+	if (name === undefined || name === "" || email === undefined || email === "") return;
+	env.GIT_AUTHOR_NAME = name;
+	env.GIT_AUTHOR_EMAIL = email;
+	env.GIT_COMMITTER_NAME = name;
+	env.GIT_COMMITTER_EMAIL = email;
 }
 
 /**

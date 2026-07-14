@@ -55,6 +55,14 @@ spec:
             # --- runtime selection + K8s backend wiring ---
             - name: WARREN_RUNTIME
               value: "k8s"
+            # Trust the cluster CA for the kube-apiserver's serving cert. Under
+            # Bun, @kubernetes/client-node's per-request CA (from the in-cluster
+            # KubeConfig) is not applied to the TLS handshake, so every API call
+            # fails with "unable to verify the first certificate" (hit live on
+            # GKE, warren-4e36). NODE_EXTRA_CA_CERTS is honored by Bun and adds
+            # the projected SA CA bundle to the global trust store.
+            - name: NODE_EXTRA_CA_CERTS
+              value: "/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"
             - name: WARREN_K8S_NAMESPACE
               value: "warren-runs"
             # Agent + init images the provider stamps into each run pod. Build and
