@@ -23,6 +23,15 @@ RUN apt-get update \
         ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
+# Trust the `/workspace` emptyDir regardless of its owner uid (warren-fd08 live
+# validation). The pod runs as uid 1000 (hardened securityContext) but the
+# emptyDir mountpoint is root-owned — git >= 2.35.2 then refuses every command in
+# it with "detected dubious ownership", failing the init clone/switch, the
+# agent's own commits, AND finalize's push. A system-wide safe.directory is the
+# canonical container fix; the pod is single-tenant (one run's workspace), so
+# trusting all repos inside it adds no real trust surface.
+RUN git config --system --add safe.directory '*'
+
 WORKDIR /app
 
 # Warren source + its dependencies. `.dockerignore` keeps node_modules / UI build

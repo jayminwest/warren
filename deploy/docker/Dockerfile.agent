@@ -34,6 +34,13 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends nodejs \
     && rm -rf /var/lib/apt/lists/*
 
+# Trust the `/workspace` emptyDir regardless of owner uid (warren-fd08 live
+# validation): the pod runs as uid 1000 but the emptyDir mountpoint is
+# root-owned, so git >= 2.35.2 refuses the agent's commits + finalize's push with
+# "detected dubious ownership". A system-wide safe.directory is the canonical
+# container fix (single-tenant pod ⇒ no added trust surface).
+RUN git config --system --add safe.directory '*'
+
 # Baked coding-agent runtimes + os-eco data-plane CLIs. Versions track the
 # control-plane Dockerfile's pins; bump both together on a toolchain refresh.
 # BUN_INSTALL=/usr/local relocates the global store so the uid-1000 agent finds
