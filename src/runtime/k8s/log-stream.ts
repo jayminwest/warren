@@ -125,6 +125,12 @@ export interface StreamCounterSink {
 	increment(name: string, labels?: Readonly<Record<string, string>>, by?: number): void;
 }
 
+/** Minimal structured-logger surface the pump logs backoff/parse warnings through. */
+export interface StreamLogger {
+	info?: (obj: unknown, msg: string) => void;
+	warn?: (obj: unknown, msg: string) => void;
+}
+
 export interface K8sLogStreamDeps {
 	readonly follow: LogFollowFn;
 	readonly probe: TerminalProbe;
@@ -134,10 +140,7 @@ export interface K8sLogStreamDeps {
 	readonly metrics?: StreamCounterSink;
 	readonly backoffBaseMs?: number;
 	readonly backoffMaxMs?: number;
-	readonly logger?: {
-		info?: (obj: unknown, msg: string) => void;
-		warn?: (obj: unknown, msg: string) => void;
-	};
+	readonly logger?: StreamLogger;
 }
 
 /** Mutable cursor state carried across reconnects within one `streamEvents` call. */

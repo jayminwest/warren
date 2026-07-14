@@ -26,6 +26,7 @@ import type { RuntimeProvider } from "./contract.ts";
 import { UnknownRuntimeError } from "./errors.ts";
 import type { AdmissionCounterSink, PodAdmissionSource } from "./k8s/admission.ts";
 import type { FinalizeCoordinator } from "./k8s/finalize-coordinator.ts";
+import type { StreamLogger } from "./k8s/log-stream.ts";
 import type { PodCacheReader } from "./k8s/pod-watcher.ts";
 import { defaultCoreApiFactory, K8sProvider } from "./k8s/provider.ts";
 import type { K8sInboxStore } from "./k8s/send-message.ts";
@@ -103,6 +104,13 @@ export interface RuntimeProviderDeps {
 	 * same started `PodWatcher` as `k8sPodCache`.
 	 */
 	readonly k8sPodAdmission?: PodAdmissionSource;
+	/**
+	 * OPTIONAL structured logger for the K8s pod-log stream pump (warren-72a8) —
+	 * only consulted for `WARREN_RUNTIME=k8s`. Threaded onto the provider so the
+	 * pump's backoff/disconnect warnings surface instead of being silent no-ops;
+	 * absent ⇒ the pump logs nothing. Boot threads the shared pino logger.
+	 */
+	readonly k8sLogger?: StreamLogger;
 }
 
 /**
@@ -163,5 +171,6 @@ function buildK8sProvider(deps: RuntimeProviderDeps): K8sProvider {
 			: {}),
 		...(deps.k8sPodCache !== undefined ? { podCache: deps.k8sPodCache } : {}),
 		...(deps.k8sPodAdmission !== undefined ? { podAdmission: deps.k8sPodAdmission } : {}),
+		...(deps.k8sLogger !== undefined ? { logger: deps.k8sLogger } : {}),
 	});
 }

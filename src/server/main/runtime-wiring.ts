@@ -141,6 +141,11 @@ export interface ResolveBootRuntimeProviderInput {
 	/** Admission-rejection metric sink (K8s, warren-b6f2); absent ⇒ uncounted. */
 	readonly admissionMetrics?: AdmissionCounterSink;
 	/**
+	 * Structured logger threaded onto the `K8sProvider` pod-log stream pump so its
+	 * backoff/disconnect warnings surface (warren-72a8); ignored by LocalProvider.
+	 */
+	readonly logger?: Logger;
+	/**
 	 * The started K8s runtime (pod-watcher + shared client), present only under
 	 * `WARREN_RUNTIME=k8s`. Its pod-watcher is threaded as the provider's status
 	 * cache + admission source; its core-API factory keeps the provider on one
@@ -168,6 +173,7 @@ export function resolveBootRuntimeProvider(
 			...(input.admissionMetrics !== undefined
 				? { k8sAdmissionMetrics: input.admissionMetrics }
 				: {}),
+			...(input.logger !== undefined ? { k8sLogger: adaptLogger(input.logger) } : {}),
 			...(input.k8sRuntime !== undefined
 				? {
 						k8sCoreApi: input.k8sRuntime.coreApi,

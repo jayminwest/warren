@@ -213,6 +213,7 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 		env,
 		burrowClient,
 		runInbox: () => repos.runInbox,
+		logger,
 		...(metricsRegistry !== undefined ? { admissionMetrics: metricsRegistry } : {}),
 		...(k8sRuntime !== undefined ? { k8sRuntime } : {}),
 	});
