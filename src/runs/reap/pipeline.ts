@@ -365,12 +365,41 @@ async function prOpenStep(ctx: ReapPipelineContext, state: ReapPipelineState): P
  * Preview launch (warren-f156 / SPEC §11.L). See runPreviewLaunch +
  * runPreviewAnnotate for the gate semantics. Skipped on a dropped commit
  * (warren-72b9).
+ *
+ * warren-4fbe: preview launch exposes an inbound port through the burrow worker
+ * — a LocalProvider-only capability. Under a provider with
+ * `capabilities.previewPorts === false` (K8s v1: preview via Service/Ingress is
+ * deferred, contract §5.F) there is no burrow to hit, so gate on the capability
+ * and skip cleanly (no burrow call, no run failure). When a project opted in but
+ * the provider can't serve it, surface `reap.preview_skipped_unsupported` so
+ * operators can see why a `preview.yaml` produced no preview; `previewLaunchState`
+ * stays `null`, exactly as for a project that never opted in.
  */
 async function previewLaunchStep(
 	ctx: ReapPipelineContext,
 	state: ReapPipelineState,
 ): Promise<void> {
 	const { burrowId } = ctx.run;
+	// Surface the skip only when a successful, committed run actually opted in (so
+	// preview WOULD have launched locally); otherwise stay silent as a no-op.
+	if (!ctx.provider.capabilities.previewPorts) {
+		if (
+			ctx.input.outcome === "succeeded" &&
+			!state.droppedCommit &&
+			ctx.input.previewConfig !== undefined &&
+			ctx.input.portAllocator !== undefined
+		) {
+			await ctx.emit("reap.preview_skipped_unsupported", {
+				reason: "provider_no_preview_ports",
+				message: "preview launch skipped: provider does not support inbound preview ports",
+			});
+			ctx.log.info(
+				{ event: "reap.preview_skipped_unsupported", reason: "provider_no_preview_ports" },
+				"preview launch skipped: provider lacks preview-port capability",
+			);
+		}
+		return;
+	}
 	if (
 		!(
 			ctx.input.outcome === "succeeded" &&

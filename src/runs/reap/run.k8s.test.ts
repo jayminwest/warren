@@ -1,4 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { DrizzleAdapter } from "../../db/repos/drizzle-adapter.ts";
+import type { LaunchPreviewInput, LaunchPreviewResult } from "../../preview/launch/index.ts";
+import { PreviewPortAllocator } from "../../preview/port-allocator.ts";
 import type {
 	FinalizeIntent,
 	FinalizeResult,
@@ -6,6 +9,7 @@ import type {
 	RuntimeProvider,
 	WorkspaceInfo,
 } from "../../runtime/contract.ts";
+import type { ServerPreviewConfig } from "../../warren-config/index.ts";
 import { reapRun } from "./index.ts";
 import {
 	type Burrow,
@@ -201,6 +205,71 @@ describe("reapRun under a K8s-style RuntimeProvider", () => {
 
 		const events = await ctx.repos.events.listByRun(ctx.runId);
 		expect(events.some((ev) => ev.kind === "reap.clone_deltas_applied")).toBe(true);
+	});
+
+	// warren-4fbe: preview launch is a LocalProvider-only capability (it exposes
+	// an inbound port through the burrow worker). Under a provider that advertises
+	// previewPorts=false, the step must skip cleanly — never touch the launcher,
+	// never fail the run — and surface a `reap.preview_skipped_unsupported` event.
+	test("skips preview launch when provider lacks previewPorts, without touching the launcher", async () => {
+		const branch = "warren/run-1";
+		const fake = fakeK8sProvider({ branch, finalizeResult: finalizeResultWithDeltas(branch) });
+		const e = fakeExec({ stagedDelta: true });
+		const preview: ServerPreviewConfig = { type: "server", command: "bun run dev", port: 3000 };
+		const launchCalls: LaunchPreviewInput[] = [];
+		const launchPreview = async (input: LaunchPreviewInput): Promise<LaunchPreviewResult> => {
+			launchCalls.push(input);
+			return { ok: true, port: 40000, sidecarId: "sc_1" };
+		};
+
+		const result = await reapRun({
+			runId: ctx.runId,
+			outcome: "succeeded",
+			repos: ctx.repos,
+			burrowClient: await makePool(throwingBurrowClient(), ctx.repos),
+			runtimeProvider: fake.provider,
+			broker: ctx.broker,
+			fs: fakeFs().fs,
+			exec: e.exec,
+			previewConfig: preview,
+			portAllocator: new PreviewPortAllocator(DrizzleAdapter.for(ctx.db)),
+			launchPreview,
+		});
+
+		// The run still succeeds and the launcher was never called.
+		expect(result.state).toBe("succeeded");
+		expect(launchCalls).toHaveLength(0);
+		// Preview outcome degrades to the same shape a non-opted-in project produces.
+		expect(result.previewState).toBeNull();
+		expect(result.previewPort).toBeNull();
+		expect(result.previewUrl).toBeNull();
+		// No preview launch failure was recorded.
+		expect(result.errors.map((x) => x.step)).not.toContain("preview_launch");
+		// The skip is surfaced as a structured event.
+		const events = await ctx.repos.events.listByRun(ctx.runId);
+		expect(events.some((ev) => ev.kind === "reap.preview_skipped_unsupported")).toBe(true);
+	});
+
+	test("stays silent about preview when provider lacks previewPorts and project did not opt in", async () => {
+		const branch = "warren/run-1";
+		const fake = fakeK8sProvider({ branch, finalizeResult: finalizeResultWithDeltas(branch) });
+		const e = fakeExec({ stagedDelta: true });
+
+		const result = await reapRun({
+			runId: ctx.runId,
+			outcome: "succeeded",
+			repos: ctx.repos,
+			burrowClient: await makePool(throwingBurrowClient(), ctx.repos),
+			runtimeProvider: fake.provider,
+			broker: ctx.broker,
+			fs: fakeFs().fs,
+			exec: e.exec,
+		});
+
+		expect(result.state).toBe("succeeded");
+		expect(result.previewState).toBeNull();
+		const events = await ctx.repos.events.listByRun(ctx.runId);
+		expect(events.some((ev) => ev.kind === "reap.preview_skipped_unsupported")).toBe(false);
 	});
 
 	test("workspaceInfo throwing skips the pipeline and records workspace_lookup", async () => {
