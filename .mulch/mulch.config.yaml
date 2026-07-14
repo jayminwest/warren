@@ -33,6 +33,7 @@ domains:
   quality: {}
   plan-runs: {}
   k8s-migration: {}
+  runtime: {}
 governance:
   max_entries: 100
   warn_entries: 150
