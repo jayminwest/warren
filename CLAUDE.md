@@ -45,9 +45,16 @@ opt-in. When you change cross-cutting docs (README, SPEC §1/§2, package
 description), keep the standalone path primary and the integrations as
 features that light up when used.
 
-The runtime substrate is [burrow](https://github.com/jayminwest/burrow);
-warren and burrow are co-tenanted inside the container and share a unix
-socket — see "Relationship to burrow" below.
+Warren runs against a swappable **runtime provider**, resolved once at
+boot from `WARREN_RUNTIME` (`src/runtime/registry.ts`) behind the
+`RuntimeProvider` contract (`src/runtime/contract.ts`). Two backends:
+`LocalProvider` (`src/runtime/local/`, the default) wraps the
+co-tenanted [burrow](https://github.com/jayminwest/burrow) sandbox
+daemon; `K8sProvider` (`src/runtime/k8s/`, `WARREN_RUNTIME=k8s`) runs
+each agent as a Kubernetes pod with no burrow at all. Burrow is the
+LocalProvider's substrate, **not a required warren dependency** — see
+"Relationship to burrow" below and [docs/RUNBOOK-K8S.md](docs/RUNBOOK-K8S.md)
+for the K8s topology.
 
 [SPEC.md](SPEC.md) is the V1 design record. The manual-run path
 (`warren run <agent> <project> -p "..."`) and the cron half of the
@@ -103,11 +110,23 @@ and is surfaced by `loadWarrenConfig()`. Notable knobs:
 
 ## Relationship to burrow
 
-Warren and burrow are tightly coupled — burrow is the sandbox runtime,
-warren is the orchestrator that spawns and talks to it. **Read
-`../burrow/SPEC.md` before changing anything that crosses the warren↔burrow
-boundary** (the supervisor's `burrow serve` invocation, the `burrow-client/`
-HTTP facade, the bwrap-friendly security flags in `docker-compose.yml`).
+Burrow is the **`LocalProvider`'s sandbox substrate** — the runtime warren
+uses under `WARREN_RUNTIME=local` (the default). It is no longer a
+universal dependency: under `WARREN_RUNTIME=k8s` there is **no burrow** at
+all (no `burrow serve`, no unix socket, no bwrap; the pod boundary is the
+sandbox, and `/readyz` drops the burrow/bwrap/stale-workspace probes —
+`src/server/handlers/diagnostics.ts`, warren-c128). Everything in this
+section is the `local` topology; for the K8s topology see
+[docs/RUNBOOK-K8S.md](docs/RUNBOOK-K8S.md) and the design docs under
+`docs/design/` (`runtime-provider-contract.md`, `k8s-migration.md`,
+`k8s-migration-plan.md`).
+
+Under `local`, warren and burrow are tightly coupled — burrow is the
+sandbox runtime, warren is the orchestrator that spawns and talks to it via
+`LocalProvider`. **Read `../burrow/SPEC.md` before changing anything that
+crosses the warren↔burrow boundary** (the supervisor's `burrow serve`
+invocation, the `burrow-client/` HTTP facade, the bwrap-friendly security
+flags in `docker-compose.yml`).
 
 - The **supervisor** (`src/supervisor/main.ts`) spawns `burrow serve` as a
   sibling process and forwards SIGTERM/SIGINT. They share a unix socket
@@ -135,8 +154,10 @@ HTTP facade, the bwrap-friendly security flags in `docker-compose.yml`).
 - **UI:** React + Vite + Tailwind + shadcn-style components, lives in
   `src/ui/` as a separate `@os-eco/warren-ui` package; built into
   `src/ui/dist/` and served from there
-- **Sandbox primitive:** none directly — burrow owns isolation; warren talks
-  to it over HTTP over a unix socket
+- **Sandbox primitive:** none directly — a `RuntimeProvider`
+  (`src/runtime/`) owns isolation. `LocalProvider` (default) delegates to
+  burrow over HTTP over a unix socket; `K8sProvider` (`WARREN_RUNTIME=k8s`)
+  runs each agent as a Kubernetes pod (the pod boundary is the sandbox)
 
 ## Build & Test Commands
 

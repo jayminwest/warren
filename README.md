@@ -15,6 +15,13 @@ Spawn cloud agents at your GitHub repos. Watch them work live, steer them mid-ru
 
 Warren is a self-hostable control plane for ephemeral coding agents. Runs are short-lived and sandboxed: they complete a task, validate the changes, push a branch, and spin down. Point it at your repos, dispatch from a browser or CLI, watch the events stream live, and reap the result. **One container, one volume, one HTTP API, one UI.**
 
+Warren runs against a swappable **runtime provider**, selected once at boot by `WARREN_RUNTIME` (`src/runtime/registry.ts`), behind one contract (`src/runtime/contract.ts`). Two topologies, same domain code:
+
+- **`local` (default) — self-host.** The whole system is one container: warren plus a co-tenanted [burrow](https://github.com/jayminwest/burrow) sandbox daemon that isolates each run with `bwrap`. This is the primary path everything below describes.
+- **`k8s` — scale-out.** Each run is its own Kubernetes pod (the pod boundary is the sandbox); there is no burrow. Built for clusters / GKE Autopilot. See [**the K8s runbook**](docs/RUNBOOK-K8S.md) and [`deploy/k8s/`](deploy/k8s/README.md).
+
+Burrow is the LocalProvider's substrate, not a required dependency of warren — under `WARREN_RUNTIME=k8s` there is no burrow at all.
+
 A fresh install needs nothing but a GitHub URL and a prompt. The built-in `claude-code` agent ships inline; pick it, paste your repo, write what you want done. Power features (versioned prompt libraries, persistent agent memory, an integrated issue queue, a steerable alternative harness, a shared coordination substrate) light up when you opt into them.
 
 ## Who this is for
@@ -23,12 +30,12 @@ Engineering teams self-hosting their own agent infrastructure. The deployment un
 
 ## Status
 
-Stable (`0.6.2`), running on Fly.io in continuous use against real GitHub repos. The end-to-end path is covered by 33 scenario-based acceptance tests in [`scripts/acceptance/`](scripts/acceptance/): manual runs, cron triggers, multi-worker placement, Postgres backend, per-run preview environments, restart recovery, cost tracking, cost analytics, seeds-extensions roundtrip, serial plan-run dispatch, plan-run + Plot composition, Plot-workbench loop. The active frontier is the org-readiness cluster: SSO, remote workers, MCP, audit, budgets, GitHub App auth. See [ROADMAP.md](ROADMAP.md).
+Stable (`0.6.2`), running on Fly.io in continuous use against real GitHub repos. The end-to-end path is covered by 33 scenario-based acceptance tests in [`scripts/acceptance/`](scripts/acceptance/): manual runs, cron triggers, K8s pod dispatch (OOM fast-fail, steer delivery), Postgres backend, per-run preview environments, restart recovery, cost tracking, cost analytics, seeds-extensions roundtrip, serial plan-run dispatch, plan-run + Plot composition, Plot-workbench loop. The active frontier is the org-readiness cluster: SSO, remote workers, MCP, audit, budgets, GitHub App auth. See [ROADMAP.md](ROADMAP.md).
 
 ## What you get
 
 - **One image, one volume.** The supervisor (`src/supervisor/main.ts`) is the container ENTRYPOINT. It spawns the sandbox runtime first, waits for the unix socket, then spawns warren. SIGTERM/SIGINT forward to both children; the runtime restarts under a 5-in-60s budget on unexpected exit.
-- **Native sandboxing per run.** Every run gets a fresh `bwrap`-isolated workspace under `/data/burrow/`. The host is unreachable; warren talks to the runtime over a unix socket with a shared bearer token.
+- **Native sandboxing per run.** In the default `local` topology every run gets a fresh `bwrap`-isolated workspace under `/data/burrow/`; the host is unreachable and warren talks to the runtime over a unix socket with a shared bearer token. Under `WARREN_RUNTIME=k8s` the sandbox is the pod boundary instead (kubelet-enforced CPU/memory, no bwrap) — see [the K8s runbook](docs/RUNBOOK-K8S.md).
 - **Built-in agents.** `claude-code`, `sapling`, and `pi` ship inline (`src/registry/builtins/`), so dispatching a run needs no extra setup.
 - **Live event stream.** NDJSON events are persisted to warren's SQLite log and tailed over `GET /runs/:id/events?follow=1`. The UI, CLI (`warren run`), and HTTP clients all consume the same stream.
 - **Steerable mid-run.** `POST /runs/:id/steer` lands a message in the agent's inbox; the next turn picks it up. `POST /runs/:id/cancel` aborts cleanly.
@@ -60,7 +67,7 @@ Required environment variables (see [`.env.example`](.env.example) for the full 
 
 The compose file applies the four bwrap-required security flags (`apparmor=unconfined`, `seccomp=unconfined`, `systempaths=unconfined`, `cap_add: SYS_ADMIN`). These relax the outer container so the runtime's nested userns sandboxes can come up. Removing any one of them breaks sandbox provisioning.
 
-> **Image requirement: burrow-cli ≥ 0.3.12.** Warren is co-tenanted with [burrow](https://github.com/jayminwest/burrow) inside the container and talks to it over a shared unix socket. The published image pins `@os-eco/burrow-cli@0.3.12` (see [`Dockerfile`](Dockerfile)); if you build your own image or override the runtime, install burrow-cli **0.3.12 or newer** — earlier releases predate the runtime contract warren depends on (agent spawn shape, resume support, event kinds) and will fail at dispatch.
+> **Image requirement (self-host / `local` runtime): burrow-cli ≥ 0.3.12.** In the default topology warren is co-tenanted with [burrow](https://github.com/jayminwest/burrow) inside the container and talks to it over a shared unix socket. The published image pins `@os-eco/burrow-cli@0.3.12` (see [`Dockerfile`](Dockerfile)); if you build your own image or override the runtime, install burrow-cli **0.3.12 or newer** — earlier releases predate the runtime contract warren depends on (agent spawn shape, resume support, event kinds) and will fail at dispatch. Under `WARREN_RUNTIME=k8s` this does not apply — the run pods carry their own toolchain image and no burrow is installed.
 
 ## Deploy to Fly.io
 
@@ -120,7 +127,22 @@ Warren ships enough operator-visible surface for a single-box / single-Fly-app d
 - **Fly dashboards.** The **Metrics** tab on the Fly app dashboard graphs CPU, RAM, and per-volume IO out of the box; pair it with the **Logs** tab above for incident triage. `fly status -a <your-warren-app>` and `fly vm status` print machine + volume state from the CLI. `fly ssh console -a <your-warren-app>` drops you into the running container if you need to inspect `/data/warren.db` directly (sqlite default) or tail the canopy clone under `WARREN_CANOPY_DIR`.
 - **Pre-flight checks.** Run `warren doctor` (`src/cli/commands/doctor.ts`) against a deployed instance to surface common misconfigurations — empty/placeholder bearer tokens, unbalanced preview markers, missing `WARREN_PREVIEW_HOST` when previews are wired, etc. Cheaper than reading the logs after a failed run.
 
-There is no built-in Prometheus / OpenTelemetry exporter in V1. If you need one, the request-id + pino combination is the seam to extend; the route table (`ROUTE_TABLE` in `src/server/handlers.ts`, documented in [`docs/http-api.md`](docs/http-api.md)) is the stable surface to instrument against.
+There is no built-in Prometheus / OpenTelemetry exporter for the `local` runtime in V1. If you need one there, the request-id + pino combination is the seam to extend; the route table (`ROUTE_TABLE` in `src/server/handlers.ts`, documented in [`docs/http-api.md`](docs/http-api.md)) is the stable surface to instrument against. (The `k8s` runtime *does* ship pod-lifecycle Prometheus metrics on `/metrics` — see the runbook.)
+
+## Deploy to Kubernetes (scale-out)
+
+The `local` topology above is one box: warren + burrow in one container, and one host is the concurrency ceiling. The `k8s` topology lifts that ceiling by running **each agent run as its own pod** — kubelet enforces per-run CPU/memory natively, a runaway run kills its own pod (not the control plane), and admission caps shed load before the cluster thrashes. There is no burrow: the pod boundary is the sandbox.
+
+```bash
+# Build + push the three images (control plane, agent, workspace-init)
+deploy/docker/build-images.sh
+
+# Apply the manifests (kustomize; pick an overlay)
+kubectl apply -k deploy/k8s/overlays/gke     # GKE Autopilot (the hosted target)
+kubectl apply -k deploy/k8s/overlays/kind    # local kind / k3d dev
+```
+
+Turn it on with `WARREN_RUNTIME=k8s` on the control-plane Deployment. The full operator story — deploy, secrets + rotation, RBAC, garbage collection, admission knobs, observability, and incident playbooks — is in **[docs/RUNBOOK-K8S.md](docs/RUNBOOK-K8S.md)**; the manifest quick-start lives in **[deploy/k8s/README.md](deploy/k8s/README.md)**. Some LocalProvider features degrade under `k8s` (previews and conversation mode are off, steering is ~5s poll rather than real-time) — the runbook's capability section spells out the gaps.
 
 ## Power features (opt-in)
 
@@ -241,7 +263,7 @@ See [SPEC §11.L](SPEC.md#11l-per-run-preview-environments-2026-05-14) for the f
                           [browser]
 ```
 
-Under the hood, warren talks to [burrow](https://github.com/jayminwest/burrow) as the sandbox runtime. They are co-tenanted inside the container, share a unix socket, and share a bearer token (`BURROW_API_TOKEN` == `WARREN_BURROW_TOKEN`). See [SPEC §10.3](SPEC.md#103-container-layout) for the full layout.
+That is the default (`local`) topology: warren talks to [burrow](https://github.com/jayminwest/burrow) as the sandbox runtime. They are co-tenanted inside the container, share a unix socket, and share a bearer token (`BURROW_API_TOKEN` == `WARREN_BURROW_TOKEN`). See [SPEC §10.3](SPEC.md#103-container-layout) for the full layout. Under `WARREN_RUNTIME=k8s` this diagram changes shape entirely — no burrow, no supervisor, no unix socket; warren is a Deployment and each run is a pod ([docs/RUNBOOK-K8S.md](docs/RUNBOOK-K8S.md)).
 
 ## CLI
 
@@ -447,7 +469,7 @@ How the current release is scoped. Full details in [SPEC §11.D](SPEC.md#11d-v1-
 - **Trust-the-socket** between warren and the runtime inside the container, which are co-tenanted by design.
 - **No CSRF, single-user.** UI calls warren's API with the bearer; CORS is strict.
 - **SQLite by default; Postgres optional.** Run history and scheduler state live in `/data/warren.db` on the local volume out of the box. Org-scale deploys can attach a managed Postgres by setting `WARREN_DB_URL=postgres://user:pw@host/db`; burrow's per-run SQLite stays untouched either way.
-- **One host is the concurrency ceiling.** Horizontal scale-out across machines is in flight as R-12.
+- **One host is the concurrency ceiling — in the `local` topology.** A single container caps concurrency at what one box can sandbox. The scale-out answer is the `k8s` runtime (each run a pod, cluster-scheduled with admission caps), not a multi-worker burrow fan-out — see [docs/RUNBOOK-K8S.md](docs/RUNBOOK-K8S.md).
 
 ## Roadmap
 
