@@ -272,6 +272,43 @@ describe("pollForIntent + runFinalizeEntrypoint", () => {
 		expect(env0.version).toBe(IN_POD_FINALIZE_WIRE_VERSION);
 	});
 
+	test("a thrown intent GET is a transient poll miss — keeps polling, then completes (warren-4e36)", async () => {
+		// Live GKE failure: the FIRST poll after the agent's long run landed on a
+		// stale kept-alive socket and fetch threw "Unable to connect" — the whole
+		// finalize died on poll #1 and reap failed every step. A thrown GET must
+		// retry exactly like a not-ready 200.
+		let getCalls = 0;
+		const posted: unknown[] = [];
+		const http: FinalizeHttp = {
+			get: async () => {
+				getCalls++;
+				if (getCalls === 1)
+					throw new Error("Unable to connect. Is the computer able to access the url?");
+				return { status: 200, body: { intent: intent() } };
+			},
+			post: async (_u, _t, body) => {
+				posted.push(body);
+				return { status: 200 };
+			},
+		};
+		const { git } = fakeGit({ "rev-list": { stdout: "1" } });
+		const logs: string[] = [];
+		const did = await runFinalizeEntrypoint(env, {
+			http,
+			git,
+			fs: fakeFs({}),
+			sleep: async () => {},
+			now: () => 0,
+			log: (m) => {
+				logs.push(m);
+			},
+		});
+		expect(did).toBe(true);
+		expect(getCalls).toBe(2);
+		expect(posted).toHaveLength(1);
+		expect(logs.some((m) => m.includes("intent poll failed"))).toBe(true);
+	});
+
 	test("retries the result POST on a transient connect error, then succeeds", async () => {
 		let getCalls = 0;
 		let postCalls = 0;

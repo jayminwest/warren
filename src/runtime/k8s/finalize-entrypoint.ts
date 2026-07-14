@@ -187,8 +187,22 @@ export async function pollForIntent(
 	const url = `${env.apiUrl}/runs/${env.runId}/finalize-intent`;
 	const deadline = now() + env.maxWaitMs;
 	for (;;) {
-		const res = await http.get(url, env.apiToken);
-		if (res.status === 200) {
+		// A thrown fetch ("Unable to connect") is a TRANSIENT poll miss, not a
+		// finalize-killer: the first GET after the agent's long run can land on a
+		// stale kept-alive socket (hit live on GKE, warren-4e36 — the entire
+		// finalize died on poll #1 and every run reaped with "terminal phase
+		// without posting a finalize result"). Same rationale as the result-POST
+		// retry (warren-fd08): keep polling until the intent shows or the
+		// deadline expires.
+		let res: { status: number; body: unknown } | undefined;
+		try {
+			res = await http.get(url, env.apiToken);
+		} catch (err) {
+			log(
+				`finalize-entrypoint: intent poll failed (${err instanceof Error ? err.message : String(err)}); retrying`,
+			);
+		}
+		if (res !== undefined && res.status === 200) {
 			const intent = extractIntent(res.body);
 			if (intent !== null) return intent;
 		}
