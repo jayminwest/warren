@@ -177,6 +177,24 @@ export async function bridgeRunStream(input: BridgeRunStreamInput): Promise<Brid
 			}
 			if (event.seq <= resumeSeq) {
 				skipped += 1;
+				// warren-2206: terminal detection must run even for an already-persisted
+				// (deduped) event. A prior bridge pass can append a terminal event and
+				// then be torn down (reconnect / abort / process restart) BEFORE its
+				// inline reap fires; on the resumed pass that event replays with
+				// `seq <= resumeSeq`. If we `continue` before detecting, the terminal is
+				// never observed and the run hangs `running` forever. Detect on the
+				// persisted event and break so reap still finalizes — without
+				// re-appending the row or re-accumulating stats (dedup semantics intact;
+				// the prior pass already persisted both).
+				const resumedOutcome = detectRuntimeTerminal(event);
+				if (resumedOutcome !== null) {
+					terminalDetected = { outcome: resumedOutcome };
+					input.logger?.info?.(
+						{ runId, burrowRunId, outcome: resumedOutcome, seq: event.seq },
+						"bridge observed runtime-terminal on an already-persisted event; reap will finalize",
+					);
+					break;
+				}
 				continue;
 			}
 			const row = await repos.events.append({
