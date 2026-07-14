@@ -1,26 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import type { DestroyBurrowResult } from "@os-eco/burrow-cli";
-import type { BurrowClient } from "../../burrow-client/client.ts";
 import type { PreviewState, RunMode } from "../../db/schema.ts";
 import type { TeardownResult } from "../../runtime/contract.ts";
-import { destroyBurrowWorkspaceById, runWorkspaceDestroy } from "./destroy.ts";
-
-function fakeClient(): BurrowClient {
-	return {
-		config: { transport: { kind: "unix", path: "/tmp/x.sock" } },
-	} as unknown as BurrowClient;
-}
-
-function fakeResult(over: Partial<DestroyBurrowResult> = {}): DestroyBurrowResult {
-	return {
-		burrowId: "bur_x",
-		archived: { events: 0 } as unknown as DestroyBurrowResult["archived"],
-		deletedEvents: 3,
-		deletedMessages: 1,
-		deletedRuns: 2,
-		...over,
-	};
-}
+import { runWorkspaceDestroy } from "./destroy.ts";
 
 /** The seam `runWorkspaceDestroy` now consumes: `provider.terminate`'s result. */
 function fakeTeardown(over: Partial<TeardownResult> = {}): TeardownResult {
@@ -182,54 +163,5 @@ describe("runWorkspaceDestroy", () => {
 		expect(h.failures[0]?.step).toBe("workspace_destroy");
 		expect(h.failures[0]?.message).toContain("burrow unreachable");
 		expect(h.events.some((e) => e.kind === "reap.workspace_destroyed")).toBe(false);
-	});
-});
-
-function byIdDeps(h: Harness) {
-	const { emit } = deps(h);
-	return { emit };
-}
-
-describe("destroyBurrowWorkspaceById (warren-4f01)", () => {
-	test("resolves the worker, destroys the burrow, emits destroyed", async () => {
-		const h = harness();
-		const destroyed = await destroyBurrowWorkspaceById({
-			burrowId: "bur_x",
-			mode: "batch",
-			burrowClient: fakeClient(),
-			destroyBurrow: async () => fakeResult(),
-			...byIdDeps(h),
-		});
-		expect(destroyed).toBe(true);
-		expect(h.events[0]?.kind).toBe("reap.workspace_destroyed");
-	});
-
-	test("skips conversation runs without touching the burrow (warren-c770)", async () => {
-		const h = harness();
-		const destroyed = await destroyBurrowWorkspaceById({
-			burrowId: "bur_x",
-			mode: "conversation",
-			burrowClient: fakeClient(),
-			destroyBurrow: async () => fakeResult(),
-			...byIdDeps(h),
-		});
-		expect(destroyed).toBe(false);
-		expect(h.events[0]?.kind).toBe("reap.workspace_destroy_skipped");
-	});
-
-	test("a destroy failure degrades to a destroy_failed event", async () => {
-		const h = harness();
-		const destroyed = await destroyBurrowWorkspaceById({
-			burrowId: "bur_x",
-			mode: "batch",
-			burrowClient: fakeClient(),
-			destroyBurrow: async () => {
-				throw new Error("destroy rejected");
-			},
-			...byIdDeps(h),
-		});
-		expect(destroyed).toBe(false);
-		expect(h.events[0]?.kind).toBe("reap.workspace_destroy_failed");
-		expect(h.events[0]?.payload).toMatchObject({ step: "destroy" });
 	});
 });

@@ -1,11 +1,11 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { BurrowClient } from "../burrow-client/index.ts";
 import { openDatabase, type WarrenDb } from "../db/client.ts";
 import { createRepos, type Repos } from "../db/repos/index.ts";
 import { type ReapRunInput, type ReapRunResult, RunEventBroker } from "../runs/index.ts";
-import type { DestroyBurrowWorkspaceByIdInput } from "../runs/reap/destroy.ts";
 import type { RunHandle, RuntimeProvider, TeardownResult } from "../runtime/contract.ts";
 import { reconcileLostBurrowRun } from "./bridge-reconnect.ts";
-import { makePool } from "./bridges.test-helpers.ts";
+import { makePool, stub } from "./bridges.test-helpers.ts";
 import { createBridgeRegistry } from "./bridges.ts";
 
 /** Minimal RuntimeProvider fake exposing only `terminate` (records handles). */
@@ -155,51 +155,70 @@ describe("runWithReconnect bridge_stalled/bridge_recovered (warren-6376)", () =>
 		expect((lost[0]?.payloadJson as { finalized: boolean }).finalized).toBe(true);
 	});
 
-	test("tears down the burrow workspace after finalizing (warren-4f01)", async () => {
+	test("tears down the workspace via a LocalProvider resolved from the burrow client (warren-4f01/warren-48b2)", async () => {
 		const runId = await seedRun();
-		const pool = await makePool(repos);
-		const seen: DestroyBurrowWorkspaceByIdInput[] = [];
+		// A burrow client whose DELETE /burrows/:id succeeds. With no runtimeProvider
+		// threaded, the reconciler resolves a LocalProvider over this client
+		// (warren-48b2) and tears down through `provider.terminate` — the burrow
+		// destroy no longer happens through a domain-side burrow call.
+		const destroyed: string[] = [];
+		const destroyClient = new BurrowClient({
+			config: { transport: { kind: "unix", path: "/tmp/x.sock" } },
+			fetch: stub(async (input, init) => {
+				const url = new URL(String(input), "http://localhost");
+				const method = init?.method ?? "GET";
+				const m = url.pathname.match(/^\/burrows\/([^/]+)$/);
+				if (method === "DELETE" && m?.[1] !== undefined) {
+					destroyed.push(m[1]);
+					return new Response(
+						JSON.stringify({
+							burrowId: m[1],
+							archived: { events: 0 },
+							deletedEvents: 3,
+							deletedMessages: 1,
+							deletedRuns: 2,
+						}),
+						{ status: 200, headers: { "content-type": "application/json" } },
+					);
+				}
+				return new Response(JSON.stringify({ error: { code: "not_found", message: "stub" } }), {
+					status: 404,
+				});
+			}),
+		});
 		await reconcileLostBurrowRun({
 			runId,
 			burrowRunId: "rb_a",
 			repos,
 			broker: new RunEventBroker(),
-			burrowClient: pool,
+			burrowClient: destroyClient,
 			failureReason: "burrow_unreachable",
-			destroyWorkspace: async (input) => {
-				seen.push(input);
-				await input.emit("reap.workspace_destroyed", { burrowId: input.burrowId });
-				return true;
-			},
 		});
 
-		// Run finalized terminal, AND the workspace teardown fired with the
-		// run's burrow + mode so the bwrap/pi sandbox doesn't leak on the host.
+		// Run finalized terminal, AND the run's burrow was torn down so the bwrap/pi
+		// sandbox doesn't leak on the host.
 		const run = await repos.runs.get(runId);
 		expect(run?.state).toBe("failed");
-		expect(seen).toHaveLength(1);
-		expect(seen[0]?.burrowId).toBe("bur_a");
-		expect(seen[0]?.mode).toBe("batch");
-		expect(seen[0]?.burrowClient).toBe(pool);
+		expect(destroyed).toEqual(["bur_a"]);
 
 		const kinds = (await repos.events.listByRun(runId)).map((e) => e.kind);
 		expect(kinds).toContain("reap.workspace_destroyed");
 	});
 
-	test("skips teardown when no pool is supplied (warren-4f01)", async () => {
+	test("skips teardown when no provider can be resolved (warren-4f01/warren-48b2)", async () => {
 		const runId = await seedRun();
-		let called = false;
+		// Neither a runtimeProvider nor a burrowClient ⇒ no provider to resolve ⇒
+		// teardown is skipped (no workspace-destroy event), but the run still
+		// finalizes terminal.
 		await reconcileLostBurrowRun({
 			runId,
 			burrowRunId: "rb_a",
 			repos,
 			broker: new RunEventBroker(),
-			destroyWorkspace: async () => {
-				called = true;
-				return true;
-			},
 		});
-		expect(called).toBe(false);
+		const kinds = (await repos.events.listByRun(runId)).map((e) => e.kind);
+		expect(kinds).not.toContain("reap.workspace_destroyed");
+		expect(kinds).not.toContain("reap.workspace_destroy_failed");
 		expect((await repos.runs.get(runId))?.state).toBe("failed");
 	});
 

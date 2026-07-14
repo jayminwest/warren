@@ -1,10 +1,12 @@
 /**
  * `LocalProvider.terminate` body (pl-829f step 11, phase CONTRACT). Wraps
  * burrow's `DELETE /burrows/:id` (`http.burrows.destroy`) with `archive: true` —
- * the SAME reap-time teardown call the domain's `runWorkspaceDestroy` /
- * `destroyBurrowWorkspaceById` (`src/runs/reap/destroy.ts`, and the GC path in
- * `src/runs/reap/gc.ts`) make today — as the seam's `terminate(handle)`, and
- * re-shapes burrow's `DestroyBurrowResult` onto the seam's `TeardownResult`.
+ * the SAME reap-time teardown call the domain's `runWorkspaceDestroy`
+ * (`src/runs/reap/destroy.ts`, and the GC path in `src/runs/reap/gc.ts`) makes
+ * today — as the seam's `terminate(handle)`, and re-shapes burrow's
+ * `DestroyBurrowResult` onto the seam's `TeardownResult`. The lost-run
+ * recovery's burrow-only `destroyBurrowWorkspaceById` was retired in favor of
+ * this seam (warren-48b2).
  *
  * `terminate` is deliberately distinct from `cancel`: cancel gracefully stops the
  * *agent*; terminate kills the *sandbox* and archives+prunes its ephemeral store.
@@ -27,10 +29,10 @@
  *     Burrow-side errors (`BurrowError` subclasses, e.g. `NotFoundError` for a
  *     burrow already gone) propagate UNCHANGED. The "idempotent, best-effort"
  *     orchestration the contract describes lives at the DOMAIN call-site today —
- *     `runWorkspaceDestroy` / `destroyBurrowWorkspaceById` each try/catch and
- *     degrade to a `reap.workspace_destroy_failed` event — not intrinsic to the
- *     burrow call; the provider forwards faithfully and lets the domain keep
- *     owning best-effort (step 13).
+ *     `runWorkspaceDestroy` and the lost-run reconciler's teardown each
+ *     try/catch and degrade to a `reap.workspace_destroy_failed` event — not
+ *     intrinsic to the burrow call; the provider forwards faithfully and lets
+ *     the domain keep owning best-effort (step 13).
  *
  * ## burrow `DestroyBurrowResult` → seam `TeardownResult`
  *

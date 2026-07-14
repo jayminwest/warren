@@ -24,7 +24,6 @@ import {
 	type ReapRunResult,
 	type RunEventBroker,
 } from "../runs/index.ts";
-import type { DestroyBurrowWorkspaceByIdInput } from "../runs/reap/destroy.ts";
 import type { ConversationTurnHandler } from "../runs/stream/conversation-turn.ts";
 import type { RuntimeProvider } from "../runtime/contract.ts";
 import type { SeedsCliDeps } from "../seeds-cli/index.ts";
@@ -365,19 +364,18 @@ interface ReconcileLostBurrowRunInput {
 	 */
 	readonly failureReason?: RunFailureReason;
 	/**
-	 * warren-4f01: pool used to tear down the burrow workspace after the run
-	 * is finalized, so a wedged run's bwrap/pi sandbox doesn't leak on the
-	 * host. Omitted by callers/tests that can't resolve a worker; teardown is
-	 * then skipped.
+	 * warren-4f01: burrow client used to tear down the run's workspace after it is
+	 * finalized so a wedged run's bwrap/pi sandbox doesn't leak. With no
+	 * `runtimeProvider`, the reconciler resolves a `LocalProvider` over this client
+	 * (warren-48b2) and tears down through `provider.terminate`. Omitted ⇒ skipped.
 	 */
 	readonly burrowClient?: BurrowClient;
 	/**
 	 * warren-a7cb: active backend. When present the lost-run teardown routes
-	 * through `provider.terminate` (K8s pod / burrow); omitted ⇒ burrow fallback.
+	 * through `provider.terminate` (K8s pod / burrow); omitted ⇒ the reconciler
+	 * resolves a `LocalProvider` over `burrowClient` (warren-48b2).
 	 */
 	readonly runtimeProvider?: RuntimeProvider;
-	/** Override the workspace-destroy seam (tests). */
-	readonly destroyWorkspace?: (input: DestroyBurrowWorkspaceByIdInput) => Promise<boolean>;
 }
 
 /**
@@ -450,9 +448,10 @@ export async function reconcileLostBurrowRun(input: ReconcileLostBurrowRunInput)
 			"reconcileLostBurrowRun: failed to emit bridge_lost event",
 		);
 	}
-	// warren-4f01 / warren-a7cb: tear down the sandbox (the terminal run's later
-	// `reapRun` short-circuits without doing it) via the provider seam — see
-	// `./bridge-reconnect-teardown.ts`.
+	// warren-4f01 / warren-a7cb / warren-48b2: tear down the sandbox (the terminal
+	// run's later `reapRun` short-circuits without doing it) via the provider seam
+	// — see `./bridge-reconnect-teardown.ts`, which resolves the backend (threaded
+	// or a `LocalProvider` over the burrow client) so nothing here speaks burrow.
 	if (burrowToDestroy !== null) {
 		await teardownLostRunWorkspace({
 			runId: input.runId,
@@ -460,7 +459,6 @@ export async function reconcileLostBurrowRun(input: ReconcileLostBurrowRunInput)
 			burrow: burrowToDestroy,
 			...(input.runtimeProvider !== undefined ? { runtimeProvider: input.runtimeProvider } : {}),
 			...(input.burrowClient !== undefined ? { burrowClient: input.burrowClient } : {}),
-			...(input.destroyWorkspace !== undefined ? { destroyWorkspace: input.destroyWorkspace } : {}),
 			emit: (kind, payload) =>
 				emitBridgeSystemEvent({
 					runId: input.runId,
