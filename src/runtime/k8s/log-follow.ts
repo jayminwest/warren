@@ -15,9 +15,20 @@
  * `sinceTime` nor `sinceSeconds`; a resume passes the explicit `sinceTime` anchor.
  */
 
-import { Writable } from "node:stream";
+import { type Readable, Writable } from "node:stream";
 import { KubeConfig, Log, type LogOptions } from "@kubernetes/client-node";
 import type { LogFollowController, LogFollowFn } from "./log-stream.ts";
+
+/**
+ * Is `err` the AbortError node-fetch (or the WHATWG stream) raises when a request
+ * is aborted? Matched by `name`, the one field both the node-fetch `AbortError`
+ * (`name === "AbortError"`) and the platform `DOMException` abort share. Scoped
+ * deliberately narrow so ONLY the expected teardown signal is swallowed — every
+ * other stream error still propagates into the pump's reconnect/backoff.
+ */
+function isAbortError(err: unknown): boolean {
+	return err instanceof Error && err.name === "AbortError";
+}
 
 /**
  * Build the default lazy `LogFollowFn` factory: loads in-cluster (or kubeconfig)
@@ -41,6 +52,7 @@ export function defaultLogFollowFactory(): () => LogFollowFn {
 export function makeLogFollow(log: Log): LogFollowFn {
 	return async (params, onData, onDone) => {
 		let settled = false;
+		let aborting = false;
 		const finish = (err: unknown): void => {
 			if (settled) return;
 			settled = true;
@@ -55,6 +67,24 @@ export function makeLogFollow(log: Log): LogFollowFn {
 		sink.on("finish", () => finish(undefined));
 		sink.on("close", () => finish(undefined));
 		sink.on("error", (err) => finish(err));
+
+		// `Log.log` does `response.body.pipe(sink)`, and `.pipe()` attaches NO
+		// error listener to the SOURCE. When we tear the follow down after a
+		// terminal (warren-fd08's prompt finalize fallback), `controller.abort()`
+		// makes node-fetch emit an AbortError on `response.body`; with no listener
+		// that `emit("error")` throws, and because it fires inside the signal's
+		// abort-event dispatch it surfaces as an UNCAUGHT exception (a try/catch
+		// around `abort.abort()` can't reach it) — the control plane crash-looped
+		// on every K8s run teardown (warren-595f). The destination emits a `pipe`
+		// event carrying the source, so capture the source here and route ITS
+		// errors into the same single-settle `finish`: an AbortError (expected
+		// teardown, or a race with our own abort) closes cleanly; every other
+		// source error propagates to the pump exactly like a sink error.
+		sink.on("pipe", (src: Readable) => {
+			src.on("error", (err) => {
+				finish(aborting || isAbortError(err) ? undefined : err);
+			});
+		});
 
 		// A resume passes the explicit `sinceTime` anchor; a from-start follow
 		// passes NEITHER `sinceTime` nor `sinceSeconds`. `follow:true` with no
@@ -79,6 +109,11 @@ export function makeLogFollow(log: Log): LogFollowFn {
 		}
 		return {
 			abort: () => {
+				// Mark the teardown BEFORE aborting: `abort.abort()` synchronously
+				// drives node-fetch to emit an AbortError on the piped source, and the
+				// `pipe`-captured error listener above must see `aborting` so it treats
+				// that error as an expected clean close rather than a stream failure.
+				aborting = true;
 				abort.abort();
 				finish(undefined);
 			},

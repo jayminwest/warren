@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { Writable } from "node:stream";
+import { PassThrough, type Writable } from "node:stream";
 import type { Log, LogOptions } from "@kubernetes/client-node";
 import { makeLogFollow } from "./log-follow.ts";
 import type { LogFollowParams } from "./log-stream.ts";
@@ -28,6 +28,32 @@ function fakeLog(
 		},
 	} as unknown as Log;
 	return { log, calls, abort };
+}
+
+/**
+ * A fake `Log` that mirrors `@kubernetes/client-node`'s real `Log.log` teardown
+ * shape: it `.pipe()`s a source (`response.body`) into the sink and wires the
+ * returned `AbortController` so that aborting emits an AbortError on that SOURCE
+ * (exactly what node-fetch does on abort). `.pipe()` never attaches a source
+ * error listener, so this is the shape that crash-looped the control plane on
+ * K8s teardown (warren-595f). `source` is exposed so a test can also emit a
+ * non-abort mid-stream error.
+ */
+function fakePipedLog(): { log: Log; source: PassThrough; abort: AbortController } {
+	const source = new PassThrough();
+	const abort = new AbortController();
+	const log = {
+		log: (_ns: string, _pod: string, _c: string, sink: Writable, _options?: LogOptions) => {
+			source.pipe(sink);
+			abort.signal.addEventListener("abort", () => {
+				const err = new Error("The user aborted a request.");
+				err.name = "AbortError";
+				source.emit("error", err); // node-fetch's real abort() body
+			});
+			return Promise.resolve(abort);
+		},
+	} as unknown as Log;
+	return { log, source, abort };
 }
 
 const PARAMS: LogFollowParams = {
@@ -116,5 +142,60 @@ describe("makeLogFollow", () => {
 		controller.abort(); // idempotent
 		expect(fake.abort.signal.aborted).toBe(true);
 		expect(doneCount).toBe(1);
+	});
+
+	test("abort during an active follow swallows the source AbortError — no unhandled crash, finishes once", async () => {
+		// warren-595f: aborting the follow makes node-fetch emit an AbortError on the
+		// piped source; with no listener that emit surfaces as an UNCAUGHT exception
+		// via the signal's abort-event dispatch and crash-loops the control plane.
+		// A temporary uncaughtException/unhandledRejection guard captures any escape;
+		// with the fix the AbortError is caught on the source and finished cleanly.
+		const fake = fakePipedLog();
+		const escapes: unknown[] = [];
+		const onEscape = (e: unknown): void => {
+			escapes.push(e);
+		};
+		process.on("uncaughtException", onEscape);
+		process.on("unhandledRejection", onEscape);
+		try {
+			let doneCount = 0;
+			let endErr: unknown = "unset";
+			const controller = await makeLogFollow(fake.log)(
+				PARAMS,
+				() => {},
+				(err) => {
+					doneCount += 1;
+					endErr = err;
+				},
+			);
+			controller.abort();
+			// Let the (previously crashing) async uncaught-exception path settle.
+			await new Promise((resolve) => setTimeout(resolve, 10));
+			expect(fake.abort.signal.aborted).toBe(true);
+			expect(doneCount).toBe(1);
+			expect(endErr).toBeUndefined();
+			expect(escapes).toEqual([]);
+		} finally {
+			process.off("uncaughtException", onEscape);
+			process.off("unhandledRejection", onEscape);
+		}
+	});
+
+	test("a non-abort source error still propagates to onDone(err) for the pump to back off", async () => {
+		// The swallow is scoped to AbortError only: a genuine mid-stream failure must
+		// keep flowing into the pump so its reconnect/backoff (and 404 → lost) logic
+		// still fires exactly as before.
+		const fake = fakePipedLog();
+		let endErr: unknown = "unset";
+		await makeLogFollow(fake.log)(
+			PARAMS,
+			() => {},
+			(err) => {
+				endErr = err;
+			},
+		);
+		const boom = new Error("connection reset by peer");
+		fake.source.emit("error", boom);
+		expect(endErr).toBe(boom);
 	});
 });
