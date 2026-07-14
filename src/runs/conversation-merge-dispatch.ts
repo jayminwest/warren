@@ -21,6 +21,7 @@ import type { BurrowClient } from "../burrow-client/index.ts";
 import type { Repos } from "../db/repos/index.ts";
 import type { SpawnFn } from "../projects/clone.ts";
 import type { ProjectsConfig } from "../projects/config.ts";
+import type { RuntimeProvider } from "../runtime/contract.ts";
 import type { SeedsCliDeps } from "../seeds-cli/index.ts";
 import type { BridgeRegistry } from "../server/types.ts";
 import type { WarrenConfigCache } from "../warren-config/index.ts";
@@ -30,6 +31,12 @@ import { spawnRun } from "./spawn/index.ts";
 export interface CreateMergePollerDispatchInput {
 	readonly repos: Repos;
 	readonly burrowClient: BurrowClient;
+	/**
+	 * Resolved runtime provider (warren-c531 follow-up). Omitting it drops
+	 * planner dispatches to the burrow-backed `LocalProvider`, which cannot
+	 * spawn under `WARREN_RUNTIME=k8s`. Boot threads the shared instance.
+	 */
+	readonly runtimeProvider?: RuntimeProvider;
 	readonly bridges: BridgeRegistry;
 	readonly warrenConfigs: WarrenConfigCache;
 	readonly projectsConfig: ProjectsConfig;
@@ -50,6 +57,7 @@ export function createMergePollerDispatch(
 		const result = await spawnRunFn({
 			repos: input.repos,
 			burrowClient: input.burrowClient,
+			...(input.runtimeProvider !== undefined ? { runtimeProvider: input.runtimeProvider } : {}),
 			agentName: plannerAgent,
 			projectId,
 			prompt: buildPlannerDispatchPrompt(plotId),

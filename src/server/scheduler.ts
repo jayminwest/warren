@@ -26,6 +26,7 @@ import type { Repos } from "../db/repos/index.ts";
 import type { SpawnFn } from "../projects/clone.ts";
 import type { ProjectsConfig } from "../projects/config.ts";
 import { spawnRun } from "../runs/index.ts";
+import type { RuntimeProvider } from "../runtime/contract.ts";
 import { listScheduledSeeds, updateExtensions } from "../seeds-cli/index.ts";
 import {
 	type DispatchSpawnFn,
@@ -45,6 +46,14 @@ import type { BridgeRegistry } from "./types.ts";
 export interface BootSchedulerInput {
 	readonly repos: Repos;
 	readonly burrowClient: BurrowClient;
+	/**
+	 * Resolved runtime provider (warren-c531 follow-up). Without this, every
+	 * scheduled `spawnRun` falls back to the burrow-backed `LocalProvider`,
+	 * which under `WARREN_RUNTIME=k8s` has no socket to talk to — cron fires
+	 * then fail `never_started` and retry every tick. Boot threads the same
+	 * instance `POST /runs` dispatches through.
+	 */
+	readonly runtimeProvider?: RuntimeProvider;
 	readonly bridges: BridgeRegistry;
 	readonly warrenConfigs: WarrenConfigCache;
 	readonly projectsConfig: ProjectsConfig;
@@ -86,6 +95,7 @@ export function bootScheduler(input: BootSchedulerInput): SchedulerHandle {
 		const result = await spawnRunFn({
 			repos: input.repos,
 			burrowClient: input.burrowClient,
+			...(input.runtimeProvider !== undefined ? { runtimeProvider: input.runtimeProvider } : {}),
 			agentName: args.agentName,
 			projectId: args.projectId,
 			prompt: args.prompt,
@@ -121,6 +131,7 @@ export function bootScheduler(input: BootSchedulerInput): SchedulerHandle {
 		const result = await spawnRunFn({
 			repos: input.repos,
 			burrowClient: input.burrowClient,
+			...(input.runtimeProvider !== undefined ? { runtimeProvider: input.runtimeProvider } : {}),
 			agentName: args.agentName,
 			projectId: args.projectId,
 			prompt: args.prompt,

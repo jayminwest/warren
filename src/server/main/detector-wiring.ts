@@ -101,6 +101,8 @@ export interface MergePollerWiringInput {
 	readonly env: EnvLike;
 	readonly repos: Repos;
 	readonly burrowClient: BurrowClient;
+	/** Resolved runtime provider — threaded into the planner spawnRun (warren-c531 follow-up). */
+	readonly runtimeProvider?: RuntimeProvider;
 	readonly bridges: BridgeRegistry;
 	readonly warrenConfigs: WarrenConfigCache;
 	readonly projectsConfig: ProjectsConfig;
@@ -130,6 +132,7 @@ export function bootConversationMergePollerFromEnv(
 	const dispatch = createMergePollerDispatch({
 		repos: input.repos,
 		burrowClient: input.burrowClient,
+		...(input.runtimeProvider !== undefined ? { runtimeProvider: input.runtimeProvider } : {}),
 		bridges: input.bridges,
 		warrenConfigs: input.warrenConfigs,
 		projectsConfig: input.projectsConfig,
@@ -308,6 +311,7 @@ export function bootBackgroundDetectors(
 		env: input.env,
 		repos: input.repos,
 		burrowClient: input.burrowClient,
+		...(input.runtimeProvider !== undefined ? { runtimeProvider: input.runtimeProvider } : {}),
 		bridges: input.bridges,
 		warrenConfigs: input.warrenConfigs,
 		projectsConfig: input.projectsConfig,

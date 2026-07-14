@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { Burrow, Run as BurrowRun } from "@os-eco/burrow-cli";
+import type { RuntimeProvider } from "../runtime/contract.ts";
 import type { BridgeRegistry } from "../server/types.ts";
 import { createMergePollerDispatch } from "./conversation-merge-dispatch.ts";
 import { buildPlannerDispatchPrompt } from "./conversation-merge-poller.ts";
@@ -28,6 +29,10 @@ describe("createMergePollerDispatch", () => {
 			size: () => 0,
 		};
 
+		// Identity-only stub — asserts the SAME provider instance reaches
+		// spawnRun (warren-c531 follow-up: a dropped provider falls back to
+		// the burrow-backed LocalProvider, unusable under WARREN_RUNTIME=k8s).
+		const runtimeProvider = { kind: "stub" } as unknown as RuntimeProvider;
 		const dispatch = createMergePollerDispatch({
 			repos: {
 				projects: { require: async () => ({ defaultBranch: "trunk" }) },
@@ -35,6 +40,7 @@ describe("createMergePollerDispatch", () => {
 			} as any,
 			// biome-ignore lint/suspicious/noExplicitAny: unused by the spawn stub
 			burrowClient: {} as any,
+			runtimeProvider,
 			bridges,
 			// biome-ignore lint/suspicious/noExplicitAny: unused by the spawn stub
 			warrenConfigs: {} as any,
@@ -63,6 +69,7 @@ describe("createMergePollerDispatch", () => {
 		expect(input?.trigger).toBe("send-off");
 		expect(input?.prompt).toBe(buildPlannerDispatchPrompt("plot-abc"));
 		expect(input?.metadata).toEqual({ conversationId: "conv_1" });
+		expect(input?.runtimeProvider).toBe(runtimeProvider);
 		expect(started).toEqual([{ runId: "run_planner", burrowRunId: "rb_a", burrowId: "bur_a" }]);
 	});
 });

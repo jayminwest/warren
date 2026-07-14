@@ -256,6 +256,7 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 	const scheduler = bootScheduler({
 		repos,
 		burrowClient,
+		runtimeProvider,
 		bridges: bridgesBoot.registry,
 		warrenConfigs,
 		projectsConfig,
@@ -345,6 +346,7 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 		spawn: createPlanRunSpawn({
 			repos,
 			burrowClient,
+			runtimeProvider,
 			bridges: bridgesBoot.registry,
 			warrenConfigs,
 			projectsConfig,
@@ -404,9 +406,7 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 			projectSpawn: defaultSpawn,
 			seedsCli,
 			autoOpenPr,
-			// warren-c531: the watchdog's graceful cancel routes through the same
-			// resolved provider so a hung K8s run is SIGTERM'd via the pod, not a
-			// burrow cancel.
+			// warren-c531: watchdog cancel + merge-poller planner spawn use the resolved provider.
 			runtimeProvider,
 			...(runBranchPrefixDefault !== undefined ? { runBranchPrefixDefault } : {}),
 			logger,

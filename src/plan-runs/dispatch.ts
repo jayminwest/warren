@@ -28,6 +28,7 @@ import type { SpawnFn } from "../projects/clone.ts";
 import type { ProjectsConfig } from "../projects/config.ts";
 import { resolveTargetProject } from "../projects/resolve-target.ts";
 import { spawnRun } from "../runs/index.ts";
+import type { RuntimeProvider } from "../runtime/contract.ts";
 import { readTargetRepo, type SeedsCliDeps } from "../seeds-cli/index.ts";
 import type { BridgeRegistry } from "../server/types.ts";
 import type { WarrenConfigCache } from "../warren-config/index.ts";
@@ -72,6 +73,12 @@ export function createResolveExecution(
 export interface CreatePlanRunSpawnInput {
 	readonly repos: Repos;
 	readonly burrowClient: BurrowClient;
+	/**
+	 * Resolved runtime provider (warren-c531 follow-up). Omitting it drops
+	 * plan-run dispatches to the burrow-backed `LocalProvider`, which cannot
+	 * spawn under `WARREN_RUNTIME=k8s`. Boot threads the shared instance.
+	 */
+	readonly runtimeProvider?: RuntimeProvider;
 	readonly bridges: BridgeRegistry;
 	readonly warrenConfigs: WarrenConfigCache;
 	readonly projectsConfig: ProjectsConfig;
@@ -85,6 +92,8 @@ export interface CreatePlanRunSpawnInput {
 
 export function createPlanRunSpawn(input: CreatePlanRunSpawnInput): CoordinatorSpawnFn {
 	const spawnRunFn = input.spawnRunFn ?? spawnRun;
+	const runtimeProvider =
+		input.runtimeProvider !== undefined ? { runtimeProvider: input.runtimeProvider } : {};
 	return async ({ planRun, child, prompt, execution }) => {
 		// pl-fb43 step 5: clone the child's *execution* repo into the
 		// workspace while `seedProjectId` keeps the post-dispatch seed stamp +
@@ -99,6 +108,7 @@ export function createPlanRunSpawn(input: CreatePlanRunSpawnInput): CoordinatorS
 		const result = await spawnRunFn({
 			repos: input.repos,
 			burrowClient: input.burrowClient,
+			...runtimeProvider,
 			agentName: planRun.agentName,
 			projectId: exec.executionProjectId,
 			seedProjectId: planRun.projectId,

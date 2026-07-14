@@ -7,6 +7,7 @@ import { agents } from "../db/schema.ts";
 import type { SpawnFn } from "../projects/clone.ts";
 import type { ProjectsConfig } from "../projects/config.ts";
 import type { SpawnRunInput, SpawnRunResult } from "../runs/index.ts";
+import type { RuntimeProvider } from "../runtime/contract.ts";
 import type { TriggerSchedulerConfig } from "../triggers/index.ts";
 import { createWarrenConfigCache } from "../warren-config/index.ts";
 import { bootScheduler } from "./scheduler.ts";
@@ -57,6 +58,11 @@ const SCHEDULER_CONFIG: TriggerSchedulerConfig = {
 };
 
 const NOW = new Date("2026-05-11T00:05:00.000Z");
+
+// Identity-only stub — the tests assert the SAME instance reaches spawnRun
+// (warren-c531 follow-up: a dropped provider silently falls back to the
+// burrow-backed LocalProvider, which cannot spawn under WARREN_RUNTIME=k8s).
+const RUNTIME_PROVIDER = { kind: "stub" } as unknown as RuntimeProvider;
 
 describe("bootScheduler", () => {
 	let db: WarrenDb;
@@ -136,6 +142,7 @@ describe("bootScheduler", () => {
 		const handle = bootScheduler({
 			repos,
 			burrowClient: await makePool(repos),
+			runtimeProvider: RUNTIME_PROVIDER,
 			bridges: makeBridges(bridgeCalls),
 			warrenConfigs,
 			projectsConfig: PROJECTS_CONFIG,
@@ -157,6 +164,7 @@ describe("bootScheduler", () => {
 		// spawnRun threaded the prod plumbing through (refresh hook + cache).
 		expect(spawnRunCalls[0]?.projectsConfig).toBe(PROJECTS_CONFIG);
 		expect(spawnRunCalls[0]?.warrenConfigs).toBe(warrenConfigs);
+		expect(spawnRunCalls[0]?.runtimeProvider).toBe(RUNTIME_PROVIDER);
 		expect(bridgeCalls).toHaveLength(1);
 		expect(bridgeCalls[0]?.burrowRunId).toBe("rb_a");
 	});

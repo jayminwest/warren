@@ -13,6 +13,7 @@ import { createRepos, type Repos } from "../db/repos/index.ts";
 import { agents } from "../db/schema.ts";
 import type { SpawnFn } from "../projects/clone.ts";
 import type { SpawnRunInput, SpawnRunResult } from "../runs/index.ts";
+import type { RuntimeProvider } from "../runtime/contract.ts";
 import type { BridgeRegistry } from "../server/types.ts";
 import { createWarrenConfigCache } from "../warren-config/index.ts";
 import { createPlanRunSpawn } from "./dispatch.ts";
@@ -106,9 +107,14 @@ describe("createPlanRunSpawn", () => {
 			};
 		};
 
+		// Identity-only stub — asserts the SAME provider instance reaches
+		// spawnRun (warren-c531 follow-up: a dropped provider falls back to
+		// the burrow-backed LocalProvider, unusable under WARREN_RUNTIME=k8s).
+		const runtimeProvider = { kind: "stub" } as unknown as RuntimeProvider;
 		const spawn = createPlanRunSpawn({
 			repos,
 			burrowClient: await makePool(repos),
+			runtimeProvider,
 			bridges: makeBridges(),
 			warrenConfigs: createWarrenConfigCache({
 				load: async () => ({
@@ -136,6 +142,7 @@ describe("createPlanRunSpawn", () => {
 		expect(captured[0]?.plotId).toBe("plot_xyz");
 		expect(captured[0]?.trigger).toBe("plan-run");
 		expect(captured[0]?.dispatcherHandle).toBe(planRun.dispatcherHandle);
+		expect(captured[0]?.runtimeProvider).toBe(runtimeProvider);
 	});
 
 	test("routes spawn to the execution project and pins seedProjectId to coordination (warren-d9f3)", async () => {
