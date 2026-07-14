@@ -17,6 +17,7 @@ import {
 	type Ctx,
 	fakeExec,
 	fakeFs,
+	fakeOpenPr,
 	makePool,
 	setup,
 } from "./test-helpers.ts";
@@ -270,6 +271,43 @@ describe("reapRun under a K8s-style RuntimeProvider", () => {
 		expect(result.previewState).toBeNull();
 		const events = await ctx.repos.events.listByRun(ctx.runId);
 		expect(events.some((ev) => ev.kind === "reap.preview_skipped_unsupported")).toBe(false);
+	});
+
+	test("pr_open fetches the pushed branch into the clone to rebuild PR sections (warren-ab66)", async () => {
+		const branch = "warren/run-1";
+		const fake = fakeK8sProvider({ branch, finalizeResult: finalizeResultWithDeltas(branch) });
+		const e = fakeExec({ stagedDelta: true });
+		const pr = fakeOpenPr([{ ok: true, url: "https://github.com/x/y/pull/9", mode: "created" }]);
+
+		const result = await reapRun({
+			runId: ctx.runId,
+			outcome: "succeeded",
+			repos: ctx.repos,
+			burrowClient: await makePool(throwingBurrowClient(), ctx.repos),
+			runtimeProvider: fake.provider,
+			broker: ctx.broker,
+			fs: fakeFs().fs,
+			exec: e.exec,
+			autoOpenPr: { enabled: true, token: "ghp_xyz", warrenBaseUrl: null },
+			openPr: pr.openPr,
+		});
+
+		expect(result.prUrl).toBe("https://github.com/x/y/pull/9");
+		// The context-gathering fetched the pushed run branch into the project
+		// clone under a namespaced temp ref (never a local branch), cwd = the clone.
+		const fetchCall = e.calls.find(
+			(c) =>
+				c.cmd === "git" &&
+				c.args[0] === "fetch" &&
+				c.args.some((a) => a.includes("refs/warren/pr-open/")),
+		);
+		expect(fetchCall).toBeDefined();
+		expect(fetchCall?.cwd).toBe(ctx.projectPath);
+		// The temp ref is torn down after the reads.
+		const cleanup = e.calls.find(
+			(c) => c.cmd === "git" && c.args[0] === "update-ref" && c.args.includes("-d"),
+		);
+		expect(cleanup).toBeDefined();
 	});
 
 	test("workspaceInfo throwing skips the pipeline and records workspace_lookup", async () => {

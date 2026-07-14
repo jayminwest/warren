@@ -1,5 +1,6 @@
 import { CI_FIXER_TRIGGER } from "../../ci-fixer/poller.ts";
 import { parseGitHubUrl } from "../../projects/url.ts";
+import { authenticatedCloneUrl } from "../../runtime/k8s/workspace-init.ts";
 import {
 	type AutoOpenPrConfig,
 	type BuildPrContentInput,
@@ -109,18 +110,46 @@ export async function tryOpenPr(input: TryOpenPrInput): Promise<OpenPullRequestR
 /* PR context gathering (warren-9ee3)                                       */
 /* ----------------------------------------------------------------------- */
 
+/**
+ * Under K8s the pod pushes its run branch to origin and no host worktree
+ * survives (`workspacePath === null`). To rebuild the commit/diff-stat sections
+ * we fetch that pushed branch into the host-side project clone and diff it
+ * against the base there (warren-ab66). Omit `cloneFetch` (LocalProvider, or
+ * when we have no token) to keep the pre-warren-ab66 empty-section behavior.
+ */
+export interface CloneFetchConfig {
+	/** The pushed run branch name on origin (e.g. `warren/run-1`). */
+	readonly runBranch: string;
+	/** Run id — namespaces the temp fetch ref so concurrent reaps never collide. */
+	readonly runId: string;
+	/** Project origin URL; the token is injected into it for the fetch. */
+	readonly gitUrl: string;
+	/** GitHub token (same one the PR open uses); injected as `x-access-token`. */
+	readonly token: string;
+}
+
 export interface GatherPrContextInput {
 	/**
 	 * Host workspace path for the commits / diff-stat git reads. `null` under K8s
-	 * (the pod workspace is host-unreachable, warren-e9e1) — those two sub-calls
-	 * then degrade to empty and the PR body omits the commit/file sections. The
-	 * seed section still resolves off the project clone (`projectPath`).
+	 * (the pod workspace is host-unreachable, warren-e9e1). When null and
+	 * `cloneFetch` is supplied, the sections are rebuilt from the pushed run
+	 * branch fetched into the project clone (warren-ab66); when null and no
+	 * `cloneFetch`, they degrade to empty. The seed section always resolves off
+	 * the project clone (`projectPath`).
 	 */
 	readonly workspacePath: string | null;
 	readonly projectPath: string;
 	readonly baseBranch: string;
 	readonly prompt: string;
 	readonly exec: ReapExec;
+	/** K8s fallback source for the commit/diff-stat sections (warren-ab66). */
+	readonly cloneFetch?: CloneFetchConfig;
+	/**
+	 * Best-effort structured-warning seam (warren-ab66). Fires
+	 * `reap.pr_open_context_degraded` when the K8s clone fetch fails and the PR
+	 * body falls back to empty sections. Omit in unit tests that don't assert it.
+	 */
+	readonly emit?: (kind: string, payload: unknown) => Promise<unknown>;
 }
 
 export interface PrContext {
@@ -129,6 +158,16 @@ export interface PrContext {
 	readonly seed: PrSeed | null;
 }
 
+interface CommitStats {
+	readonly commits: readonly PrCommit[];
+	readonly diffStat: string;
+}
+
+const EMPTY_STATS: CommitStats = { commits: [], diffStat: "" };
+
+/** Temp-ref namespace for the K8s pr-open fetch; deleted after the reads. */
+const CLONE_FETCH_REF_PREFIX = "refs/warren/pr-open/";
+
 /**
  * Best-effort gathering of the data buildPrContent needs to fill in the
  * commits / files-changed / seeds sections. Each sub-call is wrapped: a
@@ -136,27 +175,97 @@ export interface PrContext {
  * failing the PR open.
  */
 export async function gatherPrContext(input: GatherPrContextInput): Promise<PrContext> {
-	// warren-e9e1: no host workspace under K8s — skip the workspace-git reads and
-	// degrade to empty commits / diff-stat rather than passing a null cwd to git.
-	const ws = input.workspacePath;
-	const [commits, diffStat, seed] = await Promise.all([
-		ws !== null ? collectCommits(ws, input.baseBranch, input.exec) : Promise.resolve([]),
-		ws !== null ? collectDiffStat(ws, input.baseBranch, input.exec) : Promise.resolve(""),
+	const [stats, seed] = await Promise.all([
+		gatherCommitStats(input),
 		resolveSeed(input.prompt, input.projectPath, input.exec),
 	]);
-	return { commits, diffStat, seed };
+	return { commits: stats.commits, diffStat: stats.diffStat, seed };
 }
 
-async function collectCommits(
-	workspacePath: string,
-	baseBranch: string,
-	exec: ReapExec,
-): Promise<PrCommit[]> {
+async function gatherCommitStats(input: GatherPrContextInput): Promise<CommitStats> {
+	// LocalProvider: read straight off the host worktree (base..HEAD).
+	if (input.workspacePath !== null) {
+		return collectRange({
+			exec: input.exec,
+			cwd: input.workspacePath,
+			baseRef: input.baseBranch,
+			headRef: "HEAD",
+		});
+	}
+	// warren-ab66: no host workspace under K8s — fetch the pushed branch into the
+	// project clone and rebuild from `base..<temp ref>`. Skip when we can't fetch.
+	if (input.cloneFetch === undefined) return EMPTY_STATS;
+	return collectFromClone(input, input.cloneFetch);
+}
+
+/**
+ * Fetch the pushed run branch into the project clone under a private temp ref,
+ * rebuild the commit/diff-stat sections against the local base, then delete the
+ * ref (warren-ab66). Any failure degrades to empty sections + a warning event
+ * so the PR still opens — never throws.
+ */
+async function collectFromClone(
+	input: GatherPrContextInput,
+	cfg: CloneFetchConfig,
+): Promise<CommitStats> {
+	const tempRef = `${CLONE_FETCH_REF_PREFIX}${cfg.runId}`;
+	const url = authenticatedCloneUrl(cfg.gitUrl, cfg.token);
 	try {
-		const out = await exec.run(
+		// Fetch only the run branch into a namespaced temp ref (never a local
+		// branch); `--force` lets a re-reap overwrite a stale ref.
+		await input.exec.run(
 			"git",
-			["log", "--reverse", "--pretty=format:%H %s", `${baseBranch}..HEAD`],
-			{ cwd: workspacePath, timeoutMs: 10_000 },
+			["fetch", "--no-tags", "--force", url, `${cfg.runBranch}:${tempRef}`],
+			{ cwd: input.projectPath, timeoutMs: 30_000 },
+		);
+	} catch (err) {
+		await input.emit?.("reap.pr_open_context_degraded", {
+			runId: cfg.runId,
+			branch: cfg.runBranch,
+			reason: "clone_fetch_failed",
+			error: err instanceof Error ? err.message : String(err),
+		});
+		return EMPTY_STATS;
+	}
+	try {
+		return await collectRange({
+			exec: input.exec,
+			cwd: input.projectPath,
+			baseRef: input.baseBranch,
+			headRef: tempRef,
+		});
+	} finally {
+		try {
+			await input.exec.run("git", ["update-ref", "-d", tempRef], {
+				cwd: input.projectPath,
+				timeoutMs: 10_000,
+			});
+		} catch {
+			// Best-effort cleanup — a leaked temp ref is harmless (overwritten by
+			// `--force` on the next reap of the same run id).
+		}
+	}
+}
+
+/** A `base..head` range read against one git cwd — shared by the local and K8s paths. */
+interface GitRange {
+	readonly exec: ReapExec;
+	readonly cwd: string;
+	readonly baseRef: string;
+	readonly headRef: string;
+}
+
+async function collectRange(range: GitRange): Promise<CommitStats> {
+	const [commits, diffStat] = await Promise.all([collectCommits(range), collectDiffStat(range)]);
+	return { commits, diffStat };
+}
+
+async function collectCommits(range: GitRange): Promise<PrCommit[]> {
+	try {
+		const out = await range.exec.run(
+			"git",
+			["log", "--reverse", "--pretty=format:%H %s", `${range.baseRef}..${range.headRef}`],
+			{ cwd: range.cwd, timeoutMs: 10_000 },
 		);
 		const commits: PrCommit[] = [];
 		for (const raw of out.stdout.split("\n")) {
@@ -172,16 +281,13 @@ async function collectCommits(
 	}
 }
 
-async function collectDiffStat(
-	workspacePath: string,
-	baseBranch: string,
-	exec: ReapExec,
-): Promise<string> {
+async function collectDiffStat(range: GitRange): Promise<string> {
 	try {
-		const out = await exec.run("git", ["diff", "--stat", `${baseBranch}..HEAD`], {
-			cwd: workspacePath,
-			timeoutMs: 10_000,
-		});
+		const out = await range.exec.run(
+			"git",
+			["diff", "--stat", `${range.baseRef}..${range.headRef}`],
+			{ cwd: range.cwd, timeoutMs: 10_000 },
+		);
 		return out.stdout;
 	} catch {
 		return "";
@@ -261,6 +367,20 @@ export async function runPrOpen(input: RunPrOpenInput): Promise<string | null> {
 			baseBranch: input.project.defaultBranch,
 			prompt: input.run.prompt,
 			exec: input.exec,
+			emit: input.emit,
+			// warren-ab66: under K8s (no host workspace) rebuild the commit/diff-stat
+			// sections from the pushed run branch fetched into the project clone. Needs
+			// a token to auth the fetch; a token-less env keeps the empty-section path.
+			...(input.workspacePath === null && input.autoOpen.token !== ""
+				? {
+						cloneFetch: {
+							runBranch: input.branch,
+							runId: input.run.id,
+							gitUrl: input.project.gitUrl,
+							token: input.autoOpen.token,
+						},
+					}
+				: {}),
 		});
 		const prArgs: TryOpenPrInput = {
 			project: input.project,
