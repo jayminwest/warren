@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`feat(k8s)`** — public GKE exposure (warren-682a): the gke overlay now
+  ships a GCE external Application LB — reserved global static IP
+  (`kubernetes.io/ingress.global-static-ip-name: warren-ingress`),
+  `ManagedCertificate` TLS, `FrontendConfig` HTTP→HTTPS redirect, and
+  container-native load balancing (ClusterIP + NEG; no NodePort). The
+  Ingress host / cert domain stay placeholders in the committed template;
+  the gitignored live overlay patches in the real hostname.
+
+### Changed
+
+- **`fix(server)`** — `/metrics` is no longer auth-exempt (warren-682a):
+  behind a public Ingress the scrape surface leaks operational shape (run
+  counts, pod phases, queue depth). The Prometheus ServiceMonitor now
+  scrapes with the control-plane bearer via `authorization.credentials`
+  (`warren-secrets/warren-api-token`). `/healthz` and `/version` remain
+  the only auth-exempt API routes.
+
 ## [0.9.10] — 2026-07-01
 
 Patch release landing the plan-run merge-gate transient-4xx fix

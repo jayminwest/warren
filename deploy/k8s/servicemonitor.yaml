@@ -1,11 +1,12 @@
 # Prometheus Operator ServiceMonitor for warren's control-plane /metrics
 # endpoint (pl-829f step 16 / warren-a7ff, design doc k8s-migration.md §5.2).
 #
-# Scrapes warren's auth-exempt `GET /metrics` (the same endpoint Fly's managed
-# Prometheus scraped via fly.toml's `[[metrics]]` block) so the pod-watcher's
-# pod-phase / OOM / pending / init metrics land in Prometheus once warren runs on
-# Kubernetes. The endpoint carries no secrets (aggregate counts + counters), so
-# no scrape auth is configured.
+# Scrapes warren's `GET /metrics` (the same endpoint Fly's managed Prometheus
+# scraped via fly.toml's `[[metrics]]` block) so the pod-watcher's pod-phase /
+# OOM / pending / init metrics land in Prometheus once warren runs on
+# Kubernetes. `/metrics` is bearer-gated (warren-682a — behind a public Ingress
+# the scrape surface leaks operational shape), so the endpoint below sends the
+# control-plane token from `warren-secrets` via `authorization.credentials`.
 #
 # NOTE: this is a standalone drop so the metric surface added in this step has a
 # home. The full manifest set — warren-runs namespace, ServiceAccount + RBAC,
@@ -45,3 +46,10 @@ spec:
       interval: 15s
       scrapeTimeout: 10s
       scheme: http
+      # /metrics requires the control-plane bearer (warren-682a). The secret
+      # must live in the ServiceMonitor's namespace (it does: warren).
+      authorization:
+        type: Bearer
+        credentials:
+          name: warren-secrets
+          key: warren-api-token

@@ -2,10 +2,12 @@
  * `GET /metrics` — Prometheus exposition endpoint (warren observability
  * Phase 1).
  *
- * Auth-exempt (like `/healthz`) so Fly's managed Prometheus can scrape it over
- * the private network without a bearer token; the body carries no secrets
- * (aggregate counts + counters only). Fly scrapes this when `fly.toml` declares
- * a `[[metrics]]` block pointing at `/metrics`.
+ * Bearer-gated like the rest of the API (warren-682a): behind a public
+ * Ingress the scrape surface leaks operational shape (run counts, pod
+ * phases, queue depth), so the historical Fly-era auth exemption is gone.
+ * In-cluster Prometheus sends the control-plane token via the
+ * ServiceMonitor's `authorization.credentials`
+ * (deploy/k8s/servicemonitor.yaml).
  *
  * Two sources, assembled per scrape:
  *   - **Gauges** read live from SQLite (`countRunsByState` / `aggregateRunCost`,

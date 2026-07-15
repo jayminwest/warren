@@ -17,6 +17,10 @@ describe("isAuthExempt", () => {
 		expect(isAuthExempt("/runs/run_abc/preview/login/")).toBe(true);
 	});
 
+	test("/metrics is gated (warren-682a — public-Ingress exposure)", () => {
+		expect(isAuthExempt("/metrics")).toBe(false);
+	});
+
 	test("other /runs/* surfaces remain gated", () => {
 		expect(isAuthExempt("/runs")).toBe(false);
 		expect(isAuthExempt("/runs/run_abc")).toBe(false);

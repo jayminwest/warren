@@ -1,0 +1,16 @@
+# GCE load-balancer frontend policy for the warren Ingress (warren-682a):
+# redirect plain HTTP to HTTPS once the ManagedCertificate is Active.
+# Referenced from the Ingress via the
+# `networking.gke.io/v1beta1.FrontendConfig` annotation.
+apiVersion: networking.gke.io/v1beta1
+kind: FrontendConfig
+metadata:
+  name: warren
+  namespace: warren
+  labels:
+    app.kubernetes.io/name: warren
+    app.kubernetes.io/component: control-plane
+spec:
+  redirectToHttps:
+    enabled: true
+    responseCodeName: MOVED_PERMANENTLY_DEFAULT

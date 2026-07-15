@@ -452,11 +452,11 @@ export function isApiPath(pathname: string): boolean {
  */
 export function isAuthExempt(pathname: string): boolean {
 	if (pathname === "/healthz") return true;
-	// `/metrics` is the Prometheus scrape surface (warren observability
-	// Phase 1). Fly's managed Prometheus scrapes it over the private
-	// network without a bearer token; the body is aggregate counts +
-	// counters only (no secrets), mirroring `/healthz`.
-	if (pathname === "/metrics") return true;
+	// `/metrics` is deliberately NOT exempt (warren-682a): behind a public
+	// Ingress the scrape surface leaks operational shape (run counts, pod
+	// phases, queue depth). In-cluster Prometheus scrapes it with the
+	// bearer via the ServiceMonitor's `authorization` credentials
+	// (deploy/k8s/servicemonitor.yaml).
 	// `/version` is non-sensitive (just the package version string) and
 	// the UI fetches it before the user logs in to render in the sidebar
 	// header. Keeping it auth-exempt avoids a chicken-and-egg on the

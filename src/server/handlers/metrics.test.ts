@@ -69,7 +69,7 @@ describe("GET /metrics", () => {
 		await db.close();
 	});
 
-	test("is auth-exempt and exposes run/bridge gauges + registry counters", async () => {
+	test("is bearer-gated (warren-682a) and exposes run/bridge gauges + registry counters", async () => {
 		const registry = new MetricsRegistry();
 		registry.increment("warren_log_messages_total", { level: "warn" });
 		registry.increment("warren_log_messages_total", { level: "error" });
@@ -79,8 +79,12 @@ describe("GET /metrics", () => {
 			auth: bearerAuth(TOKEN),
 			logger: silentLogger,
 		});
-		// No Authorization header — must still return 200.
-		const res = await fetch(`${tcpUrl(handle)}/metrics`);
+		// No Authorization header — the scrape surface is gated.
+		const unauthed = await fetch(`${tcpUrl(handle)}/metrics`);
+		expect(unauthed.status).toBe(401);
+		const res = await fetch(`${tcpUrl(handle)}/metrics`, {
+			headers: { authorization: `Bearer ${TOKEN}` },
+		});
 		expect(res.status).toBe(200);
 		expect(res.headers.get("content-type")).toBe("text/plain; version=0.0.4; charset=utf-8");
 		const body = await res.text();
@@ -110,7 +114,9 @@ describe("GET /metrics", () => {
 			auth: bearerAuth(TOKEN),
 			logger: silentLogger,
 		});
-		const res = await fetch(`${tcpUrl(handle)}/metrics`);
+		const res = await fetch(`${tcpUrl(handle)}/metrics`, {
+			headers: { authorization: `Bearer ${TOKEN}` },
+		});
 		const body = await res.text();
 		expect(body).toContain("# TYPE warren_run_pod_phase gauge");
 		expect(body).toContain('warren_run_pod_phase{phase="Pending"} 2');
@@ -126,7 +132,9 @@ describe("GET /metrics", () => {
 			auth: bearerAuth(TOKEN),
 			logger: silentLogger,
 		});
-		const res = await fetch(`${tcpUrl(handle)}/metrics`);
+		const res = await fetch(`${tcpUrl(handle)}/metrics`, {
+			headers: { authorization: `Bearer ${TOKEN}` },
+		});
 		const body = await res.text();
 		expect(body).not.toContain("warren_run_pod_phase");
 	});
@@ -138,7 +146,10 @@ describe("GET /metrics", () => {
 			auth: bearerAuth(TOKEN),
 			logger: silentLogger,
 		});
-		const res = await fetch(`${tcpUrl(handle)}/metrics`, { method: "POST" });
+		const res = await fetch(`${tcpUrl(handle)}/metrics`, {
+			method: "POST",
+			headers: { authorization: `Bearer ${TOKEN}` },
+		});
 		expect(res.status).toBe(405);
 	});
 });

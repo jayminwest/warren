@@ -23,7 +23,8 @@ deploy/k8s/
     kustomization.yaml
   overlays/
     kind/                 local: nginx ingress, imagePullPolicy Never, small PVC
-    gke/                  GKE Autopilot: Artifact Registry images, gce Ingress, NodePort
+    gke/                  GKE Autopilot: Artifact Registry images, gce Ingress + static IP,
+                          ManagedCertificate TLS, FrontendConfig HTTPS redirect, NEG ClusterIP
   servicemonitor.yaml     Prometheus Operator scrape (standalone — see below)
 ```
 
@@ -50,6 +51,33 @@ If you apply raw files instead of kustomize, apply in this order: `namespaces` �
 > namespaces. That is a dry-run artifact, not a manifest error — a real apply
 > succeeds (validated on k3d). Use `kubectl kustomize <overlay>` for offline
 > validation.
+
+## Public exposure (GKE) — static IP, TLS, DNS
+
+The gke overlay exposes warren through a GCE external Application LB
+(warren-682a): global static IP, `ManagedCertificate` TLS, `FrontendConfig`
+HTTP→HTTPS redirect, container-native LB (ClusterIP + NEG). The Ingress `host`
+and cert `domains` in the overlay are **placeholders** — patch the real
+hostname in your gitignored live overlay (see the template header), never in
+the committed tree. One-time setup:
+
+```bash
+# 1. Reserve the global static IP the Ingress annotation names.
+gcloud compute addresses create warren-ingress --global
+gcloud compute addresses describe warren-ingress --global --format='value(address)'
+
+# 2. Point DNS at it BEFORE applying: A record for your hostname → that IP.
+#    On Cloudflare the record must be DNS-only (grey cloud) — Google's cert
+#    validation fails behind the proxy.
+
+# 3. Apply the live overlay, then watch the cert go Provisioning → Active
+#    (typically 15–60 min after DNS resolves).
+kubectl -n warren get managedcertificate warren -w
+```
+
+`/metrics` is bearer-gated like the rest of the API (the ServiceMonitor sends
+the token), so nothing operational is publicly scrapeable; `/healthz` (liveness,
+`{ok: true}`) and `/version` stay open by design.
 
 ## Secrets — never commit real values
 
@@ -117,8 +145,8 @@ LimitRange can stay (harmless); if you keep the quota, keep the LimitRange.
 |---|---|---|
 | Overlay | `overlays/kind` | `overlays/gke` |
 | Images | `kind load` / `k3d image import`; `imagePullPolicy: Never` | Artifact Registry paths (edit `images:` + env in the overlay); pinned digests recommended |
-| Ingress class | `nginx` (install ingress-nginx first) | `gce` (+ attach a `ManagedCertificate` for TLS) |
-| Service type | ClusterIP | NodePort (GCE Ingress needs it; or ClusterIP + NEG annotation) |
+| Ingress class | `nginx` (install ingress-nginx first) | `gce` — global static IP + `ManagedCertificate` TLS + `FrontendConfig` HTTPS redirect (all in the overlay) |
+| Service type | ClusterIP | ClusterIP + NEG annotation (container-native LB; no NodePort) |
 | StorageClass | `local-path` default (WaitForFirstConsumer) | `standard-rwo` default |
 | repo-cache PVC | 5Gi (overlay-shrunk) | 50Gi |
 

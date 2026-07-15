@@ -35,10 +35,13 @@
 #   - Images pulled from Artifact Registry, pinned to the deployed git SHA tag.
 #   - The placeholder Secret templates are DELETED from the render (real
 #     secrets are created imperatively — see ../../README.md).
-#   - Ingress is DELETED — first exposure is `kubectl -n warren port-forward
-#     svc/warren 8080:8080`. When adding it back: ingressClassName `gce`,
-#     Service → NodePort (or ClusterIP + NEG annotation), attach a
-#     ManagedCertificate.
+#   - Ingress is a GCE external Application LB (warren-682a): reserved global
+#     static IP (`warren-ingress`), ManagedCertificate TLS, FrontendConfig
+#     HTTP→HTTPS redirect, ClusterIP Service + NEG (container-native LB; no
+#     NodePort). The Ingress `host` and ManagedCertificate `domains` are
+#     placeholders — gke-live patches in the real hostname (never commit it).
+#     DNS must point the hostname at the static IP (DNS-only / unproxied if
+#     Cloudflare) BEFORE the cert can go Active.
 #   - CANOPY_REPO_URL is wired from warren-secrets (optional — activates the
 #     canopy prompt-library agents).
 #   - WARREN_GIT_AUTHOR_NAME/EMAIL feed run pods' GIT_AUTHOR_*/GIT_COMMITTER_*
@@ -51,6 +54,8 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
   - ../../base
+  - managedcertificate.yaml
+  - frontendconfig.yaml
 images:
   - name: warren
     newName: LOCATION-docker.pkg.dev/PROJECT/warren/warren
@@ -79,17 +84,38 @@ patches:
       metadata:
         name: warren-git-token
         namespace: warren-runs
-  # No Ingress until post-smoke-test (port-forward exposure first).
+  # GCE external Application LB exposure (warren-682a). The host below is a
+  # PLACEHOLDER — gke-live patches it (and the ManagedCertificate domain) to
+  # the real hostname. The static-IP name refers to a reserved *global*
+  # address: `gcloud compute addresses create warren-ingress --global`.
   - target:
       kind: Ingress
       name: warren
     patch: |
-      $patch: delete
       apiVersion: networking.k8s.io/v1
       kind: Ingress
       metadata:
         name: warren
         namespace: warren
+        annotations:
+          kubernetes.io/ingress.class: gce
+          kubernetes.io/ingress.global-static-ip-name: warren-ingress
+          networking.gke.io/managed-certificates: warren
+          networking.gke.io/v1beta1.FrontendConfig: warren
+  # Container-native LB: GCE Ingress routes straight to pod NEGs, so the
+  # Service stays ClusterIP (no NodePort needed on Autopilot). Explicit
+  # annotation — Autopilot defaults to NEGs, but don't rely on it silently.
+  - target:
+      kind: Service
+      name: warren
+    patch: |
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: warren
+        namespace: warren
+        annotations:
+          cloud.google.com/neg: '{"ingress": true}'
   # Strategic-merge (keyed by env `name`) so the agent/init image env vars are
   # overridden regardless of list position.
   - patch: |

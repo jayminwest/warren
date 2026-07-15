@@ -1,0 +1,25 @@
+# Google-managed TLS certificate for the GCE Ingress (warren-682a).
+#
+# TEMPLATE — `warren.example.com` is a placeholder. The gitignored
+# `overlays/gke-live/` overlay patches `spec.domains` (and the Ingress
+# `host`) to the real hostname; never commit the real domain here.
+#
+# Provisioning notes:
+#   - The DNS A record for the domain must already point at the reserved
+#     global static IP (`kubernetes.io/ingress.global-static-ip-name` on
+#     the Ingress) or provisioning stalls in FailedNotVisible.
+#   - If the DNS is on Cloudflare, the record must be DNS-only (grey
+#     cloud) — Google's HTTP validation fails behind Cloudflare's proxy.
+#   - Status: `kubectl -n warren get managedcertificate warren` — expect
+#     Provisioning → Active (typically 15–60 min after DNS resolves).
+apiVersion: networking.gke.io/v1
+kind: ManagedCertificate
+metadata:
+  name: warren
+  namespace: warren
+  labels:
+    app.kubernetes.io/name: warren
+    app.kubernetes.io/component: control-plane
+spec:
+  domains:
+    - warren.example.com
