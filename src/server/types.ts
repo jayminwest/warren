@@ -9,7 +9,6 @@
  * `db/repos/` — this file just declares the seams the wiring rides on.
  */
 
-import type { BurrowClient } from "../burrow-client/index.ts";
 import type { AnyWarrenDb } from "../db/client.ts";
 import type { Repos } from "../db/repos/index.ts";
 import type { RunMode } from "../db/schema.ts";
@@ -127,12 +126,15 @@ export interface ServerDeps {
 	 * Tests can omit; the probe degrades to `ok: true`/"no db wired" when absent.
 	 */
 	readonly db?: AnyWarrenDb;
-	/** The single local burrow client (warren-76c5); burrow-targeting handlers route through it. */
-	readonly burrowClient: BurrowClient;
-	/** Runtime-provider seam (pl-829f step 13); optional — prod always sets it. */
-	readonly runtimeProvider?: RuntimeProvider;
-	/** Provider-neutral preview sidecar resolver (warren-e24d), gated on `previewPorts`. */
-	readonly previewSidecars?: import("../preview/eviction/index.ts").SidecarResolver;
+	/** Boot-resolved runtime provider (`resolveRuntimeProvider`, honoring
+	 * `WARREN_RUNTIME`). REQUIRED (warren-f796) — handlers route through it, no
+	 * burrow-client fallback (`local` ⇒ LocalProvider, `k8s` ⇒ K8sProvider). */
+	readonly runtimeProvider: RuntimeProvider;
+	/** Local-topology `/readyz` burrow probe (warren-f796), boot-wired by the `LocalBootBackend`; absent under `k8s`. */
+	readonly burrowProbe?: () => Promise<import("../diagnostics/checks.ts").DiagnosticCheck>;
+	/** Preview sidecar resolver (warren-e24d), gated on `previewPorts`. The local
+	 * backend's combined facade resolver satisfies both preview consumer seams. */
+	readonly previewSidecars?: import("../runtime/local/preview/sidecars.ts").LocalSidecarsResolver;
 	/** K8s in-pod finalize correlation registry (warren-0d35); defaults to the
 	 * shared singleton, so prod needs no wiring — tests inject a private instance. */
 	readonly finalizeCoordinator?: import("../runtime/k8s/finalize-coordinator.ts").FinalizeCoordinator;

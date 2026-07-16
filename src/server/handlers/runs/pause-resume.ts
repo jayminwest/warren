@@ -6,8 +6,6 @@ import {
 	steerRun,
 } from "../../../runs/index.ts";
 import type { MessagePriority, RuntimeProvider } from "../../../runtime/contract.ts";
-import { createLocalSidecarsResolver } from "../../../runtime/local/preview/sidecars.ts";
-import { resolveRuntimeProvider } from "../../../runtime/registry.ts";
 import { jsonResponse } from "../../response.ts";
 import type { RouteHandler, ServerDeps } from "../../types.ts";
 import {
@@ -21,24 +19,20 @@ import {
 /**
  * The runtime provider + burrow-bound inline-reap seam `cancelRun` needs,
  * resolved from server deps (warren-b223). Centralized so the cancel handler and
- * the plan-run child-cancel bind identical wiring: the provider is resolved once
- * from `WARREN_RUNTIME` (falling back to a burrow-backed LocalProvider), and the
- * reap seam is pre-bound with the provider-derived preview sidecar resolver
- * (warren-e24d), gated on the runtime's preview-port capability — the same
- * closure the boot layer hands the bridge + watchdog. Keeps `cancelRun` itself
- * free of any burrow coupling.
+ * the plan-run child-cancel bind identical wiring: the provider is the
+ * boot-resolved instance (`deps.runtimeProvider`, warren-f796 — no burrow-client
+ * fallback), and the reap seam is pre-bound with the boot-resolved preview
+ * sidecar resolver (`deps.previewSidecars`, warren-e24d), present iff the runtime
+ * advertises preview ports — the same closure the boot layer hands the bridge +
+ * watchdog. Keeps `cancelRun` itself free of any burrow coupling.
  */
 export function cancelRunWiring(deps: ServerDeps): {
 	runtimeProvider: RuntimeProvider;
 	reap: CancelReap;
 } {
-	const runtimeProvider =
-		deps.runtimeProvider ?? resolveRuntimeProvider({ burrowClient: () => deps.burrowClient });
-	const previewSidecars = runtimeProvider.capabilities.previewPorts
-		? createLocalSidecarsResolver(deps.burrowClient)
-		: undefined;
+	const previewSidecars = deps.previewSidecars;
 	return {
-		runtimeProvider,
+		runtimeProvider: deps.runtimeProvider,
 		reap: (reapInput) =>
 			reapRun({
 				...reapInput,
@@ -55,12 +49,7 @@ export function steerRunHandler(deps: ServerDeps): RouteHandler {
 			runId: id,
 			body: requireString(body, "body"),
 			repos: deps.repos,
-			runtimeProvider:
-				deps.runtimeProvider ??
-				resolveRuntimeProvider({
-					burrowClient: () => deps.burrowClient,
-					k8sRunInbox: () => deps.repos.runInbox,
-				}),
+			runtimeProvider: deps.runtimeProvider,
 			broker: deps.broker,
 			...(optionalString(body, "priority") !== undefined
 				? { priority: optionalString(body, "priority") as MessagePriority }

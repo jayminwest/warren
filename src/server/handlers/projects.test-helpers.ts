@@ -108,7 +108,7 @@ export async function depsFor(
 	await poolFor(repos, burrowClient);
 	return {
 		repos,
-		burrowClient,
+		runtimeProvider: resolveRuntimeProvider({ burrowClient: () => burrowClient }),
 		broker,
 		bridges:
 			bridges ??

@@ -8,6 +8,7 @@ import { openDatabase, type WarrenDb } from "../db/client.ts";
 import { createRepos, type Repos } from "../db/repos/index.ts";
 import type { SpawnFn } from "../projects/clone.ts";
 import { RunEventBroker } from "../runs/index.ts";
+import { checkBurrowPoolReachable } from "../runtime/local/diagnostics/burrow.ts";
 import { resolveRuntimeProvider } from "../runtime/registry.ts";
 import { bearerAuth, NO_AUTH } from "./auth.ts";
 import { createBridgeRegistry } from "./bridges.ts";
@@ -64,7 +65,9 @@ async function depsFor(
 	return {
 		repos,
 		...(overrides.db !== undefined ? { db: overrides.db } : {}),
-		burrowClient,
+		runtimeProvider: resolveRuntimeProvider({ burrowClient: () => burrowClient }),
+		// warren-f796: the readyz burrow probe is a boot-wired thunk (LocalBootBackend).
+		burrowProbe: () => checkBurrowPoolReachable(burrowClient),
 		broker,
 		bridges:
 			bridges ??

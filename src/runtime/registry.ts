@@ -20,7 +20,7 @@
  */
 
 import type { CoreV1Api } from "@kubernetes/client-node";
-import type { BurrowClient } from "../burrow-client/index.ts";
+import { BurrowClient } from "../burrow-client/index.ts";
 import type { ReapExec, ReapFs } from "../runs/reap/types.ts";
 import type { EnvLike } from "../runs/spawn/callback-env.ts";
 import type { RuntimeProvider } from "./contract.ts";
@@ -52,7 +52,15 @@ export type RuntimeEnv = Readonly<Record<string, string | undefined>>;
  * (see `LocalProviderDeps`).
  */
 export interface RuntimeProviderDeps {
-	readonly burrowClient: () => BurrowClient;
+	/**
+	 * OPTIONAL burrow client factory the `local` backend's `LocalProvider` wraps
+	 * (warren-f796). Callers that own a live client (the server boot backend in
+	 * `src/runtime/local/boot-backend.ts`, the CLI's `resolveLocalRunBackend`,
+	 * tests) supply it so they can share + close the client; when omitted for
+	 * `local` the selector builds one lazily from env (`BurrowClient.fromEnv`).
+	 * Ignored entirely by the `k8s` backend — agents run in pods, no burrow.
+	 */
+	readonly burrowClient?: () => BurrowClient;
 	/**
 	 * Server-process env a provider reads to compute its own plumbing (the
 	 * LocalProvider's loopback callback URL, §6.3). Optional — providers
@@ -155,7 +163,7 @@ export function resolveRuntimeProvider(
 	switch (kind) {
 		case "local":
 			return new LocalProvider({
-				burrowClient: deps.burrowClient,
+				burrowClient: deps.burrowClient ?? lazyBurrowClientFromEnv(env),
 				...(deps.serverEnv !== undefined ? { serverEnv: deps.serverEnv } : {}),
 				...(deps.fs !== undefined ? { fs: deps.fs } : {}),
 				...(deps.exec !== undefined ? { exec: deps.exec } : {}),
@@ -172,6 +180,20 @@ export function resolveRuntimeProvider(
  * coordinator, cache-cold status/admission). Extracted from
  * `resolveRuntimeProvider` to keep that selector under the complexity budget.
  */
+/**
+ * Lazy env-derived burrow client factory for `local` callers that don't own a
+ * client (warren-f796). The client is built on first use so `resolveRuntimeProvider`
+ * never touches a socket at construction time; callers that need to close it (boot)
+ * pass their own factory instead.
+ */
+function lazyBurrowClientFromEnv(env: RuntimeEnv): () => BurrowClient {
+	let client: BurrowClient | undefined;
+	return () => {
+		if (client === undefined) client = BurrowClient.fromEnv(env);
+		return client;
+	};
+}
+
 function buildK8sProvider(deps: RuntimeProviderDeps): K8sProvider {
 	return new K8sProvider({
 		coreApi: deps.k8sCoreApi ?? defaultCoreApiFactory(),

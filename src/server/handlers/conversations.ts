@@ -34,7 +34,6 @@ import { ProjectLacksPlotError } from "../../plan-runs/errors.ts";
 import { defaultPlotCreator, defaultPlotSyncer } from "../../plots/index.ts";
 import { rewakeConversation } from "../../runs/conversation-rewake.ts";
 import { resolveDispatcherHandle, spawnRun, steerRun } from "../../runs/index.ts";
-import { resolveRuntimeProvider } from "../../runtime/registry.ts";
 import { loadWarrenConfig } from "../../warren-config/index.ts";
 import { jsonResponse } from "../response.ts";
 import type { RouteHandler, ServerDeps } from "../types.ts";
@@ -131,8 +130,7 @@ export function createConversationHandler(deps: ServerDeps): RouteHandler {
 			// warren-c42c: dispatch through the resolved runtime provider so the
 			// conversation-start path honors WARREN_RUNTIME=k8s (the spawn seam is
 			// now provider-only — no burrow-client fallback).
-			runtimeProvider:
-				deps.runtimeProvider ?? resolveRuntimeProvider({ burrowClient: () => deps.burrowClient }),
+			runtimeProvider: deps.runtimeProvider,
 			agentName,
 			projectId,
 			prompt: opening,
@@ -250,8 +248,7 @@ export function postConversationMessageHandler(deps: ServerDeps): RouteHandler {
 			runId: conversation.anchoringRunId,
 			body: message,
 			repos: deps.repos,
-			runtimeProvider:
-				deps.runtimeProvider ?? resolveRuntimeProvider({ burrowClient: () => deps.burrowClient }),
+			runtimeProvider: deps.runtimeProvider,
 			broker: deps.broker,
 			...(fromActor !== undefined ? { fromActor } : {}),
 			...(deps.now !== undefined ? { now: deps.now } : {}),
@@ -435,8 +432,7 @@ export function rewakeConversationHandler(deps: ServerDeps): RouteHandler {
 			// warren-c42c: re-wake dispatches through the resolved runtime provider
 			// so it honors WARREN_RUNTIME=k8s (previously it threaded burrowClient
 			// and fell back to LocalProvider, unusable on the k8s backend).
-			runtimeProvider:
-				deps.runtimeProvider ?? resolveRuntimeProvider({ burrowClient: () => deps.burrowClient }),
+			runtimeProvider: deps.runtimeProvider,
 			conversationId: id,
 			reader: {
 				async readConversation(conversationId: string) {

@@ -37,7 +37,7 @@ async function depsFor(
 	return {
 		repos,
 		db,
-		burrowClient,
+		runtimeProvider: resolveRuntimeProvider({ burrowClient: () => burrowClient }),
 		broker,
 		bridges,
 		projectsConfig: { root: "/tmp/projects", gitBinary: "git" },
