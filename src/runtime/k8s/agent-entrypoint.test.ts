@@ -2,16 +2,18 @@ import { describe, expect, test } from "bun:test";
 import type { AgentRuntime, RuntimeEvent, SpawnCommand } from "@os-eco/burrow-cli";
 import {
 	type AgentEnvSource,
-	type AgentInboxHttp,
-	type AgentSpawn,
-	drainInbox,
-	extractInboxMessages,
-	formatEventLine,
 	parseAgentEntrypointEnv,
 	parseAgentFrontmatter,
 	runAgent,
 	runAgentEntrypoint,
 } from "./agent-entrypoint.ts";
+import {
+	type AgentInboxHttp,
+	type AgentSpawn,
+	drainInbox,
+	extractInboxMessages,
+	formatEventLine,
+} from "./agent-io.ts";
 import { splitTimestamp, toNormalizedEvent, tryParse } from "./log-parse.ts";
 
 /* -------------------------------------------------------------------------- */

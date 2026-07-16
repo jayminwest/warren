@@ -16,12 +16,22 @@
  *
  * Lifecycle (the contract the agent image wires around, design §5.1):
  *
- *   1. DRAIN the steering inbox once over `GET /runs/:id/inbox` (contract §5
- *      `midRunSteering: false` — a batch runtime like claude-code/sapling closes
- *      stdin at spawn, so pending steering rides as the turn's `pendingMessages`,
- *      folded into the prompt by the runtime's own encoder; mid-run stdin
- *      injection is out of scope for v1's spawn-per-turn runtimes).
+ *   1. DRAIN the steering inbox once over `GET /runs/:id/inbox`. A batch runtime
+ *      (claude-code/sapling) closes stdin at spawn, so pending steering rides as
+ *      the turn's `pendingMessages`, folded into the prompt by the runtime's own
+ *      encoder. A stdin-held runtime (pi — one that declares
+ *      `shouldCloseStdinOnEvent`) instead KEEPS stdin open past the prompt and,
+ *      if it also declares `encodeSteeringMessage`, receives later inbox messages
+ *      mid-run via a poll loop that writes them to the live stdin (warren-7a43,
+ *      mirroring burrow's dispatcher).
  *   2. `prepareWorkspace` (the runtime's optional hook), then spawn the agent.
+ *      For a stdin-held runtime the entrypoint holds stdin open after writing the
+ *      prompt and closes it only when the runtime's terminal event (pi's
+ *      `agent_end`) lands — pi exits the instant stdin closes mid-inference, so
+ *      the old unconditional close-at-spawn made it exit with no work done
+ *      (warren-7a43 / burrow-5db3). An idle watchdog drops stdin + kills if the
+ *      close-trigger never arrives so a hung run can't pin the pod. All the
+ *      stdin-hold machinery lives in `./agent-stdin-hold.ts`.
  *   3. Stream each stdout line through `runtime.parseEvents` and re-emit the
  *      structured events as NDJSON on THIS process's stdout — which becomes the
  *      pod log `K8sProvider.streamEvents` follows and `./log-parse.ts` parses
@@ -40,17 +50,19 @@
  * a real agent binary, or a real network.
  */
 
+import { AgentRegistry, type AgentRuntime, type SpawnCommand } from "@os-eco/burrow-cli";
 import {
-	AgentRegistry,
-	type AgentRuntime,
-	type Burrow,
-	type Message as BurrowMessage,
-	type Run,
-	type RuntimeEvent,
-	type SpawnCommand,
-	type SpawnContext,
-} from "@os-eco/burrow-cli";
-import type { Message } from "../contract.ts";
+	type AgentInboxHttp,
+	type AgentSpawn,
+	buildSpawnContext,
+	defaultHttp,
+	defaultSpawn,
+	drainInbox,
+	emitSystem,
+	formatEventLine,
+	readLines,
+} from "./agent-io.ts";
+import { createStdinHoldController } from "./agent-stdin-hold.ts";
 import { type FinalizeEntrypointDeps, runFinalizeEntrypoint } from "./finalize-entrypoint.ts";
 
 /* -------------------------------------------------------------------------- */
@@ -70,6 +82,15 @@ export interface AgentEntrypointEnv {
 	frontmatter: Record<string, unknown> | undefined;
 	/** Poll interval for the steering-inbox drain (ms). */
 	inboxPollIntervalMs: number;
+	/**
+	 * Watchdog for stdin-held runtimes (pi): if the child produces no stdout for
+	 * this many ms while stdin is still held open, warren closes stdin (nudging
+	 * the runtime to exit on EOF) and force-kills as a backstop — so a hung
+	 * inference can't pin the pod forever waiting on a close-trigger event that
+	 * never arrives. `0` disables the watchdog. Runtimes that close stdin at
+	 * spawn (claude-code, sapling) never arm it. (warren-7a43)
+	 */
+	stdinHoldIdleTimeoutMs: number;
 }
 
 export type AgentEnvSource = Readonly<Record<string, string | undefined>>;
@@ -92,6 +113,14 @@ function positiveIntEnv(env: AgentEnvSource, key: string, fallback: number): num
 	if (raw === undefined || raw === "") return fallback;
 	const n = Number(raw);
 	return Number.isInteger(n) && n > 0 ? n : fallback;
+}
+
+/** Like `positiveIntEnv` but allows `0` (a knob's disable sentinel). */
+function nonNegativeIntEnv(env: AgentEnvSource, key: string, fallback: number): number {
+	const raw = env[key]?.trim();
+	if (raw === undefined || raw === "") return fallback;
+	const n = Number(raw);
+	return Number.isInteger(n) && n >= 0 ? n : fallback;
 }
 
 /**
@@ -117,6 +146,9 @@ export function parseAgentFrontmatter(
 	}
 }
 
+/** Default stdin-hold idle watchdog: 30 min, matching `agent.pauseTimeoutMs`. */
+export const DEFAULT_STDIN_HOLD_IDLE_TIMEOUT_MS = 1_800_000;
+
 /** Parse + validate the agent entrypoint env. Pure. */
 export function parseAgentEntrypointEnv(env: AgentEnvSource): AgentEntrypointEnv {
 	const apiUrlRaw = optional(env, "WARREN_API_URL");
@@ -129,46 +161,17 @@ export function parseAgentEntrypointEnv(env: AgentEnvSource): AgentEntrypointEnv
 		apiToken: optional(env, "WARREN_API_TOKEN"),
 		frontmatter: parseAgentFrontmatter(env.WARREN_AGENT_METADATA),
 		inboxPollIntervalMs: positiveIntEnv(env, "WARREN_INBOX_POLL_INTERVAL_MS", 5_000),
+		stdinHoldIdleTimeoutMs: nonNegativeIntEnv(
+			env,
+			"WARREN_AGENT_STDIN_HOLD_IDLE_MS",
+			DEFAULT_STDIN_HOLD_IDLE_TIMEOUT_MS,
+		),
 	};
 }
 
 /* -------------------------------------------------------------------------- */
-/* Event emission — the NDJSON envelope `./log-parse.ts` re-parses off the log */
+/* Injectable deps                                                            */
 /* -------------------------------------------------------------------------- */
-
-/**
- * Serialize a runtime event into the one-line NDJSON envelope the pod-log stream
- * carries. The shape mirrors what `toNormalizedEvent` (`./log-parse.ts`) reads
- * back: a top-level `kind`/`stream`/`payload` plus the agent's own event time as
- * `ts` (the parser falls back to the kubelet line stamp when `ts` is absent, but
- * emitting it keeps the agent's timing authoritative). Pure + round-trippable —
- * see the co-located test.
- */
-export function formatEventLine(ev: RuntimeEvent): string {
-	return JSON.stringify({
-		kind: ev.kind,
-		stream: ev.stream,
-		payload: ev.payload,
-		ts: (ev.ts ?? new Date()).toISOString(),
-	});
-}
-
-/* -------------------------------------------------------------------------- */
-/* Injectable seams (testable without a cluster / real agent / real network)   */
-/* -------------------------------------------------------------------------- */
-
-/** A spawned agent process — the subset of `Bun.spawn`'s result the loop drives. */
-export interface AgentProc {
-	stdout: ReadableStream<Uint8Array>;
-	stderr: ReadableStream<Uint8Array>;
-	exited: Promise<number>;
-}
-
-export type AgentSpawn = (command: SpawnCommand, opts: { cwd: string }) => AgentProc;
-
-export interface AgentInboxHttp {
-	get: (url: string, token: string) => Promise<{ status: number; body: unknown }>;
-}
 
 export interface AgentEntrypointDeps {
 	/** Runtime registry — defaults to burrow's built-ins (`new AgentRegistry()`). */
@@ -186,150 +189,6 @@ export interface AgentEntrypointDeps {
 	/** Skip the in-pod finalize step entirely (tests that only exercise the agent). */
 	skipFinalize?: boolean;
 }
-
-/* -------------------------------------------------------------------------- */
-/* Inbox drain — pending steering folded into the turn's pendingMessages        */
-/* -------------------------------------------------------------------------- */
-
-/** Extract `{ messages: Message[] }` from a `GET /runs/:id/inbox` body. Pure. */
-export function extractInboxMessages(body: unknown): Message[] {
-	if (body === null || typeof body !== "object") return [];
-	const messages = (body as { messages?: unknown }).messages;
-	if (!Array.isArray(messages)) return [];
-	return messages.filter((m): m is Message => m !== null && typeof m === "object");
-}
-
-/**
- * Map a warren seam `Message` onto the burrow `Message` shape the runtime's
- * `buildSpawnCommand` reads (only `body` + `priority` are consulted by the
- * claude-code / sapling steering encoders). Cast through `unknown` at this trust
- * boundary — the burrow row type carries columns the encoders never touch.
- */
-function toBurrowMessage(msg: Message): BurrowMessage {
-	return {
-		id: msg.id,
-		body: msg.body,
-		priority: msg.priority,
-		fromActor: msg.fromActor,
-		state: "delivered",
-		createdAt: msg.createdAt,
-		deliveredAt: msg.deliveredAt,
-	} as unknown as BurrowMessage;
-}
-
-/**
- * Drain the run's steering inbox once (the poll-CONSUME endpoint claims + flips
- * each `unread` row to `delivered`). Returns the pending messages to fold into
- * the spawn's `pendingMessages`. A missing callback credential, a non-200, or a
- * malformed body all yield `[]` — steering is a best-effort nudge, never a
- * dispatch blocker.
- */
-export async function drainInbox(
-	env: AgentEntrypointEnv,
-	http: AgentInboxHttp,
-	log: (m: string) => void,
-): Promise<BurrowMessage[]> {
-	if (env.apiUrl === undefined || env.apiToken === undefined) return [];
-	try {
-		const res = await http.get(`${env.apiUrl}/runs/${env.runId}/inbox`, env.apiToken);
-		if (res.status !== 200) return [];
-		const messages = extractInboxMessages(res.body);
-		if (messages.length > 0)
-			log(`agent-entrypoint: drained ${messages.length} steering message(s)`);
-		return messages.map(toBurrowMessage);
-	} catch (err) {
-		log(`agent-entrypoint: inbox drain failed (${err instanceof Error ? err.message : err})`);
-		return [];
-	}
-}
-
-/* -------------------------------------------------------------------------- */
-/* Minimal burrow-shaped context (the runtimes only read a few fields)          */
-/* -------------------------------------------------------------------------- */
-
-/**
- * Build the `SpawnContext` the runtime's `buildSpawnCommand`/`parseEvents`
- * consume. The v1 runtimes (claude-code, sapling) read only `prompt`,
- * `pendingMessages`, and `workspacePath`; `burrow`/`run` are required by the
- * type but unused by those runtimes, so minimal stubs (cast through `unknown`)
- * satisfy the contract without reconstructing burrow's full DB rows.
- */
-function buildSpawnContext(
-	env: AgentEntrypointEnv,
-	pendingMessages: BurrowMessage[],
-): SpawnContext {
-	const burrow = {
-		id: `burrow_${env.runId}`,
-		workspacePath: env.workspacePath,
-	} as unknown as Burrow;
-	const run = {
-		id: env.runId,
-		prompt: env.prompt,
-		agentId: env.runtimeId,
-		metadataJson: env.frontmatter !== undefined ? { frontmatter: env.frontmatter } : {},
-	} as unknown as Run;
-	return {
-		burrow,
-		run,
-		prompt: env.prompt,
-		pendingMessages,
-		envResolved: {},
-		workspacePath: env.workspacePath,
-		...(env.frontmatter !== undefined ? { frontmatter: env.frontmatter } : {}),
-	};
-}
-
-/* -------------------------------------------------------------------------- */
-/* Line reader over a byte stream                                              */
-/* -------------------------------------------------------------------------- */
-
-async function* readLines(stream: ReadableStream<Uint8Array>): AsyncGenerator<string, void, void> {
-	const reader = stream.getReader();
-	const decoder = new TextDecoder();
-	let buf = "";
-	try {
-		for (;;) {
-			const { value, done } = await reader.read();
-			if (done) break;
-			buf += decoder.decode(value, { stream: true });
-			let idx = buf.indexOf("\n");
-			while (idx !== -1) {
-				yield buf.slice(0, idx);
-				buf = buf.slice(idx + 1);
-				idx = buf.indexOf("\n");
-			}
-		}
-		buf += decoder.decode();
-		if (buf.length > 0) yield buf;
-	} finally {
-		reader.releaseLock();
-	}
-}
-
-/* -------------------------------------------------------------------------- */
-/* Default spawn (Bun)                                                         */
-/* -------------------------------------------------------------------------- */
-
-const defaultSpawn: AgentSpawn = (command, opts) => {
-	const proc = Bun.spawn(command.argv, {
-		cwd: opts.cwd,
-		env: { ...process.env, ...(command.env ?? {}) },
-		stdin: "pipe",
-		stdout: "pipe",
-		stderr: "pipe",
-	});
-	// claude-code / sapling close stdin at spawn: write the encoded prompt, then
-	// end. A ReadableStream stdin (unused by v1 runtimes) is drained best-effort.
-	if (typeof command.stdin === "string") {
-		proc.stdin.write(command.stdin);
-	}
-	proc.stdin.end();
-	return {
-		stdout: proc.stdout,
-		stderr: proc.stderr,
-		exited: proc.exited,
-	};
-};
 
 /* -------------------------------------------------------------------------- */
 /* Orchestration                                                              */
@@ -373,16 +232,38 @@ export async function runAgent(
 		});
 	}
 
-	const command = runtime.buildSpawnCommand(ctx);
+	// A runtime that declares `shouldCloseStdinOnEvent` (pi/leveret/healer) exits
+	// the instant stdin closes mid-inference — so it MUST keep stdin open until
+	// its terminal event lands (mirrors burrow `dispatch.ts` `useStdinHold`).
+	// Batch runtimes (claude-code `--print`, sapling) leave the seam undefined and
+	// keep the write-and-close-at-spawn behavior. (warren-7a43)
+	const useStdinHold = typeof runtime.shouldCloseStdinOnEvent === "function";
+	const baseCommand = runtime.buildSpawnCommand(ctx);
+	const command: SpawnCommand = useStdinHold ? { ...baseCommand, holdStdin: true } : baseCommand;
 	log(`agent-entrypoint: launching '${runtime.id}' in ${env.workspacePath}`);
-	const proc = spawn(command, { cwd: env.workspacePath });
+	const proc = await spawn(command, { cwd: env.workspacePath });
+
+	// All the stdin-hold machinery (close-on-trigger, auto-reply, idle watchdog,
+	// mid-run steering) lives behind this controller; for a batch runtime it is a
+	// no-op and the pumps below behave exactly as before.
+	const hold = createStdinHoldController({
+		active: useStdinHold,
+		env,
+		runtime,
+		proc,
+		http,
+		out,
+		log,
+	});
+	hold.start();
 
 	const pumpStdout = async (): Promise<void> => {
 		for await (const line of readLines(proc.stdout)) {
+			hold.onOutput(); // any output resets the idle watchdog
 			if (line.length === 0) continue;
-			for (const ev of runtime.parseEvents(line, { burrow: ctx.burrow, run: ctx.run })) {
-				out(formatEventLine(ev));
-			}
+			const events = [...runtime.parseEvents(line, { burrow: ctx.burrow, run: ctx.run })];
+			for (const ev of events) out(formatEventLine(ev));
+			await hold.onEvents(events);
 		}
 	};
 	const pumpStderr = async (): Promise<void> => {
@@ -393,15 +274,20 @@ export async function runAgent(
 	};
 
 	let streamError: unknown;
-	const [exitCode] = await Promise.all([
-		proc.exited,
-		pumpStdout().catch((err) => {
-			streamError = err;
-		}),
-		pumpStderr().catch((err) => {
-			streamError = streamError ?? err;
-		}),
-	]);
+	let exitCode: number;
+	try {
+		[exitCode] = await Promise.all([
+			proc.exited,
+			pumpStdout().catch((err) => {
+				streamError = err;
+			}),
+			pumpStderr().catch((err) => {
+				streamError = streamError ?? err;
+			}),
+		]);
+	} finally {
+		await hold.stop();
+	}
 
 	// Exit 137 is the kubelet/kernel SIGKILL an OOM produces; surface it as a
 	// distinct system event (parity with burrow's dispatch, design §3.2). The
@@ -419,19 +305,6 @@ export async function runAgent(
 	log(`agent-entrypoint: '${runtime.id}' exited ${exitCode} (${phase})`);
 	return { exitCode, phase };
 }
-
-/** Emit a `state`/system diagnostic event onto the NDJSON stream. */
-function emitSystem(out: (line: string) => void, kind: string, payload: unknown): void {
-	out(formatEventLine({ kind, stream: "system", payload }));
-}
-
-const defaultHttp: AgentInboxHttp = {
-	get: async (url, token) => {
-		const res = await fetch(url, { headers: { authorization: `Bearer ${token}` } });
-		const body = res.status === 200 ? await res.json() : null;
-		return { status: res.status, body };
-	},
-};
 
 /**
  * Full entrypoint: run the agent, then run the in-pod finalize step, and return
