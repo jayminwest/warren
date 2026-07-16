@@ -30,7 +30,6 @@
  */
 
 import { join } from "node:path";
-import type { BurrowClient } from "../../burrow-client/client.ts";
 import type { EventRow, ProjectRow, RunRow } from "../../db/schema.ts";
 import type {
 	FinalizeIntent,
@@ -44,6 +43,7 @@ import type { BoundBridgeLogger } from "../stream/index.ts";
 import { dispatchAutoPlanRuns, hasAutoPlanRunFrontmatter, parsePlanIds } from "./auto-plan-run.ts";
 import { applyCloneDeltas } from "./clone-apply.ts";
 import { runPrOpen } from "./pr-open.ts";
+import type { PreviewWorkerClient } from "./preview.ts";
 import { runPreviewAnnotate, runPreviewLaunch } from "./preview.ts";
 import { closeRunSeedId } from "./seeds.ts";
 import type { ReapExec, ReapFs, ReapRunInput, ReapStep } from "./types.ts";
@@ -116,7 +116,7 @@ export interface ReapPipelineContext {
 	readonly branch: string | null;
 	readonly baseBranch: string | null;
 	/** Non-null whenever `workspacePath !== null` (same try-block). */
-	readonly workerClient: BurrowClient | null;
+	readonly workerClient: PreviewWorkerClient | null;
 	/** The RuntimeProvider the workspace-dependent half of reap routes through. */
 	readonly provider: RuntimeProvider;
 	readonly fs: ReapFs;

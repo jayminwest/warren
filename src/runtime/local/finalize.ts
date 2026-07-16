@@ -6,29 +6,32 @@
  *
  * A THIN host-side WRAPPER over the EXISTING reap merge functions (`mergeMulch`,
  * `mirrorSeeds`/`mirrorPlans`, `mergePlot`, `stage{Plot,Seeds}ForCommit`) — it
- * imports and calls them, it does NOT fork their logic; the pushed branch stays
- * byte-identical to reap's.
+ * calls them, it does NOT fork their logic; the pushed branch stays reap's.
+ *
+ * ## Burrow file-reads live HERE (warren-fbbf)
+ *
+ * `mirrorSeeds`/`mirrorPlans` are pure string→clone merges now; the burrow
+ * `http.files.read` for `.seeds/{issues,plans}.jsonl` was evicted from
+ * `src/runs/reap/seeds.ts` into this module (`readWorkspaceTracker`) — the ONE
+ * finalize-path burrow read. `NotFoundError` maps to `null` (no-op mirror),
+ * keeping reap core free of burrow-client imports.
  *
  * - **Event capture**: the merge functions emit ~10 per-record kinds
  *   (`mulch.record.*`, `seeds.closed/created`, `seeds.plan_mirrored`, `plot.*`,
  *   `reap.{plot,seeds}_committed`) plus per-line/stage `reap_failed`. finalize
- *   hands them a COLLECTING emit/fail (was `discardEmit`/`discardFail`) that
- *   appends `{kind, payload}` to `FinalizeResult.events` for the domain to
- *   re-emit; the counts still ride the mirror deltas.
- * - **Merge vs commit gating**: reap runs the four MERGES unconditionally but
- *   gates the two bookkeeping COMMITS on `project.hasPlot`/`hasSeeds`.
- *   `intent.mirror` gates the merges; `intent.commit` gates the commits
- *   (defaulting to `mirror`), so the domain passes `mirror:[all four]` while
- *   gating commits on the flags — byte-for-byte with reap.
+ *   hands them a COLLECTING emit/fail that appends `{kind, payload}` to
+ *   `FinalizeResult.events` for the domain to re-emit; counts ride the deltas.
+ * - **Merge vs commit gating**: `intent.mirror` gates the four merges;
+ *   `intent.commit` (default `mirror`) gates the two bookkeeping commits, so the
+ *   domain passes `mirror:[all four]` while gating commits on the project flags.
  * - **Deliberately NOT here** (domain-owned, §4): PR-open / preview /
  *   auto-plan-run / terminal-state; `reap.empty_push` (needs the run outcome —
- *   finalize returns `dirty` for it); `intent.closeSeedId` (`sd close` via
- *   `SeedsCliDeps`, no provider-seam home). finalize DOES capture
- *   `workspacePlansBody` (what `snapshotWorkspacePlans` reads before the seeds
- *   commit overwrites it) so auto-plan-run detection survives `terminate`.
+ *   finalize returns `dirty` for it); `intent.closeSeedId`. finalize DOES capture
+ *   `workspacePlansBody` so auto-plan-run detection survives `terminate`.
  */
 
 import { join } from "node:path";
+import { NotFoundError } from "@os-eco/burrow-cli";
 import { type BurrowClient, withTransportMapping } from "../../burrow-client/index.ts";
 import type { EventRow } from "../../db/schema.ts";
 import { mergeMulch } from "../../runs/reap/mulch.ts";
@@ -57,18 +60,13 @@ const MULCH_EXPERTISE_REL = ".mulch/expertise";
 const SEEDS_ISSUES_REL = ".seeds/issues.jsonl";
 const SEEDS_PLANS_REL = ".seeds/plans.jsonl";
 
-/**
- * The reap merge helpers `await emit(...)` / `await fail(...)` but never read
- * the returned row. A placeholder cast is sound — every callee ignores the
- * `emit` return value.
- */
+/** The merge helpers ignore `emit`'s return row, so a placeholder cast is sound. */
 const DISCARDED_EVENT_ROW = {} as unknown as EventRow;
 
 /**
  * Collects the merge functions' `emit`/`fail` emissions into
- * `FinalizeResult.events` so the domain can re-emit them (warren-1f56). `emit`
- * captures per-record events verbatim; `fail` captures a `reap_failed` event
- * with the SAME payload shape reap's `fail` builds (`{step, message[, path]}`).
+ * `FinalizeResult.events` so the domain can re-emit them (warren-1f56); `fail`
+ * mirrors reap's `reap_failed` payload shape (`{step, message[, path]}`).
  */
 class EventCollector {
 	readonly events: FinalizeEvent[] = [];
@@ -181,9 +179,8 @@ export async function finalizeLocalRun(
 }
 
 /**
- * Look up the live workspace path from burrow (`GET /burrows/:id`) — the same
- * lookup `reapRun` does before dispatching the pipeline. Transport-mapped so a
- * dead socket surfaces as `BurrowUnreachableError`.
+ * Look up the live workspace path from burrow (`GET /burrows/:id`). Transport-
+ * mapped so a dead socket surfaces as `BurrowUnreachableError`.
  */
 async function resolveWorkspacePath(client: BurrowClient, sandboxId: string): Promise<string> {
 	const burrow = await withTransportMapping(client.config, () =>
@@ -193,21 +190,16 @@ async function resolveWorkspacePath(client: BurrowClient, sandboxId: string): Pr
 	if (typeof workspacePath !== "string" || workspacePath === "") {
 		throw new RuntimeProviderError(
 			`LocalProvider.finalize: burrow ${sandboxId} exposed no workspace path`,
-			{
-				recoveryHint:
-					"the burrow backend merges each tracker host-side off the live workspace; " +
-					"a burrow with no workspacePath cannot be finalized (it may already be torn down)",
-			},
+			{ recoveryHint: "a burrow with no workspacePath cannot be finalized (already torn down?)" },
 		);
 	}
 	return workspacePath;
 }
 
 /**
- * Resolve the host project-clone path the merges write into. Returns `""` (an
- * unused sentinel) when `mirror` is empty; otherwise the hint is mandatory —
- * the burrow backend cannot merge without it (mirrors `create()`'s hard error
- * on a missing `hostClonePathHint`).
+ * Resolve the host project-clone path the merges write into. `""` (unused
+ * sentinel) when `mirror` is empty; otherwise the hint is mandatory — the burrow
+ * backend cannot merge without it (mirrors `create()`'s `hostClonePathHint`).
  */
 function resolveClonePath(intent: FinalizeIntent, mirror: Set<string>): string {
 	if (mirror.size === 0) return "";
@@ -215,22 +207,13 @@ function resolveClonePath(intent: FinalizeIntent, mirror: Set<string>): string {
 	if (hint === undefined || hint === "") {
 		throw new RuntimeProviderError(
 			"LocalProvider.finalize requires intent.projectClonePathHint when mirror is non-empty",
-			{
-				recoveryHint:
-					"the burrow backend merges each tracker host-side into the project clone; " +
-					"supply projectClonePathHint on the FinalizeIntent (the K8s backend ignores it)",
-			},
+			{ recoveryHint: "supply projectClonePathHint on the FinalizeIntent (K8s ignores it)" },
 		);
 	}
 	return hint;
 }
 
-/**
- * Snapshot the workspace `.seeds/plans.jsonl` body for the domain's
- * auto-plan-run detection (`FinalizeResult.workspacePlansBody`). `null` when the
- * file is absent or the read throws — the same best-effort posture as reap's
- * `snapshotWorkspacePlans` catch.
- */
+/** Snapshot workspace `.seeds/plans.jsonl` for auto-plan-run detection; `null` if absent. */
 async function captureWorkspacePlans(workspacePath: string, fs: ReapFs): Promise<string | null> {
 	try {
 		return await fs.readFile(join(workspacePath, ".seeds", "plans.jsonl"));
@@ -265,10 +248,9 @@ async function finalizeMulch(
 }
 
 /**
- * Read the post-merge body of every domain file the workspace carried, back
- * from the clone (the merge just wrote them there). Scoped to the workspace's
- * expertise files — the exact set `mergeMulch` iterated — so untouched
- * pre-existing project domains never leak into the delta.
+ * Read back the post-merge body of every domain file the workspace carried,
+ * scoped to the expertise files `mergeMulch` iterated so untouched project
+ * domains never leak into the delta.
  */
 async function readMergedMulchFiles(
 	workspacePath: string,
@@ -290,6 +272,26 @@ async function readMergedMulchFiles(
 	return files;
 }
 
+/**
+ * Read a workspace tracker file off the live burrow (warren-fbbf). `null` on
+ * `NotFoundError`; any other error propagates to a failed stage.
+ */
+async function readWorkspaceTracker(
+	client: BurrowClient,
+	sandboxId: string,
+	relPath: string,
+): Promise<string | null> {
+	try {
+		const out = await withTransportMapping(client.config, () =>
+			client.http.files.read(sandboxId, relPath),
+		);
+		return out.contents;
+	} catch (err) {
+		if (err instanceof NotFoundError) return null;
+		throw err;
+	}
+}
+
 async function finalizeSeeds(
 	client: BurrowClient,
 	sandboxId: string,
@@ -299,9 +301,9 @@ async function finalizeSeeds(
 	collector: EventCollector,
 ): Promise<SeedsDelta> {
 	try {
+		const workspaceBody = await readWorkspaceTracker(client, sandboxId, ".seeds/issues.jsonl");
 		const result = await mirrorSeeds({
-			burrowClient: client,
-			burrowId: sandboxId,
+			workspaceBody,
 			projectPath: clonePath,
 			fs,
 			emit: collector.emit,
@@ -335,9 +337,9 @@ async function finalizePlans(
 	collector: EventCollector,
 ): Promise<PlansDelta> {
 	try {
+		const workspaceBody = await readWorkspaceTracker(client, sandboxId, ".seeds/plans.jsonl");
 		const appended = await mirrorPlans({
-			burrowClient: client,
-			burrowId: sandboxId,
+			workspaceBody,
 			projectPath: clonePath,
 			fs,
 			emit: collector.emit,
@@ -431,12 +433,10 @@ interface PushOutcome {
 
 /**
  * `git push origin HEAD:<branch>` then the commits-ahead / empty-push count —
- * faithful to reap's `pushStep` + `commitsAheadStep`. `intent.push === false`
- * skips both stages; a missing `baseBranch` skips the count (`commitsAhead:
- * null`); a `rev-list` failure degrades to `null` too. On a zero-commit push it
- * probes `git status --porcelain` for `dirty` (the dropped-commit signal the
- * domain derives `droppedCommit` from). An empty branch pushes `HEAD` (reap's
- * fallback when burrow exposed no branch).
+ * faithful to reap's `pushStep` + `commitsAheadStep`. `push === false` skips
+ * both; a missing `baseBranch` or a `rev-list` failure yields `commitsAhead:
+ * null`. A zero-commit push probes `git status --porcelain` for `dirty` (the
+ * domain's dropped-commit signal); an empty branch pushes `HEAD`.
  */
 async function finalizePush(
 	intent: FinalizeIntent,
