@@ -15,7 +15,7 @@ defaultRole: pi
 # revert to main (and reconsider provider/model) when the branch merges.
 defaultBranch: k8s-migration
 defaultProvider: anthropic
-defaultModel: claude-sonnet-4-6
+defaultModel: claude-opus-4-8
 
 # ── Optional knobs (uncomment to set) ───────────────────────────────────
 
