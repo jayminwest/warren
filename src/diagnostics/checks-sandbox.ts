@@ -4,14 +4,13 @@
  * stays under the 500-line global limit; re-exported verbatim from
  * `./checks.ts`, so every importer keeps resolving unchanged.
  *
- * Covers: bwrap bring-up, the canopy clone's existence + cleanliness,
- * and burrow socket reachability (single-client + pool variants).
+ * Covers: bwrap bring-up and the canopy clone's existence + cleanliness.
+ * Burrow socket reachability lives in the allowlisted local-topology module
+ * `src/runtime/local/diagnostics/burrow.ts` (warren-11cc) so this diagnostics
+ * surface stays free of any direct burrow client import.
  */
 
 import { existsSync } from "node:fs";
-import type { BurrowClient } from "../burrow-client/client.ts";
-import { withTransportMapping } from "../burrow-client/client.ts";
-import { probeBurrowClient } from "../burrow-client/index.ts";
 import type { SpawnFn } from "../projects/clone.ts";
 import { type CanopyRegistryConfig, loadCanopyRegistryConfigFromEnv } from "../registry/config.ts";
 import type { DiagnosticCheck, EnvLike, ExistsFn } from "./checks.ts";
@@ -171,47 +170,4 @@ export async function checkCanopyClean(deps: {
 			hint: "POST /agents/refresh to hard-reset the canopy clone to origin/HEAD",
 		};
 	}
-}
-
-/**
- * Probe burrow's socket via `BurrowClient.probe()`. Wraps transport
- * errors into the same readable shape `withTransportMapping` produces
- * for §4.3 spawn-flow callers. Used by `warren doctor`, which probes a
- * single env-derived client. The server's /readyz handler uses
- * `checkBurrowPoolReachable` instead so a multi-worker deploy surfaces
- * every failing worker.
- */
-export async function checkBurrowReachable(deps: {
-	readonly burrowClient: BurrowClient;
-}): Promise<DiagnosticCheck> {
-	try {
-		await withTransportMapping(deps.burrowClient.config, () => deps.burrowClient.probe());
-		return { name: "burrow_reachable", ok: true };
-	} catch (err) {
-		return {
-			name: "burrow_reachable",
-			ok: false,
-			message: err instanceof Error ? err.message : String(err),
-			hint: "check that burrow serve is running and WARREN_BURROW_SOCKET / WARREN_BURROW_HOST point to it",
-		};
-	}
-}
-
-/**
- * Probe the single local burrow for the server's /readyz handler (warren-76c5).
- * Multi-worker aggregation was retired with the K8s migration — the self-host
- * backend is one local burrow — so this is a single `/healthz` probe shaped as
- * the readyz check envelope.
- */
-export async function checkBurrowPoolReachable(client: BurrowClient): Promise<DiagnosticCheck> {
-	const result = await probeBurrowClient(client);
-	if (result.ok) {
-		return { name: "burrow_reachable", ok: true };
-	}
-	return {
-		name: "burrow_reachable",
-		ok: false,
-		message: `${result.workerName}: ${result.error?.message ?? "unknown"}`,
-		hint: "check that burrow serve is running and WARREN_BURROW_SOCKET / WARREN_BURROW_HOST point to it",
-	};
 }

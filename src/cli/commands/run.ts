@@ -20,8 +20,6 @@
  * UI does. The CLI prints a hint on first SIGINT, exits on the second.
  */
 
-import { withTransportMapping } from "../../burrow-client/client.ts";
-import type { BurrowClient } from "../../burrow-client/index.ts";
 import type { Repos } from "../../db/repos/index.ts";
 import type { RunTerminalState } from "../../db/schema.ts";
 import {
@@ -36,9 +34,8 @@ import {
 	spawnRun,
 	tailRunEvents,
 } from "../../runs/index.ts";
-import type { RuntimeProvider } from "../../runtime/contract.ts";
-import { createLocalSidecarsResolver } from "../../runtime/local/preview/sidecars.ts";
-import { resolveRuntimeProvider } from "../../runtime/registry.ts";
+import type { RunHandle, RuntimeProvider } from "../../runtime/contract.ts";
+import type { LocalSidecarsResolver } from "../../runtime/local/preview/sidecars.ts";
 import type { SeedsCliDeps } from "../../seeds-cli/index.ts";
 import { loadTriggerSchedulerConfigFromEnv } from "../../triggers/index.ts";
 import { createWarrenConfigCache, type WarrenConfigCache } from "../../warren-config/index.ts";
@@ -64,19 +61,20 @@ export interface RunArgs {
 export interface RunDeps {
 	readonly repos: Repos;
 	/**
-	 * The single local burrow client (warren-76c5). Shared by `spawnRun`,
-	 * `bridgeRunStream`, `reapRun`, and `fetchBurrowRunState` — multi-worker
-	 * pooling was retired with the K8s migration.
+	 * Boot-resolved runtime provider for the whole run lifecycle (warren-11cc).
+	 * REQUIRED: `main.ts` resolves it once (honoring `WARREN_RUNTIME`) via
+	 * `resolveLocalRunBackend` and threads it here; `spawnRun`, `bridgeRunStream`,
+	 * `reapRun`, and the terminal-state read all dispatch through it — the run
+	 * command no longer touches a burrow client. Tests inject a stub.
 	 */
-	readonly burrowClient: BurrowClient;
+	readonly runtimeProvider: RuntimeProvider;
 	/**
-	 * Resolved runtime provider for the spawn seam (warren-c42c). Optional: when
-	 * omitted the command resolves the boot-selected backend via
-	 * `resolveRuntimeProvider` (honoring `WARREN_RUNTIME`) over `burrowClient`.
-	 * `spawnRun` dispatches through it — the spawn path no longer takes a burrow
-	 * client. Tests inject a stub here (or stub `spawn` outright).
+	 * Preview sidecar seam (warren-11cc), capability-gated by `main.ts` on
+	 * `runtimeProvider.capabilities.previewPorts`. Present only for the local
+	 * backend; absent under `WARREN_RUNTIME=k8s`, so reap's preview sub-step goes
+	 * dark exactly as it does for a project without preview config.
 	 */
-	readonly runtimeProvider?: RuntimeProvider;
+	readonly previewSidecars?: LocalSidecarsResolver;
 	/** Optional broker injection — defaults to a fresh broker per run. */
 	readonly broker?: RunEventBroker;
 	/** Override the bridge factory (tests). Defaults to the live `bridgeRunStream`. */
@@ -85,8 +83,11 @@ export interface RunDeps {
 	readonly spawn?: typeof spawnRun;
 	/** Override reap (tests). Defaults to the live `reapRun`. */
 	readonly reap?: typeof reapRun;
-	/** Override the burrow run state lookup (tests). */
-	readonly fetchBurrowRunState?: (burrowRunId: string) => Promise<RunTerminalState>;
+	/**
+	 * Override the terminal-state lookup (tests). Defaults to a
+	 * `provider.status(handle)` read — the provider seam, not a burrow client.
+	 */
+	readonly fetchBurrowRunState?: (handle: RunHandle) => Promise<RunTerminalState>;
 	/**
 	 * Auto-open-PR config (warren-f6af). Defaults to
 	 * `loadAutoOpenPrConfigFromEnv(process.env)`. Tests pass an explicit
@@ -146,18 +147,18 @@ export async function runRun(
 		deps.runBranchPrefixDefault === null
 			? undefined
 			: (deps.runBranchPrefixDefault ?? loadRunBranchPrefixFromEnv());
-	const fetchBurrowRunState =
-		deps.fetchBurrowRunState ?? defaultFetchBurrowRunState(deps.burrowClient);
-	// Resolve the active runtime provider once (honoring WARREN_RUNTIME) and share
-	// it across spawn + the stream bridge (warren-1fce): the bridge streams,
-	// polls, and cancels through the provider seam, not a burrow client.
-	const runtimeProvider =
-		deps.runtimeProvider ?? resolveRuntimeProvider({ burrowClient: () => deps.burrowClient });
+	// The active runtime provider is boot-resolved in `main.ts` (honoring
+	// WARREN_RUNTIME) and shared across spawn + the stream bridge + reap + the
+	// terminal-state read: every burrow interaction crosses the provider seam,
+	// not a burrow client (warren-11cc).
+	const runtimeProvider = deps.runtimeProvider;
+	const fetchBurrowRunState = deps.fetchBurrowRunState ?? defaultFetchRunState(runtimeProvider);
 	const seedsCli: SeedsCliDeps = deps.seedsCli ?? {
 		sdBinary: loadTriggerSchedulerConfigFromEnv().sdBinary,
 		spawn: defaultSpawn,
 	};
 
+	let handle: RunHandle | undefined;
 	let spawnResult: SpawnRunResult;
 	try {
 		spawnResult = await spawn({
@@ -179,6 +180,11 @@ export async function runRun(
 	}
 
 	const runId = spawnResult.run.id;
+	handle = {
+		runId,
+		sandboxId: spawnResult.burrow.id,
+		providerRunId: spawnResult.burrowRun.id,
+	};
 	writeJsonLine(context.stdio.stdout, {
 		event: "run.spawned",
 		runId,
@@ -236,7 +242,7 @@ export async function runRun(
 
 	let outcome: RunTerminalState;
 	try {
-		outcome = await fetchBurrowRunState(spawnResult.burrowRun.id);
+		outcome = await fetchBurrowRunState(handle);
 	} catch (err) {
 		context.stdio.stderr.write(`warren: failed to read burrow run state: ${formatError(err)}\n`);
 		// Best-effort: assume failed so the warren row finalizes rather than stays running.
@@ -250,11 +256,9 @@ export async function runRun(
 			outcome,
 			repos: deps.repos,
 			runtimeProvider,
-			// warren-e24d: preview sidecar seam, gated on the runtime's preview-port
-			// capability (absent under K8s).
-			...(runtimeProvider.capabilities.previewPorts
-				? { previewSidecars: createLocalSidecarsResolver(deps.burrowClient) }
-				: {}),
+			// warren-11cc: preview sidecar seam, capability-gated by main.ts on the
+			// runtime's preview-port capability (absent under K8s).
+			...(deps.previewSidecars !== undefined ? { previewSidecars: deps.previewSidecars } : {}),
 			broker,
 			autoOpenPr,
 			seedsCli,
@@ -290,16 +294,17 @@ export async function runRun(
 	};
 }
 
-function defaultFetchBurrowRunState(
-	client: BurrowClient,
-): (burrowRunId: string) => Promise<RunTerminalState> {
-	return async (burrowRunId) => {
-		// warren-76c5: the self-host backend is a single local burrow — fetch the
-		// run's terminal state directly from the one client. A transport failure
-		// propagates so `runRun` maps it to a non-zero exit + stderr line.
-		const row = await withTransportMapping(client.config, () => client.http.runs.get(burrowRunId));
-		const state = row.state;
-		if (state === "succeeded" || state === "failed" || state === "cancelled") return state;
+function defaultFetchRunState(
+	provider: RuntimeProvider,
+): (handle: RunHandle) => Promise<RunTerminalState> {
+	return async (handle) => {
+		// warren-11cc: read the run's terminal state through the provider seam
+		// (`status()` never throws on a missing run — it reports `exists:false`).
+		// A non-terminal or absent run maps to `failed` so the warren row
+		// finalizes rather than stranding as running.
+		const status = await provider.status(handle);
+		const phase = status.phase;
+		if (phase === "succeeded" || phase === "failed" || phase === "cancelled") return phase;
 		return "failed";
 	};
 }
