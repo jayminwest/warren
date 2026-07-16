@@ -138,6 +138,52 @@ IPv4 session pooler on Autopilot) are in
 [`gke-deploy-prep.md`](deploy/gke-deploy-prep.md) §5. Agent run pods never get
 the DB URL — only the control plane does (§3, blast-radius minimization).
 
+### 1.6 Automated CI/CD (GitHub Actions)
+
+`.github/workflows/deploy-gke.yml` automates §1.2 (build + push) and §1.3
+(apply) so a GKE roll-forward never needs `build-images.sh` +
+`kubectl apply -k` by hand (warren-bd79). The manual flow above stays the
+break-glass fallback (and the only path for kind/k3d local dev, §1.4).
+
+- **Build + push** (`build-push` job) runs on every push to `main`, on a
+  published release, and on manual dispatch. It builds all three images
+  (`Dockerfile` → `warren`, `deploy/docker/Dockerfile.agent` →
+  `warren-agent`, `deploy/docker/Dockerfile.workspace-init` →
+  `warren-workspace-init`) with `docker buildx --platform linux/amd64`
+  (Autopilot is amd64; arm64 CrashLoops with `exec format error`), tags
+  each by the full commit SHA **and** `latest`, and pushes to the same
+  `<region>-docker.pkg.dev/<project>/<repo>` Artifact Registry that
+  `cloudbuild.yaml` targets. Layer cache is GHA-scoped per image.
+- **Deploy** (`deploy` job) runs on a published GitHub release **or** a
+  manual dispatch that ticks the `deploy` input. A bare push to `main`
+  only builds images — it never touches the cluster. The job pulls cluster
+  credentials (`get-gke-credentials`), then renders the gitignored
+  `gke-live` overlay *on the runner* (never committed — see `.gitignore`),
+  layering on the committed `gke` template and pinning all three images to
+  the commit SHA (control-plane image via kustomize `images:`, agent + init
+  images via the Deployment env patch), before `kubectl apply -k` and a
+  `rollout status` gate. This is exactly the documented `gke-live` pattern
+  (`deploy/k8s/overlays/gke/kustomization.yaml` header), produced from CI
+  vars instead of a hand-maintained local overlay.
+
+Auth is **GCP Workload Identity Federation** (`google-github-actions/auth`)
+— no long-lived JSON service-account keys. A repo admin must configure:
+
+| Kind | Name | Meaning |
+|---|---|---|
+| secret | `GCP_WORKLOAD_IDENTITY_PROVIDER` | full WIF provider resource (`projects/<num>/locations/global/workloadIdentityPools/<pool>/providers/<provider>`) |
+| secret | `GCP_SERVICE_ACCOUNT` | deployer SA email; needs `roles/artifactregistry.writer` + `roles/container.developer` and a WIF binding to this repo |
+| var | `GCP_PROJECT_ID` | GCP project (e.g. `warren-502318`) — **required** |
+| var | `GCP_REGION` | Artifact Registry / cluster region (default `us-west1`) |
+| var | `GCP_AR_REPO` | Artifact Registry repo name (default `warren`) |
+| var | `GKE_CLUSTER` | Autopilot cluster name (default `warren`) |
+| var | `GKE_LOCATION` | cluster location (default `GCP_REGION`) |
+| var | `WARREN_GIT_AUTHOR_EMAIL` | agent-commit author (`<id>+warren@users.noreply.github.com`); defaults to a noreply address if unset |
+| var | `WARREN_INGRESS_HOST` | optional public hostname; when set, patches the Ingress host + ManagedCertificate domain (both placeholders in the committed template) |
+
+The Fly.io deploy in `release.yml` is untouched — this pipeline is
+additive (Fly removal is tracked separately in warren-b65c).
+
 ---
 
 ## 2. Secrets
