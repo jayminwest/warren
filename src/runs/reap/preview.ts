@@ -1,4 +1,18 @@
 import type { BurrowClient } from "../../burrow-client/client.ts";
+
+/**
+ * The burrow client the preview launch sub-step needs (it hits
+ * `client.http.sidecars` to run the preview as a long-lived sidecar). Preview
+ * is a LocalProvider-only capability whose migration off the burrow dialect is
+ * owned by warren-e24d; until then the reap core threads this client through for
+ * preview ONLY. Re-exported here so the reap-core modules (`types.ts`,
+ * `run.ts`, `pipeline.ts`) reference the preview client by this alias instead of
+ * importing a burrow-client type directly — the burrow-file-read eviction of
+ * warren-fbbf keeps those modules free of `burrow-client`/`@os-eco/burrow-cli`
+ * imports; the residual preview coupling lives behind this single seam.
+ */
+export type PreviewWorkerClient = BurrowClient;
+
 import type { Repos } from "../../db/repos/index.ts";
 import type { EventRow } from "../../db/schema.ts";
 import { parseDurationMs } from "../../preview/duration.ts";
@@ -26,7 +40,7 @@ export interface RunPreviewLaunchInput {
 	readonly outcome: string;
 	readonly previewConfig: ServerPreviewConfig;
 	readonly portAllocator: PreviewPortAllocator;
-	readonly workerClient: BurrowClient;
+	readonly workerClient: PreviewWorkerClient;
 	readonly repos: Repos;
 	readonly now: () => Date;
 	readonly emit: (kind: string, payload: unknown) => Promise<EventRow>;

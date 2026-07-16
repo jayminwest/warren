@@ -1,11 +1,19 @@
 import { dirname, join } from "node:path";
-import { NotFoundError } from "@os-eco/burrow-cli";
-import type { BurrowClient } from "../../burrow-client/client.ts";
-import { withTransportMapping } from "../../burrow-client/client.ts";
 import type { EventRow } from "../../db/schema.ts";
 import { closeSeed, type SeedsCliDeps } from "../../seeds-cli/index.ts";
 import type { ReapFs } from "./types.ts";
 import { splitLines } from "./util.ts";
+
+/* -----------------------------------------------------------------------
+ * warren-fbbf: these mirror primitives are PURE string→disk merges. The burrow
+ * file-read that used to live here (`burrowClient.http.files.read`) was evicted
+ * to the LocalProvider (`src/runtime/local/finalize.ts`), which is the ONE place
+ * warren still speaks the burrow dialect. finalize reads the workspace tracker
+ * body off the live sandbox and hands it in as `workspaceBody`; this module only
+ * merges it into the project clone. `workspaceBody === null` is the
+ * "agent-never-created-the-file" shape (was the `NotFoundError` branch) — a
+ * no-op, never an error.
+ * --------------------------------------------------------------------- */
 
 /* ----------------------------------------------------------------------- */
 /* Seeds close mirror                                                       */
@@ -19,8 +27,13 @@ interface SeedRow {
 }
 
 interface MirrorClosedSeedsInput {
-	readonly burrowClient: BurrowClient;
-	readonly burrowId: string;
+	/**
+	 * The workspace-side tracker body the LocalProvider read off the live burrow
+	 * (`.seeds/issues.jsonl` for {@link mirrorSeeds}, `.seeds/plans.jsonl` for
+	 * {@link mirrorPlans}). `null` when the file was absent in the workspace —
+	 * the agent never created it — which is a clean no-op, not a failure.
+	 */
+	readonly workspaceBody: string | null;
 	readonly projectPath: string;
 	readonly fs: ReapFs;
 	readonly emit: (kind: string, payload: unknown) => Promise<EventRow>;
@@ -32,19 +45,10 @@ interface MirrorSeedsResult {
 }
 
 export async function mirrorSeeds(input: MirrorClosedSeedsInput): Promise<MirrorSeedsResult> {
-	const { burrowClient, burrowId, projectPath, fs, emit } = input;
+	const { workspaceBody, projectPath, fs, emit } = input;
+	if (workspaceBody === null) return { closed: 0, created: 0 };
 	const projectFile = join(projectPath, ".seeds", "issues.jsonl");
-
-	let burrowBody: string;
-	try {
-		const out = await withTransportMapping(burrowClient.config, () =>
-			burrowClient.http.files.read(burrowId, ".seeds/issues.jsonl"),
-		);
-		burrowBody = out.contents;
-	} catch (err) {
-		if (err instanceof NotFoundError) return { closed: 0, created: 0 };
-		throw err;
-	}
+	const burrowBody = workspaceBody;
 
 	const projectBody = (await fs.readFile(projectFile)) ?? "";
 	const projectRows = parseSeeds(projectBody);
@@ -119,25 +123,16 @@ function parseSeeds(body: string): SeedRow[] {
 /* ----------------------------------------------------------------------- */
 
 /**
- * Mirror `.seeds/plans.jsonl` from the burrow workspace into the project
+ * Mirror `.seeds/plans.jsonl` from the workspace body into the project
  * clone. Append-only: rows whose `id` is absent from the project baseline
  * are appended. Existing rows are never overwritten — plans are immutable
  * once submitted.
  */
 export async function mirrorPlans(input: MirrorClosedSeedsInput): Promise<number> {
-	const { burrowClient, burrowId, projectPath, fs, emit } = input;
+	const { workspaceBody, projectPath, fs, emit } = input;
+	if (workspaceBody === null) return 0;
 	const projectFile = join(projectPath, ".seeds", "plans.jsonl");
-
-	let burrowBody: string;
-	try {
-		const out = await withTransportMapping(burrowClient.config, () =>
-			burrowClient.http.files.read(burrowId, ".seeds/plans.jsonl"),
-		);
-		burrowBody = out.contents;
-	} catch (err) {
-		if (err instanceof NotFoundError) return 0;
-		throw err;
-	}
+	const burrowBody = workspaceBody;
 
 	const projectBody = (await fs.readFile(projectFile)) ?? "";
 	const projectIds = new Set<string>();

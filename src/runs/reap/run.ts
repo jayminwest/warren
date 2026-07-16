@@ -1,10 +1,10 @@
-import type { BurrowClient } from "../../burrow-client/client.ts";
 import type { EventRow, RunFailureReason, RunTerminalState } from "../../db/schema.ts";
 import type { RunHandle, RuntimeProvider, WorkspaceInfo } from "../../runtime/contract.ts";
 import { resolveRuntimeProvider } from "../../runtime/registry.ts";
 import { bindBridgeLogger } from "../stream/index.ts";
 import { runWorkspaceDestroy } from "./destroy.ts";
 import { createPipelineState, runReapPipeline } from "./pipeline.ts";
+import type { PreviewWorkerClient } from "./preview.ts";
 import { detectTerminalProviderError } from "./provider-error.ts";
 import { inferFailureReason, isTerminal, transitionToTerminal } from "./state.ts";
 import type { ReapRunInput, ReapRunResult, ReapStep, ReapStepError } from "./types.ts";
@@ -97,7 +97,7 @@ export async function reapRun(input: ReapRunInput): Promise<ReapRunResult> {
 
 	let workspacePath: string | null = null;
 	let branch: string | null = null;
-	let workerClient: BurrowClient | null = null;
+	let workerClient: PreviewWorkerClient | null = null;
 	// warren-e9e1: resolve the workspace path + branch through the provider seam,
 	// not a direct `burrows.get`. LocalProvider returns the live burrow worktree
 	// path + branch (byte-identical to reap's old inline lookup); K8sProvider

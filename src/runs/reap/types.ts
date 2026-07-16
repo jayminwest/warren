@@ -1,4 +1,3 @@
-import type { BurrowClient } from "../../burrow-client/index.ts";
 import type { Repos } from "../../db/repos/index.ts";
 import type { RunFailureReason, RunTerminalState } from "../../db/schema.ts";
 import type {
@@ -15,6 +14,7 @@ import type { AutoOpenPrConfig, OpenPullRequestInput, OpenPullRequestResult } fr
 import type { AnnotatePrPreviewInput, AnnotatePrPreviewResult } from "../pr-annotate.ts";
 import type { PrTemplateOverrides } from "../pr-template.ts";
 import type { BridgeLogger } from "../stream/index.ts";
+import type { PreviewWorkerClient } from "./preview.ts";
 
 /* ----------------------------------------------------------------------- */
 /* Public surface                                                           */
@@ -52,12 +52,19 @@ export interface ReapRunInput {
 	readonly outcome: RunTerminalState;
 	readonly repos: Repos;
 	/**
-	 * The single local burrow client (warren-76c5). reap reads the burrow's
-	 * workspace path + branch through it for the workspace lookup + seeds-close
-	 * mirror http calls. Multi-worker placement was retired with the K8s
-	 * migration — the self-host backend is one local burrow.
+	 * The single local burrow client (warren-76c5), retained ONLY for the two
+	 * responsibilities reap has not yet fully shed (warren-fbbf):
+	 *   1. the preview launch sub-step (`preview.ts`), a LocalProvider-only
+	 *      capability whose burrow migration is warren-e24d;
+	 *   2. building the fallback `LocalProvider` when `runtimeProvider` is omitted
+	 *      (tests / CLI) — production threads a boot-resolved `runtimeProvider`
+	 *      and never consults this for finalize.
+	 * The seeds/plans workspace file-reads that used to run through this client
+	 * were evicted into `LocalProvider.finalize` (warren-fbbf), so reap core no
+	 * longer imports a burrow-client type — it references the preview client via
+	 * the `PreviewWorkerClient` alias re-exported from `preview.ts`.
 	 */
-	readonly burrowClient: BurrowClient;
+	readonly burrowClient: PreviewWorkerClient;
 	/**
 	 * Runtime-provider seam (K8s migration pl-829f step 13 / warren-1f56). The
 	 * workspace-dependent half of reap runs as `provider.finalize(handle, intent)`

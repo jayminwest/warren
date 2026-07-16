@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import type { EventRow } from "../../db/schema.ts";
 import type { SeedsCliDeps } from "../../seeds-cli/index.ts";
 import { reapRun } from "./index.ts";
+import { mirrorPlans, mirrorSeeds } from "./seeds.ts";
 import {
 	type Ctx,
 	createRepos,
@@ -157,6 +159,40 @@ describe("reapRun seeds-close mirror", () => {
 /* ----------------------------------------------------------------------- */
 /* Plans mirror (warren-d9a2)                                               */
 /* ----------------------------------------------------------------------- */
+
+/* warren-fbbf: merge primitives are pure string→clone merges (burrow read moved
+ * into `LocalProvider.finalize`); drive them off a `workspaceBody` string. */
+describe("mirrorSeeds/mirrorPlans (warren-fbbf pure merge)", () => {
+	const emit = async (): Promise<EventRow> => ({}) as unknown as EventRow;
+
+	test("workspaceBody null is a clean no-op for both", async () => {
+		const f = fakeFs({ "/p/.seeds/issues.jsonl": '{"id":"sd-1","status":"open"}\n' });
+		const s = await mirrorSeeds({ workspaceBody: null, projectPath: "/p", fs: f.fs, emit });
+		expect(s).toEqual({ closed: 0, created: 0 });
+		expect(await mirrorPlans({ workspaceBody: null, projectPath: "/p", fs: f.fs, emit })).toBe(0);
+		expect(f.files.get("/p/.seeds/issues.jsonl")).toBe('{"id":"sd-1","status":"open"}\n');
+	});
+
+	test("merges a closed workspace row into the clone via LWW", async () => {
+		const f = fakeFs({
+			"/p/.seeds/issues.jsonl":
+				'{"id":"sd-1","status":"open","updatedAt":"2026-05-08T19:00:00Z"}\n',
+		});
+		const body = '{"id":"sd-1","status":"closed","updatedAt":"2026-05-08T22:00:00Z"}\n';
+		const s = await mirrorSeeds({ workspaceBody: body, projectPath: "/p", fs: f.fs, emit });
+		expect(s).toEqual({ closed: 1, created: 0 });
+		expect(f.files.get("/p/.seeds/issues.jsonl")).toContain('"status":"closed"');
+	});
+
+	test("mirrorPlans appends only new plan ids (append-only)", async () => {
+		const f = fakeFs({ "/p/.seeds/plans.jsonl": '{"id":"pl-1"}\n' });
+		const body = '{"id":"pl-1"}\n{"id":"pl-2"}\n';
+		expect(await mirrorPlans({ workspaceBody: body, projectPath: "/p", fs: f.fs, emit })).toBe(1);
+		const merged = f.files.get("/p/.seeds/plans.jsonl") ?? "";
+		expect(merged).toContain("pl-1");
+		expect(merged).toContain("pl-2");
+	});
+});
 
 describe("mirrorPlans (warren-d9a2)", () => {
 	async function setupWithSeeds() {
