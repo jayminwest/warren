@@ -14,7 +14,6 @@ function buildTickInput(input: StartPreviewEvictionWorkerInput): PreviewEviction
 	return {
 		db: input.db,
 		repos: input.repos,
-		burrowClient: input.burrowClient,
 		warrenConfigs: input.warrenConfigs,
 		config: input.config,
 		...(input.broker !== undefined ? { broker: input.broker } : {}),

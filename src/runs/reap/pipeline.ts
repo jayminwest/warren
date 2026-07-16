@@ -31,6 +31,7 @@
 
 import { join } from "node:path";
 import type { EventRow, ProjectRow, RunRow } from "../../db/schema.ts";
+import type { PreviewSidecarResolver } from "../../preview/launch/index.ts";
 import type {
 	FinalizeIntent,
 	FinalizeResult,
@@ -43,7 +44,6 @@ import type { BoundBridgeLogger } from "../stream/index.ts";
 import { dispatchAutoPlanRuns, hasAutoPlanRunFrontmatter, parsePlanIds } from "./auto-plan-run.ts";
 import { applyCloneDeltas } from "./clone-apply.ts";
 import { runPrOpen } from "./pr-open.ts";
-import type { PreviewWorkerClient } from "./preview.ts";
 import { runPreviewAnnotate, runPreviewLaunch } from "./preview.ts";
 import { closeRunSeedId } from "./seeds.ts";
 import type { ReapExec, ReapFs, ReapRunInput, ReapStep } from "./types.ts";
@@ -115,8 +115,9 @@ export interface ReapPipelineContext {
 	readonly workspacePath: string | null;
 	readonly branch: string | null;
 	readonly baseBranch: string | null;
-	/** Non-null whenever `workspacePath !== null` (same try-block). */
-	readonly workerClient: PreviewWorkerClient | null;
+	/** Preview sidecar seam (warren-e24d); absent when the backend lacks preview
+	 * ports (K8s) or no caller wired it. Launch gates on `previewPorts` + this. */
+	readonly previewSidecars?: PreviewSidecarResolver;
 	/** The RuntimeProvider the workspace-dependent half of reap routes through. */
 	readonly provider: RuntimeProvider;
 	readonly fs: ReapFs;
@@ -362,18 +363,11 @@ async function prOpenStep(ctx: ReapPipelineContext, state: ReapPipelineState): P
 }
 
 /**
- * Preview launch (warren-f156 / SPEC §11.L). See runPreviewLaunch +
- * runPreviewAnnotate for the gate semantics. Skipped on a dropped commit
- * (warren-72b9).
- *
- * warren-4fbe: preview launch exposes an inbound port through the burrow worker
- * — a LocalProvider-only capability. Under a provider with
- * `capabilities.previewPorts === false` (K8s v1: preview via Service/Ingress is
- * deferred, contract §5.F) there is no burrow to hit, so gate on the capability
- * and skip cleanly (no burrow call, no run failure). When a project opted in but
- * the provider can't serve it, surface `reap.preview_skipped_unsupported` so
- * operators can see why a `preview.yaml` produced no preview; `previewLaunchState`
- * stays `null`, exactly as for a project that never opted in.
+ * Preview launch (warren-f156 / SPEC §11.L). Skipped on a dropped commit
+ * (warren-72b9). warren-4fbe: preview is a LocalProvider-only capability — under
+ * a provider with `capabilities.previewPorts === false` (K8s, contract §5.F)
+ * gate + skip cleanly; when a project opted in, surface
+ * `reap.preview_skipped_unsupported` so operators see why no preview launched.
  */
 async function previewLaunchStep(
 	ctx: ReapPipelineContext,
@@ -406,12 +400,16 @@ async function previewLaunchStep(
 			!state.droppedCommit &&
 			ctx.input.previewConfig !== undefined &&
 			ctx.input.portAllocator !== undefined &&
-			ctx.workerClient !== null &&
+			ctx.previewSidecars !== undefined &&
 			burrowId !== null
 		)
 	) {
 		return;
 	}
+	// Resolve the sandbox sidecars facade through the neutral seam; a null
+	// resolution (sandbox gone) skips the launch (warren-e24d).
+	const sidecars = await ctx.previewSidecars(burrowId);
+	if (sidecars === null) return;
 	const pv = await runPreviewLaunch({
 		runId: ctx.run.id,
 		burrowId,
@@ -419,7 +417,7 @@ async function previewLaunchStep(
 		outcome: ctx.input.outcome,
 		previewConfig: ctx.input.previewConfig,
 		portAllocator: ctx.input.portAllocator,
-		workerClient: ctx.workerClient,
+		sidecars,
 		repos: ctx.input.repos,
 		now: ctx.now,
 		emit: ctx.emit,

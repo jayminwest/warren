@@ -4,6 +4,7 @@ import type {
 	LaunchPreviewInput,
 	LaunchPreviewResult,
 	PreviewLaunchConfig,
+	PreviewSidecarResolver,
 } from "../../preview/launch/index.ts";
 import type { PreviewPortAllocator } from "../../preview/port-allocator.ts";
 import type { RuntimeProvider } from "../../runtime/contract.ts";
@@ -14,7 +15,6 @@ import type { AutoOpenPrConfig, OpenPullRequestInput, OpenPullRequestResult } fr
 import type { AnnotatePrPreviewInput, AnnotatePrPreviewResult } from "../pr-annotate.ts";
 import type { PrTemplateOverrides } from "../pr-template.ts";
 import type { BridgeLogger } from "../stream/index.ts";
-import type { PreviewWorkerClient } from "./preview.ts";
 
 /* ----------------------------------------------------------------------- */
 /* Public surface                                                           */
@@ -48,33 +48,28 @@ export interface ReapExec {
 
 export interface ReapRunInput {
 	readonly runId: string;
-	/** The burrow-observed terminal state to transition the warren row into. */
+	/** The provider-observed terminal state to transition the warren row into. */
 	readonly outcome: RunTerminalState;
 	readonly repos: Repos;
 	/**
-	 * The single local burrow client (warren-76c5), retained ONLY for the two
-	 * responsibilities reap has not yet fully shed (warren-fbbf):
-	 *   1. the preview launch sub-step (`preview.ts`), a LocalProvider-only
-	 *      capability whose burrow migration is warren-e24d;
-	 *   2. building the fallback `LocalProvider` when `runtimeProvider` is omitted
-	 *      (tests / CLI) — production threads a boot-resolved `runtimeProvider`
-	 *      and never consults this for finalize.
-	 * The seeds/plans workspace file-reads that used to run through this client
-	 * were evicted into `LocalProvider.finalize` (warren-fbbf), so reap core no
-	 * longer imports a burrow-client type — it references the preview client via
-	 * the `PreviewWorkerClient` alias re-exported from `preview.ts`.
-	 */
-	readonly burrowClient: PreviewWorkerClient;
-	/**
 	 * Runtime-provider seam (K8s migration pl-829f step 13 / warren-1f56). The
 	 * workspace-dependent half of reap runs as `provider.finalize(handle, intent)`
-	 * followed by `provider.terminate(handle)`. Optional: when omitted, reap
-	 * builds the burrow-backed `LocalProvider` over `burrowClient` (+ the same
-	 * `fs`/`exec`), so pre-existing callers and tests that only pass the client
-	 * are unchanged. Production dispatchers thread `deps.runtimeProvider` through
-	 * so a future K8sProvider is honored.
+	 * followed by `provider.terminate(handle)`; workspace resolution runs through
+	 * `provider.workspaceInfo`. REQUIRED (warren-e24d): reap no longer builds a
+	 * fallback burrow-backed provider, so it holds no burrow client of its own —
+	 * the boot wiring (and tests) construct the provider and thread it here.
 	 */
-	readonly runtimeProvider?: RuntimeProvider;
+	readonly runtimeProvider: RuntimeProvider;
+	/**
+	 * Preview sidecar seam (warren-e24d), used ONLY by the preview launch
+	 * sub-step — a LocalProvider-only capability. Built at boot from the runtime
+	 * provider (`createLocalSidecarsResolver`) and threaded here gated on
+	 * `runtimeProvider.capabilities.previewPorts`. Omitted (or absent capability)
+	 * ⇒ the preview launch is skipped exactly as for a backend without preview
+	 * ports; the pipeline surfaces `reap.preview_skipped_unsupported` for an
+	 * opted-in project.
+	 */
+	readonly previewSidecars?: PreviewSidecarResolver;
 	/** If supplied, every reap-emitted event is published here too. */
 	readonly broker?: RunEventBroker;
 	readonly fs?: ReapFs;
@@ -141,7 +136,7 @@ export interface ReapRunInput {
 	/**
 	 * Override the preview-launch mechanics (tests). Defaults to
 	 * `launchPreview`. Receives the resolved input shape, including the
-	 * port allocator and the worker-local burrow client, so tests can
+	 * port allocator and the resolved sidecars facade, so tests can
 	 * assert call arguments without touching real sidecars.
 	 */
 	readonly launchPreview?: (input: LaunchPreviewInput) => Promise<LaunchPreviewResult>;

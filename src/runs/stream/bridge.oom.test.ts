@@ -38,6 +38,7 @@ const CAPABILITIES: RuntimeCapabilities = {
 	midRunSteering: true,
 	enforcedResourceLimits: true,
 	workspaceArchive: true,
+	workspaceGc: true,
 };
 
 /** A provider whose stream tails forever (until torn down) and whose status is fixed. */

@@ -82,6 +82,7 @@ import {
 	workspaceGcLoggerFromPino,
 } from "./logging.ts";
 import { bootObservability, captureBootFailure } from "./observability-wiring.ts";
+import { resolveLocalPreviewGcSeams } from "./preview-gc-wiring.ts";
 import { createPreviewAuthAndProxy } from "./preview-wiring.ts";
 import { bootK8sRuntime, resolveBootRuntimeProvider } from "./runtime-wiring.ts";
 import { closeDatabase, defaultSpawn, redactDbUrl, resolvePgPoolMax } from "./utils.ts";
@@ -217,12 +218,21 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 		...(k8sRuntime !== undefined ? { k8sRuntime } : {}),
 	});
 
+	// Preview + workspace-GC seams (warren-e24d), gated on provider capabilities
+	// (dark under K8s). See `resolveLocalPreviewGcSeams`.
+	const { previewSidecars, workspaceDestroyer } = resolveLocalPreviewGcSeams(
+		runtimeProvider,
+		burrowClient,
+	);
+	const bindReap = (i: Parameters<typeof reapRun>[0]) =>
+		reapRun({ ...i, ...(previewSidecars !== undefined ? { previewSidecars } : {}) });
+
 	const bridgesBoot = await bootBridges({
 		repos,
 		broker,
 		runtimeProvider,
-		// warren-5a3f: pre-bind the inline reap seam with the burrow client here.
-		reap: (reapInput) => reapRun({ ...reapInput, burrowClient }),
+		// warren-e24d: reap seam pre-bound with the provider-derived preview seam.
+		reap: bindReap,
 		logger: bridgeLoggerFromPino(logger),
 		autoOpenPr,
 		warrenConfigs,
@@ -398,7 +408,7 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 			env,
 			adapter,
 			repos,
-			reap: (reapInput) => reapRun({ ...reapInput, burrowClient }),
+			reap: bindReap,
 			broker,
 			bridges: bridgesBoot.registry,
 			warrenConfigs,
@@ -406,7 +416,6 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 			projectSpawn: defaultSpawn,
 			seedsCli,
 			autoOpenPr,
-			// warren-c531: watchdog cancel + merge-poller planner spawn use the resolved provider.
 			runtimeProvider,
 			...(runBranchPrefixDefault !== undefined ? { runBranchPrefixDefault } : {}),
 			logger,
@@ -414,46 +423,37 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 		});
 
 	// Preview TTL + LRU eviction worker (R-19 / SPEC §11.L, warren-ea6b).
-	// Dialect-polymorphic since warren-adfb (createRunPreviewsRepo runs on
-	// either backend).
 	const previewEvictionWorker = startPreviewEvictionWorker({
 		db,
 		repos,
-		burrowClient,
 		warrenConfigs,
 		config: previewEvictionConfig,
 		logger: previewEvictionLoggerFromPino(logger),
+		...(previewSidecars !== undefined ? { resolveSidecar: previewSidecars } : {}),
 		...(opts.now !== undefined ? { now: opts.now } : {}),
 	});
 	if (previewEvictionConfig.disabled) {
 		logger.info({}, "preview eviction disabled via WARREN_PREVIEW_EVICTION_DISABLED");
 	} else {
-		logger.info(
-			{
-				tickMs: previewEvictionConfig.tickMs,
-				idleTtlMs: previewEvictionConfig.idleTtlMs,
-				maxLifetimeMs: previewEvictionConfig.maxLifetimeMs,
-				maxLive: previewEvictionConfig.maxLive,
-			},
-			"preview eviction worker running",
-		);
+		logger.info({ ...previewEvictionConfig }, "preview eviction worker running");
 	}
 
-	// Fallback GC for stranded burrow workspaces (warren-0a9a). Per-reap
-	// destroy (warren-0d89) covers the happy path; this periodic sweep
-	// reclaims burrows stranded by a mid-reap crash or an out-of-band
-	// force-kill that never got a reap.
+	// Fallback GC for stranded workspaces (warren-0a9a): reclaims workspaces
+	// stranded by a mid-reap crash / out-of-band force-kill. warren-e24d: runs
+	// only when the runtime advertises `workspaceGc` (dark under K8s).
+	const resolvedWorkspaceGcConfig =
+		workspaceDestroyer !== undefined ? workspaceGcConfig : { ...workspaceGcConfig, disabled: true };
 	const workspaceGcWorker = startWorkspaceGcWorker({
 		repos,
-		burrowClient,
-		config: workspaceGcConfig,
+		destroyWorkspace: workspaceDestroyer ?? (async () => ({ status: "already-gone" as const })),
+		config: resolvedWorkspaceGcConfig,
 		logger: workspaceGcLoggerFromPino(logger),
 		...(opts.now !== undefined ? { now: opts.now } : {}),
 	});
 	logger.info(
-		{ ...workspaceGcConfig },
-		workspaceGcConfig.disabled
-			? "workspace GC disabled via WARREN_WORKSPACE_GC_DISABLED"
+		{ ...resolvedWorkspaceGcConfig },
+		resolvedWorkspaceGcConfig.disabled
+			? "workspace GC disabled (WARREN_WORKSPACE_GC_DISABLED or runtime lacks workspaceGc capability)"
 			: "workspace GC worker running",
 	);
 
@@ -468,8 +468,7 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 		repos,
 		db,
 		burrowClient,
-		// warren-c531: the provider resolved once above (before bootBridges) — the
-		// sole composition point; deps no longer re-resolves a second instance.
+		// warren-c531: the provider resolved once above; deps re-uses it.
 		runtimeProvider,
 		broker,
 		bridges: bridgesBoot.registry,
@@ -485,6 +484,7 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 		previewEvictionConfig,
 		workspaceGcTtlMs: workspaceGcConfig.ttlMs,
 		previewAuth,
+		...(previewSidecars !== undefined ? { previewSidecars } : {}),
 		sdBinary: schedulerConfig.sdBinary,
 		metricsRegistry,
 		// `/metrics` pod-phase gauges read live from the same pod-watcher at scrape

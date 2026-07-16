@@ -26,6 +26,7 @@ describe("LocalProvider", () => {
 			midRunSteering: true,
 			enforcedResourceLimits: true,
 			workspaceArchive: true,
+			workspaceGc: true,
 		});
 	});
 

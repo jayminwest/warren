@@ -37,6 +37,7 @@ const K8S_CAPABILITIES: RuntimeCapabilities = {
 	midRunSteering: false,
 	enforcedResourceLimits: true,
 	workspaceArchive: false,
+	workspaceGc: false,
 };
 
 /** A non-burrow provider that records the neutral spec and returns a pod-shaped handle. */

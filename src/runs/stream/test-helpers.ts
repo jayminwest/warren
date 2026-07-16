@@ -31,6 +31,7 @@ export function makeProvider(): RuntimeProvider {
 			midRunSteering: true,
 			enforcedResourceLimits: false,
 			workspaceArchive: false,
+			workspaceGc: false,
 		},
 		create: unexpected("create"),
 		streamEvents: unexpected("streamEvents"),

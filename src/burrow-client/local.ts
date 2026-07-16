@@ -20,14 +20,17 @@
  *     probe loop, and diagnostics keep their wire/log output.
  */
 
+import { LOCAL_WORKER_NAME } from "../runs/worker-identity.ts";
 import type { BurrowClient } from "./client.ts";
 
 /**
  * Name the single local burrow is recorded under in the `workers` /
- * `burrows` tables and `runs.worker_id`. Retained until the workers/burrows
- * tables are dropped (step 24, warren-3743).
+ * `burrows` tables and `runs.worker_id`. The canonical definition lives in
+ * the neutral `src/runs/worker-identity.ts` (warren-e24d) so the preview
+ * subsystem can read it without importing `burrow-client`; re-exported here so
+ * existing `burrow-client` importers are unchanged.
  */
-export const LOCAL_WORKER_NAME = "local";
+export { LOCAL_WORKER_NAME };
 
 /** One health-probe outcome for the single local burrow. */
 export interface ProbeResult {

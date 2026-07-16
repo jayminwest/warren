@@ -44,6 +44,15 @@ export interface PreviewSidecarsClient {
 	): Promise<{ readonly state: string; readonly exitCode: number | null }>;
 }
 
+/**
+ * Resolve the sidecars facade for a run's sandbox (warren-e24d preview seam).
+ * The reap preview sub-step calls this to obtain a `PreviewSidecarsClient` for
+ * the run's sandbox; `null` when the sandbox can't be resolved. Built at boot
+ * from the runtime provider (`createLocalSidecarsResolver`); absent under a
+ * backend without `previewPorts`.
+ */
+export type PreviewSidecarResolver = (sandboxId: string) => Promise<PreviewSidecarsClient | null>;
+
 /* ----------------------------------------------------------------------- */
 /* Launch inputs / outputs                                                  */
 /* ----------------------------------------------------------------------- */

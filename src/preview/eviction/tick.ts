@@ -17,7 +17,6 @@ import type { RunEventBroker } from "../../runs/events.ts";
 import type { WarrenConfigCache } from "../../warren-config/index.ts";
 import { parseDurationMs } from "../duration.ts";
 import { createRunPreviewsRepo } from "./repo.ts";
-import { createPoolSidecarResolver } from "./sidecar.ts";
 import type {
 	EvictionReason,
 	PreviewEvictionLogger,
@@ -34,7 +33,11 @@ export async function runPreviewEvictionTick(
 ): Promise<PreviewEvictionTickResult> {
 	const now = input.now?.() ?? new Date();
 	const previews = input.previews ?? createRunPreviewsRepo(input.db);
-	const resolveSidecar = input.resolveSidecar ?? createPoolSidecarResolver(input.burrowClient);
+	// warren-e24d: the burrow coupling is gone — the resolver is threaded in from
+	// the runtime provider's preview seam (or absent when the backend has no
+	// preview ports). When absent, the db-side eviction still runs and the
+	// best-effort sidecar stop is skipped.
+	const resolveSidecar = input.resolveSidecar ?? null;
 
 	const rows = await previews.listActivePreviews();
 	const evicted: { runId: string; reason: EvictionReason }[] = [];
@@ -223,7 +226,7 @@ interface ApplyEvictionInput {
 	readonly row: RunPreviewRow;
 	readonly reason: EvictionReason;
 	readonly now: Date;
-	readonly resolveSidecar: SidecarResolver;
+	readonly resolveSidecar: SidecarResolver | null;
 	readonly previews: RunPreviewsRepo;
 	readonly repos: Repos;
 	readonly broker?: RunEventBroker;
@@ -265,6 +268,13 @@ async function applyEviction(input: ApplyEvictionInput): Promise<void> {
 async function stopSidecarsForRow(input: ApplyEvictionInput): Promise<void> {
 	const burrowId = input.row.burrowId;
 	if (burrowId === null) return;
+	if (input.resolveSidecar === null) {
+		input.logger?.warn(
+			{ runId: input.row.runId, burrowId },
+			"preview_eviction.sidecar_resolver_unavailable",
+		);
+		return;
+	}
 	try {
 		const sidecars = await input.resolveSidecar(burrowId);
 		if (sidecars === null) {

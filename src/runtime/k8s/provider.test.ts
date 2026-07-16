@@ -53,6 +53,7 @@ describe("K8sProvider", () => {
 			midRunSteering: false,
 			enforcedResourceLimits: true,
 			workspaceArchive: false,
+			workspaceGc: false,
 		});
 	});
 

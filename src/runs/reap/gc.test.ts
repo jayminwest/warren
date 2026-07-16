@@ -1,6 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { NotFoundError as BurrowNotFoundError, type DestroyBurrowResult } from "@os-eco/burrow-cli";
-import type { BurrowClient } from "../../burrow-client/client.ts";
 import { ValidationError } from "../../core/errors.ts";
 import type { RunRow } from "../../db/schema.ts";
 import {
@@ -11,6 +9,7 @@ import {
 	loadWorkspaceGcConfigFromEnv,
 	runWorkspaceGcTick,
 	startWorkspaceGcWorker,
+	type WorkspaceDestroyOutcome,
 	type WorkspaceGcConfig,
 	type WorkspaceGcTickInput,
 } from "./gc.ts";
@@ -26,21 +25,8 @@ function activeRun(burrowId: string): RunRow {
 	return { burrowId, endedAt: null, state: "running" } as unknown as RunRow;
 }
 
-function fakeResult(over: Partial<DestroyBurrowResult> = {}): DestroyBurrowResult {
-	return {
-		burrowId: "bur_x",
-		archived: { events: 0 } as unknown as DestroyBurrowResult["archived"],
-		deletedEvents: 3,
-		deletedMessages: 1,
-		deletedRuns: 2,
-		...over,
-	};
-}
-
-function fakeClient(): BurrowClient {
-	return {
-		config: { transport: { kind: "unix", path: "/tmp/x.sock" } },
-	} as unknown as BurrowClient;
+function destroyedOutcome(): WorkspaceDestroyOutcome {
+	return { status: "destroyed", archived: true, deletedEvents: 3, deletedRuns: 2 };
 }
 
 describe("findStrandedBurrows", () => {
@@ -131,12 +117,11 @@ function tickInput(
 				listByState: async (states) => (states.includes("running") ? h.activeRuns : h.terminalRuns),
 			},
 		},
-		burrowClient: fakeClient(),
 		config: { ttlMs: 60 * 60_000, tickMs: 1000, disabled: false, ...config },
 		now: () => NOW,
-		destroyBurrow: async (_client, burrowId) => {
-			h.destroyed.push(burrowId);
-			return fakeResult({ burrowId });
+		destroyWorkspace: async (sandboxId) => {
+			h.destroyed.push(sandboxId);
+			return destroyedOutcome();
 		},
 		...over,
 	};
@@ -174,9 +159,7 @@ describe("runWorkspaceGcTick", () => {
 		};
 		const result = await runWorkspaceGcTick(
 			tickInput(h, {
-				destroyBurrow: async () => {
-					throw new Error("worker unreachable");
-				},
+				destroyWorkspace: async () => ({ status: "failed", error: "worker unreachable" }),
 			}),
 		);
 		expect(result).toEqual({ scanned: 1, stranded: 1, destroyed: 0, failed: 1 });
@@ -191,9 +174,7 @@ describe("runWorkspaceGcTick", () => {
 		const logs: string[] = [];
 		const result = await runWorkspaceGcTick(
 			tickInput(h, {
-				destroyBurrow: async () => {
-					throw new BurrowNotFoundError("burrow not found");
-				},
+				destroyWorkspace: async () => ({ status: "already-gone" }),
 				logger: {
 					info: (obj) => {
 						logs.push((obj as { msg?: string }).msg ?? JSON.stringify(obj));
@@ -287,10 +268,10 @@ describe("startWorkspaceGcWorker", () => {
 		});
 		const worker = startWorkspaceGcWorker({
 			...tickInput(h, {
-				destroyBurrow: async (_c, id) => {
+				destroyWorkspace: async (id) => {
 					h.destroyed.push(id);
 					await gate;
-					return fakeResult({ burrowId: id });
+					return destroyedOutcome();
 				},
 			}),
 			setInterval: () => ({}),

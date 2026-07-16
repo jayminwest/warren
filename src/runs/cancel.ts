@@ -58,15 +58,17 @@ import type { ReapRunInput, ReapRunResult } from "./reap/index.ts";
 import type { BridgeLogger } from "./stream/index.ts";
 
 /**
- * The inline-reap seam, pre-bound with the runtime's burrow client by the caller
- * (warren-b223 — the `WatchdogReap` pattern from warren-1fce). cancel.ts
+ * The inline-reap seam (warren-b223 — the `WatchdogReap` pattern from
+ * warren-1fce). Reap no longer takes a burrow client (warren-e24d), so this is
+ * the plain `ReapRunInput`; the wiring layer binds any provider-derived seams
+ * into the boot closure it supplies as `reap`. cancel.ts
  * finalizes a terminal-cancelled run inline but no longer holds a burrow client
  * to build `reapRun` itself (reap still needs one for its workspace reads until
  * warren-fbbf sheds it), so the wiring layer binds the client and hands cancel a
  * closure that takes every reap input EXCEPT the client. Keeps this file free of
  * any `@os-eco/burrow-cli` / `burrow-client` import.
  */
-export type CancelReap = (input: Omit<ReapRunInput, "burrowClient">) => Promise<ReapRunResult>;
+export type CancelReap = (input: ReapRunInput) => Promise<ReapRunResult>;
 
 export interface CancelRunInput {
 	readonly runId: string;

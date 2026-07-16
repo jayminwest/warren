@@ -89,6 +89,7 @@ describe("resolveRuntimeProvider", () => {
 			midRunSteering: true,
 			enforcedResourceLimits: true,
 			workspaceArchive: true,
+			workspaceGc: true,
 		});
 	});
 
@@ -112,6 +113,7 @@ describe("resolveRuntimeProvider", () => {
 			midRunSteering: false,
 			enforcedResourceLimits: true,
 			workspaceArchive: false,
+			workspaceGc: false,
 		});
 	});
 

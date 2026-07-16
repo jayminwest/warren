@@ -8,7 +8,6 @@
  * SPEC §11.L for the design lock.
  */
 
-import type { BurrowClient } from "../../burrow-client/index.ts";
 import type { AnyWarrenDb } from "../../db/client.ts";
 import type { Repos } from "../../db/repos/index.ts";
 import type { PreviewState } from "../../db/schema.ts";
@@ -110,19 +109,19 @@ export interface RunPreviewsRepo {
 export interface PreviewEvictionTickInput {
 	readonly db: AnyWarrenDb;
 	readonly repos: Repos;
-	readonly burrowClient: BurrowClient;
 	readonly warrenConfigs: WarrenConfigCache;
 	readonly broker?: RunEventBroker;
 	readonly config: PreviewEvictionConfig;
 	readonly now?: () => Date;
 	readonly logger?: PreviewEvictionLogger;
 	/**
-	 * Override the sidecar resolver (tests). Defaults to a pool-backed
-	 * resolver that looks up the worker for `burrowId` and returns its
-	 * `http.sidecars` facade. Returns `null` when the worker can't be
-	 * resolved (e.g. the burrow row was deleted while the run was still
-	 * carrying a stale `burrow_id`) so the eviction still runs db-side
-	 * but the sidecar stop is skipped with a warning.
+	 * Provider-neutral sidecar resolver (warren-e24d). Built at boot from the
+	 * runtime provider's preview seam (`createLocalSidecarsResolver`) and
+	 * threaded in gated on `RuntimeCapabilities.previewPorts`. Returns `null`
+	 * when the sandbox can't be resolved so the eviction still runs db-side but
+	 * the sidecar stop is skipped with a warning. Omitted (or a backend without
+	 * preview ports) ⇒ the sidecar stop is skipped entirely; the db-side
+	 * transition still applies.
 	 */
 	readonly resolveSidecar?: SidecarResolver;
 	/**

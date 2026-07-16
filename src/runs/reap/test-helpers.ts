@@ -3,9 +3,36 @@ import { BurrowClient } from "../../burrow-client/index.ts";
 import { openDatabase, type WarrenDb } from "../../db/client.ts";
 import { createRepos, type Repos } from "../../db/repos/index.ts";
 import type { RunTerminalState } from "../../db/schema.ts";
+import type { PreviewSidecarResolver } from "../../preview/launch/index.ts";
+import type { RuntimeProvider } from "../../runtime/contract.ts";
+import { createLocalSidecarsResolver } from "../../runtime/local/preview/sidecars.ts";
+import { LocalProvider } from "../../runtime/local/provider.ts";
 import { RunEventBroker } from "../events.ts";
 import type { OpenPullRequestInput, OpenPullRequestResult } from "../pr.ts";
 import type { ReapExec, ReapFs, ReapRunResult } from "./types.ts";
+
+/**
+ * Build the reap runtime seams for tests over a fake burrow client (warren-e24d).
+ * Reap no longer takes a burrow client: it drives finalize/terminate/workspace
+ * resolution through a `RuntimeProvider` and preview through a neutral sidecar
+ * resolver. This helper wraps a `fakeBurrowClient` into the burrow-backed
+ * `LocalProvider` (with the test's fake `fs`/`exec` so finalize runs against
+ * them) plus the sidecar resolver, so a test spreads `...reapDeps(client, {
+ * fs, exec })` where it used to pass `burrowClient`.
+ */
+export function reapDeps(
+	client: BurrowClient,
+	opts: { fs?: ReapFs; exec?: ReapExec } = {},
+): { runtimeProvider: RuntimeProvider; previewSidecars: PreviewSidecarResolver } {
+	return {
+		runtimeProvider: new LocalProvider({
+			burrowClient: () => client,
+			...(opts.fs !== undefined ? { fs: opts.fs } : {}),
+			...(opts.exec !== undefined ? { exec: opts.exec } : {}),
+		}),
+		previewSidecars: createLocalSidecarsResolver(client),
+	};
+}
 
 /**
  * Build a `ReapRunResult` for tests that stub the reap step (bridges,

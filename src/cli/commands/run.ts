@@ -37,6 +37,7 @@ import {
 	tailRunEvents,
 } from "../../runs/index.ts";
 import type { RuntimeProvider } from "../../runtime/contract.ts";
+import { createLocalSidecarsResolver } from "../../runtime/local/preview/sidecars.ts";
 import { resolveRuntimeProvider } from "../../runtime/registry.ts";
 import type { SeedsCliDeps } from "../../seeds-cli/index.ts";
 import { loadTriggerSchedulerConfigFromEnv } from "../../triggers/index.ts";
@@ -248,7 +249,12 @@ export async function runRun(
 			runId,
 			outcome,
 			repos: deps.repos,
-			burrowClient: deps.burrowClient,
+			runtimeProvider,
+			// warren-e24d: preview sidecar seam, gated on the runtime's preview-port
+			// capability (absent under K8s).
+			...(runtimeProvider.capabilities.previewPorts
+				? { previewSidecars: createLocalSidecarsResolver(deps.burrowClient) }
+				: {}),
 			broker,
 			autoOpenPr,
 			seedsCli,

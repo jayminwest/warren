@@ -7,9 +7,9 @@ import {
 	fakeExec,
 	fakeFs,
 	makeBurrow,
-	makePool,
 	openDatabase,
 	RunEventBroker,
+	reapDeps,
 } from "./test-helpers.ts";
 
 /* Auto plan-run from reap (warren-a32a)                                    */
@@ -71,7 +71,7 @@ describe("auto_plan_run (warren-a32a)", () => {
 				runId: ctx.runId,
 				outcome: "succeeded",
 				repos: ctx.repos,
-				burrowClient: await makePool(fakeBurrowClient(makeBurrow()), ctx.repos),
+				...reapDeps(fakeBurrowClient(makeBurrow()), { fs: f.fs, exec: e.exec }),
 				fs: f.fs,
 				exec: e.exec,
 			});
@@ -111,10 +111,10 @@ describe("auto_plan_run (warren-a32a)", () => {
 				runId: ctx.runId,
 				outcome: "succeeded",
 				repos: ctx.repos,
-				burrowClient: await makePool(
-					fakeBurrowClient(makeBurrow(), { seedsPlansBody: plansBody }),
-					ctx.repos,
-				),
+				...reapDeps(fakeBurrowClient(makeBurrow(), { seedsPlansBody: plansBody }), {
+					fs: f.fs,
+					exec: e.exec,
+				}),
 				fs: f.fs,
 				exec: e.exec,
 			});
@@ -143,7 +143,7 @@ describe("auto_plan_run (warren-a32a)", () => {
 				runId: ctx.runId,
 				outcome: "succeeded",
 				repos: ctx.repos,
-				burrowClient: await makePool(fakeBurrowClient(makeBurrow()), ctx.repos),
+				...reapDeps(fakeBurrowClient(makeBurrow()), { fs: f.fs, exec: e.exec }),
 				fs: f.fs,
 				exec: e.exec,
 			});
@@ -171,7 +171,7 @@ describe("auto_plan_run (warren-a32a)", () => {
 				runId: ctx.runId,
 				outcome: "succeeded",
 				repos: ctx.repos,
-				burrowClient: await makePool(fakeBurrowClient(makeBurrow()), ctx.repos),
+				...reapDeps(fakeBurrowClient(makeBurrow()), { fs: f.fs, exec: e.exec }),
 				fs: f.fs,
 				exec: e.exec,
 			});
@@ -198,7 +198,7 @@ describe("auto_plan_run (warren-a32a)", () => {
 				runId: ctx.runId,
 				outcome: "failed",
 				repos: ctx.repos,
-				burrowClient: await makePool(fakeBurrowClient(makeBurrow()), ctx.repos),
+				...reapDeps(fakeBurrowClient(makeBurrow()), { fs: f.fs, exec: e.exec }),
 				fs: f.fs,
 				exec: e.exec,
 			});
@@ -224,7 +224,7 @@ describe("auto_plan_run (warren-a32a)", () => {
 				runId: ctx.runId,
 				outcome: "succeeded",
 				repos: ctx.repos,
-				burrowClient: await makePool(fakeBurrowClient(makeBurrow()), ctx.repos),
+				...reapDeps(fakeBurrowClient(makeBurrow()), { fs: f.fs, exec: e.exec }),
 				fs: f.fs,
 				exec: e.exec,
 			});
@@ -251,7 +251,7 @@ describe("auto_plan_run (warren-a32a)", () => {
 				runId: ctx.runId,
 				outcome: "succeeded",
 				repos: ctx.repos,
-				burrowClient: await makePool(fakeBurrowClient(makeBurrow()), ctx.repos),
+				...reapDeps(fakeBurrowClient(makeBurrow()), { fs: f.fs, exec: e.exec }),
 				fs: f.fs,
 				exec: e.exec,
 			});
@@ -305,7 +305,7 @@ describe("auto_plan_run (warren-a32a)", () => {
 				runId: run.id,
 				outcome: "succeeded",
 				repos,
-				burrowClient: await makePool(fakeBurrowClient(makeBurrow()), repos),
+				...reapDeps(fakeBurrowClient(makeBurrow()), { fs: f.fs, exec: e.exec }),
 				fs: f.fs,
 				exec: e.exec,
 			});
@@ -360,7 +360,7 @@ describe("auto_plan_run (warren-a32a)", () => {
 				runId: run.id,
 				outcome: "succeeded",
 				repos,
-				burrowClient: await makePool(fakeBurrowClient(makeBurrow()), repos),
+				...reapDeps(fakeBurrowClient(makeBurrow()), { fs: f.fs, exec: e.exec }),
 				fs: f.fs,
 				exec: e.exec,
 			});
@@ -410,7 +410,7 @@ describe("auto_plan_run (warren-a32a)", () => {
 				runId: ctx.runId,
 				outcome: "succeeded",
 				repos: ctx.repos,
-				burrowClient: await makePool(fakeBurrowClient(makeBurrow()), ctx.repos),
+				...reapDeps(fakeBurrowClient(makeBurrow()), { fs: f.fs, exec: e.exec }),
 				fs: f.fs,
 				exec: e.exec,
 				seedsCli: fakeSeedsCli({ "warren-c1": "open", "warren-c2": "closed" }),
@@ -438,7 +438,7 @@ describe("auto_plan_run (warren-a32a)", () => {
 				runId: ctx.runId,
 				outcome: "succeeded",
 				repos: ctx.repos,
-				burrowClient: await makePool(fakeBurrowClient(makeBurrow()), ctx.repos),
+				...reapDeps(fakeBurrowClient(makeBurrow()), { fs: f.fs, exec: e.exec }),
 				fs: f.fs,
 				exec: e.exec,
 				seedsCli: fakeSeedsCli({ "warren-c1": "open", "warren-gone": "missing" }),
@@ -471,7 +471,7 @@ describe("auto_plan_run (warren-a32a)", () => {
 				runId: ctx.runId,
 				outcome: "succeeded",
 				repos: ctx.repos,
-				burrowClient: await makePool(fakeBurrowClient(makeBurrow()), ctx.repos),
+				...reapDeps(fakeBurrowClient(makeBurrow()), { fs: f.fs, exec: e.exec }),
 				fs: f.fs,
 				exec: e.exec,
 				seedsCli: fakeSeedsCli({ "warren-c1": "closed", "warren-c2": "closed" }),

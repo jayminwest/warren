@@ -6,7 +6,7 @@ import {
 	fakeExec,
 	fakeFs,
 	makeBurrow,
-	makePool,
+	reapDeps,
 	setup,
 } from "./test-helpers.ts";
 
@@ -42,7 +42,7 @@ describe("reapRun failure-reason inference (warren-3c40 / warren-5165)", () => {
 			runId: stuck.id,
 			outcome: "failed",
 			repos,
-			burrowClient: await makePool(fakeBurrowClient(makeBurrow()), ctx.repos),
+			...reapDeps(fakeBurrowClient(makeBurrow()), { fs: fakeFs().fs, exec: fakeExec().exec }),
 			fs: fakeFs().fs,
 			exec: fakeExec().exec,
 		});
@@ -76,7 +76,7 @@ describe("reapRun failure-reason inference (warren-3c40 / warren-5165)", () => {
 			runId: ctx.runId,
 			outcome: "failed",
 			repos: ctx.repos,
-			burrowClient: await makePool(fakeBurrowClient(makeBurrow()), ctx.repos),
+			...reapDeps(fakeBurrowClient(makeBurrow()), { fs: fakeFs().fs, exec: fakeExec().exec }),
 			fs: fakeFs().fs,
 			exec: fakeExec().exec,
 		});
@@ -106,7 +106,7 @@ describe("reapRun failure-reason inference (warren-3c40 / warren-5165)", () => {
 			runId: ctx.runId,
 			outcome: "failed",
 			repos: ctx.repos,
-			burrowClient: await makePool(fakeBurrowClient(makeBurrow()), ctx.repos),
+			...reapDeps(fakeBurrowClient(makeBurrow()), { fs: fakeFs().fs, exec: fakeExec().exec }),
 			fs: fakeFs().fs,
 			exec: fakeExec().exec,
 		});
@@ -134,7 +134,7 @@ describe("reapRun failure-reason inference (warren-3c40 / warren-5165)", () => {
 			runId: ctx.runId,
 			outcome: "failed",
 			repos: ctx.repos,
-			burrowClient: await makePool(fakeBurrowClient(makeBurrow()), ctx.repos),
+			...reapDeps(fakeBurrowClient(makeBurrow()), { fs: fakeFs().fs, exec: fakeExec().exec }),
 			fs: fakeFs().fs,
 			exec: fakeExec().exec,
 		});
@@ -147,7 +147,7 @@ describe("reapRun failure-reason inference (warren-3c40 / warren-5165)", () => {
 			runId: ctx.runId,
 			outcome: "succeeded",
 			repos: ctx.repos,
-			burrowClient: await makePool(fakeBurrowClient(makeBurrow()), ctx.repos),
+			...reapDeps(fakeBurrowClient(makeBurrow()), { fs: fakeFs().fs, exec: fakeExec().exec }),
 			fs: fakeFs().fs,
 			exec: fakeExec().exec,
 		});
@@ -161,7 +161,7 @@ describe("reapRun failure-reason inference (warren-3c40 / warren-5165)", () => {
 			outcome: "failed",
 			failureReason: "timed_out",
 			repos: ctx.repos,
-			burrowClient: await makePool(fakeBurrowClient(makeBurrow()), ctx.repos),
+			...reapDeps(fakeBurrowClient(makeBurrow()), { fs: fakeFs().fs, exec: fakeExec().exec }),
 			fs: fakeFs().fs,
 			exec: fakeExec().exec,
 		});
@@ -186,7 +186,7 @@ describe("reapRun failure-reason inference (warren-3c40 / warren-5165)", () => {
 			runId: ctx.runId,
 			outcome: "failed",
 			repos: ctx.repos,
-			burrowClient: await makePool(fakeBurrowClient(makeBurrow()), ctx.repos),
+			...reapDeps(fakeBurrowClient(makeBurrow()), { fs: fakeFs().fs, exec: fakeExec().exec }),
 			fs: fakeFs().fs,
 			exec: fakeExec().exec,
 		});
@@ -196,7 +196,7 @@ describe("reapRun failure-reason inference (warren-3c40 / warren-5165)", () => {
 			runId: ctx.runId,
 			outcome: "failed",
 			repos: ctx.repos,
-			burrowClient: await makePool(fakeBurrowClient(makeBurrow()), ctx.repos),
+			...reapDeps(fakeBurrowClient(makeBurrow()), { fs: fakeFs().fs, exec: fakeExec().exec }),
 			fs: fakeFs().fs,
 			exec: fakeExec().exec,
 		});

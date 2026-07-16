@@ -1,10 +1,8 @@
 import type { EventRow, RunFailureReason, RunTerminalState } from "../../db/schema.ts";
 import type { RunHandle, RuntimeProvider, WorkspaceInfo } from "../../runtime/contract.ts";
-import { resolveRuntimeProvider } from "../../runtime/registry.ts";
 import { bindBridgeLogger } from "../stream/index.ts";
 import { runWorkspaceDestroy } from "./destroy.ts";
 import { createPipelineState, runReapPipeline } from "./pipeline.ts";
-import type { PreviewWorkerClient } from "./preview.ts";
 import { detectTerminalProviderError } from "./provider-error.ts";
 import { inferFailureReason, isTerminal, transitionToTerminal } from "./state.ts";
 import type { ReapRunInput, ReapRunResult, ReapStep, ReapStepError } from "./types.ts";
@@ -15,15 +13,11 @@ export async function reapRun(input: ReapRunInput): Promise<ReapRunResult> {
 	const exec = input.exec ?? defaultExec;
 	const now = input.now ?? (() => new Date());
 	// Runtime-provider seam (warren-1f56). The workspace-dependent half of reap
-	// (finalize) + the sandbox teardown (terminate) route through this. Production
-	// dispatchers thread the boot-resolved provider (warren-c531); when absent,
-	// resolve through the single registry selector (warren-aa4a) — honoring
-	// `WARREN_RUNTIME` over the same client + fs/exec — instead of hardcoding a
-	// LocalProvider, so callers and tests that only pass `burrowClient` keep their
-	// behavior.
-	const provider: RuntimeProvider =
-		input.runtimeProvider ??
-		resolveRuntimeProvider({ burrowClient: () => input.burrowClient, fs, exec });
+	// (finalize) + the sandbox teardown (terminate) + workspace resolution route
+	// through this. REQUIRED since warren-e24d: reap no longer builds a fallback
+	// burrow-backed provider, so it holds no burrow client of its own — the boot
+	// wiring (and tests) construct the provider and thread it in.
+	const provider: RuntimeProvider = input.runtimeProvider;
 
 	const run = await input.repos.runs.require(input.runId);
 	const log = bindBridgeLogger(input.logger, { run_id: run.id }); // warren-9f06: bind run_id once
@@ -97,7 +91,6 @@ export async function reapRun(input: ReapRunInput): Promise<ReapRunResult> {
 
 	let workspacePath: string | null = null;
 	let branch: string | null = null;
-	let workerClient: PreviewWorkerClient | null = null;
 	// warren-e9e1: resolve the workspace path + branch through the provider seam,
 	// not a direct `burrows.get`. LocalProvider returns the live burrow worktree
 	// path + branch (byte-identical to reap's old inline lookup); K8sProvider
@@ -110,7 +103,6 @@ export async function reapRun(input: ReapRunInput): Promise<ReapRunResult> {
 	if (run.burrowId === null) {
 		await fail("workspace_lookup", new Error("run has no burrow_id; nothing to reap from"));
 	} else {
-		workerClient = input.burrowClient;
 		try {
 			resolved = await provider.workspaceInfo({
 				runId: run.id,
@@ -149,7 +141,7 @@ export async function reapRun(input: ReapRunInput): Promise<ReapRunResult> {
 				workspacePath,
 				branch,
 				baseBranch,
-				workerClient,
+				...(input.previewSidecars !== undefined ? { previewSidecars: input.previewSidecars } : {}),
 				provider,
 				fs,
 				exec,
@@ -246,10 +238,7 @@ export async function reapRun(input: ReapRunInput): Promise<ReapRunResult> {
 		run.burrowId !== null
 			? { runId: run.id, sandboxId: run.burrowId, providerRunId: run.burrowRunId ?? "" }
 			: null;
-	const terminate =
-		workspaceHandle !== null && workerClient !== null
-			? () => provider.terminate(workspaceHandle)
-			: null;
+	const terminate = workspaceHandle !== null ? () => provider.terminate(workspaceHandle) : null;
 	const workspaceDestroyed = await runWorkspaceDestroy({
 		run,
 		previewLaunchState: state.previewLaunchState,

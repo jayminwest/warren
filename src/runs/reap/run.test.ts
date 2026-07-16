@@ -9,8 +9,8 @@ import {
 	fakeExec,
 	fakeFs,
 	makeBurrow,
-	makePool,
 	openDatabase,
+	reapDeps,
 	setup,
 } from "./test-helpers.ts";
 
@@ -42,7 +42,7 @@ describe("reapRun", () => {
 			runId: ctx.runId,
 			outcome: "succeeded",
 			repos: ctx.repos,
-			burrowClient: await makePool(fakeBurrowClient(makeBurrow()), ctx.repos),
+			...reapDeps(fakeBurrowClient(makeBurrow()), { fs: f.fs, exec: e.exec }),
 			broker: ctx.broker,
 			fs: f.fs,
 			exec: e.exec,
@@ -74,7 +74,7 @@ describe("reapRun", () => {
 			runId: ctx.runId,
 			outcome: "succeeded",
 			repos: ctx.repos,
-			burrowClient: await makePool(fakeBurrowClient(makeBurrow()), ctx.repos),
+			...reapDeps(fakeBurrowClient(makeBurrow()), { fs: f.fs, exec: e.exec }),
 			broker: ctx.broker,
 			fs: f.fs,
 			exec: e.exec,
@@ -106,7 +106,7 @@ describe("reapRun", () => {
 			runId: ctx.runId,
 			outcome: "succeeded",
 			repos: ctx.repos,
-			burrowClient: await makePool(fakeBurrowClient(makeBurrow()), ctx.repos),
+			...reapDeps(fakeBurrowClient(makeBurrow()), { fs: fakeFs().fs, exec: e.exec }),
 			broker: ctx.broker,
 			fs: fakeFs().fs,
 			exec: e.exec,
@@ -130,7 +130,7 @@ describe("reapRun", () => {
 			runId: ctx.runId,
 			outcome: "succeeded",
 			repos: ctx.repos,
-			burrowClient: await makePool(fakeBurrowClient(makeBurrow()), ctx.repos),
+			...reapDeps(fakeBurrowClient(makeBurrow()), { fs: fakeFs().fs, exec: e.exec }),
 			fs: fakeFs().fs,
 			exec: e.exec,
 		});
@@ -147,7 +147,7 @@ describe("reapRun", () => {
 			runId: ctx.runId,
 			outcome: "succeeded",
 			repos: ctx.repos,
-			burrowClient: await makePool(fakeBurrowClient(makeBurrow()), ctx.repos),
+			...reapDeps(fakeBurrowClient(makeBurrow()), { fs: fakeFs().fs, exec: e.exec }),
 			fs: fakeFs().fs,
 			exec: e.exec,
 		});
@@ -164,7 +164,7 @@ describe("reapRun", () => {
 			runId: ctx.runId,
 			outcome: "succeeded",
 			repos: ctx.repos,
-			burrowClient: await makePool(fakeBurrowClient(makeBurrow()), ctx.repos),
+			...reapDeps(fakeBurrowClient(makeBurrow()), { fs: fakeFs().fs, exec: e.exec }),
 			fs: fakeFs().fs,
 			exec: e.exec,
 		});
@@ -207,7 +207,7 @@ describe("reapRun", () => {
 			runId: run.id,
 			outcome: "succeeded",
 			repos: customRepos,
-			burrowClient: await makePool(fakeBurrowClient(makeBurrow()), ctx.repos),
+			...reapDeps(fakeBurrowClient(makeBurrow()), { fs: fakeFs().fs, exec: e.exec }),
 			fs: fakeFs().fs,
 			exec: e.exec,
 		});
@@ -223,7 +223,7 @@ describe("reapRun", () => {
 			runId: ctx.runId,
 			outcome: "failed",
 			repos: ctx.repos,
-			burrowClient: await makePool(fakeBurrowClient(makeBurrow()), ctx.repos),
+			...reapDeps(fakeBurrowClient(makeBurrow()), { fs: fakeFs().fs, exec: fakeExec().exec }),
 			fs: fakeFs().fs,
 			exec: fakeExec().exec,
 		});
@@ -251,7 +251,7 @@ describe("reapRun", () => {
 			runId: fresh.id,
 			outcome: "succeeded",
 			repos,
-			burrowClient: await makePool(fakeBurrowClient(makeBurrow()), ctx.repos),
+			...reapDeps(fakeBurrowClient(makeBurrow()), { fs: fakeFs().fs, exec: fakeExec().exec }),
 			fs: fakeFs().fs,
 			exec: fakeExec().exec,
 		});
@@ -268,7 +268,7 @@ describe("reapRun", () => {
 			runId: ctx.runId,
 			outcome: "succeeded",
 			repos: ctx.repos,
-			burrowClient: await makePool(fakeBurrowClient(makeBurrow()), ctx.repos),
+			...reapDeps(fakeBurrowClient(makeBurrow()), { fs: f.fs, exec: e.exec }),
 			fs: f.fs,
 			exec: e.exec,
 		});
@@ -297,7 +297,7 @@ describe("reapRun", () => {
 			runId: ctx.runId,
 			outcome: "succeeded",
 			repos: ctx.repos,
-			burrowClient: await makePool(client, ctx.repos),
+			...reapDeps(client, { fs: fakeFs().fs, exec: e.exec }),
 			fs: fakeFs().fs,
 			exec: e.exec,
 		});
@@ -314,7 +314,7 @@ describe("reapRun", () => {
 			runId: ctx.runId,
 			outcome: "succeeded",
 			repos: ctx.repos,
-			burrowClient: await makePool(fakeBurrowClient(makeBurrow()), ctx.repos),
+			...reapDeps(fakeBurrowClient(makeBurrow()), { fs: fakeFs().fs, exec: e.exec }),
 			fs: fakeFs().fs,
 			exec: e.exec,
 		});
@@ -327,7 +327,7 @@ describe("reapRun", () => {
 			runId: ctx.runId,
 			outcome: "succeeded",
 			repos: ctx.repos,
-			burrowClient: await makePool(fakeBurrowClient(makeBurrow()), ctx.repos),
+			...reapDeps(fakeBurrowClient(makeBurrow()), { fs: fakeFs().fs, exec: fakeExec().exec }),
 			fs: fakeFs().fs,
 			exec: fakeExec().exec,
 		});
@@ -360,7 +360,7 @@ describe("reapRun", () => {
 			runId: queued.id,
 			outcome: "failed",
 			repos: ctx.repos,
-			burrowClient: await makePool(fakeBurrowClient(makeBurrow()), ctx.repos),
+			...reapDeps(fakeBurrowClient(makeBurrow()), { fs: fakeFs().fs, exec: e.exec }),
 			fs: fakeFs().fs,
 			exec: e.exec,
 		});
@@ -401,7 +401,7 @@ describe("reapRun", () => {
 			runId: queued.id,
 			outcome: "failed",
 			repos: ctx.repos,
-			burrowClient: await makePool(fakeBurrowClient(makeBurrow()), ctx.repos),
+			...reapDeps(fakeBurrowClient(makeBurrow()), { fs: fakeFs().fs, exec: fakeExec().exec }),
 			fs: fakeFs().fs,
 			exec: fakeExec().exec,
 		});
@@ -431,7 +431,7 @@ describe("reapRun", () => {
 			runId: conv.id,
 			outcome: "succeeded",
 			repos: ctx.repos,
-			burrowClient: await makePool(fakeBurrowClient(makeBurrow()), ctx.repos),
+			...reapDeps(fakeBurrowClient(makeBurrow()), { fs: fakeFs().fs, exec: e.exec }),
 			broker: ctx.broker,
 			fs: fakeFs().fs,
 			exec: e.exec,
@@ -467,7 +467,7 @@ describe("reapRun", () => {
 			runId: ctx.runId,
 			outcome: "succeeded",
 			repos: ctx.repos,
-			burrowClient: await makePool(fakeBurrowClient(makeBurrow()), ctx.repos),
+			...reapDeps(fakeBurrowClient(makeBurrow()), { fs: f.fs, exec: fakeExec().exec }),
 			broker: ctx.broker,
 			fs: f.fs,
 			exec: fakeExec().exec,
