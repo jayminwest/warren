@@ -49,7 +49,7 @@ async function depsFor(input: BuildDepsInput): Promise<ServerDeps> {
 	const pool = await poolFor(input.repos);
 	return {
 		repos: input.repos,
-		burrowClient: pool,
+		runtimeProvider: resolveRuntimeProvider({ burrowClient: () => pool }),
 		broker,
 		bridges: createBridgeRegistry({
 			repos: input.repos,

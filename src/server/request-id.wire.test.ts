@@ -46,7 +46,7 @@ async function depsFor(repos: Repos): Promise<ServerDeps> {
 	const broker = new RunEventBroker();
 	return {
 		repos,
-		burrowClient,
+		runtimeProvider: resolveRuntimeProvider({ burrowClient: () => burrowClient }),
 		broker,
 		bridges: createBridgeRegistry({
 			repos,

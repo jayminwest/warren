@@ -42,7 +42,7 @@ async function depsFor(
 	await poolFor(repos, burrowClient);
 	return {
 		repos,
-		burrowClient,
+		runtimeProvider: resolveRuntimeProvider({ burrowClient: () => burrowClient }),
 		broker,
 		bridges:
 			bridges ??
@@ -183,7 +183,7 @@ describe("POST /agents/refresh without canopy library (warren-d3e9)", () => {
 		// Strip canopyConfig — equivalent to booting without CANOPY_REPO_URL.
 		const noCanopyDeps: ServerDeps = {
 			repos: deps.repos,
-			burrowClient: deps.burrowClient,
+			runtimeProvider: deps.runtimeProvider,
 			broker: deps.broker,
 			bridges: deps.bridges,
 			projectsConfig: deps.projectsConfig,

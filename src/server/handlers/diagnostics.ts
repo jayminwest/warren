@@ -23,7 +23,6 @@ import { checkStaleBurrowWorkspaces } from "../../diagnostics/stale-workspaces.t
 import { createRunPreviewsRepo, DEFAULT_MAX_LIVE } from "../../preview/eviction/index.ts";
 import { DEFAULT_PREVIEW_PORT_RANGE, PreviewPortAllocator } from "../../preview/port-allocator.ts";
 import type { SpawnFn } from "../../projects/clone.ts";
-import { checkBurrowPoolReachable } from "../../runtime/local/diagnostics/burrow.ts";
 import { resolveRuntimeKind } from "../../runtime/registry.ts";
 import { jsonResponse } from "../response.ts";
 import type { RouteHandler, ServerDeps } from "../types.ts";
@@ -101,8 +100,12 @@ export function readyzHandler(deps: ServerDeps): RouteHandler {
  */
 async function burrowReadyzChecks(deps: ServerDeps, spawn: SpawnFn): Promise<DiagnosticCheck[]> {
 	if (resolveRuntimeKind() !== "local") return [];
+	// warren-f796: the burrow-socket probe is a boot-wired thunk (`deps.burrowProbe`,
+	// built by the `LocalBootBackend`) rather than a `burrowClient` on ServerDeps.
+	// Tests that omit it degrade to just the bwrap + stale-workspace probes.
+	const burrowProbe = deps.burrowProbe;
 	return [
-		await checkBurrowPoolReachable(deps.burrowClient),
+		...(burrowProbe !== undefined ? [await burrowProbe()] : []),
 		await checkBwrap({ spawn }),
 		await staleBurrowWorkspacesReadyzCheck(deps),
 	];

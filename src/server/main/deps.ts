@@ -5,7 +5,6 @@
  * inputs the orchestrator has already wired.
  */
 
-import type { BurrowClient } from "../../burrow-client/index.ts";
 import type { AnyWarrenDb } from "../../db/client.ts";
 import type { Repos } from "../../db/repos/index.ts";
 import type { MetricsRegistry } from "../../observability/metrics-registry.ts";
@@ -24,10 +23,7 @@ import {
 	defaultPlotStatusChanger,
 } from "../../plots/index.ts";
 import type { PreviewAuth } from "../../preview/cookie.ts";
-import type {
-	loadPreviewEvictionConfigFromEnv,
-	SidecarResolver,
-} from "../../preview/eviction/index.ts";
+import type { loadPreviewEvictionConfigFromEnv } from "../../preview/eviction/index.ts";
 import type { loadPreviewLaunchConfigFromEnv } from "../../preview/launch/index.ts";
 import type { loadPreviewPortRangeFromEnv } from "../../preview/port-allocator.ts";
 import type { ProjectsConfig } from "../../projects/config.ts";
@@ -52,7 +48,6 @@ type PreviewPortRange = ReturnType<typeof loadPreviewPortRangeFromEnv>;
 export interface BuildServerDepsInput {
 	readonly repos: Repos;
 	readonly db: AnyWarrenDb;
-	readonly burrowClient: BurrowClient;
 	/**
 	 * The runtime provider resolved ONCE at boot (`resolveRuntimeProvider`,
 	 * warren-c531) — the sole composition point. `bootServer` resolves it before
@@ -67,7 +62,12 @@ export interface BuildServerDepsInput {
 	 * the preview-teardown handler's best-effort sidecar stop. Absent under a
 	 * backend without preview ports.
 	 */
-	readonly previewSidecars?: SidecarResolver;
+	readonly previewSidecars?: import("../../runtime/local/preview/sidecars.ts").LocalSidecarsResolver;
+	/**
+	 * Local-topology `/readyz` burrow probe (warren-f796). Present only under
+	 * `WARREN_RUNTIME=local` (from the `LocalBootBackend`); absent under k8s.
+	 */
+	readonly burrowProbe?: () => Promise<import("../../diagnostics/checks.ts").DiagnosticCheck>;
 	readonly broker: RunEventBroker;
 	readonly bridges: BridgeRegistry;
 	readonly canopyConfig: CanopyConfig;
@@ -99,8 +99,8 @@ export function buildServerDeps(input: BuildServerDepsInput): ServerDeps {
 	const {
 		repos,
 		db,
-		burrowClient,
 		runtimeProvider,
+		burrowProbe,
 		broker,
 		bridges,
 		canopyConfig,
@@ -146,8 +146,8 @@ export function buildServerDeps(input: BuildServerDepsInput): ServerDeps {
 	return {
 		repos,
 		db,
-		burrowClient,
 		runtimeProvider,
+		...(burrowProbe !== undefined ? { burrowProbe } : {}),
 		broker,
 		bridges,
 		...(canopyConfig !== null ? { canopyConfig } : {}),

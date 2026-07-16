@@ -11,6 +11,7 @@ import { BurrowClient } from "../../burrow-client/index.ts";
 import { openDatabase, type WarrenDb } from "../../db/client.ts";
 import { createRepos } from "../../db/repos/index.ts";
 import type { SpawnFn } from "../../projects/clone.ts";
+import { checkBurrowPoolReachable } from "../../runtime/local/diagnostics/burrow.ts";
 import type { RouteContext, ServerDeps } from "../types.ts";
 import { readyzHandler } from "./diagnostics.ts";
 
@@ -41,7 +42,9 @@ async function readyzChecks(
 	const deps = {
 		repos,
 		db,
-		burrowClient: unreachableBurrow(),
+		// warren-f796: the burrow probe is a boot-wired thunk on ServerDeps, not a
+		// live client. Mirror the LocalBootBackend by probing an unreachable client.
+		burrowProbe: () => checkBurrowPoolReachable(unreachableBurrow()),
 		spawn: failBwrap,
 		projectsConfig: { root: "/tmp/projects", gitBinary: "git" },
 		logger: silentLogger,

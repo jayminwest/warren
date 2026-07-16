@@ -17,7 +17,7 @@ function depsFor(repos: Repos): ServerDeps {
 	const client = new BurrowClient({ config: { transport: { kind: "unix", path: "/tmp/x.sock" } } });
 	return {
 		repos,
-		burrowClient: client,
+		runtimeProvider: resolveRuntimeProvider({ burrowClient: () => client }),
 		broker,
 		bridges: createBridgeRegistry({
 			repos,

@@ -27,7 +27,6 @@
  */
 
 import { join } from "node:path";
-import { BurrowClient, probeBurrowClient } from "../../burrow-client/index.ts";
 import { openDatabase } from "../../db/client.ts";
 import { DrizzleAdapter } from "../../db/repos/drizzle-adapter.ts";
 import { createRepos } from "../../db/repos/index.ts";
@@ -61,6 +60,7 @@ import {
 } from "../../runs/index.ts";
 import { buildPrContent, openPullRequest } from "../../runs/pr.ts";
 import { loadWorkspaceGcConfigFromEnv, startWorkspaceGcWorker } from "../../runs/reap/gc.ts";
+import { resolveLocalBootBackend } from "../../runtime/local/boot-backend.ts";
 import { resolveRuntimeKind } from "../../runtime/registry.ts";
 import { showSeed } from "../../seeds-cli/index.ts";
 import { loadWarrenServerConfigFromFile } from "../../server-config/index.ts";
@@ -82,7 +82,6 @@ import {
 	workspaceGcLoggerFromPino,
 } from "./logging.ts";
 import { bootObservability, captureBootFailure } from "./observability-wiring.ts";
-import { resolveLocalPreviewGcSeams } from "./preview-gc-wiring.ts";
 import { createPreviewAuthAndProxy } from "./preview-wiring.ts";
 import { bootK8sRuntime, resolveBootRuntimeProvider } from "./runtime-wiring.ts";
 import { closeDatabase, defaultSpawn, redactDbUrl, resolvePgPoolMax } from "./utils.ts";
@@ -136,8 +135,8 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 	// self-host backend is a single local burrow built from WARREN_BURROW_* env
 	// vars. The `[workers]` TOML block, the /workers + /burrows surfaces, and the
 	// worker-probe loop are all gone; the workers table itself is dropped in
-	// step 24 (warren-3743).
-	const burrowClient = BurrowClient.fromEnv(env);
+	// step 24 (warren-3743). warren-f796: the burrow client no longer lives here —
+	// the `LocalBootBackend` builds + owns it under `local` (none under `k8s`).
 	const broker = new RunEventBroker();
 
 	logger.info(
@@ -205,25 +204,24 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 		logger.info({}, "k8s runtime: pod-watcher + pod-GC started");
 	}
 
-	// Resolve the runtime provider ONCE — the sole composition point (warren-c531,
-	// formerly in `buildServerDeps`). The SAME instance flows into the bridge
-	// registry, run-state poller, watchdog, and `ServerDeps`. See
-	// `resolveBootRuntimeProvider` for the `WARREN_RUNTIME` selection semantics.
-	const runtimeProvider = resolveBootRuntimeProvider({
-		env,
-		burrowClient,
-		runInbox: () => repos.runInbox,
-		logger,
-		...(metricsRegistry !== undefined ? { admissionMetrics: metricsRegistry } : {}),
-		...(k8sRuntime !== undefined ? { k8sRuntime } : {}),
-	});
-
-	// Preview + workspace-GC seams (warren-e24d), gated on provider capabilities
-	// (dark under K8s). See `resolveLocalPreviewGcSeams`.
-	const { previewSidecars, workspaceDestroyer } = resolveLocalPreviewGcSeams(
-		runtimeProvider,
-		burrowClient,
-	);
+	// Resolve the runtime provider ONCE (warren-c531) — the SAME instance flows
+	// into the bridge registry, poller, watchdog, and `ServerDeps`. warren-f796:
+	// under `local` the `LocalBootBackend` owns the burrow client + the
+	// capability-gated preview/GC seams + burrow probe; under `k8s` there is no
+	// burrow, so we resolve the `K8sProvider` directly and those seams stay dark.
+	const localBackend =
+		resolveRuntimeKind(env) === "local" ? resolveLocalBootBackend(env) : undefined;
+	const runtimeProvider =
+		localBackend?.runtimeProvider ??
+		resolveBootRuntimeProvider({
+			env,
+			runInbox: () => repos.runInbox,
+			logger,
+			...(metricsRegistry !== undefined ? { admissionMetrics: metricsRegistry } : {}),
+			...(k8sRuntime !== undefined ? { k8sRuntime } : {}),
+		});
+	const previewSidecars = localBackend?.previewSidecars;
+	const workspaceDestroyer = localBackend?.workspaceDestroyer;
 	const bindReap = (i: Parameters<typeof reapRun>[0]) =>
 		reapRun({ ...i, ...(previewSidecars !== undefined ? { previewSidecars } : {}) });
 
@@ -254,11 +252,11 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 	}
 
 	// Startup burrow probe — local backend only; k8s has no socket (warren-c128).
-	if (resolveRuntimeKind(env) === "local") {
-		probeBurrowClient(burrowClient).then((result) => {
+	if (localBackend !== undefined) {
+		localBackend.probeBurrow().then((result) => {
 			if (!result.ok) {
 				logger.warn(
-					{ worker: result.workerName, err: result.error?.message ?? "unknown" },
+					{ err: result.message ?? "unknown" },
 					"burrow probe failed at boot — /readyz will reflect this",
 				);
 			}
@@ -467,9 +465,10 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 	const deps = buildServerDeps({
 		repos,
 		db,
-		burrowClient,
 		// warren-c531: the provider resolved once above; deps re-uses it.
 		runtimeProvider,
+		// warren-f796: local-topology `/readyz` burrow probe (absent under k8s).
+		...(localBackend !== undefined ? { burrowProbe: localBackend.probeBurrow } : {}),
 		broker,
 		bridges: bridgesBoot.registry,
 		canopyConfig,
@@ -526,7 +525,8 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 			// K8s runtime loops (no-op / undefined under the local backend).
 			await k8sRuntime?.stop();
 			await bridgesBoot.registry.stopAll();
-			await burrowClient.close();
+			// warren-f796: close the local backend's burrow client (undefined under k8s).
+			await localBackend?.close();
 			await closeDatabase(db);
 		},
 	};
