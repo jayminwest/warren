@@ -11,9 +11,11 @@
 # These were migrated from .warren/defaults.json. Edit freely.
 
 defaultRole: pi
-defaultBranch: main
-defaultProvider: zai
-defaultModel: glm-5.2
+# k8s-migration is the working mainline while the K8s migration completes;
+# revert to main (and reconsider provider/model) when the branch merges.
+defaultBranch: k8s-migration
+defaultProvider: anthropic
+defaultModel: claude-sonnet-4-6
 
 # ── Optional knobs (uncomment to set) ───────────────────────────────────
 
