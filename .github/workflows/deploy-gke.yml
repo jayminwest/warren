@@ -15,7 +15,10 @@ name: GKE Build & Deploy
 
 on:
   push:
-    branches: [main]
+    # k8s-migration is the working mainline during the migration; pushes to it
+    # build AND deploy (see the deploy job's if) so warren can dogfood its own
+    # development. Drop the branch entry when the migration merges to main.
+    branches: [main, k8s-migration]
   release:
     types: [published]
   workflow_dispatch:
@@ -110,7 +113,8 @@ jobs:
     # that explicitly opts in. A bare push to main only builds + pushes images.
     if: >-
       github.event_name == 'release' ||
-      (github.event_name == 'workflow_dispatch' && inputs.deploy)
+      (github.event_name == 'workflow_dispatch' && inputs.deploy) ||
+      (github.event_name == 'push' && github.ref == 'refs/heads/k8s-migration')
     runs-on: ubuntu-latest
     permissions:
       contents: read
