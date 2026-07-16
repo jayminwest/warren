@@ -42,13 +42,10 @@
  * unread row a send returns, populated once a later turn claims the message.
  */
 
-import {
-	type Message as BurrowMessage,
-	NotFoundError as BurrowNotFoundError,
-} from "@os-eco/burrow-cli";
+import type { Message as BurrowMessage } from "@os-eco/burrow-cli";
 import { type BurrowClient, withTransportMapping } from "../../burrow-client/index.ts";
 import type { Message, OutboundMessage, RunHandle } from "../contract.ts";
-import { RuntimeRunNotFoundError } from "../errors.ts";
+import { mapBurrowError } from "./error-map.ts";
 
 /**
  * Enqueue a steering message onto the run's burrow inbox and return the
@@ -72,15 +69,13 @@ export async function sendLocalMessage(
 			}),
 		);
 	} catch (err) {
-		// Neutralize burrow's 404 at the seam (warren-1f56): a ghost burrow
-		// surfaces to the domain as the provider-neutral `RuntimeRunNotFoundError`
-		// so `steerRun` never imports `@os-eco/burrow-cli`'s error class.
-		if (err instanceof BurrowNotFoundError) {
-			throw new RuntimeRunNotFoundError(err.message, {
-				recoveryHint: "the run is likely lost; the bridge will reconcile it to failed",
-			});
-		}
-		throw err;
+		// Neutralize burrow errors at the seam (warren-1f56, warren-36cb): a ghost
+		// burrow (burrow 404) surfaces to the domain as the provider-neutral
+		// `RuntimeRunNotFoundError` so `steerRun` never imports `@os-eco/burrow-cli`'s
+		// error class. Any burrow class with no neutral analogue propagates unchanged.
+		throw mapBurrowError(err, {
+			runNotFoundHint: "the run is likely lost; the bridge will reconcile it to failed",
+		});
 	}
 	return toSeamMessage(row);
 }

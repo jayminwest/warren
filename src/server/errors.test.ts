@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
 	NotFoundError as BurrowNotFoundError,
+	SandboxError as BurrowSandboxError,
 	ValidationError as BurrowValidationError,
 } from "@os-eco/burrow-cli";
 import { BurrowUnreachableError } from "../burrow-client/errors.ts";
@@ -8,7 +9,12 @@ import { NotFoundError, StateTransitionError, ValidationError } from "../core/er
 import { ProjectUnavailableError } from "../projects/errors.ts";
 import { AgentSchemaError, CanopyUnavailableError } from "../registry/errors.ts";
 import { RunSpawnError } from "../runs/errors.ts";
-import { RuntimeAdmissionError } from "../runtime/errors.ts";
+import {
+	RuntimeAdmissionError,
+	RuntimeConflictError,
+	RuntimeRunNotFoundError,
+	RuntimeUnreachableError,
+} from "../runtime/errors.ts";
 import { WarrenConfigUnavailableError } from "../warren-config/errors.ts";
 import { methodNotAllowed, notFound, notImplemented, renderError } from "./errors.ts";
 
@@ -45,8 +51,28 @@ describe("renderError — WarrenError mapping", () => {
 		expect(r.headers).toEqual({ "Retry-After": "30" });
 	});
 
-	test("BurrowUnreachableError → 503", () => {
-		expect(renderError(new BurrowUnreachableError("burrow gone")).status).toBe(503);
+	test("BurrowUnreachableError → 503 (extends RuntimeUnreachableError; code preserved)", () => {
+		const r = renderError(new BurrowUnreachableError("burrow gone"));
+		expect(r.status).toBe(503);
+		expect(r.envelope.error.code).toBe("burrow_unreachable");
+	});
+
+	test("RuntimeUnreachableError → 503 (neutral K8s transport failure)", () => {
+		const r = renderError(new RuntimeUnreachableError("pod endpoint gone"));
+		expect(r.status).toBe(503);
+		expect(r.envelope.error.code).toBe("runtime_unreachable");
+	});
+
+	test("RuntimeRunNotFoundError → 404", () => {
+		const r = renderError(new RuntimeRunNotFoundError("run gone"));
+		expect(r.status).toBe(404);
+		expect(r.envelope.error.code).toBe("runtime_run_not_found");
+	});
+
+	test("RuntimeConflictError → 409", () => {
+		const r = renderError(new RuntimeConflictError("toolchain clash"));
+		expect(r.status).toBe(409);
+		expect(r.envelope.error.code).toBe("runtime_conflict");
 	});
 
 	test("CanopyUnavailableError → 503", () => {
@@ -72,15 +98,37 @@ describe("renderError — WarrenError mapping", () => {
 	});
 });
 
-describe("renderError — BurrowError pass-through", () => {
+describe("renderError — backend code pass-through (warren-36cb)", () => {
+	// server/errors.ts imports NOTHING from @os-eco/burrow-cli; a raw burrow
+	// server envelope that leaks from a not-yet-provider-routed call is mapped by
+	// its `code` alone, so the envelope forwards verbatim (byte-identical to the
+	// former `instanceof BurrowError` mapping).
 	test("burrow NotFoundError → 404 with code passthrough", () => {
 		const r = renderError(new BurrowNotFoundError("burrow not found: bur_x"));
 		expect(r.status).toBe(404);
 		expect(r.envelope.error.code).toBe("not_found");
+		expect(r.envelope.error.message).toBe("burrow not found: bur_x");
 	});
 
-	test("burrow ValidationError → 400", () => {
-		expect(renderError(new BurrowValidationError("bad input")).status).toBe(400);
+	test("burrow ValidationError → 400 with code passthrough", () => {
+		const r = renderError(new BurrowValidationError("bad input"));
+		expect(r.status).toBe(400);
+		expect(r.envelope.error.code).toBe("validation_error");
+	});
+
+	test("burrow SandboxError → 502 with code passthrough", () => {
+		const r = renderError(new BurrowSandboxError("bwrap failed"));
+		expect(r.status).toBe(502);
+		expect(r.envelope.error.code).toBe("sandbox_error");
+	});
+
+	test("an unrecognized backend code falls through to 500 internal_error", () => {
+		// A backend error whose code is not in the mirrored table (e.g. a retired
+		// class) degrades to the generic 500 envelope — same status the base
+		// BurrowError always mapped to.
+		const r = renderError(new Error("nope"));
+		expect(r.status).toBe(500);
+		expect(r.envelope.error.code).toBe("internal_error");
 	});
 });
 

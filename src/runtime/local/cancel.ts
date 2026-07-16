@@ -37,10 +37,9 @@
  *     `BurrowError` subclasses propagate unchanged.
  */
 
-import { NotFoundError as BurrowNotFoundError } from "@os-eco/burrow-cli";
 import { type BurrowClient, withTransportMapping } from "../../burrow-client/index.ts";
 import type { RunHandle } from "../contract.ts";
-import { RuntimeRunNotFoundError } from "../errors.ts";
+import { mapBurrowError } from "./error-map.ts";
 
 /**
  * Forward a graceful cancel to burrow's `POST /runs/:id/cancel` for the run this
@@ -59,15 +58,13 @@ export async function cancelLocalRun(
 			client.http.runs.cancel(handle.providerRunId, reason !== undefined ? { reason } : {}),
 		);
 	} catch (err) {
-		// Neutralize burrow's 404 at the seam (warren-1f56): a ghost run surfaces
-		// to the domain as the provider-neutral `RuntimeRunNotFoundError` so
-		// `cancelRun` / the watchdog never import `@os-eco/burrow-cli`'s error
-		// class to recognize a lost run.
-		if (err instanceof BurrowNotFoundError) {
-			throw new RuntimeRunNotFoundError(err.message, {
-				recoveryHint: "the run is unknown to the backend; terminalize the warren row",
-			});
-		}
-		throw err;
+		// Neutralize burrow errors at the seam (warren-1f56, warren-36cb): a ghost
+		// run (burrow 404) surfaces to the domain as the provider-neutral
+		// `RuntimeRunNotFoundError` so `cancelRun` / the watchdog never import
+		// `@os-eco/burrow-cli`'s error class to recognize a lost run. Any burrow
+		// class with no neutral analogue propagates unchanged.
+		throw mapBurrowError(err, {
+			runNotFoundHint: "the run is unknown to the backend; terminalize the warren row",
+		});
 	}
 }
