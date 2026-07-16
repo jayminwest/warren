@@ -9,6 +9,7 @@ import type {
 } from "../../plan-runs/plot-appender.ts";
 import type { SpawnFn, SpawnOptions, SpawnResult } from "../../projects/clone.ts";
 import { RunEventBroker } from "../../runs/index.ts";
+import { resolveRuntimeProvider } from "../../runtime/registry.ts";
 import { createBridgeRegistry } from "../bridges.ts";
 import type { BridgeRegistry, Logger, ServeHandle, ServerDeps } from "../types.ts";
 
@@ -108,7 +109,7 @@ export async function depsFor(input: BuildDepsInput): Promise<ServerDeps> {
 			createBridgeRegistry({
 				repos: input.repos,
 				broker,
-				burrowClient: pool,
+				runtimeProvider: resolveRuntimeProvider({ burrowClient: () => pool }),
 				bridge: async () => ({ written: 0, skipped: 0, errored: false }),
 			}),
 		projectsConfig: { root: "/tmp/projects", gitBinary: "git" },

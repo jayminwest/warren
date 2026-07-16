@@ -10,11 +10,10 @@
  */
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { BurrowClient } from "../burrow-client/index.ts";
 import { openDatabase, type WarrenDb } from "../db/client.ts";
 import { createRepos, type Repos } from "../db/repos/index.ts";
 import { RunEventBroker } from "../runs/index.ts";
-import { makePool, stub } from "./bridges.test-helpers.ts";
+import { makeProvider } from "./bridges.test-helpers.ts";
 import { bootBridges } from "./bridges.ts";
 
 describe("bootBridges — conversation crash-recovery", () => {
@@ -54,25 +53,15 @@ describe("bootBridges — conversation crash-recovery", () => {
 		});
 		await repos.runs.markRunning(r.id);
 
-		const ghostClient = new BurrowClient({
-			config: { transport: { kind: "unix", path: "/tmp/x.sock" } },
-			fetch: stub(
-				async () =>
-					new Response(
-						JSON.stringify({
-							error: { code: "not_found", message: "run not found: rb_convghost01" },
-						}),
-						{ status: 404, headers: { "content-type": "application/json" } },
-					),
-			),
-		});
-		const pool = await makePool(repos, ghostClient);
+		// Ghost run: `status().exists === false` (the pi-chat session lived in the
+		// backend's in-memory store and vanished across the host restart).
+		const { provider } = makeProvider({ exists: false });
 
 		const calls: string[] = [];
 		const result = await bootBridges({
 			repos,
 			broker: new RunEventBroker(),
-			burrowClient: pool,
+			runtimeProvider: provider,
 			bridge: async (input) => {
 				calls.push(input.runId);
 				return { written: 0, skipped: 0, errored: false };

@@ -55,6 +55,7 @@ import {
 	loadAutoOpenPrConfigFromEnv,
 	loadRunBranchPrefixFromEnv,
 	RunEventBroker,
+	reapRun,
 	resolveDispatcherHandle,
 	resolveRunBranchPrefix,
 } from "../../runs/index.ts";
@@ -219,8 +220,9 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 	const bridgesBoot = await bootBridges({
 		repos,
 		broker,
-		burrowClient,
 		runtimeProvider,
+		// warren-5a3f: pre-bind the inline reap seam with the burrow client here.
+		reap: (reapInput) => reapRun({ ...reapInput, burrowClient }),
 		logger: bridgeLoggerFromPino(logger),
 		autoOpenPr,
 		warrenConfigs,
@@ -396,7 +398,7 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 			env,
 			adapter,
 			repos,
-			burrowClient,
+			reap: (reapInput) => reapRun({ ...reapInput, burrowClient }),
 			broker,
 			bridges: bridgesBoot.registry,
 			warrenConfigs,

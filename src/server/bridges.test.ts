@@ -7,7 +7,7 @@ import {
 	RunEventBroker,
 } from "../runs/index.ts";
 import type { RuntimeProvider } from "../runtime/contract.ts";
-import { makePool, reapStub } from "./bridges.test-helpers.ts";
+import { makeProvider, reapStub } from "./bridges.test-helpers.ts";
 import { createBridgeRegistry } from "./bridges.ts";
 
 describe("createBridgeRegistry", () => {
@@ -29,7 +29,6 @@ describe("createBridgeRegistry", () => {
 		const registry = createBridgeRegistry({
 			repos,
 			broker: new RunEventBroker(),
-			burrowClient: await makePool(repos),
 			runtimeProvider: provider,
 			bridge: async (input) => {
 				captured.push(input.runtimeProvider);
@@ -42,32 +41,12 @@ describe("createBridgeRegistry", () => {
 		expect(captured).toEqual([provider]);
 	});
 
-	test("start() resolves the local-default provider when the registry has none (warren-1fce)", async () => {
-		const captured: (RuntimeProvider | undefined)[] = [];
-		const registry = createBridgeRegistry({
-			repos,
-			broker: new RunEventBroker(),
-			burrowClient: await makePool(repos),
-			bridge: async (input) => {
-				captured.push(input.runtimeProvider);
-				return { written: 0, skipped: 0, errored: false };
-			},
-		});
-		registry.start("run_cccccccccccc", "burrow_run_zzzzzzzzzz", "bur_c");
-		await registry.stopAll();
-		// The bridge now requires a provider (warren-1fce): with none injected, the
-		// reconnect path resolves a LocalProvider over the burrow client rather than
-		// passing `undefined`.
-		expect(captured).toHaveLength(1);
-		expect(captured[0]).toBeDefined();
-	});
-
 	test("start() invokes the bridge factory once per runId", async () => {
 		const calls: BridgeRunStreamInput[] = [];
 		const registry = createBridgeRegistry({
 			repos,
 			broker: new RunEventBroker(),
-			burrowClient: await makePool(repos),
+			runtimeProvider: makeProvider().provider,
 			bridge: async (input) => {
 				calls.push(input);
 				return { written: 0, skipped: 0, errored: false };
@@ -87,7 +66,7 @@ describe("createBridgeRegistry", () => {
 		const registry = createBridgeRegistry({
 			repos,
 			broker: new RunEventBroker(),
-			burrowClient: await makePool(repos),
+			runtimeProvider: makeProvider().provider,
 			bridge: () =>
 				new Promise<BridgeRunStreamResult>((resolve) => {
 					resolvers.push(() => resolve({ written: 0, skipped: 0, errored: false }));
@@ -107,7 +86,7 @@ describe("createBridgeRegistry", () => {
 		const registry = createBridgeRegistry({
 			repos,
 			broker: new RunEventBroker(),
-			burrowClient: await makePool(repos),
+			runtimeProvider: makeProvider().provider,
 			bridge: (input) =>
 				new Promise<BridgeRunStreamResult>((resolve) => {
 					input.signal?.addEventListener("abort", () => {
@@ -144,7 +123,7 @@ describe("createBridgeRegistry", () => {
 		const registry = createBridgeRegistry({
 			repos,
 			broker: new RunEventBroker(),
-			burrowClient: await makePool(repos),
+			runtimeProvider: makeProvider().provider,
 			bridge: async () => {
 				calls += 1;
 				// First two attempts fail mid-stream (e.g., burrow's 10s
@@ -183,7 +162,7 @@ describe("createBridgeRegistry", () => {
 		const registry = createBridgeRegistry({
 			repos,
 			broker: new RunEventBroker(),
-			burrowClient: await makePool(repos),
+			runtimeProvider: makeProvider().provider,
 			bridge: async () => {
 				calls += 1;
 				// Simulate the reaper finalizing between the first errored
@@ -225,7 +204,7 @@ describe("createBridgeRegistry", () => {
 		const registry = createBridgeRegistry({
 			repos,
 			broker: new RunEventBroker(),
-			burrowClient: await makePool(repos),
+			runtimeProvider: makeProvider().provider,
 			bridge: async () => {
 				bridgeCalls += 1;
 				return {
@@ -268,7 +247,7 @@ describe("createBridgeRegistry", () => {
 		const registry = createBridgeRegistry({
 			repos,
 			broker: new RunEventBroker(),
-			burrowClient: await makePool(repos),
+			runtimeProvider: makeProvider().provider,
 			bridge: async () => ({
 				written: 1,
 				skipped: 0,
@@ -308,7 +287,7 @@ describe("createBridgeRegistry", () => {
 		const registry = createBridgeRegistry({
 			repos,
 			broker: new RunEventBroker(),
-			burrowClient: await makePool(repos),
+			runtimeProvider: makeProvider().provider,
 			bridge: async () => {
 				throw new Error("burrow has no placement record: bur_a");
 			},
@@ -359,7 +338,7 @@ describe("createBridgeRegistry", () => {
 		const registry = createBridgeRegistry({
 			repos,
 			broker: new RunEventBroker(),
-			burrowClient: await makePool(repos),
+			runtimeProvider: makeProvider().provider,
 			bridge: async () => {
 				calls += 1;
 				return { written: 0, skipped: 0, errored: true };

@@ -41,7 +41,6 @@
  * unbounded. Tests inject a stub bridge factory to avoid a real burrow.
  */
 
-import type { BurrowClient } from "../burrow-client/index.ts";
 import type { Repos } from "../db/repos/index.ts";
 import type { RunMode } from "../db/schema.ts";
 import type { PreviewLaunchConfig } from "../preview/launch/index.ts";
@@ -53,17 +52,14 @@ import {
 	type BridgeRunStreamResult,
 	bindBridgeLogger,
 	bridgeRunStream,
-	type ReapRunInput,
-	type ReapRunResult,
 	type RunEventBroker,
-	reapRun,
+	type WatchdogReap,
 } from "../runs/index.ts";
 import {
 	type ConversationTurnHandler,
 	createConversationTurnHandler,
 } from "../runs/stream/conversation-turn.ts";
 import type { RuntimeProvider } from "../runtime/contract.ts";
-import { resolveRuntimeProvider } from "../runtime/registry.ts";
 import type { SeedsCliDeps } from "../seeds-cli/index.ts";
 import type { WarrenConfigCache } from "../warren-config/index.ts";
 import { defaultSleep, reconcileLostBurrowRun, runWithReconnect } from "./bridge-reconnect.ts";
@@ -107,23 +103,16 @@ export interface CreateBridgeRegistryInput {
 	readonly repos: Repos;
 	readonly broker: RunEventBroker;
 	/**
-	 * Multi-worker burrow pool (warren-c0c9 / pl-9ba1 step 5). The registry
-	 * threads this into every bridge it starts so `bridgeRunStream` can
-	 * resolve the owning worker via `pool.clientFor({burrowId})`. The inline
-	 * reap path on `terminalDetected` consumes the same pool.
+	 * Runtime-provider seam (warren-c531 / warren-5a3f). Threaded into every
+	 * bridge the registry starts so `bridgeRunStream`'s event stream + run-state
+	 * poller speak the ACTIVE backend (`streamEvents`/`status`); the `bootBridges`
+	 * ghost-run pre-probe reconciles via `provider.status()` and lost-run teardown
+	 * routes through `provider.terminate()`. Boot resolves it once
+	 * (`resolveRuntimeProvider`, honoring `WARREN_RUNTIME`) and hands the same
+	 * instance here — the registry never speaks the burrow dialect itself, so under
+	 * `WARREN_RUNTIME=k8s` there is no stray `LocalProvider`.
 	 */
-	readonly burrowClient: BurrowClient;
-	/**
-	 * Runtime-provider seam (warren-c531). Threaded into every bridge the
-	 * registry starts so `bridgeRunStream`'s event stream + run-state poller
-	 * speak the ACTIVE backend (`streamEvents`/`status`) rather than always
-	 * defaulting to the burrow-backed `LocalProvider`. Boot resolves it once
-	 * (`resolveRuntimeProvider`) and hands the same instance here; the
-	 * `bootBridges` ghost-run pre-probe reconciles via `provider.status()` too.
-	 * Omitted (tests / `local`) ⇒ a `LocalProvider` over `burrowClient`, so the
-	 * self-host path is byte-identical.
-	 */
-	readonly runtimeProvider?: RuntimeProvider;
+	readonly runtimeProvider: RuntimeProvider;
 	readonly logger?: BridgeLogger;
 	/**
 	 * Override the per-run bridge factory (tests). Defaults to the live
@@ -131,11 +120,15 @@ export interface CreateBridgeRegistryInput {
 	 */
 	readonly bridge?: (input: BridgeRunStreamInput) => Promise<BridgeRunStreamResult>;
 	/**
-	 * Override reap (tests). Defaults to the live `reapRun`. Fired when
-	 * the bridge returns `terminalDetected` (warren-a69a) so the warren
-	 * row finalizes without depending on an external reap scheduler.
+	 * The reap seam fired when the bridge returns `terminalDetected` (warren-a69a)
+	 * so the warren row finalizes without an external scheduler. Pre-bound by the
+	 * boot composition root to `reapRun` with the local burrow client applied
+	 * (`WatchdogReap`, warren-5a3f) so the registry never speaks the burrow dialect;
+	 * reap keeps its LocalProvider workspace reads until warren-fbbf. Tests inject
+	 * their own to capture the call; when omitted (harnesses that never trigger a
+	 * terminal detect), the terminal-detect path throws and is caught + logged.
 	 */
-	readonly reap?: (input: ReapRunInput) => Promise<ReapRunResult>;
+	readonly reap?: WatchdogReap;
 	/**
 	 * Backoff schedule (ms) for reconnecting after `errored: true`. Index
 	 * `min(attempt, schedule.length-1)`. Tests pass `[0]` to disable
@@ -203,7 +196,14 @@ export interface CreateBridgeRegistryInput {
 export function createBridgeRegistry(input: CreateBridgeRegistryInput): BridgeRegistry {
 	const live = new Map<string, BridgeEntry>();
 	const bridge = input.bridge ?? bridgeRunStream;
-	const reap = input.reap ?? reapRun;
+	// warren-5a3f: the reap seam is boot-supplied (pre-bound with the burrow client).
+	// When a harness omits it and a bridge unexpectedly reports `terminalDetected`,
+	// this throws — caught + logged by `runWithReconnect`, never crashing the loop.
+	const reap: WatchdogReap =
+		input.reap ??
+		(() => {
+			throw new Error("bridge registry: reap seam not configured");
+		});
 	const backoff = input.reconnectBackoffMs ?? DEFAULT_RECONNECT_BACKOFF_MS;
 	const stallThreshold = input.stallThreshold ?? BRIDGE_STALL_THRESHOLD;
 	const stallCeiling = input.stallCeiling ?? BRIDGE_STALL_CEILING;
@@ -224,7 +224,7 @@ export function createBridgeRegistry(input: CreateBridgeRegistryInput): BridgeRe
 			burrowId,
 			repos: input.repos,
 			broker: input.broker,
-			burrowClient: input.burrowClient,
+			runtimeProvider: input.runtimeProvider,
 			signal: abort.signal,
 			bridge,
 			reap,
@@ -233,7 +233,6 @@ export function createBridgeRegistry(input: CreateBridgeRegistryInput): BridgeRe
 			stallCeiling,
 			sleep,
 			conversationTurn,
-			...(input.runtimeProvider !== undefined ? { runtimeProvider: input.runtimeProvider } : {}),
 			...(mode !== undefined ? { mode } : {}),
 			...(input.logger !== undefined ? { logger: input.logger } : {}),
 			...(input.autoOpenPr !== undefined ? { autoOpenPr: input.autoOpenPr } : {}),
@@ -323,14 +322,12 @@ export interface BootBridgesResult {
  */
 export async function bootBridges(input: CreateBridgeRegistryInput): Promise<BootBridgesResult> {
 	const registry = createBridgeRegistry(input);
-	// warren-c531: the ghost-run pre-probe reconciles via `provider.status()` so
-	// it is runtime-aware — under `WARREN_RUNTIME=k8s` a GC'd pod surfaces as
-	// `exists:false` exactly as burrow's 404 did, with no direct burrow call. The
-	// same instance the registry threads into every bridge; when absent, resolve
-	// through the single registry selector (warren-aa4a) — honoring `WARREN_RUNTIME`
-	// — instead of hardcoding a `LocalProvider`, so the self-host path is unchanged.
-	const provider: RuntimeProvider =
-		input.runtimeProvider ?? resolveRuntimeProvider({ burrowClient: () => input.burrowClient });
+	// warren-c531 / warren-5a3f: the ghost-run pre-probe reconciles via
+	// `provider.status()` so it is runtime-aware — under `WARREN_RUNTIME=k8s` a GC'd
+	// pod surfaces as `exists:false` exactly as burrow's 404 did, with no direct
+	// burrow call. The same boot-resolved instance the registry threads into every
+	// bridge.
+	const provider: RuntimeProvider = input.runtimeProvider;
 	const candidates = await input.repos.runs.listByState(["queued", "running"]);
 	const resumed: { runId: string; burrowRunId: string }[] = [];
 	const skipped: { runId: string; reason: string }[] = [];
@@ -402,11 +399,10 @@ export async function bootBridges(input: CreateBridgeRegistryInput): Promise<Boo
 				burrowRunId: run.burrowRunId,
 				repos: input.repos,
 				broker: input.broker,
-				burrowClient: input.burrowClient,
-				// warren-a7cb: route lost-run teardown through the active backend so a
-				// boot-time reconcile under WARREN_RUNTIME=k8s deletes the pod. Self-host
-				// (no runtimeProvider) keeps the burrow-only path byte-identical.
-				...(input.runtimeProvider !== undefined ? { runtimeProvider: input.runtimeProvider } : {}),
+				// warren-a7cb / warren-5a3f: route lost-run teardown through the active
+				// backend so a boot-time reconcile deletes the pod (K8s) / destroys the
+				// burrow (local) via `provider.terminate()`.
+				runtimeProvider: input.runtimeProvider,
 				logger: bindBridgeLogger(input.logger, {
 					run_id: run.id,
 					burrow_run_id: run.burrowRunId,

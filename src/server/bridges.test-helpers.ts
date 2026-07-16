@@ -1,74 +1,71 @@
-import { BurrowClient } from "../burrow-client/index.ts";
-import type { Repos } from "../db/repos/index.ts";
 import type { RunTerminalState } from "../db/schema.ts";
 import type { ReapRunResult } from "../runs/index.ts";
 import { makeReapRunResult } from "../runs/reap/test-helpers.ts";
+import type {
+	RunHandle,
+	RunPhase,
+	RunStatus,
+	RuntimeProvider,
+	TeardownResult,
+} from "../runtime/contract.ts";
 
 /**
- * Shared fixtures for the stream-bridge registry tests (`bridges.test.ts`)
- * and the reconnect/stall tests (`bridge-reconnect.test.ts`). Extracted so
- * both suites share one stub burrow client without tripping the duplicate
- * scanner (warren-61e9).
+ * Shared fixtures for the stream-bridge registry tests (`bridges*.test.ts`)
+ * and the reconnect/stall tests (`bridge-reconnect.test.ts`).
+ *
+ * warren-5a3f: the registry + reconnect chain now consume a boot-resolved
+ * `RuntimeProvider` and no longer touch a burrow client, so these fixtures speak
+ * the provider seam directly instead of stubbing burrow HTTP. `status()` drives
+ * the `bootBridges` ghost-run pre-probe (via `exists`), and `terminate()` records
+ * the lost-run teardown handles the reconciler hands the seam.
  */
 
+export interface FakeProviderOpts {
+	/** `status().exists` — `false` models a GC'd pod / burrow 404 (ghost run). */
+	readonly exists?: boolean;
+	/** `status().phase` — defaults to `"running"`. */
+	readonly phase?: RunPhase;
+	/** Make `terminate()` throw (models a pod-delete / burrow-destroy failure). */
+	readonly throwOnTerminate?: Error;
+}
+
+export interface FakeProvider {
+	readonly provider: RuntimeProvider;
+	/** Handles passed to `terminate()`, in call order. */
+	readonly terminateCalls: RunHandle[];
+	/** Handles passed to `status()`, in call order. */
+	readonly statusCalls: RunHandle[];
+}
+
 /**
- * Historical one-worker pool wrapper (warren-c0c9). Placement + the
- * workers/burrows tables were retired (warren-76c5 / warren-3743), so this is
- * now a pass-through kept for call-site stability; the `_repos` param is
- * vestigial.
+ * Minimal `RuntimeProvider` fake exposing the two methods the bridge registry
+ * and reconnect chain actually call — `status()` (ghost-run pre-probe) and
+ * `terminate()` (lost-run teardown). Every other method is absent; tests that
+ * stub the `bridge` factory never reach them.
  */
-export async function makePool(
-	_repos: Repos,
-	client?: BurrowClient,
-	_workerName = "local",
-): Promise<BurrowClient> {
-	return client ?? makeBurrowClient();
+export function makeProvider(opts: FakeProviderOpts = {}): FakeProvider {
+	const terminateCalls: RunHandle[] = [];
+	const statusCalls: RunHandle[] = [];
+	const provider = {
+		status: async (handle: RunHandle): Promise<RunStatus> => {
+			statusCalls.push(handle);
+			return {
+				phase: opts.phase ?? "running",
+				exitCode: null,
+				lastEventSeq: 0,
+				lastEventTs: null,
+				exists: opts.exists ?? true,
+			};
+		},
+		terminate: async (handle: RunHandle): Promise<TeardownResult> => {
+			terminateCalls.push(handle);
+			if (opts.throwOnTerminate !== undefined) throw opts.throwOnTerminate;
+			return { archived: false, deletedEvents: 3, deletedMessages: 1, deletedRuns: 1 };
+		},
+	} as unknown as RuntimeProvider;
+	return { provider, terminateCalls, statusCalls };
 }
 
 export function reapStub(outcome: RunTerminalState): ReapRunResult {
 	return makeReapRunResult({ state: outcome });
-}
-
-export function stub(
-	impl: (input: URL | RequestInfo, init?: RequestInit) => Promise<Response>,
-): typeof fetch {
-	return impl as unknown as typeof fetch;
-}
-
-/**
- * Default stub burrow client: returns a synthetic `running` row for any
- * `GET /runs/:id` (so warren-b1a9's bootBridges pre-probe passes) and 404
- * for everything else. Tests exercising the ghost-run reconciler build
- * their own client that 404s on the run-get instead.
- */
-export function makeBurrowClient(): BurrowClient {
-	return new BurrowClient({
-		config: { transport: { kind: "unix", path: "/tmp/x.sock" } },
-		fetch: stub(async (input, init) => {
-			const url = new URL(String(input), "http://localhost");
-			const method = init?.method ?? "GET";
-			if (method === "GET" && /^\/runs\/[^/]+$/.test(url.pathname)) {
-				return new Response(
-					JSON.stringify({
-						id: "stub_run",
-						burrowId: "bur_a",
-						agentId: "refactor-bot",
-						prompt: "p",
-						resumeOfRunId: null,
-						state: "running",
-						exitCode: null,
-						errorMessage: null,
-						metadataJson: null,
-						queuedAt: new Date("2026-05-17T19:00:00Z").toISOString(),
-						startedAt: new Date("2026-05-17T19:00:01Z").toISOString(),
-						completedAt: null,
-					}),
-					{ status: 200, headers: { "content-type": "application/json" } },
-				);
-			}
-			return new Response(JSON.stringify({ error: { code: "not_found", message: "stub" } }), {
-				status: 404,
-			});
-		}),
-	});
 }

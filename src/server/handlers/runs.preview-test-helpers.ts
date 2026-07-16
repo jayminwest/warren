@@ -3,6 +3,7 @@ import type { AnyWarrenDb } from "../../db/client.ts";
 import type { Repos } from "../../db/repos/index.ts";
 import type { PreviewAuth } from "../../preview/cookie.ts";
 import { RunEventBroker } from "../../runs/index.ts";
+import { resolveRuntimeProvider } from "../../runtime/registry.ts";
 import { createBridgeRegistry } from "../bridges.ts";
 import type { BridgeRegistry, ServeHandle, ServerDeps } from "../types.ts";
 
@@ -34,7 +35,7 @@ export async function depsFor(
 	const bridges = createBridgeRegistry({
 		repos,
 		broker,
-		burrowClient,
+		runtimeProvider: resolveRuntimeProvider({ burrowClient: () => burrowClient }),
 		bridge: async () => ({ written: 0, skipped: 0, errored: false }),
 	});
 	const previewExtras =

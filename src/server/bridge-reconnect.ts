@@ -8,7 +8,6 @@
  * at boot). Lost-run sandbox teardown lives in `./bridge-reconnect-teardown.ts`.
  */
 
-import type { BurrowClient } from "../burrow-client/index.ts";
 import type { Repos } from "../db/repos/index.ts";
 import type { EventRow, RunFailureReason, RunMode, RunState } from "../db/schema.ts";
 import type { PreviewLaunchConfig } from "../preview/launch/index.ts";
@@ -20,13 +19,11 @@ import {
 	type BridgeRunStreamInput,
 	type BridgeRunStreamResult,
 	bindBridgeLogger,
-	type ReapRunInput,
-	type ReapRunResult,
 	type RunEventBroker,
+	type WatchdogReap,
 } from "../runs/index.ts";
 import type { ConversationTurnHandler } from "../runs/stream/conversation-turn.ts";
 import type { RuntimeProvider } from "../runtime/contract.ts";
-import { resolveRuntimeProvider } from "../runtime/registry.ts";
 import type { SeedsCliDeps } from "../seeds-cli/index.ts";
 import type { WarrenConfigCache } from "../warren-config/index.ts";
 import {
@@ -47,17 +44,17 @@ export interface RunWithReconnectInput {
 	readonly burrowId: string;
 	readonly repos: Repos;
 	readonly broker: RunEventBroker;
-	readonly burrowClient: BurrowClient;
 	/**
-	 * Runtime-provider seam (warren-c531). Forwarded into every `bridgeRunStream`
-	 * pass so the event stream + run-state poller speak the ACTIVE backend
-	 * (`streamEvents`/`status`). Omitted ⇒ `bridgeRunStream` defaults to a
-	 * burrow-backed `LocalProvider`, so the self-host path is byte-identical.
+	 * Runtime-provider seam (warren-c531 / warren-5a3f). Forwarded into every
+	 * `bridgeRunStream` pass so the event stream + run-state poller speak the ACTIVE
+	 * backend (`streamEvents`/`status`), and into `reconcileLostBurrowRun` so lost-run
+	 * teardown routes through `provider.terminate()`. The registry threads the
+	 * boot-resolved instance; the reconnect loop never speaks the burrow dialect.
 	 */
-	readonly runtimeProvider?: RuntimeProvider;
+	readonly runtimeProvider: RuntimeProvider;
 	readonly signal: AbortSignal;
 	readonly bridge: (input: BridgeRunStreamInput) => Promise<BridgeRunStreamResult>;
-	readonly reap: (input: ReapRunInput) => Promise<ReapRunResult>;
+	readonly reap: WatchdogReap;
 	readonly backoff: readonly number[];
 	readonly stallThreshold: number;
 	/**
@@ -117,9 +114,9 @@ export async function runWithReconnect(
 			burrowId: input.burrowId,
 			repos: input.repos,
 			broker: input.broker,
-			// warren-1fce: bridge requires the provider seam; fall back to a LocalProvider.
-			runtimeProvider:
-				input.runtimeProvider ?? resolveRuntimeProvider({ burrowClient: () => input.burrowClient }),
+			// warren-1fce / warren-5a3f: bridge requires the provider seam; the registry
+			// threads the boot-resolved backend, so pass it straight through.
+			runtimeProvider: input.runtimeProvider,
 			signal: input.signal,
 			...(input.mode !== undefined ? { mode: input.mode } : {}),
 			...(input.conversationTurn !== undefined ? { conversationTurn: input.conversationTurn } : {}),
@@ -162,9 +159,8 @@ export async function runWithReconnect(
 				burrowRunId: input.burrowRunId,
 				repos: input.repos,
 				broker: input.broker,
-				burrowClient: input.burrowClient,
 				// warren-a7cb: route lost-run teardown through the active backend.
-				...(input.runtimeProvider !== undefined ? { runtimeProvider: input.runtimeProvider } : {}),
+				runtimeProvider: input.runtimeProvider,
 				logger: log,
 			});
 			return { written: totalWritten, skipped: totalSkipped, errored: false };
@@ -189,15 +185,11 @@ export async function runWithReconnect(
 					runId: input.runId,
 					outcome: result.terminalDetected.outcome,
 					repos: input.repos,
-					burrowClient: input.burrowClient,
-					// warren-a7cb: forward the active RuntimeProvider so the inline
-					// terminal-detect reap routes finalize + terminate through the
-					// ACTIVE backend (in-pod under WARREN_RUNTIME=k8s). Omitted ⇒ reap
-					// builds a burrow-backed LocalProvider, so the self-host path is
-					// byte-identical.
-					...(input.runtimeProvider !== undefined
-						? { runtimeProvider: input.runtimeProvider }
-						: {}),
+					// warren-a7cb / warren-5a3f: forward the active RuntimeProvider so the
+					// inline terminal-detect reap routes finalize + terminate through the
+					// ACTIVE backend (in-pod under WARREN_RUNTIME=k8s). The `reap` seam is
+					// pre-bound with the burrow client the local backend still needs.
+					runtimeProvider: input.runtimeProvider,
 					broker: input.broker,
 					logger: log,
 					// warren-9cce: carry the poller's distilled `failure_reason`
@@ -292,9 +284,8 @@ export async function runWithReconnect(
 				burrowRunId: input.burrowRunId,
 				repos: input.repos,
 				broker: input.broker,
-				burrowClient: input.burrowClient,
 				// warren-a7cb: route lost-run teardown through the active backend.
-				...(input.runtimeProvider !== undefined ? { runtimeProvider: input.runtimeProvider } : {}),
+				runtimeProvider: input.runtimeProvider,
 				failureReason: "burrow_unreachable",
 				logger: log,
 			});
@@ -366,18 +357,12 @@ interface ReconcileLostBurrowRunInput {
 	 */
 	readonly failureReason?: RunFailureReason;
 	/**
-	 * warren-4f01: burrow client used to tear down the run's workspace after it is
-	 * finalized so a wedged run's bwrap/pi sandbox doesn't leak. With no
-	 * `runtimeProvider`, the reconciler resolves a `LocalProvider` over this client
-	 * (warren-48b2) and tears down through `provider.terminate`. Omitted ⇒ skipped.
+	 * warren-a7cb / warren-5a3f: active backend the lost-run teardown routes through
+	 * (`provider.terminate` — K8s pod delete / burrow destroy) so a wedged run's
+	 * sandbox doesn't leak. The boot-resolved provider is always threaded here; the
+	 * reconciler never resolves its own burrow-backed fallback.
 	 */
-	readonly burrowClient?: BurrowClient;
-	/**
-	 * warren-a7cb: active backend. When present the lost-run teardown routes
-	 * through `provider.terminate` (K8s pod / burrow); omitted ⇒ the reconciler
-	 * resolves a `LocalProvider` over `burrowClient` (warren-48b2).
-	 */
-	readonly runtimeProvider?: RuntimeProvider;
+	readonly runtimeProvider: RuntimeProvider;
 }
 
 /**
@@ -450,17 +435,16 @@ export async function reconcileLostBurrowRun(input: ReconcileLostBurrowRunInput)
 			"reconcileLostBurrowRun: failed to emit bridge_lost event",
 		);
 	}
-	// warren-4f01 / warren-a7cb / warren-48b2: tear down the sandbox (the terminal
+	// warren-4f01 / warren-a7cb / warren-5a3f: tear down the sandbox (the terminal
 	// run's later `reapRun` short-circuits without doing it) via the provider seam
-	// — see `./bridge-reconnect-teardown.ts`, which resolves the backend (threaded
-	// or a `LocalProvider` over the burrow client) so nothing here speaks burrow.
+	// — see `./bridge-reconnect-teardown.ts`, which calls `provider.terminate()` on
+	// the boot-resolved backend so nothing here speaks burrow.
 	if (burrowToDestroy !== null) {
 		await teardownLostRunWorkspace({
 			runId: input.runId,
 			burrowRunId: input.burrowRunId,
 			burrow: burrowToDestroy,
-			...(input.runtimeProvider !== undefined ? { runtimeProvider: input.runtimeProvider } : {}),
-			...(input.burrowClient !== undefined ? { burrowClient: input.burrowClient } : {}),
+			runtimeProvider: input.runtimeProvider,
 			emit: (kind, payload) =>
 				emitBridgeSystemEvent({
 					runId: input.runId,

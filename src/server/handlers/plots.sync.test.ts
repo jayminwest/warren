@@ -5,6 +5,7 @@ import { createRepos, type Repos } from "../../db/repos/index.ts";
 import type { ProjectRow } from "../../db/schema.ts";
 import type { PlotResolver } from "../../plots/index.ts";
 import { RunEventBroker } from "../../runs/index.ts";
+import { resolveRuntimeProvider } from "../../runtime/registry.ts";
 import { NO_AUTH } from "../auth.ts";
 import { createBridgeRegistry } from "../bridges.ts";
 import { startServer } from "../server.ts";
@@ -53,7 +54,7 @@ async function depsFor(input: BuildDepsInput): Promise<ServerDeps> {
 		bridges: createBridgeRegistry({
 			repos: input.repos,
 			broker,
-			burrowClient: pool,
+			runtimeProvider: resolveRuntimeProvider({ burrowClient: () => pool }),
 			bridge: async () => ({ written: 0, skipped: 0, errored: false }),
 		}),
 		projectsConfig: { root: "/tmp/projects", gitBinary: "git" },

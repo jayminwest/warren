@@ -8,6 +8,7 @@ import { openDatabase, type WarrenDb } from "../db/client.ts";
 import { createRepos, type Repos } from "../db/repos/index.ts";
 import type { SpawnFn } from "../projects/clone.ts";
 import { RunEventBroker } from "../runs/index.ts";
+import { resolveRuntimeProvider } from "../runtime/registry.ts";
 import { bearerAuth, NO_AUTH } from "./auth.ts";
 import { createBridgeRegistry } from "./bridges.ts";
 import { startServer } from "./server.ts";
@@ -70,7 +71,7 @@ async function depsFor(
 			createBridgeRegistry({
 				repos,
 				broker,
-				burrowClient,
+				runtimeProvider: resolveRuntimeProvider({ burrowClient: () => burrowClient }),
 				bridge: async () => ({ written: 0, skipped: 0, errored: false }),
 			}),
 		canopyConfig: {

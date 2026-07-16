@@ -1,9 +1,8 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { BurrowClient } from "../burrow-client/index.ts";
 import { openDatabase, type WarrenDb } from "../db/client.ts";
 import { createRepos, type Repos } from "../db/repos/index.ts";
 import { RunEventBroker } from "../runs/index.ts";
-import { makePool, stub } from "./bridges.test-helpers.ts";
+import { makeProvider } from "./bridges.test-helpers.ts";
 import { bootBridges, createBridgeRegistry } from "./bridges.ts";
 
 describe("bootBridges", () => {
@@ -54,7 +53,7 @@ describe("bootBridges", () => {
 		const result = await bootBridges({
 			repos,
 			broker: new RunEventBroker(),
-			burrowClient: await makePool(repos),
+			runtimeProvider: makeProvider().provider,
 			bridge: async (input) => {
 				calls.push(input.runId);
 				return { written: 0, skipped: 0, errored: false };
@@ -102,7 +101,7 @@ describe("bootBridges", () => {
 		const result = await bootBridges({
 			repos,
 			broker: new RunEventBroker(),
-			burrowClient: await makePool(repos),
+			runtimeProvider: makeProvider().provider,
 			bridge: async (input) => {
 				calls.push(input.runId);
 				return { written: 0, skipped: 0, errored: false };
@@ -132,26 +131,19 @@ describe("bootBridges", () => {
 		});
 		await repos.runs.markRunning(r.id);
 
-		// Burrow stub that 404s on GET /runs/:id (ghost).
-		const ghostClient = new BurrowClient({
-			config: { transport: { kind: "unix", path: "/tmp/x.sock" } },
-			fetch: stub(
-				async () =>
-					new Response(
-						JSON.stringify({
-							error: { code: "not_found", message: "run not found: rb_ghostghost1" },
-						}),
-						{ status: 404, headers: { "content-type": "application/json" } },
-					),
-			),
+		// Ghost run: `status().exists === false` (a GC'd pod / burrow 404). The
+		// teardown terminate also fails (the sandbox is already gone), preserving the
+		// warren-4f01 `reap.workspace_destroy_failed` audit expectation below.
+		const { provider } = makeProvider({
+			exists: false,
+			throwOnTerminate: new Error("run not found: rb_ghostghost1"),
 		});
-		const pool = await makePool(repos, ghostClient);
 
 		const calls: string[] = [];
 		const result = await bootBridges({
 			repos,
 			broker: new RunEventBroker(),
-			burrowClient: pool,
+			runtimeProvider: provider,
 			bridge: async (input) => {
 				calls.push(input.runId);
 				return { written: 0, skipped: 0, errored: false };
@@ -191,7 +183,7 @@ describe("bootBridges", () => {
 		const registry = createBridgeRegistry({
 			repos,
 			broker: new RunEventBroker(),
-			burrowClient: await makePool(repos),
+			runtimeProvider: makeProvider().provider,
 			bridge: async () => {
 				calls += 1;
 				return { written: 0, skipped: 0, errored: false, burrowRunMissing: true as const };
@@ -213,7 +205,7 @@ describe("bootBridges", () => {
 		const result = await bootBridges({
 			repos,
 			broker: new RunEventBroker(),
-			burrowClient: await makePool(repos),
+			runtimeProvider: makeProvider().provider,
 		});
 		expect(result.resumed.length).toBe(0);
 		expect(result.skipped.length).toBe(0);

@@ -6,31 +6,22 @@
  * (`provider.terminate(handle)`) so it works for BOTH backends: K8s deletes the
  * pod + seed ConfigMaps, LocalProvider destroys the burrow (the burrow destroy
  * lives in `LocalProvider.terminate`, byte-identical to the retired
- * `destroyBurrowWorkspaceById`). The reconciler always resolves a provider —
- * either the threaded backend or a `LocalProvider` over its burrow client via
- * `resolveRuntimeProvider` (warren-aa4a / warren-48b2) — so there is no longer a
- * burrow-only fallback. No-op when the reconciler couldn't resolve one.
+ * `destroyBurrowWorkspaceById`). The reconciler always threads the boot-resolved
+ * backend (warren-5a3f), so there is no burrow-only fallback and nothing here
+ * speaks the burrow dialect.
  */
 
-import type { BurrowClient } from "../burrow-client/index.ts";
 import type { RunMode } from "../db/schema.ts";
 import type { BoundBridgeLogger } from "../runs/index.ts";
 import type { RunHandle, RuntimeProvider } from "../runtime/contract.ts";
-import { resolveRuntimeProvider } from "../runtime/registry.ts";
 
 export interface LostRunTeardownInput {
 	readonly runId: string;
 	readonly burrowRunId: string;
 	/** The run's burrow/pod id + mode, resolved by the reconciler. */
 	readonly burrow: { readonly id: string; readonly mode: RunMode };
-	/** Active backend; when present the teardown routes through it directly. */
-	readonly runtimeProvider?: RuntimeProvider;
-	/**
-	 * Burrow client for the self-host path: absent a threaded provider, a
-	 * `LocalProvider` is resolved over it via `resolveRuntimeProvider`
-	 * (warren-48b2) so the teardown still runs through the seam.
-	 */
-	readonly burrowClient?: BurrowClient;
+	/** Active backend the teardown routes `provider.terminate()` through. */
+	readonly runtimeProvider: RuntimeProvider;
 	/** Append + publish a `stream:'system'` event on the run. */
 	readonly emit: (kind: string, payload: Record<string, unknown>) => Promise<void>;
 	readonly log: BoundBridgeLogger;
@@ -39,21 +30,12 @@ export interface LostRunTeardownInput {
 /**
  * Tear down a lost run's sandbox through the RuntimeProvider seam
  * (`provider.terminate`) so both backends are covered (K8s pod delete / burrow
- * destroy). Uses the threaded backend, else resolves a `LocalProvider` over the
- * burrow client (honoring `WARREN_RUNTIME`) so nothing outside `LocalProvider`
- * speaks the burrow dialect (warren-48b2). No-op when neither is supplied.
- * Best-effort: every failure degrades to a `reap.workspace_destroy_failed`
- * event, never throws.
+ * destroy) — the boot-resolved backend is always threaded (warren-5a3f), so
+ * nothing outside `LocalProvider` speaks the burrow dialect. Best-effort: every
+ * failure degrades to a `reap.workspace_destroy_failed` event, never throws.
  */
 export async function teardownLostRunWorkspace(input: LostRunTeardownInput): Promise<void> {
-	const burrowClient = input.burrowClient;
-	const provider =
-		input.runtimeProvider ??
-		(burrowClient !== undefined
-			? resolveRuntimeProvider({ burrowClient: () => burrowClient })
-			: undefined);
-	if (provider === undefined) return;
-	await terminateLostWorkspace(input, provider);
+	await terminateLostWorkspace(input, input.runtimeProvider);
 }
 
 /**

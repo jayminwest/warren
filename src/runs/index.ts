@@ -194,6 +194,7 @@ export {
 	WATCHDOG_TIMED_OUT_KIND,
 	type WatchdogConfig,
 	type WatchdogHandle,
+	type WatchdogReap,
 	type WatchdogTickDeps,
 	type WatchdogTickResult,
 } from "./watchdog.ts";
