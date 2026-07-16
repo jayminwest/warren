@@ -127,14 +127,12 @@ export interface ServerDeps {
 	 * Tests can omit; the probe degrades to `ok: true`/"no db wired" when absent.
 	 */
 	readonly db?: AnyWarrenDb;
-	/**
-	 * Multi-worker burrow client pool (warren-39c3 / warren-c0c9 / pl-9ba1).
-	 * Every burrow-targeting handler routes through this: `placeFor` for new
-	 * burrows, `clientFor` for per-resource reads, and `probe()` for /readyz.
-	 */
+	/** The single local burrow client (warren-76c5); burrow-targeting handlers route through it. */
 	readonly burrowClient: BurrowClient;
 	/** Runtime-provider seam (pl-829f step 13); optional — prod always sets it. */
 	readonly runtimeProvider?: RuntimeProvider;
+	/** Provider-neutral preview sidecar resolver (warren-e24d), gated on `previewPorts`. */
+	readonly previewSidecars?: import("../preview/eviction/index.ts").SidecarResolver;
 	/** K8s in-pod finalize correlation registry (warren-0d35); defaults to the
 	 * shared singleton, so prod needs no wiring — tests inject a private instance. */
 	readonly finalizeCoordinator?: import("../runtime/k8s/finalize-coordinator.ts").FinalizeCoordinator;

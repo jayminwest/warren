@@ -27,12 +27,30 @@
  * report and the reaper agree on what "stranded" means.
  */
 
-import { NotFoundError as BurrowNotFoundError, type DestroyBurrowResult } from "@os-eco/burrow-cli";
-import type { BurrowClient } from "../../burrow-client/client.ts";
-import { withTransportMapping } from "../../burrow-client/client.ts";
 import { ValidationError } from "../../core/errors.ts";
 import type { RunRow, RunState } from "../../db/schema.ts";
 import { parseDurationMs } from "../../preview/duration.ts";
+
+/**
+ * Provider-neutral destroy seam (warren-e24d). The burrow coupling that used to
+ * live inline here — `DELETE /burrows/:id`, transport mapping, 404 handling —
+ * moved to `src/runtime/local/workspace-gc.ts` (`createLocalWorkspaceDestroyer`).
+ * The sweep is generic over this seam and is gated at boot on
+ * `RuntimeCapabilities.workspaceGc`, so under K8s (where the pod-GC loop already
+ * reclaims workspaces) the sweep is never wired.
+ */
+export type WorkspaceDestroyOutcome =
+	| {
+			readonly status: "destroyed";
+			readonly archived: boolean;
+			readonly deletedEvents: number;
+			readonly deletedRuns: number;
+	  }
+	| { readonly status: "already-gone" }
+	| { readonly status: "failed"; readonly error: string };
+
+/** Destroy a run's workspace by its sandbox id. Never throws (best-effort). */
+export type WorkspaceDestroyer = (sandboxId: string) => Promise<WorkspaceDestroyOutcome>;
 
 /** Non-terminal run states — a burrow with one of these is never GC'd. */
 export const GC_ACTIVE_RUN_STATES: readonly RunState[] = ["queued", "running", "paused"];
@@ -196,13 +214,16 @@ export interface WorkspaceGcReposLike {
 
 export interface WorkspaceGcTickInput {
 	readonly repos: WorkspaceGcReposLike;
-	/** The single local burrow client (warren-76c5). */
-	readonly burrowClient: BurrowClient;
+	/**
+	 * Provider-neutral destroy seam (warren-e24d). Built at boot from the
+	 * runtime provider (burrow-backed `createLocalWorkspaceDestroyer`); tests
+	 * inject a fake. Gated on `RuntimeCapabilities.workspaceGc` at the boot
+	 * wiring, so under K8s the sweep is never started.
+	 */
+	readonly destroyWorkspace: WorkspaceDestroyer;
 	readonly config: WorkspaceGcConfig;
 	readonly now?: () => Date;
 	readonly logger?: WorkspaceGcLogger;
-	/** Override the burrow destroy seam (tests). */
-	readonly destroyBurrow?: (client: BurrowClient, burrowId: string) => Promise<DestroyBurrowResult>;
 }
 
 export interface WorkspaceGcTickResult {
@@ -210,10 +231,6 @@ export interface WorkspaceGcTickResult {
 	readonly stranded: number;
 	readonly destroyed: number;
 	readonly failed: number;
-}
-
-function defaultDestroy(client: BurrowClient, burrowId: string): Promise<DestroyBurrowResult> {
-	return client.http.burrows.destroy(burrowId, { archive: true });
 }
 
 /**
@@ -227,7 +244,6 @@ export async function runWorkspaceGcTick(
 	input: WorkspaceGcTickInput,
 ): Promise<WorkspaceGcTickResult> {
 	const now = (input.now ?? (() => new Date()))();
-	const destroyFn = input.destroyBurrow ?? defaultDestroy;
 
 	const [activeRuns, terminalRuns] = await Promise.all([
 		input.repos.runs.listByState([...GC_ACTIVE_RUN_STATES]),
@@ -251,7 +267,7 @@ export async function runWorkspaceGcTick(
 	let destroyed = 0;
 	let failed = 0;
 	for (const candidate of stranded) {
-		const ok = await destroyOne(input, candidate, destroyFn);
+		const ok = await destroyOne(input, candidate);
 		if (ok) destroyed += 1;
 		else failed += 1;
 	}
@@ -269,40 +285,32 @@ export async function runWorkspaceGcTick(
 async function destroyOne(
 	input: WorkspaceGcTickInput,
 	candidate: StrandedBurrow,
-	destroyFn: (client: BurrowClient, burrowId: string) => Promise<DestroyBurrowResult>,
 ): Promise<boolean> {
-	try {
-		const client = input.burrowClient;
-		const result = await withTransportMapping(client.config, () =>
-			destroyFn(client, candidate.burrowId),
-		);
+	const outcome = await input.destroyWorkspace(candidate.burrowId);
+	if (outcome.status === "destroyed") {
 		input.logger?.info(
 			{
 				burrowId: candidate.burrowId,
 				ageMs: candidate.ageMs,
-				archived: result.archived !== null,
-				deletedEvents: result.deletedEvents,
-				deletedRuns: result.deletedRuns,
+				archived: outcome.archived,
+				deletedEvents: outcome.deletedEvents,
+				deletedRuns: outcome.deletedRuns,
 			},
 			"workspace_gc.destroyed",
 		);
 		return true;
-	} catch (err) {
-		// 404 from burrow means the workspace is already gone on burrow's side —
-		// count it as reclaimed so we don't churn on it every sweep.
-		if (err instanceof BurrowNotFoundError) {
-			input.logger?.info({ burrowId: candidate.burrowId }, "workspace_gc.already_gone");
-			return true;
-		}
-		input.logger?.warn(
-			{
-				burrowId: candidate.burrowId,
-				err: err instanceof Error ? err.message : String(err),
-			},
-			"workspace_gc.destroy_failed",
-		);
-		return false;
 	}
+	if (outcome.status === "already-gone") {
+		// The workspace is already gone on the backend's side — count it as
+		// reclaimed so we don't churn on it every sweep.
+		input.logger?.info({ burrowId: candidate.burrowId }, "workspace_gc.already_gone");
+		return true;
+	}
+	input.logger?.warn(
+		{ burrowId: candidate.burrowId, err: outcome.error },
+		"workspace_gc.destroy_failed",
+	);
+	return false;
 }
 
 /* ----------------------------------------------------------------------- */

@@ -109,7 +109,6 @@ function tickSuite(dialect: "sqlite" | "postgres"): void {
 			const result = await runPreviewEvictionTick({
 				db,
 				repos,
-				burrowClient: undefined as never,
 				warrenConfigs: configs.cache,
 				config: BASE_CONFIG,
 				now: () => now,
@@ -137,7 +136,6 @@ function tickSuite(dialect: "sqlite" | "postgres"): void {
 			const result = await runPreviewEvictionTick({
 				db,
 				repos,
-				burrowClient: undefined as never,
 				warrenConfigs: configs.cache,
 				config: BASE_CONFIG,
 				now: () => now,
@@ -160,7 +158,6 @@ function tickSuite(dialect: "sqlite" | "postgres"): void {
 			const result = await runPreviewEvictionTick({
 				db,
 				repos,
-				burrowClient: undefined as never,
 				warrenConfigs: configs.cache,
 				config: BASE_CONFIG,
 				now: () => now,
@@ -186,7 +183,6 @@ function tickSuite(dialect: "sqlite" | "postgres"): void {
 			const result = await runPreviewEvictionTick({
 				db,
 				repos,
-				burrowClient: undefined as never,
 				warrenConfigs: configs.cache,
 				config: BASE_CONFIG,
 				now: () => now,
@@ -215,7 +211,6 @@ function tickSuite(dialect: "sqlite" | "postgres"): void {
 			const result = await runPreviewEvictionTick({
 				db,
 				repos,
-				burrowClient: undefined as never,
 				warrenConfigs: configs.cache,
 				config: { ...BASE_CONFIG, maxLive: 1 },
 				now: () => now,
@@ -243,7 +238,6 @@ function tickSuite(dialect: "sqlite" | "postgres"): void {
 			const result = await runPreviewEvictionTick({
 				db,
 				repos,
-				burrowClient: undefined as never,
 				warrenConfigs: configs.cache,
 				config: BASE_CONFIG,
 				now: () => now,
@@ -271,7 +265,6 @@ function tickSuite(dialect: "sqlite" | "postgres"): void {
 			await runPreviewEvictionTick({
 				db,
 				repos,
-				burrowClient: undefined as never,
 				warrenConfigs: configs.cache,
 				broker,
 				config: BASE_CONFIG,
@@ -302,7 +295,6 @@ function tickSuite(dialect: "sqlite" | "postgres"): void {
 			const result = await runPreviewEvictionTick({
 				db,
 				repos,
-				burrowClient: undefined as never,
 				warrenConfigs: configs.cache,
 				config: BASE_CONFIG,
 				now: () => now,

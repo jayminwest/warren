@@ -58,12 +58,12 @@ import { type BridgeLogger, bindBridgeLogger } from "./stream/index.ts";
 
 /**
  * The reap seam the watchdog force-fails a hung run through (warren-1fce). The
- * active runtime provider is threaded in from the watchdog's own deps, but the
- * burrow client reap's LocalProvider still needs for its workspace reads is
- * bound by the wiring layer (`bootWatchdogFromEnv`, until reap itself sheds the
- * client in warren-fbbf) — so the watchdog holds no burrow client of its own.
+ * active runtime provider is threaded in from the watchdog's own deps; reap no
+ * longer takes a burrow client (warren-e24d), so this is the plain `ReapRunInput`
+ * — the wiring layer binds any provider-derived seams (e.g. the preview sidecar
+ * resolver) into the boot closure it supplies as `reap`.
  */
-export type WatchdogReap = (input: Omit<ReapRunInput, "burrowClient">) => Promise<ReapRunResult>;
+export type WatchdogReap = (input: ReapRunInput) => Promise<ReapRunResult>;
 
 /** Event kind emitted on the run row when the watchdog force-fails a hung run. */
 export const WATCHDOG_TIMED_OUT_KIND = "watchdog.timed_out";

@@ -1,5 +1,4 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { BurrowClient } from "../burrow-client/index.ts";
 import { NotFoundError } from "../core/errors.ts";
 import { openDatabase, type WarrenDb } from "../db/client.ts";
 import { createRepos, type Repos } from "../db/repos/index.ts";
@@ -53,16 +52,6 @@ function fakeSidecars(): FakeSidecars {
 		};
 	};
 	return { resolver, listingsBySidecar, deletions, listsCalled, listFailures, deleteFailures };
-}
-
-function emptyPool(_repos: Repos): BurrowClient {
-	// A real-but-unused client — teardownPreview only invokes it when the
-	// caller didn't inject a sidecar resolver; every test below overrides
-	// the resolver, so the client is never reached.
-	return new BurrowClient({
-		config: { transport: { kind: "unix", path: "/tmp/x.sock" } },
-		fetch: (async () => new Response("{}")) as unknown as typeof fetch,
-	});
 }
 
 describe("teardownPreview", () => {
@@ -119,7 +108,6 @@ describe("teardownPreview", () => {
 			runId,
 			repos,
 			previews,
-			burrowClient: emptyPool(repos),
 			broker,
 			now: () => new Date("2026-05-14T18:30:00.000Z"),
 			resolveSidecar: sidecars.resolver,
@@ -157,7 +145,6 @@ describe("teardownPreview", () => {
 			runId,
 			repos,
 			previews,
-			burrowClient: emptyPool(repos),
 			resolveSidecar: sidecars.resolver,
 		});
 
@@ -179,7 +166,6 @@ describe("teardownPreview", () => {
 			runId,
 			repos,
 			previews,
-			burrowClient: emptyPool(repos),
 			resolveSidecar: sidecars.resolver,
 		});
 
@@ -202,7 +188,6 @@ describe("teardownPreview", () => {
 			runId,
 			repos,
 			previews,
-			burrowClient: emptyPool(repos),
 			resolveSidecar: sidecars.resolver,
 		});
 
@@ -224,7 +209,6 @@ describe("teardownPreview", () => {
 			runId,
 			repos,
 			previews,
-			burrowClient: emptyPool(repos),
 			resolveSidecar: sidecars.resolver,
 		});
 
@@ -243,7 +227,6 @@ describe("teardownPreview", () => {
 				runId: "run_unknown",
 				repos,
 				previews,
-				burrowClient: emptyPool(repos),
 				resolveSidecar: sidecars.resolver,
 			}),
 		).rejects.toThrow(NotFoundError);
@@ -270,7 +253,6 @@ describe("teardownPreview", () => {
 			runId,
 			repos,
 			previews,
-			burrowClient: emptyPool(repos),
 			resolveSidecar: sidecars.resolver,
 			logger,
 		});
@@ -302,7 +284,6 @@ describe("teardownPreview", () => {
 			runId,
 			repos,
 			previews,
-			burrowClient: emptyPool(repos),
 			resolveSidecar: sidecars.resolver,
 			logger,
 		});
@@ -324,14 +305,12 @@ describe("teardownPreview", () => {
 			runId,
 			repos,
 			previews,
-			burrowClient: emptyPool(repos),
 			resolveSidecar: sidecars.resolver,
 		});
 		const second = await teardownPreview({
 			runId,
 			repos,
 			previews,
-			burrowClient: emptyPool(repos),
 			resolveSidecar: sidecars.resolver,
 		});
 
@@ -354,7 +333,6 @@ describe("teardownPreview", () => {
 			runId,
 			repos,
 			previews,
-			burrowClient: emptyPool(repos),
 			broker,
 			resolveSidecar: sidecars.resolver,
 		});
@@ -377,7 +355,6 @@ describe("teardownPreview", () => {
 			runId,
 			repos,
 			previews,
-			burrowClient: emptyPool(repos),
 			resolveSidecar: sidecars.resolver,
 		});
 

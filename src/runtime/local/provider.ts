@@ -95,6 +95,7 @@ export const LOCAL_PROVIDER_CAPABILITIES: RuntimeCapabilities = Object.freeze({
 	midRunSteering: true,
 	enforcedResourceLimits: true,
 	workspaceArchive: true,
+	workspaceGc: true,
 });
 
 /**

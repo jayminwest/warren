@@ -1,18 +1,3 @@
-import type { BurrowClient } from "../../burrow-client/client.ts";
-
-/**
- * The burrow client the preview launch sub-step needs (it hits
- * `client.http.sidecars` to run the preview as a long-lived sidecar). Preview
- * is a LocalProvider-only capability whose migration off the burrow dialect is
- * owned by warren-e24d; until then the reap core threads this client through for
- * preview ONLY. Re-exported here so the reap-core modules (`types.ts`,
- * `run.ts`, `pipeline.ts`) reference the preview client by this alias instead of
- * importing a burrow-client type directly — the burrow-file-read eviction of
- * warren-fbbf keeps those modules free of `burrow-client`/`@os-eco/burrow-cli`
- * imports; the residual preview coupling lives behind this single seam.
- */
-export type PreviewWorkerClient = BurrowClient;
-
 import type { Repos } from "../../db/repos/index.ts";
 import type { EventRow } from "../../db/schema.ts";
 import { parseDurationMs } from "../../preview/duration.ts";
@@ -22,6 +7,7 @@ import {
 	type LaunchPreviewResult,
 	launchPreview,
 	type PreviewLaunchConfig,
+	type PreviewSidecarsClient,
 } from "../../preview/launch/index.ts";
 import type { PreviewPortAllocator } from "../../preview/port-allocator.ts";
 import { DEFAULT_PREVIEW_MODE, type ServerPreviewConfig } from "../../warren-config/index.ts";
@@ -40,7 +26,13 @@ export interface RunPreviewLaunchInput {
 	readonly outcome: string;
 	readonly previewConfig: ServerPreviewConfig;
 	readonly portAllocator: PreviewPortAllocator;
-	readonly workerClient: PreviewWorkerClient;
+	/**
+	 * Provider-neutral sidecars facade for the run's sandbox (warren-e24d).
+	 * Resolved from the runtime provider's preview seam
+	 * (`createLocalSidecarsResolver`); the reap core no longer imports a
+	 * burrow dialect type.
+	 */
+	readonly sidecars: PreviewSidecarsClient;
 	readonly repos: Repos;
 	readonly now: () => Date;
 	readonly emit: (kind: string, payload: unknown) => Promise<EventRow>;
@@ -96,7 +88,7 @@ export async function runPreviewLaunch(
 			previewConfig: input.previewConfig,
 			repos: input.repos,
 			allocator: input.portAllocator,
-			sidecars: input.workerClient.http.sidecars,
+			sidecars: input.sidecars,
 			now: input.now,
 			...(readinessTimeoutMs !== undefined ? { readinessTimeoutMs } : {}),
 			...(setupTimeoutMs !== undefined ? { setupTimeoutMs } : {}),

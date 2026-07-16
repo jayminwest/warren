@@ -41,8 +41,11 @@
  *                     classify/apply helpers
  *   - `repo.ts`     — drizzle-backed `createRunPreviewsRepo` (lifecycle
  *                     persistence + manual-teardown CAS)
- *   - `sidecar.ts`  — pool-backed `createPoolSidecarResolver`
  *   - `worker.ts`   — periodic scheduler (`startPreviewEvictionWorker`)
+ *
+ * The burrow-backed sidecar resolver moved to
+ * `src/runtime/local/preview/sidecars.ts` (warren-e24d) so this subsystem holds
+ * no burrow coupling; the resolver is threaded in via `resolveSidecar`.
  *
  * Public surface is re-exported here so call sites continue to import
  * from `../preview/eviction/index.ts` (or just `"../preview/eviction"`).
@@ -63,7 +66,6 @@ export {
 	WARREN_PREVIEW_MAX_LIVE_ENV,
 } from "./config.ts";
 export { createRunPreviewsRepo } from "./repo.ts";
-export { createPoolSidecarResolver } from "./sidecar.ts";
 export { runPreviewEvictionTick } from "./tick.ts";
 export type {
 	EvictionReason,

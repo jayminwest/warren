@@ -182,7 +182,9 @@ export function previewTeardownHandler(deps: ServerDeps): RouteHandler {
 			runId,
 			repos: deps.repos,
 			previews,
-			burrowClient: deps.burrowClient,
+			// warren-e24d: provider-neutral sidecar resolver (absent under a backend
+			// without preview ports — the sidecar stop is then skipped).
+			...(deps.previewSidecars !== undefined ? { resolveSidecar: deps.previewSidecars } : {}),
 			broker: deps.broker,
 			...(actor !== undefined ? { actor } : {}),
 			...(deps.now !== undefined ? { now: deps.now } : {}),

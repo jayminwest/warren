@@ -73,6 +73,7 @@ export {
 	type LaunchPreviewResult,
 	PREVIEW_FAILURE_TAIL_BYTES,
 	PROBE_PER_CALL_TIMEOUT_MS,
+	type PreviewSidecarResolver,
 	type PreviewSidecarsClient,
 } from "./types.ts";
 export {

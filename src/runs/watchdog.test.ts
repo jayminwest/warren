@@ -251,7 +251,7 @@ describe("tickWatchdog", () => {
 			burrowRunId: "run_b1",
 		});
 		const cancels: string[] = [];
-		const reapCalls: Omit<ReapRunInput, "burrowClient">[] = [];
+		const reapCalls: ReapRunInput[] = [];
 
 		const result = await tickWatchdog({
 			repos,
@@ -284,7 +284,7 @@ describe("tickWatchdog", () => {
 			burrowRunId: "run_b1",
 		});
 		const provider = makeCancelProvider([]);
-		const reapCalls: Omit<ReapRunInput, "burrowClient">[] = [];
+		const reapCalls: ReapRunInput[] = [];
 
 		await tickWatchdog({
 			repos,
@@ -310,7 +310,7 @@ describe("tickWatchdog", () => {
 			burrowRunId: "run_b1",
 			mode: "conversation",
 		});
-		const reapCalls: Omit<ReapRunInput, "burrowClient">[] = [];
+		const reapCalls: ReapRunInput[] = [];
 
 		const result = await tickWatchdog({
 			repos,
@@ -330,7 +330,7 @@ describe("tickWatchdog", () => {
 
 	test("leaves a run inside budget alone", async () => {
 		await seedRunning("2026-06-05T00:00:00Z", { burrowId: "bur_1", burrowRunId: "run_b1" });
-		const reapCalls: Omit<ReapRunInput, "burrowClient">[] = [];
+		const reapCalls: ReapRunInput[] = [];
 
 		const result = await tickWatchdog({
 			repos,
@@ -349,7 +349,7 @@ describe("tickWatchdog", () => {
 
 	test("skips the burrow cancel when the run has no burrow_run_id", async () => {
 		const runId = await seedRunning("2026-06-05T00:00:00Z");
-		const reapCalls: Omit<ReapRunInput, "burrowClient">[] = [];
+		const reapCalls: ReapRunInput[] = [];
 
 		const result = await tickWatchdog({
 			repos,

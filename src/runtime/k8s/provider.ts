@@ -156,13 +156,12 @@ export interface K8sProviderDeps {
  *   - `previewPorts: false` — preview via Service/Ingress URL is deferred (§5.F).
  *   - `networkPolicy: "coarse"` — no per-domain allowlist at v1; `restricted`
  *     degrades to a coarse pod NetworkPolicy.
- *   - `longLived: false` — conversation pods need a separate long-lived template
- *     (design doc Q3); `restartPolicy: Never` is batch-shaped.
+ *   - `longLived: false` — conversation pods need a long-lived template (Q3); `restartPolicy: Never` is batch-shaped.
  *   - `midRunSteering: false` — steering rides the `run_inbox` poll (~5s), folded
  *     in at the next turn rather than delivered mid-turn over live stdin.
  *   - `enforcedResourceLimits: true` — the whole point: kubelet cgroup v2 limits.
- *   - `workspaceArchive: false` — the workspace is an `emptyDir`, destroyed with
- *     the pod; `terminate` returns no archive handle.
+ *   - `workspaceArchive: false` — the `emptyDir` dies with the pod; no archive handle.
+ *   - `workspaceGc: false` — pod-GC reclaims pods+emptyDir; the fallback sweep stays dark (warren-e24d).
  *
  * Frozen so the domain can read but never mutate a provider's advertised caps.
  */
@@ -173,6 +172,7 @@ export const K8S_PROVIDER_CAPABILITIES: RuntimeCapabilities = Object.freeze({
 	midRunSteering: false,
 	enforcedResourceLimits: true,
 	workspaceArchive: false,
+	workspaceGc: false,
 });
 
 /**

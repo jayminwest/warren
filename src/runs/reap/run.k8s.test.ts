@@ -11,16 +11,7 @@ import type {
 } from "../../runtime/contract.ts";
 import type { ServerPreviewConfig } from "../../warren-config/index.ts";
 import { reapRun } from "./index.ts";
-import {
-	type Burrow,
-	BurrowClient,
-	type Ctx,
-	fakeExec,
-	fakeFs,
-	fakeOpenPr,
-	makePool,
-	setup,
-} from "./test-helpers.ts";
+import { type Ctx, fakeExec, fakeFs, fakeOpenPr, setup } from "./test-helpers.ts";
 
 /**
  * Leg 1 (warren-e9e1): a succeeded run under a K8s-style provider (no host
@@ -75,22 +66,6 @@ function fakeK8sProvider(opts: {
 		},
 	} as unknown as RuntimeProvider;
 	return { provider, calls };
-}
-
-/** A burrow client whose `burrows.get` ALWAYS throws — proves no dependency. */
-function throwingBurrowClient(): BurrowClient {
-	const client = new BurrowClient({
-		config: { transport: { kind: "unix", path: "/tmp/x.sock" } },
-		fetch: (async () =>
-			new Response("{}", {
-				status: 200,
-				headers: { "content-type": "application/json" },
-			})) as unknown as typeof fetch,
-	});
-	(client.http.burrows as unknown as { get: () => Promise<Burrow> }).get = async () => {
-		throw new Error("burrows.get must not be called under the K8s provider");
-	};
-	return client;
 }
 
 function finalizeResultWithDeltas(branch: string): FinalizeResult {
@@ -150,7 +125,6 @@ describe("reapRun under a K8s-style RuntimeProvider", () => {
 			repos: ctx.repos,
 			// A throwing burrow client: reaching finalize despite it proves reap no
 			// longer depends on burrows.get under the provider seam.
-			burrowClient: await makePool(throwingBurrowClient(), ctx.repos),
 			runtimeProvider: fake.provider,
 			broker: ctx.broker,
 			fs: fakeFs().fs,
@@ -182,7 +156,6 @@ describe("reapRun under a K8s-style RuntimeProvider", () => {
 			runId: ctx.runId,
 			outcome: "succeeded",
 			repos: ctx.repos,
-			burrowClient: await makePool(throwingBurrowClient(), ctx.repos),
 			runtimeProvider: fake.provider,
 			broker: ctx.broker,
 			fs: f.fs,
@@ -227,7 +200,6 @@ describe("reapRun under a K8s-style RuntimeProvider", () => {
 			runId: ctx.runId,
 			outcome: "succeeded",
 			repos: ctx.repos,
-			burrowClient: await makePool(throwingBurrowClient(), ctx.repos),
 			runtimeProvider: fake.provider,
 			broker: ctx.broker,
 			fs: fakeFs().fs,
@@ -260,7 +232,6 @@ describe("reapRun under a K8s-style RuntimeProvider", () => {
 			runId: ctx.runId,
 			outcome: "succeeded",
 			repos: ctx.repos,
-			burrowClient: await makePool(throwingBurrowClient(), ctx.repos),
 			runtimeProvider: fake.provider,
 			broker: ctx.broker,
 			fs: fakeFs().fs,
@@ -283,7 +254,6 @@ describe("reapRun under a K8s-style RuntimeProvider", () => {
 			runId: ctx.runId,
 			outcome: "succeeded",
 			repos: ctx.repos,
-			burrowClient: await makePool(throwingBurrowClient(), ctx.repos),
 			runtimeProvider: fake.provider,
 			broker: ctx.broker,
 			fs: fakeFs().fs,
@@ -323,7 +293,6 @@ describe("reapRun under a K8s-style RuntimeProvider", () => {
 			runId: ctx.runId,
 			outcome: "succeeded",
 			repos: ctx.repos,
-			burrowClient: await makePool(throwingBurrowClient(), ctx.repos),
 			runtimeProvider: provider,
 			fs: fakeFs().fs,
 			exec: e.exec,

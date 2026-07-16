@@ -6,6 +6,7 @@ import {
 	steerRun,
 } from "../../../runs/index.ts";
 import type { MessagePriority, RuntimeProvider } from "../../../runtime/contract.ts";
+import { createLocalSidecarsResolver } from "../../../runtime/local/preview/sidecars.ts";
 import { resolveRuntimeProvider } from "../../../runtime/registry.ts";
 import { jsonResponse } from "../../response.ts";
 import type { RouteHandler, ServerDeps } from "../../types.ts";
@@ -22,18 +23,27 @@ import {
  * resolved from server deps (warren-b223). Centralized so the cancel handler and
  * the plan-run child-cancel bind identical wiring: the provider is resolved once
  * from `WARREN_RUNTIME` (falling back to a burrow-backed LocalProvider), and the
- * reap seam is pre-bound with the burrow client `reapRun` still needs for its
- * workspace reads — the same closure the boot layer hands the bridge + watchdog.
- * Keeps `cancelRun` itself free of any burrow-client import.
+ * reap seam is pre-bound with the provider-derived preview sidecar resolver
+ * (warren-e24d), gated on the runtime's preview-port capability — the same
+ * closure the boot layer hands the bridge + watchdog. Keeps `cancelRun` itself
+ * free of any burrow coupling.
  */
 export function cancelRunWiring(deps: ServerDeps): {
 	runtimeProvider: RuntimeProvider;
 	reap: CancelReap;
 } {
+	const runtimeProvider =
+		deps.runtimeProvider ?? resolveRuntimeProvider({ burrowClient: () => deps.burrowClient });
+	const previewSidecars = runtimeProvider.capabilities.previewPorts
+		? createLocalSidecarsResolver(deps.burrowClient)
+		: undefined;
 	return {
-		runtimeProvider:
-			deps.runtimeProvider ?? resolveRuntimeProvider({ burrowClient: () => deps.burrowClient }),
-		reap: (reapInput) => reapRun({ ...reapInput, burrowClient: deps.burrowClient }),
+		runtimeProvider,
+		reap: (reapInput) =>
+			reapRun({
+				...reapInput,
+				...(previewSidecars !== undefined ? { previewSidecars } : {}),
+			}),
 	};
 }
 

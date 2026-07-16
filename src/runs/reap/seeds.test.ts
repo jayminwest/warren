@@ -10,9 +10,9 @@ import {
 	fakeExec,
 	fakeFs,
 	makeBurrow,
-	makePool,
 	openDatabase,
 	RunEventBroker,
+	reapDeps,
 	setup,
 } from "./test-helpers.ts";
 
@@ -36,13 +36,13 @@ describe("reapRun seeds-close mirror", () => {
 			runId: ctx.runId,
 			outcome: "succeeded",
 			repos: ctx.repos,
-			burrowClient: await makePool(
+			...reapDeps(
 				fakeBurrowClient(makeBurrow(), {
 					seedsIssuesBody:
 						'{"id":"sd-1","status":"closed","updatedAt":"2026-05-08T22:00:00Z","title":"x"}\n' +
 						'{"id":"sd-2","status":"open","updatedAt":"2026-05-08T22:00:00Z","title":"y"}\n',
 				}),
-				ctx.repos,
+				{ fs: f.fs, exec: fakeExec().exec },
 			),
 			fs: f.fs,
 			exec: fakeExec().exec,
@@ -63,14 +63,14 @@ describe("reapRun seeds-close mirror", () => {
 			runId: ctx.runId,
 			outcome: "succeeded",
 			repos: ctx.repos,
-			burrowClient: await makePool(
+			...reapDeps(
 				fakeBurrowClient(makeBurrow(), {
 					seedsIssuesBody:
 						'{"id":"sd-1","status":"open","updatedAt":"2026-05-08T19:00:00Z","title":"x"}\n' +
 						'{"id":"sd-new1","status":"open","updatedAt":"2026-05-08T22:00:00Z","title":"planned-a"}\n' +
 						'{"id":"sd-new2","status":"open","updatedAt":"2026-05-08T22:00:00Z","title":"planned-b"}\n',
 				}),
-				ctx.repos,
+				{ fs: f.fs, exec: fakeExec().exec },
 			),
 			fs: f.fs,
 			exec: fakeExec().exec,
@@ -92,12 +92,12 @@ describe("reapRun seeds-close mirror", () => {
 			runId: ctx.runId,
 			outcome: "succeeded",
 			repos: ctx.repos,
-			burrowClient: await makePool(
+			...reapDeps(
 				fakeBurrowClient(makeBurrow(), {
 					seedsIssuesBody:
 						'{"id":"sd-1","status":"open","updatedAt":"2026-05-08T22:00:00Z","title":"modified"}\n',
 				}),
-				ctx.repos,
+				{ fs: f.fs, exec: fakeExec().exec },
 			),
 			fs: f.fs,
 			exec: fakeExec().exec,
@@ -122,7 +122,7 @@ describe("reapRun seeds-close mirror", () => {
 			runId: ctx.runId,
 			outcome: "succeeded",
 			repos: ctx.repos,
-			burrowClient: await makePool(fakeBurrowClient(makeBurrow()), ctx.repos),
+			...reapDeps(fakeBurrowClient(makeBurrow()), { fs: f.fs, exec: fakeExec().exec }),
 			fs: f.fs,
 			exec: fakeExec().exec,
 		});
@@ -140,13 +140,13 @@ describe("reapRun seeds-close mirror", () => {
 			runId: ctx.runId,
 			outcome: "succeeded",
 			repos: ctx.repos,
-			burrowClient: await makePool(
+			...reapDeps(
 				fakeBurrowClient(makeBurrow(), {
 					filesRead: async () => {
 						throw new Error("boom");
 					},
 				}),
-				ctx.repos,
+				{ fs: f.fs, exec: fakeExec().exec },
 			),
 			fs: f.fs,
 			exec: fakeExec().exec,
@@ -243,11 +243,11 @@ describe("mirrorPlans (warren-d9a2)", () => {
 				runId: ctx.runId,
 				outcome: "succeeded",
 				repos: ctx.repos,
-				burrowClient: await makePool(
+				...reapDeps(
 					fakeBurrowClient(makeBurrow(), {
 						seedsPlansBody: `${existingPlan}${newPlan}`,
 					}),
-					ctx.repos,
+					{ fs: f.fs, exec: e.exec },
 				),
 				fs: f.fs,
 				exec: e.exec,
@@ -277,10 +277,10 @@ describe("mirrorPlans (warren-d9a2)", () => {
 				runId: ctx.runId,
 				outcome: "succeeded",
 				repos: ctx.repos,
-				burrowClient: await makePool(
-					fakeBurrowClient(makeBurrow(), { seedsPlansBody: existingPlan }),
-					ctx.repos,
-				),
+				...reapDeps(fakeBurrowClient(makeBurrow(), { seedsPlansBody: existingPlan }), {
+					fs: f.fs,
+					exec: e.exec,
+				}),
 				fs: f.fs,
 				exec: e.exec,
 			});
@@ -307,10 +307,10 @@ describe("mirrorPlans (warren-d9a2)", () => {
 				runId: ctx.runId,
 				outcome: "succeeded",
 				repos: ctx.repos,
-				burrowClient: await makePool(
-					fakeBurrowClient(makeBurrow(), { seedsPlansBody: newPlan }),
-					ctx.repos,
-				),
+				...reapDeps(fakeBurrowClient(makeBurrow(), { seedsPlansBody: newPlan }), {
+					fs: f.fs,
+					exec: e.exec,
+				}),
 				fs: f.fs,
 				exec: e.exec,
 			});
@@ -390,7 +390,7 @@ describe("closeRunSeedId (warren-0d2d)", () => {
 				runId,
 				outcome: "succeeded",
 				repos,
-				burrowClient: await makePool(fakeBurrowClient(makeBurrow()), repos),
+				...reapDeps(fakeBurrowClient(makeBurrow()), { fs: f.fs, exec: fakeExec().exec }),
 				fs: f.fs,
 				exec: fakeExec().exec,
 				seedsCli,
@@ -417,7 +417,7 @@ describe("closeRunSeedId (warren-0d2d)", () => {
 				runId,
 				outcome: "succeeded",
 				repos,
-				burrowClient: await makePool(fakeBurrowClient(makeBurrow()), repos),
+				...reapDeps(fakeBurrowClient(makeBurrow()), { fs: f.fs, exec: fakeExec().exec }),
 				fs: f.fs,
 				exec: fakeExec().exec,
 				seedsCli,
@@ -440,7 +440,7 @@ describe("closeRunSeedId (warren-0d2d)", () => {
 				runId,
 				outcome: "failed",
 				repos,
-				burrowClient: await makePool(fakeBurrowClient(makeBurrow()), repos),
+				...reapDeps(fakeBurrowClient(makeBurrow()), { fs: f.fs, exec: fakeExec().exec }),
 				fs: f.fs,
 				exec: fakeExec().exec,
 				seedsCli,
@@ -463,7 +463,7 @@ describe("closeRunSeedId (warren-0d2d)", () => {
 				runId,
 				outcome: "succeeded",
 				repos,
-				burrowClient: await makePool(fakeBurrowClient(makeBurrow()), repos),
+				...reapDeps(fakeBurrowClient(makeBurrow()), { fs: f.fs, exec: fakeExec().exec }),
 				fs: f.fs,
 				exec: fakeExec().exec,
 				seedsCli,
@@ -486,7 +486,7 @@ describe("closeRunSeedId (warren-0d2d)", () => {
 				runId,
 				outcome: "succeeded",
 				repos,
-				burrowClient: await makePool(fakeBurrowClient(makeBurrow()), repos),
+				...reapDeps(fakeBurrowClient(makeBurrow()), { fs: f.fs, exec: fakeExec().exec }),
 				fs: f.fs,
 				exec: fakeExec().exec,
 			});

@@ -209,6 +209,17 @@ export interface RuntimeCapabilities {
 	enforcedResourceLimits: boolean;
 	/** terminate returns an archive handle */
 	workspaceArchive: boolean;
+	/**
+	 * Fallback garbage collection of stranded run workspaces is a backend
+	 * concern the control plane can drive (warren-e24d). `true` for the
+	 * burrow-backed LocalProvider — reap's per-run destroy can leave a
+	 * workspace stranded on a mid-reap crash, so warren runs a periodic sweep
+	 * that destroys idle workspaces via the provider's destroy seam. `false`
+	 * for backends whose own lifecycle reclaims stranded workspaces (K8s: the
+	 * pod-GC loop reclaims terminal pods + their emptyDir), so the domain sweep
+	 * stays dark and never issues a burrow-only destroy against a pod name.
+	 */
+	workspaceGc: boolean;
 }
 
 export interface TeardownResult {

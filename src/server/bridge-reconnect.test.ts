@@ -259,7 +259,7 @@ describe("reap orchestration through the provider seam (warren-a7cb)", () => {
 	test("inline terminal-detect reap forwards the active runtimeProvider", async () => {
 		const runId = await seedRun();
 		const { provider } = makeProvider();
-		let seen: Omit<ReapRunInput, "burrowClient"> | undefined;
+		let seen: ReapRunInput | undefined;
 		const registry = createBridgeRegistry({
 			repos,
 			broker: new RunEventBroker(),

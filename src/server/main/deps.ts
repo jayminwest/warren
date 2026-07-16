@@ -24,7 +24,10 @@ import {
 	defaultPlotStatusChanger,
 } from "../../plots/index.ts";
 import type { PreviewAuth } from "../../preview/cookie.ts";
-import type { loadPreviewEvictionConfigFromEnv } from "../../preview/eviction/index.ts";
+import type {
+	loadPreviewEvictionConfigFromEnv,
+	SidecarResolver,
+} from "../../preview/eviction/index.ts";
 import type { loadPreviewLaunchConfigFromEnv } from "../../preview/launch/index.ts";
 import type { loadPreviewPortRangeFromEnv } from "../../preview/port-allocator.ts";
 import type { ProjectsConfig } from "../../projects/config.ts";
@@ -58,6 +61,13 @@ export interface BuildServerDepsInput {
 	 * second instance. Under `local` it is the burrow-backed `LocalProvider`.
 	 */
 	readonly runtimeProvider: RuntimeProvider;
+	/**
+	 * Provider-neutral preview sidecar resolver (warren-e24d), gated on the
+	 * runtime's preview-port capability at boot. Threaded onto `ServerDeps` for
+	 * the preview-teardown handler's best-effort sidecar stop. Absent under a
+	 * backend without preview ports.
+	 */
+	readonly previewSidecars?: SidecarResolver;
 	readonly broker: RunEventBroker;
 	readonly bridges: BridgeRegistry;
 	readonly canopyConfig: CanopyConfig;
@@ -105,6 +115,7 @@ export function buildServerDeps(input: BuildServerDepsInput): ServerDeps {
 		previewEvictionConfig,
 		workspaceGcTtlMs,
 		previewAuth,
+		previewSidecars,
 		sdBinary,
 		metricsRegistry,
 		k8sPodWatcher,
@@ -154,6 +165,7 @@ export function buildServerDeps(input: BuildServerDepsInput): ServerDeps {
 		previewMode: previewLaunchConfig.mode,
 		...(previewHostForDeps !== undefined ? { previewHost: previewHostForDeps } : {}),
 		...(previewAuth !== undefined ? { previewAuth } : {}),
+		...(previewSidecars !== undefined ? { previewSidecars } : {}),
 		plotAggregator,
 		plotCreator: defaultPlotCreator,
 		plotAttacher: defaultPlotAttacher,
