@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { WarrenDb } from "../../db/client.ts";
 import type { Repos } from "../../db/repos/index.ts";
 import { spawnRun } from "./index.ts";
-import { makeBurrowClient, makePool, setupRepos } from "./test-helpers.ts";
+import { makeBurrowClient, makeProvider, setupRepos } from "./test-helpers.ts";
 
 describe("spawnRun: agent git identity env (warren-4e36)", () => {
 	let db: WarrenDb;
@@ -21,7 +21,7 @@ describe("spawnRun: agent git identity env (warren-4e36)", () => {
 		const { client, calls } = makeBurrowClient();
 		await spawnRun({
 			repos,
-			burrowClient: await makePool(repos, client),
+			runtimeProvider: makeProvider(client),
 			agentName: "refactor-bot",
 			projectId: "prj_xxxxxxxxxxxx",
 			prompt: "fix it",
@@ -42,7 +42,7 @@ describe("spawnRun: agent git identity env (warren-4e36)", () => {
 		const { client, calls } = makeBurrowClient();
 		await spawnRun({
 			repos,
-			burrowClient: await makePool(repos, client),
+			runtimeProvider: makeProvider(client),
 			agentName: "refactor-bot",
 			projectId: "prj_xxxxxxxxxxxx",
 			prompt: "fix it",

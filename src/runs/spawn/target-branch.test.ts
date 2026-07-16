@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { WarrenDb } from "../../db/client.ts";
 import type { Repos } from "../../db/repos/index.ts";
 import { spawnRun } from "./index.ts";
-import { makeBurrowClient, makePool, setupRepos } from "./test-helpers.ts";
+import { makeBurrowClient, makeProvider, setupRepos } from "./test-helpers.ts";
 
 /**
  * warren-709e (#419): a run dispatched with an explicit `targetBranch`
@@ -26,7 +26,7 @@ describe("spawnRun: targetBranch (warren-709e)", () => {
 		const { client, calls } = makeBurrowClient();
 		const { run } = await spawnRun({
 			repos,
-			burrowClient: await makePool(repos, client),
+			runtimeProvider: makeProvider(client),
 			agentName: "refactor-bot",
 			projectId: "prj_xxxxxxxxxxxx",
 			prompt: "rerun ci",
@@ -48,7 +48,7 @@ describe("spawnRun: targetBranch (warren-709e)", () => {
 		let refreshRef: string | undefined;
 		await spawnRun({
 			repos,
-			burrowClient: await makePool(repos, client),
+			runtimeProvider: makeProvider(client),
 			agentName: "refactor-bot",
 			projectId: "prj_xxxxxxxxxxxx",
 			prompt: "rerun ci",
@@ -73,7 +73,7 @@ describe("spawnRun: targetBranch (warren-709e)", () => {
 		let refreshRef: string | undefined;
 		await spawnRun({
 			repos,
-			burrowClient: await makePool(repos, client),
+			runtimeProvider: makeProvider(client),
 			agentName: "refactor-bot",
 			projectId: "prj_xxxxxxxxxxxx",
 			prompt: "rerun ci",
@@ -98,7 +98,7 @@ describe("spawnRun: targetBranch (warren-709e)", () => {
 		const { client, calls } = makeBurrowClient();
 		const { run } = await spawnRun({
 			repos,
-			burrowClient: await makePool(repos, client),
+			runtimeProvider: makeProvider(client),
 			agentName: "refactor-bot",
 			projectId: "prj_xxxxxxxxxxxx",
 			prompt: "rerun ci",

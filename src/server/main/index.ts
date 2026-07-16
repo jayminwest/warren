@@ -255,7 +255,6 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 
 	const scheduler = bootScheduler({
 		repos,
-		burrowClient,
 		runtimeProvider,
 		bridges: bridgesBoot.registry,
 		warrenConfigs,
@@ -345,7 +344,6 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 				: undefined,
 		spawn: createPlanRunSpawn({
 			repos,
-			burrowClient,
 			runtimeProvider,
 			bridges: bridgesBoot.registry,
 			warrenConfigs,

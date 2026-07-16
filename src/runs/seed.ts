@@ -2,7 +2,7 @@
  * Pure builder that turns an `AgentDefinition` into the `.canopy/`,
  * `.mulch/`, `.seeds/`, `.pi/` workspace drops (SPEC §4.3 step 3, §11.A).
  *
- * Returns `HttpWorkspaceFile[]` with workspace-relative paths so the
+ * Returns `SeedFile[]` with workspace-relative paths so the
  * caller can either thread the list into `HttpClient.burrows.up({ seed })`
  * (R-07 atomic provision-and-seed) or post-provision via
  * `HttpClient.files.write`. No side effects — same validation errors as
@@ -41,15 +41,22 @@
  *      `--no-extensions` for pi-chat; seeding alone is a no-op.
  */
 
-import type { HttpWorkspaceFile } from "@os-eco/burrow-cli";
 import { formatError } from "../core/errors.ts";
 import type { AgentDefinition } from "../registry/schema.ts";
+import type { RunSpec } from "../runtime/contract.ts";
 import { RunSpawnError } from "./errors.ts";
 
-export type { HttpWorkspaceFile } from "@os-eco/burrow-cli";
+/**
+ * A provider-neutral workspace-seed file (warren-c42c). Shaped exactly like a
+ * `RunSpec.seedFiles` entry so `buildSeedFiles` output threads straight onto
+ * the runtime seam without importing burrow's `HttpWorkspaceFile`. Each backend
+ * materializes the drops (LocalProvider → burrow's seed payload; K8sProvider →
+ * an init container).
+ */
+export type SeedFile = RunSpec["seedFiles"][number];
 
 export interface BuildSeedFilesResult {
-	readonly files: readonly HttpWorkspaceFile[];
+	readonly files: readonly SeedFile[];
 	readonly canopyPath: string;
 	readonly mulchDomains: readonly string[];
 	readonly workflowPath: string | null;
@@ -59,7 +66,7 @@ export interface BuildSeedFilesResult {
 }
 
 export function buildSeedFiles(agent: AgentDefinition): BuildSeedFilesResult {
-	const files: HttpWorkspaceFile[] = [];
+	const files: SeedFile[] = [];
 
 	const canopyPath = ".canopy/agent.json";
 	files.push({
@@ -114,7 +121,7 @@ export function buildSeedFiles(agent: AgentDefinition): BuildSeedFilesResult {
 
 function buildExpertiseFiles(body: string | undefined): {
 	domains: readonly string[];
-	files: HttpWorkspaceFile[];
+	files: SeedFile[];
 } {
 	if (body === undefined || body.trim() === "") return { domains: [], files: [] };
 
@@ -156,7 +163,7 @@ function buildExpertiseFiles(body: string | undefined): {
 	return { domains, files };
 }
 
-function buildWorkflowFile(body: string | undefined): HttpWorkspaceFile | null {
+function buildWorkflowFile(body: string | undefined): SeedFile | null {
 	if (body === undefined || body.trim() === "") return null;
 	return {
 		path: ".seeds/workflow.txt",
@@ -169,7 +176,7 @@ type PiArtifactKind = "skill" | "prompt" | "extension";
 function buildPiArtifactFiles(
 	body: string | undefined,
 	kind: PiArtifactKind,
-): { names: readonly string[]; files: HttpWorkspaceFile[] } {
+): { names: readonly string[]; files: SeedFile[] } {
 	if (body === undefined || body.trim() === "") return { names: [], files: [] };
 	const sectionName = PI_ARTIFACT_SECTION[kind];
 

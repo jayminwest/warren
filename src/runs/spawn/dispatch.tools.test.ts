@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { WarrenDb } from "../../db/client.ts";
 import type { Repos } from "../../db/repos/index.ts";
 import { spawnRun } from "./index.ts";
-import { makeAgentJson, makeBurrowClient, makePool, setupRepos } from "./test-helpers.ts";
+import { makeAgentJson, makeBurrowClient, makeProvider, setupRepos } from "./test-helpers.ts";
 
 describe("spawnRun: per-agent tool policy (warren-8dee)", () => {
 	let db: WarrenDb;
@@ -30,7 +30,7 @@ describe("spawnRun: per-agent tool policy (warren-8dee)", () => {
 		const { client, calls } = makeBurrowClient();
 		await spawnRun({
 			repos,
-			burrowClient: await makePool(repos, client),
+			runtimeProvider: makeProvider(client),
 			agentName: "pi",
 			projectId: "prj_xxxxxxxxxxxx",
 			prompt: "p",
@@ -54,7 +54,7 @@ describe("spawnRun: per-agent tool policy (warren-8dee)", () => {
 		const { client, calls } = makeBurrowClient();
 		await spawnRun({
 			repos,
-			burrowClient: await makePool(repos, client),
+			runtimeProvider: makeProvider(client),
 			agentName: "pi",
 			projectId: "prj_xxxxxxxxxxxx",
 			prompt: "p",

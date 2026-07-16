@@ -36,6 +36,8 @@ import {
 	spawnRun,
 	tailRunEvents,
 } from "../../runs/index.ts";
+import type { RuntimeProvider } from "../../runtime/contract.ts";
+import { resolveRuntimeProvider } from "../../runtime/registry.ts";
 import type { SeedsCliDeps } from "../../seeds-cli/index.ts";
 import { loadTriggerSchedulerConfigFromEnv } from "../../triggers/index.ts";
 import { createWarrenConfigCache, type WarrenConfigCache } from "../../warren-config/index.ts";
@@ -66,6 +68,14 @@ export interface RunDeps {
 	 * pooling was retired with the K8s migration.
 	 */
 	readonly burrowClient: BurrowClient;
+	/**
+	 * Resolved runtime provider for the spawn seam (warren-c42c). Optional: when
+	 * omitted the command resolves the boot-selected backend via
+	 * `resolveRuntimeProvider` (honoring `WARREN_RUNTIME`) over `burrowClient`.
+	 * `spawnRun` dispatches through it — the spawn path no longer takes a burrow
+	 * client. Tests inject a stub here (or stub `spawn` outright).
+	 */
+	readonly runtimeProvider?: RuntimeProvider;
 	/** Optional broker injection — defaults to a fresh broker per run. */
 	readonly broker?: RunEventBroker;
 	/** Override the bridge factory (tests). Defaults to the live `bridgeRunStream`. */
@@ -146,7 +156,8 @@ export async function runRun(
 	try {
 		spawnResult = await spawn({
 			repos: deps.repos,
-			burrowClient: deps.burrowClient,
+			runtimeProvider:
+				deps.runtimeProvider ?? resolveRuntimeProvider({ burrowClient: () => deps.burrowClient }),
 			agentName: args.agent,
 			projectId: args.project,
 			prompt: args.prompt,

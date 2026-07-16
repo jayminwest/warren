@@ -17,8 +17,19 @@
  * fail loudly on extra content.
  */
 
-import { NETWORK_POLICIES, type NetworkPolicy } from "@os-eco/burrow-cli";
+import type { RunSpec } from "../runtime/contract.ts";
 import { RunSpawnError } from "./errors.ts";
+
+/**
+ * Provider-neutral network vocabulary (warren-c42c). The agent's
+ * `burrow_config` section is domain input — the parsed `network` intent
+ * rides `RunSpec.network`, which every backend maps (LocalProvider →
+ * burrow's `NetworkPolicy` verbatim; K8sProvider → its own securityContext).
+ * Sourced from the contract so the union stays the single source of truth
+ * rather than re-importing burrow's `NetworkPolicy`.
+ */
+export type NetworkPolicy = RunSpec["network"];
+const NETWORK_POLICIES: readonly NetworkPolicy[] = ["none", "restricted", "open"];
 
 export interface ParsedBurrowConfig {
 	readonly network?: NetworkPolicy;

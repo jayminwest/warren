@@ -21,7 +21,6 @@
  * error); the coordinator catches and marks the child failed.
  */
 
-import type { BurrowClient } from "../burrow-client/index.ts";
 import type { Repos } from "../db/repos/index.ts";
 import type { PlanRunRow } from "../db/schema.ts";
 import type { SpawnFn } from "../projects/clone.ts";
@@ -72,13 +71,13 @@ export function createResolveExecution(
 
 export interface CreatePlanRunSpawnInput {
 	readonly repos: Repos;
-	readonly burrowClient: BurrowClient;
 	/**
-	 * Resolved runtime provider (warren-c531 follow-up). Omitting it drops
-	 * plan-run dispatches to the burrow-backed `LocalProvider`, which cannot
-	 * spawn under `WARREN_RUNTIME=k8s`. Boot threads the shared instance.
+	 * Resolved runtime provider (warren-c42c: required — the spawn seam is now
+	 * exclusively `provider.create()`, no burrow-client fallback). Boot threads
+	 * the boot-selected instance (`resolveRuntimeProvider`, honoring
+	 * `WARREN_RUNTIME`); `spawnRun` dispatches through it.
 	 */
-	readonly runtimeProvider?: RuntimeProvider;
+	readonly runtimeProvider: RuntimeProvider;
 	readonly bridges: BridgeRegistry;
 	readonly warrenConfigs: WarrenConfigCache;
 	readonly projectsConfig: ProjectsConfig;
@@ -92,8 +91,6 @@ export interface CreatePlanRunSpawnInput {
 
 export function createPlanRunSpawn(input: CreatePlanRunSpawnInput): CoordinatorSpawnFn {
 	const spawnRunFn = input.spawnRunFn ?? spawnRun;
-	const runtimeProvider =
-		input.runtimeProvider !== undefined ? { runtimeProvider: input.runtimeProvider } : {};
 	return async ({ planRun, child, prompt, execution }) => {
 		// pl-fb43 step 5: clone the child's *execution* repo into the
 		// workspace while `seedProjectId` keeps the post-dispatch seed stamp +
@@ -107,8 +104,7 @@ export function createPlanRunSpawn(input: CreatePlanRunSpawnInput): CoordinatorS
 		const ref = planRun.ref ?? project.defaultBranch;
 		const result = await spawnRunFn({
 			repos: input.repos,
-			burrowClient: input.burrowClient,
-			...runtimeProvider,
+			runtimeProvider: input.runtimeProvider,
 			agentName: planRun.agentName,
 			projectId: exec.executionProjectId,
 			seedProjectId: planRun.projectId,

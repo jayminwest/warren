@@ -38,8 +38,6 @@ describe("createMergePollerDispatch", () => {
 				projects: { require: async () => ({ defaultBranch: "trunk" }) },
 				// biome-ignore lint/suspicious/noExplicitAny: narrow test stub
 			} as any,
-			// biome-ignore lint/suspicious/noExplicitAny: unused by the spawn stub
-			burrowClient: {} as any,
 			runtimeProvider,
 			bridges,
 			// biome-ignore lint/suspicious/noExplicitAny: unused by the spawn stub

@@ -21,7 +21,6 @@
  * bridge.
  */
 
-import type { BurrowClient } from "../burrow-client/index.ts";
 import type { Repos } from "../db/repos/index.ts";
 import type { SpawnFn } from "../projects/clone.ts";
 import type { ProjectsConfig } from "../projects/config.ts";
@@ -46,15 +45,14 @@ import type { BridgeRegistry } from "./types.ts";
 
 export interface BootSchedulerInput {
 	readonly repos: Repos;
-	readonly burrowClient: BurrowClient;
 	/**
-	 * Resolved runtime provider (warren-c531 follow-up). Without this, every
-	 * scheduled `spawnRun` falls back to the burrow-backed `LocalProvider`,
-	 * which under `WARREN_RUNTIME=k8s` has no socket to talk to — cron fires
-	 * then fail `never_started` and retry every tick. Boot threads the same
-	 * instance `POST /runs` dispatches through.
+	 * Resolved runtime provider (warren-c42c: required — the spawn seam is now
+	 * exclusively `provider.create()`, no burrow-client fallback). Boot threads
+	 * the boot-selected instance (`resolveRuntimeProvider`, honoring
+	 * `WARREN_RUNTIME`) — the same one `POST /runs` dispatches through — so
+	 * cron/scheduled-for/CI-fixer fires all honor `WARREN_RUNTIME=k8s`.
 	 */
-	readonly runtimeProvider?: RuntimeProvider;
+	readonly runtimeProvider: RuntimeProvider;
 	readonly bridges: BridgeRegistry;
 	readonly warrenConfigs: WarrenConfigCache;
 	readonly projectsConfig: ProjectsConfig;
@@ -104,8 +102,7 @@ export function bootScheduler(input: BootSchedulerInput): SchedulerHandle {
 	): Promise<DispatchSpawnResult> => {
 		const result = await spawnRunFn({
 			repos: input.repos,
-			burrowClient: input.burrowClient,
-			...(input.runtimeProvider !== undefined ? { runtimeProvider: input.runtimeProvider } : {}),
+			runtimeProvider: input.runtimeProvider,
 			agentName: args.agentName,
 			projectId: args.projectId,
 			prompt: args.prompt,
@@ -143,8 +140,7 @@ export function bootScheduler(input: BootSchedulerInput): SchedulerHandle {
 	): Promise<{ runId: string }> => {
 		const result = await spawnRunFn({
 			repos: input.repos,
-			burrowClient: input.burrowClient,
-			...(input.runtimeProvider !== undefined ? { runtimeProvider: input.runtimeProvider } : {}),
+			runtimeProvider: input.runtimeProvider,
 			agentName: args.agentName,
 			projectId: args.projectId,
 			prompt: args.prompt,

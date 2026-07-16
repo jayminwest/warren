@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { WarrenDb } from "../../db/client.ts";
 import type { Repos } from "../../db/repos/index.ts";
 import { spawnRun } from "./index.ts";
-import { makeBurrowClient, makePool, setupRepos } from "./test-helpers.ts";
+import { makeBurrowClient, makeProvider, setupRepos } from "./test-helpers.ts";
 
 /**
  * Durable spawn-failure trail (warren-fc6e / pl-f700 step 2): a spawn that
@@ -35,7 +35,7 @@ describe("spawnRun: durable spawn failure", () => {
 		await expect(
 			spawnRun({
 				repos,
-				burrowClient: await makePool(repos, client),
+				runtimeProvider: makeProvider(client),
 				agentName: "refactor-bot",
 				projectId: "prj_xxxxxxxxxxxx",
 				prompt: "p",
@@ -63,7 +63,7 @@ describe("spawnRun: durable spawn failure", () => {
 		await expect(
 			spawnRun({
 				repos,
-				burrowClient: await makePool(repos, client),
+				runtimeProvider: makeProvider(client),
 				agentName: "refactor-bot",
 				projectId: "prj_xxxxxxxxxxxx",
 				prompt: "p",

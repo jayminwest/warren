@@ -3,6 +3,8 @@ import { BurrowClient } from "../../burrow-client/index.ts";
 import { openDatabase, type WarrenDb } from "../../db/client.ts";
 import { createRepos, type Repos } from "../../db/repos/index.ts";
 import type { AgentDefinition } from "../../registry/schema.ts";
+import type { RuntimeProvider } from "../../runtime/contract.ts";
+import { LocalProvider } from "../../runtime/local/provider.ts";
 import type { AppendPlotRunDispatchedInput, SpawnPlotAppender } from "./types.ts";
 
 /**
@@ -47,6 +49,18 @@ export async function makePool(
 	_workerName = "local",
 ): Promise<BurrowClient> {
 	return client;
+}
+
+/**
+ * Wrap a stub `BurrowClient` in a `LocalProvider` for the provider-only spawn
+ * seam (warren-c42c). `spawnRun` no longer takes a `burrowClient` — it
+ * dispatches through `runtimeProvider.create()` — so spawn tests build the
+ * burrow-backed provider explicitly here. Behavior is identical to the old
+ * dispatch fallback (which resolved a `LocalProvider` over the same client),
+ * so the stubbed burrow HTTP surface exercises exactly the same code path.
+ */
+export function makeProvider(client: BurrowClient): RuntimeProvider {
+	return new LocalProvider({ burrowClient: () => client });
 }
 
 // `typeof fetch` requires a `preconnect` method we don't exercise in tests; cast

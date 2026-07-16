@@ -3,7 +3,7 @@ import { ValidationError } from "../../core/errors.ts";
 import type { WarrenDb } from "../../db/client.ts";
 import type { Repos } from "../../db/repos/index.ts";
 import { spawnRun } from "./index.ts";
-import { makeAgentJson, makeBurrowClient, makePool, setupRepos } from "./test-helpers.ts";
+import { makeAgentJson, makeBurrowClient, makeProvider, setupRepos } from "./test-helpers.ts";
 
 /**
  * warren-e96f: a replicate run ("re-run from scratch") re-dispatches the
@@ -50,7 +50,7 @@ describe("spawnRun: replicate (warren-e96f)", () => {
 		let refreshRef: string | undefined = "sentinel";
 		const { run } = await spawnRun({
 			repos,
-			burrowClient: await makePool(repos, client),
+			runtimeProvider: makeProvider(client),
 			agentName: "refactor-bot",
 			projectId: "prj_xxxxxxxxxxxx",
 			prompt: "first pass",
@@ -77,7 +77,7 @@ describe("spawnRun: replicate (warren-e96f)", () => {
 		let refreshRef: string | undefined;
 		await spawnRun({
 			repos,
-			burrowClient: await makePool(repos, client),
+			runtimeProvider: makeProvider(client),
 			agentName: "refactor-bot",
 			projectId: "prj_xxxxxxxxxxxx",
 			prompt: "first pass",
@@ -112,7 +112,7 @@ describe("spawnRun: replicate (warren-e96f)", () => {
 		await expect(
 			spawnRun({
 				repos,
-				burrowClient: await makePool(repos, client),
+				runtimeProvider: makeProvider(client),
 				agentName: "refactor-bot",
 				projectId: "prj_xxxxxxxxxxxx",
 				prompt: "first pass",
@@ -127,7 +127,7 @@ describe("spawnRun: replicate (warren-e96f)", () => {
 		const { client } = makeBurrowClient();
 		const { run } = await spawnRun({
 			repos,
-			burrowClient: await makePool(repos, client),
+			runtimeProvider: makeProvider(client),
 			agentName: "refactor-bot",
 			projectId: "prj_xxxxxxxxxxxx",
 			prompt: "follow up",
@@ -140,7 +140,7 @@ describe("spawnRun: replicate (warren-e96f)", () => {
 		const { client } = makeBurrowClient();
 		const { run } = await spawnRun({
 			repos,
-			burrowClient: await makePool(repos, client),
+			runtimeProvider: makeProvider(client),
 			agentName: "refactor-bot",
 			projectId: "prj_xxxxxxxxxxxx",
 			prompt: "fresh",

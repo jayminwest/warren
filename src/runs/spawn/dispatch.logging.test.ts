@@ -3,7 +3,7 @@ import { BurrowClient } from "../../burrow-client/index.ts";
 import type { WarrenDb } from "../../db/client.ts";
 import type { Repos } from "../../db/repos/index.ts";
 import { spawnRun } from "./index.ts";
-import { makeBurrowClient, makePool, setupRepos, stub } from "./test-helpers.ts";
+import { makeBurrowClient, makeProvider, setupRepos, stub } from "./test-helpers.ts";
 import type { SpawnLogger } from "./types.ts";
 
 interface LogLine {
@@ -48,7 +48,7 @@ describe("spawnRun: instrumentation (warren-c686)", () => {
 		const { logger, lines } = makeRecordingLogger({ request_id: "req_abc" });
 		const result = await spawnRun({
 			repos,
-			burrowClient: await makePool(repos, client),
+			runtimeProvider: makeProvider(client),
 			agentName: "refactor-bot",
 			projectId: "prj_xxxxxxxxxxxx",
 			prompt: "p",
@@ -82,7 +82,7 @@ describe("spawnRun: instrumentation (warren-c686)", () => {
 		await expect(
 			spawnRun({
 				repos,
-				burrowClient: await makePool(repos, client),
+				runtimeProvider: makeProvider(client),
 				agentName: "refactor-bot",
 				projectId: "prj_xxxxxxxxxxxx",
 				prompt: "p",
@@ -142,7 +142,7 @@ describe("spawnRun: instrumentation (warren-c686)", () => {
 		await expect(
 			spawnRun({
 				repos,
-				burrowClient: await makePool(repos, client),
+				runtimeProvider: makeProvider(client),
 				agentName: "refactor-bot",
 				projectId: "prj_xxxxxxxxxxxx",
 				prompt: "p",

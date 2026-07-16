@@ -1,8 +1,8 @@
 /**
  * `spawnRun` — the §4.3 composition flow.
  *
- * One call drives the three-step ritual that turns "the operator picked
- * an agent + project + prompt" into "burrow has a queued run":
+ * One call drives the ritual that turns "the operator picked an agent +
+ * project + prompt" into "the runtime has a dispatched run":
  *
  *   1. Resolve the cached agent definition (registry refresh seeded it
  *      via `cn render`). The rendered envelope is what gets frozen onto
@@ -10,38 +10,32 @@
  *      deliberately not done here. Operators trigger a fresh render via
  *      `POST /agents/refresh` if they want one.
  *
- *   2. Provision a burrow via `POST /burrows`, deriving the request body
- *      from the project clone (`projectRoot`, `originUrl`) and the
- *      agent's `burrow_config` (`network`). The `.canopy/`, `.mulch/`,
- *      `.seeds/`, `.pi/` workspace drops (see `../seed.ts`) ride along as
- *      the `seed.files` payload so provisioning + seeding land in a
- *      single atomic round-trip — burrow rolls the burrow back on its
- *      side if any seed file fails validation (R-07).
+ *   2. Build the neutral `RunSpec` (workspace inputs from the project clone,
+ *      `network` from the agent's `burrow_config`, the `.canopy/.mulch/
+ *      .seeds/.pi` workspace drops from `../seed.ts` as `seedFiles`, plus the
+ *      composed env + prompt) and dispatch through the runtime seam,
+ *      `provider.create(spec)` (warren-c42c). The provider — `LocalProvider`
+ *      (burrow) or `K8sProvider` (pod) — materializes the workspace, seeds it,
+ *      and starts the run, collapsing what used to be burrow's two-call
+ *      provision-then-dispatch into one, and owns destroying any partially
+ *      provisioned sandbox on a mid-flight failure.
  *
- *   3. Dispatch via `POST /burrows/:id/runs`.
+ * The warren run row is created BEFORE `provider.create`, with both
+ * correlation ids nulled — `attachBurrow` writes back the handle's
+ * `sandboxId` / `providerRunId` only after `create` fully succeeds, so the
+ * warren `run_xxx` id is in hand throughout the flow while a failed dispatch
+ * leaves no sandbox id on the row (the provider already tore it down). These
+ * ids are the LocalProvider resume correlation the bridge reconnect path
+ * reads after a host restart.
  *
- * Placement was retired with the K8s migration (warren-76c5): the self-host
- * backend is a single local burrow serviced by one `BurrowClient`. The
- * `workers` + `burrows` placement tables were dropped in warren-3743 and
- * `runs.worker_id` is left NULL for new runs (retained, unwritten, for
- * historical rows only). `runs.burrow_id` / `runs.burrow_run_id` are still
- * written: they are the LocalProvider resume correlation ids the bridge
- * reconnect path reads after a host restart.
- *
- * The warren run row is created BEFORE any burrow call, with both
- * burrow IDs nulled — `attachBurrow` writes them back as each call
- * succeeds, so the warren `run_xxx` id is in hand throughout the flow.
- *
- * Failure handling: anything before step 2 just throws (no warren row
- * exists). Failures from step 2 onward are caught — the warren row is
- * transitioned `queued → cancelled` and any provisioned burrow is
- * best-effort destroyed; a seed-validation failure inside `burrows.up`
- * rolls back on burrow's side before warren observes a burrow id. The
+ * Failure handling: anything before the `create` call just throws (no warren
+ * row exists yet, or the row unwinds via the domain rollback). Failures from
+ * `create` onward are caught — `rollback` finalizes the warren row
+ * `failed`/`never_started` (the sandbox half is the provider's job). The
  * original error is rethrown for the caller (HTTP route, CLI).
  */
 
 import { join } from "node:path";
-import { LOCAL_WORKER_NAME } from "../../burrow-client/index.ts";
 import { NotFoundError, ValidationError } from "../../core/errors.ts";
 import { refreshProject } from "../../projects/manage.ts";
 import {
@@ -50,7 +44,6 @@ import {
 	withProviderOverrides,
 } from "../../registry/schema.ts";
 import type { RunSpec, RuntimeProvider } from "../../runtime/contract.ts";
-import { resolveRuntimeProvider } from "../../runtime/registry.ts";
 import { interactiveRuntimeOverride } from "../../warren-config/schema.ts";
 import { composeRunBranch, resolveRunBranchPrefix } from "../branch.ts";
 import { parseBurrowConfig } from "../burrow-config.ts";
@@ -74,6 +67,16 @@ import {
 import { writeSeedExtensions } from "./seed-extensions.ts";
 import type { SpawnRunInput, SpawnRunResult } from "./types.ts";
 import { resolveCoordinationProject } from "./util.ts";
+
+/**
+ * Vestigial worker-placement label carried on the `spawn.placement` /
+ * `spawn.provisioned` log lines (warren-c42c). Multi-worker placement was
+ * retired with the K8s migration (warren-76c5 / warren-3743) — a run has no
+ * "worker" on either backend — so this is a fixed log field, not a routing
+ * decision. Kept a local neutral constant now that the spawn path no longer
+ * imports burrow-client's `LOCAL_WORKER_NAME`.
+ */
+const WORKER_PLACEMENT_LABEL = "local";
 
 export async function spawnRun(input: SpawnRunInput): Promise<SpawnRunResult> {
 	if (input.prompt.trim() === "") {
@@ -181,7 +184,7 @@ export async function spawnRun(input: SpawnRunInput): Promise<SpawnRunResult> {
 	// self-host backend is a single local burrow. `runs.worker_id` is no longer
 	// written (the workers/burrows tables were dropped); it stays NULL for new
 	// runs and every reader (preview / proxy) treats NULL as the local worker.
-	logPlacement(input.logger, LOCAL_WORKER_NAME, projectAfterRefresh.id);
+	logPlacement(input.logger, WORKER_PLACEMENT_LABEL, projectAfterRefresh.id);
 
 	const run = await input.repos.runs.create({
 		agentName: agent.name,
@@ -236,21 +239,14 @@ export async function spawnRun(input: SpawnRunInput): Promise<SpawnRunResult> {
 	const runtimeOverride = interactiveRuntimeOverride(agent.name, projectDefaults);
 
 	const log = bindRunLogger(input.logger, run.id);
-	// Runtime-provider seam (K8s migration pl-829f step 13 / warren-1f56).
+	// Runtime-provider seam (warren-c42c: burrow-client eviction, bucket 2).
 	// `provider.create` collapses burrow's provision + dispatch (`burrowsUp` +
-	// `runs.create`) into one call and owns the burrow-half rollback on a partial
-	// failure (best-effort archive:false destroy + rethrow). Production dispatchers
-	// thread the boot-resolved provider (warren-c531); when absent, resolve through
-	// the single registry selector (warren-aa4a) — honoring `WARREN_RUNTIME` over
-	// the injected single client + serverEnv — instead of hardcoding a
-	// LocalProvider, so callers that only wire `burrowClient` keep working (same
-	// fallback shape as `reapRun`).
-	const provider: RuntimeProvider =
-		input.runtimeProvider ??
-		resolveRuntimeProvider({
-			burrowClient: () => input.burrowClient,
-			...(input.serverEnv !== undefined ? { serverEnv: input.serverEnv } : {}),
-		});
+	// `runs.create`) into one call and owns the sandbox-half rollback on a partial
+	// failure (best-effort destroy + rethrow). The spawn path is now EXCLUSIVELY
+	// the provider path — no burrow-direct fallback. Callers resolve the
+	// boot-selected provider (`resolveRuntimeProvider`, honoring `WARREN_RUNTIME`)
+	// and thread it in; there is no `burrowClient` on this seam to fall back to.
+	const provider: RuntimeProvider = input.runtimeProvider;
 	const runtimeId = readRuntimeId(agent, runtimeOverride);
 	// Neutral RunSpec (provider maps it to the two burrow calls). `network` is
 	// REQUIRED on the seam, so resolve burrow's own default (`none`) here — the
@@ -289,7 +285,7 @@ export async function spawnRun(input: SpawnRunInput): Promise<SpawnRunResult> {
 	try {
 		const dispatchStart = Date.now();
 		const handle = await provider.create(spec);
-		logProvisioned(log, handle.sandboxId, LOCAL_WORKER_NAME, dispatchStart);
+		logProvisioned(log, handle.sandboxId, WORKER_PLACEMENT_LABEL, dispatchStart);
 		// warren-3743: the provider owns partial-failure cleanup, so the burrow
 		// correlation ids are written back onto the run only after `create` fully
 		// succeeds — a dispatch that fails mid-flight leaves no burrow_id on the
@@ -347,11 +343,10 @@ export async function spawnRun(input: SpawnRunInput): Promise<SpawnRunResult> {
 		};
 	} catch (err) {
 		logSpawnFailed(log, null, err);
-		// The provider already destroyed any provisioned burrow on a partial
-		// failure (its create() owns the burrow-half rollback), so the domain
-		// rollback only unwinds the warren row (`persistSpawnFailure`): pass
-		// `burrow: null` so it does not attempt a second destroy.
-		await rollback(input, run.id, null, input.burrowClient, log, err);
+		// The provider already destroyed any provisioned sandbox on a partial
+		// failure (its create() owns the sandbox-half rollback), so the domain
+		// rollback only unwinds the warren row (`persistSpawnFailure`).
+		await rollback(input, run.id, log, err);
 		throw err;
 	}
 }

@@ -7,7 +7,6 @@
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Burrow, Run as BurrowRun } from "@os-eco/burrow-cli";
-import { BurrowClient } from "../burrow-client/index.ts";
 import { openDatabase, type WarrenDb } from "../db/client.ts";
 import { createRepos, type Repos } from "../db/repos/index.ts";
 import { agents } from "../db/schema.ts";
@@ -20,23 +19,10 @@ import { createPlanRunSpawn } from "./dispatch.ts";
 
 const NOW = new Date("2026-05-18T00:00:00.000Z");
 
-function stubFetch(): typeof fetch {
-	return (async () =>
-		new Response(JSON.stringify({ error: { code: "x", message: "stub" } }), {
-			status: 404,
-		})) as unknown as typeof fetch;
-}
-
-function makeBurrowClient(): BurrowClient {
-	return new BurrowClient({
-		config: { transport: { kind: "unix", path: "/tmp/x.sock" } },
-		fetch: stubFetch(),
-	});
-}
-
-async function makePool(_repos: Repos): Promise<BurrowClient> {
-	return makeBurrowClient();
-}
+// Identity-only runtime provider (warren-c42c). `createPlanRunSpawn` threads it
+// straight into `spawnRun`; these tests use a stub `spawnRunFn`, so the provider
+// is never invoked — only its identity is asserted.
+const RUNTIME_PROVIDER = { kind: "stub" } as unknown as RuntimeProvider;
 
 function makeBridges(): BridgeRegistry {
 	return {
@@ -113,7 +99,6 @@ describe("createPlanRunSpawn", () => {
 		const runtimeProvider = { kind: "stub" } as unknown as RuntimeProvider;
 		const spawn = createPlanRunSpawn({
 			repos,
-			burrowClient: await makePool(repos),
 			runtimeProvider,
 			bridges: makeBridges(),
 			warrenConfigs: createWarrenConfigCache({
@@ -183,7 +168,7 @@ describe("createPlanRunSpawn", () => {
 
 		const spawn = createPlanRunSpawn({
 			repos,
-			burrowClient: await makePool(repos),
+			runtimeProvider: RUNTIME_PROVIDER,
 			bridges: makeBridges(),
 			warrenConfigs: createWarrenConfigCache({
 				load: async () => ({
@@ -254,7 +239,7 @@ describe("createPlanRunSpawn", () => {
 
 		const spawn = createPlanRunSpawn({
 			repos,
-			burrowClient: await makePool(repos),
+			runtimeProvider: RUNTIME_PROVIDER,
 			bridges: makeBridges(),
 			warrenConfigs: createWarrenConfigCache({
 				load: async () => ({

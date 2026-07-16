@@ -166,7 +166,6 @@ async function dispatchHealer(
 ): Promise<string> {
 	const result = await spawnRun({
 		repos: deps.repos,
-		burrowClient: deps.burrowClient,
 		// warren-245d: dispatch through the resolved runtime provider so the
 		// alert auto-heal path honors WARREN_RUNTIME=k8s (else it 503s on burrow).
 		runtimeProvider:

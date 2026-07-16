@@ -1,6 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Burrow, Run as BurrowRun } from "@os-eco/burrow-cli";
-import { BurrowClient } from "../burrow-client/index.ts";
 import { openDatabase, type WarrenDb } from "../db/client.ts";
 import { createRepos, type Repos } from "../db/repos/index.ts";
 import { agents } from "../db/schema.ts";
@@ -12,24 +11,6 @@ import type { TriggerSchedulerConfig } from "../triggers/index.ts";
 import { createWarrenConfigCache } from "../warren-config/index.ts";
 import { bootScheduler } from "./scheduler.ts";
 import type { BridgeRegistry } from "./types.ts";
-
-function stubFetch(): typeof fetch {
-	return (async () =>
-		new Response(JSON.stringify({ error: { code: "x", message: "stub" } }), {
-			status: 404,
-		})) as unknown as typeof fetch;
-}
-
-function makeBurrowClient(): BurrowClient {
-	return new BurrowClient({
-		config: { transport: { kind: "unix", path: "/tmp/x.sock" } },
-		fetch: stubFetch(),
-	});
-}
-
-async function makePool(_repos: Repos): Promise<BurrowClient> {
-	return makeBurrowClient();
-}
 
 interface BridgeCall {
 	readonly runId: string;
@@ -141,7 +122,6 @@ describe("bootScheduler", () => {
 
 		const handle = bootScheduler({
 			repos,
-			burrowClient: await makePool(repos),
 			runtimeProvider: RUNTIME_PROVIDER,
 			bridges: makeBridges(bridgeCalls),
 			warrenConfigs,
@@ -223,7 +203,7 @@ describe("bootScheduler", () => {
 
 		const handle = bootScheduler({
 			repos,
-			burrowClient: await makePool(repos),
+			runtimeProvider: RUNTIME_PROVIDER,
 			bridges: makeBridges(bridgeCalls),
 			warrenConfigs,
 			projectsConfig: PROJECTS_CONFIG,
@@ -271,7 +251,7 @@ describe("bootScheduler", () => {
 		const setIntervalCalls: { ms: number }[] = [];
 		const handle = bootScheduler({
 			repos,
-			burrowClient: await makePool(repos),
+			runtimeProvider: RUNTIME_PROVIDER,
 			bridges: makeBridges([]),
 			warrenConfigs: createWarrenConfigCache({
 				load: async () => ({
@@ -302,7 +282,7 @@ describe("bootScheduler", () => {
 		const clearCalls: number[] = [];
 		const handle = bootScheduler({
 			repos,
-			burrowClient: await makePool(repos),
+			runtimeProvider: RUNTIME_PROVIDER,
 			bridges: makeBridges([]),
 			warrenConfigs: createWarrenConfigCache({
 				load: async () => ({

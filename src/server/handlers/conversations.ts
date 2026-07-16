@@ -128,7 +128,11 @@ export function createConversationHandler(deps: ServerDeps): RouteHandler {
 
 		const result = await spawnRun({
 			repos: deps.repos,
-			burrowClient: deps.burrowClient,
+			// warren-c42c: dispatch through the resolved runtime provider so the
+			// conversation-start path honors WARREN_RUNTIME=k8s (the spawn seam is
+			// now provider-only — no burrow-client fallback).
+			runtimeProvider:
+				deps.runtimeProvider ?? resolveRuntimeProvider({ burrowClient: () => deps.burrowClient }),
 			agentName,
 			projectId,
 			prompt: opening,
@@ -428,7 +432,11 @@ export function rewakeConversationHandler(deps: ServerDeps): RouteHandler {
 
 		const result = await rewakeConversation({
 			repos: deps.repos,
-			burrowClient: deps.burrowClient,
+			// warren-c42c: re-wake dispatches through the resolved runtime provider
+			// so it honors WARREN_RUNTIME=k8s (previously it threaded burrowClient
+			// and fell back to LocalProvider, unusable on the k8s backend).
+			runtimeProvider:
+				deps.runtimeProvider ?? resolveRuntimeProvider({ burrowClient: () => deps.burrowClient }),
 			conversationId: id,
 			reader: {
 				async readConversation(conversationId: string) {

@@ -6,7 +6,7 @@ import { spawnRun } from "./index.ts";
 import {
 	makeAgentJson,
 	makeBurrowClient,
-	makePool,
+	makeProvider,
 	readCanopyFrontmatter,
 	setupRepos,
 } from "./test-helpers.ts";
@@ -39,7 +39,7 @@ describe("readCachedAgent (via spawnRun)", () => {
 		const { client } = makeBurrowClient();
 		const result = await spawnRun({
 			repos,
-			burrowClient: await makePool(repos, client),
+			runtimeProvider: makeProvider(client),
 			agentName: "refactor-bot",
 			projectId: "prj_xxxxxxxxxxxx",
 			prompt: "p",
@@ -57,7 +57,7 @@ describe("readCachedAgent (via spawnRun)", () => {
 		await expect(
 			spawnRun({
 				repos,
-				burrowClient: await makePool(repos, client),
+				runtimeProvider: makeProvider(client),
 				agentName: "refactor-bot",
 				projectId: "prj_xxxxxxxxxxxx",
 				prompt: "p",
@@ -89,7 +89,7 @@ describe("agent tier resolution (R-03 / warren-0a7e)", () => {
 		const { client } = makeBurrowClient();
 		const result = await spawnRun({
 			repos,
-			burrowClient: await makePool(repos, client),
+			runtimeProvider: makeProvider(client),
 			agentName: "refactor-bot",
 			projectId: "prj_xxxxxxxxxxxx",
 			prompt: "p",
@@ -123,7 +123,7 @@ describe("agent tier resolution (R-03 / warren-0a7e)", () => {
 		const { client } = makeBurrowClient();
 		const result = await spawnRun({
 			repos,
-			burrowClient: await makePool(repos, client),
+			runtimeProvider: makeProvider(client),
 			agentName: "refactor-bot",
 			projectId: "prj_xxxxxxxxxxxx",
 			prompt: "p",
@@ -159,7 +159,7 @@ describe("provider/model override resolution (warren-618b / warren-f8c0)", () =>
 		const { client, calls } = makeBurrowClient();
 		const result = await spawnRun({
 			repos,
-			burrowClient: await makePool(repos, client),
+			runtimeProvider: makeProvider(client),
 			agentName: "pi",
 			projectId: "prj_xxxxxxxxxxxx",
 			prompt: "run",
@@ -202,7 +202,7 @@ describe("provider/model override resolution (warren-618b / warren-f8c0)", () =>
 		const { client, calls } = makeBurrowClient();
 		const result = await spawnRun({
 			repos,
-			burrowClient: await makePool(repos, client),
+			runtimeProvider: makeProvider(client),
 			agentName: "pi",
 			projectId: "prj_xxxxxxxxxxxx",
 			prompt: "run",
@@ -243,7 +243,7 @@ describe("provider/model override resolution (warren-618b / warren-f8c0)", () =>
 		const { client } = makeBurrowClient();
 		const result = await spawnRun({
 			repos,
-			burrowClient: await makePool(repos, client),
+			runtimeProvider: makeProvider(client),
 			agentName: "pi",
 			projectId: "prj_xxxxxxxxxxxx",
 			prompt: "run",
@@ -280,7 +280,7 @@ describe("provider/model override resolution (warren-618b / warren-f8c0)", () =>
 		const { client } = makeBurrowClient();
 		const result = await spawnRun({
 			repos,
-			burrowClient: await makePool(repos, client),
+			runtimeProvider: makeProvider(client),
 			agentName: "pi",
 			projectId: "prj_xxxxxxxxxxxx",
 			prompt: "run",

@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { AgentDefinition } from "../registry/schema.ts";
 import { RunSpawnError } from "./errors.ts";
-import { buildSeedFiles, type HttpWorkspaceFile } from "./seed.ts";
+import { buildSeedFiles, type SeedFile } from "./seed.ts";
 
 function makeAgent(overrides: Partial<AgentDefinition> = {}): AgentDefinition {
 	return {
@@ -14,7 +14,7 @@ function makeAgent(overrides: Partial<AgentDefinition> = {}): AgentDefinition {
 	};
 }
 
-function byPath(files: readonly HttpWorkspaceFile[]): Map<string, HttpWorkspaceFile> {
+function byPath(files: readonly SeedFile[]): Map<string, SeedFile> {
 	return new Map(files.map((f) => [f.path, f]));
 }
 

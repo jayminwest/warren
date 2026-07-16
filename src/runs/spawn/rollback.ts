@@ -8,13 +8,12 @@
  *     unconditionally,
  *   - `bindRunLogger` which re-binds `run_id` onto the caller's
  *     request-scoped logger once per spawn, and
- *   - `rollback`, the queued→cancelled + best-effort burrow-destroy
- *     unwind, now logging both previously-swallowed failure branches.
+ *   - `rollback`, the queued→failed(never_started) warren-row unwind
+ *     (warren-c42c: the burrow-half teardown moved behind the runtime
+ *     seam — `RuntimeProvider.create()` owns destroying a partially
+ *     provisioned sandbox — so this is purely the domain-row unwind).
  */
 
-import type { Burrow } from "@os-eco/burrow-cli";
-import type { BurrowClient } from "../../burrow-client/client.ts";
-import { withTransportMapping } from "../../burrow-client/client.ts";
 import type { SpawnLogger, SpawnRunInput } from "./types.ts";
 
 /**
@@ -119,11 +118,15 @@ function errorMessage(err: unknown): string {
  *
  * Both writes are best-effort: a failure here is logged but never masks
  * the original spawn error the caller is about to see rethrown.
+ *
+ * warren-c42c: no `burrowId` rides the `spawn_failed` event — the runtime
+ * seam (`RuntimeProvider.create()`) owns the sandbox and destroys any
+ * partial provision itself, so the domain never learns a sandbox id on a
+ * failed spawn (nor is one left stranded to reference).
  */
 async function persistSpawnFailure(
 	input: SpawnRunInput,
 	runId: string,
-	burrow: Burrow | null,
 	err: unknown,
 	log: SpawnLogger,
 ): Promise<void> {
@@ -137,7 +140,7 @@ async function persistSpawnFailure(
 			ts: now.toISOString(),
 			kind: "spawn_failed",
 			stream: "system",
-			payload: { step: "spawn", message, ...(burrow !== null ? { burrowId: burrow.id } : {}) },
+			payload: { step: "spawn", message },
 		});
 	} catch (eventErr) {
 		log.error(
@@ -165,34 +168,19 @@ async function persistSpawnFailure(
 	}
 }
 
+/**
+ * Unwind a failed spawn (warren-c42c). Purely the domain-row unwind now:
+ * `persistSpawnFailure` lands the `spawn_failed` event + the
+ * `failed`/`never_started` finalize. The burrow-half teardown that used to
+ * live here moved behind the runtime seam — `RuntimeProvider.create()` owns
+ * destroying a sandbox it provisioned before a partial-failure rethrow — so
+ * there is no sandbox for the domain to reference or destroy here.
+ */
 export async function rollback(
 	input: SpawnRunInput,
 	runId: string,
-	burrow: Burrow | null,
-	client: BurrowClient,
 	log: SpawnLogger,
 	err: unknown,
 ): Promise<void> {
-	await persistSpawnFailure(input, runId, burrow, err, log);
-	if (burrow !== null) {
-		try {
-			await withTransportMapping(client.config, () =>
-				client.http.burrows.destroy(burrow.id, { archive: false }),
-			);
-		} catch (err) {
-			// Best-effort cleanup. The operator can list stranded burrows via
-			// burrow's own UI / CLI; we don't want a cleanup failure to mask
-			// the original error the caller is about to see rethrown.
-			// warren-c686: log the swallowed failure so stranded burrows are
-			// traceable to the run that leaked them.
-			log.error(
-				{
-					event: "spawn.rollback.burrow_destroy_failed",
-					burrow_id: burrow.id,
-					error: errorMessage(err),
-				},
-				"spawn rollback: burrow destroy failed; burrow may be stranded",
-			);
-		}
-	}
+	await persistSpawnFailure(input, runId, err, log);
 }

@@ -5,7 +5,6 @@
  * without dragging in the full `spawnRun` implementation graph.
  */
 
-import type { BurrowClient } from "../../burrow-client/index.ts";
 import type { Repos } from "../../db/repos/index.ts";
 import type { CloneKind, RunMode, RunRow } from "../../db/schema.ts";
 import type { SpawnFn as ProjectSpawnFn } from "../../projects/clone.ts";
@@ -34,22 +33,15 @@ export interface SpawnLogger {
 export interface SpawnRunInput {
 	readonly repos: Repos;
 	/**
-	 * The single local burrow client (warren-76c5). Multi-worker placement /
-	 * pooling was retired with the K8s migration — the self-host backend is
-	 * exactly one local burrow — so `runs.worker_id` / `burrows.worker_id`
-	 * record the vestigial `LOCAL_WORKER_NAME` and the same client services
-	 * provision + dispatch + rollback.
+	 * Runtime-provider seam (warren-c42c: burrow-client eviction, bucket 2).
+	 * `spawnRun` dispatches EXCLUSIVELY through `provider.create(spec)` — the
+	 * single call that collapses burrow's `burrowsUp` + `runs.create` (and, on
+	 * a partial failure, owns the sandbox-half teardown). Required: the spawn
+	 * path no longer knows about burrow, so callers resolve the boot-selected
+	 * provider (`resolveRuntimeProvider`, honoring `WARREN_RUNTIME`) and thread
+	 * it here. LocalProvider (default) wraps burrow; K8sProvider runs a pod.
 	 */
-	readonly burrowClient: BurrowClient;
-	/**
-	 * Runtime-provider seam (K8s migration pl-829f step 13 / warren-1f56).
-	 * `spawnRun` dispatches through `provider.create(spec)` (burrow's
-	 * `burrowsUp` + `runs.create` collapsed into one). Optional: defaults to a
-	 * burrow-backed `LocalProvider` over `burrowClient` (+ `serverEnv`) so
-	 * callers that only wire the client keep working — same fallback shape as
-	 * `reapRun`.
-	 */
-	readonly runtimeProvider?: RuntimeProvider;
+	readonly runtimeProvider: RuntimeProvider;
 	readonly agentName: string;
 	readonly projectId: string;
 	/**

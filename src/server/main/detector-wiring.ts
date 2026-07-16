@@ -101,8 +101,12 @@ export interface MergePollerWiringInput {
 	readonly env: EnvLike;
 	readonly repos: Repos;
 	readonly burrowClient: BurrowClient;
-	/** Resolved runtime provider — threaded into the planner spawnRun (warren-c531 follow-up). */
-	readonly runtimeProvider?: RuntimeProvider;
+	/**
+	 * Resolved runtime provider — threaded into the planner spawnRun. Required
+	 * since warren-c42c: the spawn seam is provider-only, so the merge-poller
+	 * dispatch must carry the boot-selected provider.
+	 */
+	readonly runtimeProvider: RuntimeProvider;
 	readonly bridges: BridgeRegistry;
 	readonly warrenConfigs: WarrenConfigCache;
 	readonly projectsConfig: ProjectsConfig;
@@ -131,8 +135,7 @@ export function bootConversationMergePollerFromEnv(
 	const tickMs = parseIntEnv(env, "WARREN_MERGE_POLLER_TICK_MS", 30_000);
 	const dispatch = createMergePollerDispatch({
 		repos: input.repos,
-		burrowClient: input.burrowClient,
-		...(input.runtimeProvider !== undefined ? { runtimeProvider: input.runtimeProvider } : {}),
+		runtimeProvider: input.runtimeProvider,
 		bridges: input.bridges,
 		warrenConfigs: input.warrenConfigs,
 		projectsConfig: input.projectsConfig,
@@ -262,8 +265,12 @@ export interface BackgroundDetectorWiringInput {
 	readonly projectSpawn: SpawnFn;
 	readonly seedsCli: SeedsCliDeps;
 	readonly autoOpenPr: AutoOpenPrConfig;
-	/** Runtime-provider seam (warren-c531) — forwarded to the watchdog tick. */
-	readonly runtimeProvider?: RuntimeProvider;
+	/**
+	 * Runtime-provider seam — forwarded to the watchdog tick and the merge-poller
+	 * planner spawn. Required since warren-c42c: the merge-poller dispatch routes
+	 * through the provider-only spawn seam.
+	 */
+	readonly runtimeProvider: RuntimeProvider;
 	readonly runBranchPrefixDefault?: string;
 	readonly logger: Logger;
 	readonly now?: () => Date;
@@ -311,7 +318,7 @@ export function bootBackgroundDetectors(
 		env: input.env,
 		repos: input.repos,
 		burrowClient: input.burrowClient,
-		...(input.runtimeProvider !== undefined ? { runtimeProvider: input.runtimeProvider } : {}),
+		runtimeProvider: input.runtimeProvider,
 		bridges: input.bridges,
 		warrenConfigs: input.warrenConfigs,
 		projectsConfig: input.projectsConfig,

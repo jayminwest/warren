@@ -144,7 +144,7 @@ export {
 export {
 	type BuildSeedFilesResult,
 	buildSeedFiles,
-	type HttpWorkspaceFile,
+	type SeedFile,
 } from "./seed.ts";
 export {
 	DEFAULT_DISPATCHER_HANDLE,
