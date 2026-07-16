@@ -36,7 +36,7 @@ import {
 	requireParam,
 	requireString,
 } from "./index.ts";
-import { asNdjsonStream, bridgeAbort, eventToNdjson } from "./runs/index.ts";
+import { asNdjsonStream, bridgeAbort, cancelRunWiring, eventToNdjson } from "./runs/index.ts";
 
 /* ----------------------------------------------------------------------- */
 /* Plan runs (warren-f923 / pl-a258 step 6)                                 */
@@ -337,7 +337,7 @@ export function cancelPlanRunHandler(deps: ServerDeps): RouteHandler {
 				await cancelRun({
 					runId: inFlight.runId,
 					repos: deps.repos,
-					burrowClient: deps.burrowClient,
+					...cancelRunWiring(deps), // warren-b223: provider + burrow-bound inline reap
 					broker: deps.broker,
 					reason: `plan_run_cancelled:${planRun.id}`,
 					...(deps.now !== undefined ? { now: deps.now } : {}),

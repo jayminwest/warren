@@ -1,5 +1,11 @@
-import type { MessagePriority } from "@os-eco/burrow-cli";
-import { cancelRun, pollRunInbox, steerRun } from "../../../runs/index.ts";
+import {
+	type CancelReap,
+	cancelRun,
+	pollRunInbox,
+	reapRun,
+	steerRun,
+} from "../../../runs/index.ts";
+import type { MessagePriority, RuntimeProvider } from "../../../runtime/contract.ts";
 import { resolveRuntimeProvider } from "../../../runtime/registry.ts";
 import { jsonResponse } from "../../response.ts";
 import type { RouteHandler, ServerDeps } from "../../types.ts";
@@ -10,6 +16,26 @@ import {
 	requireParam,
 	requireString,
 } from "../index.ts";
+
+/**
+ * The runtime provider + burrow-bound inline-reap seam `cancelRun` needs,
+ * resolved from server deps (warren-b223). Centralized so the cancel handler and
+ * the plan-run child-cancel bind identical wiring: the provider is resolved once
+ * from `WARREN_RUNTIME` (falling back to a burrow-backed LocalProvider), and the
+ * reap seam is pre-bound with the burrow client `reapRun` still needs for its
+ * workspace reads — the same closure the boot layer hands the bridge + watchdog.
+ * Keeps `cancelRun` itself free of any burrow-client import.
+ */
+export function cancelRunWiring(deps: ServerDeps): {
+	runtimeProvider: RuntimeProvider;
+	reap: CancelReap;
+} {
+	return {
+		runtimeProvider:
+			deps.runtimeProvider ?? resolveRuntimeProvider({ burrowClient: () => deps.burrowClient }),
+		reap: (reapInput) => reapRun({ ...reapInput, burrowClient: deps.burrowClient }),
+	};
+}
 
 export function steerRunHandler(deps: ServerDeps): RouteHandler {
 	return async (ctx) => {
@@ -65,9 +91,7 @@ export function cancelRunHandler(deps: ServerDeps): RouteHandler {
 		const result = await cancelRun({
 			runId: id,
 			repos: deps.repos,
-			burrowClient: deps.burrowClient,
-			runtimeProvider:
-				deps.runtimeProvider ?? resolveRuntimeProvider({ burrowClient: () => deps.burrowClient }),
+			...cancelRunWiring(deps),
 			broker: deps.broker,
 			...(reason !== undefined ? { reason } : {}),
 			...(deps.now !== undefined ? { now: deps.now } : {}),
