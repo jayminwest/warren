@@ -147,6 +147,11 @@ export async function runRun(
 			: (deps.runBranchPrefixDefault ?? loadRunBranchPrefixFromEnv());
 	const fetchBurrowRunState =
 		deps.fetchBurrowRunState ?? defaultFetchBurrowRunState(deps.burrowClient);
+	// Resolve the active runtime provider once (honoring WARREN_RUNTIME) and share
+	// it across spawn + the stream bridge (warren-1fce): the bridge streams,
+	// polls, and cancels through the provider seam, not a burrow client.
+	const runtimeProvider =
+		deps.runtimeProvider ?? resolveRuntimeProvider({ burrowClient: () => deps.burrowClient });
 	const seedsCli: SeedsCliDeps = deps.seedsCli ?? {
 		sdBinary: loadTriggerSchedulerConfigFromEnv().sdBinary,
 		spawn: defaultSpawn,
@@ -156,8 +161,7 @@ export async function runRun(
 	try {
 		spawnResult = await spawn({
 			repos: deps.repos,
-			runtimeProvider:
-				deps.runtimeProvider ?? resolveRuntimeProvider({ burrowClient: () => deps.burrowClient }),
+			runtimeProvider,
 			agentName: args.agent,
 			projectId: args.project,
 			prompt: args.prompt,
@@ -192,7 +196,7 @@ export async function runRun(
 		burrowId: spawnResult.burrow.id,
 		repos: deps.repos,
 		broker,
-		burrowClient: deps.burrowClient,
+		runtimeProvider,
 		signal: bridgeAbort.signal,
 	});
 

@@ -46,17 +46,24 @@
  * default tick cadence is 30s.
  */
 
-import type { BurrowClient } from "../burrow-client/index.ts";
 import { formatError } from "../core/errors.ts";
 import type { Repos } from "../db/repos/index.ts";
 import type { RunRow } from "../db/schema.ts";
 import type { RunHandle, RuntimeProvider } from "../runtime/contract.ts";
 import { RuntimeRunNotFoundError } from "../runtime/errors.ts";
-import { resolveRuntimeProvider } from "../runtime/registry.ts";
 import type { RunEventBroker } from "./events.ts";
 import type { AutoOpenPrConfig } from "./pr.ts";
-import { type ReapRunInput, type ReapRunResult, reapRun } from "./reap/index.ts";
+import type { ReapRunInput, ReapRunResult } from "./reap/index.ts";
 import { type BridgeLogger, bindBridgeLogger } from "./stream/index.ts";
+
+/**
+ * The reap seam the watchdog force-fails a hung run through (warren-1fce). The
+ * active runtime provider is threaded in from the watchdog's own deps, but the
+ * burrow client reap's LocalProvider still needs for its workspace reads is
+ * bound by the wiring layer (`bootWatchdogFromEnv`, until reap itself sheds the
+ * client in warren-fbbf) — so the watchdog holds no burrow client of its own.
+ */
+export type WatchdogReap = (input: Omit<ReapRunInput, "burrowClient">) => Promise<ReapRunResult>;
 
 /** Event kind emitted on the run row when the watchdog force-fails a hung run. */
 export const WATCHDOG_TIMED_OUT_KIND = "watchdog.timed_out";
@@ -75,17 +82,14 @@ export const DEFAULT_WATCHDOG_HEARTBEAT_TIMEOUT_MS = 2_700_000;
 
 export interface WatchdogTickDeps {
 	readonly repos: Repos;
-	readonly burrowClient: BurrowClient;
 	/**
-	 * Runtime-provider seam (K8s migration pl-829f step 13 / warren-1f56). Only
-	 * the burrow-cancel step routes through it (`provider.cancel(handle)`);
-	 * mode-exclusion, heartbeat, and failure_reason derivation stay domain. The
-	 * reap the tick force-fails through still resolves its workspace via
-	 * `burrowClient`. Optional: defaults to a burrow-backed `LocalProvider`
-	 * over `burrowClient` (same fallback shape as `reapRun`) so callers that
-	 * only wire the pool keep working.
+	 * The active runtime provider (warren-1fce). The tick's graceful cancel of a
+	 * hung run routes through `provider.cancel(handle)`, and the same provider is
+	 * threaded into the force-fail reap so its finalize + terminate run on the
+	 * active backend (in-pod under `WARREN_RUNTIME=k8s`). Required — the watchdog
+	 * no longer falls back to a burrow-backed provider it constructs itself.
 	 */
-	readonly runtimeProvider?: RuntimeProvider;
+	readonly runtimeProvider: RuntimeProvider;
 	/**
 	 * Heartbeat budget in ms. A `running` run whose newest event (or
 	 * `startedAt` fallback) is older than this is force-failed. Must be
@@ -97,8 +101,12 @@ export interface WatchdogTickDeps {
 	readonly autoOpenPr?: AutoOpenPrConfig;
 	readonly now?: () => Date;
 	readonly logger?: BridgeLogger;
-	/** Override reap (tests). Defaults to the live `reapRun`. */
-	readonly reap?: (input: ReapRunInput) => Promise<ReapRunResult>;
+	/**
+	 * The reap seam the force-fail routes through (warren-1fce). Bound by the
+	 * wiring layer to `reapRun` with the burrow client pre-applied (see
+	 * `WatchdogReap`); tests inject their own to capture the call.
+	 */
+	readonly reap: WatchdogReap;
 }
 
 export interface WatchdogTickResult {
@@ -178,17 +186,15 @@ async function forceFail(
 	await emitTimedOutEvent(deps, run, idleMs, now);
 	await cancelBurrowRun(deps, run, log);
 
-	const reap = deps.reap ?? reapRun;
-	await reap({
+	await deps.reap({
 		runId: run.id,
 		outcome: "failed",
 		failureReason: "timed_out",
 		repos: deps.repos,
-		burrowClient: deps.burrowClient,
-		// warren-a7cb: route the force-fail reap's finalize + terminate through the
-		// active backend (in-pod under WARREN_RUNTIME=k8s). Omitted ⇒ burrow-backed
-		// LocalProvider, so the self-host path is byte-identical.
-		...(deps.runtimeProvider !== undefined ? { runtimeProvider: deps.runtimeProvider } : {}),
+		// warren-a7cb / warren-1fce: route the force-fail reap's finalize + terminate
+		// through the active backend (in-pod under WARREN_RUNTIME=k8s). The burrow
+		// client reap still needs for its workspace reads is pre-bound by the wiring.
+		runtimeProvider: deps.runtimeProvider,
 		...(deps.broker !== undefined ? { broker: deps.broker } : {}),
 		...(deps.now !== undefined ? { now: deps.now } : {}),
 		...(deps.logger !== undefined ? { logger: deps.logger } : {}),
@@ -218,15 +224,13 @@ async function cancelBurrowRun(
 	log: ReturnType<typeof bindBridgeLogger>,
 ): Promise<void> {
 	if (run.burrowId === null || run.burrowRunId === null) return;
-	const provider: RuntimeProvider =
-		deps.runtimeProvider ?? resolveRuntimeProvider({ burrowClient: () => deps.burrowClient });
 	const handle: RunHandle = {
 		runId: run.id,
 		sandboxId: run.burrowId,
 		providerRunId: run.burrowRunId,
 	};
 	try {
-		await provider.cancel(handle, "watchdog heartbeat timeout");
+		await deps.runtimeProvider.cancel(handle, "watchdog heartbeat timeout");
 	} catch (err) {
 		if (err instanceof RuntimeRunNotFoundError) return;
 		log.error(

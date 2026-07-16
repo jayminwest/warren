@@ -42,7 +42,7 @@ describe("createBridgeRegistry", () => {
 		expect(captured).toEqual([provider]);
 	});
 
-	test("start() omits runtimeProvider when the registry has none (local default)", async () => {
+	test("start() resolves the local-default provider when the registry has none (warren-1fce)", async () => {
 		const captured: (RuntimeProvider | undefined)[] = [];
 		const registry = createBridgeRegistry({
 			repos,
@@ -55,7 +55,11 @@ describe("createBridgeRegistry", () => {
 		});
 		registry.start("run_cccccccccccc", "burrow_run_zzzzzzzzzz", "bur_c");
 		await registry.stopAll();
-		expect(captured).toEqual([undefined]);
+		// The bridge now requires a provider (warren-1fce): with none injected, the
+		// reconnect path resolves a LocalProvider over the burrow client rather than
+		// passing `undefined`.
+		expect(captured).toHaveLength(1);
+		expect(captured[0]).toBeDefined();
 	});
 
 	test("start() invokes the bridge factory once per runId", async () => {

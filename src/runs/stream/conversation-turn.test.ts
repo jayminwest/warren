@@ -1,5 +1,4 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import type { RunEvent } from "@os-eco/burrow-cli";
 import { openDatabase, type WarrenDb } from "../../db/client.ts";
 import { createRepos, type Repos } from "../../db/repos/index.ts";
 import type { EditPlotIntentRequest, PlotIntentEditor } from "../../plots/index.ts";
@@ -10,6 +9,7 @@ import {
 	LEVERET_PLOT_ACTOR,
 } from "./conversation-turn.ts";
 import { evt } from "./test-helpers.ts";
+import type { StreamEventView } from "./types.ts";
 
 describe("extractAssistantText", () => {
 	test("returns text for an assistant text block on stdout", () => {
@@ -28,7 +28,7 @@ describe("extractAssistantText", () => {
 });
 
 describe("extractIntentPatch", () => {
-	function toolEnd(details: unknown): RunEvent {
+	function toolEnd(details: unknown): StreamEventView {
 		return evt("r", 1, {
 			kind: "state_change",
 			stream: "system",

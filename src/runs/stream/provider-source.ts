@@ -13,7 +13,12 @@
  * burrowRunMissing).
  */
 
-import type { NormalizedEvent, RunHandle, RuntimeProvider } from "../../runtime/contract.ts";
+import type {
+	NormalizedEvent,
+	RunHandle,
+	RuntimeProvider,
+	StreamOpts,
+} from "../../runtime/contract.ts";
 import type { StreamEventView } from "./types.ts";
 
 /** Sentinel resolved by the abort race in `streamWithSignal`. */
@@ -27,8 +32,9 @@ const ABORTED = Symbol("stream-aborted");
 export function providerStreamSource(
 	provider: RuntimeProvider,
 	handle: RunHandle,
+	opts?: StreamOpts,
 ): (signal: AbortSignal) => AsyncIterable<StreamEventView> {
-	return (signal) => streamWithSignal(provider.streamEvents(handle), signal);
+	return (signal) => streamWithSignal(provider.streamEvents(handle, opts), signal);
 }
 
 async function* streamWithSignal(

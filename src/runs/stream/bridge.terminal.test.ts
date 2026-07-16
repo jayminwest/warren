@@ -1,11 +1,11 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import type { RunEvent } from "@os-eco/burrow-cli";
 import { openDatabase, type WarrenDb } from "../../db/client.ts";
 import { createRepos, type Repos } from "../../db/repos/index.ts";
 import { RuntimeRunNotFoundError } from "../../runtime/errors.ts";
 import { RunEventBroker } from "../events.ts";
 import { bridgeRunStream } from "./bridge.ts";
-import { evt, makePool, seedBridgeRun, source } from "./test-helpers.ts";
+import { evt, makeProvider, seedBridgeRun, source } from "./test-helpers.ts";
+import type { StreamEventView } from "./types.ts";
 
 describe("bridgeRunStream — in-stream terminal detection", () => {
 	let db: WarrenDb;
@@ -40,7 +40,7 @@ describe("bridgeRunStream — in-stream terminal detection", () => {
 			repos,
 			broker,
 			burrowId: "bur_aaaaaaaaaaaa",
-			burrowClient: await makePool(repos),
+			runtimeProvider: makeProvider(),
 			source: source([claudeResultEvt, trailing]),
 		});
 		expect(result.terminalDetected).toEqual({ outcome: "succeeded" });
@@ -60,7 +60,7 @@ describe("bridgeRunStream — in-stream terminal detection", () => {
 			repos,
 			broker,
 			burrowId: "bur_aaaaaaaaaaaa",
-			burrowClient: await makePool(repos),
+			runtimeProvider: makeProvider(),
 			source: source([claudeFail]),
 		});
 		expect(result.terminalDetected).toEqual({ outcome: "failed" });
@@ -78,7 +78,7 @@ describe("bridgeRunStream — in-stream terminal detection", () => {
 			repos,
 			broker,
 			burrowId: "bur_aaaaaaaaaaaa",
-			burrowClient: await makePool(repos),
+			runtimeProvider: makeProvider(),
 			source: source([init]),
 		});
 		expect(result.terminalDetected).toBeUndefined();
@@ -97,7 +97,7 @@ describe("bridgeRunStream — in-stream terminal detection", () => {
 			repos,
 			broker,
 			burrowId: "bur_aaaaaaaaaaaa",
-			burrowClient: await makePool(repos),
+			runtimeProvider: makeProvider(),
 			source: source([piEnd, trailing]),
 		});
 		expect(result.terminalDetected).toEqual({ outcome: "succeeded" });
@@ -117,7 +117,7 @@ describe("bridgeRunStream — in-stream terminal detection", () => {
 			repos,
 			broker,
 			burrowId: "bur_aaaaaaaaaaaa",
-			burrowClient: await makePool(repos),
+			runtimeProvider: makeProvider(),
 			source: source([offStream]),
 		});
 		expect(result.terminalDetected).toBeUndefined();
@@ -152,7 +152,7 @@ describe("bridgeRunStream — in-stream terminal detection", () => {
 			repos,
 			broker,
 			burrowId: "bur_aaaaaaaaaaaa",
-			burrowClient: await makePool(repos),
+			runtimeProvider: makeProvider(),
 			source: source([replayed]),
 		});
 		// The terminal is detected on the already-persisted (deduped) event, so reap
@@ -167,8 +167,8 @@ describe("bridgeRunStream — in-stream terminal detection", () => {
 	test("warren-b1a9: RuntimeRunNotFoundError from source sets burrowRunMissing, not errored", async () => {
 		// The seam neutralizes burrow's raw 404 into `RuntimeRunNotFoundError`
 		// (warren-1f56); the bridge's ghost-run catch keys off the neutral class.
-		const missingSource = (): AsyncIterable<RunEvent> => ({
-			[Symbol.asyncIterator](): AsyncIterator<RunEvent> {
+		const missingSource = (): AsyncIterable<StreamEventView> => ({
+			[Symbol.asyncIterator](): AsyncIterator<StreamEventView> {
 				return {
 					next: async () => {
 						throw new RuntimeRunNotFoundError(`run not found: ${burrowRunId}`);
@@ -182,7 +182,7 @@ describe("bridgeRunStream — in-stream terminal detection", () => {
 			repos,
 			broker,
 			burrowId: "bur_aaaaaaaaaaaa",
-			burrowClient: await makePool(repos),
+			runtimeProvider: makeProvider(),
 			source: missingSource,
 		});
 		expect(result.burrowRunMissing).toBe(true);
@@ -191,8 +191,8 @@ describe("bridgeRunStream — in-stream terminal detection", () => {
 	});
 
 	test("warren-b1a9: non-404 throw still sets errored=true (reconnect path)", async () => {
-		const transportSource = (): AsyncIterable<RunEvent> => ({
-			[Symbol.asyncIterator](): AsyncIterator<RunEvent> {
+		const transportSource = (): AsyncIterable<StreamEventView> => ({
+			[Symbol.asyncIterator](): AsyncIterator<StreamEventView> {
 				return {
 					next: async () => {
 						throw new Error("ECONNRESET");
@@ -206,7 +206,7 @@ describe("bridgeRunStream — in-stream terminal detection", () => {
 			repos,
 			broker,
 			burrowId: "bur_aaaaaaaaaaaa",
-			burrowClient: await makePool(repos),
+			runtimeProvider: makeProvider(),
 			source: transportSource,
 		});
 		expect(result.burrowRunMissing).toBeUndefined();
@@ -253,7 +253,7 @@ describe("bridgeRunStream — conversation keep-alive (warren-df71)", () => {
 
 	test("agent_end is a turn boundary: keeps streaming, no terminalDetected", async () => {
 		const stub = makeStubTurnHandler();
-		const events: RunEvent[] = [
+		const events: StreamEventView[] = [
 			evt(burrowRunId, 1, { kind: "text", stream: "stdout", payload: { text: "Hello " } }),
 			evt(burrowRunId, 2, { kind: "text", stream: "stdout", payload: { text: "world" } }),
 			evt(burrowRunId, 3, {
@@ -279,7 +279,7 @@ describe("bridgeRunStream — conversation keep-alive (warren-df71)", () => {
 			repos,
 			broker,
 			burrowId: "bur_aaaaaaaaaaaa",
-			burrowClient: await makePool(repos),
+			runtimeProvider: makeProvider(),
 			mode: "conversation",
 			conversationTurn: stub.handler,
 			source: source(events),
@@ -297,7 +297,7 @@ describe("bridgeRunStream — conversation keep-alive (warren-df71)", () => {
 
 	test("batch mode is unaffected: agent_end still sets terminalDetected", async () => {
 		const stub = makeStubTurnHandler();
-		const events: RunEvent[] = [
+		const events: StreamEventView[] = [
 			evt(burrowRunId, 1, {
 				kind: "state_change",
 				stream: "system",
@@ -310,7 +310,7 @@ describe("bridgeRunStream — conversation keep-alive (warren-df71)", () => {
 			repos,
 			broker,
 			burrowId: "bur_aaaaaaaaaaaa",
-			burrowClient: await makePool(repos),
+			runtimeProvider: makeProvider(),
 			conversationTurn: stub.handler,
 			source: source(events),
 		});

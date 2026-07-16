@@ -8,7 +8,6 @@
  * runtime cycle.
  */
 
-import type { BurrowClient } from "../../burrow-client/index.ts";
 import type { Repos } from "../../db/repos/index.ts";
 import type { RunFailureReason, RunMode, RunTerminalState } from "../../db/schema.ts";
 import type { RuntimeProvider, TerminalReason } from "../../runtime/contract.ts";
@@ -129,33 +128,24 @@ export interface BridgeRunStreamInput {
 	/** Burrow's run id (column `runs.burrow_run_id`). */
 	readonly burrowRunId: string;
 	/**
-	 * Burrow's burrow id (column `runs.burrow_id`). The bridge uses this to
-	 * resolve the owning worker via `burrowClient.clientFor({burrowId})`
-	 * so the stream poll lands on the same worker that hosts the burrow.
+	 * The run's sandbox id (column `runs.burrow_id`). Carried opaquely into the
+	 * `RunHandle` the bridge hands the provider so `streamEvents` / `status` /
+	 * `cancel` land on the backend that hosts this run.
 	 */
 	readonly burrowId: string;
 	readonly repos: Repos;
 	readonly broker: RunEventBroker;
 	/**
-	 * Multi-worker burrow pool (warren-c0c9 / pl-9ba1 step 5). bridge resolves
-	 * the owning worker via `pool.clientFor({burrowId})` for the
-	 * `http.runs.stream` poll. Propagates `StickyWorkerUnreachableError`
-	 * (503 via src/server/errors.ts) when the pinned worker is `unreachable`.
+	 * Runtime-provider seam (K8s migration pl-829f step 13 / warren-1f56,
+	 * warren-1fce). The bridge's backend touchpoints route through it: the event
+	 * stream is `provider.streamEvents(handle, { sinceSeq })` (resume cursor), the
+	 * run-state poller reads `provider.status(handle)`, and the budget-cap graceful
+	 * stop is `provider.cancel(handle)`. Event persistence + warren seq
+	 * bookkeeping, poller cadence, and terminal-reconciliation decisions stay
+	 * DOMAIN (they run over the seam's output). Ignored when a test `source`
+	 * overrides the stream.
 	 */
-	readonly burrowClient: BurrowClient;
-	/**
-	 * Runtime-provider seam (K8s migration pl-829f step 13 / warren-1f56). The
-	 * bridge's three burrow touchpoints route through it: the event stream is
-	 * `provider.streamEvents(handle)`, the run-state poller reads
-	 * `provider.status(handle)`, and the budget-cap graceful stop is
-	 * `provider.cancel(handle)`. Event persistence + warren seq bookkeeping,
-	 * poller cadence, and terminal-reconciliation decisions stay DOMAIN (they run
-	 * over the seam's output). Optional: defaults to a burrow-backed
-	 * `LocalProvider` over `burrowClient` when absent (same fallback shape as
-	 * `reapRun` / `cancelRun` / the watchdog), so callers that only wire the pool
-	 * keep working. Ignored when a test `source` overrides the stream.
-	 */
-	readonly runtimeProvider?: RuntimeProvider;
+	readonly runtimeProvider: RuntimeProvider;
 	readonly signal?: AbortSignal;
 	/**
 	 * Run mode (warren-df71). When `'conversation'`, the bridge treats a pi

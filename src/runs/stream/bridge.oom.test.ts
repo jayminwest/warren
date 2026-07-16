@@ -15,7 +15,7 @@ import type {
 } from "../../runtime/contract.ts";
 import { RunEventBroker } from "../events.ts";
 import { bridgeRunStream } from "./bridge.ts";
-import { makePool, seedBridgeRun } from "./test-helpers.ts";
+import { seedBridgeRun } from "./test-helpers.ts";
 
 /**
  * OOM propagation (warren-9cce / warren-1f56). Burrow already emits an OOM
@@ -129,7 +129,6 @@ describe("bridgeRunStream — OOM propagation (warren-9cce)", () => {
 			repos,
 			broker,
 			burrowId: "bur_aaaaaaaaaaaa",
-			burrowClient: await makePool(repos),
 			runtimeProvider: provider,
 			runStatePollMs: 5,
 			runStateDrainMs: 10,
@@ -159,7 +158,6 @@ describe("bridgeRunStream — OOM propagation (warren-9cce)", () => {
 			repos,
 			broker,
 			burrowId: "bur_aaaaaaaaaaaa",
-			burrowClient: await makePool(repos),
 			runtimeProvider: provider,
 			runStatePollMs: 5,
 			runStateDrainMs: 10,

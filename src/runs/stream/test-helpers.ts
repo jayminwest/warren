@@ -5,41 +5,56 @@
  * Bun-test imports so a `*.test.ts` can be the consumer.
  */
 
-import type { RunEvent } from "@os-eco/burrow-cli";
-import { BurrowClient } from "../../burrow-client/index.ts";
 import type { Repos } from "../../db/repos/index.ts";
+import type { RuntimeProvider } from "../../runtime/contract.ts";
+import type { StreamEventView } from "./types.ts";
 
-export function makeBurrowClient(): BurrowClient {
-	const fetchImpl = (async () =>
-		new Response("{}", {
-			status: 200,
-			headers: { "content-type": "application/json" },
-		})) as unknown as typeof fetch;
-	return new BurrowClient({
-		config: { transport: { kind: "unix", path: "/tmp/x.sock" } },
-		fetch: fetchImpl,
-	});
+/**
+ * Inert `RuntimeProvider` stub (warren-1fce). Every stream test either overrides
+ * the bridge's `source` (so the provider's `streamEvents`/`status`/`cancel` are
+ * never reached) or injects a bespoke provider for the path under test. This
+ * stub satisfies the now-required `runtimeProvider` field while making an
+ * accidental live call fail loudly instead of hitting a real backend — the
+ * provider-only successor to the old `makePool()` burrow-client fixture.
+ */
+export function makeProvider(): RuntimeProvider {
+	const unexpected = (name: string) => (): never => {
+		throw new Error(
+			`makeProvider stub: provider.${name}() must not be called — pass a source/bridge override or a bespoke provider`,
+		);
+	};
+	return {
+		capabilities: {
+			previewPorts: false,
+			networkPolicy: "none",
+			longLived: true,
+			midRunSteering: true,
+			enforcedResourceLimits: false,
+			workspaceArchive: false,
+		},
+		create: unexpected("create"),
+		streamEvents: unexpected("streamEvents"),
+		status: unexpected("status"),
+		sendMessage: unexpected("sendMessage"),
+		cancel: unexpected("cancel"),
+		workspaceInfo: unexpected("workspaceInfo"),
+		finalize: unexpected("finalize"),
+		terminate: unexpected("terminate"),
+	};
 }
 
 /**
- * Historical one-worker pool wrapper (warren-c0c9). Placement + the
- * workers/burrows tables were retired (warren-76c5 / warren-3743), so this is
- * now a pass-through kept for call-site stability; the `_repos` param is
- * vestigial.
+ * Build a provider-neutral stream event (the bridge's `StreamEventView`). Prior
+ * to warren-1fce this returned burrow's `RunEvent`; the bridge only ever reads
+ * the `{seq, ts, kind, stream, payload}` view, satisfied by both that and the
+ * seam's `NormalizedEvent`, so the fixture drops the burrow-cli dependency.
  */
-export async function makePool(
-	_repos: Repos,
-	client?: BurrowClient,
-	_workerName = "local",
-): Promise<BurrowClient> {
-	return client ?? makeBurrowClient();
-}
-
-export function evt(burrowRunId: string, seq: number, overrides: Partial<RunEvent> = {}): RunEvent {
+export function evt(
+	_burrowRunId: string,
+	seq: number,
+	overrides: Partial<StreamEventView> = {},
+): StreamEventView {
 	return {
-		id: 0,
-		burrowId: "bur_x",
-		runId: burrowRunId,
 		seq,
 		kind: "text",
 		stream: "stdout",
@@ -53,7 +68,9 @@ export async function* asyncIter<T>(items: T[]): AsyncIterable<T> {
 	for (const i of items) yield i;
 }
 
-export function source(events: RunEvent[]): (signal: AbortSignal) => AsyncIterable<RunEvent> {
+export function source(
+	events: StreamEventView[],
+): (signal: AbortSignal) => AsyncIterable<StreamEventView> {
 	return () => asyncIter(events);
 }
 
@@ -63,7 +80,7 @@ export function source(events: RunEvent[]): (signal: AbortSignal) => AsyncIterab
  * Mirrors burrow `src/runtime/parsers/pi.ts:86-98` (warren-36c0). The
  * synthetic `{kind:"agent_end"}` shape never appears in production.
  */
-export function piAgentEnd(burrowRunId: string, seq: number): RunEvent {
+export function piAgentEnd(burrowRunId: string, seq: number): StreamEventView {
 	return evt(burrowRunId, seq, {
 		kind: "state_change",
 		stream: "system",
@@ -88,7 +105,7 @@ export function piTurnEnd(
 		cacheWrite?: number;
 		costTotal: number;
 	},
-): RunEvent {
+): StreamEventView {
 	return evt(burrowRunId, seq, {
 		kind: "state_change",
 		stream: "system",
@@ -130,7 +147,7 @@ export function claudeResult(
 		totalCostUsd: number;
 		isError?: boolean;
 	},
-): RunEvent {
+): StreamEventView {
 	return evt(burrowRunId, seq, {
 		kind: "state_change",
 		stream: "system",

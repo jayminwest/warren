@@ -26,6 +26,7 @@ import {
 } from "../runs/index.ts";
 import type { ConversationTurnHandler } from "../runs/stream/conversation-turn.ts";
 import type { RuntimeProvider } from "../runtime/contract.ts";
+import { resolveRuntimeProvider } from "../runtime/registry.ts";
 import type { SeedsCliDeps } from "../seeds-cli/index.ts";
 import type { WarrenConfigCache } from "../warren-config/index.ts";
 import {
@@ -116,9 +117,10 @@ export async function runWithReconnect(
 			burrowId: input.burrowId,
 			repos: input.repos,
 			broker: input.broker,
-			burrowClient: input.burrowClient,
+			// warren-1fce: bridge requires the provider seam; fall back to a LocalProvider.
+			runtimeProvider:
+				input.runtimeProvider ?? resolveRuntimeProvider({ burrowClient: () => input.burrowClient }),
 			signal: input.signal,
-			...(input.runtimeProvider !== undefined ? { runtimeProvider: input.runtimeProvider } : {}),
 			...(input.mode !== undefined ? { mode: input.mode } : {}),
 			...(input.conversationTurn !== undefined ? { conversationTurn: input.conversationTurn } : {}),
 			logger: log,

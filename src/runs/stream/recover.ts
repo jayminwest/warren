@@ -6,8 +6,8 @@
  * to a run we already have full history for is harmless.
  */
 
-import type { BurrowClient } from "../../burrow-client/index.ts";
 import type { Repos } from "../../db/repos/index.ts";
+import type { RuntimeProvider } from "../../runtime/contract.ts";
 import type { RunEventBroker } from "../events.ts";
 import { bridgeRunStream } from "./bridge.ts";
 import type { BridgeLogger, BridgeRunStreamInput, BridgeRunStreamResult } from "./types.ts";
@@ -15,7 +15,13 @@ import type { BridgeLogger, BridgeRunStreamInput, BridgeRunStreamResult } from "
 export interface RecoverActiveRunStreamsInput {
 	readonly repos: Repos;
 	readonly broker: RunEventBroker;
-	readonly burrowClient: BurrowClient;
+	/**
+	 * The boot-resolved runtime provider (warren-1fce). Each recovered run's
+	 * bridge re-attaches through `provider.streamEvents(handle, { sinceSeq })`, so
+	 * a restart resumes the stream from the events table's last seq on the active
+	 * backend (burrow under `local`, the pod log cursor under `k8s`).
+	 */
+	readonly runtimeProvider: RuntimeProvider;
 	readonly logger?: BridgeLogger;
 	/** Override the bridge factory (tests). Defaults to `bridgeRunStream`. */
 	readonly bridge?: (input: BridgeRunStreamInput) => Promise<BridgeRunStreamResult>;
@@ -51,7 +57,7 @@ export interface RecoverActiveRunStreamsResult {
 export async function recoverActiveRunStreams(
 	input: RecoverActiveRunStreamsInput,
 ): Promise<RecoverActiveRunStreamsResult> {
-	const { repos, broker, burrowClient, logger } = input;
+	const { repos, broker, runtimeProvider, logger } = input;
 	const bridge = input.bridge ?? bridgeRunStream;
 	const candidates = await repos.runs.listByState(["queued", "running"]);
 
@@ -85,7 +91,7 @@ export async function recoverActiveRunStreams(
 			burrowId: run.burrowId,
 			repos,
 			broker,
-			burrowClient,
+			runtimeProvider,
 			signal: abort.signal,
 			...(logger !== undefined ? { logger } : {}),
 		};

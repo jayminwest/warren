@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import type { RunEvent } from "@os-eco/burrow-cli";
 import { detectRuntimeTerminal, isPiAgentEnd } from "./terminal-detect.ts";
+import type { StreamEventView } from "./types.ts";
 
 /**
  * warren-6fcc / pl-5516 step 2: focused unit coverage for
@@ -19,11 +19,8 @@ import { detectRuntimeTerminal, isPiAgentEnd } from "./terminal-detect.ts";
  * function so we don't drag the full bridge fixture in just to assert the
  * branch.
  */
-function envelope(payload: Record<string, unknown>): RunEvent {
+function envelope(payload: Record<string, unknown>): StreamEventView {
 	return {
-		id: 0,
-		burrowId: "bur_x",
-		runId: "run_x",
 		seq: 1,
 		kind: "state_change",
 		stream: "system",

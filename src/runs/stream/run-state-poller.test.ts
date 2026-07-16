@@ -1,10 +1,10 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import type { RunEvent } from "@os-eco/burrow-cli";
 import { openDatabase, type WarrenDb } from "../../db/client.ts";
 import { createRepos, type Repos } from "../../db/repos/index.ts";
 import { RunEventBroker } from "../events.ts";
 import { bridgeRunStream } from "./bridge.ts";
-import { evt, makePool, seedBridgeRun, source } from "./test-helpers.ts";
+import { evt, makeProvider, seedBridgeRun, source } from "./test-helpers.ts";
+import type { StreamEventView } from "./types.ts";
 
 /**
  * Coverage for the run-state fallback (warren-6596) — the parallel
@@ -41,7 +41,7 @@ describe("bridgeRunStream — run-state poller (warren-6596)", () => {
 			if (probeCalls < 2) return { state: "running", exitCode: null };
 			return { state: "succeeded", exitCode: 0 };
 		};
-		const infiniteTextSource = (signal: AbortSignal): AsyncIterable<RunEvent> => ({
+		const infiniteTextSource = (signal: AbortSignal): AsyncIterable<StreamEventView> => ({
 			async *[Symbol.asyncIterator]() {
 				let i = 1;
 				while (!signal.aborted) {
@@ -56,7 +56,7 @@ describe("bridgeRunStream — run-state poller (warren-6596)", () => {
 			repos,
 			broker,
 			burrowId: "bur_aaaaaaaaaaaa",
-			burrowClient: await makePool(repos),
+			runtimeProvider: makeProvider(),
 			source: (s: AbortSignal) => infiniteTextSource(s),
 			runStateProbe,
 			runStatePollMs: 10,
@@ -85,7 +85,7 @@ describe("bridgeRunStream — run-state poller (warren-6596)", () => {
 				state: "running" | "failed" | "cancelled";
 				exitCode: number | null;
 			}> => ({ state: burrowState, exitCode: burrowState === "failed" ? 1 : null });
-			const infinite = (signal: AbortSignal): AsyncIterable<RunEvent> => ({
+			const infinite = (signal: AbortSignal): AsyncIterable<StreamEventView> => ({
 				async *[Symbol.asyncIterator]() {
 					while (!signal.aborted) {
 						yield evt(localBurrowRunId, 1);
@@ -99,7 +99,7 @@ describe("bridgeRunStream — run-state poller (warren-6596)", () => {
 				repos,
 				broker,
 				burrowId: "bur_bbbbbbbbbbbb",
-				burrowClient: await makePool(repos, undefined, `worker-${burrowState}`),
+				runtimeProvider: makeProvider(),
 				source: (s: AbortSignal) => infinite(s),
 				runStateProbe: probe,
 				runStatePollMs: 5,
@@ -129,7 +129,7 @@ describe("bridgeRunStream — run-state poller (warren-6596)", () => {
 			repos,
 			broker,
 			burrowId: "bur_aaaaaaaaaaaa",
-			burrowClient: await makePool(repos),
+			runtimeProvider: makeProvider(),
 			source: source([claudeResultEvt]),
 			runStateProbe: probe,
 			runStatePollMs: 1000,

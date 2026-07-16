@@ -1,17 +1,14 @@
 import { beforeEach, describe, expect, test } from "bun:test";
-import type { RunEvent } from "@os-eco/burrow-cli";
 import { openDatabase, type WarrenDb } from "../../db/client.ts";
 import { createRepos, type Repos } from "../../db/repos/index.ts";
 import { RunEventBroker } from "../events.ts";
 import { bridgeRunStream } from "./bridge.ts";
-import { makePool, seedBridgeRun, source } from "./test-helpers.ts";
+import { makeProvider, seedBridgeRun, source } from "./test-helpers.ts";
+import type { StreamEventView } from "./types.ts";
 
 /** Pi `turn_end` envelope carrying a per-turn cost total. */
-function turnEnd(burrowRunId: string, seq: number, costTotal: number): RunEvent {
+function turnEnd(_burrowRunId: string, seq: number, costTotal: number): StreamEventView {
 	return {
-		id: 0,
-		burrowId: "bur_aaaaaaaaaaaa",
-		runId: burrowRunId,
 		seq,
 		kind: "state_change",
 		stream: "system",
@@ -47,7 +44,7 @@ describe("bridgeRunStream — spend-cap enforcement (warren-a63d)", () => {
 			repos,
 			broker,
 			burrowId: "bur_aaaaaaaaaaaa",
-			burrowClient: await makePool(repos),
+			runtimeProvider: makeProvider(),
 			costCapUsd: 1,
 			cancelBurrowRun: async (reason) => {
 				cancels.push(reason);
@@ -78,7 +75,7 @@ describe("bridgeRunStream — spend-cap enforcement (warren-a63d)", () => {
 			repos,
 			broker,
 			burrowId: "bur_aaaaaaaaaaaa",
-			burrowClient: await makePool(repos),
+			runtimeProvider: makeProvider(),
 			costCapUsd: 5,
 			cancelBurrowRun: async (reason) => {
 				cancels.push(reason);
@@ -98,7 +95,7 @@ describe("bridgeRunStream — spend-cap enforcement (warren-a63d)", () => {
 			repos,
 			broker,
 			burrowId: "bur_aaaaaaaaaaaa",
-			burrowClient: await makePool(repos),
+			runtimeProvider: makeProvider(),
 			cancelBurrowRun: async (reason) => {
 				cancels.push(reason);
 			},

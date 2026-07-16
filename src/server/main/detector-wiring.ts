@@ -51,6 +51,7 @@ import {
 	type MergePollerHandle,
 	type PauseDetectorHandle,
 	type RunEventBroker,
+	reapRun,
 	type WatchdogHandle,
 } from "../../runs/index.ts";
 import { bootOpsStatsWorker, type OpsStatsWorkerHandle } from "../../runs/ops-stats.ts";
@@ -208,16 +209,22 @@ export function bootConversationIdleDetectorFromEnv(
 export interface WatchdogWiringInput {
 	readonly env: EnvLike;
 	readonly repos: Repos;
+	/**
+	 * The single local burrow client. No longer threaded into the watchdog tick
+	 * itself (warren-1fce): it is captured only here, to pre-bind the reap seam so
+	 * reap's LocalProvider keeps its workspace reads. Drops entirely once reap
+	 * sheds the client (warren-fbbf).
+	 */
 	readonly burrowClient: BurrowClient;
 	readonly broker: RunEventBroker;
 	readonly autoOpenPr: AutoOpenPrConfig;
 	/**
-	 * Runtime-provider seam (warren-c531). Threaded into the watchdog tick so its
-	 * best-effort graceful cancel of a hung run routes through `provider.cancel()`
-	 * on the ACTIVE backend rather than always the burrow-backed `LocalProvider`.
-	 * Omitted ⇒ the tick defaults to a `LocalProvider` over `burrowClient`.
+	 * Runtime-provider seam (warren-c531 / warren-1fce). Threaded into the watchdog
+	 * tick so its graceful cancel of a hung run and the force-fail reap's
+	 * finalize + terminate route through `provider.*` on the ACTIVE backend.
+	 * Required — the tick no longer constructs its own burrow-backed provider.
 	 */
-	readonly runtimeProvider?: RuntimeProvider;
+	readonly runtimeProvider: RuntimeProvider;
 	readonly logger: Logger;
 	readonly now?: () => Date;
 }
@@ -227,10 +234,12 @@ export function bootWatchdogFromEnv(input: WatchdogWiringInput): WatchdogHandle 
 	const config = loadWatchdogConfigFromEnv(env);
 	const handle = bootWatchdog({
 		repos: input.repos,
-		burrowClient: input.burrowClient,
 		broker: input.broker,
 		autoOpenPr: input.autoOpenPr,
-		...(input.runtimeProvider !== undefined ? { runtimeProvider: input.runtimeProvider } : {}),
+		runtimeProvider: input.runtimeProvider,
+		// Pre-bind the burrow client reap still needs for its workspace reads so the
+		// watchdog tick itself stays burrow-free (warren-1fce).
+		reap: (reapInput) => reapRun({ ...reapInput, burrowClient: input.burrowClient }),
 		heartbeatTimeoutMs: config.heartbeatTimeoutMs,
 		tickMs: config.tickMs,
 		disabled: !config.enabled,
@@ -310,7 +319,7 @@ export function bootBackgroundDetectors(
 		burrowClient: input.burrowClient,
 		broker: input.broker,
 		autoOpenPr: input.autoOpenPr,
-		...(input.runtimeProvider !== undefined ? { runtimeProvider: input.runtimeProvider } : {}),
+		runtimeProvider: input.runtimeProvider,
 		logger: input.logger,
 		...now,
 	});

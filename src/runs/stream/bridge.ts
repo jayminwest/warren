@@ -19,9 +19,8 @@
 
 import type { EventStream, RunTerminalState } from "../../db/schema.ts";
 import { EVENT_STREAMS } from "../../db/schema.ts";
-import type { RunHandle, RuntimeProvider } from "../../runtime/contract.ts";
+import type { RunHandle } from "../../runtime/contract.ts";
 import { RuntimeRunNotFoundError } from "../../runtime/errors.ts";
-import { resolveRuntimeProvider } from "../../runtime/registry.ts";
 import { resolveCostCapUsd } from "../cost-cap.ts";
 import {
 	accumulatePiUsage,
@@ -67,15 +66,11 @@ export async function bridgeRunStream(input: BridgeRunStreamInput): Promise<Brid
 
 	const resumeSeq = (await repos.events.maxSeqForRun(runId)) ?? 0;
 
-	// Runtime-provider seam (warren-1f56). The bridge's three burrow touchpoints —
-	// the event stream, the run-state poller, and the budget-cap cancel — route
-	// through the provider. Default to the burrow-backed LocalProvider over the
-	// injected pool (same fallback shape as reap/cancel/watchdog) so callers that
-	// only wire the pool keep working; the provider resolves the sole worker
-	// internally (placement retired at the seam), so the bridge no longer touches
-	// `burrowClient.clientFor` itself.
-	const provider: RuntimeProvider =
-		input.runtimeProvider ?? resolveRuntimeProvider({ burrowClient: () => input.burrowClient });
+	// Runtime-provider seam (warren-1f56, warren-1fce). The bridge's backend
+	// touchpoints — the event stream, the run-state poller, and the budget-cap
+	// cancel — route through the provider the domain resolved at boot; there is no
+	// burrow fallback here (the caller always threads the active provider).
+	const provider = input.runtimeProvider;
 	// Seam handle: `sandboxId` is the burrowId, `providerRunId` the burrowRunId.
 	const handle: RunHandle = {
 		runId,
@@ -83,13 +78,16 @@ export async function bridgeRunStream(input: BridgeRunStreamInput): Promise<Brid
 		providerRunId: burrowRunId,
 	};
 
-	// Stream source. Default: `provider.streamEvents(handle)` adapted to the abort
-	// controller so the run-state poller's `ctrl.abort()` tears the stream down
-	// (burrow's shared-signal fetch did this implicitly; the seam hides the signal,
-	// so we bridge it to the async-iterator teardown). The test `source` override
-	// bypasses the provider entirely.
+	// Stream source. Default: `provider.streamEvents(handle, { sinceSeq })` adapted
+	// to the abort controller so the run-state poller's `ctrl.abort()` tears the
+	// stream down (the seam hides the signal, so we bridge it to the async-iterator
+	// teardown). Passing the resume cursor lets a reconnect after a disconnect
+	// re-attach from where the events table left off (warren-1fce) — the in-loop
+	// `seq <= resumeSeq` dedup below stays as a belt-and-braces guard for sources
+	// that ignore the cursor (e.g. a test `source` override, which bypasses the
+	// provider entirely).
 	const source: (signal: AbortSignal) => AsyncIterable<StreamEventView> =
-		input.source ?? providerStreamSource(provider, handle);
+		input.source ?? providerStreamSource(provider, handle, { sinceSeq: resumeSeq });
 
 	// warren-a63d: resolve the run's effective spend cap once. Explicit
 	// input wins (tests); otherwise read the cap frozen onto

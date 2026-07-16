@@ -1,10 +1,10 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import type { RunEvent } from "@os-eco/burrow-cli";
 import { openDatabase, type WarrenDb } from "../../db/client.ts";
 import { createRepos, type Repos } from "../../db/repos/index.ts";
 import { RunEventBroker } from "../events.ts";
 import { bridgeRunStream } from "./bridge.ts";
-import { evt, makePool, seedBridgeRun, source } from "./test-helpers.ts";
+import { evt, makeProvider, seedBridgeRun, source } from "./test-helpers.ts";
+import type { StreamEventView } from "./types.ts";
 
 describe("bridgeRunStream — event flow", () => {
 	let db: WarrenDb;
@@ -33,7 +33,7 @@ describe("bridgeRunStream — event flow", () => {
 			repos,
 			broker,
 			burrowId: "bur_aaaaaaaaaaaa",
-			burrowClient: await makePool(repos),
+			runtimeProvider: makeProvider(),
 			source: source([evt(burrowRunId, 1), evt(burrowRunId, 2), evt(burrowRunId, 3)]),
 		});
 		expect(result.written).toBe(3);
@@ -59,7 +59,7 @@ describe("bridgeRunStream — event flow", () => {
 			repos,
 			broker,
 			burrowId: "bur_aaaaaaaaaaaa",
-			burrowClient: await makePool(repos),
+			runtimeProvider: makeProvider(),
 			source: source([evt(burrowRunId, 1), evt(burrowRunId, 2)]),
 		});
 		await consumer;
@@ -92,7 +92,7 @@ describe("bridgeRunStream — event flow", () => {
 			repos,
 			broker,
 			burrowId: "bur_aaaaaaaaaaaa",
-			burrowClient: await makePool(repos),
+			runtimeProvider: makeProvider(),
 			source: source([
 				evt(burrowRunId, 1),
 				evt(burrowRunId, 2),
@@ -113,8 +113,10 @@ describe("bridgeRunStream — event flow", () => {
 			repos,
 			broker,
 			burrowId: "bur_aaaaaaaaaaaa",
-			burrowClient: await makePool(repos),
-			source: source([evt(burrowRunId, 1, { stream: "weird" as unknown as RunEvent["stream"] })]),
+			runtimeProvider: makeProvider(),
+			source: source([
+				evt(burrowRunId, 1, { stream: "weird" as unknown as StreamEventView["stream"] }),
+			]),
 		});
 		const row = (await repos.events.listByRun(runId))[0];
 		expect(row?.stream).toBeNull();
@@ -122,7 +124,7 @@ describe("bridgeRunStream — event flow", () => {
 
 	test("source error: logs, sets errored=true, and does not throw", async () => {
 		const errs: object[] = [];
-		const errSource = (): AsyncIterable<RunEvent> => ({
+		const errSource = (): AsyncIterable<StreamEventView> => ({
 			async *[Symbol.asyncIterator]() {
 				yield evt(burrowRunId, 1);
 				throw new Error("burrow disconnected");
@@ -134,7 +136,7 @@ describe("bridgeRunStream — event flow", () => {
 			repos,
 			broker,
 			burrowId: "bur_aaaaaaaaaaaa",
-			burrowClient: await makePool(repos),
+			runtimeProvider: makeProvider(),
 			source: () => errSource(),
 			logger: {
 				error(obj: object) {
@@ -149,7 +151,7 @@ describe("bridgeRunStream — event flow", () => {
 
 	test("AbortSignal stops consumption mid-stream", async () => {
 		const ctrl = new AbortController();
-		const infinite = (signal: AbortSignal): AsyncIterable<RunEvent> => ({
+		const infinite = (signal: AbortSignal): AsyncIterable<StreamEventView> => ({
 			async *[Symbol.asyncIterator]() {
 				let i = 1;
 				while (!signal.aborted) {
@@ -165,7 +167,7 @@ describe("bridgeRunStream — event flow", () => {
 			repos,
 			broker,
 			burrowId: "bur_aaaaaaaaaaaa",
-			burrowClient: await makePool(repos),
+			runtimeProvider: makeProvider(),
 			signal: ctrl.signal,
 			source: (s: AbortSignal) => infinite(s),
 		});
@@ -187,7 +189,7 @@ describe("bridgeRunStream — event flow", () => {
 			repos,
 			broker,
 			burrowId: "bur_aaaaaaaaaaaa",
-			burrowClient: await makePool(repos),
+			runtimeProvider: makeProvider(),
 			source: source([evt(burrowRunId, 1)]),
 		});
 
@@ -203,7 +205,7 @@ describe("bridgeRunStream — event flow", () => {
 			repos,
 			broker,
 			burrowId: "bur_aaaaaaaaaaaa",
-			burrowClient: await makePool(repos),
+			runtimeProvider: makeProvider(),
 			source: source([]),
 		});
 		const after = await repos.runs.require(runId);
@@ -222,7 +224,7 @@ describe("bridgeRunStream — event flow", () => {
 			repos,
 			broker,
 			burrowId: "bur_aaaaaaaaaaaa",
-			burrowClient: await makePool(repos),
+			runtimeProvider: makeProvider(),
 			source: source([evt(burrowRunId, 1)]),
 		});
 
@@ -243,7 +245,7 @@ describe("bridgeRunStream — event flow", () => {
 			repos,
 			broker,
 			burrowId: "bur_aaaaaaaaaaaa",
-			burrowClient: await makePool(repos),
+			runtimeProvider: makeProvider(),
 			source: source([evt(burrowRunId, 1)]),
 		});
 		await consumer;

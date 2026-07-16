@@ -23,7 +23,7 @@ import { RuntimeRunNotFoundError } from "../../runtime/errors.ts";
 import { RunEventBroker } from "../events.ts";
 import { bridgeRunStream } from "./bridge.ts";
 import { defaultRunStateProbe } from "./run-state-poller.ts";
-import { makePool, seedBridgeRun } from "./test-helpers.ts";
+import { seedBridgeRun } from "./test-helpers.ts";
 
 const BURROW_ID = "bur_aaaaaaaaaaaa";
 
@@ -116,7 +116,6 @@ describe("bridgeRunStream — RuntimeProvider seam (warren-c531)", () => {
 			repos,
 			broker,
 			burrowId: BURROW_ID,
-			burrowClient: await makePool(repos),
 			runtimeProvider: provider,
 		});
 		expect(result.written).toBe(3);
@@ -142,7 +141,6 @@ describe("bridgeRunStream — RuntimeProvider seam (warren-c531)", () => {
 			repos,
 			broker,
 			burrowId: BURROW_ID,
-			burrowClient: await makePool(repos),
 			runtimeProvider: provider,
 			runStatePollMs: 5,
 			runStateDrainMs: 10,
@@ -170,7 +168,6 @@ describe("bridgeRunStream — RuntimeProvider seam (warren-c531)", () => {
 			repos,
 			broker,
 			burrowId: BURROW_ID,
-			burrowClient: await makePool(repos),
 			runtimeProvider: provider,
 			runStatePollMs: 5,
 			runStateDrainMs: 10,
@@ -201,7 +198,6 @@ describe("bridgeRunStream — RuntimeProvider seam (warren-c531)", () => {
 			repos,
 			broker,
 			burrowId: BURROW_ID,
-			burrowClient: await makePool(repos),
 			runtimeProvider: provider,
 		});
 		expect(result.burrowRunMissing).toBe(true);
