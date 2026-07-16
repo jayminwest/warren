@@ -17,14 +17,11 @@
  */
 
 import { existsSync } from "node:fs";
-import { BurrowClient } from "../../burrow-client/client.ts";
-import { loadBurrowClientConfigFromEnv } from "../../burrow-client/config.ts";
 import { ValidationError } from "../../core/errors.ts";
 import type { AnyWarrenDb } from "../../db/client.ts";
 import { DrizzleAdapter } from "../../db/repos/drizzle-adapter.ts";
 import { createRepos } from "../../db/repos/index.ts";
 import {
-	checkBurrowReachable,
 	checkBwrap,
 	checkCanopyClean,
 	checkCanopyClone,
@@ -41,6 +38,8 @@ import { checkStaleBurrowWorkspaces } from "../../diagnostics/stale-workspaces.t
 import { loadPreviewPortRangeFromEnv, PreviewPortAllocator } from "../../preview/port-allocator.ts";
 import { loadProjectsConfigFromEnv } from "../../projects/config.ts";
 import { loadWorkspaceGcConfigFromEnv } from "../../runs/reap/gc.ts";
+import { doctorBurrowCheck } from "../../runtime/local/diagnostics/burrow.ts";
+import { resolveRuntimeKind } from "../../runtime/registry.ts";
 import type { CliContext, EnvLike } from "../output.ts";
 import { writeJsonLine } from "../output.ts";
 
@@ -83,6 +82,12 @@ export async function runDoctor(
 ): Promise<DoctorResult> {
 	const exists = deps.existsSync ?? existsSync;
 	const checks: DoctorCheck[] = [];
+	// Burrow/bwrap/stale-workspace probes only make sense for the LOCAL backend,
+	// where warren co-tenants a burrow daemon. Under `WARREN_RUNTIME=k8s` agents
+	// run in pods with no co-tenanted burrow, so we skip them cleanly and emit a
+	// single informational line saying so — mirroring the `/readyz` behavior
+	// (warren-c128, src/server/handlers/diagnostics.ts).
+	const isLocalTopology = resolveRuntimeKind(context.env) === "local";
 
 	checks.push(envCheck("WARREN_API_TOKEN", context.env, args.noAuth ?? false));
 	checks.push(canopyRepoUrlCheck(context.env));
@@ -95,18 +100,31 @@ export async function runDoctor(
 
 	checks.push(projectsRootCheck(context.env, exists));
 
-	checks.push(await checkBwrap({ spawn: context.spawn }));
+	if (isLocalTopology) {
+		checks.push(await checkBwrap({ spawn: context.spawn }));
+	}
 
 	checks.push(await checkWarrenConfig({ projects: deps.projects ?? [] }));
 	checks.push(await checkWarrenConfigDeprecations({ projects: deps.projects ?? [] }));
 
 	checks.push(await previewPortAllocatorCheck(context.env, deps.db));
 
-	checks.push(await staleBurrowWorkspacesCheck(context.env, deps.db));
+	if (isLocalTopology) {
+		checks.push(await staleBurrowWorkspacesCheck(context.env, deps.db));
+	}
 
 	checks.push(checkPreviewAuthStrength({ env: context.env }));
 
-	checks.push(await burrowCheck(context.env, deps.probeBurrow));
+	if (isLocalTopology) {
+		checks.push(await doctorBurrowCheck(context.env, deps.probeBurrow));
+	} else {
+		checks.push({
+			name: "runtime_backend",
+			ok: true,
+			message:
+				"k8s: burrow / bwrap / stale-workspace probes skipped (agents run in pods, no co-tenanted burrow)",
+		});
+	}
 
 	for (const check of checks) {
 		writeJsonLine(context.stdio.stdout, check);
@@ -230,56 +248,4 @@ async function previewPortAllocatorCheck(
 	// against the runs table. Dialect-polymorphic since warren-adfb.
 	const allocator = new PreviewPortAllocator(DrizzleAdapter.for(db), range);
 	return checkPreviewPortAllocator({ probe: allocator });
-}
-
-async function burrowCheck(
-	env: EnvLike,
-	override?: (env: EnvLike) => Promise<void>,
-): Promise<DoctorCheck> {
-	if (override !== undefined) {
-		try {
-			await override(env);
-			return { name: "burrow_reachable", ok: true };
-		} catch (err) {
-			if (err instanceof ValidationError) {
-				return {
-					name: "burrow_reachable",
-					ok: false,
-					message: err.message,
-					...(err.recoveryHint !== undefined ? { hint: err.recoveryHint } : {}),
-				};
-			}
-			return {
-				name: "burrow_reachable",
-				ok: false,
-				message: err instanceof Error ? err.message : String(err),
-				hint: "check that burrow serve is running and WARREN_BURROW_SOCKET / WARREN_BURROW_HOST point to it",
-			};
-		}
-	}
-	let client: BurrowClient;
-	try {
-		const config = loadBurrowClientConfigFromEnv(env);
-		client = new BurrowClient({ config });
-	} catch (err) {
-		if (err instanceof ValidationError) {
-			return {
-				name: "burrow_reachable",
-				ok: false,
-				message: err.message,
-				...(err.recoveryHint !== undefined ? { hint: err.recoveryHint } : {}),
-			};
-		}
-		return {
-			name: "burrow_reachable",
-			ok: false,
-			message: err instanceof Error ? err.message : String(err),
-			hint: "check that burrow serve is running and WARREN_BURROW_SOCKET / WARREN_BURROW_HOST point to it",
-		};
-	}
-	try {
-		return await checkBurrowReachable({ burrowClient: client });
-	} finally {
-		await client.close().catch(() => undefined);
-	}
 }

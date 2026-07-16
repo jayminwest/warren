@@ -11,7 +11,6 @@
  */
 
 import { Command } from "commander";
-import { BurrowClient } from "../burrow-client/index.ts";
 import { WarrenClient } from "../client/index.ts";
 import type { PlanRunState } from "../client/types.ts";
 import { openDatabase } from "../db/client.ts";
@@ -20,6 +19,7 @@ import { VERSION } from "../index.ts";
 import { loadProjectsConfigFromEnv } from "../projects/config.ts";
 import { seedBuiltinAgents } from "../registry/builtins/index.ts";
 import { requireCanopyRegistryConfigFromEnv } from "../registry/config.ts";
+import { resolveLocalRunBackend } from "../runtime/local/diagnostics/burrow.ts";
 import { runAddProject } from "./commands/add-project.ts";
 import { runConfigMigrate } from "./commands/config-migrate.ts";
 import { runMigrateToPostgres } from "./commands/db.ts";
@@ -116,14 +116,22 @@ export function buildProgram(context: CliContext): Command {
 					// a canopy library (warren-d3e9). Idempotent against existing
 					// rows.
 					await seedBuiltinAgents(repos.agents, undefined, context.now);
-					// warren-76c5: multi-worker pooling is retired — the self-host
-					// backend is a single local burrow built from WARREN_BURROW_* env
-					// vars, which spawn / bridge / reap / state-fetch all share.
-					const burrowClient = BurrowClient.fromEnv(context.env);
+					// warren-11cc: resolve the run backend once (honoring WARREN_RUNTIME).
+					// The local backend lazily builds a single burrow client + preview
+					// seam; under k8s no burrow client is constructed. Direct burrow
+					// access is confined to `resolveLocalRunBackend`
+					// (src/runtime/local/diagnostics/burrow.ts).
+					const backend = resolveLocalRunBackend(context.env);
 					try {
 						const result = await runRun(
 							context,
-							{ repos, burrowClient },
+							{
+								repos,
+								runtimeProvider: backend.runtimeProvider,
+								...(backend.previewSidecars !== undefined
+									? { previewSidecars: backend.previewSidecars }
+									: {}),
+							},
 							{
 								agent,
 								project,
@@ -135,7 +143,7 @@ export function buildProgram(context: CliContext): Command {
 						);
 						return result.exitCode;
 					} finally {
-						await burrowClient.close().catch(() => undefined);
+						await backend.close();
 					}
 				});
 				process.exit(exitCode);

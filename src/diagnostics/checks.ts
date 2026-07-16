@@ -8,8 +8,10 @@
  * the three sibling test files), which all import from `./checks.ts`,
  * keeps resolving unchanged.
  *
- *   - checks-sandbox.ts — bwrap bring-up, the canopy clone's existence
- *     + cleanliness, and burrow socket reachability (single + pool).
+ *   - checks-sandbox.ts — bwrap bring-up and the canopy clone's
+ *     existence + cleanliness. Burrow socket reachability lives in the
+ *     allowlisted `src/runtime/local/diagnostics/burrow.ts` module
+ *     (warren-11cc), out of this diagnostics surface.
  *   - checks-config.ts — per-project `.warren/` parsing (fatal +
  *     deprecation), resolved DB dialect, live `SELECT 1` reachability.
  *   - checks-preview.ts — preview port + live-count saturation and
@@ -51,8 +53,6 @@ export {
 export {
 	BWRAP_PROBE_TIMEOUT_MS,
 	CANOPY_GIT_TIMEOUT_MS,
-	checkBurrowPoolReachable,
-	checkBurrowReachable,
 	checkBwrap,
 	checkCanopyClean,
 	checkCanopyClone,

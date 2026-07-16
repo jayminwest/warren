@@ -8,7 +8,6 @@
 
 import { DrizzleAdapter } from "../../db/repos/drizzle-adapter.ts";
 import {
-	checkBurrowPoolReachable,
 	checkBwrap,
 	checkCanopyClean,
 	checkCanopyClone,
@@ -24,6 +23,7 @@ import { checkStaleBurrowWorkspaces } from "../../diagnostics/stale-workspaces.t
 import { createRunPreviewsRepo, DEFAULT_MAX_LIVE } from "../../preview/eviction/index.ts";
 import { DEFAULT_PREVIEW_PORT_RANGE, PreviewPortAllocator } from "../../preview/port-allocator.ts";
 import type { SpawnFn } from "../../projects/clone.ts";
+import { checkBurrowPoolReachable } from "../../runtime/local/diagnostics/burrow.ts";
 import { resolveRuntimeKind } from "../../runtime/registry.ts";
 import { jsonResponse } from "../response.ts";
 import type { RouteHandler, ServerDeps } from "../types.ts";

@@ -221,6 +221,34 @@ describe("runDoctor", () => {
 		]);
 	});
 
+	test("under WARREN_RUNTIME=k8s, skips burrow/bwrap/stale probes and says so", async () => {
+		const { context } = captureContext({
+			WARREN_API_TOKEN: "tok",
+			CANOPY_REPO_URL: "https://example.com/agents.git",
+			WARREN_RUNTIME: "k8s",
+		});
+		const result = await runDoctor(
+			context,
+			{
+				existsSync: () => true,
+				// A throwing probe would fail the check under local; under k8s it must
+				// never be consulted at all.
+				probeBurrow: async () => {
+					throw new Error("burrow must not be probed under k8s");
+				},
+			},
+			{},
+		);
+		const names = result.checks.map((c) => c.name);
+		expect(names).not.toContain("bwrap");
+		expect(names).not.toContain("stale_burrow_workspaces");
+		expect(names).not.toContain("burrow_reachable");
+		const runtime = result.checks.find((c: DoctorCheck) => c.name === "runtime_backend");
+		expect(runtime?.ok).toBe(true);
+		expect(runtime?.message).toContain("k8s");
+		expect(result.exitCode).toBe(0);
+	});
+
 	test("warren_db reports the resolved dialect for WARREN_DB_URL", async () => {
 		const { context } = captureContext({
 			WARREN_API_TOKEN: "tok",
