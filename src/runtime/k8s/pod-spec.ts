@@ -30,12 +30,13 @@ import type {
 	V1Container,
 	V1Pod,
 	V1PodSecurityContext,
-	V1ResourceRequirements,
 	V1SecurityContext,
 } from "@kubernetes/client-node";
 import {
 	DEFAULT_K8S_CPU_LIMIT_MILLICORES,
 	DEFAULT_K8S_CPU_REQUEST_MILLICORES,
+	DEFAULT_K8S_EPHEMERAL_STORAGE_LIMIT_MIB,
+	DEFAULT_K8S_EPHEMERAL_STORAGE_REQUEST_MIB,
 	DEFAULT_K8S_MEMORY_LIMIT_MIB,
 	DEFAULT_K8S_MEMORY_REQUEST_MIB,
 	DEFAULT_K8S_NETWORK,
@@ -50,6 +51,11 @@ import {
 	buildRunPodVolumes,
 	resolveRepoCacheConfig,
 } from "./pod-env.ts";
+import {
+	clampRequests,
+	type ResolvedResourceQuantities,
+	resourceRequirements,
+} from "./pod-resources.ts";
 
 // Re-exported so `./pod-spec.ts` stays the single import surface for the pod
 // shape; the env builders + ENV name constants live in `./pod-env.ts` (split
@@ -65,6 +71,10 @@ export {
 	ENV_WORKSPACE_PATH,
 	serviceDnsCallbackUrl,
 } from "./pod-env.ts";
+// warren-653f: the resource-quantity types/helpers live in `./pod-resources.ts`
+// (split out for the file-size ratchet); re-exported so `./pod-spec.ts` stays the
+// single import surface for the pod shape.
+export type { ResolvedResourceQuantities } from "./pod-resources.ts";
 
 // --- Pod-shape constants ---------------------------------------------------
 
@@ -188,12 +198,6 @@ export const DEFAULT_K8S_CANCEL_GRACE_SECONDS = 30;
  */
 export const DEFAULT_K8S_TERMINATE_GRACE_SECONDS = 0;
 
-/** A fully-resolved memory+cpu pair (whole MiB / millicores). */
-export interface ResolvedResourceQuantities {
-	memoryMiB: number;
-	cpuMillicores: number;
-}
-
 /**
  * Everything the pure `buildRunPod` needs beyond the `RunSpec` — cluster-shaped
  * defaults resolved once (from env + `.warren/config.yaml`) so the builder stays
@@ -271,10 +275,14 @@ export function resolveK8sPodConfig(
 		requests: {
 			memoryMiB: resources?.requests?.memoryMiB ?? DEFAULT_K8S_MEMORY_REQUEST_MIB,
 			cpuMillicores: resources?.requests?.cpuMillicores ?? DEFAULT_K8S_CPU_REQUEST_MILLICORES,
+			ephemeralStorageMiB:
+				resources?.requests?.ephemeralStorageMiB ?? DEFAULT_K8S_EPHEMERAL_STORAGE_REQUEST_MIB,
 		},
 		limits: {
 			memoryMiB: resources?.limits?.memoryMiB ?? DEFAULT_K8S_MEMORY_LIMIT_MIB,
 			cpuMillicores: resources?.limits?.cpuMillicores ?? DEFAULT_K8S_CPU_LIMIT_MILLICORES,
+			ephemeralStorageMiB:
+				resources?.limits?.ephemeralStorageMiB ?? DEFAULT_K8S_EPHEMERAL_STORAGE_LIMIT_MIB,
 		},
 		network: resources?.network ?? DEFAULT_K8S_NETWORK,
 		callback: {
@@ -346,33 +354,6 @@ export function podNameForRun(runId: string): string {
 
 // --- Builder ---------------------------------------------------------------
 
-function quantityString(q: ResolvedResourceQuantities): { memory: string; cpu: string } {
-	return { memory: `${q.memoryMiB}Mi`, cpu: `${q.cpuMillicores}m` };
-}
-
-/** Requests can never exceed limits (K8s rejects it) — clamp per-dimension. */
-function clampRequests(
-	requests: ResolvedResourceQuantities,
-	limits: ResolvedResourceQuantities,
-): ResolvedResourceQuantities {
-	return {
-		memoryMiB: Math.min(requests.memoryMiB, limits.memoryMiB),
-		cpuMillicores: Math.min(requests.cpuMillicores, limits.cpuMillicores),
-	};
-}
-
-function resourceRequirements(
-	requests: ResolvedResourceQuantities,
-	limits: ResolvedResourceQuantities,
-): V1ResourceRequirements {
-	const req = quantityString(requests);
-	const lim = quantityString(limits);
-	return {
-		requests: { memory: req.memory, cpu: req.cpu },
-		limits: { memory: lim.memory, cpu: lim.cpu },
-	};
-}
-
 /** Container-level hardening applied to BOTH the init and agent containers (§2.2). */
 function containerSecurityContext(config: K8sPodConfig): V1SecurityContext {
 	return {
@@ -421,6 +402,11 @@ function buildInitContainer(
 		command: [...K8S_INIT_COMMAND],
 		env: buildInitEnv(spec, config, opts),
 		volumeMounts: buildInitVolumeMounts(config, opts),
+		// warren-653f: the init container fills the /workspace emptyDir with the
+		// fresh clone, so it too needs an explicit ephemeral-storage request+limit —
+		// otherwise Autopilot injects a 1Gi default and evicts the pod mid-clone.
+		// cpu/memory stay at the config requests/limits (clamped), matching the agent.
+		resources: resourceRequirements(clampRequests(config.requests, config.limits), config.limits),
 		securityContext: containerSecurityContext(config),
 	};
 }
@@ -432,6 +418,7 @@ function buildAgentContainer(spec: RunSpec, config: K8sPodConfig): V1Container {
 	const limits: ResolvedResourceQuantities = {
 		memoryMiB: spec.resources?.memoryMiB ?? config.limits.memoryMiB,
 		cpuMillicores: spec.resources?.cpuMillicores ?? config.limits.cpuMillicores,
+		ephemeralStorageMiB: spec.resources?.ephemeralStorageMiB ?? config.limits.ephemeralStorageMiB,
 	};
 	const requests = clampRequests(config.requests, limits);
 	return {

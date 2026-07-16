@@ -14,9 +14,16 @@
  * | Running          | agent container running                     | running   | (none)         | null          |
  * | Succeeded        | agent terminated exit 0                     | succeeded | completed      | 0 (or agent)  |
  * | Failed           | any container terminated `OOMKilled`        | failed    | oom_killed     | 137 (or code) |
+ * | Failed           | pod `status.reason == "Evicted"`            | failed    | evicted        | 137 / null    |
  * | Failed           | a container terminated exit≠0 (Init:Error)  | failed    | error          | that code     |
- * | Failed           | evicted / no container status               | failed    | error          | null          |
+ * | Failed           | no failing container status                 | failed    | error          | null          |
  * | Unknown          | kubelet lost contact — NOT terminal         | running   | (none)         | null          |
+ *
+ * A `Failed` pod is ALWAYS terminal (warren-c0cd): whatever the container-status
+ * shape — a clean non-zero exit, a `ContainerStatusUnknown` exit 137 (the kubelet
+ * couldn't locate a container it already killed, the classic eviction footprint),
+ * or no container status at all — the run terminalizes, never falling through to a
+ * non-terminal state that leaves the run wedged `running`.
  *
  * A pod that is ABSENT from the API (list empty / 404) is not represented here:
  * the provider maps it to `runLostStatus()` (`exists:false` + `terminalReason:
@@ -52,6 +59,17 @@ import { AGENT_CONTAINER_NAME } from "./pod-spec.ts";
 
 /** kubelet's `terminated.reason` for a cgroup OOM kill. */
 const OOM_KILLED_REASON = "OOMKilled";
+
+/**
+ * The kubelet's pod-level `status.reason` for an eviction (warren-c0cd). Set when
+ * a node reclaims a pod under resource pressure — most often ephemeral-storage
+ * exhaustion (the emptyDir workspace overrunning its budget). The evicted pod
+ * lingers in `Failed` phase; its container terminated state is usually
+ * `{reason: "ContainerStatusUnknown", exitCode: 137}` (the runtime couldn't locate
+ * the already-killed container), which is why the pod reason — not a container
+ * reason — is the reliable eviction witness.
+ */
+const EVICTED_REASON = "Evicted";
 
 /**
  * The reconcile snapshot for a run whose pod is ABSENT from the API — deleted,
@@ -120,10 +138,20 @@ function classify(pod: V1Pod, phase: string | undefined): Classified {
 }
 
 /**
- * Split a `Failed` pod on its container terminated states: an OOM kill anywhere
- * (agent OR init) is first-class `oom_killed`; any other non-zero termination is
- * `error` carrying its exit code; a pod that failed with no terminated container
- * status (evicted, node pressure) is `error` with a null exit code.
+ * Split a `Failed` pod on its pod reason + container terminated states. Order is
+ * significant, most-specific first:
+ *
+ *   1. an OOM kill anywhere (agent OR init `terminated.reason == "OOMKilled"`) is
+ *      first-class `oom_killed`;
+ *   2. a kubelet EVICTION (`pod.status.reason == "Evicted"`) is first-class
+ *      `evicted` — checked BEFORE the generic non-zero path because an evicted
+ *      pod's container typically terminates `ContainerStatusUnknown` exit 137,
+ *      which would otherwise be mis-labelled a plain `error` (warren-c0cd);
+ *   3. any other non-zero container termination (incl. `ContainerStatusUnknown`
+ *      exit 137 on a non-evicted pod, e.g. a crash) is `error` with its exit code;
+ *   4. a `Failed` pod with no failing terminated container is still `error` (null
+ *      exit) — never a non-terminal fall-through: a `Failed` pod ALWAYS terminates
+ *      the run.
  */
 function classifyFailed(pod: V1Pod): Classified {
 	const terminated = allContainerStatuses(pod)
@@ -134,11 +162,19 @@ function classifyFailed(pod: V1Pod): Classified {
 	if (oom !== undefined) {
 		return { phase: "failed", exitCode: oom.exitCode ?? null, terminalReason: "oom_killed" };
 	}
+	if (pod.status?.reason === EVICTED_REASON) {
+		// Prefer the agent's exit code (137 on the classic ephemeral-storage
+		// eviction), else the first non-zero terminated code, else null.
+		const exitCode =
+			agentExitCode(pod) ?? terminated.find((t) => t.exitCode !== 0)?.exitCode ?? null;
+		return { phase: "failed", exitCode, terminalReason: "evicted" };
+	}
 	const nonZero = terminated.find((t) => t.exitCode !== 0);
 	if (nonZero !== undefined) {
 		return { phase: "failed", exitCode: nonZero.exitCode ?? null, terminalReason: "error" };
 	}
-	// Failed phase but no failing terminated container (evicted / lost node).
+	// Failed phase but no failing terminated container (lost node, etc.). Still
+	// terminal — a Failed pod never leaves the run `running`.
 	return { phase: "failed", exitCode: null, terminalReason: "error" };
 }
 

@@ -165,4 +165,32 @@ describe("bridgeRunStream — OOM propagation (warren-9cce)", () => {
 
 		expect(result.terminalDetected).toEqual({ outcome: "failed" });
 	});
+
+	// warren-c0cd: an evicted pod (ephemeral-storage exhaustion) must reconcile the
+	// run to a terminal failed/evicted — not hang `running` until a manual cancel.
+	test("carries evicted from provider.status onto terminalDetected", async () => {
+		const provider = new FakeRuntimeProvider({
+			phase: "failed",
+			exitCode: 137,
+			terminalReason: "evicted",
+			lastEventSeq: 3,
+			lastEventTs: "2026-05-08T12:00:03.000Z",
+			exists: true,
+		});
+
+		const result = await bridgeRunStream({
+			runId,
+			burrowRunId,
+			repos,
+			broker,
+			burrowId: "bur_aaaaaaaaaaaa",
+			runtimeProvider: provider,
+			runStatePollMs: 5,
+			runStateDrainMs: 10,
+		});
+
+		expect(result.terminalDetected).toEqual({ outcome: "failed", failureReason: "evicted" });
+		expect(result.errored).toBe(false);
+		expect(result.burrowRunMissing).toBeUndefined();
+	});
 });

@@ -65,8 +65,12 @@ describe("resolveK8sPodConfig", () => {
 		expect(c.initImage).toBe(DEFAULT_K8S_INIT_IMAGE);
 		expect(c.uid).toBe(WARREN_POD_UID);
 		expect(c.gid).toBe(WARREN_POD_GID);
-		expect(c.requests).toEqual({ memoryMiB: 2048, cpuMillicores: 1000 });
-		expect(c.limits).toEqual({ memoryMiB: 4096, cpuMillicores: 4000 });
+		expect(c.requests).toEqual({
+			memoryMiB: 2048,
+			cpuMillicores: 1000,
+			ephemeralStorageMiB: 10_240,
+		});
+		expect(c.limits).toEqual({ memoryMiB: 4096, cpuMillicores: 4000, ephemeralStorageMiB: 10_240 });
 		expect(c.network).toBe("restricted");
 		expect(c.serviceAccountName).toBeUndefined();
 	});
@@ -157,17 +161,8 @@ describe("resolveK8sPodConfig", () => {
 		expect(c.gitTokenSecret).toEqual({ name: "gh", key: "pat" });
 	});
 
-	test("sources resources + network from the .warren/config.yaml resources block", () => {
-		const resources: ResourcesConfig = {
-			requests: { memoryMiB: 512, cpuMillicores: 250 },
-			limits: { memoryMiB: 8192, cpuMillicores: 8000 },
-			network: "none",
-		};
-		const c = resolveK8sPodConfig({}, resources);
-		expect(c.requests).toEqual({ memoryMiB: 512, cpuMillicores: 250 });
-		expect(c.limits).toEqual({ memoryMiB: 8192, cpuMillicores: 8000 });
-		expect(c.network).toBe("none");
-	});
+	// Resource-block resolution (incl. ephemeral-storage) is covered in
+	// `pod-resources.test.ts` alongside the extracted quantity helpers (warren-653f).
 });
 
 describe("podNameForRun", () => {
@@ -321,6 +316,9 @@ describe("buildRunPod", () => {
 		const vol = pod.spec?.volumes?.[0];
 		expect(vol?.name).toBe(WORKSPACE_VOLUME_NAME);
 		expect(vol?.emptyDir).toBeDefined();
+		// warren-653f: the emptyDir is capped at the ephemeral-storage limit so a
+		// workspace overrun fails the volume first (crisp signal), not just the pod.
+		expect(vol?.emptyDir?.sizeLimit).toBe("10240Mi");
 		const agent = pod.spec?.containers?.[0];
 		expect(agent?.name).toBe(AGENT_CONTAINER_NAME);
 		// warren-245d: the agent container must NOT override workingDir — it starts
@@ -330,31 +328,8 @@ describe("buildRunPod", () => {
 		expect(agent?.volumeMounts?.[0]?.mountPath).toBe(WORKSPACE_MOUNT_PATH);
 	});
 
-	test("agent resources map config requests/limits to K8s quantity strings", () => {
-		const pod = buildRunPod(baseSpec(), config);
-		const res = pod.spec?.containers?.[0]?.resources;
-		expect(res?.requests).toEqual({ memory: "2048Mi", cpu: "1000m" });
-		expect(res?.limits).toEqual({ memory: "4096Mi", cpu: "4000m" });
-	});
-
-	test("RunSpec.resources overrides the limit; requests clamp so they never exceed it", () => {
-		const pod = buildRunPod(
-			baseSpec({ resources: { memoryMiB: 1024, cpuMillicores: 500 } }),
-			config,
-		);
-		const res = pod.spec?.containers?.[0]?.resources;
-		expect(res?.limits).toEqual({ memory: "1024Mi", cpu: "500m" });
-		// config requests were 2048Mi/1000m — clamped down to the lowered limit.
-		expect(res?.requests).toEqual({ memory: "1024Mi", cpu: "500m" });
-	});
-
-	test("a partial RunSpec.resources override only touches the dimension it sets", () => {
-		const pod = buildRunPod(baseSpec({ resources: { memoryMiB: 1024 } }), config);
-		const res = pod.spec?.containers?.[0]?.resources;
-		expect(res?.limits).toEqual({ memory: "1024Mi", cpu: "4000m" });
-		// memory request clamps to 1024; cpu request stays at the config default.
-		expect(res?.requests).toEqual({ memory: "1024Mi", cpu: "1000m" });
-	});
+	// Agent/init resource rendering + per-run overrides live in
+	// `pod-resources.test.ts` (warren-653f).
 
 	test("env vars are name-sorted for a deterministic spec", () => {
 		const pod = buildRunPod(baseSpec({ env: { ZED: "1", ALPHA: "2", MID: "3" } }), config);

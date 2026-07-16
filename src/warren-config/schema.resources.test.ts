@@ -50,6 +50,24 @@ describe("ResourcesConfigSchema bounds + strictness", () => {
 		); // above 64-core ceiling
 	});
 
+	test("enforces the ephemeral-storage bounds (warren-653f)", () => {
+		expect(ResourcesConfigSchema.safeParse({ limits: { ephemeralStorageMiB: 32 } }).success).toBe(
+			false,
+		); // below 64 MiB floor
+		expect(
+			ResourcesConfigSchema.safeParse({ limits: { ephemeralStorageMiB: 2_000_000 } }).success,
+		).toBe(false); // above 1 TiB ceiling
+		expect(
+			ResourcesConfigSchema.safeParse({ limits: { ephemeralStorageMiB: 1024.5 } }).success,
+		).toBe(false); // non-integer
+		expect(
+			ResourcesConfigSchema.safeParse({
+				requests: { ephemeralStorageMiB: 4096 },
+				limits: { ephemeralStorageMiB: 20_480 },
+			}).success,
+		).toBe(true);
+	});
+
 	test("rejects a non-integer memory value and an unknown network policy", () => {
 		expect(ResourcesConfigSchema.safeParse({ limits: { memoryMiB: 1024.5 } }).success).toBe(false);
 		expect(ResourcesConfigSchema.safeParse({ network: "vpc" }).success).toBe(false);

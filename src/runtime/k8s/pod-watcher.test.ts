@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { V1Pod } from "@kubernetes/client-node";
 import {
+	METRIC_EVICTED_TOTAL,
 	METRIC_INIT_FAILURES_TOTAL,
 	METRIC_OOM_KILLED_TOTAL,
 	METRIC_WATCH_RECONNECTS_TOTAL,
@@ -194,6 +195,47 @@ describe("PodWatcher — event → cache + metrics", () => {
 		conn.onEvent("ADDED", oomPod);
 		conn.onEvent("MODIFIED", oomPod); // duplicate watch event — must not double-count
 		expect(metrics.get(METRIC_OOM_KILLED_TOTAL)).toBe(1);
+		await watcher.stop();
+	});
+
+	test("an evicted pod bumps the evicted counter exactly once (warren-c0cd)", async () => {
+		const list = listReturning([], "1");
+		const watch = new FakeWatch();
+		const metrics = new FakeCounters();
+		const watcher = makeWatcher(list.fn, watch, metrics);
+		watcher.start();
+		await waitForConnections(watch, 1);
+		const conn = watch.latest();
+
+		const evictedPod: V1Pod = {
+			metadata: { name: "run-run_evicted", labels: { [LABEL_RUN_ID]: "run_evicted" } },
+			status: {
+				phase: "Failed",
+				reason: "Evicted",
+				message: "Pod ephemeral local storage usage exceeds the total limit of containers 1Gi.",
+				containerStatuses: [
+					{
+						name: AGENT_CONTAINER_NAME,
+						image: "warren-agent:latest",
+						imageID: "",
+						ready: false,
+						restartCount: 0,
+						state: {
+							terminated: {
+								exitCode: 137,
+								reason: "ContainerStatusUnknown",
+								message: "The container could not be located when the pod was terminated",
+							},
+						},
+					},
+				],
+			},
+		};
+		conn.onEvent("ADDED", evictedPod);
+		conn.onEvent("MODIFIED", evictedPod); // duplicate watch event — must not double-count
+		expect(metrics.get(METRIC_EVICTED_TOTAL)).toBe(1);
+		// an eviction is NOT an OOM kill — the two counters stay distinct.
+		expect(metrics.get(METRIC_OOM_KILLED_TOTAL)).toBe(0);
 		await watcher.stop();
 	});
 

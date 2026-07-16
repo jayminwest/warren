@@ -73,7 +73,15 @@ export function resolveRepoCacheConfig(
  * the optional repo-cache PVC (init-only mount — see `buildInitVolumeMounts`).
  */
 export function buildRunPodVolumes(config: K8sPodConfig, opts: BuildRunPodOptions): V1Volume[] {
-	const volumes: V1Volume[] = [{ name: WORKSPACE_VOLUME_NAME, emptyDir: {} }];
+	// warren-653f: cap the workspace emptyDir at the ephemeral-storage limit so an
+	// overrun fails the emptyDir first — a crisp "workspace too big" signal — rather
+	// than surfacing only as a whole-pod ephemeral-storage eviction. Autopilot
+	// counts emptyDir usage against the pod ephemeral-storage budget either way; the
+	// sizeLimit just makes the boundary attributable to the workspace.
+	const workspaceSizeLimit = `${config.limits.ephemeralStorageMiB}Mi`;
+	const volumes: V1Volume[] = [
+		{ name: WORKSPACE_VOLUME_NAME, emptyDir: { sizeLimit: workspaceSizeLimit } },
+	];
 	if (opts.seedConfigMapName !== undefined) {
 		volumes.push({ name: SEED_VOLUME_NAME, configMap: { name: opts.seedConfigMapName } });
 	}

@@ -407,6 +407,7 @@ CRD):
 | Metric | Type | Alert-worthy signal |
 |---|---|---|
 | `warren_run_oom_killed_total` | counter | rising ⇒ agent memory limits too low, or a runaway prompt |
+| `warren_run_evicted_total` | counter | rising ⇒ pods evicted under node pressure, usually ephemeral-storage exhaustion (§7.3.1) — raise `resources.limits.ephemeralStorageMiB` |
 | `warren_run_pod_phase{phase}` | gauge | a growing `Pending` series ⇒ cluster can't schedule (pairs with `cluster_pending_saturated`) |
 | `warren_pod_pending_duration_seconds` | gauge | age of the longest-pending pod; sustained high ⇒ scheduling starvation |
 | `warren_workspace_init_duration_seconds` | gauge | last clone time; spikes ⇒ cold cache / slow git |
@@ -527,6 +528,40 @@ request/limit fit the workload; on Autopilot remember request==limit billing. Fo
 a runaway, fix the agent/prompt — do not paper over it by raising limits cluster-
 wide. Note there is no blind retry: `restartPolicy: Never` means an OOM ends the
 pod, warren surfaces the failure immediately rather than re-running from scratch.
+
+#### 7.3.1 Evicted runs (ephemeral-storage exhaustion)
+
+**Symptom.** A run flips to `failed (evicted)`; `warren_run_evicted_total`
+increments; `describe pod` shows `Status: Failed`, `Reason: Evicted`, message
+`Pod ephemeral local storage usage exceeds the total limit of containers …`,
+and a container `Terminated, Reason: ContainerStatusUnknown, Exit Code: 137`.
+
+**Diagnose.** The agent's `/workspace` (an emptyDir carrying the clone + `bun
+install`) outgrew the pod's ephemeral-storage budget and the kubelet reclaimed
+the pod. The `Evicted` pod reason — not the container's `ContainerStatusUnknown`
+code — is the reliable witness (`src/runtime/k8s/status-map.ts`), so the run
+finalizes `failed (evicted)` rather than a generic error. **On GKE Autopilot a
+pod with NO explicit ephemeral-storage request is injected a 1Gi default**, which
+a real clone + install blows past in minutes; warren now sets an explicit 10Gi
+request+limit on BOTH the agent and workspace-init containers plus a matching
+emptyDir `sizeLimit` (warren-653f), so the default budget is generous.
+
+**Remedy.** For a legitimately large repo/toolchain, raise the ephemeral-storage
+budget in `.warren/config.yaml`:
+
+```yaml
+resources:
+  requests:
+    ephemeralStorageMiB: 20480   # 20 GiB
+  limits:
+    ephemeralStorageMiB: 20480   # request == limit (Autopilot forces it)
+```
+
+Bounds are 64 MiB..1 TiB (`src/warren-config/resources-config.ts`). Absent, the
+`DEFAULT_K8S_EPHEMERAL_STORAGE_*_MIB` 10Gi default applies. On Autopilot the
+pod-level ephemeral-storage limit is the SUM of the container limits, so both
+containers carrying 10Gi gives a 20Gi pod budget with the emptyDir itself capped
+at the per-container limit for a crisp "workspace too big" signal.
 
 ### 7.4 Admission 429s
 

@@ -43,6 +43,7 @@ import {
 	type PodAdmissionSource,
 } from "./admission.ts";
 import {
+	METRIC_EVICTED_TOTAL,
 	METRIC_INIT_FAILURES_TOTAL,
 	METRIC_OOM_KILLED_TOTAL,
 	METRIC_WATCH_RECONNECTS_TOTAL,
@@ -123,6 +124,8 @@ export class PodWatcher implements PodCacheReader, PodMetricsSource, PodAdmissio
 	private readonly cache = new Map<string, V1Pod>();
 	/** runIds whose OOM kill we have already counted (count once, not per event). */
 	private readonly oomCounted = new Set<string>();
+	/** runIds whose eviction we have already counted (count once, not per event). */
+	private readonly evictedCounted = new Set<string>();
 	/** runIds whose workspace-init terminal we have already accounted for. */
 	private readonly initAccounted = new Set<string>();
 	private lastInitDurationSeconds: number | null = null;
@@ -307,16 +310,18 @@ export class PodWatcher implements PodCacheReader, PodMetricsSource, PodAdmissio
 		this.applyPod(runId, obj);
 	}
 
-	/** Store a pod and fold its OOM / init-terminal signals into the metrics. */
+	/** Store a pod and fold its OOM / eviction / init-terminal signals into the metrics. */
 	private applyPod(runId: string, pod: V1Pod): void {
 		this.cache.set(runId, pod);
 		this.accountOom(runId, pod);
+		this.accountEvicted(runId, pod);
 		this.accountInit(runId, pod);
 	}
 
 	private forget(runId: string): void {
 		this.cache.delete(runId);
 		this.oomCounted.delete(runId);
+		this.evictedCounted.delete(runId);
 		this.initAccounted.delete(runId);
 	}
 
@@ -326,6 +331,15 @@ export class PodWatcher implements PodCacheReader, PodMetricsSource, PodAdmissio
 		if (mapPodToRunStatus(pod).terminalReason === "oom_killed") {
 			this.oomCounted.add(runId);
 			this.deps.metrics.increment(METRIC_OOM_KILLED_TOTAL);
+		}
+	}
+
+	/** Count an eviction once per run, the first time the pod maps to `evicted` (warren-c0cd). */
+	private accountEvicted(runId: string, pod: V1Pod): void {
+		if (this.evictedCounted.has(runId)) return;
+		if (mapPodToRunStatus(pod).terminalReason === "evicted") {
+			this.evictedCounted.add(runId);
+			this.deps.metrics.increment(METRIC_EVICTED_TOTAL);
 		}
 	}
 

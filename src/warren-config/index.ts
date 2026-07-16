@@ -29,6 +29,12 @@ export {
 	loadWarrenConfig,
 	type ReadFileFn,
 } from "./load.ts";
+// warren-653f: ephemeral-storage defaults sourced straight from resources-config
+// (not routed through schema.ts) to keep that frozen-budget file unchanged.
+export {
+	DEFAULT_K8S_EPHEMERAL_STORAGE_LIMIT_MIB,
+	DEFAULT_K8S_EPHEMERAL_STORAGE_REQUEST_MIB,
+} from "./resources-config.ts";
 export {
 	type AgentConfig,
 	type ConversationConfig,

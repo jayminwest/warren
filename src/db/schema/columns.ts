@@ -165,6 +165,16 @@ export type CloneKind = (typeof CLONE_KINDS)[number];
  *     seed close / plan-run advance. The provider message is surfaced on
  *     the `reap.provider_error` event; `failure_reason` carries only the
  *     discriminator (the column is enum-narrowed, not free text).
+ *   - `oom_killed` (warren-9cce) means the agent container was cgroup
+ *     OOM-killed — burrow's `oomKilled()` probe or the K8s
+ *     `terminated.reason=="OOMKilled"` signal, carried through the run-state
+ *     probe's `terminalReason` onto the finalized row.
+ *   - `evicted` (warren-c0cd) means the kubelet evicted the run pod under node
+ *     resource pressure (K8s `status.reason=="Evicted"`) — most often
+ *     ephemeral-storage exhaustion (the emptyDir workspace outgrowing its
+ *     budget). K8s-only; distinct from `oom_killed` (a container cgroup kill)
+ *     and `crashed` (an agent fault) because an eviction is an infra-capacity
+ *     signal. Surfaced via the run-state probe's `terminalReason`.
  *
  * Null on succeeded/cancelled rows.
  */
@@ -178,6 +188,7 @@ export const RUN_FAILURE_REASONS = [
 	"dropped_commit",
 	"provider_error",
 	"oom_killed",
+	"evicted",
 ] as const;
 export type RunFailureReason = (typeof RUN_FAILURE_REASONS)[number];
 

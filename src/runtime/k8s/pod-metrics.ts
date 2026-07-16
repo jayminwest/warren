@@ -27,6 +27,14 @@ import type { PromMetric } from "../../observability/prometheus.ts";
 
 /** Total OOM kills observed across all run pods (`terminated.reason==OOMKilled`). */
 export const METRIC_OOM_KILLED_TOTAL = "warren_run_oom_killed_total";
+/**
+ * Total pod evictions observed across all run pods (`status.reason==Evicted`,
+ * warren-c0cd) — the kubelet reclaiming a pod under node resource pressure, most
+ * often ephemeral-storage exhaustion. Counted once per run, alongside the
+ * `evicted` terminalReason the run finalizes with, so a spike in evictions is
+ * visible as an infra-capacity signal distinct from OOM kills.
+ */
+export const METRIC_EVICTED_TOTAL = "warren_run_evicted_total";
 /** Total pod-watch reconnects (watch stream ended and the informer re-attached). */
 export const METRIC_WATCH_RECONNECTS_TOTAL = "warren_pod_watch_reconnects_total";
 /** Total workspace-init container failures (init terminated with a non-zero exit). */

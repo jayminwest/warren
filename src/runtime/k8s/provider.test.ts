@@ -295,8 +295,16 @@ describe("K8sProvider.create", () => {
 			},
 		});
 		const resources = fake.pods[0]?.body.spec?.containers?.[0]?.resources;
-		expect(resources?.requests).toEqual({ memory: "512Mi", cpu: "250m" });
-		expect(resources?.limits).toEqual({ memory: "8192Mi", cpu: "8000m" });
+		expect(resources?.requests).toEqual({
+			memory: "512Mi",
+			cpu: "250m",
+			"ephemeral-storage": "10240Mi",
+		});
+		expect(resources?.limits).toEqual({
+			memory: "8192Mi",
+			cpu: "8000m",
+			"ephemeral-storage": "10240Mi",
+		});
 		expect(fake.pods[0]?.body.metadata?.labels?.[LABEL_NETWORK]).toBe("open");
 	});
 
@@ -311,19 +319,35 @@ describe("K8sProvider.create", () => {
 			},
 		});
 		const resources = fake.pods[0]?.body.spec?.containers?.[0]?.resources;
-		// Limit reflects the per-run override, not the project block's 8192Mi/8000m.
-		expect(resources?.limits).toEqual({ memory: "1024Mi", cpu: "2000m" });
+		// Limit reflects the per-run override, not the project block's 8192Mi/8000m;
+		// ephemeral-storage is untouched by the memory/cpu override (config default).
+		expect(resources?.limits).toEqual({
+			memory: "1024Mi",
+			cpu: "2000m",
+			"ephemeral-storage": "10240Mi",
+		});
 		// Requests still come from the project block, clamped to never exceed the limit.
-		expect(resources?.limits).not.toEqual({ memory: "8192Mi", cpu: "8000m" });
-		expect(resources?.requests).toEqual({ memory: "512Mi", cpu: "250m" });
+		expect(resources?.requests).toEqual({
+			memory: "512Mi",
+			cpu: "250m",
+			"ephemeral-storage": "10240Mi",
+		});
 	});
 
 	test("absent projectResources falls back to the env/global DEFAULT_K8S_* defaults", async () => {
 		const fake = fakeApi();
 		await makeProvider(fake).create(spec);
 		const resources = fake.pods[0]?.body.spec?.containers?.[0]?.resources;
-		expect(resources?.requests).toEqual({ memory: "2048Mi", cpu: "1000m" });
-		expect(resources?.limits).toEqual({ memory: "4096Mi", cpu: "4000m" });
+		expect(resources?.requests).toEqual({
+			memory: "2048Mi",
+			cpu: "1000m",
+			"ephemeral-storage": "10240Mi",
+		});
+		expect(resources?.limits).toEqual({
+			memory: "4096Mi",
+			cpu: "4000m",
+			"ephemeral-storage": "10240Mi",
+		});
 		expect(fake.pods[0]?.body.metadata?.labels?.[LABEL_NETWORK]).toBe("restricted");
 	});
 });

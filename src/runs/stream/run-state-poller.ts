@@ -10,7 +10,7 @@
  * failures.
  */
 
-import type { RunTerminalState } from "../../db/schema.ts";
+import type { RunFailureReason, RunTerminalState } from "../../db/schema.ts";
 import type { RunHandle, RuntimeProvider, TerminalReason } from "../../runtime/contract.ts";
 import type { BridgeLogger, BurrowTerminalSnapshot, RunStateProbe } from "./types.ts";
 
@@ -113,21 +113,35 @@ function isBurrowTerminal(state: string): state is RunTerminalState {
 }
 
 /**
+ * The seam `terminalReason` values that map 1:1 onto a domain `failure_reason`
+ * the poller carries onto the finalized run (warren-9cce, warren-c0cd). Reasons
+ * absent here are already covered by `state` (e.g. `completed` → succeeded,
+ * `cancelled` → cancelled), so they need no distinct `failure_reason`.
+ */
+const TERMINAL_REASON_TO_FAILURE_REASON: Partial<Record<TerminalReason, RunFailureReason>> = {
+	oom_killed: "oom_killed",
+	evicted: "evicted",
+};
+
+/**
  * Build the terminal snapshot the poller records, distilling the seam's coarse
- * `terminalReason` into a domain `failure_reason` (warren-9cce). Only
- * `oom_killed` is load-bearing today — burrow's OOM kill (previously collapsed
- * into an anonymous error) now rides through to the finalized run's
- * `failure_reason`; every other reason is already covered by `state`.
+ * `terminalReason` into a domain `failure_reason` (warren-9cce, warren-c0cd).
+ * `oom_killed` (a cgroup kill) and `evicted` (a kubelet pod eviction, most often
+ * ephemeral-storage exhaustion) both ride through to the finalized run's
+ * `failure_reason` instead of collapsing into an anonymous error; every other
+ * reason is already covered by `state`.
  */
 function toTerminalSnapshot(
 	state: RunTerminalState,
 	exitCode: number | null,
 	terminalReason: TerminalReason | undefined,
 ): BurrowTerminalSnapshot {
+	const failureReason =
+		terminalReason !== undefined ? TERMINAL_REASON_TO_FAILURE_REASON[terminalReason] : undefined;
 	return {
 		state,
 		exitCode,
-		...(terminalReason === "oom_killed" ? { failureReason: "oom_killed" as const } : {}),
+		...(failureReason !== undefined ? { failureReason } : {}),
 	};
 }
 

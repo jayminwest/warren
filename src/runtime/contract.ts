@@ -71,7 +71,7 @@ export interface RunSpec {
 
 	// Isolation INTENT (provider maps to SandboxProfile | pod securityContext+resources).
 	network: "none" | "restricted" | "open";
-	resources?: { memoryMiB?: number; cpuMillicores?: number };
+	resources?: { memoryMiB?: number; cpuMillicores?: number; ephemeralStorageMiB?: number };
 	/**
 	 * OPTIONAL per-project pod resource defaults from `.warren/config.yaml`
 	 * `resources` (warren-aedd) — the dispatch path reads the project config once
@@ -80,8 +80,8 @@ export interface RunSpec {
 	 * per-run `resources` limit > `projectResources` > env defaults. K8s only.
 	 */
 	projectResources?: {
-		requests?: { memoryMiB?: number; cpuMillicores?: number };
-		limits?: { memoryMiB?: number; cpuMillicores?: number };
+		requests?: { memoryMiB?: number; cpuMillicores?: number; ephemeralStorageMiB?: number };
+		limits?: { memoryMiB?: number; cpuMillicores?: number; ephemeralStorageMiB?: number };
 		network?: "none" | "restricted" | "open";
 	};
 	timeoutMs?: number;
@@ -139,10 +139,22 @@ export type RunPhase = "queued" | "running" | "succeeded" | "failed" | "cancelle
  * - `oom_killed` — killed by the cgroup/OOM killer. NEW first-class value (§6.5):
  *   burrow already emits this signal (oomKilled() probe + `oom_killed` event)
  *   and warren currently discards it; K8s gives it via `terminated.reason=="OOMKilled"`.
+ * - `evicted` — the kubelet evicted the pod (K8s `status.reason=="Evicted"`) under
+ *   node resource pressure — most commonly ephemeral-storage exhaustion (a git
+ *   clone + `bun install` overrunning the emptyDir budget, warren-c0cd). Distinct
+ *   from `oom_killed` (a container cgroup kill) and from a plain `error`: an
+ *   eviction is an infra-capacity signal, not an agent fault, so it earns its own
+ *   reason. K8s-only (LocalProvider has no eviction concept).
  * - `cancelled` — graceful stop via `cancel()`.
  * - `lost` — run vanished (burrow 404 / pod GC'd); pairs with `exists:false`.
  */
-export type TerminalReason = "completed" | "error" | "oom_killed" | "cancelled" | "lost";
+export type TerminalReason =
+	| "completed"
+	| "error"
+	| "oom_killed"
+	| "evicted"
+	| "cancelled"
+	| "lost";
 
 /**
  * Out-of-band reconcile/recovery snapshot — what the watchdog/recovery/pod-watcher

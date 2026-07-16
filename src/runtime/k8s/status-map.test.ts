@@ -6,6 +6,8 @@ import { agentContainerStatus, mapPodToRunStatus, runLostStatus } from "./status
 /** Build a pod with the given phase + container statuses. */
 function pod(opts: {
 	phase?: string;
+	reason?: string;
+	message?: string;
 	containers?: V1ContainerStatus[];
 	initContainers?: V1ContainerStatus[];
 	startTime?: Date;
@@ -15,6 +17,8 @@ function pod(opts: {
 		metadata: { name: "run-run-x", labels: opts.labels },
 		status: {
 			...(opts.phase !== undefined ? { phase: opts.phase } : {}),
+			...(opts.reason !== undefined ? { reason: opts.reason } : {}),
+			...(opts.message !== undefined ? { message: opts.message } : {}),
 			...(opts.containers !== undefined ? { containerStatuses: opts.containers } : {}),
 			...(opts.initContainers !== undefined ? { initContainerStatuses: opts.initContainers } : {}),
 			...(opts.startTime !== undefined ? { startTime: opts.startTime } : {}),
@@ -191,11 +195,61 @@ describe("mapPodToRunStatus — Failed", () => {
 		expect(s.exitCode).toBe(128);
 	});
 
-	test("evicted / no terminated container status → failed/error, exitCode null", () => {
+	test("Failed with no terminated container status → failed/error, exitCode null", () => {
 		const s = mapPodToRunStatus(pod({ phase: "Failed" }));
 		expect(s.phase).toBe("failed");
 		expect(s.terminalReason).toBe("error");
 		expect(s.exitCode).toBeNull();
+	});
+
+	// warren-c0cd: the exact GKE Autopilot ephemeral-storage eviction footprint.
+	test("ephemeral-storage eviction (reason Evicted + ContainerStatusUnknown 137) → failed/evicted", () => {
+		const s = mapPodToRunStatus(
+			pod({
+				phase: "Failed",
+				reason: "Evicted",
+				message: "Pod ephemeral local storage usage exceeds the total limit of containers 1Gi.",
+				containers: [
+					agentTerminated(
+						137,
+						"ContainerStatusUnknown",
+						// no finishedAt
+					),
+				],
+			}),
+		);
+		expect(s.phase).toBe("failed");
+		expect(s.terminalReason).toBe("evicted");
+		expect(s.exitCode).toBe(137);
+		expect(s.exists).toBe(true);
+	});
+
+	test("eviction with no container status at all → failed/evicted, exitCode null", () => {
+		const s = mapPodToRunStatus(pod({ phase: "Failed", reason: "Evicted" }));
+		expect(s.phase).toBe("failed");
+		expect(s.terminalReason).toBe("evicted");
+		expect(s.exitCode).toBeNull();
+	});
+
+	test("OOMKilled takes priority over an Evicted pod reason", () => {
+		const s = mapPodToRunStatus(
+			pod({
+				phase: "Failed",
+				reason: "Evicted",
+				containers: [agentTerminated(137, "OOMKilled")],
+			}),
+		);
+		expect(s.terminalReason).toBe("oom_killed");
+		expect(s.exitCode).toBe(137);
+	});
+
+	test("ContainerStatusUnknown 137 WITHOUT an Evicted pod reason → failed/error (generic crash)", () => {
+		const s = mapPodToRunStatus(
+			pod({ phase: "Failed", containers: [agentTerminated(137, "ContainerStatusUnknown")] }),
+		);
+		expect(s.phase).toBe("failed");
+		expect(s.terminalReason).toBe("error");
+		expect(s.exitCode).toBe(137);
 	});
 
 	test("OOM takes priority over a co-terminated non-zero init container", () => {
