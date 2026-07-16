@@ -186,17 +186,20 @@ jobs:
           # If a hostname is configured, patch the placeholder Ingress host and
           # ManagedCertificate domain (both are placeholders in the gke
           # template — never commit the real hostname).
+          # Ingress spec.rules has no strategic-merge key, so a partial rule
+          # patch REPLACES the whole rule and drops http.paths (learned live:
+          # the LB then 404s every API path). Surgical JSON6902 replace of the
+          # host field only.
           if [ -n "${INGRESS_HOST}" ]; then
             cat >> deploy/k8s/overlays/gke-live/kustomization.yaml <<EOF
-            - patch: |
-                apiVersion: networking.k8s.io/v1
+            - target:
                 kind: Ingress
-                metadata:
-                  name: warren
-                  namespace: warren
-                spec:
-                  rules:
-                    - host: ${INGRESS_HOST}
+                name: warren
+                namespace: warren
+              patch: |
+                - op: replace
+                  path: /spec/rules/0/host
+                  value: ${INGRESS_HOST}
             - patch: |
                 apiVersion: networking.gke.io/v1
                 kind: ManagedCertificate
