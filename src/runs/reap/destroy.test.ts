@@ -110,6 +110,25 @@ describe("runWorkspaceDestroy", () => {
 		expect(h.events[0]?.payload).toMatchObject({ reason: "conversation_run" });
 	});
 
+	test("skips and preserves the workspace when the branch push failed (warren-495d)", async () => {
+		const h = harness();
+		let terminated = false;
+		const destroyed = await runWorkspaceDestroy({
+			run: run(),
+			previewLaunchState: null,
+			branchPushFailed: true,
+			terminate: async () => {
+				terminated = true;
+				return fakeTeardown();
+			},
+			...deps(h),
+		});
+		expect(destroyed).toBe(false);
+		expect(terminated).toBe(false);
+		expect(h.events[0]?.kind).toBe("reap.workspace_destroy_skipped");
+		expect(h.events[0]?.payload).toMatchObject({ reason: "branch_push_failed" });
+	});
+
 	test("skips when this reap launched a live preview", async () => {
 		const h = harness();
 		const destroyed = await runWorkspaceDestroy({

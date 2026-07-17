@@ -20,6 +20,15 @@ export interface RunWorkspaceDestroyInput {
 	 */
 	readonly previewLaunchState: "live" | "failed" | null;
 	/**
+	 * warren-495d: the branch push did NOT complete (finalize timed out / the
+	 * pod vanished / the push stage failed), so the agent's commits are still
+	 * only on this workspace. Destroy is SKIPPED (without an error) so the work
+	 * stays recoverable instead of being silently lost — the run is already
+	 * being terminalized `failed`/`finalize_failed`, and the GC/eviction path
+	 * can reclaim the workspace later once operators have recovered the branch.
+	 */
+	readonly branchPushFailed?: boolean;
+	/**
 	 * The RuntimeProvider `terminate(handle)` seam bound to this run (warren-1f56)
 	 * — reap calls it to tear the sandbox down. `null` when the run has no burrow
 	 * or reap never resolved the worker (mirrors the old `workerClient === null`
@@ -45,7 +54,10 @@ export interface RunWorkspaceDestroyInput {
  *     streaming against the same workspace; warren-c770);
  *   - a preview is still live (this reap launched one, or an earlier launch
  *     left `previewState` in `starting`/`live`) — the eviction worker owns
- *     teardown in that case.
+ *     teardown in that case;
+ *   - the branch push did not complete (`branchPushFailed`, warren-495d) — the
+ *     agent's commits are still only on this workspace, so it is preserved for
+ *     recovery instead of destroyed.
  *
  * Best-effort like every other reap sub-step: a destroy failure emits
  * `reap_failed` step=`workspace_destroy` and never blocks the run's
@@ -63,6 +75,14 @@ export async function runWorkspaceDestroy(input: RunWorkspaceDestroyInput): Prom
 		await input.emit("reap.workspace_destroy_skipped", {
 			burrowId: run.burrowId,
 			reason: "conversation_run",
+		});
+		return false;
+	}
+
+	if (input.branchPushFailed === true) {
+		await input.emit("reap.workspace_destroy_skipped", {
+			burrowId: run.burrowId,
+			reason: "branch_push_failed",
 		});
 		return false;
 	}

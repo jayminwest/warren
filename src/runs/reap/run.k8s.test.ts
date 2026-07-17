@@ -280,6 +280,59 @@ describe("reapRun under a K8s-style RuntimeProvider", () => {
 		expect(cleanup).toBeDefined();
 	});
 
+	// warren-495d: the in-pod finalize timed out / the pod vanished before it
+	// posted a result, so K8sProvider.finalize returns a structured FAILED result
+	// with every stage failed and `pushed:false`. reap must (1) NOT report the run
+	// succeeded, (2) preserve the workspace (never call terminate), and (3) not
+	// close the run's seed.
+	test("finalize timeout before branch_push fails the run and preserves the workspace (warren-495d)", async () => {
+		const branch = "warren/run-1";
+		const message = "in-pod finalize timed out after 120000ms";
+		const timedOut: FinalizeResult = {
+			pushed: false,
+			commitsAhead: null,
+			emptyPush: false,
+			dirty: false,
+			workspacePlansBody: null,
+			events: [{ kind: "reap_failed", payload: { step: "finalize", message } }],
+			mirror: {},
+			prBranch: null,
+			stages: [
+				{ stage: "mulch_merge", status: "failed", error: message },
+				{ stage: "seeds_mirror", status: "failed", error: message },
+				{ stage: "plans_mirror", status: "failed", error: message },
+				{ stage: "plot_merge", status: "failed", error: message },
+				{ stage: "branch_push", status: "failed", error: message },
+			],
+		};
+		const fake = fakeK8sProvider({ branch, finalizeResult: timedOut });
+		const e = fakeExec();
+
+		const result = await reapRun({
+			runId: ctx.runId,
+			outcome: "succeeded",
+			repos: ctx.repos,
+			runtimeProvider: fake.provider,
+			broker: ctx.broker,
+			fs: fakeFs().fs,
+			exec: e.exec,
+		});
+
+		// (1) not succeeded — a distinct finalize_failed terminal reason.
+		expect(result.state).toBe("failed");
+		expect(result.failureReason).toBe("finalize_failed");
+		expect(result.branchPushed).toBe(false);
+		expect(result.errors.map((x) => x.step)).toContain("branch_push");
+		// (2) workspace preserved — terminate never ran.
+		expect(fake.calls.terminate).toBe(0);
+		expect(result.workspaceDestroyed).toBe(false);
+		// (3) seed not closed host-side.
+		expect(result.seedIdClosed).toBe(false);
+		const events = await ctx.repos.events.listByRun(ctx.runId);
+		const skipped = events.find((ev) => ev.kind === "reap.workspace_destroy_skipped");
+		expect(skipped?.payloadJson).toMatchObject({ reason: "branch_push_failed" });
+	});
+
 	test("workspaceInfo throwing skips the pipeline and records workspace_lookup", async () => {
 		const provider = {
 			capabilities: {},

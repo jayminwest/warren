@@ -165,6 +165,19 @@ export type CloneKind = (typeof CLONE_KINDS)[number];
  *     seed close / plan-run advance. The provider message is surfaced on
  *     the `reap.provider_error` event; `failure_reason` carries only the
  *     discriminator (the column is enum-narrowed, not free text).
+ *   - `finalize_failed` (warren-495d) means reap's finalize did NOT
+ *     complete its branch push before it timed out or failed — under K8s
+ *     the in-pod finalize round-trip (git push → mirror deltas → POST the
+ *     result) can time out (`WARREN_K8S_FINALIZE_TIMEOUT_MS`, default
+ *     120s) or the pod can vanish / reach a terminal phase before it
+ *     posts a result, yielding a structured FAILED `FinalizeResult` with
+ *     `pushed:false`. Marking the run `failed` (instead of letting it
+ *     masquerade as `succeeded`) keeps a run whose commits never reached
+ *     origin from reporting success — and pairs with reap PRESERVING the
+ *     workspace (skipping `terminate`) so the agent's commits stay
+ *     recoverable instead of being silently destroyed. Distinct from
+ *     `dropped_commit` (push succeeded but landed zero commits over a
+ *     still-dirty tree): here the push itself never completed.
  *   - `oom_killed` (warren-9cce) means the agent container was cgroup
  *     OOM-killed — burrow's `oomKilled()` probe or the K8s
  *     `terminated.reason=="OOMKilled"` signal, carried through the run-state
@@ -186,6 +199,7 @@ export const RUN_FAILURE_REASONS = [
 	"burrow_run_lost",
 	"burrow_unreachable",
 	"dropped_commit",
+	"finalize_failed",
 	"provider_error",
 	"oom_killed",
 	"evicted",

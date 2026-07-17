@@ -165,8 +165,13 @@ export async function reapRun(input: ReapRunInput): Promise<ReapRunResult> {
 	// warren-edc3: a terminal provider error does the same — and blocks the
 	// bookkeeping-only PR / seed close / plan-run advance that would
 	// otherwise ship a no-code PR and discard the agent's uncommitted edits.
+	// warren-495d: a finalize that timed out / failed before the branch push
+	// completed leaves the agent's commits unpushed — flip an otherwise-
+	// succeeded run to `failed`/`finalize_failed` so it can't report success
+	// while its work sits only on the (soon-to-be-destroyed) workspace.
+	const finalizeFailed = state.finalizeFailed && input.outcome === "succeeded";
 	const effectiveOutcome: RunTerminalState =
-		state.droppedCommit || failedFromProviderError ? "failed" : input.outcome;
+		state.droppedCommit || failedFromProviderError || finalizeFailed ? "failed" : input.outcome;
 
 	if (failedFromProviderError) {
 		await emit("reap.provider_error", { message: providerErrorMessage });
@@ -177,6 +182,8 @@ export async function reapRun(input: ReapRunInput): Promise<ReapRunResult> {
 		failureReason = "dropped_commit";
 	} else if (failedFromProviderError) {
 		failureReason = "provider_error";
+	} else if (finalizeFailed) {
+		failureReason = "finalize_failed";
 	} else if (effectiveOutcome === "failed") {
 		failureReason =
 			input.failureReason ?? (await inferFailureReason(input.repos, run.id, stateOnEntry));
@@ -242,6 +249,10 @@ export async function reapRun(input: ReapRunInput): Promise<ReapRunResult> {
 	const workspaceDestroyed = await runWorkspaceDestroy({
 		run,
 		previewLaunchState: state.previewLaunchState,
+		// warren-495d: preserve the workspace when the branch push never completed
+		// — the agent's commits live only here, so destroying it would silently
+		// lose them. The eviction/GC path can reclaim it later once recovered.
+		branchPushFailed: state.finalizeFailed,
 		terminate,
 		emit,
 		fail: (step, err) => fail(step, err),
