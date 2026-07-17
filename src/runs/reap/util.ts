@@ -66,7 +66,7 @@ export function createSeqAllocator(start: number): { next: () => number } {
 	};
 }
 
-export function isEnoent(err: unknown): boolean {
+function isEnoent(err: unknown): boolean {
 	return typeof err === "object" && err !== null && (err as { code?: unknown }).code === "ENOENT";
 }
 
