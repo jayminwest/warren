@@ -12,7 +12,6 @@
 		"src/runtime/k8s/provider.ts": 507,
 		"src/server/handlers/agents.test.ts": 533,
 		"src/server/handlers/plan-runs.ts": 505,
-		"src/server/main/index.ts": 548,
 		"src/triggers/tick.test.ts": 539,
 		"src/server/server.test.ts": 536,
 		"src/server/types.ts": 508,
