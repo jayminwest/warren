@@ -114,6 +114,21 @@ export type CoordinatorEmitFn = (
  */
 export type CoordinatorTransitionPlotFn = (planRun: PlanRunRow) => Promise<AutoTransitionResult>;
 
+/**
+ * Optional host-side child-seed close hook (warren-3806). Called the instant
+ * a plan-run child transitions to `merged` (both the trivial-merge and
+ * PR-poll paths). The implementation deterministically closes the child's
+ * seed on the project's default branch using WARREN_BOT_IDENTITY, so seed
+ * closure never depends on agent initiative. Best-effort: the implementation
+ * owns its own error handling/logging and always resolves, so a close failure
+ * never blocks the plan from advancing. Default (tests / unwired) is a no-op,
+ * matching the pre-warren-3806 baseline.
+ */
+export type CoordinatorCloseChildSeedFn = (input: {
+	readonly planRun: PlanRunRow;
+	readonly child: PlanRunChildRow;
+}) => Promise<void>;
+
 export const PLAN_RUN_EVENT_KINDS = [
 	"plan_run.advanced",
 	"plan_run.dispatched",
@@ -153,6 +168,8 @@ export interface AdvancePlanRunInput {
 	readonly resolveExecution?: CoordinatorResolveExecutionFn;
 	/** warren-b290: Plot auto-done hook fired on plan_succeeded when plotId is set. */
 	readonly transitionPlot?: CoordinatorTransitionPlotFn;
+	/** warren-3806: host-side seed close fired when a child transitions to merged. */
+	readonly closeChildSeed?: CoordinatorCloseChildSeedFn;
 	/** warren-3937: merge-wait budget (ms); defaults to {@link DEFAULT_MERGE_TIMEOUT_MS}, 0 disables. */
 	readonly mergeTimeoutMs?: number;
 	/** warren-22de: PR-(re)open seam. See {@link CoordinatorReopenPrFn}. */
@@ -212,6 +229,7 @@ export async function advancePlanRun(input: AdvancePlanRunInput): Promise<Advanc
 				mergeTimeoutMs,
 				now: nowFn,
 				reopenPr: input.reopenPr,
+				...(input.closeChildSeed !== undefined ? { closeChildSeed: input.closeChildSeed } : {}),
 			});
 			if (decision.kind === "merged") {
 				mergedChildSeq = inFlight.seq;

@@ -28,6 +28,7 @@ import type { PlanRunRow } from "../db/schema.ts";
 import {
 	type AdvanceResult,
 	advancePlanRun,
+	type CoordinatorCloseChildSeedFn,
 	type CoordinatorEmitFn,
 	type CoordinatorReopenPrFn,
 	type CoordinatorRepos,
@@ -75,6 +76,13 @@ export interface PlanRunTickDeps {
 	 * on a child that succeeded with no prUrl and no empty-push event.
 	 */
 	readonly reopenPr?: CoordinatorReopenPrFn;
+	/**
+	 * Optional host-side child-seed close seam (warren-3806). When provided,
+	 * the coordinator closes a plan-run child's seed on the project's default
+	 * branch the instant the child transitions to `merged`, so seed closure
+	 * never depends on agent initiative. Omit to leave it unwired (tests).
+	 */
+	readonly closeChildSeed?: CoordinatorCloseChildSeedFn;
 }
 
 export interface PlanRunAdvanceLog {
@@ -95,19 +103,7 @@ export async function runPlanRunTick(deps: PlanRunTickDeps): Promise<PlanRunTick
 	const active: PlanRunRow[] = await deps.repos.planRuns.listActive();
 	for (const planRun of active) {
 		try {
-			const result = await advancePlanRun({
-				planRun,
-				repos: deps.repos as CoordinatorRepos,
-				showSeed: deps.showSeed,
-				checkPrMerged: deps.checkPrMerged,
-				spawn: deps.spawn,
-				...(deps.resolveExecution !== undefined ? { resolveExecution: deps.resolveExecution } : {}),
-				emit,
-				...(deps.transitionPlot !== undefined ? { transitionPlot: deps.transitionPlot } : {}),
-				...(deps.mergeTimeoutMs !== undefined ? { mergeTimeoutMs: deps.mergeTimeoutMs } : {}),
-				...(deps.reopenPr !== undefined ? { reopenPr: deps.reopenPr } : {}),
-				...(deps.now !== undefined ? { now: deps.now } : {}),
-			});
+			const result = await advancePlanRun(buildAdvanceInput(deps, planRun, emit));
 			advances.push({ planRunId: planRun.id, result });
 			logAdvance(deps.logger, planRun.id, result);
 		} catch (err) {
@@ -118,6 +114,33 @@ export async function runPlanRunTick(deps: PlanRunTickDeps): Promise<PlanRunTick
 	}
 
 	return { advances, errors };
+}
+
+/**
+ * Assemble the per-PlanRun {@link advancePlanRun} input, threading only the
+ * optional seams that were actually wired (only-if-present spreads). Extracted
+ * from {@link runPlanRunTick} so the tick body stays under the cognitive-
+ * complexity ceiling (warren-d3a6 / warren-3806).
+ */
+function buildAdvanceInput(
+	deps: PlanRunTickDeps,
+	planRun: PlanRunRow,
+	emit: CoordinatorEmitFn,
+): Parameters<typeof advancePlanRun>[0] {
+	return {
+		planRun,
+		repos: deps.repos as CoordinatorRepos,
+		showSeed: deps.showSeed,
+		checkPrMerged: deps.checkPrMerged,
+		spawn: deps.spawn,
+		emit,
+		...(deps.resolveExecution !== undefined ? { resolveExecution: deps.resolveExecution } : {}),
+		...(deps.transitionPlot !== undefined ? { transitionPlot: deps.transitionPlot } : {}),
+		...(deps.mergeTimeoutMs !== undefined ? { mergeTimeoutMs: deps.mergeTimeoutMs } : {}),
+		...(deps.reopenPr !== undefined ? { reopenPr: deps.reopenPr } : {}),
+		...(deps.closeChildSeed !== undefined ? { closeChildSeed: deps.closeChildSeed } : {}),
+		...(deps.now !== undefined ? { now: deps.now } : {}),
+	};
 }
 
 function logAdvance(
