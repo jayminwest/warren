@@ -26,7 +26,7 @@
 
 import type { Repos } from "../db/repos/index.ts";
 import type { Message } from "../runtime/contract.ts";
-import { toSeamMessage } from "../runtime/k8s/send-message.ts";
+import { toSeamMessage } from "./inbox-message.ts";
 
 export interface PollRunInboxInput {
 	readonly runId: string;
