@@ -145,9 +145,17 @@ export const scenario: Scenario = {
 		// a display-only field slated for removal with the multi-worker /
 		// `/burrows` surface (design §5.C). Re-tighten this to assert a real
 		// path if/when §5.C reinstates a provider-neutral workspace handle.
-		assertTrue(
-			typeof r1Body.burrow?.workspacePath === "string",
-			"POST /runs response.burrow.workspacePath is a string (empty until §5.C — warren-1f56 seam)",
+		//
+		// warren-5af5: assert the EXACT contract value (`""`) rather than the
+		// weaker "is a string" — the empty string is the deliberate seam
+		// output, and locking it means a regression that leaves a stale host
+		// path (or emits some other non-empty value) is caught here instead of
+		// silently passing. The field's presence is asserted by the strict
+		// equality itself (`undefined !== ""`).
+		assertEqual(
+			r1Body.burrow?.workspacePath,
+			"",
+			'POST /runs response.burrow.workspacePath is exactly "" (seam drops host path until §5.C — warren-1f56)',
 		);
 
 		// rendered_agent_json populated and matches the cached envelope.

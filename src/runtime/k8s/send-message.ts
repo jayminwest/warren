@@ -30,6 +30,10 @@
  *
  * ## `run_inbox` row → seam `Message`
  *
+ * The row→`Message` projection itself lives in the neutral `src/runs/inbox-
+ * message.ts` (`toSeamMessage`, warren-5af5) — it is shared with the local/
+ * shared poll path (`src/runs/inbox.ts`) and is not k8s-specific.
+ *
  * | seam field    | row field           | note                                     |
  * |---------------|---------------------|------------------------------------------|
  * | `id`          | `id`                | 1:1 (`msg_…`)                            |
@@ -47,6 +51,7 @@
 
 import type { EnqueueRunInboxInput } from "../../db/repos/run-inbox.ts";
 import type { RunInboxRow } from "../../db/schema.ts";
+import { toSeamMessage } from "../../runs/inbox-message.ts";
 import type { Message, OutboundMessage, RunHandle } from "../contract.ts";
 import { RuntimeProviderError, RuntimeRunNotFoundError } from "../errors.ts";
 
@@ -92,23 +97,4 @@ export async function sendK8sMessage(
 		);
 	}
 	return toSeamMessage(row);
-}
-
-/**
- * Map a `run_inbox` row onto the seam's provider-neutral `Message`. `runId`
- * mirrors LocalProvider's delivery-attribution semantics: `null` while `unread`
- * (a fresh send), the claiming run once delivered. Timestamps are already
- * ISO-8601 TEXT, so no Date round-trip.
- */
-export function toSeamMessage(row: RunInboxRow): Message {
-	return {
-		id: row.id,
-		runId: row.state === "unread" ? null : row.runId,
-		body: row.body,
-		priority: row.priority,
-		fromActor: row.fromActor,
-		state: row.state,
-		createdAt: row.createdAt,
-		deliveredAt: row.deliveredAt,
-	};
 }
