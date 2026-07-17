@@ -12,7 +12,7 @@
     "tags": [
       "agent"
     ],
-    "model": "claude-sonnet-5",
+    "model": "claude-opus-4-8",
     "source": "builtin",
     "runtime": "pi",
     "provider": "anthropic"

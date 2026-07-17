@@ -1,6 +1,6 @@
 import { CI_FIXER_TRIGGER } from "../../ci-fixer/poller.ts";
 import { parseGitHubUrl } from "../../projects/url.ts";
-import { authenticatedCloneUrl } from "../../runtime/k8s/workspace-init.ts";
+import { authenticatedCloneUrl } from "../../workspace/git/clone-url.ts";
 import {
 	type AutoOpenPrConfig,
 	type BuildPrContentInput,

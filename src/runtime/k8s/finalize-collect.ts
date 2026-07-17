@@ -13,6 +13,7 @@
  */
 
 import { join } from "node:path";
+import { authenticatedCloneUrl } from "../../workspace/git/clone-url.ts";
 import type {
 	FinalizeEvent,
 	FinalizeResult,
@@ -25,7 +26,6 @@ import type {
 	SeedsDelta,
 } from "../contract.ts";
 import type { InPodFinalizeIntent } from "./finalize-wire.ts";
-import { authenticatedCloneUrl } from "./workspace-init.ts";
 
 /** Clone-relative (posix) tracker paths — the delta `path` fields (match `../local/finalize.ts`). */
 const MULCH_EXPERTISE_REL = ".mulch/expertise";
