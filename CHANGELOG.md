@@ -7,8 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.0] — 2026-07-17
+
+The Kubernetes migration release (k8s-migration branch, warren-e176):
+warren now runs against a swappable runtime provider, with GKE as the
+hosted topology and burrow-backed local execution unchanged as the
+default.
+
 ### Added
 
+- **`feat(runtime)`** — `RuntimeProvider` contract
+  (`src/runtime/contract.ts`, docs/design/runtime-provider-contract.md):
+  the warren domain depends on a provider seam resolved once at boot
+  from `WARREN_RUNTIME` (`src/runtime/registry.ts`). Two backends:
+  `LocalProvider` (`src/runtime/local/`, the default — wraps the
+  co-tenanted burrow sandbox daemon; existing self-host/local behavior
+  unchanged) and `K8sProvider` (`src/runtime/k8s/`,
+  `WARREN_RUNTIME=k8s`) — each agent runs as a Kubernetes pod with no
+  burrow at all; the pod boundary is the sandbox.
 - **`feat(k8s)`** — public GKE exposure (warren-682a): the gke overlay now
   ships a GCE external Application LB — reserved global static IP
   (`kubernetes.io/ingress.global-static-ip-name: warren-ingress`),
@@ -16,9 +32,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   container-native load balancing (ClusterIP + NEG; no NodePort). The
   Ingress host / cert domain stay placeholders in the committed template;
   the gitignored live overlay patches in the real hostname.
+- **`feat(k8s)`** — GKE Autopilot hosting: kustomize overlays under
+  `deploy/k8s/`, admission gating (`admission.maxConcurrentRuns`,
+  `WARREN_K8S_MAX_QUEUE_DEPTH`, `WARREN_K8S_MAX_PENDING_PODS`), pod
+  watcher, in-pod finalize, and the `deploy-gke.yml` build-and-roll
+  workflow. See docs/RUNBOOK-K8S.md.
+- **`feat(reap)`** — dropped-commit guard (warren-495d): a finalize
+  timeout or failed `branch_push` can no longer report `succeeded` and
+  destroy the workspace; the run fails with an explicit
+  `failureReason` and reap errors surface via `GET /runs/:id`.
+- **`feat(reap)`** — seeded-artifact reset (warren-8d95): reap resets
+  warren-seeded workspace paths (e.g. `.canopy/agent.json`) to base
+  before `branch_push`, so seeded artifacts never ride along in agent
+  PRs and trip protected-path automerge guards.
+- **`feat(plan-runs)`** — deterministic child-seed closure
+  (warren-3806): when a plan-run child's PR merges, warren closes the
+  child seed host-side with the canonical bot identity instead of
+  depending on agent initiative.
 
 ### Changed
 
+- **Multi-worker retirement**: the single-container/one-volume Fly-era
+  worker topology is retired in favor of the provider seam; under
+  `WARREN_RUNTIME=k8s` there is no `burrow serve`, no unix socket, and
+  `/readyz` drops the burrow/bwrap probes (warren-c128).
+- **`fix(reap)`** — intentional no-commit runs are no longer
+  misclassified as `dropped_commit`, and host-side seed closure never
+  fires for runs that end failed/cancelled (warren-89b0).
 - **`fix(server)`** — `/metrics` is no longer auth-exempt (warren-682a):
   behind a public Ingress the scrape surface leaks operational shape (run
   counts, pod phases, queue depth). The Prometheus ServiceMonitor now
