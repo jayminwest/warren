@@ -1,11 +1,17 @@
 import { ValidationError } from "../../../core/errors.ts";
+import type { PreviewAuth } from "../../../preview/cookie.ts";
 import { createRunPreviewsRepo } from "../../../preview/eviction/index.ts";
 import { teardownPreview } from "../../../preview/teardown.ts";
 import { jsonResponse } from "../../response.ts";
 import type { RouteHandler, ServerDeps } from "../../types.ts";
 import { optionalString, readJsonBodyOrEmpty, requireParam } from "../index.ts";
 
-function validatePreviewConfig(deps: ServerDeps, mode: "subdomain" | "path"): void {
+/**
+ * Validate that the preview surface is configured for `mode` and return the
+ * narrowed {@link PreviewAuth}, so callers avoid non-null assertions on the
+ * optional `deps.previewAuth`.
+ */
+function validatePreviewConfig(deps: ServerDeps, mode: "subdomain" | "path"): PreviewAuth {
 	if (deps.previewAuth === undefined) {
 		throw new ValidationError("preview surface is not configured on this warren", {
 			recoveryHint:
@@ -18,6 +24,7 @@ function validatePreviewConfig(deps: ServerDeps, mode: "subdomain" | "path"): vo
 				"set WARREN_PREVIEW_HOST to enable subdomain-mode previews, or switch to WARREN_PREVIEW_MODE=path",
 		});
 	}
+	return deps.previewAuth;
 }
 
 /**
@@ -58,11 +65,10 @@ export function previewLoginHandler(deps: ServerDeps): RouteHandler {
 	return async (ctx) => {
 		const runId = requireParam(ctx, "id");
 		const mode: "subdomain" | "path" = deps.previewMode ?? "subdomain";
-		validatePreviewConfig(deps, mode);
+		const previewAuth = validatePreviewConfig(deps, mode);
 
 		const token = ctx.url.searchParams.get("token");
-		// biome-ignore lint/style/noNonNullAssertion: checked by validatePreviewConfig
-		if (!deps.previewAuth!.verifyLoginToken(token)) {
+		if (!previewAuth.verifyLoginToken(token)) {
 			return jsonResponse(401, {
 				error: {
 					code: "unauthorized",
@@ -93,8 +99,7 @@ export function previewLoginHandler(deps: ServerDeps): RouteHandler {
 		}
 
 		const now = deps.now?.() ?? new Date();
-		// biome-ignore lint/style/noNonNullAssertion: checked by validatePreviewConfig
-		const cookie = deps.previewAuth!.signCookie(runId, now);
+		const cookie = previewAuth.signCookie(runId, now);
 		return new Response(null, {
 			status: 302,
 			headers: {
