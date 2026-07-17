@@ -24,7 +24,8 @@ jobs:
     runs-on: ubuntu-latest
     if: >-
       !github.event.pull_request.draft &&
-      github.event.pull_request.user.login == github.repository_owner
+      github.event.pull_request.user.login == github.repository_owner &&
+      !contains(github.event.pull_request.labels.*.name, 'no-automerge')
     steps:
       # docs/CONSTITUTION.md Article IX: changes to the constitution, the
       # audit triggers, project-tier agent prompts, or this workflow itself
@@ -35,9 +36,13 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.AUTO_MERGE_PAT }}
           PR_URL: ${{ github.event.pull_request.html_url }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
           PROTECTED='^(docs/CONSTITUTION\.md|\.warren/triggers\.yaml|\.canopy/|\.github/workflows/auto-merge\.yml)'
-          CHANGED=$(gh pr view "$PR_URL" --json files -q '.files[].path')
+          # Paginated files API, not `gh pr view --json files` — the latter
+          # caps at 100 entries, which hides protected paths on large PRs
+          # (warren-88e1).
+          CHANGED=$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/files" --paginate -q '.[].path')
           if echo "$CHANGED" | grep -qE "$PROTECTED"; then
             echo "hit=true" >> "$GITHUB_OUTPUT"
             echo "Article IX: protected paths changed — auto-merge will NOT be enabled:"
