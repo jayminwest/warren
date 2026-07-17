@@ -34,8 +34,9 @@
  *     the cache path falls back to a direct network clone with a structured
  *     warning, so the cache is a pure optimization, never a hard dependency.
  *
- * The pure helpers (`parseInitEnv`, `authenticatedCloneUrl`, `mirrorPathFor`)
- * are unit-tested without a cluster or a real git; `runWorkspaceInit` takes
+ * The pure helpers (`parseInitEnv`, `mirrorPathFor`) are unit-tested without a
+ * cluster or a real git (`authenticatedCloneUrl` now lives in
+ * `src/workspace/git/clone-url.ts`); `runWorkspaceInit` takes
  * injectable git/fs seams so the orchestration is testable by recording the
  * git argv.
  *
@@ -64,6 +65,7 @@ import {
 } from "node:fs/promises";
 import { dirname, isAbsolute, join, normalize } from "node:path";
 import { WorkspaceMaterializationError } from "../../workspace/errors.ts";
+import { authenticatedCloneUrl } from "../../workspace/git/clone-url.ts";
 import { runGit } from "../../workspace/git/exec.ts";
 import { parseSeedManifest } from "./seed-configmap.ts";
 
@@ -122,23 +124,6 @@ export function parseInitEnv(env: InitEnvSource): InitEnv {
 export function mirrorPathFor(cacheDir: string, repoUrl: string): string {
 	const hash = createHash("sha256").update(repoUrl).digest("hex");
 	return join(cacheDir, `${hash}.git`);
-}
-
-/**
- * Inject a git token into an https clone URL as `x-access-token:<token>@host`
- * (GitHub's app-token scheme, matching the supervisor's `insteadOf` credential).
- * Left untouched for ssh/other schemes or a URL that already carries credentials,
- * and when no token is supplied (public repos clone anonymously). Pure.
- */
-export function authenticatedCloneUrl(repoUrl: string, token?: string): string {
-	if (token === undefined || token === "") return repoUrl;
-	const prefix = "https://";
-	if (!repoUrl.startsWith(prefix)) return repoUrl;
-	const rest = repoUrl.slice(prefix.length);
-	// `@` before the first `/` means the authority already has userinfo.
-	const authority = rest.split("/", 1)[0] ?? "";
-	if (authority.includes("@")) return repoUrl;
-	return `${prefix}x-access-token:${token}@${rest}`;
 }
 
 /** Injectable git runner — defaults to the real `runGit` over `src/workspace/git`. */
