@@ -148,8 +148,14 @@ export type CloneKind = (typeof CLONE_KINDS)[number];
  *     workspace tree was still dirty at reap — the agent edited/staged
  *     work but never ran `git commit` (the common weak-model failure,
  *     e.g. Gemini Flash narrating "before committing" then exiting).
- *     Distinguished from a deliberate no-op (clean tree, zero commits)
- *     which stays `succeeded`. Marking the run `failed` keeps a dropped
+ *     Distinguished from a deliberate no-op — a clean tree with zero
+ *     commits, OR a dirty tree whose ONLY uncommitted paths are
+ *     warren-managed bookkeeping artifacts (`.mulch/`, `.seeds/`,
+ *     `.plot/`, `.canopy/`; warren-89b0) — which stays `succeeded` and
+ *     is surfaced as `noChanges` on `reap.empty_push` / `reap.completed`.
+ *     The dropped-commit guard stays conservative: any non-bookkeeping
+ *     dirty path (real uncommitted work) still fails the run. Marking a
+ *     genuine dropped commit `failed` keeps it
  *     commit from masquerading as success and, on plan-runs, fails the
  *     plan instead of silently auto-merging/advancing past the child.
  *   - `provider_error` (warren-edc3) means the agent's terminal model

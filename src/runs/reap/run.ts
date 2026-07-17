@@ -221,6 +221,9 @@ export async function reapRun(input: ReapRunInput): Promise<ReapRunResult> {
 		},
 		branchPushed: state.branchPushed,
 		commitsAhead: state.commitsAhead,
+		// warren-89b0: distinguish a deliberate no-op (succeeded, non-alarming)
+		// from a dropped commit (failed) for operators reading the terminal event.
+		noChanges: state.noChanges,
 		prUrl: state.prUrl,
 		previewState: state.previewLaunchState,
 		previewPort: state.previewLaunchPort,

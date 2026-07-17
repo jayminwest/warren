@@ -115,6 +115,117 @@ export async function isWorkspaceDirty(exec: ReapExec, workspacePath: string): P
 	}
 }
 
+/**
+ * Return the workspace-relative paths of every uncommitted change
+ * (warren-89b0). Parses `git status --porcelain` — each line is
+ * `XY <path>` (or `XY <old> -> <new>` for renames) — into the set of
+ * touched paths so the domain can classify a zero-commit dirty tree as an
+ * intentional bookkeeping-only no-op vs. a genuinely dropped commit. A
+ * probe error resolves to `[]` (the clean shape) so it degrades to the
+ * no-op posture rather than crying wolf, mirroring {@link isWorkspaceDirty}.
+ */
+export async function workspaceDirtyPaths(
+	exec: ReapExec,
+	workspacePath: string,
+): Promise<string[]> {
+	try {
+		const status = await exec.run("git", ["status", "--porcelain"], {
+			cwd: workspacePath,
+			timeoutMs: 10_000,
+		});
+		return parseDirtyPaths(status.stdout);
+	} catch {
+		return [];
+	}
+}
+
+/** Parse `git status --porcelain` stdout into workspace-relative paths. */
+export function parseDirtyPaths(porcelain: string): string[] {
+	const out: string[] = [];
+	for (const raw of porcelain.split("\n")) {
+		if (raw.trim() === "") continue;
+		// Porcelain v1: 2 status chars + a space, then the path. Renames/copies
+		// render `old -> new`; the destination is what's dirty in the tree.
+		const rest = raw.slice(3);
+		const arrow = rest.indexOf(" -> ");
+		out.push((arrow >= 0 ? rest.slice(arrow + 4) : rest).trim());
+	}
+	return out;
+}
+
+/**
+ * warren-managed data-plane directories (warren-89b0). Uncommitted changes
+ * confined to these are NOT lost agent work: warren mirrors + commits them on
+ * the agent's behalf during finalize (`.mulch/`, `.seeds/`, `.plot/`) or
+ * re-seeds them per-run (`.canopy/`). A zero-commit push whose ONLY dirty
+ * paths are bookkeeping artifacts is a deliberate no-op, not a dropped commit.
+ */
+export const BOOKKEEPING_ARTIFACT_PREFIXES: readonly string[] = [
+	".mulch/",
+	".seeds/",
+	".plot/",
+	".canopy/",
+];
+
+/**
+ * True when the dirty tree is non-empty AND every dirty path lives under a
+ * {@link BOOKKEEPING_ARTIFACT_PREFIXES} directory (warren-89b0). An empty list
+ * returns false — a clean tree is already the classic deliberate-no-op shape and
+ * never reached the dropped-commit branch. Conservative by construction: a
+ * single non-bookkeeping dirty path (real uncommitted work) fails the check and
+ * keeps the dropped-commit guard armed.
+ */
+export function isBookkeepingOnlyDirty(paths: readonly string[]): boolean {
+	if (paths.length === 0) return false;
+	return paths.every((p) => BOOKKEEPING_ARTIFACT_PREFIXES.some((prefix) => p.startsWith(prefix)));
+}
+
+/** Verdict for a zero-commit push (warren-89b0), owned by the reap domain. */
+export interface EmptyPushClassification {
+	/** Real uncommitted work was lost — flip an otherwise-succeeded run to failed. */
+	readonly droppedCommit: boolean;
+	/** Deliberate no-op (clean or bookkeeping-only tree) — stays succeeded, non-alarming. */
+	readonly noChanges: boolean;
+	/** Human-readable `reap.empty_push` message for the resolved shape. */
+	readonly message: string;
+}
+
+/**
+ * Classify a zero-commit push (warren-89b0). A clean tree, or a dirty tree whose
+ * ONLY paths are {@link BOOKKEEPING_ARTIFACT_PREFIXES}, is a deliberate no-op
+ * (succeeded); any non-bookkeeping dirty path over a succeeded run is a dropped
+ * commit (failed). Conservative: an unenumerable dirty tree (`dirtyPaths` empty
+ * but `dirty` true) keeps the dropped-commit guard armed.
+ */
+export function classifyEmptyPush(
+	succeeded: boolean,
+	dirty: boolean,
+	dirtyPaths: readonly string[],
+): EmptyPushClassification {
+	const bookkeepingOnly = dirty && isBookkeepingOnlyDirty(dirtyPaths);
+	if (!dirty) {
+		return {
+			droppedCommit: false,
+			noChanges: succeeded,
+			message: "git push exited zero but the branch landed no new commits — agent did not commit",
+		};
+	}
+	if (bookkeepingOnly) {
+		return {
+			droppedCommit: false,
+			noChanges: succeeded,
+			message:
+				"git push exited zero with no new commits — agent intentionally made no code changes (only warren-managed bookkeeping paths dirty)",
+		};
+	}
+	return {
+		droppedCommit: succeeded,
+		noChanges: false,
+		message:
+			"git push exited zero and the workspace still has uncommitted changes — agent staged work but never committed",
+	};
+}
+
 export const defaultExec: ReapExec = {
 	run: async (cmd, args, opts) => {
 		const execOpts: {

@@ -1,23 +1,21 @@
 /**
  * The reap "success pipeline" (warren-c65d): the long sequence of best-effort
  * sub-steps that runs once a non-`queued` run with a live workspace and a
- * surviving project clone reaches reap. Extracted from `run.ts` so the top-level
- * `reapRun` orchestrator stays under the file-size / function-length budget.
+ * surviving project clone reaches reap. Extracted from `run.ts` to keep the
+ * top-level `reapRun` orchestrator under budget.
  *
  * ## Routed through the RuntimeProvider seam (warren-1f56, pl-829f step 13)
  *
  * The workspace-touching half — the four tracker merges, the two
- * `chore(warren): {plot,seeds} state` bookkeeping commits, the branch push, and
- * the commits-ahead + dirtiness probe — now runs inside a SINGLE
+ * `chore(warren): {plot,seeds} state` commits, the branch push, and the
+ * commits-ahead + dirtiness probe — runs inside a SINGLE
  * `provider.finalize(handle, intent)` call (§4). finalize returns the mirror
- * deltas (counts), collected per-record events, the `dirty` flag, and the
- * workspace `.seeds/plans.jsonl` snapshot; the domain re-emits those events,
- * derives `droppedCommit` + `reap.empty_push` from `dirty`, and keeps the
- * interleaved DOMAIN steps at the call-site (baseline snapshot, `sd close`,
- * auto-plan-run detection, PR-open / preview / preview-annotate).
- *
- * The pipeline mutates a {@link ReapPipelineState} accumulator in place so
- * `reapRun` reads the same field set in its terminal `reap.completed` emit.
+ * deltas, collected events, the `dirty` flag + dirty paths, and the workspace
+ * `.seeds/plans.jsonl` snapshot; the domain re-emits those events, classifies
+ * `reap.empty_push`, and keeps the interleaved DOMAIN steps at the call-site
+ * (baseline snapshot, `sd close`, auto-plan-run detection, PR/preview). The
+ * pipeline mutates a {@link ReapPipelineState} accumulator in place so `reapRun`
+ * reads the same field set in its terminal `reap.completed` emit.
  */
 
 import { join } from "node:path";
@@ -39,6 +37,7 @@ import { runPreviewAnnotate, runPreviewLaunch } from "./preview.ts";
 import { seededArtifactResetPaths } from "./seed-reset.ts";
 import { closeRunSeedId } from "./seeds.ts";
 import type { ReapExec, ReapFs, ReapRunInput, ReapStep } from "./types.ts";
+import { classifyEmptyPush } from "./util.ts";
 
 /** Mutable accumulator carrying every result the pipeline can produce. */
 export interface ReapPipelineState {
@@ -56,10 +55,11 @@ export interface ReapPipelineState {
 	branchPushed: boolean;
 	commitsAhead: number | null;
 	droppedCommit: boolean;
+	/** warren-89b0: deliberate no-op (clean/bookkeeping-only tree); stays succeeded. */
+	noChanges: boolean;
 	/** warren-495d: requested push did NOT complete; fail run + preserve workspace. */
 	finalizeFailed: boolean;
-	/** warren-e9e1 (leg 2): a `chore(warren): mirror state` commit applied the K8s
-	 * finalize's mirror deltas to the clone. Always false on the local path. */
+	/** warren-e9e1 (leg 2): K8s finalize's mirror deltas applied to the clone; local=false. */
 	cloneDeltasApplied: boolean;
 	prUrl: string | null;
 	previewLaunchState: "live" | "failed" | null;
@@ -87,6 +87,7 @@ export function createPipelineState(): ReapPipelineState {
 		branchPushed: false,
 		commitsAhead: null,
 		droppedCommit: false,
+		noChanges: false,
 		finalizeFailed: false,
 		cloneDeltasApplied: false,
 		prUrl: null,
@@ -123,9 +124,8 @@ export interface ReapPipelineContext {
 	readonly fail: (step: ReapStep, err: unknown, path?: string) => Promise<void>;
 	/**
 	 * Record a best-effort failure into reap's `errors[]` WITHOUT emitting a
-	 * `reap_failed` event — used to fold finalize's failed stages back into the
-	 * domain error trail when the matching `reap_failed` event was already
-	 * re-emitted from `FinalizeResult.events`.
+	 * `reap_failed` event — folds finalize's failed stages into the error trail
+	 * when the matching event already rode `FinalizeResult.events`.
 	 */
 	readonly recordError: (step: ReapStep, message: string) => void;
 }
@@ -147,9 +147,8 @@ const FINALIZE_STAGE_TO_REAP_STEP: Partial<Record<FinalizeStage, ReapStep>> = {
 
 /**
  * warren-a32a: snapshot the project-clone baseline plans.jsonl BEFORE finalize's
- * plans mirror so auto_plan_run can diff workspace vs baseline. Must happen
- * before the mirror appends workspace plans into the project clone, which would
- * make the baseline identical to the workspace and defeat the diff.
+ * plans mirror so auto_plan_run can diff workspace vs baseline — the mirror
+ * appends workspace plans into the clone, which would otherwise defeat the diff.
  */
 async function snapshotBaselinePlanIds(ctx: ReapPipelineContext): Promise<Set<string> | null> {
 	if (
@@ -175,8 +174,7 @@ async function snapshotBaselinePlanIds(ctx: ReapPipelineContext): Promise<Set<st
 async function runFinalize(ctx: ReapPipelineContext): Promise<FinalizeResult> {
 	const handle: RunHandle = {
 		runId: ctx.run.id,
-		// burrowId is non-null in the pipeline branch (reapRun guards it).
-		sandboxId: ctx.run.burrowId as string,
+		sandboxId: ctx.run.burrowId as string, // non-null in the pipeline branch (reapRun guards it)
 		providerRunId: ctx.run.burrowRunId ?? "",
 	};
 	// Merges run unconditionally; COMMITS gate on project flags (warren-1f56).
@@ -205,10 +203,9 @@ async function replayFinalizeEvents(ctx: ReapPipelineContext, r: FinalizeResult)
 }
 
 /**
- * Fold finalize's failed stages into reap's `errors[]`. The matching
- * `reap_failed` events were already re-emitted from `r.events`, so this records
- * the error entry only (no second emit). `commits_ahead` is excluded — a
- * rev-list failure is log-only in reap.
+ * Fold finalize's failed stages into reap's `errors[]` (the matching
+ * `reap_failed` events already rode `r.events`, so record only — no re-emit).
+ * `commits_ahead` is excluded: a rev-list failure is log-only in reap.
  */
 function recordFinalizeErrors(ctx: ReapPipelineContext, r: FinalizeResult): void {
 	for (const st of r.stages) {
@@ -234,15 +231,14 @@ function applyFinalizeToState(state: ReapPipelineState, r: FinalizeResult): void
 	state.seedsCommitted = r.events.some((e) => e.kind === "reap.seeds_committed");
 	state.branchPushed = r.pushed;
 	state.commitsAhead = r.commitsAhead;
-	// warren-495d: requested push failed / timed out (commits left unpushed).
+	// warren-495d: push failed/timed out (commits left unpushed).
 	state.finalizeFailed = r.stages.some((s) => s.stage === "branch_push" && s.status === "failed");
 }
 
 /**
- * warren-72b9 / warren-f3bb: on a zero-commit push, derive `droppedCommit` from
- * finalize's `dirty` probe (dirty tree + succeeded = staged-but-uncommitted) and
- * surface it on `reap.empty_push`. The domain owns this because `droppedCommit`
- * needs the run outcome and the workspace is gone after `terminate`.
+ * warren-72b9 / warren-89b0: classify a zero-commit push via `classifyEmptyPush`
+ * — clean/bookkeeping-only ⇒ `noChanges` (succeeded), else `droppedCommit`
+ * (failed). Domain-owned: needs the run outcome; workspace is gone post-terminate.
  */
 async function emitEmptyPushIfNeeded(
 	ctx: ReapPipelineContext,
@@ -250,15 +246,17 @@ async function emitEmptyPushIfNeeded(
 	r: FinalizeResult,
 ): Promise<void> {
 	if (!(r.pushed && r.commitsAhead === 0)) return;
-	state.droppedCommit = r.dirty && ctx.input.outcome === "succeeded";
+	const c = classifyEmptyPush(ctx.input.outcome === "succeeded", r.dirty, r.dirtyPaths ?? []);
+	state.noChanges = c.noChanges;
+	state.droppedCommit = c.droppedCommit;
 	await ctx.emit("reap.empty_push", {
 		branch: ctx.branch,
 		baseBranch: ctx.baseBranch,
 		dirty: r.dirty,
-		droppedCommit: state.droppedCommit,
-		message: r.dirty
-			? "git push exited zero and the workspace still has uncommitted changes — agent staged work but never committed"
-			: "git push exited zero but the branch landed no new commits — agent did not commit",
+		dirtyPaths: r.dirtyPaths ?? [],
+		droppedCommit: c.droppedCommit,
+		noChanges: c.noChanges,
+		message: c.message,
 	});
 }
 
@@ -278,17 +276,20 @@ function resolveWorkspacePlans(
 
 /**
  * warren-0d2d: host-side safety net — close the run's associated seed after a
- * successful reap even if the agent didn't call `sd close`. `sd close` is
- * idempotent; the updated `issues.jsonl` lands on origin via finalize's seeds
- * bookkeeping commit + push (already run by this point).
+ * successful reap even if the agent didn't call `sd close` (`sd close` is
+ * idempotent; the updated `issues.jsonl` already rode finalize's seeds commit).
  */
 async function seedIdCloseStep(ctx: ReapPipelineContext, state: ReapPipelineState): Promise<void> {
 	const { seedId } = ctx.run;
 	const { seedsCli } = ctx.input;
-	// warren-495d: skip close when the push did not land (close rides the push).
+	// warren-495d/89b0: never close for a run ending failed/cancelled. `succeeded`
+	// excludes cancelled + provider-error; `droppedCommit`/`finalizeFailed` (both
+	// resolved before this step) cover the flips-to-failed reap applies AFTER.
 	if (
 		!(
 			ctx.input.outcome === "succeeded" &&
+			!state.droppedCommit &&
+			!state.finalizeFailed &&
 			state.branchPushed &&
 			seedId !== null &&
 			ctx.project.hasSeeds &&
@@ -366,18 +367,17 @@ async function prOpenStep(ctx: ReapPipelineContext, state: ReapPipelineState): P
 
 /**
  * Preview launch (warren-f156 / SPEC §11.L). Skipped on a dropped commit
- * (warren-72b9). warren-4fbe: preview is a LocalProvider-only capability — under
- * a provider with `capabilities.previewPorts === false` (K8s, contract §5.F)
- * gate + skip cleanly; when a project opted in, surface
- * `reap.preview_skipped_unsupported` so operators see why no preview launched.
+ * (warren-72b9). warren-4fbe: preview is LocalProvider-only — under a provider
+ * with `capabilities.previewPorts === false` (K8s) skip cleanly, surfacing
+ * `reap.preview_skipped_unsupported` when a project opted in.
  */
 async function previewLaunchStep(
 	ctx: ReapPipelineContext,
 	state: ReapPipelineState,
 ): Promise<void> {
 	const { burrowId } = ctx.run;
-	// Surface the skip only when a successful, committed run actually opted in (so
-	// preview WOULD have launched locally); otherwise stay silent as a no-op.
+	// Surface the skip only when a successful, committed run opted in (preview
+	// WOULD have launched locally); otherwise stay silent.
 	if (!ctx.provider.capabilities.previewPorts) {
 		if (
 			ctx.input.outcome === "succeeded" &&
