@@ -13,6 +13,7 @@
  */
 
 import { join } from "node:path";
+import { parseDirtyPaths } from "../../runs/reap/util.ts";
 import { authenticatedCloneUrl } from "../../workspace/git/clone-url.ts";
 import type {
 	FinalizeEvent,
@@ -183,9 +184,16 @@ export interface PushOutcome {
 	commitsAhead: number | null;
 	emptyPush: boolean;
 	dirty: boolean;
+	dirtyPaths: readonly string[];
 }
 
-const NO_PUSH: PushOutcome = { pushed: false, commitsAhead: null, emptyPush: false, dirty: false };
+const NO_PUSH: PushOutcome = {
+	pushed: false,
+	commitsAhead: null,
+	emptyPush: false,
+	dirty: false,
+	dirtyPaths: [],
+};
 
 /**
  * `git push origin HEAD:<branch>` then the commits-ahead / empty-push count,
@@ -219,8 +227,17 @@ async function runPush(
 		}
 		trail.ok("branch_push");
 		const commitsAhead = await countCommitsAhead(intent, workspacePath, git, trail);
-		const dirty = commitsAhead === 0 ? await isWorkspaceDirty(workspacePath, git) : false;
-		return { pushed: true, commitsAhead, emptyPush: commitsAhead === 0, dirty };
+		// warren-89b0: capture dirty PATHS on a zero-commit push so warren can
+		// classify a bookkeeping-only no-op vs a dropped commit (parity with
+		// ../local/finalize.ts).
+		const dirtyPaths = commitsAhead === 0 ? await workspaceDirtyPaths(workspacePath, git) : [];
+		return {
+			pushed: true,
+			commitsAhead,
+			emptyPush: commitsAhead === 0,
+			dirty: dirtyPaths.length > 0,
+			dirtyPaths,
+		};
 	} finally {
 		await restore();
 	}
@@ -273,9 +290,13 @@ async function countCommitsAhead(
 	return Number.isFinite(parsed) ? parsed : null;
 }
 
-async function isWorkspaceDirty(workspacePath: string, git: FinalizeGitRunner): Promise<boolean> {
+async function workspaceDirtyPaths(
+	workspacePath: string,
+	git: FinalizeGitRunner,
+): Promise<string[]> {
 	const res = await git(["status", "--porcelain"], { cwd: workspacePath });
-	return res.exitCode === 0 && res.stdout.trim() !== "";
+	if (res.exitCode !== 0) return [];
+	return parseDirtyPaths(res.stdout);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -339,6 +360,7 @@ export async function collectFinalizeResult(
 		commitsAhead: push.commitsAhead,
 		emptyPush: push.emptyPush,
 		dirty: push.dirty,
+		dirtyPaths: push.dirtyPaths,
 		workspacePlansBody,
 		events: collector.events,
 		mirror: {

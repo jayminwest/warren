@@ -131,6 +131,20 @@ function optStringOrNull(obj: Record<string, unknown>, key: string, label: strin
 	return v;
 }
 
+/** warren-89b0: optional `string[]` (absent ⇒ `undefined`, kept off the shape). */
+function optStringArray(
+	obj: Record<string, unknown>,
+	key: string,
+	label: string,
+): readonly string[] | undefined {
+	const v = obj[key];
+	if (v === undefined) return undefined;
+	if (!Array.isArray(v) || v.some((e) => typeof e !== "string")) {
+		throw new ValidationError(`${label}.${key} must be an array of strings`);
+	}
+	return v as string[];
+}
+
 function reqNonNegInt(obj: Record<string, unknown>, key: string, label: string): number {
 	const v = obj[key];
 	if (typeof v !== "number" || !Number.isInteger(v) || v < 0) {
@@ -252,11 +266,13 @@ export function validateFinalizeResult(value: unknown): FinalizeResult {
 	if (mirrorRaw.plans !== undefined) mirror.plans = validatePlansDelta(mirrorRaw.plans);
 	if (mirrorRaw.plot !== undefined) mirror.plot = validatePlotDelta(mirrorRaw.plot);
 
+	const dirtyPaths = optStringArray(o, "dirtyPaths", "result");
 	return {
 		pushed: reqBoolean(o, "pushed", "result"),
 		commitsAhead: reqNumberOrNull(o, "commitsAhead", "result"),
 		emptyPush: reqBoolean(o, "emptyPush", "result"),
 		dirty: reqBoolean(o, "dirty", "result"),
+		...(dirtyPaths !== undefined ? { dirtyPaths } : {}),
 		workspacePlansBody: optStringOrNull(o, "workspacePlansBody", "result"),
 		events: validateEvents(o.events),
 		mirror,

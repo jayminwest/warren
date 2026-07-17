@@ -1,8 +1,8 @@
 /**
  * `LocalProvider.finalize` body (pl-829f step 12 / warren-371a; events+dirty+
- * plans parity refinement warren-1f56, step 13) — the load-bearing §4 seam.
- * Runs the workspace-DEPENDENT half of reap while the burrow workspace is still
- * live and returns structured deltas the domain applies to its project clone.
+ * plans parity refinement warren-1f56, step 13) — the load-bearing §4 seam. Runs
+ * the workspace-DEPENDENT half of reap while the burrow workspace is still live
+ * and returns structured deltas the domain applies to its project clone.
  *
  * A THIN host-side WRAPPER over the EXISTING reap merge functions (`mergeMulch`,
  * `mirrorSeeds`/`mirrorPlans`, `mergePlot`, `stage{Plot,Seeds}ForCommit`, plus
@@ -26,8 +26,8 @@
  *   (default `mirror`) gates the two bookkeeping commits.
  * - **Deliberately NOT here** (domain-owned, §4): PR-open / preview /
  *   auto-plan-run / terminal-state; `reap.empty_push` (needs the run outcome —
- *   finalize returns `dirty` for it); `intent.closeSeedId`. finalize DOES capture
- *   `workspacePlansBody` so auto-plan-run detection survives `terminate`.
+ *   finalize returns `dirty` + dirtyPaths for it); `intent.closeSeedId`.
+ *   finalize DOES capture `workspacePlansBody` so auto-plan-run survives terminate.
  */
 
 import { join } from "node:path";
@@ -39,7 +39,7 @@ import { mergePlot } from "../../runs/reap/plot-merge.ts";
 import { mirrorPlans, mirrorSeeds } from "../../runs/reap/seeds.ts";
 import { stagePlotForCommit, stageSeedsForCommit } from "../../runs/reap/stage.ts";
 import type { ReapExec, ReapFs, ReapStep } from "../../runs/reap/types.ts";
-import { defaultExec, defaultFs, isWorkspaceDirty } from "../../runs/reap/util.ts";
+import { defaultExec, defaultFs, workspaceDirtyPaths } from "../../runs/reap/util.ts";
 import type {
 	FinalizeEvent,
 	FinalizeIntent,
@@ -167,6 +167,7 @@ export async function finalizeLocalRun(
 		commitsAhead: push.commitsAhead,
 		emptyPush: push.emptyPush,
 		dirty: push.dirty,
+		dirtyPaths: push.dirtyPaths,
 		workspacePlansBody,
 		mirror: {
 			...(mulch !== undefined ? { mulch } : {}),
@@ -431,13 +432,14 @@ interface PushOutcome {
 	commitsAhead: number | null;
 	emptyPush: boolean;
 	dirty: boolean;
+	dirtyPaths: readonly string[];
 }
 
 /**
  * `git push origin HEAD:<branch>` then the commits-ahead / empty-push count —
  * faithful to reap's `pushStep` + `commitsAheadStep`. `push === false` skips
- * both; a missing `baseBranch` or a `rev-list` failure yields `commitsAhead:
- * null`. A zero-commit push probes `git status --porcelain` for `dirty` (the
+ * both; a missing `baseBranch`/`rev-list` failure yields `commitsAhead: null`. A
+ * zero-commit push probes `git status --porcelain` for `dirty` + dirtyPaths (the
  * domain's dropped-commit signal); an empty branch pushes `HEAD`.
  */
 async function finalizePush(
@@ -450,7 +452,7 @@ async function finalizePush(
 	if (!intent.push) {
 		trail.skipped("branch_push");
 		trail.skipped("commits_ahead");
-		return { pushed: false, commitsAhead: null, emptyPush: false, dirty: false };
+		return { pushed: false, commitsAhead: null, emptyPush: false, dirty: false, dirtyPaths: [] };
 	}
 	const refspec = intent.branch === "" ? "HEAD" : `HEAD:${intent.branch}`;
 	try {
@@ -463,14 +465,13 @@ async function finalizePush(
 		trail.failed("branch_push", err);
 		await collector.fail("branch_push", err, workspacePath);
 		trail.skipped("commits_ahead");
-		return { pushed: false, commitsAhead: null, emptyPush: false, dirty: false };
+		return { pushed: false, commitsAhead: null, emptyPush: false, dirty: false, dirtyPaths: [] };
 	}
 	const commitsAhead = await countCommitsAhead(intent, workspacePath, exec, trail);
-	// warren-72b9: probe dirtiness only on a zero-commit push (matching reap) so
-	// the domain can tell a dropped commit (staged-but-uncommitted) apart from a
-	// deliberate no-op. Any other case leaves `dirty` false — no extra git call.
-	const dirty = commitsAhead === 0 ? await isWorkspaceDirty(exec, workspacePath) : false;
-	return { pushed: true, commitsAhead, emptyPush: commitsAhead === 0, dirty };
+	// warren-72b9/89b0: capture dirty PATHS on a zero-commit push (dropped commit vs no-op).
+	const dirtyPaths = commitsAhead === 0 ? await workspaceDirtyPaths(exec, workspacePath) : [];
+	const dirty = dirtyPaths.length > 0;
+	return { pushed: true, commitsAhead, emptyPush: commitsAhead === 0, dirty, dirtyPaths };
 }
 
 async function countCommitsAhead(
@@ -492,8 +493,7 @@ async function countCommitsAhead(
 		trail.ok("commits_ahead");
 		return Number.isFinite(parsed) ? parsed : null;
 	} catch (err) {
-		// reap logs the rev-list failure but emits NO `reap_failed` event — the
-		// count degrades to null. Record the stage outcome only.
+		// reap logs the rev-list failure but emits NO `reap_failed` — count → null.
 		trail.failed("commits_ahead", err);
 		return null;
 	}

@@ -369,6 +369,17 @@ export interface FinalizeResult {
 	 */
 	dirty: boolean;
 	/**
+	 * The workspace-relative paths of every uncommitted change at push time
+	 * (warren-89b0), populated ONLY when `dirty` is true (i.e. `pushed &&
+	 * commitsAhead === 0` over a dirty tree). The domain uses it to classify a
+	 * zero-commit dirty tree: a tree whose ONLY dirty paths are warren-managed
+	 * bookkeeping artifacts (`.mulch/`, `.seeds/`, `.plot/`, `.canopy/`) is a
+	 * deliberate no-op (`succeeded`, non-alarming) rather than a dropped commit
+	 * (`failed`). Optional/absent ⇒ the domain falls back to the conservative
+	 * dropped-commit posture (it cannot prove the tree was bookkeeping-only).
+	 */
+	dirtyPaths?: readonly string[];
+	/**
 	 * The workspace `.seeds/plans.jsonl` body snapshotted just before the seeds
 	 * bookkeeping commit overwrote it with the clone-union (warren-1f56). This is
 	 * exactly what reap's `snapshotWorkspacePlans` reads off the live workspace to
