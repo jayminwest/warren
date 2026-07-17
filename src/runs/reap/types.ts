@@ -171,6 +171,7 @@ export type ReapStep =
 	| "seed_id_close"
 	| "clone_apply"
 	| "seeds_commit"
+	| "seed_reset"
 	| "plot_merge"
 	| "plot_commit"
 	| "auto_plan_run"
