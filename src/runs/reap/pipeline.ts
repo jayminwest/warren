@@ -1,9 +1,8 @@
 /**
- * The reap "success pipeline" (warren-c65d): the long sequence of
- * best-effort sub-steps that runs once a non-`queued` run with a live
- * workspace and a surviving project clone reaches reap. Extracted from
- * `run.ts` so the top-level `reapRun` orchestrator stays under the
- * file-size / function-length budget; behavior is byte-for-byte the same.
+ * The reap "success pipeline" (warren-c65d): the long sequence of best-effort
+ * sub-steps that runs once a non-`queued` run with a live workspace and a
+ * surviving project clone reaches reap. Extracted from `run.ts` so the top-level
+ * `reapRun` orchestrator stays under the file-size / function-length budget.
  *
  * ## Routed through the RuntimeProvider seam (warren-1f56, pl-829f step 13)
  *
@@ -11,22 +10,18 @@
  * `chore(warren): {plot,seeds} state` bookkeeping commits, the branch push, and
  * the commits-ahead + dirtiness probe — now runs inside a SINGLE
  * `provider.finalize(handle, intent)` call (§4). finalize returns the mirror
- * deltas (counts), the per-record events it collected, the `dirty` flag, and the
- * workspace `.seeds/plans.jsonl` snapshot; the domain re-emits those events
- * through its real surface, derives `droppedCommit` + `reap.empty_push` from
- * `dirty`, and keeps the interleaved DOMAIN steps at the call-site:
- *   - `snapshotBaselinePlanIds` — reads the CLONE baseline BEFORE finalize's
- *     plans mirror appends to it.
- *   - `seedIdClose` — `sd close` via `SeedsCliDeps` (a domain integration with no
- *     provider-seam home).
- *   - auto-plan-run detection — off finalize's captured `workspacePlansBody`
- *     (the live workspace is gone after `terminate`).
+ * deltas (counts), collected per-record events, the `dirty` flag, and the
+ * workspace `.seeds/plans.jsonl` snapshot; the domain re-emits those events,
+ * derives `droppedCommit` + `reap.empty_push` from `dirty`, and keeps the
+ * interleaved DOMAIN steps at the call-site:
+ *   - `snapshotBaselinePlanIds` — reads the CLONE baseline BEFORE finalize's plans mirror appends.
+ *   - `seedIdClose` — `sd close` via `SeedsCliDeps` (no provider-seam home).
+ *   - auto-plan-run detection — off finalize's captured `workspacePlansBody`.
  *   - PR-open / preview / preview-annotate — pure domain orchestration (§4).
  *
- * The pipeline mutates a {@link ReapPipelineState} accumulator in place
- * rather than returning a fresh object, so `reapRun` can read the same
- * field set in its terminal `reap.completed` emit / return regardless of
- * which branch of the dispatch chain ran.
+ * The pipeline mutates a {@link ReapPipelineState} accumulator in place rather
+ * than returning a fresh object, so `reapRun` can read the same field set in its
+ * terminal `reap.completed` emit / return regardless of which branch ran.
  */
 
 import { join } from "node:path";
@@ -64,6 +59,8 @@ export interface ReapPipelineState {
 	branchPushed: boolean;
 	commitsAhead: number | null;
 	droppedCommit: boolean;
+	/** warren-495d: requested push did NOT complete; fail run + preserve workspace. */
+	finalizeFailed: boolean;
 	/** warren-e9e1 (leg 2): a `chore(warren): mirror state` commit applied the K8s
 	 * finalize's mirror deltas to the clone. Always false on the local path. */
 	cloneDeltasApplied: boolean;
@@ -93,6 +90,7 @@ export function createPipelineState(): ReapPipelineState {
 		branchPushed: false,
 		commitsAhead: null,
 		droppedCommit: false,
+		finalizeFailed: false,
 		cloneDeltasApplied: false,
 		prUrl: null,
 		previewLaunchState: null,
@@ -236,6 +234,8 @@ function applyFinalizeToState(state: ReapPipelineState, r: FinalizeResult): void
 	state.seedsCommitted = r.events.some((e) => e.kind === "reap.seeds_committed");
 	state.branchPushed = r.pushed;
 	state.commitsAhead = r.commitsAhead;
+	// warren-495d: requested push failed / timed out (commits left unpushed).
+	state.finalizeFailed = r.stages.some((s) => s.stage === "branch_push" && s.status === "failed");
 }
 
 /**
@@ -285,9 +285,11 @@ function resolveWorkspacePlans(
 async function seedIdCloseStep(ctx: ReapPipelineContext, state: ReapPipelineState): Promise<void> {
 	const { seedId } = ctx.run;
 	const { seedsCli } = ctx.input;
+	// warren-495d: skip close when the push did not land (close rides the push).
 	if (
 		!(
 			ctx.input.outcome === "succeeded" &&
+			state.branchPushed &&
 			seedId !== null &&
 			ctx.project.hasSeeds &&
 			seedsCli !== undefined
