@@ -47,8 +47,13 @@ services:
         max-size: "10m"
         max-file: "5"
 
+    # Long-form so a missing .env on a fresh clone is not a hard error
+    # (warren-9cda). Compose concatenates env_file across base+overrides,
+    # so the base entry itself must tolerate the file being absent — an
+    # override cannot suppress it.
     env_file:
-      - .env
+      - path: .env
+        required: false
 
     volumes:
       - warren_data:/data
