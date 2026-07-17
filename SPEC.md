@@ -1844,8 +1844,8 @@ two variables injected via `burrows.up`:
 
 | Variable | Value | Producer |
 |---|---|---|
-| `PLOT_ID` | `<run.plot_id>` | `composePlotEnv` (`src/runs/spawn.ts`) |
-| `PLOT_ACTOR` | `agent:<agent-name>:<run-id>` | `composePlotEnv` |
+| `PLOT_ID` | `<run.plot_id>` | `composeRunEnv` (`src/runs/spawn/dispatch.ts`) |
+| `PLOT_ACTOR` | `agent:<agent-name>:<run-id>` | `composeRunEnv` |
 
 The `plot` CLI inside the sandbox (installed globally in the Dockerfile,
 mirroring the `burrow-cli` double-pin rule) reads these on every
@@ -1933,7 +1933,7 @@ covers the round-trip end-to-end against a real warren+burrow stack:
   cron and scheduled-seed paths attribute to the trigger owner's handle.
 
 **`.plot/` preservation across refresh (pl-d4d6, 2026-05-18).** Warren's
-host-side Plot appenders (`defaultPlotAppender` in `src/runs/spawn.ts`,
+host-side Plot appenders (`defaultPlotAppender` in `src/runs/spawn/plot-append.ts`,
 `defaultPlanRunPlotAppender` in `src/plan-runs/plot-appender.ts`,
 `autoTransitionPlotToDone` in `src/plan-runs/plot-transition.ts`) write
 to `<project_clone>/.plot/<id>.events.jsonl` and
@@ -2476,7 +2476,7 @@ POST /plan-runs { plot_id }
 [ coordinator ticks ]
    │
    ▼  for each child: dispatch.ts forwards planRun.plotId into spawnRun
-   ▼  composePlotEnv injects PLOT_ID + PLOT_ACTOR=agent:<name>:<run-id>
+   ▼  composeRunEnv injects PLOT_ID + PLOT_ACTOR=agent:<name>:<run-id>
    ▼  defaultPlotAppender emits per-child `run_dispatched` on the Plot (§11.O)
    │
    ▼  child runs → PR opens → reap → checkPullRequestMerged
@@ -2500,7 +2500,7 @@ per PlanRun**, immediately after `repos.planRuns.create` returns
 (handler edge, not coordinator tick), via the
 `defaultPlanRunPlotAppender` helper in `src/plan-runs/plot-appender.ts`
 — same rebuild-index + retry-once shape as `defaultPlotAppender`
-(`src/runs/spawn.ts`). Payload:
+(`src/runs/spawn/plot-append.ts`). Payload:
 
 ```json
 {
