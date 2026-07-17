@@ -31,3 +31,8 @@ coverage/
 
 # live GKE deployment values (real project ids / identity) — template: overlays/gke
 deploy/k8s/overlays/gke-live/
+
+# local design-sync working dirs + MCP config (may contain secrets)
+.design-sync/
+.ds-sync/
+.mcp.json
