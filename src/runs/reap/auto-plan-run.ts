@@ -29,10 +29,7 @@ export function hasAutoPlanRunFrontmatter(run: { renderedAgentJson: unknown }): 
 	return coerceBooleanFlag((fm as Record<string, unknown>).auto_plan_run);
 }
 
-export function resolveAutoPlanRunAgent(run: {
-	renderedAgentJson: unknown;
-	agentName: string;
-}): string {
+function resolveAutoPlanRunAgent(run: { renderedAgentJson: unknown; agentName: string }): string {
 	const json = run.renderedAgentJson;
 	if (json !== null && typeof json === "object" && !Array.isArray(json)) {
 		const fm = (json as Record<string, unknown>).frontmatter;
