@@ -312,6 +312,21 @@ export interface FinalizeIntent {
 	 */
 	projectClonePathHint?: string;
 	closeSeedId?: string;
+	/**
+	 * warren-8d95: warren-seeded workspace artifacts (the rendered agent
+	 * envelope + `.pi/` drops + `.seeds/workflow.txt`) that must be RESET to
+	 * `baseBranch` before `branch_push` so they never ride into a PR. In
+	 * projects that themselves track a colliding path (e.g. warren's own repo
+	 * tracks `.canopy/agent.json`), warren's seed dirties the tracked file and a
+	 * broad agent commit (`git add -A`) sweeps it into the branch, tripping the
+	 * Article IX protected-path automerge guard. Each entry carries the path and
+	 * the exact bytes warren seeded; finalize only resets a path whose live
+	 * workspace content still EQUALS the seeded bytes (so an intentional agent
+	 * edit is preserved). Omitted / empty ⇒ the reset stage is skipped (existing
+	 * callers unchanged). LocalProvider honors it; the K8s wire does not yet
+	 * project it.
+	 */
+	resetSeededPaths?: ReadonlyArray<{ path: string; contents: string }>;
 }
 
 /**
@@ -402,6 +417,7 @@ export type FinalizeStage =
 	| "plot_merge"
 	| "plot_commit"
 	| "seeds_commit"
+	| "seed_reset"
 	| "branch_push"
 	| "commits_ahead";
 

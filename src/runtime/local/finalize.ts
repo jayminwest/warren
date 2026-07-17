@@ -5,8 +5,9 @@
  * live and returns structured deltas the domain applies to its project clone.
  *
  * A THIN host-side WRAPPER over the EXISTING reap merge functions (`mergeMulch`,
- * `mirrorSeeds`/`mirrorPlans`, `mergePlot`, `stage{Plot,Seeds}ForCommit`) — it
- * calls them, it does NOT fork their logic; the pushed branch stays reap's.
+ * `mirrorSeeds`/`mirrorPlans`, `mergePlot`, `stage{Plot,Seeds}ForCommit`, plus
+ * the warren-8d95 `finalizeSeedReset`) — it calls them, it does NOT fork their
+ * logic; the pushed branch stays reap's.
  *
  * ## Burrow file-reads live HERE (warren-fbbf)
  *
@@ -21,9 +22,8 @@
  *   `reap.{plot,seeds}_committed`) plus per-line/stage `reap_failed`. finalize
  *   hands them a COLLECTING emit/fail that appends `{kind, payload}` to
  *   `FinalizeResult.events` for the domain to re-emit; counts ride the deltas.
- * - **Merge vs commit gating**: `intent.mirror` gates the four merges;
- *   `intent.commit` (default `mirror`) gates the two bookkeeping commits, so the
- *   domain passes `mirror:[all four]` while gating commits on the project flags.
+ * - **Merge vs commit gating**: `intent.mirror` gates the four merges; `commit`
+ *   (default `mirror`) gates the two bookkeeping commits.
  * - **Deliberately NOT here** (domain-owned, §4): PR-open / preview /
  *   auto-plan-run / terminal-state; `reap.empty_push` (needs the run outcome —
  *   finalize returns `dirty` for it); `intent.closeSeedId`. finalize DOES capture
@@ -54,6 +54,7 @@ import type {
 	SeedsDelta,
 } from "../contract.ts";
 import { RuntimeProviderError } from "../errors.ts";
+import { finalizeSeedReset } from "./finalize-seed-reset.ts";
 
 /** Clone-relative (posix) tracker paths — the delta `path` fields + read-back keys. */
 const MULCH_EXPERTISE_REL = ".mulch/expertise";
@@ -123,8 +124,7 @@ export async function finalizeLocalRun(
 	const trail = new StageTrail();
 	const collector = new EventCollector();
 	const mirror = new Set(intent.mirror);
-	// Commit-gating decouples from merge-gating (warren-1f56); default to
-	// `mirror` so pre-existing callers that only passed `mirror` are unchanged.
+	// Commit-gating decouples from merge-gating (warren-1f56); default to `mirror`.
 	const commit = new Set(intent.commit ?? intent.mirror);
 	const workspacePath = await resolveWorkspacePath(client, handle.sandboxId);
 	const clonePath = resolveClonePath(intent, mirror);
@@ -155,6 +155,8 @@ export async function finalizeLocalRun(
 	if (commit.has("seeds")) {
 		await finalizeSeedsCommit(workspacePath, clonePath, fs, exec, trail, collector);
 	}
+
+	await finalizeSeedReset(intent, workspacePath, fs, exec, trail, collector);
 
 	const push = await finalizePush(intent, workspacePath, exec, trail, collector);
 	const prBranch =

@@ -13,15 +13,11 @@
  * deltas (counts), collected per-record events, the `dirty` flag, and the
  * workspace `.seeds/plans.jsonl` snapshot; the domain re-emits those events,
  * derives `droppedCommit` + `reap.empty_push` from `dirty`, and keeps the
- * interleaved DOMAIN steps at the call-site:
- *   - `snapshotBaselinePlanIds` — reads the CLONE baseline BEFORE finalize's plans mirror appends.
- *   - `seedIdClose` — `sd close` via `SeedsCliDeps` (no provider-seam home).
- *   - auto-plan-run detection — off finalize's captured `workspacePlansBody`.
- *   - PR-open / preview / preview-annotate — pure domain orchestration (§4).
+ * interleaved DOMAIN steps at the call-site (baseline snapshot, `sd close`,
+ * auto-plan-run detection, PR-open / preview / preview-annotate).
  *
- * The pipeline mutates a {@link ReapPipelineState} accumulator in place rather
- * than returning a fresh object, so `reapRun` can read the same field set in its
- * terminal `reap.completed` emit / return regardless of which branch ran.
+ * The pipeline mutates a {@link ReapPipelineState} accumulator in place so
+ * `reapRun` reads the same field set in its terminal `reap.completed` emit.
  */
 
 import { join } from "node:path";
@@ -40,6 +36,7 @@ import { dispatchAutoPlanRuns, hasAutoPlanRunFrontmatter, parsePlanIds } from ".
 import { applyCloneDeltas } from "./clone-apply.ts";
 import { runPrOpen } from "./pr-open.ts";
 import { runPreviewAnnotate, runPreviewLaunch } from "./preview.ts";
+import { seededArtifactResetPaths } from "./seed-reset.ts";
 import { closeRunSeedId } from "./seeds.ts";
 import type { ReapExec, ReapFs, ReapRunInput, ReapStep } from "./types.ts";
 
@@ -144,6 +141,7 @@ const FINALIZE_STAGE_TO_REAP_STEP: Partial<Record<FinalizeStage, ReapStep>> = {
 	plot_merge: "plot_merge",
 	plot_commit: "plot_commit",
 	seeds_commit: "seeds_commit",
+	seed_reset: "seed_reset",
 	branch_push: "branch_push",
 };
 
@@ -181,8 +179,7 @@ async function runFinalize(ctx: ReapPipelineContext): Promise<FinalizeResult> {
 		sandboxId: ctx.run.burrowId as string,
 		providerRunId: ctx.run.burrowRunId ?? "",
 	};
-	// Merges run unconditionally in reap; the bookkeeping COMMITS gate on the
-	// project flags. `mirror` gates the merges, `commit` the commits (warren-1f56).
+	// Merges run unconditionally; COMMITS gate on project flags (warren-1f56).
 	const commit: ("plot" | "seeds")[] = [];
 	if (ctx.project.hasPlot) commit.push("plot");
 	if (ctx.project.hasSeeds) commit.push("seeds");
@@ -192,6 +189,9 @@ async function runFinalize(ctx: ReapPipelineContext): Promise<FinalizeResult> {
 		mirror: ["mulch", "seeds", "plans", "plot"],
 		commit,
 		projectClonePathHint: ctx.project.localPath,
+		// warren-8d95: reset warren-seeded artifacts to base before push so a broad
+		// agent commit can't sweep them into the PR (Article IX protected-path guard).
+		resetSeededPaths: seededArtifactResetPaths(ctx.run.renderedAgentJson),
 		...(ctx.baseBranch !== null ? { baseBranch: ctx.baseBranch } : {}),
 	};
 	return ctx.provider.finalize(handle, intent);
