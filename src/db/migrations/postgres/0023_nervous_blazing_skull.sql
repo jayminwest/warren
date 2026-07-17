@@ -10,5 +10,5 @@ CREATE TABLE "run_inbox" (
 	"delivered_at" text
 );
 --> statement-breakpoint
-ALTER TABLE "run_inbox" ADD CONSTRAINT "run_inbox_run_id_runs_id_fk" FOREIGN KEY ("run_id") REFERENCES "public"."runs"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "run_inbox" ADD CONSTRAINT "run_inbox_run_id_runs_id_fk" FOREIGN KEY ("run_id") REFERENCES "runs"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 CREATE INDEX "run_inbox_run_state_idx" ON "run_inbox" USING btree ("run_id","state");
