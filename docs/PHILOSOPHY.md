@@ -43,10 +43,15 @@ The litmus test for whether something belongs in core:
 > If it can be expressed as "something that observes or reacts to the run
 > lifecycle," it is an extension.
 
-By that test, plan-runs, plot, mulch, canopy, seeds integration, healer,
-ci-fixer, preview environments, triggers, and conversations are all
-extensions. Removing a feature should mean *not loading it*, never
-surgery.
+By that test, plan-runs, mulch, seeds integration, healer, ci-fixer,
+preview environments, and triggers are all extensions-in-waiting.
+Removing a feature should mean *not loading it*, never surgery.
+
+**Amendment (2026-07-17):** plot, conversations (brainstorming/chat),
+and canopy fail a *prior* test — they have no users. They are being
+**deleted outright**, not re-platformed (rule 8). A deleted feature can
+return as an extension when someone wants it badly enough to pay for
+the API it needs.
 
 ## The seams
 
@@ -58,7 +63,8 @@ implementations. Current state:
 | Runtime / sandbox | `RuntimeProvider` (`src/runtime/contract.ts`) | **Live** — local (burrow) + k8s. Eviction of legacy direct burrow paths tracked in pl-829f. |
 | Storage | dialect-aware db layer (`src/db/client.ts`) | **Live** — sqlite + postgres. |
 | Forge (GitHub, …) | `Forge` — openPR, mergePR, checkRuns, repo URLs, auth | Planned; cut alongside the GitHub App work. |
-| Issue tracker | `IssueTracker` — seeds first, Linear second | Planned; cut alongside the Linear integration. |
+| Issue tracker | `IssueTracker` — seeds first, Linear/GitHub Issues second; capability-flagged (`supportsPlans`) so plan-runs degrade gracefully on trackers without plan shapes | Planned; cut alongside the Linear integration. |
+| Auth | `AuthProvider` — `token` (bearer, today's default) + `github` (GitHub App login, repo-permission mirroring) | Planned; cut alongside the GitHub App / teams work. |
 | Agent runtime | `AgentRuntimeAdapter` — command construction, event parsing, steering format, per runtime | Planned. Lives in **warren**, not burrow; burrow stays a dumb sandbox primitive. |
 | Extensions | lifecycle event bus + registration API | Planned. Tier 1 (observe) before Tier 2 (participate). |
 
@@ -67,6 +73,32 @@ house style for every future seam: provider-neutral DTOs, capability
 flags, env/config-selected registry resolved once at boot, unknown
 selections fail loudly.
 
+## Extension tiers
+
+Who wrote the code determines which mechanism carries it. Three tiers,
+split by trust, cheapest first — and the first tier is always the first
+answer to "where does my custom integration code live":
+
+- **Tier 0 — in-repo skills.** Most "integrations" need no warren
+  surface at all: CLI tools plus a README/AGENTS.md in the *project's
+  own repo*, invoked by the agent inside the sandbox, paid for only
+  when used. A team's AWS/S3/deploy tooling lives here first.
+- **Tier 1 — container plugins.** Run-adjacent custom code is a
+  container with an env contract (the Woodpecker CI model): warren
+  invokes the team's image at a lifecycle stage with `WARREN_RUN_ID` /
+  `PLUGIN_*` env vars. A custom harness is just an agent image plus a
+  registry entry. Language-agnostic; versioned by image tag; survives
+  core churn.
+- **Tier 2 — operator hooks.** In-process TypeScript loaded at boot
+  from deployment config, for the person who *owns* the deployment
+  only. Third-party code never runs inside the server process.
+
+The hook contract is versioned from day one (`warren-ext/v1` in every
+payload, negotiated at handshake, Terraform-style), and breaking
+changes deprecate into a compat shim before removal. Every refusal to
+add a feature to core gets a public "deliberately not in core" entry
+with a recipe pointing at the tier that carries it.
+
 ## Operating rules
 
 1. **Features pay for seams.** Never cut an abstraction speculatively;
@@ -74,10 +106,10 @@ selections fail loudly.
    for `RuntimeProvider`; the GitHub App pays for `Forge`; Linear pays
    for `IssueTracker`. Building the feature *without* cutting the seam
    first deepens coupling that must then be un-deepened — order matters.
-2. **First-party features must be expressible as extensions.** If plot
-   or plan-runs can't be rebuilt on the extension API, the API isn't good
-   enough yet. We eat our own constraint, like pi shipping sub-agents as
-   an extension.
+2. **First-party features must be expressible as extensions.** If
+   plan-runs or mulch can't be rebuilt on the extension API, the API
+   isn't good enough yet. We eat our own constraint, like pi shipping
+   sub-agents as an extension.
 3. **`ServerDeps` only shrinks.** The dep bag is the anti-pattern this
    policy exists to kill. New capabilities register through a seam; they
    do not add fields. (Twelve plot-specific injector fields is the
@@ -98,6 +130,12 @@ selections fail loudly.
 7. **Capabilities, not conditionals.** Runtime- or integration-specific
    behavior gates on declared capability flags (`RuntimeCapabilities`),
    not on `hasPlot`-style booleans scattered through handlers.
+8. **Unused features are deleted, not re-platformed.** Rule 2 applies
+   to features that earn their keep. A feature with no users can't pay
+   for a seam (rule 1), so building extension API to carry it is
+   speculative abstraction wearing a discipline costume. Delete it and
+   keep the door open — deletion is the honest form of subtraction, and
+   pi's minimalism began with leaving things out, not carrying them.
 
 ## Anti-goals
 
@@ -119,19 +157,31 @@ escape hatch:
 
 ## Sequencing
 
-Standing order of work, each step paid for by a roadmap item:
+Standing order of work, each step paid for by a roadmap item
+(amended 2026-07-17):
 
 1. **Burrow-client eviction** (pl-829f, warren-36cb…warren-f796) —
-   finish the `RuntimeProvider` decision; `ServerDeps.burrowClient`
-   deleted and the boundary lint-enforced.
-2. **Tier-1 event bus**, proven by moving one reactive feature (healer)
-   onto it.
-3. **`Forge` contract**, paid for by the GitHub App.
-4. **`IssueTracker` contract**, paid for by Linear.
-5. **Re-platform plot / mulch / canopy / plan-runs as extensions** —
-   where `ServerDeps` actually dies and "remove chat" becomes "don't
+   effectively landed: `ServerDeps.burrowClient` is gone and spawn/reap
+   route through `RuntimeProvider`. Close out the remaining pl-829f
+   children and the boundary lint.
+2. **Deletion pass** — conversations → plot (+ plot-plan-run bridges)
+   → canopy, in that order (conversations depend on plot; plan-runs'
+   plot hooks leave with plot). Includes pulling the plot merge out of
+   `RuntimeProvider.finalize()` and deleting the twelve plot injector
+   fields — `ServerDeps` shrinks by ~15 fields in one stroke.
+3. **Tier-1 event bus** on `RunEventBroker`, proven by moving healer
+   onto it and evicting the mulch/seeds mirrors from `finalize()` —
+   the finalize contract stops enumerating features.
+4. **`Forge` + `AuthProvider` contracts**, both paid for by the GitHub
+   App (teams: login, repo-permission mirroring, `run.dispatched_by`
+   attribution).
+5. **`IssueTracker` contract**, paid for by Linear or GitHub Issues —
+   capability-flagged so plan-runs degrade gracefully on trackers
+   without seeds-style plan shapes.
+6. **Re-platform plan-runs / mulch / seeds as extensions** — where
+   `ServerDeps` finishes dying and "remove a feature" becomes "don't
    load it."
-6. **`AgentRuntimeAdapter`** — pulls runtime string interpretation and
+7. **`AgentRuntimeAdapter`** — pulls runtime string interpretation and
    payload parsing (`terminal-detect.ts`) behind a warren-owned registry.
 
 Warren becomes the pi.dev of software factories by accretion of
