@@ -15,6 +15,8 @@ import type { Repos } from "../../db/repos/index.ts";
 import {
 	autoTransitionPlotToDone,
 	bootPlanRunCoordinator,
+	type CoordinatorCloseChildSeedFn,
+	closeMergedChildSeed,
 	createPlanRunSpawn,
 	createPrMergeChecker,
 	createResolveExecution,
@@ -115,6 +117,50 @@ function createReopenPr(
 	};
 }
 
+type CloseChildSeedDeps = Pick<
+	PlanRunWiringInput,
+	"repos" | "projectsConfig" | "seedsCli" | "projectSpawn" | "logger"
+>;
+
+/**
+ * Build the host-side child-seed close seam (warren-3806). Fired the instant
+ * a plan-run child transitions to `merged`; deterministically closes the
+ * child's seed on the coordination project's default branch using
+ * WARREN_BOT_IDENTITY. Best-effort — any failure is logged and swallowed so
+ * the plan keeps advancing (mirrors the Plot auto-done hook's tolerance).
+ */
+function createCloseChildSeed(deps: CloseChildSeedDeps): CoordinatorCloseChildSeedFn {
+	const { repos, projectsConfig, seedsCli, projectSpawn, logger } = deps;
+	return async ({ planRun, child }) => {
+		try {
+			const project = await repos.projects.get(planRun.projectId);
+			if (project === null || !project.hasSeeds) return;
+			const result = await closeMergedChildSeed({
+				projectPath: project.localPath,
+				defaultBranch: project.defaultBranch,
+				seedId: child.seedId,
+				seedsCli,
+				spawn: projectSpawn,
+				gitBinary: projectsConfig.gitBinary,
+			});
+			logger.info(
+				{ planRunId: planRun.id, seq: child.seq, seedId: child.seedId, outcome: result.kind },
+				"plan_run.child_seed_closed",
+			);
+		} catch (err) {
+			logger.warn(
+				{
+					planRunId: planRun.id,
+					seq: child.seq,
+					seedId: child.seedId,
+					reason: err instanceof Error ? err.message : String(err),
+				},
+				"plan_run.child_seed_close_failed",
+			);
+		}
+	};
+}
+
 export interface PlanRunWiringInput {
 	readonly env: EnvLike;
 	readonly repos: Repos;
@@ -161,6 +207,14 @@ export function bootPlanRunCoordinatorWiring(input: PlanRunWiringInput): PlanRun
 		},
 		checkPrMerged: createPrMergeChecker({ token: autoOpenPr.token }),
 		resolveExecution: createResolveExecution(repos), // pl-fb43 step 5: per-child execution repo
+		// warren-3806: deterministic host-side seed close when a child merges.
+		closeChildSeed: createCloseChildSeed({
+			repos,
+			projectsConfig,
+			seedsCli,
+			projectSpawn,
+			logger,
+		}),
 		reopenPr: createReopenPr({
 			repos,
 			warrenConfigs,

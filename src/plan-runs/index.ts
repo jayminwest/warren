@@ -6,6 +6,11 @@
  */
 
 export {
+	type CloseMergedChildSeedInput,
+	type CloseMergedChildSeedResult,
+	closeMergedChildSeed,
+} from "./close-child-seed.ts";
+export {
 	DEFAULT_PLAN_RUN_MERGE_TIMEOUT_MS,
 	DEFAULT_PLAN_RUN_TICK_MS,
 	type EnvLike,
@@ -16,6 +21,7 @@ export {
 	type AdvancePlanRunInput,
 	type AdvanceResult,
 	advancePlanRun,
+	type CoordinatorCloseChildSeedFn,
 	type CoordinatorEmitFn,
 	type CoordinatorReopenPrFn,
 	type CoordinatorRepos,

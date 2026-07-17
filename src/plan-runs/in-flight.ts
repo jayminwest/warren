@@ -16,6 +16,7 @@ import type { PlanRunChildRow, PlanRunRow, RunRow } from "../db/schema.ts";
 import type {
 	AdvanceResult,
 	ChildExecution,
+	CoordinatorCloseChildSeedFn,
 	CoordinatorEmitFn,
 	CoordinatorRepos,
 	CoordinatorResolveExecutionFn,
@@ -119,6 +120,17 @@ export interface HandleInFlightInput {
 	readonly mergeTimeoutMs: number;
 	readonly now: () => Date;
 	readonly reopenPr?: CoordinatorReopenPrFn; // warren-22de: (re)open PR before failing
+	readonly closeChildSeed?: CoordinatorCloseChildSeedFn; // warren-3806: host-side seed close on merge
+}
+
+/**
+ * warren-3806: fire the host-side child-seed close the instant a child
+ * transitions to `merged`. Best-effort — the seam owns its own error
+ * handling, so this never throws into the coordinator loop.
+ */
+async function fireCloseChildSeed(input: HandleInFlightInput): Promise<void> {
+	if (input.closeChildSeed === undefined) return;
+	await input.closeChildSeed({ planRun: input.planRun, child: input.child });
 }
 
 export type HandleInFlightDecision =
@@ -205,6 +217,7 @@ async function resolveMissingPrUrl(
 			trivial: true,
 			...(await resolveExecutionFields(planRun, child, input.showSeed, input.resolveExecution)),
 		});
+		await fireCloseChildSeed(input);
 		return { kind: "decision", decision: { kind: "merged" } };
 	}
 	const prReopen = await resolveChildPrReopen({ run, mergeTimeoutMs, now, reopenPr });
@@ -311,6 +324,7 @@ async function pollMergeState(
 			mergedAt: polled.mergedAt,
 			...(await resolveExecutionFields(planRun, child, input.showSeed, input.resolveExecution)),
 		});
+		await fireCloseChildSeed(input);
 		return { kind: "merged" };
 	}
 	if (polled.kind === "open") {
