@@ -26,19 +26,9 @@
  * - `./preview-wiring.ts` — preview signed-cookie + proxy assembly
  */
 
-import { join } from "node:path";
 import { openDatabase } from "../../db/client.ts";
 import { DrizzleAdapter } from "../../db/repos/drizzle-adapter.ts";
 import { createRepos } from "../../db/repos/index.ts";
-import {
-	autoTransitionPlotToDone,
-	bootPlanRunCoordinator,
-	createPlanRunSpawn,
-	createPrMergeChecker,
-	createResolveExecution,
-	defaultPlotStatusSetter,
-	loadPlanRunCoordinatorConfigFromEnv,
-} from "../../plan-runs/index.ts";
 import {
 	loadPreviewEvictionConfigFromEnv,
 	startPreviewEvictionWorker,
@@ -46,23 +36,17 @@ import {
 import { loadPreviewLaunchConfigFromEnv } from "../../preview/launch/index.ts";
 import { loadPreviewPortRangeFromEnv, PreviewPortAllocator } from "../../preview/port-allocator.ts";
 import { loadProjectsConfigFromEnv } from "../../projects/config.ts";
-import { parseGitHubUrl } from "../../projects/index.ts";
 import { seedBuiltinAgents } from "../../registry/builtins/index.ts";
 import { loadCanopyRegistryConfigFromEnv } from "../../registry/config.ts";
 import {
-	composeRunBranch,
 	loadAutoOpenPrConfigFromEnv,
 	loadRunBranchPrefixFromEnv,
 	RunEventBroker,
 	reapRun,
-	resolveDispatcherHandle,
-	resolveRunBranchPrefix,
 } from "../../runs/index.ts";
-import { buildPrContent, openPullRequest } from "../../runs/pr.ts";
 import { loadWorkspaceGcConfigFromEnv, startWorkspaceGcWorker } from "../../runs/reap/gc.ts";
 import { resolveLocalBootBackend } from "../../runtime/local/boot-backend.ts";
 import { resolveRuntimeKind } from "../../runtime/registry.ts";
-import { showSeed } from "../../seeds-cli/index.ts";
 import { loadWarrenServerConfigFromFile } from "../../server-config/index.ts";
 import { loadTriggerSchedulerConfigFromEnv } from "../../triggers/index.ts";
 import { createWarrenConfigCache } from "../../warren-config/index.ts";
@@ -76,12 +60,12 @@ import { buildServerDeps } from "./deps.ts";
 import { bootBackgroundDetectors } from "./detector-wiring.ts";
 import {
 	bridgeLoggerFromPino,
-	planRunLoggerFromPino,
 	previewEvictionLoggerFromPino,
 	schedulerLoggerFromPino,
 	workspaceGcLoggerFromPino,
 } from "./logging.ts";
 import { bootObservability, captureBootFailure } from "./observability-wiring.ts";
+import { bootPlanRunCoordinatorWiring } from "./plan-run-wiring.ts";
 import { createPreviewAuthAndProxy } from "./preview-wiring.ts";
 import { bootK8sRuntime, resolveBootRuntimeProvider } from "./runtime-wiring.ts";
 import { closeDatabase, defaultSpawn, redactDbUrl, resolvePgPoolMax } from "./utils.ts";
@@ -286,113 +270,21 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 		);
 	}
 
-	// Plan-run coordinator (pl-a258 / warren-2623). Polls active plan_runs
-	// rows on a 10s tick by default; same single-flight + disabled-via-env
-	// shape as bootScheduler so operators reading logs see identical
-	// lifecycle semantics.
-	const planRunCoordinatorConfig = loadPlanRunCoordinatorConfigFromEnv(env);
-	const planRunCoordinator = bootPlanRunCoordinator({
+	// Plan-run coordinator (pl-a258 / warren-2623). See plan-run-wiring.ts.
+	const planRunCoordinator = bootPlanRunCoordinatorWiring({
+		env,
 		repos,
-		showSeed: async (projectId, seedId) => {
-			const project = await repos.projects.require(projectId);
-			return showSeed(seedsCli, project.localPath, seedId);
-		},
-		checkPrMerged: createPrMergeChecker({ token: autoOpenPr.token }),
-		resolveExecution: createResolveExecution(repos), // pl-fb43 step 5: per-child execution repo
-		reopenPr:
-			autoOpenPr.enabled && autoOpenPr.token !== ""
-				? async (runId: string): Promise<string | null> => {
-						try {
-							const run = await repos.runs.get(runId);
-							if (run === null || run.projectId === null) return null;
-							const project = await repos.projects.get(run.projectId);
-							if (project === null) return null;
-							const warrenConfig = await warrenConfigs.get(run.projectId, project.localPath);
-							const prefix = resolveRunBranchPrefix({
-								projectDefault: warrenConfig.defaults?.runBranchPrefix,
-								envDefault: runBranchPrefixDefault,
-							});
-							const branch = composeRunBranch(prefix, runId);
-							const parsed = parseGitHubUrl(project.gitUrl);
-							const content = buildPrContent({
-								prompt: run.prompt,
-								runId: run.id,
-								agentName: run.agentName,
-								...(run.startedAt !== null ? { startedAt: run.startedAt } : {}),
-								...(run.endedAt !== null ? { endedAt: run.endedAt } : {}),
-								...(run.costUsd !== null ? { costUsd: run.costUsd } : {}),
-								...(run.tokensInput !== null ? { tokensInput: run.tokensInput } : {}),
-								...(run.tokensOutput !== null ? { tokensOutput: run.tokensOutput } : {}),
-								...(run.tokensCacheRead !== null ? { tokensCacheRead: run.tokensCacheRead } : {}),
-								...(autoOpenPr.warrenBaseUrl !== null
-									? { warrenBaseUrl: autoOpenPr.warrenBaseUrl }
-									: {}),
-							});
-							const result = await openPullRequest({
-								owner: parsed.owner,
-								repo: parsed.name,
-								head: branch,
-								base: project.defaultBranch,
-								title: content.title,
-								body: content.body,
-								token: autoOpenPr.token,
-							});
-							if (result.ok) return result.url;
-							logger.warn(
-								{ runId, reason: result.reason, message: result.message },
-								"plan_run.reopen_pr_failed",
-							);
-							return null;
-						} catch (err) {
-							logger.warn(
-								{ runId, reason: err instanceof Error ? err.message : String(err) },
-								"plan_run.reopen_pr_error",
-							);
-							return null;
-						}
-					}
-				: undefined,
-		spawn: createPlanRunSpawn({
-			repos,
-			runtimeProvider,
-			bridges: bridgesBoot.registry,
-			warrenConfigs,
-			projectsConfig,
-			projectSpawn: defaultSpawn,
-			seedsCli,
-			...(runBranchPrefixDefault !== undefined ? { runBranchPrefixDefault } : {}),
-			...(opts.now !== undefined ? { now: opts.now } : {}),
-		}),
-		// warren-b290 / pl-7937 step 5: auto-transition the bound Plot from
-		// `active` → `done` when every child of a Plot-bound PlanRun reaches a
-		// terminal state. Best-effort — see autoTransitionPlotToDone.
-		transitionPlot: async (planRun) => {
-			if (planRun.plotId === null) {
-				// Coordinator already guards on plotId, but narrow defensively
-				// so an unexpected null still produces a benign skip.
-				return { kind: "skipped", currentStatus: "unknown" };
-			}
-			const project = await repos.projects.require(planRun.projectId);
-			return autoTransitionPlotToDone({
-				setter: defaultPlotStatusSetter,
-				logger,
-				plotDir: join(project.localPath, ".plot"),
-				plotId: planRun.plotId,
-				handle: resolveDispatcherHandle(planRun.dispatcherHandle),
-				planRunId: planRun.id,
-			});
-		},
-		tickMs: planRunCoordinatorConfig.tickMs,
-		disabled: planRunCoordinatorConfig.disabled,
-		mergeTimeoutMs: planRunCoordinatorConfig.mergeTimeoutMs,
-		logger: planRunLoggerFromPino(logger),
+		runtimeProvider,
+		bridges: bridgesBoot.registry,
+		warrenConfigs,
+		projectsConfig,
+		autoOpenPr,
+		seedsCli,
+		projectSpawn: defaultSpawn,
+		logger,
+		...(runBranchPrefixDefault !== undefined ? { runBranchPrefixDefault } : {}),
 		...(opts.now !== undefined ? { now: opts.now } : {}),
 	});
-	if (planRunCoordinatorConfig.disabled) {
-		logger.info({}, "plan-run coordinator disabled via WARREN_PLAN_RUN_DISABLED");
-	} else {
-		logger.info({ tickMs: planRunCoordinatorConfig.tickMs }, "plan-run coordinator running");
-	}
 
 	// Background detectors (each gated by its own env flag): the pause
 	// detector (warren-2976), run heartbeat watchdog (warren-285d), send-off

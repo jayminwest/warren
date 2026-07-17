@@ -1,0 +1,213 @@
+/**
+ * Plan-run coordinator boot wiring (pl-a258 / warren-2623). Extracted
+ * from `bootServer` in `index.ts` so the orchestrator stays under the
+ * per-file size budget, mirroring the sibling `*-wiring.ts` precedent
+ * (preview-wiring.ts, detector-wiring.ts, observability-wiring.ts).
+ *
+ * Polls active `plan_runs` rows on a 10s tick by default; same
+ * single-flight + disabled-via-env shape as `bootScheduler` so operators
+ * reading logs see identical lifecycle semantics. Returns the coordinator
+ * handle so the caller can call `.stop()` on it in teardown.
+ */
+
+import { join } from "node:path";
+import type { Repos } from "../../db/repos/index.ts";
+import {
+	autoTransitionPlotToDone,
+	bootPlanRunCoordinator,
+	createPlanRunSpawn,
+	createPrMergeChecker,
+	createResolveExecution,
+	defaultPlotStatusSetter,
+	loadPlanRunCoordinatorConfigFromEnv,
+	type PlanRunCoordinatorHandle,
+} from "../../plan-runs/index.ts";
+import type { SpawnFn } from "../../projects/clone.ts";
+import type { ProjectsConfig } from "../../projects/config.ts";
+import { parseGitHubUrl } from "../../projects/index.ts";
+import {
+	type AutoOpenPrConfig,
+	composeRunBranch,
+	resolveDispatcherHandle,
+	resolveRunBranchPrefix,
+} from "../../runs/index.ts";
+import { buildPrContent, openPullRequest } from "../../runs/pr.ts";
+import type { RuntimeProvider } from "../../runtime/contract.ts";
+import type { SeedsCliDeps } from "../../seeds-cli/index.ts";
+import { showSeed } from "../../seeds-cli/index.ts";
+import type { WarrenConfigCache } from "../../warren-config/index.ts";
+import type { EnvLike } from "../config.ts";
+import type { BridgeRegistry, Logger } from "../types.ts";
+import { planRunLoggerFromPino } from "./logging.ts";
+
+type ReopenPrDeps = Pick<
+	PlanRunWiringInput,
+	"repos" | "warrenConfigs" | "autoOpenPr" | "runBranchPrefixDefault" | "logger"
+>;
+
+type RunRow = NonNullable<Awaited<ReturnType<Repos["runs"]["get"]>>>;
+
+/** Build the optional `buildPrContent` fields (only-if-present spreads). */
+function buildReopenPrContent(
+	run: RunRow,
+	autoOpenPr: AutoOpenPrConfig,
+): { title: string; body: string } {
+	const content = buildPrContent({
+		prompt: run.prompt,
+		runId: run.id,
+		agentName: run.agentName,
+		...(run.startedAt !== null ? { startedAt: run.startedAt } : {}),
+		...(run.endedAt !== null ? { endedAt: run.endedAt } : {}),
+		...(run.costUsd !== null ? { costUsd: run.costUsd } : {}),
+		...(run.tokensInput !== null ? { tokensInput: run.tokensInput } : {}),
+		...(run.tokensOutput !== null ? { tokensOutput: run.tokensOutput } : {}),
+		...(run.tokensCacheRead !== null ? { tokensCacheRead: run.tokensCacheRead } : {}),
+		...(autoOpenPr.warrenBaseUrl !== null ? { warrenBaseUrl: autoOpenPr.warrenBaseUrl } : {}),
+	});
+	return { title: content.title, body: content.body };
+}
+
+/**
+ * Build the `reopenPr` coordinator seam — reopens a run's PR when auto-open
+ * is enabled. Returns `undefined` when auto-open is disabled / tokenless.
+ */
+function createReopenPr(
+	deps: ReopenPrDeps,
+): ((runId: string) => Promise<string | null>) | undefined {
+	const { repos, warrenConfigs, autoOpenPr, runBranchPrefixDefault, logger } = deps;
+	if (!autoOpenPr.enabled || autoOpenPr.token === "") return undefined;
+	return async (runId: string): Promise<string | null> => {
+		try {
+			const run = await repos.runs.get(runId);
+			if (run === null || run.projectId === null) return null;
+			const project = await repos.projects.get(run.projectId);
+			if (project === null) return null;
+			const warrenConfig = await warrenConfigs.get(run.projectId, project.localPath);
+			const prefix = resolveRunBranchPrefix({
+				projectDefault: warrenConfig.defaults?.runBranchPrefix,
+				envDefault: runBranchPrefixDefault,
+			});
+			const branch = composeRunBranch(prefix, runId);
+			const parsed = parseGitHubUrl(project.gitUrl);
+			const content = buildReopenPrContent(run, autoOpenPr);
+			const result = await openPullRequest({
+				owner: parsed.owner,
+				repo: parsed.name,
+				head: branch,
+				base: project.defaultBranch,
+				title: content.title,
+				body: content.body,
+				token: autoOpenPr.token,
+			});
+			if (result.ok) return result.url;
+			logger.warn(
+				{ runId, reason: result.reason, message: result.message },
+				"plan_run.reopen_pr_failed",
+			);
+			return null;
+		} catch (err) {
+			logger.warn(
+				{ runId, reason: err instanceof Error ? err.message : String(err) },
+				"plan_run.reopen_pr_error",
+			);
+			return null;
+		}
+	};
+}
+
+export interface PlanRunWiringInput {
+	readonly env: EnvLike;
+	readonly repos: Repos;
+	readonly runtimeProvider: RuntimeProvider;
+	readonly bridges: BridgeRegistry;
+	readonly warrenConfigs: WarrenConfigCache;
+	readonly projectsConfig: ProjectsConfig;
+	readonly autoOpenPr: AutoOpenPrConfig;
+	readonly runBranchPrefixDefault?: string;
+	readonly seedsCli: SeedsCliDeps;
+	readonly projectSpawn: SpawnFn;
+	readonly logger: Logger;
+	readonly now?: () => Date;
+}
+
+/**
+ * Boot the plan-run coordinator (pl-a258 / warren-2623). Loads its
+ * env-driven config, constructs the coordinator (including the reopen-PR
+ * and Plot-transition closures), emits the disabled/running log itself,
+ * and returns the handle for teardown.
+ */
+export function bootPlanRunCoordinatorWiring(input: PlanRunWiringInput): PlanRunCoordinatorHandle {
+	const {
+		env,
+		repos,
+		runtimeProvider,
+		bridges,
+		warrenConfigs,
+		projectsConfig,
+		autoOpenPr,
+		runBranchPrefixDefault,
+		seedsCli,
+		projectSpawn,
+		logger,
+		now,
+	} = input;
+
+	const planRunCoordinatorConfig = loadPlanRunCoordinatorConfigFromEnv(env);
+	const planRunCoordinator = bootPlanRunCoordinator({
+		repos,
+		showSeed: async (projectId, seedId) => {
+			const project = await repos.projects.require(projectId);
+			return showSeed(seedsCli, project.localPath, seedId);
+		},
+		checkPrMerged: createPrMergeChecker({ token: autoOpenPr.token }),
+		resolveExecution: createResolveExecution(repos), // pl-fb43 step 5: per-child execution repo
+		reopenPr: createReopenPr({
+			repos,
+			warrenConfigs,
+			autoOpenPr,
+			logger,
+			...(runBranchPrefixDefault !== undefined ? { runBranchPrefixDefault } : {}),
+		}),
+		spawn: createPlanRunSpawn({
+			repos,
+			runtimeProvider,
+			bridges,
+			warrenConfigs,
+			projectsConfig,
+			projectSpawn,
+			seedsCli,
+			...(runBranchPrefixDefault !== undefined ? { runBranchPrefixDefault } : {}),
+			...(now !== undefined ? { now } : {}),
+		}),
+		// warren-b290 / pl-7937 step 5: auto-transition the bound Plot from
+		// `active` → `done` when every child of a Plot-bound PlanRun reaches a
+		// terminal state. Best-effort — see autoTransitionPlotToDone.
+		transitionPlot: async (planRun) => {
+			if (planRun.plotId === null) {
+				// Coordinator already guards on plotId, but narrow defensively
+				// so an unexpected null still produces a benign skip.
+				return { kind: "skipped", currentStatus: "unknown" };
+			}
+			const project = await repos.projects.require(planRun.projectId);
+			return autoTransitionPlotToDone({
+				setter: defaultPlotStatusSetter,
+				logger,
+				plotDir: join(project.localPath, ".plot"),
+				plotId: planRun.plotId,
+				handle: resolveDispatcherHandle(planRun.dispatcherHandle),
+				planRunId: planRun.id,
+			});
+		},
+		tickMs: planRunCoordinatorConfig.tickMs,
+		disabled: planRunCoordinatorConfig.disabled,
+		mergeTimeoutMs: planRunCoordinatorConfig.mergeTimeoutMs,
+		logger: planRunLoggerFromPino(logger),
+		...(now !== undefined ? { now } : {}),
+	});
+	if (planRunCoordinatorConfig.disabled) {
+		logger.info({}, "plan-run coordinator disabled via WARREN_PLAN_RUN_DISABLED");
+	} else {
+		logger.info({ tickMs: planRunCoordinatorConfig.tickMs }, "plan-run coordinator running");
+	}
+	return planRunCoordinator;
+}
