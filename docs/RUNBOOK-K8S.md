@@ -657,10 +657,6 @@ know the gaps:
 - **Preview environments are off** (`previewPorts: false`). A `.warren/preview.yaml`
   produces no preview and logs `reap.preview_skipped_unsupported`. Service/Ingress
   previews are deferred.
-- **Conversation mode is not supported yet** (`longLived: false`). Bare pods with
-  `restartPolicy: Never` can't host a long-lived multi-turn agent. Conversation
-  (Leveret) runs stay on LocalProvider until a long-lived pod template exists.
-  Don't route conversations to a k8s warren.
 - **Steering latency is ~5s, not real-time.** Steer writes a `run_inbox` row; the
   in-pod agent polls `GET /runs/:id/inbox`. This is a reliability gain (survives
   pod/control-plane restart) at a latency cost vs. the LocalProvider stdin path.

@@ -2027,6 +2027,15 @@ re-dispatching B (or re-pushing after a manual refresh).
 > The `/plots*` HTTP contract, ACL surface, and gating below are
 > otherwise unchanged — only the React surface moved. The original
 > phase-3 record is retained for the data-flow + ACL design history.
+>
+> **Amendment (pl-3a79, 2026-07-21):** the conversations subsystem
+> — the Leveret overseer, the `mode=conversation` runs, the
+> `conversations` + `messages` tables, the `/conversations*` HTTP
+> surface, and the **Shape** tab — has since been **deleted outright**
+> (PHILOSOPHY rule 8: no users). The Workspace detail page now opens on
+> **Plan**; the Plot spine, its `/plots*` contract, and the remaining
+> Plan/Run/Activity tabs are unchanged by this amendment. Every Leveret
+> / conversation reference below is historical.
 
 Phase 3 of `warren-d362` shifts warren's web UI from run-centric to
 Plot-centric on deployments that opt into Plot, without disturbing the

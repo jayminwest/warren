@@ -79,12 +79,6 @@ and is surfaced by `loadWarrenConfig()`. Notable knobs:
   emit `question_posed`. Consumers fall back to
   `DEFAULT_AGENT_PAUSE_TIMEOUT_MS` when the block is absent. SPEC §11.O
   (warren-cd37 / pl-0344 step 2).
-- `conversation.idleTimeoutMs` (default `1200000` = 20 min, bounds
-  1s..24h) — inactivity budget after which the on-by-default idle
-  coordinator (`src/runs/conversation-idle.ts`, booted in
-  `detector-wiring.ts`; opt-out `WARREN_CONVERSATION_IDLE_DISABLED=1`)
-  finalizes a conversation's anchoring run. The conversation stays
-  `active`; transcript and Plot persist (warren-005d).
 - `agent.skipGitHooks` (default `false`) — set to `true` to skip arming
   the project's git pre-commit gate on the host clone before each run.
   By default warren detects a `git config core.hooksPath` call in the

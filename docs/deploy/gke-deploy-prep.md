@@ -249,10 +249,6 @@ just `WARREN_API_TOKEN` on the login screen.
   exists today.
 - **warren-245d must deliver (or 4e36 inherits)**: agent + init image
   Dockerfiles — no build exists for either.
-- **Conversation-mode runs don't work on K8s yet** (`longLived: false`
-  capability; bare pods, `restartPolicy: Never`). Leverets stay on
-  LocalProvider until a long-lived pod template exists. Don't smoke-test
-  conversations on GKE.
 - **Preview environments are disabled on K8s** (`previewPorts: false`, deferred).
 - **Cold clones every run**: the repo-cache PVC / warm-clone optimization
   in the design doc is not implemented; init clones fresh. Fine for
