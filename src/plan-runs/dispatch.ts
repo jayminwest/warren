@@ -95,9 +95,9 @@ export function createPlanRunSpawn(input: CreatePlanRunSpawnInput): CoordinatorS
 	const spawnRunFn = input.spawnRunFn ?? spawnRun;
 	return async ({ planRun, child, prompt, execution }) => {
 		// pl-fb43 step 5: clone the child's *execution* repo into the
-		// workspace while `seedProjectId` keeps the post-dispatch seed stamp +
-		// Plot append pointed at the coordination project. Defaults to the
-		// coordination project so an untagged child is byte-identical.
+		// workspace while `seedProjectId` keeps the post-dispatch seed stamp
+		// pointed at the coordination project. Defaults to the coordination
+		// project so an untagged child is byte-identical.
 		const exec: ChildExecution = execution ?? {
 			executionProjectId: planRun.projectId,
 			repoRef: null,
@@ -117,7 +117,6 @@ export function createPlanRunSpawn(input: CreatePlanRunSpawnInput): CoordinatorS
 			...(planRun.providerOverride !== null ? { providerOverride: planRun.providerOverride } : {}),
 			...(planRun.modelOverride !== null ? { modelOverride: planRun.modelOverride } : {}),
 			ref,
-			...(planRun.plotId !== null ? { plotId: planRun.plotId } : {}),
 			metadata: {
 				planRunId: planRun.id,
 				planId: planRun.planId,

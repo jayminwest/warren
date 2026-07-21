@@ -1,8 +1,7 @@
 /**
  * Unit test for the PlanRun spawn wrapper (warren-b290 / pl-7937 step 5).
- * Asserts `createPlanRunSpawn` forwards `planRun.plotId` into `spawnRun`'s
- * input bag so per-child PLOT_ID/PLOT_ACTOR injection and
- * `run_dispatched` Plot emission light up via the unchanged Phase 1 path.
+ * Asserts `createPlanRunSpawn` no longer forwards `planRun.plotId` into
+ * `spawnRun`'s input bag (warren-b968: plan-run ↔ plot bridge removed).
  */
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
@@ -61,7 +60,7 @@ describe("createPlanRunSpawn", () => {
 		await db.close();
 	});
 
-	test("forwards planRun.plotId into spawnRun's input bag when set", async () => {
+	test("does not forward planRun.plotId into spawnRun's input bag (plot bridge removed)", async () => {
 		const { planRun } = await repos.planRuns.create({
 			planId: "pl-plot",
 			projectId,
@@ -124,7 +123,7 @@ describe("createPlanRunSpawn", () => {
 		await spawn({ planRun, child, prompt: "work on sd warren-a" });
 
 		expect(captured).toHaveLength(1);
-		expect(captured[0]?.plotId).toBe("plot_xyz");
+		expect(captured[0]?.plotId).toBeUndefined();
 		expect(captured[0]?.trigger).toBe("plan-run");
 		expect(captured[0]?.dispatcherHandle).toBe(planRun.dispatcherHandle);
 		expect(captured[0]?.runtimeProvider).toBe(runtimeProvider);

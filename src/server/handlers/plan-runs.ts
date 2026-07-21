@@ -10,20 +10,13 @@
  * pre-split shape.
  */
 
-import { join } from "node:path";
 import { NotFoundError, ValidationError } from "../../core/errors.ts";
 import {
 	PlanHasNoOpenChildrenError,
 	ProjectLacksPlotError,
 	ProjectLacksSeedsError,
 } from "../../plan-runs/errors.ts";
-import {
-	defaultPlanRunPlotActivator,
-	defaultPlanRunPlotAppender,
-	emitPlanRunDispatchedToPlot,
-	promotePlotToActiveOnDispatch,
-} from "../../plan-runs/plot-appender.ts";
-import { cancelRun, resolveDispatcherHandle } from "../../runs/index.ts";
+import { cancelRun } from "../../runs/index.ts";
 import { showPlan, showSeed } from "../../seeds-cli/index.ts";
 import { jsonResponse, ndjsonResponse } from "../response.ts";
 import type { RouteHandler, ServerDeps } from "../types.ts";
@@ -206,38 +199,6 @@ export function createPlanRunHandler(deps: ServerDeps): RouteHandler {
 			...(plotId !== undefined && plotId !== "" ? { plotId } : {}),
 			...(deps.now !== undefined ? { now: deps.now() } : {}),
 		});
-
-		// (6b) warren-b89f / pl-7937 step 4: emit one `plan_run_dispatched`
-		// event onto the bound Plot — fire-and-log, mirrors the single-run
-		// `defaultPlotAppender` posture in src/runs/spawn/plot-append.ts. The
-		// PlanRun row is durably persisted by this point, so a Plot-write
-		// failure logs `plan_run.plot_append_failed` and the POST still
-		// returns 201.
-		if (result.planRun.plotId !== null) {
-			await emitPlanRunDispatchedToPlot({
-				appender: deps.planRunPlotAppender ?? defaultPlanRunPlotAppender,
-				logger: deps.logger,
-				plotDir: join(dispatchProject.localPath, ".plot"),
-				plotId: result.planRun.plotId,
-				handle: resolveDispatcherHandle(result.planRun.dispatcherHandle),
-				planRunId: result.planRun.id,
-				planId: result.planRun.planId,
-				childrenCount: result.children.length,
-			});
-
-			// (6c) warren-dfff / pl-e381 step 2: promote the bound Plot
-			// `ready` → `active` at dispatch so the auto-done guard
-			// (`status === 'active'`) is reachable via dispatch as well as
-			// operator action. Fire-and-log; never affects the 201.
-			await promotePlotToActiveOnDispatch({
-				activator: deps.planRunPlotActivator ?? defaultPlanRunPlotActivator,
-				logger: deps.logger,
-				plotDir: join(dispatchProject.localPath, ".plot"),
-				plotId: result.planRun.plotId,
-				handle: resolveDispatcherHandle(result.planRun.dispatcherHandle),
-				planRunId: result.planRun.id,
-			});
-		}
 
 		// (7) wire response — coordinator picks the row up on its next tick.
 		return jsonResponse(201, {

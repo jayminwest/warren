@@ -8,7 +8,6 @@
 import type { AnyWarrenDb } from "../../db/client.ts";
 import type { Repos } from "../../db/repos/index.ts";
 import type { MetricsRegistry } from "../../observability/metrics-registry.ts";
-import { createDefaultPlanSynthesizer } from "../../plot-plan-runs/index.ts";
 import {
 	createPlotAggregator,
 	createPlotResolver,
@@ -179,9 +178,6 @@ export function buildServerDeps(input: BuildServerDepsInput): ServerDeps {
 		plotResolver: createPlotResolver({
 			projectsRepo: repos.projects,
 			aggregator: plotAggregator,
-		}),
-		planSynthesizer: createDefaultPlanSynthesizer({
-			seedsCli: { sdBinary, spawn: defaultSpawn },
 		}),
 		idempotencyStore: new IdempotencyStore(now !== undefined ? { now: () => now().getTime() } : {}),
 		...(metricsRegistry !== undefined ? { metricsRegistry } : {}),

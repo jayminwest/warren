@@ -56,7 +56,6 @@ import {
 	listPlanRunsHandler,
 	streamPlanRunEventsHandler,
 } from "./plan-runs.ts";
-import { createPlotPlanRunHandler } from "./plot-plan-runs.ts";
 import {
 	answerPlotQuestionHandler,
 	attachPlotHandler,
@@ -313,7 +312,6 @@ const ROUTE_TABLE: readonly RouteEntry[] = [
 
 	{ method: "GET", pattern: "/plan-runs", build: listPlanRunsHandler },
 	{ method: "POST", pattern: "/plan-runs", build: createPlanRunHandler },
-	{ method: "POST", pattern: "/plot-plan-runs", build: createPlotPlanRunHandler },
 	{ method: "GET", pattern: "/plan-runs/:id", build: getPlanRunHandler },
 	{ method: "POST", pattern: "/plan-runs/:id/cancel", build: cancelPlanRunHandler },
 	{ method: "GET", pattern: "/plan-runs/:id/events", build: streamPlanRunEventsHandler },
@@ -391,7 +389,6 @@ export const API_PREFIXES: readonly string[] = [
 	"/metrics",
 	"/preview",
 	"/plan-runs",
-	"/plot-plan-runs",
 	"/plots",
 ];
 

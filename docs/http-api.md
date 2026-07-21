@@ -7,7 +7,7 @@ This page enumerates every HTTP route registered by warren's `Bun.serve` router.
 
 To refresh: `bun run gen:docs`. To check (CI mode): `bun run gen:docs:check`.
 
-Total routes: **53**.
+Total routes: **52**.
 
 ## /agents
 
@@ -52,12 +52,6 @@ Total routes: **53**.
 | `GET` | `/plan-runs/:id` | `getPlanRunHandler` |  |
 | `POST` | `/plan-runs/:id/cancel` | `cancelPlanRunHandler` |  |
 | `GET` | `/plan-runs/:id/events` | `streamPlanRunEventsHandler` |  |
-
-## /plot-plan-runs
-
-| Method | Pattern | Handler | Notes |
-| --- | --- | --- | --- |
-| `POST` | `/plot-plan-runs` | `createPlotPlanRunHandler` |  |
 
 ## /plots
 

@@ -12,8 +12,6 @@
 import type { AnyWarrenDb } from "../db/client.ts";
 import type { Repos } from "../db/repos/index.ts";
 import type { RunMode } from "../db/schema.ts";
-import type { PlanRunPlotActivator, PlanRunPlotAppender } from "../plan-runs/plot-appender.ts";
-import type { PlanSynthesizer } from "../plot-plan-runs/index.ts";
 import type { PreviewAuth } from "../preview/cookie.ts";
 import type { SpawnFn } from "../projects/clone.ts";
 import type { ProjectsConfig } from "../projects/config.ts";
@@ -236,22 +234,6 @@ export interface ServerDeps {
 	 */
 	readonly previewAuth?: PreviewAuth;
 	/**
-	 * Test seam for the `plan_run_dispatched` Plot append in the POST
-	 * /plan-runs handler (warren-b89f / pl-7937 step 4). Production omits
-	 * this; the handler falls back to `defaultPlanRunPlotAppender`, which
-	 * opens a `UserPlotClient` against `<project>/.plot/` and best-effort
-	 * appends one event. Tests substitute a stub to assert payload shape
-	 * without touching disk.
-	 */
-	readonly planRunPlotAppender?: PlanRunPlotAppender;
-	/**
-	 * Test seam for the dispatch-time `ready` → `active` Plot promotion in
-	 * the plan-run handlers (warren-dfff / pl-e381 step 2). Production omits
-	 * this; falls back to `defaultPlanRunPlotActivator` so the auto-done
-	 * guard (`status === 'active'`) is reachable via dispatch.
-	 */
-	readonly planRunPlotActivator?: PlanRunPlotActivator;
-	/**
 	 * Project host-clone refresher (warren-6d60). Used by the plan-run
 	 * dispatch handlers (`refreshDispatchProject`) so the seeds plan is
 	 * read off a freshly fetched + reset clone, mirroring the single-run
@@ -406,17 +388,6 @@ export interface ServerDeps {
 	 * `defaultPlotQuestionAnswerer`.
 	 */
 	readonly plotQuestionAnswerer?: import("../plots/index.ts").PlotQuestionAnswerer;
-	/**
-	 * Server-side plot→plan-run synthesizer (warren-99b2 / pl-f404 step 3
-	 * / SPEC §11.Q). `POST /plot-plan-runs` shells out via this seam to
-	 * mint a fresh throwaway parent seed and a seeds plan whose children
-	 * adopt the Plot's open `seeds_issue` attachments. `bootServer` wires
-	 * `createDefaultPlanSynthesizer({ seedsCli })` when `seedsCli` is
-	 * configured; tests substitute a stub to assert payload shape without
-	 * shelling out. Undefined → the handler rejects with the same
-	 * "seeds CLI not configured" error `POST /plan-runs` uses.
-	 */
-	readonly planSynthesizer?: PlanSynthesizer;
 	/**
 	 * `POST /runs` idempotency window (warren-d525). When wired, a dispatch
 	 * carrying an `Idempotency-Key` header is deduped per `(projectId, key)`

@@ -21,8 +21,6 @@ tags:
     description: '`/metrics` routes.'
   - name: plan-runs
     description: '`/plan-runs` routes.'
-  - name: plot-plan-runs
-    description: '`/plot-plan-runs` routes.'
   - name: plots
     description: '`/plots` routes.'
   - name: preview
@@ -212,17 +210,6 @@ paths:
           required: true
           schema:
             type: string
-  /plot-plan-runs:
-    post:
-      operationId: createPlotPlanRunHandler
-      tags:
-        - plot-plan-runs
-      summary: POST /plot-plan-runs
-      responses:
-        '200':
-          description: Successful response.
-        default:
-          description: Error response (see `src/core/errors.ts`).
   /plots:
     get:
       operationId: listPlotsHandler

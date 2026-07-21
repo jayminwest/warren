@@ -45,7 +45,6 @@ import {
 	handleInFlight,
 } from "./in-flight.ts";
 import { type CoordinatorReopenPrFn, checkParentRunMerged } from "./merge-gate.ts";
-import type { AutoTransitionResult } from "./plot-transition.ts";
 import type { PrMergeChecker } from "./pr-merge.ts";
 
 export type { CoordinatorReopenPrFn } from "./merge-gate.ts";
@@ -103,18 +102,6 @@ export type CoordinatorEmitFn = (
 ) => Promise<void>;
 
 /**
- * Optional Plot auto-done hook (warren-b290 / pl-7937 step 5). Called once
- * when the coordinator transitions a PlanRun to `succeeded` AND the row
- * carries a non-null `plot_id`. The implementation owns reading the Plot,
- * gating on `status === 'active'`, calling `setStatus('done')`, and
- * logging — the coordinator just maps the returned `AutoTransitionResult`
- * onto a `plan_run.plot_*` system event on the anchor child run. Default
- * is a no-op, so tests that don't care about Plot wiring get the same
- * behavior as the pre-pl-7937 baseline.
- */
-export type CoordinatorTransitionPlotFn = (planRun: PlanRunRow) => Promise<AutoTransitionResult>;
-
-/**
  * Optional host-side child-seed close hook (warren-3806). Called the instant
  * a plan-run child transitions to `merged` (both the trivial-merge and
  * PR-poll paths). The implementation deterministically closes the child's
@@ -136,9 +123,6 @@ export const PLAN_RUN_EVENT_KINDS = [
 	"plan_run.merged",
 	"plan_run.failed",
 	"plan_run.succeeded",
-	"plan_run.plot_auto_done",
-	"plan_run.plot_status_skipped",
-	"plan_run.plot_auto_done_failed",
 	"plan_run.waiting_for_pr_reopen",
 ] as const;
 export type PlanRunEventKind = (typeof PLAN_RUN_EVENT_KINDS)[number];
@@ -166,8 +150,6 @@ export interface AdvancePlanRunInput {
 	readonly emit: CoordinatorEmitFn;
 	/** pl-fb43 step 5: per-child execution-repo resolver (default = coordination project). */
 	readonly resolveExecution?: CoordinatorResolveExecutionFn;
-	/** warren-b290: Plot auto-done hook fired on plan_succeeded when plotId is set. */
-	readonly transitionPlot?: CoordinatorTransitionPlotFn;
 	/** warren-3806: host-side seed close fired when a child transitions to merged. */
 	readonly closeChildSeed?: CoordinatorCloseChildSeedFn;
 	/** warren-3937: merge-wait budget (ms); defaults to {@link DEFAULT_MERGE_TIMEOUT_MS}, 0 disables. */
@@ -249,22 +231,6 @@ export async function advancePlanRun(input: AdvancePlanRunInput): Promise<Advanc
 			const anchor = mostRecentDispatchedRunId(children);
 			if (anchor !== null) {
 				await input.emit(anchor, "plan_run.succeeded", { planRunId: planRun.id });
-			}
-			// warren-b290 / pl-7937 step 5: auto-transition the bound Plot
-			// from `active` → `done`. Best-effort — every outcome surfaces
-			// as a `plan_run.plot_*` system event on the anchor child run
-			// (when one exists). Skipped entirely when no plot_id is set
-			// on the PlanRun or no hook is wired in (tests).
-			if (planRun.plotId !== null && input.transitionPlot !== undefined) {
-				const transitionResult = await input.transitionPlot(planRun);
-				if (anchor !== null) {
-					const eventKind = transitionPlotEventKind(transitionResult);
-					await input.emit(anchor, eventKind, {
-						planRunId: planRun.id,
-						plotId: planRun.plotId,
-						...transitionPlotEventPayload(transitionResult),
-					});
-				}
 			}
 			return { kind: "plan_succeeded" };
 		}
@@ -416,16 +382,4 @@ function mostRecentDispatchedRunId(children: readonly PlanRunChildRow[]): string
 		if (child !== undefined && child.runId !== null) return child.runId;
 	}
 	return null;
-}
-
-function transitionPlotEventKind(result: AutoTransitionResult): PlanRunEventKind {
-	if (result.kind === "transitioned") return "plan_run.plot_auto_done";
-	if (result.kind === "skipped") return "plan_run.plot_status_skipped";
-	return "plan_run.plot_auto_done_failed";
-}
-
-function transitionPlotEventPayload(result: AutoTransitionResult): Record<string, unknown> {
-	if (result.kind === "skipped") return { currentStatus: result.currentStatus };
-	if (result.kind === "failed") return { reason: result.reason };
-	return {};
 }

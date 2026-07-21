@@ -10,17 +10,14 @@
  * handle so the caller can call `.stop()` on it in teardown.
  */
 
-import { join } from "node:path";
 import type { Repos } from "../../db/repos/index.ts";
 import {
-	autoTransitionPlotToDone,
 	bootPlanRunCoordinator,
 	type CoordinatorCloseChildSeedFn,
 	closeMergedChildSeed,
 	createPlanRunSpawn,
 	createPrMergeChecker,
 	createResolveExecution,
-	defaultPlotStatusSetter,
 	loadPlanRunCoordinatorConfigFromEnv,
 	type PlanRunCoordinatorHandle,
 } from "../../plan-runs/index.ts";
@@ -30,7 +27,6 @@ import { parseGitHubUrl } from "../../projects/index.ts";
 import {
 	type AutoOpenPrConfig,
 	composeRunBranch,
-	resolveDispatcherHandle,
 	resolveRunBranchPrefix,
 } from "../../runs/index.ts";
 import { buildPrContent, openPullRequest } from "../../runs/pr.ts";
@@ -182,7 +178,7 @@ export interface PlanRunWiringInput {
 /**
  * Boot the plan-run coordinator (pl-a258 / warren-2623). Loads its
  * env-driven config, constructs the coordinator (including the reopen-PR
- * and Plot-transition closures), emits the disabled/running log itself,
+ * closure), emits the disabled/running log itself,
  * and returns the handle for teardown.
  */
 export function bootPlanRunCoordinatorWiring(input: PlanRunWiringInput): PlanRunCoordinatorHandle {
@@ -240,25 +236,6 @@ export function bootPlanRunCoordinatorWiring(input: PlanRunWiringInput): PlanRun
 			...(runBranchPrefixDefault !== undefined ? { runBranchPrefixDefault } : {}),
 			...(now !== undefined ? { now } : {}),
 		}),
-		// warren-b290 / pl-7937 step 5: auto-transition the bound Plot from
-		// `active` → `done` when every child of a Plot-bound PlanRun reaches a
-		// terminal state. Best-effort — see autoTransitionPlotToDone.
-		transitionPlot: async (planRun) => {
-			if (planRun.plotId === null) {
-				// Coordinator already guards on plotId, but narrow defensively
-				// so an unexpected null still produces a benign skip.
-				return { kind: "skipped", currentStatus: "unknown" };
-			}
-			const project = await repos.projects.require(planRun.projectId);
-			return autoTransitionPlotToDone({
-				setter: defaultPlotStatusSetter,
-				logger,
-				plotDir: join(project.localPath, ".plot"),
-				plotId: planRun.plotId,
-				handle: resolveDispatcherHandle(planRun.dispatcherHandle),
-				planRunId: planRun.id,
-			});
-		},
 		tickMs: planRunCoordinatorConfig.tickMs,
 		disabled: planRunCoordinatorConfig.disabled,
 		mergeTimeoutMs: planRunCoordinatorConfig.mergeTimeoutMs,

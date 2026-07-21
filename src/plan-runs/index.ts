@@ -29,7 +29,6 @@ export {
 	type CoordinatorSpawnFn,
 	type CoordinatorSpawnInput,
 	type CoordinatorSpawnResult,
-	type CoordinatorTransitionPlotFn,
 	DEFAULT_MERGE_TIMEOUT_MS,
 	PLAN_RUN_EVENT_KINDS,
 	type PlanRunEventKind,
@@ -45,27 +44,6 @@ export {
 	ProjectLacksPlotError,
 	ProjectLacksSeedsError,
 } from "./errors.ts";
-export {
-	type ActivatePlanRunPlotInput,
-	type AppendPlanRunDispatchedInput,
-	defaultPlanRunPlotActivator,
-	defaultPlanRunPlotAppender,
-	type EmitPlanRunDispatchedInput,
-	emitPlanRunDispatchedToPlot,
-	type PlanRunPlotActivationResult,
-	type PlanRunPlotActivator,
-	type PlanRunPlotAppender,
-	type PromotePlotToActiveInput,
-	promotePlotToActiveOnDispatch,
-} from "./plot-appender.ts";
-export {
-	type AutoTransitionPlotToDoneInput,
-	type AutoTransitionResult,
-	autoTransitionPlotToDone,
-	defaultPlotStatusSetter,
-	type PlotStatusSetter,
-	type SetPlotStatusToDoneInput,
-} from "./plot-transition.ts";
 export {
 	type CreatePrMergeCheckerInput,
 	createPrMergeChecker,

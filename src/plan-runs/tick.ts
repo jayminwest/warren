@@ -35,7 +35,6 @@ import {
 	type CoordinatorResolveExecutionFn,
 	type CoordinatorShowSeedFn,
 	type CoordinatorSpawnFn,
-	type CoordinatorTransitionPlotFn,
 	type PlanRunEventKind,
 } from "./coordinator.ts";
 import type { PrMergeChecker } from "./pr-merge.ts";
@@ -57,13 +56,6 @@ export interface PlanRunTickDeps {
 	readonly logger?: PlanRunTickLogger;
 	/** Test seam — defaults to {@link defaultEmit} writing to events table. */
 	readonly emit?: CoordinatorEmitFn;
-	/**
-	 * Optional Plot auto-done hook (warren-b290 / pl-7937 step 5). When
-	 * wired, the coordinator calls it on the plan_succeeded transition
-	 * for any PlanRun that carries a non-null `plot_id`. Omit to skip
-	 * — tests and deployments without `.plot/` projects leave it unwired.
-	 */
-	readonly transitionPlot?: CoordinatorTransitionPlotFn;
 	/**
 	 * Bounded wall-clock merge-wait budget (ms) forwarded to
 	 * {@link advancePlanRun} (warren-3937). Omit to use the coordinator
@@ -135,7 +127,6 @@ function buildAdvanceInput(
 		spawn: deps.spawn,
 		emit,
 		...(deps.resolveExecution !== undefined ? { resolveExecution: deps.resolveExecution } : {}),
-		...(deps.transitionPlot !== undefined ? { transitionPlot: deps.transitionPlot } : {}),
 		...(deps.mergeTimeoutMs !== undefined ? { mergeTimeoutMs: deps.mergeTimeoutMs } : {}),
 		...(deps.reopenPr !== undefined ? { reopenPr: deps.reopenPr } : {}),
 		...(deps.closeChildSeed !== undefined ? { closeChildSeed: deps.closeChildSeed } : {}),

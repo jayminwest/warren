@@ -35,7 +35,6 @@ import {
 	ProjectLacksPlotError,
 	ProjectLacksSeedsError,
 } from "../plan-runs/errors.ts";
-import { NoDispatchableSeedsError, SdPlanSynthesisError } from "../plot-plan-runs/index.ts";
 import {
 	PlotAttachmentNotFoundError,
 	PlotIdInvalidError,
@@ -164,8 +163,6 @@ function warrenStatusFor(err: WarrenError): number {
 	if (err instanceof ProjectLacksSeedsError) return 400;
 	if (err instanceof ProjectLacksPlotError) return 400;
 	if (err instanceof PlanHasNoOpenChildrenError) return 400;
-	if (err instanceof NoDispatchableSeedsError) return 400;
-	if (err instanceof SdPlanSynthesisError) return 500;
 	if (err instanceof StateTransitionError) return 409;
 	if (err instanceof PlotIntentFrozenError) return 409;
 	if (err instanceof PlotIllegalStatusTransitionError) return 409;
