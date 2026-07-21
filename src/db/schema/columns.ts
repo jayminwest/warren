@@ -45,26 +45,6 @@ export const RUN_MODES = ["batch"] as const;
 export type RunMode = (typeof RUN_MODES)[number];
 
 /**
- * Conversation lifecycle status (warren-0b91). A
- * conversation stays `active` across re-wakes (the anchoring run may go
- * terminal and be respawned without closing the conversation); it flips
- * to `closed` only on send-off (warren-756d) or operator close. TS-only
- * narrowing — no SQL CHECK (mx-2ab984).
- */
-export const CONVERSATION_STATES = ["active", "closed"] as const;
-export type ConversationState = (typeof CONVERSATION_STATES)[number];
-
-/**
- * Role discriminator for a persisted conversation turn
- * (warren-0b91). `user` is an operator turn delivered over the steering
- * channel; `assistant` is a leveret reply captured off the stream;
- * `system` is a host-written marker (e.g. re-wake replay); `tool` carries
- * a structured tool turn. TS-only narrowing — no SQL CHECK.
- */
-export const MESSAGE_ROLES = ["user", "assistant", "system", "tool"] as const;
-export type MessageRole = (typeof MESSAGE_ROLES)[number];
-
-/**
  * Steering-message priority classes for the `run_inbox` table (warren-3d0b,
  * pl-829f step 18). Mirrors the seam's `MessagePriority`
  * (`src/runtime/contract.ts`) verbatim so the K8sProvider can forward the
@@ -325,8 +305,6 @@ export const TABLE_NAMES = {
 	planRuns: "plan_runs",
 	planRunChildren: "plan_run_children",
 	plots: "plots",
-	conversations: "conversations",
-	messages: "messages",
 	runInbox: "run_inbox",
 } as const;
 
@@ -375,13 +353,6 @@ export const INDEX_NAMES = {
 	// `plots_status` powers status-filtered rollups across a project.
 	plotsProjectUpdated: "plots_project_updated_idx",
 	plotsStatus: "plots_status_idx",
-	// warren-0b91. Conversations list by project (recency via
-	// last_activity_at scan off the project predicate) and by Plot binding
-	// (N:1 conversations per Plot). Messages page strictly by (conversation,
-	// seq) — the monotonic transcript order the re-wake replay reads back.
-	conversationsProject: "conversations_project_idx",
-	conversationsPlot: "conversations_plot_idx",
-	messagesConversationSeq: "messages_conversation_seq_idx",
 	// warren-3d0b. The run_inbox poll claims unread rows for one run
 	// (`GET /runs/:id/inbox`): the composite (run_id, state) makes the
 	// undelivered-per-run claim a covered index scan instead of a full-table

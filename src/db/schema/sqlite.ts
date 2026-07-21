@@ -1,11 +1,13 @@
 /**
  * SQLite physical schema for warren's durable state (SPEC §9).
  *
- * Ten tables: agents (canopy registry cache), projects (cloned repos), runs
+ * Tables: agents (canopy registry cache), projects (cloned repos), runs
  * (warren-side run rows that mirror burrow's lifecycle), events (write-through
  * cache of burrow's stream — see SPEC §9 "event durability rationale"), triggers
  * (R-06 scheduler bookkeeping), planRuns + planRunChildren, plots, and
- * conversations + messages. The workers + burrows multi-worker placement
+ * runInbox. The conversations + messages tables were dropped in
+ * warren-d93e (0030) as part of the conversations deletion pass
+ * (pl-3a79). The workers + burrows multi-worker placement
  * tables were dropped in warren-3743 (0028) once LocalProvider absorbed the
  * single-burrow runtime; `runs.worker_id` is retained (nullable, unwritten)
  * for historical rows only.
@@ -33,12 +35,10 @@ import {
 import type { PlotProjectionState } from "./columns.ts";
 import {
 	CLONE_KINDS,
-	CONVERSATION_STATES,
 	EVENT_STREAMS,
 	INBOX_PRIORITIES,
 	INBOX_STATES,
 	INDEX_NAMES,
-	MESSAGE_ROLES,
 	PLAN_RUN_CHILD_STATES,
 	PLAN_RUN_STATES,
 	PREVIEW_STATES,
@@ -438,65 +438,6 @@ export const plots = sqliteTable(
 );
 
 /**
- * Conversations (warren-0b91). One row per
- * leveret conversation. N conversations bind to one Plot (N:1). The
- * anchoring `mode:'conversation'` run rotates on re-wake, so
- * `anchoring_run_id` is nullable and mutable. `project_id` FKs `projects.id`
- * ON DELETE SET NULL so deleting a project orphans (not blocks) its
- * conversations. `plot_id` is plain text (Plots live in the project
- * workspace). The transcript lives in `messages`; `events` is single-writer.
- */
-export const conversations = sqliteTable(
-	TABLE_NAMES.conversations,
-	{
-		id: text("id").primaryKey(),
-		projectId: text("project_id").references(() => projects.id, { onDelete: "set null" }),
-		// Plot binding. Nullable in schema for forward-compat though v1 always
-		// sets it at conversation-create. Plain text, no FK — Plots are git-backed.
-		plotId: text("plot_id"),
-		// Anchoring mode:'conversation' run. Rotates on re-wake (warren-6ccf);
-		// nullable between rotations. Plain text for symmetry with run back-links.
-		anchoringRunId: text("anchoring_run_id"),
-		status: text("status", { enum: CONVERSATION_STATES }).notNull().default("active"),
-		title: text("title"),
-		submittedPrUrl: text("submitted_pr_url"), // send-off PR ref (warren-756d)
-		submittedPrNumber: integer("submitted_pr_number"),
-		plannerAgent: text("planner_agent"), // send-off planner agent (warren-756d)
-		plannerRunId: text("planner_run_id"), // merge-poller dispatch guard (warren-b872)
-		createdAt: text("created_at").notNull(),
-		lastActivityAt: text("last_activity_at").notNull(),
-		closedAt: text("closed_at"),
-	},
-	(t) => [
-		index(INDEX_NAMES.conversationsProject).on(t.projectId),
-		index(INDEX_NAMES.conversationsPlot).on(t.plotId),
-	],
-);
-
-/**
- * Messages (warren-0b91). The conversation transcript, one
- * row per turn, `seq` monotonic per conversation. `conversation_id` FKs
- * `conversations.id` ON DELETE CASCADE. `content` is TEXT (free-form turn body
- * or a JSON-encoded tool payload). `run_id` optionally back-links the
- * anchoring run that produced the turn; nullable for host-written rows.
- */
-export const messages = sqliteTable(
-	TABLE_NAMES.messages,
-	{
-		id: text("id").primaryKey(),
-		conversationId: text("conversation_id")
-			.notNull()
-			.references(() => conversations.id, { onDelete: "cascade" }),
-		seq: integer("seq").notNull(),
-		role: text("role", { enum: MESSAGE_ROLES }).notNull(),
-		content: text("content").notNull(),
-		runId: text("run_id"),
-		createdAt: text("created_at").notNull(),
-	},
-	(t) => [index(INDEX_NAMES.messagesConversationSeq).on(t.conversationId, t.seq)],
-);
-
-/**
  * Run inbox (warren-3d0b, pl-829f step 18). The durable steering channel for
  * pod-per-run K8s runs: with no live socket into the sandbox, warren persists
  * each steering message here and the in-pod agent harness polls
@@ -536,9 +477,5 @@ export type PlanRunChildRow = typeof planRunChildren.$inferSelect;
 export type PlanRunChildInsert = typeof planRunChildren.$inferInsert;
 export type PlotRow = typeof plots.$inferSelect;
 export type PlotInsert = typeof plots.$inferInsert;
-export type ConversationRow = typeof conversations.$inferSelect;
-export type ConversationInsert = typeof conversations.$inferInsert;
-export type MessageRow = typeof messages.$inferSelect;
-export type MessageInsert = typeof messages.$inferInsert;
 export type RunInboxRow = typeof runInbox.$inferSelect;
 export type RunInboxInsert = typeof runInbox.$inferInsert;

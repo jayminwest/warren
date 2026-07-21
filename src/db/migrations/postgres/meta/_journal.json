@@ -169,6 +169,13 @@
 			"when": 1783885153191,
 			"tag": "0023_nervous_blazing_skull",
 			"breakpoints": true
+		},
+		{
+			"idx": 24,
+			"version": "7",
+			"when": 1784654848612,
+			"tag": "0024_perfect_proteus",
+			"breakpoints": true
 		}
 	]
 }

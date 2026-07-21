@@ -16,9 +16,7 @@ import { getTableConfig as getPgTableConfig, type PgTable } from "drizzle-orm/pg
 import { getTableConfig as getSqliteTableConfig, type SQLiteTable } from "drizzle-orm/sqlite-core";
 import {
 	agents as pgAgents,
-	conversations as pgConversations,
 	events as pgEvents,
-	messages as pgMessages,
 	planRunChildren as pgPlanRunChildren,
 	planRuns as pgPlanRuns,
 	plots as pgPlots,
@@ -29,9 +27,7 @@ import {
 } from "./postgres.ts";
 import {
 	agents as sqliteAgents,
-	conversations as sqliteConversations,
 	events as sqliteEvents,
-	messages as sqliteMessages,
 	planRunChildren as sqlitePlanRunChildren,
 	planRuns as sqlitePlanRuns,
 	plots as sqlitePlots,
@@ -50,8 +46,6 @@ const SQLITE_TABLES: Record<string, SQLiteTable> = {
 	planRuns: sqlitePlanRuns,
 	planRunChildren: sqlitePlanRunChildren,
 	plots: sqlitePlots,
-	conversations: sqliteConversations,
-	messages: sqliteMessages,
 	runInbox: sqliteRunInbox,
 };
 
@@ -64,8 +58,6 @@ const PG_TABLES: Record<string, PgTable> = {
 	planRuns: pgPlanRuns,
 	planRunChildren: pgPlanRunChildren,
 	plots: pgPlots,
-	conversations: pgConversations,
-	messages: pgMessages,
 	runInbox: pgRunInbox,
 };
 
@@ -206,8 +198,6 @@ const TABLE_KEYS: AnyTable[] = [
 	"planRuns",
 	"planRunChildren",
 	"plots",
-	"conversations",
-	"messages",
 	"runInbox",
 ];
 
