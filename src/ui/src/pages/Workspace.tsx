@@ -1,10 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { conversationsApi, plotsApi, projectsApi } from "@/api/client.ts";
+import { plotsApi, projectsApi } from "@/api/client.ts";
 import {
 	PLOT_STATUSES,
-	type ConversationRow,
 	type NeedsAttentionReason,
 	type PlotStatus,
 	type PlotSummary,
@@ -31,7 +30,6 @@ import {
 	useClientSort,
 } from "@/hooks/use-client-sort.ts";
 import { relativeTime } from "@/lib/utils.ts";
-import { NewConversationButton } from "./leveret/new-conversation-dialog.tsx";
 
 const STATUS_FILTERS: { label: string; value: "all" | PlotStatus }[] = [
 	{ label: "All", value: "all" },
@@ -59,13 +57,10 @@ const NEEDS_ATTENTION_LABELS: Record<NeedsAttentionReason, string> = {
  * /workspace — single cross-project list, one row per Plot (warren-dc54 /
  * pl-0008 step 5).
  *
- * The Plot is the durable spine; this view merges what used to live on two
- * pages (the Plots list and the Leveret conversations list) into one. Each
- * row joins a `PlotSummary` (from `plotsApi.list`, the server `?status` /
- * `?filter=needs_attention` contract still the single source of visibility
- * truth) with its active Leveret conversation (resolved client-side from
- * `conversationsApi.list`). Actions: New Plot (shared dialog) and Start
- * conversation (the existing Leveret dialog).
+ * The Plot is the durable spine; this view lists one row per Plot from
+ * `plotsApi.list` (the server `?status` / `?filter=needs_attention` contract
+ * still the single source of visibility truth). Action: New Plot (shared
+ * dialog).
  */
 export function WorkspacePage() {
 	const [statusFilter, setStatusFilter] = useState<"all" | PlotStatus>("all");
@@ -81,12 +76,6 @@ export function WorkspacePage() {
 				},
 				signal,
 			),
-		refetchInterval: 5000,
-	});
-
-	const conversations = useQuery({
-		queryKey: ["conversations", "all"],
-		queryFn: ({ signal }) => conversationsApi.list({}, signal),
 		refetchInterval: 5000,
 	});
 
@@ -106,18 +95,6 @@ export function WorkspacePage() {
 		[projects.data],
 	);
 
-	// Resolve the most-recent active conversation per Plot. Closed
-	// conversations surface in the Plot's Activity tab (step 10), not here.
-	const activeConversationByPlot = useMemo(() => {
-		const m = new Map<string, ConversationRow>();
-		for (const c of conversations.data?.conversations ?? []) {
-			if (c.status !== "active" || !c.plotId) continue;
-			const prev = m.get(c.plotId);
-			if (!prev || c.lastActivityAt > prev.lastActivityAt) m.set(c.plotId, c);
-		}
-		return m;
-	}, [conversations.data]);
-
 	const {
 		sorted: sortedPlots,
 		sort,
@@ -132,10 +109,9 @@ export function WorkspacePage() {
 		<div className="space-y-6">
 			<PageHeader
 				title="Workspace"
-				description="One row per Plot — the durable spine. Shape intent in a conversation, then plan and run, all from one place."
+				description="One row per Plot — the durable spine. Plan and run, all from one place."
 				actions={
 					<div className="flex items-center gap-2">
-						<NewConversationButton />
 						<NewPlotButton destination="/workspace" />
 					</div>
 				}
@@ -194,7 +170,6 @@ export function WorkspacePage() {
 						<WorkspaceTable
 							plots={sortedPlots}
 							projectLabel={(id) => projectIndex.get(id) ?? id}
-							activeConversation={(id) => activeConversationByPlot.get(id)}
 							sort={sort}
 							onSort={onSort}
 						/>
@@ -243,13 +218,11 @@ function EmptyState({
 function WorkspaceTable({
 	plots,
 	projectLabel,
-	activeConversation,
 	sort,
 	onSort,
 }: {
 	plots: PlotSummary[];
 	projectLabel: (projectId: string) => string;
-	activeConversation: (plotId: string) => ConversationRow | undefined;
 	sort: SortState<SortKey>;
 	onSort: (key: SortKey) => void;
 }) {
@@ -265,7 +238,6 @@ function WorkspaceTable({
 						Status
 					</SortableTableHead>
 					<TableHead className="whitespace-nowrap">Intent</TableHead>
-					<TableHead className="whitespace-nowrap">Conversation</TableHead>
 					<SortableTableHead columnKey="last_event_ts" sort={sort} onSort={onSort}>
 						Last activity
 					</SortableTableHead>
@@ -273,7 +245,6 @@ function WorkspaceTable({
 			</TableHeader>
 			<TableBody>
 				{plots.map((p) => {
-					const convo = activeConversation(p.id);
 					return (
 						<TableRow key={`${p.project_id}::${p.id}`}>
 							<TableCell className="whitespace-nowrap">
@@ -308,23 +279,6 @@ function WorkspaceTable({
 							</TableCell>
 							<TableCell className="max-w-[16rem] truncate text-(--color-muted-foreground)">
 								{p.intent_goal_preview || "—"}
-							</TableCell>
-							<TableCell className="whitespace-nowrap">
-								{convo ? (
-									<Link
-										to={`/workspace/${encodeURIComponent(p.id)}?tab=shape`}
-										className="inline-flex items-center gap-1.5 text-xs underline-offset-2 hover:underline"
-										title={convo.title ?? "Active conversation"}
-									>
-										<span
-											aria-hidden="true"
-											className="inline-block h-2 w-2 rounded-full bg-(--color-primary)"
-										/>
-										{convo.title || "Active"}
-									</Link>
-								) : (
-									<span className="text-xs text-(--color-muted-foreground)">—</span>
-								)}
 							</TableCell>
 							<TableCell className="whitespace-nowrap text-(--color-muted-foreground)">
 								<div>{relativeTime(p.last_event_ts)}</div>

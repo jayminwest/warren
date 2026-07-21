@@ -81,7 +81,7 @@ describe("ReadyPlansView body (pl-3fc4 step 7)", () => {
 		// passes the project; the plot back-link is supplied only when the
 		// project has .plot/.
 		expect(READY_PLANS_SOURCE).toMatch(
-			/import \{ DispatchPlanButton \} from "\.\/conversation-detail\/dispatch-plan-dialog\.tsx"/,
+			/import \{ DispatchPlanButton \} from "@\/components\/dispatch-plan-dialog\.tsx"/,
 		);
 		expect(READY_PLANS_SOURCE).toMatch(/<DispatchPlanButton/);
 		expect(READY_PLANS_SOURCE).toMatch(/projectId=\{projectId\}/);

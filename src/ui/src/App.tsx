@@ -6,10 +6,7 @@ import { DefaultLanding } from "@/components/DefaultLanding.tsx";
 import { Layout } from "@/components/Layout.tsx";
 import { MotionProvider } from "@/components/ui/motion.tsx";
 import { ToastProvider } from "@/components/ui/toast.tsx";
-import {
-	ConversationToWorkspaceRedirect,
-	PlotToWorkspaceRedirect,
-} from "@/components/WorkspaceRedirects.tsx";
+import { PlotToWorkspaceRedirect } from "@/components/WorkspaceRedirects.tsx";
 import { AgentsPage } from "@/pages/Agents.tsx";
 import { LoginPage } from "@/pages/Login.tsx";
 import { NewPlanRunPage } from "@/pages/NewPlanRun.tsx";
@@ -80,10 +77,8 @@ export function App() {
 						<Route path="/plan-runs/:id" element={<PlanRunDetailPage />} />
 						<Route path="/workspace" element={<WorkspacePage />} />
 						<Route path="/workspace/:id" element={<WorkspaceDetailPage />} />
-						{/* Legacy Leveret + Plots routes collapse into Workspace
+						{/* Legacy Plots routes collapse into Workspace
 						    (warren-9cad / pl-0008 step 11). */}
-						<Route path="/leveret" element={<Navigate to="/workspace" replace />} />
-						<Route path="/leveret/:id" element={<ConversationToWorkspaceRedirect />} />
 						<Route path="/plots" element={<Navigate to="/workspace" replace />} />
 						<Route path="/plots/:id" element={<PlotToWorkspaceRedirect />} />
 						<Route path="/plots/:id/summary" element={<PlotSummaryPage />} />

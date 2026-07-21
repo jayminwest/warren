@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/table.tsx";
 import { Spinner } from "@/components/ui/spinner.tsx";
 import { formatError } from "@/lib/format-error.ts";
-import { DispatchPlanButton } from "./conversation-detail/dispatch-plan-dialog.tsx";
+import { DispatchPlanButton } from "@/components/dispatch-plan-dialog.tsx";
 
 /**
  * "Ready to dispatch" tab body (warren-ce62 / pl-3fc4 step 7).

@@ -44,10 +44,8 @@ const BASE_NAV_ITEMS: NavItem[] = [
 ];
 
 // Single collapsed Workspace entry (warren-9cad / pl-0008 step 11)
-// replaces the former Leveret + Plots pair: the Plot is the spine and
-// the conversation a facet of it, so one nav item now fronts the whole
-// shape → plan → run → activity lifecycle. The needs-you badge rides on
-// it.
+// replaces the former Plots page: the Plot is the spine, so one nav item
+// fronts the run → activity lifecycle. The needs-you badge rides on it.
 const WORKSPACE_NAV_ITEM: NavItem = { to: "/workspace", label: "Workspace", icon: Network };
 
 export function Layout() {

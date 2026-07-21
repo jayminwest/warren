@@ -1127,105 +1127,6 @@ export type PlotSyncResponse =
 	  };
 
 /* ----------------------------------------------------------------------- */
-/* Leveret conversations (warren-af15/763f).                                */
-/*                                                                          */
-/* Mirrors the `conversations` table wire shape (camelCase drizzle         */
-/* $inferSelect) returned by GET /conversations. Kept in sync by hand —    */
-/* src/ui is excluded from the root tsconfig (mx-7f971c).                  */
-/* ----------------------------------------------------------------------- */
-
-export const CONVERSATION_STATES = ["active", "closed"] as const;
-export type ConversationState = (typeof CONVERSATION_STATES)[number];
-
-export interface ConversationRow {
-	id: string;
-	projectId: string | null;
-	plotId: string | null;
-	anchoringRunId: string | null;
-	status: ConversationState;
-	title: string | null;
-	createdAt: string;
-	lastActivityAt: string;
-	closedAt: string | null;
-	/**
-	 * Send-off PR ref persisted when the operator sends the conversation
-	 * to the planner (warren-756d). Null until send-off.
-	 */
-	submittedPrUrl?: string | null;
-	submittedPrNumber?: number | null;
-	/** Planner agent pinned at send-off (warren-756d). Null until send-off. */
-	plannerAgent?: string | null;
-	/**
-	 * The auto-dispatched planner run id, stamped by the merge poller once
-	 * the send-off PR merges (warren-b872). Non-null means the planner has
-	 * been dispatched and a synthesized plan exists (or is in flight) — this
-	 * gates the operator-only "Dispatch plan" popup (warren-6e45).
-	 */
-	plannerRunId?: string | null;
-}
-
-export interface ListConversationsFilter {
-	/** Narrow to one project. Mutually exclusive with `plot`. */
-	project?: string;
-	/** Narrow to one Plot. Mutually exclusive with `project`. */
-	plot?: string;
-	/** Narrow to `active` / `closed`. */
-	status?: ConversationState;
-}
-
-export interface ListConversationsResponse {
-	conversations: ConversationRow[];
-}
-
-export const MESSAGE_ROLES = ["user", "assistant", "system", "tool"] as const;
-export type MessageRole = (typeof MESSAGE_ROLES)[number];
-
-/** Mirrors the `messages` table wire shape (camelCase drizzle $inferSelect). */
-export interface MessageRow {
-	id: string;
-	conversationId: string;
-	seq: number;
-	role: MessageRole;
-	content: string;
-	runId: string | null;
-	createdAt: string;
-}
-
-/** `GET /conversations/:id` — conversation + full transcript. */
-export interface GetConversationResponse {
-	conversation: ConversationRow;
-	messages: MessageRow[];
-}
-
-/** `POST /conversations/:id/messages` — 202 Accepted envelope. */
-export interface PostConversationMessageResponse {
-	conversationId: string;
-	message: { id: string; seq: number; role: MessageRole };
-	steerMessageId: string;
-}
-
-export interface CreateConversationInput {
-	projectId: string;
-	plotId?: string;
-	title?: string;
-	message?: string;
-	dispatcherHandle?: string;
-}
-
-export interface CreateConversationResponse {
-	conversation: ConversationRow;
-	run: { id: string; mode: string };
-	burrow: { id: string; workspacePath: string };
-}
-
-export interface SendOffConversationResponse {
-	conversation: ConversationRow;
-	plot_id: string;
-	pr: { url: string; number: number | null; branch: string };
-	planner_agent: string | null;
-}
-
-/* ----------------------------------------------------------------------- */
 /* Run-analytics token types (warren-3be4 / pl-d1a2 step 3).               */
 /*                                                                          */
 /* Mirrors the server-side shapes from src/runs/analytics/run-metrics.ts   */
@@ -1287,10 +1188,5 @@ export interface RunAnalyticsTokensSection {
 	readonly byModelTimeSeries: readonly DimensionTokenSeries[];
 	/** Per-provider daily series, top-5 by total + OTHER_KEY fold + NONE_KEY. */
 	readonly byProviderTimeSeries: readonly DimensionTokenSeries[];
-}
-
-export interface RewakeConversationResponse {
-	conversation: ConversationRow;
-	run: { id: string; mode: string };
 }
 

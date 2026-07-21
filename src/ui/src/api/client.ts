@@ -12,10 +12,6 @@ import type {
 	CreatePlanRunResponse,
 	CreatePlotPlanRunInput,
 	CreatePlotPlanRunResponse,
-	GetConversationResponse,
-	ListConversationsFilter,
-	ListConversationsResponse,
-	PostConversationMessageResponse,
 	AnswerPlotQuestionInput,
 	AnswerPlotQuestionResponse,
 	AttachPlotInput,
@@ -58,10 +54,6 @@ import type {
 	SteerRunResponse,
 	TriggersResponse,
 	WarrenConfigResponse,
-	CreateConversationInput,
-	CreateConversationResponse,
-	SendOffConversationResponse,
-	RewakeConversationResponse,
 	TokenBreakdown,
 	RunAnalyticsTokensSection,
 } from "./types.ts";
@@ -651,107 +643,6 @@ export const plotsApi = {
 			`/plots/${encodeURIComponent(plotId)}/sync`,
 			{ method: "POST", body: {} },
 		),
-};
-
-export const conversationsApi = {
-	/**
-	 * `GET /conversations` — Leveret conversations list (warren-af15 /
-	 * 763f). Optional `?project` / `?plot` (mutually exclusive) and
-	 * `?status` narrow the set; the bare call lists every conversation,
-	 * most-recent-activity first. Empty array (200) on deployments
-	 * without any conversations — the Leveret page renders its empty
-	 * state on `conversations.length === 0`.
-	 */
-	list: (filter: ListConversationsFilter = {}, signal?: AbortSignal) => {
-		const params = new URLSearchParams();
-		if (filter.project) params.set("project", filter.project);
-		if (filter.plot) params.set("plot", filter.plot);
-		if (filter.status) params.set("status", filter.status);
-		const qs = params.toString();
-		return request<ListConversationsResponse>(
-			`/conversations${qs.length > 0 ? `?${qs}` : ""}`,
-			{ ...(signal ? { signal } : {}) },
-		);
-	},
-	/**
-	 * `GET /conversations/:id` — conversation row + full transcript
-	 * (warren-af15). Backs the Leveret split-view page (warren-01c8);
-	 * `conversation.anchoringRunId` is the handle the chat surface
-	 * streams from and `conversation.plotId` the Plot the right pane
-	 * renders + edits.
-	 */
-	get: (id: string, signal?: AbortSignal) =>
-		request<GetConversationResponse>(`/conversations/${encodeURIComponent(id)}`, {
-			...(signal ? { signal } : {}),
-		}),
-	/**
-	 * `POST /conversations/:id/messages` — deliver an operator turn over
-	 * the steering channel (warren-af15). 202 Accepted: the leveret reply
-	 * lands asynchronously on the anchoring run's event stream, which the
-	 * Chat surface tails. Persisted to the transcript for re-wake replay.
-	 */
-	postMessage: (id: string, input: { message: string; dispatcherHandle?: string }) =>
-		request<PostConversationMessageResponse>(
-			`/conversations/${encodeURIComponent(id)}/messages`,
-			{
-				method: "POST",
-				body: {
-					message: input.message,
-					...(input.dispatcherHandle !== undefined
-						? { dispatcher_handle: input.dispatcherHandle }
-						: {}),
-				},
-			},
-		),
-	/**
-	 * `POST /conversations` — create a fresh conversation (warren-7186).
-	 */
-	create: (input: CreateConversationInput) =>
-		request<CreateConversationResponse>("/conversations", {
-			method: "POST",
-			body: {
-				project_id: input.projectId,
-				...(input.plotId !== undefined ? { plot_id: input.plotId } : {}),
-				...(input.title !== undefined ? { title: input.title } : {}),
-				...(input.message !== undefined ? { message: input.message } : {}),
-				...(input.dispatcherHandle !== undefined
-					? { dispatcher_handle: input.dispatcherHandle }
-					: {}),
-			},
-		}),
-	/**
-	 * `POST /conversations/:id/send-off` — send the conversation to the planner (warren-7186).
-	 */
-	sendOff: (id: string, input: { plannerAgent?: string } = {}) =>
-		request<SendOffConversationResponse>(`/conversations/${encodeURIComponent(id)}/send-off`, {
-			method: "POST",
-			body: {
-				...(input.plannerAgent !== undefined ? { planner_agent: input.plannerAgent } : {}),
-			},
-		}),
-	/**
-	 * `POST /conversations/:id/re-wake` — re-wake an idle-finalized active conversation (warren-7186).
-	 */
-	rewake: (
-		id: string,
-		input: {
-			dispatcherHandle?: string;
-			providerOverride?: string;
-			modelOverride?: string;
-		} = {},
-	) =>
-		request<RewakeConversationResponse>(`/conversations/${encodeURIComponent(id)}/re-wake`, {
-			method: "POST",
-			body: {
-				...(input.dispatcherHandle !== undefined
-					? { dispatcher_handle: input.dispatcherHandle }
-					: {}),
-				...(input.providerOverride !== undefined
-					? { provider_override: input.providerOverride }
-					: {}),
-				...(input.modelOverride !== undefined ? { model_override: input.modelOverride } : {}),
-			},
-		}),
 };
 
 /* ----------------------------------------------------------------------- */
