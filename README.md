@@ -6,14 +6,19 @@
 
 Spawn cloud agents at your GitHub repos. Watch them work live, steer them mid-run, get a branch back.
 
+[![Discord](https://img.shields.io/badge/Discord-join-5865F2?logo=discord&logoColor=white)](https://discord.gg/4r6r5jUEFE)
 [![CI](https://github.com/jayminwest/warren/actions/workflows/ci.yml/badge.svg)](https://github.com/jayminwest/warren/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 [**Watch the demo**](https://youtu.be/daa7y8g9BkM)
 
-> A network of interconnected burrows. Agents that operate in isolation, self-manage, self-repair, and self-improve.
+> The Coolify of coding agents. Self-hosted control plane: point it at a repo, bring your own key, agents run in sandboxes on your infra, PRs come out.
 
-Warren is a self-hostable control plane for ephemeral coding agents. Runs are short-lived and sandboxed: they complete a task, validate the changes, push a branch, and spin down. Point it at your repos, dispatch from a browser or CLI, watch the events stream live, and reap the result. **One container, one volume, one HTTP API, one UI.**
+Warren is a self-hostable control plane for ephemeral coding agents. It's harness-agnostic — run pi, Claude Code, and other agents behind one interface — on your own infrastructure with your own API keys. Runs are short-lived and sandboxed: they complete a task, validate the changes, push a branch, and spin down. Point it at your repos, dispatch from a browser or CLI, watch the events stream live, and reap the result. **One container, one volume, one HTTP API, one UI.**
+
+## Community
+
+Questions, help, or feedback? [Join the Discord](https://discord.gg/4r6r5jUEFE).
 
 Warren runs against a swappable **runtime provider**, selected once at boot by `WARREN_RUNTIME` (`src/runtime/registry.ts`), behind one contract (`src/runtime/contract.ts`). Two topologies, same domain code:
 
