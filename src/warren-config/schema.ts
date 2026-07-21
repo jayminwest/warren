@@ -231,22 +231,6 @@ const AgentConfigSchema = z
 
 export type AgentConfig = z.infer<typeof AgentConfigSchema>;
 
-// warren-cd22: per-project configuration for plot sync to GitHub (pl-5a6c).
-// mergeStrategy controls when changes are merged (immediate / auto / manual).
-// targetBranch overrides the default branch when pushing changes.
-const PlotSyncMergeStrategySchema = z.enum(["immediate", "auto", "manual"]);
-
-export type PlotSyncMergeStrategy = z.infer<typeof PlotSyncMergeStrategySchema>;
-
-const PlotSyncConfigSchema = z
-	.object({
-		mergeStrategy: PlotSyncMergeStrategySchema.optional(),
-		targetBranch: z.string().min(1, "targetBranch must be non-empty if provided").optional(),
-	})
-	.strict();
-
-export type PlotSyncConfig = z.infer<typeof PlotSyncConfigSchema>;
-
 // warren-b802: per-project override of the burrow runtime backing the
 // planner interactive built-in agent. Without this, an
 // operator must stand up a canopy library just to change the runtime
@@ -388,8 +372,6 @@ export const DefaultsConfigSchema = z
 		resources: ResourcesConfigSchema.optional(),
 		// warren-b6f2: per-project admission control (K8s, design §3.3).
 		admission: AdmissionConfigSchema.optional(),
-		// warren-cd22: per-project plot-sync-to-GitHub configuration.
-		plotSync: PlotSyncConfigSchema.optional(),
 		// warren-05ea: opt-in polling CI-fixer; missing block → poller skips it.
 		ciFixer: CiFixerConfigSchema.optional(),
 		// warren-3db0: opt-in closed-loop healer; missing block → intake skips it.

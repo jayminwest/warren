@@ -3,11 +3,6 @@
  * watchdog). Extracted from `bootServer` so the orchestrator in
  * `index.ts` stays under the per-file size budget.
  *
- * - `bootPauseDetectorFromEnv` (pl-0344 step 5 / warren-2976): polls Plot
- *   event logs of in-flight batch runs for unanswered `question_posed`
- *   and resumes paused runs on `question_answered` or `pauseTimeoutMs`.
- *   Opt-in via `WARREN_PAUSE_DETECTOR_ENABLED=1`. The respawn seam is a
- *   logging no-op until the interactive primitive consumes it.
  * - `bootWatchdogFromEnv` (warren-285d): force-fails `running` runs that
  *   go silent-but-busy past the heartbeat budget, routing the timeout
  *   through reap so the burrow workspace + bwrap process tree is torn
@@ -22,57 +17,17 @@ import type { DrizzleAdapter } from "../../db/repos/drizzle-adapter.ts";
 import type { Repos } from "../../db/repos/index.ts";
 import {
 	type AutoOpenPrConfig,
-	bootPauseDetector,
 	bootWatchdog,
-	defaultPlotEventReader,
 	loadWatchdogConfigFromEnv,
-	type PauseDetectorHandle,
 	type RunEventBroker,
 	type WatchdogHandle,
 	type WatchdogReap,
 } from "../../runs/index.ts";
 import { bootOpsStatsWorker, type OpsStatsWorkerHandle } from "../../runs/ops-stats.ts";
 import type { RuntimeProvider } from "../../runtime/contract.ts";
-import type { WarrenConfigCache } from "../../warren-config/index.ts";
 import type { EnvLike } from "../config.ts";
 import type { BridgeRegistry, Logger } from "../types.ts";
-import { bridgeLoggerFromPino, pauseLoggerFromPino } from "./logging.ts";
-import { parseIntEnv, parseTrueEnv } from "./utils.ts";
-
-export interface PauseDetectorWiringInput {
-	readonly env: EnvLike;
-	readonly repos: Repos;
-	readonly warrenConfigs: WarrenConfigCache;
-	readonly logger: Logger;
-	readonly now?: () => Date;
-}
-
-export function bootPauseDetectorFromEnv(input: PauseDetectorWiringInput): PauseDetectorHandle {
-	const { env, logger } = input;
-	const enabled = parseTrueEnv(env.WARREN_PAUSE_DETECTOR_ENABLED);
-	const tickMs = parseIntEnv(env, "WARREN_PAUSE_DETECTOR_TICK_MS", 15_000);
-	const handle = bootPauseDetector({
-		repos: input.repos,
-		plotReader: defaultPlotEventReader,
-		respawn: async (respawnInput) => {
-			logger.info(
-				{ runId: respawnInput.run.id, reason: respawnInput.reason.kind },
-				"pause.respawn_seam_unconfigured",
-			);
-		},
-		warrenConfigs: input.warrenConfigs,
-		tickMs,
-		disabled: !enabled,
-		logger: pauseLoggerFromPino(logger),
-		...(input.now !== undefined ? { now: input.now } : {}),
-	});
-	if (!enabled) {
-		logger.info({}, "pause detector disabled (set WARREN_PAUSE_DETECTOR_ENABLED=1 to enable)");
-	} else {
-		logger.info({ tickMs }, "pause detector running");
-	}
-	return handle;
-}
+import { bridgeLoggerFromPino } from "./logging.ts";
 
 export interface WatchdogWiringInput {
 	readonly env: EnvLike;
@@ -149,7 +104,6 @@ export interface BackgroundDetectorWiringInput {
 	readonly reap: WatchdogReap;
 	readonly broker: RunEventBroker;
 	readonly bridges: BridgeRegistry;
-	readonly warrenConfigs: WarrenConfigCache;
 	readonly autoOpenPr: AutoOpenPrConfig;
 	/**
 	 * Runtime-provider seam — forwarded to the watchdog tick.
@@ -160,7 +114,6 @@ export interface BackgroundDetectorWiringInput {
 }
 
 export interface BackgroundDetectorHandles {
-	readonly pauseDetector: PauseDetectorHandle;
 	readonly watchdog: WatchdogHandle;
 	/** Periodic operational-stats log line (warren-b2dd / pl-f700 step 6). */
 	readonly opsStatsWorker: OpsStatsWorkerHandle;
@@ -177,13 +130,6 @@ export function bootBackgroundDetectors(
 	input: BackgroundDetectorWiringInput,
 ): BackgroundDetectorHandles {
 	const now = input.now !== undefined ? { now: input.now } : {};
-	const pauseDetector = bootPauseDetectorFromEnv({
-		env: input.env,
-		repos: input.repos,
-		warrenConfigs: input.warrenConfigs,
-		logger: input.logger,
-		...now,
-	});
 	const watchdog = bootWatchdogFromEnv({
 		env: input.env,
 		repos: input.repos,
@@ -203,5 +149,5 @@ export function bootBackgroundDetectors(
 		logger: input.logger,
 		env: input.env,
 	});
-	return { pauseDetector, watchdog, opsStatsWorker };
+	return { watchdog, opsStatsWorker };
 }

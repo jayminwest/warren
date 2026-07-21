@@ -2,9 +2,8 @@
  * PlanRun HTTP handlers (warren-f923 / pl-a258 step 6).
  *
  * Extracted from `src/server/handlers/index.ts` (warren-a2b4 /
- * pl-9088 step 2). Shared parsing helpers and the
- * `assertPlotIdDispatchable` gate are re-imported from the index
- * module; the NDJSON streaming plumbing (`bridgeAbort`,
+ * pl-9088 step 2). Shared parsing helpers are re-imported from the
+ * index module; the NDJSON streaming plumbing (`bridgeAbort`,
  * `asNdjsonStream`, `eventToNdjson`) is re-imported from `./runs.ts`
  * so the plan-run stream handler stays byte-identical to the
  * pre-split shape.
@@ -22,7 +21,6 @@ import { jsonResponse, ndjsonResponse } from "../response.ts";
 import type { RouteHandler, ServerDeps } from "../types.ts";
 import { refreshDispatchProject } from "./dispatch-refresh.ts";
 import {
-	assertPlotIdDispatchable,
 	optionalString,
 	parseBoolean,
 	readJsonBody,
@@ -122,12 +120,6 @@ export function createPlanRunHandler(deps: ServerDeps): RouteHandler {
 				},
 			);
 		}
-
-		// (2c) warren-bae5 / pl-5310 step 2: plot_id format + existence
-		// validation, mirroring createRunHandler's check. Layered AFTER
-		// ProjectLacksPlotError so the more-specific project-shape error
-		// still wins when both apply.
-		await assertPlotIdDispatchable({ plotId, plotResolver: deps.plotResolver });
 
 		// (2d) warren-6d60: refresh the project host clone before the plan
 		// walk so a plan pushed moments earlier is read off fresh on-disk

@@ -102,7 +102,6 @@ export async function depsFor(
 	repos: Repos,
 	burrowClient: BurrowClient,
 	bridges?: BridgeRegistry,
-	extras?: { plotResolver?: import("../../plots/index.ts").PlotResolver },
 ): Promise<ServerDeps> {
 	const broker = new RunEventBroker();
 	await poolFor(repos, burrowClient);
@@ -137,7 +136,6 @@ export async function depsFor(
 			}
 			return { stdout: "", stderr: "", exitCode: 0 };
 		},
-		...(extras?.plotResolver !== undefined ? { plotResolver: extras.plotResolver } : {}),
 	};
 }
 

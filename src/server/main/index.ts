@@ -286,17 +286,15 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 		...(opts.now !== undefined ? { now: opts.now } : {}),
 	});
 
-	// Background detectors (each gated by its own env flag): the pause
-	// detector (warren-2976) and run heartbeat watchdog (warren-285d). See
-	// detector-wiring.ts.
-	const { pauseDetector, watchdog, opsStatsWorker } = bootBackgroundDetectors({
+	// Background detectors (each gated by its own env flag): the run
+	// heartbeat watchdog (warren-285d). See detector-wiring.ts.
+	const { watchdog, opsStatsWorker } = bootBackgroundDetectors({
 		env,
 		adapter,
 		repos,
 		reap: bindReap,
 		broker,
 		bridges: bridgesBoot.registry,
-		warrenConfigs,
 		autoOpenPr,
 		runtimeProvider,
 		logger,
@@ -397,7 +395,6 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 			// spawnRun before bridges/burrow/db disappear under it.
 			await handle.stop();
 			await planRunCoordinator.stop();
-			await pauseDetector.stop();
 			await watchdog.stop();
 			await scheduler.stop();
 			await previewEvictionWorker.stop();
