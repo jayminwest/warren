@@ -2,13 +2,18 @@
  * Warren API callback env for the sandbox (warren-f248).
  *
  * Injects the warren API token + a loopback base URL into a run's burrow
- * env so an agent can call back into warren's own HTTP API. The concrete
- * driver is the audit-warden delivery path: auditors POST each finding to
- * the standing "Audit Warden" conversation over
- * `POST /conversations/:id/messages` (warren-7f62). Without a credential
- * every such call returned 401 (`src/server/auth.ts` requires a bearer
- * token) because the auditor burrow only carried `ANTHROPIC_API_KEY` +
- * `WARREN_QUALITY_GATE`.
+ * env so an agent can call back into warren's own HTTP API. Without a
+ * credential such calls return 401 (`src/server/auth.ts` requires a
+ * bearer token) because the burrow otherwise carries only
+ * `ANTHROPIC_API_KEY` + `WARREN_QUALITY_GATE`.
+ *
+ * The original driver was the audit-warden delivery path (auditors POST
+ * each finding to a standing "Audit Warden" conversation), retired in the
+ * conversations deletion pass (warren-e7e7 / pl-3a79): audit findings now
+ * land as seeds issues via the `sd` CLI, which is the durable record and
+ * needs no HTTP callback. The token/URL injection stays as a generic
+ * loopback-API capability for sandboxed agents that need to reach
+ * warren's own API.
  *
  * V1 is single-user / single-token (SPEC §3.2 / §11.D), and the sandbox
  * already holds the operator's git push credential

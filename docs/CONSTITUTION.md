@@ -74,8 +74,10 @@ their work do not file.
 
 ## Article IX — The constitution outranks the population
 
-Changes to this file, to auditor prompts (`.canopy/` agent entries for
-gatewatch / ratchetwatch / tastewatch), or to `.warren/triggers.yaml`
+Changes to this file, to auditor prompts (the agent entries for
+gatewatch / ratchetwatch / tastewatch — today `agents/*.md`, historically
+rendered under `.canopy/`; the `.canopy/` references here are struck in
+the phase-C canopy sweep, warren-6fcd), or to `.warren/triggers.yaml`
 audit entries require explicit human review — they must not ride an
 auto-merged PR. Any auditor that observes a merged change to these
 files without human approval files a priority-1 finding citing this
@@ -98,45 +100,43 @@ note the gate here and retire the manual check.
 
 ## Audit Warden boundary (warden architecture)
 
-The Audit Warden is a **standing** Leveret conversation that consolidates
-findings from gatewatch, ratchetwatch, and tastewatch into weekly digest
-plans. Its architecture is documented in `LEVERET.md §0.15`; this section
-records the constitutional constraints.
+The Audit Warden consolidates findings from gatewatch, ratchetwatch, and
+tastewatch into a weekly digest. This section records the constitutional
+constraints.
+
+> **Retired (warren-e7e7 / pl-3a79):** the warden was formerly a standing
+> Leveret conversation bound to a long-lived meta-Plot, fed over
+> `POST /conversations/:id/messages` and re-woken via
+> `POST /conversations/:id/re-wake`. The conversations subsystem is being
+> removed; the warden now operates entirely over seeds issues. All
+> `/conversations*` references below have been struck.
 
 ### Ingestion rule
 
-Audit findings reach the warden **only** via
-`POST /conversations/:id/messages` (the existing 202 steering channel).
-No auditor writes directly to the DB or calls a new endpoint. This rule
-preserves Article IX: auditors cannot modify their own mandate, and the
-ingestion path is as auditable as any other operator turn.
+Audit findings are recorded **only** as seeds issues via the `sd` CLI
+(labeled `audit` plus the auditor's own label). No auditor writes
+directly to the DB or calls a new endpoint. The seed is the durable,
+auditable record — this preserves Article IX: auditors cannot modify
+their own mandate, and every finding is as reviewable as any other seed.
 
 ### Digest cadence
 
-- `warden-digest` cron: Sunday 05:00 America/Los_Angeles — Leveret
-  synthesizes the week's accumulated findings and proposes plans through
-  the existing send-off → planner chain.
+- `warden-digest` cron: Sunday 05:00 America/Los_Angeles — the digest
+  driver triages the week's accumulated open `audit`-labeled seeds and
+  files one consolidated digest seed (and, where mechanical, a plan).
 - `tastewatch-digest` cron: Sunday 04:00 America/Los_Angeles (60 min
-  before warden-digest) — tastewatch delivers the taste digest to the
-  warden conversation.
+  before warden-digest) — tastewatch files its taste digest seed first
+  so warden-digest can synthesize it alongside the other auditors'.
 
 Both trigger entries are in `.warren/triggers.yaml` and are protected by
 Article IX (require human review to change).
-
-### Meta-Plot and standing conversation
-
-The warden is bound to one long-lived meta-Plot (auto-created at warden
-bootstrap, never closed). The conversation is resolvable by the
-well-known title **"Audit Warden"** via `GET /conversations?status=active`.
-Re-wake (`POST /conversations/:id/re-wake`) restores a live session after
-idle-finalize without closing or re-creating the conversation or Plot.
 
 ### Autonomy-promotion recommendations
 
 When tastewatch's precision table shows consistent, high-precision findings
 from an auditor, tastewatch *recommends* autonomy promotion in its digest.
-These recommendations are advisory — they are delivered to the warden
-conversation for Leveret to route as a proposed seed or amendment, and
-any resulting change to `.canopy/` or `.warren/triggers.yaml` requires
-explicit human review (Article IX). No auditor may grant itself or another
-auditor autonomous dispatch authority.
+These recommendations are advisory — they are recorded in the digest seed
+for a human to route as a proposed seed or amendment, and any resulting
+change to `.canopy/` or `.warren/triggers.yaml` requires explicit human
+review (Article IX). No auditor may grant itself or another auditor
+autonomous dispatch authority.
