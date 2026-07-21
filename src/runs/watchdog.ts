@@ -35,7 +35,7 @@
  * is dropped, per-run errors are isolated so one bad row can't tear down
  * the loop, and `stop()` drains the in-flight tick before resolving.
  *
- * On by default (warren-b2dc) — like the conversation-idle coordinator,
+ * On by default (warren-b2dc) —
  * this is a lifecycle-reclaim safety net that must not depend on an
  * operator remembering an env var, so a fresh deploy is protected without
  * one. The built-in budget (`DEFAULT_WATCHDOG_HEARTBEAT_TIMEOUT_MS`, 45
@@ -214,11 +214,6 @@ async function evaluateRun(
 	now: Date,
 	graceMs: number,
 ): Promise<TickAction> {
-	// warren-c770: a `conversation` run is deliberately long-lived across turns —
-	// the pi-chat runtime suppresses the per-turn terminal envelope, so the run
-	// sits idle between operator messages. The watchdog must not mistake that idle
-	// for a hung tool and force-fail it.
-	if (run.mode === "conversation") return { kind: "none" };
 	const idleMs = await computeIdleMs(deps.repos, run, now);
 	if (idleMs === null) return { kind: "none" };
 	if (idleMs >= deps.heartbeatTimeoutMs) {

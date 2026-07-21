@@ -55,36 +55,6 @@ export {
 export { type ParsedBurrowConfig, parseBurrowConfig } from "./burrow-config.ts";
 export { type CancelReap, type CancelRunInput, type CancelRunResult, cancelRun } from "./cancel.ts";
 export {
-	type BootConversationIdleDetectorInput,
-	bootConversationIdleDetector,
-	CONVERSATION_IDLE_FINALIZED_KIND,
-	type ConversationIdleDetectorHandle,
-	type ConversationIdleTickDeps,
-	type ConversationIdleTickResult,
-	createRepoIdleConversationReader,
-	type IdleConversationCandidate,
-	type IdleConversationReader,
-	tickConversationIdleDetector,
-} from "./conversation-idle.ts";
-export {
-	type CreateMergePollerDispatchInput,
-	createMergePollerDispatch,
-} from "./conversation-merge-dispatch.ts";
-export {
-	type BootMergePollerInput,
-	bootConversationMergePoller,
-	buildPlannerDispatchPrompt,
-	CONVERSATION_PLANNER_DISPATCHED_KIND,
-	DEFAULT_PLANNER_AGENT,
-	type MergePollerHandle,
-	type MergePollTickDeps,
-	type MergePollTickResult,
-	type PlannerDispatchFn,
-	type PlannerDispatchInput,
-	type PlannerDispatchResult,
-	tickConversationMergePoller,
-} from "./conversation-merge-poller.ts";
-export {
 	buildCostAnalytics,
 	type CostAnalytics,
 	type CostAnalyticsRow,

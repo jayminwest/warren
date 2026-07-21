@@ -32,7 +32,6 @@ export const PREVIEW_PATH_PREFIX = "/p";
 export const WARREN_API_PATH_PREFIXES: readonly string[] = [
 	"/alerts",
 	"/analytics",
-	"/conversations",
 	"/runs",
 	"/projects",
 	"/agents",

@@ -15,8 +15,6 @@ tags:
     description: '`/alerts` routes.'
   - name: analytics
     description: '`/analytics` routes.'
-  - name: conversations
-    description: '`/conversations` routes.'
   - name: meta
     description: Liveness, readiness, and version.
   - name: metrics
@@ -120,95 +118,6 @@ paths:
           description: Successful response.
         default:
           description: Error response (see `src/core/errors.ts`).
-  /conversations:
-    get:
-      operationId: listConversationsHandler
-      tags:
-        - conversations
-      summary: GET /conversations
-      responses:
-        '200':
-          description: Successful response.
-        default:
-          description: Error response (see `src/core/errors.ts`).
-    post:
-      operationId: createConversationHandler
-      tags:
-        - conversations
-      summary: POST /conversations
-      responses:
-        '200':
-          description: Successful response.
-        default:
-          description: Error response (see `src/core/errors.ts`).
-  /conversations/{id}:
-    get:
-      operationId: getConversationHandler
-      tags:
-        - conversations
-      summary: GET /conversations/:id
-      responses:
-        '200':
-          description: Successful response.
-        default:
-          description: Error response (see `src/core/errors.ts`).
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
-  /conversations/{id}/messages:
-    post:
-      operationId: postConversationMessageHandler
-      tags:
-        - conversations
-      summary: POST /conversations/:id/messages
-      responses:
-        '200':
-          description: Successful response.
-        default:
-          description: Error response (see `src/core/errors.ts`).
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
-  /conversations/{id}/re-wake:
-    post:
-      operationId: rewakeConversationHandler
-      tags:
-        - conversations
-      summary: POST /conversations/:id/re-wake
-      responses:
-        '200':
-          description: Successful response.
-        default:
-          description: Error response (see `src/core/errors.ts`).
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
-  /conversations/{id}/send-off:
-    post:
-      operationId: sendOffConversationHandler
-      tags:
-        - conversations
-      summary: POST /conversations/:id/send-off
-      responses:
-        '200':
-          description: Successful response.
-        default:
-          description: Error response (see `src/core/errors.ts`).
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
   /healthz:
     get:
       operationId: healthzHandler

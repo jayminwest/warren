@@ -46,14 +46,6 @@ import {
 	refreshProjectAgentsHandler,
 } from "./agents.ts";
 import { healAlertHandler } from "./alerts.ts";
-import {
-	createConversationHandler,
-	getConversationHandler,
-	listConversationsHandler,
-	postConversationMessageHandler,
-	rewakeConversationHandler,
-	sendOffConversationHandler,
-} from "./conversations.ts";
 import { readyzHandler } from "./diagnostics.ts";
 import { healthzHandler, previewConfigHandler, versionHandler } from "./meta.ts";
 import { metricsHandler } from "./metrics.ts";
@@ -326,25 +318,6 @@ const ROUTE_TABLE: readonly RouteEntry[] = [
 	{ method: "POST", pattern: "/plan-runs/:id/cancel", build: cancelPlanRunHandler },
 	{ method: "GET", pattern: "/plan-runs/:id/events", build: streamPlanRunEventsHandler },
 
-	{ method: "GET", pattern: "/conversations", build: listConversationsHandler },
-	{ method: "POST", pattern: "/conversations", build: createConversationHandler },
-	{ method: "GET", pattern: "/conversations/:id", build: getConversationHandler },
-	{
-		method: "POST",
-		pattern: "/conversations/:id/messages",
-		build: postConversationMessageHandler,
-	},
-	{
-		method: "POST",
-		pattern: "/conversations/:id/send-off",
-		build: sendOffConversationHandler,
-	},
-	{
-		method: "POST",
-		pattern: "/conversations/:id/re-wake",
-		build: rewakeConversationHandler,
-	},
-
 	{ method: "GET", pattern: "/plots", build: listPlotsHandler },
 	{ method: "POST", pattern: "/plots", build: createPlotHandler },
 	// Static path — must precede `/plots/:id` so the param route doesn't
@@ -410,7 +383,6 @@ export const API_PREFIXES: readonly string[] = [
 	"/agents",
 	"/alerts",
 	"/analytics",
-	"/conversations",
 	"/projects",
 	"/runs",
 	"/healthz",

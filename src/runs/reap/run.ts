@@ -121,16 +121,7 @@ export async function reapRun(input: ReapRunInput): Promise<ReapRunResult> {
 	// `project.defaultBranch`, the correct ref for `rev-list --count`.
 	const baseBranch: string | null = project?.defaultBranch ?? null;
 
-	// warren-df71: a conversation run must NOT push a branch / commit `.plot/`
-	// / open a PR (send-off owns its plotSync PR; this pipeline made junk PRs).
-	// warren-e9e1: the pipeline gate keys on `resolved !== null` (workspace info
-	// resolved) rather than a host `workspacePath` existing — under K8s the path
-	// is legitimately null but the run is still finalizable in-pod. For the
-	// LocalProvider path `resolved !== null` iff the burrow lookup succeeded,
-	// which always yielded a host path, so the gate is byte-identical.
-	if (run.mode === "conversation" && resolved !== null) {
-		await emit("reap.branch_push_skipped", { reason: "conversation_run" });
-	} else if (stateOnEntry === "queued" && resolved !== null && project !== null) {
+	if (stateOnEntry === "queued" && resolved !== null && project !== null) {
 		await emit("reap.never_started_skip", { message: "agent never ran; skipping pipeline" });
 	} else if (stateOnEntry !== "queued" && resolved !== null && project !== null) {
 		await runReapPipeline(

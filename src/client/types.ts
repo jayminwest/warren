@@ -100,7 +100,7 @@ export interface RunRow {
 	/** Chain back-link (warren-4b11 / warren-e96f); null for root runs. */
 	parentRunId: string | null;
 	cloneKind: "replicate" | "continue" | null;
-	mode: "batch" | "conversation";
+	mode: "batch";
 	renderedAgentJson: unknown;
 	state: RunState;
 	failureReason: RunFailureReason | null;

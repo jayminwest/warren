@@ -16,38 +16,16 @@
  *   protected without an explicit env var; tune via
  *   `WARREN_RUN_HEARTBEAT_TIMEOUT_MS`, opt out via
  *   `WARREN_WATCHDOG_DISABLED=1`. See `src/runs/watchdog.ts`.
- * - `bootConversationMergePollerFromEnv` (warren-b872): polls GitHub for
- *   sent-off conversations whose plotSync PR has merged and auto-dispatches
- *   the planner run keyed on `plot_id`. On by default (warren-157a) — like
- *   the conversation idle detector it is a lifecycle-reclaim path that must
- *   not depend on an operator remembering a flag. Opt-out via
- *   `WARREN_MERGE_POLLER_DISABLED=1`.
- * - `bootConversationIdleDetectorFromEnv` (warren-005d):
- *   finalizes the anchoring `mode:"conversation"` run after
- *   `conversation.idleTimeoutMs` of inactivity (the conversation row stays
- *   `active`; transcript and Plot persist). On by default — it is the only
- *   thing that reclaims an abandoned conversation's compute, since
- *   warren-c770 exempts conversation runs from the watchdog and crash
- *   recovery. Opt-out via `WARREN_CONVERSATION_IDLE_DISABLED=1`.
  */
 
 import type { DrizzleAdapter } from "../../db/repos/drizzle-adapter.ts";
 import type { Repos } from "../../db/repos/index.ts";
-import { createPrMergeChecker } from "../../plan-runs/index.ts";
-import type { SpawnFn } from "../../projects/clone.ts";
-import type { ProjectsConfig } from "../../projects/config.ts";
 import {
 	type AutoOpenPrConfig,
-	bootConversationIdleDetector,
-	bootConversationMergePoller,
 	bootPauseDetector,
 	bootWatchdog,
-	type ConversationIdleDetectorHandle,
-	createMergePollerDispatch,
-	createRepoIdleConversationReader,
 	defaultPlotEventReader,
 	loadWatchdogConfigFromEnv,
-	type MergePollerHandle,
 	type PauseDetectorHandle,
 	type RunEventBroker,
 	type WatchdogHandle,
@@ -55,7 +33,6 @@ import {
 } from "../../runs/index.ts";
 import { bootOpsStatsWorker, type OpsStatsWorkerHandle } from "../../runs/ops-stats.ts";
 import type { RuntimeProvider } from "../../runtime/contract.ts";
-import type { SeedsCliDeps } from "../../seeds-cli/index.ts";
 import type { WarrenConfigCache } from "../../warren-config/index.ts";
 import type { EnvLike } from "../config.ts";
 import type { BridgeRegistry, Logger } from "../types.ts";
@@ -93,116 +70,6 @@ export function bootPauseDetectorFromEnv(input: PauseDetectorWiringInput): Pause
 		logger.info({}, "pause detector disabled (set WARREN_PAUSE_DETECTOR_ENABLED=1 to enable)");
 	} else {
 		logger.info({ tickMs }, "pause detector running");
-	}
-	return handle;
-}
-
-export interface MergePollerWiringInput {
-	readonly env: EnvLike;
-	readonly repos: Repos;
-	/**
-	 * Resolved runtime provider — threaded into the planner spawnRun. Required
-	 * since warren-c42c: the spawn seam is provider-only, so the merge-poller
-	 * dispatch must carry the boot-selected provider.
-	 */
-	readonly runtimeProvider: RuntimeProvider;
-	readonly bridges: BridgeRegistry;
-	readonly warrenConfigs: WarrenConfigCache;
-	readonly projectsConfig: ProjectsConfig;
-	readonly projectSpawn: SpawnFn;
-	readonly seedsCli: SeedsCliDeps;
-	readonly autoOpenPr: AutoOpenPrConfig;
-	readonly runBranchPrefixDefault?: string;
-	readonly logger: Logger;
-	readonly now?: () => Date;
-}
-
-/**
- * Boot the send-off PR-merge poller (warren-b872). On by default
- * (warren-157a) — mirroring the conversation idle detector, this is the
- * lifecycle path that auto-dispatches the planner run keyed on `plot_id`
- * once a sent-off conversation's plotSync PR merges, so it must not depend
- * on an operator remembering a flag. Opt-out via
- * `WARREN_MERGE_POLLER_DISABLED=1`; polls every
- * `WARREN_MERGE_POLLER_TICK_MS` (default 30s).
- */
-export function bootConversationMergePollerFromEnv(
-	input: MergePollerWiringInput,
-): MergePollerHandle {
-	const { env, logger } = input;
-	const disabled = parseTrueEnv(env.WARREN_MERGE_POLLER_DISABLED);
-	const tickMs = parseIntEnv(env, "WARREN_MERGE_POLLER_TICK_MS", 30_000);
-	const dispatch = createMergePollerDispatch({
-		repos: input.repos,
-		runtimeProvider: input.runtimeProvider,
-		bridges: input.bridges,
-		warrenConfigs: input.warrenConfigs,
-		projectsConfig: input.projectsConfig,
-		projectSpawn: input.projectSpawn,
-		// Raw token for the pre-dispatch refresh fetch (private repos on
-		// the K8s control plane) — see SpawnRunInput.githubToken.
-		githubToken: env.GITHUB_TOKEN,
-		seedsCli: input.seedsCli,
-		...(input.runBranchPrefixDefault !== undefined
-			? { runBranchPrefixDefault: input.runBranchPrefixDefault }
-			: {}),
-		...(input.now !== undefined ? { now: input.now } : {}),
-	});
-	const handle = bootConversationMergePoller({
-		repos: input.repos,
-		checkPrMerged: createPrMergeChecker({ token: input.autoOpenPr.token }),
-		dispatch,
-		tickMs,
-		disabled,
-		logger: pauseLoggerFromPino(logger),
-		...(input.now !== undefined ? { now: input.now } : {}),
-	});
-	if (disabled) {
-		logger.info({}, "merge poller disabled via WARREN_MERGE_POLLER_DISABLED");
-	} else {
-		logger.info({ tickMs }, "merge poller running");
-	}
-	return handle;
-}
-
-export interface ConversationIdleWiringInput {
-	readonly env: EnvLike;
-	readonly repos: Repos;
-	readonly warrenConfigs: WarrenConfigCache;
-	readonly logger: Logger;
-	readonly now?: () => Date;
-}
-
-/**
- * Boot the conversation idle-timeout coordinator (warren-005d).
- * On by default — unlike the opt-in detectors
- * above, this is the lifecycle reclaim path for conversation compute
- * (mirroring preview eviction / workspace GC), so it must not depend on an
- * operator remembering a flag. Opt-out via
- * `WARREN_CONVERSATION_IDLE_DISABLED=1`; ticks every
- * `WARREN_CONVERSATION_IDLE_TICK_MS` (default 60s). The per-conversation
- * budget comes from each project's `conversation.idleTimeoutMs`
- * (`.warren/config.yaml`), falling back to the 20-minute default.
- */
-export function bootConversationIdleDetectorFromEnv(
-	input: ConversationIdleWiringInput,
-): ConversationIdleDetectorHandle {
-	const { env, logger } = input;
-	const disabled = parseTrueEnv(env.WARREN_CONVERSATION_IDLE_DISABLED);
-	const tickMs = parseIntEnv(env, "WARREN_CONVERSATION_IDLE_TICK_MS", 60_000);
-	const handle = bootConversationIdleDetector({
-		repos: input.repos,
-		reader: createRepoIdleConversationReader(input.repos),
-		warrenConfigs: input.warrenConfigs,
-		tickMs,
-		disabled,
-		logger: pauseLoggerFromPino(logger),
-		...(input.now !== undefined ? { now: input.now } : {}),
-	});
-	if (disabled) {
-		logger.info({}, "conversation idle detector disabled via WARREN_CONVERSATION_IDLE_DISABLED");
-	} else {
-		logger.info({ tickMs }, "conversation idle detector running");
 	}
 	return handle;
 }
@@ -266,9 +133,9 @@ export function bootWatchdogFromEnv(input: WatchdogWiringInput): WatchdogHandle 
 }
 
 /**
- * Superset input for `bootBackgroundDetectors` — the pause detector, run
- * heartbeat watchdog, and send-off merge poller share most of their deps, so
- * `bootServer` hands the whole bag once instead of wiring three call sites.
+ * Superset input for `bootBackgroundDetectors` — the pause detector and run
+ * heartbeat watchdog share most of their deps, so `bootServer` hands the
+ * whole bag once instead of wiring two call sites.
  */
 export interface BackgroundDetectorWiringInput {
 	readonly env: EnvLike;
@@ -283,17 +150,11 @@ export interface BackgroundDetectorWiringInput {
 	readonly broker: RunEventBroker;
 	readonly bridges: BridgeRegistry;
 	readonly warrenConfigs: WarrenConfigCache;
-	readonly projectsConfig: ProjectsConfig;
-	readonly projectSpawn: SpawnFn;
-	readonly seedsCli: SeedsCliDeps;
 	readonly autoOpenPr: AutoOpenPrConfig;
 	/**
-	 * Runtime-provider seam — forwarded to the watchdog tick and the merge-poller
-	 * planner spawn. Required since warren-c42c: the merge-poller dispatch routes
-	 * through the provider-only spawn seam.
+	 * Runtime-provider seam — forwarded to the watchdog tick.
 	 */
 	readonly runtimeProvider: RuntimeProvider;
-	readonly runBranchPrefixDefault?: string;
 	readonly logger: Logger;
 	readonly now?: () => Date;
 }
@@ -301,19 +162,16 @@ export interface BackgroundDetectorWiringInput {
 export interface BackgroundDetectorHandles {
 	readonly pauseDetector: PauseDetectorHandle;
 	readonly watchdog: WatchdogHandle;
-	readonly mergePoller: MergePollerHandle;
-	readonly conversationIdleDetector: ConversationIdleDetectorHandle;
 	/** Periodic operational-stats log line (warren-b2dd / pl-f700 step 6). */
 	readonly opsStatsWorker: OpsStatsWorkerHandle;
 }
 
 /**
- * Boot all four background detectors in one call. Each is independently
+ * Boot all background detectors in one call. Each is independently
  * gated by its own env flag inside the per-detector boot (the pause
- * detector is opt-in; the watchdog, conversation idle detector, and
- * send-off merge poller are on-by-default opt-outs); this wrapper just
- * collapses the shared dep-plumbing so `bootServer` stays under the
- * file-size ratchet.
+ * detector is opt-in; the watchdog is an on-by-default opt-out); this
+ * wrapper just collapses the shared dep-plumbing so `bootServer` stays
+ * under the file-size ratchet.
  */
 export function bootBackgroundDetectors(
 	input: BackgroundDetectorWiringInput,
@@ -336,29 +194,6 @@ export function bootBackgroundDetectors(
 		logger: input.logger,
 		...now,
 	});
-	const mergePoller = bootConversationMergePollerFromEnv({
-		env: input.env,
-		repos: input.repos,
-		runtimeProvider: input.runtimeProvider,
-		bridges: input.bridges,
-		warrenConfigs: input.warrenConfigs,
-		projectsConfig: input.projectsConfig,
-		projectSpawn: input.projectSpawn,
-		seedsCli: input.seedsCli,
-		autoOpenPr: input.autoOpenPr,
-		...(input.runBranchPrefixDefault !== undefined
-			? { runBranchPrefixDefault: input.runBranchPrefixDefault }
-			: {}),
-		logger: input.logger,
-		...now,
-	});
-	const conversationIdleDetector = bootConversationIdleDetectorFromEnv({
-		env: input.env,
-		repos: input.repos,
-		warrenConfigs: input.warrenConfigs,
-		logger: input.logger,
-		...now,
-	});
 	// Read-only observability: one `ops.stats` line per tick with runs-by-
 	// state, active bridge count, and cost aggregates — all from data
 	// already in SQLite plus the in-process bridge registry size.
@@ -368,5 +203,5 @@ export function bootBackgroundDetectors(
 		logger: input.logger,
 		env: input.env,
 	});
-	return { pauseDetector, watchdog, mergePoller, conversationIdleDetector, opsStatsWorker };
+	return { pauseDetector, watchdog, opsStatsWorker };
 }

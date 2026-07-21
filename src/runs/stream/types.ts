@@ -12,11 +12,10 @@ import type { Repos } from "../../db/repos/index.ts";
 import type { RunFailureReason, RunMode, RunTerminalState } from "../../db/schema.ts";
 import type { RuntimeProvider, TerminalReason } from "../../runtime/contract.ts";
 import type { RunEventBroker } from "../events.ts";
-import type { ConversationTurnHandler } from "./conversation-turn.ts";
 
 /**
  * Structural view of a stream event — the fields the bridge and its pure
- * classifiers (`terminal-detect.ts`, `conversation-turn.ts`) read off each
+ * classifiers (`terminal-detect.ts`) read off each
  * event. Deliberately provider-neutral (warren-1f56): satisfied by BOTH the
  * seam's `NormalizedEvent` (the production source, off `provider.streamEvents`)
  * and burrow's `RunEvent` (the test `source` override still feeds those), so the
@@ -147,21 +146,8 @@ export interface BridgeRunStreamInput {
 	 */
 	readonly runtimeProvider: RuntimeProvider;
 	readonly signal?: AbortSignal;
-	/**
-	 * Run mode (warren-df71). When `'conversation'`, the bridge treats a pi
-	 * `agent_end` as a TURN boundary rather than a run terminal: it persists
-	 * the turn's usage + assistant text and applies any `propose_intent`
-	 * patch, then KEEPS the run `running` (no break, no inline reap). Omitted
-	 * / any other value behaves exactly as before — non-conversation run
-	 * lifecycles are unchanged.
-	 */
+	/** Run mode. */
 	readonly mode?: RunMode;
-	/**
-	 * Conversation-turn side-effect seam (warren-df71). Consulted only when
-	 * `mode === 'conversation'` to persist assistant turns and apply
-	 * `propose_intent` patches. Omit for non-conversation runs.
-	 */
-	readonly conversationTurn?: ConversationTurnHandler;
 	/**
 	 * Override the stream source (tests). Default: the run's
 	 * `provider.streamEvents(handle)` adapted to the abort signal. Typed against

@@ -231,29 +231,6 @@ const AgentConfigSchema = z
 
 export type AgentConfig = z.infer<typeof AgentConfigSchema>;
 
-// warren-005d: idle-timeout budget for a
-// mode:"conversation" anchoring run. The run stays non-terminal across turns,
-// so warren owns the deadline; when `now - conversations.last_activity_at`
-// exceeds this, the coordinator finalizes ONLY the run (→ succeeded) — the
-// conversation stays status='active' and the `messages` transcript survives.
-// Mirrors `agent.pauseTimeoutMs` (bounds 1s..24h, `.default()`-backed); the
-// `DEFAULT_*` constant is the fallback when the block is absent.
-export const DEFAULT_CONVERSATION_IDLE_TIMEOUT_MS = 1_200_000; // 20 minutes
-
-const ConversationIdleTimeoutMsSchema = z
-	.number()
-	.int("conversation.idleTimeoutMs must be an integer (milliseconds)")
-	.min(1_000, "conversation.idleTimeoutMs must be between 1s (1000) and 24h (86400000)")
-	.max(86_400_000, "conversation.idleTimeoutMs must be between 1s (1000) and 24h (86400000)");
-
-const ConversationConfigSchema = z
-	.object({
-		idleTimeoutMs: ConversationIdleTimeoutMsSchema.default(DEFAULT_CONVERSATION_IDLE_TIMEOUT_MS),
-	})
-	.strict();
-
-export type ConversationConfig = z.infer<typeof ConversationConfigSchema>;
-
 // warren-cd22: per-project configuration for plot sync to GitHub (pl-5a6c).
 // mergeStrategy controls when changes are merged (immediate / auto / manual).
 // targetBranch overrides the default branch when pushing changes.
@@ -403,8 +380,6 @@ export const DefaultsConfigSchema = z
 		// warren-cd37 / SPEC §11.O: per-project agent-runtime knobs (only
 		// `pauseTimeoutMs` today). Missing block → use the DEFAULT_* fallback.
 		agent: AgentConfigSchema.optional(),
-		// warren-005d: conversation-runtime knobs (`idleTimeoutMs`).
-		conversation: ConversationConfigSchema.optional(),
 		// warren-b802: override of the burrow runtime backing interactive built-in
 		// agents. Precedence: config override > agent frontmatter.runtime > name.
 		interactiveAgents: InteractiveAgentsConfigSchema.optional(),

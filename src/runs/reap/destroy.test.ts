@@ -97,19 +97,6 @@ describe("runWorkspaceDestroy", () => {
 		expect(h.events).toEqual([]);
 	});
 
-	test("skips conversation runs and emits a skipped event (warren-c770)", async () => {
-		const h = harness();
-		const destroyed = await runWorkspaceDestroy({
-			run: run({ mode: "conversation" }),
-			previewLaunchState: null,
-			terminate: async () => fakeTeardown(),
-			...deps(h),
-		});
-		expect(destroyed).toBe(false);
-		expect(h.events[0]?.kind).toBe("reap.workspace_destroy_skipped");
-		expect(h.events[0]?.payload).toMatchObject({ reason: "conversation_run" });
-	});
-
 	test("skips and preserves the workspace when the branch push failed (warren-495d)", async () => {
 		const h = harness();
 		let terminated = false;

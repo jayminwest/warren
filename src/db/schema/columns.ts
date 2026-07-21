@@ -37,16 +37,11 @@ export type RunTerminalState = (typeof RUN_TERMINAL_STATES)[number];
  * historical single-shot run: warren spawns burrow, agent runs to completion,
  * reap pushes the branch. Mode is fixed at run-create time. TS-only narrowing
  * (mx-2ab984); defaults to `batch` so legacy rows written before this column
- * existed match the historical shape. (The retired `interactive` mode value
- * is intentionally dropped from the enum — warren-d622.)
- *
- * `conversation` (warren-c770) is the pi-chat runtime mode:
- * the burrow-side agent suppresses the per-turn `agent_end` terminal envelope,
- * so the anchoring run stays non-terminal across turns. Warren-side lifetime
- * guards (watchdog, reap workspace-destroy, crash-recovery finalize) must
- * therefore exempt it — an idle conversation run is healthy, not hung.
+ * existed match the historical shape. (The retired `interactive` and
+ * `conversation` mode values are intentionally dropped from the enum —
+ * warren-d622, warren-ee27.)
  */
-export const RUN_MODES = ["batch", "conversation"] as const;
+export const RUN_MODES = ["batch"] as const;
 export type RunMode = (typeof RUN_MODES)[number];
 
 /**

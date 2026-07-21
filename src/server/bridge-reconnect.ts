@@ -22,7 +22,6 @@ import {
 	type RunEventBroker,
 	type WatchdogReap,
 } from "../runs/index.ts";
-import type { ConversationTurnHandler } from "../runs/stream/conversation-turn.ts";
 import type { RuntimeProvider } from "../runtime/contract.ts";
 import type { SeedsCliDeps } from "../seeds-cli/index.ts";
 import type { WarrenConfigCache } from "../warren-config/index.ts";
@@ -65,14 +64,8 @@ export interface RunWithReconnectInput {
 	 */
 	readonly stallCeiling: number;
 	readonly sleep: (ms: number, signal: AbortSignal) => Promise<void>;
-	/**
-	 * Run mode (warren-df71). Threaded into every `bridgeRunStream` pass so a
-	 * conversation run's `agent_end` is treated as a turn boundary, not a
-	 * run terminal. Omitted for non-conversation runs.
-	 */
+	/** Run mode. Threaded into every `bridgeRunStream` pass. */
 	readonly mode?: RunMode;
-	/** Conversation-turn side-effect seam (warren-df71); see `bridgeRunStream`. */
-	readonly conversationTurn?: ConversationTurnHandler;
 	readonly logger?: BridgeLogger;
 	readonly autoOpenPr?: AutoOpenPrConfig;
 	readonly warrenConfigs?: WarrenConfigCache;
@@ -119,7 +112,6 @@ export async function runWithReconnect(
 			runtimeProvider: input.runtimeProvider,
 			signal: input.signal,
 			...(input.mode !== undefined ? { mode: input.mode } : {}),
-			...(input.conversationTurn !== undefined ? { conversationTurn: input.conversationTurn } : {}),
 			logger: log,
 		};
 		const result = await input.bridge(bridgeInput);

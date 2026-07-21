@@ -56,20 +56,6 @@ describe("tickPauseDetector", () => {
 		return row.id;
 	}
 
-	async function seedRunningConversation(): Promise<string> {
-		const row = await repos.runs.create({
-			agentName: "claude-code",
-			projectId: PROJECT_ID,
-			prompt: "<seed>",
-			renderedAgentJson: makeAgentJson(),
-			trigger: "conversation",
-			mode: "conversation",
-			plotId: PLOT_ID,
-		});
-		await repos.runs.markRunning(row.id);
-		return row.id;
-	}
-
 	test("pauses a running batch run with an unanswered question_posed", async () => {
 		const runId = await seedRunningBatch();
 		const respawns: RespawnInput[] = [];
@@ -106,16 +92,6 @@ describe("tickPauseDetector", () => {
 			"2026-05-23T00:00:10.000Z",
 		);
 		expect(respawns).toEqual([]); // pause does NOT respawn
-	});
-
-	test("skips conversation runs (they anchor a long-lived pi-chat session)", async () => {
-		await seedRunningConversation();
-		const result = await tickPauseDetector({
-			repos,
-			plotReader: stubReader([poseEvent("2026-05-23T00:00:01Z")]),
-			respawn: async () => undefined,
-		});
-		expect(result.paused).toEqual([]);
 	});
 
 	test("skips batch runs with no plot_id", async () => {

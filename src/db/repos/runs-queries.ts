@@ -6,7 +6,7 @@
  * the call surface is unchanged.
  */
 
-import { and, asc, desc, eq, gte, inArray, lte, ne, type SQL, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, lte, type SQL, sql } from "drizzle-orm";
 import type { SqliteDrizzleDb } from "../client.ts";
 import type { RunRow, RunState } from "../schema.ts";
 import type { DrizzleAdapter } from "./drizzle-adapter.ts";
@@ -52,7 +52,6 @@ export async function listAll(
 		db
 			.select()
 			.from(runs)
-			.where(ne(runs.mode, "conversation"))
 			.orderBy(...orderByClause(runs, sort, dir))
 			.limit(limit)
 			.offset(offset),
@@ -76,7 +75,7 @@ export async function listByProject(
 		db
 			.select()
 			.from(runs)
-			.where(and(eq(runs.projectId, projectId), ne(runs.mode, "conversation")))
+			.where(eq(runs.projectId, projectId))
 			.orderBy(...orderByClause(runs, sort, dir))
 			.limit(limit)
 			.offset(offset),
@@ -115,7 +114,7 @@ export async function listByAgent(
 		db
 			.select()
 			.from(runs)
-			.where(and(eq(runs.agentName, agentName), ne(runs.mode, "conversation")))
+			.where(eq(runs.agentName, agentName))
 			.orderBy(...orderByClause(runs, sort, dir))
 			.limit(limit)
 			.offset(offset),
@@ -141,14 +140,14 @@ export async function aggregate(
 }> {
 	const db = adapter.drizzle as SqliteDrizzleDb;
 	const runs = adapter.schema.runs;
-	const conds: SQL[] = [ne(runs.mode, "conversation")];
+	const conds: SQL[] = [];
 	if (filter.projectId !== undefined) {
 		conds.push(eq(runs.projectId, filter.projectId));
 	}
 	if (filter.agentName !== undefined) {
 		conds.push(eq(runs.agentName, filter.agentName));
 	}
-	const where = conds.length === 1 ? conds[0] : and(...conds);
+	const where = conds.length === 0 ? undefined : conds.length === 1 ? conds[0] : and(...conds);
 	const baseQuery = db
 		.select({
 			total: sql<number>`count(*)`,

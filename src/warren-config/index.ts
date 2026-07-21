@@ -37,10 +37,8 @@ export {
 } from "./resources-config.ts";
 export {
 	type AgentConfig,
-	type ConversationConfig,
 	type CronTrigger,
 	DEFAULT_AGENT_PAUSE_TIMEOUT_MS,
-	DEFAULT_CONVERSATION_IDLE_TIMEOUT_MS,
 	DEFAULT_HEALER_COOLDOWN_MINUTES,
 	DEFAULT_HEALER_MAX_RETRIES,
 	DEFAULT_HEALER_ROLE,

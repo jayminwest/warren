@@ -287,30 +287,21 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 	});
 
 	// Background detectors (each gated by its own env flag): the pause
-	// detector (warren-2976), run heartbeat watchdog (warren-285d), send-off
-	// PR-merge poller (warren-b872, auto-dispatches the planner once a sent-off
-	// conversation's plotSync PR merges), and the on-by-default conversation
-	// idle-timeout coordinator (warren-005d, finalizes an idle conversation's
-	// anchoring run; the conversation itself stays active). See
+	// detector (warren-2976) and run heartbeat watchdog (warren-285d). See
 	// detector-wiring.ts.
-	const { pauseDetector, watchdog, mergePoller, conversationIdleDetector, opsStatsWorker } =
-		bootBackgroundDetectors({
-			env,
-			adapter,
-			repos,
-			reap: bindReap,
-			broker,
-			bridges: bridgesBoot.registry,
-			warrenConfigs,
-			projectsConfig,
-			projectSpawn: defaultSpawn,
-			seedsCli,
-			autoOpenPr,
-			runtimeProvider,
-			...(runBranchPrefixDefault !== undefined ? { runBranchPrefixDefault } : {}),
-			logger,
-			...(opts.now !== undefined ? { now: opts.now } : {}),
-		});
+	const { pauseDetector, watchdog, opsStatsWorker } = bootBackgroundDetectors({
+		env,
+		adapter,
+		repos,
+		reap: bindReap,
+		broker,
+		bridges: bridgesBoot.registry,
+		warrenConfigs,
+		autoOpenPr,
+		runtimeProvider,
+		logger,
+		...(opts.now !== undefined ? { now: opts.now } : {}),
+	});
 
 	// Preview TTL + LRU eviction worker (R-19 / SPEC §11.L, warren-ea6b).
 	const previewEvictionWorker = startPreviewEvictionWorker({
@@ -408,8 +399,6 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 			await planRunCoordinator.stop();
 			await pauseDetector.stop();
 			await watchdog.stop();
-			await mergePoller.stop();
-			await conversationIdleDetector.stop();
 			await scheduler.stop();
 			await previewEvictionWorker.stop();
 			await workspaceGcWorker.stop();

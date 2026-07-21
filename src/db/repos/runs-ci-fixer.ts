@@ -5,7 +5,7 @@
  * the call surface is unchanged.
  */
 
-import { and, asc, eq, isNotNull, ne, sql } from "drizzle-orm";
+import { and, asc, eq, isNotNull, sql } from "drizzle-orm";
 import type { SqliteDrizzleDb } from "../client.ts";
 import type { DrizzleAdapter } from "./drizzle-adapter.ts";
 
@@ -17,8 +17,7 @@ import type { DrizzleAdapter } from "./drizzle-adapter.ts";
  * (targetBranch override) and inherit the same `pr_url`, so de-duping to the
  * oldest keeps the head ref stable. Ordered most-recent-PR-first and capped
  * so a project with a long PR history doesn't fan out into an unbounded
- * number of GitHub calls per tick. `conversation`-mode runs are excluded
- * (they never open PRs).
+ * number of GitHub calls per tick.
  */
 export async function listPrCandidatesByProject(
 	adapter: DrizzleAdapter,
@@ -35,9 +34,7 @@ export async function listPrCandidatesByProject(
 		db
 			.select({ id: runs.id, prUrl: runs.prUrl, startedAt: runs.startedAt })
 			.from(runs)
-			.where(
-				and(eq(runs.projectId, projectId), isNotNull(runs.prUrl), ne(runs.mode, "conversation")),
-			)
+			.where(and(eq(runs.projectId, projectId), isNotNull(runs.prUrl)))
 			.orderBy(asc(runs.startedAt), asc(runs.id)),
 	);
 	const openerByUrl = new Map<string, string>();

@@ -55,10 +55,6 @@ import {
 	type RunEventBroker,
 	type WatchdogReap,
 } from "../runs/index.ts";
-import {
-	type ConversationTurnHandler,
-	createConversationTurnHandler,
-} from "../runs/stream/conversation-turn.ts";
 import type { RuntimeProvider } from "../runtime/contract.ts";
 import type { SeedsCliDeps } from "../seeds-cli/index.ts";
 import type { WarrenConfigCache } from "../warren-config/index.ts";
@@ -184,13 +180,6 @@ export interface CreateBridgeRegistryInput {
 	 * manual `POST /plan-runs` handler. Omit to skip validation (tests).
 	 */
 	readonly seedsCli?: SeedsCliDeps;
-	/**
-	 * Conversation-turn side-effect handler (warren-df71). Defaults to a
-	 * `createConversationTurnHandler` bound to `input.repos`; consulted only
-	 * for `mode:'conversation'` bridges to persist assistant turns and apply
-	 * `propose_intent` patches. Tests inject a stub.
-	 */
-	readonly conversationTurn?: ConversationTurnHandler;
 }
 
 export function createBridgeRegistry(input: CreateBridgeRegistryInput): BridgeRegistry {
@@ -208,12 +197,6 @@ export function createBridgeRegistry(input: CreateBridgeRegistryInput): BridgeRe
 	const stallThreshold = input.stallThreshold ?? BRIDGE_STALL_THRESHOLD;
 	const stallCeiling = input.stallCeiling ?? BRIDGE_STALL_CEILING;
 	const sleep = input.sleep ?? defaultSleep;
-	const conversationTurn =
-		input.conversationTurn ??
-		createConversationTurnHandler({
-			repos: input.repos,
-			...(input.logger !== undefined ? { logger: input.logger } : {}),
-		});
 
 	function start(runId: string, burrowRunId: string, burrowId: string, mode?: RunMode): void {
 		if (live.has(runId)) return;
@@ -232,7 +215,6 @@ export function createBridgeRegistry(input: CreateBridgeRegistryInput): BridgeRe
 			stallThreshold,
 			stallCeiling,
 			sleep,
-			conversationTurn,
 			...(mode !== undefined ? { mode } : {}),
 			...(input.logger !== undefined ? { logger: input.logger } : {}),
 			...(input.autoOpenPr !== undefined ? { autoOpenPr: input.autoOpenPr } : {}),
@@ -378,21 +360,6 @@ export async function bootBridges(input: CreateBridgeRegistryInput): Promise<Boo
 			);
 		}
 		if (lost) {
-			// warren-c770: a `conversation` run's backend run legitimately
-			// disappears across a host restart (the pi-chat session lived in the
-			// backend's in-memory store). Finalizing it to `burrow_run_lost` here
-			// would tombstone a healthy conversation; instead leave the row
-			// non-terminal and skip the bridge. Re-wake (warren-6ccf) is
-			// responsible for spawning a fresh pi session that replays the
-			// persisted transcript.
-			if (run.mode === "conversation") {
-				skipped.push({ runId: run.id, reason: "conversation_burrow_lost" });
-				input.logger?.info?.(
-					{ runId: run.id, burrowRunId: run.burrowRunId },
-					"skipping recovery: conversation burrow run lost (awaiting re-wake)",
-				);
-				continue;
-			}
 			skipped.push({ runId: run.id, reason: "burrow_run_lost" });
 			await reconcileLostBurrowRun({
 				runId: run.id,

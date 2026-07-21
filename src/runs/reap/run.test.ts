@@ -417,44 +417,6 @@ describe("reapRun", () => {
 		expect(result.errors).toEqual([]);
 	});
 
-	test("conversation run: skips branch push + PR (warren-df71)", async () => {
-		const project = (await ctx.repos.projects.listAll())[0];
-		expect(project).toBeDefined();
-		const conv = await ctx.repos.runs.create({
-			agentName: "refactor-bot",
-			projectId: (project as { id: string }).id,
-			prompt: "p",
-			renderedAgentJson: {},
-			trigger: "conversation",
-			mode: "conversation",
-			burrowId: "bur_aaaaaaaaaaaa",
-			burrowRunId: "run_conversation1",
-		});
-		await ctx.repos.runs.markRunning(conv.id);
-		const e = fakeExec();
-
-		const result = await reapRun({
-			runId: conv.id,
-			outcome: "succeeded",
-			repos: ctx.repos,
-			...reapDeps(fakeBurrowClient(makeBurrow()), { fs: fakeFs().fs, exec: e.exec }),
-			broker: ctx.broker,
-			fs: fakeFs().fs,
-			exec: e.exec,
-			autoOpenPr: { enabled: true, token: "ghp_xyz", warrenBaseUrl: null },
-		});
-
-		// No git push (and therefore no rev-list / PR) for a conversation run.
-		expect(e.calls).toHaveLength(0);
-		expect(result.branchPushed).toBe(false);
-		expect(result.plotCommitted).toBe(false);
-		expect(result.prUrl).toBeNull();
-		const events = await ctx.repos.events.listByRun(conv.id);
-		expect(events.find((ev) => ev.kind === "reap.branch_push_skipped")).toBeDefined();
-		// Workspace survives a conversation reap (warren-c770).
-		expect(result.workspaceDestroyed).toBe(false);
-	});
-
 	test("publishes reap-emitted events to the broker for live tailers", async () => {
 		const f = fakeFs({
 			"/data/burrow/ws/.mulch/expertise/build.jsonl":

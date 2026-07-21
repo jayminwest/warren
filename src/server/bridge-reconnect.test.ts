@@ -237,7 +237,7 @@ describe("reap orchestration through the provider seam (warren-a7cb)", () => {
 		await db.close();
 	});
 
-	async function seedRun(mode: "batch" | "conversation" = "batch"): Promise<string> {
+	async function seedRun(): Promise<string> {
 		const project = await repos.projects.create({
 			gitUrl: "https://github.com/x/y.git",
 			localPath: "/data/projects/x/y",
@@ -251,7 +251,6 @@ describe("reap orchestration through the provider seam (warren-a7cb)", () => {
 			trigger: "manual",
 			burrowId: "bur_a",
 			burrowRunId: "rb_a",
-			mode,
 		});
 		return run.id;
 	}
@@ -311,22 +310,6 @@ describe("reap orchestration through the provider seam (warren-a7cb)", () => {
 			deletedRuns: 1,
 		});
 		expect((await repos.runs.get(runId))?.state).toBe("failed");
-	});
-
-	test("reconcile skips provider.terminate for conversation runs", async () => {
-		const runId = await seedRun("conversation");
-		const { provider, terminateCalls } = makeProvider();
-		await reconcileLostBurrowRun({
-			runId,
-			burrowRunId: "rb_a",
-			repos,
-			broker: new RunEventBroker(),
-			runtimeProvider: provider,
-		});
-
-		expect(terminateCalls).toHaveLength(0);
-		const kinds = (await repos.events.listByRun(runId)).map((e) => e.kind);
-		expect(kinds).toContain("reap.workspace_destroy_skipped");
 	});
 
 	test("reconcile degrades a terminate failure to workspace_destroy_failed", async () => {

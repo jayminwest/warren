@@ -265,30 +265,6 @@ describe("tickWatchdog", () => {
 		expect(runId).toBeDefined();
 	});
 
-	test("never force-fails an idle conversation run (warren-c770)", async () => {
-		await seedRunning("2026-06-05T00:00:00Z", {
-			burrowId: "bur_1",
-			burrowRunId: "run_b1",
-			mode: "conversation",
-		});
-		const reapCalls: ReapRunInput[] = [];
-
-		const result = await tickWatchdog({
-			repos,
-			runtimeProvider: makeCancelProvider([]),
-			heartbeatTimeoutMs: 5 * 60_000,
-			// 10min idle — well past budget; a batch run here would force-fail.
-			now: () => new Date("2026-06-05T00:10:00Z"),
-			reap: async (input) => {
-				reapCalls.push(input);
-				return fakeReapResult("failed");
-			},
-		});
-
-		expect(result.timedOut).toEqual([]);
-		expect(reapCalls).toEqual([]);
-	});
-
 	test("leaves a run inside budget alone", async () => {
 		await seedRunning("2026-06-05T00:00:00Z", { burrowId: "bur_1", burrowRunId: "run_b1" });
 		const reapCalls: ReapRunInput[] = [];

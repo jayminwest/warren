@@ -29,7 +29,6 @@ import {
 	type SessionStatsAccumulator,
 } from "../usage-aggregate.ts";
 import { type CancelBurrowRunFn, enforceBudgetCap } from "./budget.ts";
-import { extractAssistantText, extractIntentPatch } from "./conversation-turn.ts";
 import { providerStreamSource } from "./provider-source.ts";
 import { defaultRunStateProbe, runStatePoller } from "./run-state-poller.ts";
 import { persistInStreamUsage, persistPiStatsDelta, snapshotStats } from "./stats.ts";
@@ -143,9 +142,6 @@ export async function bridgeRunStream(input: BridgeRunStreamInput): Promise<Brid
 	// Both paths are best-effort; failures leave the columns null.
 	let statsBaseline: Promise<SessionStats | null> | undefined;
 	let statsPersisted = false;
-	// warren-df71: assistant text accumulated within the current conversation
-	// turn, flushed to the transcript on `agent_end` (the turn boundary).
-	let conversationTurnText = "";
 	const piUsage: SessionStatsAccumulator = newSessionStatsAccumulator();
 	// claude-code cost tracking (warren-87f9). Single-shot: claude-code
 	// emits one `result` envelope at run end carrying `total_cost_usd` +
@@ -230,41 +226,6 @@ export async function bridgeRunStream(input: BridgeRunStreamInput): Promise<Brid
 					statsPersisted = true;
 					terminalDetected = { outcome: "cancelled" };
 					break;
-				}
-			}
-
-			// warren-df71: conversation keep-alive. A mode:'conversation' run is
-			// a long-lived pi-chat session — `agent_end` is a TURN boundary, not
-			// a run terminal. Persist the turn's usage + assistant text, apply
-			// any propose_intent patch, and KEEP the run `running` (no break, no
-			// inline reap). Non-conversation runs skip this whole branch and
-			// retain their exact prior lifecycle.
-			if (input.mode === "conversation") {
-				const assistantText = extractAssistantText(event);
-				if (assistantText !== null) conversationTurnText += assistantText;
-				const intentPatch = extractIntentPatch(event);
-				if (intentPatch !== null) {
-					await input.conversationTurn?.applyIntentPatch({ runId, patch: intentPatch });
-				}
-				if (isPiAgentEnd(event)) {
-					await persistInStreamUsage({
-						usage: piUsage,
-						runtime: "pi",
-						runId,
-						burrowRunId,
-						repos,
-						logger: input.logger,
-					});
-					const turnText = conversationTurnText.trim();
-					if (turnText.length > 0) {
-						await input.conversationTurn?.persistAssistantTurn({ runId, text: turnText });
-					}
-					conversationTurnText = "";
-					input.logger?.info?.(
-						{ runId, burrowRunId, seq: event.seq },
-						"conversation run: agent_end treated as turn-end; keeping run alive",
-					);
-					continue;
 				}
 			}
 

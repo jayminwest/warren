@@ -43,21 +43,14 @@ export async function teardownLostRunWorkspace(input: LostRunTeardownInput): Pro
  * Mirrors `destroyBurrowWorkspaceById`'s gating + event shapes so the observable
  * surface is identical, but calls `provider.terminate(handle)` — under K8s that
  * deletes the pod + seed ConfigMaps, under LocalProvider it destroys the burrow.
- * Conversation runs keep their workspace (warren-c770). Best-effort: any failure
- * degrades to a `reap.workspace_destroy_failed` event and never throws.
+ * Best-effort: any failure degrades to a `reap.workspace_destroy_failed` event
+ * and never throws.
  */
 async function terminateLostWorkspace(
 	input: LostRunTeardownInput,
 	provider: RuntimeProvider,
 ): Promise<void> {
 	const { burrow } = input;
-	if (burrow.mode === "conversation") {
-		await input.emit("reap.workspace_destroy_skipped", {
-			burrowId: burrow.id,
-			reason: "conversation_run",
-		});
-		return;
-	}
 	const handle: RunHandle = {
 		runId: input.runId,
 		sandboxId: burrow.id,
