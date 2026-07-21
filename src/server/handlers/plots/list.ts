@@ -8,13 +8,13 @@ import { join } from "node:path";
 import { PLOT_STATUSES, type PlotStatus } from "@os-eco/plot-cli";
 import { ValidationError } from "../../../core/errors.ts";
 import { ProjectLacksPlotError } from "../../../plan-runs/errors.ts";
+import { resolveDispatcherHandle } from "../../../plots/dispatcher-handle.ts";
 import {
 	defaultPlotCreator,
 	EMPTY_PLOT_SUMMARIES,
 	type PlotNeedsAttentionSummary,
 	type PlotSummary,
 } from "../../../plots/index.ts";
-import { resolveDispatcherHandle } from "../../../runs/index.ts";
 import { jsonResponse } from "../../response.ts";
 import type { RouteHandler, ServerDeps } from "../../types.ts";
 import { optionalString, readJsonBody, requireString } from "../index.ts";

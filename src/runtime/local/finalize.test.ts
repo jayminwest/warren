@@ -52,10 +52,6 @@ function fullSeed(): Record<string, string> {
 		// seeds clone baseline (workspace side rides the burrow files.read stub).
 		[`${CLONE}/.seeds/issues.jsonl`]:
 			'{"id":"sd-1","status":"open","updatedAt":"2026-05-08T19:00:00Z","title":"x"}\n',
-		// plot workspace deltas (clone absent → first write).
-		[`${WS}/.plot/plot-1.json`]: '{"id":"plot-1","updated_at":"2026-05-17T10:00:00Z"}',
-		[`${WS}/.plot/plot-1.events.jsonl`]:
-			'{"type":"decision_made","actor":"agent:bot:r1","at":"2026-05-17T10:05:00Z","data":{"summary":"x"}}\n',
 	};
 }
 
@@ -63,7 +59,7 @@ function intent(overrides: Partial<FinalizeIntent> = {}): FinalizeIntent {
 	return {
 		branch: "warren/run-1",
 		push: true,
-		mirror: ["mulch", "seeds", "plans", "plot"],
+		mirror: ["mulch", "seeds", "plans"],
 		baseBranch: "main",
 		projectClonePathHint: CLONE,
 		...overrides,
@@ -127,7 +123,6 @@ describe("finalize delta shapes — JSON round-trip", () => {
 		expect(mirror.mulch?.version).toBe(1);
 		expect(mirror.seeds?.version).toBe(1);
 		expect(mirror.plans?.version).toBe(1);
-		expect(mirror.plot?.version).toBe(1);
 	});
 });
 
@@ -197,25 +192,6 @@ describe("finalize — mirror delta assembly", () => {
 		expect(mirror.plans?.path).toBe(".seeds/plans.jsonl");
 		expect(mirror.plans?.mergedBody).toContain('"id":"pl-1"');
 	});
-
-	test("plot delta is thin — counts only, no merged bodies", async () => {
-		const fs = fakeFs(fullSeed());
-		const p = await provider({ fs, exec: fakeExec() });
-		const { mirror } = await p.finalize(HANDLE, intent({ mirror: ["plot"] }));
-		expect(mirror.plot).toEqual({
-			version: 1,
-			eventsAppended: 1,
-			plotsUpdated: 1,
-			mirrored: 1,
-		});
-		// contract guarantee: the thin plot delta carries no file bodies.
-		expect(Object.keys(mirror.plot ?? {})).toEqual([
-			"version",
-			"eventsAppended",
-			"plotsUpdated",
-			"mirrored",
-		]);
-	});
 });
 
 /* ----------------------------------------------------------------------- */
@@ -237,8 +213,6 @@ describe("finalize — stage trail + push reporting", () => {
 			"mulch_merge",
 			"seeds_mirror",
 			"plans_mirror",
-			"plot_merge",
-			"plot_commit",
 			"seeds_commit",
 			"branch_push",
 			"commits_ahead",
@@ -375,10 +349,8 @@ describe("finalize — collected events", () => {
 		expect(kinds).toContain("seeds.closed");
 		expect(kinds).toContain("seeds.created");
 		expect(kinds).toContain("seeds.plan_mirrored");
-		expect(kinds).toContain("plot.decision_made");
-		// mulch (merge) precedes seeds (mirror) precedes plot (merge).
+		// mulch (merge) precedes seeds (mirror).
 		expect(kinds.indexOf("mulch.record.added")).toBeLessThan(kinds.indexOf("seeds.closed"));
-		expect(kinds.indexOf("seeds.created")).toBeLessThan(kinds.indexOf("plot.decision_made"));
 	});
 
 	test("event payloads are JSON-serializable (round-trip deep-equal)", async () => {

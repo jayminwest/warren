@@ -11,7 +11,7 @@
  * seam. Everything here is warren's *need*; providers satisfy it.
  */
 
-import type { MulchDelta, PlansDelta, PlotDelta, SeedsDelta } from "./finalize-deltas.ts";
+import type { MulchDelta, PlansDelta, SeedsDelta } from "./finalize-deltas.ts";
 
 /**
  * Opaque handle — the only run reference that crosses the seam. Providers map
@@ -90,10 +90,9 @@ export interface RunSpec {
 	seedFiles: ReadonlyArray<{ path: string; contents: string; encoding?: string; mode?: number }>;
 
 	/**
-	 * DOMAIN env only — coordination + secrets: PLOT_ID, PLOT_ACTOR,
-	 * WARREN_QUALITY_GATE, WARREN_API_TOKEN. The provider ADDS its own plumbing
-	 * (WARREN_API_URL callback, BUN_INSTALL_CACHE_DIR, …); the domain must NOT
-	 * set those.
+	 * DOMAIN env only — coordination + secrets: WARREN_QUALITY_GATE,
+	 * WARREN_API_TOKEN. The provider ADDS its own plumbing (WARREN_API_URL
+	 * callback, BUN_INSTALL_CACHE_DIR, …); the domain must NOT set those.
 	 */
 	env: Record<string, string>;
 }
@@ -259,13 +258,7 @@ export interface WorkspaceInfo {
 // Artifact-set deltas `finalize` returns for the domain to apply to its project
 // clone. Extracted to `./finalize-deltas.ts` (warren-e9e1, frozen size budget);
 // re-exported here so importers keep using `../contract.ts`.
-export type {
-	MulchDelta,
-	MulchDeltaFile,
-	PlansDelta,
-	PlotDelta,
-	SeedsDelta,
-} from "./finalize-deltas.ts";
+export type { MulchDelta, MulchDeltaFile, PlansDelta, SeedsDelta } from "./finalize-deltas.ts";
 
 /**
  * The reap-where-the-workspace-is seam (§4). `finalize` runs the
@@ -281,18 +274,18 @@ export interface FinalizeIntent {
 	/** push HEAD:branch from inside the workspace */
 	push: boolean;
 	/** which artifact sets to extract (the MERGE half — always run in reap) */
-	mirror: ("mulch" | "seeds" | "plans" | "plot")[];
+	mirror: ("mulch" | "seeds" | "plans")[];
 	/**
 	 * Which bookkeeping COMMITS to author before the push (warren-1f56). The
 	 * reap pipeline runs the tracker merges unconditionally but gates the
-	 * `chore(warren): {plot,seeds} state` commits on `project.hasPlot` /
-	 * `project.hasSeeds` — so merge-gating (`mirror`) and commit-gating cannot
-	 * be one set. `commit` decouples them: finalize authors the plot bookkeeping
-	 * commit iff this includes `"plot"`, the seeds one iff it includes `"seeds"`.
-	 * OMITTED ⇒ defaults to `mirror` (commit whatever we merge) so callers that
-	 * only ever passed `mirror` keep their existing behavior.
+	 * `chore(warren): seeds state` commit on `project.hasSeeds` — so
+	 * merge-gating (`mirror`) and commit-gating cannot be one set. `commit`
+	 * decouples them: finalize authors the seeds bookkeeping commit iff this
+	 * includes `"seeds"`. OMITTED ⇒ defaults to `mirror` (commit whatever we
+	 * merge) so callers that only ever passed `mirror` keep their existing
+	 * behavior.
 	 */
-	commit?: ("plot" | "seeds")[];
+	commit?: "seeds"[];
 	/**
 	 * Base ref for the commits-ahead / empty-push count
 	 * (`git rev-list --count <baseBranch>..HEAD`). A provider-NEUTRAL git ref
@@ -334,7 +327,7 @@ export interface FinalizeIntent {
  * collecting emit/fail and returned for the domain to re-emit through its REAL
  * event surface (warren-1f56). The reap merge functions emit ~10 per-record
  * kinds (`mulch.record.*`, `seeds.closed/created`, `seeds.plan_mirrored`,
- * `plot.*`, `reap.{plot,seeds}_committed`) plus per-line/stage `reap_failed`;
+ * `reap.seeds_committed`) plus per-line/stage `reap_failed`;
  * finalize returns `FinalizeResult` counts, so those events are unreconstructable
  * unless carried here. K8s-friendly: this array rides the callback wire from the
  * in-pod finalize later (plan step 20), so `payload` MUST be JSON-serializable
@@ -373,7 +366,7 @@ export interface FinalizeResult {
 	 * (warren-89b0), populated ONLY when `dirty` is true (i.e. `pushed &&
 	 * commitsAhead === 0` over a dirty tree). The domain uses it to classify a
 	 * zero-commit dirty tree: a tree whose ONLY dirty paths are warren-managed
-	 * bookkeeping artifacts (`.mulch/`, `.seeds/`, `.plot/`, `.canopy/`) is a
+	 * bookkeeping artifacts (`.mulch/`, `.seeds/`, `.canopy/`) is a
 	 * deliberate no-op (`succeeded`, non-alarming) rather than a dropped commit
 	 * (`failed`). Optional/absent ⇒ the domain falls back to the conservative
 	 * dropped-commit posture (it cannot prove the tree was bookkeeping-only).
@@ -402,7 +395,6 @@ export interface FinalizeResult {
 		mulch?: MulchDelta;
 		seeds?: SeedsDelta;
 		plans?: PlansDelta;
-		plot?: PlotDelta;
 	};
 	/**
 	 * The pushed branch when it carries real work ready for a PR
@@ -425,8 +417,6 @@ export type FinalizeStage =
 	| "mulch_merge"
 	| "seeds_mirror"
 	| "plans_mirror"
-	| "plot_merge"
-	| "plot_commit"
 	| "seeds_commit"
 	| "seed_reset"
 	| "branch_push"

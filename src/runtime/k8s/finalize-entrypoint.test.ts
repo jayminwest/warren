@@ -56,8 +56,8 @@ function intent(over: Partial<InPodFinalizeIntent> = {}): InPodFinalizeIntent {
 		attemptId: "fin_abcdefghjkmn",
 		branch: "warren/run_x",
 		push: true,
-		mirror: ["mulch", "seeds", "plans", "plot"],
-		commit: ["plot", "seeds"],
+		mirror: ["mulch", "seeds", "plans"],
+		commit: ["seeds"],
 		baseBranch: "main",
 		...over,
 	};
@@ -168,7 +168,6 @@ describe("collectFinalizeResult", () => {
 		expect(argv).toContain("remote set-url origin https://github.com/x/y.git"); // restore
 		// Bookkeeping commits are skipped in-pod (no clone to union against).
 		const skipped = r.stages.filter((s) => s.status === "skipped").map((s) => s.stage);
-		expect(skipped).toContain("plot_commit");
 		expect(skipped).toContain("seeds_commit");
 	});
 

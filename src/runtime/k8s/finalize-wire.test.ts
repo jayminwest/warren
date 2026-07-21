@@ -25,7 +25,6 @@ function fullResult(): FinalizeResult {
 			},
 			seeds: { version: 1, closed: 1, created: 0, path: ".seeds/issues.jsonl", mergedBody: "z\n" },
 			plans: { version: 1, appended: 1, path: ".seeds/plans.jsonl", mergedBody: "p\n" },
-			plot: { version: 1, eventsAppended: 0, plotsUpdated: 0, mirrored: 0 },
 		},
 		prBranch: "warren/run_x",
 		stages: [

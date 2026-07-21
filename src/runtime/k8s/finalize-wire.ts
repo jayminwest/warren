@@ -39,7 +39,6 @@ import type {
 	MulchDelta,
 	MulchDeltaFile,
 	PlansDelta,
-	PlotDelta,
 	SeedsDelta,
 } from "../contract.ts";
 
@@ -63,9 +62,9 @@ export interface InPodFinalizeIntent {
 	/** Whether to push at all (mirrors `FinalizeIntent.push`). */
 	push: boolean;
 	/** Artifact sets to extract (mirrors `FinalizeIntent.mirror`). */
-	mirror: ("mulch" | "seeds" | "plans" | "plot")[];
+	mirror: ("mulch" | "seeds" | "plans")[];
 	/** Bookkeeping commits to author before the push (mirrors `FinalizeIntent.commit`). */
-	commit: ("plot" | "seeds")[];
+	commit: "seeds"[];
 	/** Base ref for the commits-ahead count; omitted ⇒ count skipped (`null`). */
 	baseBranch?: string;
 	/** Run seed to close host-side (carried for parity; the entrypoint no-ops it). */
@@ -195,22 +194,10 @@ function validatePlansDelta(value: unknown): PlansDelta {
 	};
 }
 
-function validatePlotDelta(value: unknown): PlotDelta {
-	const o = asRecord(value, "mirror.plot");
-	return {
-		version: 1,
-		eventsAppended: reqNonNegInt(o, "eventsAppended", "mirror.plot"),
-		plotsUpdated: reqNonNegInt(o, "plotsUpdated", "mirror.plot"),
-		mirrored: reqNonNegInt(o, "mirrored", "mirror.plot"),
-	};
-}
-
 const FINALIZE_STAGES: readonly FinalizeStage[] = [
 	"mulch_merge",
 	"seeds_mirror",
 	"plans_mirror",
-	"plot_merge",
-	"plot_commit",
 	"seeds_commit",
 	"branch_push",
 	"commits_ahead",
@@ -264,7 +251,6 @@ export function validateFinalizeResult(value: unknown): FinalizeResult {
 	if (mirrorRaw.mulch !== undefined) mirror.mulch = validateMulchDelta(mirrorRaw.mulch);
 	if (mirrorRaw.seeds !== undefined) mirror.seeds = validateSeedsDelta(mirrorRaw.seeds);
 	if (mirrorRaw.plans !== undefined) mirror.plans = validatePlansDelta(mirrorRaw.plans);
-	if (mirrorRaw.plot !== undefined) mirror.plot = validatePlotDelta(mirrorRaw.plot);
 
 	const dirtyPaths = optStringArray(o, "dirtyPaths", "result");
 	return {

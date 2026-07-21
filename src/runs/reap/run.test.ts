@@ -375,7 +375,6 @@ describe("reapRun", () => {
 		expect(e.calls).toHaveLength(0);
 		// No workspace pipeline work done.
 		expect(result.branchPushed).toBe(false);
-		expect(result.plotCommitted).toBe(false);
 		expect(result.mulchUpdated).toBe(0);
 		expect(result.mulchSkipped).toBe(0);
 		// State correctly reflects never_started.

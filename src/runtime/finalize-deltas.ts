@@ -17,8 +17,6 @@
  *     carry the full post-merge JSONL body, so the domain applies by overwriting
  *     the target file; it never has to read the (by-then-destroyed) workspace.
  *     The counts mirror each merge function's own return value.
- *
- * PlotDelta is deliberately the exception — see its doc.
  */
 
 /** One domain's post-merge mulch expertise file. */
@@ -82,23 +80,4 @@ export interface PlansDelta {
 	path: string;
 	/** full merged plans.jsonl, or `null` when nothing was appended */
 	mergedBody: string | null;
-}
-
-/**
- * Plot event/state mirror — deliberately THIN and disposable.
- * `data-plane-trajectory.md` marks plot the FIRST tool to go ("keep its
- * `finalize()` mirror delta thin and disposable"), so this carries only the
- * `PlotMergeResult` counts — NO merged bodies, NO per-event contents. The plot
- * files themselves still ride to origin on the pushed branch (the
- * `chore(warren): plot state` bookkeeping commit); this delta is pure
- * observability, and intentionally NOT apply-complete on its own.
- */
-export interface PlotDelta {
-	version: 1;
-	/** event-log lines appended across all plots */
-	eventsAppended: number;
-	/** `plot-*.json` state docs overwritten (LWW on `updated_at`) */
-	plotsUpdated: number;
-	/** agent-emitted decision/question/artifact events worth surfacing */
-	mirrored: number;
 }

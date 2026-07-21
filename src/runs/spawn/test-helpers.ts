@@ -5,7 +5,6 @@ import { createRepos, type Repos } from "../../db/repos/index.ts";
 import type { AgentDefinition } from "../../registry/schema.ts";
 import type { RuntimeProvider } from "../../runtime/contract.ts";
 import { LocalProvider } from "../../runtime/local/provider.ts";
-import type { AppendPlotRunDispatchedInput, SpawnPlotAppender } from "./types.ts";
 
 /**
  * Open an in-memory warren db with a default `refactor-bot` agent and
@@ -23,18 +22,6 @@ export async function setupRepos(): Promise<{ db: WarrenDb; repos: Repos }> {
 		defaultBranch: "main",
 	});
 	return { db, repos };
-}
-
-export function makeAppender(
-	opts: { calls?: AppendPlotRunDispatchedInput[]; throws?: Error } = {},
-): SpawnPlotAppender {
-	const calls = opts.calls ?? [];
-	return {
-		async appendRunDispatched(input) {
-			calls.push(input);
-			if (opts.throws) throw opts.throws;
-		},
-	};
 }
 
 /**

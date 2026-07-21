@@ -343,30 +343,6 @@ describe("spawnRun: sandbox env (warren-b893)", () => {
 		expect(env?.BUN_INSTALL_CACHE_DIR).toBe("/tmp/bun-install-cache");
 		expect(env?.WARREN_API_TOKEN).toBe("tok_secret"); // warren-f248: threaded via serverEnv
 	});
-
-	test("BUN_INSTALL_CACHE_DIR is still set when plot env vars are also injected (warren-b893)", async () => {
-		await repos.projects.create({
-			id: "prj_withplot",
-			gitUrl: "https://github.com/x/z.git",
-			localPath: "/data/projects/x/z",
-			defaultBranch: "main",
-			hasPlot: true,
-		});
-		const { client, calls } = makeBurrowClient();
-		await spawnRun({
-			repos,
-			runtimeProvider: makeProvider(client),
-			agentName: "refactor-bot",
-			projectId: "prj_withplot",
-			plotId: "plt_001",
-			prompt: "fix it",
-		});
-		const up = calls.find((c) => c.path === "/burrows");
-		const env = (up?.body as { env?: Record<string, string> }).env;
-		expect(env?.BUN_INSTALL_CACHE_DIR).toBe("/tmp/bun-install-cache");
-		expect(env?.PLOT_ID).toBe("plt_001");
-		expect(env?.PLOT_ACTOR).toMatch(/^agent:refactor-bot:run_/);
-	});
 });
 
 describe("spawnRun: rollback", () => {

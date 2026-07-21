@@ -100,9 +100,7 @@ function failedStages(intent: FinalizeIntent): FinalizeStage[] {
 	if (mirror.has("mulch")) stages.push("mulch_merge");
 	if (mirror.has("seeds")) stages.push("seeds_mirror");
 	if (mirror.has("plans")) stages.push("plans_mirror");
-	if (mirror.has("plot")) stages.push("plot_merge");
 	const commit = new Set(intent.commit ?? intent.mirror);
-	if (commit.has("plot")) stages.push("plot_commit");
 	if (commit.has("seeds")) stages.push("seeds_commit");
 	if (intent.push) stages.push("branch_push");
 	return stages;
@@ -136,12 +134,12 @@ export function failedFinalizeResult(intent: FinalizeIntent, message: string): F
 
 /**
  * Commit-gating defaults to `mirror` when omitted (parity with LocalProvider),
- * but the wire's `commit` only ranges over `plot`/`seeds` — filter the four-value
- * mirror set down so `mulch`/`plans` never leak into a commit list.
+ * but the wire's `commit` only ranges over `seeds` — filter the mirror set
+ * down so `mulch`/`plans` never leak into a commit list.
  */
-function resolveCommit(intent: FinalizeIntent): ("plot" | "seeds")[] {
+function resolveCommit(intent: FinalizeIntent): "seeds"[] {
 	if (intent.commit !== undefined) return [...intent.commit];
-	return intent.mirror.filter((m): m is "plot" | "seeds" => m === "plot" || m === "seeds");
+	return intent.mirror.filter((m): m is "seeds" => m === "seeds");
 }
 
 /** Project the neutral `FinalizeIntent` onto the pod-shaped wire (host path dropped). */

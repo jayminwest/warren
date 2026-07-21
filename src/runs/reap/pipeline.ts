@@ -7,7 +7,7 @@
  * ## Routed through the RuntimeProvider seam (warren-1f56, pl-829f step 13)
  *
  * The workspace-touching half — the four tracker merges, the two
- * `chore(warren): {plot,seeds} state` commits, the branch push, and the
+ * `chore(warren): seeds state` commit, the branch push, and the
  * commits-ahead + dirtiness probe — runs inside a SINGLE
  * `provider.finalize(handle, intent)` call (§4). finalize returns the mirror
  * deltas, collected events, the `dirty` flag + dirty paths, and the workspace
@@ -48,10 +48,6 @@ export interface ReapPipelineState {
 	seedsCreated: number;
 	seedIdClosed: boolean;
 	seedsCommitted: boolean;
-	plotEventsAppended: number;
-	plotsUpdated: number;
-	plotEventsMirrored: number;
-	plotCommitted: boolean;
 	branchPushed: boolean;
 	commitsAhead: number | null;
 	droppedCommit: boolean;
@@ -80,10 +76,6 @@ export function createPipelineState(): ReapPipelineState {
 		seedsCreated: 0,
 		seedIdClosed: false,
 		seedsCommitted: false,
-		plotEventsAppended: 0,
-		plotsUpdated: 0,
-		plotEventsMirrored: 0,
-		plotCommitted: false,
 		branchPushed: false,
 		commitsAhead: null,
 		droppedCommit: false,
@@ -138,8 +130,6 @@ const FINALIZE_STAGE_TO_REAP_STEP: Partial<Record<FinalizeStage, ReapStep>> = {
 	mulch_merge: "mulch_merge",
 	seeds_mirror: "seeds_close",
 	plans_mirror: "plans_mirror",
-	plot_merge: "plot_merge",
-	plot_commit: "plot_commit",
 	seeds_commit: "seeds_commit",
 	seed_reset: "seed_reset",
 	branch_push: "branch_push",
@@ -178,13 +168,12 @@ async function runFinalize(ctx: ReapPipelineContext): Promise<FinalizeResult> {
 		providerRunId: ctx.run.burrowRunId ?? "",
 	};
 	// Merges run unconditionally; COMMITS gate on project flags (warren-1f56).
-	const commit: ("plot" | "seeds")[] = [];
-	if (ctx.project.hasPlot) commit.push("plot");
+	const commit: "seeds"[] = [];
 	if (ctx.project.hasSeeds) commit.push("seeds");
 	const intent: FinalizeIntent = {
 		branch: ctx.branch ?? "",
 		push: true,
-		mirror: ["mulch", "seeds", "plans", "plot"],
+		mirror: ["mulch", "seeds", "plans"],
 		commit,
 		projectClonePathHint: ctx.project.localPath,
 		// warren-8d95: reset warren-seeded artifacts to base before push so a broad
@@ -223,11 +212,7 @@ function applyFinalizeToState(state: ReapPipelineState, r: FinalizeResult): void
 	state.mulchAppended = r.mirror.mulch?.appended ?? 0;
 	state.seedsClosed = r.mirror.seeds?.closed ?? 0;
 	state.seedsCreated = r.mirror.seeds?.created ?? 0;
-	state.plotEventsAppended = r.mirror.plot?.eventsAppended ?? 0;
-	state.plotsUpdated = r.mirror.plot?.plotsUpdated ?? 0;
-	state.plotEventsMirrored = r.mirror.plot?.mirrored ?? 0;
 	// A bookkeeping commit was authored iff finalize emitted its committed event.
-	state.plotCommitted = r.events.some((e) => e.kind === "reap.plot_committed");
 	state.seedsCommitted = r.events.some((e) => e.kind === "reap.seeds_committed");
 	state.branchPushed = r.pushed;
 	state.commitsAhead = r.commitsAhead;

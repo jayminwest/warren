@@ -150,7 +150,6 @@ export function createRunHandler(deps: ServerDeps): RouteHandler {
 			providerOverride,
 			modelOverride,
 			seedId,
-			plotId,
 			...(targetBranch !== undefined ? { targetBranch } : {}),
 			...(parentRunId !== undefined ? { parentRunId } : {}),
 			...(cloneKind !== undefined ? { cloneKind } : {}),

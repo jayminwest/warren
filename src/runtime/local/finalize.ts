@@ -5,9 +5,9 @@
  * and returns structured deltas the domain applies to its project clone.
  *
  * A THIN host-side WRAPPER over the EXISTING reap merge functions (`mergeMulch`,
- * `mirrorSeeds`/`mirrorPlans`, `mergePlot`, `stage{Plot,Seeds}ForCommit`, plus
- * the warren-8d95 `finalizeSeedReset`) — it calls them, it does NOT fork their
- * logic; the pushed branch stays reap's.
+ * `mirrorSeeds`/`mirrorPlans`, `stageSeedsForCommit`, plus the warren-8d95
+ * `finalizeSeedReset`) — it calls them, it does NOT fork their logic; the pushed
+ * branch stays reap's.
  *
  * ## Burrow file-reads live HERE (warren-fbbf)
  *
@@ -18,12 +18,12 @@
  * keeping reap core free of burrow-client imports.
  *
  * - **Event capture**: the merge functions emit ~10 per-record kinds
- *   (`mulch.record.*`, `seeds.closed/created`, `seeds.plan_mirrored`, `plot.*`,
- *   `reap.{plot,seeds}_committed`) plus per-line/stage `reap_failed`. finalize
+ *   (`mulch.record.*`, `seeds.closed/created`, `seeds.plan_mirrored`,
+ *   `reap.seeds_committed`) plus per-line/stage `reap_failed`. finalize
  *   hands them a COLLECTING emit/fail that appends `{kind, payload}` to
  *   `FinalizeResult.events` for the domain to re-emit; counts ride the deltas.
- * - **Merge vs commit gating**: `intent.mirror` gates the four merges; `commit`
- *   (default `mirror`) gates the two bookkeeping commits.
+ * - **Merge vs commit gating**: `intent.mirror` gates the three merges; `commit`
+ *   (default `mirror`) gates the seeds bookkeeping commit.
  * - **Deliberately NOT here** (domain-owned, §4): PR-open / preview /
  *   auto-plan-run / terminal-state; `reap.empty_push` (needs the run outcome —
  *   finalize returns `dirty` + dirtyPaths for it); `intent.closeSeedId`.
@@ -35,9 +35,8 @@ import { NotFoundError } from "@os-eco/burrow-cli";
 import { type BurrowClient, withTransportMapping } from "../../burrow-client/index.ts";
 import type { EventRow } from "../../db/schema.ts";
 import { mergeMulch } from "../../runs/reap/mulch.ts";
-import { mergePlot } from "../../runs/reap/plot-merge.ts";
 import { mirrorPlans, mirrorSeeds } from "../../runs/reap/seeds.ts";
-import { stagePlotForCommit, stageSeedsForCommit } from "../../runs/reap/stage.ts";
+import { stageSeedsForCommit } from "../../runs/reap/stage.ts";
 import type { ReapExec, ReapFs, ReapStep } from "../../runs/reap/types.ts";
 import { defaultExec, defaultFs, workspaceDirtyPaths } from "../../runs/reap/util.ts";
 import type {
@@ -49,7 +48,6 @@ import type {
 	MulchDelta,
 	MulchDeltaFile,
 	PlansDelta,
-	PlotDelta,
 	RunHandle,
 	SeedsDelta,
 } from "../contract.ts";
@@ -138,15 +136,7 @@ export async function finalizeLocalRun(
 	const plans = mirror.has("plans")
 		? await finalizePlans(client, handle.sandboxId, clonePath, fs, trail, collector)
 		: undefined;
-	const plot = mirror.has("plot")
-		? await finalizePlot(workspacePath, clonePath, fs, trail, collector)
-		: undefined;
 
-	// Bookkeeping commits BEFORE push, in reap's order (plot then seeds), so the
-	// pushed branch carries the `chore(warren): … state` commits reap authors.
-	if (commit.has("plot")) {
-		await finalizePlotCommit(workspacePath, clonePath, fs, exec, trail, collector);
-	}
 	// Snapshot the workspace plans.jsonl BEFORE the seeds commit copies the
 	// clone-union over it — this is exactly what reap's `snapshotWorkspacePlans`
 	// reads for auto-plan-run detection (warren-1f56), and the workspace is gone
@@ -173,7 +163,6 @@ export async function finalizeLocalRun(
 			...(mulch !== undefined ? { mulch } : {}),
 			...(seeds !== undefined ? { seeds } : {}),
 			...(plans !== undefined ? { plans } : {}),
-			...(plot !== undefined ? { plot } : {}),
 		},
 		prBranch,
 		stages: trail.outcomes,
@@ -355,52 +344,6 @@ async function finalizePlans(
 		trail.failed("plans_mirror", err);
 		await collector.fail("plans_mirror", err);
 		return { version: 1, appended: 0, path: SEEDS_PLANS_REL, mergedBody: null };
-	}
-}
-
-async function finalizePlot(
-	workspacePath: string,
-	clonePath: string,
-	fs: ReapFs,
-	trail: StageTrail,
-	collector: EventCollector,
-): Promise<PlotDelta> {
-	try {
-		const result = await mergePlot(workspacePath, clonePath, fs, collector.emit, collector.fail);
-		trail.ok("plot_merge");
-		return {
-			version: 1,
-			eventsAppended: result.eventsAppended,
-			plotsUpdated: result.plotsUpdated,
-			mirrored: result.mirrored,
-		};
-	} catch (err) {
-		trail.failed("plot_merge", err);
-		await collector.fail("plot_merge", err);
-		return { version: 1, eventsAppended: 0, plotsUpdated: 0, mirrored: 0 };
-	}
-}
-
-async function finalizePlotCommit(
-	workspacePath: string,
-	clonePath: string,
-	fs: ReapFs,
-	exec: ReapExec,
-	trail: StageTrail,
-	collector: EventCollector,
-): Promise<void> {
-	try {
-		await stagePlotForCommit({
-			workspacePath,
-			projectPath: clonePath,
-			fs,
-			exec,
-			emit: collector.emit,
-		});
-		trail.ok("plot_commit");
-	} catch (err) {
-		trail.failed("plot_commit", err);
-		await collector.fail("plot_commit", err, join(workspacePath, ".plot"));
 	}
 }
 

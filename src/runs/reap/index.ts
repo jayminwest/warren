@@ -3,17 +3,16 @@
  *
  * Once burrow says a run reached a terminal state, warren runs reap to
  * close out the run. Best-effort sub-steps run in order: mulch merge,
- * seeds-close mirror, plans mirror, plot merge, plot commit, seeds
- * commit, auto-plan-run dispatch, branch push, PR open, preview
- * launch, PR preview annotation. Then the warren run row transitions
- * to the burrow-observed outcome.
+ * seeds-close mirror, plans mirror, seeds commit, auto-plan-run
+ * dispatch, branch push, PR open, preview launch, PR preview
+ * annotation. Then the warren run row transitions to the
+ * burrow-observed outcome.
  *
  * Each sub-step lives in its own module under `src/runs/reap/`. See:
  *
  *   - `mulch.ts`        — mulch-expertise LWW merge
  *   - `seeds.ts`        — seeds close mirror + plans mirror
- *   - `plot-merge.ts`   — Plot events + state replay
- *   - `stage.ts`        — `.plot/` + `.seeds/` commit-through-reap
+ *   - `stage.ts`        — `.seeds/` commit-through-reap
  *   - `auto-plan-run.ts`— auto-dispatch helper for agent-created plans
  *   - `pr-open.ts`      — auto-open PR (warren-f6af)
  *   - `preview.ts`      — preview launch + PR annotation (warren-f156)
@@ -34,7 +33,6 @@
  */
 
 export { mergeMulchFile } from "./mulch.ts";
-export { mergePlotEventsFile, mergePlotJsonFile } from "./plot-merge.ts";
 export { reapRun } from "./run.ts";
 export type {
 	ReapExec,

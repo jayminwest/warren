@@ -1,6 +1,6 @@
 /**
  * Shared internal helpers for the spawn flow's fire-and-log paths
- * (`plot-append.ts`, `seed-extensions.ts`). Not exported from
+ * (`seed-extensions.ts`). Not exported from
  * `./index.ts` — strictly module-private.
  */
 
@@ -9,7 +9,7 @@ import type { ProjectRow } from "../../db/schema.ts";
 
 /**
  * Resolve the coordination project (warren-c1a4): the host clone the
- * post-dispatch seed stamp + Plot append target. Defaults to the
+ * post-dispatch seed stamp targets. Defaults to the
  * execution project (byte-identical same-repo behavior); when
  * `seedProjectId` names a different registered project, that clone is
  * loaded instead while the burrow workspace still clones the execution

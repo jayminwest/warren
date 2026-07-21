@@ -81,7 +81,6 @@ describe("createPlanRunSpawn", () => {
 				prompt: input.prompt,
 				renderedAgentJson: { sections: {} },
 				trigger: input.trigger ?? "manual",
-				...(input.plotId !== undefined ? { plotId: input.plotId } : {}),
 				now: NOW,
 			});
 			return {
@@ -123,7 +122,6 @@ describe("createPlanRunSpawn", () => {
 		await spawn({ planRun, child, prompt: "work on sd warren-a" });
 
 		expect(captured).toHaveLength(1);
-		expect(captured[0]?.plotId).toBeUndefined();
 		expect(captured[0]?.trigger).toBe("plan-run");
 		expect(captured[0]?.dispatcherHandle).toBe(planRun.dispatcherHandle);
 		expect(captured[0]?.runtimeProvider).toBe(runtimeProvider);
@@ -263,6 +261,5 @@ describe("createPlanRunSpawn", () => {
 		await spawn({ planRun, child, prompt: "work on sd warren-a" });
 
 		expect(captured).toHaveLength(1);
-		expect(captured[0]?.plotId).toBeUndefined();
 	});
 });

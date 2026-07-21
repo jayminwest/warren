@@ -6,7 +6,7 @@
  *
  * The collection is WORKSPACE-TRUTH (see the entrypoint module doc): `mergedBody`
  * is the workspace tracker file verbatim; the true LWW merge/counts and the
- * `chore(warren): {plot,seeds} state` bookkeeping commits are a warren-side apply
+ * `chore(warren): seeds state` bookkeeping commit are a warren-side apply
  * concern (design §4: "warren applies the returned deltas to its project clone"),
  * proven end-to-end in step 25. Everything here is pure over injectable git/fs
  * seams, so it is unit-testable without a cluster or a real repo.
@@ -23,7 +23,6 @@ import type {
 	MulchDelta,
 	MulchDeltaFile,
 	PlansDelta,
-	PlotDelta,
 	SeedsDelta,
 } from "../contract.ts";
 import type { InPodFinalizeIntent } from "./finalize-wire.ts";
@@ -165,16 +164,6 @@ export async function collectPlansDelta(
 	};
 }
 
-/**
- * Plot delta — deliberately THIN/disposable (contract `PlotDelta` doc). The plot
- * files ride to origin on the pushed branch; this delta is pure observability and
- * carries no bodies, so the in-pod side reports zero counts (the warren-side
- * apply surfaces the real numbers in step 25).
- */
-export function collectPlotDelta(): PlotDelta {
-	return { version: 1, eventsAppended: 0, plotsUpdated: 0, mirrored: 0 };
-}
-
 /* -------------------------------------------------------------------------- */
 /* Push collection (faithful to ../local/finalize.ts finalizePush)            */
 /* -------------------------------------------------------------------------- */
@@ -306,7 +295,7 @@ async function workspaceDirtyPaths(
 /**
  * Run the whole in-pod collection against the live workspace and assemble a
  * contract-shaped `FinalizeResult`. The mirror MERGES gate on `intent.mirror`;
- * the bookkeeping COMMITS (`plot_commit`/`seeds_commit`) are marked `skipped` —
+ * the bookkeeping COMMIT (`seeds_commit`) is marked `skipped` —
  * they need warren's clone to union against and are authored warren-side on apply
  * (step 25, see module doc). Every stage is best-effort; the workspace read is
  * captured for auto-plan-run before it would be overwritten (parity with reap's
@@ -337,14 +326,8 @@ export async function collectFinalizeResult(
 		plans = await collectPlansDelta(workspacePath, deps.fs);
 		trail.ok("plans_mirror");
 	}
-	let plot: PlotDelta | undefined;
-	if (mirror.has("plot")) {
-		plot = collectPlotDelta();
-		trail.ok("plot_merge");
-	}
 
 	// Bookkeeping commits are a warren-side apply concern in K8s (no in-pod clone).
-	if (commit.has("plot")) trail.skipped("plot_commit");
 	const workspacePlansBody = await readFileOrNull(
 		deps.fs,
 		join(workspacePath, ".seeds", "plans.jsonl"),
@@ -367,7 +350,6 @@ export async function collectFinalizeResult(
 			...(mulch !== undefined ? { mulch } : {}),
 			...(seeds !== undefined ? { seeds } : {}),
 			...(plans !== undefined ? { plans } : {}),
-			...(plot !== undefined ? { plot } : {}),
 		},
 		prBranch,
 		stages: trail.outcomes,

@@ -116,13 +116,7 @@ export {
 	buildSeedFiles,
 	type SeedFile,
 } from "./seed.ts";
-export {
-	DEFAULT_DISPATCHER_HANDLE,
-	resolveDispatcherHandle,
-	type SpawnRunInput,
-	type SpawnRunResult,
-	spawnRun,
-} from "./spawn/index.ts";
+export { type SpawnRunInput, type SpawnRunResult, spawnRun } from "./spawn/index.ts";
 export { type SteerRunInput, type SteerRunResult, steerRun } from "./steer.ts";
 export {
 	type ActiveBridge,

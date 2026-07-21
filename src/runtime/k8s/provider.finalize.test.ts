@@ -14,8 +14,8 @@ function intent(): FinalizeIntent {
 	return {
 		branch: "warren/run_prov_finalize",
 		push: true,
-		mirror: ["mulch", "seeds", "plans", "plot"],
-		commit: ["plot", "seeds"],
+		mirror: ["mulch", "seeds", "plans"],
+		commit: ["seeds"],
 		baseBranch: "main",
 		projectClonePathHint: "/data/projects/x",
 	};

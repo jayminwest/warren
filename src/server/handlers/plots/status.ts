@@ -9,8 +9,8 @@
 import { join } from "node:path";
 import { PLOT_STATUSES, type PlotStatus } from "@os-eco/plot-cli";
 import { ValidationError } from "../../../core/errors.ts";
+import { resolveDispatcherHandle } from "../../../plots/dispatcher-handle.ts";
 import { defaultPlotStatusChanger, type PlotSummary } from "../../../plots/index.ts";
-import { resolveDispatcherHandle } from "../../../runs/index.ts";
 import { jsonResponse } from "../../response.ts";
 import type { RouteHandler, ServerDeps } from "../../types.ts";
 import { optionalString, readJsonBody, requireParam } from "../index.ts";

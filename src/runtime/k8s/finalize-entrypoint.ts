@@ -24,13 +24,13 @@
  * `workspacePlansBody` capture auto-plan-run needs, and the mirror-delta BODIES
  * read straight off the workspace, all JSON-serialized onto the contract wire.
  *
- * DEFERRED to step 25's data-plane pass: the two `chore(warren): {plot,seeds}
- * state` bookkeeping commits and the true LWW MERGE COUNTS. Both need warren's
+ * DEFERRED to step 25's data-plane pass: the `chore(warren): seeds
+ * state` bookkeeping commit and the true LWW MERGE COUNTS. Both need warren's
  * project clone to union against, which the pod does not have (design §4:
  * "warren applies the returned deltas to its project clone"). So the in-pod
  * deltas are WORKSPACE-TRUTH — `mergedBody` is the workspace tracker file
  * verbatim; the merge/count reconciliation + the bookkeeping commits happen
- * warren-side when it applies the deltas. `plot_commit`/`seeds_commit` are marked
+ * warren-side when it applies the deltas. `seeds_commit` is marked
  * `skipped` here for that reason.
  *
  * The push credential arrives IN the intent (`gitToken`) — fetched over the

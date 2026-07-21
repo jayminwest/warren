@@ -1,6 +1,6 @@
 /**
  * Shared types for the spawn flow. Kept in their own module so the
- * source files (`dispatch.ts`, `plot-append.ts`, `seed-extensions.ts`,
+ * source files (`dispatch.ts`, `seed-extensions.ts`,
  * `agent-cache.ts`) and their tests can import the input/result shapes
  * without dragging in the full `spawnRun` implementation graph.
  */
@@ -52,12 +52,11 @@ export interface SpawnRunInput {
 	 *     workspace — where the agent actually does its work.
 	 *   - `seedProjectId` (coordination) selects the *host* project clone
 	 *     used for the post-dispatch bookkeeping: the seeds
-	 *     `updateExtensions` stamp (`role`/`lastRunId`/`lastRunAt`) and the
-	 *     `run_dispatched` Plot append/mirror.
+	 *     `updateExtensions` stamp (`role`/`lastRunId`/`lastRunAt`).
 	 *
 	 * Defaults to `projectId` when unset/empty, so a same-repo run is
 	 * byte-identical to the pre-split behavior. When it differs, the seed
-	 * stamp and Plot operations target the coordination project's clone
+	 * stamp targets the coordination project's clone
 	 * while the workspace still clones the execution `projectId`. The
 	 * burrow provisioning path is unaffected — it always uses `projectId`.
 	 */
@@ -91,16 +90,6 @@ export interface SpawnRunInput {
 	 * mode — the discriminator is warren-side only).
 	 */
 	readonly mode?: RunMode;
-	/**
-	 * Optional Plot id this run is dispatched against (warren-a8c3,
-	 * parent warren-000b). Validated against `project.hasPlot` here:
-	 * passing a plot_id for a project whose clone has no `.plot/`
-	 * directory raises a typed ValidationError so the operator gets a
-	 * 400 with a clear hint instead of a silently-dropped field.
-	 * Persisted to `runs.plot_id`; downstream steps (warren-e26f,
-	 * warren-e848, warren-7e0f) read it from the runs row.
-	 */
-	readonly plotId?: string;
 	readonly metadata?: unknown;
 	/**
 	 * Optional per-run override of the agent's `frontmatter.provider`. When
@@ -214,23 +203,10 @@ export interface SpawnRunInput {
 	 */
 	readonly seedsCli?: SeedsCliDeps;
 	/**
-	 * Handle of the user dispatching the run (warren-e848 / pl-2047 step 5).
-	 * Used as the actor for the `run_dispatched` event appended to the
-	 * originating Plot — Plot's SPEC §6 ACL allows both `user:*` and
-	 * `agent:*` actors for `run_dispatched`, but warren attributes the
-	 * dispatch to the human who triggered it. Falls back to
-	 * `DEFAULT_DISPATCHER_HANDLE` when undefined, empty, or doesn't match
-	 * the actor segment regex — non-user dispatch paths (cron/webhook)
-	 * are accounted for under pl-2047 risk #4.
+	 * Handle of the user dispatching the run (warren-e848). Persisted onto
+	 * plan-run bookkeeping; carried through unchanged by the spawn flow.
 	 */
 	readonly dispatcherHandle?: string;
-	/**
-	 * Test seam for the `run_dispatched` Plot append (warren-e848). The
-	 * default opens a `UserPlotClient` against `<project>/.plot/` and
-	 * fire-and-logs on failure; tests substitute a stub to assert the
-	 * payload without touching disk.
-	 */
-	readonly plotAppender?: SpawnPlotAppender;
 	/**
 	 * Structured logger for the spawn flow (warren-c686 / pl-f700 step 1).
 	 * The HTTP handlers pass `ctx.logger` (pre-bound with `request_id`);
@@ -249,22 +225,6 @@ export interface SpawnRunInput {
 	 * runs list with. Best-effort: the callback must not throw.
 	 */
 	readonly onRunRowCreated?: (runId: string) => void;
-}
-
-export interface AppendPlotRunDispatchedInput {
-	readonly plotDir: string;
-	readonly plotId: string;
-	readonly handle: string;
-	readonly runId: string;
-	readonly agentName: string;
-	readonly model: string | null;
-	readonly projectId: string;
-	/** pl-fb43 step 5: execution repo ref when it differs from coordination. */
-	readonly executionRepo?: string;
-}
-
-export interface SpawnPlotAppender {
-	appendRunDispatched(input: AppendPlotRunDispatchedInput): Promise<void>;
 }
 
 export interface SpawnRunResult {

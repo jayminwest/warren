@@ -14,8 +14,8 @@ function intent(over: Partial<FinalizeIntent> = {}): FinalizeIntent {
 	return {
 		branch: "warren/run_fin",
 		push: true,
-		mirror: ["mulch", "seeds", "plans", "plot"],
-		commit: ["plot", "seeds"],
+		mirror: ["mulch", "seeds", "plans"],
+		commit: ["seeds"],
 		baseBranch: "main",
 		projectClonePathHint: "/data/projects/x",
 		...over,
@@ -80,16 +80,16 @@ describe("toInPodIntent", () => {
 		expect("projectClonePathHint" in wire).toBe(false);
 		expect(wire.gitToken).toBe("ghp_secret");
 		expect(wire.branch).toBe("warren/run_fin");
-		expect(wire.mirror).toEqual(["mulch", "seeds", "plans", "plot"]);
-		expect(wire.commit).toEqual(["plot", "seeds"]);
+		expect(wire.mirror).toEqual(["mulch", "seeds", "plans"]);
+		expect(wire.commit).toEqual(["seeds"]);
 		expect(wire.baseBranch).toBe("main");
 	});
 
-	test("omits the token when absent and defaults commit from mirror (plot/seeds only)", () => {
+	test("omits the token when absent and defaults commit from mirror (seeds only)", () => {
 		const wire = toInPodIntent(intent({ commit: undefined }), undefined);
 		expect("gitToken" in wire).toBe(false);
 		// mulch/plans must NOT leak into the commit list.
-		expect(wire.commit).toEqual(["seeds", "plot"]);
+		expect(wire.commit).toEqual(["seeds"]);
 	});
 });
 
@@ -107,8 +107,6 @@ describe("failedFinalizeResult", () => {
 			"mulch_merge",
 			"seeds_mirror",
 			"plans_mirror",
-			"plot_merge",
-			"plot_commit",
 			"seeds_commit",
 			"branch_push",
 		]);

@@ -13,12 +13,12 @@ import { NotFoundError } from "../../../core/errors.ts";
 import type { ProjectRow } from "../../../db/schema.ts";
 import { ProjectLacksPlotError } from "../../../plan-runs/errors.ts";
 import type { PlotProjectionSink } from "../../../plot-client/index.ts";
+import { resolveDispatcherHandle } from "../../../plots/dispatcher-handle.ts";
 import {
 	createPlotsProjectionSink,
 	defaultPlanChildAdopter,
 	type PlotEnvelope,
 } from "../../../plots/index.ts";
-import { resolveDispatcherHandle } from "../../../runs/index.ts";
 import { DEFAULT_AGENT_PAUSE_TIMEOUT_MS, loadWarrenConfig } from "../../../warren-config/index.ts";
 import type { ServerDeps } from "../../types.ts";
 

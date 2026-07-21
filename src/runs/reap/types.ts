@@ -172,8 +172,6 @@ export type ReapStep =
 	| "clone_apply"
 	| "seeds_commit"
 	| "seed_reset"
-	| "plot_merge"
-	| "plot_commit"
 	| "auto_plan_run"
 	| "branch_push"
 	| "pr_open"
@@ -216,46 +214,9 @@ export interface ReapRunResult {
 	 */
 	readonly seedIdClosed: boolean;
 	/**
-	 * Plot event log lines appended to the project's `.plot/plot-*.events.jsonl`
-	 * files after merging the burrow workspace's deltas (warren-7e0f /
-	 * pl-2047 step 6). Idempotent re-runs report 0 — the merge dedups by
-	 * full-line content so a second sweep over the same workspace adds
-	 * nothing.
-	 */
-	readonly plotEventsAppended: number;
-	/**
-	 * Distinct `plot-*.json` files overwritten in the project's `.plot/` from
-	 * a newer workspace copy (warren-7e0f). Last-write-wins on `updated_at`
-	 * mirrors the mulch-merge primitive; ties with different contents emit
-	 * a `plot.conflict` event but leave the project copy untouched.
-	 */
-	readonly plotsUpdated: number;
-	/**
-	 * New agent-emitted `decision_made` / `question_posed` /
-	 * `artifact_produced` events mirrored into warren's event stream tagged
-	 * with `plot_id` (warren-7e0f). Idempotent — re-runs against an already
-	 * merged workspace re-mirror nothing because the underlying file merge
-	 * is content-dedup'd.
-	 */
-	readonly plotEventsMirrored: number;
-	/**
-	 * True when reap authored a `chore(warren): plot state` commit in the
-	 * workspace before `branch_push` so origin's workspace branch carries
-	 * the `.plot/` deltas (warren-343a, shape (a) commit-through-reap).
-	 * Set when host-side appender writes in `<project>/.plot/` (or merge
-	 * deltas from the burrow workspace) had not yet been committed by the
-	 * agent — reap stages them and authors a warren-identity commit so
-	 * the push isn't empty. False when nothing needed staging (agent had
-	 * already committed everything, project has no `.plot/`, or the merge
-	 * produced no on-disk delta) and false when the commit attempt failed
-	 * (the failure surfaces as a `reap_failed` step=`plot_commit` event).
-	 */
-	readonly plotCommitted: boolean;
-	/**
 	 * True when reap authored a `chore(warren): seeds state` commit in the
 	 * workspace before `branch_push` so origin's workspace branch carries
-	 * the `.seeds/` deltas (warren-7ecc). Mirrors `plotCommitted` (warren-
-	 * 343a, shape (a) commit-through-reap) but for the seeds tracker:
+	 * the `.seeds/` deltas (warren-7ecc). For the seeds tracker,
 	 * agents with narrowly-scoped write contracts (the planner, see
 	 * src/registry/builtins/planner.ts) are forbidden from running
 	 * `git commit`, so `sd plan submit` writes to `.seeds/issues.jsonl` +

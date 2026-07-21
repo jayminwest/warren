@@ -13,9 +13,9 @@
 import { join } from "node:path";
 import { ATTACHMENT_TYPES, type AttachmentType } from "@os-eco/plot-cli";
 import { ValidationError } from "../../../core/errors.ts";
+import { resolveDispatcherHandle } from "../../../plots/dispatcher-handle.ts";
 import { defaultPlotAttacher, defaultPlotPrMerger } from "../../../plots/index.ts";
 import { refreshProject } from "../../../projects/index.ts";
-import { resolveDispatcherHandle } from "../../../runs/index.ts";
 import { jsonResponse } from "../../response.ts";
 import type { RouteHandler, ServerDeps } from "../../types.ts";
 import {

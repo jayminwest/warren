@@ -8,145 +8,6 @@ import type { EventRow } from "../../db/schema.ts";
 import type { ReapExec, ReapFs } from "./types.ts";
 
 /* ----------------------------------------------------------------------- */
-/* Plot commit-through-reap (warren-343a, shape (a))                         */
-/* ----------------------------------------------------------------------- */
-
-/**
- * Filenames matching this prefix are gitignored derived state per
- * ../plot/README.md — the SQLite index Plot rebuilds on demand. Skipping
- * these on copy mirrors the snapshot/restore wrapper in
- * src/projects/refresh.ts (mx-239786) and keeps the warren-authored
- * commit free of churn.
- */
-const PLOT_INDEX_SKIP_PREFIX = ".index.db";
-
-interface StagePlotForCommitInput {
-	readonly workspacePath: string;
-	readonly projectPath: string;
-	readonly fs: ReapFs;
-	readonly exec: ReapExec;
-	readonly emit: (kind: string, payload: unknown) => Promise<EventRow>;
-}
-
-/**
- * Replicate every committable `.plot/` file from the project clone into
- * the burrow workspace, then stage `.plot/` and author a
- * `chore(warren): plot state` commit when there's a real delta the agent
- * never committed. Returns true when a warren-identity commit landed.
- *
- * The project clone is the union point: by this step `mergePlot` has
- * already merged the workspace's agent-side `.plot/` writes into the
- * project clone, and the project clone also carries any host-side
- * appender writes (`defaultPlotAppender`, `defaultPlanRunPlotAppender`,
- * `autoTransitionPlotToDone`) that warren wrote at dispatch / plan-run
- * coordination time. Copying that union back into the workspace gives
- * `git push` a single canonical view to ship to origin.
- *
- * `.plot/.index.db*` files are skipped — derived SQLite state Plot
- * rebuilds via `plot rebuild-index` (mx-239786). Anything that isn't
- * `plot-*.json` or `plot-*.events.jsonl` is also skipped: the SPEC §11.O
- * file layout for `.plot/` is flat and these two extensions cover the
- * full carrier surface; filtering keeps stray dotfiles out of the warren
- * commit.
- *
- * The `git add` / staged-delta / `--only` commit pathspecs are limited
- * to the actually-copied carrier files (warren-c55e, symmetric with
- * stageSeedsForCommit / #420) so a pre-staged unrelated file — even one
- * under `.plot/` — can neither spoof a staged delta nor be swept into
- * the warren bookkeeping commit. The add still honors a project-level
- * `.gitignore` of `.plot/`: a project that gitignored the directory has
- * opted out of committing Plot state, the copied carriers stage nothing,
- * and the staged-changes check below sees no entries.
- */
-export async function stagePlotForCommit(input: StagePlotForCommitInput): Promise<boolean> {
-	const { workspacePath, projectPath, fs, exec, emit } = input;
-	const projectPlotDir = join(projectPath, ".plot");
-	const workspacePlotDir = join(workspacePath, ".plot");
-
-	const entries = await fs.readdir(projectPlotDir);
-	const copiedPathspecs: string[] = [];
-	for (const name of entries) {
-		if (name.startsWith(PLOT_INDEX_SKIP_PREFIX)) continue;
-		if (!name.startsWith("plot-")) continue;
-		if (!name.endsWith(".json") && !name.endsWith(".events.jsonl")) continue;
-		const contents = await fs.readFile(join(projectPlotDir, name));
-		if (contents === null) continue;
-		if (copiedPathspecs.length === 0) await fs.mkdirp(workspacePlotDir);
-		await fs.writeFile(join(workspacePlotDir, name), contents);
-		copiedPathspecs.push(join(".plot", name));
-	}
-	const copied = copiedPathspecs.length;
-	if (copied === 0) return false;
-
-	// warren-23dd: scrub the inherited repo-context GIT_* (GIT_DIR /
-	// GIT_INDEX_FILE / …) on every git call in this flow so an env leaked by a
-	// parent `git commit`'s hook can't divert the add/diff/commit out of
-	// `workspacePath` into the parent repo — mirrors clone-apply.ts.
-	await exec.run("git", ["add", "--", ...copiedPathspecs], {
-		cwd: workspacePath,
-		timeoutMs: 10_000,
-		env: gitRepoContextScrubEnv(),
-	});
-
-	// warren-be12 (#420) / warren-c55e: narrow the staged-delta guard to the
-	// actually-copied `.plot/` carriers (symmetry with the `--only`
-	// pathspecs below, and with stageSeedsForCommit) so an unrelated
-	// pre-staged file under `.plot/` can't spoof a delta. `git diff
-	// --cached --quiet` exits non-zero when there's a staged change — the
-	// natural primitive for "did the add pick up a delta the agent hadn't
-	// already committed".
-	let hasStagedDelta: boolean;
-	try {
-		await exec.run("git", ["diff", "--cached", "--quiet", "--", ...copiedPathspecs], {
-			cwd: workspacePath,
-			timeoutMs: 10_000,
-			env: gitRepoContextScrubEnv(),
-		});
-		hasStagedDelta = false;
-	} catch {
-		hasStagedDelta = true;
-	}
-	if (!hasStagedDelta) return false;
-
-	await exec.run(
-		"git",
-		[
-			...warrenCommitIdentityArgs(),
-			"commit",
-			// warren-27d3: internal bookkeeping commits must never be gated by
-			// the project's git hooks (e.g. a pre-commit hook running the full
-			// check:all gauntlet). --no-verify skips pre-commit / commit-msg.
-			"--no-verify",
-			// warren-be12 (#420) / warren-c55e: path-limit the commit to the
-			// actually-copied `.plot/` carriers via `--only` so any unrelated
-			// files an earlier step pre-staged in the workspace index — even
-			// ones under `.plot/` — are not swept into the warren bookkeeping
-			// commit.
-			"--only",
-			"-m",
-			"chore(warren): plot state",
-			"--",
-			...copiedPathspecs,
-		],
-		// warren-035c: pin the bot identity in env too so an inherited
-		// GIT_AUTHOR_*/GIT_COMMITTER_* can't out-rank the `-c user.*` config.
-		// warren-23dd: scrub the inherited repo-context GIT_* so the commit
-		// can't escape `workspacePath` into the parent repo; identity wins over
-		// the scrub — the two key families don't overlap.
-		{
-			cwd: workspacePath,
-			timeoutMs: 10_000,
-			env: { ...gitRepoContextScrubEnv(), ...warrenCommitIdentityEnv() },
-		},
-	);
-	await emit("reap.plot_committed", {
-		message: "chore(warren): plot state",
-		filesStaged: copied,
-	});
-	return true;
-}
-
-/* ----------------------------------------------------------------------- */
 /* Seeds commit-through-reap (warren-7ecc)                                   */
 /* ----------------------------------------------------------------------- */
 
@@ -176,8 +37,7 @@ interface StageSeedsForCommitInput {
  * agent never committed. Returns true when a warren-identity commit
  * landed.
  *
- * The carrier shape mirrors stagePlotForCommit (warren-343a) — agents
- * with narrowly-scoped write contracts (planner, see
+ * Agents with narrowly-scoped write contracts (planner, see
  * src/registry/builtins/planner.ts) are forbidden from running
  * `git commit`. The planner's `sd plan submit` writes
  * `.seeds/issues.jsonl` + `.seeds/plans.jsonl` inside the workspace;
@@ -209,7 +69,7 @@ export async function stageSeedsForCommit(input: StageSeedsForCommitInput): Prom
 	if (copied === 0) return false;
 
 	// warren-23dd: scrub the inherited repo-context GIT_* on every git call in
-	// this flow (mirrors clone-apply.ts / stagePlotForCommit) so a leaked
+	// this flow (mirrors clone-apply.ts) so a leaked
 	// GIT_DIR / GIT_INDEX_FILE can't divert the add/diff/commit out of
 	// `workspacePath` into the parent repo.
 	await exec.run("git", ["add", "--", ".seeds/"], {

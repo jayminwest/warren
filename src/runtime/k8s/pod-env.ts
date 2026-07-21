@@ -167,7 +167,7 @@ export function buildInitVolumeMounts(
  * The agent container's env — the in-pod runner's full contract (warren-186c):
  *
  *   - `spec.env` (DOMAIN env) rides first: `WARREN_API_TOKEN`, `WARREN_API_URL`
- *     (the Service-DNS callback the provider folded in), `PLOT_ID`/`PLOT_ACTOR`,
+ *     (the Service-DNS callback the provider folded in),
  *     `WARREN_QUALITY_GATE`, `BUN_INSTALL_CACHE_DIR`.
  *   - The DERIVED run vars fold on top (a domain env must not carry them):
  *     `WARREN_RUN_ID`, `WARREN_WORKSPACE_PATH`, `WARREN_AGENT_RUNTIME` (the
