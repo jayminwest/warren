@@ -36,6 +36,7 @@ import { PodGc } from "../../runtime/k8s/pod-gc.ts";
 import { LABEL_RUN_ID, resolveK8sPodConfig } from "../../runtime/k8s/pod-spec.ts";
 import {
 	type CounterSink,
+	DEFAULT_RESYNC_PERIOD_MS,
 	type PodListFn,
 	PodWatcher,
 	type WatchFn,
@@ -140,6 +141,7 @@ export function bootK8sRuntime(input: BootK8sRuntimeInput): K8sRuntimeHandle | u
 		namespace,
 		metrics: input.metrics,
 		logger: wireLogger,
+		resyncPeriodMs: resolveResyncPeriodMs(input.env),
 		...(input.now !== undefined ? { now: input.now } : {}),
 	});
 
@@ -316,6 +318,25 @@ function realDeleteConfigMap(
 /** A 404 from the K8s API — the resource is already gone (idempotent delete). */
 function isNotFound(err: unknown): boolean {
 	return err instanceof ApiException && err.code === 404;
+}
+
+/**
+ * Parse `WARREN_K8S_POD_WATCHER_RESYNC_MS` (warren-4f2b): non-negative int
+ * milliseconds. `0` disables the periodic force-relist; absent/blank yields the
+ * `DEFAULT_RESYNC_PERIOD_MS` 5-minute default. Rejects non-integer / negative /
+ * malformed values loudly so a typo in a deploy config fails boot rather than
+ * silently disarming the cache-staleness backstop.
+ */
+function resolveResyncPeriodMs(env: EnvLike): number {
+	const raw = env.WARREN_K8S_POD_WATCHER_RESYNC_MS;
+	if (raw === undefined || raw.trim() === "") return DEFAULT_RESYNC_PERIOD_MS;
+	const n = Number.parseInt(raw, 10);
+	if (!Number.isFinite(n) || n < 0 || String(n) !== raw.trim()) {
+		throw new Error(
+			`WARREN_K8S_POD_WATCHER_RESYNC_MS must be a non-negative integer (got ${JSON.stringify(raw)})`,
+		);
+	}
+	return n;
 }
 
 /**

@@ -29,6 +29,15 @@
  *     from the last `resourceVersion`. Every reconnect bumps the reconnect
  *     counter.
  *
+ * ## Periodic resync (warren-4f2b)
+ * A watch that silently stops delivering events (server stall, missed DELETED
+ * whose RV has aged out of our resume cursor) leaves a phantom cache entry
+ * indefinitely — the loop has no reason to reconnect — masking a real
+ * termination from `K8sProvider.status()` and the watchdog terminal-reconcile
+ * net, so a run row wedges `running`. An independent `resyncPeriodMs` timer
+ * (default 5 min) force-relists: `reconcileCache` drops any run id absent from
+ * the fresh page, so a phantom cannot survive past one window.
+ *
  * ## Scope (warren-a7ff)
  * Provider-internal plumbing + metrics ONLY. This watcher does NOT mutate warren
  * run rows / dispatch / reap — the pod-phase → run-row reconcile is a later step
@@ -101,6 +110,14 @@ export interface PodWatcherDeps {
 	/** Backoff floor / ceiling for reconnects (ms). Defaults 1s / 30s. */
 	readonly backoffBaseMs?: number;
 	readonly backoffMaxMs?: number;
+	/**
+	 * Periodic force-relist cadence (ms). Default `DEFAULT_RESYNC_PERIOD_MS`
+	 * (5 min); `0` disables the resync. A watch that silently stops delivering
+	 * events (server stall, missed DELETED) can leave the cache stale
+	 * indefinitely; every resync tick force-relists so a phantom pod cannot
+	 * survive more than one window past its real deletion (warren-4f2b).
+	 */
+	readonly resyncPeriodMs?: number;
 	readonly logger?: {
 		info?: (obj: unknown, msg: string) => void;
 		warn?: (obj: unknown, msg: string) => void;
@@ -114,6 +131,17 @@ export interface PodCacheReader {
 
 const DEFAULT_BACKOFF_BASE_MS = 1_000;
 const DEFAULT_BACKOFF_MAX_MS = 30_000;
+
+/**
+ * Force-relist cadence (warren-4f2b): 5 minutes. Bounds the worst-case window a
+ * phantom cache entry can survive a silent watch by. Long enough that the
+ * healthy path (watch delivers DELETED within ~1-2s of pod deletion) pays no
+ * meaningful API-list overhead; short enough that a zombie run reaches the
+ * watchdog's terminal-reconcile net (2 min grace, 30s tick) inside ~8 minutes
+ * worst-case rather than the 30+ min the incident saw. Override via
+ * `WARREN_K8S_POD_WATCHER_RESYNC_MS`; `0` disables.
+ */
+export const DEFAULT_RESYNC_PERIOD_MS = 5 * 60 * 1000;
 
 /**
  * The list-then-watch informer. Construct with the injected seams, call
@@ -137,6 +165,10 @@ export class PodWatcher implements PodCacheReader, PodMetricsSource, PodAdmissio
 	private resolveWatch: ((err: unknown) => void) | undefined;
 	private loopDone: Promise<void> | undefined;
 	private backoffMs: number;
+	/** Periodic force-relist timer (warren-4f2b). Cleared by `stop()`. */
+	private resyncTimer: ReturnType<typeof setInterval> | undefined;
+	/** Serializes a resync relist against the watch loop's own relist path. */
+	private relistInFlight: Promise<void> | undefined;
 
 	constructor(private readonly deps: PodWatcherDeps) {
 		this.backoffMs = deps.backoffBaseMs ?? DEFAULT_BACKOFF_BASE_MS;
@@ -151,11 +183,16 @@ export class PodWatcher implements PodCacheReader, PodMetricsSource, PodAdmissio
 		if (this.running) return;
 		this.running = true;
 		this.loopDone = this.loop();
+		this.scheduleResync();
 	}
 
 	/** Abort the watch and await the loop's exit. Idempotent. */
 	async stop(): Promise<void> {
 		this.running = false;
+		if (this.resyncTimer !== undefined) {
+			clearInterval(this.resyncTimer);
+			this.resyncTimer = undefined;
+		}
 		this.activeWatch?.abort();
 		this.activeWatch = undefined;
 		// Unpark a `watchOnce` that is still waiting on `done` (abort may not fire
@@ -163,6 +200,46 @@ export class PodWatcher implements PodCacheReader, PodMetricsSource, PodAdmissio
 		this.resolveWatch?.(undefined);
 		await this.loopDone?.catch(() => {});
 		this.loopDone = undefined;
+	}
+
+	/**
+	 * Schedule the periodic force-relist (warren-4f2b). Cache staleness caused by
+	 * a silently-stalled watch or a missed DELETED event otherwise persists until
+	 * the next natural reconnect/410 — potentially hours. A resync tick is a
+	 * definitive server-truth snapshot: `reconcileCache` drops any run id not in
+	 * the returned page, so a phantom cache entry (with its stale `phase: Running`)
+	 * cannot survive past one window. `resyncPeriodMs: 0` opts out.
+	 */
+	private scheduleResync(): void {
+		const period = this.deps.resyncPeriodMs ?? DEFAULT_RESYNC_PERIOD_MS;
+		if (period <= 0) return;
+		this.resyncTimer = setInterval(() => {
+			if (!this.running) return;
+			// Fire-and-forget: the loop's own relist path awaits `relistInFlight`
+			// so this can't race with a concurrent 410 relist.
+			void this.resyncRelist();
+		}, period);
+	}
+
+	/**
+	 * Serialize a force-relist against the watch loop's own relist (warren-4f2b).
+	 * A resync tick that fires while the loop is already relisting after a 410
+	 * awaits that relist rather than issuing a redundant API call.
+	 */
+	private async resyncRelist(): Promise<void> {
+		if (this.relistInFlight !== undefined) {
+			await this.relistInFlight;
+			return;
+		}
+		this.deps.logger?.info?.(
+			{ namespace: this.deps.namespace },
+			"pod-watch periodic resync; relisting",
+		);
+		const promise = this.safeRelist();
+		this.relistInFlight = promise.finally(() => {
+			this.relistInFlight = undefined;
+		});
+		await this.relistInFlight;
 	}
 
 	// --- PodCacheReader ------------------------------------------------------
