@@ -37,6 +37,7 @@ domains:
   ecosystem: {}
   k8s-runtime: {}
   scheduler: {}
+  k8s: {}
 governance:
   max_entries: 100
   warn_entries: 150
