@@ -20,7 +20,6 @@ function makeProject(overrides: Partial<ProjectRow> = {}): ProjectRow {
 		addedAt: "2026-07-21T00:00:00.000Z",
 		lastFetchedAt: null,
 		lastHeadSha: null,
-		hasPlot: false,
 		hasSeeds: false,
 		...overrides,
 	};

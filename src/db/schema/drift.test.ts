@@ -19,7 +19,6 @@ import {
 	events as pgEvents,
 	planRunChildren as pgPlanRunChildren,
 	planRuns as pgPlanRuns,
-	plots as pgPlots,
 	projects as pgProjects,
 	runInbox as pgRunInbox,
 	runs as pgRuns,
@@ -30,7 +29,6 @@ import {
 	events as sqliteEvents,
 	planRunChildren as sqlitePlanRunChildren,
 	planRuns as sqlitePlanRuns,
-	plots as sqlitePlots,
 	projects as sqliteProjects,
 	runInbox as sqliteRunInbox,
 	runs as sqliteRuns,
@@ -45,7 +43,6 @@ const SQLITE_TABLES: Record<string, SQLiteTable> = {
 	triggers: sqliteTriggers,
 	planRuns: sqlitePlanRuns,
 	planRunChildren: sqlitePlanRunChildren,
-	plots: sqlitePlots,
 	runInbox: sqliteRunInbox,
 };
 
@@ -57,7 +54,6 @@ const PG_TABLES: Record<string, PgTable> = {
 	triggers: pgTriggers,
 	planRuns: pgPlanRuns,
 	planRunChildren: pgPlanRunChildren,
-	plots: pgPlots,
 	runInbox: pgRunInbox,
 };
 
@@ -197,7 +193,6 @@ const TABLE_KEYS: AnyTable[] = [
 	"triggers",
 	"planRuns",
 	"planRunChildren",
-	"plots",
 	"runInbox",
 ];
 

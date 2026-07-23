@@ -82,21 +82,6 @@ export async function listByProject(
 	);
 }
 
-/**
- * Every run row bound to a given `plotId`, ordered by id (stable for
- * tests). Powers the Plot detail/summary surfaces that enumerate every
- * run bound to a Plot — callers re-sort the underlying events by `ts`
- * so dispatch-order surprises don't affect the result. The
- * `runs_plot_id` index (sqlite + postgres) covers the predicate.
- */
-export async function listByPlotId(adapter: DrizzleAdapter, plotId: string): Promise<RunRow[]> {
-	const db = adapter.drizzle as SqliteDrizzleDb;
-	const runs = adapter.schema.runs;
-	return adapter.pickAll(
-		db.select().from(runs).where(eq(runs.plotId, plotId)).orderBy(asc(runs.id)),
-	);
-}
-
 export async function listByAgent(
 	adapter: DrizzleAdapter,
 	agentName: string,

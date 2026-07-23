@@ -274,25 +274,6 @@ export const PLAN_RUN_CHILD_TERMINAL_STATES = [
 export type PlanRunChildTerminalState = (typeof PLAN_RUN_CHILD_TERMINAL_STATES)[number];
 
 /**
- * Shape of the `plots.state_json` blob (warren-9022). The plots table is
- * a read-CACHE that mirrors full git-backed
- * Plot state (`.plot/<id>.json` + `<id>.events.jsonl`), NOT an authoritative
- * store — source of truth stays git. The JSON blob holds the entire plot
- * state object so the table schema stays stable as the plot section shape
- * drifts (no migration per shape change). The promoted scalar columns
- * (id / project_id / status / title / updated_at) are denormalized out of
- * this blob purely to back list / index queries. Typed as an opaque JSON
- * object: warren never narrows the blob's interior — the plot-cli shape is
- * the source of truth and the projection round-trips it verbatim.
- *
- * Deliberately NOT modeled (open question, settled here): no event
- * count / last-seq summary columns. Consumers that need event rollups read
- * the git-backed `<id>.events.jsonl`; promoting them would re-introduce the
- * per-shape-drift coupling the JSON blob exists to avoid.
- */
-export type PlotProjectionState = Record<string, unknown>;
-
-/**
  * Physical table names. Centralized so the two dialect modules and the drift
  * check stay in lockstep — renaming a table is a one-line change here.
  */
@@ -304,7 +285,6 @@ export const TABLE_NAMES = {
 	triggers: "triggers",
 	planRuns: "plan_runs",
 	planRunChildren: "plan_run_children",
-	plots: "plots",
 	runInbox: "run_inbox",
 } as const;
 
@@ -319,7 +299,6 @@ export const INDEX_NAMES = {
 	runsProjectStarted: "runs_project_started_idx",
 	runsAgentStarted: "runs_agent_started_idx",
 	runsWorkerState: "runs_worker_state_idx",
-	runsPlotId: "runs_plot_id_idx",
 	runsMode: "runs_mode_idx",
 	// warren-0b75: the CI-fixer poller counts prior fixer attempts per PR by
 	// `runs.pr_url` (fixAttemptHistoryByPrUrl) and enumerates PR candidates by
@@ -344,15 +323,8 @@ export const INDEX_NAMES = {
 	// reverses the run_id → child lookup the reap path uses.
 	planRunsProjectState: "plan_runs_project_state_idx",
 	planRunsState: "plan_runs_state_idx",
-	planRunsPlotId: "plan_runs_plot_id_idx",
 	planRunChildrenRun: "plan_run_children_run_idx",
 	planRunChildrenState: "plan_run_children_state_idx",
-	// warren-9022. The plots projection is queried two ways:
-	// `plots_project_updated` powers the per-project list ordered by recency
-	// (composite (project_id, updated_at) serves both ASC and DESC scans), and
-	// `plots_status` powers status-filtered rollups across a project.
-	plotsProjectUpdated: "plots_project_updated_idx",
-	plotsStatus: "plots_status_idx",
 	// warren-3d0b. The run_inbox poll claims unread rows for one run
 	// (`GET /runs/:id/inbox`): the composite (run_id, state) makes the
 	// undelivered-per-run claim a covered index scan instead of a full-table

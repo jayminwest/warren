@@ -25,7 +25,7 @@
  * instead so the UI can render a left-to-right time series without a
  * client-side resort.
  *
- * Rows whose group key is null (e.g. `plotId === null`, no plan join)
+ * Rows whose group key is null (e.g. `projectId === null`, no plan join)
  * are folded into a single `__none__` bucket per breakdown — see
  * `NONE_KEY`. The UI renders this as an em-dash so the operator can
  * still see how much spend is unattributed to that dimension.
@@ -37,7 +37,6 @@ export interface CostAnalyticsRow {
 	readonly runId: string;
 	readonly projectId: string | null;
 	readonly agentName: string;
-	readonly plotId: string | null;
 	readonly planId: string | null;
 	readonly planRunId: string | null;
 	readonly provider: string | null;
@@ -53,15 +52,7 @@ export interface CostBucket {
 	readonly priced: number;
 }
 
-export type Dimension =
-	| "date"
-	| "project"
-	| "plan"
-	| "plot"
-	| "run"
-	| "agent"
-	| "model"
-	| "provider";
+export type Dimension = "date" | "project" | "plan" | "run" | "agent" | "model" | "provider";
 
 export interface CostAnalytics {
 	readonly totals: {
@@ -76,7 +67,6 @@ const DIMENSIONS: readonly Dimension[] = [
 	"date",
 	"project",
 	"plan",
-	"plot",
 	"run",
 	"agent",
 	"model",
@@ -155,8 +145,6 @@ function keyFor(r: CostAnalyticsRow, dim: Dimension): string | null {
 			return r.projectId;
 		case "plan":
 			return r.planId;
-		case "plot":
-			return r.plotId;
 		case "run":
 			return r.runId;
 		case "agent":

@@ -316,63 +316,6 @@ describe("auto_plan_run (warren-a32a)", () => {
 		}
 	});
 
-	test("inherits plotId from the parent run when present", async () => {
-		const db = await openDatabase({ path: ":memory:" });
-		const repos = createRepos(db);
-		await repos.agents.upsert({
-			name: "patrol-bot",
-			renderedJson: { sections: { system: "x" } },
-		});
-		const project = await repos.projects.create({
-			gitUrl: "https://github.com/x/y.git",
-			localPath: "/data/projects/x/y",
-			defaultBranch: "main",
-			hasSeeds: true,
-			hasPlot: true,
-		});
-		const run = await repos.runs.create({
-			agentName: "patrol-bot",
-			projectId: project.id,
-			prompt: "patrol scan",
-			renderedAgentJson: {
-				name: "patrol-bot",
-				version: 1,
-				sections: { system: "x" },
-				resolvedFrom: [],
-				frontmatter: { auto_plan_run: true },
-			},
-			trigger: "cron",
-			burrowId: "bur_aaaaaaaaaaaa",
-			burrowRunId: "run_zzzzzzzzzzzz",
-			plotId: "plot-abc123",
-		});
-		await repos.runs.markRunning(run.id);
-		try {
-			const f = fakeFs({
-				"/data/projects/x/y/.seeds/issues.jsonl": "",
-				"/data/projects/x/y/.seeds/plans.jsonl": "",
-				"/data/burrow/ws/.seeds/plans.jsonl":
-					'{"id":"pl-new1","status":"approved","children":["warren-c1"]}\n',
-			});
-			const e = fakeExec({ stagedDelta: true });
-
-			const result = await reapRun({
-				runId: run.id,
-				outcome: "succeeded",
-				repos,
-				...reapDeps(fakeBurrowClient(makeBurrow()), { fs: f.fs, exec: e.exec }),
-				fs: f.fs,
-				exec: e.exec,
-			});
-
-			expect(result.autoPlanRunCreated).toBe(true);
-			const planRun = await repos.planRuns.require(result.autoPlanRunId as string);
-			expect(planRun.plotId).toBe("plot-abc123");
-		} finally {
-			await db.close();
-		}
-	});
-
 	// warren-41d5: child-seed validation on the auto path mirrors the
 	// manual POST /plan-runs handler. `seedsCli.spawn` answers `sd show
 	// <id> --json`; "missing" resolves to a `SeedNotFoundError` (exit 1,

@@ -4,8 +4,10 @@
  * Tables: agents (canopy registry cache), projects (cloned repos), runs
  * (warren-side run rows that mirror burrow's lifecycle), events (write-through
  * cache of burrow's stream — see SPEC §9 "event durability rationale"), triggers
- * (R-06 scheduler bookkeeping), planRuns + planRunChildren, plots, and
- * runInbox. The conversations + messages tables were dropped in
+ * (R-06 scheduler bookkeeping), planRuns + planRunChildren, and
+ * runInbox. The plots projection table was dropped in warren-0b13 (0031)
+ * as part of the plot deletion pass (pl-3a79). The conversations + messages
+ * tables were dropped in
  * warren-d93e (0030) as part of the conversations deletion pass
  * (pl-3a79). The workers + burrows multi-worker placement
  * tables were dropped in warren-3743 (0028) once LocalProvider absorbed the
@@ -32,7 +34,6 @@ import {
 	text,
 	uniqueIndex,
 } from "drizzle-orm/sqlite-core";
-import type { PlotProjectionState } from "./columns.ts";
 import {
 	CLONE_KINDS,
 	EVENT_STREAMS,
@@ -97,13 +98,6 @@ export const projects = sqliteTable(
 		addedAt: text("added_at").notNull(),
 		lastFetchedAt: text("last_fetched_at"),
 		lastHeadSha: text("last_head_sha"),
-		// Plot opt-in gating flag (warren-4e20). True iff a `.plot/` directory
-		// exists at the clone root at the time of the most recent
-		// addProject / refreshProjectClone. The dispatch path reads this to
-		// gate `plot_id` validation and PLOT_ID/PLOT_ACTOR env injection
-		// (warren-a8c3, warren-e26f). Defaults to false so legacy rows
-		// written before this column existed match the no-`.plot/` shape.
-		hasPlot: integer("has_plot", { mode: "boolean" }).notNull().default(false),
 		// Seeds opt-in gating flag (warren-9990 / pl-a258 step 1). True iff a
 		// `.seeds/` directory exists at the clone root at the time of the
 		// most recent addProject / refreshProjectClone. The PlanRun API
@@ -156,17 +150,6 @@ export const runs = sqliteTable(
 		// Plain text (no FK to seeds) — seeds live in the project workspace, not
 		// in warren's database, and the seed-id space is per-project.
 		seedId: text("seed_id"),
-		// Optional back-link to the Plot this run was dispatched against
-		// (warren-a8c3, parent warren-000b). Gated on the owning project's
-		// `hasPlot` flag at handler-level — POST /runs rejects a plot_id when
-		// the project has no `.plot/` directory. When set, the spawn flow
-		// (warren-e26f) injects PLOT_ID + PLOT_ACTOR into the sandbox env,
-		// emits a `run_dispatched` event into the Plot (warren-e848), and
-		// reap mirrors plot deltas back into warren's event stream tagged
-		// with this plot_id (warren-7e0f). Nullable: legacy rows and runs
-		// dispatched without a plot leave it null. Plain text, no FK — Plots
-		// live in the project workspace, not in warren's database.
-		plotId: text("plot_id"),
 		renderedAgentJson: text("rendered_agent_json", { mode: "json" }).notNull(),
 		state: text("state", { enum: RUN_STATES }).notNull(),
 		failureReason: text("failure_reason", { enum: RUN_FAILURE_REASONS }),
@@ -242,7 +225,6 @@ export const runs = sqliteTable(
 		index(INDEX_NAMES.runsProjectStarted).on(t.projectId, sql`${t.startedAt} DESC`),
 		index(INDEX_NAMES.runsAgentStarted).on(t.agentName, sql`${t.startedAt} DESC`),
 		index(INDEX_NAMES.runsWorkerState).on(t.workerId, t.state),
-		index(INDEX_NAMES.runsPlotId).on(t.plotId),
 		index(INDEX_NAMES.runsMode).on(t.mode),
 		index(INDEX_NAMES.runsPrUrl).on(t.prUrl),
 	],
@@ -329,14 +311,6 @@ export const planRuns = sqliteTable(
 		modelOverride: text("model_override"),
 		dispatcherHandle: text("dispatcher_handle").notNull().default("operator"),
 		trigger: text("trigger").notNull().default("manual"),
-		// Optional back-link to the Plot this plan-run was dispatched against
-		// (warren-06dc / pl-7937 Phase 2; mirrors `runs.plot_id`). Gated on the
-		// owning project's `hasPlot` flag at handler level. When set, the
-		// coordinator forwards it to every child run's spawn input (PLOT_ID/
-		// PLOT_ACTOR injection, per-child `run_dispatched`) and auto-transitions
-		// the bound Plot to `done` once every child is terminal. Nullable;
-		// plain text, no FK — Plots live in the project workspace.
-		plotId: text("plot_id"),
 		// Back-link to the parent run that created this plan-run via
 		// auto_plan_run (warren-d9a2). When set, the coordinator gates on
 		// the parent run's PR being merged before dispatching the first
@@ -354,7 +328,6 @@ export const planRuns = sqliteTable(
 	(t) => [
 		index(INDEX_NAMES.planRunsProjectState).on(t.projectId, t.state),
 		index(INDEX_NAMES.planRunsState).on(t.state),
-		index(INDEX_NAMES.planRunsPlotId).on(t.plotId),
 	],
 );
 
@@ -409,35 +382,6 @@ export type EventInsert = typeof events.$inferInsert;
 export type TriggerRow = typeof triggers.$inferSelect;
 export type TriggerInsert = typeof triggers.$inferInsert;
 /**
- * Plots projection (warren-9022). A read-cache that
- * mirrors full git-backed Plot state — NOT an authoritative store; source of
- * truth stays git. The `state_json` blob holds the entire plot state (schema
- * stable across plot-shape drift), and the promoted scalars (project_id /
- * status / title / updated_at) are denormalized out of it for list / index
- * queries. `project_id` FKs `projects.id` ON DELETE CASCADE (the projection
- * is rebuildable from git); `id` is the caller-supplied `plot-...` id
- * (PLOT_ID_REGEX, mx-28a262). See `columns.ts`'s `PlotProjectionState` for
- * the full framing.
- */
-export const plots = sqliteTable(
-	TABLE_NAMES.plots,
-	{
-		id: text("id").primaryKey(),
-		projectId: text("project_id")
-			.notNull()
-			.references(() => projects.id, { onDelete: "cascade" }),
-		status: text("status").notNull(),
-		title: text("title"),
-		updatedAt: text("updated_at").notNull(),
-		stateJson: text("state_json", { mode: "json" }).$type<PlotProjectionState>().notNull(),
-	},
-	(t) => [
-		index(INDEX_NAMES.plotsProjectUpdated).on(t.projectId, t.updatedAt),
-		index(INDEX_NAMES.plotsStatus).on(t.status),
-	],
-);
-
-/**
  * Run inbox (warren-3d0b, pl-829f step 18). The durable steering channel for
  * pod-per-run K8s runs: with no live socket into the sandbox, warren persists
  * each steering message here and the in-pod agent harness polls
@@ -475,7 +419,5 @@ export type PlanRunRow = typeof planRuns.$inferSelect;
 export type PlanRunInsert = typeof planRuns.$inferInsert;
 export type PlanRunChildRow = typeof planRunChildren.$inferSelect;
 export type PlanRunChildInsert = typeof planRunChildren.$inferInsert;
-export type PlotRow = typeof plots.$inferSelect;
-export type PlotInsert = typeof plots.$inferInsert;
 export type RunInboxRow = typeof runInbox.$inferSelect;
 export type RunInboxInsert = typeof runInbox.$inferInsert;

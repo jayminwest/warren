@@ -6,7 +6,6 @@ function row(o: Partial<CostAnalyticsRow> & { runId: string }): CostAnalyticsRow
 		runId: o.runId,
 		projectId: o.projectId ?? null,
 		agentName: o.agentName ?? "claude-code",
-		plotId: o.plotId ?? null,
 		planId: o.planId ?? null,
 		planRunId: o.planRunId ?? null,
 		provider: o.provider ?? null,
@@ -63,23 +62,22 @@ describe("buildCostAnalytics", () => {
 
 	it("folds null keys into the NONE_KEY bucket per dimension", () => {
 		const a = buildCostAnalytics([
-			row({ runId: "a", plotId: "plot-1", costUsd: 1 }),
-			row({ runId: "b", plotId: null, costUsd: 2 }),
-			row({ runId: "c", plotId: null, costUsd: 4 }),
+			row({ runId: "a", planId: "pl-1", costUsd: 1 }),
+			row({ runId: "b", planId: null, costUsd: 2 }),
+			row({ runId: "c", planId: null, costUsd: 4 }),
 		]);
-		const noneBucket = a.breakdowns.plot.find((b) => b.key === NONE_KEY);
+		const noneBucket = a.breakdowns.plan.find((b) => b.key === NONE_KEY);
 		expect(noneBucket).toBeDefined();
 		expect(noneBucket?.costUsd).toBeCloseTo(6);
 		expect(noneBucket?.runs).toBe(2);
 	});
 
-	it("exposes all eight dimensions", () => {
+	it("exposes all seven dimensions", () => {
 		const a = buildCostAnalytics([
 			row({
 				runId: "r",
 				projectId: "p",
 				planId: "pl",
-				plotId: "plot",
 				agentName: "claude-code",
 				provider: "anthropic",
 				model: "claude-sonnet-4-6",
@@ -90,7 +88,6 @@ describe("buildCostAnalytics", () => {
 		expect(a.breakdowns.date[0]?.key).toBe("2026-01-01");
 		expect(a.breakdowns.project[0]?.key).toBe("p");
 		expect(a.breakdowns.plan[0]?.key).toBe("pl");
-		expect(a.breakdowns.plot[0]?.key).toBe("plot");
 		expect(a.breakdowns.run[0]?.key).toBe("r");
 		expect(a.breakdowns.agent[0]?.key).toBe("claude-code");
 		expect(a.breakdowns.model[0]?.key).toBe("claude-sonnet-4-6");

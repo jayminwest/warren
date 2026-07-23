@@ -176,6 +176,13 @@
 			"when": 1784654848612,
 			"tag": "0024_perfect_proteus",
 			"breakpoints": true
+		},
+		{
+			"idx": 25,
+			"version": "7",
+			"when": 1784813003621,
+			"tag": "0025_black_santa_claus",
+			"breakpoints": true
 		}
 	]
 }

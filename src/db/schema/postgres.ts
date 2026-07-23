@@ -35,7 +35,6 @@ import {
 	text,
 	uniqueIndex,
 } from "drizzle-orm/pg-core";
-import type { PlotProjectionState } from "./columns.ts";
 import {
 	CLONE_KINDS,
 	EVENT_STREAMS,
@@ -77,11 +76,6 @@ export const projects = pgTable(
 		addedAt: text("added_at").notNull(),
 		lastFetchedAt: text("last_fetched_at"),
 		lastHeadSha: text("last_head_sha"),
-		// Plot opt-in gating flag (warren-4e20) — mirror of sqlite. Boolean
-		// rather than integer here; the drift check only compares structure
-		// (column name + nullability + default presence), not the storage
-		// type, so the sqlite integer-as-boolean stays in lockstep.
-		hasPlot: boolean("has_plot").notNull().default(false),
 		// Seeds opt-in gating flag (warren-9990 / pl-a258 step 1) — mirror of
 		// sqlite. See sqlite.ts for shape.
 		hasSeeds: boolean("has_seeds").notNull().default(false),
@@ -102,8 +96,6 @@ export const runs = pgTable(
 		burrowRunId: text("burrow_run_id"),
 		workerId: text("worker_id"),
 		seedId: text("seed_id"),
-		// Mirror of sqlite plot_id (warren-a8c3). See sqlite.ts for shape.
-		plotId: text("plot_id"),
 		renderedAgentJson: jsonb("rendered_agent_json").notNull(),
 		state: text("state", { enum: RUN_STATES }).notNull(),
 		failureReason: text("failure_reason", { enum: RUN_FAILURE_REASONS }),
@@ -140,7 +132,6 @@ export const runs = pgTable(
 		index(INDEX_NAMES.runsProjectStarted).on(t.projectId, sql`${t.startedAt} DESC`),
 		index(INDEX_NAMES.runsAgentStarted).on(t.agentName, sql`${t.startedAt} DESC`),
 		index(INDEX_NAMES.runsWorkerState).on(t.workerId, t.state),
-		index(INDEX_NAMES.runsPlotId).on(t.plotId),
 		index(INDEX_NAMES.runsMode).on(t.mode),
 		index(INDEX_NAMES.runsPrUrl).on(t.prUrl),
 	],
@@ -199,9 +190,6 @@ export const planRuns = pgTable(
 		modelOverride: text("model_override"),
 		dispatcherHandle: text("dispatcher_handle").notNull().default("operator"),
 		trigger: text("trigger").notNull().default("manual"),
-		// Mirror of sqlite plan_runs.plot_id (warren-06dc / pl-7937 Phase 2).
-		// See sqlite.ts for shape + gating intent.
-		plotId: text("plot_id"),
 		// Mirror of sqlite plan_runs.parent_run_id (warren-d9a2). See
 		// sqlite.ts for shape + gating intent.
 		parentRunId: text("parent_run_id"),
@@ -214,7 +202,6 @@ export const planRuns = pgTable(
 	(t) => [
 		index(INDEX_NAMES.planRunsProjectState).on(t.projectId, t.state),
 		index(INDEX_NAMES.planRunsState).on(t.state),
-		index(INDEX_NAMES.planRunsPlotId).on(t.plotId),
 	],
 );
 
@@ -260,30 +247,6 @@ export type EventInsert = typeof events.$inferInsert;
 export type TriggerRow = typeof triggers.$inferSelect;
 export type TriggerInsert = typeof triggers.$inferInsert;
 /**
- * Plots projection (warren-9022) — mirror of sqlite.
- * `state_json` is `jsonb` here (vs sqlite's `text mode:"json"`); the drift
- * check compares structure (column name + nullability + FK + index), not the
- * storage type. See sqlite.ts for the projection's full intent.
- */
-export const plots = pgTable(
-	TABLE_NAMES.plots,
-	{
-		id: text("id").primaryKey(),
-		projectId: text("project_id")
-			.notNull()
-			.references(() => projects.id, { onDelete: "cascade" }),
-		status: text("status").notNull(),
-		title: text("title"),
-		updatedAt: text("updated_at").notNull(),
-		stateJson: jsonb("state_json").$type<PlotProjectionState>().notNull(),
-	},
-	(t) => [
-		index(INDEX_NAMES.plotsProjectUpdated).on(t.projectId, t.updatedAt),
-		index(INDEX_NAMES.plotsStatus).on(t.status),
-	],
-);
-
-/**
  * Run inbox (warren-3d0b) — mirror of sqlite. See sqlite.ts for the pod-per-run
  * steering-channel intent + delivery semantics.
  */
@@ -309,7 +272,5 @@ export type PlanRunRow = typeof planRuns.$inferSelect;
 export type PlanRunInsert = typeof planRuns.$inferInsert;
 export type PlanRunChildRow = typeof planRunChildren.$inferSelect;
 export type PlanRunChildInsert = typeof planRunChildren.$inferInsert;
-export type PlotRow = typeof plots.$inferSelect;
-export type PlotInsert = typeof plots.$inferInsert;
 export type RunInboxRow = typeof runInbox.$inferSelect;
 export type RunInboxInsert = typeof runInbox.$inferInsert;

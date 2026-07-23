@@ -58,44 +58,6 @@ describe("advancePlanRun — dispatch phase", () => {
 		expect(children.find((c) => c.seq === 1)?.state).toBe("running");
 	});
 
-	test("spawn receives the PlanRun.plotId so per-child PLOT_ID injection lights up", async () => {
-		// Seed a Plot-bound PlanRun directly so the coordinator's spawn
-		// closure sees a non-null plotId on the row passed through.
-		const { planRun: plotBound } = await h.repos.planRuns.create({
-			planId: "pl-plot",
-			projectId: h.projectId,
-			agentName: "claude-code",
-			plotId: "plot_acc",
-			children: [{ seq: 1, seedId: "warren-p" }],
-			now: NOW,
-		});
-		const captured: { plotId: string | null }[] = [];
-		const spawn: CoordinatorSpawnFn = async ({ planRun, child, prompt }) => {
-			captured.push({ plotId: planRun.plotId });
-			const run = await h.repos.runs.create({
-				agentName: "claude-code",
-				projectId: h.projectId,
-				prompt,
-				renderedAgentJson: { sections: {} },
-				trigger: "plan-run",
-				seedId: child.seedId,
-				now: NOW,
-			});
-			return { runId: run.id };
-		};
-		const result = await advancePlanRun({
-			planRun: plotBound,
-			repos: h.repos,
-			showSeed: h.showSeedStub("open"),
-			checkPrMerged: neverPoll,
-			spawn,
-			emit: h.emit,
-			now: () => NOW,
-		});
-		expect(result.kind).toBe("dispatched");
-		expect(captured).toEqual([{ plotId: "plot_acc" }]);
-	});
-
 	test("dispatch failure → plan_failed with dispatch_failed:<message>", async () => {
 		const failingSpawn: CoordinatorSpawnFn = async () => {
 			throw new Error("burrow unreachable");

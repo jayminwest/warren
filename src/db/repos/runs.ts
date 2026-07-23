@@ -30,7 +30,6 @@ import {
 	listAll,
 	listByAgent,
 	listByIds,
-	listByPlotId,
 	listByProject,
 	listByState,
 	listForAnalytics,
@@ -75,12 +74,6 @@ export interface CreateRunInput {
 	 * primitive (warren-1117). Fixed at run-create time.
 	 */
 	mode?: RunMode;
-	/**
-	 * Back-link to the Plot this run was dispatched against (warren-a8c3).
-	 * Null when the project hasn't opted into Plots or plot_id was omitted;
-	 * `project.hasPlot` is validated at the handler.
-	 */
-	plotId?: string | null;
 	/**
 	 * Continuation/replicate back-link (warren-4b11 / warren-e96f). Null for
 	 * root runs; plain text id, no FK. `cloneKind` tells the two chain kinds
@@ -139,7 +132,6 @@ export class RunsRepo {
 			burrowRunId: input.burrowRunId ?? null,
 			workerId: input.workerId ?? null,
 			seedId: input.seedId ?? null,
-			plotId: input.plotId ?? null,
 			parentRunId: input.parentRunId ?? null,
 			cloneKind: input.cloneKind ?? null,
 			renderedAgentJson: input.renderedAgentJson,
@@ -240,10 +232,6 @@ export class RunsRepo {
 		} = {},
 	): Promise<RunRow[]> {
 		return listByProject(this.adapter, projectId, options);
-	}
-
-	listByPlotId(plotId: string): Promise<RunRow[]> {
-		return listByPlotId(this.adapter, plotId);
 	}
 
 	listByAgent(

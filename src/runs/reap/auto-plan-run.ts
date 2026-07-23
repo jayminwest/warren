@@ -76,7 +76,6 @@ export function parsePlanChildren(body: string, planId: string): string[] {
 export interface DispatchAutoPlanRunsInput {
 	readonly run: {
 		id: string;
-		plotId: string | null;
 		renderedAgentJson: unknown;
 		agentName: string;
 	};
@@ -185,7 +184,6 @@ async function dispatchOnePlan(
 		trigger: "auto_plan_run",
 		ref: input.project.defaultBranch,
 		parentRunId: input.run.id,
-		...(input.run.plotId !== null ? { plotId: input.run.plotId } : {}),
 	});
 	await input.emit("auto_plan_run_created", {
 		planId,

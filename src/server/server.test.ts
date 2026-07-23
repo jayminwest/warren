@@ -404,7 +404,7 @@ describe("startServer — routes", () => {
 		const body = (await res.json()) as Record<string, unknown>;
 		expect(body.totals).toEqual({ runs: 0, priced: 0, costUsd: 0 });
 		const breakdowns = body.breakdowns as Record<string, unknown[]>;
-		for (const dim of ["date", "project", "plan", "plot", "run", "agent", "model", "provider"]) {
+		for (const dim of ["date", "project", "plan", "run", "agent", "model", "provider"]) {
 			expect(breakdowns[dim]).toEqual([]);
 		}
 	});

@@ -218,6 +218,13 @@
 			"when": 1784654847771,
 			"tag": "0030_moaning_tombstone",
 			"breakpoints": true
+		},
+		{
+			"idx": 31,
+			"version": "6",
+			"when": 1784813123072,
+			"tag": "0031_normal_johnny_blaze",
+			"breakpoints": true
 		}
 	]
 }

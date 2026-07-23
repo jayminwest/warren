@@ -143,7 +143,6 @@ export function listCostAnalyticsHandler(deps: ServerDeps): RouteHandler {
 				runId: r.id,
 				projectId: r.projectId,
 				agentName: r.agentName,
-				plotId: r.plotId,
 				planId: planByRun.get(r.id) ?? null,
 				planRunId: null,
 				provider: provider ?? null,

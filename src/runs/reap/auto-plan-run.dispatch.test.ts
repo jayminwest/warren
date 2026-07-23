@@ -6,7 +6,7 @@ import { dispatchAutoPlanRuns } from "./auto-plan-run.ts";
 /* ----------------------------------------------------------------------- */
 
 describe("dispatchAutoPlanRuns (warren-c40e)", () => {
-	const run = { id: "run-1", plotId: null, renderedAgentJson: {}, agentName: "patrol-bot" };
+	const run = { id: "run-1", renderedAgentJson: {}, agentName: "patrol-bot" };
 	const project = { id: "proj-1", defaultBranch: "main", localPath: "/data/projects/x/y" };
 	const emit = async () => undefined;
 	const fail = async () => undefined;

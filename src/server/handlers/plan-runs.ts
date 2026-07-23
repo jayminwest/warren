@@ -313,7 +313,7 @@ export function streamPlanRunEventsHandler(deps: ServerDeps): RouteHandler {
 			follow,
 			signal: ctrl.signal,
 		});
-		return ndjsonResponse(asNdjsonStream(source, (row) => eventToNdjson(row, null), ctrl));
+		return ndjsonResponse(asNdjsonStream(source, (row) => eventToNdjson(row), ctrl));
 	};
 }
 

@@ -1,7 +1,8 @@
 /**
  * Unit test for the PlanRun spawn wrapper (warren-b290 / pl-7937 step 5).
- * Asserts `createPlanRunSpawn` no longer forwards `planRun.plotId` into
- * `spawnRun`'s input bag (warren-b968: plan-run ↔ plot bridge removed).
+ * Asserts `createPlanRunSpawn` wires trigger / dispatcherHandle / runtime
+ * provider through to `spawnRun`'s input bag. The plan-run ↔ plot bridge
+ * was removed in warren-b968 and the plot DB surface in warren-0b13.
  */
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
@@ -60,12 +61,11 @@ describe("createPlanRunSpawn", () => {
 		await db.close();
 	});
 
-	test("does not forward planRun.plotId into spawnRun's input bag (plot bridge removed)", async () => {
+	test("forwards trigger / dispatcherHandle / runtimeProvider into spawnRun's input bag", async () => {
 		const { planRun } = await repos.planRuns.create({
 			planId: "pl-plot",
 			projectId,
 			agentName: "claude-code",
-			plotId: "plot_xyz",
 			children: [{ seq: 1, seedId: "warren-a" }],
 			now: NOW,
 		});
@@ -204,7 +204,7 @@ describe("createPlanRunSpawn", () => {
 		expect(captured[0]?.executionRepo).toBe("x/child");
 	});
 
-	test("omits plotId from spawnRun input when the PlanRun has no plot binding", async () => {
+	test("spawns a single child run for a PlanRun with no bindings", async () => {
 		const { planRun } = await repos.planRuns.create({
 			planId: "pl-noplot",
 			projectId,

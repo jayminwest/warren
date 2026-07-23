@@ -19,7 +19,6 @@ function row(over: Partial<RunRow> & { id: string; state: RunRow["state"] }): Ru
 		burrowRunId: null,
 		workerId: null,
 		seedId: null,
-		plotId: null,
 		renderedAgentJson: null,
 		failureReason: null,
 		startedAt: null,
