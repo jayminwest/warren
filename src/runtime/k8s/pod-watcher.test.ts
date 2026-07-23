@@ -103,6 +103,7 @@ function makeWatcher(
 	watch: FakeWatch,
 	metrics: CounterSink,
 	now?: () => Date,
+	resyncPeriodMs?: number,
 ): PodWatcher {
 	return new PodWatcher({
 		list,
@@ -111,6 +112,9 @@ function makeWatcher(
 		metrics,
 		backoffBaseMs: 1,
 		backoffMaxMs: 4,
+		// Disable periodic resync by default in tests unless a case opts in —
+		// otherwise every unit test would need to schedule around the 5-min timer.
+		resyncPeriodMs: resyncPeriodMs ?? 0,
 		...(now !== undefined ? { now } : {}),
 	});
 }
@@ -391,6 +395,60 @@ describe("PodWatcher — lifecycle", () => {
 		watcher.start();
 		await watcher.stop();
 		expect(true).toBe(true);
+	});
+});
+
+describe("PodWatcher — periodic resync (warren-4f2b)", () => {
+	test("a phantom cache entry from a silent watch is reclaimed by the next resync tick", async () => {
+		// Simulate the incident: watcher's initial list saw a Running pod, the watch
+		// then silently stops delivering events, and by the time the resync tick
+		// fires the pod has already been deleted at the API. The DELETED event is
+		// never received by the watch — only the force-relist can drop the phantom.
+		let listCalls = 0;
+		const items: V1Pod[][] = [[podFor("run_zombie", "Running", "100")], []];
+		const list: PodListFn = async () => {
+			const page = items[Math.min(listCalls, items.length - 1)] ?? [];
+			const rv = listCalls === 0 ? "100" : "200";
+			listCalls++;
+			return { items: page, resourceVersion: rv };
+		};
+		const watch = new FakeWatch();
+		const watcher = makeWatcher(list, watch, new FakeCounters(), undefined, 10);
+		watcher.start();
+		await waitForConnections(watch, 1);
+		expect(watcher.getByRunId("run_zombie")?.status?.phase).toBe("Running");
+
+		// Wait for the resync tick to fire (10ms period + a little slack).
+		for (let i = 0; i < 200 && listCalls < 2; i++) await delay(2);
+		expect(listCalls).toBeGreaterThanOrEqual(2);
+		expect(watcher.getByRunId("run_zombie")).toBeUndefined();
+		// The provider's status() cache-cold path now returns runLostStatus,
+		// unwedging the watchdog terminal-reconcile net (warren-c433).
+		await watcher.stop();
+	});
+
+	test("resyncPeriodMs: 0 disables the periodic force-relist", async () => {
+		const list = listReturning([podFor("run_a", "Running")], "100");
+		const watch = new FakeWatch();
+		const watcher = makeWatcher(list.fn, watch, new FakeCounters(), undefined, 0);
+		watcher.start();
+		await waitForConnections(watch, 1);
+		// Wait long enough that a live 5ms timer would have fired several times.
+		await delay(40);
+		expect(list.calls()).toBe(1);
+		await watcher.stop();
+	});
+
+	test("stop() clears the resync timer (no relist after the loop halts)", async () => {
+		const list = listReturning([], "100");
+		const watch = new FakeWatch();
+		const watcher = makeWatcher(list.fn, watch, new FakeCounters(), undefined, 5);
+		watcher.start();
+		await waitForConnections(watch, 1);
+		await watcher.stop();
+		const listCallsAtStop = list.calls();
+		await delay(30);
+		expect(list.calls()).toBe(listCallsAtStop);
 	});
 });
 
