@@ -38,6 +38,7 @@ domains:
   k8s-runtime: {}
   scheduler: {}
   k8s: {}
+  deployment: {}
 governance:
   max_entries: 100
   warn_entries: 150
