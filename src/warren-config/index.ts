@@ -57,8 +57,6 @@ export {
 	type NetworkPolicy,
 	NetworkPolicySchema,
 	type ParseResult,
-	type PlotSyncConfig,
-	type PlotSyncMergeStrategy,
 	type PreviewConfig,
 	PreviewConfigSchema,
 	type PreviewMode,

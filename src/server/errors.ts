@@ -30,22 +30,7 @@ import {
 	ValidationError,
 	WarrenError,
 } from "../core/errors.ts";
-import {
-	PlanHasNoOpenChildrenError,
-	ProjectLacksPlotError,
-	ProjectLacksSeedsError,
-} from "../plan-runs/errors.ts";
-import {
-	PlotAttachmentNotFoundError,
-	PlotIdInvalidError,
-	PlotIdNotFoundError,
-	PlotIllegalStatusTransitionError,
-	PlotIntentFrozenError,
-	PlotPrAttachmentInvalidError,
-	PlotPrAttachmentMismatchedKindError,
-	PlotQuestionAlreadyAnsweredError,
-	PlotQuestionNotFoundError,
-} from "../plots/errors.ts";
+import { PlanHasNoOpenChildrenError, ProjectLacksSeedsError } from "../plan-runs/errors.ts";
 import { ProjectUnavailableError } from "../projects/errors.ts";
 import { AgentSchemaError, CanopyUnavailableError } from "../registry/errors.ts";
 import { RunSpawnError } from "../runs/errors.ts";
@@ -161,18 +146,8 @@ function warrenStatusFor(err: WarrenError): number {
 	if (err instanceof NotFoundError) return 404;
 	if (err instanceof ValidationError) return 400;
 	if (err instanceof ProjectLacksSeedsError) return 400;
-	if (err instanceof ProjectLacksPlotError) return 400;
 	if (err instanceof PlanHasNoOpenChildrenError) return 400;
 	if (err instanceof StateTransitionError) return 409;
-	if (err instanceof PlotIntentFrozenError) return 409;
-	if (err instanceof PlotIllegalStatusTransitionError) return 409;
-	if (err instanceof PlotAttachmentNotFoundError) return 404;
-	if (err instanceof PlotPrAttachmentMismatchedKindError) return 400;
-	if (err instanceof PlotPrAttachmentInvalidError) return 400;
-	if (err instanceof PlotQuestionNotFoundError) return 404;
-	if (err instanceof PlotQuestionAlreadyAnsweredError) return 409;
-	if (err instanceof PlotIdInvalidError) return 400;
-	if (err instanceof PlotIdNotFoundError) return 400;
 	// Provider-neutral runtime errors (warren-36cb). `RuntimeUnreachableError`
 	// covers the LocalProvider's `BurrowUnreachableError` (which extends it) and
 	// K8sProvider transport failures alike; the run-not-found / conflict cases

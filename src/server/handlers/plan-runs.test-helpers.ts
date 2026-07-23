@@ -82,7 +82,6 @@ export interface BuildDepsInput {
 	sdSpawn: SpawnFn;
 	bridges?: BridgeRegistry;
 	logger?: Logger;
-	plotResolver?: import("../../plots/index.ts").PlotResolver;
 	/** Wire the git `spawn` seam so the plan-run handler refreshes the clone (warren-6d60). */
 	spawn?: SpawnFn;
 	/** Stub the project refresher so tests assert the refresh without shelling out (warren-6d60). */
@@ -108,7 +107,6 @@ export async function depsFor(input: BuildDepsInput): Promise<ServerDeps> {
 		logger: input.logger ?? silentLogger,
 		uiDistDir: null,
 		seedsCli: { sdBinary: "sd", spawn: input.sdSpawn },
-		...(input.plotResolver !== undefined ? { plotResolver: input.plotResolver } : {}),
 		...(input.spawn !== undefined ? { spawn: input.spawn } : {}),
 		...(input.refreshProjectFn !== undefined ? { refreshProjectFn: input.refreshProjectFn } : {}),
 	};
@@ -144,8 +142,6 @@ export interface PlanRunFixture {
 	repos: Repos;
 	projectId: string;
 	seedyProjectId: string;
-	plottedProjectId: string;
-	barePlottedProjectId: string;
 }
 
 export async function setupPlanRunFixture(): Promise<PlanRunFixture> {
@@ -175,26 +171,10 @@ export async function setupPlanRunFixture(): Promise<PlanRunFixture> {
 		defaultBranch: "main",
 		hasSeeds: false,
 	});
-	const plotted = await repos.projects.create({
-		gitUrl: "https://github.com/x/plotted.git",
-		localPath: "/tmp/plotted",
-		defaultBranch: "main",
-		hasSeeds: true,
-		hasPlot: true,
-	});
-	const barePlotted = await repos.projects.create({
-		gitUrl: "https://github.com/x/bare-plotted.git",
-		localPath: "/tmp/bare-plotted",
-		defaultBranch: "main",
-		hasSeeds: false,
-		hasPlot: true,
-	});
 	return {
 		db,
 		repos,
 		projectId: bare.id,
 		seedyProjectId: seedy.id,
-		plottedProjectId: plotted.id,
-		barePlottedProjectId: barePlotted.id,
 	};
 }

@@ -39,11 +39,7 @@ export {
 	createResolveExecution,
 	resolveChildExecution,
 } from "./dispatch.ts";
-export {
-	PlanHasNoOpenChildrenError,
-	ProjectLacksPlotError,
-	ProjectLacksSeedsError,
-} from "./errors.ts";
+export { PlanHasNoOpenChildrenError, ProjectLacksSeedsError } from "./errors.ts";
 export {
 	type CreatePrMergeCheckerInput,
 	createPrMergeChecker,

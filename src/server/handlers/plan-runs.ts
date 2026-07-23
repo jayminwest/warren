@@ -2,8 +2,7 @@
  * PlanRun HTTP handlers (warren-f923 / pl-a258 step 6).
  *
  * Extracted from `src/server/handlers/index.ts` (warren-a2b4 /
- * pl-9088 step 2). Shared parsing helpers and the
- * `assertPlotIdDispatchable` gate are re-imported from the index
+ * pl-9088 step 2). Shared parsing helpers are re-imported from the index
  * module; the NDJSON streaming plumbing (`bridgeAbort`,
  * `asNdjsonStream`, `eventToNdjson`) is re-imported from `./runs.ts`
  * so the plan-run stream handler stays byte-identical to the
@@ -11,18 +10,13 @@
  */
 
 import { NotFoundError, ValidationError } from "../../core/errors.ts";
-import {
-	PlanHasNoOpenChildrenError,
-	ProjectLacksPlotError,
-	ProjectLacksSeedsError,
-} from "../../plan-runs/errors.ts";
+import { PlanHasNoOpenChildrenError, ProjectLacksSeedsError } from "../../plan-runs/errors.ts";
 import { cancelRun } from "../../runs/index.ts";
 import { showPlan, showSeed } from "../../seeds-cli/index.ts";
 import { jsonResponse, ndjsonResponse } from "../response.ts";
 import type { RouteHandler, ServerDeps } from "../types.ts";
 import { refreshDispatchProject } from "./dispatch-refresh.ts";
 import {
-	assertPlotIdDispatchable,
 	optionalString,
 	parseBoolean,
 	readJsonBody,
@@ -60,28 +54,15 @@ function parsePlanRunStateFilter(raw: string | null): PlanRunStateFilter | undef
  *
  * Handler order (warren-f923):
  *   (1) load project; 404 if missing.
- *   (2) reject when project.hasSeeds is false (ProjectLacksSeedsError mirrors
- *       the plot reject shape at warren-a8c3 — same ValidationError → 400
- *       envelope, stable code so HTTP consumers can branch on it).
- *   (2b) reject when plot_id is set but project.hasPlot is false
- *       (ProjectLacksPlotError, warren-c900 / pl-7937 Phase 2). Same 400
- *       envelope; raised before the seeds-CLI fan-out so a non-Plot project
- *       never grows a half-validated plan-run.
- *
- *   Gates (2) and (2b) are **stacked, not independent** (warren-909c /
- *   pl-7937 step 6): seeds is the base, plot is the optional layer on top.
- *   A project missing .seeds/ is rejected as `project_lacks_seeds` even
- *   when plot_id is supplied — plot_id never short-circuits the .seeds/
- *   requirement, and PlanRun-with-plot only lights up when BOTH .seeds/
- *   AND .plot/ are present.
+ *   (2) reject when project.hasSeeds is false (ProjectLacksSeedsError) —
+ *       400 envelope with a stable code so HTTP consumers can branch on it.
  *   (3) call showPlan; assert plan.status is in (approved, active, done) and
  *       at least one open child exists (PlanHasNoOpenChildrenError).
  *   (4) resolve agent via repos.agents.resolve with the project-tier fallback
  *       (mx-644fb5 — same posture as spawnRun).
  *   (5/6) build + persist plan_runs + plan_run_children rows in a single
  *       repo.create call (the repo runs them in a transaction so a half-
- *       inserted PlanRun never appears to listActive). plot_id rides through
- *       the same call (default null when omitted).
+ *       inserted PlanRun never appears to listActive).
  *   (7) return 201 with {planRun, children}.
  */
 export function createPlanRunHandler(deps: ServerDeps): RouteHandler {
@@ -95,7 +76,6 @@ export function createPlanRunHandler(deps: ServerDeps): RouteHandler {
 		const providerOverride = optionalString(body, "providerOverride");
 		const modelOverride = optionalString(body, "modelOverride");
 		const dispatcherHandle = optionalString(body, "dispatcherHandle");
-		const plotId = optionalString(body, "plotId");
 
 		// (1) project lookup — NotFoundError → 404.
 		const project = await deps.repos.projects.require(projectId);
@@ -110,26 +90,7 @@ export function createPlanRunHandler(deps: ServerDeps): RouteHandler {
 			);
 		}
 
-		// (2b) hasPlot gate — symmetric to single-run's spawn-time check
-		// (src/runs/spawn/dispatch.ts, warren-a8c3). Empty-string plot_id is treated
-		// as "not provided" to match the single-run handler's posture.
-		if (plotId !== undefined && plotId !== "" && !project.hasPlot) {
-			throw new ProjectLacksPlotError(
-				`project ${project.id} has no .plot/ directory; plot_id is not accepted`,
-				{
-					recoveryHint:
-						"either omit plot_id on POST /plan-runs, or run `plot init` in the project clone and refresh the project so warren picks up the .plot/ directory",
-				},
-			);
-		}
-
-		// (2c) warren-bae5 / pl-5310 step 2: plot_id format + existence
-		// validation, mirroring createRunHandler's check. Layered AFTER
-		// ProjectLacksPlotError so the more-specific project-shape error
-		// still wins when both apply.
-		await assertPlotIdDispatchable({ plotId, plotResolver: deps.plotResolver });
-
-		// (2d) warren-6d60: refresh the project host clone before the plan
+		// warren-6d60: refresh the project host clone before the plan
 		// walk so a plan pushed moments earlier is read off fresh on-disk
 		// state. See `refreshDispatchProject`.
 		const dispatchProject = await refreshDispatchProject(deps, project, ref);
@@ -196,7 +157,6 @@ export function createPlanRunHandler(deps: ServerDeps): RouteHandler {
 			...(providerOverride !== undefined ? { providerOverride } : {}),
 			...(modelOverride !== undefined ? { modelOverride } : {}),
 			...(dispatcherHandle !== undefined ? { dispatcherHandle } : {}),
-			...(plotId !== undefined && plotId !== "" ? { plotId } : {}),
 			...(deps.now !== undefined ? { now: deps.now() } : {}),
 		});
 

@@ -10,10 +10,9 @@ import { WarrenError } from "../core/errors.ts";
 
 /**
  * `POST /plan-runs` (warren-f923) rejection when the target project doesn't
- * carry a `.seeds/` directory (`project.hasSeeds === false`). Mirrors the
- * plot reject shape at warren-a8c3: 400 status, stable code so HTTP
- * consumers branch on it without parsing the message. Mapped to 400 in
- * src/server/errors.ts alongside ValidationError.
+ * carry a `.seeds/` directory (`project.hasSeeds === false`). 400 status,
+ * stable code so HTTP consumers branch on it without parsing the message.
+ * Mapped to 400 in src/server/errors.ts alongside ValidationError.
  */
 export class ProjectLacksSeedsError extends WarrenError {
 	readonly code = "project_lacks_seeds";
@@ -27,19 +26,4 @@ export class ProjectLacksSeedsError extends WarrenError {
  */
 export class PlanHasNoOpenChildrenError extends WarrenError {
 	readonly code = "plan_has_no_open_children";
-}
-
-/**
- * `POST /plan-runs` (warren-c900 / pl-7937 Phase 2) rejection when the
- * caller supplies `plot_id` but the target project has no `.plot/`
- * directory (`project.hasPlot === false`). Mirrors ProjectLacksSeedsError's
- * shape so HTTP consumers branch on `code === "project_lacks_plot"`
- * without parsing the message. Mapped to 400 in src/server/errors.ts.
- *
- * Symmetric to the single-run gate in src/runs/spawn/dispatch.ts (warren-a8c3),
- * just routed through a typed error here so the plan-runs error surface
- * is uniform.
- */
-export class ProjectLacksPlotError extends WarrenError {
-	readonly code = "project_lacks_plot";
 }

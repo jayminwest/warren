@@ -101,7 +101,6 @@ export async function addProject(input: AddProjectInput): Promise<ProjectRow> {
 		gitUrl,
 		localPath: clone.localPath,
 		defaultBranch: clone.defaultBranch,
-		hasPlot: features.hasPlot,
 		hasSeeds: features.hasSeeds,
 		now: input.now?.(),
 	});
@@ -186,7 +185,6 @@ export async function refreshProject(input: RefreshProjectInput): Promise<Refres
 	const updated = await repo.recordRefresh({
 		id: row.id,
 		headSha: result.headSha,
-		hasPlot: result.features.hasPlot,
 		hasSeeds: result.features.hasSeeds,
 		now: input.now?.(),
 	});

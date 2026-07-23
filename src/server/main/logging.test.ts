@@ -3,15 +3,13 @@
  * (warren-8d3d / pl-9088 step 10). The adapters are trivial
  * pass-throughs; this test locks the call-forwarding shape so the
  * structural subtype each subsystem (bridges, probe, scheduler,
- * plan-run coordinator, pause detector, preview eviction) declares
- * stays satisfied.
+ * plan-run coordinator, preview eviction) declares stays satisfied.
  */
 
 import { describe, expect, test } from "bun:test";
 import type { Logger } from "../types.ts";
 import {
 	bridgeLoggerFromPino,
-	pauseLoggerFromPino,
 	planRunLoggerFromPino,
 	previewEvictionLoggerFromPino,
 	schedulerLoggerFromPino,
@@ -51,11 +49,10 @@ describe("bridgeLoggerFromPino", () => {
 	});
 });
 
-describe("schedulerLoggerFromPino / planRunLoggerFromPino / pauseLoggerFromPino / previewEvictionLoggerFromPino", () => {
+describe("schedulerLoggerFromPino / planRunLoggerFromPino / previewEvictionLoggerFromPino", () => {
 	const factories = {
 		scheduler: schedulerLoggerFromPino,
 		planRun: planRunLoggerFromPino,
-		pause: pauseLoggerFromPino,
 		previewEviction: previewEvictionLoggerFromPino,
 	} as const;
 

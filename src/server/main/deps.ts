@@ -8,19 +8,6 @@
 import type { AnyWarrenDb } from "../../db/client.ts";
 import type { Repos } from "../../db/repos/index.ts";
 import type { MetricsRegistry } from "../../observability/metrics-registry.ts";
-import {
-	createPlotAggregator,
-	createPlotResolver,
-	defaultPlanChildAdopter,
-	defaultPlotAttacher,
-	defaultPlotCreator,
-	defaultPlotIntentEditor,
-	defaultPlotPrMerger,
-	defaultPlotQuestionAnswerer,
-	defaultPlotReader,
-	defaultPlotRenamer,
-	defaultPlotStatusChanger,
-} from "../../plots/index.ts";
 import type { PreviewAuth } from "../../preview/cookie.ts";
 import type { loadPreviewEvictionConfigFromEnv } from "../../preview/eviction/index.ts";
 import type { loadPreviewLaunchConfigFromEnv } from "../../preview/launch/index.ts";
@@ -121,20 +108,6 @@ export function buildServerDeps(input: BuildServerDepsInput): ServerDeps {
 		now,
 	} = input;
 
-	// Plot aggregator (warren-c167 / pl-9d6a step 2). 5s in-memory cache,
-	// fan-out across every `hasPlot=true` project, byte-identical empty
-	// contract for deployments where no project ships `.plot/`. Threaded
-	// through ServerDeps so `GET /plots` (and later mutating handlers in
-	// pl-9d6a) read the same cache. `paused_run` needs-attention signal
-	// source (warren-d693 / pl-0344 step 9): `repos.runs` already
-	// satisfies `AggregatorRunsRepo`'s narrow surface.
-	const plotAggregator = createPlotAggregator({
-		projectsRepo: repos.projects,
-		logger,
-		runsRepo: repos.runs,
-		...(now !== undefined ? { now: () => now().getTime() } : {}),
-	});
-
 	const previewHostForDeps =
 		previewLaunchConfig.host !== null ? previewLaunchConfig.host : undefined;
 
@@ -165,20 +138,6 @@ export function buildServerDeps(input: BuildServerDepsInput): ServerDeps {
 		...(previewHostForDeps !== undefined ? { previewHost: previewHostForDeps } : {}),
 		...(previewAuth !== undefined ? { previewAuth } : {}),
 		...(previewSidecars !== undefined ? { previewSidecars } : {}),
-		plotAggregator,
-		plotCreator: defaultPlotCreator,
-		plotAttacher: defaultPlotAttacher,
-		plotPrMerger: defaultPlotPrMerger,
-		plotIntentEditor: defaultPlotIntentEditor,
-		plotRenamer: defaultPlotRenamer,
-		plotReader: defaultPlotReader,
-		planChildAdopter: defaultPlanChildAdopter,
-		plotStatusChanger: defaultPlotStatusChanger,
-		plotQuestionAnswerer: defaultPlotQuestionAnswerer,
-		plotResolver: createPlotResolver({
-			projectsRepo: repos.projects,
-			aggregator: plotAggregator,
-		}),
 		idempotencyStore: new IdempotencyStore(now !== undefined ? { now: () => now().getTime() } : {}),
 		...(metricsRegistry !== undefined ? { metricsRegistry } : {}),
 		// `/metrics` pod-phase gauges read live from the same pod-watcher at scrape

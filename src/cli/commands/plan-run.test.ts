@@ -252,7 +252,6 @@ describe("runPlanRun", () => {
 				ref: "main",
 				provider: "anthropic",
 				model: "opus",
-				plot: "plot-x",
 			}),
 		);
 		expect(observed).toEqual({
@@ -263,7 +262,6 @@ describe("runPlanRun", () => {
 			ref: "main",
 			providerOverride: "anthropic",
 			modelOverride: "opus",
-			plotId: "plot-x",
 		});
 	});
 

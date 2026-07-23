@@ -83,7 +83,6 @@
 	"dependencies": {
 		"@kubernetes/client-node": "^1.4.0",
 		"@os-eco/burrow-cli": "^0.3.15",
-		"@os-eco/plot-cli": "^0.4.0",
 		"@sentry/bun": "^10.59.0",
 		"commander": "^15.0.0",
 		"croner": "^10.0.1",

@@ -100,7 +100,6 @@ export async function depsFor(
 	burrowClient: BurrowClient,
 	bridges?: BridgeRegistry,
 	extras?: {
-		plotResolver?: import("../../plots/index.ts").PlotResolver;
 		finalizeCoordinator?: import("../../runtime/k8s/finalize-coordinator.ts").FinalizeCoordinator;
 	},
 ): Promise<ServerDeps> {
@@ -137,7 +136,6 @@ export async function depsFor(
 			}
 			return { stdout: "", stderr: "", exitCode: 0 };
 		},
-		...(extras?.plotResolver !== undefined ? { plotResolver: extras.plotResolver } : {}),
 		...(extras?.finalizeCoordinator !== undefined
 			? { finalizeCoordinator: extras.finalizeCoordinator }
 			: {}),

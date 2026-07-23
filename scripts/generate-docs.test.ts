@@ -14,7 +14,7 @@ describe("generate-docs", () => {
 
 	test("extracts a healthy number of routes from the real handlers module", () => {
 		const { routes } = generate();
-		expect(routes.length).toBeGreaterThanOrEqual(40);
+		expect(routes.length).toBeGreaterThanOrEqual(35);
 		// Sanity-check a few canonical ones.
 		const patterns = new Set(routes.map((r) => `${r.method} ${r.pattern}`));
 		expect(patterns.has("GET /healthz")).toBe(true);
@@ -25,9 +25,10 @@ describe("generate-docs", () => {
 
 	test("preserves ordering caveats from leading // comments", () => {
 		const { routes } = generate();
-		const needsAttention = routes.find((r) => r.pattern === "/plots/needs-attention/count");
-		expect(needsAttention?.comment).toBeDefined();
-		expect(needsAttention?.comment ?? "").toContain("must precede");
+		// Static path — must precede `/projects/:id/seeds/:seedId`.
+		const seedsPlans = routes.find((r) => r.pattern === "/projects/:id/seeds/plans");
+		expect(seedsPlans?.comment).toBeDefined();
+		expect(seedsPlans?.comment ?? "").toContain("must precede");
 	});
 
 	test("extractRoutes handles single-line and multi-line entries", () => {

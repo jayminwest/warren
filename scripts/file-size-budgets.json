@@ -4,7 +4,6 @@
 	"budgets": {
 		"src/db/repos/runs.test.ts": 538,
 		"src/db/schema/sqlite.ts": 564,
-		"src/plots/aggregate.ts": 506,
 		"src/runs/reap/pipeline.ts": 528,
 		"src/runs/reap/stage.test.ts": 526,
 		"src/runtime/contract.ts": 512,

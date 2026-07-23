@@ -5,8 +5,6 @@ import { CFG, ok, recorder } from "./refresh.test-helpers.ts";
 import {
 	detectHooksPathFromPackageJson,
 	detectProjectFeatures,
-	mergeEventsLines,
-	mergePlotJsonForRefresh,
 	refreshProjectClone,
 } from "./refresh.ts";
 
@@ -28,7 +26,7 @@ describe("refreshProjectClone", () => {
 		expect(result).toEqual({
 			headSha: sha,
 			ref: "main",
-			features: { hasPlot: true, hasSeeds: true },
+			features: { hasSeeds: true },
 		});
 		expect(calls.map((c) => c.cmd[1])).toEqual([
 			"fetch",
@@ -186,30 +184,6 @@ describe("refreshProjectClone", () => {
 		).rejects.toBeInstanceOf(ProjectUnavailableError);
 	});
 
-	test("probes for .plot/ alongside git ops and surfaces the boolean on features (warren-4e20)", async () => {
-		const sha = "feedfacefeedfacefeedfacefeedfacefeedface";
-		const probed: string[] = [];
-		const { spawn } = recorder((cmd) => {
-			if (cmd[1] === "rev-parse") return ok(`${sha}\n`);
-			return ok();
-		});
-		const result = await refreshProjectClone({
-			config: CFG,
-			localPath: "/data/projects/x/y",
-			ref: "main",
-			spawn,
-			exists: (p) => {
-				probed.push(p);
-				if (p === "/data/projects/x/y") return true;
-				if (p === "/data/projects/x/y/.plot") return false;
-				return false;
-			},
-		});
-
-		expect(result.features).toEqual({ hasPlot: false, hasSeeds: false });
-		expect(probed).toContain("/data/projects/x/y/.plot");
-	});
-
 	test("probes for .seeds/ alongside git ops and surfaces the boolean on features (warren-9990)", async () => {
 		const sha = "abadcafeabadcafeabadcafeabadcafeabadcafe";
 		const probed: string[] = [];
@@ -230,7 +204,7 @@ describe("refreshProjectClone", () => {
 			},
 		});
 
-		expect(result.features).toEqual({ hasPlot: false, hasSeeds: true });
+		expect(result.features).toEqual({ hasSeeds: true });
 		expect(probed).toContain("/data/projects/x/y/.seeds");
 	});
 
@@ -252,19 +226,9 @@ describe("refreshProjectClone", () => {
 });
 
 describe("detectProjectFeatures", () => {
-	test("returns hasPlot=true when .plot/ exists at the clone root", () => {
-		const probed: string[] = [];
-		const result = detectProjectFeatures("/data/projects/x/y", (p) => {
-			probed.push(p);
-			return p === "/data/projects/x/y/.plot";
-		});
-		expect(result).toEqual({ hasPlot: true, hasSeeds: false });
-		expect(probed).toContain("/data/projects/x/y/.plot");
-	});
-
-	test("returns hasPlot=false when .plot/ is absent", () => {
+	test("returns hasSeeds=false when .seeds/ is absent", () => {
 		const result = detectProjectFeatures("/data/projects/x/y", () => false);
-		expect(result).toEqual({ hasPlot: false, hasSeeds: false });
+		expect(result).toEqual({ hasSeeds: false });
 	});
 
 	test("returns hasSeeds=true when .seeds/ exists at the clone root (warren-9990)", () => {
@@ -273,77 +237,8 @@ describe("detectProjectFeatures", () => {
 			probed.push(p);
 			return p === "/data/projects/x/y/.seeds";
 		});
-		expect(result).toEqual({ hasPlot: false, hasSeeds: true });
+		expect(result).toEqual({ hasSeeds: true });
 		expect(probed).toContain("/data/projects/x/y/.seeds");
-	});
-});
-
-describe("mergeEventsLines (warren-af9e)", () => {
-	test("appends snapshot-only lines after remote lines", () => {
-		const remote = '{"type":"a"}\n{"type":"b"}\n';
-		const snapshot = '{"type":"a"}\n{"type":"c"}\n';
-		const result = mergeEventsLines(remote, snapshot);
-		expect(result).toBe('{"type":"a"}\n{"type":"b"}\n{"type":"c"}\n');
-	});
-
-	test("returns remote unchanged when snapshot is a subset", () => {
-		const remote = '{"type":"a"}\n{"type":"b"}\n';
-		const snapshot = '{"type":"a"}\n';
-		const result = mergeEventsLines(remote, snapshot);
-		expect(result).toBe(remote);
-	});
-
-	test("handles empty remote — all snapshot lines restored", () => {
-		const snapshot = '{"type":"a"}\n{"type":"b"}\n';
-		const result = mergeEventsLines("", snapshot);
-		expect(result).toBe('{"type":"a"}\n{"type":"b"}\n');
-	});
-
-	test("deduplicates identical lines", () => {
-		const remote = '{"type":"a"}\n';
-		const snapshot = '{"type":"a"}\n{"type":"a"}\n';
-		const result = mergeEventsLines(remote, snapshot);
-		expect(result).toBe(remote);
-	});
-});
-
-describe("mergePlotJsonForRefresh (warren-af9e)", () => {
-	test("overlays snapshot status onto remote when status differs", () => {
-		const remote = JSON.stringify({
-			id: "plot-x",
-			status: "active",
-			attachments: [{ id: "att-1" }],
-		});
-		const snapshot = JSON.stringify({
-			id: "plot-x",
-			status: "done",
-			attachments: [],
-			updated_at: "2026-05-23T02:00:00Z",
-		});
-		const result = JSON.parse(mergePlotJsonForRefresh(remote, snapshot)) as Record<string, unknown>;
-		expect(result.status).toBe("done");
-		expect(result.attachments).toEqual([{ id: "att-1" }]);
-		expect(result.updated_at).toBe("2026-05-23T02:00:00Z");
-	});
-
-	test("returns remote when status matches", () => {
-		const remote = JSON.stringify({
-			id: "plot-x",
-			status: "active",
-			attachments: [{ id: "att-2" }],
-		});
-		const snapshot = JSON.stringify({ id: "plot-x", status: "active", attachments: [] });
-		expect(mergePlotJsonForRefresh(remote, snapshot)).toBe(remote);
-	});
-
-	test("returns remote when both are identical", () => {
-		const data = JSON.stringify({ id: "plot-x", status: "done" });
-		expect(mergePlotJsonForRefresh(data, data)).toBe(data);
-	});
-
-	test("falls back to snapshot on unparseable remote JSON", () => {
-		const snapshot = '{"status":"done"}';
-		expect(mergePlotJsonForRefresh("not-json", snapshot)).toBe(snapshot);
 	});
 });
 

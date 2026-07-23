@@ -60,35 +60,6 @@ describe("addProject", () => {
 		expect(row.defaultBranch).toBe("trunk");
 	});
 
-	test("probes for .plot/ after clone and persists hasPlot on the row (warren-4e20)", async () => {
-		const row = await addProject({
-			repo,
-			config: CFG,
-			gitUrl: "https://github.com/x/y.git",
-			spawn: NOOP_SPAWN,
-			clone: fakeClone(),
-			detectFeatures: (localPath) => {
-				expect(localPath).toBe("/data/projects/x/y");
-				return { hasPlot: true, hasSeeds: false };
-			},
-		});
-		expect(row.hasPlot).toBe(true);
-		const persisted = await repo.require(row.id);
-		expect(persisted.hasPlot).toBe(true);
-	});
-
-	test("defaults hasPlot=false when the probe returns false", async () => {
-		const row = await addProject({
-			repo,
-			config: CFG,
-			gitUrl: "https://github.com/x/y.git",
-			spawn: NOOP_SPAWN,
-			clone: fakeClone(),
-			detectFeatures: () => ({ hasPlot: false, hasSeeds: false }),
-		});
-		expect(row.hasPlot).toBe(false);
-	});
-
 	test("persists hasSeeds=true after probe (warren-9990)", async () => {
 		const row = await addProject({
 			repo,
@@ -96,7 +67,7 @@ describe("addProject", () => {
 			gitUrl: "https://github.com/x/y.git",
 			spawn: NOOP_SPAWN,
 			clone: fakeClone(),
-			detectFeatures: () => ({ hasPlot: false, hasSeeds: true }),
+			detectFeatures: () => ({ hasSeeds: true }),
 		});
 		expect(row.hasSeeds).toBe(true);
 		const persisted = await repo.require(row.id);

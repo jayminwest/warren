@@ -304,7 +304,6 @@ export function buildProgram(context: CliContext): Command {
 		.option("--ref <git-ref>", "git ref to clone child workspaces from")
 		.option("--provider <name>", "per-run override of agent frontmatter.provider")
 		.option("--model <name>", "per-run override of agent frontmatter.model")
-		.option("--plot <id>", "associate the plan-run with a Plot (plt_xxx)")
 		.option("--no-follow", "dispatch and exit without tailing events")
 		.option("--output <mode>", "output mode: ndjson (default) or pretty", "ndjson")
 		.action(
@@ -317,7 +316,6 @@ export function buildProgram(context: CliContext): Command {
 					ref?: string;
 					provider?: string;
 					model?: string;
-					plot?: string;
 					follow: boolean;
 					output?: string;
 				},
@@ -336,7 +334,6 @@ export function buildProgram(context: CliContext): Command {
 						...(opts.ref !== undefined ? { ref: opts.ref } : {}),
 						...(opts.provider !== undefined ? { provider: opts.provider } : {}),
 						...(opts.model !== undefined ? { model: opts.model } : {}),
-						...(opts.plot !== undefined ? { plot: opts.plot } : {}),
 					},
 				);
 				process.exit(result.exitCode);

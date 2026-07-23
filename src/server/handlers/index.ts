@@ -4,11 +4,10 @@
  *
  * Domain handlers live alongside in `./agents.ts`, `./projects.ts`,
  * `./burrows.ts`, `./workers.ts`, `./runs.ts`, `./plan-runs.ts`,
- * `./plots.ts`, `./plot-plan-runs.ts`, `./diagnostics.ts`, and
- * `./meta.ts`. Each is a thin envelope around a function in `runs/`,
- * `registry/`, `projects/`, or `db/repos/` — the modules already do
- * validation, state machines, and burrow shell-out, so handlers only
- * shape the wire IO.
+ * `./diagnostics.ts`, and `./meta.ts`. Each is a thin envelope around a
+ * function in `runs/`, `registry/`, `projects/`, or `db/repos/` — the
+ * modules already do validation, state machines, and burrow shell-out,
+ * so handlers only shape the wire IO.
  *
  * Streaming surface (`GET /runs/:id/events?follow=1`) bridges
  * `tailRunEvents` onto NDJSON. Cleanup follows the same pattern burrow
@@ -31,7 +30,6 @@
  */
 
 import { ValidationError } from "../../core/errors.ts";
-import { isValidPlotIdFormat, PlotIdInvalidError, PlotIdNotFoundError } from "../../plots/index.ts";
 import {
 	resolveSpawnEnv,
 	type SpawnFn,
@@ -56,21 +54,6 @@ import {
 	listPlanRunsHandler,
 	streamPlanRunEventsHandler,
 } from "./plan-runs.ts";
-import {
-	answerPlotQuestionHandler,
-	attachPlotHandler,
-	changePlotStatusHandler,
-	createPlotHandler,
-	detachPlotHandler,
-	editPlotIntentHandler,
-	getPlotHandler,
-	getPlotSummaryHandler,
-	listPlotsHandler,
-	mergePlotPrAttachmentHandler,
-	needsAttentionCountHandler,
-	renamePlotHandler,
-	syncPlotHandler,
-} from "./plots/index.ts";
 import {
 	createProjectHandler,
 	deleteProjectHandler,
@@ -204,44 +187,6 @@ export function parseNonNegativeInt(raw: string | null, label: string): number |
 	return n;
 }
 
-/**
- * Validate `plotId` at the dispatch edge (POST /runs, POST /plan-runs).
- * Both inputs are normalized so an undefined / empty string passes
- * through unchanged — "no plot bound" is a first-class shape.
- *
- * Format check is always-on (`isValidPlotIdFormat`). Existence check
- * runs only when `plotResolver` is wired on ServerDeps (production
- * wires it in src/server/main/index.ts). Test harnesses that omit the
- * resolver get format-only validation, which matches the existing
- * per-Plot handler posture in this file (`deps.plotResolver !==
- * undefined ? ... : null`).
- *
- * warren-bae5 / pl-5310 step 2 — fold-in of warren-a353.
- */
-export async function assertPlotIdDispatchable(input: {
-	readonly plotId: string | undefined;
-	readonly plotResolver?: import("../../plots/index.ts").PlotResolver;
-}): Promise<void> {
-	const { plotId, plotResolver } = input;
-	if (plotId === undefined || plotId === "") return;
-	if (!isValidPlotIdFormat(plotId)) {
-		throw new PlotIdInvalidError(
-			`plot_id ${JSON.stringify(plotId)} is not a valid Plot ID (expected shape: plot-<lower-alphanum>+)`,
-			{
-				recoveryHint:
-					"Plot IDs look like `plot-3e72876d`. Visit /plots to copy the canonical id of an existing Plot.",
-			},
-		);
-	}
-	if (plotResolver === undefined) return;
-	const owning = await plotResolver.resolve(plotId);
-	if (owning === null) {
-		throw new PlotIdNotFoundError(`plot_id ${plotId} does not match any known Plot`, {
-			recoveryHint: "Verify the Plot exists at /plots, or omit plot_id to dispatch an unbound run.",
-		});
-	}
-}
-
 /* ----------------------------------------------------------------------- */
 /* Route table                                                              */
 /* ----------------------------------------------------------------------- */
@@ -315,42 +260,6 @@ const ROUTE_TABLE: readonly RouteEntry[] = [
 	{ method: "GET", pattern: "/plan-runs/:id", build: getPlanRunHandler },
 	{ method: "POST", pattern: "/plan-runs/:id/cancel", build: cancelPlanRunHandler },
 	{ method: "GET", pattern: "/plan-runs/:id/events", build: streamPlanRunEventsHandler },
-
-	{ method: "GET", pattern: "/plots", build: listPlotsHandler },
-	{ method: "POST", pattern: "/plots", build: createPlotHandler },
-	// Static path — must precede `/plots/:id` so the param route doesn't
-	// swallow `needs-attention` as an :id.
-	{
-		method: "GET",
-		pattern: "/plots/needs-attention/count",
-		build: needsAttentionCountHandler,
-	},
-	// Static-suffix path — must precede `/plots/:id` so the param route
-	// doesn't swallow `summary` as the rest of the id.
-	{ method: "GET", pattern: "/plots/:id/summary", build: getPlotSummaryHandler },
-	{ method: "GET", pattern: "/plots/:id", build: getPlotHandler },
-	{ method: "POST", pattern: "/plots/:id/intent", build: editPlotIntentHandler },
-	{ method: "POST", pattern: "/plots/:id/rename", build: renamePlotHandler },
-	{ method: "POST", pattern: "/plots/:id/sync", build: syncPlotHandler },
-	{ method: "POST", pattern: "/plots/:id/status", build: changePlotStatusHandler },
-	{ method: "POST", pattern: "/plots/:id/attachments", build: attachPlotHandler },
-	// Specific path — must precede `/plots/:id/attachments/:ref` so the
-	// DELETE-by-ref route doesn't swallow `<ref>/merge` as a ref.
-	{
-		method: "POST",
-		pattern: "/plots/:id/attachments/:ref/merge",
-		build: mergePlotPrAttachmentHandler,
-	},
-	{
-		method: "DELETE",
-		pattern: "/plots/:id/attachments/:ref",
-		build: detachPlotHandler,
-	},
-	{
-		method: "POST",
-		pattern: "/plots/:id/questions/:event_id/answer",
-		build: answerPlotQuestionHandler,
-	},
 ];
 
 /**
@@ -389,7 +298,6 @@ export const API_PREFIXES: readonly string[] = [
 	"/metrics",
 	"/preview",
 	"/plan-runs",
-	"/plots",
 ];
 
 /**

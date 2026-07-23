@@ -7,7 +7,7 @@ This page enumerates every HTTP route registered by warren's `Bun.serve` router.
 
 To refresh: `bun run gen:docs`. To check (CI mode): `bun run gen:docs:check`.
 
-Total routes: **52**.
+Total routes: **39**.
 
 ## /agents
 
@@ -52,24 +52,6 @@ Total routes: **52**.
 | `GET` | `/plan-runs/:id` | `getPlanRunHandler` |  |
 | `POST` | `/plan-runs/:id/cancel` | `cancelPlanRunHandler` |  |
 | `GET` | `/plan-runs/:id/events` | `streamPlanRunEventsHandler` |  |
-
-## /plots
-
-| Method | Pattern | Handler | Notes |
-| --- | --- | --- | --- |
-| `GET` | `/plots` | `listPlotsHandler` |  |
-| `POST` | `/plots` | `createPlotHandler` |  |
-| `GET` | `/plots/needs-attention/count` | `needsAttentionCountHandler` | Static path — must precede `/plots/:id` so the param route doesn't swallow `needs-attention` as an :id. |
-| `GET` | `/plots/:id/summary` | `getPlotSummaryHandler` | Static-suffix path — must precede `/plots/:id` so the param route doesn't swallow `summary` as the rest of the id. |
-| `GET` | `/plots/:id` | `getPlotHandler` |  |
-| `POST` | `/plots/:id/intent` | `editPlotIntentHandler` |  |
-| `POST` | `/plots/:id/rename` | `renamePlotHandler` |  |
-| `POST` | `/plots/:id/sync` | `syncPlotHandler` |  |
-| `POST` | `/plots/:id/status` | `changePlotStatusHandler` |  |
-| `POST` | `/plots/:id/attachments` | `attachPlotHandler` |  |
-| `POST` | `/plots/:id/attachments/:ref/merge` | `mergePlotPrAttachmentHandler` | Specific path — must precede `/plots/:id/attachments/:ref` so the DELETE-by-ref route doesn't swallow `<ref>/merge` as a ref. |
-| `DELETE` | `/plots/:id/attachments/:ref` | `detachPlotHandler` |  |
-| `POST` | `/plots/:id/questions/:event_id/answer` | `answerPlotQuestionHandler` |  |
 
 ## /preview
 

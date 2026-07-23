@@ -95,7 +95,6 @@ RUN bun install -g \
     @os-eco/seeds-cli@0.5.13 \
     @os-eco/mulch-cli@0.10.7 \
     @os-eco/sapling-cli@0.3.2 \
-    @os-eco/plot-cli@0.4.0 \
     @anthropic-ai/claude-code@2.1.150 \
     @earendil-works/pi-coding-agent@0.77.0 \
     pnpm@11.1.2

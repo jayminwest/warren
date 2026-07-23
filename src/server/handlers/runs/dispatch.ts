@@ -4,13 +4,7 @@ import { spawnRun } from "../../../runs/index.ts";
 import type { IdempotentDispatch } from "../../idempotency.ts";
 import { jsonResponse } from "../../response.ts";
 import type { RouteHandler, ServerDeps } from "../../types.ts";
-import {
-	assertPlotIdDispatchable,
-	defaultSpawn,
-	optionalString,
-	readJsonBody,
-	requireString,
-} from "../index.ts";
+import { defaultSpawn, optionalString, readJsonBody, requireString } from "../index.ts";
 
 /**
  * Defaults derived from a prior run for the `cloneFromRunId` re-run path
@@ -110,7 +104,6 @@ export function createRunHandler(deps: ServerDeps): RouteHandler {
 	return async (ctx) => {
 		const body = await readJsonBody(ctx);
 		const seedId = optionalString(body, "seedId");
-		const plotId = optionalString(body, "plotId");
 		const ref = optionalString(body, "ref");
 		// warren-709e (#419): an explicit target branch the run must push to
 		// instead of the composed `${prefix}/${runId}`. Persisted on the run row
@@ -127,8 +120,6 @@ export function createRunHandler(deps: ServerDeps): RouteHandler {
 			parentRunId,
 			cloneKind,
 		} = await resolveDispatchFields(deps, body);
-
-		await assertPlotIdDispatchable({ plotId, plotResolver: deps.plotResolver });
 
 		const options: Parameters<typeof spawnRun>[0] = {
 			repos: deps.repos,

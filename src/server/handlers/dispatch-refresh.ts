@@ -1,13 +1,12 @@
 /**
  * Shared dispatch-time project refresh (warren-6d60).
  *
- * Both `POST /plan-runs` and `POST /plot-plan-runs` read seeds/plan state
- * off the project's host clone before they dispatch. Without an
- * intrinsic refresh a plan submitted + pushed moments earlier is walked
- * against stale on-disk state and the operator has to manually refresh
- * the project first. The single-run path already refreshes inside
- * `spawnRun` (warren-1bb6); this helper gives the plan-run handlers the
- * same posture from one place.
+ * `POST /plan-runs` reads seeds/plan state off the project's host clone
+ * before it dispatches. Without an intrinsic refresh a plan submitted +
+ * pushed moments earlier is walked against stale on-disk state and the
+ * operator has to manually refresh the project first. The single-run path
+ * already refreshes inside `spawnRun` (warren-1bb6); this helper gives the
+ * plan-run handler the same posture from one place.
  *
  * Gated on the git `spawn` seam being wired: production wires
  * `defaultSpawn`, so the refresh fires; tests leave `spawn` unset and
@@ -16,9 +15,8 @@
  * a stale walk is worse than a clean error (mirrors `spawnRun`).
  *
  * Returns the post-refresh project row (its `localPath` is unchanged but
- * `hasPlot`/`hasSeeds`/`headSha` may move) so callers read subsequent
- * on-disk state through it; returns the input row untouched when the
- * seam is unwired.
+ * `hasSeeds`/`headSha` may move) so callers read subsequent on-disk state
+ * through it; returns the input row untouched when the seam is unwired.
  */
 
 import type { ProjectRow } from "../../db/schema.ts";

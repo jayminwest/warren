@@ -2,35 +2,25 @@ import { pollUntilTerminal } from "./client-helpers.ts";
 import { type EnvLike, loadWarrenClientConfigFromEnv, type WarrenClientConfig } from "./config.ts";
 import { WarrenClientError, WarrenUnreachableError } from "./errors.ts";
 import { errorFromResponse, readNdjsonStream } from "./ndjson.ts";
-import * as plots from "./plots.ts";
 import {
 	type AgentRow,
 	type CancelPlanRunResponse,
-	type ChangePlotStatusInput,
-	type ChangePlotStatusResponse,
 	type CreatePlanRunInput,
 	type CreatePlanRunResponse,
-	type CreatePlotInput,
 	type CreateProjectInput,
 	type CreateRunInput,
 	type DispatchRunInput,
-	type EditPlotIntentInput,
 	isTerminalPlanRunState,
 	isTerminalRunState,
 	type ListAgentsQuery,
 	type ListAgentsResponse,
 	type ListPlanRunsFilter,
 	type ListPlanRunsResponse,
-	type ListPlotsFilter,
-	type ListPlotsResponse,
 	type ListProjectsResponse,
 	type ListReadyPlansResponse,
 	type ListRunsResponse,
 	type PlanRunDetailResponse,
 	type PlanRunRow,
-	type PlotEnvelope,
-	type PlotSummary,
-	type PlotSyncResponse,
 	type ProjectRow,
 	type RefreshAgentsResponse,
 	type RefreshProjectAgentsResult,
@@ -213,7 +203,6 @@ export class WarrenClient {
 		if (input.model !== undefined) body.modelOverride = input.model;
 		if (input.provider !== undefined) body.providerOverride = input.provider;
 		if (input.seedId !== undefined) body.seedId = input.seedId;
-		if (input.plotId !== undefined) body.plotId = input.plotId;
 		if (input.dispatcherHandle !== undefined) body.dispatcherHandle = input.dispatcherHandle;
 		if (input.continueFromRunId !== undefined) body.continueFromRunId = input.continueFromRunId;
 		if (input.cloneFromRunId !== undefined) body.cloneFromRunId = input.cloneFromRunId;
@@ -304,40 +293,6 @@ export class WarrenClient {
 		const init: RequestInit = { headers: { accept: "application/x-ndjson" } };
 		if (signal) init.signal = signal;
 		return readNdjsonStream<T>(() => this.withTransportMapping(() => this.requestRaw(path, init)));
-	}
-
-	/* --------------------------------------------------------------- */
-	/* Plots — warren-8ffc. Implementations live in `./plots.ts` as    */
-	/* free functions (warren-fcc8) so this class stays under budget;  */
-	/* see that module for per-method docs + the camelCase→snake_case  */
-	/* wire mapping.                                                    */
-	/* --------------------------------------------------------------- */
-
-	listPlots(filter: ListPlotsFilter = {}): Promise<ListPlotsResponse> {
-		return plots.listPlots(this, filter);
-	}
-
-	getPlot(plotId: string): Promise<PlotEnvelope> {
-		return plots.getPlot(this, plotId);
-	}
-
-	createPlot(input: CreatePlotInput): Promise<PlotSummary> {
-		return plots.createPlot(this, input);
-	}
-
-	editPlotIntent(plotId: string, input: EditPlotIntentInput = {}): Promise<PlotEnvelope> {
-		return plots.editPlotIntent(this, plotId, input);
-	}
-
-	changePlotStatus(
-		plotId: string,
-		input: ChangePlotStatusInput,
-	): Promise<ChangePlotStatusResponse> {
-		return plots.changePlotStatus(this, plotId, input);
-	}
-
-	syncPlot(plotId: string): Promise<PlotSyncResponse> {
-		return plots.syncPlot(this, plotId);
 	}
 
 	/* --------------------------------------------------------------- */

@@ -161,7 +161,6 @@ export interface CreateRunInput {
 	providerOverride?: string;
 	modelOverride?: string;
 	seedId?: string;
-	plotId?: string;
 	dispatcherHandle?: string;
 	/** Continuation parent (warren-4b11): seed the workspace from this run's branch. */
 	continueFromRunId?: string;
@@ -184,7 +183,6 @@ export interface DispatchRunInput {
 	/** Maps to CreateRunInput.providerOverride. */
 	provider?: string;
 	seedId?: string;
-	plotId?: string;
 	dispatcherHandle?: string;
 	/** Maps to CreateRunInput.continueFromRunId (warren-4b11). */
 	continueFromRunId?: string;
@@ -267,151 +265,6 @@ export interface ListRunsResponse {
 	costTotalUsd: number | null;
 	costPricedCount: number;
 }
-
-/* ----------------------------------------------------------------------- */
-/* Plots — typed facade over /plots endpoints (warren-8ffc). Wire envelope */
-/* is snake_case end-to-end (mirror of @os-eco/plot-cli) and surfaced      */
-/* verbatim; inputs accept camelCase and map to snake_case at the boundary */
-/* (parallel to dispatch() mapping branch/model/provider onto the runs     */
-/* wire).                                                                   */
-/* ----------------------------------------------------------------------- */
-
-export type PlotStatus = "drafting" | "ready" | "active" | "done" | "archived";
-
-export const PLOT_STATUSES: readonly PlotStatus[] = [
-	"drafting",
-	"ready",
-	"active",
-	"done",
-	"archived",
-];
-
-export const NEEDS_ATTENTION_REASONS = [
-	"paused_run",
-	"merged_pr_unreviewed",
-	"stale_draft",
-] as const;
-export type NeedsAttentionReason = (typeof NEEDS_ATTENTION_REASONS)[number];
-
-export interface PlotSummary {
-	id: string;
-	name: string;
-	status: PlotStatus;
-	/** First ~160 chars of `intent.goal`, with ellipsis when truncated. */
-	intent_goal_preview: string;
-	attachments_count: number;
-	last_event_ts: string;
-	last_event_actor: string;
-	project_id: string;
-	/** Populated only by `GET /plots?filter=needs_attention`. */
-	reasons?: NeedsAttentionReason[];
-}
-
-export const ATTACHMENT_TYPES = [
-	"seeds_issue",
-	"mulch_record",
-	"agent_run",
-	"gh_pr",
-	"gh_issue",
-	"file",
-] as const;
-export type AttachmentType = (typeof ATTACHMENT_TYPES)[number];
-
-export interface PlotIntent {
-	goal: string;
-	non_goals: string[];
-	constraints: string[];
-	success_criteria: string[];
-}
-
-export interface PlotAttachment {
-	id: string;
-	type: AttachmentType;
-	ref: string;
-	role: string;
-	added_at: string;
-	added_by: string;
-}
-
-export interface PlotEvent {
-	type: string;
-	actor: string;
-	at: string;
-	data: Record<string, unknown>;
-}
-
-/** Snapshot of warren runs in state=paused bound to this plot. */
-export interface PausedRunInfo {
-	run_id: string;
-	paused_at: string;
-	paused_question_event_id: string;
-	pause_timeout_ms: number;
-}
-
-export interface PlotEnvelope {
-	id: string;
-	name: string;
-	status: PlotStatus;
-	intent: PlotIntent;
-	attachments: PlotAttachment[];
-	event_log: PlotEvent[];
-	project_id: string;
-	paused_runs: PausedRunInfo[];
-}
-
-export interface ListPlotsResponse {
-	plots: PlotSummary[];
-}
-
-export interface ListPlotsFilter {
-	status?: PlotStatus;
-	/** `?filter=needs_attention` — rows carry a `reasons` array. */
-	needsAttention?: boolean;
-}
-
-/** Optional partial intent body accepted on `POST /plots`. */
-export interface CreatePlotIntentPatch {
-	goal?: string;
-	non_goals?: string[];
-	constraints?: string[];
-	success_criteria?: string[];
-}
-
-export interface CreatePlotInput {
-	projectId: string;
-	name?: string;
-	intent?: CreatePlotIntentPatch;
-	dispatcherHandle?: string;
-}
-
-/** `POST /plots/:id/intent` — flat top-level fields (no `intent:` wrapper). */
-export interface EditPlotIntentInput {
-	goal?: string;
-	non_goals?: string[];
-	constraints?: string[];
-	success_criteria?: string[];
-	dispatcherHandle?: string;
-}
-
-export interface ChangePlotStatusInput {
-	next: PlotStatus;
-	dispatcherHandle?: string;
-}
-
-export interface ChangePlotStatusResponse {
-	summary: PlotSummary;
-	event: PlotEvent;
-}
-
-export type PlotSyncResponse =
-	| { kind: "no_op" }
-	| {
-			kind: "synced";
-			branch: string;
-			prUrl: string;
-			prNumber?: number;
-			merged: boolean;
-	  };
 
 /* ----------------------------------------------------------------------- */
 /* Plan-runs — typed facade over /plan-runs (warren-8ffc).                 */
