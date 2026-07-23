@@ -39,6 +39,7 @@ domains:
   scheduler: {}
   k8s: {}
   deployment: {}
+  ops: {}
 governance:
   max_entries: 100
   warn_entries: 150
