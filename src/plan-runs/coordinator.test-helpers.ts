@@ -2,6 +2,7 @@ import { openDatabase, type WarrenDb } from "../db/client.ts";
 import { createRepos, type Repos } from "../db/repos/index.ts";
 import type { PlanRunRow } from "../db/schema.ts";
 import { agents } from "../db/schema.ts";
+import { SeedNotFoundError } from "../seeds-cli/index.ts";
 import type {
 	CoordinatorEmitFn,
 	CoordinatorShowSeedFn,
@@ -25,6 +26,10 @@ export interface Harness {
 	events: CapturedEvent[];
 	emit: CoordinatorEmitFn;
 	showSeedStub: (status: "open" | "closed") => CoordinatorShowSeedFn;
+	/** A showSeed that always throws SeedNotFoundError (warren-2a8c). */
+	showSeedNotFound: CoordinatorShowSeedFn;
+	/** A showSeed that always throws a transient (non-not-found) error. */
+	showSeedTransient: CoordinatorShowSeedFn;
 	spawnStub: (newRunId: () => string) => CoordinatorSpawnFn;
 	makeRun: (seedId: string) => Promise<string>;
 }
@@ -63,6 +68,12 @@ export async function setup(): Promise<Harness> {
 	const showSeedStub = (status: "open" | "closed"): CoordinatorShowSeedFn => {
 		return async (_projectId, seedId) => ({ id: seedId, status });
 	};
+	const showSeedNotFound: CoordinatorShowSeedFn = async (_projectId, seedId) => {
+		throw new SeedNotFoundError(`Issue not found: ${seedId}`);
+	};
+	const showSeedTransient: CoordinatorShowSeedFn = async () => {
+		throw new Error("sd timed out");
+	};
 	const spawnStub = (newRunId: () => string): CoordinatorSpawnFn => {
 		return async ({ child, prompt }) => {
 			const run = await repos.runs.create({
@@ -98,6 +109,8 @@ export async function setup(): Promise<Harness> {
 		events,
 		emit,
 		showSeedStub,
+		showSeedNotFound,
+		showSeedTransient,
 		spawnStub,
 		makeRun,
 	};
