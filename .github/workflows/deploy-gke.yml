@@ -10,8 +10,15 @@ name: GKE Build & Deploy
 # admin configures the OIDC provider + service account as secrets and the
 # project/region/cluster as repo variables (see docs/RUNBOOK-K8S.md §1.6).
 #
-# This is the deploy path: a published GitHub release (cut by release.yml) or
-# an opt-in manual dispatch rolls GKE forward. There is no Fly.io deploy.
+# This is the deploy path: release.yml calls this workflow directly (via
+# `workflow_call`) after it publishes a GitHub release, or an opt-in manual
+# dispatch rolls GKE forward. There is no Fly.io deploy.
+#
+# We deliberately do NOT trigger on `release: [published]`. GitHub suppresses
+# workflow runs for events created with the default GITHUB_TOKEN (release.yml
+# cuts releases with `gh release create` under `github.token`), so a
+# release-event trigger would silently never fire — the exact regression
+# tracked in warren-cb81. release.yml invokes us with an explicit SHA instead.
 
 on:
   push:
@@ -19,8 +26,16 @@ on:
     # build AND deploy (see the deploy job's if) so warren can dogfood its own
     # development. Drop the branch entry when the migration merges to main.
     branches: [main, k8s-migration]
-  release:
-    types: [published]
+  workflow_call:
+    inputs:
+      sha:
+        description: "Exact commit SHA to build + deploy (the released commit)"
+        type: string
+        required: true
+      deploy:
+        description: "Roll GKE forward after building (release path sets true)"
+        type: boolean
+        default: true
   workflow_dispatch:
     inputs:
       deploy:
@@ -35,6 +50,10 @@ on:
 env:
   AR_BASE: ${{ vars.GCP_REGION || 'us-west1' }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/${{ vars.GCP_AR_REPO || 'warren' }}
   REGISTRY_HOST: ${{ vars.GCP_REGION || 'us-west1' }}-docker.pkg.dev
+  # The commit to build + deploy. workflow_call passes the released SHA
+  # explicitly (github.sha is unreliable across a reusable-workflow boundary
+  # and for tag/release events); push + dispatch fall back to github.sha.
+  TARGET_SHA: ${{ inputs.sha || github.sha }}
 
 concurrency:
   group: gke-build-deploy-${{ github.ref }}
@@ -48,6 +67,8 @@ jobs:
       id-token: write # required for Workload Identity Federation
     steps:
       - uses: actions/checkout@v6.0.2
+        with:
+          ref: ${{ env.TARGET_SHA }}
 
       - id: auth
         uses: google-github-actions/auth@v2
@@ -76,7 +97,7 @@ jobs:
           platforms: linux/amd64
           push: true
           tags: |
-            ${{ env.AR_BASE }}/warren:${{ github.sha }}
+            ${{ env.AR_BASE }}/warren:${{ env.TARGET_SHA }}
             ${{ env.AR_BASE }}/warren:latest
           cache-from: type=gha,scope=warren-control
           cache-to: type=gha,mode=max,scope=warren-control
@@ -89,7 +110,7 @@ jobs:
           platforms: linux/amd64
           push: true
           tags: |
-            ${{ env.AR_BASE }}/warren-agent:${{ github.sha }}
+            ${{ env.AR_BASE }}/warren-agent:${{ env.TARGET_SHA }}
             ${{ env.AR_BASE }}/warren-agent:latest
           cache-from: type=gha,scope=warren-agent
           cache-to: type=gha,mode=max,scope=warren-agent
@@ -102,18 +123,19 @@ jobs:
           platforms: linux/amd64
           push: true
           tags: |
-            ${{ env.AR_BASE }}/warren-workspace-init:${{ github.sha }}
+            ${{ env.AR_BASE }}/warren-workspace-init:${{ env.TARGET_SHA }}
             ${{ env.AR_BASE }}/warren-workspace-init:latest
           cache-from: type=gha,scope=warren-init
           cache-to: type=gha,mode=max,scope=warren-init
 
   deploy:
     needs: build-push
-    # Roll GKE forward on a published GitHub release, or on a manual dispatch
-    # that explicitly opts in. A bare push to main only builds + pushes images.
+    # Roll GKE forward when a caller (release.yml via workflow_call, or a
+    # manual dispatch) opts in, or on a push to k8s-migration. `inputs.deploy`
+    # is set for both workflow_call (release path) and workflow_dispatch; a
+    # bare push to main leaves it empty and only builds + pushes images.
     if: >-
-      github.event_name == 'release' ||
-      (github.event_name == 'workflow_dispatch' && inputs.deploy) ||
+      inputs.deploy ||
       (github.event_name == 'push' && github.ref == 'refs/heads/k8s-migration')
     runs-on: ubuntu-latest
     permissions:
@@ -124,6 +146,8 @@ jobs:
       cancel-in-progress: false
     steps:
       - uses: actions/checkout@v6.0.2
+        with:
+          ref: ${{ env.TARGET_SHA }}
 
       - uses: google-github-actions/auth@v2
         with:
@@ -146,7 +170,7 @@ jobs:
       # merge patch keyed by env `name`.
       - name: Render gke-live overlay pinned to ${{ github.sha }}
         env:
-          SHA: ${{ github.sha }}
+          SHA: ${{ env.TARGET_SHA }}
           GIT_AUTHOR_EMAIL: ${{ vars.WARREN_GIT_AUTHOR_EMAIL || 'warren@users.noreply.github.com' }}
           INGRESS_HOST: ${{ vars.WARREN_INGRESS_HOST }}
         run: |
@@ -222,3 +246,23 @@ jobs:
 
       - name: Wait for rollout
         run: kubectl -n warren rollout status deploy/warren --timeout=300s
+
+      # Fail loudly if the live control-plane image is not the exact SHA we
+      # just built + rendered. Guards against a stale rollout silently passing
+      # (warren-cb81 acceptance: the workflow must fail visibly if version
+      # verification fails).
+      - name: Verify rolled-out image matches release SHA
+        env:
+          SHA: ${{ env.TARGET_SHA }}
+        run: |
+          set -euo pipefail
+          EXPECTED="${AR_BASE}/warren:${SHA}"
+          ACTUAL=$(kubectl -n warren get deploy/warren \
+            -o jsonpath='{.spec.template.spec.containers[?(@.name=="warren")].image}')
+          echo "expected: ${EXPECTED}"
+          echo "actual:   ${ACTUAL}"
+          if [ "${ACTUAL}" != "${EXPECTED}" ]; then
+            echo "::error::Rolled-out warren image ${ACTUAL} does not match release image ${EXPECTED}"
+            exit 1
+          fi
+          echo "Verified: warren deployment is running the released SHA ${SHA}."

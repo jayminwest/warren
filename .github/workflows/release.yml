@@ -105,7 +105,20 @@ jobs:
               --generate-notes
           fi
 
-# Deploy is decoupled from release: publishing a GitHub release above triggers
-# the `release: [published]` path in .github/workflows/deploy-gke.yml, which
-# builds the SHA-pinned images and rolls the GKE Autopilot deployment forward.
-# See docs/RUNBOOK-K8S.md for the canonical deploy procedure.
+  # Roll GKE forward for the exact released commit. We call deploy-gke.yml
+  # directly (workflow_call) rather than leaning on a `release: [published]`
+  # event: releases are cut with the default GITHUB_TOKEN, and GitHub
+  # suppresses workflow runs triggered by GITHUB_TOKEN-created events, so a
+  # release-event trigger would never fire (warren-cb81). Passing github.sha
+  # pins the build + rollout to this release's commit.
+  deploy:
+    needs: release
+    if: needs.release.outputs.release == 'true'
+    uses: ./.github/workflows/deploy-gke.yml
+    permissions:
+      contents: read
+      id-token: write
+    secrets: inherit
+    with:
+      sha: ${{ github.sha }}
+      deploy: true

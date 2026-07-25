@@ -145,8 +145,9 @@ the DB URL — only the control plane does (§3, blast-radius minimization).
 `kubectl apply -k` by hand (warren-bd79). The manual flow above stays the
 break-glass fallback (and the only path for kind/k3d local dev, §1.4).
 
-- **Build + push** (`build-push` job) runs on every push to `main`, on a
-  published release, and on manual dispatch. It builds all three images
+- **Build + push** (`build-push` job) runs on every push to `main`, when
+  `release.yml` calls this workflow after cutting a release (`workflow_call`,
+  pinned to the released SHA), and on manual dispatch. It builds all three images
   (`Dockerfile` → `warren`, `deploy/docker/Dockerfile.agent` →
   `warren-agent`, `deploy/docker/Dockerfile.workspace-init` →
   `warren-workspace-init`) with `docker buildx --platform linux/amd64`
@@ -154,9 +155,11 @@ break-glass fallback (and the only path for kind/k3d local dev, §1.4).
   each by the full commit SHA **and** `latest`, and pushes to the same
   `<region>-docker.pkg.dev/<project>/<repo>` Artifact Registry that
   `cloudbuild.yaml` targets. Layer cache is GHA-scoped per image.
-- **Deploy** (`deploy` job) runs on a published GitHub release **or** a
-  manual dispatch that ticks the `deploy` input. A bare push to `main`
-  only builds images — it never touches the cluster. The job pulls cluster
+- **Deploy** (`deploy` job) runs when a caller opts in via the `deploy`
+  input — `release.yml` sets it after publishing a release, or a manual
+  dispatch ticks it — or on a push to `k8s-migration`. A bare push to `main`
+  only builds images — it never touches the cluster. It also fails visibly
+  if the rolled-out control-plane image is not the exact released SHA. The job pulls cluster
   credentials (`get-gke-credentials`), then renders the gitignored
   `gke-live` overlay *on the runner* (never committed — see `.gitignore`),
   layering on the committed `gke` template and pinning all three images to
@@ -181,10 +184,13 @@ Auth is **GCP Workload Identity Federation** (`google-github-actions/auth`)
 | var | `WARREN_GIT_AUTHOR_EMAIL` | agent-commit author (`<id>+warren@users.noreply.github.com`); defaults to a noreply address if unset |
 | var | `WARREN_INGRESS_HOST` | optional public hostname; when set, patches the Ingress host + ManagedCertificate domain (both placeholders in the committed template) |
 
-This is the only deploy pipeline: a published GitHub release (cut by
-`release.yml`) triggers the `release: [published]` path here, which
-builds the SHA-pinned images and rolls the cluster forward. There is no
-Fly.io deploy (removed in warren-b65c).
+This is the only deploy pipeline: `release.yml`, after publishing a GitHub
+release, calls this workflow directly via `workflow_call` (passing the
+released commit SHA), which builds the SHA-pinned images and rolls the
+cluster forward. We deliberately avoid a `release: [published]` trigger:
+releases are cut with the default `GITHUB_TOKEN`, and GitHub suppresses
+workflow runs for GITHUB_TOKEN-created events, so that trigger would never
+fire (warren-cb81). There is no Fly.io deploy (removed in warren-b65c).
 
 ---
 
