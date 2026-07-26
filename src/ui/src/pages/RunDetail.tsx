@@ -17,7 +17,6 @@ import type {
 	RunRow,
 } from "@/api/types.ts";
 import { PREVIEW_ACTIVE_STATES, RUN_TERMINAL_STATES } from "@/api/types.ts";
-import { PlotMetaCardContent } from "@/components/PlotMetaCardContent.tsx";
 import { StateBadge } from "@/components/StateBadge.tsx";
 import { StatusIndicator } from "@/components/StatusIndicator.tsx";
 import { Alert } from "@/components/ui/alert.tsx";
@@ -185,8 +184,7 @@ export function RunDetailPage() {
 											cloneFromRunId: r.id,
 											agent: r.agentName,
 											project: r.projectId ?? undefined,
-											plotId: r.plotId ?? undefined,
-											prompt: r.prompt,
+												prompt: r.prompt,
 										} satisfies NewRunRouteState,
 									})
 								}
@@ -202,8 +200,7 @@ export function RunDetailPage() {
 											continueFromRunId: r.id,
 											agent: r.agentName,
 											project: r.projectId ?? undefined,
-											plotId: r.plotId ?? undefined,
-											prompt: r.prompt,
+												prompt: r.prompt,
 										} satisfies NewRunRouteState,
 									})
 								}
@@ -268,11 +265,6 @@ export function RunDetailPage() {
 						>
 							{r.prUrl}
 						</a>
-					</MetaCard>
-				) : null}
-				{r.plotId !== null ? (
-					<MetaCard label="Plot">
-						<PlotMetaCardContent plotId={r.plotId} />
 					</MetaCard>
 				) : null}
 				{r.parentRunId !== null ? (

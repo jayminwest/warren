@@ -33,7 +33,6 @@ function planRunRow(overrides: Partial<PlanRunRow> = {}): PlanRunRow {
 		createdAt: "t",
 		startedAt: null,
 		endedAt: null,
-		plotId: null,
 		...overrides,
 	};
 }
@@ -63,7 +62,6 @@ function event(kind: string, payload: unknown, over: Partial<RunEvent> = {}): Ru
 		kind,
 		stream: "stdout",
 		payload,
-		plotId: null,
 		...over,
 	};
 }

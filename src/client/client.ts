@@ -213,9 +213,9 @@ export class WarrenClient {
 	 * `POST /runs/:id/steer` — mid-run steering. Forwards an operator
 	 * message into the burrow inbox; valid only while the run is
 	 * non-terminal AND a burrow is attached (else `ValidationError`).
-	 * Batch runs get nudges here, but blocking-question `pause ↔ resume`
-	 * is driven server-side by Plot `question_answered` events
-	 * (`src/runs/pause.ts`) — no explicit "resume" needed after a steer.
+	 * Batch runs get nudges here; `src/runs/pause.ts` drives the
+	 * blocking-question `pause ↔ resume` cycle server-side — no explicit
+	 * "resume" needed after a steer.
 	 */
 	async steer(runId: string, input: SteerRunInput): Promise<SteerRunResponse> {
 		const body: Record<string, unknown> = { body: input.body };
@@ -306,10 +306,6 @@ export class WarrenClient {
 	 * each on the previous PR merging. Re-dispatching the same
 	 * `planId` after children land resumes from the next open child
 	 * (idempotent resume contract).
-	 *
-	 * When the project has a `.plot/` directory and `plotId` is
-	 * supplied, warren emits a `plan_run_dispatched` event onto the
-	 * Plot and threads `PLOT_ID`/`PLOT_ACTOR` into every child run.
 	 */
 	async createPlanRun(input: CreatePlanRunInput): Promise<CreatePlanRunResponse> {
 		return this.request<CreatePlanRunResponse>("/plan-runs", {

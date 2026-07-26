@@ -3,12 +3,12 @@
  *
  * One source of truth maps every status string the UI shows
  * (`RunState`, `PreviewState`, `PlanRunState`, `PlanRunChildState`,
- * `PlotStatus`, and RunDetail's event-stream status) to a single
+ * and RunDetail's event-stream status) to a single
  * `StatusMeta` record: `{ label, variant, icon, pulse }`. The
  * concrete rendering — a `Badge` with optional leading icon and an
  * optional `motion-safe:animate-pulse` hint — is centralised in
  * `<StatusIndicator>`. The legacy wrappers (`StateBadge`,
- * `PlotStatusBadge`, `PlanRunStateBadge`, `PlanRunChildStateBadge`,
+ * `PlanRunStateBadge`, `PlanRunChildStateBadge`,
  * the inline `PreviewStateBadge` in `RunDetail.tsx`, and the
  * inline `statusVariant()` switch in `RunDetail.tsx`) all delegate
  * here so adding a new state or swapping a colour token is a

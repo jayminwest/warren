@@ -10,31 +10,11 @@ import type {
 	CancelRunResponse,
 	CreatePlanRunInput,
 	CreatePlanRunResponse,
-	CreatePlotPlanRunInput,
-	CreatePlotPlanRunResponse,
-	AnswerPlotQuestionInput,
-	AnswerPlotQuestionResponse,
-	AttachPlotInput,
-	AttachPlotResponse,
-	MergePlotPrInput,
-	MergePlotPrResponse,
-	ChangePlotStatusInput,
-	ChangePlotStatusResponse,
-	CreatePlotInput,
 	CreateRunInput,
-	DetachPlotResponse,
-	EditPlotIntentInput,
-	RenamePlotInput,
-	ListPlotsResponse,
 	ListRunsResponse,
-	PlotEnvelope,
-	PlotSummaryArtifact,
-	PlotSyncResponse,
 	PlanRunDetailResponse,
 	PlanRunRow,
 	PlanRunState,
-	PlotStatus,
-	PlotSummary,
 	PreviewConfigResponse,
 	PreviewTeardownResponse,
 	ProjectRow,
@@ -48,8 +28,6 @@ import type {
 	RunTriggerResponse,
 	SeedPlansResponse,
 	SeedStatusResponse,
-	SendRunMessageInput,
-	SendRunMessageResponse,
 	SpawnRunResponse,
 	SteerRunResponse,
 	TriggersResponse,
@@ -217,8 +195,7 @@ export const projectsApi = {
 		),
 	/**
 	 * `GET /projects/:id/seeds/:seedId` — read a seed's current status
-	 * (warren-4015). Used by PlotDetail BatchDispatch to skip closed
-	 * seeds before firing N parallel POST /runs.
+	 * (warren-4015).
 	 */
 	seedStatus: (id: string, seedId: string, signal?: AbortSignal) =>
 		request<SeedStatusResponse>(
@@ -277,11 +254,6 @@ export const runsApi = {
 		request<RunRow>(`/runs/${encodeURIComponent(id)}`, { ...(signal ? { signal } : {}) }),
 	create: (input: CreateRunInput) =>
 		request<SpawnRunResponse>("/runs", { method: "POST", body: input }),
-	sendMessage: (id: string, input: SendRunMessageInput) =>
-		request<SendRunMessageResponse>(`/runs/${encodeURIComponent(id)}/messages`, {
-			method: "POST",
-			body: input,
-		}),
 	steer: (id: string, input: { body: string }) =>
 		request<SteerRunResponse>(`/runs/${encodeURIComponent(id)}/steer`, {
 			method: "POST",
@@ -400,250 +372,6 @@ export async function* streamPlanRunEvents(
 		opts,
 	);
 }
-
-/* ----------------------------------------------------------------------- */
-/* Plots (warren-4879 / pl-9d6a step 4).                                    */
-/* ----------------------------------------------------------------------- */
-
-export interface ListPlotsFilter {
-	status?: PlotStatus;
-	/**
-	 * `needs_attention` routes to the server-side scorer; rows carry an
-	 * ordered `reasons` array (warren-d693). Status filter composes on
-	 * top so a UI can render e.g. "drafting Plots in the Needs-you view".
-	 */
-	filter?: "needs_attention";
-}
-
-export const plotsApi = {
-	/**
-	 * `GET /plots?status=` — cross-project Plot list. Empty array (200)
-	 * when no `hasPlot=true` projects exist (mirrors the
-	 * byte-identical-empty contract pinned by scenario 28); the UI's
-	 * Plots page renders the "no hasPlot projects yet" empty state on
-	 * `plots.length === 0`. Unknown status string is rejected
-	 * server-side with a 400 / `bad_request`.
-	 */
-	list: (filter: ListPlotsFilter = {}, signal?: AbortSignal) => {
-		const params = new URLSearchParams();
-		if (filter.status) params.set("status", filter.status);
-		if (filter.filter) params.set("filter", filter.filter);
-		const qs = params.toString();
-		return request<ListPlotsResponse>(`/plots${qs.length > 0 ? `?${qs}` : ""}`, {
-			...(signal ? { signal } : {}),
-		});
-	},
-	/**
-	 * `GET /plots/needs-attention/count` — sidebar-badge counter
-	 * (warren-d693 / pl-0344 step 9; consumed by Layout in warren-f0e2 /
-	 * step 13). Returns `{ count: 0 }` on deployments without the Plot
-	 * aggregator wired — byte-stable for the standalone path.
-	 */
-	needsAttentionCount: (signal?: AbortSignal) =>
-		request<{ count: number }>("/plots/needs-attention/count", {
-			...(signal ? { signal } : {}),
-		}),
-	/**
-	 * `POST /plots` — create a fresh Plot in the named project's `.plot/`
-	 * directory. Returns the new `PlotSummary` (201). Rejects with
-	 * `ApiError` code `project_lacks_plot` when the project hasn't opted
-	 * into Plots (mirrors the server-side `ProjectLacksPlotError`). The
-	 * input is camelCase; the wire body uses snake_case per the
-	 * `POST /plots` handler contract.
-	 */
-	create: (input: CreatePlotInput) =>
-		request<PlotSummary>("/plots", {
-			method: "POST",
-			body: {
-				project_id: input.projectId,
-				...(input.name !== undefined ? { name: input.name } : {}),
-				...(input.intent !== undefined ? { intent: input.intent } : {}),
-				...(input.dispatcherHandle !== undefined
-					? { dispatcher_handle: input.dispatcherHandle }
-					: {}),
-			},
-		}),
-	/**
-	 * `GET /plots/:id` — full Plot envelope (warren-961e / pl-9d6a step 8).
-	 * `event_log` is returned in ascending `at` order; the UI collapses
-	 * same-kind same-actor chains client-side.
-	 */
-	get: (plotId: string, signal?: AbortSignal) =>
-		request<PlotEnvelope>(`/plots/${encodeURIComponent(plotId)}`, {
-			...(signal ? { signal } : {}),
-		}),
-	/**
-	 * `GET /plots/:id/summary` — curated artifact view (warren-8917 /
-	 * pl-0344 step 15). Returns the institutional-memory projection:
-	 * formatted intent, decisions filtered from the event log,
-	 * linked PRs + commits, and a structural timeline. Pure derivation
-	 * over the same `.plot/` reader as `get`.
-	 */
-	summary: (plotId: string, signal?: AbortSignal) =>
-		request<PlotSummaryArtifact>(`/plots/${encodeURIComponent(plotId)}/summary`, {
-			...(signal ? { signal } : {}),
-		}),
-	/**
-	 * `POST /plots/:id/intent` — edit Plot intent (warren-896f /
-	 * pl-9d6a step 9). Server rejects with `plot_intent_frozen` (409)
-	 * when status is done/archived; UI also disables the form to short
-	 * the round-trip.
-	 */
-	editIntent: (plotId: string, input: EditPlotIntentInput) => {
-		const body: Record<string, unknown> = {};
-		if (input.goal !== undefined) body.goal = input.goal;
-		if (input.non_goals !== undefined) body.non_goals = input.non_goals;
-		if (input.constraints !== undefined) body.constraints = input.constraints;
-		if (input.success_criteria !== undefined) body.success_criteria = input.success_criteria;
-		if (input.dispatcherHandle !== undefined) body.dispatcher_handle = input.dispatcherHandle;
-		return request<PlotEnvelope>(`/plots/${encodeURIComponent(plotId)}/intent`, {
-			method: "POST",
-			body,
-		});
-	},
-	/**
-	 * `POST /plots/:id/rename` — rename a Plot (warren-bed0 / pl-b0c0
-	 * step 3). Server trims the name and rejects empty-after-trim with
-	 * 400. Allowed in every status (the name is pure metadata).
-	 */
-	rename: (plotId: string, input: RenamePlotInput) => {
-		const body: Record<string, unknown> = { name: input.name };
-		if (input.dispatcherHandle !== undefined) body.dispatcher_handle = input.dispatcherHandle;
-		return request<PlotEnvelope>(`/plots/${encodeURIComponent(plotId)}/rename`, {
-			method: "POST",
-			body,
-		});
-	},
-	/**
-	 * `POST /plots/:id/status` — transition status (warren-e868 /
-	 * pl-9d6a step 10). The legal-transition matrix is enforced at the
-	 * handler edge; UI button group should already only surface
-	 * reachable next states.
-	 */
-	changeStatus: (plotId: string, input: ChangePlotStatusInput) =>
-		request<ChangePlotStatusResponse>(`/plots/${encodeURIComponent(plotId)}/status`, {
-			method: "POST",
-			body: {
-				next: input.next,
-				...(input.dispatcherHandle !== undefined
-					? { dispatcher_handle: input.dispatcherHandle }
-					: {}),
-			},
-		}),
-	/** `POST /plots/:id/attachments` — attach external reference. */
-	attach: (plotId: string, input: AttachPlotInput) =>
-		request<AttachPlotResponse>(`/plots/${encodeURIComponent(plotId)}/attachments`, {
-			method: "POST",
-			body: {
-				kind: input.kind,
-				ref: input.ref,
-				...(input.role !== undefined ? { role: input.role } : {}),
-				...(input.dispatcherHandle !== undefined
-					? { dispatcher_handle: input.dispatcherHandle }
-					: {}),
-			},
-		}),
-	/** `DELETE /plots/:id/attachments/:ref` — detach by ref. */
-	detach: (plotId: string, ref: string, dispatcherHandle?: string) =>
-		request<DetachPlotResponse>(
-			`/plots/${encodeURIComponent(plotId)}/attachments/${encodeURIComponent(ref)}`,
-			{
-				method: "DELETE",
-				...(dispatcherHandle !== undefined
-					? { body: { dispatcher_handle: dispatcherHandle } }
-					: {}),
-			},
-		),
-	/**
-	 * `POST /plots/:id/attachments/:ref/merge` — click-to-merge a
-	 * `gh_pr` attachment (warren-8e39 / pl-0344 step 14). Returns the
-	 * fresh envelope plus the GitHub merge outcome variant. On
-	 * `merged` / `already_merged` the server schedules a background
-	 * project-clone refresh.
-	 */
-	mergeAttachment: (plotId: string, ref: string, input: MergePlotPrInput = {}) =>
-		request<MergePlotPrResponse>(
-			`/plots/${encodeURIComponent(plotId)}/attachments/${encodeURIComponent(ref)}/merge`,
-			{
-				method: "POST",
-				body: {
-					...(input.mergeMethod !== undefined ? { merge_method: input.mergeMethod } : {}),
-					...(input.dispatcherHandle !== undefined
-						? { dispatcher_handle: input.dispatcherHandle }
-						: {}),
-				},
-			},
-		),
-	/**
-	 * `POST /plan-runs` (sugar) — dispatch a plan run bound to this
-	 * Plot. Identical wire surface to `planRunsApi.create`; surfaced on
-	 * `plotsApi` so the PlotDetail "Run plan" button (warren-5d94 /
-	 * pl-9d6a step 14) reads as a Plot-side action. The server-side
-	 * stacked gate (mx-4b7ff8) rejects with `project_lacks_seeds` when
-	 * the project has no `.seeds/` directory and with
-	 * `project_lacks_plot` when `plotId` is set on a project without
-	 * `.plot/`; both surface as `ApiError` to the caller.
-	 */
-	dispatchPlanRun: (input: CreatePlanRunInput) =>
-		request<CreatePlanRunResponse>("/plan-runs", { method: "POST", body: input }),
-	/**
-	 * `POST /plot-plan-runs` — synthesize a seeds plan from the Plot's
-	 * open `seeds_issue` attachments and dispatch it through the same
-	 * §11.P coordinator as `dispatchPlanRun` (warren-99b2, SPEC §11.Q).
-	 * Server-side filters: `pl-*`-shaped refs (sd_plan attachments) and
-	 * closed seeds drop out before synthesis; zero candidates returns
-	 * 400 `no_dispatchable_seeds`. Wire body is snake_case per the
-	 * handler contract.
-	 */
-	dispatchSynthesizedPlanRun: (input: CreatePlotPlanRunInput) =>
-		request<CreatePlotPlanRunResponse>("/plot-plan-runs", {
-			method: "POST",
-			body: {
-				plot_id: input.plotId,
-				project_id: input.projectId,
-				agent_name: input.agent,
-				...(input.promptTemplate !== undefined
-					? { prompt_template: input.promptTemplate }
-					: {}),
-				...(input.ref !== undefined ? { ref: input.ref } : {}),
-				...(input.providerOverride !== undefined
-					? { provider_override: input.providerOverride }
-					: {}),
-				...(input.modelOverride !== undefined
-					? { model_override: input.modelOverride }
-					: {}),
-				...(input.dispatcherHandle !== undefined
-					? { dispatcher_handle: input.dispatcherHandle }
-					: {}),
-			},
-		}),
-	/**
-	 * `POST /plots/:id/questions/:event_id/answer` — answer a
-	 * question_posed event. `eventId` is the targeted event's `at` ISO
-	 * timestamp.
-	 */
-	answerQuestion: (plotId: string, input: AnswerPlotQuestionInput) =>
-		request<AnswerPlotQuestionResponse>(
-			`/plots/${encodeURIComponent(plotId)}/questions/${encodeURIComponent(input.eventId)}/answer`,
-			{
-				method: "POST",
-				body: {
-					answer: input.answer,
-					...(input.dispatcherHandle !== undefined
-						? { dispatcher_handle: input.dispatcherHandle }
-						: {}),
-				},
-			},
-		),
-	/**
-	 * `POST /plots/:id/sync` — manually sync plot metadata to GitHub (warren-1d0c / pl-5a6c step 4).
-	 */
-	sync: (plotId: string) =>
-		request<PlotSyncResponse>(
-			`/plots/${encodeURIComponent(plotId)}/sync`,
-			{ method: "POST", body: {} },
-		),
-};
 
 /* ----------------------------------------------------------------------- */
 /* NDJSON event stream — `GET /runs/:id/events?follow=1` (SPEC §8.1).      */
@@ -769,7 +497,6 @@ export type CostDimension =
 	| "date"
 	| "project"
 	| "plan"
-	| "plot"
 	| "run"
 	| "agent"
 	| "model"

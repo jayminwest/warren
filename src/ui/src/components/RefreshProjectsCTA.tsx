@@ -9,9 +9,9 @@ import { formatError } from "@/lib/format-error.ts";
  *
  * First dogfood-discovered Plot UX gap: Plots created via the `plot` CLI in
  * a project repo are silently invisible in the warren UI until project
- * refresh runs (detectProjectFeatures only flips `hasPlot` during refresh).
- * Surfaces an inline refresh affordance on /plots empty-state and
- * /plots/:id 404 — fans out `projectsApi.refresh(id)` across every
+ * refresh runs (detectProjectFeatures only flips feature flags during a
+ * refresh). Surfaces an inline refresh affordance — fans out
+ * `projectsApi.refresh(id)` across every
  * registered project in parallel, then invalidates the plot caches.
  */
 export function RefreshProjectsCTA({ label }: { label?: string }) {

@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { projectsApi } from "@/api/client.ts";
-import type { ProjectRow, ReadyPlan } from "@/api/types.ts";
+import type { ReadyPlan } from "@/api/types.ts";
 import { Alert } from "@/components/ui/alert.tsx";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card.tsx";
 import { EmptyState } from "@/components/ui/empty-state.tsx";
@@ -23,19 +23,12 @@ import { DispatchPlanButton } from "@/components/dispatch-plan-dialog.tsx";
  * endpoint: approved plans with at least one open child seed that have not
  * already been dispatched. Each row offers a one-click Dispatch button that
  * opens the generalized DispatchPlanDialog pre-filled with the plan id +
- * project (and, when the project has `.plot/`, the plan id as the plot
- * back-link — the dialog omits an unbindable plot from the dispatch itself).
+ * project.
  *
  * The endpoint is per-project, so the operator must pick a project first;
  * with none selected we prompt rather than fetching.
  */
-export function ReadyPlansView({
-	projectId,
-	project,
-}: {
-	projectId: string;
-	project: ProjectRow | undefined;
-}): JSX.Element {
+export function ReadyPlansView({ projectId }: { projectId: string }): JSX.Element {
 	const hasProject = projectId.length > 0;
 	const readyPlans = useQuery({
 		queryKey: ["ready-plans", projectId],
@@ -92,12 +85,7 @@ export function ReadyPlansView({
 						</TableHeader>
 						<TableBody>
 							{plans.map((plan) => (
-								<ReadyPlanRow
-									key={plan.id}
-									plan={plan}
-									projectId={projectId}
-									hasPlot={project?.hasPlot ?? false}
-								/>
+								<ReadyPlanRow key={plan.id} plan={plan} projectId={projectId} />
 							))}
 						</TableBody>
 					</Table>
@@ -110,11 +98,9 @@ export function ReadyPlansView({
 function ReadyPlanRow({
 	plan,
 	projectId,
-	hasPlot,
 }: {
 	plan: ReadyPlan;
 	projectId: string;
-	hasPlot: boolean;
 }): JSX.Element {
 	return (
 		<TableRow>
@@ -125,12 +111,7 @@ function ReadyPlanRow({
 				{plan.openChildCount}
 			</TableCell>
 			<TableCell className="text-right">
-				<DispatchPlanButton
-					projectId={projectId}
-					planId={plan.id}
-					planIdLocked
-					plotId={hasPlot ? plan.id : null}
-				/>
+				<DispatchPlanButton projectId={projectId} planId={plan.id} planIdLocked />
 			</TableCell>
 		</TableRow>
 	);

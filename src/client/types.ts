@@ -85,7 +85,6 @@ export interface ProjectRow {
 	addedAt: string;
 	lastFetchedAt: string | null;
 	lastHeadSha: string | null;
-	hasPlot: boolean;
 	hasSeeds: boolean;
 }
 
@@ -96,7 +95,6 @@ export interface RunRow {
 	burrowId: string | null;
 	burrowRunId: string | null;
 	seedId: string | null;
-	plotId: string | null;
 	/** Chain back-link (warren-4b11 / warren-e96f); null for root runs. */
 	parentRunId: string | null;
 	cloneKind: "replicate" | "continue" | null;
@@ -130,7 +128,6 @@ export interface RunEvent {
 	kind: string;
 	stream: "stdout" | "stderr" | "system" | null;
 	payload: unknown;
-	plotId: string | null;
 }
 
 export interface StreamRunEventsOptions {

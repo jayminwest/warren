@@ -22,14 +22,12 @@ describe("WarrenClient plan-runs", () => {
 			project: "prj_1",
 			planId: "pl-abc",
 			agent: "claude-code",
-			plotId: "plot-x",
 		});
 		expect(observedUrl).toBe("https://w.local/plan-runs");
 		expect(JSON.parse(observedBody || "{}")).toEqual({
 			project: "prj_1",
 			planId: "pl-abc",
 			agent: "claude-code",
-			plotId: "plot-x",
 		});
 		expect(res.planRun.id).toBe("pr-1");
 	});
@@ -97,12 +95,12 @@ describe("WarrenClient plan-runs", () => {
 			start(controller) {
 				controller.enqueue(
 					enc.encode(
-						`${JSON.stringify({ id: 1, runId: "run-a", seq: 1, ts: "t", kind: "tool_use", stream: "stdout", payload: {}, plotId: null })}\n`,
+						`${JSON.stringify({ id: 1, runId: "run-a", seq: 1, ts: "t", kind: "tool_use", stream: "stdout", payload: {} })}\n`,
 					),
 				);
 				controller.enqueue(
 					enc.encode(
-						`${JSON.stringify({ id: 2, runId: "run-b", seq: 1, ts: "t", kind: "result", stream: null, payload: {}, plotId: "plot-x" })}\n`,
+						`${JSON.stringify({ id: 2, runId: "run-b", seq: 1, ts: "t", kind: "result", stream: null, payload: {} })}\n`,
 					),
 				);
 				controller.close();

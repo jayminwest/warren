@@ -59,7 +59,6 @@ function planRunRow(state: PlanRunState) {
 		createdAt: "t",
 		startedAt: null,
 		endedAt: null,
-		plotId: null,
 	};
 }
 
@@ -133,7 +132,6 @@ describe("runPlanRun", () => {
 				kind: "tool_use",
 				stream: "stdout",
 				payload: {},
-				plotId: null,
 			},
 		];
 		const res = await runPlanRun(
@@ -189,7 +187,6 @@ describe("runPlanRun", () => {
 							kind: "k",
 							stream: null,
 							payload: {},
-							plotId: null,
 						};
 					},
 				}),
@@ -217,7 +214,6 @@ describe("runPlanRun", () => {
 							kind: "text",
 							stream: "stdout",
 							payload: { text: "working on it" },
-							plotId: null,
 						};
 					},
 				}),
@@ -308,7 +304,6 @@ describe("runPlanRun", () => {
 						kind: "k",
 						stream: null,
 						payload: {},
-						plotId: null,
 					};
 				},
 			}),

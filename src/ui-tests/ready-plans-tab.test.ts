@@ -28,10 +28,10 @@ describe("PlanRuns 'Ready to dispatch' tab (pl-3fc4 step 7)", () => {
 
 	test("renders ReadyPlansView for the ready tab, table otherwise", () => {
 		// Tab toggles the body; the ready view receives the selected
-		// project (the endpoint is per-project) for plot gating.
+		// project id (the endpoint is per-project).
 		expect(PLAN_RUNS_SOURCE).toMatch(/import \{ ReadyPlansView \} from "\.\/ready-plans\.tsx"/);
 		expect(PLAN_RUNS_SOURCE).toMatch(
-			/tab === "ready" \? \(\s*<ReadyPlansView projectId=\{projectFilter\} project=\{selectedProject\} \/>/,
+			/tab === "ready" \? \(\s*<ReadyPlansView projectId=\{projectFilter\} \/>/,
 		);
 	});
 
@@ -76,10 +76,9 @@ describe("ReadyPlansView body (pl-3fc4 step 7)", () => {
 		expect(READY_PLANS_SOURCE).toMatch(/\{plan\.openChildCount\}/);
 	});
 
-	test("one-click Dispatch opens the dialog pre-filled + locked, plot-gated", () => {
+	test("one-click Dispatch opens the dialog pre-filled + locked", () => {
 		// Each row's DispatchPlanButton pre-fills + locks the plan id and
-		// passes the project; the plot back-link is supplied only when the
-		// project has .plot/.
+		// passes the project.
 		expect(READY_PLANS_SOURCE).toMatch(
 			/import \{ DispatchPlanButton \} from "@\/components\/dispatch-plan-dialog\.tsx"/,
 		);
@@ -87,6 +86,12 @@ describe("ReadyPlansView body (pl-3fc4 step 7)", () => {
 		expect(READY_PLANS_SOURCE).toMatch(/projectId=\{projectId\}/);
 		expect(READY_PLANS_SOURCE).toMatch(/planId=\{plan\.id\}/);
 		expect(READY_PLANS_SOURCE).toMatch(/planIdLocked/);
-		expect(READY_PLANS_SOURCE).toMatch(/plotId=\{hasPlot \? plan\.id : null\}/);
+	});
+
+	// warren-1f12 / pl-3a79 step 10: the plot back-link died with the plot
+	// deletion pass. Pin its absence so it can't drift back in.
+	test("carries no plot back-link", () => {
+		expect(READY_PLANS_SOURCE).not.toMatch(/plotId/);
+		expect(READY_PLANS_SOURCE).not.toMatch(/hasPlot/);
 	});
 });

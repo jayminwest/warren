@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils.ts";
  *
  * Tiny wrapper around lucide-react's Loader2 with `animate-spin` baked
  * in. Audit found the same `<Loader|RefreshCw> animate-spin` idiom
- * duplicated across RefreshProjectsCTA, NewPlanRun, Agents, PlotDetail
+ * duplicated across RefreshProjectsCTA, NewPlanRun, Agents
  * (mx grep above) — phase 4+ replaces the bare `<p>Loading…</p>` sites
  * with this primitive plus a label, and phase 3 wires it into the
  * StatusIndicator registry's `running` state pulse.

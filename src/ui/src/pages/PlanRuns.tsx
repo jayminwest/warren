@@ -77,8 +77,6 @@ export function PlanRunsPage() {
 		return m;
 	}, [projects.data]);
 
-	const selectedProject = projects.data?.projects.find((p) => p.id === projectFilter);
-
 	const comparators = useMemo<Record<PlanRunSortKey, Comparator<PlanRunRow>>>(
 		() => ({
 			state: (a, b) => compareStrings(a.state, b.state),
@@ -161,7 +159,7 @@ export function PlanRunsPage() {
 			</div>
 
 			{tab === "ready" ? (
-				<ReadyPlansView projectId={projectFilter} project={selectedProject} />
+				<ReadyPlansView projectId={projectFilter} />
 			) : (
 			<Card>
 				<CardHeader>

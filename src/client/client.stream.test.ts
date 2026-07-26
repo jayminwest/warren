@@ -11,13 +11,13 @@ describe("WarrenClient.streamRunEvents", () => {
 				const enc = new TextEncoder();
 				controller.enqueue(
 					enc.encode(
-						`${JSON.stringify({ id: 1, runId: "r1", seq: 1, ts: "t", kind: "tool_use", stream: "stdout", payload: { a: 1 }, plotId: null })}\n`,
+						`${JSON.stringify({ id: 1, runId: "r1", seq: 1, ts: "t", kind: "tool_use", stream: "stdout", payload: { a: 1 } })}\n`,
 					),
 				);
 				// chunked + partial-line split across reads
 				controller.enqueue(
 					enc.encode(
-						`${JSON.stringify({ id: 2, runId: "r1", seq: 2, ts: "t", kind: "tool_result", stream: "stdout", payload: { ok: true }, plotId: "plot-abc" })}\n`,
+						`${JSON.stringify({ id: 2, runId: "r1", seq: 2, ts: "t", kind: "tool_result", stream: "stdout", payload: { ok: true } })}\n`,
 					),
 				);
 				controller.close();
@@ -35,21 +35,21 @@ describe("WarrenClient.streamRunEvents", () => {
 			config: { baseUrl: "https://w.local" },
 			fetch: stubFetch,
 		});
-		const out: Array<{ seq: number; kind: string; plotId: string | null }> = [];
+		const out: Array<{ seq: number; kind: string }> = [];
 		for await (const ev of c.streamRunEvents("r 1", { follow: true, sinceSeq: 7 })) {
-			out.push({ seq: ev.seq, kind: ev.kind, plotId: ev.plotId });
+			out.push({ seq: ev.seq, kind: ev.kind });
 		}
 		expect(observedUrl).toBe("https://w.local/runs/r%201/events?follow=1&since=7");
 		expect(observedAccept).toBe("application/x-ndjson");
 		expect(out).toEqual([
-			{ seq: 1, kind: "tool_use", plotId: null },
-			{ seq: 2, kind: "tool_result", plotId: "plot-abc" },
+			{ seq: 1, kind: "tool_use" },
+			{ seq: 2, kind: "tool_result" },
 		]);
 	});
 
 	test("handles partial lines split across chunks", async () => {
 		const enc = new TextEncoder();
-		const line = `${JSON.stringify({ id: 1, runId: "r1", seq: 1, ts: "t", kind: "k", stream: null, payload: {}, plotId: null })}\n`;
+		const line = `${JSON.stringify({ id: 1, runId: "r1", seq: 1, ts: "t", kind: "k", stream: null, payload: {} })}\n`;
 		const mid = Math.floor(line.length / 2);
 		const body = new ReadableStream<Uint8Array>({
 			start(controller) {
@@ -81,7 +81,6 @@ describe("WarrenClient.streamRunEvents", () => {
 							kind: "k",
 							stream: null,
 							payload: {},
-							plotId: null,
 						}),
 					),
 				);
@@ -104,7 +103,7 @@ describe("WarrenClient.streamRunEvents", () => {
 				controller.enqueue(enc.encode("this is not json\n"));
 				controller.enqueue(
 					enc.encode(
-						`${JSON.stringify({ id: 1, runId: "r1", seq: 1, ts: "t", kind: "ok", stream: null, payload: {}, plotId: null })}\n`,
+						`${JSON.stringify({ id: 1, runId: "r1", seq: 1, ts: "t", kind: "ok", stream: null, payload: {} })}\n`,
 					),
 				);
 				controller.close();

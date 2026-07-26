@@ -9,13 +9,13 @@ import {
 	ListChecks,
 	LogOut,
 	Menu,
-	Network,
 	Plus,
 	X,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
-import { metaApi, plotsApi, projectsApi, setApiToken } from "@/api/client.ts";
+import { metaApi, setApiToken } from "@/api/client.ts";
+import { ErrorBoundary } from "@/components/ErrorBoundary.tsx";
 import { ThemeToggle } from "@/components/ThemeToggle.tsx";
 import { WarrenLogo } from "@/components/WarrenLogo.tsx";
 import { Button } from "@/components/ui/button.tsx";
@@ -25,11 +25,9 @@ type NavItem = {
 	to: string;
 	label: string;
 	icon: React.ComponentType<{ className?: string }>;
-	/** Optional small counter rendered to the right of the label. */
-	badge?: number;
 };
 
-const BASE_NAV_ITEMS: NavItem[] = [
+const NAV_ITEMS: NavItem[] = [
 	{ to: "/runs", label: "Runs", icon: Activity },
 	{ to: "/plan-runs", label: "Plans", icon: ListChecks },
 	{ to: "/projects", label: "Projects", icon: FolderGit2 },
@@ -43,11 +41,6 @@ const BASE_NAV_ITEMS: NavItem[] = [
 	{ to: "/run-analytics", label: "Run stats", icon: BarChart3 },
 ];
 
-// Single collapsed Workspace entry (warren-9cad / pl-0008 step 11)
-// replaces the former Plots page: the Plot is the spine, so one nav item
-// fronts the run → activity lifecycle. The needs-you badge rides on it.
-const WORKSPACE_NAV_ITEM: NavItem = { to: "/workspace", label: "Workspace", icon: Network };
-
 export function Layout() {
 	const navigate = useNavigate();
 
@@ -59,52 +52,6 @@ export function Layout() {
 		staleTime: Infinity,
 		retry: false,
 	});
-
-	// Gate the Plots sidebar entry on at least one project having
-	// `.plot/` provisioned. The projects list is the canonical source
-	// for `hasPlot` (warren-4e20); reuse the same query key as the
-	// Plots page so tanstack-query dedupes the fetch.
-	const projects = useQuery({
-		queryKey: ["projects"],
-		queryFn: ({ signal }) => projectsApi.list(signal),
-		staleTime: 5000,
-	});
-	const anyHasPlot = useMemo(
-		() => (projects.data?.projects ?? []).some((p) => p.hasPlot),
-		[projects.data],
-	);
-
-	// Needs-you sidebar badge (warren-f0e2 / pl-0344 step 13). Polls
-	// the cheap `{count}` endpoint every 10s only when the deployment
-	// has at least one `.plot/`-enabled project; non-Plot deployments
-	// pay nothing. Errors collapse to undefined — the badge silently
-	// hides rather than disrupting the sidebar layout.
-	const needsAttention = useQuery({
-		queryKey: ["plots", "needs-attention-count"],
-		queryFn: ({ signal }) => plotsApi.needsAttentionCount(signal),
-		enabled: anyHasPlot,
-		refetchInterval: 10000,
-		staleTime: 5000,
-	});
-	const needsAttentionBadge =
-		needsAttention.data !== undefined && needsAttention.data.count > 0
-			? needsAttention.data.count
-			: undefined;
-
-	const navItems = useMemo<NavItem[]>(() => {
-		// Byte-identical to pre-Plots order when no project opted in —
-		// preserves the CLAUDE.md standalone path (warren-e59a / pl-9d6a
-		// step 19).
-		if (!anyHasPlot) return BASE_NAV_ITEMS;
-		// Plot-enabled deployments lead with the single Workspace entry,
-		// then the existing Runs → Plans → Projects → Agents order:
-		// Workspace → Runs → Plans → Projects → Agents.
-		const workspaceItem: NavItem =
-			needsAttentionBadge !== undefined
-				? { ...WORKSPACE_NAV_ITEM, badge: needsAttentionBadge }
-				: WORKSPACE_NAV_ITEM;
-		return [workspaceItem, ...BASE_NAV_ITEMS];
-	}, [anyHasPlot, needsAttentionBadge]);
 
 	const handleLogout = (): void => {
 		setApiToken(null);
@@ -126,7 +73,7 @@ export function Layout() {
 
 	const renderNavLinks = (onNavigate?: () => void) => (
 		<>
-			{navItems.map(({ to, label, icon: Icon, badge }) => (
+			{NAV_ITEMS.map(({ to, label, icon: Icon }) => (
 				<NavLink
 					key={to}
 					to={to}
@@ -142,14 +89,6 @@ export function Layout() {
 				>
 					<Icon className="h-4 w-4" />
 					<span className="flex-1">{label}</span>
-					{badge !== undefined ? (
-						<span
-							aria-label={`${badge} need${badge === 1 ? "" : "s"} your attention`}
-							className="ml-auto rounded-full bg-(--color-primary) px-1.5 py-0.5 text-xs font-mono text-(--color-primary-foreground)"
-						>
-							{badge > 99 ? "99+" : badge}
-						</span>
-					) : null}
 				</NavLink>
 			))}
 			<NavLink
@@ -253,7 +192,11 @@ export function Layout() {
 			</DialogPrimitive.Root>
 
 			<main className="min-h-0 min-w-0 flex-1 overflow-y-auto p-4 sm:p-6 md:p-8">
-				<Outlet />
+				{/* Boundary sits INSIDE the chrome so a page-level throw costs
+				    the page, not the sidebar (warren-1f12). */}
+				<ErrorBoundary resetKey={location.pathname}>
+					<Outlet />
+				</ErrorBoundary>
 			</main>
 		</div>
 	);

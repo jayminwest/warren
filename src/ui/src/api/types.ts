@@ -52,16 +52,6 @@ export interface ProjectRow {
 	lastFetchedAt: string | null;
 	lastHeadSha: string | null;
 	/**
-	 * Plot opt-in gating flag (warren-4e20). True iff a `.plot/` directory
-	 * existed at the clone root the last time addProject or
-	 * refreshProjectClone probed it. The dispatch path consumes this to
-	 * gate `plot_id` validation and PLOT_ID/PLOT_ACTOR env injection
-	 * downstream (warren-a8c3, warren-e26f). No UI surface yet — the
-	 * field exists so subsequent plan steps can read it without touching
-	 * the wire envelope again.
-	 */
-	hasPlot: boolean;
-	/**
 	 * Seeds opt-in gating flag (warren-9990 / pl-a258 step 1). True iff a
 	 * `.seeds/` directory existed at the clone root the last time
 	 * addProject or refreshProjectClone probed it. The PlanRun API
@@ -100,13 +90,6 @@ export interface RunRow {
 	 */
 	seedId: string | null;
 	/**
-	 * Back-link to the Plot this run was dispatched against (warren-a8c3,
-	 * parent warren-000b). Null when the project hasn't opted into Plots
-	 * (`project.hasPlot` false) or the dispatch omitted plot_id. The
-	 * stream envelope mirrors the same field for live consumers.
-	 */
-	plotId: string | null;
-	/**
 	 * Continuation back-link (warren-4b11). Set when this run was spawned as
 	 * a "re-run with follow-up" of a prior terminal run: its workspace was
 	 * seeded from the parent's pushed branch instead of the project default
@@ -125,7 +108,7 @@ export interface RunRow {
 	/**
 	 * Run mode discriminator (pl-0344 step 1 / warren-67b6, step 4 /
 	 * warren-b3b9). `'batch'` is the legacy one-shot dispatch; `'interactive'`
-	 * is the respawn-per-turn primitive bound to a Plot. Pinned at row
+	 * is the respawn-per-turn primitive. Pinned at row
 	 * creation; warren-side only (burrow doesn't know about run mode).
 	 */
 	mode: "batch" | "interactive";
@@ -226,16 +209,8 @@ export interface CreateRunInput {
 	 */
 	seedId?: string;
 	/**
-	 * Optional back-link to the Plot this run is dispatched against
-	 * (warren-a8c3, parent warren-000b). The server validates that the
-	 * project has a `.plot/` directory (`project.hasPlot`); supplying
-	 * plot_id for a project without Plots returns a 400 ValidationError.
-	 */
-	plotId?: string;
-	/**
 	 * Run mode (pl-0344 step 4 / warren-b3b9). Defaults to `'batch'`
-	 * server-side; pass `'interactive'` together with `plotId` to spawn
-	 * an interactive turn. `interactiveAgent` may override `agent` when
+	 * server-side. `interactiveAgent` may override `agent` when
 	 * mode is interactive so a UI surface can flip mode without
 	 * re-keying the picker (`agent` stays its batch default).
 	 */
@@ -272,40 +247,6 @@ export interface ListRunsResponse {
 	costPricedCount: number;
 	limit: number;
 	offset: number;
-}
-
-/**
- * Body for `POST /runs/:id/messages` (pl-0344 step 4 / warren-b3b9).
- * Sends a follow-up user turn on an interactive conversation. `:id` is
- * any prior interactive run row that shares the conversation's plotId
- * — the server resolves Plot context from disk, not from this row.
- */
-export interface SendRunMessageInput {
-	message: string;
-	ref?: string;
-	providerOverride?: string;
-	modelOverride?: string;
-	dispatcherHandle?: string;
-}
-
-/**
- * Wire envelope of `POST /runs/:id/messages`. The server returns 202
- * Accepted with the freshly-spawned turn row + the persisted
- * user_message event; the matching `agent_message` event lands later on
- * the events stream when reap fires.
- */
-export interface SendRunMessageResponse {
-	run: RunRow;
-	burrow: BurrowSummary;
-	userMessageEvent: {
-		id: number;
-		runId: string;
-		seq: number;
-		ts: string;
-		kind: string;
-	};
-	priorRunId: string;
-	plotContextDegraded: boolean;
 }
 
 export interface CancelRunResponse {
@@ -359,13 +300,6 @@ export interface RunEvent {
 	kind: string;
 	stream: "stdout" | "stderr" | "system" | null;
 	payload: unknown;
-	/**
-	 * Run-scoped Plot back-link, snapshotted at stream-open time from
-	 * `runs.plot_id` (warren-a8c3). Null when the run was dispatched
-	 * without a plot_id. Stable across the lifetime of the stream — the
-	 * run row's plot_id is set at spawn and never mutates.
-	 */
-	plotId: string | null;
 }
 
 /**
@@ -533,7 +467,7 @@ export interface TriggersResponse {
  * `GET /projects/:id/seeds/:seedId` — single-seed status read (warren-4015).
  * Mirrors the narrow `{id, status, blockedBy}` envelope warren returns;
  * the wire shape is intentionally minimal because the only consumer
- * (PlotDetail BatchDispatch) just needs `status` to drop closed seeds.
+ * just needs `status` to drop closed seeds.
  */
 export interface SeedStatusResponse {
 	id: string;
@@ -633,15 +567,6 @@ export interface PlanRunRow {
 	createdAt: string;
 	startedAt: string | null;
 	endedAt: string | null;
-	/**
-	 * Back-link to the Plot this PlanRun was dispatched against
-	 * (warren-06dc / pl-7937 Phase 2). Null when the project hasn't opted
-	 * into Plots (`project.hasPlot` false) or the dispatch omitted plot_id.
-	 * Threaded through every child run's spawn so per-child `run_dispatched`
-	 * events and PLOT_ID/PLOT_ACTOR env injection light up via the Phase 1
-	 * single-run path unchanged.
-	 */
-	plotId: string | null;
 }
 
 export interface PlanRunChildRow {
@@ -676,14 +601,6 @@ export interface CreatePlanRunInput {
 	providerOverride?: string;
 	modelOverride?: string;
 	dispatcherHandle?: string;
-	/**
-	 * Optional back-link to the Plot this PlanRun is dispatched against
-	 * (warren-06dc / pl-7937 Phase 2). The server validates that the
-	 * project has a `.plot/` directory (`project.hasPlot`); supplying
-	 * plot_id for a project without Plots returns a 400 with code
-	 * `project_lacks_plot`.
-	 */
-	plotId?: string;
 }
 
 /** `POST /plan-runs` 201 response envelope. */
@@ -709,422 +626,6 @@ export interface CancelPlanRunResponse {
 	cancelledChild: { childSeq: number; runId: string } | null;
 	alreadyTerminal: boolean;
 }
-
-/**
- * `POST /plot-plan-runs` request body (warren-99b2 / pl-f404 step 3 /
- * SPEC §11.Q). Wire envelope is snake_case; UI camelCase is mapped at
- * the `plotsApi.dispatchSynthesizedPlanRun` boundary.
- */
-export interface CreatePlotPlanRunInput {
-	plotId: string;
-	projectId: string;
-	agent: string;
-	promptTemplate?: string;
-	ref?: string;
-	providerOverride?: string;
-	modelOverride?: string;
-	dispatcherHandle?: string;
-}
-
-/**
- * `POST /plot-plan-runs` 201 response envelope. Same `{planRun,
- * children}` shape as `POST /plan-runs` so the navigation target is
- * identical, plus synthesis-specific `synthesizedPlanId` and
- * `parentSeedId` fields the UI can surface for debugging.
- */
-export interface CreatePlotPlanRunResponse {
-	planRun: PlanRunRow;
-	children: PlanRunChildRow[];
-	synthesizedPlanId: string;
-	parentSeedId: string;
-}
-
-/* ----------------------------------------------------------------------- */
-/* Plots (warren-4879 / pl-9d6a step 4).                                    */
-/*                                                                          */
-/* Mirrors the server-side `PlotSummary` shape from `src/plots/types.ts`    */
-/* and the `@os-eco/plot-cli` `PlotStatus` literal union. Kept in sync by   */
-/* hand because src/ui is excluded from the root tsconfig — the boundary   */
-/* is the HTTP wire, not a TS import (mx-7f971c).                          */
-/* ----------------------------------------------------------------------- */
-
-/**
- * Plot status enum — mirror of `@os-eco/plot-cli` `PlotStatus`. The five
- * values match the SPEC §6.5 transition whitelist; UI status filter chips
- * iterate `PLOT_STATUSES` so the mirror is the single source of truth on
- * the UI side.
- */
-export type PlotStatus = "drafting" | "ready" | "active" | "done" | "archived";
-
-export const PLOT_STATUSES: readonly PlotStatus[] = [
-	"drafting",
-	"ready",
-	"active",
-	"done",
-	"archived",
-];
-
-/**
- * Row shape returned by `GET /plots` (one row per Plot across every
- * project with `hasPlot=true`) and the JSON body of `POST /plots`
- * (warren-c167, warren-194e). Sortable in the UI by `last_event_ts`
- * desc, `name`, or `status`. Field names match the wire envelope
- * verbatim — snake_case on the wire, not the UI's camelCase
- * convention, because the server hands the `PlotSummary` interface
- * straight through to `JSON.stringify`.
- */
-export interface PlotSummary {
-	id: string;
-	name: string;
-	status: PlotStatus;
-	/** First ~160 chars of `intent.goal`, with ellipsis when truncated. */
-	intent_goal_preview: string;
-	attachments_count: number;
-	/** ISO 8601 timestamp of the most recent event in the Plot's log. */
-	last_event_ts: string;
-	/** Actor string of the most recent event (e.g. `user:alice`). */
-	last_event_actor: string;
-	/** Warren project id (`prj_xxx`) the Plot lives in. */
-	project_id: string;
-	/**
-	 * Populated only by `GET /plots?filter=needs_attention` (warren-d693 /
-	 * pl-0344 step 9). Ordered non-empty list of reasons the Plot
-	 * surfaces in the Needs-you view; absent on the default list.
-	 */
-	reasons?: NeedsAttentionReason[];
-}
-
-/**
- * Canonical "Needs you" signals (mirrors `src/plots/needs-attention.ts`).
- * Order is significant — server returns reasons in this canonical
- * order so badges render consistently.
- */
-export const NEEDS_ATTENTION_REASONS = [
-	"paused_run",
-	"merged_pr_unreviewed",
-	"stale_draft",
-] as const;
-export type NeedsAttentionReason = (typeof NEEDS_ATTENTION_REASONS)[number];
-
-/**
- * Optional partial intent body accepted on `POST /plots`. Every field
- * is optional; omitted fields stay at the `PlotStore.create` defaults
- * (empty string / empty arrays). The UI's New-Plot dialog surfaces
- * `goal` as the only field today; the array fields are reserved for
- * the Plot detail intent editor (warren-bdbf).
- */
-export interface CreatePlotIntentPatch {
-	goal?: string;
-	non_goals?: string[];
-	constraints?: string[];
-	success_criteria?: string[];
-}
-
-/**
- * `POST /plots` request body. `projectId` is the warren project id
- * (the wire envelope's `project_id`); the client serializer rewrites
- * to snake_case so callers can keep the rest of the UI in camelCase.
- * Empty/whitespace-only `name` is rejected by the server; omit the
- * field entirely to accept the `"Untitled Plot"` default.
- */
-export interface CreatePlotInput {
-	projectId: string;
-	name?: string;
-	intent?: CreatePlotIntentPatch;
-	dispatcherHandle?: string;
-}
-
-/** `GET /plots` envelope. */
-export interface ListPlotsResponse {
-	plots: PlotSummary[];
-}
-
-/* ----------------------------------------------------------------------- */
-/* Plot detail (warren-961e/896f/e868/589c/e1ac, pl-9d6a steps 8–12).        */
-/*                                                                          */
-/* Mirrors @os-eco/plot-cli `Intent`, `Attachment`, `PlotEvent` plus the    */
-/* server-side per-handler response envelopes. Kept in sync by hand —      */
-/* src/ui is excluded from the root tsconfig (mx-7f971c).                  */
-/* ----------------------------------------------------------------------- */
-
-export const ATTACHMENT_TYPES = [
-	"seeds_issue",
-	"mulch_record",
-	"agent_run",
-	"gh_pr",
-	"gh_issue",
-	"file",
-] as const;
-export type AttachmentType = (typeof ATTACHMENT_TYPES)[number];
-
-export interface PlotIntent {
-	goal: string;
-	non_goals: string[];
-	constraints: string[];
-	success_criteria: string[];
-}
-
-export interface PlotAttachment {
-	id: string; // att-NNN
-	type: AttachmentType;
-	ref: string;
-	role: string;
-	added_at: string;
-	added_by: string;
-}
-
-/**
- * One Plot event — discriminated union on `type`. Mirrors the
- * @os-eco/plot-cli `PlotEvent` shape. The UI treats unknown future
- * types as opaque `data: unknown` rather than rejecting on read.
- */
-export type PlotEventType =
-	| "plot_created"
-	| "intent_edited"
-	| "status_changed"
-	| "attachment_added"
-	| "attachment_removed"
-	| "run_dispatched"
-	| "plan_run_dispatched"
-	| "decision_made"
-	| "question_posed"
-	| "question_answered"
-	| "artifact_produced"
-	| "note";
-
-export interface PlotEvent {
-	type: PlotEventType | string;
-	actor: string;
-	at: string; // ISO 8601; doubles as the event's stable id (used by
-	           // POST /plots/:id/questions/:event_id/answer).
-	data: Record<string, unknown>;
-}
-
-/**
- * `GET /plots/:id` envelope (warren-961e). The reader sorts the event
- * log by `at` ascending defensively; the UI collapses chains of
- * same-kind same-actor events client-side.
- */
-export interface PlotEnvelope {
-	id: string;
-	name: string;
-	status: PlotStatus;
-	intent: PlotIntent;
-	attachments: PlotAttachment[];
-	event_log: PlotEvent[];
-	project_id: string;
-	/**
-	 * Snapshot of warren runs in state=paused bound to this plot.
-	 * Sourced from `runs.listByPlotId(plot.id)` filtered to `paused`
-	 * at envelope-read time (warren-4ea4 / pl-0344 step 12). Drives
-	 * the prominent "Answer & resume" affordance + countdown that
-	 * PlotDetail renders below the matching `question_posed` event.
-	 * Empty when no paused run exists for the plot.
-	 */
-	paused_runs: PausedRunInfo[];
-}
-
-/**
- * One row of `paused_runs[]` on `PlotEnvelope` (warren-4ea4 /
- * pl-0344 step 12). The shape is the narrow subset PlotDetail needs:
- * the run id (for diagnostics), the `paused_at` ISO timestamp (anchor
- * for the countdown), the `paused_question_event_id` that joins this
- * row to a `question_posed` event in `event_log` (same id contract as
- * the AnswerCard's `:event_id`), and the resolved per-project
- * `agent.pauseTimeoutMs` budget so the UI can render "resumes in
- * N:NN" without re-reading the project config.
- */
-export interface PausedRunInfo {
-	run_id: string;
-	paused_at: string;
-	paused_question_event_id: string;
-	pause_timeout_ms: number;
-}
-
-/**
- * `POST /plots/:id/intent` request body (warren-896f). Flat top-level
- * fields (no `intent:` wrapper, unlike `POST /plots`). Omitted fields
- * are left untouched; an empty patch is accepted as a no-op.
- */
-export interface EditPlotIntentInput {
-	goal?: string;
-	non_goals?: string[];
-	constraints?: string[];
-	success_criteria?: string[];
-	dispatcherHandle?: string;
-}
-
-/**
- * `POST /plots/:id/rename` request body (warren-bed0 / pl-b0c0 step 3).
- * `name` is trimmed server-side; an empty-after-trim value is rejected
- * with 400. Renames are allowed in every status — the SPEC §6
- * frozen-at-done rule applies only to the intent body, not the name.
- */
-export interface RenamePlotInput {
-	name: string;
-	dispatcherHandle?: string;
-}
-
-/**
- * `POST /plots/:id/status` request body + response envelope
- * (warren-e868). The server validates the SPEC §6.5 transition matrix
- * before delegating to the lib.
- */
-export interface ChangePlotStatusInput {
-	next: PlotStatus;
-	dispatcherHandle?: string;
-}
-export interface ChangePlotStatusResponse {
-	summary: PlotSummary;
-	event: PlotEvent;
-}
-
-/**
- * `POST /plots/:id/attachments` request body + response envelope
- * (warren-589c). Per-kind ref shape is validated at the server edge.
- */
-export interface AttachPlotInput {
-	kind: AttachmentType;
-	ref: string;
-	role?: string;
-	dispatcherHandle?: string;
-}
-export interface AttachPlotResponse {
-	envelope: PlotEnvelope;
-	attachment: PlotAttachment;
-}
-
-/** `DELETE /plots/:id/attachments/:ref` response envelope. */
-export interface DetachPlotResponse {
-	envelope: PlotEnvelope;
-	removed_id: string;
-}
-
-/**
- * `POST /plots/:id/attachments/:ref/merge` request body + response
- * envelope (warren-8e39 / pl-0344 step 14).
- *
- * The `merge.kind` discriminant is forwarded verbatim from the server
- * so the UI can render rate-limit + error states without re-parsing.
- */
-export type MergeMethod = "merge" | "squash" | "rebase";
-
-export interface MergePlotPrInput {
-	mergeMethod?: MergeMethod;
-	dispatcherHandle?: string;
-}
-
-export type MergePlotPrOutcome =
-	| { kind: "merged"; sha: string }
-	| { kind: "already_merged" }
-	| { kind: "not_mergeable"; message: string }
-	| { kind: "not_found"; message: string }
-	| { kind: "missing_token"; message: string }
-	| { kind: "rate_limited"; message: string; resetAt: string | null }
-	| { kind: "network"; message: string }
-	| { kind: "http_error"; status: number; message: string };
-
-export interface MergePlotPrResponse {
-	envelope: PlotEnvelope;
-	merge: MergePlotPrOutcome;
-	attachment_id: string;
-	refresh_scheduled: boolean;
-}
-
-/**
- * `POST /plots/:id/questions/:event_id/answer` request body + response.
- * `eventId` is the targeted `question_posed` event's `at` ISO timestamp.
- */
-export interface AnswerPlotQuestionInput {
-	eventId: string;
-	answer: string;
-	dispatcherHandle?: string;
-}
-export interface AnswerPlotQuestionResponse {
-	event: PlotEvent;
-}
-
-/* ----------------------------------------------------------------------- */
-/* `GET /plots/:id/summary` — curated artifact view (warren-8917 /          */
-/* pl-0344 step 15). Institutional-memory projection: formatted intent,    */
-/* decisions filtered from the event log by type=decision_made, linked     */
-/* PRs + commits, and a curated structural timeline.                       */
-/* ----------------------------------------------------------------------- */
-
-export interface PlotSummaryDecision {
-	at: string;
-	actor: string;
-	summary: string;
-	rationale?: string;
-}
-
-export interface PlotSummaryLinkedPr {
-	attachment_id: string;
-	ref: string;
-	role: string;
-	added_at: string;
-	added_by: string;
-	/** ISO 8601 of the pr_merged note, or null when not merged. */
-	merged_at: string | null;
-}
-
-export interface PlotSummaryLinkedCommit {
-	at: string;
-	ref: string;
-	actor: string;
-}
-
-export interface PlotSummaryLinkedSeed {
-	attachment_id: string;
-	ref: string;
-	role: string;
-	added_at: string;
-	added_by: string;
-}
-
-export type PlotSummaryTimelineKind =
-	| "plot_created"
-	| "status_changed"
-	| "decision_made"
-	| "question_posed"
-	| "question_answered"
-	| "attachment_added"
-	| "run_dispatched"
-	| "plan_run_dispatched"
-	| "artifact_produced";
-
-export interface PlotSummaryTimelineEntry {
-	at: string;
-	actor: string;
-	kind: PlotSummaryTimelineKind;
-	label: string;
-}
-
-export interface PlotSummaryArtifact {
-	id: string;
-	name: string;
-	status: PlotStatus;
-	project_id: string;
-	intent: PlotIntent;
-	created_at: string;
-	last_event_at: string;
-	done_at: string | null;
-	decisions: PlotSummaryDecision[];
-	linked_prs: PlotSummaryLinkedPr[];
-	linked_commits: PlotSummaryLinkedCommit[];
-	linked_seeds: PlotSummaryLinkedSeed[];
-	timeline: PlotSummaryTimelineEntry[];
-}
-
-export type PlotSyncResponse =
-	| { kind: "no_op" }
-	| {
-			kind: "synced";
-			branch: string;
-			prUrl: string;
-			prNumber?: number;
-			merged: boolean;
-	  };
 
 /* ----------------------------------------------------------------------- */
 /* Run-analytics token types (warren-3be4 / pl-d1a2 step 3).               */
