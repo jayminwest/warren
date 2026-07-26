@@ -35,7 +35,7 @@ Engineering teams self-hosting their own agent infrastructure. The deployment un
 
 ## Status
 
-Stable (`0.9.10`), running on GKE in continuous use against real GitHub repos, with the Kubernetes runtime (`WARREN_RUNTIME=k8s`, pod-per-run) as the supported hosted target on GKE Autopilot. The end-to-end path is covered by 38 scenario-based acceptance tests in [`scripts/acceptance/`](scripts/acceptance/): manual runs, cron triggers, K8s pod dispatch (OOM fast-fail, steer delivery), Postgres backend, per-run preview environments, restart recovery, cost tracking, cost analytics, seeds-extensions roundtrip, serial plan-run dispatch, plan-run + Plot composition, Plot-workbench loop. The active frontier is the org-readiness cluster: SSO, remote workers, MCP, audit, budgets, GitHub App auth. See [ROADMAP.md](ROADMAP.md).
+Stable (`0.10.1`), running on GKE in continuous use against real GitHub repos, with the Kubernetes runtime (`WARREN_RUNTIME=k8s`, pod-per-run) as the supported hosted target on GKE Autopilot. The end-to-end path is covered by 38 scenario-based acceptance tests in [`scripts/acceptance/`](scripts/acceptance/): manual runs, cron triggers, K8s pod dispatch (OOM fast-fail, steer delivery), Postgres backend, per-run preview environments, restart recovery, cost tracking, cost analytics, seeds-extensions roundtrip, serial plan-run dispatch, plan-run + Plot composition, Plot-workbench loop. The active frontier is the org-readiness cluster: SSO, remote workers, MCP, audit, budgets, GitHub App auth. See [ROADMAP.md](ROADMAP.md).
 
 ## What you get
 
