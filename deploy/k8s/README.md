@@ -117,7 +117,28 @@ kubectl -n warren-runs create secret generic warren-git-token \
 | `warren-secrets/github-token` | warren | `GITHUB_TOKEN` | git push / private clone |
 | `warren-secrets/anthropic-api-key` | warren | `ANTHROPIC_API_KEY` | injected into agent pod env |
 | `warren-secrets/sentry-dsn` | warren | `SENTRY_DSN` | error reporting (optional) |
+| `warren-secrets/warren-auth` | warren | `WARREN_AUTH` | auth posture: `token` (default) or `public` (optional) |
+| `warren-secrets/warren-public-allowlist` | warren | `WARREN_PUBLIC_ALLOWLIST` | owners (`my-org`) and/or repos (`some-owner/some-repo`) a public instance may hold (required iff `warren-auth=public`) |
 | `warren-git-token/token` | warren-runs | `WARREN_GIT_TOKEN` (init pod) | init-container clone |
+
+### Going public
+
+The last two keys hold config, not credentials. They live in `warren-secrets`
+so that an operator flips the posture — and reverts it — with a Secret edit
+plus a rollout restart, rather than a redeploy. To enable public read-only
+access:
+
+```bash
+kubectl -n warren patch secret warren-secrets --type merge -p \
+  '{"stringData":{"warren-auth":"public","warren-public-allowlist":"<owner>|<owner>/<repo>[,...]"}}'
+kubectl -n warren rollout restart deploy/warren
+```
+
+To revert, set `warren-auth` back to `token` (or `""`) and restart again.
+Both keys fail safe. An absent or blank `warren-auth` resolves to `token`.
+Public mode with an empty allowlist refuses to boot instead of serving
+everything, and under a rolling update that leaves the previous pod in
+service.
 
 ## RBAC (design Q4 / R5)
 

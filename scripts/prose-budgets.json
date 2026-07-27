@@ -35,7 +35,6 @@
 		"SECURITY.md": 2,
 		"docs/CONSTITUTION.md": 26,
 		"docs/PHILOSOPHY.md": 31,
-		"docs/RUNBOOK-K8S.md": 109,
 		"docs/labels.md": 10,
 		"docs/project-setup.md": 5,
 		"docs/deploy/gke-deploy-prep.md": 37,

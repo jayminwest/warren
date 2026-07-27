@@ -85,18 +85,18 @@ jobs:
       id-token: write # required for Workload Identity Federation
       packages: write # required to push the control-plane image to ghcr.io
     steps:
-      - uses: actions/checkout@v6.0.2
+      - uses: actions/checkout@v7.0.1
         with:
           ref: ${{ env.TARGET_SHA }}
 
       - id: auth
-        uses: google-github-actions/auth@v2
+        uses: google-github-actions/auth@v3
         with:
           workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
           token_format: access_token
 
-      - uses: docker/login-action@v3
+      - uses: docker/login-action@v4.4.0
         with:
           registry: ${{ env.REGISTRY_HOST }}
           username: oauth2accesstoken
@@ -104,7 +104,7 @@ jobs:
 
       # ghcr.io needs no provisioned secret — the job's own GITHUB_TOKEN,
       # scoped by `permissions: packages: write` above, is the credential.
-      - uses: docker/login-action@v3
+      - uses: docker/login-action@v4.4.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -147,7 +147,7 @@ jobs:
       # public image too — a multi-arch manifest list is deliberately
       # deferred (it costs QEMU build time on every push).
       - name: Build + push warren (control plane)
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: Dockerfile
@@ -161,7 +161,7 @@ jobs:
           cache-to: type=gha,mode=max,scope=warren-control
 
       - name: Build + push warren-agent
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: deploy/docker/Dockerfile.agent
@@ -174,7 +174,7 @@ jobs:
           cache-to: type=gha,mode=max,scope=warren-agent
 
       - name: Build + push warren-workspace-init
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: deploy/docker/Dockerfile.workspace-init
@@ -201,16 +201,16 @@ jobs:
       group: gke-deploy-warren
       cancel-in-progress: false
     steps:
-      - uses: actions/checkout@v6.0.2
+      - uses: actions/checkout@v7.0.1
         with:
           ref: ${{ env.TARGET_SHA }}
 
-      - uses: google-github-actions/auth@v2
+      - uses: google-github-actions/auth@v3
         with:
           workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
 
-      - uses: google-github-actions/get-gke-credentials@v2
+      - uses: google-github-actions/get-gke-credentials@v3
         with:
           cluster_name: ${{ vars.GKE_CLUSTER || 'warren' }}
           location: ${{ vars.GKE_LOCATION || vars.GCP_REGION || 'us-west1' }}

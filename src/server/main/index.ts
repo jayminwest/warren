@@ -56,7 +56,7 @@ import { bootBridges } from "../bridges.ts";
 import { type EnvLike, loadServerConfigFromEnv } from "../config.ts";
 import {
 	assertRegisteredProjectsAllowlisted,
-	resolvePublicOrgAllowlist,
+	resolvePublicAllowlist,
 } from "../public-allowlist.ts";
 import { bootScheduler } from "../scheduler.ts";
 import { startServer } from "../server.ts";
@@ -115,7 +115,7 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 	// here so a public instance with no allowlist refuses the boot before it
 	// touches anything. `undefined` in every other mode ⇒ no org restriction.
 	const authKind = resolveAuthKind(env);
-	const publicOrgAllowlist = resolvePublicOrgAllowlist(authKind, env);
+	const publicAllowlist = resolvePublicAllowlist(authKind, env);
 
 	if (serverConfig.dbUrlConflict !== null) {
 		logger.warn(
@@ -134,7 +134,7 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 	// A public instance serving one private repo is the worst outcome this
 	// posture can produce, so a violation refuses the boot (naming every
 	// offender) instead of being served anonymously until someone notices.
-	assertRegisteredProjectsAllowlisted(publicOrgAllowlist, await listProjects(repos.projects));
+	assertRegisteredProjectsAllowlisted(publicAllowlist, await listProjects(repos.projects));
 
 	// Load the operator-facing TOML config (pl-9ba1 step 7 / warren-3909).
 	const fileConfig = await loadWarrenServerConfigFromFile({ env });
@@ -391,7 +391,7 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 		// knob refuses the boot instead of surfacing on someone's first stream.
 		eventStreamLimits: loadEventStreamLimitsFromEnv(),
 		// warren-ce9b: only set under `WARREN_AUTH=public`; gates POST /projects.
-		publicOrgAllowlist,
+		publicAllowlist,
 		previewAuth,
 		...(previewSidecars !== undefined ? { previewSidecars } : {}),
 		sdBinary: schedulerConfig.sdBinary,
