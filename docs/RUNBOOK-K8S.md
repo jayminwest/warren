@@ -306,7 +306,7 @@ Two namespaces hold secrets — the run namespace deliberately gets a smaller cr
 | `warren-secrets/anthropic-api-key` | `warren` | `ANTHROPIC_API_KEY` | injected into agent pod env at dispatch |
 | `warren-secrets/sentry-dsn` | `warren` | `SENTRY_DSN` | error reporting (optional) |
 | `warren-secrets/warren-auth` | `warren` | `WARREN_AUTH` | auth posture: `token` (default) or `public`; **not a secret** — it lives here so the flip and the revert stay a Secret edit plus a rollout restart |
-| `warren-secrets/warren-public-org-allowlist` | `warren` | `WARREN_PUBLIC_ORG_ALLOWLIST` | comma-separated GitHub owners a public instance may hold; read **only** under `WARREN_AUTH=public`, where an empty value refuses the boot |
+| `warren-secrets/warren-public-allowlist` | `warren` | `WARREN_PUBLIC_ALLOWLIST` | comma-separated owners (`os-eco`) and/or repos (`jayminwest/warren`) a public instance may hold; read **only** under `WARREN_AUTH=public`, where an empty value refuses the boot |
 | `warren-git-token/token` | `warren-runs` | `WARREN_GIT_TOKEN` (init pod) | init-container clone/push; **optional** — public repos clone without it, private repos **fail silently** if it is missing |
 | `warren-anthropic-key/api-key` | `warren-runs` | agent pod `secretKeyRef` | OPTIONAL agent key source (`WARREN_K8S_ANTHROPIC_SECRET_NAME`/`_KEY`); a run whose key rides the dispatch env still schedules when this Secret is absent |
 
@@ -342,7 +342,9 @@ Do not `--from-env-file` a self-host `.env` straight into `warren-secrets` — c
 `WARREN_AUTH` selects who may reach the instance without a bearer token.
 The default `token` keeps every route gated.
 `public` admits credential-less spectators to a read-only public projection covering runs, projects, agents and the event stream.
-`WARREN_PUBLIC_ORG_ALLOWLIST` names the GitHub owners such an instance may hold.
+`WARREN_PUBLIC_ALLOWLIST` names what such an instance may hold.
+Each entry is either a bare owner (`os-eco`) or one repo (`jayminwest/warren`).
+Use repo entries when the owner also holds private repos, because an owner entry admits every repo beneath it.
 
 Neither value is a credential.
 Both live in `warren-secrets` for one reason: rollback speed.
@@ -351,7 +353,7 @@ A literal `value:` in the overlay would turn that revert into a commit, a releas
 
 ```bash
 kubectl -n warren patch secret warren-secrets --type merge -p \
-  '{"stringData":{"warren-auth":"public","warren-public-org-allowlist":"<org>[,<org>...]"}}'
+  '{"stringData":{"warren-auth":"public","warren-public-allowlist":"<owner>|<owner>/<repo>[,...]"}}'
 kubectl -n warren rollout restart deploy/warren
 ```
 
@@ -390,7 +392,7 @@ The full Fly→K8s mapping is in [`gke-deploy-prep.md`](deploy/gke-deploy-prep.m
 | `WARREN_K8S_ANTHROPIC_SECRET_NAME` / `_KEY` | `warren-anthropic-key` / `api-key` | optional agent-key `secretKeyRef` |
 | `WARREN_K8S_GIT_SECRET_NAME` / `_KEY` | `warren-git-token` / `token` | init-container git token source |
 | `WARREN_AUTH` | unset ⇒ `token` | auth posture (§2.5); `public` admits credential-less spectators to the public projection |
-| `WARREN_PUBLIC_ORG_ALLOWLIST` | unset | GitHub owners a public instance may hold; required under `WARREN_AUTH=public` |
+| `WARREN_PUBLIC_ALLOWLIST` | unset | owners and/or `owner/repo` entries a public instance may hold; required under `WARREN_AUTH=public` |
 
 The provider injects these into pods (never set them by hand): `WARREN_API_URL`, `WARREN_RUN_ID`, `WARREN_REPO_URL`, `WARREN_BRANCH`, `WARREN_BASE_BRANCH`, `WARREN_WORKSPACE_PATH`, `WARREN_SEED_MANIFEST`.
 

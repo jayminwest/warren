@@ -90,8 +90,8 @@ export function createProjectHandler(deps: ServerDeps): RouteHandler {
 		const defaultBranch = optionalString(body, "defaultBranch");
 		// warren-ce9b: on a public instance only allowlisted orgs may ever be
 		// registered — refused here, BEFORE addProject clones anything. No-op
-		// under `WARREN_AUTH=token` (deps.publicOrgAllowlist is absent).
-		assertGitUrlAllowlisted(deps.publicOrgAllowlist, gitUrl);
+		// under `WARREN_AUTH=token` (deps.publicAllowlist is absent).
+		assertGitUrlAllowlisted(deps.publicAllowlist, gitUrl);
 		const project = await addProject({
 			repo: deps.repos.projects,
 			config: deps.projectsConfig,

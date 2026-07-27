@@ -152,9 +152,9 @@ spec:
             #     src/server/auth.ts) ⇒ the instance stays private. There is
             #     no path from a degenerate value to "public"; an
             #     unrecognized value refuses the boot outright.
-            #   - WARREN_PUBLIC_ORG_ALLOWLIST is read ONLY under
+            #   - WARREN_PUBLIC_ALLOWLIST is read ONLY under
             #     WARREN_AUTH=public, where absent/empty REFUSES the boot
-            #     (loadPublicOrgAllowlistFromEnv). Under a rolling update an
+            #     (loadPublicAllowlistFromEnv). Under a rolling update an
             #     unready pod never takes traffic, so the misconfiguration
             #     leaves the previous pod serving instead of exposing one.
             - name: WARREN_AUTH
@@ -163,11 +163,11 @@ spec:
                   name: warren-secrets
                   key: warren-auth
                   optional: true
-            - name: WARREN_PUBLIC_ORG_ALLOWLIST
+            - name: WARREN_PUBLIC_ALLOWLIST
               valueFrom:
                 secretKeyRef:
                   name: warren-secrets
-                  key: warren-public-org-allowlist
+                  key: warren-public-allowlist
                   optional: true
           volumeMounts:
             - name: data

@@ -4,12 +4,12 @@ import { resolve } from "node:path";
 import { load, loadAll } from "js-yaml";
 
 import { AUTH_KINDS, DEFAULT_AUTH_KIND } from "../src/server/auth.ts";
-import { WARREN_PUBLIC_ORG_ALLOWLIST_ENV } from "../src/server/public-allowlist.ts";
+import { WARREN_PUBLIC_ALLOWLIST_ENV } from "../src/server/public-allowlist.ts";
 
 // Guards the public-instance auth wiring (warren-851b / warren-ce9b / warren-1841).
 //
 // The auth posture has two halves that nothing else can check. The SOURCE
-// half reads `WARREN_AUTH` and `WARREN_PUBLIC_ORG_ALLOWLIST` from the process
+// half reads `WARREN_AUTH` and `WARREN_PUBLIC_ALLOWLIST` from the process
 // env; the MANIFEST half is the only thing that ever puts them there. Neither
 // the compiler nor kustomize relates the two, and the failure is silent in the
 // worst direction: `kubectl apply` succeeds, the operator sets the Secret key,
@@ -40,7 +40,7 @@ const WARREN_AUTH_ENV = "WARREN_AUTH";
 
 const SECRET_NAME = "warren-secrets";
 const AUTH_KEY = "warren-auth";
-const ALLOWLIST_KEY = "warren-public-org-allowlist";
+const ALLOWLIST_KEY = "warren-public-allowlist";
 
 function readRepoFile(path: string): string {
 	return readFileSync(resolve(REPO_ROOT, path), "utf8");
@@ -82,7 +82,7 @@ function envEntry(name: string): EnvEntry {
 }
 
 describe("the Deployment supplies the auth-posture env vars", () => {
-	for (const name of [WARREN_AUTH_ENV, WARREN_PUBLIC_ORG_ALLOWLIST_ENV]) {
+	for (const name of [WARREN_AUTH_ENV, WARREN_PUBLIC_ALLOWLIST_ENV]) {
 		test(`${name} reaches the container`, () => {
 			expect(controlPlaneEnv().map((e) => e.name)).toContain(name);
 		});
@@ -102,9 +102,7 @@ describe("the Deployment supplies the auth-posture env vars", () => {
 
 	test("the Secret keys are the ones the README tells operators to set", () => {
 		expect(envEntry(WARREN_AUTH_ENV).valueFrom?.secretKeyRef?.key).toBe(AUTH_KEY);
-		expect(envEntry(WARREN_PUBLIC_ORG_ALLOWLIST_ENV).valueFrom?.secretKeyRef?.key).toBe(
-			ALLOWLIST_KEY,
-		);
+		expect(envEntry(WARREN_PUBLIC_ALLOWLIST_ENV).valueFrom?.secretKeyRef?.key).toBe(ALLOWLIST_KEY);
 	});
 });
 
@@ -119,7 +117,7 @@ describe("source and manifest still agree on the env var names", () => {
 	test("the allowlist env name is imported, not retyped", () => {
 		// Sanity: the constant this file imports is the real one, so the
 		// Deployment assertions above are anchored to source.
-		expect(WARREN_PUBLIC_ORG_ALLOWLIST_ENV).toBe("WARREN_PUBLIC_ORG_ALLOWLIST");
+		expect(WARREN_PUBLIC_ALLOWLIST_ENV).toBe("WARREN_PUBLIC_ALLOWLIST");
 	});
 });
 
