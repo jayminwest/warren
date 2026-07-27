@@ -13,19 +13,20 @@
  * inline `statusVariant()` switch in `RunDetail.tsx`) all delegate
  * here so adding a new state or swapping a colour token is a
  * one-line change rather than a multi-file grep.
+ *
+ * The `plot` kind was dropped in warren-f53e / pl-b82d step 19: the
+ * surfaces it served were deleted in pl-3a79 and nothing rendered it
+ * afterwards.
  */
 import {
 	Activity,
-	Archive,
 	CheckCircle2,
 	CircleDashed,
-	CircleDot,
 	Clock,
 	GitPullRequest,
 	type LucideIcon,
 	MinusCircle,
 	Pause,
-	Pencil,
 	PlayCircle,
 	PowerOff,
 	XCircle,
@@ -63,14 +64,6 @@ const RUN_STATUS: Record<string, StatusMeta> = {
 	succeeded: { label: "succeeded", variant: "succeeded", icon: CheckCircle2, pulse: false },
 	failed: { label: "failed", variant: "failed", icon: XCircle, pulse: false },
 	cancelled: { label: "cancelled", variant: "cancelled", icon: MinusCircle, pulse: false },
-};
-
-const PLOT_STATUS: Record<string, StatusMeta> = {
-	drafting: { label: "drafting", variant: "drafting", icon: Pencil, pulse: false },
-	ready: { label: "ready", variant: "ready", icon: CircleDot, pulse: false },
-	active: { label: "active", variant: "active", icon: Activity, pulse: true },
-	done: { label: "done", variant: "done", icon: CheckCircle2, pulse: false },
-	archived: { label: "archived", variant: "archived", icon: Archive, pulse: false },
 };
 
 const PLAN_RUN_STATUS: Record<string, StatusMeta> = {
@@ -112,7 +105,6 @@ const EVENT_STREAM_STATUS: Record<string, StatusMeta> = {
 
 const REGISTRY = {
 	run: RUN_STATUS,
-	plot: PLOT_STATUS,
 	planRun: PLAN_RUN_STATUS,
 	planRunChild: PLAN_RUN_CHILD_STATUS,
 	preview: PREVIEW_STATUS,

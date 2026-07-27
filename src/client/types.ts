@@ -26,6 +26,25 @@ export type RunFailureReason =
 
 export type PreviewState = "starting" | "live" | "failed" | "torn-down";
 
+/**
+ * Identity discriminant reported by `GET /whoami` (warren-e195). Mirrors
+ * `ActorKind` in src/server/types.ts.
+ */
+export type ActorIdentity = "operator" | "anonymous";
+
+/** One capability name. Mirrors `CapabilityName` in src/server/types.ts. */
+export type CapabilityName = "readPublic" | "readOperator" | "dispatch" | "admin";
+
+/**
+ * `GET /whoami` — who warren thinks the caller is and what it may do.
+ * `capabilities` holds only the granted names, so a client checks
+ * membership rather than a boolean flag.
+ */
+export interface WhoamiResponse {
+	identity: ActorIdentity;
+	capabilities: CapabilityName[];
+}
+
 export type AgentSource = "builtin" | "library" | `project:${string}`;
 
 export interface AgentRow {

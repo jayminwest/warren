@@ -3,6 +3,7 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { agentsApi, projectsApi, runsApi } from "@/api/client.ts";
+import { OperatorOnly } from "@/components/OperatorOnly.tsx";
 import { StateBadge } from "@/components/StateBadge.tsx";
 import { Alert } from "@/components/ui/alert.tsx";
 import { Button } from "@/components/ui/button.tsx";
@@ -127,10 +128,14 @@ export function RunsPage() {
 	}, [projects.data]);
 
 	// All-time totals from the server (warren-ee50). Survives pagination
-	// — unlike the prior "sum the visible page" approach.
+	// — unlike the prior "sum the visible page" approach. `costTotalUsd` is
+	// absent from a spectator's envelope (warren-946f drops the
+	// instance-wide rollup), so it stays `undefined` rather than 0 and the
+	// tile below renders on presence — a coalesced 0 would read as a real
+	// "$0.00 all-time" headline (warren-f53e).
 	const totalRuns = runs.data?.total ?? 0;
 	const costTotals = {
-		total: runs.data?.costTotalUsd ?? 0,
+		total: runs.data?.costTotalUsd,
 		priced: runs.data?.costPricedCount ?? 0,
 	};
 	const visibleCount = runs.data?.runs.length ?? 0;
@@ -145,9 +150,11 @@ export function RunsPage() {
 				title="Runs"
 				description="Agent runs dispatched into burrow sandboxes."
 				actions={
-					<Link to="/runs/new">
-						<Button>Dispatch a run</Button>
-					</Link>
+					<OperatorOnly>
+						<Link to="/runs/new">
+							<Button>Dispatch a run</Button>
+						</Link>
+					</OperatorOnly>
 				}
 			/>
 
@@ -195,7 +202,7 @@ export function RunsPage() {
 			<Card>
 				<CardHeader className={responsiveCardHeaderRow}>
 					<CardTitle>{totalRuns} runs</CardTitle>
-					{showCost && costTotals.priced > 0 ? (
+					{showCost && costTotals.total !== undefined && costTotals.priced > 0 ? (
 						<span
 							className="font-mono text-xs text-(--color-muted-foreground)"
 							title={`${costTotals.priced} of ${totalRuns} runs have a recorded cost (all-time)`}

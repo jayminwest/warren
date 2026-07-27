@@ -18,6 +18,7 @@ export {
 	getRunHandler,
 	listCostAnalyticsHandler,
 	listRunsHandler,
+	projectRun,
 } from "./lifecycle.ts";
 export {
 	cancelRunHandler,

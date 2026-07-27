@@ -27,7 +27,8 @@
  *
  * `notFound` / `methodNotAllowed` / `notImplemented` are the canned
  * envelopes used by the router when no route matches or a route is a
- * scaffold-only stub.
+ * scaffold-only stub; `forbidden` is the canned envelope the capability
+ * gate returns when the admitted caller can't reach the matched route.
  */
 
 import {
@@ -49,7 +50,7 @@ import {
 } from "../runtime/errors.ts";
 import { WarrenConfigUnavailableError } from "../warren-config/errors.ts";
 import { EventStreamCapacityError } from "./stream-limits.ts";
-import type { ErrorEnvelope } from "./types.ts";
+import type { ErrorEnvelope, RoutePolicy } from "./types.ts";
 
 export interface RenderedError {
 	readonly status: number;
@@ -158,6 +159,25 @@ export function notFound(pathname: string): RenderedError {
 	return {
 		status: 404,
 		envelope: buildEnvelope("not_found", `no route matches ${pathname}`),
+	};
+}
+
+/**
+ * The caller was admitted but its capability set doesn't satisfy the route's
+ * declared policy (warren-b875). The body names the capability the route
+ * wants and nothing else — not who the caller is, not why it fell short, not
+ * whether the resource exists. 403 rather than 404: the route table is public
+ * (`docs/openapi.yaml`), so hiding its existence buys nothing, and a
+ * spectator that gets a 403 knows to authenticate rather than to retry.
+ */
+export function forbidden(policy: RoutePolicy): RenderedError {
+	return {
+		status: 403,
+		envelope: buildEnvelope(
+			"forbidden",
+			`this route requires the '${policy}' capability`,
+			"authenticate with an operator bearer token",
+		),
 	};
 }
 

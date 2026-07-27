@@ -14,25 +14,33 @@
  * `/readyz` reveals failed checks, which is sensitive in a
  * misconfigured deploy.
  *
+ * Past the gate sits the capability check (warren-b875): every route carries
+ * a declared `RoutePolicy` and `handleRequest` refuses with 403 when the
+ * admitted actor doesn't hold it. This is the ONLY place that check happens —
+ * one chokepoint every request passes through, so no handler can forget it
+ * and no route can opt out (the field is required).
+ *
  * `startServer` does NOT own the bridges, broker, or DB — those live in
  * `ServerDeps` so a single test can spin up the wire layer without a
  * real burrow socket. The `main.ts` boot wires the production deps.
  */
 
 import { existsSync, unlinkSync } from "node:fs";
-import { NO_AUTH } from "./auth.ts";
-import { errorLogFields, methodNotAllowed, notFound, renderError } from "./errors.ts";
+import { NO_AUTH, policyAllows } from "./auth.ts";
+import { errorLogFields, forbidden, methodNotAllowed, notFound, renderError } from "./errors.ts";
 import { buildApiRoutes, isApiPath, isAuthExempt } from "./handlers/index.ts";
 import { bindRequestIdLogger, extractOrGenerateRequestId, stampRequestId } from "./request-id.ts";
 import { jsonResponse } from "./response.ts";
 import { matchRoute, pathExists } from "./router.ts";
 import type {
+	Actor,
 	AuthDenied,
 	AuthProvider,
 	Logger,
 	PreviewProxyHandler,
 	Route,
 	RouteContext,
+	RoutePolicy,
 	ServeHandle,
 	ServeOptions,
 	ServerDeps,
@@ -152,6 +160,10 @@ function buildAllRoutes(deps: ServerDeps): Route[] {
 		routes.push({
 			method: "GET",
 			pattern: "/",
+			// The SPA shell is a non-API path, so the auth gate never runs for
+			// it and no actor is ever weighed against this policy — declaring
+			// it `anonymous` states the intent the exemption already encodes.
+			policy: "anonymous",
 			handler: createUiHandler({ distDir: deps.uiDistDir }),
 		});
 	}
@@ -226,13 +238,25 @@ async function handleRequest(
 		}
 	}
 
+	// The admitted caller, threaded onto the RouteContext below (warren-1ff0).
+	// Stays undefined on auth-exempt paths — the gate never ran there, so
+	// there is nobody to speak for.
+	let actor: Actor | undefined;
 	if (!isAuthExempt(url.pathname)) {
 		const result = auth.authorize(request);
 		if (!result.ok) return denyResponse(result, logger, request, url);
+		actor = result.actor;
 	}
 
 	const match = matchRoute(routes, request.method, url.pathname);
 	if (match) {
+		// Capability gate (warren-b875). Every route declares the capability it
+		// requires and this is the single place it is checked — handlers never
+		// re-derive it. `actor` is undefined only on auth-exempt paths, where
+		// the gate never ran and the policy is `anonymous` by construction.
+		if (actor !== undefined && !policyAllows(actor, match.route.policy)) {
+			return forbiddenResponse(match.route.policy, logger, request, url);
+		}
 		const ctx: RouteContext = {
 			request,
 			url,
@@ -240,6 +264,7 @@ async function handleRequest(
 			logger,
 			requestId,
 			...(clientIp !== undefined ? { clientIp } : {}),
+			...(actor !== undefined ? { actor } : {}),
 		};
 		try {
 			return await match.route.handler(ctx);
@@ -311,6 +336,32 @@ async function handleRequest(
 	const rendered = pathExists(routes, url.pathname)
 		? methodNotAllowed(request.method, url.pathname)
 		: notFound(url.pathname);
+	return jsonResponse(rendered.status, rendered.envelope);
+}
+
+/**
+ * 403 for an admitted caller whose capabilities don't cover the matched
+ * route's policy (warren-b875). Logged at warn like `server.auth_denied` so
+ * refused public traffic is visible; the declared policy rides along so an
+ * operator can tell "spectator hit an operator route" from "bad token".
+ */
+function forbiddenResponse(
+	policy: RoutePolicy,
+	logger: Logger,
+	request: Request,
+	url: URL,
+): Response {
+	const rendered = forbidden(policy);
+	logger.warn(
+		{
+			method: request.method,
+			path: url.pathname,
+			status: rendered.status,
+			code: rendered.envelope.error.code,
+			policy,
+		},
+		"server.policy_denied",
+	);
 	return jsonResponse(rendered.status, rendered.envelope);
 }
 

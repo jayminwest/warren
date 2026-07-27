@@ -1,4 +1,5 @@
 import { ValidationError } from "../../../core/errors.ts";
+import type { RunRow } from "../../../db/schema.ts";
 import { readProviderFrontmatter } from "../../../registry/index.ts";
 import {
 	buildCostAnalytics,
@@ -6,9 +7,86 @@ import {
 	hydrateRunsUsage,
 	hydrateRunUsage,
 } from "../../../runs/index.ts";
+import { isPublicOnly, pickFields } from "../../projection.ts";
 import { jsonResponse } from "../../response.ts";
-import type { RouteHandler, ServerDeps } from "../../types.ts";
+import type { Actor, RouteHandler, ServerDeps } from "../../types.ts";
 import { requireParam } from "../index.ts";
+
+/**
+ * The run columns a `readPublic`-only spectator sees (warren-946f /
+ * pl-b82d step 14). An allowlist, so a column added to `runs` tomorrow is
+ * absent from the public body until someone classifies it here — see
+ * `src/server/projection.ts` for why this is never a denylist.
+ *
+ * The prompt stays: "here's what we asked, here's what it did" is the
+ * interesting half of a public instance. Per-run `costUsd` and the token
+ * counts stay too — cost-per-merged-PR is the metric the instance exists
+ * to show, and it is os-eco's own spend on its own public repos.
+ */
+export const PUBLIC_RUN_FIELDS = [
+	"id",
+	"agentName",
+	"projectId",
+	"seedId",
+	"parentRunId",
+	"cloneKind",
+	"mode",
+	"state",
+	"failureReason",
+	"startedAt",
+	"endedAt",
+	"prompt",
+	"trigger",
+	"prUrl",
+	"targetBranch",
+	"costUsd",
+	"tokensInput",
+	"tokensOutput",
+	"tokensCacheRead",
+	"tokensCacheWrite",
+	"previewState",
+	"previewPort",
+	"previewStartedAt",
+	"previewLastHitAt",
+	"pausedAt",
+	"pausedQuestionEventId",
+] as const satisfies readonly (keyof RunRow)[];
+
+/**
+ * The complement of `PUBLIC_RUN_FIELDS`, spelled out so the classification
+ * is a decision on record rather than "whatever fell off the list", and so
+ * `lifecycle.projection.test.ts` can assert the two partition `RunRow`.
+ *
+ * - `renderedAgentJson` — the fully rendered system prompt. Prompt
+ *   engineering is the IP here, and it is pure noise to a spectator.
+ * - `burrowId` / `burrowRunId` / `workerId` — internal runtime handles.
+ *   They also render as empty "—" cards on the K8s instance today.
+ * - `previewFailureMessage` — free text carrying a subprocess stderr tail.
+ */
+export const REDACTED_RUN_FIELDS = [
+	"renderedAgentJson",
+	"burrowId",
+	"burrowRunId",
+	"workerId",
+	"previewFailureMessage",
+] as const satisfies readonly (keyof RunRow)[];
+
+/** A run row as a `readPublic`-only caller sees it. */
+export type PublicRun = Pick<RunRow, (typeof PUBLIC_RUN_FIELDS)[number]>;
+
+/**
+ * Narrow one run row for `actor`. The operator gets the row untouched, so
+ * the public body is provably the operator body minus fields — there is
+ * only one construction site and the two cannot drift.
+ *
+ * Exported (warren-c405) because `GET /plan-runs/:id` fans out `runs[]` too
+ * and must reuse THIS function rather than grow a second projection: the
+ * plan-run detail handler served raw `RunRow`s to spectators until scenario
+ * 39 caught it.
+ */
+export function projectRun<T extends RunRow>(run: T, actor: Actor | undefined): T | PublicRun {
+	return isPublicOnly(actor) ? pickFields(run, PUBLIC_RUN_FIELDS) : run;
+}
 
 function parseRunsSort(ctx: { url: URL }): { sort: "started" | "cost"; dir: "asc" | "desc" } {
 	const rawSort = ctx.url.searchParams.get("sort");
@@ -80,7 +158,7 @@ export function listRunsHandler(deps: ServerDeps): RouteHandler {
 					: await deps.repos.runs.listAll(listOpts);
 		// warren-ab18: surface in-events cost for terminal runs whose
 		// bridge died before the final checkpoint landed.
-		const runs = await hydrateRunsUsage(rows, deps.repos.events);
+		const hydrated = await hydrateRunsUsage(rows, deps.repos.events);
 		// warren-ee50 / pl-b0c0 step 1: aggregate the full filtered set so
 		// the Runs page can show all-time totals next to a paginated table.
 		const aggFilter = {
@@ -88,10 +166,15 @@ export function listRunsHandler(deps: ServerDeps): RouteHandler {
 			...(agent !== null ? { agentName: agent } : {}),
 		};
 		const agg = await deps.repos.runs.aggregate(aggFilter);
+		// warren-946f: `costTotalUsd` is an instance-wide all-time number.
+		// Unlabeled on a list endpoint it reads as a headline out of
+		// context, so it belongs in a deliberately framed ledger view
+		// rather than here; per-run `costUsd` survives the projection.
+		const publicOnly = isPublicOnly(ctx.actor);
 		return jsonResponse(200, {
-			runs,
+			runs: hydrated.map((run) => projectRun(run, ctx.actor)),
 			total: agg.total,
-			costTotalUsd: agg.costTotalUsd,
+			...(publicOnly ? {} : { costTotalUsd: agg.costTotalUsd }),
 			costPricedCount: agg.costPricedCount,
 			limit: page.limit,
 			offset: page.offset,
@@ -106,7 +189,7 @@ export function getRunHandler(deps: ServerDeps): RouteHandler {
 		// warren-ab18: same compute-on-read fallback as the list handler
 		// so the RunDetail page shows cost for ghost / reboot-orphaned runs.
 		const run = await hydrateRunUsage(row, deps.repos.events);
-		return jsonResponse(200, run);
+		return jsonResponse(200, projectRun(run, ctx.actor));
 	};
 }
 

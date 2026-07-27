@@ -1,0 +1,38 @@
+# GCE load-balancer backend policy for the warren Ingress (warren-48d3).
+# Bound to the Service by its `cloud.google.com/backend-config` annotation
+# (patched in kustomization.yaml), which is what makes the GCE Ingress
+# controller apply the settings below to the generated backend service.
+#
+# `securityPolicy` names a Cloud Armor policy, which is a GCP *project*
+# resource and therefore cannot be expressed as a manifest. Provision it first
+# with `deploy/gcp/cloud-armor.sh` (the reviewable source of truth for the
+# rules); this reference is inert until that policy exists. The two names are
+# pinned together by `scripts/cloud-armor.test.ts`.
+#
+# Kill switch: `kubectl -n warren patch backendconfig warren --type=merge \
+#   -p '{"spec":{"securityPolicy":{"name":""}}}'` detaches the policy within a
+# minute or two. That is a live edit — the next `kubectl apply -k` restores it,
+# so a durable disable means editing this file. See docs/RUNBOOK-K8S.md §1.7.
+apiVersion: cloud.google.com/v1
+kind: BackendConfig
+metadata:
+  name: warren
+  namespace: warren
+  labels:
+    app.kubernetes.io/name: warren
+    app.kubernetes.io/component: control-plane
+spec:
+  securityPolicy:
+    name: warren-armor
+  # The GCE backend-service default is 30s, which would cut every long-lived
+  # NDJSON event stream (GET /runs/:id/events, unbounded by default —
+  # WARREN_EVENT_STREAM_MAX_LIFETIME=0). This is a stream *response* timeout,
+  # not an idle timeout, so it must exceed the longest run a client watches.
+  timeoutSec: 3600
+  # LB request logging is where Cloud Armor decisions surface (the
+  # enforcedSecurityPolicy / previewSecurityPolicy fields). Without it a
+  # throttled burst and a preview-rule match are both invisible. Lower the
+  # sample rate if log volume becomes a cost problem during a spike.
+  logging:
+    enable: true
+    sampleRate: 1.0

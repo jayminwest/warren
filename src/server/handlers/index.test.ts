@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { isAuthExempt } from "./index.ts";
+import type { RoutePolicy } from "../types.ts";
+import { API_ROUTE_POLICIES, isAuthExempt } from "./index.ts";
 
 /* isAuthExempt tests (extracted from handlers.preview.test.ts, warren-599c / pl-9088 step 3). */
 
@@ -27,5 +28,105 @@ describe("isAuthExempt", () => {
 		expect(isAuthExempt("/runs/run_abc/events")).toBe(false);
 		expect(isAuthExempt("/runs/run_abc/preview")).toBe(false);
 		expect(isAuthExempt("/runs/run_abc/preview/login/extra")).toBe(false);
+	});
+
+	test("the exempt set is exactly the anonymous-policy routes (warren-b875)", () => {
+		const anonymous = API_ROUTE_POLICIES.filter((r) => r.policy === "anonymous").map(
+			(r) => r.pattern,
+		);
+		expect(anonymous.every((p) => isAuthExempt(p))).toBe(true);
+		for (const route of API_ROUTE_POLICIES) {
+			if (route.policy === "anonymous") continue;
+			// Every other API pattern must be gated; a `:param` pattern is never
+			// itself a real pathname, but it still lives under an API prefix.
+			expect(isAuthExempt(route.pattern)).toBe(false);
+		}
+	});
+
+	test("anonymous routes are static paths — a :param pattern could never match", () => {
+		for (const route of API_ROUTE_POLICIES) {
+			if (route.policy !== "anonymous") continue;
+			expect(route.pattern).not.toContain(":");
+		}
+	});
+});
+
+/**
+ * Route-policy classification (warren-b875). ROUTE_TABLE is the security
+ * boundary of a `WARREN_AUTH=public` instance, so the classification is
+ * asserted here as literal data: widening a route to the spectator surface
+ * has to be a deliberate edit to THIS list, never a side effect of adding a
+ * route. The wire-level proof that the classification is actually enforced
+ * lives in `policy.wire.test.ts`.
+ */
+describe("ROUTE_TABLE policy classification", () => {
+	const key = (r: { method: string; pattern: string }) => `${r.method} ${r.pattern}`;
+	const policyOf = (route: string): RoutePolicy | undefined =>
+		API_ROUTE_POLICIES.find((r) => key(r) === route)?.policy;
+
+	/** The whole surface a credential-less spectator may reach. */
+	const SPECTATOR_ROUTES: readonly string[] = [
+		"GET /healthz",
+		"GET /version",
+		"GET /whoami", // reflects the caller's own request back at it (warren-e195)
+		"GET /agents",
+		"GET /agents/:name",
+		"GET /projects",
+		"GET /analytics/runs",
+		"GET /runs",
+		"GET /runs/:id",
+		"GET /runs/:id/events",
+		"GET /plan-runs",
+		"GET /plan-runs/:id",
+		"GET /plan-runs/:id/events",
+	];
+
+	/** Reads that must stay operator-only — each with the reason it is here. */
+	const OPERATOR_READS: readonly string[] = [
+		"GET /readyz", // failed-check disclosure
+		"GET /metrics", // cumulative cost + operational shape (warren-682a)
+		"GET /analytics/cost", // instance-wide USD rollup
+		"GET /analytics/behavior", // cross-run tool/command mining
+		"GET /runs/:id/inbox", // DESTRUCTIVE ON READ — drains the steering queue
+		"GET /runs/:id/finalize-intent", // pod callback; pollable to race the pod
+		"GET /projects/:id/triggers", // trigger prompts + qualityGate commands
+		"GET /projects/:id/warren-config", // admission caps + executable strings
+		"GET /projects/:id/seeds/plans", // project issue contents
+		"GET /projects/:id/seeds/:seedId", // project issue contents
+		"GET /projects/:id/ready-plans", // project issue contents
+		"GET /preview/config", // discloses WARREN_PREVIEW_HOST
+	];
+
+	test("every route declares a policy from the known vocabulary", () => {
+		const legal: readonly RoutePolicy[] = [
+			"anonymous",
+			"readPublic",
+			"readOperator",
+			"dispatch",
+			"admin",
+		];
+		expect(API_ROUTE_POLICIES.length).toBeGreaterThan(0);
+		for (const route of API_ROUTE_POLICIES) {
+			expect(legal).toContain(route.policy);
+		}
+	});
+
+	test("the spectator surface is exactly the enumerated routes", () => {
+		const reachable = API_ROUTE_POLICIES.filter(
+			(r) => r.policy === "anonymous" || r.policy === "readPublic",
+		).map(key);
+		expect(reachable.sort()).toEqual([...SPECTATOR_ROUTES].sort());
+	});
+
+	test("every operator-only read is blocked to a spectator", () => {
+		const misclassified = OPERATOR_READS.filter((r) => policyOf(r) !== "readOperator");
+		expect(misclassified).toEqual([]);
+	});
+
+	test("every POST and DELETE requires dispatch or admin", () => {
+		const mutating = API_ROUTE_POLICIES.filter((r) => r.method !== "GET");
+		expect(mutating.length).toBeGreaterThan(0);
+		const reachable = mutating.filter((r) => r.policy !== "dispatch" && r.policy !== "admin");
+		expect(reachable.map(key)).toEqual([]);
 	});
 });

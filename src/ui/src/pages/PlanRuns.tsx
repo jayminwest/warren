@@ -2,12 +2,20 @@ import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { planRunsApi, projectsApi } from "@/api/client.ts";
-import type { PlanRunChildState, PlanRunRow, PlanRunState, RunRow } from "@/api/types.ts";
+import type {
+	CapabilityName,
+	PlanRunChildState,
+	PlanRunRow,
+	PlanRunState,
+	RunRow,
+} from "@/api/types.ts";
+import { useCapabilities } from "@/hooks/use-capabilities.ts";
 import {
 	compareStrings,
 	type Comparator,
 	useClientSort,
 } from "@/hooks/use-client-sort.ts";
+import { OperatorOnly } from "@/components/OperatorOnly.tsx";
 import { SortableTableHead } from "@/components/ui/sortable-table-head.tsx";
 import { formatCostUsd } from "./RunDetail.tsx";
 import { PlanRunStateBadge } from "@/components/PlanRunStateBadge.tsx";
@@ -32,6 +40,13 @@ import { ReadyPlansView } from "./ready-plans.tsx";
 
 type PlanRunsTab = "plan-runs" | "ready";
 
+/**
+ * `GET /projects/:id/ready-plans` is readOperator — it surfaces project
+ * internals — so the tab that renders it is dropped for a spectator rather
+ * than left to 403 (warren-f53e / pl-b82d step 19).
+ */
+const READY_TAB_CAPABILITY: CapabilityName = "readOperator";
+
 type PlanRunSortKey = "state" | "id" | "planId" | "project" | "agentName" | "startedAt";
 
 const TABS: { label: string; value: PlanRunsTab }[] = [
@@ -49,6 +64,7 @@ const STATE_FILTERS: { label: string; value: "all" | PlanRunState }[] = [
 ];
 
 export function PlanRunsPage() {
+	const caps = useCapabilities();
 	const [tab, setTab] = useState<PlanRunsTab>("plan-runs");
 	const [stateFilter, setStateFilter] = useState<"all" | PlanRunState>("all");
 	const [projectFilter, setProjectFilter] = useState<string>("");
@@ -98,26 +114,32 @@ export function PlanRunsPage() {
 		{ initialKey: "startedAt", initialDirection: "desc", defaultDirections: { startedAt: "desc" } },
 	);
 
+	const canReadReady = caps.can(READY_TAB_CAPABILITY);
+	const visibleTabs = canReadReady ? TABS : TABS.filter((t) => t.value !== "ready");
+	const activeTab = tab === "ready" && !canReadReady ? "plan-runs" : tab;
+
 	return (
 		<div className="space-y-6">
 			<PageHeader
 				title="Plan runs"
 				description="Serial execution of a seeds plan — one warren run per open child, in order."
 				actions={
-					<Link to="/plan-runs/new">
-						<Button>Dispatch a plan run</Button>
-					</Link>
+					<OperatorOnly>
+						<Link to="/plan-runs/new">
+							<Button>Dispatch a plan run</Button>
+						</Link>
+					</OperatorOnly>
 				}
 			/>
 
 			<div className="flex flex-wrap items-center gap-2">
-				{TABS.map((t) => (
+				{visibleTabs.map((t) => (
 					<button
 						key={t.value}
 						type="button"
 						onClick={() => setTab(t.value)}
 						className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
-							tab === t.value
+							activeTab === t.value
 								? "bg-(--color-primary) text-(--color-primary-foreground)"
 								: "bg-(--color-card) hover:bg-(--color-accent)"
 						}`}
@@ -128,7 +150,7 @@ export function PlanRunsPage() {
 			</div>
 
 			<div className="flex flex-wrap items-center gap-2">
-				{tab === "plan-runs"
+				{activeTab === "plan-runs"
 					? STATE_FILTERS.map((f) => (
 							<button
 								key={f.value}
@@ -158,7 +180,7 @@ export function PlanRunsPage() {
 				</select>
 			</div>
 
-			{tab === "ready" ? (
+			{activeTab === "ready" ? (
 				<ReadyPlansView projectId={projectFilter} />
 			) : (
 			<Card>

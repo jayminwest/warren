@@ -42,6 +42,11 @@
 #     placeholders — gke-live patches in the real hostname (never commit it).
 #     DNS must point the hostname at the static IP (DNS-only / unproxied if
 #     Cloudflare) BEFORE the cert can go Active.
+#   - BackendConfig attaches the `warren-armor` Cloud Armor policy (per-IP rate
+#     limiting + preconfigured WAF) and raises the backend timeout so event
+#     streams survive (warren-48d3). The policy itself is a GCP project
+#     resource — run `deploy/gcp/cloud-armor.sh` before applying, or the
+#     reference is inert. See docs/RUNBOOK-K8S.md §1.7.
 #   - CANOPY_REPO_URL is wired from warren-secrets (optional — activates the
 #     canopy prompt-library agents).
 #   - WARREN_GIT_AUTHOR_NAME/EMAIL feed run pods' GIT_AUTHOR_*/GIT_COMMITTER_*
@@ -56,6 +61,7 @@ resources:
   - ../../base
   - managedcertificate.yaml
   - frontendconfig.yaml
+  - backendconfig.yaml
 images:
   - name: warren
     newName: LOCATION-docker.pkg.dev/PROJECT/warren/warren
@@ -105,6 +111,11 @@ patches:
   # Container-native LB: GCE Ingress routes straight to pod NEGs, so the
   # Service stays ClusterIP (no NodePort needed on Autopilot). Explicit
   # annotation — Autopilot defaults to NEGs, but don't rely on it silently.
+  #
+  # `backend-config` is the only thing that binds backendconfig.yaml to the
+  # generated backend service; without it the Cloud Armor policy and the raised
+  # stream timeout are never applied (warren-48d3). `default` covers every port
+  # on this Service.
   - target:
       kind: Service
       name: warren
@@ -116,6 +127,7 @@ patches:
         namespace: warren
         annotations:
           cloud.google.com/neg: '{"ingress": true}'
+          cloud.google.com/backend-config: '{"default": "warren"}'
   # Strategic-merge (keyed by env `name`) so the agent/init image env vars are
   # overridden regardless of list position.
   - patch: |

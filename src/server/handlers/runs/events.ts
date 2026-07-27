@@ -1,8 +1,9 @@
 import { tailRunEvents } from "../../../runs/index.ts";
 import { ndjsonResponse } from "../../response.ts";
 import { reserveEventStreamSlot } from "../../stream-limits.ts";
-import type { RouteHandler, ServerDeps } from "../../types.ts";
+import type { Actor, RouteHandler, ServerDeps } from "../../types.ts";
 import { parseBoolean, parseNonNegativeInt, requireParam } from "../index.ts";
+import { projectEvent } from "./event-projection.ts";
 
 export function streamRunEventsHandler(deps: ServerDeps): RouteHandler {
 	return async (ctx) => {
@@ -35,7 +36,7 @@ export function streamRunEventsHandler(deps: ServerDeps): RouteHandler {
 		return ndjsonResponse(
 			asNdjsonStream(
 				source,
-				(row) => eventToNdjson(row),
+				(row) => eventToNdjson(row, ctx.actor),
 				ctrl,
 				() => slot.release(),
 			),
@@ -68,7 +69,7 @@ export function bridgeAbort(reqSignal: AbortSignal): AbortController {
  */
 export function asNdjsonStream<T>(
 	source: AsyncIterable<T>,
-	encode: (value: T) => string,
+	encode: (value: T) => string | null,
 	ctrl: AbortController,
 	onClose?: () => void,
 ): ReadableStream<Uint8Array> {
@@ -77,13 +78,21 @@ export function asNdjsonStream<T>(
 	return new ReadableStream<Uint8Array>({
 		async pull(controller) {
 			try {
-				const { done, value } = await iterator.next();
-				if (done) {
-					onClose?.();
-					controller.close();
+				// warren-1cb7: `encode` returns null for a value the projection
+				// dropped. Pull the next one instead of enqueuing a blank chunk —
+				// a dropped event must be absent from the wire, not an empty line.
+				while (true) {
+					const { done, value } = await iterator.next();
+					if (done) {
+						onClose?.();
+						controller.close();
+						return;
+					}
+					const line = encode(value);
+					if (line === null) continue;
+					controller.enqueue(encoder.encode(line));
 					return;
 				}
-				controller.enqueue(encoder.encode(encode(value)));
 			} catch (err) {
 				onClose?.();
 				if (ctrl.signal.aborted) {
@@ -105,22 +114,33 @@ export function asNdjsonStream<T>(
 	});
 }
 
-export function eventToNdjson(row: {
-	id: number;
-	runId: string;
-	burrowEventSeq: number;
-	ts: string;
-	kind: string;
-	stream: string | null;
-	payloadJson: unknown;
-}): string {
+/**
+ * Encode one event row as an NDJSON line, narrowed for `actor`
+ * (warren-1cb7). The seven envelope keys are an allowlist by
+ * construction; `projectEvent` owns the payload half and returns `null`
+ * for an event a `readPublic`-only caller must not see at all.
+ */
+export function eventToNdjson(
+	row: {
+		id: number;
+		runId: string;
+		burrowEventSeq: number;
+		ts: string;
+		kind: string;
+		stream: string | null;
+		payloadJson: unknown;
+	},
+	actor?: Actor,
+): string | null {
+	const projected = projectEvent(row, actor);
+	if (projected === null) return null;
 	return `${JSON.stringify({
-		id: row.id,
-		runId: row.runId,
-		seq: row.burrowEventSeq,
-		ts: row.ts,
-		kind: row.kind,
-		stream: row.stream,
-		payload: row.payloadJson,
+		id: projected.id,
+		runId: projected.runId,
+		seq: projected.burrowEventSeq,
+		ts: projected.ts,
+		kind: projected.kind,
+		stream: projected.stream,
+		payload: projected.payloadJson,
 	})}\n`;
 }

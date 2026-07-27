@@ -30,15 +30,18 @@ describe("PlanRuns 'Ready to dispatch' tab (pl-3fc4 step 7)", () => {
 		// Tab toggles the body; the ready view receives the selected
 		// project id (the endpoint is per-project).
 		expect(PLAN_RUNS_SOURCE).toMatch(/import \{ ReadyPlansView \} from "\.\/ready-plans\.tsx"/);
+		// `activeTab`, not `tab`: warren-f53e drops the ready tab for a
+		// readPublic-only caller (the endpoint is readOperator), so the
+		// rendered tab is the requested one clamped to what's visible.
 		expect(PLAN_RUNS_SOURCE).toMatch(
-			/tab === "ready" \? \(\s*<ReadyPlansView projectId=\{projectFilter\} \/>/,
+			/activeTab === "ready" \? \(\s*<ReadyPlansView projectId=\{projectFilter\} \/>/,
 		);
 	});
 
 	test("state filters are hidden on the ready tab, project select stays", () => {
 		// State pills are plan-run specific; the project <select> drives
 		// both tabs and must remain mounted.
-		expect(PLAN_RUNS_SOURCE).toMatch(/tab === "plan-runs"\s*\?\s*STATE_FILTERS\.map/);
+		expect(PLAN_RUNS_SOURCE).toMatch(/activeTab === "plan-runs"\s*\?\s*STATE_FILTERS\.map/);
 	});
 });
 

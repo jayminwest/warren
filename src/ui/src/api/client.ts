@@ -33,6 +33,7 @@ import type {
 	SteerRunResponse,
 	TriggersResponse,
 	WarrenConfigResponse,
+	WhoamiResponse,
 	TokenBreakdown,
 	RunAnalyticsTokensSection,
 } from "./types.ts";
@@ -488,6 +489,16 @@ export const metaApi = {
 	readyz: () => request<ReadyzResponse>("/readyz"),
 	version: (signal?: AbortSignal) =>
 		request<{ version: string }>("/version", { ...(signal ? { signal } : {}) }),
+	/**
+	 * Who warren admitted this browser as, and what it may do (warren-e195).
+	 * The capability layer calls this on mount and renders operator-only
+	 * affordances from the answer instead of inferring permission from the
+	 * presence of a stored token. Gated: under the default
+	 * `WARREN_AUTH=token` a browser with no token gets a 401, which
+	 * `request` already turns into `UnauthorizedError`.
+	 */
+	whoami: (signal?: AbortSignal) =>
+		request<WhoamiResponse>("/whoami", { ...(signal ? { signal } : {}) }),
 };
 
 /* ----------------------------------------------------------------------- */

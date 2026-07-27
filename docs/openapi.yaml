@@ -27,6 +27,8 @@ tags:
     description: '`/projects` routes.'
   - name: runs
     description: '`/runs` routes.'
+  - name: whoami
+    description: '`/whoami` routes.'
 paths:
   /agents:
     get:
@@ -540,7 +542,8 @@ paths:
           description: Error response (see `src/core/errors.ts`).
       description: >-
         warren-3d0b: the in-pod steering poll for the K8s backend. Bearer-gated like every /runs
-        route; the pod carries WARREN_API_TOKEN.
+        route; the pod carries WARREN_API_TOKEN. Destructive on read (it claims unread messages), so
+        it is operator-only (warren-b875).
       parameters:
         - name: id
           in: path
@@ -613,3 +616,15 @@ paths:
           description: Successful response.
         default:
           description: Error response (see `src/core/errors.ts`).
+  /whoami:
+    get:
+      operationId: whoamiHandler
+      tags:
+        - whoami
+      summary: GET /whoami
+      responses:
+        '200':
+          description: Successful response.
+        default:
+          description: Error response (see `src/core/errors.ts`).
+      description: 'warren-e195: `readPublic`, not `anonymous` — an exempt route gets no actor to name.'

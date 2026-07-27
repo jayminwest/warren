@@ -33,6 +33,7 @@ import {
 	type SteerRunResponse,
 	type StreamPlanRunEventsOptions,
 	type StreamRunEventsOptions,
+	type WhoamiResponse,
 } from "./types.ts";
 
 export const DEFAULT_PROBE_TIMEOUT_MS = 2_000;
@@ -118,6 +119,18 @@ export class WarrenClient {
 			if (text.length === 0) return undefined as T;
 			return JSON.parse(text) as T;
 		});
+	}
+
+	/**
+	 * `GET /whoami` — the identity and capability set warren admitted this
+	 * client as (warren-e195). Useful before a mutation: a client whose
+	 * capabilities lack `dispatch` is reading a public instance and will be
+	 * refused with 403, so it can say so up front instead of on failure.
+	 * Unlike `probe`, this is a gated route — the default `WARREN_AUTH=token`
+	 * mode 401s a client configured without a token.
+	 */
+	async whoami(signal?: AbortSignal): Promise<WhoamiResponse> {
+		return this.request<WhoamiResponse>("/whoami", { ...(signal ? { signal } : {}) });
 	}
 
 	async getProject(projectId: string): Promise<ProjectRow> {

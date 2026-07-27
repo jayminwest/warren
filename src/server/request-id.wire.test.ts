@@ -166,6 +166,7 @@ describe("X-Request-ID wire integration (warren-30af)", () => {
 			{
 				method: "GET",
 				pattern: "/boom",
+				policy: "readPublic",
 				handler: () => {
 					throw new Error(leaky);
 				},

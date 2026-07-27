@@ -41,6 +41,7 @@ export const WARREN_API_PATH_PREFIXES: readonly string[] = [
 	"/metrics",
 	"/preview",
 	"/plan-runs",
+	"/whoami",
 ];
 
 /**

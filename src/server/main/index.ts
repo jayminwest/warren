@@ -36,6 +36,7 @@ import {
 import { loadPreviewLaunchConfigFromEnv } from "../../preview/launch/index.ts";
 import { loadPreviewPortRangeFromEnv, PreviewPortAllocator } from "../../preview/port-allocator.ts";
 import { loadProjectsConfigFromEnv } from "../../projects/config.ts";
+import { listProjects } from "../../projects/index.ts";
 import { seedBuiltinAgents } from "../../registry/builtins/index.ts";
 import { loadCanopyRegistryConfigFromEnv } from "../../registry/config.ts";
 import {
@@ -50,9 +51,13 @@ import { resolveRuntimeKind } from "../../runtime/registry.ts";
 import { loadWarrenServerConfigFromFile } from "../../server-config/index.ts";
 import { loadTriggerSchedulerConfigFromEnv } from "../../triggers/index.ts";
 import { createWarrenConfigCache } from "../../warren-config/index.ts";
-import { NO_AUTH, resolveAuth } from "../auth.ts";
+import { NO_AUTH, resolveAuth, resolveAuthKind } from "../auth.ts";
 import { bootBridges } from "../bridges.ts";
 import { type EnvLike, loadServerConfigFromEnv } from "../config.ts";
+import {
+	assertRegisteredProjectsAllowlisted,
+	resolvePublicAllowlist,
+} from "../public-allowlist.ts";
 import { bootScheduler } from "../scheduler.ts";
 import { startServer } from "../server.ts";
 import { loadEventStreamLimitsFromEnv } from "../stream-limits.ts";
@@ -101,6 +106,17 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 	const canopyConfig = loadCanopyRegistryConfigFromEnv(env);
 	const projectsConfig = loadProjectsConfigFromEnv(env);
 
+	// Resolve the auth backend's IDENTITY here (warren-851b), before the db
+	// opens: an unrecognized `WARREN_AUTH` throws out of `bootServer` rather
+	// than degrading to a provider nobody asked for. The provider itself is
+	// built further down, once `serverConfig.token` has been consulted.
+	//
+	// warren-ce9b: `public` also demands a non-empty org allowlist, parsed
+	// here so a public instance with no allowlist refuses the boot before it
+	// touches anything. `undefined` in every other mode ⇒ no org restriction.
+	const authKind = resolveAuthKind(env);
+	const publicAllowlist = resolvePublicAllowlist(authKind, env);
+
 	if (serverConfig.dbUrlConflict !== null) {
 		logger.warn(
 			{ url: serverConfig.dbUrl, path: serverConfig.dbUrlConflict },
@@ -113,6 +129,12 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 		...(pgPoolMax !== undefined ? { pgPoolMax } : {}),
 	});
 	const repos = createRepos(db);
+
+	// warren-ce9b: hold every ALREADY-registered project to the allowlist too.
+	// A public instance serving one private repo is the worst outcome this
+	// posture can produce, so a violation refuses the boot (naming every
+	// offender) instead of being served anonymously until someone notices.
+	assertRegisteredProjectsAllowlisted(publicAllowlist, await listProjects(repos.projects));
 
 	// Load the operator-facing TOML config (pl-9ba1 step 7 / warren-3909).
 	const fileConfig = await loadWarrenServerConfigFromFile({ env });
@@ -368,6 +390,8 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 		// Event-stream concurrency caps (warren-25f6). Parsed here so a bad
 		// knob refuses the boot instead of surfacing on someone's first stream.
 		eventStreamLimits: loadEventStreamLimitsFromEnv(),
+		// warren-ce9b: only set under `WARREN_AUTH=public`; gates POST /projects.
+		publicAllowlist,
 		previewAuth,
 		...(previewSidecars !== undefined ? { previewSidecars } : {}),
 		sdBinary: schedulerConfig.sdBinary,
@@ -378,8 +402,19 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 		...(opts.now !== undefined ? { now: opts.now } : {}),
 	});
 
+	// Build the provider from the backend resolved at the top of the boot
+	// (warren-851b), before the listener exists. `--no-auth` (token null)
+	// still wins — it is the loopback dev hatch and predates the selector.
 	const auth: AuthProvider =
-		serverConfig.token !== null ? resolveAuth({ token: serverConfig.token }) : NO_AUTH;
+		serverConfig.token !== null
+			? resolveAuth({ token: serverConfig.token, kind: authKind })
+			: NO_AUTH;
+	if (authKind === "public" && serverConfig.token !== null) {
+		logger.warn(
+			{},
+			"WARREN_AUTH=public — unauthenticated callers may read this instance's public projections",
+		);
+	}
 
 	const handle = startServer(deps, {
 		transport: serverConfig.transport,

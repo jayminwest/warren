@@ -250,6 +250,7 @@ describe("startServer — lifecycle", () => {
 			{
 				method: "GET",
 				pattern: "/boom",
+				policy: "readPublic",
 				handler: () => {
 					throw new ValidationError("nope", { recoveryHint: "fix it" });
 				},
@@ -268,6 +269,7 @@ describe("startServer — lifecycle", () => {
 			{
 				method: "GET",
 				pattern: "/boom",
+				policy: "readPublic",
 				handler: () => {
 					throw new Error("kaboom");
 				},
@@ -288,6 +290,7 @@ describe("startServer — lifecycle", () => {
 			{
 				method: "GET",
 				pattern: "/slow",
+				policy: "readPublic",
 				handler: () =>
 					new Response(
 						new ReadableStream({

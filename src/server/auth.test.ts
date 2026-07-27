@@ -1,6 +1,17 @@
 import { describe, expect, test } from "bun:test";
 import { ValidationError } from "../core/errors.ts";
-import { bearerAuth, NO_AUTH, resolveAuth } from "./auth.ts";
+import {
+	ANONYMOUS_ACTOR,
+	bearerAuth,
+	DEFAULT_AUTH_KIND,
+	NO_AUTH,
+	OPERATOR_ACTOR,
+	policyAllows,
+	publicReadAuth,
+	resolveAuth,
+	resolveAuthKind,
+	UnknownAuthProviderError,
+} from "./auth.ts";
 
 function req(authorization?: string): Request {
 	const headers: Record<string, string> = {};
@@ -61,6 +72,32 @@ describe("bearerAuth", () => {
 	});
 });
 
+describe("actor (warren-1ff0)", () => {
+	test("NO_AUTH authorizes the full-capability operator actor", () => {
+		const result = NO_AUTH.authorize(req());
+		expect(result.ok).toBe(true);
+		if (!result.ok) return;
+		expect(result.actor).toEqual(OPERATOR_ACTOR);
+	});
+
+	test("bearerAuth authorizes the same actor a valid token has always got", () => {
+		const result = bearerAuth("s3cret").authorize(req("Bearer s3cret"));
+		expect(result.ok).toBe(true);
+		if (!result.ok) return;
+		expect(result.actor).toEqual(OPERATOR_ACTOR);
+	});
+
+	test("the operator actor holds every capability", () => {
+		expect(OPERATOR_ACTOR.kind).toBe("operator");
+		expect(OPERATOR_ACTOR.capabilities).toEqual({
+			readPublic: true,
+			readOperator: true,
+			dispatch: true,
+			admin: true,
+		});
+	});
+});
+
 describe("resolveAuth", () => {
 	test("noAuth wins over everything else", () => {
 		const provider = resolveAuth({
@@ -90,5 +127,175 @@ describe("resolveAuth", () => {
 
 	test("throws ValidationError on empty token", () => {
 		expect(() => resolveAuth({ env: { WARREN_API_TOKEN: "" } })).toThrow(ValidationError);
+	});
+});
+
+describe("publicReadAuth (warren-851b)", () => {
+	const provider = publicReadAuth(bearerAuth("s3cret"));
+
+	test("admits a credential-less caller as the anonymous actor", () => {
+		const result = provider.authorize(req());
+		expect(result.ok).toBe(true);
+		if (!result.ok) return;
+		expect(result.actor).toEqual(ANONYMOUS_ACTOR);
+	});
+
+	test("the anonymous actor holds readPublic and nothing else", () => {
+		expect(ANONYMOUS_ACTOR.kind).toBe("anonymous");
+		expect(ANONYMOUS_ACTOR.capabilities).toEqual({
+			readPublic: true,
+			readOperator: false,
+			dispatch: false,
+			admin: false,
+		});
+	});
+
+	test("admits a valid bearer token as the full-capability operator", () => {
+		const result = provider.authorize(req("Bearer s3cret"));
+		expect(result.ok).toBe(true);
+		if (!result.ok) return;
+		expect(result.actor).toEqual(OPERATOR_ACTOR);
+	});
+
+	test("denies a wrong token instead of degrading it to anonymous", () => {
+		const result = provider.authorize(req("Bearer wrong"));
+		expect(result.ok).toBe(false);
+		if (result.ok) return;
+		expect(result.status).toBe(401);
+		expect(result.challenge).toContain("invalid_token");
+	});
+
+	test("denies a malformed Authorization header instead of degrading it", () => {
+		const result = provider.authorize(req("Basic abc"));
+		expect(result.ok).toBe(false);
+		if (result.ok) return;
+		expect(result.status).toBe(401);
+	});
+});
+
+describe("resolveAuthKind (warren-851b)", () => {
+	test("unset resolves to the token default", () => {
+		expect(resolveAuthKind({})).toBe("token");
+		expect(DEFAULT_AUTH_KIND).toBe("token");
+	});
+
+	test("recognizes token and public, trimming surrounding whitespace", () => {
+		expect(resolveAuthKind({ WARREN_AUTH: "token" })).toBe("token");
+		expect(resolveAuthKind({ WARREN_AUTH: "public" })).toBe("public");
+		expect(resolveAuthKind({ WARREN_AUTH: "  public  " })).toBe("public");
+	});
+
+	test("throws UnknownAuthProviderError on an unrecognized value", () => {
+		expect(() => resolveAuthKind({ WARREN_AUTH: "nonsense" })).toThrow(UnknownAuthProviderError);
+	});
+
+	test("names the recognized values in the recovery hint", () => {
+		try {
+			resolveAuthKind({ WARREN_AUTH: "nonsense" });
+			throw new Error("expected resolveAuthKind to throw");
+		} catch (err) {
+			expect(err).toBeInstanceOf(UnknownAuthProviderError);
+			if (!(err instanceof UnknownAuthProviderError)) return;
+			expect(err.code).toBe("unknown_auth_provider");
+			expect(err.recoveryHint).toContain("token, public");
+		}
+	});
+
+	/**
+	 * The load-bearing assertion of this seam: no degenerate config value
+	 * may resolve to `public`. Every one of these either yields the token
+	 * default or refuses the boot — never anonymous access to an instance
+	 * whose operator did not ask for it.
+	 */
+	test("every degenerate value fails closed — token or a throw, never public", () => {
+		const degenerate = [
+			"",
+			"   ",
+			"PUBLIC",
+			"Public",
+			"publik",
+			"public,token",
+			"public;token",
+			"1",
+			"true",
+			"yes",
+			"on",
+			"null",
+			"undefined",
+			"*",
+			"public read",
+		];
+		for (const raw of degenerate) {
+			let kind: string | undefined;
+			try {
+				kind = resolveAuthKind({ WARREN_AUTH: raw });
+			} catch (err) {
+				expect(err).toBeInstanceOf(UnknownAuthProviderError);
+				continue;
+			}
+			expect(kind).toBe("token");
+		}
+	});
+});
+
+describe("resolveAuth backend selection (warren-851b)", () => {
+	test("defaults to the token provider — no anonymous access", () => {
+		const provider = resolveAuth({ env: { WARREN_API_TOKEN: "s3cret" } });
+		expect(provider.authorize(req()).ok).toBe(false);
+	});
+
+	test("WARREN_AUTH=public admits anonymous readers and the operator", () => {
+		const provider = resolveAuth({ env: { WARREN_API_TOKEN: "s3cret", WARREN_AUTH: "public" } });
+		const anon = provider.authorize(req());
+		expect(anon.ok).toBe(true);
+		if (!anon.ok) return;
+		expect(anon.actor).toEqual(ANONYMOUS_ACTOR);
+		const operator = provider.authorize(req("Bearer s3cret"));
+		expect(operator.ok).toBe(true);
+		if (!operator.ok) return;
+		expect(operator.actor).toEqual(OPERATOR_ACTOR);
+	});
+
+	test("public mode still requires an operator token", () => {
+		expect(() => resolveAuth({ env: { WARREN_AUTH: "public" } })).toThrow(ValidationError);
+	});
+
+	test("an unrecognized WARREN_AUTH throws even with a valid token", () => {
+		expect(() => resolveAuth({ env: { WARREN_API_TOKEN: "s3cret", WARREN_AUTH: "nope" } })).toThrow(
+			UnknownAuthProviderError,
+		);
+	});
+
+	test("noAuth still wins over WARREN_AUTH=public", () => {
+		const provider = resolveAuth({ noAuth: true, env: { WARREN_AUTH: "public" } });
+		expect(provider).toBe(NO_AUTH);
+	});
+
+	test("an explicit kind wins over env.WARREN_AUTH", () => {
+		const provider = resolveAuth({
+			kind: "token",
+			env: { WARREN_API_TOKEN: "s3cret", WARREN_AUTH: "public" },
+		});
+		expect(provider.authorize(req()).ok).toBe(false);
+	});
+});
+
+describe("policyAllows (warren-b875)", () => {
+	test("anonymous demands nothing of either actor", () => {
+		expect(policyAllows(ANONYMOUS_ACTOR, "anonymous")).toBe(true);
+		expect(policyAllows(OPERATOR_ACTOR, "anonymous")).toBe(true);
+	});
+
+	test("the operator clears every capability", () => {
+		for (const policy of ["readPublic", "readOperator", "dispatch", "admin"] as const) {
+			expect(policyAllows(OPERATOR_ACTOR, policy)).toBe(true);
+		}
+	});
+
+	test("the spectator clears readPublic and nothing else", () => {
+		expect(policyAllows(ANONYMOUS_ACTOR, "readPublic")).toBe(true);
+		for (const policy of ["readOperator", "dispatch", "admin"] as const) {
+			expect(policyAllows(ANONYMOUS_ACTOR, policy)).toBe(false);
+		}
 	});
 });

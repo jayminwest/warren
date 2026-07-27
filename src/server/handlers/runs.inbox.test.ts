@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { BurrowClient } from "../../burrow-client/index.ts";
 import { openDatabase, type WarrenDb } from "../../db/client.ts";
 import { createRepos, type Repos } from "../../db/repos/index.ts";
-import { bearerAuth, NO_AUTH } from "../auth.ts";
+import { bearerAuth, NO_AUTH, publicReadAuth } from "../auth.ts";
 import { startServer } from "../server.ts";
 import type { ServeHandle } from "../types.ts";
 import { depsFor, silentLogger, stub, tcpUrl } from "./runs.test-helpers.ts";
@@ -118,5 +118,34 @@ describe("GET /runs/:id/inbox — HTTP handler", () => {
 		expect(ok.status).toBe(200);
 		const body = (await ok.json()) as { messages: { body: string }[] };
 		expect(body.messages.map((m) => m.body)).toEqual(["secret steer"]);
+	});
+
+	test("a public-read spectator is refused BEFORE the queue is drained (warren-b875)", async () => {
+		// This route is the reason the policy table is not just about
+		// disclosure: the poll is destructive on read (`src/runs/inbox.ts`
+		// claims unread rows and flips them to `delivered`), so an anonymous
+		// caller reaching it would silently drain the operator's steering
+		// queue — an availability bug, not a leak. The 403 must land before
+		// the handler runs.
+		const runId = await createRun();
+		await repos.runInbox.enqueue({ runId, body: "steer me" });
+		const base = await serveWith(publicReadAuth(bearerAuth("s3cret")));
+
+		const denied = await fetch(`${base}/runs/${runId}/inbox`);
+		expect(denied.status).toBe(403);
+		expect((await repos.runInbox.listByRun(runId)).map((r) => r.state)).toEqual(["unread"]);
+
+		// Repeated polls can't grind the queue down either.
+		for (let i = 0; i < 3; i++) {
+			expect((await fetch(`${base}/runs/${runId}/inbox`)).status).toBe(403);
+		}
+		expect((await repos.runInbox.listByRun(runId)).map((r) => r.state)).toEqual(["unread"]);
+
+		// The operator still drains it.
+		const ok = await fetch(`${base}/runs/${runId}/inbox`, {
+			headers: { authorization: "Bearer s3cret" },
+		});
+		expect(ok.status).toBe(200);
+		expect((await repos.runInbox.listByRun(runId)).map((r) => r.state)).toEqual(["delivered"]);
 	});
 });

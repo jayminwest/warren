@@ -351,6 +351,13 @@ and uses the helpers in `scripts/acceptance/lib/`. New scenarios should be
 deterministic, idempotent, and clean up after themselves — they are
 expected to run against a live (possibly long-lived) deployment.
 
+Scenario 39 (`39-public-exposure.ts`, warren-c405) is the public-instance
+leak guard and the only scenario wired into CI
+(`.github/workflows/acceptance-public.yml`, `bun run acceptance:public`).
+It boots its own `WARREN_AUTH=public` warren over a database seeded
+through warren's repos before boot, so it needs no burrow dispatch and no
+canopy library — the rest of the suite still runs locally only.
+
 ## Session Completion Protocol
 
 When ending a work session, complete ALL steps:

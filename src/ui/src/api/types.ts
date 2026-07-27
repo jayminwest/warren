@@ -31,9 +31,24 @@ export const PREVIEW_ACTIVE_STATES: readonly PreviewState[] = ["starting", "live
 
 export interface AgentRow {
 	name: string;
-	renderedJson: unknown;
+	/**
+	 * The fully rendered canopy envelope — `sections.system` is the agent's
+	 * whole system prompt, `sections.burrow_config` is sandbox policy. The
+	 * public projection drops it (warren-4f6c), so it is ABSENT for a
+	 * spectator; the three facts worth showing one are hoisted onto the row
+	 * as `description` / `provider` / `model` below.
+	 */
+	renderedJson?: unknown;
 	registeredAt: string;
 	lastRefreshed: string;
+	/**
+	 * Frontmatter facts hoisted out of `renderedJson` onto the row so both
+	 * audiences get them (warren-4f6c). Null when the agent's frontmatter
+	 * declares none.
+	 */
+	description: string | null;
+	provider: string | null;
+	model: string | null;
 	/**
 	 * Provenance decorated by the server (warren-f6ad / readAgentSource).
 	 * R-03 (pl-fef5) widened this from `"builtin" | "library"` to also
@@ -46,7 +61,12 @@ export interface AgentRow {
 export interface ProjectRow {
 	id: string;
 	gitUrl: string;
-	localPath: string;
+	/**
+	 * OPTIONAL on the wire: an absolute server filesystem path, so the
+	 * public projection drops it (warren-4f6c / warren-f53e). Operator-only
+	 * surfaces may read it; anything a spectator reaches must test presence.
+	 */
+	localPath?: string;
 	defaultBranch: string;
 	addedAt: string;
 	lastFetchedAt: string | null;
@@ -77,8 +97,14 @@ export interface RunRow {
 	 * survives a project delete as orphan rows.
 	 */
 	projectId: string | null;
-	burrowId: string | null;
-	burrowRunId: string | null;
+	/**
+	 * Internal runtime handles. OPTIONAL on the wire: the public projection
+	 * drops both (warren-946f), and they are null under
+	 * `WARREN_RUNTIME=k8s` besides — so consumers must test presence, not
+	 * `!== null` (warren-f53e).
+	 */
+	burrowId?: string | null;
+	burrowRunId?: string | null;
 	/**
 	 * Back-link to the seeds issue this run was dispatched against
 	 * (pl-bb70 step 3 / warren-805a). Null encodes "no seed" — manual
@@ -153,7 +179,11 @@ export interface RunRow {
 	previewPort: number | null;
 	previewStartedAt: string | null;
 	previewLastHitAt: string | null;
-	previewFailureMessage: string | null;
+	/**
+	 * OPTIONAL on the wire: free text carrying a subprocess stderr tail, so
+	 * the public projection drops it (warren-946f / warren-f53e).
+	 */
+	previewFailureMessage?: string | null;
 }
 
 /**
@@ -249,11 +279,16 @@ export interface SpawnRunResponse {
  * even when only a window of rows is on screen. `limit`/`offset` echo
  * back the resolved pagination so the UI can render "Showing X–Y of
  * T" against the same numbers the server applied.
+ *
+ * `costTotalUsd` is OPTIONAL: it is the instance-wide all-time spend and
+ * the public projection drops it (warren-946f), so a spectator's envelope
+ * has no such key. Callers must render on presence — coalescing to 0 would
+ * print a confident "total: $0.00" (warren-f53e).
  */
 export interface ListRunsResponse {
 	runs: RunRow[];
 	total: number;
-	costTotalUsd: number;
+	costTotalUsd?: number;
 	costPricedCount: number;
 	limit: number;
 	offset: number;
@@ -334,6 +369,32 @@ export interface ReapCompletedPayload {
 
 export interface ApiErrorEnvelope {
 	error: { code: string; message: string; hint?: string };
+}
+
+/* ----------------------------------------------------------------------- */
+/* Caller identity — `GET /whoami` (warren-e195).                          */
+/*                                                                         */
+/* Mirrors `ActorKind` / `CapabilityName` / the whoami body in             */
+/* src/server/types.ts + src/server/handlers/whoami.ts — kept manually in  */
+/* sync because src/ui/ is excluded from the root tsconfig and the         */
+/* boundary is the HTTP wire, not a TS import (mx-2e4a1a).                 */
+/* ----------------------------------------------------------------------- */
+
+/** Who warren admitted this browser as. */
+export type ActorIdentity = "operator" | "anonymous";
+
+/** One capability name. `readPublic` is all a public-instance visitor holds. */
+export type CapabilityName = "readPublic" | "readOperator" | "dispatch" | "admin";
+
+/**
+ * Wire envelope of `GET /whoami`. `capabilities` lists only the granted
+ * names, so the UI checks membership rather than a boolean flag. Under the
+ * default `WARREN_AUTH=token` the route 401s a browser with no stored
+ * token, which the existing `UnauthorizedError` path already handles.
+ */
+export interface WhoamiResponse {
+	identity: ActorIdentity;
+	capabilities: CapabilityName[];
 }
 
 /**

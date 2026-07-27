@@ -1,0 +1,10 @@
+{
+	"status": 403,
+	"body": {
+		"error": {
+			"code": "forbidden",
+			"message": "this route requires the 'readOperator' capability",
+			"hint": "authenticate with an operator bearer token"
+		}
+	}
+}

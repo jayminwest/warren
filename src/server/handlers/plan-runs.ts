@@ -24,7 +24,13 @@ import {
 	requireParam,
 	requireString,
 } from "./index.ts";
-import { asNdjsonStream, bridgeAbort, cancelRunWiring, eventToNdjson } from "./runs/index.ts";
+import {
+	asNdjsonStream,
+	bridgeAbort,
+	cancelRunWiring,
+	eventToNdjson,
+	projectRun,
+} from "./runs/index.ts";
 
 /* ----------------------------------------------------------------------- */
 /* Plan runs (warren-f923 / pl-a258 step 6)                                 */
@@ -207,6 +213,10 @@ export function listPlanRunsHandler(deps: ServerDeps): RouteHandler {
  * `GET /plan-runs/:id` — full detail page payload: row + children + the
  * fanned-out `runs[]` from runs.listByIds(child.runId for each non-null)
  * so the UI's detail page renders in one round-trip.
+ *
+ * `runs[]` goes through the SAME `projectRun` the `/runs` routes use
+ * (warren-c405): this route is `readPublic`, so serving the rows raw handed
+ * a spectator every field `REDACTED_RUN_FIELDS` withholds elsewhere.
  */
 export function getPlanRunHandler(deps: ServerDeps): RouteHandler {
 	return async (ctx) => {
@@ -215,7 +225,11 @@ export function getPlanRunHandler(deps: ServerDeps): RouteHandler {
 		const children = await deps.repos.planRuns.listChildren(id);
 		const runIds = children.map((c) => c.runId).filter((v): v is string => v !== null);
 		const runs = await deps.repos.runs.listByIds(runIds);
-		return jsonResponse(200, { planRun, children, runs });
+		return jsonResponse(200, {
+			planRun,
+			children,
+			runs: runs.map((run) => projectRun(run, ctx.actor)),
+		});
 	};
 }
 
@@ -326,7 +340,7 @@ export function streamPlanRunEventsHandler(deps: ServerDeps): RouteHandler {
 		return ndjsonResponse(
 			asNdjsonStream(
 				source,
-				(row) => eventToNdjson(row),
+				(row) => eventToNdjson(row, ctx.actor),
 				ctrl,
 				() => slot.release(),
 			),

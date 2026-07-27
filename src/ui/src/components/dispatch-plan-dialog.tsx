@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { agentsApi, ApiError, planRunsApi, projectsApi } from "@/api/client.ts";
+import { OperatorOnly } from "@/components/OperatorOnly.tsx";
 import { Button } from "@/components/ui/button.tsx";
 import {
 	Dialog,
@@ -50,10 +51,13 @@ export function DispatchPlanButton(props: {
 	projectId: string;
 	planId?: string;
 	planIdLocked?: boolean;
-}): JSX.Element {
+}): JSX.Element | null {
 	const [open, setOpen] = useState(false);
+	// Gating the ENTRY POINT gates the dialog: without the button there is
+	// no path to the form, so one wrap covers the whole affordance
+	// (warren-f53e / pl-b82d step 19).
 	return (
-		<>
+		<OperatorOnly>
 			<Button type="button" size="sm" onClick={() => setOpen(true)}>
 				Dispatch plan
 			</Button>
@@ -65,7 +69,7 @@ export function DispatchPlanButton(props: {
 					onOpenChange={setOpen}
 				/>
 			) : null}
-		</>
+		</OperatorOnly>
 	);
 }
 

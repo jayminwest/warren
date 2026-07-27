@@ -12,6 +12,7 @@ import type {
 	RunRow,
 } from "@/api/types.ts";
 import { PREVIEW_ACTIVE_STATES, RUN_TERMINAL_STATES } from "@/api/types.ts";
+import { OperatorOnly } from "@/components/OperatorOnly.tsx";
 import { StateBadge } from "@/components/StateBadge.tsx";
 import { StatusIndicator } from "@/components/StatusIndicator.tsx";
 import { Alert } from "@/components/ui/alert.tsx";
@@ -26,6 +27,7 @@ import { Label } from "@/components/ui/label.tsx";
 import { AnimatePresence, StreamItem } from "@/components/ui/motion.tsx";
 import { Spinner } from "@/components/ui/spinner.tsx";
 import { Textarea } from "@/components/ui/textarea.tsx";
+import { useCapabilities } from "@/hooks/use-capabilities.ts";
 import { useEventStream } from "@/hooks/useEventStream.ts";
 import { formatError } from "@/lib/format-error.ts";
 import { formatTimestamp, relativeTime } from "@/lib/utils.ts";
@@ -168,6 +170,7 @@ export function RunDetailPage() {
 						)}
 					</p>
 				</div>
+				<OperatorOnly>
 				<div className="flex flex-col items-end gap-1">
 					{isTerminal ? (
 						<div className="flex gap-2">
@@ -216,6 +219,7 @@ export function RunDetailPage() {
 					)}
 					<CancelStatus mutation={cancel} />
 				</div>
+				</OperatorOnly>
 			</header>
 
 			{bridgeStalled ? (
@@ -229,12 +233,20 @@ export function RunDetailPage() {
 				<MetaCard label="Started">{formatTimestamp(r.startedAt)}</MetaCard>
 				<MetaCard label="Ended">{formatTimestamp(r.endedAt)}</MetaCard>
 				<MetaCard label="Trigger">{r.trigger}</MetaCard>
-				<MetaCard label="Burrow ID">
-					<span className="font-mono text-xs">{r.burrowId ?? "—"}</span>
-				</MetaCard>
-				<MetaCard label="Burrow Run">
-					<span className="font-mono text-xs">{r.burrowRunId ?? "—"}</span>
-				</MetaCard>
+				{/* Gated on presence (warren-f53e): both handles are null under
+				    `WARREN_RUNTIME=k8s` (no burrow at all) and absent from a
+				    spectator's projection, where they rendered as two empty
+				    "—" jargon cards on the hero page. */}
+				{r.burrowId ? (
+					<MetaCard label="Burrow ID">
+						<span className="font-mono text-xs">{r.burrowId}</span>
+					</MetaCard>
+				) : null}
+				{r.burrowRunId ? (
+					<MetaCard label="Burrow Run">
+						<span className="font-mono text-xs">{r.burrowRunId}</span>
+					</MetaCard>
+				) : null}
 				<MetaCard label="Updated">{relativeTime(r.endedAt ?? r.startedAt)}</MetaCard>
 				{r.seedId !== null ? (
 					<MetaCard label="Seed">
@@ -287,14 +299,20 @@ export function RunDetailPage() {
 				</CardContent>
 			</Card>
 
+			{/* Steer sits ABOVE the event tail (warren-f53e): the tail is a
+			    fixed 480px log, so steering used to mean scrolling past the
+			    whole thing to reach the box you want to type in while the
+			    agent is running. */}
+			<OperatorOnly>
+				<SteerForm runId={r.id} disabled={isTerminal} />
+			</OperatorOnly>
+
 			<EventTail
 				events={stream.events}
 				status={stream.status}
 				error={stream.error}
 				terminal={isTerminal}
 			/>
-
-			<SteerForm runId={r.id} disabled={isTerminal} />
 		</div>
 	);
 }
@@ -392,12 +410,18 @@ function CostCard({ run }: { run: RunRow }) {
  */
 function PreviewCard({ run }: { run: RunRow }) {
 	const state = run.previewState;
+	const caps = useCapabilities();
 	const previewConfig = useQuery({
 		queryKey: ["preview", "config"],
 		queryFn: ({ signal }) => previewApi.config(signal),
 		// Deployment-wide config; only a warren restart changes it.
 		staleTime: Number.POSITIVE_INFINITY,
 		gcTime: Number.POSITIVE_INFINITY,
+		// `GET /preview/config` discloses WARREN_PREVIEW_HOST and is
+		// readOperator — don't fire a guaranteed 403 for a spectator
+		// (warren-f53e). Without it the card drops the canonical URL and
+		// mode badge, which are the operator's affordances anyway.
+		enabled: caps.can("readOperator"),
 	});
 	if (state === null) return null;
 	const isActive = PREVIEW_ACTIVE_STATES.includes(state);
@@ -427,7 +451,11 @@ function PreviewCard({ run }: { run: RunRow }) {
 						</Badge>
 					) : null}
 				</CardTitle>
-				{state === "live" ? <PreviewOpenButton runId={run.id} /> : null}
+				{state === "live" ? (
+					<OperatorOnly>
+						<PreviewOpenButton runId={run.id} />
+					</OperatorOnly>
+				) : null}
 			</CardHeader>
 			<CardContent className="space-y-3">
 				{canonicalUrl !== null ? (
@@ -444,7 +472,7 @@ function PreviewCard({ run }: { run: RunRow }) {
 						<PreviewMetaLine label="Last hit" value={relativeTime(run.previewLastHitAt)} />
 					) : null}
 				</div>
-				{state === "failed" && run.previewFailureMessage !== null ? (
+				{state === "failed" && run.previewFailureMessage ? (
 					<pre
 						className="max-h-40 overflow-auto whitespace-pre-wrap break-words rounded-md bg-(--color-muted) p-2 font-mono text-xs text-(--color-destructive)"
 						title="Sidecar stderr / readiness-probe failure tail"
@@ -452,7 +480,11 @@ function PreviewCard({ run }: { run: RunRow }) {
 						{run.previewFailureMessage}
 					</pre>
 				) : null}
-				{isActive ? <PreviewTeardownButton runId={run.id} mode={mode} /> : null}
+				{isActive ? (
+					<OperatorOnly>
+						<PreviewTeardownButton runId={run.id} mode={mode} />
+					</OperatorOnly>
+				) : null}
 			</CardContent>
 		</Card>
 	);
@@ -529,7 +561,7 @@ function PreviewOpenButton({ runId }: { runId: string }) {
 
 function PreviewStateBadge({ state }: { state: PreviewState }) {
 	// warren-3849: delegate to the unified StatusIndicator registry so
-	// preview state colour/icon/pulse stays in lockstep with Plot/Run.
+	// preview state colour/icon/pulse stays in lockstep with run state.
 	return <StatusIndicator kind="preview" status={state} />;
 }
 

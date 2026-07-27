@@ -3,6 +3,7 @@ import { lazy, Suspense } from "react";
 import { HashRouter, Navigate, Route, Routes } from "react-router-dom";
 import { AuthGate } from "@/components/AuthGate.tsx";
 import { Layout } from "@/components/Layout.tsx";
+import { OperatorRoute } from "@/components/OperatorOnly.tsx";
 import { MotionProvider } from "@/components/ui/motion.tsx";
 import { ToastProvider } from "@/components/ui/toast.tsx";
 import { AgentsPage } from "@/pages/Agents.tsx";
@@ -68,18 +69,42 @@ export function App() {
 						    plot deletion pass — warren-1f12 / pl-3a79 step 10. */}
 						<Route index element={<Navigate to="/runs" replace />} />
 						<Route path="/runs" element={<RunsPage />} />
-						<Route path="/runs/new" element={<NewRunPage />} />
+						{/* The two dispatch forms are the only pages whose whole
+						    reason to exist is a mutation, so they are guarded at
+						    the route rather than field by field — a spectator
+						    who deep-links here lands on /runs
+						    (warren-f53e / pl-b82d step 19). */}
+						<Route
+							path="/runs/new"
+							element={
+								<OperatorRoute>
+									<NewRunPage />
+								</OperatorRoute>
+							}
+						/>
 						<Route path="/runs/:id" element={<RunDetailPage />} />
 						<Route path="/plan-runs" element={<PlanRunsPage />} />
-						<Route path="/plan-runs/new" element={<NewPlanRunPage />} />
+						<Route
+							path="/plan-runs/new"
+							element={
+								<OperatorRoute>
+									<NewPlanRunPage />
+								</OperatorRoute>
+							}
+						/>
 						<Route path="/plan-runs/:id" element={<PlanRunDetailPage />} />
 						<Route path="/agents" element={<AgentsPage />} />
 						<Route
 							path="/cost-analytics"
 							element={
-								<Suspense fallback={<AnalyticsFallback />}>
-									<CostAnalyticsPage />
-								</Suspense>
+								// `GET /analytics/cost` is readOperator (the
+								// instance-wide USD rollup), so the page is
+								// guarded to match the nav entry it drops.
+								<OperatorRoute capability="readOperator">
+									<Suspense fallback={<AnalyticsFallback />}>
+										<CostAnalyticsPage />
+									</Suspense>
+								</OperatorRoute>
 							}
 						/>
 						<Route

@@ -21,14 +21,17 @@ import {
 	buildSteeringSignals,
 	type DimensionTokenSeries,
 	hydrateRunsUsage,
+	type RunGroupBucket,
 	type RunMetrics,
 	type RunMetricsRow,
+	type RunTotals,
 	type TokenBreakdown,
 	type TokenDayBucket,
 	type ToolEventRow,
 } from "../../../runs/index.ts";
+import { isPublicOnly, pickFields } from "../../projection.ts";
 import { jsonResponse } from "../../response.ts";
-import type { RouteHandler, ServerDeps } from "../../types.ts";
+import type { Actor, RouteHandler, ServerDeps } from "../../types.ts";
 import {
 	extractProviderModel,
 	parseAnalyticsDateBound,
@@ -159,6 +162,123 @@ function buildTokensSection(metrics: RunMetrics): RunAnalyticsTokensSection {
 	};
 }
 
+/** The full `GET /analytics/runs` body an operator receives. */
+export interface RunAnalyticsBody extends RunMetrics {
+	readonly filter: { projectId: string | null; from: string | null; to: string | null };
+	readonly tokens: RunAnalyticsTokensSection;
+}
+
+/**
+ * The `GET /analytics/runs` sections a `readPublic`-only spectator sees
+ * (warren-4f6c / pl-b82d step 15). Public analytics is a run-count and
+ * state-distribution view: how much work this instance does, how much of
+ * it lands, and how many tokens it burns doing so.
+ *
+ * Three allowlists, one per nesting level, so a field added to `RunMetrics`,
+ * `RunTotals` or `RunGroupBucket` tomorrow is absent from the public body
+ * until someone classifies it — see `src/server/projection.ts`.
+ */
+export const PUBLIC_RUN_ANALYTICS_FIELDS = [
+	"filter",
+	"totals",
+	"timeSeries",
+	"byAgent",
+	"byModel",
+	"byProvider",
+	"byFailureReason",
+	"tokenTimeSeries",
+	"tokenByModelSeries",
+	"tokenByProviderSeries",
+	"tokens",
+] as const satisfies readonly (keyof RunAnalyticsBody)[];
+
+/**
+ * The complement of `PUBLIC_RUN_ANALYTICS_FIELDS`.
+ *
+ * - `topSeedsByContext` — a leaderboard of the instance's own issue ids
+ *   ranked by context burn. Reads as internal backlog triage, and the
+ *   seed ids only mean anything to the operator.
+ */
+export const REDACTED_RUN_ANALYTICS_FIELDS = [
+	"topSeedsByContext",
+] as const satisfies readonly (keyof RunAnalyticsBody)[];
+
+/** `RunTotals` minus the windowed USD rollup. */
+export const PUBLIC_RUN_TOTALS_FIELDS = [
+	"runs",
+	"succeeded",
+	"failed",
+	"cancelled",
+	"active",
+	"successRate",
+	"durationMs",
+	"contextTokens",
+	"tokens",
+] as const satisfies readonly (keyof RunTotals)[];
+
+/**
+ * - `cost` — the windowed `{total, avg, priced}` USD rollup. Same call as
+ *   `costTotalUsd` on `GET /runs` (warren-946f): per-run cost on a run
+ *   detail is a deliberate exception, an aggregate headline is not.
+ */
+export const REDACTED_RUN_TOTALS_FIELDS = ["cost"] as const satisfies readonly (keyof RunTotals)[];
+
+/** `RunGroupBucket` minus the per-group USD rollup. */
+export const PUBLIC_RUN_GROUP_FIELDS = [
+	"key",
+	"runs",
+	"succeeded",
+	"failed",
+	"cancelled",
+	"successRate",
+	"contextTokensTotal",
+	"avgContextTokens",
+	"tokens",
+	"avgDurationMs",
+] as const satisfies readonly (keyof RunGroupBucket)[];
+
+/**
+ * - `costUsd` / `priced` — per-agent / per-model / per-provider spend.
+ *   Summing them reconstructs the aggregate `totals.cost` the projection
+ *   just dropped, so they go together or not at all.
+ */
+export const REDACTED_RUN_GROUP_FIELDS = [
+	"costUsd",
+	"priced",
+] as const satisfies readonly (keyof RunGroupBucket)[];
+
+/** The `GET /analytics/runs` body as a `readPublic`-only caller sees it. */
+export type PublicRunAnalytics = Omit<
+	Pick<RunAnalyticsBody, (typeof PUBLIC_RUN_ANALYTICS_FIELDS)[number]>,
+	"totals" | "byAgent" | "byModel" | "byProvider"
+> & {
+	readonly totals: Pick<RunTotals, (typeof PUBLIC_RUN_TOTALS_FIELDS)[number]>;
+	readonly byAgent: readonly Pick<RunGroupBucket, (typeof PUBLIC_RUN_GROUP_FIELDS)[number]>[];
+	readonly byModel: readonly Pick<RunGroupBucket, (typeof PUBLIC_RUN_GROUP_FIELDS)[number]>[];
+	readonly byProvider: readonly Pick<RunGroupBucket, (typeof PUBLIC_RUN_GROUP_FIELDS)[number]>[];
+};
+
+/**
+ * Narrow the analytics body for `actor`. The operator gets the body
+ * untouched, so the public body is provably the operator body minus
+ * fields — one construction site, no drift.
+ */
+function projectRunAnalytics(
+	body: RunAnalyticsBody,
+	actor: Actor | undefined,
+): RunAnalyticsBody | PublicRunAnalytics {
+	if (!isPublicOnly(actor)) return body;
+	const groups = (buckets: readonly RunGroupBucket[]) =>
+		buckets.map((b) => pickFields(b, PUBLIC_RUN_GROUP_FIELDS));
+	return {
+		...pickFields(body, PUBLIC_RUN_ANALYTICS_FIELDS),
+		totals: pickFields(body.totals, PUBLIC_RUN_TOTALS_FIELDS),
+		byAgent: groups(body.byAgent),
+		byModel: groups(body.byModel),
+		byProvider: groups(body.byProvider),
+	};
+}
+
 /**
  * `GET /analytics/runs?from=&to=&projectId=` (warren-0692 / pl-ad0f step 2;
  * tokens section added by warren-1244 / pl-d1a2 step 3).
@@ -178,7 +298,8 @@ export function listRunAnalyticsHandler(deps: ServerDeps): RouteHandler {
 		const { echo, filter } = resolveAnalyticsWindow(ctx);
 		const { metrics } = await loadRunMetrics(deps, filter);
 		const tokens = buildTokensSection(metrics);
-		return jsonResponse(200, { filter: echo, ...metrics, tokens });
+		const body: RunAnalyticsBody = { filter: echo, ...metrics, tokens };
+		return jsonResponse(200, projectRunAnalytics(body, ctx.actor));
 	};
 }
 

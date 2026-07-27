@@ -5,11 +5,11 @@ import type { Route } from "./types.ts";
 const noopHandler = () => new Response();
 
 const routes: Route[] = [
-	{ method: "GET", pattern: "/agents", handler: noopHandler },
-	{ method: "POST", pattern: "/agents/refresh", handler: noopHandler },
-	{ method: "GET", pattern: "/agents/:name", handler: noopHandler },
-	{ method: "GET", pattern: "/runs/:id/events", handler: noopHandler },
-	{ method: "POST", pattern: "/runs/:id/cancel", handler: noopHandler },
+	{ method: "GET", pattern: "/agents", policy: "readPublic", handler: noopHandler },
+	{ method: "POST", pattern: "/agents/refresh", policy: "admin", handler: noopHandler },
+	{ method: "GET", pattern: "/agents/:name", policy: "readPublic", handler: noopHandler },
+	{ method: "GET", pattern: "/runs/:id/events", policy: "readPublic", handler: noopHandler },
+	{ method: "POST", pattern: "/runs/:id/cancel", policy: "dispatch", handler: noopHandler },
 ];
 
 describe("compilePattern", () => {

@@ -85,7 +85,7 @@ jobs:
       id-token: write # required for Workload Identity Federation
       packages: write # required to push the control-plane image to ghcr.io
     steps:
-      - uses: actions/checkout@v6.0.2
+      - uses: actions/checkout@v7.0.1
         with:
           ref: ${{ env.TARGET_SHA }}
 
@@ -201,7 +201,7 @@ jobs:
       group: gke-deploy-warren
       cancel-in-progress: false
     steps:
-      - uses: actions/checkout@v6.0.2
+      - uses: actions/checkout@v7.0.1
         with:
           ref: ${{ env.TARGET_SHA }}
 

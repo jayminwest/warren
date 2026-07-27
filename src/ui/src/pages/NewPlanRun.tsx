@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { agentsApi, planRunsApi, projectsApi } from "@/api/client.ts";
 import type { CreatePlanRunInput } from "@/api/types.ts";
+import { OperatorOnly } from "@/components/OperatorOnly.tsx";
 import { Button } from "@/components/ui/button.tsx";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card.tsx";
 import { Input } from "@/components/ui/input.tsx";
@@ -172,20 +173,25 @@ export function NewPlanRunPage() {
 							enable plan-run dispatch.
 						</p>
 						<div className="flex items-center gap-3">
-							<Button
-								type="button"
-								variant="outline"
-								size="sm"
-								onClick={() => refreshProject.mutate(project)}
-								disabled={refreshProject.isPending}
-							>
-								<RefreshCw
-									className={`mr-2 h-4 w-4 ${
-										refreshProject.isPending ? "animate-spin" : ""
-									}`}
-								/>
-								Refresh project
-							</Button>
+							{/* `POST /projects/:id/refresh` is `admin`, a strictly
+							    narrower grant than the `dispatch` this page is
+							    route-guarded on (warren-f53e). */}
+							<OperatorOnly capability="admin">
+								<Button
+									type="button"
+									variant="outline"
+									size="sm"
+									onClick={() => refreshProject.mutate(project)}
+									disabled={refreshProject.isPending}
+								>
+									<RefreshCw
+										className={`mr-2 h-4 w-4 ${
+											refreshProject.isPending ? "animate-spin" : ""
+										}`}
+									/>
+									Refresh project
+								</Button>
+							</OperatorOnly>
 							{refreshProject.isError ? (
 								<span className="text-xs">
 									{refreshProject.error instanceof Error

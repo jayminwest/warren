@@ -32,6 +32,7 @@ import { BurrowUnreachableError } from "../burrow-client/errors.ts";
 import { NotFoundError, StateTransitionError, ValidationError } from "../core/errors.ts";
 import { CanopyUnavailableError } from "../registry/errors.ts";
 import {
+	forbidden,
 	methodNotAllowed,
 	notFound,
 	notImplemented,
@@ -59,6 +60,10 @@ const cases: ReadonlyArray<{ name: string; produce: () => Snapshot }> = [
 	{
 		name: "canned-method-not-allowed",
 		produce: () => snapshot(methodNotAllowed("PATCH", "/runs/abc")),
+	},
+	{
+		name: "canned-forbidden",
+		produce: () => snapshot(forbidden("readOperator")),
 	},
 	{
 		name: "canned-not-implemented",

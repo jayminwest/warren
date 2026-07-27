@@ -1,5 +1,5 @@
 import * as DialogPrimitive from "@radix-ui/react-dialog";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
 	Activity,
 	BarChart3,
@@ -7,6 +7,7 @@ import {
 	DollarSign,
 	FolderGit2,
 	ListChecks,
+	LogIn,
 	LogOut,
 	Menu,
 	Plus,
@@ -15,16 +16,26 @@ import {
 import { useEffect, useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { metaApi, setApiToken } from "@/api/client.ts";
+import type { CapabilityName } from "@/api/types.ts";
 import { ErrorBoundary } from "@/components/ErrorBoundary.tsx";
+import { OperatorOnly } from "@/components/OperatorOnly.tsx";
 import { ThemeToggle } from "@/components/ThemeToggle.tsx";
 import { WarrenLogo } from "@/components/WarrenLogo.tsx";
 import { Button } from "@/components/ui/button.tsx";
+import { useCapabilities } from "@/hooks/use-capabilities.ts";
 import { cn } from "@/lib/utils.ts";
 
 type NavItem = {
 	to: string;
 	label: string;
 	icon: React.ComponentType<{ className?: string }>;
+	/**
+	 * Capability the destination's own reads require. Absent = every
+	 * caller warren admits can read the page, so the entry always shows.
+	 * Filtering here (warren-f53e / pl-b82d step 19) keeps a public
+	 * visitor off pages that would answer 403 rather than render.
+	 */
+	capability?: CapabilityName;
 };
 
 const NAV_ITEMS: NavItem[] = [
@@ -35,7 +46,9 @@ const NAV_ITEMS: NavItem[] = [
 	// Cost analytics (warren-cf63 / pl-b0c0 step 6) lives at the bottom
 	// of the sidebar — it's an operator-facing analytics view, not a
 	// daily-driver page, so it stays out of the lead-eight positions.
-	{ to: "/cost-analytics", label: "Cost", icon: DollarSign },
+	// `GET /analytics/cost` is the instance-wide USD rollup and is
+	// readOperator, so a spectator never sees the entry.
+	{ to: "/cost-analytics", label: "Cost", icon: DollarSign, capability: "readOperator" },
 	// Run analytics (warren-638a / pl-ad0f step 5) sits beside Cost as
 	// the execution-telemetry companion to the spend view.
 	{ to: "/run-analytics", label: "Run stats", icon: BarChart3 },
@@ -43,6 +56,8 @@ const NAV_ITEMS: NavItem[] = [
 
 export function Layout() {
 	const navigate = useNavigate();
+	const qc = useQueryClient();
+	const caps = useCapabilities();
 
 	// Version is auth-exempt and stable for the life of the server
 	// process — fetch once, cache forever (warren-6ea5).
@@ -55,6 +70,10 @@ export function Layout() {
 
 	const handleLogout = (): void => {
 		setApiToken(null);
+		// Everything cached was fetched with the operator's bearer — including
+		// the `/whoami` answer the capability layer reads (warren-f53e). Drop
+		// it all so the next mount re-asks as the credential-less caller.
+		qc.clear();
 		navigate("/login", { replace: true });
 	};
 
@@ -71,9 +90,13 @@ export function Layout() {
 		setMobileNavOpen(false);
 	}, [location.pathname]);
 
+	const visibleNavItems = NAV_ITEMS.filter(
+		({ capability }) => capability === undefined || caps.can(capability),
+	);
+
 	const renderNavLinks = (onNavigate?: () => void) => (
 		<>
-			{NAV_ITEMS.map(({ to, label, icon: Icon }) => (
+			{visibleNavItems.map(({ to, label, icon: Icon }) => (
 				<NavLink
 					key={to}
 					to={to}
@@ -91,22 +114,41 @@ export function Layout() {
 					<span className="flex-1">{label}</span>
 				</NavLink>
 			))}
-			<NavLink
-				to="/runs/new"
-				onClick={onNavigate}
-				className={({ isActive }) =>
-					cn(
-						"mt-2 flex min-h-11 items-center gap-2 rounded-md px-3 py-2 text-sm transition-colors",
-						isActive
-							? "bg-(--color-primary) text-(--color-primary-foreground)"
-							: "border bg-(--color-card) hover:bg-(--color-accent)",
-					)
-				}
-			>
-				<Plus className="h-4 w-4" />
-				Dispatch run
-			</NavLink>
+			<OperatorOnly>
+				<NavLink
+					to="/runs/new"
+					onClick={onNavigate}
+					className={({ isActive }) =>
+						cn(
+							"mt-2 flex min-h-11 items-center gap-2 rounded-md px-3 py-2 text-sm transition-colors",
+							isActive
+								? "bg-(--color-primary) text-(--color-primary-foreground)"
+								: "border bg-(--color-card) hover:bg-(--color-accent)",
+						)
+					}
+				>
+					<Plus className="h-4 w-4" />
+					Dispatch run
+				</NavLink>
+			</OperatorOnly>
 		</>
+	);
+
+	// A spectator has no session to end, and hiding the control outright
+	// would strand the operator of a public instance with no way back to
+	// `/login` — so the same slot offers the way IN (warren-f53e).
+	const session = caps.can("readOperator") ? (
+		<Button variant="ghost" size="sm" onClick={handleLogout} className="mt-2 justify-start">
+			<LogOut className="h-4 w-4" />
+			Log out
+		</Button>
+	) : (
+		<Button asChild variant="ghost" size="sm" className="mt-2 justify-start">
+			<NavLink to="/login">
+				<LogIn className="h-4 w-4" />
+				Log in
+			</NavLink>
+		</Button>
 	);
 
 	const brand = (
@@ -143,10 +185,7 @@ export function Layout() {
 				<div className="mb-6">{brand}</div>
 				<nav className="flex flex-1 flex-col gap-1">{renderNavLinks()}</nav>
 				<ThemeToggle />
-				<Button variant="ghost" size="sm" onClick={handleLogout} className="mt-2 justify-start">
-					<LogOut className="h-4 w-4" />
-					Log out
-				</Button>
+				{session}
 			</aside>
 
 			{/* Mobile slide-over drawer. Radix Dialog gives focus trap +
@@ -178,15 +217,7 @@ export function Layout() {
 							{renderNavLinks(() => setMobileNavOpen(false))}
 						</nav>
 						<ThemeToggle />
-						<Button
-							variant="ghost"
-							size="sm"
-							onClick={handleLogout}
-							className="mt-2 justify-start"
-						>
-							<LogOut className="h-4 w-4" />
-							Log out
-						</Button>
+						{session}
 					</DialogPrimitive.Content>
 				</DialogPrimitive.Portal>
 			</DialogPrimitive.Root>

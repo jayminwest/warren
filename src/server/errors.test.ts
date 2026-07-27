@@ -18,6 +18,7 @@ import {
 import { WarrenConfigUnavailableError } from "../warren-config/errors.ts";
 import {
 	errorLogFields,
+	forbidden,
 	INTERNAL_ERROR_MESSAGE,
 	methodNotAllowed,
 	notFound,
@@ -206,6 +207,14 @@ describe("canned envelopes", () => {
 		const r = methodNotAllowed("PUT", "/agents");
 		expect(r.status).toBe(405);
 		expect(r.envelope.error.code).toBe("method_not_allowed");
+	});
+
+	test("forbidden names the demanded capability and nothing else (warren-b875)", () => {
+		const r = forbidden("readOperator");
+		expect(r.status).toBe(403);
+		expect(r.envelope.error.code).toBe("forbidden");
+		expect(r.envelope.error.message).toContain("readOperator");
+		expect(r.envelope.error.hint).toContain("bearer token");
 	});
 
 	test("notImplemented", () => {

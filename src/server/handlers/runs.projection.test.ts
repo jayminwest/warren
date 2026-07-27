@@ -1,0 +1,203 @@
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { getTableColumns } from "drizzle-orm";
+import { BurrowClient } from "../../burrow-client/index.ts";
+import { openDatabase, type WarrenDb } from "../../db/client.ts";
+import { createRepos, type Repos } from "../../db/repos/index.ts";
+import { type RunRow, runs } from "../../db/schema.ts";
+import { bearerAuth, publicReadAuth } from "../auth.ts";
+import { startServer } from "../server.ts";
+import type { ServeHandle } from "../types.ts";
+import { PUBLIC_RUN_FIELDS, REDACTED_RUN_FIELDS } from "./runs/lifecycle.ts";
+import { depsFor, silentLogger, stub, tcpUrl } from "./runs.test-helpers.ts";
+
+/**
+ * Public projections for `GET /runs` and `GET /runs/:id` (warren-946f /
+ * pl-b82d step 14).
+ *
+ * The classification is asserted twice over: as data (every `runs` column
+ * lands in exactly one of the two exported lists, so a new column fails
+ * this file until someone classifies it) and over the wire against a real
+ * server under `WARREN_AUTH=public`, anonymously and with the operator
+ * token, so the "operator is unchanged" half is proved rather than assumed.
+ */
+
+const TOKEN = "s3cret";
+
+/** A burrow client that 404s everything — no route here reaches it. */
+function inertBurrowClient(): BurrowClient {
+	return new BurrowClient({
+		config: { transport: { kind: "unix", path: "/tmp/x.sock" } },
+		fetch: stub(
+			async () => new Response(JSON.stringify({ error: { code: "not_found" } }), { status: 404 }),
+		),
+	});
+}
+
+describe("run field classification (warren-946f)", () => {
+	const columns = Object.keys(getTableColumns(runs)) as (keyof RunRow)[];
+
+	test("every runs column is classified exactly once", () => {
+		const classified = [...PUBLIC_RUN_FIELDS, ...REDACTED_RUN_FIELDS];
+		expect([...classified].sort()).toEqual([...columns].sort());
+		expect(new Set(classified).size).toBe(classified.length);
+	});
+
+	test("the redacted set is exactly the fields pl-b82d named", () => {
+		expect([...REDACTED_RUN_FIELDS].sort()).toEqual([
+			"burrowId",
+			"burrowRunId",
+			"previewFailureMessage",
+			"renderedAgentJson",
+			"workerId",
+		]);
+	});
+
+	test("the prompt and per-run cost are deliberately public", () => {
+		for (const kept of [
+			"prompt",
+			"costUsd",
+			"tokensInput",
+			"tokensOutput",
+			"tokensCacheRead",
+			"tokensCacheWrite",
+			"state",
+			"failureReason",
+			"agentName",
+			"projectId",
+			"seedId",
+			"targetBranch",
+			"prUrl",
+			"startedAt",
+			"endedAt",
+		] as const) {
+			expect(PUBLIC_RUN_FIELDS).toContain(kept);
+		}
+	});
+});
+
+describe("GET /runs projections under WARREN_AUTH=public (warren-946f)", () => {
+	let db: WarrenDb;
+	let repos: Repos;
+	let handle: ServeHandle | null = null;
+	let base: string;
+	let runId: string;
+
+	beforeEach(async () => {
+		db = await openDatabase({ path: ":memory:" });
+		repos = createRepos(db);
+		const project = await repos.projects.create({
+			gitUrl: "https://github.com/os-eco/warren.git",
+			localPath: "/data/projects/os-eco/warren",
+			defaultBranch: "main",
+		});
+		const row = await repos.runs.create({
+			agentName: "claude-code",
+			projectId: project.id,
+			prompt: "fix the flaky test",
+			renderedAgentJson: { frontmatter: { provider: "anthropic", model: "opus" } },
+			trigger: "manual",
+			burrowId: "bur_1",
+			burrowRunId: "burun_1",
+			workerId: "worker_1",
+		});
+		runId = row.id;
+		await repos.runs.markRunning(runId, new Date("2026-07-01T00:00:00.000Z"));
+		await repos.runs.finalize(runId, "succeeded", new Date("2026-07-01T00:05:00.000Z"), null);
+		await repos.runs.attachStats(runId, { costUsd: 1.25, tokensInput: 100, tokensOutput: 20 });
+		await repos.runs.attachPreview(runId, {
+			previewState: "failed",
+			previewFailureMessage: "bun install exited 1: EACCES /root/.bun",
+		});
+		handle = startServer(await depsFor(repos, inertBurrowClient()), {
+			transport: { kind: "tcp", hostname: "127.0.0.1", port: 0 },
+			auth: publicReadAuth(bearerAuth(TOKEN)),
+			logger: silentLogger,
+		});
+		base = tcpUrl(handle);
+	});
+
+	afterEach(async () => {
+		if (handle) {
+			await handle.stop();
+			handle = null;
+		}
+		await db.close();
+	});
+
+	async function get(path: string, token?: string): Promise<Record<string, unknown>> {
+		const res = await fetch(
+			`${base}${path}`,
+			token === undefined ? {} : { headers: { authorization: `Bearer ${token}` } },
+		);
+		expect(res.status).toBe(200);
+		return (await res.json()) as Record<string, unknown>;
+	}
+
+	test("anonymous GET /runs emits exactly the public field set", async () => {
+		const body = await get("/runs");
+		const list = body.runs as Record<string, unknown>[];
+		expect(list).toHaveLength(1);
+		expect(Object.keys(list[0] ?? {}).sort()).toEqual([...PUBLIC_RUN_FIELDS].sort());
+	});
+
+	test("anonymous GET /runs drops the instance-wide cost rollup", async () => {
+		const body = await get("/runs");
+		expect(body).not.toHaveProperty("costTotalUsd");
+		expect(body.total).toBe(1);
+		expect(body.limit).toBe(100);
+		expect(body.offset).toBe(0);
+	});
+
+	test("anonymous GET /runs keeps the prompt and per-run cost", async () => {
+		const body = await get("/runs");
+		const run = (body.runs as Record<string, unknown>[])[0];
+		expect(run?.prompt).toBe("fix the flaky test");
+		expect(run?.costUsd).toBe(1.25);
+		expect(run?.tokensInput).toBe(100);
+		expect(run?.state).toBe("succeeded");
+	});
+
+	test("anonymous GET /runs/:id emits exactly the public field set", async () => {
+		const run = await get(`/runs/${runId}`);
+		expect(Object.keys(run).sort()).toEqual([...PUBLIC_RUN_FIELDS].sort());
+		for (const dropped of REDACTED_RUN_FIELDS) {
+			expect(run).not.toHaveProperty(dropped);
+		}
+	});
+
+	test("no redacted value survives anywhere in an anonymous body", async () => {
+		const listed = JSON.stringify(await get("/runs"));
+		const detail = JSON.stringify(await get(`/runs/${runId}`));
+		for (const secret of ["bur_1", "burun_1", "worker_1", "EACCES", "anthropic"]) {
+			expect(listed).not.toContain(secret);
+			expect(detail).not.toContain(secret);
+		}
+	});
+
+	test("the operator body is the full row plus the cost rollup", async () => {
+		const stored = await repos.runs.require(runId);
+		const body = await get("/runs", TOKEN);
+		const list = body.runs as Record<string, unknown>[];
+		expect(Object.keys(list[0] ?? {}).sort()).toEqual(Object.keys(stored).sort());
+		expect(body.costTotalUsd).toBe(1.25);
+		expect(body.costPricedCount).toBe(1);
+		const detail = await get(`/runs/${runId}`, TOKEN);
+		expect(Object.keys(detail).sort()).toEqual(Object.keys(stored).sort());
+		expect(detail.burrowId).toBe("bur_1");
+		expect(detail.renderedAgentJson).toEqual({
+			frontmatter: { provider: "anthropic", model: "opus" },
+		});
+	});
+
+	test("the operator envelope keeps its historical key order", async () => {
+		const body = await get("/runs", TOKEN);
+		expect(Object.keys(body)).toEqual([
+			"runs",
+			"total",
+			"costTotalUsd",
+			"costPricedCount",
+			"limit",
+			"offset",
+		]);
+	});
+});

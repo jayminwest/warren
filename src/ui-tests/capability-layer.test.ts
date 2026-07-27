@@ -1,0 +1,231 @@
+/**
+ * Structural guard for the UI capability layer (warren-f53e / pl-b82d
+ * step 19).
+ *
+ * The acceptance criterion is negative and easy to regress silently: a
+ * visitor with no token browses `app.warren.run` and NO dispatch / steer /
+ * cancel / refresh / delete affordance is rendered anywhere. The warren UI
+ * package ships without a React test harness (no jsdom, no
+ * @testing-library, mx-a86ce6), so — same convention as
+ * `plot-surface-removed.test.ts` and `ready-plans-tab.test.ts` — the
+ * invariants are pinned at the source level:
+ *
+ *   1. every mutating `useMutation` lives in a file that imports the ONE
+ *      gate (`OperatorOnly` / `OperatorRoute`), so a new mutation site
+ *      can't be added to an ungated file without this test noticing;
+ *   2. `AuthGate` decides from `/whoami`, never from a localStorage token;
+ *   3. the two dispatch forms are route-guarded;
+ *   4. nav entries whose destination is readOperator carry a capability.
+ */
+
+import { describe, expect, test } from "bun:test";
+import { readdirSync, readFileSync, statSync } from "node:fs";
+import { join } from "node:path";
+
+const UI_SRC = join(import.meta.dir, "..", "ui", "src");
+
+function walk(dir: string): string[] {
+	const out: string[] = [];
+	for (const entry of readdirSync(dir)) {
+		const full = join(dir, entry);
+		if (statSync(full).isDirectory()) out.push(...walk(full));
+		else if (entry.endsWith(".ts") || entry.endsWith(".tsx")) out.push(full);
+	}
+	return out;
+}
+
+function read(...parts: string[]): string {
+	return readFileSync(join(UI_SRC, ...parts), "utf8");
+}
+
+const UI_FILES = walk(UI_SRC);
+
+describe("useCapabilities (warren-f53e)", () => {
+	const helpers = read("hooks", "use-capabilities.helpers.ts");
+	const hook = read("hooks", "use-capabilities.ts");
+
+	test("reads GET /whoami once per session under a stable key", () => {
+		expect(hook).toMatch(/WHOAMI_QUERY_KEY = \["meta", "whoami"\]/);
+		expect(hook).toMatch(/metaApi\.whoami\(signal\)/);
+		expect(hook).toMatch(/staleTime: Number\.POSITIVE_INFINITY/);
+	});
+
+	test("separates the 401 answer from the anonymous answer", () => {
+		// The trap warren-e195 called out: under the default
+		// WARREN_AUTH=token a tokenless browser 401s on /whoami too, so
+		// folding that into "anonymous" would strand the operator on a
+		// read-only UI with no route to /login.
+		expect(helpers).toMatch(/instanceof UnauthorizedError\) return denied\("unauthenticated"/);
+		expect(helpers).toMatch(/"loading" \| "ready" \| "unauthenticated" \| "error"/);
+	});
+
+	test("both token-mutating sites clear the cache so the answer is re-asked", () => {
+		expect(read("components", "Layout.tsx")).toMatch(
+			/setApiToken\(null\);[\s\S]{0,400}qc\.clear\(\)/,
+		);
+		expect(read("pages", "Login.tsx")).toMatch(/qc\.clear\(\)/);
+	});
+});
+
+describe("AuthGate lets an anonymous visitor through (warren-f53e)", () => {
+	const gate = read("components", "AuthGate.tsx");
+
+	test("decides from the capability layer, not from a stored token", () => {
+		expect(gate).toMatch(/useCapabilities/);
+		// The old guard bounced on `getApiToken() === null`, which sends a
+		// legitimate public-mode visitor to a password box.
+		expect(gate).not.toMatch(/getApiToken/);
+	});
+
+	test("redirects to /login only on an actual 401", () => {
+		expect(gate).toMatch(/status === "unauthenticated"[\s\S]{0,160}Navigate to="\/login"/);
+	});
+
+	test("surfaces a transport failure instead of demoting to read-only", () => {
+		expect(gate).toMatch(/status === "error"/);
+		expect(gate).toMatch(/title="Can't reach warren"/);
+	});
+});
+
+describe("route guards and nav filtering (warren-f53e)", () => {
+	const app = read("App.tsx");
+	const layout = read("components", "Layout.tsx");
+
+	test("both dispatch forms are wrapped in OperatorRoute", () => {
+		for (const page of ["NewRunPage", "NewPlanRunPage"]) {
+			expect(app).toMatch(new RegExp(`<OperatorRoute>\\s*<${page} />\\s*</OperatorRoute>`));
+		}
+	});
+
+	test("OperatorRoute bounces to a surface every caller can read", () => {
+		const guard = read("components", "OperatorOnly.tsx");
+		expect(guard).toMatch(/<Navigate to="\/runs" replace \/>/);
+		// Waits for the answer rather than bouncing an operator mid-load.
+		expect(guard).toMatch(/status === "loading"\) return null/);
+	});
+
+	test("the cost analytics page and its nav entry are gated together", () => {
+		expect(app).toMatch(/<OperatorRoute capability="readOperator">/);
+		expect(layout).toMatch(/to: "\/cost-analytics"[^\n]*capability: "readOperator"/);
+	});
+
+	test("nav links are filtered by capability and the dispatch CTA is gated", () => {
+		expect(layout).toMatch(
+			/NAV_ITEMS\.filter\(\s*\(\{ capability \}\) => capability === undefined \|\| caps\.can\(capability\)/,
+		);
+		expect(layout).toMatch(/<OperatorOnly>\s*<NavLink\s*to="\/runs\/new"/);
+	});
+});
+
+/**
+ * Every file that mutates must import the gate. This is the criterion that
+ * actually scales: it fails the moment someone adds a mutation to a page
+ * that has no notion of capabilities, without this test needing to know
+ * which button the mutation is behind.
+ *
+ * `mutationFn` is the marker — a `useMutation` is the only way the UI
+ * writes. The exemptions are NAMED, not pattern-matched, and each is
+ * asserted separately below: `RefreshProjectsCTA.tsx` is a leaf gated by
+ * its caller, and `NewRun.tsx` is a whole page guarded at the route (its
+ * only reason to exist is the dispatch it submits).
+ */
+describe("every mutation site sits behind the one gate (warren-f53e)", () => {
+	const GATED_ELSEWHERE = new Set(["RefreshProjectsCTA.tsx", "NewRun.tsx"]);
+
+	test("no file calls useMutation without importing OperatorOnly", () => {
+		const offenders: string[] = [];
+		for (const file of UI_FILES) {
+			const name = file.slice(file.lastIndexOf("/") + 1);
+			if (GATED_ELSEWHERE.has(name)) continue;
+			const src = readFileSync(file, "utf8");
+			if (!/mutationFn:/.test(src)) continue;
+			if (/OperatorOnly/.test(src)) continue;
+			offenders.push(file.slice(UI_SRC.length + 1));
+		}
+		expect(offenders).toEqual([]);
+	});
+
+	test("the caller-gated leaf is gated by every one of its callers", () => {
+		const projects = read("pages", "Projects.tsx");
+		expect(projects).toMatch(
+			/<OperatorOnly capability="admin">\s*<RefreshProjectsCTA \/>\s*<\/OperatorOnly>/,
+		);
+	});
+
+	test("the plan-dispatch dialog is gated at its entry point", () => {
+		const dialog = read("components", "dispatch-plan-dialog.tsx");
+		expect(dialog).toMatch(/<OperatorOnly>\s*<Button type="button" size="sm"/);
+	});
+
+	test("project + registry mutation is gated on admin, not dispatch", () => {
+		// `POST /projects`, `DELETE /projects/:id`, the two refresh routes and
+		// `POST /agents/refresh` are all `admin` in ROUTE_TABLE (warren-b875).
+		expect(read("pages", "Projects.tsx")).toMatch(
+			/<OperatorOnly capability="admin">\s*<AddProjectForm/,
+		);
+		expect(read("pages", "Agents.tsx")).toMatch(/<OperatorOnly capability="admin">/);
+		expect(read("pages", "NewPlanRun.tsx")).toMatch(/<OperatorOnly capability="admin">/);
+	});
+});
+
+describe("redacted wire fields render on presence (warren-f53e)", () => {
+	const types = read("api", "types.ts");
+	const runDetail = read("pages", "RunDetail.tsx");
+
+	test("the fields the public projection drops are optional in the row types", () => {
+		// `undefined !== null` is TRUE — the exact shape that blanked every
+		// run detail page in warren-1f12. Optional forces a presence test.
+		expect(types).toMatch(/burrowId\?: string \| null/);
+		expect(types).toMatch(/burrowRunId\?: string \| null/);
+		expect(types).toMatch(/previewFailureMessage\?: string \| null/);
+		expect(types).toMatch(/localPath\?: string/);
+		expect(types).toMatch(/renderedJson\?: unknown/);
+		// The instance-wide cost rollup is dropped too (warren-946f), so
+		// coalescing it to 0 would print a confident "$0.00 all-time".
+		expect(types).toMatch(/costTotalUsd\?: number/);
+	});
+
+	test("the burrow meta cards don't render as two empty '—' cards", () => {
+		expect(runDetail).toMatch(/\{r\.burrowId \? \(/);
+		expect(runDetail).toMatch(/\{r\.burrowRunId \? \(/);
+		expect(runDetail).not.toMatch(/burrowId \?\? "—"/);
+		expect(runDetail).not.toMatch(/burrowRunId \?\? "—"/);
+	});
+
+	test("the runs list renders its all-time cost tile on presence", () => {
+		const runs = read("pages", "Runs.tsx");
+		expect(runs).toMatch(/total: runs\.data\?\.costTotalUsd,/);
+		expect(runs).toMatch(/costTotals\.total !== undefined/);
+	});
+
+	test("the agents panel reads the flat metadata that survives projection", () => {
+		const agents = read("pages", "Agents.tsx");
+		expect(agents).toMatch(/agent\.provider \?\?/);
+		expect(agents).toMatch(/agent\.model \?\?/);
+		// The rendered envelope (system prompt, canopy paths) is dropped for
+		// a spectator, so its half of the panel is operator-only.
+		expect(agents).toMatch(/<OperatorOnly capability="readOperator">\s*<AgentDefinitionInternals/);
+	});
+});
+
+describe("demo polish (warren-f53e)", () => {
+	test("the steer form sits above the 480px event tail", () => {
+		const runDetail = read("pages", "RunDetail.tsx");
+		const steer = runDetail.indexOf("<SteerForm");
+		const tail = runDetail.indexOf("<EventTail");
+		expect(steer).toBeGreaterThan(-1);
+		expect(tail).toBeGreaterThan(-1);
+		expect(steer).toBeLessThan(tail);
+	});
+
+	test("the plot-era residue is gone from the two files that carried it", () => {
+		const cta = read("components", "RefreshProjectsCTA.tsx");
+		// Dead cache invalidations for surfaces deleted in pl-3a79.
+		expect(cta).not.toMatch(/\["plots"\]/);
+		expect(cta).not.toMatch(/\["plot"\]/);
+		expect(cta).not.toMatch(/discover new Plots/);
+		const status = read("components", "StatusIndicator.tsx");
+		expect(status).not.toMatch(/PLOT_STATUS/);
+		expect(status).not.toMatch(/^\tplot: /m);
+	});
+});

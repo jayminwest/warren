@@ -5,16 +5,19 @@ import { Button } from "@/components/ui/button.tsx";
 import { formatError } from "@/lib/format-error.ts";
 
 /**
- * "Refresh projects to discover new Plots" CTA (warren-bb22).
+ * "Refresh projects" CTA (warren-bb22).
  *
- * First dogfood-discovered Plot UX gap: Plots created via the `plot` CLI in
- * a project repo are silently invisible in the warren UI until project
- * refresh runs (detectProjectFeatures only flips feature flags during a
- * refresh). Surfaces an inline refresh affordance — fans out
- * `projectsApi.refresh(id)` across every
- * registered project in parallel, then invalidates the plot caches.
+ * Fans `projectsApi.refresh(id)` out across every registered project in
+ * parallel, then invalidates the projects cache. `POST
+ * /projects/:id/refresh` is what re-probes each clone's feature flags
+ * (`hasSeeds`) and moves `lastHeadSha`, so this is the one-click way to
+ * pick up a change made in the project repo without visiting each row.
+ *
+ * Retitled in warren-f53e / pl-b82d step 19: the label and the two dead
+ * cache invalidations it carried named a coordination surface deleted back
+ * in pl-3a79. `POST /projects/:id/refresh` is `admin` — callers gate it.
  */
-export function RefreshProjectsCTA({ label }: { label?: string }) {
+export function RefreshProjectsCTA() {
 	const qc = useQueryClient();
 	const projects = useQuery({
 		queryKey: ["projects"],
@@ -28,8 +31,6 @@ export function RefreshProjectsCTA({ label }: { label?: string }) {
 		},
 		onSuccess: () => {
 			qc.invalidateQueries({ queryKey: ["projects"] });
-			qc.invalidateQueries({ queryKey: ["plots"] });
-			qc.invalidateQueries({ queryKey: ["plot"] });
 		},
 	});
 
@@ -48,7 +49,7 @@ export function RefreshProjectsCTA({ label }: { label?: string }) {
 				<RefreshCw
 					className={`mr-2 h-4 w-4 ${refreshAll.isPending ? "animate-spin" : ""}`}
 				/>
-				{label ?? "Refresh projects to discover new Plots"}
+				Refresh all
 			</Button>
 			{refreshAll.isError ? (
 				<span className="text-xs text-(--color-destructive)">{formatError(refreshAll.error)}</span>

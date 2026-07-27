@@ -3,6 +3,7 @@ import { ChevronDown, ChevronRight, RefreshCw } from "lucide-react";
 import { useState } from "react";
 import { agentsApi, projectsApi } from "@/api/client.ts";
 import type { AgentRow } from "@/api/types.ts";
+import { OperatorOnly } from "@/components/OperatorOnly.tsx";
 import { Alert } from "@/components/ui/alert.tsx";
 import { Badge } from "@/components/ui/badge.tsx";
 import { Button } from "@/components/ui/button.tsx";
@@ -110,30 +111,33 @@ export function AgentsPage() {
 							))}
 						</select>
 					</div>
-					{projectFilter.length > 0 ? (
+					{/* Both refresh routes are `admin` (warren-b875). */}
+					<OperatorOnly capability="admin">
+						{projectFilter.length > 0 ? (
+							<Button
+								onClick={() => refreshProject.mutate(projectFilter)}
+								disabled={refreshProject.isPending}
+								variant="outline"
+							>
+								<RefreshCw
+									className={`h-4 w-4 ${
+										refreshProject.isPending ? "animate-spin" : ""
+									}`}
+								/>
+								Refresh project tier
+							</Button>
+						) : null}
 						<Button
-							onClick={() => refreshProject.mutate(projectFilter)}
-							disabled={refreshProject.isPending}
+							onClick={() => refresh.mutate()}
+							disabled={refresh.isPending}
 							variant="outline"
 						>
 							<RefreshCw
-								className={`h-4 w-4 ${
-									refreshProject.isPending ? "animate-spin" : ""
-								}`}
+								className={`h-4 w-4 ${refresh.isPending ? "animate-spin" : ""}`}
 							/>
-							Refresh project tier
+							Refresh registry
 						</Button>
-					) : null}
-					<Button
-						onClick={() => refresh.mutate()}
-						disabled={refresh.isPending}
-						variant="outline"
-					>
-						<RefreshCw
-							className={`h-4 w-4 ${refresh.isPending ? "animate-spin" : ""}`}
-						/>
-						Refresh registry
-					</Button>
+					</OperatorOnly>
 				</div>
 				}
 			/>
@@ -358,29 +362,38 @@ function readTags(frontmatter: Record<string, unknown> | undefined): string[] {
 	return v.filter((t): t is string => typeof t === "string" && t.length > 0);
 }
 
+/**
+ * Expanded-row detail for one agent.
+ *
+ * The header `<dl>` reads the flat row fields (`description` / `provider` /
+ * `model`), which survive the public projection, so it renders identically
+ * for both audiences. Everything below it is derived from `renderedJson` —
+ * the system prompt, the resolved canopy source paths, the raw envelope —
+ * which warren drops for a `readPublic`-only caller (warren-4f6c). Rather
+ * than render that half as an empty "No sections." shell, it is gated on
+ * `readOperator` (warren-f53e / pl-b82d step 19).
+ */
 function AgentDefinitionPanel({ agent }: { agent: AgentRow }) {
 	const def = readRenderedAgent(agent.renderedJson);
-	const [showRaw, setShowRaw] = useState(false);
-	const provider = readStringField(def.frontmatter, "provider");
-	const model = readStringField(def.frontmatter, "model");
 	const tags = readTags(def.frontmatter);
-	const sectionEntries = Object.entries(def.sections ?? {});
-	const resolvedFrom = (def.resolvedFrom ?? []).filter(
-		(s): s is string => typeof s === "string" && s.length > 0,
-	);
+	// Prefer the flat row field; fall back to frontmatter so an older
+	// warren that predates the hoist still fills the cell.
+	const provider = agent.provider ?? readStringField(def.frontmatter, "provider");
+	const model = agent.model ?? readStringField(def.frontmatter, "model");
 
 	return (
 		<div className="space-y-4 break-words">
 			<dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs sm:grid-cols-3 lg:grid-cols-4">
 				<MetaField label="Name" value={def.name ?? agent.name} mono />
-				<MetaField
-					label="Version"
-					value={typeof def.version === "number" ? String(def.version) : "—"}
-					mono
-				/>
 				<MetaField label="Source" value={agent.source ?? "—"} />
 				<MetaField label="Provider" value={provider ?? "—"} mono />
 				<MetaField label="Model" value={model ?? "—"} mono />
+				{agent.description ? (
+					<div className="col-span-2">
+						<dt className="text-(--color-muted-foreground)">Description</dt>
+						<dd className="mt-1">{agent.description}</dd>
+					</div>
+				) : null}
 				<div>
 					<dt className="text-(--color-muted-foreground)">Tags</dt>
 					<dd className="mt-1 flex flex-wrap gap-1">
@@ -396,6 +409,30 @@ function AgentDefinitionPanel({ agent }: { agent: AgentRow }) {
 					</dd>
 				</div>
 			</dl>
+
+			<OperatorOnly capability="readOperator">
+				<AgentDefinitionInternals agent={agent} def={def} />
+			</OperatorOnly>
+		</div>
+	);
+}
+
+/** The `renderedJson`-derived half of the panel. Operator-only. */
+function AgentDefinitionInternals({ agent, def }: { agent: AgentRow; def: RenderedAgent }) {
+	const [showRaw, setShowRaw] = useState(false);
+	const sectionEntries = Object.entries(def.sections ?? {});
+	const resolvedFrom = (def.resolvedFrom ?? []).filter(
+		(s): s is string => typeof s === "string" && s.length > 0,
+	);
+
+	return (
+		<div className="space-y-4">
+			{typeof def.version === "number" ? (
+				<div className="text-xs text-(--color-muted-foreground)">
+					<span className="font-medium">Version:</span>{" "}
+					<span className="font-mono">{def.version}</span>
+				</div>
+			) : null}
 
 			{resolvedFrom.length > 0 ? (
 				<div className="text-xs text-(--color-muted-foreground)">
