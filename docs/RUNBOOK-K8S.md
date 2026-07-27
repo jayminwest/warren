@@ -305,6 +305,8 @@ Two namespaces hold secrets — the run namespace deliberately gets a smaller cr
 | `warren-secrets/github-token` | `warren` | `GITHUB_TOKEN` | control-plane git push / private clone |
 | `warren-secrets/anthropic-api-key` | `warren` | `ANTHROPIC_API_KEY` | injected into agent pod env at dispatch |
 | `warren-secrets/sentry-dsn` | `warren` | `SENTRY_DSN` | error reporting (optional) |
+| `warren-secrets/warren-auth` | `warren` | `WARREN_AUTH` | auth posture: `token` (default) or `public`; **not a secret** — it lives here so the flip and the revert stay a Secret edit plus a rollout restart |
+| `warren-secrets/warren-public-org-allowlist` | `warren` | `WARREN_PUBLIC_ORG_ALLOWLIST` | comma-separated GitHub owners a public instance may hold; read **only** under `WARREN_AUTH=public`, where an empty value refuses the boot |
 | `warren-git-token/token` | `warren-runs` | `WARREN_GIT_TOKEN` (init pod) | init-container clone/push; **optional** — public repos clone without it, private repos **fail silently** if it is missing |
 | `warren-anthropic-key/api-key` | `warren-runs` | agent pod `secretKeyRef` | OPTIONAL agent key source (`WARREN_K8S_ANTHROPIC_SECRET_NAME`/`_KEY`); a run whose key rides the dispatch env still schedules when this Secret is absent |
 
@@ -335,6 +337,37 @@ Per-user identity and short-lived per-run GitHub App tokens are roadmap items (R
 Nothing reads them under `WARREN_RUNTIME=k8s`, so in the cluster they are dead weight that causes confusion.
 Do not `--from-env-file` a self-host `.env` straight into `warren-secrets` — cherry-pick the keys in the table above.
 
+### 2.5 The public-instance posture
+
+`WARREN_AUTH` selects who may reach the instance without a bearer token.
+The default `token` keeps every route gated.
+`public` admits credential-less spectators to a read-only public projection covering runs, projects, agents and the event stream.
+`WARREN_PUBLIC_ORG_ALLOWLIST` names the GitHub owners such an instance may hold.
+
+Neither value is a credential.
+Both live in `warren-secrets` for one reason: rollback speed.
+An operator flips the posture, and reverts it, with a Secret edit plus a rollout restart.
+A literal `value:` in the overlay would turn that revert into a commit, a release and a deploy.
+
+```bash
+kubectl -n warren patch secret warren-secrets --type merge -p \
+  '{"stringData":{"warren-auth":"public","warren-public-org-allowlist":"<org>[,<org>...]"}}'
+kubectl -n warren rollout restart deploy/warren
+```
+
+To revert, set `warren-auth` back to `token` and restart again.
+The Secret edit alone changes nothing, because a `secretKeyRef` resolves at pod start.
+
+Both keys fail safe.
+An absent or blank `WARREN_AUTH` resolves to `token`, and an unrecognized value refuses the boot outright.
+No degenerate value ever reaches `public`.
+Public mode with an empty allowlist also refuses the boot, and a rolling update never routes traffic to a pod that fails to start.
+A misconfigured flip therefore leaves the previous pod in service rather than exposing one.
+
+The allowlist proves the OWNER, not that each repo under it is public.
+Put an org on the list only when you accept every repo in it becoming visible.
+`scripts/public-auth-wiring.test.ts` guards the wiring that carries both keys into the container.
+
 ---
 
 ## 3. Control-plane configuration (env)
@@ -356,6 +389,8 @@ The full Fly→K8s mapping is in [`gke-deploy-prep.md`](deploy/gke-deploy-prep.m
 | `WARREN_K8S_MAX_PROJECT_CONCURRENCY` | unset (unlimited) | admission: global per-project default |
 | `WARREN_K8S_ANTHROPIC_SECRET_NAME` / `_KEY` | `warren-anthropic-key` / `api-key` | optional agent-key `secretKeyRef` |
 | `WARREN_K8S_GIT_SECRET_NAME` / `_KEY` | `warren-git-token` / `token` | init-container git token source |
+| `WARREN_AUTH` | unset ⇒ `token` | auth posture (§2.5); `public` admits credential-less spectators to the public projection |
+| `WARREN_PUBLIC_ORG_ALLOWLIST` | unset | GitHub owners a public instance may hold; required under `WARREN_AUTH=public` |
 
 The provider injects these into pods (never set them by hand): `WARREN_API_URL`, `WARREN_RUN_ID`, `WARREN_REPO_URL`, `WARREN_BRANCH`, `WARREN_BASE_BRANCH`, `WARREN_WORKSPACE_PATH`, `WARREN_SEED_MANIFEST`.
 
