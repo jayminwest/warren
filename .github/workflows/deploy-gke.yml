@@ -147,7 +147,7 @@ jobs:
       # public image too — a multi-arch manifest list is deliberately
       # deferred (it costs QEMU build time on every push).
       - name: Build + push warren (control plane)
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: Dockerfile
@@ -161,7 +161,7 @@ jobs:
           cache-to: type=gha,mode=max,scope=warren-control
 
       - name: Build + push warren-agent
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: deploy/docker/Dockerfile.agent
@@ -174,7 +174,7 @@ jobs:
           cache-to: type=gha,mode=max,scope=warren-agent
 
       - name: Build + push warren-workspace-init
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: deploy/docker/Dockerfile.workspace-init
