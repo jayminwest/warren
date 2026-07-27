@@ -137,16 +137,16 @@ describe("POST /projects org allowlist", () => {
 	test("a repo entry admits its repo and refuses a sibling, over the wire", async () => {
 		await serve({
 			owners: new Set<string>(),
-			repos: new Set(["jayminwest/warren"]),
+			repos: new Set(["some-owner/public-repo"]),
 		});
 
-		const refused = await post("https://github.com/jayminwest/kota-mind.git");
+		const refused = await post("https://github.com/some-owner/private-repo.git");
 		expect(refused.status).toBe(400);
 		expect(((await refused.json()) as ErrorBody).error.message).toContain("allowlist");
 		expect(await readdir(projectsRoot)).toEqual([]);
 		expect(await repos.projects.listAll()).toEqual([]);
 
-		const gitUrl = "https://github.com/jayminwest/warren.git";
+		const gitUrl = "https://github.com/some-owner/public-repo.git";
 		await repos.projects.create({
 			gitUrl,
 			localPath: join(projectsRoot, "w"),

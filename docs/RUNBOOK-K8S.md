@@ -306,7 +306,7 @@ Two namespaces hold secrets — the run namespace deliberately gets a smaller cr
 | `warren-secrets/anthropic-api-key` | `warren` | `ANTHROPIC_API_KEY` | injected into agent pod env at dispatch |
 | `warren-secrets/sentry-dsn` | `warren` | `SENTRY_DSN` | error reporting (optional) |
 | `warren-secrets/warren-auth` | `warren` | `WARREN_AUTH` | auth posture: `token` (default) or `public`; **not a secret** — it lives here so the flip and the revert stay a Secret edit plus a rollout restart |
-| `warren-secrets/warren-public-allowlist` | `warren` | `WARREN_PUBLIC_ALLOWLIST` | comma-separated owners (`os-eco`) and/or repos (`jayminwest/warren`) a public instance may hold; read **only** under `WARREN_AUTH=public`, where an empty value refuses the boot |
+| `warren-secrets/warren-public-allowlist` | `warren` | `WARREN_PUBLIC_ALLOWLIST` | comma-separated owners (`my-org`) and/or repos (`some-owner/some-repo`) a public instance may hold; read **only** under `WARREN_AUTH=public`, where an empty value refuses the boot |
 | `warren-git-token/token` | `warren-runs` | `WARREN_GIT_TOKEN` (init pod) | init-container clone/push; **optional** — public repos clone without it, private repos **fail silently** if it is missing |
 | `warren-anthropic-key/api-key` | `warren-runs` | agent pod `secretKeyRef` | OPTIONAL agent key source (`WARREN_K8S_ANTHROPIC_SECRET_NAME`/`_KEY`); a run whose key rides the dispatch env still schedules when this Secret is absent |
 
@@ -343,7 +343,7 @@ Do not `--from-env-file` a self-host `.env` straight into `warren-secrets` — c
 The default `token` keeps every route gated.
 `public` admits credential-less spectators to a read-only public projection covering runs, projects, agents and the event stream.
 `WARREN_PUBLIC_ALLOWLIST` names what such an instance may hold.
-Each entry is either a bare owner (`os-eco`) or one repo (`jayminwest/warren`).
+Each entry is either a bare owner (`my-org`) or one repo (`some-owner/some-repo`).
 Use repo entries when the owner also holds private repos, because an owner entry admits every repo beneath it.
 
 Neither value is a credential.

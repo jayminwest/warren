@@ -22,14 +22,14 @@ import {
 } from "./public-allowlist.ts";
 
 const ALLOWED: PublicAllowlist = {
-	owners: new Set(["os-eco", "jayminwest"]),
+	owners: new Set(["os-eco", "some-owner"]),
 	repos: new Set<string>(),
 };
 
 /** Repo-granular list: one repo under an owner that is NOT wholly allowed. */
 const REPO_SCOPED: PublicAllowlist = {
 	owners: new Set<string>(),
-	repos: new Set(["jayminwest/warren", "jayminwest/burrow"]),
+	repos: new Set(["some-owner/public-repo", "some-owner/other-public-repo"]),
 };
 
 /** Quiet the deprecation notice when a test exercises the legacy env name. */
@@ -37,8 +37,8 @@ const silent = () => {};
 
 describe("loadPublicAllowlistFromEnv", () => {
 	test("parses a comma-separated list, trimming and lowercasing", () => {
-		const allowlist = loadPublicAllowlistFromEnv({ [ENV]: " os-eco , JayminWest " });
-		expect([...allowlist.owners].sort()).toEqual(["jayminwest", "os-eco"]);
+		const allowlist = loadPublicAllowlistFromEnv({ [ENV]: " my-org , OtherOrg " });
+		expect([...allowlist.owners].sort()).toEqual(["my-org", "otherorg"]);
 	});
 
 	test("a single owner is a valid list", () => {
@@ -105,49 +105,49 @@ describe("isRepoAllowlisted", () => {
 	// The whole point of warren-1841: an owner with private repos must be
 	// expressible WITHOUT admitting all of them.
 	test("a repo entry admits only itself, not its siblings under the same owner", () => {
-		expect(isRepoAllowlisted(REPO_SCOPED, "jayminwest", "warren")).toBe(true);
-		expect(isRepoAllowlisted(REPO_SCOPED, "jayminwest", "burrow")).toBe(true);
-		expect(isRepoAllowlisted(REPO_SCOPED, "jayminwest", "kota-mind")).toBe(false);
-		expect(isRepoAllowlisted(REPO_SCOPED, "jayminwest", "big-sesh-com")).toBe(false);
+		expect(isRepoAllowlisted(REPO_SCOPED, "some-owner", "public-repo")).toBe(true);
+		expect(isRepoAllowlisted(REPO_SCOPED, "some-owner", "other-public-repo")).toBe(true);
+		expect(isRepoAllowlisted(REPO_SCOPED, "some-owner", "private-repo")).toBe(false);
+		expect(isRepoAllowlisted(REPO_SCOPED, "some-owner", "another-private-repo")).toBe(false);
 	});
 
 	test("a repo entry matches case-insensitively on both segments", () => {
-		expect(isRepoAllowlisted(REPO_SCOPED, "JayminWest", "WARREN")).toBe(true);
+		expect(isRepoAllowlisted(REPO_SCOPED, "SOME-OWNER", "PUBLIC-REPO")).toBe(true);
 	});
 
 	test("no substring match on the repo name either", () => {
-		expect(isRepoAllowlisted(REPO_SCOPED, "jayminwest", "warren-evil")).toBe(false);
-		expect(isRepoAllowlisted(REPO_SCOPED, "jayminwest", "war")).toBe(false);
+		expect(isRepoAllowlisted(REPO_SCOPED, "some-owner", "public-repo-evil")).toBe(false);
+		expect(isRepoAllowlisted(REPO_SCOPED, "some-owner", "public")).toBe(false);
 	});
 });
 
 describe("repo entries", () => {
 	test("owner and owner/repo entries coexist in one list", () => {
-		const list = loadPublicAllowlistFromEnv({ [ENV]: "os-eco,jayminwest/warren" });
-		expect([...list.owners]).toEqual(["os-eco"]);
-		expect([...list.repos]).toEqual(["jayminwest/warren"]);
-		expect(isRepoAllowlisted(list, "os-eco", "anything")).toBe(true);
-		expect(isRepoAllowlisted(list, "jayminwest", "warren")).toBe(true);
-		expect(isRepoAllowlisted(list, "jayminwest", "kota-mind")).toBe(false);
+		const list = loadPublicAllowlistFromEnv({ [ENV]: "my-org,some-owner/public-repo" });
+		expect([...list.owners]).toEqual(["my-org"]);
+		expect([...list.repos]).toEqual(["some-owner/public-repo"]);
+		expect(isRepoAllowlisted(list, "my-org", "anything")).toBe(true);
+		expect(isRepoAllowlisted(list, "some-owner", "public-repo")).toBe(true);
+		expect(isRepoAllowlisted(list, "some-owner", "private-repo")).toBe(false);
 	});
 
 	test("a .git suffix on an entry is tolerated, matching parseGitHubUrl", () => {
-		const list = loadPublicAllowlistFromEnv({ [ENV]: "jayminwest/warren.git" });
-		expect(isRepoAllowlisted(list, "jayminwest", "warren")).toBe(true);
+		const list = loadPublicAllowlistFromEnv({ [ENV]: "some-owner/public-repo.git" });
+		expect(isRepoAllowlisted(list, "some-owner", "public-repo")).toBe(true);
 	});
 
 	test("entries are validated by parseGitHubUrl, so path escapes refuse", () => {
-		for (const raw of ["jayminwest/..", "jayminwest/.", "-bad/warren"]) {
+		for (const raw of ["some-owner/..", "some-owner/.", "-bad/some-repo"]) {
 			expect(() => loadPublicAllowlistFromEnv({ [ENV]: raw })).toThrow(PublicAllowlistError);
 		}
 	});
 
-	// The live case this was built for: ten private repos under the same
-	// owner as the seven public ones. An owner list cannot express it.
+	// The case this was built for: private repos sitting under the same
+	// owner as the public ones. An owner list cannot express it.
 	test("a repo list refuses a private sibling the owner list would have admitted", () => {
-		const byOwner = loadPublicAllowlistFromEnv({ [ENV]: "jayminwest" });
-		const byRepo = loadPublicAllowlistFromEnv({ [ENV]: "jayminwest/warren" });
-		const priv = [{ id: "p1", gitUrl: "https://github.com/jayminwest/kota-mind.git" }];
+		const byOwner = loadPublicAllowlistFromEnv({ [ENV]: "some-owner" });
+		const byRepo = loadPublicAllowlistFromEnv({ [ENV]: "some-owner/public-repo" });
+		const priv = [{ id: "p1", gitUrl: "https://github.com/some-owner/private-repo.git" }];
 		expect(() => assertRegisteredProjectsAllowlisted(byOwner, priv)).not.toThrow();
 		expect(() => assertRegisteredProjectsAllowlisted(byRepo, priv)).toThrow(PublicAllowlistError);
 	});
@@ -181,8 +181,8 @@ describe("the legacy env name", () => {
 	});
 
 	test("it accepts repo entries too — the deprecation is the name, not the shape", () => {
-		const list = loadPublicAllowlistFromEnv({ [LEGACY]: "jayminwest/warren" }, silent);
-		expect(isRepoAllowlisted(list, "jayminwest", "warren")).toBe(true);
+		const list = loadPublicAllowlistFromEnv({ [LEGACY]: "some-owner/public-repo" }, silent);
+		expect(isRepoAllowlisted(list, "some-owner", "public-repo")).toBe(true);
 	});
 });
 
@@ -232,7 +232,7 @@ describe("assertRegisteredProjectsAllowlisted", () => {
 		expect(() =>
 			assertRegisteredProjectsAllowlisted(ALLOWED, [
 				{ id: "p1", gitUrl: "https://github.com/os-eco/warren.git" },
-				{ id: "p2", gitUrl: "git@github.com:jayminwest/burrow.git" },
+				{ id: "p2", gitUrl: "git@github.com:some-owner/other-public-repo.git" },
 			]),
 		).not.toThrow();
 	});

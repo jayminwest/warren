@@ -21,9 +21,14 @@
  * lose the registration that already succeeded.
  *
  * Usage:
- *   WARREN_URL=... WARREN_API_TOKEN=... bun run scripts/register-projects.ts
- *   ... bun run scripts/register-projects.ts --dry-run
- *   ... bun run scripts/register-projects.ts https://github.com/owner/name
+ *   WARREN_URL=... WARREN_API_TOKEN=... \
+ *     bun run scripts/register-projects.ts https://github.com/owner/name ...
+ *   ... bun run scripts/register-projects.ts --from repos.txt
+ *   ... bun run scripts/register-projects.ts --dry-run <urls>
+ *
+ * Repos are always supplied by the caller. There is no built-in list —
+ * this script ships in every warren checkout, so a default manifest would
+ * be one deployment's repos hardcoded into everyone else's.
  *
  * `WARREN_URL` is deliberately required with no default — this script
  * mutates whatever instance it is pointed at, and a default would eventually
@@ -31,24 +36,6 @@
  */
 
 import { parseGitHubUrl } from "../src/projects/url.ts";
-
-/**
- * The public os-eco repos a fresh instance is expected to hold.
- *
- * `trellis` is deliberately absent: it is a PRIVATE repo, and the public
- * instance must only ever hold repos whose contents are already public
- * (see src/server/public-allowlist.ts on why the org allowlist alone does
- * not prove that). Add it only if it is made public.
- */
-export const OS_ECO_REPOS: readonly string[] = [
-	"https://github.com/jayminwest/warren",
-	"https://github.com/jayminwest/burrow",
-	"https://github.com/jayminwest/plot",
-	"https://github.com/jayminwest/mulch",
-	"https://github.com/jayminwest/seeds",
-	"https://github.com/jayminwest/canopy",
-	"https://github.com/jayminwest/sapling",
-];
 
 /**
  * Client-side budget for one registration. The server's own clone timeout
@@ -61,12 +48,37 @@ const DEFAULT_TIMEOUT_MS = 30_000;
 export interface Args {
 	readonly repos: readonly string[];
 	readonly dryRun: boolean;
+	/** Path passed to `--from`, if any. Read by the caller (keeps this pure). */
+	readonly fromFile?: string;
 }
 
+/**
+ * Repos come from the caller — as arguments or via `--from <file>` — and
+ * there is no built-in list. A default manifest here would be one
+ * deployment's repos hardcoded into everyone else's checkout.
+ */
 export function parseArgs(argv: readonly string[]): Args {
 	const dryRun = argv.includes("--dry-run");
-	const repos = argv.filter((a) => !a.startsWith("--"));
-	return { repos: repos.length > 0 ? repos : OS_ECO_REPOS, dryRun };
+	const repos: string[] = [];
+	let fromFile: string | undefined;
+	for (let i = 0; i < argv.length; i++) {
+		const arg = argv[i] as string;
+		if (arg === "--from") {
+			fromFile = argv[i + 1];
+			i++;
+			continue;
+		}
+		if (!arg.startsWith("--")) repos.push(arg);
+	}
+	return { repos, dryRun, ...(fromFile !== undefined ? { fromFile } : {}) };
+}
+
+/** Parse a `--from` file: one repo URL per line, `#` comments and blanks ignored. */
+export function parseRepoFile(contents: string): readonly string[] {
+	return contents
+		.split("\n")
+		.map((line) => line.trim())
+		.filter((line) => line !== "" && !line.startsWith("#"));
 }
 
 /**
@@ -228,7 +240,17 @@ async function main(): Promise<number> {
 		console.error("  WARREN_URL has no default on purpose — this script mutates the instance.");
 		return 2;
 	}
-	const { repos, dryRun } = parseArgs(process.argv.slice(2));
+	const { repos: argRepos, dryRun, fromFile } = parseArgs(process.argv.slice(2));
+	const repos =
+		fromFile !== undefined
+			? [...argRepos, ...parseRepoFile(await Bun.file(fromFile).text())]
+			: argRepos;
+	if (repos.length === 0) {
+		console.error("No repos given.");
+		console.error("  bun run scripts/register-projects.ts <git-url>...");
+		console.error("  bun run scripts/register-projects.ts --from repos.txt");
+		return 2;
+	}
 	const opts: ClientOptions = { baseUrl, token };
 
 	// Preflight doubles as an auth + reachability check before any write.

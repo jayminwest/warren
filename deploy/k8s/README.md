@@ -118,7 +118,7 @@ kubectl -n warren-runs create secret generic warren-git-token \
 | `warren-secrets/anthropic-api-key` | warren | `ANTHROPIC_API_KEY` | injected into agent pod env |
 | `warren-secrets/sentry-dsn` | warren | `SENTRY_DSN` | error reporting (optional) |
 | `warren-secrets/warren-auth` | warren | `WARREN_AUTH` | auth posture: `token` (default) or `public` (optional) |
-| `warren-secrets/warren-public-allowlist` | warren | `WARREN_PUBLIC_ALLOWLIST` | owners (`os-eco`) and/or repos (`jayminwest/warren`) a public instance may hold (required iff `warren-auth=public`) |
+| `warren-secrets/warren-public-allowlist` | warren | `WARREN_PUBLIC_ALLOWLIST` | owners (`my-org`) and/or repos (`some-owner/some-repo`) a public instance may hold (required iff `warren-auth=public`) |
 | `warren-git-token/token` | warren-runs | `WARREN_GIT_TOKEN` (init pod) | init-container clone |
 
 ### Going public

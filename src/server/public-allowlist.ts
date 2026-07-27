@@ -12,7 +12,7 @@
  *
  * `WARREN_PUBLIC_ALLOWLIST` is a comma-separated list whose entries are
  * EITHER a bare GitHub owner (`os-eco`) or one specific repo
- * (`jayminwest/warren`). Both shapes may appear in the same list. It is
+ * (`some-owner/some-repo`). Both shapes may appear in the same list. It is
  * consulted ONLY under `WARREN_AUTH=public` (token mode is entirely
  * unaffected — `resolvePublicAllowlist` returns `undefined` and every
  * assertion below is a no-op). Two enforcement points:
@@ -34,13 +34,13 @@
  * **Why repo entries exist.** The original design admitted bare owners
  * only, reasoning that an operator should "put an org on the list only
  * when every repo in it is one you are happy to publish". That premise
- * silently fails for a PERSONAL account, which is the common case. The
- * os-eco instance holds fifteen `jayminwest`-owned projects, ten of them
- * private — so an owner allowlist of `jayminwest` would have admitted
- * every one of them, and the boot assertion meant to catch exactly that
- * would have passed clean. Owner entries remain, because they are the
- * right tool for a dedicated org whose contents are uniformly public.
- * They are no longer the only tool.
+ * silently fails whenever the owner is a personal account, which is the
+ * common case: a personal account nearly always holds private work
+ * alongside whatever is being demoed, so an owner entry admits every one
+ * of those private repos and the boot assertion meant to catch exactly
+ * that passes clean. Owner entries remain, because they are the right
+ * tool for a dedicated org whose contents are uniformly public. They are
+ * no longer the only tool.
  *
  * **Tradeoff retained (deliberate):** neither entry shape asks the forge
  * whether a repo is really public. That would put a network call on
@@ -111,7 +111,7 @@ function invalidEntry(entry: string, why: string): PublicAllowlistError {
 		`${WARREN_PUBLIC_ALLOWLIST_ENV} entry ${JSON.stringify(entry)} ${why}`,
 		{
 			recoveryHint:
-				"each entry is either a bare owner (os-eco) or one repo (jayminwest/warren) — not a URL, and not owner/name/extra",
+				"each entry is either a bare owner (my-org) or one repo (some-owner/some-repo) — not a URL, and not owner/name/extra",
 		},
 	);
 }
@@ -145,7 +145,7 @@ export function loadPublicAllowlistFromEnv(
 	const { raw, source } = readRawAllowlist(env);
 	if (source === LEGACY_PUBLIC_ORG_ALLOWLIST_ENV) {
 		warn(
-			`${LEGACY_PUBLIC_ORG_ALLOWLIST_ENV} is deprecated — rename it to ${WARREN_PUBLIC_ALLOWLIST_ENV}. It now accepts owner/repo entries (e.g. jayminwest/warren), not owners only.`,
+			`${LEGACY_PUBLIC_ORG_ALLOWLIST_ENV} is deprecated — rename it to ${WARREN_PUBLIC_ALLOWLIST_ENV}. It now accepts owner/repo entries (e.g. some-owner/some-repo), not owners only.`,
 		);
 	}
 	const entries = raw

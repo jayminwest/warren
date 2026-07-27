@@ -4,9 +4,9 @@ import {
 	type ClientOptions,
 	formatSummary,
 	isAlreadyExists,
-	OS_ECO_REPOS,
 	type Outcome,
 	parseArgs,
+	parseRepoFile,
 	planRegistrations,
 	registerOne,
 	repoKey,
@@ -78,27 +78,20 @@ describe("planRegistrations", () => {
 		expect(plan.skipped).toHaveLength(1);
 	});
 
-	test("an empty instance registers everything", () => {
-		expect(planRegistrations(OS_ECO_REPOS, []).toRegister).toHaveLength(OS_ECO_REPOS.length);
-	});
-});
-
-describe("the default manifest", () => {
-	test("holds only public repos — trellis is private and must stay out", () => {
-		expect(OS_ECO_REPOS.some((u) => u.includes("trellis"))).toBe(false);
-	});
-
-	test("every entry parses as a GitHub URL", () => {
-		for (const url of OS_ECO_REPOS) expect(repoKey(url)).toMatch(/^[^/]+\/[^/]+$/);
+	test("an empty instance registers everything given", () => {
+		const targets = ["https://github.com/a/b", "https://github.com/c/d"];
+		expect(planRegistrations(targets, []).toRegister).toHaveLength(2);
 	});
 });
 
 describe("parseArgs", () => {
-	test("falls back to the os-eco manifest", () => {
-		expect(parseArgs([]).repos).toEqual(OS_ECO_REPOS);
+	// No built-in manifest: this script ships in every warren checkout, so a
+	// default list would be one deployment's repos in everyone else's tree.
+	test("no arguments yields no repos — there is no default list", () => {
+		expect(parseArgs([]).repos).toEqual([]);
 	});
 
-	test("explicit repos win over the manifest", () => {
+	test("repos come from the caller", () => {
 		expect(parseArgs(["https://github.com/a/b"]).repos).toEqual(["https://github.com/a/b"]);
 	});
 
@@ -106,6 +99,20 @@ describe("parseArgs", () => {
 		const args = parseArgs(["--dry-run", "https://github.com/a/b"]);
 		expect(args.dryRun).toBe(true);
 		expect(args.repos).toEqual(["https://github.com/a/b"]);
+	});
+
+	test("--from captures its path and does not treat it as a repo", () => {
+		const args = parseArgs(["--from", "repos.txt", "https://github.com/a/b"]);
+		expect(args.fromFile).toBe("repos.txt");
+		expect(args.repos).toEqual(["https://github.com/a/b"]);
+	});
+});
+
+describe("parseRepoFile", () => {
+	test("one url per line, ignoring blanks and # comments", () => {
+		expect(
+			parseRepoFile("# my instance\nhttps://github.com/a/b\n\n  https://github.com/c/d  \n"),
+		).toEqual(["https://github.com/a/b", "https://github.com/c/d"]);
 	});
 });
 
