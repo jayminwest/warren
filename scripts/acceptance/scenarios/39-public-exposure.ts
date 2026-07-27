@@ -107,7 +107,7 @@ export const scenario: Scenario = {
 				gitConfigPath,
 				extraEnv: {
 					WARREN_AUTH: "public",
-					WARREN_PUBLIC_ORG_ALLOWLIST: PUBLIC_ORG,
+					WARREN_PUBLIC_ALLOWLIST: PUBLIC_ORG,
 					WARREN_MAX_EVENT_STREAMS_PER_CLIENT: String(MAX_STREAMS_PER_CLIENT),
 					// No triggers on the seeded project; keep the tick loop out of
 					// the way for the life of the scenario.
@@ -130,11 +130,11 @@ export const scenario: Scenario = {
 			await assertBootRefused(handle, "unrecognized WARREN_AUTH", { WARREN_AUTH: "publik" });
 			await assertBootRefused(handle, "public mode with an empty org allowlist", {
 				WARREN_AUTH: "public",
-				WARREN_PUBLIC_ORG_ALLOWLIST: "",
+				WARREN_PUBLIC_ALLOWLIST: "",
 			});
 			await assertBootRefused(handle, "public mode with a non-matching org allowlist", {
 				WARREN_AUTH: "public",
-				WARREN_PUBLIC_ORG_ALLOWLIST: "some-other-org",
+				WARREN_PUBLIC_ALLOWLIST: "some-other-org",
 			});
 		} finally {
 			// `stop()` removes the temp root; on a pre-boot failure nothing owns

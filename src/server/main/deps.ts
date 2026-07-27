@@ -21,7 +21,7 @@ import type { PodMetricsSource } from "../../runtime/k8s/pod-metrics.ts";
 import type { PodCacheReader } from "../../runtime/k8s/pod-watcher.ts";
 import type { createWarrenConfigCache } from "../../warren-config/index.ts";
 import { IdempotencyStore } from "../idempotency.ts";
-import type { PublicOrgAllowlist } from "../public-allowlist.ts";
+import type { PublicAllowlist } from "../public-allowlist.ts";
 import { EventStreamLimiter, type EventStreamLimits } from "../stream-limits.ts";
 import type { BridgeRegistry, Logger, ServerDeps } from "../types.ts";
 import { defaultSpawn } from "./utils.ts";
@@ -80,7 +80,7 @@ export interface BuildServerDepsInput {
 	 * Orgs `POST /projects` may register (warren-ce9b). Resolved by the
 	 * orchestrator, which passes `undefined` unless `WARREN_AUTH=public`.
 	 */
-	readonly publicOrgAllowlist: PublicOrgAllowlist | undefined;
+	readonly publicAllowlist: PublicAllowlist | undefined;
 	readonly previewAuth: PreviewAuth | undefined;
 	readonly sdBinary: string;
 	readonly metricsRegistry?: MetricsRegistry;
@@ -115,7 +115,7 @@ export function buildServerDeps(input: BuildServerDepsInput): ServerDeps {
 		previewEvictionConfig,
 		workspaceGcTtlMs,
 		eventStreamLimits,
-		publicOrgAllowlist,
+		publicAllowlist,
 		previewAuth,
 		previewSidecars,
 		sdBinary,
@@ -151,7 +151,7 @@ export function buildServerDeps(input: BuildServerDepsInput): ServerDeps {
 		previewMaxLive: previewEvictionConfig.maxLive,
 		workspaceGcTtlMs,
 		streamLimiter: new EventStreamLimiter(eventStreamLimits),
-		...(publicOrgAllowlist !== undefined ? { publicOrgAllowlist } : {}),
+		...(publicAllowlist !== undefined ? { publicAllowlist } : {}),
 		previewMode: previewLaunchConfig.mode,
 		...(previewHostForDeps !== undefined ? { previewHost: previewHostForDeps } : {}),
 		...(previewAuth !== undefined ? { previewAuth } : {}),

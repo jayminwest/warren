@@ -13,82 +13,176 @@ import { ValidationError } from "../core/errors.ts";
 import {
 	assertGitUrlAllowlisted,
 	assertRegisteredProjectsAllowlisted,
-	WARREN_PUBLIC_ORG_ALLOWLIST_ENV as ENV,
-	isOrgAllowlisted,
-	loadPublicOrgAllowlistFromEnv,
-	type PublicOrgAllowlist,
-	PublicOrgAllowlistError,
-	resolvePublicOrgAllowlist,
+	WARREN_PUBLIC_ALLOWLIST_ENV as ENV,
+	isRepoAllowlisted,
+	loadPublicAllowlistFromEnv,
+	type PublicAllowlist,
+	PublicAllowlistError,
+	resolvePublicAllowlist,
 } from "./public-allowlist.ts";
 
-const ALLOWED: PublicOrgAllowlist = new Set(["os-eco", "jayminwest"]);
+const ALLOWED: PublicAllowlist = {
+	owners: new Set(["os-eco", "some-owner"]),
+	repos: new Set<string>(),
+};
 
-describe("loadPublicOrgAllowlistFromEnv", () => {
+/** Repo-granular list: one repo under an owner that is NOT wholly allowed. */
+const REPO_SCOPED: PublicAllowlist = {
+	owners: new Set<string>(),
+	repos: new Set(["some-owner/public-repo", "some-owner/other-public-repo"]),
+};
+
+/** Quiet the deprecation notice when a test exercises the legacy env name. */
+const silent = () => {};
+
+describe("loadPublicAllowlistFromEnv", () => {
 	test("parses a comma-separated list, trimming and lowercasing", () => {
-		const allowlist = loadPublicOrgAllowlistFromEnv({ [ENV]: " os-eco , JayminWest " });
-		expect([...allowlist].sort()).toEqual(["jayminwest", "os-eco"]);
+		const allowlist = loadPublicAllowlistFromEnv({ [ENV]: " my-org , OtherOrg " });
+		expect([...allowlist.owners].sort()).toEqual(["my-org", "otherorg"]);
 	});
 
 	test("a single owner is a valid list", () => {
-		expect([...loadPublicOrgAllowlistFromEnv({ [ENV]: "os-eco" })]).toEqual(["os-eco"]);
+		expect([...loadPublicAllowlistFromEnv({ [ENV]: "os-eco" }).owners]).toEqual(["os-eco"]);
 	});
 
 	// The fail-closed core: an absent or empty list must never widen to
 	// "every org". Reverting the length check makes all four of these pass.
 	test("absent, blank, or all-empty-entry values refuse", () => {
 		for (const raw of [undefined, "", "   ", ",", " , , "]) {
-			expect(() => loadPublicOrgAllowlistFromEnv(raw === undefined ? {} : { [ENV]: raw })).toThrow(
-				PublicOrgAllowlistError,
+			expect(() => loadPublicAllowlistFromEnv(raw === undefined ? {} : { [ENV]: raw })).toThrow(
+				PublicAllowlistError,
 			);
 		}
 	});
 
-	test("entries that aren't bare owners refuse", () => {
-		for (const raw of [
-			"https://github.com/os-eco",
-			"os-eco/warren",
-			"os eco",
-			"-os-eco",
-			"os:eco",
-			"*",
-		]) {
-			expect(() => loadPublicOrgAllowlistFromEnv({ [ENV]: raw })).toThrow(/is not a GitHub owner/);
+	test("entries that are neither an owner nor an owner/repo refuse", () => {
+		for (const raw of ["os eco", "-os-eco", "os:eco", "*"]) {
+			expect(() => loadPublicAllowlistFromEnv({ [ENV]: raw })).toThrow(/is not a GitHub owner/);
 		}
 	});
 
+	test("a pasted URL refuses — it has too many segments to be either shape", () => {
+		expect(() => loadPublicAllowlistFromEnv({ [ENV]: "https://github.com/os-eco/warren" })).toThrow(
+			/too many path segments/,
+		);
+	});
+
 	test("the refusal names the env var so the operator knows what to set", () => {
-		expect(() => loadPublicOrgAllowlistFromEnv({})).toThrow(ENV);
+		expect(() => loadPublicAllowlistFromEnv({})).toThrow(ENV);
 	});
 });
 
-describe("resolvePublicOrgAllowlist", () => {
+describe("resolvePublicAllowlist", () => {
 	test("token mode opts out entirely — a bad allowlist isn't even parsed", () => {
-		expect(resolvePublicOrgAllowlist("token", {})).toBeUndefined();
-		expect(resolvePublicOrgAllowlist("token", { [ENV]: "os-eco/warren" })).toBeUndefined();
+		expect(resolvePublicAllowlist("token", {})).toBeUndefined();
+		expect(resolvePublicAllowlist("token", { [ENV]: "os-eco/warren" })).toBeUndefined();
 	});
 
 	test("public mode parses the list", () => {
-		const allowlist = resolvePublicOrgAllowlist("public", { [ENV]: "os-eco" });
+		const allowlist = resolvePublicAllowlist("public", { [ENV]: "os-eco" });
 		expect(allowlist).toBeDefined();
-		expect(allowlist?.has("os-eco")).toBe(true);
+		expect(allowlist?.owners.has("os-eco")).toBe(true);
 	});
 
 	test("public mode with no allowlist refuses the boot", () => {
-		expect(() => resolvePublicOrgAllowlist("public", {})).toThrow(PublicOrgAllowlistError);
+		expect(() => resolvePublicAllowlist("public", {})).toThrow(PublicAllowlistError);
 	});
 });
 
-describe("isOrgAllowlisted", () => {
-	test("matches case-insensitively on the whole owner", () => {
-		expect(isOrgAllowlisted(ALLOWED, "os-eco")).toBe(true);
-		expect(isOrgAllowlisted(ALLOWED, "OS-ECO")).toBe(true);
-		expect(isOrgAllowlisted(ALLOWED, " os-eco ")).toBe(true);
+describe("isRepoAllowlisted", () => {
+	test("an owner entry admits every repo beneath it, case-insensitively", () => {
+		expect(isRepoAllowlisted(ALLOWED, "os-eco", "warren")).toBe(true);
+		expect(isRepoAllowlisted(ALLOWED, "OS-ECO", "anything")).toBe(true);
+		expect(isRepoAllowlisted(ALLOWED, " os-eco ", "whatever")).toBe(true);
 	});
 
-	test("no substring or prefix match", () => {
-		expect(isOrgAllowlisted(ALLOWED, "os")).toBe(false);
-		expect(isOrgAllowlisted(ALLOWED, "os-eco-evil")).toBe(false);
-		expect(isOrgAllowlisted(ALLOWED, "evil-os-eco")).toBe(false);
+	test("no substring or prefix match on the owner", () => {
+		expect(isRepoAllowlisted(ALLOWED, "os", "warren")).toBe(false);
+		expect(isRepoAllowlisted(ALLOWED, "os-eco-evil", "warren")).toBe(false);
+		expect(isRepoAllowlisted(ALLOWED, "evil-os-eco", "warren")).toBe(false);
+	});
+
+	// The whole point of warren-1841: an owner with private repos must be
+	// expressible WITHOUT admitting all of them.
+	test("a repo entry admits only itself, not its siblings under the same owner", () => {
+		expect(isRepoAllowlisted(REPO_SCOPED, "some-owner", "public-repo")).toBe(true);
+		expect(isRepoAllowlisted(REPO_SCOPED, "some-owner", "other-public-repo")).toBe(true);
+		expect(isRepoAllowlisted(REPO_SCOPED, "some-owner", "private-repo")).toBe(false);
+		expect(isRepoAllowlisted(REPO_SCOPED, "some-owner", "another-private-repo")).toBe(false);
+	});
+
+	test("a repo entry matches case-insensitively on both segments", () => {
+		expect(isRepoAllowlisted(REPO_SCOPED, "SOME-OWNER", "PUBLIC-REPO")).toBe(true);
+	});
+
+	test("no substring match on the repo name either", () => {
+		expect(isRepoAllowlisted(REPO_SCOPED, "some-owner", "public-repo-evil")).toBe(false);
+		expect(isRepoAllowlisted(REPO_SCOPED, "some-owner", "public")).toBe(false);
+	});
+});
+
+describe("repo entries", () => {
+	test("owner and owner/repo entries coexist in one list", () => {
+		const list = loadPublicAllowlistFromEnv({ [ENV]: "my-org,some-owner/public-repo" });
+		expect([...list.owners]).toEqual(["my-org"]);
+		expect([...list.repos]).toEqual(["some-owner/public-repo"]);
+		expect(isRepoAllowlisted(list, "my-org", "anything")).toBe(true);
+		expect(isRepoAllowlisted(list, "some-owner", "public-repo")).toBe(true);
+		expect(isRepoAllowlisted(list, "some-owner", "private-repo")).toBe(false);
+	});
+
+	test("a .git suffix on an entry is tolerated, matching parseGitHubUrl", () => {
+		const list = loadPublicAllowlistFromEnv({ [ENV]: "some-owner/public-repo.git" });
+		expect(isRepoAllowlisted(list, "some-owner", "public-repo")).toBe(true);
+	});
+
+	test("entries are validated by parseGitHubUrl, so path escapes refuse", () => {
+		for (const raw of ["some-owner/..", "some-owner/.", "-bad/some-repo"]) {
+			expect(() => loadPublicAllowlistFromEnv({ [ENV]: raw })).toThrow(PublicAllowlistError);
+		}
+	});
+
+	// The case this was built for: private repos sitting under the same
+	// owner as the public ones. An owner list cannot express it.
+	test("a repo list refuses a private sibling the owner list would have admitted", () => {
+		const byOwner = loadPublicAllowlistFromEnv({ [ENV]: "some-owner" });
+		const byRepo = loadPublicAllowlistFromEnv({ [ENV]: "some-owner/public-repo" });
+		const priv = [{ id: "p1", gitUrl: "https://github.com/some-owner/private-repo.git" }];
+		expect(() => assertRegisteredProjectsAllowlisted(byOwner, priv)).not.toThrow();
+		expect(() => assertRegisteredProjectsAllowlisted(byRepo, priv)).toThrow(PublicAllowlistError);
+	});
+});
+
+describe("the legacy env name", () => {
+	const LEGACY = "WARREN_PUBLIC_ORG_ALLOWLIST";
+
+	test("is still read, so a copied .env does not silently lose its allowlist", () => {
+		const list = loadPublicAllowlistFromEnv({ [LEGACY]: "os-eco" }, silent);
+		expect(list.owners.has("os-eco")).toBe(true);
+	});
+
+	test("warns when it supplies the value", () => {
+		let warned = "";
+		loadPublicAllowlistFromEnv({ [LEGACY]: "os-eco" }, (m) => {
+			warned = m;
+		});
+		expect(warned).toContain(LEGACY);
+		expect(warned).toContain(ENV);
+	});
+
+	test("the current name wins and warns about nothing", () => {
+		let warned = "";
+		const list = loadPublicAllowlistFromEnv({ [ENV]: "current", [LEGACY]: "legacy" }, (m) => {
+			warned = m;
+		});
+		expect(list.owners.has("current")).toBe(true);
+		expect(list.owners.has("legacy")).toBe(false);
+		expect(warned).toBe("");
+	});
+
+	test("it accepts repo entries too — the deprecation is the name, not the shape", () => {
+		const list = loadPublicAllowlistFromEnv({ [LEGACY]: "some-owner/public-repo" }, silent);
+		expect(isRepoAllowlisted(list, "some-owner", "public-repo")).toBe(true);
 	});
 });
 
@@ -115,7 +209,7 @@ describe("assertGitUrlAllowlisted", () => {
 			ValidationError,
 		);
 		expect(() => assertGitUrlAllowlisted(ALLOWED, "https://github.com/somebody/private")).toThrow(
-			/"somebody" is not on this public instance's org allowlist/,
+			/"somebody\/private" is not on this public instance's allowlist/,
 		);
 	});
 
@@ -138,7 +232,7 @@ describe("assertRegisteredProjectsAllowlisted", () => {
 		expect(() =>
 			assertRegisteredProjectsAllowlisted(ALLOWED, [
 				{ id: "p1", gitUrl: "https://github.com/os-eco/warren.git" },
-				{ id: "p2", gitUrl: "git@github.com:jayminwest/burrow.git" },
+				{ id: "p2", gitUrl: "git@github.com:some-owner/other-public-repo.git" },
 			]),
 		).not.toThrow();
 	});
@@ -149,7 +243,7 @@ describe("assertRegisteredProjectsAllowlisted", () => {
 				{ id: "p1", gitUrl: "https://github.com/os-eco/warren.git" },
 				{ id: "p2", gitUrl: "https://github.com/somebody/private.git" },
 			]),
-		).toThrow(PublicOrgAllowlistError);
+		).toThrow(PublicAllowlistError);
 		expect(() =>
 			assertRegisteredProjectsAllowlisted(ALLOWED, [
 				{ id: "p2", gitUrl: "https://github.com/somebody/private.git" },
@@ -178,6 +272,6 @@ describe("assertRegisteredProjectsAllowlisted", () => {
 	test("an unparseable stored gitUrl counts as NOT allowlisted", () => {
 		expect(() =>
 			assertRegisteredProjectsAllowlisted(ALLOWED, [{ id: "p9", gitUrl: "file:///etc/passwd" }]),
-		).toThrow(PublicOrgAllowlistError);
+		).toThrow(PublicAllowlistError);
 	});
 });

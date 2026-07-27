@@ -292,12 +292,13 @@ export interface ServerDeps {
 	 */
 	readonly streamLimiter?: import("./stream-limits.ts").EventStreamLimiter;
 	/**
-	 * Orgs `POST /projects` may register (warren-ce9b). `bootServer` wires
-	 * this ONLY under `WARREN_AUTH=public`, from
-	 * `WARREN_PUBLIC_ORG_ALLOWLIST`; absent (token mode, tests) ⇒ no org
+	 * What `POST /projects` may register (warren-ce9b, widened to repo
+	 * granularity by warren-1841): bare owners and/or `owner/repo` pairs.
+	 * `bootServer` wires this ONLY under `WARREN_AUTH=public`, from
+	 * `WARREN_PUBLIC_ALLOWLIST`; absent (token mode, tests) ⇒ no
 	 * restriction. See `src/server/public-allowlist.ts`.
 	 */
-	readonly publicOrgAllowlist?: import("./public-allowlist.ts").PublicOrgAllowlist;
+	readonly publicAllowlist?: import("./public-allowlist.ts").PublicAllowlist;
 }
 
 /**

@@ -22,12 +22,12 @@ import { BurrowClient } from "../../burrow-client/index.ts";
 import { openDatabase, type WarrenDb } from "../../db/client.ts";
 import { createRepos, type Repos } from "../../db/repos/index.ts";
 import { NO_AUTH } from "../auth.ts";
-import type { PublicOrgAllowlist } from "../public-allowlist.ts";
+import type { PublicAllowlist } from "../public-allowlist.ts";
 import { startServer } from "../server.ts";
 import type { ServeHandle, ServerDeps } from "../types.ts";
 import { depsFor, silentLogger, stub, tcpUrl } from "./projects.test-helpers.ts";
 
-const ALLOWED: PublicOrgAllowlist = new Set(["os-eco"]);
+const ALLOWED: PublicAllowlist = { owners: new Set(["os-eco"]), repos: new Set<string>() };
 
 interface ErrorBody {
 	readonly error: { readonly code: string; readonly message: string };
@@ -47,12 +47,12 @@ describe("POST /projects org allowlist", () => {
 	let handle: ServeHandle | null = null;
 
 	/** Start a server whose projects root is the temp dir. `undefined` ⇒ token mode. */
-	async function serve(allowlist: PublicOrgAllowlist | undefined): Promise<void> {
+	async function serve(allowlist: PublicAllowlist | undefined): Promise<void> {
 		const base = await depsFor(repos, inertBurrowClient());
 		const deps: ServerDeps = {
 			...base,
 			projectsConfig: { root: projectsRoot, gitBinary: "git" },
-			...(allowlist !== undefined ? { publicOrgAllowlist: allowlist } : {}),
+			...(allowlist !== undefined ? { publicAllowlist: allowlist } : {}),
 		};
 		handle = startServer(deps, {
 			transport: { kind: "tcp", hostname: "127.0.0.1", port: 0 },
@@ -130,6 +130,32 @@ describe("POST /projects org allowlist", () => {
 		const body = (await res.json()) as ErrorBody;
 		expect(body.error.message).toContain("project already exists");
 		expect(body.error.message).not.toContain("allowlist");
+	});
+
+	// warren-1841: the case an owner allowlist cannot express — a private
+	// sibling under the same owner as an allowlisted repo.
+	test("a repo entry admits its repo and refuses a sibling, over the wire", async () => {
+		await serve({
+			owners: new Set<string>(),
+			repos: new Set(["some-owner/public-repo"]),
+		});
+
+		const refused = await post("https://github.com/some-owner/private-repo.git");
+		expect(refused.status).toBe(400);
+		expect(((await refused.json()) as ErrorBody).error.message).toContain("allowlist");
+		expect(await readdir(projectsRoot)).toEqual([]);
+		expect(await repos.projects.listAll()).toEqual([]);
+
+		const gitUrl = "https://github.com/some-owner/public-repo.git";
+		await repos.projects.create({
+			gitUrl,
+			localPath: join(projectsRoot, "w"),
+			defaultBranch: "main",
+		});
+		const admitted = await post(gitUrl);
+		expect(((await admitted.json()) as ErrorBody).error.message).toContain(
+			"project already exists",
+		);
 	});
 
 	test("token mode is unaffected — any org gets past the gate", async () => {
