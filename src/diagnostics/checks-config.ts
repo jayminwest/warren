@@ -8,6 +8,7 @@
  * resolved DB dialect, and a live `SELECT 1` reachability probe.
  */
 
+import { basename } from "node:path";
 import { ValidationError } from "../core/errors.ts";
 import { type AnyWarrenDb, pingDatabase } from "../db/client.ts";
 import { parseDatabaseUrl, sqliteUrlForPath } from "../db/url.ts";
@@ -17,7 +18,8 @@ import {
 	type WarrenConfigCache,
 	WarrenConfigUnavailableError,
 } from "../warren-config/index.ts";
-import type { DiagnosticCheck, EnvLike } from "./checks.ts";
+import type { DiagnosticCheck, DiagnosticLogger, EnvLike } from "./checks.ts";
+import { dbFailureMessage } from "./redact.ts";
 
 /**
  * Walk every registered project, parse its `.warren/` directory, and
@@ -42,6 +44,8 @@ export interface CheckWarrenConfigDeps {
 	readonly cache?: WarrenConfigCache;
 	/** Override the loader (tests). Ignored when `cache` is supplied. */
 	readonly load?: (projectPath: string) => Promise<LoadedWarrenConfig>;
+	/** Sink for the raw loader text the message deliberately withholds (warren-51de). */
+	readonly log?: DiagnosticLogger;
 }
 
 export async function checkWarrenConfig(deps: CheckWarrenConfigDeps): Promise<DiagnosticCheck> {
@@ -61,12 +65,18 @@ export async function checkWarrenConfig(deps: CheckWarrenConfigDeps): Promise<Di
 		try {
 			loaded = await loadProjectConfig(deps, project);
 		} catch (err) {
-			failures.push(`${project.id}: ${configLoadFailureMessage(err)}`);
+			failures.push(`${project.id}: ${configLoadFailureCode(err)}`);
+			logConfigFailure(deps.log, project.id, err);
 			continue;
 		}
 		validated += 1;
 		for (const fileError of loaded.errors) {
-			failures.push(`${project.id} ${fileError.file}: ${fileError.message}`);
+			// Only the stable `code` reaches the wire (warren-51de). A loader
+			// message wraps the underlying fs/YAML error, which routinely
+			// carries the clone's absolute path — and `/readyz` renders this
+			// verbatim. The full text goes to the log instead.
+			failures.push(`${project.id} ${fileError.file}: ${fileError.code}`);
+			logConfigFailure(deps.log, project.id, fileError.message, fileError.file);
 		}
 	}
 
@@ -106,12 +116,33 @@ function loadProjectConfig(
 	return (deps.load ?? defaultWarrenConfigLoad)(project.localPath);
 }
 
-/** Operator-facing message for a fatal `.warren/` load failure. */
-function configLoadFailureMessage(err: unknown): string {
-	if (err instanceof WarrenConfigUnavailableError) {
-		return err.message;
-	}
-	return err instanceof Error ? err.message : String(err);
+/**
+ * Wire-safe reason for a fatal `.warren/` load failure. The thrown
+ * message names the project's absolute clone path (`project clone missing
+ * on disk: /data/projects/…`), so only the stable error code travels;
+ * `logConfigFailure` keeps the raw text for the operator (warren-51de).
+ */
+function configLoadFailureCode(err: unknown): string {
+	return err instanceof WarrenConfigUnavailableError ? err.code : "unknown";
+}
+
+/** Log the `.warren/` failure detail the check message withholds. */
+function logConfigFailure(
+	log: DiagnosticLogger | undefined,
+	projectId: string,
+	detail: unknown,
+	file?: string,
+): void {
+	log?.warn(
+		{
+			event: "diagnostics.probe_failed",
+			check: "warren_config",
+			project_id: projectId,
+			...(file !== undefined ? { file } : {}),
+			err_message: detail instanceof Error ? detail.message : String(detail),
+		},
+		"diagnostics .warren/ probe failed",
+	);
 }
 
 /**
@@ -223,19 +254,27 @@ function warrenDbMismatch(
 	if (synthesized === url) {
 		return undefined;
 	}
+	// Neither value is echoed (warren-51de): WARREN_DB_URL is a full
+	// connection string, userinfo and all. The hint already says what to do.
 	return {
 		name: "warren_db",
 		ok: false,
-		message: `WARREN_DB_URL (${url}) and WARREN_DB_PATH (${path}) disagree`,
+		message: "WARREN_DB_URL and WARREN_DB_PATH disagree",
 		hint: "unset WARREN_DB_PATH or align it with WARREN_DB_URL — WARREN_DB_URL wins at boot",
 	};
 }
 
-/** Parse the effective DB URL and report the resolved dialect (or the parse failure). */
+/**
+ * Parse the effective DB URL and report the resolved dialect (or the parse
+ * failure). The sqlite branch reports the file's BASENAME, never the
+ * absolute path — enough for an operator to tell `warren.db` from
+ * `warren-staging.db` without publishing the server's filesystem layout
+ * (warren-51de).
+ */
 function warrenDbFromUrl(effective: string): DiagnosticCheck {
 	try {
 		const parsed = parseDatabaseUrl(effective);
-		const display = parsed.dialect === "sqlite" ? `sqlite ${parsed.path}` : "postgres";
+		const display = parsed.dialect === "sqlite" ? `sqlite ${basename(parsed.path)}` : "postgres";
 		return { name: "warren_db", ok: true, message: display };
 	} catch (err) {
 		if (err instanceof ValidationError) {
@@ -261,9 +300,14 @@ function warrenDbFromUrl(effective: string): DiagnosticCheck {
  * the bootServer-owned handle via `ServerDeps.db`). Returns an
  * informational `ok: true` when no handle is wired so tests don't have
  * to populate the seam.
+ *
+ * A failed ping reports a classified reason code, never the driver's own
+ * text — a pg connection error names the host, port, and role (warren-51de).
+ * The raw text goes to `deps.log`.
  */
 export async function checkDatabaseReachable(deps: {
 	readonly db?: AnyWarrenDb;
+	readonly log?: DiagnosticLogger;
 }): Promise<DiagnosticCheck> {
 	if (deps.db === undefined) {
 		return { name: "db_reachable", ok: true, message: "no db handle wired (test or partial deps)" };
@@ -275,7 +319,7 @@ export async function checkDatabaseReachable(deps: {
 		return {
 			name: "db_reachable",
 			ok: false,
-			message: err instanceof Error ? err.message : String(err),
+			message: dbFailureMessage("db_reachable", err, deps.log),
 			hint:
 				deps.db.dialect === "postgres"
 					? "verify WARREN_DB_URL points at a reachable Postgres and the role can SELECT"

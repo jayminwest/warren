@@ -59,17 +59,24 @@ describe("checkStaleBurrowWorkspaces", () => {
 		expect(result.ok).toBe(true);
 	});
 
-	test("fails loudly when the probe throws", async () => {
+	test("fails with a reason code and logs the raw driver text (warren-51de)", async () => {
+		const logged: object[] = [];
 		const result = await checkStaleBurrowWorkspaces({
 			probe: {
 				listByState: async () => {
-					throw new Error("db down");
+					throw new Error("connection to server at 10.0.0.4 port 5432 failed: ECONNREFUSED");
 				},
 			},
 			ttlMs: 60 * 60_000,
 			now: NOW,
+			log: { warn: (obj) => logged.push(obj) },
 		});
 		expect(result.ok).toBe(false);
-		expect(result.message).toBe("db down");
+		expect(result.message).toBe("probe failed (reason=unreachable)");
+		expect(result.message).not.toContain("5432");
+		expect(logged[0]).toMatchObject({
+			check: "stale_burrow_workspaces",
+			reason: "unreachable",
+		});
 	});
 });

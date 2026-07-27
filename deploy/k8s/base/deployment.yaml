@@ -138,6 +138,37 @@ spec:
                   name: warren-secrets
                   key: sentry-dsn
                   optional: true
+            # --- public-instance posture (warren-851b / warren-ce9b) ---
+            # Sourced from warren-secrets even though neither value is a
+            # secret. The property that matters here is ROLLBACK SPEED: the
+            # auth posture is the one setting an operator may need to revert
+            # in seconds, and a Secret key is `kubectl edit` + rollout
+            # restart, whereas a literal `value:` in the overlay would make
+            # the flip (and the revert) a commit → release → deploy cycle.
+            #
+            # Both fail SAFE when absent, which is why optional:true is
+            # correct rather than lax:
+            #   - WARREN_AUTH unset or blank ⇒ "token" (resolveAuthKind,
+            #     src/server/auth.ts) ⇒ the instance stays private. There is
+            #     no path from a degenerate value to "public"; an
+            #     unrecognized value refuses the boot outright.
+            #   - WARREN_PUBLIC_ALLOWLIST is read ONLY under
+            #     WARREN_AUTH=public, where absent/empty REFUSES the boot
+            #     (loadPublicAllowlistFromEnv). Under a rolling update an
+            #     unready pod never takes traffic, so the misconfiguration
+            #     leaves the previous pod serving instead of exposing one.
+            - name: WARREN_AUTH
+              valueFrom:
+                secretKeyRef:
+                  name: warren-secrets
+                  key: warren-auth
+                  optional: true
+            - name: WARREN_PUBLIC_ALLOWLIST
+              valueFrom:
+                secretKeyRef:
+                  name: warren-secrets
+                  key: warren-public-allowlist
+                  optional: true
           volumeMounts:
             - name: data
               mountPath: /data

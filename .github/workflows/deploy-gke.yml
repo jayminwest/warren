@@ -6,6 +6,12 @@ name: GKE Build & Deploy
 # (warren-bd79). Replaces the manual `deploy/docker/build-images.sh` +
 # `kubectl apply -k` flow documented in docs/RUNBOOK-K8S.md §1.2-1.3.
 #
+# The control-plane image is ALSO published to the public ghcr.io registry
+# (warren-26be) — that is the image docker-compose.yml pulls, so the
+# "one container, five-minute self-host" path never builds from source.
+# Only the control plane goes public; warren-agent and warren-workspace-init
+# only ever run on GKE and stay in the private Artifact Registry.
+#
 # Auth is GCP Workload Identity Federation — no long-lived JSON keys. A repo
 # admin configures the OIDC provider + service account as secrets and the
 # project/region/cluster as repo variables (see docs/RUNBOOK-K8S.md §1.6).
@@ -19,13 +25,16 @@ name: GKE Build & Deploy
 # cuts releases with `gh release create` under `github.token`), so a
 # release-event trigger would silently never fire — the exact regression
 # tracked in warren-cb81. release.yml invokes us with an explicit SHA instead.
+#
+# There is also NO `push` trigger (warren-8b5f). A push to main used to build
+# all three images, and the release that same push kicks off called us AGAIN —
+# two full builds per release, serialized by the concurrency group below, for
+# one commit. release.yml is now the only builder; `workflow_dispatch` is the
+# manual escape hatch. (The `k8s-migration` build-and-deploy entry went with
+# it: that branch merged in v0.10.0, and until now anyone pushing it deployed
+# straight to production.)
 
 on:
-  push:
-    # k8s-migration is the working mainline during the migration; pushes to it
-    # build AND deploy (see the deploy job's if) so warren can dogfood its own
-    # development. Drop the branch entry when the migration merges to main.
-    branches: [main, k8s-migration]
   workflow_call:
     inputs:
       sha:
@@ -36,6 +45,11 @@ on:
         description: "Roll GKE forward after building (release path sets true)"
         type: boolean
         default: true
+      version:
+        description: "Released semver (no leading v) — adds :vX.Y.Z and :X.Y ghcr.io tags"
+        type: string
+        required: false
+        default: ""
   workflow_dispatch:
     inputs:
       deploy:
@@ -50,9 +64,13 @@ on:
 env:
   AR_BASE: ${{ vars.GCP_REGION || 'us-west1' }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/${{ vars.GCP_AR_REPO || 'warren' }}
   REGISTRY_HOST: ${{ vars.GCP_REGION || 'us-west1' }}-docker.pkg.dev
+  # Public home of the control-plane image (warren-26be). ghcr.io requires a
+  # lowercase path; `jayminwest/warren` already is. Kept as an expression
+  # rather than a literal so a fork publishes under its own owner.
+  GHCR_IMAGE: ghcr.io/${{ github.repository_owner }}/warren
   # The commit to build + deploy. workflow_call passes the released SHA
   # explicitly (github.sha is unreliable across a reusable-workflow boundary
-  # and for tag/release events); push + dispatch fall back to github.sha.
+  # and for tag/release events); a manual dispatch falls back to github.sha.
   TARGET_SHA: ${{ inputs.sha || github.sha }}
 
 concurrency:
@@ -65,6 +83,7 @@ jobs:
     permissions:
       contents: read
       id-token: write # required for Workload Identity Federation
+      packages: write # required to push the control-plane image to ghcr.io
     steps:
       - uses: actions/checkout@v7.0.1
         with:
@@ -83,12 +102,50 @@ jobs:
           username: oauth2accesstoken
           password: ${{ steps.auth.outputs.access_token }}
 
+      # ghcr.io needs no provisioned secret — the job's own GITHUB_TOKEN,
+      # scoped by `permissions: packages: write` above, is the credential.
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
       - uses: docker/setup-buildx-action@v3
+
+      # Public tag set for the control-plane image (warren-26be). Self-hosters
+      # pull this image from docker-compose.yml, so it carries semver as well
+      # as the commit SHA: `:<sha>` and `:latest` on every build, plus
+      # `:vX.Y.Z` and the moving `:X.Y` when a caller passes a released
+      # version (release.yml threads its version-check output through
+      # workflow_call). `:X.Y` is deliberately withheld from prereleases — a
+      # moving minor tag must never resolve to an rc.
+      - name: Compute ghcr.io tags for the control-plane image
+        id: ghcr-tags
+        env:
+          SHA: ${{ env.TARGET_SHA }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          {
+            echo "tags<<GHCR_TAGS_EOF"
+            echo "${GHCR_IMAGE}:${SHA}"
+            echo "${GHCR_IMAGE}:latest"
+            if [ -n "${VERSION}" ]; then
+              echo "${GHCR_IMAGE}:v${VERSION}"
+              if [[ "${VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+                echo "${GHCR_IMAGE}:${VERSION%.*}"
+              fi
+            fi
+            echo "GHCR_TAGS_EOF"
+          } >> "$GITHUB_OUTPUT"
 
       # Autopilot schedules amd64; an arm64 image CrashLoops with
       # `exec format error`. All three build on native amd64 with GHA layer
       # cache (per-image scope). Each is tagged by the full commit SHA and
-      # `latest`.
+      # `latest`; the control plane additionally carries the public ghcr.io
+      # tag set computed above. Single-arch is a known limitation of the
+      # public image too — a multi-arch manifest list is deliberately
+      # deferred (it costs QEMU build time on every push).
       - name: Build + push warren (control plane)
         uses: docker/build-push-action@v6
         with:
@@ -99,6 +156,7 @@ jobs:
           tags: |
             ${{ env.AR_BASE }}/warren:${{ env.TARGET_SHA }}
             ${{ env.AR_BASE }}/warren:latest
+            ${{ steps.ghcr-tags.outputs.tags }}
           cache-from: type=gha,scope=warren-control
           cache-to: type=gha,mode=max,scope=warren-control
 
@@ -130,13 +188,11 @@ jobs:
 
   deploy:
     needs: build-push
-    # Roll GKE forward when a caller (release.yml via workflow_call, or a
-    # manual dispatch) opts in, or on a push to k8s-migration. `inputs.deploy`
-    # is set for both workflow_call (release path) and workflow_dispatch; a
-    # bare push to main leaves it empty and only builds + pushes images.
-    if: >-
-      inputs.deploy ||
-      (github.event_name == 'push' && github.ref == 'refs/heads/k8s-migration')
+    # Roll GKE forward only when the caller opts in. `inputs.deploy` is set by
+    # both entrypoints — release.yml passes true via workflow_call, a manual
+    # dispatch ticks the checkbox — so a build-only dispatch leaves the
+    # cluster alone. No branch ever deploys by itself (warren-8b5f).
+    if: inputs.deploy
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -168,6 +224,14 @@ jobs:
       # (matching the template's post-transform name); the agent + init images
       # are env vars on the Deployment, so they are overridden with a strategic
       # merge patch keyed by env `name`.
+      #
+      # NOTE on the `images:` match key below: the `warren/warren` segment is
+      # the committed gke template's own placeholder
+      # (deploy/k8s/overlays/gke/kustomization.yaml `images[0].newName`), NOT
+      # `vars.GCP_AR_REPO`. It is a literal that must equal that template
+      # value or the remap silently no-ops; `scripts/deploy-trigger.test.ts`
+      # pins the two together. The operator's real repo only ever appears in
+      # `newName`, via AR_BASE — so GCP_AR_REPO is honoured (warren-8b5f).
       - name: Render gke-live overlay pinned to ${{ github.sha }}
         env:
           SHA: ${{ env.TARGET_SHA }}
@@ -266,3 +330,45 @@ jobs:
             exit 1
           fi
           echo "Verified: warren deployment is running the released SHA ${SHA}."
+
+      # The step above proves the Deployment *spec* points at the released
+      # image. This one proves the public ingress actually serves it: GET
+      # /version is auth-exempt and returns {"version":"X.Y.Z"} straight from
+      # src/index.ts (README "Health & readiness probes"), which is exactly
+      # what the endpoint was built for and nothing used until now
+      # (warren-8b5f). Polled, because the GCE LB can keep draining old
+      # backends for a while after `rollout status` returns.
+      - name: Smoke-test /version over the ingress
+        env:
+          VERSION: ${{ inputs.version }}
+          INGRESS_HOST: ${{ vars.WARREN_INGRESS_HOST }}
+          SMOKE_ATTEMPTS: "12"
+          SMOKE_INTERVAL: "10"
+        run: |
+          set -uo pipefail
+          if [ -z "${VERSION}" ]; then
+            echo "No released version passed (build-only or manual dispatch); nothing to assert."
+            exit 0
+          fi
+          if [ -z "${INGRESS_HOST}" ]; then
+            echo "::error::WARREN_INGRESS_HOST is unset, so the rollout of v${VERSION} cannot be verified over the ingress. Set the repo variable (docs/RUNBOOK-K8S.md §1.6)."
+            exit 1
+          fi
+          URL="https://${INGRESS_HOST}/version"
+          ACTUAL=""
+          ATTEMPT=1
+          while [ "${ATTEMPT}" -le "${SMOKE_ATTEMPTS}" ]; do
+            BODY=$(curl -fsS --max-time 15 "${URL}" 2>/dev/null || true)
+            ACTUAL=$(printf '%s' "${BODY}" | sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')
+            if [ "${ACTUAL}" = "${VERSION}" ]; then
+              echo "Verified: ${URL} reports v${VERSION}."
+              exit 0
+            fi
+            echo "attempt ${ATTEMPT}/${SMOKE_ATTEMPTS}: ${URL} reported '${ACTUAL:-<no response>}', want '${VERSION}'"
+            ATTEMPT=$((ATTEMPT + 1))
+            if [ "${ATTEMPT}" -le "${SMOKE_ATTEMPTS}" ]; then
+              sleep "${SMOKE_INTERVAL}"
+            fi
+          done
+          echo "::error::${URL} never reported version ${VERSION} (last saw '${ACTUAL:-<no response>}'). The rollout did not reach the ingress."
+          exit 1

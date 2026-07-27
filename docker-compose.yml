@@ -1,6 +1,11 @@
 # Warren home-server compose file (SPEC §10.1).
 #
-# `docker compose up -d` boots a single warren container with:
+# `docker compose up -d` on a fresh clone PULLS the published control-plane
+# image from ghcr.io (warren-26be) — it does not build from source. Pin a
+# release with `WARREN_IMAGE_TAG=v0.10.4` (or the moving minor, `0.10`) in
+# .env or the environment; the default `latest` tracks main.
+#
+# It boots a single warren container with:
 #   - the four bwrap-friendly security flags (SPEC §5.3 / mx-94901b /
 #     mx-c085ba). They relax the outer container so burrow's nested
 #     userns sandboxes can come up.
@@ -18,10 +23,14 @@
 
 services:
   warren:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    image: warren:local
+    image: ghcr.io/jayminwest/warren:${WARREN_IMAGE_TAG:-latest}
+    # Contributors who want to run THIS checkout instead of the published
+    # image: uncomment the build block and `docker compose up -d --build`.
+    # Compose then builds from the local Dockerfile and tags the result as
+    # the `image:` above, so nothing else in this file has to change.
+    # build:
+    #   context: .
+    #   dockerfile: Dockerfile
     container_name: warren
     restart: unless-stopped
 

@@ -39,6 +39,24 @@ describe("WarrenClient", () => {
 		expect(observedAuth).toBe("Bearer my-token");
 	});
 
+	test("performs whoami request and returns the capability set", async () => {
+		let observedUrl: string | undefined;
+
+		const stubFetch = stub(async (input) => {
+			observedUrl = String(input);
+			return jsonResponse(200, { identity: "anonymous", capabilities: ["readPublic"] });
+		});
+
+		const client = new WarrenClient({
+			config: { baseUrl: "https://warren.local" },
+			fetch: stubFetch,
+		});
+
+		const who = await client.whoami();
+		expect(observedUrl).toBe("https://warren.local/whoami");
+		expect(who).toEqual({ identity: "anonymous", capabilities: ["readPublic"] });
+	});
+
 	test("performs createRun request", async () => {
 		let observedUrl: string | undefined;
 		let observedMethod: string | undefined;

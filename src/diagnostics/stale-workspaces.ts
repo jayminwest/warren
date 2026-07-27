@@ -18,7 +18,8 @@ import {
 	GC_ACTIVE_RUN_STATES,
 	GC_TERMINAL_RUN_STATES,
 } from "../runs/reap/gc.ts";
-import type { DiagnosticCheck } from "./checks.ts";
+import type { DiagnosticCheck, DiagnosticLogger } from "./checks.ts";
+import { dbFailureMessage } from "./redact.ts";
 
 export interface StaleBurrowWorkspaceProbe {
 	listByState(state: RunState[]): Promise<RunRow[]>;
@@ -28,6 +29,8 @@ export async function checkStaleBurrowWorkspaces(deps: {
 	readonly probe: StaleBurrowWorkspaceProbe;
 	readonly ttlMs: number;
 	readonly now?: Date;
+	/** Sink for the raw driver text the message deliberately withholds (warren-51de). */
+	readonly log?: DiagnosticLogger;
 }): Promise<DiagnosticCheck> {
 	let activeRuns: RunRow[];
 	let terminalRuns: RunRow[];
@@ -40,7 +43,7 @@ export async function checkStaleBurrowWorkspaces(deps: {
 		return {
 			name: "stale_burrow_workspaces",
 			ok: false,
-			message: err instanceof Error ? err.message : String(err),
+			message: dbFailureMessage("stale_burrow_workspaces", err, deps.log),
 			hint: "verify the database is reachable and the runs table exists",
 		};
 	}

@@ -16,6 +16,8 @@
  *     deprecation), resolved DB dialect, live `SELECT 1` reachability.
  *   - checks-preview.ts — preview port + live-count saturation and
  *     signed-cookie token strength.
+ *   - redact.ts — the body/log split that keeps raw driver text, token
+ *     lengths, and absolute paths out of every check message (warren-51de).
  *
  * Each check returns `{ name, ok, message?, hint? }`. Callers decide
  * how to render (newline-delimited JSON for doctor, one envelope for
@@ -32,6 +34,17 @@ export interface DiagnosticCheck {
 
 export type EnvLike = Readonly<Record<string, string | undefined>>;
 export type ExistsFn = (path: string) => boolean;
+
+/**
+ * Minimal logger seam for checks that must LOG a failure detail they
+ * refuse to put on the wire (warren-51de) — see `./redact.ts`. Pino and a
+ * console-shaped test stub both satisfy it structurally. Optional at every
+ * call site, so surfaces with no logger (the `warren doctor` CLI) simply
+ * drop the detail rather than leak it.
+ */
+export interface DiagnosticLogger {
+	warn(obj: object, msg?: string): void;
+}
 
 export {
 	type CheckWarrenConfigDeps,
@@ -57,3 +70,4 @@ export {
 	checkCanopyClean,
 	checkCanopyClone,
 } from "./checks-sandbox.ts";
+export { classifyDbFailure, type DbFailureReason, dbFailureMessage } from "./redact.ts";

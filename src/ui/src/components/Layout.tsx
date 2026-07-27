@@ -1,5 +1,5 @@
 import * as DialogPrimitive from "@radix-ui/react-dialog";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
 	Activity,
 	BarChart3,
@@ -7,29 +7,38 @@ import {
 	DollarSign,
 	FolderGit2,
 	ListChecks,
+	LogIn,
 	LogOut,
 	Menu,
-	Network,
 	Plus,
 	X,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
-import { metaApi, plotsApi, projectsApi, setApiToken } from "@/api/client.ts";
+import { metaApi, setApiToken } from "@/api/client.ts";
+import type { CapabilityName } from "@/api/types.ts";
+import { ErrorBoundary } from "@/components/ErrorBoundary.tsx";
+import { OperatorOnly } from "@/components/OperatorOnly.tsx";
 import { ThemeToggle } from "@/components/ThemeToggle.tsx";
 import { WarrenLogo } from "@/components/WarrenLogo.tsx";
 import { Button } from "@/components/ui/button.tsx";
+import { useCapabilities } from "@/hooks/use-capabilities.ts";
 import { cn } from "@/lib/utils.ts";
 
 type NavItem = {
 	to: string;
 	label: string;
 	icon: React.ComponentType<{ className?: string }>;
-	/** Optional small counter rendered to the right of the label. */
-	badge?: number;
+	/**
+	 * Capability the destination's own reads require. Absent = every
+	 * caller warren admits can read the page, so the entry always shows.
+	 * Filtering here (warren-f53e / pl-b82d step 19) keeps a public
+	 * visitor off pages that would answer 403 rather than render.
+	 */
+	capability?: CapabilityName;
 };
 
-const BASE_NAV_ITEMS: NavItem[] = [
+const NAV_ITEMS: NavItem[] = [
 	{ to: "/runs", label: "Runs", icon: Activity },
 	{ to: "/plan-runs", label: "Plans", icon: ListChecks },
 	{ to: "/projects", label: "Projects", icon: FolderGit2 },
@@ -37,19 +46,18 @@ const BASE_NAV_ITEMS: NavItem[] = [
 	// Cost analytics (warren-cf63 / pl-b0c0 step 6) lives at the bottom
 	// of the sidebar — it's an operator-facing analytics view, not a
 	// daily-driver page, so it stays out of the lead-eight positions.
-	{ to: "/cost-analytics", label: "Cost", icon: DollarSign },
+	// `GET /analytics/cost` is the instance-wide USD rollup and is
+	// readOperator, so a spectator never sees the entry.
+	{ to: "/cost-analytics", label: "Cost", icon: DollarSign, capability: "readOperator" },
 	// Run analytics (warren-638a / pl-ad0f step 5) sits beside Cost as
 	// the execution-telemetry companion to the spend view.
 	{ to: "/run-analytics", label: "Run stats", icon: BarChart3 },
 ];
 
-// Single collapsed Workspace entry (warren-9cad / pl-0008 step 11)
-// replaces the former Plots page: the Plot is the spine, so one nav item
-// fronts the run → activity lifecycle. The needs-you badge rides on it.
-const WORKSPACE_NAV_ITEM: NavItem = { to: "/workspace", label: "Workspace", icon: Network };
-
 export function Layout() {
 	const navigate = useNavigate();
+	const qc = useQueryClient();
+	const caps = useCapabilities();
 
 	// Version is auth-exempt and stable for the life of the server
 	// process — fetch once, cache forever (warren-6ea5).
@@ -60,54 +68,12 @@ export function Layout() {
 		retry: false,
 	});
 
-	// Gate the Plots sidebar entry on at least one project having
-	// `.plot/` provisioned. The projects list is the canonical source
-	// for `hasPlot` (warren-4e20); reuse the same query key as the
-	// Plots page so tanstack-query dedupes the fetch.
-	const projects = useQuery({
-		queryKey: ["projects"],
-		queryFn: ({ signal }) => projectsApi.list(signal),
-		staleTime: 5000,
-	});
-	const anyHasPlot = useMemo(
-		() => (projects.data?.projects ?? []).some((p) => p.hasPlot),
-		[projects.data],
-	);
-
-	// Needs-you sidebar badge (warren-f0e2 / pl-0344 step 13). Polls
-	// the cheap `{count}` endpoint every 10s only when the deployment
-	// has at least one `.plot/`-enabled project; non-Plot deployments
-	// pay nothing. Errors collapse to undefined — the badge silently
-	// hides rather than disrupting the sidebar layout.
-	const needsAttention = useQuery({
-		queryKey: ["plots", "needs-attention-count"],
-		queryFn: ({ signal }) => plotsApi.needsAttentionCount(signal),
-		enabled: anyHasPlot,
-		refetchInterval: 10000,
-		staleTime: 5000,
-	});
-	const needsAttentionBadge =
-		needsAttention.data !== undefined && needsAttention.data.count > 0
-			? needsAttention.data.count
-			: undefined;
-
-	const navItems = useMemo<NavItem[]>(() => {
-		// Byte-identical to pre-Plots order when no project opted in —
-		// preserves the CLAUDE.md standalone path (warren-e59a / pl-9d6a
-		// step 19).
-		if (!anyHasPlot) return BASE_NAV_ITEMS;
-		// Plot-enabled deployments lead with the single Workspace entry,
-		// then the existing Runs → Plans → Projects → Agents order:
-		// Workspace → Runs → Plans → Projects → Agents.
-		const workspaceItem: NavItem =
-			needsAttentionBadge !== undefined
-				? { ...WORKSPACE_NAV_ITEM, badge: needsAttentionBadge }
-				: WORKSPACE_NAV_ITEM;
-		return [workspaceItem, ...BASE_NAV_ITEMS];
-	}, [anyHasPlot, needsAttentionBadge]);
-
 	const handleLogout = (): void => {
 		setApiToken(null);
+		// Everything cached was fetched with the operator's bearer — including
+		// the `/whoami` answer the capability layer reads (warren-f53e). Drop
+		// it all so the next mount re-asks as the credential-less caller.
+		qc.clear();
 		navigate("/login", { replace: true });
 	};
 
@@ -124,9 +90,13 @@ export function Layout() {
 		setMobileNavOpen(false);
 	}, [location.pathname]);
 
+	const visibleNavItems = NAV_ITEMS.filter(
+		({ capability }) => capability === undefined || caps.can(capability),
+	);
+
 	const renderNavLinks = (onNavigate?: () => void) => (
 		<>
-			{navItems.map(({ to, label, icon: Icon, badge }) => (
+			{visibleNavItems.map(({ to, label, icon: Icon }) => (
 				<NavLink
 					key={to}
 					to={to}
@@ -142,32 +112,43 @@ export function Layout() {
 				>
 					<Icon className="h-4 w-4" />
 					<span className="flex-1">{label}</span>
-					{badge !== undefined ? (
-						<span
-							aria-label={`${badge} need${badge === 1 ? "" : "s"} your attention`}
-							className="ml-auto rounded-full bg-(--color-primary) px-1.5 py-0.5 text-xs font-mono text-(--color-primary-foreground)"
-						>
-							{badge > 99 ? "99+" : badge}
-						</span>
-					) : null}
 				</NavLink>
 			))}
-			<NavLink
-				to="/runs/new"
-				onClick={onNavigate}
-				className={({ isActive }) =>
-					cn(
-						"mt-2 flex min-h-11 items-center gap-2 rounded-md px-3 py-2 text-sm transition-colors",
-						isActive
-							? "bg-(--color-primary) text-(--color-primary-foreground)"
-							: "border bg-(--color-card) hover:bg-(--color-accent)",
-					)
-				}
-			>
-				<Plus className="h-4 w-4" />
-				Dispatch run
-			</NavLink>
+			<OperatorOnly>
+				<NavLink
+					to="/runs/new"
+					onClick={onNavigate}
+					className={({ isActive }) =>
+						cn(
+							"mt-2 flex min-h-11 items-center gap-2 rounded-md px-3 py-2 text-sm transition-colors",
+							isActive
+								? "bg-(--color-primary) text-(--color-primary-foreground)"
+								: "border bg-(--color-card) hover:bg-(--color-accent)",
+						)
+					}
+				>
+					<Plus className="h-4 w-4" />
+					Dispatch run
+				</NavLink>
+			</OperatorOnly>
 		</>
+	);
+
+	// A spectator has no session to end, and hiding the control outright
+	// would strand the operator of a public instance with no way back to
+	// `/login` — so the same slot offers the way IN (warren-f53e).
+	const session = caps.can("readOperator") ? (
+		<Button variant="ghost" size="sm" onClick={handleLogout} className="mt-2 justify-start">
+			<LogOut className="h-4 w-4" />
+			Log out
+		</Button>
+	) : (
+		<Button asChild variant="ghost" size="sm" className="mt-2 justify-start">
+			<NavLink to="/login">
+				<LogIn className="h-4 w-4" />
+				Log in
+			</NavLink>
+		</Button>
 	);
 
 	const brand = (
@@ -204,10 +185,7 @@ export function Layout() {
 				<div className="mb-6">{brand}</div>
 				<nav className="flex flex-1 flex-col gap-1">{renderNavLinks()}</nav>
 				<ThemeToggle />
-				<Button variant="ghost" size="sm" onClick={handleLogout} className="mt-2 justify-start">
-					<LogOut className="h-4 w-4" />
-					Log out
-				</Button>
+				{session}
 			</aside>
 
 			{/* Mobile slide-over drawer. Radix Dialog gives focus trap +
@@ -239,21 +217,17 @@ export function Layout() {
 							{renderNavLinks(() => setMobileNavOpen(false))}
 						</nav>
 						<ThemeToggle />
-						<Button
-							variant="ghost"
-							size="sm"
-							onClick={handleLogout}
-							className="mt-2 justify-start"
-						>
-							<LogOut className="h-4 w-4" />
-							Log out
-						</Button>
+						{session}
 					</DialogPrimitive.Content>
 				</DialogPrimitive.Portal>
 			</DialogPrimitive.Root>
 
 			<main className="min-h-0 min-w-0 flex-1 overflow-y-auto p-4 sm:p-6 md:p-8">
-				<Outlet />
+				{/* Boundary sits INSIDE the chrome so a page-level throw costs
+				    the page, not the sidebar (warren-1f12). */}
+				<ErrorBoundary resetKey={location.pathname}>
+					<Outlet />
+				</ErrorBoundary>
 			</main>
 		</div>
 	);

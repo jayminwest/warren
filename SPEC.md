@@ -1342,8 +1342,10 @@ to re-spin a preview on a different host) is cheap.
 **Auth — signed cookie, not bearer.** A run against private code
 produces a preview that may contain secrets. Bearer-in-header is
 impossible for a browser hitting `run-<id>.<host>` directly, so warren
-issues a signed cookie from `GET /runs/:id/preview/login?token=…&redirect=…`
-(ROADMAP option a). Cookie scope is `Domain=.<warren-host>;
+issues a signed cookie from `POST /runs/:id/preview/login` — bearer in the
+`Authorization` header, optional `{redirect}` body (ROADMAP option a;
+warren-e1b0 moved the bearer out of the query string, where it would have
+landed in history, `Referer` headers and proxy logs). Cookie scope is `Domain=.<warren-host>;
 Path=/; HttpOnly; Secure; SameSite=Lax` **in subdomain mode**; path
 mode narrows the scope to `Path=/p/<run-id>/` with no `Domain` (see
 the "Routing modes — path vs subdomain" addendum below). The proxy
@@ -1520,9 +1522,9 @@ mx-c38965) parameterizes scope by mode:
   multiple previews simultaneously in the same browser.
 
 The HMAC and token shape are identical across modes. The login route
-`GET /runs/:id/preview/login?token=…&redirect=…` stays the canonical
-entry point; in path mode it sets the path-scoped cookie and redirects
-to `/p/<run-id>/<redirect-or-slash>`. Unauthenticated requests on the
+`POST /runs/:id/preview/login` stays the canonical entry point; in path
+mode it sets the path-scoped cookie and answers with the
+`/p/<run-id>/<redirect-or-slash>` URL to navigate to. Unauthenticated requests on the
 proxied path 401 (not 502) just as in subdomain mode.
 
 **PR annotation URL shape.** `src/runs/pr-annotate.ts` (mx-ba79c4)

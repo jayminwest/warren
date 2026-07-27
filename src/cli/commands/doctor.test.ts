@@ -114,7 +114,10 @@ describe("runDoctor", () => {
 		);
 		const canopyClone = result.checks.find((c: DoctorCheck) => c.name === "canopy_clone");
 		expect(canopyClone?.ok).toBe(false);
-		expect(canopyClone?.message).toContain("/nonexistent/canopy");
+		expect(canopyClone?.message).toBe("canopy clone directory does not exist");
+		// warren-51de: doctor shares the check with /readyz, which renders the
+		// message verbatim — so the clone path is not in it.
+		expect(canopyClone?.message).not.toContain("/nonexistent/canopy");
 	});
 
 	test("returns exit 0 when every check passes", async () => {

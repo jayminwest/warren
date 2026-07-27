@@ -20,6 +20,8 @@ jobs:
       - run: bun run lint
       - run: bun run typecheck
       - run: bun run check:agents
+      - run: bun run gen:docs:check
+      - run: bun run gen:openapi:check
       - run: bun run check:size
       - run: bun run check:debt
       - run: bun run check:dups

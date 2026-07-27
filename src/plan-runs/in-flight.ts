@@ -13,6 +13,7 @@
  */
 
 import type { PlanRunChildRow, PlanRunRow, RunRow } from "../db/schema.ts";
+import { SeedNotFoundError } from "../seeds-cli/index.ts";
 import type {
 	AdvanceResult,
 	ChildExecution,
@@ -204,21 +205,7 @@ async function resolveMissingPrUrl(
 ): Promise<PrUrlResolution> {
 	const { repos, planRun, child, emit, mergeTimeoutMs, now, reopenPr } = input;
 	if (await hasEmptyPushEvent(repos, run.id)) {
-		const mergedAt = now().toISOString();
-		await repos.planRuns.updateChild({
-			planRunId: planRun.id,
-			seq: child.seq,
-			patch: { state: "merged", prMergedAt: mergedAt, endedAt: mergedAt },
-			now: now(),
-		});
-		await emit(run.id, "plan_run.merged", {
-			planRunId: planRun.id,
-			mergedChildSeq: child.seq,
-			trivial: true,
-			...(await resolveExecutionFields(planRun, child, input.showSeed, input.resolveExecution)),
-		});
-		await fireCloseChildSeed(input);
-		return { kind: "decision", decision: { kind: "merged" } };
+		return await resolveEmptyPush(input, run);
 	}
 	const prReopen = await resolveChildPrReopen({ run, mergeTimeoutMs, now, reopenPr });
 	if (prReopen.kind === "expired") {
@@ -236,6 +223,71 @@ async function resolveMissingPrUrl(
 	}
 	await repos.runs.setPrUrl(run.id, prReopen.url);
 	return { kind: "url", url: prReopen.url };
+}
+
+type ChildSeedResolution = "resolved" | "unresolved" | "transient";
+
+/**
+ * warren-2a8c: is the in-flight child's seed still resolvable? An empty
+ * push is only a *trivial merge* when the agent had a real work item and
+ * legitimately produced no diff. A child whose seed does not resolve
+ * (the K8s durability failure of warren-486c, a typo'd id, a wrong repo,
+ * an unmerged branch) pushed nothing because it *could not do the work* —
+ * that must fail with a typed reason, not be scored a phantom success.
+ *
+ * Only a definitive `SeedNotFoundError` is terminal; any other (transient:
+ * timeout / lock / malformed) failure stays retryable so a flaky seed
+ * store never converts a genuine trivial merge into a spurious failure.
+ * This mirrors the dispatch-arm semantics in coordinator.ts.
+ */
+async function resolveChildSeed(input: HandleInFlightInput): Promise<ChildSeedResolution> {
+	try {
+		await input.showSeed(input.planRun.projectId, input.child.seedId);
+		return "resolved";
+	} catch (err) {
+		return err instanceof SeedNotFoundError ? "unresolved" : "transient";
+	}
+}
+
+/**
+ * Settle a succeeded child that pushed nothing (`reap.empty_push`). Merges
+ * trivially only when the child's seed resolved (warren-2a8c); otherwise
+ * fails terminally with `child_seed_not_resolved:<seedId>` (unresolved) or
+ * retries next tick (transient seed-store failure).
+ */
+async function resolveEmptyPush(input: HandleInFlightInput, run: RunRow): Promise<PrUrlResolution> {
+	const { repos, planRun, child, emit, now } = input;
+	const seed = await resolveChildSeed(input);
+	if (seed === "unresolved") {
+		return {
+			kind: "decision",
+			decision: await failChild(input, run, `child_seed_not_resolved:${child.seedId}`),
+		};
+	}
+	if (seed === "transient") {
+		return {
+			kind: "decision",
+			decision: {
+				kind: "result",
+				result: { kind: "noop", reason: `seed_check_failed:${run.id}` },
+			},
+		};
+	}
+	const mergedAt = now().toISOString();
+	await repos.planRuns.updateChild({
+		planRunId: planRun.id,
+		seq: child.seq,
+		patch: { state: "merged", prMergedAt: mergedAt, endedAt: mergedAt },
+		now: now(),
+	});
+	await emit(run.id, "plan_run.merged", {
+		planRunId: planRun.id,
+		mergedChildSeq: child.seq,
+		trivial: true,
+		...(await resolveExecutionFields(planRun, child, input.showSeed, input.resolveExecution)),
+	});
+	await fireCloseChildSeed(input);
+	return { kind: "decision", decision: { kind: "merged" } };
 }
 
 type FirstObservation =

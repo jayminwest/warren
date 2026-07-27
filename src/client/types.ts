@@ -26,6 +26,25 @@ export type RunFailureReason =
 
 export type PreviewState = "starting" | "live" | "failed" | "torn-down";
 
+/**
+ * Identity discriminant reported by `GET /whoami` (warren-e195). Mirrors
+ * `ActorKind` in src/server/types.ts.
+ */
+export type ActorIdentity = "operator" | "anonymous";
+
+/** One capability name. Mirrors `CapabilityName` in src/server/types.ts. */
+export type CapabilityName = "readPublic" | "readOperator" | "dispatch" | "admin";
+
+/**
+ * `GET /whoami` — who warren thinks the caller is and what it may do.
+ * `capabilities` holds only the granted names, so a client checks
+ * membership rather than a boolean flag.
+ */
+export interface WhoamiResponse {
+	identity: ActorIdentity;
+	capabilities: CapabilityName[];
+}
+
 export type AgentSource = "builtin" | "library" | `project:${string}`;
 
 export interface AgentRow {
@@ -85,7 +104,6 @@ export interface ProjectRow {
 	addedAt: string;
 	lastFetchedAt: string | null;
 	lastHeadSha: string | null;
-	hasPlot: boolean;
 	hasSeeds: boolean;
 }
 
@@ -96,7 +114,6 @@ export interface RunRow {
 	burrowId: string | null;
 	burrowRunId: string | null;
 	seedId: string | null;
-	plotId: string | null;
 	/** Chain back-link (warren-4b11 / warren-e96f); null for root runs. */
 	parentRunId: string | null;
 	cloneKind: "replicate" | "continue" | null;
@@ -130,7 +147,6 @@ export interface RunEvent {
 	kind: string;
 	stream: "stdout" | "stderr" | "system" | null;
 	payload: unknown;
-	plotId: string | null;
 }
 
 export interface StreamRunEventsOptions {

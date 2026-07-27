@@ -50,7 +50,8 @@ describe("checkWarrenConfig", () => {
 		expect(result.message).toContain("2 project(s) checked");
 	});
 
-	test("fails with file paths when any project's .warren/ is malformed (state 3)", async () => {
+	test("fails with the file + stable code when any project's .warren/ is malformed (state 3)", async () => {
+		const logged: object[] = [];
 		const malformed: LoadedWarrenConfig = {
 			triggers: null,
 			defaults: { defaultBranch: "main" },
@@ -60,7 +61,9 @@ describe("checkWarrenConfig", () => {
 				{
 					file: ".warren/triggers.yaml",
 					code: "warren_config_parse_error",
-					message: "YAML parse error: bad indent",
+					// A loader message wraps the underlying fs error, which names
+					// the clone's absolute path.
+					message: "failed to read file: ENOENT, open '/clones/b/.warren/triggers.yaml'",
 				},
 			],
 			warnings: [],
@@ -71,23 +74,37 @@ describe("checkWarrenConfig", () => {
 				{ id: "prj_bad", localPath: "/clones/b" },
 			],
 			load: async (path) => (path === "/clones/a" ? valid : malformed),
+			log: { warn: (obj) => logged.push(obj) },
 		});
 		expect(result.ok).toBe(false);
-		expect(result.message).toContain("prj_bad .warren/triggers.yaml");
-		expect(result.message).toContain("YAML parse error");
+		expect(result.message).toContain("prj_bad .warren/triggers.yaml: warren_config_parse_error");
+		// warren-51de: the absolute clone path never reaches the wire, only the log.
+		expect(result.message).not.toContain("/clones/b");
 		expect(result.hint).toContain("/refresh");
+		expect(logged[0]).toMatchObject({
+			check: "warren_config",
+			project_id: "prj_bad",
+			file: ".warren/triggers.yaml",
+		});
 	});
 
-	test("fails when a project clone has vanished (WarrenConfigUnavailableError)", async () => {
+	test("fails with a stable code when a project clone has vanished", async () => {
+		const logged: object[] = [];
 		const result = await checkWarrenConfig({
 			projects: [{ id: "prj_gone", localPath: "/clones/missing" }],
 			load: async () => {
 				throw new WarrenConfigUnavailableError("project clone missing on disk: /clones/missing");
 			},
+			log: { warn: (obj) => logged.push(obj) },
 		});
 		expect(result.ok).toBe(false);
-		expect(result.message).toContain("prj_gone");
-		expect(result.message).toContain("clone missing");
+		expect(result.message).toContain("prj_gone: warren_config_unavailable");
+		expect(result.message).not.toContain("/clones/missing");
+		expect(logged[0]).toMatchObject({
+			check: "warren_config",
+			project_id: "prj_gone",
+			err_message: "project clone missing on disk: /clones/missing",
+		});
 	});
 
 	test("aggregates errors across many projects", async () => {
@@ -241,10 +258,10 @@ describe("checkWarrenDb", () => {
 		expect(result.message).toContain("will default to sqlite");
 	});
 
-	test("ok and reports sqlite path when WARREN_DB_URL is sqlite://", () => {
+	test("ok and reports the sqlite BASENAME when WARREN_DB_URL is sqlite:// (warren-51de)", () => {
 		const result = checkWarrenDb({ env: { WARREN_DB_URL: "sqlite:///data/warren.db" } });
 		expect(result.ok).toBe(true);
-		expect(result.message).toBe("sqlite /data/warren.db");
+		expect(result.message).toBe("sqlite warren.db");
 	});
 
 	test("ok and reports postgres when WARREN_DB_URL is postgres://", () => {
@@ -256,7 +273,7 @@ describe("checkWarrenDb", () => {
 	test("synthesizes a sqlite url from legacy WARREN_DB_PATH", () => {
 		const result = checkWarrenDb({ env: { WARREN_DB_PATH: "/srv/warren.db" } });
 		expect(result.ok).toBe(true);
-		expect(result.message).toBe("sqlite /srv/warren.db");
+		expect(result.message).toBe("sqlite warren.db");
 	});
 
 	test("ok when WARREN_DB_URL and WARREN_DB_PATH agree (sqlite synthesis matches URL)", () => {
@@ -272,12 +289,16 @@ describe("checkWarrenDb", () => {
 	test("fails when WARREN_DB_URL (postgres) and WARREN_DB_PATH (sqlite) disagree", () => {
 		const result = checkWarrenDb({
 			env: {
-				WARREN_DB_URL: "postgres://h/db",
+				WARREN_DB_URL: "postgres://alice:hunter2@db.internal:5432/warren",
 				WARREN_DB_PATH: "/srv/legacy.sqlite",
 			},
 		});
 		expect(result.ok).toBe(false);
 		expect(result.message).toContain("disagree");
+		// warren-51de: neither value is echoed — WARREN_DB_URL carries userinfo.
+		expect(result.message).not.toContain("hunter2");
+		expect(result.message).not.toContain("db.internal");
+		expect(result.message).not.toContain("/srv/legacy.sqlite");
 		expect(result.hint).toContain("WARREN_DB_URL wins");
 	});
 
@@ -306,11 +327,15 @@ describe("checkDatabaseReachable", () => {
 		}
 	});
 
-	test("returns ok=false with the underlying error when ping throws", async () => {
+	test("returns ok=false with a reason code (not the driver text) when ping throws", async () => {
+		const logged: object[] = [];
 		const db = await openDatabase({ url: ":memory:" });
 		await db.close();
-		const result = await checkDatabaseReachable({ db });
+		const result = await checkDatabaseReachable({ db, log: { warn: (obj) => logged.push(obj) } });
 		expect(result.ok).toBe(false);
+		expect(result.message).toBe("probe failed (reason=unreachable)");
 		expect(result.hint).toContain("sqlite");
+		// warren-51de: the raw driver text survives, but only in the log.
+		expect(logged[0]).toMatchObject({ check: "db_reachable", reason: "unreachable" });
 	});
 });

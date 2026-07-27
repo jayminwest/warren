@@ -309,4 +309,108 @@ describe("advancePlanRun — completion phase", () => {
 		expect(children.find((c) => c.seq === 2)?.state).toBe("dispatched");
 		expect(h.events.some((e) => e.kind === "plan_run.merged")).toBe(true);
 	});
+
+	// warren-2a8c: an empty push is only a trivial merge when the child's
+	// seed actually resolved. When it doesn't, the agent could not find its
+	// work item and pushed nothing — that must fail with a typed reason, not
+	// be scored a phantom success that masks the real first failure.
+	async function setupEmptyPushChild(): Promise<string> {
+		await h.repos.planRuns.transitionTo(h.planRun.id, "running", { startedAt: NOW.toISOString() });
+		const runId = await h.makeRun("warren-a");
+		await h.repos.runs.markRunning(runId, NOW);
+		await h.repos.runs.finalize(runId, "succeeded", NOW);
+		await h.repos.events.append({
+			runId,
+			burrowEventSeq: 1,
+			ts: NOW.toISOString(),
+			kind: "reap.empty_push",
+			stream: "system",
+			payload: { branch: "burrow/run", baseBranch: "main", message: "no commits" },
+		});
+		await h.repos.planRuns.updateChild({
+			planRunId: h.planRun.id,
+			seq: 1,
+			patch: { runId, state: "running", startedAt: NOW.toISOString() },
+		});
+		return runId;
+	}
+
+	test("empty push + unresolved seed fails child_seed_not_resolved, not trivial merge (warren-2a8c)", async () => {
+		const runId = await setupEmptyPushChild();
+		const planRun = await h.repos.planRuns.require(h.planRun.id);
+		const result = await advancePlanRun({
+			planRun,
+			repos: h.repos,
+			showSeed: h.showSeedNotFound,
+			checkPrMerged: neverPoll,
+			spawn: h.spawnStub(() => "unused"),
+			emit: h.emit,
+			now: () => NOW,
+		});
+		expect(result.kind).toBe("plan_failed");
+		if (result.kind === "plan_failed") {
+			expect(result.reason).toBe("child_seed_not_resolved:warren-a");
+		}
+		const reloaded = await h.repos.planRuns.require(h.planRun.id);
+		expect(reloaded.state).toBe("failed");
+		expect(reloaded.failureReason).toBe("child_seed_not_resolved:warren-a");
+		const children = await h.repos.planRuns.listChildren(h.planRun.id);
+		expect(children.find((c) => c.seq === 1)?.state).toBe("failed");
+		// seq 2 must NOT have advanced — the plan died at the true first failure.
+		expect(children.find((c) => c.seq === 2)?.state).toBe("pending");
+		// The emitted event distinguishes this from a trivial merge.
+		expect(h.events.some((e) => e.kind === "plan_run.merged")).toBe(false);
+		expect(
+			h.events.some(
+				(e) =>
+					e.kind === "plan_run.failed" && e.payload.reason === "child_seed_not_resolved:warren-a",
+			),
+		).toBe(true);
+		void runId;
+	});
+
+	test("empty push + resolved seed still merges trivially (no regression) (warren-2a8c)", async () => {
+		await setupEmptyPushChild();
+		const planRun = await h.repos.planRuns.require(h.planRun.id);
+		const result = await advancePlanRun({
+			planRun,
+			repos: h.repos,
+			showSeed: h.showSeedStub("open"),
+			checkPrMerged: neverPoll,
+			spawn: h.spawnStub(() => "unused"),
+			emit: h.emit,
+			now: () => NOW,
+		});
+		expect(result.kind).toBe("advanced");
+		const children = await h.repos.planRuns.listChildren(h.planRun.id);
+		expect(children.find((c) => c.seq === 1)?.state).toBe("merged");
+		expect(children.find((c) => c.seq === 2)?.state).toBe("dispatched");
+		expect(h.events.some((e) => e.kind === "plan_run.merged" && e.payload.trivial === true)).toBe(
+			true,
+		);
+	});
+
+	test("empty push + transient seed-store failure retries next tick, no terminal decision (warren-2a8c)", async () => {
+		const runId = await setupEmptyPushChild();
+		const planRun = await h.repos.planRuns.require(h.planRun.id);
+		const result = await advancePlanRun({
+			planRun,
+			repos: h.repos,
+			showSeed: h.showSeedTransient,
+			checkPrMerged: neverPoll,
+			spawn: h.spawnStub(() => "unused"),
+			emit: h.emit,
+			now: () => NOW,
+		});
+		expect(result.kind).toBe("noop");
+		if (result.kind === "noop") {
+			expect(result.reason).toBe(`seed_check_failed:${runId}`);
+		}
+		// Plan still running — neither merged nor failed.
+		const reloaded = await h.repos.planRuns.require(h.planRun.id);
+		expect(reloaded.state).toBe("running");
+		const children = await h.repos.planRuns.listChildren(h.planRun.id);
+		expect(children.find((c) => c.seq === 1)?.state).toBe("running");
+		expect(h.events.some((e) => e.kind === "plan_run.merged")).toBe(false);
+	});
 });

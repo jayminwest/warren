@@ -3,6 +3,7 @@ import { openDatabase, type WarrenDb } from "../../db/client.ts";
 import { createRepos, type Repos } from "../../db/repos/index.ts";
 import { NO_AUTH } from "../auth.ts";
 import { startServer } from "../server.ts";
+import { EVENT_STREAM_RETRY_AFTER_SECONDS, EventStreamLimiter } from "../stream-limits.ts";
 import type { ServeHandle } from "../types.ts";
 import { depsFor, makeSdSpawn, silentLogger, tcpUrl } from "./plan-runs.test-helpers.ts";
 
@@ -100,6 +101,69 @@ describe("GET /plan-runs/:id/events", () => {
 		const parsed = lines.map((l) => JSON.parse(l) as { kind: string; runId: string });
 		expect(parsed.map((p) => p.runId).sort()).toEqual([runA.id, runB.id].sort());
 		expect(parsed.every((p) => p.kind === "plan_run.dispatched")).toBe(true);
+	});
+
+	test("the concurrency cap refuses an over-quota stream with 503 + Retry-After (warren-25f6)", async () => {
+		const created = await repos.planRuns.create({
+			planId: "pl-capped",
+			projectId: seedyProjectId,
+			agentName: "claude-code",
+			children: [{ seq: 1, seedId: "wa-a" }],
+		});
+		const child = await repos.runs.create({
+			agentName: "claude-code",
+			projectId: seedyProjectId,
+			prompt: "work on sd wa-a",
+			renderedAgentJson: {},
+			trigger: "plan-run",
+		});
+		await repos.planRuns.updateChild({
+			planRunId: created.planRun.id,
+			seq: 1,
+			patch: { runId: child.id },
+		});
+		// One persisted event so the held follow stream flushes its response
+		// headers immediately instead of parking before the first byte.
+		await repos.events.append({
+			runId: child.id,
+			burrowEventSeq: 1,
+			ts: "2026-05-18T00:00:00.000Z",
+			kind: "plan_run.dispatched",
+			stream: "system",
+			payload: { seq: 1 },
+		});
+		// A plan-run stream fans in every child, so it gets the same admission
+		// gate as the single-run twin. maxGlobal 1 with the slot never released
+		// (the follow stream stays attached) refuses the second caller.
+		const deps = await depsFor({
+			repos,
+			sdSpawn: makeSdSpawn([], []),
+			streamLimiter: new EventStreamLimiter({
+				maxGlobal: 1,
+				maxPerClient: 0,
+				maxLifetimeMs: 0,
+			}),
+		});
+		handle = startServer(deps, {
+			transport: { kind: "tcp", hostname: "127.0.0.1", port: 0 },
+			auth: NO_AUTH,
+			logger: silentLogger,
+		});
+
+		const url = `${tcpUrl(handle)}/plan-runs/${created.planRun.id}/events?follow=1`;
+		const ctrl = new AbortController();
+		const held = await fetch(url, { signal: ctrl.signal });
+		expect(held.status).toBe(200);
+		try {
+			const refused = await fetch(url);
+			expect(refused.status).toBe(503);
+			expect(refused.headers.get("retry-after")).toBe(String(EVENT_STREAM_RETRY_AFTER_SECONDS));
+			const body = (await refused.json()) as { error: { code: string } };
+			expect(body.error.code).toBe("event_stream_capacity");
+		} finally {
+			await held.body?.cancel().catch(() => {});
+			ctrl.abort();
+		}
 	});
 
 	test("404 for unknown plan_run id", async () => {

@@ -17,11 +17,18 @@
  *      file imports NOTHING from `@os-eco/burrow-cli` or `src/burrow-client`, yet
  *      an HTTP consumer still sees the same `{code, message, hint}` they'd see
  *      hitting the backend directly.
- *   - Anything else → 500 internal_error with the bare message.
+ *   - Anything else → 500 internal_error with a FIXED generic message plus
+ *      the request's correlation id (warren-4385). An untyped throw carries
+ *      whatever the failing layer produced — subprocess stderr, filesystem
+ *      paths, driver text — and every route can raise one, so the body must
+ *      never forward it. The caller logs the full error under the same
+ *      correlation id (see `errorLogFields` + `server.ts`), so operators
+ *      lose nothing.
  *
  * `notFound` / `methodNotAllowed` / `notImplemented` are the canned
  * envelopes used by the router when no route matches or a route is a
- * scaffold-only stub.
+ * scaffold-only stub; `forbidden` is the canned envelope the capability
+ * gate returns when the admitted caller can't reach the matched route.
  */
 
 import {
@@ -42,7 +49,8 @@ import {
 	runtimeBackendStatusFor,
 } from "../runtime/errors.ts";
 import { WarrenConfigUnavailableError } from "../warren-config/errors.ts";
-import type { ErrorEnvelope } from "./types.ts";
+import { EventStreamCapacityError } from "./stream-limits.ts";
+import type { ErrorEnvelope, RoutePolicy } from "./types.ts";
 
 export interface RenderedError {
 	readonly status: number;
@@ -55,7 +63,21 @@ export interface RenderedError {
 	readonly headers?: Readonly<Record<string, string>>;
 }
 
-export function renderError(err: unknown): RenderedError {
+/**
+ * The only message an unhandled 500 ever puts on the wire. Fixed so no
+ * caller can smuggle detail into it and so consumers can match on it.
+ */
+export const INTERNAL_ERROR_MESSAGE = "internal server error";
+
+/**
+ * Render a thrown value as `{ status, envelope }`. `requestId` is the
+ * per-request correlation id (`RouteContext.requestId`, also stamped as
+ * `X-Request-ID`); it is echoed in the hint of the generic 500 envelope so a
+ * caller can quote it and an operator can find the full error in the logs.
+ * Optional because typed errors don't need it — omitting it only degrades
+ * the hint on the untyped path.
+ */
+export function renderError(err: unknown, requestId?: string): RenderedError {
 	if (err instanceof RuntimeAdmissionError) {
 		// 429 + Retry-After (warren-b6f2): the cluster/project is at capacity. The
 		// header advertises the backoff the provider chose; the envelope carries
@@ -64,6 +86,18 @@ export function renderError(err: unknown): RenderedError {
 		const envelope = buildEnvelope(err.code, err.message, err.recoveryHint);
 		return {
 			status: 429,
+			envelope,
+			headers: { "Retry-After": String(err.retryAfterSeconds) },
+		};
+	}
+	if (err instanceof EventStreamCapacityError) {
+		// 503 + Retry-After (warren-25f6): the event-stream concurrency cap is
+		// full. 503 rather than 429 — the caller isn't being rate-limited on a
+		// request budget, a finite resource (open connections on a
+		// single-replica control plane) is temporarily exhausted.
+		const envelope = buildEnvelope(err.code, err.message, err.recoveryHint);
+		return {
+			status: 503,
 			envelope,
 			headers: { "Retry-After": String(err.retryAfterSeconds) },
 		};
@@ -83,22 +117,67 @@ export function renderError(err: unknown): RenderedError {
 		const { code, message, hint } = readBackendEnvelope(err);
 		return { status: backendStatus, envelope: buildEnvelope(code, message, hint) };
 	}
-	if (err instanceof Error) {
-		return {
-			status: 500,
-			envelope: buildEnvelope("internal_error", err.message),
-		};
-	}
+	// Untyped throw (Error or otherwise): nothing above claimed it, so its
+	// message is unvetted and never reaches the body (warren-4385).
+	return internalError(requestId);
+}
+
+/**
+ * The generic 500 envelope. Same body whether an `Error`, a string, or any
+ * other value was thrown — the distinction is only interesting on the log
+ * side, and telling the two apart on the wire is itself a small disclosure.
+ */
+function internalError(requestId: string | undefined): RenderedError {
+	const hint =
+		requestId === undefined
+			? "check the warren server logs for the underlying error"
+			: `check the warren server logs for request id ${requestId}`;
 	return {
 		status: 500,
-		envelope: buildEnvelope("internal_error", String(err)),
+		envelope: buildEnvelope("internal_error", INTERNAL_ERROR_MESSAGE, hint),
 	};
+}
+
+/**
+ * Structured log fields for a thrown value — the log half of the
+ * body/log split (warren-4385). `renderError` withholds an untyped error's
+ * message from the response, so this is the only place the detail survives:
+ * `err` is pino's conventional key (its default serializer expands
+ * type/message/stack), and `err_message` / `err_stack` repeat it flat so
+ * console-shaped loggers and log search see it too. The caller's logger is
+ * already bound to `request_id`, which is what ties this record to the
+ * correlation id in the response envelope.
+ */
+export function errorLogFields(err: unknown): Record<string, unknown> {
+	if (err instanceof Error) {
+		return { err, err_message: err.message, err_stack: err.stack };
+	}
+	return { err, err_message: String(err) };
 }
 
 export function notFound(pathname: string): RenderedError {
 	return {
 		status: 404,
 		envelope: buildEnvelope("not_found", `no route matches ${pathname}`),
+	};
+}
+
+/**
+ * The caller was admitted but its capability set doesn't satisfy the route's
+ * declared policy (warren-b875). The body names the capability the route
+ * wants and nothing else — not who the caller is, not why it fell short, not
+ * whether the resource exists. 403 rather than 404: the route table is public
+ * (`docs/openapi.yaml`), so hiding its existence buys nothing, and a
+ * spectator that gets a 403 knows to authenticate rather than to retry.
+ */
+export function forbidden(policy: RoutePolicy): RenderedError {
+	return {
+		status: 403,
+		envelope: buildEnvelope(
+			"forbidden",
+			`this route requires the '${policy}' capability`,
+			"authenticate with an operator bearer token",
+		),
 	};
 }
 

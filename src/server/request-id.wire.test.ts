@@ -14,7 +14,7 @@ import { resolveRuntimeProvider } from "../runtime/registry.ts";
 import { bearerAuth, NO_AUTH } from "./auth.ts";
 import { createBridgeRegistry } from "./bridges.ts";
 import { startServer } from "./server.ts";
-import type { ServeHandle, ServerDeps } from "./types.ts";
+import type { Route, ServeHandle, ServerDeps } from "./types.ts";
 
 const silentLogger = {
 	info() {},
@@ -24,7 +24,7 @@ const silentLogger = {
 };
 
 // Capture a single log level into `events` while staying silent elsewhere.
-function captureLogger(level: "info" | "warn") {
+function captureLogger(level: "info" | "warn" | "error") {
 	const events: Array<{ obj: Record<string, unknown>; msg?: string }> = [];
 	const logger = {
 		...silentLogger,
@@ -158,6 +158,50 @@ describe("X-Request-ID wire integration (warren-30af)", () => {
 		expect(res.status).toBe(401);
 		const obj = events.find((e) => e.msg === "server.auth_denied")?.obj;
 		expect(obj).toMatchObject({ path: "/projects", status: 401 });
+	});
+
+	test("an untyped handler throw leaks nothing and quotes the correlation id (warren-4385)", async () => {
+		const leaky = `sd show failed: ENOENT ${process.cwd()}/data/warren/projects/acme/.seeds`;
+		const routes: Route[] = [
+			{
+				method: "GET",
+				pattern: "/boom",
+				policy: "readPublic",
+				handler: () => {
+					throw new Error(leaky);
+				},
+			},
+		];
+		const { events, logger } = captureLogger("error");
+		handle = startServer(await depsFor(repos), {
+			transport: { kind: "tcp", hostname: "127.0.0.1", port: 0 },
+			auth: NO_AUTH,
+			logger,
+			routes,
+		});
+		const res = await fetch(`${tcpUrl(handle)}/boom`, {
+			headers: { "x-request-id": "boom-trace" },
+		});
+		expect(res.status).toBe(500);
+		const text = await res.text();
+		// Body: generic message + correlation id, and none of the thrown detail.
+		expect(JSON.parse(text)).toEqual({
+			error: {
+				code: "internal_error",
+				message: "internal server error",
+				hint: "check the warren server logs for request id boom-trace",
+			},
+		});
+		expect(text).not.toContain(process.cwd());
+		expect(text).not.toContain("/data/warren");
+		expect(text).not.toContain("ENOENT");
+		expect(res.headers.get("x-request-id")).toBe("boom-trace");
+		// Log: the full message and stack, findable by the same id (request_id is
+		// bound onto the per-request child logger).
+		const obj = events.find((e) => e.msg === "server: handler threw")?.obj;
+		expect(obj?.err_message).toBe(leaky);
+		expect(String(obj?.err_stack)).toContain(leaky);
+		expect(obj?.request_id).toBe("boom-trace");
 	});
 
 	test("stamps the id on api 404 responses", async () => {

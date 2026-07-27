@@ -50,23 +50,24 @@ describe("checkCanopyClone", () => {
 		expect(result.message).toContain("no canopy library configured");
 	});
 
-	test("fails when the local dir does not exist", () => {
+	test("fails without naming the clone path when the local dir does not exist", () => {
 		const result = checkCanopyClone({
 			env: { CANOPY_REPO_URL: "https://x/y.git", WARREN_CANOPY_DIR: "/missing" },
 			exists: () => false,
 		});
 		expect(result.ok).toBe(false);
-		expect(result.message).toContain("/missing");
+		expect(result.message).toBe("canopy clone directory does not exist");
+		expect(result.message).not.toContain("/missing");
 		expect(result.hint).toContain("/agents/refresh");
 	});
 
-	test("ok when local dir exists", () => {
+	test("ok reports presence, not the clone path (warren-51de)", () => {
 		const result = checkCanopyClone({
 			env: { CANOPY_REPO_URL: "https://x/y.git", WARREN_CANOPY_DIR: "/cn" },
 			exists: () => true,
 		});
 		expect(result.ok).toBe(true);
-		expect(result.message).toBe("/cn");
+		expect(result.message).toBe("canopy clone present");
 	});
 });
 
@@ -81,11 +82,12 @@ describe("checkCanopyClean", () => {
 		expect(calls.length).toBe(0);
 	});
 
-	test("fails when the local dir does not exist", async () => {
+	test("fails without naming the clone path when the local dir does not exist", async () => {
 		const { spawn, calls } = captureSpawnCalls({});
 		const result = await checkCanopyClean({ env: baseEnv, spawn, exists: () => false });
 		expect(result.ok).toBe(false);
-		expect(result.message).toContain("/cn");
+		expect(result.message).toBe("canopy clone directory does not exist");
+		expect(result.message).not.toContain("/cn");
 		// Should not shell out when the dir is missing.
 		expect(calls.length).toBe(0);
 	});
@@ -96,6 +98,7 @@ describe("checkCanopyClean", () => {
 		});
 		const result = await checkCanopyClean({ env: baseEnv, spawn, exists: () => true });
 		expect(result.ok).toBe(true);
+		expect(result.message).toBe("canopy clone is clean");
 		expect(calls[0]?.cmd).toEqual(["git", "status", "--porcelain"]);
 		expect(calls[0]?.cwd).toBe("/cn");
 	});
@@ -107,6 +110,7 @@ describe("checkCanopyClean", () => {
 		const result = await checkCanopyClean({ env: baseEnv, spawn, exists: () => true });
 		expect(result.ok).toBe(false);
 		expect(result.message).toContain("2 local mutation");
+		expect(result.message).not.toContain("/cn");
 		expect(result.hint).toContain("/agents/refresh");
 	});
 

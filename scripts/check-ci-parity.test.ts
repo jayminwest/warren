@@ -4,13 +4,23 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
 	type CiInvocation,
+	computeCiCoverage,
 	computeReachable,
+	evaluateCoverage,
 	evaluateParity,
 	extractBunRunTargets,
 	extractCiInvocations,
 	listCiWorkflows,
 	loadParityConfig,
+	type ParityConfig,
 } from "./check-ci-parity.ts";
+
+const inv = (script: string): CiInvocation => ({
+	workflow: "ci.yml",
+	job: "ci",
+	step: 0,
+	script,
+});
 
 describe("check-ci-parity", () => {
 	test("extractBunRunTargets picks up package-script invocations only", () => {
@@ -96,19 +106,36 @@ describe("check-ci-parity", () => {
 		const config = loadParityConfig("/nonexistent/ci-parity-config.json");
 		expect(config.aliases).toEqual({});
 		expect(config.ciOnly.size).toBe(0);
+		expect(config.localOnly.size).toBe(0);
+	});
+
+	test("loadParityConfig reads localOnly alongside aliases + ciOnly", () => {
+		const dir = mkdtempSync(join(tmpdir(), "ci-parity-cfg-"));
+		const file = join(dir, "ci-parity-config.json");
+		try {
+			writeFileSync(
+				file,
+				JSON.stringify({
+					aliases: { "check:coverage:ci": "check:coverage" },
+					ciOnly: ["report:test-timing"],
+					localOnly: ["check:bundle-size"],
+				}),
+			);
+			const config = loadParityConfig(file);
+			expect(config.aliases).toEqual({ "check:coverage:ci": "check:coverage" });
+			expect([...config.ciOnly]).toEqual(["report:test-timing"]);
+			expect([...config.localOnly]).toEqual(["check:bundle-size"]);
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
 	});
 
 	test("evaluateParity flags drift and honors aliases + ciOnly", () => {
-		const inv = (script: string): CiInvocation => ({
-			workflow: "ci.yml",
-			job: "ci",
-			step: 0,
-			script,
-		});
 		const reachable = new Set(["check:all", "lint", "check:coverage"]);
-		const config = {
+		const config: ParityConfig = {
 			aliases: { "check:coverage:ci": "check:coverage", "lint:special": "lint:missing" },
 			ciOnly: new Set(["report:test-timing"]),
+			localOnly: new Set(),
 		};
 		// Reachable directly — passes.
 		expect(evaluateParity([inv("lint")], reachable, config)).toEqual([]);
@@ -125,5 +152,47 @@ describe("check-ci-parity", () => {
 		expect(aliasDrift).toHaveLength(1);
 		expect(aliasDrift[0]?.canonical).toBe("lint:missing");
 		expect(aliasDrift[0]?.reason).toContain("aliased to");
+	});
+
+	test("computeCiCoverage walks CI steps through aliases and transitively", () => {
+		const scripts = {
+			"check:coverage": "bun run scripts/check-coverage.ts",
+			"check:coverage:ci": "bun run scripts/check-coverage.ts --junit",
+			"gate:umbrella": "bun run lint && bun run typecheck",
+			lint: "biome check .",
+			typecheck: "tsc --noEmit",
+			"check:size": "bun run scripts/check-file-sizes.ts",
+		};
+		const config: ParityConfig = {
+			aliases: { "check:coverage:ci": "check:coverage" },
+			ciOnly: new Set(),
+			localOnly: new Set(),
+		};
+		const covered = computeCiCoverage(
+			scripts,
+			[inv("gate:umbrella"), inv("check:coverage:ci")],
+			config,
+		);
+		// Transitive through an umbrella script.
+		expect(covered.has("lint")).toBe(true);
+		expect(covered.has("typecheck")).toBe(true);
+		// Alias maps the CI-side name onto the canonical gate.
+		expect(covered.has("check:coverage")).toBe(true);
+		// Never invoked by CI.
+		expect(covered.has("check:size")).toBe(false);
+	});
+
+	test("evaluateCoverage flags manifest gates CI never runs, honoring localOnly", () => {
+		const config: ParityConfig = {
+			aliases: {},
+			ciOnly: new Set(),
+			localOnly: new Set(["check:bundle-size"]),
+		};
+		const gates = ["lint", "typecheck", "gen:openapi:check", "check:bundle-size"];
+		const covered = new Set(["lint", "typecheck"]);
+		// Uncovered and not allowlisted — drift; the allowlisted gate is exempt.
+		expect(evaluateCoverage(gates, covered, config)).toEqual(["gen:openapi:check"]);
+		// Fully covered — clean.
+		expect(evaluateCoverage(gates, new Set([...gates]), config)).toEqual([]);
 	});
 });

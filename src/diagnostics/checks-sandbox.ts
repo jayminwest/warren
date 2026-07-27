@@ -61,6 +61,12 @@ export async function checkBwrap(deps: {
  * `CANOPY_REPO_URL` is no longer a failure (warren-d3e9). Failing means
  * `CANOPY_REPO_URL` *is* set but `POST /agents/refresh` has never run
  * successfully on this host.
+ *
+ * Reports only WHETHER the clone is present, never `config.localDir` —
+ * `/readyz` renders these messages verbatim and the clone path is server
+ * filesystem layout (warren-51de). Operators already know the directory:
+ * they set `WARREN_CANOPY_DIR`. `checkCanopyClean` below follows the same
+ * rule.
  */
 export function checkCanopyClone(deps: {
 	readonly env: EnvLike;
@@ -90,11 +96,11 @@ export function checkCanopyClone(deps: {
 		return {
 			name: "canopy_clone",
 			ok: false,
-			message: `canopy clone directory does not exist: ${config.localDir}`,
+			message: "canopy clone directory does not exist",
 			hint: "POST /agents/refresh or run `warren register-agent <name>` to clone",
 		};
 	}
-	return { name: "canopy_clone", ok: true, message: config.localDir };
+	return { name: "canopy_clone", ok: true, message: "canopy clone present" };
 }
 
 /**
@@ -134,7 +140,7 @@ export async function checkCanopyClean(deps: {
 		return {
 			name: "canopy_clean",
 			ok: false,
-			message: `canopy clone directory does not exist: ${config.localDir}`,
+			message: "canopy clone directory does not exist",
 			hint: "POST /agents/refresh or run `warren register-agent <name>` to clone",
 		};
 	}
@@ -157,11 +163,11 @@ export async function checkCanopyClean(deps: {
 			return {
 				name: "canopy_clean",
 				ok: false,
-				message: `${dirty.length} local mutation(s) in ${config.localDir}`,
+				message: `${dirty.length} local mutation(s) in the canopy clone`,
 				hint: "POST /agents/refresh to hard-reset the canopy clone to origin/HEAD",
 			};
 		}
-		return { name: "canopy_clean", ok: true, message: config.localDir };
+		return { name: "canopy_clean", ok: true, message: "canopy clone is clean" };
 	} catch (err) {
 		return {
 			name: "canopy_clean",

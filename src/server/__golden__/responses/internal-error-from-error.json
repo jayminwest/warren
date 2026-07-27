@@ -3,7 +3,8 @@
 	"body": {
 		"error": {
 			"code": "internal_error",
-			"message": "boom"
+			"message": "internal server error",
+			"hint": "check the warren server logs for the underlying error"
 		}
 	}
 }

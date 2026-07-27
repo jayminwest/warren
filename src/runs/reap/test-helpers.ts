@@ -129,6 +129,13 @@ export interface FakeExec {
 export interface FakeExecOpts {
 	/** Throw on every git push call (default: succeed). */
 	fail?: string;
+	/**
+	 * Throw ONLY on `git push` calls, leaving add/diff/commit/rev-list intact
+	 * (default: succeed). Distinct from `fail` (which throws on every non-routed
+	 * command): used by warren-486c to exercise the durability-push failure path
+	 * where the clone commit lands but the origin push is rejected.
+	 */
+	failPush?: string;
 	/** Throw on git rev-list calls (default: succeed). */
 	failRevList?: string;
 	/**
@@ -185,6 +192,7 @@ export function fakeExec(opts: FakeExecOpts = {}): FakeExec {
 		env?: Record<string, string | undefined>;
 	}[] = [];
 	const fail = opts.fail !== undefined ? { reason: opts.fail } : null;
+	const failPush = opts.failPush ?? null;
 	const failRevList = opts.failRevList ?? null;
 	const revListCount = opts.revListCount ?? "1";
 	const stagedDelta = opts.stagedDelta === true;
@@ -200,6 +208,7 @@ export function fakeExec(opts: FakeExecOpts = {}): FakeExec {
 			if (isGitSub(cmd, args, "diff") && args.includes("--cached") && args.includes("--quiet")) {
 				return handleDiffCached(stagedDelta);
 			}
+			if (failPush !== null && isGitSub(cmd, args, "push")) throw new Error(failPush);
 			if (fail !== null) throw new Error(fail.reason);
 			return { stdout: "", stderr: "" };
 		},

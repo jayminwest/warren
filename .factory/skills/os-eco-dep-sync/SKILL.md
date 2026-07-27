@@ -101,15 +101,14 @@ they disagree, the supervisor and the bundled CLI diverge at runtime.
 
 ### 4. Keep warren's own VERSION in sync and ship the bump
 
-A dependency bump is a release, so bump warren's own patch version. The version
-lives in **two** places that CI (`.github/workflows/release.yml`) fails the job
-if they disagree — there is no `version:bump` script in this repo, edit both:
+A dependency bump is a release, so bump warren's own patch version. Use the
+script — it rewrites every version site at once and rolls back on failure:
 
 ```bash
-# package.json   -> "version": "X.Y.(Z+1)"
-# src/index.ts   -> export const VERSION = "X.Y.(Z+1)";
+bun run version:bump patch
 grep '"version"' package.json
-grep 'export const VERSION' src/index.ts   # the two strings MUST match
+grep 'export const VERSION' src/index.ts   # the two strings MUST match —
+                                           # release.yml fails the job otherwise
 ```
 
 Add a `CHANGELOG.md` entry for the new version describing the os-eco bumps

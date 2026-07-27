@@ -2,9 +2,9 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CircleStop } from "lucide-react";
 import { useParams } from "react-router-dom";
 import { planRunsApi } from "@/api/client.ts";
-import { PlotMetaCardContent } from "@/components/PlotMetaCardContent.tsx";
 import type { PlanRunChildRow, PlanRunRow, RunRow } from "@/api/types.ts";
 import { PLAN_RUN_TERMINAL_STATES } from "@/api/types.ts";
+import { OperatorOnly } from "@/components/OperatorOnly.tsx";
 import { PlanRunStateBadge } from "@/components/PlanRunStateBadge.tsx";
 import { Alert } from "@/components/ui/alert.tsx";
 import { Button } from "@/components/ui/button.tsx";
@@ -74,6 +74,7 @@ export function PlanRunDetailPage() {
 					</p>
 				</div>
 				{canCancel ? (
+					<OperatorOnly>
 					<div className="flex flex-col items-end gap-1">
 						<Button
 							variant="destructive"
@@ -85,6 +86,7 @@ export function PlanRunDetailPage() {
 						</Button>
 						<CancelStatus mutation={cancel} />
 					</div>
+					</OperatorOnly>
 				) : null}
 			</header>
 
@@ -130,11 +132,6 @@ export function PlanRunDetailPage() {
 				{planRun.ref !== null ? (
 					<MetaCard label="Ref">
 						<span className="font-mono text-xs">{planRun.ref}</span>
-					</MetaCard>
-				) : null}
-				{planRun.plotId !== null ? (
-					<MetaCard label="Plot">
-						<PlotMetaCardContent plotId={planRun.plotId} />
 					</MetaCard>
 				) : null}
 				<MetaCard label="Created">{relativeTime(planRun.createdAt)}</MetaCard>

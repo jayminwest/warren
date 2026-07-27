@@ -21,16 +21,12 @@ import { classifyAgentSource } from "@/lib/agent-source.ts";
 /**
  * Route state accepted by NewRunPage when navigated via `navigate("/runs/new",
  * { state })` — pre-fills the form so the user can click Dispatch
- * immediately without typing. Used by PlotDetail's RunSeedButton
- * (warren-ff2a) to dispatch a Plot-bound run from a seeds_issue
- * attachment with project/agent/plot_id/prompt resolved up-front. All
- * fields are optional; absent values fall back to NewRun's defaulting
- * flow (project-default agent/prompt, etc.).
+ * immediately without typing. All fields are optional; absent values fall back
+ * to NewRun's defaulting flow (project-default agent/prompt, etc.).
  */
 export interface NewRunRouteState {
 	project?: string;
 	agent?: string;
-	plotId?: string;
 	prompt?: string;
 	/**
 	 * Continuation parent (warren-4b11). When RunDetail's "Re-run with
@@ -53,7 +49,6 @@ function readRouteState(state: unknown): NewRunRouteState {
 	const out: NewRunRouteState = {};
 	if (typeof s.project === "string") out.project = s.project;
 	if (typeof s.agent === "string") out.agent = s.agent;
-	if (typeof s.plotId === "string") out.plotId = s.plotId;
 	if (typeof s.prompt === "string") out.prompt = s.prompt;
 	if (typeof s.continueFromRunId === "string") out.continueFromRunId = s.continueFromRunId;
 	if (typeof s.cloneFromRunId === "string") out.cloneFromRunId = s.cloneFromRunId;
@@ -71,9 +66,9 @@ export function NewRunPage() {
 	const navigate = useNavigate();
 	const qc = useQueryClient();
 	const location = useLocation();
-	// warren-ff2a: PlotDetail's RunSeedButton (and any future callers)
-	// can pre-fill the form via location.state. Read once on mount —
-	// further navigation away and back resets to the defaulting flow.
+	// RunDetail's re-run buttons (and any future callers) can pre-fill the
+	// form via location.state. Read once on mount — further navigation away
+	// and back resets to the defaulting flow.
 	const [initialState] = useState(() => readRouteState(location.state));
 
 	const [agent, setAgent] = useState(initialState.agent ?? "");
@@ -98,7 +93,6 @@ export function NewRunPage() {
 	const [promptTouched, setPromptTouched] = useState(
 		initialState.prompt !== undefined && initialState.prompt.length > 0,
 	);
-	const [plotId, setPlotId] = useState(initialState.plotId ?? "");
 	const [ref, setRef] = useState("");
 	const [providerOverride, setProviderOverride] = useState("");
 	const [providerTouched, setProviderTouched] = useState(false);
@@ -190,11 +184,9 @@ export function NewRunPage() {
 	const handleSubmit = (e: React.FormEvent): void => {
 		e.preventDefault();
 		if (agent.length === 0 || project.length === 0 || prompt.trim().length === 0) return;
-		if (plotIdMalformed) return;
 		const trimmedRef = ref.trim();
 		const trimmedProvider = providerOverride.trim();
 		const trimmedModel = modelOverride.trim();
-		const trimmedPlotId = plotId.trim();
 		spawn.mutate({
 			agent,
 			project,
@@ -202,7 +194,6 @@ export function NewRunPage() {
 			...(trimmedRef.length > 0 ? { ref: trimmedRef } : {}),
 			...(trimmedProvider.length > 0 ? { providerOverride: trimmedProvider } : {}),
 			...(trimmedModel.length > 0 ? { modelOverride: trimmedModel } : {}),
-			...(hasPlot && trimmedPlotId.length > 0 ? { plotId: trimmedPlotId } : {}),
 			...(continueFromRunId !== undefined ? { continueFromRunId } : {}),
 			...(cloneFromRunId !== undefined ? { cloneFromRunId } : {}),
 		});
@@ -218,17 +209,6 @@ export function NewRunPage() {
 	const noAgents = !agents.isLoading && (agents.data?.agents.length ?? 0) === 0;
 	const noProjects = !projects.isLoading && (projects.data?.projects.length ?? 0) === 0;
 	const selectedProject = projects.data?.projects.find((p) => p.id === project);
-	const hasPlot = selectedProject?.hasPlot ?? false;
-
-	// warren-bae5 / pl-5310 step 2: client-side mirror of the
-	// `^plot-[a-z0-9]+$` shape the server enforces (src/plots/id-validator.ts).
-	// Duplicated regex — the UI bundle can't import warren's server-side
-	// `src/plots/index.ts` (no node-only deps allowed in the browser
-	// bundle), so keep these two literals in lockstep.
-	const PLOT_ID_RE = /^plot-[a-z0-9]+$/;
-	const trimmedPlotIdForUi = plotId.trim();
-	const plotIdMalformed =
-		hasPlot && trimmedPlotIdForUi.length > 0 && !PLOT_ID_RE.test(trimmedPlotIdForUi);
 
 	return (
 		<div className="mx-auto max-w-3xl space-y-6">
@@ -347,39 +327,6 @@ export function NewRunPage() {
 							/>
 						</Field>
 
-						{hasPlot ? (
-							<Field
-								label="Plot ID (optional)"
-								htmlFor="plotId"
-								description={
-									<>
-										Bind this run to a Plot. The Plot's activity feed gets a{" "}
-										<code className="font-mono">run_dispatched</code> event; the
-										sandbox sees <code className="font-mono">PLOT_ID</code> /{" "}
-										<code className="font-mono">PLOT_ACTOR</code>.
-									</>
-								}
-								error={
-									plotIdMalformed ? (
-										<>
-											Plot ID must look like{" "}
-											<code className="font-mono">plot-xxxxxxxx</code>.
-										</>
-									) : null
-								}
-							>
-								<Input
-									id="plotId"
-									value={plotId}
-									onChange={(e) => setPlotId(e.target.value)}
-									placeholder="plot-…"
-									autoComplete="off"
-									spellCheck={false}
-									className={responsiveFormControl}
-								/>
-							</Field>
-						) : null}
-
 						<div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
 							<div className="space-y-1.5">
 								<Label htmlFor="provider">Provider override (optional)</Label>
@@ -487,8 +434,7 @@ export function NewRunPage() {
 									spawn.isPending ||
 									agent.length === 0 ||
 									project.length === 0 ||
-									prompt.trim().length === 0 ||
-									plotIdMalformed
+									prompt.trim().length === 0
 								}
 								className={`h-11 sm:h-9 ${responsiveFooterButton}`}
 							>

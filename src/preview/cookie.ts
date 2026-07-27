@@ -7,15 +7,7 @@
  * directly — the cookie scope is the only way to keep a private-code
  * preview private. `createPreviewAuth(token, …)` derives an HMAC-SHA256
  * key from `WARREN_API_TOKEN` (label-scoped so a future preview-secret
- * rotation can be decoupled from the API token) and exposes three methods:
- *
- *   - `verifyLoginToken(candidate)` — constant-time compare against
- *     `WARREN_API_TOKEN`, used by the `/runs/:id/preview/login` handler to
- *     validate the `?token=` query param. The bearer arrives via query
- *     because the browser hop either crosses a subdomain (subdomain mode)
- *     or jumps to a different path scope (path mode); either way the
- *     handler bypasses the standard `Authorization` gate (see
- *     `isAuthExempt`) and calls this method explicitly.
+ * rotation can be decoupled from the API token) and exposes two methods:
  *
  *   - `signCookie(runId, now)` — produces a `<runId>.<expiresMs>.<sig>`
  *     payload and a `Set-Cookie` header value scoped per the
@@ -77,8 +69,6 @@ export function previewCookieName(runId: string, mode: "subdomain" | "path"): st
 const KEY_DERIVATION_LABEL = "::preview-cookie-v1";
 
 export interface PreviewAuth {
-	/** Constant-time compare a candidate token against `WARREN_API_TOKEN`. */
-	verifyLoginToken(candidate: string | null | undefined): boolean;
 	/**
 	 * Issue a signed cookie attesting access to `runId`. Returns a
 	 * `Set-Cookie` header value plus the parsed envelope so handlers can
@@ -157,15 +147,9 @@ export function createPreviewAuth(token: string, opts: CreatePreviewAuthOptions 
 	}
 	const scope = opts.scope ?? DEFAULT_SCOPE;
 	const secure = opts.secure ?? true;
-	const tokenBytes = new TextEncoder().encode(token);
-	const cookieKey = deriveCookieKey(tokenBytes);
+	const cookieKey = deriveCookieKey(new TextEncoder().encode(token));
 
 	return {
-		verifyLoginToken(candidate: string | null | undefined): boolean {
-			if (candidate === null || candidate === undefined || candidate.length === 0) return false;
-			return constantTimeEqualBytes(new TextEncoder().encode(candidate), tokenBytes);
-		},
-
 		signCookie(runId: string, now: Date, ttlMs: number = DEFAULT_COOKIE_TTL_MS): SignedCookie {
 			if (runId.length === 0) {
 				throw new Error("signCookie: runId must be non-empty");

@@ -6,6 +6,7 @@
  */
 
 import { NotFoundError, ValidationError } from "../../core/errors.ts";
+import type { ProjectRow } from "../../db/schema.ts";
 import { ProjectLacksSeedsError } from "../../plan-runs/errors.ts";
 import { computeReadyPlans, type ReadyPlanInput } from "../../plan-runs/index.ts";
 import { addProject, deleteProject, listProjects, refreshProject } from "../../projects/index.ts";
@@ -17,8 +18,10 @@ import {
 	type LoadedWarrenConfig,
 	loadWarrenConfig,
 } from "../../warren-config/index.ts";
+import { isPublicOnly, pickFields } from "../projection.ts";
+import { assertGitUrlAllowlisted } from "../public-allowlist.ts";
 import { jsonResponse } from "../response.ts";
-import type { RouteHandler, ServerDeps } from "../types.ts";
+import type { Actor, RouteHandler, ServerDeps } from "../types.ts";
 import {
 	defaultSpawn,
 	optionalString,
@@ -28,8 +31,56 @@ import {
 	requireString,
 } from "./index.ts";
 
+/**
+ * The project columns a `readPublic`-only spectator sees (warren-4f6c /
+ * pl-b82d step 15). An allowlist, so a column added to `projects`
+ * tomorrow is absent from the public body until someone classifies it
+ * here — see `src/server/projection.ts` for why this is never a denylist.
+ *
+ * `gitUrl` stays: on a public instance every registered repo is public
+ * (enforced by the org allowlist, warren-ce9b), and "which repos does
+ * this instance work on" is the whole point of the demo surface.
+ */
+export const PUBLIC_PROJECT_FIELDS = [
+	"id",
+	"gitUrl",
+	"defaultBranch",
+	"addedAt",
+	"lastFetchedAt",
+	"lastHeadSha",
+	"hasSeeds",
+] as const satisfies readonly (keyof ProjectRow)[];
+
+/**
+ * The complement of `PUBLIC_PROJECT_FIELDS`, spelled out so the
+ * classification is a decision on record rather than "whatever fell off
+ * the list", and so `public-projections.test.ts` can assert the two
+ * partition `ProjectRow`.
+ *
+ * - `localPath` — an absolute server filesystem path under the projects
+ *   root. Pure host-layout disclosure; a spectator has no use for it.
+ */
+export const REDACTED_PROJECT_FIELDS = [
+	"localPath",
+] as const satisfies readonly (keyof ProjectRow)[];
+
+/** A project row as a `readPublic`-only caller sees it. */
+export type PublicProject = Pick<ProjectRow, (typeof PUBLIC_PROJECT_FIELDS)[number]>;
+
+/**
+ * Narrow one project row for `actor`. The operator gets the row
+ * untouched, so the public body is provably the operator body minus
+ * fields — one construction site, no drift.
+ */
+function projectProject(row: ProjectRow, actor: Actor | undefined): ProjectRow | PublicProject {
+	return isPublicOnly(actor) ? pickFields(row, PUBLIC_PROJECT_FIELDS) : row;
+}
+
 export function listProjectsHandler(deps: ServerDeps): RouteHandler {
-	return async () => jsonResponse(200, { projects: await listProjects(deps.repos.projects) });
+	return async (ctx) => {
+		const rows = await listProjects(deps.repos.projects);
+		return jsonResponse(200, { projects: rows.map((row) => projectProject(row, ctx.actor)) });
+	};
 }
 
 export function createProjectHandler(deps: ServerDeps): RouteHandler {
@@ -37,6 +88,10 @@ export function createProjectHandler(deps: ServerDeps): RouteHandler {
 		const body = await readJsonBody(ctx);
 		const gitUrl = requireString(body, "gitUrl");
 		const defaultBranch = optionalString(body, "defaultBranch");
+		// warren-ce9b: on a public instance only allowlisted orgs may ever be
+		// registered — refused here, BEFORE addProject clones anything. No-op
+		// under `WARREN_AUTH=token` (deps.publicAllowlist is absent).
+		assertGitUrlAllowlisted(deps.publicAllowlist, gitUrl);
 		const project = await addProject({
 			repo: deps.repos.projects,
 			config: deps.projectsConfig,

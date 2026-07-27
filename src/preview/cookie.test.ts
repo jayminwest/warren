@@ -10,21 +10,7 @@ import {
 
 const TOKEN = "test-token-very-secret-1234567890abcdef";
 
-describe("createPreviewAuth.verifyLoginToken", () => {
-	test("constant-time accepts the configured token", () => {
-		const auth = createPreviewAuth(TOKEN);
-		expect(auth.verifyLoginToken(TOKEN)).toBe(true);
-	});
-
-	test("rejects mismatched + empty + null", () => {
-		const auth = createPreviewAuth(TOKEN);
-		expect(auth.verifyLoginToken("")).toBe(false);
-		expect(auth.verifyLoginToken(null)).toBe(false);
-		expect(auth.verifyLoginToken(undefined)).toBe(false);
-		expect(auth.verifyLoginToken(`${TOKEN}-extra`)).toBe(false);
-		expect(auth.verifyLoginToken(TOKEN.slice(0, -1))).toBe(false);
-	});
-
+describe("createPreviewAuth", () => {
 	test("empty-token construction throws", () => {
 		expect(() => createPreviewAuth("")).toThrow();
 	});

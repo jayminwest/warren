@@ -47,7 +47,6 @@ export interface PlanRunRow {
 	createdAt: string;
 	startedAt: string | null;
 	endedAt: string | null;
-	plotId: string | null;
 }
 
 export interface PlanRunChildRow {
@@ -74,7 +73,6 @@ export interface CreatePlanRunInput {
 	providerOverride?: string;
 	modelOverride?: string;
 	dispatcherHandle?: string;
-	plotId?: string;
 }
 
 export interface CreatePlanRunResponse {

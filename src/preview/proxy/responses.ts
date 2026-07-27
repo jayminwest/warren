@@ -24,13 +24,19 @@ export function previewError(status: number, code: string, message: string): Res
  * path mode keeps the hint relative (the warren origin matches the
  * inbound request, but the proxy preamble is below the auth layer that
  * would otherwise validate that origin).
+ *
+ * warren-e1b0: the handshake is `POST` with the bearer in the
+ * `Authorization` header — the hint must never suggest a `?token=`
+ * query string, which would put the credential in history / Referer /
+ * proxy logs.
  */
 export function previewUnauthorized(runId: string, config: PreviewProxyConfig, url: URL): Response {
 	const loginPath = `${LOGIN_PATH_PREFIX}${runId}/preview/login`;
+	const authHeader = "-H 'Authorization: Bearer <WARREN_API_TOKEN>'";
 	const hint =
 		config.mode === "subdomain"
-			? `GET https://${config.host}${loginPath}?token=<WARREN_API_TOKEN>&redirect=https://run-${runId}.${config.host}/`
-			: `GET ${url.origin}${loginPath}?token=<WARREN_API_TOKEN>&redirect=${url.origin}/p/${runId}/`;
+			? `POST https://${config.host}${loginPath} ${authHeader} -d '{"redirect":"https://run-${runId}.${config.host}/"}'`
+			: `POST ${url.origin}${loginPath} ${authHeader} -d '{"redirect":"${url.origin}/p/${runId}/"}'`;
 	const body = {
 		error: {
 			code: "preview_unauthorized",

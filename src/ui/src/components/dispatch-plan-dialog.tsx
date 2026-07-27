@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { agentsApi, ApiError, planRunsApi, projectsApi } from "@/api/client.ts";
+import { OperatorOnly } from "@/components/OperatorOnly.tsx";
 import { Button } from "@/components/ui/button.tsx";
 import {
 	Dialog,
@@ -16,7 +17,6 @@ import { Label } from "@/components/ui/label.tsx";
 import { Textarea } from "@/components/ui/textarea.tsx";
 import {
 	buildPlanRunInput,
-	computeBindablePlot,
 	computeSubmittable,
 	DEFAULT_PROMPT_TEMPLATE,
 	readFrontmatter,
@@ -32,11 +32,10 @@ import {
  * plan-run over the EXISTING `planRunsApi.create` (`POST /plan-runs`) path. No
  * new dispatch path is introduced.
  *
- * It is now reusable OUTSIDE a conversation: callers pass a `projectId`, an
- * optional pre-fillable (and optionally locked) `planId`, and an optional
- * `plotId`. The conversation caller leaves `planId` empty + unlocked so the
- * operator pastes the synthesized plan id surfaced by the planner run; the
- * "Ready to dispatch" surface (warren-ce62) pre-fills + locks it.
+ * Callers pass a `projectId` and an optional pre-fillable (and optionally
+ * locked) `planId`. The "Ready to dispatch" surface (warren-ce62) pre-fills +
+ * locks it; other callers leave it empty + unlocked so the operator pastes the
+ * plan id by hand.
  */
 
 export interface DispatchPlanDialogProps {
@@ -45,8 +44,6 @@ export interface DispatchPlanDialogProps {
 	planId?: string;
 	/** When true the Plan ID field is locked (read-only, caller-supplied). */
 	planIdLocked?: boolean;
-	/** Plot back-link; omitted/null dispatches unbound. */
-	plotId?: string | null;
 	onOpenChange: (open: boolean) => void;
 }
 
@@ -54,11 +51,13 @@ export function DispatchPlanButton(props: {
 	projectId: string;
 	planId?: string;
 	planIdLocked?: boolean;
-	plotId?: string | null;
-}): JSX.Element {
+}): JSX.Element | null {
 	const [open, setOpen] = useState(false);
+	// Gating the ENTRY POINT gates the dialog: without the button there is
+	// no path to the form, so one wrap covers the whole affordance
+	// (warren-f53e / pl-b82d step 19).
 	return (
-		<>
+		<OperatorOnly>
 			<Button type="button" size="sm" onClick={() => setOpen(true)}>
 				Dispatch plan
 			</Button>
@@ -67,11 +66,10 @@ export function DispatchPlanButton(props: {
 					projectId={props.projectId}
 					planId={props.planId}
 					planIdLocked={props.planIdLocked}
-					plotId={props.plotId}
 					onOpenChange={setOpen}
 				/>
 			) : null}
-		</>
+		</OperatorOnly>
 	);
 }
 
@@ -79,7 +77,6 @@ export function DispatchPlanDialog({
 	projectId,
 	planId: initialPlanId = "",
 	planIdLocked = false,
-	plotId = null,
 	onOpenChange,
 }: DispatchPlanDialogProps): JSX.Element {
 	const navigate = useNavigate();
@@ -109,7 +106,6 @@ export function DispatchPlanDialog({
 
 	const project = projects.data?.projects.find((p) => p.id === projectId);
 	const hasSeeds = project?.hasSeeds ?? false;
-	const hasPlot = project?.hasPlot ?? false;
 	const defaults = warrenConfig.data?.defaults ?? null;
 	const defaultRole = defaults?.defaultRole;
 	const defaultProvider = defaults?.defaultProvider;
@@ -150,12 +146,10 @@ export function DispatchPlanDialog({
 		mutationFn: planRunsApi.create,
 		onSuccess: (data) => {
 			qc.invalidateQueries({ queryKey: ["plan-runs"] });
-			if (plotId !== null) qc.invalidateQueries({ queryKey: ["plot", plotId] });
 			navigate(`/plan-runs/${encodeURIComponent(data.planRun.id)}`);
 		},
 	});
 
-	const bindablePlot = computeBindablePlot(hasPlot, plotId);
 	const submittable =
 		computeSubmittable({ isPending: dispatch.isPending, hasSeeds, agent, planId, promptTemplate });
 
@@ -169,8 +163,6 @@ export function DispatchPlanDialog({
 				promptTemplate,
 				providerOverride,
 				modelOverride,
-				plotId,
-				bindablePlot,
 			}),
 		);
 	};
@@ -235,24 +227,6 @@ export function DispatchPlanDialog({
 								: "The synthesized plan id, surfaced by the planner run."}
 						</p>
 					</div>
-
-					{plotId !== null ? (
-						<div className="space-y-1.5">
-							<Label htmlFor="dispatch-plan-plotId">Plot</Label>
-							<Input
-								id="dispatch-plan-plotId"
-								value={plotId}
-								readOnly
-								disabled
-								className="h-9 font-mono text-sm"
-							/>
-							<p className="text-xs text-(--color-muted-foreground)">
-								{bindablePlot
-									? "Children inherit PLOT_ID; the Plot auto-transitions to done when every child merges."
-									: "This Plot can't be bound (project has no .plot/) — the plan-run dispatches unbound."}
-							</p>
-						</div>
-					) : null}
 
 					<div className="space-y-1.5">
 						<Label htmlFor="dispatch-plan-agent">Agent</Label>

@@ -50,8 +50,15 @@ export function readyzHandler(deps: ServerDeps): RouteHandler {
 				: {};
 
 		const checks: DiagnosticCheck[] = [];
+		// `deps.logger` is the sink for the raw failure detail the checks
+		// refuse to put in the payload (warren-51de): driver text naming the
+		// DB host/port/role, loader text naming the clone's absolute path.
+		// The body carries a stable reason code; the log carries the rest.
 		checks.push(
-			await checkDatabaseReachable({ ...(deps.db !== undefined ? { db: deps.db } : {}) }),
+			await checkDatabaseReachable({
+				...(deps.db !== undefined ? { db: deps.db } : {}),
+				log: deps.logger,
+			}),
 		);
 		// The burrow socket, bwrap, and stale-burrow-workspace probes only make
 		// sense for the local backend, where warren co-tenants a burrow daemon.
@@ -68,6 +75,7 @@ export function readyzHandler(deps: ServerDeps): RouteHandler {
 		}));
 		const warrenConfigArgs = {
 			projects: warrenConfigProjects,
+			log: deps.logger,
 			...(deps.warrenConfigs !== undefined ? { cache: deps.warrenConfigs } : {}),
 		};
 		checks.push(await checkWarrenConfig(warrenConfigArgs));
@@ -124,7 +132,7 @@ async function previewPortAllocatorReadyzCheck(deps: ServerDeps): Promise<Diagno
 		};
 	}
 	const allocator = new PreviewPortAllocator(DrizzleAdapter.for(deps.db), range);
-	return checkPreviewPortAllocator({ probe: allocator });
+	return checkPreviewPortAllocator({ probe: allocator, log: deps.logger });
 }
 
 async function previewMaxLiveReadyzCheck(deps: ServerDeps): Promise<DiagnosticCheck> {
@@ -140,6 +148,7 @@ async function previewMaxLiveReadyzCheck(deps: ServerDeps): Promise<DiagnosticCh
 	return checkPreviewMaxLive({
 		probe: { count: () => previews.countActivePreviews() },
 		maxLive,
+		log: deps.logger,
 	});
 }
 
@@ -158,6 +167,7 @@ async function staleBurrowWorkspacesReadyzCheck(deps: ServerDeps): Promise<Diagn
 			listByState: (state) => deps.repos.runs.listByState(state),
 		},
 		ttlMs: deps.workspaceGcTtlMs,
+		log: deps.logger,
 		...(deps.now !== undefined ? { now: deps.now() } : {}),
 	});
 }

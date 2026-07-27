@@ -66,17 +66,23 @@ describe("checkPreviewPortAllocator", () => {
 		expect(result.ok).toBe(false);
 	});
 
-	test("fails with the probe error message when usage() throws", async () => {
+	test("fails with a reason code, not the driver text, when usage() throws (warren-51de)", async () => {
+		const logged: object[] = [];
 		const result = await checkPreviewPortAllocator({
 			probe: {
 				usage: async () => {
-					throw new Error("db handle closed");
+					throw new Error("connection is closed");
 				},
 			},
+			log: { warn: (obj) => logged.push(obj) },
 		});
 		expect(result.ok).toBe(false);
-		expect(result.message).toBe("db handle closed");
+		expect(result.message).toBe("probe failed (reason=unreachable)");
 		expect(result.hint).toContain("migration 0009");
+		expect(logged[0]).toMatchObject({
+			check: "preview_port_allocator",
+			err_message: "Error: connection is closed",
+		});
 	});
 });
 
@@ -119,17 +125,18 @@ describe("checkPreviewMaxLive", () => {
 		expect(result.ok).toBe(false);
 	});
 
-	test("fails with the probe error message when count() throws", async () => {
+	test("fails with a reason code, not the driver text, when count() throws (warren-51de)", async () => {
 		const result = await checkPreviewMaxLive({
 			probe: {
 				count: async () => {
-					throw new Error("db handle closed");
+					throw new Error('relation "run_previews" does not exist');
 				},
 			},
 			maxLive: 20,
 		});
 		expect(result.ok).toBe(false);
-		expect(result.message).toBe("db handle closed");
+		expect(result.message).toBe("probe failed (reason=migration_pending)");
+		expect(result.message).not.toContain("run_previews");
 		expect(result.hint).toContain("migration 0009");
 	});
 });
@@ -143,11 +150,13 @@ describe("checkPreviewAuthStrength", () => {
 		expect(result.message).toContain("WARREN_PREVIEW_HOST unset");
 	});
 
-	test("ok when host is set + token is strong", () => {
+	test("ok when host is set + token is strong, without echoing either value", () => {
 		const result = checkPreviewAuthStrength({
 			env: { WARREN_PREVIEW_HOST: "preview.example.com", WARREN_API_TOKEN: STRONG_TOKEN },
 		});
 		expect(result.ok).toBe(true);
+		expect(result.message).toBe("WARREN_PREVIEW_HOST and WARREN_API_TOKEN configured");
+		expect(result.message).not.toContain("preview.example.com");
 	});
 
 	test("fails when host is set + token is empty", () => {
@@ -173,7 +182,18 @@ describe("checkPreviewAuthStrength", () => {
 			env: { WARREN_PREVIEW_HOST: "preview.example.com", WARREN_API_TOKEN: "shorty" },
 		});
 		expect(result.ok).toBe(false);
-		expect(result.message).toContain("preview surface needs");
+		expect(result.message).toContain("shorter than the preview surface minimum");
+	});
+
+	test("never discloses the token's length or the minimum (warren-51de)", () => {
+		// A length is a real search-space reduction, and `/readyz` renders
+		// `message` verbatim — so no check message may carry a digit run.
+		for (const token of ["", "shorty", "changeme", STRONG_TOKEN]) {
+			const result = checkPreviewAuthStrength({
+				env: { WARREN_PREVIEW_HOST: "preview.example.com", WARREN_API_TOKEN: token },
+			});
+			expect(result.message ?? "").not.toMatch(/[0-9]{2,}/);
+		}
 	});
 
 	test("blank WARREN_PREVIEW_HOST is treated as unset", () => {

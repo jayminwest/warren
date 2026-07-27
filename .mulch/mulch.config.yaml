@@ -40,6 +40,10 @@ domains:
   k8s: {}
   deployment: {}
   ops: {}
+  tooling: {}
+  quality-gates: {}
+  k8s-deploy: {}
+  testing: {}
 governance:
   max_entries: 100
   warn_entries: 150

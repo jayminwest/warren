@@ -7,30 +7,39 @@
  * This file is BYTE-IDENTICAL across every conforming repo — do not
  * edit it in place. It imports the resolved GATES manifest from
  * ./check-all.ts as the single source of truth, parses every
- * `.github/workflows/ci*.yml`, and fails when any `bun run <X>`
- * invoked by a CI `run:` step is not transitively reachable from the
- * gate manifest — i.e. when CI enforces something `bun run check:all`
- * does not exercise locally.
+ * `.github/workflows/ci*.yml`, and asserts parity in BOTH directions
+ * (warren-da69):
+ *
+ *   - CI -> local: every `bun run <X>` invoked by a CI `run:` step is
+ *     transitively reachable from the gate manifest — i.e. CI never
+ *     enforces something `bun run check:all` does not exercise.
+ *   - local -> CI: every gate in the manifest is transitively invoked
+ *     by some CI step — i.e. a gate can never silently vanish from
+ *     (or never reach) CI.
  *
  * Per-repo escape hatches live OUTSIDE this file, in an optional
  * `scripts/ci-parity-config.json`:
  *
  *   {
  *     "aliases": { "check:coverage:ci": "check:coverage" },
- *     "ciOnly": ["report:test-timing", "report:quality-metrics"]
+ *     "ciOnly": ["report:test-timing", "report:quality-metrics"],
+ *     "localOnly": []
  *   }
  *
  *   - `aliases` maps a CI-side script name onto a canonical
  *     gate-reachable equivalent. Use for variants that run the same
  *     gate with a different reporter / preamble (e.g. a junit
- *     emitter).
+ *     emitter). It applies in both directions.
  *   - `ciOnly` is the explicit allowlist of scripts that are
  *     intentionally CI-only (summaries / setup with no local
- *     equivalent). Adding here is the only sanctioned way to diverge;
- *     justify each entry in the config's "$comment".
+ *     equivalent).
+ *   - `localOnly` is its inverse: the explicit allowlist of manifest
+ *     gates deliberately not run in CI (too slow, or needing tooling
+ *     CI does not have). Adding to either list is the only sanctioned
+ *     way to diverge; justify each entry in the config's "$comment".
  *
- * Anything outside those two sinks is drift: grow the manifest, change
- * the workflow, or add a justified escape-hatch entry.
+ * Anything outside those sinks is drift: grow the manifest, change the
+ * workflow, or add a justified escape-hatch entry.
  */
 
 import { existsSync, readdirSync, readFileSync } from "node:fs";
@@ -44,14 +53,22 @@ const PACKAGE_JSON = resolve(REPO_ROOT, "package.json");
 const PARITY_CONFIG = resolve(import.meta.dir, "ci-parity-config.json");
 const ROOT_GATE = "check:all";
 
-export type ParityConfig = { aliases: Record<string, string>; ciOnly: ReadonlySet<string> };
+export type ParityConfig = {
+	aliases: Record<string, string>;
+	ciOnly: ReadonlySet<string>;
+	localOnly: ReadonlySet<string>;
+};
 
-type RawParityConfig = { aliases?: Record<string, string>; ciOnly?: string[] };
+type RawParityConfig = { aliases?: Record<string, string>; ciOnly?: string[]; localOnly?: string[] };
 
 export function loadParityConfig(configPath: string = PARITY_CONFIG): ParityConfig {
-	if (!existsSync(configPath)) return { aliases: {}, ciOnly: new Set() };
+	if (!existsSync(configPath)) return { aliases: {}, ciOnly: new Set(), localOnly: new Set() };
 	const raw = JSON.parse(readFileSync(configPath, "utf8")) as RawParityConfig;
-	return { aliases: raw.aliases ?? {}, ciOnly: new Set(raw.ciOnly ?? []) };
+	return {
+		aliases: raw.aliases ?? {},
+		ciOnly: new Set(raw.ciOnly ?? []),
+		localOnly: new Set(raw.localOnly ?? []),
+	};
 }
 
 type PackageJson = { scripts?: Record<string, string> };
@@ -75,6 +92,24 @@ export function loadScripts(packageJsonPath: string = PACKAGE_JSON): Record<stri
 	return pkg.scripts ?? {};
 }
 
+/** Transitive closure of `bun run <x>` references in script bodies,
+ *  seeded with `seeds` (which are themselves part of the result). */
+function closeOver(scripts: Record<string, string>, seeds: readonly string[]): Set<string> {
+	const seen = new Set<string>();
+	const stack: string[] = [...seeds];
+	while (stack.length > 0) {
+		const name = stack.pop();
+		if (!name || seen.has(name)) continue;
+		seen.add(name);
+		const body = scripts[name];
+		if (body === undefined) continue;
+		for (const dep of extractBunRunTargets(body)) {
+			if (!seen.has(dep)) stack.push(dep);
+		}
+	}
+	return seen;
+}
+
 /**
  * Everything reachable from the gate manifest: the manifest itself,
  * the check:all / verify entry points, and the transitive closure of
@@ -84,19 +119,7 @@ export function computeReachable(
 	scripts: Record<string, string>,
 	gates: readonly string[],
 ): Set<string> {
-	const reachable = new Set<string>();
-	const stack: string[] = [ROOT_GATE, "verify", ...gates];
-	while (stack.length > 0) {
-		const name = stack.pop();
-		if (!name || reachable.has(name)) continue;
-		reachable.add(name);
-		const body = scripts[name];
-		if (body === undefined) continue;
-		for (const dep of extractBunRunTargets(body)) {
-			if (!reachable.has(dep)) stack.push(dep);
-		}
-	}
-	return reachable;
+	return closeOver(scripts, [ROOT_GATE, "verify", ...gates]);
 }
 
 type WorkflowStep = { run?: unknown };
@@ -156,33 +179,58 @@ export function evaluateParity(
 	return failures;
 }
 
+/**
+ * Everything CI transitively exercises: each script a CI step invokes
+ * (mapped through `aliases`), plus the closure of `bun run <x>`
+ * references in those script bodies.
+ */
+export function computeCiCoverage(
+	scripts: Record<string, string>,
+	invocations: readonly CiInvocation[],
+	config: ParityConfig,
+): Set<string> {
+	return closeOver(
+		scripts,
+		invocations.map((inv) => config.aliases[inv.script] ?? inv.script),
+	);
+}
+
+/** Manifest gates no CI workflow invokes, minus the `localOnly` allowlist. */
+export function evaluateCoverage(
+	gates: readonly string[],
+	covered: ReadonlySet<string>,
+	config: ParityConfig,
+): string[] {
+	return gates.filter((gate) => !covered.has(gate) && !config.localOnly.has(gate));
+}
+
 export function checkParity(): {
 	invocations: CiInvocation[];
 	reachable: Set<string>;
 	failures: ParityFailure[];
+	missingGates: string[];
 } {
-	const reachable = computeReachable(loadScripts(), GATES);
+	const scripts = loadScripts();
+	const config = loadParityConfig();
+	const reachable = computeReachable(scripts, GATES);
 	const invocations: CiInvocation[] = [];
 	for (const wf of listCiWorkflows()) {
 		invocations.push(...extractCiInvocations(wf));
 	}
-	const failures = evaluateParity(invocations, reachable, loadParityConfig());
-	return { invocations, reachable, failures };
+	const failures = evaluateParity(invocations, reachable, config);
+	const missingGates = evaluateCoverage(
+		GATES,
+		computeCiCoverage(scripts, invocations, config),
+		config,
+	);
+	return { invocations, reachable, failures, missingGates };
 }
 
 function formatFailure(f: ParityFailure): string {
 	return `  ${f.workflow} (job=${f.job}, step=${f.step}): bun run ${f.script} — ${f.reason}`;
 }
 
-function main(): void {
-	const { invocations, reachable, failures } = checkParity();
-	if (failures.length === 0) {
-		console.log(
-			`✓ CI parity: ${invocations.length} bun-run invocation(s) across CI workflows, ` +
-				`all reachable from "${ROOT_GATE}" (${reachable.size} scripts in graph).`,
-		);
-		return;
-	}
+function reportUnreachable(failures: ParityFailure[]): void {
 	console.error(
 		`✗ CI parity drift: ${failures.length} CI step(s) invoke a script that is not ` +
 			`reachable from "${ROOT_GATE}":\n`,
@@ -198,6 +246,37 @@ function main(): void {
 			`  - If two scripts run the same gate under different names, map the CI name\n` +
 			`    to its canonical equivalent in "aliases" in scripts/ci-parity-config.json.`,
 	);
+}
+
+function reportUncovered(missingGates: string[], separator: string): void {
+	console.error(
+		`${separator}✗ CI parity drift: ${missingGates.length} manifest gate(s) are not ` +
+			`invoked by any CI workflow:\n`,
+	);
+	for (const gate of missingGates) console.error(`  bun run ${gate}`);
+	console.error(
+		`\nFix one of:\n` +
+			`  - Add a "bun run <gate>" step to a .github/workflows/ci*.yml job.\n` +
+			`  - Point CI at a script that transitively runs the gate, mapping the CI-side\n` +
+			`    name in "aliases" in scripts/ci-parity-config.json if it differs.\n` +
+			`  - If the gate is intentionally local-only (too slow, or needing tooling CI\n` +
+			`    does not have), add it to "localOnly" in scripts/ci-parity-config.json with\n` +
+			`    a justification in the config's "$comment".`,
+	);
+}
+
+function main(): void {
+	const { invocations, reachable, failures, missingGates } = checkParity();
+	if (failures.length === 0 && missingGates.length === 0) {
+		console.log(
+			`✓ CI parity: ${invocations.length} bun-run invocation(s) across CI workflows, ` +
+				`all reachable from "${ROOT_GATE}" (${reachable.size} scripts in graph); ` +
+				`all ${GATES.length} manifest gate(s) invoked by CI.`,
+		);
+		return;
+	}
+	if (failures.length > 0) reportUnreachable(failures);
+	if (missingGates.length > 0) reportUncovered(missingGates, failures.length > 0 ? "\n" : "");
 	process.exit(1);
 }
 

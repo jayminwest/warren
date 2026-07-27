@@ -272,27 +272,34 @@ export interface LoginInput {
 }
 
 /**
- * Walk the `/runs/:id/preview/login?token=…&redirect=…` handshake and
- * return the value of the `warren_preview` cookie the handler issues.
- * The handler responds 302 with `Set-Cookie`; we don't follow the
- * redirect (the cookie scope makes it impossible to actually reach
+ * Walk the `POST /runs/:id/preview/login` handshake and return the value
+ * of the `warren_preview` cookie the handler issues. The bearer rides
+ * the `Authorization` header (warren-e1b0 — never a `?token=` query) and
+ * the handler answers 200 + `Set-Cookie`; we don't follow the returned
+ * URL (the cookie scope makes it impossible to actually reach
  * `run-<id>.<host>` from a test process anyway).
  */
 export async function loginAndIssueCookie(input: LoginInput): Promise<string> {
 	const redirect = `https://run-${input.runId}.${input.previewHost}/`;
-	const url = `${input.warrenUrl}/runs/${encodeURIComponent(input.runId)}/preview/login?token=${encodeURIComponent(
-		input.token,
-	)}&redirect=${encodeURIComponent(redirect)}`;
-	const res = await fetch(url, { method: "GET", redirect: "manual" });
-	if (res.status !== 302) {
+	const url = `${input.warrenUrl}/runs/${encodeURIComponent(input.runId)}/preview/login`;
+	const res = await fetch(url, {
+		method: "POST",
+		headers: {
+			authorization: `Bearer ${input.token}`,
+			"content-type": "application/json",
+		},
+		body: JSON.stringify({ redirect }),
+		redirect: "manual",
+	});
+	if (res.status !== 200) {
 		const body = await res.text();
 		throw new AcceptanceError(
-			`preview login: expected 302, got ${res.status}: ${body.slice(0, 256)}`,
+			`preview login: expected 200, got ${res.status}: ${body.slice(0, 256)}`,
 		);
 	}
 	const setCookie = res.headers.get("set-cookie");
 	if (setCookie === null || setCookie.length === 0) {
-		throw new AcceptanceError("preview login: missing Set-Cookie on 302");
+		throw new AcceptanceError("preview login: missing Set-Cookie on 200");
 	}
 	const value = parseSetCookie(setCookie, "warren_preview");
 	if (value === null) {

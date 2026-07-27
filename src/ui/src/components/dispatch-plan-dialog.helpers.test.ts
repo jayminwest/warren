@@ -1,28 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import {
 	buildPlanRunInput,
-	computeBindablePlot,
 	computeSubmittable,
 	readFrontmatter,
 } from "./dispatch-plan-dialog.helpers.ts";
-
-describe("computeBindablePlot", () => {
-	test("binds a well-formed plot id when the project has .plot/", () => {
-		expect(computeBindablePlot(true, "plot-abc123")).toBe(true);
-	});
-
-	test("does not bind when the project lacks .plot/", () => {
-		expect(computeBindablePlot(false, "plot-abc123")).toBe(false);
-	});
-
-	test("does not bind a null plot id", () => {
-		expect(computeBindablePlot(true, null)).toBe(false);
-	});
-
-	test("does not bind a malformed plot id", () => {
-		expect(computeBindablePlot(true, "PLOT-Bad")).toBe(false);
-	});
-});
 
 describe("computeSubmittable", () => {
 	const base = {
@@ -66,8 +47,6 @@ describe("buildPlanRunInput", () => {
 		promptTemplate: "  work on sd {seed_id}  ",
 		providerOverride: "",
 		modelOverride: "",
-		plotId: null,
-		bindablePlot: false,
 	};
 
 	test("trims plan id and prompt and omits optional fields when unset", () => {
@@ -87,15 +66,6 @@ describe("buildPlanRunInput", () => {
 				modelOverride: " claude-sonnet-4-6 ",
 			}),
 		).toMatchObject({ providerOverride: "anthropic", modelOverride: "claude-sonnet-4-6" });
-	});
-
-	test("includes the plot back-link only when bindable", () => {
-		expect(buildPlanRunInput({ ...base, plotId: "plot-abc", bindablePlot: true })).toMatchObject({
-			plotId: "plot-abc",
-		});
-		expect(
-			buildPlanRunInput({ ...base, plotId: "plot-abc", bindablePlot: false }),
-		).not.toHaveProperty("plotId");
 	});
 });
 

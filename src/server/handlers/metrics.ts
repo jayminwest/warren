@@ -30,6 +30,7 @@ import {
 } from "../../observability/prometheus.ts";
 import { buildPodPhaseMetrics } from "../../runtime/k8s/pod-metrics.ts";
 import { textResponse } from "../response.ts";
+import { METRIC_EVENT_STREAMS } from "../stream-limits.ts";
 import type { RouteHandler, ServerDeps } from "../types.ts";
 
 export function metricsHandler(deps: ServerDeps): RouteHandler {
@@ -56,6 +57,19 @@ export function metricsHandler(deps: ServerDeps): RouteHandler {
 		metrics.push(
 			gauge("warren_active_bridges", "Currently-attached run-stream bridges.", deps.bridges.size()),
 		);
+
+		if (deps.streamLimiter !== undefined) {
+			// Event-stream saturation (warren-25f6): the numerator for the
+			// WARREN_MAX_EVENT_STREAMS cap, so an operator can see the instance
+			// approaching the point where new streams get a 503.
+			metrics.push(
+				gauge(
+					METRIC_EVENT_STREAMS,
+					"Currently-attached NDJSON event-stream connections.",
+					deps.streamLimiter.active(),
+				),
+			);
+		}
 
 		if (deps.podMetrics !== undefined) {
 			// K8s pod-phase gauges, read live from the pod-watcher cache at scrape

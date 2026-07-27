@@ -11,8 +11,8 @@ Steps:
 1. Find the last release tag: `git describe --tags --abbrev=0 2>/dev/null || echo "none"`
 2. If there's a previous tag, review changes: `git log <tag>..HEAD --oneline` and `git diff <tag>..HEAD`
 3. Determine the version bump level. **Always use patch unless the user explicitly requests minor or major.**
-4. Bump version in both `package.json` (`"version"` field) and `src/index.ts` (`export const VERSION = "X.Y.Z"`) by editing each file directly. There is no `bun run version:bump` script in this repo; the release workflow (`.github/workflows/release.yml`) fails if the two values disagree.
-5. Update `CHANGELOG.md` — move items from [Unreleased] to the new version section with today's date
+4. Run `bun run version:bump <major|minor|patch>`. It rewrites all four version sites (`package.json`, `src/index.ts`, `docs/openapi.yaml` via `gen:openapi`, and the README `## Status` line) and drafts an `[Unreleased]` CHANGELOG block from the commit log. The release workflow (`.github/workflows/release.yml`) fails if `package.json` and `src/index.ts` disagree.
+5. Curate the drafted `CHANGELOG.md` block by hand — regroup the entries under `### Added` / `### Changed` / `### Fixed`, rename the heading to the new version with today's date, and delete the `<!-- version-bump:draft -->` markers
 6. Update `CLAUDE.md` if command counts or structure changed
 7. Update `README.md` if CLI reference or stats changed
 8. COMMIT YOUR CHANGES! Then present a summary of all changes made.

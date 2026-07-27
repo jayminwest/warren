@@ -77,6 +77,23 @@ export interface RouteContext {
 	 * off the request.
 	 */
 	readonly requestId: string;
+	/**
+	 * Socket peer address from `Bun.serve`'s `server.requestIP` (warren-25f6),
+	 * or undefined on a transport that has none (unix socket) and in tests that
+	 * build a context by hand. Behind the canonical Caddy / Ingress deploy this
+	 * is the proxy, not the caller — `eventStreamClientKey` prefers
+	 * `X-Forwarded-For` and only falls back here.
+	 */
+	readonly clientIp?: string;
+	/**
+	 * The authorized caller and its capability set (warren-1ff0), from the
+	 * `AuthProvider` that admitted the request. Undefined on auth-exempt
+	 * paths (`isAuthExempt`: `/healthz` plus every non-API path, where the
+	 * gate never runs) and in tests that build a context by hand — every
+	 * gated API route has one. Handlers should branch on
+	 * `actor.capabilities.*`, never on `actor.kind`.
+	 */
+	readonly actor?: Actor;
 }
 
 export type RouteHandler = (ctx: RouteContext) => Response | Promise<Response>;
@@ -84,6 +101,13 @@ export type RouteHandler = (ctx: RouteContext) => Response | Promise<Response>;
 export interface Route {
 	readonly method: HttpMethod;
 	readonly pattern: string;
+	/**
+	 * What the route demands of its caller (warren-b875). Enforced ONCE, in
+	 * `handleRequest` — handlers never re-check. Required, so a route added
+	 * without a declared policy is a typecheck failure rather than a
+	 * silently-open surface.
+	 */
+	readonly policy: RoutePolicy;
 	readonly handler: RouteHandler;
 }
 
@@ -259,6 +283,22 @@ export interface ServerDeps {
 	 * K8s pod-phase gauge source for `GET /metrics` (pl-829f step 16); set under WARREN_RUNTIME=k8s.
 	 */
 	readonly podMetrics?: import("../runtime/k8s/pod-metrics.ts").PodMetricsSource;
+	/**
+	 * Concurrency admission for the two NDJSON event-stream routes
+	 * (warren-25f6). `bootServer` always wires one from
+	 * `loadEventStreamLimitsFromEnv()`; tests may omit, in which case the
+	 * streams are uncapped. Also feeds the `warren_event_streams` gauge on
+	 * `GET /metrics`. See `src/server/stream-limits.ts`.
+	 */
+	readonly streamLimiter?: import("./stream-limits.ts").EventStreamLimiter;
+	/**
+	 * What `POST /projects` may register (warren-ce9b, widened to repo
+	 * granularity by warren-1841): bare owners and/or `owner/repo` pairs.
+	 * `bootServer` wires this ONLY under `WARREN_AUTH=public`, from
+	 * `WARREN_PUBLIC_ALLOWLIST`; absent (token mode, tests) ⇒ no
+	 * restriction. See `src/server/public-allowlist.ts`.
+	 */
+	readonly publicAllowlist?: import("./public-allowlist.ts").PublicAllowlist;
 }
 
 /**
@@ -314,8 +354,74 @@ export interface ServeHandle {
 	stop(): Promise<void>;
 }
 
+/**
+ * What a caller is permitted to do — the gate branches on these, it does
+ * not re-derive them from who the caller is (warren-1ff0). Named for the
+ * permission, not the holder, mirroring `RuntimeCapabilities`
+ * (`src/runtime/contract.ts`): a flag says what the surface allows, so a
+ * later provider can grant an arbitrary subset without anyone teaching
+ * handlers a new identity vocabulary.
+ */
+export interface ActorCapabilities {
+	/** Read the public projection of runs / projects / agents. */
+	readonly readPublic: boolean;
+	/**
+	 * Read operator-only surfaces — diagnostics, the run inbox, cost
+	 * rollups, raw agent transcripts, per-project warren-config.
+	 */
+	readonly readOperator: boolean;
+	/** Dispatch runs / plan-runs and steer, pause, cancel them. */
+	readonly dispatch: boolean;
+	/** Mutate instance-level state — register projects, triggers, config. */
+	readonly admin: boolean;
+}
+
+/**
+ * One capability name. Derived from `ActorCapabilities` rather than
+ * re-listed, so a capability added there is automatically a legal route
+ * policy and the two vocabularies can't drift.
+ */
+export type CapabilityName = keyof ActorCapabilities;
+
+/**
+ * What a route demands of its caller (warren-b875). Every `ROUTE_TABLE`
+ * entry declares exactly one; there is no default and no fallthrough.
+ *
+ * `anonymous` is the only value that isn't a capability: it means the auth
+ * gate never runs for that path at all (`isAuthExempt` is derived from it),
+ * so the route answers a credential-less caller in EVERY auth mode —
+ * liveness probes and the version string the login screen reads before the
+ * user has a token. Treat it as strictly wider than `readPublic`, which
+ * still requires the bearer under the default `WARREN_AUTH=token`.
+ *
+ * Every other value names the capability the admitted actor must hold; the
+ * gate refuses with 403 when it doesn't.
+ */
+export type RoutePolicy = "anonymous" | CapabilityName;
+
+/**
+ * Identity discriminant. `operator` is the single-user V1 caller (SPEC
+ * §3.2 / §11.D) the token provider authorizes; `anonymous` is the
+ * credential-less spectator the `WARREN_AUTH=public` provider mints
+ * (warren-851b) — it holds `readPublic` and nothing else. Further kinds
+ * land with the providers that mint them.
+ */
+export type ActorKind = "operator" | "anonymous";
+
+/**
+ * Who is making the request and what they may do. Produced by an
+ * `AuthProvider`, carried on `RouteContext.actor` so a handler consults
+ * capabilities instead of re-reading the Authorization header.
+ */
+export interface Actor {
+	readonly kind: ActorKind;
+	readonly capabilities: ActorCapabilities;
+}
+
 export interface AuthOk {
 	readonly ok: true;
+	/** The authorized caller. Threaded onto `RouteContext.actor`. */
+	readonly actor: Actor;
 }
 
 export interface AuthDenied {

@@ -86,6 +86,8 @@ export interface BuildDepsInput {
 	spawn?: SpawnFn;
 	/** Stub the project refresher so tests assert the refresh without shelling out (warren-6d60). */
 	refreshProjectFn?: ServerDeps["refreshProjectFn"];
+	/** Event-stream concurrency caps (warren-25f6). Omitted ⇒ uncapped. */
+	streamLimiter?: ServerDeps["streamLimiter"];
 }
 
 export async function depsFor(input: BuildDepsInput): Promise<ServerDeps> {
@@ -109,6 +111,7 @@ export async function depsFor(input: BuildDepsInput): Promise<ServerDeps> {
 		seedsCli: { sdBinary: "sd", spawn: input.sdSpawn },
 		...(input.spawn !== undefined ? { spawn: input.spawn } : {}),
 		...(input.refreshProjectFn !== undefined ? { refreshProjectFn: input.refreshProjectFn } : {}),
+		...(input.streamLimiter !== undefined ? { streamLimiter: input.streamLimiter } : {}),
 	};
 }
 

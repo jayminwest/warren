@@ -10,6 +10,7 @@ import {
 	useClientSort,
 } from "@/hooks/use-client-sort.ts";
 import { SortableTableHead } from "@/components/ui/sortable-table-head.tsx";
+import { OperatorOnly } from "@/components/OperatorOnly.tsx";
 import { RefreshProjectsCTA } from "@/components/RefreshProjectsCTA.tsx";
 import { Alert } from "@/components/ui/alert.tsx";
 import { Button } from "@/components/ui/button.tsx";
@@ -95,16 +96,23 @@ export function ProjectsPage() {
 				}
 			/>
 
-			<AddProjectForm
-				onSubmit={(input) => create.mutate(input)}
-				pending={create.isPending}
-				error={create.error ? formatError(create.error) : null}
-			/>
+			{/* Project registration / refresh / delete are all `admin` routes
+			    (warren-b875), so the whole cluster of affordances is gated on
+			    that capability rather than on `dispatch` (warren-f53e). */}
+			<OperatorOnly capability="admin">
+				<AddProjectForm
+					onSubmit={(input) => create.mutate(input)}
+					pending={create.isPending}
+					error={create.error ? formatError(create.error) : null}
+				/>
+			</OperatorOnly>
 
 			<Card>
 				<CardHeader className={responsiveCardHeaderRow}>
 					<CardTitle>{projects.data?.projects.length ?? 0} projects</CardTitle>
-					<RefreshProjectsCTA label="Sync all" />
+					<OperatorOnly capability="admin">
+						<RefreshProjectsCTA />
+					</OperatorOnly>
 				</CardHeader>
 				<CardContent className="p-0">
 					{projects.isLoading ? (
@@ -142,7 +150,9 @@ export function ProjectsPage() {
 									<SortableTableHead columnKey="addedAt" sort={sort} onSort={onSort}>
 										Added
 									</SortableTableHead>
-									<TableHead className="w-24" />
+									<OperatorOnly capability="admin">
+										<TableHead className="w-24" />
+									</OperatorOnly>
 								</TableRow>
 							</TableHeader>
 							<TableBody>
@@ -174,6 +184,7 @@ export function ProjectsPage() {
 										<TableCell className="whitespace-nowrap text-(--color-muted-foreground)">
 											{formatTimestamp(p.addedAt)}
 										</TableCell>
+										<OperatorOnly capability="admin">
 										<TableCell>
 											<div className="flex gap-1">
 												<Button
@@ -204,6 +215,7 @@ export function ProjectsPage() {
 												</Button>
 											</div>
 										</TableCell>
+										</OperatorOnly>
 									</TableRow>
 								))}
 							</TableBody>

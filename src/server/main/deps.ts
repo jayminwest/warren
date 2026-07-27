@@ -21,6 +21,8 @@ import type { PodMetricsSource } from "../../runtime/k8s/pod-metrics.ts";
 import type { PodCacheReader } from "../../runtime/k8s/pod-watcher.ts";
 import type { createWarrenConfigCache } from "../../warren-config/index.ts";
 import { IdempotencyStore } from "../idempotency.ts";
+import type { PublicAllowlist } from "../public-allowlist.ts";
+import { EventStreamLimiter, type EventStreamLimits } from "../stream-limits.ts";
 import type { BridgeRegistry, Logger, ServerDeps } from "../types.ts";
 import { defaultSpawn } from "./utils.ts";
 
@@ -67,6 +69,18 @@ export interface BuildServerDepsInput {
 	readonly previewLaunchConfig: PreviewLaunchConfig;
 	readonly previewEvictionConfig: PreviewEvictionConfig;
 	readonly workspaceGcTtlMs: number;
+	/**
+	 * Event-stream concurrency caps (warren-25f6), resolved from env by the
+	 * orchestrator so a malformed knob fails at boot rather than at the first
+	 * stream. One `EventStreamLimiter` is built from them here and shared by
+	 * both NDJSON routes plus the `/metrics` saturation gauge.
+	 */
+	readonly eventStreamLimits: EventStreamLimits;
+	/**
+	 * Orgs `POST /projects` may register (warren-ce9b). Resolved by the
+	 * orchestrator, which passes `undefined` unless `WARREN_AUTH=public`.
+	 */
+	readonly publicAllowlist: PublicAllowlist | undefined;
 	readonly previewAuth: PreviewAuth | undefined;
 	readonly sdBinary: string;
 	readonly metricsRegistry?: MetricsRegistry;
@@ -100,6 +114,8 @@ export function buildServerDeps(input: BuildServerDepsInput): ServerDeps {
 		previewLaunchConfig,
 		previewEvictionConfig,
 		workspaceGcTtlMs,
+		eventStreamLimits,
+		publicAllowlist,
 		previewAuth,
 		previewSidecars,
 		sdBinary,
@@ -134,6 +150,8 @@ export function buildServerDeps(input: BuildServerDepsInput): ServerDeps {
 		previewPortRange,
 		previewMaxLive: previewEvictionConfig.maxLive,
 		workspaceGcTtlMs,
+		streamLimiter: new EventStreamLimiter(eventStreamLimits),
+		...(publicAllowlist !== undefined ? { publicAllowlist } : {}),
 		previewMode: previewLaunchConfig.mode,
 		...(previewHostForDeps !== undefined ? { previewHost: previewHostForDeps } : {}),
 		...(previewAuth !== undefined ? { previewAuth } : {}),

@@ -3,7 +3,7 @@
 openapi: 3.1.0
 info:
   title: warren HTTP API
-  version: 0.10.1
+  version: 0.11.0
   description: >-
     Auto-generated from `src/server/handlers/index.ts`'s `ROUTE_TABLE`. Run `bun run gen:openapi` to
     refresh; CI fails if this schema drifts from the handler module. Request/response bodies are
@@ -27,6 +27,8 @@ tags:
     description: '`/projects` routes.'
   - name: runs
     description: '`/runs` routes.'
+  - name: whoami
+    description: '`/whoami` routes.'
 paths:
   /agents:
     get:
@@ -540,7 +542,8 @@ paths:
           description: Error response (see `src/core/errors.ts`).
       description: >-
         warren-3d0b: the in-pod steering poll for the K8s backend. Bearer-gated like every /runs
-        route; the pod carries WARREN_API_TOKEN.
+        route; the pod carries WARREN_API_TOKEN. Destructive on read (it claims unread messages), so
+        it is operator-only (warren-b875).
       parameters:
         - name: id
           in: path
@@ -548,16 +551,20 @@ paths:
           schema:
             type: string
   /runs/{id}/preview/login:
-    get:
+    post:
       operationId: previewLoginHandler
       tags:
         - runs
-      summary: GET /runs/:id/preview/login
+      summary: POST /runs/:id/preview/login
       responses:
         '200':
           description: Successful response.
         default:
           description: Error response (see `src/core/errors.ts`).
+      description: >-
+        warren-e1b0: POST, not GET — the bearer rides the `Authorization` header like every other
+        /runs route instead of a `?token=` query string that would land in history / Referer / proxy
+        logs.
       parameters:
         - name: id
           in: path
@@ -609,3 +616,15 @@ paths:
           description: Successful response.
         default:
           description: Error response (see `src/core/errors.ts`).
+  /whoami:
+    get:
+      operationId: whoamiHandler
+      tags:
+        - whoami
+      summary: GET /whoami
+      responses:
+        '200':
+          description: Successful response.
+        default:
+          description: Error response (see `src/core/errors.ts`).
+      description: 'warren-e195: `readPublic`, not `anonymous` — an exempt route gets no actor to name.'

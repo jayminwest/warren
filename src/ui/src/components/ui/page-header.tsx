@@ -5,8 +5,8 @@ import { cn } from "@/lib/utils.ts";
  * Phase 6 layout primitive (warren-e6b3 / pl-55a3 step 7):
  *
  * PageHeader — the canonical top-of-page banner. Audit found ~10
- * pages (Runs, Plots, Projects, PlanRuns, Agents, NewRun,
- * NewPlanRun, CostAnalytics, PlotDetail, PlotSummary) each rolling
+ * pages (Runs, Projects, PlanRuns, Agents, NewRun,
+ * NewPlanRun, CostAnalytics) each rolling
  * their own `<header>` with `<h1 className="text-2xl font-semibold
  * tracking-tight">` + muted-foreground description + actions cluster.
  * This primitive consolidates that shape so all pages share spacing,

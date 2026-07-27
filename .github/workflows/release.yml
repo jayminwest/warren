@@ -26,9 +26,15 @@ jobs:
           bun-version-file: .bun-version
 
       - run: bun install
-      - run: bun run lint
-      - run: bun run typecheck
-      - run: bun test
+
+      # The full gate manifest, not a hand-picked subset (warren-8b5f). This
+      # job used to run 4 of the 12 gates CI enforces on every PR, so a
+      # release could ship code that CI would have rejected. `check:all` IS
+      # the manifest (docs/check-all-standard.md); `ui:install` comes first
+      # because check:deps (knip) resolves the src/ui workspace and runs
+      # before check:bundle-size builds it.
+      - run: bun run ui:install
+      - run: bun run check:all
 
       - name: Check if version is unreleased
         id: version-check
@@ -70,40 +76,41 @@ jobs:
             git push origin "v$VERSION"
           fi
 
+      # A missing `## [X.Y.Z]` section used to fall back to `--generate-notes`,
+      # so an uncurated release shipped with nobody noticing (warren-8b5f).
+      # The CHANGELOG is warren's only release-notes contract, and this is the
+      # ONLY place it is enforced — deliberately at release time rather than
+      # in PR CI, so ordinary PRs are never blocked on changelog etiquette.
+      # A miss is fatal: no notes, no release.
       - name: Extract changelog notes
         if: steps.version-check.outputs.release == 'true'
         id: changelog
+        env:
+          VERSION: ${{ steps.version-check.outputs.version }}
         run: |
-          VERSION="${{ steps.version-check.outputs.version }}"
+          set -uo pipefail
           NOTES=$(awk '/^## \['"$VERSION"'\]/{found=1; next} found && /^## \[/{exit} found{print}' CHANGELOG.md)
           NOTES=$(echo "$NOTES" | awk 'NF{found=1} found{lines[++n]=$0} END{while(n>0 && lines[n]=="") n--; for(i=1;i<=n;i++) print lines[i]}')
-          if [ -n "$NOTES" ]; then
-            echo "found=true" >> "$GITHUB_OUTPUT"
-            echo "$NOTES" > /tmp/release-notes.md
-          else
-            echo "found=false" >> "$GITHUB_OUTPUT"
-            echo "Warning: No CHANGELOG entry found for $VERSION"
+          if [ -z "$NOTES" ]; then
+            echo "::error::CHANGELOG.md has no '## [$VERSION]' section (or it is empty). Write the release notes before bumping the version — releases are never auto-generated."
+            exit 1
           fi
+          echo "$NOTES" > "${RUNNER_TEMP}/release-notes.md"
 
       - name: Create GitHub release
         if: steps.version-check.outputs.release == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version-check.outputs.version }}
         run: |
-          VERSION="${{ steps.version-check.outputs.version }}"
+          set -euo pipefail
           if gh release view "v$VERSION" >/dev/null 2>&1; then
             echo "Release v$VERSION already exists; skipping"
             exit 0
           fi
-          if [ "${{ steps.changelog.outputs.found }}" = "true" ]; then
-            gh release create "v$VERSION" \
-              --title "v$VERSION" \
-              --notes-file /tmp/release-notes.md
-          else
-            gh release create "v$VERSION" \
-              --title "v$VERSION" \
-              --generate-notes
-          fi
+          gh release create "v$VERSION" \
+            --title "v$VERSION" \
+            --notes-file "${RUNNER_TEMP}/release-notes.md"
 
   # Roll GKE forward for the exact released commit. We call deploy-gke.yml
   # directly (workflow_call) rather than leaning on a `release: [published]`
@@ -111,6 +118,10 @@ jobs:
   # suppresses workflow runs triggered by GITHUB_TOKEN-created events, so a
   # release-event trigger would never fire (warren-cb81). Passing github.sha
   # pins the build + rollout to this release's commit.
+  #
+  # The same job also publishes the public control-plane image, so the
+  # released semver rides along (warren-26be): it is what turns into the
+  # `ghcr.io/<owner>/warren:vX.Y.Z` and `:X.Y` tags self-hosters pin to.
   deploy:
     needs: release
     if: needs.release.outputs.release == 'true'
@@ -118,7 +129,67 @@ jobs:
     permissions:
       contents: read
       id-token: write
+      packages: write
     secrets: inherit
     with:
       sha: ${{ github.sha }}
       deploy: true
+      version: ${{ needs.release.outputs.version }}
+
+  # AUTO_MERGE_PAT is a silent single point of failure (warren-8b5f). GitHub
+  # suppresses workflow runs for GITHUB_TOKEN-authored pushes, so auto-merge.yml
+  # must merge with a PAT; when that PAT expires, PRs simply stop merging, main
+  # stops moving, and releases stop happening — with no failed run anywhere to
+  # notice. This job is the heartbeat: it runs on every release-workflow tick
+  # and turns a dead PAT into a red X.
+  #
+  # It deliberately does NOT gate the release: an expired PAT breaks the merge
+  # queue, not this release (which is cut with github.token). So it is a
+  # sibling job with no `needs` edge — visible when it fails, never blocking.
+  pat-heartbeat:
+    runs-on: ubuntu-latest
+    permissions: {}
+    steps:
+      - name: Check AUTO_MERGE_PAT validity and expiry
+        env:
+          PAT: ${{ secrets.AUTO_MERGE_PAT }}
+          # Lead time to rotate before the merge queue stops (days).
+          WARN_DAYS: "14"
+        run: |
+          set -uo pipefail
+          if [ -z "${PAT}" ]; then
+            echo "::error::AUTO_MERGE_PAT is not configured. auto-merge.yml needs it to merge PRs in a way that re-triggers CI and Release (docs/project-setup.md §2)."
+            exit 1
+          fi
+          HEADERS=$(curl -sS -D - -o /dev/null --max-time 20 \
+            -H "Authorization: Bearer ${PAT}" \
+            -H "Accept: application/vnd.github+json" \
+            https://api.github.com/user | tr -d '\r' | tr 'A-Z' 'a-z')
+          STATUS=$(printf '%s\n' "${HEADERS}" | awk 'NR==1{print $2}')
+          if [ "${STATUS:-}" != "200" ]; then
+            echo "::error::AUTO_MERGE_PAT was rejected by api.github.com (HTTP ${STATUS:-none}) — it has expired or been revoked. Rotate it (docs/project-setup.md §2)."
+            exit 1
+          fi
+          EXPIRY=$(printf '%s\n' "${HEADERS}" | sed -n 's/^github-authentication-token-expiration:[[:space:]]*//p')
+          if [ -z "${EXPIRY}" ]; then
+            echo "AUTO_MERGE_PAT is valid and carries no expiration date."
+            exit 0
+          fi
+          # Compare on the YYYY-MM-DD prefix only; GitHub's timezone suffix
+          # varies and neither GNU nor BSD date parses every spelling.
+          DAY=$(printf '%s\n' "${EXPIRY}" | sed -n 's/^\([0-9]\{4\}-[0-9]\{2\}-[0-9]\{2\}\).*/\1/p')
+          EXPIRY_EPOCH=$(date -u -d "${DAY}" +%s 2>/dev/null || date -u -j -f "%Y-%m-%d" "${DAY}" +%s 2>/dev/null || echo "")
+          if [ -z "${EXPIRY_EPOCH}" ]; then
+            echo "::warning::AUTO_MERGE_PAT expires ${EXPIRY} (unparseable date — check it by hand)."
+            exit 0
+          fi
+          DAYS=$(( (EXPIRY_EPOCH - $(date -u +%s)) / 86400 ))
+          if [ "${DAYS}" -le 0 ]; then
+            echo "::error::AUTO_MERGE_PAT expired on ${EXPIRY}. Rotate it now (docs/project-setup.md §2) or merges — and therefore releases — stop silently."
+            exit 1
+          fi
+          if [ "${DAYS}" -le "${WARN_DAYS}" ]; then
+            echo "::warning::AUTO_MERGE_PAT expires in ${DAYS} day(s) (${EXPIRY}). Rotate it (docs/project-setup.md §2)."
+          else
+            echo "AUTO_MERGE_PAT is valid for ${DAYS} more day(s) (${EXPIRY})."
+          fi

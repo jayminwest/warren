@@ -8,6 +8,7 @@ import { resolveRuntimeProvider } from "../../runtime/registry.ts";
 import { bearerAuth } from "../auth.ts";
 import { createBridgeRegistry } from "../bridges.ts";
 import { startServer } from "../server.ts";
+import { EventStreamLimiter } from "../stream-limits.ts";
 import type { ServeHandle, ServerDeps } from "../types.ts";
 
 const TOKEN = "metrics-test-token-0000000000000000000000";
@@ -25,6 +26,7 @@ async function depsFor(
 	repos: Repos,
 	db: WarrenDb,
 	registry?: MetricsRegistry,
+	streamLimiter?: EventStreamLimiter,
 ): Promise<ServerDeps> {
 	const burrowClient = makeBurrowClient();
 	const broker = new RunEventBroker();
@@ -44,6 +46,7 @@ async function depsFor(
 		logger: silentLogger,
 		uiDistDir: null,
 		...(registry !== undefined ? { metricsRegistry: registry } : {}),
+		...(streamLimiter !== undefined ? { streamLimiter } : {}),
 	};
 }
 
@@ -97,6 +100,34 @@ describe("GET /metrics", () => {
 		// Genuine counter keeps its _total suffix.
 		expect(body).toContain('warren_log_messages_total{level="warn"} 1');
 		expect(body).toContain('warren_log_messages_total{level="error"} 1');
+	});
+
+	test("reports event-stream saturation when a stream limiter is wired (warren-25f6)", async () => {
+		const limiter = new EventStreamLimiter({ maxGlobal: 8, maxPerClient: 2, maxLifetimeMs: 0 });
+		limiter.acquire("1.2.3.4");
+		limiter.acquire("5.6.7.8");
+		handle = startServer(await depsFor(repos, db, undefined, limiter), {
+			transport: { kind: "tcp", hostname: "127.0.0.1", port: 0 },
+			auth: bearerAuth(TOKEN),
+			logger: silentLogger,
+		});
+		const body = await fetch(`${tcpUrl(handle)}/metrics`, {
+			headers: { authorization: `Bearer ${TOKEN}` },
+		}).then((r) => r.text());
+		expect(body).toContain("# TYPE warren_event_streams gauge");
+		expect(body).toContain("warren_event_streams 2");
+	});
+
+	test("omits the event-stream gauge when no limiter is wired", async () => {
+		handle = startServer(await depsFor(repos, db), {
+			transport: { kind: "tcp", hostname: "127.0.0.1", port: 0 },
+			auth: bearerAuth(TOKEN),
+			logger: silentLogger,
+		});
+		const body = await fetch(`${tcpUrl(handle)}/metrics`, {
+			headers: { authorization: `Bearer ${TOKEN}` },
+		}).then((r) => r.text());
+		expect(body).not.toContain("warren_event_streams");
 	});
 
 	test("appends K8s pod-phase gauges when a pod-metrics source is wired", async () => {

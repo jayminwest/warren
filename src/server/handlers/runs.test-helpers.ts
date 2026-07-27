@@ -101,6 +101,8 @@ export async function depsFor(
 	bridges?: BridgeRegistry,
 	extras?: {
 		finalizeCoordinator?: import("../../runtime/k8s/finalize-coordinator.ts").FinalizeCoordinator;
+		/** Event-stream concurrency caps (warren-25f6). Omitted ⇒ uncapped. */
+		streamLimiter?: import("../stream-limits.ts").EventStreamLimiter;
 	},
 ): Promise<ServerDeps> {
 	const broker = new RunEventBroker();
@@ -139,6 +141,7 @@ export async function depsFor(
 		...(extras?.finalizeCoordinator !== undefined
 			? { finalizeCoordinator: extras.finalizeCoordinator }
 			: {}),
+		...(extras?.streamLimiter !== undefined ? { streamLimiter: extras.streamLimiter } : {}),
 	};
 }
 

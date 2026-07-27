@@ -23,8 +23,9 @@
  *
  *   - `Host: run-<id>.<preview-host>` without a cookie → 401 (the proxy
  *     points the browser at `/runs/:id/preview/login`).
- *   - `GET /runs/:id/preview/login?token=…&redirect=…` → 302 + `Set-Cookie:
- *     warren_preview=…`.
+ *   - `POST /runs/:id/preview/login` with `Authorization: Bearer …` and
+ *     an optional `{redirect}` body → 200 + `Set-Cookie: warren_preview=…`
+ *     (warren-e1b0 — the bearer never rides a query string).
  *   - Replay the same `Host` header with the issued cookie → 200; the
  *     upstream body proves the proxy forwarded into the sidecar.
  *

@@ -10,6 +10,7 @@ import type {
 	WarrenConfigFileError,
 	WarrenConfigResponse,
 } from "@/api/types.ts";
+import { OperatorOnly } from "@/components/OperatorOnly.tsx";
 import { Alert } from "@/components/ui/alert.tsx";
 import { Badge } from "@/components/ui/badge.tsx";
 import { Button } from "@/components/ui/button.tsx";
@@ -21,11 +22,13 @@ import {
 	cardVariants,
 } from "@/components/ui/card.tsx";
 import { Spinner } from "@/components/ui/spinner.tsx";
+import { useCapabilities } from "@/hooks/use-capabilities.ts";
 import { formatError } from "@/lib/format-error.ts";
 import { cn, formatTimestamp } from "@/lib/utils.ts";
 
 export function ProjectDetailPage() {
 	const { id = "" } = useParams<{ id: string }>();
+	const caps = useCapabilities();
 
 	// Reuse the projects-list cache rather than introducing a GET /projects/:id —
 	// the list endpoint is the only project-row source today (warren-435b shipped
@@ -36,10 +39,13 @@ export function ProjectDetailPage() {
 		queryFn: ({ signal }) => projectsApi.list(signal),
 	});
 
+	// `GET /projects/:id/warren-config` carries trigger prompt text and
+	// quality-gate command strings and is readOperator, so a spectator
+	// never fires it (warren-f53e).
 	const warrenConfig = useQuery({
 		queryKey: ["projects", id, "warren-config"],
 		queryFn: ({ signal }) => projectsApi.warrenConfig(id, signal),
-		enabled: id.length > 0,
+		enabled: id.length > 0 && caps.can("readOperator"),
 	});
 
 	const project: ProjectRow | undefined = projects.data?.projects.find((p) => p.id === id);
@@ -74,12 +80,17 @@ export function ProjectDetailPage() {
 			) : (
 				<>
 					<ProjectMetaCard project={project} />
-					<WarrenConfigPanel
-						projectId={id}
-						query={warrenConfig.data}
-						isLoading={warrenConfig.isLoading}
-						error={warrenConfig.error}
-					/>
+					{/* The panel's own reads are readOperator and it hosts the
+					    `Run now` trigger dispatch, so it is gated whole rather
+					    than button by button (warren-f53e). */}
+					<OperatorOnly capability="readOperator">
+						<WarrenConfigPanel
+							projectId={id}
+							query={warrenConfig.data}
+							isLoading={warrenConfig.isLoading}
+							error={warrenConfig.error}
+						/>
+					</OperatorOnly>
 				</>
 			)}
 		</div>
@@ -94,7 +105,14 @@ function ProjectMetaCard({ project }: { project: ProjectRow }) {
 			</CardHeader>
 			<CardContent>
 				<dl className="grid grid-cols-1 gap-x-6 gap-y-3 text-sm md:grid-cols-2">
-					<MetaRow label="Local path" value={<code className="text-xs">{project.localPath}</code>} />
+					{/* Host-layout disclosure — absent from a spectator's row
+					    (warren-4f6c), so render on presence (warren-f53e). */}
+					{project.localPath !== undefined ? (
+						<MetaRow
+							label="Local path"
+							value={<code className="text-xs">{project.localPath}</code>}
+						/>
+					) : null}
 					<MetaRow label="Default branch" value={project.defaultBranch} />
 					<MetaRow
 						label="Last HEAD"

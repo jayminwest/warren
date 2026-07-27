@@ -14,25 +14,33 @@
  * `/readyz` reveals failed checks, which is sensitive in a
  * misconfigured deploy.
  *
+ * Past the gate sits the capability check (warren-b875): every route carries
+ * a declared `RoutePolicy` and `handleRequest` refuses with 403 when the
+ * admitted actor doesn't hold it. This is the ONLY place that check happens —
+ * one chokepoint every request passes through, so no handler can forget it
+ * and no route can opt out (the field is required).
+ *
  * `startServer` does NOT own the bridges, broker, or DB — those live in
  * `ServerDeps` so a single test can spin up the wire layer without a
  * real burrow socket. The `main.ts` boot wires the production deps.
  */
 
 import { existsSync, unlinkSync } from "node:fs";
-import { NO_AUTH } from "./auth.ts";
-import { methodNotAllowed, notFound, renderError } from "./errors.ts";
+import { NO_AUTH, policyAllows } from "./auth.ts";
+import { errorLogFields, forbidden, methodNotAllowed, notFound, renderError } from "./errors.ts";
 import { buildApiRoutes, isApiPath, isAuthExempt } from "./handlers/index.ts";
 import { bindRequestIdLogger, extractOrGenerateRequestId, stampRequestId } from "./request-id.ts";
 import { jsonResponse } from "./response.ts";
 import { matchRoute, pathExists } from "./router.ts";
 import type {
+	Actor,
 	AuthDenied,
 	AuthProvider,
 	Logger,
 	PreviewProxyHandler,
 	Route,
 	RouteContext,
+	RoutePolicy,
 	ServeHandle,
 	ServeOptions,
 	ServerDeps,
@@ -67,7 +75,7 @@ export function startServer(deps: ServerDeps, opts: ServeOptions = {}): ServeHan
 	const idleTimeout = opts.idleTimeout ?? DEFAULT_IDLE_TIMEOUT_SECONDS;
 	const previewProxy = opts.previewProxy;
 
-	const fetchHandler = async (request: Request): Promise<Response> => {
+	const fetchHandler = async (request: Request, self: ServeServer): Promise<Response> => {
 		// X-Request-ID middleware (warren-30af / pl-7b06 step 19): mint or
 		// adopt a correlation id, thread it through the handler pipeline,
 		// and stamp it onto every outgoing response — regardless of which
@@ -76,6 +84,11 @@ export function startServer(deps: ServerDeps, opts: ServeOptions = {}): ServeHan
 		const requestId = extractOrGenerateRequestId(request);
 		const requestLogger = bindRequestIdLogger(logger, requestId);
 		const startedAt = performance.now();
+		// Socket peer address for the event-stream per-client cap (warren-25f6).
+		// Null on the unix transport, and only ever the proxy behind the
+		// canonical Caddy / Ingress deploy — `eventStreamClientKey` layers
+		// `X-Forwarded-For` on top of it.
+		const clientIp = self.requestIP(request)?.address;
 		const response = await handleRequest(
 			request,
 			routes,
@@ -83,6 +96,7 @@ export function startServer(deps: ServerDeps, opts: ServeOptions = {}): ServeHan
 			requestLogger,
 			previewProxy,
 			requestId,
+			clientIp,
 		);
 		// Access log (warren-26c2 / pl-f700 step 4): one info line per
 		// request. request_id is already bound onto requestLogger, so the
@@ -146,6 +160,10 @@ function buildAllRoutes(deps: ServerDeps): Route[] {
 		routes.push({
 			method: "GET",
 			pattern: "/",
+			// The SPA shell is a non-API path, so the auth gate never runs for
+			// it and no actor is ever weighed against this policy — declaring
+			// it `anonymous` states the intent the exemption already encodes.
+			policy: "anonymous",
 			handler: createUiHandler({ distDir: deps.uiDistDir }),
 		});
 	}
@@ -155,7 +173,7 @@ function buildAllRoutes(deps: ServerDeps): Route[] {
 function bindTcp(
 	hostname: string,
 	port: number,
-	fetch: (req: Request) => Promise<Response>,
+	fetch: (req: Request, self: ServeServer) => Promise<Response>,
 	idleTimeout: number,
 ): ServeServer {
 	return Bun.serve({ hostname, port, fetch, idleTimeout });
@@ -163,7 +181,7 @@ function bindTcp(
 
 function bindUnix(
 	path: string,
-	fetch: (req: Request) => Promise<Response>,
+	fetch: (req: Request, self: ServeServer) => Promise<Response>,
 	idleTimeout: number,
 ): ServeServer {
 	if (existsSync(path)) {
@@ -194,6 +212,7 @@ async function handleRequest(
 	logger: Logger,
 	previewProxy: PreviewProxyHandler | undefined,
 	requestId: string,
+	clientIp: string | undefined,
 ): Promise<Response> {
 	const url = new URL(request.url);
 
@@ -206,9 +225,9 @@ async function handleRequest(
 			const proxied = await previewProxy(request, url);
 			if (proxied !== null) return proxied;
 		} catch (err) {
-			const rendered = renderError(err);
+			const rendered = renderError(err, requestId);
 			logger.error(
-				{ err, route: "preview proxy", status: rendered.status },
+				{ ...errorLogFields(err), route: "preview proxy", status: rendered.status },
 				"server: preview proxy threw",
 			);
 			return jsonResponse(
@@ -219,27 +238,41 @@ async function handleRequest(
 		}
 	}
 
+	// The admitted caller, threaded onto the RouteContext below (warren-1ff0).
+	// Stays undefined on auth-exempt paths — the gate never ran there, so
+	// there is nobody to speak for.
+	let actor: Actor | undefined;
 	if (!isAuthExempt(url.pathname)) {
 		const result = auth.authorize(request);
 		if (!result.ok) return denyResponse(result, logger, request, url);
+		actor = result.actor;
 	}
 
 	const match = matchRoute(routes, request.method, url.pathname);
 	if (match) {
+		// Capability gate (warren-b875). Every route declares the capability it
+		// requires and this is the single place it is checked — handlers never
+		// re-derive it. `actor` is undefined only on auth-exempt paths, where
+		// the gate never ran and the policy is `anonymous` by construction.
+		if (actor !== undefined && !policyAllows(actor, match.route.policy)) {
+			return forbiddenResponse(match.route.policy, logger, request, url);
+		}
 		const ctx: RouteContext = {
 			request,
 			url,
 			params: match.params,
 			logger,
 			requestId,
+			...(clientIp !== undefined ? { clientIp } : {}),
+			...(actor !== undefined ? { actor } : {}),
 		};
 		try {
 			return await match.route.handler(ctx);
 		} catch (err) {
-			const rendered = renderError(err);
+			const rendered = renderError(err, requestId);
 			logger.error(
 				{
-					err,
+					...errorLogFields(err),
 					route: `${match.route.method} ${match.route.pattern}`,
 					status: rendered.status,
 				},
@@ -287,9 +320,9 @@ async function handleRequest(
 		try {
 			return await uiFallback.handler(ctx);
 		} catch (err) {
-			const rendered = renderError(err);
+			const rendered = renderError(err, requestId);
 			logger.error(
-				{ err, route: "GET (ui fallback)", status: rendered.status },
+				{ ...errorLogFields(err), route: "GET (ui fallback)", status: rendered.status },
 				"server: ui handler threw",
 			);
 			return jsonResponse(
@@ -303,6 +336,32 @@ async function handleRequest(
 	const rendered = pathExists(routes, url.pathname)
 		? methodNotAllowed(request.method, url.pathname)
 		: notFound(url.pathname);
+	return jsonResponse(rendered.status, rendered.envelope);
+}
+
+/**
+ * 403 for an admitted caller whose capabilities don't cover the matched
+ * route's policy (warren-b875). Logged at warn like `server.auth_denied` so
+ * refused public traffic is visible; the declared policy rides along so an
+ * operator can tell "spectator hit an operator route" from "bad token".
+ */
+function forbiddenResponse(
+	policy: RoutePolicy,
+	logger: Logger,
+	request: Request,
+	url: URL,
+): Response {
+	const rendered = forbidden(policy);
+	logger.warn(
+		{
+			method: request.method,
+			path: url.pathname,
+			status: rendered.status,
+			code: rendered.envelope.error.code,
+			policy,
+		},
+		"server.policy_denied",
+	);
 	return jsonResponse(rendered.status, rendered.envelope);
 }
 

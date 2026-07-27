@@ -25,7 +25,8 @@
  *      assigned.
  *   2. Anonymous `GET <warrenUrl>/p/<runId>/` is rejected with 401 by
  *      the path-mode proxy preamble (cookie required).
- *   3. `GET /runs/<runId>/preview/login?token=…&redirect=…` returns 302
+ *   3. `POST /runs/<runId>/preview/login` (bearer in the `Authorization`
+ *      header, warren-e1b0) returns 200
  *      with a `Set-Cookie: warren_preview_<runId>=…; Path=/` —
  *      per-run cookie name + root `Path` (warren-63e1) is what makes
  *      referer-based asset routing authenticate `/_next/static/...`

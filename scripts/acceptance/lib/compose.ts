@@ -12,6 +12,11 @@
  *       WARREN_API_TOKEN, WARREN_BURROW_NO_AUTH=1 (mx-24f580), an empty
  *       CANOPY_REPO_URL so /readyz takes the "no library" branch.
  *   - an anonymous /data volume that gets removed on `compose down -v`.
+ *   - a `build:` section pointing at this checkout's Dockerfile. The base
+ *     compose file pulls the published ghcr.io image (warren-26be) and
+ *     comments its build block out; acceptance must exercise the local
+ *     Dockerfile, so the override puts it back under a `warren:acceptance`
+ *     tag.
  *
  * Why this is a thin wrapper, not a re-implementation of inproc.ts:
  *   - The supervisor inside the container owns burrow lifecycle. We do
@@ -79,7 +84,16 @@ export async function bootCompose(opts: ComposeBootOptions): Promise<ComposeBoot
 	const overridePath = join(opts.tmpRoot, "compose-override.yml");
 	const dataDir = join(opts.tmpRoot, "compose-data");
 	await mkdir(dataDir, { recursive: true });
-	await writeFile(overridePath, renderOverride({ projectName, hostPort, token: opts.token }));
+	await writeFile(
+		overridePath,
+		renderOverride({
+			projectName,
+			hostPort,
+			token: opts.token,
+			build: opts.build !== false,
+			repoRoot: opts.repoRoot,
+		}),
+	);
 
 	const composeFiles = [join(opts.repoRoot, "docker-compose.yml"), overridePath];
 	const baseArgs = composeArgs(projectName, composeFiles);
@@ -133,9 +147,12 @@ interface ComposeOverrideOptions {
 	readonly projectName: string;
 	readonly hostPort: number;
 	readonly token: string;
+	/** Re-add the `build:` section the base compose file no longer carries. */
+	readonly build: boolean;
+	readonly repoRoot: string;
 }
 
-function renderOverride(opts: ComposeOverrideOptions): string {
+export function renderOverride(opts: ComposeOverrideOptions): string {
 	// We deliberately do NOT inherit env_file: ./.env from the base compose
 	// file — the override blanks it via `env_file: []` and supplies the
 	// minimum-needed environment inline. Acceptance must work on a clean
@@ -150,10 +167,24 @@ function renderOverride(opts: ComposeOverrideOptions): string {
 	// via `${WARREN_API_TOKEN}` interpolation: the token is single-use and
 	// already on disk in the harness's tmp dir alongside fixtures, and
 	// inlining sidesteps biome's noTemplateCurlyInString lint.
-	return [
-		"services:",
-		"  warren:",
-		`    container_name: ${opts.projectName}`,
+	//
+	// Build section (warren-26be): the base compose file now PULLS the
+	// published ghcr.io control-plane image and keeps its `build:` block
+	// commented out, so a fresh clone self-hosts without a toolchain.
+	// Container-mode acceptance wants the opposite contract — "the image
+	// builds" is one of the deploy-shape concerns it exists to verify — so
+	// the override re-adds `build:` against an absolute repo-root context
+	// and retags the result locally, leaving the published tag untouched.
+	const lines = ["services:", "  warren:", `    container_name: ${opts.projectName}`];
+	if (opts.build) {
+		lines.push(
+			"    image: warren:acceptance",
+			"    build:",
+			`      context: ${opts.repoRoot}`,
+			"      dockerfile: Dockerfile",
+		);
+	}
+	lines.push(
 		"    ports: !override",
 		`      - '${opts.hostPort}:8080'`,
 		"    env_file: []",
@@ -164,7 +195,8 @@ function renderOverride(opts: ComposeOverrideOptions): string {
 		"      WARREN_DISABLE_UI: '1'",
 		"      CANOPY_REPO_URL: ''",
 		"",
-	].join("\n");
+	);
+	return lines.join("\n");
 }
 
 function buildComposeEnv(): Record<string, string> {

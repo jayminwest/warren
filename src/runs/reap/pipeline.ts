@@ -31,7 +31,7 @@ import type {
 import { openPullRequest } from "../pr.ts";
 import type { BoundBridgeLogger } from "../stream/index.ts";
 import { dispatchAutoPlanRuns, hasAutoPlanRunFrontmatter, parsePlanIds } from "./auto-plan-run.ts";
-import { applyCloneDeltas } from "./clone-apply.ts";
+import { applyK8sCloneDeltas } from "./clone-apply.ts";
 import { runPrOpen } from "./pr-open.ts";
 import { runPreviewAnnotate, runPreviewLaunch } from "./preview.ts";
 import { seededArtifactResetPaths } from "./seed-reset.ts";
@@ -57,6 +57,12 @@ export interface ReapPipelineState {
 	finalizeFailed: boolean;
 	/** warren-e9e1 (leg 2): K8s finalize's mirror deltas applied to the clone; local=false. */
 	cloneDeltasApplied: boolean;
+	/**
+	 * warren-486c: the K8s mirror commit could NOT be made durable on origin
+	 * (push failed/rejected), so auto-dispatch is suppressed — a plan-run must
+	 * never be created against host-only tracker state child pods can't clone.
+	 */
+	mirrorDurabilityFailed: boolean;
 	prUrl: string | null;
 	previewLaunchState: "live" | "failed" | null;
 	previewLaunchPort: number | null;
@@ -82,6 +88,7 @@ export function createPipelineState(): ReapPipelineState {
 		noChanges: false,
 		finalizeFailed: false,
 		cloneDeltasApplied: false,
+		mirrorDurabilityFailed: false,
 		prUrl: null,
 		previewLaunchState: null,
 		previewLaunchPort: null,
@@ -300,6 +307,12 @@ async function autoDispatchStep(
 	state: ReapPipelineState,
 	plans: { ids: Set<string> | null; body: string | null; baseline: Set<string> | null },
 ): Promise<void> {
+	// warren-486c: never dispatch against a mirror commit that never reached
+	// origin — the child pods would clone a ref missing their seed ids.
+	if (state.mirrorDurabilityFailed) {
+		await ctx.emit("auto_plan_run_skipped", { reason: "mirror_durability_failed" });
+		return;
+	}
 	const autoDispatch = await dispatchAutoPlanRuns({
 		run: ctx.run,
 		project: ctx.project,
@@ -494,7 +507,7 @@ export async function runReapPipeline(
 	// warren-e9e1 (leg 2): K8s merged in-pod, so apply finalize's mirror deltas to
 	// the clone host-side. Gated on the K8s discriminator; the local path already
 	// merged into the clone during finalize (byte-identical). See clone-apply.ts.
-	if (ctx.workspacePath === null) await applyCloneDeltas(ctx, state, finalizeResult);
+	if (ctx.workspacePath === null) await applyK8sCloneDeltas(ctx, state, finalizeResult);
 
 	// Domain safety-net close + auto-plan-run detection off finalize's snapshot.
 	await seedIdCloseStep(ctx, state);

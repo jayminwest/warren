@@ -160,7 +160,7 @@ From the repo root (server + supervisor + CLI):
 ```bash
 bun test                      # Run all tests
 bun test src/foo.test.ts      # Run a single test file
-bun run lint                  # biome check --error-on-warnings .
+bun run lint                  # biome + burrow-boundary + version-sync guards
 bun run typecheck             # tsc --noEmit
 bun run build:ui              # cd src/ui && bun install && bun run build
 ```
@@ -212,13 +212,17 @@ the first failing gate.
 `check:ci-parity` (`bun scripts/check-ci-parity.ts`, also byte-identical
 to the template copy) imports `GATES` from `check-all.ts`, parses every
 `.github/workflows/ci*.yml` (today `ci.yml` + `ci-postgres.yml`), and
-fails when a CI `bun run <X>` step is not transitively reachable from
-the manifest. Per-repo escape hatches live in
-`scripts/ci-parity-config.json` — `aliases` (e.g. `check:coverage:ci` →
-`check:coverage`) for same-gate-different-reporter variants, `ciOnly`
-(`ui:install`, `build:ui`, `report:test-timing`,
-`report:quality-metrics`) for intentionally CI-only steps. Justify every
-entry in the config's `$comment`; never edit the script itself.
+asserts parity in **both** directions (warren-da69): CI → local, no CI
+`bun run <X>` step may be unreachable from the manifest; local → CI,
+every manifest gate must be transitively invoked by some CI step, so a
+gate can never silently vanish from `ci.yml`. Per-repo escape hatches
+live in `scripts/ci-parity-config.json` — `aliases` (e.g.
+`check:coverage:ci` → `check:coverage`) for same-gate-different-reporter
+variants, `ciOnly` (`ui:install`, `build:ui`, `report:test-timing`,
+`report:quality-metrics`) for intentionally CI-only steps, and its
+inverse `localOnly` for manifest gates deliberately kept out of CI
+(warren's is empty — CI runs all 12). Justify every entry in the
+config's `$comment`; never edit the script itself.
 
 `check:coverage` (warren-e4b1) wraps `bun test --coverage` and enforces
 the floors in `scripts/coverage-budgets.json` against the "All files"
@@ -282,16 +286,40 @@ cap) reach a human.
 
 ## Version Management
 
-Version lives in two places — kept in sync manually and verified by the
-release workflow:
+The version lives in four places, all of them rewritten by
+`bun run version:bump <major|minor|patch|X.Y.Z>`
+(`scripts/version-bump.ts`, warren-16b5):
 
 - `package.json` — `"version"` field
 - `src/index.ts` — `export const VERSION = "X.Y.Z"`
+- `docs/openapi.yaml` — `info.version`, refreshed by the script re-running
+  `bun run gen:openapi` after the package.json rewrite
+- `README.md` — the semver in the `## Status` paragraph
 
-There is **no** `bun run version:bump` script in this repo (unlike burrow);
-edit both files directly. `.github/workflows/release.yml` fails the release
-job if they disagree, then auto-tags `v$VERSION` and creates a GitHub release
-from the matching `CHANGELOG.md` section.
+The script also drafts an `[Unreleased]` block into `CHANGELOG.md` from
+`git log <last-tag>..HEAD`, fenced by `<!-- version-bump:draft -->`
+markers. That draft is **assistive only** — CHANGELOG curation stays
+human and nothing in CI gates on it; edit it down and delete the markers
+before releasing. Every rewrite is computed before any file is written,
+and a failure (including a failed `gen:openapi`) rolls all of them back.
+
+`.github/workflows/release.yml` fails the release job if `package.json`
+and `src/index.ts` disagree, then auto-tags `v$VERSION` and creates a
+GitHub release from the matching `CHANGELOG.md` section.
+
+That release-time check only ever compared two of the four sites, on the
+release branch, so the README drifted two releases and the openapi
+version drifted invisibly. `bun run check:version-sync`
+(`scripts/check-version-sync.ts`, warren-0210) closes that: it asserts on
+every PR that all four version sites agree, and — same drift class — that
+the `@os-eco/burrow-cli` pin agrees across the `Dockerfile` global
+install, the `package.json` dependency range, and every burrow-cli
+mention in the README. The README locator is imported from
+`version-bump.ts` so the gate and the bumper can never disagree about
+where the version lives. Because the canonical `check:all` gate
+vocabulary is frozen, it is chained into `bun run lint` (alongside
+`scripts/check-burrow-boundary.ts`) instead of getting its own manifest
+slot.
 
 ## Git identities (Article VII)
 
@@ -322,6 +350,13 @@ warren+burrow stack. Each scenario lives in `scripts/acceptance/scenarios/`
 and uses the helpers in `scripts/acceptance/lib/`. New scenarios should be
 deterministic, idempotent, and clean up after themselves — they are
 expected to run against a live (possibly long-lived) deployment.
+
+Scenario 39 (`39-public-exposure.ts`, warren-c405) is the public-instance
+leak guard and the only scenario wired into CI
+(`.github/workflows/acceptance-public.yml`, `bun run acceptance:public`).
+It boots its own `WARREN_AUTH=public` warren over a database seeded
+through warren's repos before boot, so it needs no burrow dispatch and no
+canopy library — the rest of the suite still runs locally only.
 
 ## Session Completion Protocol
 

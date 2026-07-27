@@ -33,6 +33,7 @@ import {
 	type SteerRunResponse,
 	type StreamPlanRunEventsOptions,
 	type StreamRunEventsOptions,
+	type WhoamiResponse,
 } from "./types.ts";
 
 export const DEFAULT_PROBE_TIMEOUT_MS = 2_000;
@@ -118,6 +119,18 @@ export class WarrenClient {
 			if (text.length === 0) return undefined as T;
 			return JSON.parse(text) as T;
 		});
+	}
+
+	/**
+	 * `GET /whoami` — the identity and capability set warren admitted this
+	 * client as (warren-e195). Useful before a mutation: a client whose
+	 * capabilities lack `dispatch` is reading a public instance and will be
+	 * refused with 403, so it can say so up front instead of on failure.
+	 * Unlike `probe`, this is a gated route — the default `WARREN_AUTH=token`
+	 * mode 401s a client configured without a token.
+	 */
+	async whoami(signal?: AbortSignal): Promise<WhoamiResponse> {
+		return this.request<WhoamiResponse>("/whoami", { ...(signal ? { signal } : {}) });
 	}
 
 	async getProject(projectId: string): Promise<ProjectRow> {
@@ -213,9 +226,9 @@ export class WarrenClient {
 	 * `POST /runs/:id/steer` — mid-run steering. Forwards an operator
 	 * message into the burrow inbox; valid only while the run is
 	 * non-terminal AND a burrow is attached (else `ValidationError`).
-	 * Batch runs get nudges here, but blocking-question `pause ↔ resume`
-	 * is driven server-side by Plot `question_answered` events
-	 * (`src/runs/pause.ts`) — no explicit "resume" needed after a steer.
+	 * Batch runs get nudges here; `src/runs/pause.ts` drives the
+	 * blocking-question `pause ↔ resume` cycle server-side — no explicit
+	 * "resume" needed after a steer.
 	 */
 	async steer(runId: string, input: SteerRunInput): Promise<SteerRunResponse> {
 		const body: Record<string, unknown> = { body: input.body };
@@ -306,10 +319,6 @@ export class WarrenClient {
 	 * each on the previous PR merging. Re-dispatching the same
 	 * `planId` after children land resumes from the next open child
 	 * (idempotent resume contract).
-	 *
-	 * When the project has a `.plot/` directory and `plotId` is
-	 * supplied, warren emits a `plan_run_dispatched` event onto the
-	 * Plot and threads `PLOT_ID`/`PLOT_ACTOR` into every child run.
 	 */
 	async createPlanRun(input: CreatePlanRunInput): Promise<CreatePlanRunResponse> {
 		return this.request<CreatePlanRunResponse>("/plan-runs", {

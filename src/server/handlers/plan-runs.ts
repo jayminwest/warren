@@ -14,6 +14,7 @@ import { PlanHasNoOpenChildrenError, ProjectLacksSeedsError } from "../../plan-r
 import { cancelRun } from "../../runs/index.ts";
 import { showPlan, showSeed } from "../../seeds-cli/index.ts";
 import { jsonResponse, ndjsonResponse } from "../response.ts";
+import { reserveEventStreamSlot } from "../stream-limits.ts";
 import type { RouteHandler, ServerDeps } from "../types.ts";
 import { refreshDispatchProject } from "./dispatch-refresh.ts";
 import {
@@ -23,7 +24,13 @@ import {
 	requireParam,
 	requireString,
 } from "./index.ts";
-import { asNdjsonStream, bridgeAbort, cancelRunWiring, eventToNdjson } from "./runs/index.ts";
+import {
+	asNdjsonStream,
+	bridgeAbort,
+	cancelRunWiring,
+	eventToNdjson,
+	projectRun,
+} from "./runs/index.ts";
 
 /* ----------------------------------------------------------------------- */
 /* Plan runs (warren-f923 / pl-a258 step 6)                                 */
@@ -206,6 +213,10 @@ export function listPlanRunsHandler(deps: ServerDeps): RouteHandler {
  * `GET /plan-runs/:id` — full detail page payload: row + children + the
  * fanned-out `runs[]` from runs.listByIds(child.runId for each non-null)
  * so the UI's detail page renders in one round-trip.
+ *
+ * `runs[]` goes through the SAME `projectRun` the `/runs` routes use
+ * (warren-c405): this route is `readPublic`, so serving the rows raw handed
+ * a spectator every field `REDACTED_RUN_FIELDS` withholds elsewhere.
  */
 export function getPlanRunHandler(deps: ServerDeps): RouteHandler {
 	return async (ctx) => {
@@ -214,7 +225,11 @@ export function getPlanRunHandler(deps: ServerDeps): RouteHandler {
 		const children = await deps.repos.planRuns.listChildren(id);
 		const runIds = children.map((c) => c.runId).filter((v): v is string => v !== null);
 		const runs = await deps.repos.runs.listByIds(runIds);
-		return jsonResponse(200, { planRun, children, runs });
+		return jsonResponse(200, {
+			planRun,
+			children,
+			runs: runs.map((run) => projectRun(run, ctx.actor)),
+		});
 	};
 }
 
@@ -305,6 +320,15 @@ export function streamPlanRunEventsHandler(deps: ServerDeps): RouteHandler {
 		const planRun = await deps.repos.planRuns.require(id);
 		const follow = parseBoolean(ctx.url.searchParams.get("follow"), "follow") ?? false;
 		const ctrl = bridgeAbort(ctx.request.signal);
+		// Same concurrency admission as the single-run twin (warren-25f6): a
+		// plan-run stream fans in every child, so it is the more expensive of
+		// the two to leave uncapped.
+		const slot = reserveEventStreamSlot({
+			limiter: deps.streamLimiter,
+			ctx,
+			ctrl,
+			route: "GET /plan-runs/:id/events",
+		});
 
 		const source = tailPlanRunEvents({
 			planRun,
@@ -313,7 +337,14 @@ export function streamPlanRunEventsHandler(deps: ServerDeps): RouteHandler {
 			follow,
 			signal: ctrl.signal,
 		});
-		return ndjsonResponse(asNdjsonStream(source, (row) => eventToNdjson(row), ctrl));
+		return ndjsonResponse(
+			asNdjsonStream(
+				source,
+				(row) => eventToNdjson(row, ctx.actor),
+				ctrl,
+				() => slot.release(),
+			),
+		);
 	};
 }
 

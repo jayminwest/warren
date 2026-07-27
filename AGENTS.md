@@ -50,7 +50,7 @@ bun run test:coverage         # bun test --coverage (text + lcov -> coverage/)
 bun run check:coverage        # tests + coverage + ratchet enforcement
 bun run report:test-timing    # print slowest suites/tests from junit.xml
 bun run report:quality-metrics # print code-quality metrics summary (coverage + complexity + ratchets)
-bun run lint                  # biome check --error-on-warnings .
+bun run lint                  # biome + burrow-boundary + version-sync guards
 bun run typecheck             # tsc --noEmit
 bun run build:ui              # cd src/ui && bun install && bun run build
 ```
@@ -90,8 +90,9 @@ Warren's resolved manifest, in order: `lint`, `typecheck`,
 `check:agents`, `check:dups` (jscpd), `check:deps`, `check:size`,
 `check:debt`, `check:bundle-size`, `gen:docs:check`, `gen:openapi:check`,
 `check:coverage` (tests + coverage ratchet), and `check:ci-parity` —
-the same set CI enforces (see `.github/workflows/ci.yml`; escape
-hatches live in `scripts/ci-parity-config.json`). Do not merge with
+the same set CI enforces, and `check:ci-parity` proves it in both
+directions (see `.github/workflows/ci.yml`; escape hatches live in
+`scripts/ci-parity-config.json`). Do not merge with
 lint warnings; fix at write time or promote to error in `biome.json`.
 
 Details on the additional checks:
@@ -217,16 +218,31 @@ with lint warnings; fix at write time or promote to error in `biome.json`.
 
 ## Version management
 
-The version lives in **two places**, kept in sync manually and verified
-by the release workflow:
+The version lives in **four places**, all rewritten by
+`bun run version:bump <major|minor|patch|X.Y.Z>`
+(`scripts/version-bump.ts`):
 
 - `package.json` — `"version"` field
 - `src/index.ts` — `export const VERSION = "X.Y.Z"`
+- `docs/openapi.yaml` — `info.version` (the script re-runs `gen:openapi`)
+- `README.md` — the semver in the `## Status` paragraph
 
-There is no `bun run version:bump` in this repo — edit both files
-directly. `.github/workflows/release.yml` fails the release job if they
-disagree, then auto-tags `v$VERSION` and creates a GitHub release from
-the matching `CHANGELOG.md` section.
+It also drafts an `[Unreleased]` block into `CHANGELOG.md` from
+`git log <last-tag>..HEAD`, fenced by `<!-- version-bump:draft -->`
+markers — assistive only, nothing gates on it; curate it and delete the
+markers before releasing. All rewrites roll back together on failure.
+`.github/workflows/release.yml` fails the release job if `package.json`
+and `src/index.ts` disagree, then auto-tags `v$VERSION` and creates a
+GitHub release from the matching `CHANGELOG.md` section.
+
+`bun run check:version-sync` (warren-0210, `scripts/check-version-sync.ts`)
+asserts on every PR — not just at release — that all four sites agree, and
+that the `@os-eco/burrow-cli` pin agrees across `Dockerfile`,
+`package.json` and the README. It shares the README locator with
+`scripts/version-bump.ts`, so the gate and the bumper can never disagree about
+where the version lives. It is chained into `bun run lint` rather than
+registered as its own gate, because the canonical `check:all` manifest is
+frozen.
 
 ## Per-project config (`.warren/config.yaml`)
 
@@ -284,4 +300,5 @@ see `CLAUDE.md` for the full command surface.
 - [`SPEC.md`](SPEC.md) — V1 design record
 - [`README.md`](README.md) — user-facing pitch + deploy instructions
 - [`ACCEPTANCE.md`](ACCEPTANCE.md) — operator runbook for V1 release gates
-- [`CHANGELOG.md`](CHANGELOG.md) — release history
+- [`CHANGELOG.md`](CHANGELOG.md) — release history (0.9.10 and earlier:
+  [`docs/CHANGELOG-archive.md`](docs/CHANGELOG-archive.md))

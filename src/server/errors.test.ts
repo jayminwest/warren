@@ -16,7 +16,15 @@ import {
 	RuntimeUnreachableError,
 } from "../runtime/errors.ts";
 import { WarrenConfigUnavailableError } from "../warren-config/errors.ts";
-import { methodNotAllowed, notFound, notImplemented, renderError } from "./errors.ts";
+import {
+	errorLogFields,
+	forbidden,
+	INTERNAL_ERROR_MESSAGE,
+	methodNotAllowed,
+	notFound,
+	notImplemented,
+	renderError,
+} from "./errors.ts";
 
 describe("renderError — WarrenError mapping", () => {
 	test("NotFoundError → 404", () => {
@@ -132,18 +140,58 @@ describe("renderError — backend code pass-through (warren-36cb)", () => {
 	});
 });
 
-describe("renderError — fallthrough", () => {
-	test("plain Error → 500 internal_error", () => {
+describe("renderError — fallthrough (warren-4385)", () => {
+	test("plain Error → 500 internal_error with the generic message, not err.message", () => {
 		const r = renderError(new Error("kaboom"));
 		expect(r.status).toBe(500);
 		expect(r.envelope.error.code).toBe("internal_error");
-		expect(r.envelope.error.message).toBe("kaboom");
+		expect(r.envelope.error.message).toBe(INTERNAL_ERROR_MESSAGE);
+		expect(r.envelope.error.message).not.toContain("kaboom");
 	});
 
-	test("non-Error thrown value → 500 with String(value) message", () => {
+	test("non-Error thrown value → 500 with the same generic message", () => {
 		const r = renderError("oops");
 		expect(r.status).toBe(500);
-		expect(r.envelope.error.message).toBe("oops");
+		expect(r.envelope.error.message).toBe(INTERNAL_ERROR_MESSAGE);
+		expect(JSON.stringify(r.envelope)).not.toContain("oops");
+	});
+
+	test("the correlation id rides in the hint when supplied", () => {
+		const r = renderError(new Error("kaboom"), "trace-abc-123");
+		expect(r.envelope.error.hint).toContain("trace-abc-123");
+	});
+
+	test("no correlation id → a hint that still points at the logs", () => {
+		const r = renderError(new Error("kaboom"));
+		expect(r.envelope.error.hint).toBe("check the warren server logs for the underlying error");
+	});
+
+	test("a subprocess/filesystem message never reaches the envelope", () => {
+		// The disclosure this guard exists for: `sd` stderr, a /data clone path,
+		// and a driver string all arrive as untyped Errors from deep layers.
+		const leaky = new Error(
+			`sd show failed: ENOENT /data/warren/projects/acme/.seeds at ${process.cwd()}`,
+		);
+		const body = JSON.stringify(renderError(leaky, "req-1").envelope);
+		expect(body).not.toContain("/data/warren");
+		expect(body).not.toContain(process.cwd());
+		expect(body).not.toContain("ENOENT");
+	});
+});
+
+describe("errorLogFields (warren-4385)", () => {
+	test("carries the full message and stack for an Error", () => {
+		const err = new Error("kaboom");
+		const fields = errorLogFields(err);
+		expect(fields.err).toBe(err);
+		expect(fields.err_message).toBe("kaboom");
+		expect(typeof fields.err_stack).toBe("string");
+	});
+
+	test("stringifies a non-Error thrown value", () => {
+		const fields = errorLogFields("oops");
+		expect(fields.err_message).toBe("oops");
+		expect(fields.err_stack).toBeUndefined();
 	});
 });
 
@@ -159,6 +207,14 @@ describe("canned envelopes", () => {
 		const r = methodNotAllowed("PUT", "/agents");
 		expect(r.status).toBe(405);
 		expect(r.envelope.error.code).toBe("method_not_allowed");
+	});
+
+	test("forbidden names the demanded capability and nothing else (warren-b875)", () => {
+		const r = forbidden("readOperator");
+		expect(r.status).toBe(403);
+		expect(r.envelope.error.code).toBe("forbidden");
+		expect(r.envelope.error.message).toContain("readOperator");
+		expect(r.envelope.error.hint).toContain("bearer token");
 	});
 
 	test("notImplemented", () => {

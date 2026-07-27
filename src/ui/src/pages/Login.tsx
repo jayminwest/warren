@@ -1,6 +1,7 @@
+import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { agentsApi, setApiToken, UnauthorizedError } from "@/api/client.ts";
+import { metaApi, setApiToken, UnauthorizedError } from "@/api/client.ts";
 import { Button } from "@/components/ui/button.tsx";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card.tsx";
 import { Input } from "@/components/ui/input.tsx";
@@ -8,6 +9,7 @@ import { Label } from "@/components/ui/label.tsx";
 
 export function LoginPage() {
 	const navigate = useNavigate();
+	const qc = useQueryClient();
 	const [token, setToken] = useState("");
 	const [error, setError] = useState<string | null>(null);
 	const [pending, setPending] = useState(false);
@@ -22,11 +24,20 @@ export function LoginPage() {
 		setError(null);
 		setApiToken(token);
 		try {
-			// Probe a token-protected route to validate the bearer. /agents
-			// always returns 200 for a valid token (empty list is fine);
-			// /readyz can return 503 even on a valid token when no agents
-			// are registered yet, so it can't disambiguate.
-			await agentsApi.list();
+			// Probe `/whoami` to validate the bearer (warren-f53e). It 401s a
+			// bad token under both `WARREN_AUTH` kinds and answers with the
+			// caller's identity on success — unlike `/agents`, which returns
+			// 200 to a credential-less caller on a public instance and so
+			// can't tell "valid token" from "admitted as a spectator".
+			const who = await metaApi.whoami();
+			if (who.identity !== "operator") {
+				setApiToken(null);
+				setError("Token was accepted but grants no operator capabilities.");
+				return;
+			}
+			// Anything cached pre-login was fetched anonymously and carries
+			// the public projection; drop it so post-login reads are full.
+			qc.clear();
 			navigate("/runs", { replace: true });
 		} catch (err) {
 			setApiToken(null);

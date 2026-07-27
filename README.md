@@ -35,7 +35,7 @@ Engineering teams self-hosting their own agent infrastructure. The deployment un
 
 ## Status
 
-Stable (`0.9.10`), running on GKE in continuous use against real GitHub repos, with the Kubernetes runtime (`WARREN_RUNTIME=k8s`, pod-per-run) as the supported hosted target on GKE Autopilot. The end-to-end path is covered by 38 scenario-based acceptance tests in [`scripts/acceptance/`](scripts/acceptance/): manual runs, cron triggers, K8s pod dispatch (OOM fast-fail, steer delivery), Postgres backend, per-run preview environments, restart recovery, cost tracking, cost analytics, seeds-extensions roundtrip, serial plan-run dispatch, plan-run + Plot composition, Plot-workbench loop. The active frontier is the org-readiness cluster: SSO, remote workers, MCP, audit, budgets, GitHub App auth. See [ROADMAP.md](ROADMAP.md).
+Stable (`0.11.0`), running on GKE in continuous use against real GitHub repos, with the Kubernetes runtime (`WARREN_RUNTIME=k8s`, pod-per-run) as the supported hosted target on GKE Autopilot. The end-to-end path is covered by 38 scenario-based acceptance tests in [`scripts/acceptance/`](scripts/acceptance/): manual runs, cron triggers, K8s pod dispatch (OOM fast-fail, steer delivery), Postgres backend, per-run preview environments, restart recovery, cost tracking, cost analytics, seeds-extensions roundtrip, serial plan-run dispatch, plan-run + Plot composition, Plot-workbench loop. The active frontier is the org-readiness cluster: SSO, remote workers, MCP, audit, budgets, GitHub App auth. See [ROADMAP.md](ROADMAP.md).
 
 ## What you get
 
@@ -72,7 +72,7 @@ Required environment variables (see [`.env.example`](.env.example) for the full 
 
 The compose file applies the four bwrap-required security flags (`apparmor=unconfined`, `seccomp=unconfined`, `systempaths=unconfined`, `cap_add: SYS_ADMIN`). These relax the outer container so the runtime's nested userns sandboxes can come up. Removing any one of them breaks sandbox provisioning.
 
-> **Image requirement (self-host / `local` runtime): burrow-cli ≥ 0.3.12.** In the default topology warren is co-tenanted with [burrow](https://github.com/jayminwest/burrow) inside the container and talks to it over a shared unix socket. The published image pins `@os-eco/burrow-cli@0.3.12` (see [`Dockerfile`](Dockerfile)); if you build your own image or override the runtime, install burrow-cli **0.3.12 or newer** — earlier releases predate the runtime contract warren depends on (agent spawn shape, resume support, event kinds) and will fail at dispatch. Under `WARREN_RUNTIME=k8s` this does not apply — the run pods carry their own toolchain image and no burrow is installed.
+> **Image requirement (self-host / `local` runtime): burrow-cli ≥ 0.3.15.** In the default topology warren is co-tenanted with [burrow](https://github.com/jayminwest/burrow) inside the container and talks to it over a shared unix socket. The published image pins `@os-eco/burrow-cli@0.3.15` (see [`Dockerfile`](Dockerfile)); if you build your own image or override the runtime, install burrow-cli **0.3.15 or newer** — earlier releases predate the runtime contract warren depends on (agent spawn shape, resume support, event kinds) and will fail at dispatch. Under `WARREN_RUNTIME=k8s` this does not apply — the run pods carry their own toolchain image and no burrow is installed.
 
 ## Deploy
 
@@ -81,13 +81,13 @@ Two supported paths:
 - **Single box (`local` runtime).** The [Quickstart](#quickstart-home-server) above *is* a complete deploy — one container, one volume, warren + burrow co-tenanted. Run it on a home server or any Docker host. Warren does not terminate TLS; front the container with Caddy (home server) or your ingress if you need HTTPS.
 - **Cluster (`k8s` runtime), the hosted target.** Deploy to Kubernetes — **GKE Autopilot is the reference cluster**. Each run is its own pod, there is no burrow, and admission caps shed load before the cluster thrashes. The canonical procedure is **[docs/RUNBOOK-K8S.md](docs/RUNBOOK-K8S.md)**; the manifest quick-start is [`deploy/k8s/README.md`](deploy/k8s/README.md); see [Deploy to Kubernetes (scale-out)](#deploy-to-kubernetes-scale-out) below.
 
-Continuous deployment ships in [`.github/workflows/deploy-gke.yml`](.github/workflows/deploy-gke.yml): a published GitHub release (cut by [`release.yml`](.github/workflows/release.yml)) builds the three SHA-pinned images and rolls the GKE Autopilot deployment forward. Auth is GCP Workload Identity Federation — no long-lived keys; the OIDC provider, service account, and cluster coordinates are repo secrets/variables (see [docs/RUNBOOK-K8S.md](docs/RUNBOOK-K8S.md) §1.6).
+Continuous deployment ships in [`.github/workflows/deploy-gke.yml`](.github/workflows/deploy-gke.yml): a published GitHub release (cut by [`release.yml`](.github/workflows/release.yml)) builds the three SHA-pinned images and rolls the GKE Autopilot deployment forward, then fails the run unless the rolled-out image is the released SHA *and* the ingress `/version` reports the released semver. Auth is GCP Workload Identity Federation — no long-lived keys; the OIDC provider, service account, and cluster coordinates are repo secrets/variables (see [docs/RUNBOOK-K8S.md](docs/RUNBOOK-K8S.md) §1.6).
 
 ### Observability on a live deploy
 
 Warren ships enough operator-visible surface to be inspectable without bolting on extra infrastructure. The pieces:
 
-- **Health & readiness probes.** `GET /healthz` is a cheap liveness check (returns `{ok: true}`, auth-exempt — point an uptime monitor or the cluster's liveness probe at it). `GET /readyz` runs deeper diagnostics (DB reachable, bwrap usable under `local`, canopy clone fresh when `CANOPY_REPO_URL` is set) and returns a `DiagnosticCheck[]` payload — use it for deploy gating and the cluster's readiness probe, not for hot-path liveness. `GET /version` returns `{version}` straight from `src/index.ts` so you can confirm a rollout actually swapped the image.
+- **Health & readiness probes.** `GET /healthz` is a cheap liveness check (returns `{ok: true}`, auth-exempt — point an uptime monitor or the cluster's liveness probe at it). `GET /readyz` runs deeper diagnostics (DB reachable, bwrap usable under `local`, canopy clone fresh when `CANOPY_REPO_URL` is set) and returns a `DiagnosticCheck[]` payload — use it for deploy gating and the cluster's readiness probe, not for hot-path liveness. `GET /version` returns `{version}` straight from `src/index.ts` so you can confirm a rollout actually swapped the image — [`deploy-gke.yml`](.github/workflows/deploy-gke.yml) polls it after every release and fails the deploy on a mismatch.
 - **Structured JSON logs.** The server emits one [pino](https://getpino.io) JSON line per event on stdout (name `warren`, level controlled by `WARREN_LOG_LEVEL`, default `info`). Stream them with `docker compose logs -f warren` on a single box or `kubectl -n warren logs deploy/warren` on a cluster. Pipe through `| jq` for ad-hoc filtering; ship to an external store with a [pino transport](https://getpino.io/#/docs/transports) if you need retention beyond your log driver's window.
 - **Correlation IDs.** Every HTTP response carries an `X-Request-ID` header (`src/server/request-id.ts`, warren-30af). Warren honours a well-formed inbound `X-Request-ID` and otherwise mints one; the same id is bound into the per-request pino child logger, so grepping the logs with `jq 'select(.req_id == "…")'` reconstructs the full server-side trace for one client call. Forward the header from any reverse proxy in front of warren to keep the chain unbroken.
 - **Per-run cost & token usage.** `runs.cost_usd` and `runs.tokens_*` columns are populated for the `pi` and `claude-code` built-ins (SPEC §11.K); the UI run-detail page surfaces them and `GET /analytics/cost?from=&to=&projectId=` aggregates across runs (`src/db/repos/runs.ts:listForAnalytics`). This is reporting, not enforcement — budget caps are deferred to R-17.
@@ -184,7 +184,7 @@ Enable the preview proxy by giving warren a host suffix it can route on:
 WARREN_PREVIEW_HOST=preview.warren.example.com
 ```
 
-Warren then matches `Host: run-<runId>.preview.warren.example.com` as a preamble before its API/UI routes and forwards to the in-sandbox port allocated at reap time. The login route (`GET /runs/:id/preview/login?token=…&redirect=…`) accepts the warren bearer in the query and issues a domain-scoped signed cookie (`warren_preview`); the proxy rejects unauthenticated browser requests with 401 (not 502). The HMAC key is derived from `WARREN_API_TOKEN`, so there's no second secret to manage. `warren doctor` warns if the token is empty or matches a placeholder.
+Warren then matches `Host: run-<runId>.preview.warren.example.com` as a preamble before its API/UI routes and forwards to the in-sandbox port allocated at reap time. The login route (`POST /runs/:id/preview/login`, optional `{redirect}` body) takes the warren bearer in the `Authorization` header and issues a domain-scoped signed cookie (`warren_preview`); the proxy rejects unauthenticated browser requests with 401 (not 502). The HMAC key is derived from `WARREN_API_TOKEN`, so there's no second secret to manage. `warren doctor` warns if the token is empty or matches a placeholder.
 
 **Wildcard DNS.** Point a wildcard CNAME at the warren box so every `run-*` subdomain resolves:
 
@@ -272,7 +272,7 @@ GET    /runs/:id                     detail incl. rendered_agent_json
 GET    /runs/:id/events?follow=1     NDJSON tail (warren log + live)
 POST   /runs/:id/steer               proxy to runtime inbox
 POST   /runs/:id/cancel              proxy to runtime cancel
-GET    /runs/:id/preview/login       issue signed-cookie + 302 (auth-exempt, ?token=)
+POST   /runs/:id/preview/login       issue signed-cookie + preview url (bearer-gated)
 POST   /runs/:id/preview/teardown    manual preview teardown (idempotent)
 
 POST   /plan-runs                    { project, planId, agent } → serial dispatch (.seeds/ only)

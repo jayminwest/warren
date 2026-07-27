@@ -170,6 +170,7 @@ export type ReapStep =
 	| "plans_mirror"
 	| "seed_id_close"
 	| "clone_apply"
+	| "clone_apply_push"
 	| "seeds_commit"
 	| "seed_reset"
 	| "auto_plan_run"

@@ -1,0 +1,10 @@
+{
+	"status": 500,
+	"body": {
+		"error": {
+			"code": "internal_error",
+			"message": "internal server error",
+			"hint": "check the warren server logs for request id req-golden-1"
+		}
+	}
+}

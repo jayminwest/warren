@@ -28,15 +28,16 @@ function validatePreviewConfig(deps: ServerDeps, mode: "subdomain" | "path"): Pr
 }
 
 /**
- * `GET /runs/:id/preview/login?token=<bearer>&redirect=<absolute-url>`
+ * `POST /runs/:id/preview/login` with an optional `{redirect}` JSON body
  * (R-19 / SPEC §11.L, warren-8a10; path-mode redirect warren-edff;
- * per-run cookie name warren-63e1).
+ * per-run cookie name warren-63e1; bearer-out-of-the-URL warren-e1b0).
  *
  * The signed-cookie handshake the preview proxy depends on. A browser
  * hitting a preview origin directly can't carry an Authorization header,
- * so the operator opens this URL on the warren host, the handler
- * validates the bearer in the query, sets a scoped `warren_preview*`
- * cookie, and 302s to the preview.
+ * so the UI calls this endpoint on the warren origin *with* the bearer in
+ * the `Authorization` header, the handler sets a scoped `warren_preview*`
+ * cookie via `Set-Cookie`, and answers 200 with the preview URL the
+ * caller should then navigate to.
  *
  *   - **Subdomain mode** (`deps.previewMode === "subdomain"`): cookie name
  *     `warren_preview`, `Domain=.<host>; Path=/`; redirect must be
@@ -48,14 +49,16 @@ function validatePreviewConfig(deps: ServerDeps, mode: "subdomain" | "path"): Pr
  *     every same-origin request so referer-based asset routing in the
  *     proxy preamble can authenticate sub-resource loads.
  *
- * This route is auth-exempt (`isAuthExempt` whitelists `/preview/login`)
- * because the standard bearer gate would 401 the browser before the
- * handler ever ran. The handler does its own bearer check via
- * `previewAuth.verifyLoginToken` (constant-time compare against the
- * configured `WARREN_API_TOKEN`).
+ * warren-e1b0 replaced the original `GET …?token=<bearer>` shape: a
+ * bearer in a query string lands in browser history, `Referer` headers,
+ * and every proxy/analytics log on the path. The route is now bearer-
+ * gated by the standard `Authorization` gate like every other `/runs/*`
+ * route (it is no longer in `isAuthExempt`), and returning the target as
+ * JSON rather than a 302 keeps the credential in the header where it
+ * belongs.
  *
  * `redirect` is constrained to the run's own preview surface — anything
- * else is rejected so a stolen login link can't become an open redirect.
+ * else is rejected so a forged body can't become an open redirect.
  *
  * 400 when `previewAuth` is null (subdomain mode with no host, or
  * warren booted with `--no-auth`); the proxy is also disabled in those
@@ -67,20 +70,12 @@ export function previewLoginHandler(deps: ServerDeps): RouteHandler {
 		const mode: "subdomain" | "path" = deps.previewMode ?? "subdomain";
 		const previewAuth = validatePreviewConfig(deps, mode);
 
-		const token = ctx.url.searchParams.get("token");
-		if (!previewAuth.verifyLoginToken(token)) {
-			return jsonResponse(401, {
-				error: {
-					code: "unauthorized",
-					message: "preview login requires a valid ?token=<WARREN_API_TOKEN>",
-				},
-			});
-		}
 		// 404 fast if the run isn't known — issuing a cookie for a nonexistent
 		// run would let an attacker pre-seed a session keyed off a future id.
 		await deps.repos.runs.require(runId);
 
-		const redirect = ctx.url.searchParams.get("redirect");
+		const body = await readJsonBodyOrEmpty(ctx);
+		const redirect = body !== null ? (optionalString(body, "redirect") ?? null) : null;
 		const redirectTarget =
 			mode === "path"
 				? resolvePathPreviewRedirect(redirect, runId, ctx.url.origin)
@@ -100,13 +95,11 @@ export function previewLoginHandler(deps: ServerDeps): RouteHandler {
 
 		const now = deps.now?.() ?? new Date();
 		const cookie = previewAuth.signCookie(runId, now);
-		return new Response(null, {
-			status: 302,
-			headers: {
-				location: redirectTarget,
-				"set-cookie": cookie.setCookieHeader,
-			},
-		});
+		return jsonResponse(
+			200,
+			{ url: redirectTarget },
+			{ headers: { "set-cookie": cookie.setCookieHeader } },
+		);
 	};
 }
 

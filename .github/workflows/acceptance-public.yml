@@ -1,0 +1,45 @@
+name: Acceptance (public exposure)
+
+# Runs acceptance scenario 39 — the public-instance exposure guard
+# (warren-c405 / pl-b82d step 21). Every projection pl-b82d landed is an
+# allowlist a contributor can widen by accident, so the guard has to be a
+# check that fails on a violation rather than a grep someone remembers to
+# run.
+#
+# Why its OWN workflow rather than a step in ci.yml:
+#   - `scripts/check-ci-parity.ts` parses `.github/workflows/ci*.yml` and
+#     requires every `bun run <X>` there to be reachable from the frozen
+#     `check:all` gate manifest. The acceptance suite is not a gate in that
+#     manifest (it boots processes and is not part of `bun run verify`), so
+#     putting it in `ci.yml` would mean an escape-hatch entry in
+#     `ci-parity-config.json` for something that is not a gate variant.
+#   - The rest of the suite needs bubblewrap-capable sandboxing and the
+#     `sd` / `ml` / `plot` CLIs to dispatch real agent runs; scenario 39
+#     deliberately needs NONE of that (it seeds warren's database before
+#     boot and never dispatches), so it can run per-PR here while bringing
+#     the whole suite into CI stays separate work.
+#
+# `cn` is the one external CLI the shared harness boot still needs — the
+# fixture builder authors the canopy library through canopy itself so a
+# canopy schema bump can't silently rot the fixture.
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  acceptance-public:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6.0.2
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+
+      - run: bun install
+      - name: Install the canopy CLI the fixture builder shells to
+        run: bun add -g @os-eco/canopy-cli
+      - run: bun run acceptance:public
