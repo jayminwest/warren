@@ -1,6 +1,0 @@
-project: canopy
-version: 1
-targets:
-  default:
-    dir: agents
-    default: true

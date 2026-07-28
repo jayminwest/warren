@@ -142,7 +142,6 @@ describe("protected paths are refused", () => {
 	const protectedPaths = [
 		"docs/CONSTITUTION.md",
 		".warren/triggers.yaml",
-		".canopy/prompts.yaml",
 		"src/registry/builtins/claude-code.ts",
 		".github/workflows/auto-merge.yml",
 	];

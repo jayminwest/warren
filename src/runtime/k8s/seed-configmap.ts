@@ -1,12 +1,12 @@
 /**
  * Seed-file delivery via ConfigMap (pl-829f step 15 / warren-2181, design
  * k8s-migration.md §4.2). A `RunSpec` carries `seedFiles` — the
- * `.canopy/.mulch/.seeds/.pi` context drops the domain writes into the
+ * `.warren/.mulch/.seeds/.pi` context drops the domain writes into the
  * workspace. LocalProvider hands them to burrow's `seed.files`; the K8s backend
  * has no such channel, so it ships them as a ConfigMap the init container reads.
  *
  * A ConfigMap volume flattens keys to files in one directory and cannot
- * reproduce an arbitrary tree (`.canopy/agent.json`, `.mulch/…`). So rather than
+ * reproduce an arbitrary tree (`.warren/agent.json`, `.mulch/…`). So rather than
  * one key per file, the whole set travels as a single JSON manifest under one
  * key (`seeds.json`); the init entrypoint (`./workspace-init.ts`) parses it and
  * writes each entry at its real path inside `/workspace` after checkout. This

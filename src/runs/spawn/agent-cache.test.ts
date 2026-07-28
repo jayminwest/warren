@@ -7,7 +7,7 @@ import {
 	makeAgentJson,
 	makeBurrowClient,
 	makeProvider,
-	readCanopyFrontmatter,
+	readAgentEnvelopeFrontmatter,
 	setupRepos,
 } from "./test-helpers.ts";
 
@@ -98,8 +98,8 @@ describe("provider/model override resolution (warren-618b / warren-f8c0)", () =>
 
 		// The seed payload shipped on POST /burrows carries the override-applied
 		// agent envelope verbatim (buildSeedFiles materializes the resolved
-		// frontmatter into `.canopy/agent.json`).
-		const seededFm = readCanopyFrontmatter(calls);
+		// frontmatter into `.warren/agent.json`).
+		const seededFm = readAgentEnvelopeFrontmatter(calls);
 		expect(seededFm.provider).toBe("openai");
 		expect(seededFm.model).toBe("gpt-4o");
 		// Original builtin frontmatter preserved
@@ -150,7 +150,7 @@ describe("provider/model override resolution (warren-618b / warren-f8c0)", () =>
 			},
 		});
 
-		const seededFm = readCanopyFrontmatter(calls);
+		const seededFm = readAgentEnvelopeFrontmatter(calls);
 		expect(seededFm.provider).toBe("anthropic");
 		expect(seededFm.model).toBe("claude-opus-4-7");
 		expect(seededFm.source).toBe("builtin");

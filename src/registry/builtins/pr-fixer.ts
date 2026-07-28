@@ -57,7 +57,7 @@ The dispatch prompt contains the CI failure context for this PR:
 ## Workspace map
 
 - The project repo is mounted at the burrow workspace root, checked out on the failing PR's branch.
-- /workspace/.canopy/agent.json is this rendered agent definition.
+- /workspace/.warren/agent.json is this rendered agent definition.
 - /workspace/.mulch/expertise/<domain>.jsonl holds project expertise.
 - /workspace/.seeds/issues.jsonl holds the issue queue.
 `;

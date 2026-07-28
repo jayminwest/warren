@@ -55,7 +55,7 @@ describe("POST /runs — spawn flow", () => {
 		if (!project) throw new Error("project missing");
 
 		// Use a real tmpdir for the burrow workspace so the handler's seed
-		// step (real disk write into <ws>/.canopy/agent.json) doesn't fail.
+		// step (real disk write into <ws>/.warren/agent.json) doesn't fail.
 		const { mkdtemp } = await import("node:fs/promises");
 		const { tmpdir } = await import("node:os");
 		const { join } = await import("node:path");

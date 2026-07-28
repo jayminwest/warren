@@ -15,6 +15,11 @@ bun.lockb.bak
 supabase/
 # plot was removed from warren; the leftover local records stay untracked
 .plot/
+
+# warren seeds the rendered agent envelope here per run (warren-5585); the
+# surrounding .warren/ config files (config.yaml, preview.yaml, triggers.yaml)
+# stay tracked. Ignore the single seeded file, not the directory.
+.warren/agent.json
 .claude/settings.local.json
 
 # pi agent session transcripts: leaked run logs (prompts, thinking, tool

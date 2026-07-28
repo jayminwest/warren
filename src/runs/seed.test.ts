@@ -19,11 +19,11 @@ function byPath(files: readonly SeedFile[]): Map<string, SeedFile> {
 }
 
 describe("buildSeedFiles", () => {
-	test("emits the rendered agent envelope at .canopy/agent.json", () => {
+	test("emits the rendered agent envelope at .warren/agent.json", () => {
 		const result = buildSeedFiles(makeAgent());
 		const map = byPath(result.files);
-		expect(result.canopyPath).toBe(".canopy/agent.json");
-		const entry = map.get(".canopy/agent.json");
+		expect(result.agentEnvelopePath).toBe(".warren/agent.json");
+		const entry = map.get(".warren/agent.json");
 		expect(entry).toBeDefined();
 		const parsed = JSON.parse(entry?.contents ?? "");
 		expect(parsed.name).toBe("refactor-bot");
@@ -87,8 +87,8 @@ describe("buildSeedFiles", () => {
 		expect(result.piSkills).toEqual([]);
 		expect(result.piPrompts).toEqual([]);
 		expect(result.piExtensions).toEqual([]);
-		// Only the canopy envelope drops when no optional sections are present.
-		expect(result.files.map((f) => f.path)).toEqual([".canopy/agent.json"]);
+		// Only the agent envelope drops when no optional sections are present.
+		expect(result.files.map((f) => f.path)).toEqual([".warren/agent.json"]);
 	});
 
 	test("emits pi_skills JSONL lines at .pi/skills/<name>/SKILL.md", () => {

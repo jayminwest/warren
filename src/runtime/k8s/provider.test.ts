@@ -203,13 +203,13 @@ describe("K8sProvider.create", () => {
 		const fake = fakeApi();
 		await makeProvider(fake).create({
 			...spec,
-			seedFiles: [{ path: ".canopy/agent.json", contents: "{}" }],
+			seedFiles: [{ path: ".warren/agent.json", contents: "{}" }],
 		});
 		expect(fake.cms).toHaveLength(1);
 		expect(fake.cms[0]?.namespace).toBe("warren-runs");
 		expect(fake.cms[0]?.body.metadata?.name).toBe("run-run-test-seeds");
 		const manifest = fake.cms[0]?.body.data?.[SEED_MANIFEST_KEY];
-		expect(JSON.parse(manifest ?? "[]")).toEqual([{ path: ".canopy/agent.json", contents: "{}" }]);
+		expect(JSON.parse(manifest ?? "[]")).toEqual([{ path: ".warren/agent.json", contents: "{}" }]);
 		// The pod's seed volume references the ConfigMap by name.
 		const vol = fake.pods[0]?.body.spec?.volumes?.find((v) => v.configMap);
 		expect(vol?.configMap?.name).toBe("run-run-test-seeds");

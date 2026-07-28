@@ -26,7 +26,7 @@ const HANDLE: RunHandle = {
 	sandboxId: "bur_aaaaaaaaaaaa",
 	providerRunId: "run_zzzzzzzzzzzz",
 };
-const CANOPY = ".canopy/agent.json";
+const AGENT_ENVELOPE = ".warren/agent.json";
 const SEED = '{\n  "name": "claude-code"\n}\n';
 
 let openDb: WarrenDb | null = null;
@@ -51,7 +51,7 @@ function intent(overrides: Partial<FinalizeIntent> = {}): FinalizeIntent {
 		push: true,
 		mirror: [],
 		baseBranch: "main",
-		resetSeededPaths: [{ path: CANOPY, contents: SEED }],
+		resetSeededPaths: [{ path: AGENT_ENVELOPE, contents: SEED }],
 		...overrides,
 	};
 }
@@ -62,20 +62,20 @@ function gitCall(exec: ReturnType<typeof fakeExec>, ...sub: string[]) {
 
 describe("finalize — seed_reset stage (warren-8d95)", () => {
 	test("resets an unedited seeded artifact to base and commits before push", async () => {
-		const fs = fakeFs({ [`${WS}/${CANOPY}`]: SEED });
+		const fs = fakeFs({ [`${WS}/${AGENT_ENVELOPE}`]: SEED });
 		const exec = fakeExec({ stagedDelta: true }); // diff --cached --quiet fails ⇒ staged
 		const p = await provider(fs, exec);
 		const result = await p.finalize(HANDLE, intent());
 
 		expect(result.stages.find((s) => s.stage === "seed_reset")?.status).toBe("ok");
-		expect(gitCall(exec, "checkout", "main", "--", CANOPY)).toBeDefined();
+		expect(gitCall(exec, "checkout", "main", "--", AGENT_ENVELOPE)).toBeDefined();
 		const commit = exec.calls.find((c) => c.cmd === "git" && c.args.includes("commit"));
 		expect(commit?.args).toContain("--no-verify");
 		expect(result.events.some((e) => e.kind === "reap.seed_reset")).toBe(true);
 	});
 
 	test("seed_reset runs BEFORE branch_push in the stage trail", async () => {
-		const fs = fakeFs({ [`${WS}/${CANOPY}`]: SEED });
+		const fs = fakeFs({ [`${WS}/${AGENT_ENVELOPE}`]: SEED });
 		const exec = fakeExec({ stagedDelta: true });
 		const p = await provider(fs, exec);
 		const stages = (await p.finalize(HANDLE, intent())).stages.map((s) => s.stage);
@@ -83,13 +83,13 @@ describe("finalize — seed_reset stage (warren-8d95)", () => {
 	});
 
 	test("leaves an agent-edited seeded artifact untouched (no checkout, no commit)", async () => {
-		const fs = fakeFs({ [`${WS}/${CANOPY}`]: '{"name":"edited-by-agent"}\n' });
+		const fs = fakeFs({ [`${WS}/${AGENT_ENVELOPE}`]: '{"name":"edited-by-agent"}\n' });
 		const exec = fakeExec({ stagedDelta: true });
 		const p = await provider(fs, exec);
 		const result = await p.finalize(HANDLE, intent());
 
 		expect(result.stages.find((s) => s.stage === "seed_reset")?.status).toBe("ok");
-		expect(gitCall(exec, "checkout", "main", "--", CANOPY)).toBeUndefined();
+		expect(gitCall(exec, "checkout", "main", "--", AGENT_ENVELOPE)).toBeUndefined();
 		expect(result.events.some((e) => e.kind === "reap.seed_reset")).toBe(false);
 	});
 
@@ -98,12 +98,12 @@ describe("finalize — seed_reset stage (warren-8d95)", () => {
 		const exec = fakeExec({ stagedDelta: true });
 		const p = await provider(fs, exec);
 		const result = await p.finalize(HANDLE, intent());
-		expect(gitCall(exec, "checkout", "main", "--", CANOPY)).toBeUndefined();
+		expect(gitCall(exec, "checkout", "main", "--", AGENT_ENVELOPE)).toBeUndefined();
 		expect(result.stages.find((s) => s.stage === "seed_reset")?.status).toBe("ok");
 	});
 
 	test("skips seed_reset (no stage failure) when no baseBranch is supplied", async () => {
-		const fs = fakeFs({ [`${WS}/${CANOPY}`]: SEED });
+		const fs = fakeFs({ [`${WS}/${AGENT_ENVELOPE}`]: SEED });
 		const exec = fakeExec({ stagedDelta: true });
 		const p = await provider(fs, exec);
 		const result = await p.finalize(HANDLE, intent({ baseBranch: undefined }));
@@ -112,7 +112,7 @@ describe("finalize — seed_reset stage (warren-8d95)", () => {
 	});
 
 	test("absent resetSeededPaths leaves seed_reset out of the stage trail entirely", async () => {
-		const fs = fakeFs({ [`${WS}/${CANOPY}`]: SEED });
+		const fs = fakeFs({ [`${WS}/${AGENT_ENVELOPE}`]: SEED });
 		const exec = fakeExec();
 		const p = await provider(fs, exec);
 		const result = await p.finalize(HANDLE, intent({ resetSeededPaths: undefined }));
@@ -120,7 +120,7 @@ describe("finalize — seed_reset stage (warren-8d95)", () => {
 	});
 
 	test("a git failure during reset surfaces as a failed stage, not a throw", async () => {
-		const fs = fakeFs({ [`${WS}/${CANOPY}`]: SEED });
+		const fs = fakeFs({ [`${WS}/${AGENT_ENVELOPE}`]: SEED });
 		const exec = fakeExec({ fail: "git checkout blew up" });
 		const p = await provider(fs, exec);
 		const result = await p.finalize(HANDLE, intent());

@@ -392,7 +392,7 @@ function injectGitIdentityEnv(env: Record<string, string>, serverEnv: EnvLike): 
  * canopy-defined operating contract (workspace map, rituals, expectations)
  * actually reaches claude. Burrow's claude-code runtime feeds the dispatch
  * prompt to the agent as a single user turn — it never reads
- * `.canopy/agent.json` itself, so without this prepend the canopy `system`
+ * `.warren/agent.json` itself, so without this prepend the canopy `system`
  * body is dead text on disk.
  *
  * `runs.prompt` (warren-side) keeps the user-typed input verbatim; only

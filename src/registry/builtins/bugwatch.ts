@@ -77,7 +77,7 @@ Run \`sd list --status open --type bug --format json\` to get the full bug queue
 ## Workspace map
 
 - The project repo is mounted at the burrow workspace root.
-- /workspace/.canopy/agent.json is this rendered agent definition.
+- /workspace/.warren/agent.json is this rendered agent definition.
 - /workspace/.mulch/expertise/<domain>.jsonl holds project expertise.
 - /workspace/.seeds/issues.jsonl holds the issue queue.
 

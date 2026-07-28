@@ -1,5 +1,5 @@
 /**
- * Pure builder that turns an `AgentDefinition` into the `.canopy/`,
+ * Pure builder that turns an `AgentDefinition` into the `.warren/`,
  * `.mulch/`, `.seeds/`, `.pi/` workspace drops (SPEC §4.3 step 3, §11.A).
  *
  * Returns `SeedFile[]` with workspace-relative paths so the
@@ -10,7 +10,7 @@
  *
  * Five drops:
  *
- *   `.canopy/agent.json` — the rendered AgentDefinition envelope. The
+ *   `.warren/agent.json` — the rendered AgentDefinition envelope. The
  *      harness (claude-code or sapling) reads whichever sections it
  *      needs; packaging the whole envelope avoids prematurely freezing
  *      a per-section file layout before harness expectations stabilize.
@@ -35,6 +35,11 @@
  *      pi_skills but flat (one .md per prompt, no per-prompt
  *      directory).
  *
+ * NOTE: `.warren/agent.json` is gitignored (the surrounding `.warren/`
+ * config files stay tracked). It used to land at `.canopy/agent.json`,
+ * a path warren's own repo tracked — the seed clobbered a tracked file
+ * and the flip rode into PRs. Relocated to an untracked path (warren-5585).
+ *
  *   `.pi/extensions/<name>.ts` — same JSONL `{name, body}` shape as
  *      pi_prompts but flat .ts modules (extensions default-export a
  *      `(pi) => {…}` registration function). INERT until burrow drops
@@ -57,7 +62,7 @@ export type SeedFile = RunSpec["seedFiles"][number];
 
 export interface BuildSeedFilesResult {
 	readonly files: readonly SeedFile[];
-	readonly canopyPath: string;
+	readonly agentEnvelopePath: string;
 	readonly mulchDomains: readonly string[];
 	readonly workflowPath: string | null;
 	readonly piSkills: readonly string[];
@@ -68,9 +73,9 @@ export interface BuildSeedFilesResult {
 export function buildSeedFiles(agent: AgentDefinition): BuildSeedFilesResult {
 	const files: SeedFile[] = [];
 
-	const canopyPath = ".canopy/agent.json";
+	const agentEnvelopePath = ".warren/agent.json";
 	files.push({
-		path: canopyPath,
+		path: agentEnvelopePath,
 		contents: `${JSON.stringify(
 			{
 				name: agent.name,
@@ -110,7 +115,7 @@ export function buildSeedFiles(agent: AgentDefinition): BuildSeedFilesResult {
 
 	return {
 		files,
-		canopyPath,
+		agentEnvelopePath,
 		mulchDomains: domains,
 		workflowPath: workflowFile?.path ?? null,
 		piSkills,

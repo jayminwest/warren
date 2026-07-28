@@ -111,7 +111,7 @@ describe("spawnRun: provider-neutral dispatch (k8s-shaped backend)", () => {
 		expect(spec.runtimeId).toBe("pi");
 		expect(spec.prompt).toContain("do the thing");
 		expect(spec.network).toBe("none");
-		expect(spec.seedFiles.map((f) => f.path)).toContain(".canopy/agent.json");
+		expect(spec.seedFiles.map((f) => f.path)).toContain(".warren/agent.json");
 
 		// The handle's ids are attached back onto the run row — pod name / pod uid,
 		// not burrow ids. spawn makes no shape assumption.

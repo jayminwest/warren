@@ -4,14 +4,14 @@
  *
  * ## The bug
  *
- * Warren seeds the rendered agent envelope to `.canopy/agent.json` (plus `.pi/`
+ * Warren seeds the rendered agent envelope to `.warren/agent.json` (plus `.pi/`
  * skill/prompt/extension drops and `.seeds/workflow.txt`). In a project that
- * itself TRACKS one of those paths — warren's own repo tracks
- * `.canopy/agent.json` — the seed overwrites a tracked file, leaving the
- * worktree dirty. A broad agent commit (`git add -A` / `git commit -a`) then
- * carries the seeded artifact into the run branch, and the auto-merge workflow's
- * Article IX protected-path guard (regex includes `^\.canopy/`) correctly
- * refuses to enable auto-merge, so the PR sits unmerged.
+ * itself TRACKS one of those paths, the seed overwrites a tracked file, leaving
+ * the worktree dirty. A broad agent commit (`git add -A` / `git commit -a`) then
+ * carries the seeded artifact into the run branch. warren's own repo no longer
+ * tracks the agent envelope (warren-5585 relocated it off the tracked
+ * `.canopy/agent.json` to a gitignored `.warren/agent.json`), but this reset
+ * stays as a general guard for any project that tracks a colliding seed path.
  *
  * ## The fix
  *
@@ -34,7 +34,7 @@ export interface SeededResetPath {
 
 /**
  * Rebuild the warren-seeded artifact list from the run's stored agent envelope
- * and return the PURE-CONTEXT drops (canopy + `.pi/**` + `.seeds/workflow.txt`),
+ * and return the PURE-CONTEXT drops (agent envelope + `.pi/**` + `.seeds/workflow.txt`),
  * excluding the mirror-managed `.mulch/expertise/` family. Defensive: a missing
  * or malformed `renderedAgentJson` (or a seed builder throw) yields `[]` so reap
  * degrades to its pre-warren-8d95 behavior rather than failing the run.
