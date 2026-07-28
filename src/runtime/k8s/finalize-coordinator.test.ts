@@ -8,7 +8,7 @@ function intent(): Omit<InPodFinalizeIntent, "attemptId"> {
 		version: IN_POD_FINALIZE_WIRE_VERSION,
 		branch: "warren/run_x",
 		push: true,
-		mirror: ["mulch", "seeds"],
+		artifacts: ["mulch", "seeds"],
 		commit: ["seeds"],
 	};
 }
@@ -21,7 +21,7 @@ function result(pushed: boolean): FinalizeResult {
 		dirty: false,
 		workspacePlansBody: null,
 		events: [],
-		mirror: {},
+		artifacts: {},
 		prBranch: pushed ? "warren/run_x" : null,
 		stages: [],
 	};

@@ -32,14 +32,12 @@
 
 import { ValidationError } from "../../core/errors.ts";
 import type {
+	ArtifactDelta,
+	ArtifactDeltaFile,
 	FinalizeEvent,
 	FinalizeResult,
 	FinalizeStage,
 	FinalizeStageOutcome,
-	MulchDelta,
-	MulchDeltaFile,
-	PlansDelta,
-	SeedsDelta,
 } from "../contract.ts";
 
 /** Wire-format version tag so the intent shape can evolve unambiguously. */
@@ -61,8 +59,8 @@ export interface InPodFinalizeIntent {
 	branch: string;
 	/** Whether to push at all (mirrors `FinalizeIntent.push`). */
 	push: boolean;
-	/** Artifact sets to extract (mirrors `FinalizeIntent.mirror`). */
-	mirror: ("mulch" | "seeds" | "plans")[];
+	/** Opaque artifact-set keys to extract (mirrors `FinalizeIntent.artifacts`). */
+	artifacts: string[];
 	/** Bookkeeping commits to author before the push (mirrors `FinalizeIntent.commit`). */
 	commit: "seeds"[];
 	/** Base ref for the commits-ahead count; omitted ⇒ count skipped (`null`). */
@@ -152,46 +150,29 @@ function reqNonNegInt(obj: Record<string, unknown>, key: string, label: string):
 	return v;
 }
 
-function validateMulchDelta(value: unknown): MulchDelta {
-	const o = asRecord(value, "mirror.mulch");
+/**
+ * Narrow one opaque artifact delta (warren-df3e). Feature-neutral: validates the
+ * `files[]` bodies + the opaque `counts` map (every value a non-negative
+ * integer); it does NOT assume which artifact produced the delta.
+ */
+function validateArtifactDelta(value: unknown, key: string): ArtifactDelta {
+	const label = `artifacts.${key}`;
+	const o = asRecord(value, label);
 	const filesRaw = o.files;
-	if (!Array.isArray(filesRaw)) throw new ValidationError("mirror.mulch.files must be an array");
-	const files: MulchDeltaFile[] = filesRaw.map((f, i) => {
-		const fo = asRecord(f, `mirror.mulch.files[${i}]`);
+	if (!Array.isArray(filesRaw)) throw new ValidationError(`${label}.files must be an array`);
+	const files: ArtifactDeltaFile[] = filesRaw.map((f, i) => {
+		const fo = asRecord(f, `${label}.files[${i}]`);
 		return {
-			domain: reqString(fo, "domain", `mirror.mulch.files[${i}]`),
-			path: reqString(fo, "path", `mirror.mulch.files[${i}]`),
-			mergedBody: reqString(fo, "mergedBody", `mirror.mulch.files[${i}]`),
+			path: reqString(fo, "path", `${label}.files[${i}]`),
+			mergedBody: reqString(fo, "mergedBody", `${label}.files[${i}]`),
 		};
 	});
-	return {
-		version: 1,
-		updated: reqNonNegInt(o, "updated", "mirror.mulch"),
-		skipped: reqNonNegInt(o, "skipped", "mirror.mulch"),
-		appended: reqNonNegInt(o, "appended", "mirror.mulch"),
-		files,
-	};
-}
-
-function validateSeedsDelta(value: unknown): SeedsDelta {
-	const o = asRecord(value, "mirror.seeds");
-	return {
-		version: 1,
-		closed: reqNonNegInt(o, "closed", "mirror.seeds"),
-		created: reqNonNegInt(o, "created", "mirror.seeds"),
-		path: reqString(o, "path", "mirror.seeds"),
-		mergedBody: optStringOrNull(o, "mergedBody", "mirror.seeds"),
-	};
-}
-
-function validatePlansDelta(value: unknown): PlansDelta {
-	const o = asRecord(value, "mirror.plans");
-	return {
-		version: 1,
-		appended: reqNonNegInt(o, "appended", "mirror.plans"),
-		path: reqString(o, "path", "mirror.plans"),
-		mergedBody: optStringOrNull(o, "mergedBody", "mirror.plans"),
-	};
+	const countsRaw = asRecord(o.counts ?? {}, `${label}.counts`);
+	const counts: Record<string, number> = {};
+	for (const name of Object.keys(countsRaw)) {
+		counts[name] = reqNonNegInt(countsRaw, name, `${label}.counts`);
+	}
+	return { version: 1, files, counts };
 }
 
 const FINALIZE_STAGES: readonly FinalizeStage[] = [
@@ -246,11 +227,11 @@ function validateEvents(value: unknown): FinalizeEvent[] {
  */
 export function validateFinalizeResult(value: unknown): FinalizeResult {
 	const o = asRecord(value, "result");
-	const mirrorRaw = asRecord(o.mirror ?? {}, "result.mirror");
-	const mirror: FinalizeResult["mirror"] = {};
-	if (mirrorRaw.mulch !== undefined) mirror.mulch = validateMulchDelta(mirrorRaw.mulch);
-	if (mirrorRaw.seeds !== undefined) mirror.seeds = validateSeedsDelta(mirrorRaw.seeds);
-	if (mirrorRaw.plans !== undefined) mirror.plans = validatePlansDelta(mirrorRaw.plans);
+	const artifactsRaw = asRecord(o.artifacts ?? {}, "result.artifacts");
+	const artifacts: FinalizeResult["artifacts"] = {};
+	for (const key of Object.keys(artifactsRaw)) {
+		artifacts[key] = validateArtifactDelta(artifactsRaw[key], key);
+	}
 
 	const dirtyPaths = optStringArray(o, "dirtyPaths", "result");
 	return {
@@ -261,7 +242,7 @@ export function validateFinalizeResult(value: unknown): FinalizeResult {
 		...(dirtyPaths !== undefined ? { dirtyPaths } : {}),
 		workspacePlansBody: optStringOrNull(o, "workspacePlansBody", "result"),
 		events: validateEvents(o.events),
-		mirror,
+		artifacts,
 		prBranch: optStringOrNull(o, "prBranch", "result"),
 		stages: validateStages(o.stages),
 	};

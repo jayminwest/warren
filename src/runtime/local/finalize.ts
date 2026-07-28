@@ -22,8 +22,8 @@
  *   `reap.seeds_committed`) plus per-line/stage `reap_failed`. finalize
  *   hands them a COLLECTING emit/fail that appends `{kind, payload}` to
  *   `FinalizeResult.events` for the domain to re-emit; counts ride the deltas.
- * - **Merge vs commit gating**: `intent.mirror` gates the three merges; `commit`
- *   (default `mirror`) gates the seeds bookkeeping commit.
+ * - **Merge vs commit gating**: `intent.artifacts` gates the three merges;
+ *   `commit` (default = the merge set) gates the seeds bookkeeping commit.
  * - **Deliberately NOT here** (domain-owned, §4): PR-open / preview /
  *   auto-plan-run / terminal-state; `reap.empty_push` (needs the run outcome —
  *   finalize returns `dirty` + dirtyPaths for it); `intent.closeSeedId`.
@@ -40,16 +40,14 @@ import { stageSeedsForCommit } from "../../runs/reap/stage.ts";
 import type { ReapExec, ReapFs, ReapStep } from "../../runs/reap/types.ts";
 import { defaultExec, defaultFs, workspaceDirtyPaths } from "../../runs/reap/util.ts";
 import type {
+	ArtifactDelta,
+	ArtifactDeltaFile,
 	FinalizeEvent,
 	FinalizeIntent,
 	FinalizeResult,
 	FinalizeStage,
 	FinalizeStageOutcome,
-	MulchDelta,
-	MulchDeltaFile,
-	PlansDelta,
 	RunHandle,
-	SeedsDelta,
 } from "../contract.ts";
 import { RuntimeProviderError } from "../errors.ts";
 import { finalizeSeedReset } from "./finalize-seed-reset.ts";
@@ -121,19 +119,19 @@ export async function finalizeLocalRun(
 	const exec = deps.exec ?? defaultExec;
 	const trail = new StageTrail();
 	const collector = new EventCollector();
-	const mirror = new Set(intent.mirror);
-	// Commit-gating decouples from merge-gating (warren-1f56); default to `mirror`.
-	const commit = new Set(intent.commit ?? intent.mirror);
+	const artifacts = new Set(intent.artifacts);
+	// Commit-gating decouples from merge-gating (warren-1f56); default to the merge set.
+	const commit = new Set(intent.commit ?? intent.artifacts);
 	const workspacePath = await resolveWorkspacePath(client, handle.sandboxId);
-	const clonePath = resolveClonePath(intent, mirror);
+	const clonePath = resolveClonePath(intent, artifacts);
 
-	const mulch = mirror.has("mulch")
+	const mulch = artifacts.has("mulch")
 		? await finalizeMulch(workspacePath, clonePath, fs, trail, collector)
 		: undefined;
-	const seeds = mirror.has("seeds")
+	const seeds = artifacts.has("seeds")
 		? await finalizeSeeds(client, handle.sandboxId, clonePath, fs, trail, collector)
 		: undefined;
-	const plans = mirror.has("plans")
+	const plans = artifacts.has("plans")
 		? await finalizePlans(client, handle.sandboxId, clonePath, fs, trail, collector)
 		: undefined;
 
@@ -159,7 +157,7 @@ export async function finalizeLocalRun(
 		dirty: push.dirty,
 		dirtyPaths: push.dirtyPaths,
 		workspacePlansBody,
-		mirror: {
+		artifacts: {
 			...(mulch !== undefined ? { mulch } : {}),
 			...(seeds !== undefined ? { seeds } : {}),
 			...(plans !== undefined ? { plans } : {}),
@@ -190,15 +188,15 @@ async function resolveWorkspacePath(client: BurrowClient, sandboxId: string): Pr
 
 /**
  * Resolve the host project-clone path the merges write into. `""` (unused
- * sentinel) when `mirror` is empty; otherwise the hint is mandatory — the burrow
- * backend cannot merge without it (mirrors `create()`'s `hostClonePathHint`).
+ * sentinel) when `artifacts` is empty; otherwise the hint is mandatory — the
+ * burrow backend cannot merge without it (mirrors `create()`'s `hostClonePathHint`).
  */
-function resolveClonePath(intent: FinalizeIntent, mirror: Set<string>): string {
-	if (mirror.size === 0) return "";
+function resolveClonePath(intent: FinalizeIntent, artifacts: Set<string>): string {
+	if (artifacts.size === 0) return "";
 	const hint = intent.projectClonePathHint;
 	if (hint === undefined || hint === "") {
 		throw new RuntimeProviderError(
-			"LocalProvider.finalize requires intent.projectClonePathHint when mirror is non-empty",
+			"LocalProvider.finalize requires intent.projectClonePathHint when artifacts is non-empty",
 			{ recoveryHint: "supply projectClonePathHint on the FinalizeIntent (K8s ignores it)" },
 		);
 	}
@@ -220,22 +218,20 @@ async function finalizeMulch(
 	fs: ReapFs,
 	trail: StageTrail,
 	collector: EventCollector,
-): Promise<MulchDelta> {
+): Promise<ArtifactDelta> {
 	try {
 		const result = await mergeMulch(workspacePath, clonePath, fs, collector.emit, collector.fail);
 		const files = await readMergedMulchFiles(workspacePath, clonePath, fs);
 		trail.ok("mulch_merge");
 		return {
 			version: 1,
-			updated: result.updated,
-			skipped: result.skipped,
-			appended: result.appended,
 			files,
+			counts: { updated: result.updated, skipped: result.skipped, appended: result.appended },
 		};
 	} catch (err) {
 		trail.failed("mulch_merge", err);
 		await collector.fail("mulch_merge", err);
-		return { version: 1, updated: 0, skipped: 0, appended: 0, files: [] };
+		return { version: 1, files: [], counts: { updated: 0, skipped: 0, appended: 0 } };
 	}
 }
 
@@ -248,15 +244,14 @@ async function readMergedMulchFiles(
 	workspacePath: string,
 	clonePath: string,
 	fs: ReapFs,
-): Promise<MulchDeltaFile[]> {
+): Promise<ArtifactDeltaFile[]> {
 	const names = (await fs.readdir(join(workspacePath, ".mulch", "expertise")))
 		.filter((n) => n.endsWith(".jsonl"))
 		.sort();
-	const files: MulchDeltaFile[] = [];
+	const files: ArtifactDeltaFile[] = [];
 	for (const name of names) {
 		const mergedBody = (await fs.readFile(join(clonePath, ".mulch", "expertise", name))) ?? "";
 		files.push({
-			domain: name.slice(0, -".jsonl".length),
 			path: `${MULCH_EXPERTISE_REL}/${name}`,
 			mergedBody,
 		});
@@ -291,7 +286,7 @@ async function finalizeSeeds(
 	fs: ReapFs,
 	trail: StageTrail,
 	collector: EventCollector,
-): Promise<SeedsDelta> {
+): Promise<ArtifactDelta> {
 	try {
 		const workspaceBody = await readWorkspaceTracker(client, sandboxId, ".seeds/issues.jsonl");
 		const result = await mirrorSeeds({
@@ -307,17 +302,20 @@ async function finalizeSeeds(
 		trail.ok("seeds_mirror");
 		return {
 			version: 1,
-			closed: result.closed,
-			created: result.created,
-			path: SEEDS_ISSUES_REL,
-			mergedBody,
+			files: singleFile(SEEDS_ISSUES_REL, mergedBody),
+			counts: { closed: result.closed, created: result.created },
 		};
 	} catch (err) {
 		trail.failed("seeds_mirror", err);
 		// reap's `mirrorSeedsStep` reports this failure as step `seeds_close`.
 		await collector.fail("seeds_close", err);
-		return { version: 1, closed: 0, created: 0, path: SEEDS_ISSUES_REL, mergedBody: null };
+		return { version: 1, files: [], counts: { closed: 0, created: 0 } };
 	}
+}
+
+/** One-entry `files[]` when a mirror produced a body; empty on a no-op merge. */
+function singleFile(path: string, mergedBody: string | null): ArtifactDeltaFile[] {
+	return mergedBody != null ? [{ path, mergedBody }] : [];
 }
 
 async function finalizePlans(
@@ -327,7 +325,7 @@ async function finalizePlans(
 	fs: ReapFs,
 	trail: StageTrail,
 	collector: EventCollector,
-): Promise<PlansDelta> {
+): Promise<ArtifactDelta> {
 	try {
 		const workspaceBody = await readWorkspaceTracker(client, sandboxId, ".seeds/plans.jsonl");
 		const appended = await mirrorPlans({
@@ -339,11 +337,11 @@ async function finalizePlans(
 		const mergedBody =
 			appended > 0 ? ((await fs.readFile(join(clonePath, ".seeds", "plans.jsonl"))) ?? null) : null;
 		trail.ok("plans_mirror");
-		return { version: 1, appended, path: SEEDS_PLANS_REL, mergedBody };
+		return { version: 1, files: singleFile(SEEDS_PLANS_REL, mergedBody), counts: { appended } };
 	} catch (err) {
 		trail.failed("plans_mirror", err);
 		await collector.fail("plans_mirror", err);
-		return { version: 1, appended: 0, path: SEEDS_PLANS_REL, mergedBody: null };
+		return { version: 1, files: [], counts: { appended: 0 } };
 	}
 }
 

@@ -36,7 +36,7 @@ function sampleIntent(): Omit<InPodFinalizeIntent, "attemptId"> {
 		version: IN_POD_FINALIZE_WIRE_VERSION,
 		branch: "warren/run_x",
 		push: true,
-		mirror: ["mulch", "seeds"],
+		artifacts: ["mulch", "seeds"],
 		commit: ["seeds"],
 		baseBranch: "main",
 	};
@@ -50,7 +50,7 @@ function sampleResult(): FinalizeResult {
 		dirty: false,
 		workspacePlansBody: null,
 		events: [{ kind: "seeds.closed", payload: { id: "warren-1" } }],
-		mirror: {},
+		artifacts: {},
 		prBranch: "warren/run_x",
 		stages: [{ stage: "branch_push", status: "ok" }],
 	};
@@ -103,7 +103,7 @@ describe("finalize callback endpoints", () => {
 		const body = (await res.json()) as { intent: InPodFinalizeIntent };
 		expect(body.intent.attemptId).toBe(parked.attemptId);
 		expect(body.intent.branch).toBe("warren/run_x");
-		expect(body.intent.mirror).toEqual(["mulch", "seeds"]);
+		expect(body.intent.artifacts).toEqual(["mulch", "seeds"]);
 	});
 
 	test("POST finalize-result resolves the awaiting finalize and reports accepted", async () => {

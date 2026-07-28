@@ -16,14 +16,12 @@ import { join } from "node:path";
 import { parseDirtyPaths } from "../../runs/reap/util.ts";
 import { authenticatedCloneUrl } from "../../workspace/git/clone-url.ts";
 import type {
+	ArtifactDelta,
+	ArtifactDeltaFile,
 	FinalizeEvent,
 	FinalizeResult,
 	FinalizeStage,
 	FinalizeStageOutcome,
-	MulchDelta,
-	MulchDeltaFile,
-	PlansDelta,
-	SeedsDelta,
 } from "../contract.ts";
 import type { InPodFinalizeIntent } from "./finalize-wire.ts";
 
@@ -104,64 +102,71 @@ async function readFileOrNull(fs: FinalizeFs, path: string): Promise<string | nu
 /* -------------------------------------------------------------------------- */
 
 /**
- * Read every `.mulch/expertise/*.jsonl` file off the workspace into a
- * `MulchDelta`. `mergedBody` is the workspace body verbatim (the LWW merge +
- * counts against warren's clone happen warren-side, step 25); `appended` reports
- * the workspace record count as a "records present" signal, `updated`/`skipped`
- * stay 0. Absent `.mulch/expertise` ⇒ an empty delta.
+ * Read every `.mulch/expertise/*.jsonl` file off the workspace into a mulch
+ * {@link ArtifactDelta}. `mergedBody` is the workspace body verbatim (the LWW
+ * merge + real counts against warren's clone happen warren-side, step 25); the
+ * `appended` count reports the workspace record count as a "records present"
+ * signal, `updated`/`skipped` stay 0. Absent `.mulch/expertise` ⇒ an empty delta.
  */
 export async function collectMulchDelta(
 	workspacePath: string,
 	fs: FinalizeFs,
-): Promise<MulchDelta> {
+): Promise<ArtifactDelta> {
 	let names: string[];
 	try {
 		names = (await fs.readdir(join(workspacePath, ".mulch", "expertise")))
 			.filter((n) => n.endsWith(".jsonl"))
 			.sort();
 	} catch {
-		return { version: 1, updated: 0, skipped: 0, appended: 0, files: [] };
+		return { version: 1, files: [], counts: { updated: 0, skipped: 0, appended: 0 } };
 	}
-	const files: MulchDeltaFile[] = [];
+	const files: ArtifactDeltaFile[] = [];
 	let appended = 0;
 	for (const name of names) {
 		const body = (await readFileOrNull(fs, join(workspacePath, ".mulch", "expertise", name))) ?? "";
 		appended += countJsonlRecords(body);
 		files.push({
-			domain: name.slice(0, -".jsonl".length),
 			path: `${MULCH_EXPERTISE_REL}/${name}`,
 			mergedBody: body,
 		});
 	}
-	return { version: 1, updated: 0, skipped: 0, appended, files };
+	return { version: 1, files, counts: { updated: 0, skipped: 0, appended } };
 }
 
 /**
- * Read `.seeds/issues.jsonl` off the workspace into a `SeedsDelta`. `closed` /
- * `created` need warren's clone baseline to diff, so they stay 0 here and are
- * reconciled warren-side on apply (step 25); `mergedBody` carries the workspace
- * body for that apply, or `null` when the file is absent.
+ * Read `.seeds/issues.jsonl` off the workspace into a seeds {@link ArtifactDelta}.
+ * `closed` / `created` need warren's clone baseline to diff, so they stay 0 here
+ * and are reconciled warren-side on apply (step 25); the workspace body rides in
+ * `files[]` for that apply, or an empty `files[]` when the file is absent.
  */
 export async function collectSeedsDelta(
 	workspacePath: string,
 	fs: FinalizeFs,
-): Promise<SeedsDelta> {
+): Promise<ArtifactDelta> {
 	const body = await readFileOrNull(fs, join(workspacePath, ".seeds", "issues.jsonl"));
-	return { version: 1, closed: 0, created: 0, path: SEEDS_ISSUES_REL, mergedBody: body };
+	return {
+		version: 1,
+		files: bodyToFiles(SEEDS_ISSUES_REL, body),
+		counts: { closed: 0, created: 0 },
+	};
 }
 
-/** Read `.seeds/plans.jsonl` off the workspace into a `PlansDelta` (append-only). */
+/** Read `.seeds/plans.jsonl` off the workspace into a plans {@link ArtifactDelta} (append-only). */
 export async function collectPlansDelta(
 	workspacePath: string,
 	fs: FinalizeFs,
-): Promise<PlansDelta> {
+): Promise<ArtifactDelta> {
 	const body = await readFileOrNull(fs, join(workspacePath, ".seeds", "plans.jsonl"));
 	return {
 		version: 1,
-		appended: body !== null ? countJsonlRecords(body) : 0,
-		path: SEEDS_PLANS_REL,
-		mergedBody: body,
+		files: bodyToFiles(SEEDS_PLANS_REL, body),
+		counts: { appended: body !== null ? countJsonlRecords(body) : 0 },
 	};
+}
+
+/** One-entry `files[]` when the workspace carried a body; empty when absent. */
+function bodyToFiles(path: string, body: string | null): ArtifactDeltaFile[] {
+	return body !== null ? [{ path, mergedBody: body }] : [];
 }
 
 /* -------------------------------------------------------------------------- */
@@ -294,7 +299,7 @@ async function workspaceDirtyPaths(
 
 /**
  * Run the whole in-pod collection against the live workspace and assemble a
- * contract-shaped `FinalizeResult`. The mirror MERGES gate on `intent.mirror`;
+ * contract-shaped `FinalizeResult`. The mirror MERGES gate on `intent.artifacts`;
  * the bookkeeping COMMIT (`seeds_commit`) is marked `skipped` —
  * they need warren's clone to union against and are authored warren-side on apply
  * (step 25, see module doc). Every stage is best-effort; the workspace read is
@@ -308,21 +313,21 @@ export async function collectFinalizeResult(
 ): Promise<FinalizeResult> {
 	const trail = new StageTrail();
 	const collector = new EventCollector();
-	const mirror = new Set(intent.mirror);
+	const artifacts = new Set(intent.artifacts);
 	const commit = new Set(intent.commit);
 
-	let mulch: MulchDelta | undefined;
-	if (mirror.has("mulch")) {
+	let mulch: ArtifactDelta | undefined;
+	if (artifacts.has("mulch")) {
 		mulch = await collectMulchDelta(workspacePath, deps.fs);
 		trail.ok("mulch_merge");
 	}
-	let seeds: SeedsDelta | undefined;
-	if (mirror.has("seeds")) {
+	let seeds: ArtifactDelta | undefined;
+	if (artifacts.has("seeds")) {
 		seeds = await collectSeedsDelta(workspacePath, deps.fs);
 		trail.ok("seeds_mirror");
 	}
-	let plans: PlansDelta | undefined;
-	if (mirror.has("plans")) {
+	let plans: ArtifactDelta | undefined;
+	if (artifacts.has("plans")) {
 		plans = await collectPlansDelta(workspacePath, deps.fs);
 		trail.ok("plans_mirror");
 	}
@@ -346,7 +351,7 @@ export async function collectFinalizeResult(
 		dirtyPaths: push.dirtyPaths,
 		workspacePlansBody,
 		events: collector.events,
-		mirror: {
+		artifacts: {
 			...(mulch !== undefined ? { mulch } : {}),
 			...(seeds !== undefined ? { seeds } : {}),
 			...(plans !== undefined ? { plans } : {}),

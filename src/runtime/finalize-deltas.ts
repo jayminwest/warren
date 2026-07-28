@@ -1,9 +1,18 @@
 /**
- * Artifact-set deltas `finalize` extracts from the live workspace and returns
- * for the domain to apply to its project clone. PINNED (pl-829f step 12 /
- * warren-371a) by SERIALIZING what today's in-process reap merge functions
- * (`src/runs/reap/{mulch,seeds,plot-merge}.ts`) actually produce — grounded in
- * their real return values, not a speculative shape.
+ * Feature-neutral artifact deltas `finalize` extracts from the live workspace
+ * and returns for the domain to apply to its project clone.
+ *
+ * ## Why opaquely keyed (warren-df3e)
+ *
+ * The finalize seam used to enumerate warren's data-plane features directly —
+ * a `mulch | seeds | plans` union on the intent and a
+ * `{ mulch?, seeds?, plans? }` record on the result. That made the runtime
+ * contract grow a slot every time a feature landed. It now speaks a single,
+ * opaque {@link ArtifactDelta} keyed by a provider-chosen string
+ * (`Record<string, ArtifactDelta>`): providers still know which merges they run
+ * (mulch expertise LWW, the seeds/plans mirror) and pick the key, but the
+ * CONTRACT names no feature. The domain reads a delta back by the same opaque
+ * key; the seam itself is feature-neutral.
  *
  * Extracted from `contract.ts` (warren-e9e1) to keep that file under its frozen
  * size budget; re-exported from `contract.ts` so importers are unaffected.
@@ -13,71 +22,39 @@
  *     unchanged. These are the wire format the K8s in-pod finalize (plan step
  *     20) emits over its callback, so no `Map`/`Set`/`Date`/`undefined` slots.
  *   - **`version`-tagged** so the wire format can evolve unambiguously.
- *   - **Apply-complete without filesystem access** — mulch / seeds / plans each
- *     carry the full post-merge JSONL body, so the domain applies by overwriting
- *     the target file; it never has to read the (by-then-destroyed) workspace.
- *     The counts mirror each merge function's own return value.
+ *   - **Apply-complete without filesystem access** — each `files[]` entry carries
+ *     the full post-merge body, so the domain applies by overwriting the target
+ *     file; it never has to read the (by-then-destroyed) workspace.
  */
 
-/** One domain's post-merge mulch expertise file. */
-export interface MulchDeltaFile {
-	/** expertise filename minus `.jsonl` (e.g. `build`) */
-	domain: string;
-	/** clone-relative (posix) target path: `.mulch/expertise/<domain>.jsonl` */
+/** One post-merge file the domain overwrites in the project clone. */
+export interface ArtifactDeltaFile {
+	/** clone-relative (posix) target path, e.g. `.mulch/expertise/build.jsonl` */
 	path: string;
-	/** full merged JSONL body — the domain writes it verbatim */
+	/** full merged body — the domain writes it verbatim */
 	mergedBody: string;
 }
 
 /**
- * mulch expertise LWW-merge result — mirrors `MulchMergeResult`
- * (`{updated,skipped,appended}`) plus the per-file merged bodies
- * `mergeMulchFile` produces. mulch is warren's memory layer and gets real
- * effort, so its delta is complete.
+ * One artifact set's finalize delta — feature-neutral. `files` are the
+ * clone-relative bodies to overwrite (empty when the merge was a no-op);
+ * `counts` are provider-defined, opaquely-named tallies the domain records and
+ * re-emits (e.g. mulch's `{updated,skipped,appended}`, seeds' `{closed,created}`,
+ * plans' `{appended}`). The finalize seam does NOT name which artifact produced
+ * them — the caller keys the enclosing `Record<string, ArtifactDelta>`.
  */
-export interface MulchDelta {
+export interface ArtifactDelta {
 	version: 1;
-	/** records replaced because the incoming `recorded_at` was newer */
-	updated: number;
-	/** records dropped because the incoming was older-or-equal */
-	skipped: number;
-	/** brand-new records appended */
-	appended: number;
-	/** one entry per workspace expertise file, carrying its merged body */
-	files: MulchDeltaFile[];
-}
-
-/**
- * seeds issue-tracker close/create mirror — mirrors `MirrorSeedsResult`
- * (`{closed,created}`) plus the merged `issues.jsonl`. Connector-shaped because
- * seeds is a swappable tracker, so this is done properly: the full merged body
- * travels for a filesystem-free apply.
- */
-export interface SeedsDelta {
-	version: 1;
-	/** rows transitioned to `closed` (added-as-closed or status-updated) */
-	closed: number;
-	/** brand-new rows (e.g. planner-created) added to the clone */
-	created: number;
-	/** clone-relative (posix) target path: `.seeds/issues.jsonl` */
-	path: string;
 	/**
-	 * full merged issues.jsonl, or `null` when the mirror was a no-op (the
-	 * workspace had no `.seeds/issues.jsonl`, or it produced no delta).
+	 * Post-merge files to overwrite in the project clone. Each carries the full
+	 * body + clone-relative path so the domain applies without reading the
+	 * workspace. Empty when the merge produced nothing (a no-op mirror).
 	 */
-	mergedBody: string | null;
-}
-
-/**
- * seeds plan mirror — append-only (plans are immutable once submitted).
- * Mirrors `mirrorPlans`'s `added` count plus the merged `plans.jsonl`.
- */
-export interface PlansDelta {
-	version: 1;
-	/** plan rows appended to the clone */
-	appended: number;
-	/** clone-relative (posix) target path: `.seeds/plans.jsonl` */
-	path: string;
-	/** full merged plans.jsonl, or `null` when nothing was appended */
-	mergedBody: string | null;
+	files: ArtifactDeltaFile[];
+	/**
+	 * Opaque, provider-defined counts. Keys are the merge function's own tally
+	 * names; absent keys read as `0` at the domain. Feature-neutral: the seam
+	 * carries the numbers, not the meaning.
+	 */
+	counts: Record<string, number>;
 }

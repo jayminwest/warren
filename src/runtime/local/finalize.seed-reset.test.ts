@@ -49,7 +49,7 @@ function intent(overrides: Partial<FinalizeIntent> = {}): FinalizeIntent {
 	return {
 		branch: "warren/run-1",
 		push: true,
-		mirror: [],
+		artifacts: [],
 		baseBranch: "main",
 		resetSeededPaths: [{ path: AGENT_ENVELOPE, contents: SEED }],
 		...overrides,

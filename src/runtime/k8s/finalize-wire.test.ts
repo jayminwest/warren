@@ -15,16 +15,22 @@ function fullResult(): FinalizeResult {
 		dirty: false,
 		workspacePlansBody: '{"id":"pl-1"}\n',
 		events: [{ kind: "seeds.closed", payload: { id: "warren-1" } }],
-		mirror: {
+		artifacts: {
 			mulch: {
 				version: 1,
-				updated: 0,
-				skipped: 0,
-				appended: 2,
-				files: [{ domain: "build", path: ".mulch/expertise/build.jsonl", mergedBody: "x\ny\n" }],
+				files: [{ path: ".mulch/expertise/build.jsonl", mergedBody: "x\ny\n" }],
+				counts: { updated: 0, skipped: 0, appended: 2 },
 			},
-			seeds: { version: 1, closed: 1, created: 0, path: ".seeds/issues.jsonl", mergedBody: "z\n" },
-			plans: { version: 1, appended: 1, path: ".seeds/plans.jsonl", mergedBody: "p\n" },
+			seeds: {
+				version: 1,
+				files: [{ path: ".seeds/issues.jsonl", mergedBody: "z\n" }],
+				counts: { closed: 1, created: 0 },
+			},
+			plans: {
+				version: 1,
+				files: [{ path: ".seeds/plans.jsonl", mergedBody: "p\n" }],
+				counts: { appended: 1 },
+			},
 		},
 		prBranch: "warren/run_x",
 		stages: [
@@ -56,13 +62,15 @@ describe("validateFinalizeResult", () => {
 		expect(() => validateFinalizeResult(bad)).toThrow(/not a known finalize stage/);
 	});
 
-	test("rejects a malformed mulch delta file entry", () => {
+	test("rejects a malformed artifact delta file entry", () => {
 		const bad = fullResult();
-		const badMirror = {
-			...bad.mirror,
-			mulch: { ...bad.mirror.mulch, files: [{ domain: "x" }] },
+		const badArtifacts = {
+			...bad.artifacts,
+			mulch: { ...bad.artifacts.mulch, files: [{ mergedBody: "x" }] },
 		};
-		expect(() => validateFinalizeResult({ ...bad, mirror: badMirror })).toThrow(ValidationError);
+		expect(() => validateFinalizeResult({ ...bad, artifacts: badArtifacts })).toThrow(
+			ValidationError,
+		);
 	});
 });
 

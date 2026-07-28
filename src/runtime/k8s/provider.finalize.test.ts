@@ -14,7 +14,7 @@ function intent(): FinalizeIntent {
 	return {
 		branch: "warren/run_prov_finalize",
 		push: true,
-		mirror: ["mulch", "seeds", "plans"],
+		artifacts: ["mulch", "seeds", "plans"],
 		commit: ["seeds"],
 		baseBranch: "main",
 		projectClonePathHint: "/data/projects/x",
@@ -29,7 +29,7 @@ function podResult(): FinalizeResult {
 		dirty: false,
 		workspacePlansBody: null,
 		events: [],
-		mirror: {},
+		artifacts: {},
 		prBranch: "warren/run_prov_finalize",
 		stages: [{ stage: "branch_push", status: "ok" }],
 	};

@@ -35,7 +35,6 @@ import { applyK8sCloneDeltas } from "./clone-apply.ts";
 import { runPrOpen } from "./pr-open.ts";
 import { runPreviewAnnotate, runPreviewLaunch } from "./preview.ts";
 import { seededArtifactResetPaths } from "./seed-reset.ts";
-import { closeRunSeedId } from "./seeds.ts";
 import type { ReapExec, ReapFs, ReapRunInput, ReapStep } from "./types.ts";
 import { classifyEmptyPush } from "./util.ts";
 
@@ -46,7 +45,6 @@ export interface ReapPipelineState {
 	mulchAppended: number;
 	seedsClosed: number;
 	seedsCreated: number;
-	seedIdClosed: boolean;
 	seedsCommitted: boolean;
 	branchPushed: boolean;
 	commitsAhead: number | null;
@@ -80,7 +78,6 @@ export function createPipelineState(): ReapPipelineState {
 		mulchAppended: 0,
 		seedsClosed: 0,
 		seedsCreated: 0,
-		seedIdClosed: false,
 		seedsCommitted: false,
 		branchPushed: false,
 		commitsAhead: null,
@@ -180,7 +177,9 @@ async function runFinalize(ctx: ReapPipelineContext): Promise<FinalizeResult> {
 	const intent: FinalizeIntent = {
 		branch: ctx.branch ?? "",
 		push: true,
-		mirror: ["mulch", "seeds", "plans"],
+		// Opaque artifact keys the domain asks the provider to merge (warren-df3e);
+		// the returned `FinalizeResult.artifacts` is keyed the same way.
+		artifacts: ["mulch", "seeds", "plans"],
 		commit,
 		projectClonePathHint: ctx.project.localPath,
 		// warren-8d95: reset warren-seeded artifacts to base before push so a broad
@@ -214,11 +213,15 @@ function recordFinalizeErrors(ctx: ReapPipelineContext, r: FinalizeResult): void
 
 /** Copy finalize's counts/flags onto the pipeline state accumulator. */
 function applyFinalizeToState(state: ReapPipelineState, r: FinalizeResult): void {
-	state.mulchUpdated = r.mirror.mulch?.updated ?? 0;
-	state.mulchSkipped = r.mirror.mulch?.skipped ?? 0;
-	state.mulchAppended = r.mirror.mulch?.appended ?? 0;
-	state.seedsClosed = r.mirror.seeds?.closed ?? 0;
-	state.seedsCreated = r.mirror.seeds?.created ?? 0;
+	// The domain reads deltas back by the opaque keys it merged (warren-df3e);
+	// absent count keys read as 0.
+	const mulch = r.artifacts.mulch?.counts;
+	const seeds = r.artifacts.seeds?.counts;
+	state.mulchUpdated = mulch?.updated ?? 0;
+	state.mulchSkipped = mulch?.skipped ?? 0;
+	state.mulchAppended = mulch?.appended ?? 0;
+	state.seedsClosed = seeds?.closed ?? 0;
+	state.seedsCreated = seeds?.created ?? 0;
 	// A bookkeeping commit was authored iff finalize emitted its committed event.
 	state.seedsCommitted = r.events.some((e) => e.kind === "reap.seeds_committed");
 	state.branchPushed = r.pushed;
@@ -264,42 +267,6 @@ function resolveWorkspacePlans(
 	if (baselinePlanIds === null) return { ids: null, body: null };
 	const body = r.workspacePlansBody ?? "";
 	return { ids: parsePlanIds(body), body };
-}
-
-/**
- * warren-0d2d: host-side safety net — close the run's associated seed after a
- * successful reap even if the agent didn't call `sd close` (`sd close` is
- * idempotent; the updated `issues.jsonl` already rode finalize's seeds commit).
- */
-async function seedIdCloseStep(ctx: ReapPipelineContext, state: ReapPipelineState): Promise<void> {
-	const { seedId } = ctx.run;
-	const { seedsCli } = ctx.input;
-	// warren-495d/89b0: never close for a run ending failed/cancelled. `succeeded`
-	// excludes cancelled + provider-error; `droppedCommit`/`finalizeFailed` (both
-	// resolved before this step) cover the flips-to-failed reap applies AFTER.
-	if (
-		!(
-			ctx.input.outcome === "succeeded" &&
-			!state.droppedCommit &&
-			!state.finalizeFailed &&
-			state.branchPushed &&
-			seedId !== null &&
-			ctx.project.hasSeeds &&
-			seedsCli !== undefined
-		)
-	) {
-		return;
-	}
-	try {
-		state.seedIdClosed = await closeRunSeedId({
-			seedId,
-			projectPath: ctx.project.localPath,
-			seedsCli,
-			emit: ctx.emit,
-		});
-	} catch (err) {
-		await ctx.fail("seed_id_close", err);
-	}
 }
 
 async function autoDispatchStep(
@@ -466,7 +433,7 @@ function emptyFinalizeResult(): FinalizeResult {
 		emptyPush: false,
 		dirty: false,
 		workspacePlansBody: null,
-		mirror: {},
+		artifacts: {},
 		prBranch: null,
 		stages: [],
 		events: [],
@@ -509,8 +476,10 @@ export async function runReapPipeline(
 	// merged into the clone during finalize (byte-identical). See clone-apply.ts.
 	if (ctx.workspacePath === null) await applyK8sCloneDeltas(ctx, state, finalizeResult);
 
-	// Domain safety-net close + auto-plan-run detection off finalize's snapshot.
-	await seedIdCloseStep(ctx, state);
+	// warren-df3e: the clone-side seed-close safety net is no longer a pipeline
+	// step — it observes `post_reap` on the observation bus
+	// (`./seed-close-lifecycle.ts`), keyed off the settled outcome + branchPushed.
+	// Auto-plan-run detection still reads finalize's captured snapshot here.
 	const workspacePlans = resolveWorkspacePlans(baselinePlanIds, finalizeResult);
 	await autoDispatchStep(ctx, state, {
 		ids: workspacePlans.ids,

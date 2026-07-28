@@ -96,11 +96,11 @@ export interface K8sFinalizeDeps {
 /** The stages a FAILED finalize marks, derived from what the intent asked for. */
 function failedStages(intent: FinalizeIntent): FinalizeStage[] {
 	const stages: FinalizeStage[] = [];
-	const mirror = new Set(intent.mirror);
-	if (mirror.has("mulch")) stages.push("mulch_merge");
-	if (mirror.has("seeds")) stages.push("seeds_mirror");
-	if (mirror.has("plans")) stages.push("plans_mirror");
-	const commit = new Set(intent.commit ?? intent.mirror);
+	const artifacts = new Set(intent.artifacts);
+	if (artifacts.has("mulch")) stages.push("mulch_merge");
+	if (artifacts.has("seeds")) stages.push("seeds_mirror");
+	if (artifacts.has("plans")) stages.push("plans_mirror");
+	const commit = new Set(intent.commit ?? intent.artifacts);
 	if (commit.has("seeds")) stages.push("seeds_commit");
 	if (intent.push) stages.push("branch_push");
 	return stages;
@@ -126,20 +126,20 @@ export function failedFinalizeResult(intent: FinalizeIntent, message: string): F
 		dirty: false,
 		workspacePlansBody: null,
 		events: [{ kind: "reap_failed", payload: { step: "finalize", message } }],
-		mirror: {},
+		artifacts: {},
 		prBranch: null,
 		stages,
 	};
 }
 
 /**
- * Commit-gating defaults to `mirror` when omitted (parity with LocalProvider),
- * but the wire's `commit` only ranges over `seeds` — filter the mirror set
- * down so `mulch`/`plans` never leak into a commit list.
+ * Commit-gating defaults to the merge set when omitted (parity with
+ * LocalProvider), but the wire's `commit` only ranges over `seeds` — filter the
+ * merge set down so `mulch`/`plans` never leak into a commit list.
  */
 function resolveCommit(intent: FinalizeIntent): "seeds"[] {
 	if (intent.commit !== undefined) return [...intent.commit];
-	return intent.mirror.filter((m): m is "seeds" => m === "seeds");
+	return intent.artifacts.filter((m): m is "seeds" => m === "seeds");
 }
 
 /** Project the neutral `FinalizeIntent` onto the pod-shaped wire (host path dropped). */
@@ -151,7 +151,7 @@ export function toInPodIntent(
 		version: IN_POD_FINALIZE_WIRE_VERSION,
 		branch: intent.branch,
 		push: intent.push,
-		mirror: [...intent.mirror],
+		artifacts: [...intent.artifacts],
 		commit: resolveCommit(intent),
 		...(intent.baseBranch !== undefined ? { baseBranch: intent.baseBranch } : {}),
 		...(intent.closeSeedId !== undefined ? { closeSeedId: intent.closeSeedId } : {}),

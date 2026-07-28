@@ -2,7 +2,7 @@
  * `LocalProvider.finalize()` (pl-829f step 12 / warren-371a) — the §4
  * reap-where-the-workspace-is seam. Two concerns:
  *
- *   1. **Delta-shape guarantees** — each mirror delta constructed from realistic
+ *   1. **Delta-shape guarantees** — each artifacts delta constructed from realistic
  *      merge outputs survives a `JSON.parse(JSON.stringify(x))` round-trip. The
  *      deltas are the wire format the K8s in-pod finalize emits (step 20), so
  *      serializability is a contract guarantee, not an implementation detail.
@@ -59,7 +59,7 @@ function intent(overrides: Partial<FinalizeIntent> = {}): FinalizeIntent {
 	return {
 		branch: "warren/run-1",
 		push: true,
-		mirror: ["mulch", "seeds", "plans"],
+		artifacts: ["mulch", "seeds", "plans"],
 		baseBranch: "main",
 		projectClonePathHint: CLONE,
 		...overrides,
@@ -110,7 +110,7 @@ describe("finalize delta shapes — JSON round-trip", () => {
 		expect(roundTripped).toEqual(result);
 	});
 
-	test("each mirror delta is populated and version-tagged", async () => {
+	test("each artifact delta is populated and version-tagged", async () => {
 		const fs = fakeFs(fullSeed());
 		const p = await provider({
 			fs,
@@ -119,10 +119,10 @@ describe("finalize delta shapes — JSON round-trip", () => {
 				'{"id":"sd-1","status":"closed","updatedAt":"2026-05-08T22:00:00Z","title":"x"}\n',
 			seedsPlansBody: '{"id":"pl-1","title":"a plan"}\n',
 		});
-		const { mirror } = await p.finalize(HANDLE, intent());
-		expect(mirror.mulch?.version).toBe(1);
-		expect(mirror.seeds?.version).toBe(1);
-		expect(mirror.plans?.version).toBe(1);
+		const { artifacts } = await p.finalize(HANDLE, intent());
+		expect(artifacts.mulch?.version).toBe(1);
+		expect(artifacts.seeds?.version).toBe(1);
+		expect(artifacts.plans?.version).toBe(1);
 	});
 });
 
@@ -130,23 +130,20 @@ describe("finalize delta shapes — JSON round-trip", () => {
 /* 2. Delta assembly from the reap merge functions                          */
 /* ----------------------------------------------------------------------- */
 
-describe("finalize — mirror delta assembly", () => {
+describe("finalize — artifacts delta assembly", () => {
 	test("mulch delta carries LWW counts + per-domain merged body", async () => {
 		const fs = fakeFs(fullSeed());
 		const p = await provider({ fs, exec: fakeExec() });
-		const { mirror } = await p.finalize(HANDLE, intent({ mirror: ["mulch"] }));
-		expect(mirror.mulch).toEqual({
+		const { artifacts } = await p.finalize(HANDLE, intent({ artifacts: ["mulch"] }));
+		expect(artifacts.mulch).toEqual({
 			version: 1,
-			updated: 0,
-			skipped: 0,
-			appended: 1,
 			files: [
 				{
-					domain: "build",
 					path: ".mulch/expertise/build.jsonl",
 					mergedBody: '{"id":"mx-1","recorded_at":"2026-05-08T20:00:00Z","content":"a"}\n',
 				},
 			],
+			counts: { updated: 0, skipped: 0, appended: 1 },
 		});
 	});
 
@@ -159,24 +156,22 @@ describe("finalize — mirror delta assembly", () => {
 				'{"id":"sd-1","status":"closed","updatedAt":"2026-05-08T22:00:00Z","title":"x"}\n' +
 				'{"id":"sd-2","status":"open","updatedAt":"2026-05-08T22:00:00Z","title":"y"}\n',
 		});
-		const { mirror } = await p.finalize(HANDLE, intent({ mirror: ["seeds"] }));
-		expect(mirror.seeds?.closed).toBe(1);
-		expect(mirror.seeds?.created).toBe(1);
-		expect(mirror.seeds?.path).toBe(".seeds/issues.jsonl");
-		expect(mirror.seeds?.mergedBody).toContain('"id":"sd-2"');
-		expect(mirror.seeds?.mergedBody).toContain('"status":"closed"');
+		const { artifacts } = await p.finalize(HANDLE, intent({ artifacts: ["seeds"] }));
+		expect(artifacts.seeds?.counts.closed).toBe(1);
+		expect(artifacts.seeds?.counts.created).toBe(1);
+		expect(artifacts.seeds?.files[0]?.path).toBe(".seeds/issues.jsonl");
+		expect(artifacts.seeds?.files[0]?.mergedBody).toContain('"id":"sd-2"');
+		expect(artifacts.seeds?.files[0]?.mergedBody).toContain('"status":"closed"');
 	});
 
-	test("seeds delta mergedBody is null on a no-op mirror (no workspace file)", async () => {
+	test("seeds delta files is empty on a no-op mirror (no workspace file)", async () => {
 		const fs = fakeFs(fullSeed());
 		const p = await provider({ fs, exec: fakeExec() }); // no seedsIssuesBody → 404 → no-op
-		const { mirror } = await p.finalize(HANDLE, intent({ mirror: ["seeds"] }));
-		expect(mirror.seeds).toEqual({
+		const { artifacts } = await p.finalize(HANDLE, intent({ artifacts: ["seeds"] }));
+		expect(artifacts.seeds).toEqual({
 			version: 1,
-			closed: 0,
-			created: 0,
-			path: ".seeds/issues.jsonl",
-			mergedBody: null,
+			files: [],
+			counts: { closed: 0, created: 0 },
 		});
 	});
 
@@ -187,10 +182,10 @@ describe("finalize — mirror delta assembly", () => {
 			exec: fakeExec(),
 			seedsPlansBody: '{"id":"pl-1","title":"a plan"}\n',
 		});
-		const { mirror } = await p.finalize(HANDLE, intent({ mirror: ["plans"] }));
-		expect(mirror.plans?.appended).toBe(1);
-		expect(mirror.plans?.path).toBe(".seeds/plans.jsonl");
-		expect(mirror.plans?.mergedBody).toContain('"id":"pl-1"');
+		const { artifacts } = await p.finalize(HANDLE, intent({ artifacts: ["plans"] }));
+		expect(artifacts.plans?.counts.appended).toBe(1);
+		expect(artifacts.plans?.files[0]?.path).toBe(".seeds/plans.jsonl");
+		expect(artifacts.plans?.files[0]?.mergedBody).toContain('"id":"pl-1"');
 	});
 });
 
@@ -244,7 +239,7 @@ describe("finalize — stage trail + push reporting", () => {
 		const fs = fakeFs(fullSeed());
 		const exec = fakeExec();
 		const p = await provider({ fs, exec });
-		const result = await p.finalize(HANDLE, intent({ mirror: [], push: false }));
+		const result = await p.finalize(HANDLE, intent({ artifacts: [], push: false }));
 		expect(result.pushed).toBe(false);
 		expect(result.commitsAhead).toBe(null);
 		expect(result.prBranch).toBe(null);
@@ -258,7 +253,7 @@ describe("finalize — stage trail + push reporting", () => {
 	test("missing baseBranch → commits_ahead skipped, commitsAhead null", async () => {
 		const fs = fakeFs(fullSeed());
 		const p = await provider({ fs, exec: fakeExec() });
-		const result = await p.finalize(HANDLE, intent({ mirror: [], baseBranch: undefined }));
+		const result = await p.finalize(HANDLE, intent({ artifacts: [], baseBranch: undefined }));
 		expect(result.pushed).toBe(true);
 		expect(result.commitsAhead).toBe(null);
 		expect(result.stages).toEqual([
@@ -283,17 +278,15 @@ describe("finalize — error capture + guards", () => {
 				throw new Error("burrow files.read boom");
 			},
 		});
-		const result = await p.finalize(HANDLE, intent({ mirror: ["seeds"] }));
+		const result = await p.finalize(HANDLE, intent({ artifacts: ["seeds"] }));
 		const seedsStage = result.stages.find((s) => s.stage === "seeds_mirror");
 		expect(seedsStage?.status).toBe("failed");
 		expect(seedsStage?.error).toContain("boom");
 		// delta still present, zeroed — the domain sees the no-op explicitly.
-		expect(result.mirror.seeds).toEqual({
+		expect(result.artifacts.seeds).toEqual({
 			version: 1,
-			closed: 0,
-			created: 0,
-			path: ".seeds/issues.jsonl",
-			mergedBody: null,
+			files: [],
+			counts: { closed: 0, created: 0 },
 		});
 		// push still ran after the failed merge.
 		expect(result.pushed).toBe(true);
@@ -302,7 +295,7 @@ describe("finalize — error capture + guards", () => {
 	test("a failing branch push is captured; commits_ahead is skipped", async () => {
 		const fs = fakeFs(fullSeed());
 		const p = await provider({ fs, exec: fakeExec({ fail: "push rejected" }) });
-		const result = await p.finalize(HANDLE, intent({ mirror: [] }));
+		const result = await p.finalize(HANDLE, intent({ artifacts: [] }));
 		expect(result.pushed).toBe(false);
 		expect(result.commitsAhead).toBe(null);
 		expect(result.stages).toEqual([
@@ -311,7 +304,7 @@ describe("finalize — error capture + guards", () => {
 		]);
 	});
 
-	test("non-empty mirror without projectClonePathHint throws RuntimeProviderError", async () => {
+	test("non-empty artifacts without projectClonePathHint throws RuntimeProviderError", async () => {
 		const fs = fakeFs(fullSeed());
 		const p = await provider({ fs, exec: fakeExec() });
 		await expect(
@@ -319,14 +312,14 @@ describe("finalize — error capture + guards", () => {
 		).rejects.toBeInstanceOf(RuntimeProviderError);
 	});
 
-	test("empty mirror needs no clone hint and skips every merge stage", async () => {
+	test("empty artifacts needs no clone hint and skips every merge stage", async () => {
 		const fs = fakeFs(fullSeed());
 		const p = await provider({ fs, exec: fakeExec() });
 		const result = await p.finalize(
 			HANDLE,
-			intent({ mirror: [], projectClonePathHint: undefined }),
+			intent({ artifacts: [], projectClonePathHint: undefined }),
 		);
-		expect(result.mirror).toEqual({});
+		expect(result.artifacts).toEqual({});
 		expect(result.stages.map((s) => s.stage)).toEqual(["branch_push", "commits_ahead"]);
 	});
 });
@@ -349,14 +342,14 @@ describe("finalize — collected events", () => {
 		expect(kinds).toContain("seeds.closed");
 		expect(kinds).toContain("seeds.created");
 		expect(kinds).toContain("seeds.plan_mirrored");
-		// mulch (merge) precedes seeds (mirror).
+		// mulch (merge) precedes seeds (artifacts).
 		expect(kinds.indexOf("mulch.record.added")).toBeLessThan(kinds.indexOf("seeds.closed"));
 	});
 
 	test("event payloads are JSON-serializable (round-trip deep-equal)", async () => {
 		const fs = fakeFs(fullSeed());
 		const p = await provider({ fs, exec: fakeExec() });
-		const { events } = await p.finalize(HANDLE, intent({ mirror: ["mulch"] }));
+		const { events } = await p.finalize(HANDLE, intent({ artifacts: ["mulch"] }));
 		const roundTripped = JSON.parse(JSON.stringify(events));
 		expect(roundTripped).toEqual(events);
 		const added = events.find((e) => e.kind === "mulch.record.added");
@@ -366,7 +359,7 @@ describe("finalize — collected events", () => {
 	test("a failing branch push is collected as a reap_failed event", async () => {
 		const fs = fakeFs(fullSeed());
 		const p = await provider({ fs, exec: fakeExec({ fail: "push rejected" }) });
-		const { events } = await p.finalize(HANDLE, intent({ mirror: [] }));
+		const { events } = await p.finalize(HANDLE, intent({ artifacts: [] }));
 		const failed = events.find((e) => e.kind === "reap_failed");
 		expect(failed).toBeDefined();
 		expect(failed?.payload).toMatchObject({ step: "branch_push" });
@@ -375,7 +368,7 @@ describe("finalize — collected events", () => {
 	test("a rev-list failure emits NO reap_failed event (log-only in reap)", async () => {
 		const fs = fakeFs(fullSeed());
 		const p = await provider({ fs, exec: fakeExec({ failRevList: "bad revision" }) });
-		const { events } = await p.finalize(HANDLE, intent({ mirror: [] }));
+		const { events } = await p.finalize(HANDLE, intent({ artifacts: [] }));
 		expect(events.some((e) => e.kind === "reap_failed")).toBe(false);
 	});
 });
@@ -388,7 +381,7 @@ describe("finalize — dirty probe", () => {
 			fs,
 			exec: fakeExec({ revListCount: "0", gitStatus: " M src/foo.ts\n" }),
 		});
-		const result = await p.finalize(HANDLE, intent({ mirror: [] }));
+		const result = await p.finalize(HANDLE, intent({ artifacts: [] }));
 		expect(result.commitsAhead).toBe(0);
 		expect(result.emptyPush).toBe(true);
 		expect(result.dirty).toBe(true);
@@ -397,7 +390,7 @@ describe("finalize — dirty probe", () => {
 	test("zero-commit push + clean tree → dirty false", async () => {
 		const fs = fakeFs(fullSeed());
 		const p = await provider({ fs, exec: fakeExec({ revListCount: "0" }) });
-		const result = await p.finalize(HANDLE, intent({ mirror: [] }));
+		const result = await p.finalize(HANDLE, intent({ artifacts: [] }));
 		expect(result.emptyPush).toBe(true);
 		expect(result.dirty).toBe(false);
 	});
@@ -405,7 +398,7 @@ describe("finalize — dirty probe", () => {
 	test("non-empty push does NOT probe dirtiness (no extra git call)", async () => {
 		const fs = fakeFs(fullSeed());
 		const exec = fakeExec({ revListCount: "3" });
-		const result = await (await provider({ fs, exec })).finalize(HANDLE, intent({ mirror: [] }));
+		const result = await (await provider({ fs, exec })).finalize(HANDLE, intent({ artifacts: [] }));
 		expect(result.dirty).toBe(false);
 		// push + rev-list only — no `git status --porcelain`.
 		expect(exec.calls.some((c) => c.args.includes("status"))).toBe(false);
@@ -414,7 +407,7 @@ describe("finalize — dirty probe", () => {
 
 /* 7. commit decoupling + workspacePlansBody (warren-1f56) */
 describe("finalize — commit decoupling", () => {
-	test("mirror:[seeds] commit:[] runs the merge but skips the seeds commit", async () => {
+	test("artifacts:[seeds] commit:[] runs the merge but skips the seeds commit", async () => {
 		const fs = fakeFs({
 			[`${CLONE}/.seeds/issues.jsonl`]:
 				'{"id":"sd-1","status":"open","updatedAt":"2026-05-08T19:00:00Z","title":"x"}\n',
@@ -426,9 +419,9 @@ describe("finalize — commit decoupling", () => {
 			seedsIssuesBody:
 				'{"id":"sd-1","status":"closed","updatedAt":"2026-05-08T22:00:00Z","title":"x"}\n',
 		});
-		const result = await p.finalize(HANDLE, intent({ mirror: ["seeds"], commit: [] }));
+		const result = await p.finalize(HANDLE, intent({ artifacts: ["seeds"], commit: [] }));
 		// merge ran → closed count present …
-		expect(result.mirror.seeds?.closed).toBe(1);
+		expect(result.artifacts.seeds?.counts.closed).toBe(1);
 		// … but no seeds_commit stage and no `git add -- .seeds/`.
 		expect(result.stages.map((s) => s.stage)).not.toContain("seeds_commit");
 		expect(exec.calls.some((c) => c.args.includes(".seeds/"))).toBe(false);
@@ -443,7 +436,7 @@ describe("finalize — commit decoupling", () => {
 		const p = await provider({ fs, exec });
 		const result = await p.finalize(
 			HANDLE,
-			intent({ mirror: ["seeds"], commit: ["seeds"], push: false }),
+			intent({ artifacts: ["seeds"], commit: ["seeds"], push: false }),
 		);
 		expect(result.stages.map((s) => s.stage)).toContain("seeds_commit");
 		expect(exec.calls.some((c) => c.cmd === "git" && c.args.includes(".seeds/"))).toBe(true);
@@ -459,14 +452,14 @@ describe("finalize — workspacePlansBody snapshot", () => {
 			[`${CLONE}/.seeds/plans.jsonl`]: "",
 		});
 		const p = await provider({ fs, exec: fakeExec({ stagedDelta: true }) });
-		const result = await p.finalize(HANDLE, intent({ mirror: ["seeds"], commit: ["seeds"] }));
+		const result = await p.finalize(HANDLE, intent({ artifacts: ["seeds"], commit: ["seeds"] }));
 		expect(result.workspacePlansBody).toBe(workspacePlans);
 	});
 
 	test("null when the workspace has no plans.jsonl", async () => {
 		const fs = fakeFs(fullSeed());
 		const p = await provider({ fs, exec: fakeExec() });
-		const result = await p.finalize(HANDLE, intent({ mirror: [] }));
+		const result = await p.finalize(HANDLE, intent({ artifacts: [] }));
 		expect(result.workspacePlansBody).toBeNull();
 	});
 });

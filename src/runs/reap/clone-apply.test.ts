@@ -48,28 +48,25 @@ function resultWithDeltas(): FinalizeResult {
 		dirty: false,
 		workspacePlansBody: null,
 		events: [],
-		mirror: {
+		artifacts: {
 			mulch: {
 				version: 1,
-				updated: 1,
-				skipped: 0,
-				appended: 0,
 				files: [
 					{
-						domain: "build",
 						path: ".mulch/expertise/build.jsonl",
 						mergedBody: '{"id":"mx-1","recorded_at":"2026-07-01T00:00:00Z","content":"merged"}\n',
 					},
 				],
+				counts: { updated: 1, skipped: 0, appended: 0 },
 			},
 			seeds: {
 				version: 1,
-				closed: 1,
-				created: 0,
-				path: ".seeds/issues.jsonl",
-				mergedBody: '{"id":"warren-1","status":"closed"}\n',
+				files: [
+					{ path: ".seeds/issues.jsonl", mergedBody: '{"id":"warren-1","status":"closed"}\n' },
+				],
+				counts: { closed: 1, created: 0 },
 			},
-			plans: { version: 1, appended: 0, path: ".seeds/plans.jsonl", mergedBody: null },
+			plans: { version: 1, files: [], counts: { appended: 0 } },
 		},
 		prBranch: "warren/run-1",
 		stages: [],
@@ -146,14 +143,14 @@ describe("applyCloneDeltas (leg 2, real git clone)", () => {
 		expect(files.sort()).toEqual([".mulch/expertise/build.jsonl", ".seeds/issues.jsonl"]);
 
 		const applied = emitted.find((e) => e.kind === "reap.clone_deltas_applied");
-		expect(applied?.payload).toMatchObject({ filesWritten: 2, seeds: true, plans: false });
+		expect(applied?.payload).toMatchObject({ filesWritten: 2, artifacts: { mulch: 1, seeds: 1 } });
 	});
 
 	test("no-op (no commit) when the mirror carries no merged bodies", async () => {
 		const emitted: { kind: string; payload: unknown }[] = [];
 		const failed: { step: ReapStep; message: string }[] = [];
 		const state = createPipelineState();
-		const empty: FinalizeResult = { ...resultWithDeltas(), mirror: {} };
+		const empty: FinalizeResult = { ...resultWithDeltas(), artifacts: {} };
 
 		const committed = await applyCloneDeltas(makeCtx(dir, emitted, failed), state, empty);
 

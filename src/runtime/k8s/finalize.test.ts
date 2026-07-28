@@ -14,7 +14,7 @@ function intent(over: Partial<FinalizeIntent> = {}): FinalizeIntent {
 	return {
 		branch: "warren/run_fin",
 		push: true,
-		mirror: ["mulch", "seeds", "plans"],
+		artifacts: ["mulch", "seeds", "plans"],
 		commit: ["seeds"],
 		baseBranch: "main",
 		projectClonePathHint: "/data/projects/x",
@@ -30,8 +30,12 @@ function podResult(): FinalizeResult {
 		dirty: false,
 		workspacePlansBody: null,
 		events: [{ kind: "seeds.closed", payload: { id: "warren-1" } }],
-		mirror: {
-			seeds: { version: 1, closed: 1, created: 0, path: ".seeds/issues.jsonl", mergedBody: "x" },
+		artifacts: {
+			seeds: {
+				version: 1,
+				files: [{ path: ".seeds/issues.jsonl", mergedBody: "x" }],
+				counts: { closed: 1, created: 0 },
+			},
 		},
 		prBranch: "warren/run_fin",
 		stages: [{ stage: "branch_push", status: "ok" }],
@@ -80,12 +84,12 @@ describe("toInPodIntent", () => {
 		expect("projectClonePathHint" in wire).toBe(false);
 		expect(wire.gitToken).toBe("ghp_secret");
 		expect(wire.branch).toBe("warren/run_fin");
-		expect(wire.mirror).toEqual(["mulch", "seeds", "plans"]);
+		expect(wire.artifacts).toEqual(["mulch", "seeds", "plans"]);
 		expect(wire.commit).toEqual(["seeds"]);
 		expect(wire.baseBranch).toBe("main");
 	});
 
-	test("omits the token when absent and defaults commit from mirror (seeds only)", () => {
+	test("omits the token when absent and defaults commit from the merge set (seeds only)", () => {
 		const wire = toInPodIntent(intent({ commit: undefined }), undefined);
 		expect("gitToken" in wire).toBe(false);
 		// mulch/plans must NOT leak into the commit list.
@@ -98,7 +102,7 @@ describe("failedFinalizeResult", () => {
 		const r = failedFinalizeResult(intent(), "boom");
 		expect(r.pushed).toBe(false);
 		expect(r.commitsAhead).toBeNull();
-		expect(r.mirror).toEqual({});
+		expect(r.artifacts).toEqual({});
 		expect(r.events).toEqual([
 			{ kind: "reap_failed", payload: { step: "finalize", message: "boom" } },
 		]);

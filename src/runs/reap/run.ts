@@ -212,7 +212,6 @@ export async function reapRun(input: ReapRunInput): Promise<ReapRunResult> {
 		seeds: {
 			closed: state.seedsClosed,
 			created: state.seedsCreated,
-			seedIdClosed: state.seedIdClosed,
 			committed: state.seedsCommitted,
 		},
 		branchPushed: state.branchPushed,
@@ -295,7 +294,6 @@ export async function reapRun(input: ReapRunInput): Promise<ReapRunResult> {
 			mulchAppended: state.mulchAppended,
 			seedsClosed: state.seedsClosed,
 			seedsCreated: state.seedsCreated,
-			seedIdClosed: state.seedIdClosed,
 			seedsCommitted: state.seedsCommitted,
 			branchPushed: state.branchPushed,
 			commitsAhead: state.commitsAhead,
@@ -320,7 +318,6 @@ export async function reapRun(input: ReapRunInput): Promise<ReapRunResult> {
 		mulchAppended: state.mulchAppended,
 		seedsClosed: state.seedsClosed,
 		seedsCreated: state.seedsCreated,
-		seedIdClosed: state.seedIdClosed,
 		seedsCommitted: state.seedsCommitted,
 		branchPushed: state.branchPushed,
 		commitsAhead: state.commitsAhead,
