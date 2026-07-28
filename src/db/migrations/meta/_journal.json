@@ -232,6 +232,13 @@
 			"when": 1785265054833,
 			"tag": "0032_spotty_otto_octavius",
 			"breakpoints": true
+		},
+		{
+			"idx": 33,
+			"version": "6",
+			"when": 1785268483938,
+			"tag": "0033_bouncy_psynapse",
+			"breakpoints": true
 		}
 	]
 }

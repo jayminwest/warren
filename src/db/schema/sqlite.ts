@@ -103,13 +103,15 @@ export const runs = sqliteTable(
 		// is a soft cache anyway — spawn resolves `(agentName, projectId)`
 		// with global fallback at the application layer.
 		agentName: text("agent_name").notNull(),
-		// Nullable + ON DELETE SET NULL so deleting a project orphans its
-		// runs instead of being blocked by the FK. The UI's delete-project
-		// dialog promises 'Run history for this project is kept' (warren-5f19);
-		// before this change, an FK constraint failure on delete combined
-		// with the disk-first ordering in deleteProject left the project
-		// row orphaned from its on-disk clone.
-		projectId: text("project_id").references(() => projects.id, { onDelete: "set null" }),
+		// Nullable, ON DELETE CASCADE (warren-41b3). Deleting a project
+		// removes its runs (and, via events.run_id CASCADE, their event
+		// transcripts) rather than orphaning them with project_id = NULL.
+		// The prior SET NULL intent (warren-5f19) preserved run history
+		// across de-registration, but that leaked unattributable private
+		// transcripts on public instances and grew the events table without
+		// bound — 58% of production runs and 81% of events were orphans.
+		// Removing the orphan class outright is the fail-closed fix.
+		projectId: text("project_id").references(() => projects.id, { onDelete: "cascade" }),
 		// Provider-side sandbox id (burrow id under LocalProvider). Load-bearing:
 		// the bridge/reconnect path (`bootBridges`, `server/bridge-reconnect.ts`)
 		// reads it after a host restart to re-attach the run's live event stream.
@@ -218,9 +220,12 @@ export const events = sqliteTable(
 	TABLE_NAMES.events,
 	{
 		id: integer("id").primaryKey({ autoIncrement: true }),
+		// ON DELETE CASCADE (warren-41b3) so a run's event transcript is
+		// removed with the run — including the cascade from a deleted
+		// project (runs.project_id ON DELETE CASCADE).
 		runId: text("run_id")
 			.notNull()
-			.references(() => runs.id),
+			.references(() => runs.id, { onDelete: "cascade" }),
 		burrowEventSeq: integer("burrow_event_seq").notNull(),
 		ts: text("ts").notNull(),
 		kind: text("kind").notNull(),

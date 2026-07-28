@@ -11,13 +11,17 @@
  *     `git clone` returns success.
  *   - deleteProject removes the row *first*, then best-effort rms the
  *     on-disk clone (warren-5f19). The row delete and the
- *     `runs.project_id` SET-NULL cascade run as a single SQLite
- *     statement, so any concurrent referent (in-flight runs, history)
- *     is updated atomically. If the disk rmrf fails after the row is
- *     gone, the operator gets a logged warning and a stranded
- *     directory under the projects root — better than the prior
- *     ordering, where a row could remain pointing at a deleted
- *     directory and wedge subsequent dispatches against the project.
+ *     `runs.project_id` ON DELETE CASCADE (warren-41b3) run as a single
+ *     SQLite statement, so the project's runs — and, via
+ *     `events.run_id` ON DELETE CASCADE, their event transcripts — are
+ *     removed atomically with the row rather than orphaned with
+ *     `project_id = NULL`. Doing this before the disk rm guarantees we
+ *     never leave a `projects` row pointing at a missing directory. If
+ *     the disk rmrf fails after the row is gone, the operator gets a
+ *     logged warning and a stranded directory under the projects root —
+ *     better than the prior ordering, where a row could remain pointing
+ *     at a deleted directory and wedge subsequent dispatches against the
+ *     project.
  *
  * The `localPath` returned by the clone is re-validated against the
  * configured projects root before any rm: defense-in-depth so a
@@ -216,12 +220,13 @@ export async function deleteProject(input: DeleteProjectInput): Promise<ProjectR
 	const row = await repo.require(id);
 	assertPathUnderRoot(row.localPath, config.root);
 
-	// Row first. The FK on `runs.project_id` is `ON DELETE SET NULL`, so
-	// SQLite atomically orphans every referencing run inside the same
-	// implicit transaction. Doing this before the disk rm guarantees we
-	// never leave a `projects` row pointing at a missing directory —
-	// that combination wedged subsequent dispatches against the project
-	// (warren-5f19).
+	// Row first. The FK on `runs.project_id` is `ON DELETE CASCADE`
+	// (warren-41b3), so SQLite atomically deletes every referencing run —
+	// and, via `events.run_id` ON DELETE CASCADE, their event transcripts —
+	// inside the same implicit transaction. Doing this before the disk rm
+	// guarantees we never leave a `projects` row pointing at a missing
+	// directory — that combination wedged subsequent dispatches against
+	// the project (warren-5f19).
 	await repo.delete(id);
 	input.warrenConfigs?.invalidate(id);
 

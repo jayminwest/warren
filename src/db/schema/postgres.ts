@@ -87,7 +87,10 @@ export const runs = pgTable(
 		// pl-fef5, warren-094a). With agents identified by (name, project_id)
 		// rather than a single-column PK, this FK is no longer representable.
 		agentName: text("agent_name").notNull(),
-		projectId: text("project_id").references(() => projects.id, { onDelete: "set null" }),
+		// ON DELETE CASCADE (warren-41b3) — mirror of sqlite. Deleting a
+		// project removes its runs and (via events.run_id CASCADE) their
+		// event transcripts rather than orphaning them. See sqlite.ts.
+		projectId: text("project_id").references(() => projects.id, { onDelete: "cascade" }),
 		burrowId: text("burrow_id"),
 		burrowRunId: text("burrow_run_id"),
 		workerId: text("worker_id"),
@@ -137,9 +140,12 @@ export const events = pgTable(
 	TABLE_NAMES.events,
 	{
 		id: serial("id").primaryKey(),
+		// ON DELETE CASCADE (warren-41b3) — mirror of sqlite. Removes a
+		// run's event transcript with the run, including the project-delete
+		// cascade.
 		runId: text("run_id")
 			.notNull()
-			.references(() => runs.id),
+			.references(() => runs.id, { onDelete: "cascade" }),
 		burrowEventSeq: integer("burrow_event_seq").notNull(),
 		ts: text("ts").notNull(),
 		kind: text("kind").notNull(),
