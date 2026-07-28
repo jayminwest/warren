@@ -136,6 +136,66 @@ jobs:
       deploy: true
       version: ${{ needs.release.outputs.version }}
 
+  # Announce the release in Discord #releases. This is a sibling of `deploy`,
+  # not a step inside `release`: the release is already cut and tagged by the
+  # time this runs, so a Discord outage must show as its own red job rather
+  # than turn a successful release red.
+  #
+  # The notes are read back from the release itself (`gh release view`) rather
+  # than re-parsed from CHANGELOG.md, so Discord can never disagree with what
+  # GitHub published, and the post is proof the release exists.
+  announce:
+    needs: release
+    if: needs.release.outputs.release == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Post release notes to Discord
+        env:
+          # Discord channel webhook — docs/project-setup.md §6. Unlike
+          # AUTO_MERGE_PAT, its absence breaks nothing in the release
+          # pipeline, so a fork with no Discord server skips instead of
+          # failing. A webhook that is present but REJECTED is fatal.
+          WEBHOOK: ${{ secrets.DISCORD_RELEASES_WEBHOOK }}
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.release.outputs.version }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          if [ -z "${WEBHOOK}" ]; then
+            echo "::warning::DISCORD_RELEASES_WEBHOOK is not configured; skipping the Discord announcement (docs/project-setup.md §6)."
+            exit 0
+          fi
+          URL="https://github.com/${REPO}/releases/tag/v${VERSION}"
+          FULL=$(gh release view "v${VERSION}" --repo "${REPO}" --json body --jq .body)
+          # Discord caps an embed description at 4096 characters. Truncate on
+          # whole lines, never mid-character: a split UTF-8 sequence would
+          # produce a payload jq cannot encode.
+          NOTES=$(printf '%s\n' "${FULL}" | awk -v cap=3500 '{ n += length($0) + 1; if (n > cap) exit; print }')
+          if [ "${NOTES}" != "${FULL}" ]; then
+            NOTES="${NOTES}"$'\n\n'"… [read the full notes on GitHub](${URL})"
+          fi
+          jq -n \
+            --arg title "warren v${VERSION}" \
+            --arg url "${URL}" \
+            --arg notes "${NOTES}" \
+            --arg image "ghcr.io/${REPO}:v${VERSION}" \
+            '{
+              username: "warren",
+              embeds: [{
+                title: $title,
+                url: $url,
+                description: $notes,
+                color: 5793266,
+                footer: { text: ("docker pull " + $image) }
+              }]
+            }' > payload.json
+          curl --fail-with-body -sS --max-time 30 --retry 3 --retry-connrefused \
+            -H "Content-Type: application/json" \
+            -X POST -d @payload.json "${WEBHOOK}"
+          echo "Announced v${VERSION} in Discord."
+
   # AUTO_MERGE_PAT is a silent single point of failure (warren-8b5f). GitHub
   # suppresses workflow runs for GITHUB_TOKEN-authored pushes, so auto-merge.yml
   # must merge with a PAT; when that PAT expires, PRs simply stop merging, main
