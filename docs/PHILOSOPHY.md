@@ -53,6 +53,19 @@ and canopy fail a *prior* test — they have no users. They are being
 return as an extension when someone wants it badly enough to pay for
 the API it needs.
 
+**Amendment (2026-07-28):** the deletion pass **landed** (pl-3a79).
+Warren keeps only mulch, seeds, and sapling as opt-in integrations.
+
+- Conversations, plot (with its plan-run bridges), and canopy left
+  warren's code, DB, UI, config, CLI, and env surface.
+- The pass removed canopy at **both tiers**: the library tier
+  (`CANOPY_REPO_URL`, `POST /agents/refresh`, `warren register-agent`)
+  and the project tier (`agents.project_id`, the `.canopy/` scaffold).
+- warren-a781 first promoted the four Audit Warden agents to inline
+  built-ins, so the tier death dropped no agent.
+- Canopy and plot live on as independent os-eco projects. The pass
+  removed only warren's bundling of them.
+
 ## The seams
 
 Every swappable noun gets a contract, a registry, and at least two
@@ -164,12 +177,15 @@ Standing order of work, each step paid for by a roadmap item
    effectively landed: `ServerDeps.burrowClient` is gone and spawn/reap
    route through `RuntimeProvider`. Close out the remaining pl-829f
    children and the boundary lint.
-2. **Deletion pass** (pl-3a79, warren-e7e7…warren-0515) —
-   conversations → plot (+ plot-plan-run bridges)
-   → canopy, in that order (conversations depend on plot; plan-runs'
-   plot hooks leave with plot). Includes pulling the plot merge out of
-   `RuntimeProvider.finalize()` and deleting the twelve plot injector
-   fields — `ServerDeps` shrinks by ~15 fields in one stroke.
+2. **Deletion pass** — **landed** (pl-3a79, warren-e7e7…warren-0515):
+   conversations first, then plot with its plot-plan-run bridges, then
+   canopy. Conversations depend on plot, and the plan-run plot hooks
+   leave with plot. The pass pulled the plot merge out of
+   `RuntimeProvider.finalize()` and deleted the twelve plot injector
+   fields, so `ServerDeps` shrank by ~15 fields in one stroke. Warren
+   now keeps only mulch, seeds, and sapling as opt-in integrations. The
+   `.canopy/` project tier and the plot substrate are gone, and SPEC
+   §4.2 / §8.x / §11.O carry RETIRED banners.
 3. **Tier-1 event bus** (pl-3a79 steps 16–18,
    warren-bb60/warren-4e74/warren-df3e) on `RunEventBroker`, proven by
    moving healer

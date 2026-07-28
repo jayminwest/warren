@@ -2,15 +2,15 @@
  * Built-in agent definitions shipped with warren.
  *
  * Warren seeds these into the agents registry on every server boot so a
- * fresh install can dispatch a run without `CANOPY_REPO_URL` being set.
- * Library agents loaded from a configured canopy repo are additive: a
- * same-named library agent overrides the built-in via `agents.upsert`.
+ * fresh install can dispatch a run out of the box. The external canopy
+ * agent library was removed in the deletion pass (pl-3a79); the registry
+ * is now the built-ins alone.
  *
  * Provenance is encoded in `frontmatter.source` on each row's rendered
  * JSON. Two tiers:
  *
  *   - `"builtin"` — built-in agents shipped inline.
- *   - `"library"` — same-named overrides loaded from a configured source.
+ *   - `"library"` — legacy provenance retained for pre-existing rows.
  *                   Unset frontmatter falls back to library.
  *
  * The HTTP layer reads that field to surface `source` on `GET /agents`

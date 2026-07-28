@@ -290,7 +290,6 @@ The `warren` (or `wr`) admin CLI is for ops. The web UI is for daily work.
 
 ```
 GET    /agents                       list registered agents
-POST   /agents/refresh               re-resolve the agent registry
 GET    /agents/:name                 rendered agent JSON
 
 GET    /projects                     list cloned projects

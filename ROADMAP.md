@@ -15,15 +15,15 @@ Status vocabulary: `now`, `next`, `shipped`, `not-in-core`.
 
 - **Public read-only instance** (warren-1841, plan `pl-b82d`). The auth stack landed on main. It carries a capability-bearing `Actor`, a `PublicReadProvider` behind `WARREN_AUTH`, and a declarative route policy table. It also carries public response projections, an event scrubber, `GET /whoami`, a UI capability layer, and Cloud Armor. The cutover stays open, and `app.warren.run` answers 401 to anonymous callers today.
 - **Public-facing readiness** (plan `pl-b82d`). A docs truth pass, one shared home for the wire vocabulary, a data-driven layer gate, and `src/ui` under the quality gates.
-- **Deletion-pass closeout** (plan `pl-3a79`). Canopy removal and the Tier-1 event-bus steps stay open.
+- **Deletion-pass closeout** (plan `pl-3a79`). Conversations, plot, and canopy are all gone. The last open step evicts the mulch and seeds mirrors off `finalize()` onto the Tier-1 event bus (warren-df3e).
 
 ## Next — planned
 
 The order below mirrors the Sequencing section of [docs/PHILOSOPHY.md](docs/PHILOSOPHY.md), which is the one source of truth. Each step waits on a roadmap item to pay for it.
 
 1. **Burrow-client eviction** (`pl-829f`). Effectively landed: `ServerDeps.burrowClient` is gone and spawn plus reap route through `RuntimeProvider`. What remains is the last `pl-829f` children and the boundary lint.
-2. **Deletion pass** (`pl-3a79`). Conversations and plot are gone. Canopy is the last of the three and stays open.
-3. **Tier-1 event bus** (warren-bb60, warren-4e74, warren-df3e) on `RunEventBroker`, proven by moving healer onto it and evicting the mulch and seeds mirrors from `finalize()`. The finalize contract stops enumerating features.
+2. **Deletion pass** (`pl-3a79`). Landed. Conversations, plot, and canopy are all gone. Warren keeps only mulch, seeds, and sapling as opt-in integrations.
+3. **Tier-1 event bus** (warren-bb60, warren-4e74, warren-df3e) on `RunEventBroker`, proven by moving healer onto it and evicting the mulch and seeds mirrors from `finalize()`. The bus and the healer proof consumer landed. The mirror eviction (warren-df3e) is the last open step. The finalize contract stops enumerating features.
 4. **`Forge` and `AuthProvider` contracts**, both paid for by the GitHub App. Teams need login, repo-permission mirroring, and `run.dispatched_by` attribution.
 5. **`IssueTracker` contract**, paid for by Linear or GitHub Issues. A `supportsPlans` capability flag lets plan-runs degrade on trackers without seeds-style plan shapes.
 6. **Re-platform plan-runs, mulch, and seeds as extensions.** Here `ServerDeps` finishes dying and "remove a feature" becomes "do not load it".
@@ -66,14 +66,11 @@ Honest tombstones. A removed feature can return as an extension when someone wan
 |------|------|-----|
 | Conversations (Leveret) | v0.11.0 | No users. PHILOSOPHY rule 8 deletes rather than re-platforms. |
 | Plot | v0.11.0 | No users. Twelve injector fields left `ServerDeps` with it. |
-| Canopy (agent library, `register-agent`, `CANOPY_REPO_URL`, `/agents/refresh`) | v0.12.0 | No users. Built-in agents ship inline. PHILOSOPHY rule 8 deletes rather than re-platforms. |
+| Canopy — both tiers: the library tier (`register-agent`, `CANOPY_REPO_URL`, `/agents/refresh`) and the project tier (`agents.project_id`, the `.canopy/` scaffold) | v0.12.0 | No users. Built-in agents ship inline. The four Audit Warden agents moved to built-ins first (warren-a781). PHILOSOPHY rule 8 deletes rather than re-platforms. |
 | Multi-worker burrow model and remote workers (old R-12) | v0.10.0 | Superseded by the `k8s` runtime provider. SPEC §5.4 carries the RETIRED banner. |
 | Fly.io deploy path | v0.10.0 | Superseded by the published container image plus GKE. See `docs/RUNBOOK-K8S.md`. |
 
-The canopy agent library, its `register-agent` CLI, the `CANOPY_REPO_URL`
-knob, and the `/agents/refresh` routes are gone as of the `pl-3a79`
-deletion pass (PHILOSOPHY sequencing step 2). Built-in agents now ship
-inline (`src/registry/builtins/`). Mulch and seeds stay live.
+The `pl-3a79` deletion pass (PHILOSOPHY sequencing step 2) removed the canopy library tier (`register-agent`, `CANOPY_REPO_URL`, `/agents/refresh`) and the canopy project tier (`agents.project_id`, the `.canopy/` scaffold). Built-in agents now ship inline (`src/registry/builtins/`), and mulch, seeds, and sapling stay live as opt-in integrations.
 
 ## Under evaluation
 

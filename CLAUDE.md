@@ -10,9 +10,8 @@ The fresh-install path is standalone: the built-in `claude-code` agent
 ships inline (`src/registry/builtins/`), so a user with a GitHub URL and
 an Anthropic key can dispatch a run end-to-end with no other tooling.
 
-Warren also bundles four [os-eco](https://github.com/jayminwest/os-eco)
-data-plane tools as **opt-in built-in features**, not required
-infrastructure:
+Around that kernel warren integrates three [os-eco](https://github.com/jayminwest/os-eco)
+data-plane tools as **opt-in features**, not required infrastructure:
 
 - **mulch** — persistent agent memory across runs. Activated by the
   project having a `.mulch/` directory.
@@ -20,21 +19,35 @@ infrastructure:
   Activated by the project having a `.seeds/` directory.
 - **sapling** — alternative steerable coding harness. Ships inline as a
   built-in agent alongside claude-code.
-- **plan-run** — serial sd plan execution; activated by the project
-  having a `.seeds/` directory. A dispatch mode on top of the existing
-  single-run primitive (not a sixth bundled feature): `POST /plan-runs`
-  walks a seeds plan's children one at a time, gating each on the
-  previous PR merging before the next dispatches. Re-dispatching the
-  same plan resumes from the next open child. See SPEC §11.P.
 
-(A former sixth bundled feature, **plot** — a shared coordination
-substrate — has been **retired**; its code, DB surface, UI, config, and
-`plot` CLI were deleted in the PHILOSOPHY deletion pass. See SPEC §11.O.)
+The agent registry is entirely inline: `BUILTIN_AGENTS`
+(`src/registry/builtins/`) ships `claude-code`, `sapling`, `pi`,
+`planner`, `nightwatch`, `bugwatch`, `pr-fixer`, and `healer`, seeded
+into the agents table on every boot. There is no external agent library
+to point at — the registry is the built-ins plus the per-run agent
+definition warren renders into the workspace. `GET /agents` still
+reports `source: "builtin" | "library"` provenance; the `library` arm
+survives only for legacy rows.
 
-Same code, same depth — only the user-facing framing surfaces them as
-opt-in. When you change cross-cutting docs (README, SPEC §1/§2, package
-description), keep the standalone path primary and the integrations as
-features that light up when used.
+**plan-run** is a dispatch *mode* on top of the single-run primitive,
+not a bundled feature: activated by the project having a `.seeds/`
+directory, `POST /plan-runs` walks a seeds plan's children one at a
+time, gating each on the previous PR merging before the next
+dispatches. Re-dispatching the same plan resumes from the next open
+child. See SPEC §11.P.
+
+Two former data-plane features — **plot** (a shared coordination
+substrate) and **canopy** (an external agent-definition library) — have
+been **retired and deleted** in plan pl-3a79: their code, DB surface,
+UI, config, CLI paths, and env knobs (`PLOT_ID`, `CANOPY_REPO_URL`,
+`POST /agents/refresh`, `warren register-agent`) are gone. SPEC §11.O
+and §4.2/§8.1 carry RETIRED banners; see docs/PHILOSOPHY.md for the
+sequencing.
+
+Same code, same depth — only the user-facing framing surfaces the
+integrations as opt-in. When you change cross-cutting docs (README,
+SPEC §1/§2, package description), keep the standalone path primary and
+the integrations as features that light up when used.
 
 Warren runs against a swappable **runtime provider**, resolved once at
 boot from `WARREN_RUNTIME` (`src/runtime/registry.ts`) behind the
@@ -68,8 +81,10 @@ and is surfaced by `loadWarrenConfig()`. Notable knobs:
 - `agent.pauseTimeoutMs` (default `1800000` = 30 min, bounds 1s..24h)
   — wall-clock budget for paused interactive turns and batch runs that
   emit `question_posed`. Consumers fall back to
-  `DEFAULT_AGENT_PAUSE_TIMEOUT_MS` when the block is absent. SPEC §11.O
-  (warren-cd37 / pl-0344 step 2).
+  `DEFAULT_AGENT_PAUSE_TIMEOUT_MS` when the block is absent. Defined on
+  `DefaultsConfigSchema.agent` (`src/warren-config/schema.ts`); see the
+  `.warren/config.yaml` convention in SPEC §11.H (warren-cd37 / pl-0344
+  step 2).
 - `agent.skipGitHooks` (default `false`) — set to `true` to skip arming
   the project's git pre-commit gate on the host clone before each run.
   By default warren detects a `git config core.hooksPath` call in the

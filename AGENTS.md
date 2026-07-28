@@ -15,10 +15,14 @@ user steer mid-run, then pushes the workspace branch. One container,
 one volume, one HTTP API, one UI.
 
 The fresh-install path is standalone: the built-in `claude-code` agent
-ships inline (`src/registry/builtins/`). The bundled os-eco data-plane
-features (`mulch`, `seeds`, `sapling`, `plan-run`) are
-**opt-in** and light up when their config / directories are present —
-see `CLAUDE.md` and [`SPEC.md`](SPEC.md) §1 / §11 for the full framing.
+ships inline (`src/registry/builtins/`) with the other built-ins. The
+opt-in os-eco integrations (`mulch`, `seeds`, `sapling`) light up when
+their config or directories are present.
+
+`plan-run` is a dispatch mode over the single-run primitive that a
+`.seeds/` plan unlocks. The deletion pass pl-3a79 retired `plot` and
+`canopy` — see `CLAUDE.md` and [`SPEC.md`](SPEC.md) §1 / §11 for the
+full framing.
 
 The runtime substrate is [burrow](https://github.com/jayminwest/burrow);
 warren and burrow are co-tenanted inside the container and share a unix
