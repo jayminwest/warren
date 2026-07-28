@@ -86,6 +86,24 @@ This is safe because the auto-merge workflow already scopes to `github.repositor
 
 Keep the required status check (e.g. `ci`) so PRs still must pass CI before merging.
 
+## 6. Add the `DISCORD_RELEASES_WEBHOOK` secret (optional)
+
+The `announce` job in `.github/workflows/release.yml` posts each new release to a Discord channel. It reads the notes back from the GitHub release, so Discord shows the same curated `CHANGELOG.md` section.
+
+In Discord, make the webhook:
+
+**Server Settings → Integrations → Webhooks → New Webhook**
+
+Point it at the `#releases` channel, name it `warren`, then copy the webhook URL.
+
+Give the URL to GitHub:
+
+```bash
+gh secret set DISCORD_RELEASES_WEBHOOK --repo owner/repo
+```
+
+The job skips with a warning when the secret is absent, so a fork without a Discord server still releases. A webhook that Discord rejects fails the job.
+
 ## Quick setup script
 
 For a new repo, run all the API calls at once:
