@@ -12,7 +12,6 @@ import {
 	type DispatchRunInput,
 	isTerminalPlanRunState,
 	isTerminalRunState,
-	type ListAgentsQuery,
 	type ListAgentsResponse,
 	type ListPlanRunsFilter,
 	type ListPlanRunsResponse,
@@ -22,7 +21,6 @@ import {
 	type PlanRunDetailResponse,
 	type PlanRunRow,
 	type ProjectRow,
-	type RefreshProjectAgentsResult,
 	type RefreshProjectInput,
 	type RefreshProjectResponse,
 	type RunEvent,
@@ -168,27 +166,12 @@ export class WarrenClient {
 		);
 	}
 
-	async refreshProjectAgents(projectId: string): Promise<RefreshProjectAgentsResult> {
-		return this.request<RefreshProjectAgentsResult>(
-			`/projects/${encodeURIComponent(projectId)}/agents/refresh`,
-			{ method: "POST" },
-		);
+	async listAgents(): Promise<ListAgentsResponse> {
+		return this.request<ListAgentsResponse>("/agents");
 	}
 
-	async listAgents(query: ListAgentsQuery = {}): Promise<ListAgentsResponse> {
-		const qs =
-			query.projectId !== undefined && query.projectId !== ""
-				? `?projectId=${encodeURIComponent(query.projectId)}`
-				: "";
-		return this.request<ListAgentsResponse>(`/agents${qs}`);
-	}
-
-	async getAgent(name: string, query: ListAgentsQuery = {}): Promise<AgentRow> {
-		const qs =
-			query.projectId !== undefined && query.projectId !== ""
-				? `?projectId=${encodeURIComponent(query.projectId)}`
-				: "";
-		return this.request<AgentRow>(`/agents/${encodeURIComponent(name)}${qs}`);
+	async getAgent(name: string): Promise<AgentRow> {
+		return this.request<AgentRow>(`/agents/${encodeURIComponent(name)}`);
 	}
 
 	async createRun(input: CreateRunInput): Promise<SpawnRunResponse> {

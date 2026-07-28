@@ -297,13 +297,13 @@ async function assertStreamCapRefuses(base: string, ids: SeededIds): Promise<voi
 }
 
 /**
- * Assertion group 5. `GET /agents?projectId=` reaches the project-tier
- * agent whose `rendered_json` the seeder left unparseable, so the handler
- * raises an untyped SyntaxError — the one class of throw whose message must
- * never reach the wire (warren-4385).
+ * Assertion group 5. `GET /agents` lists the agent whose `rendered_json`
+ * the seeder left unparseable, so the handler raises an untyped
+ * SyntaxError — the one class of throw whose message must never reach the
+ * wire (warren-4385).
  */
-async function assertForcedFiveHundredSaysNothing(base: string, ids: SeededIds): Promise<void> {
-	const res = await fetch(`${base}/agents?projectId=${encodeURIComponent(ids.projectId)}`);
+async function assertForcedFiveHundredSaysNothing(base: string, _ids: SeededIds): Promise<void> {
+	const res = await fetch(`${base}/agents`);
 	assertEqual(res.status, 500, "the poison agent row forces an unhandled 500");
 	const raw = await res.text();
 	const envelope = JSON.parse(raw) as ErrorEnvelope;

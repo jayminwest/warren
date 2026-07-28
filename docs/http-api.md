@@ -7,7 +7,7 @@ This page enumerates every HTTP route registered by warren's `Bun.serve` router.
 
 To refresh: `bun run gen:docs`. To check (CI mode): `bun run gen:docs:check`.
 
-Total routes: **39**.
+Total routes: **38**.
 
 ## /agents
 
@@ -71,7 +71,6 @@ Total routes: **39**.
 | `GET` | `/projects/:id/seeds/:seedId` | `getProjectSeedHandler` |  |
 | `POST` | `/projects/:id/triggers/:triggerId/run` | `runProjectTriggerHandler` |  |
 | `POST` | `/projects/:id/refresh` | `refreshProjectHandler` |  |
-| `POST` | `/projects/:id/agents/refresh` | `refreshProjectAgentsHandler` |  |
 | `DELETE` | `/projects/:id` | `deleteProjectHandler` |  |
 
 ## /readyz

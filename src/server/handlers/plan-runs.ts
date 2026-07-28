@@ -65,8 +65,7 @@ function parsePlanRunStateFilter(raw: string | null): PlanRunStateFilter | undef
  *       400 envelope with a stable code so HTTP consumers can branch on it.
  *   (3) call showPlan; assert plan.status is in (approved, active, done) and
  *       at least one open child exists (PlanHasNoOpenChildrenError).
- *   (4) resolve agent via repos.agents.resolve with the project-tier fallback
- *       (mx-644fb5 — same posture as spawnRun).
+ *   (4) resolve agent via repos.agents.get from the global registry.
  *   (5/6) build + persist plan_runs + plan_run_children rows in a single
  *       repo.create call (the repo runs them in a transaction so a half-
  *       inserted PlanRun never appears to listActive).
@@ -145,13 +144,10 @@ export function createPlanRunHandler(deps: ServerDeps): RouteHandler {
 			);
 		}
 
-		// (4) agent resolve with project-tier fallback (mx-644fb5).
-		const agent = await deps.repos.agents.resolve(agentName, { projectId: project.id });
+		// (4) resolve the agent from the global registry.
+		const agent = await deps.repos.agents.get(agentName);
 		if (agent === null) {
-			throw new NotFoundError(`agent not found: ${agentName}`, {
-				recoveryHint:
-					"POST /projects/:id/agents/refresh to re-discover from a project .canopy/ tier",
-			});
+			throw new NotFoundError(`agent not found: ${agentName}`);
 		}
 
 		// (5/6) persist.

@@ -4,7 +4,7 @@
 #   1. ui-builder — build the React/Vite SPA into src/ui/dist.
 #   2. runtime    — bun + bwrap + uidmap, warren source, burrow itself
 #                   plus the bundled os-eco CLIs warren shells out to for
-#                   opt-in features (canopy/mulch/seeds/sapling), and the
+#                   opt-in features (mulch/seeds/sapling), and the
 #                   SPA bundle copied from stage 1.
 #
 # The supervisor (src/supervisor/main.ts) is the ENTRYPOINT — it owns
@@ -80,7 +80,7 @@ RUN apt-get update \
 
 # Bundled CLIs warren shells out to during run setup, reap, and project
 # management, plus burrow itself (the supervisor execs `burrow serve`).
-# The four os-eco CLIs (canopy/seeds/mulch/sapling) back warren's opt-in
+# The three os-eco CLIs (seeds/mulch/sapling) back warren's opt-in
 # features — they ship in every image so the features light up the moment
 # a project or operator opts in, with no separate install. Versions track
 # each tool's current release; bumping them is a deliberate image-rebuild
@@ -97,13 +97,12 @@ RUN apt-get update \
 # /root/.bun/install/global into /usr/local/install/global. Burrow's bwrap
 # profile only ro-binds /usr, /etc, /lib, /lib64, /bin, /sbin, /opt (see
 # burrow src/provider/local/bwrap.ts SYSTEM_RO_MOUNTS) — /root is not visible
-# inside the sandbox, so symlinks at /usr/local/bin/{sd,ml,cn,sapling,burrow}
+# inside the sandbox, so symlinks at /usr/local/bin/{sd,ml,sapling,burrow}
 # pointing into /root/.bun would dangle for the UID-1000 agent (warren-1eaa).
 # /usr/local sits under /usr so the symlink targets resolve inside the sandbox.
 ENV BUN_INSTALL=/usr/local
 RUN bun install -g \
     @os-eco/burrow-cli@0.3.15 \
-    @os-eco/canopy-cli@0.2.4 \
     @os-eco/seeds-cli@0.5.13 \
     @os-eco/mulch-cli@0.10.7 \
     @os-eco/sapling-cli@0.3.2 \
@@ -165,7 +164,7 @@ ENV WARREN_BURROW_SOCKET=/var/run/burrow.sock
 # The supervisor's burrow child inherits this env (src/supervisor/main.ts).
 ENV BURROW_DATA_DIR=/data/burrow
 
-# /data is a persistence boundary (sqlite + cloned canopy + cloned project
+# /data is a persistence boundary (sqlite + cloned project
 # repos + burrow's db.sqlite under /data/burrow). /var/run is where the
 # supervisor binds burrow's unix socket; the directory must exist for
 # `burrow serve --socket /var/run/burrow.sock`. /data/burrow itself is

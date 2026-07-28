@@ -60,13 +60,10 @@ export const INDEX_NAMES = {
 	eventsRunSeq: "events_run_seq_idx",
 	eventsRunTs: "events_run_ts_idx",
 	triggersProject: "triggers_project_idx",
-	// R-03 step 1 (pl-fef5, warren-094a): agents are addressed by (name,
-	// project_id). The composite enforces uniqueness for project-tier rows
-	// (project_id non-null). The partial index enforces a single global row
-	// per name; SQLite's NULL-distinct semantics mean the composite alone
-	// would let two rows with (NULL, "claude-code") coexist.
-	agentsProjectName: "agents_project_name_idx",
-	agentsGlobalName: "agents_global_name_idx",
+	// warren-f787: agents are identified by `name` alone (the project tier
+	// and its `project_id` column were removed). A single unique index on
+	// name enforces registry identity.
+	agentsName: "agents_name_idx",
 	// pl-a258 step 2 (warren-4d7c). plan_runs walk is sequential per project;
 	// `plan_runs_project_state` powers the API's listByProjectAndState filter
 	// and `plan_runs_state` powers the coordinator's `listActive()` (queued |

@@ -41,10 +41,9 @@ export const PUBLIC_ORG = "warren-acceptance";
 /** Agent visible at the global tier — the one the public sweep reads. */
 export const PUBLIC_AGENT_NAME = "stub-shell";
 /**
- * Project-tier agent whose `rendered_json` is deliberately invalid JSON.
- * Project tier so it is invisible to `GET /agents` and `GET /agents/:name`
- * (both resolve `project_id IS NULL`) and only `?projectId=` reaches it —
- * that is how the scenario forces a 500 without breaking the sweep.
+ * Agent whose `rendered_json` is deliberately invalid JSON. Listing it via
+ * `GET /agents` forces the handler to raise an untyped SyntaxError — that
+ * is how the scenario proves a forced 500 leaks nothing.
  */
 export const POISON_AGENT_NAME = "acceptance-poison-agent";
 /** Body of the steering message the anonymous inbox poll must not drain. */
@@ -169,13 +168,12 @@ export async function seedPublicInstanceDb(input: SeedPublicInstanceInput): Prom
 		});
 		await repos.agents.upsert({
 			name: POISON_AGENT_NAME,
-			projectId: project.id,
 			renderedJson: { sections: { system: "replaced below" } },
 		});
 		// Raw UPDATE: the column is a drizzle `{ mode: "json" }` text column,
 		// so an unparseable value can only be written past the mapper. Read
-		// back through `GET /agents?projectId=` it throws an untyped
-		// SyntaxError — the 500 path warren-4385 must not narrate.
+		// back through `GET /agents` it throws an untyped SyntaxError — the
+		// 500 path warren-4385 must not narrate.
 		db.raw
 			.query("UPDATE agents SET rendered_json = ? WHERE name = ?")
 			.run("{ not json", POISON_AGENT_NAME);

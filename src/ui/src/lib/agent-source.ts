@@ -1,10 +1,7 @@
-// Server-side `AgentSource` is `"builtin" | "library" | "project:<projectId>"`
-// (src/registry/builtins/index.ts, R-03 / pl-fef5 step 2). The UI mirrors the
-// shape on `AgentRow.source` but classifies on a coarser tier ("builtin" /
-// "library" / "project") for badge rendering — operators care about the tier
-// for triage, not the exact project id.
-
-import type { AgentRow } from "@/api/types.ts";
+// Server-side `AgentSource` is `"builtin" | "library"`
+// (src/registry/builtins/index.ts; the per-project `.canopy/` tier was
+// removed in warren-f787). The UI classifies on a coarser tier for badge
+// rendering. The `project` tier is retained defensively for legacy rows.
 
 export type AgentSourceTier = "builtin" | "library" | "project" | "unknown";
 
@@ -14,7 +11,7 @@ export interface ClassifiedAgentSource {
 	projectId: string | null;
 }
 
-export function classifyAgentSource(source: AgentRow["source"] | undefined): ClassifiedAgentSource {
+export function classifyAgentSource(source: string | undefined): ClassifiedAgentSource {
 	if (source === undefined) return { tier: "unknown", label: "—", projectId: null };
 	if (source === "builtin") return { tier: "builtin", label: "built-in", projectId: null };
 	if (source === "library") return { tier: "library", label: "library", projectId: null };

@@ -248,23 +248,6 @@ paths:
           required: true
           schema:
             type: string
-  /projects/{id}/agents/refresh:
-    post:
-      operationId: refreshProjectAgentsHandler
-      tags:
-        - projects
-      summary: POST /projects/:id/agents/refresh
-      responses:
-        '200':
-          description: Successful response.
-        default:
-          description: Error response (see `src/core/errors.ts`).
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
   /projects/{id}/ready-plans:
     get:
       operationId: listReadyPlansHandler

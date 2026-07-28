@@ -30,7 +30,6 @@ import {
 } from "@os-eco/burrow-cli";
 import { BurrowUnreachableError } from "../burrow-client/errors.ts";
 import { NotFoundError, StateTransitionError, ValidationError } from "../core/errors.ts";
-import { CanopyUnavailableError } from "../registry/errors.ts";
 import {
 	forbidden,
 	methodNotAllowed,
@@ -91,10 +90,6 @@ const cases: ReadonlyArray<{ name: string; produce: () => Snapshot }> = [
 	{
 		name: "warren-burrow-unreachable",
 		produce: () => snapshot(renderError(new BurrowUnreachableError("socket closed"))),
-	},
-	{
-		name: "warren-canopy-unavailable",
-		produce: () => snapshot(renderError(new CanopyUnavailableError("CANOPY_REPO_URL unset"))),
 	},
 	{
 		name: "burrow-not-found-passthrough",

@@ -60,25 +60,8 @@ export interface AgentRow {
 	source?: AgentSource;
 }
 
-export interface RefreshSkipped {
-	name: string;
-	reason: string;
-	code: string;
-}
-
-export interface ListAgentsQuery {
-	projectId?: string;
-}
-
 export interface ListAgentsResponse {
 	agents: AgentRow[];
-}
-
-export interface RefreshProjectAgentsResult {
-	projectId: string;
-	registered: AgentRow[];
-	skipped: RefreshSkipped[];
-	removed: string[];
 }
 
 export interface ProjectRow {

@@ -54,16 +54,12 @@ export const agents = pgTable(
 	TABLE_NAMES.agents,
 	{
 		id: serial("id").primaryKey(),
-		projectId: text("project_id").references(() => projects.id, { onDelete: "cascade" }),
 		name: text("name").notNull(),
 		renderedJson: jsonb("rendered_json").notNull(),
 		registeredAt: text("registered_at").notNull(),
 		lastRefreshed: text("last_refreshed").notNull(),
 	},
-	(t) => [
-		uniqueIndex(INDEX_NAMES.agentsProjectName).on(t.projectId, t.name),
-		uniqueIndex(INDEX_NAMES.agentsGlobalName).on(t.name).where(sql`${t.projectId} IS NULL`),
-	],
+	(t) => [uniqueIndex(INDEX_NAMES.agentsName).on(t.name)],
 );
 
 export const projects = pgTable(

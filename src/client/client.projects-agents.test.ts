@@ -115,7 +115,7 @@ describe("WarrenClient projects/agents", () => {
 		expect(JSON.parse(observedBody || "{}")).toEqual({});
 	});
 
-	test("listAgents GETs /agents and forwards projectId", async () => {
+	test("listAgents GETs /agents", async () => {
 		const urls: string[] = [];
 		const stubFetch = stub(async (input) => {
 			urls.push(String(input));
@@ -126,9 +126,7 @@ describe("WarrenClient projects/agents", () => {
 			fetch: stubFetch,
 		});
 		await c.listAgents();
-		await c.listAgents({ projectId: "p 1" });
 		expect(urls[0]).toBe("https://w.local/agents");
-		expect(urls[1]).toBe("https://w.local/agents?projectId=p%201");
 	});
 
 	test("getAgent GETs /agents/:name and url-encodes", async () => {
@@ -147,31 +145,8 @@ describe("WarrenClient projects/agents", () => {
 			config: { baseUrl: "https://w.local" },
 			fetch: stubFetch,
 		});
-		const row = await c.getAgent("claude-code", { projectId: "p1" });
-		expect(observedUrl).toBe("https://w.local/agents/claude-code?projectId=p1");
+		const row = await c.getAgent("claude-code");
+		expect(observedUrl).toBe("https://w.local/agents/claude-code");
 		expect(row.source).toBe("builtin");
-	});
-
-	test("refreshProjectAgents POSTs /projects/:id/agents/refresh", async () => {
-		let observedUrl: string | undefined;
-		let observedMethod: string | undefined;
-		const stubFetch = stub(async (input, init) => {
-			observedUrl = String(input);
-			observedMethod = init?.method;
-			return jsonResponse(200, {
-				projectId: "p1",
-				registered: [],
-				skipped: [],
-				removed: [],
-			});
-		});
-		const c = new WarrenClient({
-			config: { baseUrl: "https://w.local" },
-			fetch: stubFetch,
-		});
-		const res = await c.refreshProjectAgents("p1");
-		expect(observedUrl).toBe("https://w.local/projects/p1/agents/refresh");
-		expect(observedMethod).toBe("POST");
-		expect(res.projectId).toBe("p1");
 	});
 });
