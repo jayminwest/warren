@@ -27,6 +27,15 @@ jobs:
       github.event.pull_request.user.login == github.repository_owner &&
       !contains(github.event.pull_request.labels.*.name, 'no-automerge')
     steps:
+      # Pin to the PR head SHA, not the default `refs/pull/N/merge` ref.
+      # GitHub computes the merge ref asynchronously after a PR is opened,
+      # so resolving it is the same race warren-7b2f is about. A head SHA
+      # from the event payload is immutable and always resolvable.
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
       # docs/CONSTITUTION.md Article IX: changes to the constitution, the
       # cron triggers, the built-in agent definitions, or this workflow
       # itself must be merged by a human — never auto-merge. This step is
@@ -35,22 +44,50 @@ jobs:
       - name: Article IX check (constitution-protected paths)
         id: protected
         env:
-          GH_TOKEN: ${{ secrets.AUTO_MERGE_PAT }}
-          PR_URL: ${{ github.event.pull_request.html_url }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
+          set -uo pipefail
           PROTECTED='^(docs/CONSTITUTION\.md|\.warren/triggers\.yaml|\.canopy/|src/registry/builtins/|\.github/workflows/auto-merge\.yml)'
-          # Paginated files API, not `gh pr view --json files` — the latter
-          # caps at 100 entries, which hides protected paths on large PRs
-          # (warren-88e1).
-          CHANGED=$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/files" --paginate -q '.[].path')
-          if echo "$CHANGED" | grep -qE "$PROTECTED"; then
+
+          # warren-7b2f: the changed-file list comes from git, NOT from
+          # `gh api .../pulls/:n/files`. That endpoint keys each entry
+          # `filename`; only `gh pr view --json files` uses `path`. When #609
+          # swapped one for the other it kept the old `-q '.[].path'`, so from
+          # 2026-07-17 the list was one empty string per file, the grep below
+          # matched nothing, and this gate permitted every PR it was asked to
+          # judge — including #644, which changed docs/CONSTITUTION.md,
+          # .warren/triggers.yaml and this workflow itself. Git needs no field
+          # name and no async materialization, so that class of bug is gone.
+          # Three-dot: diff against the merge base, so commits that landed on
+          # the base branch after the PR opened are not counted as changes.
+          if ! CHANGED=$(git diff --name-only "${BASE_SHA}...${HEAD_SHA}"); then
+            echo "hit=true" >> "$GITHUB_OUTPUT"
+            echo "Article IX: cannot diff ${BASE_SHA}...${HEAD_SHA} — refusing auto-merge (fail closed)."
+            exit 0
+          fi
+
+          COUNT=$(printf '%s\n' "$CHANGED" | grep -c . || true)
+          echo "Article IX: ${COUNT} changed file(s) in ${BASE_SHA}...${HEAD_SHA}"
+
+          # Fail closed. A pull request always changes at least one file, so an
+          # empty list means the source was unreliable — never that the diff
+          # was clean. The old step drew the opposite conclusion.
+          if [ "$COUNT" -eq 0 ]; then
+            echo "hit=true" >> "$GITHUB_OUTPUT"
+            echo "Article IX: empty changed-file list — refusing auto-merge (fail closed)."
+            exit 0
+          fi
+
+          if printf '%s\n' "$CHANGED" | grep -qE "$PROTECTED"; then
             echo "hit=true" >> "$GITHUB_OUTPUT"
             echo "Article IX: protected paths changed — auto-merge will NOT be enabled:"
-            echo "$CHANGED" | grep -E "$PROTECTED"
+            printf '%s\n' "$CHANGED" | grep -E "$PROTECTED"
           else
             echo "hit=false" >> "$GITHUB_OUTPUT"
+            echo "Article IX: no protected paths in the diff — auto-merge may be enabled."
           fi
+
       - name: Enable auto-merge (squash)
         if: steps.protected.outputs.hit == 'false'
         env:
