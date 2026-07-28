@@ -16,7 +16,7 @@ one volume, one HTTP API, one UI.
 
 The fresh-install path is standalone: the built-in `claude-code` agent
 ships inline (`src/registry/builtins/`). The bundled os-eco data-plane
-features (`canopy`, `mulch`, `seeds`, `sapling`, `plot`, `plan-run`) are
+features (`canopy`, `mulch`, `seeds`, `sapling`, `plan-run`) are
 **opt-in** and light up when their config / directories are present —
 see `CLAUDE.md` and [`SPEC.md`](SPEC.md) §1 / §11 for the full framing.
 
@@ -298,7 +298,7 @@ Canonical home for per-project defaults. Schema:
 `src/warren-config/schema.ts` (`DefaultsConfigSchema`), surfaced by
 `loadWarrenConfig()`. Notable knobs: `defaultRole`, `defaultPrompt`,
 `defaultProvider`, `defaultModel`, `defaultBranch`, `runBranchPrefix`,
-`preview`, `agent.pauseTimeoutMs`, `agent.skipGitHooks`, `plotSync`. See `CLAUDE.md` and
+`preview`, `agent.pauseTimeoutMs`, `agent.skipGitHooks`. See `CLAUDE.md` and
 SPEC §11.H / §11.L / §11.O for details.
 
 ## Golden snapshots

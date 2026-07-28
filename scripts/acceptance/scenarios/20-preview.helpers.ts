@@ -1,7 +1,7 @@
 /**
  * File-local helper group for scenario 20 (`20-preview.ts`).
  *
- * Mirrors the precedent in `32-plot-workbench-loop.helpers.ts`: the
+ * Splits helpers out of the scenario body: the
  * fixture builder, run/preview polling, event fetch, and proxy/login
  * handshake helpers live here so the scenario body stays under the
  * per-file line budget. The scenario body imports the exported symbols

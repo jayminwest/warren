@@ -122,22 +122,6 @@ JSON
   echo "stub-agent: wrote seed close id=${seed_id} to ${seeds_path}"
 fi
 
-# Plot integration (warren-4e06 / pl-2047 step 8). When the burrow forwards
-# PLOT_ID + PLOT_ACTOR into the sandbox (warren-e26f), echo both for the
-# acceptance scenario to assert their presence, then `plot append` a
-# decision_made event so reap-time mirroring (warren-7e0f) has something
-# to merge into warren's event stream. Gated on PLOT_ID so unrelated
-# scenarios (no plot_id dispatched) are unaffected.
-if [ -n "${PLOT_ID:-}" ]; then
-  echo "stub-agent: PLOT_ID=${PLOT_ID}"
-  echo "stub-agent: PLOT_ACTOR=${PLOT_ACTOR:-<unset>}"
-  if plot append --event decision_made --data '{"summary":"scenario-25 stub agent"}' >/dev/null 2>&1; then
-    echo "stub-agent: plot append decision_made OK"
-  else
-    echo "stub-agent: plot append failed (PLOT_ID=${PLOT_ID} PLOT_ACTOR=${PLOT_ACTOR:-<unset>})"
-  fi
-fi
-
 # Optional sleep so scenarios that need a long-running agent (event
 # stream replay, supervisor restart) can drive the kill before exit.
 # Heartbeats are emitted once per second so warren's bridge has a steady
