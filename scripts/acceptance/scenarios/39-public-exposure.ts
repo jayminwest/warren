@@ -53,6 +53,15 @@ import {
 
 /** Per-client event-stream cap this scenario boots with (warren-25f6). */
 const MAX_STREAMS_PER_CLIENT = 2;
+/**
+ * Floor on how many mutating (non-GET) routes the policy table must declare
+ * as blocked. A tripwire, not a census: it catches a POST/DELETE that lost
+ * its policy and silently fell out of the refusal sweep. Lower it only
+ * alongside a route the diff actually DELETES — never to make CI green.
+ * Last moved by warren-5652, which deleted `POST /agents/refresh` with the
+ * canopy library tier (15 → 14).
+ */
+const MIN_MUTATING_BLOCKED_ROUTES = 14;
 /** How long a refused boot gets to exit non-zero before we call it a hang. */
 const BOOT_REFUSAL_TIMEOUT_MS = 20_000;
 
@@ -184,8 +193,8 @@ async function assertBlockedRoutesRefused(
 		debug(`scenario-39: ${call.method} ${call.pattern} → ${res.status}`);
 	}
 	assertTrue(
-		mutations >= 15,
-		`expected the policy table to declare at least 15 mutating routes, saw ${mutations} — did a POST/DELETE route lose its policy?`,
+		mutations >= MIN_MUTATING_BLOCKED_ROUTES,
+		`expected the policy table to declare at least ${MIN_MUTATING_BLOCKED_ROUTES} mutating routes, saw ${mutations} — did a POST/DELETE route lose its policy?`,
 	);
 }
 
