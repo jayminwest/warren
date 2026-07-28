@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { openDatabase, type WarrenDb } from "../db/client.ts";
 import { DrizzleAdapter } from "../db/repos/drizzle-adapter.ts";
+import { EventsRepo } from "../db/repos/events.ts";
 import { ProjectsRepo } from "../db/repos/projects.ts";
 import { RunsRepo } from "../db/repos/runs.ts";
 import { ProjectUnavailableError } from "./errors.ts";
@@ -70,8 +71,8 @@ describe("deleteProject", () => {
 
 	test("removes the row even when rmrf throws and surfaces a logger warning", async () => {
 		// Reordered behaviour (warren-5f19): the row delete is the
-		// transactional fix that orphans referencing runs via ON DELETE
-		// SET NULL; a stranded clone on disk is a recoverable
+		// transactional fix that cascade-removes referencing runs via ON
+		// DELETE CASCADE; a stranded clone on disk is a recoverable
 		// inconvenience, not a blocker. The prior contract ("rm fails →
 		// row remains registered") left the system in 'row exists, disk
 		// gone' if the operator hit `delete` again, which then wedged
@@ -105,11 +106,14 @@ describe("deleteProject", () => {
 		expect(warnings[0]?.msg).toContain("stranded clone");
 	});
 
-	test("orphans referencing runs via ON DELETE SET NULL instead of failing the FK", async () => {
-		// SPEC §11.E + warren-5f19: deleting a project with run history
-		// must succeed and keep the runs as orphans (project_id null), so
-		// the UI can still render the historical runs and operators can
-		// re-register the same gitUrl without an FK conflict.
+	test("cascade-removes referencing runs and their event transcripts (warren-41b3)", async () => {
+		// warren-41b3: deleting a project must remove its runs and their
+		// event transcripts rather than orphaning them with project_id =
+		// NULL. Orphaned runs kept their prompt + full event stream and
+		// leaked unattributable transcripts on public instances (58% of
+		// production runs / 81% of events were orphans). The FK is now ON
+		// DELETE CASCADE (runs.project_id) chained to events.run_id ON
+		// DELETE CASCADE, so the whole subtree disappears in one statement.
 		const row = await addProject({
 			repo,
 			config: CFG,
@@ -119,7 +123,8 @@ describe("deleteProject", () => {
 		});
 
 		const runsRepo = new RunsRepo(DrizzleAdapter.for(db));
-		// Seed a referencing agent + run before the delete.
+		const eventsRepo = new EventsRepo(DrizzleAdapter.for(db));
+		// Seed a referencing agent + run + event before the delete.
 		db.raw.exec(
 			"INSERT INTO agents (name, rendered_json, registered_at, last_refreshed) VALUES ('claude-code', '{}', '2026-05-09T00:00:00.000Z', '2026-05-09T00:00:00.000Z')",
 		);
@@ -130,6 +135,14 @@ describe("deleteProject", () => {
 			renderedAgentJson: { name: "claude-code" },
 			trigger: "manual",
 		});
+		await eventsRepo.append({
+			runId: created.id,
+			burrowEventSeq: 1,
+			ts: "2026-05-09T00:00:01.000Z",
+			kind: "log",
+			payload: { line: "secret transcript" },
+		});
+		expect(await eventsRepo.listByRunIds([created.id])).toHaveLength(1);
 
 		await deleteProject({
 			repo,
@@ -140,8 +153,12 @@ describe("deleteProject", () => {
 		});
 
 		expect(await repo.get(row.id)).toBeNull();
-		const orphan = await runsRepo.require(created.id);
-		expect(orphan.projectId).toBeNull();
+		// The run row is gone, not orphaned.
+		await expect(runsRepo.require(created.id)).rejects.toMatchObject({
+			code: "not_found",
+		});
+		// And its event transcript went with it.
+		expect(await eventsRepo.listByRunIds([created.id])).toHaveLength(0);
 	});
 
 	test("refuses to delete a project whose localPath escaped the configured root", async () => {

@@ -190,6 +190,13 @@
 			"when": 1785265057128,
 			"tag": "0026_optimal_stryfe",
 			"breakpoints": true
+		},
+		{
+			"idx": 27,
+			"version": "7",
+			"when": 1785268484222,
+			"tag": "0027_lumpy_silvermane",
+			"breakpoints": true
 		}
 	]
 }

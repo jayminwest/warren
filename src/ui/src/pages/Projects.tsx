@@ -233,7 +233,7 @@ export function ProjectsPage() {
 							{confirmDelete !== null ? (
 								<>
 									This removes <code>{confirmDelete.localPath}</code> from disk and the project row.
-									Run history for this project is kept.
+									This project's runs and their event transcripts are deleted too.
 								</>
 							) : null}
 						</DialogDescription>
