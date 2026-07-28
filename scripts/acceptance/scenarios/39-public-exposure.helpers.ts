@@ -38,13 +38,17 @@ import { AcceptanceError } from "../lib/assert.ts";
 
 /** Owner of the seeded project; also the whole public org allowlist. */
 export const PUBLIC_ORG = "warren-acceptance";
-/** Agent visible at the global tier — the one the public sweep reads. */
+/** The agent the public sweep reads. */
 export const PUBLIC_AGENT_NAME = "stub-shell";
 /**
- * Project-tier agent whose `rendered_json` is deliberately invalid JSON.
- * Project tier so it is invisible to `GET /agents` and `GET /agents/:name`
- * (both resolve `project_id IS NULL`) and only `?projectId=` reaches it —
- * that is how the scenario forces a 500 without breaking the sweep.
+ * Agent whose `rendered_json` is deliberately invalid JSON. Reading it
+ * forces the handler to raise an untyped SyntaxError — that is how the
+ * scenario proves a forced 500 leaks nothing.
+ *
+ * The row is written by {@link poisonAgentRow} AFTER the public read sweep,
+ * not by the seeder: warren-f787 deleted the project tier, so every agent
+ * row is now visible to `GET /agents` and a poison row present at seed time
+ * would 500 the sweep it is supposed to run beside.
  */
 export const POISON_AGENT_NAME = "acceptance-poison-agent";
 /** Body of the steering message the anonymous inbox poll must not drain. */
@@ -167,19 +171,6 @@ export async function seedPublicInstanceDb(input: SeedPublicInstanceInput): Prom
 				resolvedFrom: SENTINELS.agentResolvedFrom,
 			},
 		});
-		await repos.agents.upsert({
-			name: POISON_AGENT_NAME,
-			projectId: project.id,
-			renderedJson: { sections: { system: "replaced below" } },
-		});
-		// Raw UPDATE: the column is a drizzle `{ mode: "json" }` text column,
-		// so an unparseable value can only be written past the mapper. Read
-		// back through `GET /agents?projectId=` it throws an untyped
-		// SyntaxError — the 500 path warren-4385 must not narrate.
-		db.raw
-			.query("UPDATE agents SET rendered_json = ? WHERE name = ?")
-			.run("{ not json", POISON_AGENT_NAME);
-
 		const seedId = "ah-39-1";
 		const run = await repos.runs.create({
 			agentName: PUBLIC_AGENT_NAME,
@@ -231,6 +222,38 @@ export async function seedPublicInstanceDb(input: SeedPublicInstanceInput): Prom
 			poisonAgentName: POISON_AGENT_NAME,
 			seedId,
 		};
+	} finally {
+		await db.close();
+	}
+}
+
+/**
+ * Write the poison agent row against the LIVE instance's database, after
+ * the public read sweep has run (see {@link POISON_AGENT_NAME}).
+ *
+ * The row goes in through a second sqlite connection on the same file —
+ * WAL admits the one writer, and the server reads it back on the next
+ * request. `skipMigrations` because the seeder already migrated this
+ * database and warren has since booted against it.
+ *
+ * The value is written with a raw UPDATE: `rendered_json` is a drizzle
+ * `{ mode: "json" }` text column, so an unparseable value can only be
+ * written past the mapper. Read back through the agents handler it throws
+ * an untyped SyntaxError — the 500 path warren-4385 must not narrate.
+ */
+export async function poisonAgentRow(tmpRoot: string): Promise<void> {
+	const db = await openDatabase({
+		path: join(tmpRoot, "data", "warren.db"),
+		skipMigrations: true,
+	});
+	try {
+		await createRepos(db).agents.upsert({
+			name: POISON_AGENT_NAME,
+			renderedJson: { sections: { system: "replaced below" } },
+		});
+		db.raw
+			.query("UPDATE agents SET rendered_json = ? WHERE name = ?")
+			.run("{ not json", POISON_AGENT_NAME);
 	} finally {
 		await db.close();
 	}

@@ -37,11 +37,6 @@
 			"why": "Same mirrored wire vocabulary as the plan-run rows above, guarded by check:wire-types."
 		},
 		{
-			"a": "src/server/handlers/agents.ts",
-			"b": "src/server/handlers/projects.ts",
-			"why": "The RouteHandler preamble every :id route repeats — `requireParam(ctx, \"id\")` then `deps.repos.projects.require(id)`. That preamble IS the thin-surface contract; hiding it behind a wrapper would obscure the 404 path."
-		},
-		{
 			"a": "src/server/handlers/alerts.ts",
 			"b": "src/server/handlers/projects.ts",
 			"why": "The `spawnRun` argument object. Both routes dispatch a run, so they pass the same optional-spread deps; the dispatch logic itself lives once in src/runs/spawn/dispatch.ts."

@@ -50,42 +50,26 @@ import {
 } from "./columns.ts";
 
 /**
- * Canopy registry cache. Three tiers of rows live here, addressed by
- * (name, project_id):
+ * Agent registry cache. Rows are identified by `name` alone — the global
+ * registry seeded from `src/registry/builtins/`, plus any same-named
+ * library override. A synthetic rowid PK backs the table; a single unique
+ * index on `name` enforces registry identity (warren-f787, which removed
+ * the per-project `.canopy/` tier and its `project_id` column).
  *
- *   - built-in   (`source = 'builtin'`)        — `project_id IS NULL`
- *   - library    (`source = 'library'`)        — `project_id IS NULL`
- *   - project    (`source = 'project:<id>'`)   — `project_id = <id>`
- *
- * R-03 (pl-fef5, warren-094a) replaced the single-column `name` primary
- * key with a synthetic rowid PK so the project tier can carry duplicate
- * names across projects. Identity is enforced at the index layer:
- *
- *   - composite unique on (project_id, name) for project-tier rows.
- *   - partial unique on (name) WHERE project_id IS NULL for the global
- *     tier — SQLite treats NULL as distinct in plain unique indexes, so
- *     the composite alone would allow two `(NULL, "claude-code")` rows.
- *
- * `runs.agent_name` used to FK to `agents.name`; with composite identity
- * the FK is unrepresentable in SQLite (no composite FK from a single
- * column), so it was dropped. The agents table is a soft cache —
- * spawn-time lookups fall back to "global" if a project-tier row is
- * missing and `POST /agents/refresh` re-discovers from canopy.
+ * `runs.agent_name` does not FK to `agents.name` — the agents table is a
+ * soft cache, re-seeded on boot, so a run row keeps its frozen
+ * `rendered_agent_json` even if the agent row is later removed.
  */
 export const agents = sqliteTable(
 	TABLE_NAMES.agents,
 	{
 		id: integer("id").primaryKey({ autoIncrement: true }),
-		projectId: text("project_id").references(() => projects.id, { onDelete: "cascade" }),
 		name: text("name").notNull(),
 		renderedJson: text("rendered_json", { mode: "json" }).notNull(),
 		registeredAt: text("registered_at").notNull(),
 		lastRefreshed: text("last_refreshed").notNull(),
 	},
-	(t) => [
-		uniqueIndex(INDEX_NAMES.agentsProjectName).on(t.projectId, t.name),
-		uniqueIndex(INDEX_NAMES.agentsGlobalName).on(t.name).where(sql`${t.projectId} IS NULL`),
-	],
+	(t) => [uniqueIndex(INDEX_NAMES.agentsName).on(t.name)],
 );
 
 export const projects = sqliteTable(

@@ -76,18 +76,9 @@ export async function spawnRun(input: SpawnRunInput): Promise<SpawnRunResult> {
 		throw new ValidationError("prompt cannot be empty");
 	}
 
-	// R-03 (pl-fef5 step 7): prefer the project tier when a project-scoped
-	// row exists, fall back to the global (built-in + library) tier otherwise.
-	// `resolve` returns null on both misses; re-raise as the same NotFoundError
-	// shape `require` used to so HTTP/CLI error envelopes (incl. the
-	// `POST /agents/refresh` recovery hint) stay intact.
-	const agentRow = await input.repos.agents.resolve(input.agentName, {
-		projectId: input.projectId,
-	});
+	const agentRow = await input.repos.agents.get(input.agentName);
 	if (!agentRow) {
-		throw new NotFoundError(`agent not found: ${input.agentName}`, {
-			recoveryHint: "POST /projects/:id/agents/refresh to re-discover from a project .canopy/ tier",
-		});
+		throw new NotFoundError(`agent not found: ${input.agentName}`);
 	}
 	const project = await input.repos.projects.require(input.projectId);
 	const baseAgent = readCachedAgent(agentRow.renderedJson, agentRow.name);

@@ -4,16 +4,12 @@ import { AgentsRepo } from "../../db/repos/agents.ts";
 import { DrizzleAdapter } from "../../db/repos/drizzle-adapter.ts";
 import { parseRenderedAgent, type RenderResponse } from "../schema.ts";
 import {
-	agentSourceTier,
 	BUILTIN_AGENT_NAMES,
 	BUILTIN_AGENTS,
 	CLAUDE_CODE_BUILTIN,
-	isProjectAgentSource,
-	makeProjectAgentSource,
 	PI_BUILTIN,
 	PLANNER_BUILTIN,
 	PR_FIXER_BUILTIN,
-	projectIdFromAgentSource,
 	readAgentSource,
 	SAPLING_BUILTIN,
 	seedBuiltinAgents,
@@ -98,61 +94,6 @@ describe("readAgentSource", () => {
 		expect(readAgentSource("not-an-object")).toBe("library");
 		expect(readAgentSource(42)).toBe("library");
 	});
-
-	test("returns 'project:<id>' when frontmatter.source carries the project prefix", () => {
-		expect(
-			readAgentSource({
-				name: "refactor-bot",
-				sections: { system: "..." },
-				frontmatter: { source: "project:prj_aaaaaaaaaaaa" },
-			}),
-		).toBe("project:prj_aaaaaaaaaaaa");
-	});
-
-	test("collapses an empty-suffix project: source back to 'library'", () => {
-		// A bare 'project:' string isn't a valid project tier — refusing to
-		// pass it through keeps `agentSourceTier` honest for malformed rows.
-		expect(
-			readAgentSource({
-				name: "refactor-bot",
-				sections: { system: "..." },
-				frontmatter: { source: "project:" },
-			}),
-		).toBe("library");
-	});
-});
-
-describe("makeProjectAgentSource / isProjectAgentSource / projectIdFromAgentSource", () => {
-	test("round-trip: makeProjectAgentSource then projectIdFromAgentSource", () => {
-		const source = makeProjectAgentSource("prj_aaaaaaaaaaaa");
-		expect(source).toBe("project:prj_aaaaaaaaaaaa");
-		expect(isProjectAgentSource(source)).toBe(true);
-		expect(projectIdFromAgentSource(source)).toBe("prj_aaaaaaaaaaaa");
-	});
-
-	test("rejects empty projectId", () => {
-		expect(() => makeProjectAgentSource("")).toThrow(/non-empty/);
-	});
-
-	test("isProjectAgentSource is false for builtin / library / empty-suffix strings", () => {
-		expect(isProjectAgentSource("builtin")).toBe(false);
-		expect(isProjectAgentSource("library")).toBe(false);
-		expect(isProjectAgentSource("project:")).toBe(false);
-		expect(isProjectAgentSource("")).toBe(false);
-	});
-
-	test("projectIdFromAgentSource returns null for non-project tiers", () => {
-		expect(projectIdFromAgentSource("builtin")).toBeNull();
-		expect(projectIdFromAgentSource("library")).toBeNull();
-	});
-});
-
-describe("agentSourceTier", () => {
-	test("classifies each tier to a coarse string", () => {
-		expect(agentSourceTier("builtin")).toBe("builtin");
-		expect(agentSourceTier("library")).toBe("library");
-		expect(agentSourceTier(makeProjectAgentSource("prj_aaaaaaaaaaaa"))).toBe("project");
-	});
 });
 
 describe("stampAgentSource", () => {
@@ -167,22 +108,6 @@ describe("stampAgentSource", () => {
 	test("preserves other frontmatter fields", () => {
 		const stamped = stampAgentSource(CLAUDE_CODE_BUILTIN, "library");
 		expect(stamped.frontmatter.tags).toEqual(["agent"]);
-	});
-
-	test("stamps a project-tier source via makeProjectAgentSource", () => {
-		const stamped = stampAgentSource(
-			{
-				name: "refactor-bot",
-				version: 1,
-				sections: { system: "..." },
-				resolvedFrom: [],
-				frontmatter: {},
-			},
-			makeProjectAgentSource("prj_aaaaaaaaaaaa"),
-		);
-		expect(stamped.frontmatter.source).toBe("project:prj_aaaaaaaaaaaa");
-		expect(readAgentSource(stamped)).toBe("project:prj_aaaaaaaaaaaa");
-		expect(agentSourceTier(readAgentSource(stamped))).toBe("project");
 	});
 });
 

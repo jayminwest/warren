@@ -219,13 +219,12 @@ export type EventStream = (typeof EVENT_STREAMS)[number];
 
 /**
  * Registry provenance stamped onto an agent row by the server
- * (warren-f6ad / readAgentSource). R-03 (pl-fef5) widened it from
- * `"builtin" | "library"` to also carry the per-project `.canopy/` tier as
- * `project:<projectId>`; consumers classify by the `project:` prefix. Not a
- * closed tuple — the project tier is an open template literal — so there is
- * no `AGENT_SOURCES` array to iterate.
+ * (warren-f6ad / readAgentSource). Two tiers: built-in agents shipped
+ * inline (`"builtin"`) and same-named library overrides (`"library"`).
+ * The per-project `.canopy/` tier was removed in warren-f787.
  */
-export type AgentSource = "builtin" | "library" | `project:${string}`;
+export const AGENT_SOURCES = ["builtin", "library"] as const;
+export type AgentSource = (typeof AGENT_SOURCES)[number];
 
 /**
  * Preview environment lifecycle (R-19 / SPEC §11.L).

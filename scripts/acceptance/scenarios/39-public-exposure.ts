@@ -46,6 +46,7 @@ import {
 	INBOX_BODY,
 	POISON_AGENT_NAME,
 	PUBLIC_ORG,
+	poisonAgentRow,
 	publicGetCalls,
 	type SeededIds,
 	seedPublicInstanceDb,
@@ -58,10 +59,11 @@ const MAX_STREAMS_PER_CLIENT = 2;
  * as blocked. A tripwire, not a census: it catches a POST/DELETE that lost
  * its policy and silently fell out of the refusal sweep. Lower it only
  * alongside a route the diff actually DELETES — never to make CI green.
- * Last moved by warren-5652, which deleted `POST /agents/refresh` with the
- * canopy library tier (15 → 14).
+ * Last moved by warren-f787, which deleted `POST /projects/:id/agents/refresh`
+ * with the canopy project tier (14 → 13). Before that, warren-5652 deleted
+ * `POST /agents/refresh` with the canopy library tier (15 → 14).
  */
-const MIN_MUTATING_BLOCKED_ROUTES = 14;
+const MIN_MUTATING_BLOCKED_ROUTES = 13;
 /** How long a refused boot gets to exit non-zero before we call it a hang. */
 const BOOT_REFUSAL_TIMEOUT_MS = 20_000;
 
@@ -132,6 +134,9 @@ export const scenario: Scenario = {
 			await assertNoLeakOnPublicReads(base, ids, ctx.logger.debug);
 			await assertInboxNotDrained(base, operator, ids);
 			await assertStreamCapRefuses(base, ids);
+			// Poison LAST: warren-f787 deleted the project tier, so the row is
+			// visible to `GET /agents` and would 500 the read sweep above.
+			await poisonAgentRow(scenarioRoot);
 			await assertForcedFiveHundredSaysNothing(base, ids);
 
 			// Fail-closed part 2: three boot configurations that must REFUSE.
@@ -297,13 +302,13 @@ async function assertStreamCapRefuses(base: string, ids: SeededIds): Promise<voi
 }
 
 /**
- * Assertion group 5. `GET /agents?projectId=` reaches the project-tier
- * agent whose `rendered_json` the seeder left unparseable, so the handler
- * raises an untyped SyntaxError — the one class of throw whose message must
- * never reach the wire (warren-4385).
+ * Assertion group 5. `GET /agents` lists the agent whose `rendered_json`
+ * {@link poisonAgentRow} just left unparseable, so the handler raises an
+ * untyped SyntaxError — the one class of throw whose message must never
+ * reach the wire (warren-4385).
  */
-async function assertForcedFiveHundredSaysNothing(base: string, ids: SeededIds): Promise<void> {
-	const res = await fetch(`${base}/agents?projectId=${encodeURIComponent(ids.projectId)}`);
+async function assertForcedFiveHundredSaysNothing(base: string, _ids: SeededIds): Promise<void> {
+	const res = await fetch(`${base}/agents`);
 	assertEqual(res.status, 500, "the poison agent row forces an unhandled 500");
 	const raw = await res.text();
 	const envelope = JSON.parse(raw) as ErrorEnvelope;

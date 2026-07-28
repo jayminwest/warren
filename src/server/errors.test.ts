@@ -7,7 +7,7 @@ import {
 import { BurrowUnreachableError } from "../burrow-client/errors.ts";
 import { NotFoundError, StateTransitionError, ValidationError } from "../core/errors.ts";
 import { ProjectUnavailableError } from "../projects/errors.ts";
-import { AgentSchemaError, CanopyUnavailableError } from "../registry/errors.ts";
+import { AgentSchemaError } from "../registry/errors.ts";
 import { RunSpawnError } from "../runs/errors.ts";
 import {
 	RuntimeAdmissionError,
@@ -82,10 +82,6 @@ describe("renderError — WarrenError mapping", () => {
 		const r = renderError(new RuntimeConflictError("toolchain clash"));
 		expect(r.status).toBe(409);
 		expect(r.envelope.error.code).toBe("runtime_conflict");
-	});
-
-	test("CanopyUnavailableError → 503", () => {
-		expect(renderError(new CanopyUnavailableError("cn missing")).status).toBe(503);
 	});
 
 	test("ProjectUnavailableError → 503", () => {

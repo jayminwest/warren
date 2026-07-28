@@ -1,8 +1,8 @@
 {
 	"version": "6",
 	"dialect": "sqlite",
-	"id": "cc45f5eb-c609-45a8-852f-66cbc1e78368",
-	"prevId": "2369e95f-7bb0-4c51-96ac-36e566e593c1",
+	"id": "4f95ce60-f269-4447-bf44-764a4dc9687e",
+	"prevId": "cc45f5eb-c609-45a8-852f-66cbc1e78368",
 	"tables": {
 		"agents": {
 			"name": "agents",
@@ -127,7 +127,7 @@
 					"tableTo": "runs",
 					"columnsFrom": ["run_id"],
 					"columnsTo": ["id"],
-					"onDelete": "no action",
+					"onDelete": "cascade",
 					"onUpdate": "no action"
 				}
 			},
@@ -836,7 +836,7 @@
 					"tableTo": "projects",
 					"columnsFrom": ["project_id"],
 					"columnsTo": ["id"],
-					"onDelete": "set null",
+					"onDelete": "cascade",
 					"onUpdate": "no action"
 				}
 			},

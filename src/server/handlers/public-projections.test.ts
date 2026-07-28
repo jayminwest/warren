@@ -79,7 +79,6 @@ describe("project + agent field classification (warren-4f6c)", () => {
 		const decorated = Object.keys(
 			withAgentSource({
 				id: 1,
-				projectId: null,
 				name: "claude-code",
 				renderedJson: RENDERED_CLAUDE_CODE,
 				registeredAt: "2026-07-01T00:00:00.000Z",
@@ -105,7 +104,6 @@ describe("project + agent field classification (warren-4f6c)", () => {
 	test("withAgentSource hoists description / provider / model off frontmatter", () => {
 		const decorated = withAgentSource({
 			id: 1,
-			projectId: null,
 			name: "claude-code",
 			renderedJson: RENDERED_CLAUDE_CODE,
 			registeredAt: "2026-07-01T00:00:00.000Z",
@@ -120,7 +118,6 @@ describe("project + agent field classification (warren-4f6c)", () => {
 	test("withAgentSource nulls the metadata when frontmatter is absent", () => {
 		const decorated = withAgentSource({
 			id: 2,
-			projectId: null,
 			name: "bare",
 			renderedJson: { name: "bare", version: 1, sections: { system: "x" } },
 			registeredAt: "2026-07-01T00:00:00.000Z",

@@ -32,7 +32,7 @@
 import { ValidationError } from "../../core/errors.ts";
 import { defaultSpawn } from "../../projects/clone.ts";
 import type { Route, RouteContext, RouteHandler, RoutePolicy, ServerDeps } from "../types.ts";
-import { getAgentHandler, listAgentsHandler, refreshProjectAgentsHandler } from "./agents.ts";
+import { getAgentHandler, listAgentsHandler } from "./agents.ts";
 import { healAlertHandler } from "./alerts.ts";
 import { readyzHandler } from "./diagnostics.ts";
 import { healthzHandler, previewConfigHandler, versionHandler, whoamiHandler } from "./meta.ts";
@@ -263,12 +263,6 @@ const ROUTE_TABLE: readonly RouteEntry[] = [
 		pattern: "/projects/:id/refresh",
 		policy: "admin",
 		build: refreshProjectHandler,
-	},
-	{
-		method: "POST",
-		pattern: "/projects/:id/agents/refresh",
-		policy: "admin",
-		build: refreshProjectAgentsHandler,
 	},
 	{ method: "DELETE", pattern: "/projects/:id", policy: "admin", build: deleteProjectHandler },
 

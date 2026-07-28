@@ -44,7 +44,7 @@ import {
 } from "../core/errors.ts";
 import { PlanHasNoOpenChildrenError, ProjectLacksSeedsError } from "../plan-runs/errors.ts";
 import { ProjectUnavailableError } from "../projects/errors.ts";
-import { AgentSchemaError, CanopyUnavailableError } from "../registry/errors.ts";
+import { AgentSchemaError } from "../registry/errors.ts";
 import { RunSpawnError } from "../runs/errors.ts";
 import {
 	RuntimeAdmissionError,
@@ -155,16 +155,13 @@ function logPointerHint(requestId: string | undefined): string {
  * The only message a CAUGHT error ever puts on the wire — the same
  * body/log split as the untyped-500 path (warren-4385), applied where a
  * handler catches a per-item failure and reports it inside a 2xx body
- * instead of throwing it. Today's single call site is `POST
- * /agents/refresh`'s `projectErrors[]` (warren-bf4c).
+ * instead of throwing it.
  *
  * Deliberately unconditional: unlike `renderError` it does NOT keep a
- * `WarrenError`'s own message. The errors collected at such a site are
- * canopy shell-outs whose `CanopyUnavailableError` messages interpolate
- * `cn` / `git` stderr and the project's on-disk path (`formatStderr` in
- * `src/registry/canopy.ts`), so the typed-is-vetted assumption
- * `renderError` leans on does not hold there. The caller logs the real
- * error under the same correlation id via {@link errorLogFields}.
+ * `WarrenError`'s own message. The errors collected at such a site may
+ * interpolate subprocess stderr and on-disk paths, so the typed-is-vetted
+ * assumption `renderError` leans on does not hold there. The caller logs
+ * the real error under the same correlation id via {@link errorLogFields}.
  */
 export function collectedErrorMessage(requestId?: string): string {
 	return `${INTERNAL_ERROR_MESSAGE}; ${logPointerHint(requestId)}`;
@@ -266,7 +263,6 @@ function warrenStatusFor(err: WarrenError): number {
 	if (err instanceof RuntimeUnreachableError) return 503;
 	if (err instanceof RuntimeRunNotFoundError) return 404;
 	if (err instanceof RuntimeConflictError) return 409;
-	if (err instanceof CanopyUnavailableError) return 503;
 	if (err instanceof ProjectUnavailableError) return 503;
 	if (err instanceof WarrenConfigUnavailableError) return 503;
 	// Multi-worker placement errors were retired with the K8s migration

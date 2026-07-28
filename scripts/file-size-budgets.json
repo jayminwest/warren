@@ -9,7 +9,6 @@
 		"src/runtime/contract.ts": 512,
 		"src/runtime/k8s/pod-spec.ts": 515,
 		"src/runtime/k8s/provider.ts": 507,
-		"src/server/handlers/agents.test.ts": 533,
 		"src/server/handlers/plan-runs.ts": 505,
 		"src/triggers/tick.test.ts": 539,
 		"src/server/server.test.ts": 536,
