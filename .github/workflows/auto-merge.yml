@@ -39,8 +39,7 @@ jobs:
       # docs/CONSTITUTION.md Article IX: changes to the constitution, the
       # cron triggers, the built-in agent definitions, or this workflow
       # itself must be merged by a human — never auto-merge. This step is
-      # the executable form of that article. `.canopy/` stays in the
-      # pattern until the canopy tier is deleted (warren-f787).
+      # the executable form of that article.
       - name: Article IX check (constitution-protected paths)
         id: protected
         env:
@@ -48,7 +47,7 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           set -uo pipefail
-          PROTECTED='^(docs/CONSTITUTION\.md|\.warren/triggers\.yaml|\.canopy/|src/registry/builtins/|\.github/workflows/auto-merge\.yml)'
+          PROTECTED='^(docs/CONSTITUTION\.md|\.warren/triggers\.yaml|src/registry/builtins/|\.github/workflows/auto-merge\.yml)'
 
           # warren-7b2f: the changed-file list comes from git, NOT from
           # `gh api .../pulls/:n/files`. That endpoint keys each entry

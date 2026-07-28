@@ -43,12 +43,12 @@ describe("seedConfigMapName", () => {
 describe("serializeSeedManifest / parseSeedManifest", () => {
 	test("round-trips path/contents/encoding/mode", () => {
 		const files = [
-			{ path: ".canopy/agent.json", contents: "{}" },
+			{ path: ".warren/agent.json", contents: "{}" },
 			{ path: ".mulch/x.jsonl", contents: "Zm9v", encoding: "base64", mode: 0o644 },
 		];
 		const parsed = parseSeedManifest(serializeSeedManifest(files));
 		expect(parsed).toEqual([
-			{ path: ".canopy/agent.json", contents: "{}" },
+			{ path: ".warren/agent.json", contents: "{}" },
 			{ path: ".mulch/x.jsonl", contents: "Zm9v", encoding: "base64", mode: 0o644 },
 		]);
 	});

@@ -318,19 +318,21 @@ function serializeMessage(m: BurrowMessage): unknown {
 }
 
 /**
- * Pull `.canopy/agent.json` out of the seed payload that rode on POST /burrows
+ * Pull `.warren/agent.json` out of the seed payload that rode on POST /burrows
  * and return its `frontmatter`. The seed payload travels as part of
- * `burrows.up({ seed: { files } })`, so the canopy envelope is recoverable
+ * `burrows.up({ seed: { files } })`, so the agent envelope is recoverable
  * from the recorded request body without a separate seam.
  */
-export function readCanopyFrontmatter(calls: readonly RecordedCall[]): Record<string, unknown> {
+export function readAgentEnvelopeFrontmatter(
+	calls: readonly RecordedCall[],
+): Record<string, unknown> {
 	const up = calls.find((c) => c.method === "POST" && c.path === "/burrows");
 	const seed = (
 		up?.body as { seed?: { files?: ReadonlyArray<{ path: string; contents: string }> } }
 	)?.seed;
-	const canopy = seed?.files?.find((f) => f.path === ".canopy/agent.json");
-	if (canopy === undefined) throw new Error(".canopy/agent.json missing from seed payload");
-	const parsed = JSON.parse(canopy.contents) as { frontmatter?: Record<string, unknown> };
+	const envelope = seed?.files?.find((f) => f.path === ".warren/agent.json");
+	if (envelope === undefined) throw new Error(".warren/agent.json missing from seed payload");
+	const parsed = JSON.parse(envelope.contents) as { frontmatter?: Record<string, unknown> };
 	return parsed.frontmatter ?? {};
 }
 

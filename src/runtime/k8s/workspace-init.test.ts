@@ -186,7 +186,7 @@ describe("runWorkspaceInit", () => {
 		const writes: Array<{ path: string; data: string }> = [];
 		const mkdirs: string[] = [];
 		const manifest = JSON.stringify([
-			{ path: ".canopy/agent.json", contents: "{}" },
+			{ path: ".warren/agent.json", contents: "{}" },
 			{ path: ".mulch/x", contents: Buffer.from("hello").toString("base64"), encoding: "base64" },
 		]);
 		const fs: InitFs = {
@@ -211,10 +211,10 @@ describe("runWorkspaceInit", () => {
 			{ git, fs, log: () => {} },
 		);
 		expect(writes).toEqual([
-			{ path: "/ws/.canopy/agent.json", data: "{}" },
+			{ path: "/ws/.warren/agent.json", data: "{}" },
 			{ path: "/ws/.mulch/x", data: "hello" },
 		]);
-		expect(mkdirs).toEqual(["/ws/.canopy", "/ws/.mulch"]);
+		expect(mkdirs).toEqual(["/ws/.warren", "/ws/.mulch"]);
 	});
 
 	test("refuses a seed path that escapes the workspace", async () => {

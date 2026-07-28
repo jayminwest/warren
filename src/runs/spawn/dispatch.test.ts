@@ -118,7 +118,7 @@ describe("spawnRun: end-to-end", () => {
 		expect(upBody.originUrl).toBe("https://github.com/x/y.git");
 		expect(upBody.agents).toEqual(["pi"]);
 		const seededPaths = (upBody.seed?.files ?? []).map((f) => f.path);
-		expect(seededPaths).toContain(".canopy/agent.json");
+		expect(seededPaths).toContain(".warren/agent.json");
 
 		// warren-3743: worker_id is nullified for new runs (the workers/burrows
 		// placement tables were dropped); the burrow correlation ids are still

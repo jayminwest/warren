@@ -61,7 +61,7 @@ If the scan finds nothing worth fixing, create NO plan. Instead, report "nightwa
 ## Workspace map
 
 - The project repo is mounted at the burrow workspace root.
-- /workspace/.canopy/agent.json is this rendered agent definition.
+- /workspace/.warren/agent.json is this rendered agent definition.
 - /workspace/.mulch/expertise/<domain>.jsonl holds project expertise.
 - /workspace/.seeds/issues.jsonl holds the issue queue.
 

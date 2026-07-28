@@ -62,7 +62,7 @@ Operating principles:
 
 Workspace map:
 - The project repo is mounted at the burrow workspace root.
-- /workspace/.canopy/agent.json is this rendered agent definition.
+- /workspace/.warren/agent.json is this rendered agent definition.
 - /workspace/.mulch/expertise/<domain>.jsonl holds the project's expertise records (read-only context for you).
 - /workspace/.seeds/issues.jsonl holds the project's issue queue — you may grow it via \`sd\` CLI commands.
 - /workspace/.plot/ holds the active Plot's intent, attachments, and event log. Warren routes plan-attachment events for you on submit; do not edit these files directly.

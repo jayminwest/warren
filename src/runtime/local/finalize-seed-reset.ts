@@ -1,12 +1,14 @@
 /**
  * warren-8d95: the `seed_reset` finalize stage for the burrow `LocalProvider`.
  *
- * Warren seeds the rendered agent envelope (`.canopy/agent.json`), the `.pi/`
+ * Warren seeds the rendered agent envelope (`.warren/agent.json`), the `.pi/`
  * skill/prompt/extension drops, and `.seeds/workflow.txt` into every run
- * workspace. In a project that itself TRACKS a colliding path — warren's own
- * repo tracks `.canopy/agent.json` — the seed overwrites a tracked file, and a
- * broad agent commit (`git add -A`) then carries the seeded artifact into the
- * run branch, tripping the auto-merge workflow's Article IX protected-path guard.
+ * workspace. In a project that itself TRACKS a colliding path the seed
+ * overwrites a tracked file, and a broad agent commit (`git add -A`) then
+ * carries the seeded artifact into the run branch, tripping the auto-merge
+ * workflow's Article IX protected-path guard. warren's own repo no longer
+ * tracks the agent envelope (warren-5585), but this reset stays as a general
+ * guard for any project that tracks a colliding seed path.
  *
  * This stage runs AFTER the bookkeeping commits and BEFORE `branch_push`
  * (matching reap's commit-then-push order): it restores each seeded path to

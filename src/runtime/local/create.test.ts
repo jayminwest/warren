@@ -47,7 +47,7 @@ function newSpec(overrides: Partial<RunSpec> = {}): RunSpec {
 		metadata: { frontmatter: { model: "claude" } },
 		mode: "batch",
 		network: "restricted",
-		seedFiles: [{ path: ".canopy/agent.json", contents: "{}" }],
+		seedFiles: [{ path: ".warren/agent.json", contents: "{}" }],
 		env: { PLOT_ID: "pl_1", WARREN_QUALITY_GATE: "verify" },
 		...overrides,
 	};
@@ -81,7 +81,7 @@ describe("LocalProvider.create", () => {
 		expect(up.agents).toEqual(["claude-code"]); // runtimeId → agents[]
 		expect(up.branch).toBe("warren/run_domain0001");
 		expect(up.network).toBe("restricted");
-		expect(up.seed).toEqual({ files: [{ path: ".canopy/agent.json", contents: "{}" }] });
+		expect(up.seed).toEqual({ files: [{ path: ".warren/agent.json", contents: "{}" }] });
 
 		const create = calls[1]?.body as Record<string, unknown>;
 		expect(create.agentId).toBe("claude-code"); // runtimeId → agentId

@@ -22,7 +22,7 @@ const SYSTEM_BODY = `You are a helpful coding assistant. Be concise.
 
 Workspace map:
 - The project repo is mounted at the burrow workspace root.
-- /workspace/.canopy/agent.json is the rendered agent definition (warren seeded it).
+- /workspace/.warren/agent.json is the rendered agent definition (warren seeded it).
 - /workspace/.mulch/expertise/<domain>.jsonl holds the project's expertise records.
 - /workspace/.seeds/issues.jsonl holds the project's issue queue.
 

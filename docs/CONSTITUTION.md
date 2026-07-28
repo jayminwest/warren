@@ -87,7 +87,7 @@ standard it is measured against, and does not schedule itself.
 
 Executable form: the "Article IX check" step in
 `.github/workflows/auto-merge.yml` refuses to enable auto-merge on any
-PR touching this file, `.warren/triggers.yaml`, `.canopy/`, or that
+PR touching this file, `.warren/triggers.yaml`, or that
 workflow itself. The gate can be deleted; the deletion is itself a
 protected change, so a human sees it.
 

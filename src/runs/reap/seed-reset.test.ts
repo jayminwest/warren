@@ -1,6 +1,6 @@
 /**
  * warren-8d95: `seededArtifactResetPaths` reconstructs the warren-seeded
- * pure-context artifact paths (canopy + `.pi/**` + `.seeds/workflow.txt`) from
+ * pure-context artifact paths (agent envelope + `.pi/**` + `.seeds/workflow.txt`) from
  * the run's stored agent envelope, excluding the mirror-managed `.mulch/` family.
  */
 
@@ -22,16 +22,16 @@ function agent(overrides: Partial<AgentDefinition["sections"]> = {}): AgentDefin
 }
 
 describe("seededArtifactResetPaths", () => {
-	test("includes the canopy envelope by default", () => {
+	test("includes the agent envelope by default", () => {
 		const paths = seededArtifactResetPaths(agent());
-		expect(paths.map((p) => p.path)).toContain(".canopy/agent.json");
+		expect(paths.map((p) => p.path)).toContain(".warren/agent.json");
 	});
 
-	test("carries the exact seeded canopy bytes for the intentional-edit check", () => {
-		const [canopy] = seededArtifactResetPaths(agent());
-		expect(canopy?.path).toBe(".canopy/agent.json");
-		expect(canopy?.contents).toContain('"name": "claude-code"');
-		expect(canopy?.contents.endsWith("\n")).toBe(true);
+	test("carries the exact seeded agent-envelope bytes for the intentional-edit check", () => {
+		const [envelope] = seededArtifactResetPaths(agent());
+		expect(envelope?.path).toBe(".warren/agent.json");
+		expect(envelope?.contents).toContain('"name": "claude-code"');
+		expect(envelope?.contents.endsWith("\n")).toBe(true);
 	});
 
 	test("includes .pi/ drops and .seeds/workflow.txt but excludes .mulch/", () => {
@@ -44,7 +44,7 @@ describe("seededArtifactResetPaths", () => {
 		).map((p) => p.path);
 		expect(paths).toContain(".pi/skills/lint/SKILL.md");
 		expect(paths).toContain(".seeds/workflow.txt");
-		expect(paths).toContain(".canopy/agent.json");
+		expect(paths).toContain(".warren/agent.json");
 		expect(paths.some((p) => p.startsWith(".mulch/"))).toBe(false);
 	});
 

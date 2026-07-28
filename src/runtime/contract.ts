@@ -309,8 +309,8 @@ export interface FinalizeIntent {
 	 * warren-8d95: warren-seeded workspace artifacts (the rendered agent
 	 * envelope + `.pi/` drops + `.seeds/workflow.txt`) that must be RESET to
 	 * `baseBranch` before `branch_push` so they never ride into a PR. In
-	 * projects that themselves track a colliding path (e.g. warren's own repo
-	 * tracks `.canopy/agent.json`), warren's seed dirties the tracked file and a
+	 * projects that themselves track a colliding path, warren's seed dirties the
+	 * tracked file and a
 	 * broad agent commit (`git add -A`) sweeps it into the branch, tripping the
 	 * Article IX protected-path automerge guard. Each entry carries the path and
 	 * the exact bytes warren seeded; finalize only resets a path whose live
@@ -366,7 +366,7 @@ export interface FinalizeResult {
 	 * (warren-89b0), populated ONLY when `dirty` is true (i.e. `pushed &&
 	 * commitsAhead === 0` over a dirty tree). The domain uses it to classify a
 	 * zero-commit dirty tree: a tree whose ONLY dirty paths are warren-managed
-	 * bookkeeping artifacts (`.mulch/`, `.seeds/`, `.canopy/`) is a
+	 * bookkeeping artifacts (`.mulch/`, `.seeds/`, `.plot/`) is a
 	 * deliberate no-op (`succeeded`, non-alarming) rather than a dropped commit
 	 * (`failed`). Optional/absent ⇒ the domain falls back to the conservative
 	 * dropped-commit posture (it cannot prove the tree was bookkeeping-only).
