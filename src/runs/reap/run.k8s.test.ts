@@ -76,26 +76,23 @@ function finalizeResultWithDeltas(branch: string): FinalizeResult {
 		dirty: false,
 		workspacePlansBody: null,
 		events: [{ kind: "mulch.record.added", payload: { id: "mx-1" } }],
-		mirror: {
+		artifacts: {
 			mulch: {
 				version: 1,
-				updated: 1,
-				skipped: 0,
-				appended: 0,
 				files: [
 					{
-						domain: "build",
 						path: ".mulch/expertise/build.jsonl",
 						mergedBody: '{"id":"mx-1","content":"merged"}\n',
 					},
 				],
+				counts: { updated: 1, skipped: 0, appended: 0 },
 			},
 			seeds: {
 				version: 1,
-				closed: 1,
-				created: 0,
-				path: ".seeds/issues.jsonl",
-				mergedBody: '{"id":"warren-1","status":"closed"}\n',
+				files: [
+					{ path: ".seeds/issues.jsonl", mergedBody: '{"id":"warren-1","status":"closed"}\n' },
+				],
+				counts: { closed: 1, created: 0 },
 			},
 		},
 		prBranch: branch,
@@ -295,7 +292,7 @@ describe("reapRun under a K8s-style RuntimeProvider", () => {
 			dirty: false,
 			workspacePlansBody: null,
 			events: [{ kind: "reap_failed", payload: { step: "finalize", message } }],
-			mirror: {},
+			artifacts: {},
 			prBranch: null,
 			stages: [
 				{ stage: "mulch_merge", status: "failed", error: message },
@@ -325,8 +322,6 @@ describe("reapRun under a K8s-style RuntimeProvider", () => {
 		// (2) workspace preserved — terminate never ran.
 		expect(fake.calls.terminate).toBe(0);
 		expect(result.workspaceDestroyed).toBe(false);
-		// (3) seed not closed host-side.
-		expect(result.seedIdClosed).toBe(false);
 		const events = await ctx.repos.events.listByRun(ctx.runId);
 		const skipped = events.find((ev) => ev.kind === "reap.workspace_destroy_skipped");
 		expect(skipped?.payloadJson).toMatchObject({ reason: "branch_push_failed" });

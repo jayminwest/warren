@@ -70,7 +70,7 @@ describe("reapRun zero-commit classification (warren-89b0)", () => {
 	});
 
 	test("bookkeeping-only dirty tree is an intentional no-op, not a dropped commit", async () => {
-		const { seedsCli, calls } = fakeSeedsCli();
+		const { seedsCli } = fakeSeedsCli();
 		const f = fakeFs({ "/data/projects/x/y/.seeds/issues.jsonl": ISSUES });
 		const e = fakeExec({
 			revListCount: "0",
@@ -89,9 +89,6 @@ describe("reapRun zero-commit classification (warren-89b0)", () => {
 
 		expect(result.state).toBe("succeeded");
 		expect(result.failureReason).toBeNull();
-		// A legitimate succeeded no-op still closes the seed host-side.
-		expect(result.seedIdClosed).toBe(true);
-		expect(calls.some((c) => c.args.includes("close"))).toBe(true);
 		const events = await repos.events.listByRun(runId);
 		expect(events.find((ev) => ev.kind === "reap.empty_push")?.payloadJson).toMatchObject({
 			dirty: true,
@@ -103,8 +100,8 @@ describe("reapRun zero-commit classification (warren-89b0)", () => {
 		});
 	});
 
-	test("real uncommitted work is a dropped commit and skips the host-side close", async () => {
-		const { seedsCli, calls } = fakeSeedsCli();
+	test("real uncommitted work is a dropped commit", async () => {
+		const { seedsCli } = fakeSeedsCli();
 		const f = fakeFs({ "/data/projects/x/y/.seeds/issues.jsonl": ISSUES });
 		const e = fakeExec({ revListCount: "0", gitStatus: " M src/foo.ts\n" });
 
@@ -120,9 +117,5 @@ describe("reapRun zero-commit classification (warren-89b0)", () => {
 
 		expect(result.state).toBe("failed");
 		expect(result.failureReason).toBe("dropped_commit");
-		expect(result.seedIdClosed).toBe(false);
-		expect(calls.some((c) => c.args.includes("close"))).toBe(false);
-		const events = await repos.events.listByRun(runId);
-		expect(events.find((ev) => ev.kind === "seeds.seed_id_closed")).toBeUndefined();
 	});
 });

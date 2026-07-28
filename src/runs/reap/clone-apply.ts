@@ -10,9 +10,9 @@
  * (`mergeMulch(workspacePath, clonePath)` etc.), so nothing is left to apply —
  * the clone already carries the union. Under K8s the merge happens INSIDE the
  * pod against a pod-local clone the control plane can't reach; `finalize` hands
- * back the merged bodies as `FinalizeResult.mirror` deltas (each carries a
- * `mergedBody` + clone-relative `path`, per the contract). This module writes
- * those bodies into the control plane's project clone and authors a single
+ * back the merged bodies as `FinalizeResult.artifacts` deltas (each carries the
+ * full `files[]` bodies + clone-relative paths, per the contract). This module
+ * writes those bodies into the control plane's project clone and authors a single
  * `chore(warren): mirror state` bookkeeping commit so the clone's `.mulch/` and
  * `.seeds/` reflect what the agent produced (mulch is the cross-run memory
  * layer — the clone is the next run's materialization source).
@@ -32,8 +32,8 @@
  * a pre-staged unrelated file can't be swept in — the same posture as the local
  * `stage{Plot,Seeds}ForCommit` commits.
  *
- * `PlotDelta` carries no `mergedBody` (deliberately thin, contract) so it is not
- * applied here; the `.plot/` files ride to origin on the pod-pushed branch.
+ * A no-op merge contributes an empty `files[]` (warren-df3e), so nothing is
+ * written for it and no commit is authored when every delta is empty.
  */
 
 import { dirname, join } from "node:path";
@@ -58,20 +58,17 @@ interface CloneWrite {
 }
 
 /**
- * Flatten the finalize mirror deltas into the set of clone files to overwrite.
- * `mulch` contributes one entry per expertise file; `seeds` / `plans` one each
- * when their `mergedBody` is non-null (a null body means the mirror was a no-op).
+ * Flatten every finalize artifact delta into the set of clone files to
+ * overwrite (warren-df3e). Feature-neutral: each opaque artifact contributes its
+ * `files[]` verbatim; a no-op merge carries an empty `files[]` and contributes
+ * nothing.
  */
 function collectCloneWrites(r: FinalizeResult): CloneWrite[] {
 	const writes: CloneWrite[] = [];
-	for (const file of r.mirror.mulch?.files ?? []) {
-		writes.push({ relPath: file.path, body: file.mergedBody });
-	}
-	if (r.mirror.seeds?.mergedBody != null) {
-		writes.push({ relPath: r.mirror.seeds.path, body: r.mirror.seeds.mergedBody });
-	}
-	if (r.mirror.plans?.mergedBody != null) {
-		writes.push({ relPath: r.mirror.plans.path, body: r.mirror.plans.mergedBody });
+	for (const delta of Object.values(r.artifacts)) {
+		for (const file of delta.files) {
+			writes.push({ relPath: file.path, body: file.mergedBody });
+		}
 	}
 	return writes;
 }
@@ -148,9 +145,10 @@ export async function applyCloneDeltas(
 		await ctx.emit("reap.clone_deltas_applied", {
 			message: COMMIT_MESSAGE,
 			filesWritten: pathspecs.length,
-			mulchFiles: r.mirror.mulch?.files.length ?? 0,
-			seeds: r.mirror.seeds?.mergedBody != null,
-			plans: r.mirror.plans?.mergedBody != null,
+			// Feature-neutral per-artifact file counts, keyed by the opaque delta key.
+			artifacts: Object.fromEntries(
+				Object.entries(r.artifacts).map(([key, delta]) => [key, delta.files.length]),
+			),
 		});
 		return true;
 	} catch (err) {

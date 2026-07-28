@@ -29,7 +29,6 @@ export function fakeReapResult(state: ReapRunResult["state"]): ReapRunResult {
 		mulchAppended: 0,
 		seedsClosed: 0,
 		seedsCreated: 0,
-		seedIdClosed: false,
 		seedsCommitted: false,
 		branchPushed: false,
 		commitsAhead: null,

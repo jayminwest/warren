@@ -56,7 +56,7 @@ function intent(over: Partial<InPodFinalizeIntent> = {}): InPodFinalizeIntent {
 		attemptId: "fin_abcdefghjkmn",
 		branch: "warren/run_x",
 		push: true,
-		mirror: ["mulch", "seeds", "plans"],
+		artifacts: ["mulch", "seeds", "plans"],
 		commit: ["seeds"],
 		baseBranch: "main",
 		...over,
@@ -88,7 +88,7 @@ describe("countJsonlRecords", () => {
 	});
 });
 
-describe("mirror-delta collection (workspace-truth)", () => {
+describe("artifact-delta collection (workspace-truth)", () => {
 	test("collectMulchDelta reads every expertise file with its verbatim body", async () => {
 		const fs = fakeFs(
 			{
@@ -98,37 +98,39 @@ describe("mirror-delta collection (workspace-truth)", () => {
 			{ "/ws/.mulch/expertise": ["build.jsonl", "ci.jsonl", "README.md"] },
 		);
 		const d = await collectMulchDelta("/ws", fs);
-		expect(d.files.map((f) => f.domain)).toEqual(["build", "ci"]);
-		expect(d.files[0]?.path).toBe(".mulch/expertise/build.jsonl");
+		expect(d.files.map((f) => f.path)).toEqual([
+			".mulch/expertise/build.jsonl",
+			".mulch/expertise/ci.jsonl",
+		]);
 		expect(d.files[0]?.mergedBody).toBe('{"id":"a"}\n{"id":"b"}\n');
-		expect(d.appended).toBe(3);
-		expect(d.updated).toBe(0);
+		expect(d.counts.appended).toBe(3);
+		expect(d.counts.updated).toBe(0);
 	});
 
 	test("collectMulchDelta is empty when .mulch/expertise is absent", async () => {
 		const d = await collectMulchDelta("/ws", fakeFs({}));
-		expect(d).toEqual({ version: 1, updated: 0, skipped: 0, appended: 0, files: [] });
+		expect(d).toEqual({ version: 1, files: [], counts: { updated: 0, skipped: 0, appended: 0 } });
 	});
 
 	test("collectSeedsDelta carries the workspace issues body; counts stay 0", async () => {
 		const fs = fakeFs({ "/ws/.seeds/issues.jsonl": '{"id":"warren-1"}\n' });
 		const d = await collectSeedsDelta("/ws", fs);
-		expect(d.mergedBody).toBe('{"id":"warren-1"}\n');
-		expect(d.closed).toBe(0);
-		expect(d.created).toBe(0);
-		expect(d.path).toBe(".seeds/issues.jsonl");
+		expect(d.files[0]?.mergedBody).toBe('{"id":"warren-1"}\n');
+		expect(d.counts.closed).toBe(0);
+		expect(d.counts.created).toBe(0);
+		expect(d.files[0]?.path).toBe(".seeds/issues.jsonl");
 	});
 
-	test("collectSeedsDelta mergedBody is null when the file is absent", async () => {
+	test("collectSeedsDelta files is empty when the file is absent", async () => {
 		const d = await collectSeedsDelta("/ws", fakeFs({}));
-		expect(d.mergedBody).toBeNull();
+		expect(d.files).toEqual([]);
 	});
 
 	test("collectPlansDelta counts appended plan records", async () => {
 		const fs = fakeFs({ "/ws/.seeds/plans.jsonl": '{"id":"pl-1"}\n{"id":"pl-2"}\n' });
 		const d = await collectPlansDelta("/ws", fs);
-		expect(d.appended).toBe(2);
-		expect(d.mergedBody).toContain("pl-1");
+		expect(d.counts.appended).toBe(2);
+		expect(d.files[0]?.mergedBody).toContain("pl-1");
 	});
 });
 
@@ -157,8 +159,8 @@ describe("collectFinalizeResult", () => {
 		expect(r.emptyPush).toBe(false);
 		expect(r.prBranch).toBe("warren/run_x");
 		expect(r.workspacePlansBody).toBe('{"id":"pl-1"}\n');
-		expect(r.mirror.mulch?.files[0]?.domain).toBe("build");
-		expect(r.mirror.seeds?.mergedBody).toBe('{"id":"warren-1"}\n');
+		expect(r.artifacts.mulch?.files[0]?.path).toBe(".mulch/expertise/build.jsonl");
+		expect(r.artifacts.seeds?.files[0]?.mergedBody).toBe('{"id":"warren-1"}\n');
 		// The push authenticated origin then restored it.
 		const argv = calls.map((c) => c.join(" "));
 		expect(argv).toContain(

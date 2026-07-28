@@ -11,22 +11,33 @@
  *
  * Proof consumer #1 is the healer (`src/healer/lifecycle.ts`): it
  * observes `run_dispatched` and reacts only to `healer`-triggered runs.
- * "Removing the healer" is deleting its entry from the batch below —
- * not loading it — never surgery on the run loop.
+ * Consumer #2 is the clone-side seed-close safety net
+ * (`src/runs/reap/seed-close-lifecycle.ts`, warren-df3e): it observes
+ * `post_reap` and closes the run's seed host-side. "Removing" either is
+ * deleting its entry from the batch below — not loading it — never
+ * surgery on the run loop.
  */
 
 import { formatError } from "../../core/errors.ts";
+import type { Repos } from "../../db/repos/index.ts";
 import { createHealerLifecycleExtension } from "../../healer/lifecycle.ts";
+import type { RunEventBroker } from "../../runs/events.ts";
 import {
 	clearLifecycleBus,
 	installLifecycleBus,
 	LifecycleBus,
 	registerExtensions,
 } from "../../runs/index.ts";
+import { createSeedCloseLifecycleExtension } from "../../runs/reap/seed-close-lifecycle.ts";
+import type { SeedsCliDeps } from "../../seeds-cli/index.ts";
 import type { Logger } from "../types.ts";
 
 export interface LifecycleBusWiringInput {
 	readonly logger: Logger;
+	readonly repos: Repos;
+	readonly seedsCli: SeedsCliDeps;
+	/** Broker so the seed-close observability event reaches live tailers too. */
+	readonly broker?: RunEventBroker;
 }
 
 export interface LifecycleBusHandle {
@@ -42,7 +53,7 @@ export interface LifecycleBusHandle {
  * teardown (or a test) leaves no global state behind.
  */
 export function bootLifecycleBus(input: LifecycleBusWiringInput): LifecycleBusHandle {
-	const { logger } = input;
+	const { logger, repos, seedsCli, broker } = input;
 	const bus = new LifecycleBus({
 		onError: ({ extension, hook, runId, error }) => {
 			logger.error(
@@ -55,6 +66,12 @@ export function bootLifecycleBus(input: LifecycleBusWiringInput): LifecycleBusHa
 	const registration = registerExtensions(bus, [
 		createHealerLifecycleExtension({
 			logger: { info: (obj, msg) => logger.info(obj, msg) },
+		}),
+		createSeedCloseLifecycleExtension({
+			repos,
+			seedsCli,
+			logger: { error: (obj, msg) => logger.error(obj, msg) },
+			...(broker !== undefined ? { broker } : {}),
 		}),
 	]);
 

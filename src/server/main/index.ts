@@ -145,12 +145,6 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 	// the `LocalBootBackend` builds + owns it under `local` (none under `k8s`).
 	const broker = new RunEventBroker();
 
-	// Tier-1 observation event bus (warren-bb60) + its first-party consumers
-	// (warren-4e74). Installed as the process singleton BEFORE the bridges
-	// resume in-flight runs (which may reap and emit `post_reap`), so no
-	// lifecycle emit is dropped on the floor at boot. See lifecycle-bus-wiring.ts.
-	const lifecycleBusHandle = bootLifecycleBus({ logger });
-
 	logger.info(
 		{
 			dbUrl: redactDbUrl(serverConfig.dbUrl),
@@ -195,6 +189,14 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 	// child-seed validation) and the plan-run coordinator below.
 	const schedulerConfig = loadTriggerSchedulerConfigFromEnv(env);
 	const seedsCli = { sdBinary: schedulerConfig.sdBinary, spawn: defaultSpawn };
+
+	// Tier-1 observation event bus (warren-bb60) + its first-party consumers
+	// (warren-4e74 healer, warren-df3e seed-close). Installed as the process
+	// singleton BEFORE the bridges resume in-flight runs (which may reap and emit
+	// `post_reap`), so no lifecycle emit is dropped on the floor at boot. Wired
+	// here (after `repos`/`broker`/`seedsCli`) so the seed-close subscriber can
+	// resolve run/project rows + drive `sd close`. See lifecycle-bus-wiring.ts.
+	const lifecycleBusHandle = bootLifecycleBus({ logger, repos, seedsCli, broker });
 
 	// K8s runtime background loops (pl-829f step 25 / warren-7c30). Under
 	// `WARREN_RUNTIME=k8s` this constructs + starts the pod-watcher informer and

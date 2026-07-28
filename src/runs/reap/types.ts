@@ -206,14 +206,9 @@ export interface ReapRunResult {
 	readonly mulchAppended: number;
 	readonly seedsClosed: number;
 	readonly seedsCreated: number;
-	/**
-	 * True when reap successfully closed the dispatched run's seed (warren-0d2d).
-	 * Requires `run.seedId` to be non-null, `outcome === "succeeded"`,
-	 * `project.hasSeeds === true`, and `seedsCli` to be configured. False when
-	 * the step was skipped (any gate missing) or when `sd close` failed
-	 * (failure surfaces as `reap_failed` step=`seed_id_close`).
-	 */
-	readonly seedIdClosed: boolean;
+	// warren-df3e: the host-side seed-id close (warren-0d2d) is no longer a reap
+	// step — it observes `post_reap` on the observation bus
+	// (`./seed-close-lifecycle.ts`), so its outcome is no longer reported here.
 	/**
 	 * True when reap authored a `chore(warren): seeds state` commit in the
 	 * workspace before `branch_push` so origin's workspace branch carries

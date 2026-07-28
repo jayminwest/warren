@@ -11,7 +11,7 @@
  * seam. Everything here is warren's *need*; providers satisfy it.
  */
 
-import type { MulchDelta, PlansDelta, SeedsDelta } from "./finalize-deltas.ts";
+import type { ArtifactDelta } from "./finalize-deltas.ts";
 
 /**
  * Opaque handle — the only run reference that crosses the seam. Providers map
@@ -255,10 +255,10 @@ export interface WorkspaceInfo {
 	branch: string | null;
 }
 
-// Artifact-set deltas `finalize` returns for the domain to apply to its project
-// clone. Extracted to `./finalize-deltas.ts` (warren-e9e1, frozen size budget);
-// re-exported here so importers keep using `../contract.ts`.
-export type { MulchDelta, MulchDeltaFile, PlansDelta, SeedsDelta } from "./finalize-deltas.ts";
+// Feature-neutral artifact deltas `finalize` returns for the domain to apply to
+// its project clone. Extracted to `./finalize-deltas.ts` (warren-e9e1, frozen
+// size budget); re-exported here so importers keep using `../contract.ts`.
+export type { ArtifactDelta, ArtifactDeltaFile } from "./finalize-deltas.ts";
 
 /**
  * The reap-where-the-workspace-is seam (§4). `finalize` runs the
@@ -273,16 +273,22 @@ export interface FinalizeIntent {
 	branch: string;
 	/** push HEAD:branch from inside the workspace */
 	push: boolean;
-	/** which artifact sets to extract (the MERGE half — always run in reap) */
-	mirror: ("mulch" | "seeds" | "plans")[];
+	/**
+	 * Which artifact sets to extract (the MERGE half — always run in reap),
+	 * named by OPAQUE provider keys (warren-df3e). The finalize contract no
+	 * longer enumerates features: the domain passes the keys it wants merged
+	 * (e.g. `["mulch", "seeds", "plans"]`) and the provider maps each to its own
+	 * merge; the returned {@link FinalizeResult.artifacts} is keyed the same way.
+	 */
+	artifacts: string[];
 	/**
 	 * Which bookkeeping COMMITS to author before the push (warren-1f56). The
 	 * reap pipeline runs the tracker merges unconditionally but gates the
 	 * `chore(warren): seeds state` commit on `project.hasSeeds` — so
-	 * merge-gating (`mirror`) and commit-gating cannot be one set. `commit`
+	 * merge-gating (`artifacts`) and commit-gating cannot be one set. `commit`
 	 * decouples them: finalize authors the seeds bookkeeping commit iff this
-	 * includes `"seeds"`. OMITTED ⇒ defaults to `mirror` (commit whatever we
-	 * merge) so callers that only ever passed `mirror` keep their existing
+	 * includes `"seeds"`. OMITTED ⇒ defaults to `artifacts` (commit whatever we
+	 * merge) so callers that only ever passed the merge set keep their existing
 	 * behavior.
 	 */
 	commit?: "seeds"[];
@@ -298,7 +304,7 @@ export interface FinalizeIntent {
 	 * SEAM SIGNAL (mirrors `RunSpec.hostClonePathHint`): the host path of the
 	 * project clone the LocalProvider merges each tracker INTO — a host path
 	 * with no provider-neutral home. REQUIRED by the burrow backend whenever
-	 * `mirror` is non-empty (it does the merge host-side against the shared
+	 * `artifacts` is non-empty (it does the merge host-side against the shared
 	 * disk, exactly as reap does today); the K8s backend IGNORES it (the in-pod
 	 * finalize has no clone — it emits the deltas above and the control plane
 	 * applies them, plan step 20).
@@ -390,12 +396,13 @@ export interface FinalizeResult {
 	 * `reap.workspace_destroyed` (a `terminate` concern).
 	 */
 	events: FinalizeEvent[];
-	/** artifact deltas the domain applies to the project clone */
-	mirror: {
-		mulch?: MulchDelta;
-		seeds?: SeedsDelta;
-		plans?: PlansDelta;
-	};
+	/**
+	 * Feature-neutral artifact deltas the domain applies to the project clone,
+	 * keyed by the SAME opaque provider keys the intent's `artifacts` named
+	 * (warren-df3e). An absent key means that merge did not run; the domain reads
+	 * a delta back by key and never assumes a fixed feature set.
+	 */
+	artifacts: Record<string, ArtifactDelta>;
 	/**
 	 * The pushed branch when it carries real work ready for a PR
 	 * (`pushed && commitsAhead > 0`), else `null`. finalize does NOT open the

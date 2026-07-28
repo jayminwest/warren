@@ -25,7 +25,6 @@ export function buildAlreadyTerminalResult(run: RunRow): ReapRunResult {
 		mulchAppended: 0,
 		seedsClosed: 0,
 		seedsCreated: 0,
-		seedIdClosed: false,
 		seedsCommitted: false,
 		branchPushed: false,
 		commitsAhead: null,

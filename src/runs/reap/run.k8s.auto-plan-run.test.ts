@@ -67,20 +67,22 @@ function finalizeWithNewPlan(): FinalizeResult {
 		dirty: false,
 		workspacePlansBody: NEW_PLAN_BODY,
 		events: [],
-		mirror: {
+		artifacts: {
 			seeds: {
 				version: 1,
-				closed: 0,
-				created: 2,
-				path: ".seeds/issues.jsonl",
-				mergedBody:
-					'{"id":"warren-c1","status":"open","title":"a"}\n{"id":"warren-c2","status":"open","title":"b"}\n',
+				files: [
+					{
+						path: ".seeds/issues.jsonl",
+						mergedBody:
+							'{"id":"warren-c1","status":"open","title":"a"}\n{"id":"warren-c2","status":"open","title":"b"}\n',
+					},
+				],
+				counts: { closed: 0, created: 2 },
 			},
 			plans: {
 				version: 1,
-				appended: 1,
-				path: ".seeds/plans.jsonl",
-				mergedBody: NEW_PLAN_BODY,
+				files: [{ path: ".seeds/plans.jsonl", mergedBody: NEW_PLAN_BODY }],
+				counts: { appended: 1 },
 			},
 		},
 		prBranch: null,
