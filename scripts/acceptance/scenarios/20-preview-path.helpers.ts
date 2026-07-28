@@ -1,8 +1,8 @@
 /**
  * File-local helper group for scenario 20-path (`20-preview-path.ts`).
  *
- * Mirrors the precedent in `20-preview.helpers.ts` (warren-65f6) and
- * `32-plot-workbench-loop.helpers.ts`: the wire-shape interfaces,
+ * Mirrors the precedent in `20-preview.helpers.ts` (warren-65f6):
+ * the wire-shape interfaces,
  * module constants, fixture builder, run/preview polling, and the
  * path-mode proxy/login handshake helpers live here so the scenario
  * body stays under the per-file line budget. The scenario body imports

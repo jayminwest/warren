@@ -66,7 +66,7 @@ implementations. Current state:
 | Issue tracker | `IssueTracker` — seeds first, Linear/GitHub Issues second; capability-flagged (`supportsPlans`) so plan-runs degrade gracefully on trackers without plan shapes | Planned; cut alongside the Linear integration. |
 | Auth | `AuthProvider` — `token` (bearer, today's default) + `github` (GitHub App login, repo-permission mirroring) | Planned; cut alongside the GitHub App / teams work. |
 | Agent runtime | `AgentRuntimeAdapter` — command construction, event parsing, steering format, per runtime | Planned. Lives in **warren**, not burrow; burrow stays a dumb sandbox primitive. |
-| Extensions | lifecycle event bus + registration API | Planned. Tier 1 (observe) before Tier 2 (participate). |
+| Extensions | lifecycle event bus + registration API | Tier-1 observe bus + registration API landed (`src/runs/lifecycle-bus.ts`, warren-bb60; [design](design/tier1-observation-bus.md)). Flips **Live** once proven by the healer + mirror eviction (warren-4e74/df3e). Tier 1 (observe) before Tier 2 (participate). |
 
 The `RuntimeProvider` contract and the storage dialect layer are the
 house style for every future seam: provider-neutral DTOs, capability

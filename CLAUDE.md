@@ -22,23 +22,16 @@ infrastructure:
   Activated by the project having a `.seeds/` directory.
 - **sapling** — alternative steerable coding harness. Ships inline as a
   built-in agent alongside claude-code.
-- **plot** — shared coordination substrate where humans and agents are
-  peer nodes on a per-Plot event log. Activated by the project having a
-  `.plot/` directory **and** the dispatch carrying a `plot_id`; warren
-  injects `PLOT_ID` + `PLOT_ACTOR` into the sandbox, appends
-  `run_dispatched`, and mirrors agent-emitted events at reap. See
-  SPEC §11.O.
 - **plan-run** — serial sd plan execution; activated by the project
   having a `.seeds/` directory. A dispatch mode on top of the existing
   single-run primitive (not a sixth bundled feature): `POST /plan-runs`
   walks a seeds plan's children one at a time, gating each on the
   previous PR merging before the next dispatches. Re-dispatching the
-  same plan resumes from the next open child. When the project also
-  ships `.plot/` and the dispatch carries `plot_id`, plan-runs compose
-  onto Plot: one `plan_run_dispatched` event at start, per-child
-  `PLOT_ID` injection + `run_dispatched` for free, and an auto-`done`
-  Plot transition when the final child merges. See SPEC §11.P and
-  §11.P.Plot.
+  same plan resumes from the next open child. See SPEC §11.P.
+
+(A former sixth bundled feature, **plot** — a shared coordination
+substrate — has been **retired**; its code, DB surface, UI, config, and
+`plot` CLI were deleted in the PHILOSOPHY deletion pass. See SPEC §11.O.)
 
 Same code, same depth — only the user-facing framing surfaces them as
 opt-in. When you change cross-cutting docs (README, SPEC §1/§2, package
@@ -87,11 +80,6 @@ and is surfaced by `loadWarrenConfig()`. Notable knobs:
   Flip this when a project's hooks are too slow, require tools not
   available on the warren host, or you explicitly want agent commits
   unfiltered (warren-8f4c).
-- `plotSync` — per-project Plot sync to GitHub configuration.
-  `mergeStrategy` (`immediate` | `auto` | `manual`, default `manual`)
-  controls whether sync PRs are auto-merged; `targetBranch` overrides
-  the project's `defaultBranch` for the PR base. `POST /plots/:id/sync`
-  triggers manually; formalize and status-change fire background syncs.
 - `admission.maxConcurrentRuns` — per-project cap on simultaneous
   non-terminal runs, enforced by the K8s runtime's admission gate
   (`WARREN_RUNTIME=k8s`); exceeding it rejects the dispatch with HTTP 429
@@ -327,7 +315,7 @@ cap) reach a human.
 ## Single source of truth
 
 Each capability in warren has exactly ONE implementation. The domain modules
-(`src/runs/`, `src/projects/`, `src/plan-runs/`, `src/plots/`, …) own the
+(`src/runs/`, `src/projects/`, `src/plan-runs/`, …) own the
 logic. The HTTP handlers in `src/server/handlers/` are a thin surface
 over those modules. The CLI (`src/cli/`), the SDK (`src/client/`) and the
 UI (`src/ui/`) are consumers: they call the domain function, or they call
@@ -489,7 +477,7 @@ identity — one agent, one spelling. There are two distinct identities,
 and they must not be conflated:
 
 - **Warren's own bookkeeping bot** — the reap-time `chore(warren): …`
-  commits (plot/seeds state) and the plot-sync commit are authored as
+  commits (seeds state) are authored as
   `warren <warren@os-eco.dev>`. This spelling is the single source of
   truth in `src/bot-identity.ts` (`WARREN_BOT_IDENTITY` /
   `warrenCommitIdentityArgs()`). Never re-spell `user.name` /

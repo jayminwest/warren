@@ -55,14 +55,8 @@ import { scenario as scenario20Path } from "./scenarios/20-preview-path.ts";
 import { scenario as scenario21 } from "./scenarios/21-claude-code-cost-smoke.ts";
 import { scenario as scenario22 } from "./scenarios/22-seeds-extensions-roundtrip.ts";
 import { scenario as scenario24 } from "./scenarios/24-preview-node-runtime.ts";
-import { scenario as scenario25 } from "./scenarios/25-plot-roundtrip.ts";
 import { scenario as scenario26 } from "./scenarios/26-plan-run-roundtrip.ts";
-import { scenario as scenario27 } from "./scenarios/27-plan-run-plot-roundtrip.ts";
-import { scenario as scenario28 } from "./scenarios/28-plot-list-and-create.ts";
-import { scenario as scenario29 } from "./scenarios/29-plot-detail-roundtrip.ts";
 import { scenario as scenario30 } from "./scenarios/30-pi-multi-provider-env.ts";
-import { scenario as scenario31 } from "./scenarios/31-plot-plan-run-synthesis.ts";
-import { scenario as scenario32 } from "./scenarios/32-plot-workbench-loop.ts";
 import { scenario as scenario35 } from "./scenarios/35-ci-fixer-roundtrip.ts";
 import { scenario as scenario36 } from "./scenarios/36-ready-to-dispatch-plans.ts";
 import { scenario as scenario37 } from "./scenarios/37-k8s-oom-fast-fail.ts";
@@ -92,14 +86,8 @@ const SCENARIOS: readonly Scenario[] = [
 	scenario21,
 	scenario22,
 	scenario24,
-	scenario25,
 	scenario26,
-	scenario27,
-	scenario28,
-	scenario29,
 	scenario30,
-	scenario31,
-	scenario32,
 	scenario35,
 	scenario36,
 	scenario37,

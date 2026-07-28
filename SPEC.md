@@ -17,7 +17,7 @@ V1 scope is the **manual run path** plus the **cron half of the scheduler**: con
 
 Warren is a self-hostable control plane for ephemeral coding agents. A user points it at a GitHub repo, picks an agent, writes a prompt; warren spawns the agent inside a sandbox, streams events back to the UI, lets the user steer mid-run, then pushes the workspace branch. **One container, one volume, one HTTP API, one UI.**
 
-The fresh-install path is standalone: the built-in `claude-code` agent ships inline, so a user with a GitHub URL and an Anthropic key can dispatch a run end-to-end with no other tooling. Two additional coding-agent runtimes ship inline alongside it — `sapling` (steerable harness) and `pi` (multi-provider, with per-run cost reporting). Warren also bundles a small set of [os-eco](https://github.com/jayminwest/os-eco) tools as opt-in built-in features — versioned prompt libraries via canopy, persistent agent memory via mulch, an integrated issue queue via seeds, and a shared coordination substrate via plot (§11.O) — each surfaced only when the project or operator opts in.
+The fresh-install path is standalone: the built-in `claude-code` agent ships inline, so a user with a GitHub URL and an Anthropic key can dispatch a run end-to-end with no other tooling. Two additional coding-agent runtimes ship inline alongside it — `sapling` (steerable harness) and `pi` (multi-provider, with per-run cost reporting). Warren also bundles a small set of [os-eco](https://github.com/jayminwest/os-eco) tools as opt-in built-in features — versioned prompt libraries via canopy, persistent agent memory via mulch, an integrated issue queue via seeds — each surfaced only when the project or operator opts in. (Warren once bundled a sixth such tool, plot, for shared coordination. Warren dropped it in the deletion pass — see §11.O.)
 
 Warren dispatches through a swappable **runtime provider**, chosen once at boot by `WARREN_RUNTIME` behind the `RuntimeProvider` contract (post-V1; `src/runtime/`, design docs under `docs/design/`). The default `local` provider uses [burrow](https://github.com/jayminwest/burrow) as its sandbox substrate — a sibling process inside the container that warren talks to over a unix socket — which is the topology this document describes throughout. A second `k8s` provider runs each agent as its own Kubernetes pod with no burrow, for cluster scale-out ([`docs/RUNBOOK-K8S.md`](docs/RUNBOOK-K8S.md)); it supersedes the multi-worker burrow model §5.4 originally sketched. Burrow is thus the LocalProvider's substrate, not a hard warren dependency.
 
@@ -51,7 +51,7 @@ In the UI:
 - The **UI**: web frontend served from the same process.
 - The **scheduler**: in-process cron tick + scheduled-seed dispatch (V1, §11.I). Webhook/event-triggered runs deferred to V2.
 
-Warren bundles five os-eco data-plane tools (canopy, mulch, seeds, sapling, plot) as built-in features, but a fresh install does not require a user to adopt any of them — `claude-code` ships inline and reads/writes nothing outside the sandbox. The integrations light up when the operator sets `CANOPY_REPO_URL`, or when a project contains `.mulch/` / `.seeds/` / `.plot/`.
+Warren bundles four os-eco data-plane tools (canopy, mulch, seeds, sapling) as built-in features, but a fresh install does not require a user to adopt any of them — `claude-code` ships inline and reads/writes nothing outside the sandbox. The integrations light up when the operator sets `CANOPY_REPO_URL`, or when a project contains `.mulch/` / `.seeds/`. (Warren dropped plot, a former fifth tool, in the deletion pass — see §11.O.)
 
 ### 2.3 What Warren is not
 
@@ -1759,6 +1759,13 @@ implementation work isn't blocked on re-deriving the design.
 
 ### 11.O Plot integration (pl-2047, 2026-05-17)
 
+> **RETIRED — the deletion pass removed plot from warren (pl-3a79, phase
+> B, 2026-07).**
+> Plot gave warren an opt-in coordination substrate, keyed on a `.plot/`
+> directory and a per-run `plot_id`.
+> The pass dropped every plot module, route, table, column, config knob,
+> UI, and CLI, and warren now keeps only canopy, mulch, seeds, and sapling.
+
 Phase 1 of `warren-000b` — adopting [Plot](https://github.com/jayminwest/plot)
 as warren's coordination primitive. Plot is the fifth opt-in bundled
 feature alongside canopy, mulch, seeds, and sapling: a project lights it
@@ -2012,6 +2019,10 @@ produces a clean superset commit; operators retry the merge by
 re-dispatching B (or re-pushing after a manual refresh).
 
 #### 11.O.Plot.UI Plot-centric UI surface (pl-9d6a, 2026-05-18)
+
+> **RETIRED — the deletion pass removed plot (pl-3a79, phase B, 2026-07).**
+> The Plot-centric UI below no longer exists.
+> See the banner at the top of §11.O. Keep this section as a V1 record.
 
 > **Superseded by the Workspace collapse (pl-0008, 2026-06-14).** The
 > separate Leveret-conversations and Plots surfaces described below were
@@ -2423,6 +2434,11 @@ only the last child's `run_dispatched` would survive on disk.
 
 ### 11.P.Plot PlanRun + Plot composition (pl-7937, 2026-05-18)
 
+> **RETIRED — the deletion pass removed plot (pl-3a79, phase B, 2026-07).**
+> The deletion pass also cut the plan-run ↔ plot bridges below.
+> A plan-run today never threads a `plot_id`.
+> See the banner at the top of §11.O. Keep this section as a V1 record.
+
 Phase 2 of `warren-000b` — composing PlanRun (§11.P) onto Plot (§11.O).
 Phase 1 wired Plot into single-run dispatch; this phase mirrors that
 shape on the PlanRun surface so a plan-run launched from a Plot
@@ -2646,6 +2662,11 @@ composes scenarios 25 + 26 against a real warren+burrow stack:
   JSONL-tail-at-reap for live updates).
 
 ### 11.Q Plot → synthesized plan-run pipeline (pl-5310 step 4, 2026-05-18)
+
+> **RETIRED — the deletion pass removed plot (pl-3a79, phase B, 2026-07).**
+> This synthesis pipeline reached design-lock but never shipped.
+> The plot surface it needs no longer exists.
+> See the banner at the top of §11.O. Keep this section as a V1 record.
 
 Design lock for `warren-a4b7` (pl-5310 step 4, parent epic
 `warren-e40a`). Closes the deepest realization of the Plot UX vision:

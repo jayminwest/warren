@@ -1,8 +1,8 @@
 /**
  * File-local helper group for scenario 26 (`26-plan-run-roundtrip.ts`).
  *
- * Mirrors the precedent in `20-preview.helpers.ts` (warren-65f6) and
- * `32-plot-workbench-loop.helpers.ts`: the row/response wire shapes,
+ * Mirrors the precedent in `20-preview.helpers.ts` (warren-65f6):
+ * the row/response wire shapes,
  * module constants, fixture builder, seed/plan row writers, source-seed
  * rewrite, plan-state polling, and event fetch live here so the
  * scenario body stays under the per-file line budget. The scenario body

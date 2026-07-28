@@ -76,6 +76,28 @@ export {
 	pollRunInbox,
 } from "./inbox.ts";
 export {
+	type BranchPushedPayload,
+	type EventEmittedPayload,
+	LIFECYCLE_HOOKS,
+	LifecycleBus,
+	type LifecycleBusOptions,
+	type LifecycleEnvelope,
+	type LifecycleErrorSink,
+	type LifecycleExtension,
+	type LifecycleHandler,
+	type LifecycleHook,
+	type LifecycleOutcome,
+	type LifecyclePayloads,
+	type LifecycleRegistration,
+	type PostReapPayload,
+	type PreReapPayload,
+	type RunDispatchedPayload,
+	type RunStartedPayload,
+	registerExtensions,
+	WARREN_EXT_PROTOCOL,
+	type WarrenExtProtocol,
+} from "./lifecycle-bus.ts";
+export {
 	type AutoOpenPrConfig,
 	buildPrContent,
 	loadAutoOpenPrConfigFromEnv,
