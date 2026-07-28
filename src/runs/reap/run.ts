@@ -1,5 +1,6 @@
 import type { EventRow, RunFailureReason, RunTerminalState } from "../../db/schema.ts";
 import type { RunHandle, RuntimeProvider, WorkspaceInfo } from "../../runtime/contract.ts";
+import { lifecycleBus } from "../lifecycle-bus.ts";
 import { bindBridgeLogger } from "../stream/index.ts";
 import { runWorkspaceDestroy } from "./destroy.ts";
 import { createPipelineState, runReapPipeline } from "./pipeline.ts";
@@ -120,6 +121,16 @@ export async function reapRun(input: ReapRunInput): Promise<ReapRunResult> {
 	// primary flow always carves the workspace branch off
 	// `project.defaultBranch`, the correct ref for `rev-list --count`.
 	const baseBranch: string | null = project?.defaultBranch ?? null;
+
+	// warren-4e74: observe-only `pre_reap` — reap is about to touch the
+	// workspace. A no-op unless a bus is installed with a subscriber; fired
+	// before the finalize pipeline so a consumer (e.g. the mulch/seeds
+	// mirror eviction, warren-df3e) sees the run's intended outcome.
+	lifecycleBus()?.emitPreReap({
+		runId: run.id,
+		projectId: run.projectId ?? "",
+		outcome: pipelineInput.outcome,
+	});
 
 	if (stateOnEntry === "queued" && resolved !== null && project !== null) {
 		await emit("reap.never_started_skip", { message: "agent never ran; skipping pipeline" });
@@ -245,6 +256,31 @@ export async function reapRun(input: ReapRunInput): Promise<ReapRunResult> {
 		emit,
 		fail: (step, err) => fail(step, err),
 	});
+
+	// warren-4e74: observe-only lifecycle emits, after the terminal
+	// transition and workspace teardown. `branch_pushed` fires only when
+	// finalize actually pushed commits; `post_reap` always fires so a
+	// consumer sees the settled summary (the hook warren-df3e subscribes
+	// to). No-op unless a bus is installed with a subscriber.
+	const bus = lifecycleBus();
+	if (bus !== undefined) {
+		if (state.branchPushed && branch !== null) {
+			bus.emitBranchPushed({
+				runId: run.id,
+				branch,
+				baseBranch,
+				commitsAhead: state.commitsAhead,
+			});
+		}
+		bus.emitPostReap({
+			runId: run.id,
+			projectId: run.projectId ?? "",
+			outcome: effectiveOutcome,
+			branchPushed: state.branchPushed,
+			commitsAhead: state.commitsAhead,
+			prUrl: state.prUrl,
+		});
+	}
 
 	if (input.broker !== undefined) input.broker.close(run.id);
 

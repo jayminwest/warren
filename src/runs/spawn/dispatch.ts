@@ -46,6 +46,7 @@ import type { RunSpec, RuntimeProvider } from "../../runtime/contract.ts";
 import { interactiveRuntimeOverride } from "../../warren-config/schema.ts";
 import { composeRunBranch, resolveRunBranchPrefix } from "../branch.ts";
 import { parseBurrowConfig } from "../burrow-config.ts";
+import { lifecycleBus } from "../lifecycle-bus.ts";
 import { buildSeedFiles } from "../seed.ts";
 import { readCachedAgent, readProjectDefaults, resolveOverride } from "./agent-cache.ts";
 import { type EnvLike, injectWarrenCallbackEnv } from "./callback-env.ts";
@@ -252,6 +253,19 @@ export async function spawnRun(input: SpawnRunInput): Promise<SpawnRunResult> {
 			burrowRunId: handle.providerRunId,
 		});
 		logDispatched(log, handle.sandboxId, handle.providerRunId, dispatchStart);
+		// warren-4e74: fire the observe-only `run_dispatched` lifecycle hook.
+		// A no-op when no bus is installed (unit tests) or no extension
+		// subscribes; a subscriber can neither mutate this payload nor stall
+		// the dispatch (Tier-1 observe, warren-ext/v1).
+		lifecycleBus()?.emitRunDispatched({
+			runId: run.id,
+			projectId: projectAfterRefresh.id,
+			agentName: agent.name,
+			branch,
+			trigger: input.trigger ?? "manual",
+			sandboxId: handle.sandboxId,
+			providerRunId: handle.providerRunId,
+		});
 		// pl-bb70 step 4: stamp the seed's warren-namespaced extensions after
 		// dispatch lands. Fire-and-log — anything that throws here (sd not
 		// on PATH, project clone vanished, write race) emits a system event

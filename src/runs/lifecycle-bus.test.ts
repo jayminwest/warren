@@ -1,12 +1,15 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
 import {
 	type BranchPushedPayload,
+	clearLifecycleBus,
 	type EventEmittedPayload,
+	installLifecycleBus,
 	LIFECYCLE_HOOKS,
 	LifecycleBus,
 	type LifecycleEnvelope,
 	type LifecycleExtension,
 	type LifecycleHook,
+	lifecycleBus,
 	type PostReapPayload,
 	type PreReapPayload,
 	type RunDispatchedPayload,
@@ -254,5 +257,35 @@ describe("registerExtensions", () => {
 		expect(bus.extensionNames().sort()).toEqual(["one", "two"]);
 		unregisterAll();
 		expect(bus.extensionNames()).toEqual([]);
+	});
+});
+
+describe("installLifecycleBus", () => {
+	afterEach(() => clearLifecycleBus());
+
+	test("lifecycleBus returns undefined until a bus is installed", () => {
+		expect(lifecycleBus()).toBeUndefined();
+	});
+
+	test("install then read returns the same instance; clear removes it", () => {
+		const bus = busWithClock();
+		installLifecycleBus(bus);
+		expect(lifecycleBus()).toBe(bus);
+		clearLifecycleBus();
+		expect(lifecycleBus()).toBeUndefined();
+	});
+
+	test("an emit through the installed singleton reaches a subscriber", () => {
+		const seen: RunDispatchedPayload[] = [];
+		const bus = busWithClock();
+		bus.register({
+			name: "spy",
+			protocol: WARREN_EXT_PROTOCOL,
+			hooks: { run_dispatched: (env) => void seen.push(env.payload) },
+		});
+		installLifecycleBus(bus);
+		lifecycleBus()?.emitRunDispatched(dispatchedPayload("run_singleton"));
+		expect(seen).toHaveLength(1);
+		expect(seen[0]?.runId).toBe("run_singleton");
 	});
 });

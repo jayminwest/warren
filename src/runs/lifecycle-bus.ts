@@ -346,3 +346,37 @@ export function registerExtensions(
 		},
 	};
 }
+
+/**
+ * Boot-installed process singleton (warren-4e74).
+ *
+ * The run-lifecycle emit call-sites (`spawnRun`, `reapRun`) publish
+ * through this so a first-party consumer wires ONCE at boot
+ * ({@link installLifecycleBus}) instead of threading the bus down every
+ * seam — and, per PHILOSOPHY rule 3, without a new `ServerDeps` field.
+ * Unset (tests, or an embedding that skips boot wiring) ⇒ {@link
+ * lifecycleBus} returns `undefined` and every emit is a no-op, so
+ * instrumentation never changes control flow. This is the seam only;
+ * the wire contract (hooks, payloads, `warren-ext/v1`, observe-only)
+ * is unchanged.
+ */
+let installed: LifecycleBus | undefined;
+
+/** Install the process-wide lifecycle bus (called once at boot). */
+export function installLifecycleBus(bus: LifecycleBus): void {
+	installed = bus;
+}
+
+/** Tear the installed bus back down (boot `stop()` + test cleanup). */
+export function clearLifecycleBus(): void {
+	installed = undefined;
+}
+
+/**
+ * The installed lifecycle bus, or `undefined` when none was wired. Emit
+ * call-sites use the optional-chain form `lifecycleBus()?.emit*(...)` so
+ * an un-wired process (unit tests) is a pure no-op.
+ */
+export function lifecycleBus(): LifecycleBus | undefined {
+	return installed;
+}

@@ -1,9 +1,14 @@
 # Tier-1 Observation Event Bus — `warren-ext/v1`
 
-**Status:** Live foundation — the observe-only lifecycle seam
-(warren-bb60, pl-3a79 step 16). The bus + registration API ship in
-`src/runs/lifecycle-bus.ts`; the proof consumers land in
-warren-4e74 (healer) and warren-df3e (mulch/seeds mirror eviction).
+**Status:** Live — the observe-only lifecycle seam (warren-bb60,
+pl-3a79 step 16) with its first proof consumer wired (warren-4e74,
+step 17). The bus + registration API ship in `src/runs/lifecycle-bus.ts`;
+the run-lifecycle emit call-sites (`run_dispatched` in `spawnRun`,
+`pre_reap` / `post_reap` / `branch_pushed` in `reapRun`) publish through
+the boot-installed process singleton, and the healer
+(`src/healer/lifecycle.ts`) is registered as proof consumer #1 via
+`registerExtensions`. warren-df3e (mulch/seeds mirror eviction) evicts
+the finalize-enumerated mirrors onto `post_reap` next.
 **Grounds:** [`PHILOSOPHY.md`](../PHILOSOPHY.md) "Extension tiers" +
 operating rule 6 ("read-only as long as possible"); layered on the
 existing `RunEventBroker` (`src/runs/events.ts`).
@@ -77,6 +82,16 @@ reg.unregister();
   survivors of the deletion pass (pause detector, watchdog, ops-stats)
   and the follow-up consumers (healer, mirrors) wire through — no
   bespoke per-consumer plumbing, no `ServerDeps` field.
+- `installLifecycleBus(bus)` / `lifecycleBus()` is the boot-installed
+  process singleton the run-lifecycle emit call-sites publish through,
+  so a consumer wires ONCE at boot instead of threading the bus down
+  `spawnRun` / `reapRun` (again, no `ServerDeps` field — rule 3). Unset
+  (unit tests) ⇒ `lifecycleBus()` is `undefined` and every emit is a
+  no-op, so instrumentation never changes control flow.
+
+`src/server/main/lifecycle-bus-wiring.ts` is where boot constructs the
+bus (error sink → the boot logger), registers the first-party consumers,
+and installs the singleton; its `stop()` unwinds both on teardown.
 
 ## 4. Observe-only isolation
 
