@@ -29,87 +29,48 @@
 #     Run the housekeeping checklist and file seeds for anything off.
 
 # ---------------------------------------------------------------------
-# ALL TRIGGERS TEMPORARILY DISABLED (2026-07-28).
+# NO TRIGGERS ARE ACTIVE. This is deliberate, not a temporary outage.
 #
-# The scheduled agents below were dispatching and failing on the public
-# instance. Every entry is commented out rather than deleted so it can be
-# restored verbatim — uncomment the block(s) to re-enable. An empty
-# trigger list is valid; warren parses this file and schedules nothing.
+# Warren used to schedule six agents against its own repo: two patrols
+# (nightwatch, bugwatch) and a four-agent "Audit Warden" population
+# (gatewatch, ratchetwatch, tastewatch, warden-digest). Operator decision
+# 2026-07-28 (warren-a781): the audit population is retired outright and
+# nothing runs on a schedule here.
+#
+# Why the wardens went: they billed tokens nightly to file findings that
+# accumulated faster than anyone triaged them — ~90 seeds across their
+# lifetime, and the four still open at retirement were all obsolete. The
+# standards they enforced did not depend on them. Article I and Article
+# IX are human review rules, and Article II's ratchets are already
+# mechanical gates — check:size, check:coverage, check:debt and
+# check:bundle-size run on every PR whether or not an agent watches them.
+# An auditor that only restates what a gate already enforces is a
+# scheduled bill, not a control.
+#
+# nightwatch is KEPT as warren's worked example of an autonomous agent.
+# It survives as a built-in TS module (src/registry/builtins/nightwatch.ts)
+# with test coverage — one patrol demonstrates the whole loop warren
+# exists to show: patrol -> seeds plan -> auto_plan_run -> PR. bugwatch
+# also still ships as a built-in for operators who want it; neither is
+# scheduled on this instance.
+#
+# To re-enable the example, uncomment the block below. Note warren-af3f:
+# cron-triggered patrols succeeded only 32% of the time in production
+# (never_started and dropped_commit are the two dominant failure modes).
+# Fix that before scheduling anything nightly.
+#
+# An empty trigger list is valid — warren parses this file and schedules
+# nothing.
 # ---------------------------------------------------------------------
 
 # - id: nightwatch-patrol
 #   kind: cron
-#   cron: '0 2 * * *'
+#   cron: '0 2 * * 0'          # weekly, Sunday 02:00
 #   role: nightwatch
 #   timezone: America/Los_Angeles
 #   prompt: |
 #     Scan this repo for quality issues. Follow your procedure exactly.
 #     Today's date is {{date}}. If you find issues, file a plan. If the
 #     codebase is clean, report clean and exit.
-
-# - id: bugwatch-triage
-#   kind: cron
-#   cron: '0 5 * * 0,3'
-#   role: bugwatch
-#   timezone: America/Los_Angeles
-#   prompt: |
-#     Triage open bug seeds and plan fixes. Follow your procedure exactly.
-#     Today's date is {{date}}. If no bugs qualify, report clean and exit.
-
-# Audit population (docs/CONSTITUTION.md). gatewatch + ratchetwatch are
-# mechanical auditors with plan+dispatch authority (auto_plan_run);
-# tastewatch is the report-only taste auditor — its weekly digest seed is
-# the human's five-minute calibration read. Article IX: changes to these
-# entries require explicit human review.
-
-# - id: gatewatch-patrol
-#   kind: cron
-#   cron: '10 3 * * *'
-#   role: gatewatch
-#   timezone: America/Los_Angeles
-#   prompt: |
-#     Audit the last 36 hours of merged history for gate-integrity
-#     violations per docs/CONSTITUTION.md. Follow your procedure exactly.
-#     Today's date is {{date}}. Dedupe against open audit seeds before
-#     filing. Each finding is a seed (labeled audit,gatewatch) — the seed is
-#     the durable record the weekly warden-digest triages. If the window is
-#     clean, report clean and exit.
-
-# - id: ratchetwatch-patrol
-#   kind: cron
-#   cron: '40 3 * * *'
-#   role: ratchetwatch
-#   timezone: America/Los_Angeles
-#   prompt: |
-#     Measure ratchet slack (coverage floors, grandfather lists, bundle
-#     creep, debt markers) per docs/CONSTITUTION.md Article II and plan
-#     mechanical tightenings only. Follow your procedure exactly. Today's
-#     date is {{date}}. Each finding is a seed or plan (labeled
-#     audit,ratchetwatch) — the seed is the durable record the weekly
-#     warden-digest triages. If everything is tight, report tight and exit.
-
-# - id: warden-digest
-#   kind: cron
-#   cron: '0 5 * * 0'
-#   role: warden-digest
-#   timezone: America/Los_Angeles
-#   prompt: |
-#     Triage the week's accumulated open audit seeds (gatewatch,
-#     ratchetwatch, tastewatch) into one consolidated warden digest seed and
-#     propose plans for the highest-priority mechanical themes. Follow your
-#     procedure exactly. Today's date is {{date}}.
-
-# - id: tastewatch-digest
-#   kind: cron
-#   cron: '0 4 * * 0'
-#   role: tastewatch
-#   timezone: America/Los_Angeles
-#   prompt: |
-#     Produce the weekly taste digest: stratified sample of the week's
-#     merged commits judged against docs/CONSTITUTION.md, auditor
-#     precision table, divergence trend, at most one proposed amendment.
-#     Exactly one digest seed (labeled audit,tastewatch,digest) — the seed
-#     is the durable record the weekly warden-digest triages. Report-only,
-#     no dispatch or plan. Today's date is {{date}}.
 
 []

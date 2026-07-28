@@ -1,11 +1,17 @@
 # The Warren Constitution
 
-Taste, compiled. This document is the standard the audit population
-(gatewatch, ratchetwatch, tastewatch — see `.warren/triggers.yaml`)
-measures merged work against. Auditors cite articles by number when
-filing findings. The quality gates in CI enforce what they can;
-these articles cover what executable gates cannot — and every article
-aspires to become a gate.
+Taste, compiled. This document is the standard merged work is measured
+against — by humans reviewing PRs, and by any agent warren dispatches
+against this repo. Cite articles by number. The quality gates in CI
+enforce what they can; these articles cover what executable gates
+cannot — and every article aspires to become a gate.
+
+There is no standing audit population. Warren ran one from 2026-06 to
+2026-07 (gatewatch, ratchetwatch, tastewatch, warden-digest on nightly
+and weekly crons); it was retired 2026-07-28 (warren-a781) because it
+billed tokens to restate findings the gates already enforced, at a rate
+nobody triaged. Enforcement lives in CI and in human review. See
+`.warren/triggers.yaml` for what remains scheduled (nothing) and why.
 
 Provenance: distilled 2026-06-11 from CLAUDE.md conventions, mulch
 records, and a forensic audit of merged history (the PR #270
@@ -69,74 +75,38 @@ finding.
 ## Article VIII — Evidence or it didn't happen
 
 Findings cite commit SHAs, file paths, and line ranges. A seed filed
-without evidence gets closed without action. Auditors that cannot show
-their work do not file.
+without evidence gets closed without action. An agent that cannot show
+its work does not file.
 
 ## Article IX — The constitution outranks the population
 
-Changes to this file, to auditor prompts (the agent entries for
-gatewatch / ratchetwatch / tastewatch — today `agents/*.md`, historically
-rendered under `.canopy/`; the `.canopy/` references here are struck in
-the phase-C canopy sweep, warren-6fcd), or to `.warren/triggers.yaml`
-audit entries require explicit human review — they must not ride an
-auto-merged PR. Any auditor that observes a merged change to these
-files without human approval files a priority-1 finding citing this
-article. The population does not rewrite its own mandate.
+Changes to this file, to `.warren/triggers.yaml`, or to the agent
+definitions in `src/registry/builtins/` require explicit human review —
+they must not ride an auto-merged PR. An agent does not rewrite the
+standard it is measured against, and does not schedule itself.
 
 Executable form: the "Article IX check" step in
 `.github/workflows/auto-merge.yml` refuses to enable auto-merge on any
 PR touching this file, `.warren/triggers.yaml`, `.canopy/`, or that
-workflow itself. The auditors still verify (the gate can be deleted;
-the deletion is itself a protected change).
+workflow itself. The gate can be deleted; the deletion is itself a
+protected change, so a human sees it.
 
 ## Amendments
 
 Amend by PR touching this file, flagged for human merge (Article IX).
-Tastewatch's weekly digest may propose amendments; it may not apply
-them. When an article becomes fully enforceable as an executable gate,
-note the gate here and retire the manual check.
+An agent may propose an amendment; only a human merges one. When an
+article becomes fully enforceable as an executable gate, note the gate
+here and retire the manual check.
 
 ---
 
-## Audit Warden boundary (warden architecture)
+## Agent reporting boundary
 
-The Audit Warden consolidates findings from gatewatch, ratchetwatch, and
-tastewatch into a weekly digest. This section records the constitutional
-constraints.
+Any agent warren dispatches against this repo records its findings
+**only** as seeds issues via the `sd` CLI. No agent writes to the
+database directly or calls a new endpoint to report. The seed is the
+durable record, as reviewable as any other seed.
 
-> **Retired (warren-e7e7 / pl-3a79):** the warden was formerly a standing
-> Leveret conversation bound to a long-lived meta-Plot, fed over
-> `POST /conversations/:id/messages` and re-woken via
-> `POST /conversations/:id/re-wake`. The conversations subsystem is being
-> removed; the warden now operates entirely over seeds issues. All
-> `/conversations*` references below have been struck.
-
-### Ingestion rule
-
-Audit findings are recorded **only** as seeds issues via the `sd` CLI
-(labeled `audit` plus the auditor's own label). No auditor writes
-directly to the DB or calls a new endpoint. The seed is the durable,
-auditable record — this preserves Article IX: auditors cannot modify
-their own mandate, and every finding is as reviewable as any other seed.
-
-### Digest cadence
-
-- `warden-digest` cron: Sunday 05:00 America/Los_Angeles — the digest
-  driver triages the week's accumulated open `audit`-labeled seeds and
-  files one consolidated digest seed (and, where mechanical, a plan).
-- `tastewatch-digest` cron: Sunday 04:00 America/Los_Angeles (60 min
-  before warden-digest) — tastewatch files its taste digest seed first
-  so warden-digest can synthesize it alongside the other auditors'.
-
-Both trigger entries are in `.warren/triggers.yaml` and are protected by
-Article IX (require human review to change).
-
-### Autonomy-promotion recommendations
-
-When tastewatch's precision table shows consistent, high-precision findings
-from an auditor, tastewatch *recommends* autonomy promotion in its digest.
-These recommendations are advisory — they are recorded in the digest seed
-for a human to route as a proposed seed or amendment, and any resulting
-change to `.canopy/` or `.warren/triggers.yaml` requires explicit human
-review (Article IX). No auditor may grant itself or another auditor
-autonomous dispatch authority.
+This is what makes Article IX hold: an agent's output is a proposal in
+the tracker, never a change to the standard it was measured against and
+never a change to its own schedule.

@@ -367,7 +367,8 @@ function composeRunEnv(
 	const env: Record<string, string> = { BUN_INSTALL_CACHE_DIR };
 	if (qualityGate !== undefined) env.WARREN_QUALITY_GATE = qualityGate;
 	// warren-f248: forward the warren API token + loopback URL so the agent
-	// can call back into warren's HTTP API (audit-warden delivery path).
+	// can call back into warren's HTTP API. See callback-env.ts for why this
+	// is a generic capability rather than one caller's delivery path.
 	injectWarrenCallbackEnv(env, serverEnv ?? process.env);
 	injectGitIdentityEnv(env, serverEnv ?? process.env);
 	return env;

@@ -7,7 +7,8 @@
  *
  *   - **Metrics**: increments `warren_log_messages_total{level}` for every
  *     warn/error/fatal line, so Grafana can `rate()` the warn/error stream
- *     (this is what catches the warden-digest cron spam — a `warn`, level 40).
+ *     (this is what caught the cron spam from an unregistered scheduled
+ *     agent retrying every tick — a `warn`, level 40).
  *   - **Sentry**: forwards error/fatal lines (level >= 50) as exceptions (when
  *     the log object carries an `Error` under `err`/`error`) or messages. The
  *     structured log object becomes Sentry `extra`; the redaction scrubber on

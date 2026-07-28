@@ -78,7 +78,9 @@ function spawnThrowing(err: unknown): DispatchSpawnFn {
 
 describe("isPermanentSpawnFailure", () => {
 	test("classifies an agent-not-found NotFoundError as permanent", () => {
-		expect(isPermanentSpawnFailure(new NotFoundError("agent not found: warden-digest"))).toBe(true);
+		expect(isPermanentSpawnFailure(new NotFoundError("agent not found: unregistered-agent"))).toBe(
+			true,
+		);
 	});
 
 	test("classifies a transient Error as not permanent", () => {
@@ -298,7 +300,7 @@ describe("dispatchCronTrigger", () => {
 			trigger: cronTrigger(),
 			now: new Date("2026-05-11T00:05:00.000Z"),
 			repos,
-			spawn: spawnThrowing(new NotFoundError("agent not found: warden-digest")),
+			spawn: spawnThrowing(new NotFoundError("agent not found: unregistered-agent")),
 		});
 		expect(result.kind).toBe("error");
 		if (result.kind === "error") expect(result.permanent).toBe(true);
@@ -316,7 +318,7 @@ describe("dispatchCronTrigger", () => {
 			trigger: cronTrigger(),
 			now,
 			repos,
-			spawn: spawnThrowing(new NotFoundError("agent not found: warden-digest")),
+			spawn: spawnThrowing(new NotFoundError("agent not found: unregistered-agent")),
 		});
 		expect(result.kind).toBe("error");
 		if (result.kind === "error") expect(result.permanent).toBe(true);
@@ -338,7 +340,7 @@ describe("dispatchCronTrigger", () => {
 		const calls: unknown[] = [];
 		const spawn: DispatchSpawnFn = async (spawnInput) => {
 			calls.push(spawnInput.agentName);
-			throw new NotFoundError("agent not found: warden-digest");
+			throw new NotFoundError("agent not found: unregistered-agent");
 		};
 
 		// First tick: a new slot elapsed, so we attempt the spawn (and fail
