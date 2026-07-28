@@ -187,18 +187,6 @@ describe("wire paths", () => {
 			url: "/agents?projectId=p1",
 		},
 		{ name: "agents.get", call: (a) => a.agentsApi.get("claude-code"), url: "/agents/claude-code" },
-		{
-			name: "agents.refresh",
-			call: (a) => a.agentsApi.refresh(),
-			url: "/agents/refresh",
-			method: "POST",
-		},
-		{
-			name: "agents.refreshProject",
-			call: (a) => a.agentsApi.refreshProject("p1"),
-			url: "/projects/p1/agents/refresh",
-			method: "POST",
-		},
 		{ name: "projects.list", call: (a) => a.projectsApi.list(), url: "/projects" },
 		{
 			name: "projects.create",

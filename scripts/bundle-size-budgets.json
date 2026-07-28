@@ -8,18 +8,18 @@
 	"$comment_capability_layer_2026_07_27": "BOUNDED AUTO-RAISE (warren-f53e / pl-b82d step 19): the UI capability layer adds the useCapabilities hook, the OperatorOnly / OperatorRoute wrappers, and ~25 wrap sites across the pages, against which the deleted PLOT_STATUS registry and the RefreshProjectsCTA label prop return only a few hundred bytes. Net +673 B gzip js / +1984 B raw js — ordinary feature growth, well inside AUTO_RAISE_CAP, re-baselined via `bun run check:bundle-size --update` on a clean --frozen-lockfile build. No new dependency. The 'ratchet only goes down' rule resumes from here.",
 	"totals": {
 		"raw": {
-			"js": 947946,
-			"css": 38661
+			"js": 944073,
+			"css": 38509
 		},
 		"gzip": {
-			"js": 286575,
-			"css": 7917
+			"js": 285757,
+			"css": 7899
 		}
 	},
 	"largest": {
 		"gzip": {
-			"js": 161154,
-			"css": 7917
+			"js": 160340,
+			"css": 7899
 		}
 	}
 }

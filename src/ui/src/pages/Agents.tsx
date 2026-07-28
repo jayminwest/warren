@@ -1,5 +1,5 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ChevronDown, ChevronRight, RefreshCw } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { ChevronDown, ChevronRight } from "lucide-react";
 import { useState } from "react";
 import { agentsApi, projectsApi } from "@/api/client.ts";
 import type { AgentRow } from "@/api/types.ts";
@@ -23,26 +23,22 @@ import {
 	TableRow,
 } from "@/components/ui/table.tsx";
 import { type Comparator, compareStrings, useClientSort } from "@/hooks/use-client-sort.ts";
-import { type AgentSourceTier, classifyAgentSource } from "@/lib/agent-source.ts";
 import { formatError } from "@/lib/format-error.ts";
 import { formatTimestamp } from "@/lib/utils.ts";
 
-type AgentSortKey = "name" | "source" | "registeredAt" | "lastRefreshed";
+type AgentSortKey = "name" | "registeredAt" | "lastRefreshed";
 
 const AGENT_COMPARATORS: Record<AgentSortKey, Comparator<AgentRow>> = {
 	name: (a, b) => compareStrings(a.name, b.name),
-	source: (a, b) =>
-		compareStrings(classifyAgentSource(a.source).label, classifyAgentSource(b.source).label),
 	registeredAt: (a, b) => compareStrings(a.registeredAt, b.registeredAt),
 	lastRefreshed: (a, b) => compareStrings(a.lastRefreshed, b.lastRefreshed),
 };
 
 export function AgentsPage() {
-	const qc = useQueryClient();
-	// R-03 / pl-fef5 step 8: the projectId filter scopes the list to
-	// global ∪ that project's tier. Empty string means "global only" (the
-	// server rejects `?projectId=`, so the client passes no param in that
-	// case — see agentsQuery in api/client.ts).
+	// The projectId filter scopes the list to global ∪ that project. Empty
+	// string means "global only" (the server rejects `?projectId=`, so the
+	// client passes no param in that case — see agentsQuery in
+	// api/client.ts).
 	const [projectFilter, setProjectFilter] = useState("");
 	const projects = useQuery({
 		queryKey: ["projects"],
@@ -52,17 +48,6 @@ export function AgentsPage() {
 		queryKey: ["agents", { projectId: projectFilter }],
 		queryFn: ({ signal }) =>
 			agentsApi.list(projectFilter.length > 0 ? { projectId: projectFilter } : {}, signal),
-	});
-	const refresh = useMutation({
-		mutationFn: () => agentsApi.refresh(),
-		onSuccess: () => qc.invalidateQueries({ queryKey: ["agents"] }),
-	});
-	// `POST /projects/:id/agents/refresh` — re-scans one project's `.canopy/`.
-	// Only available when a project filter is active; invalidates the
-	// project-scoped agents query so the new rows surface immediately.
-	const refreshProject = useMutation({
-		mutationFn: (projectId: string) => agentsApi.refreshProject(projectId),
-		onSuccess: () => qc.invalidateQueries({ queryKey: ["agents"] }),
 	});
 	const [openName, setOpenName] = useState<string | null>(null);
 	const { sorted, sort, onSort } = useClientSort(agents.data?.agents ?? [], AGENT_COMPARATORS, {
@@ -78,8 +63,7 @@ export function AgentsPage() {
 				description={
 					<>
 						Agents available for dispatch. <code>claude-code</code>, <code>sapling</code>, and{" "}
-						<code>pi</code> ship inline; refresh re-clones the optional canopy library for custom
-						agents. Pick a project to surface its <code>.canopy/</code> tier.
+						<code>pi</code> ship inline. Pick a project to scope the list.
 					</>
 				}
 				actions={
@@ -102,78 +86,9 @@ export function AgentsPage() {
 								))}
 							</select>
 						</div>
-						{/* Both refresh routes are `admin` (warren-b875). */}
-						<OperatorOnly capability="admin">
-							{projectFilter.length > 0 ? (
-								<Button
-									onClick={() => refreshProject.mutate(projectFilter)}
-									disabled={refreshProject.isPending}
-									variant="outline"
-								>
-									<RefreshCw
-										className={`h-4 w-4 ${refreshProject.isPending ? "animate-spin" : ""}`}
-									/>
-									Refresh project tier
-								</Button>
-							) : null}
-							<Button
-								onClick={() => refresh.mutate()}
-								disabled={refresh.isPending}
-								variant="outline"
-							>
-								<RefreshCw className={`h-4 w-4 ${refresh.isPending ? "animate-spin" : ""}`} />
-								Refresh registry
-							</Button>
-						</OperatorOnly>
 					</div>
 				}
 			/>
-
-			{refresh.isSuccess ? (
-				<Card>
-					<CardContent className="flex flex-wrap items-center gap-3 p-4 text-sm">
-						<span className="font-medium">Last refresh:</span>
-						<Badge variant="succeeded">{refresh.data.registered.length} registered</Badge>
-						{refresh.data.skipped.length > 0 ? (
-							<Badge variant="failed">{refresh.data.skipped.length} skipped</Badge>
-						) : null}
-						{refresh.data.removed.length > 0 ? (
-							<Badge variant="cancelled">{refresh.data.removed.length} removed</Badge>
-						) : null}
-						<span className="text-(--color-muted-foreground)">
-							{refresh.data.clone.head.slice(0, 12)}
-						</span>
-					</CardContent>
-				</Card>
-			) : null}
-
-			{refreshProject.isSuccess ? (
-				<Card>
-					<CardContent className="flex flex-wrap items-center gap-3 p-4 text-sm">
-						<span className="font-medium">Last project refresh:</span>
-						<code className="font-mono text-xs">{refreshProject.data.projectId}</code>
-						<Badge variant="succeeded">{refreshProject.data.registered.length} registered</Badge>
-						{refreshProject.data.skipped.length > 0 ? (
-							<Badge variant="failed">{refreshProject.data.skipped.length} skipped</Badge>
-						) : null}
-						{refreshProject.data.removed.length > 0 ? (
-							<Badge variant="cancelled">{refreshProject.data.removed.length} removed</Badge>
-						) : null}
-					</CardContent>
-				</Card>
-			) : null}
-
-			{refresh.isError ? (
-				<Alert variant="danger" title="Registry refresh failed">
-					{formatError(refresh.error)}
-				</Alert>
-			) : null}
-
-			{refreshProject.isError ? (
-				<Alert variant="danger" title="Project tier refresh failed">
-					{formatError(refreshProject.error)}
-				</Alert>
-			) : null}
 
 			<Card>
 				<CardHeader>
@@ -196,9 +111,7 @@ export function AgentsPage() {
 							description={
 								<>
 									Built-in <code>claude-code</code>, <code>sapling</code>, and <code>pi</code>{" "}
-									should appear here automatically — if not, check <code>warren doctor</code>. To
-									layer a custom canopy library on top, set <code>CANOPY_REPO_URL</code> and click{" "}
-									<strong>Refresh registry</strong>.
+									should appear here automatically — if not, check <code>warren doctor</code>.
 								</>
 							}
 						/>
@@ -209,9 +122,6 @@ export function AgentsPage() {
 									<TableHead className="w-8" />
 									<SortableTableHead columnKey="name" sort={sort} onSort={onSort}>
 										Name
-									</SortableTableHead>
-									<SortableTableHead columnKey="source" sort={sort} onSort={onSort}>
-										Source
 									</SortableTableHead>
 									<SortableTableHead columnKey="registeredAt" sort={sort} onSort={onSort}>
 										Registered
@@ -241,24 +151,10 @@ export function AgentsPage() {
 	);
 }
 
-/**
- * Project-tier rows can share a `name` with a global row when the
- * filter surfaces both; key open-state on `name + source` so toggling
- * one doesn't expand the other.
- */
+/** Key open-state on `name` so toggling one row doesn't expand another. */
 function agentRowKey(agent: AgentRow): string {
-	return `${agent.source ?? "unknown"}::${agent.name}`;
+	return agent.name;
 }
-
-const sourceBadgeVariant: Record<
-	AgentSourceTier,
-	"default" | "secondary" | "succeeded" | "running" | "queued"
-> = {
-	builtin: "secondary",
-	library: "running",
-	project: "succeeded",
-	unknown: "default",
-};
 
 function AgentDisplayRow({
 	agent,
@@ -269,7 +165,6 @@ function AgentDisplayRow({
 	open: boolean;
 	onToggle: () => void;
 }) {
-	const classified = classifyAgentSource(agent.source);
 	return (
 		<>
 			<TableRow className="cursor-pointer" onClick={onToggle}>
@@ -277,15 +172,6 @@ function AgentDisplayRow({
 					{open ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
 				</TableCell>
 				<TableCell className="font-medium">{agent.name}</TableCell>
-				<TableCell>
-					<Badge
-						variant={sourceBadgeVariant[classified.tier]}
-						className="font-mono text-xs"
-						title={classified.projectId !== null ? `project:${classified.projectId}` : undefined}
-					>
-						{classified.label}
-					</Badge>
-				</TableCell>
 				<TableCell className="text-(--color-muted-foreground)">
 					{formatTimestamp(agent.registeredAt)}
 				</TableCell>
@@ -295,7 +181,7 @@ function AgentDisplayRow({
 			</TableRow>
 			{open ? (
 				<TableRow>
-					<TableCell colSpan={5} className="bg-(--color-muted)/30 max-w-0">
+					<TableCell colSpan={4} className="bg-(--color-muted)/30 max-w-0">
 						<AgentDefinitionPanel agent={agent} />
 					</TableCell>
 				</TableRow>
@@ -336,7 +222,7 @@ function readTags(frontmatter: Record<string, unknown> | undefined): string[] {
  * The header `<dl>` reads the flat row fields (`description` / `provider` /
  * `model`), which survive the public projection, so it renders identically
  * for both audiences. Everything below it is derived from `renderedJson` —
- * the system prompt, the resolved canopy source paths, the raw envelope —
+ * the system prompt, the resolved source paths, the raw envelope —
  * which warren drops for a `readPublic`-only caller (warren-4f6c). Rather
  * than render that half as an empty "No sections." shell, it is gated on
  * `readOperator` (warren-f53e / pl-b82d step 19).
@@ -353,7 +239,6 @@ function AgentDefinitionPanel({ agent }: { agent: AgentRow }) {
 		<div className="space-y-4 break-words">
 			<dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs sm:grid-cols-3 lg:grid-cols-4">
 				<MetaField label="Name" value={def.name ?? agent.name} mono />
-				<MetaField label="Source" value={agent.source ?? "—"} />
 				<MetaField label="Provider" value={provider ?? "—"} mono />
 				<MetaField label="Model" value={model ?? "—"} mono />
 				{agent.description ? (

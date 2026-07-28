@@ -158,12 +158,13 @@ describe("every mutation site sits behind the one gate (warren-f53e)", () => {
 	});
 
 	test("project + registry mutation is gated on admin, not dispatch", () => {
-		// `POST /projects`, `DELETE /projects/:id`, the two refresh routes and
-		// `POST /agents/refresh` are all `admin` in ROUTE_TABLE (warren-b875).
+		// `POST /projects` and `DELETE /projects/:id` are `admin` in
+		// ROUTE_TABLE (warren-b875). The canopy `/agents/refresh` routes were
+		// removed in the deletion pass (warren-6fcd), so the Agents page no
+		// longer carries an admin mutation control.
 		expect(read("pages", "Projects.tsx")).toMatch(
 			/<OperatorOnly capability="admin">\s*<AddProjectForm/,
 		);
-		expect(read("pages", "Agents.tsx")).toMatch(/<OperatorOnly capability="admin">/);
 		expect(read("pages", "NewPlanRun.tsx")).toMatch(/<OperatorOnly capability="admin">/);
 	});
 });

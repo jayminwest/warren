@@ -27,7 +27,7 @@ A green run prints something like:
 ```
 Acceptance results:
   ✓ 01     312ms  boot + /healthz auth-exempt + /readyz transitions to 200 after refresh
-  ✓ 02     842ms  POST /agents/refresh clones canopy + GET /agents lists stub-shell
+  ✓ 03     842ms  projects management — add / list / refresh / delete
   ...
   12 passed, 0 failed, 0 skipped
 ```
@@ -36,7 +36,7 @@ In container mode, scenarios that need host-side fixtures skip cleanly:
 
 ```
   ✓ 01     180ms  boot + /healthz auth-exempt + /readyz transitions to 200 after refresh
-  ○ 02       0ms  POST /agents/refresh clones canopy + GET /agents lists stub-shell
+  ○ 19       0ms  warren on postgres
         ↳ not supported in container mode
   ...
   ✓ 13   42130ms  container boot — image builds, supervisor + bwrap flags hold, healthz/readyz/agents respond
@@ -95,8 +95,8 @@ Boots warren via `docker compose up -d --build` using the canonical
 
 - gives the run a unique compose project name + container name,
 - maps a random ephemeral host port to the container's `:8080`,
-- supplies `WARREN_API_TOKEN`, `WARREN_BURROW_NO_AUTH=1`,
-  `WARREN_LOG_LEVEL=warn`, and an empty `CANOPY_REPO_URL` inline
+- supplies `WARREN_API_TOKEN`, `WARREN_BURROW_NO_AUTH=1`, and
+  `WARREN_LOG_LEVEL=warn` inline
   (no `.env` file required at the repo root).
 
 ```bash
@@ -122,8 +122,8 @@ What container mode actually verifies (scenarios 01 + 13):
   `sapling`) seeded by `seedBuiltinAgents`,
 - `/readyz` returns a structured `{ ok, checks: [...] }` body.
 
-Scenarios that depend on host-side fixtures (canopy library, sample
-project repo) declare `modes: ["in-proc"]` and skip cleanly in
+Scenarios that depend on host-side fixtures (a sample project repo)
+declare `modes: ["in-proc"]` and skip cleanly in
 container mode — the compose harness deliberately doesn't bind-mount
 fixtures into the container, since the production deploy is
 fixture-free. Scenarios that drive process control (kill warren /
@@ -249,9 +249,9 @@ open http://localhost:8080
 1. **Login screen.** Paste `WARREN_API_TOKEN` into the bearer-token
    input (stored in localStorage under `warren.apiToken`). The
    ProjectsPage should load without redirecting back to login.
-2. **Agents page.** Built-in agents (`claude-code`, `sapling`) appear
-   with a `builtin` badge. If `CANOPY_REPO_URL` is set, library agents
-   appear after a refresh.
+2. **Agents page.** Built-in agents (`claude-code`, `sapling`, `pi`)
+   appear in the registry table. Expand a row to inspect its rendered
+   definition.
 3. **Projects page.** `Add project` accepts a github.com URL and
    produces a row within ~5s; refresh updates `defaultBranch`.
 4. **New run.** Pick agent + project, type a prompt, submit. The page

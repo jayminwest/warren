@@ -5,9 +5,8 @@
 // declared here. It is defined once in `src/core/wire.ts` — warren's
 // dependency-free kernel — and re-exported below, so the UI and the server
 // can never drift the way they did before warren-b229 (a `RunFailureReason`
-// missing two live values, a deleted `interactive` run mode, and a
-// `RefreshAgentsResponse.removed` typed `{name}[]` against a `string[]`
-// server truth). `src/ui/tsconfig.app.json` lists `../core/wire.ts` in its
+// missing two live values and a deleted `interactive` run mode).
+// `src/ui/tsconfig.app.json` lists `../core/wire.ts` in its
 // `include` so the separate `@os-eco/warren-ui` project can see the file.
 //
 // Only the RESPONSE ENVELOPES below are UI-local, and only because the
@@ -47,7 +46,7 @@ import type {
 export interface AgentRow {
 	name: string;
 	/**
-	 * The fully rendered canopy envelope — `sections.system` is the agent's
+	 * The fully rendered agent envelope — `sections.system` is the agent's
 	 * whole system prompt, `sections.burrow_config` is sandbox policy. The
 	 * public projection drops it (warren-4f6c), so it is ABSENT for a
 	 * spectator; the three facts worth showing one are hoisted onto the row
@@ -65,10 +64,9 @@ export interface AgentRow {
 	provider: string | null;
 	model: string | null;
 	/**
-	 * Provenance decorated by the server (warren-f6ad / readAgentSource).
-	 * R-03 (pl-fef5) widened this from `"builtin" | "library"` to also
-	 * include `project:<projectId>` for the per-project `.canopy/` tier;
-	 * UI surfaces classify by the `project:` prefix.
+	 * Provenance decorated by the server (warren-f6ad / readAgentSource):
+	 * `"builtin"` for agents shipped inline, `"library"` for same-named
+	 * overrides loaded from a configured source.
 	 */
 	source?: AgentSource;
 }
@@ -311,51 +309,6 @@ export interface CancelRunResponse {
 
 export interface SteerRunResponse {
 	message: unknown;
-}
-
-/**
- * Wire envelope of `POST /agents/refresh` (src/server/handlers/agents.ts).
- * `removed` is `string[]` — the server passes `RefreshResult.removed`
- * through verbatim (src/registry/refresh.ts) — and `projects` /
- * `projectErrors` carry the per-project `.canopy/` tier's results (R-03 /
- * pl-fef5). All four were wrong or missing here before warren-b229.
- */
-export interface RefreshAgentsResponse {
-	clone: { localPath: string; head: string };
-	registered: AgentRow[];
-	skipped: RefreshSkipped[];
-	removed: string[];
-	projects: RefreshProjectAgentsResponse[];
-	projectErrors: ProjectRefreshErrorRow[];
-}
-
-/** One per-agent registration failure inside a refresh envelope. */
-export interface RefreshSkipped {
-	name: string;
-	reason: string;
-	code: string;
-}
-
-/** One per-project failure in `POST /agents/refresh`; `message` is fixed (warren-bf4c). */
-export interface ProjectRefreshErrorRow {
-	projectId: string;
-	code: string;
-	message: string;
-}
-
-/**
- * Wire envelope of `POST /projects/:id/agents/refresh` (R-03 / pl-fef5
- * step 6). Mirrors `RefreshProjectResult` after server-side decoration:
- * each `registered` row carries the `source: "project:<id>"` provenance
- * stamp. Per-agent failures land in `skipped`; project-tier `removed` is
- * `string[]` because pruning is always-on at this tier (the project's
- * `.canopy/` is authoritative).
- */
-export interface RefreshProjectAgentsResponse {
-	projectId: string;
-	registered: AgentRow[];
-	skipped: RefreshSkipped[];
-	removed: string[];
 }
 
 export interface ReadyCheckResult {

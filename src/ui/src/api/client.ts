@@ -21,8 +21,6 @@ import type {
 	ProjectRow,
 	ReadyPlansResponse,
 	ReadyzResponse,
-	RefreshAgentsResponse,
-	RefreshProjectAgentsResponse,
 	RefreshProjectResponse,
 	RunAnalyticsTokensSection,
 	RunEvent,
@@ -156,19 +154,6 @@ export const agentsApi = {
 		request<AgentRow>(`/agents/${encodeURIComponent(name)}${agentsQuery(filter)}`, {
 			...(signal ? { signal } : {}),
 		}),
-	refresh: () => request<RefreshAgentsResponse>("/agents/refresh", { method: "POST", body: {} }),
-	/**
-	 * Refresh just one project's `.canopy/` tier (R-03 / pl-fef5 step 6).
-	 * Distinct from `refresh`, which re-clones the library AND every
-	 * project's tier in one pass — the per-project route is the targeted
-	 * path the Agents page calls after the operator edits one project's
-	 * `.canopy/`.
-	 */
-	refreshProject: (projectId: string) =>
-		request<RefreshProjectAgentsResponse>(
-			`/projects/${encodeURIComponent(projectId)}/agents/refresh`,
-			{ method: "POST", body: {} },
-		),
 };
 
 /* ----------------------------------------------------------------------- */
