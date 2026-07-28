@@ -8,8 +8,6 @@
 
 import {
 	checkBwrap,
-	checkCanopyClean,
-	checkCanopyClone,
 	checkDatabaseReachable,
 	checkPreviewAuthStrength,
 	checkPreviewMaxLive,
@@ -35,18 +33,6 @@ export function readyzHandler(deps: ServerDeps): RouteHandler {
 		// handler-local `defaultSpawn` to keep the contract live in tests
 		// that don't override.
 		const spawn: SpawnFn = deps.spawn ?? defaultSpawn;
-		// Canopy probes are gated on `CANOPY_REPO_URL` being configured
-		// (warren-d3e9). With no library, both probes return informational
-		// `ok: true` rather than failing — built-in agents cover the
-		// "no library" case and there's no clone to inspect.
-		const env: Readonly<Record<string, string | undefined>> =
-			deps.canopyConfig !== undefined
-				? {
-						CANOPY_REPO_URL: deps.canopyConfig.repoUrl,
-						WARREN_CANOPY_DIR: deps.canopyConfig.localDir,
-						WARREN_GIT_BINARY: deps.canopyConfig.gitBinary,
-					}
-				: {};
 
 		const checks: DiagnosticCheck[] = [];
 		// `deps.logger` is the sink for the raw failure detail the checks
@@ -66,8 +52,6 @@ export function readyzHandler(deps: ServerDeps): RouteHandler {
 		// readiness (warren-c128). `burrowReadyzChecks` returns [] under k8s.
 		checks.push(...(await burrowReadyzChecks(deps, spawn)));
 		checks.push(await checkAgentsRegistered(deps));
-		checks.push(checkCanopyClone({ env }));
-		checks.push(await checkCanopyClean({ env, spawn }));
 		const warrenConfigProjects = (await deps.repos.projects.listAll()).map((p) => ({
 			id: p.id,
 			localPath: p.localPath,
@@ -181,10 +165,7 @@ async function checkAgentsRegistered(deps: ServerDeps): Promise<DiagnosticCheck>
 			name: "agents",
 			ok: false,
 			message: "no agents registered",
-			hint:
-				deps.canopyConfig !== undefined
-					? "POST /agents/refresh against your canopy library, or check the warren server logs for built-in seed errors"
-					: "check the warren server logs for built-in seed errors",
+			hint: "check the warren server logs for built-in seed errors",
 		};
 	}
 	return { name: "agents", ok: true };

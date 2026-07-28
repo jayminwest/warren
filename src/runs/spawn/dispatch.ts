@@ -86,7 +86,7 @@ export async function spawnRun(input: SpawnRunInput): Promise<SpawnRunResult> {
 	});
 	if (!agentRow) {
 		throw new NotFoundError(`agent not found: ${input.agentName}`, {
-			recoveryHint: "POST /agents/refresh to re-discover from canopy",
+			recoveryHint: "POST /projects/:id/agents/refresh to re-discover from a project .canopy/ tier",
 		});
 	}
 	const project = await input.repos.projects.require(input.projectId);

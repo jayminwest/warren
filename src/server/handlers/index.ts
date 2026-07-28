@@ -22,7 +22,7 @@
  * this hook the run dispatches into burrow but warren never persists
  * any of its events — a regression Phase 6 would otherwise re-introduce.
  *
- * `POST /agents/refresh` is sync from the wire's POV (the canopy clone +
+ * `POST /projects/:id/agents/refresh` is sync from the wire's POV (the
  * per-prompt render runs to completion before responding). We don't
  * stream progress events; if a refresh starts taking minutes the right
  * answer is to add a Phase 13-style readyz/doctor signal, not to bolt a
@@ -32,12 +32,7 @@
 import { ValidationError } from "../../core/errors.ts";
 import { defaultSpawn } from "../../projects/clone.ts";
 import type { Route, RouteContext, RouteHandler, RoutePolicy, ServerDeps } from "../types.ts";
-import {
-	getAgentHandler,
-	listAgentsHandler,
-	refreshAgentsHandler,
-	refreshProjectAgentsHandler,
-} from "./agents.ts";
+import { getAgentHandler, listAgentsHandler, refreshProjectAgentsHandler } from "./agents.ts";
 import { healAlertHandler } from "./alerts.ts";
 import { readyzHandler } from "./diagnostics.ts";
 import { healthzHandler, previewConfigHandler, versionHandler, whoamiHandler } from "./meta.ts";
@@ -217,7 +212,6 @@ const ROUTE_TABLE: readonly RouteEntry[] = [
 	{ method: "GET", pattern: "/whoami", policy: "readPublic", build: () => whoamiHandler() },
 
 	{ method: "GET", pattern: "/agents", policy: "readPublic", build: listAgentsHandler },
-	{ method: "POST", pattern: "/agents/refresh", policy: "admin", build: refreshAgentsHandler },
 	{ method: "GET", pattern: "/agents/:name", policy: "readPublic", build: getAgentHandler },
 
 	// warren-3db0: closed-loop alert intake. Token-gated via the standard

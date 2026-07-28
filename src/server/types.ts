@@ -18,7 +18,6 @@ import type { PreviewProxyHandler } from "../preview/proxy/types.ts";
 import type { SpawnFn } from "../projects/clone.ts";
 import type { ProjectsConfig } from "../projects/config.ts";
 import type { refreshProject } from "../projects/manage.ts";
-import type { CanopyRegistryConfig } from "../registry/config.ts";
 import type { RunEventBroker } from "../runs/events.ts";
 import type { AutoOpenPrConfig } from "../runs/pr.ts";
 import type { BridgeRegistry } from "../runs/stream/types.ts";
@@ -180,19 +179,12 @@ export interface ServerDeps {
 	readonly finalizeCoordinator?: import("../runtime/k8s/finalize-coordinator.ts").FinalizeCoordinator;
 	readonly broker: RunEventBroker;
 	readonly bridges: BridgeRegistry;
-	/**
-	 * Canopy library config — undefined when `CANOPY_REPO_URL` is unset
-	 * (warren-d3e9). `POST /agents/refresh` and the canopy clone / canopy clean
-	 * readyz probes are gated on this being defined. Built-in agents in
-	 * `src/registry/builtins/` cover the common "no library configured" case.
-	 */
-	readonly canopyConfig?: CanopyRegistryConfig;
 	readonly projectsConfig: ProjectsConfig;
 	readonly logger: Logger;
 	/** UI dist directory for static serving; null disables `/` and `/assets/*`. */
 	readonly uiDistDir: string | null;
 	/**
-	 * Spawn seam used by `/readyz` (Phase 13 bwrap + canopy_clean probes)
+	 * Spawn seam used by `/readyz` (Phase 13 bwrap probe)
 	 * and any future shell-out from a handler. `main.ts` wires the
 	 * production `Bun.spawn` adapter; tests pass a stub.
 	 */

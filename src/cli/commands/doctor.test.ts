@@ -25,7 +25,7 @@ function captureContext(
 }
 
 describe("runDoctor", () => {
-	test("flags missing WARREN_API_TOKEN and exits 1; CANOPY_REPO_URL is informational", async () => {
+	test("flags missing WARREN_API_TOKEN and exits 1", async () => {
 		const { context } = captureContext({});
 		const result = await runDoctor(
 			context,
@@ -38,11 +38,6 @@ describe("runDoctor", () => {
 		expect(result.exitCode).toBe(1);
 		const tokenCheck = result.checks.find((c: DoctorCheck) => c.name === "WARREN_API_TOKEN");
 		expect(tokenCheck?.ok).toBe(false);
-		// CANOPY_REPO_URL is now optional (warren-d3e9): unset is ok with an
-		// informational message, not a failure.
-		const canopyCheck = result.checks.find((c: DoctorCheck) => c.name === "CANOPY_REPO_URL");
-		expect(canopyCheck?.ok).toBe(true);
-		expect(canopyCheck?.message).toContain("no canopy library configured");
 	});
 
 	test("doctor passes with no canopy library configured (warren-d3e9)", async () => {
@@ -98,32 +93,9 @@ describe("runDoctor", () => {
 		expect(result.exitCode).toBe(1);
 	});
 
-	test("flags a missing canopy clone directory", async () => {
-		const { context } = captureContext({
-			WARREN_API_TOKEN: "tok",
-			CANOPY_REPO_URL: "https://example.com/agents.git",
-			WARREN_CANOPY_DIR: "/nonexistent/canopy",
-		});
-		const result = await runDoctor(
-			context,
-			{
-				existsSync: (p) => p !== "/nonexistent/canopy",
-				probeBurrow: async () => undefined,
-			},
-			{},
-		);
-		const canopyClone = result.checks.find((c: DoctorCheck) => c.name === "canopy_clone");
-		expect(canopyClone?.ok).toBe(false);
-		expect(canopyClone?.message).toBe("canopy clone directory does not exist");
-		// warren-51de: doctor shares the check with /readyz, which renders the
-		// message verbatim — so the clone path is not in it.
-		expect(canopyClone?.message).not.toContain("/nonexistent/canopy");
-	});
-
 	test("returns exit 0 when every check passes", async () => {
 		const { context } = captureContext({
 			WARREN_API_TOKEN: "tok",
-			CANOPY_REPO_URL: "https://example.com/agents.git",
 		});
 		const result = await runDoctor(
 			context,
@@ -164,38 +136,9 @@ describe("runDoctor", () => {
 		expect(bwrap?.hint).toContain("bubblewrap");
 	});
 
-	test("flags a dirty canopy clone with the refresh hint", async () => {
-		const { context } = captureContext(
-			{
-				WARREN_API_TOKEN: "tok",
-				CANOPY_REPO_URL: "https://example.com/agents.git",
-			},
-			async (cmd) => {
-				if (cmd.includes("status") && cmd.includes("--porcelain")) {
-					return { stdout: " M agents/foo.md\n", stderr: "", exitCode: 0 };
-				}
-				return { stdout: "bubblewrap 0.8.0", stderr: "", exitCode: 0 };
-			},
-		);
-		const result = await runDoctor(
-			context,
-			{
-				existsSync: () => true,
-				probeBurrow: async () => undefined,
-			},
-			{},
-		);
-		expect(result.exitCode).toBe(1);
-		const clean = result.checks.find((c: DoctorCheck) => c.name === "canopy_clean");
-		expect(clean?.ok).toBe(false);
-		expect(clean?.message).toContain("1 local mutation");
-		expect(clean?.hint).toContain("/agents/refresh");
-	});
-
 	test("emits all expected check names in order", async () => {
 		const { context } = captureContext({
 			WARREN_API_TOKEN: "tok",
-			CANOPY_REPO_URL: "https://example.com/agents.git",
 		});
 		const result = await runDoctor(
 			context,
@@ -208,11 +151,8 @@ describe("runDoctor", () => {
 		const names = result.checks.map((c) => c.name);
 		expect(names).toEqual([
 			"WARREN_API_TOKEN",
-			"CANOPY_REPO_URL",
 			"warren_db",
 			"db_reachable",
-			"canopy_clone",
-			"canopy_clean",
 			"projects_root",
 			"bwrap",
 			"warren_config",

@@ -12,11 +12,7 @@ import { NotFoundError, ValidationError } from "../../core/errors.ts";
 import type { AgentRow } from "../../db/schema.ts";
 import { type AgentSource, readAgentSource } from "../../registry/builtins/index.ts";
 import { CanopyClient } from "../../registry/canopy.ts";
-import {
-	type RefreshProjectResult,
-	refreshAgentRegistry,
-	refreshProjectAgents,
-} from "../../registry/refresh.ts";
+import { type RefreshProjectResult, refreshProjectAgents } from "../../registry/refresh.ts";
 import { readProviderFrontmatter } from "../../registry/schema.ts";
 import { collectedErrorMessage, errorLogFields } from "../errors.ts";
 import { isPublicOnly, pickFields } from "../projection.ts";
@@ -152,7 +148,8 @@ export function getAgentHandler(deps: ServerDeps): RouteHandler {
 				: await deps.repos.agents.get(name);
 		if (!row) {
 			throw new NotFoundError(`agent not found: ${name}`, {
-				recoveryHint: "POST /agents/refresh to re-discover from canopy",
+				recoveryHint:
+					"POST /projects/:id/agents/refresh to re-discover from a project .canopy/ tier",
 			});
 		}
 		return jsonResponse(200, projectAgent(withAgentSource(row), ctx.actor));
@@ -160,10 +157,11 @@ export function getAgentHandler(deps: ServerDeps): RouteHandler {
 }
 
 /**
- * Per-project refresh error caught by `POST /agents/refresh`'s all-
- * projects loop. Surfaced in the response envelope so the operator
- * can spot a project whose `.canopy/` is misconfigured without
- * tanking the library half of the refresh.
+ * Per-project refresh error, surfaced in a response envelope so the
+ * operator can spot a project whose `.canopy/` is misconfigured. The
+ * library tier and its all-projects refresh loop were removed in
+ * warren-5652; `collectProjectRefreshError` remains the shared
+ * body/log disclosure helper (warren-bf4c) for per-project failures.
  *
  * `message` is a FIXED stand-in, never the caught error's own text
  * (warren-bf4c) — see `collectProjectRefreshError`.
@@ -225,75 +223,17 @@ function decorateRefreshResult(result: RefreshProjectResult): ProjectRefreshOutc
 /**
  * Build a `CanopyClient` rooted at a project's working tree so
  * `cn list`/`cn render` resolve against `<projectPath>/.canopy/`.
- * The cn binary defaults to whatever the library tier configured
- * (`canopyConfig.cnBinary`, ultimately `WARREN_CN_BINARY`); without
- * a library configured we fall back to "cn" on PATH.
+ * The cn binary is "cn" on PATH.
  */
 export function projectCanopyClient(deps: ServerDeps, projectPath: string): CanopyClient {
 	return CanopyClient.forProjectPath({
 		projectPath,
-		cnBinary: deps.canopyConfig?.cnBinary ?? "cn",
+		cnBinary: "cn",
 		// Route project-tier spawns through deps.spawn (when set) so tests
 		// can stub `cn list`/`cn render` without touching PATH — same seam
 		// `POST /projects/:id/refresh` uses for git.
 		spawn: deps.spawn ?? defaultSpawn,
 	});
-}
-
-export function refreshAgentsHandler(deps: ServerDeps): RouteHandler {
-	return async (ctx) => {
-		// No canopy library configured (warren-d3e9): refresh has nothing
-		// to refresh against. 400 with a friendly hint is more useful than
-		// 200-with-empty-arrays — the operator's mental model is "I asked
-		// for a refresh, why didn't anything happen". Project-tier refresh
-		// is still available via POST /projects/:id/agents/refresh.
-		if (deps.canopyConfig === undefined) {
-			throw new ValidationError("CANOPY_REPO_URL is not set; nothing to refresh", {
-				recoveryHint:
-					"set CANOPY_REPO_URL to a canopy agent library to enable refresh — built-in agents are always available without one, and POST /projects/:id/agents/refresh handles project-tier .canopy/",
-			});
-		}
-		const canopyConfig = deps.canopyConfig;
-		const client = CanopyClient.forLibrary({ config: canopyConfig, spawn: defaultSpawn });
-		const libraryResult = await refreshAgentRegistry({
-			client,
-			agents: deps.repos.agents,
-			cloneOptions: {
-				config: canopyConfig,
-				spawn: defaultSpawn,
-			},
-		});
-
-		// After the library pass, scan every project's .canopy/ tier
-		// (pl-fef5 acceptance #3). Per-project failures (missing .canopy,
-		// malformed prompts, cn binary AWOL inside one project) are
-		// collected — one bad project must not poison the batch.
-		const projects = await deps.repos.projects.listAll();
-		const projectOutcomes: ProjectRefreshOutcome[] = [];
-		const projectErrors: ProjectRefreshError[] = [];
-		for (const project of projects) {
-			try {
-				const result = await refreshProjectAgents({
-					client: projectCanopyClient(deps, project.localPath),
-					agents: deps.repos.agents,
-					projectId: project.id,
-					projectPath: project.localPath,
-				});
-				projectOutcomes.push(decorateRefreshResult(result));
-			} catch (err) {
-				projectErrors.push(collectProjectRefreshError(project.id, err, ctx));
-			}
-		}
-
-		return jsonResponse(200, {
-			clone: libraryResult.clone,
-			registered: libraryResult.registered,
-			skipped: libraryResult.skipped,
-			removed: libraryResult.removed,
-			projects: projectOutcomes,
-			projectErrors,
-		});
-	};
 }
 
 export function refreshProjectAgentsHandler(deps: ServerDeps): RouteHandler {

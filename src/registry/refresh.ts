@@ -1,21 +1,16 @@
 /**
- * `refreshAgentRegistry` — the operation behind `POST /agents/refresh`
- * (SPEC §8.1) and `warren register-agent` (SPEC §8.2).
+ * `refreshProjectAgents` — the operation behind
+ * `POST /projects/:id/agents/refresh` (R-03 / pl-fef5). Scans a
+ * project's `<projectPath>/.canopy/` tier via the `cn` CLI, renders and
+ * validates each agent, and upserts it at the project scope.
  *
- * Pipeline:
- *   1. Clone or fast-forward the canopy library repo on disk.
- *   2. List prompts tagged `agent` via `cn list --tag agent --json`.
- *   3. For each, render via `cn render <name> --format json`, validate
- *      against warren's semantic schema, and upsert into the agents
- *      table.
- *   4. Optionally prune agents that are no longer in the canopy repo
- *      (off by default — operators may not want a missed `git fetch`
- *      to nuke their registry).
+ * The library tier (`CANOPY_REPO_URL` clone path, `refreshAgentRegistry`,
+ * `POST /agents/refresh`) was removed in warren-5652 — warren ships
+ * built-in agents inline (`src/registry/builtins/`) and per-project
+ * `.canopy/` is the only remaining canopy-sourced tier.
  *
  * Per-agent failures are *collected*, not thrown: one bad prompt
- * shouldn't block the operator from seeing the other 19 register
- * cleanly. The caller decides whether to surface skipped entries as a
- * warning (UI) or as a non-zero CLI exit (`warren register-agent`).
+ * shouldn't block the operator from seeing the others register cleanly.
  *
  * Transport-level failures (canopy unreachable, `cn` binary missing)
  * abort the whole refresh — there's nothing useful to partially register
@@ -28,7 +23,6 @@ import type { AgentsRepo } from "../db/repos/agents.ts";
 import type { AgentRow } from "../db/schema.ts";
 import { makeProjectAgentSource, stampAgentSource } from "./builtins/index.ts";
 import type { AgentSummary, CanopyClient } from "./canopy.ts";
-import { type CloneOptions, type CloneResult, cloneOrUpdateCanopyRepo } from "./clone.ts";
 import { composeAgent, type ResolveParent, rawPromptHasParents } from "./compose.ts";
 import { AgentSchemaError, CanopyUnavailableError } from "./errors.ts";
 import { type AgentDefinition, parseRenderedAgent, validateAgentDefinition } from "./schema.ts";
@@ -39,75 +33,9 @@ export interface RefreshSkipped {
 	readonly code: string;
 }
 
-export interface RefreshResult {
-	readonly clone: CloneResult;
-	readonly registered: AgentRow[];
-	readonly skipped: RefreshSkipped[];
-	readonly removed: string[];
-}
-
-export interface RefreshOptions {
-	readonly client: CanopyClient;
-	readonly agents: AgentsRepo;
-	/** Inject the cloner; defaults to the live `cloneOrUpdateCanopyRepo`. */
-	readonly clone?: (
-		opts: Omit<CloneOptions, "spawn"> & { spawn: CloneOptions["spawn"] },
-	) => Promise<CloneResult>;
-	readonly cloneOptions: Omit<CloneOptions, "spawn"> & Pick<CloneOptions, "spawn">;
-	/**
-	 * If true, delete agents that exist in warren's table but are no longer
-	 * in the canopy repo. Off by default — see file header.
-	 */
-	readonly prune?: boolean;
-	readonly now?: () => Date;
-}
-
-export async function refreshAgentRegistry(opts: RefreshOptions): Promise<RefreshResult> {
-	const cloneFn = opts.clone ?? cloneOrUpdateCanopyRepo;
-	const clone = await cloneFn(opts.cloneOptions);
-
-	const summaries = await opts.client.listAgents();
-	const seen = new Set<string>();
-	const registered: AgentRow[] = [];
-	const skipped: RefreshSkipped[] = [];
-
-	for (const summary of summaries) {
-		seen.add(summary.name);
-		const outcome = await registerOne(opts, summary);
-		if (outcome.kind === "registered") {
-			registered.push(outcome.row);
-		} else {
-			skipped.push(outcome.skipped);
-		}
-	}
-
-	const removed: string[] = [];
-	if (opts.prune === true) {
-		for (const existing of await opts.agents.listAll()) {
-			if (!seen.has(existing.name)) {
-				await opts.agents.delete(existing.name);
-				removed.push(existing.name);
-			}
-		}
-	}
-
-	return { clone, registered, skipped, removed };
-}
-
 type RegisterOutcome =
 	| { kind: "registered"; row: AgentRow }
 	| { kind: "skipped"; skipped: RefreshSkipped };
-
-async function registerOne(opts: RefreshOptions, summary: AgentSummary): Promise<RegisterOutcome> {
-	const rendered = await renderAndParse(opts.client, summary);
-	if (rendered.kind === "skipped") return rendered;
-	const row = await opts.agents.upsert({
-		name: rendered.definition.name,
-		renderedJson: rendered.definition,
-		now: opts.now?.(),
-	});
-	return { kind: "registered", row };
-}
 
 export interface RefreshProjectOptions {
 	readonly client: CanopyClient;

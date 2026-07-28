@@ -13,7 +13,6 @@ import type { loadPreviewEvictionConfigFromEnv } from "../../preview/eviction/in
 import type { loadPreviewLaunchConfigFromEnv } from "../../preview/launch/index.ts";
 import type { loadPreviewPortRangeFromEnv } from "../../preview/port-allocator.ts";
 import type { ProjectsConfig } from "../../projects/config.ts";
-import type { loadCanopyRegistryConfigFromEnv } from "../../registry/config.ts";
 import type { loadAutoOpenPrConfigFromEnv, RunEventBroker } from "../../runs/index.ts";
 import type { RuntimeProvider } from "../../runtime/contract.ts";
 import type { PodAdmissionSource } from "../../runtime/k8s/admission.ts";
@@ -27,7 +26,6 @@ import { EventStreamLimiter, type EventStreamLimits } from "../stream-limits.ts"
 import type { BridgeRegistry, Logger, ServerDeps } from "../types.ts";
 import { defaultSpawn } from "./utils.ts";
 
-type CanopyConfig = ReturnType<typeof loadCanopyRegistryConfigFromEnv>;
 type AutoOpenPrConfig = ReturnType<typeof loadAutoOpenPrConfigFromEnv>;
 type WarrenConfigs = ReturnType<typeof createWarrenConfigCache>;
 type PreviewLaunchConfig = ReturnType<typeof loadPreviewLaunchConfigFromEnv>;
@@ -59,7 +57,6 @@ export interface BuildServerDepsInput {
 	readonly burrowProbe?: () => Promise<import("../../diagnostics/checks.ts").DiagnosticCheck>;
 	readonly broker: RunEventBroker;
 	readonly bridges: BridgeRegistry;
-	readonly canopyConfig: CanopyConfig;
 	readonly projectsConfig: ProjectsConfig;
 	readonly logger: Logger;
 	readonly uiDistDir: string | null;
@@ -104,7 +101,6 @@ export function buildServerDeps(input: BuildServerDepsInput): ServerDeps {
 		burrowProbe,
 		broker,
 		bridges,
-		canopyConfig,
 		projectsConfig,
 		logger,
 		uiDistDir,
@@ -143,7 +139,6 @@ export function buildServerDeps(input: BuildServerDepsInput): ServerDeps {
 		...(burrowProbe !== undefined ? { burrowProbe } : {}),
 		broker,
 		bridges,
-		...(canopyConfig !== null ? { canopyConfig } : {}),
 		projectsConfig,
 		logger,
 		uiDistDir,

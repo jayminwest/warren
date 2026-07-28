@@ -22,7 +22,6 @@ import {
 	type PlanRunDetailResponse,
 	type PlanRunRow,
 	type ProjectRow,
-	type RefreshAgentsResponse,
 	type RefreshProjectAgentsResult,
 	type RefreshProjectInput,
 	type RefreshProjectResponse,
@@ -190,10 +189,6 @@ export class WarrenClient {
 				? `?projectId=${encodeURIComponent(query.projectId)}`
 				: "";
 		return this.request<AgentRow>(`/agents/${encodeURIComponent(name)}${qs}`);
-	}
-
-	async refreshAgents(): Promise<RefreshAgentsResponse> {
-		return this.request<RefreshAgentsResponse>("/agents/refresh", { method: "POST" });
 	}
 
 	async createRun(input: CreateRunInput): Promise<SpawnRunResponse> {

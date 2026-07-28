@@ -34,7 +34,6 @@ import { type BuiltFixtures, buildFixtures } from "./lib/fixtures.ts";
 import { type BootHandle, bootInProc } from "./lib/inproc.ts";
 
 import { scenario as scenario01 } from "./scenarios/01-boot-healthz-readyz.ts";
-import { scenario as scenario02 } from "./scenarios/02-agents-refresh.ts";
 import { scenario as scenario03 } from "./scenarios/03-projects-management.ts";
 import { scenario as scenario04 } from "./scenarios/04-run-spawn.ts";
 import { scenario as scenario05 } from "./scenarios/05-events-stream.ts";
@@ -73,7 +72,6 @@ import { scenario as scenario39 } from "./scenarios/39-public-exposure.ts";
 
 const SCENARIOS: readonly Scenario[] = [
 	scenario01,
-	scenario02,
 	scenario03,
 	scenario04,
 	scenario05,

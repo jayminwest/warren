@@ -12,11 +12,6 @@
 			"why": "The `client.probe()` reachability check and its `warren: <error>` stderr tail. Every remote CLI command ends this way; the shared part is the exit convention, not logic."
 		},
 		{
-			"a": "src/cli/commands/register-agent.ts",
-			"b": "src/cli/commands/run.ts",
-			"why": "The optional-`now` spread and the `catch (err) → stderr → exitCode 1` tail. Same exit convention as the pair above."
-		},
-		{
 			"a": "src/cli/main.ts",
 			"b": "src/cli/main.ts",
 			"why": "Commander `.option()` / `.action()` wiring repeated once per subcommand. Per-command declaration is the shape the library asks for; collapsing it hides which flags a command takes."
@@ -40,11 +35,6 @@
 			"a": "src/client/types.ts",
 			"b": "src/ui/src/api/types.ts",
 			"why": "Same mirrored wire vocabulary as the plan-run rows above, guarded by check:wire-types."
-		},
-		{
-			"a": "src/server/handlers/agents.ts",
-			"b": "src/server/handlers/agents.ts",
-			"why": "Two routes call `refreshProjectAgents` with the same argument object. The shared part is the call shape; the logic already lives once in src/registry/."
 		},
 		{
 			"a": "src/server/handlers/agents.ts",

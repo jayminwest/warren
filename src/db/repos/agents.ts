@@ -122,7 +122,8 @@ export class AgentsRepo {
 		const row = await this.get(name, scope);
 		if (!row) {
 			throw new NotFoundError(`agent not found: ${name}`, {
-				recoveryHint: "POST /agents/refresh to re-discover from canopy",
+				recoveryHint:
+					"POST /projects/:id/agents/refresh to re-discover from a project .canopy/ tier",
 			});
 		}
 		return row;

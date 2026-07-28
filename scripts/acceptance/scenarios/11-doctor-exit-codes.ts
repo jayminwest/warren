@@ -5,9 +5,9 @@
  *   "warren doctor exits 0 when the host is healthy, exits non-zero
  *   with a hint when something is broken."
  *
- * Doctor probes eight things (mx-1a70ef, post-R-02):
- *   WARREN_API_TOKEN, CANOPY_REPO_URL, canopy_clone, canopy_clean,
- *   projects_root, bwrap, warren_config, burrow_reachable.
+ * Doctor probes (mx-1a70ef, post-R-02):
+ *   WARREN_API_TOKEN, projects_root, bwrap, warren_config,
+ *   burrow_reachable.
  * The shared check functions live in src/diagnostics/checks.ts so this
  * scenario tests the same surface /readyz exposes (mx-718b25). Scenario
  * 14 covers the warren_config-with-real-projects matrix; here we only
@@ -17,10 +17,9 @@
  * Two invocations, each spawning `bun run src/cli/main.ts doctor` as a
  * child process so we exercise the real exit code path:
  *
- *  A. Healthy — `--no-auth` exempts the token check, CANOPY_REPO_URL
- *     unset means the canopy probes report "no library configured"
- *     (warren-d3e9), a fake bwrap shim on PATH satisfies the bwrap
- *     probe on dev hosts where bubblewrap isn't installed, and
+ *  A. Healthy — `--no-auth` exempts the token check, a fake bwrap
+ *     shim on PATH satisfies the bwrap probe on dev hosts where
+ *     bubblewrap isn't installed, and
  *     WARREN_BURROW_SOCKET points at the harness's running burrow.
  *     Expected: exit 0, every check `ok: true`.
  *
@@ -63,9 +62,6 @@ interface DoctorRun {
 
 const EXPECTED_CHECK_NAMES: readonly string[] = [
 	"WARREN_API_TOKEN",
-	"CANOPY_REPO_URL",
-	"canopy_clone",
-	"canopy_clean",
 	"projects_root",
 	"bwrap",
 	"warren_config",
@@ -183,11 +179,6 @@ function buildDoctorEnv(ctx: ScenarioCtx, shimDir: string): Record<string, strin
 		// 'skipped' message for it; healthy assertion treats that as ok.
 		// Leaving the env var unset keeps the shape simple.
 		WARREN_BURROW_SOCKET: ctx.socketPath,
-		// Bun auto-loads .env from cwd into spawned children, so we must
-		// explicitly null out CANOPY_REPO_URL (commonly set in dev .env)
-		// to take the "no library configured" branch (warren-d3e9). Empty
-		// string is treated identically to unset by loadCanopyRegistryConfigFromEnv.
-		CANOPY_REPO_URL: "",
 		// Setting WARREN_PROJECTS_DIR keeps projects_root pointing somewhere
 		// inside our scratch tree rather than /data/projects.
 		WARREN_PROJECTS_DIR: join(ctx.tmp, "scenario-11", "projects-root"),

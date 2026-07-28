@@ -41,17 +41,6 @@ paths:
           description: Successful response.
         default:
           description: Error response (see `src/core/errors.ts`).
-  /agents/refresh:
-    post:
-      operationId: refreshAgentsHandler
-      tags:
-        - agents
-      summary: POST /agents/refresh
-      responses:
-        '200':
-          description: Successful response.
-        default:
-          description: Error response (see `src/core/errors.ts`).
   /agents/{name}:
     get:
       operationId: getAgentHandler

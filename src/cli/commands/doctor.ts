@@ -2,16 +2,14 @@
  * `warren doctor` — startup health check (SPEC §8.2).
  *
  * Runs the union of:
- *   - required env vars (WARREN_API_TOKEN, CANOPY_REPO_URL),
- *   - canopy clone exists on disk,
- *   - canopy clone is "clean" (no working-tree mutations — Phase 13),
+ *   - required env vars (WARREN_API_TOKEN),
  *   - bwrap binary reachable (Phase 13),
  *   - projects root resolvable (non-fatal),
  *   - per-project `.warren/` config validity (R-02, pl-5d74 step 6),
  *   - burrow socket reachable.
  *
- * The Phase-13 probes (bwrap + canopy_clean) live in
- * `src/diagnostics/checks.ts` so `GET /readyz` mirrors them without
+ * The Phase-13 bwrap probe lives in
+ * `src/diagnostics/checks.ts` so `GET /readyz` mirrors it without
  * duplicating logic. Each check returns `{name, ok, message?, hint?}`;
  * the command exits 0 when every check passes and 1 otherwise.
  */
@@ -23,8 +21,6 @@ import { DrizzleAdapter } from "../../db/repos/drizzle-adapter.ts";
 import { createRepos } from "../../db/repos/index.ts";
 import {
 	checkBwrap,
-	checkCanopyClean,
-	checkCanopyClone,
 	checkDatabaseReachable,
 	checkPreviewAuthStrength,
 	checkPreviewPortAllocator,
@@ -90,13 +86,9 @@ export async function runDoctor(
 	const isLocalTopology = resolveRuntimeKind(context.env) === "local";
 
 	checks.push(envCheck("WARREN_API_TOKEN", context.env, args.noAuth ?? false));
-	checks.push(canopyRepoUrlCheck(context.env));
 
 	checks.push(checkWarrenDb({ env: context.env }));
 	checks.push(await checkDatabaseReachable({ ...(deps.db !== undefined ? { db: deps.db } : {}) }));
-
-	checks.push(checkCanopyClone({ env: context.env, exists }));
-	checks.push(await checkCanopyClean({ env: context.env, spawn: context.spawn, exists }));
 
 	checks.push(projectsRootCheck(context.env, exists));
 
@@ -148,23 +140,6 @@ function envCheck(name: string, env: EnvLike, exempted: boolean): DoctorCheck {
 		ok: false,
 		message: `${name} is not set`,
 		hint: `export ${name}=...`,
-	};
-}
-
-/**
- * `CANOPY_REPO_URL` is optional (warren-d3e9): warren ships built-in
- * agents that cover the common case. Report unset as `ok: true` with an
- * informational message rather than failing the check.
- */
-function canopyRepoUrlCheck(env: EnvLike): DoctorCheck {
-	const value = env.CANOPY_REPO_URL;
-	if (value !== undefined && value !== "") {
-		return { name: "CANOPY_REPO_URL", ok: true };
-	}
-	return {
-		name: "CANOPY_REPO_URL",
-		ok: true,
-		message: "no canopy library configured (using built-in agents only)",
 	};
 }
 

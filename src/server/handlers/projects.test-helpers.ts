@@ -118,12 +118,6 @@ export async function depsFor(
 				runtimeProvider: resolveRuntimeProvider({ burrowClient: () => burrowClient }),
 				bridge: async () => ({ written: 0, skipped: 0, errored: false }),
 			}),
-		canopyConfig: {
-			repoUrl: "https://example/agents.git",
-			localDir: "/tmp/cn",
-			cnBinary: "cn",
-			gitBinary: "git",
-		},
 		projectsConfig: { root: "/tmp/projects", gitBinary: "git" },
 		logger: silentLogger,
 		uiDistDir: null,

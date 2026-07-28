@@ -9,11 +9,11 @@
 #   - the four bwrap-friendly security flags (SPEC §5.3 / mx-94901b /
 #     mx-c085ba). They relax the outer container so burrow's nested
 #     userns sandboxes can come up.
-#   - a named volume mounted at /data for warren.db (SQLite default),
-#     the canopy clone, and cloned project repos. When WARREN_DB_URL
-#     points at an external Postgres (R-13, shipped 2026-05-14),
-#     warren.db is unused but the volume still holds canopy + project
-#     clones, so the mount stays in place either way.
+#   - a named volume mounted at /data for warren.db (SQLite default)
+#     and cloned project repos. When WARREN_DB_URL points at an external
+#     Postgres (R-13, shipped 2026-05-14), warren.db is unused but the
+#     volume still holds project clones, so the mount stays in place
+#     either way.
 #   - the runtime env loaded from .env (`cp .env.example .env` first).
 #
 # The supervisor inside the container spawns `burrow serve` and `warren`
@@ -66,14 +66,6 @@ services:
 
     volumes:
       - warren_data:/data
-      # Local-dev bind mount so warren can clone a host-side canopy repo
-      # via `CANOPY_REPO_URL=file:///canopy-source`. Read-only — warren
-      # only ever reads from this path; clones land under /data.
-      # CANOPY_REPO_URL itself is optional (warren-d3e9: built-in agents
-      # cover the common case); only set CANOPY_SOURCE_DIR if you're
-      # pointing CANOPY_REPO_URL at file:///canopy-source for local dev.
-      # Defaults to /dev/null so the mount is harmless when unset.
-      - ${CANOPY_SOURCE_DIR:-/dev/null}:/canopy-source:ro
 
 volumes:
   warren_data:

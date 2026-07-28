@@ -18,7 +18,6 @@ import { parseDatabaseUrl } from "../db/url.ts";
 import { VERSION } from "../index.ts";
 import { loadProjectsConfigFromEnv } from "../projects/config.ts";
 import { seedBuiltinAgents } from "../registry/builtins/index.ts";
-import { requireCanopyRegistryConfigFromEnv } from "../registry/config.ts";
 import { resolveLocalRunBackend } from "../runtime/local/diagnostics/burrow.ts";
 import { runAddProject } from "./commands/add-project.ts";
 import { runConfigMigrate } from "./commands/config-migrate.ts";
@@ -27,7 +26,6 @@ import { runDoctor } from "./commands/doctor.ts";
 import { runInit } from "./commands/init.ts";
 import { runPlanCancel, runPlanRun } from "./commands/plan-run.ts";
 import { runPlanList, runPlanStatus } from "./commands/plan-status.ts";
-import { runRegisterAgent } from "./commands/register-agent.ts";
 import { runRun } from "./commands/run.ts";
 import { runServe } from "./commands/serve.ts";
 import { withCliDb } from "./context.ts";
@@ -45,28 +43,6 @@ export function buildProgram(context: CliContext): Command {
 			// kill the process from inside a test harness. Re-throwing here
 			// surfaces the error to the caller.
 			throw err;
-		});
-
-	program
-		.command("register-agent")
-		.description("refresh canopy and register one agent into warren's cache")
-		.argument("<name>", "canopy prompt name (must be tagged 'agent')")
-		.action(async (name: string) => {
-			const exitCode = await withCliDb({ env: context.env }, async ({ repos }) => {
-				// register-agent only makes sense against a configured library —
-				// built-ins are seeded automatically and can't be 'registered'
-				// from canopy. requireCanopyRegistryConfigFromEnv throws a
-				// ValidationError with a friendly hint when CANOPY_REPO_URL is
-				// unset; main's catch surfaces it.
-				const canopyConfig = requireCanopyRegistryConfigFromEnv(context.env);
-				const result = await runRegisterAgent(
-					context,
-					{ agents: repos.agents, canopyConfig },
-					{ name },
-				);
-				return result.exitCode;
-			});
-			process.exit(exitCode);
 		});
 
 	program
@@ -215,7 +191,7 @@ export function buildProgram(context: CliContext): Command {
 
 	program
 		.command("doctor")
-		.description("check warren's environment: env vars, burrow socket, canopy clone")
+		.description("check warren's environment: env vars, burrow socket")
 		.option("--no-auth", "skip the WARREN_API_TOKEN check (loopback dev mode)")
 		.action(async (opts: { auth?: boolean }) => {
 			// commander turns `--no-auth` into `opts.auth === false`.

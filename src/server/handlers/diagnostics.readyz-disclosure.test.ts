@@ -22,7 +22,7 @@ import { readyzHandler } from "./diagnostics.ts";
 
 const silentLogger = { info() {}, warn() {}, error() {}, debug() {} };
 
-/** Host has no bubblewrap and no canopy clone — both probes degrade. */
+/** Host has no bubblewrap — the bwrap probe degrades. */
 const failingSpawn: SpawnFn = async (cmd) => {
 	if (cmd[0]?.endsWith("bwrap")) return { stdout: "", stderr: "not found", exitCode: 127 };
 	return { stdout: "", stderr: "", exitCode: 0 };
@@ -48,12 +48,6 @@ function degradedDeps(db: WarrenDb): ServerDeps {
 		},
 		db,
 		spawn: failingSpawn,
-		canopyConfig: {
-			repoUrl: "https://example.com/agents.git",
-			localDir: "/data/warren/canopy",
-			cnBinary: "cn",
-			gitBinary: "git",
-		},
 		workspaceGcTtlMs: 3_600_000,
 		projectsConfig: { root: "/data/warren/projects", gitBinary: "git" },
 		logger: silentLogger,
@@ -112,7 +106,6 @@ describe("/readyz disclosure contract (warren-51de)", () => {
 			"probe failed (reason=unreachable)",
 		);
 		expect(byName.get("warren_config")?.message).toContain("prj_acme: warren_config_unavailable");
-		expect(byName.get("canopy_clone")?.message).toBe("canopy clone directory does not exist");
 		// Failing checks keep their recovery hint — the reason code replaces the
 		// leaked detail, it does not replace the operator's next action.
 		for (const check of checks) {

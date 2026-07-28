@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { SpawnFn } from "../projects/clone.ts";
 import { captureSpawnCalls } from "./checks.test-helpers.ts";
-import { checkBwrap, checkCanopyClean, checkCanopyClone } from "./checks.ts";
+import { checkBwrap } from "./checks.ts";
 
 describe("checkBwrap", () => {
 	test("ok when bwrap --version exits 0", async () => {
@@ -40,107 +40,5 @@ describe("checkBwrap", () => {
 		});
 		await checkBwrap({ spawn, bwrapBinary: "/usr/local/bin/bwrap" });
 		expect(calls[0]?.cmd).toEqual(["/usr/local/bin/bwrap", "--version"]);
-	});
-});
-
-describe("checkCanopyClone", () => {
-	test("ok with informational message when CANOPY_REPO_URL unset (warren-d3e9)", () => {
-		const result = checkCanopyClone({ env: {}, exists: () => true });
-		expect(result.ok).toBe(true);
-		expect(result.message).toContain("no canopy library configured");
-	});
-
-	test("fails without naming the clone path when the local dir does not exist", () => {
-		const result = checkCanopyClone({
-			env: { CANOPY_REPO_URL: "https://x/y.git", WARREN_CANOPY_DIR: "/missing" },
-			exists: () => false,
-		});
-		expect(result.ok).toBe(false);
-		expect(result.message).toBe("canopy clone directory does not exist");
-		expect(result.message).not.toContain("/missing");
-		expect(result.hint).toContain("/agents/refresh");
-	});
-
-	test("ok reports presence, not the clone path (warren-51de)", () => {
-		const result = checkCanopyClone({
-			env: { CANOPY_REPO_URL: "https://x/y.git", WARREN_CANOPY_DIR: "/cn" },
-			exists: () => true,
-		});
-		expect(result.ok).toBe(true);
-		expect(result.message).toBe("canopy clone present");
-	});
-});
-
-describe("checkCanopyClean", () => {
-	const baseEnv = { CANOPY_REPO_URL: "https://x/y.git", WARREN_CANOPY_DIR: "/cn" };
-
-	test("ok with informational message when CANOPY_REPO_URL unset (warren-d3e9)", async () => {
-		const { spawn, calls } = captureSpawnCalls({});
-		const result = await checkCanopyClean({ env: {}, spawn, exists: () => true });
-		expect(result.ok).toBe(true);
-		expect(result.message).toContain("no canopy library configured");
-		expect(calls.length).toBe(0);
-	});
-
-	test("fails without naming the clone path when the local dir does not exist", async () => {
-		const { spawn, calls } = captureSpawnCalls({});
-		const result = await checkCanopyClean({ env: baseEnv, spawn, exists: () => false });
-		expect(result.ok).toBe(false);
-		expect(result.message).toBe("canopy clone directory does not exist");
-		expect(result.message).not.toContain("/cn");
-		// Should not shell out when the dir is missing.
-		expect(calls.length).toBe(0);
-	});
-
-	test("ok when git status --porcelain is empty", async () => {
-		const { spawn, calls } = captureSpawnCalls({
-			git: { stdout: "", exitCode: 0 },
-		});
-		const result = await checkCanopyClean({ env: baseEnv, spawn, exists: () => true });
-		expect(result.ok).toBe(true);
-		expect(result.message).toBe("canopy clone is clean");
-		expect(calls[0]?.cmd).toEqual(["git", "status", "--porcelain"]);
-		expect(calls[0]?.cwd).toBe("/cn");
-	});
-
-	test("fails with mutation count when porcelain reports dirt", async () => {
-		const { spawn } = captureSpawnCalls({
-			git: { stdout: " M a.md\n?? b\n", exitCode: 0 },
-		});
-		const result = await checkCanopyClean({ env: baseEnv, spawn, exists: () => true });
-		expect(result.ok).toBe(false);
-		expect(result.message).toContain("2 local mutation");
-		expect(result.message).not.toContain("/cn");
-		expect(result.hint).toContain("/agents/refresh");
-	});
-
-	test("fails when git exits non-zero", async () => {
-		const { spawn } = captureSpawnCalls({
-			git: { stderr: "fatal: not a git repository", exitCode: 128 },
-		});
-		const result = await checkCanopyClean({ env: baseEnv, spawn, exists: () => true });
-		expect(result.ok).toBe(false);
-		expect(result.message).toContain("128");
-	});
-
-	test("fails when spawn itself throws", async () => {
-		const spawn: SpawnFn = async () => {
-			throw new Error("ENOENT git");
-		};
-		const result = await checkCanopyClean({ env: baseEnv, spawn, exists: () => true });
-		expect(result.ok).toBe(false);
-		expect(result.message).toContain("ENOENT");
-	});
-
-	test("uses configured gitBinary", async () => {
-		const { spawn, calls } = captureSpawnCalls({
-			"/opt/git": { stdout: "", exitCode: 0 },
-		});
-		await checkCanopyClean({
-			env: { ...baseEnv, WARREN_GIT_BINARY: "/opt/git" },
-			spawn,
-			exists: () => true,
-		});
-		expect(calls[0]?.cmd[0]).toBe("/opt/git");
 	});
 });

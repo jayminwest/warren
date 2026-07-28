@@ -152,31 +152,6 @@ describe("WarrenClient projects/agents", () => {
 		expect(row.source).toBe("builtin");
 	});
 
-	test("refreshAgents POSTs /agents/refresh", async () => {
-		let observedUrl: string | undefined;
-		let observedMethod: string | undefined;
-		const stubFetch = stub(async (input, init) => {
-			observedUrl = String(input);
-			observedMethod = init?.method;
-			return jsonResponse(200, {
-				clone: { cloned: false, localDir: "/x" },
-				registered: [],
-				skipped: [],
-				removed: [],
-				projects: [],
-				projectErrors: [],
-			});
-		});
-		const c = new WarrenClient({
-			config: { baseUrl: "https://w.local" },
-			fetch: stubFetch,
-		});
-		const res = await c.refreshAgents();
-		expect(observedUrl).toBe("https://w.local/agents/refresh");
-		expect(observedMethod).toBe("POST");
-		expect(res.clone.cloned).toBe(false);
-	});
-
 	test("refreshProjectAgents POSTs /projects/:id/agents/refresh", async () => {
 		let observedUrl: string | undefined;
 		let observedMethod: string | undefined;

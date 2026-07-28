@@ -38,7 +38,6 @@ import { loadPreviewPortRangeFromEnv, PreviewPortAllocator } from "../../preview
 import { loadProjectsConfigFromEnv } from "../../projects/config.ts";
 import { listProjects } from "../../projects/index.ts";
 import { seedBuiltinAgents } from "../../registry/builtins/index.ts";
-import { loadCanopyRegistryConfigFromEnv } from "../../registry/config.ts";
 import {
 	loadAutoOpenPrConfigFromEnv,
 	loadRunBranchPrefixFromEnv,
@@ -103,7 +102,6 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 		...(opts.noAuth !== undefined ? { noAuth: opts.noAuth } : {}),
 		...(opts.defaultUiDistDir !== undefined ? { defaultUiDistDir: opts.defaultUiDistDir } : {}),
 	});
-	const canopyConfig = loadCanopyRegistryConfigFromEnv(env);
 	const projectsConfig = loadProjectsConfigFromEnv(env);
 
 	// Resolve the auth backend's IDENTITY here (warren-851b), before the db
@@ -376,7 +374,6 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 		...(localBackend !== undefined ? { burrowProbe: localBackend.probeBurrow } : {}),
 		broker,
 		bridges: bridgesBoot.registry,
-		canopyConfig,
 		projectsConfig,
 		logger,
 		uiDistDir: serverConfig.uiDistDir,

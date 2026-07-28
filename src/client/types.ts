@@ -66,11 +66,6 @@ export interface RefreshSkipped {
 	code: string;
 }
 
-export interface CloneResult {
-	cloned: boolean;
-	localDir: string;
-}
-
 export interface ListAgentsQuery {
 	projectId?: string;
 }
@@ -84,27 +79,6 @@ export interface RefreshProjectAgentsResult {
 	registered: AgentRow[];
 	skipped: RefreshSkipped[];
 	removed: string[];
-}
-
-/**
- * One per-project failure inside `POST /agents/refresh`. `message` is a
- * fixed stand-in naming the request id, never the caught error's own text
- * (warren-bf4c) — `code` is the diagnosable field, and the real message
- * is in the server log under that id.
- */
-export interface ProjectRefreshErrorRow {
-	projectId: string;
-	code: string;
-	message: string;
-}
-
-export interface RefreshAgentsResponse {
-	clone: CloneResult;
-	registered: AgentRow[];
-	skipped: RefreshSkipped[];
-	removed: string[];
-	projects: RefreshProjectAgentsResult[];
-	projectErrors: ProjectRefreshErrorRow[];
 }
 
 export interface ProjectRow {

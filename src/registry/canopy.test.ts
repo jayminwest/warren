@@ -1,14 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import { CanopyClient, type SpawnFn, type SpawnResult } from "./canopy.ts";
-import type { CanopyRegistryConfig } from "./config.ts";
 import { CanopyUnavailableError } from "./errors.ts";
 
-const CFG: CanopyRegistryConfig = {
-	repoUrl: "https://example.com/agents.git",
-	localDir: "/tmp/canopy",
-	cnBinary: "cn",
-	gitBinary: "git",
-};
+function lib(spawn: SpawnFn): CanopyClient {
+	return CanopyClient.forProjectPath({ projectPath: "/tmp/canopy", spawn });
+}
 
 function makeSpawn(
 	handler: (cmd: readonly string[], cwd: string) => SpawnResult | Promise<SpawnResult>,
@@ -40,7 +36,7 @@ describe("CanopyClient.listAgents", () => {
 			],
 		};
 		const { spawn, calls } = makeSpawn(() => ok(JSON.stringify(list)));
-		const client = CanopyClient.forLibrary({ config: CFG, spawn });
+		const client = lib(spawn);
 
 		const agents = await client.listAgents();
 		expect(agents).toHaveLength(2);
@@ -61,7 +57,7 @@ describe("CanopyClient.listAgents", () => {
 			],
 		};
 		const { spawn } = makeSpawn(() => ok(JSON.stringify(list)));
-		const client = CanopyClient.forLibrary({ config: CFG, spawn });
+		const client = lib(spawn);
 		const agents = await client.listAgents();
 		expect(agents.map((a) => a.name)).toEqual(["active-bot"]);
 	});
@@ -73,14 +69,14 @@ describe("CanopyClient.listAgents", () => {
 			prompts: [{ name: "no-status", version: 1 }],
 		};
 		const { spawn } = makeSpawn(() => ok(JSON.stringify(list)));
-		const client = CanopyClient.forLibrary({ config: CFG, spawn });
+		const client = lib(spawn);
 		const agents = await client.listAgents();
 		expect(agents.map((a) => a.name)).toEqual(["no-status"]);
 	});
 
 	test("throws CanopyUnavailableError on non-zero exit", async () => {
 		const { spawn } = makeSpawn(() => fail("cn: command not found", 127));
-		const client = CanopyClient.forLibrary({ config: CFG, spawn });
+		const client = lib(spawn);
 		await expect(client.listAgents()).rejects.toBeInstanceOf(CanopyUnavailableError);
 		await expect(client.listAgents()).rejects.toMatchObject({
 			message: expect.stringContaining("exited 127"),
@@ -89,13 +85,13 @@ describe("CanopyClient.listAgents", () => {
 
 	test("throws CanopyUnavailableError when stdout is not JSON", async () => {
 		const { spawn } = makeSpawn(() => ok("not json"));
-		const client = CanopyClient.forLibrary({ config: CFG, spawn });
+		const client = lib(spawn);
 		await expect(client.listAgents()).rejects.toBeInstanceOf(CanopyUnavailableError);
 	});
 
 	test("throws CanopyUnavailableError when envelope shape is wrong", async () => {
 		const { spawn } = makeSpawn(() => ok(JSON.stringify({ success: true, prompts: "nope" })));
-		const client = CanopyClient.forLibrary({ config: CFG, spawn });
+		const client = lib(spawn);
 		await expect(client.listAgents()).rejects.toBeInstanceOf(CanopyUnavailableError);
 	});
 
@@ -105,7 +101,7 @@ describe("CanopyClient.listAgents", () => {
 			err.code = "ENOENT";
 			throw err;
 		};
-		const client = CanopyClient.forLibrary({ config: CFG, spawn });
+		const client = lib(spawn);
 		await expect(client.listAgents()).rejects.toMatchObject({
 			code: "canopy_unavailable",
 			message: expect.stringContaining("failed to spawn"),
@@ -123,7 +119,7 @@ describe("CanopyClient.renderAgent", () => {
 			sections: [{ name: "system", body: "..." }],
 		};
 		const { spawn, calls } = makeSpawn(() => ok(JSON.stringify(render)));
-		const client = CanopyClient.forLibrary({ config: CFG, spawn });
+		const client = lib(spawn);
 		const out = await client.renderAgent("refactor-bot");
 		expect(out).toEqual(render);
 		expect(calls[0]?.cmd).toEqual(["cn", "render", "refactor-bot", "--json"]);
@@ -133,7 +129,7 @@ describe("CanopyClient.renderAgent", () => {
 		const errEnv = { success: false, command: "render", error: 'Prompt "missing" not found' };
 		// canopy exits 1 with the structured error on stdout
 		const { spawn } = makeSpawn(() => fail("", 1, JSON.stringify(errEnv)));
-		const client = CanopyClient.forLibrary({ config: CFG, spawn });
+		const client = lib(spawn);
 		await expect(client.renderAgent("missing")).rejects.toMatchObject({
 			code: "canopy_unavailable",
 			message: expect.stringContaining('Prompt "missing" not found'),
@@ -142,13 +138,13 @@ describe("CanopyClient.renderAgent", () => {
 
 	test("still throws on non-zero exit when stdout is empty", async () => {
 		const { spawn } = makeSpawn(() => fail("crashed in canopy", 2));
-		const client = CanopyClient.forLibrary({ config: CFG, spawn });
+		const client = lib(spawn);
 		await expect(client.renderAgent("foo")).rejects.toBeInstanceOf(CanopyUnavailableError);
 	});
 
 	test("rejects unparseable stdout on a zero-exit (impossible-but-defensive)", async () => {
 		const { spawn } = makeSpawn(() => ok("garbage"));
-		const client = CanopyClient.forLibrary({ config: CFG, spawn });
+		const client = lib(spawn);
 		await expect(client.renderAgent("foo")).rejects.toBeInstanceOf(CanopyUnavailableError);
 	});
 });
@@ -243,30 +239,6 @@ describe("CanopyClient.showAgent (warren-44a3)", () => {
 		expect(out?.extends).toBeUndefined();
 		expect(out?.mixins).toEqual([]);
 		expect(out?.frontmatter).toEqual({});
-	});
-});
-
-describe("CanopyClient.forLibrary", () => {
-	test("invokes `cn` from the library's localDir", async () => {
-		const { spawn, calls } = makeSpawn(() =>
-			ok(JSON.stringify({ success: true, command: "list", prompts: [] })),
-		);
-		const client = CanopyClient.forLibrary({ config: CFG, spawn });
-		await client.listAgents();
-		expect(calls[0]?.cmd).toEqual(["cn", "list", "--tag", "agent", "--json"]);
-		expect(calls[0]?.cwd).toBe("/tmp/canopy");
-	});
-
-	test("respects WARREN_CN_BINARY override via config.cnBinary", async () => {
-		const { spawn, calls } = makeSpawn(() =>
-			ok(JSON.stringify({ success: true, command: "list", prompts: [] })),
-		);
-		const client = CanopyClient.forLibrary({
-			config: { ...CFG, cnBinary: "/usr/local/bin/cn" },
-			spawn,
-		});
-		await client.listAgents();
-		expect(calls[0]?.cmd[0]).toBe("/usr/local/bin/cn");
 	});
 });
 

@@ -24,7 +24,6 @@ describe("buildProgram", () => {
 			"doctor",
 			"init",
 			"plan",
-			"register-agent",
 			"run",
 			"serve",
 		]);

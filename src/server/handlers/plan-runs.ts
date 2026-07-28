@@ -149,7 +149,8 @@ export function createPlanRunHandler(deps: ServerDeps): RouteHandler {
 		const agent = await deps.repos.agents.resolve(agentName, { projectId: project.id });
 		if (agent === null) {
 			throw new NotFoundError(`agent not found: ${agentName}`, {
-				recoveryHint: "POST /agents/refresh to re-discover from canopy",
+				recoveryHint:
+					"POST /projects/:id/agents/refresh to re-discover from a project .canopy/ tier",
 			});
 		}
 

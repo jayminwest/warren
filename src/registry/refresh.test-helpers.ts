@@ -3,16 +3,6 @@
 // Kept next to refresh.ts so it travels with the module under test.
 
 import { CanopyClient, type SpawnFn, type SpawnResult } from "./canopy.ts";
-import type { CanopyRegistryConfig } from "./config.ts";
-
-export const CFG: CanopyRegistryConfig = {
-	repoUrl: "https://example.com/agents.git",
-	localDir: "/tmp/canopy-refresh",
-	cnBinary: "cn",
-	gitBinary: "git",
-};
-
-export const FAKE_CLONE = async () => ({ cloned: false, localDir: CFG.localDir });
 
 type CommandHandler = { ok?: unknown; exit?: number; stderr?: string };
 

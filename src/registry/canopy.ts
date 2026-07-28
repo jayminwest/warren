@@ -14,10 +14,10 @@
  *     the raw JSON envelope which `parseRenderedAgent` then validates.
  *
  * What the facade adds beyond a raw `Bun.spawn`:
- *   - Cwd is parameterized so the same facade drives both the library
- *     clone (`forLibrary`) and per-project `.canopy/` directories
- *     (`forProjectPath`, R-03 / pl-fef5). Callers should reach for a
- *     factory rather than picking a cwd by hand.
+ *   - Cwd is parameterized so the same facade drives per-project
+ *     `.canopy/` directories (`forProjectPath`, R-03 / pl-fef5).
+ *     Callers should reach for a factory rather than picking a cwd by
+ *     hand.
  *   - Transport-layer failures (binary missing, non-zero exit, malformed
  *     JSON, empty stdout) become `CanopyUnavailableError`, mirroring the
  *     burrow-client transport-error mapping pattern.
@@ -34,7 +34,6 @@
 
 import { z } from "zod";
 import { formatError } from "../core/errors.ts";
-import type { CanopyRegistryConfig } from "./config.ts";
 import { CanopyUnavailableError } from "./errors.ts";
 
 export interface SpawnResult {
@@ -116,17 +115,10 @@ export interface CanopyClientOptions {
 	readonly timeoutMs?: number;
 }
 
-export interface CanopyClientLibraryOptions {
-	readonly config: CanopyRegistryConfig;
-	readonly spawn?: SpawnFn;
-	readonly timeoutMs?: number;
-}
-
 export interface CanopyClientProjectOptions {
 	/**
 	 * Project root directory. `cn` resolves `.canopy/` relative to its
-	 * cwd, so passing the project root (not `<projectPath>/.canopy`)
-	 * mirrors how the library clone is wired in `forLibrary`.
+	 * cwd, so pass the project root (not `<projectPath>/.canopy`).
 	 */
 	readonly projectPath: string;
 	readonly cnBinary?: string;
@@ -148,25 +140,8 @@ export class CanopyClient {
 	}
 
 	/**
-	 * Library tier: scan the cloned canopy repo at `config.localDir`.
-	 * Existing `POST /agents/refresh` and `warren register-agent` paths
-	 * use this factory.
-	 */
-	static forLibrary(opts: CanopyClientLibraryOptions): CanopyClient {
-		return new CanopyClient({
-			cnBinary: opts.config.cnBinary,
-			cwd: opts.config.localDir,
-			...(opts.spawn !== undefined ? { spawn: opts.spawn } : {}),
-			...(opts.timeoutMs !== undefined ? { timeoutMs: opts.timeoutMs } : {}),
-		});
-	}
-
-	/**
 	 * Project tier (R-03 / pl-fef5): scan `<projectPath>/.canopy/` for
-	 * project-scoped agents. The `cn` binary name defaults to "cn"
-	 * because project-tier refresh is independent of the library env
-	 * (`WARREN_CN_BINARY` still applies if the operator overrode it,
-	 * but the caller wires that through explicitly).
+	 * project-scoped agents. The `cn` binary name defaults to "cn".
 	 */
 	static forProjectPath(opts: CanopyClientProjectOptions): CanopyClient {
 		return new CanopyClient({
