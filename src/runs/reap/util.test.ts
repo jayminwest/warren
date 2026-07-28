@@ -1,5 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { BOOKKEEPING_ARTIFACT_PREFIXES, isBookkeepingOnlyDirty, parseDirtyPaths } from "./util.ts";
+import {
+	BOOKKEEPING_ARTIFACT_PREFIXES,
+	HARNESS_STATE_PREFIXES,
+	isBookkeepingOnlyDirty,
+	parseDirtyPaths,
+} from "./util.ts";
 
 describe("parseDirtyPaths", () => {
 	test("parses porcelain status lines into workspace-relative paths", () => {
@@ -40,5 +45,25 @@ describe("isBookkeepingOnlyDirty", () => {
 		for (const prefix of BOOKKEEPING_ARTIFACT_PREFIXES) {
 			expect(isBookkeepingOnlyDirty([`${prefix}file`])).toBe(true);
 		}
+	});
+
+	test("true for harness-owned scratch state (e.g. claude-code settings.local.json)", () => {
+		expect(isBookkeepingOnlyDirty([".claude/settings.local.json"])).toBe(true);
+	});
+
+	test("true for a mix of bookkeeping and harness-owned scratch paths", () => {
+		expect(isBookkeepingOnlyDirty([".seeds/issues.jsonl", ".claude/settings.local.json"])).toBe(
+			true,
+		);
+	});
+
+	test("covers each documented harness-state prefix", () => {
+		for (const prefix of HARNESS_STATE_PREFIXES) {
+			expect(isBookkeepingOnlyDirty([`${prefix}file`])).toBe(true);
+		}
+	});
+
+	test("false when harness scratch is mixed with real uncommitted work", () => {
+		expect(isBookkeepingOnlyDirty([".claude/settings.local.json", "src/foo.ts"])).toBe(false);
 	});
 });

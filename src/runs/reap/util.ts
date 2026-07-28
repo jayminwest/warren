@@ -164,16 +164,39 @@ export const BOOKKEEPING_ARTIFACT_PREFIXES: readonly string[] = [
 ];
 
 /**
+ * Harness-owned scratch state (warren-f6f2). A third category, distinct from
+ * {@link BOOKKEEPING_ARTIFACT_PREFIXES}: warren does NOT commit these on the
+ * agent's behalf — the agent harness itself writes them into the workspace at
+ * runtime (e.g. the claude-code harness drops `.claude/settings.local.json`).
+ * The agent never staged them, so a zero-commit push whose only dirty paths
+ * are harness scratch is a deliberate no-op, not a dropped commit. Kept as its
+ * own constant rather than overloading the bookkeeping list, because the reason
+ * they are ignorable is different (harness-written, not warren-committed).
+ */
+export const HARNESS_STATE_PREFIXES: readonly string[] = [".claude/"];
+
+/**
+ * Prefixes whose dirty paths are never lost agent work: warren-committed
+ * bookkeeping artifacts plus harness-owned scratch state.
+ */
+const IGNORABLE_DIRTY_PREFIXES: readonly string[] = [
+	...BOOKKEEPING_ARTIFACT_PREFIXES,
+	...HARNESS_STATE_PREFIXES,
+];
+
+/**
  * True when the dirty tree is non-empty AND every dirty path lives under a
- * {@link BOOKKEEPING_ARTIFACT_PREFIXES} directory (warren-89b0). An empty list
- * returns false — a clean tree is already the classic deliberate-no-op shape and
- * never reached the dropped-commit branch. Conservative by construction: a
- * single non-bookkeeping dirty path (real uncommitted work) fails the check and
- * keeps the dropped-commit guard armed.
+ * bookkeeping ({@link BOOKKEEPING_ARTIFACT_PREFIXES}) or harness-state
+ * ({@link HARNESS_STATE_PREFIXES}) directory (warren-89b0, warren-f6f2). An
+ * empty list returns false — a clean tree is already the classic
+ * deliberate-no-op shape and never reached the dropped-commit branch.
+ * Conservative by construction: a single dirty path outside those categories
+ * (real uncommitted work) fails the check and keeps the dropped-commit guard
+ * armed.
  */
 export function isBookkeepingOnlyDirty(paths: readonly string[]): boolean {
 	if (paths.length === 0) return false;
-	return paths.every((p) => BOOKKEEPING_ARTIFACT_PREFIXES.some((prefix) => p.startsWith(prefix)));
+	return paths.every((p) => IGNORABLE_DIRTY_PREFIXES.some((prefix) => p.startsWith(prefix)));
 }
 
 /** Verdict for a zero-commit push (warren-89b0), owned by the reap domain. */
@@ -211,7 +234,7 @@ export function classifyEmptyPush(
 			droppedCommit: false,
 			noChanges: succeeded,
 			message:
-				"git push exited zero with no new commits — agent intentionally made no code changes (only warren-managed bookkeeping paths dirty)",
+				"git push exited zero with no new commits — agent intentionally made no code changes (only warren-managed bookkeeping or harness-owned scratch paths dirty)",
 		};
 	}
 	return {
