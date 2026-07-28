@@ -17,7 +17,7 @@ V1 scope is the **manual run path** plus the **cron half of the scheduler**: con
 
 Warren is a self-hostable control plane for ephemeral coding agents. A user points it at a GitHub repo, picks an agent, writes a prompt; warren spawns the agent inside a sandbox, streams events back to the UI, lets the user steer mid-run, then pushes the workspace branch. **One container, one volume, one HTTP API, one UI.**
 
-The fresh-install path is standalone: the built-in `claude-code` agent ships inline, so a user with a GitHub URL and an Anthropic key can dispatch a run end-to-end with no other tooling. Two additional coding-agent runtimes ship inline alongside it — `sapling` (steerable harness) and `pi` (multi-provider, with per-run cost reporting). Warren also bundles a small set of [os-eco](https://github.com/jayminwest/os-eco) tools as opt-in built-in features — versioned prompt libraries via canopy, persistent agent memory via mulch, an integrated issue queue via seeds — each surfaced only when the project or operator opts in. (Warren once bundled a sixth such tool, plot, for shared coordination. Warren dropped it in the deletion pass — see §11.O.)
+The fresh-install path is standalone: the built-in `claude-code` agent ships inline, so a user with a GitHub URL and an Anthropic key can dispatch a run end-to-end with no other tooling. Two additional coding-agent runtimes ship inline alongside it — `sapling` (steerable harness) and `pi` (multi-provider, with per-run cost reporting). Warren also bundles a small set of [os-eco](https://github.com/jayminwest/os-eco) tools as opt-in built-in features — persistent agent memory via mulch, an integrated issue queue via seeds — each surfaced only when the project opts in. (Warren once bundled canopy, for versioned prompt libraries, and plot, for shared coordination. Warren dropped both in the deletion pass — see §4.2 and §11.O.)
 
 Warren dispatches through a swappable **runtime provider**, chosen once at boot by `WARREN_RUNTIME` behind the `RuntimeProvider` contract (post-V1; `src/runtime/`, design docs under `docs/design/`). The default `local` provider uses [burrow](https://github.com/jayminwest/burrow) as its sandbox substrate — a sibling process inside the container that warren talks to over a unix socket — which is the topology this document describes throughout. A second `k8s` provider runs each agent as its own Kubernetes pod with no burrow, for cluster scale-out ([`docs/RUNBOOK-K8S.md`](docs/RUNBOOK-K8S.md)); it supersedes the multi-worker burrow model §5.4 originally sketched. Burrow is thus the LocalProvider's substrate, not a hard warren dependency.
 
@@ -31,13 +31,13 @@ V1 is single-user, single-host: clone warren, `docker compose up`, browser at `l
 
 ```
 $ git clone https://github.com/jayminwest/warren && cd warren
-$ cp .env.example .env && $EDITOR .env   # WARREN_API_TOKEN, BURROW_API_TOKEN, WARREN_BURROW_TOKEN, ANTHROPIC_API_KEY, GITHUB_TOKEN (CANOPY_REPO_URL optional)
+$ cp .env.example .env && $EDITOR .env   # WARREN_API_TOKEN, BURROW_API_TOKEN, WARREN_BURROW_TOKEN, ANTHROPIC_API_KEY, GITHUB_TOKEN
 $ docker compose up -d
 $ open http://homeserver.local:8080
 ```
 
 In the UI:
-1. **Pick an agent** — Warren ships three built-in agents inline (`src/registry/builtins/`): `pi` (multi-provider harness with first-class cost reporting, and the default runtime when an agent pins none — warren-16f8), `claude-code` (single-provider Anthropic harness, opt-in via `frontmatter.runtime`), and `sapling` (alternative steerable harness). A fresh install can dispatch a run against any of them without further setup. Power users who want a custom prompt library set `CANOPY_REPO_URL`; warren clones the repo and every prompt tagged `agent` becomes a library-source agent that overrides any same-named built-in.
+1. **Pick an agent** — Warren ships three built-in agents inline (`src/registry/builtins/`): `pi` (multi-provider harness with first-class cost reporting, and the default runtime when an agent pins none — warren-16f8), `claude-code` (single-provider Anthropic harness, opt-in via `frontmatter.runtime`), and `sapling` (alternative steerable harness). A fresh install can dispatch a run against any of them without further setup.
 2. **Add project** — paste a GitHub URL. Warren clones it under `/data/projects/`.
 3. **Spawn run** — pick agent + project + prompt. Warren provisions a sandbox, seeds the rendered agent into it, dispatches the run, streams events to the UI.
 4. **Watch and steer** — live event tail, send steering messages, cancel cleanly. If the project opted into the agent-memory feature, the UI also surfaces mulch records the agent recorded; if it opted into the issue-queue feature, it surfaces seeds the agent filed or closed.
@@ -46,12 +46,12 @@ In the UI:
 ### 2.2 What Warren is
 
 - The **control plane**: one process, one HTTP API, one volume.
-- The **agent registry**: built-in agents inline, plus optional canopy library on top, plus per-project `.canopy/` tier (R-03; precedence project > library > built-in).
+- The **agent registry**: built-in agents seeded inline on boot (`src/registry/builtins/`).
 - The **dispatcher**: provisions sandboxes via the runtime, streams events back, reaps results.
 - The **UI**: web frontend served from the same process.
 - The **scheduler**: in-process cron tick + scheduled-seed dispatch (V1, §11.I). Webhook/event-triggered runs deferred to V2.
 
-Warren bundles four os-eco data-plane tools (canopy, mulch, seeds, sapling) as built-in features, but a fresh install does not require a user to adopt any of them — `claude-code` ships inline and reads/writes nothing outside the sandbox. The integrations light up when the operator sets `CANOPY_REPO_URL`, or when a project contains `.mulch/` / `.seeds/`. (Warren dropped plot, a former fifth tool, in the deletion pass — see §11.O.)
+Warren bundles three os-eco data-plane tools (mulch, seeds, sapling) as built-in features, but a fresh install does not require a user to adopt any of them — `claude-code` ships inline and reads/writes nothing outside the sandbox. The integrations light up when a project contains `.mulch/` / `.seeds/`. (Warren dropped plot and canopy, two former bundled tools, in the deletion pass — see §11.O and §4.2.)
 
 ### 2.3 What Warren is not
 
@@ -118,7 +118,20 @@ Burrow is the cell the agent runs in. Warren is the operator that picks who runs
 
 ### 4.2 The bundle, expressed in canopy
 
-An agent is a single canopy prompt with a schema-validated set of sections:
+> **RETIRED (in part) — the deletion pass removed the external canopy
+> library integration (pl-3a79, phase C, 2026-07).** Warren no longer
+> reads the `CANOPY_REPO_URL` knob, runs the `cn render` spawn step,
+> ships the `warren register-agent` CLI, or serves the `/agents/refresh`
+> routes. Warren seeds agents from the inline built-ins in
+> `src/registry/builtins/` (§4.1) and freezes their rendered envelopes
+> on the run row. The envelope **shape** below — the schema-validated
+> section set — survives as warren's internal `AgentDefinition` format
+> (`src/registry/schema.ts`). A fresh install needs no canopy tooling.
+> The canopy tool itself lives on in os-eco to author prompt libraries.
+> Read the rest of this section as the anatomy of that envelope, not as
+> a live external integration.
+
+An agent is a single agent-envelope with a schema-validated set of sections:
 
 ```yaml
 name: refactor-bot
@@ -189,7 +202,7 @@ The agent's worklist (seeds) belongs to the project, not the agent. Same project
 │   │ ─ HTTP API + UI        │                                           │
 │   │ ─ scheduler (cron)     │                                           │
 │   │ ─ webhook receiver     │                                           │
-│   │ ─ shells out: cn/sd/ml │                                           │
+│   │ ─ shells out: sd/ml    │                                           │
 │   │ ─ HTTP: burrow         │                                           │
 │   └────┬───────────────────┘                                           │
 │        │                                                               │
@@ -200,10 +213,9 @@ The agent's worklist (seeds) belongs to the project, not the agent. Same project
 │        │     │ owns SQLite + sandboxes        │                        │
 │        │     └────────────────────────────────┘                        │
 │        │                                                               │
-│        └─── shell: cn render / sd list / git                           │
+│        └─── shell: sd list / git                                       │
 │                                                                        │
 │   /data/                                                               │
-│   ├── canopy-repo/         ← cloned agent library                      │
 │   ├── projects/<owner>/<name>/  ← cloned project repos                 │
 │   ├── burrow/              ← burrow's home: SQLite, workspaces         │
 │   └── warren.db            ← warren's SQLite: schedules, run history   │
@@ -436,8 +448,8 @@ warren/
 │   │   ├── errors.ts
 │   │   └── ids.ts              # ag_xxx, prj_xxx, run_xxx, sched_xxx
 │   ├── registry/
-│   │   ├── canopy.ts           # cn render — turn canopy prompts into AgentDefs
-│   │   └── schema.ts           # canopy schema validating "agent: true" prompts
+│   │   ├── builtins/           # inline built-in agent defs seeded on boot
+│   │   └── schema.ts           # AgentDefinition schema (canopy-shaped envelope)
 │   ├── projects/
 │   │   ├── clone.ts            # git clone <url> → /data/projects/...
 │   │   └── repo.ts             # discovery, .seeds/.mulch/ presence checks
@@ -466,7 +478,6 @@ warren/
 │   ├── cli/
 │   │   ├── main.ts             # `warren` CLI for ops/admin
 │   │   └── commands/
-│   │       ├── register-agent.ts
 │   │       ├── add-project.ts
 │   │       ├── run.ts
 │   │       └── doctor.ts
@@ -492,11 +503,18 @@ warren/
 
 ### 8.1 HTTP API (top-level resources)
 
+> **RETIRED (in part) — the deletion pass removed the canopy library
+> routes (pl-3a79, phase C, 2026-07).** `POST /agents/refresh` and
+> `POST /projects/:id/agents/refresh` are gone. Warren seeds agents from
+> the inline built-ins on boot, so no library remains to re-clone and no
+> per-project `.canopy/` tier remains to scan. `GET /agents` still lists
+> the registered defs and `GET /agents/:name` still returns the rendered
+> envelope.
+
 ```
 # V1 — manual run path
-GET    /agents                  — list registered agent defs (built-ins + library); `?projectId=<id>` adds that project's `.canopy/` tier (R-03)
-POST   /agents/refresh          — re-clone canopy library AND scan every project's `.canopy/` (per-project errors collected, never fatal — R-03)
-GET    /agents/:name            — full rendered agent (cn render output); `?projectId=<id>` resolves project-first with global fallback (R-03)
+GET    /agents                  — list registered agent defs (built-ins seeded on boot)
+GET    /agents/:name            — full rendered agent envelope
 
 GET    /projects                — list cloned project repos
 POST   /projects                — { gitUrl, defaultBranch? } → clone
@@ -504,7 +522,6 @@ DELETE /projects/:id            — remove project
 GET    /projects/:id/warren-config — parsed .warren/ envelope (§11.H, R-02)
 GET    /projects/:id/triggers   — parsed triggers.yaml joined with last/next-fire state (§11.I, R-06)
 POST   /projects/:id/triggers/:triggerId/run — Run Now: dispatch trigger inline with trigger='manual'
-POST   /projects/:id/agents/refresh — refresh one project's `.canopy/` tier (R-03)
 
 POST   /runs                    — { agent, project, prompt } → spawn
 GET    /runs                    — list with filters (status, agent, project)
@@ -514,7 +531,7 @@ POST   /runs/:id/steer          — send steering message (proxies to burrow inb
 POST   /runs/:id/cancel         — graceful cancel (proxies to burrow)
 
 GET    /healthz                 — liveness
-GET    /readyz                  — readiness (canopy reachable, burrow reachable)
+GET    /readyz                  — readiness (burrow reachable)
 
 # V2 — deferred
 POST   /webhooks/github         — GitHub webhook target (event-driven trigger half of the scheduler)
@@ -526,11 +543,14 @@ Auth: `Authorization: Bearer ${WARREN_API_TOKEN}` on every route except `/health
 
 The CLI is for ops, not daily use — the UI is daily.
 
+> **RETIRED (in part) — the deletion pass removed `warren register-agent`
+> (pl-3a79, phase C, 2026-07).** Agents ship inline as built-ins. No
+> canopy library remains to refresh.
+
 ```
-warren register-agent <name>       — refresh canopy and register one agent
 warren add-project <git-url>       — clone a project
 warren run <agent> <project> -p "..."  — one-shot, no UI
-warren doctor                       — burrow reachable? canopy clean? bwrap working?
+warren doctor                       — burrow reachable? bwrap working?
 warren serve                        — start the HTTP server (default in docker entrypoint)
 
 # V2 — deferred
@@ -650,7 +670,6 @@ The canonical operator procedure — secrets + rotation, RBAC, garbage collectio
 ```dockerfile
 FROM ghcr.io/jayminwest/burrow-base:0.2.0   # bun + bwrap + uidmap + burrow CLI
 RUN bun install -g \
-    @os-eco/canopy-cli@<v> \
     @os-eco/seeds-cli@<v> \
     @os-eco/mulch-cli@<v> \
     @os-eco/sapling-cli@<v>
@@ -702,14 +721,14 @@ The decided shape, expanded from prior open question #4:
 | Run cancellation | `POST /runs/:id/cancel` proxies to burrow's `POST /runs/:burrow_run_id/cancel`. Hard-stop = `DELETE /burrows/:burrow_id` is V2; not needed for V1. | §4.3 |
 | Burrow API contract | Burrow's `/openapi.json` is the source of truth. Warren generates a typed client against it. | §4.3 |
 | Burrow shippability | All 21 routes implemented as of `burrow@7926a0e` (2026-05-08). `POST /burrows` no longer returns 501. | — |
-| `CANOPY_REPO_URL` is optional (warren-d3e9, 2026-05-10) | Warren ships built-in `claude-code`, `sapling`, and `pi` agents inline (`src/registry/builtins/`); the canopy library is a power-user override, not a hard dependency. Boot seeds built-ins; refresh upserts library agents on top (same-named library agents win). `warren doctor` and `/readyz` treat unset `CANOPY_REPO_URL` as info, not failure. `POST /agents/refresh` and `warren register-agent` 400 with a friendly hint when no library is configured. `GET /agents` returns `source: "builtin" \| "library"` provenance derived from `frontmatter.source`. | §10.2, §11.B |
+| ~~`CANOPY_REPO_URL` is optional~~ **RETIRED (pl-3a79, phase C, 2026-07)** | The deletion pass removed the external canopy library. Warren ships built-in `claude-code`, `sapling`, and `pi` agents inline (`src/registry/builtins/`) and seeds them on boot. Warren no longer reads `CANOPY_REPO_URL`, serves `POST /agents/refresh`, or ships `warren register-agent`. `GET /agents` still returns `source: "builtin" \| "library"` provenance from `frontmatter.source` (the `library` arm survives for legacy rows). | §4.2, §8.1 |
 
 ### 11.C Open questions for V1
 
 1. **OpenAPI spec for warren's own HTTP surface.** Same question burrow resolved by hand-authoring `src/server/openapi/spec.ts` and golden-locking it. Recommend the same pattern; defer decision until after `/runs` and `/agents` routes stabilize.
 2. **Concurrent runs per project.** Warren can dispatch many runs against the same project; each run gets its own burrow (provisioned per-run, destroyed on completion). Or do we share a long-lived burrow per project and queue runs serially inside it? Decision affects burrow lifecycle (provision-per-run vs. provision-per-project) and `runs.burrow_id` semantics. Lean toward provision-per-run for V1: simpler isolation, matches "task burrow" model from burrow's §4.1.
 3. **Reverse proxy assumption.** Spec assumes warren is fronted by Caddy / cluster ingress for TLS. Should warren refuse to start if `WARREN_TRUST_PROXY != true` and the bind address is non-loopback? V1 default: warn loudly in `doctor`, do not refuse — home-server users may not have a proxy yet.
-4. **`readyz` timing.** When does warren consider itself "ready"? Burrow socket reachable + canopy clone present + at least one agent successfully rendered? All three? Affects deploy-time orchestration.
+4. **`readyz` timing.** When does warren consider itself "ready"? Burrow socket reachable + at least one agent registered? Both? Affects deploy-time orchestration.
 
 ### 11.D V1 security posture (known limitations)
 
@@ -1764,10 +1783,10 @@ implementation work isn't blocked on re-deriving the design.
 > Plot gave warren an opt-in coordination substrate, keyed on a `.plot/`
 > directory and a per-run `plot_id`.
 > The pass dropped every plot module, route, table, column, config knob,
-> UI, and CLI, and warren now keeps only canopy, mulch, seeds, and sapling.
+> UI, and CLI, and warren now keeps only mulch, seeds, and sapling.
 
 Phase 1 of `warren-000b` — adopting [Plot](https://github.com/jayminwest/plot)
-as warren's coordination primitive. Plot is the fifth opt-in bundled
+as warren's coordination primitive. Plot was an opt-in bundled
 feature alongside canopy, mulch, seeds, and sapling: a project lights it
 up by shipping a `.plot/` directory, and projects without one are
 byte-identical to the pre-change behavior. Phase 1 is the dispatch wiring

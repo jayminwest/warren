@@ -532,7 +532,7 @@ The file stays out of the kustomize base because it needs the `monitoring.coreos
 `GET /readyz` (`src/server/handlers/diagnostics.ts`) runs deeper checks than the liveness `/healthz`.
 It is **topology-aware**: the burrow socket, bwrap, and stale-burrow-workspace probes only run when `resolveRuntimeKind() === "local"`, and return `[]` under k8s (warren-c128).
 Without that gate they would forever report "burrow unreachable" and wrongly degrade a healthy K8s control plane.
-Under k8s, `/readyz` covers: DB reachable, agents registered, the canopy clone (when `CANOPY_REPO_URL` is set), the warren-config parse, and the preview-allocator and auth checks.
+Under k8s, `/readyz` covers: DB reachable, agents registered, the warren-config parse, and the preview-allocator and auth checks.
 
 The Deployment probes point at the **auth-exempt `/healthz`**.
 `/readyz` needs the bearer, so gate readiness on it only via a probe with `httpHeaders: [{name: Authorization, value: "Bearer …"}]`.

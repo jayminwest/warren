@@ -66,10 +66,14 @@ Honest tombstones. A removed feature can return as an extension when someone wan
 |------|------|-----|
 | Conversations (Leveret) | v0.11.0 | No users. PHILOSOPHY rule 8 deletes rather than re-platforms. |
 | Plot | v0.11.0 | No users. Twelve injector fields left `ServerDeps` with it. |
+| Canopy (agent library, `register-agent`, `CANOPY_REPO_URL`, `/agents/refresh`) | v0.12.0 | No users. Built-in agents ship inline. PHILOSOPHY rule 8 deletes rather than re-platforms. |
 | Multi-worker burrow model and remote workers (old R-12) | v0.10.0 | Superseded by the `k8s` runtime provider. SPEC §5.4 carries the RETIRED banner. |
 | Fly.io deploy path | v0.10.0 | Superseded by the published container image plus GKE. See `docs/RUNBOOK-K8S.md`. |
 
-Canopy is not on this list. The optional agent library stays live behind `CANOPY_REPO_URL`, alongside mulch and seeds, and PHILOSOPHY sequencing step 2 still tracks its removal.
+The canopy agent library, its `register-agent` CLI, the `CANOPY_REPO_URL`
+knob, and the `/agents/refresh` routes are gone as of the `pl-3a79`
+deletion pass (PHILOSOPHY sequencing step 2). Built-in agents now ship
+inline (`src/registry/builtins/`). Mulch and seeds stay live.
 
 ## Under evaluation
 
@@ -79,7 +83,7 @@ Canopy is not on this list. The optional agent library stays live behind `CANOPY
 
 Choices locked in earlier, recorded so that nobody relitigates them when an item becomes a seed.
 
-- The database holds runtime state only. Issues, expertise, prompts, and trigger config stay git-tracked in the project repo under `.seeds/`, `.mulch/`, `.canopy/`, and `.warren/`.
+- The database holds runtime state only. Issues, expertise, prompts, and trigger config stay git-tracked in the project repo under `.seeds/`, `.mulch/`, and `.warren/`.
 - Seeds is the source of truth for issues. Warren has no issues table.
 - The kernel's guaranteed output is a pushed workspace branch. Everything past that point is extension behavior.
 - Warren stays self-hostable, not SaaS. One warren deploy serves one team, and multi-tenancy stays out of scope.

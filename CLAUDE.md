@@ -10,12 +10,10 @@ The fresh-install path is standalone: the built-in `claude-code` agent
 ships inline (`src/registry/builtins/`), so a user with a GitHub URL and
 an Anthropic key can dispatch a run end-to-end with no other tooling.
 
-Warren also bundles five [os-eco](https://github.com/jayminwest/os-eco)
+Warren also bundles four [os-eco](https://github.com/jayminwest/os-eco)
 data-plane tools as **opt-in built-in features**, not required
 infrastructure:
 
-- **canopy** — versioned prompt libraries for custom agents. Activated by
-  setting `CANOPY_REPO_URL`; library agents override built-ins by name.
 - **mulch** — persistent agent memory across runs. Activated by the
   project having a `.mulch/` directory.
 - **seeds** — integrated issue queue agents read from and write to.
@@ -503,8 +501,8 @@ Scenario 39 (`39-public-exposure.ts`, warren-c405) is the public-instance
 leak guard and the only scenario wired into CI
 (`.github/workflows/acceptance-public.yml`, `bun run acceptance:public`).
 It boots its own `WARREN_AUTH=public` warren over a database seeded
-through warren's repos before boot, so it needs no burrow dispatch and no
-canopy library — the rest of the suite still runs locally only.
+through warren's repos before boot, so it needs no burrow dispatch — the
+rest of the suite still runs locally only.
 
 ## Session Completion Protocol
 

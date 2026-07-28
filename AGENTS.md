@@ -16,7 +16,7 @@ one volume, one HTTP API, one UI.
 
 The fresh-install path is standalone: the built-in `claude-code` agent
 ships inline (`src/registry/builtins/`). The bundled os-eco data-plane
-features (`canopy`, `mulch`, `seeds`, `sapling`, `plan-run`) are
+features (`mulch`, `seeds`, `sapling`, `plan-run`) are
 **opt-in** and light up when their config / directories are present —
 see `CLAUDE.md` and [`SPEC.md`](SPEC.md) §1 / §11 for the full framing.
 
