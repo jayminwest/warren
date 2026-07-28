@@ -77,7 +77,9 @@ export {
 } from "./inbox.ts";
 export {
 	type BranchPushedPayload,
+	clearLifecycleBus,
 	type EventEmittedPayload,
+	installLifecycleBus,
 	LIFECYCLE_HOOKS,
 	LifecycleBus,
 	type LifecycleBusOptions,
@@ -89,6 +91,7 @@ export {
 	type LifecycleOutcome,
 	type LifecyclePayloads,
 	type LifecycleRegistration,
+	lifecycleBus,
 	type PostReapPayload,
 	type PreReapPayload,
 	type RunDispatchedPayload,

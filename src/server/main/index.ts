@@ -63,6 +63,7 @@ import { loadEventStreamLimitsFromEnv } from "../stream-limits.ts";
 import type { AuthProvider, ServeHandle } from "../types.ts";
 import { buildServerDeps } from "./deps.ts";
 import { bootBackgroundDetectors } from "./detector-wiring.ts";
+import { bootLifecycleBus } from "./lifecycle-bus-wiring.ts";
 import {
 	bridgeLoggerFromPino,
 	previewEvictionLoggerFromPino,
@@ -143,6 +144,12 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 	// step 24 (warren-3743). warren-f796: the burrow client no longer lives here —
 	// the `LocalBootBackend` builds + owns it under `local` (none under `k8s`).
 	const broker = new RunEventBroker();
+
+	// Tier-1 observation event bus (warren-bb60) + its first-party consumers
+	// (warren-4e74). Installed as the process singleton BEFORE the bridges
+	// resume in-flight runs (which may reap and emit `post_reap`), so no
+	// lifecycle emit is dropped on the floor at boot. See lifecycle-bus-wiring.ts.
+	const lifecycleBusHandle = bootLifecycleBus({ logger });
 
 	logger.info(
 		{
@@ -440,6 +447,9 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 			// K8s runtime loops (no-op / undefined under the local backend).
 			await k8sRuntime?.stop();
 			await bridgesBoot.registry.stopAll();
+			// Detach the lifecycle-bus consumers + uninstall the singleton so a
+			// teardown leaves no global emit target behind (warren-4e74).
+			lifecycleBusHandle.stop();
 			// warren-f796: close the local backend's burrow client (undefined under k8s).
 			await localBackend?.close();
 			await closeDatabase(db);
