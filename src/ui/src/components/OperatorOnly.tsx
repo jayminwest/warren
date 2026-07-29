@@ -52,3 +52,32 @@ export function OperatorRoute({
 	if (!caps.can(capability)) return <Navigate to="/runs" replace />;
 	return children;
 }
+
+/**
+ * Copy-level counterpart of `OperatorOnly`: return `hint` only for a caller
+ * holding `capability`, `undefined` otherwise (warren-b67b).
+ *
+ * The empty states were written for operators, so they instruct the reader
+ * to use the very control `OperatorOnly` removed — "Dispatch one above."
+ * points at nothing for a public visitor, which makes every empty list on
+ * `app.warren.run` a dead end. The `EmptyState` title already says
+ * "nothing here" on its own, so a spectator loses the instruction line
+ * rather than gaining a second, redundant one.
+ *
+ * A hook, not a wrapper component, because `EmptyState.description` is a
+ * slot: `<OperatorOnly>` inside it renders nothing but the description row
+ * still gets its `gap-2`, so a spectator pays 8px for an empty div.
+ * Returning `undefined` drops the row entirely.
+ *
+ * Call it unconditionally at the top of the component like any other hook —
+ * the empty branch it feeds renders conditionally, the hook must not.
+ * Defaults to `dispatch` to match `OperatorOnly`; pass the capability that
+ * gates the control the copy points at.
+ */
+export function useOperatorHint(
+	hint: ReactNode,
+	capability: CapabilityName = "dispatch",
+): ReactNode {
+	const caps = useCapabilities();
+	return caps.can(capability) ? hint : undefined;
+}

@@ -3,7 +3,7 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { agentsApi, projectsApi, runsApi } from "@/api/client.ts";
-import { OperatorOnly } from "@/components/OperatorOnly.tsx";
+import { OperatorOnly, useOperatorHint } from "@/components/OperatorOnly.tsx";
 import { StateBadge } from "@/components/StateBadge.tsx";
 import { Alert } from "@/components/ui/alert.tsx";
 import { Button } from "@/components/ui/button.tsx";
@@ -95,6 +95,7 @@ export function RunsPage() {
 		queryFn: ({ signal }) => runsApi.list(filterApi, signal),
 		refetchInterval: 5000,
 	});
+	const emptyHint = useOperatorHint("Dispatch one above.");
 
 	// Click cycles: inactive → desc → asc → (back to started/desc default).
 	const toggleSort = (key: SortKey): void => {
@@ -219,7 +220,7 @@ export function RunsPage() {
 							</Alert>
 						</div>
 					) : runs.data?.runs.length === 0 ? (
-						<EmptyState title="No runs match this filter" description="Dispatch one above." />
+						<EmptyState title="No runs match this filter" description={emptyHint} />
 					) : (
 						<Table>
 							<TableHeader>

@@ -3,7 +3,7 @@ import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { planRunsApi, projectsApi } from "@/api/client.ts";
 import type { CapabilityName, PlanRunRow, PlanRunState, RunRow } from "@/api/types.ts";
-import { OperatorOnly } from "@/components/OperatorOnly.tsx";
+import { OperatorOnly, useOperatorHint } from "@/components/OperatorOnly.tsx";
 import { PlanRunStateBadge } from "@/components/PlanRunStateBadge.tsx";
 import { Alert } from "@/components/ui/alert.tsx";
 import { Button } from "@/components/ui/button.tsx";
@@ -105,6 +105,7 @@ export function PlanRunsPage() {
 		defaultDirections: { startedAt: "desc" },
 	});
 
+	const emptyHint = useOperatorHint("Dispatch one above.");
 	const canReadReady = caps.can(READY_TAB_CAPABILITY);
 	const visibleTabs = canReadReady ? TABS : TABS.filter((t) => t.value !== "ready");
 	const activeTab = tab === "ready" && !canReadReady ? "plan-runs" : tab;
@@ -190,10 +191,7 @@ export function PlanRunsPage() {
 								</Alert>
 							</div>
 						) : planRuns.data?.planRuns.length === 0 ? (
-							<EmptyState
-								title="No plan runs match this filter"
-								description="Dispatch one above."
-							/>
+							<EmptyState title="No plan runs match this filter" description={emptyHint} />
 						) : (
 							<Table>
 								<TableHeader>

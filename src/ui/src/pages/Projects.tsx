@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { projectsApi } from "@/api/client.ts";
 import type { ProjectRow } from "@/api/types.ts";
-import { OperatorOnly } from "@/components/OperatorOnly.tsx";
+import { OperatorOnly, useOperatorHint } from "@/components/OperatorOnly.tsx";
 import { RefreshProjectsCTA } from "@/components/RefreshProjectsCTA.tsx";
 import { Alert } from "@/components/ui/alert.tsx";
 import { Button } from "@/components/ui/button.tsx";
@@ -85,6 +85,9 @@ export function ProjectsPage() {
 		mutationFn: (id: string) => projectsApi.refresh(id),
 		onSuccess: () => qc.invalidateQueries({ queryKey: ["projects"] }),
 	});
+	// `admin`, not the hook's `dispatch` default: `POST /projects` is an admin
+	// route (warren-b875), which is what gates `AddProjectForm` below.
+	const emptyHint = useOperatorHint("Add one with a GitHub URL above.", "admin");
 
 	return (
 		<div className="space-y-6">
@@ -127,7 +130,7 @@ export function ProjectsPage() {
 							</Alert>
 						</div>
 					) : projects.data?.projects.length === 0 ? (
-						<EmptyState title="No projects yet" description="Add one with a GitHub URL above." />
+						<EmptyState title="No projects yet" description={emptyHint} />
 					) : (
 						<Table>
 							<TableHeader>

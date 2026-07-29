@@ -15,7 +15,9 @@
  *      can't be added to an ungated file without this test noticing;
  *   2. `AuthGate` decides from `/whoami`, never from a localStorage token;
  *   3. the two dispatch forms are route-guarded;
- *   4. nav entries whose destination is readOperator carry a capability.
+ *   4. nav entries whose destination is readOperator carry a capability;
+ *   5. no empty-state instruction points a spectator at a control the gate
+ *      removed (warren-b67b).
  */
 
 import { describe, expect, test } from "bun:test";
@@ -206,6 +208,76 @@ describe("redacted wire fields render on presence (warren-f53e)", () => {
 		// The rendered envelope (system prompt, canopy paths) is dropped for
 		// a spectator, so its half of the panel is operator-only.
 		expect(agents).toMatch(/<OperatorOnly capability="readOperator">\s*<AgentDefinitionInternals/);
+	});
+});
+
+/**
+ * Empty-state copy is capability-aware (warren-b67b).
+ *
+ * `OperatorOnly` removes the dispatch CTA and the add-project form for a
+ * public visitor, but the empty states kept the operator instruction —
+ * "Dispatch one above." pointed at nothing, so every empty list on
+ * `app.warren.run` was a dead end. The instruction now goes through
+ * `useOperatorHint`: an operator keeps it, a spectator gets the (already
+ * neutral) title alone.
+ */
+describe("empty states don't point a spectator at a hidden control (warren-b67b)", () => {
+	test("the hint hook yields the copy only for a caller holding the capability", () => {
+		const guard = read("components", "OperatorOnly.tsx");
+		expect(guard).toMatch(/export function useOperatorHint\(/);
+		expect(guard).toMatch(/return caps\.can\(capability\) \? hint : undefined;/);
+	});
+
+	test("EmptyState drops the description row when the hint is undefined", () => {
+		// Not cosmetic, and the reason this is a hook and not an
+		// `<OperatorOnly>` inside the slot: that would render nothing but
+		// still cost the row's `gap-2`.
+		expect(read("components", "ui", "empty-state.tsx")).toMatch(/\{description \? \(/);
+	});
+
+	test("the two dispatch lists gate their instruction on `dispatch`", () => {
+		for (const page of ["Runs.tsx", "PlanRuns.tsx"]) {
+			const src = read("pages", page);
+			expect(src).toMatch(/useOperatorHint\("Dispatch one above\."\)/);
+			expect(src).toMatch(/description=\{emptyHint\}/);
+		}
+	});
+
+	test("the projects list gates its instruction on `admin`, like AddProjectForm", () => {
+		// `POST /projects` is `admin`, not `dispatch` (warren-b875) — gating
+		// the copy on `dispatch` would print it for a caller who still can't
+		// see the form.
+		const projects = read("pages", "Projects.tsx");
+		expect(projects).toMatch(/useOperatorHint\("Add one with a GitHub URL above\.", "admin"\)/);
+		expect(projects).toMatch(/description=\{emptyHint\}/);
+	});
+
+	/**
+	 * The scaling half: gated copy travels as `useOperatorHint("…")` and
+	 * reaches the slot as an expression, so a description STRING LITERAL that
+	 * points at an on-page control ("… above") is by construction ungated.
+	 * That catches a fourth page without this test naming it.
+	 *
+	 * One named exemption, in the style of `GATED_ELSEWHERE` above:
+	 * `ready-plans.tsx` lives inside a `readOperator` tab that `PlanRuns.tsx`
+	 * drops for a spectator, so its "choose one above" never reaches one.
+	 *
+	 * Expression descriptions are outside the guard by design — the Agents
+	 * page's copy is a JSX fragment and its spectator issues are tracked
+	 * separately.
+	 */
+	test("no ungated empty-state literal points at an on-page control", () => {
+		const GATED_ELSEWHERE = new Set(["ready-plans.tsx"]);
+		const offenders: string[] = [];
+		for (const file of UI_FILES) {
+			const name = file.slice(file.lastIndexOf("/") + 1);
+			if (GATED_ELSEWHERE.has(name)) continue;
+			const literals = readFileSync(file, "utf8").match(/description="[^"]*"/g) ?? [];
+			if (literals.some((literal) => / above/.test(literal))) {
+				offenders.push(file.slice(UI_SRC.length + 1));
+			}
+		}
+		expect(offenders).toEqual([]);
 	});
 });
 
