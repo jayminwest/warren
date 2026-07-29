@@ -5,13 +5,11 @@ import { Button } from "@/components/ui/button.tsx";
 /**
  * Route-level error boundary (warren-1f12).
  *
- * Motivation is a concrete production incident, not defensive habit: the
- * plot deletion pass dropped `runs.plot_id` server-side while RunDetail
- * still rendered a `r.plotId !== null` MetaCard. On the wire the field
- * became *absent*, so the guard read `undefined !== null` → true, and the
- * child dereferenced `plotId.length` → TypeError during render. With no
- * boundary mounted, React unmounted the entire root and every
- * `/#/runs/:id` deep link served a blank white page.
+ * Motivation is a concrete production incident, not defensive habit: a
+ * wire-shape drift left RunDetail reading a field the server had stopped
+ * sending, so a guard treated the absent value as present and a child
+ * threw during render. With no boundary mounted, React unmounted the
+ * entire root and every `/#/runs/:id` deep link served a blank white page.
  *
  * The stale field is fixed; this makes the *failure mode* survivable. A
  * throw inside the routed page now degrades to one error card with the

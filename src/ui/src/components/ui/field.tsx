@@ -6,9 +6,8 @@ import { Label } from "./label.tsx";
  * Phase 6 layout primitive (warren-e6b3 / pl-55a3 step 7):
  *
  * Field — wraps `<Label>` + control + optional description/error/hint
- * into the `space-y-1.5` stack that NewRun, NewPlanRun, ProjectDetail,
- * and the per-Plot form blocks all repeat by hand. Consolidating the
- * pattern means every form field gets:
+ * into the `space-y-1.5` stack that NewRun, NewPlanRun, and ProjectDetail
+ * all repeat by hand. Consolidating the pattern means every form field gets:
  *   - the same vertical rhythm,
  *   - the same `text-xs text-(--color-muted-foreground)` hint copy,
  *   - the same `text-(--color-destructive)` error voice,

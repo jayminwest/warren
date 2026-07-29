@@ -13,10 +13,6 @@
  * inline `statusVariant()` switch in `RunDetail.tsx`) all delegate
  * here so adding a new state or swapping a colour token is a
  * one-line change rather than a multi-file grep.
- *
- * The `plot` kind was dropped in warren-f53e / pl-b82d step 19: the
- * surfaces it served were deleted in pl-3a79 and nothing rendered it
- * afterwards.
  */
 import {
 	Activity,

@@ -16,10 +16,10 @@ import { cn } from "@/lib/utils.ts";
  *     promoted onto Card. Pairs with a translucent muted fill via
  *     a className override on call sites that need it.
  *
- * Phase 7 (warren-2221) will add an `interactive` variant (hover
- * border + shadow lift) once the PlotDetail decomposition surfaces
- * actual clickable-row sites — adding it now would just pay the
- * bundle-size cost for utilities no consumer references yet.
+ * An `interactive` variant (hover border + shadow lift) is deferred
+ * until clickable-row call sites exist — adding it now would just pay
+ * the bundle-size cost for utilities no consumer references yet
+ * (warren-2221).
  */
 const cardVariants = cva("border bg-(--color-card) text-(--color-fg)", {
 	variants: {

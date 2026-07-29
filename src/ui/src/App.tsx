@@ -64,9 +64,7 @@ export function App() {
 									</AuthGate>
 								}
 							>
-								{/* Runs is the home surface. The former Plot-first
-						    landing (DefaultLanding, warren-e59a) died with the
-						    plot deletion pass — warren-1f12 / pl-3a79 step 10. */}
+								{/* Runs is the home surface (warren-1f12 / pl-3a79 step 10). */}
 								<Route index element={<Navigate to="/runs" replace />} />
 								<Route path="/runs" element={<RunsPage />} />
 								{/* The two dispatch forms are the only pages whose whole

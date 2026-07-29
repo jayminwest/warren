@@ -6,12 +6,9 @@ import { cn } from "@/lib/utils.ts";
  * Phase 4 shared-state primitive (warren-36f0 / pl-55a3 step 5):
  *
  * EmptyState — a centered "nothing here yet" placeholder for list and
- * detail surfaces. Audit found ~12 ad-hoc empty branches across pages/
- * (Plots.tsx had its own local EmptyState, ProjectDetail.tsx had
- * EmptyHint, Runs/Projects/PlanRuns/PlotDetail used bare `<p>`
- * placeholders) — this primitive consolidates them so all empty
- * surfaces share the same vertical rhythm, icon size, and muted color
- * token.
+ * detail surfaces. Consolidates the former ad-hoc empty branches across
+ * pages so all empty surfaces share the same vertical rhythm, icon size,
+ * and muted color token.
  *
  * Slots:
  *   - `icon` — optional lucide-react icon component (constructor),

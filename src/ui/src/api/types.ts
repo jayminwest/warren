@@ -146,9 +146,8 @@ export interface RunRow {
 	cloneKind: CloneKind | null;
 	/**
 	 * Run mode discriminator (pl-0344 step 1 / warren-67b6). Pinned at row
-	 * creation; warren-side only (burrow doesn't know about run mode). The
-	 * retired `interactive` / `conversation` values are gone from the enum
-	 * (warren-d622, warren-ee27), so `batch` is the only member today.
+	 * creation; warren-side only (burrow doesn't know about run mode).
+	 * `batch` is the only member today.
 	 */
 	mode: RunMode;
 	renderedAgentJson: unknown;
@@ -437,11 +436,6 @@ export interface CronTrigger {
 
 export type Trigger = CronTrigger;
 
-export interface InteractiveAgentsConfig {
-	brainstormRuntime?: "claude-code" | "sapling" | "pi";
-	plannerRuntime?: "claude-code" | "sapling" | "pi";
-}
-
 export interface DefaultsConfig {
 	defaultRole?: string;
 	defaultBranch?: string;
@@ -461,11 +455,6 @@ export interface DefaultsConfig {
 	 * verify which prefix is in effect.
 	 */
 	runBranchPrefix?: string;
-	/**
-	 * warren-b802: per-project override of the burrow runtime backing
-	 * the interactive built-in agents (brainstorm / planner).
-	 */
-	interactiveAgents?: InteractiveAgentsConfig;
 	qualityGate?: string;
 }
 
