@@ -82,7 +82,7 @@ Run it for yourself on a home server today. The [org-readiness roadmap](ROADMAP.
 
 ## Status
 
-Stable (`0.12.2`), running on GKE in continuous use against real GitHub repos. The Kubernetes runtime (`WARREN_RUNTIME=k8s`, pod-per-run) is the supported hosted target on GKE Autopilot.
+Stable (`0.13.0`), running on GKE in continuous use against real GitHub repos. The Kubernetes runtime (`WARREN_RUNTIME=k8s`, pod-per-run) is the supported hosted target on GKE Autopilot.
 
 37 scenario-based acceptance tests in [`scripts/acceptance/`](scripts/acceptance/) cover the end-to-end path. They span manual runs, cron triggers, and K8s pod dispatch (OOM fast-fail, steer delivery). They also span the Postgres backend, per-run preview environments, restart recovery, cost tracking, cost analytics, the seeds-extensions roundtrip, and serial plan-run dispatch.
 

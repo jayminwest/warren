@@ -10,6 +10,60 @@ Releases **0.9.10 and earlier** live in
 
 ## [Unreleased]
 
+## [0.13.0] — 2026-07-30
+
+**Known limitation:** the container image is still amd64-only
+(warren-fe9f is open for multi-arch builds).
+
+### Security
+
+- **Per-run scoped tokens** — run pods no longer receive the
+  full-capability operator token (`WARREN_API_TOKEN`). Each run gets its
+  own scoped token instead (warren-57fd, #666).
+
+### Added
+
+- **Tier-1 observation event bus** on `RunEventBroker`
+  (`warren-ext/v1`), wired into the run lifecycle, with the healer as
+  its first proof consumer (warren-bb60 #653, warren-4e74 #655).
+- **CI builds the container image on every PR** (warren-3380, #667), so
+  an unbuildable commit can no longer reach a tagged release — the
+  failure class behind the dead `v0.12.0`/`v0.12.1` tags.
+- **Discord release announcements** — new releases are announced in the
+  `#releases` channel (#648).
+
+### Changed
+
+- **Release ordering: draft until the image exists** — the release
+  workflow now creates a *draft* GitHub release, waits for the deploy
+  job to push `ghcr.io/…/warren:vX.Y.Z`, then promotes the draft and
+  announces (warren-89f2, #668). A release is never public before its
+  image is pullable.
+- **Finalize contract generalized to opaque artifact deltas**;
+  seed-close moved onto the observation bus (warren-df3e, #657).
+- **Canopy tiers deleted** — the library tier (`CANOPY_REPO_URL` clone
+  path, `POST /agents/refresh`, `warren register-agent`) (#646) and the
+  project tier (#650) are gone; the agent registry is collapsed to the
+  inline built-ins. Workspace seed drop moved off `.canopy/agent.json`
+  (warren-5585, #654).
+- **Audit Warden agents retired**; nightwatch stays as the example
+  (#644). All scheduled agents are disabled by default in
+  `.warren/triggers.yaml`.
+- README container advice pinned to the first buildable image tag,
+  `:v0.12.2` (#669).
+
+### Fixed
+
+- **Project delete cascades to runs and events** (warren-41b3, #651).
+- **Article IX CI gate failed open on every PR** — it now reads the
+  diff from git (#649).
+- **Reap treats harness-owned scratch state as a no-op**, not a
+  `dropped_commit` (#643).
+- UI fixes for spectators/visitors: run analytics no longer crash on
+  redacted cost fields (warren-e274, #665), empty-state copy is
+  capability-aware (warren-b67b, #661), and the dead agent link is
+  repaired with wire enums humanized (#664).
+
 ## [0.12.2] — 2026-07-28
 
 **This is the first buildable 0.12 release.** `v0.12.0` and `v0.12.1`
