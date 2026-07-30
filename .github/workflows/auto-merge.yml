@@ -1,6 +1,9 @@
 name: auto-merge
 
-# Enable GitHub's auto-merge on PRs authored by the repo owner so they
+# Enable GitHub's auto-merge on PRs authored by the repo owner — or by
+# the deployment's dedicated bot account, named by the repo variable
+# AUTO_MERGE_BOT_LOGIN (unset → owner-only; a variable rather than a
+# hardcoded login so forks/self-hosters name their own bot) — so they
 # merge as soon as the `ci` required check passes. Other authors' PRs
 # still run CI but require a manual `gh pr merge` (or click). Squash is
 # the chosen merge method — keeps main history linear, drops the
@@ -24,7 +27,9 @@ jobs:
     runs-on: ubuntu-latest
     if: >-
       !github.event.pull_request.draft &&
-      github.event.pull_request.user.login == github.repository_owner &&
+      (github.event.pull_request.user.login == github.repository_owner ||
+       (vars.AUTO_MERGE_BOT_LOGIN != '' &&
+        github.event.pull_request.user.login == vars.AUTO_MERGE_BOT_LOGIN)) &&
       !contains(github.event.pull_request.labels.*.name, 'no-automerge')
     steps:
       # Pin to the PR head SHA, not the default `refs/pull/N/merge` ref.
