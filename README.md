@@ -52,7 +52,7 @@ Open <http://localhost:8080> and paste the token. Click **Projects → Add** and
 
 Then **Dispatch run**, pick `claude-code`, write a prompt, and start it. The events panel streams live. When the run completes, warren pushes a branch you can open a PR from.
 
-`:latest` tracks `main`. Pin a release with `:v0.11.0`, or track the moving minor with `:0.11`.
+`:latest` tracks `main`. Pin a release with `:v0.12.2`, the first buildable 0.12 image. The `v0.12.0` and `v0.12.1` tags exist but carry no container image. Their builds were broken and the fix landed in v0.12.2, so do not pin them. Two of the three 0.12 tags are unbuildable. Prefer the explicit `:v0.12.2` pin over the moving `:0.12` minor tag.
 
 The four security flags relax the outer container so the sandbox runtime can nest its own user namespaces (SPEC §5.3). Remove any one of them and sandbox provisioning fails.
 
