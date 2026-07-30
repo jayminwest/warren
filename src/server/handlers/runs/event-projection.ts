@@ -108,6 +108,15 @@ const SECRET_PATTERN = new RegExp(
 		"(?:AKIA|ASIA)[0-9A-Z]{16}",
 		// Slack bot / user / app-level / refresh tokens.
 		"xox[baprs]-[A-Za-z0-9-]{10,}",
+		// URL userinfo credentials: `scheme://user:pass@host`. This is where a
+		// Postgres / Supabase DSN (WARREN_DB_URL) hides its password. Anchored on
+		// the `:pass@` shape so an ordinary URL without userinfo never matches.
+		// Redacted whole (scheme + userinfo + `@`), leaving the host in the clear.
+		String.raw`\w+://[^\s:@/]+:[^\s@/]+@`,
+		// JWTs — three base64url segments joined by dots. Anchored on the `eyJ`
+		// header prefix (base64url of `{"`) so a dotted identifier like
+		// `foo.bar.baz` is never mistaken for a token.
+		String.raw`eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+`,
 	].join("|"),
 	"gi",
 );
@@ -119,7 +128,8 @@ const SECRET_PATTERN = new RegExp(
  * at a secret (`WARREN_K8S_ANTHROPIC_SECRET_NAME`) deliberately fall
  * outside.
  */
-const SECRET_ENV_NAME = /(?:^|_)(?:TOKEN|SECRET|KEY|PASSWORD|PASSPHRASE|CREDENTIALS?|DSN)$/i;
+const SECRET_ENV_NAME =
+	/(?:^|_)(?:TOKEN|SECRET|KEY|PASSWORD|PASSPHRASE|CREDENTIALS?|DSN|URL|URI|CONN)$/i;
 
 /**
  * Env values shorter than this are not redacted. A 4-character token is
