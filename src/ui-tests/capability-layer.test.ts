@@ -173,6 +173,7 @@ describe("every mutation site sits behind the one gate (warren-f53e)", () => {
 
 describe("redacted wire fields render on presence (warren-f53e)", () => {
 	const types = read("api", "types.ts");
+	const client = read("api", "client.ts");
 	const runDetail = read("pages", "RunDetail.tsx");
 
 	test("the fields the public projection drops are optional in the row types", () => {
@@ -208,6 +209,31 @@ describe("redacted wire fields render on presence (warren-f53e)", () => {
 		// The rendered envelope (system prompt, canopy paths) is dropped for
 		// a spectator, so its half of the panel is operator-only.
 		expect(agents).toMatch(/<OperatorOnly capability="readOperator">\s*<AgentDefinitionInternals/);
+	});
+
+	// warren-e274: `REDACTED_RUN_TOTALS_FIELDS` drops `totals.cost` and
+	// `REDACTED_RUN_GROUP_FIELDS` drops `costUsd` / `priced` for a
+	// readPublic-only caller, so the UI types must mark them optional and
+	// the three consumers must render on presence. Before this fix the whole
+	// /run-analytics page threw for an anonymous visitor.
+	test("run-analytics cost fields are optional in the wire types", () => {
+		expect(client).toMatch(/cost\?: \{ total: number; avg: number \| null; priced: number \}/);
+		expect(client).toMatch(/costUsd\?: number;\s*priced\?: number;/);
+	});
+
+	test("the run-analytics consumers guard the redacted cost fields", () => {
+		const kpi = read("pages", "run-analytics", "KpiCards.tsx");
+		const tables = read("pages", "run-analytics", "Tables.tsx");
+		const tokenStats = read("pages", "run-analytics", "TokenStats.tsx");
+		// KpiCards: the `Total cost` card renders only when `cost` is present.
+		expect(kpi).toMatch(/cost !== undefined \?/);
+		expect(kpi).not.toMatch(/totals\.cost\.total/);
+		// Tables: the `Cost` column is omitted when no bucket carries costUsd.
+		expect(tables).toMatch(/buckets\.some\(\(b\) => b\.costUsd !== undefined\)/);
+		expect(tables).toMatch(/b\.costUsd === undefined \? "—" : formatCostUsd/);
+		// TokenStats: same treatment for the `$/1M` column.
+		expect(tokenStats).toMatch(/buckets\.some\(\(b\) => b\.costUsd !== undefined\)/);
+		expect(tokenStats).toMatch(/b\.costUsd === undefined \? "—" : costPer1M/);
 	});
 });
 

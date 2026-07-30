@@ -54,6 +54,10 @@ export function GroupTable({
 	buckets: RunGroupBucket[];
 	loading: boolean;
 }) {
+	// `costUsd` is redacted for a readPublic-only visitor (warren-e274); when
+	// no bucket carries it, omit the Cost column entirely instead of showing
+	// a wall of em-dashes.
+	const showCost = buckets.some((b) => b.costUsd !== undefined);
 	return (
 		<Card>
 			<CardHeader>
@@ -74,7 +78,7 @@ export function GroupTable({
 								<TableHead className="text-right">Success</TableHead>
 								<TableHead className="text-right">Avg ctx</TableHead>
 								<TableHead className="text-right">Avg dur</TableHead>
-								<TableHead className="text-right">Cost</TableHead>
+								{showCost ? <TableHead className="text-right">Cost</TableHead> : null}
 							</TableRow>
 						</TableHeader>
 						<TableBody>
@@ -95,9 +99,11 @@ export function GroupTable({
 									<TableCell className="whitespace-nowrap text-right font-mono text-xs text-(--color-muted-foreground)">
 										{formatDurationMs(b.avgDurationMs)}
 									</TableCell>
-									<TableCell className="whitespace-nowrap text-right font-mono text-xs">
-										{formatCostUsd(b.costUsd)}
-									</TableCell>
+									{showCost ? (
+										<TableCell className="whitespace-nowrap text-right font-mono text-xs">
+											{b.costUsd === undefined ? "—" : formatCostUsd(b.costUsd)}
+										</TableCell>
+									) : null}
 								</TableRow>
 							))}
 						</TableBody>

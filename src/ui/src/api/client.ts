@@ -552,7 +552,14 @@ export interface RunAnalyticsTotals {
 	successRate: number | null;
 	durationMs: RunStatSummary;
 	contextTokens: RunStatSummary;
-	cost: { total: number; avg: number | null; priced: number };
+	/**
+	 * OPTIONAL on the wire: the windowed USD rollup is redacted for a
+	 * `readPublic`-only caller (`REDACTED_RUN_TOTALS_FIELDS` in
+	 * `src/server/handlers/runs/analytics.ts`), so a spectator's envelope has
+	 * no such key. Callers must render on presence — dereferencing without a
+	 * guard crashed `/run-analytics` for anonymous visitors (warren-e274).
+	 */
+	cost?: { total: number; avg: number | null; priced: number };
 }
 
 export interface RunDayBucket {
@@ -574,8 +581,15 @@ export interface RunGroupBucket {
 	contextTokensTotal: number;
 	avgContextTokens: number | null;
 	tokens: TokenBreakdown;
-	costUsd: number;
-	priced: number;
+	/**
+	 * OPTIONAL on the wire: per-group USD spend is redacted for a
+	 * `readPublic`-only caller (`REDACTED_RUN_GROUP_FIELDS` in
+	 * `src/server/handlers/runs/analytics.ts`); summing per-group cost would
+	 * reconstruct the aggregate the totals projection just dropped. Callers
+	 * must render on presence (warren-e274).
+	 */
+	costUsd?: number;
+	priced?: number;
 	avgDurationMs: number | null;
 }
 

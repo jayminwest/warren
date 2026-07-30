@@ -45,6 +45,23 @@ function KpiCard({
 	);
 }
 
+/**
+ * `cost` is redacted for a readPublic-only visitor (warren-e274), so the
+ * card renders on presence rather than dereferencing unguarded. Split into
+ * its own component to keep `KpiCards` under Biome's cognitive-complexity
+ * cap now that the tile is conditional.
+ */
+function TotalCostCard({ cost }: { cost: NonNullable<RunAnalyticsTotals["cost"]> }) {
+	const dash = "—";
+	return (
+		<KpiCard
+			title="Total cost"
+			value={formatCostUsd(cost.total)}
+			hint={`avg ${cost.avg === null ? dash : formatCostUsd(cost.avg)} · ${cost.priced} priced`}
+		/>
+	);
+}
+
 export function KpiCards({ totals }: { totals: RunAnalyticsTotals | undefined }) {
 	const loading = totals === undefined;
 	const dash = "—";
@@ -79,15 +96,7 @@ export function KpiCards({ totals }: { totals: RunAnalyticsTotals | undefined })
 						: `avg ${formatTokensOrDash(totals.contextTokens.avg)} · ${totals.contextTokens.count} priced`
 				}
 			/>
-			<KpiCard
-				title="Total cost"
-				value={loading ? dash : formatCostUsd(totals.cost.total)}
-				hint={
-					loading
-						? undefined
-						: `avg ${totals.cost.avg === null ? dash : formatCostUsd(totals.cost.avg)} · ${totals.cost.priced} priced`
-				}
-			/>
+			{totals?.cost !== undefined ? <TotalCostCard cost={totals.cost} /> : null}
 			<KpiCard
 				title="Active runs"
 				value={loading ? dash : formatCount(totals.active)}

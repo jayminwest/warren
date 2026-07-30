@@ -135,6 +135,9 @@ export function TokenGroupTable({
 	loading: boolean;
 }) {
 	const grandTotal = buckets.reduce((s, b) => s + b.tokens.total, 0);
+	// `costUsd` is redacted for a readPublic-only visitor (warren-e274) — the
+	// $/1M column derives from it, so omit the column when no bucket carries it.
+	const showCost = buckets.some((b) => b.costUsd !== undefined);
 
 	return (
 		<Card>
@@ -158,7 +161,7 @@ export function TokenGroupTable({
 								<TableHead className="text-right">Cache W</TableHead>
 								<TableHead className="text-right">Total</TableHead>
 								<TableHead className="text-right">Share</TableHead>
-								<TableHead className="text-right">$/1M</TableHead>
+								{showCost ? <TableHead className="text-right">$/1M</TableHead> : null}
 							</TableRow>
 						</TableHeader>
 						<TableBody>
@@ -185,9 +188,11 @@ export function TokenGroupTable({
 									<TableCell className="whitespace-nowrap text-right font-mono text-xs">
 										{grandTotal === 0 ? "—" : formatPercent(b.tokens.total / grandTotal)}
 									</TableCell>
-									<TableCell className="whitespace-nowrap text-right font-mono text-xs">
-										{costPer1M(b.costUsd, b.tokens.total)}
-									</TableCell>
+									{showCost ? (
+										<TableCell className="whitespace-nowrap text-right font-mono text-xs">
+											{b.costUsd === undefined ? "—" : costPer1M(b.costUsd, b.tokens.total)}
+										</TableCell>
+									) : null}
 								</TableRow>
 							))}
 						</TableBody>
