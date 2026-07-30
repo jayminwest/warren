@@ -116,6 +116,60 @@ describe("reapRun failure-reason inference (warren-3c40 / warren-5165)", () => {
 		expect(row.failureReason).toBe("no_model_response");
 	});
 
+	test("classifies a sandbox-primitive stderr error as sandbox_failed (warren-daef)", async () => {
+		// bwrap spawned but could not create the sandbox (user namespaces
+		// disabled on the host), so it wrote its own error to stderr and
+		// exited before the agent ran a single turn. Without the sandbox arm
+		// this shape collapses into no_model_response, which reads as a
+		// credential fault.
+		await ctx.repos.events.append({
+			runId: ctx.runId,
+			burrowEventSeq: 1,
+			ts: new Date().toISOString(),
+			kind: "text",
+			stream: "stderr",
+			payload: { text: "bwrap: setting up uid map: Permission denied" },
+		});
+
+		const result = await reapRun({
+			runId: ctx.runId,
+			outcome: "failed",
+			repos: ctx.repos,
+			...reapDeps(fakeBurrowClient(makeBurrow()), { fs: fakeFs().fs, exec: fakeExec().exec }),
+			fs: fakeFs().fs,
+			exec: fakeExec().exec,
+		});
+
+		expect(result.failureReason).toBe("sandbox_failed");
+		const row = await ctx.repos.runs.require(ctx.runId);
+		expect(row.failureReason).toBe("sandbox_failed");
+	});
+
+	test("keeps no_model_response when stderr mentions bwrap without the error prefix (warren-daef)", async () => {
+		// The matcher is anchored to the sandbox binary's own `bwrap: `
+		// error prefix — an agent merely printing the word in prose must
+		// not reclassify its own credential failure.
+		await ctx.repos.events.append({
+			runId: ctx.runId,
+			burrowEventSeq: 1,
+			ts: new Date().toISOString(),
+			kind: "text",
+			stream: "stderr",
+			payload: { text: "Not logged in · Please run /login (bwrap sandbox active)" },
+		});
+
+		const result = await reapRun({
+			runId: ctx.runId,
+			outcome: "failed",
+			repos: ctx.repos,
+			...reapDeps(fakeBurrowClient(makeBurrow()), { fs: fakeFs().fs, exec: fakeExec().exec }),
+			fs: fakeFs().fs,
+			exec: fakeExec().exec,
+		});
+
+		expect(result.failureReason).toBe("no_model_response");
+	});
+
 	test("thinking and tool_use events also count as model-turn output (warren-5165)", async () => {
 		// burrow's jsonl-claude parser maps assistant content blocks into
 		// kind=text, kind=thinking, or kind=tool_use. Any one of them is

@@ -183,6 +183,18 @@ export type CloneKind = (typeof CLONE_KINDS)[number];
  *     OOM-killed — burrow's `oomKilled()` probe or the K8s
  *     `terminated.reason=="OOMKilled"` signal, carried through the run-state
  *     probe's `terminalReason` onto the finalized row.
+ *   - `sandbox_failed` (warren-daef) means the sandbox PRIMITIVE itself
+ *     broke before the agent ever ran — bwrap could not create the
+ *     namespace (user namespaces disabled, missing setuid bit, AppArmor
+ *     policy) or sandbox-exec refused the profile, so the run died with
+ *     the sandbox's own error on stderr and zero model turns. Reap
+ *     infers it from a bwrap/sandbox-exec error line on `stream=stderr`
+ *     when no model-turn output exists, so a broken host stops
+ *     masquerading as `no_model_response` (which reads as a
+ *     credential/provider fault and sends the operator down the wrong
+ *     debugging path). Distinct from `no_model_response` (the agent
+ *     started but produced nothing) and `never_started` (the bridge
+ *     never claimed the row).
  *   - `evicted` (warren-c0cd) means the kubelet evicted the run pod under node
  *     resource pressure (K8s `status.reason=="Evicted"`) — most often
  *     ephemeral-storage exhaustion (the emptyDir workspace outgrowing its
@@ -195,6 +207,7 @@ export type CloneKind = (typeof CLONE_KINDS)[number];
 export const RUN_FAILURE_REASONS = [
 	"never_started",
 	"no_model_response",
+	"sandbox_failed",
 	"crashed",
 	"timed_out",
 	"burrow_run_lost",
