@@ -404,6 +404,29 @@ describe("buildRunPod", () => {
 		expect(anthropic[0]?.valueFrom).toBeUndefined();
 	});
 
+	test("OPENROUTER_API_KEY rides as an optional secretKeyRef by default", () => {
+		const agent = buildRunPod(baseSpec(), config).spec?.containers?.[0];
+		const openrouter = (agent?.env ?? []).find((e) => e.name === "OPENROUTER_API_KEY");
+		expect(openrouter?.valueFrom?.secretKeyRef).toEqual({
+			name: config.openrouterSecret.name,
+			key: config.openrouterSecret.key,
+			optional: true,
+		});
+	});
+
+	test("a domain-supplied OPENROUTER_API_KEY is not shadowed by the secret ref", () => {
+		const pod = buildRunPod(
+			baseSpec({ env: { WARREN_API_TOKEN: "tok", OPENROUTER_API_KEY: "sk-or-inline" } }),
+			config,
+		);
+		const openrouter = (pod.spec?.containers?.[0]?.env ?? []).filter(
+			(e) => e.name === "OPENROUTER_API_KEY",
+		);
+		expect(openrouter).toHaveLength(1);
+		expect(openrouter[0]?.value).toBe("sk-or-inline");
+		expect(openrouter[0]?.valueFrom).toBeUndefined();
+	});
+
 	test("no ServiceAccount by default → token automount disabled", () => {
 		const pod = buildRunPod(baseSpec(), config);
 		expect(pod.spec?.serviceAccountName).toBeUndefined();

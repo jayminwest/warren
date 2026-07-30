@@ -49,6 +49,12 @@ import {
 	buildInitEnv,
 	buildInitVolumeMounts,
 	buildRunPodVolumes,
+	DEFAULT_K8S_ANTHROPIC_SECRET_KEY,
+	DEFAULT_K8S_ANTHROPIC_SECRET_NAME,
+	DEFAULT_K8S_GIT_SECRET_KEY,
+	DEFAULT_K8S_GIT_SECRET_NAME,
+	DEFAULT_K8S_OPENROUTER_SECRET_KEY,
+	DEFAULT_K8S_OPENROUTER_SECRET_NAME,
 	resolveRepoCacheConfig,
 } from "./pod-env.ts";
 import {
@@ -64,6 +70,12 @@ export {
 	buildAgentEnv,
 	buildInitEnv,
 	buildInitVolumeMounts,
+	DEFAULT_K8S_ANTHROPIC_SECRET_KEY,
+	DEFAULT_K8S_ANTHROPIC_SECRET_NAME,
+	DEFAULT_K8S_GIT_SECRET_KEY,
+	DEFAULT_K8S_GIT_SECRET_NAME,
+	DEFAULT_K8S_OPENROUTER_SECRET_KEY,
+	DEFAULT_K8S_OPENROUTER_SECRET_NAME,
 	ENV_AGENT_METADATA,
 	ENV_AGENT_RUNTIME,
 	ENV_PROMPT,
@@ -157,27 +169,6 @@ export const DEFAULT_K8S_CALLBACK_NAMESPACE = "warren";
 export const DEFAULT_K8S_CALLBACK_PORT = "8080";
 
 /**
- * K8s Secret the init container's `WARREN_GIT_TOKEN` is sourced from (design
- * §6.3 `github-token`). Referenced as an OPTIONAL secretKeyRef so public repos
- * still clone when no secret is present. Overridable via
- * `WARREN_K8S_GIT_SECRET_NAME` / `WARREN_K8S_GIT_SECRET_KEY`; the actual Secret
- * is provisioned by the manifests step (warren-74b5).
- */
-export const DEFAULT_K8S_GIT_SECRET_NAME = "warren-git-token";
-export const DEFAULT_K8S_GIT_SECRET_KEY = "token";
-
-/**
- * K8s Secret the agent container's `ANTHROPIC_API_KEY` is sourced from (design
- * §6.3: agent pods receive `ANTHROPIC_API_KEY` from a Secret, NOT the control
- * plane's process env). Referenced as an OPTIONAL secretKeyRef so a run whose
- * key rides `spec.env` (or an OAuth-token flow) still schedules when the Secret
- * is absent. Overridable via `WARREN_K8S_ANTHROPIC_SECRET_NAME` /
- * `WARREN_K8S_ANTHROPIC_SECRET_KEY`; the Secret is provisioned by the manifests.
- */
-export const DEFAULT_K8S_ANTHROPIC_SECRET_NAME = "warren-anthropic-key";
-export const DEFAULT_K8S_ANTHROPIC_SECRET_KEY = "api-key";
-
-/**
  * SIGTERM grace on `cancel()` (pl-829f step 19 / warren-31d4). `cancel` is the
  * seam's GRACEFUL stop: it deletes the pod with this `gracePeriodSeconds`, so
  * the kubelet delivers SIGTERM and waits this long before SIGKILL — giving the
@@ -216,8 +207,9 @@ export interface K8sPodConfig {
 	callback: { service: string; namespace: string; port: string };
 	/** K8s Secret the init container's git token is sourced from (§6.3). */
 	gitTokenSecret: { name: string; key: string };
-	/** K8s Secret the agent container's `ANTHROPIC_API_KEY` is sourced from (§6.3). */
+	/** Agent-container API-key Secrets: `ANTHROPIC_API_KEY` / `OPENROUTER_API_KEY` (§6.3). */
 	anthropicSecret: { name: string; key: string };
+	openrouterSecret: { name: string; key: string };
 	/** Optional PVC-backed git-mirror cache on the init container (§4.3, pod-env.ts). */
 	repoCache?: { claimName: string; mountPath: string };
 	/** SIGTERM grace (seconds) `cancel()` deletes the pod with (step 19). */
@@ -297,6 +289,14 @@ export function resolveK8sPodConfig(
 		anthropicSecret: {
 			name: pickString(env, "WARREN_K8S_ANTHROPIC_SECRET_NAME", DEFAULT_K8S_ANTHROPIC_SECRET_NAME),
 			key: pickString(env, "WARREN_K8S_ANTHROPIC_SECRET_KEY", DEFAULT_K8S_ANTHROPIC_SECRET_KEY),
+		},
+		openrouterSecret: {
+			name: pickString(
+				env,
+				"WARREN_K8S_OPENROUTER_SECRET_NAME",
+				DEFAULT_K8S_OPENROUTER_SECRET_NAME,
+			),
+			key: pickString(env, "WARREN_K8S_OPENROUTER_SECRET_KEY", DEFAULT_K8S_OPENROUTER_SECRET_KEY),
 		},
 		cancelGracePeriodSeconds: pickNonNegativeInt(
 			env,

@@ -90,6 +90,16 @@ patches:
       metadata:
         name: warren-git-token
         namespace: warren-runs
+  - target:
+      kind: Secret
+      name: warren-openrouter-key
+    patch: |
+      $patch: delete
+      apiVersion: v1
+      kind: Secret
+      metadata:
+        name: warren-openrouter-key
+        namespace: warren-runs
   # GCE external Application LB exposure (warren-682a). The host below is a
   # PLACEHOLDER — gke-live patches it (and the ManagedCertificate domain) to
   # the real hostname. The static-IP name refers to a reserved *global*

@@ -4,6 +4,7 @@
 pl-3a79 step 16) with its first proof consumer wired (warren-4e74,
 step 17). The bus + registration API ship in `src/runs/lifecycle-bus.ts`;
 the run-lifecycle emit call-sites (`run_dispatched` in `spawnRun`,
+`run_started` + `event_emitted` in the event bridge (warren-28ca),
 `pre_reap` / `post_reap` / `branch_pushed` in `reapRun`) publish through
 the boot-installed process singleton, and the healer
 (`src/healer/lifecycle.ts`) is registered as proof consumer #1 via
@@ -107,6 +108,9 @@ subscriber cannot stall the run loop.
 The broker (`src/runs/events.ts`) fans a run's **event rows** out to
 live HTTP tailers; this bus fans the **run lifecycle** out to boot-wired
 consumers. The `event_emitted` hook is the lifecycle mirror of a broker
-`publish` — the bridge is the natural call-site for both. The bus holds
+`publish` — the bridge is the call-site for both. `run_started` fires
+from the bridge's atomic queued → running claim (`claimById`) and
+`event_emitted` fires immediately after each `broker.publish`, so both
+hooks emit on the real production run path (warren-28ca). The bus holds
 nothing durable; like the broker, the events table remains the recovery
 boundary.

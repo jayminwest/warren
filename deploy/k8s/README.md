@@ -104,6 +104,11 @@ kubectl -n warren create secret generic warren-secrets \
 # Same value as github-token. Optional — public repos clone without it.
 kubectl -n warren-runs create secret generic warren-git-token \
   --from-literal=token=<gh PAT>
+
+# Agent pods read OPENROUTER_API_KEY from THIS secret, in warren-runs.
+# Optional — needed only for runs whose provider is `openrouter` (pi harness).
+kubectl -n warren-runs create secret generic warren-openrouter-key \
+  --from-literal=api-key=<sk-or-…>
 ```
 
 | Secret / key | Namespace | warren env var | Purpose |
@@ -116,6 +121,7 @@ kubectl -n warren-runs create secret generic warren-git-token \
 | `warren-secrets/warren-auth` | warren | `WARREN_AUTH` | auth posture: `token` (default) or `public` (optional) |
 | `warren-secrets/warren-public-allowlist` | warren | `WARREN_PUBLIC_ALLOWLIST` | owners (`my-org`) and/or repos (`some-owner/some-repo`) a public instance may hold (required iff `warren-auth=public`) |
 | `warren-git-token/token` | warren-runs | `WARREN_GIT_TOKEN` (init pod) | init-container clone |
+| `warren-openrouter-key/api-key` | warren-runs | `OPENROUTER_API_KEY` (agent pod) | OpenRouter auth for `openrouter`-provider runs (optional) |
 
 ### Going public
 
@@ -233,7 +239,9 @@ pushed refs.
 OPTIONAL `secretKeyRef` (`WARREN_K8S_ANTHROPIC_SECRET_NAME` /
 `_KEY`, default Secret `warren-anthropic-key` key `api-key`) so a run whose key
 rides the dispatch env still schedules when the Secret is absent. Provision the
-Secret alongside `warren-git-token` (design §6.3).
+Secret alongside `warren-git-token` (design §6.3). `OPENROUTER_API_KEY` rides
+the same pattern (`WARREN_K8S_OPENROUTER_SECRET_NAME` / `_KEY`, default Secret
+`warren-openrouter-key` key `api-key`) for `openrouter`-provider runs.
 
 ## Host-mode local dev: kubeconfig 401 with client-cert clusters
 
