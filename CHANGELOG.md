@@ -12,9 +12,6 @@ Releases **0.9.10 and earlier** live in
 
 ## [0.13.0] — 2026-07-30
 
-**Known limitation:** the container image is still amd64-only
-(warren-fe9f is open for multi-arch builds).
-
 ### Security
 
 - **Per-run scoped tokens** — run pods no longer receive the
@@ -31,6 +28,10 @@ Releases **0.9.10 and earlier** live in
   failure class behind the dead `v0.12.0`/`v0.12.1` tags.
 - **Discord release announcements** — new releases are announced in the
   `#releases` channel (#648).
+- **Multi-arch public image** — the `ghcr.io/…/warren` tags self-hosters
+  pull are now built for `linux/amd64` and `linux/arm64`, fixing runs
+  dying under emulation on Apple Silicon; GKE-internal Artifact Registry
+  images stay amd64 (warren-fe9f, #671).
 
 ### Changed
 
