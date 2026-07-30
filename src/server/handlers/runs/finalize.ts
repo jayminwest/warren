@@ -17,7 +17,9 @@
  *     pod's retry loop stops (see `FinalizeCoordinator`).
  *
  * Both are bearer-gated like every other `/runs` route — the pod carries the
- * `WARREN_API_TOKEN` warren injected at create. Neither is auth-exempt.
+ * per-run SCOPED callback token warren injected at create (warren-57fd), which
+ * authorizes exactly this run's inbox + finalize surface and nothing else.
+ * Neither is auth-exempt.
  *
  * The coordinator is the process-wide `sharedFinalizeCoordinator` by default (the
  * same instance `K8sProvider.finalize()` defaults to, so they correlate without

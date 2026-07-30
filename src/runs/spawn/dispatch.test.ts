@@ -5,6 +5,7 @@ import { isId } from "../../core/ids.ts";
 import type { WarrenDb } from "../../db/client.ts";
 import type { Repos } from "../../db/repos/index.ts";
 import { composeDispatchPrompt, spawnRun } from "./index.ts";
+import { isRunScopedToken, verifyRunScopedToken } from "./run-token.ts";
 import { makeAgentJson, makeBurrowClient, makeProvider, setupRepos, stub } from "./test-helpers.ts";
 
 describe("spawnRun: validation", () => {
@@ -341,7 +342,12 @@ describe("spawnRun: sandbox env (warren-b893)", () => {
 		const env = (up?.body as { env?: Record<string, string> }).env;
 		expect(env).toBeDefined();
 		expect(env?.BUN_INSTALL_CACHE_DIR).toBe("/tmp/bun-install-cache");
-		expect(env?.WARREN_API_TOKEN).toBe("tok_secret"); // warren-f248: threaded via serverEnv
+		// warren-57fd: the sandbox gets a per-run SCOPED callback token, NOT the
+		// operator token — signed with the operator token, bound to this run.
+		expect(env?.WARREN_API_TOKEN).toBeDefined();
+		expect(env?.WARREN_API_TOKEN).not.toBe("tok_secret");
+		expect(isRunScopedToken(env?.WARREN_API_TOKEN ?? "")).toBe(true);
+		expect(verifyRunScopedToken(env?.WARREN_API_TOKEN ?? "", "tok_secret")).not.toBeNull();
 	});
 });
 

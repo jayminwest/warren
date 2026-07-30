@@ -188,7 +188,7 @@ export async function spawnRun(input: SpawnRunInput): Promise<SpawnRunResult> {
 		input.targetBranch,
 	);
 
-	const runEnv = composeRunEnv(projectDefaults?.qualityGate, input.serverEnv);
+	const runEnv = composeRunEnv(run.id, projectDefaults?.qualityGate, input.serverEnv);
 
 	// warren-b802: resolve per-project runtime override for the planner
 	// interactive agent at dispatch time so the agent row
@@ -366,15 +366,16 @@ const BUN_INSTALL_CACHE_DIR = "/tmp/bun-install-cache";
 /** Merge quality-gate (warren-5797) and Bun cache relocation
  * (warren-b893) into the sandbox env. Always returns a non-empty object. */
 function composeRunEnv(
+	runId: string,
 	qualityGate: string | undefined,
 	serverEnv?: Readonly<Record<string, string | undefined>>,
 ): Record<string, string> {
 	const env: Record<string, string> = { BUN_INSTALL_CACHE_DIR };
 	if (qualityGate !== undefined) env.WARREN_QUALITY_GATE = qualityGate;
-	// warren-f248: forward the warren API token + loopback URL so the agent
-	// can call back into warren's HTTP API. See callback-env.ts for why this
-	// is a generic capability rather than one caller's delivery path.
-	injectWarrenCallbackEnv(env, serverEnv ?? process.env);
+	// warren-57fd: inject a per-run SCOPED callback token (valid only for this
+	// run's own inbox + finalize surface), not the operator bearer. See
+	// callback-env.ts + run-token.ts for the trust-boundary rationale.
+	injectWarrenCallbackEnv(env, serverEnv ?? process.env, runId);
 	injectGitIdentityEnv(env, serverEnv ?? process.env);
 	return env;
 }

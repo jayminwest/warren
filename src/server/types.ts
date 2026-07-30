@@ -340,7 +340,21 @@ export interface ServeOptions {
 	 * Undefined → no preview surface (zero overhead per request).
 	 */
 	previewProxy?: PreviewProxyHandler;
+	/**
+	 * Liveness probe for run-scoped callback tokens (warren-57fd). Given a run
+	 * id, resolves true while the run may still call back (non-terminal). The
+	 * request gate uses it to reject a `run` actor once its run is terminal.
+	 * `bootServer` wires it from `deps.repos.runs`; tests may omit (a run token
+	 * is then bounded only by route+id, not by liveness).
+	 */
+	runActivityCheck?: RunActivityCheck;
 }
+
+/**
+ * Resolves true while `runId` may still legitimately call back into warren
+ * (i.e. it is not terminal). See `ServeOptions.runActivityCheck`.
+ */
+export type RunActivityCheck = (runId: string) => Promise<boolean>;
 
 /**
  * Host-match preview proxy preamble. Declared in the preview domain
@@ -404,10 +418,12 @@ export type RoutePolicy = "anonymous" | CapabilityName;
  * Identity discriminant. `operator` is the single-user V1 caller (SPEC
  * §3.2 / §11.D) the token provider authorizes; `anonymous` is the
  * credential-less spectator the `WARREN_AUTH=public` provider mints
- * (warren-851b) — it holds `readPublic` and nothing else. Further kinds
- * land with the providers that mint them.
+ * (warren-851b) — it holds `readPublic` and nothing else. `run` is a
+ * sandbox calling back with its per-run scoped token (warren-57fd): it is
+ * pinned to a single run's callback surface by the request gate, not by
+ * its capability set. Further kinds land with the providers that mint them.
  */
-export type ActorKind = "operator" | "anonymous";
+export type ActorKind = "operator" | "anonymous" | "run";
 
 /**
  * Who is making the request and what they may do. Produced by an
@@ -417,6 +433,13 @@ export type ActorKind = "operator" | "anonymous";
 export interface Actor {
 	readonly kind: ActorKind;
 	readonly capabilities: ActorCapabilities;
+	/**
+	 * The run a `run`-kind actor is scoped to (warren-57fd). Present ONLY on
+	 * `kind === "run"`. The request gate refuses any route outside that run's
+	 * callback surface, pins the `:id` param to this value, and rejects once
+	 * the run is terminal — the capability set alone does not constrain it.
+	 */
+	readonly runId?: string;
 }
 
 export interface AuthOk {

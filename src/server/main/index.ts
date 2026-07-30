@@ -26,6 +26,7 @@
  * - `./preview-wiring.ts` — preview signed-cookie + proxy assembly
  */
 
+import { isTerminalRunState } from "../../core/wire.ts";
 import { openDatabase } from "../../db/client.ts";
 import { DrizzleAdapter } from "../../db/repos/drizzle-adapter.ts";
 import { createRepos } from "../../db/repos/index.ts";
@@ -60,7 +61,7 @@ import {
 import { bootScheduler } from "../scheduler.ts";
 import { startServer } from "../server.ts";
 import { loadEventStreamLimitsFromEnv } from "../stream-limits.ts";
-import type { AuthProvider, ServeHandle } from "../types.ts";
+import type { AuthProvider, RunActivityCheck, ServeHandle } from "../types.ts";
 import { buildServerDeps } from "./deps.ts";
 import { bootBackgroundDetectors } from "./detector-wiring.ts";
 import { bootLifecycleBus } from "./lifecycle-bus-wiring.ts";
@@ -422,10 +423,19 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 		);
 	}
 
+	// warren-57fd: bound each run-scoped callback token's lifetime to its run.
+	// The auth layer verifies the token's signature and run binding; this probe
+	// is what makes the token invalid once the run reaches a terminal state.
+	const runActivityCheck: RunActivityCheck = async (runId) => {
+		const row = await deps.repos.runs.get(runId);
+		return row !== null && !isTerminalRunState(row.state);
+	};
+
 	const handle = startServer(deps, {
 		transport: serverConfig.transport,
 		auth,
 		logger,
+		runActivityCheck,
 		...(previewProxy !== undefined ? { previewProxy } : {}),
 	});
 
