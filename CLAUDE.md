@@ -55,7 +55,10 @@ boot from `WARREN_RUNTIME` (`src/runtime/registry.ts`) behind the
 `LocalProvider` (`src/runtime/local/`, the default) wraps the
 co-tenanted [burrow](https://github.com/jayminwest/burrow) sandbox
 daemon; `K8sProvider` (`src/runtime/k8s/`, `WARREN_RUNTIME=k8s`) runs
-each agent as a Kubernetes pod with no burrow at all. Burrow is the
+each agent as a Kubernetes pod with no burrow *daemon* — no `burrow
+serve`, no unix socket, no bwrap (though warren still links
+`@os-eco/burrow-cli` as a library for shared types and error classes;
+cutting that k8s dependency is a ROADMAP item). Burrow the daemon is the
 LocalProvider's substrate, **not a required warren dependency** — see
 "Relationship to burrow" below and [docs/RUNBOOK-K8S.md](docs/RUNBOOK-K8S.md)
 for the K8s topology.
@@ -107,10 +110,12 @@ and is surfaced by `loadWarrenConfig()`. Notable knobs:
 
 Burrow is the **`LocalProvider`'s sandbox substrate** — the runtime warren
 uses under `WARREN_RUNTIME=local` (the default). It is no longer a
-universal dependency: under `WARREN_RUNTIME=k8s` there is **no burrow** at
-all (no `burrow serve`, no unix socket, no bwrap; the pod boundary is the
-sandbox, and `/readyz` drops the burrow/bwrap/stale-workspace probes —
-`src/server/handlers/diagnostics.ts`, warren-c128). Everything in this
+universal dependency: under `WARREN_RUNTIME=k8s` there is **no burrow
+daemon** (no `burrow serve`, no unix socket, no bwrap; the pod boundary is
+the sandbox, and `/readyz` drops the burrow/bwrap/stale-workspace probes —
+`src/server/handlers/diagnostics.ts`, warren-c128; the
+`@os-eco/burrow-cli` npm package still ships in the image as a library
+dependency, but nothing spawns the daemon). Everything in this
 section is the `local` topology; for the K8s topology see
 [docs/RUNBOOK-K8S.md](docs/RUNBOOK-K8S.md) and the design docs under
 `docs/design/` (`runtime-provider-contract.md`, `k8s-migration.md`).
