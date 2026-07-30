@@ -39,6 +39,7 @@
 
 import { timingSafeEqual } from "node:crypto";
 import { ValidationError, WarrenError } from "../core/errors.ts";
+import { isRunScopedToken, verifyRunScopedToken } from "../runs/spawn/run-token.ts";
 import type {
 	Actor,
 	ActorCapabilities,
@@ -90,6 +91,28 @@ export const ANONYMOUS_ACTOR: Actor = Object.freeze({
 });
 
 const ALLOW_ANONYMOUS: AuthOk = Object.freeze({ ok: true, actor: ANONYMOUS_ACTOR });
+
+/**
+ * A run-scoped callback token holds `readOperator` + `dispatch` so it clears
+ * the capability gate on its three callback routes (`GET .../inbox` +
+ * `.../finalize-intent` are `readOperator`, `POST .../finalize-result` is
+ * `dispatch`). This does NOT let it read arbitrary operator surfaces: the
+ * request gate additionally pins a `run` actor to `RUN_CALLBACK_ROUTE_PATTERNS`
+ * for its OWN run id and refuses once that run is terminal (warren-57fd). The
+ * narrow route+id+liveness rule is the real boundary; these flags only let the
+ * legitimate callbacks through the shared capability check.
+ */
+const RUN_SCOPED_CAPABILITIES: ActorCapabilities = Object.freeze({
+	readPublic: false,
+	readOperator: true,
+	dispatch: true,
+	admin: false,
+});
+
+/** Build the `run`-kind actor a valid run-scoped token authorizes. */
+export function runScopedActor(runId: string): Actor {
+	return Object.freeze({ kind: "run", capabilities: RUN_SCOPED_CAPABILITIES, runId });
+}
 
 class NoAuthProvider implements AuthProvider {
 	authorize(): AuthOutcome {
@@ -154,6 +177,52 @@ class PublicReadProvider implements AuthProvider {
 		if (request.headers.get("authorization") === null) return ALLOW_ANONYMOUS;
 		return this.operator.authorize(request);
 	}
+}
+
+/**
+ * Wraps an operator/public provider and admits run-scoped callback tokens
+ * (warren-57fd). A bearer shaped like a run token (`isRunScopedToken`) is
+ * verified against `secret` (the instance operator token, shared with the
+ * dispatch-time minter): a valid signature yields a `run` actor bound to its
+ * run id; a shaped-but-invalid token 401s rather than falling through to the
+ * operator check (so a tampered run token never accidentally matches the
+ * operator bearer). Any other bearer is delegated unchanged.
+ */
+class RunScopedAuthProvider implements AuthProvider {
+	private readonly inner: AuthProvider;
+	private readonly secret: string;
+
+	constructor(inner: AuthProvider, secret: string) {
+		this.inner = inner;
+		this.secret = secret;
+	}
+
+	authorize(request: Request): AuthOutcome {
+		const header = request.headers.get("authorization");
+		const match = header !== null ? /^Bearer\s+(\S+)\s*$/i.exec(header) : null;
+		const presented = match?.[1];
+		if (presented !== undefined && isRunScopedToken(presented)) {
+			const runId = verifyRunScopedToken(presented, this.secret);
+			if (runId !== null) return { ok: true, actor: runScopedActor(runId) };
+			return deny(
+				401,
+				"unauthorized",
+				"invalid run-scoped token",
+				'Bearer realm="warren", error="invalid_token"',
+			);
+		}
+		return this.inner.authorize(request);
+	}
+}
+
+/**
+ * Wrap `inner` so run-scoped callback tokens signed with `secret` are admitted
+ * as `run` actors (warren-57fd). `secret` is the operator token the
+ * dispatch-time minter also keys off, so mint and verify share it with no
+ * extra config.
+ */
+export function runScopedAuth(inner: AuthProvider, secret: string): AuthProvider {
+	return new RunScopedAuthProvider(inner, secret);
 }
 
 /**
@@ -266,7 +335,11 @@ export function resolveAuth(opts: ResolveAuthOptions = {}): AuthProvider {
 		});
 	}
 	const operator = bearerAuth(token);
-	return kind === "public" ? publicReadAuth(operator) : operator;
+	const base = kind === "public" ? publicReadAuth(operator) : operator;
+	// warren-57fd: admit per-run scoped callback tokens (keyed off the same
+	// operator token the dispatch-time minter uses) in every non-`--no-auth`
+	// mode. The request gate pins each to its own run's callback surface.
+	return runScopedAuth(base, token);
 }
 
 function deny(status: number, code: string, message: string, challenge?: string): AuthDenied {

@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { ValidationError } from "../core/errors.ts";
+import { createHmacRunTokenMinter } from "../runs/spawn/run-token.ts";
 import {
 	ANONYMOUS_ACTOR,
 	bearerAuth,
@@ -10,6 +11,7 @@ import {
 	publicReadAuth,
 	resolveAuth,
 	resolveAuthKind,
+	runScopedAuth,
 	UnknownAuthProviderError,
 } from "./auth.ts";
 
@@ -127,6 +129,51 @@ describe("resolveAuth", () => {
 
 	test("throws ValidationError on empty token", () => {
 		expect(() => resolveAuth({ env: { WARREN_API_TOKEN: "" } })).toThrow(ValidationError);
+	});
+});
+
+describe("runScopedAuth (warren-57fd)", () => {
+	const SECRET = "tok_operator_secret";
+	const RUN_ID = "run_abc123def456";
+	const provider = runScopedAuth(bearerAuth(SECRET), SECRET);
+	const scopedToken = createHmacRunTokenMinter(SECRET).mint(RUN_ID);
+
+	test("admits a valid run-scoped token as a run actor bound to its run", () => {
+		const result = provider.authorize(req(`Bearer ${scopedToken}`));
+		expect(result.ok).toBe(true);
+		if (!result.ok) return;
+		expect(result.actor.kind).toBe("run");
+		expect(result.actor.runId).toBe(RUN_ID);
+	});
+
+	test("the run actor lacks readPublic and admin", () => {
+		const result = provider.authorize(req(`Bearer ${scopedToken}`));
+		if (!result.ok) return;
+		expect(result.actor.capabilities.readPublic).toBe(false);
+		expect(result.actor.capabilities.admin).toBe(false);
+	});
+
+	test("401s a run-shaped token with a bad signature (does not fall through to operator)", () => {
+		const forged = `wrs1.${RUN_ID}.deadbeef`;
+		const result = provider.authorize(req(`Bearer ${forged}`));
+		expect(result.ok).toBe(false);
+		if (result.ok) return;
+		expect(result.status).toBe(401);
+	});
+
+	test("delegates a plain operator bearer to the inner provider", () => {
+		expect(provider.authorize(req(`Bearer ${SECRET}`)).ok).toBe(true);
+		const operatorResult = provider.authorize(req(`Bearer ${SECRET}`));
+		if (!operatorResult.ok) return;
+		expect(operatorResult.actor.kind).toBe("operator");
+	});
+
+	test("resolveAuth wraps the operator provider so scoped tokens are admitted", () => {
+		const resolved = resolveAuth({ token: SECRET, env: {} });
+		const result = resolved.authorize(req(`Bearer ${scopedToken}`));
+		expect(result.ok).toBe(true);
+		if (!result.ok) return;
+		expect(result.actor.kind).toBe("run");
 	});
 });
 

@@ -294,12 +294,14 @@ const ROUTE_TABLE: readonly RouteEntry[] = [
 		build: streamRunEventsHandler,
 	},
 	// warren-3d0b: the in-pod steering poll for the K8s backend. Bearer-gated
-	// like every /runs route; the pod carries WARREN_API_TOKEN. Destructive on
-	// read (it claims unread messages), so it is operator-only (warren-b875).
+	// like every /runs route; the pod carries its per-run SCOPED token
+	// (warren-57fd). Destructive on read (it claims unread messages), so for a
+	// non-run caller it is operator-only (warren-b875).
 	{ method: "GET", pattern: "/runs/:id/inbox", policy: "readOperator", build: pollRunInboxHandler },
 	// warren-0d35: the in-pod finalize callback for the K8s backend — the pod
 	// fetches the reap intent, runs the workspace-dependent half in place, and
-	// POSTs the FinalizeResult back. Bearer-gated; the pod carries WARREN_API_TOKEN.
+	// POSTs the FinalizeResult back. Bearer-gated; the pod carries its per-run
+	// scoped token (warren-57fd).
 	{
 		method: "GET",
 		pattern: "/runs/:id/finalize-intent",

@@ -1,43 +1,45 @@
 /**
- * Warren API callback env for the sandbox (warren-f248).
+ * Warren API callback env for the sandbox (warren-f248, re-scoped warren-57fd).
  *
- * Injects the warren API token + a loopback base URL into a run's burrow
- * env so an agent can call back into warren's own HTTP API. Without a
- * credential such calls return 401 (`src/server/auth.ts` requires a
- * bearer token) because the burrow otherwise carries only
- * `ANTHROPIC_API_KEY` + `WARREN_QUALITY_GATE`.
+ * Injects a callback credential + a loopback base URL into a run's burrow
+ * env so the agent/finalize harness can call back into warren's own HTTP API
+ * (the in-pod steering poll and the two finalize legs). Without a credential
+ * such calls return 401 (`src/server/auth.ts` requires a bearer token) because
+ * the burrow otherwise carries only `ANTHROPIC_API_KEY` + `WARREN_QUALITY_GATE`.
  *
- * The original driver was the audit-warden delivery path (auditors POST
- * each finding to a standing "Audit Warden" conversation), retired in the
- * conversations deletion pass (warren-e7e7 / pl-3a79): audit findings now
- * land as seeds issues via the `sd` CLI, which is the durable record and
- * needs no HTTP callback. The token/URL injection stays as a generic
- * loopback-API capability for sandboxed agents that need to reach
- * warren's own API.
- *
- * V1 is single-user / single-token (SPEC §3.2 / §11.D), and the sandbox
- * already holds the operator's git push credential
- * (`installGitCredential`), so forwarding the same bearer token is
- * consistent with the existing trust boundary — the agent code is
- * operator-trusted by construction.
+ * The credential is NOT the operator token. warren-57fd replaced the forwarded
+ * operator bearer — which granted the sandbox full control-plane admin — with a
+ * per-run scoped token (`src/runs/spawn/run-token.ts`) valid only for THIS
+ * run's own callback surface and only while the run is live. On a public
+ * instance the sandbox inputs are attacker-influenced (issue/PR text, repo
+ * contents, contributed test/build scripts), so a captured callback token must
+ * buy nothing beyond the run's own inbox + finalize.
  */
+
+import { createHmacRunTokenMinter } from "./run-token.ts";
 
 export type EnvLike = Readonly<Record<string, string | undefined>>;
 
 /**
- * Mutate `env` to carry `WARREN_API_TOKEN` + `WARREN_API_URL` derived from
- * the server-process `serverEnv`.
+ * Mutate `env` to carry a run-scoped `WARREN_API_TOKEN` + `WARREN_API_URL`
+ * derived from the server-process `serverEnv` and bound to `runId`.
  *
- * Skips silently when the server runs `--no-auth` (no token in env): there
- * is nothing useful to inject and the run env stays byte-identical to the
- * pre-change behavior. When warren is bound to a unix socket only (no
- * dialable TCP loopback) the token is still injected but the URL is
- * omitted — there's no TCP endpoint to hand the sandbox.
+ * The token is minted from the instance operator token (`WARREN_API_TOKEN` in
+ * `serverEnv`) as the signing secret; the server's auth layer re-derives and
+ * verifies it against the same secret. Skips silently when the server runs
+ * `--no-auth` (no operator token to sign with) — there is nothing to inject and
+ * the sandbox has no callback credential, exactly as before. When warren is
+ * bound to a unix socket only (no dialable TCP loopback) the token is still
+ * injected but the URL is omitted — there's no TCP endpoint to hand the sandbox.
  */
-export function injectWarrenCallbackEnv(env: Record<string, string>, serverEnv: EnvLike): void {
-	const token = serverEnv.WARREN_API_TOKEN;
-	if (token === undefined || token === "") return;
-	env.WARREN_API_TOKEN = token;
+export function injectWarrenCallbackEnv(
+	env: Record<string, string>,
+	serverEnv: EnvLike,
+	runId: string,
+): void {
+	const secret = serverEnv.WARREN_API_TOKEN;
+	if (secret === undefined || secret === "") return;
+	env.WARREN_API_TOKEN = createHmacRunTokenMinter(secret).mint(runId);
 	const url = loopbackApiUrl(serverEnv);
 	if (url !== null) env.WARREN_API_URL = url;
 }

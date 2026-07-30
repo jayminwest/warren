@@ -26,6 +26,7 @@
  */
 
 import { existsSync, unlinkSync } from "node:fs";
+import { isRunCallbackRoute } from "../runs/spawn/run-token.ts";
 import { NO_AUTH, policyAllows } from "./auth.ts";
 import { errorLogFields, forbidden, methodNotAllowed, notFound, renderError } from "./errors.ts";
 import { buildApiRoutes, isApiPath, isAuthExempt } from "./handlers/index.ts";
@@ -41,6 +42,7 @@ import type {
 	Route,
 	RouteContext,
 	RoutePolicy,
+	RunActivityCheck,
 	ServeHandle,
 	ServeOptions,
 	ServerDeps,
@@ -74,6 +76,7 @@ export function startServer(deps: ServerDeps, opts: ServeOptions = {}): ServeHan
 	const transport = opts.transport ?? DEFAULT_TRANSPORT;
 	const idleTimeout = opts.idleTimeout ?? DEFAULT_IDLE_TIMEOUT_SECONDS;
 	const previewProxy = opts.previewProxy;
+	const runActivityCheck = opts.runActivityCheck;
 
 	const fetchHandler = async (request: Request, self: ServeServer): Promise<Response> => {
 		// X-Request-ID middleware (warren-30af / pl-7b06 step 19): mint or
@@ -97,6 +100,7 @@ export function startServer(deps: ServerDeps, opts: ServeOptions = {}): ServeHan
 			previewProxy,
 			requestId,
 			clientIp,
+			runActivityCheck,
 		);
 		// Access log (warren-26c2 / pl-f700 step 4): one info line per
 		// request. request_id is already bound onto requestLogger, so the
@@ -213,6 +217,7 @@ async function handleRequest(
 	previewProxy: PreviewProxyHandler | undefined,
 	requestId: string,
 	clientIp: string | undefined,
+	runActivityCheck: RunActivityCheck | undefined,
 ): Promise<Response> {
 	const url = new URL(request.url);
 
@@ -256,6 +261,19 @@ async function handleRequest(
 		// the gate never ran and the policy is `anonymous` by construction.
 		if (actor !== undefined && !policyAllows(actor, match.route.policy)) {
 			return forbiddenResponse(match.route.policy, logger, request, url);
+		}
+		// Run-scope narrowing (warren-57fd). A `run` actor holds broad
+		// capabilities so the callback routes clear the gate above, but it may
+		// reach ONLY its own run's callback surface. Confine it here: the route
+		// must be a callback route, its `:id` must be the token's bound run, and
+		// the run must not be terminal (its callback lifetime is over).
+		if (actor?.kind === "run") {
+			if (!isRunCallbackRoute(match.route.pattern) || match.params.id !== actor.runId) {
+				return forbiddenResponse(match.route.policy, logger, request, url);
+			}
+			if (runActivityCheck !== undefined && !(await runActivityCheck(actor.runId ?? ""))) {
+				return runTerminalResponse(actor.runId ?? "", logger, request, url);
+			}
 		}
 		const ctx: RouteContext = {
 			request,
@@ -363,6 +381,21 @@ function forbiddenResponse(
 		"server.policy_denied",
 	);
 	return jsonResponse(rendered.status, rendered.envelope);
+}
+
+/**
+ * 401 for a run-scoped token whose run has reached a terminal state
+ * (warren-57fd) — its callback lifetime is over. Logged like an auth denial so
+ * a token used past the run's life is visible without leaking the token.
+ */
+function runTerminalResponse(runId: string, logger: Logger, request: Request, url: URL): Response {
+	logger.warn(
+		{ method: request.method, path: url.pathname, status: 401, run_id: runId },
+		"server.run_token_expired",
+	);
+	return jsonResponse(401, {
+		error: { code: "unauthorized", message: "run-scoped token is no longer valid (run terminal)" },
+	});
 }
 
 function denyResponse(result: AuthDenied, logger: Logger, request: Request, url: URL): Response {
