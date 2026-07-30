@@ -88,8 +88,11 @@ interface RunSpec {
   // materializes: burrow internally, K8s in an init container).
   originUrl: string;
   branch: string;
-  baseBranch: string;          // PROMOTED to first-class — burrow resolved it internally
-                               // (default_branch ?? "main"); K8s init container needs it explicit.
+  baseBranch: string;          // PROMOTED to first-class — the domain resolves it
+                               // (default_branch ?? "main") and BOTH providers forward it:
+                               // LocalProvider → burrow's POST /burrows baseBranch (git
+                               // worktree add -b <branch> <baseBranch>); K8s init container
+                               // needs it explicit. The workspace branch is cut from it.
   hostClonePathHint?: string;  // optional burrow worktree optimization; K8s ignores it.
 
   // Agent.
@@ -269,7 +272,8 @@ Grounded divergences where K8s v1 can't match LocalProvider — the domain branc
 ## 6. Corrections this contract bakes in (from ground truth)
 
 1. **Two-call create → one `create()`** (burrow's `burrows.up` + `runs.create` collapse).
-2. **`baseBranch` promoted** to a RunSpec field (was resolved burrow-internally; K8s needs it).
+2. **`baseBranch` promoted** to a RunSpec field, forwarded verbatim by LocalProvider to
+   burrow's `POST /burrows` (previously resolved burrow-internally; K8s needs it explicit).
 3. **Callback URL is provider-owned**, not domain env — `http://localhost:PORT` is a
    co-tenancy assumption; K8s uses Service DNS. Domain `env` excludes `WARREN_API_URL`.
 4. **`seq` is a provider guarantee** — free in burrow, synthesized by K8s over pod logs.

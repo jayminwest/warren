@@ -289,6 +289,10 @@ export class LocalProvider implements RuntimeProvider {
  *   - `runtimeId` → `agents: [runtimeId]` (burrow resolves the toolchain image
  *     from its runtime registry; the domain pre-resolves the runtime id).
  *   - `branch`   → `branch` (the domain composes `${prefix}/${runId}`).
+ *   - `baseBranch` → `baseBranch` (the ref the workspace branch is cut from;
+ *     burrow's `POST /burrows` honors it — `materializeProjectWorkspace` runs
+ *     `git worktree add -b <branch> <baseBranch>`). The domain always resolves
+ *     a concrete base (`default_branch ?? "main"`), so it is always sent.
  *   - `network`  → `network` (RunSpec's `"none"|"restricted"|"open"` IS burrow's
  *     `NetworkPolicy` verbatim). Always sent: the domain resolves a concrete
  *     intent, so the "undefined ⇒ burrow default" omission `dispatch.ts` does
@@ -298,11 +302,6 @@ export class LocalProvider implements RuntimeProvider {
  *
  * UNMAPPED RunSpec fields (documented seam signal — no burrow-request home in
  * the LocalProvider path today):
- *   - `baseBranch`: PROMOTED for K8s's init container, but `dispatch.ts` does
- *     NOT pass it — burrow resolves it internally (`default_branch ?? "main"`)
- *     and the host-clone refresh (a domain step outside `create()`) positions
- *     the fork base. Forwarding it here would CHANGE today's behavior, so we
- *     deliberately omit it and keep the LocalProvider byte-faithful.
  *   - `resources` / `timeoutMs`: no field on `POST /burrows`; `dispatch.ts`
  *     never sends them. Carried for the K8s pod securityContext/limits.
  *   - `mode`: domain state (selects long-lived vs batch handling) — never a
@@ -328,6 +327,7 @@ function buildBurrowsUpInput(
 		originUrl: spec.originUrl,
 		agents: [spec.runtimeId],
 		branch: spec.branch,
+		baseBranch: spec.baseBranch,
 		network: spec.network,
 		...(spec.seedFiles.length > 0 ? { seed: { files: spec.seedFiles.map(toWorkspaceFile) } } : {}),
 		env,
