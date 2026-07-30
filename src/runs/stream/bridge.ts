@@ -22,6 +22,7 @@ import { EVENT_STREAMS } from "../../db/schema.ts";
 import type { RunHandle } from "../../runtime/contract.ts";
 import { RuntimeRunNotFoundError } from "../../runtime/errors.ts";
 import { resolveCostCapUsd } from "../cost-cap.ts";
+import { lifecycleBus } from "../lifecycle-bus.ts";
 import {
 	accumulatePiUsage,
 	extractClaudeUsage,
@@ -157,6 +158,11 @@ export async function bridgeRunStream(input: BridgeRunStreamInput): Promise<Brid
 				const claimedRun = await repos.runs.claimById(runId);
 				if (claimedRun !== null) {
 					input.logger?.info?.({ runId, burrowRunId }, "bridge transitioned run queued → running");
+					// warren-28ca: the queued → running edge is the production
+					// emit for the `run_started` lifecycle hook. `claimById`
+					// returns non-null exactly once (the atomic claim), so this
+					// fires once per run start and never on a re-observed edge.
+					lifecycleBus()?.emitRunStarted({ runId });
 				}
 				claimed = true;
 				if (input.piStats !== undefined) {
@@ -202,6 +208,17 @@ export async function bridgeRunStream(input: BridgeRunStreamInput): Promise<Brid
 			});
 			written += 1;
 			broker.publish(runId, row);
+			// warren-28ca: `event_emitted` is the lifecycle mirror of the
+			// broker publish — one persisted run-event row, fanned to
+			// boot-wired consumers as a provider-neutral projection. The
+			// bridge is the sole writer to `events`, so this is the single
+			// production call-site (design doc §5).
+			lifecycleBus()?.emitEventEmitted({
+				runId,
+				seq: row.burrowEventSeq,
+				kind: row.kind,
+				stream: row.stream ?? "",
+			});
 
 			accumulatePiUsage(piUsage, event);
 			extractClaudeUsage(claudeUsage, event);
