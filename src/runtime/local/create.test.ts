@@ -80,6 +80,7 @@ describe("LocalProvider.create", () => {
 		expect(up.originUrl).toBe("https://github.com/o/r.git");
 		expect(up.agents).toEqual(["claude-code"]); // runtimeId → agents[]
 		expect(up.branch).toBe("warren/run_domain0001");
+		expect(up.baseBranch).toBe("main"); // spec.baseBranch → baseBranch
 		expect(up.network).toBe("restricted");
 		expect(up.seed).toEqual({ files: [{ path: ".warren/agent.json", contents: "{}" }] });
 
@@ -144,11 +145,13 @@ describe("LocalProvider.create", () => {
 		expect(env.WARREN_API_URL).toBe("http://localhost:8080");
 	});
 
-	test("does NOT forward baseBranch — burrow resolves it internally today", async () => {
+	test("forwards a non-default baseBranch so the workspace branch is cut from it", async () => {
 		const { provider, calls } = await localProvider();
 		await provider.create(newSpec({ baseBranch: "release/2.0" }));
 		const up = calls[0]?.body as Record<string, unknown>;
-		expect(up.baseBranch).toBeUndefined();
+		// burrow's POST /burrows honors baseBranch: `git worktree add -b <branch>
+		// <baseBranch>`, so the run's branch is cut from release/2.0, not main.
+		expect(up.baseBranch).toBe("release/2.0");
 	});
 
 	test("forwards the concrete network intent verbatim", async () => {
