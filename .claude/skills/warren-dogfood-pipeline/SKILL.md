@@ -16,10 +16,15 @@ locally — including for repairs. The pipeline was proven 2026-07-28
 
 - **Focus theme + priority band** — e.g. "P0/P1 deletion-focused",
   "security leaks", "docs drift". This drives the audit lens.
-- **Agent + model** — default `pi` with an explicit `modelOverride`
-  (the pi builtin defaults to the sonnet tier; pass the opus-tier model
-  for hard refactors). Confirm the model id against
-  `src/registry/builtins/model-tiers.ts`.
+- **Agent + model/provider** — ALWAYS stop and ask the operator
+  (AskUserQuestion) which model + provider to use for all tasks in the
+  session, even when every other input was given. Recommended default:
+  provider `openrouter`, model `moonshotai/kimi-k3`, on the `pi`
+  harness (the only harness that can reach OpenRouter; it is also the
+  project `defaultRole`). Offer the anthropic tiers
+  (`src/registry/builtins/model-tiers.ts`) as alternatives — e.g. the
+  opus-tier model for hard refactors. Dispatch with explicit
+  `providerOverride` + `modelOverride` matching the answer.
 - **Dispatch mode** — sequential one-at-a-time (default, what the
   operator chose last time) vs parallel. Sequential means: next issue
   run dispatches only after the previous run is TERMINAL; repair runs

@@ -107,7 +107,7 @@ RUN bun install -g \
     @os-eco/mulch-cli@0.10.7 \
     @os-eco/sapling-cli@0.3.2 \
     @anthropic-ai/claude-code@2.1.150 \
-    @earendil-works/pi-coding-agent@0.77.0 \
+    @earendil-works/pi-coding-agent@0.83.0 \
     pnpm@11.1.2
 
 # bun install -g skips lifecycle scripts by default, so claude-code's

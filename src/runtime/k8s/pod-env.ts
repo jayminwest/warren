@@ -33,6 +33,25 @@ export function serviceDnsCallbackUrl(config: K8sPodConfig): string {
 	return `http://${service}.${namespace}.svc.cluster.local:${port}`;
 }
 
+// --- Secret sources (design §6.3) -------------------------------------------
+// Each is referenced as an OPTIONAL secretKeyRef so a pod still schedules when
+// the Secret is absent; each pair is overridable via the matching
+// `WARREN_K8S_*_SECRET_NAME` / `_KEY` env. Provisioned by the manifests step
+// (see deploy/k8s/base/secrets.yaml); all three live in the RUNS namespace.
+
+/** Init container's `WARREN_GIT_TOKEN` source (public repos clone without it). */
+export const DEFAULT_K8S_GIT_SECRET_NAME = "warren-git-token";
+export const DEFAULT_K8S_GIT_SECRET_KEY = "token";
+/** Agent container's `ANTHROPIC_API_KEY` source — from a Secret, NOT the control
+ * plane's process env; a key riding `spec.env` (OAuth-token flow) wins. */
+export const DEFAULT_K8S_ANTHROPIC_SECRET_NAME = "warren-anthropic-key";
+export const DEFAULT_K8S_ANTHROPIC_SECRET_KEY = "api-key";
+/** Agent container's `OPENROUTER_API_KEY` source — the multi-provider sibling,
+ * needed when a run's provider is `openrouter` (pi harness only; e.g. the
+ * moonshotai/kimi-k3 project default). */
+export const DEFAULT_K8S_OPENROUTER_SECRET_NAME = "warren-openrouter-key";
+export const DEFAULT_K8S_OPENROUTER_SECRET_KEY = "api-key";
+
 // --- Repo-cache PVC (design §4.3, R2 — warren-e908) -------------------------
 
 /**
@@ -180,6 +199,10 @@ export function buildInitVolumeMounts(
  *     sourced from a Secret, not the control plane's env) UNLESS the domain env
  *     already carries it (an OAuth-token flow), which would make a duplicate env
  *     name illegal.
+ *   - `OPENROUTER_API_KEY` rides the same way from its own Secret, so runs
+ *     whose provider is `openrouter` (pi harness) can authenticate. The pod
+ *     entrypoint spawns the agent with the full pod env, so presence here is
+ *     sufficient — pi reads the var directly.
  *
  * The prompt travels as an env var: composed prompts are bounded (system section
  * + user input) and fit comfortably under K8s's per-pod object size. A prompt
@@ -204,6 +227,18 @@ export function buildAgentEnv(spec: RunSpec, config: K8sPodConfig): V1EnvVar[] {
 				secretKeyRef: {
 					name: config.anthropicSecret.name,
 					key: config.anthropicSecret.key,
+					optional: true,
+				},
+			},
+		});
+	}
+	if (spec.env.OPENROUTER_API_KEY === undefined) {
+		vars.push({
+			name: "OPENROUTER_API_KEY",
+			valueFrom: {
+				secretKeyRef: {
+					name: config.openrouterSecret.name,
+					key: config.openrouterSecret.key,
 					optional: true,
 				},
 			},

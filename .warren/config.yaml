@@ -12,8 +12,10 @@
 
 defaultRole: pi
 defaultBranch: main
-defaultProvider: anthropic
-defaultModel: claude-opus-4-8
+# kimi-k3 is reachable only through the pi harness (defaultRole above);
+# agent pods need OPENROUTER_API_KEY (warren-openrouter-key Secret on k8s).
+defaultProvider: openrouter
+defaultModel: moonshotai/kimi-k3
 
 # ── Optional knobs (uncomment to set) ───────────────────────────────────
 
