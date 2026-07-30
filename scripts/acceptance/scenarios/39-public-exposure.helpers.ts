@@ -70,6 +70,15 @@ export const SENTINELS = {
 	eventAnthropicKey: "sk-ant-LEAKSENTINELANTHROPICKEY0001",
 	eventBearerToken: "LEAKSENTINELBEARERTOKEN00000001",
 	eventApiKeyField: "LEAKSENTINEL-APIKEY-FIELD-VALUE",
+	// The password embedded in a Supabase-style DSN's URL userinfo
+	// (WARREN_DB_URL shape). warren-6fa0: the userinfo pattern redacts it.
+	eventDsnPassword: "LEAKSENTINELDSNPASSWORD00000001",
+	// A generic `https://user:pass@host` userinfo credential (warren-6fa0).
+	eventUserinfoPassword: "LEAKSENTINELUSERINFOPW0000001",
+	// A full JWT (three base64url segments). warren-6fa0: the JWT pattern
+	// redacts it whole. `eyJ` header prefix keeps it off ordinary identifiers.
+	eventJwt:
+		"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiTEVBS1NFTlRJTkVMSldUUk9MRSJ9.LEAKSENTINELJWTSIGNATURE0001",
 } as const;
 
 /**
@@ -260,11 +269,12 @@ export async function poisonAgentRow(tmpRoot: string): Promise<void> {
 }
 
 /**
- * The transcript half. Four events: one whose payload carries a
+ * The transcript half. Five events: one whose payload carries a
  * shape-matched credential, one whose payload carries the instance's own
  * token (the env-literal matcher), one whose payload carries a
- * secret-NAMED field, and one `bridge_lost` — the internal kind
- * `INTERNAL_EVENT_KINDS` drops whole rather than scrubs.
+ * secret-NAMED field, one whose payload carries a DSN / userinfo URL / JWT
+ * (the three shapes warren-6fa0 added), and one `bridge_lost` — the
+ * internal kind `INTERNAL_EVENT_KINDS` drops whole rather than scrubs.
  */
 async function seedEvents(repos: Repos, runId: string, instanceToken: string): Promise<void> {
 	const ts = "2026-07-27T00:00:00.000Z";
@@ -300,6 +310,20 @@ async function seedEvents(repos: Repos, runId: string, instanceToken: string): P
 	await repos.events.append({
 		runId,
 		burrowEventSeq: 4,
+		ts,
+		kind: "agent_output",
+		stream: "stdout",
+		payload: {
+			// A Supabase-style DSN (WARREN_DB_URL shape), a generic userinfo URL,
+			// and a JWT — the three shapes warren-6fa0 added to the scrubber.
+			dsn: `psql postgresql://postgres:${SENTINELS.eventDsnPassword}@db.proj.supabase.co:5432/postgres`,
+			clone: `git clone https://alice:${SENTINELS.eventUserinfoPassword}@example.com/x.git`,
+			jwt: `SUPABASE_SERVICE_ROLE_KEY=${SENTINELS.eventJwt}`,
+		},
+	});
+	await repos.events.append({
+		runId,
+		burrowEventSeq: 5,
 		ts,
 		kind: "bridge_lost",
 		stream: "system",

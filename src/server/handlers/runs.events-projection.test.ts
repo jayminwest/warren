@@ -132,6 +132,36 @@ const CORPUS: readonly { name: string; payload: unknown; secret: string }[] = [
 		payload: { results: [{ config: { githubToken: "not-a-known-shape-at-all" } }] },
 		secret: "not-a-known-shape-at-all",
 	},
+	{
+		name: "a Supabase-style Postgres DSN with the password in the URL userinfo",
+		payload: {
+			type: "tool_use",
+			input: {
+				command:
+					"psql postgresql://postgres:sup3r-s3cret-pw@db.abcdefghij.supabase.co:5432/postgres",
+			},
+		},
+		secret: "sup3r-s3cret-pw",
+	},
+	{
+		name: "generic URL userinfo credentials echoed into a stack trace",
+		payload: { type: "text", text: "clone failed: https://alice:hunter2pass@example.com/repo.git" },
+		secret: "hunter2pass",
+	},
+	{
+		name: "a Supabase service_role JWT in a tool_result",
+		payload: {
+			type: "tool_result",
+			content: [
+				{
+					type: "text",
+					text: "SUPABASE_SERVICE_ROLE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoic2VydmljZV9yb2xlIn0.AbCdEf0123456789xyzABCDEFGHIJ",
+				},
+			],
+		},
+		secret:
+			"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoic2VydmljZV9yb2xlIn0.AbCdEf0123456789xyzABCDEFGHIJ",
+	},
 ];
 
 describe("scrubSecrets — fixture corpus (warren-1cb7)", () => {
@@ -152,6 +182,25 @@ describe("scrubSecrets — fixture corpus (warren-1cb7)", () => {
 			ok: true,
 			nothing: null,
 		};
+		expect(scrubSecrets(payload, null)).toEqual(payload);
+	});
+
+	test("leaves an ordinary URL without userinfo untouched", () => {
+		const payload = {
+			type: "text",
+			text: "cloning https://github.com/os-eco/warren.git and GET https://api.example.com:5432/x",
+		};
+		expect(scrubSecrets(payload, null)).toEqual(payload);
+	});
+
+	test("redacts URL userinfo whole but leaves the host readable", () => {
+		expect(scrubSecrets("db=postgres://u:pw@host:5432/db", null)).toBe(
+			`db=${REDACTED_MARKER}host:5432/db`,
+		);
+	});
+
+	test("does not mistake an ordinary dotted identifier for a JWT", () => {
+		const payload = { type: "text", text: "import foo.bar.baz; module.exports.thing = 1" };
 		expect(scrubSecrets(payload, null)).toEqual(payload);
 	});
 
@@ -204,6 +253,17 @@ describe("buildEnvSecretPattern (warren-1cb7)", () => {
 
 	test("is null when the env carries no secret-shaped name", () => {
 		expect(buildEnvSecretPattern({ PATH: "/usr/bin:/bin", WARREN_RUNTIME: "local" })).toBeNull();
+	});
+
+	test("redacts a WARREN_DB_URL DSN value that leaks into the transcript", () => {
+		const dsn = "postgresql://postgres:pw-in-env@db.proj.supabase.co:5432/postgres";
+		const pattern = buildEnvSecretPattern({ WARREN_DB_URL: dsn });
+		expect(scrubSecrets(`connecting to ${dsn} now`, pattern)).not.toContain("pw-in-env");
+	});
+
+	test("covers *_URI and *_CONN env names as well as *_URL", () => {
+		expect(buildEnvSecretPattern({ MONGO_URI: "mongodb://a:secretpw@host/db" })).not.toBeNull();
+		expect(buildEnvSecretPattern({ PG_CONN: "host=x password=secretpw12345" })).not.toBeNull();
 	});
 });
 

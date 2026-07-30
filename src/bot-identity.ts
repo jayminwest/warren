@@ -16,12 +16,43 @@
  * This is distinct from the operator-configured identity in
  * `src/supervisor/git-identity.ts`, which controls the *agent's* own
  * commits (via `WARREN_GIT_AUTHOR_NAME` / `WARREN_GIT_AUTHOR_EMAIL`). The
- * constant below is warren's own bookkeeping bot, not the agent's author.
+ * identity below is warren's own bookkeeping bot, not the agent's author.
+ *
+ * The spelling is operator-configurable (warren-02cd): `WARREN_BOT_NAME` +
+ * `WARREN_BOT_EMAIL` override the default when BOTH are set (both halves
+ * or nothing, mirroring the supervisor's agent-identity rule). Warren is
+ * self-hosted by strangers, so the default must attribute to nobody: the
+ * historical `warren@os-eco.dev` default lived at a domain the project
+ * does not own, and any real domain would pin every deployment's
+ * bookkeeping commits to whoever owns that mailbox. `warren.invalid` is
+ * RFC 2606-reserved — unregistrable and unroutable by construction.
+ * Operators who want GitHub attribution point `WARREN_BOT_EMAIL` at an
+ * address verified on their own bot/machine account (see `.env.example`).
  */
 export const WARREN_BOT_IDENTITY = {
 	name: "warren",
-	email: "warren@os-eco.dev",
+	email: "bot@warren.invalid",
 } as const;
+
+/** Minimal env surface for identity resolution — injectable for tests. */
+export type BotIdentityEnv = Record<string, string | undefined>;
+
+/**
+ * Resolve the effective bookkeeping-bot identity: the operator override
+ * (`WARREN_BOT_NAME` + `WARREN_BOT_EMAIL`, both non-blank) when present,
+ * else the canonical default. A half-set pair is ignored rather than
+ * half-applied, so a typo can't produce a hybrid spelling — the drift
+ * class warren-598f exists to prevent.
+ */
+export function resolveWarrenBotIdentity(env: BotIdentityEnv = process.env): {
+	name: string;
+	email: string;
+} {
+	const name = env.WARREN_BOT_NAME?.trim();
+	const email = env.WARREN_BOT_EMAIL?.trim();
+	if (name && email) return { name, email };
+	return WARREN_BOT_IDENTITY;
+}
 
 /**
  * `-c user.name=… -c user.email=…` arguments that pin the canonical warren
@@ -36,13 +67,9 @@ export const WARREN_BOT_IDENTITY = {
  * the operator. Pair this with `warrenCommitIdentityEnv()` at every commit
  * site so inherited env can never win (warren-035c).
  */
-export function warrenCommitIdentityArgs(): string[] {
-	return [
-		"-c",
-		`user.name=${WARREN_BOT_IDENTITY.name}`,
-		"-c",
-		`user.email=${WARREN_BOT_IDENTITY.email}`,
-	];
+export function warrenCommitIdentityArgs(env: BotIdentityEnv = process.env): string[] {
+	const identity = resolveWarrenBotIdentity(env);
+	return ["-c", `user.name=${identity.name}`, "-c", `user.email=${identity.email}`];
 }
 
 /**
@@ -53,12 +80,13 @@ export function warrenCommitIdentityArgs(): string[] {
  * `WARREN_BOT_IDENTITY` source of truth — never re-spell the literals.
  * Returned as a fresh object so callers can splice it without sharing state.
  */
-export function warrenCommitIdentityEnv(): Record<string, string> {
+export function warrenCommitIdentityEnv(env: BotIdentityEnv = process.env): Record<string, string> {
+	const identity = resolveWarrenBotIdentity(env);
 	return {
-		GIT_AUTHOR_NAME: WARREN_BOT_IDENTITY.name,
-		GIT_AUTHOR_EMAIL: WARREN_BOT_IDENTITY.email,
-		GIT_COMMITTER_NAME: WARREN_BOT_IDENTITY.name,
-		GIT_COMMITTER_EMAIL: WARREN_BOT_IDENTITY.email,
+		GIT_AUTHOR_NAME: identity.name,
+		GIT_AUTHOR_EMAIL: identity.email,
+		GIT_COMMITTER_NAME: identity.name,
+		GIT_COMMITTER_EMAIL: identity.email,
 	};
 }
 

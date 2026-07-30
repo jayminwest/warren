@@ -1,5 +1,9 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { gitRepoContextScrubEnv, warrenCommitIdentityEnv } from "../../bot-identity.ts";
+import {
+	gitRepoContextScrubEnv,
+	WARREN_BOT_IDENTITY,
+	warrenCommitIdentityEnv,
+} from "../../bot-identity.ts";
 import { reapRun } from "./index.ts";
 import {
 	type Ctx,
@@ -100,7 +104,7 @@ describe("reapRun commit-through-reap sub-steps (warren-7ecc)", () => {
 				"-c",
 				"user.name=warren",
 				"-c",
-				"user.email=warren@os-eco.dev",
+				`user.email=${WARREN_BOT_IDENTITY.email}`,
 				"commit",
 				"--no-verify",
 				"--only",

@@ -33,7 +33,7 @@ export BURROW_TOKEN=$(openssl rand -hex 32)
 export ANTHROPIC_API_KEY=sk-ant-...     # your key
 export GITHUB_TOKEN=ghp_...             # repo scope: clone + push
 
-docker run -d --name warren -p 8080:8080 -v warren_data:/data \
+docker run -d --name warren --restart unless-stopped -p 8080:8080 -v warren_data:/data \
   --security-opt apparmor=unconfined \
   --security-opt seccomp=unconfined \
   --security-opt systempaths=unconfined \
@@ -143,9 +143,9 @@ Warren ships enough operator-visible surface to stay inspectable without extra i
 - **Per-run cost and token usage.** Warren populates the `runs.cost_usd` and `runs.tokens_*` columns for the `pi` and `claude-code` built-ins (SPEC §11.K). The UI run-detail page surfaces them, and `GET /analytics/cost?from=&to=&projectId=` aggregates across runs (`src/db/repos/runs.ts:listForAnalytics`). These numbers report usage. They do not enforce limits — budget caps land in R-17.
 - **Pre-flight checks.** Run `warren doctor` (`src/cli/commands/doctor.ts`) against a deployed instance. It surfaces common misconfigurations: empty or placeholder bearer tokens, unbalanced preview markers, and a missing `WARREN_PREVIEW_HOST` on a project that uses previews. Cheaper than reading the logs after a failed run.
 
-V1 ships no built-in Prometheus or OpenTelemetry exporter for the `local` runtime. If you need one there, the request-id and pino combination is the seam to extend. The route table (`ROUTE_TABLE` in `src/server/handlers/index.ts`) is the stable surface to instrument against.
+V1 ships a bearer-gated Prometheus exposition endpoint (`GET /metrics`) that works under both runtimes. It carries no OpenTelemetry exporter. For richer tracing, the request-id and pino combination is the seam to extend. The route table (`ROUTE_TABLE` in `src/server/handlers/index.ts`) is the stable surface to instrument against.
 
-The `k8s` runtime *does* ship pod-lifecycle Prometheus metrics on `/metrics` — see the runbook.
+Both runtimes serve `GET /metrics` (bearer-gated, warren-682a) — a Prometheus exposition endpoint. Each scrape reports run-count, cost, token, and event-stream gauges (`src/server/handlers/metrics.ts`). Under `k8s` the same endpoint also carries pod-lifecycle gauges — see the runbook.
 
 ## Community
 
@@ -236,7 +236,7 @@ Caddy's DNS-01 plugin supports Cloudflare, Route 53, DigitalOcean, Hetzner, Lino
 
 Per-project overrides for `idle_ttl` and `max_lifetime` live in `.warren/preview.yaml`. `/readyz` surfaces port-allocator saturation warnings.
 
-Cross-host routing for runs that land on remote workers is in progress as R-12. Until then, the proxy returns **501** for off-host runs. See [SPEC §11.L](SPEC.md#11l-per-run-preview-environments-2026-05-14) for the full design.
+Warren does not route cross-host preview traffic: the proxy returns **501** for off-host runs (`runs.worker_id` other than the local worker). The `k8s` runtime provider superseded the multi-worker model that once scoped this work (old R-12) — see [ROADMAP.md](ROADMAP.md). See [SPEC §11.L](SPEC.md#11l-per-run-preview-environments-2026-05-14) for the full design.
 
 ## Architecture
 
@@ -471,7 +471,6 @@ How the current release is scoped. Full details in [SPEC §11.D](SPEC.md#11d-v1-
 
 The active direction is org-readiness, which extends warren from "one team, one box" to "50-engineer org, their own infra":
 
-- **Remote sandbox workers** ([R-12](ROADMAP.md)): one warren dispatching across many runtime workers, which lifts the single-host ceiling.
 - **SSO / per-user identity** ([R-09](ROADMAP.md)): OIDC login replacing the shared bearer. The bearer stays as a service-account path for CI.
 - **MCP support** ([R-15](ROADMAP.md)): agents declare `mcp_servers` in their prompt frontmatter, and warren plumbs credentials into the sandbox.
 - **Cross-project activity UI + stable OpenAPI** ([R-14](ROADMAP.md)): a "what is every agent doing right now" view, plus a versioned API contract.
