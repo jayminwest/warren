@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { agentsApi, projectsApi } from "@/api/client.ts";
 import type { AgentRow } from "@/api/types.ts";
 import { OperatorOnly } from "@/components/OperatorOnly.tsx";
@@ -49,7 +50,13 @@ export function AgentsPage() {
 		queryFn: ({ signal }) =>
 			agentsApi.list(projectFilter.length > 0 ? { projectId: projectFilter } : {}, signal),
 	});
-	const [openName, setOpenName] = useState<string | null>(null);
+	// `?agent=<name>` pre-expands one row. It is what the Run Analytics
+	// per-agent table links to (warren-14fc / #641): there is no
+	// agent-detail page, so the deep link lands the visitor on the list
+	// with the agent they clicked already open. Read once at mount — no
+	// in-page control rewrites the param, so there is nothing to sync.
+	const [searchParams] = useSearchParams();
+	const [openName, setOpenName] = useState<string | null>(() => searchParams.get("agent"));
 	const { sorted, sort, onSort } = useClientSort(agents.data?.agents ?? [], AGENT_COMPARATORS, {
 		initialKey: "name",
 		defaultDirections: { registeredAt: "desc", lastRefreshed: "desc" },

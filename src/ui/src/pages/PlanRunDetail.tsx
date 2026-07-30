@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button.tsx";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card.tsx";
 import { Spinner } from "@/components/ui/spinner.tsx";
 import { formatError } from "@/lib/format-error.ts";
+import { formatPlanRunFailureReason } from "@/lib/labels.ts";
 import { formatTimestamp, relativeTime } from "@/lib/utils.ts";
 import { PlanRunChildTable } from "./plan-run-detail/child-table.tsx";
 import { formatCostUsd } from "./RunDetail.tsx";
@@ -59,11 +60,10 @@ export function PlanRunDetailPage() {
 						<h1 className="font-mono text-xl font-semibold">{planRun.id}</h1>
 						<PlanRunStateBadge state={planRun.state} />
 						{planRun.state === "failed" && planRun.failureReason !== null ? (
-							<span
-								className="font-mono text-xs text-(--color-destructive)"
-								title={planRun.failureReason}
-							>
-								{planRun.failureReason}
+							// Prose for the visitor, raw reason in the tooltip for the
+							// operator (warren-14fc / #641).
+							<span className="text-xs text-(--color-destructive)" title={planRun.failureReason}>
+								{formatPlanRunFailureReason(planRun.failureReason)}
 							</span>
 						) : null}
 					</div>

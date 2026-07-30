@@ -5,8 +5,11 @@
  * Both dimensions share the `RunGroupBucket` wire shape, so one
  * `GroupTable` renders either. Buckets are pre-sorted server-side by
  * context desc; the null group key (`RUN_ANALYTICS_NONE_KEY`) renders
- * as an em-dash. Agent rows deep-link to `/agents/:name`; model rows
- * are plain monospace (no agents-by-model route in the UI).
+ * as an em-dash. Agent rows deep-link to the Agents list with that
+ * agent's row pre-expanded (`/agents?agent=<name>`, warren-14fc / #641 —
+ * they used to point at `/agents/:name`, a route `App.tsx` never
+ * registered, so the catch-all silently bounced the visitor to `/runs`).
+ * Model rows are plain monospace (no agents-by-model route in the UI).
  */
 import { Link } from "react-router-dom";
 import { RUN_ANALYTICS_NONE_KEY, type RunGroupBucket } from "@/api/client.ts";
@@ -28,7 +31,7 @@ function renderKey(dimension: "agent" | "model", key: string): React.ReactNode {
 	if (dimension === "agent") {
 		return (
 			<Link
-				to={`/agents/${encodeURIComponent(key)}`}
+				to={`/agents?agent=${encodeURIComponent(key)}`}
 				className="underline-offset-2 hover:underline"
 			>
 				{key}

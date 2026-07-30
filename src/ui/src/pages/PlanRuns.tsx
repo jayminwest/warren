@@ -2,13 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { planRunsApi, projectsApi } from "@/api/client.ts";
-import type {
-	CapabilityName,
-	PlanRunChildState,
-	PlanRunRow,
-	PlanRunState,
-	RunRow,
-} from "@/api/types.ts";
+import type { CapabilityName, PlanRunRow, PlanRunState, RunRow } from "@/api/types.ts";
 import { OperatorOnly } from "@/components/OperatorOnly.tsx";
 import { PlanRunStateBadge } from "@/components/PlanRunStateBadge.tsx";
 import { Alert } from "@/components/ui/alert.tsx";
@@ -30,6 +24,7 @@ import {
 import { useCapabilities } from "@/hooks/use-capabilities.ts";
 import { type Comparator, compareStrings, useClientSort } from "@/hooks/use-client-sort.ts";
 import { formatError } from "@/lib/format-error.ts";
+import { formatChildStateCounts } from "@/lib/labels.ts";
 import { relativeTime } from "@/lib/utils.ts";
 import { formatCostUsd } from "./RunDetail.tsx";
 import { ReadyPlansView } from "./ready-plans.tsx";
@@ -273,7 +268,7 @@ function PlanRunListRow({
 		queryFn: ({ signal }) => planRunsApi.get(planRunId, signal),
 		refetchInterval: 5000,
 	});
-	const counts = summarizeChildren(detail.data?.children ?? []);
+	const counts = formatChildStateCounts(detail.data?.children ?? []);
 	const cost = summarizeCost(detail.data?.runs ?? []);
 	return (
 		<TableRow>
@@ -291,8 +286,8 @@ function PlanRunListRow({
 			<TableCell className="whitespace-nowrap font-mono text-xs">{planId}</TableCell>
 			<TableCell className="whitespace-nowrap font-mono text-xs">{projectLabel}</TableCell>
 			<TableCell className="whitespace-nowrap">{agentName}</TableCell>
-			<TableCell className="whitespace-nowrap font-mono text-xs text-(--color-muted-foreground)">
-				{counts}
+			<TableCell className="text-xs text-(--color-muted-foreground)" title={counts.title}>
+				{counts.text}
 			</TableCell>
 			<TableCell
 				className="whitespace-nowrap font-mono text-xs text-(--color-muted-foreground)"
@@ -333,22 +328,4 @@ function summarizeCost(runs: RunRow[]): {
 		}
 	}
 	return { sum, priced, total: runs.length };
-}
-
-function summarizeChildren(children: { state: PlanRunChildState }[]): string {
-	if (children.length === 0) return "—";
-	const buckets: Record<"pending" | "inflight" | "merged" | "failed", number> = {
-		pending: 0,
-		inflight: 0,
-		merged: 0,
-		failed: 0,
-	};
-	for (const c of children) {
-		if (c.state === "pending") buckets.pending += 1;
-		else if (c.state === "dispatched" || c.state === "running" || c.state === "pr_open")
-			buckets.inflight += 1;
-		else if (c.state === "merged" || c.state === "skipped") buckets.merged += 1;
-		else if (c.state === "failed") buckets.failed += 1;
-	}
-	return `${buckets.pending}p / ${buckets.inflight}i / ${buckets.merged}m / ${buckets.failed}f`;
 }

@@ -11,6 +11,7 @@ import {
 	TableHeader,
 	TableRow,
 } from "@/components/ui/table.tsx";
+import { formatPlanRunFailureReason } from "@/lib/labels.ts";
 import { relativeTime } from "@/lib/utils.ts";
 
 /**
@@ -19,6 +20,10 @@ import { relativeTime } from "@/lib/utils.ts";
  * failure reason. Extracted from PlanRunDetail (warren-d17f / pl-0008 step 9)
  * so the Workspace Run tab can embed the same surface instead of forking a
  * second renderer.
+ *
+ * The failure column is coordinator free text (`reason` or `reason:detail`),
+ * so it goes through `formatPlanRunFailureReason` before a visitor sees it;
+ * the raw string stays in the cell's tooltip (warren-14fc / #641).
  */
 export function PlanRunChildTable({
 	planChildren,
@@ -108,8 +113,11 @@ export function PlanRunChildTable({
 												<span className="text-(--color-muted-foreground)">—</span>
 											)}
 										</TableCell>
-										<TableCell className="text-xs text-(--color-destructive)">
-											{c.failureReason ?? ""}
+										<TableCell
+											className="text-xs text-(--color-destructive)"
+											title={c.failureReason ?? undefined}
+										>
+											{c.failureReason === null ? "" : formatPlanRunFailureReason(c.failureReason)}
 										</TableCell>
 									</TableRow>
 								);

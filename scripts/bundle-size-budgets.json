@@ -6,20 +6,21 @@
 	"$comment_pl55a3_closeout_2026_05_29": "warren-bfc6 / pl-369d: pl-55a3 (warren-6358, frontend design-system revamp, v0.7.2) is now closed. The TEMPORARY overhaul ceilings raised across PR #197/#201 are collapsed to honest floors here. NOTE: pl-55a3 grew the bundle right up to its ceilings — the only metric with genuine room to ratchet down is gzip css (8500 → 8200). raw js, raw css, and gzip js are at their true floors and cannot drop. The first attempt at this closeout (commit c2a3ba5) set gzip js to 172580 from a number that was NOT produced by `bun run check:bundle-size` — it matched Vite's build-log reporter (~2KB cooler), so when CI ran the actual script the identical bytes gzipped to 173931 and the guard failed. Re-baselined from the actual check script on a clean --frozen-lockfile build (byte-identical to CI): gzip js 173931 / raw js 583998 / gzip css 8005 / raw css 40432 (largest chunk == totals — single js + single css asset). Budgets = those figures + a small churn headroom. The bulk of the js floor is the Phase 5 motion layer (framer-motion v12 via strict LazyMotion + domAnimation, NOT the full motion proxy). The 'ratchet only goes down' rule is back in force from here — future UI work must hold flat or shrink against THIS floor.",
 	"$comment_plot_ui_deletion_2026_07_26": "RATCHET DOWN (warren-1f12 / pl-3a79 step 10): the plot UI deletion removed ~3.8k LOC of pages and components (plot-detail/, PlotSummary, the Workspace surface, NewPlotButton, PlotStatusBadge, PlotMetaCardContent, DefaultLanding) plus the plotsApi client block and the plot type region. Re-baselined via `bun run check:bundle-size --update` on a clean --frozen-lockfile build: gzip js totals 299685 -> 285902, largest chunk 174236 -> 160480, gzip css 8362 -> 7897. Lowering, so it applies unconditionally. This is the new floor.",
 	"$comment_capability_layer_2026_07_27": "BOUNDED AUTO-RAISE (warren-f53e / pl-b82d step 19): the UI capability layer adds the useCapabilities hook, the OperatorOnly / OperatorRoute wrappers, and ~25 wrap sites across the pages, against which the deleted PLOT_STATUS registry and the RefreshProjectsCTA label prop return only a few hundred bytes. Net +673 B gzip js / +1984 B raw js — ordinary feature growth, well inside AUTO_RAISE_CAP, re-baselined via `bun run check:bundle-size --update` on a clean --frozen-lockfile build. No new dependency. The 'ratchet only goes down' rule resumes from here.",
+	"$comment_public_labels_2026_07_30": "BOUNDED AUTO-RAISE (warren-14fc / #641): src/ui/src/lib/labels.ts adds the visitor-facing label maps for run / plan-run failure reasons plus the plan-run child rollup, and the call sites that consume them. Net +607 B gzip js / +1211 B raw js — ordinary feature growth, well inside AUTO_RAISE_CAP, re-baselined via `bun run check:bundle-size --update` on a clean --frozen-lockfile build. No new dependency. CSS shrank (no new utilities) and is ratcheted down to its measured floor. The 'ratchet only goes down' rule resumes from here.",
 	"totals": {
 		"raw": {
-			"js": 944073,
-			"css": 38509
+			"js": 945284,
+			"css": 37779
 		},
 		"gzip": {
-			"js": 285757,
-			"css": 7899
+			"js": 286364,
+			"css": 7781
 		}
 	},
 	"largest": {
 		"gzip": {
-			"js": 160340,
-			"css": 7899
+			"js": 160918,
+			"css": 7781
 		}
 	}
 }

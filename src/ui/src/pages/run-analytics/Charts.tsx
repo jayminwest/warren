@@ -14,11 +14,12 @@
  * Charts render a muted "No data in this window." placeholder rather
  * than an empty axis frame when their slice of the payload is empty.
  */
-import type {
-	RunDayBucket,
-	RunFailureBucket,
-	RunGroupBucket,
-	SeedContextBucket,
+import {
+	RUN_ANALYTICS_NONE_KEY,
+	type RunDayBucket,
+	type RunFailureBucket,
+	type RunGroupBucket,
+	type SeedContextBucket,
 } from "@/api/client.ts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card.tsx";
 import {
@@ -36,6 +37,7 @@ import {
 	XAxis,
 	YAxis,
 } from "@/components/ui/chart.tsx";
+import { formatRunFailureReason } from "@/lib/labels.ts";
 import { formatTokens } from "./format.ts";
 
 /**
@@ -211,25 +213,26 @@ export function TopSeedsByContextChart({ topSeeds }: { topSeeds: SeedContextBuck
 }
 
 export function FailureReasonChart({ byFailureReason }: { byFailureReason: RunFailureBucket[] }) {
+	// The slice name is what the legend, the slice label and the tooltip all
+	// render, so map it to prose before recharts ever sees it — the raw
+	// `finalize_failed` / `evicted` discriminators were reaching public
+	// visitors otherwise (warren-14fc / #641). Runs with no recorded reason
+	// come back under the analytics null key.
+	const data = byFailureReason.map((b) => ({
+		...b,
+		label: b.key === RUN_ANALYTICS_NONE_KEY ? "Unrecorded" : formatRunFailureReason(b.key),
+	}));
 	return (
 		<ChartFrame
 			title="Failure reasons"
 			subtitle="Failed runs grouped by recorded reason"
-			empty={byFailureReason.length === 0}
+			empty={data.length === 0}
 		>
 			<PieChart>
 				<Tooltip contentStyle={TOOLTIP_STYLE} />
 				<Legend wrapperStyle={{ fontSize: 11 }} />
-				<Pie
-					data={byFailureReason}
-					dataKey="runs"
-					nameKey="key"
-					cx="50%"
-					cy="50%"
-					outerRadius={80}
-					label
-				>
-					{byFailureReason.map((b, i) => (
+				<Pie data={data} dataKey="runs" nameKey="label" cx="50%" cy="50%" outerRadius={80} label>
+					{data.map((b, i) => (
 						<Cell key={b.key} fill={PIE_PALETTE[i % PIE_PALETTE.length]} />
 					))}
 				</Pie>

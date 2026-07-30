@@ -13,6 +13,11 @@
  * inline `statusVariant()` switch in `RunDetail.tsx`) all delegate
  * here so adding a new state or swapping a colour token is a
  * one-line change rather than a multi-file grep.
+ *
+ * `<RunFailureBadge>` at the bottom is the same idea for the OTHER
+ * enum a run row carries — its `failureReason`. It lives here rather
+ * than in the page so the "prose for the visitor, raw value in the
+ * tooltip" rule has one owner too (warren-14fc / #641).
  */
 import {
 	Activity,
@@ -29,6 +34,7 @@ import {
 } from "lucide-react";
 import type { ComponentProps } from "react";
 import { Badge } from "@/components/ui/badge.tsx";
+import { formatRunFailureReason, humanizeWireValue } from "@/lib/labels.ts";
 import { cn } from "@/lib/utils.ts";
 
 type BadgeVariant = NonNullable<ComponentProps<typeof Badge>["variant"]>;
@@ -74,7 +80,9 @@ const PLAN_RUN_CHILD_STATUS: Record<string, StatusMeta> = {
 	pending: { label: "pending", variant: "secondary", icon: CircleDashed, pulse: false },
 	dispatched: { label: "dispatched", variant: "queued", icon: PlayCircle, pulse: false },
 	running: { label: "running", variant: "running", icon: Activity, pulse: true },
-	pr_open: { label: "pr_open", variant: "queued", icon: GitPullRequest, pulse: false },
+	// The one status whose wire value is not already a readable word
+	// (warren-14fc / #641) — a public visitor should not be shown `pr_open`.
+	pr_open: { label: "PR open", variant: "queued", icon: GitPullRequest, pulse: false },
 	merged: { label: "merged", variant: "succeeded", icon: CheckCircle2, pulse: false },
 	failed: { label: "failed", variant: "failed", icon: XCircle, pulse: false },
 	skipped: { label: "skipped", variant: "cancelled", icon: MinusCircle, pulse: false },
@@ -118,14 +126,16 @@ const SECONDARY_META: StatusMeta = {
 
 /**
  * Look up the `StatusMeta` for a `(kind, status)` pair. Returns a
- * `secondary` fallback (with the original status string as the
- * label) when the kind or status is unknown so the UI keeps
- * rendering something useful instead of crashing.
+ * `secondary` fallback when the kind or status is unknown so the UI
+ * keeps rendering something useful instead of crashing. The unknown
+ * status is humanized rather than printed raw — the dashboard is
+ * public, so a status this registry has not caught up with must still
+ * not reach a visitor as `some_new_state` (warren-14fc / #641).
  */
 export function getStatusMeta(kind: StatusKind, status: string): StatusMeta {
 	const entry = REGISTRY[kind][status];
 	if (entry !== undefined) return entry;
-	return { ...SECONDARY_META, label: status };
+	return { ...SECONDARY_META, label: humanizeWireValue(status) };
 }
 
 export interface StatusIndicatorProps {
@@ -170,6 +180,20 @@ export function StatusIndicator({
 				/>
 			) : null}
 			{showLabel ? <span>{label ?? meta.label}</span> : null}
+		</Badge>
+	);
+}
+
+/**
+ * A failed run's `failureReason` as a pill. The label is prose so a
+ * public visitor is never shown `finalize_failed`; the raw
+ * discriminator stays in the tooltip so an operator can still read
+ * exactly what the server recorded.
+ */
+export function RunFailureBadge({ reason }: { reason: string }) {
+	return (
+		<Badge variant="cancelled" className="text-xs" title={`Failure reason: ${reason}`}>
+			{formatRunFailureReason(reason)}
 		</Badge>
 	);
 }

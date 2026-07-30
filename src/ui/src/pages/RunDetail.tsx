@@ -14,7 +14,7 @@ import type {
 import { isActivePreviewState, isTerminalRunState } from "@/api/types.ts";
 import { OperatorOnly } from "@/components/OperatorOnly.tsx";
 import { StateBadge } from "@/components/StateBadge.tsx";
-import { StatusIndicator } from "@/components/StatusIndicator.tsx";
+import { RunFailureBadge, StatusIndicator } from "@/components/StatusIndicator.tsx";
 import { Alert } from "@/components/ui/alert.tsx";
 import { Badge } from "@/components/ui/badge.tsx";
 import { Button } from "@/components/ui/button.tsx";
@@ -124,9 +124,7 @@ export function RunDetailPage() {
 						<h1 className="font-mono text-xl font-semibold">{r.id}</h1>
 						<StateBadge state={r.state} />
 						{r.state === "failed" && r.failureReason !== null ? (
-							<Badge variant="cancelled" className="font-mono text-xs">
-								{r.failureReason}
-							</Badge>
+							<RunFailureBadge reason={r.failureReason} />
 						) : null}
 						{reap !== null && reap.branchPushed === true && reap.commitsAhead === 0 ? (
 							<Badge
