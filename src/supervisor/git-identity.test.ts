@@ -46,10 +46,11 @@ describe("installGitAuthor", () => {
 		expect(env.GIT_AUTHOR_NAME).toBeUndefined();
 		expect(env.GIT_COMMITTER_EMAIL).toBeUndefined();
 		expect(logs[0]?.msg).toContain("WARREN_GIT_AUTHOR_NAME/EMAIL unset");
+		expect(logs[0]?.level).toBe("warn");
 	});
 
-	test("no-op when only one of the pair is set", async () => {
-		const { logger } = makeLogger();
+	test("no-op when only one of the pair is set, with a distinct half-set warning", async () => {
+		const { logger, logs } = makeLogger();
 		const { run, calls } = makeRun();
 		const env: Record<string, string | undefined> = {};
 
@@ -61,6 +62,9 @@ describe("installGitAuthor", () => {
 		expect(result.installed).toBe(false);
 		expect(calls).toHaveLength(0);
 		expect(env.GIT_AUTHOR_NAME).toBeUndefined();
+		expect(logs[0]?.level).toBe("warn");
+		expect(logs[0]?.msg).toContain("half-set");
+		expect(logs[0]?.obj).toEqual({ nameSet: true, emailSet: false });
 	});
 
 	test("treats whitespace-only values as unset", async () => {

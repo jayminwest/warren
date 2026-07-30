@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { WARREN_BOT_IDENTITY } from "../../bot-identity.ts";
 import type { FinalizeResult } from "../../runtime/contract.ts";
 import { applyCloneDeltas } from "./clone-apply.ts";
 import { createPipelineState, type ReapPipelineContext } from "./pipeline.ts";
@@ -11,7 +12,7 @@ import { defaultExec, defaultFs } from "./util.ts";
 /**
  * Leg 2 (warren-e9e1) verified against a REAL temp git clone: the K8s finalize's
  * mirror deltas (mulch/seeds merged bodies) must land in the project clone and be
- * committed by the canonical warren bot identity (`warren <warren@os-eco.dev>`),
+ * committed by the canonical warren bot identity (`WARREN_BOT_IDENTITY`),
  * never re-spelled inline (CLAUDE.md Article VII).
  */
 
@@ -132,9 +133,9 @@ describe("applyCloneDeltas (leg 2, real git clone)", () => {
 
 		// The commit is authored by the canonical warren bot identity.
 		const author = (await git(dir, "log", "-1", "--format=%an <%ae>")).trim();
-		expect(author).toBe("warren <warren@os-eco.dev>");
+		expect(author).toBe(`${WARREN_BOT_IDENTITY.name} <${WARREN_BOT_IDENTITY.email}>`);
 		const committer = (await git(dir, "log", "-1", "--format=%cn <%ce>")).trim();
-		expect(committer).toBe("warren <warren@os-eco.dev>");
+		expect(committer).toBe(`${WARREN_BOT_IDENTITY.name} <${WARREN_BOT_IDENTITY.email}>`);
 		const subject = (await git(dir, "log", "-1", "--format=%s")).trim();
 		expect(subject).toBe("chore(warren): mirror state");
 

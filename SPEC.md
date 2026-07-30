@@ -2002,8 +2002,9 @@ clone, a new `plot_commit` sub-step in `src/runs/reap.ts`
 (`stagePlotForCommit`) replicates `plot-*.events.jsonl` and
 `plot-*.json` files back into the burrow workspace, runs
 `git add -- .plot/`, and — when `git diff --cached --quiet -- .plot/`
-exits non-zero — authors a `chore(warren): plot state` commit under a
-fixed warren bot identity (`-c user.name=warren -c user.email=warren@os-eco.dev`).
+exits non-zero — authors a `chore(warren): plot state` commit under the
+canonical warren bot identity (`src/bot-identity.ts`, historically
+`warren@os-eco.dev`, since warren-02cd resolved per deployment).
 The follow-on `branch_push` carries that commit upstream. Filtering on
 copy: `.index.db*` files are skipped (derived state per the
 snapshot/restore contract above), and only `plot-*.{json,events.jsonl}`
