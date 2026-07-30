@@ -22,6 +22,12 @@ const GHCR_IMAGE_EXPR = `ghcr.io/\${{ github.repository_owner }}/warren`;
 const ACTOR_EXPR = `\${{ github.actor }}`;
 const GITHUB_TOKEN_EXPR = `\${{ secrets.GITHUB_TOKEN }}`;
 
+// The control-plane image builds twice (warren-fe9f): once amd64-only for
+// the private Artifact Registry (GKE schedules amd64), once multi-arch for
+// the public ghcr.io tags self-hosters pull.
+const AR_CONTROL_STEP = "Build + push warren (control plane, Artifact Registry)";
+const GHCR_STEP = "Build + push warren (control plane, public ghcr.io)";
+
 type Step = {
 	name?: string;
 	id?: string;
@@ -98,7 +104,7 @@ describe("ghcr.io control-plane publish (deploy-gke.yml)", () => {
 
 	test("only the control-plane image carries the ghcr.io tag set", () => {
 		const steps = buildPushSteps();
-		expect(tagsOf(steps, "Build + push warren (control plane)")).toContain(GHCR_TAGS_EXPR);
+		expect(tagsOf(steps, GHCR_STEP)).toContain(GHCR_TAGS_EXPR);
 		// warren-agent and warren-workspace-init only ever run on GKE; they stay
 		// in the private Artifact Registry.
 		for (const name of ["Build + push warren-agent", "Build + push warren-workspace-init"]) {
@@ -109,8 +115,55 @@ describe("ghcr.io control-plane publish (deploy-gke.yml)", () => {
 	});
 
 	test("the control plane keeps its Artifact Registry tags alongside ghcr.io", () => {
-		const tags = tagsOf(buildPushSteps(), "Build + push warren (control plane)");
+		const tags = tagsOf(buildPushSteps(), AR_CONTROL_STEP);
 		expect(tags.filter((t) => t.includes("AR_BASE")).length).toBe(2);
+	});
+});
+
+// warren-fe9f: the PUBLIC ghcr.io image must be multi-arch so Apple Silicon
+// self-hosters pull native arm64 — under amd64 emulation CLONE_NEWUSER
+// breaks and every run dies. The GKE-internal Artifact Registry images stay
+// amd64-only on purpose (no arm64 node ever pulls them; the deploy-critical
+// AR push must not depend on a QEMU build).
+describe("multi-arch public image (warren-fe9f)", () => {
+	function platformsOf(stepName: string): string {
+		const step = buildPushSteps().find((s) => s.name === stepName);
+		if (step === undefined) throw new Error(`no step named ${stepName}`);
+		const platforms = step.with?.platforms;
+		if (typeof platforms !== "string") throw new Error(`step ${stepName} has no platforms`);
+		return platforms;
+	}
+
+	test("the public ghcr.io build produces an amd64+arm64 manifest list", () => {
+		expect(platformsOf(GHCR_STEP)).toBe("linux/amd64,linux/arm64");
+	});
+
+	test("the Artifact Registry images stay amd64-only", () => {
+		for (const name of [
+			AR_CONTROL_STEP,
+			"Build + push warren-agent",
+			"Build + push warren-workspace-init",
+		]) {
+			expect(platformsOf(name)).toBe("linux/amd64");
+		}
+	});
+
+	test("QEMU is set up before the arm64 build", () => {
+		const steps = buildPushSteps();
+		const qemu = steps.findIndex((s) => s.uses?.startsWith("docker/setup-qemu-action"));
+		const ghcrBuild = steps.findIndex((s) => s.name === GHCR_STEP);
+		expect(qemu).toBeGreaterThanOrEqual(0);
+		expect(qemu).toBeLessThan(ghcrBuild);
+	});
+
+	test("the ghcr.io step publishes no Artifact Registry tag (and vice versa)", () => {
+		const steps = buildPushSteps();
+		for (const tag of tagsOf(steps, GHCR_STEP)) {
+			expect(tag).not.toContain("AR_BASE");
+		}
+		for (const tag of tagsOf(steps, AR_CONTROL_STEP)) {
+			expect(tag).not.toContain("ghcr");
+		}
 	});
 });
 

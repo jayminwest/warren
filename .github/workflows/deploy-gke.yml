@@ -9,8 +9,10 @@ name: GKE Build & Deploy
 # The control-plane image is ALSO published to the public ghcr.io registry
 # (warren-26be) — that is the image docker-compose.yml pulls, so the
 # "one container, five-minute self-host" path never builds from source.
-# Only the control plane goes public; warren-agent and warren-workspace-init
-# only ever run on GKE and stay in the private Artifact Registry.
+# The public image is multi-arch (linux/amd64 + linux/arm64, warren-fe9f)
+# so Apple Silicon self-hosters get a native arm64 image. Only the control
+# plane goes public; warren-agent and warren-workspace-init only ever run
+# on GKE and stay in the private Artifact Registry.
 #
 # Auth is GCP Workload Identity Federation — no long-lived JSON keys. A repo
 # admin configures the OIDC provider + service account as secrets and the
@@ -112,6 +114,10 @@ jobs:
 
       - uses: docker/setup-buildx-action@v3
 
+      # QEMU provides the arm64 emulation the multi-arch public ghcr.io
+      # build below needs (warren-fe9f); GitHub-hosted runners are amd64.
+      - uses: docker/setup-qemu-action@v3
+
       # Public tag set for the control-plane image (warren-26be). Self-hosters
       # pull this image from docker-compose.yml, so it carries semver as well
       # as the commit SHA: `:<sha>` and `:latest` on every build, plus
@@ -139,14 +145,16 @@ jobs:
             echo "GHCR_TAGS_EOF"
           } >> "$GITHUB_OUTPUT"
 
-      # Autopilot schedules amd64; an arm64 image CrashLoops with
-      # `exec format error`. All three build on native amd64 with GHA layer
-      # cache (per-image scope). Each is tagged by the full commit SHA and
-      # `latest`; the control plane additionally carries the public ghcr.io
-      # tag set computed above. Single-arch is a known limitation of the
-      # public image too — a multi-arch manifest list is deliberately
-      # deferred (it costs QEMU build time on every push).
-      - name: Build + push warren (control plane)
+      # Autopilot schedules amd64; a single-arch arm64 image CrashLoops with
+      # `exec format error`. A multi-arch MANIFEST would still be safe on GKE
+      # (each node pulls the layer set for its own arch), but the three
+      # GKE-internal Artifact Registry images deliberately stay amd64-only:
+      # no arm64 node ever pulls them, and skipping the QEMU arm64 build
+      # keeps the deploy-critical AR push fast and immune to emulation
+      # flakes. Only the PUBLIC ghcr.io image is multi-arch (warren-fe9f,
+      # next step). All three AR builds run on native amd64 with GHA layer
+      # cache (per-image scope), tagged by the full commit SHA and `latest`.
+      - name: Build + push warren (control plane, Artifact Registry)
         uses: docker/build-push-action@v7
         with:
           context: .
@@ -156,9 +164,32 @@ jobs:
           tags: |
             ${{ env.AR_BASE }}/warren:${{ env.TARGET_SHA }}
             ${{ env.AR_BASE }}/warren:latest
-            ${{ steps.ghcr-tags.outputs.tags }}
           cache-from: type=gha,scope=warren-control
           cache-to: type=gha,mode=max,scope=warren-control
+
+      # The public self-hoster image is multi-arch (warren-fe9f): amd64 +
+      # arm64 in one manifest list, so `docker pull` on Apple Silicon gets
+      # a native arm64 image instead of amd64-under-emulation — where
+      # CLONE_NEWUSER breaks and every run dies. The amd64 half reuses the
+      # layer cache the Artifact Registry build above just wrote; only the
+      # arm64 half builds fresh under QEMU, and only on this release path.
+      # PR CI (ci.yml docker-build) stays amd64-only for speed: a broken
+      # arm64 build here fails before the `promote` job flips the draft
+      # release public (warren-89f2), so it blocks promotion, not
+      # visibility.
+      - name: Build + push warren (control plane, public ghcr.io)
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ${{ steps.ghcr-tags.outputs.tags }}
+          cache-from: |
+            type=gha,scope=warren-control
+            type=gha,scope=warren-control-multiarch
+          cache-to: type=gha,mode=max,scope=warren-control-multiarch
 
       - name: Build + push warren-agent
         uses: docker/build-push-action@v7

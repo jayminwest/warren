@@ -62,6 +62,14 @@ jobs:
   # tag, not after (warren-3380). Build only — no push, no registry login.
   # GitHub Actions layer caching (type=gha) keeps it affordable. This is a
   # CI-only job, deliberately not a check:all gate (the manifest is frozen).
+  #
+  # amd64-only, even though the released public image is multi-arch
+  # (warren-fe9f): an arm64 build runs under QEMU emulation and would slow
+  # every PR by many minutes. The release-time arm64 failure risk this
+  # leaves open is bounded by the draft-until-image-exists ordering
+  # (warren-89f2) — a broken arm64 build fails release.yml's deploy job and
+  # blocks promotion, never a published release pointing at a missing
+  # image.
   docker-build:
     runs-on: ubuntu-latest
     steps:
