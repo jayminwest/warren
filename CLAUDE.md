@@ -41,8 +41,8 @@ substrate) and **canopy** (an external agent-definition library) — have
 been **retired and deleted** in plan pl-3a79: their code, DB surface,
 UI, config, CLI paths, and env knobs (`PLOT_ID`, `CANOPY_REPO_URL`,
 `POST /agents/refresh`, `warren register-agent`) are gone. SPEC §11.O
-and §4.2/§8.1 carry RETIRED banners; see docs/PHILOSOPHY.md for the
-sequencing.
+and §4.2/§8.1 carry RETIRED banners; see ROADMAP.md for the
+sequencing (docs/PHILOSOPHY.md holds policy only).
 
 Same code, same depth — only the user-facing framing surfaces the
 integrations as opt-in. When you change cross-cutting docs (README,
