@@ -70,6 +70,50 @@ describe("createPrMergeChecker", () => {
 		expect(calls).toBe(3);
 	});
 
+	test("retries on rate_limited and surfaces the eventual response", async () => {
+		const responses: CheckPrMergedResult[] = [
+			{ kind: "rate_limited", retryAfterMs: null, message: "429" },
+			{ kind: "open" },
+		];
+		let calls = 0;
+		const checker = createPrMergeChecker({
+			token: "tok",
+			check: async () => {
+				const next = responses[calls];
+				if (next === undefined) throw new Error("ran out of stubbed responses");
+				calls += 1;
+				return next;
+			},
+			maxRetries: 2,
+			retryDelayMs: 0,
+		});
+		const result = await checker("https://github.com/o/r/pull/3");
+		expect(result.kind).toBe("open");
+		expect(calls).toBe(2);
+	});
+
+	test("honors the Retry-After hint (capped) when sleeping between rate-limited retries", async () => {
+		const sleeps: number[] = [];
+		let calls = 0;
+		const checker = createPrMergeChecker({
+			token: "tok",
+			check: async () => {
+				calls += 1;
+				return { kind: "rate_limited", retryAfterMs: 120_000, message: "429" };
+			},
+			maxRetries: 1,
+			retryDelayMs: 0,
+			sleep: async (ms) => {
+				sleeps.push(ms);
+			},
+		});
+		const result = await checker("https://github.com/o/r/pull/3");
+		expect(result.kind).toBe("rate_limited");
+		expect(calls).toBe(2);
+		// 120s hint capped at MAX_RETRY_AFTER_MS (60s).
+		expect(sleeps).toEqual([60_000]);
+	});
+
 	test("returns the last transient response after exhausting retries", async () => {
 		let calls = 0;
 		const checker = createPrMergeChecker({

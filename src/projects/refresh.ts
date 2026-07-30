@@ -24,8 +24,8 @@
  */
 
 import { existsSync } from "node:fs";
-import { join } from "node:path";
 import { githubCredentialGitEnv } from "../workspace/git/credential-env.ts";
+import { detectProjectFeatures, type ProjectFeatureFlags } from "./capabilities.ts";
 import type { SpawnFn, SpawnOptions, SpawnResult } from "./clone.ts";
 import type { ProjectsConfig } from "./config.ts";
 import { ProjectUnavailableError } from "./errors.ts";
@@ -35,45 +35,14 @@ export { detectHooksPathFromPackageJson } from "./git-hooks.ts";
 
 export const DEFAULT_GIT_TIMEOUT_MS = 120_000;
 
-/**
- * Feature directories warren probes for at clone refresh time (warren-4e20).
- * The seed plan (pl-2047 step 2) leaves room for the existing opt-in
- * integrations (`.mulch/`, `.canopy/`, `.pi/`) to start surfacing the same
- * way without changing the probe shape. `.seeds/` joined in warren-9990
- * to gate plan-run dispatch.
- */
-export const PROJECT_FEATURE_DIRS = {
-	seeds: ".seeds",
-} as const;
-
-/**
- * Result of probing a project clone for opt-in feature directories. One
- * boolean per gated integration; addProject / refreshProject persist the
- * fields to the corresponding `projects` row columns.
- */
-export interface ProjectFeatureFlags {
-	readonly hasSeeds: boolean;
-}
-
-/**
- * Synchronous probe of the on-disk clone for the directories that gate
- * warren's opt-in integrations. Returns booleans; never throws. The
- * `exists` probe is injectable so tests don't touch disk and so a future
- * git-tree reader can swap to a non-checked-out ref.
- *
- * Called from `refreshProjectClone` after the post-fetch reset and from
- * `addProject` immediately after the initial clone so the row reflects
- * the feature shape of the freshly-checked-out tree. The detection is
- * read-only and stateless on its own — persistence is the caller's job.
- */
-export function detectProjectFeatures(
-	localPath: string,
-	exists: (path: string) => boolean = existsSync,
-): ProjectFeatureFlags {
-	return {
-		hasSeeds: exists(join(localPath, PROJECT_FEATURE_DIRS.seeds)),
-	};
-}
+// The capability-flag shape (`PROJECT_FEATURE_DIRS`, `ProjectFeatureFlags`,
+// `detectProjectFeatures`) lives in `./capabilities.ts` (warren-9bbc) —
+// re-exported here so existing `refresh.ts` import paths keep resolving.
+export {
+	detectProjectFeatures,
+	PROJECT_FEATURE_DIRS,
+	type ProjectFeatureFlags,
+} from "./capabilities.ts";
 
 export interface RefreshProjectCloneInput {
 	readonly config: ProjectsConfig;

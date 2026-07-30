@@ -20,6 +20,7 @@ export {
 	checkPullRequestMerged,
 	PR_URL_RE,
 	parsePullRequestUrl,
+	parseRetryAfterMs,
 } from "./pr-checks.ts";
 
 /**

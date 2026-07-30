@@ -77,8 +77,16 @@ export const INTERNAL_EVENT_KINDS: ReadonlySet<string> = new Set([
 	"bridge_fatal",
 ]);
 
-/** Field names whose value is censored on sight, reusing the central pino policy. */
-const SECRET_FIELD_SET = new Set<string>(SECRET_FIELDS.map((f) => f.toLowerCase()));
+/**
+ * Field names whose value is censored on sight, reusing the central pino
+ * policy. `x-api-key` rides along here rather than in SECRET_FIELDS because
+ * pino redact paths can't express the dash — the event scrubber matches on
+ * the lowercased key alone, so it can (warren-9bbc).
+ */
+const SECRET_FIELD_SET = new Set<string>([
+	...SECRET_FIELDS.map((f) => f.toLowerCase()),
+	"x-api-key",
+]);
 
 /**
  * Known credential shapes, compiled as ONE alternation so a payload string
@@ -108,6 +116,23 @@ const SECRET_PATTERN = new RegExp(
 		"(?:AKIA|ASIA)[0-9A-Z]{16}",
 		// Slack bot / user / app-level / refresh tokens.
 		"xox[baprs]-[A-Za-z0-9-]{10,}",
+		// Slack incoming-webhook URLs — the path tail IS the credential.
+		String.raw`https://hooks\.slack\.com/services/[A-Za-z0-9]+/[A-Za-z0-9]+/[A-Za-z0-9]+`,
+		// Linear personal API keys (warren-9bbc — a `lin_api_` key quoted into
+		// a transcript used to sail through every shape above).
+		"lin_api_[0-9a-fA-F]{40}",
+		// Stripe secret / restricted keys (live AND test — a test key in a
+		// transcript is still a credential shape) and webhook-signing secrets.
+		"(?:sk|rk)_(?:live|test)_[A-Za-z0-9]{10,}",
+		"whsec_[A-Za-z0-9]{16,}",
+		// GitLab personal access tokens.
+		"glpat-[A-Za-z0-9_-]{20,}",
+		// npm access tokens.
+		"npm_[A-Za-z0-9]{36}",
+		// SendGrid API keys (`SG.` + two base64url segments).
+		String.raw`SG\.[A-Za-z0-9_-]{16,}\.[A-Za-z0-9_-]{16,}`,
+		// Google API keys.
+		"AIza[0-9A-Za-z_-]{35}",
 		// URL userinfo credentials: `scheme://user:pass@host`. This is where a
 		// Postgres / Supabase DSN (WARREN_DB_URL) hides its password. Anchored on
 		// the `:pass@` shape so an ordinary URL without userinfo never matches.

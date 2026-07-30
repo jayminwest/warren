@@ -59,7 +59,19 @@ export const CANONICAL_HOME = "src/core/wire.ts";
  * export whose name contains none of these is not enforced, so adding a
  * generically-named helper to the kernel can never fail an unrelated file.
  */
-export const DOMAIN_STEMS = ["run", "inbox", "clone", "preview", "event", "agent"] as const;
+export const DOMAIN_STEMS = [
+	"run",
+	"inbox",
+	"clone",
+	"preview",
+	"event",
+	"agent",
+	// warren-9bbc: seed + project join the guarded stems so wire vocabulary
+	// for the IssueTracker seam (seeds) and the project domain can't drift
+	// into hand-copied redeclarations the way run/preview names did.
+	"seed",
+	"project",
+] as const;
 
 /**
  * Files (repo-relative POSIX) allowed to declare a canonical name anyway.

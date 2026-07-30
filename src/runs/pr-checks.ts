@@ -58,6 +58,19 @@ export function truncate(input: string, max: number): string {
 	return input.length <= max ? input : `${input.slice(0, max)}…`;
 }
 
+/**
+ * Parse a `Retry-After` header value into milliseconds. Only the
+ * delta-seconds form is honored (the HTTP-date form would need a clock);
+ * absent or unparseable values return `null` so the caller falls back to
+ * its own delay.
+ */
+export function parseRetryAfterMs(header: string | null): number | null {
+	if (header === null) return null;
+	const seconds = Number.parseInt(header.trim(), 10);
+	if (!Number.isFinite(seconds) || seconds < 0 || String(seconds) !== header.trim()) return null;
+	return seconds * 1000;
+}
+
 /* ----------------------------------------------------------------------- */
 /* PR-merge polling                                                         */
 /* ----------------------------------------------------------------------- */
@@ -84,6 +97,12 @@ export type CheckPrMergedResult =
 	| { readonly kind: "open" }
 	| { readonly kind: "closed_unmerged" }
 	| { readonly kind: "missing_token"; readonly message: string }
+	| {
+			readonly kind: "rate_limited";
+			/** Parsed `Retry-After` seconds as ms, when GitHub sent the header. */
+			readonly retryAfterMs: number | null;
+			readonly message: string;
+	  }
 	| { readonly kind: "http_error"; readonly status: number; readonly message: string };
 
 export async function checkPullRequestMerged(
@@ -110,6 +129,19 @@ export async function checkPullRequestMerged(
 			kind: "http_error",
 			status: 0,
 			message: err instanceof Error ? err.message : String(err),
+		};
+	}
+
+	if (res.status === 429) {
+		// warren-9bbc: rate limiting is its own retryable class, not a generic
+		// `http_error`. The poller (src/plan-runs/pr-merge.ts) retries it and
+		// honors `Retry-After` when GitHub sends one; lumping it into the 4xx
+		// bucket made a transient throttle indistinguishable from a dead PR.
+		const text = await readText(res);
+		return {
+			kind: "rate_limited",
+			retryAfterMs: parseRetryAfterMs(res.headers.get("retry-after")),
+			message: `GET /pulls/${input.number} returned 429 (rate limited): ${truncate(text, 500)}`,
 		};
 	}
 

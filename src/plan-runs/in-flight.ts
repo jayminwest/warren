@@ -389,8 +389,8 @@ async function pollMergeState(
 		}
 		return await failChild(input, run, "pr_closed_without_merge", extra);
 	}
-	// `missing_token` or transient `http_error` (status 0 or 5xx that
-	// survived pr-merge.ts retries) — keep waiting.
+	// `missing_token`, `rate_limited` (429 that survived pr-merge.ts
+	// retries), or transient `http_error` (status 0 or 5xx) — keep waiting.
 	return { kind: "result", result: { kind: "waiting_for_merge" } };
 }
 
