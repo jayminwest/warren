@@ -541,7 +541,10 @@ Auth: `Authorization: Bearer ${WARREN_API_TOKEN}` on every route except `/health
 
 ### 8.2 CLI (admin-only)
 
-The CLI is for ops, not daily use — the UI is daily.
+The CLI covers ops/admin (`add-project`, `doctor`, `serve`) and one-shot
+run dispatch (`warren run`); the UI remains the primary interactive
+surface. An agent-facing CLI + npm publish is a roadmap item (see
+[`ROADMAP.md`](ROADMAP.md)).
 
 > **RETIRED (in part) — the deletion pass removed `warren register-agent`
 > (pl-3a79, phase C, 2026-07).** Agents ship inline as built-ins. No
@@ -643,7 +646,7 @@ webhook_secrets (
 ### 10.1 Home server (canonical)
 
 ```bash
-git clone https://github.com/jaymin/warren && cd warren
+git clone https://github.com/jayminwest/warren && cd warren
 cp .env.example .env && $EDITOR .env
 docker compose up -d
 open http://localhost:8080

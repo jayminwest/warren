@@ -1,27 +1,28 @@
 # Warren Project Philosophy
 
-**Warren ships minimal but incredibly extensible.** The aspiration, stated
-plainly: be the [pi.dev](https://pi.dev/) of software factories — a small,
-legible orchestration kernel where every noun is a provider behind a
-contract and every feature is an extension the core doesn't know about.
+**Warren ships minimal but extensible.** The aspiration, stated
+plainly: be the [pi.dev](https://pi.dev/) of software factories — a
+small, legible orchestration kernel where every noun is a provider
+behind a contract, and every feature is an extension the core does not
+know about.
 
-This is not a rewrite or a refactor project. It is an operating policy:
-from here on, every feature gets built behind a seam instead of into the
-core, and existing features migrate behind seams as roadmap work touches
-them.
+This document holds policy only. It contains the rules that stay true
+for years. For direction, sequencing, and the status of each seam, read
+[ROADMAP.md](../ROADMAP.md). For the work queue, run `sd ready`. If a
+sentence here names the current state of the code, that sentence is a
+bug in this document.
 
 ## What pi.dev proves
 
 Pi's reputation rests on disciplined subtraction plus total
-interceptability: a tiny core (four tools, a ~300-word prompt), hooks at
-every lifecycle boundary, and a **features-as-extensions discipline** —
-the maintainers deliberately left sub-agents, plan mode, and sandboxing
-out of core, then shipped each one as an extension to prove the extension
-API could carry real weight. "Adapt Pi to your workflows, not the other
-way around."
+interceptability: a tiny core, hooks at every lifecycle boundary, and a
+features-as-extensions discipline. The maintainers left sub-agents,
+plan mode, and sandboxing out of core. Then they shipped each one as an
+extension to prove that the extension API could carry real weight.
+"Adapt Pi to your workflows, not the other way around."
 
-Warren's translation: the core is the run loop; the value proposition is
-the contracts.
+Warren's translation: the core is the run loop. The value proposition
+is the contracts.
 
 ## The kernel
 
@@ -30,182 +31,147 @@ The irreducible core is:
 > **project registry → dispatch → sandboxed run → event stream →
 > steer/pause → reap → push branch**
 
-plus the HTTP API, the UI shell, and storage. That's it.
+plus the HTTP API, the UI shell, and storage. That is all.
 
-A control plane necessarily carries more state than a CLI — runs,
-projects, events, auth — so "minimal" here means *minimal surface, few
-nouns*, not few lines. The kernel's guaranteed output is a pushed
-workspace branch; everything past that point (opening a PR, closing an
-issue, syncing a plot) is extension behavior.
+A control plane carries more state than a CLI — runs, projects, events,
+auth. So "minimal" here means *minimal surface, few nouns*, not few
+lines. The kernel's guaranteed output is a pushed workspace branch.
+Everything past that point — open a PR, close an issue, sync a tracker —
+is extension behavior.
 
-The litmus test for whether something belongs in core:
+The litmus test for core membership:
 
-> If it can be expressed as "something that observes or reacts to the run
-> lifecycle," it is an extension.
+> If a feature observes or reacts to the run lifecycle, it is an
+> extension.
 
-By that test, plan-runs, mulch, seeds integration, healer, ci-fixer,
-preview environments, and triggers are all extensions-in-waiting.
-Removing a feature should mean *not loading it*, never surgery.
+Removal of a feature must mean *not loading it*, never surgery.
 
-**Amendment (2026-07-17):** plot, conversations (brainstorming/chat),
-and canopy fail a *prior* test — they have no users. They are being
-**deleted outright**, not re-platformed (rule 8). A deleted feature can
-return as an extension when someone wants it badly enough to pay for
-the API it needs.
+## Seams
 
-**Amendment (2026-07-28):** the deletion pass **landed** (pl-3a79).
-Warren keeps only mulch, seeds, and sapling as opt-in integrations.
+A seam is a swappable noun. Every seam gets a contract, a registry, and
+at least two implementations. The house style, set by `RuntimeProvider`
+and the storage dialect layer:
 
-- Conversations, plot (with its plan-run bridges), and canopy left
-  warren's code, DB, UI, config, CLI, and env surface.
-- The pass removed canopy at **both tiers**: the library tier
-  (`CANOPY_REPO_URL`, `POST /agents/refresh`, `warren register-agent`)
-  and the project tier (`agents.project_id`, the `.canopy/` scaffold).
-- warren-a781 first promoted the four Audit Warden agents to inline
-  built-ins, so the tier death dropped no agent.
-- Canopy and plot live on as independent os-eco projects. The pass
-  removed only warren's bundling of them.
+- Provider-neutral DTOs. A contract type never names a first-party
+  feature.
+- Capability flags, which the domain reads before it acts.
+- One registry, selected by env or config, resolved once at boot.
+- Unknown selections fail loudly at boot. No silent fallback.
+- A falsification test, written before the contract: name the change
+  that proves the seam failed.
+- A lint gate that fails on a boundary-crossing import, landed in the
+  same PR as the contract.
 
-## The seams
-
-Every swappable noun gets a contract, a registry, and at least two
-implementations. Current state:
-
-| Seam | Contract | Status |
-|------|----------|--------|
-| Runtime / sandbox | `RuntimeProvider` (`src/runtime/contract.ts`) | **Live** — local (burrow) + k8s. Eviction of legacy direct burrow paths tracked in pl-829f. |
-| Storage | dialect-aware db layer (`src/db/client.ts`) | **Live** — sqlite + postgres. |
-| Forge (GitHub, …) | `Forge` — openPR, mergePR, checkRuns, repo URLs, auth | Planned; cut alongside the GitHub App work. |
-| Issue tracker | `IssueTracker` — seeds first, Linear/GitHub Issues second; capability-flagged (`supportsPlans`) so plan-runs degrade gracefully on trackers without plan shapes | Planned; cut alongside the Linear integration. |
-| Auth | `AuthProvider` — `token` (bearer, today's default) + `github` (GitHub App login, repo-permission mirroring) | Planned; cut alongside the GitHub App / teams work. |
-| Agent runtime | `AgentRuntimeAdapter` — command construction, event parsing, steering format, per runtime | Planned. Lives in **warren**, not burrow; burrow stays a dumb sandbox primitive. |
-| Extensions | lifecycle event bus + registration API | Tier-1 observe bus + registration API landed (`src/runs/lifecycle-bus.ts`, warren-bb60; [design](design/tier1-observation-bus.md)), with the run-lifecycle emit call-sites wired and the healer registered as proof consumer #1 (warren-4e74, `src/healer/lifecycle.ts`). Fully **Live** once the mirror eviction lands too (warren-df3e). Tier 1 (observe) before Tier 2 (participate). |
-
-The `RuntimeProvider` contract and the storage dialect layer are the
-house style for every future seam: provider-neutral DTOs, capability
-flags, env/config-selected registry resolved once at boot, unknown
-selections fail loudly.
+[ROADMAP.md](../ROADMAP.md) owns the list of seams, their status, and
+the feature that pays for each one. Each cut seam gets a contract
+document under `docs/design/`, modeled on
+`docs/design/runtime-provider-contract.md`.
 
 ## Extension tiers
 
 Who wrote the code determines which mechanism carries it. Three tiers,
-split by trust, cheapest first — and the first tier is always the first
+split by trust, cheapest first. The first tier is always the first
 answer to "where does my custom integration code live":
 
-- **Tier 0 — in-repo skills.** Most "integrations" need no warren
-  surface at all: CLI tools plus a README/AGENTS.md in the *project's
-  own repo*, invoked by the agent inside the sandbox, paid for only
-  when used. A team's AWS/S3/deploy tooling lives here first.
+- **Tier 0 — in-repo skills.** Most integrations need no warren surface
+  at all: CLI tools plus a README or AGENTS.md in the project's own
+  repo, invoked by the agent inside the sandbox, paid for only when
+  used. A team's AWS, S3, or deploy tooling lives here first.
 - **Tier 1 — container plugins.** Run-adjacent custom code is a
-  container with an env contract (the Woodpecker CI model): warren
-  invokes the team's image at a lifecycle stage with `WARREN_RUN_ID` /
-  `PLUGIN_*` env vars. A custom harness is just an agent image plus a
-  registry entry. Language-agnostic; versioned by image tag; survives
+  container with an env contract (the Woodpecker CI model). Warren
+  invokes the team's image at a lifecycle stage with `WARREN_RUN_ID`
+  and `PLUGIN_*` env vars. A custom harness is an agent image plus a
+  registry entry. Language-agnostic, versioned by image tag, survives
   core churn.
-- **Tier 2 — operator hooks.** In-process TypeScript loaded at boot
-  from deployment config, for the person who *owns* the deployment
-  only. Third-party code never runs inside the server process.
+- **Tier 2 — operator hooks.** In-process TypeScript, loaded at boot
+  from deployment config, for the person who owns the deployment only.
+  Third-party code never runs inside the server process.
 
 The hook contract is versioned from day one (`warren-ext/v1` in every
-payload, negotiated at handshake, Terraform-style), and breaking
-changes deprecate into a compat shim before removal. Every refusal to
-add a feature to core gets a public "deliberately not in core" entry
-with a recipe pointing at the tier that carries it.
+payload, negotiated at handshake, Terraform-style). A breaking change
+deprecates into a compat shim before removal. A declared hook that
+never fires is a contract that lies. Emit it, or mark it reserved in
+the design document and in the code.
+
+Every refusal to add a feature to core gets a public "deliberately not
+in core" entry in ROADMAP.md, with a recipe that names the tier that
+carries it.
 
 ## Operating rules
 
-1. **Features pay for seams.** Never cut an abstraction speculatively;
-   cut it when a second implementation forces it. The k8s migration paid
-   for `RuntimeProvider`; the GitHub App pays for `Forge`; Linear pays
-   for `IssueTracker`. Building the feature *without* cutting the seam
-   first deepens coupling that must then be un-deepened — order matters.
-2. **First-party features must be expressible as extensions.** If
-   plan-runs or mulch can't be rebuilt on the extension API, the API
-   isn't good enough yet. We eat our own constraint, like pi shipping
+1. **Features pay for seams.** Do not cut a seam on speculation. Cut it
+   when a second implementation forces it. To build the feature without
+   the seam deepens coupling that must then be un-deepened. Order
+   matters.
+2. **First-party features must be expressible as extensions.** If a
+   first-party feature cannot be rebuilt on the extension API, the API
+   is not good enough yet. We eat our own constraint, like pi shipping
    sub-agents as an extension.
 3. **`ServerDeps` only shrinks.** The dep bag is the anti-pattern this
-   policy exists to kill. New capabilities register through a seam; they
-   do not add fields. (Twelve plot-specific injector fields is the
+   policy exists to kill. A new capability registers through a seam. It
+   does not add a field. (Twelve plot-specific injector fields is the
    cautionary tale.)
-4. **A seam isn't done until it's enforced.** Definition of done for any
-   eviction is a lint/check gate that fails on a boundary-violating
-   import — not a clean grep on one day.
+4. **A seam is not done until a gate enforces it.** The definition of
+   done for any eviction is a lint or check gate that fails on a
+   boundary-crossing import — not a clean grep on one day. The same
+   standard applies to behavior claims: a capability parity that only a
+   grep supports is not done either.
 5. **Data formats are API.** The JSONL run-event stream, the events
    table, the OpenAPI surface — machine-readable at every boundary.
    Out-of-process integrations build on these before any in-process
    plugin API exists.
-6. **Extension API is versioned from day one, and read-only as long as
-   possible.** Warren extensions will be load-bearing in other people's
-   deployments; API churn is the failure mode that kills server-side
-   plugin ecosystems. Observation hooks (run dispatched / event / reaped
-   / branch pushed) come first; mutating hooks only when a real extension
-   needs them.
-7. **Capabilities, not conditionals.** Runtime- or integration-specific
-   behavior gates on declared capability flags (`RuntimeCapabilities`),
-   not on `hasPlot`-style booleans scattered through handlers.
+6. **The extension API is versioned from day one, and stays read-only
+   as long as possible.** Warren extensions will be load-bearing in
+   other people's deployments. API churn is the failure mode that kills
+   server-side plugin ecosystems. Observation hooks come first.
+   Mutating hooks come only when a real extension needs them.
+7. **Capabilities, not conditionals.** Runtime-specific or
+   integration-specific behavior gates on declared capability flags,
+   not on `hasPlot`-style booleans scattered through handlers, and not
+   on directory probes. A capability is declared by the provider and
+   read by the domain.
 8. **Unused features are deleted, not re-platformed.** Rule 2 applies
-   to features that earn their keep. A feature with no users can't pay
-   for a seam (rule 1), so building extension API to carry it is
-   speculative abstraction wearing a discipline costume. Delete it and
-   keep the door open — deletion is the honest form of subtraction, and
-   pi's minimalism began with leaving things out, not carrying them.
+   to features that earn their keep. A feature with no users cannot pay
+   for a seam (rule 1). To build extension API for it is speculation in
+   a discipline costume. Delete it and keep the door open — a deleted
+   feature can return as an extension when someone wants it enough to
+   pay for the API it needs. Deletion is the honest form of
+   subtraction. Pi's minimalism began with what it left out.
 
 ## Anti-goals
 
-Things warren deliberately does not build into core, and the prescribed
-escape hatch:
+Things warren does not build into core, each with its escape hatch:
 
-- **No bundled workflow opinions** — plot/intent, chat, plan orchestration
-  are extensions you can decline to load, not core you rip out.
-- **No forge monoculture** — the kernel's contract with the world is a
-  pushed branch. GitHub remains an assumption in the code today
-  (`api.github.com` appears in three modules), so read this entry as a
-  standard the code must reach. The seam table above marks `Forge` as
-  planned.
-- **No issue-tracker monoculture** — seeds remains a structural dependency
-  today, not implementation #1. The seam table marks `IssueTracker` as
-  planned, and the same reading applies.
-- **No agent-runtime semantics in the sandbox layer** — burrow runs a
-  command and streams output; what a claude-code vs. pi event *means* is
-  warren's adapter's job.
-- **No in-core integration sprawl** — Slack, Linear, Sentry, Grafana
-  arrive as extensions on the event bus, never as new `ServerDeps`
-  fields.
+- **No bundled workflow opinions.** Plan orchestration and chat-shaped
+  features are extensions you can decline to load, not core you rip
+  out.
+- **No forge monoculture.** The kernel's contract with the world is a
+  pushed branch. GitHub is implementation #1 behind the `Forge` seam,
+  never an assumption in domain code. Until the seam is cut, read this
+  entry as a standard the code must reach — ROADMAP.md tracks the gap.
+- **No issue-tracker monoculture.** Seeds is implementation #1 behind
+  the `IssueTracker` seam, never a structural dependency. The same
+  reading applies until the seam is cut.
+- **No agent-runtime semantics in the sandbox layer.** Burrow runs a
+  command and streams output. What a claude-code or pi event *means* is
+  the job of warren's `AgentRuntimeAdapter`.
+- **No in-core integration sprawl.** Slack, Sentry, and Grafana arrive
+  as extensions on the event bus, never as new `ServerDeps` fields.
+- **No multi-tenant SaaS.** One warren deploy serves one team. Seams
+  declare a single-org scope explicitly.
 
-## Sequencing
+## Where state lives
 
-Standing order of work, each step paid for by a roadmap item
-(amended 2026-07-17):
+This file changes when the policy changes, and at no other time.
 
-1. **Burrow-client eviction** (pl-829f, warren-36cb…warren-f796) —
-   effectively landed: `ServerDeps.burrowClient` is gone and spawn/reap
-   route through `RuntimeProvider`. Close out the remaining pl-829f
-   children and the boundary lint.
-2. **Deletion pass** — **landed** (pl-3a79, warren-e7e7…warren-0515):
-   conversations first, then plot with its plot-plan-run bridges, then
-   canopy. Conversations depend on plot, and the plan-run plot hooks
-   leave with plot. The pass pulled the plot merge out of
-   `RuntimeProvider.finalize()` and deleted the twelve plot injector
-   fields, so `ServerDeps` shrank by ~15 fields in one stroke. Warren
-   now keeps only mulch, seeds, and sapling as opt-in integrations. The
-   `.canopy/` project tier and the plot substrate are gone, and SPEC
-   §4.2 / §8.x / §11.O carry RETIRED banners.
-3. **Tier-1 event bus** (pl-3a79 steps 16–18,
-   warren-bb60/warren-4e74/warren-df3e) on `RunEventBroker`, proven by
-   moving healer
-   onto it and evicting the mulch/seeds mirrors from `finalize()` —
-   the finalize contract stops enumerating features.
-4. **`Forge` + `AuthProvider` contracts**, both paid for by the GitHub
-   App (teams: login, repo-permission mirroring, `run.dispatched_by`
-   attribution).
-5. **`IssueTracker` contract**, paid for by Linear or GitHub Issues —
-   capability-flagged so plan-runs degrade gracefully on trackers
-   without seeds-style plan shapes.
-6. **Re-platform plan-runs / mulch / seeds as extensions** — where
-   `ServerDeps` finishes dying and "remove a feature" becomes "don't
-   load it."
-7. **`AgentRuntimeAdapter`** — pulls runtime string interpretation and
-   payload parsing (`terminal-detect.ts`) behind a warren-owned registry.
+| Question | Source of truth |
+|---|---|
+| What is the policy? | This file |
+| What is the direction and the order of work? | [ROADMAP.md](../ROADMAP.md) |
+| What is the status of a seam? | ROADMAP.md seam table |
+| What is the design of a cut seam? | `docs/design/*.md` |
+| What work is open? | `sd ready` |
+| What did we learn? | `ml prime` |
 
 Warren becomes the pi.dev of software factories by accretion of
 discipline — which is also how pi did it.
