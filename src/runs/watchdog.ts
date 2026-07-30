@@ -5,8 +5,7 @@
  * `bun run lint:fix` → biome) that goes runaway and pins CPU without ever
  * emitting another event. Nothing reaps it — burrow keeps the run
  * `running` with `exitCode: null`, the warren row stays `running`, and the
- * stream bridge happily shows it live forever. `agent.pauseTimeoutMs` only
- * covers `paused`/question turns, not a busy-but-silent tool. Without a
+ * stream bridge happily shows it live forever. Without a
  * wall-clock budget a single hung gate command wedges the run indefinitely
  * (the 2026-06-05 `run_wawgn5tbejkx` incident — biome accumulating ~57
  * CPU-min behind a stuck bash tool call).
@@ -26,14 +25,14 @@
  *
  * Routing the timeout through reap (rather than a bare `finalize`) is
  * deliberate: reap is the only path that destroys the sandbox, pushes any
- * partial workspace branch, and runs the mulch/seeds/plot mirrors, so a
+ * partial workspace branch, and runs the mulch/seeds mirrors, so a
  * timed-out run still preserves whatever work the agent committed before
  * it hung — same philosophy as `cancelRun` (warren-a69a).
  *
- * The single-flight boot wrapper mirrors `bootPauseDetector`
- * (mx-985743 / mx-094b64): an in-flight tick when the next interval fires
- * is dropped, per-run errors are isolated so one bad row can't tear down
- * the loop, and `stop()` drains the in-flight tick before resolving.
+ * The single-flight boot wrapper (mx-985743 / mx-094b64) drops an
+ * in-flight tick when the next interval fires, isolates per-run errors so
+ * one bad row can't tear down the loop, and `stop()` drains the in-flight
+ * tick before resolving.
  *
  * On by default (warren-b2dc) —
  * this is a lifecycle-reclaim safety net that must not depend on an
@@ -431,9 +430,7 @@ const NOOP_HANDLE = Symbol("watchdog-noop-handle") as unknown as WatchdogTimerHa
 
 /**
  * Boot the recurring heartbeat tick. Single-flight wrapper drops
- * overlapping ticks instead of stacking them — mirrors
- * `bootPauseDetector` so lifecycle semantics are identical for operators
- * reading logs.
+ * overlapping ticks instead of stacking them.
  */
 export function bootWatchdog(input: BootWatchdogInput): WatchdogHandle {
 	const setIntervalFn: (cb: () => void, ms: number) => WatchdogTimerHandle =

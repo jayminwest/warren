@@ -151,13 +151,12 @@ export function parseDirtyPaths(porcelain: string): string[] {
 /**
  * warren-managed data-plane directories (warren-89b0). Uncommitted changes
  * confined to these are NOT lost agent work: warren mirrors + commits them on
- * the agent's behalf during finalize (`.mulch/`, `.seeds/`, `.plot/`). The
- * per-run agent envelope (`.warren/agent.json`) is gitignored (warren-5585),
- * so it never surfaces as a dirty tracked path. A zero-commit push whose ONLY
- * dirty paths are bookkeeping artifacts is a deliberate no-op, not a dropped
- * commit.
+ * the agent's behalf during finalize (`.mulch/`, `.seeds/`). The per-run agent
+ * envelope (`.warren/agent.json`) is gitignored (warren-5585), so it never
+ * surfaces as a dirty tracked path. A zero-commit push whose ONLY dirty paths
+ * are bookkeeping artifacts is a deliberate no-op, not a dropped commit.
  */
-export const BOOKKEEPING_ARTIFACT_PREFIXES: readonly string[] = [".mulch/", ".seeds/", ".plot/"];
+export const BOOKKEEPING_ARTIFACT_PREFIXES: readonly string[] = [".mulch/", ".seeds/"];
 
 /**
  * Harness-owned scratch state (warren-f6f2). A third category, distinct from

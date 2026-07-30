@@ -15,8 +15,7 @@
  * `DefaultsConfigSchema` tolerates exactly one new key. Values mirror the
  * design-doc per-run defaults: requests govern scheduling (1 CPU / 2 GiB),
  * limits are the kubelet-enforced hard caps (4 CPU / 4 GiB). Absent block → the
- * builder falls back to the `DEFAULT_K8S_*` constants, same posture as
- * `agent.pauseTimeoutMs`.
+ * builder falls back to the `DEFAULT_K8S_*` constants.
  */
 
 import { z } from "zod";

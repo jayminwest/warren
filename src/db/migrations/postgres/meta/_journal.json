@@ -197,6 +197,13 @@
 			"when": 1785268484222,
 			"tag": "0027_lumpy_silvermane",
 			"breakpoints": true
+		},
+		{
+			"idx": 28,
+			"version": "7",
+			"when": 1785446835000,
+			"tag": "0028_abnormal_mysterio",
+			"breakpoints": true
 		}
 	]
 }

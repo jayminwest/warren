@@ -260,7 +260,7 @@ function pickNonNegativeInt(env: K8sPodConfigEnv, key: string, fallback: number)
  * `.warren/config.yaml` `resources` block (carried on `RunSpec.projectResources`
  * by the dispatch path, warren-aedd). Each field the block supplies overrides the
  * matching env/global default; any it omits falls back to the `DEFAULT_K8S_*`
- * constants (same posture as `agent.pauseTimeoutMs`). Pure — no cluster access.
+ * constants. Pure — no cluster access.
  */
 export function resolveK8sPodConfig(
 	env: K8sPodConfigEnv,

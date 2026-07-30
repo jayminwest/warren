@@ -15,8 +15,8 @@ describe("isTerminalRunState", () => {
 		}
 	});
 
-	test("flags queued/running/paused as non-terminal", () => {
-		for (const s of ["queued", "running", "paused"] as RunState[]) {
+	test("flags queued/running as non-terminal", () => {
+		for (const s of ["queued", "running"] as RunState[]) {
 			expect(isTerminalRunState(s)).toBe(false);
 		}
 	});

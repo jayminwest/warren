@@ -18,13 +18,7 @@ export {
 	type CheckPrMergedResult,
 	type CheckPullRequestMergedInput,
 	checkPullRequestMerged,
-	isRateLimited,
-	type MergePullRequestInput,
-	type MergePullRequestResult,
-	mergePullRequest,
-	PR_SHORT_RE,
 	PR_URL_RE,
-	parsePullRequestRef,
 	parsePullRequestUrl,
 } from "./pr-checks.ts";
 

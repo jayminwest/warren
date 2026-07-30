@@ -18,7 +18,6 @@ function makeStats(
 	const dense: Record<RunState, number> = {
 		queued: 0,
 		running: 0,
-		paused: 0,
 		succeeded: 0,
 		failed: 0,
 		cancelled: 0,
@@ -130,7 +129,6 @@ describe("startOpsStatsWorker", () => {
 		const dense: Record<RunState, number> = {
 			queued: 0,
 			running: 0,
-			paused: 0,
 			succeeded: 0,
 			failed: 0,
 			cancelled: 0,

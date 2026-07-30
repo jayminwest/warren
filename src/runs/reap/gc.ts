@@ -18,8 +18,8 @@
  * the `runs` table (the `burrows` placement table was dropped in warren-3743),
  * find those whose runs are all terminal and whose newest activity is older
  * than a configurable TTL, and destroy each one. It is intentionally
- * conservative — a burrow with any non-terminal (`queued` / `running` /
- * `paused`) run is never touched, and every destroy is best-effort so one
+ * conservative — a burrow with any non-terminal (`queued` / `running`)
+ * run is never touched, and every destroy is best-effort so one
  * unreachable worker can't stall the sweep.
  *
  * The same `findStrandedBurrows` predicate backs the `warren doctor` /
@@ -53,7 +53,7 @@ export type WorkspaceDestroyOutcome =
 export type WorkspaceDestroyer = (sandboxId: string) => Promise<WorkspaceDestroyOutcome>;
 
 /** Non-terminal run states — a burrow with one of these is never GC'd. */
-export const GC_ACTIVE_RUN_STATES: readonly RunState[] = ["queued", "running", "paused"];
+export const GC_ACTIVE_RUN_STATES: readonly RunState[] = ["queued", "running"];
 /** Terminal run states — their newest `endedAt` ages a burrow off. */
 export const GC_TERMINAL_RUN_STATES: readonly RunState[] = ["succeeded", "failed", "cancelled"];
 

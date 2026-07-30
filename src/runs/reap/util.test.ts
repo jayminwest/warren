@@ -28,13 +28,9 @@ describe("isBookkeepingOnlyDirty", () => {
 	});
 
 	test("true when every dirty path is a warren-managed bookkeeping artifact", () => {
-		expect(
-			isBookkeepingOnlyDirty([
-				".mulch/expertise/build.jsonl",
-				".seeds/issues.jsonl",
-				".plot/x.json",
-			]),
-		).toBe(true);
+		expect(isBookkeepingOnlyDirty([".mulch/expertise/build.jsonl", ".seeds/issues.jsonl"])).toBe(
+			true,
+		);
 	});
 
 	test("false when any dirty path is real uncommitted work", () => {

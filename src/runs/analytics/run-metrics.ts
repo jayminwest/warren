@@ -81,7 +81,7 @@ export interface RunTotals {
 	readonly succeeded: number;
 	readonly failed: number;
 	readonly cancelled: number;
-	/** queued + running + paused — non-terminal at query time. */
+	/** queued + running — non-terminal at query time. */
 	readonly active: number;
 	/** succeeded / (succeeded + failed + cancelled), or null when no terminal runs. */
 	readonly successRate: number | null;

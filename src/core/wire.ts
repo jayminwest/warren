@@ -37,14 +37,7 @@
  * are NOT wire vocabulary and stay in `src/db/schema/columns.ts`.
  */
 
-export const RUN_STATES = [
-	"queued",
-	"running",
-	"paused",
-	"succeeded",
-	"failed",
-	"cancelled",
-] as const;
+export const RUN_STATES = ["queued", "running", "succeeded", "failed", "cancelled"] as const;
 export type RunState = (typeof RUN_STATES)[number];
 
 export const RUN_TERMINAL_STATES = [
@@ -152,8 +145,8 @@ export type CloneKind = (typeof CLONE_KINDS)[number];
  *     e.g. Gemini Flash narrating "before committing" then exiting).
  *     Distinguished from a deliberate no-op — a clean tree with zero
  *     commits, OR a dirty tree whose ONLY uncommitted paths are
- *     warren-managed bookkeeping artifacts (`.mulch/`, `.seeds/`,
- *     `.plot/`; warren-89b0) — which stays `succeeded` and
+ *     warren-managed bookkeeping artifacts (`.mulch/`, `.seeds/`;
+ *     warren-89b0) — which stays `succeeded` and
  *     is surfaced as `noChanges` on `reap.empty_push` / `reap.completed`.
  *     The dropped-commit guard stays conservative: any non-bookkeeping
  *     dirty path (real uncommitted work) still fails the run. Marking a

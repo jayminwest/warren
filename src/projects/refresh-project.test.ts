@@ -327,7 +327,7 @@ describe("refreshProject git-hooks knob (warren-8f4c)", () => {
 		const skipHooksCache: WarrenConfigCache = {
 			get: async () => ({
 				triggers: null,
-				defaults: { agent: { pauseTimeoutMs: 1_800_000, skipGitHooks: true } },
+				defaults: { agent: { skipGitHooks: true } },
 				prTemplate: null,
 				sourceFile: null,
 				errors: [],

@@ -21,14 +21,13 @@
  *   - `model-cost-outlier`: a model whose average per-run cost is a multiple of
  *     its peers' median
  *   - `steering-anomaly`: a high share of runs needing mid-run human steering
- *   - `pause-anomaly`: runs that stalled until their pause timed out
  *
- * NOTE: the `steering-anomaly` / `pause-anomaly` callouts fire only when a
- * caller passes the optional {@link SteeringSignals} bundle. The
- * `GET /analytics/behavior` handler now supplies it — it tallies steering /
- * pause counters via `buildSteeringSignals` (over a dedicated event query)
- * and passes `steering` into `buildInsights` — so these two kinds appear in
- * the live endpoint's response whenever the underlying signal is present.
+ * NOTE: the `steering-anomaly` callout fires only when a caller passes the
+ * optional {@link SteeringSignals} bundle. The `GET /analytics/behavior`
+ * handler now supplies it — it tallies steering counters via
+ * `buildSteeringSignals` (over a dedicated event query) and passes `steering`
+ * into `buildInsights` — so this kind appears in the live endpoint's response
+ * whenever the underlying signal is present.
  *
  * Every callout carries a typed `kind`, a `severity`, a numeric `value` (the
  * metric that triggered it) and a `subject` (the seed / agent / command /
@@ -52,8 +51,7 @@ export type InsightKind =
 	| "most-failed-command"
 	| "most-retried-command"
 	| "model-cost-outlier"
-	| "steering-anomaly"
-	| "pause-anomaly";
+	| "steering-anomaly";
 
 export interface Insight {
 	readonly kind: InsightKind;
@@ -69,10 +67,10 @@ export interface Insight {
 }
 
 /**
- * Steering / pause counters a caller may tally while scanning events. All
- * optional — when omitted (or zeroed) the steering/pause insights are skipped.
- * The `GET /analytics/behavior` handler supplies this bundle (built by
- * `buildSteeringSignals`), so the steering/pause insights are live there.
+ * Steering counters a caller may tally while scanning events. All optional —
+ * when omitted (or zeroed) the steering insight is skipped. The
+ * `GET /analytics/behavior` handler supplies this bundle (built by
+ * `buildSteeringSignals`), so the steering insight is live there.
  */
 export interface SteeringSignals {
 	readonly totalRuns: number;
@@ -80,10 +78,6 @@ export interface SteeringSignals {
 	readonly runsSteered: number;
 	/** total steering messages injected across all runs. */
 	readonly steeringMessages: number;
-	/** runs that entered the `paused` state at least once. */
-	readonly runsPaused: number;
-	/** runs whose pause hit the pause-timeout (stalled awaiting input). */
-	readonly pauseTimeouts: number;
 }
 
 export interface InsightsInput {
@@ -112,7 +106,6 @@ const STEERING_CRITICAL_SHARE = 0.5;
 const STEERING_WARNING_SHARE = 0.25;
 
 const KIND_ORDER: readonly InsightKind[] = [
-	"pause-anomaly",
 	"worst-success-agent",
 	"most-retried-command",
 	"most-failed-command",
@@ -249,20 +242,6 @@ function steeringAnomaly(s: SteeringSignals): Insight | null {
 	};
 }
 
-function pauseAnomaly(s: SteeringSignals): Insight | null {
-	if (s.pauseTimeouts <= 0) return null;
-	return {
-		kind: "pause-anomaly",
-		severity: "critical",
-		title: "Runs stalled on pause",
-		detail: `${s.pauseTimeouts} run(s) hit the pause timeout while awaiting input${
-			s.runsPaused > 0 ? ` (${s.runsPaused} paused at least once)` : ""
-		}.`,
-		value: s.pauseTimeouts,
-		subject: null,
-	};
-}
-
 function compareInsights(a: Insight, b: Insight): number {
 	const sev = SEVERITY_RANK[a.severity] - SEVERITY_RANK[b.severity];
 	if (sev !== 0) return sev;
@@ -277,18 +256,6 @@ function compareInsights(a: Insight, b: Insight): number {
 const STEER_SENT_KIND = "steer.sent";
 
 /**
- * Event kind emitted by the pause detector when a run enters the paused
- * state. Mirrored here from `pause.ts`.
- */
-const PAUSE_DETECTED_KIND = "pause.detected";
-
-/**
- * Event kind emitted by the pause detector when a paused run hits its budget.
- * Mirrored here from `pause.ts`.
- */
-const PAUSE_TIMED_OUT_KIND = "pause.timed_out";
-
-/**
  * The minimal event shape the steering-signals aggregator needs. Matches the
  * subset of `EventRow` used here so callers can pass the full row without an
  * explicit cast.
@@ -299,14 +266,14 @@ export interface SteeringEventRow {
 }
 
 /**
- * Aggregate steering / pause counters from the raw event rows produced by
- * `EventsRepo.listSteeringAndPauseEventsForRuns`. Returns a populated
+ * Aggregate steering counters from the raw event rows produced by
+ * `EventsRepo.listSteeringEventsForRuns`. Returns a populated
  * {@link SteeringSignals} bundle ready to pass to {@link buildInsights}.
  *
  * Complexity is O(n) in the number of event rows.
  *
- * @param rows - Events with kind in `steer.sent`, `pause.detected`,
- *   `pause.timed_out` for all runs in the analytics window.
+ * @param rows - Events with kind `steer.sent` for all runs in the analytics
+ *   window.
  * @param totalRuns - Total run count in the window (denominator for rates).
  */
 export function buildSteeringSignals(
@@ -314,25 +281,17 @@ export function buildSteeringSignals(
 	totalRuns: number,
 ): SteeringSignals {
 	const steeredRunIds = new Set<string>();
-	const pausedRunIds = new Set<string>();
 	let steeringMessages = 0;
-	let pauseTimeouts = 0;
 	for (const row of rows) {
 		if (row.kind === STEER_SENT_KIND) {
 			steeredRunIds.add(row.runId);
 			steeringMessages++;
-		} else if (row.kind === PAUSE_DETECTED_KIND) {
-			pausedRunIds.add(row.runId);
-		} else if (row.kind === PAUSE_TIMED_OUT_KIND) {
-			pauseTimeouts++;
 		}
 	}
 	return {
 		totalRuns,
 		runsSteered: steeredRunIds.size,
 		steeringMessages,
-		runsPaused: pausedRunIds.size,
-		pauseTimeouts,
 	};
 }
 
@@ -352,7 +311,7 @@ export function buildInsights(input: InsightsInput): Insight[] {
 		modelCostOutlier(metrics),
 	];
 	if (steering !== undefined) {
-		candidates.push(steeringAnomaly(steering), pauseAnomaly(steering));
+		candidates.push(steeringAnomaly(steering));
 	}
 	const insights = candidates.filter((i): i is Insight => i !== null);
 	insights.sort(compareInsights);

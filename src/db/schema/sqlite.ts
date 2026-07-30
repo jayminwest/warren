@@ -179,16 +179,6 @@ export const runs = sqliteTable(
 		// primitive (pl-0344 step 3 / warren-1117). Fixed at run-create time.
 		// Defaults to `batch` so legacy rows match the historical shape.
 		mode: text("mode", { enum: RUN_MODES }).notNull().default("batch"),
-		// Pause bookkeeping (pl-0344 step 1 / warren-67b6). Populated when the
-		// supervisor (pl-0344 step 5 / warren-2976) detects a blocking
-		// `question_posed` event on the linked Plot and transitions the run
-		// `running → paused`. `paused_at` is the ISO8601 transition timestamp;
-		// `paused_question_event_id` is the Plot event id awaiting an answer.
-		// Both nullable: only set while the run is in the `paused` state. On
-		// resume (`paused → running`), the row may keep or clear these — the
-		// supervisor clears them once the answering turn is dispatched.
-		pausedAt: text("paused_at"),
-		pausedQuestionEventId: text("paused_question_event_id"),
 		// Continuation back-link (warren-4b11): when an operator re-runs a
 		// terminated run "with a follow-up", the new run is spawned with the
 		// prior run's pushed branch as the workspace base (instead of the

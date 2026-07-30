@@ -27,7 +27,6 @@ import {
 	GitPullRequest,
 	type LucideIcon,
 	MinusCircle,
-	Pause,
 	PlayCircle,
 	PowerOff,
 	XCircle,
@@ -62,7 +61,6 @@ export interface StatusMeta {
 const RUN_STATUS: Record<string, StatusMeta> = {
 	queued: { label: "queued", variant: "queued", icon: Clock, pulse: false },
 	running: { label: "running", variant: "running", icon: Activity, pulse: true },
-	paused: { label: "paused", variant: "paused", icon: Pause, pulse: false },
 	succeeded: { label: "succeeded", variant: "succeeded", icon: CheckCircle2, pulse: false },
 	failed: { label: "failed", variant: "failed", icon: XCircle, pulse: false },
 	cancelled: { label: "cancelled", variant: "cancelled", icon: MinusCircle, pulse: false },

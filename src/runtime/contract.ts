@@ -372,7 +372,7 @@ export interface FinalizeResult {
 	 * (warren-89b0), populated ONLY when `dirty` is true (i.e. `pushed &&
 	 * commitsAhead === 0` over a dirty tree). The domain uses it to classify a
 	 * zero-commit dirty tree: a tree whose ONLY dirty paths are warren-managed
-	 * bookkeeping artifacts (`.mulch/`, `.seeds/`, `.plot/`) is a
+	 * bookkeeping artifacts (`.mulch/`, `.seeds/`) is a
 	 * deliberate no-op (`succeeded`, non-alarming) rather than a dropped commit
 	 * (`failed`). Optional/absent ⇒ the domain falls back to the conservative
 	 * dropped-commit posture (it cannot prove the tree was bookkeeping-only).

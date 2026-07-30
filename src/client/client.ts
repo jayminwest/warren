@@ -204,9 +204,6 @@ export class WarrenClient {
 	 * `POST /runs/:id/steer` — mid-run steering. Forwards an operator
 	 * message into the burrow inbox; valid only while the run is
 	 * non-terminal AND a burrow is attached (else `ValidationError`).
-	 * Batch runs get nudges here; `src/runs/pause.ts` drives the
-	 * blocking-question `pause ↔ resume` cycle server-side — no explicit
-	 * "resume" needed after a steer.
 	 */
 	async steer(runId: string, input: SteerRunInput): Promise<SteerRunResponse> {
 		const body: Record<string, unknown> = { body: input.body };

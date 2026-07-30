@@ -117,8 +117,6 @@ export const runs = pgTable(
 		// Mirror of sqlite mode (pl-0344 step 1 / warren-67b6). See sqlite.ts
 		// for shape + state-machine intent.
 		mode: text("mode", { enum: RUN_MODES }).notNull().default("batch"),
-		pausedAt: text("paused_at"),
-		pausedQuestionEventId: text("paused_question_event_id"),
 		// Mirror of sqlite parent_run_id (warren-4b11). Continuation back-link
 		// for re-run-with-follow-up; see sqlite.ts for the full shape + intent.
 		parentRunId: text("parent_run_id"),

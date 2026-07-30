@@ -30,7 +30,7 @@
  * CLAUDE.md Article VII), `--no-verify` (bookkeeping commits never run project
  * hooks, warren-27d3), `--only` path-limited to the actually-written carriers so
  * a pre-staged unrelated file can't be swept in — the same posture as the local
- * `stage{Plot,Seeds}ForCommit` commits.
+ * `stageSeedsForCommit` commit.
  *
  * A no-op merge contributes an empty `files[]` (warren-df3e), so nothing is
  * written for it and no commit is authored when every delta is empty.

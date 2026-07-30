@@ -685,8 +685,7 @@ export type InsightKind =
 	| "most-failed-command"
 	| "most-retried-command"
 	| "model-cost-outlier"
-	| "steering-anomaly"
-	| "pause-anomaly";
+	| "steering-anomaly";
 
 export interface Insight {
 	kind: InsightKind;

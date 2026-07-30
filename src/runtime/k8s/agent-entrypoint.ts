@@ -146,7 +146,7 @@ export function parseAgentFrontmatter(
 	}
 }
 
-/** Default stdin-hold idle watchdog: 30 min, matching `agent.pauseTimeoutMs`. */
+/** Default stdin-hold idle watchdog: 30 min. */
 export const DEFAULT_STDIN_HOLD_IDLE_TIMEOUT_MS = 1_800_000;
 
 /** Parse + validate the agent entrypoint env. Pure. */

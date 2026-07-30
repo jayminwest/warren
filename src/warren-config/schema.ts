@@ -210,21 +210,8 @@ const PreviewConnectTimeoutSchema = DurationStringSchema.refine(
 
 const PreviewSetupSchema = z.string().min(1, "preview.setup must be non-empty");
 
-// warren-cd37 / SPEC §11.O (pl-0344 step 2): wall-clock budget for paused interactive turns.
-// `question_posed` transitions the run to `paused`; if `question_answered` doesn't arrive within
-// this window the supervisor respawns with a timeout warning (warren-2976). Bounds: 1s..24h.
-// Field is `.default()`-backed; the `DEFAULT_*` constant is the fallback when the block is absent.
-export const DEFAULT_AGENT_PAUSE_TIMEOUT_MS = 1_800_000; // 30 minutes
-
-const AgentPauseTimeoutMsSchema = z
-	.number()
-	.int("agent.pauseTimeoutMs must be an integer (milliseconds)")
-	.min(1_000, "agent.pauseTimeoutMs must be between 1s (1000) and 24h (86400000)")
-	.max(86_400_000, "agent.pauseTimeoutMs must be between 1s (1000) and 24h (86400000)");
-
 const AgentConfigSchema = z
 	.object({
-		pauseTimeoutMs: AgentPauseTimeoutMsSchema.default(DEFAULT_AGENT_PAUSE_TIMEOUT_MS),
 		skipGitHooks: z.boolean().optional(), // warren-8f4c: skip git-hooks arming on the host clone
 	})
 	.strict();
@@ -361,8 +348,8 @@ export const DefaultsConfigSchema = z
 		// home is `.warren/preview.yaml` (post-warren-5840); this nested field is
 		// still accepted for migration — when both exist, `preview.yaml` wins.
 		preview: PreviewConfigSchema.optional(),
-		// warren-cd37 / SPEC §11.O: per-project agent-runtime knobs (only
-		// `pauseTimeoutMs` today). Missing block → use the DEFAULT_* fallback.
+		// warren-8f4c: per-project agent-runtime knobs (only `skipGitHooks`
+		// today). Missing block → defaults apply.
 		agent: AgentConfigSchema.optional(),
 		// warren-b802: override of the burrow runtime backing interactive built-in
 		// agents. Precedence: config override > agent frontmatter.runtime > name.

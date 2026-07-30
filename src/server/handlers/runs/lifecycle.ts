@@ -48,8 +48,6 @@ export const PUBLIC_RUN_FIELDS = [
 	"previewPort",
 	"previewStartedAt",
 	"previewLastHitAt",
-	"pausedAt",
-	"pausedQuestionEventId",
 ] as const satisfies readonly (keyof RunRow)[];
 
 /**

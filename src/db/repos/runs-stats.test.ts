@@ -41,7 +41,6 @@ function suite(dialect: "sqlite" | "postgres"): void {
 				const counts = await countRunsByState(adapter);
 				expect(counts.queued).toBe(1);
 				expect(counts.running).toBe(1);
-				expect(counts.paused).toBe(0);
 				expect(counts.succeeded).toBe(0);
 				expect(counts.failed).toBe(0);
 				expect(counts.cancelled).toBe(0);

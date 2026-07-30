@@ -81,13 +81,6 @@ and is surfaced by `loadWarrenConfig()`. Notable knobs:
   SPEC §11.H.
 - `preview` — per-run preview environments; canonical home is
   `.warren/preview.yaml`, see SPEC §11.L.
-- `agent.pauseTimeoutMs` (default `1800000` = 30 min, bounds 1s..24h)
-  — wall-clock budget for paused interactive turns and batch runs that
-  emit `question_posed`. Consumers fall back to
-  `DEFAULT_AGENT_PAUSE_TIMEOUT_MS` when the block is absent. Defined on
-  `DefaultsConfigSchema.agent` (`src/warren-config/schema.ts`); see the
-  `.warren/config.yaml` convention in SPEC §11.H (warren-cd37 / pl-0344
-  step 2).
 - `agent.skipGitHooks` (default `false`) — set to `true` to skip arming
   the project's git pre-commit gate on the host clone before each run.
   By default warren detects a `git config core.hooksPath` call in the

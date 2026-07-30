@@ -315,9 +315,9 @@ export function listRunAnalyticsHandler(deps: ServerDeps): RouteHandler {
  * itself stays on `/analytics/runs` — this endpoint returns just the behavior
  * layers (`mining` + `insights`) so the fast view can render independently.
  *
- * Steering / pause event kinds scanned when building {@link SteeringSignals}
- * for `buildInsights`. These three event kinds are lightweight (at most a
- * handful per run) so they are fetched in a separate, uncapped query rather
+ * Steering event kinds scanned when building {@link SteeringSignals}
+ * for `buildInsights`. The `steer.sent` kind is lightweight (at most a
+ * handful per run) so it is fetched in a separate, uncapped query rather
  * than being mixed into the tool-event cap that bounds command mining.
  */
 export function listBehaviorAnalyticsHandler(deps: ServerDeps): RouteHandler {
@@ -327,7 +327,7 @@ export function listBehaviorAnalyticsHandler(deps: ServerDeps): RouteHandler {
 		const runIds = rows.map((r) => r.id);
 		const [eventRows, steeringRows] = await Promise.all([
 			loadToolEventRows(deps.repos.events, runIds),
-			deps.repos.events.listSteeringAndPauseEventsForRuns(runIds),
+			deps.repos.events.listSteeringEventsForRuns(runIds),
 		]);
 		const mining = buildCommandMining(eventRows);
 		const steering = buildSteeringSignals(steeringRows, rows.length);
