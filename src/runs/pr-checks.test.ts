@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { jsonResponse, recordingFetch } from "./pr.test-helpers.ts";
-import { checkPullRequestMerged, parsePullRequestUrl } from "./pr.ts";
+import { checkPullRequestMerged, parsePullRequestUrl, parseRetryAfterMs } from "./pr.ts";
 
 describe("checkPullRequestMerged", () => {
 	const baseArgs = { owner: "jayminwest", repo: "warren", number: 42, token: "ghp_xyz" };
@@ -46,6 +46,22 @@ describe("checkPullRequestMerged", () => {
 		expect((result as { message: string }).message).toContain("404");
 	});
 
+	test("429 → rate_limited with the Retry-After hint parsed", async () => {
+		const res = jsonResponse(429, { message: "API rate limit exceeded" });
+		res.headers.set("retry-after", "30");
+		const { fetch } = recordingFetch([res]);
+		const result = await checkPullRequestMerged({ ...baseArgs, fetch });
+		expect(result.kind).toBe("rate_limited");
+		expect((result as { retryAfterMs: number | null }).retryAfterMs).toBe(30_000);
+		expect((result as { message: string }).message).toContain("429");
+	});
+
+	test("429 without a Retry-After header → rate_limited with null hint", async () => {
+		const { fetch } = recordingFetch([jsonResponse(429, { message: "secondary rate limit" })]);
+		const result = await checkPullRequestMerged({ ...baseArgs, fetch });
+		expect(result).toMatchObject({ kind: "rate_limited", retryAfterMs: null });
+	});
+
 	test("fetch throw → http_error with status 0", async () => {
 		const failingFetch = (async () => {
 			throw new Error("ECONNREFUSED");
@@ -54,6 +70,23 @@ describe("checkPullRequestMerged", () => {
 		expect(result.kind).toBe("http_error");
 		expect((result as { status: number }).status).toBe(0);
 		expect((result as { message: string }).message).toContain("ECONNREFUSED");
+	});
+});
+
+describe("parseRetryAfterMs", () => {
+	test("parses the delta-seconds form", () => {
+		expect(parseRetryAfterMs("30")).toBe(30_000);
+		expect(parseRetryAfterMs(" 2 ")).toBe(2_000);
+	});
+
+	test("returns null for absent, malformed, or negative values", () => {
+		expect(parseRetryAfterMs(null)).toBeNull();
+		expect(parseRetryAfterMs("")).toBeNull();
+		expect(parseRetryAfterMs("soon")).toBeNull();
+		expect(parseRetryAfterMs("-5")).toBeNull();
+		expect(parseRetryAfterMs("1.5")).toBeNull();
+		// The HTTP-date form is deliberately not honored.
+		expect(parseRetryAfterMs("Wed, 21 Oct 2026 07:28:00 GMT")).toBeNull();
 	});
 });
 

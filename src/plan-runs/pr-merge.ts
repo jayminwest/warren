@@ -7,9 +7,12 @@
  * Retry policy:
  *   - `http_error` with status 0 (fetch threw) OR status 5xx → retry up
  *     to `maxRetries` times with a short fixed delay.
+ *   - `rate_limited` (HTTP 429, warren-9bbc) → retry up to `maxRetries`
+ *     times, honoring the `Retry-After` hint when GitHub sent one (capped
+ *     so a hostile header can't park the poller), else the fixed delay.
  *   - `http_error` with status 4xx → return immediately (not retried).
  *     The coordinator treats only 404/410 as a fatal "PR is gone" signal
- *     (warren-eccd); 401/403/429 fall through to keep-waiting, bounded
+ *     (warren-eccd); 401/403 fall through to keep-waiting, bounded
  *     by the merge-wait budget (warren-3937).
  *   - any other shape (`merged`, `open`, `closed_unmerged`,
  *     `missing_token`) returns immediately.
@@ -71,8 +74,9 @@ export function createPrMergeChecker(input: CreatePrMergeCheckerInput): PrMergeC
 			});
 			last = result;
 			if (!isTransient(result)) return result;
-			if (attempt < maxRetries && retryDelayMs > 0) {
-				await sleep(retryDelayMs);
+			const delayMs = retryDelayFor(result, retryDelayMs);
+			if (attempt < maxRetries && delayMs > 0) {
+				await sleep(delayMs);
 			}
 		}
 		return last ?? { kind: "http_error", status: 0, message: "no result" };
@@ -80,9 +84,22 @@ export function createPrMergeChecker(input: CreatePrMergeCheckerInput): PrMergeC
 }
 
 function isTransient(result: CheckPrMergedResult): boolean {
+	if (result.kind === "rate_limited") return true;
 	if (result.kind !== "http_error") return false;
 	if (result.status === 0) return true;
 	return result.status >= 500;
+}
+
+/**
+ * A `Retry-After` hint above this is treated as broken, not patient — the
+ * poller runs on the coordinator's tick and the merge-wait budget is the
+ * real bound, so a multi-minute header would only stall the plan.
+ */
+const MAX_RETRY_AFTER_MS = 60_000;
+
+function retryDelayFor(result: CheckPrMergedResult, fallbackMs: number): number {
+	if (result.kind !== "rate_limited" || result.retryAfterMs === null) return fallbackMs;
+	return Math.min(result.retryAfterMs, MAX_RETRY_AFTER_MS);
 }
 
 function defaultSleep(ms: number): Promise<void> {

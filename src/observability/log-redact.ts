@@ -45,6 +45,20 @@ export const SECRET_FIELDS = [
 	"GITHUB_TOKEN",
 	"BURROW_API_TOKEN",
 	"WARREN_BURROW_TOKEN",
+	// warren-9bbc: snake_case JSON keys an agent transcript or an OAuth /
+	// vendor SDK dump actually carries — the camelCase-only list above
+	// missed `{ access_token, refresh_token, client_secret, … }` payloads
+	// in both the event-stream scrubber and the Sentry scrubber, which
+	// share this policy.
+	"api_key",
+	"access_token",
+	"accessToken",
+	"refresh_token",
+	"refreshToken",
+	"client_secret",
+	"clientSecret",
+	"private_key",
+	"privateKey",
 ] as const;
 
 /**
@@ -58,6 +72,9 @@ export const LOG_REDACT_PATHS: string[] = [
 	"headers.authorization",
 	'headers["authorization"]',
 	'headers["x-burrow-token"]',
+	// Dashed header names can't ride the SECRET_FIELDS list — pino redact
+	// paths parse `.` segments, so `x-api-key` needs bracket notation.
+	'headers["x-api-key"]',
 ];
 
 /**
