@@ -97,7 +97,15 @@ jobs:
           fi
           echo "$NOTES" > "${RUNNER_TEMP}/release-notes.md"
 
-      - name: Create GitHub release
+      # Create the release as a DRAFT (warren-89f2). A draft is invisible to
+      # non-collaborators and is excluded from `/releases/latest`, so the
+      # release is never publicly visible until its container image exists.
+      # The `promote` job flips it to final only after `deploy` has built and
+      # pushed ghcr.io/<owner>/warren:vX.Y.Z. Before this, `deploy` was
+      # `needs: release` and ran AFTER a fully published release, so a failed
+      # image build (v0.12.0, v0.12.1) left a live Release + Discord announce
+      # pointing at a `docker pull` tag that was never pushed.
+      - name: Create GitHub release (draft)
         if: steps.version-check.outputs.release == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
@@ -109,6 +117,7 @@ jobs:
             exit 0
           fi
           gh release create "v$VERSION" \
+            --draft \
             --title "v$VERSION" \
             --notes-file "${RUNNER_TEMP}/release-notes.md"
 
@@ -136,16 +145,43 @@ jobs:
       deploy: true
       version: ${{ needs.release.outputs.version }}
 
+  # Promote the draft release to final (warren-89f2). This runs ONLY after
+  # `deploy` has built and pushed the container image, so the ordering
+  # guarantee is: image exists first, public Release second. `--latest` makes
+  # this the target of `/releases/latest` at the moment of promotion, never
+  # before. Idempotent: re-marking an already-published release --draft=false
+  # is a no-op, so a retried run is safe.
+  promote:
+    needs: [release, deploy]
+    if: needs.release.outputs.release == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Publish the draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.release.outputs.version }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          gh release edit "v${VERSION}" --repo "${REPO}" --draft=false --latest
+          echo "Promoted v${VERSION} to a final release."
+
   # Announce the release in Discord #releases. This is a sibling of `deploy`,
   # not a step inside `release`: the release is already cut and tagged by the
   # time this runs, so a Discord outage must show as its own red job rather
   # than turn a successful release red.
   #
+  # It gates on `promote` (and therefore on `deploy`), so the announcement —
+  # whose footer is `docker pull ghcr.io/<owner>/warren:vX.Y.Z` — only fires
+  # once BOTH the image is pushed and the Release is final (warren-89f2).
+  #
   # The notes are read back from the release itself (`gh release view`) rather
   # than re-parsed from CHANGELOG.md, so Discord can never disagree with what
   # GitHub published, and the post is proof the release exists.
   announce:
-    needs: release
+    needs: [release, promote]
     if: needs.release.outputs.release == 'true'
     runs-on: ubuntu-latest
     permissions:
