@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { WARREN_BOT_IDENTITY } from "../../bot-identity.ts";
 import { DrizzleAdapter } from "../../db/repos/drizzle-adapter.ts";
 import type { LaunchPreviewInput, LaunchPreviewResult } from "../../preview/launch/index.ts";
 import { PreviewPortAllocator } from "../../preview/port-allocator.ts";
@@ -170,7 +171,7 @@ describe("reapRun under a K8s-style RuntimeProvider", () => {
 		const commit = e.calls.find((c) => c.cmd === "git" && c.args.includes("commit"));
 		expect(commit).toBeDefined();
 		expect(commit?.args).toContain("user.name=warren");
-		expect(commit?.args).toContain("user.email=warren@os-eco.dev");
+		expect(commit?.args).toContain(`user.email=${WARREN_BOT_IDENTITY.email}`);
 		expect(commit?.args).toContain("chore(warren): mirror state");
 		expect(commit?.cwd).toBe("/data/projects/x/y");
 

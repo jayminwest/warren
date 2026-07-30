@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { WARREN_BOT_IDENTITY } from "../bot-identity.ts";
 import type { SpawnFn } from "../projects/index.ts";
 import type { SeedsCliDeps } from "../seeds-cli/index.ts";
 import { closeMergedChildSeed } from "./close-child-seed.ts";
@@ -80,7 +81,7 @@ describe("closeMergedChildSeed", () => {
 		expect(commit?.cmd).toContain("--no-verify");
 		expect(commit?.cmd.join(" ")).toContain("user.name=warren");
 		expect(commit?.env?.GIT_AUTHOR_NAME).toBe("warren");
-		expect(commit?.env?.GIT_COMMITTER_EMAIL).toBe("warren@os-eco.dev");
+		expect(commit?.env?.GIT_COMMITTER_EMAIL).toBe(WARREN_BOT_IDENTITY.email);
 
 		// The push targets the default branch directly.
 		const push = calls.find((c) => c.cmd.includes("push"));

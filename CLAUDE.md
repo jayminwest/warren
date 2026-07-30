@@ -55,7 +55,10 @@ boot from `WARREN_RUNTIME` (`src/runtime/registry.ts`) behind the
 `LocalProvider` (`src/runtime/local/`, the default) wraps the
 co-tenanted [burrow](https://github.com/jayminwest/burrow) sandbox
 daemon; `K8sProvider` (`src/runtime/k8s/`, `WARREN_RUNTIME=k8s`) runs
-each agent as a Kubernetes pod with no burrow at all. Burrow is the
+each agent as a Kubernetes pod with no burrow *daemon* — no `burrow
+serve`, no unix socket, no bwrap (though warren still links
+`@os-eco/burrow-cli` as a library for shared types and error classes;
+cutting that k8s dependency is a ROADMAP item). Burrow the daemon is the
 LocalProvider's substrate, **not a required warren dependency** — see
 "Relationship to burrow" below and [docs/RUNBOOK-K8S.md](docs/RUNBOOK-K8S.md)
 for the K8s topology.
@@ -107,10 +110,12 @@ and is surfaced by `loadWarrenConfig()`. Notable knobs:
 
 Burrow is the **`LocalProvider`'s sandbox substrate** — the runtime warren
 uses under `WARREN_RUNTIME=local` (the default). It is no longer a
-universal dependency: under `WARREN_RUNTIME=k8s` there is **no burrow** at
-all (no `burrow serve`, no unix socket, no bwrap; the pod boundary is the
-sandbox, and `/readyz` drops the burrow/bwrap/stale-workspace probes —
-`src/server/handlers/diagnostics.ts`, warren-c128). Everything in this
+universal dependency: under `WARREN_RUNTIME=k8s` there is **no burrow
+daemon** (no `burrow serve`, no unix socket, no bwrap; the pod boundary is
+the sandbox, and `/readyz` drops the burrow/bwrap/stale-workspace probes —
+`src/server/handlers/diagnostics.ts`, warren-c128; the
+`@os-eco/burrow-cli` npm package still ships in the image as a library
+dependency, but nothing spawns the daemon). Everything in this
 section is the `local` topology; for the K8s topology see
 [docs/RUNBOOK-K8S.md](docs/RUNBOOK-K8S.md) and the design docs under
 `docs/design/` (`runtime-provider-contract.md`, `k8s-migration.md`).
@@ -490,19 +495,26 @@ identity — one agent, one spelling. There are two distinct identities,
 and they must not be conflated:
 
 - **Warren's own bookkeeping bot** — the reap-time `chore(warren): …`
-  commits (seeds state) are authored as
-  `warren <warren@os-eco.dev>`. This spelling is the single source of
-  truth in `src/bot-identity.ts` (`WARREN_BOT_IDENTITY` /
-  `warrenCommitIdentityArgs()`). Never re-spell `user.name` /
-  `user.email` inline at a new commit site — import the constant so the
-  history can never drift again (warren-598f closed a ~9-spelling drift:
-  `@warren.local`, `@os-eco.local`, `@local`, `@example.com`, …).
+  commits (seeds state). The resolver in `src/bot-identity.ts`
+  (`resolveWarrenBotIdentity()` / `warrenCommitIdentityArgs()`) is the
+  single source of truth: operators override the spelling with
+  `WARREN_BOT_NAME` + `WARREN_BOT_EMAIL` (both halves or nothing), and
+  the default is `warren <bot@warren.invalid>` — an RFC 2606
+  non-routable address, because warren is self-hosted by strangers and
+  the default must attribute to nobody (warren-02cd; the old
+  `warren@os-eco.dev` default sat on a domain the project never owned).
+  Never re-spell `user.name` / `user.email` inline at a new commit
+  site — go through the resolver so the history can never drift again
+  (warren-598f closed a ~9-spelling drift: `@warren.local`,
+  `@os-eco.local`, `@local`, `@example.com`, …).
 - **The agent's own author identity** — operator-configured via
   `WARREN_GIT_AUTHOR_NAME` / `WARREN_GIT_AUTHOR_EMAIL` and installed by
-  `src/supervisor/git-identity.ts`. This governs the *agent's* commits,
-  not warren's bookkeeping bot. Operators should use a github.com
-  `<id>+warren@users.noreply.github.com` noreply address so the
-  contribution graph reflects agent-driven work.
+  `src/supervisor/git-identity.ts` (unset → a warn-level fallback
+  notice, warren-6a28). This governs the *agent's* commits, not
+  warren's bookkeeping bot. Operators should create a dedicated GitHub
+  machine account and use its
+  `<id>+<bot-login>@users.noreply.github.com` noreply address so
+  agent-driven work attributes to the bot, not to a personal account.
 
 ## Acceptance Harness
 
