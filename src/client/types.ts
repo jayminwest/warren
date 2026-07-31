@@ -95,6 +95,14 @@ export interface RunRow {
 	trigger: string;
 	prUrl: string | null;
 	targetBranch: string | null;
+	/**
+	 * Salvage-before-destroy (warren-cd3b): where a finalize_failed run's
+	 * committed work was captured. `salvageRef` is the `warren/rescue/<runId>`
+	 * branch on origin; `salvagePath` is the durable git-bundle file. Both null
+	 * when no salvage was captured (or none was needed).
+	 */
+	salvageRef: string | null;
+	salvagePath: string | null;
 	costUsd: number | null;
 	tokensInput: number | null;
 	tokensOutput: number | null;

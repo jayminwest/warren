@@ -38,14 +38,19 @@
  * static env, so a compromised agent never held it (`provider.ts` decision).
  */
 
-import { readdir as nodeReaddir, readFile as nodeReadFile } from "node:fs/promises";
+import { readdir as nodeReaddir, readFile as nodeReadFile, rm as nodeRm } from "node:fs/promises";
 import {
 	collectFinalizeResult,
 	type FinalizeFs,
 	type FinalizeGitRunner,
 } from "./finalize-collect.ts";
-import type { FinalizeResultEnvelope, InPodFinalizeIntent } from "./finalize-wire.ts";
+import type {
+	FinalizeResultEnvelope,
+	InPodFinalizeIntent,
+	SalvageEnvelope,
+} from "./finalize-wire.ts";
 import { IN_POD_FINALIZE_WIRE_VERSION } from "./finalize-wire.ts";
+import { collectSalvage } from "./salvage.ts";
 
 /* -------------------------------------------------------------------------- */
 /* Env                                                                        */
@@ -56,10 +61,22 @@ export interface FinalizeEntrypointEnv {
 	apiUrl: string;
 	apiToken: string;
 	workspacePath: string;
+	/** Base ref the run branch was cut from (WARREN_BASE_BRANCH); bundles the salvage range. */
+	baseBranch: string | undefined;
+	/** The run's own branch (WARREN_BRANCH); surfaced on the salvage envelope. */
+	branch: string | undefined;
 	/** Poll interval for the intent fetch (ms). */
 	pollIntervalMs: number;
 	/** Max wall-clock to wait for warren to park an intent before giving up (ms). */
 	maxWaitMs: number;
+	/**
+	 * Max wall-clock to keep retrying the SALVAGE post when no intent ever
+	 * arrived (warren-cd3b). A control-plane rollout is exactly the window this
+	 * covers: the pod must outlast the rollout long enough for the new control
+	 * plane to intake the bundle. In the `push_failed` window the normal
+	 * bounded result-POST budget applies instead (warren is reachable).
+	 */
+	salvageMaxWaitMs: number;
 	/**
 	 * Max attempts for the result POST before giving up (warren-fd08). A transient
 	 * "Unable to connect" / non-2xx must not silently lose the collected result —
@@ -95,8 +112,11 @@ export function parseFinalizeEntrypointEnv(env: FinalizeEnvSource): FinalizeEntr
 		apiUrl: required(env, "WARREN_API_URL").replace(/\/+$/, ""),
 		apiToken: required(env, "WARREN_API_TOKEN"),
 		workspacePath: env.WARREN_WORKSPACE_PATH?.trim() || "/workspace",
+		baseBranch: env.WARREN_BASE_BRANCH?.trim() || undefined,
+		branch: env.WARREN_BRANCH?.trim() || undefined,
 		pollIntervalMs: positiveIntEnv(env, "WARREN_FINALIZE_POLL_INTERVAL_MS", 2_000),
 		maxWaitMs: positiveIntEnv(env, "WARREN_FINALIZE_MAX_WAIT_MS", 300_000),
+		salvageMaxWaitMs: positiveIntEnv(env, "WARREN_SALVAGE_MAX_WAIT_MS", 120_000),
 		postMaxAttempts: positiveIntEnv(env, "WARREN_FINALIZE_POST_MAX_ATTEMPTS", 5),
 		postRetryBaseMs: positiveIntEnv(env, "WARREN_FINALIZE_POST_RETRY_BASE_MS", 1_000),
 	};
@@ -118,6 +138,9 @@ export interface FinalizeEntrypointDeps {
 	sleep?: (ms: number) => Promise<void>;
 	now?: () => number;
 	log?: (message: string) => void;
+	/** Salvage seams (warren-cd3b) — default to node fs; injected in tests. */
+	readFileBytes?: (path: string) => Promise<Uint8Array>;
+	rm?: (path: string) => Promise<void>;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -160,6 +183,12 @@ const defaultHttp: FinalizeHttp = {
 };
 
 const defaultSleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
+
+const defaultReadFileBytes = async (path: string): Promise<Uint8Array> => nodeReadFile(path);
+
+const defaultRm = async (path: string): Promise<void> => {
+	await nodeRm(path, { force: true });
+};
 
 /**
  * Extract the parked intent from a `GET /finalize-intent` body. `{ intent: null }`
@@ -263,10 +292,88 @@ export async function postResultWithRetry(
 }
 
 /**
+ * Salvage-before-exit (warren-cd3b): capture the workspace's committed work
+ * (rescue-ref push when a credential is available + a git bundle) and POST it
+ * to `POST /runs/:id/salvage` BEFORE the container exits and the `emptyDir`
+ * dies with it. Retried until `deadlineMs` of wall-clock budget is spent — in
+ * the `no_intent` window that budget (`salvageMaxWaitMs`) is sized to outlast
+ * a control-plane rollout; in the `push_failed` window warren is demonstrably
+ * reachable so the standard bounded retry applies. Best-effort: never throws,
+ * so a salvage failure can never mask the finalize path it rode in on.
+ */
+export async function salvageAndPost(
+	env: FinalizeEntrypointEnv,
+	http: FinalizeHttp,
+	sleep: (ms: number) => Promise<void>,
+	now: () => number,
+	log: (m: string) => void,
+	trigger: SalvageEnvelope["trigger"],
+	gitToken: string | undefined,
+	git: FinalizeGitRunner,
+	readFileBytes: (path: string) => Promise<Uint8Array>,
+	rm: (path: string) => Promise<void>,
+): Promise<boolean> {
+	const salvage = await collectSalvage(
+		{
+			runId: env.runId,
+			workspacePath: env.workspacePath,
+			baseBranch: env.baseBranch,
+			gitToken,
+		},
+		{ git, readFileBytes, rm },
+	);
+	if (salvage.rescueRef === null && salvage.bundleBase64 === null) {
+		log(`finalize-entrypoint: salvage (${trigger}) captured nothing: ${salvage.notes.join("; ")}`);
+	}
+	const envelope: SalvageEnvelope = {
+		version: IN_POD_FINALIZE_WIRE_VERSION,
+		trigger,
+		rescueRef: salvage.rescueRef,
+		bundleBase64: salvage.bundleBase64,
+		branch: env.branch ?? null,
+		baseBranch: env.baseBranch ?? null,
+		notes: salvage.notes,
+	};
+	const url = `${env.apiUrl}/runs/${env.runId}/salvage`;
+	const deadline = now() + (trigger === "no_intent" ? env.salvageMaxWaitMs : 0);
+	// Bounded-attempt budget in the push_failed window (warren is reachable);
+	// wall-clock deadline budget in the no_intent window (rollout survival).
+	const exhausted = (attempt: number): boolean =>
+		trigger === "push_failed" ? attempt >= env.postMaxAttempts : now() >= deadline;
+	let backoff = env.postRetryBaseMs;
+	for (let attempt = 1; ; attempt += 1) {
+		let accepted = false;
+		try {
+			accepted = postAccepted((await http.post(url, env.apiToken, envelope)).status);
+		} catch (err) {
+			log(
+				`finalize-entrypoint: salvage POST attempt ${attempt} failed (${err instanceof Error ? err.message : String(err)})`,
+			);
+		}
+		if (accepted) {
+			log(
+				`finalize-entrypoint: salvage (${trigger}) delivered on attempt ${attempt} (rescueRef=${salvage.rescueRef}, bundle=${salvage.bundleBase64 !== null})`,
+			);
+			return true;
+		}
+		if (exhausted(attempt)) break;
+		await sleep(backoff);
+		backoff *= 2;
+	}
+	log(`finalize-entrypoint: salvage (${trigger}) POST gave up; work may be unrecoverable`);
+	return false;
+}
+
+/**
  * Full entrypoint: poll for the intent, run the workspace collection, and POST
  * the `FinalizeResult`. Returns `true` when a result was POSTed, `false` when no
  * intent arrived (nothing to do). The workspace-touching seams are injectable so
  * the orchestration is testable without a cluster / real git / real network.
+ *
+ * warren-cd3b: both loss windows run salvage BEFORE the process can exit —
+ * no intent at all (control-plane severed) ⇒ bundle + retry through the
+ * rollout; an intent whose branch push failed ⇒ rescue-ref + bundle BEFORE
+ * the result POST (which lets warren proceed to terminate the pod).
  */
 export async function runFinalizeEntrypoint(
 	envSource: FinalizeEnvSource,
@@ -278,13 +385,57 @@ export async function runFinalizeEntrypoint(
 	const sleep = deps.sleep ?? defaultSleep;
 	const now = deps.now ?? (() => Date.now());
 	const log = deps.log ?? ((m: string) => console.log(m));
+	const readFileBytes = deps.readFileBytes ?? defaultReadFileBytes;
+	const rm = deps.rm ?? defaultRm;
 
 	const env = parseFinalizeEntrypointEnv(envSource);
 	const intent = await pollForIntent(env, http, sleep, now, log);
-	if (intent === null) return false;
+	if (intent === null) {
+		// No reap intent ever arrived: warren lost track of this pod (the classic
+		// trigger is a control-plane rollout severing the finalize loop). The
+		// workspace commits exist ONLY on this pod's emptyDir — salvage them
+		// before exiting, or the run's entire output is unrecoverable.
+		await salvageAndPost(
+			env,
+			http,
+			sleep,
+			now,
+			log,
+			"no_intent",
+			undefined,
+			git,
+			readFileBytes,
+			rm,
+		);
+		return false;
+	}
 
 	log(`finalize-entrypoint: intent ${intent.attemptId} received; collecting`);
 	const result = await collectFinalizeResult(intent, env.workspacePath, { fs, git });
+	// The primary push failed (timeout / push protection / auth). Salvage FIRST:
+	// the result POST below resolves warren's awaiting finalize, which proceeds
+	// straight to `terminate` (contract §6.8) — after it, this volume is gone.
+	const pushFailed = result.stages.some((s) => s.stage === "branch_push" && s.status === "failed");
+	if (pushFailed) {
+		// The intent's baseBranch narrows the bundle range; the env carries the
+		// pod-spec copy for the salvage envelope's bookkeeping fields.
+		const salvageEnv: FinalizeEntrypointEnv =
+			intent.baseBranch !== undefined && intent.baseBranch !== ""
+				? { ...env, baseBranch: intent.baseBranch }
+				: env;
+		await salvageAndPost(
+			salvageEnv,
+			http,
+			sleep,
+			now,
+			log,
+			"push_failed",
+			intent.gitToken,
+			git,
+			readFileBytes,
+			rm,
+		);
+	}
 	const envelope: FinalizeResultEnvelope = {
 		version: IN_POD_FINALIZE_WIRE_VERSION,
 		attemptId: intent.attemptId,

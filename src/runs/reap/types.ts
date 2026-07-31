@@ -74,6 +74,14 @@ export interface ReapRunInput {
 	readonly broker?: RunEventBroker;
 	readonly fs?: ReapFs;
 	readonly exec?: ReapExec;
+	/**
+	 * Durable dir for the local salvage bundle capture (warren-cd3b), boot-wired
+	 * to `<dataDir>/salvage`. Consulted ONLY when the finalize branch push
+	 * failed and the rescue-ref push also fails — the bundle is the last
+	 * capture before the workspace is preserved-or-destroyed. Absent ⇒ the
+	 * bundle form is skipped (tests); the rescue push still runs.
+	 */
+	readonly salvageDir?: string;
 	readonly now?: () => Date;
 	readonly logger?: BridgeLogger;
 	/**
@@ -286,6 +294,16 @@ export interface ReapRunResult {
 	 * still covers crash-stranded burrows.
 	 */
 	readonly workspaceDestroyed: boolean;
+	/**
+	 * Salvage-before-destroy outcome (warren-cd3b): where the run's committed
+	 * work was captured when the finalize branch push failed. `salvageRescueRef`
+	 * is the `warren/rescue/<runId>` branch on origin; `salvagePath` is the
+	 * durable git-bundle file. Both null when no salvage ran (push fine, k8s
+	 * backend — the pod self-salvages) or when every capture failed (the
+	 * `reap.workspace_salvage_failed` event carries the notes).
+	 */
+	readonly salvageRescueRef: string | null;
+	readonly salvagePath: string | null;
 	readonly errors: readonly ReapStepError[];
 	/** True when the row was already terminal on entry — sub-steps were skipped. */
 	readonly alreadyTerminal: boolean;

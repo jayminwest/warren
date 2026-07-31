@@ -39,6 +39,9 @@ export const PUBLIC_RUN_FIELDS = [
 	"trigger",
 	"prUrl",
 	"targetBranch",
+	// warren-cd3b: the rescue ref is operator-recovery metadata (a branch name
+	// carrying the run id, which is already public) — safe for spectators.
+	"salvageRef",
 	"costUsd",
 	"tokensInput",
 	"tokensOutput",
@@ -60,6 +63,8 @@ export const PUBLIC_RUN_FIELDS = [
  * - `burrowId` / `burrowRunId` / `workerId` — internal runtime handles.
  *   They also render as empty "—" cards on the K8s instance today.
  * - `previewFailureMessage` — free text carrying a subprocess stderr tail.
+ * - `salvagePath` — a host filesystem path (warren-cd3b); internal topology,
+ *   same posture as the runtime handles.
  */
 export const REDACTED_RUN_FIELDS = [
 	"renderedAgentJson",
@@ -67,6 +72,7 @@ export const REDACTED_RUN_FIELDS = [
 	"burrowRunId",
 	"workerId",
 	"previewFailureMessage",
+	"salvagePath",
 ] as const satisfies readonly (keyof RunRow)[];
 
 /** A run row as a `readPublic`-only caller sees it. */

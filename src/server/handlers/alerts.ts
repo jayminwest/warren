@@ -44,6 +44,7 @@ import {
 import { jsonResponse } from "../response.ts";
 import type { RouteHandler, ServerDeps } from "../types.ts";
 import { defaultSpawn, readJsonBody } from "./index.ts";
+import { stampRunSystemEvent } from "./stamp-event.ts";
 
 export function healAlertHandler(deps: ServerDeps): RouteHandler {
 	return async (ctx) => {
@@ -200,25 +201,15 @@ async function stampDispatchedEvent(
 	runId: string,
 	alert: HealAlert,
 ): Promise<void> {
-	try {
-		const seq = ((await deps.repos.events.maxSeqForRun(runId)) ?? 0) + 1;
-		const now = (deps.now ?? (() => new Date()))();
-		await deps.repos.events.append({
-			runId,
-			burrowEventSeq: seq,
-			ts: now.toISOString(),
-			kind: HEAL_DISPATCHED_EVENT,
-			stream: "system",
-			payload: {
-				fingerprint: alert.fingerprint,
-				source: alert.source,
-				title: alert.title,
-			},
-		});
-	} catch (err) {
-		deps.logger.error(
-			{ runId, reason: err instanceof Error ? err.message : String(err) },
-			"alerts.heal_event_failed",
-		);
-	}
+	await stampRunSystemEvent(deps, deps.logger, {
+		runId,
+		kind: HEAL_DISPATCHED_EVENT,
+		payload: {
+			fingerprint: alert.fingerprint,
+			source: alert.source,
+			title: alert.title,
+		},
+		level: "error",
+		message: "alerts.heal_event_failed",
+	});
 }

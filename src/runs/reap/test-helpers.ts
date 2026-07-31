@@ -62,6 +62,8 @@ export function makeReapRunResult(overrides: Partial<ReapRunResult> = {}): ReapR
 		autoPlanRunId: null,
 		autoPlanRunPlanId: null,
 		workspaceDestroyed: false,
+		salvageRescueRef: null,
+		salvagePath: null,
 		errors: [],
 		alreadyTerminal: false,
 		...overrides,

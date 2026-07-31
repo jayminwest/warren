@@ -166,6 +166,14 @@ export interface RunRow {
 	/** Existing branch reap pushes the workspace back to (#419). Null when unset. */
 	targetBranch: string | null;
 	/**
+	 * Salvage-before-destroy (warren-cd3b): where a finalize_failed run's
+	 * committed work was captured — `salvageRef` is the `warren/rescue/<runId>`
+	 * branch on origin, `salvagePath` the durable git-bundle file. Both null
+	 * when nothing was captured (or needed).
+	 */
+	salvageRef: string | null;
+	salvagePath: string | null;
+	/**
 	 * Per-run cost in USD (warren-a7dc). Currently populated only for runs
 	 * dispatched against the `pi` runtime — the bridge snapshots
 	 * `get_session_stats` at run-start + run-end and persists the delta.

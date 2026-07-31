@@ -103,6 +103,8 @@ export async function depsFor(
 		finalizeCoordinator?: import("../../runtime/k8s/finalize-coordinator.ts").FinalizeCoordinator;
 		/** Event-stream concurrency caps (warren-25f6). Omitted ⇒ uncapped. */
 		streamLimiter?: import("../stream-limits.ts").EventStreamLimiter;
+		/** Salvage-bundle intake dir (warren-cd3b). Omitted ⇒ the route 500s. */
+		salvageDir?: string;
 	},
 ): Promise<ServerDeps> {
 	const broker = new RunEventBroker();
@@ -136,6 +138,7 @@ export async function depsFor(
 			? { finalizeCoordinator: extras.finalizeCoordinator }
 			: {}),
 		...(extras?.streamLimiter !== undefined ? { streamLimiter: extras.streamLimiter } : {}),
+		...(extras?.salvageDir !== undefined ? { salvageDir: extras.salvageDir } : {}),
 	};
 }
 

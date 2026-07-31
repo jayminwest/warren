@@ -104,6 +104,9 @@ export const runs = pgTable(
 		trigger: text("trigger").notNull(),
 		prUrl: text("pr_url"),
 		targetBranch: text("target_branch"),
+		// Salvage-before-destroy (warren-cd3b); see the sqlite schema comment.
+		salvageRef: text("salvage_ref"),
+		salvagePath: text("salvage_path"),
 		costUsd: doublePrecision("cost_usd"),
 		tokensInput: integer("tokens_input"),
 		tokensOutput: integer("tokens_output"),

@@ -204,6 +204,13 @@
 			"when": 1785446835000,
 			"tag": "0028_abnormal_mysterio",
 			"breakpoints": true
+		},
+		{
+			"idx": 29,
+			"version": "7",
+			"when": 1785456676276,
+			"tag": "0029_mean_penance",
+			"breakpoints": true
 		}
 	]
 }

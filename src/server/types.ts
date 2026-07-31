@@ -177,6 +177,13 @@ export interface ServerDeps {
 	/** K8s in-pod finalize correlation registry (warren-0d35); defaults to the
 	 * shared singleton, so prod needs no wiring — tests inject a private instance. */
 	readonly finalizeCoordinator?: import("../runtime/k8s/finalize-coordinator.ts").FinalizeCoordinator;
+	/**
+	 * Durable salvage-bundle directory (warren-cd3b). The `POST /runs/:id/salvage`
+	 * intake writes pod-captured git bundles here (`<runId>.bundle`); boot wires
+	 * `<dataDir>/salvage`. Absent ⇒ the intake refuses with a 500 rather than
+	 * silently dropping the run's only recoverable copy.
+	 */
+	readonly salvageDir?: string;
 	readonly broker: RunEventBroker;
 	readonly bridges: BridgeRegistry;
 	readonly projectsConfig: ProjectsConfig;

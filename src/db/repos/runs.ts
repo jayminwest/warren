@@ -137,6 +137,8 @@ export class RunsRepo {
 			trigger: input.trigger,
 			prUrl: null,
 			targetBranch: input.targetBranch ?? null,
+			salvageRef: null,
+			salvagePath: null,
 			costUsd: null,
 			tokensInput: null,
 			tokensOutput: null,
@@ -387,6 +389,27 @@ export class RunsRepo {
 			this.db.update(this.runs).set({ prUrl }).where(eq(this.runs.id, id)),
 		);
 		return { ...current, prUrl };
+	}
+
+	/**
+	 * Persist where a failed finalize's work was salvaged to (warren-cd3b):
+	 * the rescue branch on origin (`salvageRef`) and/or the durable git-bundle
+	 * file (`salvagePath`). Written by the salvage intake handler (k8s) or
+	 * reap's local salvage step before the workspace is destroyed. Last write
+	 * wins (a retried/re-dispatched salvage overwrites the stale location).
+	 */
+	async setSalvage(
+		id: string,
+		salvage: { rescueRef: string | null; bundlePath: string | null },
+	): Promise<RunRow> {
+		const current = await this.require(id);
+		await this.adapter.runWrite(
+			this.db
+				.update(this.runs)
+				.set({ salvageRef: salvage.rescueRef, salvagePath: salvage.bundlePath })
+				.where(eq(this.runs.id, id)),
+		);
+		return { ...current, salvageRef: salvage.rescueRef, salvagePath: salvage.bundlePath };
 	}
 
 	/** CI-fixer queries (warren-0b75); bodies live in runs-ci-fixer.ts. */

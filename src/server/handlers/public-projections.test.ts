@@ -155,8 +155,17 @@ describe("public projections over the wire (warren-4f6c)", () => {
 			trigger: "manual",
 			seedId: "warren-4f6c",
 		});
-		await repos.runs.markRunning(run.id, new Date("2026-07-01T00:00:00.000Z"));
-		await repos.runs.finalize(run.id, "succeeded", new Date("2026-07-01T00:05:00.000Z"), null);
+		// Relative timestamps: the analytics handler's default window is the last
+		// 30 days, so a fixed date eventually ages out and the window finds zero
+		// runs (the 2026-07-30 instance of that time bomb).
+		const startedAt = new Date(Date.now() - 24 * 60 * 60 * 1000);
+		await repos.runs.markRunning(run.id, startedAt);
+		await repos.runs.finalize(
+			run.id,
+			"succeeded",
+			new Date(startedAt.getTime() + 5 * 60 * 1000),
+			null,
+		);
 		await repos.runs.attachStats(run.id, {
 			costUsd: 1.25,
 			tokensInput: 100,

@@ -36,6 +36,10 @@ export function buildAlreadyTerminalResult(run: RunRow): ReapRunResult {
 		autoPlanRunId: null,
 		autoPlanRunPlanId: null,
 		workspaceDestroyed: false,
+		// warren-cd3b: surface any salvage a prior reap captured so an idempotent
+		// re-reap still reports the recovery location.
+		salvageRescueRef: run.salvageRef,
+		salvagePath: run.salvagePath,
 		errors: [],
 		alreadyTerminal: true,
 	};

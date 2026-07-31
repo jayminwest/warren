@@ -5,6 +5,7 @@ import { bindBridgeLogger } from "../stream/index.ts";
 import { runWorkspaceDestroy } from "./destroy.ts";
 import { createPipelineState, runReapPipeline } from "./pipeline.ts";
 import { detectTerminalProviderError } from "./provider-error.ts";
+import { salvageWorkspace, type WorkspaceSalvageOutcome } from "./salvage.ts";
 import { inferFailureReason, isTerminal, transitionToTerminal } from "./state.ts";
 import type { ReapRunInput, ReapRunResult, ReapStep, ReapStepError } from "./types.ts";
 import { buildAlreadyTerminalResult, createSeqAllocator, defaultExec, defaultFs } from "./util.ts";
@@ -191,6 +192,54 @@ export async function reapRun(input: ReapRunInput): Promise<ReapRunResult> {
 			input.failureReason ?? (await inferFailureReason(input.repos, run.id, stateOnEntry));
 	}
 
+	// warren-cd3b: salvage-before-destroy. The finalize branch push never
+	// landed, so the agent's commits exist ONLY on this workspace — capture
+	// them (rescue-ref push, then a durable git bundle) BEFORE the destroy
+	// sub-step decides the workspace's fate. LocalProvider only: under k8s
+	// `workspacePath` is null (the pod's emptyDir is host-unreachable) and the
+	// pod runs its own salvage + POSTs it to `/runs/:id/salvage`. A successful
+	// capture also lifts the destroy skip below: the work is safe, so the
+	// workspace no longer needs preserving.
+	let salvage: WorkspaceSalvageOutcome | null = null;
+	if (state.finalizeFailed && workspacePath !== null) {
+		salvage = await salvageWorkspace({
+			runId: run.id,
+			workspacePath,
+			baseBranch,
+			...(input.salvageDir !== undefined ? { salvageDir: input.salvageDir } : {}),
+			exec,
+			fs,
+		});
+		if (salvage.rescueRef !== null || salvage.bundlePath !== null) {
+			try {
+				await input.repos.runs.setSalvage(run.id, {
+					rescueRef: salvage.rescueRef,
+					bundlePath: salvage.bundlePath,
+				});
+			} catch (err) {
+				// The row write is bookkeeping; the capture itself is the artifact.
+				log.warn(
+					{
+						event: "reap.salvage_stamp_failed",
+						err: err instanceof Error ? err.message : String(err),
+					},
+					"salvage captured but the run row could not be stamped",
+				);
+			}
+			await emit("reap.workspace_salvaged", {
+				rescueRef: salvage.rescueRef,
+				bundlePath: salvage.bundlePath,
+			});
+		} else {
+			await emit("reap.workspace_salvage_failed", { errors: salvage.errors });
+		}
+	}
+	// The destroy skip (warren-495d) now gates on a FAILED salvage too: once
+	// the work is captured, preserving the workspace buys nothing.
+	const workspacePreserved = state.finalizeFailed && salvage === null;
+	const salvageFailed =
+		salvage !== null && salvage.rescueRef === null && salvage.bundlePath === null;
+
 	const finalState = await transitionToTerminal(
 		input.repos,
 		run.id,
@@ -216,6 +265,10 @@ export async function reapRun(input: ReapRunInput): Promise<ReapRunResult> {
 		},
 		branchPushed: state.branchPushed,
 		commitsAhead: state.commitsAhead,
+		salvage: {
+			rescueRef: salvage?.rescueRef ?? null,
+			bundlePath: salvage?.bundlePath ?? null,
+		},
 		// warren-89b0: distinguish a deliberate no-op (succeeded, non-alarming)
 		// from a dropped commit (failed) for operators reading the terminal event.
 		noChanges: state.noChanges,
@@ -247,10 +300,11 @@ export async function reapRun(input: ReapRunInput): Promise<ReapRunResult> {
 	const workspaceDestroyed = await runWorkspaceDestroy({
 		run,
 		previewLaunchState: state.previewLaunchState,
-		// warren-495d: preserve the workspace when the branch push never completed
-		// — the agent's commits live only here, so destroying it would silently
-		// lose them. The eviction/GC path can reclaim it later once recovered.
-		branchPushFailed: state.finalizeFailed,
+		// warren-495d + warren-cd3b: preserve the workspace when the branch push
+		// never completed AND salvage could not capture the work (k8s — the pod
+		// self-salvages instead — or a local salvage that failed outright). Once
+		// salvage lands, destroy proceeds: the work is durable elsewhere.
+		branchPushFailed: workspacePreserved || salvageFailed,
 		terminate,
 		emit,
 		fail: (step, err) => fail(step, err),
@@ -329,6 +383,8 @@ export async function reapRun(input: ReapRunInput): Promise<ReapRunResult> {
 		autoPlanRunId: state.autoPlanRunId,
 		autoPlanRunPlanId: state.autoPlanRunPlanId,
 		workspaceDestroyed,
+		salvageRescueRef: salvage?.rescueRef ?? null,
+		salvagePath: salvage?.bundlePath ?? null,
 		errors,
 		alreadyTerminal: false,
 	};

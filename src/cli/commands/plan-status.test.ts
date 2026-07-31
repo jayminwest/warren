@@ -93,6 +93,8 @@ function runRow(over: Partial<RunRow> = {}): RunRow {
 		trigger: "cli",
 		prUrl: null,
 		targetBranch: null,
+		salvageRef: null,
+		salvagePath: null,
 		costUsd: 0.1234,
 		tokensInput: null,
 		tokensOutput: null,
