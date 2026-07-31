@@ -44,6 +44,7 @@ import {
 } from "./clone.ts";
 import type { ProjectsConfig } from "./config.ts";
 import { ProjectUnavailableError } from "./errors.ts";
+import { assertGitUrlAllowlisted, type PublicAllowlist } from "./public-allowlist.ts";
 import {
 	detectProjectFeatures,
 	type RefreshProjectCloneResult,
@@ -65,6 +66,13 @@ export interface AddProjectInput {
 	readonly spawn: SpawnFn;
 	readonly timeoutMs?: number;
 	readonly now?: () => Date;
+	/**
+	 * Public-instance allowlist (warren-ce9b), enforced HERE so every
+	 * registration surface — `POST /projects` and the
+	 * `warren add-project` CLI — holds the same line (warren-0883).
+	 * `undefined` (token mode) ⇒ no restriction.
+	 */
+	readonly publicAllowlist?: PublicAllowlist;
 	/** Inject the cloner; defaults to the live `cloneProjectRepo`. */
 	readonly clone?: typeof cloneProjectRepo;
 	/**
@@ -77,6 +85,10 @@ export interface AddProjectInput {
 
 export async function addProject(input: AddProjectInput): Promise<ProjectRow> {
 	const { repo, config, gitUrl } = input;
+	// warren-ce9b/0883: on a public instance only allowlisted repos may
+	// ever be registered — refused here, BEFORE anything is cloned, from
+	// the single enforcement site every surface shares.
+	assertGitUrlAllowlisted(input.publicAllowlist, gitUrl);
 	const parsed = parseGitHubUrl(gitUrl);
 
 	const existing = await repo.findByGitUrl(gitUrl);

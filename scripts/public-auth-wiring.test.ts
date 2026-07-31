@@ -2,9 +2,8 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { load, loadAll } from "js-yaml";
-
+import { WARREN_PUBLIC_ALLOWLIST_ENV } from "../src/projects/public-allowlist.ts";
 import { AUTH_KINDS, DEFAULT_AUTH_KIND } from "../src/server/auth.ts";
-import { WARREN_PUBLIC_ALLOWLIST_ENV } from "../src/server/public-allowlist.ts";
 
 // Guards the public-instance auth wiring (warren-851b / warren-ce9b / warren-1841).
 //

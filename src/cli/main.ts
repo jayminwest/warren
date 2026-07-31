@@ -17,6 +17,7 @@ import { openDatabase } from "../db/client.ts";
 import { parseDatabaseUrl } from "../db/url.ts";
 import { VERSION } from "../index.ts";
 import { loadProjectsConfigFromEnv } from "../projects/config.ts";
+import { resolvePublicAllowlist } from "../projects/public-allowlist.ts";
 import { seedBuiltinAgents } from "../registry/builtins/index.ts";
 import { resolveLocalRunBackend } from "../runtime/local/diagnostics/burrow.ts";
 import { runAddProject } from "./commands/add-project.ts";
@@ -53,9 +54,24 @@ export function buildProgram(context: CliContext): Command {
 		.action(async (gitUrl: string, opts: { defaultBranch?: string }) => {
 			const exitCode = await withCliDb({ env: context.env }, async ({ repos }) => {
 				const projectsConfig = loadProjectsConfigFromEnv(context.env);
+				// warren-0883: the CLI used to bypass the public-instance
+				// allowlist that `POST /projects` enforces. Resolve it here
+				// (public mode with a missing/empty list throws, exactly like
+				// server boot) and forward it into `addProject`, the single
+				// enforcement site both surfaces share. The CLI cannot import
+				// the server's `resolveAuthKind` (check:layers), so it reads
+				// the selector directly.
+				const publicAllowlist = resolvePublicAllowlist(
+					context.env.WARREN_AUTH?.trim() === "public",
+					context.env,
+				);
 				const result = await runAddProject(
 					context,
-					{ projects: repos.projects, projectsConfig },
+					{
+						projects: repos.projects,
+						projectsConfig,
+						...(publicAllowlist !== undefined ? { publicAllowlist } : {}),
+					},
 					{
 						gitUrl,
 						...(opts.defaultBranch !== undefined ? { defaultBranch: opts.defaultBranch } : {}),

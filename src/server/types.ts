@@ -319,9 +319,10 @@ export interface ServerDeps {
 	 * granularity by warren-1841): bare owners and/or `owner/repo` pairs.
 	 * `bootServer` wires this ONLY under `WARREN_AUTH=public`, from
 	 * `WARREN_PUBLIC_ALLOWLIST`; absent (token mode, tests) ⇒ no
-	 * restriction. See `src/server/public-allowlist.ts`.
+	 * restriction. See `src/projects/public-allowlist.ts`; enforced inside
+	 * `addProject` (warren-0883).
 	 */
-	readonly publicAllowlist?: import("./public-allowlist.ts").PublicAllowlist;
+	readonly publicAllowlist?: import("../projects/public-allowlist.ts").PublicAllowlist;
 }
 
 /**
