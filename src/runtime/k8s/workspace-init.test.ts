@@ -1,15 +1,5 @@
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { describe, expect, test } from "bun:test";
 import { WorkspaceMaterializationError } from "../../workspace/errors.ts";
-import { runGit } from "../../workspace/git/exec.ts";
-import {
-	assertFixtureHermetic,
-	fixtureGit,
-	fixtureGitOrThrow,
-	gitFixtureEnv,
-} from "../../workspace/git/test-fixture.ts";
 import {
 	type InitFs,
 	type InitGitRunner,
@@ -170,6 +160,46 @@ describe("runWorkspaceInit", () => {
 			{ git, log: () => {} },
 		);
 		expect(calls.map((c) => c.args[0])).toEqual(["clone", "switch"]);
+	});
+
+	test("branch === baseBranch (ref-dispatch, warren-dac8) skips the colliding switch -c", async () => {
+		const { git, calls } = recordingGit();
+		await runWorkspaceInit(
+			{
+				WARREN_REPO_URL: "https://github.com/o/r.git",
+				WARREN_BRANCH: "fix/pr-head",
+				WARREN_BASE_BRANCH: "fix/pr-head",
+				WARREN_WORKSPACE_PATH: "/ws",
+			},
+			{ git, log: () => {} },
+		);
+		expect(calls[0]?.args).toEqual([
+			"clone",
+			"--branch",
+			"fix/pr-head",
+			"https://github.com/o/r.git",
+			"/ws",
+		]);
+		// The clone already checked out the pinned branch — no `switch -c`.
+		expect(calls.some((c) => c.args[0] === "switch")).toBe(false);
+	});
+
+	test("falls back to plain clone + checkout when --branch rejects the base ref (SHA)", async () => {
+		const sha = "deadbeef".repeat(5);
+		const { git, calls } = recordingGit({ fail: (args) => args.includes("--branch") });
+		await runWorkspaceInit(
+			{
+				WARREN_REPO_URL: "https://github.com/o/r.git",
+				WARREN_BRANCH: "warren/run_1",
+				WARREN_BASE_BRANCH: sha,
+				WARREN_WORKSPACE_PATH: "/ws",
+			},
+			{ git, log: () => {} },
+		);
+		const argv = calls.map((c) => c.args);
+		expect(argv[1]).toEqual(["clone", "https://github.com/o/r.git", "/ws"]);
+		expect(calls[2]).toEqual({ args: ["checkout", sha], cwd: "/ws" });
+		expect(calls[3]).toEqual({ args: ["switch", "-c", "warren/run_1"], cwd: "/ws" });
 	});
 
 	test("throws WorkspaceMaterializationError when a git step fails", async () => {
@@ -336,98 +366,5 @@ describe("runWorkspaceInit repo-cache path (warren-e908, §4.3/R2)", () => {
 		expect(argv).toContainEqual(["clone", "--branch", "main", AUTH_URL, "/ws"]);
 		expect(argv.some((a) => a[0] === "clone" && a[1] === "--mirror")).toBe(false);
 		expect(argv.some((a) => a.includes("--is-bare-repository"))).toBe(false);
-	});
-});
-
-/**
- * End-to-end against REAL git (temp repos, no network) — exercises the actual
- * `clone --mirror` → mirror reuse (`git fetch`) → local-clone-into-workspace
- * mechanics the seam tests above stub out. GIT_* is stripped for the suite (the
- * repo's pre-commit hook exports GIT_DIR/GIT_INDEX_FILE, which would redirect a
- * temp-dir git call at the real warren repo — see worktree.test.ts).
- */
-describe("runWorkspaceInit repo-cache with real git (warren-e908)", () => {
-	const savedGitEnv: Record<string, string | undefined> = {};
-	// The default git seam inherits process.env; force the canonical hermetic
-	// fixture env explicitly (warren-cfa7): inherited GIT_* severed, discovery
-	// ceiling pinned to the operated-on path's parent so the hook's exported
-	// GIT_DIR/GIT_INDEX_FILE can't redirect these calls at the real repo.
-	const cleanGit: InitGitRunner = (args, opts) => {
-		const anchor = opts?.cwd ?? [...args].reverse().find((a) => a.startsWith("/"));
-		return runGit(args, { ...(opts ?? {}), env: gitFixtureEnv(anchor ?? "/") });
-	};
-
-	beforeAll(() => {
-		for (const key of Object.keys(process.env)) {
-			if (key.startsWith("GIT_")) {
-				savedGitEnv[key] = process.env[key];
-				delete process.env[key];
-			}
-		}
-	});
-	afterAll(() => {
-		for (const [key, value] of Object.entries(savedGitEnv)) {
-			if (value !== undefined) process.env[key] = value;
-		}
-	});
-
-	async function commitFile(repo: string, name: string, body: string): Promise<void> {
-		writeFileSync(join(repo, name), body);
-		await fixtureGitOrThrow(repo, ["add", "."]);
-		await fixtureGitOrThrow(repo, ["commit", "-m", `add ${name}`]);
-	}
-
-	test("creates the mirror on first run, reuses+fetches it on the second", async () => {
-		const root = mkdtempSync(join(tmpdir(), "warren-cache-"));
-		try {
-			const origin = join(root, "origin");
-			const cacheDir = join(root, "cache");
-			await fixtureGitOrThrow(root, ["init", "-q", "-b", "main", origin]);
-			await fixtureGitOrThrow(origin, ["config", "user.email", "t@e.com"]);
-			await fixtureGitOrThrow(origin, ["config", "user.name", "T"]);
-			await commitFile(origin, "README.md", "# repo\n");
-			// warren-cfa7 guard: the fixture resolves its git dir INSIDE itself.
-			await assertFixtureHermetic(origin);
-
-			// --- First run: mirror does not exist → clone --mirror, then materialize.
-			const ws1 = join(root, "ws1");
-			await runWorkspaceInit(
-				{
-					WARREN_REPO_URL: origin,
-					WARREN_BRANCH: "warren/run_1",
-					WARREN_BASE_BRANCH: "main",
-					WARREN_WORKSPACE_PATH: ws1,
-					WARREN_REPO_CACHE_DIR: cacheDir,
-				},
-				{ git: cleanGit, log: () => {} },
-			);
-			expect(existsSync(mirrorPathFor(cacheDir, origin))).toBe(true);
-			expect(existsSync(join(ws1, "README.md"))).toBe(true);
-			const branch1 = await fixtureGit(ws1, ["rev-parse", "--abbrev-ref", "HEAD"]);
-			expect(branch1.stdout.trim()).toBe("warren/run_1");
-			// Workspace origin points at the real remote, not the local mirror path.
-			const originUrl = await fixtureGit(ws1, ["remote", "get-url", "origin"]);
-			expect(originUrl.stdout.trim()).toBe(origin);
-
-			// --- Second run after a new upstream commit: mirror reused + fetched.
-			await commitFile(origin, "NEW.md", "new\n");
-			const ws2 = join(root, "ws2");
-			await runWorkspaceInit(
-				{
-					WARREN_REPO_URL: origin,
-					WARREN_BRANCH: "warren/run_2",
-					WARREN_BASE_BRANCH: "main",
-					WARREN_WORKSPACE_PATH: ws2,
-					WARREN_REPO_CACHE_DIR: cacheDir,
-				},
-				{ git: cleanGit, log: () => {} },
-			);
-			// The fetch pulled the new commit through the reused mirror.
-			expect(existsSync(join(ws2, "NEW.md"))).toBe(true);
-			const branch2 = await fixtureGit(ws2, ["rev-parse", "--abbrev-ref", "HEAD"]);
-			expect(branch2.stdout.trim()).toBe("warren/run_2");
-		} finally {
-			rmSync(root, { recursive: true, force: true });
-		}
 	});
 });

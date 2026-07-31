@@ -123,6 +123,37 @@ describe("spawnRun: provider-neutral dispatch (k8s-shaped backend)", () => {
 		expect(reread.state).toBe("queued");
 	});
 
+	// warren-dac8: a ref/targetBranch dispatch must hand the provider the
+	// RESOLVED base ref, not blindly the project default branch — the K8s init
+	// container cuts the workspace off `baseBranch`, and a workspace cut from
+	// the default branch misses the target ref's tip, so finalize's push reaps
+	// non-fast-forward (finalize_failed, run_ghd091f288r8).
+	test("ref-dispatch pins RunSpec.baseBranch to the target ref, not the project default", async () => {
+		const { provider, specs } = makeRecordingProvider();
+		await spawnRun({
+			repos,
+			runtimeProvider: provider,
+			agentName: "refactor-bot",
+			projectId: "prj_xxxxxxxxxxxx",
+			prompt: "repair the branch",
+			targetBranch: "fix/pr-head",
+			projectsConfig: { root: "/data/projects", gitBinary: "git" },
+			projectSpawn: async () => ({ stdout: "", stderr: "", exitCode: 0 }),
+			refreshProjectFn: async (input) => {
+				const updated = await repos.projects.recordRefresh({
+					id: input.id,
+					headSha: "feedface".repeat(5),
+				});
+				return { project: updated, headSha: "feedface".repeat(5), ref: input.ref ?? "main" };
+			},
+		});
+
+		const spec = specs[0];
+		if (spec === undefined) throw new Error("no RunSpec captured");
+		expect(spec.branch).toBe("fix/pr-head");
+		expect(spec.baseBranch).toBe("fix/pr-head");
+	});
+
 	test("a provider.create failure rolls the warren row back to failed/never_started", async () => {
 		const provider: RuntimeProvider = {
 			capabilities: K8S_CAPABILITIES,

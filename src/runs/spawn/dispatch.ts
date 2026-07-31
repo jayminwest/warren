@@ -216,7 +216,12 @@ export async function spawnRun(input: SpawnRunInput): Promise<SpawnRunResult> {
 		runId: run.id,
 		originUrl: projectAfterRefresh.gitUrl,
 		branch,
-		baseBranch: projectAfterRefresh.defaultBranch,
+		// warren-dac8: the RESOLVED base ref (explicit ref / targetBranch /
+		// continuation parent branch), not blindly the project default branch.
+		// The K8s init container cuts the workspace off `baseBranch`; a
+		// ref-dispatch cut from the default branch misses the target ref's
+		// tip and finalize's push reaps non-fast-forward (finalize_failed).
+		baseBranch: baseRef ?? projectAfterRefresh.defaultBranch,
 		hostClonePathHint: projectAfterRefresh.localPath,
 		// warren-b6f2: project identity + per-project concurrency cap for K8s
 		// admission control (design §3.3). The provider stamps the project label
