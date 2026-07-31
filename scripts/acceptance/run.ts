@@ -207,6 +207,11 @@ async function runInProcMode(opts: RunModeArgs): Promise<number> {
 		logger.info(
 			`acceptance: fixtures built (canopy=${fixtures.canopyRepoUrl} project=${fixtures.sampleProjectGitUrl})`,
 		);
+		// Register the stub-shell agent on every warren boot (shared and
+		// scenario-owned) via the boot-time seed path (warren-e376) — the
+		// POST /agents/refresh endpoint the scenarios used to call was
+		// deleted in pl-3a79. bootInProc passes this var through.
+		process.env.WARREN_SEED_AGENTS_FILE = fixtures.seedAgentsFilePath;
 		handle = await bootInProc({
 			tmpRoot,
 			token,
@@ -244,6 +249,7 @@ async function runInProcMode(opts: RunModeArgs): Promise<number> {
 				stubAgentName: fixtures.stubAgentName,
 				knownSeedTitle: fixtures.knownSeedTitle,
 				knownMulchDomain: fixtures.knownMulchDomain,
+				gitConfigPath: fixtures.gitConfigPath,
 			},
 			logger,
 			tmp: tmpRoot,
@@ -395,6 +401,7 @@ async function runContainerMode(opts: RunModeArgs): Promise<number> {
 				stubAgentName: "",
 				knownSeedTitle: "",
 				knownMulchDomain: "",
+				gitConfigPath: "",
 			},
 			logger,
 			tmp: tmpRoot,

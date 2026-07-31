@@ -23,10 +23,17 @@
  *   - ah-acc-26-a — open; agent dispatches, closes via the stub, reap
  *     opens a stubbed PR, coordinator polls merged, child advances.
  *   - ah-acc-26-b — open; same.
- *   - ah-acc-26-c — open AND listed in `WARREN_STUB_NO_COMMIT_SEEDS`,
- *     so the stub agent skips every workspace mutation. Reap reports
- *     `commitsAhead=0` + emits `reap.empty_push`, and the coordinator
- *     drives the trivial-merge branch (no GH polling, child → merged).
+ *   - ah-acc-26-c — open; same.
+ *
+ * Note (warren-e376): this scenario used to assert a `trivial-merge`
+ * branch (no-commit child → prUrl=null) via WARREN_STUB_NO_COMMIT_SEEDS.
+ * That arm is unreachable for plan-runs today: warren's seed-extension
+ * stamping (writeSeedExtensions, warren-fcc9) updates the child's seed
+ * row in the clone at dispatch, and finalize commits that delta into
+ * the workspace branch (`chore(warren): seeds state`), so
+ * `commitsAhead` is never 0 for a `.seeds` project. The assertion was
+ * retired; the coordinator's resolveEmptyPush arm only fires for
+ * `.seeds`-less projects, which plan-runs never are.
  *
  * Then a SECOND POST after rewriting the source seed row for
  * ah-acc-26-b to `status=closed` verifies the resume contract
@@ -62,7 +69,7 @@ import {
 export const scenario: Scenario = {
 	id: "26",
 	title:
-		"Plan-run roundtrip — coordinator dispatches three children, merges via stubbed GH PR, trivial-merges the no-commit child; second POST resumes from the next open seed",
+		"Plan-run roundtrip — coordinator dispatches three children, merges via stubbed GH PR; second POST resumes from the next open seed",
 	modes: ["in-proc"],
 	async run(ctx) {
 		const scenarioRoot = await mkdtemp(join(tmpdir(), "warren-acceptance-26-"));
@@ -90,10 +97,6 @@ export const scenario: Scenario = {
 					// coordinator's checkPullRequestMerged short-circuit to a
 					// canned `merged` shape — no real GH fixture needed.
 					WARREN_GH_FETCH_OVERRIDE: "merged",
-					// Drive the trivial-merge branch on the third child by
-					// telling the stub agent to skip every workspace mutation
-					// for that seed id.
-					WARREN_STUB_NO_COMMIT_SEEDS: SEED_C,
 					// Coordinator tick fires every 1s so the three-child
 					// roundtrip lands inside PLAN_DEADLINE_MS.
 					WARREN_PLAN_RUN_TICK_MS: "1000",
@@ -102,7 +105,7 @@ export const scenario: Scenario = {
 			ctx.logger.info(`scenario-26: warren ready at ${handle.warrenUrl}`);
 
 			const http = new WarrenHttp({ baseUrl: handle.warrenUrl, token: handle.token });
-			await http.expectStatus("POST", "/agents/refresh", 200);
+			// claude-code is a built-in agent — seeded at boot (warren-e376).
 
 			const project = await http.expectJson<ProjectRow>("POST", "/projects", 201, {
 				body: { gitUrl: PLAN_PROJECT_URL },
@@ -172,24 +175,11 @@ export const scenario: Scenario = {
 				}
 			}
 
-			// One child must have hit the trivial-merge branch (prUrl=null +
-			// reap.empty_push), the other two land via the polled merge path.
-			const trivialChild = finished.children.find((c) => c.seedId === SEED_C);
-			if (trivialChild === undefined) {
-				throw new AcceptanceError(`first POST: missing child for ${SEED_C}`);
-			}
-			const trivialRun = finished.runs.find((r) => r.id === trivialChild.runId);
-			if (trivialRun === undefined) {
-				throw new AcceptanceError(
-					`first POST: could not locate the fanned-out run for trivial-merge child (runId=${trivialChild.runId})`,
-				);
-			}
-			assertEqual(
-				trivialRun.prUrl,
-				null,
-				`first POST: ${SEED_C} run's prUrl stays null (no-commit child → trivial-merge)`,
-			);
-			for (const seedId of [SEED_A, SEED_B]) {
+			// Every child merges through the polled-PR path: seed-extension
+			// stamping (warren-fcc9) guarantees a bookkeeping commit, so the
+			// GH-override pr_open stub populates prUrl on all three runs
+			// (warren-e376 — see the header note).
+			for (const seedId of [SEED_A, SEED_B, SEED_C]) {
 				const child = finished.children.find((c) => c.seedId === seedId);
 				if (child === undefined) {
 					throw new AcceptanceError(`first POST: missing child for ${seedId}`);
@@ -223,7 +213,7 @@ export const scenario: Scenario = {
 			//
 			// Mutate the source repo so ah-acc-26-b is `closed`, then refresh
 			// the project clone. The coordinator's per-child showSeed should
-			// catch the closed status and flip child seq=2 to 'skipped'
+			// catch the closed status and flip that child to 'skipped'
 			// without spawning a run (warren-fcc9 resume contract).
 			await rewriteSourceSeedClosed(fixturePath, SEED_B);
 			await http.expectJson<unknown>(

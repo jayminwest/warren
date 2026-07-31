@@ -112,7 +112,7 @@ export const scenario: Scenario = {
 			ctx.logger.info(`scenario-36: warren ready at ${handle.warrenUrl}`);
 
 			const http = new WarrenHttp({ baseUrl: handle.warrenUrl, token: handle.token });
-			await http.expectStatus("POST", "/agents/refresh", 200);
+			// claude-code is a built-in agent — seeded at boot (warren-e376).
 
 			const project = await http.expectJson<ProjectRow>("POST", "/projects", 201, {
 				body: { gitUrl: PLAN_PROJECT_URL },

@@ -80,7 +80,7 @@ export const scenario: Scenario = {
 
 		const http = new WarrenHttp({ baseUrl: ctx.warrenUrl, token: ctx.token });
 
-		await http.expectStatus("POST", "/agents/refresh", 200);
+		// stub-shell is seeded at boot via WARREN_SEED_AGENTS_FILE (warren-e376).
 		const project = await ensureProject(http, ctx.fixtures.sampleProjectGitUrl);
 
 		const created = await http.expectJson<CreateRunResponse>("POST", "/runs", 201, {

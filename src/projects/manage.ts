@@ -198,6 +198,17 @@ export async function refreshProject(input: RefreshProjectInput): Promise<Refres
 		armHooks,
 	});
 
+	// Drop the cached envelope AGAIN after the fetch/reset lands
+	// (warren-e376). The invalidate-before covers readers that were
+	// already in flight when the refresh started, but a reader that
+	// STARTS mid-refresh (e.g. the 1s trigger-scheduler tick in the
+	// acceptance harness) parses the working tree mid-swap — possibly
+	// the pre-fetch tree or a partially checked-out one — and commits
+	// that stale envelope as the post-refresh cache entry. Scenario 15's
+	// Run Now 404'd on exactly this. Invalidating after the reset forces
+	// the next get() to parse the settled tree.
+	input.warrenConfigs?.invalidate(id);
+
 	const updated = await repo.recordRefresh({
 		id: row.id,
 		headSha: result.headSha,

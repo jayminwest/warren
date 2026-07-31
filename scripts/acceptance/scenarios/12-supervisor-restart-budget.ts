@@ -28,7 +28,7 @@
  *
  * Flow:
  *   1. Spawn supervisor → wait for warren /healthz.
- *   2. POST /agents/refresh + POST /projects + POST /runs (long sleep
+ *   2. POST /projects + POST /runs (long sleep
  *      via WARREN_STUB_SLEEP_MS) so warren has a tracked run row that
  *      depends on burrow being alive.
  *   3. Read burrow pid_1 from pid file.
@@ -138,7 +138,9 @@ export const scenario: Scenario = {
 
 			const http = new WarrenHttp({ baseUrl: warrenUrl, token });
 
-			await http.expectStatus("POST", "/agents/refresh", 200);
+			// stub-shell is seeded at boot (WARREN_SEED_AGENTS_FILE passed
+			// through buildSupervisorEnv above) — no registry refresh call
+			// exists anymore (warren-e376).
 			const project = await ensureSampleProject(http, ctx.fixtures.sampleProjectGitUrl);
 			ctx.logger.debug(`scenario-12: project=${project.id}`);
 
@@ -260,6 +262,10 @@ function buildSupervisorEnv(opts: SupervisorEnvOpts): Record<string, string> {
 		"LC_ALL",
 		"TMPDIR",
 		"TZ",
+		// Boot-time stub-agent seeding (warren-e376) — the supervisor's
+		// warren child inherits its env, so passing the var through here
+		// registers stub-shell before POST /runs.
+		"WARREN_SEED_AGENTS_FILE",
 	]) {
 		const v = opts.parentEnv[k];
 		if (typeof v === "string") passthrough[k] = v;

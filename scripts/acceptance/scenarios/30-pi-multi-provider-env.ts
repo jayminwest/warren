@@ -46,8 +46,11 @@
  * out of scope here.
  */
 
+import { join } from "node:path";
+
 import { assertTrue, type Scenario } from "../lib/assert.ts";
 import { WarrenHttp } from "../lib/http.ts";
+import { type BootHandle, bootInProc } from "../lib/inproc.ts";
 
 interface ProjectRow {
 	readonly id: string;
@@ -89,16 +92,24 @@ export const scenario: Scenario = {
 		"pi multi-provider env passthrough — providerOverride='openai' surfaces OPENAI_API_KEY in the spawned sandbox",
 	modes: ["in-proc"],
 	async run(ctx) {
-		const http = new WarrenHttp({ baseUrl: ctx.warrenUrl, token: ctx.token });
-
-		// Seed process.env so the dispatcher's noSandboxSpawn (which
-		// reads process.env per name in profile.envPassthrough) can
-		// forward the value. We restore the prior value on teardown
-		// so re-runs in the same process don't leak.
-		const prior = process.env.OPENAI_API_KEY;
-		process.env.OPENAI_API_KEY = TEST_OPENAI_KEY;
-
+		// Boot a dedicated warren+burrow pair with OPENAI_API_KEY already
+		// in the child processes' env (warren-e376). The shared harness
+		// boot can't be used: burrow's noSandboxSpawn reads ITS OWN
+		// process.env for each name in profile.envPassthrough, and the
+		// shared burrow was spawned before any scenario ran — a
+		// process.env mutation here would never reach it (that was the
+		// nightly failure: the key silently never entered the sandbox).
+		let handle: BootHandle | undefined;
 		try {
+			handle = await bootInProc({
+				tmpRoot: join(ctx.tmp, "warren-30"),
+				token: ctx.token,
+				canopyRepoUrl: ctx.fixtures.canopyRepoUrl,
+				gitConfigPath: ctx.fixtures.gitConfigPath,
+				extraEnv: { OPENAI_API_KEY: TEST_OPENAI_KEY },
+			});
+			const http = new WarrenHttp({ baseUrl: handle.warrenUrl, token: handle.token });
+
 			const project = await ensureProject(http, ctx.fixtures.sampleProjectGitUrl);
 
 			const created = await http.expectJson<CreateRunResponse>("POST", "/runs", 201, {
@@ -130,11 +141,7 @@ export const scenario: Scenario = {
 				await safelyCancel(http, run.id);
 			}
 		} finally {
-			if (prior === undefined) {
-				delete process.env.OPENAI_API_KEY;
-			} else {
-				process.env.OPENAI_API_KEY = prior;
-			}
+			await handle?.stop();
 		}
 	},
 };
