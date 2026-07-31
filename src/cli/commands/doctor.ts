@@ -28,6 +28,7 @@ import {
 	checkWarrenConfigDeprecations,
 	checkWarrenDb,
 	type DiagnosticCheck,
+	type DiagnosticLogger,
 	type WarrenConfigCheckProject,
 } from "../../diagnostics/checks.ts";
 import { checkStaleBurrowWorkspaces } from "../../diagnostics/stale-workspaces.ts";
@@ -43,6 +44,14 @@ export type DoctorCheck = DiagnosticCheck;
 
 export interface DoctorArgs {
 	readonly noAuth?: boolean;
+	/**
+	 * When true, wire a stderr logger into the probes that deliberately
+	 * withhold raw driver/loader text from the check messages
+	 * (warren-51de). The CLI has no server logger seam, so without this
+	 * flag the raw text is dropped entirely (warren-2d14). Default output
+	 * is unchanged.
+	 */
+	readonly verbose?: boolean;
 }
 
 export interface DoctorDeps {
@@ -93,8 +102,18 @@ export async function runDoctor(
 
 	checks.push(envCheck("WARREN_API_TOKEN", context.env, args.noAuth ?? false));
 
+	// Threaded per-call, never a global: only the probes that already
+	// accept a `log` seam (warren-51de) receive it, and only under
+	// --verbose. `GET /readyz` wires its own pino logger server-side.
+	const verboseLog = args.verbose === true ? verboseLogger(context) : undefined;
+
 	checks.push(checkWarrenDb({ env: context.env }));
-	checks.push(await checkDatabaseReachable({ ...(deps.db !== undefined ? { db: deps.db } : {}) }));
+	checks.push(
+		await checkDatabaseReachable({
+			...(deps.db !== undefined ? { db: deps.db } : {}),
+			...(verboseLog !== undefined ? { log: verboseLog } : {}),
+		}),
+	);
 
 	checks.push(projectsRootCheck(context.env, exists));
 
@@ -107,7 +126,12 @@ export async function runDoctor(
 		);
 	}
 
-	checks.push(await checkWarrenConfig({ projects: deps.projects ?? [] }));
+	checks.push(
+		await checkWarrenConfig({
+			projects: deps.projects ?? [],
+			...(verboseLog !== undefined ? { log: verboseLog } : {}),
+		}),
+	);
 	checks.push(await checkWarrenConfigDeprecations({ projects: deps.projects ?? [] }));
 
 	checks.push(await previewPortAllocatorCheck(context.env, deps.db));
@@ -138,6 +162,22 @@ export async function runDoctor(
 		context.stdio.stderr.write("warren: one or more checks failed\n");
 	}
 	return { exitCode: allOk ? 0 : 1, checks };
+}
+
+/**
+ * The `--verbose` logger (warren-2d14): a `DiagnosticLogger` that writes
+ * the raw probe detail the wire messages withhold to stderr, one line
+ * per failure. Stderr (not stdout) so the newline-delimited-JSON check
+ * stream on stdout stays machine-parseable unchanged.
+ */
+function verboseLogger(context: CliContext): DiagnosticLogger {
+	return {
+		warn(obj: object, msg?: string): void {
+			context.stdio.stderr.write(
+				`warren doctor verbose: ${msg ?? "probe failed"} ${JSON.stringify(obj)}\n`,
+			);
+		},
+	};
 }
 
 function envCheck(name: string, env: EnvLike, exempted: boolean): DoctorCheck {
