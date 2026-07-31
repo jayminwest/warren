@@ -163,6 +163,8 @@ export interface RunStatus {
 	phase: RunPhase;
 	exitCode: number | null;
 	terminalReason?: TerminalReason;
+	/** Provider detail behind a terminal classification (warren-4a95), e.g. the kubelet's eviction message. */
+	terminalDetail?: string | null;
 	/** collapses the separate `maxSeqForRun` query */
 	lastEventSeq: number;
 	/** heartbeat anchor (the domain still owns the watchdog decision) */

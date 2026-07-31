@@ -165,6 +165,7 @@ async function forceReconcile(
 			phase: status.phase,
 			exists: status.exists,
 			...(target.failureReason !== undefined ? { failureReason: target.failureReason } : {}),
+			...(status.terminalDetail != null ? { terminalDetail: status.terminalDetail } : {}),
 		},
 		"watchdog reconciled terminal-but-stuck run",
 	);
@@ -191,6 +192,12 @@ async function emitReconciledEvent(
 			providerPhase: status.phase,
 			providerExists: status.exists,
 			burrowRunId: run.burrowRunId,
+			// The provider's free-text terminal detail (warren-4a95) — e.g. the
+			// kubelet's eviction message (`Pod ephemeral local storage usage
+			// exceeds the total limit of containers …`). Persisted onto the run's
+			// event stream so the cause survives the pod's (and its kubectl
+			// events') GC.
+			...(status.terminalDetail != null ? { providerDetail: status.terminalDetail } : {}),
 		},
 	});
 	deps.broker?.publish(run.id, row);

@@ -23,7 +23,7 @@ import {
 
 // --- Fakes ------------------------------------------------------------------
 
-class FakeCounters implements CounterSink {
+export class FakeCounters implements CounterSink {
 	readonly counts = new Map<string, number>();
 	increment(name: string, _labels?: Readonly<Record<string, string>>, by = 1): void {
 		this.counts.set(name, (this.counts.get(name) ?? 0) + by);
@@ -40,7 +40,7 @@ interface FakeConnection {
 }
 
 /** A watch seam whose connections are inspectable + drivable from a test. */
-class FakeWatch {
+export class FakeWatch {
 	readonly connections: FakeConnection[] = [];
 	aborts = 0;
 
@@ -61,7 +61,7 @@ class FakeWatch {
 	}
 }
 
-function listReturning(
+export function listReturning(
 	items: V1Pod[],
 	resourceVersion = "100",
 ): { fn: PodListFn; calls: () => number } {
@@ -90,7 +90,7 @@ function podFor(runId: string, phase: string, resourceVersion?: string): V1Pod {
 const delay = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
 /** Wait until at least `n` watch connections have been opened. */
-async function waitForConnections(watch: FakeWatch, n: number): Promise<void> {
+export async function waitForConnections(watch: FakeWatch, n: number): Promise<void> {
 	for (let i = 0; i < 200; i++) {
 		if (watch.connections.length >= n) return;
 		await delay(2);
