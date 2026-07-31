@@ -203,6 +203,27 @@ describe("finalizeK8sRun", () => {
 		expect(message).toContain("without posting a finalize result");
 	});
 
+	test("the lost message carries the kubelet terminal detail (warren-4a95)", async () => {
+		// An evicted pod's `status.message` is the only surviving copy of the
+		// eviction cause once the pod + its kubectl events are GC'd.
+		const coordinator = new FinalizeCoordinator();
+		const detail = "Pod ephemeral local storage usage exceeds the total limit of containers 10Gi.";
+		const res = await finalizeK8sRun(HANDLE, intent(), {
+			coordinator,
+			status: async () => ({
+				...terminalPresent,
+				terminalReason: "evicted",
+				terminalDetail: detail,
+			}),
+			podPollMs: 1_000,
+			timeoutMs: 999_999,
+			setTimer: firingTimer(1_000),
+		});
+		const message = (res.events[0]?.payload as { message: string }).message;
+		expect(message).toContain("failed; evicted");
+		expect(message).toContain(detail);
+	});
+
 	test("the result wins even if a pod-gone probe is scheduled", async () => {
 		const coordinator = new FinalizeCoordinator();
 		// status would say gone, but the result POST lands first via the inert timer

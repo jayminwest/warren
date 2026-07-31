@@ -140,6 +140,36 @@ describe("tickWatchdog — terminal-reconcile net (warren-c433)", () => {
 		expect(reapCalls[0]?.failureReason).toBe("burrow_run_lost");
 	});
 
+	// warren-4a95: an eviction must be diagnosable after the pod (and its
+	// kubectl events) are GC'd — the kubelet's message rides the reconcile
+	// event payload onto the run's event stream.
+	test("an evicted pod reconciles to failed(evicted) and captures the kubelet detail on the event", async () => {
+		const runId = await seedRunningWithBurrow("2026-06-05T00:00:00Z");
+		const detail = "Pod ephemeral local storage usage exceeds the total limit of containers 10Gi.";
+		const { provider } = makeStatusProvider(
+			statusOf({ phase: "failed", terminalReason: "evicted", terminalDetail: detail }),
+		);
+		const reapCalls: ReapRunInput[] = [];
+		const result = await tickWatchdog({
+			repos,
+			runtimeProvider: provider,
+			heartbeatTimeoutMs: 45 * 60_000,
+			terminalReconcileGraceMs: 60_000,
+			now: () => new Date("2026-06-05T00:05:00Z"),
+			reap: async (input) => {
+				reapCalls.push(input);
+				return fakeReapResult("failed");
+			},
+		});
+		expect(result.reconciled).toEqual([{ runId, idleMs: 5 * 60_000, outcome: "failed" }]);
+		expect(reapCalls[0]?.failureReason).toBe("evicted");
+
+		const events = await repos.events.listByRun(runId);
+		const reconciled = events.find((e) => e.kind === WATCHDOG_TERMINAL_RECONCILED_KIND);
+		expect(reconciled).toBeDefined();
+		expect((reconciled?.payloadJson as { providerDetail?: string }).providerDetail).toBe(detail);
+	});
+
 	test("leaves a still-live pod alone (no reap)", async () => {
 		await seedRunningWithBurrow("2026-06-05T00:00:00Z");
 		const { provider, statusCalls } = makeStatusProvider(statusOf({ phase: "running" }));

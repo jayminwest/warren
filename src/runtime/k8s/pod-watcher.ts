@@ -414,9 +414,24 @@ export class PodWatcher implements PodCacheReader, PodMetricsSource, PodAdmissio
 	/** Count an eviction once per run, the first time the pod maps to `evicted` (warren-c0cd). */
 	private accountEvicted(runId: string, pod: V1Pod): void {
 		if (this.evictedCounted.has(runId)) return;
-		if (mapPodToRunStatus(pod).terminalReason === "evicted") {
+		const status = mapPodToRunStatus(pod);
+		if (status.terminalReason === "evicted") {
 			this.evictedCounted.add(runId);
 			this.deps.metrics.increment(METRIC_EVICTED_TOTAL);
+			// Warn-log the kubelet's eviction message the moment it is observed
+			// (warren-4a95): the pod and its kubectl events age out of the API, so
+			// this line is often the only surviving copy of the cause (e.g. `Pod
+			// ephemeral local storage usage exceeds the total limit of containers
+			// 10Gi`). The watchdog reconcile event carries the same detail onto
+			// the run record.
+			this.deps.logger?.warn?.(
+				{
+					runId,
+					reason: pod.status?.reason,
+					...(status.terminalDetail != null ? { detail: status.terminalDetail } : {}),
+				},
+				"run pod evicted by kubelet",
+			);
 		}
 	}
 

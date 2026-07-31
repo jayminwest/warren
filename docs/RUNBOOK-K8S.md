@@ -396,6 +396,7 @@ Manifest values live in `deploy/k8s/base/deployment.yaml` plus the overlays.
 | `WARREN_K8S_MAX_PROJECT_CONCURRENCY` | unset (unlimited) | admission: global per-project default |
 | `WARREN_K8S_ANTHROPIC_SECRET_NAME` / `_KEY` | `warren-anthropic-key` / `api-key` | optional agent-key `secretKeyRef` |
 | `WARREN_K8S_GIT_SECRET_NAME` / `_KEY` | `warren-git-token` / `token` | init-container git token source |
+| `WARREN_K8S_EPHEMERAL_STORAGE_REQUEST_MIB` / `_LIMIT_MIB` | `10240` / `10240` (10Gi) | cluster-wide default ephemeral-storage budget (request + limit + emptyDir `sizeLimit`). A per-project `resources` block beats it (§7.3.1) |
 | `WARREN_AUTH` | unset ⇒ `token` | auth posture (§2.5); `public` admits credential-less spectators to the public projection |
 | `WARREN_PUBLIC_ALLOWLIST` | unset | owners and/or `owner/repo` entries a public instance may hold; required under `WARREN_AUTH=public` |
 
@@ -638,12 +639,26 @@ A container shows `Terminated, Reason: ContainerStatusUnknown, Exit Code: 137`.
 The `Evicted` pod reason — not the container's `ContainerStatusUnknown` code — is the reliable witness (`src/runtime/k8s/status-map.ts`).
 The run thus finalizes as `failed (evicted)` rather than a generic error.
 
+**You do not need kubectl to read the cause (warren-4a95).**
+The evicted pod — and its kubectl events — age out of the API within the hour.
+Warren therefore captures the kubelet's own `status.message` at observation time, in three places.
+For an ephemeral-storage eviction that message reads `Pod ephemeral local storage usage exceeds the total limit of containers 10Gi`.
+
+1. the run's event stream — the `watchdog_terminal_reconciled` system event's `providerDetail` payload field.
+2. warren's logs — the pod-watcher's `run pod evicted by kubelet` warn line (`detail` field) and the watchdog's reconcile line (`terminalDetail` field).
+3. the finalize-failure message, when the pod went terminal before its finalize POST could land.
+
+A detail that says ephemeral-storage exhaustion means the workspace outgrew the budget.
+A detail that names node pressure means the node ran out of disk, and the remedy is cluster capacity rather than a bigger budget.
+
 **On GKE Autopilot, a pod with no explicit ephemeral-storage request gets a 1Gi default.**
 A real clone plus install blows past that in minutes.
 Warren now sets an explicit 10Gi request and limit on BOTH the agent and workspace-init containers, plus a matching emptyDir `sizeLimit` (warren-653f).
 The default budget is thus generous.
 
-**Remedy.** For a legitimately large repo or toolchain, raise the ephemeral-storage budget in `.warren/config.yaml`:
+**Remedy.** For a legitimately large repo or toolchain, raise the ephemeral-storage budget.
+UI builds are the classic case: a root `bun install` plus a `src/ui` install plus a Vite build can outgrow 10Gi.
+Per-project, in `.warren/config.yaml`:
 
 ```yaml
 resources:
@@ -653,7 +668,15 @@ resources:
     ephemeralStorageMiB: 20480   # request == limit (Autopilot forces it)
 ```
 
-Bounds are 64 MiB..1 TiB (`src/warren-config/resources-config.ts`).
+Cluster-wide, set the default every run starts from (warren-4a95):
+
+```
+WARREN_K8S_EPHEMERAL_STORAGE_REQUEST_MIB=20480
+WARREN_K8S_EPHEMERAL_STORAGE_LIMIT_MIB=20480
+```
+
+A per-project `resources` block beats the env default. The env default beats the compiled-in 10Gi.
+Bounds are 64 MiB..1 TiB for both knobs (`src/warren-config/resources-config.ts`, `pickMiB` in `src/runtime/k8s/pod-spec.ts`) — an invalid env value falls back to the default.
 When the block is absent, the `DEFAULT_K8S_EPHEMERAL_STORAGE_*_MIB` 10Gi default applies.
 On Autopilot, the pod-level ephemeral-storage limit is the SUM of the container limits.
 Both containers at 10Gi thus give a 20Gi pod budget, with the emptyDir capped at the per-container limit for a "workspace too big" signal.

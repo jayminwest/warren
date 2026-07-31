@@ -35,8 +35,6 @@ import type {
 import {
 	DEFAULT_K8S_CPU_LIMIT_MILLICORES,
 	DEFAULT_K8S_CPU_REQUEST_MILLICORES,
-	DEFAULT_K8S_EPHEMERAL_STORAGE_LIMIT_MIB,
-	DEFAULT_K8S_EPHEMERAL_STORAGE_REQUEST_MIB,
 	DEFAULT_K8S_MEMORY_LIMIT_MIB,
 	DEFAULT_K8S_MEMORY_REQUEST_MIB,
 	DEFAULT_K8S_NETWORK,
@@ -60,6 +58,7 @@ import {
 import {
 	clampRequests,
 	type ResolvedResourceQuantities,
+	resolveEphemeralStorageMiB,
 	resourceRequirements,
 } from "./pod-resources.ts";
 
@@ -258,6 +257,8 @@ export function resolveK8sPodConfig(
 	env: K8sPodConfigEnv,
 	resources?: ResourcesConfig | null,
 ): K8sPodConfig {
+	// Per-project resources block > WARREN_K8S_EPHEMERAL_STORAGE_*_MIB > 10Gi (warren-4a95).
+	const ephemeral = resolveEphemeralStorageMiB(env, resources);
 	const config: K8sPodConfig = {
 		namespace: pickString(env, "WARREN_K8S_NAMESPACE", DEFAULT_K8S_NAMESPACE),
 		agentImage: pickString(env, "WARREN_K8S_AGENT_IMAGE", DEFAULT_K8S_AGENT_IMAGE),
@@ -267,14 +268,12 @@ export function resolveK8sPodConfig(
 		requests: {
 			memoryMiB: resources?.requests?.memoryMiB ?? DEFAULT_K8S_MEMORY_REQUEST_MIB,
 			cpuMillicores: resources?.requests?.cpuMillicores ?? DEFAULT_K8S_CPU_REQUEST_MILLICORES,
-			ephemeralStorageMiB:
-				resources?.requests?.ephemeralStorageMiB ?? DEFAULT_K8S_EPHEMERAL_STORAGE_REQUEST_MIB,
+			ephemeralStorageMiB: ephemeral.requestMiB,
 		},
 		limits: {
 			memoryMiB: resources?.limits?.memoryMiB ?? DEFAULT_K8S_MEMORY_LIMIT_MIB,
 			cpuMillicores: resources?.limits?.cpuMillicores ?? DEFAULT_K8S_CPU_LIMIT_MILLICORES,
-			ephemeralStorageMiB:
-				resources?.limits?.ephemeralStorageMiB ?? DEFAULT_K8S_EPHEMERAL_STORAGE_LIMIT_MIB,
+			ephemeralStorageMiB: ephemeral.limitMiB,
 		},
 		network: resources?.network ?? DEFAULT_K8S_NETWORK,
 		callback: {
