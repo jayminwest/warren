@@ -19,7 +19,6 @@ import {
 	buildPlanRunInput,
 	computeSubmittable,
 	DEFAULT_PROMPT_TEMPLATE,
-	readFrontmatter,
 } from "./dispatch-plan-dialog.helpers.ts";
 
 /**
@@ -122,10 +121,8 @@ export function DispatchPlanDialog({
 	}, [agentTouched, defaultRoleRegistered, defaultRole, agent]);
 
 	const selectedAgent = registered.find((a) => a.name === agent);
-	const agentFrontmatter = readFrontmatter(selectedAgent?.renderedJson);
-	const agentProvider =
-		typeof agentFrontmatter.provider === "string" ? agentFrontmatter.provider : "";
-	const agentModel = typeof agentFrontmatter.model === "string" ? agentFrontmatter.model : "";
+	const agentProvider = selectedAgent?.provider ?? "";
+	const agentModel = selectedAgent?.model ?? "";
 	const providerAutoFill =
 		defaultProvider !== undefined && defaultProvider.length > 0 ? defaultProvider : agentProvider;
 	const modelAutoFill =

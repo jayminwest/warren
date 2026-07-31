@@ -47,11 +47,3 @@ export function buildPlanRunInput(args: {
 		...(trimmedModel.length > 0 ? { modelOverride: trimmedModel } : {}),
 	};
 }
-
-/** Read agent frontmatter (provider/model auto-fill source) defensively. */
-export function readFrontmatter(renderedJson: unknown): Record<string, unknown> {
-	if (typeof renderedJson !== "object" || renderedJson === null) return {};
-	const fm = (renderedJson as { frontmatter?: unknown }).frontmatter;
-	if (typeof fm !== "object" || fm === null || Array.isArray(fm)) return {};
-	return fm as Record<string, unknown>;
-}

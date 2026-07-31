@@ -19,13 +19,6 @@ import { Textarea } from "@/components/ui/textarea.tsx";
 
 const DEFAULT_PROMPT_TEMPLATE = "work on sd {seed_id}";
 
-function readFrontmatter(renderedJson: unknown): Record<string, unknown> {
-	if (typeof renderedJson !== "object" || renderedJson === null) return {};
-	const fm = (renderedJson as { frontmatter?: unknown }).frontmatter;
-	if (typeof fm !== "object" || fm === null || Array.isArray(fm)) return {};
-	return fm as Record<string, unknown>;
-}
-
 export function NewPlanRunPage() {
 	const navigate = useNavigate();
 	const qc = useQueryClient();
@@ -87,10 +80,8 @@ export function NewPlanRunPage() {
 	}, [agentTouched, defaultRoleRegistered, defaultRole, agent]);
 
 	const selectedAgent = agents.data?.agents.find((a) => a.name === agent);
-	const agentFrontmatter = readFrontmatter(selectedAgent?.renderedJson);
-	const agentProvider =
-		typeof agentFrontmatter.provider === "string" ? agentFrontmatter.provider : "";
-	const agentModel = typeof agentFrontmatter.model === "string" ? agentFrontmatter.model : "";
+	const agentProvider = selectedAgent?.provider ?? "";
+	const agentModel = selectedAgent?.model ?? "";
 	const providerAutoFill =
 		defaultProvider !== undefined && defaultProvider.length > 0 ? defaultProvider : agentProvider;
 	const modelAutoFill =
