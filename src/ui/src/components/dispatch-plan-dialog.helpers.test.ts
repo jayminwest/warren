@@ -1,9 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import {
-	buildPlanRunInput,
-	computeSubmittable,
-	readFrontmatter,
-} from "./dispatch-plan-dialog.helpers.ts";
+import { buildPlanRunInput, computeSubmittable } from "./dispatch-plan-dialog.helpers.ts";
 
 describe("computeSubmittable", () => {
 	const base = {
@@ -66,20 +62,5 @@ describe("buildPlanRunInput", () => {
 				modelOverride: " claude-sonnet-4-6 ",
 			}),
 		).toMatchObject({ providerOverride: "anthropic", modelOverride: "claude-sonnet-4-6" });
-	});
-});
-
-describe("readFrontmatter", () => {
-	test("returns the frontmatter object when present", () => {
-		expect(readFrontmatter({ frontmatter: { provider: "anthropic" } })).toEqual({
-			provider: "anthropic",
-		});
-	});
-
-	test("returns an empty object for non-objects, null, or array frontmatter", () => {
-		expect(readFrontmatter(null)).toEqual({});
-		expect(readFrontmatter("nope")).toEqual({});
-		expect(readFrontmatter({ frontmatter: [1, 2] })).toEqual({});
-		expect(readFrontmatter({})).toEqual({});
 	});
 });

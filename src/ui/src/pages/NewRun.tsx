@@ -53,13 +53,6 @@ function readRouteState(state: unknown): NewRunRouteState {
 	return out;
 }
 
-function readFrontmatter(renderedJson: unknown): Record<string, unknown> {
-	if (typeof renderedJson !== "object" || renderedJson === null) return {};
-	const fm = (renderedJson as { frontmatter?: unknown }).frontmatter;
-	if (typeof fm !== "object" || fm === null || Array.isArray(fm)) return {};
-	return fm as Record<string, unknown>;
-}
-
 export function NewRunPage() {
 	const navigate = useNavigate();
 	const qc = useQueryClient();
@@ -131,19 +124,18 @@ export function NewRunPage() {
 		setPrompt(defaultPrompt);
 	}, [promptTouched, defaultPrompt, prompt]);
 
-	// Pull provider/model defaults off the selected agent's frontmatter
-	// (warren-f8c0). Both are free-text strings — runtimes that don't
+	// Pull provider/model defaults off the selected agent's flat row
+	// fields (warren-f8c0; hoisted out of renderedJson.frontmatter by
+	// warren-4253). Both are free-text strings — runtimes that don't
 	// support multi-provider just ignore them. Auto-fill stops once the
 	// operator types in either field. Per warren-618b, when the project
 	// declares `.warren/config.yaml.defaultProvider` / `defaultModel`,
-	// those win over the agent's frontmatter — the form surfaces the same
+	// those win over the agent's fields — the form surfaces the same
 	// precedence the server applies (operator override > project default >
-	// agent frontmatter).
+	// agent row).
 	const selectedAgent = agents.data?.agents.find((a) => a.name === agent);
-	const agentFrontmatter = readFrontmatter(selectedAgent?.renderedJson);
-	const agentProvider =
-		typeof agentFrontmatter.provider === "string" ? agentFrontmatter.provider : "";
-	const agentModel = typeof agentFrontmatter.model === "string" ? agentFrontmatter.model : "";
+	const agentProvider = selectedAgent?.provider ?? "";
+	const agentModel = selectedAgent?.model ?? "";
 	const providerAutoFill =
 		defaultProvider !== undefined && defaultProvider.length > 0 ? defaultProvider : agentProvider;
 	const modelAutoFill =
@@ -341,7 +333,7 @@ export function NewRunPage() {
 									</p>
 								) : !providerTouched && agentProvider.length > 0 ? (
 									<p className="text-xs text-(--color-muted-foreground)">
-										Defaulted from agent frontmatter.
+										Defaulted from the agent definition.
 									</p>
 								) : (
 									<p className="text-xs text-(--color-muted-foreground)">
@@ -372,7 +364,7 @@ export function NewRunPage() {
 									</p>
 								) : !modelTouched && agentModel.length > 0 ? (
 									<p className="text-xs text-(--color-muted-foreground)">
-										Defaulted from agent frontmatter.
+										Defaulted from the agent definition.
 									</p>
 								) : null}
 							</div>
