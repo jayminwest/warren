@@ -328,6 +328,92 @@ describe("reapRun under a K8s-style RuntimeProvider", () => {
 		expect(skipped?.payloadJson).toMatchObject({ reason: "branch_push_failed" });
 	});
 
+	// warren-5ea1: a warren-SYNTHESIZED result (the pod reached a terminal phase
+	// without posting anything — `unposted` set) is a distinct failure class
+	// from a posted-but-failed push: `finalize_unposted`, not `finalize_failed`.
+	// When the pod banked a self-salvage before exiting, reap surfaces it from
+	// the run row and lets the destroy proceed (the work is durable elsewhere).
+	test("unposted finalize + pod-posted salvage ⇒ finalize_unposted, salvage surfaced, destroy proceeds", async () => {
+		const message =
+			"run pod reached a terminal phase (succeeded; completed) without posting a finalize result; in-pod finalize could not run";
+		const unposted: FinalizeResult = {
+			pushed: false,
+			unposted: "pod_terminal",
+			commitsAhead: null,
+			emptyPush: false,
+			dirty: false,
+			workspacePlansBody: null,
+			events: [{ kind: "reap_failed", payload: { step: "finalize", message } }],
+			artifacts: {},
+			prBranch: null,
+			stages: [{ stage: "branch_push", status: "failed", error: message }],
+		};
+		const fake = fakeK8sProvider({ branch: "warren/run-1", finalizeResult: unposted });
+		await ctx.repos.runs.setSalvage(ctx.runId, {
+			rescueRef: null,
+			bundlePath: "/data/salvage/run-1.bundle",
+		});
+
+		const result = await reapRun({
+			runId: ctx.runId,
+			outcome: "succeeded",
+			repos: ctx.repos,
+			runtimeProvider: fake.provider,
+			broker: ctx.broker,
+			fs: fakeFs().fs,
+			exec: fakeExec().exec,
+		});
+
+		expect(result.state).toBe("failed");
+		expect(result.failureReason).toBe("finalize_unposted");
+		expect(result.salvagePath).toBe("/data/salvage/run-1.bundle");
+		const events = await ctx.repos.events.listByRun(ctx.runId);
+		const recorded = events.find((ev) => ev.kind === "reap.workspace_salvage_recorded");
+		expect(recorded?.payloadJson).toMatchObject({
+			source: "pod",
+			bundlePath: "/data/salvage/run-1.bundle",
+		});
+		// The work is durable in the bundle — the dead pod is deleted, not preserved.
+		expect(fake.calls.terminate).toBe(1);
+		expect(result.workspaceDestroyed).toBe(true);
+	});
+
+	test("unposted finalize with NO salvage ⇒ finalize_unposted + salvage_failed event, pod preserved", async () => {
+		const message = "in-pod finalize timed out after 120000ms";
+		const unposted: FinalizeResult = {
+			pushed: false,
+			unposted: "timeout",
+			commitsAhead: null,
+			emptyPush: false,
+			dirty: false,
+			workspacePlansBody: null,
+			events: [{ kind: "reap_failed", payload: { step: "finalize", message } }],
+			artifacts: {},
+			prBranch: null,
+			stages: [{ stage: "branch_push", status: "failed", error: message }],
+		};
+		const fake = fakeK8sProvider({ branch: "warren/run-1", finalizeResult: unposted });
+
+		const result = await reapRun({
+			runId: ctx.runId,
+			outcome: "succeeded",
+			repos: ctx.repos,
+			runtimeProvider: fake.provider,
+			broker: ctx.broker,
+			fs: fakeFs().fs,
+			exec: fakeExec().exec,
+		});
+
+		expect(result.state).toBe("failed");
+		expect(result.failureReason).toBe("finalize_unposted");
+		expect(result.salvageRescueRef).toBeNull();
+		expect(result.salvagePath).toBeNull();
+		const events = await ctx.repos.events.listByRun(ctx.runId);
+		expect(events.some((ev) => ev.kind === "reap.workspace_salvage_failed")).toBe(true);
+		expect(fake.calls.terminate).toBe(0);
+		expect(result.workspaceDestroyed).toBe(false);
+	});
+
 	test("workspaceInfo throwing skips the pipeline and records workspace_lookup", async () => {
 		const provider = {
 			capabilities: {},

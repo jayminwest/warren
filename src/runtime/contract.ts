@@ -346,6 +346,8 @@ export interface FinalizeEvent {
 
 export interface FinalizeResult {
 	pushed: boolean;
+	/** warren-5ea1: set ONLY on a warren-SYNTHESIZED failed result — the in-pod finalize never POSTed one. */
+	unposted?: "timeout" | "pod_terminal" | "pod_gone";
 	/**
 	 * Commits the pushed branch is ahead of `intent.baseBranch`. WIDENED from
 	 * the design-doc's `number` to `number | null` to match reap's real shape

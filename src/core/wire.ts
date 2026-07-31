@@ -166,6 +166,20 @@ export type CloneKind = (typeof CLONE_KINDS)[number];
  *     recoverable instead of being silently destroyed. Distinct from
  *     `dropped_commit` (push succeeded but landed zero commits over a
  *     still-dirty tree): here the push itself never completed.
+ *   - `finalize_unposted` (warren-5ea1) means the K8s in-pod finalize
+ *     never POSTed a result at all — the pod reached a terminal phase
+ *     (or vanished, or the round-trip timed out) while warren was still
+ *     waiting, so reap's `FinalizeResult` is the provider's synthesized
+ *     degradation, not a pod-computed collection. The canonical trigger:
+ *     the agent process exited WITHOUT its terminal envelope reaching
+ *     warren (a severed/lost event stream), so no reap intent was ever
+ *     parked while the pod was alive to serve it. Distinct from
+ *     `finalize_failed` (the pod DID post a result whose branch-push
+ *     stage failed, e.g. a rejected/non-fast-forward push — warren-b94b's
+ *     class): the two look identical at the stage level but
+ *     `finalize_unposted` means the workspace died with the pod, so the
+ *     only recovery path is the salvage bundle/rescue ref the pod POSTed
+ *     before exiting (surfaced on `reap.completed`'s `salvage` payload).
  *   - `provider_error` (warren-edc3) means the agent's terminal model
  *     turn ended with `stopReason === "error"` and a non-empty provider
  *     `errorMessage` (e.g. Anthropic `400` "Your credit balance is too
@@ -214,6 +228,7 @@ export const RUN_FAILURE_REASONS = [
 	"burrow_unreachable",
 	"dropped_commit",
 	"finalize_failed",
+	"finalize_unposted",
 	"provider_error",
 	"oom_killed",
 	"evicted",

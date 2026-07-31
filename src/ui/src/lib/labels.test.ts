@@ -46,6 +46,7 @@ describe("formatRunFailureReason", () => {
 
 	test("uses the curated wording, not a mechanical de-underscore", () => {
 		expect(formatRunFailureReason("finalize_failed")).toBe("Finalize failed");
+		expect(formatRunFailureReason("finalize_unposted")).toBe("Finalize not posted");
 		expect(formatRunFailureReason("oom_killed")).toBe("Out of memory");
 		expect(formatRunFailureReason("burrow_run_lost")).toBe("Sandbox run lost");
 	});

@@ -10,7 +10,10 @@
  *      the log stream, which is how warren detects logical completion and drives
  *      reap → `provider.finalize()` — independent of the pod phase);
  *   2. the harness invokes THIS entrypoint, which POLLS
- *      `GET /runs/:id/finalize-intent` until warren parks the reap intent;
+ *      `GET /runs/:id/finalize-intent` until warren parks the reap intent.
+ *      The wait outlasts warren's slowest intent-parking path (warren-5ea1),
+ *      with a proactive salvage banked at the 5-min mark — the pod is the
+ *      ONLY place the commits exist; exiting early loses work;
  *   3. it runs the workspace-DEPENDENT collection in place (git push + the reap
  *      counts + the mirror-delta bodies) against the live `/workspace`;
  *   4. it POSTs a `FinalizeResult` to `POST /runs/:id/finalize-result`, which
@@ -21,21 +24,20 @@
  *
  * BUILT: the pure collection — env parse, the authenticated push (+ commits-ahead
  * / empty-push / dirty probe faithful to reap's `pushStep`), the
- * `workspacePlansBody` capture auto-plan-run needs, and the mirror-delta BODIES
- * read straight off the workspace, all JSON-serialized onto the contract wire.
+ * `workspacePlansBody` capture, and the mirror-delta BODIES read straight off
+ * the workspace, all JSON-serialized onto the contract wire.
  *
  * DEFERRED to step 25's data-plane pass: the `chore(warren): seeds
  * state` bookkeeping commit and the true LWW MERGE COUNTS. Both need warren's
- * project clone to union against, which the pod does not have (design §4:
- * "warren applies the returned deltas to its project clone"). So the in-pod
- * deltas are WORKSPACE-TRUTH — `mergedBody` is the workspace tracker file
- * verbatim; the merge/count reconciliation + the bookkeeping commits happen
- * warren-side when it applies the deltas. `seeds_commit` is marked
- * `skipped` here for that reason.
+ * project clone to union against, which the pod does not have (design §4). So
+ * the in-pod deltas are WORKSPACE-TRUTH — `mergedBody` is the workspace
+ * tracker file verbatim; the merge/count reconciliation + the bookkeeping
+ * commits happen warren-side when it applies the deltas. `seeds_commit` is
+ * marked `skipped` here for that reason.
  *
  * The push credential arrives IN the intent (`gitToken`) — fetched over the
- * authenticated callback after the agent exited — not the agent container's
- * static env, so a compromised agent never held it (`provider.ts` decision).
+ * authenticated callback after the agent exited — so a compromised agent
+ * never held it (`provider.ts` decision).
  */
 
 import { readdir as nodeReaddir, readFile as nodeReadFile, rm as nodeRm } from "node:fs/promises";
@@ -67,21 +69,26 @@ export interface FinalizeEntrypointEnv {
 	branch: string | undefined;
 	/** Poll interval for the intent fetch (ms). */
 	pollIntervalMs: number;
-	/** Max wall-clock to wait for warren to park an intent before giving up (ms). */
+	/**
+	 * Max wall-clock to wait for warren to park an intent before giving up
+	 * (ms). warren-5ea1: 50 min — must OUTLAST warren's 45-min heartbeat
+	 * watchdog, its slowest intent-parking path (the pod stays `Running`
+	 * while this entrypoint waits).
+	 */
 	maxWaitMs: number;
+	/** warren-5ea1: post a proactive `no_intent` salvage bundle once the wait
+	 * crosses this mark (default 5 min), then keep waiting to `maxWaitMs`. */
+	earlySalvageMs: number; // 0 disables
 	/**
 	 * Max wall-clock to keep retrying the SALVAGE post when no intent ever
-	 * arrived (warren-cd3b). A control-plane rollout is exactly the window this
-	 * covers: the pod must outlast the rollout long enough for the new control
-	 * plane to intake the bundle. In the `push_failed` window the normal
-	 * bounded result-POST budget applies instead (warren is reachable).
+	 * arrived (warren-cd3b): the pod must outlast a control-plane rollout long
+	 * enough for the new control plane to intake the bundle. In the
+	 * `push_failed` window the bounded result-POST budget applies instead.
 	 */
 	salvageMaxWaitMs: number;
 	/**
-	 * Max attempts for the result POST before giving up (warren-fd08). A transient
-	 * "Unable to connect" / non-2xx must not silently lose the collected result —
-	 * the reap deltas the pod computed are otherwise unrecoverable (warren then
-	 * falls to its finalize timeout and terminalizes the run FAILED).
+	 * Max attempts for the result POST before giving up (warren-fd08): a
+	 * transient connect error / non-2xx must not lose the collected deltas.
 	 */
 	postMaxAttempts: number;
 	/** Base backoff between result-POST retries (ms); doubles each attempt. */
@@ -98,11 +105,12 @@ function required(env: FinalizeEnvSource, key: string): string {
 	return raw;
 }
 
-function positiveIntEnv(env: FinalizeEnvSource, key: string, fallback: number): number {
+/** Integer env knob ≥ `min` (`0` when the knob has a disable sentinel), else `fallback`. */
+function intEnv(env: FinalizeEnvSource, key: string, fallback: number, min: 0 | 1): number {
 	const raw = env[key]?.trim();
 	if (raw === undefined || raw === "") return fallback;
 	const n = Number(raw);
-	return Number.isInteger(n) && n > 0 ? n : fallback;
+	return Number.isInteger(n) && n >= min ? n : fallback;
 }
 
 /** Parse + validate the finalize entrypoint env. Pure. */
@@ -114,11 +122,12 @@ export function parseFinalizeEntrypointEnv(env: FinalizeEnvSource): FinalizeEntr
 		workspacePath: env.WARREN_WORKSPACE_PATH?.trim() || "/workspace",
 		baseBranch: env.WARREN_BASE_BRANCH?.trim() || undefined,
 		branch: env.WARREN_BRANCH?.trim() || undefined,
-		pollIntervalMs: positiveIntEnv(env, "WARREN_FINALIZE_POLL_INTERVAL_MS", 2_000),
-		maxWaitMs: positiveIntEnv(env, "WARREN_FINALIZE_MAX_WAIT_MS", 300_000),
-		salvageMaxWaitMs: positiveIntEnv(env, "WARREN_SALVAGE_MAX_WAIT_MS", 120_000),
-		postMaxAttempts: positiveIntEnv(env, "WARREN_FINALIZE_POST_MAX_ATTEMPTS", 5),
-		postRetryBaseMs: positiveIntEnv(env, "WARREN_FINALIZE_POST_RETRY_BASE_MS", 1_000),
+		pollIntervalMs: intEnv(env, "WARREN_FINALIZE_POLL_INTERVAL_MS", 2_000, 1),
+		maxWaitMs: intEnv(env, "WARREN_FINALIZE_MAX_WAIT_MS", 3_000_000, 1),
+		earlySalvageMs: intEnv(env, "WARREN_FINALIZE_EARLY_SALVAGE_MS", 300_000, 0),
+		salvageMaxWaitMs: intEnv(env, "WARREN_SALVAGE_MAX_WAIT_MS", 120_000, 1),
+		postMaxAttempts: intEnv(env, "WARREN_FINALIZE_POST_MAX_ATTEMPTS", 5, 1),
+		postRetryBaseMs: intEnv(env, "WARREN_FINALIZE_POST_RETRY_BASE_MS", 1_000, 1),
 	};
 }
 
@@ -203,8 +212,8 @@ export function extractIntent(body: unknown): InPodFinalizeIntent | null {
 
 /**
  * Poll `GET /runs/:id/finalize-intent` until warren parks an intent or `maxWaitMs`
- * elapses. Returns the intent, or `null` on timeout (the harness then exits and
- * warren's own finalize timeout produces a failed result).
+ * elapses; `null` on timeout (warren's own finalize timeout then produces a
+ * failed result). `onEarlySalvage` fires once at the `earlySalvageMs` mark.
  */
 export async function pollForIntent(
 	env: FinalizeEntrypointEnv,
@@ -212,28 +221,20 @@ export async function pollForIntent(
 	sleep: (ms: number) => Promise<void>,
 	now: () => number,
 	log: (m: string) => void,
+	onEarlySalvage?: () => Promise<unknown>,
 ): Promise<InPodFinalizeIntent | null> {
 	const url = `${env.apiUrl}/runs/${env.runId}/finalize-intent`;
-	const deadline = now() + env.maxWaitMs;
+	const startedAt = now();
+	const deadline = startedAt + env.maxWaitMs;
+	// warren-5ea1: `onEarlySalvage` fires ONCE at the `earlySalvageMs` mark.
+	let earlySalvageDone = onEarlySalvage === undefined || env.earlySalvageMs <= 0;
 	for (;;) {
-		// A thrown fetch ("Unable to connect") is a TRANSIENT poll miss, not a
-		// finalize-killer: the first GET after the agent's long run can land on a
-		// stale kept-alive socket (hit live on GKE, warren-4e36 — the entire
-		// finalize died on poll #1 and every run reaped with "terminal phase
-		// without posting a finalize result"). Same rationale as the result-POST
-		// retry (warren-fd08): keep polling until the intent shows or the
-		// deadline expires.
-		let res: { status: number; body: unknown } | undefined;
-		try {
-			res = await http.get(url, env.apiToken);
-		} catch (err) {
-			log(
-				`finalize-entrypoint: intent poll failed (${err instanceof Error ? err.message : String(err)}); retrying`,
-			);
-		}
-		if (res !== undefined && res.status === 200) {
-			const intent = extractIntent(res.body);
-			if (intent !== null) return intent;
+		const intent = await fetchParkedIntent(env, http, url, log);
+		if (intent !== null) return intent;
+		if (!earlySalvageDone && now() - startedAt >= env.earlySalvageMs) {
+			earlySalvageDone = true;
+			log(`finalize-entrypoint: no intent after ${env.earlySalvageMs}ms; posting early salvage`);
+			await onEarlySalvage?.();
 		}
 		if (now() >= deadline) {
 			log(`finalize-entrypoint: no intent after ${env.maxWaitMs}ms; giving up`);
@@ -241,6 +242,31 @@ export async function pollForIntent(
 		}
 		await sleep(env.pollIntervalMs);
 	}
+}
+
+/**
+ * One intent poll; `null` when nothing is parked. A thrown fetch ("Unable to
+ * connect") is a TRANSIENT miss, not a finalize-killer: the first GET after
+ * the agent's long run can land on a stale kept-alive socket (hit live on
+ * GKE, warren-4e36 — the entire finalize died on poll #1). Same rationale as
+ * the result-POST retry (warren-fd08).
+ */
+async function fetchParkedIntent(
+	env: FinalizeEntrypointEnv,
+	http: FinalizeHttp,
+	url: string,
+	log: (m: string) => void,
+): Promise<InPodFinalizeIntent | null> {
+	let res: { status: number; body: unknown } | undefined;
+	try {
+		res = await http.get(url, env.apiToken);
+	} catch (err) {
+		log(
+			`finalize-entrypoint: intent poll failed (${err instanceof Error ? err.message : String(err)}); retrying`,
+		);
+	}
+	if (res === undefined || res.status !== 200) return null;
+	return extractIntent(res.body);
 }
 
 /** A result POST is delivered iff warren answers 2xx (its intake is idempotent). */
@@ -298,7 +324,9 @@ export async function postResultWithRetry(
  * dies with it. Retried until `deadlineMs` of wall-clock budget is spent — in
  * the `no_intent` window that budget (`salvageMaxWaitMs`) is sized to outlast
  * a control-plane rollout; in the `push_failed` window warren is demonstrably
- * reachable so the standard bounded retry applies. Best-effort: never throws,
+ * reachable so the standard bounded retry applies. `bounded` forces that
+ * bounded-attempt budget for a `no_intent` post too (the warren-5ea1 EARLY
+ * salvage, which must not stall the intent poll). Best-effort: never throws,
  * so a salvage failure can never mask the finalize path it rode in on.
  */
 export async function salvageAndPost(
@@ -312,6 +340,7 @@ export async function salvageAndPost(
 	git: FinalizeGitRunner,
 	readFileBytes: (path: string) => Promise<Uint8Array>,
 	rm: (path: string) => Promise<void>,
+	bounded?: boolean,
 ): Promise<boolean> {
 	const salvage = await collectSalvage(
 		{
@@ -336,10 +365,11 @@ export async function salvageAndPost(
 	};
 	const url = `${env.apiUrl}/runs/${env.runId}/salvage`;
 	const deadline = now() + (trigger === "no_intent" ? env.salvageMaxWaitMs : 0);
-	// Bounded-attempt budget in the push_failed window (warren is reachable);
-	// wall-clock deadline budget in the no_intent window (rollout survival).
+	// Bounded attempts when warren is reachable; wall-clock deadline otherwise.
 	const exhausted = (attempt: number): boolean =>
-		trigger === "push_failed" ? attempt >= env.postMaxAttempts : now() >= deadline;
+		trigger === "push_failed" || bounded === true
+			? attempt >= env.postMaxAttempts
+			: now() >= deadline;
 	let backoff = env.postRetryBaseMs;
 	for (let attempt = 1; ; attempt += 1) {
 		let accepted = false;
@@ -371,9 +401,9 @@ export async function salvageAndPost(
  * the orchestration is testable without a cluster / real git / real network.
  *
  * warren-cd3b: both loss windows run salvage BEFORE the process can exit —
- * no intent at all (control-plane severed) ⇒ bundle + retry through the
- * rollout; an intent whose branch push failed ⇒ rescue-ref + bundle BEFORE
- * the result POST (which lets warren proceed to terminate the pod).
+ * no intent at all ⇒ bundle + retry through a rollout; a failed branch push
+ * ⇒ rescue-ref + bundle BEFORE the result POST. warren-5ea1: and a proactive
+ * bundle at the early-salvage mark, mid-wait.
  */
 export async function runFinalizeEntrypoint(
 	envSource: FinalizeEnvSource,
@@ -389,12 +419,25 @@ export async function runFinalizeEntrypoint(
 	const rm = deps.rm ?? defaultRm;
 
 	const env = parseFinalizeEntrypointEnv(envSource);
-	const intent = await pollForIntent(env, http, sleep, now, log);
+	// warren-5ea1: bank a bundle at the early-salvage mark while still waiting.
+	const earlySalvage = (): Promise<boolean> =>
+		salvageAndPost(
+			env,
+			http,
+			sleep,
+			now,
+			log,
+			"no_intent",
+			undefined,
+			git,
+			readFileBytes,
+			rm,
+			true,
+		);
+	const intent = await pollForIntent(env, http, sleep, now, log, earlySalvage);
 	if (intent === null) {
-		// No reap intent ever arrived: warren lost track of this pod (the classic
-		// trigger is a control-plane rollout severing the finalize loop). The
-		// workspace commits exist ONLY on this pod's emptyDir — salvage them
-		// before exiting, or the run's entire output is unrecoverable.
+		// No reap intent ever arrived (warren lost track of this pod). Salvage
+		// the emptyDir-only commits before exiting, retrying through a rollout.
 		await salvageAndPost(
 			env,
 			http,

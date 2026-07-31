@@ -53,6 +53,13 @@ export interface ReapPipelineState {
 	noChanges: boolean;
 	/** warren-495d: requested push did NOT complete; fail run + preserve workspace. */
 	finalizeFailed: boolean;
+	/**
+	 * warren-5ea1: set when the finalize result was warren-SYNTHESIZED because
+	 * the pod never posted one (the `FinalizeResult.unposted` cause); null on a
+	 * pod-computed result. Splits the `finalize_unposted` failure reason from
+	 * `finalize_failed` in reap.
+	 */
+	finalizeUnposted: NonNullable<FinalizeResult["unposted"]> | null;
 	/** warren-e9e1 (leg 2): K8s finalize's mirror deltas applied to the clone; local=false. */
 	cloneDeltasApplied: boolean;
 	/**
@@ -84,6 +91,7 @@ export function createPipelineState(): ReapPipelineState {
 		droppedCommit: false,
 		noChanges: false,
 		finalizeFailed: false,
+		finalizeUnposted: null,
 		cloneDeltasApplied: false,
 		mirrorDurabilityFailed: false,
 		prUrl: null,
@@ -228,6 +236,8 @@ function applyFinalizeToState(state: ReapPipelineState, r: FinalizeResult): void
 	state.commitsAhead = r.commitsAhead;
 	// warren-495d: push failed/timed out (commits left unpushed).
 	state.finalizeFailed = r.stages.some((s) => s.stage === "branch_push" && s.status === "failed");
+	// warren-5ea1: a warren-synthesized result (pod never posted) carries its cause.
+	state.finalizeUnposted = r.unposted ?? null;
 }
 
 /**

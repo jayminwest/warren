@@ -113,7 +113,11 @@ function failedStages(intent: FinalizeIntent): FinalizeStage[] {
  * back so reap surfaces it, mirroring how the pipeline folds a finalize failure
  * into `errors[]`. Nothing was pushed and no delta was produced.
  */
-export function failedFinalizeResult(intent: FinalizeIntent, message: string): FinalizeResult {
+export function failedFinalizeResult(
+	intent: FinalizeIntent,
+	message: string,
+	unposted: NonNullable<FinalizeResult["unposted"]>,
+): FinalizeResult {
 	const stages = failedStages(intent).map((stage) => ({
 		stage,
 		status: "failed" as const,
@@ -121,6 +125,7 @@ export function failedFinalizeResult(intent: FinalizeIntent, message: string): F
 	}));
 	return {
 		pushed: false,
+		unposted,
 		commitsAhead: null,
 		emptyPush: false,
 		dirty: false,
@@ -279,9 +284,17 @@ export async function finalizeK8sRun(
 		const outcome = await Promise.race([resultRace, timeout, podTerminalOrGone]);
 		if (outcome.kind === "result") return outcome.result;
 		if (outcome.kind === "lost") {
-			return failedFinalizeResult(intent, lostMessage(outcome.reason, outcome.status));
+			return failedFinalizeResult(
+				intent,
+				lostMessage(outcome.reason, outcome.status),
+				outcome.reason === "gone" ? "pod_gone" : "pod_terminal",
+			);
 		}
-		return failedFinalizeResult(intent, `in-pod finalize timed out after ${timeoutMs}ms`);
+		return failedFinalizeResult(
+			intent,
+			`in-pod finalize timed out after ${timeoutMs}ms`,
+			"timeout",
+		);
 	} finally {
 		settle();
 		deps.coordinator.abort(handle.runId, pending.attemptId);

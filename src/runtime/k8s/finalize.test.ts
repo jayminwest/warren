@@ -99,8 +99,9 @@ describe("toInPodIntent", () => {
 
 describe("failedFinalizeResult", () => {
 	test("marks every requested stage failed with the message, nothing pushed", () => {
-		const r = failedFinalizeResult(intent(), "boom");
+		const r = failedFinalizeResult(intent(), "boom", "timeout");
 		expect(r.pushed).toBe(false);
+		expect(r.unposted).toBe("timeout");
 		expect(r.commitsAhead).toBeNull();
 		expect(r.artifacts).toEqual({});
 		expect(r.events).toEqual([

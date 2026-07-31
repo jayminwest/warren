@@ -374,6 +374,58 @@ describe("pollForIntent + runFinalizeEntrypoint", () => {
 		expect(postCalls).toBe(3); // exactly max attempts, no more
 	});
 
+	test("warren-5ea1 defaults: maxWait outlasts the 45-min heartbeat watchdog; early salvage at 5 min", () => {
+		const parsed = parseFinalizeEntrypointEnv(env);
+		expect(parsed.maxWaitMs).toBe(3_000_000);
+		expect(parsed.earlySalvageMs).toBe(300_000);
+		// `0` disables the early capture.
+		expect(
+			parseFinalizeEntrypointEnv({ ...env, WARREN_FINALIZE_EARLY_SALVAGE_MS: "0" }).earlySalvageMs,
+		).toBe(0);
+	});
+
+	test("an intent landing AFTER the early-salvage mark still finalizes — salvage posted once, first", async () => {
+		let clock = 0;
+		const posted: string[] = [];
+		const http: FinalizeHttp = {
+			get: async () =>
+				clock < 20
+					? { status: 200, body: { intent: null } }
+					: { status: 200, body: { intent: intent() } },
+			post: async (url) => {
+				posted.push(url);
+				return { status: 200 };
+			},
+		};
+		const { git } = fakeGit({ "rev-list": { stdout: "1" } });
+		const did = await runFinalizeEntrypoint(
+			{
+				...env,
+				WARREN_BASE_BRANCH: "main",
+				WARREN_FINALIZE_EARLY_SALVAGE_MS: "10",
+				WARREN_FINALIZE_MAX_WAIT_MS: "100000",
+			},
+			{
+				http,
+				git,
+				fs: fakeFs({}),
+				sleep: async () => {
+					clock += 5;
+				},
+				now: () => clock,
+				log: () => {},
+				readFileBytes: async () => new TextEncoder().encode("bundle-bytes"),
+				rm: async () => {},
+			},
+		);
+		expect(did).toBe(true);
+		const salvagePosts = posted.filter((u) => u.endsWith("/salvage"));
+		expect(salvagePosts).toHaveLength(1); // exactly one early capture
+		// The early salvage rode BEFORE the result POST that full finalize ends in.
+		expect(posted[0]).toBe("http://warren:8080/runs/run_x/salvage");
+		expect(posted[posted.length - 1]).toBe("http://warren:8080/runs/run_x/finalize-result");
+	});
+
 	test("gives up (no POST) when the intent never arrives before maxWait", async () => {
 		let nowVal = 0;
 		const http: FinalizeHttp = {

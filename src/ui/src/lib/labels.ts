@@ -61,6 +61,7 @@ const RUN_FAILURE_REASON_LABELS: Readonly<Record<string, string>> = {
 	burrow_unreachable: "Sandbox unreachable",
 	dropped_commit: "Dropped commit",
 	finalize_failed: "Finalize failed",
+	finalize_unposted: "Finalize not posted",
 	provider_error: "Provider error",
 	oom_killed: "Out of memory",
 	evicted: "Evicted",

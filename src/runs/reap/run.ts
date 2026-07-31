@@ -186,7 +186,13 @@ export async function reapRun(input: ReapRunInput): Promise<ReapRunResult> {
 	} else if (failedFromProviderError) {
 		failureReason = "provider_error";
 	} else if (finalizeFailed) {
-		failureReason = "finalize_failed";
+		// warren-5ea1: split the two finalize failure classes. `finalize_failed`
+		// is a pod-computed result whose push stage failed (e.g. a rejected
+		// push); `finalize_unposted` is a warren-synthesized result — the pod
+		// reached a terminal phase / vanished / timed out without posting
+		// anything, so the workspace died with it and salvage is the only
+		// recovery path.
+		failureReason = state.finalizeUnposted !== null ? "finalize_unposted" : "finalize_failed";
 	} else if (effectiveOutcome === "failed") {
 		failureReason =
 			input.failureReason ?? (await inferFailureReason(input.repos, run.id, stateOnEntry));
@@ -201,6 +207,31 @@ export async function reapRun(input: ReapRunInput): Promise<ReapRunResult> {
 	// capture also lifts the destroy skip below: the work is safe, so the
 	// workspace no longer needs preserving.
 	let salvage: WorkspaceSalvageOutcome | null = null;
+	if (state.finalizeFailed && workspacePath === null) {
+		// warren-5ea1 (k8s): the control plane cannot reach the pod's emptyDir,
+		// so reap cannot capture anything itself — but the pod may have POSTed a
+		// self-salvage (`/runs/:id/salvage` intake stamps the run row) before
+		// exiting. Surface whatever landed so the terminal record names the
+		// recovery path at a glance, and let the destroy proceed when the work
+		// is already durable elsewhere (the intake's `reap.workspace_salvaged`
+		// event carries the operator-visible detail; re-fetch the row since the
+		// stamp can land after reap's initial read).
+		const fresh = await input.repos.runs.require(run.id);
+		if (fresh.salvageRef !== null || fresh.salvagePath !== null) {
+			salvage = { rescueRef: fresh.salvageRef, bundlePath: fresh.salvagePath, errors: [] };
+			await emit("reap.workspace_salvage_recorded", {
+				source: "pod",
+				rescueRef: fresh.salvageRef,
+				bundlePath: fresh.salvagePath,
+			});
+		} else {
+			await emit("reap.workspace_salvage_failed", {
+				errors: [
+					"pod reached a terminal phase without posting a finalize result or a salvage bundle; committed work is unrecoverable",
+				],
+			});
+		}
+	}
 	if (state.finalizeFailed && workspacePath !== null) {
 		salvage = await salvageWorkspace({
 			runId: run.id,
