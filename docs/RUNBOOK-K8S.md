@@ -241,6 +241,29 @@ That key is only correct while DNS stays unproxied.
 If a proxy ever sits in front of the LB, every request keys off the proxy's address.
 The rule must then move to `--enforce-on-key=XFF-IP`.
 
+**Do not burst-test from your own network.** The warren-63e4 synthetic burst verification trips rule 1000 exactly as designed — and the 300s ban then applies to *your* IP too.
+Your own browser gets 429s off the UI and API for five minutes, mid-verification.
+Run the burst from an external vantage point instead (Cloud Shell is the cheap one), or accept the self-lockout.
+
+If you do lock yourself out, port-forward past the load balancer — Cloud Armor evaluates at the LB, and the pod never sees its 429:
+
+```bash
+kubectl port-forward -n warren deploy/warren 8080:8080
+# UI and API now on http://localhost:8080 for the rest of the ban window
+```
+
+For go-live verification, pre-clear your IP with a temporary higher-priority allow rule (priority 500 sits above rule 1000):
+
+```bash
+gcloud compute security-policies rules create 500 \
+  --security-policy=warren-armor --src-ip-ranges="$OPERATOR_IP/32" \
+  --action=allow --project "$PROJECT_ID"
+
+# After verification, delete it — a standing allow rule bypasses the rate limit forever.
+gcloud compute security-policies rules delete 500 \
+  --security-policy=warren-armor --project "$PROJECT_ID"
+```
+
 **Kill switch** (fastest first):
 
 ```bash
