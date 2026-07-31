@@ -2,6 +2,11 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import {
+	assertFixtureHermetic,
+	fixtureGitOrThrow,
+	gitFixtureEnv,
+} from "../../workspace/git/test-fixture.ts";
 import { gatherPrContext } from "./pr-open.ts";
 import type { ReapExec } from "./types.ts";
 
@@ -13,21 +18,18 @@ import type { ReapExec } from "./types.ts";
  * fallback, and the unchanged LocalProvider (`workspacePath`) path.
  */
 
-/** Env with all inherited `GIT_*` vars stripped so temp-repo git is isolated. */
-function cleanGitEnv(): Record<string, string> {
-	const out: Record<string, string> = {};
-	for (const [k, v] of Object.entries(process.env)) {
-		if (v !== undefined && !k.startsWith("GIT_")) out[k] = v;
-	}
-	return out;
-}
-
-/** A real `ReapExec` over `Bun.spawn` — rejects on non-zero exit like production. */
+/**
+ * A real `ReapExec` over `Bun.spawn` — rejects on non-zero exit like
+ * production. Every spawn runs with the canonical hermetic fixture env
+ * (warren-cfa7): inherited GIT_* severed, discovery ceiling pinned to the
+ * cwd's parent — so the pre-commit hook's exported GIT_DIR/GIT_INDEX_FILE can
+ * never redirect these calls at the invoking repo.
+ */
 const realExec: ReapExec = {
 	run: async (cmd, args, opts) => {
 		const proc = Bun.spawn([cmd, ...args], {
 			cwd: opts.cwd,
-			env: cleanGitEnv(),
+			env: gitFixtureEnv(opts.cwd),
 			stdout: "pipe",
 			stderr: "pipe",
 		});
@@ -44,7 +46,7 @@ const realExec: ReapExec = {
 };
 
 async function git(cwd: string, ...args: string[]): Promise<string> {
-	return (await realExec.run("git", args, { cwd })).stdout;
+	return (await fixtureGitOrThrow(cwd, args)).stdout;
 }
 
 async function commitFile(cwd: string, file: string, body: string, message: string): Promise<void> {
@@ -71,6 +73,10 @@ describe("gatherPrContext K8s clone fetch (warren-ab66)", () => {
 		await git(origin, "checkout", "-q", "main");
 		// Project clone: a host-side clone the control plane maintains (main checked out).
 		await git(root, "clone", "-q", origin, clone);
+		// warren-cfa7 guard: both fixture repos resolve their git dir INSIDE the
+		// fixture — never to the invoking repo.
+		await assertFixtureHermetic(origin);
+		await assertFixtureHermetic(clone);
 	});
 
 	afterEach(() => {

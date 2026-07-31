@@ -3,8 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { WorkspaceMaterializationError } from "./errors.ts";
-import { cleanGitEnv } from "./git/exec.test.ts";
-import { runGit } from "./git/exec.ts";
+import { assertFixtureHermetic, fixtureGitOrThrow } from "./git/test-fixture.ts";
 import { branchExists, discoverHostClone, initRepo, listWorktrees } from "./git/worktree.ts";
 import {
 	materializeProjectWorkspace,
@@ -41,11 +40,14 @@ async function bootstrapRepo(path: string): Promise<void> {
 	await initRepo({ targetPath: path, initialBranch: "main" });
 	writeFileSync(join(path, "README.md"), "# repo\n");
 	// Repo-local identity only (never --global, never the warren repo) so the
-	// temp repo can commit without inheriting host git config.
-	await runGit(["config", "user.email", "host@example.com"], { cwd: path, env: cleanGitEnv() });
-	await runGit(["config", "user.name", "Host"], { cwd: path, env: cleanGitEnv() });
-	await runGit(["add", "."], { cwd: path, env: cleanGitEnv() });
-	await runGit(["commit", "-m", "init"], { cwd: path, env: cleanGitEnv() });
+	// temp repo can commit without inheriting host git config. Fixture git goes
+	// through the hermetic helper (warren-cfa7).
+	await fixtureGitOrThrow(path, ["config", "user.email", "host@example.com"]);
+	await fixtureGitOrThrow(path, ["config", "user.name", "Host"]);
+	await fixtureGitOrThrow(path, ["add", "."]);
+	await fixtureGitOrThrow(path, ["commit", "-m", "init"]);
+	// warren-cfa7 guard: the fixture resolves its git dir INSIDE itself.
+	await assertFixtureHermetic(path);
 }
 
 /**
@@ -115,7 +117,7 @@ describe("materializeProjectWorkspace", () => {
 
 	test("checks out an existing branch when createBranch=false", async () => {
 		// Pre-create a feature branch on the host clone (without checking it out).
-		await runGit(["branch", "feature/x", "main"], { cwd: repo, env: cleanGitEnv() });
+		await fixtureGitOrThrow(repo, ["branch", "feature/x", "main"]);
 		const ws = join(root, "ws-existing");
 		const result = await materializeProjectWorkspace({
 			workspacePath: ws,

@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { WARREN_BOT_IDENTITY } from "../../bot-identity.ts";
 import type { FinalizeResult } from "../../runtime/contract.ts";
+import { assertFixtureHermetic, gitFixtureEnv } from "../../workspace/git/test-fixture.ts";
 import { applyCloneDeltas } from "./clone-apply.ts";
 import { createPipelineState, type ReapPipelineContext } from "./pipeline.ts";
 import type { ReapStep } from "./types.ts";
@@ -16,8 +17,18 @@ import { defaultExec, defaultFs } from "./util.ts";
  * never re-spelled inline (CLAUDE.md Article VII).
  */
 
+/**
+ * Test-side git helper. Every spawn carries the canonical hermetic fixture env
+ * (warren-cfa7) — inherited GIT_* severed, discovery ceiling pinned — so the
+ * suite never depends on the beforeEach clearing alone: the pre-commit hook's
+ * exported GIT_DIR/GIT_INDEX_FILE can't redirect these calls at the real repo.
+ */
 async function git(cwd: string, ...args: string[]): Promise<string> {
-	const out = await defaultExec.run("git", args, { cwd, timeoutMs: 10_000 });
+	const out = await defaultExec.run("git", args, {
+		cwd,
+		timeoutMs: 10_000,
+		env: gitFixtureEnv(cwd),
+	});
 	return out.stdout;
 }
 
@@ -78,7 +89,8 @@ function resultWithDeltas(): FinalizeResult {
  * Git env vars that pin repo discovery to a specific worktree. A git pre-commit
  * hook (this repo runs `check:all` in one) sets `GIT_DIR` / `GIT_INDEX_FILE` in
  * the environment; if inherited, the temp-repo `git commit` below would ignore
- * its `cwd` and write to the REAL repo. Clear them so the temp clone is hermetic.
+ * its `cwd` and write to the REAL repo. Cleared here as defense in depth — the
+ * primary hermeticity is the spawn-site fixture env in git() (warren-cfa7).
  */
 const GIT_DISCOVERY_ENV = [
 	"GIT_DIR",
@@ -100,6 +112,8 @@ describe("applyCloneDeltas (leg 2, real git clone)", () => {
 		}
 		dir = await mkdtemp(join(tmpdir(), "warren-clone-apply-"));
 		await git(dir, "init", "-q");
+		// warren-cfa7 guard: the fixture resolves its git dir INSIDE itself.
+		await assertFixtureHermetic(dir);
 	});
 
 	afterEach(async () => {
@@ -192,8 +206,8 @@ describe("applyCloneDeltas (leg 2, real git clone)", () => {
 			const state = createPipelineState();
 			const committed = await applyCloneDeltas(makeCtx(dir, [], []), state, resultWithDeltas());
 
-			// Drop the hostile env before assertions so this test's own git() calls
-			// (which don't scrub) read each repo through its `cwd` again.
+			// Drop the hostile env before assertions (the suite shares one process;
+			// leaving it set would poison later files even though git() now scrubs).
 			delete process.env.GIT_DIR;
 			delete process.env.GIT_INDEX_FILE;
 			delete process.env.GIT_PREFIX;

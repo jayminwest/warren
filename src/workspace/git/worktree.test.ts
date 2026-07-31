@@ -3,8 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { WorkspaceMaterializationError } from "../errors.ts";
-import { cleanGitEnv } from "./exec.test.ts";
-import { runGit } from "./exec.ts";
+import { assertFixtureHermetic, fixtureGitOrThrow } from "./test-fixture.ts";
 import {
 	addWorktree,
 	branchExists,
@@ -23,7 +22,9 @@ import {
  * temp-dir git call they redirect it at the REAL warren repo (which is how a
  * prior run corrupted this repo's config). Strip every GIT_* var from the test
  * process for the duration of this suite so the module functions operate purely
- * on their `cwd` temp repos, then restore afterwards.
+ * on their `cwd` temp repos, then restore afterwards. Test-side git spawns
+ * additionally go through the hermetic fixture helper (warren-cfa7), and every
+ * bootstrapped repo passes the assertFixtureHermetic guard.
  */
 const savedGitEnv: Record<string, string | undefined> = {};
 
@@ -46,15 +47,18 @@ async function bootstrapRepo(path: string): Promise<void> {
 	await initRepo({ targetPath: path, initialBranch: "main" });
 	writeFileSync(join(path, "README.md"), "# repo\n");
 	// Repo-local identity only (never --global, never the warren repo) so the
-	// temp repo can commit without inheriting host git config.
-	await runGit(["config", "user.email", "test@example.com"], { cwd: path, env: cleanGitEnv() });
-	await runGit(["config", "user.name", "Test"], { cwd: path, env: cleanGitEnv() });
-	await runGit(["add", "."], { cwd: path, env: cleanGitEnv() });
-	await runGit(["commit", "-m", "init", "--allow-empty"], { cwd: path, env: cleanGitEnv() });
+	// temp repo can commit without inheriting host git config. Fixture git goes
+	// through the hermetic helper (warren-cfa7).
+	await fixtureGitOrThrow(path, ["config", "user.email", "test@example.com"]);
+	await fixtureGitOrThrow(path, ["config", "user.name", "Test"]);
+	await fixtureGitOrThrow(path, ["add", "."]);
+	await fixtureGitOrThrow(path, ["commit", "-m", "init", "--allow-empty"]);
 	// Pre-create a non-checked-out branch the existing-branch worktree tests
 	// can target. `main` is already claimed by the host clone itself, so a
 	// second worktree on `main` would fail with "already used by worktree".
-	await runGit(["branch", "feature/wt", "main"], { cwd: path, env: cleanGitEnv() });
+	await fixtureGitOrThrow(path, ["branch", "feature/wt", "main"]);
+	// warren-cfa7 guard: the fixture resolves its git dir INSIDE itself.
+	await assertFixtureHermetic(path);
 }
 
 describe("git worktree helpers", () => {
