@@ -1,8 +1,11 @@
-import { useEffect, useRef, useState } from "react";
-import { streamRunEvents, UnauthorizedError } from "@/api/client.ts";
-import type { RunEvent } from "@/api/types.ts";
-
-export type StreamStatus = "idle" | "connecting" | "live" | "ended" | "error";
+import { useEffect, useState } from "react";
+import { runsApi, streamRunEvents, UnauthorizedError } from "@/api/client.ts";
+import { isTerminalRunState, type RunEvent } from "@/api/types.ts";
+import {
+	type EventStreamLoopDeps,
+	runEventStreamLoop,
+	type StreamStatus,
+} from "@/hooks/use-event-stream.helpers.ts";
 
 interface State {
 	events: RunEvent[];
@@ -16,8 +19,17 @@ interface State {
  * `follow=false` replays history and closes (for terminal runs).
  *
  * Auto-reconnects with exponential backoff (max 30s) on transport
- * errors when following; UnauthorizedError aborts permanently so the
- * auth gate can boot the user back to login.
+ * errors when following, and ALSO on a clean close while the run is
+ * still non-terminal: the server's per-connection lifetime cap
+ * (`WARREN_EVENT_STREAM_MAX_LIFETIME`, warren-3995) ends the stream
+ * cleanly, which is indistinguishable on the wire from the broker
+ * closing on run termination, so the loop re-reads the run state to
+ * tell them apart and resumes via `since` on the former.
+ * UnauthorizedError aborts permanently so the auth gate can boot the
+ * user back to login.
+ *
+ * The reconnect policy lives in `use-event-stream.helpers.ts`; this
+ * file is only the React binding.
  */
 export function useEventStream(runId: string, follow: boolean): State {
 	const [state, setState] = useState<State>({
@@ -25,49 +37,36 @@ export function useEventStream(runId: string, follow: boolean): State {
 		status: "connecting",
 		error: null,
 	});
-	const lastSeqRef = useRef<number | null>(null);
 
 	useEffect(() => {
 		let cancelled = false;
-		let backoff = 500;
 		const ctrl = new AbortController();
 
-		const run = async (): Promise<void> => {
-			while (!cancelled) {
-				setState((s) => ({ ...s, status: "connecting", error: null }));
+		const deps: EventStreamLoopDeps = {
+			follow,
+			isCancelled: () => cancelled || ctrl.signal.aborted,
+			openStream: (sinceSeq) =>
+				streamRunEvents(runId, {
+					follow,
+					signal: ctrl.signal,
+					...(sinceSeq !== undefined ? { sinceSeq } : {}),
+				}),
+			hasRunEnded: async () => {
 				try {
-					const opts: { follow: boolean; signal: AbortSignal; sinceSeq?: number } = {
-						follow,
-						signal: ctrl.signal,
-					};
-					if (lastSeqRef.current !== null) opts.sinceSeq = lastSeqRef.current + 1;
-					const iter = streamRunEvents(runId, opts);
-					setState((s) => ({ ...s, status: "live" }));
-					backoff = 500;
-					for await (const evt of iter) {
-						if (cancelled) break;
-						lastSeqRef.current = evt.seq;
-						setState((s) => ({ ...s, events: [...s.events, evt] }));
-					}
-					if (!cancelled) setState((s) => ({ ...s, status: "ended" }));
-					return;
-				} catch (err) {
-					if (cancelled || ctrl.signal.aborted) return;
-					if (err instanceof UnauthorizedError) {
-						setState((s) => ({ ...s, status: "error", error: err.message }));
-						return;
-					}
-					const msg = err instanceof Error ? err.message : String(err);
-					setState((s) => ({ ...s, status: "error", error: msg }));
-					if (!follow) {
-						return;
-					}
-					await new Promise((r) => setTimeout(r, backoff));
-					backoff = Math.min(backoff * 2, 30_000);
+					const run = await runsApi.get(runId, ctrl.signal);
+					return isTerminalRunState(run.state);
+				} catch {
+					// A failed state read must not kill the tail — reconnect
+					// and let the stream's own error path surface any real
+					// problem.
+					return false;
 				}
-			}
+			},
+			isAuthError: (err) => err instanceof UnauthorizedError,
+			onEvent: (evt) => setState((s) => ({ ...s, events: [...s.events, evt] })),
+			onStatus: (status, error) => setState((s) => ({ ...s, status, error })),
 		};
-		void run();
+		void runEventStreamLoop(deps);
 
 		return () => {
 			cancelled = true;

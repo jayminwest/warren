@@ -24,12 +24,14 @@
  * and never a disturbance to the streams already attached. Set a knob to
  * `0` to disable that cap.
  *
- * A per-connection max lifetime (`WARREN_EVENT_STREAM_MAX_LIFETIME`) is
- * available but OFF by default: expiry ends the NDJSON stream cleanly and
- * the UI's `useEventStream` treats a clean close as `"ended"` rather than
- * reconnecting, so a default-on cap would silently stop live updates
- * mid-run. Operators of public instances can set it so a wedged client
- * can't hold a slot forever.
+ * A per-connection max lifetime (`WARREN_EVENT_STREAM_MAX_LIFETIME`,
+ * default 4h) bounds how long one stream can hold a slot, so a wedged
+ * client cannot occupy a concurrency slot forever. Expiry ends the NDJSON
+ * stream cleanly — indistinguishable on the wire from the broker closing
+ * on run termination — and the UI's `useEventStream` tells the two apart
+ * by re-reading the run state and resumes via `since` when the run is
+ * still non-terminal (warren-3995), so the default-on cap is invisible
+ * to live tails. Set it to `0` to disable.
  */
 
 import { WarrenError } from "../core/errors.ts";
@@ -45,8 +47,12 @@ export const WARREN_EVENT_STREAM_MAX_LIFETIME_ENV = "WARREN_EVENT_STREAM_MAX_LIF
 export const DEFAULT_MAX_EVENT_STREAMS = 200;
 /** Per-client concurrent event streams. A tab open per run plus a couple of stale ones. */
 export const DEFAULT_MAX_EVENT_STREAMS_PER_CLIENT = 5;
-/** Per-connection lifetime. `0` ⇒ unlimited (the default; see the module note). */
-export const DEFAULT_EVENT_STREAM_MAX_LIFETIME_MS = 0;
+/**
+ * Per-connection lifetime, ON by default (warren-3995): long enough that a
+ * healthy tail only ever crosses it on a genuinely wedged connection, and
+ * the UI resumes transparently anyway. `0` ⇒ unlimited.
+ */
+export const DEFAULT_EVENT_STREAM_MAX_LIFETIME_MS = 4 * 60 * 60_000;
 
 /**
  * `Retry-After` advertised on a capacity 503. Slots free as runs finish and

@@ -65,6 +65,16 @@ describe("loadEventStreamLimitsFromEnv", () => {
 		});
 	});
 
+	test("the lifetime cap is ON by default (warren-3995)", () => {
+		// The UI resumes via `since` on a lifetime close, so a default-on cap
+		// no longer kills live tails — regressing this to 0 silently reopens
+		// the wedged-client slot leak.
+		expect(DEFAULT_EVENT_STREAM_MAX_LIFETIME_MS).toBeGreaterThan(0);
+		expect(loadEventStreamLimitsFromEnv({}).maxLifetimeMs).toBe(
+			DEFAULT_EVENT_STREAM_MAX_LIFETIME_MS,
+		);
+	});
+
 	test("reads all three knobs", () => {
 		expect(
 			loadEventStreamLimitsFromEnv({
