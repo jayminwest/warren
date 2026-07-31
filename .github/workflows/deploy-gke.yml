@@ -116,7 +116,7 @@ jobs:
 
       # QEMU provides the arm64 emulation the multi-arch public ghcr.io
       # build below needs (warren-fe9f); GitHub-hosted runners are amd64.
-      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-qemu-action@v4
 
       # Public tag set for the control-plane image (warren-26be). Self-hosters
       # pull this image from docker-compose.yml, so it carries semver as well
