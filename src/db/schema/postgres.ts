@@ -239,7 +239,7 @@ export const planRunChildren = pgTable(
 	],
 );
 
-export type AgentRow = typeof agents.$inferSelect;
+export type AgentDbRow = typeof agents.$inferSelect;
 export type AgentInsert = typeof agents.$inferInsert;
 export type ProjectRow = typeof projects.$inferSelect;
 export type ProjectInsert = typeof projects.$inferInsert;

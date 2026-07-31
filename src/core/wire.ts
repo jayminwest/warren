@@ -233,6 +233,40 @@ export const AGENT_SOURCES = ["builtin", "library"] as const;
 export type AgentSource = (typeof AGENT_SOURCES)[number];
 
 /**
+ * The `GET /agents` row shape as every consumer sees it (warren-4253 /
+ * pl-b82d). Not enum-shaped like the rest of this file, but it crosses the
+ * same wire and drifted the same way: the UI typed the hoisted
+ * `description` / `provider` / `model` trio while the SDK's hand-copy
+ * lacked all three. Declared once here; `src/client/types.ts` and
+ * `src/ui/src/api/types.ts` re-export it.
+ *
+ * Field notes (server truth: `DecoratedAgent` in
+ * `src/server/handlers/agents.ts`):
+ *
+ *   - `renderedJson` is OPTIONAL: the public projection drops the whole
+ *     rendered envelope for a `readPublic`-only spectator (warren-4f6c),
+ *     so operator surfaces must test presence.
+ *   - `description` / `provider` / `model` are the frontmatter facts
+ *     hoisted out of `renderedJson` onto the row (warren-4f6c) so both
+ *     audiences get them; null when the frontmatter declares none.
+ *   - `source` is decorated by the server (warren-f6ad /
+ *     `readAgentSource`).
+ *
+ * The drizzle `agents` table row is a DIFFERENT shape (physical schema,
+ * not wire vocabulary) and lives in `src/db/schema/` as `AgentDbRow`.
+ */
+export interface AgentRow {
+	name: string;
+	renderedJson?: unknown;
+	registeredAt: string;
+	lastRefreshed: string;
+	description: string | null;
+	provider: string | null;
+	model: string | null;
+	source?: AgentSource;
+}
+
+/**
  * Preview environment lifecycle (R-19 / SPEC §11.L).
  *
  *   - `starting`    — `preview_launch` sub-step has spawned the sidecar

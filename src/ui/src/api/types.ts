@@ -14,6 +14,7 @@
 // drizzle and `bun:sqlite` into the browser bundle.
 
 export {
+	type AgentRow,
 	type AgentSource,
 	isActivePreviewState,
 	isTerminalPlanRunChildState,
@@ -32,7 +33,6 @@ export {
 } from "../../../core/wire.ts";
 
 import type {
-	AgentSource,
 	CloneKind,
 	EventStream,
 	PlanRunChildState,
@@ -42,34 +42,6 @@ import type {
 	RunMode,
 	RunState,
 } from "../../../core/wire.ts";
-
-export interface AgentRow {
-	name: string;
-	/**
-	 * The fully rendered agent envelope — `sections.system` is the agent's
-	 * whole system prompt, `sections.burrow_config` is sandbox policy. The
-	 * public projection drops it (warren-4f6c), so it is ABSENT for a
-	 * spectator; the three facts worth showing one are hoisted onto the row
-	 * as `description` / `provider` / `model` below.
-	 */
-	renderedJson?: unknown;
-	registeredAt: string;
-	lastRefreshed: string;
-	/**
-	 * Frontmatter facts hoisted out of `renderedJson` onto the row so both
-	 * audiences get them (warren-4f6c). Null when the agent's frontmatter
-	 * declares none.
-	 */
-	description: string | null;
-	provider: string | null;
-	model: string | null;
-	/**
-	 * Provenance decorated by the server (warren-f6ad / readAgentSource):
-	 * `"builtin"` for agents shipped inline, `"library"` for same-named
-	 * overrides loaded from a configured source.
-	 */
-	source?: AgentSource;
-}
 
 export interface ProjectRow {
 	id: string;
