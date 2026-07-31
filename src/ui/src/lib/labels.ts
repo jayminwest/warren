@@ -54,6 +54,7 @@ export function humanizeWireValue(raw: string): string {
 const RUN_FAILURE_REASON_LABELS: Readonly<Record<string, string>> = {
 	never_started: "Never started",
 	no_model_response: "No model response",
+	sandbox_failed: "Sandbox failed",
 	crashed: "Crashed",
 	timed_out: "Timed out",
 	burrow_run_lost: "Sandbox run lost",
