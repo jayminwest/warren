@@ -242,8 +242,11 @@ async function runPush(
  * No token ⇒ no-op. Best-effort: a failure to read/rewrite leaves origin as-is
  * and returns a no-op restore (the push then runs against the plain remote and
  * fails cleanly if auth was needed).
+ *
+ * Exported for `./salvage.ts` (warren-cd3b): the rescue-ref push rides the same
+ * temporarily-authenticated origin as the primary push.
  */
-async function authenticateOrigin(
+export async function authenticateOrigin(
 	token: string | undefined,
 	workspacePath: string,
 	git: FinalizeGitRunner,

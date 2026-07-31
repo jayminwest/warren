@@ -90,6 +90,12 @@ export interface BuildServerDepsInput {
 	 * Absent under `local` — no pod plumbing is wired.
 	 */
 	readonly k8sPodWatcher?: PodCacheReader & PodAdmissionSource & PodMetricsSource;
+	/**
+	 * Durable salvage-bundle directory (warren-cd3b), resolved by the
+	 * orchestrator to `<dataDir>/salvage`. Threaded onto `ServerDeps` for the
+	 * `POST /runs/:id/salvage` intake.
+	 */
+	readonly salvageDir: string;
 	readonly now?: () => Date;
 }
 
@@ -118,6 +124,7 @@ export function buildServerDeps(input: BuildServerDepsInput): ServerDeps {
 		sdBinary,
 		metricsRegistry,
 		k8sPodWatcher,
+		salvageDir,
 		now,
 	} = input;
 
@@ -137,6 +144,7 @@ export function buildServerDeps(input: BuildServerDepsInput): ServerDeps {
 		...createDbSeams(db),
 		runtimeProvider,
 		...(burrowProbe !== undefined ? { burrowProbe } : {}),
+		salvageDir,
 		broker,
 		bridges,
 		projectsConfig,

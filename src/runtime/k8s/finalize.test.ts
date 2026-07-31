@@ -185,6 +185,23 @@ describe("finalizeK8sRun", () => {
 		expect(coordinator.pendingCount).toBe(0);
 	});
 
+	test("the lost message names the phase + terminalReason (warren-cd3b root-cause split)", async () => {
+		// One collapsed "terminal phase" message used to hide every root cause —
+		// an OOM kill, an agent crash, and a completed-but-unposted container now
+		// read differently to the operator.
+		const coordinator = new FinalizeCoordinator();
+		const res = await finalizeK8sRun(HANDLE, intent(), {
+			coordinator,
+			status: async () => ({ ...terminalPresent, terminalReason: "oom_killed" }),
+			podPollMs: 1_000,
+			timeoutMs: 999_999,
+			setTimer: firingTimer(1_000),
+		});
+		const message = (res.events[0]?.payload as { message: string }).message;
+		expect(message).toContain("failed; oom_killed");
+		expect(message).toContain("without posting a finalize result");
+	});
+
 	test("the result wins even if a pod-gone probe is scheduled", async () => {
 		const coordinator = new FinalizeCoordinator();
 		// status would say gone, but the result POST lands first via the inert timer

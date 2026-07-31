@@ -67,6 +67,7 @@ import {
 	listRunsHandler,
 	pollRunInboxHandler,
 	postRunFinalizeResultHandler,
+	postRunSalvageHandler,
 	previewLoginHandler,
 	previewTeardownHandler,
 	steerRunHandler,
@@ -313,6 +314,15 @@ const ROUTE_TABLE: readonly RouteEntry[] = [
 		pattern: "/runs/:id/finalize-result",
 		policy: "dispatch",
 		build: postRunFinalizeResultHandler,
+	},
+	// warren-cd3b: the in-pod salvage intake — the pod POSTs the work it
+	// captured (rescue ref + git bundle) when the finalize branch push failed
+	// or no reap intent ever arrived, BEFORE its emptyDir dies with the pod.
+	{
+		method: "POST",
+		pattern: "/runs/:id/salvage",
+		policy: "dispatch",
+		build: postRunSalvageHandler,
 	},
 	{ method: "POST", pattern: "/runs/:id/steer", policy: "dispatch", build: steerRunHandler },
 	{ method: "POST", pattern: "/runs/:id/cancel", policy: "dispatch", build: cancelRunHandler },

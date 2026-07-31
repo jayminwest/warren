@@ -40,6 +40,8 @@ export function fakeReapResult(state: ReapRunResult["state"]): ReapRunResult {
 		autoPlanRunId: null,
 		autoPlanRunPlanId: null,
 		workspaceDestroyed: true,
+		salvageRescueRef: null,
+		salvagePath: null,
 		errors: [],
 		alreadyTerminal: false,
 	};

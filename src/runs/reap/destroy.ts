@@ -21,11 +21,16 @@ export interface RunWorkspaceDestroyInput {
 	readonly previewLaunchState: "live" | "failed" | null;
 	/**
 	 * warren-495d: the branch push did NOT complete (finalize timed out / the
-	 * pod vanished / the push stage failed), so the agent's commits are still
-	 * only on this workspace. Destroy is SKIPPED (without an error) so the work
-	 * stays recoverable instead of being silently lost — the run is already
-	 * being terminalized `failed`/`finalize_failed`, and the GC/eviction path
-	 * can reclaim the workspace later once operators have recovered the branch.
+	 * pod vanished / the push stage failed) AND salvage could not capture the
+	 * work either (warren-cd3b — reap's local salvage runs BEFORE this flag is
+	 * computed; a successful capture clears it, so the skip now means
+	 * "unrecoverable", not merely "unpushed"). Destroy is SKIPPED (without an
+	 * error) so the work stays recoverable instead of being silently lost —
+	 * the run is already being terminalized `failed`/`finalize_failed`, and
+	 * the GC/eviction path can reclaim the workspace later once operators
+	 * have recovered the branch. Note the K8s caveat: the skip preserves
+	 * nothing by itself there (the pod's emptyDir dies with the container) —
+	 * the in-pod salvage (`src/runtime/k8s/salvage.ts`) is the k8s capture.
 	 */
 	readonly branchPushFailed?: boolean;
 	/**

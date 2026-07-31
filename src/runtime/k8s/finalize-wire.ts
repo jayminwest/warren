@@ -86,6 +86,31 @@ export interface FinalizeResultEnvelope {
 	result: FinalizeResult;
 }
 
+/**
+ * The SALVAGE envelope the in-pod harness POSTs to `POST /runs/:id/salvage`
+ * (warren-cd3b). Sent when the run's work would otherwise be lost: the primary
+ * branch push failed (`push_failed` — e.g. GitHub push protection rejected it)
+ * or no reap intent ever arrived before the pod had to exit (`no_intent` — a
+ * control-plane restart / severed callback). Unlike the finalize result, this
+ * carries the work ITSELF (a git bundle) because the pod's volume is about to
+ * die with the container. See `../salvage.ts` for the two capture forms.
+ */
+export interface SalvageEnvelope {
+	version: typeof IN_POD_FINALIZE_WIRE_VERSION;
+	/** Why salvage ran. */
+	trigger: "push_failed" | "no_intent";
+	/** The rescue branch the pod pushed to origin, when that push landed. */
+	rescueRef: string | null;
+	/** base64 git bundle of the run's commits, when one was produced. */
+	bundleBase64: string | null;
+	/** Branch the workspace HEAD was on, when known. */
+	branch: string | null;
+	/** Base ref used for the bundle range, when known. */
+	baseBranch: string | null;
+	/** Best-effort diagnostics from the salvage attempt (never secret material). */
+	notes: string[];
+}
+
 /* -------------------------------------------------------------------------- */
 /* Validation (pod → warren intake)                                           */
 /* -------------------------------------------------------------------------- */
@@ -265,5 +290,35 @@ export function parseFinalizeResultEnvelope(value: unknown): FinalizeResultEnvel
 		version: IN_POD_FINALIZE_WIRE_VERSION,
 		attemptId: reqString(o, "attemptId", "body"),
 		result: validateFinalizeResult(o.result),
+	};
+}
+
+/**
+ * Narrow an `unknown` `POST /runs/:id/salvage` body onto a `SalvageEnvelope`
+ * (warren-cd3b). Same defensive posture as the finalize envelope: a malformed
+ * body is a 400 the pod can retry, never a crash. The bundle is capped by the
+ * handler (the parser only checks shape); `notes` is a bounded string list.
+ */
+export function parseSalvageEnvelope(value: unknown): SalvageEnvelope {
+	const o = asRecord(value, "body");
+	const version = o.version;
+	if (version !== IN_POD_FINALIZE_WIRE_VERSION) {
+		throw new ValidationError(
+			`unsupported salvage wire version ${String(version)} (expected ${IN_POD_FINALIZE_WIRE_VERSION})`,
+		);
+	}
+	const trigger = reqString(o, "trigger", "body");
+	if (trigger !== "push_failed" && trigger !== "no_intent") {
+		throw new ValidationError('body.trigger must be "push_failed" or "no_intent"');
+	}
+	const notes = optStringArray(o, "notes", "body");
+	return {
+		version: IN_POD_FINALIZE_WIRE_VERSION,
+		trigger,
+		rescueRef: optStringOrNull(o, "rescueRef", "body"),
+		bundleBase64: optStringOrNull(o, "bundleBase64", "body"),
+		branch: optStringOrNull(o, "branch", "body"),
+		baseBranch: optStringOrNull(o, "baseBranch", "body"),
+		notes: notes !== undefined ? [...notes] : [],
 	};
 }

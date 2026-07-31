@@ -155,14 +155,17 @@ describe("public projections over the wire (warren-4f6c)", () => {
 			trigger: "manual",
 			seedId: "warren-4f6c",
 		});
-		// Timestamps are relative to NOW, not pinned: the analytics handler's
-		// default window is a rolling "last 30 days", so a hardcoded date ages
-		// out of the window and the suite starts failing on that day (observed
-		// 2026-07-31 with a 2026-07-01 pin). Cf. the explicit-window comment in
-		// runs.analytics.test.ts.
-		const startedAt = new Date(Date.now() - 5 * 60_000);
+		// Relative timestamps: the analytics handler's default window is the last
+		// 30 days, so a fixed date eventually ages out and the window finds zero
+		// runs (the 2026-07-30 instance of that time bomb).
+		const startedAt = new Date(Date.now() - 24 * 60 * 60 * 1000);
 		await repos.runs.markRunning(run.id, startedAt);
-		await repos.runs.finalize(run.id, "succeeded", new Date(), null);
+		await repos.runs.finalize(
+			run.id,
+			"succeeded",
+			new Date(startedAt.getTime() + 5 * 60 * 1000),
+			null,
+		);
 		await repos.runs.attachStats(run.id, {
 			costUsd: 1.25,
 			tokensInput: 100,

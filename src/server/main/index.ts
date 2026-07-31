@@ -26,6 +26,7 @@
  * - `./preview-wiring.ts` — preview signed-cookie + proxy assembly
  */
 
+import { join } from "node:path";
 import { isTerminalRunState } from "../../core/wire.ts";
 import { openDatabase } from "../../db/client.ts";
 import { DrizzleAdapter } from "../../db/repos/drizzle-adapter.ts";
@@ -237,8 +238,15 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 		});
 	const previewSidecars = localBackend?.previewSidecars;
 	const workspaceDestroyer = localBackend?.workspaceDestroyer;
+	// warren-cd3b: the local salvage step writes its bundle capture to the same
+	// durable dir the salvage intake handler serves.
+	const salvageDir = join(serverConfig.dataDir, "salvage");
 	const bindReap = (i: Parameters<typeof reapRun>[0]) =>
-		reapRun({ ...i, ...(previewSidecars !== undefined ? { previewSidecars } : {}) });
+		reapRun({
+			...i,
+			...(previewSidecars !== undefined ? { previewSidecars } : {}),
+			salvageDir,
+		});
 
 	const bridgesBoot = await bootBridges({
 		repos,
@@ -403,6 +411,9 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 		...(previewSidecars !== undefined ? { previewSidecars } : {}),
 		sdBinary: schedulerConfig.sdBinary,
 		metricsRegistry,
+		// warren-cd3b: durable salvage-bundle intake dir (pod-posted git bundles
+		// land here; the data dir is the persistent volume in both runtimes).
+		salvageDir,
 		// `/metrics` pod-phase gauges read live from the same pod-watcher at scrape
 		// (warren-7c30); absent under LocalProvider.
 		...(k8sRuntime !== undefined ? { k8sPodWatcher: k8sRuntime.podWatcher } : {}),

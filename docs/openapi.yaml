@@ -560,6 +560,27 @@ paths:
           required: true
           schema:
             type: string
+  /runs/{id}/salvage:
+    post:
+      operationId: postRunSalvageHandler
+      tags:
+        - runs
+      summary: POST /runs/:id/salvage
+      responses:
+        '200':
+          description: Successful response.
+        default:
+          description: Error response (see `src/core/errors.ts`).
+      description: >-
+        warren-cd3b: the in-pod salvage intake — the pod POSTs the work it captured (rescue ref +
+        git bundle) when the finalize branch push failed or no reap intent ever arrived, BEFORE its
+        emptyDir dies with the pod.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
   /runs/{id}/steer:
     post:
       operationId: steerRunHandler

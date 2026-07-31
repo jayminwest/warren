@@ -30,3 +30,4 @@ export {
 	previewLoginHandler,
 	previewTeardownHandler,
 } from "./preview.ts";
+export { postRunSalvageHandler } from "./salvage.ts";

@@ -151,6 +151,15 @@ export const runs = sqliteTable(
 		prUrl: text("pr_url"),
 		// Operator-requested target branch (warren-1f81, #419); null = none.
 		targetBranch: text("target_branch"),
+		// Salvage-before-destroy (warren-cd3b). When a reap's branch push never
+		// landed, the workspace's committed work is captured BEFORE destroy:
+		// `salvage_ref` is the rescue branch pushed to origin
+		// (`warren/rescue/<runId>`) when that push landed; `salvage_path` is the
+		// durable warren-side git-bundle file (`<dataDir>/salvage/<runId>.bundle`)
+		// when a bundle was captured (pod-POSTed under k8s, host-written under
+		// local). Both null ⇒ no salvage was captured (or none was needed).
+		salvageRef: text("salvage_ref"),
+		salvagePath: text("salvage_path"),
 		// Per-run cost + token accounting (warren-a7dc). All nullable: only the
 		// pi runtime reports session-cumulative stats via get_session_stats today,
 		// and even there the value is best-effort (null when the bridge can't

@@ -48,6 +48,8 @@ describe("run field classification (warren-946f)", () => {
 			"burrowRunId",
 			"previewFailureMessage",
 			"renderedAgentJson",
+			// warren-cd3b: a host filesystem path is internal topology.
+			"salvagePath",
 			"workerId",
 		]);
 	});

@@ -123,6 +123,10 @@ export const ENV_WORKSPACE_PATH = "WARREN_WORKSPACE_PATH";
 export const ENV_AGENT_RUNTIME = "WARREN_AGENT_RUNTIME";
 /** The composed prompt (system section already prepended by the domain). */
 export const ENV_PROMPT = "WARREN_PROMPT";
+/** The run's own branch (warren-cd3b) — surfaced on the in-pod salvage envelope. */
+export const ENV_BRANCH = "WARREN_BRANCH";
+/** Base ref the run branch was cut from (warren-cd3b) — bounds the salvage bundle range. */
+export const ENV_BASE_BRANCH = "WARREN_BASE_BRANCH";
 /** The agent frontmatter/metadata (JSON) — provider/model overrides the runtime honors. */
 export const ENV_AGENT_METADATA = "WARREN_AGENT_METADATA";
 
@@ -217,6 +221,11 @@ export function buildAgentEnv(spec: RunSpec, config: K8sPodConfig): V1EnvVar[] {
 		[ENV_WORKSPACE_PATH]: WORKSPACE_MOUNT_PATH,
 		[ENV_AGENT_RUNTIME]: spec.runtimeId,
 		[ENV_PROMPT]: spec.prompt,
+		// warren-cd3b: the in-pod salvage (finalize-entrypoint) bundles
+		// `<base>..HEAD` and labels the envelope with the run branch. Neither is
+		// a credential — the push token stays out of this env by design.
+		[ENV_BRANCH]: spec.branch,
+		[ENV_BASE_BRANCH]: spec.baseBranch,
 	};
 	if (spec.metadata !== undefined) plain[ENV_AGENT_METADATA] = JSON.stringify(spec.metadata);
 	const vars: V1EnvVar[] = Object.entries(plain).map(([name, value]) => ({ name, value }));

@@ -162,7 +162,7 @@ export function toInPodIntent(
 type RaceOutcome =
 	| { kind: "result"; result: FinalizeResult }
 	| { kind: "timeout" }
-	| { kind: "lost"; reason: "gone" | "terminal" };
+	| { kind: "lost"; reason: "gone" | "terminal"; status: RunStatus };
 
 const defaultSetTimer = (fn: () => void, ms: number): { cancel: () => void } => {
 	const id = setTimeout(fn, ms);
@@ -181,11 +181,20 @@ function podLostReason(status: RunStatus): "gone" | "terminal" | null {
 	return null;
 }
 
-/** The failed-finalize message for a lost pod, by fast-fail reason. */
-function lostMessage(reason: "gone" | "terminal"): string {
-	return reason === "gone"
-		? "run pod is gone; in-pod finalize could not run"
-		: "run pod reached a terminal phase without posting a finalize result; in-pod finalize could not run";
+/**
+ * The failed-finalize message for a lost pod, by fast-fail reason (warren-cd3b:
+ * the terminal case now carries the pod PHASE + the container's terminalReason
+ * so an operator can tell an OOM kill (`oom_killed`) apart from an agent crash
+ * (`error`) or a completed-but-unposted container (`completed`) instead of one
+ * collapsed message for every root cause).
+ */
+function lostMessage(reason: "gone" | "terminal", status: RunStatus): string {
+	if (reason === "gone") return "run pod is gone; in-pod finalize could not run";
+	const detail =
+		status.terminalReason !== undefined
+			? `${status.phase}; ${status.terminalReason}`
+			: status.phase;
+	return `run pod reached a terminal phase (${detail}) without posting a finalize result; in-pod finalize could not run`;
 }
 
 /**
@@ -207,9 +216,10 @@ function schedulePodProbe(
 		const tick = async (): Promise<void> => {
 			if (isSettled()) return;
 			try {
-				const reason = podLostReason(await deps.status(handle));
+				const status = await deps.status(handle);
+				const reason = podLostReason(status);
 				if (!isSettled() && reason !== null) {
-					resolve({ kind: "lost", reason });
+					resolve({ kind: "lost", reason, status });
 					return;
 				}
 			} catch {
@@ -268,7 +278,9 @@ export async function finalizeK8sRun(
 	try {
 		const outcome = await Promise.race([resultRace, timeout, podTerminalOrGone]);
 		if (outcome.kind === "result") return outcome.result;
-		if (outcome.kind === "lost") return failedFinalizeResult(intent, lostMessage(outcome.reason));
+		if (outcome.kind === "lost") {
+			return failedFinalizeResult(intent, lostMessage(outcome.reason, outcome.status));
+		}
 		return failedFinalizeResult(intent, `in-pod finalize timed out after ${timeoutMs}ms`);
 	} finally {
 		settle();

@@ -245,6 +245,32 @@ crosses the seam. The ordering contract is explicit: **domain calls `finalize`, 
 `terminate`.** `finalize` is skipped under the same conditions reap is skipped today
 (conversation mode, preview still live).
 
+### 4.1 Salvage-before-destroy (warren-cd3b, 2026-07-30)
+
+A failed `finalize` used to erase the run's committed work. The branch push
+never landed, and then the workspace went away. LocalProvider destroyed it.
+Under K8s the preserve skip was a no-op, because the pod's `emptyDir` died
+with the container.
+
+Salvage closes that hole. **Before warren destroys a workspace after a
+failed finalize, the side that can still reach it captures the work** in two
+forms:
+
+1. **Rescue ref** — push `HEAD` to `warren/rescue/<runId>` on origin. Recovery is one `git fetch`. Push protection can refuse this push too.
+2. **Git bundle** — `git bundle create <base>..HEAD` at `<dataDir>/salvage/<runId>.bundle`. The bundle never touches origin, so push protection cannot block it.
+
+The runtime split mirrors `finalize` itself.
+
+- **LocalProvider:** the salvage step (`src/runs/reap/salvage.ts`) runs inside reap before `runWorkspaceDestroy`. A captured work product lifts the old preserve-the-workspace skip. A total failure keeps the skip and emits `reap.workspace_salvage_failed`.
+- **K8sProvider:** the pod salvages itself (`src/runtime/k8s/salvage.ts`). On a failed push it posts BEFORE the finalize result that releases warren to destroy the pod. With no intent at all it retries the bundle POST through the rollout window (`WARREN_SALVAGE_MAX_WAIT_MS`).
+
+The intake route `POST /runs/:id/salvage` stores the bundle, stamps
+`salvage_ref`/`salvage_path` on the run row, and emits
+`reap.workspace_salvaged`. In-flight runs survive a control-plane rollout
+with their work recoverable. Warren does not drain dispatch during a
+rollout. The lost finalize message names the pod phase and terminalReason,
+so root causes no longer collapse into one string.
+
 **Open sub-questions for the finalize spike** (do not block the core contract):
 - Exact `MulchDelta`/`SeedsDelta`/`PlansDelta`/`PlotDelta` shapes — how much of the
   current in-process merge logic serializes cleanly across the seam.
