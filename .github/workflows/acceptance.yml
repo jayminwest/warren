@@ -1,0 +1,122 @@
+name: Acceptance (nightly)
+
+# Runs the curated in-proc acceptance suite (`bun run acceptance:nightly`)
+# on a nightly cron plus workflow_dispatch. Not per-PR by design: the
+# suite boots real burrow+warren processes under bwrap and takes minutes
+# to run, which would gum up the PR gate. Scenario 39 already runs per-PR
+# via `.github/workflows/acceptance-public.yml`; this workflow picks up
+# where that leaves off.
+#
+# ## Runner shape
+#
+# - `ubuntu-latest`. The runner already ships kernel user-namespaces
+#   enabled with a positive `user.max_user_namespaces`, so bwrap can nest
+#   without a sysctl step (contrast the docker-compose deploy path,
+#   which needs the four bwrap-friendly flags baked into
+#   `docker-compose.yml`; in the raw runner env bwrap just works).
+# - `bubblewrap` + `uidmap` installed via apt so `burrow serve` can run
+#   its bwrap-based sandbox (same substrate `Dockerfile:68-79` bakes into
+#   the release image).
+# - `@os-eco/seeds-cli` + `@os-eco/mulch-cli` installed globally so
+#   `sd` / `ml` resolve on PATH — warren shells to them for scenarios
+#   9/10/15/22/26/36. Versions track `Dockerfile:104-108` so the CLI
+#   surface warren links against matches production.
+# - `@os-eco/canopy-cli` installed globally so the fixture builder's
+#   `cn init` / `cn sync` calls succeed (mirrors `acceptance-public.yml`).
+#
+# ## Curated scenario subset
+#
+# INCLUDED (deterministic boot/doctor/config/triggers/roundtrip core):
+#   01, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 14, 15, 16, 17,
+#   21, 22, 26, 30, 35, 36
+#
+# EXCLUDED, with reasons:
+#   - 13 (container-smoke)      — needs docker-in-docker.
+#   - 19 (warren-on-postgres)   — needs a Postgres service. The
+#                                 sqlite/postgres dialect split is
+#                                 already exercised by ci-postgres.yml
+#                                 running `bun test` against pg.
+#   - 20 (preview happy-path)   — long (idle-TTL variant sleeps past
+#     20-path (preview path)      2s window); driver command needs
+#     24 (preview node runtime)   `python3 -m http.server` / real Node,
+#                                 and burrow's inbound port-forward is
+#                                 Linux-only under bwrap. Reserved for a
+#                                 dedicated preview workflow.
+#   - 37, 38 (k8s runtime)      — need an external warren booted with
+#                                 WARREN_RUNTIME=k8s + a cluster-
+#                                 reachable project (scripts/acceptance/
+#                                 lib/k8s-target.ts). They skip cleanly
+#                                 without the env, but we exclude them
+#                                 explicitly rather than relying on a
+#                                 silent skip.
+#   - 39 (public-exposure)      — already runs per-PR via
+#                                 acceptance-public.yml.
+#
+# None of the included scenarios dispatches a real paid agent — every
+# one uses the harness's stub-shell / stub claude-code / stub pi
+# runtimes (scripts/acceptance/lib/burrow-with-stub.ts). If a future
+# scenario dispatches a real claude-code run against the Anthropic API,
+# gate its id on the presence of `secrets.ANTHROPIC_API_KEY` and skip
+# cleanly with a log line when absent — the secret is not provisioned
+# on this workflow today.
+#
+# ## Not wired into check:all
+#
+# The canonical `bun run check:all` gate manifest is frozen
+# (docs/check-all-standard.md). The acceptance suite lives outside it
+# because it boots processes and takes minutes. `check:ci-parity` only
+# scans `.github/workflows/ci*.yml`, so this workflow's package-script
+# invocations don't need to appear in `scripts/ci-parity-config.json`.
+
+on:
+  schedule:
+    # 07:17 UTC daily — off the top of the hour so we don't collide with
+    # every other project's midnight-cron rush on shared runners.
+    - cron: "17 7 * * *"
+  workflow_dispatch: {}
+
+# Only one nightly run at a time; if a manual dispatch stacks on top of
+# the cron trigger, cancel the older one so we don't tie up a runner.
+concurrency:
+  group: acceptance-nightly
+  cancel-in-progress: true
+
+jobs:
+  acceptance:
+    runs-on: ubuntu-latest
+    # 30-minute cap on the whole suite. Each scenario has its own
+    # internal timeouts on waitFor* helpers; this is the outer stop so a
+    # hung boot / hung dispatch can't consume the runner. Bump only if a
+    # green run genuinely brushes this ceiling.
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      - name: Install bubblewrap + uidmap (burrow's sandbox substrate)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends bubblewrap uidmap
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+
+      - run: bun install
+
+      - name: Install os-eco CLIs the fixture builder + scenarios shell to
+        # Pinned to the same versions as Dockerfile:104-108 so the CLI
+        # surface warren links against matches the release image.
+        run: |
+          bun add -g \
+            @os-eco/canopy-cli \
+            @os-eco/seeds-cli@0.5.13 \
+            @os-eco/mulch-cli@0.10.7
+
+      - name: Run curated acceptance scenarios (in-proc)
+        run: bun run acceptance:nightly
+        env:
+          # Surface warren + burrow child-process logs on failure so the
+          # first triage step doesn't need a re-run with the knob flipped.
+          WARREN_ACCEPTANCE_LOG_LEVEL: info
+          WARREN_ACCEPTANCE_WARREN_STDERR: "1"
+          WARREN_ACCEPTANCE_BURROW_STDERR: "1"
