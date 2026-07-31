@@ -273,9 +273,19 @@ async function assertInboxNotDrained(
  * Assertion group 6. Hold the per-client allowance open with follow
  * streams, then prove the next one is refused fast (503) rather than
  * queued on a single-replica control plane.
+ *
+ * The slots are held against the PLAN-RUN stream, not the run stream:
+ * the seeded run is terminal (it must be — boot-time bridge resume
+ * reconciles a seeded `running` run to `burrow_run_lost`), and since
+ * warren-7bff a follow tail on a terminal run closes right after
+ * replay, releasing its slot before the next probe. The plan-run tail
+ * holds until the client disconnects, so it pins the slots
+ * deterministically — and it is the costlier stream to leave uncapped
+ * (it fans in every child), so it is the better route to prove the cap
+ * on anyway. Both routes share the same limiter (warren-25f6).
  */
 async function assertStreamCapRefuses(base: string, ids: SeededIds): Promise<void> {
-	const url = `${base}/runs/${encodeURIComponent(ids.runId)}/events?follow=1`;
+	const url = `${base}/plan-runs/${encodeURIComponent(ids.planRunId)}/events?follow=1`;
 	const held: AbortController[] = [];
 	try {
 		for (let i = 0; i < MAX_STREAMS_PER_CLIENT; i++) {

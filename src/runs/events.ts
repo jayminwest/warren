@@ -197,7 +197,24 @@ export interface TailRunEventsInput {
 	/** Skip events with `burrow_event_seq <= sinceSeq`. Default: 0 (all). */
 	readonly sinceSeq?: number;
 	readonly signal?: AbortSignal;
+	/**
+	 * Terminal backstop (warren-7bff). `broker.close(runId)` only fires
+	 * while a stream bridge is alive for the run; a follow tail opened
+	 * against a run whose bridge already exited (warren restart, finalize
+	 * racing the connect) would otherwise hang forever. When provided,
+	 * `isTerminal` is polled (once immediately, then every `pollMs`); on
+	 * the first `true` the tail drains any events persisted since the last
+	 * yield and returns. Read failures are treated as transient — the tail
+	 * keeps following and the next tick retries.
+	 */
+	readonly terminal?: {
+		readonly isTerminal: () => Promise<boolean>;
+		readonly pollMs?: number;
+	};
 }
+
+/** Default interval for the terminal backstop poll (warren-7bff). */
+export const DEFAULT_TERMINAL_POLL_MS = 1000;
 
 /**
  * Replay-then-live tail for `/runs/:id/events?follow=1`. Subscribes to
@@ -211,7 +228,7 @@ export interface TailRunEventsInput {
 export async function* tailRunEvents(
 	input: TailRunEventsInput,
 ): AsyncGenerator<EventRow, void, void> {
-	const { runId, repos, broker, follow, signal } = input;
+	const { runId, repos, follow } = input;
 	const sinceSeq = input.sinceSeq ?? 0;
 
 	if (!follow) {
@@ -219,22 +236,109 @@ export async function* tailRunEvents(
 		for (const row of await repos.events.listByRun(runId, opts)) yield row;
 		return;
 	}
+	yield* followRunEvents(input, sinceSeq);
+}
 
-	const subOpts: SubscribeOptions = signal !== undefined ? { signal } : {};
-	const live = broker.subscribe(runId, subOpts);
+/**
+ * The follow half of `tailRunEvents`: replay the snapshot, live-tail the
+ * broker, and — when a terminal probe is wired — end promptly once the
+ * run finishes even if no bridge remains to `broker.close` it.
+ */
+async function* followRunEvents(
+	input: TailRunEventsInput,
+	sinceSeq: number,
+): AsyncGenerator<EventRow, void, void> {
+	const { runId, repos, broker, signal } = input;
+
+	// Linked abort for the subscription: fires when the caller's signal
+	// aborts OR when the terminal backstop trips. Waking the subscription
+	// this way (rather than racing `live.next()` against a terminal
+	// promise) is what lets `live.return()` in the finally settle — a
+	// generator parked in the subscription's notify-await cannot be
+	// interrupted by `.return()` alone.
+	const subCtrl = new AbortController();
+	const onCallerAbort = (): void => subCtrl.abort();
+	if (signal !== undefined) {
+		if (signal.aborted) subCtrl.abort();
+		else signal.addEventListener("abort", onCallerAbort, { once: true });
+	}
+	const live = broker.subscribe(runId, { signal: subCtrl.signal });
+
+	const backstop =
+		input.terminal !== undefined
+			? startTerminalBackstop(input.terminal, () => subCtrl.abort())
+			: null;
+
+	const listOpts = sinceSeq > 0 ? { sinceSeq } : {};
 	let lastYielded = sinceSeq;
 	try {
-		const opts = sinceSeq > 0 ? { sinceSeq } : {};
-		for (const row of await repos.events.listByRun(runId, opts)) {
-			yield row;
-			lastYielded = Math.max(lastYielded, row.burrowEventSeq);
-		}
-		for await (const row of live) {
-			if (row.burrowEventSeq <= lastYielded) continue;
-			yield row;
-			lastYielded = row.burrowEventSeq;
+		lastYielded = yield* yieldNewerRows(await repos.events.listByRun(runId, listOpts), lastYielded);
+		lastYielded = yield* yieldNewerRows(live, lastYielded);
+		if (backstop?.reached() === true && !signal?.aborted) {
+			// The backstop (not `broker.close`) ended the tail, so events
+			// committed-but-never-published may still sit in the table.
+			// Drain them before closing so the follow tail doesn't truncate
+			// the run's final events.
+			const drainOpts = lastYielded > 0 ? { sinceSeq: lastYielded } : {};
+			lastYielded = yield* yieldNewerRows(
+				await repos.events.listByRun(runId, drainOpts),
+				lastYielded,
+			);
 		}
 	} finally {
+		if (backstop !== null) clearInterval(backstop.timer);
+		signal?.removeEventListener("abort", onCallerAbort);
 		await live.return(undefined).catch(() => {});
 	}
+}
+
+/**
+ * Yield every row whose `burrowEventSeq` is above `lastYielded`, returning
+ * the new high-water mark via the generator's return value (`yield*`
+ * captures it). Shared by the snapshot replay, the live tail and the
+ * terminal drain so the dedup rule lives in exactly one place.
+ */
+async function* yieldNewerRows(
+	rows: Iterable<EventRow> | AsyncIterable<EventRow>,
+	lastYielded: number,
+): AsyncGenerator<EventRow, number, void> {
+	let last = lastYielded;
+	for await (const row of rows) {
+		if (row.burrowEventSeq <= last) continue;
+		yield row;
+		last = row.burrowEventSeq;
+	}
+	return last;
+}
+
+interface TerminalBackstop {
+	readonly timer: ReturnType<typeof setInterval>;
+	readonly reached: () => boolean;
+}
+
+/**
+ * Poll `probe.isTerminal` (once immediately, then every `pollMs`) and fire
+ * `onTerminal` on the first `true`. Read failures are transient — the tail
+ * keeps following and the next tick retries.
+ */
+function startTerminalBackstop(
+	probe: { isTerminal: () => Promise<boolean>; pollMs?: number },
+	onTerminal: () => void,
+): TerminalBackstop {
+	let hit = false;
+	const check = (): void => {
+		probe
+			.isTerminal()
+			.then((terminal) => {
+				if (!terminal) return;
+				hit = true;
+				onTerminal();
+			})
+			.catch(() => {});
+	};
+	check();
+	return {
+		timer: setInterval(check, probe.pollMs ?? DEFAULT_TERMINAL_POLL_MS),
+		reached: () => hit,
+	};
 }

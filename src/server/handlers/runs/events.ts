@@ -1,3 +1,4 @@
+import { isTerminalRunState } from "../../../core/wire.ts";
 import { tailRunEvents } from "../../../runs/index.ts";
 import { ndjsonResponse } from "../../response.ts";
 import { reserveEventStreamSlot } from "../../stream-limits.ts";
@@ -10,9 +11,15 @@ export function streamRunEventsHandler(deps: ServerDeps): RouteHandler {
 		const id = requireParam(ctx, "id");
 		// 404 fast if the run isn't known — without this we'd happily
 		// stream an empty NDJSON forever for a typo'd id.
-		await deps.repos.runs.require(id);
+		const run = await deps.repos.runs.require(id);
 
-		const follow = parseBoolean(ctx.url.searchParams.get("follow"), "follow") ?? false;
+		// warren-7bff: follow by DEFAULT while the run is non-terminal. A
+		// bare `curl -N /runs/:id/events` (RUNBOOK-K8S's stream check) or any
+		// client not passing `?follow=` must hold the connection on a live
+		// run, not replay-then-close. Terminal runs keep replay-then-close;
+		// an explicit `?follow=0|1` always wins.
+		const followParam = parseBoolean(ctx.url.searchParams.get("follow"), "follow");
+		const follow = followParam ?? !isTerminalRunState(run.state);
 		const sinceSeq = parseNonNegativeInt(ctx.url.searchParams.get("since"), "since");
 
 		const ctrl = bridgeAbort(ctx.request.signal);
@@ -32,6 +39,15 @@ export function streamRunEventsHandler(deps: ServerDeps): RouteHandler {
 			follow,
 			...(sinceSeq !== undefined ? { sinceSeq } : {}),
 			signal: ctrl.signal,
+			// warren-7bff: close the tail promptly when the run finishes even
+			// if no live bridge remains to `broker.close` it (warren restart,
+			// finalize racing the connect) — no dangling follow connections.
+			terminal: {
+				isTerminal: async () => {
+					const row = await deps.repos.runs.get(id);
+					return row === null || isTerminalRunState(row.state);
+				},
+			},
 		});
 		return ndjsonResponse(
 			asNdjsonStream(
