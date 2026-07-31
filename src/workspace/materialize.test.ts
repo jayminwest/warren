@@ -55,12 +55,18 @@ async function bootstrapRepo(path: string): Promise<void> {
  * developer's real ~/.gitconfig, and disable system + xdg config sources that
  * could inject conflicting values on CI hosts. Passed as `hostEnv` (used
  * directly by resolveWorkspaceIdentity's runGit, not merged with process.env).
+ * GIT_DIR pins git's repo discovery to an empty dir: `git config --get` runs
+ * with cwd = the test process's cwd (the warren repo), so without this a
+ * repo-LOCAL user.name/user.email — e.g. the identity a workflow configures
+ * in its checkout to commit — would override the pinned global config and
+ * leak the runner's identity in (warren-25bf).
  */
 function isolatedEnv(home: string): Record<string, string | undefined> {
 	return {
 		HOME: home,
 		GIT_CONFIG_GLOBAL: join(home, ".gitconfig"),
 		GIT_CONFIG_NOSYSTEM: "1",
+		GIT_DIR: join(home, "not-a-repo"),
 		XDG_CONFIG_HOME: join(home, ".config"),
 		PATH: process.env.PATH,
 	};
