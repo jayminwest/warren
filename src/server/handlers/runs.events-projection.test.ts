@@ -242,8 +242,11 @@ describe("GET /runs/:id/events under WARREN_AUTH=public (warren-1cb7)", () => {
 	});
 
 	async function stream(token?: string): Promise<{ text: string; lines: string[] }> {
+		// Explicit follow=0: these tests assert projection over the replayed
+		// history. As of warren-7bff a bare request on a non-terminal run
+		// follows instead of replay-then-close.
 		const res = await fetch(
-			`${base}/runs/${runId}/events`,
+			`${base}/runs/${runId}/events?follow=0`,
 			token === undefined ? {} : { headers: { authorization: `Bearer ${token}` } },
 		);
 		expect(res.status).toBe(200);

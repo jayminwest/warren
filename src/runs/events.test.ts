@@ -250,4 +250,51 @@ describe("tailRunEvents", () => {
 		await done;
 		expect(out.map((e) => e.burrowEventSeq)).toEqual([1]);
 	});
+
+	test("terminal backstop ends a follow tail with no live bridge (warren-7bff)", async () => {
+		await appendRow(1);
+		let terminal = false;
+		const tail = tailRunEvents({
+			runId,
+			repos,
+			broker,
+			follow: true,
+			terminal: { isTerminal: async () => terminal, pollMs: 10 },
+		});
+		const out: EventRow[] = [];
+		const done = (async () => {
+			for await (const ev of tail) out.push(ev);
+		})();
+		await new Promise((r) => setTimeout(r, 20));
+		// The run finishes with no bridge alive to `broker.close` — and its
+		// final event was committed to the table but never published.
+		await appendRow(2);
+		terminal = true;
+		await done;
+		// The tail drained the never-published final event, then closed.
+		expect(out.map((e) => e.burrowEventSeq)).toEqual([1, 2]);
+	});
+
+	test("terminal backstop: transient probe failures keep the tail alive", async () => {
+		await appendRow(1);
+		let calls = 0;
+		const tail = tailRunEvents({
+			runId,
+			repos,
+			broker,
+			follow: true,
+			terminal: {
+				isTerminal: async () => {
+					calls += 1;
+					if (calls < 3) throw new Error("db busy");
+					return true;
+				},
+				pollMs: 10,
+			},
+		});
+		const out: EventRow[] = [];
+		for await (const ev of tail) out.push(ev);
+		expect(out.map((e) => e.burrowEventSeq)).toEqual([1]);
+		expect(calls).toBeGreaterThanOrEqual(3);
+	});
 });

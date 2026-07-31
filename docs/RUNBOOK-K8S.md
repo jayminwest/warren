@@ -227,7 +227,7 @@ Preview mode gives forensic signal and a measurable false-positive rate.
 Two independent reasons, both worth a re-check after any change here:
 
 - Cloud Armor rate limits count **requests**, not bytes or seconds. A long-lived `GET /runs/:id/events` NDJSON stream costs one request at open. Rule 1000 never re-counts the stream and never severs it.
-- The GCE backend-service timeout defaults to **30s**, which *would* sever every stream. `backendconfig.yaml` sets `timeoutSec: 3600`. Check after a deploy: watch a run for more than 30s in the UI, or run `curl -N -H "Authorization: Bearer $TOK" https://$HOST/runs/$ID/events`.
+- The GCE backend-service timeout defaults to **30s**, which *would* sever every stream. `backendconfig.yaml` sets `timeoutSec: 3600`. Check after a deploy: watch a run for more than 30s in the UI, or run `curl -N -H "Authorization: Bearer $TOK" https://$HOST/runs/$ID/events` against a **live** run. Since warren-7bff the bare request follows a non-terminal run by default. The connection must stay open and stream new events until the run finishes. A replay-then-close in under a second against a `state=running` run is the warren-7bff regression. Pass `?follow=0` to force replay-then-close.
 
 **Tuning.** Thresholds are env overrides on the script — re-run it to reconcile:
 
