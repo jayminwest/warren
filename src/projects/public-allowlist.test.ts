@@ -5,7 +5,7 @@
  * of this file pins: public mode with no allowlist refuses, an unparseable
  * `gitUrl` counts as not-allowlisted, and token mode is untouched in every
  * direction. The over-the-wire half (`POST /projects` → 400, nothing
- * cloned) lives in `handlers/projects.public-allowlist.test.ts`.
+ * cloned) lives in `src/server/handlers/projects.public-allowlist.test.ts`.
  */
 
 import { describe, expect, test } from "bun:test";
@@ -74,18 +74,18 @@ describe("loadPublicAllowlistFromEnv", () => {
 
 describe("resolvePublicAllowlist", () => {
 	test("token mode opts out entirely — a bad allowlist isn't even parsed", () => {
-		expect(resolvePublicAllowlist("token", {})).toBeUndefined();
-		expect(resolvePublicAllowlist("token", { [ENV]: "os-eco/warren" })).toBeUndefined();
+		expect(resolvePublicAllowlist(false, {})).toBeUndefined();
+		expect(resolvePublicAllowlist(false, { [ENV]: "os-eco/warren" })).toBeUndefined();
 	});
 
 	test("public mode parses the list", () => {
-		const allowlist = resolvePublicAllowlist("public", { [ENV]: "os-eco" });
+		const allowlist = resolvePublicAllowlist(true, { [ENV]: "os-eco" });
 		expect(allowlist).toBeDefined();
 		expect(allowlist?.owners.has("os-eco")).toBe(true);
 	});
 
 	test("public mode with no allowlist refuses the boot", () => {
-		expect(() => resolvePublicAllowlist("public", {})).toThrow(PublicAllowlistError);
+		expect(() => resolvePublicAllowlist(true, {})).toThrow(PublicAllowlistError);
 	});
 });
 

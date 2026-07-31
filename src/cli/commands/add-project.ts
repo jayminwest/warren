@@ -9,6 +9,7 @@
 import type { ProjectsRepo } from "../../db/repos/projects.ts";
 import type { ProjectsConfig } from "../../projects/config.ts";
 import { addProject } from "../../projects/index.ts";
+import type { PublicAllowlist } from "../../projects/public-allowlist.ts";
 import type { CliContext } from "../output.ts";
 import { formatError, writeJsonLine } from "../output.ts";
 
@@ -20,6 +21,12 @@ export interface AddProjectArgs {
 export interface AddProjectDeps {
 	readonly projects: ProjectsRepo;
 	readonly projectsConfig: ProjectsConfig;
+	/**
+	 * Public-instance allowlist (warren-ce9b), forwarded into `addProject`
+	 * so the CLI enforces the same registration gate as `POST /projects`
+	 * (warren-0883). `undefined` (token mode) ⇒ no restriction.
+	 */
+	readonly publicAllowlist?: PublicAllowlist;
 }
 
 export interface AddProjectResult {
@@ -41,6 +48,7 @@ export async function runAddProject(
 			repo: deps.projects,
 			config: deps.projectsConfig,
 			gitUrl: args.gitUrl,
+			...(deps.publicAllowlist !== undefined ? { publicAllowlist: deps.publicAllowlist } : {}),
 			...(args.defaultBranch !== undefined && args.defaultBranch !== ""
 				? { defaultBranch: args.defaultBranch }
 				: {}),

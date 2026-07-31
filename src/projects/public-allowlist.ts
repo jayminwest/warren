@@ -3,7 +3,8 @@
  * repo granularity by warren-1841).
  *
  * `WARREN_AUTH=public` admits credential-less spectators to the public
- * projection of every project on the instance (`src/server/auth.ts`). The
+ * projection of every project on the instance (the server's auth module).
+ * The
  * redaction work that precedes it (warren-946f / 4f6c / 1cb7) is a field
  * allowlist per response; this module is the STRUCTURAL half — if the only
  * repos that can ever be registered are public ones, a redaction miss
@@ -21,9 +22,11 @@
  *     then every already-registered project is held to it. A project
  *     outside the allowlist refuses the boot, naming the offenders, rather
  *     than serving them anonymously for however long nobody notices.
- *   - **registration** (`POST /projects`) — a non-allowlisted repo is a
- *     `ValidationError` → HTTP 400, raised before `addProject` so nothing
- *     is cloned.
+ *   - **registration** (`addProject`) — a non-allowlisted repo is a
+ *     `ValidationError` (HTTP 400 at `POST /projects`), raised inside the
+ *     domain before anything is cloned, so the API and the
+ *     `warren add-project` CLI enforce identically from one site
+ *     (warren-0883).
  *
  * Fail closed, three ways: public mode with an absent or empty allowlist
  * refuses the boot (an empty list is a misconfiguration, never "allow
@@ -61,8 +64,7 @@
  */
 
 import { ValidationError, WarrenError } from "../core/errors.ts";
-import { parseGitHubUrl } from "../projects/url.ts";
-import type { AuthKind } from "./auth.ts";
+import { parseGitHubUrl } from "./url.ts";
 
 export const WARREN_PUBLIC_ALLOWLIST_ENV = "WARREN_PUBLIC_ALLOWLIST" as const;
 
@@ -192,14 +194,17 @@ export function loadPublicAllowlistFromEnv(
 
 /**
  * The allowlist this process enforces, or `undefined` when it enforces
- * none. Called once at boot: `public` parses the env (throwing on a
- * missing/empty list), every other backend opts out entirely.
+ * none. Called once per surface (server boot, CLI add-project) with
+ * whether the process is in public mode: `true` parses the env (throwing
+ * on a missing/empty list), `false` opts out entirely. Takes the boolean
+ * rather than the server's `AuthKind` so the domain never imports the
+ * server (warren-0883, check:layers).
  */
 export function resolvePublicAllowlist(
-	kind: AuthKind,
+	publicMode: boolean,
 	env: EnvLike = process.env,
 ): PublicAllowlist | undefined {
-	return kind === "public" ? loadPublicAllowlistFromEnv(env) : undefined;
+	return publicMode ? loadPublicAllowlistFromEnv(env) : undefined;
 }
 
 /**
@@ -229,10 +234,12 @@ function isGitUrlAllowlisted(allowlist: PublicAllowlist, gitUrl: string): boolea
 }
 
 /**
- * Registration gate for `POST /projects`. `allowlist === undefined` (token
+ * Registration gate, called from `addProject` (warren-0883) so every
+ * registration surface — `POST /projects` and the `warren add-project`
+ * CLI — enforces from the same site. `allowlist === undefined` (token
  * mode) is a no-op, so the fresh-install path is untouched. Throws
- * `ValidationError` → HTTP 400; call it BEFORE `addProject` so a refused
- * repo never reaches `git clone`.
+ * `ValidationError` → HTTP 400 at the API; called BEFORE the clone so a
+ * refused repo never reaches `git clone`.
  */
 export function assertGitUrlAllowlisted(
 	allowlist: PublicAllowlist | undefined,

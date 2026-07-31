@@ -39,6 +39,10 @@ import { loadPreviewLaunchConfigFromEnv } from "../../preview/launch/index.ts";
 import { loadPreviewPortRangeFromEnv, PreviewPortAllocator } from "../../preview/port-allocator.ts";
 import { loadProjectsConfigFromEnv } from "../../projects/config.ts";
 import { listProjects } from "../../projects/index.ts";
+import {
+	assertRegisteredProjectsAllowlisted,
+	resolvePublicAllowlist,
+} from "../../projects/public-allowlist.ts";
 import { seedBuiltinAgents } from "../../registry/builtins/index.ts";
 import {
 	loadAutoOpenPrConfigFromEnv,
@@ -55,10 +59,6 @@ import { createWarrenConfigCache } from "../../warren-config/index.ts";
 import { NO_AUTH, resolveAuth, resolveAuthKind } from "../auth.ts";
 import { bootBridges } from "../bridges.ts";
 import { type EnvLike, loadServerConfigFromEnv } from "../config.ts";
-import {
-	assertRegisteredProjectsAllowlisted,
-	resolvePublicAllowlist,
-} from "../public-allowlist.ts";
 import { bootScheduler } from "../scheduler.ts";
 import { startServer } from "../server.ts";
 import { loadEventStreamLimitsFromEnv } from "../stream-limits.ts";
@@ -116,7 +116,7 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 	// here so a public instance with no allowlist refuses the boot before it
 	// touches anything. `undefined` in every other mode ⇒ no org restriction.
 	const authKind = resolveAuthKind(env);
-	const publicAllowlist = resolvePublicAllowlist(authKind, env);
+	const publicAllowlist = resolvePublicAllowlist(authKind === "public", env);
 
 	if (serverConfig.dbUrlConflict !== null) {
 		logger.warn(

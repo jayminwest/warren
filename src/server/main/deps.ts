@@ -13,6 +13,7 @@ import type { loadPreviewEvictionConfigFromEnv } from "../../preview/eviction/in
 import type { loadPreviewLaunchConfigFromEnv } from "../../preview/launch/index.ts";
 import type { loadPreviewPortRangeFromEnv } from "../../preview/port-allocator.ts";
 import type { ProjectsConfig } from "../../projects/config.ts";
+import type { PublicAllowlist } from "../../projects/public-allowlist.ts";
 import type { loadAutoOpenPrConfigFromEnv, RunEventBroker } from "../../runs/index.ts";
 import type { RuntimeProvider } from "../../runtime/contract.ts";
 import type { PodAdmissionSource } from "../../runtime/k8s/admission.ts";
@@ -21,7 +22,6 @@ import type { PodCacheReader } from "../../runtime/k8s/pod-watcher.ts";
 import type { createWarrenConfigCache } from "../../warren-config/index.ts";
 import { createDbSeams } from "../db-seams.ts";
 import { IdempotencyStore } from "../idempotency.ts";
-import type { PublicAllowlist } from "../public-allowlist.ts";
 import { EventStreamLimiter, type EventStreamLimits } from "../stream-limits.ts";
 import type { BridgeRegistry, Logger, ServerDeps } from "../types.ts";
 import { defaultSpawn } from "./utils.ts";

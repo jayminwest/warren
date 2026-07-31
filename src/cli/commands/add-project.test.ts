@@ -61,4 +61,46 @@ describe("runAddProject", () => {
 		expect(result.exitCode).toBe(1);
 		expect(err.join("")).toContain("[validation_error]");
 	});
+
+	// warren-0883: the CLI used to bypass the public-instance allowlist
+	// that `POST /projects` enforces. The allowlist is now forwarded into
+	// `addProject` — the single enforcement site — so these pin the CLI
+	// half of that contract.
+	const PUBLIC_ALLOWLIST = {
+		owners: new Set(["os-eco"]),
+		repos: new Set<string>(),
+	};
+
+	test("public mode: refuses a non-allowlisted org with exit 1 and persists nothing", async () => {
+		const { context, err } = captureContext();
+		const result = await runAddProject(
+			context,
+			{ projects, projectsConfig: CFG, publicAllowlist: PUBLIC_ALLOWLIST },
+			{ gitUrl: "https://github.com/somebody/private" },
+		);
+		expect(result.exitCode).toBe(1);
+		expect(err.join("")).toContain("not on this public instance's allowlist");
+		expect(await projects.findByGitUrl("https://github.com/somebody/private")).toBeNull();
+	});
+
+	test("public mode: admits an allowlisted org", async () => {
+		const { context, out } = captureContext();
+		const result = await runAddProject(
+			context,
+			{ projects, projectsConfig: CFG, publicAllowlist: PUBLIC_ALLOWLIST },
+			{ gitUrl: "https://github.com/os-eco/warren", defaultBranch: "main" },
+		);
+		expect(result.exitCode).toBe(0);
+		expect(JSON.parse(out.join("")).ok).toBe(true);
+	});
+
+	test("token mode: no allowlist dep stays permissive", async () => {
+		const { context } = captureContext();
+		const result = await runAddProject(
+			context,
+			{ projects, projectsConfig: CFG },
+			{ gitUrl: "https://github.com/somebody/anything", defaultBranch: "main" },
+		);
+		expect(result.exitCode).toBe(0);
+	});
 });
