@@ -44,6 +44,7 @@ import {
 	resolvePublicAllowlist,
 } from "../../projects/public-allowlist.ts";
 import { seedBuiltinAgents } from "../../registry/builtins/index.ts";
+import { seedAgentsFromEnvFile } from "../../registry/builtins/seed-file.ts";
 import {
 	loadAutoOpenPrConfigFromEnv,
 	loadRunBranchPrefixFromEnv,
@@ -159,13 +160,15 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 		logger.info({ path: fileConfig.path }, "loaded warren.toml");
 	}
 
-	// Seed built-in agents (warren-d3e9). Idempotent: existing rows
-	// (whether seeded by an earlier boot or upserted by a refresh of a
-	// same-named library agent) are preserved.
+	// Seed built-in agents (warren-d3e9); idempotent — existing rows are preserved.
 	const seedResult = await seedBuiltinAgents(repos.agents, undefined, opts.now);
 	if (seedResult.seeded.length > 0) {
 		logger.info({ agents: seedResult.seeded }, "seeded built-in agents");
 	}
+
+	const extra = await seedAgentsFromEnvFile(repos.agents, env, opts.now);
+	if (extra !== null && extra.seeded.length > 0)
+		logger.info({ agents: extra.seeded, path: extra.path }, "seeded seed-file agents");
 
 	const autoOpenPr = loadAutoOpenPrConfigFromEnv(env);
 	if (autoOpenPr.enabled && autoOpenPr.token === "") {

@@ -89,8 +89,8 @@ export const scenario: Scenario = {
 
 		// Pre-reqs. Scenarios share a warren+burrow pair, so the sample
 		// project may already exist from a sibling scenario — reuse it
-		// instead of failing on the "already exists" 400.
-		await http.expectStatus("POST", "/agents/refresh", 200);
+		// instead of failing on the "already exists" 400. The stub agent
+		// is seeded at boot via WARREN_SEED_AGENTS_FILE (warren-e376).
 		const project = await ensureSampleProject(http, ctx.fixtures.sampleProjectGitUrl);
 
 		// Spawn a long-running run so cancel has something to actually

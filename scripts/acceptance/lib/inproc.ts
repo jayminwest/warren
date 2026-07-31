@@ -276,6 +276,11 @@ function pickPort(): number {
 }
 
 const PASSTHROUGH_ENV_KEYS = new Set([
+	// Seeds the stub-shell agent into every warren this harness boots
+	// (warren-e376). run.ts points it at the fixture-built JSON file;
+	// scenario-owned boots (20, 20-path, 26, 36) inherit it from
+	// process.env so their private warren pairs register the stub too.
+	"WARREN_SEED_AGENTS_FILE",
 	"PATH",
 	"HOME",
 	"USER",

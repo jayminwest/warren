@@ -36,6 +36,13 @@ export interface ScenarioCtx {
 		readonly stubAgentName: string;
 		readonly knownSeedTitle: string;
 		readonly knownMulchDomain: string;
+		/**
+		 * GIT_CONFIG_GLOBAL file redirecting the fixture git URLs onto
+		 * local paths. Scenarios booting their own in-proc pair (20, 30)
+		 * pass it to bootInProc so the private warren clones resolve.
+		 * Empty in container mode.
+		 */
+		readonly gitConfigPath: string;
 	};
 	readonly logger: ScenarioLogger;
 	readonly tmp: string;

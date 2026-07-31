@@ -169,7 +169,7 @@ async function runVariantA(ctx: ScenarioCtx): Promise<void> {
 		ctx.logger.info(`scenario-20A: warren ready at ${handle.warrenUrl}`);
 
 		const http = new WarrenHttp({ baseUrl: handle.warrenUrl, token: handle.token });
-		await http.expectStatus("POST", "/agents/refresh", 200);
+		// stub-shell is seeded at boot via WARREN_SEED_AGENTS_FILE (warren-e376).
 		const project = await ensureProject(http, sample.gitUrl);
 
 		const created = await http.expectJson<CreateRunResponse>("POST", "/runs", 201, {
@@ -301,7 +301,7 @@ async function runVariantB(ctx: ScenarioCtx): Promise<void> {
 		ctx.logger.info(`scenario-20B: warren ready at ${handle.warrenUrl}`);
 
 		const http = new WarrenHttp({ baseUrl: handle.warrenUrl, token: handle.token });
-		await http.expectStatus("POST", "/agents/refresh", 200);
+		// stub-shell is seeded at boot via WARREN_SEED_AGENTS_FILE (warren-e376).
 		const project = await ensureProject(http, sample.gitUrl);
 
 		const created = await http.expectJson<CreateRunResponse>("POST", "/runs", 201, {

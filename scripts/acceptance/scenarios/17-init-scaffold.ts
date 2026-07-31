@@ -89,20 +89,21 @@ export const scenario: Scenario = {
 			);
 			assertEqual(
 				firstJson.scaffolded.files.slice().sort().join(","),
-				".warren/defaults.json,.warren/triggers.yaml",
+				".warren/config.yaml,.warren/triggers.yaml",
 				"init A: both files reported scaffolded",
 			);
 
 			const triggersAbs = join(scaffoldDir, ".warren/triggers.yaml");
-			const defaultsAbs = join(scaffoldDir, ".warren/defaults.json");
+			const configAbs = join(scaffoldDir, ".warren/config.yaml");
 			assertTrue(existsSync(triggersAbs), "init A: triggers.yaml exists on disk");
-			assertTrue(existsSync(defaultsAbs), "init A: defaults.json exists on disk");
+			assertTrue(existsSync(configAbs), "init A: config.yaml exists on disk");
 
-			const defaultsParsed = JSON.parse(await readFile(defaultsAbs, "utf8"));
-			assertEqual(
-				defaultsParsed.defaultRole,
-				"claude-code",
-				"init A: defaults.json carries the requested defaultRole",
+			// warren-5840 layout: defaults live in config.yaml, not the
+			// legacy defaults.json (warren-e376).
+			const configRaw = await readFile(configAbs, "utf8");
+			assertTrue(
+				configRaw.includes("defaultRole: claude-code"),
+				`init A: config.yaml carries the requested defaultRole; got ${JSON.stringify(configRaw)}`,
 			);
 
 			const triggersRaw = await readFile(triggersAbs, "utf8");
@@ -136,7 +137,7 @@ export const scenario: Scenario = {
 			// Publish the scaffolded files into the source repo and commit.
 			await mkdir(sourceWarrenDir, { recursive: true });
 			await copyFile(triggersAbs, join(sourceWarrenDir, "triggers.yaml"));
-			await copyFile(defaultsAbs, join(sourceWarrenDir, "defaults.json"));
+			await copyFile(configAbs, join(sourceWarrenDir, "config.yaml"));
 			await commitInSource(
 				ctx.fixtures.sampleProjectPath,
 				"scenario-17: publish scaffolded .warren/",

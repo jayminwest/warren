@@ -243,8 +243,11 @@ describe("refreshProject", () => {
 			},
 		});
 
-		expect(order).toEqual([`invalidate:${row.id}`, "refresh"]);
-		expect(cache.invalidations).toEqual([row.id]);
+		// warren-e376: a second invalidate AFTER the refresh closes the
+		// hole where a reader that starts mid-refresh (1s scheduler tick)
+		// caches a stale mid-swap parse (acceptance scenario 15 404).
+		expect(order).toEqual([`invalidate:${row.id}`, "refresh", `invalidate:${row.id}`]);
+		expect(cache.invalidations).toEqual([row.id, row.id]);
 	});
 
 	test("invalidates even when refresh throws (cache stays empty)", async () => {

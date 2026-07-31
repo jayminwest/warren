@@ -154,7 +154,11 @@ export function buildProgram(context: CliContext): Command {
 				process.exit(2);
 			}
 			const exitCode = await withCliDb({ env: context.env }, async ({ repos }) => {
-				seedBuiltinAgents(repos.agents, undefined, context.now);
+				// Must await (warren-e376): --default-role validation reads the
+				// registry immediately after; an un-awaited seed lets the read
+				// race ahead on a fresh DB and reject built-in names like
+				// claude-code as "unknown agent" (acceptance scenario 17).
+				await seedBuiltinAgents(repos.agents, undefined, context.now);
 				const args =
 					opts.project !== undefined
 						? {

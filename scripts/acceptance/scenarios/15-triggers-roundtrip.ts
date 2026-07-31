@@ -113,9 +113,9 @@ export const scenario: Scenario = {
 	async run(ctx) {
 		const http = new WarrenHttp({ baseUrl: ctx.warrenUrl, token: ctx.token });
 
-		// stub-shell must be in warren's agents registry before any spawn.
-		await http.expectStatus("POST", "/agents/refresh", 200);
-
+		// stub-shell must be in warren's agents registry before any spawn —
+		// seeded at boot via WARREN_SEED_AGENTS_FILE (warren-e376); the
+		// POST /agents/refresh endpoint was deleted in pl-3a79.
 		const project = await ensureSampleProject(http, ctx.fixtures.sampleProjectGitUrl);
 
 		// Restore source state in case a prior pass (or sibling scenario)

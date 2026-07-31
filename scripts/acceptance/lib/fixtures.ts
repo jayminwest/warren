@@ -46,6 +46,13 @@ export interface BuiltFixtures {
 	/** Path to the stub bash script committed inside the sample project. */
 	readonly stubAgentScriptInProject: string;
 	readonly gitConfigPath: string;
+	/**
+	 * Path to a JSON array of AgentDefinition objects the booted warren
+	 * seeds via WARREN_SEED_AGENTS_FILE (warren-e376). Carries the
+	 * `stub-shell` definition now that POST /agents/refresh is gone
+	 * (pl-3a79) and the registry seeds on boot only.
+	 */
+	readonly seedAgentsFilePath: string;
 }
 
 const FAKE_CANOPY_OWNER = "warren-acceptance";
@@ -72,6 +79,8 @@ export async function buildFixtures(roots: FixtureRoots): Promise<BuiltFixtures>
 
 	await buildCanopyRepo(canopyRepoPath);
 	await buildSampleProject(sampleProjectPath);
+	const seedAgentsFilePath = join(fixturesRoot, "stub-agents.json");
+	await buildSeedAgentsFile(seedAgentsFilePath);
 	await writeGitConfigRedirects(gitConfigPath, [
 		{ fakeUrl: canopyRepoUrl, localPath: canopyRepoPath },
 		{ fakeUrl: sampleProjectGitUrl, localPath: sampleProjectPath },
@@ -100,24 +109,57 @@ export async function buildFixtures(roots: FixtureRoots): Promise<BuiltFixtures>
 		knownMulchRecordId: KNOWN_MULCH_RECORD_ID,
 		stubAgentScriptInProject: join(sampleProjectPath, "tools", "stub-agent.sh"),
 		gitConfigPath,
+		seedAgentsFilePath,
 	};
 }
+
+/**
+ * Write the WARREN_SEED_AGENTS_FILE payload: the `stub-shell` agent as a
+ * warren AgentDefinition (mirrors the canopy fixture's sections and
+ * `runtime=stub-shell` frontmatter so dispatch resolves the runtime the
+ * burrow-with-stub wrapper registered). `source: "builtin"` lets
+ * seedBuiltinAgents upsert on drift across reboots.
+ */
+async function buildSeedAgentsFile(path: string): Promise<void> {
+	const stubAgent = {
+		name: STUB_AGENT_NAME,
+		version: 1,
+		sections: {
+			system: STUB_SYSTEM_SECTION,
+			burrow_config: STUB_BURROW_CONFIG_SECTION,
+		},
+		resolvedFrom: ["acceptance:stub-shell"],
+		frontmatter: {
+			source: "builtin",
+			tags: ["agent"],
+			description: "Deterministic stub agent for warren acceptance",
+			runtime: STUB_AGENT_NAME,
+		},
+	};
+	await writeFile(path, `${JSON.stringify([stubAgent], null, 2)}\n`);
+}
+
+// The stub agent's two sections, shared between the canopy fixture
+// (buildCanopyRepo) and the WARREN_SEED_AGENTS_FILE payload
+// (buildSeedAgentsFile) so the two registration paths can't drift apart.
+const STUB_BURROW_CONFIG_SECTION = [
+	"[sandbox]",
+	`network = "restricted"`,
+	`allowed_domains = ["github.com", "registry.npmjs.org"]`,
+	"",
+].join("\n");
+const STUB_SYSTEM_SECTION = [
+	"You are the warren acceptance stub agent. You only run inside",
+	"warren's acceptance harness — never against real user data.",
+].join(" ");
 
 async function buildCanopyRepo(repoPath: string): Promise<void> {
 	const env = withGitIdentity({ HOME: process.env.HOME ?? "/tmp" });
 
 	await runIn(repoPath, ["git", "init", "--initial-branch=main"], env);
 	await runIn(repoPath, ["cn", "init"], env);
-	const burrowConfigSection = [
-		"[sandbox]",
-		`network = "restricted"`,
-		`allowed_domains = ["github.com", "registry.npmjs.org"]`,
-		"",
-	].join("\n");
-	const systemSection = [
-		"You are the warren acceptance stub agent. You only run inside",
-		"warren's acceptance harness — never against real user data.",
-	].join(" ");
+	const burrowConfigSection = STUB_BURROW_CONFIG_SECTION;
+	const systemSection = STUB_SYSTEM_SECTION;
 	await runIn(
 		repoPath,
 		[
