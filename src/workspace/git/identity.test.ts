@@ -33,10 +33,16 @@ describe("identity helpers", () => {
 		// directly (not merged with process.env), the pre-commit hook's exported
 		// GIT_* vars never leak in, so a `git config --get` here can only ever
 		// read from the temp GIT_CONFIG_GLOBAL below.
+		// GIT_DIR pins git's repo discovery to an empty dir: `git config --get`
+		// runs with cwd = the test process's cwd (the warren repo), so without
+		// this a repo-LOCAL user.name/user.email — e.g. the identity a workflow
+		// configures in its checkout to commit — would override the pinned
+		// global config and leak the runner's identity in (warren-25bf).
 		return {
 			HOME: home,
 			GIT_CONFIG_GLOBAL: configPath,
 			GIT_CONFIG_NOSYSTEM: "1",
+			GIT_DIR: join(home, "not-a-repo"),
 			XDG_CONFIG_HOME: join(home, ".config"),
 			PATH: process.env.PATH,
 		};
@@ -52,6 +58,27 @@ describe("identity helpers", () => {
 		writeFileSync(configPath, "[user]\n\tname = OnlyName\n");
 		const identity = await readHostGitIdentity({ hostEnv: isolatedEnv() });
 		expect(identity).toBeNull();
+	});
+
+	test("readHostGitIdentity ignores a repo-LOCAL identity at the process cwd (warren-25bf)", async () => {
+		// Repro of the autoheal-runner failure: the workflow configures
+		// user.name/user.email in its checkout (repo-local) to commit, and
+		// `git config --get` from that cwd prefers local over the pinned global.
+		// GIT_DIR in isolatedEnv must sever that.
+		const cwd = process.cwd();
+		const repo = mkdtempSync(join(tmpdir(), "warren-identity-repo-"));
+		try {
+			await Bun.spawn(["git", "init", "-q"], { cwd: repo }).exited;
+			await Bun.spawn(["git", "config", "user.name", "Local Bot"], { cwd: repo }).exited;
+			await Bun.spawn(["git", "config", "user.email", "bot@local"], { cwd: repo }).exited;
+			process.chdir(repo);
+			writeFileSync(configPath, "[user]\n\tname = Alice Example\n\temail = alice@example.com\n");
+			const identity = await readHostGitIdentity({ hostEnv: isolatedEnv() });
+			expect(identity).toEqual({ name: "Alice Example", email: "alice@example.com" });
+		} finally {
+			process.chdir(cwd);
+			rmSync(repo, { recursive: true, force: true });
+		}
 	});
 
 	test("resolveWorkspaceIdentity('bot') ignores host config and returns the supplied pair", async () => {
