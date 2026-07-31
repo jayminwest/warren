@@ -209,7 +209,8 @@ export function buildProgram(context: CliContext): Command {
 		.command("doctor")
 		.description("check warren's environment: env vars, burrow socket")
 		.option("--no-auth", "skip the WARREN_API_TOKEN check (loopback dev mode)")
-		.action(async (opts: { auth?: boolean }) => {
+		.option("--verbose", "print raw probe/driver output (withheld from check messages) to stderr")
+		.action(async (opts: { auth?: boolean; verbose?: boolean }) => {
 			// commander turns `--no-auth` into `opts.auth === false`.
 			// Open the DB so the warren_config check can walk every
 			// registered project. A missing DB file is fine — withCliDb's
@@ -220,7 +221,11 @@ export function buildProgram(context: CliContext): Command {
 					id: p.id,
 					localPath: p.localPath,
 				}));
-				const result = await runDoctor(context, { projects, db }, { noAuth: opts.auth === false });
+				const result = await runDoctor(
+					context,
+					{ projects, db },
+					{ noAuth: opts.auth === false, verbose: opts.verbose === true },
+				);
 				return result.exitCode;
 			});
 			process.exit(exitCode);

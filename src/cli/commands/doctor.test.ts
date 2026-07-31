@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import type { AnyWarrenDb } from "../../db/client.ts";
 import type { CliContext, CliSpawn, EnvLike } from "../output.ts";
 import { type DoctorCheck, runDoctor } from "./doctor.ts";
 
@@ -277,5 +278,52 @@ describe("runDoctor", () => {
 		const wc = result.checks.find((c: DoctorCheck) => c.name === "warren_config");
 		expect(wc?.ok).toBe(true);
 		expect(wc?.message).toContain("no projects registered");
+	});
+
+	describe("--verbose (warren-2d14)", () => {
+		// A db handle whose SELECT 1 fails with text that names host/role —
+		// exactly the disclosure warren-51de keeps off the check message.
+		const RAW_DRIVER_TEXT = "ECONNREFUSED 10.0.0.9:5432 role warren_admin";
+		const failingDb = (): AnyWarrenDb =>
+			({
+				dialect: "sqlite",
+				raw: {
+					query: () => ({
+						get: () => {
+							throw new Error(RAW_DRIVER_TEXT);
+						},
+					}),
+				},
+				drizzle: {},
+				close: async () => {},
+			}) as unknown as AnyWarrenDb;
+
+		test("writes the raw driver text to stderr while the check message keeps the reason code", async () => {
+			const { context, err } = captureContext({ WARREN_API_TOKEN: "tok" });
+			const result = await runDoctor(
+				context,
+				{ existsSync: () => true, probeBurrow: async () => undefined, db: failingDb() },
+				{ verbose: true },
+			);
+			const reach = result.checks.find((c: DoctorCheck) => c.name === "db_reachable");
+			expect(reach?.ok).toBe(false);
+			expect(reach?.message).toBe("probe failed (reason=unreachable)");
+			expect(reach?.message).not.toContain(RAW_DRIVER_TEXT);
+			expect(err.join("")).toContain("warren doctor verbose:");
+			expect(err.join("")).toContain(RAW_DRIVER_TEXT);
+		});
+
+		test("default output drops the raw driver text entirely (unchanged behavior)", async () => {
+			const { context, err } = captureContext({ WARREN_API_TOKEN: "tok" });
+			const result = await runDoctor(
+				context,
+				{ existsSync: () => true, probeBurrow: async () => undefined, db: failingDb() },
+				{},
+			);
+			const reach = result.checks.find((c: DoctorCheck) => c.name === "db_reachable");
+			expect(reach?.ok).toBe(false);
+			expect(reach?.message).toBe("probe failed (reason=unreachable)");
+			expect(err.join("")).not.toContain(RAW_DRIVER_TEXT);
+		});
 	});
 });
