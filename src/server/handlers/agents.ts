@@ -7,7 +7,7 @@
  */
 
 import { NotFoundError } from "../../core/errors.ts";
-import type { AgentRow } from "../../db/schema.ts";
+import type { AgentDbRow } from "../../db/schema.ts";
 import { type AgentSource, readAgentSource } from "../../registry/builtins/index.ts";
 import { readProviderFrontmatter } from "../../registry/schema.ts";
 import { isPublicOnly, pickFields } from "../projection.ts";
@@ -30,7 +30,7 @@ export interface AgentMetadata {
 }
 
 /** An `agents` row as every `GET /agents` consumer sees it. */
-export type DecoratedAgent = AgentRow & AgentMetadata & { source: AgentSource };
+export type DecoratedAgent = AgentDbRow & AgentMetadata & { source: AgentSource };
 
 function readAgentMetadata(rendered: unknown): AgentMetadata {
 	if (rendered === null || typeof rendered !== "object") {
@@ -51,11 +51,11 @@ function readAgentMetadata(rendered: unknown): AgentMetadata {
 }
 
 /**
- * Decorate an `AgentRow` with the `source` provenance so `GET /agents`
+ * Decorate an `AgentDbRow` with the `source` provenance so `GET /agents`
  * consumers can distinguish built-ins from library-loaded agents, plus the
  * flat `description` / `provider` / `model` metadata (warren-4f6c).
  */
-export function withAgentSource(row: AgentRow): DecoratedAgent {
+export function withAgentSource(row: AgentDbRow): DecoratedAgent {
 	return {
 		...row,
 		...readAgentMetadata(row.renderedJson),

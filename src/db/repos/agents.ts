@@ -14,7 +14,7 @@
 import { asc, eq } from "drizzle-orm";
 import { NotFoundError } from "../../core/errors.ts";
 import type { SqliteDrizzleDb } from "../client.ts";
-import type { AgentRow } from "../schema.ts";
+import type { AgentDbRow } from "../schema.ts";
 import type { DrizzleAdapter, WarrenSchema } from "./drizzle-adapter.ts";
 
 export interface UpsertAgentInput {
@@ -45,7 +45,7 @@ export class AgentsRepo {
 		return this.adapter.schema.agents;
 	}
 
-	async upsert(input: UpsertAgentInput): Promise<AgentRow> {
+	async upsert(input: UpsertAgentInput): Promise<AgentDbRow> {
 		const ts = (input.now ?? new Date()).toISOString();
 		return this.adapter.runInTransaction(async (tx) => {
 			const txDb = tx.drizzle as SqliteDrizzleDb;
@@ -77,14 +77,14 @@ export class AgentsRepo {
 	}
 
 	/** Exact-match lookup by name. Returns null when no row exists. */
-	async get(name: string): Promise<AgentRow | null> {
+	async get(name: string): Promise<AgentDbRow | null> {
 		const row = await this.adapter.pickOne(
 			this.db.select().from(this.agents).where(eq(this.agents.name, name)),
 		);
 		return row ?? null;
 	}
 
-	async require(name: string): Promise<AgentRow> {
+	async require(name: string): Promise<AgentDbRow> {
 		const row = await this.get(name);
 		if (!row) {
 			throw new NotFoundError(`agent not found: ${name}`);
@@ -93,7 +93,7 @@ export class AgentsRepo {
 	}
 
 	/** List all rows, ordered by name. */
-	async listAll(): Promise<AgentRow[]> {
+	async listAll(): Promise<AgentDbRow[]> {
 		return this.adapter.pickAll(this.db.select().from(this.agents).orderBy(asc(this.agents.name)));
 	}
 

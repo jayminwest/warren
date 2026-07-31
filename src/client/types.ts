@@ -8,7 +8,7 @@
 /* the build if you do.                                                     */
 /* ----------------------------------------------------------------------- */
 import type {
-	AgentSource,
+	AgentRow,
 	CloneKind,
 	EventStream,
 	InboxPriority,
@@ -20,6 +20,7 @@ import type {
 } from "../core/wire.ts";
 
 export {
+	type AgentRow,
 	type AgentSource,
 	type CloneKind,
 	type EventStream,
@@ -50,14 +51,6 @@ export type CapabilityName = "readPublic" | "readOperator" | "dispatch" | "admin
 export interface WhoamiResponse {
 	identity: ActorIdentity;
 	capabilities: CapabilityName[];
-}
-
-export interface AgentRow {
-	name: string;
-	renderedJson: unknown;
-	registeredAt: string;
-	lastRefreshed: string;
-	source?: AgentSource;
 }
 
 export interface ListAgentsResponse {

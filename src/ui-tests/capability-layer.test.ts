@@ -183,7 +183,11 @@ describe("redacted wire fields render on presence (warren-f53e)", () => {
 		expect(types).toMatch(/burrowRunId\?: string \| null/);
 		expect(types).toMatch(/previewFailureMessage\?: string \| null/);
 		expect(types).toMatch(/localPath\?: string/);
-		expect(types).toMatch(/renderedJson\?: unknown/);
+		// `AgentRow` is canonical in `src/core/wire.ts` (warren-4253) and
+		// re-exported from the UI types module, so its optionality assertion
+		// reads the kernel file.
+		const wire = readFileSync(join(import.meta.dir, "..", "core", "wire.ts"), "utf8");
+		expect(wire).toMatch(/renderedJson\?: unknown/);
 		// The instance-wide cost rollup is dropped too (warren-946f), so
 		// coalescing it to 0 would print a confident "$0.00 all-time".
 		expect(types).toMatch(/costTotalUsd\?: number/);
