@@ -96,12 +96,14 @@ export function runLostStatus(): RunStatus {
 export function mapPodToRunStatus(pod: V1Pod): RunStatus {
 	const phase = pod.status?.phase;
 	const classified = classify(pod, phase);
+	const terminalDetail = classified.terminalReason !== undefined ? kubeletDetail(pod) : null;
 	return {
 		phase: classified.phase,
 		exitCode: classified.exitCode,
 		...(classified.terminalReason !== undefined
 			? { terminalReason: classified.terminalReason }
 			: {}),
+		...(terminalDetail !== null ? { terminalDetail } : {}),
 		lastEventSeq: 0,
 		lastEventTs: heartbeatAnchor(pod),
 		exists: true,
@@ -176,6 +178,23 @@ function classifyFailed(pod: V1Pod): Classified {
 	// Failed phase but no failing terminated container (lost node, etc.). Still
 	// terminal — a Failed pod never leaves the run `running`.
 	return { phase: "failed", exitCode: null, terminalReason: "error" };
+}
+
+/**
+ * The kubelet's own explanation of a terminal pod (warren-4a95):
+ * `status.message` (e.g. `Pod ephemeral local storage usage exceeds the total
+ * limit of containers 10Gi` on an eviction), falling back to `status.reason`
+ * when the message is absent, `null` when neither is set. The evicted pod —
+ * and its kubectl events — age out of the API within the hour, so this detail
+ * must be captured into warren's run record at reconcile time or the eviction
+ * cause is undiagnosable after the fact.
+ */
+function kubeletDetail(pod: V1Pod): string | null {
+	const message = pod.status?.message?.trim();
+	if (message !== undefined && message !== "") return message;
+	const reason = pod.status?.reason?.trim();
+	if (reason !== undefined && reason !== "") return reason;
+	return null;
 }
 
 /** The agent container's terminated exit code, if it has terminated. */

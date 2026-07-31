@@ -199,7 +199,10 @@ function lostMessage(reason: "gone" | "terminal", status: RunStatus): string {
 		status.terminalReason !== undefined
 			? `${status.phase}; ${status.terminalReason}`
 			: status.phase;
-	return `run pod reached a terminal phase (${detail}) without posting a finalize result; in-pod finalize could not run`;
+	// The kubelet's own message (e.g. the ephemeral-storage eviction reason,
+	// warren-4a95) survives the pod's GC only if we carry it into this record.
+	const kubelet = status.terminalDetail != null ? ` — ${status.terminalDetail}` : "";
+	return `run pod reached a terminal phase (${detail}) without posting a finalize result; in-pod finalize could not run${kubelet}`;
 }
 
 /**

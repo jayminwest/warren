@@ -89,6 +89,35 @@ describe("resolveK8sPodConfig — ephemeral-storage", () => {
 		expect(c.requests).toEqual({ memoryMiB: 2048, cpuMillicores: 1000, ephemeralStorageMiB: 4096 });
 		expect(c.limits).toEqual({ memoryMiB: 4096, cpuMillicores: 4000, ephemeralStorageMiB: 20_480 });
 	});
+
+	// warren-4a95: cluster-wide env defaults — a UI-building workload that
+	// outgrows 10Gi should not need a per-project config edit on every repo.
+	test("reads bounded MiB integers from the WARREN_K8S_EPHEMERAL_STORAGE_*_MIB env", () => {
+		const c = resolveK8sPodConfig({
+			WARREN_K8S_EPHEMERAL_STORAGE_REQUEST_MIB: "20480",
+			WARREN_K8S_EPHEMERAL_STORAGE_LIMIT_MIB: "30720",
+		});
+		expect(c.requests.ephemeralStorageMiB).toBe(20_480);
+		expect(c.limits.ephemeralStorageMiB).toBe(30_720);
+	});
+
+	test("invalid env (out-of-bounds / non-integer / blank) falls back to the 10Gi default", () => {
+		for (const raw of ["63", "1048577", "-5", "1.5", "  ", "abc"]) {
+			expect(
+				resolveK8sPodConfig({ WARREN_K8S_EPHEMERAL_STORAGE_LIMIT_MIB: raw }).limits
+					.ephemeralStorageMiB,
+			).toBe(10_240);
+		}
+	});
+
+	test("a per-project resources block beats the env default", () => {
+		const c = resolveK8sPodConfig(
+			{ WARREN_K8S_EPHEMERAL_STORAGE_LIMIT_MIB: "20480" },
+			{ limits: { ephemeralStorageMiB: 40_960 } },
+		);
+		expect(c.limits.ephemeralStorageMiB).toBe(40_960);
+		expect(c.requests.ephemeralStorageMiB).toBe(10_240);
+	});
 });
 
 describe("buildRunPod — resource rendering", () => {

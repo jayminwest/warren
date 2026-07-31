@@ -222,6 +222,11 @@ describe("mapPodToRunStatus — Failed", () => {
 		expect(s.terminalReason).toBe("evicted");
 		expect(s.exitCode).toBe(137);
 		expect(s.exists).toBe(true);
+		// warren-4a95: the kubelet's own message is the eviction witness that
+		// outlives the pod's GC — capture it verbatim.
+		expect(s.terminalDetail).toBe(
+			"Pod ephemeral local storage usage exceeds the total limit of containers 1Gi.",
+		);
 	});
 
 	test("eviction with no container status at all → failed/evicted, exitCode null", () => {
@@ -229,6 +234,23 @@ describe("mapPodToRunStatus — Failed", () => {
 		expect(s.phase).toBe("failed");
 		expect(s.terminalReason).toBe("evicted");
 		expect(s.exitCode).toBeNull();
+	});
+
+	// warren-4a95: terminalDetail capture rules.
+	test("terminal pod without a message falls back to the pod reason as terminalDetail", () => {
+		const s = mapPodToRunStatus(pod({ phase: "Failed", reason: "Evicted" }));
+		expect(s.terminalDetail).toBe("Evicted");
+	});
+
+	test("terminal pod with neither message nor reason carries no terminalDetail", () => {
+		const s = mapPodToRunStatus(pod({ phase: "Failed" }));
+		expect(s.terminalDetail).toBeUndefined();
+	});
+
+	test("non-terminal pod never carries a terminalDetail even when a message is set", () => {
+		const s = mapPodToRunStatus(pod({ phase: "Running", message: "something informational" }));
+		expect(s.phase).toBe("running");
+		expect(s.terminalDetail).toBeUndefined();
 	});
 
 	test("OOMKilled takes priority over an Evicted pod reason", () => {
