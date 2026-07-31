@@ -218,6 +218,27 @@ async function ensureMirror(
 }
 
 /**
+ * Clone `url` into the workspace checked out at `cfg.baseBranch`, then carve
+ * the per-run branch. warren-dac8: `baseBranch` may be ANY resolved ref — an
+ * explicit `ref` (branch, tag, or SHA) or a ref-dispatch's `targetBranch`,
+ * which ALSO pins the per-run branch (`branch === baseBranch`, warren-709e).
+ * `git clone --branch` rejects a raw SHA, so fall back to a plain clone +
+ * `git checkout`; and when the branch to carve IS the checked-out base, the
+ * `switch -c` would collide with the clone's local branch, so skip it.
+ */
+async function cloneBaseAndCarve(git: InitGitRunner, cfg: InitEnv, url: string): Promise<void> {
+	const branched = await git(["clone", "--branch", cfg.baseBranch, url, cfg.workspacePath]);
+	if (branched.exitCode !== 0) {
+		// SHA (or otherwise non-`--branch`-able) base ref: plain clone + checkout.
+		await gitOrThrow(git, ["clone", url, cfg.workspacePath]);
+		await gitOrThrow(git, ["checkout", cfg.baseBranch], { cwd: cfg.workspacePath });
+	}
+	if (cfg.branch !== cfg.baseBranch) {
+		await gitOrThrow(git, ["switch", "-c", cfg.branch], { cwd: cfg.workspacePath });
+	}
+}
+
+/**
  * Materialize the workspace from the PVC-backed mirror: ensure/update the shared
  * bare mirror, then LOCAL-clone the base branch out of it into the emptyDir and
  * carve the per-run branch. The workspace `origin` is reset to the clean remote
@@ -237,10 +258,9 @@ async function materializeViaCache(
 	try {
 		await ensureMirror(git, fs, cfg, mirrorPath, authUrl, log);
 		// Local clone from the mirror path — no network, no credentials.
-		await gitOrThrow(git, ["clone", "--branch", cfg.baseBranch, mirrorPath, cfg.workspacePath]);
+		await cloneBaseAndCarve(git, cfg, mirrorPath);
 		// Point origin at the real remote (the mirror path is never a push target).
 		await gitOrThrow(git, ["remote", "set-url", "origin", cfg.repoUrl], { cwd: cfg.workspacePath });
-		await gitOrThrow(git, ["switch", "-c", cfg.branch], { cwd: cfg.workspacePath });
 		log(`workspace-init: materialized ${cfg.branch} from repo-cache mirror`);
 		return true;
 	} catch (err) {
@@ -264,8 +284,7 @@ async function directClone(
 ): Promise<void> {
 	const cloneUrl = authenticatedCloneUrl(cfg.repoUrl, cfg.token);
 	log(`workspace-init: cloning ${cfg.repoUrl} (${cfg.baseBranch}) into ${cfg.workspacePath}`);
-	await gitOrThrow(git, ["clone", "--branch", cfg.baseBranch, cloneUrl, cfg.workspacePath]);
-	await gitOrThrow(git, ["switch", "-c", cfg.branch], { cwd: cfg.workspacePath });
+	await cloneBaseAndCarve(git, cfg, cloneUrl);
 	// Strip the embedded token so it never persists in the workspace .git/config.
 	if (cfg.token !== undefined) {
 		await gitOrThrow(git, ["remote", "set-url", "origin", cfg.repoUrl], { cwd: cfg.workspacePath });
