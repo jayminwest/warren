@@ -60,18 +60,84 @@
  * coincided with termination) before ending. A pod that has vanished (404 /
  * `exists:false`) mid-stream throws `RuntimeRunNotFoundError` — the seam's `lost`
  * signal — exactly as LocalProvider maps burrow's 404, never a crash.
+ *
+ * ## Liveness guard (warren-029d — root cause of warren-3047)
+ * The reconnect loop only advances when the follow's `onDone` fires. A HALF-OPEN
+ * HTTP log stream — no bytes, no FIN, no error, e.g. a silently dropped
+ * LB/apiserver connection mid-stream — blocked `openAndConsume` forever, muting
+ * the event bridge for the rest of the run; warren never saw the terminal
+ * envelope and the run died `finalize_failed` (run_pnknyar9yw3d, 2026-07-30).
+ * A per-pull `stallTimeoutMs` window bounds that blind window: ANY delivered
+ * byte resets the timer; on a trip the connection is aborted and the loop falls
+ * through to its normal probe — pod Running ⇒ `sinceTime` resume (the
+ * seq/high-water dedup makes the resume lossless and dup-free), pod terminal ⇒
+ * drain the tail and end. This mirrors the pod-watcher's `resyncPeriodMs`
+ * backstop for the same silently-stalled-stream shape (warren-4f2b). A healthy
+ * but quiet agent (a long silent tool call) pays one probe + forward resume per
+ * window — cheap, and it never loses or duplicates an event.
  */
 
 import type { NormalizedEvent, StreamOpts } from "../contract.ts";
 import { RuntimeRunNotFoundError } from "../errors.ts";
-import { ChunkQueue, splitTimestamp, toNormalizedEvent, tryParse, tsLess } from "./log-parse.ts";
-import { METRIC_LOG_PARSE_FAILURES_TOTAL } from "./pod-metrics.ts";
+import {
+	type CursorState,
+	LogConnection,
+	type LogConnectionDeps,
+	type StreamCounterSink,
+	type StreamLogger,
+} from "./log-connection.ts";
+import { ChunkQueue, type QueueItem } from "./log-parse.ts";
+
+// The sink/logger surfaces live in `./log-connection.ts`; re-export so existing
+// consumers (the provider, tests) keep importing them from this module.
+export type { StreamCounterSink, StreamLogger } from "./log-connection.ts";
 
 /** The synthetic-event kind emitted when a resume cursor predates retained logs. */
 export const STREAM_GAP_KIND = "stream_gap";
 
 const DEFAULT_BACKOFF_BASE_MS = 500;
 const DEFAULT_BACKOFF_MAX_MS = 15_000;
+
+/**
+ * Liveness window for the pod-log follow (warren-029d): when no bytes arrive
+ * for this long, the stream is presumed half-open; the connection is aborted
+ * and the loop probes + resumes. 5 minutes matches the pod-watcher's
+ * `DEFAULT_RESYNC_PERIOD_MS` precedent for the same stalled-stream shape — long
+ * enough that a healthy-but-quiet agent rarely pays a spurious reconnect, short
+ * enough that warren's blindness to a dropped stream is bounded. Override via
+ * `WARREN_K8S_LOG_STREAM_STALL_MS`; `0` disables.
+ */
+export const DEFAULT_LOG_STALL_TIMEOUT_MS = 5 * 60 * 1000;
+
+/**
+ * Parse `WARREN_K8S_LOG_STREAM_STALL_MS` (warren-029d): non-negative integer
+ * milliseconds. `0` disables the liveness guard; absent/blank yields the
+ * `DEFAULT_LOG_STALL_TIMEOUT_MS` default. Rejects non-integer / negative /
+ * malformed values loudly so a typo in a deploy config fails the run's stream
+ * setup rather than silently disarming the guard (mirrors the
+ * `WARREN_K8S_POD_WATCHER_RESYNC_MS` resolver, warren-4f2b).
+ */
+export function resolveLogStallTimeoutMs(
+	env: Readonly<Record<string, string | undefined>>,
+): number {
+	const raw = env.WARREN_K8S_LOG_STREAM_STALL_MS;
+	if (raw === undefined || raw.trim() === "") return DEFAULT_LOG_STALL_TIMEOUT_MS;
+	const n = Number.parseInt(raw, 10);
+	if (!Number.isFinite(n) || n < 0 || String(n) !== raw.trim()) {
+		throw new Error(
+			`WARREN_K8S_LOG_STREAM_STALL_MS must be a non-negative integer (got ${JSON.stringify(raw)})`,
+		);
+	}
+	return n;
+}
+
+/**
+ * Sentinel the pull race resolves with — and `openAndConsume` returns — when
+ * the liveness window trips. Distinct from every transport end signal (clean
+ * EOF is `undefined`; failures are errors) so the pump can fall through to its
+ * probe without mis-classifying the abort as a 404 or a stream error.
+ */
+const LOG_STALL: unique symbol = Symbol("k8s-pod-log-stall");
 
 /** Terminal pod phases (mirrors the seam's `RunPhase` terminal set). */
 const TERMINAL_PHASES = new Set(["succeeded", "failed", "cancelled"]);
@@ -109,6 +175,9 @@ export type LogFollowFn = (
 	onDone: (err: unknown) => void,
 ) => Promise<LogFollowController>;
 
+// `StreamCounterSink` / `StreamLogger` are imported above from
+// `./log-connection.ts` and re-exported below the import block.
+
 /** Reconcile snapshot the stream consults to decide terminate-vs-reconnect. */
 export interface StreamTerminalState {
 	/** `false` ⇒ the pod vanished (404 / GC'd) — the stream ends with `lost`. */
@@ -127,17 +196,6 @@ export interface StreamTerminalState {
 /** Probes whether the run's pod is still live / terminal (wraps `status()`). */
 export type TerminalProbe = () => Promise<StreamTerminalState>;
 
-/** Minimal counter surface for the parse-failure metric — satisfied by `MetricsRegistry`. */
-export interface StreamCounterSink {
-	increment(name: string, labels?: Readonly<Record<string, string>>, by?: number): void;
-}
-
-/** Minimal structured-logger surface the pump logs backoff/parse warnings through. */
-export interface StreamLogger {
-	info?: (obj: unknown, msg: string) => void;
-	warn?: (obj: unknown, msg: string) => void;
-}
-
 export interface K8sLogStreamDeps {
 	readonly follow: LogFollowFn;
 	readonly probe: TerminalProbe;
@@ -147,21 +205,14 @@ export interface K8sLogStreamDeps {
 	readonly metrics?: StreamCounterSink;
 	readonly backoffBaseMs?: number;
 	readonly backoffMaxMs?: number;
+	/**
+	 * Liveness window (ms) for a follow that delivers NO bytes (warren-029d).
+	 * Default `DEFAULT_LOG_STALL_TIMEOUT_MS`; `0` disables. On a trip the
+	 * connection is aborted and the loop probes: pod Running ⇒ `sinceTime`
+	 * resume, pod terminal ⇒ drain + end. Any delivered byte resets the window.
+	 */
+	readonly stallTimeoutMs?: number;
 	readonly logger?: StreamLogger;
-}
-
-/** Mutable cursor state carried across reconnects within one `streamEvents` call. */
-interface CursorState {
-	/** Absolute physical-line index of the most recently PROCESSED (counted) line. */
-	lineSeq: number;
-	/** High-water mark of the last YIELDED seq (dedup floor for cold resume). */
-	lastYieldedSeq: number;
-	/** Kubelet stamp of the most recently counted line — the reconnect anchor. */
-	anchorTs: string | undefined;
-	/** Count of counted lines whose stamp == `anchorTs` (skip-count on resume). */
-	skipAtAnchor: number;
-	/** Emitted-gap guard so a persistent rotation only signals once. */
-	gapEmitted: boolean;
 }
 
 /**
@@ -188,7 +239,7 @@ async function* pump(deps: K8sLogStreamDeps): AsyncGenerator<NormalizedEvent, vo
 
 	for (;;) {
 		const resumeViaSinceTime = !firstConnection && state.anchorTs !== undefined;
-		const conn = new LogConnection(state, deps, resumeViaSinceTime);
+		const conn = new LogConnection(state, connDeps(deps), resumeViaSinceTime);
 		// Stream events out as each chunk is parsed — a live `follow:true`
 		// connection stays open for the pod's whole lifetime, so events MUST be
 		// yielded incrementally (not batched at connection close, warren-245d).
@@ -196,7 +247,9 @@ async function* pump(deps: K8sLogStreamDeps): AsyncGenerator<NormalizedEvent, vo
 		const endErr = yield* openAndConsume(deps, conn, followExtra(true, resumeViaSinceTime, state));
 
 		// A pod deleted out from under the follow (404) is the seam's `lost` signal.
-		if (isNotFound(endErr)) throw runNotFound(deps.params.podName);
+		// A stall-trip abort (LOG_STALL) is NOT a transport error: fall through to
+		// the probe — Running ⇒ sinceTime resume, terminal ⇒ drain + end (warren-029d).
+		if (endErr !== LOG_STALL && isNotFound(endErr)) throw runNotFound(deps.params.podName);
 
 		const gap = coldResumeGap(state, firstConnection, sinceSeq);
 		if (gap !== null) yield gap;
@@ -252,6 +305,15 @@ function coldResumeGap(
 	});
 }
 
+/** Project the pump's deps onto the narrow slice a `LogConnection` needs. */
+function connDeps(deps: K8sLogStreamDeps): LogConnectionDeps {
+	return {
+		podName: deps.params.podName,
+		...(deps.metrics !== undefined ? { metrics: deps.metrics } : {}),
+		...(deps.logger !== undefined ? { logger: deps.logger } : {}),
+	};
+}
+
 /** Build the `{ follow, sinceTime? }` extra for a connection open. */
 function followExtra(
 	follow: boolean,
@@ -274,7 +336,7 @@ async function* drainTail(
 	state: CursorState,
 ): AsyncGenerator<NormalizedEvent> {
 	const resumeViaSinceTime = state.anchorTs !== undefined;
-	const conn = new LogConnection(state, deps, resumeViaSinceTime);
+	const conn = new LogConnection(state, connDeps(deps), resumeViaSinceTime);
 	// Non-follow read: the connection ends on its own (EOF); its end error is
 	// intentionally ignored — a 404 on the drain read means the pod was GC'd right
 	// at termination, and the events we already yielded stand (terminal seen).
@@ -298,9 +360,21 @@ async function* openAndConsume(
 ): AsyncGenerator<NormalizedEvent, unknown, void> {
 	const queue = new ChunkQueue();
 	const controller = await openFollow(deps, extra, queue);
+	const stallMs = deps.stallTimeoutMs ?? DEFAULT_LOG_STALL_TIMEOUT_MS;
 	try {
 		for (;;) {
-			const item = await queue.pull();
+			const item = await pullNext(queue, stallMs);
+			if (item === LOG_STALL) {
+				// Half-open stream (no bytes, no FIN, no error): abort and let the
+				// pump's probe decide resume-vs-drain (warren-029d). The `finally`
+				// aborts the controller; buffered-but-unpulled chunks are re-read by
+				// the resume (seq/high-water dedup keeps that lossless + dup-free).
+				deps.logger?.warn?.(
+					{ podName: deps.params.podName, stallTimeoutMs: stallMs, follow: extra.follow },
+					"pod-log stream delivered no bytes within the liveness window; aborting to force a resume",
+				);
+				return LOG_STALL;
+			}
 			if (!item.done) {
 				yield* conn.consume(item.chunk);
 				continue;
@@ -323,6 +397,24 @@ async function* openAndConsume(
 			// expected teardown noise; the stream is already ending
 		}
 	}
+}
+
+/**
+ * Pull the next queue item, resolving `LOG_STALL` when no chunk / end signal
+ * arrives within `stallMs` — the half-open case (warren-029d). A FRESH timer
+ * per pull means any delivered byte resets the window; `stallMs <= 0` disables
+ * the guard entirely. On a trip the orphaned `queue.pull()` resolves later
+ * (abort → `finish` → wake) with no consumer — harmless.
+ */
+function pullNext(queue: ChunkQueue, stallMs: number): Promise<QueueItem | typeof LOG_STALL> {
+	if (stallMs <= 0) return queue.pull();
+	return new Promise((resolve) => {
+		const timer = setTimeout(() => resolve(LOG_STALL), stallMs);
+		void queue.pull().then((item) => {
+			clearTimeout(timer);
+			resolve(item);
+		});
+	});
 }
 
 /** Open a follow connection and route its chunks / end signal into `queue`. */
@@ -348,100 +440,6 @@ async function openFollow(
 	} catch (err) {
 		queue.finish(err);
 		return undefined;
-	}
-}
-
-/**
- * Per-connection line assembler + seq synthesizer. Owns the partial-line buffer
- * and the sinceTime resume-boundary dedup; mutates the shared `CursorState` so
- * the absolute line index survives across reconnects.
- */
-class LogConnection {
-	private partial = "";
-	/** Anchor captured at connection start — fixed for the resume-skip window. */
-	private readonly resumeAnchorTs: string | undefined;
-	private readonly resumeSkipCount: number;
-	private skipped = 0;
-
-	constructor(
-		private readonly state: CursorState,
-		private readonly deps: K8sLogStreamDeps,
-		private readonly resumeViaSinceTime: boolean,
-	) {
-		this.resumeAnchorTs = state.anchorTs;
-		this.resumeSkipCount = state.skipAtAnchor;
-	}
-
-	*consume(chunk: string): Generator<NormalizedEvent> {
-		this.partial += chunk;
-		let nl = this.partial.indexOf("\n");
-		while (nl >= 0) {
-			const raw = this.partial.slice(0, nl);
-			this.partial = this.partial.slice(nl + 1);
-			yield* this.processLine(raw);
-			nl = this.partial.indexOf("\n");
-		}
-	}
-
-	/** Flush a trailing newline-less line at a clean EOF (a complete final write). */
-	*flush(): Generator<NormalizedEvent> {
-		const rest = this.partial;
-		this.partial = "";
-		if (rest.length > 0) yield* this.processLine(rest);
-	}
-
-	private *processLine(raw: string): Generator<NormalizedEvent> {
-		const line = raw.endsWith("\r") ? raw.slice(0, -1) : raw;
-		const { kubeletTs, content } = splitTimestamp(line);
-		if (content.trim() === "") return; // blank log line — no seq slot
-
-		// sinceTime resume-boundary dedup: skip the exact lines already counted at
-		// the anchor stamp, without advancing the counter (they are not new). The
-		// kubelet may or may not re-return the boundary-stamp line (sinceTime is
-		// inclusive but nanosecond-exact); either way this converges — an
-		// unreturned anchor just skips zero, a re-returned one skips `skipAtAnchor`.
-		if (this.resumeViaSinceTime && this.resumeAnchorTs !== undefined) {
-			if (kubeletTs !== null && tsLess(kubeletTs, this.resumeAnchorTs)) return;
-			if (
-				kubeletTs !== null &&
-				kubeletTs === this.resumeAnchorTs &&
-				this.skipped < this.resumeSkipCount
-			) {
-				this.skipped += 1;
-				return;
-			}
-		}
-
-		// A NEW physical line: it occupies the next absolute index.
-		this.state.lineSeq += 1;
-		const seq = this.state.lineSeq;
-		this.advanceAnchor(kubeletTs);
-
-		// Cold-resume dedup floor: skip lines at/below the persisted cursor.
-		if (seq <= this.state.lastYieldedSeq) return;
-
-		const envelope = tryParse(content);
-		if (envelope === null) {
-			this.deps.metrics?.increment(METRIC_LOG_PARSE_FAILURES_TOTAL);
-			this.deps.logger?.warn?.(
-				{ podName: this.deps.params.podName, seq },
-				"dropped a non-JSON pod-log line",
-			);
-			return; // dropped — the index slot is a gap, seq stays stable
-		}
-		this.state.lastYieldedSeq = seq;
-		yield toNormalizedEvent(envelope, seq, kubeletTs);
-	}
-
-	/** Advance the shared anchor + same-stamp skip count as new lines are counted. */
-	private advanceAnchor(kubeletTs: string | null): void {
-		if (kubeletTs === null) return; // keep the last real stamp as the anchor
-		if (kubeletTs === this.state.anchorTs) {
-			this.state.skipAtAnchor += 1;
-		} else {
-			this.state.anchorTs = kubeletTs;
-			this.state.skipAtAnchor = 1;
-		}
 	}
 }
 
