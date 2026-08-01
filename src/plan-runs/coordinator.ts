@@ -38,12 +38,7 @@ import type { Repos } from "../db/repos/index.ts";
 import type { PlanRunChildRow, PlanRunChildState, PlanRunRow } from "../db/schema.ts";
 import { buildDispatchPrompt } from "../runs/dispatch-prompt.ts";
 import { SeedNotFoundError, type SeedShowResult } from "../seeds-cli/index.ts";
-import {
-	defaultResolveExecution,
-	executionFields,
-	failChildAndPlan,
-	handleInFlight,
-} from "./in-flight.ts";
+import { handleInFlight } from "./in-flight.ts";
 import { type CoordinatorReopenPrFn, checkParentRunMerged } from "./merge-gate.ts";
 import type { PrMergeChecker } from "./pr-merge.ts";
 
@@ -53,40 +48,10 @@ export type CoordinatorRepos = Pick<Repos, "planRuns" | "runs" | "events">;
 
 export type CoordinatorShowSeedFn = (projectId: string, seedId: string) => Promise<SeedShowResult>;
 
-/**
- * Per-child execution routing decision (pl-fb43 step 5 / warren-d9f3).
- *
- * `executionProjectId` is the project whose repo is cloned into the burrow
- * workspace — where the child actually does its work. It is the coordination
- * project (`planRun.projectId`) for an untagged child, or the project a
- * child seed's `extensions.repo` resolved to. `repoRef` carries the raw
- * `extensions.repo` string when the child was routed (null on fallback) so
- * the emitted events and Plot mirror are self-describing.
- */
-export interface ChildExecution {
-	readonly executionProjectId: string;
-	readonly repoRef: string | null;
-}
-
-/**
- * Resolve a child's execution project from its seed `extensions.repo`
- * (pl-fb43 step 5). Implemented in src/plan-runs/dispatch.ts on top of
- * `resolveTargetProject`; throws `TargetProjectUnresolvedError` when a
- * present repo tag matches no registered project, which the coordinator
- * routes to the existing plan_failed path. Default (tests / unwired) maps
- * every child to the coordination project.
- */
-export type CoordinatorResolveExecutionFn = (
-	planRun: PlanRunRow,
-	seedExtensions: Record<string, unknown> | undefined,
-) => Promise<ChildExecution>;
-
 export interface CoordinatorSpawnInput {
 	readonly planRun: PlanRunRow;
 	readonly child: PlanRunChildRow;
 	readonly prompt: string;
-	/** Resolved execution routing for this child (pl-fb43 step 5). */
-	readonly execution?: ChildExecution;
 }
 
 export interface CoordinatorSpawnResult {
@@ -148,8 +113,6 @@ export interface AdvancePlanRunInput {
 	readonly checkPrMerged: PrMergeChecker;
 	readonly spawn: CoordinatorSpawnFn;
 	readonly emit: CoordinatorEmitFn;
-	/** pl-fb43 step 5: per-child execution-repo resolver (default = coordination project). */
-	readonly resolveExecution?: CoordinatorResolveExecutionFn;
 	/** warren-3806: host-side seed close fired when a child transitions to merged. */
 	readonly closeChildSeed?: CoordinatorCloseChildSeedFn;
 	/** warren-3937: merge-wait budget (ms); defaults to {@link DEFAULT_MERGE_TIMEOUT_MS}, 0 disables. */
@@ -167,7 +130,6 @@ const IN_FLIGHT_STATES: readonly PlanRunChildState[] = ["dispatched", "running",
 export async function advancePlanRun(input: AdvancePlanRunInput): Promise<AdvanceResult> {
 	const nowFn = input.now ?? (() => new Date());
 	const mergeTimeoutMs = input.mergeTimeoutMs ?? DEFAULT_MERGE_TIMEOUT_MS;
-	const resolveExecution = input.resolveExecution ?? defaultResolveExecution;
 	let planRun = input.planRun;
 
 	// (a) Queued → running.
@@ -207,7 +169,6 @@ export async function advancePlanRun(input: AdvancePlanRunInput): Promise<Advanc
 				checkPrMerged: input.checkPrMerged,
 				emit: input.emit,
 				showSeed: input.showSeed,
-				resolveExecution,
 				mergeTimeoutMs,
 				now: nowFn,
 				reopenPr: input.reopenPr,
@@ -284,26 +245,6 @@ export async function advancePlanRun(input: AdvancePlanRunInput): Promise<Advanc
 			continue;
 		}
 
-		// pl-fb43 step 5: resolve the child's execution repo from its
-		// `extensions.repo` tag (fallback = the coordination project). A
-		// present-but-unresolvable tag fails this child + the plan via the
-		// existing plan_failed path with a typed `unresolved_repo:` reason.
-		let execution: ChildExecution;
-		try {
-			execution = await resolveExecution(planRun, seedShow.extensions);
-		} catch (err) {
-			const reason = `unresolved_repo:${formatError(err)}`;
-			return await failChildAndPlan({
-				repos: input.repos,
-				planRun,
-				seq: next.seq,
-				anchorRunId: mostRecentDispatchedRunId(children),
-				reason,
-				emit: input.emit,
-				now: nowFn,
-			});
-		}
-
 		// Dispatch the next child; seed text inlined via the shared builder.
 		const prompt = buildDispatchPrompt({
 			template: planRun.promptTemplate,
@@ -311,7 +252,7 @@ export async function advancePlanRun(input: AdvancePlanRunInput): Promise<Advanc
 		});
 		let spawnResult: CoordinatorSpawnResult;
 		try {
-			spawnResult = await input.spawn({ planRun, child: next, prompt, execution });
+			spawnResult = await input.spawn({ planRun, child: next, prompt });
 		} catch (err) {
 			const reason = `dispatch_failed:${formatError(err)}`;
 			const endedAt = nowFn().toISOString();
@@ -341,28 +282,21 @@ export async function advancePlanRun(input: AdvancePlanRunInput): Promise<Advanc
 			seq: next.seq,
 			patch: {
 				runId: spawnResult.runId,
-				// pl-fb43 step 6 / warren-57f6: persist the resolved execution
-				// project so the detail API + UI can show which repo this child
-				// targeted without re-reading the seed's `extensions.repo`.
-				executionProjectId: execution.executionProjectId,
 				state: "dispatched",
 				startedAt: nowFn().toISOString(),
 			},
 			now: nowFn(),
 		});
-		const execFields = executionFields(execution);
 		await input.emit(spawnResult.runId, "plan_run.dispatched", {
 			planRunId: planRun.id,
 			seq: next.seq,
 			seedId: next.seedId,
-			...execFields,
 		});
 		if (mergedChildSeq !== undefined) {
 			await input.emit(spawnResult.runId, "plan_run.advanced", {
 				planRunId: planRun.id,
 				mergedChildSeq,
 				dispatchedChildSeq: next.seq,
-				...execFields,
 			});
 			return {
 				kind: "advanced",
