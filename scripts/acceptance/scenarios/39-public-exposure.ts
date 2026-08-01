@@ -232,6 +232,25 @@ async function assertNoLeakOnPublicReads(
 		REDACTED_RUN_GROUP_FIELDS,
 	);
 
+	// warren-30cc: `to=` without `from=` must not drop the lower bound and
+	// scan the whole runs table — the default window applies and the span
+	// stays clamped, echoed back in the filter block.
+	const windowed = await fetch(`${base}/analytics/runs?to=2030-01-01`);
+	assertEqual(windowed.status, 200, "anonymous GET /analytics/runs?to=… is 200");
+	const windowedBody = (await windowed.json()) as {
+		filter: { from: string | null; to: string | null };
+	};
+	assertTrue(
+		windowedBody.filter.from !== null,
+		"analytics window with to= and no from= carried no lower bound — the default window was skipped",
+	);
+	const spanMs =
+		Date.parse(windowedBody.filter.to ?? "") - Date.parse(windowedBody.filter.from ?? "");
+	assertTrue(
+		Number.isFinite(spanMs) && spanMs <= 91 * 24 * 60 * 60 * 1000,
+		`analytics window span exceeded the 90-day clamp (from=${windowedBody.filter.from} to=${windowedBody.filter.to})`,
+	);
+
 	// The stream is the widest surface, so pin its two positive obligations
 	// too: the scrubber left its marker, and the internal-only kind is gone.
 	const stream = await fetch(`${base}/runs/${encodeURIComponent(ids.runId)}/events`);

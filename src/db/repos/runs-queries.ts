@@ -155,7 +155,12 @@ export async function aggregate(
  * (lexicographic == chronological). Both optional; omitting both returns
  * every row (the endpoint defaults to the last 30 days). Rows with a null
  * `startedAt` are excluded when either bound is set, mirroring SQL.
+ * Capped at {@link ANALYTICS_MAX_ROWS} as defence in depth: the handler
+ * already bounds the window (warren-30cc), but a caller that reaches
+ * this repo directly still can't pull the whole table.
  */
+export const ANALYTICS_MAX_ROWS = 10_000;
+
 export async function listForAnalytics(
 	adapter: DrizzleAdapter,
 	filter: { projectId?: string; from?: string; to?: string } = {},
@@ -173,8 +178,9 @@ export async function listForAnalytics(
 		conds.push(lte(runs.startedAt, filter.to));
 	}
 	const where = conds.length === 0 ? undefined : conds.length === 1 ? conds[0] : and(...conds);
-	const baseQuery = db.select().from(runs).orderBy(desc(runs.startedAt));
-	return adapter.pickAll(where === undefined ? baseQuery : baseQuery.where(where));
+	const baseQuery = db.select().from(runs);
+	const filtered = where === undefined ? baseQuery : baseQuery.where(where);
+	return adapter.pickAll(filtered.orderBy(desc(runs.startedAt)).limit(ANALYTICS_MAX_ROWS));
 }
 
 /**
