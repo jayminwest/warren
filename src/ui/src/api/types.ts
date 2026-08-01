@@ -83,10 +83,12 @@ export interface RunRow {
 	 */
 	projectId: string | null;
 	/**
-	 * Internal runtime handles. OPTIONAL on the wire: the public projection
-	 * drops both (warren-946f), and they are null under
-	 * `WARREN_RUNTIME=k8s` besides — so consumers must test presence, not
-	 * `!== null` (warren-f53e).
+	 * Internal runtime handles, named for burrow but populated by
+	 * whichever runtime dispatched the run (warren-0965): burrow
+	 * sandbox/run ids under the burrow runtime, the pod name and pod UID
+	 * under `WARREN_RUNTIME=k8s` — NOT null there. OPTIONAL on the wire:
+	 * the public projection drops both (warren-946f), so consumers must
+	 * test presence, not `!== null` (warren-f53e).
 	 */
 	burrowId?: string | null;
 	burrowRunId?: string | null;

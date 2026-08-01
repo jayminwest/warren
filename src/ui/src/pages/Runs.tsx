@@ -149,7 +149,7 @@ export function RunsPage() {
 		<div className="space-y-6">
 			<PageHeader
 				title="Runs"
-				description="Agent runs dispatched into burrow sandboxes."
+				description="Agent runs dispatched into isolated sandboxes."
 				actions={
 					<OperatorOnly>
 						<Link to="/runs/new">
