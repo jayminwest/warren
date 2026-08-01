@@ -44,32 +44,6 @@ export interface SpawnRunInput {
 	readonly runtimeProvider: RuntimeProvider;
 	readonly agentName: string;
 	readonly projectId: string;
-	/**
-	 * Coordination project id (warren-c1a4 / pl-fb43 step 3). Splits the
-	 * single project identity into two roles:
-	 *
-	 *   - `projectId` (execution) selects the repo cloned into the burrow
-	 *     workspace — where the agent actually does its work.
-	 *   - `seedProjectId` (coordination) selects the *host* project clone
-	 *     used for the post-dispatch bookkeeping: the seeds
-	 *     `updateExtensions` stamp (`role`/`lastRunId`/`lastRunAt`).
-	 *
-	 * Defaults to `projectId` when unset/empty, so a same-repo run is
-	 * byte-identical to the pre-split behavior. When it differs, the seed
-	 * stamp targets the coordination project's clone
-	 * while the workspace still clones the execution `projectId`. The
-	 * burrow provisioning path is unaffected — it always uses `projectId`.
-	 */
-	readonly seedProjectId?: string;
-	/**
-	 * Legibility-only repo ref for the cross-repo plan-run path (pl-fb43
-	 * step 5 / warren-d9f3). When the child was routed to a different
-	 * execution repo than the coordination project, this carries the raw
-	 * `extensions.repo` string so the `run_dispatched` Plot mirror on the
-	 * coordination project is self-describing about which repo the run
-	 * actually targeted. Omitted on same-repo dispatches.
-	 */
-	readonly executionRepo?: string;
 	readonly prompt: string;
 	readonly trigger?: string;
 	/**
