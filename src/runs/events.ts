@@ -198,6 +198,14 @@ export interface TailRunEventsInput {
 	readonly sinceSeq?: number;
 	readonly signal?: AbortSignal;
 	/**
+	 * Max rows a single `listByRun` snapshot materializes (warren-2a8b).
+	 * Default `DEFAULT_SNAPSHOT_PAGE_LIMIT`. Non-follow tails return one
+	 * page and rely on the client re-querying with `?since`; follow tails
+	 * page forward through history in chunks of this size so per-query
+	 * memory stays bounded without truncating the replay.
+	 */
+	readonly snapshotLimit?: number;
+	/**
 	 * Terminal backstop (warren-7bff). `broker.close(runId)` only fires
 	 * while a stream bridge is alive for the run; a follow tail opened
 	 * against a run whose bridge already exited (warren restart, finalize
@@ -217,6 +225,15 @@ export interface TailRunEventsInput {
 export const DEFAULT_TERMINAL_POLL_MS = 1000;
 
 /**
+ * Default snapshot page size (warren-2a8b). Anonymous event replays must
+ * not materialize an entire run transcript per connection — the pod runs
+ * a single replica under a 1Gi limit, so a handful of concurrent replays
+ * of a long run could OOM-kill it. Clients page beyond the bound with
+ * `?since`.
+ */
+export const DEFAULT_SNAPSHOT_PAGE_LIMIT = 5000;
+
+/**
  * Replay-then-live tail for `/runs/:id/events?follow=1`. Subscribes to
  * the broker first, snapshots the events table, yields the snapshot,
  * then yields live events while skipping any whose seq is at-or-below
@@ -231,8 +248,11 @@ export async function* tailRunEvents(
 	const { runId, repos, follow } = input;
 	const sinceSeq = input.sinceSeq ?? 0;
 
+	const snapshotLimit = input.snapshotLimit ?? DEFAULT_SNAPSHOT_PAGE_LIMIT;
+
 	if (!follow) {
-		const opts = sinceSeq > 0 ? { sinceSeq } : {};
+		// One bounded page; the client pages beyond it with `?since`.
+		const opts = sinceSeq > 0 ? { sinceSeq, limit: snapshotLimit } : { limit: snapshotLimit };
 		for (const row of await repos.events.listByRun(runId, opts)) yield row;
 		return;
 	}
@@ -269,10 +289,13 @@ async function* followRunEvents(
 			? startTerminalBackstop(input.terminal, () => subCtrl.abort())
 			: null;
 
-	const listOpts = sinceSeq > 0 ? { sinceSeq } : {};
+	const listOpts =
+		sinceSeq > 0
+			? { sinceSeq, limit: input.snapshotLimit ?? DEFAULT_SNAPSHOT_PAGE_LIMIT }
+			: { limit: input.snapshotLimit ?? DEFAULT_SNAPSHOT_PAGE_LIMIT };
 	let lastYielded = sinceSeq;
 	try {
-		lastYielded = yield* yieldNewerRows(await repos.events.listByRun(runId, listOpts), lastYielded);
+		lastYielded = yield* pageHistory(repos, runId, listOpts, lastYielded);
 		lastYielded = yield* yieldNewerRows(live, lastYielded);
 		if (backstop?.reached() === true && !signal?.aborted) {
 			// The backstop (not `broker.close`) ended the tail, so events
@@ -290,6 +313,30 @@ async function* followRunEvents(
 		signal?.removeEventListener("abort", onCallerAbort);
 		await live.return(undefined).catch(() => {});
 	}
+}
+
+/**
+ * Page forward through history in bounded chunks (warren-2a8b). A
+ * follow client can't re-issue `?since` mid-stream, so truncating the
+ * snapshot would silently drop events between its last row and the live
+ * tail; paging keeps the full replay while bounding each materialization.
+ * A short page means the snapshot is exhausted. Returns the high-water
+ * mark via the generator return value, like `yieldNewerRows`.
+ */
+async function* pageHistory(
+	repos: { events: EventsRepo },
+	runId: string,
+	listOpts: { sinceSeq?: number; limit: number },
+	lastYielded: number,
+): AsyncGenerator<EventRow, number, void> {
+	let last = lastYielded;
+	let page = await repos.events.listByRun(runId, listOpts);
+	while (page.length > 0) {
+		last = yield* yieldNewerRows(page, last);
+		if (page.length < listOpts.limit) break;
+		page = await repos.events.listByRun(runId, { sinceSeq: last, limit: listOpts.limit });
+	}
+	return last;
 }
 
 /**
