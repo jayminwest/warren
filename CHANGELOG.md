@@ -10,6 +10,16 @@ Releases **0.9.10 and earlier** live in
 
 ## [Unreleased]
 
+### Changed
+
+- **js-yaml 4 → 5** — config parsing migrates to js-yaml v5
+  (named `load`/`dump` imports, bundled types replace `@types/js-yaml`;
+  warren-381c, #637). Empty or comment-only `.warren/*` YAML files still
+  parse as "absent". v5's `load` uses the YAML 1.2 `CORE_SCHEMA` (no
+  `!!merge` by default, `yes`/`no`/`on`/`off` are strings) and `dump`
+  quotes per YAML 1.1, so `warren init` / `warren config migrate` output
+  may differ cosmetically — semantics are unchanged.
+
 ## [0.13.0] — 2026-07-30
 
 ### Security
