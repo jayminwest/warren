@@ -10,7 +10,7 @@
 		"src/ui/dist/**"
 	],
 	"minTokens": 100,
-	"threshold": 3,
+	"threshold": 1.3,
 	"reporters": ["consoleFull"],
 	"absolute": false,
 	"gitignore": true,
