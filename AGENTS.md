@@ -1,36 +1,126 @@
 # AGENTS.md
 
-This file is the canonical entry point for AI coding agents working in
-this repo, following the [agents.md](https://agents.md) convention. It
-mirrors the essentials from [`CLAUDE.md`](CLAUDE.md); when the two
-disagree, `CLAUDE.md` is authoritative and this file should be updated
-to match.
+This file is the canonical instruction doc for AI coding agents working
+in this repo, following the [agents.md](https://agents.md) convention.
+`CLAUDE.md` is a symlink to this file, so one document serves every
+harness and there is nothing to drift.
 
 ## What this project is
 
 Warren is a self-hostable control plane for ephemeral cloud agents.
-Point it at a GitHub repo, pick an agent, write a prompt; warren spawns
-the agent inside a sandbox (burrow), streams events to the UI, lets the
-user steer mid-run, then pushes the workspace branch. One container,
-one volume, one HTTP API, one UI.
+Point it at a GitHub repo, pick an agent, write a prompt. Warren spawns
+the agent inside a sandbox, streams events to the UI, accepts steering
+mid-run, then pushes the workspace branch. One container, one volume,
+one HTTP API, one UI.
 
-The fresh-install path is standalone: the built-in `claude-code` agent
-ships inline (`src/registry/builtins/`) with the other built-ins. The
-opt-in os-eco integrations (`mulch`, `seeds`, `sapling`) light up when
-their config or directories are present.
+The fresh-install path is standalone. A user with a GitHub URL and an
+Anthropic key can dispatch a run end-to-end with no other tooling.
+Around that kernel, three [os-eco](https://github.com/jayminwest/os-eco)
+data-plane tools integrate as opt-in features, not required
+infrastructure.
 
-`plan-run` is a dispatch mode over the single-run primitive that a
-`.seeds/` plan unlocks. The deletion pass pl-3a79 retired `plot` and
-`canopy` — see `CLAUDE.md` for the full framing.
+- **mulch** — persistent agent memory across runs. Activated by a
+  `.mulch/` directory in the project.
+- **seeds** — the integrated issue queue agents read from and write to.
+  Activated by a `.seeds/` directory.
+- **sapling** — alternative steerable coding harness. Ships inline as a
+  built-in agent.
 
-The runtime substrate is [burrow](https://github.com/jayminwest/burrow);
-warren and burrow are co-tenanted inside the container and share a unix
-socket. **Before touching anything that crosses the warren↔burrow
-boundary** (`src/supervisor/main.ts`, `src/burrow-client/`,
-`docker-compose.yml` security flags), read `../burrow/SPEC.md` and the
-"Relationship to burrow" section of `CLAUDE.md`.
+The agent registry is entirely inline. `BUILTIN_AGENTS`
+(`src/registry/builtins/`) ships eight agents and boot seeds them into
+the agents table on every start: `claude-code`, `sapling`, `pi`,
+`planner`, `nightwatch`, `bugwatch`, `pr-fixer`, and `healer`. There is
+no external agent library. `GET /agents` still reports
+`source: "builtin" | "library"` provenance. The `library` arm survives
+only for legacy rows.
 
-## Tech stack at a glance
+**plan-run** is a dispatch mode over the single-run primitive, unlocked
+by a `.seeds/` plan. `POST /plan-runs` walks a seeds plan's children
+one at a time and gates each on the previous PR merging.
+Re-dispatching the same plan resumes from the next open child. See
+[docs/design/plan-run-coordinator.md](docs/design/plan-run-coordinator.md).
+
+Plan pl-3a79 retired and deleted two former data-plane features:
+`plot` (a shared coordination substrate) and `canopy` (an external
+agent-definition library). See [ROADMAP.md](ROADMAP.md) for
+the sequencing and [docs/PHILOSOPHY.md](docs/PHILOSOPHY.md) for policy.
+
+## Runtime topology
+
+Warren runs against a swappable runtime provider, resolved once at boot
+from `WARREN_RUNTIME` (`src/runtime/registry.ts`) behind the
+`RuntimeProvider` contract (`src/runtime/contract.ts`). Two backends
+exist.
+
+- `LocalProvider` (`src/runtime/local/`, the default) wraps the
+  co-tenanted [burrow](https://github.com/jayminwest/burrow) sandbox
+  daemon.
+- `K8sProvider` (`src/runtime/k8s/`, `WARREN_RUNTIME=k8s`) runs each
+  agent as a Kubernetes pod. No burrow daemon runs there, so no
+  `burrow serve`, no unix socket, and no bwrap. The pod boundary is the
+  sandbox, and `/readyz` drops the burrow probes. Warren still links
+  `@os-eco/burrow-cli` as a library for shared types and error classes.
+
+Burrow the daemon is the LocalProvider's substrate, not a required
+warren dependency. For the K8s topology see
+[docs/RUNBOOK-K8S.md](docs/RUNBOOK-K8S.md) and the design records
+[docs/design/runtime-provider-contract.md](docs/design/runtime-provider-contract.md)
+and [docs/design/k8s-migration.md](docs/design/k8s-migration.md).
+
+### Relationship to burrow (local topology)
+
+Under `local`, burrow is the sandbox runtime and warren is the
+orchestrator that spawns it and talks to it over HTTP. **Read
+`../burrow/SPEC.md` before changing anything that crosses the
+warren↔burrow boundary**. That boundary covers the supervisor's
+`burrow serve` invocation (`src/supervisor/main.ts`), the
+`src/burrow-client/` HTTP facade, and the bwrap-friendly security flags
+in `docker-compose.yml`.
+
+- The supervisor spawns `burrow serve` as a sibling process and
+  forwards SIGTERM/SIGINT. The two share a unix socket (default path
+  `/var/run/burrow.sock`) and a bearer token (`BURROW_API_TOKEN` equals
+  `WARREN_BURROW_TOKEN`).
+- `src/burrow-client/` is a typed facade over burrow's `HttpClient`.
+  Call the facade, never the socket directly, so the HTTP surface stays
+  mirrored.
+- The `@os-eco/burrow-cli` pin lives in two places, the `Dockerfile`
+  global install and `package.json` + `bun.lock`. Bumping only one is a
+  no-op, because the supervisor resolves the local copy from
+  node_modules before PATH. Update both and regenerate the lockfile.
+- Burrow needs three apparmor/seccomp/systempaths-unconfined flags plus
+  `cap_add: SYS_ADMIN` on Linux for user-namespace nesting.
+  `docker-compose.yml` bakes them in. See
+  [docs/design/runtime-and-supervisor.md](docs/design/runtime-and-supervisor.md).
+
+## Per-project config (`.warren/config.yaml`)
+
+The canonical home for per-project defaults is `.warren/config.yaml`.
+The legacy `defaults.json` still loads with a deprecation warning. The
+schema lives in `src/warren-config/schema.ts` (`DefaultsConfigSchema`)
+and `loadWarrenConfig()` surfaces it. Notable knobs:
+
+- `defaultRole`, `defaultPrompt`, `defaultProvider`, `defaultModel`,
+  `defaultBranch`, `runBranchPrefix` — dispatch-time defaults. See
+  [docs/design/warren-config.md](docs/design/warren-config.md).
+- `preview` — per-run preview environments. The canonical home is
+  `.warren/preview.yaml`. See
+  [docs/design/preview-environments.md](docs/design/preview-environments.md).
+- `agent.skipGitHooks` (default `false`) — set `true` to skip arming
+  the project's git pre-commit gate on the host clone before each run
+  (warren-8f4c).
+- `admission.maxConcurrentRuns` — per-project cap on simultaneous
+  non-terminal runs, enforced by the K8s admission gate. Over the cap
+  the gate rejects the dispatch with HTTP 429 and reason
+  `project_concurrency_exceeded`. Cluster-wide env knobs pair with it.
+  See [docs/design/k8s-migration.md](docs/design/k8s-migration.md) §3.3
+  (warren-b6f2).
+- `WARREN_K8S_MAX_PROJECT_CONCURRENCY` — the global default for the
+  per-project cap. `WARREN_K8S_MAX_QUEUE_DEPTH` (default 50) caps total
+  non-terminal pods. `WARREN_K8S_MAX_PENDING_PODS` (default 20) caps
+  Pending pods. `0` disables a cap. LocalProvider ignores all of these.
+
+## Tech stack
 
 - **Runtime:** Bun (runs TypeScript directly, no server build step)
 - **Language:** TypeScript, strict mode (`noUncheckedIndexedAccess`, no `any`)
@@ -39,288 +129,386 @@ boundary** (`src/supervisor/main.ts`, `src/burrow-client/`,
 - **HTTP:** `Bun.serve` serves both the JSON API and the SPA
 - **UI:** React + Vite + Tailwind + shadcn-style components, in
   `src/ui/` as the `@os-eco/warren-ui` package, built into `src/ui/dist/`
-- **Sandbox primitive:** burrow (HTTP over a unix socket)
+- **Sandbox primitive:** a `RuntimeProvider` (`src/runtime/`), not a
+  direct dependency. `LocalProvider` delegates to burrow over a unix
+  socket. `K8sProvider` runs pods.
 
 ## Build & test commands
 
-From the repo root:
+From the repo root (server + supervisor + CLI):
 
 ```bash
-bun test                      # Run all tests
-bun test src/foo.test.ts      # Run a single test file
-bun run test:ci               # bun test --reporter=junit -> test-results/junit.xml
-bun run test:coverage         # bun test --coverage (text + lcov -> coverage/)
-bun run check:coverage        # tests + coverage + ratchet enforcement
-bun run report:test-timing    # print slowest suites/tests from junit.xml
-bun run report:quality-metrics # print code-quality metrics summary (coverage + complexity + ratchets)
-bun run lint                  # biome + layers + version-sync + wire-types + prose guards
-bun run check:wire-types      # canonical wire vocabulary guard (also inside lint)
-bun run typecheck             # tsc --noEmit
-bun run build:ui              # cd src/ui && bun install && bun run build
+bun test                       # Run all tests
+bun test src/foo.test.ts       # Run a single test file
+bun run test:coverage          # bun test --coverage (text + lcov -> coverage/)
+bun run check:coverage         # tests + coverage + ratchet enforcement
+bun run test:pg                # test suite against Postgres
+bun run lint                   # biome + layers + version-sync + wire-types + prose guards
+bun run typecheck              # tsc --noEmit
+bun run build:ui               # cd src/ui && bun install && bun run build
+bun run db:generate            # regenerate drizzle migrations (sqlite + postgres)
+bun run version:bump           # bump version across all four sites
+bun run acceptance             # end-to-end acceptance scenarios
+bun run acceptance:container   # acceptance scenarios in container mode
+bun run acceptance:public      # scenario 39, the public-instance leak guard
+bun run acceptance:nightly     # the nightly acceptance suite
 ```
 
-CI (`.github/workflows/ci.yml`, warren-cec7) runs `bun run test:ci` instead
-of bare `bun test` so every PR emits `test-results/junit.xml`, then runs
-`bun run report:test-timing` to dump a slowest-suite/slowest-test summary
-into the GitHub Actions step summary, then `bun run report:quality-metrics`
-(warren-5b95) appends a consolidated code-quality panel — coverage % vs
-floors, complexity grandfather counts, file-size + debt-marker ratchet
-status, and bundle-size headroom — to the same summary, and uploads the JUnit XML as the
-`bun-test-junit` artifact for offline analysis (regression triage, perf
-ratchets, etc.). `test-results/` is gitignored — it's a build artifact.
+CI (`.github/workflows/ci.yml`) runs each manifest gate as its own
+step. The test job invokes `check:coverage:ci`, which emits
+`test-results/junit.xml` and uploads `coverage/lcov.info`. CI then runs
+`report:test-timing` for a slowest-suite summary and
+`report:quality-metrics` (warren-5b95) for a code-quality panel in the
+GitHub Actions step summary. Git ignores `test-results/` and
+`coverage/` as build artifacts.
 
 UI-only (its own package):
 
 ```bash
-bun run ui:dev                # vite dev server
-bun run ui:install            # cd src/ui && bun install
+bun run ui:dev                 # vite dev server
+bun run ui:install             # cd src/ui && bun install
 ```
 
 ## Quality gates
 
-Run all checks before committing — warnings count as failures:
+Run all checks before committing. Warnings count as failures:
 
 ```bash
 bun run check:all     # or its agent-facing alias: bun run verify
 ```
 
-`check:all` is the os-eco canonical quiet runner (`scripts/check-all.ts`,
-byte-identical to `../templates/l5-toolkit/scripts/check-all.ts` at the
-os-eco root — never edit it in place). It prints one aligned status line
-per gate and a `12/12 gates passed` tally; on failure it shows parsed
-failure signatures plus a `re-run: bun run <gate>` hint
-(`CHECK_ALL_VERBOSE=1` streams full output, `--bail` stops early).
-Warren's resolved manifest, in order: `lint`, `typecheck`,
-`check:agents`, `check:dups` (jscpd), `check:deps`, `check:size`,
-`check:debt`, `check:bundle-size`, `gen:docs:check`, `gen:openapi:check`,
-`check:coverage` (tests + coverage ratchet), and `check:ci-parity` —
-the same set CI enforces, and `check:ci-parity` proves it in both
-directions (see `.github/workflows/ci.yml`; escape hatches live in
-`scripts/ci-parity-config.json`). Do not merge with
-lint warnings; fix at write time or promote to error in `biome.json`.
+`check:all` is the os-eco canonical quiet runner (`scripts/check-all.ts`).
+It is byte-identical to `../templates/l5-toolkit/scripts/check-all.ts`
+at the os-eco root. Never edit it in place. It prints one aligned
+status line per gate and a `12/12 gates passed` tally. On failure it
+shows parsed failure signatures plus a `re-run: bun run <gate>` hint.
+`CHECK_ALL_VERBOSE=1` streams full output and `--bail` stops early.
+
+Warren's resolved manifest, in order:
+
+- `lint`
+- `typecheck`
+- `check:agents`
+- `check:dups` (jscpd)
+- `check:deps`
+- `check:size`
+- `check:debt`
+- `check:bundle-size`
+- `gen:docs:check`
+- `gen:openapi:check`
+- `check:coverage` (tests + coverage ratchet)
+- `check:ci-parity`
+
+The release workflow (`.github/workflows/release.yml`) runs the same
+`check:all` before any release work, so a release can never ship code
+CI would reject. `check:ci-parity` proves the local manifest and the CI
+workflow agree in both directions. Per-repo escape hatches live in
+`scripts/ci-parity-config.json`.
+
+Four repo-specific guards ride inside the `lint` gate rather than
+taking a manifest slot, because the canonical gate vocabulary is
+frozen. They are `scripts/check-layers.ts`,
+`scripts/check-version-sync.ts`, `scripts/check-wire-types.ts`, and
+`scripts/check-prose.ts`. Each also runs standalone under the matching
+`check:` script name.
 
 Details on the additional checks:
 
 - **`check:size`** (warren-4553) — enforces a per-file line-count
   budget. New `.ts`/`.tsx` files under `src/` and `scripts/` must stay
-  ≤ 500 lines; existing oversized files are grandfathered in
-  `scripts/file-size-budgets.json` and may not grow past their frozen
-  ceiling — the ratchet only goes down. `src/ui/` is in scope as of
-  warren-c8bd. The walk skips only the `src/ui/dist/` build output.
-  That change added the three `src/ui/` entries to the budget file. Biome's
-  `noExcessiveLinesPerFunction` rule (also 500-line cap) enforces the
-  same budget at the function level, with the same baseline exceptions
-  called out in `biome.json`'s `overrides`.
-- **`check:debt`** (warren-7f2b) — scans `src/` and `scripts/`
-  `.ts`/`.tsx` for `TODO` / `FIXME` / `HACK` / `XXX` and fails if any
-  marker lacks a tracker reference on the same line (`warren-XXXX`,
-  `pl-XXXX`, `mx-XXXX`, `#NNN`, or a URL). The ratchet grandfather list
-  lives in `scripts/debt-marker-allowlist.json` and only goes down —
-  pair new markers with an id (or remove them) rather than appending to
-  the allowlist. `src/ui/` is in scope as of warren-c8bd. The walk
-  skips only `src/ui/dist/`. `src/ui/` carried no untracked marker, so
-  the allowlist stays empty.
-- **`check:agents`** — validates that `AGENTS.md` references
-  (`bun run <X>` commands and backtick-quoted paths) still exist.
-- **Four guards ride inside `lint`** rather than taking a manifest slot of their own, because the canonical `check:all` gate vocabulary is frozen. They are `scripts/check-layers.ts`, `scripts/check-version-sync.ts`, `scripts/check-wire-types.ts` and `scripts/check-prose.ts`. Each one also runs on its own under the matching `check:` script name. See "Single source of truth" below for the first and third.
-
-Biome's `noExcessiveCognitiveComplexity` rule (warren-d3a6, cognitive
-complexity ≤ 15) enforces a project-wide complexity ceiling. New code
-must stay under the threshold; existing offenders are grandfathered in
-the first `overrides` block of `biome.json`. That block also names the
-15 `src/ui/` files warren-c8bd brought into scope. The ratchet only goes
-down — refactor offenders out of the list rather than adding new
-entries.
-
+  at or under 500 lines. `scripts/file-size-budgets.json` grandfathers
+  existing oversized files at frozen ceilings, and the ratchet only
+  goes down. `src/ui/` is in scope as of warren-c8bd with three
+  grandfathered entries. The walk skips only `src/ui/dist/`. Biome's
+  `noExcessiveLinesPerFunction` rule enforces the same 500-line cap at
+  the function level.
+- **`check:debt`** (warren-7f2b) — scans `src/` and `scripts/` for
+  `TODO` / `FIXME` / `HACK` / `XXX`. Any marker without a tracker
+  reference on the same line fails the gate. Accepted references are
+  `warren-XXXX`, `pl-XXXX`, `mx-XXXX`, an issue number, or a URL.
+  `scripts/debt-marker-allowlist.json` holds the grandfather list, and
+  it only goes down. Pair new markers with an id instead of appending
+  to the allowlist.
+- **`check:agents`** — validates that `AGENTS.md` references still
+  resolve. Every `bun run <x>` in a fenced bash block must exist in
+  `package.json` scripts. Every backticked path-shaped token must exist
+  on disk or sit in the script's explicit known-missing list.
+- **`check:dups`** (warren-61e9) — runs jscpd over
+  `src/**/*.{ts,tsx}` to detect copy-pasted code. Config lives in
+  `.jscpd.json`, which excludes tests, generated migrations, drizzle
+  schema, goldens, and the UI build output. The percentage threshold is
+  a ratchet that only goes down.
+- **`check:deps`** (warren-d109) — wraps knip in `--dependencies` mode
+  (config in `knip.json`) to flag unused or undeclared npm dependencies
+  across the root package and the `src/ui` workspace. The fix for a
+  knip hit is almost always `bun remove <dep>`. Ignore a dep only when
+  it resolves by string at runtime, like a pino transport target.
 - **`check:bundle-size`** (warren-5abc) — measures the Vite UI build
-  output in `src/ui/dist/assets/` and enforces a ratchet in
-  `scripts/bundle-size-budgets.json`. Tracks raw + gzipped totals per
-  extension (`.js`, `.css`) and the largest single chunk's gzipped
-  size. Never hand-edit the budget JSON from Vite's build-log gzip
-  number — it runs ~2KB cooler than this guard, so eyeballed budgets
-  fail CI. Re-baseline with `bun run check:bundle-size --update`,
-  which writes the authoritative measured numbers: lowering always
-  applies, ordinary growth auto-raises within `AUTO_RAISE_CAP`, and a
-  heavy new dep past the cap needs `WARREN_BUNDLE_SIZE_ALLOW_RAISE=1`.
-  The `bundle-size-autoheal` workflow re-baselines + pushes for you when
-  a PR fails on a within-cap overshoot, so a few-hundred-byte miss never
-  halts a run. The script body carries `--build`, so `bun run
-  check:bundle-size` is self-contained (frozen-lockfile UI install +
-  build, then measure); CI additionally keeps an explicit `build:ui`
-  step so the build is visible in logs.
+  output in `src/ui/dist/assets/` against the ratchet in
+  `scripts/bundle-size-budgets.json`. Never hand-edit the budget from
+  Vite's build-log gzip number, which runs about 2KB cooler than this
+  guard's Node-zlib measure. Re-baseline with
+  `bun run check:bundle-size --update`, which always builds first and
+  writes measured numbers. Lowering always applies. Ordinary growth
+  auto-raises within `AUTO_RAISE_CAP`. A heavy new dep past the cap
+  needs `WARREN_BUNDLE_SIZE_ALLOW_RAISE=1`. On a PR that fails on a
+  within-cap overshoot, the `bundle-size-autoheal` workflow
+  re-baselines and pushes for you.
+- **`check:coverage`** (warren-e4b1) — wraps `bun test --coverage` and
+  enforces the floors in `scripts/coverage-budgets.json` against the
+  "All files" row of Bun's text reporter. CI invokes
+  `check:coverage:ci`, which also emits `test-results/junit.xml` and
+  uploads `coverage/lcov.info`. The ratchet only goes up. Lowering a
+  floor means you deleted tests, and it needs a tracker reference.
+- **`gen:docs:check`** (warren-e5fb) — keeps `docs/http-api.md` in sync
+  with the `ROUTE_TABLE` array in `src/server/handlers/index.ts`, the
+  canonical HTTP API surface. Refresh with `bun run gen:docs` and
+  commit the result.
+- **`gen:openapi:check`** (warren-b46b) — keeps `docs/openapi.yaml`
+  (OpenAPI 3.1, derived from the same `ROUTE_TABLE`) up to date.
+  Refresh with `bun run gen:openapi` and commit.
 
-- **`check:coverage`** (warren-e4b1) — wraps `bun test --coverage`
-  (text + lcov reporters) and enforces the floors in
-  `scripts/coverage-budgets.json` against the "All files" aggregate of
-  Bun's text coverage table. CI invokes `check:coverage:ci`, which
-  additionally emits `test-results/junit.xml` for the test-timing
-  summary; the `coverage/lcov.info` artifact is uploaded for downstream
-  analysis. The ratchet only goes UP — raise floors as coverage
-  improves; lowering them requires a tracker-referenced rationale (it
-  means you deleted tests).
+Biome's `noExcessiveCognitiveComplexity` rule (warren-d3a6, ceiling 15)
+holds a project-wide complexity budget. New code must stay under the
+threshold. The first `overrides` block of `biome.json` grandfathers
+existing offenders, including the 15 `src/ui/` files warren-c8bd
+brought into scope. The second `overrides` block names 32 legacy
+PascalCase and camelCase UI filenames exempt from
+`useFilenamingConvention`. Both lists are ratchets that only shrink.
 
-- **`gen:docs:check`** (warren-e5fb) — verifies that `docs/http-api.md`
-  is in sync with the `ROUTE_TABLE` array in `src/server/handlers/index.ts`.
-  The route table is the canonical HTTP API surface; this guard keeps
-  the doc from drifting. To refresh after editing routes, run
-  `bun run gen:docs` and commit the result. CI runs the `--check` mode
-  via `check:all`.
-
-- **`gen:openapi:check`** (warren-b46b) — verifies that
-  `docs/openapi.yaml` (an OpenAPI 3.1 schema derived from the same
-  `ROUTE_TABLE`) is up to date. Paths, methods, path parameters, and
-  operationIds are generated from the handler module; request/response
-  bodies remain permissive in V1. Refresh with `bun run gen:openapi`
-  and commit; CI runs `--check` via `check:all`.
-
-`check:deps` (warren-d109) wraps [knip](https://knip.dev) in
-`--dependencies` mode (config in `knip.json`) to flag unused or
-undeclared npm dependencies across the root package and the `src/ui`
-workspace. The fix for a knip hit is almost always `bun remove <dep>`
-(or `cd src/ui && bun remove <dep>`) — only ignore a dep when it's
-resolved by string at runtime (e.g. a pino transport target).
-
-`check:all` runs `bun run check:dups` (warren-61e9), which invokes
-[jscpd](https://github.com/kucherenko/jscpd) over `src/**/*.{ts,tsx}` to
-detect copy-pasted code. Config lives in `.jscpd.json`: tests,
-auto-generated migrations (`src/db/migrations/`), drizzle schema
-(`src/db/schema/`), goldens, and the UI build output are excluded so
-the scanner only sees hand-written production code. The percentage
-threshold (`threshold` in `.jscpd.json`) is a ratchet that should only
-go down — fix duplicates rather than raising the ceiling.
-
-CI (`.github/workflows/release.yml`) runs the same trinity. Do not merge
-with lint warnings; fix at write time or promote to error in `biome.json`.
+`biome.json` goes through strict `JSON.parse`, so it cannot carry
+comments. The rationale for those two lists lives here.
 
 ## Naming conventions
 
 - **Filenames (server/scripts):** `kebab-case.ts`. Tests are
-  `<name>.test.ts` sitting next to the file under test. Dotted
-  groupings (e.g. `src/server/handlers/plan-runs.create.test.ts`) are allowed
-  and each dot-segment must itself be kebab-case. Enforced by Biome's
-  `useFilenamingConvention` rule (group `style`, kebab-case, strict).
+  `<name>.test.ts` next to the file under test. Dotted groupings like
+  `src/server/handlers/plan-runs.create.test.ts` pass, and each
+  dot-segment must itself be kebab-case. Biome's
+  `useFilenamingConvention` rule enforces this.
 - **Filenames (`src/ui/`):** the same kebab-case rule applies as of
-  warren-c8bd. The second `overrides` block of `biome.json` names the 32
-  legacy PascalCase and camelCase UI files that predate the rule. That
-  list is a bounded ratchet and only goes down. Write new UI files in
-  kebab-case. To clear an entry, rename the file and delete its line.
+  warren-c8bd. Write new UI files in kebab-case. To clear a
+  grandfathered entry, rename the file and delete its line in
+  `biome.json`.
 - **Directories:** `kebab-case` (`src/burrow-client/`,
   `src/plan-runs/`, `src/warren-config/`).
 - **Identifiers:** `camelCase` for functions, variables, and instance
-  fields; `PascalCase` for types, interfaces, classes, and React
-  components; `SCREAMING_SNAKE_CASE` for module-level constants that
-  are true constants (e.g. `NETWORK_POLICIES`). Booleans read as
-  predicates (`isOpen`, `hasPreview`).
-- **Test names:** `describe("<unitUnderTest>")` + `test("verb-led
-  behaviour description")` — no `should`, no `it`.
-- **TOML / config keys** (agent definitions, `burrow_config`, etc.)
-  stay `snake_case` to match the upstream schema even when the TS
+  fields. `PascalCase` for types, interfaces, classes, and React
+  components. `SCREAMING_SNAKE_CASE` for true module-level constants
+  like `NETWORK_POLICIES`. Booleans read as predicates (`isOpen`,
+  `hasPreview`).
+- **Test names:** `describe("<unitUnderTest>")` plus a verb-led
+  `test("...")` behaviour description. No `should`, no `it`.
+- **TOML / config keys** (agent definitions, `burrow_config`) stay
+  `snake_case` to match the upstream schema, even when the TypeScript
   helper that parses them is kebab-case.
 
 ## TypeScript conventions
 
-- Strict mode with `noUncheckedIndexedAccess` — always handle possible
-  `undefined` from indexing
-- No `any` — use `unknown` and narrow, or define a proper type
-- **Define wire vocabulary once, then re-export it outward.** Every enum-shaped value that crosses the HTTP wire lives in `src/core/wire.ts`. The SDK, the drizzle columns and the UI re-export it. None of them declares a second copy, and `bun run lint` fails if one does. See "Single source of truth" below.
-- **Domain-internal types still co-locate with their domain** (`src/server/types.ts`, `src/runs/...`, `src/projects/...`). UI-only view types stay in `src/ui/` — component props, form state, chart shapes.
-- Import with `.ts` extensions
-- Tab indentation, 100-char line width (enforced by Biome)
+- Strict mode with `noUncheckedIndexedAccess`. Always handle possible
+  `undefined` from indexing.
+- No `any`. Use `unknown` and narrow, or define a proper type.
+- **Define wire vocabulary once, then re-export it outward.** Every
+  enum-shaped value that crosses the HTTP wire lives in
+  `src/core/wire.ts`. The SDK, the drizzle columns, and the UI
+  re-export it. None of them declares a second copy, and `bun run lint`
+  fails if one appears. See "Single source of truth" below.
+- **Domain-internal types co-locate with their domain**
+  (`src/server/types.ts`, `src/runs/`, `src/projects/`). UI-only view
+  types stay in `src/ui/`: component props, form state, chart shapes.
+- Import with `.ts` extensions.
+- Tab indentation, 100-char line width (enforced by Biome).
 
 ## Single source of truth
 
-Each capability in warren has exactly ONE implementation. The domain modules under `src/runs/`, `src/projects/` and `src/plan-runs/` own the logic. The HTTP handlers in `src/server/handlers/` are a thin surface over them. The CLI, the SDK and the UI are consumers that call the domain function or the HTTP route that wraps it. None of them re-implements it, and none of them keeps a hand-maintained copy of a type the other side already owns.
+Each capability in warren has exactly one implementation. The domain
+modules under `src/runs/`, `src/projects/`, and `src/plan-runs/` own
+the logic. The HTTP handlers in `src/server/handlers/` are a thin
+surface over them. The CLI, the SDK, and the UI are consumers that call
+the domain function or the HTTP route that wraps it. None of them
+re-implements it. None keeps a hand-maintained copy of a type another
+side already owns.
 
-The old wording here told agents to keep UI types in a separate file, which sanctioned the duplication that then drifted. `RunFailureReason` lost `finalize_failed` and `evicted` in BOTH the SDK copy and the UI copy. The UI still typed a run mode the server deleted. `RefreshAgentsResponse.removed` read as an object array in the UI against a server truth of `string[]`. warren-b229 repaired all three.
+The old wording told agents to keep UI types in a separate file, which
+sanctioned the duplication that then drifted. `RunFailureReason` lost
+values in both the SDK copy and the UI copy. The UI still typed a run
+mode the server had deleted. `RefreshAgentsResponse.removed` read as an
+object array against a server truth of `string[]` (warren-b229). A
+convention that permits a second copy produces a second copy.
 
 ### The wire vocabulary
 
-`src/core/wire.ts` is the canonical home for every enum-shaped value that crosses the HTTP wire. That covers run, plan-run and preview lifecycle states, the failure-cause discriminator, run mode, clone kind, event stream, agent source, and the steering-inbox classes. The direction is define there, re-export outward.
+`src/core/wire.ts` is the canonical home for every enum-shaped value
+that crosses the HTTP wire. That covers run, plan-run, and preview
+lifecycle states, the failure-cause discriminator, run mode, clone
+kind, event stream, agent source, and the steering-inbox classes. The
+direction is define there, re-export outward.
 
-- `src/db/schema/columns.ts` re-exports the whole module with `export * from "../../core/wire.ts"`.
-- `src/client/types.ts` and `src/client/types.plan-runs.ts` re-export the names they need.
-- `src/ui/src/api/types.ts` re-exports the same names and declares none of them.
+- `src/db/schema/columns.ts` re-exports the whole module with
+  `export * from "../../core/wire.ts"`.
+- `src/client/types.ts` and `src/client/types.plan-runs.ts` re-export
+  the names they need.
+- `src/ui/src/api/types.ts` re-exports the same names and declares none
+  of them.
 
-`src/core/` imports nothing. A kernel with no imports is what lets the Vite-bundled UI reach the same module. Neither drizzle nor `bun:sqlite` reaches the browser bundle.
+`src/core/` imports nothing. A kernel with no imports is what lets the
+Vite-bundled UI reach the same module without dragging drizzle and
+`bun:sqlite` into a browser bundle.
 
-Two guards hold the rule, and both run inside `bun run lint`:
+Two guards hold the rule, and both run inside `bun run lint`.
 
-- `check:wire-types` (`scripts/check-wire-types.ts`, warren-d371) reads the canonical name list out of `src/core/wire.ts` at run time. Re-export forms pass. A redeclaration fails with `file:line — declares "NAME"`. Put a deliberate local copy in the script's `ALLOW` list with a comment saying why.
-- `check:layers` (`scripts/check-layers.ts`, warren-89a6) refuses an import that points the wrong way across a declared seam. Its rules live in `scripts/layer-rules.json`, so a new seam is a data edit, not a new script. A hit prints `file:line` plus the rule's `why`. Put a deliberate exception in that rule's `allow` list with a `why` field. Seven seams ship today:
-  - The two burrow boundaries it took over from the retired burrow-boundary guard (warren-f796). No direct `src/burrow-client/` or `@os-eco/burrow-cli` import outside the local-topology allowlist.
-  - Domain modules must not import `src/server/**` or `src/cli/**`.
-  - `src/cli/**` must not import `src/server/**`. `src/cli/commands/serve.ts` is the one exception, because booting the server is that command's whole job.
-  - `src/server/handlers/**` must not import `src/db/schema/**`, and must not build a repo out of `deps.db`. Use the boot-wired seams `deps.repos`, `deps.dbAdapter` and `deps.runPreviews`.
-  - `src/core/` may import only itself.
+- `check:wire-types` (`scripts/check-wire-types.ts`, warren-d371) reads
+  the canonical name list out of `src/core/wire.ts` at run time.
+  Re-export forms pass. A redeclaration fails with
+  `file:line — declares "NAME"`. A deliberate local copy goes in the
+  script's `ALLOW` list with a comment saying why.
+- `check:layers` (`scripts/check-layers.ts`, warren-89a6) refuses an
+  import that points the wrong way across a declared seam. Rules live
+  in `scripts/layer-rules.json`, so a new seam is a data edit. A hit
+  prints `file:line` plus the rule's `why`. A deliberate exception goes
+  in that rule's `allow` list with a `why` field.
+
+Seven seams ship today:
+
+- The two burrow boundaries inherited from the retired burrow-boundary
+  guard (warren-f796). No direct `src/burrow-client/` or
+  `@os-eco/burrow-cli` import outside the local-topology allowlist.
+- Domain modules must not import `src/server/**` or `src/cli/**`.
+- `src/cli/**` must not import `src/server/**`.
+  `src/cli/commands/serve.ts` is the one exception, because booting the
+  server is that command's whole job.
+- `src/server/handlers/**` must not import `src/db/schema/**` and must
+  not build a repo out of `deps.db`. Use the boot-wired seams
+  `deps.repos`, `deps.dbAdapter`, and `deps.runPreviews`.
+- `src/core/` may import only itself.
 
 Two sharp edges:
 
-- A module that `src/ui` imports from outside its own `src/` must appear in `include` in `src/ui/tsconfig.app.json`. The UI is a separate composite project, so a missing entry fails the build with TS6307. Only `bun run build:ui` catches that, because the root typecheck skips `src/ui`.
-- `check:wire-types` only enforces canonical names that carry one of its `DOMAIN_STEMS`: run, inbox, clone, preview, event, agent. A new wire name outside those stems stays unguarded until you widen the list.
+- A module that `src/ui` imports from outside its own `src/` must
+  appear in `include` in `src/ui/tsconfig.app.json`. The UI is a
+  separate composite project, so a missing entry fails the build with
+  TS6307. Only `bun run build:ui` catches that, because the root
+  typecheck skips `src/ui`.
+- `check:wire-types` only enforces canonical names that carry one of
+  its `DOMAIN_STEMS`: run, inbox, clone, preview, event, agent. A new
+  wire name outside those stems stays unguarded until you widen the
+  list.
 
 ### Patterns to copy
 
-- `spawnRun` lives once in `src/runs/spawn/dispatch.ts`. Five call sites import it — the scheduler, the plan-run dispatcher and three handler modules.
-- `addProject` lives once in `src/projects/manage.ts`. Both `src/cli/commands/add-project.ts` and `src/server/handlers/projects.ts` call it, so the CLI and the API register a project the same way.
+- `spawnRun` lives once in `src/runs/spawn/dispatch.ts`. Five call
+  sites import it: the scheduler, the plan-run dispatcher, and three
+  handler modules.
+- `addProject` lives once in `src/projects/manage.ts`. Both
+  `src/cli/commands/add-project.ts` and
+  `src/server/handlers/projects.ts` call it, so the CLI and the API
+  register a project the same way.
+- `defaultSpawn` lives once in `src/projects/clone.ts`, beside the
+  `SpawnFn` contract and `resolveSpawnEnv`. `src/cli/output.ts`,
+  `src/server/main/utils.ts`, and `src/server/handlers/index.ts`
+  re-export it.
 
-- `defaultSpawn` lives once in `src/projects/clone.ts`, beside the `SpawnFn` contract and `resolveSpawnEnv`. `src/cli/output.ts`, `src/server/main/utils.ts` and `src/server/handlers/index.ts` re-export it.
-
-The counter-example to avoid: `defaultSpawn` used to exist three times, once per surface. Each copy carried a comment that called the duplication deliberate "so neither surface imports the other". That reason did not hold, because all three already imported `resolveSpawnEnv` from `src/projects/clone.ts`. A comment asserting that a copy is intentional is not evidence that it is. warren-032a removed the copies.
+The counter-example to avoid. `defaultSpawn` used to exist three times,
+once per surface, and each copy carried a comment calling the
+duplication deliberate. The reason did not hold, because all three
+already imported `resolveSpawnEnv` from `src/projects/clone.ts`. A
+comment asserting that a copy is intentional is not evidence that it
+is. warren-032a removed the copies.
 
 ## Version management
 
-The version lives in **four places**, all rewritten by
+The version lives in four places, all rewritten by
 `bun run version:bump <major|minor|patch|X.Y.Z>`
-(`scripts/version-bump.ts`):
+(`scripts/version-bump.ts`, warren-16b5):
 
-- `package.json` — `"version"` field
+- `package.json` — the `"version"` field
 - `src/index.ts` — `export const VERSION = "X.Y.Z"`
-- `docs/openapi.yaml` — `info.version` (the script re-runs `gen:openapi`)
+- `docs/openapi.yaml` — `info.version`, refreshed by the script
+  re-running `gen:openapi`
 - `README.md` — the semver in the `## Status` paragraph
 
-It also drafts an `[Unreleased]` block into `CHANGELOG.md` from
+The script also drafts an `[Unreleased]` block into `CHANGELOG.md` from
 `git log <last-tag>..HEAD`, fenced by `<!-- version-bump:draft -->`
-markers — assistive only, nothing gates on it; curate it and delete the
-markers before releasing. All rewrites roll back together on failure.
+markers. The draft is assistive only. Curate it and delete the markers
+before releasing. All rewrites roll back together on failure.
+
 `.github/workflows/release.yml` fails the release job if `package.json`
-and `src/index.ts` disagree, then auto-tags `v$VERSION` and creates a
-GitHub release from the matching `CHANGELOG.md` section.
+and `src/index.ts` disagree. It then auto-tags the release and creates
+it from the matching `CHANGELOG.md` section.
 
-`bun run check:version-sync` (warren-0210, `scripts/check-version-sync.ts`)
-asserts on every PR — not just at release — that all four sites agree, and
-that the `@os-eco/burrow-cli` pin agrees across `Dockerfile`,
-`package.json` and the README. It shares the README locator with
-`scripts/version-bump.ts`, so the gate and the bumper can never disagree about
-where the version lives. It is chained into `bun run lint` rather than
-registered as its own gate, because the canonical `check:all` manifest is
-frozen.
+`bun run check:version-sync` (warren-0210,
+`scripts/check-version-sync.ts`) asserts on every PR that all four
+sites agree. It also checks that the `@os-eco/burrow-cli` pin agrees
+across the `Dockerfile`, `package.json`, and the README. It shares the
+README locator with `scripts/version-bump.ts`, so the gate and the
+bumper can never disagree about where the version lives. It rides
+inside `bun run lint` because the canonical gate manifest is frozen.
 
-## Per-project config (`.warren/config.yaml`)
+## Git identities (Article VII)
 
-Canonical home for per-project defaults. Schema:
-`src/warren-config/schema.ts` (`DefaultsConfigSchema`), surfaced by
-`loadWarrenConfig()`. Notable knobs: `defaultRole`, `defaultPrompt`,
-`defaultProvider`, `defaultModel`, `defaultBranch`, `runBranchPrefix`,
-`preview`, `agent.skipGitHooks`. See `CLAUDE.md`,
-`docs/design/warren-config.md` and `docs/design/preview-environments.md`
-for details.
+Per [docs/CONSTITUTION.md](docs/CONSTITUTION.md) Article VII,
+warren-authored commits use one canonical bot identity. Two distinct
+identities exist. Do not conflate them.
+
+- **Warren's bookkeeping bot** authors the reap-time `chore(warren)`
+  commits. The resolver in `src/bot-identity.ts` is the single source
+  of truth. Operators override the spelling with `WARREN_BOT_NAME` and
+  `WARREN_BOT_EMAIL` together. The default is
+  `warren <bot@warren.invalid>`, an RFC 2606 non-routable address
+  (warren-02cd). Never re-spell `user.name` or `user.email` inline at a
+  new commit site. Go through the resolver. warren-598f closed a
+  nine-spelling drift this way.
+- **The agent's author identity** comes from `WARREN_GIT_AUTHOR_NAME`
+  and `WARREN_GIT_AUTHOR_EMAIL`, installed by
+  `src/supervisor/git-identity.ts`. Operators should use a dedicated
+  GitHub machine account's noreply address so agent work attributes to
+  the bot, not to a personal account.
+
+## Protected paths (Article IX)
+
+Per [docs/CONSTITUTION.md](docs/CONSTITUTION.md) Article IX, some
+changes require explicit human review and must not ride an auto-merged
+PR. The protected paths are `docs/CONSTITUTION.md` itself,
+`.warren/triggers.yaml`, and the agent definitions in
+`src/registry/builtins/`. The "Article IX check" step in
+`.github/workflows/auto-merge.yml` refuses to enable auto-merge on any
+PR touching those paths or the workflow itself.
+
+## Auth modes
+
+`WARREN_AUTH` resolves the auth backend once at boot
+(`src/server/auth.ts`). The default `token` mode requires a bearer
+credential on every request. `WARREN_AUTH=public` (warren-851b) admits
+an unauthenticated caller as a read-only spectator on the public
+projection. The server holds a credentialed caller to its credentials.
+A stale or malformed token returns 401 rather than silently degrading
+to the public view. Acceptance scenario 39 is the leak guard for this
+mode.
+
+## Lifecycle bus
+
+Boot wires the Tier-1 observation event bus in
+`src/server/main/lifecycle-bus-wiring.ts` (warren-4e74). It is an
+observe-only process singleton that run-lifecycle call sites emit into.
+Proof consumers are the healer (`src/healer/lifecycle.ts`) and the
+seed-close reap hook (`src/runs/reap/seed-close-lifecycle.ts`). See
+[docs/design/tier1-observation-bus.md](docs/design/tier1-observation-bus.md).
 
 ## Golden snapshots
 
 Stable wire shapes that downstream consumers depend on are pinned with
 on-disk JSON fixtures under a sibling directory named `__golden__`.
-The first adopter is `src/server/__golden__/responses` (warren-8aa4 /
-pl-7b06 step 22), which locks `renderError` + `notFound` /
-`methodNotAllowed` / `notImplemented` envelopes; the companion test is
-`src/server/responses.golden.test.ts`. Regenerate after an intentional
-shape change with `WARREN_UPDATE_GOLDENS=1 bun test
-src/server/responses.golden.test.ts`, then `git diff` the fixtures and
-commit only the diffs you meant. The directory name mirrors the
-upstream burrow convention (the `__golden__` fixture dirs under
-burrow's parser tree) and is already excluded from `check:size`, `check:debt`,
-`check:dups`, and Biome's filename-convention rule — keep new
-golden directories under the same name so those exclusions keep
-applying without churn.
+The first adopter is `src/server/__golden__/responses` (warren-8aa4),
+which locks the `renderError`, `notFound`, `methodNotAllowed`, and
+`notImplemented` envelopes. The companion test is
+`src/server/responses.golden.test.ts`.
+
+Regenerate after an intentional shape change with
+`WARREN_UPDATE_GOLDENS=1 bun test src/server/responses.golden.test.ts`.
+Then diff the fixtures and commit only what you meant. The
+`__golden__` name is already excluded from `check:size`, `check:debt`,
+`check:dups`, and Biome's filename-convention rule. Keep new golden
+directories under the same name so those exclusions keep applying.
 
 ## Acceptance harness
 
@@ -329,6 +517,12 @@ real warren+burrow stack. Scenarios live in
 `scripts/acceptance/scenarios/` and use the helpers in
 `scripts/acceptance/lib/`. New scenarios must be deterministic,
 idempotent, and clean up after themselves.
+
+Scenario 39 (`scripts/acceptance/scenarios/39-public-exposure.ts`, warren-c405) is the
+public-instance leak guard. It is the only scenario wired into CI, via
+`.github/workflows/acceptance-public.yml` and
+`bun run acceptance:public`. The rest of the suite runs locally and on
+the nightly workflow.
 
 ## Session completion protocol
 
@@ -341,16 +535,110 @@ When ending a work session, complete ALL steps:
 5. Push: `sd sync && ml sync && git push`
 6. Verify: `git status` shows "up to date with origin"
 
-This repo uses [Seeds](https://github.com/jayminwest/seeds) for issue
-tracking and [Mulch](https://github.com/jayminwest/mulch) for expertise
-records. Run `sd prime` and `ml prime` at the start of every session;
-see `CLAUDE.md` for the full command surface.
+<!-- seeds:start -->
+## Issue Tracking (Seeds)
+<!-- seeds-onboard:v0.4.0 -->
+<!-- seeds-onboard-schema:4 -->
+
+This project uses [Seeds](https://github.com/jayminwest/seeds) v0.4.0 for git-native issue tracking.
+
+**At the start of every session**, run:
+```
+sd prime
+```
+
+This injects session context: rules, command reference, and workflows. Pass `--format json|compact|markdown|plain|ids` on any command for agent-friendly output.
+
+**Quick reference:**
+- `sd ready` — Find unblocked work
+- `sd search <query>` — Full-text search across titles + descriptions
+- `sd create --title "..." --type task --priority 2` — Create issue
+- `sd update <id> --status in_progress` — Claim work
+- `sd close <id>` — Complete work
+- `sd dep add <id> <depends-on>` — Add dependency between issues
+- `sd sync` — Sync with git (run before pushing)
+
+### Planning
+Use `sd plan` when work is large or ambiguous enough that an LLM benefits from structured decomposition. Submit spawns one child seed per step. `step.blocks` uses forward semantics: step i with `blocks: [j]` means step i blocks step j, and step j gets step i's id in its `blockedBy`.
+
+- `sd plan templates` — List built-ins (`feature`, `bug`, `refactor`) plus custom templates
+- `sd plan prompt <seed-id>` — Emit a structured prompt the LLM fills in
+- `sd plan submit <seed-id> --plan <file>` — Validate + spawn child seeds
+- `sd plan show <pl-id>` — View sections, children, sub-plans
+- `sd plan outcome <pl-id> --result success|partial|failure` — Record outcome (storage-only)
+- `sd plan review <pl-id> --by <name>` — Record reviewer (informational)
+
+### Before You Finish
+1. Close completed issues: `sd close <id>`
+2. File issues for remaining work: `sd create --title "..."`
+3. Sync and push: `sd sync && git push`
+<!-- seeds:end -->
+
+<!-- mulch:start -->
+## Project Expertise (Mulch)
+<!-- mulch-onboard:v0.8.0 -->
+
+This project uses [Mulch](https://github.com/jayminwest/mulch) v0.8.0 for structured expertise management.
+
+**At the start of every session**, run:
+```bash
+ml prime
+```
+
+Injects project-specific conventions, patterns, decisions, failures, references, and guides into
+your context. Run `ml prime --files src/foo.ts` before editing a file to load only records
+relevant to that path (per-file framing, classification age, and confirmation scores included).
+
+For monolith projects where dumping every record wastes context, set
+`prime.default_mode: manifest` in `.mulch/mulch.config.yaml` (or pass `--manifest`) to emit a
+quick reference + domain index. Agents then scope-load with `ml prime <domain>` or
+`ml prime --files <path>`.
+
+**Before completing your task**, record insights worth preserving — conventions discovered,
+patterns applied, failures encountered, or decisions made:
+```bash
+ml record <domain> --type <convention|pattern|failure|decision|reference|guide> --description "..."
+```
+
+Evidence auto-populates from git (current commit + changed files). Link explicitly with
+`--evidence-seeds <id>` / `--evidence-gh <id>` / `--evidence-linear <id>` / `--evidence-bead <id>`,
+`--evidence-commit <sha>`, or `--relates-to <mx-id>`. Upserts of named records merge outcomes
+instead of replacing them. Validation failures print a copy-paste retry hint with missing fields
+pre-filled.
+
+Run `ml status` for domain health, `ml doctor` to check record integrity (add `--fix` to strip
+broken file anchors), `ml --help` for the full command list. Write commands use file locking and
+atomic writes, so multiple agents can record concurrently. Expertise survives `git worktree`
+cleanup — `.mulch/` resolves to the main repo.
+
+`ml prune` soft-archives stale records to `.mulch/archive/` instead of deleting them. Pass
+`--hard` for true deletion. Restore an archived record with `ml restore <id>`. Do not read
+`.mulch/archive/` directly — those records are stale by definition. If you need historical
+context, run `ml search --archived <query>`.
+
+### Before You Finish
+
+1. Discover what to record (shows changed files and suggests domains):
+   ```bash
+   ml learn
+   ```
+2. Store insights from this work session:
+   ```bash
+   ml record <domain> --type <convention|pattern|failure|decision|reference|guide> --description "..."
+   ```
+3. Validate and commit:
+   ```bash
+   ml sync
+   ```
+<!-- mulch:end -->
 
 ## Further reading
 
-- [`CLAUDE.md`](CLAUDE.md) — authoritative long-form version of this file
-- [`docs/design/`](docs/design/) — topic design records
-- [`README.md`](README.md) — user-facing pitch + deploy instructions
-- [`ACCEPTANCE.md`](ACCEPTANCE.md) — operator runbook for V1 release gates
-- [`CHANGELOG.md`](CHANGELOG.md) — release history (0.9.10 and earlier:
-  [`docs/CHANGELOG-archive.md`](docs/CHANGELOG-archive.md))
+- [ROADMAP.md](ROADMAP.md) — sequencing and release plan
+- [docs/PHILOSOPHY.md](docs/PHILOSOPHY.md) — project policy
+- [docs/CONSTITUTION.md](docs/CONSTITUTION.md) — the articles agents answer to
+- [docs/design/](docs/design/) — topic design records
+- [README.md](README.md) — user-facing pitch + deploy instructions
+- [ACCEPTANCE.md](ACCEPTANCE.md) — operator runbook for V1 release gates
+- [CHANGELOG.md](CHANGELOG.md) — release history (0.9.10 and earlier:
+  [docs/CHANGELOG-archive.md](docs/CHANGELOG-archive.md))
