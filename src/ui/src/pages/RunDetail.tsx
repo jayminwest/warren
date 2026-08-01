@@ -227,17 +227,17 @@ export function RunDetailPage() {
 				<MetaCard label="Started">{formatTimestamp(r.startedAt)}</MetaCard>
 				<MetaCard label="Ended">{formatTimestamp(r.endedAt)}</MetaCard>
 				<MetaCard label="Trigger">{r.trigger}</MetaCard>
-				{/* Gated on presence (warren-f53e): both handles are null under
-				    `WARREN_RUNTIME=k8s` (no burrow at all) and absent from a
-				    spectator's projection, where they rendered as two empty
-				    "—" jargon cards on the hero page. */}
+				{/* Gated on presence (warren-f53e): runtime handles — burrow ids under
+				    burrow, pod name/UID under k8s (NOT null there; warren-0965) — and
+				    absent from a spectator's projection, where they rendered as two
+				    empty "—" jargon cards on the hero page. */}
 				{r.burrowId ? (
-					<MetaCard label="Burrow ID">
+					<MetaCard label="Sandbox ID">
 						<span className="font-mono text-xs">{r.burrowId}</span>
 					</MetaCard>
 				) : null}
 				{r.burrowRunId ? (
-					<MetaCard label="Burrow Run">
+					<MetaCard label="Sandbox Run">
 						<span className="font-mono text-xs">{r.burrowRunId}</span>
 					</MetaCard>
 				) : null}
@@ -329,11 +329,11 @@ function CancelStatus({
 				</p>
 			);
 		}
-		const burrowState = d.burrowRun?.state;
+		const runtimeState = d.burrowRun?.state; // pod phase under k8s (warren-0965)
 		return (
 			<p className="text-xs text-emerald-700 dark:text-emerald-300">
 				Cancel forwarded
-				{burrowState !== undefined ? ` (burrow: ${burrowState})` : ""}.
+				{runtimeState !== undefined ? ` (sandbox: ${runtimeState})` : ""}.
 			</p>
 		);
 	}

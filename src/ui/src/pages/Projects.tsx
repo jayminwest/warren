@@ -93,11 +93,7 @@ export function ProjectsPage() {
 		<div className="space-y-6">
 			<PageHeader
 				title="Projects"
-				description={
-					<>
-						GitHub repos cloned under <code>$WARREN_PROJECTS_DIR</code>.
-					</>
-				}
+				description="GitHub repos cloned into warren's workspace storage."
 			/>
 
 			{/* Project registration / refresh / delete are all `admin` routes
