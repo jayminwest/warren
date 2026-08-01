@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type { AgentRuntime, RuntimeEvent, SpawnCommand } from "@os-eco/burrow-cli";
 import {
 	type AgentEnvSource,
+	EXIT_FINALIZE_NOT_DELIVERED,
 	parseAgentEntrypointEnv,
 	parseAgentFrontmatter,
 	runAgent,
@@ -14,6 +15,8 @@ import {
 	extractInboxMessages,
 	formatEventLine,
 } from "./agent-io.ts";
+import type { FinalizeEntrypointDeps } from "./finalize-entrypoint.ts";
+import { IN_POD_FINALIZE_WIRE_VERSION } from "./finalize-wire.ts";
 import { splitTimestamp, toNormalizedEvent, tryParse } from "./log-parse.ts";
 
 /* -------------------------------------------------------------------------- */
@@ -365,5 +368,125 @@ describe("runAgentEntrypoint", () => {
 			},
 		);
 		expect(code).toBe(3);
+	});
+
+	/* warren-4d6a — finalize-not-delivered exit-code behavior ------------------ */
+
+	/** Finalize seams where warren never parks an intent (polls hit the deadline). */
+	function finalizeNeverDelivers(): {
+		finalize: FinalizeEntrypointDeps;
+		env: Record<string, string>;
+	} {
+		let clock = 0;
+		return {
+			env: { WARREN_FINALIZE_MAX_WAIT_MS: "10", WARREN_FINALIZE_EARLY_SALVAGE_MS: "0" },
+			finalize: {
+				http: {
+					get: async () => ({ status: 200, body: { intent: null } }),
+					post: async () => ({ status: 200 }),
+				},
+				git: async () => ({ exitCode: 0, stdout: "", stderr: "" }),
+				fs: {
+					readFile: async () => {
+						throw new Error("ENOENT");
+					},
+					readdir: async () => {
+						throw new Error("ENOTDIR");
+					},
+				},
+				sleep: async () => {
+					clock += 100; // each poll sleep jumps past the 10ms maxWait
+				},
+				now: () => clock,
+				readFileBytes: async () => new TextEncoder().encode("bundle"),
+				rm: async () => {},
+				log: silent,
+			},
+		};
+	}
+
+	function finalizeDelivers(): FinalizeEntrypointDeps {
+		return {
+			http: {
+				get: async () => ({
+					status: 200,
+					body: {
+						intent: {
+							version: IN_POD_FINALIZE_WIRE_VERSION,
+							attemptId: "fin_abcdefghjkmn",
+							branch: "warren/run_x",
+							push: false,
+							artifacts: [],
+							commit: [],
+						},
+					},
+				}),
+				post: async () => ({ status: 200 }),
+			},
+			git: async () => ({ exitCode: 0, stdout: "", stderr: "" }),
+			fs: {
+				readFile: async () => {
+					throw new Error("ENOENT");
+				},
+				readdir: async () => {
+					throw new Error("ENOTDIR");
+				},
+			},
+			sleep: async () => {},
+			now: () => 0,
+			log: silent,
+		};
+	}
+
+	test("agent ok + finalize delivered returns the agent's exit code", async () => {
+		const code = await runAgentEntrypoint(baseEnv(), {
+			registry: stubRegistry(),
+			spawn: stubSpawn({ exitCode: 0 }),
+			http: { get: async () => ({ status: 200, body: { messages: [] } }) },
+			out: silent,
+			log: silent,
+			finalize: finalizeDelivers(),
+		});
+		expect(code).toBe(0);
+	});
+
+	test("agent ok + finalize gave up with a credential present exits EXIT_FINALIZE_NOT_DELIVERED", async () => {
+		const { finalize, env } = finalizeNeverDelivers();
+		const code = await runAgentEntrypoint(baseEnv(env), {
+			registry: stubRegistry(),
+			spawn: stubSpawn({ exitCode: 0 }),
+			http: { get: async () => ({ status: 200, body: { messages: [] } }) },
+			out: silent,
+			log: silent,
+			finalize,
+		});
+		expect(code).toBe(EXIT_FINALIZE_NOT_DELIVERED);
+		expect(code).not.toBe(0);
+	});
+
+	test("agent failed keeps its own exit code even when finalize never delivers", async () => {
+		const { finalize, env } = finalizeNeverDelivers();
+		const code = await runAgentEntrypoint(baseEnv(env), {
+			registry: stubRegistry(),
+			spawn: stubSpawn({ exitCode: 3 }),
+			http: { get: async () => ({ status: 200, body: { messages: [] } }) },
+			out: silent,
+			log: silent,
+			finalize,
+		});
+		expect(code).toBe(3);
+	});
+
+	test("no callback credential keeps the agent's exit code unchanged", async () => {
+		const code = await runAgentEntrypoint(
+			{ WARREN_RUN_ID: "run_x", WARREN_AGENT_RUNTIME: "test-runtime", WARREN_PROMPT: "p" },
+			{
+				registry: stubRegistry(),
+				spawn: stubSpawn({ exitCode: 0 }),
+				out: silent,
+				log: silent,
+			},
+		);
+		expect(code).toBe(0);
 	});
 });

@@ -44,6 +44,11 @@
  *   5. Exit with the agent's own exit code so the pod's terminal PHASE
  *      (`restartPolicy: Never`: 0 → Succeeded, ≠0 → Failed) reflects the run
  *      outcome — the pod-watcher/status-map's backstop signal (design §1.3).
+ *      warren-4d6a: one exception — when the agent exited 0 but the finalize
+ *      step FAILED to deliver a result (and a callback credential was present),
+ *      exit `EXIT_FINALIZE_NOT_DELIVERED` instead, so a pod whose committed
+ *      work was never posted reads Failed (status-map: terminalReason 'error')
+ *      rather than a lying Succeeded.
  *
  * The workspace-touching + network seams (`registry`, `spawn`, `http`, `out`)
  * are injectable so the whole orchestration is unit-testable without a cluster,
@@ -307,12 +312,29 @@ export async function runAgent(
 }
 
 /**
+ * Container exit code (warren-4d6a) for "the agent succeeded but the finalize
+ * entrypoint never delivered a result": 75 (sysexits EX_TEMPFAIL) — a distinct,
+ * documented code so operators can tell a lost-delivery pod apart from an agent
+ * failure (the agent's own non-zero code) and from an OOM (137). Any non-zero
+ * code already reads pod-phase Failed → status-map terminalReason 'error'; this
+ * value is the discriminator in the pod's exit code field.
+ */
+export const EXIT_FINALIZE_NOT_DELIVERED = 75;
+
+/**
  * Full entrypoint: run the agent, then run the in-pod finalize step, and return
  * the agent's exit code (so the pod PHASE reflects the run outcome). Finalize is
  * best-effort and independent of the agent's success — warren only parks a reap
  * intent when it decides to reap (which happens for failed runs too), and the
  * finalize entrypoint self-bounds with its own poll timeout when no intent
  * arrives. Skipped when no callback credential is present or `deps.skipFinalize`.
+ *
+ * warren-4d6a: when a callback credential WAS present and finalize still failed
+ * to deliver (no intent within maxWaitMs, exhausted POST retries, or a thrown
+ * error), a SUCCESSFUL agent run exits `EXIT_FINALIZE_NOT_DELIVERED` instead of
+ * 0 — the pod's terminal phase then truthfully reads Failed instead of
+ * Succeeded for a run whose committed work was never posted. The agent's own
+ * non-zero exit always wins unchanged.
  */
 export async function runAgentEntrypoint(
 	envSource: AgentEnvSource,
@@ -323,17 +345,28 @@ export async function runAgentEntrypoint(
 	const result = await runAgent(env, deps);
 
 	const canFinalize = env.apiUrl !== undefined && env.apiToken !== undefined;
+	let finalizeDelivered = true;
 	if (deps.skipFinalize !== true && canFinalize) {
 		try {
-			await runFinalizeEntrypoint(envSource, deps.finalize);
+			finalizeDelivered = await runFinalizeEntrypoint(envSource, deps.finalize);
 		} catch (err) {
-			// Finalize is best-effort in-pod; warren's own finalize timeout produces
-			// a failed FinalizeResult if the pod never posts. Never let a finalize
-			// error mask the agent's real exit code.
+			// A thrown finalize error means nothing was delivered — treat it as a
+			// delivery failure for exit-code purposes (warren-4d6a).
+			finalizeDelivered = false;
 			log(`agent-entrypoint: finalize step failed (${err instanceof Error ? err.message : err})`);
 		}
 	} else if (!canFinalize) {
 		log("agent-entrypoint: no callback credential; skipping in-pod finalize");
+	}
+	// The agent's own failure always wins; only a SUCCESSFUL agent run whose
+	// finalize never delivered gets reclassified non-zero (warren-4d6a).
+	if (result.exitCode !== 0) return result.exitCode;
+	if (canFinalize && deps.skipFinalize !== true && !finalizeDelivered) {
+		log(
+			`agent-entrypoint: finalize never delivered a result; exiting ${EXIT_FINALIZE_NOT_DELIVERED} ` +
+				"so the pod phase reads Failed instead of a lying Succeeded",
+		);
+		return EXIT_FINALIZE_NOT_DELIVERED;
 	}
 	return result.exitCode;
 }
