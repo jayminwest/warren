@@ -341,9 +341,6 @@ export const planRunChildren = sqliteTable(
 		seq: integer("seq").notNull(),
 		seedId: text("seed_id").notNull(),
 		runId: text("run_id").references(() => runs.id, { onDelete: "set null" }),
-		// Execution project the coordinator routed this child to (pl-fb43
-		// step 6 / warren-57f6). Nullable (pending/skipped + legacy rows).
-		executionProjectId: text("execution_project_id"),
 		state: text("state", { enum: PLAN_RUN_CHILD_STATES }).notNull(),
 		createdAt: text("created_at").notNull(),
 		updatedAt: text("updated_at").notNull(),
