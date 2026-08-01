@@ -90,7 +90,7 @@ The base creates:
 - Two namespaces: `warren` for the control plane, `warren-runs` for run pods.
 - A ServiceAccount plus the RBAC Role and RoleBinding (§4).
 - A ResourceQuota with its paired LimitRange.
-- Two PVCs: `warren-data` (5Gi) and `warren-repo-cache` (50Gi).
+- One PVC: `warren-data` (5Gi). The `warren-repo-cache` claim is opt-in via overlay (§5.3, warren-554f).
 - The Deployment, the Service, and the Ingress.
 
 Apply `servicemonitor.yaml` separately — it needs the Prometheus Operator CRD.
@@ -412,7 +412,7 @@ Manifest values live in `deploy/k8s/base/deployment.yaml` plus the overlays.
 | `WARREN_K8S_NAMESPACE` | `warren-runs` | namespace run pods land in |
 | `WARREN_K8S_AGENT_IMAGE` / `WARREN_K8S_INIT_IMAGE` | registry paths | the run pod + init images (§1.2) |
 | `WARREN_K8S_CALLBACK_SERVICE` / `_NAMESPACE` / `_PORT` | `warren` / `warren` / `8080` | the in-pod callback URL = Service DNS `warren.warren.svc.cluster.local:8080` (provider-owned; do not set `WARREN_API_URL` by hand) |
-| `WARREN_K8S_REPO_CACHE_PVC` | (set in deployment) | names the shared repo-cache claim; clear to disable the cache (every run clones fresh) — see §5.3 |
+| `WARREN_K8S_REPO_CACHE_PVC` | unset (cache OFF by default, warren-554f) | opt-in: names the shared repo-cache claim; set it (plus the PVC) via an overlay to enable the cache — see §5.3 |
 | `WARREN_K8S_REPO_CACHE_PATH` | `/repo-cache` | mount path for the cache |
 | `WARREN_K8S_MAX_QUEUE_DEPTH` | `50` | admission: total non-terminal pods; `0` disables (§5.5) |
 | `WARREN_K8S_MAX_PENDING_PODS` | `20` | admission: Pending pods; `0` disables |
@@ -492,10 +492,20 @@ Each failed attempt GC's the previous attempt's `never_started` row, so at most 
 The counters are in-memory state, so a control-plane restart resets them.
 That is acceptable — the worst case is one extra bounded burst after a restart.
 
-### 5.3 Repo-cache growth
+### 5.3 Repo-cache (opt-in) growth
 
-`warren-repo-cache` (50Gi RWO) is a **shared clone cache**, never a working tree — the working tree is the per-pod `emptyDir`.
-When `WARREN_K8S_REPO_CACHE_PVC` names the claim, the init container keeps a per-repo bare mirror at `/repo-cache` (`<sha256(url)>.git`, `git clone --mirror`, then `git fetch` on reuse).
+The repo-cache is **off by default** as of warren-554f.
+The base has no `warren-repo-cache` PVC, and `deployment.yaml` does not set `WARREN_K8S_REPO_CACHE_PVC`, so every run clones fresh.
+The claim is `ReadWriteOnce` and shared by all run pods.
+Concurrent run pods on different nodes deadlock on it (Multi-Attach), and the second run stalls in Init.
+Direct clones cost seconds against 5–20min runs.
+RWX storage (like GKE Filestore, 1TiB minimum) costs too much to share a disk of small mirrors.
+
+Single-node clusters may opt back in via an overlay that adds the claim and re-sets the env — see `deploy/k8s/README.md` "Repo cache (opt-in)".
+Before adding a second node, either turn the cache back off or migrate the claim to a `ReadWriteMany` class (design R2).
+
+When enabled, `warren-repo-cache` is a **shared clone cache**, never a working tree — the working tree is the per-pod `emptyDir`.
+The init container keeps a per-repo bare mirror at `/repo-cache` (`<sha256(url)>.git`, `git clone --mirror`, then `git fetch` on reuse).
 A run then costs a `git fetch` plus a fast local clone instead of a full network clone (warren-e908, design §4.3 / R2).
 
 The number of distinct repos times their object-store size bounds growth — run count does not.
@@ -723,6 +733,8 @@ Clients must honor `Retry-After` and back off.
 
 ### 7.5 Repo-cache corruption
 
+Applies only when the opt-in cache is enabled (§5.3). By default there is no cache and every run clones fresh.
+
 **Symptom.** Init containers log clone or fetch failures against `/repo-cache`, and `warren_workspace_init_failures_total` rises.
 Runs can still complete, only slower.
 
@@ -737,7 +749,8 @@ kubectl -n warren-runs logs run-<id> -c workspace-init
 
 **Remedy.** Exec into a pod that mounts the PVC (or a debug pod) and delete the bad mirror directory — the next run re-mirrors it clean.
 Or clear `WARREN_K8S_REPO_CACHE_PVC` to turn the cache off while you investigate (all runs then clone fresh).
-Because RWO pins the cache to one node, corruption stays single-node-scoped today.
+Because RWO pins the cache to one node, corruption stays single-node-scoped.
+The cache is only safe single-node — the RWO Multi-Attach deadlock is why it is opt-in (warren-554f).
 
 ### 7.6 Draining the control plane for maintenance
 
@@ -792,7 +805,7 @@ Operators must know the gaps:
 - **Preview environments are off** (`previewPorts: false`). A `.warren/preview.yaml` produces no preview and logs `reap.preview_skipped_unsupported`. Service/Ingress previews are a deferred feature.
 - **Steering latency is ~5s, not real-time.** Steer writes a `run_inbox` row, and the in-pod agent polls `GET /runs/:id/inbox`. That trade gains reliability (it survives pod and control-plane restarts) at a latency cost against the LocalProvider stdin path.
 - **Network policy is coarse.** No per-domain allowlist exists under k8s v1 (`networkPolicy: "coarse"`, against the LocalProvider's `domain-allowlist`).
-- **The repo cache is RWO — single-node only.** Move `warren-repo-cache` to a `ReadWriteMany` class (GKE Filestore CSI, or Longhorn on bare metal) **before** you add a second node. Otherwise init containers can schedule where the mount is impossible (design R2). Do not provision Filestore only to run single-node.
+- **The repo cache is opt-in and RWO — single-node only.** The cache is off by default (warren-554f). If you enable it, move `warren-repo-cache` to a `ReadWriteMany` class (GKE Filestore CSI, or Longhorn on bare metal) **before** you add a second node. Otherwise concurrent run pods deadlock on the RWO claim (Multi-Attach, design R2). Do not provision Filestore only to run single-node. Leaving the cache off is the cheaper default.
 
 ---
 

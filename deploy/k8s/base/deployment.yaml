@@ -71,15 +71,9 @@ spec:
               value: "warren-agent:latest"
             - name: WARREN_K8S_INIT_IMAGE
               value: "warren-workspace-init:latest"
-            # PVC-backed git-mirror cache the init container fetches into instead
-            # of a full network clone every run (design §4.3, R2; warren-e908).
-            # Names the claim in pvc.yaml (warren-repo-cache, warren-runs ns).
-            # Empty ⇒ the cache is OFF and every run clones fresh. The claim is
-            # RWO today (single node); switch to an RWX class BEFORE adding a
-            # second node (see README "Repo cache PVC"). Mount path is overridable
-            # via WARREN_K8S_REPO_CACHE_PATH (default /repo-cache).
-            - name: WARREN_K8S_REPO_CACHE_PVC
-              value: "warren-repo-cache"
+            # WARREN_K8S_REPO_CACHE_PVC is deliberately UNSET here: the repo-cache
+            # is OPT-IN (warren-554f) because its RWO PVC deadlocks concurrent run
+            # pods (Multi-Attach). See README "Repo cache (opt-in)".
             # In-cluster Service DNS the in-pod agent dials for event/finalize
             # callbacks (pod-spec.ts serviceDnsCallbackUrl). Must match the
             # Service name/namespace/port below.

@@ -12,7 +12,7 @@ deploy/k8s/
     rbac.yaml             Role + RoleBinding scoped to warren-runs ONLY
     resourcequota.yaml    ResourceQuota (50 pods) + LimitRange defaults
     secrets.yaml          Secret TEMPLATES (placeholders — do not apply as-is)
-    pvc.yaml              warren-data (5Gi) + warren-repo-cache (50Gi)
+    pvc.yaml              warren-data (5Gi) — the repo-cache is opt-in, see below
     deployment.yaml       warren control-plane Deployment
     service.yaml          ClusterIP Service (callback DNS + ingress backend)
     ingress.yaml          controller-agnostic Ingress
@@ -182,7 +182,7 @@ LimitRange can stay (harmless); if you keep the quota, keep the LimitRange.
 | Ingress class | `nginx` (install ingress-nginx first) | `gce` — global static IP + `ManagedCertificate` TLS + `FrontendConfig` HTTPS redirect (all in the overlay) |
 | Service type | ClusterIP | ClusterIP + NEG annotation (container-native LB; no NodePort) |
 | StorageClass | `local-path` default (WaitForFirstConsumer) | `standard-rwo` default |
-| repo-cache PVC | 5Gi (overlay-shrunk) | 50Gi |
+| repo-cache PVC | off (opt-in) | off (opt-in) |
 
 **k3d ingress note:** k3d ships Traefik by default. The kind overlay sets
 `ingressClassName: nginx`; on k3d either install ingress-nginx or start the
@@ -327,26 +327,62 @@ run the operator:
 kubectl apply -f deploy/k8s/servicemonitor.yaml
 ```
 
+## Repo cache (opt-in)
+
+The git-mirror cache (warren-e908) is **off by default** as of warren-554f.
+The base ships no `warren-repo-cache` PVC, and `deployment.yaml` does not set
+`WARREN_K8S_REPO_CACHE_PVC`. Every run clones fresh.
+
+warren-554f flipped the default because the cache is a `ReadWriteOnce` claim
+shared by all run pods. Two concurrent run pods on different nodes deadlock on
+it (Multi-Attach), and the second run stalls in Init. Direct clones cost
+seconds against 5–20min runs. RWX storage (like GKE Filestore, 1TiB minimum)
+costs too much to share a disk of small mirrors.
+
+**Single-node clusters may opt back in** via an overlay that adds the claim and
+re-sets the env:
+
+```yaml
+# overlays/<yours>/kustomization.yaml (excerpt)
+patches:
+  - target:
+      kind: Deployment
+      name: warren
+    patch: |
+      - op: add
+        path: /spec/template/spec/containers/0/env/-
+        value: {name: WARREN_K8S_REPO_CACHE_PVC, value: warren-repo-cache}
+  - patch: |
+      apiVersion: v1
+      kind: PersistentVolumeClaim
+      metadata: {name: warren-repo-cache, namespace: warren-runs}
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources: {requests: {storage: 50Gi}}
+```
+
+When enabled, the init container mounts the claim at `/repo-cache` (override
+with `WARREN_K8S_REPO_CACHE_PATH`) and keeps a per-repo bare mirror under it. A
+run is then a `git fetch` + fast local clone instead of a full network clone
+(design §4.3, R2). The run workspace itself still lives on the per-pod
+`emptyDir` — the PVC is a *shared clone cache*, never the working tree.
+
+Any cache failure falls back to a direct clone automatically, so a wedged
+mirror never blocks a run. On local-path the PVC stays `Pending`
+(WaitForFirstConsumer) until the first run pod mounts it — expected, not an
+error.
+
+**RWO caveat — switch to RWX BEFORE a second node.** The claim is
+`ReadWriteOnce`, so only pods on the PVC's node can mount it. This is the
+deadlock that made the cache opt-in. It is only safe while every run pod
+schedules on one node.
+
+Before scaling out, migrate the claim to a `ReadWriteMany` class (GKE Filestore
+CSI; Longhorn on bare metal) and pin it via an overlay `storageClassName`
+(design R2) — or simply leave the cache off.
+
 ## Known follow-ups
 
-- **Repo cache PVC (`warren-repo-cache`).** Wired in warren-e908: the init
-  container mounts this claim at `/repo-cache` (set by `WARREN_K8S_REPO_CACHE_PVC`
-  in `deployment.yaml`) and keeps a per-repo bare git mirror under it, so a run
-  is a `git fetch` + fast local clone instead of a full network clone (design
-  §4.3, R2). The run workspace itself still lives on the per-pod `emptyDir` — the
-  PVC is a *shared clone cache*, never the working tree. Turn the cache OFF by
-  clearing `WARREN_K8S_REPO_CACHE_PVC` (every run then clones fresh); any cache
-  failure also falls back to a direct clone automatically, so a wedged mirror
-  never blocks a run. Override the mount path with `WARREN_K8S_REPO_CACHE_PATH`
-  (default `/repo-cache`). On local-path the PVC stays `Pending`
-  (WaitForFirstConsumer) until the first run pod mounts it — expected, not an error.
-- **RWO on multi-node — switch to RWX BEFORE a second node.** `warren-repo-cache`
-  is `ReadWriteOnce`, so only pods on the PVC's node can mount it. This is fine
-  single-node, but the moment you add a second worker node an init container may
-  schedule where it cannot mount the cache. Before scaling out, migrate the claim
-  to a `ReadWriteMany` class (GKE Filestore CSI; Longhorn on bare metal) and pin
-  it via an overlay `storageClassName` (design R2). Do NOT provision Filestore
-  just to run single-node — the default class is sufficient until then.
 - **`/readyz` probes.** Deployment probes use the auth-exempt `/healthz`. Deeper
   readiness (`/readyz`, which mirrors DB/canopy checks) requires the bearer token;
   wire it via a probe `httpHeaders: [{name: Authorization, value: "Bearer …"}]`

@@ -5,17 +5,12 @@
 #     (WARREN_DATA_DIR) by the control-plane Deployment. On Postgres deploys this
 #     still holds config + canopy clone.
 #
-#   warren-repo-cache (50Gi, RWO, ns=warren-runs) — the per-project git-mirror
-#     cache the init container fetches into instead of a full clone
-#     (discoverHostClone pattern, §4.3). Wired in warren-e908: the init container
-#     mounts this claim at /repo-cache when WARREN_K8S_REPO_CACHE_PVC names it
-#     (set in deployment.yaml), keeps a per-repo bare mirror under it, and
-#     local-clones the run workspace out of the mirror onto the emptyDir
-#     (pod-spec.ts WORKSPACE_VOLUME_NAME) — so the emptyDir is still the per-run
-#     working tree, never shared. RWO means single-node ONLY (design R2): the
-#     mirror is a ReadWriteOnce volume, so two init pods on different nodes
-#     cannot both mount it. Switch to a ReadWriteMany class (e.g. GKE Filestore
-#     CSI / Longhorn) BEFORE adding a second worker node (see README).
+#   warren-repo-cache — NOT part of the base anymore (warren-554f). The
+#     git-mirror cache is OPT-IN: as an RWO claim shared by concurrent run pods
+#     it deadlocks the second pod in Init (Multi-Attach), so the default
+#     topology has no shared volume across run pods and every run clones fresh.
+#     Single-node clusters that want it add the claim + WARREN_K8S_REPO_CACHE_PVC
+#     back via an overlay — see README "Repo cache (opt-in)".
 #
 # storageClassName is intentionally OMITTED so each cluster's default class binds
 # (local-path on kind/k3d; standard-rwo on GKE). Overlays may pin a class.
@@ -32,17 +27,3 @@ spec:
   resources:
     requests:
       storage: 5Gi
----
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: warren-repo-cache
-  namespace: warren-runs
-  labels:
-    app.kubernetes.io/name: warren
-    app.kubernetes.io/component: runs
-spec:
-  accessModes: ["ReadWriteOnce"]
-  resources:
-    requests:
-      storage: 50Gi

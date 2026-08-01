@@ -335,6 +335,12 @@ Init container receives:
 
 ### 4.3 Repo / toolchain caching strategy
 
+> **Superseded (warren-554f):** the repo-cache is now OPT-IN and off by
+> default — the RWO claim deadlocks concurrent run pods (Multi-Attach), and
+> RWX storage costs too much for what it saves. The design below stays as the
+> historical record — see `deploy/k8s/README.md` "Repo cache (opt-in)" for the
+> current operational story.
+
 **Git repo cache:** PVC-backed `ReadWriteOnce` volume mounted by the init
 container as the "host clone." The init container checks if a clone exists and
 runs `git fetch` instead of a full clone when it does. This is equivalent to
@@ -432,7 +438,8 @@ New tables added in migration:
   equivalent needed.
 - **`BURROW_DATA_DIR` env var:** removed from the Deployment manifest.
 
-The warren Deployment needs two PVCs:
+The warren Deployment needs two PVCs (superseded — warren-554f made the
+repo-cache opt-in and dropped it from the base. Kept here as history):
 1. `warren-data` (5 Gi, `ReadWriteOnce`) — warren config, canopy clone.
 2. `warren-repo-cache` (50 Gi, `ReadWriteOnce`) — project clones for workspace
    init (the "host clone" from `discoverHostClone`). Mounted by init containers,
@@ -607,7 +614,9 @@ At that point, init containers may schedule on a node that can't mount the PVC.
 Mitigation: start with local-path provisioner (single-node) and migrate to
 Longhorn / Filestore `ReadWriteMany` before adding a second worker node.
 
-*Status (warren-e908):* the cache is now WIRED — the init container mounts the
+*Status (warren-e908):* the cache is now WIRED *(superseded by warren-554f:
+the cache is opt-in and off by default — this R2 Multi-Attach risk is exactly
+why. See §4.3's superseded note)* — — the init container mounts the
 claim at `/repo-cache` when `WARREN_K8S_REPO_CACHE_PVC` names it, keeps a
 per-repo bare mirror (`<sha256(url)>.git`, `git clone --mirror` then `git fetch`
 on re-use), and local-clones the run workspace out of the mirror onto the

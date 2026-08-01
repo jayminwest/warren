@@ -53,8 +53,9 @@
 #     (composeRunEnv, warren-4e36) — without them every in-pod `git commit`
 #     fails with "Author identity unknown".
 #   - Autopilot ignores fixed storageClassName choices for some tiers; the
-#     default `standard-rwo` binds the PVCs. For a multi-node repo-cache you
-#     need an RWM class (Filestore) — see README (design R2).
+#     default `standard-rwo` binds the PVC. The repo-cache is OPT-IN
+#     (warren-554f): if you enable it and later go multi-node you need an RWM
+#     class (Filestore) — see README "Repo cache (opt-in)" (design R2).
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
