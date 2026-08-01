@@ -53,6 +53,7 @@ import { defaultLogFollowFactory } from "./log-follow.ts";
 import {
 	isTerminalPhase,
 	type LogFollowFn,
+	resolveLogStallTimeoutMs,
 	type StreamCounterSink,
 	type StreamLogger,
 	type StreamTerminalState,
@@ -342,6 +343,7 @@ export class K8sProvider implements RuntimeProvider {
 		return streamK8sLogs({
 			follow,
 			probe: () => this.streamTerminalProbe(handle),
+			stallTimeoutMs: resolveLogStallTimeoutMs(env), // half-open-follow guard (warren-029d)
 			params: {
 				namespace: config.namespace,
 				podName: handle.sandboxId,
