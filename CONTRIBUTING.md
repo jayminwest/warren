@@ -38,13 +38,10 @@ Use descriptive branch names with a category prefix:
 ```bash
 bun test                                   # Run all tests
 bun test src/foo.test.ts                   # Run a single test file
-biome check .                              # Lint + format check
-biome check --write .                      # Auto-fix lint + format issues
-tsc --noEmit                               # Type check
-bun run check:all                          # All quality gates
+bun run check:all                          # All quality gates CI enforces
 ```
 
-Always run `bun run check:all` before submitting a PR.
+Run lint, typecheck, and the other gates through `bun run check:all`. `biome check .` alone is not the gate. Always run `bun run check:all` before submitting a PR.
 
 ## TypeScript Conventions
 
@@ -69,7 +66,7 @@ Warren is a strict TypeScript project that runs directly on Bun (no build step).
 ### File Organization
 
 - Types live with the domain that owns them: `src/core/` for ids and the error hierarchy, `src/server/types.ts` for the HTTP wire shapes, and `src/runs/`, `src/projects/`, `src/registry/` for their own
-- UI types are a separate package and live in `src/ui/src/api/types.ts`
+- Enum-shaped wire values live once in `src/core/wire.ts`. Every other surface re-exports them (see `AGENTS.md` for the full rule)
 - Each CLI command gets its own file in `src/cli/commands/`
 - Import with `.ts` extensions
 
@@ -130,7 +127,7 @@ Prefix with `fix:`, `feat:`, or `docs:` when the category is clear. Plain descri
 
 - **One concern per PR.** Keep changes focused -- a bug fix, a feature, a refactor. Not all three.
 - **Tests required.** New features and bug fixes should include tests. See the testing conventions above.
-- **Passing CI.** All PRs must pass CI checks (lint + typecheck + test) before merge.
+- **Passing CI.** All PRs must pass the full `bun run check:all` gate manifest before merge.
 - **Description.** Briefly explain what the PR does and why. Link to any relevant issues.
 
 ## Reporting Issues

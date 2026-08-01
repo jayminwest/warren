@@ -52,19 +52,11 @@ Open <http://localhost:8080> and paste the token. Click **Projects → Add** and
 
 Then **Dispatch run**, pick `claude-code`, write a prompt, and start it. The events panel streams live. When the run completes, warren pushes a branch you can open a PR from.
 
-`:latest` tracks `main`. Pin a release with `:v0.12.2`, the first buildable 0.12 image. The `v0.12.0` and `v0.12.1` tags exist but carry no container image. Their builds were broken and the fix landed in v0.12.2, so do not pin them. Two of the three 0.12 tags are unbuildable. Prefer the explicit `:v0.12.2` pin over the moving `:0.12` minor tag.
+`:latest` tracks `main`. Pin a release tag such as `:v0.13.1` for a reproducible deploy. [CHANGELOG.md](CHANGELOG.md) records the release history.
 
 The four security flags relax the outer container so the sandbox runtime can nest its own user namespaces (see [docs/design/runtime-and-supervisor.md](docs/design/runtime-and-supervisor.md)). Remove any one of them and sandbox provisioning fails.
 
-| Variable | Purpose |
-|---|---|
-| `WARREN_API_TOKEN` | Bearer token on every route except `/healthz` and `/version`. `openssl rand -hex 32`. |
-| `BURROW_API_TOKEN` | Token the sandbox runtime requires to bind. `openssl rand -hex 32`. |
-| `WARREN_BURROW_TOKEN` | Token warren's runtime client sends. **Must equal `BURROW_API_TOKEN`** — they are the two ends of one channel. |
-| `ANTHROPIC_API_KEY` | Forwarded to agent runtimes that need it. |
-| `GITHUB_TOKEN` | Forwarded for project clones and branch pushes. |
-
-[`.env.example`](.env.example) documents the full knob set. To manage the same container declaratively, use the compose file instead. It pulls the same image and applies the same flags:
+The quickstart exports the four required variables. `WARREN_BURROW_TOKEN` must equal `BURROW_API_TOKEN`, because they are the two ends of one channel. [`.env.example`](.env.example) documents the full knob set. To manage the same container declaratively, use the compose file instead. It pulls the same image and applies the same flags:
 
 ```bash
 git clone https://github.com/jayminwest/warren && cd warren
@@ -84,9 +76,9 @@ Run it for yourself on a home server today. The [org-readiness roadmap](ROADMAP.
 
 Stable (`0.13.1`), running on GKE in continuous use against real GitHub repos. The Kubernetes runtime (`WARREN_RUNTIME=k8s`, pod-per-run) is the supported hosted target on GKE Autopilot.
 
-37 scenario-based acceptance tests in [`scripts/acceptance/`](scripts/acceptance/) cover the end-to-end path. They span manual runs, cron triggers, and K8s pod dispatch (OOM fast-fail, steer delivery). They also span the Postgres backend, per-run preview environments, restart recovery, cost tracking, cost analytics, the seeds-extensions roundtrip, and serial plan-run dispatch.
+Scenario-based acceptance tests in [`scripts/acceptance/`](scripts/acceptance/) cover the end-to-end path. They span manual runs, cron triggers, K8s pod dispatch, Postgres, previews, restart recovery, cost analytics, the seeds-extensions roundtrip, and serial plan-run dispatch.
 
-The active frontier is the org-readiness cluster: SSO, remote workers, MCP, audit, budgets, GitHub App auth. See [ROADMAP.md](ROADMAP.md).
+The active frontier is the org-readiness cluster: the GitHub App campaign, auth widening, and the issue-tracker seam. See [ROADMAP.md](ROADMAP.md).
 
 ## What you get
 
@@ -120,16 +112,7 @@ The `local` topology is one box, and one host is the concurrency ceiling. The `k
 
 Kubelet enforces per-run CPU and memory natively. A runaway run kills its own pod instead of the control plane, and admission caps shed load before the cluster thrashes. There is no burrow — the pod boundary is the sandbox.
 
-```bash
-# Build + push the three images (control plane, agent, workspace-init)
-deploy/docker/build-images.sh
-
-# Apply the manifests (kustomize; pick an overlay)
-kubectl apply -k deploy/k8s/overlays/gke     # GKE Autopilot (the hosted target)
-kubectl apply -k deploy/k8s/overlays/kind    # local kind / k3d dev
-```
-
-Turn it on with `WARREN_RUNTIME=k8s` on the control-plane Deployment. The full operator story — deploy, secrets and rotation, RBAC, garbage collection, admission knobs, observability, and incident playbooks — is in **[docs/RUNBOOK-K8S.md](docs/RUNBOOK-K8S.md)**.
+Set `WARREN_RUNTIME=k8s` on the control-plane Deployment and follow **[docs/RUNBOOK-K8S.md](docs/RUNBOOK-K8S.md)**. The runbook owns the image build, manifest overlays, secrets, and admission procedure. The manifest quick-start is [`deploy/k8s/README.md`](deploy/k8s/README.md).
 
 Some LocalProvider features degrade under `k8s`: previews are off, and steering is a 5s poll rather than real-time. The runbook's capability section spells out the gaps.
 
@@ -140,7 +123,7 @@ Warren ships enough operator-visible surface to stay inspectable without extra i
 - **Health and readiness probes.** `GET /healthz` is a cheap liveness check that returns `{ok: true}` and needs no auth. Point an uptime monitor or the cluster's liveness probe at it. `GET /readyz` runs deeper diagnostics (DB reachable, bwrap usable under `local`) and returns a `DiagnosticCheck[]` payload. Use it for deploy gating and the cluster's readiness probe, not for hot-path liveness. `GET /version` returns `{version}` straight from `src/index.ts`, which confirms that a rollout actually swapped the image. [`deploy-gke.yml`](.github/workflows/deploy-gke.yml) polls it after every release and fails the deploy on a mismatch.
 - **Structured JSON logs.** The server emits one [pino](https://getpino.io) JSON line per event on stdout (name `warren`, level from `WARREN_LOG_LEVEL`, default `info`). Stream them with `docker compose logs -f warren` on a single box, or `kubectl -n warren logs deploy/warren` on a cluster. Pipe through `| jq` for ad-hoc filtering. Ship to an external store with a [pino transport](https://getpino.io/#/docs/transports) if you need retention beyond your log driver's window.
 - **Correlation IDs.** Every HTTP response carries an `X-Request-ID` header (`src/server/request-id.ts`, warren-30af). Warren honours a well-formed inbound `X-Request-ID` and otherwise mints one. The same id binds into the per-request pino child logger, so `jq 'select(.req_id == "…")'` over the logs reconstructs the full server-side trace for one client call. Forward the header from any reverse proxy in front of warren to keep the chain unbroken.
-- **Per-run cost and token usage.** Warren populates the `runs.cost_usd` and `runs.tokens_*` columns for the `pi` and `claude-code` built-ins (see [docs/design/agent-composition.md](docs/design/agent-composition.md)). The UI run-detail page surfaces them, and `GET /analytics/cost?from=&to=&projectId=` aggregates across runs (`src/db/repos/runs.ts:listForAnalytics`). These numbers report usage. They do not enforce limits — budget caps land in R-17.
+- **Per-run cost and token usage.** Warren populates the `runs.cost_usd` and `runs.tokens_*` columns for the `pi` and `claude-code` built-ins (see [docs/design/agent-composition.md](docs/design/agent-composition.md)). The UI run-detail page surfaces them, and `GET /analytics/cost?from=&to=&projectId=` aggregates across runs (`src/db/repos/runs.ts:listForAnalytics`). A per-run `maxCostUsd` cap in `.warren/config.yaml` cancels a run at its spend ceiling (see [docs/design/warren-config.md](docs/design/warren-config.md)).
 - **Pre-flight checks.** Run `warren doctor` (`src/cli/commands/doctor.ts`) against a deployed instance. It surfaces common misconfigurations: empty or placeholder bearer tokens, unbalanced preview markers, and a missing `WARREN_PREVIEW_HOST` on a project that uses previews. Cheaper than reading the logs after a failed run.
 
 V1 ships a bearer-gated Prometheus exposition endpoint (`GET /metrics`) that works under both runtimes. It carries no OpenTelemetry exporter. For richer tracing, the request-id and pino combination is the seam to extend. The route table (`ROUTE_TABLE` in `src/server/handlers/index.ts`) is the stable surface to instrument against.
@@ -232,7 +215,7 @@ The proxy rejects unauthenticated browser requests with 401, not 502. The HMAC k
 
 Caddy's DNS-01 plugin supports Cloudflare, Route 53, DigitalOcean, Hetzner, Linode, OVH, Vultr, and others. See [caddy-dns](https://github.com/caddy-dns) for the current list. If your provider is absent from it, an operator-controlled per-project subdomain pattern is the alternative.
 
-**Lifecycle knobs.** Tune for scale with `WARREN_PREVIEW_IDLE_TTL` (default `30m`), `WARREN_PREVIEW_MAX_LIFETIME` (`8h`), `WARREN_PREVIEW_MAX_LIVE` (`20`), `WARREN_PREVIEW_PORT_RANGE` (`30000-31000`), and `WARREN_PREVIEW_EVICTION_TICK_MS` (`60000`).
+**Lifecycle knobs.** [`.env.example`](.env.example) documents the idle-TTL, lifetime, live-count, and port-range knobs with their defaults.
 
 Per-project overrides for `idle_ttl` and `max_lifetime` live in `.warren/preview.yaml`. `/readyz` surfaces port-allocator saturation warnings.
 
@@ -281,46 +264,13 @@ The `warren` (or `wr`) admin CLI is for ops. The web UI is for daily work.
 | `warren init` | Scaffold a `.warren/` directory in a project |
 | `warren doctor` | Runtime reachable? Bwrap working? DB reachable? |
 | `warren serve` | Start the HTTP server (default in entrypoint) |
-| `warren db migrate-to-postgres --from <sqlite> --to <pg-url>` | One-shot SQLite → Postgres porter ([R-13](ROADMAP.md)) |
+| `warren db migrate-to-postgres --from <sqlite> --to <pg-url>` | One-shot SQLite → Postgres porter |
 
 `warren run claude-code <project> -p "..."` does the full composition end-to-end. It resolves the agent, provisions the sandbox, dispatches the run, streams events back, then pushes the branch. A project with `.mulch/` or `.seeds/` round-trips those too.
 
 ## HTTP API
 
-```
-GET    /agents                       list registered agents
-GET    /agents/:name                 rendered agent JSON
-
-GET    /projects                     list cloned projects
-POST   /projects                     { gitUrl, defaultBranch? } → clone
-POST   /projects/:id/refresh         git fetch + reset to upstream HEAD
-DELETE /projects/:id                 remove project
-GET    /projects/:id/warren-config   parsed .warren/ envelope
-GET    /projects/:id/triggers        scheduler state per trigger
-POST   /projects/:id/triggers/:tid/run   dispatch a trigger inline
-
-POST   /runs                         { agent, project, prompt } → spawn
-GET    /runs                         list (filter by status / agent / project)
-GET    /runs/:id                     run detail
-GET    /runs/:id/events?follow=1     NDJSON tail (warren log + live)
-POST   /runs/:id/steer               proxy to runtime inbox
-POST   /runs/:id/cancel              proxy to runtime cancel
-POST   /runs/:id/preview/login       issue signed-cookie + preview url (bearer-gated)
-POST   /runs/:id/preview/teardown    manual preview teardown (idempotent)
-
-POST   /plan-runs                    { project, planId, agent } → serial dispatch (.seeds/ only)
-GET    /plan-runs                    list (filter by project / state)
-GET    /plan-runs/:id                detail + fanned-out child runs[]
-POST   /plan-runs/:id/cancel         cancel; aborts the in-flight child run
-GET    /plan-runs/:id/events         NDJSON tail union over every child run
-
-GET    /whoami                       caller identity + capability set
-GET    /healthz                      liveness (no auth)
-GET    /version                      running semver (no auth)
-GET    /readyz                       runtime + first-render check
-```
-
-`bun run gen:docs` writes the full route list to [`docs/http-api.md`](docs/http-api.md) from `ROUTE_TABLE`.
+The route list comes from `ROUTE_TABLE`. `bun run gen:docs` writes [`docs/http-api.md`](docs/http-api.md), and `bun run gen:openapi` writes [`docs/openapi.yaml`](docs/openapi.yaml).
 
 `Authorization: Bearer ${WARREN_API_TOKEN}` is required on every route except `/healthz` and `/version`. Warren serves plain HTTP. Put TLS on your edge with Caddy on a home server, or with your cluster's ingress.
 
@@ -331,10 +281,10 @@ Requires [Bun](https://bun.sh) v1.1+.
 ```bash
 bun install
 bun test                  # all unit tests
-bun run lint              # biome + boundary, version-sync, and prose guards
-bun run typecheck         # tsc --noEmit
 bun run verify            # every quality gate CI enforces (alias of check:all)
 ```
+
+[CONTRIBUTING.md](CONTRIBUTING.md) lists the full build-and-test command set.
 
 UI development is a separate package:
 
@@ -343,7 +293,7 @@ bun run ui:install
 bun run ui:dev
 ```
 
-The acceptance harness in [`scripts/acceptance/`](scripts/acceptance/) drives 37 scenarios against a live container. See [ACCEPTANCE.md](ACCEPTANCE.md) for the runbook. See [CONTRIBUTING.md](CONTRIBUTING.md) for branch naming, testing conventions, and PR expectations. [docs/README.md](docs/README.md) indexes every document in the repo.
+The acceptance harness in [`scripts/acceptance/`](scripts/acceptance/) drives end-to-end scenarios against a live container. See [ACCEPTANCE.md](ACCEPTANCE.md) for the runbook. See [CONTRIBUTING.md](CONTRIBUTING.md) for branch naming, testing conventions, and PR expectations. [docs/README.md](docs/README.md) indexes every document in the repo.
 
 ## Project layout
 
@@ -460,7 +410,7 @@ The full type surface (all inputs, outputs, row shapes, enums) is in `src/client
 
 How the current release is scoped. Full details in [SECURITY.md](SECURITY.md#v1-security-posture-known-limitations):
 
-- **Single bearer token.** Rotation, expiry, and scopes are not supported. Rotate by editing `.env` (or the cluster secret) and bouncing the container. Per-user identity is on the roadmap (R-09).
+- **Single bearer token.** Rotation, expiry, and scopes are not supported. Rotate by editing `.env` (or the cluster secret) and bouncing the container. Per-user identity is on the roadmap ([ROADMAP.md](ROADMAP.md)).
 - **TLS is upstream's job.** Direct HTTP on a non-loopback bind is a misconfiguration, and `warren doctor` warns.
 - **Trust-the-socket** between warren and the runtime inside the container, which share the container by design.
 - **No CSRF, single-user.** The UI calls warren's API with the bearer, and CORS is strict.
@@ -469,15 +419,7 @@ How the current release is scoped. Full details in [SECURITY.md](SECURITY.md#v1-
 
 ## Roadmap
 
-The active direction is org-readiness, which extends warren from "one team, one box" to "50-engineer org, their own infra":
-
-- **SSO / per-user identity** ([R-09](ROADMAP.md)): OIDC login replacing the shared bearer. The bearer stays as a service-account path for CI.
-- **MCP support** ([R-15](ROADMAP.md)): agents declare `mcp_servers` in their prompt frontmatter, and warren plumbs credentials into the sandbox.
-- **Cross-project activity UI + stable OpenAPI** ([R-14](ROADMAP.md)): a "what is every agent doing right now" view, plus a versioned API contract.
-- **Audit log** ([R-16](ROADMAP.md)) and **cost / concurrency guardrails** ([R-17](ROADMAP.md)): security review and budget control once real user identity lands.
-- **GitHub App auth** ([R-18](ROADMAP.md)): installation-scoped, short-lived per-run tokens replacing the shared PAT.
-
-Every item is additive. None changes current behavior when unconfigured. See [ROADMAP.md](ROADMAP.md) for design sketches and sequencing.
+Warren extends from "one team, one box" to a 50-engineer org on its own infra. [ROADMAP.md](ROADMAP.md) owns the sequencing: what is in flight, what is next, and what stays out of core.
 
 ## Security
 

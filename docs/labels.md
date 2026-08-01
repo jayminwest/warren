@@ -59,7 +59,6 @@ concerns. Multiple `area/*` labels are fine when work spans subsystems.
 | `area/agents`      | Agent registry + built-ins (`src/registry/`, `src/agents/`)                 |
 | `area/runs`        | Run lifecycle, events, streaming (`src/runs/`)                              |
 | `area/projects`    | Project management (`src/projects/`, `.warren/config.yaml`)                 |
-| `area/plot`        | Plot integration (`plot_id` wiring, sync to GitHub)                         |
 | `area/plan-runs`   | plan-runs dispatch mode (`src/plan-runs/`)                                  |
 | `area/preview`     | Preview environments (`.warren/preview.yaml`)                               |
 | `area/scheduler`   | Cron triggers + scheduled runs (`.warren/triggers.yaml`)                    |
