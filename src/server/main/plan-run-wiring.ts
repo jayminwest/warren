@@ -17,7 +17,6 @@ import {
 	closeMergedChildSeed,
 	createPlanRunSpawn,
 	createPrMergeChecker,
-	createResolveExecution,
 	loadPlanRunCoordinatorConfigFromEnv,
 	type PlanRunCoordinatorHandle,
 } from "../../plan-runs/index.ts";
@@ -205,7 +204,6 @@ export function bootPlanRunCoordinatorWiring(input: PlanRunWiringInput): PlanRun
 			return showSeed(seedsCli, project.localPath, seedId);
 		},
 		checkPrMerged: createPrMergeChecker({ token: autoOpenPr.token }),
-		resolveExecution: createResolveExecution(repos), // pl-fb43 step 5: per-child execution repo
 		// warren-3806: deterministic host-side seed close when a child merges.
 		closeChildSeed: createCloseChildSeed({
 			env,

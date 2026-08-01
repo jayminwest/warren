@@ -32,7 +32,6 @@ import {
 	type CoordinatorEmitFn,
 	type CoordinatorReopenPrFn,
 	type CoordinatorRepos,
-	type CoordinatorResolveExecutionFn,
 	type CoordinatorShowSeedFn,
 	type CoordinatorSpawnFn,
 	type PlanRunEventKind,
@@ -50,8 +49,6 @@ export interface PlanRunTickDeps {
 	readonly showSeed: CoordinatorShowSeedFn;
 	readonly checkPrMerged: PrMergeChecker;
 	readonly spawn: CoordinatorSpawnFn;
-	/** pl-fb43 step 5: per-child execution-repo resolver (default = coordination project). */
-	readonly resolveExecution?: CoordinatorResolveExecutionFn;
 	readonly now?: () => Date;
 	readonly logger?: PlanRunTickLogger;
 	/** Test seam — defaults to {@link defaultEmit} writing to events table. */
@@ -126,7 +123,6 @@ function buildAdvanceInput(
 		checkPrMerged: deps.checkPrMerged,
 		spawn: deps.spawn,
 		emit,
-		...(deps.resolveExecution !== undefined ? { resolveExecution: deps.resolveExecution } : {}),
 		...(deps.mergeTimeoutMs !== undefined ? { mergeTimeoutMs: deps.mergeTimeoutMs } : {}),
 		...(deps.reopenPr !== undefined ? { reopenPr: deps.reopenPr } : {}),
 		...(deps.closeChildSeed !== undefined ? { closeChildSeed: deps.closeChildSeed } : {}),
