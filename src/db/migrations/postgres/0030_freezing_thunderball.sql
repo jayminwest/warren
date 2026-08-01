@@ -1,0 +1,1 @@
+ALTER TABLE "plan_run_children" DROP COLUMN "execution_project_id";
