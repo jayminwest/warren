@@ -3,7 +3,7 @@ import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import yaml from "js-yaml";
+import { load } from "js-yaml";
 import { openDatabase, type WarrenDb } from "../../db/client.ts";
 import { DrizzleAdapter } from "../../db/repos/drizzle-adapter.ts";
 import { ProjectsRepo } from "../../db/repos/projects.ts";
@@ -64,7 +64,7 @@ describe("runConfigMigrate (--cwd mode)", () => {
 		expect(existsSync(join(warrenDir, "defaults.json"))).toBe(false);
 		const configBody = await readFile(join(warrenDir, "config.yaml"), "utf8");
 		expect(configBody.startsWith("# .warren/config.yaml")).toBe(true);
-		expect(yaml.load(configBody)).toEqual({
+		expect(load(configBody)).toEqual({
 			defaultRole: "claude-code",
 			defaultBranch: "main",
 		});
@@ -97,10 +97,10 @@ describe("runConfigMigrate (--cwd mode)", () => {
 		expect(stdout.migrated.written).toEqual([".warren/config.yaml", ".warren/preview.yaml"]);
 
 		const configBody = await readFile(join(warrenDir, "config.yaml"), "utf8");
-		expect(yaml.load(configBody)).toEqual({ defaultRole: "claude-code" });
+		expect(load(configBody)).toEqual({ defaultRole: "claude-code" });
 
 		const previewBody = await readFile(join(warrenDir, "preview.yaml"), "utf8");
-		expect(yaml.load(previewBody)).toEqual({
+		expect(load(previewBody)).toEqual({
 			type: "server",
 			command: "bun run dev",
 			port: 3000,
@@ -120,7 +120,7 @@ describe("runConfigMigrate (--cwd mode)", () => {
 		expect(stdout.migrated.previewHoisted).toBe(false);
 
 		const configBody = await readFile(join(warrenDir, "config.yaml"), "utf8");
-		expect(yaml.load(configBody)).toEqual({});
+		expect(load(configBody)).toEqual({});
 	});
 
 	test("refuses to overwrite an existing config.yaml", async () => {

@@ -3,7 +3,7 @@ import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import yaml from "js-yaml";
+import { load } from "js-yaml";
 import { openDatabase, type WarrenDb } from "../../db/client.ts";
 import { AgentsRepo } from "../../db/repos/agents.ts";
 import { DrizzleAdapter } from "../../db/repos/drizzle-adapter.ts";
@@ -60,12 +60,12 @@ describe("runInit (--cwd mode)", () => {
 		expect(stdout.scaffolded.files).toEqual([".warren/triggers.yaml", ".warren/config.yaml"]);
 
 		const triggersRaw = await readFile(join(tmp, ".warren/triggers.yaml"), "utf8");
-		const triggersParsed = parseTriggersConfig(yaml.load(triggersRaw));
+		const triggersParsed = parseTriggersConfig(load(triggersRaw));
 		expect(triggersParsed.ok).toBe(true);
 		if (triggersParsed.ok) expect(triggersParsed.value).toEqual([]);
 
 		const configRaw = await readFile(join(tmp, ".warren/config.yaml"), "utf8");
-		const configParsed = parseConfigFile(yaml.load(configRaw));
+		const configParsed = parseConfigFile(load(configRaw));
 		expect(configParsed.ok).toBe(true);
 		if (configParsed.ok) expect(configParsed.value).toEqual({ defaultRole: "claude-code" });
 	});
@@ -79,7 +79,7 @@ describe("runInit (--cwd mode)", () => {
 		const configRaw = await readFile(join(tmp, ".warren/config.yaml"), "utf8");
 		// Empty config renders as a YAML flow-style empty mapping `{}` so the
 		// file round-trips back through the schema to an empty DefaultsConfig.
-		expect(yaml.load(configRaw)).toEqual({});
+		expect(load(configRaw)).toEqual({});
 		expect(JSON.parse(out.join("")).scaffolded.defaultRole).toBeNull();
 	});
 
@@ -92,7 +92,7 @@ describe("runInit (--cwd mode)", () => {
 			{ mode: "cwd", cwd: tmp, defaultRole: "sapling" },
 		);
 		expect(result.exitCode).toBe(0);
-		const config = yaml.load(await readFile(join(tmp, ".warren/config.yaml"), "utf8")) as {
+		const config = load(await readFile(join(tmp, ".warren/config.yaml"), "utf8")) as {
 			defaultRole?: string;
 		};
 		expect(config.defaultRole).toBe("sapling");

@@ -37,7 +37,7 @@
 import { existsSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { isAbsolute, join, resolve } from "node:path";
-import yaml from "js-yaml";
+import { dump } from "js-yaml";
 import { NotFoundError, ValidationError } from "../../core/errors.ts";
 import type { AgentsRepo } from "../../db/repos/agents.ts";
 import type { ProjectsRepo } from "../../db/repos/projects.ts";
@@ -216,11 +216,11 @@ async function resolveDefaults(deps: InitDeps, args: InitArgs): Promise<Defaults
 /**
  * Render `DefaultsConfig` into the scaffolded YAML body. Empty objects
  * render as `{}` rather than the empty string so the file always
- * round-trips through `yaml.load` to the same schema-valid value.
+ * round-trips through `load` to the same schema-valid value.
  */
 function renderConfigYaml(defaults: DefaultsConfig): string {
 	if (Object.keys(defaults).length === 0) {
 		return "{}\n";
 	}
-	return yaml.dump(defaults, { lineWidth: 100, noRefs: true });
+	return dump(defaults, { lineWidth: 100, noRefs: true });
 }

@@ -374,7 +374,7 @@ export type ParseResult<T> =
 	| { readonly ok: false; readonly message: string };
 
 export function parseTriggersConfig(raw: unknown): ParseResult<TriggersConfig> {
-	// Empty file (yaml.load returns undefined) is the same as "no triggers"
+	// Empty / comment-only file (parses to undefined) is the same as "no triggers"
 	// — operators should be able to scaffold the file without forcing an
 	// explicit empty list literal.
 	if (raw === undefined || raw === null) {

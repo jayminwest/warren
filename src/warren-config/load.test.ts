@@ -215,7 +215,7 @@ defaultPrompt: Read the issue, plan, execute.
 		expect(result.errors).toHaveLength(2);
 	});
 
-	test("empty triggers file (yaml.load returns undefined) → empty array, no error", async () => {
+	test("empty triggers file → empty array, no error", async () => {
 		const result = await loadWarrenConfig({
 			projectPath: PROJECT,
 			...fs({ [TRIGGERS_PATH]: "" }),
@@ -232,6 +232,41 @@ defaultPrompt: Read the issue, plan, execute.
 		expect(result.defaults).toEqual({});
 		expect(result.errors).toEqual([]);
 		expect(result.warnings).toEqual([]);
+	});
+
+	// warren-381c: comment-only files are the documented "keep the file around
+	// as documentation" shape (schema.ts) and must not become parse errors —
+	// js-yaml v5 load() throws on input with no document.
+	test("comment-only triggers file → empty array, no error", async () => {
+		const result = await loadWarrenConfig({
+			projectPath: PROJECT,
+			...fs({ [TRIGGERS_PATH]: "# just a comment\n# and another\n" }),
+		});
+		expect(result.triggers).toEqual([]);
+		expect(result.errors).toEqual([]);
+	});
+
+	test("comment-only config.yaml → empty defaults object, no error", async () => {
+		const result = await loadWarrenConfig({
+			projectPath: PROJECT,
+			...fs({ [CONFIG_PATH]: "# just a comment\n" }),
+		});
+		expect(result.defaults).toEqual({});
+		expect(result.errors).toEqual([]);
+		expect(result.warnings).toEqual([]);
+	});
+
+	test("comment-only preview.yaml → no error, defaults preserved", async () => {
+		const result = await loadWarrenConfig({
+			projectPath: PROJECT,
+			...fs({
+				[CONFIG_PATH]: "defaultRole: claude-code\n",
+				[PREVIEW_PATH]: "# just a comment\n",
+			}),
+		});
+		expect(result.errors).toEqual([]);
+		expect(result.defaults?.defaultRole).toBe("claude-code");
+		expect(result.defaults?.preview).toBeUndefined();
 	});
 
 	// warren-7be9 / SPEC §11.L: malformed preview block surfaces in the per-file

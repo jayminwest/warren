@@ -790,7 +790,7 @@ allowed (JSON's biggest weakness) and arrays-of-objects stay readable as
 new blocks accumulate. The pre-reorg JSON choice (`mx-2cefdd`) is
 superseded by the warren-5840 decision; both formats keep working until
 projects migrate via `warren config migrate`. YAML parser is `js-yaml
-^4.1.1` to match mulch + overstory (`mx-8b6896`).
+^5.x` (was `^4.1.1`; warren-381c) to match mulch + overstory (`mx-8b6896`).
 
 **Schema.** `triggers.yaml` is `Array<Trigger>` with a `kind:` discriminator
 (only `'cron'` is implemented today; `kind:` exists so future webhook

@@ -25,7 +25,7 @@
 import { existsSync } from "node:fs";
 import { readFile, rm, writeFile } from "node:fs/promises";
 import { isAbsolute, join, resolve } from "node:path";
-import yaml from "js-yaml";
+import { dump } from "js-yaml";
 import { NotFoundError, ValidationError } from "../../core/errors.ts";
 import type { ProjectsRepo } from "../../db/repos/projects.ts";
 import {
@@ -205,9 +205,9 @@ function renderConfig(config: DefaultsConfig): string {
 	if (Object.keys(config).length === 0) {
 		return `${CONFIG_HEADER}{}\n`;
 	}
-	return `${CONFIG_HEADER}${yaml.dump(config, { lineWidth: 100, noRefs: true })}`;
+	return `${CONFIG_HEADER}${dump(config, { lineWidth: 100, noRefs: true })}`;
 }
 
 function renderPreview(preview: PreviewConfig): string {
-	return `${PREVIEW_HEADER}${yaml.dump(preview, { lineWidth: 100, noRefs: true })}`;
+	return `${PREVIEW_HEADER}${dump(preview, { lineWidth: 100, noRefs: true })}`;
 }
