@@ -157,7 +157,7 @@ export function buildDocument(routes: readonly Route[], version: string): OpenAp
 				"Auto-generated from `src/server/handlers/index.ts`'s `ROUTE_TABLE`. " +
 				"Run `bun run gen:openapi` to refresh; CI fails if this schema " +
 				"drifts from the handler module. Request/response bodies are " +
-				"intentionally left permissive in V1 — see SPEC §8.1 for the " +
+				"intentionally left permissive in V1 — see docs/http-api.md for the " +
 				"canonical handler contracts.",
 		},
 		tags,

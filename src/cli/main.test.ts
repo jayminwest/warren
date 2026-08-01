@@ -14,7 +14,7 @@ function silentContext(): CliContext {
 }
 
 describe("buildProgram", () => {
-	test("registers all SPEC §8.2 subcommands + the `init` scaffolder + `db` admin group + `config` group", () => {
+	test("registers all subcommands + the `init` scaffolder + `db` admin group + `config` group", () => {
 		const program = buildProgram(silentContext());
 		const names = program.commands.map((c) => c.name()).sort();
 		expect(names).toEqual([
