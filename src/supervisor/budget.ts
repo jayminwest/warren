@@ -1,5 +1,5 @@
 /**
- * Restart budget for a supervised child (SPEC §10.3).
+ * Restart budget for a supervised child (docs/design/runtime-and-supervisor.md).
  *
  * The supervisor restarts `burrow serve` on non-zero exit, but a misbehaving
  * burrow (bad config, bwrap bringup failure, kernel mismatch) shouldn't put

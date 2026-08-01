@@ -1,6 +1,6 @@
 /**
  * Map thrown errors to `{ status, ErrorEnvelope }` for the warren HTTP
- * server (SPEC §8.1 + §11.D).
+ * server (docs/http-api.md + SECURITY.md).
  *
  * Three error families flow through here:
  *   - `WarrenError` subclasses → mapped to a stable status by class.

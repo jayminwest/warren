@@ -1,4 +1,4 @@
-# Warren home-server compose file (SPEC §10.1).
+# Warren home-server compose file.
 #
 # `docker compose up -d` on a fresh clone PULLS the published control-plane
 # image from ghcr.io (warren-26be) — it does not build from source. Pin a
@@ -6,7 +6,7 @@
 # .env or the environment; the default `latest` tracks main.
 #
 # It boots a single warren container with:
-#   - the four bwrap-friendly security flags (SPEC §5.3 / mx-94901b /
+#   - the four bwrap-friendly security flags (docs/design/runtime-and-supervisor.md / mx-94901b /
 #     mx-c085ba). They relax the outer container so burrow's nested
 #     userns sandboxes can come up.
 #   - a named volume mounted at /data for warren.db (SQLite default)
@@ -18,7 +18,7 @@
 #
 # The supervisor inside the container spawns `burrow serve` and `warren`
 # as siblings — there is no separate burrow service in compose. See
-# SPEC §10.3 for the supervisor contract and src/supervisor/main.ts for
+# docs/design/runtime-and-supervisor.md for the supervisor contract and src/supervisor/main.ts for
 # the implementation.
 
 services:
@@ -34,7 +34,7 @@ services:
     container_name: warren
     restart: unless-stopped
 
-    # Required for nested bwrap (SPEC §5.3, mx-94901b/mx-c085ba). Remove
+    # Required for nested bwrap (docs/design/runtime-and-supervisor.md, mx-94901b/mx-c085ba). Remove
     # any one of these and `burrow up` fails inside the container.
     security_opt:
       - apparmor=unconfined

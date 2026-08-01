@@ -1,8 +1,7 @@
 /**
  * Repository for the `projects` table.
  *
- * Projects are GitHub repos cloned under /data/projects/<owner>/<name> (SPEC
- * §5). The repo only owns the row; cloning, default-branch detection, and
+ * Projects are GitHub repos cloned under /data/projects/<owner>/<name> (docs/design/runtime-and-supervisor.md). The repo only owns the row; cloning, default-branch detection, and
  * filesystem layout are Phase 4's domain.
  */
 

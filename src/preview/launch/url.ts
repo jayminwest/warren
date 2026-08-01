@@ -67,11 +67,11 @@ export function loadPreviewLaunchConfigFromEnv(
 
 /**
  * Format the preview URL for a `live` preview. The host suffix is the
- * operator's `WARREN_PREVIEW_HOST`; URLs are always `https` per SPEC §11.D
+ * operator's `WARREN_PREVIEW_HOST`; URLs are always `https` per SECURITY.md
  * (TLS terminates on the operator's reverse proxy).
  *
  * - **Subdomain mode** (`https://run-<id>.<host>`): the reviewer-facing
- *   shape from the original §11.L. No trailing slash so the URL stays
+ *   shape from the original docs/design/preview-environments.md. No trailing slash so the URL stays
  *   stable across modes and existing PR annotations.
  * - **Path mode** (`https://<host>/p/<id>/`, warren-c3c4 / docs/design/preview-environments.md
  *   addendum): trailing slash is load-bearing — without it the browser

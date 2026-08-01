@@ -1,7 +1,7 @@
 /**
  * Resolve a burrow transport from environment variables.
  *
- * V1's canonical deploy is single-container (SPEC §10.3): warren and
+ * V1's canonical deploy is single-container (docs/design/runtime-and-supervisor.md): warren and
  * `burrow serve` are sibling processes inside one container, the
  * supervisor binds burrow to a unix socket, warren reaches it through
  * that path. The TCP branch exists for tests, dev loops where burrow

@@ -1,6 +1,6 @@
 /**
  * Schemas for canopy `cn render` output and warren's normalized agent
- * definition (SPEC §4.2).
+ * definition (docs/design/agent-composition.md).
  *
  * `RenderResponseSchema` mirrors the wire shape canopy 0.2.x emits with
  * `--format json` — `{success, command, name, version, sections, ...}`.
@@ -12,7 +12,7 @@
  * map (the rest of warren never cares about ordering — `cn render` already
  * resolved inheritance + mixins). It also enforces warren's semantic rule:
  * an agent prompt MUST include a `system` section. Other sections from
- * SPEC §4.2 (`skills`, `expertise_seed`, `burrow_config`, `workflow`) are
+ * docs/design/agent-composition.md (`skills`, `expertise_seed`, `burrow_config`, `workflow`) are
  * optional — they are consumed at run-spawn time (Phase 5), not now, and
  * canopy's own per-prompt schema is the right place to enforce richer
  * structural rules.
@@ -93,7 +93,7 @@ export interface AgentDefinition {
  *              `--no-builtin-tools` / `--no-tools`. Read + normalized by
  *              `readToolsFrontmatter`; gives reviewer / patrol agents a
  *              hard read-only guarantee at the harness level (paired
- *              warren↔burrow change, SPEC §11.K).
+ *              warren↔burrow change, docs/design/agent-composition.md).
  *
  * Both stay in the open `frontmatter` bag (no schema rev) so a canopy
  * author can set them inline. `POST /runs` accepts the same two fields
@@ -121,7 +121,7 @@ export function readProviderFrontmatter(frontmatter: Readonly<Record<string, unk
  *   noTools    — expose no tools at all → pi's `--no-tools`
  *
  * Only the `pi` runtime consumes this in V1 (paired warren↔burrow change,
- * SPEC §11.K); other runtimes ignore the field. The policy rides the open
+ * docs/design/agent-composition.md); other runtimes ignore the field. The policy rides the open
  * `frontmatter` bag, so a canopy / `.warren` agent author declares it inline
  * with no schema rev, and it forwards to burrow on run metadata via the same
  * `composeBurrowMetadata` seam as `provider` / `model`.

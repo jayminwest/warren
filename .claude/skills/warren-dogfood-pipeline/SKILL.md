@@ -100,7 +100,7 @@ expands `\n` inside the JSON and corrupts it). On terminal, capture
 
 ## 4. PR shepherding (expect to do this for EVERY PR)
 
-Themed slices touch overlapping files (SPEC, CLAUDE.md, budgets,
+Themed slices touch overlapping files (CLAUDE.md, budgets,
 `.seeds/issues.jsonl`), so almost every PR that outlives another merge
 goes stale. Diagnose with
 `gh pr view <n> --json mergeable,mergeStateStatus,autoMergeRequest,statusCheckRollup`:

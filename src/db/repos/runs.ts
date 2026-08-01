@@ -5,7 +5,7 @@
  * (queued → running → succeeded|failed|cancelled). The state is updated as
  * we observe burrow's stream; warren itself does not pick runs off a queue.
  *
- * `attachBurrow` exists because the §4.3 composition flow creates the warren
+ * `attachBurrow` exists because the composition flow (docs/design/agent-composition.md) creates the warren
  * row before burrow's `POST /burrows` and `POST /burrows/:id/runs` return —
  * the burrow IDs are written back once we have them.
  */
@@ -263,7 +263,7 @@ export class RunsRepo {
 	}
 
 	/**
-	 * Write back the burrow IDs as they become available. The §4.3 spawn flow
+	 * Write back the burrow IDs as they become available. The spawn flow (docs/design/agent-composition.md)
 	 * provisions the burrow first (`POST /burrows`) and dispatches the run
 	 * second (`POST /burrows/:id/runs`), so each ID lands on a different turn.
 	 * Both fields are optional, but at least one must be set.

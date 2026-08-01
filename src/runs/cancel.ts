@@ -1,5 +1,5 @@
 /**
- * `cancelRun` — SPEC §8.1 `POST /runs/:id/cancel`.
+ * `cancelRun` — docs/http-api.md `POST /runs/:id/cancel`.
  *
  * Forwards a graceful cancel to the run's runtime backend via
  * `provider.cancel(handle, reason?)` and emits a `cancel.requested` audit event

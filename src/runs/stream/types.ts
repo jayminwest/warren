@@ -48,7 +48,7 @@ export interface BridgeLogger {
 }
 
 /**
- * Session-cumulative cost + token snapshot (warren-a7dc, SPEC §pi). Pi
+ * Session-cumulative cost + token snapshot (warren-a7dc, docs/design/agent-composition.md). Pi
  * v0.74 reports cost in USD computed against the same models.json it
  * dispatched against; warren persists the raw number rather than
  * re-pricing tokens itself (plan alternative #5).

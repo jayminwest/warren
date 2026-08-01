@@ -1,6 +1,6 @@
 /**
- * `bridgeRunStream` — the main event-bridge pump (SPEC §4.3 step 5,
- * §9 "event durability rationale"). Splits out of the legacy
+ * `bridgeRunStream` — the main event-bridge pump (docs/design/agent-composition.md step 5;
+ * event durability per docs/design/runtime-and-supervisor.md). Splits out of the legacy
  * monolithic `src/runs/stream.ts` (warren-041e / pl-9088 step 5):
  * terminal-detection lives in `./terminal-detect.ts`, the run-state
  * fallback in `./run-state-poller.ts`, cost-stats persistence in

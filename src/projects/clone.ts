@@ -1,6 +1,6 @@
 /**
  * Clone a project repo into `<projectsRoot>/<owner>/<name>` and detect
- * its default branch (SPEC §5, §9 `projects.default_branch`).
+ * its default branch (docs/design/runtime-and-supervisor.md, `projects.default_branch`).
  *
  * Project clones are working trees that agents will run against — *not*
  * a cache like the canopy library clone. So the contract is the

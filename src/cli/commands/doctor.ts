@@ -1,5 +1,5 @@
 /**
- * `warren doctor` — startup health check (SPEC §8.2).
+ * `warren doctor` — startup health check.
  *
  * Runs the union of:
  *   - required env vars (WARREN_API_TOKEN),

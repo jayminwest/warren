@@ -4,7 +4,7 @@ import type { ReapFs, ReapStep } from "./types.ts";
 import { splitLines } from "./util.ts";
 
 /* ----------------------------------------------------------------------- */
-/* Mulch merge (SPEC §11.A)                                                 */
+/* Mulch merge (docs/design/runtime-and-supervisor.md)                                                 */
 /* ----------------------------------------------------------------------- */
 
 export interface MulchMergeResult {
@@ -70,7 +70,7 @@ interface MulchFileMergeResult {
  * Pure: merge a single domain's JSONL. Existing entries keep their
  * original order; new (or replaced) entries land at the end of the
  * file in incoming order. Anonymous records (no `id`) always append —
- * spec §11.A says they have no conflict possible.
+ * the runtime-and-supervisor contract says they have no conflict possible.
  *
  * Exported for unit-testing in isolation from the disk + event surface.
  */

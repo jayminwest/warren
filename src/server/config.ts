@@ -1,5 +1,5 @@
 /**
- * Resolve the warren HTTP server's environment-driven config (SPEC §10).
+ * Resolve the warren HTTP server's environment-driven config (docs/design/runtime-and-supervisor.md).
  *
  * Five pieces of state matter here:
  *   1. Where the server binds (host + port; or unix socket path).

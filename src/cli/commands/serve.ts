@@ -7,7 +7,7 @@
  * into a `handle.stop()` call and exit cleanly.
  *
  * `--no-auth` plumbs through to the boot config: the loopback dev-loop
- * escape hatch (SPEC §11.D). The bind/data env vars are read by
+ * escape hatch (SECURITY.md). The bind/data env vars are read by
  * `bootServer` itself; nothing to surface here.
  */
 

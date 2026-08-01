@@ -1,5 +1,5 @@
 /**
- * Static SPA serving from `src/ui/dist` (SPEC §6, §7).
+ * Static SPA serving from `src/ui/dist`.
  *
  * Phase 9's UI surface is just the file server: Phase 10 builds the
  * actual React app. The wiring here lets warren ship the dist dir

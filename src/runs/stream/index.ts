@@ -1,6 +1,6 @@
 /**
  * Bridge burrow's per-run event stream into warren's events table and
- * fan-out broker (SPEC §4.3 step 5, §9 "event durability rationale").
+ * fan-out broker (docs/design/agent-composition.md step 5; event durability per docs/design/runtime-and-supervisor.md).
  *
  * The bridge is the only writer to `events` (rows always land via
  * `bridgeRunStream` → `EventsRepo.append`); the broker is published
@@ -21,7 +21,7 @@
  * for the run-scoped variant), so warren dedupes on the consumer side:
  * `EventsRepo.maxSeqForRun(runId)` gives the last seq we persisted, and
  * any incoming event whose `seq <= maxSeq` is dropped. This is the
- * "MAX(events.burrow_event_seq) + 1" recovery point in SPEC §4.3 — we
+ * "MAX(events.burrow_event_seq) + 1" recovery point in docs/design/agent-composition.md — we
  * implement it client-side because the wire route doesn't.
  *
  * The bridge swallows transport-layer errors (BurrowUnreachableError

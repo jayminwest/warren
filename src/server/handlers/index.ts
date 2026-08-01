@@ -1,5 +1,5 @@
 /**
- * Handlers for warren's HTTP API (SPEC §8.1) — route-table composer
+ * Handlers for warren's HTTP API (docs/http-api.md) — route-table composer
  * and shared parsing helpers.
  *
  * Domain handlers live alongside in `./agents.ts`, `./projects.ts`,

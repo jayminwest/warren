@@ -1,5 +1,5 @@
 /**
- * `reapRun` — SPEC §4.3 step 6 + §11.A.
+ * `reapRun` — docs/design/agent-composition.md step 6 + docs/design/runtime-and-supervisor.md.
  *
  * Once burrow says a run reached a terminal state, warren runs reap to
  * close out the run. Best-effort sub-steps run in order: mulch merge,

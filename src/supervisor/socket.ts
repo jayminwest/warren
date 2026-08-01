@@ -1,12 +1,12 @@
 /**
- * Wait until a unix socket file appears on disk (SPEC §10.3).
+ * Wait until a unix socket file appears on disk (docs/design/runtime-and-supervisor.md).
  *
  * The supervisor spawns `burrow serve --socket <path>` and then needs to wait
  * until burrow has actually opened the socket before it spawns warren — a
  * warren process that boots before burrow's socket exists fails its startup
  * burrow probe and emits a noisy warning.
  *
- * SPEC §10.3 specifies `fs.access` poll, 100 ms × 50 = 5s total. The polling
+ * docs/design/runtime-and-supervisor.md specifies `fs.access` poll, 100 ms × 50 = 5s total. The polling
  * interval and timeout are injectable so tests can drive them quickly.
  */
 

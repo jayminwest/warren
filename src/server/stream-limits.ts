@@ -249,7 +249,7 @@ export class EventStreamLimiter {
  * The identity the per-client cap counts against.
  *
  * The canonical deploy puts warren behind Caddy / a cluster Ingress
- * (SPEC §11.D), where the socket peer is the proxy and every caller would
+ * (SECURITY.md), where the socket peer is the proxy and every caller would
  * otherwise collapse into one key — so the left-most `X-Forwarded-For` hop
  * wins when present, falling back to the socket peer and finally a shared
  * `"unknown"` bucket. A caller on a directly-exposed instance can forge the

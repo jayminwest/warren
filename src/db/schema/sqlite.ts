@@ -1,9 +1,10 @@
 /**
- * SQLite physical schema for warren's durable state (SPEC §9).
+ * SQLite physical schema for warren's durable state (docs/design/runtime-and-supervisor.md).
  *
  * Tables: agents (canopy registry cache), projects (cloned repos), runs
  * (warren-side run rows that mirror burrow's lifecycle), events (write-through
- * cache of burrow's stream — see SPEC §9 "event durability rationale"), triggers
+ * cache of burrow's stream — see the event-durability rationale in
+ * docs/design/runtime-and-supervisor.md), triggers
  * (R-06 scheduler bookkeeping), planRuns + planRunChildren, and
  * runInbox. The plots projection table was dropped in warren-0b13 (0031)
  * as part of the plot deletion pass (pl-3a79). The conversations + messages

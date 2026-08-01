@@ -1,12 +1,12 @@
 /**
- * Boot entry for `warren serve` (SPEC §8.2 / §10.3).
+ * Boot entry for `warren serve` (docs/design/runtime-and-supervisor.md).
  *
  * Wires together every layer the server depends on:
  *   - load env-driven config (server bind, data dir, UI dist),
  *   - open the SQLite db (creates + migrates if missing),
  *   - construct the BurrowClient + RunEventBroker,
  *   - boot the BridgeRegistry (resumes any in-flight runs from the
- *     events-table cursor — SPEC §9 restart-recovery contract),
+ *     events-table cursor — docs/design/runtime-and-supervisor.md restart-recovery contract),
  *   - load the canopy + projects sub-configs,
  *   - resolve the AuthProvider,
  *   - call `startServer`.

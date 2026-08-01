@@ -1,5 +1,5 @@
 /**
- * `spawnRun` — SPEC §4.3 composition flow (agent + project + prompt →
+ * `spawnRun` — docs/design/agent-composition.md composition flow (agent + project + prompt →
  * queued burrow run). Split into per-concern modules under warren-f71c /
  * pl-9088 step 6:
  *

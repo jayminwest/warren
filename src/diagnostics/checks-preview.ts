@@ -106,7 +106,7 @@ export async function checkPreviewMaxLive(deps: {
  * is gated by an HMAC derived from `WARREN_API_TOKEN`. A weak token
  * ("changeme", "warren-token", a tutorial copy-paste) leaves a
  * private-code preview accessible to anyone who can guess the token —
- * the SPEC's risk #2 mitigation. Warns when the token matches a
+ * the preview-environment contract's risk #2 mitigation. Warns when the token matches a
  * placeholder or is shorter than `MIN_TOKEN_LENGTH`. No-ops when
  * `WARREN_PREVIEW_HOST` is absent (the proxy surface is off).
  *

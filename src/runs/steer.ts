@@ -1,5 +1,5 @@
 /**
- * `steerRun` — SPEC §8.1 `POST /runs/:id/steer`.
+ * `steerRun` — docs/http-api.md `POST /runs/:id/steer`.
  *
  * Forwards a steering message to the burrow inbox. Burrow's inbox is
  * scoped per-burrow (not per-run); the message is delivered to the next
@@ -13,7 +13,7 @@
  *     keeps the wire calls clean).
  *   - run must not be in a terminal state — steering a finished run is
  *     meaningless. Returns `ValidationError`, not `StateTransitionError`,
- *     to match the §7 error envelope used by the rest of warren's HTTP
+ *     to match the error envelope (src/core/wire.ts) used by the rest of warren's HTTP
  *     surface for "operator asked for an impossible action".
  *   - run must have a `burrow_id` attached. A queued warren row without a
  *     burrowId is the spawn-rollback window; sending an inbox message in

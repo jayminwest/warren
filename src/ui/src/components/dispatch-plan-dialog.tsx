@@ -26,7 +26,7 @@ import {
  * generalized in warren-585d / pl-3fc4 step 6).
  *
  * Plan-run dispatch stays OPERATOR-GATED in v1 — there is no auto-dispatch
- * (this preserves the SPEC §10.4 approval-gate taste signal). This popup is
+ * (this preserves the docs/design/plan-run-coordinator.md approval-gate taste signal). This popup is
  * the manual hand-off: it MIRRORS the `/plan-runs/new` fields and dispatches a
  * plan-run over the EXISTING `planRunsApi.create` (`POST /plan-runs`) path. No
  * new dispatch path is introduced.

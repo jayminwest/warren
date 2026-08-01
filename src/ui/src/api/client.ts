@@ -1,4 +1,4 @@
-// Thin fetch wrapper around the warren HTTP API (SPEC §8.1). Bearer
+// Thin fetch wrapper around the warren HTTP API (docs/http-api.md). Bearer
 // token comes from localStorage; mutated via `setApiToken` after the
 // login screen accepts it. A 401 clears the cached token so the
 // router can redirect back to login on the next render pass.
@@ -361,7 +361,7 @@ export async function* streamPlanRunEvents(
 }
 
 /* ----------------------------------------------------------------------- */
-/* NDJSON event stream — `GET /runs/:id/events?follow=1` (SPEC §8.1).      */
+/* NDJSON event stream — `GET /runs/:id/events?follow=1` (docs/http-api.md).      */
 /* ----------------------------------------------------------------------- */
 
 export interface StreamRunEventsOptions {

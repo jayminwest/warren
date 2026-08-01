@@ -1,5 +1,5 @@
 /**
- * Shared types for the warren HTTP server (SPEC §8.1).
+ * Shared types for the warren HTTP server (docs/http-api.md).
  *
  * The shape mirrors burrow's server (`@os-eco/burrow-cli` `src/server/`)
  * deliberately so a future operator who flips between the two can read
@@ -115,7 +115,7 @@ export interface Route {
 
 /**
  * Wire-level binding for `warren serve`. TCP is the canonical V1 deploy
- * (warren is fronted by Caddy / cluster ingress for TLS — see SPEC §11.D); the
+ * (warren is fronted by Caddy / cluster ingress for TLS — see SECURITY.md); the
  * unix socket option is kept for any future "warren next to a reverse
  * proxy on the same box without a port" deploy. Defaults to ephemeral
  * loopback TCP for tests.
@@ -429,8 +429,8 @@ export type CapabilityName = keyof ActorCapabilities;
 export type RoutePolicy = "anonymous" | CapabilityName;
 
 /**
- * Identity discriminant. `operator` is the single-user V1 caller (SPEC
- * §3.2 / §11.D) the token provider authorizes; `anonymous` is the
+ * Identity discriminant. `operator` is the single-user V1 caller
+ * (SECURITY.md) the token provider authorizes; `anonymous` is the
  * credential-less spectator the `WARREN_AUTH=public` provider mints
  * (warren-851b) — it holds `readPublic` and nothing else. `run` is a
  * sandbox calling back with its per-run scoped token (warren-57fd): it is

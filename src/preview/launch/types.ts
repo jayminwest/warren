@@ -180,7 +180,7 @@ export const DEFAULT_SETUP_POLL_MS = 1_000;
  * connection but the dev server is mid-compile and never flushes bytes)
  * blocks the deadline check indefinitely. 2s is a conservative upper bound —
  * a dev server that can't return any byte for `GET /` within 2s is not
- * "ready" in the §11.L sense even if it's alive.
+ * "ready" in the docs/design/preview-environments.md sense even if it's alive.
  */
 export const PROBE_PER_CALL_TIMEOUT_MS = 2_000;
 /** Stderr tail size copied into `preview_failure_message`. */

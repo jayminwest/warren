@@ -1,5 +1,5 @@
 /**
- * `spawnRun` — the §4.3 composition flow.
+ * `spawnRun` — the composition flow (docs/design/agent-composition.md).
  *
  * One call drives the ritual that turns "the operator picked an agent +
  * project + prompt" into "the runtime has a dispatched run":
