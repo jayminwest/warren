@@ -1,7 +1,7 @@
 # Warren Acceptance Runbook
 
 This is the operator's checklist for verifying a warren cut against the
-§3.1 V1 goals + §11.A reap roundtrip + restart-recovery contract before
+V1 goals (below) + §11.A reap roundtrip + restart-recovery contract before
 pushing a release.
 
 The contract is split across **automated** (the harness in
@@ -86,7 +86,26 @@ Logging knobs:
 | `WARREN_ACCEPTANCE_BURROW_STDOUT=1`| passthrough burrow stdout                     |
 | `WARREN_ACCEPTANCE_BURROW_STDERR=1`| passthrough burrow stderr                     |
 
-In-proc mode covers scenarios 01–12 (the §3.1 application contract).
+In-proc mode covers scenarios 01–12 (the V1-goals application contract
+in the next section).
+
+## V1 goals under verification
+
+These are the V1 goals (SPEC §3.1, folded in here) the acceptance
+criteria and scenarios 01–13 verify:
+
+- Single-image deploy: `docker compose up` on a home server, `kubectl apply -k` on a cluster (GKE Autopilot), same Dockerfile.
+- Web UI for: agent registry, project list, run dispatch, live event tail, basic settings.
+- HTTP API mirroring the UI's surface so external scripts can drive warren.
+- Custom-agent-as-canopy-prompt: an agent is a single canopy prompt with required sections. Warren auto-discovers agents from a connected canopy repo.
+- Runs against project repos cloned into warren's data dir from GitHub URLs.
+- Self-* loop: agents read seeds queue, write seeds for follow-ups, record mulch on success/failure, prime mulch on next spawn.
+- Durable event log: warren persists every event burrow streams in its SQLite database. Reload-after-crash and post-hoc inspection both work.
+
+Deferred to V2 (context, not built in V1):
+
+- GitHub webhook receiver and signature verification: the event-driven half of the scheduler. The cron half shipped in V1. See [`docs/design/scheduler.md`](docs/design/scheduler.md).
+- `@os-eco/warren` library API exports — internal-only `Client` is fine for V1.
 
 ## Automated harness — container mode
 
@@ -148,7 +167,8 @@ docker compose -p warren-acceptance-<suffix> down -v
 
 ## Manual gate — `--real` claude-code run
 
-Verifies the §11.E first-run path: a real claude-code run, with a real
+Verifies the first-run path exercised in the first dogfood post-mortem
+(below): a real claude-code run, with a real
 ANTHROPIC_API_KEY, against a real GitHub repo, completes end-to-end
 with `state: succeeded` + `branchPushed: true` + non-zero `commitsAhead`.
 
@@ -182,8 +202,8 @@ warren events <run-id> --follow
 
 If any of the above fail, do **not** ship — the §4.3 composition flow
 is structurally broken in a way the automated harness can't catch
-(stub agent has no real toolchain). Re-read the §11.E–§11.G
-post-mortems in `SPEC.md` for the canonical failure shapes
+(stub agent has no real toolchain). Re-read the dogfood post-mortems
+below for the canonical failure shapes
 (`warren-67cc`, `warren-a69a`, `warren-1eaa`, `warren-1a09`, etc.) and
 `branchPushed-requires-both-reap-and-sandbox-git` (a `branchPushed:
 true` does NOT prove the agent committed — it can fire on an
@@ -295,6 +315,74 @@ results:
 - **macOS Docker Desktop nests bwrap partially** — see container-mode
   caveat above.
 
+## Dogfood post-mortems (2026-05-09)
+
+The three V1 dogfood passes (SPEC §11.E–§11.G, folded in here) are the
+canonical record of how the composition flow failed in the wild. Re-read
+them before shipping when a manual gate fails.
+
+### First-run validation
+
+The first end-to-end exercise of the composition flow against a real claude-code agent surfaced three burrow gaps. Each shipped a fix in the same session.
+
+- `burrow-7b97`: `burrow serve` had no in-process executor, so runs queued forever. The fix wired `RunDispatcher` into `startServer` and hooked `RunsClient.setOnCreated`.
+- `burrow-55e3`: HTTP `burrows.up` ignored agent-id hints and left `toolchainPaths: []`. The fix accepts `agents` on `HttpBurrowUpInput` and threads them through `resolveEffectiveAgents`. Warren's spawn forwards `agents: [agent.name]` to match.
+- `burrow-0329`: `buildBwrapArgv` lacked `--uid`/`--gid`. The sandboxed process inherited host root, and claude-code refused to run with `--dangerously-skip-permissions`.
+
+Warren-side fixes:
+
+- Bump `@os-eco/burrow-cli` in **both** `Dockerfile` and `package.json` + `bun.lock`. The supervisor's `Bun.spawn` resolves `./node_modules/.bin/burrow` before PATH, so a Dockerfile-only bump does nothing.
+- Bundle `@anthropic-ai/claude-code` with an explicit postinstall invocation. `bun install -g` skips lifecycle scripts.
+- Add a compose-time `CANOPY_SOURCE_DIR` bind mount for local-canopy testing.
+
+Outcome with burrow at `0.2.3`: `warren run claude-code <prj> -p "..."` against warren itself completes in ~5s. The run ends `state: succeeded` with `branchPushed: true` and a real model response in `run.event seq:4`.
+
+Open gaps for V1 after this pass (all open warren seeds):
+
+- `warren-dcf3`: the supervisor does not auto-wire `GITHUB_TOKEN` into git's credential helper.
+- `warren-93ee`: the supervisor has no `--no-auth` knob for burrow loopback dev.
+- `warren-fab1`: the `warren` CLI is not on `PATH` inside the container.
+- `warren-3c40`: reap cannot tell "queued, never started" apart from "crashed".
+- `warren-bd69`: the runtime image lacks `curl` for diagnostics.
+
+### Second dogfood
+
+All five first-run gaps closed, then a second end-to-end run against warren itself surfaced six new structural seams. Burrow patched one mid-session: `burrow-e9e7` landed in `0.2.6`. The `claude-code` runtime now default-allows `ANTHROPIC_API_KEY` plus the OAuth env names, with no project `burrow.toml [env]` block required. Claude-code is a built-in runtime, so its env contract ships built-in too.
+
+With burrow at `0.2.6`, the agent authenticated cleanly (`apiKeySource: "ANTHROPIC_API_KEY"` in the seq:1 init). It ran for 12m48s and ended with a clean terminal `result` event: `is_error: false`, 102 turns, and `bun test 417/417 + lint + typecheck` all green inside the sandbox.
+
+**None of that work landed on the remote.** Two compounding bugs explain why:
+
+- `warren-67cc`: the burrow worktree's `.git` file points at `<project>/.git/worktrees/<burrowId>`. That path lives outside the bwrap mount. The agent cannot run `git commit` inside its workspace, so reap had nothing to push.
+- `warren-a69a`: warren's reap does not transition runs on terminal events. The bridge stores the result event, but the runs row stays `running` forever. Even with a commit, reap would not push.
+
+Mulch records the pattern as `mx-runs/branchPushed-requires-both-reap-and-sandbox-git`. A `branchPushed: true` is a compound output of in-sandbox git AND warren reap. Either half failing alone produces the same shape: a stuck `running` run with no branch.
+
+Other open seeds from this iteration:
+
+- `warren-5f19`: `deleteProject` rmrf's the disk before the row delete. The FK on `runs.project_id` makes the row delete fail. The system ends in a `(row exists, disk gone)` state. Recommended fix: `ON DELETE SET NULL` plus row-first ordering inside a transaction.
+- `warren-1eaa`: `bun install -g` runs as root during build. The `/usr/local/bin/{sd,ml,cn,sapling,overstory}` symlinks point into `/root/.bun/...`, which user `bun` cannot traverse. Every os-eco CLI dangles at runtime.
+- `warren-5165`: `.env.example` and SPEC claimed canopy `env_passthrough` flows via `burrow_config`, but `parseBurrowConfig` only reads `[sandbox].network`. Resolved as docs-only: the claude-code env contract is now burrow-built-in via `burrow-e9e7`. Project-level `env_passthrough` plumbing waits until a non-built-in runtime needs it.
+- `warren-d9ad`: the UI's RunDetail badge does not react to incoming events. Even after the reap fix lands, the UI shows stale state until a manual refresh.
+
+### Third dogfood
+
+Released as `0.1.2` after all six second-dogfood gaps closed. Bumped `@os-eco/burrow-cli` to `0.2.7` in **both** `Dockerfile` and `package.json` + `bun.lock`. That pulls in the gitdir-bind fix `burrow-7a80`: burrow's bwrap profile now binds the host worktree gitdir into the sandbox. An agent at UID 1000 can resolve `<workspace>/.git → /<host-path>/.git/worktrees/<id>` and run `git commit` inside its workspace.
+
+Two runs against warren-on-warren produced the cleanest signal yet on the composition flow.
+
+**Run 1** (`run_a98cfx1fantf`, prompt `"Work on sd warren-9f65. Use ml"`) completed `succeeded` in 6m28s / 49 turns with `branchPushed: true`. Zero of the agent's work reached the remote: `gh compare main...burrow/bur_r9mjn6da9xc9` reported `ahead_by: 0, total_commits: 0`. The branch ref pointed at main's SHA. Warren reap pushed an unchanged HEAD because the agent never ran `git commit`.
+
+The thin canopy `claude-code` prompt (`canopy-daf3`, `"You are a helpful coding assistant. Be concise."`) carries no commit contract. Combined with `src/runs/reap.ts:257-265` (push-without-commit) and the `branchPushed` boolean, any successful push flips it `true`, including a no-op. The result is a silent work-loss shape that even an attentive operator misreads as success. Filed as `warren-f3bb` (P1: observability fix B, canopy-prompt fix C, SPEC §4.3.6 doc fix D).
+
+A secondary entanglement: `warren-fead`. The agent emitted `stop_reason=end_turn` while it waited on a foreground `bun install` Monitor. It wrote that it would wait for the monitor, then made no follow-up tool call. The run ended before commit could happen.
+
+**Run 2** (`run_agpet4ev6e4a`, prompt `"...Commit and push when you're done"`) produced the first warren-on-warren success that actually shipped. Branch `burrow/bur_0qgh4pwpvgv0` at SHA `15339e61` with `ahead_by: 1`. A real diff across 5 files: acceptance scenario 04 implementation, lib changes, mulch, seeds. This validates the fix-C scope: instructing the agent to commit suffices for the smoke-test agent.
+
+The "and push" portion proved inert and counterproductive. Agent-side `git push` failed four times with `fatal: could not read Username for 'https://github.com'`. Warren's supervisor installs the `insteadOf` rewrite rule into `/root/.gitconfig` (`src/supervisor/git-credentials.ts:65-71`). Burrow's bwrap profile ro-binds `/usr`, `/etc`, `/lib`, `/lib64`, `/bin`, `/sbin`, `/opt`, but not `/root`. Same architectural pattern as `warren-1eaa`: the Bun store at `/root/.bun` and the git config stay invisible inside the sandbox. Filed as `warren-1a09` (P2).
+
+For V1, fix A (canopy prompt instructs commit only, since warren handles the push) and fix D suffice. Fix D documents the contract: the agent commits, reap pushes, the sandbox has no github auth path. Reap pushed the agent's commit because reap runs host-side with `/root/.gitconfig` visible. The system did the right thing while the agent burned ~5 turns on doomed retries.
+
 ## Wiring summary
 
 | File                                        | Purpose                                           |
@@ -307,7 +395,7 @@ results:
 | `scripts/acceptance/lib/stub-agent/agent.sh`| Deterministic no-network stub agent               |
 | `scripts/acceptance/lib/assert.ts`          | Scenario runner + assertion helpers               |
 | `scripts/acceptance/lib/http.ts`            | Bearer-aware fetch + NDJSON streaming             |
-| `scripts/acceptance/scenarios/01-13`        | The 13 §3.1 acceptance criteria                   |
+| `scripts/acceptance/scenarios/01-13`        | The 13 V1-goal acceptance criteria                |
 | `package.json`                              | `acceptance` + `acceptance:container` scripts     |
 
 When adding a scenario, mirror the existing file shape: a top-level
