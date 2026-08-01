@@ -20,7 +20,7 @@
  * cleans up the temp dir. The harness owns lifecycle; scenarios just
  * read the `warrenUrl` and `token` fields off the handle.
  *
- * Why we don't reuse warren's own `bootServer()` directly: the §10.3
+ * Why we don't reuse warren's own `bootServer()` directly: the docs/design/runtime-and-supervisor.md
  * supervisor is the deploy entrypoint, and the acceptance harness is
  * the closest in-process approximation we have to "what docker compose
  * up does." Boot here mirrors the supervisor's contract: spawn burrow

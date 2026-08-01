@@ -1,5 +1,5 @@
 /**
- * Scenario 10 — reap seeds-close roundtrip (SPEC §11.A).
+ * Scenario 10 — reap seeds-close roundtrip (docs/design/runtime-and-supervisor.md).
  *
  * Acceptance criterion #10:
  *   "Seeds the agent marks closed in the burrow's per-run `.seeds/`
@@ -41,7 +41,7 @@
  * .seeds roundtrip.
  *
  * Note: reap's seeds-close mirror only mirrors closed seeds (not other
- * mutations); the "agent marked done" wording in SPEC §4.3 step 6 maps
+ * mutations); the "agent marked done" wording in docs/design/agent-composition.md maps
  * directly to that. Other seed mutations would ride on the workspace
  * branch push, which we don't assert here.
  */

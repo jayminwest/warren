@@ -12,7 +12,7 @@
  *   /runs) picks up new commits pushed to origin without requiring
  *   DELETE + POST."
  *
- * Verifies the §8.1 atomicity contract: a row exists ⇔ its localPath
+ * Verifies the docs/http-api.md atomicity contract: a row exists ⇔ its localPath
  * exists. We poke the filesystem directly to make sure deleteProject
  * isn't lying about the rmrf step.
  */

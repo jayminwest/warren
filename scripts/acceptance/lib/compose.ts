@@ -127,7 +127,7 @@ export async function bootCompose(opts: ComposeBootOptions): Promise<ComposeBoot
 		warrenUrl,
 		token: opts.token,
 		tmpRoot: opts.tmpRoot,
-		// SPEC §10.3 + Dockerfile ENV: container's burrow socket lives here.
+		// docs/design/runtime-and-supervisor.md + Dockerfile ENV: container's burrow socket lives here.
 		// Surfaced for parity with InProc; not reachable from the host.
 		socketPath: "/var/run/burrow.sock",
 		projectName,

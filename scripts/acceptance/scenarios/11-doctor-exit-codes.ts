@@ -1,5 +1,5 @@
 /**
- * Scenario 11 — `warren doctor` exit codes (SPEC §8.2).
+ * Scenario 11 — `warren doctor` exit codes (README CLI docs / `warren doctor --help`).
  *
  * Acceptance criterion #11:
  *   "warren doctor exits 0 when the host is healthy, exits non-zero

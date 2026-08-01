@@ -5,7 +5,7 @@
  *   "warren-on-postgres dispatches a run end-to-end against a Postgres
  *   container, streams events, restarts warren mid-stream, and verifies
  *   event resume from MAX(events.burrow_event_seq)+1 works the same as
- *   on SQLite (SPEC §9 restart-recovery contract)."
+ *   on SQLite (docs/design/runtime-and-supervisor.md restart-recovery contract)."
  *
  * This is the structural twin of scenario 06 (restart-recovery) — the
  * difference is the backend warren writes its rows to. Scenario 06 runs

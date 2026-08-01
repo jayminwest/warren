@@ -6,8 +6,8 @@
  * Parses the `ROUTE_TABLE` constant in `src/server/handlers/index.ts` and
  * renders a Markdown table of all HTTP API routes to
  * `docs/http-api.md`. The handler module is the canonical surface for
- * the warren JSON API (SPEC §1, §11), so deriving the docs from it
- * avoids the usual drift between a hand-written endpoint list and the
+ * the warren JSON API (rendered in docs/http-api.md), so deriving
+ * the docs from it avoids the usual drift between a hand-written endpoint list and the
  * real router.
  *
  * Why this shape (not typedoc):

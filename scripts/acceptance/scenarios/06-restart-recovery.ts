@@ -1,5 +1,5 @@
 /**
- * Scenario 06 — restart-recovery (SPEC §9 "MAX(seq)+1" contract).
+ * Scenario 06 — restart-recovery (docs/design/runtime-and-supervisor.md "MAX(seq)+1" contract).
  *
  * Acceptance criterion #6:
  *   "Killing warren mid-run and restarting it: the bridge resumes from

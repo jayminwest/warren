@@ -1,5 +1,5 @@
 /**
- * Scenario 09 — reap mulch roundtrip (SPEC §11.A).
+ * Scenario 09 — reap mulch roundtrip (docs/design/runtime-and-supervisor.md).
  *
  * Acceptance criterion #9:
  *   "On run terminal, warren copies the burrow's per-run
