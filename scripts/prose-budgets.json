@@ -5,7 +5,6 @@
 	"sentenceWordCap": 25,
 	"files": [
 		"README.md",
-		"SPEC.md",
 		"ROADMAP.md",
 		"ACCEPTANCE.md",
 		"AGENTS.md",
@@ -24,7 +23,6 @@
 		"src/ui/README.md"
 	],
 	"budgets": {
-		"SPEC.md": 583,
 		"ACCEPTANCE.md": 31,
 		"AGENTS.md": 56,
 		"CONTRIBUTING.md": 5,

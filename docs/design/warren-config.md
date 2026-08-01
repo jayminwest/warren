@@ -1,6 +1,6 @@
 # `.warren/` Directory Convention + Config-Loader Contract
 
-> **Salvage provenance:** lifted from `SPEC.md` §11.H (`.warren/`
+> **Salvage provenance:** lifted from the retired top-level spec §11.H (`.warren/`
 > directory convention, 2026-05-10, reorg 2026-05-14) as part of the
 > SPEC retirement plan `pl-1717` (step `warren-3bec`). The wording
 > below is the live contract — `src/warren-config/load.ts`, doctor
