@@ -170,7 +170,7 @@ function CancelStatus({
 /**
  * Distinct execution repos a plan-run dispatches across (pl-fb43 step 6 /
  * warren-57f6). Children inherit the coordination project unless their
- * seed carries an `extensions.repo` tag, so the common single-repo case
+ * seed carries a routing tag, so the common single-repo case
  * renders as the coordination project itself; a cross-repo plan lists each
  * distinct execution project. Children not yet dispatched (null
  * `executionProjectId`) are ignored until the coordinator stamps them.
