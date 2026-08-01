@@ -200,8 +200,10 @@ export function getRunHandler(deps: ServerDeps): RouteHandler {
 /**
  * `GET /analytics/cost?from=&to=&projectId=` (warren-cf63 / pl-b0c0 step 6).
  *
- * Window defaults to the last 30 days when neither bound is supplied so
- * a fresh install renders a useful chart without operator setup. Both
+ * Window defaults to the last 30 days whenever `from` is absent —
+ * including when `to` is supplied — and the from..to span is clamped to
+ * 90 days, so no anonymous request can drop the lower bound and scan
+ * the whole table (warren-30cc). Both
  * bounds and `projectId` are validated lightly — a malformed date is a
  * 400 because the lexicographic ISO8601 compare in `listForAnalytics`
  * would silently produce surprising results otherwise.
@@ -211,11 +213,12 @@ export function listCostAnalyticsHandler(deps: ServerDeps): RouteHandler {
 		const projectId = ctx.url.searchParams.get("projectId") ?? undefined;
 		const from = parseAnalyticsDateBound(ctx, "from");
 		const to = parseAnalyticsDateBound(ctx, "to");
-		const defaultFrom = resolveAnalyticsFrom(from, to);
-		const filter: { projectId?: string; from?: string; to?: string } = {};
+		const window = resolveAnalyticsWindow(from, to);
+		const filter: { projectId?: string; from?: string; to?: string } = {
+			from: window.from,
+			to: window.to,
+		};
 		if (projectId !== undefined) filter.projectId = projectId;
-		if (defaultFrom !== undefined) filter.from = defaultFrom;
-		if (to !== undefined) filter.to = to;
 		const rowsRaw = await deps.repos.runs.listForAnalytics(filter);
 		// Hydrate so terminal runs with bridge-died cost still count.
 		const rows = await hydrateRunsUsage(rowsRaw, deps.repos.events);
@@ -242,8 +245,8 @@ export function listCostAnalyticsHandler(deps: ServerDeps): RouteHandler {
 		return jsonResponse(200, {
 			filter: {
 				projectId: projectId ?? null,
-				from: defaultFrom ?? null,
-				to: to ?? null,
+				from: window.from,
+				to: window.to,
 			},
 			...analytics,
 		});
@@ -263,19 +266,33 @@ export function parseAnalyticsDateBound(
 	return d.toISOString();
 }
 
+/** Default analytics window when the caller supplies no `from` (days). */
+export const ANALYTICS_DEFAULT_WINDOW_DAYS = 30;
+/** Hard ceiling on the from..to span so an anonymous caller can't widen the scan (warren-30cc). */
+export const ANALYTICS_MAX_WINDOW_DAYS = 90;
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
 /**
- * Resolve the analytics window `from` bound, defaulting to the last 30
- * days when neither bound is supplied so a fresh install renders a
- * useful chart without operator setup. Shared by the cost + run
- * analytics handlers (warren-cf63 / warren-0692).
+ * Resolve the analytics window, defaulting `from` to the last 30 days
+ * whenever it is absent — including when `to` is supplied — so a fresh
+ * install renders a useful chart and no anonymous request can drop the
+ * lower bound entirely (warren-30cc). The total span is clamped to
+ * {@link ANALYTICS_MAX_WINDOW_DAYS} by pulling `from` forward, so the
+ * scan stays bounded no matter what the caller supplies. Shared by the
+ * cost + run analytics handlers (warren-cf63 / warren-0692).
  */
-export function resolveAnalyticsFrom(
+export function resolveAnalyticsWindow(
 	from: string | undefined,
 	to: string | undefined,
-): string | undefined {
-	if (from !== undefined) return from;
-	if (to !== undefined) return undefined;
-	return new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+): { from: string; to: string } {
+	const toMs = to !== undefined ? Date.parse(to) : Date.now();
+	let fromMs =
+		from !== undefined ? Date.parse(from) : toMs - ANALYTICS_DEFAULT_WINDOW_DAYS * DAY_MS;
+	if (toMs - fromMs > ANALYTICS_MAX_WINDOW_DAYS * DAY_MS) {
+		fromMs = toMs - ANALYTICS_MAX_WINDOW_DAYS * DAY_MS;
+	}
+	return { from: new Date(fromMs).toISOString(), to: new Date(toMs).toISOString() };
 }
 
 export function extractProviderModel(rendered: unknown): { provider?: string; model?: string } {

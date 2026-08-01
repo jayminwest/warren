@@ -35,7 +35,7 @@ import type { Actor, RouteHandler, ServerDeps } from "../../types.ts";
 import {
 	extractProviderModel,
 	parseAnalyticsDateBound,
-	resolveAnalyticsFrom,
+	resolveAnalyticsWindow as resolveAnalyticsWindowBounds,
 } from "./lifecycle.ts";
 
 /**
@@ -68,25 +68,24 @@ interface AnalyticsWindow {
 
 /**
  * Parse + resolve the shared `?from`/`?to`/`?projectId` window. Defaults the
- * `from` bound to the last 30 days when neither bound is supplied, matching
- * `GET /analytics/cost`. Both bounds and `projectId` are validated lightly — a
- * malformed date is a 400 because the lexicographic ISO8601 compare in
- * `listForAnalytics` would silently produce surprising results otherwise.
+ * `from` bound to the last 30 days whenever it is absent and clamps the span
+ * to 90 days, matching `GET /analytics/cost` (warren-30cc). Both bounds and
+ * `projectId` are validated lightly — a malformed date is a 400 because the
+ * lexicographic ISO8601 compare in `listForAnalytics` would silently produce
+ * surprising results otherwise.
  */
-function resolveAnalyticsWindow(ctx: { url: URL }): {
+function parseAnalyticsWindow(ctx: { url: URL }): {
 	echo: { projectId: string | null; from: string | null; to: string | null };
 	filter: AnalyticsWindow;
 } {
 	const projectId = ctx.url.searchParams.get("projectId") ?? undefined;
 	const from = parseAnalyticsDateBound(ctx, "from");
 	const to = parseAnalyticsDateBound(ctx, "to");
-	const defaultFrom = resolveAnalyticsFrom(from, to);
-	const filter: AnalyticsWindow = {};
+	const window = resolveAnalyticsWindowBounds(from, to);
+	const filter: AnalyticsWindow = { from: window.from, to: window.to };
 	if (projectId !== undefined) filter.projectId = projectId;
-	if (defaultFrom !== undefined) filter.from = defaultFrom;
-	if (to !== undefined) filter.to = to;
 	return {
-		echo: { projectId: projectId ?? null, from: defaultFrom ?? null, to: to ?? null },
+		echo: { projectId: projectId ?? null, from: window.from, to: window.to },
 		filter,
 	};
 }
@@ -295,7 +294,7 @@ function projectRunAnalytics(
  */
 export function listRunAnalyticsHandler(deps: ServerDeps): RouteHandler {
 	return async (ctx) => {
-		const { echo, filter } = resolveAnalyticsWindow(ctx);
+		const { echo, filter } = parseAnalyticsWindow(ctx);
 		const { metrics } = await loadRunMetrics(deps, filter);
 		const tokens = buildTokensSection(metrics);
 		const body: RunAnalyticsBody = { filter: echo, ...metrics, tokens };
@@ -322,7 +321,7 @@ export function listRunAnalyticsHandler(deps: ServerDeps): RouteHandler {
  */
 export function listBehaviorAnalyticsHandler(deps: ServerDeps): RouteHandler {
 	return async (ctx) => {
-		const { echo, filter } = resolveAnalyticsWindow(ctx);
+		const { echo, filter } = parseAnalyticsWindow(ctx);
 		const { rows, metrics } = await loadRunMetrics(deps, filter);
 		const runIds = rows.map((r) => r.id);
 		const [eventRows, steeringRows] = await Promise.all([

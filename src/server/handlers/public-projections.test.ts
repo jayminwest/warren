@@ -297,7 +297,11 @@ describe("public projections over the wire (warren-4f6c)", () => {
 		expect(totals.succeeded).toBe(1);
 		expect(totals.successRate).toBe(1);
 		expect((totals.tokens as Record<string, unknown>).total).toBe(160);
-		expect(body.filter).toMatchObject({ projectId: null, to: null });
+		expect(body.filter).toMatchObject({ projectId: null });
+		// warren-30cc: the resolved window is always bounded — both bounds echo as strings.
+		const filter = body.filter as { from: unknown; to: unknown };
+		expect(typeof filter.from).toBe("string");
+		expect(typeof filter.to).toBe("string");
 		expect((body.tokens as Record<string, unknown>).totals).toEqual(
 			totals.tokens as Record<string, unknown>,
 		);
