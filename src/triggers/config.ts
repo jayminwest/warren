@@ -1,5 +1,6 @@
 /**
- * Resolve the scheduler module's environment-driven config (SPEC §13).
+ * Resolve the scheduler module's environment-driven config
+ * (docs/design/scheduler.md).
  *
  * Env contract:
  *   WARREN_SCHEDULER_TICK_MS   tick interval in ms — default 60_000 (one minute)
