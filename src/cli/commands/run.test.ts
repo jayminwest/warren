@@ -252,6 +252,164 @@ describe("runRun", () => {
 		expect(result.state).toBe("failed");
 	});
 
+	test("prefers the bridge's in-stream terminal outcome over the status probe", async () => {
+		// warren-2909 / GH #663: the terminal result envelope lands before burrow
+		// finalizes the run row, so a one-shot status() probe still reads
+		// `running`. The bridge's terminalDetected (in-stream detection) must win
+		// and the probe must not fire at all.
+		const projectId = (await repos.projects.listAll())[0]?.id as string;
+		const broker = new RunEventBroker();
+		const { context } = captureContext();
+
+		const bridgeStub = (async (): Promise<BridgeRunStreamResult> => ({
+			written: 0,
+			skipped: 0,
+			errored: false,
+			terminalDetected: { outcome: "succeeded" },
+		})) as never;
+		const reapStub = (async (input: { runId: string; outcome: RunTerminalState }) => {
+			await repos.runs.markRunning(input.runId, new Date("2026-05-08T12:00:01.000Z"));
+			await repos.runs.finalize(input.runId, input.outcome, new Date("2026-05-08T12:00:02.000Z"));
+			return {
+				state: input.outcome,
+				mulchUpdated: 0,
+				mulchSkipped: 0,
+				mulchAppended: 0,
+				seedsClosed: 0,
+				seedsCreated: 0,
+				branchPushed: false,
+				errors: [],
+				alreadyTerminal: false,
+			};
+		}) as never;
+
+		let probeCalls = 0;
+		const result = await runRun(
+			context,
+			{
+				repos,
+				...fakeRunDeps(repos),
+				broker,
+				spawn: buildSpawnStub(repos, "refactor-bot", projectId) as never,
+				bridge: bridgeStub,
+				reap: reapStub,
+				fetchBurrowRunState: async () => {
+					probeCalls++;
+					return "failed";
+				},
+			},
+			{ agent: "refactor-bot", project: projectId, prompt: "fix the bug" },
+		);
+
+		expect(result.exitCode).toBe(0);
+		expect(result.state).toBe("succeeded");
+		expect(probeCalls).toBe(0);
+	});
+
+	test("threads the bridge's terminal failureReason into reap", async () => {
+		// warren-2909: an in-stream failure reason (e.g. oom_killed) must reach
+		// reap instead of being re-inferred as `crashed`.
+		const projectId = (await repos.projects.listAll())[0]?.id as string;
+		const broker = new RunEventBroker();
+		const { context } = captureContext();
+
+		const bridgeStub = (async (): Promise<BridgeRunStreamResult> => ({
+			written: 0,
+			skipped: 0,
+			errored: false,
+			terminalDetected: { outcome: "failed", failureReason: "oom_killed" },
+		})) as never;
+
+		let reapedFailureReason: unknown;
+		const reapStub = (async (input: {
+			runId: string;
+			outcome: RunTerminalState;
+			failureReason?: unknown;
+		}) => {
+			reapedFailureReason = input.failureReason;
+			await repos.runs.markRunning(input.runId, new Date("2026-05-08T12:00:01.000Z"));
+			await repos.runs.finalize(input.runId, input.outcome, new Date("2026-05-08T12:00:02.000Z"));
+			return {
+				state: input.outcome,
+				mulchUpdated: 0,
+				mulchSkipped: 0,
+				mulchAppended: 0,
+				seedsClosed: 0,
+				seedsCreated: 0,
+				branchPushed: false,
+				errors: [],
+				alreadyTerminal: false,
+			};
+		}) as never;
+
+		const result = await runRun(
+			context,
+			{
+				repos,
+				...fakeRunDeps(repos),
+				broker,
+				spawn: buildSpawnStub(repos, "refactor-bot", projectId) as never,
+				bridge: bridgeStub,
+				reap: reapStub,
+				fetchBurrowRunState: async () => "succeeded",
+			},
+			{ agent: "refactor-bot", project: projectId, prompt: "fix the bug" },
+		);
+
+		expect(result.exitCode).toBe(1);
+		expect(result.state).toBe("failed");
+		expect(reapedFailureReason).toBe("oom_killed");
+	});
+
+	test("falls back to the status probe when the bridge detects no terminal envelope", async () => {
+		const projectId = (await repos.projects.listAll())[0]?.id as string;
+		const broker = new RunEventBroker();
+		const { context } = captureContext();
+
+		const bridgeStub = (async (): Promise<BridgeRunStreamResult> => ({
+			written: 0,
+			skipped: 0,
+			errored: false,
+		})) as never;
+		const reapStub = (async (input: { runId: string; outcome: RunTerminalState }) => {
+			await repos.runs.markRunning(input.runId, new Date("2026-05-08T12:00:01.000Z"));
+			await repos.runs.finalize(input.runId, input.outcome, new Date("2026-05-08T12:00:02.000Z"));
+			return {
+				state: input.outcome,
+				mulchUpdated: 0,
+				mulchSkipped: 0,
+				mulchAppended: 0,
+				seedsClosed: 0,
+				seedsCreated: 0,
+				branchPushed: false,
+				errors: [],
+				alreadyTerminal: false,
+			};
+		}) as never;
+
+		let probeCalls = 0;
+		const result = await runRun(
+			context,
+			{
+				repos,
+				...fakeRunDeps(repos),
+				broker,
+				spawn: buildSpawnStub(repos, "refactor-bot", projectId) as never,
+				bridge: bridgeStub,
+				reap: reapStub,
+				fetchBurrowRunState: async () => {
+					probeCalls++;
+					return "succeeded";
+				},
+			},
+			{ agent: "refactor-bot", project: projectId, prompt: "fix the bug" },
+		);
+
+		expect(result.exitCode).toBe(0);
+		expect(result.state).toBe("succeeded");
+		expect(probeCalls).toBe(1);
+	});
+
 	test("reads the terminal state through provider.status when no override is wired", async () => {
 		const projectId = (await repos.projects.listAll())[0]?.id as string;
 		const broker = new RunEventBroker();

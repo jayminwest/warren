@@ -84,8 +84,10 @@ export interface RunDeps {
 	/** Override reap (tests). Defaults to the live `reapRun`. */
 	readonly reap?: typeof reapRun;
 	/**
-	 * Override the terminal-state lookup (tests). Defaults to a
-	 * `provider.status(handle)` read — the provider seam, not a burrow client.
+	 * Override the terminal-state fallback lookup (tests). Consulted only when
+	 * the bridge detected no in-stream terminal envelope (warren-2909).
+	 * Defaults to a bounded-retry `provider.status(handle)` read — the
+	 * provider seam, not a burrow client.
 	 */
 	readonly fetchBurrowRunState?: (handle: RunHandle) => Promise<RunTerminalState>;
 	/**
@@ -239,14 +241,29 @@ export async function runRun(
 	}
 
 	await bridgeDone.catch(() => undefined);
+	const bridgeResult = await bridgePromise.catch(() => undefined);
+
+	// warren-2909 / GH #663: prefer the bridge's in-stream terminal
+	// detection (`detectRuntimeTerminal` on the result envelope's
+	// `is_error`) over the status() probe. The probe races burrow's
+	// finalize — the terminal envelope can arrive while burrow still
+	// reports `running`, and a one-shot read then mislabels a clean run
+	// as failed/crashed, skipping PR auto-open. The probe is the fallback
+	// for runs whose runtime emits no in-stream terminal envelope (or
+	// whose bridge errored).
+	const terminal = bridgeResult?.terminalDetected;
 
 	let outcome: RunTerminalState;
-	try {
-		outcome = await fetchBurrowRunState(handle);
-	} catch (err) {
-		context.stdio.stderr.write(`warren: failed to read burrow run state: ${formatError(err)}\n`);
-		// Best-effort: assume failed so the warren row finalizes rather than stays running.
-		outcome = "failed";
+	if (terminal !== undefined) {
+		outcome = terminal.outcome;
+	} else {
+		try {
+			outcome = await fetchBurrowRunState(handle);
+		} catch (err) {
+			context.stdio.stderr.write(`warren: failed to read burrow run state: ${formatError(err)}\n`);
+			// Best-effort: assume failed so the warren row finalizes rather than stays running.
+			outcome = "failed";
+		}
 	}
 
 	let finalState: RunTerminalState = outcome;
@@ -254,6 +271,9 @@ export async function runRun(
 		const reaped = await reap({
 			runId,
 			outcome,
+			// warren-2909: an explicit failure reason the bridge distilled
+			// in-stream (e.g. `oom_killed`) overrides reap's inference.
+			...(terminal?.failureReason !== undefined ? { failureReason: terminal.failureReason } : {}),
 			repos: deps.repos,
 			runtimeProvider,
 			// warren-11cc: preview sidecar seam, capability-gated by main.ts on the
@@ -294,17 +314,42 @@ export async function runRun(
 	};
 }
 
-function defaultFetchRunState(
+/** Fallback status()-probe poll cadence (ms) — see warren-2909. */
+const FINALIZE_POLL_MS = 250;
+/**
+ * Fallback status()-probe budget (ms). burrow finalizes the run row a few
+ * hundred ms after the terminal envelope; 5s is comfortably past a healthy
+ * finalize while staying bounded for a genuinely wedged one.
+ */
+const FINALIZE_TIMEOUT_MS = 5_000;
+
+export function defaultFetchRunState(
 	provider: RuntimeProvider,
+	opts?: {
+		readonly pollMs?: number;
+		readonly timeoutMs?: number;
+		readonly sleep?: (ms: number) => Promise<void>;
+	},
 ): (handle: RunHandle) => Promise<RunTerminalState> {
+	const pollMs = opts?.pollMs ?? FINALIZE_POLL_MS;
+	const timeoutMs = opts?.timeoutMs ?? FINALIZE_TIMEOUT_MS;
+	const sleep =
+		opts?.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
 	return async (handle) => {
 		// warren-11cc: read the run's terminal state through the provider seam
 		// (`status()` never throws on a missing run — it reports `exists:false`).
-		// A non-terminal or absent run maps to `failed` so the warren row
-		// finalizes rather than stranding as running.
-		const status = await provider.status(handle);
-		const phase = status.phase;
-		if (phase === "succeeded" || phase === "failed" || phase === "cancelled") return phase;
+		// warren-2909: tolerate burrow's finalize lag — while the phase is still
+		// `queued`/`running`, retry on a bounded budget instead of mapping the
+		// first non-terminal read straight to `failed`. A run that never reaches
+		// terminal within the budget maps to `failed` so the warren row finalizes
+		// rather than stranding as running.
+		const maxAttempts = Math.max(1, Math.ceil(timeoutMs / pollMs));
+		for (let attempt = 0; attempt < maxAttempts; attempt++) {
+			const status = await provider.status(handle);
+			const phase = status.phase;
+			if (phase === "succeeded" || phase === "failed" || phase === "cancelled") return phase;
+			if (attempt < maxAttempts - 1) await sleep(pollMs);
+		}
 		return "failed";
 	};
 }
