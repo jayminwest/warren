@@ -112,6 +112,43 @@ describe("bridgeRunStream — event flow", () => {
 		expect(published).toEqual(["text", "telemetry"]);
 	});
 
+	test("drops per-delta noise envelopes (tool_execution_update, message_start); keeps lifecycle markers and turn_end", async () => {
+		const stateChange =
+			(type: string) =>
+			(seq: number): StreamEventView =>
+				evt(burrowRunId, seq, {
+					kind: "state_change",
+					stream: "system",
+					payload: { type },
+				});
+		const result = await bridgeRunStream({
+			runId,
+			burrowRunId,
+			repos,
+			broker,
+			burrowId: "bur_aaaaaaaaaaaa",
+			runtimeProvider: makeProvider(),
+			source: source([
+				evt(burrowRunId, 1),
+				// Dropped: burrow's parser maps pi's unknown
+				// tool_execution_update into state_change.
+				stateChange("tool_execution_update")(2),
+				stateChange("message_start")(3),
+				// Kept: once-per-invocation lifecycle markers.
+				stateChange("turn_start")(4),
+				stateChange("tool_execution_start")(5),
+				stateChange("tool_execution_end")(6),
+				// Kept: HARD CONSTRAINT — usage aggregation reads turn_end.
+				stateChange("turn_end")(7),
+			]),
+		});
+
+		expect(result.written).toBe(5);
+		expect(result.skipped).toBe(0);
+		const rows = await repos.events.listByRun(runId);
+		expect(rows.map((e) => e.burrowEventSeq)).toEqual([1, 4, 5, 6, 7]);
+	});
+
 	test("resume: skips events with seq <= MAX(burrow_event_seq)", async () => {
 		await repos.events.append({
 			runId,
