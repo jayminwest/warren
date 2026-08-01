@@ -36,7 +36,6 @@
 import { formatError } from "../core/errors.ts";
 import type { Repos } from "../db/repos/index.ts";
 import type { PlanRunChildRow, PlanRunChildState, PlanRunRow } from "../db/schema.ts";
-import { buildDispatchPrompt } from "../runs/dispatch-prompt.ts";
 import { SeedNotFoundError, type SeedShowResult } from "../seeds-cli/index.ts";
 import { handleInFlight } from "./in-flight.ts";
 import { type CoordinatorReopenPrFn, checkParentRunMerged } from "./merge-gate.ts";
@@ -245,11 +244,8 @@ export async function advancePlanRun(input: AdvancePlanRunInput): Promise<Advanc
 			continue;
 		}
 
-		// Dispatch the next child; seed text inlined via the shared builder.
-		const prompt = buildDispatchPrompt({
-			template: planRun.promptTemplate,
-			seed: { id: next.seedId, title: seedShow.title, body: seedShow.description },
-		});
+		// Dispatch the next child; legacy {seed_id}-only template render.
+		const prompt = planRun.promptTemplate.replace(/\{seed_id\}/g, next.seedId);
 		let spawnResult: CoordinatorSpawnResult;
 		try {
 			spawnResult = await input.spawn({ planRun, child: next, prompt });
