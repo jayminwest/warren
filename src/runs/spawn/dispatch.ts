@@ -60,7 +60,6 @@ import {
 } from "./rollback.ts";
 import { writeSeedExtensions } from "./seed-extensions.ts";
 import type { SpawnRunInput, SpawnRunResult } from "./types.ts";
-import { resolveCoordinationProject } from "./util.ts";
 
 /**
  * Vestigial worker-placement label carried on the `spawn.placement` /
@@ -114,14 +113,6 @@ export async function spawnRun(input: SpawnRunInput): Promise<SpawnRunResult> {
 				})
 			: null;
 	const projectAfterRefresh = refreshed?.project ?? project;
-
-	// warren-c1a4: coordination project — host clone the post-dispatch
-	// seed stamp target (defaults to the execution project).
-	const coordinationProject = await resolveCoordinationProject(
-		input.repos,
-		input.seedProjectId,
-		projectAfterRefresh,
-	);
 
 	// warren-618b: fold per-project provider/model defaults onto the agent
 	// frontmatter, operator per-run override winning. Order: operator
@@ -280,7 +271,7 @@ export async function spawnRun(input: SpawnRunInput): Promise<SpawnRunResult> {
 			await writeSeedExtensions({
 				repos: input.repos,
 				seedsCli: input.seedsCli,
-				projectPath: coordinationProject.localPath,
+				projectPath: projectAfterRefresh.localPath,
 				seedId: input.seedId,
 				runId: run.id,
 				agentName: agent.name,
