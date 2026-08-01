@@ -9,18 +9,18 @@
 	"$comment_public_labels_2026_07_30": "BOUNDED AUTO-RAISE (warren-14fc / #641): src/ui/src/lib/labels.ts adds the visitor-facing label maps for run / plan-run failure reasons plus the plan-run child rollup, and the call sites that consume them. Net +607 B gzip js / +1211 B raw js — ordinary feature growth, well inside AUTO_RAISE_CAP, re-baselined via `bun run check:bundle-size --update` on a clean --frozen-lockfile build. No new dependency. CSS shrank (no new utilities) and is ratcheted down to its measured floor. The 'ratchet only goes down' rule resumes from here.",
 	"totals": {
 		"raw": {
-			"js": 944593,
-			"css": 37315
+			"js": 944351,
+			"css": 37264
 		},
 		"gzip": {
-			"js": 286272,
-			"css": 7688
+			"js": 286391,
+			"css": 7681
 		}
 	},
 	"largest": {
 		"gzip": {
-			"js": 160750,
-			"css": 7688
+			"js": 160808,
+			"css": 7681
 		}
 	}
 }

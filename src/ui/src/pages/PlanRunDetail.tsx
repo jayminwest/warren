@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CircleStop } from "lucide-react";
 import { useParams } from "react-router-dom";
 import { planRunsApi } from "@/api/client.ts";
-import type { PlanRunChildRow, PlanRunRow, RunRow } from "@/api/types.ts";
+import type { PlanRunRow, RunRow } from "@/api/types.ts";
 import { isTerminalPlanRunState } from "@/api/types.ts";
 import { OperatorOnly } from "@/components/OperatorOnly.tsx";
 import { PlanRunStateBadge } from "@/components/PlanRunStateBadge.tsx";
@@ -95,12 +95,9 @@ export function PlanRunDetailPage() {
 					<span className="font-mono text-xs">{planRun.planId}</span>
 				</MetaCard>
 				<MetaCard label="Agent">{planRun.agentName}</MetaCard>
-				<MetaCard label="Coordination">
-					<span className="font-mono text-xs" title="coordination project (where the seeds live)">
-						{planRun.projectId}
-					</span>
+				<MetaCard label="Project">
+					<span className="font-mono text-xs">{planRun.projectId}</span>
 				</MetaCard>
-				<MetaCard label="Executes across">{renderExecutionRepos(planRun, children)}</MetaCard>
 				<MetaCard label="Dispatcher">{planRun.dispatcherHandle}</MetaCard>
 				<MetaCard label="Trigger">{planRun.trigger}</MetaCard>
 				<MetaCard label="Children">{children.length}</MetaCard>
@@ -165,35 +162,6 @@ function CancelStatus({
 		return <p className="text-xs text-emerald-700 dark:text-emerald-300">Cancel forwarded.</p>;
 	}
 	return null;
-}
-
-/**
- * Distinct execution repos a plan-run dispatches across (pl-fb43 step 6 /
- * warren-57f6). Children inherit the coordination project unless their
- * seed carries a routing tag, so the common single-repo case
- * renders as the coordination project itself; a cross-repo plan lists each
- * distinct execution project. Children not yet dispatched (null
- * `executionProjectId`) are ignored until the coordinator stamps them.
- */
-function renderExecutionRepos(planRun: PlanRunRow, children: PlanRunChildRow[]): React.ReactNode {
-	const distinct = new Set<string>();
-	for (const c of children) {
-		if (c.executionProjectId !== null) distinct.add(c.executionProjectId);
-	}
-	if (distinct.size === 0) {
-		return (
-			<span className="font-mono text-xs text-(--color-muted-foreground)">{planRun.projectId}</span>
-		);
-	}
-	return (
-		<div className="flex flex-wrap gap-1">
-			{[...distinct].map((repo) => (
-				<span key={repo} className="rounded bg-(--color-muted) px-1.5 py-0.5 font-mono text-xs">
-					{repo}
-				</span>
-			))}
-		</div>
-	);
 }
 
 function MetaCard({ label, children }: { label: string; children: React.ReactNode }) {
