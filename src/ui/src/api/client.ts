@@ -263,7 +263,7 @@ export const runsApi = {
 		}),
 	/**
 	 * Preview login handshake (`POST /runs/:id/preview/login`, R-19 /
-	 * SPEC §11.L, warren-8a10 / warren-edff; warren-e1b0 moved the bearer
+	 * docs/design/preview-environments.md, warren-8a10 / warren-edff; warren-e1b0 moved the bearer
 	 * out of the URL). The bearer rides the `Authorization` header like
 	 * every other call in this module; the server answers with a
 	 * `Set-Cookie` the browser stores for the same-origin preview surface
@@ -280,7 +280,7 @@ export const runsApi = {
 };
 
 /**
- * Deployment-wide preview config (R-19 / SPEC §11.L path addendum,
+ * Deployment-wide preview config (R-19 / docs/design/preview-environments.md path addendum,
  * warren-016d). Fetched once per session — mode/host can only change via
  * a warren restart — and consumed by `PreviewCard` to render the
  * canonical preview URL string.

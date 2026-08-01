@@ -134,7 +134,7 @@ describe("createPreviewProxyHandler (path mode) — referer routing (warren-63e1
 		});
 		const url = new URL(request.url);
 		// Subdomain mode keys off Host, which doesn't match the preview suffix
-		// here; referer routing is path-mode-only by design (SPEC §11.L
+		// here; referer routing is path-mode-only by design (docs/design/preview-environments.md
 		// addendum: subdomain mode owns its own DNS and emits absolute URLs
 		// from the upstream's own origin).
 		expect(await handler(request, url)).toBeNull();

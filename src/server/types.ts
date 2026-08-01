@@ -234,7 +234,7 @@ export interface ServerDeps {
 	 */
 	readonly runBranchPrefixDefault?: string;
 	/**
-	 * Preview port allocator range (R-19 / SPEC §11.L, warren-2277).
+	 * Preview port allocator range (R-19 / docs/design/preview-environments.md, warren-2277).
 	 * Resolved from `WARREN_PREVIEW_PORT_RANGE` at boot so `/readyz`'s
 	 * `preview_port_allocator` saturation probe matches what the reap-time
 	 * launcher allocates against. Tests may omit; the probe degrades to
@@ -242,7 +242,7 @@ export interface ServerDeps {
 	 */
 	readonly previewPortRange?: { readonly start: number; readonly end: number };
 	/**
-	 * Live-preview cap (R-19 / SPEC §11.L, warren-ea6b). Resolved from
+	 * Live-preview cap (R-19 / docs/design/preview-environments.md, warren-ea6b). Resolved from
 	 * `WARREN_PREVIEW_MAX_LIVE` at boot so `/readyz`'s `preview_max_live`
 	 * saturation probe matches the eviction worker's LRU cap. Tests may omit; the
 	 * probe falls back to `DEFAULT_MAX_LIVE` so the codepath still exercises.
@@ -256,7 +256,7 @@ export interface ServerDeps {
 	 */
 	readonly workspaceGcTtlMs?: number;
 	/**
-	 * Operator's preview host suffix (R-19 / SPEC §11.L, warren-8a10).
+	 * Operator's preview host suffix (R-19 / docs/design/preview-environments.md, warren-8a10).
 	 * Resolved at boot from `WARREN_PREVIEW_HOST`. In subdomain mode the
 	 * Host-match preview proxy preamble requires this; in path mode it stays
 	 * optional (previews ride on the warren host itself). Undefined + subdomain
@@ -264,7 +264,7 @@ export interface ServerDeps {
 	 */
 	readonly previewHost?: string;
 	/**
-	 * Preview routing mode (warren-edff / SPEC §11.L path addendum).
+	 * Preview routing mode (warren-edff / docs/design/preview-environments.md path addendum).
 	 * Drives the login handler's redirect validation: subdomain mode
 	 * targets `https://run-<id>.<host>/`; path mode targets the inbound
 	 * origin under `/p/<id>/`. Defaults to `subdomain` so legacy callers
@@ -273,7 +273,7 @@ export interface ServerDeps {
 	 */
 	readonly previewMode?: PreviewMode;
 	/**
-	 * Signed-cookie auth for the preview proxy (R-19 / SPEC §11.L,
+	 * Signed-cookie auth for the preview proxy (R-19 / docs/design/preview-environments.md,
 	 * warren-8a10). Bound at boot from `WARREN_API_TOKEN` (the same
 	 * bearer the rest of warren uses). Undefined when the operator
 	 * disabled the preview surface (subdomain mode with no host) or
@@ -348,7 +348,7 @@ export interface ServeOptions {
 	 */
 	idleTimeout?: number;
 	/**
-	 * Host-match preview proxy preamble (R-19 / SPEC §11.L, warren-8a10).
+	 * Host-match preview proxy preamble (R-19 / docs/design/preview-environments.md, warren-8a10).
 	 * Runs BEFORE auth + route match. Returns a `Response` to short-circuit
 	 * the request, or `null` to fall through to the regular pipeline.
 	 * Undefined → no preview surface (zero overhead per request).

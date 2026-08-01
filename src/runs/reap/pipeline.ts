@@ -341,7 +341,7 @@ async function prOpenStep(ctx: ReapPipelineContext, state: ReapPipelineState): P
 }
 
 /**
- * Preview launch (warren-f156 / SPEC §11.L). Skipped on a dropped commit
+ * Preview launch (warren-f156 / docs/design/preview-environments.md). Skipped on a dropped commit
  * (warren-72b9). warren-4fbe: preview is LocalProvider-only — under a provider
  * with `capabilities.previewPorts === false` (K8s) skip cleanly, surfacing
  * `reap.preview_skipped_unsupported` when a project opted in.

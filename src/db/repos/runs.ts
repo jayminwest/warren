@@ -347,7 +347,7 @@ export class RunsRepo {
 	}
 
 	/**
-	 * Persist per-run preview environment fields (R-19 / SPEC §11.L). Mirrors
+	 * Persist per-run preview environment fields (R-19 / docs/design/preview-environments.md). Mirrors
 	 * `attachStats`'s partial-input semantics (mx-49272e): omitted fields
 	 * preserve existing values, explicit `null` clears. Throws ValidationError
 	 * when called with no fields, matching `attachBurrow` / `attachStats`.

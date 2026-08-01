@@ -15,7 +15,7 @@ import type { RunRow } from "../../db/schema.ts";
 import { previewError } from "./responses.ts";
 import { applyPathModeRewrites } from "./rewrite.ts";
 
-/** SPEC §11.L: debounce `preview_last_hit_at` writes to ~once per 30s. */
+/** docs/design/preview-environments.md: debounce `preview_last_hit_at` writes to ~once per 30s. */
 export const DEFAULT_DEBOUNCE_MS = 30_000;
 
 export async function maybeFlushLastHit(

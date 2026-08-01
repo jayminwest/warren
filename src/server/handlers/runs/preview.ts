@@ -28,7 +28,7 @@ function validatePreviewConfig(deps: ServerDeps, mode: "subdomain" | "path"): Pr
 
 /**
  * `POST /runs/:id/preview/login` with an optional `{redirect}` JSON body
- * (R-19 / SPEC §11.L, warren-8a10; path-mode redirect warren-edff;
+ * (R-19 / docs/design/preview-environments.md, warren-8a10; path-mode redirect warren-edff;
  * per-run cookie name warren-63e1; bearer-out-of-the-URL warren-e1b0).
  *
  * The signed-cookie handshake the preview proxy depends on. A browser
@@ -142,7 +142,7 @@ function resolvePathPreviewRedirect(
 }
 
 /**
- * `POST /runs/:id/preview/teardown` (R-19 / SPEC §11.L acceptance #8,
+ * `POST /runs/:id/preview/teardown` (R-19 / docs/design/preview-environments.md acceptance #8,
  * warren-d725).
  *
  * Idempotent operator-driven teardown of the per-run preview. Bearer-

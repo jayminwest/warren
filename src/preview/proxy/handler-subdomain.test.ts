@@ -100,7 +100,7 @@ describe("createPreviewProxyHandler (subdomain mode)", () => {
 		expect(res?.status).toBe(503);
 	});
 
-	test("401 when cookie is missing — never 200, never 502 (SPEC §11.L risk #2)", async () => {
+	test("401 when cookie is missing — never 200, never 502 (docs/design/preview-environments.md risk #2)", async () => {
 		let upstreamCalled = false;
 		const handler = createPreviewProxyHandler({
 			repos,

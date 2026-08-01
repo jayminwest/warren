@@ -58,7 +58,7 @@ export function whoamiHandler(): RouteHandler {
 }
 
 /**
- * `GET /preview/config` (R-19 / SPEC §11.L path addendum, warren-016d).
+ * `GET /preview/config` (R-19 / docs/design/preview-environments.md path addendum, warren-016d).
  *
  * Surfaces the deployment-wide preview routing mode + optional host so the
  * UI's `PreviewCard` can render the canonical preview URL without having

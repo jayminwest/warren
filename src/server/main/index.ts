@@ -344,7 +344,7 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 		...(opts.now !== undefined ? { now: opts.now } : {}),
 	});
 
-	// Preview TTL + LRU eviction worker (R-19 / SPEC §11.L, warren-ea6b).
+	// Preview TTL + LRU eviction worker (R-19 / docs/design/preview-environments.md, warren-ea6b).
 	const previewEvictionWorker = startPreviewEvictionWorker({
 		db,
 		repos,

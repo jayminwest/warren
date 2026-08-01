@@ -3,7 +3,7 @@
  * 10). Extracted from `bootServer` so the orchestrator in `index.ts`
  * stays under the per-file budget.
  *
- * R-19 / SPEC §11.L (warren-8a10; path-mode scope warren-edff). Both
+ * R-19 / docs/design/preview-environments.md (warren-8a10; path-mode scope warren-edff). Both
  * surfaces (login handshake + proxy preamble) need the same secret;
  * derive from `WARREN_API_TOKEN` so a fresh-install operator doesn't
  * have a second token to manage.

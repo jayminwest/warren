@@ -28,14 +28,14 @@ export interface PreviewLaunchConfig {
 	 * `runs.preview_state`), but `pr_annotate_preview` skips because there
 	 * is no URL to publish.
 	 *
-	 * In path mode (default, warren-fcb7 / SPEC §11.L path addendum) the proxy
+	 * In path mode (default, warren-fcb7 / docs/design/preview-environments.md path addendum) the proxy
 	 * preamble derives the preview origin from the request's own `Host` and
 	 * routes by path prefix, so `host` being null no longer disables the
 	 * preview surface — only subdomain mode still requires this to be set.
 	 */
 	readonly host: string | null;
 	/**
-	 * Routing mode for previews (warren-fcb7 / SPEC §11.L path addendum).
+	 * Routing mode for previews (warren-fcb7 / docs/design/preview-environments.md path addendum).
 	 * `path` (default): previews served at `https://<warren-host>/p/<run-id>/`.
 	 * `subdomain`: previews served at `https://run-<id>.<host>/`. The env
 	 * surface wins over any per-project `.warren/preview.yaml` `mode` pin
@@ -73,7 +73,7 @@ export function loadPreviewLaunchConfigFromEnv(
  * - **Subdomain mode** (`https://run-<id>.<host>`): the reviewer-facing
  *   shape from the original §11.L. No trailing slash so the URL stays
  *   stable across modes and existing PR annotations.
- * - **Path mode** (`https://<host>/p/<id>/`, warren-c3c4 / SPEC §11.L
+ * - **Path mode** (`https://<host>/p/<id>/`, warren-c3c4 / docs/design/preview-environments.md
  *   addendum): trailing slash is load-bearing — without it the browser
  *   resolves the upstream's root-relative HTML (`href="/assets/foo"`)
  *   against `/p/` instead of `/p/<id>/`, defeating the proxy preamble.

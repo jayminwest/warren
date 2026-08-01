@@ -8,7 +8,7 @@ import {
 } from "./schema.ts";
 
 describe("PreviewConfigSchema", () => {
-	test("accepts the full server-type shape from SPEC §11.L", () => {
+	test("accepts the full server-type shape from docs/design/preview-environments.md", () => {
 		const parsed = PreviewConfigSchema.safeParse(VALID_SERVER_PREVIEW);
 		expect(parsed.success).toBe(true);
 	});

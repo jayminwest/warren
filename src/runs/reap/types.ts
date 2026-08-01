@@ -115,7 +115,7 @@ export interface ReapRunInput {
 	 */
 	readonly sleep?: (ms: number) => Promise<void>;
 	/**
-	 * Per-run preview environments (R-19 / SPEC §11.L, warren-f156). When
+	 * Per-run preview environments (R-19 / docs/design/preview-environments.md, warren-f156). When
 	 * the project has opted in via `.warren/defaults.json` and `outcome ===
 	 * "succeeded"`, reap launches `preview.command` as a long-lived burrow
 	 * sidecar in the same workspace (`preview_launch`) and — if `pr_open`
@@ -252,7 +252,7 @@ export interface ReapRunResult {
 	 */
 	readonly prUrl: string | null;
 	/**
-	 * Terminal state of the preview launch (R-19 / SPEC §11.L,
+	 * Terminal state of the preview launch (R-19 / docs/design/preview-environments.md,
 	 * warren-f156). `null` when the sub-step was skipped (project didn't
 	 * opt in, outcome !== succeeded, worker !== local, type !== server) —
 	 * not when it failed. `live` / `failed` carry the matching

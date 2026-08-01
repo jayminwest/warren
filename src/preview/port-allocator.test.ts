@@ -85,11 +85,11 @@ describe("rangeSize", () => {
 });
 
 describe("constants", () => {
-	test("PORT_EXHAUSTED_REASON matches SPEC §11.L wording", () => {
+	test("PORT_EXHAUSTED_REASON matches docs/design/preview-environments.md wording", () => {
 		expect(PORT_EXHAUSTED_REASON).toBe("port_exhausted");
 	});
 
-	test("warn ratio matches SPEC §11.L (≥80%)", () => {
+	test("warn ratio matches docs/design/preview-environments.md (≥80%)", () => {
 		expect(PREVIEW_PORT_USAGE_WARN_RATIO).toBe(0.8);
 	});
 });

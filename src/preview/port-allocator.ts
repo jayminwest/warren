@@ -1,5 +1,5 @@
 /**
- * Dialect-polymorphic preview port allocator (R-19 / SPEC §11.L, warren-2277;
+ * Dialect-polymorphic preview port allocator (R-19 / docs/design/preview-environments.md, warren-2277;
  * dialect-aware port via warren-adfb).
  *
  * Picks a free TCP port from a configurable range and claims it by writing
@@ -35,7 +35,7 @@
  *
  * **Exhaustion.** Returns `{ status: 'exhausted' }` instead of throwing.
  * The reap-time launch sub-step (warren-f156) translates that into a
- * `preview_failed` event with `reason='port_exhausted'` per SPEC §11.L.
+ * `preview_failed` event with `reason='port_exhausted'` per docs/design/preview-environments.md.
  */
 
 import { and, eq, inArray, isNotNull, sql } from "drizzle-orm";

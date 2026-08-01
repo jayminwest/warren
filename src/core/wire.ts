@@ -282,7 +282,7 @@ export interface AgentRow {
 }
 
 /**
- * Preview environment lifecycle (R-19 / SPEC §11.L).
+ * Preview environment lifecycle (R-19 / docs/design/preview-environments.md).
  *
  *   - `starting`    — `preview_launch` sub-step has spawned the sidecar
  *                     command in burrow; readiness probe hasn't returned

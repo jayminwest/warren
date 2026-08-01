@@ -72,7 +72,7 @@ describe("rewriteLocationHeader", () => {
 	});
 
 	test("leaves non-absolute paths untouched (relative or fragment)", () => {
-		// Per SPEC §11.L only same-origin absolute paths (start with `/`)
+		// Per docs/design/preview-environments.md only same-origin absolute paths (start with `/`)
 		// are rewritten. Relative / fragment values stay verbatim.
 		expect(rewriteLocationHeader("foo/bar", PREFIX)).toBe("foo/bar");
 		expect(rewriteLocationHeader("#anchor", PREFIX)).toBe("#anchor");
