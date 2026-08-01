@@ -34,19 +34,18 @@ not a bundled feature: activated by the project having a `.seeds/`
 directory, `POST /plan-runs` walks a seeds plan's children one at a
 time, gating each on the previous PR merging before the next
 dispatches. Re-dispatching the same plan resumes from the next open
-child. See SPEC §11.P.
+child. See [docs/design/plan-run-coordinator.md](docs/design/plan-run-coordinator.md).
 
 Two former data-plane features — **plot** (a shared coordination
 substrate) and **canopy** (an external agent-definition library) — have
 been **retired and deleted** in plan pl-3a79: their code, DB surface,
 UI, config, CLI paths, and env knobs (`PLOT_ID`, `CANOPY_REPO_URL`,
-`POST /agents/refresh`, `warren register-agent`) are gone. SPEC §11.O
-and §4.2/§8.1 carry RETIRED banners; see ROADMAP.md for the
-sequencing (docs/PHILOSOPHY.md holds policy only).
+`POST /agents/refresh`, `warren register-agent`) are gone. See
+ROADMAP.md for the sequencing (docs/PHILOSOPHY.md holds policy only).
 
 Same code, same depth — only the user-facing framing surfaces the
 integrations as opt-in. When you change cross-cutting docs (README,
-SPEC §1/§2, package description), keep the standalone path primary and
+package description), keep the standalone path primary and
 the integrations as features that light up when used.
 
 Warren runs against a swappable **runtime provider**, resolved once at
@@ -63,11 +62,13 @@ LocalProvider's substrate, **not a required warren dependency** — see
 "Relationship to burrow" below and [docs/RUNBOOK-K8S.md](docs/RUNBOOK-K8S.md)
 for the K8s topology.
 
-[SPEC.md](SPEC.md) is the V1 design record. The manual-run path
+The topic records under [docs/design/](docs/design/) are the design
+record. The manual-run path
 (`warren run <agent> <project> -p "..."`) and the cron half of the
 scheduler (`.warren/triggers.yaml` + past-due `scheduledFor` seed
-extensions, SPEC §11.I) are what V1 ships; GitHub webhook triggers
-and library API exports are deferred to V2.
+extensions, [docs/design/scheduler.md](docs/design/scheduler.md)) are
+what V1 ships; GitHub webhook triggers and library API exports are
+deferred to V2.
 
 ### Per-project config (`.warren/config.yaml`)
 
@@ -78,9 +79,10 @@ and is surfaced by `loadWarrenConfig()`. Notable knobs:
 
 - `defaultRole`, `defaultPrompt`, `defaultProvider`, `defaultModel`,
   `defaultBranch`, `runBranchPrefix` — dispatch-time defaults; see
-  SPEC §11.H.
+  [docs/design/warren-config.md](docs/design/warren-config.md).
 - `preview` — per-run preview environments; canonical home is
-  `.warren/preview.yaml`, see SPEC §11.L.
+  `.warren/preview.yaml`, see
+  [docs/design/preview-environments.md](docs/design/preview-environments.md).
 - `agent.skipGitHooks` (default `false`) — set to `true` to skip arming
   the project's git pre-commit gate on the host clone before each run.
   By default warren detects a `git config core.hooksPath` call in the
@@ -97,7 +99,8 @@ and is surfaced by `loadWarrenConfig()`. Notable knobs:
   cluster-wide env knobs pair with it: `WARREN_K8S_MAX_QUEUE_DEPTH`
   (total non-terminal pods, default 50) and `WARREN_K8S_MAX_PENDING_PODS`
   (Pending pods, default 20); `0` disables a cap. Ignored by LocalProvider.
-  SPEC §3.3 (warren-b6f2, supersedes warren-b01e + warren-ea4f).
+  See [docs/design/k8s-migration.md](docs/design/k8s-migration.md) §3.3
+  (warren-b6f2, supersedes warren-b01e + warren-ea4f).
 
 ## Relationship to burrow
 
@@ -133,8 +136,9 @@ flags in `docker-compose.yml`).
   supervisor runs the local copy. Update both, regenerate the lockfile,
   re-test.
 - Burrow needs three apparmor/seccomp/systempaths-unconfined flags + `cap_add:
-  SYS_ADMIN` on Linux to do user-namespace nesting (see SPEC §5.3 and burrow
-  `DEPLOY.md`). These are baked into `docker-compose.yml`; don't strip them.
+  SYS_ADMIN` on Linux to do user-namespace nesting (see
+  [docs/design/runtime-and-supervisor.md](docs/design/runtime-and-supervisor.md)
+  and burrow `DEPLOY.md`). These are baked into `docker-compose.yml`; don't strip them.
 
 ## Tech Stack
 

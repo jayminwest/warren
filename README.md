@@ -54,7 +54,7 @@ Then **Dispatch run**, pick `claude-code`, write a prompt, and start it. The eve
 
 `:latest` tracks `main`. Pin a release with `:v0.12.2`, the first buildable 0.12 image. The `v0.12.0` and `v0.12.1` tags exist but carry no container image. Their builds were broken and the fix landed in v0.12.2, so do not pin them. Two of the three 0.12 tags are unbuildable. Prefer the explicit `:v0.12.2` pin over the moving `:0.12` minor tag.
 
-The four security flags relax the outer container so the sandbox runtime can nest its own user namespaces (SPEC §5.3). Remove any one of them and sandbox provisioning fails.
+The four security flags relax the outer container so the sandbox runtime can nest its own user namespaces (see [docs/design/runtime-and-supervisor.md](docs/design/runtime-and-supervisor.md)). Remove any one of them and sandbox provisioning fails.
 
 | Variable | Purpose |
 |---|---|
@@ -97,7 +97,7 @@ The active frontier is the org-readiness cluster: SSO, remote workers, MCP, audi
 - **Steerable mid-run.** `POST /runs/:id/steer` lands a message in the agent's inbox, and the next turn picks it up. `POST /runs/:id/cancel` aborts cleanly.
 - **Scheduled runs.** `.warren/triggers.yaml` defines cron triggers per project. The in-process scheduler dispatches them on the same composition path as manual runs.
 - **Serial plan-run dispatch.** Projects that ship `.seeds/` can `POST /plan-runs` against a seeds plan. Warren walks the plan's children one at a time, spawns one run per child, and gates each on the previous PR merging. A re-dispatch after some children close resumes from the next open child.
-- **Three thin clients of one pipeline.** The web UI, the `warren` admin CLI, and the HTTP API all flow through the same composition path ([SPEC §4.3](SPEC.md#43-the-composition-flow)).
+- **Three thin clients of one pipeline.** The web UI, the `warren` admin CLI, and the HTTP API all flow through the same composition path ([docs/design/agent-composition.md](docs/design/agent-composition.md)).
 
 ## Deploy
 
@@ -140,7 +140,7 @@ Warren ships enough operator-visible surface to stay inspectable without extra i
 - **Health and readiness probes.** `GET /healthz` is a cheap liveness check that returns `{ok: true}` and needs no auth. Point an uptime monitor or the cluster's liveness probe at it. `GET /readyz` runs deeper diagnostics (DB reachable, bwrap usable under `local`) and returns a `DiagnosticCheck[]` payload. Use it for deploy gating and the cluster's readiness probe, not for hot-path liveness. `GET /version` returns `{version}` straight from `src/index.ts`, which confirms that a rollout actually swapped the image. [`deploy-gke.yml`](.github/workflows/deploy-gke.yml) polls it after every release and fails the deploy on a mismatch.
 - **Structured JSON logs.** The server emits one [pino](https://getpino.io) JSON line per event on stdout (name `warren`, level from `WARREN_LOG_LEVEL`, default `info`). Stream them with `docker compose logs -f warren` on a single box, or `kubectl -n warren logs deploy/warren` on a cluster. Pipe through `| jq` for ad-hoc filtering. Ship to an external store with a [pino transport](https://getpino.io/#/docs/transports) if you need retention beyond your log driver's window.
 - **Correlation IDs.** Every HTTP response carries an `X-Request-ID` header (`src/server/request-id.ts`, warren-30af). Warren honours a well-formed inbound `X-Request-ID` and otherwise mints one. The same id binds into the per-request pino child logger, so `jq 'select(.req_id == "…")'` over the logs reconstructs the full server-side trace for one client call. Forward the header from any reverse proxy in front of warren to keep the chain unbroken.
-- **Per-run cost and token usage.** Warren populates the `runs.cost_usd` and `runs.tokens_*` columns for the `pi` and `claude-code` built-ins (SPEC §11.K). The UI run-detail page surfaces them, and `GET /analytics/cost?from=&to=&projectId=` aggregates across runs (`src/db/repos/runs.ts:listForAnalytics`). These numbers report usage. They do not enforce limits — budget caps land in R-17.
+- **Per-run cost and token usage.** Warren populates the `runs.cost_usd` and `runs.tokens_*` columns for the `pi` and `claude-code` built-ins (see [docs/design/agent-composition.md](docs/design/agent-composition.md)). The UI run-detail page surfaces them, and `GET /analytics/cost?from=&to=&projectId=` aggregates across runs (`src/db/repos/runs.ts:listForAnalytics`). These numbers report usage. They do not enforce limits — budget caps land in R-17.
 - **Pre-flight checks.** Run `warren doctor` (`src/cli/commands/doctor.ts`) against a deployed instance. It surfaces common misconfigurations: empty or placeholder bearer tokens, unbalanced preview markers, and a missing `WARREN_PREVIEW_HOST` on a project that uses previews. Cheaper than reading the logs after a failed run.
 
 V1 ships a bearer-gated Prometheus exposition endpoint (`GET /metrics`) that works under both runtimes. It carries no OpenTelemetry exporter. For richer tracing, the request-id and pino combination is the seam to extend. The route table (`ROUTE_TABLE` in `src/server/handlers/index.ts`) is the stable surface to instrument against.
@@ -156,10 +156,10 @@ Questions, help, or feedback? [Join the Discord](https://discord.gg/4r6r5jUEFE).
 Warren bundles a few [os-eco](https://github.com/jayminwest/os-eco) tools as opt-in features. A basic run needs none of them, and each one stays silent until a project uses it.
 
 - **Agent memory.** A project with a `.mulch/` directory gets its expertise primed into every run, and reap merges new records back with last-write-wins by timestamp.
-- **Issue queue.** A project with a `.seeds/` directory lets agents read the queue, claim work, file follow-ups, and close finished issues. `.seeds/` also unlocks serial plan-run dispatch and past-due `extensions.scheduledFor` triggers (SPEC §11.I, §11.P). Tune the plan-run coordinator with `WARREN_PLAN_RUN_TICK_MS` (default 10s), or turn it off with `WARREN_PLAN_RUN_DISABLED=1`.
+- **Issue queue.** A project with a `.seeds/` directory lets agents read the queue, claim work, file follow-ups, and close finished issues. `.seeds/` also unlocks serial plan-run dispatch and past-due `extensions.scheduledFor` triggers (see [docs/design/scheduler.md](docs/design/scheduler.md) and [docs/design/plan-run-coordinator.md](docs/design/plan-run-coordinator.md)). Tune the plan-run coordinator with `WARREN_PLAN_RUN_TICK_MS` (default 10s), or turn it off with `WARREN_PLAN_RUN_DISABLED=1`.
 - **Alternative harness.** The built-in `sapling` agent is a second coding harness on the same dispatch path. Use it the way you use `claude-code`.
 
-See [SPEC §11](SPEC.md) for the full contracts.
+See the topic records under [docs/design/](docs/design/) for the full contracts.
 
 ## PR-body template
 
@@ -177,7 +177,7 @@ Please follow our [PR checklist](https://example.com/checklist) before merging.
 
 Recognized fragment names: `title`, `summary`, `run`, `seeds`, `preview_url_or_placeholder`, `commits`, `files_changed`, `prompt`, `trailer`.
 
-A whitespace-only body removes the fragment entirely. Unknown names and unbalanced preview markers surface through `warren doctor`, so typos are loud. See [SPEC §11.L](SPEC.md) for the full fragment contract.
+A whitespace-only body removes the fragment entirely. Unknown names and unbalanced preview markers surface through `warren doctor`, so typos are loud. See [docs/design/preview-environments.md](docs/design/preview-environments.md) for the full fragment contract.
 
 ## Per-run preview environments
 
@@ -219,7 +219,7 @@ The proxy rejects unauthenticated browser requests with 401, not 502. The HMAC k
 *.preview.warren.example.com   CNAME   warren.example.com
 ```
 
-**TLS through Caddy with a wildcard cert.** TLS stays on the operator's edge (SPEC §8.1 / §11.D). Use Caddy's DNS-01 challenge to issue `*.preview.warren.example.com`, because HTTP-01 cannot issue wildcards. Minimal Caddyfile snippet:
+**TLS through Caddy with a wildcard cert.** TLS stays on the operator's edge (see [SECURITY.md](SECURITY.md)). Use Caddy's DNS-01 challenge to issue `*.preview.warren.example.com`, because HTTP-01 cannot issue wildcards. Minimal Caddyfile snippet:
 
 ```caddyfile
 *.preview.warren.example.com {
@@ -236,7 +236,7 @@ Caddy's DNS-01 plugin supports Cloudflare, Route 53, DigitalOcean, Hetzner, Lino
 
 Per-project overrides for `idle_ttl` and `max_lifetime` live in `.warren/preview.yaml`. `/readyz` surfaces port-allocator saturation warnings.
 
-Warren does not route cross-host preview traffic: the proxy returns **501** for off-host runs (`runs.worker_id` other than the local worker). The `k8s` runtime provider superseded the multi-worker model that once scoped this work (old R-12) — see [ROADMAP.md](ROADMAP.md). See [SPEC §11.L](SPEC.md#11l-per-run-preview-environments-2026-05-14) for the full design.
+Warren does not route cross-host preview traffic: the proxy returns **501** for off-host runs (`runs.worker_id` other than the local worker). The `k8s` runtime provider superseded the multi-worker model that once scoped this work (old R-12) — see [ROADMAP.md](ROADMAP.md). See [docs/design/preview-environments.md](docs/design/preview-environments.md) for the full design.
 
 ## Architecture
 
@@ -262,7 +262,7 @@ Burrow is the LocalProvider's substrate, not a required dependency of warren. Un
                           [browser]
 ```
 
-That is the default (`local`) topology. Warren and burrow share the container, a unix socket, and a bearer token (`BURROW_API_TOKEN` == `WARREN_BURROW_TOKEN`). See [SPEC §10.3](SPEC.md#103-container-layout) for the full layout.
+That is the default (`local`) topology. Warren and burrow share the container, a unix socket, and a bearer token (`BURROW_API_TOKEN` == `WARREN_BURROW_TOKEN`). See [docs/design/runtime-and-supervisor.md](docs/design/runtime-and-supervisor.md) for the full layout.
 
 Under `WARREN_RUNTIME=k8s` this diagram changes shape entirely: no burrow, no supervisor, no unix socket. Warren is a Deployment, and each run is a pod ([docs/RUNBOOK-K8S.md](docs/RUNBOOK-K8S.md)).
 
@@ -353,10 +353,10 @@ src/
 ├── core/               types, errors, id minting (ag_*, prj_*, run_*)
 ├── registry/           agent definition resolution (built-in + library)
 ├── projects/           GitHub clone management
-├── runs/               spawn / stream / reap composition flow (SPEC §4.3)
-├── plan-runs/          serial plan execution (SPEC §11.P)
-├── triggers/           cron + scheduled-for dispatcher (SPEC §11.I)
-├── warren-config/      .warren/ per-project config loader + cache (SPEC §11.H)
+├── runs/               spawn / stream / reap composition flow (docs/design/agent-composition.md)
+├── plan-runs/          serial plan execution (docs/design/plan-run-coordinator.md)
+├── triggers/           cron + scheduled-for dispatcher (docs/design/scheduler.md)
+├── warren-config/      .warren/ per-project config loader + cache (docs/design/warren-config.md)
 ├── client/             typed SDK for driving warren's HTTP API programmatically
 ├── runtime/            RuntimeProvider contract + local and k8s backends
 ├── burrow-client/      facade over the sandbox runtime's HttpClient

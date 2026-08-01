@@ -91,7 +91,7 @@ in the next section).
 
 ## V1 goals under verification
 
-These are the V1 goals (SPEC §3.1, folded in here) the acceptance
+These are the V1 goals the acceptance
 criteria and scenarios 01–13 verify:
 
 - Single-image deploy: `docker compose up` on a home server, `kubectl apply -k` on a cluster (GKE Autopilot), same Dockerfile.
@@ -293,7 +293,7 @@ open http://localhost:8080
 - Empty-push warning fires on a real-work run → the agent didn't
   commit (warren-f3bb / `branchPushed-requires-both-reap-and-sandbox-git`).
 
-## Known V1 caveats (SPEC §11)
+## Known V1 caveats
 
 These don't fail acceptance but are footguns when interpreting
 results:
@@ -317,7 +317,7 @@ results:
 
 ## Dogfood post-mortems (2026-05-09)
 
-The three V1 dogfood passes (SPEC §11.E–§11.G, folded in here) are the
+The three V1 dogfood passes are the
 canonical record of how the composition flow failed in the wild. Re-read
 them before shipping when a manual gate fails.
 
@@ -362,7 +362,7 @@ Other open seeds from this iteration:
 
 - `warren-5f19`: `deleteProject` rmrf's the disk before the row delete. The FK on `runs.project_id` makes the row delete fail. The system ends in a `(row exists, disk gone)` state. Recommended fix: `ON DELETE SET NULL` plus row-first ordering inside a transaction.
 - `warren-1eaa`: `bun install -g` runs as root during build. The `/usr/local/bin/{sd,ml,cn,sapling,overstory}` symlinks point into `/root/.bun/...`, which user `bun` cannot traverse. Every os-eco CLI dangles at runtime.
-- `warren-5165`: `.env.example` and SPEC claimed canopy `env_passthrough` flows via `burrow_config`, but `parseBurrowConfig` only reads `[sandbox].network`. Resolved as docs-only: the claude-code env contract is now burrow-built-in via `burrow-e9e7`. Project-level `env_passthrough` plumbing waits until a non-built-in runtime needs it.
+- `warren-5165`: `.env.example` and warren's docs claimed canopy `env_passthrough` flows via `burrow_config`, but `parseBurrowConfig` only reads `[sandbox].network`. Resolved as docs-only: the claude-code env contract is now burrow-built-in via `burrow-e9e7`. Project-level `env_passthrough` plumbing waits until a non-built-in runtime needs it.
 - `warren-d9ad`: the UI's RunDetail badge does not react to incoming events. Even after the reap fix lands, the UI shows stale state until a manual refresh.
 
 ### Third dogfood
@@ -373,7 +373,7 @@ Two runs against warren-on-warren produced the cleanest signal yet on the compos
 
 **Run 1** (`run_a98cfx1fantf`, prompt `"Work on sd warren-9f65. Use ml"`) completed `succeeded` in 6m28s / 49 turns with `branchPushed: true`. Zero of the agent's work reached the remote: `gh compare main...burrow/bur_r9mjn6da9xc9` reported `ahead_by: 0, total_commits: 0`. The branch ref pointed at main's SHA. Warren reap pushed an unchanged HEAD because the agent never ran `git commit`.
 
-The thin canopy `claude-code` prompt (`canopy-daf3`, `"You are a helpful coding assistant. Be concise."`) carries no commit contract. Combined with `src/runs/reap.ts:257-265` (push-without-commit) and the `branchPushed` boolean, any successful push flips it `true`, including a no-op. The result is a silent work-loss shape that even an attentive operator misreads as success. Filed as `warren-f3bb` (P1: observability fix B, canopy-prompt fix C, SPEC §4.3.6 doc fix D).
+The thin canopy `claude-code` prompt (`canopy-daf3`, `"You are a helpful coding assistant. Be concise."`) carries no commit contract. Combined with `src/runs/reap.ts:257-265` (push-without-commit) and the `branchPushed` boolean, any successful push flips it `true`, including a no-op. The result is a silent work-loss shape that even an attentive operator misreads as success. Filed as `warren-f3bb` (P1: observability fix B, canopy-prompt fix C, docs/design/agent-composition.md doc fix D).
 
 A secondary entanglement: `warren-fead`. The agent emitted `stop_reason=end_turn` while it waited on a foreground `bun install` Monitor. It wrote that it would wait for the monitor, then made no follow-up tool call. The run ended before commit could happen.
 

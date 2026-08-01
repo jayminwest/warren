@@ -21,8 +21,7 @@ their config or directories are present.
 
 `plan-run` is a dispatch mode over the single-run primitive that a
 `.seeds/` plan unlocks. The deletion pass pl-3a79 retired `plot` and
-`canopy` — see `CLAUDE.md` and [`SPEC.md`](SPEC.md) §1 / §11 for the
-full framing.
+`canopy` — see `CLAUDE.md` for the full framing.
 
 The runtime substrate is [burrow](https://github.com/jayminwest/burrow);
 warren and burrow are co-tenanted inside the container and share a unix
@@ -36,7 +35,7 @@ boundary** (`src/supervisor/main.ts`, `src/burrow-client/`,
 - **Runtime:** Bun (runs TypeScript directly, no server build step)
 - **Language:** TypeScript, strict mode (`noUncheckedIndexedAccess`, no `any`)
 - **Lint/format:** Biome (`--error-on-warnings` — warnings fail CI)
-- **Storage:** SQLite via `bun:sqlite` (Postgres optional, see SPEC §11.J)
+- **Storage:** SQLite via `bun:sqlite` (Postgres optional)
 - **HTTP:** `Bun.serve` serves both the JSON API and the SPA
 - **UI:** React + Vite + Tailwind + shadcn-style components, in
   `src/ui/` as the `@os-eco/warren-ui` package, built into `src/ui/dist/`
@@ -302,8 +301,9 @@ Canonical home for per-project defaults. Schema:
 `src/warren-config/schema.ts` (`DefaultsConfigSchema`), surfaced by
 `loadWarrenConfig()`. Notable knobs: `defaultRole`, `defaultPrompt`,
 `defaultProvider`, `defaultModel`, `defaultBranch`, `runBranchPrefix`,
-`preview`, `agent.skipGitHooks`. See `CLAUDE.md` and
-SPEC §11.H / §11.L / §11.O for details.
+`preview`, `agent.skipGitHooks`. See `CLAUDE.md`,
+`docs/design/warren-config.md` and `docs/design/preview-environments.md`
+for details.
 
 ## Golden snapshots
 
@@ -349,7 +349,7 @@ see `CLAUDE.md` for the full command surface.
 ## Further reading
 
 - [`CLAUDE.md`](CLAUDE.md) — authoritative long-form version of this file
-- [`SPEC.md`](SPEC.md) — V1 design record
+- [`docs/design/`](docs/design/) — topic design records
 - [`README.md`](README.md) — user-facing pitch + deploy instructions
 - [`ACCEPTANCE.md`](ACCEPTANCE.md) — operator runbook for V1 release gates
 - [`CHANGELOG.md`](CHANGELOG.md) — release history (0.9.10 and earlier:

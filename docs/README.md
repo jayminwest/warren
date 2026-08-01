@@ -21,7 +21,6 @@ Two paths lead out of here. Take the first to run warren against your own repos.
 - [`http-api.md`](http-api.md) — every HTTP route with its auth posture. `bun run gen:docs` writes this file from `ROUTE_TABLE`.
 - [`openapi.yaml`](openapi.yaml) — the same surface as an OpenAPI 3.1 schema. `bun run gen:openapi` writes it from the same route table.
 - [`CONSTITUTION.md`](CONSTITUTION.md) — the articles that govern warren-authored code, commits, and bot identity.
-- [`../SPEC.md`](../SPEC.md) — the V1 design record. Long, and the deepest answer to "why does it do that".
 - [`../ROADMAP.md`](../ROADMAP.md) — what is in flight now, what comes next, and what warren will not do.
 - [`../ACCEPTANCE.md`](../ACCEPTANCE.md) — the scenario harness that drives a live stack from end to end.
 

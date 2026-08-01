@@ -65,7 +65,7 @@ concerns. Multiple `area/*` labels are fine when work spans subsystems.
 | `area/scheduler`   | Cron triggers + scheduled runs (`.warren/triggers.yaml`)                    |
 | `area/acceptance`  | End-to-end acceptance harness (`scripts/acceptance/`)                       |
 | `area/build`       | Build, CI, lint, type-check, ratchets, tooling (`.github/`, `scripts/`)     |
-| `area/docs`        | Documentation (`README`, `SPEC`, `AGENTS.md`, `docs/`)                      |
+| `area/docs`        | Documentation (`README`, `AGENTS.md`, `docs/`)                      |
 | `area/deps`        | Dependency updates (Dependabot, `bun.lock`, `package.json`)                 |
 
 ### `status/*` — workflow state

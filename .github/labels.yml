@@ -117,7 +117,7 @@
   description: "Build, CI, lint, type-check, ratchets, tooling (.github/, scripts/)"
 - name: "area/docs"
   color: "0e8a16"
-  description: "Documentation (README, SPEC, AGENTS.md, docs/)"
+  description: "Documentation (README, AGENTS.md, docs/)"
 - name: "area/deps"
   color: "0e8a16"
   description: "Dependency updates (Dependabot, bun.lock, package.json)"
