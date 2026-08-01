@@ -458,7 +458,7 @@ The full type surface (all inputs, outputs, row shapes, enums) is in `src/client
 
 ## Operating model
 
-How the current release is scoped. Full details in [SPEC §11.D](SPEC.md#11d-v1-security-posture-known-limitations):
+How the current release is scoped. Full details in [SECURITY.md](SECURITY.md#v1-security-posture-known-limitations):
 
 - **Single bearer token.** Rotation, expiry, and scopes are not supported. Rotate by editing `.env` (or the cluster secret) and bouncing the container. Per-user identity is on the roadmap (R-09).
 - **TLS is upstream's job.** Direct HTTP on a non-loopback bind is a misconfiguration, and `warren doctor` warns.
