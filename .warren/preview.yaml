@@ -1,4 +1,4 @@
-# .warren/preview.yaml — per-run preview environment (warren-5840, SPEC §11.L).
+# .warren/preview.yaml — per-run preview environment (warren-5840, docs/design/preview-environments.md).
 #
 # The top-level document IS the preview block (no `preview:` wrapper key).
 # Uncomment the block below to enable per-run previews. Until you do,

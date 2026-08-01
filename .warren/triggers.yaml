@@ -1,4 +1,4 @@
-# .warren/triggers.yaml — scheduled runs for this project (SPEC §11.I, R-06).
+# .warren/triggers.yaml — scheduled runs for this project (docs/design/scheduler.md, R-06).
 #
 # Each entry is a cron-style trigger. Warren ticks once a minute and
 # spawns a run when a trigger is due. Today only `kind: cron` is
