@@ -68,6 +68,21 @@ export function ndjsonResponse(stream: ReadableStream<Uint8Array>, init?: Respon
 	});
 }
 
+/**
+ * Stamp {@link SECURITY_HEADERS} onto a Response built outside the shared
+ * constructors — the preview-proxy preamble (`src/server/server.ts`) builds
+ * its own envelopes below the normal pipeline, and warren-e2a4's "every
+ * response" baseline has to reach those too. Existing headers win, so an
+ * upstream's own `content-type` / `cache-control` is never clobbered.
+ */
+export function withSecurityHeaders(res: Response): Response {
+	return new Response(res.body, {
+		status: res.status,
+		statusText: res.statusText,
+		headers: mergeHeaders(res.headers, SECURITY_HEADERS),
+	});
+}
+
 function mergeHeaders(
 	provided: HeadersInit | undefined,
 	defaults: Record<string, string>,

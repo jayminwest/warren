@@ -3,8 +3,9 @@
  *
  * Mirrors the precedent in `20-preview.helpers.ts` and
  * `26-plan-run-roundtrip.helpers.ts`: the db seeder, the forbidden-token
- * vocabulary, the route-path derivation and the leak assertions live here
- * so the scenario body stays under the per-file line budget.
+ * vocabulary and the route-path derivation live here so the scenario body
+ * stays under the per-file line budget. The leak assertions that consume
+ * the vocabulary live in `39-public-exposure.leaks.ts`.
  *
  * Two things here carry the weight of the whole scenario:
  *
@@ -29,8 +30,13 @@ import { join } from "node:path";
 
 import { openDatabase } from "../../../src/db/client.ts";
 import { createRepos, type Repos } from "../../../src/db/repos/index.ts";
+import { DEFAULT_SNAPSHOT_PAGE_LIMIT } from "../../../src/runs/events.ts";
 import { REDACTED_AGENT_FIELDS } from "../../../src/server/handlers/agents.ts";
 import { API_ROUTE_POLICIES } from "../../../src/server/handlers/index.ts";
+import {
+	REDACTED_PLAN_RUN_CHILD_FIELDS,
+	REDACTED_PLAN_RUN_FIELDS,
+} from "../../../src/server/handlers/plan-runs-projection.ts";
 import { REDACTED_PROJECT_FIELDS } from "../../../src/server/handlers/projects.ts";
 import { REDACTED_RUN_ANALYTICS_FIELDS } from "../../../src/server/handlers/runs/analytics.ts";
 import { REDACTED_RUN_FIELDS } from "../../../src/server/handlers/runs/lifecycle.ts";
@@ -75,6 +81,19 @@ export const SENTINELS = {
 	eventDsnPassword: "LEAKSENTINELDSNPASSWORD00000001",
 	// A generic `https://user:pass@host` userinfo credential (warren-6fa0).
 	eventUserinfoPassword: "LEAKSENTINELUSERINFOPW0000001",
+	// `watchdog.terminal_reconciled` payload handle (warren-d8f4 censored the
+	// key; warren-b0bd plants the value so the guard has a live target).
+	eventWatchdogBurrowRunId: "brun_LEAKSENTINELWATCHDOG0001",
+	// `reap.workspace_destroyed` payload handle (warren-5f59, same story).
+	eventReapBurrowId: "brw_LEAKSENTINELREAPWS0000001",
+	// plan_runs / plan_run_children redacted columns (warren-8793). Planted
+	// so a projection regression fails on the VALUE, not just the key name.
+	planRunPromptTemplate: "LEAKSENTINEL-PLANRUN-PROMPT-TEMPLATE",
+	planRunDispatcherHandle: "LEAKSENTINEL-DISPATCHER-HANDLE",
+	planRunProviderOverride: "LEAKSENTINEL-PROVIDER-OVERRIDE",
+	planRunModelOverride: "LEAKSENTINEL-MODEL-OVERRIDE",
+	planRunFailureReason: "LEAKSENTINEL-PLANRUN-FAILURE-REASON",
+	planRunChildFailureReason: "LEAKSENTINEL-CHILD-FAILURE-REASON",
 	// A full JWT (three base64url segments). warren-6fa0: the JWT pattern
 	// redacts it whole. `eyJ` header prefix keeps it off ordinary identifiers.
 	eventJwt:
@@ -94,10 +113,22 @@ export const SENTINELS = {
  * (`assertAnalyticsRollupsAbsent`).
  */
 export const FORBIDDEN_FIELD_NAMES: readonly string[] = [
-	...REDACTED_RUN_FIELDS,
-	...REDACTED_PROJECT_FIELDS,
-	...REDACTED_AGENT_FIELDS,
-	...REDACTED_RUN_ANALYTICS_FIELDS,
+	...new Set(
+		[
+			...REDACTED_RUN_FIELDS,
+			...REDACTED_PROJECT_FIELDS,
+			...REDACTED_AGENT_FIELDS,
+			...REDACTED_RUN_ANALYTICS_FIELDS,
+			...REDACTED_PLAN_RUN_FIELDS,
+			...REDACTED_PLAN_RUN_CHILD_FIELDS,
+		].filter(
+			// `failureReason` collides with a PUBLIC runs field (runs serve it
+			// to spectators), so the raw body scan can't carry it — the plan-run
+			// bodies hold it structurally instead (`assertPlanRunFailureReasonAbsent`),
+			// and the planted SENTINELS still cover it at the value level.
+			(name) => name !== "failureReason",
+		),
+	),
 	// Envelope-level, not a row column, so it belongs to no REDACTED_* list:
 	// the instance-wide all-time rollup `GET /runs` drops for a spectator
 	// (warren-946f).
@@ -215,6 +246,10 @@ export async function seedPublicInstanceDb(input: SeedPublicInstanceInput): Prom
 			planId: "pl-3900",
 			projectId: project.id,
 			agentName: PUBLIC_AGENT_NAME,
+			promptTemplate: SENTINELS.planRunPromptTemplate,
+			providerOverride: SENTINELS.planRunProviderOverride,
+			modelOverride: SENTINELS.planRunModelOverride,
+			dispatcherHandle: SENTINELS.planRunDispatcherHandle,
 			children: [{ seq: 1, seedId }],
 		});
 		await repos.planRuns.updateChild({
@@ -222,6 +257,16 @@ export async function seedPublicInstanceDb(input: SeedPublicInstanceInput): Prom
 			seq: 1,
 			patch: { runId: run.id, state: "merged" },
 		});
+		// `failureReason` only lands through `transitionTo`, which would move
+		// the plan-run to a terminal state — and the stream-cap assertions
+		// hold their slots against a LIVE plan-run tail. Plant the sentinels
+		// with raw UPDATEs instead, past the state machine (warren-b0bd).
+		db.raw
+			.query("UPDATE plan_runs SET failure_reason = ? WHERE id = ?")
+			.run(SENTINELS.planRunFailureReason, planRun.planRun.id);
+		db.raw
+			.query("UPDATE plan_run_children SET failure_reason = ? WHERE plan_run_id = ? AND seq = 1")
+			.run(SENTINELS.planRunChildFailureReason, planRun.planRun.id);
 
 		return {
 			projectId: project.id,
@@ -269,10 +314,17 @@ export async function poisonAgentRow(tmpRoot: string): Promise<void> {
 }
 
 /**
- * The transcript half. Seven events: a shape-matched credential, the
- * instance's own token, a secret-NAMED field, a DSN / userinfo URL / JWT
- * (warren-6fa0), a dropped-whole `bridge_lost`, and `reap_failed` /
- * `spawn_failed` planting `/data/` / `/home/` paths + raw stderr (warren-cbd8).
+ * The transcript half. Nine planted events: a shape-matched credential,
+ * the instance's own token, a secret-NAMED field, a DSN / userinfo URL /
+ * JWT (warren-6fa0), a dropped-whole `bridge_lost`, `reap_failed` /
+ * `spawn_failed` planting `/data/` / `/home/` paths + raw stderr
+ * (warren-cbd8), and `watchdog.terminal_reconciled` /
+ * `reap.workspace_destroyed` carrying the internal runtime handles
+ * warren-d8f4 / warren-5f59 censor on the key (warren-b0bd).
+ *
+ * After the planted nine, filler events bring the log past
+ * `DEFAULT_SNAPSHOT_PAGE_LIMIT` so the scenario can prove an anonymous
+ * replay is a bounded page, not the whole transcript (warren-2a8b).
  */
 async function seedEvents(repos: Repos, runId: string, instanceToken: string): Promise<void> {
 	const ts = "2026-07-27T00:00:00.000Z";
@@ -347,6 +399,37 @@ async function seedEvents(repos: Repos, runId: string, instanceToken: string): P
 		stream: "system",
 		payload: { step: "spawn", message: "clone stderr: /home/operator/.ssh unreadable" },
 	});
+	await repos.events.append({
+		runId,
+		burrowEventSeq: 8,
+		ts,
+		kind: "watchdog.terminal_reconciled",
+		stream: "system",
+		payload: { burrowRunId: SENTINELS.eventWatchdogBurrowRunId, state: "succeeded" },
+	});
+	await repos.events.append({
+		runId,
+		burrowEventSeq: 9,
+		ts,
+		kind: "reap.workspace_destroyed",
+		stream: "system",
+		payload: { burrowId: SENTINELS.eventReapBurrowId, archived: true },
+	});
+
+	// Filler past the snapshot page bound (warren-b0bd). Seq starts at 1000
+	// so the planted nine stay at the head of the replay where the sentinel
+	// assertions can find them.
+	const filler = DEFAULT_SNAPSHOT_PAGE_LIMIT + 1 - 9;
+	for (let i = 0; i < filler; i++) {
+		await repos.events.append({
+			runId,
+			burrowEventSeq: 1000 + i,
+			ts,
+			kind: "agent_output",
+			stream: "stdout",
+			payload: { text: `scenario-39 filler event ${i}` },
+		});
+	}
 }
 
 /* ----------------------------------------------------------------------- */
@@ -404,97 +487,4 @@ export function publicGetCalls(ids: SeededIds): readonly RouteCall[] {
 		}
 		return { method: r.method, pattern: r.pattern, path };
 	});
-}
-
-/* ----------------------------------------------------------------------- */
-/* Leak assertions                                                          */
-/* ----------------------------------------------------------------------- */
-
-/**
- * The one assertion the whole scenario exists for: `body` — the verbatim
- * bytes an anonymous caller received from `label` — carries no redacted
- * field name, no planted sentinel, no host path, and no live bearer.
- */
-export function assertNoLeak(label: string, body: string): void {
-	for (const name of FORBIDDEN_FIELD_NAMES) {
-		if (body.includes(name)) {
-			throw new AcceptanceError(
-				`${label}: anonymous body carries redacted field name ${JSON.stringify(name)} — a public projection widened (${excerptAround(body, name)})`,
-			);
-		}
-	}
-	for (const [key, sentinel] of Object.entries(SENTINELS)) {
-		if (body.includes(sentinel)) {
-			throw new AcceptanceError(
-				`${label}: anonymous body carries the ${key} sentinel value (${excerptAround(body, sentinel)})`,
-			);
-		}
-	}
-	for (const fragment of FORBIDDEN_PATH_FRAGMENTS) {
-		if (body.includes(fragment)) {
-			throw new AcceptanceError(
-				`${label}: anonymous body carries a host path fragment ${JSON.stringify(fragment)} (${excerptAround(body, fragment)})`,
-			);
-		}
-	}
-	const bearer = UNREDACTED_BEARER.exec(body);
-	if (bearer !== null) {
-		throw new AcceptanceError(
-			`${label}: anonymous body carries an unredacted bearer credential (${excerptAround(body, bearer[0])})`,
-		);
-	}
-}
-
-/**
- * `GET /analytics/runs`: the USD rollups whose names collide with public
- * ones, checked structurally at the level they live on rather than by
- * substring. Field lists are imported so a re-classification reaches here.
- */
-export function assertAnalyticsRollupsAbsent(
-	body: Record<string, unknown>,
-	totalsFields: readonly string[],
-	groupFields: readonly string[],
-): void {
-	const totals = body.totals;
-	if (totals === null || typeof totals !== "object") {
-		throw new AcceptanceError("GET /analytics/runs: expected a `totals` object in the body");
-	}
-	for (const field of totalsFields) {
-		if (field in (totals as Record<string, unknown>)) {
-			throw new AcceptanceError(
-				`GET /analytics/runs: totals.${field} is redacted for a spectator but present`,
-			);
-		}
-	}
-	for (const groupKey of ["byAgent", "byModel", "byProvider"]) {
-		assertGroupRollupsAbsent(groupKey, body[groupKey], groupFields);
-	}
-}
-
-/** One `byAgent` / `byModel` / `byProvider` bucket array. */
-function assertGroupRollupsAbsent(
-	groupKey: string,
-	buckets: unknown,
-	groupFields: readonly string[],
-): void {
-	if (!Array.isArray(buckets)) {
-		throw new AcceptanceError(`GET /analytics/runs: expected \`${groupKey}\` to be an array`);
-	}
-	for (const bucket of buckets as readonly Record<string, unknown>[]) {
-		for (const field of groupFields) {
-			if (field in bucket) {
-				throw new AcceptanceError(
-					`GET /analytics/runs: ${groupKey}[].${field} is redacted for a spectator but present`,
-				);
-			}
-		}
-	}
-}
-
-/** A short window around `needle` so a failure names the offending bytes. */
-function excerptAround(body: string, needle: string): string {
-	const at = body.indexOf(needle);
-	if (at < 0) return "no excerpt";
-	const from = Math.max(0, at - 60);
-	return `…${body.slice(from, at + needle.length + 60)}…`;
 }

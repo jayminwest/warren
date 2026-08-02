@@ -15,8 +15,18 @@
  *   4. No anonymous response body carries a redacted field name, a planted
  *      sentinel value, a host path, or a live bearer credential.
  *   5. A forced 500 narrates nothing (warren-4385).
- *   6. Exceeding the per-client event-stream cap is a 503 (warren-25f6).
- *   7. Fail-closed: token mode grants anonymity nothing, an unrecognized
+ *   6. Exceeding the per-client event-stream cap is a 503 (warren-25f6),
+ *      rotating the client-controlled LEFT-most `X-Forwarded-For` hop does
+ *      not dodge it (warren-46a7), and neither does spreading streams
+ *      across client keys past the GLOBAL cap (warren-b0bd).
+ *   7. Anonymous reads are bounded: `GET /runs?limit=` is clamp-refused
+ *      past 500 (warren-ee50) and an event replay is one bounded page the
+ *      client pages beyond with `?since` (warren-2a8b) — never the whole
+ *      transcript in one shot.
+ *   8. The pre-auth preview-proxy preamble narrates nothing: not the
+ *      redacted `workerId` on its 501, and the warren-e2a4 security
+ *      headers reach its below-the-gate envelopes (warren-b0bd).
+ *   9. Fail-closed: token mode grants anonymity nothing, an unrecognized
  *      `WARREN_AUTH` refuses the boot, and public mode refuses to boot with
  *      an empty or non-matching org allowlist (warren-851b / warren-ce9b).
  *
@@ -40,8 +50,6 @@ import { AcceptanceError, assertEqual, assertTrue, type Scenario } from "../lib/
 import { WarrenHttp } from "../lib/http.ts";
 import { type BootHandle, bootInProc } from "../lib/inproc.ts";
 import {
-	assertAnalyticsRollupsAbsent,
-	assertNoLeak,
 	blockedRouteCalls,
 	INBOX_BODY,
 	POISON_AGENT_NAME,
@@ -51,9 +59,19 @@ import {
 	type SeededIds,
 	seedPublicInstanceDb,
 } from "./39-public-exposure.helpers.ts";
+import {
+	assertAnalyticsRollupsAbsent,
+	assertNoLeak,
+	assertPlanRunFailureReasonAbsent,
+} from "./39-public-exposure.leaks.ts";
+import {
+	assertBoundedReads,
+	assertPreviewProxyPreamble,
+	assertStreamCapRefuses,
+	MAX_STREAMS_GLOBAL,
+	MAX_STREAMS_PER_CLIENT,
+} from "./39-public-exposure.limits.ts";
 
-/** Per-client event-stream cap this scenario boots with (warren-25f6). */
-const MAX_STREAMS_PER_CLIENT = 2;
 /**
  * Floor on how many mutating (non-GET) routes the policy table must declare
  * as blocked. A tripwire, not a census: it catches a POST/DELETE that lost
@@ -120,6 +138,7 @@ export const scenario: Scenario = {
 					WARREN_AUTH: "public",
 					WARREN_PUBLIC_ALLOWLIST: PUBLIC_ORG,
 					WARREN_MAX_EVENT_STREAMS_PER_CLIENT: String(MAX_STREAMS_PER_CLIENT),
+					WARREN_MAX_EVENT_STREAMS: String(MAX_STREAMS_GLOBAL),
 					// No triggers on the seeded project; keep the tick loop out of
 					// the way for the life of the scenario.
 					WARREN_SCHEDULER_TICK_MS: "3600000",
@@ -133,7 +152,9 @@ export const scenario: Scenario = {
 			await assertBlockedRoutesRefused(base, ids, ctx.logger.debug);
 			await assertNoLeakOnPublicReads(base, ids, ctx.logger.debug);
 			await assertInboxNotDrained(base, operator, ids);
-			await assertStreamCapRefuses(base, ids);
+			await assertBoundedReads(base, ids);
+			await assertPreviewProxyPreamble(base, ids);
+			await assertStreamCapRefuses(base, operator, ids);
 			await assertSecurityHeadersAndVary(base, ids, ctx.logger.debug);
 			// Poison LAST: warren-f787 deleted the project tier, so the row is
 			// visible to `GET /agents` and would 500 the read sweep above.
@@ -266,6 +287,28 @@ async function assertNoLeakOnPublicReads(
 		!ndjson.includes("bridge_lost"),
 		"the event stream served the internal-only `bridge_lost` kind to a spectator",
 	);
+	// warren-b0bd: the handle-carrying kinds stay on the stream (the fact
+	// is spectator-visible) but the handles themselves are censored on the
+	// key (warren-5f59 / warren-d8f4). The sentinel VALUES are already
+	// covered by assertNoLeak above; here pin that the kinds survived.
+	for (const kind of ["watchdog.terminal_reconciled", "reap.workspace_destroyed"]) {
+		assertTrue(
+			ndjson.includes(kind),
+			`the event stream dropped ${kind} — it is censored, not internal-only`,
+		);
+	}
+
+	// `failureReason` is redacted on both plan-run projections but public
+	// on runs, so the raw body scan can't hold it — walk the parsed bodies
+	// and refuse the key wherever it nests (warren-b0bd).
+	const planRuns = await fetch(`${base}/plan-runs`);
+	assertPlanRunFailureReasonAbsent("anonymous GET /plan-runs", await planRuns.json());
+	const planRunRes = await fetch(`${base}/plan-runs/${encodeURIComponent(ids.planRunId)}`);
+	// The detail payload fans out `runs[]`, where `failureReason` IS public
+	// — hold the key only on the plan-run halves of the body.
+	const detail = (await planRunRes.json()) as { planRun: unknown; children: unknown };
+	assertPlanRunFailureReasonAbsent("anonymous GET /plan-runs/:id planRun", detail.planRun);
+	assertPlanRunFailureReasonAbsent("anonymous GET /plan-runs/:id children", detail.children);
 }
 
 /**
@@ -330,48 +373,6 @@ async function assertInboxNotDrained(
 		bodies.includes(INBOX_BODY),
 		`the operator's inbox poll lost the seeded message — the anonymous poll drained it (got ${JSON.stringify(bodies)})`,
 	);
-}
-
-/**
- * Assertion group 6. Hold the per-client allowance open with follow
- * streams, then prove the next one is refused fast (503) rather than
- * queued on a single-replica control plane.
- *
- * The slots are held against the PLAN-RUN stream, not the run stream:
- * the seeded run is terminal (it must be — boot-time bridge resume
- * reconciles a seeded `running` run to `burrow_run_lost`), and since
- * warren-7bff a follow tail on a terminal run closes right after
- * replay, releasing its slot before the next probe. The plan-run tail
- * holds until the client disconnects, so it pins the slots
- * deterministically — and it is the costlier stream to leave uncapped
- * (it fans in every child), so it is the better route to prove the cap
- * on anyway. Both routes share the same limiter (warren-25f6).
- */
-async function assertStreamCapRefuses(base: string, ids: SeededIds): Promise<void> {
-	const url = `${base}/plan-runs/${encodeURIComponent(ids.planRunId)}/events?follow=1`;
-	const held: AbortController[] = [];
-	try {
-		for (let i = 0; i < MAX_STREAMS_PER_CLIENT; i++) {
-			const ctrl = new AbortController();
-			held.push(ctrl);
-			const res = await fetch(url, { signal: ctrl.signal });
-			assertEqual(res.status, 200, `follow stream ${i + 1} within the per-client cap is admitted`);
-		}
-		const refused = await fetch(url);
-		assertEqual(
-			refused.status,
-			503,
-			`follow stream ${MAX_STREAMS_PER_CLIENT + 1} exceeds the per-client cap and must be refused`,
-		);
-		const body = await refused.text();
-		assertTrue(
-			refused.headers.get("retry-after") !== null,
-			"a capacity 503 advertises Retry-After",
-		);
-		assertNoLeak("anonymous capacity 503", body);
-	} finally {
-		for (const ctrl of held) ctrl.abort();
-	}
 }
 
 /**

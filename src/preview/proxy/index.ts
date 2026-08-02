@@ -151,10 +151,15 @@ export function createPreviewProxyHandler(deps: PreviewProxyDeps): PreviewProxyH
 		}
 
 		if (run.workerId !== null && run.workerId !== localWorkerName) {
+			// The preamble runs BEFORE the auth gate, so this body reaches
+			// anonymous callers — never interpolate `run.workerId` into it.
+			// `workerId` is a REDACTED_RUN_FIELDS member (warren-946f): internal
+			// worker topology is operator-only shape, and scenario 39 now drives
+			// this exact path with a sentinel in the column (warren-b0bd).
 			return previewError(
 				501,
 				"preview_remote_worker",
-				`preview proxying is local-worker-only in V1; run.worker_id=${run.workerId} (R-12 deferral, see docs/design/preview-environments.md)`,
+				"preview proxying is local-worker-only in V1; the run lives on a remote worker (R-12 deferral, see docs/design/preview-environments.md)",
 			);
 		}
 
