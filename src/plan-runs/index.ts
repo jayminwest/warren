@@ -6,6 +6,13 @@
  */
 
 export {
+	assertPlanRunPromptTemplate,
+	DEFAULT_PLAN_RUN_PROMPT_TEMPLATE,
+	hasSeedIdPlaceholder,
+	renderPlanRunPrompt,
+	SEED_ID_PLACEHOLDER,
+} from "../core/plan-run-prompt.ts";
+export {
 	type CloseMergedChildSeedInput,
 	type CloseMergedChildSeedResult,
 	closeMergedChildSeed,

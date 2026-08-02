@@ -27,6 +27,7 @@
 import { and, asc, eq, inArray } from "drizzle-orm";
 import { NotFoundError, StateTransitionError, ValidationError } from "../../core/errors.ts";
 import { generateId } from "../../core/ids.ts";
+import { DEFAULT_PLAN_RUN_PROMPT_TEMPLATE } from "../../core/plan-run-prompt.ts";
 import type { SqliteDrizzleDb } from "../client.ts";
 import type { PlanRunChildRow, PlanRunChildState, PlanRunRow, PlanRunState } from "../schema.ts";
 import type { DrizzleAdapter } from "./drizzle-adapter.ts";
@@ -142,7 +143,7 @@ export class PlanRunsRepo {
 			planId: input.planId,
 			projectId: input.projectId,
 			agentName: input.agentName,
-			promptTemplate: input.promptTemplate ?? "work on sd {seed_id}",
+			promptTemplate: input.promptTemplate ?? DEFAULT_PLAN_RUN_PROMPT_TEMPLATE,
 			ref: input.ref ?? null,
 			providerOverride: input.providerOverride ?? null,
 			modelOverride: input.modelOverride ?? null,

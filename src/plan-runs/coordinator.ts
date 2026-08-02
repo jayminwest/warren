@@ -34,6 +34,7 @@
  */
 
 import { formatError } from "../core/errors.ts";
+import { renderPlanRunPrompt } from "../core/plan-run-prompt.ts";
 import type { Repos } from "../db/repos/index.ts";
 import type { PlanRunChildRow, PlanRunChildState, PlanRunRow } from "../db/schema.ts";
 import { SeedNotFoundError, type SeedShowResult } from "../seeds-cli/index.ts";
@@ -245,7 +246,8 @@ export async function advancePlanRun(input: AdvancePlanRunInput): Promise<Advanc
 		}
 
 		// Dispatch the next child; legacy {seed_id}-only template render.
-		const prompt = planRun.promptTemplate.replace(/\{seed_id\}/g, next.seedId);
+		// Every occurrence is substituted (warren-b3be).
+		const prompt = renderPlanRunPrompt(planRun.promptTemplate, next.seedId);
 		let spawnResult: CoordinatorSpawnResult;
 		try {
 			spawnResult = await input.spawn({ planRun, child: next, prompt });

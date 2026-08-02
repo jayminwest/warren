@@ -11,6 +11,7 @@
 
 import { NotFoundError, ValidationError } from "../../core/errors.ts";
 import { PlanHasNoOpenChildrenError, ProjectLacksSeedsError } from "../../plan-runs/errors.ts";
+import { assertPlanRunPromptTemplate } from "../../plan-runs/index.ts";
 import { cancelRun } from "../../runs/index.ts";
 import { showPlan, showSeed } from "../../seeds-cli/index.ts";
 import { jsonResponse, ndjsonResponse } from "../response.ts";
@@ -79,6 +80,10 @@ export function createPlanRunHandler(deps: ServerDeps): RouteHandler {
 		const planId = requireString(body, "planId");
 		const agentName = requireString(body, "agent");
 		const promptTemplate = optionalString(body, "promptTemplate");
+		// warren-b3be: an operator-supplied template must reference the child
+		// seed, or every child is dispatched with an identical blind prompt.
+		// Absent → the repo default, which already carries the placeholder.
+		if (promptTemplate !== undefined) assertPlanRunPromptTemplate(promptTemplate);
 		const ref = optionalString(body, "ref");
 		const providerOverride = optionalString(body, "providerOverride");
 		const modelOverride = optionalString(body, "modelOverride");
