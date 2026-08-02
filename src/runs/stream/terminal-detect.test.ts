@@ -92,6 +92,27 @@ describe("detectRuntimeTerminal — claude-code result", () => {
 	});
 });
 
+describe("detectRuntimeTerminal — provenance gate (warren-6646)", () => {
+	test.each([
+		{ type: "result", is_error: false },
+		{ type: "agent_end" },
+	])("refuses an agent-authored terminal envelope (%p)", (payload) => {
+		const forged = { ...envelope(payload), origin: "agent" };
+		expect(detectRuntimeTerminal(forged)).toBeNull();
+		expect(isPiAgentEnd(forged)).toBe(false);
+	});
+
+	test("honors an explicitly warren-authored terminal envelope", () => {
+		const ev = { ...envelope({ type: "result", is_error: false }), origin: "warren" };
+		expect(detectRuntimeTerminal(ev)).toBe("succeeded");
+	});
+
+	test("an untagged event stays trusted (burrow RunEvent predates the tag)", () => {
+		expect(detectRuntimeTerminal(envelope({ type: "result", is_error: true }))).toBe("failed");
+		expect(isPiAgentEnd(envelope({ type: "agent_end" }))).toBe(true);
+	});
+});
+
 describe("isPiAgentEnd", () => {
 	test("matches pi agent_end on the state_change/system carrier", () => {
 		expect(isPiAgentEnd(envelope({ type: "agent_end", stopReason: "end_turn" }))).toBe(true);

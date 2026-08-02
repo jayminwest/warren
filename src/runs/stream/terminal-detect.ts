@@ -36,8 +36,19 @@ import type { StreamEventView } from "./types.ts";
  * burrow's own cancel path emits a different terminal shape; that case
  * is handled by `cancelRun`. Future runtimes extend this dispatch by
  * adding their runtime-specific terminal shape.
+ *
+ * ## Provenance gate (warren-6646)
+ * `kind`/`stream` are open strings that ride the same transport the
+ * agent's own output does, so an event that the parse boundary could
+ * not attribute to warren's event pipeline (`origin === "agent"`) is
+ * refused outright — otherwise an agent printing a crafted
+ * `state_change`/`system` line reaps its own run as `succeeded` and
+ * short-circuits real outcome detection. The K8s parse boundary already
+ * downgrades such a line's stream (`src/runtime/k8s/log-parse.ts`); this
+ * check is the second, domain-side lock on the same door.
  */
 export function detectRuntimeTerminal(event: StreamEventView): RunTerminalState | null {
+	if (isAgentAuthored(event)) return null;
 	if (event.kind !== "state_change") return null;
 	if (event.stream !== "system") return null;
 	const payload = event.payload;
@@ -64,10 +75,22 @@ export function detectRuntimeTerminal(event: StreamEventView): RunTerminalState 
  * envelope — piStats is a pi-only concern.
  */
 export function isPiAgentEnd(event: StreamEventView): boolean {
+	if (isAgentAuthored(event)) return false;
 	if (event.kind !== "state_change") return false;
 	if (event.stream !== "system") return false;
 	const payload = event.payload;
 	if (payload === null || typeof payload !== "object") return false;
 	const env = payload as Record<string, unknown>;
 	return env.type === "agent_end";
+}
+
+/**
+ * True when the parse boundary tagged this event as an unattributed,
+ * agent-writable line (warren-6646). An absent `origin` reads as
+ * warren-authored: burrow's `RunEvent` (LocalProvider, test `source`
+ * overrides) predates the tag and arrives over a host-side channel the
+ * sandbox cannot write to directly.
+ */
+function isAgentAuthored(event: StreamEventView): boolean {
+	return event.origin === "agent";
 }
