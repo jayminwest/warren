@@ -197,6 +197,44 @@ describe("projectEvent (warren-1cb7)", () => {
 		expect(projectEvent(reap, undefined)).toBe(reap);
 	});
 
+	test("reap_failed keeps step but drops path and redacts stderr message (warren-cbd8)", () => {
+		const reap = {
+			kind: "reap_failed",
+			payloadJson: {
+				step: "mulch_merge",
+				message: "cp: /data/warren/projects/x/.mulch/expertise/a.jsonl: I/O error",
+				path: "/data/warren/projects/x/.mulch/expertise/a.jsonl",
+			},
+		};
+		const projected = projectEvent(reap, ANONYMOUS_ACTOR);
+		expect(projected).not.toBeNull();
+		expect(projected?.payloadJson.step).toBe("mulch_merge");
+		expect(projected?.payloadJson.message).toBe(REDACTED_MARKER);
+		expect("path" in (projected?.payloadJson ?? {})).toBe(false);
+		expect(JSON.stringify(projected)).not.toContain("/data/");
+		// The stored row is never mutated — the operator stream still reads it.
+		expect(projectEvent(reap, undefined)).toBe(reap);
+	});
+
+	test("spawn_failed redacts its subprocess stderr message (warren-cbd8)", () => {
+		const spawn = {
+			kind: "spawn_failed",
+			payloadJson: {
+				step: "spawn",
+				message: "git clone failed: could not read from /home/operator/.ssh/id_rsa",
+			},
+		};
+		const projected = projectEvent(spawn, ANONYMOUS_ACTOR);
+		expect(projected?.payloadJson).toEqual({ step: "spawn", message: REDACTED_MARKER });
+		expect(JSON.stringify(projected)).not.toContain("/home/");
+		expect(projectEvent(spawn, undefined)).toBe(spawn);
+	});
+
+	test("a failure payload with no path/message survives sanitize untouched", () => {
+		const reap = { kind: "reap_failed", payloadJson: { step: "seed_close" } };
+		expect(projectEvent(reap, ANONYMOUS_ACTOR)?.payloadJson).toEqual({ step: "seed_close" });
+	});
+
 	test("the drop set is exactly the internal handles warren-946f already redacts", () => {
 		expect([...INTERNAL_EVENT_KINDS].sort()).toEqual([
 			"bridge_fatal",

@@ -14,7 +14,11 @@
  *
  * 1. {@link INTERNAL_EVENT_KINDS} — event kinds dropped whole, because
  *    their payload is control-plane plumbing and nothing else.
- * 2. {@link scrubSecrets} — a deep walk that replaces known credential
+ * 2. {@link RAW_FAILURE_EVENT_KINDS} — failure kinds kept on the stream
+ *    (`state: "failed"` is spectator-visible fact) but whose payload
+ *    carries raw subprocess stderr and absolute host paths, so the
+ *    `message` is replaced with the marker and `path` is stripped whole.
+ * 3. {@link scrubSecrets} — a deep walk that replaces known credential
  *    shapes, secret-named fields, and this instance's own env secrets with
  *    {@link REDACTED_MARKER}. A visible marker, never a deletion, so a
  *    viewer can tell scrubbing happened rather than wondering whether the
@@ -68,7 +72,8 @@ export const REDACTED_MARKER = "[redacted]";
  *
  * Keep this list to kinds that are *purely* internal. A kind that carries
  * any spectator-visible fact (`spawn_failed`, `reap_failed`, `budget.exceeded`)
- * stays on the stream and is scrubbed like everything else.
+ * stays on the stream — the failure kinds get {@link sanitizeFailurePayload}
+ * instead of a drop, and everything else is scrubbed like everything else.
  */
 export const INTERNAL_EVENT_KINDS: ReadonlySet<string> = new Set([
 	"bridge_stalled",
@@ -76,6 +81,43 @@ export const INTERNAL_EVENT_KINDS: ReadonlySet<string> = new Set([
 	"bridge_lost",
 	"bridge_fatal",
 ]);
+
+/**
+ * Failure kinds whose payload `message` is raw subprocess stderr and whose
+ * optional `path` is an absolute host workspace path
+ * (`src/runs/reap/run.ts` `fail()`, `src/runs/reap/mulch.ts`,
+ * `src/runs/spawn/rollback.ts`). The credential scrubber cannot help here:
+ * a `/data/…` host path and an arbitrary stderr tail match no credential
+ * shape, yet they disclose exactly what `REDACTED_RUN_FIELDS` withholds
+ * from the run row (`localPath`, `previewFailureMessage`) — warren-cbd8.
+ *
+ * The event itself stays: the failure IS spectator-visible fact. What the
+ * public projection applies is the body/log split (warren-4385): `step`
+ * (a closed `ReapStep` vocabulary) survives, `message` is replaced with
+ * the marker, `path` is stripped whole. The full text stays where it
+ * belongs — the operator stream, which gets the row by reference.
+ */
+export const RAW_FAILURE_EVENT_KINDS: ReadonlySet<string> = new Set([
+	"reap_failed",
+	"spawn_failed",
+]);
+
+/**
+ * The body half of the body/log split for {@link RAW_FAILURE_EVENT_KINDS}:
+ * keep every field except `path` (stripped — no marker, the field existing
+ * at all is operator-only shape) and `message` (replaced with the marker).
+ */
+function sanitizeFailurePayload(payload: unknown): unknown {
+	if (typeof payload !== "object" || payload === null || Array.isArray(payload)) {
+		return payload;
+	}
+	const out: Record<string, unknown> = {};
+	for (const [key, value] of Object.entries(payload as Record<string, unknown>)) {
+		if (key === "path") continue;
+		out[key] = key === "message" ? REDACTED_MARKER : value;
+	}
+	return out;
+}
 
 /**
  * Field names whose value is censored on sight, reusing the central pino
@@ -265,5 +307,8 @@ export function projectEvent<T extends ProjectableEvent>(
 ): T | null {
 	if (!isPublicOnly(actor)) return row;
 	if (INTERNAL_EVENT_KINDS.has(row.kind)) return null;
-	return { ...row, payloadJson: scrubSecrets(row.payloadJson, instanceEnvSecretPattern()) };
+	const payload = RAW_FAILURE_EVENT_KINDS.has(row.kind)
+		? sanitizeFailurePayload(row.payloadJson)
+		: row.payloadJson;
+	return { ...row, payloadJson: scrubSecrets(payload, instanceEnvSecretPattern()) };
 }

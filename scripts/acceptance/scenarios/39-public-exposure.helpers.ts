@@ -269,12 +269,10 @@ export async function poisonAgentRow(tmpRoot: string): Promise<void> {
 }
 
 /**
- * The transcript half. Five events: one whose payload carries a
- * shape-matched credential, one whose payload carries the instance's own
- * token (the env-literal matcher), one whose payload carries a
- * secret-NAMED field, one whose payload carries a DSN / userinfo URL / JWT
- * (the three shapes warren-6fa0 added), and one `bridge_lost` — the
- * internal kind `INTERNAL_EVENT_KINDS` drops whole rather than scrubs.
+ * The transcript half. Seven events: a shape-matched credential, the
+ * instance's own token, a secret-NAMED field, a DSN / userinfo URL / JWT
+ * (warren-6fa0), a dropped-whole `bridge_lost`, and `reap_failed` /
+ * `spawn_failed` planting `/data/` / `/home/` paths + raw stderr (warren-cbd8).
  */
 async function seedEvents(repos: Repos, runId: string, instanceToken: string): Promise<void> {
 	const ts = "2026-07-27T00:00:00.000Z";
@@ -328,6 +326,26 @@ async function seedEvents(repos: Repos, runId: string, instanceToken: string): P
 		kind: "bridge_lost",
 		stream: "system",
 		payload: { burrowId: SENTINELS.runBurrowId, attempts: 3 },
+	});
+	await repos.events.append({
+		runId,
+		burrowEventSeq: 6,
+		ts,
+		kind: "reap_failed",
+		stream: "system",
+		payload: {
+			step: "mulch_merge",
+			message: "mulch stderr: /home/operator/bin/mulch: denied",
+			path: "/data/warren/projects/sample/.mulch/infra.jsonl",
+		},
+	});
+	await repos.events.append({
+		runId,
+		burrowEventSeq: 7,
+		ts,
+		kind: "spawn_failed",
+		stream: "system",
+		payload: { step: "spawn", message: "clone stderr: /home/operator/.ssh unreadable" },
 	});
 }
 
