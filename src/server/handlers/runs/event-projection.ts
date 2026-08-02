@@ -87,14 +87,19 @@ export const INTERNAL_EVENT_KINDS: ReadonlySet<string> = new Set([
  * it is an internal runtime handle the run projection already withholds
  * (`REDACTED_RUN_FIELDS`, warren-946f), and system events like
  * `reap.workspace_destroyed` re-leaked it through the transcript
- * (warren-5f59). Censoring on the key keeps the handle off the public
- * stream wherever a payload carries it, without dropping the event — the
- * rest of the payload (`archived`, timestamps) is spectator-visible fact.
+ * (warren-5f59). `burrowRunId` is the same class of handle —
+ * `watchdog.terminal_reconciled` re-leaked it (warren-d8f4), and under
+ * `WARREN_RUNTIME=k8s` the value is a real Kubernetes pod UID, not
+ * something derivable from the run id. Censoring on the key keeps the
+ * handle off the public stream wherever a payload carries it, without
+ * dropping the event — the rest of the payload (`archived`, timestamps)
+ * is spectator-visible fact.
  */
 const SECRET_FIELD_SET = new Set<string>([
 	...SECRET_FIELDS.map((f) => f.toLowerCase()),
 	"x-api-key",
 	"burrowid",
+	"burrowrunid",
 ]);
 
 /**

@@ -91,6 +91,18 @@ describe("scrubSecrets — fixture corpus (warren-1cb7)", () => {
 		expect(scrubbed.payload.archived).toBe(false);
 	});
 
+	test("censors the burrowRunId runtime handle on the key alone (warren-d8f4)", () => {
+		const payload = {
+			kind: "watchdog.terminal_reconciled",
+			payload: { outcome: "succeeded", burrowRunId: "0f1e2d3c-pod-uid", idleMs: 42 },
+		};
+		const scrubbed = scrubSecrets(payload, null) as typeof payload;
+		expect(scrubbed.payload.burrowRunId).toBe(REDACTED_MARKER);
+		// The spectator-visible facts around the handle survive.
+		expect(scrubbed.payload.outcome).toBe("succeeded");
+		expect(scrubbed.payload.idleMs).toBe(42);
+	});
+
 	test("walks arrays and nested objects", () => {
 		const scrubbed = scrubSecrets(
 			{ content: [{ text: "AKIAIOSFODNN7EXAMPLE" }, { deep: { text: "AKIAIOSFODNN7EXAMPLE" } }] },
