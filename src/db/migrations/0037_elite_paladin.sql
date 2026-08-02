@@ -1,0 +1,1 @@
+CREATE INDEX `events_kind_ts_idx` ON `events` (`kind`,`ts`);

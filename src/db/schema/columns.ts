@@ -59,6 +59,10 @@ export const INDEX_NAMES = {
 	runsPrUrl: "runs_pr_url_idx",
 	eventsRunSeq: "events_run_seq_idx",
 	eventsRunTs: "events_run_ts_idx",
+	// warren-55cf: the healer counts prior heal.dispatched attempts per alert
+	// fingerprint with a `kind = ?` predicate, so index the kind it filters on
+	// (newest-first by ts) instead of scanning the whole events table.
+	eventsKindTs: "events_kind_ts_idx",
 	triggersProject: "triggers_project_idx",
 	// warren-f787: agents are identified by `name` alone (the project tier
 	// and its `project_id` column were removed). A single unique index on
