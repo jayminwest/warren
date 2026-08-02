@@ -24,6 +24,7 @@ import {
 	requireParam,
 	requireString,
 } from "./index.ts";
+import { projectPlanRun, projectPlanRunChild } from "./plan-runs-projection.ts";
 import {
 	asNdjsonStream,
 	bridgeAbort,
@@ -186,7 +187,9 @@ export function listPlanRunsHandler(deps: ServerDeps): RouteHandler {
 				projectId,
 				state !== undefined ? state : undefined,
 			);
-			return jsonResponse(200, { planRuns: rows });
+			return jsonResponse(200, {
+				planRuns: rows.map((row) => projectPlanRun(row, ctx.actor)),
+			});
 		}
 		// No project filter — return active PlanRuns when no state requested,
 		// or the operator's chosen state across every project.
@@ -200,9 +203,14 @@ export function listPlanRunsHandler(deps: ServerDeps): RouteHandler {
 					projects.map((p) => deps.repos.planRuns.listByProjectAndState(p.id, state)),
 				)
 			).flat();
-			return jsonResponse(200, { planRuns: all });
+			return jsonResponse(200, {
+				planRuns: all.map((row) => projectPlanRun(row, ctx.actor)),
+			});
 		}
-		return jsonResponse(200, { planRuns: await deps.repos.planRuns.listActive() });
+		const active = await deps.repos.planRuns.listActive();
+		return jsonResponse(200, {
+			planRuns: active.map((row) => projectPlanRun(row, ctx.actor)),
+		});
 	};
 }
 
@@ -214,6 +222,10 @@ export function listPlanRunsHandler(deps: ServerDeps): RouteHandler {
  * `runs[]` goes through the SAME `projectRun` the `/runs` routes use
  * (warren-c405): this route is `readPublic`, so serving the rows raw handed
  * a spectator every field `REDACTED_RUN_FIELDS` withholds elsewhere.
+ * `planRun` and `children` go through `projectPlanRun` / `projectPlanRunChild`
+ * (warren-8793): this pair was the last `readPublic` body served with no
+ * field allowlist, leaking `promptTemplate`, the dispatch overrides,
+ * `dispatcherHandle`, and raw internal error strings on `failureReason`.
  */
 export function getPlanRunHandler(deps: ServerDeps): RouteHandler {
 	return async (ctx) => {
@@ -223,8 +235,8 @@ export function getPlanRunHandler(deps: ServerDeps): RouteHandler {
 		const runIds = children.map((c) => c.runId).filter((v): v is string => v !== null);
 		const runs = await deps.repos.runs.listByIds(runIds);
 		return jsonResponse(200, {
-			planRun,
-			children,
+			planRun: projectPlanRun(planRun, ctx.actor),
+			children: children.map((child) => projectPlanRunChild(child, ctx.actor)),
 			runs: runs.map((run) => projectRun(run, ctx.actor)),
 		});
 	};
