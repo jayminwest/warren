@@ -156,6 +156,9 @@ export const events = pgTable(
 	(t) => [
 		index(INDEX_NAMES.eventsRunSeq).on(t.runId, t.burrowEventSeq),
 		index(INDEX_NAMES.eventsRunTs).on(t.runId, t.ts),
+		// warren-55cf: healer attempt history filters by kind + payload
+		// fingerprint at the SQL level; this keeps the kind scan bounded.
+		index(INDEX_NAMES.eventsKindTs).on(t.kind, t.ts),
 	],
 );
 

@@ -185,6 +185,73 @@ function suite(dialect: "sqlite" | "postgres"): void {
 			}
 		});
 
+		test("payloadKeyHistory counts every matching row past the listByKind window", async () => {
+			const { handle, events, runId } = await open();
+			try {
+				const append1 = (seq: number, fingerprint: string, ts: string) =>
+					events.append({
+						runId,
+						burrowEventSeq: seq,
+						ts,
+						kind: "heal.dispatched",
+						payload: { fingerprint },
+					});
+				// Two attempts for the fingerprint under test, oldest first.
+				await append1(1, "fp-target", "2026-05-01T00:00:00.000Z");
+				await append1(2, "fp-target", "2026-05-01T01:00:00.000Z");
+				// 600 unrelated dispatches scroll the target rows out of the 500-row
+				// newest-first window listByKind returns (warren-55cf).
+				for (let i = 0; i < 600; i++) {
+					await append1(
+						100 + i,
+						`fp-noise-${i}`,
+						`2026-06-01T00:00:00.${String(i).padStart(3, "0")}Z`,
+					);
+				}
+
+				const windowed = await events.listByKind("heal.dispatched");
+				expect(windowed.length).toBe(500);
+				expect(
+					windowed.some(
+						(r) => (r.payloadJson as { fingerprint?: string }).fingerprint === "fp-target",
+					),
+				).toBe(false);
+
+				const history = await events.payloadKeyHistory(
+					"heal.dispatched",
+					"fingerprint",
+					"fp-target",
+				);
+				expect(history.count).toBe(2);
+				expect(history.lastTs).toBe("2026-05-01T01:00:00.000Z");
+			} finally {
+				await handle.close();
+			}
+		});
+
+		test("payloadKeyHistory ignores other kinds and unknown fingerprints", async () => {
+			const { handle, events, runId } = await open();
+			try {
+				await events.append({
+					runId,
+					burrowEventSeq: 1,
+					ts: "2026-05-01T00:00:00.000Z",
+					kind: "other.kind",
+					payload: { fingerprint: "fp-a" },
+				});
+				expect(await events.payloadKeyHistory("heal.dispatched", "fingerprint", "fp-a")).toEqual({
+					count: 0,
+					lastTs: null,
+				});
+				expect(await events.payloadKeyHistory("other.kind", "fingerprint", "fp-a")).toEqual({
+					count: 1,
+					lastTs: "2026-05-01T00:00:00.000Z",
+				});
+			} finally {
+				await handle.close();
+			}
+		});
+
 		test("nullable stream column round-trips as null", async () => {
 			const { handle, events, runId } = await open();
 			try {
