@@ -309,6 +309,39 @@ describe("POST /runs — spawn flow", () => {
 		expect(body.error.code).toBe("validation_error");
 	});
 
+	test("non-object metadata → 400 validation_error, no burrow call (warren-b27c)", async () => {
+		const calls: { method: string; path: string; body: unknown }[] = [];
+		const burrowClient = makeBurrowClient(
+			{ burrowId: "bur_xxxxxxxxxxxx", burrowRunId: "run_zzzzzzzzzzzz", workspacePath: "/tmp/ws" },
+			calls,
+		);
+		const deps = await depsFor(repos, burrowClient);
+		handle = startServer(deps, {
+			transport: { kind: "tcp", hostname: "127.0.0.1", port: 0 },
+			auth: NO_AUTH,
+			logger: silentLogger,
+		});
+
+		const project = (await repos.projects.listAll())[0];
+		if (!project) throw new Error("project missing");
+		for (const metadata of [[1, 2], "nope", 7]) {
+			const res = await fetch(`${tcpUrl(handle)}/runs`, {
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({
+					agent: "refactor-bot",
+					project: project.id,
+					prompt: "p",
+					metadata,
+				}),
+			});
+			expect(res.status).toBe(400);
+			const body = (await res.json()) as { error: { code: string } };
+			expect(body.error.code).toBe("validation_error");
+		}
+		expect(calls).toEqual([]);
+	});
+
 	test("empty body → 400 validation_error", async () => {
 		const calls: { method: string; path: string; body: unknown }[] = [];
 		const burrowClient = makeBurrowClient(
