@@ -15,7 +15,7 @@ import {
 	RuntimeRunNotFoundError,
 	RuntimeUnreachableError,
 } from "../runtime/errors.ts";
-import { WarrenConfigUnavailableError } from "../warren-config/errors.ts";
+import { WarrenConfigInvalidError, WarrenConfigUnavailableError } from "../warren-config/errors.ts";
 import {
 	collectedErrorMessage,
 	errorLogFields,
@@ -92,6 +92,12 @@ describe("renderError — WarrenError mapping", () => {
 		const r = renderError(new WarrenConfigUnavailableError("clone vanished"));
 		expect(r.status).toBe(503);
 		expect(r.envelope.error.code).toBe("warren_config_unavailable");
+	});
+
+	test("WarrenConfigInvalidError → 422 with code passthrough (warren-02aa)", () => {
+		const r = renderError(new WarrenConfigInvalidError("unknown key in .warren/config.yaml"));
+		expect(r.status).toBe(422);
+		expect(r.envelope.error.code).toBe("warren_config_invalid");
 	});
 
 	test("AgentSchemaError → 422", () => {

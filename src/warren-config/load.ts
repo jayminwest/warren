@@ -6,6 +6,15 @@
  *   malformed file  → field is `null`, one entry in `errors`
  *   valid file      → field is the parsed value, no entry in `errors`
  *
+ * That contract is read-only: the loader never throws on a bad file, and it
+ * never guesses at a partial value. It does NOT mean a malformed file is
+ * harmless. Since warren-02aa the spawn path treats an `errors[]` entry
+ * against a guardrail-bearing file (`config.yaml` / `defaults.json`) as
+ * dispatch-blocking — see `assertGuardrailConfigUsable` in
+ * `src/runs/spawn/agent-cache.ts`. Consumers that merely RENDER config
+ * (doctor, readyz, the UI) keep reading `defaults: null` + `errors`;
+ * consumers that ACT on guardrails must fail closed.
+ *
  * Warren-5840 hoists global defaults into YAML and splits the preview block
  * into its own file. Backcompat precedence:
  *

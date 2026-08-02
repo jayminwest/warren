@@ -10,7 +10,12 @@ import {
 	parseRenderedAgent,
 	RenderResponseSchema,
 } from "../../registry/schema.ts";
-import type { DefaultsConfig, WarrenConfigCache } from "../../warren-config/index.ts";
+import type {
+	DefaultsConfig,
+	WarrenConfigCache,
+	WarrenConfigFileError,
+} from "../../warren-config/index.ts";
+import { WarrenConfigInvalidError, warrenConfigRelativePath } from "../../warren-config/index.ts";
 import { RunSpawnError } from "../errors.ts";
 
 /**
@@ -79,10 +84,67 @@ export function resolveOverride(
 }
 
 /**
- * Load the project's `.warren/defaults.json` envelope through the cache.
+ * The `.warren/` files that carry dispatch guardrails: the admission cap,
+ * the quality gate, the resource limits, and the cost caps all live in the
+ * global-defaults tier. A parse / schema failure in either tier means the
+ * project HAS a policy we could not read (warren-02aa).
+ *
+ * `triggers.yaml` and `pr-template.md` are deliberately NOT in this list.
+ * Neither constrains what a dispatched run may do, so a typo there keeps
+ * degrading gracefully the way it always has.
+ */
+const GUARDRAIL_CONFIG_FILES: readonly string[] = [
+	warrenConfigRelativePath("config"),
+	warrenConfigRelativePath("defaults"),
+];
+
+/**
+ * Fail closed on a present-but-unreadable guardrail file (warren-02aa).
+ *
+ * `DefaultsConfigSchema` is `.strict()`, so one unknown key rejects the
+ * whole document and `loadWarrenConfig` yields `defaults: null` plus an
+ * `errors[]` entry. Before this guard every consumer optional-chained past
+ * that null and dispatched with no cap, no gate, no limits, and no spend
+ * ceiling — the loudest possible failure rendered as the quietest possible
+ * behavior.
+ *
+ * We keep whole-document strictness rather than salvaging section by
+ * section. Per-section validation would still drop the very knob the
+ * operator fat-fingered (`admission.maxConcurrentRun` silently uncaps the
+ * project), which is the same bug in a smaller blast radius. Whole-document
+ * strictness plus a dispatch-blocking failure is the only shape where a
+ * typo cannot widen a guardrail.
+ *
+ * A project with NO config file at all is untouched: the loader reports no
+ * errors, and dispatch proceeds on built-in defaults exactly as before.
+ */
+export function assertGuardrailConfigUsable(
+	errors: readonly WarrenConfigFileError[],
+	projectId: string,
+): void {
+	const blocking = errors.filter((err) => GUARDRAIL_CONFIG_FILES.includes(err.file));
+	if (blocking.length === 0) return;
+	const detail = blocking.map((err) => `${err.file}: ${err.message}`).join("; ");
+	throw new WarrenConfigInvalidError(
+		`project ${projectId} has an unreadable guardrail config, refusing dispatch — ${detail}`,
+		{
+			recoveryHint:
+				"fix the reported file (unknown keys are rejected) and re-dispatch; " +
+				"GET /projects/:id/warren-config shows the same errors",
+		},
+	);
+}
+
+/**
+ * Load the project's global-defaults envelope through the cache.
+ *
  * Returns `null` when no cache is wired (CLI/tests that don't care about
- * project defaults) or when the load fails — a malformed `.warren/` should
- * never abort a spawn, just downgrade to "no project default" behavior.
+ * project defaults) or when the whole load failed at the filesystem level —
+ * a vanished clone surfaces on the refresh path with a better error.
+ *
+ * Throws `WarrenConfigInvalidError` when a guardrail file exists but failed
+ * to parse or validate (warren-02aa). Dispatch must not proceed as if the
+ * project had no policy.
  */
 export async function readProjectDefaults(
 	cache: WarrenConfigCache | undefined,
@@ -90,13 +152,15 @@ export async function readProjectDefaults(
 	projectPath: string,
 ): Promise<DefaultsConfig | null> {
 	if (cache === undefined) return null;
+	let envelope: Awaited<ReturnType<WarrenConfigCache["get"]>>;
 	try {
-		const envelope = await cache.get(projectId, projectPath);
-		return envelope.defaults;
+		envelope = await cache.get(projectId, projectPath);
 	} catch {
 		// Project clone vanished or .warren/ I/O errored — leave the agent
 		// frontmatter as the final source of truth and let the rest of the
 		// flow surface any project-state failure on its own path.
 		return null;
 	}
+	assertGuardrailConfigUsable(envelope.errors, projectId);
+	return envelope.defaults;
 }

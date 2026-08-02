@@ -20,6 +20,7 @@ export {
 	WARREN_CONFIG_FILE_ERROR_CODES,
 	type WarrenConfigFileError,
 	type WarrenConfigFileErrorCode,
+	WarrenConfigInvalidError,
 	WarrenConfigUnavailableError,
 } from "./errors.ts";
 export {

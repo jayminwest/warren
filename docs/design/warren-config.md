@@ -89,6 +89,32 @@ nested `preview:` field — see `PreviewConfigSchema` in §11.L.
   `refreshProject` and `deleteProject` (`mx-61c0e6`) so the next request
   reparses; this avoids the stale-config race called out in pl-5d74 risk #4.
 
+**Fail-closed dispatch (warren-02aa).** The loader contract above is
+read-only: it never throws and never guesses a partial value. Consumers
+that merely RENDER config (doctor, `/readyz`, the UI) keep reading
+`defaults: null` plus `errors[]`. Consumers that ACT on guardrails must
+not. `DefaultsConfigSchema` is `.strict()`, so one unknown key (e.g.
+`admission.maxConcurrentRun`, missing the `s`) rejects the whole document
+— and every guardrail it carried (admission cap, quality gate, resource
+limits, cost caps) used to disappear at once while the dispatch went
+through uncapped.
+
+`readProjectDefaults` (`src/runs/spawn/agent-cache.ts`) now calls
+`assertGuardrailConfigUsable` and throws `WarrenConfigInvalidError`
+(HTTP 422) when an `errors[]` entry names a guardrail-bearing file —
+`.warren/config.yaml` or the legacy `.warren/defaults.json`. The refusal
+lands before the run row is created, so a broken policy file produces no
+orphan run. `triggers.yaml` and `pr-template.md` are deliberately outside
+that set: neither constrains what a dispatched run may do, so they keep
+degrading gracefully. A project with NO config file at all is unchanged —
+no errors, built-in defaults, dispatch proceeds.
+
+Whole-document strictness is kept rather than salvaging section by
+section. Per-section validation would still drop precisely the knob the
+operator fat-fingered, which is the same bug with a smaller blast radius.
+Strict parse plus a dispatch-blocking failure is the only shape where a
+typo cannot widen a guardrail.
+
 **HTTP surface.** `GET /projects/:id/warren-config` returns the
 `LoadedWarrenConfig` envelope verbatim (`mx-adf588`); 404 if the project
 doesn't exist; `WarrenConfigUnavailableError` joins the existing

@@ -24,6 +24,19 @@ export class WarrenConfigUnavailableError extends WarrenError {
 }
 
 /**
+ * A guardrail-bearing `.warren/` file EXISTS on disk but failed to parse or
+ * validate (warren-02aa). The loader still reports such failures as
+ * `errors[]` entries for the read-only surfaces (doctor, readyz, UI); this
+ * error is what the DISPATCH path raises so a project whose policy file is
+ * broken refuses to run rather than running with its admission cap, quality
+ * gate, resource limits, and cost caps silently dropped. Maps to 422 at the
+ * warren HTTP boundary — the fix is to correct the file and re-dispatch.
+ */
+export class WarrenConfigInvalidError extends WarrenError {
+	readonly code = "warren_config_invalid";
+}
+
+/**
  * Stable codes for per-file failures and advisories collected by the
  * loader. Surfaced to the HTTP/UI/doctor layers; treat as a public
  * contract.
