@@ -19,12 +19,13 @@
  *                          lastRunAt, role, trigger:'cron'}` in one write
  *
  * `WarrenTriggerKind` locks down the trigger-string proliferation called
- * out as risk #6 in the plan. Today the cron-trigger manual-run handler
+ * out as risk #6 in the plan. It is DERIVED from `RUN_TRIGGER_KINDS` in
+ * `src/core/wire.ts` (warren-c486) — the hand-listed copy that used to live
+ * here covered six of the ten values live dispatchers pass, so `plan-run`,
+ * `ci-fixer`, `healer` and `auto_plan_run` failed the parse and lost the
+ * `trigger` key. The legacy `"manual-trigger"` written by
  * `src/server/handlers/projects.ts` (POST /projects/:id/triggers/:triggerId/run)
- * writes `"manual-trigger"` into the warren `runs.trigger` column, while
- * Run Now (POST /runs) passes no trigger and defaults to `"manual"`; the
- * enum here is the downstream-stable contract that step 4 will reconcile
- * callers onto.
+ * normalizes to `"manual"` via `normalizeRunTriggerKind` at the write site.
  *
  * The schema is `.strict()` for writes — unknown keys would silently
  * persist into seeds and rot the convention. Reads go through
@@ -32,16 +33,11 @@
  */
 
 import { z } from "zod";
+import { RUN_TRIGGER_KINDS, type RunTriggerKind } from "../core/wire.ts";
 
-export const WarrenTriggerKind = z.enum([
-	"manual",
-	"cron",
-	"scheduled",
-	"webhook",
-	"comment",
-	"cli",
-]);
-export type WarrenTriggerKind = z.infer<typeof WarrenTriggerKind>;
+/** Zod view of the canonical {@link RUN_TRIGGER_KINDS} vocabulary. */
+export const WarrenTriggerKind = z.enum(RUN_TRIGGER_KINDS);
+export type WarrenTriggerKind = RunTriggerKind;
 
 const IsoTimestamp = z.string().min(1, "must be a non-empty ISO 8601 string");
 

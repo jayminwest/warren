@@ -3,7 +3,9 @@ import type { WarrenDb } from "../../db/client.ts";
 import type { Repos } from "../../db/repos/index.ts";
 import type { SpawnFn as ProjectSpawnFn, SpawnResult } from "../../projects/clone.ts";
 import { spawnRun } from "./index.ts";
+import { UNKNOWN_TRIGGER_EVENT } from "./seed-extensions.ts";
 import { makeBurrowClient, makeProvider, setupRepos } from "./test-helpers.ts";
+import type { SpawnLogger } from "./types.ts";
 
 describe("spawnRun: post-dispatch seed extension write (pl-bb70)", () => {
 	let db: WarrenDb;
@@ -129,8 +131,65 @@ describe("spawnRun: post-dispatch seed extension write (pl-bb70)", () => {
 		expect(evt.ts).toBe(fixedNow.toISOString());
 	});
 
-	test("drops an unrecognized trigger string but still writes role/lastRunId/lastRunAt (src/server/handlers/projects.ts 'manual-trigger')", async () => {
+	// warren-c486: every kind a live dispatcher passes must round-trip into the
+	// seed's `trigger` extension. The old hand-copied enum covered six of ten,
+	// so these four silently lost provenance.
+	for (const [trigger, expected] of [
+		["manual", "manual"],
+		["cron", "cron"],
+		["scheduled", "scheduled"],
+		["cli", "cli"],
+		["plan-run", "plan-run"],
+		["auto_plan_run", "auto_plan_run"],
+		["ci-fixer", "ci-fixer"],
+		["healer", "healer"],
+		// Legacy alias from POST /projects/:id/triggers/:triggerId/run.
+		["manual-trigger", "manual"],
+	] as const) {
+		test(`round-trips trigger '${trigger}' into the seed extensions`, async () => {
+			const { client } = makeBurrowClient();
+			const sdCalls: { cmd: readonly string[] }[] = [];
+			const seedsSpawn: ProjectSpawnFn = async (cmd) => {
+				sdCalls.push({ cmd });
+				return { stdout: "{}", stderr: "", exitCode: 0 };
+			};
+			const fixedNow = new Date("2026-05-15T17:00:00.000Z");
+			const result = await spawnRun({
+				repos,
+				runtimeProvider: makeProvider(client),
+				agentName: "refactor-bot",
+				projectId: "prj_xxxxxxxxxxxx",
+				prompt: "fix it",
+				seedId: "warren-abc",
+				trigger,
+				seedsCli: { sdBinary: "sd", spawn: seedsSpawn },
+				now: () => fixedNow,
+			});
+
+			expect(JSON.parse(sdCalls[0]?.cmd[4] ?? "{}")).toEqual({
+				role: "refactor-bot",
+				trigger: expected,
+				lastRunId: result.run.id,
+				lastRunAt: fixedNow.toISOString(),
+			});
+			// No system event — nothing was dropped.
+			expect(await repos.events.countByRun(result.run.id)).toBe(0);
+		});
+	}
+
+	test("drops an unknown trigger string LOUDLY: warns + emits seeds_trigger_kind_unknown", async () => {
 		const { client } = makeBurrowClient();
+		const warnings: { trigger: string }[] = [];
+		const logger: SpawnLogger = {
+			info: () => {},
+			warn: (fields: object) => {
+				warnings.push(fields as { trigger: string });
+			},
+			error: () => {},
+			child() {
+				return logger;
+			},
+		};
 		const sdCalls: { cmd: readonly string[] }[] = [];
 		const seedsSpawn: ProjectSpawnFn = async (cmd) => {
 			sdCalls.push({ cmd });
@@ -144,17 +203,28 @@ describe("spawnRun: post-dispatch seed extension write (pl-bb70)", () => {
 			projectId: "prj_xxxxxxxxxxxx",
 			prompt: "fix it",
 			seedId: "warren-abc",
-			trigger: "manual-trigger",
+			trigger: "totally-made-up",
 			seedsCli: { sdBinary: "sd", spawn: seedsSpawn },
 			now: () => fixedNow,
+			logger,
 		});
 
 		expect(sdCalls).toHaveLength(1);
+		// The rest of the payload still lands — a strict-schema rejection would
+		// have lost role / lastRunId / lastRunAt too.
 		expect(JSON.parse(sdCalls[0]?.cmd[4] ?? "{}")).toEqual({
 			role: "refactor-bot",
 			lastRunId: result.run.id,
 			lastRunAt: fixedNow.toISOString(),
 		});
-		expect(await repos.events.countByRun(result.run.id)).toBe(0);
+
+		// …but the drop is visible: one warning and one system event.
+		expect(warnings).toHaveLength(1);
+		expect(warnings[0]?.trigger).toBe("totally-made-up");
+		const events = await repos.events.listByRun(result.run.id);
+		expect(events).toHaveLength(1);
+		expect(events[0]?.kind).toBe(UNKNOWN_TRIGGER_EVENT);
+		expect(events[0]?.stream).toBe("system");
+		expect((events[0]?.payloadJson as { trigger: string }).trigger).toBe("totally-made-up");
 	});
 });
