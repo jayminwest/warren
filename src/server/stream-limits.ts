@@ -14,7 +14,10 @@
  *
  *   - **per-client** (`WARREN_MAX_EVENT_STREAMS_PER_CLIENT`, default 5) —
  *     bounds one browser / script. Checked FIRST so the rejection names the
- *     actual offender rather than blaming the instance.
+ *     actual offender rather than blaming the instance. The client key is
+ *     derived from `X-Forwarded-For` counting RIGHT from the trusted edge
+ *     (`WARREN_EVENT_STREAM_TRUSTED_PROXY_HOPS`), never the client-forgeable
+ *     left-most hop — see `eventStreamClientKey` (warren-46a7).
  *   - **global** (`WARREN_MAX_EVENT_STREAMS`, default 200) — bounds the
  *     instance. Logged at `warn`: an instance at its stream cap is an
  *     operator signal, not routine.
@@ -42,6 +45,8 @@ export const WARREN_MAX_EVENT_STREAMS_ENV = "WARREN_MAX_EVENT_STREAMS" as const;
 export const WARREN_MAX_EVENT_STREAMS_PER_CLIENT_ENV =
 	"WARREN_MAX_EVENT_STREAMS_PER_CLIENT" as const;
 export const WARREN_EVENT_STREAM_MAX_LIFETIME_ENV = "WARREN_EVENT_STREAM_MAX_LIFETIME" as const;
+export const WARREN_EVENT_STREAM_TRUSTED_PROXY_HOPS_ENV =
+	"WARREN_EVENT_STREAM_TRUSTED_PROXY_HOPS" as const;
 
 /** Instance-wide concurrent event streams. Generous for a real audience, finite for an attacker. */
 export const DEFAULT_MAX_EVENT_STREAMS = 200;
@@ -53,6 +58,14 @@ export const DEFAULT_MAX_EVENT_STREAMS_PER_CLIENT = 5;
  * the UI resumes transparently anyway. `0` ⇒ unlimited.
  */
 export const DEFAULT_EVENT_STREAM_MAX_LIFETIME_MS = 4 * 60 * 60_000;
+/**
+ * Right-most `X-Forwarded-For` hops to skip as trusted infrastructure when
+ * deriving the per-client key (warren-46a7). `0` suits a single Caddy /
+ * Ingress hop, which appends only the real client. The GKE overlay sets
+ * `1`: GCLB appends `<client-ip>, <lb-ip>` after any client-supplied value,
+ * so the `lb-ip` hop must be skipped to reach the client.
+ */
+export const DEFAULT_EVENT_STREAM_TRUSTED_PROXY_HOPS = 0;
 
 /**
  * `Retry-After` advertised on a capacity 503. Slots free as runs finish and
@@ -71,6 +84,8 @@ export interface EventStreamLimits {
 	readonly maxPerClient: number;
 	/** Wall-clock budget for one connection in ms; `<= 0` ⇒ unlimited. */
 	readonly maxLifetimeMs: number;
+	/** Right-most XFF hops skipped as trusted infrastructure when keying the per-client cap. */
+	readonly trustedProxyHops: number;
 }
 
 export type EnvLike = Readonly<Record<string, string | undefined>>;
@@ -92,6 +107,11 @@ export function loadEventStreamLimitsFromEnv(env: EnvLike = process.env): EventS
 			env,
 			WARREN_EVENT_STREAM_MAX_LIFETIME_ENV,
 			DEFAULT_EVENT_STREAM_MAX_LIFETIME_MS,
+		),
+		trustedProxyHops: parseEnvCount(
+			env,
+			WARREN_EVENT_STREAM_TRUSTED_PROXY_HOPS_ENV,
+			DEFAULT_EVENT_STREAM_TRUSTED_PROXY_HOPS,
 		),
 	};
 }
@@ -250,17 +270,34 @@ export class EventStreamLimiter {
  *
  * The canonical deploy puts warren behind Caddy / a cluster Ingress
  * (SECURITY.md), where the socket peer is the proxy and every caller would
- * otherwise collapse into one key — so the left-most `X-Forwarded-For` hop
- * wins when present, falling back to the socket peer and finally a shared
- * `"unknown"` bucket. A caller on a directly-exposed instance can forge the
- * header to dodge its own cap; that only ever costs it the per-client
- * allowance, because the global cap counts every stream regardless of key.
+ * otherwise collapse into one key — so the key comes from
+ * `X-Forwarded-For`, falling back to the socket peer and finally a shared
+ * `"unknown"` bucket.
+ *
+ * Which hop is trusted matters (warren-46a7): everything LEFT of what the
+ * first trusted proxy appended is client-controlled. GCLB appends to a
+ * supplied header (`<supplied>, <client-ip>, <lb-ip>`), so the left-most
+ * hop is attacker-set — rotating it dodged the per-client cap and let one
+ * source drain the global budget. Count instead from the RIGHT: skip
+ * `trustedProxyHops` infrastructure entries (`WARREN_EVENT_STREAM_TRUSTED_PROXY_HOPS`,
+ * `1` on the GKE overlay for GCLB's own address, `0` for a lone Caddy /
+ * Ingress hop) and take the next entry, which the trusted edge appended
+ * and the client cannot influence. A chain shorter than the configured
+ * trust depth falls back to the socket peer. A caller on a directly-
+ * exposed instance can still forge the header to dodge its own cap; that
+ * only ever costs it the per-client allowance, because the global cap
+ * counts every stream regardless of key.
  */
-export function eventStreamClientKey(ctx: RouteContext): string {
+export function eventStreamClientKey(ctx: RouteContext, trustedProxyHops = 0): string {
 	const forwarded = ctx.request.headers.get("x-forwarded-for");
 	if (forwarded !== null) {
-		const first = forwarded.split(",")[0]?.trim();
-		if (first !== undefined && first !== "") return first;
+		const hops = forwarded
+			.split(",")
+			.map((hop) => hop.trim())
+			.filter((hop) => hop !== "");
+		const clientIndex = hops.length - 1 - trustedProxyHops;
+		const client = clientIndex >= 0 ? hops[clientIndex] : undefined;
+		if (client !== undefined) return client;
 	}
 	const peer = ctx.clientIp?.trim();
 	return peer !== undefined && peer !== "" ? peer : "unknown";
@@ -286,7 +323,7 @@ export interface ReserveEventStreamSlotInput {
 export function reserveEventStreamSlot(input: ReserveEventStreamSlotInput): EventStreamSlot {
 	const { limiter, ctx, ctrl, route } = input;
 	if (limiter === undefined) return UNLIMITED_SLOT;
-	const clientKey = eventStreamClientKey(ctx);
+	const clientKey = eventStreamClientKey(ctx, limiter.limits.trustedProxyHops);
 	try {
 		return limiter.acquire(clientKey, { onExpire: () => ctrl.abort() });
 	} catch (err) {

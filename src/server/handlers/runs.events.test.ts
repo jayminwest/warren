@@ -198,7 +198,12 @@ describe("GET /runs/:id/events — concurrency caps", () => {
 	}
 
 	test("the N+1th stream for one client is refused while the first N keep delivering", async () => {
-		const url = await serve({ maxGlobal: 0, maxPerClient: 2, maxLifetimeMs: 0 });
+		const url = await serve({
+			maxGlobal: 0,
+			maxPerClient: 2,
+			maxLifetimeMs: 0,
+			trustedProxyHops: 0,
+		});
 
 		const first = await openStream(url);
 		const second = await openStream(url);
@@ -228,7 +233,7 @@ describe("GET /runs/:id/events — concurrency caps", () => {
 				lines.push({ level, obj: obj as Record<string, unknown>, msg });
 			};
 		const url = await serve(
-			{ maxGlobal: 1, maxPerClient: 0, maxLifetimeMs: 0 },
+			{ maxGlobal: 1, maxPerClient: 0, maxLifetimeMs: 0, trustedProxyHops: 0 },
 			{ info: record("info"), warn: record("warn"), error: record("error") },
 		);
 
@@ -244,7 +249,12 @@ describe("GET /runs/:id/events — concurrency caps", () => {
 	});
 
 	test("a stream that ends normally gives its slot back", async () => {
-		const url = await serve({ maxGlobal: 1, maxPerClient: 1, maxLifetimeMs: 0 });
+		const url = await serve({
+			maxGlobal: 1,
+			maxPerClient: 1,
+			maxLifetimeMs: 0,
+			trustedProxyHops: 0,
+		});
 		// Non-follow: the handler replays history and closes, so the slot is
 		// released through `asNdjsonStream`'s end-of-source path.
 		const historyUrl = url.replace("?follow=1", "?follow=0");

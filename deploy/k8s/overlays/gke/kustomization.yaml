@@ -168,6 +168,14 @@ patches:
                   # every in-pod `git commit` fails with "Author identity
                   # unknown" (warren-4e36). The noreply address keeps agent
                   # commits attributed to the operator's GitHub account.
+                  # GCLB appends `<client-ip>, <lb-ip>` after any client-
+                  # supplied X-Forwarded-For, so the per-client event-stream
+                  # cap must skip the one right-most infrastructure hop to
+                  # reach the client key (warren-46a7). Without this every
+                  # spectator collapses into the LB's address and shares one
+                  # per-client allowance.
+                  - name: WARREN_EVENT_STREAM_TRUSTED_PROXY_HOPS
+                    value: "1"
                   - name: WARREN_GIT_AUTHOR_NAME
                     value: warren
                   - name: WARREN_GIT_AUTHOR_EMAIL

@@ -105,7 +105,12 @@ describe("GET /metrics", () => {
 	});
 
 	test("reports event-stream saturation when a stream limiter is wired (warren-25f6)", async () => {
-		const limiter = new EventStreamLimiter({ maxGlobal: 8, maxPerClient: 2, maxLifetimeMs: 0 });
+		const limiter = new EventStreamLimiter({
+			maxGlobal: 8,
+			maxPerClient: 2,
+			maxLifetimeMs: 0,
+			trustedProxyHops: 0,
+		});
 		limiter.acquire("1.2.3.4");
 		limiter.acquire("5.6.7.8");
 		handle = startServer(await depsFor(repos, db, undefined, limiter), {

@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { renderError } from "./errors.ts";
 import {
 	DEFAULT_EVENT_STREAM_MAX_LIFETIME_MS,
+	DEFAULT_EVENT_STREAM_TRUSTED_PROXY_HOPS,
 	DEFAULT_MAX_EVENT_STREAMS,
 	DEFAULT_MAX_EVENT_STREAMS_PER_CLIENT,
 	EVENT_STREAM_RETRY_AFTER_SECONDS,
@@ -21,6 +22,7 @@ function limiter(
 		maxGlobal: 0,
 		maxPerClient: 0,
 		maxLifetimeMs: 0,
+		trustedProxyHops: 0,
 		...overrides,
 	});
 }
@@ -62,6 +64,7 @@ describe("loadEventStreamLimitsFromEnv", () => {
 			maxGlobal: DEFAULT_MAX_EVENT_STREAMS,
 			maxPerClient: DEFAULT_MAX_EVENT_STREAMS_PER_CLIENT,
 			maxLifetimeMs: DEFAULT_EVENT_STREAM_MAX_LIFETIME_MS,
+			trustedProxyHops: DEFAULT_EVENT_STREAM_TRUSTED_PROXY_HOPS,
 		});
 	});
 
@@ -81,8 +84,9 @@ describe("loadEventStreamLimitsFromEnv", () => {
 				WARREN_MAX_EVENT_STREAMS: "12",
 				WARREN_MAX_EVENT_STREAMS_PER_CLIENT: "3",
 				WARREN_EVENT_STREAM_MAX_LIFETIME: "90m",
+				WARREN_EVENT_STREAM_TRUSTED_PROXY_HOPS: "1",
 			}),
-		).toEqual({ maxGlobal: 12, maxPerClient: 3, maxLifetimeMs: 90 * 60_000 });
+		).toEqual({ maxGlobal: 12, maxPerClient: 3, maxLifetimeMs: 90 * 60_000, trustedProxyHops: 1 });
 	});
 
 	test("0 disables a cap rather than failing", () => {
@@ -218,12 +222,35 @@ describe("EventStreamLimiter", () => {
 });
 
 describe("eventStreamClientKey", () => {
-	test("prefers the left-most X-Forwarded-For hop", () => {
+	test("ignores client-supplied left-most hops and trusts only the right-hand side (warren-46a7)", () => {
+		// GCLB appends `<client-ip>, <lb-ip>` after whatever the caller sent,
+		// so the left-most hop is attacker-controlled and must never key the cap.
 		const ctx = ctxFor({
-			headers: { "x-forwarded-for": "203.0.113.7, 10.0.0.1, 10.0.0.2" },
+			headers: { "x-forwarded-for": "203.0.113.7, 198.51.100.4, 10.0.0.2" },
 			clientIp: "10.0.0.9",
 		});
-		expect(eventStreamClientKey(ctx)).toBe("203.0.113.7");
+		expect(eventStreamClientKey(ctx, 1)).toBe("198.51.100.4");
+		expect(eventStreamClientKey(ctx, 0)).toBe("10.0.0.2");
+	});
+
+	test("a forged left-most rotation collapses to one key under the GCLB hop count", () => {
+		const ctxForSpoof = (spoof: string): RouteContext =>
+			ctxFor({
+				headers: { "x-forwarded-for": `${spoof}, 198.51.100.4, 10.0.0.2` },
+				clientIp: "10.0.0.9",
+			});
+		const keys = new Set(
+			["1.1.1.1", "2.2.2.2", "3.3.3.3"].map((spoof) => eventStreamClientKey(ctxForSpoof(spoof), 1)),
+		);
+		expect(keys).toEqual(new Set(["198.51.100.4"]));
+	});
+
+	test("a chain shorter than the trusted-hop count falls back to the socket peer", () => {
+		const ctx = ctxFor({
+			headers: { "x-forwarded-for": "203.0.113.7" },
+			clientIp: "10.0.0.9",
+		});
+		expect(eventStreamClientKey(ctx, 1)).toBe("10.0.0.9");
 	});
 
 	test("falls back to the socket peer when there is no proxy header", () => {

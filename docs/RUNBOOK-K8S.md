@@ -241,6 +241,10 @@ That key is only correct while DNS stays unproxied.
 If a proxy ever sits in front of the LB, every request keys off the proxy's address.
 The rule must then move to `--enforce-on-key=XFF-IP`.
 
+The per-client event-stream cap has the same keying problem in-process (warren-46a7): GCLB appends `<client-ip>, <lb-ip>` after whatever X-Forwarded-For the caller supplied, so the left-most hop is client-forgeable.
+`eventStreamClientKey` therefore counts from the right, skipping `WARREN_EVENT_STREAM_TRUSTED_PROXY_HOPS` infrastructure hops — the GKE overlay pins it to `1` (the LB's own address).
+If a proxy ever sits in front of the LB, raise it by the hops that proxy appends — otherwise every spectator shares one per-client allowance.
+
 **Do not burst-test from your own network.** The warren-63e4 synthetic burst verification trips rule 1000 exactly as designed — and the 300s ban then applies to *your* IP too.
 Your own browser gets 429s off the UI and API for five minutes, mid-verification.
 Run the burst from an external vantage point instead (Cloud Shell is the cheap one), or accept the self-lockout.

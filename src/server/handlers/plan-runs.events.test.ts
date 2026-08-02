@@ -142,6 +142,7 @@ describe("GET /plan-runs/:id/events", () => {
 				maxGlobal: 1,
 				maxPerClient: 0,
 				maxLifetimeMs: 0,
+				trustedProxyHops: 0,
 			}),
 		});
 		handle = startServer(deps, {
