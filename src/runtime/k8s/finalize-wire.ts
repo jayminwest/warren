@@ -36,9 +36,9 @@ import type {
 	ArtifactDeltaFile,
 	FinalizeEvent,
 	FinalizeResult,
-	FinalizeStage,
 	FinalizeStageOutcome,
 } from "../contract.ts";
+import { isFinalizeStage } from "../contract.ts";
 
 /** Wire-format version tag so the intent shape can evolve unambiguously. */
 export const IN_POD_FINALIZE_WIRE_VERSION = 1 as const;
@@ -62,7 +62,7 @@ export interface InPodFinalizeIntent {
 	/** Opaque artifact-set keys to extract (mirrors `FinalizeIntent.artifacts`). */
 	artifacts: string[];
 	/** Bookkeeping commits to author before the push (mirrors `FinalizeIntent.commit`). */
-	commit: "seeds"[];
+	commit: string[];
 	/** Base ref for the commits-ahead count; omitted ⇒ count skipped (`null`). */
 	baseBranch?: string;
 	/**
@@ -198,21 +198,17 @@ function validateArtifactDelta(value: unknown, key: string): ArtifactDelta {
 	return { version: 1, files, counts };
 }
 
-const FINALIZE_STAGES: readonly FinalizeStage[] = [
-	"mulch_merge",
-	"seeds_mirror",
-	"plans_mirror",
-	"seeds_commit",
-	"branch_push",
-	"commits_ahead",
-];
-
+/**
+ * warren-357c: stage names are no longer a fixed union — the merge/commit
+ * stages derive from the opaque artifact keys, so intake validates the SHAPE
+ * (pipeline stage or `${key}_merge` / `${key}_commit`), not a feature list.
+ */
 function validateStages(value: unknown): FinalizeStageOutcome[] {
 	if (!Array.isArray(value)) throw new ValidationError("result.stages must be an array");
 	return value.map((s, i) => {
 		const so = asRecord(s, `result.stages[${i}]`);
 		const stage = reqString(so, "stage", `result.stages[${i}]`);
-		if (!(FINALIZE_STAGES as readonly string[]).includes(stage)) {
+		if (!isFinalizeStage(stage)) {
 			throw new ValidationError(
 				`result.stages[${i}].stage "${stage}" is not a known finalize stage`,
 			);
@@ -226,7 +222,7 @@ function validateStages(value: unknown): FinalizeStageOutcome[] {
 			throw new ValidationError(`result.stages[${i}].error must be a string when present`);
 		}
 		return {
-			stage: stage as FinalizeStage,
+			stage,
 			status,
 			...(typeof error === "string" ? { error } : {}),
 		};

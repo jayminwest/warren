@@ -35,8 +35,7 @@ The brake on all three is PHILOSOPHY rule 1: features pay for seams. Work with n
 
 ## Now — in flight
 
-- **Hygiene residue** — what remains of the v0.13.1 truth-and-hygiene pass. `closeSeedId` deleted per rule 8 (warren-11e4). Generalize the finalize holdouts (`commit?: "seeds"[]`, the `FinalizeStage` union) in one contract touch.
-- **Self-host hardening residue** `[plan: pl-1c02, outcome: success]`. Two durability items stay open after the batch shipped in v0.13.0–v0.13.1: fetch-before-carve (warren-b94b) and the tracker-integrity gate (warren-a71f part 1).
+- **Hygiene residue** — what remains of the v0.13.1 truth-and-hygiene pass. `closeSeedId` deleted per rule 8 (warren-11e4). The finalize holdouts generalized in one contract touch (warren-357c). `commit` now takes opaque artifact keys. The merge and commit stage names derive from them.
 - **Agent-facing CLI + npm publish** `[plan: not yet filed]`. Step 5 of that plan is also `AgentRuntimeAdapter` phase 1 item 10: one event-envelope extractor in `src/core`, three consumers. The docker-build CI gate shipped in v0.13.0, so the npm publish step no longer inherits the release-before-artifact failure.
 
 ## Next — planned, in order

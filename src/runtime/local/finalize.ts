@@ -49,6 +49,7 @@ import type {
 	FinalizeStageOutcome,
 	RunHandle,
 } from "../contract.ts";
+import { finalizeCommitStage, finalizeMergeStage } from "../contract.ts";
 import { RuntimeProviderError } from "../errors.ts";
 import { finalizeSeedReset } from "./finalize-seed-reset.ts";
 
@@ -222,14 +223,14 @@ async function finalizeMulch(
 	try {
 		const result = await mergeMulch(workspacePath, clonePath, fs, collector.emit, collector.fail);
 		const files = await readMergedMulchFiles(workspacePath, clonePath, fs);
-		trail.ok("mulch_merge");
+		trail.ok(finalizeMergeStage("mulch"));
 		return {
 			version: 1,
 			files,
 			counts: { updated: result.updated, skipped: result.skipped, appended: result.appended },
 		};
 	} catch (err) {
-		trail.failed("mulch_merge", err);
+		trail.failed(finalizeMergeStage("mulch"), err);
 		await collector.fail("mulch_merge", err);
 		return { version: 1, files: [], counts: { updated: 0, skipped: 0, appended: 0 } };
 	}
@@ -299,14 +300,14 @@ async function finalizeSeeds(
 		const mergedBody = changed
 			? ((await fs.readFile(join(clonePath, ".seeds", "issues.jsonl"))) ?? null)
 			: null;
-		trail.ok("seeds_mirror");
+		trail.ok(finalizeMergeStage("seeds"));
 		return {
 			version: 1,
 			files: singleFile(SEEDS_ISSUES_REL, mergedBody),
 			counts: { closed: result.closed, created: result.created },
 		};
 	} catch (err) {
-		trail.failed("seeds_mirror", err);
+		trail.failed(finalizeMergeStage("seeds"), err);
 		// reap's `mirrorSeedsStep` reports this failure as step `seeds_close`.
 		await collector.fail("seeds_close", err);
 		return { version: 1, files: [], counts: { closed: 0, created: 0 } };
@@ -336,10 +337,10 @@ async function finalizePlans(
 		});
 		const mergedBody =
 			appended > 0 ? ((await fs.readFile(join(clonePath, ".seeds", "plans.jsonl"))) ?? null) : null;
-		trail.ok("plans_mirror");
+		trail.ok(finalizeMergeStage("plans"));
 		return { version: 1, files: singleFile(SEEDS_PLANS_REL, mergedBody), counts: { appended } };
 	} catch (err) {
-		trail.failed("plans_mirror", err);
+		trail.failed(finalizeMergeStage("plans"), err);
 		await collector.fail("plans_mirror", err);
 		return { version: 1, files: [], counts: { appended: 0 } };
 	}
@@ -361,9 +362,9 @@ async function finalizeSeedsCommit(
 			exec,
 			emit: collector.emit,
 		});
-		trail.ok("seeds_commit");
+		trail.ok(finalizeCommitStage("seeds"));
 	} catch (err) {
-		trail.failed("seeds_commit", err);
+		trail.failed(finalizeCommitStage("seeds"), err);
 		await collector.fail("seeds_commit", err, join(workspacePath, ".seeds"));
 	}
 }

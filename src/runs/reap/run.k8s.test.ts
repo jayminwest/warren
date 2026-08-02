@@ -297,8 +297,8 @@ describe("reapRun under a K8s-style RuntimeProvider", () => {
 			prBranch: null,
 			stages: [
 				{ stage: "mulch_merge", status: "failed", error: message },
-				{ stage: "seeds_mirror", status: "failed", error: message },
-				{ stage: "plans_mirror", status: "failed", error: message },
+				{ stage: "seeds_merge", status: "failed", error: message },
+				{ stage: "plans_merge", status: "failed", error: message },
 				{ stage: "branch_push", status: "failed", error: message },
 			],
 		};

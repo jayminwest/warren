@@ -89,11 +89,11 @@ describe("toInPodIntent", () => {
 		expect(wire.baseBranch).toBe("main");
 	});
 
-	test("omits the token when absent and defaults commit from the merge set (seeds only)", () => {
+	test("omits the token when absent and defaults commit to the merge set", () => {
 		const wire = toInPodIntent(intent({ commit: undefined }), undefined);
 		expect("gitToken" in wire).toBe(false);
-		// mulch/plans must NOT leak into the commit list.
-		expect(wire.commit).toEqual(["seeds"]);
+		// warren-357c: commit defaults to the merge set verbatim (opaque keys).
+		expect(wire.commit).toEqual(["mulch", "seeds", "plans"]);
 	});
 });
 
@@ -110,8 +110,8 @@ describe("failedFinalizeResult", () => {
 		const failed = r.stages.filter((s) => s.status === "failed").map((s) => s.stage);
 		expect(failed).toEqual([
 			"mulch_merge",
-			"seeds_mirror",
-			"plans_mirror",
+			"seeds_merge",
+			"plans_merge",
 			"seeds_commit",
 			"branch_push",
 		]);

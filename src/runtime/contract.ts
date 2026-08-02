@@ -12,6 +12,7 @@
  */
 
 import type { ArtifactDelta } from "./finalize-deltas.ts";
+import type { FinalizeStage } from "./finalize-stages.ts";
 
 /**
  * Opaque handle — the only run reference that crosses the seam. Providers map
@@ -288,12 +289,12 @@ export interface FinalizeIntent {
 	 * reap pipeline runs the tracker merges unconditionally but gates the
 	 * `chore(warren): seeds state` commit on `project.hasSeeds` — so
 	 * merge-gating (`artifacts`) and commit-gating cannot be one set. `commit`
-	 * decouples them: finalize authors the seeds bookkeeping commit iff this
-	 * includes `"seeds"`. OMITTED ⇒ defaults to `artifacts` (commit whatever we
-	 * merge) so callers that only ever passed the merge set keep their existing
-	 * behavior.
+	 * decouples them: the provider authors the bookkeeping commit for each key
+	 * listed here, keyed off the SAME opaque artifact vocabulary as `artifacts`
+	 * (warren-357c — no feature enumeration at the seam). OMITTED ⇒ defaults to
+	 * `artifacts` (commit whatever we merge).
 	 */
-	commit?: "seeds"[];
+	commit?: string[];
 	/**
 	 * Base ref for the commits-ahead / empty-push count
 	 * (`git rev-list --count <baseBranch>..HEAD`). A provider-NEUTRAL git ref
@@ -422,15 +423,14 @@ export interface FinalizeResult {
 	stages: FinalizeStageOutcome[];
 }
 
-/** The workspace-touching stages `finalize` runs, in pipeline order. */
-export type FinalizeStage =
-	| "mulch_merge"
-	| "seeds_mirror"
-	| "plans_mirror"
-	| "seeds_commit"
-	| "seed_reset"
-	| "branch_push"
-	| "commits_ahead";
+export type { FinalizePipelineStage, FinalizeStage } from "./finalize-stages.ts";
+// The finalize stage vocabulary (warren-357c) lives in `./finalize-stages.ts` (size-budget split).
+export {
+	FINALIZE_PIPELINE_STAGES,
+	finalizeCommitStage,
+	finalizeMergeStage,
+	isFinalizeStage,
+} from "./finalize-stages.ts";
 
 export interface FinalizeStageOutcome {
 	stage: FinalizeStage;

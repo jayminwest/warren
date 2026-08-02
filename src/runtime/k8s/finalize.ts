@@ -38,6 +38,7 @@ import type {
 	RunHandle,
 	RunStatus,
 } from "../contract.ts";
+import { finalizeCommitStage, finalizeMergeStage } from "../contract.ts";
 import { RuntimeProviderError } from "../errors.ts";
 import type { FinalizeCoordinator } from "./finalize-coordinator.ts";
 import type { InPodFinalizeIntent } from "./finalize-wire.ts";
@@ -93,15 +94,16 @@ export interface K8sFinalizeDeps {
 	readonly setTimer?: (fn: () => void, ms: number) => { cancel: () => void };
 }
 
-/** The stages a FAILED finalize marks, derived from what the intent asked for. */
+/**
+ * The stages a FAILED finalize marks, DERIVED from what the intent asked for
+ * (warren-357c): a merge stage per artifact key, a commit stage per commit
+ * key, and `branch_push` when the intent pushes.
+ */
 function failedStages(intent: FinalizeIntent): FinalizeStage[] {
-	const stages: FinalizeStage[] = [];
-	const artifacts = new Set(intent.artifacts);
-	if (artifacts.has("mulch")) stages.push("mulch_merge");
-	if (artifacts.has("seeds")) stages.push("seeds_mirror");
-	if (artifacts.has("plans")) stages.push("plans_mirror");
-	const commit = new Set(intent.commit ?? intent.artifacts);
-	if (commit.has("seeds")) stages.push("seeds_commit");
+	const stages: FinalizeStage[] = intent.artifacts.map(finalizeMergeStage);
+	for (const key of new Set(intent.commit ?? intent.artifacts)) {
+		stages.push(finalizeCommitStage(key));
+	}
 	if (intent.push) stages.push("branch_push");
 	return stages;
 }
@@ -139,12 +141,11 @@ export function failedFinalizeResult(
 
 /**
  * Commit-gating defaults to the merge set when omitted (parity with
- * LocalProvider), but the wire's `commit` only ranges over `seeds` — filter the
- * merge set down so `mulch`/`plans` never leak into a commit list.
+ * LocalProvider). warren-357c: the wire `commit` now ranges over the same
+ * opaque artifact keys as `artifacts`, so the set travels verbatim.
  */
-function resolveCommit(intent: FinalizeIntent): "seeds"[] {
-	if (intent.commit !== undefined) return [...intent.commit];
-	return intent.artifacts.filter((m): m is "seeds" => m === "seeds");
+function resolveCommit(intent: FinalizeIntent): string[] {
+	return [...(intent.commit ?? intent.artifacts)];
 }
 
 /** Project the neutral `FinalizeIntent` onto the pod-shaped wire (host path dropped). */

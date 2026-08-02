@@ -206,8 +206,8 @@ describe("finalize — stage trail + push reporting", () => {
 		const result = await p.finalize(HANDLE, intent());
 		expect(result.stages.map((s) => s.stage)).toEqual([
 			"mulch_merge",
-			"seeds_mirror",
-			"plans_mirror",
+			"seeds_merge",
+			"plans_merge",
 			"seeds_commit",
 			"branch_push",
 			"commits_ahead",
@@ -279,7 +279,7 @@ describe("finalize — error capture + guards", () => {
 			},
 		});
 		const result = await p.finalize(HANDLE, intent({ artifacts: ["seeds"] }));
-		const seedsStage = result.stages.find((s) => s.stage === "seeds_mirror");
+		const seedsStage = result.stages.find((s) => s.stage === "seeds_merge");
 		expect(seedsStage?.status).toBe("failed");
 		expect(seedsStage?.error).toContain("boom");
 		// delta still present, zeroed — the domain sees the no-op explicitly.

@@ -23,6 +23,7 @@ import type {
 	FinalizeStage,
 	FinalizeStageOutcome,
 } from "../contract.ts";
+import { finalizeCommitStage, finalizeMergeStage } from "../contract.ts";
 import type { InPodFinalizeIntent } from "./finalize-wire.ts";
 
 /** Clone-relative (posix) tracker paths — the delta `path` fields (match `../local/finalize.ts`). */
@@ -303,7 +304,7 @@ async function workspaceDirtyPaths(
 /**
  * Run the whole in-pod collection against the live workspace and assemble a
  * contract-shaped `FinalizeResult`. The mirror MERGES gate on `intent.artifacts`;
- * the bookkeeping COMMIT (`seeds_commit`) is marked `skipped` —
+ * the bookkeeping COMMIT stages (`${key}_commit`) are marked `skipped` —
  * they need warren's clone to union against and are authored warren-side on apply
  * (step 25, see module doc). Every stage is best-effort; the workspace read is
  * captured for auto-plan-run before it would be overwritten (parity with reap's
@@ -322,17 +323,17 @@ export async function collectFinalizeResult(
 	let mulch: ArtifactDelta | undefined;
 	if (artifacts.has("mulch")) {
 		mulch = await collectMulchDelta(workspacePath, deps.fs);
-		trail.ok("mulch_merge");
+		trail.ok(finalizeMergeStage("mulch"));
 	}
 	let seeds: ArtifactDelta | undefined;
 	if (artifacts.has("seeds")) {
 		seeds = await collectSeedsDelta(workspacePath, deps.fs);
-		trail.ok("seeds_mirror");
+		trail.ok(finalizeMergeStage("seeds"));
 	}
 	let plans: ArtifactDelta | undefined;
 	if (artifacts.has("plans")) {
 		plans = await collectPlansDelta(workspacePath, deps.fs);
-		trail.ok("plans_mirror");
+		trail.ok(finalizeMergeStage("plans"));
 	}
 
 	// Bookkeeping commits are a warren-side apply concern in K8s (no in-pod clone).
@@ -340,7 +341,7 @@ export async function collectFinalizeResult(
 		deps.fs,
 		join(workspacePath, ".seeds", "plans.jsonl"),
 	);
-	if (commit.has("seeds")) trail.skipped("seeds_commit");
+	for (const key of commit) trail.skipped(finalizeCommitStage(key));
 
 	const push = await runPush(intent, workspacePath, deps.git, trail, collector);
 	const prBranch =

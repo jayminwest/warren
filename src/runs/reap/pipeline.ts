@@ -28,6 +28,7 @@ import type {
 	RunHandle,
 	RuntimeProvider,
 } from "../../runtime/contract.ts";
+import { finalizeCommitStage, finalizeMergeStage } from "../../runtime/contract.ts";
 import { openPullRequest } from "../pr.ts";
 import type { BoundBridgeLogger } from "../stream/index.ts";
 import { dispatchAutoPlanRuns, hasAutoPlanRunFrontmatter, parsePlanIds } from "./auto-plan-run.ts";
@@ -138,14 +139,30 @@ export interface ReapPipelineContext {
  * Map a finalize stage onto the reap step name reap's `errors[]` uses. Omitted
  * stages (`commits_ahead`) are NOT errors — reap only logs a rev-list failure.
  */
-const FINALIZE_STAGE_TO_REAP_STEP: Partial<Record<FinalizeStage, ReapStep>> = {
-	mulch_merge: "mulch_merge",
-	seeds_mirror: "seeds_close",
-	plans_mirror: "plans_mirror",
-	seeds_commit: "seeds_commit",
-	seed_reset: "seed_reset",
-	branch_push: "branch_push",
-};
+/**
+ * warren-357c: finalize stage names are DERIVED from the opaque artifact keys
+ * (`${key}_merge` / `${key}_commit`), so the fold maps them back onto reap's
+ * step vocabulary with a function, not a fixed record. Unknown derived keys
+ * (an artifact with no reap step) and `commits_ahead` fold to nothing.
+ */
+function finalizeStageToReapStep(stage: FinalizeStage): ReapStep | undefined {
+	switch (stage) {
+		case "seed_reset":
+			return "seed_reset";
+		case "branch_push":
+			return "branch_push";
+		case finalizeMergeStage("mulch"):
+			return "mulch_merge";
+		case finalizeMergeStage("seeds"):
+			return "seeds_close";
+		case finalizeMergeStage("plans"):
+			return "plans_mirror";
+		case finalizeCommitStage("seeds"):
+			return "seeds_commit";
+		default:
+			return undefined;
+	}
+}
 
 /**
  * warren-a32a: snapshot the project-clone baseline plans.jsonl BEFORE finalize's
@@ -180,7 +197,7 @@ async function runFinalize(ctx: ReapPipelineContext): Promise<FinalizeResult> {
 		providerRunId: ctx.run.burrowRunId ?? "",
 	};
 	// Merges run unconditionally; COMMITS gate on project flags (warren-1f56).
-	const commit: "seeds"[] = [];
+	const commit: string[] = [];
 	if (ctx.project.hasSeeds) commit.push("seeds");
 	const intent: FinalizeIntent = {
 		branch: ctx.branch ?? "",
@@ -213,7 +230,7 @@ async function replayFinalizeEvents(ctx: ReapPipelineContext, r: FinalizeResult)
 function recordFinalizeErrors(ctx: ReapPipelineContext, r: FinalizeResult): void {
 	for (const st of r.stages) {
 		if (st.status !== "failed") continue;
-		const step = FINALIZE_STAGE_TO_REAP_STEP[st.stage];
+		const step = finalizeStageToReapStep(st.stage);
 		if (step === undefined) continue;
 		ctx.recordError(step, st.error ?? "");
 	}
