@@ -32,6 +32,17 @@
  *   2. `ALLOW` is an explicit, commented escape hatch for a deliberate local
  *      declaration. It is empty today; every entry needs a reason.
  *
+ * Known blind spot (warren-7b7a): the guard matches on NAMES, so a parallel
+ * copy spelled differently is invisible to it — `src/runtime/contract.ts` once
+ * declared `RunPhase` (a hand-listed `RUN_STATES`), `MessagePriority` (an
+ * `INBOX_PRIORITIES` copy), an inline `Message.state` union (`INBOX_STATES`),
+ * and both stream adapters carried a private `NORMALIZED_STREAMS`
+ * (`EVENT_STREAMS`). Those are now type aliases over the canonical names, which
+ * is the convention for a seam that wants its own vocabulary word: alias, never
+ * re-list. Widening DOMAIN_STEMS would not have caught them — every canonical
+ * export in `src/core/wire.ts` already carries a stem — so the defence against
+ * an aliased re-list stays review plus this note.
+ *
  * Scope note: this guard walks ALL of `src/` INCLUDING `src/ui/`, which biome,
  * `check:size` and `check:debt` all exclude — the UI is a separate
  * `@os-eco/warren-ui` package, and it is also where two of the three

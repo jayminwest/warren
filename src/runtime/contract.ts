@@ -11,7 +11,13 @@
  * seam. Everything here is warren's *need*; providers satisfy it.
  */
 
-import type { EventOrigin } from "../core/wire.ts";
+import type {
+	EventOrigin,
+	EventStream,
+	InboxPriority,
+	InboxState,
+	RunState,
+} from "../core/wire.ts";
 import type { ArtifactDelta } from "./finalize-deltas.ts";
 import type { FinalizeStage } from "./finalize-stages.ts";
 
@@ -116,8 +122,8 @@ export interface NormalizedEvent {
 	 * typed terminal event or `detectRuntimeTerminal` breaks.
 	 */
 	kind: string;
-	/** unknown coerces to `null` */
-	stream: "stdout" | "stderr" | "system" | null;
+	/** unknown coerces to `null`. Derived from `EVENT_STREAMS` (`src/core/wire.ts`). */
+	stream: EventStream | null;
 	/** warren-6646, see `src/core/wire.ts`: only `"warren"` keeps system authority. */
 	origin?: EventOrigin;
 	/** LOSSLESS — see interface doc; typed `unknown` deliberately. */
@@ -129,7 +135,8 @@ export interface StreamOpts {
 	sinceSeq?: number;
 }
 
-export type RunPhase = "queued" | "running" | "succeeded" | "failed" | "cancelled";
+/** Provider run phase — canonical `RUN_STATES` (`src/core/wire.ts`), warren-7b7a. */
+export type RunPhase = RunState;
 
 /**
  * Coarse terminal reason — the only terminal classification that is a provider
@@ -137,15 +144,12 @@ export type RunPhase = "queued" | "running" | "succeeded" | "failed" | "cancelle
  *
  * - `completed` — agent finished normally.
  * - `error` — agent/runtime failed.
- * - `oom_killed` — killed by the cgroup/OOM killer. NEW first-class value (§6.5):
- *   burrow already emits this signal (oomKilled() probe + `oom_killed` event)
- *   and warren currently discards it; K8s gives it via `terminated.reason=="OOMKilled"`.
- * - `evicted` — the kubelet evicted the pod (K8s `status.reason=="Evicted"`) under
- *   node resource pressure — most commonly ephemeral-storage exhaustion (a git
- *   clone + `bun install` overrunning the emptyDir budget, warren-c0cd). Distinct
- *   from `oom_killed` (a container cgroup kill) and from a plain `error`: an
- *   eviction is an infra-capacity signal, not an agent fault, so it earns its own
- *   reason. K8s-only (LocalProvider has no eviction concept).
+ * - `oom_killed` — killed by the cgroup/OOM killer (§6.5): burrow's oomKilled()
+ *   probe + `oom_killed` event; K8s `terminated.reason=="OOMKilled"`.
+ * - `evicted` — the kubelet evicted the pod (K8s `status.reason=="Evicted"`)
+ *   under node pressure, usually ephemeral-storage exhaustion (warren-c0cd).
+ *   K8s-only, and distinct from `oom_killed` (a container cgroup kill) and
+ *   `error` (an agent fault): an eviction is an infra-capacity signal.
  * - `cancelled` — graceful stop via `cancel()`.
  * - `lost` — run vanished (burrow 404 / pod GC'd); pairs with `exists:false`.
  */
@@ -175,7 +179,8 @@ export interface RunStatus {
 	exists: boolean;
 }
 
-export type MessagePriority = "low" | "normal" | "high" | "urgent";
+/** Steering priority — canonical `INBOX_PRIORITIES` (`src/core/wire.ts`), warren-7b7a. */
+export type MessagePriority = InboxPriority;
 
 export interface OutboundMessage {
 	body: string;
@@ -190,7 +195,8 @@ export interface Message {
 	body: string;
 	priority: MessagePriority;
 	fromActor: string;
-	state: "unread" | "delivered" | "failed";
+	/** Delivery lifecycle — canonical `INBOX_STATES` (`src/core/wire.ts`). */
+	state: InboxState;
 	createdAt: string;
 	deliveredAt: string | null;
 }
@@ -213,14 +219,12 @@ export interface RuntimeCapabilities {
 	/** terminate returns an archive handle */
 	workspaceArchive: boolean;
 	/**
-	 * Fallback garbage collection of stranded run workspaces is a backend
-	 * concern the control plane can drive (warren-e24d). `true` for the
-	 * burrow-backed LocalProvider — reap's per-run destroy can leave a
-	 * workspace stranded on a mid-reap crash, so warren runs a periodic sweep
-	 * that destroys idle workspaces via the provider's destroy seam. `false`
-	 * for backends whose own lifecycle reclaims stranded workspaces (K8s: the
-	 * pod-GC loop reclaims terminal pods + their emptyDir), so the domain sweep
-	 * stays dark and never issues a burrow-only destroy against a pod name.
+	 * Fallback garbage collection of stranded run workspaces is a backend concern
+	 * the control plane can drive (warren-e24d). `true` for LocalProvider — reap's
+	 * per-run destroy can strand a workspace on a mid-reap crash, so warren sweeps
+	 * idle workspaces via the destroy seam. `false` where the backend's own
+	 * lifecycle reclaims them (K8s pod-GC reclaims terminal pods + their emptyDir),
+	 * so the sweep stays dark instead of aiming a burrow destroy at a pod name.
 	 */
 	workspaceGc: boolean;
 }
@@ -248,11 +252,10 @@ export interface TeardownResult {
  *   annotation). `null` when it could not be resolved — finalize then pushes
  *   `HEAD` (reap's historical fallback).
  *
- * A THROW means resolution failed (a live burrow that 404'd, an API error) —
- * the domain records `workspace_lookup` and skips the success pipeline, exactly
- * as reap did when `burrows.get` threw. A returned value with `workspacePath:
- * null` is NOT a failure: it is the K8s backend reporting a legitimately
- * host-unreachable (but finalizable) workspace.
+ * A THROW means resolution failed (a live burrow that 404'd, an API error): the
+ * domain records `workspace_lookup` and skips the success pipeline, as reap did
+ * when `burrows.get` threw. A `workspacePath: null` is NOT a failure — it is K8s
+ * reporting a legitimately host-unreachable (but finalizable) workspace.
  */
 export interface WorkspaceInfo {
 	workspacePath: string | null;
@@ -319,8 +322,7 @@ export interface FinalizeIntent {
 	 * envelope + `.pi/` drops + `.seeds/workflow.txt`) that must be RESET to
 	 * `baseBranch` before `branch_push` so they never ride into a PR. In
 	 * projects that themselves track a colliding path, warren's seed dirties the
-	 * tracked file and a
-	 * broad agent commit (`git add -A`) sweeps it into the branch, tripping the
+	 * tracked file and a broad agent commit (`git add -A`) sweeps it in, tripping
 	 * Article IX protected-path automerge guard. Each entry carries the path and
 	 * the exact bytes warren seeded; finalize only resets a path whose live
 	 * workspace content still EQUALS the seeded bytes (so an intentional agent
@@ -336,11 +338,10 @@ export interface FinalizeIntent {
  * collecting emit/fail and returned for the domain to re-emit through its REAL
  * event surface (warren-1f56). The reap merge functions emit ~10 per-record
  * kinds (`mulch.record.*`, `seeds.closed/created`, `seeds.plan_mirrored`,
- * `reap.seeds_committed`) plus per-line/stage `reap_failed`;
- * finalize returns `FinalizeResult` counts, so those events are unreconstructable
- * unless carried here. K8s-friendly: this array rides the callback wire from the
- * in-pod finalize later (plan step 20), so `payload` MUST be JSON-serializable
- * (plain objects only — same posture as `NormalizedEvent.payload`).
+ * `reap.seeds_committed`) plus per-line/stage `reap_failed`; finalize returns
+ * counts, so those events are unreconstructable unless carried here. This array
+ * rides the callback wire from the in-pod finalize later (plan step 20), so
+ * `payload` MUST be JSON-serializable — same posture as `NormalizedEvent`.
  */
 export interface FinalizeEvent {
 	kind: string;
@@ -377,10 +378,9 @@ export interface FinalizeResult {
 	 * (warren-89b0), populated ONLY when `dirty` is true (i.e. `pushed &&
 	 * commitsAhead === 0` over a dirty tree). The domain uses it to classify a
 	 * zero-commit dirty tree: a tree whose ONLY dirty paths are warren-managed
-	 * bookkeeping artifacts (`.mulch/`, `.seeds/`) is a
-	 * deliberate no-op (`succeeded`, non-alarming) rather than a dropped commit
-	 * (`failed`). Optional/absent ⇒ the domain falls back to the conservative
-	 * dropped-commit posture (it cannot prove the tree was bookkeeping-only).
+	 * bookkeeping artifacts (`.mulch/`, `.seeds/`) is a deliberate no-op
+	 * (`succeeded`) rather than a dropped commit (`failed`). Optional/absent ⇒ the
+	 * domain falls back to the conservative dropped-commit posture.
 	 */
 	dirtyPaths?: readonly string[];
 	/**
@@ -417,9 +417,8 @@ export interface FinalizeResult {
 	/**
 	 * Per-stage outcome trail — a REFINEMENT over the design-doc shape (which
 	 * omitted it). Grounds in reap's best-effort `ReapStepError[]`: every
-	 * workspace-touching stage is best-effort, so the domain must see which
-	 * merged, which were skipped, and which failed (with the message) without
-	 * reverse-engineering it from the deltas.
+	 * workspace-touching stage is best-effort, so the domain must see which merged,
+	 * which were skipped, and which failed (with the message).
 	 */
 	stages: FinalizeStageOutcome[];
 }
@@ -481,8 +480,7 @@ export interface RuntimeProvider {
 
 	/**
 	 * Graceful stop — distinct from `terminate`. Burrow: POST /cancel. K8s:
-	 * SIGTERM + grace period. Best-effort; the domain still reaps + terminates
-	 * afterward.
+	 * SIGTERM + grace. Best-effort; the domain still reaps + terminates after.
 	 */
 	cancel(handle: RunHandle, reason?: string): Promise<void>;
 

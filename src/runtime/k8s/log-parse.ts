@@ -6,11 +6,8 @@
  * independently unit-testable (no cluster, no clock beyond `Date`).
  */
 
-import type { EventOrigin } from "../../core/wire.ts";
+import { EVENT_STREAMS, type EventOrigin } from "../../core/wire.ts";
 import type { NormalizedEvent } from "../contract.ts";
-
-/** The three stream tags the seam recognizes; anything else coerces to `null`. */
-const NORMALIZED_STREAMS = ["stdout", "stderr", "system"] as const;
 
 /**
  * The provenance marker `./agent-io.ts`'s `formatEventLine` stamps onto every
@@ -137,13 +134,14 @@ function pickTs(envelopeTs: unknown, kubeletTs: string | null): string {
 }
 
 /**
- * Coerce an envelope's `stream` tag onto `"stdout"|"stderr"|"system"|null`, then
- * apply the provenance rule (warren-6646): `"system"` is warren's own authority
- * tag, so an `"agent"`-origin line claiming it is downgraded to `"stdout"`
- * rather than dropped.
+ * Coerce an envelope's `stream` tag onto the canonical `EVENT_STREAMS`
+ * (`src/core/wire.ts`) or `null` — warren-7b7a removed the local copy of the tag
+ * list — then apply the provenance rule (warren-6646): `"system"` is warren's
+ * own authority tag, so an `"agent"`-origin line claiming it is downgraded to
+ * `"stdout"` rather than dropped.
  */
 function normalizeStream(value: unknown, origin: EventOrigin): NormalizedEvent["stream"] {
-	if (typeof value !== "string" || !(NORMALIZED_STREAMS as readonly string[]).includes(value)) {
+	if (typeof value !== "string" || !(EVENT_STREAMS as readonly string[]).includes(value)) {
 		return null;
 	}
 	if (value === "system" && origin !== "warren") return "stdout";
