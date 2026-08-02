@@ -46,6 +46,7 @@ domains:
   testing: {}
   types: {}
   seeds-tracker: {}
+  security: {}
 governance:
   max_entries: 100
   warn_entries: 150
