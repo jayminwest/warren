@@ -159,7 +159,6 @@ export function toInPodIntent(
 		artifacts: [...intent.artifacts],
 		commit: resolveCommit(intent),
 		...(intent.baseBranch !== undefined ? { baseBranch: intent.baseBranch } : {}),
-		...(intent.closeSeedId !== undefined ? { closeSeedId: intent.closeSeedId } : {}),
 		...(gitToken !== undefined && gitToken !== "" ? { gitToken } : {}),
 	};
 }

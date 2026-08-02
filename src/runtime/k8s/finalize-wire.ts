@@ -65,8 +65,6 @@ export interface InPodFinalizeIntent {
 	commit: "seeds"[];
 	/** Base ref for the commits-ahead count; omitted ⇒ count skipped (`null`). */
 	baseBranch?: string;
-	/** Run seed to close host-side (carried for parity; the entrypoint no-ops it). */
-	closeSeedId?: string;
 	/**
 	 * Short-lived git push credential. Delivered here — over the authenticated
 	 * callback, AFTER the agent exits — rather than in the agent container's

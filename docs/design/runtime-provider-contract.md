@@ -218,7 +218,6 @@ interface FinalizeIntent {
   branch: string;
   push: boolean;                    // push HEAD:branch from inside the workspace
   mirror: ("mulch" | "seeds" | "plans" | "plot")[];   // which artifact sets to extract
-  closeSeedId?: string;
 }
 interface FinalizeResult {
   pushed: boolean;

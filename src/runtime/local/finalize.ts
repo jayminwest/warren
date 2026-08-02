@@ -26,7 +26,7 @@
  *   `commit` (default = the merge set) gates the seeds bookkeeping commit.
  * - **Deliberately NOT here** (domain-owned, §4): PR-open / preview /
  *   auto-plan-run / terminal-state; `reap.empty_push` (needs the run outcome —
- *   finalize returns `dirty` + dirtyPaths for it); `intent.closeSeedId`.
+ *   finalize returns `dirty` + dirtyPaths for it).
  *   finalize DOES capture `workspacePlansBody` so auto-plan-run survives terminate.
  */
 

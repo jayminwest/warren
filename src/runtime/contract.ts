@@ -312,7 +312,6 @@ export interface FinalizeIntent {
 	 * applies them, plan step 20).
 	 */
 	projectClonePathHint?: string;
-	closeSeedId?: string;
 	/**
 	 * warren-8d95: warren-seeded workspace artifacts (the rendered agent
 	 * envelope + `.pi/` drops + `.seeds/workflow.txt`) that must be RESET to
