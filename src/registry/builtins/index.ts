@@ -19,7 +19,7 @@
 
 import type { AgentSource } from "../../core/wire.ts";
 import type { AgentsRepo } from "../../db/repos/agents.ts";
-import type { AgentDefinition } from "../schema.ts";
+import { type AgentDefinition, validateAgentRuntimeId } from "../schema.ts";
 import { BUGWATCH_BUILTIN } from "./bugwatch.ts";
 import { CLAUDE_CODE_BUILTIN } from "./claude-code.ts";
 import { HEALER_BUILTIN } from "./healer.ts";
@@ -58,6 +58,19 @@ export const BUILTIN_AGENT_NAMES: ReadonlySet<string> = new Set(BUILTIN_AGENTS.m
 export interface SeedBuiltinAgentsResult {
 	readonly seeded: readonly string[];
 	readonly skipped: readonly string[];
+	/**
+	 * Definitions refused by validation and NOT written to the agents table
+	 * (warren-c4be). Boot never crashes on one: an unknown runtime id on a
+	 * legacy row or an operator's seed file degrades to a loud warning and the
+	 * row simply never registers, so dispatch still cannot reach burrow with
+	 * an id burrow does not know.
+	 */
+	readonly rejected: readonly RejectedAgentSeed[];
+}
+
+export interface RejectedAgentSeed {
+	readonly name: string;
+	readonly reason: string;
 }
 
 function areDeepEqual(a: unknown, b: unknown): boolean {
@@ -82,6 +95,9 @@ function areDeepEqual(a: unknown, b: unknown): boolean {
  * same name does not already exist, or if the existing row is a built-in
  * whose content/frontmatter has drifted from the code's definition.
  * Pre-existing overridden rows (library or project tier) are preserved.
+ *
+ * Validation failures are collected on `rejected` rather than thrown, so a
+ * bad definition can never take the boot down with it (warren-c4be).
  */
 export async function seedBuiltinAgents(
 	repo: AgentsRepo,
@@ -90,18 +106,20 @@ export async function seedBuiltinAgents(
 ): Promise<SeedBuiltinAgentsResult> {
 	const seeded: string[] = [];
 	const skipped: string[] = [];
+	const rejected: RejectedAgentSeed[] = [];
 	for (const builtin of builtins) {
-		const existing = await repo.get(builtin.name);
-		if (existing !== null) {
-			const source = readAgentSource(existing.renderedJson);
-			if (source !== BUILTIN_AGENT_SOURCE) {
-				skipped.push(builtin.name);
-				continue;
-			}
-			if (areDeepEqual(existing.renderedJson, builtin)) {
-				skipped.push(builtin.name);
-				continue;
-			}
+		// warren-c4be: an unknown runtime id never reaches the agents table.
+		// Registration is the last boundary that can still answer 4xx; past it
+		// the id is only checked by burrow, mid-dispatch (the warren-ebca class).
+		// Seeding is a BOOT path, so a refusal is recorded, not thrown.
+		const refusal = runtimeIdRefusal(builtin);
+		if (refusal !== null) {
+			rejected.push(refusal);
+			continue;
+		}
+		if (await isAlreadySeeded(repo, builtin)) {
+			skipped.push(builtin.name);
+			continue;
 		}
 		await repo.upsert({
 			name: builtin.name,
@@ -110,7 +128,32 @@ export async function seedBuiltinAgents(
 		});
 		seeded.push(builtin.name);
 	}
-	return { seeded, skipped };
+	return { seeded, skipped, rejected };
+}
+
+/**
+ * Validate a definition's runtime id, returning the refusal instead of
+ * throwing it (warren-c4be) — seeding runs at boot, which must complete.
+ */
+function runtimeIdRefusal(def: AgentDefinition): RejectedAgentSeed | null {
+	try {
+		validateAgentRuntimeId(def);
+		return null;
+	} catch (err) {
+		return { name: def.name, reason: err instanceof Error ? err.message : String(err) };
+	}
+}
+
+/**
+ * True when the registry already holds this name in a state seeding must
+ * leave alone: an overridden (non-built-in) row, or a built-in row whose
+ * content has not drifted from the code's definition.
+ */
+async function isAlreadySeeded(repo: AgentsRepo, builtin: AgentDefinition): Promise<boolean> {
+	const existing = await repo.get(builtin.name);
+	if (existing === null) return false;
+	if (readAgentSource(existing.renderedJson) !== BUILTIN_AGENT_SOURCE) return true;
+	return areDeepEqual(existing.renderedJson, builtin);
 }
 
 /**

@@ -25,6 +25,7 @@
  */
 
 import { z } from "zod";
+import { isKnownRuntimeId, KNOWN_RUNTIME_IDS, type RuntimeId } from "../core/wire.ts";
 import { AgentSchemaError } from "./errors.ts";
 
 export const REQUIRED_AGENT_SECTIONS = ["system"] as const;
@@ -264,11 +265,85 @@ export const DEFAULT_RUNTIME_ID = "pi";
  *   3. `DEFAULT_RUNTIME_ID` ("pi") — the preferred default when
  *      nothing pins a runtime; claude-code is opt-in
  */
-export function readRuntimeId(agent: AgentDefinition, configOverride?: string): string {
-	if (typeof configOverride === "string" && configOverride.length > 0) return configOverride;
+export function readRuntimeId(agent: AgentDefinition, configOverride?: string): AcceptedRuntimeId {
+	if (typeof configOverride === "string" && configOverride.length > 0) {
+		return assertKnownRuntimeId(configOverride, agent.name, "config override");
+	}
 	const r = agent.frontmatter.runtime;
-	if (typeof r === "string" && r.length > 0) return r;
+	if (typeof r === "string" && r.length > 0) {
+		return assertKnownRuntimeId(r, agent.name, "frontmatter.runtime");
+	}
 	return DEFAULT_RUNTIME_ID;
+}
+
+/**
+ * Env var an operator sets when their burrow build registers runtime ids
+ * beyond warren's canonical three (warren-c4be). Comma-separated; empty /
+ * unset means the canonical list alone, so validation stays fail-closed by
+ * default. The acceptance harness uses it for its `stub-shell` runtime,
+ * which burrow-with-stub really does register.
+ *
+ * Scope: agent `frontmatter.runtime` and the dispatch-time override. The
+ * `.warren/config.yaml` `plannerRuntime` enum stays strictly canonical.
+ */
+export const EXTRA_RUNTIME_IDS_ENV = "WARREN_EXTRA_RUNTIME_IDS";
+
+/**
+ * A runtime id that passed validation: either a {@link KNOWN_RUNTIME_IDS}
+ * member or an operator-declared extension from
+ * {@link EXTRA_RUNTIME_IDS_ENV}. Widens to `string` because the extension
+ * list is only known at run time; `RunSpec.runtimeId` is a `string` too.
+ */
+export type AcceptedRuntimeId = RuntimeId | string;
+
+/** Parse {@link EXTRA_RUNTIME_IDS_ENV} into a deduped, trimmed id list. */
+export function readExtraRuntimeIds(
+	env: Readonly<Record<string, string | undefined>> = process.env,
+): readonly string[] {
+	const raw = env[EXTRA_RUNTIME_IDS_ENV];
+	if (raw === undefined || raw.trim() === "") return [];
+	const ids = raw
+		.split(",")
+		.map((s) => s.trim())
+		.filter((s) => s.length > 0 && !isKnownRuntimeId(s));
+	return [...new Set(ids)];
+}
+
+/** The full accepted runtime vocabulary: canonical plus operator extras. */
+export function acceptedRuntimeIds(
+	env?: Readonly<Record<string, string | undefined>>,
+): readonly string[] {
+	return [...KNOWN_RUNTIME_IDS, ...readExtraRuntimeIds(env)];
+}
+
+/**
+ * Validate a resolved runtime id against the canonical vocabulary
+ * (warren-c4be). Throws `AgentSchemaError` — which the HTTP layer maps to
+ * 422 — naming the offending id and the accepted list.
+ *
+ * This is the systemic fix behind the warren-ebca incident class: an
+ * unknown runtime id used to travel all the way into burrow, which failed
+ * its own `BUILT_IN_RUNTIMES` lookup and killed the run before agent boot,
+ * long past any 4xx boundary. Called from `validateAgentDefinition`
+ * (registration / refresh / seeding) and again from `readRuntimeId`
+ * (dispatch), so a legacy row that predates the check still fails 4xx
+ * rather than sandbox-side.
+ */
+export function assertKnownRuntimeId(
+	value: string,
+	agentName: string,
+	source = "frontmatter.runtime",
+	env?: Readonly<Record<string, string | undefined>>,
+): AcceptedRuntimeId {
+	if (isKnownRuntimeId(value)) return value;
+	const accepted = acceptedRuntimeIds(env);
+	if (accepted.includes(value)) return value;
+	throw new AgentSchemaError(
+		`agent "${agentName}" ${source} "${value}" is not a known runtime id (known: ${accepted.join(", ")})`,
+		{
+			recoveryHint: `set the runtime to one of: ${accepted.join(", ")}, or declare the id in ${EXTRA_RUNTIME_IDS_ENV}`,
+		},
+	);
 }
 
 /**
@@ -365,6 +440,30 @@ export function validateAgentDefinition(def: AgentDefinition): void {
 	// warren-8dee: reject a malformed tools policy here (parse-time + cross-tier
 	// composer) so an unenforceable read-only declaration surfaces loudly.
 	readToolsFrontmatter(def.frontmatter, def.name);
+	// warren-c4be: an unknown `frontmatter.runtime` fails at registration /
+	// refresh / seeding instead of dying inside the sandbox at dispatch.
+	validateAgentRuntimeId(def);
+}
+
+/**
+ * Reject an agent whose declared `frontmatter.runtime` is absent-shaped or
+ * outside {@link KNOWN_RUNTIME_IDS} (warren-c4be). An agent that pins no
+ * runtime is fine — `readRuntimeId` falls back to `DEFAULT_RUNTIME_ID`.
+ * Called by `validateAgentDefinition` and by built-in / seed-file seeding,
+ * the two ways an agent row enters the registry.
+ */
+export function validateAgentRuntimeId(def: AgentDefinition): void {
+	const runtime = def.frontmatter.runtime;
+	if (runtime === undefined || runtime === null) return;
+	if (typeof runtime !== "string" || runtime.length === 0) {
+		throw new AgentSchemaError(
+			`agent "${def.name}" frontmatter.runtime must be a non-empty string`,
+			{
+				recoveryHint: `set the runtime to one of: ${acceptedRuntimeIds().join(", ")}`,
+			},
+		);
+	}
+	assertKnownRuntimeId(runtime, def.name);
 }
 
 /**

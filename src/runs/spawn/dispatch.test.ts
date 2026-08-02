@@ -249,6 +249,30 @@ describe("spawnRun: burrow_config + runtime + metadata", () => {
 		expect((dispatch?.body as { agentId: string }).agentId).toBe("pi");
 	});
 
+	// warren-c4be: a legacy row whose runtime id predates registration-time
+	// validation must fail at the dispatch boundary (AgentSchemaError -> 422),
+	// never sandbox-side after provisioning (the warren-ebca incident class).
+	test("dispatch rejects a legacy row with an unknown runtime id before provisioning", async () => {
+		await repos.agents.upsert({
+			name: "legacy-bot",
+			renderedJson: makeAgentJson({
+				name: "legacy-bot",
+				frontmatter: { source: "library", runtime: "legacy-bot" },
+			}),
+		});
+		const { client, calls } = makeBurrowClient();
+		expect(
+			spawnRun({
+				repos,
+				runtimeProvider: makeProvider(client),
+				agentName: "legacy-bot",
+				projectId: "prj_xxxxxxxxxxxx",
+				prompt: "p",
+			}),
+		).rejects.toThrow(/is not a known runtime id/);
+		expect(calls.find((c) => c.path === "/burrows")).toBeUndefined();
+	});
+
 	test("forwards agent.frontmatter as burrow run metadata so piRuntime gets provider/model (warren-d34e)", async () => {
 		await repos.agents.upsert({
 			name: "pi",

@@ -281,6 +281,11 @@ const PASSTHROUGH_ENV_KEYS = new Set([
 	// scenario-owned boots (20, 20-path, 26, 36) inherit it from
 	// process.env so their private warren pairs register the stub too.
 	"WARREN_SEED_AGENTS_FILE",
+	// The stub-shell runtime burrow-with-stub really registers is outside
+	// warren's canonical KNOWN_RUNTIME_IDS, so the harness declares it as an
+	// operator extension (warren-c4be). Without it, boot-time seeding refuses
+	// the stub agent and every dispatch onto it fails 422.
+	"WARREN_EXTRA_RUNTIME_IDS",
 	"PATH",
 	"HOME",
 	"USER",
