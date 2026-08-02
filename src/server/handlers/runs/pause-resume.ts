@@ -1,3 +1,4 @@
+import { INBOX_PRIORITIES } from "../../../core/wire.ts";
 import {
 	type CancelReap,
 	cancelRun,
@@ -5,9 +6,10 @@ import {
 	reapRun,
 	steerRun,
 } from "../../../runs/index.ts";
-import type { MessagePriority, RuntimeProvider } from "../../../runtime/contract.ts";
+import type { RuntimeProvider } from "../../../runtime/contract.ts";
 import { jsonResponse } from "../../response.ts";
 import type { RouteHandler, ServerDeps } from "../../types.ts";
+import { optionalEnum } from "../body-fields.ts";
 import {
 	optionalString,
 	readJsonBody,
@@ -45,15 +47,18 @@ export function steerRunHandler(deps: ServerDeps): RouteHandler {
 	return async (ctx) => {
 		const id = requireParam(ctx, "id");
 		const body = await readJsonBody(ctx);
+		// warren-b27c: membership-checked against the canonical wire vocabulary
+		// before anything persists. An unchecked cast let `{"priority":"CRITICAL"}`
+		// reach the `run_inbox` row (TS-only enum, no SQL CHECK) and make the
+		// delivery comparator non-total.
+		const priority = optionalEnum(body, "priority", INBOX_PRIORITIES);
 		const result = await steerRun({
 			runId: id,
 			body: requireString(body, "body"),
 			repos: deps.repos,
 			runtimeProvider: deps.runtimeProvider,
 			broker: deps.broker,
-			...(optionalString(body, "priority") !== undefined
-				? { priority: optionalString(body, "priority") as MessagePriority }
-				: {}),
+			...(priority !== undefined ? { priority } : {}),
 			...(optionalString(body, "fromActor") !== undefined
 				? { fromActor: optionalString(body, "fromActor") as string }
 				: {}),

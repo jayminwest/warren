@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Run as BurrowRun, Message } from "@os-eco/burrow-cli";
 import { BurrowClient } from "../../burrow-client/index.ts";
+import { INBOX_PRIORITIES } from "../../core/wire.ts";
 import { openDatabase, type WarrenDb } from "../../db/client.ts";
 import { createRepos, type Repos } from "../../db/repos/index.ts";
 import type { AutoOpenPrConfig } from "../../runs/pr.ts";
@@ -269,6 +270,73 @@ describe("POST /runs/:id/steer and POST /runs/:id/cancel — HTTP handlers", () 
 						fromActor: "alice",
 					},
 				},
+			]);
+		});
+
+		test("rejects an unknown priority with 400 and sends nothing to burrow", async () => {
+			// warren-b27c: `{"priority":"CRITICAL"}` used to sail past an unchecked
+			// cast, persist verbatim, and make the inbox comparator return NaN.
+			const runId = await createRunningRun();
+			const calls: RecordedCall[] = [];
+			const deps = await depsFor(repos, makePauseResumeClient(fix, calls));
+			handle = startServer(deps, {
+				transport: { kind: "tcp", hostname: "127.0.0.1", port: 0 },
+				auth: NO_AUTH,
+				logger: silentLogger,
+			});
+
+			const res = await fetch(`${tcpUrl(handle)}/runs/${runId}/steer`, {
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({ body: "do it", priority: "CRITICAL" }),
+			});
+			expect(res.status).toBe(400);
+			const err = (await res.json()) as { error: { message: string } };
+			expect(err.error.message).toContain("priority");
+			// Nothing forwarded, nothing persisted.
+			expect(calls).toEqual([]);
+			expect(await repos.runInbox.listByRun(runId)).toEqual([]);
+		});
+
+		test("rejects a non-string priority with 400", async () => {
+			const runId = await createRunningRun();
+			const calls: RecordedCall[] = [];
+			const deps = await depsFor(repos, makePauseResumeClient(fix, calls));
+			handle = startServer(deps, {
+				transport: { kind: "tcp", hostname: "127.0.0.1", port: 0 },
+				auth: NO_AUTH,
+				logger: silentLogger,
+			});
+
+			const res = await fetch(`${tcpUrl(handle)}/runs/${runId}/steer`, {
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({ body: "do it", priority: 3 }),
+			});
+			expect(res.status).toBe(400);
+			expect(calls).toEqual([]);
+		});
+
+		test("accepts every canonical INBOX_PRIORITIES value", async () => {
+			const runId = await createRunningRun();
+			const calls: RecordedCall[] = [];
+			const deps = await depsFor(repos, makePauseResumeClient(fix, calls));
+			handle = startServer(deps, {
+				transport: { kind: "tcp", hostname: "127.0.0.1", port: 0 },
+				auth: NO_AUTH,
+				logger: silentLogger,
+			});
+
+			for (const priority of INBOX_PRIORITIES) {
+				const res = await fetch(`${tcpUrl(handle)}/runs/${runId}/steer`, {
+					method: "POST",
+					headers: { "content-type": "application/json" },
+					body: JSON.stringify({ body: `at ${priority}`, priority }),
+				});
+				expect(res.status).toBe(200);
+			}
+			expect(calls.map((c) => (c.body as { priority?: string }).priority)).toEqual([
+				...INBOX_PRIORITIES,
 			]);
 		});
 	});

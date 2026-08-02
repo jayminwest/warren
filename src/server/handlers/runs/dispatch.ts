@@ -4,6 +4,7 @@ import { spawnRun } from "../../../runs/index.ts";
 import type { IdempotentDispatch } from "../../idempotency.ts";
 import { jsonResponse } from "../../response.ts";
 import type { RouteHandler, ServerDeps } from "../../types.ts";
+import { optionalObject } from "../body-fields.ts";
 import { defaultSpawn, optionalString, readJsonBody, requireString } from "../index.ts";
 
 /**
@@ -135,7 +136,9 @@ export function createRunHandler(deps: ServerDeps): RouteHandler {
 			projectsConfig: deps.projectsConfig,
 			projectSpawn: deps.spawn ?? defaultSpawn,
 			githubToken: deps.autoOpenPr?.gitToken,
-			metadata: body.metadata as Record<string, unknown> | undefined,
+			// warren-b27c: shape-checked, not cast. An array or scalar `metadata`
+			// used to sail through the cast and reach persistence typed as a record.
+			metadata: optionalObject(body, "metadata"),
 			now: deps.now,
 			ref,
 			providerOverride,

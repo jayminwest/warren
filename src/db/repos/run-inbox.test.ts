@@ -117,6 +117,30 @@ function suite(dialect: "sqlite" | "postgres"): void {
 			}
 		});
 
+		test("claimForDelivery keeps a total order when a row holds an unknown priority", async () => {
+			// warren-b27c: handlers refuse an out-of-vocabulary priority, but the
+			// column has no SQL CHECK, so a legacy row can still hold one. The rank
+			// lookup must not yield NaN (a non-total comparator hands Array.sort
+			// implementation-defined ordering).
+			const { handle, repo, mkRun } = await open();
+			try {
+				const runId = await mkRun();
+				await repo.enqueue({ runId, body: "n1", priority: "normal" });
+				await repo.enqueue({
+					runId,
+					body: "bogus",
+					priority: "CRITICAL" as "urgent",
+				});
+				await repo.enqueue({ runId, body: "u1", priority: "urgent" });
+
+				const claimed = await repo.claimForDelivery(runId);
+				// Unknown ranks below every known class, deterministically last.
+				expect(claimed.map((r) => r.body)).toEqual(["u1", "n1", "bogus"]);
+			} finally {
+				await handle.close();
+			}
+		});
+
 		test("claimForDelivery drains only unread rows; a second poll is empty", async () => {
 			const { handle, repo, mkRun } = await open();
 			try {
