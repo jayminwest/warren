@@ -53,7 +53,7 @@ import {
 	RuntimeUnreachableError,
 	runtimeBackendStatusFor,
 } from "../runtime/errors.ts";
-import { WarrenConfigUnavailableError } from "../warren-config/errors.ts";
+import { WarrenConfigInvalidError, WarrenConfigUnavailableError } from "../warren-config/errors.ts";
 import { EventStreamCapacityError } from "./stream-limits.ts";
 import type { ErrorEnvelope, RoutePolicy } from "./types.ts";
 
@@ -265,6 +265,9 @@ function warrenStatusFor(err: WarrenError): number {
 	if (err instanceof RuntimeConflictError) return 409;
 	if (err instanceof ProjectUnavailableError) return 503;
 	if (err instanceof WarrenConfigUnavailableError) return 503;
+	// warren-02aa: a present-but-broken guardrail file is operator-fixable
+	// input, not a host failure — 422, same family as AgentSchemaError.
+	if (err instanceof WarrenConfigInvalidError) return 422;
 	// Multi-worker placement errors were retired with the K8s migration
 	// (warren-76c5): the self-host backend is a single local burrow, so there
 	// is no placement/sticky-worker failure to map. The /workers + /burrows
