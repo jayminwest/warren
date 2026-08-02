@@ -17,11 +17,20 @@
  *   running   → succeeded, failed, cancelled
  *   succeeded → ø    failed → ø    cancelled → ø
  *
- * Child state transitions are NOT guarded here — the coordinator's
- * decision tree is the source of truth for which advance is legal at any
- * given moment, and the repo's job is to persist that decision. The repo
- * merely refuses to write a child patch against a non-existent
- * (planRunId, seq) pair (require-style read first).
+ * Child state transitions ARE guarded here as of warren-66d2:
+ *
+ *   pending    → dispatched, failed, skipped
+ *   dispatched → running, pr_open, merged, failed
+ *   running    → pr_open, merged, failed
+ *   pr_open    → merged, failed
+ *   merged → ø    failed → ø    skipped → ø
+ *
+ * Every writer (the coordinator and the in-flight poller, the only two
+ * live call sites) goes through `updateChild`, so one guard covers them
+ * all. A same-state write is a no-op re-assert and stays legal so
+ * idempotent ticks keep working. The repo also refuses to write a child
+ * patch against a non-existent (planRunId, seq) pair (require-style read
+ * first).
  */
 
 import { and, asc, eq, inArray } from "drizzle-orm";
@@ -42,6 +51,38 @@ const ALLOWED_TRANSITIONS: Record<PlanRunState, readonly PlanRunState[]> = {
 export function assertPlanRunTransition(from: PlanRunState, to: PlanRunState): void {
 	if (!ALLOWED_TRANSITIONS[from].includes(to)) {
 		throw new StateTransitionError(`invalid plan_run transition: ${from} → ${to}`);
+	}
+}
+
+/**
+ * Legal per-child advances (warren-66d2). Enumerated from the two live
+ * writers — `src/plan-runs/coordinator.ts` (dispatch / skip / seed-not-found
+ * and dispatch failures) and `src/plan-runs/in-flight.ts` (run sync, PR
+ * open, trivial merge, poll-confirmed merge, terminal failure). The three
+ * states in PLAN_RUN_CHILD_TERMINAL_STATES have no exits: a resumed plan
+ * dispatch inserts a fresh plan_run row with fresh children rather than
+ * re-opening a settled child.
+ */
+const CHILD_ALLOWED_TRANSITIONS: Record<PlanRunChildState, readonly PlanRunChildState[]> = {
+	pending: ["dispatched", "failed", "skipped"],
+	dispatched: ["running", "pr_open", "merged", "failed"],
+	running: ["pr_open", "merged", "failed"],
+	pr_open: ["merged", "failed"],
+	merged: [],
+	failed: [],
+	skipped: [],
+};
+
+/**
+ * Guard one child advance. A same-state write is an idempotent re-assert
+ * (the coordinator's ticks are replayable) and passes; anything not in the
+ * table throws StateTransitionError, which `src/server/errors.ts` renders
+ * as HTTP 409.
+ */
+export function assertPlanRunChildTransition(from: PlanRunChildState, to: PlanRunChildState): void {
+	if (from === to) return;
+	if (!CHILD_ALLOWED_TRANSITIONS[from].includes(to)) {
+		throw new StateTransitionError(`invalid plan_run_child transition: ${from} → ${to}`);
 	}
 }
 
@@ -336,6 +377,9 @@ export class PlanRunsRepo {
 			throw new NotFoundError(
 				`plan_run_child not found: planRunId=${input.planRunId} seq=${input.seq}`,
 			);
+		}
+		if (input.patch.state !== undefined) {
+			assertPlanRunChildTransition(current.state, input.patch.state);
 		}
 		const patch: Partial<PlanRunChildRow> = {
 			updatedAt: (input.now ?? new Date()).toISOString(),

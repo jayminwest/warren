@@ -15,10 +15,12 @@ async function setupSucceededChildNoPr(harness: Harness, endedAt: Date): Promise
 	await harness.repos.runs.markRunning(runId, NOW);
 	await harness.repos.runs.finalize(runId, "succeeded", endedAt);
 	// No prUrl set, no empty_push event.
-	await harness.repos.planRuns.updateChild({
+	await harness.seedChildState({
 		planRunId: harness.planRun.id,
 		seq: 1,
-		patch: { runId, state: "running", startedAt: NOW.toISOString() },
+		runId,
+		state: "running",
+		startedAt: NOW.toISOString(),
 	});
 	return runId;
 }
@@ -145,16 +147,14 @@ describe("advancePlanRun — PR recovery and plan completion", () => {
 	test("plan_succeeded: every child terminal, no pending left", async () => {
 		await h.repos.planRuns.transitionTo(h.planRun.id, "running", { startedAt: NOW.toISOString() });
 		const runId = await h.makeRun("warren-a");
-		await h.repos.planRuns.updateChild({
+		await h.seedChildState({
 			planRunId: h.planRun.id,
 			seq: 1,
-			patch: {
-				runId,
-				state: "merged",
-				prMergedAt: NOW.toISOString(),
-				startedAt: NOW.toISOString(),
-				endedAt: NOW.toISOString(),
-			},
+			runId,
+			state: "merged",
+			startedAt: NOW.toISOString(),
+			prMergedAt: NOW.toISOString(),
+			endedAt: NOW.toISOString(),
 		});
 		await h.repos.planRuns.updateChild({
 			planRunId: h.planRun.id,

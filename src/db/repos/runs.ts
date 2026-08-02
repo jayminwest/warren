@@ -49,6 +49,44 @@ export function assertRunTransition(from: RunState, to: RunState): void {
 	}
 }
 
+/**
+ * Legal per-run preview-environment advances (warren-66d2). Enumerated from
+ * the live writers:
+ *
+ *   - `src/preview/port-allocator.ts` claims a port and stamps `starting`
+ *     (its own CAS write, not attachPreview).
+ *   - `src/preview/launch/orchestrate.ts` + `src/runs/reap/preview.ts` write
+ *     `live` / `failed` through `attachPreview`.
+ *   - `src/preview/teardown.ts` / `src/preview/eviction/repo.ts` flip
+ *     `starting`/`live` → `torn-down` with a state-filtered CAS.
+ *
+ * `null` is the unset arm: a run whose project never opted into previews,
+ * or one whose port allocation failed before `starting` was stamped — hence
+ * `null → failed`. `torn-down` and `failed` release the port; a retry
+ * re-enters at `starting`, which is why `failed → starting` is legal while
+ * `torn-down → live` (the case warren-66d2 flagged) is not.
+ */
+const PREVIEW_ALLOWED_TRANSITIONS: Record<PreviewState | "unset", readonly PreviewState[]> = {
+	unset: ["starting", "live", "failed"],
+	starting: ["live", "failed", "torn-down"],
+	live: ["failed", "torn-down"],
+	failed: ["starting", "torn-down"],
+	"torn-down": ["starting"],
+};
+
+/**
+ * Guard one preview-state advance. A same-state write is an idempotent
+ * re-assert (probe retries, repeated teardown) and passes; anything not in
+ * the table throws StateTransitionError, which `src/server/errors.ts`
+ * renders as HTTP 409.
+ */
+export function assertPreviewTransition(from: PreviewState | null, to: PreviewState): void {
+	if (from === to) return;
+	if (!PREVIEW_ALLOWED_TRANSITIONS[from ?? "unset"].includes(to)) {
+		throw new StateTransitionError(`invalid preview transition: ${from ?? "unset"} → ${to}`);
+	}
+}
+
 export interface CreateRunInput {
 	id?: string;
 	agentName: string;
@@ -367,6 +405,9 @@ export class RunsRepo {
 			throw new ValidationError("attachPreview requires at least one preview field");
 		}
 		const current = await this.require(id);
+		if (input.previewState !== undefined && input.previewState !== null) {
+			assertPreviewTransition(current.previewState, input.previewState);
+		}
 		const patch: Partial<RunRow> = {};
 		for (const k of keys) {
 			if (input[k] !== undefined) {
