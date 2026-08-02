@@ -82,10 +82,19 @@ export const INTERNAL_EVENT_KINDS: ReadonlySet<string> = new Set([
  * policy. `x-api-key` rides along here rather than in SECRET_FIELDS because
  * pino redact paths can't express the dash — the event scrubber matches on
  * the lowercased key alone, so it can (warren-9bbc).
+ *
+ * `burrowId` rides along for a different reason: it is not a credential,
+ * it is an internal runtime handle the run projection already withholds
+ * (`REDACTED_RUN_FIELDS`, warren-946f), and system events like
+ * `reap.workspace_destroyed` re-leaked it through the transcript
+ * (warren-5f59). Censoring on the key keeps the handle off the public
+ * stream wherever a payload carries it, without dropping the event — the
+ * rest of the payload (`archived`, timestamps) is spectator-visible fact.
  */
 const SECRET_FIELD_SET = new Set<string>([
 	...SECRET_FIELDS.map((f) => f.toLowerCase()),
 	"x-api-key",
+	"burrowid",
 ]);
 
 /**
