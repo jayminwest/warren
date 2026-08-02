@@ -1,8 +1,7 @@
 /**
  * Repository for the `events` table.
  *
- * Warren's events table is a write-through cache of burrow's stream (SPEC
- * §9). Each row carries the burrow-side `seq` so we can resume the stream
+ * Warren's events table is a write-through cache of burrow's stream (docs/design/runtime-and-supervisor.md). Each row carries the burrow-side `seq` so we can resume the stream
  * at MAX(burrow_event_seq) + 1 after a warren restart mid-run, and so the UI
  * replays events in the same order burrow emitted them.
  */
@@ -110,7 +109,7 @@ export class EventsRepo {
 	/**
 	 * Highest burrow_event_seq we've persisted for a run, or null if none.
 	 * Used at warren startup to compute the resume offset for live runs
-	 * (SPEC §9 "MAX(events.burrow_event_seq) + 1").
+	 * ("MAX(events.burrow_event_seq) + 1", docs/design/runtime-and-supervisor.md).
 	 */
 	async maxSeqForRun(runId: string): Promise<number | null> {
 		const row = await this.adapter.pickOne<{ max: number | null }>(

@@ -1,5 +1,5 @@
 /**
- * Warren's run-event fan-out (SPEC §4.3 step 5, §9 "event durability rationale").
+ * Warren's run-event fan-out (docs/design/agent-composition.md step 5; event durability per docs/design/runtime-and-supervisor.md).
  *
  * Two surfaces live here:
  *

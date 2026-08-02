@@ -1,7 +1,7 @@
 /**
  * `warren run <agent> <project> -p "..."` — one-shot, no UI.
  *
- * Spawns a run via the §4.3 composition flow, opens a stream bridge so
+ * Spawns a run via the docs/design/agent-composition.md composition flow, opens a stream bridge so
  * events land in the warren events table, and tails them as NDJSON to
  * stdout until the burrow run terminates. When the bridge ends, fetches
  * the burrow run's terminal state, runs `reapRun` to finalize the warren

@@ -1,5 +1,5 @@
 /**
- * Duration-string parser for the preview config (R-19 / SPEC §11.L).
+ * Duration-string parser for the preview config (R-19 / docs/design/preview-environments.md).
  *
  * The schema (`src/warren-config/schema.ts` `DurationStringSchema`) validates
  * shape only — accepting one-or-more `<number><unit>` pairs (`30m`, `8h`,

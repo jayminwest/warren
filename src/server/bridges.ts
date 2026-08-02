@@ -3,7 +3,7 @@
  *
  * The HTTP server boots, walks the runs table for (queued|running) rows
  * that have a `burrow_run_id`, and attaches a bridge to each — that's
- * the §9 "MAX(events.burrow_event_seq)+1 on warren restart" recovery.
+ * the docs/design/runtime-and-supervisor.md "MAX(events.burrow_event_seq)+1 on warren restart" recovery.
  * Every subsequent `POST /runs` registers a new bridge for the spawned
  * run via `start()`. On shutdown, `stopAll()` aborts everyone in one
  * pass and awaits the drain so the events table stays consistent with

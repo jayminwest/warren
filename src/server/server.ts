@@ -221,7 +221,7 @@ async function handleRequest(
 ): Promise<Response> {
 	const url = new URL(request.url);
 
-	// Preview proxy preamble (R-19 / SPEC §11.L, warren-8a10) runs BEFORE the
+	// Preview proxy preamble (R-19 / docs/design/preview-environments.md, warren-8a10) runs BEFORE the
 	// auth gate: previews use signed-cookie auth keyed off Host, not the
 	// bearer header the API gate inspects. Returns null when the request
 	// isn't for a preview subdomain — the standard pipeline takes over.

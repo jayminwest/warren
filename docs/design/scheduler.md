@@ -1,6 +1,6 @@
 # Scheduler Contract (cron + scheduled-for)
 
-> **Salvage provenance:** lifted from `SPEC.md` §11.I (Scheduler —
+> **Salvage provenance:** lifted from the retired top-level spec §11.I (Scheduler —
 > cron + scheduled-for, 2026-05-11) as part of the SPEC retirement plan
 > `pl-1717` (step `warren-979e`). The wording below is the live
 > contract — `src/triggers/`, the `triggers` table migration, and

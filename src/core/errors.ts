@@ -1,5 +1,5 @@
 /**
- * Error hierarchy with stable codes and recovery hints (SPEC §7).
+ * Error hierarchy with stable codes and recovery hints (docs/http-api.md).
  *
  * Higher layers (HTTP server, CLI) format errors as `[<code>] <message>` plus
  * an optional recovery hint. Library callers can catch by class or switch on

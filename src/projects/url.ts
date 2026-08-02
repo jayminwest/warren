@@ -1,6 +1,6 @@
 /**
  * Parse a GitHub URL into the `{owner, name}` pair warren uses to lay
- * out `/data/projects/<owner>/<name>` (SPEC §5, §9).
+ * out `/data/projects/<owner>/<name>` (docs/design/runtime-and-supervisor.md).
  *
  * Three accepted shapes — the operator pastes whichever GitHub UI gave
  * them:
@@ -15,7 +15,7 @@
  * dotfile.
  *
  * Non-GitHub URLs (gitlab, self-hosted, file://) are rejected up-front:
- * V1 SPEC scope is "paste a GitHub URL" (§3.1), and accepting other hosts
+ * V1 scope is "paste a GitHub URL" (ACCEPTANCE.md), and accepting other hosts
  * silently would let bad inputs flow into `git clone`.
  */
 

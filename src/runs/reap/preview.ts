@@ -46,7 +46,7 @@ export interface RunPreviewLaunchResult {
 }
 
 /**
- * Preview launch sub-step (R-19 / SPEC §11.L, warren-f156). Extracted from
+ * Preview launch sub-step (R-19 / docs/design/preview-environments.md, warren-f156). Extracted from
  * reapRun so the orchestrator stays readable. Returns the lifecycle state
  * and port to surface on the run row; emits `preview_launched` /
  * `reap_failed` events and persists `preview_state=failed` for the

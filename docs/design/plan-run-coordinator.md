@@ -1,6 +1,6 @@
 # PlanRun Coordinator + Ready-to-Dispatch Surface
 
-> **Salvage provenance:** lifted from `SPEC.md` §11.P (PlanRun: serial
+> **Salvage provenance:** lifted from the retired top-level spec §11.P (PlanRun: serial
 > plan execution, pl-a258) and §11.R (ready-to-dispatch surface,
 > pl-3fc4) as part of the SPEC retirement plan `pl-1717` (step
 > `warren-dc11`). The wording below is the live contract — the

@@ -14,7 +14,7 @@
  * so a canopy version bump doesn't silently break the fixture.
  *
  * The sample project carries:
- *   - `burrow.toml` — declares the `stub-shell` agent (SPEC §12.3
+ *   - `burrow.toml` — declares the `stub-shell` agent (../burrow/SPEC.md §12.3
  *     declarative AgentConfig) pointing at the bash script the harness
  *     runs on every dispatch.
  *   - `tools/stub-agent.sh` — the deterministic stub committed via

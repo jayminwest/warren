@@ -1,5 +1,5 @@
 /**
- * Reverse proxy preamble for per-run previews (R-19 / SPEC §11.L,
+ * Reverse proxy preamble for per-run previews (R-19 / docs/design/preview-environments.md,
  * warren-8a10; path-mode addendum warren-8085 + HTML rewrite warren-ab3a
  * / pl-f4ea; SPA out-of-the-box revision warren-63e1). Split into
  * `proxy/` modules in warren-b902.
@@ -39,7 +39,7 @@
  *      **401** pointing the browser at `/runs/:id/preview/login`.
  *
  *   4. **last_hit_at debounce.** Update `runs.preview_last_hit_at`
- *      **before** forwarding (SPEC §11.L) — debounced via an in-memory
+ *      **before** forwarding (docs/design/preview-environments.md) — debounced via an in-memory
  *      `Map<runId, lastFlushAtMs>` to ~once per `DEFAULT_DEBOUNCE_MS`.
  *
  *   5. **Forward.** Rewrite the URL to `http://127.0.0.1:<preview_port>`,
@@ -154,7 +154,7 @@ export function createPreviewProxyHandler(deps: PreviewProxyDeps): PreviewProxyH
 			return previewError(
 				501,
 				"preview_remote_worker",
-				`preview proxying is local-worker-only in V1; run.worker_id=${run.workerId} (R-12 deferral, see SPEC §11.L)`,
+				`preview proxying is local-worker-only in V1; run.worker_id=${run.workerId} (R-12 deferral, see docs/design/preview-environments.md)`,
 			);
 		}
 
@@ -195,7 +195,7 @@ export function createPreviewProxyHandler(deps: PreviewProxyDeps): PreviewProxyH
 			return previewUnauthorized(runId, deps.config, url);
 		}
 
-		// SPEC §11.L: update last_hit_at BEFORE forwarding (debounced).
+		// docs/design/preview-environments.md: update last_hit_at BEFORE forwarding (debounced).
 		await maybeFlushLastHit(deps.repos, run, lastFlush, debounceMs, now());
 
 		const pathPrefix = mode === "path" ? `${PREVIEW_PATH_PREFIX}/${runId}` : null;

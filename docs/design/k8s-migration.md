@@ -664,7 +664,7 @@ but is safe under concurrent readers. One fetch per project per minute is
 sufficient; implement a lock file or a simple `lastFetchedAt` DB check.
 
 **Q2 — Preview sidecars.** Warren's preview launch (`src/preview/launch/`) boots
-a per-run dev server sidecar (R-19 / SPEC §11.L). With pod-per-run, the sidecar
+a per-run dev server sidecar (R-19 / [preview-environments.md](preview-environments.md)). With pod-per-run, the sidecar
 becomes a second container in the same pod (sidecar container pattern, GA in K8s
 1.29). The `inboundPortForwards` mechanism from
 `burrow/src/provider/types.ts:SandboxProfile` is replaced by a K8s `Service` of

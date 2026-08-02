@@ -1,9 +1,10 @@
 /**
- * SQLite physical schema for warren's durable state (SPEC §9).
+ * SQLite physical schema for warren's durable state (docs/design/runtime-and-supervisor.md).
  *
  * Tables: agents (canopy registry cache), projects (cloned repos), runs
  * (warren-side run rows that mirror burrow's lifecycle), events (write-through
- * cache of burrow's stream — see SPEC §9 "event durability rationale"), triggers
+ * cache of burrow's stream — see the event-durability rationale in
+ * docs/design/runtime-and-supervisor.md), triggers
  * (R-06 scheduler bookkeeping), planRuns + planRunChildren, and
  * runInbox. The plots projection table was dropped in warren-0b13 (0031)
  * as part of the plot deletion pass (pl-3a79). The conversations + messages
@@ -170,7 +171,7 @@ export const runs = sqliteTable(
 		tokensOutput: integer("tokens_output"),
 		tokensCacheRead: integer("tokens_cache_read"),
 		tokensCacheWrite: integer("tokens_cache_write"),
-		// Per-run preview environment columns (R-19 / SPEC §11.L). All nullable
+		// Per-run preview environment columns (R-19 / docs/design/preview-environments.md). All nullable
 		// because only projects that opt in via `.warren/defaults.json`'s
 		// `preview` block exercise this path; non-opted-in runs leave every
 		// field null. Populated by reap's `preview_launch` sub-step, the

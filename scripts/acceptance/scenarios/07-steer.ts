@@ -22,7 +22,7 @@
  *      replays the event log can reconstruct what was sent.
  *
  * Validation paths exercised: empty body → 400, terminal-run → 400,
- * unknown-run → 404. The §7 error envelope shape is asserted on the
+ * unknown-run → 404. The src/core/wire.ts error envelope shape is asserted on the
  * empty-body case so the error contract is anchored.
  *
  * Stays self-contained: spawns its own long-running stub run (sleep set

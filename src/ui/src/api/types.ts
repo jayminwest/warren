@@ -163,7 +163,7 @@ export interface RunRow {
 	/** Cache-write tokens (warren-a7dc); see `costUsd` for nullability. */
 	tokensCacheWrite: number | null;
 	/**
-	 * Per-run preview environment columns (R-19 / SPEC §11.L). All null on
+	 * Per-run preview environment columns (R-19 / docs/design/preview-environments.md). All null on
 	 * runs whose project hasn't opted into previews; populated by reap's
 	 * `preview_launch` sub-step, the readiness probe, the host reverse
 	 * proxy (`previewLastHitAt`), and the eviction worker / manual
@@ -181,7 +181,7 @@ export interface RunRow {
 }
 
 /**
- * Wire envelope of `POST /runs/:id/preview/teardown` (R-19 / SPEC §11.L,
+ * Wire envelope of `POST /runs/:id/preview/teardown` (R-19 / docs/design/preview-environments.md,
  * warren-d725). The handler is idempotent and always 200s with a CAS-
  * outcome discriminator: `tornDown: true` only when the call flipped a
  * `starting`/`live` row.
@@ -200,7 +200,7 @@ export interface PreviewTeardownResponse {
 }
 
 /**
- * Wire envelope of `POST /runs/:id/preview/login` (R-19 / SPEC §11.L,
+ * Wire envelope of `POST /runs/:id/preview/login` (R-19 / docs/design/preview-environments.md,
  * warren-e1b0). The credential-bearing half of the handshake is the
  * `Set-Cookie` header the browser stores implicitly; `url` is the
  * mode-correct preview target the caller navigates to afterwards.
@@ -364,7 +364,7 @@ export interface WhoamiResponse {
 }
 
 /**
- * Wire envelope of `GET /preview/config` (R-19 / SPEC §11.L path addendum,
+ * Wire envelope of `GET /preview/config` (R-19 / docs/design/preview-environments.md path addendum,
  * warren-016d). Deployment-wide preview routing mode + optional host. The
  * UI uses this to render the canonical preview URL in `PreviewCard` so
  * path-mode and subdomain-mode deploys both show a copyable string that

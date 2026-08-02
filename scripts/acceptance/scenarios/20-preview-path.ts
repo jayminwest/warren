@@ -1,6 +1,6 @@
 /**
  * Scenario 20-path — path-mode previews end-to-end
- * (R-19 / SPEC §11.L addendum, warren-7b3c / pl-f4ea step 8).
+ * (R-19 / docs/design/preview-environments.md path-mode addendum, warren-7b3c / pl-f4ea step 8).
  *
  * Sibling of scenario 20 (subdomain mode). Locks down the path-mode
  * acceptance criterion (#2 on pl-f4ea): a fresh-install warren with no
@@ -31,7 +31,7 @@
  *      per-run cookie name + root `Path` (warren-63e1) is what makes
  *      referer-based asset routing authenticate `/_next/static/...`
  *      sub-resource loads and isolates sibling-run sessions in the same
- *      browser (SPEC §11.L risk 4 mitigation).
+ *      browser (docs/design/preview-environments.md risk 4 mitigation).
  *   4. Authenticated `GET <warrenUrl>/p/<runId>/` returns 200, the body
  *      carries the upstream `preview-ok` marker (proves the proxy hit
  *      the sidecar, not a sibling port) AND the path-mode HTML
@@ -48,7 +48,7 @@
  *
  *   - **macOS** — burrow's bwrap-based inbound-port-forwarding (R-08)
  *     is Linux-only (mx-1d31f0).
- *   - **Postgres dialect** — the SPEC §11.L port allocator + eviction
+ *   - **Postgres dialect** — the docs/design/preview-environments.md port allocator + eviction
  *     worker are sqlite-only today (mx-b82a55).
  */
 

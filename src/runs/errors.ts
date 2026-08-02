@@ -1,5 +1,5 @@
 /**
- * Errors specific to the run-spawn / composition flow (SPEC §4.3).
+ * Errors specific to the run-spawn / composition flow (docs/design/agent-composition.md).
  *
  * `RunSpawnError` covers anything that goes wrong between "we have an
  * agent + project" and "we have a dispatched burrow run" that isn't

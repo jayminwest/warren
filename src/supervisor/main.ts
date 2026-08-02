@@ -1,5 +1,5 @@
 /**
- * Warren container entrypoint (SPEC §10.3).
+ * Warren container entrypoint (docs/design/runtime-and-supervisor.md).
  *
  * The supervisor runs as the container entrypoint and owns three
  * responsibilities the warren and burrow processes can't own themselves:
@@ -344,7 +344,7 @@ export const DEFAULT_BURROW_SOCKET = "/var/run/burrow.sock";
 
 /**
  * Resolve the supervisor's launch commands from env. The defaults match the
- * canonical container layout (SPEC §10.3); env overrides exist so a developer
+ * canonical container layout (docs/design/runtime-and-supervisor.md); env overrides exist so a developer
  * can run the supervisor on a host without /var/run/.
  *
  * Env contract:

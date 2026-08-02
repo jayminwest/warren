@@ -1,5 +1,5 @@
 /**
- * Prefixed ID generators (SPEC §7).
+ * Prefixed ID generators (docs/http-api.md).
  *
  * Each ID is a stable two-part string: a domain prefix and a 12-char
  * lowercase base32 suffix (~60 bits of entropy). Prefixes are reserved per

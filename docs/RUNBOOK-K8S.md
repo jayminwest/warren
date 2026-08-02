@@ -350,7 +350,7 @@ Secrets reach pods as env values that the control plane stamps into the pod spec
 
 ### 2.3 Rotation
 
-There is one bearer token, and it is not scoped or versioned (SPEC §11.D).
+There is one bearer token, and it is not scoped or versioned (see [SECURITY.md](../SECURITY.md)).
 
 - **`WARREN_API_TOKEN`.** A rotation invalidates in-flight callback auth and every preview cookie (the HMAC key derives from it). Rotate during a quiet window: update `warren-secrets`, then `kubectl -n warren rollout restart deploy/warren`. In-flight run pods hold the old token in their env, so their finalize callback will fail. Drain first (§7.6), or accept that active runs reap degraded.
 - **`GITHUB_TOKEN` / `WARREN_GIT_TOKEN`.** Update both copies — the control-plane `warren-secrets/github-token` and the run-namespace `warren-git-token/token` are the same PAT by convention. Rollout-restart the control plane. New run pods pick the new value up at the next dispatch. Old pods keep the token in their spec until they exit.

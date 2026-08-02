@@ -1,6 +1,6 @@
 # Agent Composition + Pi Runtime Contract
 
-> **Salvage provenance:** lifted from `SPEC.md` §4.1 (the four sides of
+> **Salvage provenance:** lifted from the retired top-level spec §4.1 (the four sides of
 > a custom agent), the still-live schema parts of §4.2, §4.3 (the
 > composition flow), and §11.K (pi runtime support) as part of the SPEC
 > retirement plan `pl-1717` (step `warren-ff89`). The wording below is

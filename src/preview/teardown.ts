@@ -1,5 +1,5 @@
 /**
- * `teardownPreview` — `POST /runs/:id/preview/teardown` (R-19 / SPEC §11.L
+ * `teardownPreview` — `POST /runs/:id/preview/teardown` (R-19 / docs/design/preview-environments.md
  * acceptance #8, warren-d725).
  *
  * Operator-driven counterpart to the TTL+LRU eviction worker

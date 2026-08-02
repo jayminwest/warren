@@ -1,5 +1,5 @@
 /**
- * Resolve the project-management module's environment-driven config (SPEC §10.1).
+ * Resolve the project-management module's environment-driven config.
  *
  * Two pieces of state matter:
  *   1. Where cloned project repos live on disk (one subdir per `<owner>/<name>`).

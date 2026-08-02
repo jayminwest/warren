@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * `warren` / `wr` CLI entry (SPEC §8.2).
+ * `warren` / `wr` CLI entry.
  *
  * Five subcommands, all dispatching into pure functions in `./commands/`.
  * The dispatch is intentionally thin: commander handles argv parsing and

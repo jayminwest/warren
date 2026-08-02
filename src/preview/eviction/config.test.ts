@@ -13,7 +13,7 @@ import {
 } from "./config.ts";
 
 describe("loadPreviewEvictionConfigFromEnv", () => {
-	test("defaults match SPEC §11.L", () => {
+	test("defaults match docs/design/preview-environments.md", () => {
 		expect(loadPreviewEvictionConfigFromEnv({})).toEqual({
 			idleTtlMs: DEFAULT_IDLE_TTL_MS,
 			maxLifetimeMs: DEFAULT_MAX_LIFETIME_MS,

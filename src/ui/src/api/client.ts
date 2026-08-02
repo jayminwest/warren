@@ -1,4 +1,4 @@
-// Thin fetch wrapper around the warren HTTP API (SPEC §8.1). Bearer
+// Thin fetch wrapper around the warren HTTP API (docs/http-api.md). Bearer
 // token comes from localStorage; mutated via `setApiToken` after the
 // login screen accepts it. A 401 clears the cached token so the
 // router can redirect back to login on the next render pass.
@@ -263,7 +263,7 @@ export const runsApi = {
 		}),
 	/**
 	 * Preview login handshake (`POST /runs/:id/preview/login`, R-19 /
-	 * SPEC §11.L, warren-8a10 / warren-edff; warren-e1b0 moved the bearer
+	 * docs/design/preview-environments.md, warren-8a10 / warren-edff; warren-e1b0 moved the bearer
 	 * out of the URL). The bearer rides the `Authorization` header like
 	 * every other call in this module; the server answers with a
 	 * `Set-Cookie` the browser stores for the same-origin preview surface
@@ -280,7 +280,7 @@ export const runsApi = {
 };
 
 /**
- * Deployment-wide preview config (R-19 / SPEC §11.L path addendum,
+ * Deployment-wide preview config (R-19 / docs/design/preview-environments.md path addendum,
  * warren-016d). Fetched once per session — mode/host can only change via
  * a warren restart — and consumed by `PreviewCard` to render the
  * canonical preview URL string.
@@ -361,7 +361,7 @@ export async function* streamPlanRunEvents(
 }
 
 /* ----------------------------------------------------------------------- */
-/* NDJSON event stream — `GET /runs/:id/events?follow=1` (SPEC §8.1).      */
+/* NDJSON event stream — `GET /runs/:id/events?follow=1` (docs/http-api.md).      */
 /* ----------------------------------------------------------------------- */
 
 export interface StreamRunEventsOptions {

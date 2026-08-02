@@ -1,5 +1,5 @@
 /**
- * Tiny extractor for the agent's `burrow_config` section (SPEC §4.2).
+ * Tiny extractor for the agent's `burrow_config` section (docs/design/agent-composition.md).
  *
  * The body is TOML. The only field warren currently forwards onto
  * `POST /burrows` (HttpBurrowUpInput, burrow §15.6) is `[sandbox].network`

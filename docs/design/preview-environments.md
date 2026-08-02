@@ -1,6 +1,6 @@
 # Per-Run Preview Environments + PR-Body Template
 
-> **Salvage provenance:** lifted verbatim from `SPEC.md` §11.L (per-run
+> **Salvage provenance:** lifted verbatim from the retired top-level spec §11.L (per-run
 > preview environments, design lock for R-19) and §11.M (PR-body
 > template) as part of the SPEC retirement plan `pl-1717` (step
 > `warren-8777`). The wording below is the live contract — tests and

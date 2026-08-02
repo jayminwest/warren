@@ -1,7 +1,7 @@
 /**
  * High-level project management: add (clone + persist), list, delete
  * (rm-rf + db). These are the operations behind `POST /projects`,
- * `GET /projects`, and `DELETE /projects/:id` (SPEC §8.1) — the HTTP
+ * `GET /projects`, and `DELETE /projects/:id` (docs/http-api.md) — the HTTP
  * server is a thin envelope around these calls.
  *
  * Atomicity contract:

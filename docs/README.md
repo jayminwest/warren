@@ -7,7 +7,7 @@ Two paths lead out of here. Take the first to run warren against your own repos.
 ## Path 1 — run warren
 
 - [`../README.md`](../README.md) — what warren is, the container quickstart, and the two deploy shapes.
-- [`project-setup.md`](project-setup.md) — how to make one of your repos ready for warren: the `.warren/` directory, dispatch defaults, and the PR template.
+- [`project-setup.md`](project-setup.md) — how to make one of your repos ready for warren: auto-merge on agent PRs, the secrets it needs, and branch cleanup.
 - [`RUNBOOK-K8S.md`](RUNBOOK-K8S.md) — the operator playbook for the `k8s` runtime: deploy, secrets and rotation, RBAC, garbage collection, admission caps, observability, and incident response.
 - [`../deploy/k8s/README.md`](../deploy/k8s/README.md) — the Kubernetes manifest quick start: overlay layout, `kubectl apply -k`, and the secret commands.
 - [`PHILOSOPHY.md`](PHILOSOPHY.md) — the ideas warren rests on, and why the loop has the shape it has.
@@ -21,7 +21,6 @@ Two paths lead out of here. Take the first to run warren against your own repos.
 - [`http-api.md`](http-api.md) — every HTTP route with its auth posture. `bun run gen:docs` writes this file from `ROUTE_TABLE`.
 - [`openapi.yaml`](openapi.yaml) — the same surface as an OpenAPI 3.1 schema. `bun run gen:openapi` writes it from the same route table.
 - [`CONSTITUTION.md`](CONSTITUTION.md) — the articles that govern warren-authored code, commits, and bot identity.
-- [`../SPEC.md`](../SPEC.md) — the V1 design record. Long, and the deepest answer to "why does it do that".
 - [`../ROADMAP.md`](../ROADMAP.md) — what is in flight now, what comes next, and what warren will not do.
 - [`../ACCEPTANCE.md`](../ACCEPTANCE.md) — the scenario harness that drives a live stack from end to end.
 

@@ -63,7 +63,7 @@ export type SeedsListEnvelope = z.infer<typeof SeedsListEnvelopeSchema>;
 // `title` (warren-d519). `sd plan show --json` persists these steps
 // as `{existing_seed: "<id>"}` with no title field — the adopted
 // seed's title is surfaced separately via the envelope's `children[]`
-// detail rows. The plot-plan-run synthesis path (SPEC §11.Q) reads
+// detail rows. The plot-plan-run synthesis path reads
 // `plan.children` for dispatch and ignores `steps[]`, so accepting
 // the optional shape lets `showPlan` parse synthesized plans without
 // the facade getting in the way.

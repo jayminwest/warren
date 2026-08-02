@@ -1,7 +1,7 @@
 /**
- * Bearer-token auth for `warren serve` (SPEC §8.1).
+ * Bearer-token auth for `warren serve` (docs/http-api.md).
  *
- * V1 posture is single-user (SPEC §3.2 / §11.D): one bearer token from
+ * V1 posture is single-user (SECURITY.md): one bearer token from
  * `WARREN_API_TOKEN`, missing/invalid → 401. The `AuthProvider` seam
  * exists so a future multi-user landing (per-token scopes, OIDC, ...)
  * can plug in additively without rewriting handlers.

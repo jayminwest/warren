@@ -1,6 +1,6 @@
 /**
  * Path-mode HTML / URL byte-level rewrite logic for the preview proxy
- * (warren-b902 split of src/preview/proxy/index.ts; SPEC §11.L addendum,
+ * (warren-b902 split of src/preview/proxy/index.ts; docs/design/preview-environments.md addendum,
  * warren-ab3a + warren-63e1).
  *
  * Two byte-wise transforms run over the head of `text/html` responses
@@ -20,7 +20,7 @@
  * entirely because the upstream origin already owns its own URL space.
  */
 
-/** SPEC §11.L addendum (warren-ab3a): cap the lookahead for `<head>` /
+/** docs/design/preview-environments.md addendum (warren-ab3a): cap the lookahead for `<head>` /
  *  `<base>` detection to the first 64 KiB of body. Documents without a
  *  parseable `<head>` in that window pass through untouched. The same
  *  cap bounds the root-relative URL attribute rewrite (warren-63e1)
@@ -32,7 +32,7 @@ const HEAD_OPEN_BYTES = TEXT_ENCODER.encode("<head");
 const BASE_OPEN_BYTES = TEXT_ENCODER.encode("<base");
 
 /**
- * Path-mode response transforms (SPEC §11.L addendum, warren-ab3a).
+ * Path-mode response transforms (docs/design/preview-environments.md addendum, warren-ab3a).
  * Rewrites a same-origin `Location:` on 3xx responses, and best-effort
  * injects `<base href="<pathPrefix>/">` after the opening `<head>` tag
  * on `text/html` bodies. All other content types and statuses stream

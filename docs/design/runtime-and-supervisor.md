@@ -1,6 +1,6 @@
 # Runtime, Supervisor & Event Durability
 
-> **Salvage provenance:** lifted from `SPEC.md` §3.3 (the seams that
+> **Salvage provenance:** lifted from the retired top-level spec §3.3 (the seams that
 > matter), §5.1–5.3 (process model / burrow-as-separate-process /
 > sandbox nesting), §9 (event-durability rationale — the
 > `MAX(seq)+1` restart contract only, not the stale column sketch),

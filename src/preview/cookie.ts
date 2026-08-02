@@ -1,5 +1,5 @@
 /**
- * Signed-cookie auth for the preview reverse proxy (R-19 / SPEC §11.L,
+ * Signed-cookie auth for the preview reverse proxy (R-19 / docs/design/preview-environments.md,
  * warren-8a10; path-mode scope addendum warren-edff / pl-f4ea; per-run
  * name + `Path=/` revision warren-63e1).
  *
@@ -21,7 +21,7 @@
  *         every same-origin request (including `/_next/static/...` asset
  *         loads with a `/p/<id>/...` Referer), and the per-run name keeps
  *         sibling preview sessions isolated on the same browser
- *         (SPEC §11.L risk 4 mitigation). Earlier revisions scoped
+ *         (docs/design/preview-environments.md risk 4 mitigation). Earlier revisions scoped
  *         `Path=/p/<runId>/` but that blocked the cookie on the asset
  *         requests referer routing needs to authenticate.
  *     Both modes set `HttpOnly`, `Secure` (unless overridden), `SameSite=Lax`,
@@ -46,7 +46,7 @@
 
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 
-/** Default cookie lifetime (24 hours). Matches the SPEC §11.L expectation
+/** Default cookie lifetime (24 hours). Matches the docs/design/preview-environments.md expectation
  *  that a reviewer's session covers an entire workday without re-login. */
 export const DEFAULT_COOKIE_TTL_MS = 24 * 3_600_000;
 
@@ -106,7 +106,7 @@ export interface SignedCookie {
  *
  *  - `path` — cookie name `warren_preview_<runId>`, `Path=/` with no
  *    `Domain`. Per-run name keeps sibling preview sessions isolated on
- *    the same browser (SPEC §11.L risk 4 mitigation); `Path=/` ships the
+ *    the same browser (docs/design/preview-environments.md risk 4 mitigation); `Path=/` ships the
  *    cookie on every same-origin request so referer-based asset routing
  *    in the proxy preamble can authenticate `/_next/static/...`-style
  *    sub-resource loads.

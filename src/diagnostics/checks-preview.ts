@@ -15,7 +15,7 @@ import type { DiagnosticCheck, DiagnosticLogger, EnvLike } from "./checks.ts";
 import { dbFailureMessage } from "./redact.ts";
 
 /**
- * Preview port allocator saturation (R-19 / SPEC §11.L, warren-2277). Fails
+ * Preview port allocator saturation (R-19 / docs/design/preview-environments.md, warren-2277). Fails
  * when ≥ `warnRatio` of the configured port range is in use by `starting`
  * or `live` runs — operators can either raise `WARREN_PREVIEW_PORT_RANGE`
  * or tighten idle-TTL / max-lifetime so the eviction worker reclaims
@@ -57,7 +57,7 @@ export async function checkPreviewPortAllocator(deps: {
 }
 
 /**
- * Live-preview saturation against the global cap (R-19 / SPEC §11.L,
+ * Live-preview saturation against the global cap (R-19 / docs/design/preview-environments.md,
  * warren-ea6b). Fails when the count of `starting`/`live` previews is at
  * or above `warnRatio` of `WARREN_PREVIEW_MAX_LIVE`. Operators tighten
  * `WARREN_PREVIEW_IDLE_TTL` / `WARREN_PREVIEW_MAX_LIFETIME` so the
@@ -101,12 +101,12 @@ export async function checkPreviewMaxLive(deps: {
 }
 
 /**
- * Preview signed-cookie auth strength check (R-19 / SPEC §11.L,
+ * Preview signed-cookie auth strength check (R-19 / docs/design/preview-environments.md,
  * warren-8a10). When `WARREN_PREVIEW_HOST` is set, the proxy preamble
  * is gated by an HMAC derived from `WARREN_API_TOKEN`. A weak token
  * ("changeme", "warren-token", a tutorial copy-paste) leaves a
  * private-code preview accessible to anyone who can guess the token —
- * the SPEC's risk #2 mitigation. Warns when the token matches a
+ * the preview-environment contract's risk #2 mitigation. Warns when the token matches a
  * placeholder or is shorter than `MIN_TOKEN_LENGTH`. No-ops when
  * `WARREN_PREVIEW_HOST` is absent (the proxy surface is off).
  *

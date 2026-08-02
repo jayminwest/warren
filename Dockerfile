@@ -1,4 +1,4 @@
-# Warren container image (SPEC §10.3).
+# Warren container image (docs/design/runtime-and-supervisor.md).
 #
 # Two-stage build:
 #   1. ui-builder — build the React/Vite SPA into src/ui/dist.
@@ -9,13 +9,13 @@
 #
 # The supervisor (src/supervisor/main.ts) is the ENTRYPOINT — it owns
 # spawning + signal-forwarding + restart policy for `burrow serve` and
-# warren's HTTP server. See SPEC §10.3 for the contract.
+# warren's HTTP server. See docs/design/runtime-and-supervisor.md for the contract.
 #
 # The four `bwrap` security flags (apparmor=unconfined, seccomp=unconfined,
 # systempaths=unconfined, cap_add=SYS_ADMIN) are applied by the orchestrator
 # (docker-compose.yml in the `local` topology), not the image. Under the
 # `k8s` runtime there is no bwrap — the pod boundary is the sandbox. See
-# SPEC §5.3 + §11.A and burrow's DEPLOY.md for the rationale.
+# docs/design/runtime-and-supervisor.md and burrow's DEPLOY.md for the rationale.
 
 # ---------- stage 1: build the UI ----------
 #
@@ -56,7 +56,7 @@ FROM oven/bun:1.2
 # Next.js / Remix project on startup. NodeSource ships a recent LTS — bookworm's
 # stock `nodejs` package is too old (18.19) for current frontend stacks.
 #
-# netcat-openbsd is required by burrow's inbound port-forwarder (SPEC §8.7,
+# netcat-openbsd is required by burrow's inbound port-forwarder (../burrow/SPEC.md §8.7,
 # `../burrow/src/provider/local/inbound-forward.ts`): the forwarder accepts
 # host-loopback connections and `nsenter`s into the burrow netns to relay
 # via `nc 127.0.0.1 <sandboxPort>`. Without it, every accepted connection's
@@ -86,7 +86,7 @@ RUN apt-get update \
 # each tool's current release; bumping them is a deliberate image-rebuild
 # decision.
 #
-# pnpm is baked in so per-run preview sidecars (R-19 / SPEC §11.L) can
+# pnpm is baked in so per-run preview sidecars (R-19 / docs/design/preview-environments.md) can
 # boot the common JS dev-server commands (`pnpm dev`) in projects that
 # don't use bun. npm ships with the NodeSource `nodejs` package above,
 # so we don't reinstall it via bun. Both run under the real Node installed

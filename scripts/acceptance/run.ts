@@ -1,7 +1,7 @@
 /**
  * Acceptance harness entry — `bun run scripts/acceptance/run.ts`.
  *
- * Phase 14 (warren-3ee3): exercises the §3.1 V1 acceptance criteria
+ * Phase 14 (warren-3ee3): exercises the ACCEPTANCE.md V1 acceptance criteria
  * against a real warren+burrow process pair (in-proc by default,
  * `--mode container` brings up the docker-compose stack and runs the
  * container-supported scenarios on top of it).

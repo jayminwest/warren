@@ -1,6 +1,6 @@
 /**
  * Scenario 12 — supervisor restart-budget + tracked-run survival
- * (SPEC §10.3, mx-c01c8a, mx-54c9ee).
+ * (docs/design/runtime-and-supervisor.md, mx-c01c8a, mx-54c9ee).
  *
  * Acceptance criterion #12:
  *   "If burrow exits non-zero, the supervisor restarts it within the

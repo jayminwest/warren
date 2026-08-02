@@ -41,7 +41,7 @@ const REFETCH_TRIGGER_KINDS: ReadonlySet<string> = new Set([
 	"cancel.requested",
 	"reap.completed",
 	"reap_failed",
-	// Preview lifecycle events (R-19 / SPEC §11.L, warren-c0b9) — each
+	// Preview lifecycle events (R-19 / docs/design/preview-environments.md, warren-c0b9) — each
 	// flips one of the `previewState` / `previewPort` / `previewStartedAt`
 	// columns on the run row, so refresh the query to surface the new
 	// badge + URL + teardown affordance.
@@ -365,7 +365,7 @@ function CostCard({ run }: { run: RunRow }) {
 }
 
 /**
- * Per-run preview environment surface (R-19 / SPEC §11.L, warren-c0b9).
+ * Per-run preview environment surface (R-19 / docs/design/preview-environments.md, warren-c0b9).
  * Renders one of four states populated by reap's `preview_launch` sub-
  * step + the eviction / teardown paths:
  *

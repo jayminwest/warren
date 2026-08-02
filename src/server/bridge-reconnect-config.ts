@@ -34,7 +34,7 @@ export async function resolveProjectPreviewConfig(
 		const config = await input.warrenConfigs.get(project.id, project.localPath);
 		const preview = config.defaults?.preview;
 		if (preview === undefined) return undefined;
-		// `type: 'static'` is filed as a follow-up (per SPEC §11.L); reap
+		// `type: 'static'` is filed as a follow-up (per docs/design/preview-environments.md); reap
 		// would reject at launch time anyway. Skip cleanly here so the
 		// PR-body placeholder doesn't promise a preview that can't run.
 		if (preview.type !== "server") return undefined;

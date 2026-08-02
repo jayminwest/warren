@@ -12,7 +12,7 @@
  * `DefaultsConfigSchema`. `parsePreviewFile` parses a standalone
  * `preview.yaml` whose top-level document is the preview block itself. The
  * preview block accepts an optional `mode: path | subdomain` field
- * (warren-fcb7 / SPEC §11.L path-mode addendum) so a project can pin a
+ * (warren-fcb7 / docs/design/preview-environments.md path-mode addendum) so a project can pin a
  * routing mode for its previews; `WARREN_PREVIEW_MODE` (operator-facing,
  * env) wins on conflict — precedence is enforced at consumption time.
  *
@@ -125,7 +125,7 @@ const TimezoneSchema = z.string().min(1, "timezone must be non-empty if provided
 
 const PromptSchema = z.string().min(1, "prompt must be non-empty if provided");
 
-// warren-7be9 / SPEC §11.L: idle_ttl and max_lifetime are both string-duration
+// warren-7be9 / docs/design/preview-environments.md: idle_ttl and max_lifetime are both string-duration
 // fields (e.g. "30m", "8h", "1h30m"). The launcher / eviction worker parses
 // these into milliseconds; the schema only validates shape so malformed input
 // surfaces in the per-file errors envelope before reap-time. Compound forms
@@ -236,7 +236,7 @@ const InteractiveAgentsConfigSchema = z
 
 export type InteractiveAgentsConfig = z.infer<typeof InteractiveAgentsConfigSchema>;
 
-// warren-fcb7 / SPEC §11.L (path-mode addendum, pl-f4ea): per-project pin of
+// warren-fcb7 / docs/design/preview-environments.md (path-mode addendum, pl-f4ea): per-project pin of
 // the preview routing mode. Operator-facing surface is `WARREN_PREVIEW_MODE`
 // in env; this top-level field on `.warren/preview.yaml` lets a project
 // declare its own preference when the operator runs warren in a mixed
@@ -249,7 +249,7 @@ export type PreviewMode = z.infer<typeof PreviewModeSchema>;
 /** Default routing mode when neither env nor per-project pin is set. */
 export const DEFAULT_PREVIEW_MODE: PreviewMode = "path";
 
-// warren-7be9 / SPEC §11.L: the schema carries a `type` discriminator from
+// warren-7be9 / docs/design/preview-environments.md: the schema carries a `type` discriminator from
 // day one so V2 can add `type: 'static'` (build step + dir to serve) without
 // breaking the config. V1 implements only `type: 'server'`. `type: 'static'`
 // is accepted by the parser but rejected at launch time by the reap-step
@@ -344,7 +344,7 @@ export const DefaultsConfigSchema = z
 		// warren-9993: run branch prefix; spawnRun composes `${prefix}/${run.id}`.
 		// Precedence: project default > WARREN_RUN_BRANCH_PREFIX env > "burrow".
 		runBranchPrefix: RunBranchPrefixSchema.optional(),
-		// warren-7be9 / SPEC §11.L: per-run preview environments (R-19). Canonical
+		// warren-7be9 / docs/design/preview-environments.md: per-run preview environments (R-19). Canonical
 		// home is `.warren/preview.yaml` (post-warren-5840); this nested field is
 		// still accepted for migration — when both exist, `preview.yaml` wins.
 		preview: PreviewConfigSchema.optional(),

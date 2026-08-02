@@ -40,5 +40,5 @@ deploy/k8s/overlays/gke-live/
 
 # working design/planning docs that are not yet (or never will be) a seeds
 # plan. Thinking-in-progress lives here so it has a home outside the tracker
-# and outside git history; promote anything durable into SPEC/docs or `sd plan`.
+# and outside git history; promote anything durable into docs or `sd plan`.
 local-planning/

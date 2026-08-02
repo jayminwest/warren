@@ -2,12 +2,12 @@
 
 This file carries direction, sequencing, and seam status. Seeds holds the work queue, so run `sd ready` for what to pick up next.
 
-[SPEC.md](SPEC.md) is the design record. [CHANGELOG.md](CHANGELOG.md) is the ship log. [docs/PHILOSOPHY.md](docs/PHILOSOPHY.md) owns the operating policy. This file owns the order of work.
+The topic records under [docs/design/](docs/design/) are the design record. [CHANGELOG.md](CHANGELOG.md) is the ship log. [docs/PHILOSOPHY.md](docs/PHILOSOPHY.md) owns the operating policy. This file owns the order of work.
 
 Two rules keep this file short.
 
 1. Shipped items shrink, never grow. A shipped item is one table row that points at its design record.
-2. No design sketches. A schema or a config shape belongs in a seed at implementation time, or in SPEC after a design lock.
+2. No design sketches. A schema or a config shape belongs in a seed at implementation time, or in a `docs/design/` record after a design lock.
 
 Status vocabulary: `now`, `next`, `deferred`, `shipped`, `not-in-core`.
 
@@ -35,7 +35,7 @@ The brake on all three is PHILOSOPHY rule 1: features pay for seams. Work with n
 
 ## Now — in flight
 
-- **Hygiene residue** — what remains of the v0.13.1 truth-and-hygiene pass. Re-scope warren-937e, whose text still names retired canopy tiers. Delete `closeSeedId` per rule 8 if it is in fact dead. Generalize the finalize holdouts (`commit?: "seeds"[]`, the `FinalizeStage` union) in one contract touch.
+- **Hygiene residue** — what remains of the v0.13.1 truth-and-hygiene pass. Delete `closeSeedId` per rule 8 if it is in fact dead. Generalize the finalize holdouts (`commit?: "seeds"[]`, the `FinalizeStage` union) in one contract touch.
 - **Self-host hardening residue** `[plan: pl-1c02, outcome: success]`. Two durability items stay open after the batch shipped in v0.13.0–v0.13.1: fetch-before-carve (warren-b94b) and the tracker-integrity gate (warren-a71f part 1).
 - **Agent-facing CLI + npm publish** `[plan: not yet filed]`. Step 5 of that plan is also `AgentRuntimeAdapter` phase 1 item 10: one event-envelope extractor in `src/core`, three consumers. The docker-build CI gate shipped in v0.13.0, so the npm publish step no longer inherits the release-before-artifact failure.
 
@@ -43,9 +43,9 @@ The brake on all three is PHILOSOPHY rule 1: features pay for seams. Work with n
 
 1. **The GitHub App campaign: `Forge` + `AuthProvider` widening, co-designed.** Two design docs come first, modeled on `docs/design/runtime-provider-contract.md`, written while the Now batch runs. Implementation starts on an explicit owner go/no-go. Internal order: consolidate the three GitHub REST clients into `src/forge/github/http.ts` first. Then cut a capability-minimal `Forge` contract, with a FakeForge acceptance provider as implementation #2. Then widen auth: async `authorize`, `Actor.subject`, sessions, `run.dispatched_by`. Then the token story, once. Per-run scoped run tokens shipped in v0.13.0 (warren-57fd) and satisfy the campaign's hard gate on human login. Falsification tests: a FakeForge project completes dispatch → reap → push → PR with zero domain-code changes, and scenario 39 stays green at every commit.
 2. **`AgentRuntimeAdapter` phase 1.** Warren-only, parallel with the campaign — the file sets are disjoint. Consolidate the dual usage extractors behind a `usageShape` capability. Move `classifyProviderError`, `seedLayout`, and `harnessStatePrefixes` behind the adapter registry. Type `runtimeId` off `KNOWN_RUNTIME_IDS`. Enforcement: a runtime-id literal outside the adapter directory fails lint. Named non-goals: burrow's `AgentRuntime` interface, the k8s in-pod dispatcher, steering encoding — all of it phase 2 scope (item 4).
-3. **`IssueTracker`, Linear first.** After the campaign, which dissolves its worst blockers. Credential storage (B1) generalizes the App's project-to-credential mapping. The sandbox stays `network: none` (B6): tracker calls proxy through warren on the run-scoped token. The FakeForge pattern becomes FakeTracker (B5). Budget the caching and backoff layer (B3, B4) as a real step. The public-mode leak (B2) is a contract-time owner decision. GitHub Issues lands after Linear as implementation #3, on the shared GitHub HTTP core.
+3. **`IssueTracker`, Linear first.** After the campaign, which dissolves its worst blockers. Credential storage (B1) generalizes the App's project-to-credential mapping. The sandbox stays `network: none` (B6): tracker calls proxy through warren on the run-scoped token. The FakeForge pattern becomes FakeTracker (B5). Budget the caching and backoff layer (B3, B4) as a real step. The public-mode leak (B2) is a contract-time owner decision. GitHub Issues lands after Linear as implementation #3, on the shared GitHub HTTP core. Design input from the deleted pl-fb43 prototype: any future cross-repo routing must key off tracker-agnostic metadata. That means the 2026-07-29 sidecar-table amendment, keyed by (project_id, issue_id) — never a tracker-specific field like seeds extensions.repo.
 4. **`AgentRuntimeAdapter` phase 2 — repatriate the harness logic from burrow.** Promoted from Deferred on 2026-07-30. The promotion trigger was an explicit decision to cut the k8s dependency on `@os-eco/burrow-cli`, and the owner made that decision (see Decisions). Move `AgentRegistry`, the pi and claude-code parsers, `buildSpawnCommand`, and the steering encoders into the warren adapter registry — a source lift from burrow, not a rewrite. Rehome the burrow types and error classes that ~15 domain files import today into warren's own vocabulary. Exit criterion: the k8s path (`src/runtime/k8s/`) imports zero burrow code. The npm dependency survives only for the LocalProvider daemon client. Depends on phase 1 only. The file sets are disjoint from the campaign, so this phase can run early if capacity allows.
-5. **Sandbox internalization — the burrow endgame.** `LocalProvider` spawns agents through warren-owned bwrap / sandbox-exec profile generation (lifted from burrow), driven by the same host-side loop the k8s entrypoint already runs. Kills `burrow serve`, the unix socket, the token handshake, `src/burrow-client/`, and the supervisor sibling process. No intermediate raw-exec daemon mode — the absorption decision retires that contract. The excision rides with it: drop `@os-eco/burrow-cli` from `package.json` and the Dockerfile, the burrow-pin assertions in `check:version-sync`, and the two burrow rules in `layer-rules.json`. Rewrite the CLAUDE.md and SPEC burrow sections. The compose bwrap capability flags stay — warren itself runs bwrap after this.
+5. **Sandbox internalization — the burrow endgame.** `LocalProvider` spawns agents through warren-owned bwrap / sandbox-exec profile generation (lifted from burrow), driven by the same host-side loop the k8s entrypoint already runs. Kills `burrow serve`, the unix socket, the token handshake, `src/burrow-client/`, and the supervisor sibling process. No intermediate raw-exec daemon mode — the absorption decision retires that contract. The excision rides with it: drop `@os-eco/burrow-cli` from `package.json` and the Dockerfile, the burrow-pin assertions in `check:version-sync`, and the two burrow rules in `layer-rules.json`. Rewrite the CLAUDE.md and docs/design/runtime-and-supervisor.md burrow sections. The compose bwrap capability flags stay — warren itself runs bwrap after this.
 
 ## Deferred until paid
 
@@ -59,14 +59,14 @@ Honest replacements for old sequencing steps with no payer. Each entry names its
 
 | What | Landed | Record |
 |------|--------|--------|
-| `.warren/` per-project config convention | v0.1.5 | SPEC §11.H |
-| Cron scheduler and past-due scheduled seeds | v0.1.6 | SPEC §11.I |
-| Seeds `extensions` field for runtime metadata | v0.3.11 | SPEC §11.I |
-| Postgres backend behind `WARREN_DB_URL` | v0.3.2 | SPEC §3.2 |
-| Per-run preview environments | v0.3.2 | SPEC §11.L |
-| Plan-runs — serial `sd` plan execution | v0.3.17 | SPEC §11.P |
+| `.warren/` per-project config convention | v0.1.5 | `docs/design/warren-config.md` |
+| Cron scheduler and past-due scheduled seeds | v0.1.6 | `docs/design/scheduler.md` |
+| Seeds `extensions` field for runtime metadata | v0.3.11 | `docs/design/scheduler.md` |
+| Postgres backend behind `WARREN_DB_URL` | v0.3.2 | `src/db/` (Postgres adapter behind `WARREN_DB_URL`) |
+| Per-run preview environments | v0.3.2 | `docs/design/preview-environments.md` |
+| Plan-runs — serial `sd` plan execution | v0.3.17 | `docs/design/plan-run-coordinator.md` |
 | OpenAPI 3.1 schema and the `gen:openapi:check` gate | v0.6.14 | `docs/openapi.yaml` |
-| Ready-to-dispatch surface | v0.9.4 | SPEC §11.R |
+| Ready-to-dispatch surface | v0.9.4 | `docs/design/plan-run-coordinator.md` |
 | `RuntimeProvider` seam plus the Kubernetes runtime | v0.10.0 | `docs/design/runtime-provider-contract.md` |
 | Burrow-client eviction and the layer gate | v0.10.x | pl-829f, `scripts/layer-rules.json` |
 | Release machinery — version bump, version-sync gate, `ghcr.io` image | v0.11.0 | [CHANGELOG.md](CHANGELOG.md) |
@@ -81,7 +81,7 @@ Honest replacements for old sequencing steps with no payer. Each entry names its
 
 ## Deliberately not in core
 
-PHILOSOPHY mandates a public entry for every refusal, with a recipe that names the extension tier. Tier 0 is in-repo skills. Tier 1 is container plugins on the event bus. Tier 2 is operator hooks.
+PHILOSOPHY mandates a public entry for every refusal, with a recipe that names the extension tier. The tier definitions live in [docs/PHILOSOPHY.md](docs/PHILOSOPHY.md).
 
 - **Issues UI** (old R-04) — **Tier 0**. The agent already runs `sd` inside the sandbox against the project's own repo. A browser CRUD surface over the tracker buys a sync problem and little else.
 - **Per-harness UI surfaces** (old R-07) — **Tier 1**. A new harness is an agent image plus a registry entry. What a runtime's events mean belongs behind `AgentRuntimeAdapter`, not in a page per harness.
@@ -102,10 +102,11 @@ Honest tombstones. A removed feature can return as an extension when someone wan
 | Conversations (Leveret) | v0.11.0 | No users. PHILOSOPHY rule 8 deletes rather than re-platforms. |
 | Plot | v0.11.0 | No users. Twelve injector fields left `ServerDeps` with it. |
 | Canopy — the library tier and the project tier | v0.13.0 | No users. Built-in agents ship inline (warren-a781 moved the Audit Warden agents first). |
-| Multi-worker burrow model and remote workers (old R-12) | v0.10.0 | Superseded by the `k8s` runtime provider. SPEC §5.4 carries the RETIRED banner. |
+| Multi-worker burrow model and remote workers (old R-12) | v0.10.0 | Superseded by the `k8s` runtime provider. Carried a RETIRED banner before the old design doc's retirement. |
 | Fly.io deploy path | v0.10.0 | Superseded by the container image plus GKE. See `docs/RUNBOOK-K8S.md`. |
 | Pause machinery (`markPaused`, `question_posed` remnants) | v0.13.1 | Dead since the plot deletion. No non-test caller. |
 | `mergePullRequest` | v0.13.1 | Built for the deleted Plot PR surface. No production caller. |
+| Cross-repo plan-run routing (pl-fb43) | v0.13.x (unshipped release line) | Seeds-bound machinery built ahead of the IssueTracker seam; no payer. Deleted per rule 8; the execution-vs-coordination project split survives as an IssueTracker design input. |
 
 ## Under evaluation
 
@@ -117,7 +118,7 @@ Choices locked earlier, recorded so that nobody relitigates them when an item be
 
 - The database holds runtime state only. Issues, expertise, and trigger config stay git-tracked in the project repo under `.seeds/`, `.mulch/`, and `.warren/`. **Amended 2026-07-29:** a warren-side sidecar table keyed by `(project_id, issue_id)`, which holds only warren's own run bookkeeping, counts as permitted runtime state. It is not an issues mirror.
 - **Amended 2026-07-29:** the project's tracker is the source of truth for issues. Seeds is `IssueTracker` implementation #1, not a structural dependency. Warren still keeps no issues table (see the sidecar amendment above).
-- The kernel's guaranteed output is a pushed workspace branch. Everything past that point is extension behavior.
+- The kernel's guaranteed output is a pushed workspace branch. Everything past it is extension behavior ([PHILOSOPHY](docs/PHILOSOPHY.md)).
 - Warren stays self-hostable, not SaaS. One warren deploy serves one team. Seams declare a single-org scope explicitly.
 - `claude-code` is the public default agent, and `WARREN_DEFAULT_AGENT` picks another one without a source change.
 - GitHub webhook triggers stay out of the current phase. The `.warren/triggers.yaml` schema leaves room for another `kind:` entry later.

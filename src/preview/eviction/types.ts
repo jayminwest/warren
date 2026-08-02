@@ -5,7 +5,7 @@
  * through `index.ts`.
  *
  * See `./index.ts` for the four-signal eviction contract framing and
- * SPEC §11.L for the design lock.
+ * docs/design/preview-environments.md for the design lock.
  */
 
 import type { AnyWarrenDb } from "../../db/client.ts";
@@ -96,7 +96,7 @@ export interface RunPreviewsRepo {
 	}): Promise<boolean>;
 	/**
 	 * Atomically claim a `starting`/`live` preview for manual teardown
-	 * (R-19 / SPEC §11.L acceptance #8, warren-d725). BEGIN IMMEDIATE
+	 * (R-19 / docs/design/preview-environments.md acceptance #8, warren-d725). BEGIN IMMEDIATE
 	 * serializes against the eviction worker's `evict` so a manual
 	 * teardown racing an LRU sweep deterministically lands in exactly
 	 * one of them — the loser sees `already-torn-down`. Returns the

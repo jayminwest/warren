@@ -1,6 +1,6 @@
 /**
  * Pure builder that turns an `AgentDefinition` into the `.warren/`,
- * `.mulch/`, `.seeds/`, `.pi/` workspace drops (SPEC §4.3 step 3, §11.A).
+ * `.mulch/`, `.seeds/`, `.pi/` workspace drops (docs/design/agent-composition.md step 3; docs/design/runtime-and-supervisor.md).
  *
  * Returns `SeedFile[]` with workspace-relative paths so the
  * caller can either thread the list into `HttpClient.burrows.up({ seed })`

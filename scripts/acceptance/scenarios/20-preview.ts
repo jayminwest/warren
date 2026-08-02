@@ -53,7 +53,7 @@
  *     hands out has nothing listening on it and the readiness probe
  *     times out. Documented in burrow's `inbound-forward.ts` and warren
  *     `mx-1d31f0`; same posture as scenarios 13/14.
- *   - **Postgres dialect** — the SPEC §11.L port allocator and eviction
+ *   - **Postgres dialect** — the docs/design/preview-environments.md port allocator and eviction
  *     worker are sqlite-only today (R-13 follow-up, mx-b82a55). When the
  *     harness is dispatched with `WARREN_TEST_DIALECT=postgres` the
  *     scenario skips with a documented `pl-f17e` follow-up reference;

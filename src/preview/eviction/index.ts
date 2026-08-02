@@ -1,5 +1,5 @@
 /**
- * Preview TTL + LRU eviction worker (R-19 / SPEC §11.L, warren-ea6b).
+ * Preview TTL + LRU eviction worker (R-19 / docs/design/preview-environments.md, warren-ea6b).
  * Split into `eviction/` modules in warren-d0a9 (pl-9088 step 8).
  *
  * Periodic tick that walks every preview in `starting`/`live` and evicts on

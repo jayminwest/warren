@@ -65,7 +65,7 @@ export function readyzHandler(deps: ServerDeps): RouteHandler {
 		checks.push(await checkWarrenConfigDeprecations(warrenConfigArgs));
 		checks.push(await previewPortAllocatorReadyzCheck(deps));
 		checks.push(await previewMaxLiveReadyzCheck(deps));
-		// Auth-strength probe (R-19 / SPEC §11.L, warren-8a10) reads from
+		// Auth-strength probe (R-19 / docs/design/preview-environments.md, warren-8a10) reads from
 		// process.env directly: server boot already validated the token shape,
 		// so /readyz only needs to surface the strength heuristic against the
 		// live env. Tests that don't override `process.env` get the inert

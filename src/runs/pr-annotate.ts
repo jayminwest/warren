@@ -1,7 +1,7 @@
 /**
  * `annotatePrPreview` — replace the `preview_url_or_placeholder` fragment
  * in a PR body with the live preview URL or the launch failure tail
- * (warren-f156 / SPEC §11.L).
+ * (warren-f156 / docs/design/preview-environments.md).
  *
  * Sixth best-effort sub-step of `reapRun`, gated on:
  *   - `pr_open` produced a `prUrl` (no PR ⇒ nothing to annotate), and

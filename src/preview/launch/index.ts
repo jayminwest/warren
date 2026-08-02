@@ -1,7 +1,7 @@
 /**
  * `launchPreview` — spawn `preview.command` as a long-lived burrow sidecar
  * after a successful agent run, drive its readiness probe, and persist the
- * resulting `preview_state` (R-19 / SPEC §11.L, warren-f156). Split into
+ * resulting `preview_state` (R-19 / docs/design/preview-environments.md, warren-f156). Split into
  * `launch/` modules in warren-62a7 / pl-9088 step 9.
  *
  * The actual orchestration (gating on outcome / opt-in / worker locality)

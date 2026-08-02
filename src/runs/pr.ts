@@ -215,7 +215,7 @@ export interface BuildPrContentInput {
 	readonly tokensOutput?: number;
 	readonly tokensCacheRead?: number;
 	/**
-	 * Project opted into per-run preview environments (R-19 / SPEC §11.L).
+	 * Project opted into per-run preview environments (R-19 / docs/design/preview-environments.md).
 	 * When true, the body includes a `preview_url_or_placeholder` fragment
 	 * (a `## Preview` section bracketed by `<!-- warren:preview-start -->`
 	 * and `<!-- warren:preview-end -->`) so reap's `pr_annotate_preview`

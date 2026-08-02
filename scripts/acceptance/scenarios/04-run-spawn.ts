@@ -1,5 +1,5 @@
 /**
- * Scenario 04 — POST /runs (the §4.3 composition flow).
+ * Scenario 04 — POST /runs (the docs/design/agent-composition.md composition flow).
  *
  * Acceptance criterion #4:
  *   "POST /runs returns 201 with a `run_xxx` id; the response carries

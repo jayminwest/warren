@@ -4,7 +4,7 @@
  * The thin wrapper is mostly a construction helper plus a connection
  * probe. The real surface (burrows / runs / inbox / events / agents
  * namespaces) is forwarded straight from `HttpClient`; warren's own
- * HTTP API maps onto those routes 1:1 (SPEC §8.1) so adding a layer
+ * HTTP API maps onto those routes 1:1 (docs/http-api.md) so adding a layer
  * of warren-specific methods would just produce noise.
  *
  * What the facade *does* add:
@@ -17,7 +17,7 @@
  *      whether burrow is reachable before continuing.
  *   3. Wire-error mapping — `withTransportMapping` runs an HttpClient
  *      call and rethrows transport-layer errors as the structured
- *      `BurrowUnreachableError`. Wrap calls in §4.3 composition flows
+ *      `BurrowUnreachableError`. Wrap calls in the docs/design/agent-composition.md composition flows
  *      where a unreachable burrow should turn into a 503 from warren
  *      rather than a stack trace.
  *
@@ -27,7 +27,7 @@
  *     hidden retry. Add at the call site if needed.
  *   - No request logging here. The warren HTTP server logs at the
  *     route boundary; logging both would double up.
- *   - No higher-level types. The §4.3 spawn flow constructs its own
+ *   - No higher-level types. The docs/design/agent-composition.md spawn flow constructs its own
  *     domain types from `Burrow` / `Run`; this client returns burrow's
  *     wire types untouched.
  */

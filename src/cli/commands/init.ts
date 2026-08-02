@@ -80,7 +80,7 @@ export interface InitResult {
 const TRIGGERS_TEMPLATE = `# .warren/triggers.yaml — scheduled runs for this project (R-06).
 #
 # Each entry is a cron-style trigger. Warren ticks once a minute and
-# spawns a run when a trigger is due. See SPEC §11.I for the contract.
+# spawns a run when a trigger is due. See docs/design/scheduler.md for the contract.
 #
 # Example:
 # - id: nightly-housekeeping
@@ -97,8 +97,8 @@ const TRIGGERS_TEMPLATE = `# .warren/triggers.yaml — scheduled runs for this p
 const CONFIG_HEADER = `# .warren/config.yaml — per-project warren defaults (warren-5840 layout).
 #
 # Supersedes the legacy .warren/defaults.json. Fields are all optional;
-# every key from the JSON layout works here unchanged. See SPEC §11.H
-# for the schema. Moving from defaults.json? Run \`warren config migrate\`.
+# every key from the JSON layout works here unchanged. See
+# docs/design/warren-config.md for the schema. Moving from defaults.json? Run \`warren config migrate\`.
 `;
 
 export async function runInit(

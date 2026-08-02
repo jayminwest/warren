@@ -1,7 +1,7 @@
 # .warren/config.yaml — per-project warren defaults (warren-5840 layout).
 #
 # Supersedes the legacy .warren/defaults.json. All fields are optional.
-# See SPEC §11.H for the schema. Every key here matches DefaultsConfigSchema
+# See docs/design/warren-config.md for the schema. Every key here matches DefaultsConfigSchema
 # in src/warren-config/schema.ts.
 #
 # Precedence at spawn time: operator override (per-run) > project default

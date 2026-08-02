@@ -6,7 +6,7 @@
 #
 # Three side effects, in order:
 #   1. Append a known mulch record to .mulch/expertise/<domain>.jsonl
-#      with a recorded_at timestamp warren's reap step (§11.A LWW)
+#      with a recorded_at timestamp warren's reap step (runtime-and-supervisor.md LWW)
 #      uses to merge into the project's persistent .mulch/.
 #   2. Mark the harness's known seed as `closed` in .seeds/issues.jsonl
 #      so reap's seeds-close-mirror sub-step has something to mirror.

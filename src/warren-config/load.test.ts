@@ -269,7 +269,7 @@ defaultPrompt: Read the issue, plan, execute.
 		expect(result.defaults?.preview).toBeUndefined();
 	});
 
-	// warren-7be9 / SPEC §11.L: malformed preview block surfaces in the per-file
+	// warren-7be9 / docs/design/preview-environments.md: malformed preview block surfaces in the per-file
 	// errors envelope (mx-66d478) — same pattern as any other `.warren/` field.
 	test("malformed preview block in config.yaml → defaults null, schemaError entry", async () => {
 		const result = await loadWarrenConfig({
