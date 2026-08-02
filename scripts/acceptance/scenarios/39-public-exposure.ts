@@ -134,6 +134,7 @@ export const scenario: Scenario = {
 			await assertNoLeakOnPublicReads(base, ids, ctx.logger.debug);
 			await assertInboxNotDrained(base, operator, ids);
 			await assertStreamCapRefuses(base, ids);
+			await assertSecurityHeadersAndVary(base, ids, ctx.logger.debug);
 			// Poison LAST: warren-f787 deleted the project tier, so the row is
 			// visible to `GET /agents` and would 500 the read sweep above.
 			await poisonAgentRow(scenarioRoot);
@@ -265,6 +266,49 @@ async function assertNoLeakOnPublicReads(
 		!ndjson.includes("bridge_lost"),
 		"the event stream served the internal-only `bridge_lost` kind to a spectator",
 	);
+}
+
+/**
+ * warren-e2a4: every projected route emits `Vary: Authorization` — an
+ * operator sees more fields than a spectator at the same URL, so a shared
+ * cache in front (a CDN toggle away) must never key the two together —
+ * and every response carries the baseline security headers. The UI shell
+ * is checked too: the operator token lives in browser storage on that
+ * origin, so CSP / frame-ancestors are not cosmetic there.
+ */
+async function assertSecurityHeadersAndVary(
+	base: string,
+	ids: SeededIds,
+	debug: (msg: string) => void,
+): Promise<void> {
+	const required: readonly string[] = [
+		"content-security-policy",
+		"x-content-type-options",
+		"referrer-policy",
+		"x-frame-options",
+		"strict-transport-security",
+	];
+	for (const call of publicGetCalls(ids)) {
+		const res = await fetch(`${base}${call.path}`);
+		assertEqual(res.status, 200, `GET ${call.pattern} is 200 for the header sweep`);
+		await res.body?.cancel();
+		assertTrue(
+			(res.headers.get("vary") ?? "").toLowerCase().includes("authorization"),
+			`GET ${call.pattern}: no Vary: Authorization — a shared cache could serve an operator body to a spectator`,
+		);
+		for (const name of required) {
+			assertTrue(
+				res.headers.get(name) !== null,
+				`GET ${call.pattern}: missing security header ${name}`,
+			);
+		}
+		debug(`scenario-39: GET ${call.pattern} headers clean`);
+	}
+	const ui = await fetch(`${base}/`);
+	await ui.body?.cancel();
+	for (const name of required) {
+		assertTrue(ui.headers.get(name) !== null, `GET / (UI shell): missing security header ${name}`);
+	}
 }
 
 /**

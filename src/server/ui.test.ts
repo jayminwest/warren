@@ -46,6 +46,16 @@ describe("createUiHandler", () => {
 		expect(await res.text()).toContain("warren ui");
 	});
 
+	test("served files carry the baseline security headers (warren-e2a4)", async () => {
+		const handler = createUiHandler({ distDir });
+		const res = await handler(ctxFor("/"));
+		expect(res.headers.get("content-security-policy")).toContain("default-src 'self'");
+		expect(res.headers.get("x-content-type-options")).toBe("nosniff");
+		expect(res.headers.get("referrer-policy")).toBe("no-referrer");
+		expect(res.headers.get("x-frame-options")).toBe("DENY");
+		expect(res.headers.get("strict-transport-security")).toContain("max-age=");
+	});
+
 	test("/assets/app.js serves the file with the right content-type", async () => {
 		const handler = createUiHandler({ distDir });
 		const res = await handler(ctxFor("/assets/app.js"));

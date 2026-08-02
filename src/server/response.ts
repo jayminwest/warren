@@ -11,18 +11,47 @@
 const JSON_CT = "application/json; charset=utf-8";
 const NDJSON_CT = "application/x-ndjson";
 
+/**
+ * Baseline security headers every warren response carries (warren-e2a4).
+ * The operator bearer token lives in browser storage on this origin, so
+ * the missing-CSP / missing-frame-ancestors posture was never cosmetic.
+ * HSTS is a no-op over plain HTTP (browsers ignore it), so it is safe to
+ * emit unconditionally for the TLS-terminated deployments that need it.
+ */
+export const SECURITY_HEADERS: Readonly<Record<string, string>> = {
+	"content-security-policy":
+		"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'",
+	"x-content-type-options": "nosniff",
+	"referrer-policy": "no-referrer",
+	"x-frame-options": "DENY",
+	"strict-transport-security": "max-age=31536000; includeSubDomains",
+};
+
+/**
+ * Every API body varies by `Authorization`: under `WARREN_AUTH=public`
+ * (warren-851b) an operator sees more fields than a spectator at the same
+ * URL. Without `Vary` a shared cache in front (a CDN toggle away) could
+ * serve the operator body to anonymous visitors. Emitting it on responses
+ * that do not vary is harmless — it only narrows cacheability.
+ */
+const VARY_AUTH = { vary: "Authorization" } as const;
+
 export function jsonResponse(status: number, body: unknown, init?: ResponseInit): Response {
 	return new Response(JSON.stringify(body), {
 		status,
 		...init,
-		headers: mergeHeaders(init?.headers, { "content-type": JSON_CT }),
+		headers: mergeHeaders(init?.headers, {
+			"content-type": JSON_CT,
+			...VARY_AUTH,
+			...SECURITY_HEADERS,
+		}),
 	});
 }
 
 export function textResponse(status: number, body: string, contentType: string): Response {
 	return new Response(body, {
 		status,
-		headers: { "content-type": contentType },
+		headers: { "content-type": contentType, ...SECURITY_HEADERS },
 	});
 }
 
@@ -33,6 +62,8 @@ export function ndjsonResponse(stream: ReadableStream<Uint8Array>, init?: Respon
 		headers: mergeHeaders(init?.headers, {
 			"content-type": NDJSON_CT,
 			"cache-control": "no-store",
+			...VARY_AUTH,
+			...SECURITY_HEADERS,
 		}),
 	});
 }
