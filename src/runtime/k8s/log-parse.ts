@@ -6,10 +6,8 @@
  * independently unit-testable (no cluster, no clock beyond `Date`).
  */
 
+import { EVENT_STREAMS } from "../../core/wire.ts";
 import type { NormalizedEvent } from "../contract.ts";
-
-/** The three stream tags the seam recognizes; anything else coerces to `null`. */
-const NORMALIZED_STREAMS = ["stdout", "stderr", "system"] as const;
 
 /**
  * Split a `timestamps=true` log line into its kubelet RFC3339 stamp + content.
@@ -105,9 +103,13 @@ function pickTs(envelopeTs: unknown, kubeletTs: string | null): string {
 	return new Date().toISOString();
 }
 
-/** Coerce an envelope's `stream` tag onto `"stdout"|"stderr"|"system"|null`. */
+/**
+ * Coerce an envelope's `stream` tag onto the canonical `EVENT_STREAMS`
+ * (`src/core/wire.ts`) or `null`; anything unrecognized coerces to `null`
+ * rather than throwing (warren-7b7a removed the local copy of the tag list).
+ */
 function normalizeStream(value: unknown): NormalizedEvent["stream"] {
-	return typeof value === "string" && (NORMALIZED_STREAMS as readonly string[]).includes(value)
+	return typeof value === "string" && (EVENT_STREAMS as readonly string[]).includes(value)
 		? (value as NormalizedEvent["stream"])
 		: null;
 }

@@ -6,7 +6,7 @@
 		"src/db/schema/sqlite.ts": 564,
 		"src/runs/reap/pipeline.ts": 528,
 		"src/runs/reap/stage.test.ts": 526,
-		"src/runtime/contract.ts": 512,
+		"src/runtime/contract.ts": 510,
 		"src/runtime/k8s/pod-spec.ts": 515,
 		"src/runtime/k8s/pod-watcher.ts": 514,
 		"src/runtime/k8s/provider.ts": 507,

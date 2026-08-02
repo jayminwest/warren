@@ -11,6 +11,7 @@
  * seam. Everything here is warren's *need*; providers satisfy it.
  */
 
+import type { EventStream, InboxPriority, InboxState, RunState } from "../core/wire.ts";
 import type { ArtifactDelta } from "./finalize-deltas.ts";
 import type { FinalizeStage } from "./finalize-stages.ts";
 
@@ -117,8 +118,8 @@ export interface NormalizedEvent {
 	 * typed terminal event or `detectRuntimeTerminal` breaks.
 	 */
 	kind: string;
-	/** unknown coerces to `null` */
-	stream: "stdout" | "stderr" | "system" | null;
+	/** unknown coerces to `null`. Derived from `EVENT_STREAMS` (`src/core/wire.ts`). */
+	stream: EventStream | null;
 	/** LOSSLESS — see interface doc; typed `unknown` deliberately. */
 	payload: unknown;
 }
@@ -128,7 +129,8 @@ export interface StreamOpts {
 	sinceSeq?: number;
 }
 
-export type RunPhase = "queued" | "running" | "succeeded" | "failed" | "cancelled";
+/** Provider run phase — canonical `RUN_STATES` (`src/core/wire.ts`), warren-7b7a. */
+export type RunPhase = RunState;
 
 /**
  * Coarse terminal reason — the only terminal classification that is a provider
@@ -136,15 +138,12 @@ export type RunPhase = "queued" | "running" | "succeeded" | "failed" | "cancelle
  *
  * - `completed` — agent finished normally.
  * - `error` — agent/runtime failed.
- * - `oom_killed` — killed by the cgroup/OOM killer. NEW first-class value (§6.5):
- *   burrow already emits this signal (oomKilled() probe + `oom_killed` event)
- *   and warren currently discards it; K8s gives it via `terminated.reason=="OOMKilled"`.
- * - `evicted` — the kubelet evicted the pod (K8s `status.reason=="Evicted"`) under
- *   node resource pressure — most commonly ephemeral-storage exhaustion (a git
- *   clone + `bun install` overrunning the emptyDir budget, warren-c0cd). Distinct
- *   from `oom_killed` (a container cgroup kill) and from a plain `error`: an
- *   eviction is an infra-capacity signal, not an agent fault, so it earns its own
- *   reason. K8s-only (LocalProvider has no eviction concept).
+ * - `oom_killed` — killed by the cgroup/OOM killer (§6.5): burrow's oomKilled()
+ *   probe + `oom_killed` event; K8s `terminated.reason=="OOMKilled"`.
+ * - `evicted` — the kubelet evicted the pod (K8s `status.reason=="Evicted"`)
+ *   under node pressure, usually ephemeral-storage exhaustion (warren-c0cd).
+ *   K8s-only, and distinct from `oom_killed` (a container cgroup kill) and
+ *   `error` (an agent fault): an eviction is an infra-capacity signal.
  * - `cancelled` — graceful stop via `cancel()`.
  * - `lost` — run vanished (burrow 404 / pod GC'd); pairs with `exists:false`.
  */
@@ -174,7 +173,8 @@ export interface RunStatus {
 	exists: boolean;
 }
 
-export type MessagePriority = "low" | "normal" | "high" | "urgent";
+/** Steering priority — canonical `INBOX_PRIORITIES` (`src/core/wire.ts`), warren-7b7a. */
+export type MessagePriority = InboxPriority;
 
 export interface OutboundMessage {
 	body: string;
@@ -189,7 +189,8 @@ export interface Message {
 	body: string;
 	priority: MessagePriority;
 	fromActor: string;
-	state: "unread" | "delivered" | "failed";
+	/** Delivery lifecycle — canonical `INBOX_STATES` (`src/core/wire.ts`). */
+	state: InboxState;
 	createdAt: string;
 	deliveredAt: string | null;
 }
@@ -212,14 +213,12 @@ export interface RuntimeCapabilities {
 	/** terminate returns an archive handle */
 	workspaceArchive: boolean;
 	/**
-	 * Fallback garbage collection of stranded run workspaces is a backend
-	 * concern the control plane can drive (warren-e24d). `true` for the
-	 * burrow-backed LocalProvider — reap's per-run destroy can leave a
-	 * workspace stranded on a mid-reap crash, so warren runs a periodic sweep
-	 * that destroys idle workspaces via the provider's destroy seam. `false`
-	 * for backends whose own lifecycle reclaims stranded workspaces (K8s: the
-	 * pod-GC loop reclaims terminal pods + their emptyDir), so the domain sweep
-	 * stays dark and never issues a burrow-only destroy against a pod name.
+	 * Fallback garbage collection of stranded run workspaces is a backend concern
+	 * the control plane can drive (warren-e24d). `true` for LocalProvider — reap's
+	 * per-run destroy can strand a workspace on a mid-reap crash, so warren sweeps
+	 * idle workspaces via the destroy seam. `false` where the backend's own
+	 * lifecycle reclaims them (K8s pod-GC reclaims terminal pods + their emptyDir),
+	 * so the sweep stays dark instead of aiming a burrow destroy at a pod name.
 	 */
 	workspaceGc: boolean;
 }
