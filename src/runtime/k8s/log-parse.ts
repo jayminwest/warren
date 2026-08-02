@@ -6,10 +6,21 @@
  * independently unit-testable (no cluster, no clock beyond `Date`).
  */
 
+import type { EventOrigin } from "../../core/wire.ts";
 import type { NormalizedEvent } from "../contract.ts";
 
 /** The three stream tags the seam recognizes; anything else coerces to `null`. */
 const NORMALIZED_STREAMS = ["stdout", "stderr", "system"] as const;
+
+/**
+ * The provenance marker `./agent-io.ts`'s `formatEventLine` stamps onto every
+ * envelope warren's in-pod event pipeline authors (warren-6646). Its ABSENCE is
+ * the signal that matters: a line that reached the pod log without going through
+ * that emitter — e.g. an agent writing NDJSON straight at the entrypoint's stdout
+ * fd — is classified `"agent"` and loses system-stream authority here, at the
+ * parse boundary, before any consumer can read a terminal envelope off it.
+ */
+export const WARREN_ORIGIN_MARKER = "warren";
 
 /**
  * Split a `timestamps=true` log line into its kubelet RFC3339 stamp + content.
@@ -83,6 +94,15 @@ export function tryParse(content: string): Record<string, unknown> | null {
  * top-level `payload` carries it through verbatim; a bare JSON object rides
  * wholesale as the payload so nothing is dropped. `ts` prefers the envelope's own
  * stamp (the agent's event time) and falls back to the kubelet line stamp.
+ *
+ * ## Provenance (warren-6646)
+ * `kind` is an OPEN string taken from the line, and the pod log is a transport
+ * the agent's own process tree can reach. So the envelope's SELF-DECLARED
+ * `stream: "system"` is only honored when the line also carries warren's origin
+ * marker (stamped by the in-pod entrypoint's emitter, `./agent-io.ts`). An
+ * unattributed line is tagged `origin: "agent"` and its system claim is
+ * downgraded to `"stdout"` — it still rides the stream verbatim, it just cannot
+ * pose as the runtime's terminal envelope and reap its own run as succeeded.
  */
 export function toNormalizedEvent(
 	envelope: Record<string, unknown>,
@@ -90,13 +110,24 @@ export function toNormalizedEvent(
 	kubeletTs: string | null,
 ): NormalizedEvent {
 	const payload = "payload" in envelope ? envelope.payload : envelope;
+	const origin = normalizeOrigin(envelope.origin);
 	return {
 		seq,
 		ts: pickTs(envelope.ts, kubeletTs),
 		kind: typeof envelope.kind === "string" ? envelope.kind : "log",
-		stream: normalizeStream(envelope.stream),
+		stream: normalizeStream(envelope.stream, origin),
+		origin,
 		payload,
 	};
+}
+
+/**
+ * Classify a log line's provenance. Only the exact marker warren's own emitter
+ * writes yields `"warren"`; everything else (absent, malformed, or a value the
+ * agent invented) is `"agent"`.
+ */
+function normalizeOrigin(value: unknown): EventOrigin {
+	return value === WARREN_ORIGIN_MARKER ? "warren" : "agent";
 }
 
 function pickTs(envelopeTs: unknown, kubeletTs: string | null): string {
@@ -105,11 +136,18 @@ function pickTs(envelopeTs: unknown, kubeletTs: string | null): string {
 	return new Date().toISOString();
 }
 
-/** Coerce an envelope's `stream` tag onto `"stdout"|"stderr"|"system"|null`. */
-function normalizeStream(value: unknown): NormalizedEvent["stream"] {
-	return typeof value === "string" && (NORMALIZED_STREAMS as readonly string[]).includes(value)
-		? (value as NormalizedEvent["stream"])
-		: null;
+/**
+ * Coerce an envelope's `stream` tag onto `"stdout"|"stderr"|"system"|null`, then
+ * apply the provenance rule (warren-6646): `"system"` is warren's own authority
+ * tag, so an `"agent"`-origin line claiming it is downgraded to `"stdout"`
+ * rather than dropped.
+ */
+function normalizeStream(value: unknown, origin: EventOrigin): NormalizedEvent["stream"] {
+	if (typeof value !== "string" || !(NORMALIZED_STREAMS as readonly string[]).includes(value)) {
+		return null;
+	}
+	if (value === "system" && origin !== "warren") return "stdout";
+	return value as NormalizedEvent["stream"];
 }
 
 /** One pulled item from the chunk queue: a chunk, or the terminal end signal. */

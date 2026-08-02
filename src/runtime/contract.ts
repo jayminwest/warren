@@ -11,6 +11,7 @@
  * seam. Everything here is warren's *need*; providers satisfy it.
  */
 
+import type { EventOrigin } from "../core/wire.ts";
 import type { ArtifactDelta } from "./finalize-deltas.ts";
 import type { FinalizeStage } from "./finalize-stages.ts";
 
@@ -101,13 +102,11 @@ export interface RunSpec {
 /**
  * One event off the ordered, resumable, lossless stream. `payload` is passed
  * through verbatim (§6.6) — providers MUST NOT summarize it; the budget/cost
- * extractor reads `total_cost_usd`/`usage` out of these payloads.
+ * extractor reads `total_cost_usd`/`usage` out of these payloads. Provenance
+ * (`origin`) is classified at the parse boundary, never self-declared.
  */
 export interface NormalizedEvent {
-	/**
-	 * Monotonic per run — burrow server-assigns, K8s synthesizes a cursor over
-	 * pod logs (§6.4, the single biggest K8s implementation burden).
-	 */
+	/** Monotonic per run — burrow server-assigns, K8s synthesizes a cursor over pod logs (§6.4). */
 	seq: number;
 	/** ISO-8601 */
 	ts: string;
@@ -119,6 +118,8 @@ export interface NormalizedEvent {
 	kind: string;
 	/** unknown coerces to `null` */
 	stream: "stdout" | "stderr" | "system" | null;
+	/** warren-6646, see `src/core/wire.ts`: only `"warren"` keeps system authority. */
+	origin?: EventOrigin;
 	/** LOSSLESS — see interface doc; typed `unknown` deliberately. */
 	payload: unknown;
 }

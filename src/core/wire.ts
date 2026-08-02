@@ -239,6 +239,31 @@ export const EVENT_STREAMS = ["stdout", "stderr", "system"] as const;
 export type EventStream = (typeof EVENT_STREAMS)[number];
 
 /**
+ * Provenance of a stream event, classified at the PARSE boundary (warren-6646).
+ * Describes which channel authored the envelope, not what the payload says about
+ * itself — an event never gets to declare its own trust level.
+ *
+ *   - `"warren"` — warren's own event pipeline authored the envelope: the
+ *     host-side burrow stream (LocalProvider), the in-pod agent entrypoint's
+ *     NDJSON emitter (which classifies each transcript line through the
+ *     runtime's structured parser), or a warren-synthesized lifecycle event.
+ *     Only this origin carries `stream: "system"` authority, which is what
+ *     terminal detection (`src/runs/stream/terminal-detect.ts`) reaps on.
+ *   - `"agent"` — an unattributed raw line warren re-parsed off a transport the
+ *     agent can also write to (the pod log). Kept in the stream so nothing is
+ *     lost, but stripped of system-stream authority so a crafted
+ *     `{"kind":"state_change","stream":"system",...}` line cannot terminalize
+ *     the run it was printed from.
+ *
+ * Not persisted: the parse boundary already downgrades an `"agent"` envelope's
+ * stream, so every consumer that keys on `state_change` + `system` (usage
+ * aggregation, provider-error inference, reap) inherits the guarantee off the
+ * stored row.
+ */
+export const EVENT_ORIGINS = ["warren", "agent"] as const;
+export type EventOrigin = (typeof EVENT_ORIGINS)[number];
+
+/**
  * Registry provenance stamped onto an agent row by the server
  * (warren-f6ad / readAgentSource). Two tiers: built-in agents shipped
  * inline (`"builtin"`) and same-named library overrides (`"library"`).

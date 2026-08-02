@@ -89,13 +89,20 @@ async function* pumpLocalEvents(
 	}
 }
 
-/** Re-shape a burrow `RunEvent` onto the seam's `NormalizedEvent` (payload lossless). */
+/**
+ * Re-shape a burrow `RunEvent` onto the seam's `NormalizedEvent` (payload
+ * lossless). Origin is `"warren"` (warren-6646): these events come off the
+ * host-side burrow daemon's own stream, which classifies each transcript line
+ * with its runtime parser — the sandbox never gets to pick `kind`/`stream`
+ * itself, so the envelope keeps system-stream authority.
+ */
 function normalizeEvent(event: RunEvent): NormalizedEvent {
 	return {
 		seq: event.seq,
 		ts: toIsoString(event.ts),
 		kind: event.kind,
 		stream: normalizeStream(event.stream),
+		origin: "warren",
 		payload: event.payload,
 	};
 }

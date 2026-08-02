@@ -223,11 +223,13 @@ describe("streamK8sLogs — NDJSON parse + synthesized seq", () => {
 				type: "event",
 				kind: "state_change",
 				stream: "system",
+				origin: "warren", // warren-6646: the in-pod emitter's marker; without it, no system claim
+
 				payload: { type: "result", is_error: false, total_cost_usd: 0.42 },
 			}),
 		);
 		const { events } = await drain(run([script], probeSequence(TERMINAL)).stream);
-		expect(events[0]).toMatchObject({ kind: "state_change", stream: "system" });
+		expect(events[0]).toMatchObject({ kind: "state_change", stream: "system", origin: "warren" });
 		expect(events[0]?.payload).toEqual({ type: "result", is_error: false, total_cost_usd: 0.42 });
 	});
 

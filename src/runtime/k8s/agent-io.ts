@@ -19,6 +19,7 @@ import type {
 } from "@os-eco/burrow-cli";
 import type { Message } from "../contract.ts";
 import type { AgentEntrypointEnv } from "./agent-entrypoint.ts";
+import { WARREN_ORIGIN_MARKER } from "./log-parse.ts";
 
 /* -------------------------------------------------------------------------- */
 /* Event emission — the NDJSON envelope `./log-parse.ts` re-parses off the log */
@@ -31,6 +32,13 @@ import type { AgentEntrypointEnv } from "./agent-entrypoint.ts";
  * `ts` (the parser falls back to the kubelet line stamp when `ts` is absent, but
  * emitting it keeps the agent's timing authoritative). Pure + round-trippable —
  * see the co-located test.
+ *
+ * Every line also carries `origin: "warren"` (warren-6646): THIS emitter is
+ * warren's in-pod event pipeline, so what it writes — its own system diagnostics
+ * AND the transcript events the runtime's structured parser classified — is
+ * warren-authored. A line that lands in the pod log without going through here
+ * (an agent writing NDJSON at the entrypoint's stdout fd) lacks the marker and
+ * `toNormalizedEvent` strips its system-stream authority.
  */
 export function formatEventLine(ev: RuntimeEvent): string {
 	return JSON.stringify({
@@ -38,6 +46,7 @@ export function formatEventLine(ev: RuntimeEvent): string {
 		stream: ev.stream,
 		payload: ev.payload,
 		ts: (ev.ts ?? new Date()).toISOString(),
+		origin: WARREN_ORIGIN_MARKER,
 	});
 }
 
