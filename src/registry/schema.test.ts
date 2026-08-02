@@ -1,12 +1,15 @@
 import { describe, expect, test } from "bun:test";
+import { KNOWN_RUNTIME_IDS } from "../core/wire.ts";
 import { AgentSchemaError } from "./errors.ts";
 import {
 	type AgentDefinition,
+	assertKnownRuntimeId,
 	parseRenderedAgent,
 	RenderResponseSchema,
 	readProviderFrontmatter,
 	readRuntimeId,
 	readToolsFrontmatter,
+	validateAgentRuntimeId,
 	withMaxCostUsdOverride,
 	withProviderOverrides,
 } from "./schema.ts";
@@ -138,6 +141,78 @@ describe("readRuntimeId", () => {
 	test("ignores empty / undefined config override", () => {
 		expect(readRuntimeId(INTERACTIVE, undefined)).toBe("pi");
 		expect(readRuntimeId(INTERACTIVE, "")).toBe("pi");
+	});
+
+	// warren-c4be: dispatch is the last defence for a legacy row that entered
+	// the registry before registration validated the id (warren-ebca class).
+	test("rejects an unknown frontmatter.runtime at dispatch time", () => {
+		const legacy: AgentDefinition = {
+			...INTERACTIVE,
+			frontmatter: { source: "library", runtime: "planner" },
+		};
+		expect(() => readRuntimeId(legacy)).toThrow(AgentSchemaError);
+		expect(() => readRuntimeId(legacy)).toThrow(/claude-code, sapling, pi/);
+	});
+
+	test("rejects an unknown config override", () => {
+		expect(() => readRuntimeId(INTERACTIVE, "gpt-runtime")).toThrow(AgentSchemaError);
+		expect(() => readRuntimeId(INTERACTIVE, "gpt-runtime")).toThrow(/config override/);
+	});
+});
+
+describe("assertKnownRuntimeId", () => {
+	test("returns every known id unchanged", () => {
+		for (const id of KNOWN_RUNTIME_IDS) {
+			expect(assertKnownRuntimeId(id, "bot")).toBe(id);
+		}
+	});
+
+	test("throws AgentSchemaError naming the agent and the known ids", () => {
+		expect(() => assertKnownRuntimeId("nope", "bot")).toThrow(
+			/agent "bot" frontmatter.runtime "nope" is not a known runtime id/,
+		);
+	});
+});
+
+describe("validateAgentRuntimeId", () => {
+	const base: AgentDefinition = {
+		name: "bot",
+		version: 1,
+		sections: { system: "hi" },
+		resolvedFrom: [],
+		frontmatter: {},
+	};
+
+	test("accepts an agent that pins no runtime", () => {
+		expect(() => validateAgentRuntimeId(base)).not.toThrow();
+	});
+
+	test("rejects a non-string runtime", () => {
+		expect(() => validateAgentRuntimeId({ ...base, frontmatter: { runtime: 7 } })).toThrow(
+			/must be a non-empty string/,
+		);
+		expect(() => validateAgentRuntimeId({ ...base, frontmatter: { runtime: "" } })).toThrow(
+			/must be a non-empty string/,
+		);
+	});
+
+	test("rejects an unknown runtime id at registration", () => {
+		expect(() => validateAgentRuntimeId({ ...base, frontmatter: { runtime: "planner" } })).toThrow(
+			AgentSchemaError,
+		);
+	});
+});
+
+describe("parseRenderedAgent runtime validation", () => {
+	test("rejects a rendered agent whose frontmatter.runtime is unknown (warren-c4be)", () => {
+		expect(() =>
+			parseRenderedAgent({ ...VALID, frontmatter: { runtime: "burrow-lite" } }, "refactor-bot"),
+		).toThrow(AgentSchemaError);
+	});
+
+	test("accepts a rendered agent pinning a known runtime", () => {
+		const def = parseRenderedAgent({ ...VALID, frontmatter: { runtime: "sapling" } });
+		expect(readRuntimeId(def)).toBe("sapling");
 	});
 });
 

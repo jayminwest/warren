@@ -40,6 +40,7 @@
  */
 
 import { z } from "zod";
+import { KNOWN_RUNTIME_IDS } from "../core/wire.ts";
 import { parseDurationMs } from "../preview/duration.ts";
 import { CiFixerConfigSchema, HealerConfigSchema } from "./feature-loop-config.ts";
 import { AdmissionConfigSchema, ResourcesConfigSchema } from "./resources-config.ts";
@@ -223,8 +224,11 @@ export type AgentConfig = z.infer<typeof AgentConfigSchema>;
 // operator must stand up a canopy library just to change the runtime
 // field. Validated against the known burrow runtime ids so a typo
 // surfaces at config-load time, not at burrow boot.
-export const KNOWN_RUNTIME_IDS = ["claude-code", "sapling", "pi"] as const;
-export type RuntimeId = (typeof KNOWN_RUNTIME_IDS)[number];
+//
+// warren-c4be: the id vocabulary itself is canonical in `src/core/wire.ts`
+// because the agent registry validates against the same list. Re-export,
+// never re-list.
+export { KNOWN_RUNTIME_IDS, type RuntimeId } from "../core/wire.ts";
 
 const RuntimeIdSchema = z.enum(KNOWN_RUNTIME_IDS);
 

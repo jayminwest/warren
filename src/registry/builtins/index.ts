@@ -19,7 +19,7 @@
 
 import type { AgentSource } from "../../core/wire.ts";
 import type { AgentsRepo } from "../../db/repos/agents.ts";
-import type { AgentDefinition } from "../schema.ts";
+import { type AgentDefinition, validateAgentRuntimeId } from "../schema.ts";
 import { BUGWATCH_BUILTIN } from "./bugwatch.ts";
 import { CLAUDE_CODE_BUILTIN } from "./claude-code.ts";
 import { HEALER_BUILTIN } from "./healer.ts";
@@ -91,6 +91,10 @@ export async function seedBuiltinAgents(
 	const seeded: string[] = [];
 	const skipped: string[] = [];
 	for (const builtin of builtins) {
+		// warren-c4be: an unknown runtime id never reaches the agents table.
+		// Registration is the last boundary that can still answer 4xx; past it
+		// the id is only checked by burrow, mid-dispatch (the warren-ebca class).
+		validateAgentRuntimeId(builtin);
 		const existing = await repo.get(builtin.name);
 		if (existing !== null) {
 			const source = readAgentSource(existing.renderedJson);

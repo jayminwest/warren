@@ -1,9 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import {
 	isActivePreviewState,
+	isKnownRuntimeId,
 	isTerminalPlanRunChildState,
 	isTerminalPlanRunState,
 	isTerminalRunState,
+	KNOWN_RUNTIME_IDS,
 	PLAN_RUN_ACTIVE_STATES,
 	PLAN_RUN_CHILD_STATES,
 	PLAN_RUN_CHILD_TERMINAL_STATES,
@@ -81,5 +83,21 @@ describe("plan-run vocabulary", () => {
 				(PLAN_RUN_CHILD_TERMINAL_STATES as readonly string[]).includes(s),
 			);
 		}
+	});
+});
+
+// warren-c4be: the runtime-id vocabulary is canonical here because both the
+// per-project config schema and the agent registry validate against it.
+describe("runtime id vocabulary", () => {
+	test("KNOWN_RUNTIME_IDS lists the burrow runtimes warren dispatches onto", () => {
+		expect([...KNOWN_RUNTIME_IDS]).toEqual(["claude-code", "sapling", "pi"]);
+	});
+
+	test("isKnownRuntimeId accepts members and rejects everything else", () => {
+		for (const id of KNOWN_RUNTIME_IDS) expect(isKnownRuntimeId(id)).toBe(true);
+		expect(isKnownRuntimeId("planner")).toBe(false);
+		expect(isKnownRuntimeId("")).toBe(false);
+		expect(isKnownRuntimeId(undefined)).toBe(false);
+		expect(isKnownRuntimeId(7)).toBe(false);
 	});
 });

@@ -1,8 +1,10 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { isKnownRuntimeId } from "../../core/wire.ts";
 import { openDatabase, type WarrenDb } from "../../db/client.ts";
 import { AgentsRepo } from "../../db/repos/agents.ts";
 import { DrizzleAdapter } from "../../db/repos/drizzle-adapter.ts";
-import { parseRenderedAgent, type RenderResponse } from "../schema.ts";
+import { AgentSchemaError } from "../errors.ts";
+import { parseRenderedAgent, type RenderResponse, readRuntimeId } from "../schema.ts";
 import {
 	BUILTIN_AGENT_NAMES,
 	BUILTIN_AGENTS,
@@ -48,6 +50,14 @@ describe("BUILTIN_AGENTS", () => {
 			const parsed = parseRenderedAgent(renderResponse, builtin.name);
 			expect(parsed.name).toBe(builtin.name);
 			expect(parsed.sections.system).toBe(builtin.sections.system);
+		}
+	});
+
+	// warren-c4be: every shipped built-in must resolve to a runtime burrow
+	// actually knows. warren-ebca was exactly this failing at dispatch instead.
+	test("each builtin resolves to a known runtime id (warren-c4be)", () => {
+		for (const builtin of BUILTIN_AGENTS) {
+			expect(isKnownRuntimeId(readRuntimeId(builtin))).toBe(true);
 		}
 	});
 
@@ -216,6 +226,19 @@ describe("seedBuiltinAgents", () => {
 		const stored = await repo.get("claude-code");
 		expect(stored).not.toBeNull();
 		expect(readAgentSource(stored?.renderedJson)).toBe("builtin");
+	});
+
+	// warren-c4be: registration is the boundary that can still answer 4xx.
+	test("refuses to seed an agent whose runtime id is unknown (warren-c4be)", async () => {
+		const bad = {
+			name: "stub-shell",
+			version: 1,
+			sections: { system: "hi" },
+			resolvedFrom: [],
+			frontmatter: { source: "builtin", runtime: "planner" },
+		};
+		expect(seedBuiltinAgents(repo, [bad])).rejects.toThrow(AgentSchemaError);
+		expect(await repo.get("stub-shell")).toBeNull();
 	});
 
 	test("preserves existing rows (library override) and skips them", async () => {
