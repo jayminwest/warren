@@ -48,6 +48,7 @@ import { composeRunBranch, resolveRunBranchPrefix } from "../branch.ts";
 import { parseBurrowConfig } from "../burrow-config.ts";
 import { lifecycleBus } from "../lifecycle-bus.ts";
 import { buildSeedFiles } from "../seed.ts";
+import { validateTargetBranch } from "../target-branch.ts";
 import { readCachedAgent, readProjectDefaults, resolveOverride } from "./agent-cache.ts";
 import { type EnvLike, injectWarrenCallbackEnv } from "./callback-env.ts";
 import {
@@ -81,6 +82,13 @@ export async function spawnRun(input: SpawnRunInput): Promise<SpawnRunResult> {
 		throw new NotFoundError(`agent not found: ${input.agentName}`);
 	}
 	const project = await input.repos.projects.require(input.projectId);
+	// warren-3a75: `targetBranch` is a push target the finalize step writes to
+	// directly, with no PR and therefore no Article IX gate. Enforce the ref
+	// grammar and refuse the project default branch BEFORE any side effect (no
+	// clone refresh, no run row). Repair runs targeting an existing PR head
+	// branch are unaffected.
+	const targetBranch = validateTargetBranch(input.targetBranch, project.defaultBranch);
+
 	const baseAgent = readCachedAgent(agentRow.renderedJson, agentRow.name);
 	const burrowConfig = parseBurrowConfig(baseAgent.sections.burrow_config);
 
@@ -91,7 +99,7 @@ export async function spawnRun(input: SpawnRunInput): Promise<SpawnRunResult> {
 	// before burrow forks the new run branch off it. The parent link is also
 	// recorded on the new run row below so the UI can render a chain indicator
 	// and chain cost/token totals are derivable by walking the link.
-	const baseRef = await resolveContinuationRef(input, project);
+	const baseRef = await resolveContinuationRef(input, project, targetBranch);
 
 	// Refresh the project clone to origin/<ref> so the run sees the
 	// latest commits. Skipped only when the caller didn't wire the
@@ -160,7 +168,7 @@ export async function spawnRun(input: SpawnRunInput): Promise<SpawnRunResult> {
 		...(input.parentRunId !== undefined && input.parentRunId !== ""
 			? { parentRunId: input.parentRunId, cloneKind: input.cloneKind ?? "continue" }
 			: {}),
-		...(input.targetBranch?.trim() ? { targetBranch: input.targetBranch } : {}),
+		...(targetBranch !== undefined ? { targetBranch } : {}),
 		now: input.now?.(),
 	});
 	// warren-a0a2: expose the run id the instant the row exists so the cron
@@ -176,7 +184,7 @@ export async function spawnRun(input: SpawnRunInput): Promise<SpawnRunResult> {
 			envDefault: input.runBranchPrefixDefault,
 		}),
 		run.id,
-		input.targetBranch,
+		targetBranch,
 	);
 
 	const runEnv = composeRunEnv(run.id, projectDefaults?.qualityGate, input.serverEnv);
@@ -327,8 +335,9 @@ export async function spawnRun(input: SpawnRunInput): Promise<SpawnRunResult> {
 async function resolveContinuationRef(
 	input: SpawnRunInput,
 	project: { id: string; localPath: string },
+	targetBranch: string | undefined,
 ): Promise<string | undefined> {
-	if (!input.parentRunId) return input.ref ?? input.targetBranch; // warren-709e
+	if (!input.parentRunId) return input.ref ?? targetBranch; // warren-709e
 	// Replicate (warren-e96f): fresh re-dispatch against the explicit ref /
 	// project default base, not the parent's pushed branch. We still validate
 	// the parent below (same-project guard), but the base ref is the caller's.

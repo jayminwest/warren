@@ -110,3 +110,53 @@ describe("spawnRun: targetBranch (warren-709e)", () => {
 		expect(upBody.branch).toBe(`burrow/${run.id}`);
 	});
 });
+
+/**
+ * warren-3a75: `targetBranch` is an unreviewed push target — finalize pushes
+ * `HEAD:<branch>` with no PR, so the Article IX auto-merge gate never sees the
+ * change. `spawnRun` refuses the project default branch and any ref git itself
+ * would reject, before creating a run row. Repair runs aimed at an existing PR
+ * head branch keep working.
+ */
+describe("spawnRun: targetBranch policy (warren-3a75)", () => {
+	let db: WarrenDb;
+	let repos: Repos;
+
+	beforeEach(async () => {
+		({ db, repos } = await setupRepos());
+	});
+	afterEach(async () => {
+		await db.close();
+	});
+
+	const dispatch = (targetBranch: string) => {
+		const { client } = makeBurrowClient();
+		return spawnRun({
+			repos,
+			runtimeProvider: makeProvider(client),
+			agentName: "refactor-bot",
+			projectId: "prj_xxxxxxxxxxxx",
+			prompt: "rerun ci",
+			targetBranch,
+		});
+	};
+
+	test("refuses a targetBranch equal to the project default branch", async () => {
+		await expect(dispatch("main")).rejects.toThrow(/default branch/);
+		expect(await repos.runs.listAll()).toHaveLength(0);
+	});
+
+	test("refuses a fully-qualified ref that resolves to the default branch", async () => {
+		await expect(dispatch("refs/heads/main")).rejects.toThrow(/default branch/);
+	});
+
+	test("refuses a grammar-invalid targetBranch", async () => {
+		await expect(dispatch("bad branch")).rejects.toThrow(/not a valid git branch name/);
+		expect(await repos.runs.listAll()).toHaveLength(0);
+	});
+
+	test("keeps accepting an existing PR head branch for repair runs", async () => {
+		const { run } = await dispatch("fix/pr-head");
+		expect(run.targetBranch).toBe("fix/pr-head");
+	});
+});
