@@ -139,6 +139,42 @@ describe("POST /alerts/heal", () => {
 		expect(body.reason).toBe("cooldown");
 	});
 
+	test("holds the cap per fingerprint past 500 unrelated heal.dispatched events", async () => {
+		// warren-55cf: the attempt history used to come from the 500 newest
+		// heal.dispatched rows globally, so a noisy fleet scrolled an exhausted
+		// fingerprint out of the window and the cooldown silently reset.
+		await writeHealerConfig(
+			projectLocalPath,
+			"healer:\n  enabled: true\n  maxRetries: 1\n  projectMapping:\n    - issue-99\n",
+		);
+		await serve();
+
+		const first = await post(SENTRY_PAYLOAD);
+		expect(first.status).toBe(202);
+		const { runId } = (await first.json()) as { runId: string };
+
+		for (let i = 0; i < 600; i++) {
+			await repos.events.append({
+				runId,
+				burrowEventSeq: 10_000 + i,
+				ts: `2099-01-01T00:00:00.${String(i).padStart(3, "0")}Z`,
+				kind: "heal.dispatched",
+				payload: { fingerprint: `fp-noise-${i}`, source: "sentry", title: "noise" },
+			});
+		}
+		// The bounded window no longer holds the target fingerprint at all.
+		const windowed = await repos.events.listByKind("heal.dispatched");
+		expect(
+			windowed.some((r) => (r.payloadJson as { fingerprint?: string }).fingerprint === "issue-99"),
+		).toBe(false);
+
+		const second = await post(SENTRY_PAYLOAD);
+		expect(second.status).toBe(200);
+		const body = (await second.json()) as { status: string; reason: string };
+		expect(body.status).toBe("skipped");
+		expect(body.reason).toBe("max_retries");
+	});
+
 	test("skips with no_match when nothing routes (200)", async () => {
 		await writeHealerConfig(
 			projectLocalPath,

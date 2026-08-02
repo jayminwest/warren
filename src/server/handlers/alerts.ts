@@ -134,24 +134,23 @@ async function loadProjectConfig(
 
 /**
  * Reconstruct the prior heal-attempt history for a fingerprint from the
- * durable `heal.dispatched` events. The payload is opaque JSON, so the
- * fingerprint filter runs in JS over the most-recent rows.
+ * durable `heal.dispatched` events. warren-55cf: the fingerprint filter and
+ * the aggregation both run in SQL, so the max-retries and cooldown gates see
+ * every prior attempt for this fingerprint regardless of how many unrelated
+ * heal dispatches landed since. The previous shape scanned the 500 most
+ * recent rows globally and filtered in JS, which silently reset the cooldown
+ * once a busy fleet pushed the fingerprint out of that window.
  */
 async function computeHealHistory(
 	events: EventsRepo,
 	fingerprint: string,
 ): Promise<HealAttemptHistory> {
-	const rows = await events.listByKind(HEAL_DISPATCHED_EVENT);
-	let attempts = 0;
-	let lastAttemptAt: string | null = null;
-	for (const row of rows) {
-		const payload = row.payloadJson as { fingerprint?: unknown } | null;
-		if (payload?.fingerprint !== fingerprint) continue;
-		attempts += 1;
-		// Rows arrive newest-first, so the first match is the latest.
-		if (lastAttemptAt === null) lastAttemptAt = row.ts;
-	}
-	return { attempts, lastAttemptAt };
+	const { count, lastTs } = await events.payloadKeyHistory(
+		HEAL_DISPATCHED_EVENT,
+		"fingerprint",
+		fingerprint,
+	);
+	return { attempts: count, lastAttemptAt: lastTs };
 }
 
 /**
