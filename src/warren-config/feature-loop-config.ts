@@ -9,8 +9,9 @@
  *   - `healer` (warren-3db0) — closed-loop alert healer. When `enabled`, a
  *     `POST /alerts/heal` webhook (Sentry/Grafana) that resolves to the
  *     project dispatches a `healer` run. `projectMapping` is the static
- *     alert→project routing key list (fingerprints / culprit substrings);
- *     intake falls back to the alert's inferred repo vs. the git URL.
+ *     alert→project routing key list; intake falls back to the alert's
+ *     inferred repo vs. the git URL. See `projectMapping` below for the
+ *     matching semantics.
  *
  * Both are off by default — a missing block means "not opted in". Numeric
  * knobs carry `.default()` so consumers always see concrete numbers; the
@@ -70,8 +71,28 @@ export const HealerConfigSchema = z
 			DEFAULT_HEALER_COOLDOWN_MINUTES,
 		),
 		role: RoleNameSchema.default(DEFAULT_HEALER_ROLE),
+		// warren-50a7: routing keys match the alert's fingerprint, culprit, or
+		// title with ANCHORED, case-insensitive equality — the whole value must
+		// match, not a fragment of it. Widen a key deliberately with `*`, which
+		// stands for any run of characters:
+		//
+		//   "fp-1234"        matches only that exact fingerprint/culprit/title
+		//   "src/runs/*"     matches any culprit under src/runs/
+		//   "*ErrorRate"     matches any title ending in ErrorRate
+		//   "*"              catch-all: every alert routes to this project
+		//
+		// The old behaviour was an implicit `.includes()` substring test, so a
+		// key like "api" claimed every alert whose title merely contained it.
 		projectMapping: z
-			.array(z.string().min(1, "healer.projectMapping entries must be non-empty"))
+			.array(
+				z
+					.string()
+					.min(1, "healer.projectMapping entries must be non-empty")
+					.refine(
+						(key) => key.trim() === key,
+						"healer.projectMapping entries must not have leading/trailing whitespace",
+					),
+			)
 			.default([]),
 	})
 	.strict();
