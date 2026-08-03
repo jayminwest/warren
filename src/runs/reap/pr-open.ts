@@ -141,6 +141,12 @@ export interface GatherPrContextInput {
 	readonly projectPath: string;
 	readonly baseBranch: string;
 	readonly prompt: string;
+	/**
+	 * Authoritative seed attribution from the run row (warren-50c8). When set it
+	 * wins outright; the prompt scan below is only a legacy fallback for runs
+	 * dispatched without a `seedId`.
+	 */
+	readonly seedId?: string | null;
 	readonly exec: ReapExec;
 	/** K8s fallback source for the commit/diff-stat sections (warren-ab66). */
 	readonly cloneFetch?: CloneFetchConfig;
@@ -177,7 +183,11 @@ const CLONE_FETCH_REF_PREFIX = "refs/warren/pr-open/";
 export async function gatherPrContext(input: GatherPrContextInput): Promise<PrContext> {
 	const [stats, seed] = await Promise.all([
 		gatherCommitStats(input),
-		resolveSeed(input.prompt, input.projectPath, input.exec),
+		resolveSeed(
+			{ seedId: input.seedId ?? null, prompt: input.prompt },
+			input.projectPath,
+			input.exec,
+		),
 	]);
 	return { commits: stats.commits, diffStat: stats.diffStat, seed };
 }
@@ -298,13 +308,37 @@ async function collectDiffStat(range: GitRange): Promise<string> {
 // lowercase prefix with optional internal dashes, followed by `-` and a
 // 4+ char lowercase-hex suffix. Trailing hex suffix anchors the match;
 // the prefix-with-dashes regex would otherwise eat ordinary words.
-const SEED_ID_RE = /\b([a-z][a-z-]*-[a-f0-9]{4,})\b/;
+const SEED_ID_RE = /\b([a-z][a-z-]*-[a-f0-9]{4,})\b/g;
 
-async function resolveSeed(prompt: string, cwd: string, exec: ReapExec): Promise<PrSeed | null> {
-	const m = SEED_ID_RE.exec(prompt);
-	if (m === null) return null;
-	const id = m[1];
-	if (id === undefined) return null;
+/**
+ * Legacy fallback attribution (warren-50c8). The first regex hit used to win,
+ * so a prompt merely MENTIONING another seed id mis-attributed the PR. Now the
+ * scan only commits when the prompt names exactly one distinct seed id;
+ * anything ambiguous degrades to no seed section rather than a wrong one.
+ */
+function scanPromptForSeedId(prompt: string): string | null {
+	const ids = new Set<string>();
+	for (const m of prompt.matchAll(SEED_ID_RE)) {
+		const id = m[1];
+		if (id !== undefined) ids.add(id);
+	}
+	if (ids.size !== 1) return null;
+	return [...ids][0] ?? null;
+}
+
+interface SeedAttribution {
+	readonly seedId: string | null;
+	readonly prompt: string;
+}
+
+async function resolveSeed(
+	attribution: SeedAttribution,
+	cwd: string,
+	exec: ReapExec,
+): Promise<PrSeed | null> {
+	// warren-50c8: the run row's column is authoritative when present.
+	const id = attribution.seedId ?? scanPromptForSeedId(attribution.prompt);
+	if (id === null) return null;
 	try {
 		const out = await exec.run("sd", ["show", id, "--format", "json"], {
 			cwd,
@@ -330,7 +364,12 @@ export interface RunPrOpenInput {
 		defaultBranch: string;
 		localPath: string;
 	};
-	readonly run: TryOpenPrInput["run"] & { prompt: string; trigger?: string };
+	/** `seedId` is the authoritative PR attribution source (warren-50c8). */
+	readonly run: TryOpenPrInput["run"] & {
+		prompt: string;
+		trigger?: string;
+		seedId?: string | null;
+	};
 	readonly branch: string;
 	readonly baseBranch: string | null;
 	/** Host workspace path, or `null` under K8s (PR-context git reads degrade). */
@@ -366,6 +405,7 @@ export async function runPrOpen(input: RunPrOpenInput): Promise<string | null> {
 			projectPath: input.project.localPath,
 			baseBranch: input.project.defaultBranch,
 			prompt: input.run.prompt,
+			seedId: input.run.seedId ?? null,
 			exec: input.exec,
 			emit: input.emit,
 			// warren-ab66: under K8s (no host workspace) rebuild the commit/diff-stat
