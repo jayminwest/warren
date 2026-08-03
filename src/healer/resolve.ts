@@ -5,9 +5,15 @@
  * "static mapping WITH payload fallback"):
  *
  *   1. Static mapping — a healer-enabled project's
- *      `healer.projectMapping` lists routing keys. A key matches when it
- *      equals the alert fingerprint, or is a case-insensitive substring
- *      of the culprit / title. The first enabled project with a hit wins.
+ *      `healer.projectMapping` lists routing keys. Matching is anchored
+ *      and case-insensitive: a key matches when it equals the alert
+ *      fingerprint, culprit, or title in full. A key may opt into
+ *      wildcard matching with `*`, which stands for any run of
+ *      characters (`src/runs/*`, `*ErrorRate`, `pay*service`). There is
+ *      no implicit substring matching — warren-50a7 removed it, because
+ *      a short key like `api` silently claimed every alert whose title
+ *      happened to contain "api". The first enabled project with a hit
+ *      wins.
  *   2. Payload fallback — the alert's inferred `owner/repo` is matched
  *      against each enabled project's git URL. Used only when no mapping
  *      key matched, so an explicit mapping always takes precedence.
@@ -37,15 +43,33 @@ export type HealResolveResult =
 	| { readonly kind: "no_match" }
 	| { readonly kind: "not_enabled" };
 
+const GLOB_SPECIALS = /[.*+?^${}()|[\]\\]/g;
+
+/**
+ * Compile one mapping key into an anchored, case-insensitive matcher.
+ * Every regex metacharacter is escaped; only `*` survives, as `.*`.
+ */
+function compileKey(key: string): RegExp {
+	const pattern = key
+		.split("*")
+		.map((part) => part.replace(GLOB_SPECIALS, "\\$&"))
+		.join(".*");
+	return new RegExp(`^${pattern}$`, "i");
+}
+
+/**
+ * True when `key` matches `value` under the documented semantics: full,
+ * case-insensitive equality, widened only by explicit `*` wildcards.
+ */
+export function healMappingKeyMatches(key: string, value: string): boolean {
+	if (!key.includes("*")) return key.toLowerCase() === value.toLowerCase();
+	return compileKey(key).test(value);
+}
+
 function mappingMatches(alert: HealAlert, mapping: readonly string[]): boolean {
 	if (mapping.length === 0) return false;
-	const haystacks = [alert.culprit ?? "", alert.title].map((s) => s.toLowerCase());
-	for (const key of mapping) {
-		if (key === alert.fingerprint) return true;
-		const lower = key.toLowerCase();
-		if (haystacks.some((h) => h.includes(lower))) return true;
-	}
-	return false;
+	const haystacks = [alert.fingerprint, alert.culprit ?? "", alert.title];
+	return mapping.some((key) => haystacks.some((value) => healMappingKeyMatches(key, value)));
 }
 
 function repoMatches(alert: HealAlert, gitUrl: string): boolean {
