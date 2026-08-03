@@ -36,5 +36,7 @@ export {
 export {
 	type HealProjectCandidate,
 	type HealResolveResult,
+	healMappingKeyMatches,
 	resolveHealProject,
 } from "./resolve.ts";
+export { checkHealerRole, type HealerRoleCheck, type HealerRoleCheckInput } from "./role.ts";

@@ -1,9 +1,14 @@
 import { describe, expect, test } from "bun:test";
 import {
 	isActivePreviewState,
+	isKnownRuntimeId,
+	isRunTriggerKind,
 	isTerminalPlanRunChildState,
 	isTerminalPlanRunState,
 	isTerminalRunState,
+	KNOWN_RUNTIME_IDS,
+	LEGACY_RUN_TRIGGER_ALIASES,
+	normalizeRunTriggerKind,
 	PLAN_RUN_ACTIVE_STATES,
 	PLAN_RUN_CHILD_STATES,
 	PLAN_RUN_CHILD_TERMINAL_STATES,
@@ -15,6 +20,7 @@ import {
 	RUN_MODES,
 	RUN_STATES,
 	RUN_TERMINAL_STATES,
+	RUN_TRIGGER_KINDS,
 } from "./wire.ts";
 
 describe("run vocabulary", () => {
@@ -81,5 +87,61 @@ describe("plan-run vocabulary", () => {
 				(PLAN_RUN_CHILD_TERMINAL_STATES as readonly string[]).includes(s),
 			);
 		}
+	});
+});
+
+// warren-c4be: the runtime-id vocabulary is canonical here because both the
+// per-project config schema and the agent registry validate against it.
+describe("runtime id vocabulary", () => {
+	test("KNOWN_RUNTIME_IDS lists the burrow runtimes warren dispatches onto", () => {
+		expect([...KNOWN_RUNTIME_IDS]).toEqual(["claude-code", "sapling", "pi"]);
+	});
+
+	test("isKnownRuntimeId accepts members and rejects everything else", () => {
+		for (const id of KNOWN_RUNTIME_IDS) expect(isKnownRuntimeId(id)).toBe(true);
+		expect(isKnownRuntimeId("planner")).toBe(false);
+		expect(isKnownRuntimeId("")).toBe(false);
+		expect(isKnownRuntimeId(undefined)).toBe(false);
+		expect(isKnownRuntimeId(7)).toBe(false);
+	});
+});
+
+// warren-c486: the trigger-kind vocabulary is canonical here so the spawn-side
+// seed-extension writer and the seeds-CLI zod schema share one list.
+describe("run trigger vocabulary", () => {
+	test("RUN_TRIGGER_KINDS covers every kind a live dispatcher passes", () => {
+		for (const kind of [
+			"manual",
+			"cron",
+			"scheduled",
+			"webhook",
+			"comment",
+			"cli",
+			"plan-run",
+			"auto_plan_run",
+			"ci-fixer",
+			"healer",
+		]) {
+			expect(isRunTriggerKind(kind)).toBe(true);
+			expect((RUN_TRIGGER_KINDS as readonly string[]).includes(kind)).toBe(true);
+		}
+	});
+
+	test("isRunTriggerKind rejects non-members", () => {
+		expect(isRunTriggerKind("manual-trigger")).toBe(false);
+		expect(isRunTriggerKind("")).toBe(false);
+		expect(isRunTriggerKind(undefined)).toBe(false);
+	});
+
+	test("normalizeRunTriggerKind maps the legacy manual-trigger alias to manual", () => {
+		expect(normalizeRunTriggerKind("manual-trigger")).toBe("manual");
+		for (const alias of Object.keys(LEGACY_RUN_TRIGGER_ALIASES)) {
+			expect(normalizeRunTriggerKind(alias)).not.toBeUndefined();
+		}
+	});
+
+	test("normalizeRunTriggerKind returns undefined for an unknown or absent value", () => {
+		expect(normalizeRunTriggerKind("totally-made-up")).toBeUndefined();
+		expect(normalizeRunTriggerKind(undefined)).toBeUndefined();
 	});
 });

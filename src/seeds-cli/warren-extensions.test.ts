@@ -1,13 +1,16 @@
 import { describe, expect, test } from "bun:test";
+import { RUN_TRIGGER_KINDS } from "../core/wire.ts";
 import { WarrenExtensionsSchema, WarrenTriggerKind } from "./warren-extensions.ts";
 
 describe("WarrenTriggerKind", () => {
-	test("accepts the canonical trigger set", () => {
-		for (const kind of ["manual", "cron", "scheduled", "webhook", "comment", "cli"] as const) {
+	test("accepts the canonical trigger set (derived from RUN_TRIGGER_KINDS)", () => {
+		for (const kind of RUN_TRIGGER_KINDS) {
 			expect(WarrenTriggerKind.safeParse(kind).success).toBe(true);
 		}
 	});
 
+	// warren-c486: `manual-trigger` is a legacy raw column value, normalized to
+	// `manual` by `normalizeRunTriggerKind` before it reaches this schema.
 	test("rejects strings outside the enum (e.g. manual-trigger)", () => {
 		expect(WarrenTriggerKind.safeParse("manual-trigger").success).toBe(false);
 		expect(WarrenTriggerKind.safeParse("Manual").success).toBe(false);

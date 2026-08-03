@@ -107,7 +107,7 @@ describe("createPreviewProxyHandler (path mode)", () => {
 	});
 
 	test("503 when preview_state is not live", async () => {
-		await repos.runs.attachPreview(runId, { previewState: "starting" });
+		await repos.runs.attachPreview(runId, { previewState: "torn-down" });
 		const handler = createPreviewProxyHandler({
 			repos,
 			previewAuth: auth,

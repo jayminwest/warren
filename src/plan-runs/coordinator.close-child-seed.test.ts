@@ -36,10 +36,12 @@ describe("advancePlanRun — host-side child seed close (warren-3806)", () => {
 		await h.repos.runs.markRunning(runId, NOW);
 		await h.repos.runs.finalize(runId, "succeeded", NOW);
 		await h.repos.runs.setPrUrl(runId, "https://github.com/x/y/pull/42");
-		await h.repos.planRuns.updateChild({
+		await h.seedChildState({
 			planRunId: h.planRun.id,
 			seq: 1,
-			patch: { runId, state: "pr_open", startedAt: NOW.toISOString() },
+			runId,
+			state: "pr_open",
+			startedAt: NOW.toISOString(),
 		});
 		const { fn, calls } = recordingCloseSeed();
 		const planRun = await h.repos.planRuns.require(h.planRun.id);
@@ -70,10 +72,12 @@ describe("advancePlanRun — host-side child seed close (warren-3806)", () => {
 			stream: "system",
 			payload: { branch: "burrow/run", baseBranch: "main", message: "no commits" },
 		});
-		await h.repos.planRuns.updateChild({
+		await h.seedChildState({
 			planRunId: h.planRun.id,
 			seq: 1,
-			patch: { runId, state: "running", startedAt: NOW.toISOString() },
+			runId,
+			state: "running",
+			startedAt: NOW.toISOString(),
 		});
 		const { fn, calls } = recordingCloseSeed();
 		const planRun = await h.repos.planRuns.require(h.planRun.id);
@@ -97,10 +101,12 @@ describe("advancePlanRun — host-side child seed close (warren-3806)", () => {
 		await h.repos.runs.markRunning(runId, NOW);
 		await h.repos.runs.finalize(runId, "succeeded", NOW);
 		await h.repos.runs.setPrUrl(runId, "https://github.com/x/y/pull/42");
-		await h.repos.planRuns.updateChild({
+		await h.seedChildState({
 			planRunId: h.planRun.id,
 			seq: 1,
-			patch: { runId, state: "pr_open", startedAt: NOW.toISOString() },
+			runId,
+			state: "pr_open",
+			startedAt: NOW.toISOString(),
 		});
 		const { fn, calls } = recordingCloseSeed();
 		const planRun = await h.repos.planRuns.require(h.planRun.id);

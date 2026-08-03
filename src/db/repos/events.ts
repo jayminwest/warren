@@ -206,14 +206,44 @@ export class EventsRepo {
 	}
 
 	/**
+	 * Attempt history for one `payload_json` string key across every event of
+	 * a kind (warren-55cf). Returns the total matching row count and the
+	 * newest `ts`, both computed in SQL, so the healer's max-retries and
+	 * cooldown gates are correct by construction: no global row window can
+	 * scroll an exhausted fingerprint out of view.
+	 *
+	 * The JSON extraction is the one dialect-specific bit — sqlite stores
+	 * `payload_json` as TEXT (`json_extract`), postgres as `jsonb` (`->>`).
+	 * Both narrow on `kind` first, which `events_kind_ts_idx` covers.
+	 */
+	async payloadKeyHistory(
+		kind: string,
+		key: string,
+		value: string,
+	): Promise<{ count: number; lastTs: string | null }> {
+		const column = this.events.payloadJson;
+		const extracted =
+			this.adapter.dialect === "postgres"
+				? sql<string | null>`${column} ->> ${key}`
+				: sql<string | null>`json_extract(${column}, ${`$.${key}`})`;
+		const row = await this.adapter.pickOne<{ n: number | string; last: string | null }>(
+			this.db
+				.select({
+					n: sql<number>`count(*)`,
+					last: sql<string | null>`max(${this.events.ts})`,
+				})
+				.from(this.events)
+				.where(and(eq(this.events.kind, kind), eq(extracted, value))),
+		);
+		return { count: Number(row?.n ?? 0), lastTs: row?.last ?? null };
+	}
+
+	/**
 	 * Most-recent events of a single kind across all runs (warren-3db0).
-	 * Backs the healer's per-fingerprint attempt history: the intake
-	 * fetches recent `heal.dispatched` rows and filters them by the
-	 * `payload.fingerprint` in JS (the payload is opaque JSON, so a
-	 * dialect-agnostic SQL filter isn't available). Ordered newest-first
-	 * and capped so a long alert history never fans out into an unbounded
-	 * scan. `heal.dispatched` is a rare system event, so the cap is
-	 * generous relative to real volume.
+	 * Ordered newest-first and capped so a long history never fans out into
+	 * an unbounded scan. Read-only consumers (tests, ad-hoc inspection) only;
+	 * gating decisions must use an aggregate such as
+	 * {@link payloadKeyHistory} rather than this bounded window.
 	 */
 	async listByKind(kind: string, limit = 500): Promise<EventRow[]> {
 		if (limit <= 0) return [];

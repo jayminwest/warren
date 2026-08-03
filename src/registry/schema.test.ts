@@ -1,12 +1,17 @@
 import { describe, expect, test } from "bun:test";
+import { KNOWN_RUNTIME_IDS } from "../core/wire.ts";
 import { AgentSchemaError } from "./errors.ts";
 import {
 	type AgentDefinition,
+	acceptedRuntimeIds,
+	assertKnownRuntimeId,
 	parseRenderedAgent,
 	RenderResponseSchema,
+	readExtraRuntimeIds,
 	readProviderFrontmatter,
 	readRuntimeId,
 	readToolsFrontmatter,
+	validateAgentRuntimeId,
 	withMaxCostUsdOverride,
 	withProviderOverrides,
 } from "./schema.ts";
@@ -138,6 +143,125 @@ describe("readRuntimeId", () => {
 	test("ignores empty / undefined config override", () => {
 		expect(readRuntimeId(INTERACTIVE, undefined)).toBe("pi");
 		expect(readRuntimeId(INTERACTIVE, "")).toBe("pi");
+	});
+
+	// warren-c4be: dispatch is the last defence for a legacy row that entered
+	// the registry before registration validated the id (warren-ebca class).
+	test("rejects an unknown frontmatter.runtime at dispatch time", () => {
+		const legacy: AgentDefinition = {
+			...INTERACTIVE,
+			frontmatter: { source: "library", runtime: "planner" },
+		};
+		expect(() => readRuntimeId(legacy)).toThrow(AgentSchemaError);
+		expect(() => readRuntimeId(legacy)).toThrow(/claude-code, sapling, pi/);
+	});
+
+	test("rejects an unknown config override", () => {
+		expect(() => readRuntimeId(INTERACTIVE, "gpt-runtime")).toThrow(AgentSchemaError);
+		expect(() => readRuntimeId(INTERACTIVE, "gpt-runtime")).toThrow(/config override/);
+	});
+});
+
+describe("assertKnownRuntimeId", () => {
+	test("returns every known id unchanged", () => {
+		for (const id of KNOWN_RUNTIME_IDS) {
+			expect(assertKnownRuntimeId(id, "bot")).toBe(id);
+		}
+	});
+
+	test("throws AgentSchemaError naming the agent and the known ids", () => {
+		expect(() => assertKnownRuntimeId("nope", "bot")).toThrow(
+			/agent "bot" frontmatter.runtime "nope" is not a known runtime id/,
+		);
+	});
+
+	// warren-c4be: a burrow build may register runtime ids beyond warren's
+	// canonical three (the acceptance harness's `stub-shell` is one). The
+	// operator declares them explicitly; the default stays fail-closed.
+	test("accepts an id declared in WARREN_EXTRA_RUNTIME_IDS", () => {
+		const env = { WARREN_EXTRA_RUNTIME_IDS: "stub-shell, other-runtime" };
+		expect(assertKnownRuntimeId("stub-shell", "bot", "frontmatter.runtime", env)).toBe(
+			"stub-shell",
+		);
+		expect(assertKnownRuntimeId("other-runtime", "bot", "frontmatter.runtime", env)).toBe(
+			"other-runtime",
+		);
+		expect(() => assertKnownRuntimeId("undeclared", "bot", "frontmatter.runtime", env)).toThrow(
+			AgentSchemaError,
+		);
+	});
+
+	test("stays fail-closed when the extension var is unset or empty", () => {
+		expect(() => assertKnownRuntimeId("stub-shell", "bot", "frontmatter.runtime", {})).toThrow(
+			AgentSchemaError,
+		);
+		expect(() =>
+			assertKnownRuntimeId("stub-shell", "bot", "frontmatter.runtime", {
+				WARREN_EXTRA_RUNTIME_IDS: "  ",
+			}),
+		).toThrow(AgentSchemaError);
+	});
+});
+
+describe("readExtraRuntimeIds", () => {
+	test("parses, trims and dedupes the comma-separated list", () => {
+		expect(readExtraRuntimeIds({ WARREN_EXTRA_RUNTIME_IDS: "a, b ,a,,b" })).toEqual(["a", "b"]);
+	});
+
+	test("returns empty for unset / blank, and drops canonical ids", () => {
+		expect(readExtraRuntimeIds({})).toEqual([]);
+		expect(readExtraRuntimeIds({ WARREN_EXTRA_RUNTIME_IDS: "" })).toEqual([]);
+		expect(readExtraRuntimeIds({ WARREN_EXTRA_RUNTIME_IDS: "pi,sapling" })).toEqual([]);
+	});
+
+	test("acceptedRuntimeIds is the canonical list plus the extras", () => {
+		expect(acceptedRuntimeIds({ WARREN_EXTRA_RUNTIME_IDS: "stub-shell" })).toEqual([
+			...KNOWN_RUNTIME_IDS,
+			"stub-shell",
+		]);
+		expect(acceptedRuntimeIds({})).toEqual([...KNOWN_RUNTIME_IDS]);
+	});
+});
+
+describe("validateAgentRuntimeId", () => {
+	const base: AgentDefinition = {
+		name: "bot",
+		version: 1,
+		sections: { system: "hi" },
+		resolvedFrom: [],
+		frontmatter: {},
+	};
+
+	test("accepts an agent that pins no runtime", () => {
+		expect(() => validateAgentRuntimeId(base)).not.toThrow();
+	});
+
+	test("rejects a non-string runtime", () => {
+		expect(() => validateAgentRuntimeId({ ...base, frontmatter: { runtime: 7 } })).toThrow(
+			/must be a non-empty string/,
+		);
+		expect(() => validateAgentRuntimeId({ ...base, frontmatter: { runtime: "" } })).toThrow(
+			/must be a non-empty string/,
+		);
+	});
+
+	test("rejects an unknown runtime id at registration", () => {
+		expect(() => validateAgentRuntimeId({ ...base, frontmatter: { runtime: "planner" } })).toThrow(
+			AgentSchemaError,
+		);
+	});
+});
+
+describe("parseRenderedAgent runtime validation", () => {
+	test("rejects a rendered agent whose frontmatter.runtime is unknown (warren-c4be)", () => {
+		expect(() =>
+			parseRenderedAgent({ ...VALID, frontmatter: { runtime: "burrow-lite" } }, "refactor-bot"),
+		).toThrow(AgentSchemaError);
+	});
+
+	test("accepts a rendered agent pinning a known runtime", () => {
+		const def = parseRenderedAgent({ ...VALID, frontmatter: { runtime: "sapling" } });
+		expect(readRuntimeId(def)).toBe("sapling");
 	});
 });
 

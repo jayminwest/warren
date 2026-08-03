@@ -139,6 +139,42 @@ describe("POST /alerts/heal", () => {
 		expect(body.reason).toBe("cooldown");
 	});
 
+	test("holds the cap per fingerprint past 500 unrelated heal.dispatched events", async () => {
+		// warren-55cf: the attempt history used to come from the 500 newest
+		// heal.dispatched rows globally, so a noisy fleet scrolled an exhausted
+		// fingerprint out of the window and the cooldown silently reset.
+		await writeHealerConfig(
+			projectLocalPath,
+			"healer:\n  enabled: true\n  maxRetries: 1\n  projectMapping:\n    - issue-99\n",
+		);
+		await serve();
+
+		const first = await post(SENTRY_PAYLOAD);
+		expect(first.status).toBe(202);
+		const { runId } = (await first.json()) as { runId: string };
+
+		for (let i = 0; i < 600; i++) {
+			await repos.events.append({
+				runId,
+				burrowEventSeq: 10_000 + i,
+				ts: `2099-01-01T00:00:00.${String(i).padStart(3, "0")}Z`,
+				kind: "heal.dispatched",
+				payload: { fingerprint: `fp-noise-${i}`, source: "sentry", title: "noise" },
+			});
+		}
+		// The bounded window no longer holds the target fingerprint at all.
+		const windowed = await repos.events.listByKind("heal.dispatched");
+		expect(
+			windowed.some((r) => (r.payloadJson as { fingerprint?: string }).fingerprint === "issue-99"),
+		).toBe(false);
+
+		const second = await post(SENTRY_PAYLOAD);
+		expect(second.status).toBe(200);
+		const body = (await second.json()) as { status: string; reason: string };
+		expect(body.status).toBe("skipped");
+		expect(body.reason).toBe("max_retries");
+	});
+
 	test("skips with no_match when nothing routes (200)", async () => {
 		await writeHealerConfig(
 			projectLocalPath,
@@ -166,6 +202,52 @@ describe("POST /alerts/heal", () => {
 		expect(res.status).toBe(200);
 		const body = (await res.json()) as { status: string; reason: string };
 		expect(body.reason).toBe("disabled");
+	});
+
+	// warren-50a7: a short mapping key no longer substring-claims an alert.
+	test("does not route a short mapping key that is only a fragment (200 no_match)", async () => {
+		await writeHealerConfig(
+			projectLocalPath,
+			"healer:\n  enabled: true\n  projectMapping:\n    - reap\n",
+		);
+		await serve();
+
+		const res = await post({
+			data: { issue: { id: "issue-frag" }, event: { title: "boom", culprit: "src/runs/reap.ts" } },
+		});
+		expect(res.status).toBe(200);
+		const body = (await res.json()) as { reason: string };
+		expect(body.reason).toBe("no_match");
+	});
+
+	test("routes an explicit wildcard mapping key (202)", async () => {
+		await writeHealerConfig(
+			projectLocalPath,
+			"healer:\n  enabled: true\n  projectMapping:\n    - 'src/runs/*'\n",
+		);
+		await serve();
+
+		const res = await post(SENTRY_PAYLOAD);
+		expect(res.status).toBe(202);
+	});
+
+	// warren-50a7: an unknown healer.role is a config error surfaced at
+	// intake, not a bare `agent not found` from inside spawnRun.
+	test("rejects an unknown healer.role at intake with 400 (400)", async () => {
+		await writeHealerConfig(
+			projectLocalPath,
+			"healer:\n  enabled: true\n  role: healr\n  projectMapping:\n    - issue-99\n",
+		);
+		await serve();
+
+		const res = await post(SENTRY_PAYLOAD);
+		expect(res.status).toBe(400);
+		const body = (await res.json()) as { error: { code: string; message: string } };
+		expect(body.error.code).toBe("validation_error");
+		expect(body.error.message).toContain('healer.role "healr"');
+		expect(body.error.message).toContain(".warren/config.yaml");
+		// No run row was created.
+		expect((await repos.runs.listAll()).length).toBe(0);
 	});
 
 	test("rejects an invalid ?source with 400", async () => {

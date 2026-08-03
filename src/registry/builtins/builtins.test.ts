@@ -1,8 +1,9 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { isKnownRuntimeId } from "../../core/wire.ts";
 import { openDatabase, type WarrenDb } from "../../db/client.ts";
 import { AgentsRepo } from "../../db/repos/agents.ts";
 import { DrizzleAdapter } from "../../db/repos/drizzle-adapter.ts";
-import { parseRenderedAgent, type RenderResponse } from "../schema.ts";
+import { parseRenderedAgent, type RenderResponse, readRuntimeId } from "../schema.ts";
 import {
 	BUILTIN_AGENT_NAMES,
 	BUILTIN_AGENTS,
@@ -48,6 +49,14 @@ describe("BUILTIN_AGENTS", () => {
 			const parsed = parseRenderedAgent(renderResponse, builtin.name);
 			expect(parsed.name).toBe(builtin.name);
 			expect(parsed.sections.system).toBe(builtin.sections.system);
+		}
+	});
+
+	// warren-c4be: every shipped built-in must resolve to a runtime burrow
+	// actually knows. warren-ebca was exactly this failing at dispatch instead.
+	test("each builtin resolves to a known runtime id (warren-c4be)", () => {
+		for (const builtin of BUILTIN_AGENTS) {
+			expect(isKnownRuntimeId(readRuntimeId(builtin))).toBe(true);
 		}
 	});
 
@@ -216,6 +225,60 @@ describe("seedBuiltinAgents", () => {
 		const stored = await repo.get("claude-code");
 		expect(stored).not.toBeNull();
 		expect(readAgentSource(stored?.renderedJson)).toBe("builtin");
+	});
+
+	// warren-c4be: registration is the boundary that can still answer 4xx, but
+	// seeding is a BOOT path — it refuses the row loudly instead of throwing,
+	// so a legacy/seed-file definition can never take the server down.
+	test("refuses to seed an agent whose runtime id is unknown (warren-c4be)", async () => {
+		const bad = {
+			name: "stub-shell",
+			version: 1,
+			sections: { system: "hi" },
+			resolvedFrom: [],
+			frontmatter: { source: "builtin", runtime: "planner" },
+		};
+		const result = await seedBuiltinAgents(repo, [bad]);
+		expect(result.seeded).toEqual([]);
+		expect(result.rejected).toHaveLength(1);
+		expect(result.rejected[0]?.name).toBe("stub-shell");
+		expect(result.rejected[0]?.reason).toMatch(/is not a known runtime id/);
+		expect(await repo.get("stub-shell")).toBeNull();
+	});
+
+	test("seeds the good agents alongside a rejected one (boot completes)", async () => {
+		const bad = {
+			name: "bad-runtime",
+			version: 1,
+			sections: { system: "hi" },
+			resolvedFrom: [],
+			frontmatter: { source: "builtin", runtime: "nope" },
+		};
+		const result = await seedBuiltinAgents(repo, [bad, CLAUDE_CODE_BUILTIN]);
+		expect(result.seeded).toEqual(["claude-code"]);
+		expect(result.rejected.map((r) => r.name)).toEqual(["bad-runtime"]);
+		expect(await repo.get("claude-code")).not.toBeNull();
+	});
+
+	test("accepts an operator-declared extra runtime id (warren-c4be)", async () => {
+		const previous = process.env.WARREN_EXTRA_RUNTIME_IDS;
+		process.env.WARREN_EXTRA_RUNTIME_IDS = "stub-shell";
+		try {
+			const result = await seedBuiltinAgents(repo, [
+				{
+					name: "stub-shell",
+					version: 1,
+					sections: { system: "hi" },
+					resolvedFrom: [],
+					frontmatter: { source: "builtin", runtime: "stub-shell" },
+				},
+			]);
+			expect(result.rejected).toEqual([]);
+			expect(result.seeded).toEqual(["stub-shell"]);
+		} finally {
+			if (previous === undefined) delete process.env.WARREN_EXTRA_RUNTIME_IDS;
+			else process.env.WARREN_EXTRA_RUNTIME_IDS = previous;
+		}
 	});
 
 	test("preserves existing rows (library override) and skips them", async () => {

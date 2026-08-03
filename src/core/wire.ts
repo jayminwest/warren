@@ -264,6 +264,61 @@ export const EVENT_ORIGINS = ["warren", "agent"] as const;
 export type EventOrigin = (typeof EVENT_ORIGINS)[number];
 
 /**
+ * How a run was kicked off (warren-c486). The closed vocabulary every
+ * dispatcher stamps onto `runs.trigger` and, via the seed-extension writer
+ * (`src/runs/spawn/seed-extensions.ts`), onto the seed for provenance.
+ *
+ * Canonical here because two surfaces need the same list: that writer and
+ * the seeds-CLI extension schema (`src/seeds-cli/warren-extensions.ts`,
+ * which derives its zod enum from this tuple). The hand-copied enum it
+ * replaced held six of the ten values live dispatchers pass, so `plan-run`,
+ * `ci-fixer`, `healer`, `auto_plan_run` and the legacy `manual-trigger` all
+ * failed the parse and lost the `trigger` key. Spelling matches what
+ * dispatchers already persisted in the column, so the mix stays as-is.
+ */
+export const RUN_TRIGGER_KINDS = [
+	"manual",
+	"cron",
+	"scheduled",
+	"webhook",
+	"comment",
+	"cli",
+	"plan-run",
+	"auto_plan_run",
+	"ci-fixer",
+	"healer",
+] as const;
+export type RunTriggerKind = (typeof RUN_TRIGGER_KINDS)[number];
+
+/**
+ * Legacy raw `runs.trigger` strings mapped onto a canonical kind
+ * (warren-c486). `manual-trigger` is what
+ * `POST /projects/:id/triggers/:triggerId/run` has always written; Run Now
+ * on a cron trigger is a manual dispatch, so it normalizes to `manual` at
+ * the read boundary. The column keeps its historical value.
+ */
+export const LEGACY_RUN_TRIGGER_ALIASES = {
+	"manual-trigger": "manual",
+} as const satisfies Record<string, RunTriggerKind>;
+
+/** Membership predicate for {@link RUN_TRIGGER_KINDS}. */
+export function isRunTriggerKind(value: unknown): value is RunTriggerKind {
+	return typeof value === "string" && (RUN_TRIGGER_KINDS as readonly string[]).includes(value);
+}
+
+/**
+ * Resolve a raw trigger string to a canonical kind via
+ * {@link LEGACY_RUN_TRIGGER_ALIASES}. `undefined` means outside the
+ * vocabulary — callers must surface that, never drop it silently.
+ */
+export function normalizeRunTriggerKind(value: string | undefined): RunTriggerKind | undefined {
+	if (value === undefined) return undefined;
+	if (isRunTriggerKind(value)) return value;
+	const aliases: Record<string, RunTriggerKind> = LEGACY_RUN_TRIGGER_ALIASES;
+	return aliases[value];
+}
+
+/**
  * Registry provenance stamped onto an agent row by the server
  * (warren-f6ad / readAgentSource). Two tiers: built-in agents shipped
  * inline (`"builtin"`) and same-named library overrides (`"library"`).
@@ -271,6 +326,30 @@ export type EventOrigin = (typeof EVENT_ORIGINS)[number];
  */
 export const AGENT_SOURCES = ["builtin", "library"] as const;
 export type AgentSource = (typeof AGENT_SOURCES)[number];
+
+/**
+ * The burrow/pod runtime ids warren can dispatch an agent onto
+ * (warren-c4be). Canonical here because two independent surfaces need the
+ * same vocabulary: the per-project `.warren/config.yaml` runtime override
+ * (`src/warren-config/schema.ts`, which zod-enforces it) and the agent
+ * registry (`src/registry/schema.ts`, which resolves an agent's
+ * `frontmatter.runtime` at registration and at dispatch).
+ *
+ * Before this lived here, only the config half validated. An agent row
+ * carrying an unknown runtime id sailed through registration and died
+ * sandbox-side at dispatch, past every 4xx boundary — the warren-ebca
+ * incident class (the planner agent pinned no runtime, burrow looked up
+ * "planner" in its built-in runtime table, and the run died before agent
+ * boot). Validating the id where agents enter the system turns that into a
+ * typed 422 that names the known ids.
+ */
+export const KNOWN_RUNTIME_IDS = ["claude-code", "sapling", "pi"] as const;
+export type RuntimeId = (typeof KNOWN_RUNTIME_IDS)[number];
+
+/** Membership predicate for {@link KNOWN_RUNTIME_IDS}. */
+export function isKnownRuntimeId(value: unknown): value is RuntimeId {
+	return typeof value === "string" && (KNOWN_RUNTIME_IDS as readonly string[]).includes(value);
+}
 
 /**
  * The `GET /agents` row shape as every consumer sees it (warren-4253 /

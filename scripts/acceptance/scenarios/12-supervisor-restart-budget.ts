@@ -266,6 +266,8 @@ function buildSupervisorEnv(opts: SupervisorEnvOpts): Record<string, string> {
 		// warren child inherits its env, so passing the var through here
 		// registers stub-shell before POST /runs.
 		"WARREN_SEED_AGENTS_FILE",
+		// Declares the harness's stub-shell burrow runtime id (warren-c4be).
+		"WARREN_EXTRA_RUNTIME_IDS",
 	]) {
 		const v = opts.parentEnv[k];
 		if (typeof v === "string") passthrough[k] = v;

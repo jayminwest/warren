@@ -43,8 +43,6 @@ import {
 	assertRegisteredProjectsAllowlisted,
 	resolvePublicAllowlist,
 } from "../../projects/public-allowlist.ts";
-import { seedBuiltinAgents } from "../../registry/builtins/index.ts";
-import { seedAgentsFromEnvFile } from "../../registry/builtins/seed-file.ts";
 import {
 	loadAutoOpenPrConfigFromEnv,
 	loadRunBranchPrefixFromEnv,
@@ -64,6 +62,7 @@ import { bootScheduler } from "../scheduler.ts";
 import { startServer } from "../server.ts";
 import { loadEventStreamLimitsFromEnv } from "../stream-limits.ts";
 import type { AuthProvider, RunActivityCheck, ServeHandle } from "../types.ts";
+import { seedAgentsAtBoot } from "./agent-seeding.ts";
 import { buildServerDeps } from "./deps.ts";
 import { bootBackgroundDetectors } from "./detector-wiring.ts";
 import { bootLifecycleBus } from "./lifecycle-bus-wiring.ts";
@@ -160,15 +159,14 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 		logger.info({ path: fileConfig.path }, "loaded warren.toml");
 	}
 
-	// Seed built-in agents (warren-d3e9); idempotent — existing rows are preserved.
-	const seedResult = await seedBuiltinAgents(repos.agents, undefined, opts.now);
-	if (seedResult.seeded.length > 0) {
-		logger.info({ agents: seedResult.seeded }, "seeded built-in agents");
-	}
-
-	const extra = await seedAgentsFromEnvFile(repos.agents, env, opts.now);
-	if (extra !== null && extra.seeded.length > 0)
-		logger.info({ agents: extra.seeded, path: extra.path }, "seeded seed-file agents");
+	// Boot-time agent seeding + narration (warren-c4be extracted it here):
+	// idempotent, and a refused definition warns instead of failing the boot.
+	await seedAgentsAtBoot({
+		repo: repos.agents,
+		env,
+		logger,
+		...(opts.now ? { now: opts.now } : {}),
+	});
 
 	const autoOpenPr = loadAutoOpenPrConfigFromEnv(env);
 	if (autoOpenPr.enabled && autoOpenPr.token === "") {

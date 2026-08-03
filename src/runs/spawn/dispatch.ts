@@ -285,6 +285,7 @@ export async function spawnRun(input: SpawnRunInput): Promise<SpawnRunResult> {
 				agentName: agent.name,
 				trigger: input.trigger,
 				now: input.now?.() ?? new Date(),
+				logger: log,
 			});
 		}
 		// `workspacePath` is a burrow host path with no provider-neutral home, so

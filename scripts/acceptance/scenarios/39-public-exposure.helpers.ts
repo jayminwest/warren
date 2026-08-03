@@ -252,10 +252,19 @@ export async function seedPublicInstanceDb(input: SeedPublicInstanceInput): Prom
 			dispatcherHandle: SENTINELS.planRunDispatcherHandle,
 			children: [{ seq: 1, seedId }],
 		});
+		// Walk the legal child lifecycle rather than jumping pending → merged,
+		// which the warren-66d2 table refuses and no real writer takes: the
+		// coordinator dispatches, then `src/plan-runs/in-flight.ts` settles the
+		// merge. Replay both hops so the sentinel-bearing child lands merged.
 		await repos.planRuns.updateChild({
 			planRunId: planRun.planRun.id,
 			seq: 1,
-			patch: { runId: run.id, state: "merged" },
+			patch: { runId: run.id, state: "dispatched" },
+		});
+		await repos.planRuns.updateChild({
+			planRunId: planRun.planRun.id,
+			seq: 1,
+			patch: { state: "merged" },
 		});
 		// `failureReason` only lands through `transitionTo`, which would move
 		// the plan-run to a terminal state — and the stream-cap assertions
