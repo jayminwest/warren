@@ -204,6 +204,52 @@ describe("POST /alerts/heal", () => {
 		expect(body.reason).toBe("disabled");
 	});
 
+	// warren-50a7: a short mapping key no longer substring-claims an alert.
+	test("does not route a short mapping key that is only a fragment (200 no_match)", async () => {
+		await writeHealerConfig(
+			projectLocalPath,
+			"healer:\n  enabled: true\n  projectMapping:\n    - reap\n",
+		);
+		await serve();
+
+		const res = await post({
+			data: { issue: { id: "issue-frag" }, event: { title: "boom", culprit: "src/runs/reap.ts" } },
+		});
+		expect(res.status).toBe(200);
+		const body = (await res.json()) as { reason: string };
+		expect(body.reason).toBe("no_match");
+	});
+
+	test("routes an explicit wildcard mapping key (202)", async () => {
+		await writeHealerConfig(
+			projectLocalPath,
+			"healer:\n  enabled: true\n  projectMapping:\n    - 'src/runs/*'\n",
+		);
+		await serve();
+
+		const res = await post(SENTRY_PAYLOAD);
+		expect(res.status).toBe(202);
+	});
+
+	// warren-50a7: an unknown healer.role is a config error surfaced at
+	// intake, not a bare `agent not found` from inside spawnRun.
+	test("rejects an unknown healer.role at intake with 400 (400)", async () => {
+		await writeHealerConfig(
+			projectLocalPath,
+			"healer:\n  enabled: true\n  role: healr\n  projectMapping:\n    - issue-99\n",
+		);
+		await serve();
+
+		const res = await post(SENTRY_PAYLOAD);
+		expect(res.status).toBe(400);
+		const body = (await res.json()) as { error: { code: string; message: string } };
+		expect(body.error.code).toBe("validation_error");
+		expect(body.error.message).toContain('healer.role "healr"');
+		expect(body.error.message).toContain(".warren/config.yaml");
+		// No run row was created.
+		expect((await repos.runs.listAll()).length).toBe(0);
+	});
+
 	test("rejects an invalid ?source with 400", async () => {
 		await serve();
 		const res = await post(SENTRY_PAYLOAD, "datadog");

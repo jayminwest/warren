@@ -5,7 +5,11 @@ import type { SqliteDrizzleDb } from "../client.ts";
 import { isPostgresTestEnabled, withDb } from "../testing.ts";
 import { AgentsRepo } from "./agents.ts";
 import { DrizzleAdapter } from "./drizzle-adapter.ts";
-import { assertPlanRunTransition, PlanRunsRepo } from "./plan-runs.ts";
+import {
+	assertPlanRunChildTransition,
+	assertPlanRunTransition,
+	PlanRunsRepo,
+} from "./plan-runs.ts";
 import { ProjectsRepo } from "./projects.ts";
 import { RunsRepo } from "./runs.ts";
 
@@ -29,6 +33,56 @@ describe("assertPlanRunTransition", () => {
 		expect(() => assertPlanRunTransition("succeeded", "running")).toThrow(StateTransitionError);
 		expect(() => assertPlanRunTransition("failed", "running")).toThrow(StateTransitionError);
 		expect(() => assertPlanRunTransition("cancelled", "running")).toThrow(StateTransitionError);
+	});
+});
+
+describe("assertPlanRunChildTransition", () => {
+	test("allows every advance the coordinator performs (warren-66d2)", () => {
+		const legal = [
+			// coordinator.ts: dispatch, resume-skip, seed-not-found / dispatch fail.
+			["pending", "dispatched"],
+			["pending", "skipped"],
+			["pending", "failed"],
+			// in-flight.ts: run-state sync, PR open, trivial merge, terminal fail.
+			["dispatched", "running"],
+			["dispatched", "pr_open"],
+			["dispatched", "merged"],
+			["dispatched", "failed"],
+			["running", "pr_open"],
+			["running", "merged"],
+			["running", "failed"],
+			["pr_open", "merged"],
+			["pr_open", "failed"],
+		] as const;
+		for (const [from, to] of legal) {
+			expect(() => assertPlanRunChildTransition(from, to)).not.toThrow();
+		}
+	});
+
+	test("refuses merged → pending", () => {
+		expect(() => assertPlanRunChildTransition("merged", "pending")).toThrow(StateTransitionError);
+	});
+
+	test("terminal child states have no exits", () => {
+		for (const from of ["merged", "failed", "skipped"] as const) {
+			for (const to of ["pending", "dispatched", "running", "pr_open"] as const) {
+				expect(() => assertPlanRunChildTransition(from, to)).toThrow(StateTransitionError);
+			}
+		}
+		expect(() => assertPlanRunChildTransition("failed", "merged")).toThrow(StateTransitionError);
+		expect(() => assertPlanRunChildTransition("skipped", "merged")).toThrow(StateTransitionError);
+	});
+
+	test("refuses skipping the dispatch step", () => {
+		expect(() => assertPlanRunChildTransition("pending", "running")).toThrow(StateTransitionError);
+		expect(() => assertPlanRunChildTransition("pending", "pr_open")).toThrow(StateTransitionError);
+		expect(() => assertPlanRunChildTransition("pending", "merged")).toThrow(StateTransitionError);
+	});
+
+	test("a same-state write is an idempotent re-assert", () => {
+		for (const state of ["pending", "dispatched", "running", "pr_open", "merged"] as const) {
+			expect(() => assertPlanRunChildTransition(state, state)).not.toThrow();
+		}
 	});
 });
 
@@ -185,11 +239,8 @@ function suite(dialect: "sqlite" | "postgres"): void {
 			try {
 				const { planRun } = await repo.create(seed({ agentName, projectId }));
 				for (const seq of [1, 2, 3]) {
-					await repo.updateChild({
-						planRunId: planRun.id,
-						seq,
-						patch: { state: "merged" },
-					});
+					await repo.updateChild({ planRunId: planRun.id, seq, patch: { state: "dispatched" } });
+					await repo.updateChild({ planRunId: planRun.id, seq, patch: { state: "merged" } });
 				}
 				expect(await repo.pickNextPending(planRun.id)).toBeNull();
 			} finally {
@@ -230,6 +281,39 @@ function suite(dialect: "sqlite" | "postgres"): void {
 				// runId + startedAt preserved.
 				expect(merged.runId).toBe(run.id);
 				expect(merged.startedAt).toBe("2026-05-17T00:01:00.000Z");
+			} finally {
+				await handle.close();
+			}
+		});
+
+		test("updateChild refuses merged → pending (warren-66d2)", async () => {
+			const { handle, repo, agentName, projectId } = await open();
+			try {
+				const { planRun } = await repo.create(seed({ agentName, projectId }));
+				await repo.updateChild({ planRunId: planRun.id, seq: 1, patch: { state: "dispatched" } });
+				await repo.updateChild({ planRunId: planRun.id, seq: 1, patch: { state: "merged" } });
+				await expect(
+					repo.updateChild({ planRunId: planRun.id, seq: 1, patch: { state: "pending" } }),
+				).rejects.toThrow(StateTransitionError);
+				const children = await repo.listChildren(planRun.id);
+				expect(children.find((c) => c.seq === 1)?.state).toBe("merged");
+			} finally {
+				await handle.close();
+			}
+		});
+
+		test("updateChild allows a state-free patch on a terminal child", async () => {
+			const { handle, repo, agentName, projectId } = await open();
+			try {
+				const { planRun } = await repo.create(seed({ agentName, projectId }));
+				await repo.updateChild({ planRunId: planRun.id, seq: 1, patch: { state: "skipped" } });
+				const patched = await repo.updateChild({
+					planRunId: planRun.id,
+					seq: 1,
+					patch: { endedAt: "2026-08-02T00:00:00.000Z" },
+				});
+				expect(patched.state).toBe("skipped");
+				expect(patched.endedAt).toBe("2026-08-02T00:00:00.000Z");
 			} finally {
 				await handle.close();
 			}

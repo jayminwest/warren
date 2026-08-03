@@ -46,10 +46,12 @@ describe("advancePlanRun — completion phase", () => {
 		await h.repos.runs.markRunning(runId, NOW);
 		await h.repos.runs.finalize(runId, "succeeded", NOW);
 		await h.repos.runs.setPrUrl(runId, "https://github.com/x/y/pull/42");
-		await h.repos.planRuns.updateChild({
+		await h.seedChildState({
 			planRunId: h.planRun.id,
 			seq: 1,
-			patch: { runId, state: "pr_open", startedAt: NOW.toISOString() },
+			runId,
+			state: "pr_open",
+			startedAt: NOW.toISOString(),
 		});
 		const planRun = await h.repos.planRuns.require(h.planRun.id);
 		const later = new Date(NOW.getTime() + 60 * 60 * 1000); // +1h, past 30m default
@@ -80,10 +82,12 @@ describe("advancePlanRun — completion phase", () => {
 		await h.repos.runs.markRunning(runId, NOW);
 		await h.repos.runs.finalize(runId, "succeeded", NOW);
 		await h.repos.runs.setPrUrl(runId, "https://github.com/x/y/pull/42");
-		await h.repos.planRuns.updateChild({
+		await h.seedChildState({
 			planRunId: h.planRun.id,
 			seq: 1,
-			patch: { runId, state: "pr_open", startedAt: NOW.toISOString() },
+			runId,
+			state: "pr_open",
+			startedAt: NOW.toISOString(),
 		});
 		const planRun = await h.repos.planRuns.require(h.planRun.id);
 		const result = await advancePlanRun({
@@ -115,10 +119,12 @@ describe("advancePlanRun — completion phase", () => {
 		await h.repos.runs.markRunning(runId, NOW);
 		await h.repos.runs.finalize(runId, "succeeded", NOW);
 		await h.repos.runs.setPrUrl(runId, "https://github.com/x/y/pull/42");
-		await h.repos.planRuns.updateChild({
+		await h.seedChildState({
 			planRunId: h.planRun.id,
 			seq: 1,
-			patch: { runId, state: "pr_open", startedAt: NOW.toISOString() },
+			runId,
+			state: "pr_open",
+			startedAt: NOW.toISOString(),
 		});
 		const planRun = await h.repos.planRuns.require(h.planRun.id);
 		const result = await advancePlanRun({
@@ -152,10 +158,12 @@ describe("advancePlanRun — completion phase", () => {
 		await h.repos.runs.markRunning(runId, NOW);
 		await h.repos.runs.finalize(runId, "succeeded", NOW);
 		await h.repos.runs.setPrUrl(runId, "https://github.com/x/y/pull/42");
-		await h.repos.planRuns.updateChild({
+		await h.seedChildState({
 			planRunId: h.planRun.id,
 			seq: 1,
-			patch: { runId, state: "pr_open", startedAt: NOW.toISOString() },
+			runId,
+			state: "pr_open",
+			startedAt: NOW.toISOString(),
 		});
 		const planRun = await h.repos.planRuns.require(h.planRun.id);
 		const result = await advancePlanRun({
@@ -192,10 +200,12 @@ describe("advancePlanRun — completion phase", () => {
 		await h.repos.runs.markRunning(runId, NOW);
 		await h.repos.runs.finalize(runId, "succeeded", NOW);
 		await h.repos.runs.setPrUrl(runId, "https://github.com/x/y/pull/42");
-		await h.repos.planRuns.updateChild({
+		await h.seedChildState({
 			planRunId: h.planRun.id,
 			seq: 1,
-			patch: { runId, state: "pr_open", startedAt: NOW.toISOString() },
+			runId,
+			state: "pr_open",
+			startedAt: NOW.toISOString(),
 		});
 		const planRun = await h.repos.planRuns.require(h.planRun.id);
 		const result = await advancePlanRun({
@@ -222,10 +232,12 @@ describe("advancePlanRun — completion phase", () => {
 		const runId = await h.makeRun("warren-a");
 		await h.repos.runs.markRunning(runId, NOW);
 		await h.repos.runs.finalize(runId, "failed", NOW, "crashed");
-		await h.repos.planRuns.updateChild({
+		await h.seedChildState({
 			planRunId: h.planRun.id,
 			seq: 1,
-			patch: { runId, state: "running", startedAt: NOW.toISOString() },
+			runId,
+			state: "running",
+			startedAt: NOW.toISOString(),
 		});
 		const planRun = await h.repos.planRuns.require(h.planRun.id);
 		const result = await advancePlanRun({
@@ -251,10 +263,12 @@ describe("advancePlanRun — completion phase", () => {
 		await h.repos.runs.markRunning(runId, NOW);
 		// reap flips a zero-commit + dirty-tree run to failed/dropped_commit.
 		await h.repos.runs.finalize(runId, "failed", NOW, "dropped_commit");
-		await h.repos.planRuns.updateChild({
+		await h.seedChildState({
 			planRunId: h.planRun.id,
 			seq: 1,
-			patch: { runId, state: "running", startedAt: NOW.toISOString() },
+			runId,
+			state: "running",
+			startedAt: NOW.toISOString(),
 		});
 		const planRun = await h.repos.planRuns.require(h.planRun.id);
 		const result = await advancePlanRun({
@@ -288,10 +302,12 @@ describe("advancePlanRun — completion phase", () => {
 			stream: "system",
 			payload: { branch: "burrow/run", baseBranch: "main", message: "no commits" },
 		});
-		await h.repos.planRuns.updateChild({
+		await h.seedChildState({
 			planRunId: h.planRun.id,
 			seq: 1,
-			patch: { runId, state: "running", startedAt: NOW.toISOString() },
+			runId,
+			state: "running",
+			startedAt: NOW.toISOString(),
 		});
 		const planRun = await h.repos.planRuns.require(h.planRun.id);
 		const result = await advancePlanRun({
@@ -327,10 +343,12 @@ describe("advancePlanRun — completion phase", () => {
 			stream: "system",
 			payload: { branch: "burrow/run", baseBranch: "main", message: "no commits" },
 		});
-		await h.repos.planRuns.updateChild({
+		await h.seedChildState({
 			planRunId: h.planRun.id,
 			seq: 1,
-			patch: { runId, state: "running", startedAt: NOW.toISOString() },
+			runId,
+			state: "running",
+			startedAt: NOW.toISOString(),
 		});
 		return runId;
 	}

@@ -24,6 +24,7 @@ import { ValidationError } from "../../core/errors.ts";
 import type { EventsRepo } from "../../db/repos/events.ts";
 import {
 	buildHealPrompt,
+	checkHealerRole,
 	decideHealDispatch,
 	HEAL_DISPATCHED_EVENT,
 	HEALER_TRIGGER,
@@ -63,6 +64,11 @@ export function healAlertHandler(deps: ServerDeps): RouteHandler {
 
 		const settings = resolved.candidate.settings;
 		if (settings === undefined) return skipped("disabled", alert);
+
+		// warren-50a7: fail loudly on a misconfigured `healer.role` here, at
+		// intake, instead of letting it surface as a bare `agent not found`
+		// from deep inside spawnRun after the run row already exists.
+		await assertHealerRole(deps, resolved.candidate);
 
 		const history = await computeHealHistory(deps.repos.events, alert.fingerprint);
 		const decision = decideHealDispatch({
@@ -121,6 +127,21 @@ async function gatherCandidates(deps: ServerDeps): Promise<HealProjectCandidate[
 		});
 	}
 	return candidates;
+}
+
+/**
+ * Validate the matched project's `healer.role` against the registered
+ * agents. Throws a `ValidationError` (400) naming the project, the bad
+ * role, and the known agents, so a config typo reads as a config error.
+ */
+async function assertHealerRole(deps: ServerDeps, candidate: HealProjectCandidate): Promise<void> {
+	const agents = await deps.repos.agents.listAll();
+	const check = checkHealerRole({
+		role: candidate.role,
+		projectId: candidate.projectId,
+		knownRoles: agents.map((a) => a.name),
+	});
+	if (check.kind === "unknown_role") throw new ValidationError(check.message);
 }
 
 async function loadProjectConfig(

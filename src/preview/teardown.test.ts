@@ -89,6 +89,12 @@ describe("teardownPreview", () => {
 			burrowId: opts.burrowId ?? "bur_test",
 		});
 		if (opts.state !== undefined) {
+			// warren-66d2: the repo guards preview transitions, so a fixture that
+			// wants a terminal state enters through `starting`, like the real
+			// launch path does.
+			if (opts.state !== null && opts.state !== "starting") {
+				await repos.runs.attachPreview(run.id, { previewState: "starting" });
+			}
 			await repos.runs.attachPreview(run.id, {
 				previewState: opts.state,
 				...(opts.port !== undefined ? { previewPort: opts.port } : {}),
@@ -399,6 +405,12 @@ describe("RunPreviewsRepo.claimTeardown", () => {
 			burrowId: opts.burrowId ?? "bur_x",
 		});
 		if (opts.state !== undefined) {
+			// warren-66d2: the repo guards preview transitions, so a fixture that
+			// wants a terminal state enters through `starting`, like the real
+			// launch path does.
+			if (opts.state !== null && opts.state !== "starting") {
+				await repos.runs.attachPreview(run.id, { previewState: "starting" });
+			}
 			await repos.runs.attachPreview(run.id, {
 				previewState: opts.state,
 				...(opts.port !== undefined ? { previewPort: opts.port } : {}),
