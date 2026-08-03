@@ -47,6 +47,7 @@ domains:
   types: {}
   seeds-tracker: {}
   security: {}
+  healer: {}
 governance:
   max_entries: 100
   warn_entries: 150
