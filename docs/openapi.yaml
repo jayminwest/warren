@@ -232,6 +232,22 @@ paths:
         default:
           description: Error response (see `src/core/errors.ts`).
   /projects/{id}:
+    get:
+      operationId: getProjectHandler
+      tags:
+        - projects
+      summary: GET /projects/:id
+      responses:
+        '200':
+          description: Successful response.
+        default:
+          description: Error response (see `src/core/errors.ts`).
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
     delete:
       operationId: deleteProjectHandler
       tags:

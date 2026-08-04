@@ -1,8 +1,9 @@
 /**
- * High-level project management: add (clone + persist), list, delete
+ * High-level project management: add (clone + persist), get, list, delete
  * (rm-rf + db). These are the operations behind `POST /projects`,
- * `GET /projects`, and `DELETE /projects/:id` (docs/http-api.md) — the HTTP
- * server is a thin envelope around these calls.
+ * `GET /projects`, `GET /projects/:id`, and `DELETE /projects/:id`
+ * (docs/http-api.md) — the HTTP server is a thin envelope around these
+ * calls.
  *
  * Atomicity contract:
  *   - addProject leaves the system in either "row + dir on disk" or
@@ -269,6 +270,15 @@ export async function deleteProject(input: DeleteProjectInput): Promise<ProjectR
 
 export async function listProjects(repo: ProjectsRepo): Promise<ProjectRow[]> {
 	return repo.listAll();
+}
+
+/**
+ * Single-project read behind `GET /projects/:id` (warren-2a89). `require`
+ * throws NotFoundError for an unknown id, which the handler layer renders
+ * as the canonical 404 envelope.
+ */
+export async function getProject(repo: ProjectsRepo, id: string): Promise<ProjectRow> {
+	return repo.require(id);
 }
 
 function assertPathUnderRoot(localPath: string, root: string): void {

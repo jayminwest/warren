@@ -47,6 +47,7 @@ import {
 import {
 	createProjectHandler,
 	deleteProjectHandler,
+	getProjectHandler,
 	getProjectSeedHandler,
 	getProjectTriggersHandler,
 	getProjectWarrenConfigHandler,
@@ -221,6 +222,7 @@ const ROUTE_TABLE: readonly RouteEntry[] = [
 
 	{ method: "GET", pattern: "/projects", policy: "readPublic", build: listProjectsHandler },
 	{ method: "POST", pattern: "/projects", policy: "admin", build: createProjectHandler },
+	{ method: "GET", pattern: "/projects/:id", policy: "readPublic", build: getProjectHandler },
 	{
 		method: "GET",
 		pattern: "/projects/:id/warren-config",
