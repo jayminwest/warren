@@ -146,6 +146,8 @@ export interface CreateRunInput {
 	targetBranch?: string;
 	providerOverride?: string;
 	modelOverride?: string;
+	/** Run trigger label (warren-97a2); defaults to the server's own default when omitted. */
+	trigger?: string;
 	seedId?: string;
 	dispatcherHandle?: string;
 	/** Continuation parent (warren-4b11): seed the workspace from this run's branch. */
@@ -168,6 +170,8 @@ export interface DispatchRunInput {
 	model?: string;
 	/** Maps to CreateRunInput.providerOverride. */
 	provider?: string;
+	/** Maps to CreateRunInput.trigger (warren-97a2). */
+	trigger?: string;
 	seedId?: string;
 	dispatcherHandle?: string;
 	/** Maps to CreateRunInput.continueFromRunId (warren-4b11). */

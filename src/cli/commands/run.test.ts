@@ -1,14 +1,12 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import type { Burrow, Run as BurrowRun } from "@os-eco/burrow-cli";
-import { openDatabase, type WarrenDb } from "../../db/client.ts";
-import { createRepos, type Repos } from "../../db/repos/index.ts";
-import type { RunRow, RunTerminalState } from "../../db/schema.ts";
+import { describe, expect, test } from "bun:test";
 import {
-	type BridgeRunStreamResult,
-	RunEventBroker,
-	type SpawnRunResult,
-} from "../../runs/index.ts";
-import type { RuntimeProvider } from "../../runtime/contract.ts";
+	type CreateRunInput,
+	type RunEvent,
+	type RunRow,
+	type SpawnRunResponse,
+	type WarrenClient,
+	WarrenUnreachableError,
+} from "../../client/index.ts";
 import type { CliContext } from "../output.ts";
 import { runRun } from "./run.ts";
 
@@ -22,457 +20,239 @@ function captureContext(): { context: CliContext; out: string[]; err: string[] }
 			stderr: { write: (c) => err.push(c) },
 		},
 		spawn: async () => ({ stdout: "", stderr: "", exitCode: 0 }),
-		now: () => new Date("2026-05-08T12:00:00.000Z"),
 	};
 	return { context, out, err };
 }
 
-/**
- * Minimal RuntimeProvider stub (warren-11cc). The run-command tests stub
- * spawn/bridge/reap/fetchBurrowRunState, so the provider's methods are never
- * actually driven here — it exists to satisfy the required `runtimeProvider`
- * dep. `capabilities.previewPorts` is `false` so the preview sub-step stays
- * dark (tests wire `previewSidecars` explicitly if they need it).
- */
-function fakeProvider(): RuntimeProvider {
-	const notWired = () => {
-		throw new Error("fakeProvider: method not wired for this test");
-	};
+function parseLines(chunks: string[]): Array<Record<string, unknown>> {
+	return chunks
+		.join("")
+		.trimEnd()
+		.split("\n")
+		.filter(Boolean)
+		.map((l) => JSON.parse(l) as Record<string, unknown>);
+}
+
+function runRow(over: Partial<RunRow> = {}): RunRow {
 	return {
-		capabilities: {
-			previewPorts: false,
-			networkPolicy: "domain-allowlist",
-			longLived: true,
-			midRunSteering: true,
-			enforcedResourceLimits: true,
-			workspaceArchive: true,
-			workspaceGc: true,
+		id: "run-1",
+		agentName: "claude-code",
+		projectId: "prj_1",
+		burrowId: "bur-1",
+		burrowRunId: "brun-1",
+		seedId: null,
+		parentRunId: null,
+		cloneKind: null,
+		mode: "batch",
+		renderedAgentJson: {},
+		state: "succeeded",
+		failureReason: null,
+		startedAt: "2026-08-04T00:00:00.000Z",
+		endedAt: "2026-08-04T00:01:00.000Z",
+		prompt: "do the thing",
+		trigger: "cli",
+		prUrl: "https://github.com/os-eco/warren/pull/42",
+		targetBranch: null,
+		salvageRef: null,
+		salvagePath: null,
+		costUsd: 0.01,
+		tokensInput: 10,
+		tokensOutput: 20,
+		tokensCacheRead: 0,
+		tokensCacheWrite: 0,
+		previewState: null,
+		previewPort: null,
+		previewStartedAt: null,
+		previewLastHitAt: null,
+		previewFailureMessage: null,
+		...over,
+	};
+}
+
+function runEvent(seq: number): RunEvent {
+	return {
+		id: seq,
+		runId: "run-1",
+		seq,
+		ts: `2026-08-04T00:00:0${seq}.000Z`,
+		kind: "stdout",
+		stream: "stdout",
+		payload: { text: `line ${seq}` },
+	};
+}
+
+interface MockClientInput {
+	readonly probeError?: Error;
+	readonly createError?: Error;
+	readonly events?: readonly RunEvent[];
+	readonly streamError?: Error;
+	readonly row?: RunRow;
+	readonly createCalls?: CreateRunInput[];
+	readonly onStream?: (signal?: AbortSignal) => void;
+}
+
+/** Mocked WarrenClient (warren-97a2): the run command never touches a DB or a socket. */
+function mockClient(input: MockClientInput = {}): WarrenClient {
+	const events = input.events ?? [];
+	return {
+		probe: async () => {
+			if (input.probeError !== undefined) throw input.probeError;
 		},
-		create: notWired as never,
-		streamEvents: notWired as never,
-		status: notWired as never,
-		sendMessage: notWired as never,
-		cancel: notWired as never,
-		workspaceInfo: notWired as never,
-		finalize: notWired as never,
-		terminate: notWired as never,
-	};
+		createRun: async (body: CreateRunInput) => {
+			input.createCalls?.push(body);
+			if (input.createError !== undefined) throw input.createError;
+			const spawned: SpawnRunResponse = {
+				run: input.row ?? runRow(),
+				burrow: { id: "bur-1", workspacePath: "/ws/run-1" },
+			};
+			return spawned;
+		},
+		streamRunEvents: (_runId: string, opts?: { signal?: AbortSignal }) =>
+			(async function* (): AsyncGenerator<RunEvent, void, void> {
+				input.onStream?.(opts?.signal);
+				for (const event of events) {
+					if (opts?.signal?.aborted === true) {
+						throw new DOMException("The operation was aborted", "AbortError");
+					}
+					yield event;
+				}
+				if (input.streamError !== undefined) throw input.streamError;
+				if (opts?.signal?.aborted === true) {
+					throw new DOMException("The operation was aborted", "AbortError");
+				}
+			})(),
+		getRun: async () => input.row ?? runRow(),
+	} as unknown as WarrenClient;
 }
 
-function fakeRunDeps(_repos: Repos): { runtimeProvider: RuntimeProvider } {
-	return { runtimeProvider: fakeProvider() };
-}
-
-function buildSpawnStub(repos: Repos, agentName: string, projectId: string) {
-	return async (): Promise<SpawnRunResult> => {
-		const run: RunRow = await repos.runs.create({
-			agentName,
-			projectId,
-			prompt: "fix the bug",
-			renderedAgentJson: { name: agentName, version: 1, sections: { system: "x" } },
-			trigger: "cli",
-			now: new Date("2026-05-08T12:00:00.000Z"),
-		});
-		const burrow: Burrow = {
-			id: "bur_aaaaaaaaaaaa",
-			parentId: null,
-			kind: "task",
-			name: null,
-			projectRoot: "/tmp/p",
-			workspacePath: "/tmp/p/ws",
-			branch: "warren/run/x",
-			provider: "local",
-			providerStateJson: null,
-			profileJson: {},
-			state: "active",
-			createdAt: new Date(),
-			updatedAt: new Date(),
-			destroyedAt: null,
-		};
-		const burrowRun: BurrowRun = {
-			id: "run_zzzzzzzzzzzz",
-			burrowId: burrow.id,
-			agentId: agentName,
-			prompt: "fix the bug",
-			resumeOfRunId: null,
-			state: "queued",
-			exitCode: null,
-			errorMessage: null,
-			metadataJson: null,
-			queuedAt: new Date(),
-			startedAt: null,
-			completedAt: null,
-		};
-		await repos.runs.attachBurrow(run.id, { burrowId: burrow.id, burrowRunId: burrowRun.id });
-		return {
-			run,
-			burrow,
-			burrowRun,
-			agent: {
-				name: agentName,
-				version: 1,
-				sections: { system: "x" },
-				resolvedFrom: [],
-				frontmatter: {},
-			},
-		};
-	};
-}
+const ARGS = { agent: "claude-code", project: "prj_1", prompt: "do the thing" };
 
 describe("runRun", () => {
-	let db: WarrenDb;
-	let repos: Repos;
-
-	beforeEach(async () => {
-		db = await openDatabase({ path: ":memory:" });
-		repos = createRepos(db);
-		// Seed an agent + project so referential checks would pass for spawnRun
-		// callers; the stubbed spawn we install below does not actually consult
-		// these, but inserting them documents the contract.
-		await repos.agents.upsert({
-			name: "refactor-bot",
-			renderedJson: { name: "refactor-bot", version: 1, sections: { system: "x" } },
-			now: new Date("2026-05-08T12:00:00.000Z"),
-		});
-		await repos.projects.create({
-			gitUrl: "https://github.com/x/y.git",
-			localPath: "/tmp/p",
-			defaultBranch: "main",
-			now: new Date("2026-05-08T12:00:00.000Z"),
-		});
-	});
-
-	afterEach(async () => {
-		await db.close();
-	});
-
-	test("rejects missing args with exit 2", async () => {
-		const { context } = captureContext();
-		const result = await runRun(
-			context,
-			{ repos, ...fakeRunDeps(repos) },
-			{ agent: "", project: "", prompt: "" },
-		);
+	test("rejects empty agent/project/prompt with exit 2", async () => {
+		const { context, err } = captureContext();
+		const result = await runRun(context, { client: mockClient() }, { ...ARGS, prompt: "" });
 		expect(result.exitCode).toBe(2);
+		expect(err.join("")).toContain("--prompt are all required");
 	});
 
-	test("orchestrates spawn → tail → reap and exits 0 on succeeded", async () => {
-		const projectId = (await repos.projects.listAll())[0]?.id as string;
-		const broker = new RunEventBroker();
-		const { context, out, err } = captureContext();
-
-		// Bridge resolves immediately; the runner closes the broker in `finally`,
-		// so the tail iterator returns empty.
-		const bridgeStub = (async (): Promise<BridgeRunStreamResult> => ({
-			written: 0,
-			skipped: 0,
-			errored: false,
-		})) as never;
-
-		const reapStub = (async (input: { runId: string; outcome: RunTerminalState }) => {
-			await repos.runs.markRunning(input.runId, new Date("2026-05-08T12:00:01.000Z"));
-			await repos.runs.finalize(input.runId, input.outcome, new Date("2026-05-08T12:00:02.000Z"));
-			return {
-				state: input.outcome,
-				mulchUpdated: 0,
-				mulchSkipped: 0,
-				mulchAppended: 0,
-				seedsClosed: 0,
-				seedsCreated: 0,
-				branchPushed: false,
-				errors: [],
-				alreadyTerminal: false,
-			};
-		}) as never;
-
-		const result = await runRun(
-			context,
-			{
-				repos,
-				...fakeRunDeps(repos),
-				broker,
-				spawn: buildSpawnStub(repos, "refactor-bot", projectId) as never,
-				bridge: bridgeStub,
-				reap: reapStub,
-				fetchBurrowRunState: async () => "succeeded",
-			},
-			{ agent: "refactor-bot", project: projectId, prompt: "fix the bug" },
-		);
-
-		expect(err).toEqual([]);
-		expect(result.exitCode).toBe(0);
-		expect(result.state).toBe("succeeded");
-		const events = out.map((l) => JSON.parse(l) as { event: string });
-		const kinds = events.map((e) => e.event);
-		expect(kinds).toContain("run.spawned");
-		expect(kinds).toContain("run.reaped");
-	});
-
-	test("exits 1 when reap reports a non-success terminal state", async () => {
-		const projectId = (await repos.projects.listAll())[0]?.id as string;
-		const broker = new RunEventBroker();
-		const { context } = captureContext();
-
-		const bridgeStub = (async (): Promise<BridgeRunStreamResult> => ({
-			written: 0,
-			skipped: 0,
-			errored: false,
-		})) as never;
-		const reapStub = (async (input: { runId: string; outcome: RunTerminalState }) => {
-			await repos.runs.markRunning(input.runId, new Date("2026-05-08T12:00:01.000Z"));
-			await repos.runs.finalize(input.runId, input.outcome, new Date("2026-05-08T12:00:02.000Z"));
-			return {
-				state: input.outcome,
-				mulchUpdated: 0,
-				mulchSkipped: 0,
-				mulchAppended: 0,
-				seedsClosed: 0,
-				seedsCreated: 0,
-				branchPushed: false,
-				errors: [],
-				alreadyTerminal: false,
-			};
-		}) as never;
-
-		const result = await runRun(
-			context,
-			{
-				repos,
-				...fakeRunDeps(repos),
-				broker,
-				spawn: buildSpawnStub(repos, "refactor-bot", projectId) as never,
-				bridge: bridgeStub,
-				reap: reapStub,
-				fetchBurrowRunState: async () => "failed",
-			},
-			{ agent: "refactor-bot", project: projectId, prompt: "fix the bug" },
-		);
-
-		expect(result.exitCode).toBe(1);
-		expect(result.state).toBe("failed");
-	});
-
-	test("prefers the bridge's in-stream terminal outcome over the status probe", async () => {
-		// warren-2909 / GH #663: the terminal result envelope lands before burrow
-		// finalizes the run row, so a one-shot status() probe still reads
-		// `running`. The bridge's terminalDetected (in-stream detection) must win
-		// and the probe must not fire at all.
-		const projectId = (await repos.projects.listAll())[0]?.id as string;
-		const broker = new RunEventBroker();
-		const { context } = captureContext();
-
-		const bridgeStub = (async (): Promise<BridgeRunStreamResult> => ({
-			written: 0,
-			skipped: 0,
-			errored: false,
-			terminalDetected: { outcome: "succeeded" },
-		})) as never;
-		const reapStub = (async (input: { runId: string; outcome: RunTerminalState }) => {
-			await repos.runs.markRunning(input.runId, new Date("2026-05-08T12:00:01.000Z"));
-			await repos.runs.finalize(input.runId, input.outcome, new Date("2026-05-08T12:00:02.000Z"));
-			return {
-				state: input.outcome,
-				mulchUpdated: 0,
-				mulchSkipped: 0,
-				mulchAppended: 0,
-				seedsClosed: 0,
-				seedsCreated: 0,
-				branchPushed: false,
-				errors: [],
-				alreadyTerminal: false,
-			};
-		}) as never;
-
-		let probeCalls = 0;
-		const result = await runRun(
-			context,
-			{
-				repos,
-				...fakeRunDeps(repos),
-				broker,
-				spawn: buildSpawnStub(repos, "refactor-bot", projectId) as never,
-				bridge: bridgeStub,
-				reap: reapStub,
-				fetchBurrowRunState: async () => {
-					probeCalls++;
-					return "failed";
-				},
-			},
-			{ agent: "refactor-bot", project: projectId, prompt: "fix the bug" },
-		);
-
-		expect(result.exitCode).toBe(0);
-		expect(result.state).toBe("succeeded");
-		expect(probeCalls).toBe(0);
-	});
-
-	test("threads the bridge's terminal failureReason into reap", async () => {
-		// warren-2909: an in-stream failure reason (e.g. oom_killed) must reach
-		// reap instead of being re-inferred as `crashed`.
-		const projectId = (await repos.projects.listAll())[0]?.id as string;
-		const broker = new RunEventBroker();
-		const { context } = captureContext();
-
-		const bridgeStub = (async (): Promise<BridgeRunStreamResult> => ({
-			written: 0,
-			skipped: 0,
-			errored: false,
-			terminalDetected: { outcome: "failed", failureReason: "oom_killed" },
-		})) as never;
-
-		let reapedFailureReason: unknown;
-		const reapStub = (async (input: {
-			runId: string;
-			outcome: RunTerminalState;
-			failureReason?: unknown;
-		}) => {
-			reapedFailureReason = input.failureReason;
-			await repos.runs.markRunning(input.runId, new Date("2026-05-08T12:00:01.000Z"));
-			await repos.runs.finalize(input.runId, input.outcome, new Date("2026-05-08T12:00:02.000Z"));
-			return {
-				state: input.outcome,
-				mulchUpdated: 0,
-				mulchSkipped: 0,
-				mulchAppended: 0,
-				seedsClosed: 0,
-				seedsCreated: 0,
-				branchPushed: false,
-				errors: [],
-				alreadyTerminal: false,
-			};
-		}) as never;
-
-		const result = await runRun(
-			context,
-			{
-				repos,
-				...fakeRunDeps(repos),
-				broker,
-				spawn: buildSpawnStub(repos, "refactor-bot", projectId) as never,
-				bridge: bridgeStub,
-				reap: reapStub,
-				fetchBurrowRunState: async () => "succeeded",
-			},
-			{ agent: "refactor-bot", project: projectId, prompt: "fix the bug" },
-		);
-
-		expect(result.exitCode).toBe(1);
-		expect(result.state).toBe("failed");
-		expect(reapedFailureReason).toBe("oom_killed");
-	});
-
-	test("falls back to the status probe when the bridge detects no terminal envelope", async () => {
-		const projectId = (await repos.projects.listAll())[0]?.id as string;
-		const broker = new RunEventBroker();
-		const { context } = captureContext();
-
-		const bridgeStub = (async (): Promise<BridgeRunStreamResult> => ({
-			written: 0,
-			skipped: 0,
-			errored: false,
-		})) as never;
-		const reapStub = (async (input: { runId: string; outcome: RunTerminalState }) => {
-			await repos.runs.markRunning(input.runId, new Date("2026-05-08T12:00:01.000Z"));
-			await repos.runs.finalize(input.runId, input.outcome, new Date("2026-05-08T12:00:02.000Z"));
-			return {
-				state: input.outcome,
-				mulchUpdated: 0,
-				mulchSkipped: 0,
-				mulchAppended: 0,
-				seedsClosed: 0,
-				seedsCreated: 0,
-				branchPushed: false,
-				errors: [],
-				alreadyTerminal: false,
-			};
-		}) as never;
-
-		let probeCalls = 0;
-		const result = await runRun(
-			context,
-			{
-				repos,
-				...fakeRunDeps(repos),
-				broker,
-				spawn: buildSpawnStub(repos, "refactor-bot", projectId) as never,
-				bridge: bridgeStub,
-				reap: reapStub,
-				fetchBurrowRunState: async () => {
-					probeCalls++;
-					return "succeeded";
-				},
-			},
-			{ agent: "refactor-bot", project: projectId, prompt: "fix the bug" },
-		);
-
-		expect(result.exitCode).toBe(0);
-		expect(result.state).toBe("succeeded");
-		expect(probeCalls).toBe(1);
-	});
-
-	test("reads the terminal state through provider.status when no override is wired", async () => {
-		const projectId = (await repos.projects.listAll())[0]?.id as string;
-		const broker = new RunEventBroker();
-		const { context } = captureContext();
-
-		const bridgeStub = (async (): Promise<BridgeRunStreamResult> => ({
-			written: 0,
-			skipped: 0,
-			errored: false,
-		})) as never;
-		const reapStub = (async (input: { runId: string; outcome: RunTerminalState }) => {
-			await repos.runs.markRunning(input.runId, new Date("2026-05-08T12:00:01.000Z"));
-			await repos.runs.finalize(input.runId, input.outcome, new Date("2026-05-08T12:00:02.000Z"));
-			return {
-				state: input.outcome,
-				mulchUpdated: 0,
-				mulchSkipped: 0,
-				mulchAppended: 0,
-				seedsClosed: 0,
-				seedsCreated: 0,
-				branchPushed: false,
-				errors: [],
-				alreadyTerminal: false,
-			};
-		}) as never;
-
-		// A provider whose `status()` reports the run's terminal phase; the run
-		// command's default terminal-state read must dispatch through it (warren-11cc).
-		const provider = fakeProvider();
-		let statusHandle: unknown;
-		const providerWithStatus: RuntimeProvider = {
-			...provider,
-			status: (async (handle: unknown) => {
-				statusHandle = handle;
-				return {
-					phase: "succeeded",
-					exitCode: 0,
-					lastEventSeq: 0,
-					lastEventTs: null,
-					exists: true,
-				};
-			}) as never,
-		};
-
-		const result = await runRun(
-			context,
-			{
-				repos,
-				runtimeProvider: providerWithStatus,
-				broker,
-				spawn: buildSpawnStub(repos, "refactor-bot", projectId) as never,
-				bridge: bridgeStub,
-				reap: reapStub,
-			},
-			{ agent: "refactor-bot", project: projectId, prompt: "fix the bug" },
-		);
-
-		expect(result.exitCode).toBe(0);
-		expect(result.state).toBe("succeeded");
-		// The handle carried the burrow sandbox + run ids the spawn stub attached.
-		expect(statusHandle).toMatchObject({
-			sandboxId: "bur_aaaaaaaaaaaa",
-			providerRunId: "run_zzzzzzzzzzzz",
+	test("an unreachable server exits 1 before dispatching", async () => {
+		const { context, err } = captureContext();
+		const createCalls: CreateRunInput[] = [];
+		const client = mockClient({
+			probeError: new WarrenUnreachableError("connection refused"),
+			createCalls,
 		});
+		const result = await runRun(context, { client }, ARGS);
+		expect(result.exitCode).toBe(1);
+		expect(err.join("")).toContain("connection refused");
+		expect(createCalls).toEqual([]);
+	});
+
+	test("dispatches via POST /runs with the trigger + overrides forwarded", async () => {
+		const { context } = captureContext();
+		const createCalls: CreateRunInput[] = [];
+		const result = await runRun(
+			context,
+			{ client: mockClient({ createCalls }) },
+			{ ...ARGS, trigger: "manual", providerOverride: "anthropic", modelOverride: "opus" },
+		);
+		expect(result.exitCode).toBe(0);
+		expect(createCalls).toEqual([
+			{
+				agent: "claude-code",
+				project: "prj_1",
+				prompt: "do the thing",
+				trigger: "manual",
+				providerOverride: "anthropic",
+				modelOverride: "opus",
+			},
+		]);
+	});
+
+	test("defaults the trigger label to cli", async () => {
+		const { context } = captureContext();
+		const createCalls: CreateRunInput[] = [];
+		await runRun(context, { client: mockClient({ createCalls }) }, ARGS);
+		expect(createCalls[0]?.trigger).toBe("cli");
+	});
+
+	test("streams events as NDJSON and exits 0 on succeeded", async () => {
+		const { context, out } = captureContext();
+		const result = await runRun(
+			context,
+			{ client: mockClient({ events: [runEvent(1), runEvent(2)] }) },
+			ARGS,
+		);
+		expect(result.exitCode).toBe(0);
+		expect(result.runId).toBe("run-1");
+		expect(result.state).toBe("succeeded");
+		const lines = parseLines(out);
+		expect(lines[0]?.event).toBe("run.spawned");
+		expect(lines[1]?.event).toBe("run.event");
+		expect(lines[1]?.seq).toBe(1);
+		expect(lines[2]?.event).toBe("run.event");
+		expect(lines[3]?.event).toBe("run.terminal");
+		expect(lines[3]?.state).toBe("succeeded");
+		expect(lines[3]?.prUrl).toBe("https://github.com/os-eco/warren/pull/42");
+	});
+
+	test("a failed terminal state exits 1", async () => {
+		const { context } = captureContext();
+		const result = await runRun(
+			context,
+			{ client: mockClient({ row: runRow({ state: "failed", failureReason: "oom_killed" }) }) },
+			ARGS,
+		);
+		expect(result.exitCode).toBe(1);
+		expect(result.state).toBe("failed");
+	});
+
+	test("a dispatch failure exits 1 with the server error on stderr", async () => {
+		const { context, err } = captureContext();
+		const client = mockClient({ createError: new Error("unknown agent: nope") });
+		const result = await runRun(context, { client }, ARGS);
+		expect(result.exitCode).toBe(1);
+		expect(err.join("")).toContain("unknown agent");
+	});
+
+	test("a mid-stream transport error exits 1", async () => {
+		const { context, err } = captureContext();
+		const client = mockClient({ streamError: new Error("socket hangup") });
+		const result = await runRun(context, { client }, ARGS);
+		expect(result.exitCode).toBe(1);
+		expect(err.join("")).toContain("socket hangup");
+	});
+
+	test("SIGINT detaches the tail without cancelling the remote run (exit 130)", async () => {
+		const { context, err } = captureContext();
+		let sigintHandler: (() => void) | undefined;
+		const client = mockClient({
+			events: [runEvent(1)],
+			onStream: () => sigintHandler?.(),
+		});
+		const result = await runRun(
+			context,
+			{
+				client,
+				onSigint: (handler) => {
+					sigintHandler = handler;
+					return () => undefined;
+				},
+			},
+			ARGS,
+		);
+		expect(result.exitCode).toBe(130);
+		expect(err.join("")).toContain("detaching from run run-1");
+	});
+
+	test("a non-terminal read-back after the stream closes counts as failed", async () => {
+		const { context } = captureContext();
+		const result = await runRun(
+			context,
+			{ client: mockClient({ row: runRow({ state: "running" }) }) },
+			ARGS,
+		);
+		expect(result.exitCode).toBe(1);
+		expect(result.state).toBe("failed");
 	});
 });

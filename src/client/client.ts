@@ -196,6 +196,7 @@ export class WarrenClient {
 		if (input.targetBranch !== undefined) body.targetBranch = input.targetBranch;
 		if (input.model !== undefined) body.modelOverride = input.model;
 		if (input.provider !== undefined) body.providerOverride = input.provider;
+		if (input.trigger !== undefined) body.trigger = input.trigger;
 		if (input.seedId !== undefined) body.seedId = input.seedId;
 		if (input.dispatcherHandle !== undefined) body.dispatcherHandle = input.dispatcherHandle;
 		if (input.continueFromRunId !== undefined) body.continueFromRunId = input.continueFromRunId;

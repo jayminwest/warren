@@ -3,7 +3,7 @@
  * CLI for cloud plan-runs (warren-ec6a, pl-55df step 2).
  *
  * Unlike the DB-backed commands (`warren run`, `warren serve`, …), the `plan`
- * group talks to a remote warren over HTTP via {@link WarrenClient.fromEnv} —
+ * group talks to a remote warren over HTTP via {@link resolveWarrenClient} —
  * it is the first command without `withCliDb`. The flow mirrors `warren run`:
  * probe the server first (turning a down warren into a friendly error rather
  * than a mid-stream transport throw), POST `/plan-runs`, print the
@@ -26,9 +26,10 @@ import type { CliContext } from "../output.ts";
 import { formatError } from "../output.ts";
 import { createRenderer, type PlanRunOutput, type PlanRunRenderer } from "../plan-run-renderer.ts";
 import { guardRemotePlanRun, probeOrReport } from "./probe.ts";
+import { type RemoteTailDeps, tailOutcomeExit, tailWithDetach } from "./remote-tail.ts";
 
-/** Exit code emitted when the operator detaches a live tail with SIGINT. */
-const SIGINT_EXIT_CODE = 130;
+// Re-exported for the test seam (warren-97a2: the type moved to remote-tail.ts).
+export type { SigintDisposer } from "./remote-tail.ts";
 
 export interface PlanRunArgs {
 	readonly planId: string;
@@ -50,23 +51,7 @@ export interface PlanCancelArgs {
 	readonly output?: PlanRunOutput;
 }
 
-/** Disposer returned by {@link PlanRunDeps.onSigint}. */
-export type SigintDisposer = () => void;
-
-export interface PlanRunDeps {
-	/** Remote warren client. Production wires `WarrenClient.fromEnv(context.env)`. */
-	readonly client: WarrenClient;
-	/**
-	 * SIGINT seam (tests). Registers `handler` and returns a disposer that
-	 * unregisters it. Production wires `process.on("SIGINT", …)`. When omitted
-	 * the command falls back to the live `process` registration.
-	 */
-	readonly onSigint?: (handler: () => void) => SigintDisposer;
-	/** Hard-exit seam (tests). Defaults to `process.exit`. */
-	readonly exit?: (code: number) => never;
-	/** Override the probe timeout (tests). */
-	readonly probeTimeoutMs?: number;
-}
+export interface PlanRunDeps extends RemoteTailDeps {}
 
 export interface PlanCancelDeps {
 	readonly client: WarrenClient;
@@ -82,14 +67,6 @@ export interface PlanRunResult {
 export interface PlanCancelResult {
 	readonly exitCode: number;
 	readonly planRunId?: string;
-}
-
-/** Default SIGINT registration against the live process (production). */
-function defaultOnSigint(handler: () => void): SigintDisposer {
-	process.on("SIGINT", handler);
-	return () => {
-		process.off("SIGINT", handler);
-	};
 }
 
 export async function runPlanRun(
@@ -144,45 +121,19 @@ async function tailUntilTerminal(
 	renderer: PlanRunRenderer,
 	planRunId: string,
 ): Promise<PlanRunResult> {
-	const onSigint = deps.onSigint ?? defaultOnSigint;
-	const exit = deps.exit ?? (process.exit as (code: number) => never);
-	const tailAbort = new AbortController();
-	let interrupted = false;
-
-	const dispose = onSigint(() => {
-		if (interrupted) {
-			// Second SIGINT: stop waiting and hand control back to the shell.
-			exit(SIGINT_EXIT_CODE);
-			return;
-		}
-		interrupted = true;
-		context.stdio.stderr.write(
+	const outcome = await tailWithDetach({
+		context,
+		detachHint:
 			`warren: detaching from plan-run ${planRunId} (the remote run keeps going; ` +
-				`'warren plan cancel ${planRunId}' to stop it). Ctrl-C again to exit.\n`,
-		);
-		tailAbort.abort();
+			`'warren plan cancel ${planRunId}' to stop it). Ctrl-C again to exit.\n`,
+		stream: (signal) => deps.client.streamPlanRunEvents(planRunId, { follow: true, signal }),
+		onEvent: (event) => renderer.event(event),
+		onSigint: deps.onSigint,
+		exit: deps.exit,
 	});
 
-	try {
-		for await (const event of deps.client.streamPlanRunEvents(planRunId, {
-			follow: true,
-			signal: tailAbort.signal,
-		})) {
-			renderer.event(event);
-		}
-	} catch (err) {
-		if (!interrupted) {
-			dispose();
-			context.stdio.stderr.write(`warren: ${formatError(err)}\n`);
-			return { exitCode: 1, planRunId };
-		}
-		// Interrupted tails surface an AbortError — swallow it.
-	} finally {
-		dispose();
-	}
-
-	if (interrupted) {
-		return { exitCode: SIGINT_EXIT_CODE, planRunId };
+	if (outcome.kind !== "completed") {
+		return { exitCode: tailOutcomeExit(context, outcome), planRunId };
 	}
 
 	return resolveTerminal(context, deps, renderer, planRunId);

@@ -2,11 +2,12 @@
  * `withCliDb` — open the warren DB, build a Repos handle, run the body,
  * and close the DB on exit (success or failure).
  *
- * `register-agent`, `add-project`, and `run` need DB access, but `serve`
- * owns its own DB lifecycle inside `bootServer`. `doctor` also opens
- * via `withCliDb` so its `db_reachable` check can probe the live handle.
- * So this lifecycle helper is opt-in per command rather than baked into
- * `CliContext`.
+ * Post-warren-97a2 (owner decision D3) the only remaining consumer is
+ * `doctor --local`, the deployment-side half of doctor, which opens via
+ * `withCliDb` so its `db_reachable` check can probe the live handle.
+ * Every remote-capable command (`run`, `add-project`, `init`,
+ * `config migrate`, the `plan` group) drives the server through the
+ * WarrenClient SDK instead — see `src/cli/client.ts`.
  *
  * The DB URL resolves the same way `bootServer` resolves it (see
  * `server/config.ts`): explicit `WARREN_DB_URL`, else `WARREN_DB_PATH`

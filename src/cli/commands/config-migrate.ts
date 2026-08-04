@@ -26,8 +26,8 @@ import { existsSync } from "node:fs";
 import { readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { dump } from "js-yaml";
+import type { WarrenClient } from "../../client/index.ts";
 import { ValidationError } from "../../core/errors.ts";
-import type { ProjectsRepo } from "../../db/repos/projects.ts";
 import {
 	WARREN_CONFIG_DIR,
 	WARREN_CONFIG_FILES,
@@ -47,7 +47,11 @@ export type ConfigMigrateArgs =
 	| { readonly mode: "project"; readonly projectId: string };
 
 export interface ConfigMigrateDeps {
-	readonly projects: ProjectsRepo;
+	/**
+	 * Remote warren client (warren-97a2). `--project` resolves the clone
+	 * path via `GET /projects/:id`; the CLI no longer opens the server's DB.
+	 */
+	readonly client: WarrenClient;
 }
 
 export interface ConfigMigrateResult {
@@ -73,7 +77,7 @@ export async function runConfigMigrate(
 	args: ConfigMigrateArgs,
 ): Promise<ConfigMigrateResult> {
 	try {
-		const targetDir = await resolveTargetDir(deps.projects, args);
+		const targetDir = await resolveTargetDir(deps.client, args);
 		const warrenDir = join(targetDir, WARREN_CONFIG_DIR);
 		const legacyAbs = join(warrenDir, WARREN_CONFIG_FILES.defaults);
 		const configAbs = join(warrenDir, WARREN_CONFIG_FILES.config);

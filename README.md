@@ -124,7 +124,7 @@ Warren ships enough operator-visible surface to stay inspectable without extra i
 - **Structured JSON logs.** The server emits one [pino](https://getpino.io) JSON line per event on stdout (name `warren`, level from `WARREN_LOG_LEVEL`, default `info`). Stream them with `docker compose logs -f warren` on a single box, or `kubectl -n warren logs deploy/warren` on a cluster. Pipe through `| jq` for ad-hoc filtering. Ship to an external store with a [pino transport](https://getpino.io/#/docs/transports) if you need retention beyond your log driver's window.
 - **Correlation IDs.** Every HTTP response carries an `X-Request-ID` header (`src/server/request-id.ts`, warren-30af). Warren honours a well-formed inbound `X-Request-ID` and otherwise mints one. The same id binds into the per-request pino child logger, so `jq 'select(.req_id == "…")'` over the logs reconstructs the full server-side trace for one client call. Forward the header from any reverse proxy in front of warren to keep the chain unbroken.
 - **Per-run cost and token usage.** Warren populates the `runs.cost_usd` and `runs.tokens_*` columns for the `pi` and `claude-code` built-ins (see [docs/design/agent-composition.md](docs/design/agent-composition.md)). The UI run-detail page surfaces them, and `GET /analytics/cost?from=&to=&projectId=` aggregates across runs (`src/db/repos/runs.ts:listForAnalytics`). A per-run `maxCostUsd` cap in `.warren/config.yaml` cancels a run at its spend ceiling (see [docs/design/warren-config.md](docs/design/warren-config.md)).
-- **Pre-flight checks.** Run `warren doctor` (`src/cli/commands/doctor.ts`) against a deployed instance. It surfaces common misconfigurations: empty or placeholder bearer tokens, unbalanced preview markers, and a missing `WARREN_PREVIEW_HOST` on a project that uses previews. Cheaper than reading the logs after a failed run.
+- **Pre-flight checks.** Run `warren doctor --local` (`src/cli/commands/doctor.ts`) on a deployed instance. It surfaces common misconfigurations: empty or placeholder bearer tokens, unbalanced preview markers, and a missing `WARREN_PREVIEW_HOST` on a project that uses previews. Cheaper than reading the logs after a failed run.
 
 V1 ships a bearer-gated Prometheus exposition endpoint (`GET /metrics`) that works under both runtimes. It carries no OpenTelemetry exporter. For richer tracing, the request-id and pino combination is the seam to extend. The route table (`ROUTE_TABLE` in `src/server/handlers/index.ts`) is the stable surface to instrument against.
 
@@ -253,20 +253,23 @@ Under `WARREN_RUNTIME=k8s` this diagram changes shape entirely: no burrow, no su
 
 The `warren` (or `wr`) admin CLI is for ops. The web UI is for daily work.
 
+Every remote-capable command talks to a warren server over HTTP — a local user is a remote user pointed at localhost. Server resolution: `--url`/`--token` flags, then `WARREN_BASE_URL` (default `http://localhost:8080`) / `WARREN_API_TOKEN`. The genuinely-local commands are `serve`, `db migrate-to-postgres`, and `doctor --local`.
+
 | Command | Description |
 |---|---|
-| `warren add-project <git-url>` | Clone a project under `/data/projects` |
-| `warren run <agent> <project> -p "..."` | One-shot run, no UI |
+| `warren add-project <git-url>` | Register a project (POST /projects); the server clones it under its projects root |
+| `warren run <agent> <project> -p "..."` | One-shot run, no UI: dispatch, tail events as NDJSON, exit with the terminal state |
 | `warren plan run <plan-id> --project <id> --agent <name>` | Dispatch a serial plan-run, tail events as NDJSON |
 | `warren plan cancel <plan-run-id>` | Cancel a plan-run and its in-flight child |
 | `warren plan status <plan-run-id>` | Child-state table with per-child cost and duration |
 | `warren plan list [--project --state]` | List plan-runs, optionally filtered |
 | `warren init` | Scaffold a `.warren/` directory in a project |
-| `warren doctor` | Runtime reachable? Bwrap working? DB reachable? |
+| `warren doctor` | Client half: server reachable? auth valid? version match? |
+| `warren doctor --local` | Deployment half: runtime reachable? Bwrap working? DB reachable? |
 | `warren serve` | Start the HTTP server (default in entrypoint) |
 | `warren db migrate-to-postgres --from <sqlite> --to <pg-url>` | One-shot SQLite → Postgres porter |
 
-`warren run claude-code <project> -p "..."` does the full composition end-to-end. It resolves the agent, provisions the sandbox, dispatches the run, streams events back, then pushes the branch. A project with `.mulch/` or `.seeds/` round-trips those too.
+`warren run claude-code <project> -p "..."` drives the full composition end-to-end through the server. The server resolves the agent, provisions the sandbox, dispatches the run, streams events back, then pushes the branch. A project with `.mulch/` or `.seeds/` round-trips those too.
 
 ## HTTP API
 

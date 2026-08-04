@@ -4,9 +4,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { load } from "js-yaml";
-import { openDatabase, type WarrenDb } from "../../db/client.ts";
-import { DrizzleAdapter } from "../../db/repos/drizzle-adapter.ts";
-import { ProjectsRepo } from "../../db/repos/projects.ts";
+import type { WarrenClient } from "../../client/index.ts";
 import type { CliContext } from "../output.ts";
 import { runConfigMigrate } from "./config-migrate.ts";
 
@@ -28,21 +26,18 @@ function captureContext(): { context: CliContext; out: string[]; err: string[] }
 }
 
 describe("runConfigMigrate (--cwd mode)", () => {
-	let db: WarrenDb;
-	let projects: ProjectsRepo;
+	// warren-97a2: deps are a WarrenClient now; --cwd mode never touches it.
+	const client = {} as WarrenClient;
 	let tmp: string;
 	let warrenDir: string;
 
 	beforeEach(async () => {
-		db = await openDatabase({ path: ":memory:" });
-		projects = new ProjectsRepo(DrizzleAdapter.for(db));
 		tmp = await mkdtemp(join(tmpdir(), "warren-config-migrate-"));
 		warrenDir = join(tmp, ".warren");
 		await mkdir(warrenDir, { recursive: true });
 	});
 
 	afterEach(async () => {
-		await db.close();
 		await rm(tmp, { recursive: true, force: true });
 	});
 
@@ -52,7 +47,7 @@ describe("runConfigMigrate (--cwd mode)", () => {
 			JSON.stringify({ defaultRole: "claude-code", defaultBranch: "main" }, null, 2),
 		);
 		const { context, out } = captureContext();
-		const result = await runConfigMigrate(context, { projects }, { mode: "cwd", cwd: tmp });
+		const result = await runConfigMigrate(context, { client }, { mode: "cwd", cwd: tmp });
 		expect(result.exitCode).toBe(0);
 
 		const stdout = JSON.parse(out.join(""));
@@ -89,7 +84,7 @@ describe("runConfigMigrate (--cwd mode)", () => {
 			),
 		);
 		const { context, out } = captureContext();
-		const result = await runConfigMigrate(context, { projects }, { mode: "cwd", cwd: tmp });
+		const result = await runConfigMigrate(context, { client }, { mode: "cwd", cwd: tmp });
 		expect(result.exitCode).toBe(0);
 
 		const stdout = JSON.parse(out.join(""));
@@ -113,7 +108,7 @@ describe("runConfigMigrate (--cwd mode)", () => {
 	test("empty defaults.json produces an empty config.yaml and no preview hoist", async () => {
 		await writeFile(join(warrenDir, "defaults.json"), "{}\n");
 		const { context, out } = captureContext();
-		const result = await runConfigMigrate(context, { projects }, { mode: "cwd", cwd: tmp });
+		const result = await runConfigMigrate(context, { client }, { mode: "cwd", cwd: tmp });
 		expect(result.exitCode).toBe(0);
 
 		const stdout = JSON.parse(out.join(""));
@@ -127,7 +122,7 @@ describe("runConfigMigrate (--cwd mode)", () => {
 		await writeFile(join(warrenDir, "defaults.json"), JSON.stringify({ defaultBranch: "main" }));
 		await writeFile(join(warrenDir, "config.yaml"), "defaultBranch: hand-written\n");
 		const { context, err } = captureContext();
-		const result = await runConfigMigrate(context, { projects }, { mode: "cwd", cwd: tmp });
+		const result = await runConfigMigrate(context, { client }, { mode: "cwd", cwd: tmp });
 		expect(result.exitCode).toBe(2);
 		expect(err.join("")).toContain("refusing to overwrite");
 		// defaults.json untouched on refusal so the operator can re-run.
@@ -141,7 +136,7 @@ describe("runConfigMigrate (--cwd mode)", () => {
 		);
 		await writeFile(join(warrenDir, "preview.yaml"), "type: server\ncommand: existing\nport: 1\n");
 		const { context, err } = captureContext();
-		const result = await runConfigMigrate(context, { projects }, { mode: "cwd", cwd: tmp });
+		const result = await runConfigMigrate(context, { client }, { mode: "cwd", cwd: tmp });
 		expect(result.exitCode).toBe(2);
 		expect(err.join("")).toContain("refusing to overwrite");
 		expect(existsSync(join(warrenDir, "defaults.json"))).toBe(true);
@@ -150,7 +145,7 @@ describe("runConfigMigrate (--cwd mode)", () => {
 	test("malformed JSON aborts with exit 2 and leaves the file in place", async () => {
 		await writeFile(join(warrenDir, "defaults.json"), "{not-valid");
 		const { context, err } = captureContext();
-		const result = await runConfigMigrate(context, { projects }, { mode: "cwd", cwd: tmp });
+		const result = await runConfigMigrate(context, { client }, { mode: "cwd", cwd: tmp });
 		expect(result.exitCode).toBe(2);
 		expect(err.join("")).toMatch(/failed to parse/);
 		expect(existsSync(join(warrenDir, "defaults.json"))).toBe(true);
@@ -160,7 +155,7 @@ describe("runConfigMigrate (--cwd mode)", () => {
 	test("schema-invalid defaults aborts with exit 2 and leaves the file in place", async () => {
 		await writeFile(join(warrenDir, "defaults.json"), JSON.stringify({ defaultRole: "" }));
 		const { context, err } = captureContext();
-		const result = await runConfigMigrate(context, { projects }, { mode: "cwd", cwd: tmp });
+		const result = await runConfigMigrate(context, { client }, { mode: "cwd", cwd: tmp });
 		expect(result.exitCode).toBe(2);
 		expect(err.join("")).toMatch(/schema validation/);
 		expect(existsSync(join(warrenDir, "defaults.json"))).toBe(true);
@@ -168,7 +163,7 @@ describe("runConfigMigrate (--cwd mode)", () => {
 
 	test("no defaults.json present → exit 2 with a 'nothing to migrate' hint", async () => {
 		const { context, err } = captureContext();
-		const result = await runConfigMigrate(context, { projects }, { mode: "cwd", cwd: tmp });
+		const result = await runConfigMigrate(context, { client }, { mode: "cwd", cwd: tmp });
 		expect(result.exitCode).toBe(2);
 		expect(err.join("")).toMatch(/nothing to migrate/);
 	});

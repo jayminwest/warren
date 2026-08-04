@@ -153,6 +153,18 @@ export async function runDoctor(
 		});
 	}
 
+	return emitDoctorReport(context, checks);
+}
+
+/**
+ * Write the checks as NDJSON, emit the stderr banner on any failure, and
+ * map all-ok to the exit code. Shared by both doctor halves (warren-97a2):
+ * the local half here and the client half in `doctor-remote.ts`.
+ */
+export function emitDoctorReport(
+	context: CliContext,
+	checks: readonly DoctorCheck[],
+): { readonly exitCode: number; readonly checks: readonly DoctorCheck[] } {
 	for (const check of checks) {
 		writeJsonLine(context.stdio.stdout, check);
 	}

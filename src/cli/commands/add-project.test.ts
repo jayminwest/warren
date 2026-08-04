@@ -1,21 +1,15 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { openDatabase, type WarrenDb } from "../../db/client.ts";
-import { DrizzleAdapter } from "../../db/repos/drizzle-adapter.ts";
-import { ProjectsRepo } from "../../db/repos/projects.ts";
-import type { ProjectsConfig } from "../../projects/config.ts";
-import type { CliContext, SpawnResult } from "../output.ts";
+import { describe, expect, test } from "bun:test";
+import {
+	type CreateProjectInput,
+	type ProjectRow,
+	type WarrenClient,
+	WarrenClientError,
+	WarrenUnreachableError,
+} from "../../client/index.ts";
+import type { CliContext } from "../output.ts";
 import { runAddProject } from "./add-project.ts";
 
-const CFG: ProjectsConfig = {
-	root: "/tmp/projects-cli",
-	gitBinary: "git",
-};
-
-function captureContext(spawnResults?: (cmd: readonly string[]) => SpawnResult): {
-	context: CliContext;
-	out: string[];
-	err: string[];
-} {
+function captureContext(): { context: CliContext; out: string[]; err: string[] } {
 	const out: string[] = [];
 	const err: string[] = [];
 	const context: CliContext = {
@@ -24,83 +18,121 @@ function captureContext(spawnResults?: (cmd: readonly string[]) => SpawnResult):
 			stdout: { write: (c) => out.push(c) },
 			stderr: { write: (c) => err.push(c) },
 		},
-		spawn: async (cmd) =>
-			spawnResults ? spawnResults(cmd) : { stdout: "", stderr: "", exitCode: 0 },
+		spawn: async () => ({ stdout: "", stderr: "", exitCode: 0 }),
 		now: () => new Date("2026-05-08T12:00:00.000Z"),
 	};
 	return { context, out, err };
 }
 
+function projectRow(over: Partial<ProjectRow> = {}): ProjectRow {
+	return {
+		id: "prj_1",
+		gitUrl: "https://github.com/os-eco/warren",
+		localPath: "/data/projects/warren",
+		defaultBranch: "main",
+		addedAt: "2026-05-08T12:00:00.000Z",
+		lastFetchedAt: null,
+		lastHeadSha: null,
+		hasSeeds: false,
+		...over,
+	};
+}
+
+interface MockClientInput {
+	readonly probeError?: Error;
+	readonly createError?: Error;
+	readonly row?: ProjectRow;
+	readonly calls?: CreateProjectInput[];
+}
+
+/** Mocked WarrenClient (warren-97a2): command tests never touch a DB or a socket. */
+function mockClient(input: MockClientInput = {}): WarrenClient {
+	return {
+		probe: async () => {
+			if (input.probeError !== undefined) throw input.probeError;
+		},
+		createProject: async (body: CreateProjectInput) => {
+			input.calls?.push(body);
+			if (input.createError !== undefined) throw input.createError;
+			return input.row ?? projectRow({ gitUrl: body.gitUrl });
+		},
+	} as unknown as WarrenClient;
+}
+
 describe("runAddProject", () => {
-	let db: WarrenDb;
-	let projects: ProjectsRepo;
-
-	beforeEach(async () => {
-		db = await openDatabase({ path: ":memory:" });
-		projects = new ProjectsRepo(DrizzleAdapter.for(db));
-	});
-
-	afterEach(async () => {
-		await db.close();
-	});
-
 	test("rejects an empty git url with exit 2", async () => {
 		const { context, err } = captureContext();
-		const result = await runAddProject(context, { projects, projectsConfig: CFG }, { gitUrl: "" });
+		const result = await runAddProject(context, { client: mockClient() }, { gitUrl: "" });
 		expect(result.exitCode).toBe(2);
 		expect(err.join("")).toContain("git-url is required");
 	});
 
-	test("surfaces a ValidationError as exit 1 with the formatted message", async () => {
+	test("an unreachable server exits 1 with the probe error on stderr", async () => {
 		const { context, err } = captureContext();
+		const client = mockClient({ probeError: new WarrenUnreachableError("connection refused") });
 		const result = await runAddProject(
 			context,
-			{ projects, projectsConfig: CFG },
-			{ gitUrl: "not-a-github-url" },
+			{ client },
+			{ gitUrl: "https://github.com/os-eco/warren" },
 		);
 		expect(result.exitCode).toBe(1);
-		expect(err.join("")).toContain("[validation_error]");
+		expect(err.join("")).toContain("connection refused");
 	});
 
-	// warren-0883: the CLI used to bypass the public-instance allowlist
-	// that `POST /projects` enforces. The allowlist is now forwarded into
-	// `addProject` — the single enforcement site — so these pin the CLI
-	// half of that contract.
-	const PUBLIC_ALLOWLIST = {
-		owners: new Set(["os-eco"]),
-		repos: new Set<string>(),
-	};
-
-	test("public mode: refuses a non-allowlisted org with exit 1 and persists nothing", async () => {
-		const { context, err } = captureContext();
+	test("posts to /projects and prints the created row", async () => {
+		const { context, out } = captureContext();
+		const calls: CreateProjectInput[] = [];
 		const result = await runAddProject(
 			context,
-			{ projects, projectsConfig: CFG, publicAllowlist: PUBLIC_ALLOWLIST },
+			{ client: mockClient({ calls }) },
+			{ gitUrl: "https://github.com/os-eco/warren", defaultBranch: "trunk" },
+		);
+		expect(result.exitCode).toBe(0);
+		expect(calls).toEqual([{ gitUrl: "https://github.com/os-eco/warren", defaultBranch: "trunk" }]);
+		const line = JSON.parse(out.join(""));
+		expect(line.ok).toBe(true);
+		expect(line.project.id).toBe("prj_1");
+	});
+
+	test("omits defaultBranch from the body when the flag is absent", async () => {
+		const { context } = captureContext();
+		const calls: CreateProjectInput[] = [];
+		const result = await runAddProject(
+			context,
+			{ client: mockClient({ calls }) },
+			{ gitUrl: "https://github.com/os-eco/warren" },
+		);
+		expect(result.exitCode).toBe(0);
+		expect(calls).toEqual([{ gitUrl: "https://github.com/os-eco/warren" }]);
+	});
+
+	test("surfaces a server-side validation error as exit 1", async () => {
+		const { context, err } = captureContext();
+		const client = mockClient({
+			createError: new WarrenClientError(400, "validation_error", "not a GitHub URL"),
+		});
+		const result = await runAddProject(context, { client }, { gitUrl: "not-a-github-url" });
+		expect(result.exitCode).toBe(1);
+		expect(err.join("")).toContain("not a GitHub URL");
+	});
+
+	// warren-0883 / warren-97a2: the public-instance allowlist is enforced
+	// server-side by POST /projects; the CLI surfaces the refusal verbatim.
+	test("surfaces a public-allowlist refusal from the server", async () => {
+		const { context, err } = captureContext();
+		const client = mockClient({
+			createError: new WarrenClientError(
+				403,
+				"forbidden",
+				"org is not on this public instance's allowlist",
+			),
+		});
+		const result = await runAddProject(
+			context,
+			{ client },
 			{ gitUrl: "https://github.com/somebody/private" },
 		);
 		expect(result.exitCode).toBe(1);
-		expect(err.join("")).toContain("not on this public instance's allowlist");
-		expect(await projects.findByGitUrl("https://github.com/somebody/private")).toBeNull();
-	});
-
-	test("public mode: admits an allowlisted org", async () => {
-		const { context, out } = captureContext();
-		const result = await runAddProject(
-			context,
-			{ projects, projectsConfig: CFG, publicAllowlist: PUBLIC_ALLOWLIST },
-			{ gitUrl: "https://github.com/os-eco/warren", defaultBranch: "main" },
-		);
-		expect(result.exitCode).toBe(0);
-		expect(JSON.parse(out.join("")).ok).toBe(true);
-	});
-
-	test("token mode: no allowlist dep stays permissive", async () => {
-		const { context } = captureContext();
-		const result = await runAddProject(
-			context,
-			{ projects, projectsConfig: CFG },
-			{ gitUrl: "https://github.com/somebody/anything", defaultBranch: "main" },
-		);
-		expect(result.exitCode).toBe(0);
+		expect(err.join("")).toContain("allowlist");
 	});
 });

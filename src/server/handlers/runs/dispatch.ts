@@ -112,6 +112,9 @@ export function createRunHandler(deps: ServerDeps): RouteHandler {
 		// to default the root-run base ref when no `ref` is supplied.
 		const targetBranch = optionalString(body, "targetBranch");
 		const dispatcherHandle = optionalString(body, "dispatcherHandle");
+		// warren-97a2: the HTTP-collapsed `warren run` labels its dispatches
+		// trigger=cli; omitting the field preserves the spawnRun default.
+		const trigger = optionalString(body, "trigger");
 		const {
 			agentName,
 			projectId,
@@ -143,6 +146,7 @@ export function createRunHandler(deps: ServerDeps): RouteHandler {
 			ref,
 			providerOverride,
 			modelOverride,
+			...(trigger !== undefined ? { trigger } : {}),
 			seedId,
 			...(targetBranch !== undefined ? { targetBranch } : {}),
 			...(parentRunId !== undefined ? { parentRunId } : {}),

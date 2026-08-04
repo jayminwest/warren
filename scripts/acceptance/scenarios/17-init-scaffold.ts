@@ -33,7 +33,13 @@ import { existsSync } from "node:fs";
 import { copyFile, mkdir, readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 
-import { AcceptanceError, assertEqual, assertTrue, type Scenario } from "../lib/assert.ts";
+import {
+	AcceptanceError,
+	assertEqual,
+	assertTrue,
+	type Scenario,
+	type ScenarioCtx,
+} from "../lib/assert.ts";
 import { WarrenHttp } from "../lib/http.ts";
 
 interface InitJson {
@@ -76,7 +82,7 @@ export const scenario: Scenario = {
 
 		try {
 			/* ---------------- A: scaffold into --cwd ----------------- */
-			const first = await runInit(["--cwd", scaffoldDir, "--default-role", "claude-code"]);
+			const first = await runInit(ctx, ["--cwd", scaffoldDir, "--default-role", "claude-code"]);
 			if (first.exitCode !== 0) {
 				throw new AcceptanceError(`first init exited ${first.exitCode}; stderr=${first.stderr}`);
 			}
@@ -117,7 +123,7 @@ export const scenario: Scenario = {
 			);
 
 			/* ---------------- B: refusal on second run --------------- */
-			const second = await runInit(["--cwd", scaffoldDir]);
+			const second = await runInit(ctx, ["--cwd", scaffoldDir]);
 			assertEqual(second.exitCode, 2, "init B: refusal exit code is 2");
 			assertTrue(
 				second.stderr.includes("refusing to overwrite"),
@@ -178,15 +184,17 @@ export const scenario: Scenario = {
 	},
 };
 
-async function runInit(args: readonly string[]): Promise<InitRun> {
+async function runInit(ctx: ScenarioCtx, args: readonly string[]): Promise<InitRun> {
 	// Don't inherit parent env wholesale — warren CLI auto-loads .env, and
 	// any CANOPY_REPO_URL etc. there would muddy the scaffold path. Init
 	// only needs PATH (for the bun resolver chain) and a writable HOME.
 	const env: Record<string, string> = {
 		PATH: process.env.PATH ?? "",
 		HOME: process.env.HOME ?? "/tmp",
-		// Force a scratch DB so the CLI doesn't open /data/warren.db.
-		WARREN_DB_PATH: `${process.env.HOME ?? "/tmp"}/.cache/warren-acceptance-init.db`,
+		// warren-97a2: init resolves agents/projects through the HTTP API
+		// now, so point the CLI at the harness's running server.
+		WARREN_BASE_URL: ctx.warrenUrl,
+		WARREN_API_TOKEN: ctx.token,
 	};
 	const proc = Bun.spawn({
 		cmd: ["bun", "run", "src/cli/main.ts", "init", ...args],

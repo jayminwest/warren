@@ -14,7 +14,8 @@
  * assert the check is present and `ok: true` against the empty-projects
  * baseline (the "no projects registered" branch).
  *
- * Two invocations, each spawning `bun run src/cli/main.ts doctor` as a
+ * Two invocations, each spawning `bun run src/cli/main.ts doctor --local`
+ * (the deployment-side half, warren-97a2) as a
  * child process so we exercise the real exit code path:
  *
  *  A. Healthy — `--no-auth` exempts the token check, a fake bwrap
@@ -207,7 +208,9 @@ async function writeBwrapShim(scratchDir: string): Promise<string> {
 
 async function runDoctor(env: Record<string, string>): Promise<DoctorRun> {
 	const proc = Bun.spawn({
-		cmd: ["bun", "run", "src/cli/main.ts", "doctor", "--no-auth"],
+		// warren-97a2: the deployment-side probes (bwrap, burrow socket, DB)
+		// moved behind `--local`; plain `warren doctor` is the client half.
+		cmd: ["bun", "run", "src/cli/main.ts", "doctor", "--local", "--no-auth"],
 		cwd: process.cwd(),
 		env,
 		stdin: "ignore",

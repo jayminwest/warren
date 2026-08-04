@@ -2,7 +2,15 @@
 /**
  * `warren` / `wr` CLI entry.
  *
- * Five subcommands, all dispatching into pure functions in `./commands/`.
+ * Post-warren-97a2 (owner decision D3) the CLI collapses onto HTTP: a
+ * local user is a remote user pointed at localhost. Remote-capable
+ * commands (`run`, `add-project`, `doctor`, `init`, `config migrate`,
+ * the `plan` group) resolve a WarrenClient from `--url`/`--token` flags
+ * + `WARREN_BASE_URL`/`WARREN_API_TOKEN` env (client config holds base
+ * URL + token ONLY — D5) and drive the server through the SDK. The
+ * genuinely-local remainder is exactly `serve`, `db migrate-to-postgres`,
+ * and `doctor --local` (the deployment-side checks).
+ *
  * The dispatch is intentionally thin: commander handles argv parsing and
  * help text, then each command function takes a `CliContext` (env +
  * stdio + spawn) plus parsed args and returns an `exitCode`. That shape
@@ -11,19 +19,16 @@
  */
 
 import { Command } from "commander";
-import { WarrenClient } from "../client/index.ts";
 import { PLAN_RUN_STATES, type PlanRunState } from "../core/wire.ts";
 import { openDatabase } from "../db/client.ts";
 import { parseDatabaseUrl } from "../db/url.ts";
 import { VERSION } from "../index.ts";
-import { loadProjectsConfigFromEnv } from "../projects/config.ts";
-import { resolvePublicAllowlist } from "../projects/public-allowlist.ts";
-import { seedBuiltinAgents } from "../registry/builtins/index.ts";
-import { resolveLocalRunBackend } from "../runtime/local/diagnostics/burrow.ts";
+import { type ClientFlags, resolveWarrenClient } from "./client.ts";
 import { runAddProject } from "./commands/add-project.ts";
 import { runConfigMigrate } from "./commands/config-migrate.ts";
 import { runMigrateToPostgres } from "./commands/db.ts";
 import { runDoctor } from "./commands/doctor.ts";
+import { runRemoteDoctor } from "./commands/doctor-remote.ts";
 import { runInit } from "./commands/init.ts";
 import { runPlanCancel, runPlanRun } from "./commands/plan-run.ts";
 import { runPlanList, runPlanStatus } from "./commands/plan-status.ts";
@@ -32,6 +37,25 @@ import { runServe } from "./commands/serve.ts";
 import { withCliDb } from "./context.ts";
 import { type CliContext, defaultSpawn, formatError, PROCESS_STDIO } from "./output.ts";
 import type { PlanRunOutput } from "./plan-run-renderer.ts";
+
+interface RemoteOpts {
+	readonly url?: string;
+	readonly token?: string;
+}
+
+/** The `--url` / `--token` flag pair every remote command declares (D5). */
+function addClientFlags(cmd: Command): Command {
+	return cmd
+		.option("--url <url>", "warren server base URL (env WARREN_BASE_URL)")
+		.option("--token <token>", "bearer token (env WARREN_API_TOKEN)");
+}
+
+function clientFlags(opts: RemoteOpts): ClientFlags {
+	return {
+		...(opts.url !== undefined ? { url: opts.url } : {}),
+		...(opts.token !== undefined ? { token: opts.token } : {}),
+	};
+}
 
 export function buildProgram(context: CliContext): Command {
 	const program = new Command();
@@ -46,180 +70,144 @@ export function buildProgram(context: CliContext): Command {
 			throw err;
 		});
 
-	program
-		.command("add-project")
-		.description("clone a GitHub repo into the projects root and persist it")
-		.argument("<git-url>", "GitHub URL (https or git@)")
-		.option("--default-branch <name>", "override the auto-detected default branch")
-		.action(async (gitUrl: string, opts: { defaultBranch?: string }) => {
-			const exitCode = await withCliDb({ env: context.env }, async ({ repos }) => {
-				const projectsConfig = loadProjectsConfigFromEnv(context.env);
-				// warren-0883: the CLI used to bypass the public-instance
-				// allowlist that `POST /projects` enforces. Resolve it here
-				// (public mode with a missing/empty list throws, exactly like
-				// server boot) and forward it into `addProject`, the single
-				// enforcement site both surfaces share. The CLI cannot import
-				// the server's `resolveAuthKind` (check:layers), so it reads
-				// the selector directly.
-				const publicAllowlist = resolvePublicAllowlist(
-					context.env.WARREN_AUTH?.trim() === "public",
-					context.env,
-				);
-				const result = await runAddProject(
-					context,
-					{
-						projects: repos.projects,
-						projectsConfig,
-						...(publicAllowlist !== undefined ? { publicAllowlist } : {}),
-					},
-					{
-						gitUrl,
-						...(opts.defaultBranch !== undefined ? { defaultBranch: opts.defaultBranch } : {}),
-					},
-				);
-				return result.exitCode;
-			});
-			process.exit(exitCode);
-		});
-
-	program
-		.command("run")
-		.description("spawn a one-shot run, tail events as NDJSON, and exit")
-		.argument("<agent>", "registered agent name")
-		.argument("<project>", "project id (prj_xxx)")
-		.requiredOption("-p, --prompt <text>", "prompt text the agent receives")
-		.option("--trigger <label>", "run trigger label", "cli")
-		.option("--provider <name>", "per-run override of agent frontmatter.provider")
-		.option("--model <name>", "per-run override of agent frontmatter.model")
-		.action(
-			async (
-				agent: string,
-				project: string,
-				opts: {
-					prompt: string;
-					trigger?: string;
-					provider?: string;
-					model?: string;
-				},
-			) => {
-				const exitCode = await withCliDb({ env: context.env }, async ({ repos }) => {
-					// Seed built-ins so `warren run claude-code <prj> -p ...` works
-					// against a fresh DB without first registering the agent from
-					// a canopy library (warren-d3e9). Idempotent against existing
-					// rows.
-					await seedBuiltinAgents(repos.agents, undefined, context.now);
-					// warren-11cc: resolve the run backend once (honoring WARREN_RUNTIME).
-					// The local backend lazily builds a single burrow client + preview
-					// seam; under k8s no burrow client is constructed. Direct burrow
-					// access is confined to `resolveLocalRunBackend`
-					// (src/runtime/local/diagnostics/burrow.ts).
-					const backend = resolveLocalRunBackend(context.env);
-					try {
-						const result = await runRun(
-							context,
-							{
-								repos,
-								runtimeProvider: backend.runtimeProvider,
-								...(backend.previewSidecars !== undefined
-									? { previewSidecars: backend.previewSidecars }
-									: {}),
-							},
-							{
-								agent,
-								project,
-								prompt: opts.prompt,
-								...(opts.trigger !== undefined ? { trigger: opts.trigger } : {}),
-								...(opts.provider !== undefined ? { providerOverride: opts.provider } : {}),
-								...(opts.model !== undefined ? { modelOverride: opts.model } : {}),
-							},
-						);
-						return result.exitCode;
-					} finally {
-						await backend.close();
-					}
-				});
-				process.exit(exitCode);
+	addClientFlags(
+		program
+			.command("add-project")
+			.description("register a project on the warren server (POST /projects)")
+			.argument("<git-url>", "GitHub URL (https or git@)")
+			.option("--default-branch <name>", "override the auto-detected default branch"),
+	).action(async (gitUrl: string, opts: { defaultBranch?: string } & RemoteOpts) => {
+		const client = resolveWarrenClient(context.env, clientFlags(opts));
+		const result = await runAddProject(
+			context,
+			{ client },
+			{
+				gitUrl,
+				...(opts.defaultBranch !== undefined ? { defaultBranch: opts.defaultBranch } : {}),
 			},
 		);
+		process.exit(result.exitCode);
+	});
 
-	program
-		.command("init")
-		.description("scaffold a .warren/ directory (triggers.yaml + config.yaml) in a project repo")
-		.option("--project <id>", "target a registered project by id (writes into its warren clone)")
-		.option("--cwd <path>", "target a directory on disk (defaults to process.cwd())")
-		.option("--default-role <name>", "pin defaults.defaultRole to this registered agent")
-		.action(async (opts: { project?: string; cwd?: string; defaultRole?: string }) => {
-			if (opts.project !== undefined && opts.cwd !== undefined) {
-				context.stdio.stderr.write("warren: --project and --cwd are mutually exclusive\n");
-				process.exit(2);
-			}
-			const exitCode = await withCliDb({ env: context.env }, async ({ repos }) => {
-				// Must await (warren-e376): --default-role validation reads the
-				// registry immediately after; an un-awaited seed lets the read
-				// race ahead on a fresh DB and reject built-in names like
-				// claude-code as "unknown agent" (acceptance scenario 17).
-				await seedBuiltinAgents(repos.agents, undefined, context.now);
-				const args =
-					opts.project !== undefined
-						? {
-								mode: "project" as const,
-								projectId: opts.project,
-								...(opts.defaultRole !== undefined ? { defaultRole: opts.defaultRole } : {}),
-							}
-						: {
-								mode: "cwd" as const,
-								cwd: opts.cwd ?? process.cwd(),
-								...(opts.defaultRole !== undefined ? { defaultRole: opts.defaultRole } : {}),
-							};
-				const result = await runInit(
-					context,
-					{ projects: repos.projects, agents: repos.agents },
-					args,
-				);
-				return result.exitCode;
-			});
-			process.exit(exitCode);
-		});
+	addClientFlags(
+		program
+			.command("run")
+			.description(
+				"dispatch a one-shot run against the warren server, tail events as NDJSON, and exit",
+			)
+			.argument("<agent>", "registered agent name")
+			.argument("<project>", "project id (prj_xxx)")
+			.requiredOption("-p, --prompt <text>", "prompt text the agent receives")
+			.option("--trigger <label>", "run trigger label", "cli")
+			.option("--provider <name>", "per-run override of agent frontmatter.provider")
+			.option("--model <name>", "per-run override of agent frontmatter.model"),
+	).action(
+		async (
+			agent: string,
+			project: string,
+			opts: {
+				prompt: string;
+				trigger?: string;
+				provider?: string;
+				model?: string;
+			} & RemoteOpts,
+		) => {
+			const client = resolveWarrenClient(context.env, clientFlags(opts));
+			const result = await runRun(
+				context,
+				{ client },
+				{
+					agent,
+					project,
+					prompt: opts.prompt,
+					...(opts.trigger !== undefined ? { trigger: opts.trigger } : {}),
+					...(opts.provider !== undefined ? { providerOverride: opts.provider } : {}),
+					...(opts.model !== undefined ? { modelOverride: opts.model } : {}),
+				},
+			);
+			process.exit(result.exitCode);
+		},
+	);
+
+	addClientFlags(
+		program
+			.command("init")
+			.description("scaffold a .warren/ directory (triggers.yaml + config.yaml) in a project repo")
+			.option("--project <id>", "target a registered project by id (writes into its warren clone)")
+			.option("--cwd <path>", "target a directory on disk (defaults to process.cwd())")
+			.option("--default-role <name>", "pin defaults.defaultRole to this registered agent"),
+	).action(async (opts: { project?: string; cwd?: string; defaultRole?: string } & RemoteOpts) => {
+		if (opts.project !== undefined && opts.cwd !== undefined) {
+			context.stdio.stderr.write("warren: --project and --cwd are mutually exclusive\n");
+			process.exit(2);
+		}
+		const client = resolveWarrenClient(context.env, clientFlags(opts));
+		const args =
+			opts.project !== undefined
+				? {
+						mode: "project" as const,
+						projectId: opts.project,
+						...(opts.defaultRole !== undefined ? { defaultRole: opts.defaultRole } : {}),
+					}
+				: {
+						mode: "cwd" as const,
+						cwd: opts.cwd ?? process.cwd(),
+						...(opts.defaultRole !== undefined ? { defaultRole: opts.defaultRole } : {}),
+					};
+		const result = await runInit(context, { client }, args);
+		process.exit(result.exitCode);
+	});
 
 	// `config` is a subcommand group rather than a flat top-level so future
 	// .warren/ admin tools (validate, dump, edit) can land alongside without
 	// inflating warren's first-page help. Today it has one child:
 	// `migrate` (warren-5840 — defaults.json → config.yaml + preview.yaml).
 	const configGroup = program.command("config").description(".warren/ admin tools");
-	configGroup
-		.command("migrate")
-		.description(
-			"convert legacy .warren/defaults.json into the warren-5840 YAML layout (config.yaml + preview.yaml)",
-		)
-		.option("--project <id>", "target a registered project by id (writes into its warren clone)")
-		.option("--cwd <path>", "target a directory on disk (defaults to process.cwd())")
-		.action(async (opts: { project?: string; cwd?: string }) => {
-			if (opts.project !== undefined && opts.cwd !== undefined) {
-				context.stdio.stderr.write("warren: --project and --cwd are mutually exclusive\n");
-				process.exit(2);
-			}
-			const exitCode = await withCliDb({ env: context.env }, async ({ repos }) => {
-				const args =
-					opts.project !== undefined
-						? { mode: "project" as const, projectId: opts.project }
-						: { mode: "cwd" as const, cwd: opts.cwd ?? process.cwd() };
-				const result = await runConfigMigrate(context, { projects: repos.projects }, args);
-				return result.exitCode;
-			});
-			process.exit(exitCode);
-		});
+	addClientFlags(
+		configGroup
+			.command("migrate")
+			.description(
+				"convert legacy .warren/defaults.json into the warren-5840 YAML layout (config.yaml + preview.yaml)",
+			)
+			.option("--project <id>", "target a registered project by id (writes into its warren clone)")
+			.option("--cwd <path>", "target a directory on disk (defaults to process.cwd())"),
+	).action(async (opts: { project?: string; cwd?: string } & RemoteOpts) => {
+		if (opts.project !== undefined && opts.cwd !== undefined) {
+			context.stdio.stderr.write("warren: --project and --cwd are mutually exclusive\n");
+			process.exit(2);
+		}
+		const client = resolveWarrenClient(context.env, clientFlags(opts));
+		const args =
+			opts.project !== undefined
+				? { mode: "project" as const, projectId: opts.project }
+				: { mode: "cwd" as const, cwd: opts.cwd ?? process.cwd() };
+		const result = await runConfigMigrate(context, { client }, args);
+		process.exit(result.exitCode);
+	});
 
-	program
-		.command("doctor")
-		.description("check warren's environment: env vars, burrow socket")
-		.option("--no-auth", "skip the WARREN_API_TOKEN check (loopback dev mode)")
-		.option("--verbose", "print raw probe/driver output (withheld from check messages) to stderr")
-		.action(async (opts: { auth?: boolean; verbose?: boolean }) => {
-			// commander turns `--no-auth` into `opts.auth === false`.
-			// Open the DB so the warren_config check can walk every
-			// registered project. A missing DB file is fine — withCliDb's
-			// openDatabase creates one on first use; an empty projects
-			// table produces an informational `ok: true`.
+	addClientFlags(
+		program
+			.command("doctor")
+			.description(
+				"check the client's view of a warren server (reachable? auth valid? version match?)",
+			)
+			.option(
+				"--local",
+				"run the deployment-side checks instead (env vars, burrow socket, bwrap, DB)",
+			)
+			.option("--no-auth", "skip the auth check (loopback dev mode)")
+			.option(
+				"--verbose",
+				"print raw probe/driver output (withheld from check messages) to stderr",
+			),
+	).action(async (opts: { local?: boolean; auth?: boolean; verbose?: boolean } & RemoteOpts) => {
+		// commander turns `--no-auth` into `opts.auth === false`.
+		if (opts.local === true) {
+			// Deployment-side half (warren-97a2): only meaningful on the host
+			// warren is deployed on, so it keeps its local DB lifecycle.
+			// A missing DB file is fine — withCliDb's openDatabase creates one
+			// on first use; an empty projects table produces an informational
+			// `ok: true`.
 			const exitCode = await withCliDb({ env: context.env }, async ({ db, repos }) => {
 				const projects = (await repos.projects.listAll()).map((p) => ({
 					id: p.id,
@@ -233,7 +221,11 @@ export function buildProgram(context: CliContext): Command {
 				return result.exitCode;
 			});
 			process.exit(exitCode);
-		});
+		}
+		const client = resolveWarrenClient(context.env, clientFlags(opts));
+		const result = await runRemoteDoctor(context, { client }, { noAuth: opts.auth === false });
+		process.exit(result.exitCode);
+	});
 
 	// `db` is a subcommand group rather than a flat top-level so future
 	// db-admin tools (dump, restore, prune) can land alongside without
@@ -292,106 +284,110 @@ export function buildProgram(context: CliContext): Command {
 		});
 
 	// `plan` is a thin HTTP-client subcommand group (warren-ec6a, pl-55df) —
-	// the first command family that talks to a remote warren via
-	// WarrenClient.fromEnv rather than opening a local DB with withCliDb.
+	// the first command family that talked to a remote warren rather than
+	// opening a local DB with withCliDb.
 	const planGroup = program.command("plan").description("dispatch and steer cloud plan-runs");
-	planGroup
-		.command("run")
-		.description("dispatch a serial plan-run against a remote warren and tail events as NDJSON")
-		.argument("<plan-id>", "seeds plan id (pl_xxx)")
-		.requiredOption("--project <id>", "project id (prj_xxx)")
-		.requiredOption("--agent <name>", "registered agent name")
-		.option("--prompt-template <text>", "per-child prompt template override")
-		.option("--ref <git-ref>", "git ref to clone child workspaces from")
-		.option("--provider <name>", "per-run override of agent frontmatter.provider")
-		.option("--model <name>", "per-run override of agent frontmatter.model")
-		.option("--no-follow", "dispatch and exit without tailing events")
-		.option("--output <mode>", "output mode: ndjson (default) or pretty", "ndjson")
-		.action(
-			async (
-				planId: string,
-				opts: {
-					project: string;
-					agent: string;
-					promptTemplate?: string;
-					ref?: string;
-					provider?: string;
-					model?: string;
-					follow: boolean;
-					output?: string;
-				},
-			) => {
-				const client = WarrenClient.fromEnv(context.env);
-				const result = await runPlanRun(
-					context,
-					{ client },
-					{
-						planId,
-						project: opts.project,
-						agent: opts.agent,
-						follow: opts.follow,
-						output: parsePlanRunOutput(opts.output),
-						...(opts.promptTemplate !== undefined ? { promptTemplate: opts.promptTemplate } : {}),
-						...(opts.ref !== undefined ? { ref: opts.ref } : {}),
-						...(opts.provider !== undefined ? { provider: opts.provider } : {}),
-						...(opts.model !== undefined ? { model: opts.model } : {}),
-					},
-				);
-				process.exit(result.exitCode);
-			},
-		);
-	planGroup
-		.command("cancel")
-		.description("cancel a remote plan-run and its in-flight child run")
-		.argument("<plan-run-id>", "plan-run id")
-		.option("--output <mode>", "output mode: ndjson (default) or pretty", "ndjson")
-		.action(async (planRunId: string, opts: { output?: string }) => {
-			const client = WarrenClient.fromEnv(context.env);
-			const result = await runPlanCancel(
-				context,
-				{ client },
-				{ planRunId, output: parsePlanRunOutput(opts.output) },
-			);
-			process.exit(result.exitCode);
-		});
-	planGroup
-		.command("status")
-		.description("render a plan-run's child-state table with per-child cost + duration")
-		.argument("<plan-run-id>", "plan-run id")
-		.option("--output <mode>", "output mode: ndjson (default) or pretty", "ndjson")
-		.action(async (planRunId: string, opts: { output?: string }) => {
-			const client = WarrenClient.fromEnv(context.env);
-			const result = await runPlanStatus(
-				context,
-				{ client },
-				{ planRunId, output: parsePlanRunOutput(opts.output) },
-			);
-			process.exit(result.exitCode);
-		});
-	planGroup
-		.command("list")
-		.description("list plan-runs, optionally filtered by project / state")
-		.option("--project <id>", "only plan-runs for this project (prj_xxx)")
-		.option(
-			"--state <state>",
-			"only plan-runs in this state (queued|running|succeeded|failed|cancelled)",
-		)
-		.option("--output <mode>", "output mode: ndjson (default) or pretty", "ndjson")
-		.action(async (opts: { project?: string; state?: string; output?: string }) => {
-			const client = WarrenClient.fromEnv(context.env);
-			const result = await runPlanList(
+	addClientFlags(
+		planGroup
+			.command("run")
+			.description("dispatch a serial plan-run against a remote warren and tail events as NDJSON")
+			.argument("<plan-id>", "seeds plan id (pl_xxx)")
+			.requiredOption("--project <id>", "project id (prj_xxx)")
+			.requiredOption("--agent <name>", "registered agent name")
+			.option("--prompt-template <text>", "per-child prompt template override")
+			.option("--ref <git-ref>", "git ref to clone child workspaces from")
+			.option("--provider <name>", "per-run override of agent frontmatter.provider")
+			.option("--model <name>", "per-run override of agent frontmatter.model")
+			.option("--no-follow", "dispatch and exit without tailing events")
+			.option("--output <mode>", "output mode: ndjson (default) or pretty", "ndjson"),
+	).action(
+		async (
+			planId: string,
+			opts: {
+				project: string;
+				agent: string;
+				promptTemplate?: string;
+				ref?: string;
+				provider?: string;
+				model?: string;
+				follow: boolean;
+				output?: string;
+			} & RemoteOpts,
+		) => {
+			const client = resolveWarrenClient(context.env, clientFlags(opts));
+			const result = await runPlanRun(
 				context,
 				{ client },
 				{
+					planId,
+					project: opts.project,
+					agent: opts.agent,
+					follow: opts.follow,
 					output: parsePlanRunOutput(opts.output),
-					...(opts.project !== undefined ? { project: opts.project } : {}),
-					...(parsePlanRunState(opts.state) !== undefined
-						? { state: parsePlanRunState(opts.state) }
-						: {}),
+					...(opts.promptTemplate !== undefined ? { promptTemplate: opts.promptTemplate } : {}),
+					...(opts.ref !== undefined ? { ref: opts.ref } : {}),
+					...(opts.provider !== undefined ? { provider: opts.provider } : {}),
+					...(opts.model !== undefined ? { model: opts.model } : {}),
 				},
 			);
 			process.exit(result.exitCode);
-		});
+		},
+	);
+	addClientFlags(
+		planGroup
+			.command("cancel")
+			.description("cancel a remote plan-run and its in-flight child run")
+			.argument("<plan-run-id>", "plan-run id")
+			.option("--output <mode>", "output mode: ndjson (default) or pretty", "ndjson"),
+	).action(async (planRunId: string, opts: { output?: string } & RemoteOpts) => {
+		const client = resolveWarrenClient(context.env, clientFlags(opts));
+		const result = await runPlanCancel(
+			context,
+			{ client },
+			{ planRunId, output: parsePlanRunOutput(opts.output) },
+		);
+		process.exit(result.exitCode);
+	});
+	addClientFlags(
+		planGroup
+			.command("status")
+			.description("render a plan-run's child-state table with per-child cost + duration")
+			.argument("<plan-run-id>", "plan-run id")
+			.option("--output <mode>", "output mode: ndjson (default) or pretty", "ndjson"),
+	).action(async (planRunId: string, opts: { output?: string } & RemoteOpts) => {
+		const client = resolveWarrenClient(context.env, clientFlags(opts));
+		const result = await runPlanStatus(
+			context,
+			{ client },
+			{ planRunId, output: parsePlanRunOutput(opts.output) },
+		);
+		process.exit(result.exitCode);
+	});
+	addClientFlags(
+		planGroup
+			.command("list")
+			.description("list plan-runs, optionally filtered by project / state")
+			.option("--project <id>", "only plan-runs for this project (prj_xxx)")
+			.option(
+				"--state <state>",
+				"only plan-runs in this state (queued|running|succeeded|failed|cancelled)",
+			)
+			.option("--output <mode>", "output mode: ndjson (default) or pretty", "ndjson"),
+	).action(async (opts: { project?: string; state?: string; output?: string } & RemoteOpts) => {
+		const client = resolveWarrenClient(context.env, clientFlags(opts));
+		const result = await runPlanList(
+			context,
+			{ client },
+			{
+				output: parsePlanRunOutput(opts.output),
+				...(opts.project !== undefined ? { project: opts.project } : {}),
+				...(parsePlanRunState(opts.state) !== undefined
+					? { state: parsePlanRunState(opts.state) }
+					: {}),
+			},
+		);
+		process.exit(result.exitCode);
+	});
 
 	program
 		.command("serve")

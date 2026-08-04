@@ -6,7 +6,7 @@
  * plan-run's child-state table with per-child cost + duration pulled from the
  * fanned-out `runs[]` rows, while `list` prints the plan-run index, optionally
  * filtered by `--project` / `--state`. Like the rest of the `plan` group they
- * talk to a remote warren via {@link WarrenClient.fromEnv}, probe first so a
+ * talk to a remote warren via {@link resolveWarrenClient}, probe first so a
  * down server is a friendly stderr line rather than a mid-call throw, and
  * default to NDJSON output (pipeline parity) with an opt-in `--output pretty`
  * human renderer.

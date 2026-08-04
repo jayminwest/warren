@@ -4,11 +4,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { load } from "js-yaml";
-import { openDatabase, type WarrenDb } from "../../db/client.ts";
-import { AgentsRepo } from "../../db/repos/agents.ts";
-import { DrizzleAdapter } from "../../db/repos/drizzle-adapter.ts";
-import { ProjectsRepo } from "../../db/repos/projects.ts";
-import { seedBuiltinAgents } from "../../registry/builtins/index.ts";
+import { type WarrenClient, WarrenClientError } from "../../client/index.ts";
 import { parseConfigFile, parseTriggersConfig } from "../../warren-config/schema.ts";
 import type { CliContext } from "../output.ts";
 import { runInit } from "./init.ts";
@@ -30,29 +26,46 @@ function captureContext(): { context: CliContext; out: string[]; err: string[] }
 	};
 }
 
+interface MockClientInput {
+	readonly agents?: readonly { readonly name: string }[];
+	readonly projects?: Readonly<Record<string, { readonly localPath: string }>>;
+}
+
+/** Mocked WarrenClient (warren-97a2): the CLI no longer opens a DB. */
+function mockClient(input: MockClientInput = {}): WarrenClient {
+	const agents = input.agents ?? [];
+	const projects = input.projects ?? {};
+	return {
+		listAgents: async () => ({ agents: agents.map((a) => ({ name: a.name })) }),
+		getAgent: async (name: string) => {
+			const found = agents.find((a) => a.name === name);
+			if (found === undefined) throw new WarrenClientError(404, "not_found", "agent not found");
+			return { name: found.name };
+		},
+		getProject: async (id: string) => {
+			const found = projects[id];
+			if (found === undefined) throw new WarrenClientError(404, "not_found", "project not found");
+			return found;
+		},
+	} as unknown as WarrenClient;
+}
+
 describe("runInit (--cwd mode)", () => {
-	let db: WarrenDb;
-	let projects: ProjectsRepo;
-	let agents: AgentsRepo;
 	let tmp: string;
 
 	beforeEach(async () => {
-		db = await openDatabase({ path: ":memory:" });
-		projects = new ProjectsRepo(DrizzleAdapter.for(db));
-		agents = new AgentsRepo(DrizzleAdapter.for(db));
 		tmp = await mkdtemp(join(tmpdir(), "warren-init-test-"));
 	});
 
 	afterEach(async () => {
-		await db.close();
 		await rm(tmp, { recursive: true, force: true });
 	});
 
 	test("scaffolds parseable triggers.yaml + config.yaml (round-trip)", async () => {
 		// One agent registered → auto-fills defaultRole.
-		await agents.upsert({ name: "claude-code", renderedJson: {} });
+		const client = mockClient({ agents: [{ name: "claude-code" }] });
 		const { context, out } = captureContext();
-		const result = await runInit(context, { projects, agents }, { mode: "cwd", cwd: tmp });
+		const result = await runInit(context, { client }, { mode: "cwd", cwd: tmp });
 		expect(result.exitCode).toBe(0);
 		const stdout = JSON.parse(out.join(""));
 		expect(stdout.ok).toBe(true);
@@ -71,10 +84,9 @@ describe("runInit (--cwd mode)", () => {
 	});
 
 	test("omits defaultRole when multiple agents are registered", async () => {
-		// Mimic the real boot path — seedBuiltinAgents registers >1 agent.
-		await seedBuiltinAgents(agents);
+		const client = mockClient({ agents: [{ name: "claude-code" }, { name: "sapling" }] });
 		const { context, out } = captureContext();
-		const result = await runInit(context, { projects, agents }, { mode: "cwd", cwd: tmp });
+		const result = await runInit(context, { client }, { mode: "cwd", cwd: tmp });
 		expect(result.exitCode).toBe(0);
 		const configRaw = await readFile(join(tmp, ".warren/config.yaml"), "utf8");
 		// Empty config renders as a YAML flow-style empty mapping `{}` so the
@@ -84,11 +96,11 @@ describe("runInit (--cwd mode)", () => {
 	});
 
 	test("honors --default-role when the agent exists", async () => {
-		await seedBuiltinAgents(agents);
+		const client = mockClient({ agents: [{ name: "claude-code" }, { name: "sapling" }] });
 		const { context } = captureContext();
 		const result = await runInit(
 			context,
-			{ projects, agents },
+			{ client },
 			{ mode: "cwd", cwd: tmp, defaultRole: "sapling" },
 		);
 		expect(result.exitCode).toBe(0);
@@ -102,7 +114,7 @@ describe("runInit (--cwd mode)", () => {
 		const { context, err } = captureContext();
 		const result = await runInit(
 			context,
-			{ projects, agents },
+			{ client: mockClient() },
 			{ mode: "cwd", cwd: tmp, defaultRole: "nope" },
 		);
 		expect(result.exitCode).toBe(2);
@@ -111,10 +123,11 @@ describe("runInit (--cwd mode)", () => {
 	});
 
 	test("refuses to overwrite an existing .warren/triggers.yaml", async () => {
+		const client = mockClient();
 		const { context, err } = captureContext();
-		await runInit(context, { projects, agents }, { mode: "cwd", cwd: tmp });
+		await runInit(context, { client }, { mode: "cwd", cwd: tmp });
 		const { context: ctx2, err: err2 } = captureContext();
-		const second = await runInit(ctx2, { projects, agents }, { mode: "cwd", cwd: tmp });
+		const second = await runInit(ctx2, { client }, { mode: "cwd", cwd: tmp });
 		expect(second.exitCode).toBe(2);
 		expect(err2.join("")).toContain("refusing to overwrite");
 		// First run shouldn't have written errors.
@@ -125,7 +138,7 @@ describe("runInit (--cwd mode)", () => {
 		await mkdir(join(tmp, ".warren"), { recursive: true });
 		await writeFile(join(tmp, ".warren/defaults.json"), JSON.stringify({ defaultBranch: "main" }));
 		const { context, err } = captureContext();
-		const result = await runInit(context, { projects, agents }, { mode: "cwd", cwd: tmp });
+		const result = await runInit(context, { client: mockClient() }, { mode: "cwd", cwd: tmp });
 		expect(result.exitCode).toBe(2);
 		expect(err.join("")).toContain("warren config migrate");
 		expect(existsSync(join(tmp, ".warren/config.yaml"))).toBe(false);
@@ -135,7 +148,7 @@ describe("runInit (--cwd mode)", () => {
 		const { context, err } = captureContext();
 		const result = await runInit(
 			context,
-			{ projects, agents },
+			{ client: mockClient() },
 			{ mode: "cwd", cwd: join(tmp, "does-not-exist") },
 		);
 		expect(result.exitCode).toBe(2);
@@ -144,36 +157,23 @@ describe("runInit (--cwd mode)", () => {
 });
 
 describe("runInit (--project mode)", () => {
-	let db: WarrenDb;
-	let projects: ProjectsRepo;
-	let agents: AgentsRepo;
 	let tmp: string;
 
 	beforeEach(async () => {
-		db = await openDatabase({ path: ":memory:" });
-		projects = new ProjectsRepo(DrizzleAdapter.for(db));
-		agents = new AgentsRepo(DrizzleAdapter.for(db));
 		tmp = await mkdtemp(join(tmpdir(), "warren-init-prj-"));
 	});
 
 	afterEach(async () => {
-		await db.close();
 		await rm(tmp, { recursive: true, force: true });
 	});
 
 	test("scaffolds into the project's local clone", async () => {
-		await agents.upsert({ name: "claude-code", renderedJson: {} });
-		const row = await projects.create({
-			gitUrl: "https://github.com/example/init-target",
-			localPath: tmp,
-			defaultBranch: "main",
+		const client = mockClient({
+			agents: [{ name: "claude-code" }],
+			projects: { prj_1: { localPath: tmp } },
 		});
 		const { context } = captureContext();
-		const result = await runInit(
-			context,
-			{ projects, agents },
-			{ mode: "project", projectId: row.id },
-		);
+		const result = await runInit(context, { client }, { mode: "project", projectId: "prj_1" });
 		expect(result.exitCode).toBe(0);
 		expect(existsSync(join(tmp, ".warren/triggers.yaml"))).toBe(true);
 		expect(existsSync(join(tmp, ".warren/config.yaml"))).toBe(true);
@@ -183,7 +183,7 @@ describe("runInit (--project mode)", () => {
 		const { context, err } = captureContext();
 		const result = await runInit(
 			context,
-			{ projects, agents },
+			{ client: mockClient() },
 			{ mode: "project", projectId: "prj_missing" },
 		);
 		expect(result.exitCode).toBe(1);
@@ -192,17 +192,9 @@ describe("runInit (--project mode)", () => {
 
 	test("rejects a project whose clone is missing on disk with exit 2", async () => {
 		const missing = join(tmp, "vanished");
-		const row = await projects.create({
-			gitUrl: "https://github.com/example/vanished",
-			localPath: missing,
-			defaultBranch: "main",
-		});
+		const client = mockClient({ projects: { prj_1: { localPath: missing } } });
 		const { context, err } = captureContext();
-		const result = await runInit(
-			context,
-			{ projects, agents },
-			{ mode: "project", projectId: row.id },
-		);
+		const result = await runInit(context, { client }, { mode: "project", projectId: "prj_1" });
 		expect(result.exitCode).toBe(2);
 		expect(err.join("")).toContain("missing on disk");
 	});
