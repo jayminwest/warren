@@ -14,10 +14,11 @@ Thanks for your interest in contributing to Warren! This guide covers everything
    ```bash
    bun install
    ```
-4. **Run** the CLI straight from the checkout — warren is not published to npm, so there is no global install:
+4. **Run** the CLI straight from the checkout:
    ```bash
    bun run src/cli/main.ts --help
    ```
+   Since v0.14.0 the CLI also ships on npm, so end users can `npm i -g @os-eco/warren-cli` instead.
 5. **Create a branch** for your work:
    ```bash
    git checkout -b fix/description-of-change
@@ -42,6 +43,17 @@ bun run check:all                          # All quality gates CI enforces
 ```
 
 Run lint, typecheck, and the other gates through `bun run check:all`. `biome check .` alone is not the gate. Always run `bun run check:all` before submitting a PR.
+
+## Development Loop
+
+The day-to-day loop from a fresh checkout:
+
+1. `git clone` your fork and `bun install`
+2. Make your change, then `bun test` — or `bun test src/foo.test.ts` for a single file
+3. For UI work (`src/ui/`), run `bun run build:ui` to typecheck and rebuild the Vite bundle. The root typecheck skips it
+4. `bun run check:all` before pushing — it must exit zero
+
+See `AGENTS.md` for the full gate manifest and repo conventions.
 
 ## TypeScript Conventions
 
@@ -129,6 +141,10 @@ Prefix with `fix:`, `feat:`, or `docs:` when the category is clear. Plain descri
 - **Tests required.** New features and bug fixes should include tests. See the testing conventions above.
 - **Passing CI.** All PRs must pass the full `bun run check:all` gate manifest before merge.
 - **Description.** Briefly explain what the PR does and why. Link to any relevant issues.
+
+## Finding Work
+
+New to the project? Filter the [GitHub issue tracker](https://github.com/jayminwest/warren/issues) by the `good first issue` label for scoped, newcomer-friendly tasks.
 
 ## Reporting Issues
 
