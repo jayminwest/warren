@@ -266,6 +266,7 @@ jobs:
       - name: Render gke-live overlay pinned to ${{ github.sha }}
         env:
           SHA: ${{ env.TARGET_SHA }}
+          GIT_AUTHOR_NAME: ${{ vars.WARREN_GIT_AUTHOR_NAME || 'warren' }}
           GIT_AUTHOR_EMAIL: ${{ vars.WARREN_GIT_AUTHOR_EMAIL || 'warren@users.noreply.github.com' }}
           INGRESS_HOST: ${{ vars.WARREN_INGRESS_HOST }}
         run: |
@@ -298,7 +299,7 @@ jobs:
                             - name: WARREN_K8S_INIT_IMAGE
                               value: ${AR_BASE}/warren-workspace-init:${SHA}
                             - name: WARREN_GIT_AUTHOR_NAME
-                              value: warren
+                              value: ${GIT_AUTHOR_NAME}
                             - name: WARREN_GIT_AUTHOR_EMAIL
                               value: ${GIT_AUTHOR_EMAIL}
           EOF
