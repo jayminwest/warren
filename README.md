@@ -253,10 +253,19 @@ Under `WARREN_RUNTIME=k8s` this diagram changes shape entirely: no burrow, no su
 
 The `warren` (or `wr`) admin CLI is for ops. The web UI is for daily work.
 
-Every remote-capable command talks to a warren server over HTTP — a local user is a remote user pointed at localhost. Server resolution: `--url`/`--token` flags, then `WARREN_BASE_URL` (default `http://localhost:8080`) / `WARREN_API_TOKEN`. The genuinely-local commands are `serve`, `db migrate-to-postgres`, and `doctor --local`.
+Every remote-capable command talks to a warren server over HTTP — a local user is a remote user pointed at localhost. Server resolution: `--url`/`--token` flags, then `WARREN_BASE_URL` (default `http://localhost:8080`) / `WARREN_API_TOKEN`, then the client config file `warren login` writes. The genuinely-local commands are `serve`, `db migrate-to-postgres`, and `doctor --local`.
+
+Agents bootstrapping a session run `warren prime` first. It emits the command reference (derived from the program definition), the env contract, the stable exit-code table, and the canonical workflows. Then store credentials once, piping the token on stdin so it stays out of shell history:
+
+```bash
+warren prime
+echo "$WARREN_API_TOKEN" | warren login --url https://warren.example.com
+```
 
 | Command | Description |
 |---|---|
+| `warren login --url <base>` | Verify a base URL + token against `/whoami` and persist them to `~/.warren/client.json` (mode 0600; token via flag, env, or stdin) |
+| `warren prime` | Agent session context: command reference, env contract, exit-code table, canonical workflows |
 | `warren add-project <git-url>` | Register a project (POST /projects); the server clones it under its projects root |
 | `warren run <agent> <project> -p "..."` | One-shot run, no UI: dispatch, tail events as NDJSON, exit with the terminal state |
 | `warren plan run <plan-id> --project <id> --agent <name>` | Dispatch a serial plan-run, tail events as NDJSON |

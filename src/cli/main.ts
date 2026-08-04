@@ -25,6 +25,7 @@ import { parseDatabaseUrl } from "../db/url.ts";
 import { VERSION } from "../index.ts";
 import { addClientFlags, clientFlags, type RemoteOpts, resolveWarrenClient } from "./client.ts";
 import { runAddProject } from "./commands/add-project.ts";
+import { registerBootstrapCommands } from "./commands/bootstrap.ts";
 import { runConfigMigrate } from "./commands/config-migrate.ts";
 import { runMigrateToPostgres } from "./commands/db.ts";
 import { runDoctor } from "./commands/doctor.ts";
@@ -412,6 +413,11 @@ export function buildProgram(baseContext: CliContext): Command {
 
 	// Agent-facing run read/control commands (warren-b048).
 	registerRunCommands(program, context);
+
+	// Session bootstrap pair (warren-fc12, pl-882c step 11): `login` stores
+	// base URL + token in the client config (D5); `prime` emits the agent
+	// session context derived from this very program definition.
+	registerBootstrapCommands(program, context);
 
 	program
 		.command("serve")

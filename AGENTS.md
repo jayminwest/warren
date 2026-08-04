@@ -120,6 +120,37 @@ and `loadWarrenConfig()` surfaces it. Notable knobs:
   non-terminal pods. `WARREN_K8S_MAX_PENDING_PODS` (default 20) caps
   Pending pods. `0` disables a cap. LocalProvider ignores all of these.
 
+## Agent session bootstrap (warren CLI)
+
+Agents driving warren from the shell get their session context from the
+CLI itself, the same way `sd prime` and `ml prime` make seeds and mulch
+discoverable. **At the start of every session**, run:
+
+```bash
+warren prime
+```
+
+The command reference lists each command with its purpose and key
+flags, derived from the program definition so it cannot drift from the
+code. The env contract documents `WARREN_BASE_URL`, `WARREN_API_TOKEN`,
+and `WARREN_CLIENT_CONFIG`.
+
+The exit-code table is the stable warren-b61e one. The workflows cover
+dispatch-and-wait, tail-and-steer, and plan runs. Default output is
+ndjson for machines. Pass `--output pretty` for humans.
+
+To store credentials for the session, pipe the token on stdin so it stays
+out of shell history:
+
+```bash
+echo "$WARREN_API_TOKEN" | warren login --url https://warren.example.com
+```
+
+`warren login` verifies the credential against `/whoami`, then writes
+base URL + token (only — never a DB credential, per decision D5) to the
+client config at `~/.warren/client.json` with mode 0600. Resolution
+precedence everywhere: flags > env > config file > built-in default.
+
 ## Tech stack
 
 - **Runtime:** Bun (runs TypeScript directly, no server build step)
