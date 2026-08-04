@@ -334,7 +334,9 @@ describe("scan — the extension boundary (warren-0781, plan pl-116e)", () => {
 					'import { Y } from "../../../scripts/check-layers.ts";\n',
 			},
 			(dir) => {
-				expect(scan(dir, RULES)).toEqual([
+				// The filesystem walk order is platform-dependent, so sort the
+				// findings by file the way the warren-89a6 multi-finding tests do.
+				expect(scan(dir, RULES).sort((a, b) => a.file.localeCompare(b.file))).toEqual([
 					{
 						rule: "extensions-are-standalone",
 						file: "extensions/audit-log/src/collector.ts",
