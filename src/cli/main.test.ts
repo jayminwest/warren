@@ -23,7 +23,9 @@ describe("buildProgram", () => {
 			"db",
 			"doctor",
 			"init",
+			"login",
 			"plan",
+			"prime",
 			"run",
 			"serve",
 		]);

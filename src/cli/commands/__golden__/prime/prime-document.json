@@ -1,0 +1,364 @@
+{
+  "command": "prime",
+  "version": "0.13.2",
+  "commands": [
+    {
+      "name": "add-project",
+      "description": "register a project on the warren server (POST /projects)",
+      "options": [
+        {
+          "flags": "--default-branch <name>",
+          "description": "override the auto-detected default branch"
+        },
+        {
+          "flags": "--url <url>",
+          "description": "warren server base URL (env WARREN_BASE_URL)"
+        },
+        {
+          "flags": "--token <token>",
+          "description": "bearer token (env WARREN_API_TOKEN)"
+        }
+      ]
+    },
+    {
+      "name": "run",
+      "description": "dispatch a one-shot run against the warren server, tail events as NDJSON, and exit",
+      "options": [
+        {
+          "flags": "-p, --prompt <text>",
+          "description": "prompt text the agent receives"
+        },
+        {
+          "flags": "--trigger <label>",
+          "description": "run trigger label"
+        },
+        {
+          "flags": "--provider <name>",
+          "description": "per-run override of agent frontmatter.provider"
+        },
+        {
+          "flags": "--model <name>",
+          "description": "per-run override of agent frontmatter.model"
+        },
+        {
+          "flags": "--url <url>",
+          "description": "warren server base URL (env WARREN_BASE_URL)"
+        },
+        {
+          "flags": "--token <token>",
+          "description": "bearer token (env WARREN_API_TOKEN)"
+        }
+      ]
+    },
+    {
+      "name": "init",
+      "description": "scaffold a .warren/ directory (triggers.yaml + config.yaml) in a project repo",
+      "options": [
+        {
+          "flags": "--project <id>",
+          "description": "target a registered project by id (writes into its warren clone)"
+        },
+        {
+          "flags": "--cwd <path>",
+          "description": "target a directory on disk (defaults to process.cwd())"
+        },
+        {
+          "flags": "--default-role <name>",
+          "description": "pin defaults.defaultRole to this registered agent"
+        },
+        {
+          "flags": "--url <url>",
+          "description": "warren server base URL (env WARREN_BASE_URL)"
+        },
+        {
+          "flags": "--token <token>",
+          "description": "bearer token (env WARREN_API_TOKEN)"
+        }
+      ]
+    },
+    {
+      "name": "config",
+      "description": ".warren/ admin tools",
+      "options": []
+    },
+    {
+      "name": "config migrate",
+      "description": "convert legacy .warren/defaults.json into the warren-5840 YAML layout (config.yaml + preview.yaml)",
+      "options": [
+        {
+          "flags": "--project <id>",
+          "description": "target a registered project by id (writes into its warren clone)"
+        },
+        {
+          "flags": "--cwd <path>",
+          "description": "target a directory on disk (defaults to process.cwd())"
+        },
+        {
+          "flags": "--url <url>",
+          "description": "warren server base URL (env WARREN_BASE_URL)"
+        },
+        {
+          "flags": "--token <token>",
+          "description": "bearer token (env WARREN_API_TOKEN)"
+        }
+      ]
+    },
+    {
+      "name": "doctor",
+      "description": "check the client's view of a warren server (reachable? auth valid? version match?)",
+      "options": [
+        {
+          "flags": "--local",
+          "description": "run the deployment-side checks instead (env vars, burrow socket, bwrap, DB)"
+        },
+        {
+          "flags": "--no-auth",
+          "description": "skip the auth check (loopback dev mode)"
+        },
+        {
+          "flags": "--verbose",
+          "description": "print raw probe/driver output (withheld from check messages) to stderr"
+        },
+        {
+          "flags": "--url <url>",
+          "description": "warren server base URL (env WARREN_BASE_URL)"
+        },
+        {
+          "flags": "--token <token>",
+          "description": "bearer token (env WARREN_API_TOKEN)"
+        }
+      ]
+    },
+    {
+      "name": "db",
+      "description": "database admin tools",
+      "options": []
+    },
+    {
+      "name": "db migrate-to-postgres",
+      "description": "one-shot copy of a SQLite warren.db into a Postgres database",
+      "options": [
+        {
+          "flags": "--from <sqlite>",
+          "description": "source SQLite path or URL (bare path, sqlite://, file://, :memory:)"
+        },
+        {
+          "flags": "--to <pg-url>",
+          "description": "target Postgres URL (postgres:// or postgresql://)"
+        }
+      ]
+    },
+    {
+      "name": "plan",
+      "description": "dispatch and steer cloud plan-runs",
+      "options": []
+    },
+    {
+      "name": "plan run",
+      "description": "dispatch a serial plan-run against a remote warren and tail events as NDJSON",
+      "options": [
+        {
+          "flags": "--project <id>",
+          "description": "project id (prj_xxx)"
+        },
+        {
+          "flags": "--agent <name>",
+          "description": "registered agent name"
+        },
+        {
+          "flags": "--prompt-template <text>",
+          "description": "per-child prompt template override"
+        },
+        {
+          "flags": "--ref <git-ref>",
+          "description": "git ref to clone child workspaces from"
+        },
+        {
+          "flags": "--provider <name>",
+          "description": "per-run override of agent frontmatter.provider"
+        },
+        {
+          "flags": "--model <name>",
+          "description": "per-run override of agent frontmatter.model"
+        },
+        {
+          "flags": "--no-follow",
+          "description": "dispatch and exit without tailing events"
+        },
+        {
+          "flags": "--output <mode>",
+          "description": "output mode: ndjson (default) or pretty"
+        },
+        {
+          "flags": "--url <url>",
+          "description": "warren server base URL (env WARREN_BASE_URL)"
+        },
+        {
+          "flags": "--token <token>",
+          "description": "bearer token (env WARREN_API_TOKEN)"
+        }
+      ]
+    },
+    {
+      "name": "plan cancel",
+      "description": "cancel a remote plan-run and its in-flight child run",
+      "options": [
+        {
+          "flags": "--output <mode>",
+          "description": "output mode: ndjson (default) or pretty"
+        },
+        {
+          "flags": "--url <url>",
+          "description": "warren server base URL (env WARREN_BASE_URL)"
+        },
+        {
+          "flags": "--token <token>",
+          "description": "bearer token (env WARREN_API_TOKEN)"
+        }
+      ]
+    },
+    {
+      "name": "plan status",
+      "description": "render a plan-run's child-state table with per-child cost + duration",
+      "options": [
+        {
+          "flags": "--output <mode>",
+          "description": "output mode: ndjson (default) or pretty"
+        },
+        {
+          "flags": "--url <url>",
+          "description": "warren server base URL (env WARREN_BASE_URL)"
+        },
+        {
+          "flags": "--token <token>",
+          "description": "bearer token (env WARREN_API_TOKEN)"
+        }
+      ]
+    },
+    {
+      "name": "plan list",
+      "description": "list plan-runs, optionally filtered by project / state",
+      "options": [
+        {
+          "flags": "--project <id>",
+          "description": "only plan-runs for this project (prj_xxx)"
+        },
+        {
+          "flags": "--state <state>",
+          "description": "only plan-runs in this state (queued|running|succeeded|failed|cancelled)"
+        },
+        {
+          "flags": "--output <mode>",
+          "description": "output mode: ndjson (default) or pretty"
+        },
+        {
+          "flags": "--url <url>",
+          "description": "warren server base URL (env WARREN_BASE_URL)"
+        },
+        {
+          "flags": "--token <token>",
+          "description": "bearer token (env WARREN_API_TOKEN)"
+        }
+      ]
+    },
+    {
+      "name": "login",
+      "description": "verify a base URL + token against the server and persist them to the client config",
+      "options": [
+        {
+          "flags": "--url <url>",
+          "description": "warren server base URL (env WARREN_BASE_URL)"
+        },
+        {
+          "flags": "--token <token>",
+          "description": "bearer token (env WARREN_API_TOKEN)"
+        }
+      ]
+    },
+    {
+      "name": "prime",
+      "description": "emit agent session context: command reference, env contract, exit codes, workflows",
+      "options": []
+    },
+    {
+      "name": "serve",
+      "description": "start the HTTP server (default in docker entrypoint)",
+      "options": [
+        {
+          "flags": "--no-auth",
+          "description": "boot without bearer-token auth (loopback only)"
+        }
+      ]
+    }
+  ],
+  "env": [
+    {
+      "name": "WARREN_BASE_URL",
+      "summary": "warren server base URL (default http://localhost:8080)"
+    },
+    {
+      "name": "WARREN_API_TOKEN",
+      "summary": "bearer token for the server (required unless WARREN_AUTH=public)"
+    },
+    {
+      "name": "WARREN_CLIENT_CONFIG",
+      "summary": "override the client config path (default ~/.warren/client.json, written by `warren login`)"
+    }
+  ],
+  "exitCodes": [
+    {
+      "code": 0,
+      "name": "success",
+      "summary": "the command completed successfully"
+    },
+    {
+      "code": 1,
+      "name": "run-failed",
+      "summary": "the dispatched run/plan-run reached a non-success terminal state, or the command failed for any other reason"
+    },
+    {
+      "code": 2,
+      "name": "usage-error",
+      "summary": "bad flags or arguments (missing required option, invalid --output value, validation error)"
+    },
+    {
+      "code": 3,
+      "name": "server-unreachable",
+      "summary": "the warren server did not answer the pre-flight probe"
+    },
+    {
+      "code": 4,
+      "name": "auth-rejected",
+      "summary": "the server rejected the bearer token (HTTP 401/403)"
+    },
+    {
+      "code": 130,
+      "name": "sigint-detach",
+      "summary": "operator detached a live event tail with SIGINT; the remote run keeps going"
+    }
+  ],
+  "workflows": [
+    {
+      "name": "dispatch-and-wait",
+      "steps": [
+        "warren login --url <base> --token <t>   # once; stores credentials in the client config",
+        "warren run <agent> <project-id> -p \"<prompt>\"   # dispatch, tail NDJSON events, exit with the terminal state"
+      ]
+    },
+    {
+      "name": "tail-and-steer",
+      "steps": [
+        "warren run <agent> <project-id> -p \"<prompt>\"   # each NDJSON line is one event",
+        "Ctrl-C detaches the tail (exit 130); the remote run keeps going"
+      ]
+    },
+    {
+      "name": "plan-run",
+      "steps": [
+        "warren plan run <plan-id> --project <id> --agent <name>   # serial children, each gated on the previous PR merging",
+        "warren plan status <plan-run-id>   # child-state table with per-child cost + duration",
+        "warren plan cancel <plan-run-id>   # cancel the plan-run and its in-flight child"
+      ]
+    }
+  ]
+}
