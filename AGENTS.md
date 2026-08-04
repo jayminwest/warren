@@ -674,6 +674,16 @@ context, run `ml search --archived <query>`.
    ```
 <!-- mulch:end -->
 
+## Without the sd/ml CLIs
+
+The seeds and mulch sections above assume you have the sd and ml CLIs.
+If you do not, skip those steps.
+
+Everything else applies as written: make the change, run the quality
+gates, open the PR. The project's own tooling maintains the issue queue
+and expertise records. PRs from contributors without the CLIs are
+welcome.
+
 ## Further reading
 
 - [ROADMAP.md](ROADMAP.md) — sequencing and release plan
