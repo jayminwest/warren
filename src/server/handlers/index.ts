@@ -153,6 +153,15 @@ export function parseNonNegativeInt(raw: string | null, label: string): number |
 	return n;
 }
 
+export function parsePositiveInt(raw: string | null, label: string): number | undefined {
+	if (raw === null) return undefined;
+	const n = Number.parseInt(raw, 10);
+	if (!Number.isFinite(n) || n < 1 || String(n) !== raw) {
+		throw new ValidationError(`${label} must be a positive integer; got '${raw}'`);
+	}
+	return n;
+}
+
 /* ----------------------------------------------------------------------- */
 /* Route table                                                              */
 /* ----------------------------------------------------------------------- */
@@ -290,6 +299,11 @@ const ROUTE_TABLE: readonly RouteEntry[] = [
 	{ method: "GET", pattern: "/runs", policy: "readPublic", build: listRunsHandler },
 	{ method: "POST", pattern: "/runs", policy: "dispatch", build: createRunHandler },
 	{ method: "GET", pattern: "/runs/:id", policy: "readPublic", build: getRunHandler },
+	// NDJSON event tail. `?follow=1` live-tails (the default while the run
+	// is non-terminal); `?limit=N` requests a bounded non-streaming read of
+	// at most N events and implies follow=false — the response closes after
+	// the page, so agents can poll for liveness without holding a stream
+	// open (warren-17c1). `?since=<seq>` pages forward from a prior read.
 	{
 		method: "GET",
 		pattern: "/runs/:id/events",
