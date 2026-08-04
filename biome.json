@@ -129,6 +129,7 @@
 				"src/ui/src/pages/Projects.tsx",
 				"src/ui/src/pages/RunAnalytics.tsx",
 				"src/ui/src/pages/RunDetail.tsx",
+				"src/ui/src/pages/run-detail-events.tsx",
 				"src/ui/src/pages/Runs.tsx",
 				"src/ui/src/pages/plan-run-detail/child-table.tsx",
 				"src/ui/src/pages/run-analytics/TokenConsumptionChart.tsx"
