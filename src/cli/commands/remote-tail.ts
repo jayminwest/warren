@@ -11,10 +11,10 @@
  */
 
 import type { WarrenClient } from "../../client/index.ts";
-import { type CliContext, formatError } from "../output.ts";
+import { type CliContext, EXIT_SIGINT_DETACH, formatError } from "../output.ts";
 
 /** Exit code emitted when the operator detaches a live tail with SIGINT. */
-export const SIGINT_EXIT_CODE = 130;
+export const SIGINT_EXIT_CODE = EXIT_SIGINT_DETACH;
 
 /** Disposer returned by the `onSigint` seam: unregisters the handler. */
 export type SigintDisposer = () => void;

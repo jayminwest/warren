@@ -8,7 +8,7 @@
  */
 
 import type { WarrenClient } from "../../client/index.ts";
-import { type CliContext, formatError } from "../output.ts";
+import { type CliContext, EXIT_SERVER_UNREACHABLE, EXIT_USAGE, formatError } from "../output.ts";
 
 /**
  * Probe the remote warren, mapping an unreachable server to a stderr line.
@@ -42,10 +42,10 @@ export async function guardRemotePlanRun(
 ): Promise<{ readonly exitCode: number } | null> {
 	if (planRunId === "") {
 		context.stdio.stderr.write("warren: plan-run id is required\n");
-		return { exitCode: 2 };
+		return { exitCode: EXIT_USAGE };
 	}
 	if (!(await probeOrReport(context, client, probeTimeoutMs))) {
-		return { exitCode: 1 };
+		return { exitCode: EXIT_SERVER_UNREACHABLE };
 	}
 	return null;
 }

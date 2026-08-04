@@ -23,7 +23,13 @@
 import type { WarrenClient } from "../../client/index.ts";
 import type { PlanRunState } from "../../client/types.ts";
 import type { CliContext } from "../output.ts";
-import { formatError } from "../output.ts";
+import {
+	commandFailure,
+	EXIT_SERVER_UNREACHABLE,
+	EXIT_USAGE,
+	exitCodeForError,
+	formatError,
+} from "../output.ts";
 import { createRenderer, type PlanRunOutput, type PlanRunRenderer } from "../plan-run-renderer.ts";
 import { guardRemotePlanRun, probeOrReport } from "./probe.ts";
 import { type RemoteTailDeps, tailOutcomeExit, tailWithDetach } from "./remote-tail.ts";
@@ -76,11 +82,11 @@ export async function runPlanRun(
 ): Promise<PlanRunResult> {
 	if (args.planId === "" || args.project === "" || args.agent === "") {
 		context.stdio.stderr.write("warren: plan-id, --project, and --agent are all required\n");
-		return { exitCode: 2 };
+		return { exitCode: EXIT_USAGE };
 	}
 
 	if (!(await probeOrReport(context, deps.client, deps.probeTimeoutMs))) {
-		return { exitCode: 1 };
+		return { exitCode: EXIT_SERVER_UNREACHABLE };
 	}
 
 	const renderer = createRenderer(args.output ?? "ndjson", context.stdio.stdout);
@@ -100,7 +106,7 @@ export async function runPlanRun(
 		renderer.dispatched(created.planRun, created.children);
 	} catch (err) {
 		context.stdio.stderr.write(`warren: ${formatError(err)}\n`);
-		return { exitCode: 1 };
+		return { exitCode: exitCodeForError(err) };
 	}
 
 	if (!args.follow) {
@@ -153,7 +159,7 @@ async function resolveTerminal(
 		return { exitCode: state === "succeeded" ? 0 : 1, planRunId, state };
 	} catch (err) {
 		context.stdio.stderr.write(`warren: failed to read plan-run state: ${formatError(err)}\n`);
-		return { exitCode: 1, planRunId };
+		return { exitCode: exitCodeForError(err), planRunId };
 	}
 }
 
@@ -171,7 +177,6 @@ export async function runPlanCancel(
 		renderer.cancelled(result);
 		return { exitCode: 0, planRunId: args.planRunId };
 	} catch (err) {
-		context.stdio.stderr.write(`warren: ${formatError(err)}\n`);
-		return { exitCode: 1, planRunId: args.planRunId };
+		return { ...commandFailure(context, err), planRunId: args.planRunId };
 	}
 }

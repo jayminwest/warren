@@ -67,7 +67,7 @@ describe("runAddProject", () => {
 		expect(err.join("")).toContain("git-url is required");
 	});
 
-	test("an unreachable server exits 1 with the probe error on stderr", async () => {
+	test("an unreachable server exits 3 with the probe error on stderr", async () => {
 		const { context, err } = captureContext();
 		const client = mockClient({ probeError: new WarrenUnreachableError("connection refused") });
 		const result = await runAddProject(
@@ -75,7 +75,7 @@ describe("runAddProject", () => {
 			{ client },
 			{ gitUrl: "https://github.com/os-eco/warren" },
 		);
-		expect(result.exitCode).toBe(1);
+		expect(result.exitCode).toBe(3);
 		expect(err.join("")).toContain("connection refused");
 	});
 
@@ -132,7 +132,31 @@ describe("runAddProject", () => {
 			{ client },
 			{ gitUrl: "https://github.com/somebody/private" },
 		);
-		expect(result.exitCode).toBe(1);
+		expect(result.exitCode).toBe(4);
 		expect(err.join("")).toContain("allowlist");
+	});
+});
+
+describe("runAddProject output contract (warren-b61e)", () => {
+	test("json mode emits a single indented document", async () => {
+		const { context, out } = captureContext();
+		const result = await runAddProject(
+			{ ...context, output: "json" },
+			{ client: mockClient() },
+			{ gitUrl: "https://github.com/os-eco/warren" },
+		);
+		expect(result.exitCode).toBe(0);
+		expect(out.join("")).toContain('\n  "ok": true');
+	});
+
+	test("pretty mode emits the human line", async () => {
+		const { context, out } = captureContext();
+		const result = await runAddProject(
+			{ ...context, output: "pretty" },
+			{ client: mockClient() },
+			{ gitUrl: "https://github.com/os-eco/warren" },
+		);
+		expect(result.exitCode).toBe(0);
+		expect(out.join("")).toContain("✔ project prj_1 registered");
 	});
 });

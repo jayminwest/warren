@@ -1,6 +1,27 @@
 import { describe, expect, test } from "bun:test";
+import { WarrenClientError, WarrenUnreachableError } from "../client/errors.ts";
 import { ValidationError } from "../core/errors.ts";
-import { defaultSpawn, formatError, PROCESS_STDIO, writeJsonLine } from "./output.ts";
+import {
+	type CliContext,
+	commandFailure,
+	defaultSpawn,
+	EXIT_AUTH_REJECTED,
+	EXIT_CODE_TABLE,
+	EXIT_RUN_FAILED,
+	EXIT_SERVER_UNREACHABLE,
+	EXIT_USAGE,
+	exitCodeForError,
+	formatDurationMs,
+	formatError,
+	formatExitCodeTable,
+	OUTPUT_MODES,
+	type OutputMode,
+	outputMode,
+	PROCESS_STDIO,
+	parseOutputMode,
+	writeJsonLine,
+	writeResult,
+} from "./output.ts";
 
 describe("writeJsonLine", () => {
 	test("writes a single newline-terminated JSON object", () => {
@@ -65,3 +86,132 @@ describe("defaultSpawn", () => {
 		expect(result.stderr).toBe("");
 	});
 });
+
+describe("parseOutputMode", () => {
+	test("defaults an unset flag to ndjson", () => {
+		expect(parseOutputMode(undefined)).toBe("ndjson");
+	});
+
+	test("accepts each documented mode", () => {
+		for (const mode of OUTPUT_MODES) {
+			expect(parseOutputMode(mode)).toBe(mode);
+		}
+	});
+
+	test("rejects an unrecognised mode as null", () => {
+		expect(parseOutputMode("yaml")).toBeNull();
+	});
+});
+
+describe("outputMode", () => {
+	test("falls back to ndjson when the context carries no mode", () => {
+		const context = { env: {}, stdio: { stdout: sink(), stderr: sink() }, spawn: defaultSpawn };
+		expect(outputMode(context)).toBe("ndjson");
+	});
+});
+
+describe("writeResult", () => {
+	test("ndjson emits one compact line", () => {
+		const out = sink();
+		writeResult(contextWith("ndjson", out), { ok: true });
+		expect(out.chunks).toEqual([`{"ok":true}\n`]);
+	});
+
+	test("json emits a single indented document", () => {
+		const out = sink();
+		writeResult(contextWith("json", out), { ok: true });
+		expect(out.chunks).toEqual([`${JSON.stringify({ ok: true }, null, 2)}\n`]);
+	});
+
+	test("pretty emits the human line when provided", () => {
+		const out = sink();
+		writeResult(contextWith("pretty", out), { ok: true }, "✔ done");
+		expect(out.chunks).toEqual(["✔ done\n"]);
+	});
+
+	test("pretty falls back to the indented document without a human line", () => {
+		const out = sink();
+		writeResult(contextWith("pretty", out), { ok: true });
+		expect(out.chunks).toEqual([`${JSON.stringify({ ok: true }, null, 2)}\n`]);
+	});
+});
+
+describe("exit-code contract", () => {
+	test("the table pins the stable codes", () => {
+		expect(EXIT_CODE_TABLE.map((row) => [row.code, row.name])).toEqual([
+			[0, "success"],
+			[1, "run-failed"],
+			[2, "usage-error"],
+			[3, "server-unreachable"],
+			[4, "auth-rejected"],
+			[130, "sigint-detach"],
+		]);
+	});
+
+	test("formatExitCodeTable renders one line per row", () => {
+		const table = formatExitCodeTable();
+		expect(table.split("\n")).toHaveLength(EXIT_CODE_TABLE.length);
+		expect(table).toContain("server-unreachable");
+	});
+
+	test("exitCodeForError maps the error hierarchy onto the table", () => {
+		expect(exitCodeForError(new WarrenUnreachableError("down"))).toBe(EXIT_SERVER_UNREACHABLE);
+		expect(exitCodeForError(new WarrenClientError(401, "unauthorized", "bad token"))).toBe(
+			EXIT_AUTH_REJECTED,
+		);
+		expect(exitCodeForError(new WarrenClientError(403, "forbidden", "nope"))).toBe(
+			EXIT_AUTH_REJECTED,
+		);
+		expect(exitCodeForError(new ValidationError("bad input"))).toBe(EXIT_USAGE);
+		expect(exitCodeForError(new WarrenClientError(400, "validation_error", "bad"))).toBe(
+			EXIT_RUN_FAILED,
+		);
+		expect(exitCodeForError(new Error("misc"))).toBe(EXIT_RUN_FAILED);
+	});
+
+	test("commandFailure routes errors through exitCodeForError", () => {
+		const errSink = sink();
+		const context = {
+			env: {},
+			stdio: { stdout: sink(), stderr: errSink },
+			spawn: defaultSpawn,
+		};
+		expect(commandFailure(context, new WarrenUnreachableError("down")).exitCode).toBe(3);
+		expect(commandFailure(context, new ValidationError("bad")).exitCode).toBe(2);
+		expect(errSink.chunks.join("")).toContain("down");
+	});
+});
+
+describe("formatDurationMs (D6)", () => {
+	test("renders sub-minute durations as seconds", () => {
+		expect(formatDurationMs(4200)).toBe("4.2s");
+	});
+
+	test("renders sub-hour durations as minutes", () => {
+		expect(formatDurationMs(186_000)).toBe("3.1m");
+	});
+
+	test("renders longer durations as hours", () => {
+		expect(formatDurationMs(5_040_000)).toBe("1.4h");
+	});
+
+	test("honours the unit boundaries", () => {
+		expect(formatDurationMs(59_999)).toBe("60.0s");
+		expect(formatDurationMs(60_000)).toBe("1.0m");
+		expect(formatDurationMs(3_600_000)).toBe("1.0h");
+	});
+});
+
+function sink(): { write: (chunk: string) => void; chunks: string[] } {
+	const chunks: string[] = [];
+	return {
+		chunks,
+		write: (chunk) => {
+			chunks.push(chunk);
+		},
+	};
+}
+
+function contextWith(output: OutputMode, stdout: { write: (chunk: string) => void }): CliContext {
+	return { env: {}, stdio: { stdout, stderr: sink() }, spawn: defaultSpawn, output };
+}

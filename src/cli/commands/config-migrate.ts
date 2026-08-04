@@ -39,7 +39,7 @@ import {
 	parseDefaultsConfig,
 } from "../../warren-config/schema.ts";
 import type { CliContext } from "../output.ts";
-import { commandFailure, formatError, writeJsonLine } from "../output.ts";
+import { commandFailure, formatError, writeResult } from "../output.ts";
 import { resolveTargetDir } from "./target-dir.ts";
 
 export type ConfigMigrateArgs =
@@ -155,15 +155,19 @@ export async function runConfigMigrate(
 
 		await rm(legacyAbs, { force: true });
 
-		writeJsonLine(context.stdio.stdout, {
-			ok: true,
-			migrated: {
-				root: targetDir,
-				removed: warrenConfigRelativePath("defaults"),
-				written: writtenFiles,
-				previewHoisted: previewBlock !== null,
+		writeResult(
+			context,
+			{
+				ok: true,
+				migrated: {
+					root: targetDir,
+					removed: warrenConfigRelativePath("defaults"),
+					written: writtenFiles,
+					previewHoisted: previewBlock !== null,
+				},
 			},
-		});
+			`✔ migrated .warren/defaults.json in ${targetDir} — wrote ${writtenFiles.join(", ")}`,
+		);
 		return { exitCode: 0 };
 	} catch (err) {
 		return commandFailure(context, err);

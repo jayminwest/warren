@@ -104,7 +104,7 @@ describe("runPlanRun", () => {
 		expect(err.join("")).toContain("required");
 	});
 
-	test("reports-unreachable-warren-from-probe-with-exit-1", async () => {
+	test("reports-unreachable-warren-from-probe-with-exit-3", async () => {
 		const { context, err } = captureContext();
 		const res = await runPlanRun(
 			context,
@@ -117,7 +117,7 @@ describe("runPlanRun", () => {
 			},
 			baseArgs(),
 		);
-		expect(res.exitCode).toBe(1);
+		expect(res.exitCode).toBe(3);
 		expect(err.join("")).toContain("unreachable");
 	});
 

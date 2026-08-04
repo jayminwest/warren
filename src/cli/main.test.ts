@@ -82,3 +82,49 @@ describe("buildProgram", () => {
 		expect(promptOpt?.mandatory).toBe(true);
 	});
 });
+
+describe("global --output contract (warren-b61e)", () => {
+	test("the program registers a global --output option", () => {
+		const program = buildProgram(silentContext());
+		const opt = program.options.find((o) => o.long === "--output");
+		expect(opt).toBeDefined();
+	});
+
+	test("help epilogue renders the stable exit-code table", () => {
+		const program = buildProgram(silentContext());
+		let help = "";
+		program.configureOutput({
+			writeOut: (chunk) => {
+				help += chunk;
+			},
+		});
+		program.outputHelp();
+		expect(help).toContain("Exit codes:");
+		expect(help).toContain("server-unreachable");
+		expect(help).toContain("auth-rejected");
+		expect(help).toContain("sigint-detach");
+	});
+
+	test("an invalid --output value exits 2 before the command runs", async () => {
+		const errChunks: string[] = [];
+		const context: CliContext = {
+			env: {},
+			stdio: {
+				stdout: { write: () => undefined },
+				stderr: {
+					write: (chunk) => {
+						errChunks.push(chunk);
+					},
+				},
+			},
+			spawn: async () => ({ stdout: "", stderr: "", exitCode: 0 }),
+		};
+		const program = buildProgram(context);
+		program.exitOverride();
+		const err = await program
+			.parseAsync(["node", "warren", "--output", "yaml", "doctor"])
+			.catch((e: unknown) => e);
+		expect((err as { exitCode?: number }).exitCode).toBe(2);
+		expect(errChunks.join("")).toContain("invalid --output mode");
+	});
+});

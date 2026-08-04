@@ -21,7 +21,15 @@ import type {
 	RunRow,
 } from "../../client/types.ts";
 import type { CliContext } from "../output.ts";
-import { formatError, type WriteSink, writeJsonLine } from "../output.ts";
+import {
+	commandFailure,
+	EXIT_SERVER_UNREACHABLE,
+	exitCodeForError,
+	formatDurationMs,
+	formatError,
+	type WriteSink,
+	writeJsonLine,
+} from "../output.ts";
 import type { PlanRunOutput } from "../plan-run-renderer.ts";
 import { guardRemotePlanRun, probeOrReport } from "./probe.ts";
 
@@ -70,8 +78,7 @@ export async function runPlanStatus(
 		}
 		return { exitCode: 0, planRunId: detail.planRun.id, state: detail.planRun.state };
 	} catch (err) {
-		context.stdio.stderr.write(`warren: ${formatError(err)}\n`);
-		return { exitCode: 1, planRunId: args.planRunId };
+		return { ...commandFailure(context, err), planRunId: args.planRunId };
 	}
 }
 
@@ -81,7 +88,7 @@ export async function runPlanList(
 	args: PlanListArgs,
 ): Promise<PlanListResult> {
 	if (!(await probeOrReport(context, deps.client, deps.probeTimeoutMs))) {
-		return { exitCode: 1 };
+		return { exitCode: EXIT_SERVER_UNREACHABLE };
 	}
 	try {
 		const filter = {
@@ -99,7 +106,7 @@ export async function runPlanList(
 		return { exitCode: 0, count: planRuns.length };
 	} catch (err) {
 		context.stdio.stderr.write(`warren: ${formatError(err)}\n`);
-		return { exitCode: 1 };
+		return { exitCode: exitCodeForError(err) };
 	}
 }
 
@@ -191,11 +198,11 @@ function formatCost(costUsd: number | null): string {
 	return costUsd === null ? "—" : `$${costUsd.toFixed(4)}`;
 }
 
-/** Render a run's wall-clock duration as `Ns`, or an em-dash when unknown. */
+/** Render a run's wall-clock duration (D6: 4.2s / 3.1m / 1.4h), or an em-dash. */
 function formatDuration(run: RunRow | null): string {
 	if (run === null || run.startedAt === null || run.endedAt === null) return "—";
 	const started = Date.parse(run.startedAt);
 	const ended = Date.parse(run.endedAt);
 	if (Number.isNaN(started) || Number.isNaN(ended) || ended < started) return "—";
-	return `${((ended - started) / 1000).toFixed(1)}s`;
+	return formatDurationMs(ended - started);
 }

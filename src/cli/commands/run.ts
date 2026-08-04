@@ -24,7 +24,17 @@
 
 import { isTerminalRunState, type RunTerminalState } from "../../core/wire.ts";
 import type { CliContext } from "../output.ts";
-import { formatError, writeJsonLine } from "../output.ts";
+import {
+	EXIT_RUN_FAILED,
+	EXIT_SERVER_UNREACHABLE,
+	EXIT_SUCCESS,
+	EXIT_USAGE,
+	exitCodeForError,
+	formatError,
+	outputMode,
+	writeJsonLine,
+} from "../output.ts";
+import { renderEventLine, terminalGlyph } from "../plan-run-renderer.ts";
 import { probeOrReport } from "./probe.ts";
 import { type RemoteTailDeps, tailOutcomeExit, tailWithDetach } from "./remote-tail.ts";
 
@@ -55,13 +65,14 @@ export async function runRun(
 ): Promise<RunResult> {
 	if (args.agent === "" || args.project === "" || args.prompt === "") {
 		context.stdio.stderr.write("warren: agent, project, and --prompt are all required\n");
-		return { exitCode: 2 };
+		return { exitCode: EXIT_USAGE };
 	}
 
 	if (!(await probeOrReport(context, deps.client, deps.probeTimeoutMs))) {
-		return { exitCode: 1 };
+		return { exitCode: EXIT_SERVER_UNREACHABLE };
 	}
 
+	const mode = outputMode(context);
 	let runId: string;
 	try {
 		const spawned = await deps.client.createRun({
@@ -73,16 +84,23 @@ export async function runRun(
 			...(args.modelOverride !== undefined ? { modelOverride: args.modelOverride } : {}),
 		});
 		runId = spawned.run.id;
-		writeJsonLine(context.stdio.stdout, {
-			event: "run.spawned",
-			runId,
-			agent: spawned.run.agentName,
-			project: spawned.run.projectId,
-			burrowId: spawned.burrow.id,
-		});
+		if (mode === "ndjson") {
+			writeJsonLine(context.stdio.stdout, {
+				event: "run.spawned",
+				runId,
+				agent: spawned.run.agentName,
+				project: spawned.run.projectId,
+				burrowId: spawned.burrow.id,
+			});
+		} else if (mode === "pretty") {
+			context.stdio.stdout.write(
+				`▶ run ${runId} dispatched — agent ${spawned.run.agentName}, project ${spawned.run.projectId}\n`,
+			);
+		}
+		// json mode stays silent until the single final document.
 	} catch (err) {
 		context.stdio.stderr.write(`warren: ${formatError(err)}\n`);
-		return { exitCode: 1 };
+		return { exitCode: exitCodeForError(err) };
 	}
 
 	return tailUntilTerminal(context, deps, runId);
@@ -104,7 +122,13 @@ async function tailUntilTerminal(
 			`warren: detaching from run ${runId} (the remote run keeps going; ` +
 			`cancel it with POST /runs/${runId}/cancel). Ctrl-C again to exit.\n`,
 		stream: (signal) => deps.client.streamRunEvents(runId, { follow: true, signal }),
-		onEvent: (event) =>
+		onEvent: (event) => {
+			const mode = outputMode(context);
+			if (mode === "pretty") {
+				context.stdio.stdout.write(`${renderEventLine(event)}\n`);
+				return;
+			}
+			if (mode === "json") return; // stream suppressed; one final document
 			writeJsonLine(context.stdio.stdout, {
 				event: "run.event",
 				runId,
@@ -113,7 +137,8 @@ async function tailUntilTerminal(
 				kind: event.kind,
 				stream: event.stream,
 				payload: event.payload,
-			}),
+			});
+		},
 		onSigint: deps.onSigint,
 		exit: deps.exit,
 	});
@@ -134,19 +159,32 @@ async function resolveTerminal(
 	try {
 		const run = await deps.client.getRun(runId);
 		const state = run.state;
-		writeJsonLine(context.stdio.stdout, {
+		const final = {
 			event: "run.terminal",
 			runId,
 			state,
 			failureReason: run.failureReason,
 			prUrl: run.prUrl,
-		});
+		};
+		const mode = outputMode(context);
+		if (mode === "pretty") {
+			const pr = run.prUrl !== null && run.prUrl !== "" ? ` — ${run.prUrl}` : "";
+			context.stdio.stdout.write(`${terminalGlyph(state)} run ${runId} ${state}${pr}\n`);
+		} else if (mode === "json") {
+			context.stdio.stdout.write(`${JSON.stringify(final, null, 2)}\n`);
+		} else {
+			writeJsonLine(context.stdio.stdout, final);
+		}
 		// The server closes the follow stream at terminal, so a non-terminal
 		// read-back here means the stream died early — count it as failed.
 		const terminal = isTerminalRunState(state) ? state : "failed";
-		return { exitCode: terminal === "succeeded" ? 0 : 1, runId, state: terminal };
+		return {
+			exitCode: terminal === "succeeded" ? EXIT_SUCCESS : EXIT_RUN_FAILED,
+			runId,
+			state: terminal,
+		};
 	} catch (err) {
 		context.stdio.stderr.write(`warren: failed to read run state: ${formatError(err)}\n`);
-		return { exitCode: 1, runId };
+		return { exitCode: exitCodeForError(err), runId };
 	}
 }

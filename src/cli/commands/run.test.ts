@@ -5,6 +5,7 @@ import {
 	type RunRow,
 	type SpawnRunResponse,
 	type WarrenClient,
+	WarrenClientError,
 	WarrenUnreachableError,
 } from "../../client/index.ts";
 import type { CliContext } from "../output.ts";
@@ -135,7 +136,7 @@ describe("runRun", () => {
 		expect(err.join("")).toContain("--prompt are all required");
 	});
 
-	test("an unreachable server exits 1 before dispatching", async () => {
+	test("an unreachable server exits 3 before dispatching", async () => {
 		const { context, err } = captureContext();
 		const createCalls: CreateRunInput[] = [];
 		const client = mockClient({
@@ -143,7 +144,7 @@ describe("runRun", () => {
 			createCalls,
 		});
 		const result = await runRun(context, { client }, ARGS);
-		expect(result.exitCode).toBe(1);
+		expect(result.exitCode).toBe(3);
 		expect(err.join("")).toContain("connection refused");
 		expect(createCalls).toEqual([]);
 	});
@@ -254,5 +255,49 @@ describe("runRun", () => {
 		);
 		expect(result.exitCode).toBe(1);
 		expect(result.state).toBe("failed");
+	});
+});
+
+describe("runRun output contract (warren-b61e)", () => {
+	test("json mode emits a single final document and suppresses the stream", async () => {
+		const { context, out } = captureContext();
+		const jsonContext: CliContext = { ...context, output: "json" };
+		const result = await runRun(
+			jsonContext,
+			{ client: mockClient({ events: [runEvent(1), runEvent(2)] }) },
+			ARGS,
+		);
+		expect(result.exitCode).toBe(0);
+		const doc = JSON.parse(out.join("")) as Record<string, unknown>;
+		expect(doc.event).toBe("run.terminal");
+		expect(doc.state).toBe("succeeded");
+		expect(out.join("")).not.toContain("run.event");
+		expect(out.join("")).not.toContain("run.spawned");
+	});
+
+	test("pretty mode renders a dispatch line, pretty events, and a terminal glyph", async () => {
+		const { context, out } = captureContext();
+		const prettyContext: CliContext = { ...context, output: "pretty" };
+		const result = await runRun(
+			prettyContext,
+			{ client: mockClient({ events: [runEvent(1)] }) },
+			ARGS,
+		);
+		expect(result.exitCode).toBe(0);
+		const text = out.join("");
+		expect(text).toContain("▶ run run-1 dispatched");
+		expect(text).toContain("[00:00:01]");
+		expect(text).toContain("✔ run run-1 succeeded");
+		expect(text).toContain("https://github.com/os-eco/warren/pull/42");
+	});
+
+	test("an auth rejection during dispatch exits 4", async () => {
+		const { context, err } = captureContext();
+		const client = mockClient({
+			createError: new WarrenClientError(401, "unauthorized", "bad token"),
+		});
+		const result = await runRun(context, { client }, ARGS);
+		expect(result.exitCode).toBe(4);
+		expect(err.join("")).toContain("bad token");
 	});
 });

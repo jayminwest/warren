@@ -142,7 +142,7 @@ describe("runPlanStatus", () => {
 		expect(err.join("")).toContain("required");
 	});
 
-	test("reports-unreachable-warren-with-exit-1", async () => {
+	test("reports-unreachable-warren-with-exit-3", async () => {
 		const { context, err } = captureContext();
 		const res = await runPlanStatus(
 			context,
@@ -155,7 +155,7 @@ describe("runPlanStatus", () => {
 			},
 			{ planRunId: "pr-1" },
 		);
-		expect(res.exitCode).toBe(1);
+		expect(res.exitCode).toBe(3);
 		expect(err.join("")).toContain("unreachable");
 	});
 
@@ -233,7 +233,7 @@ describe("runPlanStatus", () => {
 });
 
 describe("runPlanList", () => {
-	test("reports-unreachable-warren-with-exit-1", async () => {
+	test("reports-unreachable-warren-with-exit-3", async () => {
 		const { context, err } = captureContext();
 		const res = await runPlanList(
 			context,
@@ -246,7 +246,7 @@ describe("runPlanList", () => {
 			},
 			{},
 		);
-		expect(res.exitCode).toBe(1);
+		expect(res.exitCode).toBe(3);
 		expect(err.join("")).toContain("unreachable");
 	});
 

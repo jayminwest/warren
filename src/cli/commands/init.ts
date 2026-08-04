@@ -47,7 +47,7 @@ import {
 } from "../../warren-config/config.ts";
 import { type DefaultsConfig, parseConfigFile } from "../../warren-config/schema.ts";
 import type { CliContext } from "../output.ts";
-import { commandFailure, writeJsonLine } from "../output.ts";
+import { commandFailure, writeResult } from "../output.ts";
 import { resolveTargetDir } from "./target-dir.ts";
 
 export type InitArgs =
@@ -145,14 +145,18 @@ export async function runInit(
 		await writeFile(triggersAbs, TRIGGERS_TEMPLATE, "utf8");
 		await writeFile(configAbs, configYaml, "utf8");
 
-		writeJsonLine(context.stdio.stdout, {
-			ok: true,
-			scaffolded: {
-				root: targetDir,
-				files: [warrenConfigRelativePath("triggers"), warrenConfigRelativePath("config")],
-				defaultRole: defaults.defaultRole ?? null,
+		writeResult(
+			context,
+			{
+				ok: true,
+				scaffolded: {
+					root: targetDir,
+					files: [warrenConfigRelativePath("triggers"), warrenConfigRelativePath("config")],
+					defaultRole: defaults.defaultRole ?? null,
+				},
 			},
-		});
+			`✔ scaffolded .warren/ in ${targetDir} (triggers.yaml + config.yaml)`,
+		);
 		return { exitCode: 0 };
 	} catch (err) {
 		return commandFailure(context, err);

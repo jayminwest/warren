@@ -13,7 +13,13 @@
 
 import type { WarrenClient } from "../../client/index.ts";
 import type { CliContext } from "../output.ts";
-import { formatError, writeJsonLine } from "../output.ts";
+import {
+	EXIT_SERVER_UNREACHABLE,
+	EXIT_USAGE,
+	exitCodeForError,
+	formatError,
+	writeResult,
+} from "../output.ts";
 import { probeOrReport } from "./probe.ts";
 
 export interface AddProjectArgs {
@@ -39,11 +45,11 @@ export async function runAddProject(
 ): Promise<AddProjectResult> {
 	if (args.gitUrl === "") {
 		context.stdio.stderr.write("warren: git-url is required\n");
-		return { exitCode: 2 };
+		return { exitCode: EXIT_USAGE };
 	}
 
 	if (!(await probeOrReport(context, deps.client, deps.probeTimeoutMs))) {
-		return { exitCode: 1 };
+		return { exitCode: EXIT_SERVER_UNREACHABLE };
 	}
 
 	try {
@@ -53,19 +59,23 @@ export async function runAddProject(
 				? { defaultBranch: args.defaultBranch }
 				: {}),
 		});
-		writeJsonLine(context.stdio.stdout, {
-			ok: true,
-			project: {
-				id: row.id,
-				gitUrl: row.gitUrl,
-				localPath: row.localPath,
-				defaultBranch: row.defaultBranch,
-				addedAt: row.addedAt,
+		writeResult(
+			context,
+			{
+				ok: true,
+				project: {
+					id: row.id,
+					gitUrl: row.gitUrl,
+					localPath: row.localPath,
+					defaultBranch: row.defaultBranch,
+					addedAt: row.addedAt,
+				},
 			},
-		});
+			`✔ project ${row.id} registered — ${row.gitUrl} (branch ${row.defaultBranch})`,
+		);
 		return { exitCode: 0 };
 	} catch (err) {
 		context.stdio.stderr.write(`warren: ${formatError(err)}\n`);
-		return { exitCode: 1 };
+		return { exitCode: exitCodeForError(err) };
 	}
 }

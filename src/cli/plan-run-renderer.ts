@@ -20,7 +20,7 @@ import type {
 	RunEvent,
 } from "../client/types.ts";
 import type { WriteSink } from "./output.ts";
-import { writeJsonLine } from "./output.ts";
+import { formatDurationMs, writeJsonLine } from "./output.ts";
 
 /** Output mode for the `plan` command family. Default is `ndjson`. */
 export type PlanRunOutput = "ndjson" | "pretty";
@@ -109,15 +109,18 @@ export function createPrettyRenderer(sink: WriteSink): PlanRunRenderer {
 	};
 }
 
-/** Map a terminal plan-run state to a leading glyph. */
-function terminalGlyph(state: PlanRunState): string {
+/**
+ * Map a terminal run / plan-run state to a leading glyph. Shared with
+ * `warren run`'s pretty mode (warren-b61e), so it takes any state string.
+ */
+export function terminalGlyph(state: string): string {
 	if (state === "succeeded") return "✔";
 	if (state === "cancelled") return "■";
 	return "✗";
 }
 
 /** Render one stream event as a single pretty line. */
-function renderEventLine(event: RunEvent): string {
+export function renderEventLine(event: RunEvent): string {
 	const ts = formatTimestamp(event.ts);
 	if (event.kind.startsWith("plan_run.")) {
 		return `[${ts}] ${renderLifecycle(event)}`;
@@ -186,7 +189,7 @@ function renderResult(payload: Record<string, unknown> | null): string {
 	const cost = numberField(payload, "total_cost_usd");
 	if (cost !== null) parts.push(`cost=$${cost.toFixed(4)}`);
 	const duration = numberField(payload, "duration_ms");
-	if (duration !== null) parts.push(`duration=${Math.round(duration)}ms`);
+	if (duration !== null) parts.push(`duration=${formatDurationMs(duration)}`);
 	return parts.join(" ");
 }
 

@@ -153,7 +153,7 @@ describe("createPrettyRenderer", () => {
 		createPrettyRenderer(sink).event(
 			event("result", { subtype: "success", total_cost_usd: 0.1234, duration_ms: 4200 }),
 		);
-		expect(lines()[0]).toBe("[08:09:10] result: success cost=$0.1234 duration=4200ms");
+		expect(lines()[0]).toBe("[08:09:10] result: success cost=$0.1234 duration=4.2s");
 	});
 
 	test("truncates-long-values", () => {

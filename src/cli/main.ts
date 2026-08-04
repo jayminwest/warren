@@ -18,7 +18,7 @@
  * subprocess.
  */
 
-import { Command } from "commander";
+import { Command, CommanderError } from "commander";
 import { PLAN_RUN_STATES, type PlanRunState } from "../core/wire.ts";
 import { openDatabase } from "../db/client.ts";
 import { parseDatabaseUrl } from "../db/url.ts";
@@ -35,7 +35,17 @@ import { runPlanList, runPlanStatus } from "./commands/plan-status.ts";
 import { runRun } from "./commands/run.ts";
 import { runServe } from "./commands/serve.ts";
 import { withCliDb } from "./context.ts";
-import { type CliContext, defaultSpawn, formatError, PROCESS_STDIO } from "./output.ts";
+import {
+	type CliContext,
+	defaultSpawn,
+	EXIT_USAGE,
+	formatError,
+	formatExitCodeTable,
+	OUTPUT_MODES,
+	type OutputMode,
+	PROCESS_STDIO,
+	parseOutputMode,
+} from "./output.ts";
 import type { PlanRunOutput } from "./plan-run-renderer.ts";
 
 interface RemoteOpts {
@@ -57,18 +67,47 @@ function clientFlags(opts: RemoteOpts): ClientFlags {
 	};
 }
 
-export function buildProgram(context: CliContext): Command {
+export function buildProgram(baseContext: CliContext): Command {
 	const program = new Command();
 	program
 		.name("warren")
 		.description("Control plane and UI for cloud-based custom agents")
 		.version(VERSION)
+		.option(
+			"--output <mode>",
+			`global output mode: ${OUTPUT_MODES.join("|")} (default ndjson; agents script against ndjson/json, pretty is the human opt-in)`,
+		)
+		.addHelpText("after", `\nExit codes:\n${formatExitCodeTable()}\n`)
 		.exitOverride((err) => {
 			// Let commander handle --help / --version exits, but never let it
 			// kill the process from inside a test harness. Re-throwing here
 			// surfaces the error to the caller.
 			throw err;
 		});
+
+	// Reject an unknown global --output value before any command runs,
+	// mapping it to the stable usage-error exit code (warren-b61e).
+	program.hook("preAction", () => {
+		const raw = program.opts().output as string | undefined;
+		if (raw !== undefined && parseOutputMode(raw) === null) {
+			baseContext.stdio.stderr.write(
+				`warren: invalid --output mode ${JSON.stringify(raw)} (expected ${OUTPUT_MODES.join("|")})\n`,
+			);
+			throw new CommanderError(EXIT_USAGE, "commander.invalidOutput", "invalid --output mode");
+		}
+	});
+
+	// Thread the resolved global --output through the CliContext every
+	// command receives (warren-b61e). Read lazily: commander populates
+	// program.opts() at parse time, after buildProgram returns. The `plan`
+	// group keeps its own per-command --output (ndjson|pretty), which
+	// shadows the global for those subcommands (backward compat).
+	const context: CliContext = {
+		...baseContext,
+		get output(): OutputMode | undefined {
+			return parseOutputMode(program.opts().output as string | undefined) ?? undefined;
+		},
+	};
 
 	addClientFlags(
 		program
