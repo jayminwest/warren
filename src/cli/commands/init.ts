@@ -36,9 +36,9 @@
 
 import { existsSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
-import { isAbsolute, join, resolve } from "node:path";
+import { join } from "node:path";
 import { dump } from "js-yaml";
-import { NotFoundError, ValidationError } from "../../core/errors.ts";
+import { ValidationError } from "../../core/errors.ts";
 import type { AgentsRepo } from "../../db/repos/agents.ts";
 import type { ProjectsRepo } from "../../db/repos/projects.ts";
 import {
@@ -48,7 +48,8 @@ import {
 } from "../../warren-config/config.ts";
 import { type DefaultsConfig, parseConfigFile } from "../../warren-config/schema.ts";
 import type { CliContext } from "../output.ts";
-import { formatError, writeJsonLine } from "../output.ts";
+import { commandFailure, writeJsonLine } from "../output.ts";
+import { resolveTargetDir } from "./target-dir.ts";
 
 export type InitArgs =
 	| {
@@ -107,7 +108,7 @@ export async function runInit(
 	args: InitArgs,
 ): Promise<InitResult> {
 	try {
-		const targetDir = await resolveTargetDir(deps, args);
+		const targetDir = await resolveTargetDir(deps.projects, args);
 		const warrenDir = join(targetDir, WARREN_CONFIG_DIR);
 		const triggersAbs = join(warrenDir, WARREN_CONFIG_FILES.triggers);
 		const configAbs = join(warrenDir, WARREN_CONFIG_FILES.config);
@@ -151,33 +152,8 @@ export async function runInit(
 		});
 		return { exitCode: 0 };
 	} catch (err) {
-		context.stdio.stderr.write(`warren: ${formatError(err)}\n`);
-		return { exitCode: err instanceof ValidationError ? 2 : 1 };
+		return commandFailure(context, err);
 	}
-}
-
-async function resolveTargetDir(deps: InitDeps, args: InitArgs): Promise<string> {
-	if (args.mode === "cwd") {
-		const cwd = args.cwd;
-		if (cwd === "") {
-			throw new ValidationError("--cwd path is empty");
-		}
-		const abs = isAbsolute(cwd) ? cwd : resolve(cwd);
-		if (!existsSync(abs)) {
-			throw new ValidationError(`target directory does not exist: ${abs}`);
-		}
-		return abs;
-	}
-	const row = await deps.projects.get(args.projectId);
-	if (row === null) {
-		throw new NotFoundError(`project not found: ${args.projectId}`);
-	}
-	if (!existsSync(row.localPath)) {
-		throw new ValidationError(`project clone missing on disk: ${row.localPath}`, {
-			recoveryHint: "POST /projects/:id/refresh or re-add the project",
-		});
-	}
-	return row.localPath;
 }
 
 async function resolveDefaults(deps: InitDeps, args: InitArgs): Promise<DefaultsConfig> {

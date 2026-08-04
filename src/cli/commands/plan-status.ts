@@ -23,6 +23,7 @@ import type {
 import type { CliContext } from "../output.ts";
 import { formatError, type WriteSink, writeJsonLine } from "../output.ts";
 import type { PlanRunOutput } from "../plan-run-renderer.ts";
+import { guardRemotePlanRun, probeOrReport } from "./probe.ts";
 
 export interface PlanStatusArgs {
 	readonly planRunId: string;
@@ -53,31 +54,13 @@ export interface PlanListResult {
 	readonly count?: number;
 }
 
-/** Probe the remote warren, mapping an unreachable server to a stderr line. */
-async function probeOrReport(deps: PlanStatusDeps, context: CliContext): Promise<boolean> {
-	try {
-		await (deps.probeTimeoutMs !== undefined
-			? deps.client.probe(deps.probeTimeoutMs)
-			: deps.client.probe());
-		return true;
-	} catch (err) {
-		context.stdio.stderr.write(`warren: ${formatError(err)}\n`);
-		return false;
-	}
-}
-
 export async function runPlanStatus(
 	context: CliContext,
 	deps: PlanStatusDeps,
 	args: PlanStatusArgs,
 ): Promise<PlanStatusResult> {
-	if (args.planRunId === "") {
-		context.stdio.stderr.write("warren: plan-run id is required\n");
-		return { exitCode: 2 };
-	}
-	if (!(await probeOrReport(deps, context))) {
-		return { exitCode: 1 };
-	}
+	const guard = await guardRemotePlanRun(context, deps.client, args.planRunId, deps.probeTimeoutMs);
+	if (guard !== null) return guard;
 	try {
 		const detail = await deps.client.getPlanRun(args.planRunId);
 		if ((args.output ?? "ndjson") === "pretty") {
@@ -97,7 +80,7 @@ export async function runPlanList(
 	deps: PlanListDeps,
 	args: PlanListArgs,
 ): Promise<PlanListResult> {
-	if (!(await probeOrReport(deps, context))) {
+	if (!(await probeOrReport(context, deps.client, deps.probeTimeoutMs))) {
 		return { exitCode: 1 };
 	}
 	try {

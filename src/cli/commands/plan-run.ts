@@ -25,6 +25,7 @@ import type { PlanRunState } from "../../client/types.ts";
 import type { CliContext } from "../output.ts";
 import { formatError } from "../output.ts";
 import { createRenderer, type PlanRunOutput, type PlanRunRenderer } from "../plan-run-renderer.ts";
+import { guardRemotePlanRun, probeOrReport } from "./probe.ts";
 
 /** Exit code emitted when the operator detaches a live tail with SIGINT. */
 const SIGINT_EXIT_CODE = 130;
@@ -89,21 +90,6 @@ function defaultOnSigint(handler: () => void): SigintDisposer {
 	return () => {
 		process.off("SIGINT", handler);
 	};
-}
-
-/** Probe the remote warren, mapping an unreachable server to a stderr line. */
-async function probeOrReport(
-	context: CliContext,
-	client: WarrenClient,
-	probeTimeoutMs?: number,
-): Promise<boolean> {
-	try {
-		await (probeTimeoutMs !== undefined ? client.probe(probeTimeoutMs) : client.probe());
-		return true;
-	} catch (err) {
-		context.stdio.stderr.write(`warren: ${formatError(err)}\n`);
-		return false;
-	}
 }
 
 export async function runPlanRun(
@@ -225,14 +211,8 @@ export async function runPlanCancel(
 	deps: PlanCancelDeps,
 	args: PlanCancelArgs,
 ): Promise<PlanCancelResult> {
-	if (args.planRunId === "") {
-		context.stdio.stderr.write("warren: plan-run id is required\n");
-		return { exitCode: 2 };
-	}
-
-	if (!(await probeOrReport(context, deps.client, deps.probeTimeoutMs))) {
-		return { exitCode: 1 };
-	}
+	const guard = await guardRemotePlanRun(context, deps.client, args.planRunId, deps.probeTimeoutMs);
+	if (guard !== null) return guard;
 
 	try {
 		const result = await deps.client.cancelPlanRun(args.planRunId);

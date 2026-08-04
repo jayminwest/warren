@@ -7,6 +7,7 @@
  * tests pass capture-buffers and synthetic env tables.
  */
 
+import { ValidationError } from "../core/errors.ts";
 import {
 	defaultSpawn,
 	type SpawnFn as ProjectsSpawnFn,
@@ -62,6 +63,17 @@ export { defaultSpawn };
 /** Print one JSON object per line ('\n' terminator) to a sink. */
 export function writeJsonLine(sink: WriteSink, value: unknown): void {
 	sink.write(`${JSON.stringify(value)}\n`);
+}
+
+/**
+ * The standard catch-tail for command runners: report the error on stderr
+ * and map it to the CLI exit convention (validation → 2, anything else → 1).
+ * Extracted in warren-00df — `init` and `config-migrate` carried identical
+ * copies grandfathered in the dups allowlist.
+ */
+export function commandFailure(context: CliContext, err: unknown): { readonly exitCode: number } {
+	context.stdio.stderr.write(`warren: ${formatError(err)}\n`);
+	return { exitCode: err instanceof ValidationError ? 2 : 1 };
 }
 
 /** Format a thrown error for human stderr output. */

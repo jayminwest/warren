@@ -137,30 +137,17 @@ describe("isAlreadyExists", () => {
 });
 
 describe("registerOne", () => {
-	test("registers, then refreshes that project's agents", async () => {
-		const { impl, calls } = stubFetch([
-			{ status: 201, body: { id: "p-1" } },
-			{ status: 200, body: { agents: [] } },
-		]);
+	test("registers with a single POST /projects — no agent-refresh follow-up", async () => {
+		// The agent registry is inline (pl-3a79); the per-project refresh route
+		// is gone, so a registration is exactly one call.
+		const { impl, calls } = stubFetch([{ status: 201, body: { id: "p-1" } }]);
 		const out = await registerOne(opts(impl), "https://github.com/jayminwest/warren");
 		expect(out.state).toBe("registered");
 		expect(out.id).toBe("p-1");
+		expect(calls).toHaveLength(1);
 		expect(calls[0]?.method).toBe("POST");
 		expect(calls[0]?.url).toBe("https://warren.test/projects");
 		expect(calls[0]?.body).toEqual({ gitUrl: "https://github.com/jayminwest/warren" });
-		expect(calls[1]?.url).toBe("https://warren.test/projects/p-1/agents/refresh");
-	});
-
-	test("a failed agent refresh keeps the registration", async () => {
-		// The clone already happened. Reporting this as a failure would make a
-		// re-run look necessary when the project is in fact registered.
-		const { impl } = stubFetch([
-			{ status: 201, body: { id: "p-1" } },
-			{ status: 400, body: { error: { code: "validation_error", message: "no canopy" } } },
-		]);
-		const out = await registerOne(opts(impl), "https://github.com/jayminwest/warren");
-		expect(out.state).toBe("registered");
-		expect(out.detail).toContain("agent refresh");
 	});
 
 	test("a duplicate mid-run is a skip, so a resume does not fail", async () => {
@@ -183,7 +170,7 @@ describe("registerOne", () => {
 		expect(out.detail).toContain("internal_error");
 	});
 
-	test("a 201 without an id fails loudly instead of skipping the refresh", async () => {
+	test("a 201 without an id fails loudly", async () => {
 		const { impl } = stubFetch([{ status: 201, body: {} }]);
 		const out = await registerOne(opts(impl), "https://github.com/jayminwest/warren");
 		expect(out.state).toBe("failed");

@@ -14,11 +14,10 @@
  * exists" 400 as a skip rather than an error, which covers the gap between
  * the listing and the write.
  *
- * Registration does NOT discover agents (`addProject` only clones), so each
- * successful registration is followed by
- * `POST /projects/:id/agents/refresh`. That call is best-effort: a project
- * with no `.canopy/` is a normal outcome, and a refresh failure must not
- * lose the registration that already succeeded.
+ * The agent registry is entirely inline now (`BUILTIN_AGENTS` boot-seeded,
+ * pl-3a79), so registration is a single `POST /projects` — the per-project
+ * `POST /projects/:id/agents/refresh` follow-up this script used to make
+ * went away with canopy, and no route serves it.
  *
  * Usage:
  *   WARREN_URL=... WARREN_API_TOKEN=... \
@@ -184,9 +183,9 @@ function describeFailure(status: number, body: unknown): string {
 }
 
 /**
- * Register one repo, then refresh its agents. Sequential by design: each
- * call clones a repo on the server, and firing them concurrently would
- * multiply peak disk and network on a single-replica control plane.
+ * Register one repo. Sequential by design: each call clones a repo on the
+ * server, and firing them concurrently would multiply peak disk and network
+ * on a single-replica control plane.
  */
 export async function registerOne(opts: ClientOptions, gitUrl: string): Promise<Outcome> {
 	let res: { status: number; body: unknown };
@@ -205,18 +204,7 @@ export async function registerOne(opts: ClientOptions, gitUrl: string): Promise<
 	if (id === undefined) {
 		return { gitUrl, state: "failed", detail: "201 without an id in the body" };
 	}
-	// Best-effort: a project with no .canopy/ is normal, and a refresh
-	// failure must not discard the registration that already succeeded.
-	let detail = "registered";
-	try {
-		const refresh = await call(opts, "POST", `/projects/${id}/agents/refresh`, undefined);
-		if (refresh.status < 200 || refresh.status >= 300) {
-			detail = `registered (agent refresh: ${describeFailure(refresh.status, refresh.body)})`;
-		}
-	} catch (err) {
-		detail = `registered (agent refresh failed: ${err instanceof Error ? err.message : String(err)})`;
-	}
-	return { gitUrl, state: "registered", id, detail };
+	return { gitUrl, state: "registered", id, detail: "registered" };
 }
 
 export function formatSummary(outcomes: readonly Outcome[]): string {
