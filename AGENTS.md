@@ -131,9 +131,10 @@ warren prime
 ```
 
 The command reference lists each command with its purpose and key
-flags, derived from the program definition so it cannot drift from the
-code. The env contract documents `WARREN_BASE_URL`, `WARREN_API_TOKEN`,
-and `WARREN_CLIENT_CONFIG`.
+flags, derived from the program definition so it cannot drift from the code.
+The same walk generates `docs/cli-reference.md` (`bun run gen:cli-ref`).
+The env contract documents `WARREN_BASE_URL`, `WARREN_API_TOKEN`, and
+`WARREN_CLIENT_CONFIG`.
 
 The exit-code table is the stable warren-b61e one. The workflows cover
 dispatch-and-wait, tail-and-steer, and plan runs. Default output is
@@ -178,6 +179,7 @@ bun run lint                   # biome + layers + version-sync + wire-types + pr
 bun run typecheck              # tsc --noEmit
 bun run build:ui               # cd src/ui && bun install && bun run build
 bun run db:generate            # regenerate drizzle migrations (sqlite + postgres)
+bun run gen:cli-ref            # regenerate the CLI reference (docs/cli-reference.md)
 bun run version:bump           # bump version across all four sites
 bun run acceptance             # end-to-end acceptance scenarios
 bun run acceptance:container   # acceptance scenarios in container mode
@@ -243,6 +245,9 @@ frozen. They are `scripts/check-layers.ts`,
 `scripts/check-prose.ts`. Each also runs standalone under the matching
 `check:` script name.
 
+`gen:cli-ref:check` rides the same gate and holds the generated CLI
+reference in place.
+
 Details on the additional checks:
 
 - **`check:size`** (warren-4553) — enforces a per-file line-count
@@ -298,6 +303,10 @@ Details on the additional checks:
 - **`gen:openapi:check`** (warren-b46b) — keeps `docs/openapi.yaml`
   (OpenAPI 3.1, derived from the same `ROUTE_TABLE`) up to date.
   Refresh with `bun run gen:openapi` and commit.
+- **`gen:cli-ref:check`** (warren-1caf) — keeps `docs/cli-reference.md`
+  in sync with the commander command definitions in `src/cli/main.ts`,
+  the canonical CLI surface. Refresh with `bun run gen:cli-ref` and
+  commit the result. The check rides inside the `lint` gate.
 
 Biome's `noExcessiveCognitiveComplexity` rule (warren-d3a6, ceiling 15)
 holds a project-wide complexity budget. New code must stay under the

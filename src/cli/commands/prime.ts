@@ -16,10 +16,11 @@
  * pretty for humans.
  */
 
-import type { Command, Option } from "commander";
+import type { Command } from "commander";
 import { CLIENT_CONFIG_PATH_ENV } from "../../client/config-file.ts";
 import { VERSION } from "../../index.ts";
 import { type CliContext, EXIT_CODE_TABLE, writeResult } from "../output.ts";
+import { collectCommandReference } from "../reference.ts";
 
 export interface PrimeCommand {
 	readonly name: string;
@@ -36,8 +37,12 @@ export interface PrimeDocument {
 	readonly workflows: readonly { readonly name: string; readonly steps: readonly string[] }[];
 }
 
-/** The env/config contract an agent must know before dispatching. */
-const ENV_CONTRACT: PrimeDocument["env"] = [
+/**
+ * The env/config contract an agent must know before dispatching. Exported
+ * so the generated CLI reference (warren-1caf) renders the same contract
+ * instead of keeping a second copy.
+ */
+export const ENV_CONTRACT: PrimeDocument["env"] = [
 	{ name: "WARREN_BASE_URL", summary: "warren server base URL (default http://localhost:8080)" },
 	{
 		name: "WARREN_API_TOKEN",
@@ -76,25 +81,17 @@ const WORKFLOWS: PrimeDocument["workflows"] = [
 	},
 ];
 
-/** Walk a commander program into the flat command reference. */
+/**
+ * Walk a commander program into the flat command reference. Derived from
+ * the shared `collectCommandReference` walk (warren-1caf) so prime and the
+ * generated CLI reference can never disagree about the command surface.
+ */
 export function collectCommands(program: Command): PrimeCommand[] {
-	const out: PrimeCommand[] = [];
-	const walk = (cmd: Command, prefix: string): void => {
-		for (const child of cmd.commands) {
-			const name = prefix === "" ? child.name() : `${prefix} ${child.name()}`;
-			out.push({
-				name,
-				description: child.description(),
-				options: child.options.map((o: Option) => ({
-					flags: o.flags,
-					description: o.description,
-				})),
-			});
-			walk(child, name);
-		}
-	};
-	walk(program, "");
-	return out;
+	return collectCommandReference(program).map((entry) => ({
+		name: entry.name,
+		description: entry.description,
+		options: entry.options.map(({ flags, description }) => ({ flags, description })),
+	}));
 }
 
 /** Assemble the full prime document from the live program definition. */

@@ -20,6 +20,7 @@ Two paths lead out of here. Take the first to run warren against your own repos.
 - [`labels.md`](labels.md) — the GitHub label taxonomy that triage and the issue templates depend on.
 - [`http-api.md`](http-api.md) — every HTTP route with its auth posture. `bun run gen:docs` writes this file from `ROUTE_TABLE`.
 - [`openapi.yaml`](openapi.yaml) — the same surface as an OpenAPI 3.1 schema. `bun run gen:openapi` writes it from the same route table.
+- [`cli-reference.md`](cli-reference.md) — every `warren` command with its flags and exit codes. `bun run gen:cli-ref` writes it from the CLI command definitions.
 - [`CONSTITUTION.md`](CONSTITUTION.md) — the articles that govern warren-authored code, commits, and bot identity.
 - [`../ROADMAP.md`](../ROADMAP.md) — what is in flight now, what comes next, and what warren will not do.
 - [`../ACCEPTANCE.md`](../ACCEPTANCE.md) — the scenario harness that drives a live stack from end to end.
