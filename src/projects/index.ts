@@ -30,6 +30,7 @@ export {
 	addProject,
 	type DeleteProjectInput,
 	deleteProject,
+	getProject,
 	listProjects,
 	type RefreshProjectInput,
 	type RefreshProjectResult,

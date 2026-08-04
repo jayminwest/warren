@@ -9,7 +9,13 @@ import { NotFoundError, ValidationError } from "../../core/errors.ts";
 import type { ProjectRow } from "../../db/schema.ts";
 import { ProjectLacksSeedsError } from "../../plan-runs/errors.ts";
 import { computeReadyPlans, type ReadyPlanInput } from "../../plan-runs/index.ts";
-import { addProject, deleteProject, listProjects, refreshProject } from "../../projects/index.ts";
+import {
+	addProject,
+	deleteProject,
+	getProject,
+	listProjects,
+	refreshProject,
+} from "../../projects/index.ts";
 import { spawnRun } from "../../runs/index.ts";
 import { listPlans, listSeedStatuses, showPlan, showSeed } from "../../seeds-cli/index.ts";
 import { buildTriggerSummaries, parseCron, resolveCronPrompt } from "../../triggers/index.ts";
@@ -79,6 +85,21 @@ export function listProjectsHandler(deps: ServerDeps): RouteHandler {
 	return async (ctx) => {
 		const rows = await listProjects(deps.repos.projects);
 		return jsonResponse(200, { projects: rows.map((row) => projectProject(row, ctx.actor)) });
+	};
+}
+
+/**
+ * `GET /projects/:id` — single-project read (warren-2a89). The body is the
+ * bare row, matching the SDK's `getProject(): Promise<ProjectRow>` and the
+ * single-project bodies of `POST /projects` / `DELETE /projects/:id`; a
+ * `readPublic`-only spectator sees it narrowed through the same
+ * `projectProject` projection as `GET /projects`.
+ */
+export function getProjectHandler(deps: ServerDeps): RouteHandler {
+	return async (ctx) => {
+		const id = requireParam(ctx, "id");
+		const row = await getProject(deps.repos.projects, id);
+		return jsonResponse(200, projectProject(row, ctx.actor));
 	};
 }
 
