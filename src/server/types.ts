@@ -287,7 +287,7 @@ export interface ServerDeps {
 	readonly previewAuth?: PreviewAuth;
 	/**
 	 * Project host-clone refresher (warren-6d60). Used by the plan-run
-	 * dispatch handlers (`refreshDispatchProject`) so the seeds plan is
+	 * creation orchestration (`createPlanRun`, warren-e240) so the seeds plan is
 	 * read off a freshly fetched + reset clone, mirroring the single-run
 	 * path's `spawnRun` refresh. Production omits this (falls back to the
 	 * live `refreshProject` when `spawn` is wired); tests substitute a
