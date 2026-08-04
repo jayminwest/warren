@@ -33,6 +33,16 @@
 	// server, the SDK and this UI all import so the enums can never drift.
 	// A composite project must list every file it compiles, so naming it here
 	// is what makes `import "../../../core/wire.ts"` resolve under `tsc -b`.
-	"include": ["src", "../core/wire.ts"],
+	// `../client/ndjson.ts` (+ its transitive `errors.ts` imports) is the
+	// SDK's NDJSON stream reader the UI consumes (warren-53a7) — listed
+	// file-by-file, like wire.ts, because the whole `../client` directory
+	// would drag node-only modules (config-file.ts) into a DOM-lib build.
+	"include": [
+		"src",
+		"../core/wire.ts",
+		"../core/errors.ts",
+		"../client/ndjson.ts",
+		"../client/errors.ts"
+	],
 	"exclude": ["src/**/*.test.ts", "src/**/*.test.tsx"]
 }

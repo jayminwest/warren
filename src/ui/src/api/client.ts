@@ -3,6 +3,7 @@
 // login screen accepts it. A 401 clears the cached token so the
 // router can redirect back to login on the next render pass.
 
+import { readNdjsonStream } from "../../../client/ndjson.ts";
 import type {
 	AgentRow,
 	ApiErrorEnvelope,
@@ -389,6 +390,10 @@ export async function* streamRunEvents(
  * uses the same `eventToNdjson` serializer for both, so the wire shape
  * matches and the only thing that varies is the URL prefix + `runId`
  * discriminator in each envelope.
+ *
+ * The line parser is the SDK's `readNdjsonStream` (warren-53a7) with the
+ * UI's error factory injected, so this wrapper only owns URL/header
+ * assembly and the 401 token-clearing side effect.
  */
 async function* streamNdjsonEvents(
 	basePath: string,
@@ -407,64 +412,32 @@ async function* streamNdjsonEvents(
 	const init: RequestInit = { headers };
 	if (opts.signal) init.signal = opts.signal;
 
-	const res = await fetch(url, init);
+	yield* readNdjsonStream<RunEvent>(() => fetch(url, init), {
+		errorFactory: streamErrorFromResponse,
+	});
+}
+
+/**
+ * Map a non-OK NDJSON response to the UI's error vocabulary. A 401 clears
+ * the cached token so the router redirects back to login; anything else
+ * becomes an {@link ApiError} carrying the server's error envelope.
+ */
+async function streamErrorFromResponse(res: Response): Promise<Error> {
 	if (res.status === 401) {
 		setApiToken(null);
-		throw new UnauthorizedError("API token rejected; please re-authenticate");
+		return new UnauthorizedError("API token rejected; please re-authenticate");
 	}
-	if (!res.ok) {
-		const text = await res.text();
-		let envelope: ApiErrorEnvelope | null = null;
-		try {
-			envelope = text.length > 0 ? (JSON.parse(text) as ApiErrorEnvelope) : null;
-		} catch {
-			envelope = null;
-		}
-		throw new ApiError(
-			res.status,
-			envelope?.error ?? { code: `http_${res.status}`, message: text || res.statusText },
-		);
-	}
-	if (res.body === null) return;
-
-	const reader = res.body.getReader();
-	const decoder = new TextDecoder();
-	let buf = "";
+	const text = await res.text();
+	let envelope: ApiErrorEnvelope | null = null;
 	try {
-		while (true) {
-			const { done, value } = await reader.read();
-			if (done) break;
-			buf += decoder.decode(value, { stream: true });
-			let nl = buf.indexOf("\n");
-			while (nl !== -1) {
-				const line = buf.slice(0, nl);
-				buf = buf.slice(nl + 1);
-				if (line.length > 0) {
-					try {
-						yield JSON.parse(line) as RunEvent;
-					} catch {
-						// drop malformed line; keep streaming
-					}
-				}
-				nl = buf.indexOf("\n");
-			}
-		}
-		// flush trailing line if the server closed without a newline
-		const tail = buf.trim();
-		if (tail.length > 0) {
-			try {
-				yield JSON.parse(tail) as RunEvent;
-			} catch {
-				// drop
-			}
-		}
-	} finally {
-		try {
-			reader.releaseLock();
-		} catch {
-			// ignore — releaseLock can throw if we already errored out
-		}
+		envelope = text.length > 0 ? (JSON.parse(text) as ApiErrorEnvelope) : null;
+	} catch {
+		envelope = null;
 	}
+	return new ApiError(
+		res.status,
+		envelope?.error ?? { code: `http_${res.status}`, message: text || res.statusText },
+	);
 }
 
 /* ----------------------------------------------------------------------- */
