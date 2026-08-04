@@ -34,6 +34,7 @@ export {
 
 import type {
 	CloneKind,
+	ErrorEnvelope,
 	EventStream,
 	PlanRunChildState,
 	PlanRunState,
@@ -333,9 +334,13 @@ export interface ReapCompletedPayload {
 	errors?: { step: string; message: string; path?: string }[];
 }
 
-export interface ApiErrorEnvelope {
-	error: { code: string; message: string; hint?: string };
-}
+export type { ErrorEnvelope } from "../../../core/wire.ts";
+
+/**
+ * UI-compat alias for the canonical error envelope in `src/core/wire.ts`
+ * (warren-42f1). Alias, never re-list — `check:wire-types` enforces.
+ */
+export type ApiErrorEnvelope = ErrorEnvelope;
 
 /* ----------------------------------------------------------------------- */
 /* Caller identity — `GET /whoami` (warren-e195).                          */

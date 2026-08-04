@@ -10,6 +10,7 @@
 import type {
 	AgentRow,
 	CloneKind,
+	ErrorEnvelope,
 	EventStream,
 	InboxPriority,
 	InboxState,
@@ -127,13 +128,13 @@ export interface StreamRunEventsOptions {
 	signal?: AbortSignal;
 }
 
-export interface ApiErrorEnvelope {
-	error: {
-		code: string;
-		message: string;
-		hint?: string;
-	};
-}
+export type { ErrorEnvelope } from "../core/wire.ts";
+
+/**
+ * SDK-compat alias for the canonical error envelope in `src/core/wire.ts`
+ * (warren-42f1). Alias, never re-list — `check:wire-types` enforces.
+ */
+export type ApiErrorEnvelope = ErrorEnvelope;
 
 export interface CreateRunInput {
 	// agent/project/prompt: required unless cloneFromRunId is set (warren-e96f).
