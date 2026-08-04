@@ -51,6 +51,7 @@ import { join } from "node:path";
 
 import { AcceptanceError, assertEqual, assertTrue, type Scenario } from "../lib/assert.ts";
 import { WarrenHttp } from "../lib/http.ts";
+import { waitForRunState, waitForRunTerminal } from "./lib/poll-helpers.ts";
 
 interface ProjectRow {
 	readonly id: string;
@@ -298,21 +299,13 @@ async function runStubAndReap(
 }
 
 async function waitForRunning(http: WarrenHttp, runId: string, timeoutMs: number): Promise<void> {
-	const start = Date.now();
-	let last = "unknown";
-	while (Date.now() - start < timeoutMs) {
-		const row = await http.expectJson<RunRow>("GET", `/runs/${encodeURIComponent(runId)}`, 200);
-		last = row.state;
-		if (row.state === "running") return;
-		if (TERMINAL_STATES.has(row.state)) {
-			throw new AcceptanceError(
-				`run ${runId} reached terminal state '${row.state}' before bridge mirrored running — reap will misclassify (warren-3c40 territory)`,
-			);
-		}
-		await sleep(100);
-	}
-	throw new AcceptanceError(
-		`run ${runId} did not reach 'running' within ${timeoutMs}ms (last state=${last})`,
+	await waitForRunState(
+		http,
+		runId,
+		"running",
+		timeoutMs,
+		(row) =>
+			`run ${runId} reached terminal state '${row.state}' before bridge mirrored running — reap will misclassify (warren-3c40 territory)`,
 	);
 }
 
@@ -321,17 +314,7 @@ async function waitForTerminal(
 	runId: string,
 	timeoutMs: number,
 ): Promise<string> {
-	const start = Date.now();
-	let last = "unknown";
-	while (Date.now() - start < timeoutMs) {
-		const row = await http.expectJson<RunRow>("GET", `/runs/${encodeURIComponent(runId)}`, 200);
-		last = row.state;
-		if (TERMINAL_STATES.has(row.state)) return row.state;
-		await sleep(100);
-	}
-	throw new AcceptanceError(
-		`run ${runId} did not reach a terminal state within ${timeoutMs}ms (last state=${last})`,
-	);
+	return (await waitForRunTerminal(http, runId, timeoutMs)).state;
 }
 
 async function fetchAllEvents(http: WarrenHttp, runId: string): Promise<EventRow[]> {
@@ -416,8 +399,4 @@ function summariseKinds(events: readonly EventRow[]): string {
 	return Array.from(counts.entries())
 		.map(([k, n]) => `${k}×${n}`)
 		.join(", ");
-}
-
-function sleep(ms: number): Promise<void> {
-	return new Promise((resolve) => setTimeout(resolve, ms));
 }

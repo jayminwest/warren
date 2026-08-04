@@ -36,6 +36,8 @@ import {
 	type ScenarioCtx,
 } from "../lib/assert.ts";
 import { WarrenHttp } from "../lib/http.ts";
+import { waitForServerDown } from "../lib/poll.ts";
+import { waitForEventCount, waitForSeqAbove } from "./lib/poll-helpers.ts";
 
 interface ProjectRow {
 	readonly id: string;
@@ -62,9 +64,8 @@ interface EventEnvelope {
 
 const PRE_KILL_MIN_EVENTS = 3;
 const PRE_KILL_TIMEOUT_MS = 15_000;
-const KILL_WINDOW_MS = 2_000;
+const KILL_DRAIN_TIMEOUT_MS = 10_000;
 const POST_RESTART_TIMEOUT_MS = 20_000;
-const POLL_INTERVAL_MS = 200;
 
 export const scenario: Scenario = {
 	id: "06",
@@ -101,7 +102,7 @@ export const scenario: Scenario = {
 			// Phase 1 — wait for the bridge to land at least PRE_KILL_MIN_EVENTS
 			// events into warren's events table. This proves the bridge is
 			// actively attached pre-kill.
-			const beforeKill = await waitForEventCount(
+			const beforeKill = await waitForEventCount<EventEnvelope>(
 				http,
 				runId,
 				PRE_KILL_MIN_EVENTS,
@@ -117,8 +118,8 @@ export const scenario: Scenario = {
 			// + heartbeating; burrow's events table accumulates rows warren
 			// can't see until restart.
 			await lifecycle.killWarren();
-			ctx.logger.debug(`scenario-06: warren killed; sleeping ${KILL_WINDOW_MS}ms`);
-			await sleep(KILL_WINDOW_MS);
+			ctx.logger.debug("scenario-06: warren killed; waiting for the port to stop answering");
+			await waitForServerDown(ctx.warrenUrl, KILL_DRAIN_TIMEOUT_MS);
 
 			// Phase 3 — restart warren. bootBridges() walks queued/running
 			// runs, finds this one, attaches a fresh bridge.
@@ -128,7 +129,7 @@ export const scenario: Scenario = {
 			// Phase 4 — wait for the resumed bridge to write at least one new
 			// event (seq > maxSeqBeforeKill). Without this, recovery could
 			// silently no-op and the test would still pass on cached history.
-			const afterRestart = await waitForSeqAbove(
+			const afterRestart = await waitForSeqAbove<EventEnvelope>(
 				http,
 				runId,
 				maxSeqBeforeKill,
@@ -180,51 +181,6 @@ export const scenario: Scenario = {
 	},
 };
 
-async function waitForEventCount(
-	http: WarrenHttp,
-	runId: string,
-	target: number,
-	timeoutMs: number,
-): Promise<readonly EventEnvelope[]> {
-	const deadline = Date.now() + timeoutMs;
-	let last: EventEnvelope[] = [];
-	while (Date.now() < deadline) {
-		last = await collectAll(http, `/runs/${encodeURIComponent(runId)}/events`);
-		if (last.length >= target) return last;
-		await sleep(POLL_INTERVAL_MS);
-	}
-	throw new AcceptanceError(
-		`waited ${timeoutMs}ms for ${target} events on ${runId}, only saw ${last.length}`,
-	);
-}
-
-async function waitForSeqAbove(
-	http: WarrenHttp,
-	runId: string,
-	threshold: number,
-	timeoutMs: number,
-): Promise<readonly EventEnvelope[]> {
-	const deadline = Date.now() + timeoutMs;
-	let last: EventEnvelope[] = [];
-	while (Date.now() < deadline) {
-		last = await collectAll(http, `/runs/${encodeURIComponent(runId)}/events`);
-		const max = last.reduce((m, e) => (e.seq > m ? e.seq : m), 0);
-		if (max > threshold) return last;
-		await sleep(POLL_INTERVAL_MS);
-	}
-	throw new AcceptanceError(
-		`waited ${timeoutMs}ms for seq > ${threshold} on ${runId}, saw max ${last.reduce((m, e) => (e.seq > m ? e.seq : m), 0)} (events=${last.length})`,
-	);
-}
-
-async function collectAll(http: WarrenHttp, path: string): Promise<EventEnvelope[]> {
-	const out: EventEnvelope[] = [];
-	for await (const env of http.streamNdjson(path)) {
-		out.push(env as EventEnvelope);
-	}
-	return out;
-}
-
 function assertNoSeqGaps(events: readonly EventEnvelope[], label: string): void {
 	if (events.length === 0) {
 		throw new AcceptanceError(`${label}: empty event list`);
@@ -262,8 +218,4 @@ async function safelyCancel(http: WarrenHttp, runId: string, ctx: ScenarioCtx): 
 			`scenario-06: cancel failed (${err instanceof Error ? err.message : String(err)}) — best-effort, continuing`,
 		);
 	}
-}
-
-function sleep(ms: number): Promise<void> {
-	return new Promise((resolve) => setTimeout(resolve, ms));
 }

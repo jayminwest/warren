@@ -55,6 +55,8 @@ import {
 } from "../lib/assert.ts";
 import { WarrenHttp } from "../lib/http.ts";
 import { type BootHandle, bootInProc } from "../lib/inproc.ts";
+import { waitForServerDown } from "../lib/poll.ts";
+import { waitForEventCount, waitForSeqAbove } from "./lib/poll-helpers.ts";
 
 interface ProjectRow {
 	readonly id: string;
@@ -91,9 +93,8 @@ interface ReadyzBody {
 
 const PRE_KILL_MIN_EVENTS = 3;
 const PRE_KILL_TIMEOUT_MS = 20_000;
-const KILL_WINDOW_MS = 2_000;
+const KILL_DRAIN_TIMEOUT_MS = 10_000;
 const POST_RESTART_TIMEOUT_MS = 30_000;
-const POLL_INTERVAL_MS = 200;
 
 export const scenario: Scenario = {
 	id: "19",
@@ -176,7 +177,7 @@ export const scenario: Scenario = {
 			ctx.logger.debug(`scenario-19: spawned ${runId} (burrow_run_id=${created.run.burrowRunId})`);
 
 			try {
-				const beforeKill = await waitForEventCount(
+				const beforeKill = await waitForEventCount<EventEnvelope>(
 					http,
 					runId,
 					PRE_KILL_MIN_EVENTS,
@@ -190,8 +191,8 @@ export const scenario: Scenario = {
 
 				const lifecycle = handle;
 				await lifecycle.killWarren();
-				ctx.logger.debug(`scenario-19: warren killed; sleeping ${KILL_WINDOW_MS}ms`);
-				await sleep(KILL_WINDOW_MS);
+				ctx.logger.debug("scenario-19: warren killed; waiting for the port to stop answering");
+				await waitForServerDown(ctx.warrenUrl, KILL_DRAIN_TIMEOUT_MS);
 
 				await lifecycle.restartWarren();
 				ctx.logger.debug("scenario-19: warren restarted; verifying pg-backed resume");
@@ -200,7 +201,7 @@ export const scenario: Scenario = {
 				// existing database, not re-migrating.
 				await assertDbReachableOnPostgres(http);
 
-				const afterRestart = await waitForSeqAbove(
+				const afterRestart = await waitForSeqAbove<EventEnvelope>(
 					http,
 					runId,
 					maxSeqBeforeKill,
@@ -293,54 +294,6 @@ async function assertDbReachableOnPostgres(http: WarrenHttp): Promise<void> {
 	);
 }
 
-async function waitForEventCount(
-	http: WarrenHttp,
-	runId: string,
-	target: number,
-	timeoutMs: number,
-): Promise<readonly EventEnvelope[]> {
-	const deadline = Date.now() + timeoutMs;
-	let last: EventEnvelope[] = [];
-	while (Date.now() < deadline) {
-		last = await collectAll(http, `/runs/${encodeURIComponent(runId)}/events`);
-		if (last.length >= target) return last;
-		await sleep(POLL_INTERVAL_MS);
-	}
-	throw new AcceptanceError(
-		`waited ${timeoutMs}ms for ${target} events on ${runId}, only saw ${last.length}`,
-	);
-}
-
-async function waitForSeqAbove(
-	http: WarrenHttp,
-	runId: string,
-	threshold: number,
-	timeoutMs: number,
-): Promise<readonly EventEnvelope[]> {
-	const deadline = Date.now() + timeoutMs;
-	let last: EventEnvelope[] = [];
-	while (Date.now() < deadline) {
-		last = await collectAll(http, `/runs/${encodeURIComponent(runId)}/events`);
-		const max = last.reduce((m, e) => (e.seq > m ? e.seq : m), 0);
-		if (max > threshold) return last;
-		await sleep(POLL_INTERVAL_MS);
-	}
-	throw new AcceptanceError(
-		`waited ${timeoutMs}ms for seq > ${threshold} on ${runId}, saw max ${last.reduce(
-			(m, e) => (e.seq > m ? e.seq : m),
-			0,
-		)} (events=${last.length})`,
-	);
-}
-
-async function collectAll(http: WarrenHttp, path: string): Promise<EventEnvelope[]> {
-	const out: EventEnvelope[] = [];
-	for await (const env of http.streamNdjson(path)) {
-		out.push(env as EventEnvelope);
-	}
-	return out;
-}
-
 function assertNoSeqGaps(events: readonly EventEnvelope[], label: string): void {
 	if (events.length === 0) {
 		throw new AcceptanceError(`${label}: empty event list`);
@@ -376,10 +329,6 @@ async function safelyCancel(http: WarrenHttp, runId: string, ctx: ScenarioCtx): 
 			`scenario-19: cancel failed (${err instanceof Error ? err.message : String(err)}) — best-effort, continuing`,
 		);
 	}
-}
-
-function sleep(ms: number): Promise<void> {
-	return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 /**

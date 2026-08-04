@@ -33,7 +33,8 @@
 
 import { AcceptanceError, assertEqual, assertTrue, type Scenario } from "../lib/assert.ts";
 import type { WarrenHttp } from "../lib/http.ts";
-import { resolveK8sTarget, sleep } from "../lib/k8s-target.ts";
+import { resolveK8sTarget } from "../lib/k8s-target.ts";
+import { pollAcceptance } from "../lib/poll.ts";
 
 interface RunRow {
 	readonly id: string;
@@ -160,20 +161,22 @@ async function pollInboxFor(
 	messageId: string,
 	timeoutMs: number,
 ): Promise<InboxMessage> {
-	const deadline = Date.now() + timeoutMs;
-	while (Date.now() < deadline) {
-		const res = await http.expectJson<InboxResponse>(
-			"GET",
-			`/runs/${encodeURIComponent(runId)}/inbox`,
-			200,
-		);
-		const hit = res.messages.find((m) => m.id === messageId);
-		if (hit !== undefined) return hit;
-		await sleep(POLL_INTERVAL_MS);
-	}
-	throw new AcceptanceError(
-		`steer message ${messageId} was not drainable over GET /runs/${runId}/inbox within ${timeoutMs}ms`,
-	);
+	return pollAcceptance({
+		label: "steer inbox message",
+		id: messageId,
+		timeoutMs,
+		intervalMs: POLL_INTERVAL_MS,
+		fetchRow: async (): Promise<InboxMessage | null> => {
+			const res = await http.expectJson<InboxResponse>(
+				"GET",
+				`/runs/${encodeURIComponent(runId)}/inbox`,
+				200,
+			);
+			return res.messages.find((m) => m.id === messageId) ?? null;
+		},
+		isDone: (msg): msg is InboxMessage => msg !== null,
+		describe: (msg) => (msg === null ? "not drainable yet" : msg.id),
+	});
 }
 
 async function fetchEvents(http: WarrenHttp, runId: string): Promise<EventRow[]> {

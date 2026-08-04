@@ -13,6 +13,7 @@
  * Deliberately tiny — no retry logic, no caching. The harness is the
  * caller; if a request needs to be retried, the scenario does it.
  */
+import { WarrenClient } from "../../../src/client/client.ts";
 import { AcceptanceError } from "./assert.ts";
 
 export interface WarrenHttpOptions {
@@ -90,6 +91,18 @@ export class WarrenHttp {
 	 * stream warren exposes). Returns an async iterable of parsed JSON
 	 * envelopes. Caller can `abort()` to stop streaming.
 	 */
+	/**
+	 * Build an SDK client over the same baseUrl/token/fetch so scenarios
+	 * wait on run terminality through `waitForRun` (warren-bb51) instead
+	 * of hand-rolled poll loops.
+	 */
+	sdkClient(): WarrenClient {
+		return new WarrenClient({
+			config: { baseUrl: this.baseUrl, token: this.token },
+			fetch: this.fetchImpl,
+		});
+	}
+
 	async *streamNdjson(path: string, signal?: AbortSignal): AsyncGenerator<unknown, void, void> {
 		const res = await this.request("GET", path, signal !== undefined ? { signal } : {});
 		if (res.status !== 200) {

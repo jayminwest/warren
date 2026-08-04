@@ -49,8 +49,9 @@ import { chmod, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { AcceptanceError, assertEqual, assertTrue, type Scenario } from "../lib/assert.ts";
+import { assertEqual, assertTrue, type Scenario } from "../lib/assert.ts";
 import { WarrenHttp } from "../lib/http.ts";
+import { pollAcceptance, waitForHealthz } from "../lib/poll.ts";
 
 const PORT_RANGE_START = 32_000;
 const PORT_RANGE_SPAN = 28_000;
@@ -58,7 +59,6 @@ const SUPERVISOR_HEALTHZ_TIMEOUT_MS = 20_000;
 const PID_FILE_INITIAL_TIMEOUT_MS = 10_000;
 const RESTART_TIMEOUT_MS = 15_000;
 const TEARDOWN_TIMEOUT_MS = 5_000;
-const POLL_INTERVAL_MS = 200;
 const STUB_SLEEP_MS = 30_000; // long enough to outlast the kill+restart window
 
 interface ProjectRow {
@@ -352,24 +352,24 @@ async function ensureSampleProject(http: WarrenHttp, gitUrl: string): Promise<Pr
 }
 
 async function readPid(pidFile: string, timeoutMs: number): Promise<number> {
-	const deadline = Date.now() + timeoutMs;
-	let lastErr: string | undefined;
-	while (Date.now() < deadline) {
-		if (existsSync(pidFile)) {
+	return pollAcceptance({
+		label: "burrow pid file",
+		id: pidFile,
+		timeoutMs,
+		intervalMs: 200,
+		fetchRow: async (): Promise<number | null> => {
+			if (!existsSync(pidFile)) return null;
 			try {
 				const raw = (await readFile(pidFile, "utf8")).trim();
 				const n = Number.parseInt(raw, 10);
-				if (Number.isInteger(n) && n > 0) return n;
-				lastErr = `pid file content not an integer: ${JSON.stringify(raw)}`;
-			} catch (err) {
-				lastErr = err instanceof Error ? err.message : String(err);
+				return Number.isInteger(n) && n > 0 ? n : null;
+			} catch {
+				return null;
 			}
-		}
-		await sleep(POLL_INTERVAL_MS);
-	}
-	throw new AcceptanceError(
-		`burrow pid file ${pidFile} did not contain a valid pid within ${timeoutMs}ms (last=${lastErr ?? "missing"})`,
-	);
+		},
+		isDone: (pid): pid is number => pid !== null,
+		describe: (pid) => (pid === null ? "missing or invalid" : String(pid)),
+	});
 }
 
 async function waitForNewPid(
@@ -378,26 +378,27 @@ async function waitForNewPid(
 	oldMtime: number,
 	timeoutMs: number,
 ): Promise<number> {
-	const deadline = Date.now() + timeoutMs;
-	let lastSeen: number | undefined;
-	while (Date.now() < deadline) {
-		try {
-			const stats = await stat(pidFile);
-			if (stats.mtimeMs > oldMtime) {
+	return pollAcceptance({
+		label: "supervisor burrow pid",
+		id: pidFile,
+		timeoutMs,
+		intervalMs: 200,
+		fetchRow: async (): Promise<number | null> => {
+			try {
+				const stats = await stat(pidFile);
+				if (stats.mtimeMs <= oldMtime) return null;
 				const raw = (await readFile(pidFile, "utf8")).trim();
 				const n = Number.parseInt(raw, 10);
-				if (Number.isInteger(n) && n > 0 && n !== oldPid) return n;
-				lastSeen = n;
+				// The pid file may briefly disappear or hold the old pid if the
+				// supervisor unlinked it between writes — treat as transient.
+				return Number.isInteger(n) && n > 0 && n !== oldPid ? n : null;
+			} catch {
+				return null;
 			}
-		} catch {
-			// pid file may briefly disappear if the supervisor unlinked it
-			// between writes — treat as transient.
-		}
-		await sleep(POLL_INTERVAL_MS);
-	}
-	throw new AcceptanceError(
-		`supervisor did not write a new burrow pid to ${pidFile} within ${timeoutMs}ms (last seen=${lastSeen ?? "none"}, old=${oldPid})`,
-	);
+		},
+		isDone: (pid): pid is number => pid !== null,
+		describe: (pid) => (pid === null ? `no new pid yet (old=${oldPid})` : String(pid)),
+	});
 }
 
 async function mtimeMs(path: string): Promise<number> {
@@ -418,24 +419,6 @@ function isProcessAlive(pid: number): boolean {
 	}
 }
 
-async function waitForHealthz(baseUrl: string, timeoutMs: number): Promise<void> {
-	const deadline = Date.now() + timeoutMs;
-	let lastErr: string | undefined;
-	while (Date.now() < deadline) {
-		try {
-			const res = await fetch(`${baseUrl}/healthz`);
-			if (res.status === 200) return;
-			lastErr = `status ${res.status}`;
-		} catch (err) {
-			lastErr = err instanceof Error ? err.message : String(err);
-		}
-		await sleep(POLL_INTERVAL_MS);
-	}
-	throw new AcceptanceError(
-		`scenario-12 warren /healthz did not respond 200 within ${timeoutMs}ms: ${lastErr ?? "unknown"}`,
-	);
-}
-
 function pickPort(): number {
 	return PORT_RANGE_START + Math.floor(Math.random() * PORT_RANGE_SPAN);
 }
@@ -444,8 +427,4 @@ function randomToken(): string {
 	const bytes = new Uint8Array(16);
 	crypto.getRandomValues(bytes);
 	return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
-}
-
-function sleep(ms: number): Promise<void> {
-	return new Promise((resolve) => setTimeout(resolve, ms));
 }

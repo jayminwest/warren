@@ -51,6 +51,8 @@
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
+import { waitForHealthz } from "./poll.ts";
+
 export interface ComposeBootOptions {
 	readonly tmpRoot: string;
 	readonly token: string;
@@ -74,7 +76,6 @@ export interface ComposeBootHandle {
 }
 
 const HEALTHZ_WAIT_TIMEOUT_MS = 120_000; // first-run image build + boot can be slow
-const HEALTHZ_POLL_INTERVAL_MS = 500;
 
 export async function bootCompose(opts: ComposeBootOptions): Promise<ComposeBootHandle> {
 	await assertDockerAvailable();
@@ -287,28 +288,6 @@ async function runCompose(
 		proc.exited,
 	]);
 	return { stdout, stderr, exitCode: exitCode ?? 0 };
-}
-
-async function waitForHealthz(baseUrl: string, timeoutMs: number): Promise<void> {
-	const start = Date.now();
-	let lastErr: string | undefined;
-	while (Date.now() - start < timeoutMs) {
-		try {
-			const res = await fetch(`${baseUrl}/healthz`, { method: "GET" });
-			if (res.status === 200) return;
-			lastErr = `status ${res.status}`;
-		} catch (err) {
-			lastErr = err instanceof Error ? err.message : String(err);
-		}
-		await sleep(HEALTHZ_POLL_INTERVAL_MS);
-	}
-	throw new Error(
-		`warren /healthz did not respond 200 within ${timeoutMs}ms: ${lastErr ?? "unknown"}`,
-	);
-}
-
-function sleep(ms: number): Promise<void> {
-	return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function pickPort(): number {

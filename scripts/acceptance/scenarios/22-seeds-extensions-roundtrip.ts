@@ -34,6 +34,7 @@ import { join } from "node:path";
 
 import { AcceptanceError, assertEqual, assertTrue, type Scenario } from "../lib/assert.ts";
 import { WarrenHttp } from "../lib/http.ts";
+import { waitForRunTerminal } from "./lib/poll-helpers.ts";
 
 interface ProjectRow {
 	readonly id: string;
@@ -77,7 +78,6 @@ const BOGUS_SEED_ID = "ah-acceptance-22-bogus";
 const SEED_CREATED_AT = "2026-05-08T00:00:00.000Z";
 // ISO 8601 with millisecond precision, matches `new Date().toISOString()`.
 const ISO_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
-const TERMINAL_STATES = new Set(["succeeded", "failed", "cancelled"]);
 
 export const scenario: Scenario = {
 	id: "22",
@@ -324,14 +324,12 @@ async function cancelAndDrain(http: WarrenHttp, runId: string): Promise<void> {
 	} catch {
 		// Best-effort — the run may already be terminal.
 	}
-	const deadline = Date.now() + 10_000;
-	while (Date.now() < deadline) {
-		const row = await http.expectJson<RunRow>("GET", `/runs/${encodeURIComponent(runId)}`, 200);
-		if (TERMINAL_STATES.has(row.state)) return;
-		await sleep(100);
+	try {
+		await waitForRunTerminal(http, runId, 10_000);
+	} catch {
+		// Don't fail the scenario on a stuck terminal transition — teardown
+		// kills the warren+burrow pair regardless.
 	}
-	// Don't fail the scenario on a stuck terminal transition — teardown
-	// kills the warren+burrow pair regardless.
 }
 
 async function resetSourceState(sourceRepoPath: string): Promise<void> {
@@ -395,8 +393,4 @@ async function runGit(
 		);
 	}
 	return { stdout, stderr };
-}
-
-function sleep(ms: number): Promise<void> {
-	return new Promise((resolve) => setTimeout(resolve, ms));
 }

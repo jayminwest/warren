@@ -39,6 +39,7 @@ import { join } from "node:path";
 
 import { AcceptanceError, assertEqual, assertTrue, type Scenario } from "../lib/assert.ts";
 import { WarrenHttp } from "../lib/http.ts";
+import { pollAcceptance } from "../lib/poll.ts";
 
 interface ProjectRow {
 	readonly id: string;
@@ -239,6 +240,10 @@ export const scenario: Scenario = {
 		// Quiet window: another tick or two must NOT spawn a duplicate
 		// scheduled run, AND must not fire the cron (its slot doesn't
 		// elapse during the test).
+		// warren-bb51: the harness's ONE remaining sleep. It cannot be a
+		// poll — it asserts a negative over wall-clock time ("no second
+		// dispatch arrives during this window"), and a poll can only
+		// observe that a condition holds, never that it kept holding.
 		// ----------------------------------------------------------------
 		await sleep(NO_DOUBLE_DISPATCH_WINDOW_MS);
 		const counts = await snapshotRunCounts(http, project.id);
@@ -369,25 +374,25 @@ async function waitForScheduledRun(
 	projectId: string,
 	baselineScheduledCount: number,
 ): Promise<RunRow> {
-	const deadline = Date.now() + SCHEDULED_DISPATCH_BUDGET_MS;
-	while (Date.now() < deadline) {
-		const res = await http.expectJson<ListRunsResponse>(
-			"GET",
-			`/runs?project=${encodeURIComponent(projectId)}`,
-			200,
-		);
-		const scheduled = res.runs.filter((r) => r.trigger === "scheduled");
-		if (scheduled.length > baselineScheduledCount) {
+	return pollAcceptance({
+		label: "trigger='scheduled' run",
+		id: projectId,
+		timeoutMs: SCHEDULED_DISPATCH_BUDGET_MS,
+		intervalMs: POLL_INTERVAL_MS,
+		fetchRow: async () => {
+			const res = await http.expectJson<ListRunsResponse>(
+				"GET",
+				`/runs?project=${encodeURIComponent(projectId)}`,
+				200,
+			);
+			const scheduled = res.runs.filter((r) => r.trigger === "scheduled");
 			// Caller's baseline is 0 in practice (no prior scenario uses
 			// trigger='scheduled'), so the new entry is unambiguous.
-			const newest = scheduled[0];
-			if (newest !== undefined) return newest;
-		}
-		await sleep(POLL_INTERVAL_MS);
-	}
-	throw new AcceptanceError(
-		`scheduler did not dispatch a trigger='scheduled' run within ${SCHEDULED_DISPATCH_BUDGET_MS}ms for project ${projectId}`,
-	);
+			return scheduled.length > baselineScheduledCount ? (scheduled[0] ?? null) : null;
+		},
+		isDone: (run): run is RunRow => run !== null,
+		describe: (run) => (run === null ? "not dispatched yet" : run.id),
+	});
 }
 
 interface SeedExtensions {
@@ -488,6 +493,7 @@ async function runGit(
 	return { stdout, stderr };
 }
 
+/** The harness's single sanctioned sleep (warren-bb51) — no new call sites; use waitForRun / pollAcceptance. */
 function sleep(ms: number): Promise<void> {
 	return new Promise((resolve) => setTimeout(resolve, ms));
 }

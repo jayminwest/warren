@@ -33,6 +33,7 @@
 
 import { AcceptanceError, assertEqual, assertTrue, type Scenario } from "../lib/assert.ts";
 import { WarrenHttp } from "../lib/http.ts";
+import { waitForRunTerminal } from "./lib/poll-helpers.ts";
 
 interface ProjectRow {
 	readonly id: string;
@@ -186,7 +187,7 @@ export const scenario: Scenario = {
 		);
 		assertTrue(typeof cancelRes.alreadyTerminal === "boolean", "cancel response shape");
 
-		const terminalState = await waitForTerminal(http, run.id, 8_000);
+		const terminalState = (await waitForRunTerminal(http, run.id, 8_000)).state;
 		const terminalSteerRes = await http.request(
 			"POST",
 			`/runs/${encodeURIComponent(run.id)}/steer`,
@@ -223,27 +224,4 @@ async function fetchAllEvents(http: WarrenHttp, runId: string): Promise<EventRow
 		events.push(row as EventRow);
 	}
 	return events;
-}
-
-async function waitForTerminal(
-	http: WarrenHttp,
-	runId: string,
-	timeoutMs: number,
-): Promise<string> {
-	const start = Date.now();
-	const terminal = new Set(["succeeded", "failed", "cancelled"]);
-	let lastState = "unknown";
-	while (Date.now() - start < timeoutMs) {
-		const row = await http.expectJson<RunRow>("GET", `/runs/${encodeURIComponent(runId)}`, 200);
-		lastState = row.state;
-		if (terminal.has(row.state)) return row.state;
-		await sleep(100);
-	}
-	throw new AcceptanceError(
-		`run ${runId} did not reach a terminal state within ${timeoutMs}ms (last state=${lastState})`,
-	);
-}
-
-function sleep(ms: number): Promise<void> {
-	return new Promise((resolve) => setTimeout(resolve, ms));
 }

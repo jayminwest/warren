@@ -49,6 +49,7 @@
  */
 
 import { randomBytes } from "node:crypto";
+import { isTerminalRunState } from "../../../src/core/wire.ts";
 import {
 	AcceptanceError,
 	assertEqual,
@@ -57,7 +58,7 @@ import {
 	skipScenario,
 } from "../lib/assert.ts";
 import { WarrenHttp } from "../lib/http.ts";
-import { sleep } from "./lib/poll-helpers.ts";
+import { pollAcceptance } from "../lib/poll.ts";
 
 interface ProjectRow {
 	readonly id: string;
@@ -88,7 +89,6 @@ const OPENER_BUDGET_MS = 180_000;
 // GitHub Actions runner latency + a few scheduler ticks. Generous: this
 // scenario is opt-in and a slow runner queue must not flake it.
 const FIXER_DISPATCH_BUDGET_MS = 600_000;
-const TERMINAL_STATES = new Set(["succeeded", "failed", "cancelled"]);
 
 export const scenario: Scenario = {
 	id: "35",
@@ -157,29 +157,27 @@ function parseRepoSlug(url: string): { owner: string; repo: string } {
 }
 
 async function waitForOpenerPr(http: WarrenHttp, runId: string): Promise<RunRow> {
-	const deadline = Date.now() + OPENER_BUDGET_MS;
-	let last: RunRow | null = null;
-	while (Date.now() < deadline) {
-		last = await http.expectJson<RunRow>("GET", `/runs/${encodeURIComponent(runId)}`, 200);
-		if (last.prUrl !== null && last.prUrl !== "") return last;
-		if (TERMINAL_STATES.has(last.state) && last.prUrl === null) {
-			// Terminal with no PR: give reap a couple ticks, then fail clearly.
-			await sleep(POLL_INTERVAL_MS);
-			const recheck = await http.expectJson<RunRow>(
-				"GET",
-				`/runs/${encodeURIComponent(runId)}`,
-				200,
-			);
-			if (recheck.prUrl !== null) return recheck;
-			throw new AcceptanceError(
-				`opener run ${runId} reached '${last.state}' without opening a PR — check GITHUB_TOKEN push auth + the repo's auto-open-PR config`,
-			);
-		}
-		await sleep(POLL_INTERVAL_MS);
-	}
-	throw new AcceptanceError(
-		`opener run ${runId} did not open a PR within ${OPENER_BUDGET_MS}ms (last state=${last?.state})`,
-	);
+	return pollAcceptance({
+		label: "opener run PR",
+		id: runId,
+		timeoutMs: OPENER_BUDGET_MS,
+		intervalMs: POLL_INTERVAL_MS,
+		fetchRow: async (): Promise<RunRow> => {
+			const row = await http.sdkClient().getRun(runId);
+			if (isTerminalRunState(row.state) && (row.prUrl === null || row.prUrl === "")) {
+				// Terminal with no PR: one immediate recheck in case reap is
+				// mid-write, then fail clearly.
+				const recheck = await http.sdkClient().getRun(runId);
+				if (recheck.prUrl !== null && recheck.prUrl !== "") return recheck;
+				throw new AcceptanceError(
+					`opener run ${runId} reached '${row.state}' without opening a PR — check GITHUB_TOKEN push auth + the repo's auto-open-PR config`,
+				);
+			}
+			return row;
+		},
+		isDone: (row) => row.prUrl !== null && row.prUrl !== "",
+		describe: (row) => `state=${row.state} prUrl=${JSON.stringify(row.prUrl)}`,
+	});
 }
 
 async function waitForCiFixerRun(
@@ -187,20 +185,22 @@ async function waitForCiFixerRun(
 	projectId: string,
 	openerId: string,
 ): Promise<RunRow> {
-	const deadline = Date.now() + FIXER_DISPATCH_BUDGET_MS;
-	while (Date.now() < deadline) {
-		const res = await http.expectJson<ListRunsResponse>(
-			"GET",
-			`/runs?project=${encodeURIComponent(projectId)}`,
-			200,
-		);
-		const fixer = res.runs.find((r) => r.trigger === "ci-fixer" && r.parentRunId === openerId);
-		if (fixer !== undefined) return fixer;
-		await sleep(POLL_INTERVAL_MS);
-	}
-	throw new AcceptanceError(
-		`scheduler did not dispatch a ci-fixer run for opener ${openerId} within ${FIXER_DISPATCH_BUDGET_MS}ms — check the repo's CI concluded 'failure' and ciFixer.enabled in .warren/config.yaml`,
-	);
+	return pollAcceptance({
+		label: "ci-fixer run",
+		id: openerId,
+		timeoutMs: FIXER_DISPATCH_BUDGET_MS,
+		intervalMs: POLL_INTERVAL_MS,
+		fetchRow: async (): Promise<RunRow | null> => {
+			const res = await http.expectJson<ListRunsResponse>(
+				"GET",
+				`/runs?project=${encodeURIComponent(projectId)}`,
+				200,
+			);
+			return res.runs.find((r) => r.trigger === "ci-fixer" && r.parentRunId === openerId) ?? null;
+		},
+		isDone: (run): run is RunRow => run !== null,
+		describe: (run) => (run === null ? "not dispatched yet" : run.id),
+	});
 }
 
 async function cancelRun(http: WarrenHttp, runId: string | undefined): Promise<void> {
