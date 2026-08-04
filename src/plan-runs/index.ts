@@ -13,6 +13,12 @@ export {
 	SEED_ID_PLACEHOLDER,
 } from "../core/plan-run-prompt.ts";
 export {
+	type CancelPlanRunInput,
+	type CancelPlanRunLogger,
+	type CancelPlanRunResult,
+	cancelPlanRun,
+} from "./cancel.ts";
+export {
 	type CloseMergedChildSeedInput,
 	type CloseMergedChildSeedResult,
 	closeMergedChildSeed,
@@ -40,6 +46,11 @@ export {
 	PLAN_RUN_EVENT_KINDS,
 	type PlanRunEventKind,
 } from "./coordinator.ts";
+export {
+	type CreatePlanRunOrchestrationInput,
+	createPlanRun,
+	PLAN_RUN_ACCEPTED_PLAN_STATUSES,
+} from "./create.ts";
 export { type CreatePlanRunSpawnInput, createPlanRunSpawn } from "./dispatch.ts";
 export { PlanHasNoOpenChildrenError, ProjectLacksSeedsError } from "./errors.ts";
 export {
@@ -53,6 +64,11 @@ export {
 	type ReadyPlan,
 	type ReadyPlanInput,
 } from "./ready-plans.ts";
+export {
+	type PlanRunEventRow,
+	type TailPlanRunEventsInput,
+	tailPlanRunEvents,
+} from "./tail-events.ts";
 export {
 	type BootPlanRunCoordinatorInput,
 	bootPlanRunCoordinator,
