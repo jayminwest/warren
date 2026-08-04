@@ -75,6 +75,18 @@
 			"forbidPattern": "[A-Za-z_$][\\w$.]*\\(\\s*deps\\.db\\b"
 		},
 		{
+			"name": "extensions-are-standalone",
+			"why": "An extension is a standalone package a third party could have built against warren's published HTTP surface (docs/design/extensions.md). Importing src/ or scripts/ couples it to internals that are not API, and the coupling would be invisible to the friction report that is the whole point of the flagship.",
+			"from": ["extensions/"],
+			"forbidImports": ["src/", "scripts/"]
+		},
+		{
+			"name": "core-does-not-import-extensions",
+			"why": "Warren core stays free of extension-specific code: an extension is delivered and runs out-of-process, so an import from src/ or scripts/ into extensions/ compiles the extension into core and makes its removal a breaking change.",
+			"from": ["src/", "scripts/"],
+			"forbidImports": ["extensions/"]
+		},
+		{
 			"name": "core-kernel-imports-nothing",
 			"why": "src/core/ is the dependency-free kernel. A kernel with no imports is what lets the Vite-bundled UI reach the same module, so neither drizzle nor bun:sqlite reaches the browser bundle.",
 			"from": ["src/core/"],

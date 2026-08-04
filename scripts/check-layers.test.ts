@@ -325,11 +325,83 @@ describe("scan — walk scope", () => {
 	});
 });
 
+describe("scan — the extension boundary (warren-0781, plan pl-116e)", () => {
+	test("flags an extension importing warren's src/ or scripts/", () => {
+		withFixtureRepo(
+			{
+				"extensions/audit-log/src/collector.ts": 'import { X } from "../../../src/core/wire.ts";\n',
+				"extensions/audit-log/src/helper.ts":
+					'import { Y } from "../../../scripts/check-layers.ts";\n',
+			},
+			(dir) => {
+				expect(scan(dir, RULES)).toEqual([
+					{
+						rule: "extensions-are-standalone",
+						file: "extensions/audit-log/src/collector.ts",
+						line: 1,
+						reason: 'imports "../../../src/core/wire.ts"',
+					},
+					{
+						rule: "extensions-are-standalone",
+						file: "extensions/audit-log/src/helper.ts",
+						line: 1,
+						reason: 'imports "../../../scripts/check-layers.ts"',
+					},
+				]);
+			},
+		);
+	});
+
+	test("flags core importing an extension", () => {
+		withFixtureRepo(
+			{
+				"src/server/main/lifecycle-bus-wiring.ts":
+					'import { z } from "../../../extensions/audit-log/src/index.ts";\n',
+			},
+			(dir) => {
+				expect(scan(dir, RULES).map((v) => v.rule)).toEqual(["core-does-not-import-extensions"]);
+			},
+		);
+	});
+
+	test("leaves an extension's own internal imports alone", () => {
+		withFixtureRepo(
+			{
+				"extensions/audit-log/src/index.ts":
+					'import { c } from "./collector.ts";\nimport { Database } from "bun:sqlite";\n',
+			},
+			(dir) => {
+				expect(scan(dir, RULES)).toEqual([]);
+			},
+		);
+	});
+
+	test("the reverse-direction rule is not theater: the walk reaches extensions/", () => {
+		// Plan risk 1: if the walk silently never covered extensions/, the
+		// import rule would never fire. This fixture has no src/ tree at all —
+		// a hit proves the extensions/ walk exists.
+		withFixtureRepo(
+			{
+				"extensions/audit-log/src/x.ts": 'import { w } from "../../../src/core/wire.ts";\n',
+			},
+			(dir) => {
+				expect(scan(dir, RULES)).toHaveLength(1);
+			},
+		);
+	});
+});
+
 describe("the shipped manifest", () => {
 	test("still declares both halves of the retired burrow guard", () => {
 		const names = RULES.map((r) => r.name);
 		expect(names).toContain("burrow-facade-is-local-only");
 		expect(names).toContain("burrow-package-is-local-only");
+	});
+
+	test("declares both directions of the extension boundary", () => {
+		const names = RULES.map((r) => r.name);
+		expect(names).toContain("extensions-are-standalone");
+		expect(names).toContain("core-does-not-import-extensions");
 	});
 
 	test("every allow entry carries a reason, because JSON has no comments", () => {

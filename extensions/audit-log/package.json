@@ -1,0 +1,21 @@
+{
+	"name": "@warren-ext/audit-log",
+	"version": "0.0.0",
+	"description": "Warren observer extension: tails the run lifecycle over warren's public HTTP API and normalizes it into an append-only, exportable audit log",
+	"private": true,
+	"type": "module",
+	"main": "src/index.ts",
+	"scripts": {
+		"start": "bun run src/index.ts",
+		"test": "bun test",
+		"typecheck": "tsc --noEmit -p tsconfig.json"
+	},
+	"license": "MIT",
+	"engines": {
+		"bun": ">=1.1.0"
+	},
+	"devDependencies": {
+		"@types/bun": "^1.2.0",
+		"typescript": "^5.6.0"
+	}
+}

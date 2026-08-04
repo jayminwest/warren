@@ -38,6 +38,11 @@
  * a guard whose job is to stop the accidental regression. Note it, do not
  * route around it.
  *
+ * The walk covers `src/` and `extensions/` (warren-0781, plan pl-116e): the
+ * audit-log flagship is a standalone package inside this repo, and the two
+ * extension-boundary rules in the manifest only have teeth if the walk reaches
+ * both sides of the seam.
+ *
  * Chained into `bun run lint` (alongside check-version-sync.ts,
  * check-wire-types.ts and check-prose.ts) in the slot check-burrow-boundary.ts
  * used to hold, rather than registered as its own gate: `scripts/check-all.ts`
@@ -46,7 +51,7 @@
  * runnable directly: `bun run check:layers`.
  */
 
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 
 const REPO_ROOT = resolve(import.meta.dir, "..");
@@ -190,27 +195,40 @@ export function loadRules(repoRoot: string = REPO_ROOT): LayerRule[] {
 	return parsed.rules;
 }
 
-/** Walk `<repoRoot>/src` and collect every violation of every rule. */
+/** Directory trees the walk covers, relative to the repo root. */
+export const WALK_ROOTS = ["src", "extensions"] as const;
+
+/** Walk every WALK_ROOTS tree under `repoRoot` and collect every violation. */
 export function scan(
 	repoRoot: string = REPO_ROOT,
 	rules: readonly LayerRule[] = loadRules(),
 ): Violation[] {
 	const violations: Violation[] = [];
-	for (const abs of walk(resolve(repoRoot, "src"))) {
-		const rel = relative(repoRoot, abs).split("\\").join("/");
-		if (isTestFile(rel)) continue;
-		const text = readFileSync(abs, "utf8");
-		for (const rule of rules) {
-			if (!matchesPath(rel, rule.from)) continue;
-			if (
-				matchesPath(
-					rel,
-					(rule.allow ?? []).map((a) => a.path),
-				)
-			)
-				continue;
-			violations.push(...scanText(rule, rel, text));
+	for (const root of WALK_ROOTS) {
+		const rootAbs = resolve(repoRoot, root);
+		if (!existsSync(rootAbs)) continue;
+		for (const abs of walk(rootAbs)) {
+			const rel = relative(repoRoot, abs).split("\\").join("/");
+			if (isTestFile(rel)) continue;
+			violations.push(...scanFile(rel, readFileSync(abs, "utf8"), rules));
 		}
+	}
+	return violations;
+}
+
+/** Every violation of every applicable rule inside one file. */
+function scanFile(rel: string, text: string, rules: readonly LayerRule[]): Violation[] {
+	const violations: Violation[] = [];
+	for (const rule of rules) {
+		if (!matchesPath(rel, rule.from)) continue;
+		if (
+			matchesPath(
+				rel,
+				(rule.allow ?? []).map((a) => a.path),
+			)
+		)
+			continue;
+		violations.push(...scanText(rule, rel, text));
 	}
 	return violations;
 }
