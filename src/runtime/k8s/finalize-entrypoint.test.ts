@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { DEFAULT_WATCHDOG_HEARTBEAT_TIMEOUT_MS } from "../../runs/watchdog.ts";
 import {
 	collectFinalizeResult,
 	collectMulchDelta,
@@ -9,6 +10,7 @@ import {
 	type FinalizeGitRunner,
 } from "./finalize-collect.ts";
 import {
+	DEFAULT_FINALIZE_MAX_WAIT_MS,
 	extractIntent,
 	type FinalizeHttp,
 	parseFinalizeEntrypointEnv,
@@ -374,9 +376,15 @@ describe("pollForIntent + runFinalizeEntrypoint", () => {
 		expect(postCalls).toBe(3); // exactly max attempts, no more
 	});
 
-	test("warren-5ea1 defaults: maxWait outlasts the 45-min heartbeat watchdog; early salvage at 5 min", () => {
+	test("warren-9d24 defaults: maxWait gives up below the 45-min heartbeat watchdog; early salvage at 5 min", () => {
 		const parsed = parseFinalizeEntrypointEnv(env);
-		expect(parsed.maxWaitMs).toBe(3_000_000);
+		expect(parsed.maxWaitMs).toBe(DEFAULT_FINALIZE_MAX_WAIT_MS);
+		expect(parsed.maxWaitMs).toBe(2_400_000);
+		// Cross-budget guard: a pod polling for an intent is silent, so the
+		// finalize wait must end before the heartbeat watchdog terminalizes the
+		// run — otherwise the terminal no_intent salvage POST lands after the
+		// run-scope gate starts 401ing (warren-9d24).
+		expect(DEFAULT_FINALIZE_MAX_WAIT_MS).toBeLessThan(DEFAULT_WATCHDOG_HEARTBEAT_TIMEOUT_MS);
 		expect(parsed.earlySalvageMs).toBe(300_000);
 		// `0` disables the early capture.
 		expect(
