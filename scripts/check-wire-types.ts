@@ -82,6 +82,10 @@ export const DOMAIN_STEMS = [
 	// into hand-copied redeclarations the way run/preview names did.
 	"seed",
 	"project",
+	// warren-42f1: the HTTP response envelopes (ErrorEnvelope) now live in
+	// the canonical home too — without this stem the guard would derive the
+	// name but never enforce it, recreating the warren-5334 blindness.
+	"envelope",
 ] as const;
 
 /**

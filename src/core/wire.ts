@@ -3,23 +3,21 @@
  *
  * THIS FILE IS THE SINGLE SOURCE OF TRUTH for every enum-shaped value that
  * crosses warren's HTTP wire: run / plan-run / preview lifecycle states,
- * failure-cause discriminators, run mode, clone kind, event stream, and the
- * steering-inbox classes. Every other layer — the drizzle column metadata
- * (`src/db/schema/columns.ts`), the SDK (`src/client/types*.ts`), and the
- * browser UI (`src/ui/src/api/types.ts`) — RE-EXPORTS these names. None of
- * them may redeclare one. `bun run check:wire-types` (warren-d371) enforces
- * that mechanically.
+ * failure-cause discriminators, run mode, clone kind, event stream, the
+ * steering-inbox classes, and the HTTP response envelopes (warren-42f1).
+ * Every other layer — the drizzle column metadata (`src/db/schema/columns.ts`),
+ * the SDK (`src/client/types*.ts`), and the browser UI
+ * (`src/ui/src/api/types.ts`) — RE-EXPORTS these names. None of them may
+ * redeclare one. `bun run check:wire-types` (warren-d371) enforces that
+ * mechanically.
  *
  * Why `src/core/` and why this direction:
  *
  *   - `src/core/` is warren's dependency-free kernel (errors + ids). It
  *     imports nothing, so every layer can import it without inheriting a
- *     dependency. Defining here and re-exporting outward is the only
- *     direction that works for the UI: `src/ui` is a separate package
- *     (`@os-eco/warren-ui`) bundled by Vite, and it must never reach into
- *     `src/db/schema/` — that would drag drizzle and `bun:sqlite` into a
- *     browser bundle. A leaf module with zero imports is reachable from
- *     both sides without either side importing the other.
+ *     dependency. The UI is a separate Vite-bundled package that must never
+ *     reach into `src/db/schema/` (drizzle + `bun:sqlite` in a browser
+ *     bundle); a leaf module with zero imports is reachable from both sides.
  *   - The three surfaces drifted for exactly as long as they were hand-kept
  *     copies: `RunFailureReason` lost `finalize_failed` + `evicted` in both
  *     the SDK and the UI, the UI still typed the deleted `interactive` run
@@ -497,4 +495,27 @@ export function isTerminalPlanRunChildState(
 	state: PlanRunChildState,
 ): state is PlanRunChildTerminalState {
 	return (PLAN_RUN_CHILD_TERMINAL_STATES as readonly PlanRunChildState[]).includes(state);
+}
+
+/* ----------------------------------------------------------------------- */
+/* HTTP response envelopes (warren-42f1 / pl-882c step 3).                  */
+/* ----------------------------------------------------------------------- */
+
+/**
+ * Error envelope rendered for every non-2xx response. Mirrors burrow's
+ * `ErrorEnvelope` so an HTTP consumer hitting both surfaces uses one
+ * decoder. `code` is the stable machine identifier; `message` is human;
+ * `hint` is the optional recovery cue from `WarrenError.recoveryHint`.
+ *
+ * Defined ONCE here — the server (`src/server/types.ts`), the SDK
+ * (`src/client/types.ts`) and the UI (`src/ui/src/api/types.ts`) re-export
+ * it. warren-5334 tracked the three hand-mirrored copies this replaces.
+ * Type-only, so the dependency-free-kernel rule is unaffected.
+ */
+export interface ErrorEnvelope {
+	error: {
+		code: string;
+		message: string;
+		hint?: string;
+	};
 }

@@ -27,18 +27,12 @@ import type { PreviewMode, WarrenConfigCache } from "../warren-config/index.ts";
 import type { IdempotencyStore } from "./idempotency.ts";
 
 /**
- * Error envelope rendered for every non-2xx response. Mirrors burrow's
- * `ErrorEnvelope` so an HTTP consumer hitting both surfaces uses one
- * decoder. `code` is the stable machine identifier; `message` is human;
- * `hint` is the optional recovery cue from `WarrenError.recoveryHint`.
+ * Error envelope rendered for every non-2xx response. Defined once in
+ * `src/core/wire.ts` (warren-42f1) and re-exported here so the server's
+ * import surface is unchanged. Never redeclare it — `check:wire-types`
+ * fails the build if you do.
  */
-export interface ErrorEnvelope {
-	error: {
-		code: string;
-		message: string;
-		hint?: string;
-	};
-}
+export type { ErrorEnvelope } from "../core/wire.ts";
 
 export type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 
