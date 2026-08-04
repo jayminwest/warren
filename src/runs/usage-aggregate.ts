@@ -26,6 +26,7 @@
  * aggregator — worst case is "we miss this run's cost".
  */
 
+import { extractAgentEventEnvelope } from "../core/event-envelope.ts";
 import type { SessionStats } from "./stream/index.ts";
 
 /**
@@ -41,6 +42,13 @@ import type { SessionStats } from "./stream/index.ts";
 export interface UsageEventInput {
 	readonly kind: string;
 	readonly stream: string | null;
+	/**
+	 * Parse-boundary provenance (warren-6646). Optional — the persisted
+	 * events table predates the tag; absent reads as warren-authored.
+	 * Fed into the shared envelope extractor's provenance gate
+	 * (warren-27b5).
+	 */
+	readonly origin?: string;
 	readonly payload: unknown;
 }
 
@@ -88,13 +96,10 @@ function toNumber(value: unknown): number | null {
  * the worst case is "we miss this run's cost", same as no-event.
  */
 export function accumulatePiUsage(acc: SessionStatsAccumulator, event: UsageEventInput): void {
-	if (event.kind !== "state_change") return;
-	if (event.stream !== "system") return;
-	const payload = event.payload;
-	if (payload === null || typeof payload !== "object") return;
-	const env = payload as Record<string, unknown>;
-	if (env.type !== "turn_end") return;
-	const message = env.message;
+	const envelope = extractAgentEventEnvelope(event);
+	if (envelope === null) return;
+	if (envelope.type !== "turn_end") return;
+	const message = envelope.payload.message;
 	if (message === null || typeof message !== "object") return;
 	const usage = (message as Record<string, unknown>).usage;
 	if (usage === null || typeof usage !== "object") return;
@@ -137,12 +142,10 @@ export function accumulatePiUsage(acc: SessionStatsAccumulator, event: UsageEven
  * miss this run's cost.
  */
 export function extractClaudeUsage(acc: SessionStatsAccumulator, event: UsageEventInput): void {
-	if (event.kind !== "state_change") return;
-	if (event.stream !== "system") return;
-	const payload = event.payload;
-	if (payload === null || typeof payload !== "object") return;
-	const env = payload as Record<string, unknown>;
-	if (env.type !== "result") return;
+	const envelope = extractAgentEventEnvelope(event);
+	if (envelope === null) return;
+	if (envelope.type !== "result") return;
+	const env = envelope.payload;
 	const costTotal = toNumber(env.total_cost_usd);
 	const usage = env.usage;
 	const u = usage !== null && typeof usage === "object" ? (usage as Record<string, unknown>) : null;

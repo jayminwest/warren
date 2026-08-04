@@ -12,6 +12,7 @@
  *     trigger the pi-specific terminal snapshot.
  */
 
+import { extractAgentEventEnvelope } from "../../core/event-envelope.ts";
 import type { RunTerminalState } from "../../db/schema.ts";
 import type { StreamEventView } from "./types.ts";
 
@@ -44,17 +45,15 @@ import type { StreamEventView } from "./types.ts";
  * refused outright — otherwise an agent printing a crafted
  * `state_change`/`system` line reaps its own run as `succeeded` and
  * short-circuits real outcome detection. The K8s parse boundary already
- * downgrades such a line's stream (`src/runtime/k8s/log-parse.ts`); this
- * check is the second, domain-side lock on the same door.
+ * downgrades such a line's stream (`src/runtime/k8s/log-parse.ts`); the
+ * provenance gate now lives in the shared extractor
+ * (`src/core/event-envelope.ts`, warren-27b5), the domain-side lock on
+ * the same door.
  */
 export function detectRuntimeTerminal(event: StreamEventView): RunTerminalState | null {
-	if (isAgentAuthored(event)) return null;
-	if (event.kind !== "state_change") return null;
-	if (event.stream !== "system") return null;
-	const payload = event.payload;
-	if (payload === null || typeof payload !== "object") return null;
-	const env = payload as Record<string, unknown>;
-	if (env.type === "result") return env.is_error === true ? "failed" : "succeeded";
+	const env = extractAgentEventEnvelope(event);
+	if (env === null) return null;
+	if (env.type === "result") return env.payload.is_error === true ? "failed" : "succeeded";
 	if (env.type === "agent_end") {
 		const err = env.errorMessage;
 		const failed = env.stopReason === "error" || (typeof err === "string" && err.length > 0);
@@ -75,22 +74,5 @@ export function detectRuntimeTerminal(event: StreamEventView): RunTerminalState 
  * envelope — piStats is a pi-only concern.
  */
 export function isPiAgentEnd(event: StreamEventView): boolean {
-	if (isAgentAuthored(event)) return false;
-	if (event.kind !== "state_change") return false;
-	if (event.stream !== "system") return false;
-	const payload = event.payload;
-	if (payload === null || typeof payload !== "object") return false;
-	const env = payload as Record<string, unknown>;
-	return env.type === "agent_end";
-}
-
-/**
- * True when the parse boundary tagged this event as an unattributed,
- * agent-writable line (warren-6646). An absent `origin` reads as
- * warren-authored: burrow's `RunEvent` (LocalProvider, test `source`
- * overrides) predates the tag and arrives over a host-side channel the
- * sandbox cannot write to directly.
- */
-function isAgentAuthored(event: StreamEventView): boolean {
-	return event.origin === "agent";
+	return extractAgentEventEnvelope(event)?.type === "agent_end";
 }
