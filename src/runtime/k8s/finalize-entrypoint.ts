@@ -113,6 +113,16 @@ function intEnv(env: FinalizeEnvSource, key: string, fallback: number, min: 0 | 
 	return Number.isInteger(n) && n >= min ? n : fallback;
 }
 
+/**
+ * Default ceiling for the intent poll (warren-9d24): 40 minutes. Deliberately
+ * below the heartbeat watchdog budget (`DEFAULT_WATCHDOG_HEARTBEAT_TIMEOUT_MS`,
+ * 45 min) — a pod waiting on an intent is silent for the whole wait, so a
+ * ceiling above the watchdog budget would let the watchdog terminalize the run
+ * before the terminal `no_intent` salvage POST lands, and the run-scope gate
+ * would then 401 every attempt. A cross-budget test pins this ordering.
+ */
+export const DEFAULT_FINALIZE_MAX_WAIT_MS = 2_400_000;
+
 /** Parse + validate the finalize entrypoint env. Pure. */
 export function parseFinalizeEntrypointEnv(env: FinalizeEnvSource): FinalizeEntrypointEnv {
 	return {
@@ -123,7 +133,7 @@ export function parseFinalizeEntrypointEnv(env: FinalizeEnvSource): FinalizeEntr
 		baseBranch: env.WARREN_BASE_BRANCH?.trim() || undefined,
 		branch: env.WARREN_BRANCH?.trim() || undefined,
 		pollIntervalMs: intEnv(env, "WARREN_FINALIZE_POLL_INTERVAL_MS", 2_000, 1),
-		maxWaitMs: intEnv(env, "WARREN_FINALIZE_MAX_WAIT_MS", 3_000_000, 1),
+		maxWaitMs: intEnv(env, "WARREN_FINALIZE_MAX_WAIT_MS", DEFAULT_FINALIZE_MAX_WAIT_MS, 1),
 		earlySalvageMs: intEnv(env, "WARREN_FINALIZE_EARLY_SALVAGE_MS", 300_000, 0),
 		salvageMaxWaitMs: intEnv(env, "WARREN_SALVAGE_MAX_WAIT_MS", 120_000, 1),
 		postMaxAttempts: intEnv(env, "WARREN_FINALIZE_POST_MAX_ATTEMPTS", 5, 1),
