@@ -2,7 +2,9 @@ import { describe, expect, test } from "bun:test";
 import { KNOWN_RUNTIME_IDS } from "../core/wire.ts";
 import { AgentSchemaError } from "./errors.ts";
 import {
+	AGENT_NAME_PATTERN,
 	type AgentDefinition,
+	AgentNameSchema,
 	acceptedRuntimeIds,
 	assertKnownRuntimeId,
 	parseRenderedAgent,
@@ -48,6 +50,43 @@ describe("RenderResponseSchema", () => {
 	test("requires version to be a positive integer", () => {
 		const parsed = RenderResponseSchema.safeParse({ ...VALID, version: 0 });
 		expect(parsed.success).toBe(false);
+	});
+});
+
+describe("AgentNameSchema", () => {
+	test("accepts kebab/snake-case canopy names", () => {
+		for (const name of ["refactor-bot", "pi", "claude-code", "agent_v2.1", "a"]) {
+			expect(AgentNameSchema.safeParse(name).success).toBe(true);
+		}
+	});
+
+	test("rejects names outside the kebab grammar (warren-2b75)", () => {
+		for (const name of [
+			"Refactor-Bot", // uppercase
+			"refactor bot", // space
+			"-refactor-bot", // leading hyphen
+			"foo/bar", // path separator — the router refuses this param
+			"foo\0bar", // NUL
+			"", // empty
+		]) {
+			expect(AgentNameSchema.safeParse(name).success).toBe(false);
+			expect(AGENT_NAME_PATTERN.test(name)).toBe(false);
+		}
+	});
+
+	test("matches the RoleNameSchema grammar the config layer uses", () => {
+		// The config layer reuses AGENT_NAME_PATTERN; pin the exact shape so a
+		// drift in either direction fails here.
+		expect(AGENT_NAME_PATTERN.source).toBe("^[a-z0-9][a-z0-9._-]*$");
+	});
+
+	test("RenderResponseSchema rejects a non-kebab agent name", () => {
+		const parsed = RenderResponseSchema.safeParse({ ...VALID, name: "Foo Bar" });
+		expect(parsed.success).toBe(false);
+	});
+
+	test("parseRenderedAgent surfaces a non-kebab name as an AgentSchemaError", () => {
+		expect(() => parseRenderedAgent({ ...VALID, name: "foo/bar" })).toThrow(AgentSchemaError);
 	});
 });
 

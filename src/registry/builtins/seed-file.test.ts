@@ -68,6 +68,16 @@ describe("loadSeedAgentsFromFile", () => {
 		});
 	});
 
+	test("rejects agent names outside the kebab grammar (warren-2b75)", async () => {
+		for (const name of ["Stub-Shell", "stub shell", "-stub-shell", "foo/bar"]) {
+			await withTempFile(JSON.stringify([{ ...VALID_AGENT, name }]), async (path) => {
+				const err = await loadSeedAgentsFromFile(path).catch((e: unknown) => e);
+				expect(err).toBeInstanceOf(SeedAgentsFileError);
+				expect((err as Error).message).toContain("failed validation");
+			});
+		}
+	});
+
 	test("rejects a non-array payload", async () => {
 		await withTempFile(JSON.stringify(VALID_AGENT), async (path) => {
 			const err = await loadSeedAgentsFromFile(path).catch((e: unknown) => e);
