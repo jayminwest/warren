@@ -124,7 +124,9 @@ and `loadWarrenConfig()` surfaces it. Notable knobs:
 
 Agents driving warren from the shell get their session context from the
 CLI itself, the same way `sd prime` and `ml prime` make seeds and mulch
-discoverable. **At the start of every session**, run:
+discoverable. The CLI installs from npm (`npm i -g @os-eco/warren-cli`) and
+runs on Bun v1.1+ (the package ships raw bun-shebang TypeScript).
+**At the start of every session**, run:
 
 ```bash
 warren prime

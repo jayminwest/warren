@@ -145,14 +145,54 @@ jobs:
       deploy: true
       version: ${{ needs.release.outputs.version }}
 
-  # Promote the draft release to final (warren-89f2). This runs ONLY after
-  # `deploy` has built and pushed the container image, so the ordering
-  # guarantee is: image exists first, public Release second. `--latest` makes
-  # this the target of `/releases/latest` at the moment of promotion, never
-  # before. Idempotent: re-marking an already-published release --draft=false
-  # is a no-op, so a retried run is safe.
-  promote:
+  # Publish @os-eco/warren-cli to npm (warren-58dd, superseding mx-834a3a).
+  # `needs: [release, deploy]` puts this AFTER the image build, so the chain
+  # stays draft release → ghcr image → npm publish → promote: an npm version
+  # can never exist without its matching ghcr image. The package ships raw
+  # bun-shebang TypeScript (fleet precedent: @os-eco/burrow-cli, mx-be6bc5),
+  # so there is no build step — `npm publish` packs `src/` directly.
+  # Idempotent: the `npm view` short-circuit no-ops when the version is
+  # already on the registry, so a retried run is safe. The package name in
+  # the probe is spelled out in full because a wrong name fails open
+  # (mx-be6bc5).
+  publish:
     needs: [release, deploy]
+    if: needs.release.outputs.release == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # npm provenance attestation
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+
+      - run: bun install --frozen-lockfile
+
+      - name: Publish to npm (idempotent)
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          VERSION: ${{ needs.release.outputs.version }}
+        run: |
+          set -euo pipefail
+          echo "//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}" > ~/.npmrc
+          if npm view "@os-eco/warren-cli@${VERSION}" version >/dev/null 2>&1; then
+            echo "@os-eco/warren-cli@${VERSION} is already published; skipping."
+            exit 0
+          fi
+          npm publish --provenance --access public
+
+  # Promote the draft release to final (warren-89f2). This runs ONLY after
+  # `deploy` has built and pushed the container image AND `publish` has put
+  # the CLI on npm, so the ordering guarantee is: artifacts exist first,
+  # public Release second. `--latest` makes this the target of
+  # `/releases/latest` at the moment of promotion, never before. Idempotent:
+  # re-marking an already-published release --draft=false is a no-op, so a
+  # retried run is safe.
+  promote:
+    needs: [release, deploy, publish]
     if: needs.release.outputs.release == 'true'
     runs-on: ubuntu-latest
     permissions:

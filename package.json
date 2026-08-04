@@ -8,6 +8,18 @@
 		"wr": "./src/cli/main.ts"
 	},
 	"main": "src/index.ts",
+	"exports": {
+		".": "./src/index.ts",
+		"./client": "./src/client/index.ts",
+		"./package.json": "./package.json"
+	},
+	"files": [
+		"src",
+		"!src/ui"
+	],
+	"publishConfig": {
+		"access": "public"
+	},
 	"engines": {
 		"bun": ">=1.1.0"
 	},

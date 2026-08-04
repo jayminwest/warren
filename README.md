@@ -251,7 +251,15 @@ Under `WARREN_RUNTIME=k8s` this diagram changes shape entirely: no burrow, no su
 
 ## CLI
 
-The `warren` (or `wr`) admin CLI is for ops. The web UI is for daily work.
+The `warren` (or `wr`) CLI is the agent-facing surface — the same pipeline the web UI drives, scriptable from any shell. The web UI is for daily human work.
+
+Install it from npm. The package ships raw bun-shebang TypeScript (fleet precedent: `@os-eco/burrow-cli`), so it requires [Bun](https://bun.sh) v1.1+ on the machine that runs it — no build step, no Node fallback:
+
+```bash
+npm i -g @os-eco/warren-cli
+```
+
+Programmatic consumers import the typed client straight from the package: `import { WarrenClient } from "@os-eco/warren-cli/client"`.
 
 Every remote-capable command talks to a warren server over HTTP — a local user is a remote user pointed at localhost. Server resolution: `--url`/`--token` flags, then `WARREN_BASE_URL` (default `http://localhost:8080`) / `WARREN_API_TOKEN`, then the client config file `warren login` writes. The genuinely-local commands are `serve`, `db migrate-to-postgres`, and `doctor --local`.
 
