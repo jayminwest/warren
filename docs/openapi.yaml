@@ -473,6 +473,11 @@ paths:
           description: Successful response.
         default:
           description: Error response (see `src/core/errors.ts`).
+      description: >-
+        NDJSON event tail. `?follow=1` live-tails (the default while the run is non-terminal);
+        `?limit=N` requests a bounded non-streaming read of at most N events and implies
+        follow=false — the response closes after the page, so agents can poll for liveness without
+        holding a stream open (warren-17c1). `?since=<seq>` pages forward from a prior read.
       parameters:
         - name: id
           in: path

@@ -87,7 +87,7 @@ Total routes: **40**.
 | `GET` | `/runs` | `listRunsHandler` |  |
 | `POST` | `/runs` | `createRunHandler` |  |
 | `GET` | `/runs/:id` | `getRunHandler` |  |
-| `GET` | `/runs/:id/events` | `streamRunEventsHandler` |  |
+| `GET` | `/runs/:id/events` | `streamRunEventsHandler` | NDJSON event tail. `?follow=1` live-tails (the default while the run is non-terminal); `?limit=N` requests a bounded non-streaming read of at most N events and implies follow=false — the response closes after the page, so agents can poll for liveness without holding a stream open (warren-17c1). `?since=<seq>` pages forward from a prior read. |
 | `GET` | `/runs/:id/inbox` | `pollRunInboxHandler` | warren-3d0b: the in-pod steering poll for the K8s backend. Bearer-gated like every /runs route; the pod carries its per-run SCOPED token (warren-57fd). Destructive on read (it claims unread messages), so for a non-run caller it is operator-only (warren-b875). |
 | `GET` | `/runs/:id/finalize-intent` | `getRunFinalizeIntentHandler` | warren-0d35: the in-pod finalize callback for the K8s backend — the pod fetches the reap intent, runs the workspace-dependent half in place, and POSTs the FinalizeResult back. Bearer-gated; the pod carries its per-run scoped token (warren-57fd). |
 | `POST` | `/runs/:id/finalize-result` | `postRunFinalizeResultHandler` |  |

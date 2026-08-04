@@ -3,7 +3,7 @@ import { tailRunEvents } from "../../../runs/index.ts";
 import { ndjsonResponse } from "../../response.ts";
 import { reserveEventStreamSlot } from "../../stream-limits.ts";
 import type { Actor, RouteHandler, ServerDeps } from "../../types.ts";
-import { parseBoolean, parseNonNegativeInt, requireParam } from "../index.ts";
+import { parseBoolean, parseNonNegativeInt, parsePositiveInt, requireParam } from "../index.ts";
 import { projectEvent } from "./event-projection.ts";
 
 export function streamRunEventsHandler(deps: ServerDeps): RouteHandler {
@@ -19,7 +19,12 @@ export function streamRunEventsHandler(deps: ServerDeps): RouteHandler {
 		// run, not replay-then-close. Terminal runs keep replay-then-close;
 		// an explicit `?follow=0|1` always wins.
 		const followParam = parseBoolean(ctx.url.searchParams.get("follow"), "follow");
-		const follow = followParam ?? !isTerminalRunState(run.state);
+		// warren-17c1: `?limit=N` is a bounded NON-streaming read — at most N
+		// events, then the response closes. It implies follow=false and wins
+		// over an explicit `?follow=1`, because the caller asked for a cheap
+		// page (liveness polls), not a held-open stream.
+		const limit = parsePositiveInt(ctx.url.searchParams.get("limit"), "limit");
+		const follow = limit === undefined ? (followParam ?? !isTerminalRunState(run.state)) : false;
 		const sinceSeq = parseNonNegativeInt(ctx.url.searchParams.get("since"), "since");
 
 		const ctrl = bridgeAbort(ctx.request.signal);
@@ -38,6 +43,7 @@ export function streamRunEventsHandler(deps: ServerDeps): RouteHandler {
 			broker: deps.broker,
 			follow,
 			...(sinceSeq !== undefined ? { sinceSeq } : {}),
+			...(limit !== undefined ? { snapshotLimit: limit } : {}),
 			signal: ctrl.signal,
 			// warren-7bff: close the tail promptly when the run finishes even
 			// if no live bridge remains to `broker.close` it (warren restart,

@@ -89,6 +89,84 @@ describe("GET /runs/:id/events — NDJSON tail", () => {
 		expect(first.seq).toBe(1);
 	});
 
+	test("?limit=N returns a bounded read and closes (warren-17c1)", async () => {
+		const burrowClient = new BurrowClient({
+			config: { transport: { kind: "unix", path: "/tmp/x.sock" } },
+			fetch: stub(async () => new Response("{}", { status: 200 })),
+		});
+		const deps = await depsFor(repos, burrowClient);
+		handle = startServer(deps, {
+			transport: { kind: "tcp", hostname: "127.0.0.1", port: 0 },
+			auth: NO_AUTH,
+			logger: silentLogger,
+		});
+
+		const run = (await repos.runs.listAll())[0];
+		if (!run) throw new Error("run missing");
+		// The run is non-terminal, so without ?limit this request would
+		// follow and hang (warren-7bff). limit implies follow=false.
+		const res = await fetch(`${tcpUrl(handle)}/runs/${run.id}/events?limit=1`);
+		expect(res.status).toBe(200);
+		expect(res.headers.get("content-type")).toContain("application/x-ndjson");
+		const text = await res.text();
+		const lines = text
+			.trim()
+			.split("\n")
+			.filter((l) => l !== "");
+		expect(lines.length).toBe(1);
+		const first = JSON.parse(lines[0] ?? "{}") as { kind: string; seq: number };
+		expect(first.kind).toBe("tool_use");
+		expect(first.seq).toBe(1);
+	});
+
+	test("?limit wins over an explicit ?follow=1 (warren-17c1)", async () => {
+		const burrowClient = new BurrowClient({
+			config: { transport: { kind: "unix", path: "/tmp/x.sock" } },
+			fetch: stub(async () => new Response("{}", { status: 200 })),
+		});
+		const deps = await depsFor(repos, burrowClient);
+		handle = startServer(deps, {
+			transport: { kind: "tcp", hostname: "127.0.0.1", port: 0 },
+			auth: NO_AUTH,
+			logger: silentLogger,
+		});
+
+		const run = (await repos.runs.listAll())[0];
+		if (!run) throw new Error("run missing");
+		// follow=1 on a non-terminal run would hold the stream open; the
+		// bounded read must still close after at most N events.
+		const res = await fetch(`${tcpUrl(handle)}/runs/${run.id}/events?follow=1&limit=2`);
+		expect(res.status).toBe(200);
+		const text = await res.text();
+		const lines = text
+			.trim()
+			.split("\n")
+			.filter((l) => l !== "");
+		expect(lines.length).toBe(2);
+	});
+
+	test("?limit rejects garbage and zero (warren-17c1)", async () => {
+		const burrowClient = new BurrowClient({
+			config: { transport: { kind: "unix", path: "/tmp/x.sock" } },
+			fetch: stub(async () => new Response("{}", { status: 200 })),
+		});
+		const deps = await depsFor(repos, burrowClient);
+		handle = startServer(deps, {
+			transport: { kind: "tcp", hostname: "127.0.0.1", port: 0 },
+			auth: NO_AUTH,
+			logger: silentLogger,
+		});
+
+		const run = (await repos.runs.listAll())[0];
+		if (!run) throw new Error("run missing");
+		for (const raw of ["abc", "0", "-3", "1.5"]) {
+			const res = await fetch(
+				`${tcpUrl(handle)}/runs/${run.id}/events?limit=${encodeURIComponent(raw)}`,
+			);
+			expect(res.status).toBe(400);
+		}
+	});
+
 	test("404 on unknown run id", async () => {
 		const burrowClient = new BurrowClient({
 			config: { transport: { kind: "unix", path: "/tmp/x.sock" } },
