@@ -5,6 +5,8 @@ import { errorFromResponse, readNdjsonStream } from "./ndjson.ts";
 import {
 	type AgentRow,
 	type CancelPlanRunResponse,
+	type CancelRunInput,
+	type CancelRunResponse,
 	type CreatePlanRunInput,
 	type CreatePlanRunResponse,
 	type CreateProjectInput,
@@ -30,6 +32,7 @@ import {
 	type SteerRunResponse,
 	type StreamPlanRunEventsOptions,
 	type StreamRunEventsOptions,
+	type VersionResponse,
 	type WhoamiResponse,
 } from "./types.ts";
 
@@ -218,6 +221,30 @@ export class WarrenClient {
 
 	async getRun(runId: string): Promise<RunRow> {
 		return this.request<RunRow>(`/runs/${encodeURIComponent(runId)}`);
+	}
+
+	/**
+	 * `POST /runs/:id/cancel` — cancel a non-terminal run. Idempotent: a run
+	 * already in a terminal state returns `{ alreadyTerminal: true }` without
+	 * issuing a second cancel.
+	 */
+	async cancelRun(runId: string, input: CancelRunInput = {}): Promise<CancelRunResponse> {
+		const body: Record<string, unknown> = {};
+		if (input.reason !== undefined) body.reason = input.reason;
+		return this.request<CancelRunResponse>(`/runs/${encodeURIComponent(runId)}/cancel`, {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify(body),
+		});
+	}
+
+	/**
+	 * `GET /version` — the running warren build's semver. Auth-exempt, so it
+	 * doubles as a richer probe than `/healthz` when a client wants to know
+	 * what it is talking to (warren-968c).
+	 */
+	async version(signal?: AbortSignal): Promise<VersionResponse> {
+		return this.request<VersionResponse>("/version", signal ? { signal } : {});
 	}
 
 	async listRuns(): Promise<ListRunsResponse> {
