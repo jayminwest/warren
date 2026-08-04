@@ -130,7 +130,7 @@ describe("PLANNER_BUILTIN", () => {
 		expect(PLANNER_BUILTIN.frontmatter.tags).toContain("interactive");
 	});
 
-	test("system prompt allows .plot/ and .seeds/ writes only, forbids source + dispatch", () => {
+	test("system prompt allows .seeds/ writes only, forbids source + dispatch", () => {
 		// Warren's burrow_config only forwards [sandbox].network onto
 		// POST /burrows (src/runs/burrow_config.ts), so the path-scoped
 		// write contract is enforced in the prompt for now. These string
@@ -140,8 +140,11 @@ describe("PLANNER_BUILTIN", () => {
 		expect(system).toMatch(/must NOT/);
 		expect(system).toMatch(/source files/);
 		expect(system).toMatch(/Dispatch agent runs/);
-		expect(system).toMatch(/\.plot\//);
 		expect(system).toMatch(/\.seeds\//);
+		// warren-427b: plot integration retired (pl-3a79); the prompt must
+		// not promise .plot/ writes or a `chore(warren): plot state` commit.
+		expect(system).not.toMatch(/\.plot\//);
+		expect(system).not.toMatch(/plot state/);
 	});
 
 	test("references the sd plan submit pipeline that produces seeds", () => {
