@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { WarrenClient, WarrenClientError, WarrenUnreachableError } from "./index.ts";
+import { readNdjsonStream } from "./ndjson.ts";
 import { jsonResponse, stub } from "./test-helpers.ts";
 
 describe("WarrenClient.streamRunEvents", () => {
@@ -151,6 +152,54 @@ describe("WarrenClient.streamRunEvents", () => {
 			throw new Error("expected error");
 		} catch (err) {
 			expect(err).toBeInstanceOf(WarrenUnreachableError);
+		}
+	});
+
+	test("readNdjsonStream throws the injected factory's error on non-OK", async () => {
+		class UiStyleError extends Error {
+			readonly status: number;
+			constructor(status: number, message: string) {
+				super(message);
+				this.name = "UiStyleError";
+				this.status = status;
+			}
+		}
+		let observedStatus: number | undefined;
+		const gen = readNdjsonStream(
+			async () => jsonResponse(403, { error: { code: "forbidden", message: "nope" } }),
+			{
+				errorFactory: async (res) => {
+					observedStatus = res.status;
+					return new UiStyleError(res.status, "ui says no");
+				},
+			},
+		);
+		try {
+			for await (const _ of gen) {
+				throw new Error("unexpected yield");
+			}
+			throw new Error("expected error");
+		} catch (err) {
+			expect(err).toBeInstanceOf(UiStyleError);
+			expect((err as UiStyleError).status).toBe(403);
+			expect((err as Error).message).toBe("ui says no");
+		}
+		expect(observedStatus).toBe(403);
+	});
+
+	test("readNdjsonStream defaults to WarrenClientError without a factory", async () => {
+		const gen = readNdjsonStream(async () =>
+			jsonResponse(404, { error: { code: "not_found", message: "no such run" } }),
+		);
+		try {
+			for await (const _ of gen) {
+				throw new Error("unexpected yield");
+			}
+			throw new Error("expected error");
+		} catch (err) {
+			expect(err).toBeInstanceOf(WarrenClientError);
+			expect((err as WarrenClientError).status).toBe(404);
+			expect((err as WarrenClientError).code).toBe("not_found");
 		}
 	});
 

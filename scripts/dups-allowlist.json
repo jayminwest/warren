@@ -12,11 +12,6 @@
 			"why": "The run-events querystring builder (`follow` / `since` params) in the SDK client and the UI client. Two API clients over one API is deliberate: owner decision D2 (docs/design/2026-07-29-planning-session-record.md) shares TYPES only and keeps the UI's own transport — 'duplicated transport is cheap; duplicated truth is what bit us'."
 		},
 		{
-			"a": "src/client/ndjson.ts",
-			"b": "src/ui/src/api/client.ts",
-			"why": "The NDJSON stream parser, implemented once per client; src/client/ndjson.ts documents that it mirrors the UI consumer. The parser travels with each transport per decision D2 — the UI does not import SDK modules, and merging the clients was explicitly killed."
-		},
-		{
 			"a": "src/client/types.plan-runs.ts",
 			"b": "src/ui/src/api/types.ts",
 			"why": "The plan-run wire-row interfaces, declared in both the SDK and the UI type modules. These are interfaces, not the enum-shaped vocabulary `check:wire-types` guards, and they have not been hoisted to src/core — warren-42f1 moves the wire envelopes/rows into src/core/wire.ts, after which this entry goes away."
