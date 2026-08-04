@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CircleStop, RefreshCw, Send } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { runsApi } from "@/api/client.ts";
+import { projectsApi, runsApi } from "@/api/client.ts";
 import type { CancelRunResponse } from "@/api/types.ts";
 import { isTerminalRunState } from "@/api/types.ts";
 import { OperatorOnly } from "@/components/OperatorOnly.tsx";
@@ -64,6 +64,20 @@ export function RunDetailPage() {
 			return isTerminalRunState(data.state) ? false : 3000;
 		},
 	});
+
+	// Reuse the shared projects list (same queryKey as Runs/Agents) to
+	// resolve the human-readable project name; fall back to the raw id
+	// when the project is missing or the list hasn't loaded (warren-6b21).
+	const projects = useQuery({
+		queryKey: ["projects"],
+		queryFn: ({ signal }) => projectsApi.list(signal),
+	});
+	const projectName = (() => {
+		const pid = run.data?.projectId;
+		if (!pid) return null;
+		const p = projects.data?.projects.find((proj) => proj.id === pid);
+		return p ? p.gitUrl.replace(/^https:\/\/github\.com\//, "") || pid : pid;
+	})();
 
 	const isTerminal = run.data !== undefined && isTerminalRunState(run.data.state);
 	const stream = useEventStream(id, !isTerminal);
@@ -160,7 +174,7 @@ export function RunDetailPage() {
 						{r.projectId === null ? (
 							<span className="italic">(deleted project)</span>
 						) : (
-							<span className="font-mono">{r.projectId}</span>
+							<span>{projectName ?? r.projectId}</span>
 						)}
 					</p>
 				</div>
