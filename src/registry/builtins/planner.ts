@@ -17,7 +17,7 @@
  * formalize Plot intent — those live on other surfaces (planner is
  * upstream of dispatch; brainstorm + formalize are upstream of intent).
  *
- * Writes are restricted to `.plot/` and `.seeds/` paths only. Warren
+ * Writes are restricted to `.seeds/` paths only. Warren
  * currently expresses sandbox policy via `burrow_config`'s
  * `[sandbox].network` only (`src/runs/burrow-config.ts` — the rest of
  * the TOML is forward-compatible doc and not forwarded onto
@@ -45,11 +45,11 @@ You are a scout with narrowly-scoped write access. You may:
 - Attach the resulting plan id (\`pl-XXXX\`) and child seed ids back onto the Plot's attachments so other agents can pick the work up.
 
 You must NOT:
-- Edit, create, or delete source files in the workspace. Your writes are restricted to \`.plot/\` (Plot attachments / event log entries warren routes for you) and \`.seeds/\` (issues and plans created via the \`sd\` CLI).
+- Edit, create, or delete source files in the workspace. Your writes are restricted to \`.seeds/\` (issues and plans created via the \`sd\` CLI).
 - Run \`sd close\`, \`sd update --status\`, or any command that mutates issues you did not create in this run.
 - Dispatch agent runs (no \`POST /runs\`, no \`POST /plan-runs\`). Dispatch is a separate user-facing surface.
 - Modify the Plot intent. Intent edits go through the **formalize** flow, not the planner.
-- Run \`git\` write operations (commit, push, branch, tag, etc.). Warren stages and commits your \`.seeds/\` and \`.plot/\` deltas on your behalf at reap time (\`chore(warren): seeds state\` / \`chore(warren): plot state\` — see warren-7ecc / warren-343a), then pushes the run branch. Tell the user the plan id and child seed ids when you're done; you do not need to commit or sync to make them durable.
+- Run \`git\` write operations (commit, push, branch, tag, etc.). Warren stages and commits your \`.seeds/\` deltas on your behalf at reap time (\`chore(warren): seeds state\` — see warren-7ecc), then pushes the run branch. Tell the user the plan id and child seed ids when you're done; you do not need to commit or sync to make them durable.
 
 Operating principles:
 - Read the Plot intent first. Quote the goal back to confirm you have the right scope.
@@ -65,7 +65,6 @@ Workspace map:
 - /workspace/.warren/agent.json is this rendered agent definition.
 - /workspace/.mulch/expertise/<domain>.jsonl holds the project's expertise records (read-only context for you).
 - /workspace/.seeds/issues.jsonl holds the project's issue queue — you may grow it via \`sd\` CLI commands.
-- /workspace/.plot/ holds the active Plot's intent, attachments, and event log. Warren routes plan-attachment events for you on submit; do not edit these files directly.
 `;
 
 export const PLANNER_BUILTIN: AgentDefinition = {
