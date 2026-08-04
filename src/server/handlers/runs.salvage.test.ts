@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { existsSync } from "node:fs";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { BurrowClient } from "../../burrow-client/index.ts";
@@ -11,6 +11,7 @@ import { MAX_SALVAGE_BUNDLE_BYTES } from "../../runtime/salvage.ts";
 import { NO_AUTH } from "../auth.ts";
 import { startServer } from "../server.ts";
 import type { ServeHandle } from "../types.ts";
+import { salvageUploadLimiter } from "./runs/salvage.ts";
 import { depsFor, silentLogger, stub, tcpUrl } from "./runs.test-helpers.ts";
 
 /**
@@ -225,6 +226,61 @@ describe("POST /runs/:id/salvage (warren-cd3b)", () => {
 		expect(res.status).toBe(404);
 		// The canonical warren envelope, not Bun's default 500 page.
 		expect(res.headers.get("content-type")).toContain("application/json");
+	});
+
+	/**
+	 * warren-adc1: at most one salvage upload in flight per run id. A second
+	 * concurrent POST for the same run gets the limiter family's rejection
+	 * (503 + Retry-After), and the slot frees once the first upload ends.
+	 * The in-flight first upload is simulated by holding the shared limiter's
+	 * slot for the run id directly — deterministic, no timing races.
+	 */
+	test("a second concurrent upload for the same run is refused while the first is in flight", async () => {
+		const runId = await createRun();
+		const base = await serveWith({ salvageDir });
+		const slot = salvageUploadLimiter.acquire(runId);
+		try {
+			const res = await fetch(`${base}/runs/${runId}/salvage`, {
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify(envelope()),
+			});
+			expect(res.status).toBe(503);
+			expect(res.headers.get("retry-after")).not.toBeNull();
+			// Nothing staged on disk for the refused upload.
+			expect(existsSync(join(salvageDir, `${runId}.bundle`))).toBe(false);
+		} finally {
+			slot.release();
+		}
+		// Once the in-flight upload ends, the slot frees and a retry lands.
+		const retry = await fetch(`${base}/runs/${runId}/salvage`, {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify(envelope()),
+		});
+		expect(retry.status).toBe(200);
+		const stored = await readFile(join(salvageDir, `${runId}.bundle`));
+		expect(stored.toString()).toBe("fake-bundle-bytes");
+	});
+
+	/**
+	 * warren-adc1: the staged tmp file is unlinked on a FAILED write, not left
+	 * behind. A directory parked at the final bundle path makes the rename
+	 * fail (EISDIR) after the tmp file was written — the failure path under
+	 * test. Afterwards the salvage dir must hold no `*.tmp-*` stragglers.
+	 */
+	test("a failing upload removes its staged tmp file", async () => {
+		const runId = await createRun("run_fail");
+		const base = await serveWith({ salvageDir });
+		await mkdir(join(salvageDir, `${runId}.bundle`), { recursive: true });
+		const res = await fetch(`${base}/runs/${runId}/salvage`, {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify(envelope()),
+		});
+		expect(res.status).toBe(500);
+		const left = (await readdir(salvageDir)).filter((name) => name.includes(".tmp-"));
+		expect(left).toEqual([]);
 	});
 
 	test("an unconfigured intake fails LOUD (never silently drops the only copy)", async () => {
