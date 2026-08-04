@@ -188,7 +188,7 @@ warren add-project https://github.com/<you>/<sandbox-repo>.git
 warren run claude-code <project-name> -p "Add a one-line CHANGELOG entry under [Unreleased] about the V1 acceptance gate. Commit when done."
 
 # 4. Watch the run in the UI (http://localhost:8080) or via:
-warren events <run-id> --follow
+warren tail <run-id> --follow
 ```
 
 **Pass criteria.**

@@ -25,12 +25,12 @@ import {
 	commandFailure,
 	EXIT_SERVER_UNREACHABLE,
 	exitCodeForError,
-	formatDurationMs,
 	formatError,
 	type WriteSink,
 	writeJsonLine,
 } from "../output.ts";
 import type { PlanRunOutput } from "../plan-run-renderer.ts";
+import { runCost, runDuration } from "../run-renderer.ts";
 import { guardRemotePlanRun, probeOrReport } from "./probe.ts";
 
 export interface PlanStatusArgs {
@@ -140,13 +140,13 @@ const HEADER: readonly string[] = ["#", "seed", "state", "cost", "duration", "ru
 
 /** Build one table row (string cells) for a child + its optional run row. */
 function childRow(child: PlanRunChildRow, runById: Map<string, RunRow>): readonly string[] {
-	const run = child.runId !== null ? runById.get(child.runId) : undefined;
+	const run = child.runId !== null ? (runById.get(child.runId) ?? null) : null;
 	return [
 		`#${child.seq}`,
 		child.seedId,
 		child.state,
-		formatCost(run?.costUsd ?? null),
-		formatDuration(run ?? null),
+		runCost(run?.costUsd ?? null),
+		runDuration(run),
 		child.runId ?? "—",
 	];
 }
@@ -191,18 +191,4 @@ function formatRow(row: readonly string[], widths: readonly number[]): string {
 		.map((cell, i) => cell.padEnd(widths[i] ?? cell.length))
 		.join("  ")
 		.trimEnd();
-}
-
-/** Render a cost in USD, or an em-dash when unknown. */
-function formatCost(costUsd: number | null): string {
-	return costUsd === null ? "—" : `$${costUsd.toFixed(4)}`;
-}
-
-/** Render a run's wall-clock duration (D6: 4.2s / 3.1m / 1.4h), or an em-dash. */
-function formatDuration(run: RunRow | null): string {
-	if (run === null || run.startedAt === null || run.endedAt === null) return "—";
-	const started = Date.parse(run.startedAt);
-	const ended = Date.parse(run.endedAt);
-	if (Number.isNaN(started) || Number.isNaN(ended) || ended < started) return "—";
-	return formatDurationMs(ended - started);
 }

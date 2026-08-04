@@ -23,7 +23,7 @@ import { PLAN_RUN_STATES, type PlanRunState } from "../core/wire.ts";
 import { openDatabase } from "../db/client.ts";
 import { parseDatabaseUrl } from "../db/url.ts";
 import { VERSION } from "../index.ts";
-import { type ClientFlags, resolveWarrenClient } from "./client.ts";
+import { addClientFlags, clientFlags, type RemoteOpts, resolveWarrenClient } from "./client.ts";
 import { runAddProject } from "./commands/add-project.ts";
 import { runConfigMigrate } from "./commands/config-migrate.ts";
 import { runMigrateToPostgres } from "./commands/db.ts";
@@ -47,25 +47,7 @@ import {
 	parseOutputMode,
 } from "./output.ts";
 import type { PlanRunOutput } from "./plan-run-renderer.ts";
-
-interface RemoteOpts {
-	readonly url?: string;
-	readonly token?: string;
-}
-
-/** The `--url` / `--token` flag pair every remote command declares (D5). */
-function addClientFlags(cmd: Command): Command {
-	return cmd
-		.option("--url <url>", "warren server base URL (env WARREN_BASE_URL)")
-		.option("--token <token>", "bearer token (env WARREN_API_TOKEN)");
-}
-
-function clientFlags(opts: RemoteOpts): ClientFlags {
-	return {
-		...(opts.url !== undefined ? { url: opts.url } : {}),
-		...(opts.token !== undefined ? { token: opts.token } : {}),
-	};
-}
+import { registerRunCommands } from "./register-run-commands.ts";
 
 export function buildProgram(baseContext: CliContext): Command {
 	const program = new Command();
@@ -427,6 +409,9 @@ export function buildProgram(baseContext: CliContext): Command {
 		);
 		process.exit(result.exitCode);
 	});
+
+	// Agent-facing run read/control commands (warren-b048).
+	registerRunCommands(program, context);
 
 	program
 		.command("serve")

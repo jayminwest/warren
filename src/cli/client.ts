@@ -14,6 +14,7 @@
  * adds the flag override so command files never hand-roll the merge.
  */
 
+import type { Command } from "commander";
 import { loadWarrenClientConfigFromEnv, WarrenClient } from "../client/index.ts";
 import type { EnvLike } from "./output.ts";
 
@@ -21,6 +22,27 @@ import type { EnvLike } from "./output.ts";
 export interface ClientFlags {
 	readonly url?: string;
 	readonly token?: string;
+}
+
+/** The remote flags every remote-capable commander action receives. */
+export interface RemoteOpts {
+	readonly url?: string;
+	readonly token?: string;
+}
+
+/** The `--url` / `--token` flag pair every remote command declares (D5). */
+export function addClientFlags(cmd: Command): Command {
+	return cmd
+		.option("--url <url>", "warren server base URL (env WARREN_BASE_URL)")
+		.option("--token <token>", "bearer token (env WARREN_API_TOKEN)");
+}
+
+/** Pluck the {@link ClientFlags} pair out of a parsed commander opts bag. */
+export function clientFlags(opts: RemoteOpts): ClientFlags {
+	return {
+		...(opts.url !== undefined ? { url: opts.url } : {}),
+		...(opts.token !== undefined ? { token: opts.token } : {}),
+	};
 }
 
 /**

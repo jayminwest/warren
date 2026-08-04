@@ -29,6 +29,28 @@ export async function probeOrReport(
 }
 
 /**
+ * The shared preamble of the remote run commands (`show`, `wait`, `tail`,
+ * `cancel`): a run id is required, and the server must answer the probe.
+ * Returns the failure result to return, or null when the command may
+ * proceed. Mirrors {@link guardRemotePlanRun}.
+ */
+export async function guardRemoteRun(
+	context: CliContext,
+	client: WarrenClient,
+	runId: string,
+	probeTimeoutMs?: number,
+): Promise<{ readonly exitCode: number } | null> {
+	if (runId === "") {
+		context.stdio.stderr.write("warren: run id is required\n");
+		return { exitCode: EXIT_USAGE };
+	}
+	if (!(await probeOrReport(context, client, probeTimeoutMs))) {
+		return { exitCode: EXIT_SERVER_UNREACHABLE };
+	}
+	return null;
+}
+
+/**
  * The shared preamble of the remote plan-run commands (`plan status`,
  * `plan cancel`): a plan-run id is required, and the server must answer the
  * probe. Returns the failure result to return, or null when the command may
