@@ -40,7 +40,7 @@ type NavItem = {
 
 const NAV_ITEMS: NavItem[] = [
 	{ to: "/runs", label: "Runs", icon: Activity },
-	{ to: "/plan-runs", label: "Plans", icon: ListChecks },
+	{ to: "/plan-runs", label: "Plan runs", icon: ListChecks },
 	{ to: "/projects", label: "Projects", icon: FolderGit2 },
 	{ to: "/agents", label: "Agents", icon: Bot },
 	// Cost analytics (warren-cf63 / pl-b0c0 step 6) lives at the bottom
@@ -48,10 +48,15 @@ const NAV_ITEMS: NavItem[] = [
 	// daily-driver page, so it stays out of the lead-eight positions.
 	// `GET /analytics/cost` is the instance-wide USD rollup and is
 	// readOperator, so a spectator never sees the entry.
-	{ to: "/cost-analytics", label: "Cost", icon: DollarSign, capability: "readOperator" },
+	{
+		to: "/cost-analytics",
+		label: "Cost analytics",
+		icon: DollarSign,
+		capability: "readOperator",
+	},
 	// Run analytics (warren-638a / pl-ad0f step 5) sits beside Cost as
 	// the execution-telemetry companion to the spend view.
-	{ to: "/run-analytics", label: "Run stats", icon: BarChart3 },
+	{ to: "/run-analytics", label: "Run analytics", icon: BarChart3 },
 ];
 
 export function Layout() {

@@ -108,7 +108,7 @@ describe("route guards and nav filtering (warren-f53e)", () => {
 
 	test("the cost analytics page and its nav entry are gated together", () => {
 		expect(app).toMatch(/<OperatorRoute capability="readOperator">/);
-		expect(layout).toMatch(/to: "\/cost-analytics"[^\n]*capability: "readOperator"/);
+		expect(layout).toMatch(/to: "\/cost-analytics"[\s\S]*?capability: "readOperator"/);
 	});
 
 	test("nav links are filtered by capability and the dispatch CTA is gated", () => {
