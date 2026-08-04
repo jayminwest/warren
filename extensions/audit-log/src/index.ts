@@ -14,16 +14,33 @@
  * are logged in FRICTION.md.
  *
  * Build order (plan pl-116e):
- *   warren-0781 — this scaffold + the boundary gate (done)
- *   warren-a0ff — collector: cursor-tailing client with durable resume
+ *   warren-0781 — scaffold + the boundary gate (done)
+ *   warren-a0ff — collector: cursor-tailing client with durable resume (done)
  *   warren-653a — audit store and normalization, idempotent replay
  *   warren-9c7c — export and health surface
  *   warren-88b8 — container image, README env contract, final FRICTION.md
  *   warren-c8c3 — end-to-end smoke with golden export
  */
 
+import { createClient } from "./client.ts";
+import { type EventSink, runCollector } from "./collector.ts";
+import { CursorStore } from "./cursor-store.ts";
+import type { RunEvent } from "./wire.ts";
+
 export const EXTENSION_NAME = "audit-log";
 export const EXTENSION_VERSION = "0.0.0";
+
+export { createClient, readEventsSince, listRuns, WarrenHttpError } from "./client.ts";
+export { collectOnce, runCollector, type EventSink, type CycleStats } from "./collector.ts";
+export { CursorStore, type RunCursor } from "./cursor-store.ts";
+export {
+	type RunEvent,
+	type RunListRow,
+	type RunState,
+	RUN_STATES,
+	isTerminalRunState,
+	WireDriftError,
+} from "./wire.ts";
 
 /** Configuration the extension resolves from its environment. */
 export interface ExtensionConfig {
@@ -31,6 +48,30 @@ export interface ExtensionConfig {
 	readonly warrenBaseUrl: string;
 	/** Bearer credential for warren's API. Never logged, never echoed by /healthz. */
 	readonly warrenApiToken: string;
+	/** Path of the extension-owned SQLite store (cursors now, audit rows in step 3). */
+	readonly dbPath: string;
+	/** Delay between poll cycles. */
+	readonly pollIntervalMs: number;
+	/** Events fetched per tail page. */
+	readonly eventsPageSize: number;
+}
+
+const DEFAULT_DB_PATH = "./data/audit-log.db";
+const DEFAULT_POLL_INTERVAL_MS = 5000;
+const DEFAULT_EVENTS_PAGE_SIZE = 500;
+
+function parsePositiveIntEnv(
+	env: Record<string, string | undefined>,
+	name: string,
+	fallback: number,
+): number {
+	const raw = env[name];
+	if (raw === undefined || raw === "") return fallback;
+	const n = Number.parseInt(raw, 10);
+	if (!Number.isFinite(n) || n < 1 || String(n) !== raw) {
+		throw new Error(`${name} must be a positive integer; got '${raw}'`);
+	}
+	return n;
 }
 
 /** Resolve the environment contract, or name every missing variable. */
@@ -45,10 +86,39 @@ export function resolveConfig(
 	if (missing.length > 0 || warrenBaseUrl === undefined || warrenApiToken === undefined) {
 		return { ok: false, missing };
 	}
-	return { ok: true, config: { warrenBaseUrl, warrenApiToken } };
+	return {
+		ok: true,
+		config: {
+			warrenBaseUrl,
+			warrenApiToken,
+			dbPath: env.AUDIT_LOG_DB_PATH ?? DEFAULT_DB_PATH,
+			pollIntervalMs: parsePositiveIntEnv(
+				env,
+				"AUDIT_LOG_POLL_INTERVAL_MS",
+				DEFAULT_POLL_INTERVAL_MS,
+			),
+			eventsPageSize: parsePositiveIntEnv(
+				env,
+				"AUDIT_LOG_EVENTS_PAGE_SIZE",
+				DEFAULT_EVENTS_PAGE_SIZE,
+			),
+		},
+	};
 }
 
-function main(): void {
+/**
+ * Placeholder sink until the audit store lands (warren-653a): counts
+ * events so the collector is exercisable end-to-end. The idempotent
+ * append-only store replaces this behind the same EventSink interface.
+ */
+class CountingSink implements EventSink {
+	applied = 0;
+	apply(_event: RunEvent): void {
+		this.applied += 1;
+	}
+}
+
+async function main(): Promise<void> {
 	const resolved = resolveConfig(process.env);
 	if (!resolved.ok) {
 		console.error(
@@ -56,10 +126,33 @@ function main(): void {
 		);
 		process.exit(1);
 	}
+	const { config } = resolved;
+	const client = createClient({ baseUrl: config.warrenBaseUrl, token: config.warrenApiToken });
+	const store = new CursorStore(config.dbPath);
+	const sink = new CountingSink();
+
+	const ctrl = new AbortController();
+	const shutdown = (): void => ctrl.abort();
+	process.on("SIGTERM", shutdown);
+	process.on("SIGINT", shutdown);
+
 	console.error(
-		`${EXTENSION_NAME}: scaffold only — the collector lands in warren-a0ff (plan pl-116e step 2)`,
+		`${EXTENSION_NAME} ${EXTENSION_VERSION}: collecting from ${config.warrenBaseUrl} ` +
+			`every ${config.pollIntervalMs}ms (db ${config.dbPath})`,
 	);
-	process.exit(1);
+	await runCollector({
+		client,
+		store,
+		sink,
+		pollIntervalMs: config.pollIntervalMs,
+		eventsPageSize: config.eventsPageSize,
+		signal: ctrl.signal,
+		onCycleError: (err) => console.error(`${EXTENSION_NAME}: cycle failed:`, err),
+		onRunError: (runId, err) =>
+			console.error(`${EXTENSION_NAME}: tail for run ${runId} failed:`, err),
+	});
+	store.close();
+	console.error(`${EXTENSION_NAME}: stopped; ${sink.applied} events applied`);
 }
 
-if (import.meta.main) main();
+if (import.meta.main) await main();

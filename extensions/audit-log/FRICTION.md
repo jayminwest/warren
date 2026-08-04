@@ -22,19 +22,40 @@ stream, no webhook push, no subscription endpoint. The collector must
 poll `GET /runs` to discover runs and then open one NDJSON event tail
 per active run.
 
-- `[open]` **Per-run tail fan-out.** One long-lived connection per
-  active run. On a busy instance the collector's connection count grows
-  linearly with run count, and each tail is a separate failure domain
-  and a separate cursor to checkpoint. Cost to be quantified against a
-  live instance in step 6 (warren-c8c3). warren-f566 wants the same
-  global stream for the UI.
-- `[open]` **Discovery by polling.** New runs are visible only at the
-  next poll interval of `GET /runs`, so minimum event latency is the
-  poll interval plus tail startup. A push channel would remove both.
-- `[open]` **Restart catch-up cost.** After a collector restart, every
-  run that advanced while it was down must be re-tailed from the cursor
-  position; there is no "give me everything since sequence N across all
-  runs" endpoint.
+- `[worked around]` **Per-run tail fan-out.** `?follow=1` holds one
+  long-lived connection per active run — linear fan-out, one failure
+  domain and one reconnect loop per connection. The collector
+  (warren-a0ff) instead uses BOUNDED pages (`?since=<seq>&limit=<n>`,
+  which implies `follow=false` and closes after the page): no held
+  connections, but O(active runs) requests per poll cycle and
+  poll-interval latency. Neither option is good; the endpoint has no
+  long-poll mode ("block until new events or a server-side timeout"),
+  which would give one connection AND low latency AND cheap idling.
+  Cost to be quantified against a live instance in step 6 (warren-c8c3).
+  warren-f566 wants the same global stream for the UI.
+- `[worked around]` **Discovery by polling, with an unstable page
+  cursor.** `GET /runs` has no "changed since" parameter and no
+  ascending order — the only sort is `started desc` over `?limit`/
+  `?offset` (limit capped at 500). Every poll cycle re-lists from
+  offset 0, and offset-paging a desc list while new runs arrive at the
+  front can skip or re-see rows mid-page. Mitigation: cursors are keyed
+  by run id and the next cycle re-lists from scratch, so discovery is
+  eventually consistent. Cost: a full list scan per cycle even when
+  nothing changed.
+- `[worked around]` **Restart catch-up cost.** After a collector
+  restart, every run that advanced while it was down must be re-tailed
+  from its cursor; there is no "give me everything since sequence N
+  across all runs" endpoint. `seq` (`burrowEventSeq`) is monotonic PER
+  RUN, not globally, so the extension keeps one cursor row per run in
+  its own SQLite and cannot order events across runs by anything but
+  their `ts` strings.
+- `[worked around]` **Terminal runs keep answering the tail forever.**
+  Nothing on the wire says "this run's event stream is complete" — the
+  collector infers completeness from `run.state` being terminal on the
+  LIST response plus a short page from the tail, then flags the run
+  `drained` locally so later cycles skip it. A run that terminalizes
+  between the list read and the tail read is caught next cycle, but the
+  completeness signal is derived, never stated.
 
 **What the future mechanism must provide:** a single durable,
 sequenced, warren-wide lifecycle stream (push or long-poll) with one
@@ -50,15 +71,28 @@ There is no published client artifact a third party can depend on.
 warren's repo; an out-of-core package must hand-derive its own types
 and keep them in sync by hand.
 
-- `[open]` **Hand-derived wire types.** The run list row, the NDJSON
-  event envelope, and the run/event lifecycle enums must be
-  re-declared in this package from `docs/openapi.yaml`. Drift is
-  detected only by tests against a fake or live server, not by a
-  compiler.
+- `[worked around]` **Hand-derived wire types.** The run list row, the
+  NDJSON event envelope, and the run lifecycle enum are re-declared in
+  `src/wire.ts` with runtime narrowing at the parse boundary
+  (`WireDriftError`) — the only drift detection an out-of-core package
+  gets. The collector parses the minimum it needs (`id`, `state` on
+  runs; the seven envelope keys on events) and tolerates the rest, so
+  additive server fields never break it.
+- `[filed]` **The generated OpenAPI carries no response schemas.**
+  Every route's `200` in `docs/openapi.yaml` says only "Successful
+  response." — there is no schema to derive types FROM. The actual
+  shapes had to be recovered from the handler source
+  (`src/server/handlers/runs/events.ts`, `lifecycle.ts`) and confirmed
+  against a fake server. A third party without repo access could not
+  have written `src/wire.ts` from the published contract alone. Filed
+  as warren-b9ec.
 - `[open]` **Doc drift risk.** `docs/openapi.yaml` /
   `docs/http-api.md` may lag real wire behavior on the event-tail
   endpoint (plan risk 4). Any drift found while building the collector
   (warren-a0ff) must be filed as a warren issue, not coded around.
+  None found so far: the observed `?since` exclusivity, `?limit`
+  implying `follow=false`, and the seven-key envelope all match the
+  documented behavior.
 
 **What the future mechanism must provide:** a versioned, published wire
 contract — a protocol version string (the `warren-ext/v1` model) plus a

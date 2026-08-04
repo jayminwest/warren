@@ -13,8 +13,12 @@ at-least-once collection, idempotent replay.
 
 ## Status
 
-Scaffold (plan step 1, warren-0781). The package, its tests, and the
-repo-boundary gate exist; the collector, store, and export surface land
+Collector (plan step 2, warren-a0ff). The package polls `GET /runs`,
+tails each run's NDJSON event stream with bounded `?since`/`?limit`
+pages, and checkpoints a durable per-run cursor in its own SQLite store
+— at-least-once delivery with resume across restarts. Events currently
+land in a placeholder counting sink; the idempotent audit store (step
+3), the export surface (step 4), and the container image (step 5) land
 in later plan steps. See the build-order comment in
 [`src/index.ts`](src/index.ts).
 
@@ -35,9 +39,11 @@ responses.
 | ----------------- | -------- | ----------------------------------------- |
 | `WARREN_BASE_URL` | yes      | Base URL of the warren instance to watch  |
 | `WARREN_API_TOKEN` | yes     | Bearer credential; never logged or echoed |
+| `AUDIT_LOG_DB_PATH` | no     | SQLite store path (default `./data/audit-log.db`) |
+| `AUDIT_LOG_POLL_INTERVAL_MS` | no | Delay between poll cycles (default `5000`) |
+| `AUDIT_LOG_EVENTS_PAGE_SIZE` | no | Events fetched per tail page (default `500`) |
 
-Extension-owned knobs (cursor store path, listen port, retention) arrive
-with the steps that need them.
+The listen port and retention knobs arrive with the steps that need them.
 
 ## Development
 
