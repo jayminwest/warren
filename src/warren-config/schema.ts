@@ -42,6 +42,9 @@
 import { z } from "zod";
 import { KNOWN_RUNTIME_IDS } from "../core/wire.ts";
 import { parseDurationMs } from "../preview/duration.ts";
+// warren-2b75: one agent-name grammar, owned by the registry and shared
+// here so role names and registry names can never drift apart.
+import { AGENT_NAME_PATTERN } from "../registry/agent-name.ts";
 import { CiFixerConfigSchema, HealerConfigSchema } from "./feature-loop-config.ts";
 import { AdmissionConfigSchema, ResourcesConfigSchema } from "./resources-config.ts";
 
@@ -91,7 +94,7 @@ const RoleNameSchema = z
 	.string()
 	.min(1, "role must be non-empty")
 	.regex(
-		/^[a-z0-9][a-z0-9._-]*$/,
+		AGENT_NAME_PATTERN,
 		"role must be a canopy agent name (lowercase, digits, dots, dashes, underscores)",
 	);
 

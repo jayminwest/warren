@@ -3,7 +3,12 @@ import { isKnownRuntimeId } from "../../core/wire.ts";
 import { openDatabase, type WarrenDb } from "../../db/client.ts";
 import { AgentsRepo } from "../../db/repos/agents.ts";
 import { DrizzleAdapter } from "../../db/repos/drizzle-adapter.ts";
-import { parseRenderedAgent, type RenderResponse, readRuntimeId } from "../schema.ts";
+import {
+	AgentNameSchema,
+	parseRenderedAgent,
+	type RenderResponse,
+	readRuntimeId,
+} from "../schema.ts";
 import {
 	BUILTIN_AGENT_NAMES,
 	BUILTIN_AGENTS,
@@ -27,6 +32,12 @@ describe("BUILTIN_AGENTS", () => {
 		expect(BUILTIN_AGENT_NAMES.has("pr-fixer")).toBe(true);
 		expect(BUILTIN_AGENT_NAMES.has("leveret")).toBe(false);
 		expect(BUILTIN_AGENT_NAMES.has("healer")).toBe(true);
+	});
+
+	test("each builtin name passes the shared kebab grammar (warren-2b75)", () => {
+		for (const builtin of BUILTIN_AGENTS) {
+			expect(AgentNameSchema.safeParse(builtin.name).success).toBe(true);
+		}
 	});
 
 	test("each builtin has a non-empty system section (warren's required schema field)", () => {

@@ -26,7 +26,12 @@
 
 import { z } from "zod";
 import { isKnownRuntimeId, KNOWN_RUNTIME_IDS, type RuntimeId } from "../core/wire.ts";
+import { AgentNameSchema } from "./agent-name.ts";
 import { AgentSchemaError } from "./errors.ts";
+
+// warren-2b75: the shared agent-name grammar lives in agent-name.ts (file-size
+// budget); re-export so existing import sites keep resolving it from here.
+export { AGENT_NAME_PATTERN, AgentNameSchema } from "./agent-name.ts";
 
 export const REQUIRED_AGENT_SECTIONS = ["system"] as const;
 export type RequiredAgentSection = (typeof REQUIRED_AGENT_SECTIONS)[number];
@@ -39,7 +44,7 @@ const SectionSchema = z.object({
 export const RenderResponseSchema = z.object({
 	success: z.literal(true),
 	command: z.literal("render"),
-	name: z.string().min(1),
+	name: AgentNameSchema,
 	version: z.number().int().positive(),
 	sections: z.array(SectionSchema),
 	resolvedFrom: z.array(z.string()).optional(),

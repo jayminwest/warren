@@ -20,14 +20,17 @@
 
 import { z } from "zod";
 
+import { AGENT_NAME_PATTERN } from "../registry/agent-name.ts";
+
 // Same kebab/snake-case grammar as the cron-trigger `role` field — a canopy
-// agent name. Kept local so this module doesn't import back into schema.ts
+// agent name. The pattern is shared from the registry (warren-2b75); the
+// schema stays local so this module doesn't import back into schema.ts
 // (which imports these schemas) and create a cycle.
 const RoleNameSchema = z
 	.string()
 	.min(1, "role must be non-empty")
 	.regex(
-		/^[a-z0-9][a-z0-9._-]*$/,
+		AGENT_NAME_PATTERN,
 		"role must be a canopy agent name (lowercase, digits, dots, dashes, underscores)",
 	);
 
