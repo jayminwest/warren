@@ -36,6 +36,7 @@ import {
 	type ScenarioCtx,
 } from "../lib/assert.ts";
 import { WarrenHttp } from "../lib/http.ts";
+import { pollAcceptance } from "../lib/poll.ts";
 
 interface ProjectRow {
 	readonly id: string;
@@ -205,17 +206,17 @@ async function waitForReplayAtLeast(
 	targetSeq: number,
 	timeoutMs: number,
 ): Promise<readonly EventEnvelope[]> {
-	const deadline = Date.now() + timeoutMs;
-	let last: EventEnvelope[] = [];
-	while (Date.now() < deadline) {
-		last = await collectAll(http, `/runs/${encodeURIComponent(runId)}/events`);
-		const max = last.reduce((m, e) => (e.seq > m ? e.seq : m), 0);
-		if (max >= targetSeq) return last;
-		await sleep(100);
-	}
-	throw new AcceptanceError(
-		`non-follow replay never reached seq ${targetSeq} within ${timeoutMs}ms (got ${last.length} events, max seq ${last.reduce((m, e) => (e.seq > m ? e.seq : m), 0)})`,
-	);
+	const maxSeq = (events: readonly EventEnvelope[]) =>
+		events.reduce((m, e) => (e.seq > m ? e.seq : m), 0);
+	return pollAcceptance({
+		label: "non-follow replay",
+		id: runId,
+		timeoutMs,
+		intervalMs: 100,
+		fetchRow: () => collectAll(http, `/runs/${encodeURIComponent(runId)}/events`),
+		isDone: (events) => maxSeq(events) >= targetSeq,
+		describe: (events) => `${events.length} events, max seq ${maxSeq(events)}`,
+	});
 }
 
 async function collectAll(http: WarrenHttp, path: string): Promise<EventEnvelope[]> {
@@ -248,8 +249,4 @@ async function safelyCancel(http: WarrenHttp, runId: string, ctx: ScenarioCtx): 
 			`scenario-05: cancel failed (${err instanceof Error ? err.message : String(err)}) — best-effort, continuing`,
 		);
 	}
-}
-
-function sleep(ms: number): Promise<void> {
-	return new Promise((resolve) => setTimeout(resolve, ms));
 }

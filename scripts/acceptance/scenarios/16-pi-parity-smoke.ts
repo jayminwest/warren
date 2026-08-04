@@ -51,6 +51,7 @@ import {
 	type ScenarioCtx,
 } from "../lib/assert.ts";
 import { WarrenHttp } from "../lib/http.ts";
+import { waitForFirstEvent, waitForRunPredicate } from "./lib/poll-helpers.ts";
 
 interface ProjectRow {
 	readonly id: string;
@@ -91,16 +92,6 @@ interface RunRow {
 interface CreateRunResponse {
 	readonly run: RunRow;
 	readonly burrow: { readonly id: string; readonly workspacePath: string };
-}
-
-interface EventEnvelope {
-	readonly id: number;
-	readonly runId: string;
-	readonly seq: number;
-	readonly ts: string;
-	readonly kind: string;
-	readonly stream: string | null;
-	readonly payload: unknown;
 }
 
 const RUN_ID_PATTERN = /^run_[0-9a-hjkmnpqrstvwxyz]{12}$/;
@@ -220,52 +211,39 @@ async function ensureProject(http: WarrenHttp, gitUrl: string): Promise<ProjectR
 	return await http.expectJson<ProjectRow>("POST", "/projects", 201, { body: { gitUrl } });
 }
 
-async function waitForFirstEvent(
-	http: WarrenHttp,
-	runId: string,
-	timeoutMs: number,
-): Promise<void> {
-	const deadline = Date.now() + timeoutMs;
-	while (Date.now() < deadline) {
-		const events: EventEnvelope[] = [];
-		for await (const env of http.streamNdjson(`/runs/${encodeURIComponent(runId)}/events`)) {
-			events.push(env as EventEnvelope);
-			if (events.length >= 1) break;
-		}
-		if (events.length >= 1) return;
-		await sleep(100);
-	}
-	throw new AcceptanceError(
-		`no events landed for run ${runId} within ${timeoutMs}ms — bridge or dispatch wiring is broken`,
-	);
-}
+/**
+ * Poll GET /runs/:id until pi usage columns are populated, or throw on
+ * timeout. Both attachStats fire-points (isPiAgentEnd + terminal
+ * detection) target the same row, so the first non-null read wins.
+ */
 
 /**
  * Poll GET /runs/:id until pi usage columns are populated, or throw on
  * timeout. Both attachStats fire-points (isPiAgentEnd + terminal
  * detection) target the same row, so the first non-null read wins.
  */
-async function waitForPiUsage(http: WarrenHttp, runId: string, timeoutMs: number): Promise<RunRow> {
-	const deadline = Date.now() + timeoutMs;
-	let last: RunRow | undefined;
-	while (Date.now() < deadline) {
-		const row = await http.expectJson<RunRow>("GET", `/runs/${encodeURIComponent(runId)}`, 200);
-		last = row;
-		if (
-			typeof row.costUsd === "number" &&
-			typeof row.tokensInput === "number" &&
-			typeof row.tokensOutput === "number"
-		) {
-			return row;
+async function waitForPiUsage(http: WarrenHttp, runId: string, timeoutMs: number) {
+	try {
+		return await waitForRunPredicate(
+			http,
+			runId,
+			(row) =>
+				typeof row.costUsd === "number" &&
+				typeof row.tokensInput === "number" &&
+				typeof row.tokensOutput === "number",
+			timeoutMs,
+			(row) =>
+				`state=${row.state} costUsd=${JSON.stringify(row.costUsd)} ` +
+				`tokensInput=${JSON.stringify(row.tokensInput)} tokensOutput=${JSON.stringify(row.tokensOutput)}`,
+		);
+	} catch (err) {
+		if (err instanceof AcceptanceError) {
+			throw new AcceptanceError(
+				`${err.message} — warren's bridge did not accumulate+persist the pi turn_end usage envelope`,
+			);
 		}
-		await sleep(150);
+		throw err;
 	}
-	throw new AcceptanceError(
-		`pi usage columns stayed null on run ${runId} after ${timeoutMs}ms ` +
-			`(state=${JSON.stringify(last?.state)} costUsd=${JSON.stringify(last?.costUsd)} ` +
-			`tokensInput=${JSON.stringify(last?.tokensInput)} tokensOutput=${JSON.stringify(last?.tokensOutput)}) ` +
-			"— warren's bridge did not accumulate+persist the pi turn_end usage envelope",
-	);
 }
 
 async function safelyCancel(http: WarrenHttp, runId: string, ctx: ScenarioCtx): Promise<void> {
@@ -276,8 +254,4 @@ async function safelyCancel(http: WarrenHttp, runId: string, ctx: ScenarioCtx): 
 			`scenario-16: cancel failed (${err instanceof Error ? err.message : String(err)}) — best-effort`,
 		);
 	}
-}
-
-function sleep(ms: number): Promise<void> {
-	return new Promise((resolve) => setTimeout(resolve, ms));
 }

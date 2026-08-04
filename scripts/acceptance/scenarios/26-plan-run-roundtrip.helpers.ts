@@ -15,6 +15,7 @@ import { join } from "node:path";
 
 import { AcceptanceError } from "../lib/assert.ts";
 import type { WarrenHttp } from "../lib/http.ts";
+import { pollAcceptance } from "../lib/poll.ts";
 
 export interface ProjectRow {
 	readonly id: string;
@@ -83,7 +84,6 @@ export const SEED_TS = "2026-05-15T00:00:00.000Z";
 
 export const TERMINAL_PLAN_STATES = new Set(["succeeded", "failed", "cancelled"]);
 export const PLAN_DEADLINE_MS = 90_000;
-export const POLL_INTERVAL_MS = 500;
 
 export interface BuildPlanRunFixtureInput {
 	readonly fixturePath: string;
@@ -237,26 +237,26 @@ export async function waitForPlanState(
 	target: string,
 	timeoutMs: number,
 ): Promise<PlanRunDetailResponse> {
-	const start = Date.now();
-	let last = "unknown";
-	while (Date.now() - start < timeoutMs) {
-		const row = await http.expectJson<PlanRunDetailResponse>(
-			"GET",
-			`/plan-runs/${encodeURIComponent(planRunId)}`,
-			200,
-		);
-		last = row.planRun.state;
-		if (row.planRun.state === target) return row;
-		if (TERMINAL_PLAN_STATES.has(row.planRun.state)) {
-			throw new AcceptanceError(
-				`plan-run ${planRunId}: expected '${target}', reached terminal '${row.planRun.state}'`,
-			);
-		}
-		await sleep(POLL_INTERVAL_MS);
-	}
-	throw new AcceptanceError(
-		`plan-run ${planRunId} did not reach '${target}' within ${timeoutMs}ms (last state=${last})`,
-	);
+	return pollAcceptance({
+		label: "plan-run",
+		id: planRunId,
+		timeoutMs,
+		fetchRow: () =>
+			http.expectJson<PlanRunDetailResponse>(
+				"GET",
+				`/plan-runs/${encodeURIComponent(planRunId)}`,
+				200,
+			),
+		isDone: (row) => row.planRun.state === target,
+		describe: (row) => row.planRun.state,
+		onRow: (row) => {
+			if (row.planRun.state !== target && TERMINAL_PLAN_STATES.has(row.planRun.state)) {
+				throw new AcceptanceError(
+					`plan-run ${planRunId}: expected '${target}', reached terminal '${row.planRun.state}'`,
+				);
+			}
+		},
+	});
 }
 
 export async function fetchAllPlanRunEvents(
@@ -310,8 +310,4 @@ export function withGitIdentity(): Record<string, string> {
 		GIT_COMMITTER_NAME: "Warren Acceptance",
 		GIT_COMMITTER_EMAIL: "acceptance@warren.invalid",
 	};
-}
-
-export function sleep(ms: number): Promise<void> {
-	return new Promise((resolve) => setTimeout(resolve, ms));
 }

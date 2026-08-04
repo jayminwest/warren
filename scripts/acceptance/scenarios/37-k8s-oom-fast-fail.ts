@@ -32,9 +32,10 @@
  * re-run against a long-lived deployment leaves nothing behind.
  */
 
-import { assertEqual, assertTrue, type Scenario } from "../lib/assert.ts";
+import { AcceptanceError, assertEqual, assertTrue, type Scenario } from "../lib/assert.ts";
 import type { WarrenHttp } from "../lib/http.ts";
-import { resolveK8sTarget, sleep } from "../lib/k8s-target.ts";
+import { resolveK8sTarget } from "../lib/k8s-target.ts";
+import { waitForRunTerminal } from "./lib/poll-helpers.ts";
 
 interface RunRow {
 	readonly id: string;
@@ -49,7 +50,6 @@ interface CreateRunResponse {
 const RUN_ID_PATTERN = /^run_[0-9a-hjkmnpqrstvwxyz]{12}$/;
 /** Outer budget: pod schedule + image pull + start + OOM + watch latency. */
 const TERMINAL_DEADLINE_MS = 120_000;
-const POLL_INTERVAL_MS = 500;
 
 export const scenario: Scenario = {
 	id: "37",
@@ -101,20 +101,17 @@ async function waitForTerminal(
 	runId: string,
 	timeoutMs: number,
 ): Promise<RunRow> {
-	const terminal = new Set(["succeeded", "failed", "cancelled"]);
-	const deadline = Date.now() + timeoutMs;
-	let last = "unknown";
-	while (Date.now() < deadline) {
-		const row = await http.expectJson<RunRow>("GET", `/runs/${encodeURIComponent(runId)}`, 200);
-		last = row.state;
-		if (terminal.has(row.state)) return row;
-		await sleep(POLL_INTERVAL_MS);
+	try {
+		return await waitForRunTerminal(http, runId, timeoutMs);
+	} catch (err) {
+		if (err instanceof AcceptanceError) {
+			throw new Error(
+				`${err.message} If the pod never OOMs, the project's .warren/config.yaml memory limit may be too high, ` +
+					"or the agent image has no in-pod runner to allocate memory.",
+			);
+		}
+		throw err;
 	}
-	throw new Error(
-		`run ${runId} did not reach a terminal state within ${timeoutMs}ms (last state=${last}). ` +
-			"If the pod never OOMs, the project's .warren/config.yaml memory limit may be too high, " +
-			"or the agent image has no in-pod runner to allocate memory.",
-	);
 }
 
 async function safeCancel(http: WarrenHttp, runId: string, ctx: ScenarioCtxLike): Promise<void> {

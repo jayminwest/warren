@@ -12,8 +12,9 @@
  */
 
 import { DEFAULT_SNAPSHOT_PAGE_LIMIT } from "../../../src/runs/events.ts";
-import { AcceptanceError, assertEqual, assertTrue } from "../lib/assert.ts";
+import { assertEqual, assertTrue } from "../lib/assert.ts";
 import type { WarrenHttp } from "../lib/http.ts";
+import { pollAcceptance } from "../lib/poll.ts";
 import type { SeededIds } from "./39-public-exposure.helpers.ts";
 import { assertNoLeak } from "./39-public-exposure.leaks.ts";
 
@@ -186,13 +187,24 @@ export async function assertStreamCapRefuses(
  * event-stream count reaches `expected` — the observable proof that
  * aborted follow streams have released their slots (warren-b0bd).
  */
+
+/**
+ * Poll the operator-only `/metrics` gauge until the instance-wide
+ * event-stream count reaches `expected` — the observable proof that
+ * aborted follow streams have released their slots (warren-b0bd).
+ */
 async function waitForActiveStreams(operator: WarrenHttp, expected: number): Promise<void> {
-	const deadline = Date.now() + 10_000;
-	while (Date.now() < deadline) {
-		const res = await operator.expectStatus("GET", "/metrics", 200);
-		const match = /^warren_event_streams (\d+)$/m.exec(await res.text());
-		if (match !== null && Number(match[1]) === expected) return;
-		await new Promise((resolve) => setTimeout(resolve, 100));
-	}
-	throw new AcceptanceError(`event-stream slots did not drain to ${expected} within 10s`);
+	await pollAcceptance({
+		label: "event-stream slots",
+		id: "/metrics",
+		timeoutMs: 10_000,
+		intervalMs: 100,
+		fetchRow: async () => {
+			const res = await operator.expectStatus("GET", "/metrics", 200);
+			const match = /^warren_event_streams (\d+)$/m.exec(await res.text());
+			return match === null ? null : Number(match[1]);
+		},
+		isDone: (count) => count === expected,
+		describe: (count) => (count === null ? "gauge missing" : String(count)),
+	});
 }

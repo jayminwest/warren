@@ -36,6 +36,7 @@
 
 import { AcceptanceError, assertEqual, assertTrue, type Scenario } from "../lib/assert.ts";
 import { WarrenHttp } from "../lib/http.ts";
+import { waitForRunState, waitForRunTerminal } from "./lib/poll-helpers.ts";
 
 interface ProjectRow {
 	readonly id: string;
@@ -205,33 +206,14 @@ async function ensureSampleProject(http: WarrenHttp, gitUrl: string): Promise<Pr
 	return http.expectJson<ProjectRow>("POST", "/projects", 201, { body: { gitUrl } });
 }
 
-async function fetchAllEvents(http: WarrenHttp, runId: string): Promise<EventRow[]> {
-	const events: EventRow[] = [];
-	for await (const row of http.streamNdjson(`/runs/${encodeURIComponent(runId)}/events`)) {
-		events.push(row as EventRow);
-	}
-	return events;
-}
-
 async function waitForRunning(http: WarrenHttp, runId: string, timeoutMs: number): Promise<void> {
-	const start = Date.now();
-	let lastState = "unknown";
-	while (Date.now() - start < timeoutMs) {
-		const row = await http.expectJson<RunRow>("GET", `/runs/${encodeURIComponent(runId)}`, 200);
-		lastState = row.state;
-		if (row.state === "running") return;
-		// If the agent already finished (very fast container schedulers can
-		// blow past `running` before we observe it), bail with a clearer
-		// message — we can't cancel a terminal run.
-		if (TERMINAL_STATES.has(row.state)) {
-			throw new AcceptanceError(
-				`run reached terminal state '${row.state}' before cancel scenario could observe 'running' — increase the prompt's [sleep_ms=...] knob`,
-			);
-		}
-		await sleep(100);
-	}
-	throw new AcceptanceError(
-		`run ${runId} did not reach 'running' within ${timeoutMs}ms (last state=${lastState})`,
+	await waitForRunState(
+		http,
+		runId,
+		"running",
+		timeoutMs,
+		(row) =>
+			`run reached terminal state '${row.state}' before cancel scenario could observe 'running' — increase the prompt's [sleep_ms=...] knob`,
 	);
 }
 
@@ -240,19 +222,13 @@ async function waitForTerminal(
 	runId: string,
 	timeoutMs: number,
 ): Promise<string> {
-	const start = Date.now();
-	let lastState = "unknown";
-	while (Date.now() - start < timeoutMs) {
-		const row = await http.expectJson<RunRow>("GET", `/runs/${encodeURIComponent(runId)}`, 200);
-		lastState = row.state;
-		if (TERMINAL_STATES.has(row.state)) return row.state;
-		await sleep(100);
-	}
-	throw new AcceptanceError(
-		`run ${runId} did not reach a terminal state within ${timeoutMs}ms (last state=${lastState})`,
-	);
+	return (await waitForRunTerminal(http, runId, timeoutMs)).state;
 }
 
-function sleep(ms: number): Promise<void> {
-	return new Promise((resolve) => setTimeout(resolve, ms));
+async function fetchAllEvents(http: WarrenHttp, runId: string): Promise<EventRow[]> {
+	const events: EventRow[] = [];
+	for await (const row of http.streamNdjson(`/runs/${encodeURIComponent(runId)}/events`)) {
+		events.push(row as EventRow);
+	}
+	return events;
 }

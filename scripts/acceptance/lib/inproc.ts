@@ -27,9 +27,10 @@
  * → wait for socket → spawn warren.
  */
 
-import { existsSync } from "node:fs";
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+
+import { waitForHealthz, waitForPathExists } from "./poll.ts";
 
 export interface InProcBootOptions {
 	readonly tmpRoot: string;
@@ -71,7 +72,6 @@ export interface BootHandle {
 
 const SOCKET_WAIT_TIMEOUT_MS = 5_000;
 const HEALTHZ_WAIT_TIMEOUT_MS = 10_000;
-const POLL_INTERVAL_MS = 100;
 
 export async function bootInProc(opts: InProcBootOptions): Promise<BootHandle> {
 	const tmpRoot = opts.tmpRoot;
@@ -134,7 +134,7 @@ export async function bootInProc(opts: InProcBootOptions): Promise<BootHandle> {
 		warrenStopped: undefined,
 	};
 
-	await waitForSocket(socketPath, SOCKET_WAIT_TIMEOUT_MS);
+	await waitForPathExists(socketPath, SOCKET_WAIT_TIMEOUT_MS);
 
 	state.warren = state.warrenStartCmd();
 	await waitForHealthz(warrenUrl, HEALTHZ_WAIT_TIMEOUT_MS);
@@ -236,37 +236,6 @@ async function stopChild(child: SpawnedProc | undefined): Promise<void> {
 		}
 		await child.exited.catch(() => 0);
 	}
-}
-
-async function waitForSocket(path: string, timeoutMs: number): Promise<void> {
-	const start = Date.now();
-	while (Date.now() - start < timeoutMs) {
-		if (existsSync(path)) return;
-		await sleep(POLL_INTERVAL_MS);
-	}
-	throw new Error(`burrow socket did not appear at ${path} within ${timeoutMs}ms`);
-}
-
-async function waitForHealthz(baseUrl: string, timeoutMs: number): Promise<void> {
-	const start = Date.now();
-	let lastErr: string | undefined;
-	while (Date.now() - start < timeoutMs) {
-		try {
-			const res = await fetch(`${baseUrl}/healthz`, { method: "GET" });
-			if (res.status === 200) return;
-			lastErr = `status ${res.status}`;
-		} catch (err) {
-			lastErr = err instanceof Error ? err.message : String(err);
-		}
-		await sleep(POLL_INTERVAL_MS);
-	}
-	throw new Error(
-		`warren /healthz did not respond 200 within ${timeoutMs}ms: ${lastErr ?? "unknown"}`,
-	);
-}
-
-function sleep(ms: number): Promise<void> {
-	return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function pickPort(): number {
