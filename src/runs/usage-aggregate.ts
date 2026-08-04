@@ -12,21 +12,17 @@
  * is the same shape sniffing the bridge does at write-time — kept here
  * as the canonical pure version so both call sites stay in sync.
  *
- * Two runtime shapes are recognised, both riding the same
- * `kind=state_change`, `stream=system` carrier:
- *
- *   - pi: per-turn totals in `payload.type === "turn_end"` →
- *     `message.usage.{cost.total,input,output,cacheRead,cacheWrite}`.
- *     Sum across turns.
- *   - claude-code: single terminal `payload.type === "result"` →
- *     `total_cost_usd` + `usage.{input,output,cache_read_input,
- *     cache_creation_input}_tokens`. Cumulative; assign (not add).
- *
- * Both shapes are guarded so malformed envelopes never crash the
- * aggregator — worst case is "we miss this run's cost".
+ * The per-runtime shape knowledge (which envelope type carries usage,
+ * how to read it, sum-vs-assign accumulation) lives in the typed
+ * readers of `src/core/usage-shape.ts` (warren-db2e), declared per
+ * runtime id off `KNOWN_RUNTIME_IDS`. This module owns only the
+ * cross-envelope aggregation: the accumulators, the `seen` tracking,
+ * and the pi-wins tiebreak.
  */
 
 import { extractAgentEventEnvelope } from "../core/event-envelope.ts";
+import { type UsageReading, type UsageShape, usageShapeFor } from "../core/usage-shape.ts";
+import type { RuntimeId } from "../core/wire.ts";
 import type { SessionStats } from "./stream/index.ts";
 
 /**
@@ -80,88 +76,78 @@ export function newSessionStatsAccumulator(): SessionStatsAccumulator {
 	};
 }
 
-function toNumber(value: unknown): number | null {
-	return typeof value === "number" && Number.isFinite(value) ? value : null;
+/**
+ * Fold one shape reading into the accumulator per the shape's declared
+ * mode. `sum` (pi) adds only the non-null fields — a partial turn_end
+ * still contributes what it carried. `assign` (claude-code) overwrites
+ * with a zero fallback, because claude's terminal `result` envelope is
+ * cumulative and complete.
+ */
+function applyReading(
+	acc: SessionStatsAccumulator,
+	reading: UsageReading,
+	mode: UsageShape["mode"],
+): void {
+	acc.seen = true;
+	if (mode === "assign") {
+		acc.costUsd = reading.costUsd ?? 0;
+		acc.tokensInput = reading.tokensInput ?? 0;
+		acc.tokensOutput = reading.tokensOutput ?? 0;
+		acc.tokensCacheRead = reading.tokensCacheRead ?? 0;
+		acc.tokensCacheWrite = reading.tokensCacheWrite ?? 0;
+		return;
+	}
+	if (reading.costUsd !== null) acc.costUsd += reading.costUsd;
+	if (reading.tokensInput !== null) acc.tokensInput += reading.tokensInput;
+	if (reading.tokensOutput !== null) acc.tokensOutput += reading.tokensOutput;
+	if (reading.tokensCacheRead !== null) acc.tokensCacheRead += reading.tokensCacheRead;
+	if (reading.tokensCacheWrite !== null) acc.tokensCacheWrite += reading.tokensCacheWrite;
+}
+
+/**
+ * Shared accumulate path: extract the trusted envelope, look up the
+ * runtime's declared usage shape, and fold the reading in per the
+ * shape's mode. Unknown shapes leave the accumulator untouched — a
+ * future runtime version that grows new envelope fields can't crash
+ * the bridge; the worst case is "we miss this run's cost", same as
+ * no-event.
+ */
+function accumulateWithShape(
+	acc: SessionStatsAccumulator,
+	event: UsageEventInput,
+	runtime: RuntimeId,
+): void {
+	const envelope = extractAgentEventEnvelope(event);
+	if (envelope === null) return;
+	const shape = usageShapeFor(runtime);
+	if (shape === null || envelope.type !== shape.envelopeType) return;
+	const reading = shape.read(envelope.payload);
+	if (reading === null) return;
+	applyReading(acc, reading, shape.mode);
 }
 
 /**
  * Extract pi's per-turn usage from a `turn_end` envelope and add it to
- * the accumulator. Pi's per-message usage (in `message_end`) double-counts
- * across the turn because each assistant message duplicates the
- * conversation totals, so we read only `turn_end`'s `message.usage.cost`
- * (see burrow `src/runtime/parsers/__golden__/pi-v0.74.0-anthropic-*.jsonl`).
- *
- * Defensive: unknown shapes leave the accumulator untouched. A future
- * pi version that grows new envelope fields can't crash the bridge —
- * the worst case is "we miss this run's cost", same as no-event.
+ * the accumulator, via the pi {@link UsageShape}. Pi's per-message
+ * usage (in `message_end`) double-counts across the turn because each
+ * assistant message duplicates the conversation totals, so only
+ * `turn_end`'s `message.usage.cost` is read (see burrow
+ * `src/runtime/parsers/__golden__/pi-v0.74.0-anthropic-*.jsonl`).
  */
 export function accumulatePiUsage(acc: SessionStatsAccumulator, event: UsageEventInput): void {
-	const envelope = extractAgentEventEnvelope(event);
-	if (envelope === null) return;
-	if (envelope.type !== "turn_end") return;
-	const message = envelope.payload.message;
-	if (message === null || typeof message !== "object") return;
-	const usage = (message as Record<string, unknown>).usage;
-	if (usage === null || typeof usage !== "object") return;
-	const u = usage as Record<string, unknown>;
-	const cost = u.cost;
-	const costTotal =
-		cost !== null && typeof cost === "object"
-			? toNumber((cost as Record<string, unknown>).total)
-			: null;
-	const tokensInput = toNumber(u.input);
-	const tokensOutput = toNumber(u.output);
-	const tokensCacheRead = toNumber(u.cacheRead);
-	const tokensCacheWrite = toNumber(u.cacheWrite);
-	// Require at least the cost total OR an input/output token count
-	// before we count the envelope as "real" usage — otherwise a malformed
-	// turn_end with a structurally-present but empty usage block would
-	// mark the run as pi-shaped and persist all-zeros.
-	if (costTotal === null && tokensInput === null && tokensOutput === null) return;
-	acc.seen = true;
-	if (costTotal !== null) acc.costUsd += costTotal;
-	if (tokensInput !== null) acc.tokensInput += tokensInput;
-	if (tokensOutput !== null) acc.tokensOutput += tokensOutput;
-	if (tokensCacheRead !== null) acc.tokensCacheRead += tokensCacheRead;
-	if (tokensCacheWrite !== null) acc.tokensCacheWrite += tokensCacheWrite;
+	accumulateWithShape(acc, event, "pi");
 }
 
 /**
- * Extract claude-code's run-level usage from its single terminal `result`
- * envelope (warren-87f9). Shape (see burrow `src/runtime/parsers/jsonl-claude.ts`):
- *   {"type":"result", "subtype":"success", "total_cost_usd": N,
- *    "usage":{ "input_tokens":N, "output_tokens":N,
- *              "cache_read_input_tokens":N, "cache_creation_input_tokens":N }}
- * Single-shot: claude-code emits cumulative totals once at end, so we
- * assign (not add) to the accumulator. Pi's `turn_end` shape is
- * disjoint (different `type` + nested `message.usage.cost.total`), so
- * shape-sniffing here can't collide with `accumulatePiUsage`.
- *
- * Defensive: unknown shapes leave the accumulator untouched. A future
- * claude-code that adds fields can't crash the bridge — worst case we
- * miss this run's cost.
+ * Extract claude-code's run-level usage from its single terminal
+ * `result` envelope (warren-87f9), via the claude-code
+ * {@link UsageShape}. Single-shot: claude-code emits cumulative totals
+ * once at end, so the shape assigns (not adds). Pi's `turn_end` shape
+ * is disjoint (different `type` + nested `message.usage.cost.total`),
+ * so shape resolution here can't collide with `accumulatePiUsage`.
  */
 export function extractClaudeUsage(acc: SessionStatsAccumulator, event: UsageEventInput): void {
-	const envelope = extractAgentEventEnvelope(event);
-	if (envelope === null) return;
-	if (envelope.type !== "result") return;
-	const env = envelope.payload;
-	const costTotal = toNumber(env.total_cost_usd);
-	const usage = env.usage;
-	const u = usage !== null && typeof usage === "object" ? (usage as Record<string, unknown>) : null;
-	const tokensInput = u !== null ? toNumber(u.input_tokens) : null;
-	const tokensOutput = u !== null ? toNumber(u.output_tokens) : null;
-	const tokensCacheRead = u !== null ? toNumber(u.cache_read_input_tokens) : null;
-	const tokensCacheWrite = u !== null ? toNumber(u.cache_creation_input_tokens) : null;
-	// Require cost OR input/output tokens before flagging the envelope as
-	// real claude-code usage — mirrors accumulatePiUsage's guard.
-	if (costTotal === null && tokensInput === null && tokensOutput === null) return;
-	acc.seen = true;
-	acc.costUsd = costTotal ?? 0;
-	acc.tokensInput = tokensInput ?? 0;
-	acc.tokensOutput = tokensOutput ?? 0;
-	acc.tokensCacheRead = tokensCacheRead ?? 0;
-	acc.tokensCacheWrite = tokensCacheWrite ?? 0;
+	accumulateWithShape(acc, event, "claude-code");
 }
 
 /**
