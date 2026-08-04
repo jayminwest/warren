@@ -16,23 +16,32 @@
  * Build order (plan pl-116e):
  *   warren-0781 — scaffold + the boundary gate (done)
  *   warren-a0ff — collector: cursor-tailing client with durable resume (done)
- *   warren-653a — audit store and normalization, idempotent replay
+ *   warren-653a — audit store and normalization, idempotent replay (done)
  *   warren-9c7c — export and health surface
  *   warren-88b8 — container image, README env contract, final FRICTION.md
  *   warren-c8c3 — end-to-end smoke with golden export
  */
 
+import { AuditStore } from "./audit-store.ts";
 import { createClient } from "./client.ts";
-import { type EventSink, runCollector } from "./collector.ts";
+import { runCollector } from "./collector.ts";
 import { CursorStore } from "./cursor-store.ts";
-import type { RunEvent } from "./wire.ts";
 
 export const EXTENSION_NAME = "audit-log";
 export const EXTENSION_VERSION = "0.0.0";
 
+export { AuditStore, type AuditRow } from "./audit-store.ts";
 export { createClient, readEventsSince, listRuns, WarrenHttpError } from "./client.ts";
 export { collectOnce, runCollector, type EventSink, type CycleStats } from "./collector.ts";
 export { CursorStore, type RunCursor } from "./cursor-store.ts";
+export {
+	AUDIT_EVENT_TYPES,
+	ACTOR_KIND_UNKNOWN,
+	type AuditEventType,
+	type AuditFact,
+	factsFromEvent,
+	factsFromRun,
+} from "./normalize.ts";
 export {
 	type RunEvent,
 	type RunListRow,
@@ -106,18 +115,6 @@ export function resolveConfig(
 	};
 }
 
-/**
- * Placeholder sink until the audit store lands (warren-653a): counts
- * events so the collector is exercisable end-to-end. The idempotent
- * append-only store replaces this behind the same EventSink interface.
- */
-class CountingSink implements EventSink {
-	applied = 0;
-	apply(_event: RunEvent): void {
-		this.applied += 1;
-	}
-}
-
 async function main(): Promise<void> {
 	const resolved = resolveConfig(process.env);
 	if (!resolved.ok) {
@@ -129,7 +126,7 @@ async function main(): Promise<void> {
 	const { config } = resolved;
 	const client = createClient({ baseUrl: config.warrenBaseUrl, token: config.warrenApiToken });
 	const store = new CursorStore(config.dbPath);
-	const sink = new CountingSink();
+	const sink = new AuditStore(config.dbPath);
 
 	const ctrl = new AbortController();
 	const shutdown = (): void => ctrl.abort();
@@ -152,7 +149,8 @@ async function main(): Promise<void> {
 			console.error(`${EXTENSION_NAME}: tail for run ${runId} failed:`, err),
 	});
 	store.close();
-	console.error(`${EXTENSION_NAME}: stopped; ${sink.applied} events applied`);
+	sink.close();
+	console.error(`${EXTENSION_NAME}: stopped; ${sink.count()} audit rows stored`);
 }
 
 if (import.meta.main) await main();

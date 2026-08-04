@@ -13,14 +13,19 @@ at-least-once collection, idempotent replay.
 
 ## Status
 
-Collector (plan step 2, warren-a0ff). The package polls `GET /runs`,
+Audit store (plan step 3, warren-653a). The package polls `GET /runs`,
 tails each run's NDJSON event stream with bounded `?since`/`?limit`
 pages, and checkpoints a durable per-run cursor in its own SQLite store
-— at-least-once delivery with resume across restarts. Events currently
-land in a placeholder counting sink; the idempotent audit store (step
-3), the export surface (step 4), and the container image (step 5) land
-in later plan steps. See the build-order comment in
-[`src/index.ts`](src/index.ts).
+— at-least-once delivery with resume across restarts. The normalizer
+([`src/normalize.ts`](src/normalize.ts)) maps wire facts into six audit
+event types (`run.dispatched`, `run.started`, `run.terminal`,
+`branch.pushed`, `pr.opened`, `run.steered`) and the append-only store
+([`src/audit-store.ts`](src/audit-store.ts)) applies them idempotently:
+every fact carries a deterministic dedupe key, so replaying the
+un-checkpointed tail after a kill is an exact no-op — no duplicate rows,
+no consumed ids, no timestamp drift. The export surface (step 4) and
+the container image (step 5) land in later plan steps. See the
+build-order comment in [`src/index.ts`](src/index.ts).
 
 ## Boundary contract
 

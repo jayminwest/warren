@@ -260,4 +260,25 @@ describe("runCollector", () => {
 		expect(cycleErrors.length).toBe(2);
 		store.close();
 	});
+
+	test("observeRun fires once per discovered run per cycle, after the tail", async () => {
+		fake.addRun({ id: "r1", state: "succeeded", startedAt: "2026-08-04T00:00:00Z" });
+		addEvents(fake, "r1", 1, 2);
+		const store = new CursorStore(":memory:");
+		const seen: string[] = [];
+		const sink = new RecordingSink();
+		const stats = await collectOnce({
+			client: createClient({ baseUrl: fake.baseUrl, token: "t" }),
+			store,
+			now: fixedClock(),
+			sink: Object.assign(sink, {
+				observeRun: (run: { id: string; state: string }) => {
+					seen.push(`${run.id}:${run.state}:applied=${sink.events.length}`);
+				},
+			}),
+		});
+		expect(stats.runsTailed).toBe(1);
+		expect(seen).toEqual(["r1:succeeded:applied=2"]);
+		store.close();
+	});
 });

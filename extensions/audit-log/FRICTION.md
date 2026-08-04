@@ -49,6 +49,21 @@ per active run.
   RUN, not globally, so the extension keeps one cursor row per run in
   its own SQLite and cannot order events across runs by anything but
   their `ts` strings.
+- `[worked around]` **The lifecycle facts themselves are bus-only.**
+  `run_dispatched`, `run_started`, `branch_pushed`, and `post_reap`
+  exist only on the in-process `warren-ext/v1` bus
+  (`src/runs/lifecycle-bus.ts`) — they never cross onto the HTTP wire.
+  The normalizer (warren-653a) must SYNTHESIZE three of its six audit
+  event types: `run.dispatched` = the run's first sighting (list row or
+  first event, whichever comes first — the wire carries no dispatch fact
+  and no dispatch timestamp, so queue time is invisible), `run.started`
+  = the first observed event (the bridge's queued → running claim edge
+  is bus-only), `run.terminal` = the list state turning terminal or a
+  `reap.completed` side effect, whichever arrives first. `branch.pushed`
+  is reverse-engineered from `reap.completed`'s `branchPushed` payload
+  flag rather than stated as a fact. None of these carries a transition
+  timestamp of its own; the store uses the source event's `ts` where one
+  exists and the collector's clock otherwise.
 - `[worked around]` **Terminal runs keep answering the tail forever.**
   Nothing on the wire says "this run's event stream is complete" — the
   collector infers completeness from `run.state` being terminal on the
@@ -101,14 +116,17 @@ mismatch instead of silently misreading a drifted field.
 
 ## 3. Attribution — who did the thing
 
-- `[open]` **No actor kind on lifecycle payloads.** The bus payload and
-  the events stream carry what happened to a run, not who caused it
-  (user dispatch vs scheduler vs plan-run coordinator vs steering
-  input). The 2026-08-03 amendment to R-16 settled that actor *kind*
-  suffices for audit attribution, but the field does not exist yet
-  (ties to warren-3754). Until it lands, audit rows must record actor
-  as unknown or infer it heuristically — flagged here when the
-  normalizer (warren-653a) hits it.
+- `[worked around]` **No actor kind on lifecycle payloads.** The bus
+  payload and the events stream carry what happened to a run, not who
+  caused it (user dispatch vs scheduler vs plan-run coordinator vs
+  steering input). The 2026-08-03 amendment to R-16 settled that actor
+  *kind* suffices for audit attribution, but the field does not exist
+  yet (ties to warren-3754). Hit by the normalizer in warren-653a:
+  every audit row stores `actor_kind: "unknown"` — the only honest
+  value. The one partial exception on the wire is `steer.sent`, whose
+  payload carries `fromActor` (an identity string, not a kind); the
+  normalizer preserves it in the row's detail but does not promote it,
+  because an identity from one event kind is not an attribution model.
 - `[open]` **Admin actions are not on any stream.** Project
   added/deleted, agent edits, and auth events are invisible to an
   observer today (`docs/design/extensions.md` §5). The audit log's

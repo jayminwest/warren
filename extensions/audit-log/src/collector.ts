@@ -18,9 +18,16 @@ import { listRuns, readEventsSince, type WarrenClient } from "./client.ts";
 import type { CursorStore } from "./cursor-store.ts";
 import { type RunEvent, type RunListRow, isTerminalRunState } from "./wire.ts";
 
-/** Where collected events go. Step 3 implements the audit store behind this. */
+/** Where collected events go. The audit store (step 3) implements this. */
 export interface EventSink {
 	apply(event: RunEvent): void | Promise<void>;
+	/**
+	 * Called once per discovered run per cycle, after the run's tail
+	 * drains. List-derived facts (run.dispatched for zero-event runs,
+	 * run.terminal for terminal states) ride this hook — the event
+	 * stream alone never states them (FRICTION §1).
+	 */
+	observeRun?(run: RunListRow): void | Promise<void>;
 }
 
 export interface CollectorDeps {
@@ -114,6 +121,9 @@ export async function collectOnce(deps: CollectorDeps): Promise<CycleStats> {
 	for (const run of runs) {
 		try {
 			const applied = await tailRun(run, deps, eventsPageSize, now);
+			// After the tail, so an event-derived terminal fact (reap.completed)
+			// wins the dedupe race over the list-derived one below.
+			await deps.sink.observeRun?.(run);
 			runsTailed += 1;
 			eventsApplied += applied;
 		} catch (err) {
