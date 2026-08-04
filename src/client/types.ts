@@ -247,6 +247,30 @@ export interface SteerRunResponse {
 	message: InboxMessage;
 }
 
+/** Input for {@link WarrenClient.cancelRun} (`POST /runs/:id/cancel`). */
+export interface CancelRunInput {
+	/** Optional operator note recorded on the cancel. */
+	reason?: string;
+}
+
+/**
+ * `POST /runs/:id/cancel` response. `alreadyTerminal` is true when the run
+ * had already reached a terminal state, in which case no cancel was issued.
+ * `burrowRun` carries the burrow-side run's `{ id, state }` re-read after the
+ * cancel, or null when there was nothing remote to cancel (queued run with
+ * no `burrowRunId`, or already terminal).
+ */
+export interface CancelRunResponse {
+	state: RunState;
+	alreadyTerminal: boolean;
+	burrowRun: { id: string; state: RunState } | null;
+}
+
+/** `GET /version` — the running warren build's semver. Auth-exempt. */
+export interface VersionResponse {
+	version: string;
+}
+
 export interface ListRunsResponse {
 	runs: RunRow[];
 	total: number;
