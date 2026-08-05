@@ -55,6 +55,9 @@ export const PR_BODY_FRAGMENT_NAMES: readonly PrFragmentName[] = PR_FRAGMENT_NAM
 	(n): n is PrFragmentName => n !== "title",
 );
 
+/** GitHub rejects pull-request bodies at or above this API limit. */
+export const MAX_PR_BODY_LENGTH = 65_536;
+
 const PR_FRAGMENT_NAME_SET: ReadonlySet<string> = new Set<string>(PR_FRAGMENT_NAMES);
 
 /** A project's per-fragment override map. Missing keys keep the default. */
@@ -184,13 +187,39 @@ export function parsePrTemplate(content: string): ParsedPrTemplate {
  * section-merging semantics (mx-1c92f3 in canopy).
  */
 export function composeBody(ctx: PrFragmentContext, overrides: PrTemplateOverrides = {}): string {
-	const out: string[] = [];
+	const out: Array<{ name: PrFragmentName; rendered: string }> = [];
 	for (const name of PR_BODY_FRAGMENT_NAMES) {
 		const rendered = renderFragment(name, ctx, overrides);
 		if (rendered === null) continue;
-		out.push(rendered);
+		out.push({ name, rendered });
 	}
-	return out.join("\n\n");
+	let body = out.map((fragment) => fragment.rendered).join("\n\n");
+	if (body.length <= MAX_PR_BODY_LENGTH) return body;
+
+	const commitsIndex = out.findIndex((fragment) => fragment.name === "commits");
+	if (commitsIndex >= 0 && overrides.commits === undefined && ctx.commits !== undefined) {
+		const prefix = out
+			.slice(0, commitsIndex)
+			.map((fragment) => fragment.rendered)
+			.join("\n\n");
+		const suffix = out
+			.slice(commitsIndex + 1)
+			.map((fragment) => fragment.rendered)
+			.join("\n\n");
+		const separators = (prefix === "" ? 0 : 2) + (suffix === "" ? 0 : 2);
+		const budget = MAX_PR_BODY_LENGTH - prefix.length - suffix.length - separators;
+		out[commitsIndex] = {
+			name: "commits",
+			rendered: boundedCommits(ctx.commits, budget),
+		};
+		body = out.map((fragment) => fragment.rendered).join("\n\n");
+	}
+
+	// Custom templates can still be larger than GitHub's limit. Keep the
+	// request safe even when there is no default commit fragment to shorten.
+	return body.length <= MAX_PR_BODY_LENGTH
+		? body
+		: `${body.slice(0, MAX_PR_BODY_LENGTH - 1)}…`;
 }
 
 /**
@@ -295,6 +324,28 @@ function defaultCommits(commits: readonly PrCommit[]): string {
 		lines.push(`- ${shortSha(c.sha)} ${c.subject}`);
 	}
 	return lines.join("\n");
+}
+
+function boundedCommits(commits: readonly PrCommit[], budget: number): string {
+	const header = `## Commits (${commits.length})\n\n`;
+	if (budget <= header.length) return header.slice(0, Math.max(0, budget));
+	const lines = [header];
+	let remaining = budget - header.length;
+	for (let index = 0; index < commits.length; index += 1) {
+		const commit = commits[index];
+		if (commit === undefined) continue;
+		const line = `- ${shortSha(commit.sha)} ${commit.subject}\n`;
+		const left = commits.length - index - 1;
+		const summary = left > 0 ? `- ...and ${left} more` : "";
+		if (line.length + (summary === "" ? 0 : summary.length) <= remaining) {
+			lines.push(line);
+			remaining -= line.length;
+			continue;
+		}
+		if (left > 0 && summary.length <= remaining) lines.push(summary);
+		break;
+	}
+	return lines.join("").trimEnd();
 }
 
 function defaultFilesChanged(diffStat: string): string {

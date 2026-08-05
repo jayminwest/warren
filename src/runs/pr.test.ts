@@ -311,6 +311,23 @@ describe("buildPrContent", () => {
 		expect(c.body).not.toContain("## Prompt");
 		expect(c.body).toContain("## Summary"); // other defaults survive
 	});
+
+	test("bounds oversized commit lists with a summary line", () => {
+		const commits = Array.from({ length: 2_000 }, (_, index) => ({
+			sha: `${index.toString(16).padStart(7, "0")}abcdef`,
+			subject: `commit ${index} ${"x".repeat(40)}`,
+		}));
+		const c = buildPrContent({
+			prompt: "avoid oversized PR bodies",
+			runId: "run_large",
+			agentName: "pi",
+			commits,
+		});
+		expect(c.body.length).toBeLessThanOrEqual(65_536);
+		expect(c.body).toContain("...and ");
+		expect(c.body).toContain("## Prompt");
+		expect(c.body).toContain("## Commits (2000)");
+	});
 });
 
 describe("loadAutoOpenPrConfigFromEnv", () => {
