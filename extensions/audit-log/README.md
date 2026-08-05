@@ -31,8 +31,10 @@ checkpoint), and `GET /healthz` reports collector liveness and cursor
 lag (tracked vs undrained runs, last-cycle stats) without echoing
 credentials. Retention prunes oldest-first via the knobs below — a
 `since` cursor that falls behind the retention horizon sees a gap, not
-an error. The container image (step 5) lands in a later plan step. See
-the build-order comment in [`src/index.ts`](src/index.ts).
+an error. Step 5 (warren-88b8) adds the container image: the
+[`Dockerfile`](Dockerfile) builds from this directory alone and runs
+given only `WARREN_BASE_URL` and `WARREN_API_TOKEN`. See the
+build-order comment in [`src/index.ts`](src/index.ts).
 
 ## Boundary contract
 
@@ -60,6 +62,39 @@ responses.
 
 The export surface is unauthenticated — warren has no extension-auth
 contract to delegate to (FRICTION §4). Front it with your own proxy.
+
+## Container
+
+The image builds from **this directory alone** — the build context is
+the package, exactly as a third party would ship theirs:
+
+```bash
+docker build -t warren-ext-audit-log .
+```
+
+Run it against a warren instance given only the two required variables;
+the image pins in-image defaults for every other knob (the SQLite store
+on the `/app/data` volume, the export surface on `:8080`):
+
+```bash
+docker run --rm -p 8080:8080 -v audit-log-data:/app/data \
+  -e WARREN_BASE_URL=https://warren.example.com \
+  -e WARREN_API_TOKEN=<token> \
+  warren-ext-audit-log
+```
+
+Notes:
+
+- The image runs as the non-root `bun` user; `/app/data` is the only
+  writable state and should be a volume so the durable cursor and audit
+  rows survive container replacement.
+- A `HEALTHCHECK` probes `GET /healthz`, which reports collector
+  liveness and cursor lag without echoing the token.
+- Every `AUDIT_LOG_*` knob from the environment contract above can be
+  overridden with `-e` at run time.
+- There is no extension registry or distribution channel yet — building
+  from a source checkout is the only way to obtain the image
+  (FRICTION §4).
 
 ## Development
 

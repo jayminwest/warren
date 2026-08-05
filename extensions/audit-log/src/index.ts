@@ -18,7 +18,7 @@
  *   warren-a0ff — collector: cursor-tailing client with durable resume (done)
  *   warren-653a — audit store and normalization, idempotent replay (done)
  *   warren-9c7c — export and health surface, retention (done)
- *   warren-88b8 — container image, README env contract, final FRICTION.md
+ *   warren-88b8 — container image, README env contract, final FRICTION.md (done)
  *   warren-c8c3 — end-to-end smoke with golden export
  */
 

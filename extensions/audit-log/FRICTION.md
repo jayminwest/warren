@@ -159,15 +159,40 @@ causation.
   behind the horizon and sees a silent gap. Step 4 documents the gap
   semantics rather than inventing a cursor-expiry signal the wire has
   no vocabulary for.
-- `[open]` **No manifest format.** Nothing declares to warren "this
-  container is an observer consuming the run lifecycle at protocol
-  version X with config schema Y." This package will ship a README env
-  contract (step 5) precisely because no manifest exists to write.
+- `[worked around]` **No manifest format.** Nothing declares to warren
+  "this container is an observer consuming the run lifecycle at
+  protocol version X with config schema Y." Step 5 (warren-88b8) ships
+  the README environment contract table as the stand-in artifact: it is
+  the only place name, kind, consumed surface, and config schema are
+  written down together, and nothing machine-readable exists for a
+  loader or a catalog to consume.
 - `[open]` **No injected config namespace.** Configuration is
   hand-agreed environment variables (`WARREN_BASE_URL`,
   `WARREN_API_TOKEN`) that the operator must arrange to set; the
   aspirational `PLUGIN_*` injection contract
-  (`docs/design/extensions.md` §3) does not exist.
+  (`docs/design/extensions.md` §3) does not exist. Step 5's Dockerfile
+  papers over this by pinning in-image defaults for every optional
+  knob, so the container runs given only the two required variables —
+  but it is the IMAGE carrying the convention, not warren.
+- `[worked around]` **No scoped observer credential.** The only way to
+  read the runs list and the event tails is the operator's full-power
+  admin API token — warren cannot mint a read-only or observe-scoped
+  credential, and `WARREN_AUTH=public` is an instance-wide posture, not
+  a credential an observer can hold. The image therefore always runs
+  with more privilege than it needs, and the README has to promise
+  operator-side hygiene (never logged, never echoed by `/healthz`)
+  that the platform should be enforcing by construction.
+- `[worked around]` **No healthcheck or readiness convention.**
+  Nothing tells an orchestrator where an extension listens or how to
+  probe it. Step 5 declares the image's own `HEALTHCHECK` against
+  `/healthz` and `EXPOSE`s a conventional port, but warren can neither
+  discover the port nor interpret the probe — the wiring is entirely
+  operator convention.
+- `[open]` **No distribution channel.** The image is buildable only
+  from a source checkout (`docker build` in this directory): there is
+  no registry, no catalog, and no version-skew policy tying an image
+  tag to the warren version it can observe. A third party today would
+  have to invent all three themselves.
 - `[worked around]` **Repo boundary.** The package lives inside
   warren's repo but must build as if it did not. Cost absorbed by the
   `extensions-are-standalone` / `core-does-not-import-extensions`
@@ -177,5 +202,7 @@ causation.
 **What the future mechanism must provide:** a manifest declaring name,
 kind, consumed contract + protocol version, image ref, and config
 schema — the same artifact the loader and the site catalog read — plus
-a `PLUGIN_*`-style config injection stage so operators configure an
-extension once, in one place.
+a `PLUGIN_*`-style config injection stage, scoped per-extension
+credentials, a discoverable health probe, and a distribution channel,
+so operators configure, trust, probe, and obtain an extension once, in
+one place.

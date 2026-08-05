@@ -1,0 +1,9 @@
+# Keep the build context to exactly what the image needs (plan pl-116e, warren-88b8).
+node_modules/
+data/
+*.db
+*.db-journal
+.git/
+FRICTION.md
+README.md
+*.test.ts
