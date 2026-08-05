@@ -1,0 +1,6 @@
+{"id":1,"runId":"r-smoke-1","event":"run.dispatched","at":"2026-08-04T22:00:00.000Z","actorKind":"unknown","detail":null}
+{"id":2,"runId":"r-smoke-1","event":"run.started","at":"2026-08-04T22:00:05.000Z","actorKind":"unknown","detail":null}
+{"id":3,"runId":"r-smoke-1","event":"run.steered","at":"2026-08-04T22:01:00.000Z","actorKind":"unknown","detail":{"messageId":"msg-1","priority":"normal","fromActor":"operator","body":"also update the changelog"}}
+{"id":4,"runId":"r-smoke-1","event":"run.terminal","at":"2026-08-04T22:05:00.000Z","actorKind":"unknown","detail":{"state":"succeeded","source":"reap.completed"}}
+{"id":5,"runId":"r-smoke-1","event":"branch.pushed","at":"2026-08-04T22:05:00.000Z","actorKind":"unknown","detail":{"commitsAhead":2,"state":"succeeded"}}
+{"id":6,"runId":"r-smoke-1","event":"pr.opened","at":"2026-08-04T22:05:30.000Z","actorKind":"unknown","detail":{"prUrl":"https://github.com/example/repo/pull/42","mode":"pr","branch":"warren/r-smoke-1","baseBranch":"main"}}

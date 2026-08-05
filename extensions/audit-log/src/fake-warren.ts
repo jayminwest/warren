@@ -40,6 +40,13 @@ export class FakeWarren {
 		this.runs.sort((a, b) => b.startedAt.localeCompare(a.startedAt));
 	}
 
+	/** Transition a run's list state (queued → running → terminal). */
+	setRunState(runId: string, state: string): void {
+		const run = this.runs.find((r) => r.id === runId);
+		if (run === undefined) throw new Error(`no such run: ${runId}`);
+		this.runs[this.runs.indexOf(run)] = { ...run, state };
+	}
+
 	addEvent(runId: string, event: Omit<RunEvent, "runId">): void {
 		const list = this.events.get(runId) ?? [];
 		list.push({ ...event, runId });

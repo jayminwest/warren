@@ -31,8 +31,15 @@ per active run.
   poll-interval latency. Neither option is good; the endpoint has no
   long-poll mode ("block until new events or a server-side timeout"),
   which would give one connection AND low latency AND cheap idling.
-  Cost to be quantified against a live instance in step 6 (warren-c8c3).
-  warren-f566 wants the same global stream for the UI.
+  Quantified by the step-6 smoke (warren-c8c3,
+  `src/smoke.test.ts`): collecting ONE run's six-event lifecycle cost
+  3 `GET /runs` re-lists and 3 tail pages across 3 poll cycles — 2
+  requests per cycle for a single quiet run. The discovery half is
+  constant waste (a full re-list even when nothing changed), and the
+  tail half scales linearly in active runs, so a busy instance pays
+  O(1 + active runs) requests per poll cycle for information a single
+  global stream would deliver in one connection. warren-f566 wants the
+  same global stream for the UI.
 - `[worked around]` **Discovery by polling, with an unstable page
   cursor.** `GET /runs` has no "changed since" parameter and no
   ascending order — the only sort is `started desc` over `?limit`/

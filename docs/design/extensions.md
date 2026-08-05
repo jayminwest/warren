@@ -106,6 +106,14 @@ Success criterion, in the seam-test style: a third party could have
 built this without reading warren's source — and everywhere that is
 false today is written down as friction.
 
+**Status: shipped (2026-08-05).** All six plan steps landed; the
+extension collects, survives a mid-stream kill without loss or
+duplication, and exports byte-identical to its committed golden
+(`extensions/audit-log/src/smoke.test.ts`). The finalized friction
+report is [`extensions/audit-log/FRICTION.md`](../../extensions/audit-log/FRICTION.md)
+— it is the input the manifest, loader, and delivery-mechanism specs
+now get written from (§5).
+
 ## 3. Packaging conventions (provisional)
 
 The Woodpecker-model sketch from PHILOSOPHY, held as direction until

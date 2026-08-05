@@ -13,7 +13,7 @@ at-least-once collection, idempotent replay.
 
 ## Status
 
-Export and health surface (plan step 4, warren-9c7c). The package polls `GET /runs`,
+Complete (plan pl-116e, all six steps shipped). The package polls `GET /runs`,
 tails each run's NDJSON event stream with bounded `?since`/`?limit`
 pages, and checkpoints a durable per-run cursor in its own SQLite store
 — at-least-once delivery with resume across restarts. The normalizer
@@ -33,8 +33,16 @@ credentials. Retention prunes oldest-first via the knobs below — a
 `since` cursor that falls behind the retention horizon sees a gap, not
 an error. Step 5 (warren-88b8) adds the container image: the
 [`Dockerfile`](Dockerfile) builds from this directory alone and runs
-given only `WARREN_BASE_URL` and `WARREN_API_TOKEN`. See the
-build-order comment in [`src/index.ts`](src/index.ts).
+given only `WARREN_BASE_URL` and `WARREN_API_TOKEN`. Step 6 (warren-c8c3)
+is the end-to-end smoke ([`src/smoke.test.ts`](src/smoke.test.ts)): a full
+fake-warren lifecycle flows through the real pipeline, survives a
+mid-stream kill between apply and checkpoint, and exports byte-identical
+to the committed golden at
+[`src/__golden__/smoke-export.ndjson`](src/__golden__/smoke-export.ndjson)
+— each of the six audit event types exactly once. Regenerate an
+intentional shape change with `AUDIT_LOG_UPDATE_GOLDENS=1 bun test
+src/smoke.test.ts` and diff the fixture. See the build-order comment in
+[`src/index.ts`](src/index.ts).
 
 ## Boundary contract
 
