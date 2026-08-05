@@ -15,6 +15,9 @@ describe("resolveConfig", () => {
 				dbPath: "./data/audit-log.db",
 				pollIntervalMs: 5000,
 				eventsPageSize: 500,
+				listenPort: 8080,
+				retentionMaxRows: 0,
+				retentionMaxAgeMs: 0,
 			},
 		});
 	});
@@ -26,6 +29,9 @@ describe("resolveConfig", () => {
 			AUDIT_LOG_DB_PATH: "/var/lib/audit-log/audit.db",
 			AUDIT_LOG_POLL_INTERVAL_MS: "1000",
 			AUDIT_LOG_EVENTS_PAGE_SIZE: "100",
+			AUDIT_LOG_LISTEN_PORT: "9090",
+			AUDIT_LOG_RETENTION_MAX_ROWS: "50000",
+			AUDIT_LOG_RETENTION_MAX_AGE_MS: "86400000",
 		});
 		expect(resolved).toEqual({
 			ok: true,
@@ -35,6 +41,9 @@ describe("resolveConfig", () => {
 				dbPath: "/var/lib/audit-log/audit.db",
 				pollIntervalMs: 1000,
 				eventsPageSize: 100,
+				listenPort: 9090,
+				retentionMaxRows: 50000,
+				retentionMaxAgeMs: 86400000,
 			},
 		});
 	});
@@ -49,6 +58,16 @@ describe("resolveConfig", () => {
 	test("treats empty strings as missing", () => {
 		const resolved = resolveConfig({ WARREN_BASE_URL: "", WARREN_API_TOKEN: "tok" });
 		expect(resolved.ok).toBe(false);
+	});
+
+	test("rejects a negative retention bound", () => {
+		expect(() =>
+			resolveConfig({
+				WARREN_BASE_URL: "https://warren.example.com",
+				WARREN_API_TOKEN: "tok",
+				AUDIT_LOG_RETENTION_MAX_ROWS: "-5",
+			}),
+		).toThrow("AUDIT_LOG_RETENTION_MAX_ROWS must be a non-negative integer");
 	});
 
 	test("rejects a non-integer poll interval", () => {

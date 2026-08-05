@@ -13,7 +13,7 @@ at-least-once collection, idempotent replay.
 
 ## Status
 
-Audit store (plan step 3, warren-653a). The package polls `GET /runs`,
+Export and health surface (plan step 4, warren-9c7c). The package polls `GET /runs`,
 tails each run's NDJSON event stream with bounded `?since`/`?limit`
 pages, and checkpoints a durable per-run cursor in its own SQLite store
 — at-least-once delivery with resume across restarts. The normalizer
@@ -23,9 +23,16 @@ event types (`run.dispatched`, `run.started`, `run.terminal`,
 ([`src/audit-store.ts`](src/audit-store.ts)) applies them idempotently:
 every fact carries a deterministic dedupe key, so replaying the
 un-checkpointed tail after a kill is an exact no-op — no duplicate rows,
-no consumed ids, no timestamp drift. The export surface (step 4) and
-the container image (step 5) land in later plan steps. See the
-build-order comment in [`src/index.ts`](src/index.ts).
+no consumed ids, no timestamp drift. Step 4 adds the export surface
+([`src/server.ts`](src/server.ts)): `GET /audit-log.jsonl?since=<id>&limit=<n>`
+pages the append-only log oldest-first with no skips and no duplicates
+across page boundaries (`X-Audit-Log-Max-Id` lets an empty page
+checkpoint), and `GET /healthz` reports collector liveness and cursor
+lag (tracked vs undrained runs, last-cycle stats) without echoing
+credentials. Retention prunes oldest-first via the knobs below — a
+`since` cursor that falls behind the retention horizon sees a gap, not
+an error. The container image (step 5) lands in a later plan step. See
+the build-order comment in [`src/index.ts`](src/index.ts).
 
 ## Boundary contract
 
@@ -47,8 +54,12 @@ responses.
 | `AUDIT_LOG_DB_PATH` | no     | SQLite store path (default `./data/audit-log.db`) |
 | `AUDIT_LOG_POLL_INTERVAL_MS` | no | Delay between poll cycles (default `5000`) |
 | `AUDIT_LOG_EVENTS_PAGE_SIZE` | no | Events fetched per tail page (default `500`) |
+| `AUDIT_LOG_LISTEN_PORT` | no | Port for the export surface (default `8080`) |
+| `AUDIT_LOG_RETENTION_MAX_ROWS` | no | Keep at most this many audit rows, oldest pruned first (default `0` = unlimited) |
+| `AUDIT_LOG_RETENTION_MAX_AGE_MS` | no | Prune rows older than this many ms (default `0` = unlimited) |
 
-The listen port and retention knobs arrive with the steps that need them.
+The export surface is unauthenticated — warren has no extension-auth
+contract to delegate to (FRICTION §4). Front it with your own proxy.
 
 ## Development
 

@@ -143,6 +143,8 @@ export interface RunCollectorOptions extends CollectorDeps {
 	readonly sleep?: (ms: number) => Promise<void>;
 	/** Cycle-level failures (discovery unreachable) land here. */
 	readonly onCycleError?: (err: unknown) => void;
+	/** After every completed cycle — the health surface's liveness feed. */
+	readonly onCycle?: (stats: CycleStats) => void;
 }
 
 const defaultSleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
@@ -152,7 +154,8 @@ export async function runCollector(opts: RunCollectorOptions): Promise<void> {
 	const sleep = opts.sleep ?? defaultSleep;
 	while (opts.signal?.aborted !== true) {
 		try {
-			await collectOnce(opts);
+			const stats = await collectOnce(opts);
+			opts.onCycle?.(stats);
 		} catch (err) {
 			opts.onCycleError?.(err);
 		}

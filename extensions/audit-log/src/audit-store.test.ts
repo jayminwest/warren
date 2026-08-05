@@ -196,3 +196,46 @@ describe("AuditStore over a fake warren lifecycle", () => {
 		store.close();
 	});
 });
+
+describe("AuditStore retention", () => {
+	function storeWithRows(n: number): AuditStore {
+		const store = new AuditStore(":memory:", { now: CLOCK });
+		for (let i = 1; i <= n; i++) {
+			store.apply(
+				event("steer.sent", { body: `b${i}` }, { runId: `run-${i}`, seq: i, id: i }),
+			);
+		}
+		return store;
+	}
+
+	test("maxRows keeps the newest rows and deletes oldest-first", () => {
+		const store = storeWithRows(5); // 3 rows per run: dispatched + started + steered
+		const deleted = store.pruneRetention({ maxRows: 4 });
+		expect(deleted).toBe(11);
+		expect(store.count()).toBe(4);
+		expect(store.all().map((r) => r.id)).toEqual([12, 13, 14, 15]);
+		store.close();
+	});
+
+	test("maxAgeMs drops rows older than the horizon", () => {
+		const store = new AuditStore(":memory:", { now: CLOCK });
+		store.apply(event("steer.sent", {}, { seq: 1, ts: "2026-08-01T00:00:00Z" }));
+		store.apply(event("steer.sent", {}, { seq: 2, ts: "2026-08-04T11:59:00Z" }));
+		const deleted = store.pruneRetention({
+			maxAgeMs: 3_600_000,
+			now: new Date("2026-08-04T12:00:00Z"),
+		});
+		// First event's three rows (dispatched, started, steered) carry the
+		// old event ts and fall under the horizon; the second steer survives.
+		expect(deleted).toBe(3);
+		expect(store.all().map((r) => r.event)).toEqual(["run.steered"]);
+		store.close();
+	});
+
+	test("zero bounds disable retention entirely", () => {
+		const store = storeWithRows(3);
+		expect(store.pruneRetention({})).toBe(0);
+		expect(store.count()).toBe(9);
+		store.close();
+	});
+});

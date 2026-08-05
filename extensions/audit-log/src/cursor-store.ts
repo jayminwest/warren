@@ -103,6 +103,14 @@ export class CursorStore {
 		return row.n;
 	}
 
+	/** Runs not yet fully caught up — the lag number /healthz reports. */
+	undrainedRuns(): number {
+		const row = this.#db
+			.query("SELECT COUNT(*) AS n FROM run_cursors WHERE drained = 0")
+			.get() as { n: number };
+		return row.n;
+	}
+
 	close(): void {
 		this.#db.close();
 	}

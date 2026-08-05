@@ -176,6 +176,37 @@ export class AuditStore implements EventSink {
 		return row.m;
 	}
 
+	/**
+	 * Retention (step 4): delete the oldest rows beyond `maxRows` and/or
+	 * older than `maxAgeMs` relative to `now`. 0 disables a bound. Deleting
+	 * the oldest rows means a `since` cursor behind the horizon sees a gap,
+	 * not an error — the export surface documents this. Returns the number
+	 * of rows deleted.
+	 */
+	pruneRetention(opts: { maxRows?: number; maxAgeMs?: number; now?: Date }): number {
+		let deleted = 0;
+		const maxAgeMs = opts.maxAgeMs ?? 0;
+		if (maxAgeMs > 0) {
+			const horizon = (opts.now ?? this.#now()).getTime() - maxAgeMs;
+			const result = this.#db.run("DELETE FROM audit_rows WHERE at < ?", [
+				new Date(horizon).toISOString(),
+			]);
+			deleted += result.changes;
+		}
+		const maxRows = opts.maxRows ?? 0;
+		if (maxRows > 0) {
+			// Delete oldest-first beyond the cap, keeping the newest maxRows.
+			const result = this.#db.run(
+				`DELETE FROM audit_rows WHERE id <= (
+					SELECT COALESCE(MAX(id), 0) - ? FROM audit_rows
+				)`,
+				[maxRows],
+			);
+			deleted += result.changes;
+		}
+		return deleted;
+	}
+
 	count(): number {
 		const row = this.#db.query("SELECT COUNT(*) AS n FROM audit_rows").get() as { n: number };
 		return row.n;

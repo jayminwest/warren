@@ -64,6 +64,12 @@ per active run.
   flag rather than stated as a fact. None of these carries a transition
   timestamp of its own; the store uses the source event's `ts` where one
   exists and the collector's clock otherwise.
+- `[worked around]` **True lag is unknowable from outside.** Step 4's
+  `/healthz` can report tracked vs undrained runs and last-cycle stats,
+  but "events in warren not yet collected" is not computable: there is
+  no global high-water mark to compare a cursor against, because `seq`
+  is per-run and the runs list carries no event count. The health
+  surface reports what the extension can observe and says so.
 - `[worked around]` **Terminal runs keep answering the tail forever.**
   Nothing on the wire says "this run's event stream is complete" — the
   collector infers completeness from `run.state` being terminal on the
@@ -139,6 +145,20 @@ causation.
 
 ## 4. Packaging — shipping and running the extension
 
+- `[worked around]` **No auth contract for the extension's own
+  surface.** Step 4's export endpoint is unauthenticated — not by
+  choice but because there is nothing to delegate to. Warren cannot
+  mint a scoped credential for an extension's consumers, and the
+  extension cannot verify warren tokens without calling back into an
+  introspection endpoint that does not exist (`/whoami` verifies the
+  extension's OWN credential, not a third party's). The README tells
+  operators to front the surface with their own proxy.
+- `[worked around]` **Retention fights the export cursor.** An
+  append-only log paged by `?since=<id>` wants immutable history;
+  retention deletes the oldest rows, so a slow consumer's cursor falls
+  behind the horizon and sees a silent gap. Step 4 documents the gap
+  semantics rather than inventing a cursor-expiry signal the wire has
+  no vocabulary for.
 - `[open]` **No manifest format.** Nothing declares to warren "this
   container is an observer consuming the run lifecycle at protocol
   version X with config schema Y." This package will ship a README env
