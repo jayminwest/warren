@@ -217,9 +217,7 @@ export function composeBody(ctx: PrFragmentContext, overrides: PrTemplateOverrid
 
 	// Custom templates can still be larger than GitHub's limit. Keep the
 	// request safe even when there is no default commit fragment to shorten.
-	return body.length <= MAX_PR_BODY_LENGTH
-		? body
-		: `${body.slice(0, MAX_PR_BODY_LENGTH - 1)}…`;
+	return body.length <= MAX_PR_BODY_LENGTH ? body : `${body.slice(0, MAX_PR_BODY_LENGTH - 1)}…`;
 }
 
 /**
