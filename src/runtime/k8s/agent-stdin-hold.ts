@@ -29,9 +29,6 @@ import {
 	sleepUntil,
 } from "./agent-io.ts";
 
-/** Grace after the watchdog closes stdin before it hard-kills the child. */
-const STDIN_HOLD_KILL_GRACE_MS = 15_000;
-
 /**
  * The stdin lifecycle a stdin-held runtime needs on top of the plain pump loop.
  * `onOutput`/`onEvents` hang off the stdout pump; `start`/`stop` bracket the run.
@@ -91,8 +88,13 @@ export function createStdinHoldController(args: StdinHoldControllerArgs): StdinH
 		log,
 		isStdinClosed,
 		kill: proc.kill,
+		killGraceMs: env.stdinHoldKillGraceMs,
 		onTimeout: () => {
-			void closeStdinOnce();
+			// warren-9a4a: swallow a rejection here — closing the stdin of an
+			// already-dead child throws EPIPE, and an unhandled rejection inside
+			// the watchdog timer is fatal to the pod process (the sibling call in
+			// `stop()` already catches).
+			void closeStdinOnce().catch(() => {});
 		},
 	});
 
@@ -176,6 +178,8 @@ interface IdleWatchdog {
 
 interface IdleWatchdogArgs {
 	timeoutMs: number;
+	/** Grace between the stdin close and the hard kill (warren-9a4a env knob). */
+	killGraceMs: number;
 	runtimeId: string;
 	out: (line: string) => void;
 	log: (m: string) => void;
@@ -191,7 +195,7 @@ interface IdleWatchdogArgs {
  * so a hung inference can't pin the pod. `timeoutMs <= 0` disables it. (warren-7a43)
  */
 function createIdleWatchdog(args: IdleWatchdogArgs): IdleWatchdog {
-	const { timeoutMs, runtimeId, out, log, isStdinClosed, kill, onTimeout } = args;
+	const { timeoutMs, killGraceMs, runtimeId, out, log, isStdinClosed, kill, onTimeout } = args;
 	let idleTimer: ReturnType<typeof setTimeout> | undefined;
 	let killTimer: ReturnType<typeof setTimeout> | undefined;
 	const clear = (): void => {
@@ -210,7 +214,7 @@ function createIdleWatchdog(args: IdleWatchdogArgs): IdleWatchdog {
 			);
 			// Arm the hard-kill synchronously (so `clear()` can always cancel it) —
 			// it fires only if closing stdin doesn't produce a clean exit in time.
-			killTimer = setTimeout(() => kill?.(), STDIN_HOLD_KILL_GRACE_MS);
+			killTimer = setTimeout(() => kill?.(), killGraceMs);
 			onTimeout();
 		}, timeoutMs);
 	};

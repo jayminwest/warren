@@ -404,16 +404,19 @@ async function* openAndConsume(
  * arrives within `stallMs` — the half-open case (warren-029d). A FRESH timer
  * per pull means any delivered byte resets the window; `stallMs <= 0` disables
  * the guard entirely. On a trip the orphaned `queue.pull()` resolves later
- * (abort → `finish` → wake) with no consumer — harmless.
+ * (abort → `finish` → wake) with no consumer — harmless. A REJECTED pull
+ * resolves `LOG_STALL` and recovers through the same stall path (abort →
+ * probe → resume), never a fatal unhandled rejection (warren-9a4a).
  */
 function pullNext(queue: ChunkQueue, stallMs: number): Promise<QueueItem | typeof LOG_STALL> {
 	if (stallMs <= 0) return queue.pull();
 	return new Promise((resolve) => {
 		const timer = setTimeout(() => resolve(LOG_STALL), stallMs);
-		void queue.pull().then((item) => {
+		const done = (item: QueueItem | typeof LOG_STALL): void => {
 			clearTimeout(timer);
 			resolve(item);
-		});
+		};
+		void queue.pull().then(done, () => done(LOG_STALL));
 	});
 }
 

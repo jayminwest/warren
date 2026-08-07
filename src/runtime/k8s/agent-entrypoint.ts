@@ -38,6 +38,9 @@
  *      (the envelope shape here round-trips through `toNormalizedEvent`). The
  *      agent's own terminal envelope (claude `state_change`/`result`) rides this
  *      stream, which is how warren detects logical completion and drives reap.
+ *      An agent that exits WITHOUT one (a watchdog-killed pi, a crash) gets a
+ *      synthesized `agent_end` emitted post-exit so the run still terminalizes
+ *      instead of hanging `running` forever (warren-9a4a).
  *   4. On agent exit, run the finalize entrypoint in-process (`./finalize-
  *      entrypoint.ts`): it polls warren's parked reap intent, collects the
  *      workspace-dependent artifacts, and POSTs the `FinalizeResult`.
@@ -55,7 +58,13 @@
  * a real agent binary, or a real network.
  */
 
-import { AgentRegistry, type AgentRuntime, type SpawnCommand } from "@os-eco/burrow-cli";
+import {
+	AgentRegistry,
+	type AgentRuntime,
+	type RuntimeEvent,
+	type SpawnCommand,
+} from "@os-eco/burrow-cli";
+import { extractAgentEventEnvelope } from "../../core/event-envelope.ts";
 import {
 	type AgentInboxHttp,
 	type AgentSpawn,
@@ -87,6 +96,12 @@ export interface AgentEntrypointEnv {
 	frontmatter: Record<string, unknown> | undefined;
 	/** Poll interval for the steering-inbox drain (ms). */
 	inboxPollIntervalMs: number;
+	/**
+	 * Grace (ms) between the stdin-hold idle watchdog's stdin close and its
+	 * hard kill of the child (warren-9a4a). `0` kills immediately — mostly a
+	 * test knob so the watchdog path doesn't cost 15s per case.
+	 */
+	stdinHoldKillGraceMs: number;
 	/**
 	 * Watchdog for stdin-held runtimes (pi): if the child produces no stdout for
 	 * this many ms while stdin is still held open, warren closes stdin (nudging
@@ -154,6 +169,9 @@ export function parseAgentFrontmatter(
 /** Default stdin-hold idle watchdog: 30 min. */
 export const DEFAULT_STDIN_HOLD_IDLE_TIMEOUT_MS = 1_800_000;
 
+/** Default grace between the watchdog's stdin close and its hard kill: 15s. */
+export const DEFAULT_STDIN_HOLD_KILL_GRACE_MS = 15_000;
+
 /** Parse + validate the agent entrypoint env. Pure. */
 export function parseAgentEntrypointEnv(env: AgentEnvSource): AgentEntrypointEnv {
 	const apiUrlRaw = optional(env, "WARREN_API_URL");
@@ -170,6 +188,11 @@ export function parseAgentEntrypointEnv(env: AgentEnvSource): AgentEntrypointEnv
 			env,
 			"WARREN_AGENT_STDIN_HOLD_IDLE_MS",
 			DEFAULT_STDIN_HOLD_IDLE_TIMEOUT_MS,
+		),
+		stdinHoldKillGraceMs: nonNegativeIntEnv(
+			env,
+			"WARREN_AGENT_STDIN_KILL_GRACE_MS",
+			DEFAULT_STDIN_HOLD_KILL_GRACE_MS,
 		),
 	};
 }
@@ -202,6 +225,48 @@ export interface AgentEntrypointDeps {
 export interface AgentRunResult {
 	exitCode: number;
 	phase: "succeeded" | "failed";
+}
+
+/**
+ * True when a parsed runtime event is a terminal envelope — claude's `result`
+ * or pi's `agent_end` on the `state_change`/`system` carrier. This is the exact
+ * predicate the control plane's `detectRuntimeTerminal`
+ * (src/runs/stream/terminal-detect.ts) applies to the re-parsed stream, kept in
+ * sync by going through the same shared extractor
+ * (`src/core/event-envelope.ts`). (warren-9a4a)
+ */
+export function isTerminalEnvelope(ev: RuntimeEvent): boolean {
+	const env = extractAgentEventEnvelope(ev);
+	return env !== null && (env.type === "result" || env.type === "agent_end");
+}
+
+/**
+ * warren-9a4a: the agent exited without ever emitting a terminal envelope —
+ * synthesize the missing `agent_end` in-pod (called AFTER every other witness
+ * event, so those reach the log before the terminal signal). Emitted through
+ * `emitSystem`/`formatEventLine`, it carries the warren origin marker and
+ * passes both the provenance gate and `detectRuntimeTerminal` with no
+ * control-plane change; a non-zero exit marks the envelope failed so the run
+ * terminalizes truthfully instead of reading succeeded.
+ */
+function emitSynthesizedTerminalEnvelope(
+	out: (line: string) => void,
+	sawTerminalEnvelope: boolean,
+	exitCode: number,
+): void {
+	if (sawTerminalEnvelope) return;
+	emitSystem(out, "state_change", {
+		type: "agent_end",
+		synthesized: true,
+		reason: "agent_exit_without_terminal_envelope",
+		exitCode,
+		...(exitCode !== 0
+			? {
+					stopReason: "error",
+					errorMessage: `agent exited ${exitCode} without emitting a terminal envelope`,
+				}
+			: {}),
+	});
 }
 
 /**
@@ -267,7 +332,10 @@ export async function runAgent(
 			hold.onOutput(); // any output resets the idle watchdog
 			if (line.length === 0) continue;
 			const events = [...runtime.parseEvents(line, { burrow: ctx.burrow, run: ctx.run })];
-			for (const ev of events) out(formatEventLine(ev));
+			for (const ev of events) {
+				out(formatEventLine(ev));
+				if (isTerminalEnvelope(ev)) sawTerminalEnvelope = true;
+			}
 			await hold.onEvents(events);
 		}
 	};
@@ -278,6 +346,14 @@ export async function runAgent(
 		}
 	};
 
+	// warren-9a4a: track whether the agent's OWN stream carried a terminal
+	// envelope (`result` / `agent_end` on the state_change/system carrier — the
+	// exact shape `detectRuntimeTerminal` reads). A stdin-held runtime killed by
+	// the idle watchdog (or any crashed agent) exits without one, and the reap
+	// pipeline terminalizes ONLY on that envelope — without a synthesized
+	// fallback the run hangs in `running` while the pod polls finalize-intent
+	// forever.
+	let sawTerminalEnvelope = false;
 	let streamError: unknown;
 	let exitCode: number;
 	try {
@@ -306,6 +382,7 @@ export async function runAgent(
 			message: `event stream failed: ${streamError instanceof Error ? streamError.message : String(streamError)}`,
 		});
 	}
+	emitSynthesizedTerminalEnvelope(out, sawTerminalEnvelope, exitCode);
 	const phase = exitCode === 0 ? "succeeded" : "failed";
 	log(`agent-entrypoint: '${runtime.id}' exited ${exitCode} (${phase})`);
 	return { exitCode, phase };
