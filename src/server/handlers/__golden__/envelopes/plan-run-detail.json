@@ -1,0 +1,52 @@
+{
+	"status": 200,
+	"body": {
+		"planRun": {
+			"id": "planRun_golden7d84",
+			"planId": "pl-golden7d84",
+			"projectId": "project_golden7d84",
+			"agentName": "claude-code",
+			"promptTemplate": "work on sd {seed_id}",
+			"ref": null,
+			"providerOverride": null,
+			"modelOverride": null,
+			"dispatcherHandle": "operator",
+			"trigger": "manual",
+			"parentRunId": null,
+			"state": "queued",
+			"failureReason": null,
+			"createdAt": "2026-08-07T00:00:00.000Z",
+			"startedAt": null,
+			"endedAt": null
+		},
+		"children": [
+			{
+				"planRunId": "planRun_golden7d84",
+				"seq": 1,
+				"seedId": "wa-golden-a",
+				"runId": null,
+				"state": "pending",
+				"createdAt": "2026-08-07T00:00:00.000Z",
+				"updatedAt": "2026-08-07T00:00:00.000Z",
+				"startedAt": null,
+				"endedAt": null,
+				"prMergedAt": null,
+				"failureReason": null
+			},
+			{
+				"planRunId": "planRun_golden7d84",
+				"seq": 2,
+				"seedId": "wa-golden-b",
+				"runId": null,
+				"state": "pending",
+				"createdAt": "2026-08-07T00:00:00.000Z",
+				"updatedAt": "2026-08-07T00:00:00.000Z",
+				"startedAt": null,
+				"endedAt": null,
+				"prMergedAt": null,
+				"failureReason": null
+			}
+		],
+		"runs": []
+	}
+}

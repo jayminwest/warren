@@ -1,0 +1,43 @@
+{
+	"status": 200,
+	"body": {
+		"run": {
+			"id": "run_golden7d84",
+			"agentName": "claude-code",
+			"projectId": "project_golden7d84",
+			"burrowId": null,
+			"burrowRunId": null,
+			"workerId": null,
+			"seedId": null,
+			"renderedAgentJson": {
+				"frontmatter": {
+					"provider": "anthropic",
+					"model": "opus"
+				}
+			},
+			"state": "succeeded",
+			"failureReason": null,
+			"startedAt": "2026-08-07T00:00:00.000Z",
+			"endedAt": "2026-08-07T00:05:00.000Z",
+			"prompt": "pin the detail envelope",
+			"trigger": "manual",
+			"prUrl": null,
+			"targetBranch": null,
+			"salvageRef": null,
+			"salvagePath": null,
+			"costUsd": null,
+			"tokensInput": null,
+			"tokensOutput": null,
+			"tokensCacheRead": null,
+			"tokensCacheWrite": null,
+			"previewState": null,
+			"previewPort": null,
+			"previewStartedAt": null,
+			"previewLastHitAt": null,
+			"previewFailureMessage": null,
+			"mode": "batch",
+			"parentRunId": null,
+			"cloneKind": null
+		}
+	}
+}

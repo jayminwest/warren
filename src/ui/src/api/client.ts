@@ -243,8 +243,14 @@ export const runsApi = {
 			...(signal ? { signal } : {}),
 		});
 	},
-	get: (id: string, signal?: AbortSignal) =>
-		request<RunRow>(`/runs/${encodeURIComponent(id)}`, { ...(signal ? { signal } : {}) }),
+	// warren-7d84: `GET /runs/:id` wraps the row in `{run}` like every
+	// other detail envelope; the UI client unwraps it for callers.
+	get: async (id: string, signal?: AbortSignal) =>
+		(
+			await request<{ run: RunRow }>(`/runs/${encodeURIComponent(id)}`, {
+				...(signal ? { signal } : {}),
+			})
+		).run,
 	create: (input: CreateRunInput) =>
 		request<SpawnRunResponse>("/runs", { method: "POST", body: input }),
 	steer: (id: string, input: { body: string }) =>

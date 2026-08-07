@@ -12,6 +12,7 @@ import {
 	type CreateProjectInput,
 	type CreateRunInput,
 	type DispatchRunInput,
+	type GetRunResponse,
 	isTerminalPlanRunState,
 	isTerminalRunState,
 	type ListAgentsResponse,
@@ -221,7 +222,10 @@ export class WarrenClient {
 	}
 
 	async getRun(runId: string): Promise<RunRow> {
-		return this.request<RunRow>(`/runs/${encodeURIComponent(runId)}`);
+		// warren-7d84: `GET /runs/:id` wraps the row in `{run}` like every
+		// other detail envelope; the SDK unwraps it for callers.
+		const res = await this.request<GetRunResponse>(`/runs/${encodeURIComponent(runId)}`);
+		return res.run;
 	}
 
 	/**

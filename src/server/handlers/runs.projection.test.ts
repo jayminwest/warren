@@ -159,8 +159,10 @@ describe("GET /runs projections under WARREN_AUTH=public (warren-946f)", () => {
 		expect(run?.state).toBe("succeeded");
 	});
 
-	test("anonymous GET /runs/:id emits exactly the public field set", async () => {
-		const run = await get(`/runs/${runId}`);
+	test("anonymous GET /runs/:id wraps the public field set in {run} (warren-7d84)", async () => {
+		const body = await get(`/runs/${runId}`);
+		expect(Object.keys(body)).toEqual(["run"]);
+		const run = body.run as Record<string, unknown>;
 		expect(Object.keys(run).sort()).toEqual([...PUBLIC_RUN_FIELDS].sort());
 		for (const dropped of REDACTED_RUN_FIELDS) {
 			expect(run).not.toHaveProperty(dropped);
@@ -183,7 +185,9 @@ describe("GET /runs projections under WARREN_AUTH=public (warren-946f)", () => {
 		expect(Object.keys(list[0] ?? {}).sort()).toEqual(Object.keys(stored).sort());
 		expect(body.costTotalUsd).toBe(1.25);
 		expect(body.costPricedCount).toBe(1);
-		const detail = await get(`/runs/${runId}`, TOKEN);
+		const detailBody = await get(`/runs/${runId}`, TOKEN);
+		expect(Object.keys(detailBody)).toEqual(["run"]);
+		const detail = detailBody.run as Record<string, unknown>;
 		expect(Object.keys(detail).sort()).toEqual(Object.keys(stored).sort());
 		expect(detail.burrowId).toBe("bur_1");
 		expect(detail.renderedAgentJson).toEqual({

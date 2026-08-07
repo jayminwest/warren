@@ -193,7 +193,10 @@ export function getRunHandler(deps: ServerDeps): RouteHandler {
 		// warren-ab18: same compute-on-read fallback as the list handler
 		// so the RunDetail page shows cost for ghost / reboot-orphaned runs.
 		const run = await hydrateRunUsage(row, deps.repos.events);
-		return jsonResponse(200, projectRun(run, ctx.actor));
+		// warren-7d84: detail GETs wrap the resource, matching POST /runs
+		// ({run}) and the plan-runs family ({planRun, children, runs}) so
+		// consumers need no per-route envelope knowledge.
+		return jsonResponse(200, { run: projectRun(run, ctx.actor) });
 	};
 }
 

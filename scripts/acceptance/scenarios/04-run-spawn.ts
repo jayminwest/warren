@@ -176,7 +176,7 @@ export const scenario: Scenario = {
 
 		// GET /runs/:id returns the same row (sanity — no projection
 		// drift between createRunHandler and getRunHandler).
-		const r1Reread = await http.expectJson<RunRow>(
+		const { run: r1Reread } = await http.expectJson<{ run: RunRow }>(
 			"GET",
 			`/runs/${encodeURIComponent(r1.id)}`,
 			200,
@@ -226,7 +226,7 @@ export const scenario: Scenario = {
 		);
 
 		// 3. r1's frozen JSON is unchanged.
-		const r1AfterDrift = await http.expectJson<RunRow>(
+		const { run: r1AfterDrift } = await http.expectJson<{ run: RunRow }>(
 			"GET",
 			`/runs/${encodeURIComponent(r1.id)}`,
 			200,

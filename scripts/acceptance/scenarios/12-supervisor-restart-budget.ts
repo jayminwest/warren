@@ -189,7 +189,7 @@ export const scenario: Scenario = {
 			// 'running' or terminal-failed (the bridge dropped on burrow's
 			// death) — both shapes prove warren's persistence layer didn't
 			// drop the row.
-			const reread = await http.expectJson<RunRow>(
+			const { run: reread } = await http.expectJson<{ run: RunRow }>(
 				"GET",
 				`/runs/${encodeURIComponent(runId)}`,
 				200,

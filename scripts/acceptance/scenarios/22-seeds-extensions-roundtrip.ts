@@ -143,7 +143,7 @@ export const scenario: Scenario = {
 			"POST /runs: default trigger is 'manual' (writeSeedExtensions input)",
 		);
 
-		const reread = await http.expectJson<RunRow>(
+		const { run: reread } = await http.expectJson<{ run: RunRow }>(
 			"GET",
 			`/runs/${encodeURIComponent(happy.run.id)}`,
 			200,

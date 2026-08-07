@@ -47,7 +47,8 @@ function eventLine(seq: number, kind = "stdout"): string {
 }
 
 function runStateResponse(state: string): Response {
-	return new Response(JSON.stringify({ id: "run_abc", state }), {
+	// warren-7d84: `GET /runs/:id` wraps the row in `{run}`.
+	return new Response(JSON.stringify({ run: { id: "run_abc", state } }), {
 		status: 200,
 		headers: { "content-type": "application/json" },
 	});

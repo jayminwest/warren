@@ -188,6 +188,14 @@ export interface SpawnRunResponse {
 	};
 }
 
+/**
+ * `GET /runs/:id` response. Detail GETs wrap the resource (warren-7d84):
+ * `{run}` here, `{planRun, children, runs}` on `GET /plan-runs/:id`.
+ */
+export interface GetRunResponse {
+	run: RunRow;
+}
+
 export interface ListProjectsResponse {
 	projects: ProjectRow[];
 }

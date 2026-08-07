@@ -153,7 +153,7 @@ describe("WarrenClient.getRun + waitForRun", () => {
 		let observedUrl: string | undefined;
 		const stubFetch = stub(async (input) => {
 			observedUrl = String(input);
-			return jsonResponse(200, { id: "r 1", state: "running" });
+			return jsonResponse(200, { run: { id: "r 1", state: "running" } });
 		});
 		const c = new WarrenClient({
 			config: { baseUrl: "https://w.local" },
@@ -169,7 +169,7 @@ describe("WarrenClient.getRun + waitForRun", () => {
 		let idx = 0;
 		const stubFetch = stub(async () => {
 			const state = sequence[idx++] ?? "succeeded";
-			return jsonResponse(200, { id: "r1", state });
+			return jsonResponse(200, { run: { id: "r1", state } });
 		});
 		const c = new WarrenClient({
 			config: { baseUrl: "https://w.local" },
@@ -189,7 +189,7 @@ describe("WarrenClient.getRun + waitForRun", () => {
 		let calls = 0;
 		const stubFetch = stub(async () => {
 			calls++;
-			return jsonResponse(200, { id: "r1", state: "failed" });
+			return jsonResponse(200, { run: { id: "r1", state: "failed" } });
 		});
 		const c = new WarrenClient({
 			config: { baseUrl: "https://w.local" },
@@ -201,7 +201,7 @@ describe("WarrenClient.getRun + waitForRun", () => {
 	});
 
 	test("waitForRun throws WarrenClientError(408) on timeout", async () => {
-		const stubFetch = stub(async () => jsonResponse(200, { id: "r1", state: "running" }));
+		const stubFetch = stub(async () => jsonResponse(200, { run: { id: "r1", state: "running" } }));
 		const c = new WarrenClient({
 			config: { baseUrl: "https://w.local" },
 			fetch: stubFetch,
@@ -217,7 +217,7 @@ describe("WarrenClient.getRun + waitForRun", () => {
 	});
 
 	test("waitForRun aborts when signal fires", async () => {
-		const stubFetch = stub(async () => jsonResponse(200, { id: "r1", state: "running" }));
+		const stubFetch = stub(async () => jsonResponse(200, { run: { id: "r1", state: "running" } }));
 		const c = new WarrenClient({
 			config: { baseUrl: "https://w.local" },
 			fetch: stubFetch,
