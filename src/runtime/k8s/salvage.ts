@@ -11,8 +11,16 @@
  *     token and survives even a push-protection rejection (the bundle never
  *     touches origin).
  *   - `no_intent` — no reap intent ever arrived (control-plane restart severed
- *     the finalize loop). No `gitToken` exists in that window, so only the
- *     bundle capture + POST runs.
+ *     the finalize loop). No intent-carried `gitToken` exists in that window;
+ *     the rescue push falls back to the pod-carried `WARREN_GIT_TOKEN` (the
+ *     same `warren-git-token` Secret the init container clones with —
+ *     warren-6016), and the bundle capture + POST always run.
+ *
+ * warren-6016: before either capture form runs, a DIRTY tree is folded into a
+ * warren bookkeeping commit (`git add -A` + commit with the canonical bot
+ * identity from `src/bot-identity.ts`). Salvage exists precisely for the run
+ * that died with uncommitted work, and a `main..HEAD` bundle of a dirty tree
+ * captures nothing (`fatal: Refusing to create empty bundle`).
  *
  * Everything is pure over injectable git/fs seams (mirroring
  * `./finalize-collect.ts`), so it is unit-testable without a cluster or a real
@@ -21,6 +29,11 @@
 
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import {
+	gitRepoContextScrubEnv,
+	warrenCommitIdentityArgs,
+	warrenCommitIdentityEnv,
+} from "../../bot-identity.ts";
 import { MAX_SALVAGE_BUNDLE_BYTES, rescueBranchFor } from "../salvage.ts";
 import { authenticateOrigin, type FinalizeGitRunner } from "./finalize-collect.ts";
 
@@ -37,10 +50,11 @@ export interface CollectSalvageInput {
 	/** Base ref for the bundle range; undefined ⇒ bundle the full `HEAD`. */
 	readonly baseBranch: string | undefined;
 	/**
-	 * Short-lived push credential from the finalize intent (present only in the
-	 * `push_failed` window). Absent ⇒ the rescue push is skipped (there is no
-	 * credential in the pod to authenticate it with — by design, the agent
-	 * container never holds one).
+	 * Push credential for the rescue push. In the `push_failed` window this is
+	 * the intent's short-lived `gitToken`; in the `no_intent` window the caller
+	 * falls back to the pod-carried `WARREN_GIT_TOKEN` (warren-6016 — held by
+	 * the harness env, scrubbed from the agent child's spawn env, so the agent
+	 * itself still never holds it). Absent ⇒ the rescue push is skipped.
 	 */
 	readonly gitToken: string | undefined;
 }
@@ -51,6 +65,68 @@ export interface CollectSalvageDeps {
 	readonly readFileBytes: (path: string) => Promise<Uint8Array>;
 	/** Best-effort temp-bundle cleanup. */
 	readonly rm: (path: string) => Promise<void>;
+}
+
+/**
+ * warren-6016: fold a DIRTY workspace tree into a warren bookkeeping commit so
+ * the push/bundle captures have something to save. Salvage exists for exactly
+ * the run that settled (or died) with uncommitted work; without this step a
+ * `<base>..HEAD` bundle of a dirty tree refuses as empty and the rescue ref
+ * points at commits the agent never made. The commit is authored with the
+ * canonical bot identity (`src/bot-identity.ts`, Constitution Article VII —
+ * never re-spelled inline), `--no-verify` so a project's pre-commit gate can
+ * never block a salvage capture, and spawned with the repo-context scrub +
+ * identity env so an inherited `GIT_*` can neither redirect the commit nor
+ * re-author it. A clean tree, a failed probe, and a failed commit all degrade
+ * to a note (or silence) — NEVER a thrown error that would mask the captures.
+ */
+export async function commitUncommittedWork(
+	input: CollectSalvageInput,
+	git: FinalizeGitRunner,
+	notes: string[],
+): Promise<void> {
+	const status = await git(["status", "--porcelain"], {
+		cwd: input.workspacePath,
+		env: gitRepoContextScrubEnv(),
+	});
+	if (status.exitCode !== 0) {
+		notes.push(
+			`dirty-tree probe failed: ${status.stderr.trim() || status.stdout.trim() || "git status failed"}`,
+		);
+		return;
+	}
+	if (status.stdout.trim() === "") return; // clean tree — nothing to fold in
+	const add = await git(["add", "-A"], {
+		cwd: input.workspacePath,
+		env: gitRepoContextScrubEnv(),
+	});
+	if (add.exitCode !== 0) {
+		notes.push(
+			`dirty-tree staging (git add -A) failed: ${add.stderr.trim() || add.stdout.trim() || "git add failed"}`,
+		);
+		return;
+	}
+	const commit = await git(
+		[
+			...warrenCommitIdentityArgs(),
+			"commit",
+			// A salvage capture must never gate on the project's git hooks.
+			"--no-verify",
+			"-m",
+			`chore(warren): salvage uncommitted workspace work ${input.runId}`,
+		],
+		{
+			cwd: input.workspacePath,
+			env: { ...gitRepoContextScrubEnv(), ...warrenCommitIdentityEnv() },
+		},
+	);
+	if (commit.exitCode !== 0) {
+		notes.push(
+			`dirty-tree salvage commit failed: ${commit.stderr.trim() || commit.stdout.trim() || "git commit failed"}`,
+		);
+		return;
+	}
+	notes.push("uncommitted workspace work folded into a warren bookkeeping commit");
 }
 
 /**
@@ -144,6 +220,14 @@ export async function collectSalvage(
 	const notes: string[] = [];
 	let rescueRef: string | null = null;
 	let bundleBase64: string | null = null;
+	// warren-6016: commit a dirty tree FIRST so both captures see the work.
+	try {
+		await commitUncommittedWork(input, deps.git, notes);
+	} catch (err) {
+		notes.push(
+			`dirty-tree salvage commit errored: ${err instanceof Error ? err.message : String(err)}`,
+		);
+	}
 	try {
 		rescueRef = await pushRescueRef(input, deps.git, notes);
 	} catch (err) {

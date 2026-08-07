@@ -110,6 +110,72 @@ describe("runFinalizeEntrypoint salvage (warren-cd3b)", () => {
 		expect(calls.find((c) => c[0] === "bundle")?.[3]).toBe("main..HEAD");
 	});
 
+	test("warren-6016: the no_intent window authenticates the rescue push with the pod-carried WARREN_GIT_TOKEN", async () => {
+		const posted: SalvageEnvelope[] = [];
+		const http: FinalizeHttp = {
+			get: async () => ({ status: 200, body: { intent: null } }),
+			post: async (_url, _t, body) => {
+				posted.push(body as SalvageEnvelope);
+				return { status: 200 };
+			},
+		};
+		const { git, calls } = fakeGit({
+			"remote get-url": { stdout: "https://github.com/acme/widgets.git" },
+		});
+		let clock = 0;
+		const did = await runFinalizeEntrypoint(
+			{
+				...env,
+				WARREN_GIT_TOKEN: "pod-tok",
+				WARREN_FINALIZE_MAX_WAIT_MS: "1",
+				WARREN_SALVAGE_MAX_WAIT_MS: "10",
+			},
+			{
+				...salvageDeps,
+				http,
+				git,
+				fs: fakeFs(),
+				now: () => {
+					clock += 5;
+					return clock;
+				},
+			},
+		);
+		expect(did).toBe(false);
+		// The rescue push ran against an origin re-authenticated with the pod token.
+		const setUrls = calls.filter((c) => c[0] === "remote" && c[1] === "set-url");
+		expect(setUrls[0]?.[3]).toContain("pod-tok");
+		expect(setUrls[1]?.[3]).toBe("https://github.com/acme/widgets.git");
+		expect(posted[0]?.rescueRef).toBe("warren/rescue/run_x");
+		expect(posted[0]?.bundleBase64).not.toBeNull();
+	});
+
+	test("warren-6016: in the push_failed window the intent's short-lived token wins over the pod-carried one", async () => {
+		const http: FinalizeHttp = {
+			get: async () => ({ status: 200, body: { intent: intent() } }),
+			post: async () => ({ status: 200 }),
+		};
+		// Every push fails (primary + rescue) so the token choice is observable on
+		// the RESCUE push's origin re-authentication, not on success.
+		const { git, calls } = fakeGit({
+			push: { exitCode: 1, stderr: "declined" },
+			"remote get-url": { stdout: "https://github.com/acme/widgets.git" },
+		});
+		const did = await runFinalizeEntrypoint(
+			{ ...env, WARREN_GIT_TOKEN: "pod-tok" },
+			{ ...salvageDeps, http, git, fs: fakeFs() },
+		);
+		expect(did).toBe(true);
+		const setUrls = calls.filter((c) => c[0] === "remote" && c[1] === "set-url");
+		// Both the primary and the rescue push re-authed with the INTENT token.
+		for (const call of setUrls) {
+			if (call[3] === "https://github.com/acme/widgets.git") continue; // restore
+			expect(call[3]).toContain("push-tok");
+			expect(call[3]).not.toContain("pod-tok");
+		}
+		expect(setUrls.length).toBeGreaterThan(0);
+	});
+
 	test("a failed branch push ⇒ salvage POSTs BEFORE the finalize result", async () => {
 		const order: string[] = [];
 		const http: FinalizeHttp = {

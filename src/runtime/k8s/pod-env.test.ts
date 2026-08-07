@@ -101,3 +101,50 @@ describe("repo-cache wiring through buildRunPod (warren-e908, §4.3/R2)", () => 
 		expect(agent?.volumeMounts?.some((m) => m.name === REPO_CACHE_VOLUME_NAME)).toBe(false);
 	});
 });
+
+describe("agent-container env (warren-6016)", () => {
+	test("WARREN_GIT_TOKEN rides as an optional secretKeyRef for the salvage window", () => {
+		const agent = buildRunPod(baseSpec(), config).spec?.containers?.[0];
+		const token = (agent?.env ?? []).find((e) => e.name === "WARREN_GIT_TOKEN");
+		expect(token?.valueFrom?.secretKeyRef).toEqual({
+			name: config.gitTokenSecret.name,
+			key: config.gitTokenSecret.key,
+			optional: true,
+		});
+	});
+
+	test("a domain-supplied WARREN_GIT_TOKEN is not shadowed by the secret ref", () => {
+		const pod = buildRunPod(
+			baseSpec({ env: { WARREN_API_TOKEN: "tok", WARREN_GIT_TOKEN: "inline-tok" } }),
+			config,
+		);
+		const token = (pod.spec?.containers?.[0]?.env ?? []).filter(
+			(e) => e.name === "WARREN_GIT_TOKEN",
+		);
+		expect(token).toHaveLength(1);
+		expect(token[0]?.value).toBe("inline-tok");
+		expect(token[0]?.valueFrom).toBeUndefined();
+	});
+
+	test("the operator bot-identity override threads onto the agent env, both halves or nothing", () => {
+		const withIdentity = buildRunPod(
+			baseSpec(),
+			resolveK8sPodConfig({ WARREN_BOT_NAME: "acme-bot", WARREN_BOT_EMAIL: "bot@acme.example" }),
+		);
+		const env = Object.fromEntries(
+			(withIdentity.spec?.containers?.[0]?.env ?? []).map((e) => [e.name, e.value]),
+		);
+		expect(env.WARREN_BOT_NAME).toBe("acme-bot");
+		expect(env.WARREN_BOT_EMAIL).toBe("bot@acme.example");
+		// A half-set pair is ignored (mirrors resolveWarrenBotIdentity).
+		const halfSet = buildRunPod(baseSpec(), resolveK8sPodConfig({ WARREN_BOT_NAME: "acme-bot" }));
+		const halfNames = (halfSet.spec?.containers?.[0]?.env ?? []).map((e) => e.name);
+		expect(halfNames).not.toContain("WARREN_BOT_NAME");
+		expect(halfNames).not.toContain("WARREN_BOT_EMAIL");
+		// Unset: neither var rides the pod env; the canonical default applies.
+		const defaultNames = (buildRunPod(baseSpec(), config).spec?.containers?.[0]?.env ?? []).map(
+			(e) => e.name,
+		);
+		expect(defaultNames).not.toContain("WARREN_BOT_NAME");
+	});
+});

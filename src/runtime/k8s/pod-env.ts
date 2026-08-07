@@ -39,7 +39,11 @@ export function serviceDnsCallbackUrl(config: K8sPodConfig): string {
 // `WARREN_K8S_*_SECRET_NAME` / `_KEY` env. Provisioned by the manifests step
 // (see deploy/k8s/base/secrets.yaml); all three live in the RUNS namespace.
 
-/** Init container's `WARREN_GIT_TOKEN` source (public repos clone without it). */
+/**
+ * `WARREN_GIT_TOKEN` source — the init container clones with it, and (warren-6016)
+ * the agent container's harness holds it for the salvage-window rescue push
+ * (scrubbed from the agent child's env; public repos run without it).
+ */
 export const DEFAULT_K8S_GIT_SECRET_NAME = "warren-git-token";
 export const DEFAULT_K8S_GIT_SECRET_KEY = "token";
 /** Agent container's `ANTHROPIC_API_KEY` source — from a Secret, NOT the control
@@ -84,6 +88,21 @@ export function resolveRepoCacheConfig(
 		claimName: claim,
 		mountPath: path === undefined || path === "" ? DEFAULT_REPO_CACHE_MOUNT_PATH : path,
 	};
+}
+
+/** Valid K8s `imagePullPolicy` values; anything else is ignored (field omitted). */
+const IMAGE_PULL_POLICIES = new Set(["Always", "IfNotPresent", "Never"]);
+
+/**
+ * Resolve `WARREN_K8S_IMAGE_PULL_POLICY` to a valid K8s `imagePullPolicy`, or
+ * `undefined` (omit the field ⇒ K8s default). A blank/missing/invalid value maps
+ * to `undefined` rather than propagating an invalid policy the API would reject.
+ * (Lives here so `pod-spec.ts` stays under the file-size budget.)
+ */
+export function pickImagePullPolicy(env: K8sPodConfigEnv): string | undefined {
+	const raw = env.WARREN_K8S_IMAGE_PULL_POLICY?.trim();
+	if (raw === undefined || raw === "") return undefined;
+	return IMAGE_PULL_POLICIES.has(raw) ? raw : undefined;
 }
 
 /**
@@ -223,12 +242,37 @@ export function buildAgentEnv(spec: RunSpec, config: K8sPodConfig): V1EnvVar[] {
 		[ENV_PROMPT]: spec.prompt,
 		// warren-cd3b: the in-pod salvage (finalize-entrypoint) bundles
 		// `<base>..HEAD` and labels the envelope with the run branch. Neither is
-		// a credential — the push token stays out of this env by design.
+		// a credential.
 		[ENV_BRANCH]: spec.branch,
 		[ENV_BASE_BRANCH]: spec.baseBranch,
 	};
 	if (spec.metadata !== undefined) plain[ENV_AGENT_METADATA] = JSON.stringify(spec.metadata);
+	// warren-6016: thread the operator's bookkeeping-bot identity override so
+	// the in-pod salvage commit resolves the SAME spelling the control plane's
+	// reap commits use (Article VII — the resolver in src/bot-identity.ts reads
+	// these off the pod env; a half-set pair never reaches the pod).
+	if (config.botIdentity !== undefined) {
+		plain.WARREN_BOT_NAME = config.botIdentity.name;
+		plain.WARREN_BOT_EMAIL = config.botIdentity.email;
+	}
 	const vars: V1EnvVar[] = Object.entries(plain).map(([name, value]) => ({ name, value }));
+	// warren-6016: the push token rides the agent CONTAINER env (same Secret
+	// the init container clones with) so the finalize/salvage window can
+	// authenticate a rescue push even when no reap intent ever parked one. The
+	// blast-radius posture is preserved for the agent itself: the entrypoint
+	// scrubs this key from the agent child's spawn env (agent-io.ts).
+	if (spec.env.WARREN_GIT_TOKEN === undefined) {
+		vars.push({
+			name: "WARREN_GIT_TOKEN",
+			valueFrom: {
+				secretKeyRef: {
+					name: config.gitTokenSecret.name,
+					key: config.gitTokenSecret.key,
+					optional: true,
+				},
+			},
+		});
+	}
 	if (spec.env.ANTHROPIC_API_KEY === undefined) {
 		vars.push({
 			name: "ANTHROPIC_API_KEY",

@@ -37,7 +37,11 @@
  *
  * The push credential arrives IN the intent (`gitToken`) — fetched over the
  * authenticated callback after the agent exited — so a compromised agent
- * never held it (`provider.ts` decision).
+ * never held it (`provider.ts` decision). warren-6016 adds a pod-carried
+ * fallback (`WARREN_GIT_TOKEN` off the `warren-git-token` Secret) for the
+ * salvage windows an intent never reaches; the harness holds it, and the
+ * agent child is still spawned with it scrubbed (`agent-io.ts`), so the
+ * blast-radius posture is unchanged for the agent itself.
  */
 
 import { readdir as nodeReaddir, readFile as nodeReadFile, rm as nodeRm } from "node:fs/promises";
@@ -46,13 +50,9 @@ import {
 	type FinalizeFs,
 	type FinalizeGitRunner,
 } from "./finalize-collect.ts";
-import type {
-	FinalizeResultEnvelope,
-	InPodFinalizeIntent,
-	SalvageEnvelope,
-} from "./finalize-wire.ts";
+import type { FinalizeResultEnvelope, InPodFinalizeIntent } from "./finalize-wire.ts";
 import { IN_POD_FINALIZE_WIRE_VERSION } from "./finalize-wire.ts";
-import { collectSalvage } from "./salvage.ts";
+import { salvageAndPost } from "./salvage-post.ts";
 
 /* -------------------------------------------------------------------------- */
 /* Env                                                                        */
@@ -67,6 +67,16 @@ export interface FinalizeEntrypointEnv {
 	baseBranch: string | undefined;
 	/** The run's own branch (WARREN_BRANCH); surfaced on the salvage envelope. */
 	branch: string | undefined;
+	/**
+	 * Pod-carried push credential (warren-6016) — `WARREN_GIT_TOKEN`, falling
+	 * back to `GITHUB_TOKEN`, the same resolution `provider.resolvePushToken`
+	 * applies to the reap push. Sourced from the `warren-git-token` Secret on
+	 * the agent container and held ONLY by this harness (the agent child spawns
+	 * with it scrubbed — see `agent-io.ts`). It is the salvage window's
+	 * fallback credential: an intent-carried `gitToken` always wins; this one
+	 * covers the `no_intent` windows, where no intent ever parked a token.
+	 */
+	gitToken: string | undefined;
 	/** Poll interval for the intent fetch (ms). */
 	pollIntervalMs: number;
 	/**
@@ -132,6 +142,7 @@ export function parseFinalizeEntrypointEnv(env: FinalizeEnvSource): FinalizeEntr
 		workspacePath: env.WARREN_WORKSPACE_PATH?.trim() || "/workspace",
 		baseBranch: env.WARREN_BASE_BRANCH?.trim() || undefined,
 		branch: env.WARREN_BRANCH?.trim() || undefined,
+		gitToken: env.WARREN_GIT_TOKEN?.trim() || env.GITHUB_TOKEN?.trim() || undefined,
 		pollIntervalMs: intEnv(env, "WARREN_FINALIZE_POLL_INTERVAL_MS", 2_000, 1),
 		maxWaitMs: intEnv(env, "WARREN_FINALIZE_MAX_WAIT_MS", DEFAULT_FINALIZE_MAX_WAIT_MS, 1),
 		earlySalvageMs: intEnv(env, "WARREN_FINALIZE_EARLY_SALVAGE_MS", 300_000, 0),
@@ -169,6 +180,9 @@ export interface FinalizeEntrypointDeps {
 const defaultGit: FinalizeGitRunner = async (args, opts) => {
 	const proc = Bun.spawn(["git", ...args], {
 		cwd: opts?.cwd,
+		// warren-6016: an `undefined` overlay value REMOVES the key (the
+		// repo-context scrub a warren-authored commit spawns with).
+		...(opts?.env !== undefined ? { env: applyGitEnvOverlay(opts.env) } : {}),
 		stdout: "pipe",
 		stderr: "pipe",
 	});
@@ -179,6 +193,24 @@ const defaultGit: FinalizeGitRunner = async (args, opts) => {
 	]);
 	return { exitCode, stdout, stderr };
 };
+
+/**
+ * Merge a git-spawn env overlay over the process env: defined values set,
+ * `undefined` values delete (warren-6016). The overlay exists so a
+ * warren-authored commit can pin its identity env AND scrub the inherited
+ * `GIT_*` repo-context family (`src/bot-identity.ts`).
+ */
+function applyGitEnvOverlay(overlay: Record<string, string | undefined>): Record<string, string> {
+	const env: Record<string, string> = {};
+	for (const [key, value] of Object.entries(process.env)) {
+		if (value !== undefined) env[key] = value;
+	}
+	for (const [key, value] of Object.entries(overlay)) {
+		if (value === undefined) delete env[key];
+		else env[key] = value;
+	}
+	return env;
+}
 
 const defaultFs: FinalizeFs = {
 	readFile: (path) => nodeReadFile(path, "utf8"),
@@ -324,83 +356,6 @@ export async function postResultWithRetry(
 		}
 	}
 	log(`finalize-entrypoint: result POST gave up after ${env.postMaxAttempts} attempts`);
-	return false;
-}
-
-/**
- * Salvage-before-exit (warren-cd3b): capture the workspace's committed work
- * (rescue-ref push when a credential is available + a git bundle) and POST it
- * to `POST /runs/:id/salvage` BEFORE the container exits and the `emptyDir`
- * dies with it. Retried until `deadlineMs` of wall-clock budget is spent — in
- * the `no_intent` window that budget (`salvageMaxWaitMs`) is sized to outlast
- * a control-plane rollout; in the `push_failed` window warren is demonstrably
- * reachable so the standard bounded retry applies. `bounded` forces that
- * bounded-attempt budget for a `no_intent` post too (the warren-5ea1 EARLY
- * salvage, which must not stall the intent poll). Best-effort: never throws,
- * so a salvage failure can never mask the finalize path it rode in on.
- */
-export async function salvageAndPost(
-	env: FinalizeEntrypointEnv,
-	http: FinalizeHttp,
-	sleep: (ms: number) => Promise<void>,
-	now: () => number,
-	log: (m: string) => void,
-	trigger: SalvageEnvelope["trigger"],
-	gitToken: string | undefined,
-	git: FinalizeGitRunner,
-	readFileBytes: (path: string) => Promise<Uint8Array>,
-	rm: (path: string) => Promise<void>,
-	bounded?: boolean,
-): Promise<boolean> {
-	const salvage = await collectSalvage(
-		{
-			runId: env.runId,
-			workspacePath: env.workspacePath,
-			baseBranch: env.baseBranch,
-			gitToken,
-		},
-		{ git, readFileBytes, rm },
-	);
-	if (salvage.rescueRef === null && salvage.bundleBase64 === null) {
-		log(`finalize-entrypoint: salvage (${trigger}) captured nothing: ${salvage.notes.join("; ")}`);
-	}
-	const envelope: SalvageEnvelope = {
-		version: IN_POD_FINALIZE_WIRE_VERSION,
-		trigger,
-		rescueRef: salvage.rescueRef,
-		bundleBase64: salvage.bundleBase64,
-		branch: env.branch ?? null,
-		baseBranch: env.baseBranch ?? null,
-		notes: salvage.notes,
-	};
-	const url = `${env.apiUrl}/runs/${env.runId}/salvage`;
-	const deadline = now() + (trigger === "no_intent" ? env.salvageMaxWaitMs : 0);
-	// Bounded attempts when warren is reachable; wall-clock deadline otherwise.
-	const exhausted = (attempt: number): boolean =>
-		trigger === "push_failed" || bounded === true
-			? attempt >= env.postMaxAttempts
-			: now() >= deadline;
-	let backoff = env.postRetryBaseMs;
-	for (let attempt = 1; ; attempt += 1) {
-		let accepted = false;
-		try {
-			accepted = postAccepted((await http.post(url, env.apiToken, envelope)).status);
-		} catch (err) {
-			log(
-				`finalize-entrypoint: salvage POST attempt ${attempt} failed (${err instanceof Error ? err.message : String(err)})`,
-			);
-		}
-		if (accepted) {
-			log(
-				`finalize-entrypoint: salvage (${trigger}) delivered on attempt ${attempt} (rescueRef=${salvage.rescueRef}, bundle=${salvage.bundleBase64 !== null})`,
-			);
-			return true;
-		}
-		if (exhausted(attempt)) break;
-		await sleep(backoff);
-		backoff *= 2;
-	}
-	log(`finalize-entrypoint: salvage (${trigger}) POST gave up; work may be unrecoverable`);
 	return false;
 }
 

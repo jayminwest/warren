@@ -258,6 +258,18 @@ forms:
 1. **Rescue ref** — push `HEAD` to `warren/rescue/<runId>` on origin. Recovery is one `git fetch`. Push protection can refuse this push too.
 2. **Git bundle** — `git bundle create <base>..HEAD` at `<dataDir>/salvage/<runId>.bundle`. The bundle never touches origin, so push protection cannot block it.
 
+Under K8s, salvage first folds a dirty tree into a warren bookkeeping commit
+with `git add -A` and the canonical bot identity (warren-6016). A run that
+died with uncommitted work is exactly the case salvage exists for. A range
+bundle over a dirty tree refuses as empty.
+
+The in-pod rescue push authenticates with the intent-carried `gitToken` when
+one parked, else with the pod-carried `WARREN_GIT_TOKEN` from the same
+`warren-git-token` Secret the init container clones with.
+The harness alone holds that credential.
+The entrypoint spawns the agent child with the token scrubbed, so the agent
+itself never holds a push token.
+
 The runtime split mirrors `finalize` itself.
 
 - **LocalProvider:** the salvage step (`src/runs/reap/salvage.ts`) runs inside reap before `runWorkspaceDestroy`. A captured work product lifts the old preserve-the-workspace skip. A total failure keeps the skip and emits `reap.workspace_salvage_failed`.

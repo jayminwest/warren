@@ -37,7 +37,17 @@ const SEEDS_PLANS_REL = ".seeds/plans.jsonl";
 
 export type FinalizeGitRunner = (
 	args: string[],
-	opts?: { cwd?: string; timeoutMs?: number },
+	opts?: {
+		cwd?: string;
+		timeoutMs?: number;
+		/**
+		 * Env overlay for the spawn (warren-6016): an `undefined` value REMOVES
+		 * the key from the inherited environment (the `gitRepoContextScrubEnv()`
+		 * posture a warren-authored commit pairs with `warrenCommitIdentityEnv()`).
+		 * Absent ⇒ the child inherits the process env unchanged.
+		 */
+		env?: Record<string, string | undefined>;
+	},
 ) => Promise<{ exitCode: number; stdout: string; stderr: string }>;
 
 export interface FinalizeFs {

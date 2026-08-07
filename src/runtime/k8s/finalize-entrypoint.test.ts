@@ -81,6 +81,28 @@ describe("parseFinalizeEntrypointEnv", () => {
 	test("throws on a missing required var", () => {
 		expect(() => parseFinalizeEntrypointEnv({ WARREN_RUN_ID: "run_x" })).toThrow(/WARREN_API_URL/);
 	});
+
+	test("warren-6016: the pod-carried git token resolves WARREN_GIT_TOKEN then GITHUB_TOKEN", () => {
+		const required = {
+			WARREN_RUN_ID: "run_x",
+			WARREN_API_URL: "http://warren:8080",
+			WARREN_API_TOKEN: "tok",
+		};
+		expect(parseFinalizeEntrypointEnv(required).gitToken).toBeUndefined();
+		expect(
+			parseFinalizeEntrypointEnv({ ...required, WARREN_GIT_TOKEN: " pod-tok " }).gitToken,
+		).toBe("pod-tok");
+		// GITHUB_TOKEN is the fallback only — a set WARREN_GIT_TOKEN wins.
+		expect(parseFinalizeEntrypointEnv({ ...required, GITHUB_TOKEN: "gh" }).gitToken).toBe("gh");
+		expect(
+			parseFinalizeEntrypointEnv({ ...required, WARREN_GIT_TOKEN: "pod", GITHUB_TOKEN: "gh" })
+				.gitToken,
+		).toBe("pod");
+		expect(
+			parseFinalizeEntrypointEnv({ ...required, WARREN_GIT_TOKEN: "  ", GITHUB_TOKEN: "" })
+				.gitToken,
+		).toBeUndefined();
+	});
 });
 
 describe("countJsonlRecords", () => {

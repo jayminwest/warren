@@ -53,6 +53,7 @@ import {
 	DEFAULT_K8S_GIT_SECRET_NAME,
 	DEFAULT_K8S_OPENROUTER_SECRET_KEY,
 	DEFAULT_K8S_OPENROUTER_SECRET_NAME,
+	pickImagePullPolicy,
 	resolveRepoCacheConfig,
 } from "./pod-env.ts";
 import {
@@ -204,8 +205,16 @@ export interface K8sPodConfig {
 	network: NetworkPolicy;
 	/** In-cluster Service DNS coordinates for the agent's warren callback (§6.3). */
 	callback: { service: string; namespace: string; port: string };
-	/** K8s Secret the init container's git token is sourced from (§6.3). */
+	/** K8s Secret the git token is sourced from (§6.3) — init-container clone +
+	 * the agent container's salvage-window fallback credential (warren-6016). */
 	gitTokenSecret: { name: string; key: string };
+	/**
+	 * Operator-overridden bookkeeping-bot identity (`WARREN_BOT_NAME` +
+	 * `WARREN_BOT_EMAIL`, both-or-nothing), threaded onto the agent container
+	 * env so the in-pod salvage commit spells it the control plane's way
+	 * (Article VII; warren-6016). Absent ⇒ the canonical default applies.
+	 */
+	botIdentity?: { name: string; email: string };
 	/** Agent-container API-key Secrets: `ANTHROPIC_API_KEY` / `OPENROUTER_API_KEY` (§6.3). */
 	anthropicSecret: { name: string; key: string };
 	openrouterSecret: { name: string; key: string };
@@ -310,25 +319,17 @@ export function resolveK8sPodConfig(
 	};
 	const sa = env.WARREN_K8S_SERVICE_ACCOUNT?.trim();
 	if (sa !== undefined && sa !== "") config.serviceAccountName = sa;
+	// warren-6016: both halves or nothing, mirroring resolveWarrenBotIdentity.
+	const botName = env.WARREN_BOT_NAME?.trim();
+	const botEmail = env.WARREN_BOT_EMAIL?.trim();
+	if (botName !== undefined && botName !== "" && botEmail !== undefined && botEmail !== "") {
+		config.botIdentity = { name: botName, email: botEmail };
+	}
 	const pullPolicy = pickImagePullPolicy(env);
 	if (pullPolicy !== undefined) config.imagePullPolicy = pullPolicy;
 	const repoCache = resolveRepoCacheConfig(env);
 	if (repoCache !== undefined) config.repoCache = repoCache;
 	return config;
-}
-
-/** Valid K8s `imagePullPolicy` values; anything else is ignored (field omitted). */
-const IMAGE_PULL_POLICIES = new Set(["Always", "IfNotPresent", "Never"]);
-
-/**
- * Resolve `WARREN_K8S_IMAGE_PULL_POLICY` to a valid K8s `imagePullPolicy`, or
- * `undefined` (omit the field ⇒ K8s default). A blank/missing/invalid value maps
- * to `undefined` rather than propagating an invalid policy the API would reject.
- */
-function pickImagePullPolicy(env: K8sPodConfigEnv): string | undefined {
-	const raw = env.WARREN_K8S_IMAGE_PULL_POLICY?.trim();
-	if (raw === undefined || raw === "") return undefined;
-	return IMAGE_PULL_POLICIES.has(raw) ? raw : undefined;
 }
 
 // --- Name sanitization -----------------------------------------------------

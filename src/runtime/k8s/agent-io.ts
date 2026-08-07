@@ -231,10 +231,39 @@ export function sleepUntil(ms: number, signal: AbortSignal): Promise<void> {
 /* Default spawn (Bun) + default HTTP (fetch)                                  */
 /* -------------------------------------------------------------------------- */
 
+/**
+ * Harness-only env keys the AGENT child must never inherit (warren-6016). The
+ * push credential rides the agent CONTAINER env (from the `warren-git-token`
+ * Secret) so the finalize/salvage window can authenticate a rescue push even
+ * when no reap intent ever parked one — but the blast-radius rule "a
+ * compromised agent never holds the push token" still holds for the agent
+ * process itself, so the entrypoint spawns the agent with these scrubbed. A
+ * runtime's own `command.env` may still set them explicitly (warren-controlled).
+ */
+const AGENT_SCRUBBED_ENV_KEYS: readonly string[] = ["WARREN_GIT_TOKEN", "GITHUB_TOKEN"];
+
+/**
+ * The env the agent child spawns with: the inherited (container) env minus the
+ * harness-only credentials, plus the runtime's own `command.env` overrides.
+ * Pure so the scrub is unit-testable without spawning a process.
+ */
+export function agentChildEnv(
+	inherited: Record<string, string | undefined>,
+	commandEnv?: Record<string, string>,
+): Record<string, string> {
+	const env: Record<string, string> = {};
+	for (const [key, value] of Object.entries(inherited)) {
+		if (value === undefined || AGENT_SCRUBBED_ENV_KEYS.includes(key)) continue;
+		env[key] = value;
+	}
+	for (const [key, value] of Object.entries(commandEnv ?? {})) env[key] = value;
+	return env;
+}
+
 export const defaultSpawn: AgentSpawn = async (command, opts) => {
 	const proc = Bun.spawn(command.argv, {
 		cwd: opts.cwd,
-		env: { ...process.env, ...(command.env ?? {}) },
+		env: agentChildEnv(process.env, command.env),
 		stdin: "pipe",
 		stdout: "pipe",
 		stderr: "pipe",
