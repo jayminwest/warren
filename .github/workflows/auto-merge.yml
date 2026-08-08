@@ -9,10 +9,13 @@ name: auto-merge
 # the chosen merge method — keeps main history linear, drops the
 # burrow/run_xxx branch noise from agent-opened PRs.
 #
-# Uses AUTO_MERGE_PAT (not GITHUB_TOKEN) so that the resulting push to
-# main triggers downstream workflows (CI, Release). GITHUB_TOKEN-authored
-# pushes are deliberately suppressed by GitHub to prevent recursive loops.
-# See seed warren-a2dc.
+# Uses a GitHub App installation token (not GITHUB_TOKEN) so that the
+# resulting push to main triggers downstream workflows (CI, Release).
+# GITHUB_TOKEN-authored pushes are deliberately suppressed by GitHub to
+# prevent recursive loops (seed warren-a2dc). The token is minted fresh
+# per run from AUTO_MERGE_APP_ID (repo variable) + AUTO_MERGE_APP_PRIVATE_KEY
+# (secret), so there is no expiring PAT to rotate — the static
+# AUTO_MERGE_PAT that silently died on 2026-08-07 is retired (warren-2565).
 
 on:
   pull_request:
@@ -92,9 +95,17 @@ jobs:
             echo "Article IX: no protected paths in the diff — auto-merge may be enabled."
           fi
 
+      - name: Mint app installation token
+        if: steps.protected.outputs.hit == 'false'
+        id: app-token
+        uses: actions/create-github-app-token@v3.2.0
+        with:
+          app-id: ${{ vars.AUTO_MERGE_APP_ID }}
+          private-key: ${{ secrets.AUTO_MERGE_APP_PRIVATE_KEY }}
+
       - name: Enable auto-merge (squash)
         if: steps.protected.outputs.hit == 'false'
         env:
-          GH_TOKEN: ${{ secrets.AUTO_MERGE_PAT }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
           PR_URL: ${{ github.event.pull_request.html_url }}
         run: gh pr merge --auto --squash "$PR_URL"

@@ -16,8 +16,10 @@ name: bundle-size-autoheal
 # and the job exits without touching anything — so it never masks non-bundle
 # failures and never loops (an unchanged measurement yields an unchanged budget).
 #
-# Uses AUTO_MERGE_PAT (not GITHUB_TOKEN) so the heal commit re-triggers CI;
-# GITHUB_TOKEN-authored pushes are suppressed by GitHub to avoid recursion.
+# Uses a GitHub App installation token (not GITHUB_TOKEN) so the heal commit
+# re-triggers CI; GITHUB_TOKEN-authored pushes are suppressed by GitHub to
+# avoid recursion. Minted per run from AUTO_MERGE_APP_ID +
+# AUTO_MERGE_APP_PRIVATE_KEY — same app as auto-merge.yml, no PAT to rotate.
 # NOTE: workflow_run jobs run from the DEFAULT branch's copy of this file, so
 # this only takes effect once merged to main.
 
@@ -40,9 +42,16 @@ jobs:
     env:
       HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
     steps:
+      - name: Mint app installation token
+        id: app-token
+        uses: actions/create-github-app-token@v3.2.0
+        with:
+          app-id: ${{ vars.AUTO_MERGE_APP_ID }}
+          private-key: ${{ secrets.AUTO_MERGE_APP_PRIVATE_KEY }}
+
       - uses: actions/checkout@v7.0.1
         with:
-          token: ${{ secrets.AUTO_MERGE_PAT }}
+          token: ${{ steps.app-token.outputs.token }}
           ref: ${{ github.event.workflow_run.head_branch }}
           fetch-depth: 0
 

@@ -1,13 +1,14 @@
 import { describe, expect, test } from "bun:test";
-import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { load } from "js-yaml";
 
 // Guards for warren-8b5f: the release job must be at least as strict as CI,
 // must refuse to publish a release with no curated CHANGELOG section, and must
-// keep a heartbeat on AUTO_MERGE_PAT — the secret whose silent expiry stops
-// merges to main and therefore stops releases, with no failed run to notice.
+// keep a heartbeat on the auto-merge app credential — the credential whose
+// silent death stops merges to main and therefore stops releases, with no
+// failed run to notice.
 //
 // Workflows can't run locally, so these assert on the parsed YAML plus direct
 // execution of the shell the workflow embeds.
@@ -20,6 +21,8 @@ type Step = {
 	run?: string;
 	if?: string;
 	env?: Record<string, string>;
+	uses?: string;
+	with?: Record<string, string>;
 };
 
 type Job = { needs?: unknown; steps?: Step[] };
@@ -148,90 +151,43 @@ describe("a missing CHANGELOG section is fatal", () => {
 	});
 });
 
-/**
- * Execute the AUTO_MERGE_PAT heartbeat shell against a stubbed `curl` that
- * replays a canned response-header block.
- */
-function runHeartbeat(opts: { pat: string; headers: string }): {
-	exitCode: number;
-	output: string;
-} {
-	const script = stepScript("pat-heartbeat", "Check AUTO_MERGE_PAT");
-	const dir = mkdtempSync(join(tmpdir(), "warren-pat-heartbeat-"));
-	try {
-		const stub = join(dir, "curl");
-		writeFileSync(stub, `#!/bin/sh\ncat <<'EOF'\n${opts.headers}\nEOF\n`);
-		chmodSync(stub, 0o755);
-		const result = Bun.spawnSync({
-			cmd: ["bash", "-c", script],
-			env: {
-				PATH: `${dir}:${process.env.PATH ?? ""}`,
-				PAT: opts.pat,
-				WARN_DAYS: "14",
-			},
-			stdout: "pipe",
-			stderr: "pipe",
-		});
-		return {
-			exitCode: result.exitCode,
-			output: `${result.stdout.toString()}${result.stderr.toString()}`,
-		};
-	} finally {
-		rmSync(dir, { recursive: true, force: true });
-	}
-}
-
-/** A response-header block whose token expires `days` from now. */
-function headersExpiringIn(days: number): string {
-	const at = new Date(Date.now() + days * 86_400_000).toISOString().slice(0, 10);
-	return `HTTP/2 200\ncontent-type: application/json\ngithub-authentication-token-expiration: ${at} 07:00:00 UTC`;
-}
-
-describe("AUTO_MERGE_PAT heartbeat", () => {
-	test("runs as a sibling job so a dead PAT is visible but never blocks a release", () => {
-		const job = loadRelease().jobs?.["pat-heartbeat"];
+// The merge queue authenticates with a GitHub App installation token minted
+// per run (warren-2565 retired the static AUTO_MERGE_PAT after it expired
+// silently). App private keys carry no expiry, so the heartbeat is a mint
+// attempt: if the credential is dead, the mint step fails and the sibling
+// job goes red without blocking the release.
+describe("auto-merge app credential heartbeat", () => {
+	test("runs as a sibling job so a dead credential is visible but never blocks a release", () => {
+		const job = loadRelease().jobs?.["app-heartbeat"];
 		expect(job).toBeDefined();
 		// No `needs` edge in either direction: the release itself is cut with
-		// github.token and is unaffected by the PAT.
+		// github.token and is unaffected by the app credential.
 		expect(job?.needs).toBeUndefined();
 		expect(loadRelease().jobs?.deploy?.needs).toBe("release");
 	});
 
-	test("an unset secret fails", () => {
-		const r = runHeartbeat({ pat: "", headers: "HTTP/2 200" });
-		expect(r.exitCode).toBe(1);
-		expect(r.output).toContain("AUTO_MERGE_PAT is not configured");
+	test("the heartbeat mints a token from the app id and private key", () => {
+		const steps = releaseSteps("app-heartbeat");
+		const mint = steps.find((s) => s.uses?.startsWith("actions/create-github-app-token@"));
+		expect(mint).toBeDefined();
+		expect(mint?.with?.["app-id"]).toMatch(/^\$\{\{ vars\.AUTO_MERGE_APP_ID \}\}$/);
+		expect(mint?.with?.["private-key"]).toMatch(
+			/^\$\{\{ secrets\.AUTO_MERGE_APP_PRIVATE_KEY \}\}$/,
+		);
 	});
 
-	test("a revoked or expired token is rejected by the API and fails", () => {
-		const r = runHeartbeat({ pat: "ghp_x", headers: "HTTP/2 401\ncontent-type: application/json" });
-		expect(r.exitCode).toBe(1);
-		expect(r.output).toContain("HTTP 401");
+	test("no workflow still authenticates with the retired AUTO_MERGE_PAT", () => {
+		for (const file of ["auto-merge.yml", "bundle-size-autoheal.yml", "release.yml"]) {
+			const raw = readFileSync(resolve(REPO_ROOT, ".github/workflows", file), "utf8");
+			expect(raw).not.toContain("secrets.AUTO_MERGE_PAT");
+		}
 	});
 
-	test("a token past its expiry date fails", () => {
-		const r = runHeartbeat({ pat: "ghp_x", headers: headersExpiringIn(-1) });
-		expect(r.exitCode).toBe(1);
-		expect(r.output).toContain("::error::");
-		expect(r.output).toContain("expired on");
-	});
-
-	test("a token inside the rotation window warns but passes", () => {
-		const r = runHeartbeat({ pat: "ghp_x", headers: headersExpiringIn(3) });
-		expect(r.exitCode).toBe(0);
-		expect(r.output).toContain("::warning::");
-	});
-
-	test("a healthy token passes quietly", () => {
-		const r = runHeartbeat({ pat: "ghp_x", headers: headersExpiringIn(120) });
-		expect(r.exitCode).toBe(0);
-		expect(r.output).not.toContain("::warning::");
-		expect(r.output).toContain("is valid for");
-	});
-
-	test("a non-expiring token passes", () => {
-		const r = runHeartbeat({ pat: "ghp_x", headers: "HTTP/2 200\ncontent-type: application/json" });
-		expect(r.exitCode).toBe(0);
-		expect(r.output).toContain("no expiration date");
+	test("every consumer of the app credential names the same variable and secret", () => {
+		for (const file of ["auto-merge.yml", "bundle-size-autoheal.yml", "release.yml"]) {
+			const raw = readFileSync(resolve(REPO_ROOT, ".github/workflows", file), "utf8");
+			expect(raw).toContain("vars.AUTO_MERGE_APP_ID");
+			expect(raw).toContain("secrets.AUTO_MERGE_APP_PRIVATE_KEY");
+		}
 	});
 });
