@@ -74,6 +74,26 @@ describe("countComplexityOverrides", () => {
 		expect(counts).toEqual({ cognitive: 3, linesPerFunction: 2 });
 	});
 
+	test("accepts comments in the Biome JSONC config", () => {
+		const biome = `{
+			// Existing complexity exceptions are a ratchet that only shrinks.
+			"overrides": [
+				{
+					"includes": ["legacy.ts"],
+					"linter": {
+						"rules": {
+							"complexity": {
+								"noExcessiveCognitiveComplexity": "off",
+							},
+						},
+					},
+				},
+			],
+		}`;
+
+		expect(countComplexityOverrides(biome)).toEqual({ cognitive: 1, linesPerFunction: 0 });
+	});
+
 	test("returns zeros when no overrides block is present", () => {
 		expect(countComplexityOverrides("{}")).toEqual({ cognitive: 0, linesPerFunction: 0 });
 	});

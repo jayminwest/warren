@@ -17,7 +17,7 @@
  * Mirrors burrow's parser `__golden__/` convention (`burrow/src/runtime/
  * parsers/__golden__/`). Keep new golden directories named `__golden__/`
  * so the existing exclusions in `scripts/check-file-sizes.ts`,
- * `scripts/check-debt-markers.ts`, `.jscpd.json`, and `biome.json` keep
+ * `scripts/check-debt-markers.ts`, `.jscpd.json`, and `biome.jsonc` keep
  * applying.
  */
 

@@ -312,14 +312,8 @@ Details on the additional checks:
 
 Biome's `noExcessiveCognitiveComplexity` rule (warren-d3a6, ceiling 15)
 holds a project-wide complexity budget. New code must stay under the
-threshold. The first `overrides` block of `biome.json` grandfathers
-existing offenders, including the 15 `src/ui/` files warren-c8bd
-brought into scope. The second `overrides` block names 32 legacy
-PascalCase and camelCase UI filenames exempt from
-`useFilenamingConvention`. Both lists are ratchets that only shrink.
-
-`biome.json` goes through strict `JSON.parse`, so it cannot carry
-comments. The rationale for those two lists lives here.
+threshold. Existing complexity and filename exceptions document their
+ratchet policies inline in `biome.jsonc`; both lists only shrink.
 
 ## Naming conventions
 
@@ -331,7 +325,7 @@ comments. The rationale for those two lists lives here.
 - **Filenames (`src/ui/`):** the same kebab-case rule applies as of
   warren-c8bd. Write new UI files in kebab-case. To clear a
   grandfathered entry, rename the file and delete its line in
-  `biome.json`.
+  `biome.jsonc`.
 - **Directories:** `kebab-case` (`src/burrow-client/`,
   `src/plan-runs/`, `src/warren-config/`).
 - **Identifiers:** `camelCase` for functions, variables, and instance

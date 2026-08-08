@@ -35,5 +35,5 @@ convention (`burrow/src/runtime/parsers/__golden__/`) and is
 already excluded from `check:size`, `check:debt`,
 `check:dups`, and Biome's filename-convention rule (see
 `scripts/check-file-sizes.ts`, `scripts/check-debt-markers.ts`,
-`.jscpd.json`, `biome.json`). New golden directories under `src/`
+`.jscpd.json`, `biome.jsonc`). New golden directories under `src/`
 should follow the same name so those exclusions keep working.
