@@ -50,8 +50,8 @@ interface StageSeedsForCommitInput {
  *
  * `git add .seeds/` honors a project-level `.gitignore` of `.seeds/`
  * — a project that gitignored the directory has opted out of
- * committing seeds state, and the staged-changes check below sees no
- * entries.
+ * committing seeds state, and the `knownToGit` filter below then sees
+ * no committable carriers and returns false.
  */
 export async function stageSeedsForCommit(input: StageSeedsForCommitInput): Promise<boolean> {
 	const { workspacePath, projectPath, fs, exec, emit } = input;
@@ -81,7 +81,22 @@ export async function stageSeedsForCommit(input: StageSeedsForCommitInput): Prom
 	// warren-be12 (#420): narrow the staged-delta guard to the two
 	// committable carriers (symmetry with the `--only` pathspecs below) so
 	// an unrelated pre-staged file under `.seeds/` can't spoof a delta.
-	const seedsPathspecs = SEEDS_COMMITTABLE_FILES.map((name) => join(".seeds", name));
+	//
+	// warren-890a: …but only the carriers git actually KNOWS about. `commit
+	// --only -- <path>` is a hard error when a pathspec matches nothing in the
+	// index ("did not match any file(s) known to git"), so a project with no
+	// `.seeds/plans.jsonl` (never ran `sd plan submit`) used to fail the whole
+	// seeds_commit stage — and leave the `git add` above staged-but-uncommitted,
+	// dropping the agent's seeds state from the push. Ask the index which
+	// carriers survived the add and path-limit to those.
+	const seedsPathspecs = await knownToGit(
+		SEEDS_COMMITTABLE_FILES.map((name) => join(".seeds", name)),
+		workspacePath,
+		exec,
+	);
+	// Nothing under `.seeds/` reached the index — a project that gitignored the
+	// directory has opted out of committing seeds state. Not an error.
+	if (seedsPathspecs.length === 0) return false;
 	let hasStagedDelta: boolean;
 	try {
 		await exec.run("git", ["diff", "--cached", "--quiet", "--", ...seedsPathspecs], {
@@ -123,7 +138,29 @@ export async function stageSeedsForCommit(input: StageSeedsForCommitInput): Prom
 	);
 	await emit("reap.seeds_committed", {
 		message: "chore(warren): seeds state",
-		filesStaged: copied,
+		filesStaged: seedsPathspecs.length,
 	});
 	return true;
+}
+
+/**
+ * Filter `candidates` (workspace-relative posix paths) down to the ones present
+ * in the workspace index — i.e. the ones `git commit --only` will accept as
+ * pathspecs. `git ls-files` never errors on an unmatched pathspec, so this is
+ * the safe way to ask the question that `commit --only` answers with a failure.
+ * `-z` keeps the output stable under `core.quotePath`.
+ */
+async function knownToGit(
+	candidates: readonly string[],
+	workspacePath: string,
+	exec: ReapExec,
+): Promise<string[]> {
+	const out = await exec.run("git", ["ls-files", "-z", "--", ...candidates], {
+		cwd: workspacePath,
+		timeoutMs: 10_000,
+		env: gitRepoContextScrubEnv(),
+	});
+	const listed = new Set(out.stdout.split("\0").filter((p) => p !== ""));
+	// Preserve the SEEDS_COMMITTABLE_FILES order rather than git's.
+	return candidates.filter((p) => listed.has(p));
 }

@@ -173,6 +173,70 @@ describe("reapRun commit-through-reap sub-steps (warren-7ecc)", () => {
 		}
 	});
 
+	test("path-limits to the carriers git knows when the project has no plans.jsonl (warren-890a)", async () => {
+		const seedsCtx = await setupWithSeeds();
+		try {
+			// The `app-project-assert` shape: seeds initialized, `sd plan submit`
+			// never run, so neither the clone nor the workspace has plans.jsonl.
+			const f = fakeFs({
+				"/data/projects/x/y/.seeds/issues.jsonl":
+					'{"id":"warren-1234","status":"closed","updatedAt":"2026-05-22T10:00:00Z"}\n',
+			});
+			const e = fakeExec({ stagedDelta: true, lsFiles: [".seeds/issues.jsonl"] });
+
+			const result = await reapRun({
+				runId: seedsCtx.runId,
+				outcome: "succeeded",
+				repos: seedsCtx.repos,
+				...reapDeps(fakeBurrowClient(makeBurrow()), { fs: f.fs, exec: e.exec }),
+				fs: f.fs,
+				exec: e.exec,
+			});
+
+			// The commit lands rather than dying on `pathspec '.seeds/plans.jsonl'
+			// did not match any file(s) known to git`, so the seeds state ships.
+			expect(result.seedsCommitted).toBe(true);
+			const gitArgs = e.calls.filter((c) => c.cmd === "git").map((c) => c.args);
+			const commit = gitArgs.find((a) => a[0] === "-c" && a.includes("commit"));
+			const dashDash = commit?.indexOf("--") ?? -1;
+			expect(commit?.slice(dashDash + 1)).toEqual([".seeds/issues.jsonl"]);
+			// The staged-delta guard uses the same narrowed set.
+			expect(gitArgs).toContainEqual(["diff", "--cached", "--quiet", "--", ".seeds/issues.jsonl"]);
+			const events = await seedsCtx.repos.events.listByRun(seedsCtx.runId);
+			expect(events.find((ev) => ev.kind === "reap.seeds_committed")).toBeDefined();
+			expect(events.find((ev) => ev.kind === "reap_failed")).toBeUndefined();
+		} finally {
+			await seedsCtx.db.close();
+		}
+	});
+
+	test("skips the commit when .seeds/ is gitignored so nothing reached the index (warren-890a)", async () => {
+		const seedsCtx = await setupWithSeeds();
+		try {
+			const f = fakeFs({
+				"/data/projects/x/y/.seeds/issues.jsonl": '{"id":"warren-1234","status":"open"}\n',
+			});
+			const e = fakeExec({ stagedDelta: true, lsFiles: [] });
+
+			const result = await reapRun({
+				runId: seedsCtx.runId,
+				outcome: "succeeded",
+				repos: seedsCtx.repos,
+				...reapDeps(fakeBurrowClient(makeBurrow()), { fs: f.fs, exec: e.exec }),
+				fs: f.fs,
+				exec: e.exec,
+			});
+
+			expect(result.seedsCommitted).toBe(false);
+			const gitArgs = e.calls.filter((c) => c.cmd === "git").map((c) => c.args);
+			expect(gitArgs.find((a) => a.includes("commit"))).toBeUndefined();
+			const events = await seedsCtx.repos.events.listByRun(seedsCtx.runId);
+			expect(events.find((ev) => ev.kind === "reap_failed")).toBeUndefined();
+		} finally {
+			await seedsCtx.db.close();
+		}
+	});
+
 	test("does not commit when the agent already committed every .seeds/ delta", async () => {
 		const seedsCtx = await setupWithSeeds();
 		try {

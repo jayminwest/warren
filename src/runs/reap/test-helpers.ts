@@ -161,6 +161,14 @@ export interface FakeExecOpts {
 	gitStatus?: string;
 	/** Throw on `git status --porcelain` calls (default: succeed). */
 	failGitStatus?: string;
+	/**
+	 * Workspace-relative paths `git ls-files -z -- <pathspecs>` reports as known
+	 * to the index (warren-890a). Default: every requested pathspec matches, the
+	 * "both seeds carriers are tracked" shape. Pass a narrower list (e.g. just
+	 * `.seeds/issues.jsonl`) to exercise a project that never ran
+	 * `sd plan submit`, or `[]` for a gitignored `.seeds/`.
+	 */
+	lsFiles?: readonly string[];
 }
 
 /** Match a `git <sub> …` invocation for the fakeExec command router. */
@@ -185,6 +193,17 @@ function handleDiffCached(stagedDelta: boolean): ExecResult {
 	return { stdout: "", stderr: "" };
 }
 
+/**
+ * `git ls-files -z -- <pathspecs>` — echo back the requested pathspecs the fake
+ * index knows about, NUL-separated exactly as git does (warren-890a).
+ */
+function handleLsFiles(known: readonly string[] | null, args: readonly string[]): ExecResult {
+	const dashDash = args.indexOf("--");
+	const pathspecs = dashDash === -1 ? [] : args.slice(dashDash + 1);
+	const matched = known === null ? pathspecs : pathspecs.filter((p) => known.includes(p));
+	return { stdout: matched.map((p) => `${p}\0`).join(""), stderr: "" };
+}
+
 export function fakeExec(opts: FakeExecOpts = {}): FakeExec {
 	const calls: {
 		cmd: string;
@@ -199,9 +218,11 @@ export function fakeExec(opts: FakeExecOpts = {}): FakeExec {
 	const stagedDelta = opts.stagedDelta === true;
 	const gitStatus = opts.gitStatus ?? "";
 	const failGitStatus = opts.failGitStatus ?? null;
+	const lsFiles = opts.lsFiles ?? null;
 	const exec: ReapExec = {
 		run: async (cmd, args, opt) => {
 			calls.push({ cmd, args, cwd: opt.cwd, env: opt.env });
+			if (isGitSub(cmd, args, "ls-files")) return handleLsFiles(lsFiles, args);
 			if (isGitSub(cmd, args, "rev-list")) return handleRevList(failRevList, revListCount);
 			if (isGitSub(cmd, args, "status") && args.includes("--porcelain")) {
 				return handleStatus(failGitStatus, gitStatus);
