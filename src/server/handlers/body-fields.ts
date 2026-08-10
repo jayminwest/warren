@@ -36,6 +36,24 @@ export function optionalEnum<T extends string>(
 }
 
 /**
+ * An optional body field that must be a positive finite JSON number. The
+ * first consumer is `POST /runs` `maxCostUsd` (the warren-a63d spend cap):
+ * a cap of zero, a negative, or a string would otherwise coerce downstream
+ * into "no cap" (fail-open), so the boundary rejects it loudly instead.
+ */
+export function optionalPositiveNumber(
+	body: Record<string, unknown>,
+	key: string,
+): number | undefined {
+	const value = body[key];
+	if (value === undefined || value === null) return undefined;
+	if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
+		throw new ValidationError(`field '${key}' must be a positive number`);
+	}
+	return value;
+}
+
+/**
  * An optional body field that must be a JSON object. Rejects arrays, strings,
  * and numbers instead of casting them to a record and letting a non-object
  * reach persistence.

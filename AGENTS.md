@@ -109,6 +109,12 @@ and `loadWarrenConfig()` surfaces it. Notable knobs:
 - `agent.skipGitHooks` (default `false`) — set `true` to skip arming
   the project's git pre-commit gate on the host clone before each run
   (warren-8f4c).
+- `maxCostUsd` — project-wide default per-run USD spend cap
+  (warren-a63d), enforced mid-run by the event bridge. Weakest source in
+  the cap chain: dispatch override (`POST /runs` `maxCostUsd`,
+  `warren run --max-cost-usd`, or a trigger entry's cap) > agent
+  `frontmatter.maxCostUsd` > this default — applied only when the agent
+  declares no cap (malformed agent values still fail open).
 - `admission.maxConcurrentRuns` — per-project cap on simultaneous
   non-terminal runs, enforced by the K8s admission gate. Over the cap
   the gate rejects the dispatch with HTTP 429 and reason
@@ -312,14 +318,8 @@ Details on the additional checks:
 
 Biome's `noExcessiveCognitiveComplexity` rule (warren-d3a6, ceiling 15)
 holds a project-wide complexity budget. New code must stay under the
-threshold. The first `overrides` block of `biome.json` grandfathers
-existing offenders, including the 15 `src/ui/` files warren-c8bd
-brought into scope. The second `overrides` block names 32 legacy
-PascalCase and camelCase UI filenames exempt from
-`useFilenamingConvention`. Both lists are ratchets that only shrink.
-
-`biome.json` goes through strict `JSON.parse`, so it cannot carry
-comments. The rationale for those two lists lives here.
+threshold. Existing complexity and filename exceptions document their
+ratchet policies inline in `biome.jsonc`; both lists only shrink.
 
 ## Naming conventions
 
@@ -331,7 +331,7 @@ comments. The rationale for those two lists lives here.
 - **Filenames (`src/ui/`):** the same kebab-case rule applies as of
   warren-c8bd. Write new UI files in kebab-case. To clear a
   grandfathered entry, rename the file and delete its line in
-  `biome.json`.
+  `biome.jsonc`.
 - **Directories:** `kebab-case` (`src/burrow-client/`,
   `src/plan-runs/`, `src/warren-config/`).
 - **Identifiers:** `camelCase` for functions, variables, and instance

@@ -75,12 +75,14 @@ export interface SpawnRunInput {
 	/** Optional per-run override of the agent's `frontmatter.model`. */
 	readonly modelOverride?: string;
 	/**
-	 * Per-trigger spend cap (warren-a63d). When set, the spawn composer
-	 * folds it onto `frontmatter.maxCostUsd` (overriding the agent's own
-	 * value) before freezing `runs.rendered_agent_json`, so the bridge
-	 * enforces a single trigger > agent precedence cap. Omitted for runs
-	 * with no per-trigger cap — the agent's own `maxCostUsd` (if any)
-	 * still applies.
+	 * Per-trigger / per-dispatch spend cap (warren-a63d). Set by a
+	 * `.warren/triggers.yaml` cron entry or a `POST /runs` `maxCostUsd`
+	 * body field. When set, the spawn composer folds it onto
+	 * `frontmatter.maxCostUsd` (overriding the agent's own value) before
+	 * freezing `runs.rendered_agent_json`, so the bridge enforces a single
+	 * override > agent precedence cap. Omitted for runs with no explicit
+	 * cap — the agent's own `maxCostUsd` (or, failing that, the project's
+	 * `.warren/config.yaml` `maxCostUsd` default) still applies.
 	 */
 	readonly maxCostUsdOverride?: number;
 	readonly now?: () => Date;

@@ -154,6 +154,8 @@ export interface CreateRunInput {
 	continueFromRunId?: string;
 	/** Replicate parent (warren-e96f): re-dispatch this run's config against the project base. */
 	cloneFromRunId?: string;
+	/** Per-run USD spend cap (warren-a63d): wins over the agent's own and the project default. */
+	maxCostUsd?: number;
 }
 
 /** Ergonomic input for {@link WarrenClient.dispatch}: mirrors {@link CreateRunInput} with
@@ -178,6 +180,8 @@ export interface DispatchRunInput {
 	continueFromRunId?: string;
 	/** Maps to CreateRunInput.cloneFromRunId (warren-e96f). */
 	cloneFromRunId?: string;
+	/** Maps to CreateRunInput.maxCostUsd — per-run USD spend cap (warren-a63d). */
+	maxCostUsd?: number;
 }
 
 export interface SpawnRunResponse {

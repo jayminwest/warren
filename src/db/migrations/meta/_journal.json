@@ -267,6 +267,13 @@
 			"when": 1785708464013,
 			"tag": "0037_elite_paladin",
 			"breakpoints": true
+		},
+		{
+			"idx": 38,
+			"version": "6",
+			"when": 1786160748315,
+			"tag": "0038_fair_punisher",
+			"breakpoints": true
 		}
 	]
 }

@@ -1,10 +1,11 @@
 import { ValidationError } from "../../../core/errors.ts";
 import { readProviderFrontmatter } from "../../../registry/schema.ts";
+import { readMaxCostUsd } from "../../../runs/cost-cap.ts";
 import { spawnRun } from "../../../runs/index.ts";
 import type { IdempotentDispatch } from "../../idempotency.ts";
 import { jsonResponse } from "../../response.ts";
 import type { RouteHandler, ServerDeps } from "../../types.ts";
-import { optionalObject } from "../body-fields.ts";
+import { optionalObject, optionalPositiveNumber } from "../body-fields.ts";
 import { defaultSpawn, optionalString, readJsonBody, requireString } from "../index.ts";
 
 /**
@@ -20,6 +21,7 @@ interface CloneDefaults {
 	readonly prompt: string;
 	readonly providerOverride?: string;
 	readonly modelOverride?: string;
+	readonly maxCostUsd?: number;
 }
 
 /**
@@ -41,12 +43,17 @@ async function resolveCloneDefaults(
 	}
 	const rendered = parent.renderedAgentJson as { frontmatter?: Record<string, unknown> };
 	const fm = readProviderFrontmatter(rendered.frontmatter ?? {});
+	// warren-a63d: the parent's EFFECTIVE cap (whichever tier supplied it) sits
+	// folded on the frozen frontmatter; read it back so the replica inherits it
+	// verbatim, same as provider/model.
+	const capUsd = readMaxCostUsd(rendered.frontmatter ?? {});
 	return {
 		agentName: parent.agentName,
 		projectId: parent.projectId,
 		prompt: parent.prompt,
 		...(fm.provider !== undefined ? { providerOverride: fm.provider } : {}),
 		...(fm.model !== undefined ? { modelOverride: fm.model } : {}),
+		...(capUsd !== null ? { maxCostUsd: capUsd } : {}),
 	};
 }
 
@@ -63,6 +70,7 @@ interface ResolvedDispatchFields {
 	readonly prompt: string;
 	readonly providerOverride?: string;
 	readonly modelOverride?: string;
+	readonly maxCostUsd?: number;
 	readonly parentRunId?: string;
 	readonly cloneKind?: "replicate";
 }
@@ -92,6 +100,10 @@ async function resolveDispatchFields(
 		prompt: optionalString(body, "prompt") ?? clone?.prompt ?? requireString(body, "prompt"),
 		providerOverride: optionalString(body, "providerOverride") ?? clone?.providerOverride,
 		modelOverride: optionalString(body, "modelOverride") ?? clone?.modelOverride,
+		// Per-dispatch spend cap (warren-a63d): explicit body field wins; a
+		// replicate falls back to the parent's effective cap read off its
+		// frozen frontmatter, matching the provider/model inheritance above.
+		maxCostUsd: optionalPositiveNumber(body, "maxCostUsd") ?? clone?.maxCostUsd,
 		// A replicate records the same `parent_run_id` column as a continuation;
 		// the `clone_kind` discriminator keeps them apart.
 		...(continueFromRunId !== undefined ? { parentRunId: continueFromRunId } : {}),
@@ -121,6 +133,7 @@ export function createRunHandler(deps: ServerDeps): RouteHandler {
 			prompt,
 			providerOverride,
 			modelOverride,
+			maxCostUsd,
 			parentRunId,
 			cloneKind,
 		} = await resolveDispatchFields(deps, body);
@@ -147,6 +160,7 @@ export function createRunHandler(deps: ServerDeps): RouteHandler {
 			providerOverride,
 			modelOverride,
 			...(trigger !== undefined ? { trigger } : {}),
+			...(maxCostUsd !== undefined ? { maxCostUsdOverride: maxCostUsd } : {}),
 			seedId,
 			...(targetBranch !== undefined ? { targetBranch } : {}),
 			...(parentRunId !== undefined ? { parentRunId } : {}),

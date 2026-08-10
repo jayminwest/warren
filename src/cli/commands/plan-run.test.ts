@@ -52,6 +52,7 @@ function planRunRow(state: PlanRunState) {
 		ref: null,
 		providerOverride: null,
 		modelOverride: null,
+		maxCostUsd: null,
 		dispatcherHandle: "cli",
 		trigger: "cli",
 		state,

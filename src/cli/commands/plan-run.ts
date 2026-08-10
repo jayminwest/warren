@@ -45,6 +45,8 @@ export interface PlanRunArgs {
 	readonly ref?: string;
 	readonly provider?: string;
 	readonly model?: string;
+	/** Per-child USD spend cap (warren-a63d), forwarded to every child dispatch. */
+	readonly maxCostUsd?: number;
 	/** Tail events until terminal (default). `--no-follow` dispatches and exits. */
 	readonly follow: boolean;
 	/** Output mode for the dispatch summary + event stream. Default `ndjson`. */
@@ -101,6 +103,7 @@ export async function runPlanRun(
 			...(args.ref !== undefined ? { ref: args.ref } : {}),
 			...(args.provider !== undefined ? { providerOverride: args.provider } : {}),
 			...(args.model !== undefined ? { modelOverride: args.model } : {}),
+			...(args.maxCostUsd !== undefined ? { maxCostUsd: args.maxCostUsd } : {}),
 		});
 		planRunId = created.planRun.id;
 		renderer.dispatched(created.planRun, created.children);

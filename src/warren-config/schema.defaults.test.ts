@@ -29,6 +29,18 @@ describe("DefaultsConfigSchema", () => {
 		expect(parsed.success).toBe(true);
 	});
 
+	test("accepts a positive maxCostUsd project-wide spend cap (warren-a63d)", () => {
+		const parsed = DefaultsConfigSchema.safeParse({ maxCostUsd: 2.5 });
+		expect(parsed.success).toBe(true);
+		if (parsed.success) expect(parsed.data.maxCostUsd).toBe(2.5);
+	});
+
+	test("rejects a non-positive or string maxCostUsd", () => {
+		for (const bad of [0, -1, "2.5"]) {
+			expect(DefaultsConfigSchema.safeParse({ maxCostUsd: bad }).success).toBe(false);
+		}
+	});
+
 	test("rejects extra fields so typos surface loudly", () => {
 		const parsed = DefaultsConfigSchema.safeParse({ defaultRoll: "claude-code" });
 		expect(parsed.success).toBe(false);

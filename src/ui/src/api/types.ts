@@ -254,6 +254,20 @@ export interface CreateRunInput {
 	 * the same project.
 	 */
 	continueFromRunId?: string;
+	/**
+	 * Optional replicate parent (warren-e96f): re-dispatch this run's exact
+	 * agent / model / project / prompt / cap against the project default
+	 * base. Mutually exclusive with `continueFromRunId` (continuation wins
+	 * server-side).
+	 */
+	cloneFromRunId?: string;
+	/**
+	 * Optional per-run USD spend cap (warren-a63d): wins over the agent's
+	 * own `frontmatter.maxCostUsd` and the project's `.warren/config.yaml`
+	 * default. Must be a positive finite number; the server rejects zero,
+	 * negatives, and numeric strings.
+	 */
+	maxCostUsd?: number;
 }
 
 export interface SpawnRunResponse {
@@ -450,6 +464,12 @@ export interface DefaultsConfig {
 	 */
 	runBranchPrefix?: string;
 	qualityGate?: string;
+	/**
+	 * warren-a63d: project-wide default per-run USD spend cap, the weakest
+	 * source in the cap chain (dispatch override > agent frontmatter > this).
+	 * Surfaced read-only on the ProjectDetail config panel.
+	 */
+	maxCostUsd?: number;
 }
 
 export interface WarrenConfigResponse {
@@ -491,6 +511,8 @@ export interface TriggerSummary {
 	role: string;
 	timezone?: string;
 	prompt?: string;
+	/** warren-a63d: the entry's per-run spend cap, surfaced so operators can verify it. */
+	maxCostUsd?: number;
 	lastFiredAt: string | null;
 	nextFireAt: string | null;
 	lastRunId: string | null;
@@ -580,6 +602,8 @@ export interface PlanRunRow {
 	ref: string | null;
 	providerOverride: string | null;
 	modelOverride: string | null;
+	/** warren-a63d: per-child USD spend cap forwarded to every child dispatch. */
+	maxCostUsd: number | null;
 	dispatcherHandle: string;
 	trigger: string;
 	state: PlanRunState;
@@ -612,6 +636,8 @@ export interface CreatePlanRunInput {
 	ref?: string;
 	providerOverride?: string;
 	modelOverride?: string;
+	/** Per-child USD spend cap (warren-a63d); same validation as `POST /runs` maxCostUsd. */
+	maxCostUsd?: number;
 	dispatcherHandle?: string;
 }
 

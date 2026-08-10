@@ -1,5 +1,43 @@
 import { describe, expect, test } from "bun:test";
-import { coerceCostCap, isOverBudget, readMaxCostUsd, resolveCostCapUsd } from "./cost-cap.ts";
+import {
+	coerceCostCap,
+	isOverBudget,
+	readMaxCostUsd,
+	resolveCapOverride,
+	resolveCostCapUsd,
+} from "./cost-cap.ts";
+
+describe("resolveCapOverride", () => {
+	test("prefers the explicit dispatch override over every other source", () => {
+		expect(
+			resolveCapOverride({
+				overrideUsd: 0.75,
+				frontmatter: { maxCostUsd: 1 },
+				projectDefaultUsd: 2.5,
+			}),
+		).toBe(0.75);
+	});
+
+	test("leaves a declared agent cap in place instead of folding", () => {
+		expect(resolveCapOverride({ frontmatter: { maxCostUsd: 1 }, projectDefaultUsd: 2.5 })).toBe(
+			undefined,
+		);
+	});
+
+	test("falls back to the project default when the agent declares no cap", () => {
+		expect(resolveCapOverride({ frontmatter: {}, projectDefaultUsd: 2.5 })).toBe(2.5);
+		expect(resolveCapOverride({ frontmatter: { maxCostUsd: null } })).toBe(undefined);
+	});
+
+	test("keeps a malformed agent cap failing open — the project default must not paper over it", () => {
+		expect(resolveCapOverride({ frontmatter: { maxCostUsd: "5O" }, projectDefaultUsd: 2.5 })).toBe(
+			undefined,
+		);
+		expect(resolveCapOverride({ frontmatter: { maxCostUsd: -1 }, projectDefaultUsd: 2.5 })).toBe(
+			undefined,
+		);
+	});
+});
 
 describe("coerceCostCap", () => {
 	test("accepts a positive number", () => {

@@ -6,15 +6,22 @@
  * Fable-tier agent) had no ceiling. This module is the shared, pure core
  * of the per-agent / per-trigger spend cap:
  *
- *   - per-agent cap   — `frontmatter.maxCostUsd` on the canopy agent
+ *   - per-dispatch cap — one override slot, fed by mutually exclusive
+ *                       sources: a `.warren/triggers.yaml` entry's
+ *                       `maxCostUsd` (cron and manual fires), a
+ *                       `POST /runs` `maxCostUsd` body field, or
+ *                       `warren run --max-cost-usd`. Dispatch folds it
+ *                       onto the agent frontmatter BEFORE freezing the
+ *                       run row, so the bridge sees a single,
+ *                       already-resolved cap on `rendered_agent_json`.
+ *   - per-agent cap   — `frontmatter.maxCostUsd` on the agent
  *                       definition (frozen onto `runs.rendered_agent_json`).
- *   - per-trigger cap — `maxCostUsd` on a `.warren/triggers.yaml` cron
- *                       entry. Dispatch folds it onto the agent
- *                       frontmatter as an override BEFORE freezing the
- *                       run row, so the per-trigger value wins over the
- *                       agent's own (trigger > agent precedence) and the
- *                       bridge sees a single, already-resolved cap on
- *                       `rendered_agent_json`.
+ *   - project default — `maxCostUsd` on `.warren/config.yaml`, the
+ *                       weakest source: applied only when no override
+ *                       arrived and the agent declares no cap at all.
+ *
+ * `resolveCapOverride` is the one implementation of that precedence;
+ * dispatch call sites go through it rather than re-deriving the chain.
  *
  * Enforcement lives in the event-bridge (`src/runs/stream/`): as pi's
  * cumulative `turn_end` cost crosses the cap mid-run, the bridge cancels
@@ -58,6 +65,36 @@ export function coerceCostCap(raw: unknown): number | null {
  */
 export function readMaxCostUsd(frontmatter: Readonly<Record<string, unknown>>): number | null {
 	return coerceCostCap(frontmatter[MAX_COST_USD_KEY]);
+}
+
+/**
+ * Resolve the per-dispatch value to fold onto the agent's frontmatter
+ * (via `withMaxCostUsdOverride`) for one spawn. Precedence: the explicit
+ * `overrideUsd` (trigger entry / `POST /runs` body — one slot, mutually
+ * exclusive sources) > the agent's own `frontmatter.maxCostUsd` (left in
+ * place, no fold) > the project-wide `projectDefaultUsd`.
+ *
+ * The project default applies only when the frontmatter carries no
+ * `maxCostUsd` at all. An explicit `null` counts as "no declaration" —
+ * the same reading the HTTP boundary gives a `null` body field
+ * (`optionalPositiveNumber`) — so the default applies there too; null
+ * is an explicit non-value, not a typo. A present-but-malformed agent
+ * value (a string, a negative) is NOT replaced: it stays on the frozen
+ * `rendered_agent_json` (preserving the evidence of the typo) and fails
+ * OPEN at the bridge per the module rule, exactly as it did before
+ * project defaults existed.
+ *
+ * Returns `undefined` when nothing should be folded.
+ */
+export function resolveCapOverride(input: {
+	readonly overrideUsd?: number;
+	readonly frontmatter: Readonly<Record<string, unknown>>;
+	readonly projectDefaultUsd?: number;
+}): number | undefined {
+	if (input.overrideUsd !== undefined) return input.overrideUsd;
+	const declared = input.frontmatter[MAX_COST_USD_KEY];
+	if (declared !== undefined && declared !== null) return undefined;
+	return input.projectDefaultUsd;
 }
 
 /**

@@ -230,9 +230,9 @@ jobs:
       - name: Post release notes to Discord
         env:
           # Discord channel webhook — docs/project-setup.md §6. Unlike
-          # AUTO_MERGE_PAT, its absence breaks nothing in the release
-          # pipeline, so a fork with no Discord server skips instead of
-          # failing. A webhook that is present but REJECTED is fatal.
+          # the auto-merge app credential, its absence breaks nothing in
+          # the release pipeline, so a fork with no Discord server skips
+          # instead of failing. A webhook present but REJECTED is fatal.
           WEBHOOK: ${{ secrets.DISCORD_RELEASES_WEBHOOK }}
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ needs.release.outputs.version }}
@@ -272,60 +272,26 @@ jobs:
             -X POST -d @payload.json "${WEBHOOK}"
           echo "Announced v${VERSION} in Discord."
 
-  # AUTO_MERGE_PAT is a silent single point of failure (warren-8b5f). GitHub
-  # suppresses workflow runs for GITHUB_TOKEN-authored pushes, so auto-merge.yml
-  # must merge with a PAT; when that PAT expires, PRs simply stop merging, main
-  # stops moving, and releases stop happening — with no failed run anywhere to
-  # notice. This job is the heartbeat: it runs on every release-workflow tick
-  # and turns a dead PAT into a red X.
+  # The auto-merge app credential is a silent single point of failure
+  # (warren-8b5f). GitHub suppresses workflow runs for GITHUB_TOKEN-authored
+  # pushes, so auto-merge.yml must merge with a GitHub App installation token;
+  # if that credential dies (key revoked, app uninstalled, secret or variable
+  # deleted), PRs simply stop merging, main stops moving, and releases stop
+  # happening — with no failed run anywhere to notice. This job is the
+  # heartbeat: it mints a token on every release-workflow tick and turns a
+  # dead credential into a red X. App private keys carry no expiry, so the
+  # old AUTO_MERGE_PAT expiry countdown (retired with warren-2565) has no
+  # successor — a successful mint is the whole proof.
   #
-  # It deliberately does NOT gate the release: an expired PAT breaks the merge
-  # queue, not this release (which is cut with github.token). So it is a
+  # It deliberately does NOT gate the release: a dead credential breaks the
+  # merge queue, not this release (which is cut with github.token). So it is a
   # sibling job with no `needs` edge — visible when it fails, never blocking.
-  pat-heartbeat:
+  app-heartbeat:
     runs-on: ubuntu-latest
     permissions: {}
     steps:
-      - name: Check AUTO_MERGE_PAT validity and expiry
-        env:
-          PAT: ${{ secrets.AUTO_MERGE_PAT }}
-          # Lead time to rotate before the merge queue stops (days).
-          WARN_DAYS: "14"
-        run: |
-          set -uo pipefail
-          if [ -z "${PAT}" ]; then
-            echo "::error::AUTO_MERGE_PAT is not configured. auto-merge.yml needs it to merge PRs in a way that re-triggers CI and Release (docs/project-setup.md §2)."
-            exit 1
-          fi
-          HEADERS=$(curl -sS -D - -o /dev/null --max-time 20 \
-            -H "Authorization: Bearer ${PAT}" \
-            -H "Accept: application/vnd.github+json" \
-            https://api.github.com/user | tr -d '\r' | tr 'A-Z' 'a-z')
-          STATUS=$(printf '%s\n' "${HEADERS}" | awk 'NR==1{print $2}')
-          if [ "${STATUS:-}" != "200" ]; then
-            echo "::error::AUTO_MERGE_PAT was rejected by api.github.com (HTTP ${STATUS:-none}) — it has expired or been revoked. Rotate it (docs/project-setup.md §2)."
-            exit 1
-          fi
-          EXPIRY=$(printf '%s\n' "${HEADERS}" | sed -n 's/^github-authentication-token-expiration:[[:space:]]*//p')
-          if [ -z "${EXPIRY}" ]; then
-            echo "AUTO_MERGE_PAT is valid and carries no expiration date."
-            exit 0
-          fi
-          # Compare on the YYYY-MM-DD prefix only; GitHub's timezone suffix
-          # varies and neither GNU nor BSD date parses every spelling.
-          DAY=$(printf '%s\n' "${EXPIRY}" | sed -n 's/^\([0-9]\{4\}-[0-9]\{2\}-[0-9]\{2\}\).*/\1/p')
-          EXPIRY_EPOCH=$(date -u -d "${DAY}" +%s 2>/dev/null || date -u -j -f "%Y-%m-%d" "${DAY}" +%s 2>/dev/null || echo "")
-          if [ -z "${EXPIRY_EPOCH}" ]; then
-            echo "::warning::AUTO_MERGE_PAT expires ${EXPIRY} (unparseable date — check it by hand)."
-            exit 0
-          fi
-          DAYS=$(( (EXPIRY_EPOCH - $(date -u +%s)) / 86400 ))
-          if [ "${DAYS}" -le 0 ]; then
-            echo "::error::AUTO_MERGE_PAT expired on ${EXPIRY}. Rotate it now (docs/project-setup.md §2) or merges — and therefore releases — stop silently."
-            exit 1
-          fi
-          if [ "${DAYS}" -le "${WARN_DAYS}" ]; then
-            echo "::warning::AUTO_MERGE_PAT expires in ${DAYS} day(s) (${EXPIRY}). Rotate it (docs/project-setup.md §2)."
-          else
-            echo "AUTO_MERGE_PAT is valid for ${DAYS} more day(s) (${EXPIRY})."
-          fi
+      - name: Mint an auto-merge app token (proof the credential is alive)
+        uses: actions/create-github-app-token@v3.2.0
+        with:
+          app-id: ${{ vars.AUTO_MERGE_APP_ID }}
+          private-key: ${{ secrets.AUTO_MERGE_APP_PRIVATE_KEY }}

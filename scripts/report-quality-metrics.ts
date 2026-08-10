@@ -16,7 +16,7 @@
  *   coverage/summary.json            — line + function totals (preferred, written by check-coverage.ts)
  *   coverage/lcov.info               — line + function totals (fallback only; diverges from Bun text reporter)
  *   scripts/coverage-budgets.json    — coverage floors
- *   biome.json                       — complexity & line-per-fn overrides
+ *   biome.jsonc                      — complexity & line-per-fn overrides
  *   scripts/file-size-budgets.json   — grandfathered file-size entries
  *   scripts/debt-marker-allowlist.json — grandfathered debt markers
  *   src/ui/dist/assets/              — bundle sizes (raw + gzip)
@@ -100,13 +100,13 @@ export interface ComplexityOverrides {
 
 /**
  * Count files grandfathered out of biome's two complexity rules by
- * scanning biome.json's `overrides` array. Any override block whose
+ * scanning biome.jsonc's `overrides` array. Any override block whose
  * `linter.rules.complexity.<rule>` is "off" contributes its `includes`
  * count. We don't try to dedupe across multiple blocks — by convention
  * each file appears in at most one override block per rule.
  */
 export function countComplexityOverrides(biomeJson: string): ComplexityOverrides {
-	const parsed = JSON.parse(biomeJson) as {
+	const parsed = Bun.JSONC.parse(biomeJson) as {
 		overrides?: Array<{
 			includes?: string[];
 			linter?: { rules?: { complexity?: Record<string, unknown> } };
@@ -364,7 +364,7 @@ async function main(): Promise<void> {
 		summaryJson: readIfExists(resolve(REPO_ROOT, "coverage/summary.json")),
 		lcov: readIfExists(lcovPath),
 		coverageBudgets: readIfExists(resolve(REPO_ROOT, "scripts/coverage-budgets.json")),
-		biomeJson: readIfExists(resolve(REPO_ROOT, "biome.json")),
+		biomeJson: readIfExists(resolve(REPO_ROOT, "biome.jsonc")),
 		fileSizeBudgets: readIfExists(resolve(REPO_ROOT, "scripts/file-size-budgets.json")),
 		debtAllowlist: readIfExists(resolve(REPO_ROOT, "scripts/debt-marker-allowlist.json")),
 		bundleSizes,

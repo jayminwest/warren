@@ -17,6 +17,7 @@ import { cancelPlanRun, createPlanRun, tailPlanRunEvents } from "../../plan-runs
 import { jsonResponse, ndjsonResponse } from "../response.ts";
 import { reserveEventStreamSlot } from "../stream-limits.ts";
 import type { RouteHandler, ServerDeps } from "../types.ts";
+import { optionalPositiveNumber } from "./body-fields.ts";
 import {
 	optionalString,
 	parseBoolean,
@@ -71,6 +72,9 @@ export function createPlanRunHandler(deps: ServerDeps): RouteHandler {
 		const providerOverride = optionalString(body, "providerOverride");
 		const modelOverride = optionalString(body, "modelOverride");
 		const dispatcherHandle = optionalString(body, "dispatcherHandle");
+		// warren-a63d: per-child spend cap; each child dispatch carries it as
+		// maxCostUsdOverride. Same boundary validation as POST /runs.
+		const maxCostUsd = optionalPositiveNumber(body, "maxCostUsd");
 
 		const result = await createPlanRun({
 			projectId: requireString(body, "project"),
@@ -80,6 +84,7 @@ export function createPlanRunHandler(deps: ServerDeps): RouteHandler {
 			...(ref !== undefined ? { ref } : {}),
 			...(providerOverride !== undefined ? { providerOverride } : {}),
 			...(modelOverride !== undefined ? { modelOverride } : {}),
+			...(maxCostUsd !== undefined ? { maxCostUsd } : {}),
 			...(dispatcherHandle !== undefined ? { dispatcherHandle } : {}),
 			repos: deps.repos,
 			seedsCli: deps.seedsCli,

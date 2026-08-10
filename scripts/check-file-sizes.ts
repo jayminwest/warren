@@ -17,7 +17,7 @@
  * defeat the guard.
  *
  * Companion: Biome's `noExcessiveLinesPerFunction` rule (configured in
- * `biome.json`) enforces a per-function ceiling. This script enforces a
+ * `biome.jsonc`) enforces a per-function ceiling. This script enforces a
  * per-file ceiling — Biome has no equivalent built-in for that.
  */
 
@@ -103,7 +103,7 @@ export function scan(): { failures: Failure[]; staleBudgetEntries: string[] } {
 	const roots: string[] = [];
 	for (const r of SCAN_ROOTS) roots.push(resolve(REPO_ROOT, r));
 	// drizzle.config.ts is single-file and lives at repo root; include it
-	// explicitly since it's covered by biome.json's includes list.
+	// explicitly since it's covered by biome.jsonc's includes list.
 	const extraFiles = [resolve(REPO_ROOT, "drizzle.config.ts")];
 
 	const allFiles: string[] = [];

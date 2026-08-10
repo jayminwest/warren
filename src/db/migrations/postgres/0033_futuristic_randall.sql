@@ -1,0 +1,1 @@
+ALTER TABLE "plan_runs" ADD COLUMN "max_cost_usd" double precision;

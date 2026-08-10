@@ -32,6 +32,23 @@ const NIGHTLY: CronTrigger = {
 };
 
 describe("buildTriggerSummaries", () => {
+	test("carries the entry's maxCostUsd through the summary (warren-a63d)", async () => {
+		const { repo, projectId, close } = await makeRepo();
+		try {
+			const summaries = await buildTriggerSummaries({
+				projectId,
+				triggers: [{ ...NIGHTLY, maxCostUsd: 5 }, NIGHTLY],
+				repo,
+				now: new Date("2026-05-10T12:00:00.000Z"),
+			});
+			expect(summaries[0]?.maxCostUsd).toBe(5);
+			// Uncapped entries omit the key rather than carrying undefined.
+			expect(Object.keys(summaries[1] ?? {})).not.toContain("maxCostUsd");
+		} finally {
+			await close();
+		}
+	});
+
 	test("computes nextFireAt fresh from croner when the expression parses", async () => {
 		const { repo, projectId, close } = await makeRepo();
 		try {

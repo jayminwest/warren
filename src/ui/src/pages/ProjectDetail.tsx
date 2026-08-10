@@ -289,6 +289,12 @@ function TriggerRow({
 						<dd className="break-words">{trigger.prompt}</dd>
 					</>
 				) : null}
+				{trigger.maxCostUsd !== undefined ? (
+					<>
+						<dt className="text-(--color-muted-foreground)">maxCostUsd</dt>
+						<dd className="font-mono">${trigger.maxCostUsd}</dd>
+					</>
+				) : null}
 				<dt className="text-(--color-muted-foreground)">last fired</dt>
 				<dd>
 					{trigger.lastFiredAt !== null ? (
@@ -339,7 +345,9 @@ function DefaultsBlock({
 		defaults !== null &&
 		defaults.defaultRole === undefined &&
 		defaults.defaultBranch === undefined &&
-		defaults.defaultPrompt === undefined;
+		defaults.defaultPrompt === undefined &&
+		defaults.runBranchPrefix === undefined &&
+		defaults.maxCostUsd === undefined;
 	return (
 		<section>
 			<h3 className="mb-2 text-sm font-semibold">
@@ -373,6 +381,12 @@ function DefaultsBlock({
 						<>
 							<dt className="text-(--color-muted-foreground)">runBranchPrefix</dt>
 							<dd className="font-mono">{defaults.runBranchPrefix}</dd>
+						</>
+					) : null}
+					{defaults.maxCostUsd !== undefined ? (
+						<>
+							<dt className="text-(--color-muted-foreground)">maxCostUsd</dt>
+							<dd className="font-mono">${defaults.maxCostUsd}</dd>
 						</>
 					) : null}
 				</dl>

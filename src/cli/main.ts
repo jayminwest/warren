@@ -36,6 +36,7 @@ import { runPlanList, runPlanStatus } from "./commands/plan-status.ts";
 import { runRun } from "./commands/run.ts";
 import { runServe } from "./commands/serve.ts";
 import { withCliDb } from "./context.ts";
+import { parseMaxCostUsd, resolveCliExitCode } from "./flags.ts";
 import {
 	type CliContext,
 	defaultSpawn,
@@ -122,7 +123,12 @@ export function buildProgram(baseContext: CliContext): Command {
 			.requiredOption("-p, --prompt <text>", "prompt text the agent receives")
 			.option("--trigger <label>", "run trigger label", "cli")
 			.option("--provider <name>", "per-run override of agent frontmatter.provider")
-			.option("--model <name>", "per-run override of agent frontmatter.model"),
+			.option("--model <name>", "per-run override of agent frontmatter.model")
+			.option(
+				"--max-cost-usd <usd>",
+				"per-run USD spend cap; wins over the agent's own and the project default",
+				parseMaxCostUsd,
+			),
 	).action(
 		async (
 			agent: string,
@@ -132,6 +138,7 @@ export function buildProgram(baseContext: CliContext): Command {
 				trigger?: string;
 				provider?: string;
 				model?: string;
+				maxCostUsd?: number;
 			} & RemoteOpts,
 		) => {
 			const client = resolveWarrenClient(context.env, clientFlags(opts));
@@ -145,6 +152,7 @@ export function buildProgram(baseContext: CliContext): Command {
 					...(opts.trigger !== undefined ? { trigger: opts.trigger } : {}),
 					...(opts.provider !== undefined ? { providerOverride: opts.provider } : {}),
 					...(opts.model !== undefined ? { modelOverride: opts.model } : {}),
+					...(opts.maxCostUsd !== undefined ? { maxCostUsd: opts.maxCostUsd } : {}),
 				},
 			);
 			process.exit(result.exitCode);
@@ -320,6 +328,11 @@ export function buildProgram(baseContext: CliContext): Command {
 			.option("--ref <git-ref>", "git ref to clone child workspaces from")
 			.option("--provider <name>", "per-run override of agent frontmatter.provider")
 			.option("--model <name>", "per-run override of agent frontmatter.model")
+			.option(
+				"--max-cost-usd <usd>",
+				"per-child USD spend cap applied to every child dispatch",
+				parseMaxCostUsd,
+			)
 			.option("--no-follow", "dispatch and exit without tailing events")
 			.option("--output <mode>", "output mode: ndjson (default) or pretty", "ndjson"),
 	).action(
@@ -332,6 +345,7 @@ export function buildProgram(baseContext: CliContext): Command {
 				ref?: string;
 				provider?: string;
 				model?: string;
+				maxCostUsd?: number;
 				follow: boolean;
 				output?: string;
 			} & RemoteOpts,
@@ -350,6 +364,7 @@ export function buildProgram(baseContext: CliContext): Command {
 					...(opts.ref !== undefined ? { ref: opts.ref } : {}),
 					...(opts.provider !== undefined ? { provider: opts.provider } : {}),
 					...(opts.model !== undefined ? { model: opts.model } : {}),
+					...(opts.maxCostUsd !== undefined ? { maxCostUsd: opts.maxCostUsd } : {}),
 				},
 			);
 			process.exit(result.exitCode);
@@ -455,13 +470,12 @@ if (import.meta.main) {
 	};
 	const program = buildProgram(context);
 	program.parseAsync(process.argv).catch((err) => {
-		// Commander throws for unknown commands / missing required args;
-		// it has already printed a usage hint to stderr.
-		const code = (err as { exitCode?: unknown }).exitCode;
-		if (typeof code === "number") {
-			process.exit(code);
+		// Commander throws for unknown commands / missing required args /
+		// invalid option values; it has already printed a usage hint to
+		// stderr, so only non-commander rejections need a message here.
+		if (!(err instanceof CommanderError)) {
+			process.stderr.write(`warren: ${formatError(err)}\n`);
 		}
-		process.stderr.write(`warren: ${formatError(err)}\n`);
-		process.exit(1);
+		process.exit(resolveCliExitCode(err));
 	});
 }

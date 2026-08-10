@@ -102,6 +102,8 @@ export interface CreatePlanRunInput {
 	ref?: string | null;
 	providerOverride?: string | null;
 	modelOverride?: string | null;
+	/** warren-a63d: per-child USD spend cap the coordinator forwards on each dispatch. */
+	maxCostUsd?: number | null;
 	dispatcherHandle?: string;
 	trigger?: string;
 	/**
@@ -188,6 +190,7 @@ export class PlanRunsRepo {
 			ref: input.ref ?? null,
 			providerOverride: input.providerOverride ?? null,
 			modelOverride: input.modelOverride ?? null,
+			maxCostUsd: input.maxCostUsd ?? null,
 			dispatcherHandle: input.dispatcherHandle ?? "operator",
 			trigger: input.trigger ?? "manual",
 			parentRunId: input.parentRunId ?? null,

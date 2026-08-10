@@ -1,0 +1,1 @@
+ALTER TABLE `plan_runs` ADD `max_cost_usd` real;

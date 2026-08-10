@@ -56,6 +56,8 @@ export interface CreatePlanRunOrchestrationInput {
 	readonly ref?: string;
 	readonly providerOverride?: string;
 	readonly modelOverride?: string;
+	/** warren-a63d: per-child USD spend cap, forwarded to every child dispatch. */
+	readonly maxCostUsd?: number;
 	readonly dispatcherHandle?: string;
 
 	readonly repos: Repos;
@@ -182,6 +184,7 @@ export async function createPlanRun(
 		...(input.ref !== undefined ? { ref: input.ref } : {}),
 		...(input.providerOverride !== undefined ? { providerOverride: input.providerOverride } : {}),
 		...(input.modelOverride !== undefined ? { modelOverride: input.modelOverride } : {}),
+		...(input.maxCostUsd !== undefined ? { maxCostUsd: input.maxCostUsd } : {}),
 		...(input.dispatcherHandle !== undefined ? { dispatcherHandle: input.dispatcherHandle } : {}),
 		...(input.now !== undefined ? { now: input.now() } : {}),
 	});

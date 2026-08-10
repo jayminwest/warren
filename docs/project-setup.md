@@ -4,7 +4,8 @@ Checklist for configuring a GitHub repository so warren can open PRs that auto-m
 
 ## Prerequisites
 
-- A GitHub PAT with `contents:write` and `pull-requests:write` scopes
+- A GitHub App on your account with `contents:write` and `pull-requests:write`
+  repository permissions (created in §2 — no PAT, nothing expires)
 - The repo has a CI workflow (e.g. `.github/workflows/ci.yml`) that runs on pull requests
 - `gh` CLI authenticated
 
@@ -30,29 +31,48 @@ jobs:
       !github.event.pull_request.draft &&
       github.event.pull_request.user.login == github.repository_owner
     steps:
+      - name: Mint app installation token
+        id: app-token
+        uses: actions/create-github-app-token@v3.2.0
+        with:
+          app-id: ${{ vars.AUTO_MERGE_APP_ID }}
+          private-key: ${{ secrets.AUTO_MERGE_APP_PRIVATE_KEY }}
+
       - name: Enable auto-merge (squash)
         env:
-          GH_TOKEN: ${{ secrets.AUTO_MERGE_PAT }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
           PR_URL: ${{ github.event.pull_request.html_url }}
         run: gh pr merge --auto --squash "$PR_URL"
 ```
 
 This enables GitHub's auto-merge on every non-draft PR authored by the repo owner. Other authors' PRs still run CI but require manual merge. Squash keeps main history linear.
 
-The workflow uses `AUTO_MERGE_PAT` instead of `GITHUB_TOKEN` so the merge commit triggers downstream workflows (CI, Publish, Release). GitHub deliberately suppresses `GITHUB_TOKEN`-authored pushes to prevent recursive loops.
+The workflow authenticates with a GitHub App installation token instead of `GITHUB_TOKEN` so the merge commit triggers downstream workflows (CI, Publish, Release). GitHub deliberately suppresses `GITHUB_TOKEN`-authored pushes to prevent recursive loops. An App beats a PAT here. The workflow mints a fresh token on each run from a private key that never expires. A static PAT expires silently, and then merges and releases stop with no failed run to notice (warren-2565).
 
-## 2. Add the `AUTO_MERGE_PAT` secret
+## 2. Create the auto-merge GitHub App and wire its credentials
 
-**Settings → Secrets and variables → Actions → New repository secret**
+One-time, in the browser: **Settings → Developer settings → GitHub Apps → New GitHub App** (<https://github.com/settings/apps/new>)
 
-- Name: `AUTO_MERGE_PAT`
-- Value: your GitHub PAT
+- **GitHub App name:** anything unique, for example `<owner>-warren-automerge`
+- **Homepage URL:** the repo URL (a required field, not otherwise used)
+- **Webhook:** uncheck **Active**
+- **Repository permissions:** Contents — Read and write. Pull requests — Read and write
+- **Where can this GitHub App be installed:** Only on this account
 
-Or via CLI:
+After you create the app, on its settings page:
+
+1. Note the **App ID**.
+2. **Generate a private key** — downloads a `.pem` file.
+3. **Install App** → your account → **Only select repositories** → pick the repo.
+
+Give the credentials to Actions (App ID is not a secret, so it goes in a variable):
 
 ```bash
-gh secret set AUTO_MERGE_PAT --repo owner/repo
+gh variable set AUTO_MERGE_APP_ID --repo owner/repo --body '<app id>'
+gh secret set AUTO_MERGE_APP_PRIVATE_KEY --repo owner/repo < path/to/downloaded-key.pem
 ```
+
+There is no rotation cadence. The workflow mints a new installation token on each run, and the token expires after one hour on its own. The `app-heartbeat` job in `release.yml` mints a token on every release tick as proof that the credential is alive. A revoked key or an uninstalled app turns that job red before the merge queue can stall silently.
 
 ## 3. Enable auto-merge on the repo
 
@@ -117,7 +137,8 @@ gh api --method PATCH "repos/$REPO" \
 
 gh api --method DELETE "repos/$REPO/branches/main/protection/required_pull_request_reviews" 2>/dev/null
 
-gh secret set AUTO_MERGE_PAT --repo "$REPO"
+gh variable set AUTO_MERGE_APP_ID --repo "$REPO" --body '<app id>'
+gh secret set AUTO_MERGE_APP_PRIVATE_KEY --repo "$REPO" < path/to/downloaded-key.pem
 ```
 
 Then commit the workflow file and push.

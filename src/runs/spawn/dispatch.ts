@@ -46,6 +46,7 @@ import type { RunSpec, RuntimeProvider } from "../../runtime/contract.ts";
 import { interactiveRuntimeOverride } from "../../warren-config/schema.ts";
 import { composeRunBranch, resolveRunBranchPrefix } from "../branch.ts";
 import { parseBurrowConfig } from "../burrow-config.ts";
+import { resolveCapOverride } from "../cost-cap.ts";
 import { lifecycleBus } from "../lifecycle-bus.ts";
 import { buildSeedFiles } from "../seed.ts";
 import { validateTargetBranch } from "../target-branch.ts";
@@ -136,13 +137,23 @@ export async function spawnRun(input: SpawnRunInput): Promise<SpawnRunResult> {
 		projectDefaults?.defaultProvider,
 	);
 	const effectiveModel = resolveOverride(input.modelOverride, projectDefaults?.defaultModel);
-	// warren-a63d: fold the per-trigger spend cap on top (trigger > agent).
+	// warren-a63d: fold the per-dispatch spend cap on top. The full chain
+	// (override > agent frontmatter > project default, with malformed agent
+	// values still failing open) lives in resolveCapOverride — cost-cap.ts
+	// owns the semantics, this site only feeds it the three sources.
+	const capOverride = resolveCapOverride({
+		...(input.maxCostUsdOverride !== undefined ? { overrideUsd: input.maxCostUsdOverride } : {}),
+		frontmatter: baseAgent.frontmatter,
+		...(projectDefaults?.maxCostUsd !== undefined
+			? { projectDefaultUsd: projectDefaults.maxCostUsd }
+			: {}),
+	});
 	const agent = withMaxCostUsdOverride(
 		withProviderOverrides(baseAgent, {
 			...(effectiveProvider !== undefined ? { providerOverride: effectiveProvider } : {}),
 			...(effectiveModel !== undefined ? { modelOverride: effectiveModel } : {}),
 		}),
-		input.maxCostUsdOverride,
+		capOverride,
 	);
 
 	// Build the seed payload BEFORE creating the warren row so a malformed

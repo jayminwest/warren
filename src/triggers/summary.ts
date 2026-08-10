@@ -33,6 +33,8 @@ export interface TriggerSummary {
 	readonly role: string;
 	readonly timezone?: string;
 	readonly prompt?: string;
+	/** warren-a63d: the entry's per-run spend cap, surfaced so operators can verify it. */
+	readonly maxCostUsd?: number;
 	readonly lastFiredAt: string | null;
 	readonly nextFireAt: string | null;
 	readonly lastRunId: string | null;
@@ -83,6 +85,7 @@ async function summarize(
 		role: trigger.role,
 		...(trigger.timezone !== undefined ? { timezone: trigger.timezone } : {}),
 		...(trigger.prompt !== undefined ? { prompt: trigger.prompt } : {}),
+		...(trigger.maxCostUsd !== undefined ? { maxCostUsd: trigger.maxCostUsd } : {}),
 		lastFiredAt: row?.lastFiredAt ?? null,
 		nextFireAt,
 		lastRunId: row?.lastRunId ?? null,

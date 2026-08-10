@@ -48,6 +48,8 @@ export interface RunArgs {
 	readonly providerOverride?: string;
 	/** Per-run override of the agent's `frontmatter.model`. */
 	readonly modelOverride?: string;
+	/** Per-run USD spend cap (warren-a63d): wins over the agent's own and the project default. */
+	readonly maxCostUsd?: number;
 }
 
 export interface RunDeps extends RemoteTailDeps {}
@@ -82,6 +84,7 @@ export async function runRun(
 			trigger: args.trigger ?? "cli",
 			...(args.providerOverride !== undefined ? { providerOverride: args.providerOverride } : {}),
 			...(args.modelOverride !== undefined ? { modelOverride: args.modelOverride } : {}),
+			...(args.maxCostUsd !== undefined ? { maxCostUsd: args.maxCostUsd } : {}),
 		});
 		runId = spawned.run.id;
 		if (mode === "ndjson") {

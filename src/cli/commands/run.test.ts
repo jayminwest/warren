@@ -170,6 +170,13 @@ describe("runRun", () => {
 		]);
 	});
 
+	test("forwards --max-cost-usd as the per-run spend cap (warren-a63d)", async () => {
+		const { context } = captureContext();
+		const createCalls: CreateRunInput[] = [];
+		await runRun(context, { client: mockClient({ createCalls }) }, { ...ARGS, maxCostUsd: 3.5 });
+		expect(createCalls[0]?.maxCostUsd).toBe(3.5);
+	});
+
 	test("defaults the trigger label to cli", async () => {
 		const { context } = captureContext();
 		const createCalls: CreateRunInput[] = [];

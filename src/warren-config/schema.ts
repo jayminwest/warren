@@ -304,6 +304,10 @@ export type ServerPreviewConfig = z.infer<typeof ServerPreviewConfigSchema>;
 export type StaticPreviewConfig = z.infer<typeof StaticPreviewConfigSchema>;
 export type PreviewConfig = z.infer<typeof PreviewConfigSchema>;
 
+// warren-a63d: per-run USD spend cap, shared by the trigger entry and the
+// project-wide default below so both sites can never validate differently.
+const MaxCostUsdSchema = z.number().positive("maxCostUsd must be positive").finite();
+
 // warren-a63d: per-trigger spend cap (USD); folded onto agent frontmatter
 // (trigger > agent) and enforced mid-run by the bridge. Positive finite.
 const CronTriggerSchema = z
@@ -315,7 +319,7 @@ const CronTriggerSchema = z
 		role: RoleNameSchema,
 		timezone: TimezoneSchema.optional(),
 		prompt: PromptSchema.optional(),
-		maxCostUsd: z.number().positive("maxCostUsd must be positive").finite().optional(),
+		maxCostUsd: MaxCostUsdSchema.optional(),
 	})
 	.strict();
 
@@ -366,6 +370,12 @@ export const DefaultsConfigSchema = z
 		resources: ResourcesConfigSchema.optional(),
 		// warren-b6f2: per-project admission control (K8s, design §3.3).
 		admission: AdmissionConfigSchema.optional(),
+		// Project-wide default spend cap (USD), the weakest source in the
+		// warren-a63d cap chain: dispatch override (a trigger entry's cap or a
+		// POST /runs body field — one slot, mutually exclusive sources) > agent
+		// frontmatter > this. Resolved by resolveCapOverride (src/runs/cost-cap.ts)
+		// and enforced mid-run by the event bridge.
+		maxCostUsd: MaxCostUsdSchema.optional(),
 		// warren-05ea: opt-in polling CI-fixer; missing block → poller skips it.
 		ciFixer: CiFixerConfigSchema.optional(),
 		// warren-3db0: opt-in closed-loop healer; missing block → intake skips it.

@@ -10,6 +10,7 @@
 			"ref": null,
 			"providerOverride": null,
 			"modelOverride": null,
+			"maxCostUsd": null,
 			"dispatcherHandle": "operator",
 			"trigger": "manual",
 			"parentRunId": null,

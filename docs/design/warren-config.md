@@ -59,7 +59,17 @@ event). A malformed / non-positive value fails OPEN (no cap) so a budget
 typo never silently cancels every run. `config.yaml` and legacy
 `defaults.json` share the same
 schema — `{ defaultRole?, defaultBranch?, defaultPrompt?, defaultProvider?,
-defaultModel?, runBranchPrefix?, preview? }` — all optional, all strict.
+defaultModel?, runBranchPrefix?, preview?, maxCostUsd? }` — all optional,
+all strict. `maxCostUsd` on `config.yaml` is the project-wide default
+spend cap, the weakest source in the warren-a63d chain: an explicit
+dispatch override (a `POST /runs` `maxCostUsd` body field / `warren run
+--max-cost-usd`, or a trigger entry's cap) > the agent's own
+`frontmatter.maxCostUsd` > this project default. The default applies only
+when the agent declares no cap at all — a malformed / non-positive agent
+value keeps the fail-open rule above (no cap, and the unreadable value
+stays visible on the frozen `rendered_agent_json`) rather than being
+silently replaced by the project default. `resolveCapOverride` in
+`src/runs/cost-cap.ts` is the one implementation of this chain.
 `runBranchPrefix` (warren-9993) overrides the prefix warren composes the
 burrow branch from (`${prefix}/${run.id}`); precedence project default >
 `WARREN_RUN_BRANCH_PREFIX` env > built-in `"burrow"`. `preview.yaml` (when

@@ -61,6 +61,9 @@
 		"lineWidth": 100
 	},
 	"overrides": [
+		// Existing files above the project-wide cognitive-complexity limit of 15 are grandfathered.
+		// This ratchet only shrinks: refactor an offender below the limit, then remove its line;
+		// never add new exceptions. The UI entries joined the same policy in warren-c8bd.
 		{
 			"includes": [
 				"scripts/acceptance/lib/assert.ts",
@@ -142,6 +145,9 @@
 				}
 			}
 		},
+		// These 32 legacy PascalCase and camelCase UI filenames predate the kebab-case rule.
+		// New UI files must use kebab-case. Rename a legacy file, then remove its line from
+		// this ratchet (warren-4e87); never add new exceptions.
 		{
 			"includes": [
 				"src/ui/src/App.tsx",

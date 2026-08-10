@@ -68,6 +68,9 @@ export function createPlanRunSpawn(input: CreatePlanRunSpawnInput): CoordinatorS
 			seedId: child.seedId,
 			...(planRun.providerOverride !== null ? { providerOverride: planRun.providerOverride } : {}),
 			...(planRun.modelOverride !== null ? { modelOverride: planRun.modelOverride } : {}),
+			// warren-a63d: the plan-run's spend cap applies to EACH child dispatch
+			// on the override tier, same slot a POST /runs body cap rides.
+			...(planRun.maxCostUsd !== null ? { maxCostUsdOverride: planRun.maxCostUsd } : {}),
 			ref,
 			metadata: {
 				planRunId: planRun.id,

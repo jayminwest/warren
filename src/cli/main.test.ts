@@ -1,4 +1,6 @@
 import { describe, expect, test } from "bun:test";
+import { CommanderError } from "commander";
+import { resolveCliExitCode } from "./flags.ts";
 import { buildProgram } from "./main.ts";
 import type { CliContext } from "./output.ts";
 
@@ -132,5 +134,28 @@ describe("global --output contract (warren-b61e)", () => {
 			.catch((e: unknown) => e);
 		expect((err as { exitCode?: number }).exitCode).toBe(2);
 		expect(errChunks.join("")).toContain("invalid --output mode");
+	});
+});
+
+describe("resolveCliExitCode", () => {
+	test("maps every non-zero commander usage error to the documented exit 2", () => {
+		expect(resolveCliExitCode(new CommanderError(1, "commander.invalidArgument", "bad"))).toBe(2);
+		expect(resolveCliExitCode(new CommanderError(1, "commander.missingArgument", "bad"))).toBe(2);
+		expect(resolveCliExitCode(new CommanderError(1, "commander.unknownCommand", "bad"))).toBe(2);
+	});
+
+	test("keeps --help/--version at exit 0 and non-commander failures at exit 1", () => {
+		expect(resolveCliExitCode(new CommanderError(0, "commander.helpDisplayed", "help"))).toBe(0);
+		expect(resolveCliExitCode(new Error("boom"))).toBe(1);
+	});
+
+	test("an invalid --max-cost-usd maps to the usage-error exit 2 (warren-b61e)", async () => {
+		const program = buildProgram(silentContext());
+		program.configureOutput({ writeErr: () => undefined });
+		const err = await program
+			.parseAsync(["node", "warren", "run", "agent", "prj_x", "-p", "x", "--max-cost-usd", "abc"])
+			.catch((e: unknown) => e);
+		expect(err).toBeInstanceOf(CommanderError);
+		expect(resolveCliExitCode(err)).toBe(2);
 	});
 });
