@@ -62,9 +62,12 @@ finish the batch inline.
 - **Project id**: `GET /projects`, match the gitUrl.
 - **Dispatch**: `POST /runs` with `{agent, project, prompt,
   modelOverride, seedId}`. Always pass `seedId` — it links the run to
-  the tracker. Response shapes differ: `POST /runs` WRAPS the run
-  (`{run: {...}}`), while `GET /runs/:id` returns it BARE — parsing the
-  POST as bare reads all-null and invites a duplicate dispatch.
+  the tracker. BOTH `POST /runs` and `GET /runs/:id` WRAP the run as
+  `{run: {...}}` — since warren-7d84 the detail GETs wrap to match the
+  POST and the plan-runs family, so no route needs per-envelope
+  knowledge. Parse `.run.state`, never `.state`. A bare parse reads
+  all-null, which a polling loop silently reads as "not terminal yet"
+  and spins to its iteration cap instead of failing loudly.
   Terminal states are `succeeded|failed|cancelled`.
 - **Repair dispatch onto an existing PR branch**: same POST with
   `ref` = `targetBranch` = the PR's head branch. Warren pushes back to
@@ -108,7 +111,7 @@ goes stale. Diagnose with
 | State | Fix |
 | --- | --- |
 | `BEHIND`, auto-merge armed | `gh pr update-branch <n>` (re-run after every upstream merge — serial auto-merge is a chase) |
-| `DIRTY` (conflicts) | dispatch a **repair run** on the PR branch (below) |
+| `DIRTY` (conflicts) | FIRST verify the conflict is real: `git merge-tree --write-tree origin/main <head-ref>`. Clean (tree hash only) means GitHub's cached mergeability is wrong — push a merge commit to force a recompute, do NOT spend a repair run (warren-fb6e). Genuinely conflicted → dispatch a **repair run** on the PR branch (below) |
 | `CLEAN`/green but auto-merge off | Article IX gate declined to arm it; `gh pr merge <n> --auto --squash` — only with operator authorization to unblock merges (ask once, then treat as standing for the session) |
 | CI `FAILURE` | read the failing gate log; bundle-size overshoot after a merge → repair run that runs the bounded `check:bundle-size --update` and commits ONLY the budget diff |
 
@@ -116,8 +119,15 @@ goes stale. Diagnose with
 merged on main since the branch was cut; `git fetch origin && git merge
 origin/main`; preserve BOTH sides (deletions on main win over
 incidental touches; this branch's feature always stays);
-`.seeds/issues.jsonl` conflicts keep BOTH branches' close states and
-never duplicate rows; budgets take main's numbers unless this branch
+`.seeds/issues.jsonl` needs explicit attention even when git reports NO
+conflict — `.gitattributes` sets `merge=union`, so a merge silently
+keeps both copies of every row both sides rewrote, and closing one issue
+rewrites `blockedBy` on every plan sibling (warren-9c90 / warren-db8c).
+Always run `jq -r .id .seeds/issues.jsonl | sort | uniq -d` after the
+merge. Resolve by taking `closed` where either side closed and
+INTERSECTING `blockedBy` — each side only ever removes a blocker, so
+taking either row alone resurrects one the other side satisfied. Then
+confirm with `bun run check:seeds-integrity`; budgets take main's numbers unless this branch
 changed the UI; stay on the branch, no new PR, gate green, commit, no
 push.
 
