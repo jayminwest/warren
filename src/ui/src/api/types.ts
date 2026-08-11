@@ -16,7 +16,9 @@
 export {
 	type AgentRow,
 	type AgentSource,
+	type ForgeErrorKind,
 	isActivePreviewState,
+	isPullRequestLifecycle,
 	isTerminalPlanRunChildState,
 	isTerminalPlanRunState,
 	isTerminalRunState,
@@ -26,6 +28,7 @@ export {
 	type PlanRunState,
 	PREVIEW_ACTIVE_STATES,
 	type PreviewState,
+	type PullRequestLifecycle,
 	RUN_TERMINAL_STATES,
 	type RunFailureReason,
 	type RunMode,

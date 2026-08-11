@@ -1,7 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import {
+	FORGE_ERROR_KINDS,
 	isActivePreviewState,
+	isForgeErrorKind,
 	isKnownRuntimeId,
+	isPullRequestLifecycle,
 	isRunTriggerKind,
 	isTerminalPlanRunChildState,
 	isTerminalPlanRunState,
@@ -16,6 +19,7 @@ import {
 	PLAN_RUN_TERMINAL_STATES,
 	PREVIEW_ACTIVE_STATES,
 	PREVIEW_STATES,
+	PULL_REQUEST_LIFECYCLES,
 	RUN_FAILURE_REASONS,
 	RUN_MODES,
 	RUN_STATES,
@@ -53,6 +57,48 @@ describe("run vocabulary", () => {
 	 */
 	test("batch is the only surviving run mode", () => {
 		expect([...RUN_MODES]).toEqual(["batch"]);
+	});
+});
+
+// warren-0993 / forge-contract.md §2.1: the pull-request lifecycle and the
+// forge error taxonomy land in the house shape (frozen tuple + derived union
+// + membership guard) so the UI and SDK re-export, never re-list.
+describe("pull-request vocabulary", () => {
+	test("PULL_REQUEST_LIFECYCLES lists exactly the forge-reported states", () => {
+		expect([...PULL_REQUEST_LIFECYCLES]).toEqual(["open", "merged", "closed_unmerged"]);
+	});
+
+	test("isPullRequestLifecycle accepts members and rejects everything else", () => {
+		for (const s of PULL_REQUEST_LIFECYCLES) expect(isPullRequestLifecycle(s)).toBe(true);
+		expect(isPullRequestLifecycle("closed")).toBe(false);
+		expect(isPullRequestLifecycle("")).toBe(false);
+		expect(isPullRequestLifecycle(undefined)).toBe(false);
+		expect(isPullRequestLifecycle(7)).toBe(false);
+	});
+});
+
+describe("forge error vocabulary", () => {
+	test("FORGE_ERROR_KINDS lists all ten arms of the taxonomy", () => {
+		expect([...FORGE_ERROR_KINDS]).toEqual([
+			"no_credential",
+			"unauthorized",
+			"forbidden",
+			"not_found",
+			"conflict",
+			"rate_limited",
+			"push_protected",
+			"unsupported",
+			"network",
+			"http_error",
+		]);
+	});
+
+	test("isForgeErrorKind accepts members and rejects everything else", () => {
+		for (const k of FORGE_ERROR_KINDS) expect(isForgeErrorKind(k)).toBe(true);
+		expect(isForgeErrorKind("timeout")).toBe(false);
+		expect(isForgeErrorKind("")).toBe(false);
+		expect(isForgeErrorKind(undefined)).toBe(false);
+		expect(isForgeErrorKind(null)).toBe(false);
 	});
 });
 
