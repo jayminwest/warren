@@ -1,14 +1,24 @@
 /**
  * `src/runs/pr-checks.ts` — the PR merge-check / URL-parse group split out of
  * `src/runs/pr.ts` (warren-db9a / pl-88bb step 1) to keep both files under
- * the per-file line budget. Houses `checkPullRequestMerged`,
- * `parsePullRequestUrl`, and the shared GitHub REST helpers
- * (`buildHeaders`/`readJson`/`readText`/`truncate`) that both this module
- * and `pr.ts` use. `pr.ts` re-exports the public symbols so existing
+ * the per-file line budget. Houses `checkPullRequestMerged` and
+ * `parsePullRequestUrl`. `pr.ts` re-exports the public symbols so existing
  * `../runs/pr.ts` import paths keep resolving.
+ *
+ * Transport lives in `src/forge/github/` (plan pl-d1c9 step 2, warren-51ae):
+ * headers, readers, the error classifier (including the `Retry-After`
+ * parser this module used to own), and the retry policy all come from the
+ * consolidated core. This file holds only the domain meaning of the
+ * responses (forge-contract.md §3).
  */
 
-export const GITHUB_API_BASE = "https://api.github.com";
+import { parseRetryAfterMs } from "../forge/github/errors.ts";
+import { GITHUB_API_BASE } from "../forge/github/headers.ts";
+import { requestGitHub } from "../forge/github/http.ts";
+import { readJson } from "../forge/github/readers.ts";
+
+export { parseRetryAfterMs };
+
 const USER_AGENT = "warren-reap-pr-open";
 
 /**
@@ -28,49 +38,6 @@ export function readGhFetchOverride(): "merged" | null {
 	return v.trim() === "merged" ? "merged" : null;
 }
 
-export function buildHeaders(token: string): Record<string, string> {
-	return {
-		accept: "application/vnd.github+json",
-		authorization: `Bearer ${token}`,
-		"content-type": "application/json",
-		"user-agent": USER_AGENT,
-		"x-github-api-version": "2022-11-28",
-	};
-}
-
-export async function readJson(res: Response): Promise<unknown> {
-	try {
-		return await res.json();
-	} catch {
-		return null;
-	}
-}
-
-export async function readText(res: Response): Promise<string> {
-	try {
-		return await res.text();
-	} catch {
-		return "";
-	}
-}
-
-export function truncate(input: string, max: number): string {
-	return input.length <= max ? input : `${input.slice(0, max)}…`;
-}
-
-/**
- * Parse a `Retry-After` header value into milliseconds. Only the
- * delta-seconds form is honored (the HTTP-date form would need a clock);
- * absent or unparseable values return `null` so the caller falls back to
- * its own delay.
- */
-export function parseRetryAfterMs(header: string | null): number | null {
-	if (header === null) return null;
-	const seconds = Number.parseInt(header.trim(), 10);
-	if (!Number.isFinite(seconds) || seconds < 0 || String(seconds) !== header.trim()) return null;
-	return seconds * 1000;
-}
-
 /* ----------------------------------------------------------------------- */
 /* PR-merge polling                                                         */
 /* ----------------------------------------------------------------------- */
@@ -80,9 +47,12 @@ export function parseRetryAfterMs(header: string | null): number | null {
  * coordinator (warren-9e4c). Pure helper: the caller decides what each
  * non-merged shape means (`open` = wait, `closed_unmerged` = fail the plan).
  *
- * Mirrors `openPullRequest`'s posture: direct REST call against
- * `GET /repos/:owner/:repo/pulls/:number`, `Authorization: Bearer <token>`
- * from `GITHUB_TOKEN`, fetch injected as a seam.
+ * Transport is `requestGitHub` (plan pl-d1c9 step 2). Retry stays OFF here
+ * on purpose: the caller (`src/plan-runs/pr-merge.ts`) is a tick-driven
+ * poller that is already this call site's retry — it backs off and honors
+ * `Retry-After` per forge-contract.md §6.5 ("the poller's tick and the
+ * caller's outer budget are the real bound"). Stacking the transport
+ * policy's in-band sleeps on top would double-wait every throttle.
  */
 export interface CheckPullRequestMergedInput {
 	readonly owner: string;
@@ -118,43 +88,36 @@ export async function checkPullRequestMerged(
 		};
 	}
 
-	const fetchImpl = input.fetch ?? globalThis.fetch;
-	const url = `${GITHUB_API_BASE}/repos/${input.owner}/${input.repo}/pulls/${input.number}`;
+	const result = await requestGitHub({
+		url: `${GITHUB_API_BASE}/repos/${input.owner}/${input.repo}/pulls/${input.number}`,
+		method: "GET",
+		token: input.token,
+		userAgent: USER_AGENT,
+		context: `GET /pulls/${input.number}`,
+		...(input.fetch !== undefined ? { fetch: input.fetch } : {}),
+		retry: { maxRetries: 0 },
+	});
 
-	let res: Response;
-	try {
-		res = await fetchImpl(url, { method: "GET", headers: buildHeaders(input.token) });
-	} catch (err) {
-		return {
-			kind: "http_error",
-			status: 0,
-			message: err instanceof Error ? err.message : String(err),
-		};
+	if (!result.ok) {
+		const error = result.error;
+		if (error.kind === "rate_limited") {
+			// warren-9bbc: rate limiting is its own retryable class, not a
+			// generic `http_error`. The poller (src/plan-runs/pr-merge.ts)
+			// retries it and honors `Retry-After`; lumping it into the 4xx
+			// bucket made a transient throttle indistinguishable from a dead PR.
+			return {
+				kind: "rate_limited",
+				retryAfterMs: error.retryAfterMs,
+				message: error.message,
+			};
+		}
+		return { kind: "http_error", status: error.status, message: error.message };
 	}
 
-	if (res.status === 429) {
-		// warren-9bbc: rate limiting is its own retryable class, not a generic
-		// `http_error`. The poller (src/plan-runs/pr-merge.ts) retries it and
-		// honors `Retry-After` when GitHub sends one; lumping it into the 4xx
-		// bucket made a transient throttle indistinguishable from a dead PR.
-		const text = await readText(res);
-		return {
-			kind: "rate_limited",
-			retryAfterMs: parseRetryAfterMs(res.headers.get("retry-after")),
-			message: `GET /pulls/${input.number} returned 429 (rate limited): ${truncate(text, 500)}`,
-		};
-	}
-
-	if (res.status !== 200) {
-		const text = await readText(res);
-		return {
-			kind: "http_error",
-			status: res.status,
-			message: `GET /pulls/${input.number} returned ${res.status}: ${truncate(text, 500)}`,
-		};
-	}
-
-	const body = (await readJson(res)) as { merged_at?: unknown; state?: unknown } | null;
+	const body = (await readJson(result.response)) as {
+		merged_at?: unknown;
+		state?: unknown;
+	} | null;
 	const mergedAt = typeof body?.merged_at === "string" ? body.merged_at : null;
 	if (mergedAt !== null) {
 		return { kind: "merged", mergedAt };
@@ -170,6 +133,10 @@ export async function checkPullRequestMerged(
  * `parsePullRequestUrl` — regex-parse `https://github.com/<owner>/<repo>/pull/<n>`.
  * Returns `null` on mismatch (e.g. GHE-hosted shapes) so the coordinator
  * treats them as "cannot verify merge" rather than "merged".
+ *
+ * Grammar note (plan pl-d1c9 step 2): this regex is one of the five URL
+ * grammars catalogued in forge-contract.md §6.3. It is preserved verbatim
+ * here — unification with the other grammars is a later plan step.
  */
 export const PR_URL_RE = /^https:\/\/github\.com\/([^/\s]+)\/([^/\s]+)\/pull\/(\d+)(?:[/?#].*)?$/;
 
