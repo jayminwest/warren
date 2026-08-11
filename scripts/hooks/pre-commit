@@ -4,4 +4,13 @@
 # recreate the gate-drift that warren-5797 was opened to kill. If a check
 # is too slow for the hook, fix the check — don't carve out a subset.
 set -euo pipefail
-exec bun run check:all
+
+# Git exports GIT_DIR, GIT_WORK_TREE, and GIT_INDEX_FILE to every hook it runs,
+# and an inherited GIT_DIR outranks the `cwd` a child process passes. A gate
+# that spawns git against its own fixture repo would therefore write to THIS
+# repo instead (warren-8664: a test wrote `user.name = Local Bot` into the
+# developer's .git/config, and every later local commit carried it). Strip the
+# inherited vars so the gates see a plain shell. This runs the same battery,
+# so the single-source-of-truth rule above still holds.
+exec env -u GIT_DIR -u GIT_WORK_TREE -u GIT_INDEX_FILE -u GIT_PREFIX \
+	bun run check:all

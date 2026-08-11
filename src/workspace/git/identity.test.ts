@@ -26,6 +26,29 @@ describe("identity helpers", () => {
 		rmSync(workspace, { recursive: true, force: true });
 	});
 
+	/**
+	 * Env for git commands that must act on `repo` and nothing else (warren-8664).
+	 *
+	 * `cwd` does not pin git's repo discovery: an inherited `GIT_DIR` outranks
+	 * it, so `git config user.name X` with `cwd: repo` writes to whatever
+	 * `GIT_DIR` names. Git exports `GIT_DIR` to every hook it runs, and the
+	 * pre-commit hook runs `check:all`, which runs this suite — so under a hook
+	 * these writes landed in the developer's own `.git/config` and every later
+	 * local commit was authored `Local Bot <bot@local>`.
+	 *
+	 * Dropping every inherited `GIT_*` var (`GIT_INDEX_FILE` and `GIT_WORK_TREE`
+	 * mislead the same way) and naming the target explicitly closes it.
+	 */
+	function repoScopedGitEnv(repo: string): Record<string, string | undefined> {
+		const env: Record<string, string | undefined> = {};
+		for (const [key, value] of Object.entries(process.env)) {
+			if (!key.startsWith("GIT_")) env[key] = value;
+		}
+		env.GIT_DIR = join(repo, ".git");
+		env.GIT_WORK_TREE = repo;
+		return env;
+	}
+
 	function isolatedEnv(): Record<string, string | undefined> {
 		// Pin git to the temp HOME so the test doesn't depend on the developer's
 		// real ~/.gitconfig — and disable system + xdg config sources that could
@@ -67,10 +90,11 @@ describe("identity helpers", () => {
 		// GIT_DIR in isolatedEnv must sever that.
 		const cwd = process.cwd();
 		const repo = mkdtempSync(join(tmpdir(), "warren-identity-repo-"));
+		const env = repoScopedGitEnv(repo);
 		try {
-			await Bun.spawn(["git", "init", "-q"], { cwd: repo }).exited;
-			await Bun.spawn(["git", "config", "user.name", "Local Bot"], { cwd: repo }).exited;
-			await Bun.spawn(["git", "config", "user.email", "bot@local"], { cwd: repo }).exited;
+			await Bun.spawn(["git", "init", "-q"], { cwd: repo, env }).exited;
+			await Bun.spawn(["git", "config", "user.name", "Local Bot"], { cwd: repo, env }).exited;
+			await Bun.spawn(["git", "config", "user.email", "bot@local"], { cwd: repo, env }).exited;
 			process.chdir(repo);
 			writeFileSync(configPath, "[user]\n\tname = Alice Example\n\temail = alice@example.com\n");
 			const identity = await readHostGitIdentity({ hostEnv: isolatedEnv() });
