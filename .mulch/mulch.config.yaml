@@ -54,6 +54,7 @@ domains:
   api: {}
   forge: {}
   wire-vocabulary: {}
+  seeds: {}
 governance:
   max_entries: 100
   warn_entries: 150
