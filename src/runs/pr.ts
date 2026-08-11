@@ -1,12 +1,7 @@
-import {
-	buildHeaders,
-	GH_FETCH_OVERRIDE_ENV,
-	GITHUB_API_BASE,
-	readGhFetchOverride,
-	readJson,
-	readText,
-	truncate,
-} from "./pr-checks.ts";
+import { GITHUB_API_BASE } from "../forge/github/headers.ts";
+import { requestGitHub } from "../forge/github/http.ts";
+import { readJson } from "../forge/github/readers.ts";
+import { GH_FETCH_OVERRIDE_ENV, readGhFetchOverride } from "./pr-checks.ts";
 import {
 	composeBody,
 	composeTitle,
@@ -52,6 +47,8 @@ export {
  * chain applies.
  */
 
+const PR_USER_AGENT = "warren-reap-pr-open";
+
 export interface OpenPullRequestInput {
 	readonly owner: string;
 	readonly repo: string;
@@ -93,31 +90,55 @@ export async function openPullRequest(
 		};
 	}
 
-	const url = `${GITHUB_API_BASE}/repos/${input.owner}/${input.repo}/pulls`;
-	const headers = buildHeaders(input.token);
+	// Transport policy (plan pl-d1c9 step 2, forge-contract.md §6.5): the
+	// consolidated default — transient network/5xx/429 retried in-band,
+	// other 4xx fatal. This call site previously made exactly one attempt,
+	// so transient failures now retry where they used to fail immediately.
+	const result = await requestGitHub({
+		url: `${GITHUB_API_BASE}/repos/${input.owner}/${input.repo}/pulls`,
+		method: "POST",
+		token: input.token,
+		userAgent: PR_USER_AGENT,
+		context: "POST /pulls",
+		body: {
+			title: input.title,
+			body: input.body,
+			head: input.head,
+			base: input.base,
+		},
+		fetch: deps.fetch,
+	});
 
-	let res: Response;
-	try {
-		res = await deps.fetch(url, {
-			method: "POST",
-			headers,
-			body: JSON.stringify({
-				title: input.title,
-				body: input.body,
-				head: input.head,
-				base: input.base,
-			}),
-		});
-	} catch (err) {
-		return {
-			ok: false,
-			reason: "network",
-			message: err instanceof Error ? err.message : String(err),
-		};
+	if (!result.ok) {
+		const error = result.error;
+		if (error.kind === "network") {
+			return { ok: false, reason: "network", message: error.message };
+		}
+		if (error.status === 422) {
+			// 422 covers both "PR already exists" and "no commits between head
+			// and base". The first is idempotent — fetch the existing PR and
+			// return its url. The second is a no-op shape callers are expected
+			// to skip upstream (commitsAhead === 0), but if it slips through we
+			// surface the message so the operator sees why. The transport core
+			// already classified and truncated the body into `error.message`.
+			if (/already exists|pull request already exists/i.test(error.message)) {
+				const existing = await findExistingPr(input, deps);
+				if (existing !== null) {
+					return { ok: true, url: existing, mode: "exists" };
+				}
+				return {
+					ok: false,
+					reason: "http_error",
+					message: "PR already exists but lookup did not return a url",
+				};
+			}
+			return { ok: false, reason: "http_error", message: error.message };
+		}
+		return { ok: false, reason: "http_error", message: error.message };
 	}
 
-	if (res.status === 201) {
-		const created = (await readJson(res)) as { html_url?: unknown } | null;
+	if (result.response.status === 201) {
+		const created = (await readJson(result.response)) as { html_url?: unknown } | null;
 		const link = typeof created?.html_url === "string" ? created.html_url : null;
 		if (link === null) {
 			return { ok: false, reason: "http_error", message: "POST /pulls returned no html_url" };
@@ -125,59 +146,76 @@ export async function openPullRequest(
 		return { ok: true, url: link, mode: "created" };
 	}
 
-	if (res.status === 422) {
-		// 422 covers both "PR already exists" and "no commits between head and
-		// base". The first is idempotent — fetch the existing PR and return
-		// its url. The second is a no-op shape callers are expected to skip
-		// upstream (commitsAhead === 0), but if it slips through we surface
-		// the message so the operator sees why.
-		const body = (await readJson(res)) as { errors?: unknown; message?: unknown } | null;
-		const message = typeof body?.message === "string" ? body.message : "422 from POST /pulls";
-		const errorsBlob = JSON.stringify(body?.errors ?? []);
-		if (/already exists|pull request already exists/i.test(errorsBlob + message)) {
-			const existing = await findExistingPr(input, deps);
-			if (existing !== null) {
-				return { ok: true, url: existing, mode: "exists" };
-			}
-			return {
-				ok: false,
-				reason: "http_error",
-				message: "PR already exists but lookup did not return a url",
-			};
-		}
-		return { ok: false, reason: "http_error", message: `${message} errors=${errorsBlob}` };
-	}
-
-	const text = await readText(res);
+	// Defensive: any other 2xx shape is unexpected for POST /pulls.
 	return {
 		ok: false,
 		reason: "http_error",
-		message: `POST /pulls returned ${res.status}: ${truncate(text, 500)}`,
+		message: `POST /pulls returned unexpected ${result.response.status}`,
 	};
 }
 
+interface ListedPullRequest {
+	readonly html_url?: unknown;
+	readonly head?: unknown;
+}
+
+/**
+ * 422-recovery search for the PR that already covers this head→base.
+ *
+ * First pass filters `head: <owner>:<head>`, which only matches same-repo
+ * branches. When that comes back empty, fall back to listing open PRs on
+ * the base and matching `head.ref` — a duplicate whose head lives on a
+ * fork is invisible to the owner-qualified filter (forge-contract.md
+ * §6.13). The phase-2 provider's idempotent openPullRequest inherits this
+ * fallback rather than the old assumption.
+ */
 async function findExistingPr(
 	input: OpenPullRequestInput,
 	deps: PrFetcher,
 ): Promise<string | null> {
-	const params = new URLSearchParams({
+	const direct = await searchOpenPullRequests(input, deps, {
 		head: `${input.owner}:${input.head}`,
-		base: input.base,
-		state: "open",
 		per_page: "1",
 	});
-	const url = `${GITHUB_API_BASE}/repos/${input.owner}/${input.repo}/pulls?${params.toString()}`;
-	let res: Response;
-	try {
-		res = await deps.fetch(url, { method: "GET", headers: buildHeaders(input.token) });
-	} catch {
-		return null;
+	const directHit = direct?.[0];
+	const directUrl = typeof directHit?.html_url === "string" ? directHit.html_url : null;
+	if (directUrl !== null) return directUrl;
+
+	const onBase = await searchOpenPullRequests(input, deps, { per_page: "100" });
+	if (onBase === null) return null;
+	for (const pr of onBase) {
+		const headRef =
+			typeof pr.head === "object" && pr.head !== null
+				? (pr.head as { ref?: unknown }).ref
+				: undefined;
+		if (headRef === input.head && typeof pr.html_url === "string") {
+			return pr.html_url;
+		}
 	}
-	if (!res.ok) return null;
-	const list = (await readJson(res)) as Array<{ html_url?: unknown }> | null;
-	if (!Array.isArray(list) || list.length === 0) return null;
-	const first = list[0];
-	return typeof first?.html_url === "string" ? first.html_url : null;
+	return null;
+}
+
+async function searchOpenPullRequests(
+	input: OpenPullRequestInput,
+	deps: PrFetcher,
+	extraParams: Record<string, string>,
+): Promise<readonly ListedPullRequest[] | null> {
+	const params = new URLSearchParams({
+		base: input.base,
+		state: "open",
+		...extraParams,
+	});
+	const result = await requestGitHub({
+		url: `${GITHUB_API_BASE}/repos/${input.owner}/${input.repo}/pulls?${params.toString()}`,
+		method: "GET",
+		token: input.token,
+		userAgent: PR_USER_AGENT,
+		context: "GET /pulls",
+		fetch: deps.fetch,
+	});
+	if (!result.ok) return null;
+	const list = (await readJson(result.response)) as readonly ListedPullRequest[] | null;
+	return Array.isArray(list) ? list : null;
 }
 
 /* ----------------------------------------------------------------------- */

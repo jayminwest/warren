@@ -62,7 +62,7 @@ describe("openPullRequest", () => {
 		expect(calls[1]?.url).toContain("base=main");
 	});
 
-	test("returns http_error for unrecognized 422 and embeds errors[] in message (warren-70c6)", async () => {
+	test("returns http_error for unrecognized 422 and embeds the response body in message (warren-70c6)", async () => {
 		const { fetch, calls } = recordingFetch([
 			jsonResponse(422, {
 				message: "Validation Failed",
@@ -71,8 +71,58 @@ describe("openPullRequest", () => {
 		]);
 		const result = await openPullRequest(baseInput, { fetch });
 		expect((result as { reason: string }).reason).toBe("http_error");
-		expect((result as { message: string }).message).toContain("errors="); // warren-70c6
+		// warren-70c6: the errors[] detail rides inside the truncated body the
+		// transport core folds into the error message.
+		expect((result as { message: string }).message).toContain("No commits between");
 		expect(calls).toHaveLength(1);
+	});
+
+	test("finds a cross-fork duplicate by head.ref when the owner-qualified search misses (§6.13)", async () => {
+		const { fetch, calls } = recordingFetch([
+			jsonResponse(422, {
+				message: "Validation Failed",
+				errors: [
+					{ message: "A pull request already exists for fork-owner:agent/refactor-bot/run-1." },
+				],
+			}),
+			// Owner-qualified search misses — the head lives on a fork.
+			jsonResponse(200, []),
+			// Fallback lists open PRs on the base and matches head.ref.
+			jsonResponse(200, [
+				{ html_url: "https://github.com/jayminwest/warren/pull/8", head: { ref: "other" } },
+				{
+					html_url: "https://github.com/jayminwest/warren/pull/9",
+					head: { ref: "agent/refactor-bot/run-1" },
+				},
+			]),
+		]);
+		const result = await openPullRequest(baseInput, { fetch });
+		expect(result).toEqual({
+			ok: true,
+			url: "https://github.com/jayminwest/warren/pull/9",
+			mode: "exists",
+		});
+		expect(calls).toHaveLength(3);
+		expect(calls[2]?.url).toContain("state=open");
+		expect(calls[2]?.url).not.toContain("head=");
+	});
+
+	test("still degrades to http_error when no open PR matches the head", async () => {
+		const { fetch, calls } = recordingFetch([
+			jsonResponse(422, {
+				message: "Validation Failed",
+				errors: [{ message: "A pull request already exists for x:y." }],
+			}),
+			jsonResponse(200, []),
+			jsonResponse(200, []),
+		]);
+		const result = await openPullRequest(baseInput, { fetch });
+		expect(result).toEqual({
+			ok: false,
+			reason: "http_error",
+			message: "PR already exists but lookup did not return a url",
+		});
+		expect(calls).toHaveLength(3);
 	});
 
 	test("returns missing_token when token is empty", async () => {
@@ -86,7 +136,7 @@ describe("openPullRequest", () => {
 		expect(calls).toHaveLength(0);
 	});
 
-	test("returns network on fetch throw", async () => {
+	test("returns network on fetch throw (transport retries exhausted)", async () => {
 		const failingFetch: PrFetcher = {
 			fetch: (async () => {
 				throw new Error("ECONNREFUSED");
@@ -98,14 +148,31 @@ describe("openPullRequest", () => {
 		expect((result as { message: string }).message).toContain("ECONNREFUSED");
 	});
 
-	test("returns http_error on a 500 response", async () => {
-		const { fetch } = recordingFetch([
+	test("retries a transient 500 and succeeds on recovery (pl-d1c9 §6.5 policy)", async () => {
+		const { fetch, calls } = recordingFetch([
+			new Response("oops", { status: 500, headers: { "content-type": "text/plain" } }),
+			jsonResponse(201, { html_url: "https://github.com/jayminwest/warren/pull/42" }),
+		]);
+		const result = await openPullRequest(baseInput, { fetch });
+		expect(result).toEqual({
+			ok: true,
+			url: "https://github.com/jayminwest/warren/pull/42",
+			mode: "created",
+		});
+		expect(calls).toHaveLength(2);
+	});
+
+	test("returns http_error on persistent 500s after the transport retry budget", async () => {
+		const { fetch, calls } = recordingFetch([
+			new Response("oops", { status: 500, headers: { "content-type": "text/plain" } }),
+			new Response("oops", { status: 500, headers: { "content-type": "text/plain" } }),
 			new Response("oops", { status: 500, headers: { "content-type": "text/plain" } }),
 		]);
 		const result = await openPullRequest(baseInput, { fetch });
 		expect(result.ok).toBe(false);
 		expect((result as { reason: string }).reason).toBe("http_error");
 		expect((result as { message: string }).message).toContain("500");
+		expect(calls).toHaveLength(3);
 	});
 });
 
