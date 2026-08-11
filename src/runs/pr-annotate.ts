@@ -27,9 +27,12 @@
  * events so a GitHub outage never fails the run.
  */
 
+import { GITHUB_API_BASE } from "../forge/github/headers.ts";
+import { requestGitHub } from "../forge/github/http.ts";
+import { readJson } from "../forge/github/readers.ts";
 import { PREVIEW_FRAGMENT_END, PREVIEW_FRAGMENT_START } from "./pr.ts";
+import { clampPrBodyLength } from "./pr-template.ts";
 
-const GITHUB_API_BASE = "https://api.github.com";
 const USER_AGENT = "warren-reap-pr-annotate";
 
 export interface AnnotatePrPreviewInput {
@@ -74,56 +77,56 @@ export async function annotatePrPreview(
 		};
 	}
 
-	const headers = buildHeaders(input.token);
 	const apiUrl = `${GITHUB_API_BASE}/repos/${parsed.owner}/${parsed.repo}/pulls/${parsed.number}`;
 
-	let getRes: Response;
-	try {
-		getRes = await deps.fetch(apiUrl, { method: "GET", headers });
-	} catch (err) {
+	// The transport core's single retry policy applies here: network/5xx/429
+	// GETs now retry twice at 500ms before surfacing. That is new behavior
+	// for this call site — previously it had no retry at all, on the same
+	// `GET /pulls/:n` that `src/plan-runs/pr-merge.ts` already retried
+	// (forge-contract.md §6.5). Adopting the shared policy is the point.
+	const getResult = await requestGitHub({
+		url: apiUrl,
+		method: "GET",
+		token: input.token,
+		fetch: deps.fetch,
+		userAgent: USER_AGENT,
+		context: `GET /pulls/${parsed.number}`,
+	});
+	if (!getResult.ok) {
 		return {
 			ok: false,
-			reason: "network",
-			message: err instanceof Error ? err.message : String(err),
+			reason: getResult.error.kind === "network" ? "network" : "http_error",
+			message: getResult.error.message,
 		};
 	}
-	if (!getRes.ok) {
-		const text = await readText(getRes);
-		return {
-			ok: false,
-			reason: "http_error",
-			message: `GET /pulls/${parsed.number} returned ${getRes.status}: ${truncate(text, 500)}`,
-		};
-	}
-	const fetched = (await readJson(getRes)) as { body?: unknown } | null;
+	const fetched = (await readJson(getResult.response)) as { body?: unknown } | null;
 	const currentBody = typeof fetched?.body === "string" ? fetched.body : "";
 
 	const newFragment = buildFragment(input.preview);
-	const nextBody = replaceFragment(currentBody, newFragment);
+	// Re-clamp through the domain's clamp before the PATCH. `composeBody`
+	// clamps at open time, but this path appends a failure tail to a body
+	// that can already sit near the 64KB limit — unclamped, the PATCH 422s
+	// (forge-contract.md §3; PR #805 / mx-026320 place the clamp in the
+	// domain, never in transport).
+	const nextBody = clampPrBodyLength(replaceFragment(currentBody, newFragment));
 	if (nextBody === currentBody) {
 		return { ok: true, mode: "unchanged" };
 	}
 
-	let patchRes: Response;
-	try {
-		patchRes = await deps.fetch(apiUrl, {
-			method: "PATCH",
-			headers,
-			body: JSON.stringify({ body: nextBody }),
-		});
-	} catch (err) {
+	const patchResult = await requestGitHub({
+		url: apiUrl,
+		method: "PATCH",
+		token: input.token,
+		body: { body: nextBody },
+		fetch: deps.fetch,
+		userAgent: USER_AGENT,
+		context: `PATCH /pulls/${parsed.number}`,
+	});
+	if (!patchResult.ok) {
 		return {
 			ok: false,
-			reason: "network",
-			message: err instanceof Error ? err.message : String(err),
-		};
-	}
-	if (!patchRes.ok) {
-		const text = await readText(patchRes);
-		return {
-			ok: false,
-			reason: "http_error",
-			message: `PATCH /pulls/${parsed.number} returned ${patchRes.status}: ${truncate(text, 500)}`,
+			reason: patchResult.error.kind === "network" ? "network" : "http_error",
+			message: patchResult.error.message,
 		};
 	}
 	return { ok: true, mode: "patched" };
@@ -195,34 +198,4 @@ export function replaceFragment(body: string, newFragment: string): string {
 	const trimmed = body.replace(/\s+$/, "");
 	const separator = trimmed === "" ? "" : "\n\n";
 	return `${trimmed}${separator}## Preview\n\n${newFragment}\n`;
-}
-
-function buildHeaders(token: string): Record<string, string> {
-	return {
-		accept: "application/vnd.github+json",
-		authorization: `Bearer ${token}`,
-		"content-type": "application/json",
-		"user-agent": USER_AGENT,
-		"x-github-api-version": "2022-11-28",
-	};
-}
-
-async function readJson(res: Response): Promise<unknown> {
-	try {
-		return await res.json();
-	} catch {
-		return null;
-	}
-}
-
-async function readText(res: Response): Promise<string> {
-	try {
-		return await res.text();
-	} catch {
-		return "";
-	}
-}
-
-function truncate(input: string, max: number): string {
-	return input.length <= max ? input : `${input.slice(0, max)}…`;
 }

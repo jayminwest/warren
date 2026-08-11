@@ -58,6 +58,17 @@ export const PR_BODY_FRAGMENT_NAMES: readonly PrFragmentName[] = PR_FRAGMENT_NAM
 /** GitHub rejects pull-request bodies at or above this API limit. */
 export const MAX_PR_BODY_LENGTH = 65_536;
 
+/**
+ * The one PR-body clamp. `composeBody` applies it as the final fallback,
+ * and `annotatePrPreview` (src/runs/pr-annotate.ts) re-clamps through it
+ * before its PATCH so a near-limit body plus a failure tail never 422s.
+ * The clamp lives here in the domain by decision (forge-contract.md §3,
+ * PR #805, mx-026320) — never in a provider or in transport.
+ */
+export function clampPrBodyLength(body: string): string {
+	return body.length <= MAX_PR_BODY_LENGTH ? body : `${body.slice(0, MAX_PR_BODY_LENGTH - 1)}…`;
+}
+
 const PR_FRAGMENT_NAME_SET: ReadonlySet<string> = new Set<string>(PR_FRAGMENT_NAMES);
 
 /** A project's per-fragment override map. Missing keys keep the default. */
@@ -217,7 +228,7 @@ export function composeBody(ctx: PrFragmentContext, overrides: PrTemplateOverrid
 
 	// Custom templates can still be larger than GitHub's limit. Keep the
 	// request safe even when there is no default commit fragment to shorten.
-	return body.length <= MAX_PR_BODY_LENGTH ? body : `${body.slice(0, MAX_PR_BODY_LENGTH - 1)}…`;
+	return clampPrBodyLength(body);
 }
 
 /**
