@@ -52,6 +52,7 @@ domains:
   docker: {}
   extensions: {}
   api: {}
+  forge: {}
   wire-vocabulary: {}
 governance:
   max_entries: 100
