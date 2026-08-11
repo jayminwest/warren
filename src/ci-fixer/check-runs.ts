@@ -2,11 +2,19 @@
  * GitHub check-run polling for the CI-fixer (warren-05ea).
  *
  * Pure helper that fetches the check-runs for a commit ref and classifies
- * the aggregate state. Mirrors `src/runs/pr.ts`'s posture: a direct REST
- * call against `GET /repos/:owner/:repo/commits/:ref/check-runs`,
- * `Authorization: Bearer <token>` from `GITHUB_TOKEN`, fetch injected as a
- * seam. The caller (the poller) decides what each shape means; this module
- * does not dispatch.
+ * the aggregate state. The caller (the poller) decides what each shape
+ * means; this module does not dispatch.
+ *
+ * Transport lives in `src/forge/github/` (plan pl-d1c9 step 4,
+ * warren-e5d3): headers, fail-soft readers, the error classifier, and the
+ * single retry policy all come from the consolidated core, and the
+ * API-base literal no longer appears here. Two behavior
+ * reconciliations are intended per forge-contract.md §6:
+ *   - §6.1 — the shared header builder ADDS `content-type`, which this
+ *     file's drifted copy omitted.
+ *   - §6.5 — this file had NO retry policy; the transport core's single
+ *     policy now retries transient failures (network, 5xx, 429).
+ * This module holds only the domain meaning of the responses (§3).
  *
  * Classification rules:
  *   - `pending`  — at least one check-run is not `completed`. Wait; don't
@@ -25,7 +33,11 @@
  * fetch the job log or fall back to the details URL for third-party CI.
  */
 
-const GITHUB_API_BASE = "https://api.github.com";
+import { GITHUB_API_BASE } from "../forge/github/headers.ts";
+import { requestGitHub } from "../forge/github/http.ts";
+import { readJson, readText } from "../forge/github/readers.ts";
+import type { GitHubRetryOptions } from "../forge/github/retry.ts";
+
 const USER_AGENT = "warren-ci-fixer";
 
 /** Conclusions that count as a failure worth dispatching a fixer for. */
@@ -52,6 +64,8 @@ export interface FetchCheckRunsInput {
 	readonly ref: string;
 	readonly token: string;
 	readonly fetch?: typeof fetch;
+	/** Retry tuning; defaults to the transport core's single policy. */
+	readonly retry?: GitHubRetryOptions;
 }
 
 export type FetchCheckRunsResult =
@@ -67,31 +81,23 @@ export async function fetchCheckRuns(input: FetchCheckRunsInput): Promise<FetchC
 		};
 	}
 
-	const fetchImpl = input.fetch ?? globalThis.fetch;
 	const ref = encodeURIComponent(input.ref);
-	const url = `${GITHUB_API_BASE}/repos/${input.owner}/${input.repo}/commits/${ref}/check-runs?per_page=100`;
+	const result = await requestGitHub({
+		url: `${GITHUB_API_BASE}/repos/${input.owner}/${input.repo}/commits/${ref}/check-runs?per_page=100`,
+		method: "GET",
+		token: input.token,
+		userAgent: USER_AGENT,
+		context: "GET /check-runs",
+		...(input.fetch !== undefined ? { fetch: input.fetch } : {}),
+		...(input.retry !== undefined ? { retry: input.retry } : {}),
+	});
 
-	let res: Response;
-	try {
-		res = await fetchImpl(url, { method: "GET", headers: buildHeaders(input.token) });
-	} catch (err) {
-		return {
-			kind: "http_error",
-			status: 0,
-			message: err instanceof Error ? err.message : String(err),
-		};
+	if (!result.ok) {
+		const error = result.error;
+		return { kind: "http_error", status: error.status, message: error.message };
 	}
 
-	if (res.status !== 200) {
-		const text = await readText(res);
-		return {
-			kind: "http_error",
-			status: res.status,
-			message: `GET /check-runs returned ${res.status}: ${truncate(text, 500)}`,
-		};
-	}
-
-	const body = (await readJson(res)) as { check_runs?: unknown } | null;
+	const body = (await readJson(result.response)) as { check_runs?: unknown } | null;
 	const raw = Array.isArray(body?.check_runs) ? body.check_runs : [];
 	const checkRuns = raw.map(parseCheckRun).filter((c): c is CheckRun => c !== null);
 	return { kind: "ok", checkRuns };
@@ -164,6 +170,8 @@ export interface FetchJobLogInput {
 	readonly jobId: number;
 	readonly token: string;
 	readonly fetch?: typeof fetch;
+	/** Retry tuning; defaults to the transport core's single policy. */
+	readonly retry?: GitHubRetryOptions;
 }
 
 export type FetchJobLogTailFn = (
@@ -185,16 +193,17 @@ export async function fetchJobLogTail(
 	tailLines: number,
 ): Promise<string | null> {
 	if (input.token === "" || tailLines <= 0) return null;
-	const fetchImpl = input.fetch ?? globalThis.fetch;
-	const url = `${GITHUB_API_BASE}/repos/${input.owner}/${input.repo}/actions/jobs/${input.jobId}/logs`;
-	let res: Response;
-	try {
-		res = await fetchImpl(url, { method: "GET", headers: buildHeaders(input.token) });
-	} catch {
-		return null;
-	}
-	if (!res.ok) return null;
-	return tailLog(await readText(res), tailLines);
+	const result = await requestGitHub({
+		url: `${GITHUB_API_BASE}/repos/${input.owner}/${input.repo}/actions/jobs/${input.jobId}/logs`,
+		method: "GET",
+		token: input.token,
+		userAgent: USER_AGENT,
+		context: `GET /actions/jobs/${input.jobId}/logs`,
+		...(input.fetch !== undefined ? { fetch: input.fetch } : {}),
+		...(input.retry !== undefined ? { retry: input.retry } : {}),
+	});
+	if (!result.ok) return null;
+	return tailLog(await readText(result.response), tailLines);
 }
 
 /** Keep the last `tailLines` lines of `text`, trimming trailing whitespace.
@@ -205,33 +214,4 @@ function tailLog(text: string, tailLines: number): string | null {
 	const lines = trimmed.split("\n");
 	if (lines.length <= tailLines) return trimmed;
 	return lines.slice(lines.length - tailLines).join("\n");
-}
-
-function buildHeaders(token: string): Record<string, string> {
-	return {
-		accept: "application/vnd.github+json",
-		authorization: `Bearer ${token}`,
-		"user-agent": USER_AGENT,
-		"x-github-api-version": "2022-11-28",
-	};
-}
-
-async function readJson(res: Response): Promise<unknown> {
-	try {
-		return await res.json();
-	} catch {
-		return null;
-	}
-}
-
-async function readText(res: Response): Promise<string> {
-	try {
-		return await res.text();
-	} catch {
-		return "";
-	}
-}
-
-function truncate(input: string, max: number): string {
-	return input.length <= max ? input : `${input.slice(0, max)}…`;
 }
