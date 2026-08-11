@@ -1,6 +1,14 @@
-.seeds/issues.jsonl merge=union
-.seeds/templates.jsonl merge=union
-.seeds/plans.jsonl merge=union
-.mulch/expertise/*.jsonl merge=union
-.canopy/prompts.jsonl merge=union
-.canopy/schemas.jsonl merge=union
+# The seeds and mulch state files are id-keyed JSONL whose writers REWRITE
+# rows in place (closing an issue rewrites its row and every sibling's
+# blockedBy; writePlans/writeTemplates rewrite plans and templates; mulch
+# upserts merge outcomes into existing records). merge=union therefore
+# emitted two contradictory copies of any concurrently rewritten row
+# (warren-9c90). merge=seeds-jsonl runs scripts/merge-seeds-jsonl.ts, a real
+# 3-way id-keyed merge registered via `git config merge.seeds-jsonl.driver`
+# in package.json's prepare script.
+# The .canopy/* merge=union entries were removed: canopy was retired (pl-3a79)
+# and those files no longer exist.
+.seeds/issues.jsonl merge=seeds-jsonl
+.seeds/templates.jsonl merge=seeds-jsonl
+.seeds/plans.jsonl merge=seeds-jsonl
+.mulch/expertise/*.jsonl merge=seeds-jsonl
