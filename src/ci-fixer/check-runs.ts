@@ -25,7 +25,10 @@
  * fetch the job log or fall back to the details URL for third-party CI.
  */
 
-const GITHUB_API_BASE = "https://api.github.com";
+// warren-2740: the base URL lives in the transport core; the full migration
+// of this client onto `requestGitHub` is warren-e5d3 (plan pl-d1c9 step 4).
+import { GITHUB_API_BASE } from "../forge/github/headers.ts";
+
 const USER_AGENT = "warren-ci-fixer";
 
 /** Conclusions that count as a failure worth dispatching a fixer for. */

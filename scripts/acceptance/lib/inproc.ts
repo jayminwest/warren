@@ -244,7 +244,29 @@ function pickPort(): number {
 	return 32_000 + Math.floor(Math.random() * 28_000);
 }
 
+// Credential ownership (forge-contract.md §6.14, warren-2740): the harness
+// itself owns no GitHub credential. `GITHUB_TOKEN`, when the operator exports
+// it, is passed through and owned by the BOOTED warren — it funds warren's
+// auto-open-PR config, the CI-fixer poller's check-runs fetch, and push auth.
+// Per scenario:
+//   - 35 (ci-fixer-roundtrip): the booted warren owns the token end-to-end;
+//     the harness borrows it only for best-effort PR/branch cleanup
+//     (lib/github.ts). Without it (and WARREN_ACCEPT_CI_FIXER_REPO) the
+//     scenario records `skipped`, never a failure.
+//   - 26 / 36 (plan-run scenarios): no real credential; they boot with
+//     WARREN_GH_FETCH_OVERRIDE=merged, which short-circuits the HTTP call.
+//   - 12 (supervisor-restart-budget): explicitly blanks GITHUB_TOKEN via
+//     extraEnv to keep the dev-only insteadOf rewrite out of the assertion.
+//   - everything else: auto-open-PR defaults on, but reap pr_open is
+//     best-effort against the fake local-git fixtures (reap_failed is
+//     tolerated), so an operator-exported token changes nothing observable.
 const PASSTHROUGH_ENV_KEYS = new Set([
+	// The booted warren owns the operator's GitHub credential (see the
+	// credential-ownership note above). Without this entry an exported
+	// GITHUB_TOKEN never reached the child env, so warren booted with an
+	// empty auto-open-PR config and scenario 35's opener assertion could
+	// not pass in in-proc mode (warren-2740).
+	"GITHUB_TOKEN",
 	// Seeds the stub-shell agent into every warren this harness boots
 	// (warren-e376). run.ts points it at the fixture-built JSON file;
 	// scenario-owned boots (20, 20-path, 26, 36) inherit it from

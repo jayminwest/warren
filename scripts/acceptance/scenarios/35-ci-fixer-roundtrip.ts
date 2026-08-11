@@ -28,9 +28,12 @@
  * verdicts. There is no faithful local substitute, so this scenario is
  * skip-gated (same convention as scenario 19 / warren-on-postgres) on:
  *
- *   - `GITHUB_TOKEN` — a token with `repo` scope. Used both for the
- *     check-runs fetch (scheduler `githubToken`) and the branch push
- *     (`insteadOf` rewrite); also drives auto-open-PR.
+ *   - `GITHUB_TOKEN` — a token with `repo` scope, owned by the BOOTED
+ *     warren (forge-contract.md §6.14): `bootInProc` passes it through
+ *     (warren-2740) and warren spends it on the check-runs fetch
+ *     (scheduler `githubToken`), the branch push, and auto-open-PR.
+ *     The harness borrows the same token only for best-effort PR/branch
+ *     cleanup in the `finally` below (see `lib/github.ts`).
  *   - `WARREN_ACCEPT_CI_FIXER_REPO` — an `https://github.com/<owner>/<repo>.git`
  *     URL to a repo the operator controls, prepared as a clone of the
  *     harness sample project (so the `stub-shell` agent in `burrow.toml`
@@ -57,6 +60,7 @@ import {
 	type Scenario,
 	skipScenario,
 } from "../lib/assert.ts";
+import { closePullRequestAndBranch, parseRepoSlug } from "../lib/github.ts";
 import { WarrenHttp } from "../lib/http.ts";
 import { pollAcceptance } from "../lib/poll.ts";
 
@@ -82,7 +86,6 @@ interface ListRunsResponse {
 	readonly runs: readonly RunRow[];
 }
 
-const GITHUB_API = "https://api.github.com";
 const POLL_INTERVAL_MS = 2_000;
 // Clone + stub run + reap + push + PR-open.
 const OPENER_BUDGET_MS = 180_000;
@@ -141,20 +144,11 @@ export const scenario: Scenario = {
 			// branches/PRs across runs. Each step is independently guarded.
 			await cancelRun(http, opener?.id);
 			await cancelLatestFixer(http, project.id);
-			await closeOpenerPr(token, slug, opener?.prUrl ?? null);
+			await closePullRequestAndBranch(token, slug, opener?.prUrl ?? null);
 			await deleteProject(http, project.id);
 		}
 	},
 };
-
-/** Parse `owner/repo` from an `https://github.com/<owner>/<repo>(.git)?` URL. */
-function parseRepoSlug(url: string): { owner: string; repo: string } {
-	const m = /github\.com[/:]([^/]+)\/([^/]+?)(?:\.git)?\/?$/.exec(url);
-	if (m?.[1] === undefined || m[2] === undefined) {
-		throw new AcceptanceError(`WARREN_ACCEPT_CI_FIXER_REPO is not a GitHub repo url: ${url}`);
-	}
-	return { owner: m[1], repo: m[2] };
-}
 
 async function waitForOpenerPr(http: WarrenHttp, runId: string): Promise<RunRow> {
 	return pollAcceptance({
@@ -223,46 +217,6 @@ async function cancelLatestFixer(http: WarrenHttp, projectId: string): Promise<v
 		await cancelRun(http, fixer?.id);
 	} catch {
 		// Best-effort.
-	}
-}
-
-async function closeOpenerPr(
-	token: string,
-	slug: { owner: string; repo: string },
-	prUrl: string | null,
-): Promise<void> {
-	if (prUrl === null) return;
-	const num = /\/pull\/(\d+)/.exec(prUrl)?.[1];
-	if (num === undefined) return;
-	const headers = {
-		accept: "application/vnd.github+json",
-		authorization: `Bearer ${token}`,
-		"user-agent": "warren-ci-fixer-acceptance",
-		"x-github-api-version": "2022-11-28",
-	};
-	try {
-		// Read the head ref before closing so we can delete the branch too.
-		const prRes = await fetch(`${GITHUB_API}/repos/${slug.owner}/${slug.repo}/pulls/${num}`, {
-			headers,
-		});
-		let headRef: string | null = null;
-		if (prRes.ok) {
-			const body = (await prRes.json()) as { head?: { ref?: unknown } };
-			if (typeof body.head?.ref === "string") headRef = body.head.ref;
-		}
-		await fetch(`${GITHUB_API}/repos/${slug.owner}/${slug.repo}/pulls/${num}`, {
-			method: "PATCH",
-			headers: { ...headers, "content-type": "application/json" },
-			body: JSON.stringify({ state: "closed" }),
-		});
-		if (headRef !== null) {
-			await fetch(
-				`${GITHUB_API}/repos/${slug.owner}/${slug.repo}/git/refs/heads/${encodeURIComponent(headRef)}`,
-				{ method: "DELETE", headers },
-			);
-		}
-	} catch {
-		// Best-effort: a leftover PR/branch is the operator's to prune.
 	}
 }
 

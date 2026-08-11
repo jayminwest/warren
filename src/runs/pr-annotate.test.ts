@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { GITHUB_API_BASE } from "../forge/github/headers.ts";
 import { jsonResponse, recordingFetch } from "../forge/github/test-helpers.ts";
 import { PREVIEW_FRAGMENT_END, PREVIEW_FRAGMENT_START } from "./pr.ts";
 import {
@@ -74,7 +75,7 @@ describe("annotatePrPreview", () => {
 		expect(result).toEqual({ ok: true, mode: "patched" });
 		expect(calls).toHaveLength(2);
 		expect(calls[0]?.method).toBe("GET");
-		expect(calls[0]?.url).toBe("https://api.github.com/repos/x/y/pulls/77");
+		expect(calls[0]?.url).toBe(`${GITHUB_API_BASE}/repos/x/y/pulls/77`);
 		expect(calls[1]?.method).toBe("PATCH");
 		const patchBody = JSON.parse(calls[1]?.body as string) as { body: string };
 		expect(patchBody.body).toContain(

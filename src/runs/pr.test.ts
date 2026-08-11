@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { GITHUB_API_BASE } from "../forge/github/headers.ts";
 import { jsonResponse, recordingFetch } from "./pr.test-helpers.ts";
 import {
 	buildPrContent,
@@ -30,7 +31,7 @@ describe("openPullRequest", () => {
 		});
 		expect(calls).toHaveLength(1);
 		expect(calls[0]?.method).toBe("POST");
-		expect(calls[0]?.url).toBe("https://api.github.com/repos/jayminwest/warren/pulls");
+		expect(calls[0]?.url).toBe(`${GITHUB_API_BASE}/repos/jayminwest/warren/pulls`);
 		expect(calls[0]?.headers.authorization).toBe("Bearer ghp_xyz");
 		expect(calls[0]?.headers.accept).toBe("application/vnd.github+json");
 		const body = JSON.parse(calls[0]?.body as string);

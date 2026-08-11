@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { GITHUB_API_BASE } from "../forge/github/headers.ts";
 import { jsonResponse, recordingFetch } from "./pr.test-helpers.ts";
 import { checkPullRequestMerged, parsePullRequestUrl, parseRetryAfterMs } from "./pr.ts";
 
@@ -21,7 +22,7 @@ describe("checkPullRequestMerged", () => {
 		expect(result).toEqual({ kind: "merged", mergedAt: "2026-05-17T12:00:00Z" });
 		expect(calls).toHaveLength(1);
 		expect(calls[0]?.method).toBe("GET");
-		expect(calls[0]?.url).toBe("https://api.github.com/repos/jayminwest/warren/pulls/42");
+		expect(calls[0]?.url).toBe(`${GITHUB_API_BASE}/repos/jayminwest/warren/pulls/42`);
 		expect(calls[0]?.headers.authorization).toBe("Bearer ghp_xyz");
 		expect(calls[0]?.headers.accept).toBe("application/vnd.github+json");
 	});
