@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { jsonResponse, recordingFetch } from "../forge/github/test-helpers.ts";
 import { PREVIEW_FRAGMENT_END, PREVIEW_FRAGMENT_START } from "./pr.ts";
 import {
 	type AnnotatePrPreviewInput,
@@ -6,39 +7,7 @@ import {
 	parsePrUrl,
 	replaceFragment,
 } from "./pr-annotate.ts";
-
-interface RecordedCall {
-	url: string;
-	method: string;
-	body: string | null;
-}
-
-function recordingFetch(responses: ReadonlyArray<Response | (() => Response)>): {
-	fetch: typeof fetch;
-	calls: RecordedCall[];
-} {
-	const calls: RecordedCall[] = [];
-	let i = 0;
-	const fn = (async (input: URL | RequestInfo, init?: RequestInit): Promise<Response> => {
-		const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
-		calls.push({
-			url,
-			method: (init?.method ?? "GET").toUpperCase(),
-			body: typeof init?.body === "string" ? init.body : null,
-		});
-		const next = responses[i++];
-		if (next === undefined) throw new Error("recordingFetch: out of responses");
-		return typeof next === "function" ? next() : next;
-	}) as unknown as typeof fetch;
-	return { fetch: fn, calls };
-}
-
-function jsonResponse(status: number, body: unknown): Response {
-	return new Response(JSON.stringify(body), {
-		status,
-		headers: { "content-type": "application/json" },
-	});
-}
+import { MAX_PR_BODY_LENGTH } from "./pr-template.ts";
 
 const baseInput: AnnotatePrPreviewInput = {
 	prUrl: "https://github.com/x/y/pull/77",
@@ -145,10 +114,30 @@ describe("annotatePrPreview", () => {
 		expect(calls).toHaveLength(0);
 	});
 
-	test("returns http_error when GET /pulls/N fails", async () => {
-		const { fetch } = recordingFetch([new Response("nope", { status: 500 })]);
+	test("returns http_error when GET /pulls/N fails after the retry budget", async () => {
+		// The transport core's retry policy retries 5xx twice (3 attempts).
+		const { fetch, calls } = recordingFetch([
+			new Response("nope", { status: 500 }),
+			new Response("nope", { status: 500 }),
+			new Response("nope", { status: 500 }),
+		]);
 		const result = await annotatePrPreview(baseInput, { fetch });
 		expect(result).toMatchObject({ ok: false, reason: "http_error" });
+		expect(calls).toHaveLength(3);
+	});
+
+	test("retries a transient GET failure once, then succeeds", async () => {
+		// New behavior from adopting the transport core: this call site had
+		// no retry at all before the migration (forge-contract.md §6.5).
+		const body = `${PREVIEW_FRAGMENT_START}\nx\n${PREVIEW_FRAGMENT_END}`;
+		const { fetch, calls } = recordingFetch([
+			new Response("boom", { status: 503 }),
+			jsonResponse(200, { body }),
+			jsonResponse(200, {}),
+		]);
+		const result = await annotatePrPreview(baseInput, { fetch });
+		expect(result).toMatchObject({ ok: true, mode: "patched" });
+		expect(calls.map((c) => c.method)).toEqual(["GET", "GET", "PATCH"]);
 	});
 
 	test("returns http_error when PATCH /pulls/N fails", async () => {
@@ -170,11 +159,35 @@ describe("annotatePrPreview", () => {
 		expect(calls).toHaveLength(1);
 	});
 
-	test("returns network on fetch throw", async () => {
+	test("returns network when fetch keeps throwing through the retry budget", async () => {
+		let attempts = 0;
 		const fetchImpl = (async () => {
+			attempts += 1;
 			throw new Error("ECONNREFUSED");
 		}) as unknown as typeof fetch;
 		const result = await annotatePrPreview(baseInput, { fetch: fetchImpl });
 		expect(result).toMatchObject({ ok: false, reason: "network" });
+		expect(attempts).toBe(3);
+	});
+
+	test("re-clamps a near-limit body plus failure tail so the PATCH stays under the limit", async () => {
+		// Regression for forge-contract.md §3: the annotate path used to
+		// PATCH a body it never re-clamped, so a near-limit PR body plus an
+		// appended failure tail exceeded GitHub's 64KB limit and 422d.
+		const body = "x".repeat(MAX_PR_BODY_LENGTH - 10);
+		const hugeTail = "E".repeat(4096);
+		const { fetch, calls } = recordingFetch([jsonResponse(200, { body }), jsonResponse(200, {})]);
+		const result = await annotatePrPreview(
+			{
+				prUrl: baseInput.prUrl,
+				token: baseInput.token,
+				preview: { state: "failed", failureTail: hugeTail },
+			},
+			{ fetch },
+		);
+		expect(result).toMatchObject({ ok: true, mode: "patched" });
+		expect(calls).toHaveLength(2);
+		const patchBody = JSON.parse(calls[1]?.body as string) as { body: string };
+		expect(patchBody.body.length).toBeLessThanOrEqual(MAX_PR_BODY_LENGTH);
 	});
 });
