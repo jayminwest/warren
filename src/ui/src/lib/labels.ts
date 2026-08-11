@@ -21,7 +21,7 @@
  * second copy of those labels is exactly the drift this file exists to
  * prevent. It imports `humanizeWireValue` for its unknown-status fallback.
  */
-import type { PlanRunChildState, RunFailureReason } from "@/api/types.ts";
+import type { PlanRunChildState, PullRequestLifecycle, RunFailureReason } from "@/api/types.ts";
 
 /**
  * Snake-case words that read wrong when merely capitalised. Kept tiny on
@@ -70,6 +70,22 @@ const RUN_FAILURE_REASON_LABELS: Readonly<Record<string, string>> = {
 /** Prose for a run's `failureReason`. */
 export function formatRunFailureReason(reason: string): string {
 	return RUN_FAILURE_REASON_LABELS[reason] ?? humanizeWireValue(reason);
+}
+
+/**
+ * `PullRequestLifecycle` → prose (warren-0993). Same shape as the
+ * failure-reason map: `satisfies` so the compiler fails the build when
+ * `PULL_REQUEST_LIFECYCLES` grows a value this map does not carry.
+ */
+const PULL_REQUEST_LIFECYCLE_LABELS: Readonly<Record<string, string>> = {
+	open: "Open",
+	merged: "Merged",
+	closed_unmerged: "Closed without merging",
+} satisfies Record<PullRequestLifecycle, string>;
+
+/** Prose for a pull request's `lifecycle`. */
+export function formatPullRequestLifecycle(lifecycle: string): string {
+	return PULL_REQUEST_LIFECYCLE_LABELS[lifecycle] ?? humanizeWireValue(lifecycle);
 }
 
 /**

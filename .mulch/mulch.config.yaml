@@ -53,6 +53,7 @@ domains:
   extensions: {}
   api: {}
   forge: {}
+  wire-vocabulary: {}
 governance:
   max_entries: 100
   warn_entries: 150

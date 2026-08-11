@@ -233,6 +233,112 @@ export const RUN_FAILURE_REASONS = [
 ] as const;
 export type RunFailureReason = (typeof RUN_FAILURE_REASONS)[number];
 
+/**
+ * Pull-request lifecycle as a forge reports it (warren-0993 /
+ * docs/design/forge-contract.md §2). The forge seam reports this closed
+ * vocabulary; the DOMAIN decides what a merged PR means for a run or the
+ * next plan-run child — the state machines stay domain-side (§3).
+ *
+ *   - `open`            — the PR exists and is mergeable-or-pending; the
+ *                         merge gate keeps polling.
+ *   - `merged`          — the PR merged; `mergedAt` on the state payload
+ *                         carries the epoch-ms stamp the analytics
+ *                         merge-watcher blocks on.
+ *   - `closed_unmerged` — the PR was closed without merging; fatal for a
+ *                         plan-run merge gate (the child flips to `failed`).
+ *
+ * Canonical here because the UI and the SDK both render these values
+ * (AGENTS.md, "The wire vocabulary"). House shape: frozen tuple, derived
+ * union, membership guard.
+ */
+export const PULL_REQUEST_LIFECYCLES = ["open", "merged", "closed_unmerged"] as const;
+export type PullRequestLifecycle = (typeof PULL_REQUEST_LIFECYCLES)[number];
+
+/** Membership predicate for {@link PULL_REQUEST_LIFECYCLES}. */
+export function isPullRequestLifecycle(value: unknown): value is PullRequestLifecycle {
+	return (
+		typeof value === "string" && (PULL_REQUEST_LIFECYCLES as readonly string[]).includes(value)
+	);
+}
+
+/**
+ * Forge-seam error taxonomy (warren-0993 / docs/design/forge-contract.md
+ * §2). The ONE taxonomy the domain switches on across the forge seam — it
+ * replaces the three drifted failure conventions the GitHub surface had
+ * (`OpenPullRequestResult`, `CheckPrMergedResult`,
+ * `FetchCheckRunsResult`; §6.4). Seam methods return `ForgeResult<T>` and
+ * never throw; every arm below has a live call site:
+ *
+ *   - `no_credential`  — nothing is configured at all: no token env, no
+ *     App credentials. Detection site is the provider constructor or the
+ *     credential mint, BEFORE any HTTP happens. Distinct from
+ *     `unauthorized` (a credential existed and was rejected): here the
+ *     domain skips the step rather than reporting an auth failure.
+ *   - `unauthorized`   — HTTP 401: an expired or wrong credential.
+ *     Detected by the transport error classifier off the response status.
+ *     Under App mode this is the hourly-installation-token-expiry signal
+ *     and triggers a re-mint; distinct from `forbidden` (403 — the
+ *     credential authenticated but lacks the grant).
+ *   - `forbidden`      — HTTP 403 that is NOT a rate limit. Detected by
+ *     the classifier once the `x-ratelimit-remaining: 0` /
+ *     `Retry-After` rate-limit shape has been ruled out. Distinct from
+ *     `unauthorized` (the credential itself was refused) and from
+ *     `rate_limited` (same status, different semantics and a retryAfter
+ *     hint).
+ *   - `not_found`      — HTTP 404/410. Detected by the classifier off the
+ *     status. Fatal for a merge gate (`merge-gate.ts`): a vanished PR
+ *     means `closed_unmerged`-class handling, never a keep-waiting retry.
+ *   - `conflict`       — HTTP 409/422 the provider could not resolve.
+ *     Detected after the provider's own duplicate-resolution dance
+ *     (`openPullRequest` is idempotent by contract — GitHub's
+ *     422-then-search stays INSIDE the provider), so this arm means a
+ *     genuine unresolvable conflict, e.g. a head-branch state GitHub
+ *     refuses.
+ *   - `rate_limited`   — HTTP 403/429 WITH rate-limit semantics
+ *     (`x-ratelimit-remaining: 0` or a `Retry-After` header). Detected by
+ *     the transport classifier; `ForgeError.retryAfterMs` carries the
+ *     hint when the forge knows it. Transport retry absorbs it inside the
+ *     provider (§3: semantic retry stays in the domain, transport retry
+ *     moves to the forge). Distinct from bare `forbidden`.
+ *   - `push_protected` — GitHub secret-scanning push protection rejected
+ *     the push. Detected at the git-push boundary from the push output;
+ *     `detail` carries the unblock URL GitHub returns so an operator can
+ *     allow-list the secret. Distinct from `forbidden`, which is an HTTP
+ *     API grant failure, not a push-time scan verdict.
+ *   - `unsupported`    — this forge/credential mode cannot do the
+ *     operation at all (§5 capability degradation: e.g. a fine-grained
+ *     PAT calling `listChecks` when `capabilities.checkRuns` is false).
+ *     Detected BEFORE transport by reading the provider's declared
+ *     `ForgeCapabilities` — no HTTP is ever attempted. Distinct from
+ *     `forbidden`, which is discovered at transport time.
+ *   - `network`        — no HTTP response at all: DNS failure, refused
+ *     connection, TLS error, fetch abort. Detected at the fetch boundary
+ *     (a thrown transport error rather than a response). Distinct from
+ *     every status-carrying arm — there is no `status` to log.
+ *   - `http_error`     — everything else with a response: any status the
+ *     classifier did not map onto a narrower arm (5xx, unexpected 4xx
+ *     shapes). The catch-all; `status` carries the transport status for
+ *     logs.
+ */
+export const FORGE_ERROR_KINDS = [
+	"no_credential",
+	"unauthorized",
+	"forbidden",
+	"not_found",
+	"conflict",
+	"rate_limited",
+	"push_protected",
+	"unsupported",
+	"network",
+	"http_error",
+] as const;
+export type ForgeErrorKind = (typeof FORGE_ERROR_KINDS)[number];
+
+/** Membership predicate for {@link FORGE_ERROR_KINDS}. */
+export function isForgeErrorKind(value: unknown): value is ForgeErrorKind {
+	return typeof value === "string" && (FORGE_ERROR_KINDS as readonly string[]).includes(value);
+}
+
 export const EVENT_STREAMS = ["stdout", "stderr", "system"] as const;
 export type EventStream = (typeof EVENT_STREAMS)[number];
 

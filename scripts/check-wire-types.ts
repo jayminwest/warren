@@ -82,6 +82,12 @@ export const DOMAIN_STEMS = [
 	// into hand-copied redeclarations the way run/preview names did.
 	"seed",
 	"project",
+	// warren-0993: the forge seam's wire vocabulary (PullRequestLifecycle,
+	// ForgeErrorKind). NOT "pr" — stem matching is substring-based, and "pr"
+	// would silently widen enforcement over Provider, Preview, Priority,
+	// and Project (forge-contract.md §2.1).
+	"pull",
+	"forge",
 	// warren-42f1: the HTTP response envelopes (ErrorEnvelope) now live in
 	// the canonical home too — without this stem the guard would derive the
 	// name but never enforce it, recreating the warren-5334 blindness.
