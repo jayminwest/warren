@@ -15,11 +15,11 @@
  * scenario; isolating into a per-scenario stack keeps the forge
  * selection (`WARREN_FORGE=fake`) scoped to this scenario alone.
  *
- * warren-2600: the retired `WARREN_GH_FETCH_OVERRIDE=merged` stub is
- * gone. The project registers on a FakeForge-owned `fake://` URL and the
- * harness drives the merge transitions GitHub's auto-merge workflow owns
- * in production by flipping open PRs to `merged` in the fake's state
- * file (lib/fake-forge.ts).
+ * warren-2600: the retired GitHub-fetch-override stub is gone. The
+ * project registers on a FakeForge-owned `fake://` URL and the harness
+ * drives the merge transitions GitHub's auto-merge workflow owns in
+ * production by flipping open PRs to `merged` in the fake's state file
+ * (lib/fake-forge.ts).
  *
  * The fixture commits real `.seeds/{config.yaml, issues.jsonl, plans.jsonl}`
  * rows (mirrors scenario 22's posture of writing files rather than shelling

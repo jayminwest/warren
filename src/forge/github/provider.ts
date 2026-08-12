@@ -50,7 +50,6 @@ import type {
 import type { GitHubHttpError } from "./errors.ts";
 import { GITHUB_API_BASE } from "./headers.ts";
 import { requestGitHub } from "./http.ts";
-import { readGhFetchOverride } from "./override.ts";
 import { readJson, readText } from "./readers.ts";
 import { GITHUB_FORGE_KIND, parseGitHubRepoRef } from "./repo-ref.ts";
 
@@ -147,12 +146,6 @@ export class GitHubForge implements Forge {
 	}
 
 	async openPullRequest(ref: RepoRef, req: PullRequestDraft): Promise<ForgeResult<PullRequestRef>> {
-		// Acceptance seam (warren-ae00, relocated warren-45e6): the in-proc
-		// plan-run roundtrip stubs every GitHub REST call. Short-circuit BEFORE
-		// the credential check — the override env synthesizes no token.
-		if (readGhFetchOverride() === "merged") {
-			return ok(this.toRef(ref, 1, `https://github.com/${this.slug(ref)}/pull/1`));
-		}
 		const denied = this.noCredential<PullRequestRef>(ref);
 		if (denied !== null) return denied;
 		const result = await requestGitHub({
@@ -222,13 +215,6 @@ export class GitHubForge implements Forge {
 	}
 
 	async getPullRequest(ref: RepoRef, pr: PullRequestRef): Promise<ForgeResult<PullRequestState>> {
-		// Acceptance seam (warren-ae00; warren-63e7 for this method): the
-		// in-proc plan-run roundtrip stubs every GitHub REST call, including
-		// the coordinator's merge poll. Short-circuit BEFORE the credential
-		// check — the override env synthesizes no token.
-		if (readGhFetchOverride() === "merged") {
-			return ok({ lifecycle: "merged", mergedAt: Date.now(), headCommit: "", baseBranch: "" });
-		}
 		const denied = this.noCredential<PullRequestState>(ref);
 		if (denied !== null) return denied;
 		const result = await requestGitHub({
