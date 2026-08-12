@@ -1,4 +1,5 @@
 import { ValidationError } from "../../../core/errors.ts";
+import { mintGitCredentialSecret } from "../../../forge/credentials.ts";
 import { readProviderFrontmatter } from "../../../registry/schema.ts";
 import { readMaxCostUsd } from "../../../runs/cost-cap.ts";
 import { spawnRun } from "../../../runs/index.ts";
@@ -31,6 +32,20 @@ interface CloneDefaults {
  * same model the parent used, regardless of which slot (override vs project
  * default vs agent frontmatter) originally supplied it.
  */
+/**
+ * warren-6c4c: mint the spawn's clone-refresh credential per-spawn through
+ * the boot forge (forge-contract.md §4.2), not AutoOpenPrConfig.gitToken.
+ * Extracted so `createRunHandler`'s complexity budget stays intact.
+ */
+async function mintSpawnGithubToken(
+	deps: ServerDeps,
+	projectId: string,
+): Promise<{ githubToken?: string }> {
+	const project = await deps.repos.projects.require(projectId);
+	const secret = await mintGitCredentialSecret(deps.forge, project.gitUrl);
+	return secret !== undefined ? { githubToken: secret } : {};
+}
+
 async function resolveCloneDefaults(
 	deps: ServerDeps,
 	cloneFromRunId: string,
@@ -151,7 +166,7 @@ export function createRunHandler(deps: ServerDeps): RouteHandler {
 			mode: "batch",
 			projectsConfig: deps.projectsConfig,
 			projectSpawn: deps.spawn ?? defaultSpawn,
-			githubToken: deps.autoOpenPr?.gitToken,
+			...(await mintSpawnGithubToken(deps, projectId)),
 			// warren-b27c: shape-checked, not cast. An array or scalar `metadata`
 			// used to sail through the cast and reach persistence typed as a record.
 			metadata: optionalObject(body, "metadata"),

@@ -22,6 +22,7 @@
 
 import { ValidationError } from "../../core/errors.ts";
 import type { EventsRepo } from "../../db/repos/events.ts";
+import { mintGitCredentialSecret } from "../../forge/credentials.ts";
 import {
 	buildHealPrompt,
 	checkHealerRole,
@@ -184,6 +185,10 @@ async function dispatchHealer(
 	candidate: HealProjectCandidate,
 	alert: HealAlert,
 ): Promise<string> {
+	// warren-6c4c: mint the spawn's clone-refresh credential per-spawn through
+	// the boot forge (forge-contract.md §4.2), not AutoOpenPrConfig.gitToken.
+	const project = await deps.repos.projects.require(candidate.projectId);
+	const gitSecret = await mintGitCredentialSecret(deps.forge, project.gitUrl);
 	const result = await spawnRun({
 		repos: deps.repos,
 		// warren-245d: dispatch through the resolved runtime provider so the
@@ -197,7 +202,7 @@ async function dispatchHealer(
 		metadata: { healFingerprint: alert.fingerprint, alertSource: alert.source },
 		projectsConfig: deps.projectsConfig,
 		projectSpawn: deps.spawn ?? defaultSpawn,
-		githubToken: deps.autoOpenPr?.gitToken,
+		...(gitSecret !== undefined ? { githubToken: gitSecret } : {}),
 		...(deps.warrenConfigs !== undefined ? { warrenConfigs: deps.warrenConfigs } : {}),
 		...(deps.runBranchPrefixDefault !== undefined
 			? { runBranchPrefixDefault: deps.runBranchPrefixDefault }

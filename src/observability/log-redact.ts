@@ -59,6 +59,12 @@ export const SECRET_FIELDS = [
 	"clientSecret",
 	"private_key",
 	"privateKey",
+	// warren-6c4c: the per-spawn git-credential env (githubCredentialGitEnv,
+	// forge-contract.md §4.2) embeds the minted secret inline in
+	// GIT_CONFIG_KEY_0's `url.https://x-access-token:<secret>@…` value — list
+	// the names so a logged SpawnOptions.env can never leak one.
+	"GIT_CONFIG_KEY_0",
+	"GIT_CONFIG_VALUE_0",
 ] as const;
 
 /**

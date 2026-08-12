@@ -13,6 +13,7 @@
  */
 
 import { ValidationError } from "../../core/errors.ts";
+import { mintGitCredentialSecret } from "../../forge/credentials.ts";
 import { cancelPlanRun, createPlanRun, tailPlanRunEvents } from "../../plan-runs/index.ts";
 import { jsonResponse, ndjsonResponse } from "../response.ts";
 import { reserveEventStreamSlot } from "../stream-limits.ts";
@@ -76,8 +77,14 @@ export function createPlanRunHandler(deps: ServerDeps): RouteHandler {
 		// maxCostUsdOverride. Same boundary validation as POST /runs.
 		const maxCostUsd = optionalPositiveNumber(body, "maxCostUsd");
 
+		const projectId = requireString(body, "project");
+		// warren-6c4c: mint the pre-dispatch refresh-fetch credential per-spawn
+		// through the boot forge (forge-contract.md §4.2) instead of fanning out
+		// AutoOpenPrConfig.gitToken.
+		const project = await deps.repos.projects.require(projectId);
+		const gitSecret = await mintGitCredentialSecret(deps.forge, project.gitUrl);
 		const result = await createPlanRun({
-			projectId: requireString(body, "project"),
+			projectId,
 			planId: requireString(body, "planId"),
 			agentName: requireString(body, "agent"),
 			...(promptTemplate !== undefined ? { promptTemplate } : {}),
@@ -90,7 +97,7 @@ export function createPlanRunHandler(deps: ServerDeps): RouteHandler {
 			seedsCli: deps.seedsCli,
 			projectsConfig: deps.projectsConfig,
 			...(deps.spawn !== undefined ? { spawn: deps.spawn } : {}),
-			...(deps.autoOpenPr?.gitToken !== undefined ? { gitToken: deps.autoOpenPr.gitToken } : {}),
+			...(gitSecret !== undefined ? { gitToken: gitSecret } : {}),
 			...(deps.warrenConfigs !== undefined ? { warrenConfigs: deps.warrenConfigs } : {}),
 			...(deps.refreshProjectFn !== undefined ? { refreshProjectFn: deps.refreshProjectFn } : {}),
 			...(deps.now !== undefined ? { now: deps.now } : {}),
