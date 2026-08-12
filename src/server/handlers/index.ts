@@ -68,6 +68,7 @@ import {
 	listRunsHandler,
 	pollRunInboxHandler,
 	postRunFinalizeResultHandler,
+	postRunGitCredentialHandler,
 	postRunSalvageHandler,
 	previewLoginHandler,
 	previewTeardownHandler,
@@ -339,6 +340,15 @@ const ROUTE_TABLE: readonly RouteEntry[] = [
 		pattern: "/runs/:id/salvage",
 		policy: "dispatch",
 		build: postRunSalvageHandler,
+	},
+	// warren-c9ac: the in-pod credential re-mint (forge-contract.md §4.1 window
+	// 3) — the pod requests a freshly-minted push credential over the same
+	// authenticated callback channel instead of trusting the mounted Secret.
+	{
+		method: "POST",
+		pattern: "/runs/:id/git-credential",
+		policy: "dispatch",
+		build: postRunGitCredentialHandler,
 	},
 	{ method: "POST", pattern: "/runs/:id/steer", policy: "dispatch", build: steerRunHandler },
 	{ method: "POST", pattern: "/runs/:id/cancel", policy: "dispatch", build: cancelRunHandler },

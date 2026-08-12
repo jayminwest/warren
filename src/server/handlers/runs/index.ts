@@ -14,6 +14,7 @@ export {
 	getRunFinalizeIntentHandler,
 	postRunFinalizeResultHandler,
 } from "./finalize.ts";
+export { postRunGitCredentialHandler } from "./git-credential.ts";
 export {
 	getRunHandler,
 	listCostAnalyticsHandler,

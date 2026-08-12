@@ -522,6 +522,27 @@ paths:
           required: true
           schema:
             type: string
+  /runs/{id}/git-credential:
+    post:
+      operationId: postRunGitCredentialHandler
+      tags:
+        - runs
+      summary: POST /runs/:id/git-credential
+      responses:
+        '200':
+          description: Successful response.
+        default:
+          description: Error response (see `src/core/errors.ts`).
+      description: >-
+        warren-c9ac: the in-pod credential re-mint (forge-contract.md §4.1 window 3) — the pod
+        requests a freshly-minted push credential over the same authenticated callback channel
+        instead of trusting the mounted Secret.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
   /runs/{id}/inbox:
     get:
       operationId: pollRunInboxHandler

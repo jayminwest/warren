@@ -37,9 +37,13 @@
  *
  * The push credential arrives IN the intent (`gitToken`) — fetched over the
  * authenticated callback after the agent exited — so a compromised agent
- * never held it (`provider.ts` decision). warren-6016 adds a pod-carried
- * fallback (`WARREN_GIT_TOKEN` off the `warren-git-token` Secret) for the
- * salvage windows an intent never reaches; the harness holds it, and the
+ * never held it (`provider.ts` decision). For the salvage windows an intent
+ * never reaches, warren-c9ac routes the fallback through the SAME channel:
+ * the harness POSTs `/runs/:id/git-credential` and warren mints a fresh
+ * credential off the forge (forge-contract.md §4.1 — the pod cannot hold an
+ * App private key, so it asks the control plane). The warren-6016
+ * pod-carried `WARREN_GIT_TOKEN` (off the `warren-git-token` Secret) remains
+ * only as the PAT-mode last resort for an unreachable control plane; the
  * agent child is still spawned with it scrubbed (`agent-io.ts`), so the
  * blast-radius posture is unchanged for the agent itself.
  */
@@ -69,12 +73,14 @@ export interface FinalizeEntrypointEnv {
 	branch: string | undefined;
 	/**
 	 * Pod-carried push credential (warren-6016) — `WARREN_GIT_TOKEN`, falling
-	 * back to `GITHUB_TOKEN`, the same resolution `provider.resolvePushToken`
-	 * applies to the reap push. Sourced from the `warren-git-token` Secret on
-	 * the agent container and held ONLY by this harness (the agent child spawns
-	 * with it scrubbed — see `agent-io.ts`). It is the salvage window's
-	 * fallback credential: an intent-carried `gitToken` always wins; this one
-	 * covers the `no_intent` windows, where no intent ever parked a token.
+	 * back to `GITHUB_TOKEN`. Sourced from the `warren-git-token` Secret on
+	 * the agent container (or, under App mode, the token minted at pod-spec
+	 * time — warren-c9ac) and held ONLY by this harness (the agent child
+	 * spawns with it scrubbed — see `agent-io.ts`). It is the salvage window's
+	 * LAST-RESORT credential: an intent-carried `gitToken` wins, then a
+	 * credential freshly minted over the `POST /runs/:id/git-credential`
+	 * callback (warren-c9ac); this one covers only the case where the control
+	 * plane itself is unreachable in the `no_intent` window.
 	 */
 	gitToken: string | undefined;
 	/** Poll interval for the intent fetch (ms). */
@@ -158,7 +164,7 @@ export function parseFinalizeEntrypointEnv(env: FinalizeEnvSource): FinalizeEntr
 
 export interface FinalizeHttp {
 	get: (url: string, token: string) => Promise<{ status: number; body: unknown }>;
-	post: (url: string, token: string, body: unknown) => Promise<{ status: number }>;
+	post: (url: string, token: string, body: unknown) => Promise<{ status: number; body?: unknown }>;
 }
 
 export interface FinalizeEntrypointDeps {
@@ -229,7 +235,7 @@ const defaultHttp: FinalizeHttp = {
 			headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
 			body: JSON.stringify(body),
 		});
-		return { status: res.status };
+		return { status: res.status, body: await res.json().catch(() => null) };
 	},
 };
 

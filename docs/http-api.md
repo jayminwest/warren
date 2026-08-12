@@ -7,7 +7,7 @@ This page enumerates every HTTP route registered by warren's `Bun.serve` router.
 
 To refresh: `bun run gen:docs`. To check (CI mode): `bun run gen:docs:check`.
 
-Total routes: **40**.
+Total routes: **41**.
 
 ## /agents
 
@@ -92,6 +92,7 @@ Total routes: **40**.
 | `GET` | `/runs/:id/finalize-intent` | `getRunFinalizeIntentHandler` | warren-0d35: the in-pod finalize callback for the K8s backend — the pod fetches the reap intent, runs the workspace-dependent half in place, and POSTs the FinalizeResult back. Bearer-gated; the pod carries its per-run scoped token (warren-57fd). |
 | `POST` | `/runs/:id/finalize-result` | `postRunFinalizeResultHandler` |  |
 | `POST` | `/runs/:id/salvage` | `postRunSalvageHandler` | warren-cd3b: the in-pod salvage intake — the pod POSTs the work it captured (rescue ref + git bundle) when the finalize branch push failed or no reap intent ever arrived, BEFORE its emptyDir dies with the pod. |
+| `POST` | `/runs/:id/git-credential` | `postRunGitCredentialHandler` | warren-c9ac: the in-pod credential re-mint (forge-contract.md §4.1 window 3) — the pod requests a freshly-minted push credential over the same authenticated callback channel instead of trusting the mounted Secret. |
 | `POST` | `/runs/:id/steer` | `steerRunHandler` |  |
 | `POST` | `/runs/:id/cancel` | `cancelRunHandler` |  |
 | `POST` | `/runs/:id/preview/login` | `previewLoginHandler` | warren-e1b0: POST, not GET — the bearer rides the `Authorization` header like every other /runs route instead of a `?token=` query string that would land in history / Referer / proxy logs. |
