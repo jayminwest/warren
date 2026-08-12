@@ -19,6 +19,8 @@ import {
 } from "../core/wire.ts";
 import type { Forge, PullRequestState } from "./contract.ts";
 import { FakeForge } from "./fake/fake-forge.ts";
+import { GitHubForge } from "./github/provider.ts";
+import { stubGitHubServer } from "./github/stub-server.ts";
 
 /** Compile-time mutual assignability: `A extends B` and `B extends A`. */
 type Exact<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false;
@@ -40,9 +42,21 @@ describe("forge contract vocabulary", () => {
 	});
 });
 
+/** Per-implementation knobs the conformance suite branches on. */
+export interface ForgeConformanceOptions {
+	/** A clone URL in this forge's own grammar. */
+	readonly cloneUrl: string;
+	/** The registry key `parseRepoRef` packs into the ref. */
+	readonly forgeKind: string;
+	/** URLs this forge must reject (foreign grammars). */
+	readonly foreignUrls: readonly string[];
+	/** false when the forge names no bot (GitHub PAT mode, §5). */
+	readonly botIdentity: boolean;
+}
+
 /** Conformance: every Forge implementation must satisfy these behaviours. */
-export function forgeConformanceSuite(makeForge: () => Forge): void {
-	const CLONE_URL = "fake://projects/widget";
+export function forgeConformanceSuite(makeForge: () => Forge, opts: ForgeConformanceOptions): void {
+	const CLONE_URL = opts.cloneUrl;
 	const draft = {
 		title: "Add the widget",
 		body: "Body text.",
@@ -65,9 +79,11 @@ export function forgeConformanceSuite(makeForge: () => Forge): void {
 
 	test("parseRepoRef round-trips its own grammar and rejects foreign URLs", () => {
 		const { forge, ref } = setup();
-		expect(ref.forge).toBe("fake");
+		expect(ref.forge).toBe(opts.forgeKind);
 		expect(ref.key.length).toBeGreaterThan(0);
-		expect(forge.parseRepoRef("https://github.com/o/r.git")).toBeNull();
+		for (const foreign of opts.foreignUrls) {
+			expect(forge.parseRepoRef(foreign)).toBeNull();
+		}
 		expect(forge.parseRepoRef("not a url")).toBeNull();
 	});
 
@@ -166,17 +182,36 @@ export function forgeConformanceSuite(makeForge: () => Forge): void {
 		expect(result.ok).toBe(true);
 	});
 
-	test("botIdentity names the forge's bot", async () => {
+	test("botIdentity names the forge's bot, or reports unsupported (§5)", async () => {
 		const { forge } = setup();
 		const identity = await forge.botIdentity();
-		expect(identity.ok).toBe(true);
+		expect(identity.ok).toBe(opts.botIdentity);
 		if (identity.ok) {
 			expect(identity.value.name.length).toBeGreaterThan(0);
 			expect(identity.value.email).toContain("@");
+		} else {
+			expect(identity.error.kind).toBe("unsupported");
 		}
 	});
 }
 
 describe("FakeForge conforms to the Forge contract", () => {
-	forgeConformanceSuite(() => new FakeForge());
+	forgeConformanceSuite(() => new FakeForge(), {
+		cloneUrl: "fake://projects/widget",
+		forgeKind: "fake",
+		foreignUrls: ["https://github.com/o/r.git", "git@github.com:o/r.git"],
+		botIdentity: true,
+	});
+});
+
+describe("GitHubForge conforms to the Forge contract", () => {
+	forgeConformanceSuite(
+		() => new GitHubForge({ token: "stub-token", fetch: stubGitHubServer().fetch }),
+		{
+			cloneUrl: "https://github.com/octo/widget.git",
+			forgeKind: "github",
+			foreignUrls: ["fake://projects/widget", "https://gitlab.com/o/r.git"],
+			botIdentity: false,
+		},
+	);
 });
