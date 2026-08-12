@@ -5,9 +5,13 @@
  */
 
 import { describe, expect, test } from "bun:test";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { CheckRun } from "../contract.ts";
 import { FAKE_CLONE_URL_SCHEME, FakeForge } from "./fake-forge.ts";
-import { FakeForgeStore, rollUpChecks } from "./store.ts";
+import { type FakeForgeStateFile, FakeForgeStore, rollUpChecks } from "./store.ts";
 
 const DRAFT = {
 	title: "t",
@@ -188,6 +192,57 @@ describe("FakeForgeStore", () => {
 		if (!opened.ok) throw new Error("unreachable");
 		const seen = await b.getPullRequest(ref, opened.value);
 		expect(seen.ok).toBe(true);
+	});
+});
+
+describe("FakeForgeStore state-file seam (warren-2600)", () => {
+	test("persists mutations and reloads external edits (the harness's markMerged)", async () => {
+		const dir = await mkdtemp(join(tmpdir(), "warren-fake-store-"));
+		const stateFile = join(dir, "state.json");
+		try {
+			const forge = new FakeForge({ store: new FakeForgeStore({ stateFile }) });
+			const ref = forge.parseRepoRef("fake://projects/widget");
+			if (ref === null) throw new Error("unreachable");
+			const opened = await forge.openPullRequest(ref, DRAFT);
+			if (!opened.ok) throw new Error("unreachable");
+			expect(existsSync(stateFile)).toBe(true);
+
+			// An external writer (the acceptance harness, another process)
+			// flips the PR to merged by editing the document.
+			const state = JSON.parse(readFileSync(stateFile, "utf8")) as FakeForgeStateFile;
+			const record = state.prs["projects/widget"]?.[0];
+			if (record === undefined) throw new Error("unreachable");
+			record.lifecycle = "merged";
+			record.mergedAt = 1_700_000_000_000;
+			writeFileSync(stateFile, JSON.stringify(state));
+
+			const polled = await forge.getPullRequest(ref, opened.value);
+			expect(polled.ok).toBe(true);
+			if (polled.ok) {
+				expect(polled.value.lifecycle).toBe("merged");
+				expect(polled.value.mergedAt).toBe(1_700_000_000_000);
+			}
+		} finally {
+			await rm(dir, { recursive: true, force: true });
+		}
+	});
+
+	test("a torn or missing state file keeps the in-memory state", async () => {
+		const dir = await mkdtemp(join(tmpdir(), "warren-fake-store-"));
+		const stateFile = join(dir, "state.json");
+		try {
+			const forge = new FakeForge({ store: new FakeForgeStore({ stateFile }) });
+			const ref = forge.parseRepoRef("fake://projects/widget");
+			if (ref === null) throw new Error("unreachable");
+			const opened = await forge.openPullRequest(ref, DRAFT);
+			if (!opened.ok) throw new Error("unreachable");
+			writeFileSync(stateFile, "{ not json");
+			const polled = await forge.getPullRequest(ref, opened.value);
+			expect(polled.ok).toBe(true);
+			if (polled.ok) expect(polled.value.lifecycle).toBe("open");
+		} finally {
+			await rm(dir, { recursive: true, force: true });
+		}
 	});
 });
 

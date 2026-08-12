@@ -130,11 +130,10 @@ export class FakeForge implements Forge {
 		pr: PullRequestRef,
 		body: string,
 	): Promise<ForgeResult<void>> {
-		const record = this.store.getPr(ref.key, pr.number);
+		const record = this.store.setPrBody(ref.key, pr.number, body);
 		if (record === null) {
 			return notFound(`fake forge has no pull request #${pr.number} for ${ref.key}`);
 		}
-		record.body = body;
 		return ok(undefined);
 	}
 

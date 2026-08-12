@@ -121,6 +121,7 @@ export function createProjectHandler(deps: ServerDeps): RouteHandler {
 			repo: deps.repos.projects,
 			config: deps.projectsConfig,
 			gitUrl,
+			forge: deps.forge,
 			...(deps.publicAllowlist !== undefined ? { publicAllowlist: deps.publicAllowlist } : {}),
 			...(defaultBranch !== undefined ? { defaultBranch } : {}),
 			...(gitSecret !== undefined ? { token: gitSecret } : {}),

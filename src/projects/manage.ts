@@ -35,6 +35,7 @@ import { resolve, sep } from "node:path";
 import { formatError, ValidationError } from "../core/errors.ts";
 import type { ProjectsRepo } from "../db/repos/projects.ts";
 import type { ProjectRow } from "../db/schema.ts";
+import type { Forge } from "../forge/contract.ts";
 import type { BridgeLogger } from "../runs/stream/index.ts";
 import type { WarrenConfigCache } from "../warren-config/index.ts";
 import {
@@ -51,7 +52,26 @@ import {
 	type RefreshProjectCloneResult,
 	refreshProjectClone,
 } from "./refresh.ts";
-import { parseGitHubUrl } from "./url.ts";
+import type { ParsedGitHubUrl } from "./url.ts";
+import { parseForgeOwnedUrl, parseGitHubUrl } from "./url.ts";
+
+/**
+ * Registration URL resolution (warren-2600): github.com grammars parse as
+ * today; a URL the boot forge OWNS but `parseGitHubUrl` rejects falls back
+ * to the forge-owned layout derivation. A URL neither owns surfaces the
+ * ORIGINAL `parseGitHubUrl` validation error verbatim.
+ */
+function parseProjectUrl(gitUrl: string, forge: Forge | undefined): ParsedGitHubUrl {
+	try {
+		return parseGitHubUrl(gitUrl);
+	} catch (err) {
+		if (forge !== undefined) {
+			const owned = parseForgeOwnedUrl(gitUrl, forge);
+			if (owned !== null) return owned;
+		}
+		throw err;
+	}
+}
 
 export interface AddProjectInput {
 	readonly repo: ProjectsRepo;
@@ -82,6 +102,14 @@ export interface AddProjectInput {
 	 * the on-disk clone can stay empty.
 	 */
 	readonly detectFeatures?: typeof detectProjectFeatures;
+	/**
+	 * Boot-resolved forge (warren-2600): decides which clone URLs warren can
+	 * host. A URL `parseGitHubUrl` rejects but the forge OWNS
+	 * (`parseRepoRef` non-null, e.g. FakeForge's `fake://<owner>/<name>`)
+	 * still registers, deriving its on-disk path segments via
+	 * `parseForgeOwnedUrl`. Omit ⇒ the legacy github.com-only posture.
+	 */
+	readonly forge?: Forge;
 }
 
 export async function addProject(input: AddProjectInput): Promise<ProjectRow> {
@@ -90,7 +118,7 @@ export async function addProject(input: AddProjectInput): Promise<ProjectRow> {
 	// ever be registered — refused here, BEFORE anything is cloned, from
 	// the single enforcement site every surface shares.
 	assertGitUrlAllowlisted(input.publicAllowlist, gitUrl);
-	const parsed = parseGitHubUrl(gitUrl);
+	const parsed = parseProjectUrl(gitUrl, input.forge);
 
 	const existing = await repo.findByGitUrl(gitUrl);
 	if (existing) {
