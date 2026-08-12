@@ -25,9 +25,9 @@
  * payload's `runId` / `projectId`: the run row (its `seedId`), the project row
  * (its `localPath` clone + `hasSeeds`), and the boot-wired seeds CLI. It gates on
  * the payload's `outcome === "succeeded"` (already folded past dropped-commit /
- * finalize-failed / provider-error flips by reap) and `branchPushed`, matching
- * the old pipeline gate. Its `sd close` mutates the clone; a `seeds.seed_id_closed`
- * event is appended to the run's stream for observability, best-effort.
+ * finalize-failed / provider-error flips by reap), `branchPushed`, and a positive
+ * `commitsAhead`. Its `sd close` mutates the clone; a `seeds.seed_id_closed` event
+ * is appended to the run's stream for observability, best-effort.
  */
 
 import type { Repos } from "../../db/repos/index.ts";
@@ -68,9 +68,16 @@ export function createSeedCloseLifecycleExtension(
 			post_reap: async (envelope) => {
 				const { payload } = envelope;
 				// Capability, not conditional (rule 7): this hook IS "close the run's
-				// seed after a clean, pushed reap" — the same gate the old pipeline step
-				// used. `outcome` already accounts for reap's flips-to-failed.
-				if (payload.outcome !== "succeeded" || !payload.branchPushed) return;
+				// seed after a clean reap that pushed at least one commit." `outcome`
+				// already accounts for reap's flips-to-failed.
+				if (
+					payload.outcome !== "succeeded" ||
+					!payload.branchPushed ||
+					payload.commitsAhead === null ||
+					payload.commitsAhead <= 0
+				) {
+					return;
+				}
 				await closeSeedForReap(input, now, payload.runId, payload.projectId);
 			},
 		},

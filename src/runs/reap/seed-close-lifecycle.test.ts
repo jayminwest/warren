@@ -164,6 +164,16 @@ describe("createSeedCloseLifecycleExtension", () => {
 		expect(calls.some((c) => c.args.includes("close"))).toBe(false);
 	});
 
+	test("skips when the pushed branch has no commits", async () => {
+		const { repos, runId, projectId } = await setup();
+		const { seedsCli, calls } = fakeSeedsCli();
+		const { logger } = recordingLogger();
+		await fire(repos, seedsCli, logger, { runId, projectId, commitsAhead: 0 });
+		expect(calls.some((c) => c.args.includes("close"))).toBe(false);
+		const events = await repos.events.listByRun(runId);
+		expect(events.some((ev) => ev.kind === "seeds.seed_id_closed")).toBe(false);
+	});
+
 	test("skips when the project has no seeds", async () => {
 		const { repos, runId, projectId } = await setup({ hasSeeds: false });
 		const { seedsCli, calls } = fakeSeedsCli();
