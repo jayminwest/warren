@@ -16,6 +16,22 @@ import {
 } from "./39-public-exposure.helpers.ts";
 
 /**
+ * Forge-wiring probes (warren-2600). The campaign's falsification test 2
+ * holds this scenario green while the forge seam lands; these fragments
+ * must never appear in an anonymous body NO MATTER which forge is wired:
+ *
+ *   - `fake-credential` — FakeForge's static git-credential secret
+ *     (src/forge/fake/fake-forge.ts). A minted forge credential on the
+ *     public wire is the exact leak class the seam exists to prevent.
+ *   - `fake://` — FakeForge's clone/webUrl scheme. In THIS scenario's
+ *     seeded world every URL is github.com-shaped, so a `fake://`
+ *     fragment means a forge-private URL shape escaped into a public
+ *     projection (e.g. an event payload carrying the raw webUrl where a
+ *     scrubbed shape belongs).
+ */
+const FORBIDDEN_FORGE_FRAGMENTS: readonly string[] = ["fake-credential", "fake://"];
+
+/**
  * The one assertion the whole scenario exists for: `body` — the verbatim
  * bytes an anonymous caller received from `label` — carries no redacted
  * field name, no planted sentinel, no host path, and no live bearer.
@@ -57,6 +73,13 @@ export function assertNoLeak(label: string, body: string): void {
 		throw new AcceptanceError(
 			`${label}: anonymous body carries an unredacted bearer credential (${excerptAround(body, bearer[0])})`,
 		);
+	}
+	for (const fragment of FORBIDDEN_FORGE_FRAGMENTS) {
+		if (body.includes(fragment)) {
+			throw new AcceptanceError(
+				`${label}: anonymous body carries a forge-private fragment ${JSON.stringify(fragment)} (${excerptAround(body, fragment)})`,
+			);
+		}
 	}
 }
 

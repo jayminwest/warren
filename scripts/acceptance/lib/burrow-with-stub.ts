@@ -224,6 +224,13 @@ async function main(): Promise<number> {
 
 	const client = await Client.open();
 	try {
+		// Skip the up-time `burrow doctor` gate: the harness already
+		// dispatches through noSandboxSpawn (see its doc — acceptance runs
+		// in containers without CAP_SYS_ADMIN/bwrap and isn't testing
+		// sandbox isolation), so a doctor that fails on "sandbox primitive
+		// (bwrap): missing" would refuse every dispatch in exactly the
+		// environments noSandboxSpawn exists for.
+		client.burrows.setUpOverrides({ skipDoctor: true });
 		// Register the declarative stub agent so the dispatcher can resolve
 		// `agentId: "stub-shell"` when warren spawns a run. Identical to what
 		// `burrow.toml [[agents]]` *would* do if upstream auto-registered it.

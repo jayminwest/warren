@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { ValidationError } from "../core/errors.ts";
-import { parseGitHubUrl } from "./url.ts";
+import { FakeForge } from "../forge/fake/fake-forge.ts";
+import { GitHubForge } from "../forge/github/provider.ts";
+import { parseForgeOwnedUrl, parseGitHubUrl } from "./url.ts";
 
 describe("parseGitHubUrl", () => {
 	test("accepts https URLs with and without the .git suffix", () => {
@@ -75,5 +77,33 @@ describe("parseGitHubUrl", () => {
 	test("rejects names with disallowed characters (slashes, spaces, etc.)", () => {
 		expect(() => parseGitHubUrl("https://github.com/owner/sub/dir/repo")).toThrow(ValidationError);
 		expect(() => parseGitHubUrl("https://github.com/owner/repo name")).toThrow(ValidationError);
+	});
+});
+
+describe("parseForgeOwnedUrl (warren-2600)", () => {
+	test("derives layout segments from a FakeForge-owned fake:// URL", () => {
+		expect(parseForgeOwnedUrl("fake://projects/widget", new FakeForge())).toEqual({
+			owner: "projects",
+			name: "widget",
+		});
+		expect(parseForgeOwnedUrl("fake://a/b/c", new FakeForge())).toEqual({
+			owner: "b",
+			name: "c",
+		});
+	});
+
+	test("returns null for URLs the forge disowns", () => {
+		expect(parseForgeOwnedUrl("https://github.com/o/r.git", new FakeForge())).toBeNull();
+		expect(
+			parseForgeOwnedUrl("fake://projects/widget", new GitHubForge({ token: "t" })),
+		).toBeNull();
+		expect(parseForgeOwnedUrl("not a url", new FakeForge())).toBeNull();
+		expect(parseForgeOwnedUrl("", new FakeForge())).toBeNull();
+	});
+
+	test("returns null when the path can't supply two safe segments", () => {
+		expect(parseForgeOwnedUrl("fake://onlyone", new FakeForge())).toBeNull();
+		expect(parseForgeOwnedUrl("fake://../escape", new FakeForge())).toBeNull();
+		expect(parseForgeOwnedUrl("fake://owner/repo name", new FakeForge())).toBeNull();
 	});
 });

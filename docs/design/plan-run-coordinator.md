@@ -177,8 +177,8 @@ plan including one docs-only child that exercises the trivial-merge
 branch; assertions on terminal state (`succeeded`, all children
 `merged`); a second dispatch against the same plan id after closing
 one child out-of-band, asserting the close advances to `skipped`
-without a new run; stubbed `WARREN_GH_FETCH_OVERRIDE` for the PR-merge
-poll so the harness stays deterministic.
+without a new run; the PR-merge poll ran against FakeForge
+(`WARREN_FORGE=fake`, warren-2600) so the harness stays deterministic.
 
 ## Ready-to-dispatch surface (pl-3fc4, 2026-06-20)
 

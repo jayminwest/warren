@@ -20,6 +20,7 @@
  */
 
 import { ValidationError } from "../core/errors.ts";
+import type { Forge } from "../forge/contract.ts";
 
 export interface ParsedGitHubUrl {
 	readonly owner: string;
@@ -78,6 +79,44 @@ function extractOwnerName(url: string): { owner: string; name: string } | undefi
 
 function stripGitSuffix(segment: string): string {
 	return segment.endsWith(".git") ? segment.slice(0, -4) : segment;
+}
+
+/**
+ * Forge-owned fallback (warren-2600, falsification test 1): the github.com
+ * grammars above are not the only clone URLs warren can host — the boot
+ * forge decides OWNERSHIP (`parseRepoRef`), and a URL the forge owns but
+ * `parseGitHubUrl` rejects (today: FakeForge's `fake://<owner>/<name>`)
+ * still needs on-disk path segments for `/data/projects/<owner>/<name>`.
+ *
+ * The derivation here is LAYOUT-ONLY: the last two path segments after the
+ * scheme, held to the same path-safety character set. The segments never
+ * cross back into the forge — `RepoRef.key` stays forge-private per
+ * forge-contract.md §0. Returns null when the forge disowns the URL or the
+ * path can't supply two safe segments, so the caller can fall back to the
+ * original validation error.
+ */
+export function parseForgeOwnedUrl(input: string, forge: Forge): ParsedGitHubUrl | null {
+	const trimmed = input.trim();
+	if (trimmed === "" || forge.parseRepoRef(trimmed) === null) return null;
+	const withoutScheme = trimmed.replace(/^[A-Za-z][A-Za-z0-9+.-]*:\/\//, "");
+	if (withoutScheme === trimmed) return null;
+	const parts = withoutScheme.split("/").filter((p) => p !== "");
+	if (parts.length < 2) return null;
+	const owner = stripGitSuffix(parts[parts.length - 2] as string);
+	const name = stripGitSuffix(parts[parts.length - 1] as string);
+	if (!isSafeSegmentForPath(owner) || !isSafeSegmentForPath(name)) return null;
+	return { owner, name };
+}
+
+/** Boolean twin of `validateSegment` for the null-returning fallback. */
+function isSafeSegmentForPath(segment: string): boolean {
+	return (
+		segment !== "" &&
+		segment !== "." &&
+		segment !== ".." &&
+		!segment.startsWith("-") &&
+		SEGMENT.test(segment)
+	);
 }
 
 function validateSegment(segment: string, label: string): void {

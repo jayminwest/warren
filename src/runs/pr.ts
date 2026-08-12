@@ -8,14 +8,6 @@ import {
 export { PR_URL_RE, parsePullRequestUrl } from "./pr-checks.ts";
 
 /**
- * Acceptance-seam env name (warren-ae00), mirrored from
- * `src/forge/github/override.ts` — the domain must not import forge
- * transport internals (check:layers), and warren-2600 deletes the whole
- * seam, so the string lives twice deliberately until then.
- */
-const GH_FETCH_OVERRIDE_ENV = "WARREN_GH_FETCH_OVERRIDE";
-
-/**
  * PR title/body composition + the auto-open config for the reap pipeline.
  *
  * warren-45e6 (plan pl-d1c9 step 10): the direct GitHub REST client that
@@ -176,9 +168,7 @@ export interface AutoOpenPrConfig {
 	/**
 	 * Raw `GITHUB_TOKEN` for host-side git network ops against private
 	 * repos (project clone, refresh fetch, plan-run seed-close push),
-	 * applied per-spawn via `githubCredentialGitEnv`. Deliberately
-	 * separate from `token`: the acceptance seam below synthesizes a
-	 * `stub-token` there, which must never become a real git credential.
+	 * applied per-spawn via `githubCredentialGitEnv`.
 	 * Undefined/empty → anonymous git (public repos only). The
 	 * supervisor's global insteadOf rule makes this redundant on the
 	 * local topology; under `WARREN_RUNTIME=k8s` (bare `warren serve`,
@@ -201,18 +191,9 @@ export type AutoOpenEnvLike = Readonly<Record<string, string | undefined>>;
 export function loadAutoOpenPrConfigFromEnv(env: AutoOpenEnvLike = process.env): AutoOpenPrConfig {
 	const raw = env.WARREN_AUTO_OPEN_PR;
 	const enabled = raw === undefined ? true : !isFalsy(raw);
-	const fetchOverride = env[GH_FETCH_OVERRIDE_ENV];
-	const overrideActive = typeof fetchOverride === "string" && fetchOverride.trim() === "merged";
-	// Acceptance seam (warren-ae00): WARREN_GH_FETCH_OVERRIDE=merged synthesizes
-	// a stub token so downstream config gates that still read `token` (the boot
-	// warning, the coordinator reopen-PR gate) behave as configured. The actual
-	// HTTP call short-circuits inside `GitHubForge.openPullRequest`
-	// (warren-45e6) before the token is read.
-	const token = env.GITHUB_TOKEN ?? (overrideActive ? "stub-token" : "");
 	return {
 		enabled,
-		token,
-		// Raw only — never the synthetic stub-token (see AutoOpenPrConfig.gitToken).
+		token: env.GITHUB_TOKEN ?? "",
 		gitToken: env.GITHUB_TOKEN,
 		warrenBaseUrl: env.WARREN_BASE_URL ?? null,
 	};

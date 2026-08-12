@@ -206,7 +206,7 @@ describe("FakeForge conforms to the Forge contract", () => {
 
 describe("GitHubForge conforms to the Forge contract", () => {
 	forgeConformanceSuite(
-		() => new GitHubForge({ token: "stub-token", fetch: stubGitHubServer().fetch }),
+		() => new GitHubForge({ token: "test-token", fetch: stubGitHubServer().fetch }),
 		{
 			cloneUrl: "https://github.com/octo/widget.git",
 			forgeKind: "github",

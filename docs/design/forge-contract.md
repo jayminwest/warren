@@ -122,9 +122,9 @@ loudly). Settled as follows:
 - **FakeForge is production code under `src/forge/fake/`**, selected by
   `WARREN_FORGE=fake`. It must not live in a `test-helpers` file: the layer
   and wire gates exempt test paths, so a fake there would be invisible to
-  the very rule phase 2 exists to prove. FakeForge subsumes and deletes the
-  `WARREN_GH_FETCH_OVERRIDE=merged` env hack inside `src/runs/pr-checks.ts`
-  (acceptance scenarios 26 and 36 migrate onto it).
+  the very rule phase 2 exists to prove. FakeForge subsumed and deleted the
+  old GitHub-fetch-override env hack (acceptance scenarios 26 and 36
+  migrated onto it in warren-2600).
 - Boot and registry failures **throw** (`UnknownForgeError` extending
   `WarrenError`, mirroring `UnknownRuntimeError`). Seam methods never throw;
   they return `ForgeResult` (§2.2).

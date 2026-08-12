@@ -25,7 +25,7 @@
 import type { Forge } from "./contract.ts";
 import { UnknownForgeError } from "./errors.ts";
 import { FakeForge } from "./fake/fake-forge.ts";
-import type { FakeForgeStore } from "./fake/store.ts";
+import { FAKE_FORGE_STATE_FILE_ENV, FakeForgeStore } from "./fake/store.ts";
 import { GitHubForge } from "./github/provider.ts";
 
 /** Forge backends the selector understands. */
@@ -109,7 +109,19 @@ export function resolveForge(deps: ForgeDeps = {}, env: ForgeEnv = process.env):
 				...(deps.githubCheckRuns !== undefined ? { checkRuns: deps.githubCheckRuns } : {}),
 			});
 		}
-		case "fake":
-			return new FakeForge(deps.fakeStore !== undefined ? { store: deps.fakeStore() } : {});
+		case "fake": {
+			if (deps.fakeStore !== undefined) {
+				return new FakeForge({ store: deps.fakeStore() });
+			}
+			// Cross-process acceptance seam (warren-2600): the harness boots
+			// warren as a subprocess, so it drives FakeForge state transitions
+			// (markMerged & friends) by editing a JSON state file the store
+			// reloads on every read. Unset → the pure in-memory store.
+			const stateFile = env[FAKE_FORGE_STATE_FILE_ENV]?.trim();
+			if (stateFile === undefined || stateFile === "") {
+				return new FakeForge();
+			}
+			return new FakeForge({ store: new FakeForgeStore({ stateFile }) });
+		}
 	}
 }

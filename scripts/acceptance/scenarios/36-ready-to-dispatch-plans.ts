@@ -12,8 +12,10 @@
  *
  * Topology mirrors scenario 26 (closest twin): an in-proc warren+burrow
  * pair against a bespoke fixture committed under a per-scenario tmp root,
- * with `WARREN_GH_FETCH_OVERRIDE=merged` so the dispatched plan-run's
- * single child merges through the stubbed GH path without a real fixture.
+ * with `WARREN_FORGE=fake` so the dispatched plan-run's single child
+ * merges through FakeForge — the harness flips the recorded PR to
+ * `merged` in the fake's state file (lib/fake-forge.ts), the same role
+ * GitHub's auto-merge workflow plays in production (warren-2600).
  *
  * The fixture commits real `.seeds/{config.yaml, issues.jsonl, plans.jsonl}`
  * rows: one `approved` plan (pl-acc-36) with exactly one open child
@@ -36,6 +38,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { AcceptanceError, assertEqual, assertTrue, type Scenario } from "../lib/assert.ts";
+import { startFakeForgeAutoMerge } from "../lib/fake-forge.ts";
 import { WarrenHttp } from "../lib/http.ts";
 import { type BootHandle, bootInProc } from "../lib/inproc.ts";
 
@@ -71,7 +74,7 @@ interface CreatePlanRunResponse {
 	readonly children: readonly { readonly seedId: string }[];
 }
 
-const PLAN_PROJECT_URL = "https://github.com/warren-acceptance/sample-ready-plans.git";
+const PLAN_PROJECT_URL = "fake://warren-acceptance/sample-ready-plans";
 const PLAN_ID = "pl-acc-36";
 const SEED_A = "ah-acc-36-a";
 const SEED_TS = "2026-05-15T00:00:00.000Z";
@@ -85,6 +88,7 @@ export const scenario: Scenario = {
 		const scenarioRoot = await mkdtemp(join(tmpdir(), "warren-acceptance-36-"));
 		const fixturePath = join(scenarioRoot, "fixture");
 		const gitConfigPath = join(scenarioRoot, "git-config");
+		const fakeStateFile = join(scenarioRoot, "fake-forge-state.json");
 
 		await buildReadyPlansFixture({
 			fixturePath,
@@ -95,6 +99,7 @@ export const scenario: Scenario = {
 		});
 
 		let handle: BootHandle | undefined;
+		const autoMerge = startFakeForgeAutoMerge(fakeStateFile);
 		try {
 			handle = await bootInProc({
 				tmpRoot: join(scenarioRoot, "warren"),
@@ -103,9 +108,10 @@ export const scenario: Scenario = {
 				gitConfigPath,
 				extraEnv: {
 					WARREN_STUB_SLEEP_MS: "0",
-					// Stub every GitHub REST call so the dispatched plan-run's
-					// single child merges through the canned `merged` shape.
-					WARREN_GH_FETCH_OVERRIDE: "merged",
+					// FakeForge owns the project's fake:// URL; the auto-merge
+					// driver above merges the child PR through the state file.
+					WARREN_FORGE: "fake",
+					WARREN_FAKE_FORGE_STATE_FILE: fakeStateFile,
 					WARREN_PLAN_RUN_TICK_MS: "1000",
 				},
 			});
@@ -164,6 +170,7 @@ export const scenario: Scenario = {
 				`after dispatch: ${PLAN_ID} no longer appears in ready-plans (dedup via listDispatchedPlanIds)`,
 			);
 		} finally {
+			autoMerge.stop();
 			if (handle !== undefined) {
 				await handle.stop().catch(() => undefined);
 			}

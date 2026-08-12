@@ -75,7 +75,9 @@ export interface EventRow {
 	readonly payload: Record<string, unknown> | null;
 }
 
-export const PLAN_PROJECT_URL = "https://github.com/warren-acceptance/sample-plan-run.git";
+// warren-2600: FakeForge owns the `fake://` grammar — the plan-run
+// roundtrip merges through the fake's state file, not a GH stub.
+export const PLAN_PROJECT_URL = "fake://warren-acceptance/sample-plan-run";
 export const PLAN_ID = "pl-acc-26";
 export const SEED_A = "ah-acc-26-a";
 export const SEED_B = "ah-acc-26-b";

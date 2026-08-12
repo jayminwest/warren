@@ -4,6 +4,7 @@ import { isId } from "../core/ids.ts";
 import { openDatabase, type WarrenDb } from "../db/client.ts";
 import { DrizzleAdapter } from "../db/repos/drizzle-adapter.ts";
 import { ProjectsRepo } from "../db/repos/projects.ts";
+import { FakeForge } from "../forge/fake/fake-forge.ts";
 import { ProjectUnavailableError } from "./errors.ts";
 import { CFG, fakeClone, NOOP_SPAWN } from "./manage.test-helpers.ts";
 import { addProject } from "./manage.ts";
@@ -89,6 +90,33 @@ describe("addProject", () => {
 			}),
 		).rejects.toBeInstanceOf(ValidationError);
 		expect(cloneCalled).toBe(false);
+		expect(await repo.listAll()).toHaveLength(0);
+	});
+
+	test("registers a forge-owned non-GitHub URL via the forge fallback (warren-2600)", async () => {
+		const row = await addProject({
+			repo,
+			config: CFG,
+			gitUrl: "fake://warren-acceptance/sample-fake-forge",
+			forge: new FakeForge(),
+			spawn: NOOP_SPAWN,
+			clone: fakeClone(),
+		});
+		expect(row.gitUrl).toBe("fake://warren-acceptance/sample-fake-forge");
+		expect(row.localPath).toBe("/data/projects/warren-acceptance/sample-fake-forge");
+	});
+
+	test("a disowned non-GitHub URL still surfaces the original ValidationError", async () => {
+		await expect(
+			addProject({
+				repo,
+				config: CFG,
+				gitUrl: "https://gitlab.com/o/r.git",
+				forge: new FakeForge(),
+				spawn: NOOP_SPAWN,
+				clone: fakeClone(),
+			}),
+		).rejects.toBeInstanceOf(ValidationError);
 		expect(await repo.listAll()).toHaveLength(0);
 	});
 

@@ -1,8 +1,12 @@
 import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { Forge } from "./contract.ts";
 import { UnknownForgeError } from "./errors.ts";
 import { FakeForge } from "./fake/fake-forge.ts";
-import type { FakeForgeStore } from "./fake/store.ts";
+import { FakeForgeStore } from "./fake/store.ts";
 import { GitHubForge } from "./github/provider.ts";
 import {
 	DEFAULT_FORGE_KIND,
@@ -91,6 +95,38 @@ describe("resolveForge", () => {
 
 	test("constructs only the selected arm — the github arm never builds the fake store", () => {
 		expect(() => resolveForge(githubArmDeps, { WARREN_FORGE: "github" })).not.toThrow();
+	});
+
+	test("WARREN_FAKE_FORGE_STATE_FILE backs the fake store with the file (warren-2600)", async () => {
+		const dir = await mkdtemp(join(tmpdir(), "warren-forge-registry-"));
+		const stateFile = join(dir, "state.json");
+		const forge = resolveForge(fakeArmDeps, {
+			WARREN_FORGE: "fake",
+			WARREN_FAKE_FORGE_STATE_FILE: stateFile,
+		});
+		const ref = forge.parseRepoRef("fake://p/r");
+		if (ref === null) throw new Error("unreachable");
+		const opened = await forge.openPullRequest(ref, {
+			title: "t",
+			body: "b",
+			headBranch: "warren/run-1",
+			baseBranch: "main",
+		});
+		expect(opened.ok).toBe(true);
+		const persisted = JSON.parse(readFileSync(stateFile, "utf8")) as {
+			prs: Record<string, { lifecycle: string }[]>;
+		};
+		expect(persisted.prs["p/r"]?.[0]?.lifecycle).toBe("open");
+		await rm(dir, { recursive: true, force: true });
+	});
+
+	test("an injected fakeStore factory beats WARREN_FAKE_FORGE_STATE_FILE", () => {
+		const store = new FakeForgeStore();
+		const forge = resolveForge(
+			{ ...fakeArmDeps, fakeStore: () => store },
+			{ WARREN_FORGE: "fake", WARREN_FAKE_FORGE_STATE_FILE: "/nonexistent/state.json" },
+		);
+		expect((forge as FakeForge).store).toBe(store);
 	});
 
 	test("the default github token factory reads GITHUB_TOKEN from the selection env", async () => {
