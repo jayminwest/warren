@@ -1,94 +1,80 @@
 /**
- * Retry-aware wrapper around `checkPullRequestMerged` (src/runs/pr.ts,
- * warren-9e4c). The coordinator (warren-2623) calls this every tick for
- * each child whose state is `pr_open`; transient GitHub 5xx or network
- * blips must not flip the plan to `failed`.
+ * Retry-aware PR merge gate over the Forge seam (warren-63e7, plan pl-d1c9
+ * step 11). Replaces the captured-token `checkPullRequestMerged` poller:
+ * the old closure held one `GITHUB_TOKEN` captured at boot across a
+ * multi-hour poll loop — the motivating bug of the whole Forge campaign
+ * (forge-contract.md §4, §4.1), because an hourly App credential cannot
+ * outlive the loop. The checker now consumes the boot-resolved `Forge`
+ * (minted-per-operation credentials live inside the provider) and the gate
+ * drives off `PullRequestState.lifecycle` / `mergedAt`.
  *
- * Retry policy:
- *   - `http_error` with status 0 (fetch threw) OR status 5xx → retry up
- *     to `maxRetries` times with a short fixed delay.
- *   - `rate_limited` (HTTP 429, warren-9bbc) → retry up to `maxRetries`
- *     times, honoring the `Retry-After` hint when GitHub sent one (capped
- *     so a hostile header can't park the poller), else the fixed delay.
- *   - `http_error` with status 4xx → return immediately (not retried).
- *     The coordinator treats only 404/410 as a fatal "PR is gone" signal
- *     (warren-eccd); 401/403 fall through to keep-waiting, bounded
- *     by the merge-wait budget (warren-3937).
- *   - any other shape (`merged`, `open`, `closed_unmerged`,
- *     `missing_token`) returns immediately.
+ * Poll result vocabulary (domain meaning, §3 — the forge reports
+ * lifecycle, the domain decides what it means):
+ *   - `merged` / `open` / `closed_unmerged` — the lifecycle arms.
+ *   - `unparseable` — no forge owns the URL (foreign-host PR). Keeps the
+ *     wait-indefinitely-on-manual-merge behaviour.
+ *   - `forge_error` — the provider failed; `errorKind` is the
+ *     `ForgeErrorKind` the domain switches on. Only `not_found` is fatal
+ *     (`isFatalForgeError` in merge-gate.ts) — the PR is genuinely gone.
+ *     Everything else keeps waiting, bounded by the merge-wait budget.
  *
- * `parsePullRequestUrl` rejections (GHE-hosted shapes, malformed URLs)
- * surface as a synthetic `{kind:'http_error', status:0,
- * message:'unparseable...'}` so the coordinator treats them as
- * "cannot verify merge" (waiting) rather than "merged".
+ * Retry policy (transport-transient only, §3: semantic retry — waiting an
+ * hour for a human to press merge — stays in merge-gate.ts):
+ *   - `network` and 5xx `http_error` → retry up to `maxRetries` times.
+ *   - `rate_limited` → retry, honoring the `Retry-After` hint (capped so a
+ *     hostile header can't park the poller).
+ *   - everything else returns immediately.
+ *
+ * The unauthorized policy (step body, warren-63e7 — do not re-litigate):
+ *   - `unauthorized` / `forbidden` fire a LOUD once-per-repo `logger.warn`
+ *     so the operator fixes credentials mid-run — the plan itself keeps
+ *     waiting and never loses progress (plan risk 7).
+ *   - `no_credential` KEEPS the old stall-and-log semantics: quiet, never
+ *     fatal, no notice.
  */
 
-import {
-	type CheckPrMergedResult,
-	checkPullRequestMerged,
-	parsePullRequestUrl,
-} from "../runs/pr.ts";
+import type {
+	Forge,
+	ForgeError,
+	ForgeErrorKind,
+	PullRequestRef,
+	PullRequestState,
+	RepoRef,
+} from "../forge/contract.ts";
 
-export type PrMergeChecker = (prUrl: string) => Promise<CheckPrMergedResult>;
+export type PrMergePollResult =
+	| { readonly kind: "merged"; readonly mergedAt: string }
+	| { readonly kind: "open" }
+	| { readonly kind: "closed_unmerged" }
+	| { readonly kind: "unparseable"; readonly detail: string }
+	| { readonly kind: "forge_error"; readonly errorKind: ForgeErrorKind; readonly detail: string };
+
+export type PrMergeChecker = (prUrl: string) => Promise<PrMergePollResult>;
+
+/** Minimal structural logger — the domain cannot import src/server/types.ts. */
+export interface PrMergeCheckerLogger {
+	warn(obj: Record<string, unknown>, msg: string): void;
+}
 
 export interface CreatePrMergeCheckerInput {
-	readonly token: string;
-	readonly fetch?: typeof fetch;
+	/** Boot-resolved forge (ServerDeps.forge) — never a per-tick instance. */
+	readonly forge: Forge;
 	/** Default 2 retries (3 total attempts). */
 	readonly maxRetries?: number;
 	/** Default 500ms between retries. Tests set this to 0. */
 	readonly retryDelayMs?: number;
-	/** Test seam to inject the underlying helper. */
-	readonly check?: typeof checkPullRequestMerged;
 	/** Test seam for the delay. */
 	readonly sleep?: (ms: number) => Promise<void>;
+	/**
+	 * Loud-notice sink for the unauthorized policy. A repo keys one notice
+	 * per checker lifetime (the checker is boot-scoped, so per-repo ≈
+	 * per-project).
+	 */
+	readonly logger?: PrMergeCheckerLogger;
 }
 
 const DEFAULT_MAX_RETRIES = 2;
 const DEFAULT_RETRY_DELAY_MS = 500;
-
-export function createPrMergeChecker(input: CreatePrMergeCheckerInput): PrMergeChecker {
-	const check = input.check ?? checkPullRequestMerged;
-	const sleep = input.sleep ?? defaultSleep;
-	const maxRetries = input.maxRetries ?? DEFAULT_MAX_RETRIES;
-	const retryDelayMs = input.retryDelayMs ?? DEFAULT_RETRY_DELAY_MS;
-
-	return async function poll(prUrl: string): Promise<CheckPrMergedResult> {
-		const parsed = parsePullRequestUrl(prUrl);
-		if (parsed === null) {
-			return {
-				kind: "http_error",
-				status: 0,
-				message: `unparseable pull request url: ${prUrl}`,
-			};
-		}
-
-		let last: CheckPrMergedResult | null = null;
-		for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
-			const result = await check({
-				owner: parsed.owner,
-				repo: parsed.repo,
-				number: parsed.number,
-				token: input.token,
-				...(input.fetch !== undefined ? { fetch: input.fetch } : {}),
-			});
-			last = result;
-			if (!isTransient(result)) return result;
-			const delayMs = retryDelayFor(result, retryDelayMs);
-			if (attempt < maxRetries && delayMs > 0) {
-				await sleep(delayMs);
-			}
-		}
-		return last ?? { kind: "http_error", status: 0, message: "no result" };
-	};
-}
-
-function isTransient(result: CheckPrMergedResult): boolean {
-	if (result.kind === "rate_limited") return true;
-	if (result.kind !== "http_error") return false;
-	if (result.status === 0) return true;
-	return result.status >= 500;
-}
 
 /**
  * A `Retry-After` hint above this is treated as broken, not patient — the
@@ -97,9 +83,106 @@ function isTransient(result: CheckPrMergedResult): boolean {
  */
 const MAX_RETRY_AFTER_MS = 60_000;
 
-function retryDelayFor(result: CheckPrMergedResult, fallbackMs: number): number {
-	if (result.kind !== "rate_limited" || result.retryAfterMs === null) return fallbackMs;
-	return Math.min(result.retryAfterMs, MAX_RETRY_AFTER_MS);
+/**
+ * The PR number is a legitimate seam DTO field (`PullRequestRef.number` —
+ * "display + tracker cross-reference"), read here as the URL's trailing
+ * numeric path segment. This is deliberately NOT a host grammar: the
+ * forge-owned `parseRepoRef` decides whether the URL is owned at all, and
+ * nothing here joins the number to a host path (forge-contract.md §0).
+ */
+const TRAILING_PR_NUMBER = /\/(\d+)(?:[/?#].*)?$/;
+
+export function createPrMergeChecker(input: CreatePrMergeCheckerInput): PrMergeChecker {
+	const { forge } = input;
+	const sleep = input.sleep ?? defaultSleep;
+	const maxRetries = input.maxRetries ?? DEFAULT_MAX_RETRIES;
+	const retryDelayMs = input.retryDelayMs ?? DEFAULT_RETRY_DELAY_MS;
+	const noticedRepos = new Set<string>();
+
+	const noticeUnauthorized = (refKey: string, error: ForgeError): void => {
+		if (error.kind !== "unauthorized" && error.kind !== "forbidden") return;
+		if (noticedRepos.has(refKey)) return;
+		noticedRepos.add(refKey);
+		input.logger?.warn(
+			{
+				repo: refKey,
+				errorKind: error.kind,
+				...(error.status !== undefined ? { status: error.status } : {}),
+				detail: error.detail,
+			},
+			"plan_run.merge_check_unauthorized",
+		);
+	};
+
+	return async function poll(prUrl: string): Promise<PrMergePollResult> {
+		const target = resolvePollTarget(forge, prUrl);
+		if (target.kind === "unparseable") return target;
+
+		let last: ForgeError = { kind: "network", detail: "no result" };
+		for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
+			const result = await forge.getPullRequest(target.ref, target.pr);
+			if (result.ok) return mapLifecycle(result.value);
+			last = result.error;
+			if (!isTransient(result.error)) {
+				noticeUnauthorized(target.ref.key, result.error);
+				break;
+			}
+			const delayMs = retryDelayFor(result.error, retryDelayMs);
+			if (attempt < maxRetries && delayMs > 0) {
+				await sleep(delayMs);
+			}
+		}
+		return { kind: "forge_error", errorKind: last.kind, detail: last.detail };
+	};
+}
+
+type PollTarget =
+	| { readonly kind: "unparseable"; readonly detail: string }
+	| { readonly kind: "resolved"; readonly ref: RepoRef; readonly pr: PullRequestRef };
+
+/**
+ * Route a stored PR URL to its forge. A null `parseRepoRef` (foreign-host
+ * PR) keeps the wait-indefinitely-on-manual-merge behaviour, exactly as
+ * before.
+ */
+function resolvePollTarget(forge: Forge, prUrl: string): PollTarget {
+	const ref = forge.parseRepoRef(prUrl);
+	if (ref === null) {
+		return { kind: "unparseable", detail: `no forge owns pull request url: ${prUrl}` };
+	}
+	const number = TRAILING_PR_NUMBER.exec(prUrl.trim())?.[1];
+	if (number === undefined) {
+		return { kind: "unparseable", detail: `no pull request number in url: ${prUrl}` };
+	}
+	const pr: PullRequestRef = {
+		forge: ref.forge,
+		key: `${ref.key}#${number}`,
+		number: Number.parseInt(number, 10),
+		webUrl: prUrl,
+	};
+	return { kind: "resolved", ref, pr };
+}
+
+/** Map the provider-neutral lifecycle onto the gate's poll vocabulary. */
+function mapLifecycle(state: PullRequestState): PrMergePollResult {
+	if (state.lifecycle === "merged") {
+		// mergedAt non-null is the truth source (GitHubForge only reports
+		// `merged` when it is set); the Date.now fallback covers a provider
+		// that breaks that rule.
+		return { kind: "merged", mergedAt: new Date(state.mergedAt ?? Date.now()).toISOString() };
+	}
+	return state.lifecycle === "closed_unmerged" ? { kind: "closed_unmerged" } : { kind: "open" };
+}
+
+function isTransient(error: ForgeError): boolean {
+	if (error.kind === "rate_limited" || error.kind === "network") return true;
+	if (error.kind !== "http_error") return false;
+	return error.status === undefined || error.status >= 500;
+}
+
+function retryDelayFor(error: ForgeError, fallbackMs: number): number {
+	if (error.kind !== "rate_limited" || error.retryAfterMs === undefined) return fallbackMs;
+	return Math.min(error.retryAfterMs, MAX_RETRY_AFTER_MS);
 }
 
 function defaultSleep(ms: number): Promise<void> {

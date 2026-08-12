@@ -38,6 +38,9 @@ export const FAKE_FORGE_KIND = "fake";
 /** The clone-URL scheme the fake owns: `fake://<path>`. */
 export const FAKE_CLONE_URL_SCHEME = "fake://";
 
+/** The PR-web-URL suffix `toRef` mints and `parseRepoRef` strips. */
+const FAKE_PR_URL_SUFFIX = /\/pulls\/\d+$/;
+
 export interface FakeForgeOptions {
 	/** Shared state; a fresh store when omitted. */
 	readonly store?: FakeForgeStore;
@@ -79,7 +82,14 @@ export class FakeForge implements Forge {
 	 */
 	parseRepoRef(cloneUrl: string): RepoRef | null {
 		if (!cloneUrl.startsWith(FAKE_CLONE_URL_SCHEME)) return null;
-		const key = cloneUrl.slice(FAKE_CLONE_URL_SCHEME.length);
+		let key = cloneUrl.slice(FAKE_CLONE_URL_SCHEME.length);
+		if (key.length === 0) return null;
+		// warren-63e7: accept the fake's own PR web URLs (`fake://<path>/pulls/<n>`,
+		// see toRef) and resolve them to the repo ref — the same grammar
+		// tolerance GitHubForge's parseRepoRef has for `/pull/<n>` URLs. The
+		// plan-run merge gate polls the stored webUrl, so the round-trip must
+		// land back on the repo key the store is indexed by.
+		key = key.replace(FAKE_PR_URL_SUFFIX, "");
 		if (key.length === 0) return null;
 		return { forge: FAKE_FORGE_KIND, key };
 	}
@@ -172,6 +182,11 @@ export class FakeForge implements Forge {
 	/** Transition an open PR to merged, as the auto-merge workflow would. */
 	markMerged(ref: RepoRef, pr: PullRequestRef): boolean {
 		return this.store.markMerged(ref.key, pr.number, this.now()) !== null;
+	}
+
+	/** Transition an open PR to closed-unmerged (a human closed the tab). */
+	markClosed(ref: RepoRef, pr: PullRequestRef): boolean {
+		return this.store.markClosed(ref.key, pr.number) !== null;
 	}
 
 	/** Install the check runs `listChecks` reports for a commit. */

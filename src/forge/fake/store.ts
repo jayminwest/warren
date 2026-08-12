@@ -99,6 +99,14 @@ export class FakeForgeStore {
 		return pr;
 	}
 
+	/** Test/acceptance seeding seam: transition an open PR to closed (unmerged). */
+	markClosed(repoKey: string, number: number): FakePullRequestRecord | null {
+		const pr = this.getPr(repoKey, number);
+		if (pr === null) return null;
+		pr.lifecycle = "closed_unmerged";
+		return pr;
+	}
+
 	/** Test/acceptance seeding seam: install the check runs for a commit. */
 	setChecks(repoKey: string, commit: string, runs: CheckRun[]): void {
 		this.checksByCommit.set(

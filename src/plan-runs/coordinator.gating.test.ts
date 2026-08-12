@@ -174,10 +174,10 @@ describe("advancePlanRun — parentRunId gate (warren-d9a2)", () => {
 		expect(reloaded.failureReason).toBe("parent_pr_not_merged");
 	});
 
-	test.each<[number, string]>([
-		[404, "Not Found"],
-		[410, "Gone"],
-	])("parent PR http %i poll → plan_failed parent_pr_not_merged (warren-eccd)", async (status, message) => {
+	test.each([
+		"Not Found",
+		"Gone",
+	])("parent PR not_found poll (%s) → plan_failed parent_pr_not_merged (warren-eccd)", async (detail) => {
 		const parentRunId = await h.makeRun("warren-parent");
 		await h.repos.runs.markRunning(parentRunId, NOW);
 		await h.repos.runs.finalize(parentRunId, "succeeded", NOW);
@@ -187,12 +187,12 @@ describe("advancePlanRun — parentRunId gate (warren-d9a2)", () => {
 			planRun: pr,
 			repos: h.repos,
 			showSeed: h.showSeedStub("open"),
-			checkPrMerged: async () => ({ kind: "http_error", status, message }),
+			checkPrMerged: async () => ({ kind: "forge_error", errorKind: "not_found", detail }),
 			spawn: h.spawnStub(() => "unused"),
 			emit: h.emit,
 			now: () => NOW,
 		});
-		// 404/410 mean the parent PR is genuinely gone → fail the gate.
+		// not_found means the parent PR is genuinely gone → fail the gate.
 		expect(result.kind).toBe("plan_failed");
 		if (result.kind === "plan_failed") {
 			expect(result.reason).toBe("parent_pr_not_merged");
@@ -207,11 +207,11 @@ describe("advancePlanRun — parentRunId gate (warren-d9a2)", () => {
 		expect(failedEvent?.payload.reason).toBe("parent_pr_not_merged");
 	});
 
-	test.each<[number, string]>([
-		[401, "Unauthorized"],
-		[403, "Forbidden"],
-		[429, "rate limit"],
-	])("parent PR http %i poll keeps waiting, not parent_pr_not_merged (warren-eccd)", async (status, message) => {
+	test.each([
+		"unauthorized",
+		"forbidden",
+		"rate_limited",
+	] as const)("parent PR %s poll keeps waiting, not parent_pr_not_merged (warren-eccd)", async (errorKind) => {
 		const parentRunId = await h.makeRun("warren-parent");
 		await h.repos.runs.markRunning(parentRunId, NOW);
 		await h.repos.runs.finalize(parentRunId, "succeeded", NOW);
@@ -221,13 +221,13 @@ describe("advancePlanRun — parentRunId gate (warren-d9a2)", () => {
 			planRun: pr,
 			repos: h.repos,
 			showSeed: h.showSeedStub("open"),
-			checkPrMerged: async () => ({ kind: "http_error", status, message }),
+			checkPrMerged: async () => ({ kind: "forge_error", errorKind, detail: errorKind }),
 			spawn: h.spawnStub(() => "unused"),
 			emit: h.emit,
 			now: () => NOW,
 		});
-		// 401/403/429 are "cannot verify right now" (auth blip / rate
-		// limit) — keep waiting for the parent merge, bounded by the
+		// unauthorized/forbidden/rate_limited are "cannot verify right now"
+		// (auth blip / rate limit) — keep waiting for the parent merge, bounded by the
 		// merge-wait budget (warren-3937). Do NOT fail the gate; no
 		// plan_run.failed event.
 		expect(result.kind).toBe("waiting_for_parent_merge");

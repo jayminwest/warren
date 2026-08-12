@@ -147,10 +147,10 @@ describe("advancePlanRun — completion phase", () => {
 		expect(h.events.some((e) => e.kind === "plan_run.failed")).toBe(true);
 	});
 
-	test.each<[number, string]>([
-		[404, "Not Found"],
-		[410, "Gone"],
-	])("pr_open + http %i poll → plan_failed pr_closed_without_merge (warren-eccd)", async (status, message) => {
+	test.each([
+		"Not Found",
+		"Gone",
+	])("pr_open + not_found poll (%s) → plan_failed pr_closed_without_merge (warren-eccd)", async (detail) => {
 		await h.repos.planRuns.transitionTo(h.planRun.id, "running", {
 			startedAt: NOW.toISOString(),
 		});
@@ -170,12 +170,12 @@ describe("advancePlanRun — completion phase", () => {
 			planRun,
 			repos: h.repos,
 			showSeed: h.showSeedStub("open"),
-			checkPrMerged: async () => ({ kind: "http_error", status, message }),
+			checkPrMerged: async () => ({ kind: "forge_error", errorKind: "not_found", detail }),
 			spawn: h.spawnStub(() => "unused"),
 			emit: h.emit,
 			now: () => NOW,
 		});
-		// 404/410 mean the PR is genuinely gone → fail the plan.
+		// not_found means the PR is genuinely gone → fail the plan.
 		expect(result.kind).toBe("plan_failed");
 		if (result.kind === "plan_failed") {
 			expect(result.reason).toBe("pr_closed_without_merge");
@@ -188,11 +188,11 @@ describe("advancePlanRun — completion phase", () => {
 		expect(failedEvent?.payload.reason).toBe("pr_closed_without_merge");
 	});
 
-	test.each<[number, string]>([
-		[401, "Unauthorized"],
-		[403, "Forbidden"],
-		[429, "rate limit"],
-	])("pr_open + http %i poll keeps waiting, not pr_closed_without_merge (warren-eccd)", async (status, message) => {
+	test.each([
+		"unauthorized",
+		"forbidden",
+		"rate_limited",
+	] as const)("pr_open + %s poll keeps waiting, not pr_closed_without_merge (warren-eccd)", async (errorKind) => {
 		await h.repos.planRuns.transitionTo(h.planRun.id, "running", {
 			startedAt: NOW.toISOString(),
 		});
@@ -212,13 +212,13 @@ describe("advancePlanRun — completion phase", () => {
 			planRun,
 			repos: h.repos,
 			showSeed: h.showSeedStub("open"),
-			checkPrMerged: async () => ({ kind: "http_error", status, message }),
+			checkPrMerged: async () => ({ kind: "forge_error", errorKind, detail: errorKind }),
 			spawn: h.spawnStub(() => "unused"),
 			emit: h.emit,
 			now: () => NOW,
 		});
-		// 401/403/429 are "cannot verify right now" (auth blip / rate
-		// limit) — keep waiting, bounded by the merge-wait budget
+		// unauthorized/forbidden/rate_limited are "cannot verify right now"
+		// (auth blip / rate limit) — keep waiting, bounded by the merge-wait budget
 		// (warren-3937). Do NOT fail the plan; no plan_run.failed event.
 		expect(result.kind).toBe("waiting_for_merge");
 		const reloaded = await h.repos.planRuns.require(h.planRun.id);

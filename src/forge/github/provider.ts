@@ -222,6 +222,13 @@ export class GitHubForge implements Forge {
 	}
 
 	async getPullRequest(ref: RepoRef, pr: PullRequestRef): Promise<ForgeResult<PullRequestState>> {
+		// Acceptance seam (warren-ae00; warren-63e7 for this method): the
+		// in-proc plan-run roundtrip stubs every GitHub REST call, including
+		// the coordinator's merge poll. Short-circuit BEFORE the credential
+		// check — the override env synthesizes no token.
+		if (readGhFetchOverride() === "merged") {
+			return ok({ lifecycle: "merged", mergedAt: Date.now(), headCommit: "", baseBranch: "" });
+		}
 		const denied = this.noCredential<PullRequestState>(ref);
 		if (denied !== null) return denied;
 		const result = await requestGitHub({

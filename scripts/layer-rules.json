@@ -109,10 +109,6 @@
 			"allow": [
 				{ "path": "src/forge/", "why": "the seam itself" },
 				{
-					"path": "src/runs/pr-checks.ts",
-					"why": "phase-3 migration of the plan-run coordinator merge gate deletes this entry (warren-63e7)"
-				},
-				{
 					"path": "src/ci-fixer/check-runs.ts",
 					"why": "phase-3 migration of the CI-fixer onto the Forge seam deletes this entry (warren-0b49)"
 				}

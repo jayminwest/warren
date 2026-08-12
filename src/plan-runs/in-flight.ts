@@ -21,7 +21,7 @@ import type {
 import {
 	type CoordinatorReopenPrFn,
 	hasEmptyPushEvent,
-	isFatalHttpError,
+	isFatalForgeError,
 	isTerminalRun,
 	mergeDeadlineExceeded,
 	resolveChildPrReopen,
@@ -297,15 +297,17 @@ async function pollMergeState(
 	if (polled.kind === "open") {
 		return await handleOpenPr(input, run, effectivePrUrl);
 	}
-	if (polled.kind === "closed_unmerged" || isFatalHttpError(polled)) {
+	if (polled.kind === "closed_unmerged" || isFatalForgeError(polled)) {
 		const extra: Record<string, unknown> = { prUrl: effectivePrUrl };
-		if (polled.kind === "http_error") {
-			extra.httpStatus = polled.status;
+		if (polled.kind === "forge_error") {
+			extra.errorKind = polled.errorKind;
 		}
 		return await failChild(input, run, "pr_closed_without_merge", extra);
 	}
-	// `missing_token`, `rate_limited` (429 that survived pr-merge.ts
-	// retries), or transient `http_error` (status 0 or 5xx) — keep waiting.
+	// `unparseable` (foreign-host PR) or any non-fatal `forge_error` —
+	// `no_credential`, `unauthorized` (the checker already fired its loud
+	// per-repo notice), `rate_limited` / transient `http_error` that
+	// survived pr-merge.ts retries — keep waiting.
 	return { kind: "result", result: { kind: "waiting_for_merge" } };
 }
 

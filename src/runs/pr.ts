@@ -1,4 +1,3 @@
-import { GH_FETCH_OVERRIDE_ENV } from "./pr-checks.ts";
 import {
 	composeBody,
 	composeTitle,
@@ -6,14 +5,15 @@ import {
 	type PrTemplateOverrides,
 } from "./pr-template.ts";
 
-export {
-	type CheckPrMergedResult,
-	type CheckPullRequestMergedInput,
-	checkPullRequestMerged,
-	PR_URL_RE,
-	parsePullRequestUrl,
-	parseRetryAfterMs,
-} from "./pr-checks.ts";
+export { PR_URL_RE, parsePullRequestUrl } from "./pr-checks.ts";
+
+/**
+ * Acceptance-seam env name (warren-ae00), mirrored from
+ * `src/forge/github/override.ts` — the domain must not import forge
+ * transport internals (check:layers), and warren-2600 deletes the whole
+ * seam, so the string lives twice deliberately until then.
+ */
+const GH_FETCH_OVERRIDE_ENV = "WARREN_GH_FETCH_OVERRIDE";
 
 /**
  * PR title/body composition + the auto-open config for the reap pipeline.
