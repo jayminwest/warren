@@ -4,10 +4,12 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Forge } from "./contract.ts";
-import { UnknownForgeError } from "./errors.ts";
+import { ForgeConfigError, UnknownForgeError } from "./errors.ts";
 import { FakeForge } from "./fake/fake-forge.ts";
 import { FakeForgeStore } from "./fake/store.ts";
 import { GitHubForge } from "./github/provider.ts";
+import { type GitHubAppCredentials, GitHubAppForge } from "./github-app/provider.ts";
+import { generateTestAppKeyPair } from "./github-app/test-helpers.ts";
 import {
 	DEFAULT_FORGE_KIND,
 	FORGE_KINDS,
@@ -49,9 +51,10 @@ describe("resolveForgeKind", () => {
 		expect(resolveForgeKind({ WARREN_FORGE: "   " })).toBe("github");
 	});
 
-	test("accepts both registered kinds", () => {
-		expect(FORGE_KINDS).toEqual(["github", "fake"]);
+	test("accepts all registered kinds", () => {
+		expect(FORGE_KINDS).toEqual(["github", "app", "fake"]);
 		expect(resolveForgeKind({ WARREN_FORGE: "github" })).toBe("github");
+		expect(resolveForgeKind({ WARREN_FORGE: "app" })).toBe("app");
 		expect(resolveForgeKind({ WARREN_FORGE: "fake" })).toBe("fake");
 	});
 
@@ -169,5 +172,67 @@ describe("resolveForge", () => {
 		expect(() => resolveForge(githubArmDeps, { WARREN_FORGE: "bitbucket" })).toThrow(
 			UnknownForgeError,
 		);
+	});
+});
+
+describe("resolveForge app arm (warren-f8df)", () => {
+	const { privateKeyPem } = generateTestAppKeyPair();
+	const appCreds = { appId: "1", installationId: "2", privateKey: privateKeyPem };
+	const appArmDeps: ForgeDeps = {
+		githubToken: (): string => {
+			throw new Error("githubToken factory must not be called when WARREN_FORGE=app");
+		},
+		fakeStore: (): FakeForgeStore => {
+			throw new Error("fakeStore factory must not be called when WARREN_FORGE=app");
+		},
+		githubApp: () => appCreds,
+	};
+
+	test("resolves GitHubAppForge for WARREN_FORGE=app from the injected factory", () => {
+		const forge = resolveForge(appArmDeps, { WARREN_FORGE: "app" });
+		expect(forge).toBeInstanceOf(GitHubAppForge);
+		expect(forge.capabilities.credentialLifetime).toBe("short-lived");
+	});
+
+	test("constructs only the app arm — the github and fake factories are never touched", () => {
+		expect(() => resolveForge(appArmDeps, { WARREN_FORGE: "app" })).not.toThrow();
+	});
+
+	test("the default app factory reads the WARREN_GITHUB_APP_* triple from the selection env", () => {
+		const forge = resolveForge(
+			{ githubAppFetch: (() => {}) as unknown as typeof fetch },
+			{
+				WARREN_FORGE: "app",
+				WARREN_GITHUB_APP_ID: "1",
+				WARREN_GITHUB_APP_INSTALLATION_ID: "2",
+				WARREN_GITHUB_APP_PRIVATE_KEY: privateKeyPem,
+			},
+		);
+		expect(forge).toBeInstanceOf(GitHubAppForge);
+	});
+
+	test("missing app env fails loud at boot with ForgeConfigError", () => {
+		expect(() => resolveForge({}, { WARREN_FORGE: "app" })).toThrow(ForgeConfigError);
+	});
+
+	test("an unparseable app private key fails loud at boot with ForgeConfigError", () => {
+		expect(() =>
+			resolveForge(
+				{ githubApp: () => ({ appId: "1", installationId: "2", privateKey: "junk" }) },
+				{ WARREN_FORGE: "app" },
+			),
+		).toThrow(ForgeConfigError);
+	});
+
+	test("the github and fake arms never touch the app arm's inputs", () => {
+		const appFactory = (): GitHubAppCredentials => {
+			throw new Error("githubApp factory must not be called for non-app arms");
+		};
+		expect(() =>
+			resolveForge({ ...githubArmDeps, githubApp: appFactory }, { WARREN_FORGE: "github" }),
+		).not.toThrow();
+		expect(() =>
+			resolveForge({ ...fakeArmDeps, githubApp: appFactory }, { WARREN_FORGE: "fake" }),
+		).not.toThrow();
 	});
 });

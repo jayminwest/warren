@@ -11,6 +11,10 @@
  * Selection rules (§1.1):
  *   - `WARREN_FORGE` unset (or blank) → `github` (the default forge).
  *   - `github` → `GitHubForge` over the static `GITHUB_TOKEN` secret.
+ *   - `app`    → `GitHubAppForge` (warren-f8df) over the
+ *     `WARREN_GITHUB_APP_ID` / `WARREN_GITHUB_APP_INSTALLATION_ID` /
+ *     `WARREN_GITHUB_APP_PRIVATE_KEY` triple; a missing or unparseable
+ *     input throws `ForgeConfigError` at boot (fail loud, §4).
  *   - `fake`   → `FakeForge` with its in-memory PR store.
  *   - anything else → `UnknownForgeError` (fail loud — never silently fall
  *     back to the default, so a typo can't route runs onto the wrong forge).
@@ -27,25 +31,31 @@ import { UnknownForgeError } from "./errors.ts";
 import { FakeForge } from "./fake/fake-forge.ts";
 import { FAKE_FORGE_STATE_FILE_ENV, FakeForgeStore } from "./fake/store.ts";
 import { GitHubForge } from "./github/provider.ts";
+import {
+	type GitHubAppCredentials,
+	GitHubAppForge,
+	loadGitHubAppCredentialsFromEnv,
+} from "./github-app/provider.ts";
 
 /** Forge backends the selector understands. */
-export type ForgeKind = "github" | "fake";
+export type ForgeKind = "github" | "app" | "fake";
 
 /** Selector default when `WARREN_FORGE` is unset — the real forge. */
 export const DEFAULT_FORGE_KIND: ForgeKind = "github";
 
 /** Every recognized `WARREN_FORGE` value (used for validation + error hints). */
-export const FORGE_KINDS: readonly ForgeKind[] = ["github", "fake"];
+export const FORGE_KINDS: readonly ForgeKind[] = ["github", "app", "fake"];
 
 /** Minimal env surface the selector reads. */
 export type ForgeEnv = Readonly<Record<string, string | undefined>>;
 
 /**
  * Dependencies every forge the registry can build is threaded. Kept as a
- * single bag — mirroring `RuntimeProviderDeps` — so adding a backend later
- * (GitHub App mode) doesn't change the selector's signature. The token and
- * the fake's store are factories so the registry needn't touch a secret or
- * construct state for the arm it did not select.
+ * single bag — mirroring `RuntimeProviderDeps` — so adding a backend (the
+ * `app` arm landed this way in warren-f8df) doesn't change the selector's
+ * signature. The token, app credentials, and the fake's store are factories
+ * so the registry needn't touch a secret or construct state for the arm it
+ * did not select.
  */
 export interface ForgeDeps {
 	/**
@@ -67,6 +77,18 @@ export interface ForgeDeps {
 	 * true (classic PAT).
 	 */
 	readonly githubCheckRuns?: boolean;
+	/**
+	 * Lazy credential factory for the `app` arm (warren-f8df). Optional —
+	 * when omitted the selector reads the `WARREN_GITHUB_APP_*` triple from
+	 * the same env the selection came from. A test injects a throwing
+	 * factory here to prove the other arms never touch the app arm's inputs.
+	 */
+	readonly githubApp?: () => GitHubAppCredentials;
+	/**
+	 * OPTIONAL fetch seam for the `app` arm — a test injects a stub so the
+	 * constructed `GitHubAppForge` never reaches the network.
+	 */
+	readonly githubAppFetch?: typeof fetch;
 	/**
 	 * Lazy store factory for the `fake` arm — only consulted for
 	 * `WARREN_FORGE=fake`. Optional: the `FakeForge` defaults to a fresh
@@ -107,6 +129,13 @@ export function resolveForge(deps: ForgeDeps = {}, env: ForgeEnv = process.env):
 				token: tokenFactory(),
 				...(deps.githubFetch !== undefined ? { fetch: deps.githubFetch } : {}),
 				...(deps.githubCheckRuns !== undefined ? { checkRuns: deps.githubCheckRuns } : {}),
+			});
+		}
+		case "app": {
+			const credentials = (deps.githubApp ?? (() => loadGitHubAppCredentialsFromEnv(env)))();
+			return new GitHubAppForge({
+				...credentials,
+				...(deps.githubAppFetch !== undefined ? { fetch: deps.githubAppFetch } : {}),
 			});
 		}
 		case "fake": {

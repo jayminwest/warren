@@ -34,7 +34,7 @@ interface CloneDefaults {
  */
 /**
  * warren-6c4c: mint the spawn's clone-refresh credential per-spawn through
- * the boot forge (forge-contract.md §4.2), not AutoOpenPrConfig.gitToken.
+ * the boot forge (forge-contract.md §4), not AutoOpenPrConfig.gitToken.
  * Extracted so `createRunHandler`'s complexity budget stays intact.
  */
 async function mintSpawnGithubToken(

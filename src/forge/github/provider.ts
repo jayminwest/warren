@@ -17,8 +17,11 @@
  *     direct `head=<owner>:<branch>` filter, then an on-base scan matching
  *     `head.ref` — so a duplicate whose head lives on a fork is found
  *     rather than degrading to an opaque conflict (§6.13).
- *   - `gitCredential` returns the configured static secret with
- *     `expiresAt: null` (§4 — static lifetime skips the re-mint path).
+ *   - `gitCredential` returns the minted credential — under the default
+ *     static source that is the configured PAT with `expiresAt: null` (§4 —
+ *     static lifetime skips the re-mint path); the App provider injects its
+ *     installation-token cache as the `tokenSource` and rides every method
+ *     below unchanged.
  *
  * Capabilities (§5): `checkRuns` defaults true — a CLASSIC PAT reaches the
  * Checks API. A FINE-GRAINED PAT cannot (GitHub's fine-grained permission
@@ -52,14 +55,28 @@ import { GITHUB_API_BASE } from "./headers.ts";
 import { requestGitHub } from "./http.ts";
 import { readJson, readText } from "./readers.ts";
 import { GITHUB_FORGE_KIND, parseGitHubRepoRef } from "./repo-ref.ts";
+import {
+	type GitHubCredentialSecret,
+	type GitHubForgeTokenSource,
+	StaticGitHubTokenSource,
+} from "./token-source.ts";
 
 export { GITHUB_FORGE_KIND } from "./repo-ref.ts";
 
 const USER_AGENT = "warren-forge-github";
 
 export interface GitHubForgeOptions {
-	/** The static secret (a PAT). Empty string → methods return `no_credential`. */
-	readonly token: string;
+	/**
+	 * The static secret (a PAT). Empty string → methods return `no_credential`.
+	 * Ignored when `tokenSource` is set.
+	 */
+	readonly token?: string;
+	/**
+	 * Dynamic per-call credential source (forge-contract.md §4) — the App
+	 * provider's installation-token cache implements it. When set, every API
+	 * method mints immediately before its request instead of reading `token`.
+	 */
+	readonly tokenSource?: GitHubForgeTokenSource;
 	/** Injected fetch seam; defaults to `globalThis.fetch`. */
 	readonly fetch?: typeof fetch;
 	/**
@@ -86,8 +103,12 @@ function err<T>(error: ForgeError): ForgeResult<T> {
 	return { ok: false, error };
 }
 
-/** Transport-kind vocabulary aligns with the seam kinds — the map is a rename. */
-function toForgeError(error: GitHubHttpError): ForgeError {
+/**
+ * Transport-kind vocabulary aligns with the seam kinds — the map is a
+ * rename. Exported for the App provider's installation-token mint, which
+ * rides the same transport and maps its failures identically.
+ */
+export function toForgeError(error: GitHubHttpError): ForgeError {
 	const forgeError: ForgeError = { kind: error.kind, status: error.status, detail: error.message };
 	if (error.kind === "rate_limited" && error.retryAfterMs !== null) {
 		return { ...forgeError, retryAfterMs: error.retryAfterMs };
@@ -115,11 +136,11 @@ function prWebUrl(json: GitHubPrJson): string | null {
 export class GitHubForge implements Forge {
 	readonly capabilities: ForgeCapabilities;
 
-	private readonly token: string;
+	private readonly tokens: GitHubForgeTokenSource;
 	private readonly fetch: typeof fetch;
 
 	constructor(options: GitHubForgeOptions) {
-		this.token = options.token;
+		this.tokens = options.tokenSource ?? new StaticGitHubTokenSource(options.token ?? "");
 		this.fetch = options.fetch ?? globalThis.fetch;
 		this.capabilities = {
 			checkRuns: options.checkRuns ?? true,
@@ -137,21 +158,26 @@ export class GitHubForge implements Forge {
 		return parseGitHubRepoRef(cloneUrl);
 	}
 
-	gitCredential(ref: RepoRef): Promise<ForgeResult<GitCredential>> {
-		const denied = this.noCredential<GitCredential>(ref);
-		if (denied !== null) return Promise.resolve(denied);
-		// Static mode (§4): no known expiry, so the domain skips the re-mint.
+	async gitCredential(ref: RepoRef): Promise<ForgeResult<GitCredential>> {
+		const minted = await this.mint(ref);
+		if (!minted.ok) return err(minted.error);
 		// The provider owns the username; no domain code ever names it.
-		return Promise.resolve(ok({ username: "x-access-token", secret: this.token, expiresAt: null }));
+		// `expiresAt` is null under the static source (§4: the domain skips
+		// the re-mint) and real under the App source.
+		return ok({
+			username: "x-access-token",
+			secret: minted.value.secret,
+			expiresAt: minted.value.expiresAt,
+		});
 	}
 
 	async openPullRequest(ref: RepoRef, req: PullRequestDraft): Promise<ForgeResult<PullRequestRef>> {
-		const denied = this.noCredential<PullRequestRef>(ref);
-		if (denied !== null) return denied;
+		const minted = await this.mint(ref);
+		if (!minted.ok) return err(minted.error);
 		const result = await requestGitHub({
 			url: `${GITHUB_API_BASE}/repos/${this.slug(ref)}/pulls`,
 			method: "POST",
-			token: this.token,
+			token: minted.value.secret,
 			userAgent: USER_AGENT,
 			context: "POST /pulls",
 			body: {
@@ -186,12 +212,12 @@ export class GitHubForge implements Forge {
 		ref: RepoRef,
 		q: PullRequestQuery,
 	): Promise<ForgeResult<PullRequestRef | null>> {
-		const denied = this.noCredential<PullRequestRef | null>(ref);
-		if (denied !== null) return denied;
+		const minted = await this.mint(ref);
+		if (!minted.ok) return err(minted.error);
 		const state = q.state ?? "open";
 		// Pass 1: the owner-qualified head filter. Only matches same-repo
 		// branches — GitHub scopes `head=<owner>:<branch>` to that owner.
-		const direct = await this.searchPullRequests(ref, {
+		const direct = await this.searchPullRequests(ref, minted.value.secret, {
 			base: q.baseBranch,
 			state,
 			head: `${this.owner(ref)}:${q.headBranch}`,
@@ -202,7 +228,7 @@ export class GitHubForge implements Forge {
 		if (directHit !== undefined) return ok(directHit.ref);
 		// Pass 2 (§6.13): an on-base scan matching `head.ref` finds a duplicate
 		// whose head lives on a fork, which pass 1 cannot see.
-		const onBase = await this.searchPullRequests(ref, {
+		const onBase = await this.searchPullRequests(ref, minted.value.secret, {
 			base: q.baseBranch,
 			state,
 			per_page: "100",
@@ -215,12 +241,12 @@ export class GitHubForge implements Forge {
 	}
 
 	async getPullRequest(ref: RepoRef, pr: PullRequestRef): Promise<ForgeResult<PullRequestState>> {
-		const denied = this.noCredential<PullRequestState>(ref);
-		if (denied !== null) return denied;
+		const minted = await this.mint(ref);
+		if (!minted.ok) return err(minted.error);
 		const result = await requestGitHub({
 			url: `${GITHUB_API_BASE}/repos/${this.slug(ref)}/pulls/${pr.number}`,
 			method: "GET",
-			token: this.token,
+			token: minted.value.secret,
 			userAgent: USER_AGENT,
 			context: `GET /pulls/${pr.number}`,
 			fetch: this.fetch,
@@ -249,12 +275,12 @@ export class GitHubForge implements Forge {
 		pr: PullRequestRef,
 		body: string,
 	): Promise<ForgeResult<void>> {
-		const denied = this.noCredential<void>(ref);
-		if (denied !== null) return denied;
+		const minted = await this.mint(ref);
+		if (!minted.ok) return err(minted.error);
 		const result = await requestGitHub({
 			url: `${GITHUB_API_BASE}/repos/${this.slug(ref)}/pulls/${pr.number}`,
 			method: "PATCH",
-			token: this.token,
+			token: minted.value.secret,
 			userAgent: USER_AGENT,
 			context: `PATCH /pulls/${pr.number}`,
 			body: { body },
@@ -272,12 +298,12 @@ export class GitHubForge implements Forge {
 					"capabilities.checkRuns is false (fine-grained PAT cannot reach the Checks API — §5/§6.7)",
 			});
 		}
-		const denied = this.noCredential<CheckSummary>(ref);
-		if (denied !== null) return denied;
+		const minted = await this.mint(ref);
+		if (!minted.ok) return err(minted.error);
 		const result = await requestGitHub({
 			url: `${GITHUB_API_BASE}/repos/${this.slug(ref)}/commits/${encodeURIComponent(commit)}/check-runs?per_page=100`,
 			method: "GET",
-			token: this.token,
+			token: minted.value.secret,
 			userAgent: USER_AGENT,
 			context: "GET /check-runs",
 			fetch: this.fetch,
@@ -295,11 +321,13 @@ export class GitHubForge implements Forge {
 		jobId: string,
 		maxBytes: number,
 	): Promise<ForgeResult<string | null>> {
-		if (this.token === "" || maxBytes <= 0) return ok(null);
+		if (maxBytes <= 0) return ok(null);
+		const minted = await this.mint(ref);
+		if (!minted.ok) return ok(null);
 		const result = await requestGitHub({
 			url: `${GITHUB_API_BASE}/repos/${this.slug(ref)}/actions/jobs/${encodeURIComponent(jobId)}/logs`,
 			method: "GET",
-			token: this.token,
+			token: minted.value.secret,
 			userAgent: USER_AGENT,
 			context: `GET /actions/jobs/${jobId}/logs`,
 			fetch: this.fetch,
@@ -311,12 +339,12 @@ export class GitHubForge implements Forge {
 	}
 
 	async deleteBranch(ref: RepoRef, branch: string): Promise<ForgeResult<void>> {
-		const denied = this.noCredential<void>(ref);
-		if (denied !== null) return denied;
+		const minted = await this.mint(ref);
+		if (!minted.ok) return err(minted.error);
 		const result = await requestGitHub({
 			url: `${GITHUB_API_BASE}/repos/${this.slug(ref)}/git/refs/heads/${encodeURIComponent(branch)}`,
 			method: "DELETE",
-			token: this.token,
+			token: minted.value.secret,
 			userAgent: USER_AGENT,
 			context: `DELETE /git/refs/heads/${branch}`,
 			fetch: this.fetch,
@@ -338,12 +366,22 @@ export class GitHubForge implements Forge {
 
 	/* ------------------------------------------------------------------- */
 
-	private noCredential<T>(ref: RepoRef): ForgeResult<T> | null {
-		if (this.token !== "") return null;
-		return err({
-			kind: "no_credential",
-			detail: `no GitHub credential configured; cannot call the forge for ${ref.key}`,
-		});
+	/**
+	 * Mint the credential for ONE API call (§4) — a free static read under
+	 * PAT mode, a cache hit or installation-token re-mint under App mode.
+	 * A `no_credential` miss is re-detailed with the repo ref so the error
+	 * names the operation it failed, matching the pre-source behavior.
+	 */
+	private async mint(ref: RepoRef): Promise<ForgeResult<GitHubCredentialSecret>> {
+		const minted = await this.tokens.mint();
+		if (minted.ok) return minted;
+		if (minted.error.kind === "no_credential") {
+			return err({
+				kind: "no_credential",
+				detail: `no GitHub credential configured; cannot call the forge for ${ref.key}`,
+			});
+		}
+		return err(minted.error);
 	}
 
 	/** RepoRef keys pack `github.com/<owner>/<repo>`; only this provider destructures them. */
@@ -375,13 +413,14 @@ export class GitHubForge implements Forge {
 	 */
 	private async searchPullRequests(
 		ref: RepoRef,
+		token: string,
 		params: Record<string, string>,
 	): Promise<ForgeResult<Array<{ ref: PullRequestRef; headBranch: string }>>> {
 		const query = new URLSearchParams(params);
 		const result = await requestGitHub({
 			url: `${GITHUB_API_BASE}/repos/${this.slug(ref)}/pulls?${query.toString()}`,
 			method: "GET",
-			token: this.token,
+			token,
 			userAgent: USER_AGENT,
 			context: "GET /pulls",
 			fetch: this.fetch,

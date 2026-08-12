@@ -24,6 +24,17 @@ export class UnknownForgeError extends WarrenError {
 }
 
 /**
+ * Thrown at boot when the SELECTED forge's required configuration is
+ * missing or malformed (e.g. `WARREN_FORGE=app` without
+ * `WARREN_GITHUB_APP_PRIVATE_KEY`). Mirrors the unknown-kind rule: a
+ * misconfigured short-lived backend fails loud at boot rather than
+ * degrading to anonymous git against a private repo mid-run (§4).
+ */
+export class ForgeConfigError extends WarrenError {
+	readonly code = "forge_config_invalid";
+}
+
+/**
  * Provider-neutral HTTP status for a seam-level `ForgeError`, keyed by its
  * `ForgeErrorKind`, so the HTTP layer can render `{code, message, hint}`
  * without an `instanceof` against any provider class. Mirrors

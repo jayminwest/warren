@@ -186,7 +186,7 @@ async function dispatchHealer(
 	alert: HealAlert,
 ): Promise<string> {
 	// warren-6c4c: mint the spawn's clone-refresh credential per-spawn through
-	// the boot forge (forge-contract.md §4.2), not AutoOpenPrConfig.gitToken.
+	// the boot forge (forge-contract.md §4), not AutoOpenPrConfig.gitToken.
 	const project = await deps.repos.projects.require(candidate.projectId);
 	const gitSecret = await mintGitCredentialSecret(deps.forge, project.gitUrl);
 	const result = await spawnRun({

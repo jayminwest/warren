@@ -1,5 +1,5 @@
 /**
- * Per-spawn git-credential mint (forge-contract.md §4.2 — the load-bearing
+ * Per-spawn git-credential mint (forge-contract.md §4 — the load-bearing
  * boundary: credentials are minted, never held).
  *
  * The HTTP handlers that fan a git credential into a domain call

@@ -21,6 +21,8 @@ import type { Forge, PullRequestState } from "./contract.ts";
 import { FakeForge } from "./fake/fake-forge.ts";
 import { GitHubForge } from "./github/provider.ts";
 import { stubGitHubServer } from "./github/stub-server.ts";
+import { GitHubAppForge } from "./github-app/provider.ts";
+import { generateTestAppKeyPair, stubGitHubAppServer } from "./github-app/test-helpers.ts";
 
 /** Compile-time mutual assignability: `A extends B` and `B extends A`. */
 type Exact<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false;
@@ -52,6 +54,8 @@ export interface ForgeConformanceOptions {
 	readonly foreignUrls: readonly string[];
 	/** false when the forge names no bot (GitHub PAT mode, §5). */
 	readonly botIdentity: boolean;
+	/** true when minted credentials carry a real expiry (GitHub App mode, §4). */
+	readonly shortLivedCredential?: boolean;
 }
 
 /** Conformance: every Forge implementation must satisfy these behaviours. */
@@ -94,7 +98,11 @@ export function forgeConformanceSuite(makeForge: () => Forge, opts: ForgeConform
 		if (result.ok) {
 			expect(result.value.username.length).toBeGreaterThan(0);
 			expect(result.value.secret.length).toBeGreaterThan(0);
-			expect(result.value.expiresAt).toBeNull();
+			if (opts.shortLivedCredential === true) {
+				expect(typeof result.value.expiresAt).toBe("number");
+			} else {
+				expect(result.value.expiresAt).toBeNull();
+			}
 		}
 	});
 
@@ -212,6 +220,25 @@ describe("GitHubForge conforms to the Forge contract", () => {
 			forgeKind: "github",
 			foreignUrls: ["fake://projects/widget", "https://gitlab.com/o/r.git"],
 			botIdentity: false,
+		},
+	);
+});
+
+describe("GitHubAppForge conforms to the Forge contract", () => {
+	forgeConformanceSuite(
+		() =>
+			new GitHubAppForge({
+				appId: "4560297",
+				installationId: "555",
+				privateKey: generateTestAppKeyPair().privateKeyPem,
+				fetch: stubGitHubAppServer().fetch,
+			}),
+		{
+			cloneUrl: "https://github.com/octo/widget.git",
+			forgeKind: "github",
+			foreignUrls: ["fake://projects/widget", "https://gitlab.com/o/r.git"],
+			botIdentity: true,
+			shortLivedCredential: true,
 		},
 	);
 });

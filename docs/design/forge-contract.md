@@ -111,7 +111,8 @@ planning record §7: one registry, resolved once, unknown selections fail
 loudly). Settled as follows:
 
 - **One registry, resolved once at boot**, exactly like `resolveRuntimeProvider`.
-  The kind vocabulary is `FORGE_KINDS = ["github", "fake"]` with
+  The kind vocabulary is `FORGE_KINDS = ["github", "app", "fake"]` (the
+  `app` arm landed in warren-f8df) with
   `DEFAULT_FORGE_KIND = "github"`. `WARREN_FORGE` selects; blank means the
   default; anything else throws `UnknownForgeError` at boot. No silent
   fallback, no plugin discovery.
@@ -363,7 +364,11 @@ must carry:
 - **GitHubApp:** signs an RS256 JWT from the deployment's private key, calls
   `POST /app/installations/:id/access_tokens`, and MAY down-scope the mint to
   the single repository and the minimum permission set. It caches a token
-  until `expiresAt` minus a safety margin, then re-mints.
+  until `expiresAt` minus a safety margin, then re-mints. Shipped as
+  `GitHubAppForge` (warren-f8df), selected by `WARREN_FORGE=app` and
+  configured by `WARREN_GITHUB_APP_ID` / `WARREN_GITHUB_APP_INSTALLATION_ID`
+  / `WARREN_GITHUB_APP_PRIVATE_KEY`; the shipped margin is five minutes and
+  the mint is not down-scoped — the single installation id bounds it.
 - **GitHubPat:** returns the configured secret with `expiresAt: null` and
   reports `credentialLifetime: "static"`.
 
