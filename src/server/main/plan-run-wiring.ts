@@ -12,6 +12,7 @@
 
 import type { Repos } from "../../db/repos/index.ts";
 import type { Forge } from "../../forge/contract.ts";
+import { mintGitCredentialSecret } from "../../forge/credentials.ts";
 import {
 	bootPlanRunCoordinator,
 	type CoordinatorCloseChildSeedFn,
@@ -72,7 +73,10 @@ function createReopenPr(
 	deps: ReopenPrDeps,
 ): ((runId: string) => Promise<string | null>) | undefined {
 	const { repos, warrenConfigs, autoOpenPr, forge, runBranchPrefixDefault, logger } = deps;
-	if (!autoOpenPr.enabled || autoOpenPr.token === "") return undefined;
+	// warren-63e7: the token-presence conjunct died with the captured token.
+	// A credential-less forge surfaces `no_credential` from openPullRequest
+	// (logged below, reopen skipped) — same net behavior, no §5 conditional.
+	if (!autoOpenPr.enabled) return undefined;
 	return async (runId: string): Promise<string | null> => {
 		try {
 			const run = await repos.runs.get(runId);
@@ -117,7 +121,7 @@ function createReopenPr(
 
 type CloseChildSeedDeps = Pick<
 	PlanRunWiringInput,
-	"env" | "repos" | "projectsConfig" | "seedsCli" | "projectSpawn" | "logger"
+	"forge" | "repos" | "projectsConfig" | "seedsCli" | "projectSpawn" | "logger"
 >;
 
 /**
@@ -128,11 +132,16 @@ type CloseChildSeedDeps = Pick<
  * the plan keeps advancing (mirrors the Plot auto-done hook's tolerance).
  */
 function createCloseChildSeed(deps: CloseChildSeedDeps): CoordinatorCloseChildSeedFn {
-	const { env, repos, projectsConfig, seedsCli, projectSpawn, logger } = deps;
+	const { forge, repos, projectsConfig, seedsCli, projectSpawn, logger } = deps;
 	return async ({ planRun, child }) => {
 		try {
 			const project = await repos.projects.get(planRun.projectId);
 			if (project === null || !project.hasSeeds) return;
+			// warren-63e7: mint the fetch/push credential from the forge
+			// immediately before the git spawns (forge-contract.md §4 — minted,
+			// never held) instead of reading a boot-captured env.GITHUB_TOKEN.
+			// Undefined → anonymous git, the old no-token behavior.
+			const gitSecret = await mintGitCredentialSecret(forge, project.gitUrl);
 			const result = await closeMergedChildSeed({
 				projectPath: project.localPath,
 				defaultBranch: project.defaultBranch,
@@ -140,9 +149,9 @@ function createCloseChildSeed(deps: CloseChildSeedDeps): CoordinatorCloseChildSe
 				seedsCli,
 				spawn: projectSpawn,
 				gitBinary: projectsConfig.gitBinary,
-				// Raw token so the fetch/push work against private repos on
-				// the K8s control plane (no supervisor insteadOf rule there).
-				githubToken: env.GITHUB_TOKEN,
+				// Minted per close so the fetch/push work against private repos
+				// on the K8s control plane (no supervisor insteadOf rule there).
+				githubToken: gitSecret,
 			});
 			logger.info(
 				{ planRunId: planRun.id, seq: child.seq, seedId: child.seedId, outcome: result.kind },
@@ -209,10 +218,12 @@ export function bootPlanRunCoordinatorWiring(input: PlanRunWiringInput): PlanRun
 			const project = await repos.projects.require(projectId);
 			return showSeed(seedsCli, project.localPath, seedId);
 		},
-		checkPrMerged: createPrMergeChecker({ token: autoOpenPr.token }),
+		// warren-63e7: the merge gate consumes the boot-resolved forge — no
+		// closure-captured token can ride a multi-hour poll loop anymore.
+		checkPrMerged: createPrMergeChecker({ forge, logger }),
 		// warren-3806: deterministic host-side seed close when a child merges.
 		closeChildSeed: createCloseChildSeed({
-			env,
+			forge,
 			repos,
 			projectsConfig,
 			seedsCli,
