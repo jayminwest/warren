@@ -158,8 +158,8 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 		logger.info({ path: fileConfig.path }, "loaded warren.toml");
 	}
 
-	// Boot-time agent seeding + narration (warren-c4be extracted it here):
-	// idempotent, and a refused definition warns instead of failing the boot.
+	// Boot-time agent seeding + narration (warren-c4be): idempotent; a refused
+	// definition warns instead of failing the boot.
 	await seedAgentsAtBoot({
 		repo: repos.agents,
 		env,
@@ -171,10 +171,7 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 	// warren-6c4c: resolve the forge ONCE (runtimeProvider posture); ServerDeps.forge has the doc.
 	const forge = resolveForge({}, env);
 	if (autoOpenPr.enabled && autoOpenPr.token === "") {
-		logger.warn(
-			{},
-			"WARREN_AUTO_OPEN_PR is enabled but GITHUB_TOKEN is unset; reap pr_open will skip with reap_failed events",
-		);
+		logger.warn({}, "WARREN_AUTO_OPEN_PR enabled but GITHUB_TOKEN unset; pr_open will reap_fail");
 	}
 
 	const warrenConfigs = createWarrenConfigCache();
@@ -246,12 +243,13 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 		});
 	const previewSidecars = localBackend?.previewSidecars;
 	const workspaceDestroyer = localBackend?.workspaceDestroyer;
-	// warren-cd3b: the local salvage step writes its bundle capture to the same
-	// durable dir the salvage intake handler serves.
+	// warren-cd3b: the salvage bundle capture lands beside the salvage intake dir.
 	const salvageDir = join(serverConfig.dataDir, "salvage");
 	const bindReap = (i: Parameters<typeof reapRun>[0]) =>
 		reapRun({
 			...i,
+			// warren-45e6: the boot-resolved forge drives reap's PR sub-steps.
+			forge,
 			...(previewSidecars !== undefined ? { previewSidecars } : {}),
 			salvageDir,
 		});
@@ -322,6 +320,7 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 		env,
 		repos,
 		runtimeProvider,
+		forge,
 		bridges: bridgesBoot.registry,
 		warrenConfigs,
 		projectsConfig,

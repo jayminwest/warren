@@ -29,11 +29,10 @@ import type {
 	RuntimeProvider,
 } from "../../runtime/contract.ts";
 import { finalizeCommitStage, finalizeMergeStage } from "../../runtime/contract.ts";
-import { openPullRequest } from "../pr.ts";
 import type { BoundBridgeLogger } from "../stream/index.ts";
 import { dispatchAutoPlanRuns, hasAutoPlanRunFrontmatter, parsePlanIds } from "./auto-plan-run.ts";
 import { applyK8sCloneDeltas } from "./clone-apply.ts";
-import { runPrOpen } from "./pr-open.ts";
+import { type OpenedPr, runPrOpen } from "./pr-open.ts";
 import { runPreviewAnnotate, runPreviewLaunch } from "./preview.ts";
 import { seededArtifactResetPaths } from "./seed-reset.ts";
 import type { ReapExec, ReapFs, ReapRunInput, ReapStep } from "./types.ts";
@@ -70,6 +69,8 @@ export interface ReapPipelineState {
 	 */
 	mirrorDurabilityFailed: boolean;
 	prUrl: string | null;
+	/** The full PR handle from `pr_open` — feeds `pr_annotate_preview` (warren-45e6). */
+	openedPr: OpenedPr | null;
 	previewLaunchState: "live" | "failed" | null;
 	previewLaunchPort: number | null;
 	previewUrl: string | null;
@@ -96,6 +97,7 @@ export function createPipelineState(): ReapPipelineState {
 		cloneDeltasApplied: false,
 		mirrorDurabilityFailed: false,
 		prUrl: null,
+		openedPr: null,
 		previewLaunchState: null,
 		previewLaunchPort: null,
 		previewUrl: null,
@@ -136,14 +138,10 @@ export interface ReapPipelineContext {
 }
 
 /**
- * Map a finalize stage onto the reap step name reap's `errors[]` uses. Omitted
- * stages (`commits_ahead`) are NOT errors — reap only logs a rev-list failure.
- */
-/**
- * warren-357c: finalize stage names are DERIVED from the opaque artifact keys
- * (`${key}_merge` / `${key}_commit`), so the fold maps them back onto reap's
- * step vocabulary with a function, not a fixed record. Unknown derived keys
- * (an artifact with no reap step) and `commits_ahead` fold to nothing.
+ * warren-357c: map a finalize stage onto reap's step vocabulary. Stage names
+ * are DERIVED from the opaque artifact keys (`${key}_merge` / `${key}_commit`),
+ * so the fold is a function, not a fixed record. Unknown derived keys and
+ * `commits_ahead` fold to nothing — a rev-list failure is log-only, not an error.
  */
 function finalizeStageToReapStep(stage: FinalizeStage): ReapStep | undefined {
 	switch (stage) {
@@ -339,8 +337,13 @@ async function prOpenStep(ctx: ReapPipelineContext, state: ReapPipelineState): P
 	) {
 		return;
 	}
-	state.prUrl = await runPrOpen({
+	// warren-45e6: the forge is boot-wired; a reap input without one (tests)
+	// skips pr_open exactly as if auto-open were disabled.
+	const forge = ctx.input.forge;
+	if (forge === undefined) return;
+	state.openedPr = await runPrOpen({
 		autoOpen: ctx.input.autoOpenPr,
+		forge,
 		project: ctx.project,
 		run: ctx.run,
 		branch,
@@ -351,17 +354,16 @@ async function prOpenStep(ctx: ReapPipelineContext, state: ReapPipelineState): P
 		emit: ctx.emit,
 		fail: (step, err) => ctx.fail(step, err),
 		setPrUrl: (id, url) => ctx.input.repos.runs.setPrUrl(id, url),
-		openPr: ctx.input.openPr ?? openPullRequest,
 		...(ctx.input.prTemplate !== undefined ? { prTemplate: ctx.input.prTemplate } : {}),
 		...(ctx.input.sleep !== undefined ? { sleep: ctx.input.sleep } : {}),
 	});
+	state.prUrl = state.openedPr?.url ?? null;
 }
 
 /**
- * Preview launch (warren-f156 / docs/design/preview-environments.md). Skipped on a dropped commit
- * (warren-72b9). warren-4fbe: preview is LocalProvider-only — under a provider
- * with `capabilities.previewPorts === false` (K8s) skip cleanly, surfacing
- * `reap.preview_skipped_unsupported` when a project opted in.
+ * Preview launch (warren-f156 / docs/design/preview-environments.md). Skipped on a dropped
+ * commit (warren-72b9). warren-4fbe: under a provider without `previewPorts` (K8s) skip
+ * cleanly, surfacing `reap.preview_skipped_unsupported` when a project opted in.
  */
 async function previewLaunchStep(
 	ctx: ReapPipelineContext,
@@ -426,29 +428,32 @@ async function previewAnnotateStep(
 	ctx: ReapPipelineContext,
 	state: ReapPipelineState,
 ): Promise<void> {
-	const { prUrl, previewLaunchState } = state;
+	const { openedPr, previewLaunchState } = state;
+	// warren-45e6: the token gate is gone — the forge reports `no_credential`
+	// as a seam result, and a forge without `pullRequestBodyEdit` reports the
+	// skip as a sub-step event (forge-contract.md §5) inside runPreviewAnnotate.
 	if (
 		!(
-			prUrl !== null &&
+			openedPr !== null &&
 			previewLaunchState !== null &&
 			ctx.input.autoOpenPr?.enabled === true &&
-			ctx.input.autoOpenPr.token !== ""
+			ctx.input.forge !== undefined
 		)
 	) {
 		return;
 	}
 	state.previewUrl = await runPreviewAnnotate({
 		runId: ctx.run.id,
-		prUrl,
+		prUrl: openedPr.url,
+		repoRef: openedPr.repoRef,
+		prRef: openedPr.prRef,
+		prBody: openedPr.body,
 		previewLaunchState,
-		autoOpenPr: ctx.input.autoOpenPr,
+		forge: ctx.input.forge,
 		previewLaunchConfig: ctx.input.previewLaunchConfig,
 		repos: ctx.input.repos,
 		emit: ctx.emit,
 		fail: ctx.fail,
-		...(ctx.input.annotatePrPreview !== undefined
-			? { annotatePrPreviewFn: ctx.input.annotatePrPreview }
-			: {}),
 	});
 }
 

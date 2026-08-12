@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { gatherPrContext } from "./pr-open.ts";
+import { gatherPrContext } from "./pr-context.ts";
 import type { ReapExec } from "./types.ts";
 
 /**

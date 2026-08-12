@@ -11,6 +11,7 @@
  */
 
 import type { Repos } from "../../db/repos/index.ts";
+import type { Forge } from "../../forge/contract.ts";
 import {
 	bootPlanRunCoordinator,
 	type CoordinatorCloseChildSeedFn,
@@ -22,13 +23,12 @@ import {
 } from "../../plan-runs/index.ts";
 import type { SpawnFn } from "../../projects/clone.ts";
 import type { ProjectsConfig } from "../../projects/config.ts";
-import { parseGitHubUrl } from "../../projects/index.ts";
 import {
 	type AutoOpenPrConfig,
 	composeRunBranch,
 	resolveRunBranchPrefix,
 } from "../../runs/index.ts";
-import { buildPrContent, openPullRequest } from "../../runs/pr.ts";
+import { buildPrContent } from "../../runs/pr.ts";
 import type { RuntimeProvider } from "../../runtime/contract.ts";
 import type { SeedsCliDeps } from "../../seeds-cli/index.ts";
 import { showSeed } from "../../seeds-cli/index.ts";
@@ -39,7 +39,7 @@ import { planRunLoggerFromPino } from "./logging.ts";
 
 type ReopenPrDeps = Pick<
 	PlanRunWiringInput,
-	"repos" | "warrenConfigs" | "autoOpenPr" | "runBranchPrefixDefault" | "logger"
+	"repos" | "warrenConfigs" | "autoOpenPr" | "forge" | "runBranchPrefixDefault" | "logger"
 >;
 
 type RunRow = NonNullable<Awaited<ReturnType<Repos["runs"]["get"]>>>;
@@ -71,7 +71,7 @@ function buildReopenPrContent(
 function createReopenPr(
 	deps: ReopenPrDeps,
 ): ((runId: string) => Promise<string | null>) | undefined {
-	const { repos, warrenConfigs, autoOpenPr, runBranchPrefixDefault, logger } = deps;
+	const { repos, warrenConfigs, autoOpenPr, forge, runBranchPrefixDefault, logger } = deps;
 	if (!autoOpenPr.enabled || autoOpenPr.token === "") return undefined;
 	return async (runId: string): Promise<string | null> => {
 		try {
@@ -85,20 +85,23 @@ function createReopenPr(
 				envDefault: runBranchPrefixDefault,
 			});
 			const branch = composeRunBranch(prefix, runId);
-			const parsed = parseGitHubUrl(project.gitUrl);
+			// warren-45e6: the reopen crosses the Forge seam. parseRepoRef never
+			// throws — null means no forge owns the URL, logged + skipped.
+			const ref = forge.parseRepoRef(project.gitUrl);
+			if (ref === null) {
+				logger.warn({ runId }, "plan_run.reopen_pr_unowned_url");
+				return null;
+			}
 			const content = buildReopenPrContent(run, autoOpenPr);
-			const result = await openPullRequest({
-				owner: parsed.owner,
-				repo: parsed.name,
-				head: branch,
-				base: project.defaultBranch,
+			const result = await forge.openPullRequest(ref, {
+				headBranch: branch,
+				baseBranch: project.defaultBranch,
 				title: content.title,
 				body: content.body,
-				token: autoOpenPr.token,
 			});
-			if (result.ok) return result.url;
+			if (result.ok) return result.value.webUrl;
 			logger.warn(
-				{ runId, reason: result.reason, message: result.message },
+				{ runId, kind: result.error.kind, detail: result.error.detail },
 				"plan_run.reopen_pr_failed",
 			);
 			return null;
@@ -163,6 +166,8 @@ export interface PlanRunWiringInput {
 	readonly env: EnvLike;
 	readonly repos: Repos;
 	readonly runtimeProvider: RuntimeProvider;
+	/** Boot-resolved forge (warren-45e6) — the reopen-PR seam runs through it. */
+	readonly forge: Forge;
 	readonly bridges: BridgeRegistry;
 	readonly warrenConfigs: WarrenConfigCache;
 	readonly projectsConfig: ProjectsConfig;
@@ -185,6 +190,7 @@ export function bootPlanRunCoordinatorWiring(input: PlanRunWiringInput): PlanRun
 		env,
 		repos,
 		runtimeProvider,
+		forge,
 		bridges,
 		warrenConfigs,
 		projectsConfig,
@@ -217,6 +223,7 @@ export function bootPlanRunCoordinatorWiring(input: PlanRunWiringInput): PlanRun
 			repos,
 			warrenConfigs,
 			autoOpenPr,
+			forge,
 			logger,
 			...(runBranchPrefixDefault !== undefined ? { runBranchPrefixDefault } : {}),
 		}),

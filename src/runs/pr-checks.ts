@@ -15,28 +15,16 @@
 import { parseRetryAfterMs } from "../forge/github/errors.ts";
 import { GITHUB_API_BASE } from "../forge/github/headers.ts";
 import { requestGitHub } from "../forge/github/http.ts";
+import { GH_FETCH_OVERRIDE_ENV, readGhFetchOverride } from "../forge/github/override.ts";
 import { readJson } from "../forge/github/readers.ts";
 
-export { parseRetryAfterMs };
+// warren-45e6: the acceptance-seam reader moved into the forge's GitHub
+// transport (`src/forge/github/override.ts`) so `GitHubForge` can honor it
+// without importing domain code. Re-exported here for the pre-migration
+// consumers that still import it from this module.
+export { GH_FETCH_OVERRIDE_ENV, parseRetryAfterMs, readGhFetchOverride };
 
 const USER_AGENT = "warren-reap-pr-open";
-
-/**
- * Acceptance test seam (warren-ae00 / scenario 26). When
- * `WARREN_GH_FETCH_OVERRIDE` is set, every GitHub REST call short-circuits
- * to a canned positive response — `openPullRequest` returns a synthetic
- * `pull/1` URL and `checkPullRequestMerged` returns `merged` immediately.
- * Lets the in-proc plan-run roundtrip exercise reap's PR open + the
- * coordinator's pr_open → merged transition without standing up a real
- * GitHub fixture. Unset in production deployments.
- */
-export const GH_FETCH_OVERRIDE_ENV = "WARREN_GH_FETCH_OVERRIDE";
-
-export function readGhFetchOverride(): "merged" | null {
-	const v = process.env[GH_FETCH_OVERRIDE_ENV];
-	if (typeof v !== "string") return null;
-	return v.trim() === "merged" ? "merged" : null;
-}
 
 /* ----------------------------------------------------------------------- */
 /* PR-merge polling                                                         */

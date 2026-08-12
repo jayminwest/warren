@@ -3,17 +3,17 @@ import { DrizzleAdapter } from "../../db/repos/drizzle-adapter.ts";
 import type { LaunchPreviewInput, LaunchPreviewResult } from "../../preview/launch/index.ts";
 import { PreviewPortAllocator } from "../../preview/port-allocator.ts";
 import type { ServerPreviewConfig } from "../../warren-config/index.ts";
-import type { AnnotatePrPreviewInput, AnnotatePrPreviewResult } from "../pr-annotate.ts";
 import { reapRun } from "./index.ts";
 import {
 	type Ctx,
 	fakeBurrowClient,
 	fakeExec,
+	fakeForge,
 	fakeFs,
-	fakeOpenPr,
 	makeBurrow,
 	reapDeps,
 	setup,
+	stubForge,
 } from "./test-helpers.ts";
 
 describe("reapRun preview_launch + pr_annotate_preview (warren-f156)", () => {
@@ -48,23 +48,6 @@ describe("reapRun preview_launch + pr_annotate_preview (warren-f156)", () => {
 			return typeof r === "function" ? r() : r;
 		};
 		return { launch, calls };
-	}
-
-	function fakeAnnotate(
-		responses: ReadonlyArray<AnnotatePrPreviewResult | (() => AnnotatePrPreviewResult)>,
-	): {
-		annotate: (input: AnnotatePrPreviewInput) => Promise<AnnotatePrPreviewResult>;
-		calls: AnnotatePrPreviewInput[];
-	} {
-		const calls: AnnotatePrPreviewInput[] = [];
-		let i = 0;
-		const annotate = async (input: AnnotatePrPreviewInput): Promise<AnnotatePrPreviewResult> => {
-			calls.push(input);
-			const r = responses[i++];
-			if (r === undefined) throw new Error("fakeAnnotate: out of responses");
-			return typeof r === "function" ? r() : r;
-		};
-		return { annotate, calls };
 	}
 
 	test("launches preview when outcome=succeeded and project opted in, surfaces live state", async () => {
@@ -313,9 +296,8 @@ describe("reapRun preview_launch + pr_annotate_preview (warren-f156)", () => {
 
 	test("annotates the PR body with the live preview URL after launch and pr_open succeed", async () => {
 		const e = fakeExec({ revListCount: "2" });
-		const pr = fakeOpenPr([{ ok: true, url: "https://github.com/x/y/pull/77", mode: "created" }]);
+		const forge = fakeForge();
 		const launch = fakeLaunch([{ ok: true, port: 40000, sidecarId: "sc_1" }]);
-		const annotate = fakeAnnotate([{ ok: true, mode: "patched" }]);
 		const result = await reapRun({
 			runId: ctx.runId,
 			outcome: "succeeded",
@@ -325,30 +307,28 @@ describe("reapRun preview_launch + pr_annotate_preview (warren-f156)", () => {
 			fs: fakeFs().fs,
 			exec: e.exec,
 			autoOpenPr: { enabled: true, token: "ghp_xyz", warrenBaseUrl: null },
-			openPr: pr.openPr,
+			forge,
 			previewConfig: SERVER_PREVIEW,
 			previewLaunchConfig: { host: "warren.example.com", mode: "subdomain", port: null },
 			portAllocator: new PreviewPortAllocator(DrizzleAdapter.for(ctx.db)),
 			launchPreview: launch.launch,
-			annotatePrPreview: annotate.annotate,
 		});
-		expect(result.prUrl).toBe("https://github.com/x/y/pull/77");
+		expect(result.prUrl).toBe("fake://x/y/pulls/1");
 		expect(result.previewState).toBe("live");
-		expect(annotate.calls).toHaveLength(1);
-		expect(annotate.calls[0]?.preview).toEqual({
-			state: "live",
-			url: `https://run-${ctx.runId}.warren.example.com`,
-		});
 		expect(result.previewUrl).toBe(`https://run-${ctx.runId}.warren.example.com`);
+		// The forge store carries the patched body — the semantic seam's truth.
+		const body = forge.store.getPr("x/y", 1)?.body ?? "";
+		expect(body).toContain(`https://run-${ctx.runId}.warren.example.com`);
+		expect(body).not.toContain("Preview launching…");
 		const events = await ctx.repos.events.listByRun(ctx.runId);
-		expect(events.find((ev) => ev.kind === "preview_annotated")).toBeDefined();
+		const annotated = events.find((ev) => ev.kind === "preview_annotated");
+		expect(annotated?.payloadJson).toMatchObject({ mode: "patched", state: "live" });
 	});
 
 	test("annotates the PR body with the path-mode preview URL when mode=path (warren-c3c4)", async () => {
 		const e = fakeExec({ revListCount: "2" });
-		const pr = fakeOpenPr([{ ok: true, url: "https://github.com/x/y/pull/77", mode: "created" }]);
+		const forge = fakeForge();
 		const launch = fakeLaunch([{ ok: true, port: 40000, sidecarId: "sc_1" }]);
-		const annotate = fakeAnnotate([{ ok: true, mode: "patched" }]);
 		const result = await reapRun({
 			runId: ctx.runId,
 			outcome: "succeeded",
@@ -358,26 +338,22 @@ describe("reapRun preview_launch + pr_annotate_preview (warren-f156)", () => {
 			fs: fakeFs().fs,
 			exec: e.exec,
 			autoOpenPr: { enabled: true, token: "ghp_xyz", warrenBaseUrl: null },
-			openPr: pr.openPr,
+			forge,
 			previewConfig: SERVER_PREVIEW,
 			previewLaunchConfig: { host: "warren.example.com", mode: "path", port: 8081 },
 			portAllocator: new PreviewPortAllocator(DrizzleAdapter.for(ctx.db)),
 			launchPreview: launch.launch,
-			annotatePrPreview: annotate.annotate,
 		});
-		expect(annotate.calls).toHaveLength(1);
 		// warren-3f8a: path-mode previews live on the dedicated listener's port.
-		expect(annotate.calls[0]?.preview).toEqual({
-			state: "live",
-			url: `https://warren.example.com:8081/p/${ctx.runId}/`,
-		});
 		expect(result.previewUrl).toBe(`https://warren.example.com:8081/p/${ctx.runId}/`);
+		const body = forge.store.getPr("x/y", 1)?.body ?? "";
+		expect(body).toContain(`https://warren.example.com:8081/p/${ctx.runId}/`);
 	});
 
 	test("pr_annotate_preview is skipped when no PR was opened", async () => {
 		const e = fakeExec({ revListCount: "2" });
+		const forge = fakeForge();
 		const launch = fakeLaunch([{ ok: true, port: 40000, sidecarId: "sc_1" }]);
-		const annotate = fakeAnnotate([]);
 		await reapRun({
 			runId: ctx.runId,
 			outcome: "succeeded",
@@ -385,20 +361,60 @@ describe("reapRun preview_launch + pr_annotate_preview (warren-f156)", () => {
 			...reapDeps(fakeBurrowClient(makeBurrow()), { fs: fakeFs().fs, exec: e.exec }),
 			fs: fakeFs().fs,
 			exec: e.exec,
+			forge,
 			previewConfig: SERVER_PREVIEW,
 			previewLaunchConfig: { host: "warren.example.com", mode: "subdomain", port: null },
 			portAllocator: new PreviewPortAllocator(DrizzleAdapter.for(ctx.db)),
 			launchPreview: launch.launch,
-			annotatePrPreview: annotate.annotate,
 		});
-		expect(annotate.calls).toHaveLength(0);
+		expect(forge.store.getPr("x/y", 1)).toBeNull();
+		const events = await ctx.repos.events.listByRun(ctx.runId);
+		expect(events.find((ev) => ev.kind === "preview_annotated")).toBeUndefined();
+	});
+
+	test("pr_annotate_preview reports a skipped sub-step when the forge cannot edit bodies (§5)", async () => {
+		const e = fakeExec({ revListCount: "2" });
+		// §5: a forge without pullRequestBodyEdit makes the degradation VISIBLE.
+		const base = fakeForge();
+		const forge = stubForge({
+			capabilities: { ...base.capabilities, pullRequestBodyEdit: false },
+			openPullRequest: (ref, req) => base.openPullRequest(ref, req),
+			findPullRequest: (ref, q) => base.findPullRequest(ref, q),
+		});
+		const launch = fakeLaunch([{ ok: true, port: 40000, sidecarId: "sc_1" }]);
+		const result = await reapRun({
+			runId: ctx.runId,
+			outcome: "succeeded",
+			repos: ctx.repos,
+			...reapDeps(fakeBurrowClient(makeBurrow()), { fs: fakeFs().fs, exec: e.exec }),
+			broker: ctx.broker,
+			fs: fakeFs().fs,
+			exec: e.exec,
+			autoOpenPr: { enabled: true, token: "ghp_xyz", warrenBaseUrl: null },
+			forge,
+			previewConfig: SERVER_PREVIEW,
+			previewLaunchConfig: { host: "warren.example.com", mode: "subdomain", port: null },
+			portAllocator: new PreviewPortAllocator(DrizzleAdapter.for(ctx.db)),
+			launchPreview: launch.launch,
+		});
+		// The PR still opened; the body keeps its placeholder, and reap succeeds.
+		expect(result.prUrl).toBe("fake://x/y/pulls/1");
+		expect(result.state).toBe("succeeded");
+		expect(result.previewUrl).toBeNull();
+		expect(base.store.getPr("x/y", 1)?.body).toContain("<!-- warren:preview-start -->");
+		const events = await ctx.repos.events.listByRun(ctx.runId);
+		const skipped = events.find((ev) => ev.kind === "reap.pr_annotate_preview_skipped");
+		expect(skipped?.payloadJson).toMatchObject({
+			reason: "forge_capability",
+			capability: "pullRequestBodyEdit",
+		});
+		expect(events.find((ev) => ev.kind === "preview_annotated")).toBeUndefined();
 	});
 
 	test("pr_annotate_preview is skipped (and reap_failed) when WARREN_PREVIEW_HOST is unset", async () => {
 		const e = fakeExec({ revListCount: "2" });
-		const pr = fakeOpenPr([{ ok: true, url: "https://github.com/x/y/pull/77", mode: "created" }]);
+		const forge = fakeForge();
 		const launch = fakeLaunch([{ ok: true, port: 40000, sidecarId: "sc_1" }]);
-		const annotate = fakeAnnotate([]);
 		const result = await reapRun({
 			runId: ctx.runId,
 			outcome: "succeeded",
@@ -407,21 +423,21 @@ describe("reapRun preview_launch + pr_annotate_preview (warren-f156)", () => {
 			fs: fakeFs().fs,
 			exec: e.exec,
 			autoOpenPr: { enabled: true, token: "ghp_xyz", warrenBaseUrl: null },
-			openPr: pr.openPr,
+			forge,
 			previewConfig: SERVER_PREVIEW,
 			previewLaunchConfig: { host: null, mode: "subdomain", port: null },
 			portAllocator: new PreviewPortAllocator(DrizzleAdapter.for(ctx.db)),
 			launchPreview: launch.launch,
-			annotatePrPreview: annotate.annotate,
 		});
-		expect(annotate.calls).toHaveLength(0);
+		// The body keeps its placeholder — no patch without a URL to publish.
+		expect(forge.store.getPr("x/y", 1)?.body).toContain("<!-- warren:preview-start -->");
 		expect(result.errors.map((e) => e.step)).toContain("pr_annotate_preview");
 		expect(result.state).toBe("succeeded");
 	});
 
 	test("pr_annotate_preview still patches a failure tail even with WARREN_PREVIEW_HOST unset", async () => {
 		const e = fakeExec({ revListCount: "2" });
-		const pr = fakeOpenPr([{ ok: true, url: "https://github.com/x/y/pull/77", mode: "created" }]);
+		const forge = fakeForge();
 		const launch = fakeLaunch([
 			{
 				ok: false,
@@ -437,7 +453,6 @@ describe("reapRun preview_launch + pr_annotate_preview (warren-f156)", () => {
 		await ctx.repos.runs.attachPreview(ctx.runId, {
 			previewFailureMessage: "TypeError: cannot read X",
 		});
-		const annotate = fakeAnnotate([{ ok: true, mode: "patched" }]);
 		const result = await reapRun({
 			runId: ctx.runId,
 			outcome: "succeeded",
@@ -446,26 +461,26 @@ describe("reapRun preview_launch + pr_annotate_preview (warren-f156)", () => {
 			fs: fakeFs().fs,
 			exec: e.exec,
 			autoOpenPr: { enabled: true, token: "ghp_xyz", warrenBaseUrl: null },
-			openPr: pr.openPr,
+			forge,
 			previewConfig: SERVER_PREVIEW,
 			previewLaunchConfig: { host: null, mode: "subdomain", port: null },
 			portAllocator: new PreviewPortAllocator(DrizzleAdapter.for(ctx.db)),
 			launchPreview: launch.launch,
-			annotatePrPreview: annotate.annotate,
 		});
-		expect(annotate.calls).toHaveLength(1);
-		expect(annotate.calls[0]?.preview).toMatchObject({
-			state: "failed",
-			failureTail: "TypeError: cannot read X",
-		});
+		const body = forge.store.getPr("x/y", 1)?.body ?? "";
+		expect(body).toContain("Preview failed");
+		expect(body).toContain("TypeError: cannot read X");
 		expect(result.previewUrl).toBeNull();
+		const events = await ctx.repos.events.listByRun(ctx.runId);
+		expect(events.find((ev) => ev.kind === "preview_annotated")?.payloadJson).toMatchObject({
+			mode: "patched",
+			state: "failed",
+		});
 	});
 
 	test("pr_open includes the preview placeholder fragment when project opted in", async () => {
 		const e = fakeExec({ revListCount: "2" });
-		const pr = fakeOpenPr([{ ok: true, url: "https://github.com/x/y/pull/77", mode: "created" }]);
-		const launch = fakeLaunch([{ ok: true, port: 40000, sidecarId: "sc_1" }]);
-		const annotate = fakeAnnotate([{ ok: true, mode: "patched" }]);
+		const forge = fakeForge();
 		await reapRun({
 			runId: ctx.runId,
 			outcome: "succeeded",
@@ -474,14 +489,10 @@ describe("reapRun preview_launch + pr_annotate_preview (warren-f156)", () => {
 			fs: fakeFs().fs,
 			exec: e.exec,
 			autoOpenPr: { enabled: true, token: "ghp_xyz", warrenBaseUrl: null },
-			openPr: pr.openPr,
+			forge,
 			previewConfig: SERVER_PREVIEW,
-			previewLaunchConfig: { host: "warren.example.com", mode: "subdomain", port: null },
-			portAllocator: new PreviewPortAllocator(DrizzleAdapter.for(ctx.db)),
-			launchPreview: launch.launch,
-			annotatePrPreview: annotate.annotate,
 		});
-		const body = pr.calls[0]?.body ?? "";
+		const body = forge.store.getPr("x/y", 1)?.body ?? "";
 		expect(body).toContain("<!-- warren:preview-start -->");
 		expect(body).toContain("<!-- warren:preview-end -->");
 		expect(body).toContain("## Preview");

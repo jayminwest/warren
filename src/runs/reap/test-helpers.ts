@@ -3,12 +3,13 @@ import { BurrowClient } from "../../burrow-client/index.ts";
 import { openDatabase, type WarrenDb } from "../../db/client.ts";
 import { createRepos, type Repos } from "../../db/repos/index.ts";
 import type { RunTerminalState } from "../../db/schema.ts";
+import type { Forge, RepoRef } from "../../forge/contract.ts";
+import { FAKE_FORGE_KIND, FakeForge, type FakeForgeOptions } from "../../forge/fake/fake-forge.ts";
 import type { PreviewSidecarResolver } from "../../preview/launch/index.ts";
 import type { RuntimeProvider } from "../../runtime/contract.ts";
 import { createLocalSidecarsResolver } from "../../runtime/local/preview/sidecars.ts";
 import { LocalProvider } from "../../runtime/local/provider.ts";
 import { RunEventBroker } from "../events.ts";
-import type { OpenPullRequestInput, OpenPullRequestResult } from "../pr.ts";
 import type { ReapExec, ReapFs, ReapRunResult } from "./types.ts";
 
 /**
@@ -320,21 +321,52 @@ export async function setup(): Promise<Ctx> {
 	};
 }
 
-export function fakeOpenPr(
-	responses: ReadonlyArray<OpenPullRequestResult | (() => OpenPullRequestResult)>,
-): {
-	openPr: (input: OpenPullRequestInput) => Promise<OpenPullRequestResult>;
-	calls: OpenPullRequestInput[];
-} {
-	const calls: OpenPullRequestInput[] = [];
-	let i = 0;
-	const openPr = async (input: OpenPullRequestInput): Promise<OpenPullRequestResult> => {
-		calls.push(input);
-		const r = responses[i++];
-		if (r === undefined) throw new Error("fakeOpenPr: out of responses");
-		return typeof r === "function" ? r() : r;
+/* ----------------------------------------------------------------------- */
+/* Forge seams (warren-45e6)                                                 */
+/* ----------------------------------------------------------------------- */
+
+/**
+ * The RepoRef the test forges mint for the `setup()` project's clone URL
+ * (`https://github.com/x/y.git`). Keyed `x/y` so FakeForge's store lines up
+ * with the pre-migration `owner/repo` assertions.
+ */
+export const TEST_REPO_REF: RepoRef = { forge: FAKE_FORGE_KIND, key: "x/y" };
+
+/**
+ * A FakeForge that ALSO claims github.com clone URLs (the fake's own grammar
+ * is `fake://` only). Reap tests exercise the semantic seam against this —
+ * never a hand-rolled fetch mock.
+ */
+export function fakeForge(options: FakeForgeOptions = {}): FakeForge {
+	const forge = new FakeForge(options);
+	const inner = forge.parseRepoRef.bind(forge);
+	forge.parseRepoRef = (cloneUrl: string): RepoRef | null =>
+		inner(cloneUrl) ?? (cloneUrl.includes("github.com") ? TEST_REPO_REF : null);
+	return forge;
+}
+
+/**
+ * A contract-typed Forge stub: every method delegates to a FakeForge, with
+ * per-method overrides for the failure shapes the fake cannot produce (a
+ * `conflict` open, a `no_credential` find, a capability flip). Replaces the
+ * pre-migration `fakeOpenPr` response-queue at the same semantic seam.
+ */
+export function stubForge(overrides: Partial<Forge> = {}): Forge {
+	const inner = fakeForge();
+	return {
+		capabilities: inner.capabilities,
+		parseRepoRef: (cloneUrl) => inner.parseRepoRef(cloneUrl),
+		gitCredential: (ref) => inner.gitCredential(ref),
+		openPullRequest: (ref, req) => inner.openPullRequest(ref, req),
+		findPullRequest: (ref, q) => inner.findPullRequest(ref, q),
+		getPullRequest: (ref, pr) => inner.getPullRequest(ref, pr),
+		setPullRequestBody: (ref, pr, body) => inner.setPullRequestBody(ref, pr, body),
+		listChecks: (ref, commit) => inner.listChecks(ref, commit),
+		fetchJobLogTail: (ref, jobId, maxBytes) => inner.fetchJobLogTail(ref, jobId, maxBytes),
+		deleteBranch: (ref, branch) => inner.deleteBranch(ref, branch),
+		botIdentity: () => inner.botIdentity(),
+		...overrides,
 	};
-	return { openPr, calls };
 }
 
 export { type Burrow, BurrowClient, createRepos, NotFoundError, openDatabase, RunEventBroker };

@@ -1,5 +1,6 @@
 import type { Repos } from "../../db/repos/index.ts";
 import type { RunFailureReason, RunTerminalState } from "../../db/schema.ts";
+import type { Forge } from "../../forge/contract.ts";
 import type {
 	LaunchPreviewInput,
 	LaunchPreviewResult,
@@ -11,8 +12,7 @@ import type { RuntimeProvider } from "../../runtime/contract.ts";
 import type { SeedsCliDeps } from "../../seeds-cli/index.ts";
 import type { ServerPreviewConfig } from "../../warren-config/index.ts";
 import type { RunEventBroker } from "../events.ts";
-import type { AutoOpenPrConfig, OpenPullRequestInput, OpenPullRequestResult } from "../pr.ts";
-import type { AnnotatePrPreviewInput, AnnotatePrPreviewResult } from "../pr-annotate.ts";
+import type { AutoOpenPrConfig } from "../pr.ts";
 import type { PrTemplateOverrides } from "../pr-template.ts";
 import type { BridgeLogger } from "../stream/index.ts";
 
@@ -104,11 +104,14 @@ export interface ReapRunInput {
 	 */
 	readonly autoOpenPr?: AutoOpenPrConfig;
 	/**
-	 * Override the PR-open seam (tests). Defaults to the live
-	 * `openPullRequest`. Receives the same input shape as the production
-	 * function so tests can assert call arguments.
+	 * The boot-resolved forge (warren-45e6, plan pl-d1c9 step 10). The
+	 * `pr_open` and `pr_annotate_preview` sub-steps run through it
+	 * (`forge.openPullRequest` / `forge.setPullRequestBody`); it also mints
+	 * the K8s clone-fetch credential (forge-contract.md §4). Production boot
+	 * wiring always binds it (`bindReap` / `cancelRunWiring`); when omitted
+	 * (tests), the PR sub-steps skip exactly as when auto-open is disabled.
 	 */
-	readonly openPr?: (input: OpenPullRequestInput) => Promise<OpenPullRequestResult>;
+	readonly forge?: Forge;
 	/**
 	 * Override the sleep seam for PR-open retry back-off (warren-70c6 / tests).
 	 * Defaults to real `setTimeout`-based sleep in production.
@@ -148,11 +151,6 @@ export interface ReapRunInput {
 	 * assert call arguments without touching real sidecars.
 	 */
 	readonly launchPreview?: (input: LaunchPreviewInput) => Promise<LaunchPreviewResult>;
-	/**
-	 * Override the preview-annotation seam (tests). Defaults to
-	 * `annotatePrPreview`.
-	 */
-	readonly annotatePrPreview?: (input: AnnotatePrPreviewInput) => Promise<AnnotatePrPreviewResult>;
 	/**
 	 * Optional seeds-CLI seam (warren-41d5). Forwarded to the auto_plan_run
 	 * sub-step so reap validates a new plan's child seeds (via `showSeed`)

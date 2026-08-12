@@ -7,7 +7,7 @@ import {
 	fixtureGitOrThrow,
 	gitFixtureEnv,
 } from "../../workspace/git/test-fixture.ts";
-import { gatherPrContext } from "./pr-open.ts";
+import { gatherPrContext } from "./pr-context.ts";
 import type { ReapExec } from "./types.ts";
 
 /**

@@ -109,16 +109,8 @@
 			"allow": [
 				{ "path": "src/forge/", "why": "the seam itself" },
 				{
-					"path": "src/runs/pr.ts",
-					"why": "phase-3 migration of the reap pipeline onto the Forge seam deletes this entry (warren-45e6)"
-				},
-				{
 					"path": "src/runs/pr-checks.ts",
 					"why": "phase-3 migration of the plan-run coordinator merge gate deletes this entry (warren-63e7)"
-				},
-				{
-					"path": "src/runs/pr-annotate.ts",
-					"why": "phase-3 migration of the reap pipeline's preview annotation deletes this entry (warren-45e6)"
 				},
 				{
 					"path": "src/ci-fixer/check-runs.ts",

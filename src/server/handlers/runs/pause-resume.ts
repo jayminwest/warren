@@ -38,6 +38,11 @@ export function cancelRunWiring(deps: ServerDeps): {
 		reap: (reapInput) =>
 			reapRun({
 				...reapInput,
+				// warren-45e6: the inline reap's pr_open runs through the boot-resolved
+				// forge. This single bind covers BOTH cancel call sites the Forge
+				// migration owns — the plan-run cancel handler and the run
+				// cancel/pause-resume handler (warren-b223 inline reap).
+				forge: deps.forge,
 				...(previewSidecars !== undefined ? { previewSidecars } : {}),
 			}),
 	};

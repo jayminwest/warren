@@ -1,5 +1,6 @@
 import type { Repos } from "../../db/repos/index.ts";
 import type { EventRow } from "../../db/schema.ts";
+import type { Forge, PullRequestRef, RepoRef } from "../../forge/contract.ts";
 import { parseDurationMs } from "../../preview/duration.ts";
 import {
 	formatPreviewUrl,
@@ -11,12 +12,7 @@ import {
 } from "../../preview/launch/index.ts";
 import type { PreviewPortAllocator } from "../../preview/port-allocator.ts";
 import { DEFAULT_PREVIEW_MODE, type ServerPreviewConfig } from "../../warren-config/index.ts";
-import type { AutoOpenPrConfig } from "../pr.ts";
-import {
-	type AnnotatePrPreviewInput,
-	type AnnotatePrPreviewResult,
-	annotatePrPreview,
-} from "../pr-annotate.ts";
+import { composePreviewBody, type PreviewAnnotationState } from "../pr-annotate.ts";
 import type { ReapStep } from "./types.ts";
 
 export interface RunPreviewLaunchInput {
@@ -111,22 +107,37 @@ export async function runPreviewLaunch(
 
 export interface RunPreviewAnnotateInput {
 	readonly runId: string;
+	/** The PR `pr_open` just opened — URL for events, refs for the forge call. */
 	readonly prUrl: string;
+	readonly repoRef: RepoRef;
+	readonly prRef: PullRequestRef;
+	/**
+	 * The PR body `pr_open` composed in this same reap. The Forge contract has
+	 * no body read (forge-contract.md §3), so annotation composes the next body
+	 * from THIS text rather than a GET.
+	 */
+	readonly prBody: string;
 	readonly previewLaunchState: "live" | "failed";
-	readonly autoOpenPr: AutoOpenPrConfig;
+	/** The boot-resolved forge (warren-45e6). */
+	readonly forge: Forge;
 	readonly previewLaunchConfig: PreviewLaunchConfig | undefined;
 	readonly repos: Repos;
 	readonly emit: (kind: string, payload: unknown) => Promise<EventRow>;
 	readonly fail: (step: ReapStep, err: unknown, path?: string) => Promise<void>;
-	readonly annotatePrPreviewFn?: (
-		input: AnnotatePrPreviewInput,
-	) => Promise<AnnotatePrPreviewResult>;
 }
 
 /**
- * PR-annotate preview sub-step. Returns the `previewUrl` patched into the
- * PR body when annotation succeeded (live state with host configured),
+ * PR-annotate preview sub-step (warren-45e6: on the Forge seam). Composes
+ * the next body in the domain (`composePreviewBody`) and transports it via
+ * `forge.setPullRequestBody`. Returns the `previewUrl` patched into the PR
+ * body when annotation succeeded (live state with host configured),
  * otherwise `null`.
+ *
+ * Capability degradation (forge-contract.md §5): a forge without
+ * `pullRequestBodyEdit` cannot PATCH a body, so the sub-step REPORTS the
+ * skip (`reap.pr_annotate_preview_skipped`) and reap continues — the
+ * pre-migration path was silent, which made a missing capability
+ * indistinguishable from a non-opted-in project.
  */
 export async function runPreviewAnnotate(input: RunPreviewAnnotateInput): Promise<string | null> {
 	const previewHost = input.previewLaunchConfig?.host ?? null;
@@ -135,6 +146,15 @@ export async function runPreviewAnnotate(input: RunPreviewAnnotateInput): Promis
 	const previewPort = input.previewLaunchConfig?.port ?? null;
 	let previewUrl: string | null = null;
 	try {
+		if (!input.forge.capabilities.pullRequestBodyEdit) {
+			await input.emit("reap.pr_annotate_preview_skipped", {
+				reason: "forge_capability",
+				capability: "pullRequestBodyEdit",
+				prUrl: input.prUrl,
+				state: input.previewLaunchState,
+			});
+			return null;
+		}
 		if (input.previewLaunchState === "live" && previewHost === null) {
 			await input.fail(
 				"pr_annotate_preview",
@@ -144,35 +164,37 @@ export async function runPreviewAnnotate(input: RunPreviewAnnotateInput): Promis
 			);
 			return null;
 		}
-		const failureTail =
-			input.previewLaunchState === "failed"
-				? ((await input.repos.runs.require(input.runId)).previewFailureMessage ?? "")
-				: "";
-		const result = await (input.annotatePrPreviewFn ?? annotatePrPreview)({
-			prUrl: input.prUrl,
-			token: input.autoOpenPr.token,
-			preview:
-				input.previewLaunchState === "live"
-					? {
-							state: "live",
-							url: formatPreviewUrl(input.runId, previewHost as string, previewMode, previewPort),
-						}
-					: { state: "failed", failureTail },
-		});
-		if (result.ok) {
-			if (input.previewLaunchState === "live") {
-				previewUrl = formatPreviewUrl(input.runId, previewHost as string, previewMode, previewPort);
-			}
-			await input.emit("preview_annotated", {
-				prUrl: input.prUrl,
-				previewUrl,
-				mode: result.mode,
-				state: input.previewLaunchState,
-			});
-			return previewUrl;
+		const preview: PreviewAnnotationState =
+			input.previewLaunchState === "live"
+				? {
+						state: "live",
+						url: formatPreviewUrl(input.runId, previewHost as string, previewMode, previewPort),
+					}
+				: {
+						state: "failed",
+						failureTail: (await input.repos.runs.require(input.runId)).previewFailureMessage ?? "",
+					};
+		const edit = composePreviewBody(input.prBody, preview);
+		if (input.previewLaunchState === "live") {
+			previewUrl = formatPreviewUrl(input.runId, previewHost as string, previewMode, previewPort);
 		}
-		await input.fail("pr_annotate_preview", new Error(`${result.reason}: ${result.message}`));
-		return null;
+		if (edit.changed) {
+			const patched = await input.forge.setPullRequestBody(input.repoRef, input.prRef, edit.body);
+			if (!patched.ok) {
+				await input.fail(
+					"pr_annotate_preview",
+					new Error(`${patched.error.kind}: ${patched.error.detail}`),
+				);
+				return null;
+			}
+		}
+		await input.emit("preview_annotated", {
+			prUrl: input.prUrl,
+			previewUrl,
+			mode: edit.changed ? "patched" : "unchanged",
+			state: input.previewLaunchState,
+		});
+		return previewUrl;
 	} catch (err) {
 		await input.fail("pr_annotate_preview", err);
 		return null;

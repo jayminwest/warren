@@ -1,172 +1,64 @@
 /**
- * `annotatePrPreview` — replace the `preview_url_or_placeholder` fragment
- * in a PR body with the live preview URL or the launch failure tail
- * (warren-f156 / docs/design/preview-environments.md).
+ * Preview-annotation body composition (warren-f156 /
+ * docs/design/preview-environments.md; migrated onto the Forge seam in
+ * warren-45e6).
  *
  * Sixth best-effort sub-step of `reapRun`, gated on:
- *   - `pr_open` produced a `prUrl` (no PR ⇒ nothing to annotate), and
+ *   - `pr_open` produced a PR (no PR ⇒ nothing to annotate), and
  *   - `preview_launch` reached a terminal state (`live` or `failed`).
  *
- * The annotation patch is its own idempotent HTTP step:
+ * This module is PURE DOMAIN (forge-contract.md §3): it composes the next PR
+ * body from the body `pr_open` composed moments earlier in the same reap,
+ * replacing the `preview_url_or_placeholder` fragment
+ * (`<!-- warren:preview-start -->\n…\n<!-- warren:preview-end -->`) with the
+ * live URL or the launch failure tail. The transport half — deciding WHICH
+ * PR and PATCHing the body — is `forge.setPullRequestBody`, driven by
+ * `runPreviewAnnotate` (`src/runs/reap/preview.ts`). No `api.github.com`, no
+ * token, and no PR-URL grammar cross this file.
  *
- *   1. GET  /repos/:owner/:repo/pulls/:n   → read current body
- *   2. Replace the markers + their content with the new fragment
- *      (`<!-- warren:preview-start -->\n…\n<!-- warren:preview-end -->`).
- *      Re-running on an already-patched body just replaces again — no
- *      drift, no duplication.
- *   3. PATCH /repos/:owner/:repo/pulls/:n  → write the new body
+ * If the placeholder markers aren't found (e.g. someone edited the PR body
+ * and stripped them out, or the PR was opened before the preview fragment
+ * landed), the composer appends the section at the end of the body rather
+ * than failing — operators reading the PR still see the preview state, and
+ * the next annotation pass is still idempotent.
  *
- * If the placeholder markers aren't found (e.g. someone edited the PR
- * body and stripped them out, or the PR was opened before the preview
- * fragment landed), the annotator appends the section at the end of the
- * body rather than failing — operators reading the PR still see the
- * preview state, and the next annotation pass is still idempotent.
- *
- * Like `openPullRequest`, all errors are returned as discriminated-union
- * results; reap maps them into `reap_failed step=pr_annotate_preview`
- * events so a GitHub outage never fails the run.
+ * The composed body is re-clamped through the domain's 64KB clamp before the
+ * forge call: `composeBody` clamps at open time, but this path appends a
+ * failure tail to a body that can already sit near the limit — unclamped,
+ * the PATCH 422s (forge-contract.md §3; PR #805 / mx-026320 place the clamp
+ * in the domain, never in transport).
  */
 
-import { GITHUB_API_BASE } from "../forge/github/headers.ts";
-import { requestGitHub } from "../forge/github/http.ts";
-import { readJson } from "../forge/github/readers.ts";
 import { PREVIEW_FRAGMENT_END, PREVIEW_FRAGMENT_START } from "./pr.ts";
 import { clampPrBodyLength } from "./pr-template.ts";
 
-const USER_AGENT = "warren-reap-pr-annotate";
+/** Outcome of the preview launch — drives what gets patched in. */
+export type PreviewAnnotationState =
+	| { readonly state: "live"; readonly url: string }
+	| { readonly state: "failed"; readonly failureTail: string };
 
-export interface AnnotatePrPreviewInput {
-	/** Full GitHub PR URL — e.g. `https://github.com/owner/repo/pull/77`. */
-	readonly prUrl: string;
-	readonly token: string;
-	/** Outcome of the preview launch — drives what gets patched in. */
-	readonly preview:
-		| { readonly state: "live"; readonly url: string }
-		| { readonly state: "failed"; readonly failureTail: string };
-}
-
-export type AnnotatePrPreviewResult =
-	| { readonly ok: true; readonly mode: "patched" | "unchanged" }
-	| {
-			readonly ok: false;
-			readonly reason: "missing_token" | "bad_url" | "network" | "http_error";
-			readonly message: string;
-	  };
-
-export interface AnnotatePrPreviewFetcher {
-	readonly fetch: typeof fetch;
-}
-
-export async function annotatePrPreview(
-	input: AnnotatePrPreviewInput,
-	deps: AnnotatePrPreviewFetcher = { fetch: globalThis.fetch },
-): Promise<AnnotatePrPreviewResult> {
-	if (input.token === "") {
-		return {
-			ok: false,
-			reason: "missing_token",
-			message: "GITHUB_TOKEN unset; cannot annotate pull request",
-		};
-	}
-	const parsed = parsePrUrl(input.prUrl);
-	if (parsed === null) {
-		return {
-			ok: false,
-			reason: "bad_url",
-			message: `unrecognized GitHub PR URL: ${input.prUrl}`,
-		};
-	}
-
-	const apiUrl = `${GITHUB_API_BASE}/repos/${parsed.owner}/${parsed.repo}/pulls/${parsed.number}`;
-
-	// The transport core's single retry policy applies here: network/5xx/429
-	// GETs now retry twice at 500ms before surfacing. That is new behavior
-	// for this call site — previously it had no retry at all, on the same
-	// `GET /pulls/:n` that `src/plan-runs/pr-merge.ts` already retried
-	// (forge-contract.md §6.5). Adopting the shared policy is the point.
-	const getResult = await requestGitHub({
-		url: apiUrl,
-		method: "GET",
-		token: input.token,
-		fetch: deps.fetch,
-		userAgent: USER_AGENT,
-		context: `GET /pulls/${parsed.number}`,
-	});
-	if (!getResult.ok) {
-		return {
-			ok: false,
-			reason: getResult.error.kind === "network" ? "network" : "http_error",
-			message: getResult.error.message,
-		};
-	}
-	const fetched = (await readJson(getResult.response)) as { body?: unknown } | null;
-	const currentBody = typeof fetched?.body === "string" ? fetched.body : "";
-
-	const newFragment = buildFragment(input.preview);
-	// Re-clamp through the domain's clamp before the PATCH. `composeBody`
-	// clamps at open time, but this path appends a failure tail to a body
-	// that can already sit near the 64KB limit — unclamped, the PATCH 422s
-	// (forge-contract.md §3; PR #805 / mx-026320 place the clamp in the
-	// domain, never in transport).
-	const nextBody = clampPrBodyLength(replaceFragment(currentBody, newFragment));
-	if (nextBody === currentBody) {
-		return { ok: true, mode: "unchanged" };
-	}
-
-	const patchResult = await requestGitHub({
-		url: apiUrl,
-		method: "PATCH",
-		token: input.token,
-		body: { body: nextBody },
-		fetch: deps.fetch,
-		userAgent: USER_AGENT,
-		context: `PATCH /pulls/${parsed.number}`,
-	});
-	if (!patchResult.ok) {
-		return {
-			ok: false,
-			reason: patchResult.error.kind === "network" ? "network" : "http_error",
-			message: patchResult.error.message,
-		};
-	}
-	return { ok: true, mode: "patched" };
-}
-
-interface ParsedPrUrl {
-	readonly owner: string;
-	readonly repo: string;
-	readonly number: number;
+export interface PreviewBodyEdit {
+	/** The next PR body (clamped). Equals `currentBody` when nothing changed. */
+	readonly body: string;
+	/** False when the body already carried exactly this fragment. */
+	readonly changed: boolean;
 }
 
 /**
- * Accepts both the GitHub web URL (`https://github.com/o/r/pull/N`) and the
- * REST API resource URL (`https://api.github.com/repos/o/r/pulls/N`) so the
- * annotator works whether reap stashed `html_url` (web) or `url` (api).
- * `openPullRequest` returns `html_url`, so the common case is the first
- * shape — the second shape is a defensive fallback for callers that pass
- * `pulls[].url` instead of `pulls[].html_url`.
+ * Compose the annotated PR body. Pure: the caller (reap's
+ * `pr_annotate_preview` sub-step) hands the result to
+ * `forge.setPullRequestBody` only when `changed` is true, and reports the
+ * `unchanged` mode otherwise.
  */
-export function parsePrUrl(input: string): ParsedPrUrl | null {
-	const trimmed = input.trim();
-	if (trimmed === "") return null;
-	const web = /^https?:\/\/github\.com\/([^/]+)\/([^/]+)\/pull\/(\d+)\/?$/.exec(trimmed);
-	if (web !== null) {
-		const n = Number.parseInt(web[3] as string, 10);
-		if (!Number.isFinite(n) || n <= 0) return null;
-		return { owner: web[1] as string, repo: web[2] as string, number: n };
-	}
-	const api = /^https?:\/\/api\.github\.com\/repos\/([^/]+)\/([^/]+)\/pulls\/(\d+)\/?$/.exec(
-		trimmed,
-	);
-	if (api !== null) {
-		const n = Number.parseInt(api[3] as string, 10);
-		if (!Number.isFinite(n) || n <= 0) return null;
-		return { owner: api[1] as string, repo: api[2] as string, number: n };
-	}
-	return null;
+export function composePreviewBody(
+	currentBody: string,
+	preview: PreviewAnnotationState,
+): PreviewBodyEdit {
+	const nextBody = clampPrBodyLength(replaceFragment(currentBody, buildFragment(preview)));
+	return { body: nextBody, changed: nextBody !== currentBody };
 }
 
-function buildFragment(preview: AnnotatePrPreviewInput["preview"]): string {
+function buildFragment(preview: PreviewAnnotationState): string {
 	const inner =
 		preview.state === "live"
 			? `[${preview.url}](${preview.url})`

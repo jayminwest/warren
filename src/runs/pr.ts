@@ -1,7 +1,4 @@
-import { GITHUB_API_BASE } from "../forge/github/headers.ts";
-import { requestGitHub } from "../forge/github/http.ts";
-import { readJson } from "../forge/github/readers.ts";
-import { GH_FETCH_OVERRIDE_ENV, readGhFetchOverride } from "./pr-checks.ts";
+import { GH_FETCH_OVERRIDE_ENV } from "./pr-checks.ts";
 import {
 	composeBody,
 	composeTitle,
@@ -19,25 +16,14 @@ export {
 } from "./pr-checks.ts";
 
 /**
- * `openPullRequest` — open a GitHub PR for a branch reap just pushed
- * (warren-f6af). Fourth best-effort sub-step of `reapRun`, gated by
- * `WARREN_AUTO_OPEN_PR` (default on).
+ * PR title/body composition + the auto-open config for the reap pipeline.
  *
- * The call hits the GitHub REST API directly (`POST /repos/:owner/:repo/pulls`)
- * via an injected `fetch` seam — no shell-out to `gh`, no extra runtime
- * dependency. Auth is `GITHUB_TOKEN`, the same token the supervisor wires
- * into git's `insteadOf` rule at boot (warren-dcf3).
- *
- * Failure shapes (callers translate into `reap_failed` events; reap never
- * crashes the run because the PR step blew up):
- *   - `missing_token` — `GITHUB_TOKEN` unset/empty. Skip cleanly.
- *   - `pr_exists`    — GitHub returns 422 because a PR already covers the
- *                       same head→base. Treated as success: re-fetch the
- *                       existing PR's `html_url` so the caller still gets
- *                       a link to surface (idempotency for re-runs and
- *                       restart-recovery sweeps).
- *   - `network`      — fetch threw or non-2xx response that isn't a
- *                       known idempotent shape.
+ * warren-45e6 (plan pl-d1c9 step 10): the direct GitHub REST client that
+ * used to live here (`openPullRequest` over `POST /repos/:o/:r/pulls`) is
+ * gone — PR creation now crosses the Forge seam (`forge.openPullRequest`,
+ * driven by `src/runs/reap/pr-open.ts`). What remains is DOMAIN meaning
+ * (forge-contract.md §3): the template-driven title/body composer and the
+ * `WARREN_AUTO_OPEN_PR` env config.
  *
  * The body and title format is template-driven (warren-bd49): the body
  * comes from the named-fragment registry in `src/runs/pr-template.ts`,
@@ -46,177 +32,6 @@ export {
  * `title` override wins; otherwise the seed/commit/prompt precedence
  * chain applies.
  */
-
-const PR_USER_AGENT = "warren-reap-pr-open";
-
-export interface OpenPullRequestInput {
-	readonly owner: string;
-	readonly repo: string;
-	readonly head: string;
-	readonly base: string;
-	readonly title: string;
-	readonly body: string;
-	readonly token: string;
-}
-
-export type OpenPullRequestResult =
-	| { readonly ok: true; readonly url: string; readonly mode: "created" | "exists" }
-	| {
-			readonly ok: false;
-			readonly reason: "missing_token" | "network" | "http_error";
-			readonly message: string;
-	  };
-
-export interface PrFetcher {
-	readonly fetch: typeof fetch;
-}
-
-export async function openPullRequest(
-	input: OpenPullRequestInput,
-	deps: PrFetcher = { fetch: globalThis.fetch },
-): Promise<OpenPullRequestResult> {
-	if (readGhFetchOverride() === "merged") {
-		return {
-			ok: true,
-			url: `https://github.com/${input.owner}/${input.repo}/pull/1`,
-			mode: "created",
-		};
-	}
-	if (input.token === "") {
-		return {
-			ok: false,
-			reason: "missing_token",
-			message: "GITHUB_TOKEN unset; cannot open pull request",
-		};
-	}
-
-	// Transport policy (plan pl-d1c9 step 2, forge-contract.md §6.5): the
-	// consolidated default — transient network/5xx/429 retried in-band,
-	// other 4xx fatal. This call site previously made exactly one attempt,
-	// so transient failures now retry where they used to fail immediately.
-	const result = await requestGitHub({
-		url: `${GITHUB_API_BASE}/repos/${input.owner}/${input.repo}/pulls`,
-		method: "POST",
-		token: input.token,
-		userAgent: PR_USER_AGENT,
-		context: "POST /pulls",
-		body: {
-			title: input.title,
-			body: input.body,
-			head: input.head,
-			base: input.base,
-		},
-		fetch: deps.fetch,
-	});
-
-	if (!result.ok) {
-		const error = result.error;
-		if (error.kind === "network") {
-			return { ok: false, reason: "network", message: error.message };
-		}
-		if (error.status === 422) {
-			// 422 covers both "PR already exists" and "no commits between head
-			// and base". The first is idempotent — fetch the existing PR and
-			// return its url. The second is a no-op shape callers are expected
-			// to skip upstream (commitsAhead === 0), but if it slips through we
-			// surface the message so the operator sees why. The transport core
-			// already classified and truncated the body into `error.message`.
-			if (/already exists|pull request already exists/i.test(error.message)) {
-				const existing = await findExistingPr(input, deps);
-				if (existing !== null) {
-					return { ok: true, url: existing, mode: "exists" };
-				}
-				return {
-					ok: false,
-					reason: "http_error",
-					message: "PR already exists but lookup did not return a url",
-				};
-			}
-			return { ok: false, reason: "http_error", message: error.message };
-		}
-		return { ok: false, reason: "http_error", message: error.message };
-	}
-
-	if (result.response.status === 201) {
-		const created = (await readJson(result.response)) as { html_url?: unknown } | null;
-		const link = typeof created?.html_url === "string" ? created.html_url : null;
-		if (link === null) {
-			return { ok: false, reason: "http_error", message: "POST /pulls returned no html_url" };
-		}
-		return { ok: true, url: link, mode: "created" };
-	}
-
-	// Defensive: any other 2xx shape is unexpected for POST /pulls.
-	return {
-		ok: false,
-		reason: "http_error",
-		message: `POST /pulls returned unexpected ${result.response.status}`,
-	};
-}
-
-interface ListedPullRequest {
-	readonly html_url?: unknown;
-	readonly head?: unknown;
-}
-
-/**
- * 422-recovery search for the PR that already covers this head→base.
- *
- * First pass filters `head: <owner>:<head>`, which only matches same-repo
- * branches. When that comes back empty, fall back to listing open PRs on
- * the base and matching `head.ref` — a duplicate whose head lives on a
- * fork is invisible to the owner-qualified filter (forge-contract.md
- * §6.13). The phase-2 provider's idempotent openPullRequest inherits this
- * fallback rather than the old assumption.
- */
-async function findExistingPr(
-	input: OpenPullRequestInput,
-	deps: PrFetcher,
-): Promise<string | null> {
-	const direct = await searchOpenPullRequests(input, deps, {
-		head: `${input.owner}:${input.head}`,
-		per_page: "1",
-	});
-	const directHit = direct?.[0];
-	const directUrl = typeof directHit?.html_url === "string" ? directHit.html_url : null;
-	if (directUrl !== null) return directUrl;
-
-	const onBase = await searchOpenPullRequests(input, deps, { per_page: "100" });
-	if (onBase === null) return null;
-	for (const pr of onBase) {
-		const headRef =
-			typeof pr.head === "object" && pr.head !== null
-				? (pr.head as { ref?: unknown }).ref
-				: undefined;
-		if (headRef === input.head && typeof pr.html_url === "string") {
-			return pr.html_url;
-		}
-	}
-	return null;
-}
-
-async function searchOpenPullRequests(
-	input: OpenPullRequestInput,
-	deps: PrFetcher,
-	extraParams: Record<string, string>,
-): Promise<readonly ListedPullRequest[] | null> {
-	const params = new URLSearchParams({
-		base: input.base,
-		state: "open",
-		...extraParams,
-	});
-	const result = await requestGitHub({
-		url: `${GITHUB_API_BASE}/repos/${input.owner}/${input.repo}/pulls?${params.toString()}`,
-		method: "GET",
-		token: input.token,
-		userAgent: PR_USER_AGENT,
-		context: "GET /pulls",
-		fetch: deps.fetch,
-	});
-	if (!result.ok) return null;
-	const list = (await readJson(result.response)) as readonly ListedPullRequest[] | null;
-	return Array.isArray(list) ? list : null;
-}
 
 /* ----------------------------------------------------------------------- */
 /* Title + body formatting                                                  */
@@ -389,9 +204,10 @@ export function loadAutoOpenPrConfigFromEnv(env: AutoOpenEnvLike = process.env):
 	const fetchOverride = env[GH_FETCH_OVERRIDE_ENV];
 	const overrideActive = typeof fetchOverride === "string" && fetchOverride.trim() === "merged";
 	// Acceptance seam (warren-ae00): WARREN_GH_FETCH_OVERRIDE=merged synthesizes
-	// a stub token so reap's empty-token gate + tryOpenPr's empty-token gate
-	// don't skip pr_open. The actual HTTP call short-circuits inside
-	// openPullRequest before the token is read.
+	// a stub token so downstream config gates that still read `token` (the boot
+	// warning, the coordinator reopen-PR gate) behave as configured. The actual
+	// HTTP call short-circuits inside `GitHubForge.openPullRequest`
+	// (warren-45e6) before the token is read.
 	const token = env.GITHUB_TOKEN ?? (overrideActive ? "stub-token" : "");
 	return {
 		enabled,

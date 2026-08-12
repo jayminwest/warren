@@ -1,20 +1,13 @@
 import { CI_FIXER_TRIGGER } from "../../ci-fixer/poller.ts";
-import { parseGitHubUrl } from "../../projects/url.ts";
-import { authenticatedCloneUrl } from "../../workspace/git/clone-url.ts";
-import {
-	type AutoOpenPrConfig,
-	type BuildPrContentInput,
-	buildPrContent,
-	type OpenPullRequestInput,
-	type OpenPullRequestResult,
-	type PrCommit,
-	type PrSeed,
-} from "../pr.ts";
+import type { Forge, ForgeErrorKind, PullRequestRef, RepoRef } from "../../forge/contract.ts";
+import { mintGitCredentialSecret } from "../../forge/credentials.ts";
+import { type AutoOpenPrConfig, type BuildPrContentInput, buildPrContent } from "../pr.ts";
 import type { PrTemplateOverrides } from "../pr-template.ts";
+import { type CloneFetchConfig, gatherPrContext, type PrContext } from "./pr-context.ts";
 import type { ReapExec } from "./types.ts";
 
 /* ----------------------------------------------------------------------- */
-/* Retry policy for PR open (warren-70c6)                                   */
+/* Semantic retry policy for PR open (warren-70c6, collapsed in warren-45e6)  */
 /* ----------------------------------------------------------------------- */
 
 // 3 retries after the initial attempt: ~1s, ~2s, ~4s backoff.
@@ -25,30 +18,55 @@ function defaultSleep(ms: number): Promise<void> {
 }
 
 /**
- * Returns true when the PR-open result warrants a retry.
- *
- * Retryable: any `http_error` that is not a known-permanent 422 shape.
- *   - "already exists" 422 is handled inside openPullRequest (returns ok:true),
- *     so it never reaches here.
- *   - "No commits between" 422 is permanent; don't retry.
- *   - All other http_errors (transient 422 e.g. "head invalid", 5xx) → retry.
- *
- * Not retried: missing_token (operator config), network (surface immediately).
+ * Semantic retry (forge-contract.md §3: "semantic retry stays in the domain;
+ * transport retry moves to the forge"). The provider already retried the
+ * transport classes (network/5xx/429) in-band, so the ONLY kind worth a
+ * domain retry is `conflict` — the transient 422 ("head invalid") the forge
+ * returns while it is still indexing the just-pushed ref. The permanent
+ * "No commits between" 422 arrives as the SAME classified conflict: the
+ * pipeline's `commitsAhead > 0` gate means it should never occur, and when
+ * it slips through it simply exhausts the retries — no message-string
+ * re-derivation (warren-45e6). `no_credential` (operator config) and every
+ * other kind surface immediately.
  */
-function isRetryablePrResult(result: OpenPullRequestResult): boolean {
-	if (result.ok || result.reason !== "http_error") return false;
-	if (/no commits between/i.test(result.message)) return false;
-	return true;
+function isRetryablePrErrorKind(kind: ForgeErrorKind | "unowned_url"): boolean {
+	return kind === "conflict";
 }
 
 /* ----------------------------------------------------------------------- */
-/* PR open (warren-f6af)                                                    */
+/* PR open (warren-f6af; Forge seam warren-45e6)                             */
 /* ----------------------------------------------------------------------- */
+
+/**
+ * A successfully opened (or found) PR. Carries the opaque forge refs and the
+ * composed body alongside the URL so the `pr_annotate_preview` sub-step can
+ * rewrite the body through `forge.setPullRequestBody` without re-deriving
+ * either — the domain composed this body moments ago in the same reap, and
+ * the Forge contract deliberately has no body read (forge-contract.md §3).
+ */
+export interface OpenedPr {
+	readonly url: string;
+	readonly mode: "created" | "exists";
+	readonly repoRef: RepoRef;
+	readonly prRef: PullRequestRef;
+	readonly body: string;
+}
+
+export type TryOpenPrResult =
+	| { readonly ok: true; readonly pr: OpenedPr }
+	| {
+			readonly ok: false;
+			/** `unowned_url`: no forge claimed the project clone URL (parseRepoRef → null). */
+			readonly kind: ForgeErrorKind | "unowned_url";
+			readonly detail: string;
+	  };
 
 export interface TryOpenPrInput {
 	readonly project: { gitUrl: string; defaultBranch: string };
 	readonly branch: string;
 	readonly autoOpen: AutoOpenPrConfig;
+	/** The boot-resolved forge (warren-45e6). Owns URL parsing, credentials, transport. */
+	readonly forge: Forge;
 	readonly run: {
 		id: string;
 		agentName: string;
@@ -62,19 +80,20 @@ export interface TryOpenPrInput {
 	};
 	readonly prContext: PrContext;
 	readonly previewOptedIn: boolean;
-	readonly openPr: (input: OpenPullRequestInput) => Promise<OpenPullRequestResult>;
 	readonly prTemplate?: PrTemplateOverrides;
 }
 
-export async function tryOpenPr(input: TryOpenPrInput): Promise<OpenPullRequestResult> {
-	if (input.autoOpen.token === "") {
+export async function tryOpenPr(input: TryOpenPrInput): Promise<TryOpenPrResult> {
+	// parseRepoRef NEVER throws: null means this forge does not own the URL.
+	// Surfaced as a pr_open failure by the caller — never a reap crash.
+	const ref = input.forge.parseRepoRef(input.project.gitUrl);
+	if (ref === null) {
 		return {
 			ok: false,
-			reason: "missing_token",
-			message: "GITHUB_TOKEN unset; skipping auto-open PR",
+			kind: "unowned_url",
+			detail: `no forge owns the project clone URL (${input.project.gitUrl}); cannot open a pull request`,
 		};
 	}
-	const parsed = parseGitHubUrl(input.project.gitUrl);
 	const contentInput: BuildPrContentInput = {
 		prompt: input.run.prompt,
 		runId: input.run.id,
@@ -95,266 +114,47 @@ export async function tryOpenPr(input: TryOpenPrInput): Promise<OpenPullRequestR
 		...(input.prTemplate !== undefined ? { templateOverrides: input.prTemplate } : {}),
 	};
 	const content = buildPrContent(contentInput);
-	return input.openPr({
-		owner: parsed.owner,
-		repo: parsed.name,
-		head: input.branch,
-		base: input.project.defaultBranch,
+	const draft = {
 		title: content.title,
 		body: content.body,
-		token: input.autoOpen.token,
+		headBranch: input.branch,
+		baseBranch: input.project.defaultBranch,
+	};
+	// Find-then-open keeps the re-reap sweep idempotent WITHOUT a POST: a PR
+	// already covering this head→base resolves to mode "exists" (the provider's
+	// own openPullRequest would resolve the duplicate too, but then the domain
+	// could not report the distinction). A failed find degrades to open — the
+	// provider's duplicate resolution is the backstop.
+	const found = await input.forge.findPullRequest(ref, {
+		headBranch: input.branch,
+		baseBranch: input.project.defaultBranch,
 	});
-}
-
-/* ----------------------------------------------------------------------- */
-/* PR context gathering (warren-9ee3)                                       */
-/* ----------------------------------------------------------------------- */
-
-/**
- * Under K8s the pod pushes its run branch to origin and no host worktree
- * survives (`workspacePath === null`). To rebuild the commit/diff-stat sections
- * we fetch that pushed branch into the host-side project clone and diff it
- * against the base there (warren-ab66). Omit `cloneFetch` (LocalProvider, or
- * when we have no token) to keep the pre-warren-ab66 empty-section behavior.
- */
-export interface CloneFetchConfig {
-	/** The pushed run branch name on origin (e.g. `warren/run-1`). */
-	readonly runBranch: string;
-	/** Run id — namespaces the temp fetch ref so concurrent reaps never collide. */
-	readonly runId: string;
-	/** Project origin URL; the token is injected into it for the fetch. */
-	readonly gitUrl: string;
-	/** GitHub token (same one the PR open uses); injected as `x-access-token`. */
-	readonly token: string;
-}
-
-export interface GatherPrContextInput {
-	/**
-	 * Host workspace path for the commits / diff-stat git reads. `null` under K8s
-	 * (the pod workspace is host-unreachable, warren-e9e1). When null and
-	 * `cloneFetch` is supplied, the sections are rebuilt from the pushed run
-	 * branch fetched into the project clone (warren-ab66); when null and no
-	 * `cloneFetch`, they degrade to empty. The seed section always resolves off
-	 * the project clone (`projectPath`).
-	 */
-	readonly workspacePath: string | null;
-	readonly projectPath: string;
-	readonly baseBranch: string;
-	readonly prompt: string;
-	/**
-	 * Authoritative seed attribution from the run row (warren-50c8). When set it
-	 * wins outright; the prompt scan below is only a legacy fallback for runs
-	 * dispatched without a `seedId`.
-	 */
-	readonly seedId?: string | null;
-	readonly exec: ReapExec;
-	/** K8s fallback source for the commit/diff-stat sections (warren-ab66). */
-	readonly cloneFetch?: CloneFetchConfig;
-	/**
-	 * Best-effort structured-warning seam (warren-ab66). Fires
-	 * `reap.pr_open_context_degraded` when the K8s clone fetch fails and the PR
-	 * body falls back to empty sections. Omit in unit tests that don't assert it.
-	 */
-	readonly emit?: (kind: string, payload: unknown) => Promise<unknown>;
-}
-
-export interface PrContext {
-	readonly commits: readonly PrCommit[];
-	readonly diffStat: string;
-	readonly seed: PrSeed | null;
-}
-
-interface CommitStats {
-	readonly commits: readonly PrCommit[];
-	readonly diffStat: string;
-}
-
-const EMPTY_STATS: CommitStats = { commits: [], diffStat: "" };
-
-/** Temp-ref namespace for the K8s pr-open fetch; deleted after the reads. */
-const CLONE_FETCH_REF_PREFIX = "refs/warren/pr-open/";
-
-/**
- * Best-effort gathering of the data buildPrContent needs to fill in the
- * commits / files-changed / seeds sections. Each sub-call is wrapped: a
- * git error or missing `sd` CLI degrades to empty data rather than
- * failing the PR open.
- */
-export async function gatherPrContext(input: GatherPrContextInput): Promise<PrContext> {
-	const [stats, seed] = await Promise.all([
-		gatherCommitStats(input),
-		resolveSeed(
-			{ seedId: input.seedId ?? null, prompt: input.prompt },
-			input.projectPath,
-			input.exec,
-		),
-	]);
-	return { commits: stats.commits, diffStat: stats.diffStat, seed };
-}
-
-async function gatherCommitStats(input: GatherPrContextInput): Promise<CommitStats> {
-	// LocalProvider: read straight off the host worktree (base..HEAD).
-	if (input.workspacePath !== null) {
-		return collectRange({
-			exec: input.exec,
-			cwd: input.workspacePath,
-			baseRef: input.baseBranch,
-			headRef: "HEAD",
-		});
+	if (found.ok && found.value !== null) {
+		return {
+			ok: true,
+			pr: {
+				url: found.value.webUrl,
+				mode: "exists",
+				repoRef: ref,
+				prRef: found.value,
+				body: content.body,
+			},
+		};
 	}
-	// warren-ab66: no host workspace under K8s — fetch the pushed branch into the
-	// project clone and rebuild from `base..<temp ref>`. Skip when we can't fetch.
-	if (input.cloneFetch === undefined) return EMPTY_STATS;
-	return collectFromClone(input, input.cloneFetch);
-}
-
-/**
- * Fetch the pushed run branch into the project clone under a private temp ref,
- * rebuild the commit/diff-stat sections against the local base, then delete the
- * ref (warren-ab66). Any failure degrades to empty sections + a warning event
- * so the PR still opens — never throws.
- */
-async function collectFromClone(
-	input: GatherPrContextInput,
-	cfg: CloneFetchConfig,
-): Promise<CommitStats> {
-	const tempRef = `${CLONE_FETCH_REF_PREFIX}${cfg.runId}`;
-	const url = authenticatedCloneUrl(cfg.gitUrl, cfg.token);
-	try {
-		// Fetch only the run branch into a namespaced temp ref (never a local
-		// branch); `--force` lets a re-reap overwrite a stale ref.
-		await input.exec.run(
-			"git",
-			["fetch", "--no-tags", "--force", url, `${cfg.runBranch}:${tempRef}`],
-			{ cwd: input.projectPath, timeoutMs: 30_000 },
-		);
-	} catch (err) {
-		await input.emit?.("reap.pr_open_context_degraded", {
-			runId: cfg.runId,
-			branch: cfg.runBranch,
-			reason: "clone_fetch_failed",
-			error: err instanceof Error ? err.message : String(err),
-		});
-		return EMPTY_STATS;
+	const opened = await input.forge.openPullRequest(ref, draft);
+	if (!opened.ok) {
+		return { ok: false, kind: opened.error.kind, detail: opened.error.detail };
 	}
-	try {
-		return await collectRange({
-			exec: input.exec,
-			cwd: input.projectPath,
-			baseRef: input.baseBranch,
-			headRef: tempRef,
-		});
-	} finally {
-		try {
-			await input.exec.run("git", ["update-ref", "-d", tempRef], {
-				cwd: input.projectPath,
-				timeoutMs: 10_000,
-			});
-		} catch {
-			// Best-effort cleanup — a leaked temp ref is harmless (overwritten by
-			// `--force` on the next reap of the same run id).
-		}
-	}
-}
-
-/** A `base..head` range read against one git cwd — shared by the local and K8s paths. */
-interface GitRange {
-	readonly exec: ReapExec;
-	readonly cwd: string;
-	readonly baseRef: string;
-	readonly headRef: string;
-}
-
-async function collectRange(range: GitRange): Promise<CommitStats> {
-	const [commits, diffStat] = await Promise.all([collectCommits(range), collectDiffStat(range)]);
-	return { commits, diffStat };
-}
-
-async function collectCommits(range: GitRange): Promise<PrCommit[]> {
-	try {
-		const out = await range.exec.run(
-			"git",
-			["log", "--reverse", "--pretty=format:%H %s", `${range.baseRef}..${range.headRef}`],
-			{ cwd: range.cwd, timeoutMs: 10_000 },
-		);
-		const commits: PrCommit[] = [];
-		for (const raw of out.stdout.split("\n")) {
-			const line = raw.trimEnd();
-			if (line === "") continue;
-			const sp = line.indexOf(" ");
-			if (sp === -1) continue;
-			commits.push({ sha: line.slice(0, sp), subject: line.slice(sp + 1) });
-		}
-		return commits;
-	} catch {
-		return [];
-	}
-}
-
-async function collectDiffStat(range: GitRange): Promise<string> {
-	try {
-		const out = await range.exec.run(
-			"git",
-			["diff", "--stat", `${range.baseRef}..${range.headRef}`],
-			{ cwd: range.cwd, timeoutMs: 10_000 },
-		);
-		return out.stdout;
-	} catch {
-		return "";
-	}
-}
-
-// Matches seed ids like `warren-17a4`, `seeds-9ee3`, `mulch-cafe` — a
-// lowercase prefix with optional internal dashes, followed by `-` and a
-// 4+ char lowercase-hex suffix. Trailing hex suffix anchors the match;
-// the prefix-with-dashes regex would otherwise eat ordinary words.
-const SEED_ID_RE = /\b([a-z][a-z-]*-[a-f0-9]{4,})\b/g;
-
-/**
- * Legacy fallback attribution (warren-50c8). The first regex hit used to win,
- * so a prompt merely MENTIONING another seed id mis-attributed the PR. Now the
- * scan only commits when the prompt names exactly one distinct seed id;
- * anything ambiguous degrades to no seed section rather than a wrong one.
- */
-function scanPromptForSeedId(prompt: string): string | null {
-	const ids = new Set<string>();
-	for (const m of prompt.matchAll(SEED_ID_RE)) {
-		const id = m[1];
-		if (id !== undefined) ids.add(id);
-	}
-	if (ids.size !== 1) return null;
-	return [...ids][0] ?? null;
-}
-
-interface SeedAttribution {
-	readonly seedId: string | null;
-	readonly prompt: string;
-}
-
-async function resolveSeed(
-	attribution: SeedAttribution,
-	cwd: string,
-	exec: ReapExec,
-): Promise<PrSeed | null> {
-	// warren-50c8: the run row's column is authoritative when present.
-	const id = attribution.seedId ?? scanPromptForSeedId(attribution.prompt);
-	if (id === null) return null;
-	try {
-		const out = await exec.run("sd", ["show", id, "--format", "json"], {
-			cwd,
-			timeoutMs: 10_000,
-		});
-		const parsed: unknown = JSON.parse(out.stdout);
-		if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) return null;
-		const obj = parsed as Record<string, unknown>;
-		const issue = obj.issue ?? obj;
-		if (issue === null || typeof issue !== "object" || Array.isArray(issue)) return null;
-		const title = (issue as Record<string, unknown>).title;
-		if (typeof title !== "string" || title === "") return null;
-		return { id, title };
-	} catch {
-		return null;
-	}
+	return {
+		ok: true,
+		pr: {
+			url: opened.value.webUrl,
+			mode: "created",
+			repoRef: ref,
+			prRef: opened.value,
+			body: content.body,
+		},
+	};
 }
 
 export interface RunPrOpenInput {
@@ -379,19 +179,20 @@ export interface RunPrOpenInput {
 	readonly emit: (kind: string, payload: unknown) => Promise<unknown>;
 	readonly fail: (step: "pr_open", err: unknown) => Promise<void>;
 	readonly setPrUrl: (runId: string, url: string) => Promise<unknown>;
-	readonly openPr: (input: OpenPullRequestInput) => Promise<OpenPullRequestResult>;
+	/** The boot-resolved forge (warren-45e6). */
+	readonly forge: Forge;
 	readonly prTemplate?: PrTemplateOverrides;
 	/** Injected sleep for tests; defaults to real setTimeout-based sleep. */
 	readonly sleep?: (ms: number) => Promise<void>;
 }
 
 /**
- * Best-effort PR-open sub-step. Returns the opened PR url on success
- * (and persists it via `setPrUrl`); `null` on skip / failure. Mirrors
- * the original inline block in `reapRun` — failures emit
- * `reap_failed` step=pr_open and never fail the run.
+ * Best-effort PR-open sub-step. Returns the opened PR handle (URL persisted
+ * via `setPrUrl`; refs + composed body threaded to `pr_annotate_preview`);
+ * `null` on skip / failure. Mirrors the original inline block in `reapRun` —
+ * failures emit `reap_failed` step=pr_open and never fail the run.
  */
-export async function runPrOpen(input: RunPrOpenInput): Promise<string | null> {
+export async function runPrOpen(input: RunPrOpenInput): Promise<OpenedPr | null> {
 	// warren-a993: a CI-fixer run pushed its fix onto the open PR's head branch
 	// (targetBranch), which re-runs that PR's CI. A fresh PR would duplicate the
 	// existing one, so self-skip here and record the reason for traceability.
@@ -400,6 +201,23 @@ export async function runPrOpen(input: RunPrOpenInput): Promise<string | null> {
 		return null;
 	}
 	try {
+		// warren-ab66: under K8s (no host workspace) rebuild the commit/diff-stat
+		// sections from the pushed run branch fetched into the project clone. The
+		// fetch credential is MINTED from the forge (warren-45e6, §4) instead of
+		// read off the auto-open config; a forge that owns no credential for the
+		// URL keeps the pre-warren-ab66 empty-section path.
+		let cloneFetch: CloneFetchConfig | undefined;
+		if (input.workspacePath === null) {
+			const secret = await mintGitCredentialSecret(input.forge, input.project.gitUrl);
+			if (secret !== undefined) {
+				cloneFetch = {
+					runBranch: input.branch,
+					runId: input.run.id,
+					gitUrl: input.project.gitUrl,
+					token: secret,
+				};
+			}
+		}
 		const prContext = await gatherPrContext({
 			workspacePath: input.workspacePath,
 			projectPath: input.project.localPath,
@@ -408,48 +226,36 @@ export async function runPrOpen(input: RunPrOpenInput): Promise<string | null> {
 			seedId: input.run.seedId ?? null,
 			exec: input.exec,
 			emit: input.emit,
-			// warren-ab66: under K8s (no host workspace) rebuild the commit/diff-stat
-			// sections from the pushed run branch fetched into the project clone. Needs
-			// a token to auth the fetch; a token-less env keeps the empty-section path.
-			...(input.workspacePath === null && input.autoOpen.token !== ""
-				? {
-						cloneFetch: {
-							runBranch: input.branch,
-							runId: input.run.id,
-							gitUrl: input.project.gitUrl,
-							token: input.autoOpen.token,
-						},
-					}
-				: {}),
+			...(cloneFetch !== undefined ? { cloneFetch } : {}),
 		});
 		const prArgs: TryOpenPrInput = {
 			project: input.project,
 			branch: input.branch,
 			autoOpen: input.autoOpen,
+			forge: input.forge,
 			run: input.run,
 			prContext,
 			previewOptedIn: input.previewOptedIn,
-			openPr: input.openPr,
 			...(input.prTemplate !== undefined ? { prTemplate: input.prTemplate } : {}),
 		};
 		const sleep = input.sleep ?? defaultSleep;
 		let opened = await tryOpenPr(prArgs);
 		for (let attempt = 0; attempt < PR_OPEN_RETRY_DELAYS_MS.length; attempt++) {
-			if (opened.ok || !isRetryablePrResult(opened)) break;
+			if (opened.ok || !isRetryablePrErrorKind(opened.kind)) break;
 			await sleep(PR_OPEN_RETRY_DELAYS_MS[attempt] ?? 1_000);
 			opened = await tryOpenPr(prArgs);
 		}
 		if (opened.ok) {
-			await input.setPrUrl(input.run.id, opened.url);
+			await input.setPrUrl(input.run.id, opened.pr.url);
 			await input.emit("reap.pr_opened", {
-				prUrl: opened.url,
-				mode: opened.mode,
+				prUrl: opened.pr.url,
+				mode: opened.pr.mode,
 				branch: input.branch,
 				baseBranch: input.baseBranch,
 			});
-			return opened.url;
+			return opened.pr;
 		}
-		await input.fail("pr_open", new Error(`${opened.reason}: ${opened.message}`));
+		await input.fail("pr_open", new Error(`${opened.kind}: ${opened.detail}`));
 		return null;
 	} catch (err) {
 		await input.fail("pr_open", err);
