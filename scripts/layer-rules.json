@@ -87,6 +87,46 @@
 			"forbidImports": ["extensions/"]
 		},
 		{
+			"name": "github-api-literal-is-forge-only",
+			"why": "The api.github.com literal lives only inside the forge seam (docs/design/forge-contract.md §0). Domain code names a RepoRef, never a GitHub URL; a new literal outside src/forge/ is a leak across the seam.",
+			"from": ["src/"],
+			"forbidPattern": "api\\.github\\.com",
+			"allow": [
+				{ "path": "src/forge/", "why": "the forge seam itself — it owns the GitHub transport" }
+			]
+		},
+		{
+			"name": "forge-transport-is-forge-only",
+			"why": "GitHub transport (src/forge/github/ internals, octokit-family packages) is reached only through the Forge contract (src/forge/contract.ts). The allow list below is the phase-3 ratchet (plan pl-d1c9): it only shrinks, and reaches zero when the callers migrate onto the seam.",
+			"from": ["src/"],
+			"forbidImports": [
+				"src/forge/github/",
+				"octokit",
+				"@octokit/rest",
+				"@octokit/core",
+				"@octokit/request"
+			],
+			"allow": [
+				{ "path": "src/forge/", "why": "the seam itself" },
+				{
+					"path": "src/runs/pr.ts",
+					"why": "phase-3 migration of the reap pipeline onto the Forge seam deletes this entry (warren-45e6)"
+				},
+				{
+					"path": "src/runs/pr-checks.ts",
+					"why": "phase-3 migration of the plan-run coordinator merge gate deletes this entry (warren-63e7)"
+				},
+				{
+					"path": "src/runs/pr-annotate.ts",
+					"why": "phase-3 migration of the reap pipeline's preview annotation deletes this entry (warren-45e6)"
+				},
+				{
+					"path": "src/ci-fixer/check-runs.ts",
+					"why": "phase-3 migration of the CI-fixer onto the Forge seam deletes this entry (warren-0b49)"
+				}
+			]
+		},
+		{
 			"name": "core-kernel-imports-nothing",
 			"why": "src/core/ is the dependency-free kernel. A kernel with no imports is what lets the Vite-bundled UI reach the same module, so neither drizzle nor bun:sqlite reaches the browser bundle.",
 			"from": ["src/core/"],
