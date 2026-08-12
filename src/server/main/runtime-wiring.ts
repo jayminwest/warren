@@ -30,6 +30,8 @@
  */
 
 import { ApiException, CoreV1Api, KubeConfig, type V1Pod, Watch } from "@kubernetes/client-node";
+import type { Forge } from "../../forge/contract.ts";
+import { mintGitCredentialSecret } from "../../forge/credentials.ts";
 import type { RuntimeProvider } from "../../runtime/contract.ts";
 import type { AdmissionCounterSink } from "../../runtime/k8s/admission.ts";
 import { PodGc } from "../../runtime/k8s/pod-gc.ts";
@@ -189,6 +191,13 @@ export interface ResolveBootRuntimeProviderInput {
 	 * client. Absent ⇒ `resolveRuntimeProvider` builds a LocalProvider.
 	 */
 	readonly k8sRuntime?: K8sRuntimeHandle;
+	/**
+	 * Boot-resolved forge (warren-c9ac). Drives the K8s token windows
+	 * (forge-contract.md §4.1): the provider mints the init-container clone
+	 * credential per pod-spec, and the window-2 static-env push-token fallback
+	 * is allowed only when the forge's `credentialLifetime` is `static` (PAT).
+	 */
+	readonly forge?: Forge;
 }
 
 /**
@@ -201,6 +210,23 @@ export interface ResolveBootRuntimeProviderInput {
  * pod-watcher. Extracted here (rather than inline in `index.ts`) to keep the
  * orchestrator under its file-size budget and co-locate it with `bootK8sRuntime`.
  */
+/**
+ * The forge-driven K8s token-window deps (warren-c9ac, forge-contract.md §4.1):
+ * a per-pod-spec clone-credential mint (window 1) plus the window-2 gate that
+ * keeps an App-mode run off the static env fallback. `{}` when no forge is
+ * wired (a `local` boot ignores both fields anyway).
+ */
+function k8sForgeTokenWindows(forge: Forge | undefined): {
+	readonly k8sMintGitCredential?: (gitUrl: string) => Promise<string | undefined>;
+	readonly k8sAllowStaticPushTokenFallback?: boolean;
+} {
+	if (forge === undefined) return {};
+	return {
+		k8sMintGitCredential: (gitUrl) => mintGitCredentialSecret(forge, gitUrl),
+		k8sAllowStaticPushTokenFallback: forge.capabilities.credentialLifetime === "static",
+	};
+}
+
 export function resolveBootRuntimeProvider(
 	input: ResolveBootRuntimeProviderInput,
 ): RuntimeProvider {
@@ -218,6 +244,7 @@ export function resolveBootRuntimeProvider(
 						k8sPodAdmission: input.k8sRuntime.podWatcher,
 					}
 				: {}),
+			...k8sForgeTokenWindows(input.forge),
 		},
 		input.env,
 	);

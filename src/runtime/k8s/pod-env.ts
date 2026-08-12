@@ -159,6 +159,12 @@ function sortByName(vars: V1EnvVar[]): V1EnvVar[] {
  * workspace mount path, an OPTIONAL `WARREN_GIT_TOKEN` from a Secret, and (when
  * seeds ride a ConfigMap) the manifest path. Name-sorted for a stable spec; the
  * secret ref sorts by name alongside the plain values.
+ *
+ * warren-c9ac (forge-contract.md §4.1 window 1): when the spec carries a
+ * `WARREN_GIT_TOKEN` value — the credential `K8sProvider.create` minted at
+ * pod-spec time under App mode — it rides as a PLAIN value and the static
+ * Secret ref is skipped entirely, so a short-lived token is fresh for the
+ * clone and the pod never references the long-lived Secret.
  */
 export function buildInitEnv(
 	spec: RunSpec,
@@ -174,17 +180,21 @@ export function buildInitEnv(
 	};
 	if (opts.seedConfigMapName !== undefined) plain.WARREN_SEED_MANIFEST = SEED_MANIFEST_PATH;
 	if (config.repoCache !== undefined) plain[ENV_REPO_CACHE_DIR] = config.repoCache.mountPath;
+	const specToken = spec.env.WARREN_GIT_TOKEN;
+	if (specToken !== undefined) plain.WARREN_GIT_TOKEN = specToken;
 	const vars: V1EnvVar[] = Object.entries(plain).map(([name, value]) => ({ name, value }));
-	vars.push({
-		name: "WARREN_GIT_TOKEN",
-		valueFrom: {
-			secretKeyRef: {
-				name: config.gitTokenSecret.name,
-				key: config.gitTokenSecret.key,
-				optional: true,
+	if (specToken === undefined) {
+		vars.push({
+			name: "WARREN_GIT_TOKEN",
+			valueFrom: {
+				secretKeyRef: {
+					name: config.gitTokenSecret.name,
+					key: config.gitTokenSecret.key,
+					optional: true,
+				},
 			},
-		},
-	});
+		});
+	}
 	return sortByName(vars);
 }
 

@@ -26,7 +26,7 @@
  * real method bodies (later steps) need in-cluster config.
  */
 
-import { ApiException, CoreV1Api, KubeConfig, type V1Pod } from "@kubernetes/client-node";
+import { ApiException, type CoreV1Api, type V1Pod } from "@kubernetes/client-node";
 import type { EnvLike } from "../../runs/spawn/callback-env.ts";
 import type {
 	FinalizeIntent,
@@ -49,6 +49,7 @@ import { admitK8sCreate } from "./admit.ts";
 import { mapApiError } from "./api-error.ts";
 import { finalizeK8sRun, resolveFinalizeBudgets } from "./finalize.ts";
 import { type FinalizeCoordinator, sharedFinalizeCoordinator } from "./finalize-coordinator.ts";
+import { cloneTokenEnvOverlay, resolveK8sPushToken } from "./git-tokens.ts";
 import { defaultLogFollowFactory } from "./log-follow.ts";
 import {
 	isTerminalPhase,
@@ -148,6 +149,24 @@ export interface K8sProviderDeps {
 	readonly finalizePodPollMs?: number;
 	/** Injectable timer for the finalize race — tests drive it without real delays. */
 	readonly finalizeSetTimer?: (fn: () => void, ms: number) => { cancel: () => void };
+	/**
+	 * OPTIONAL git-credential mint seam (forge-contract.md §4.1, warren-c9ac).
+	 * `create()` mints the window-1 init-container clone credential at pod-spec
+	 * time so a short-lived App-mode token is fresh for the clone. Boot wires
+	 * this to `mintGitCredentialSecret` over the resolved forge; absent, the pod
+	 * spec keeps the static `warren-git-token` Secret ref (PAT-mode posture).
+	 */
+	readonly mintGitCredential?: (gitUrl: string) => Promise<string | undefined>;
+	/**
+	 * Whether the window-2 finalize push may fall back to the STATIC control-plane
+	 * env (`WARREN_GIT_TOKEN` / `GITHUB_TOKEN`) when the intent carries no minted
+	 * token. Boot sets this from the forge's `credentialLifetime`: `static` (PAT)
+	 * ⇒ true; `short-lived` (App) ⇒ false — under App mode the static value is an
+	 * hourly-expiring credential a >1h run must never depend on (warren-c9ac).
+	 * Defaults to true (the pre-warren-c9ac behavior) so unwired paths keep the
+	 * fallback.
+	 */
+	readonly allowStaticPushTokenFallback?: boolean;
 }
 
 /**
@@ -176,22 +195,7 @@ export const K8S_PROVIDER_CAPABILITIES: RuntimeCapabilities = Object.freeze({
 	workspaceGc: false,
 });
 
-/**
- * Build the default lazy `CoreV1Api` factory: loads in-cluster (or kubeconfig)
- * config and constructs the client on FIRST call, memoized thereafter. Not
- * invoked at construction, so importing this never requires a reachable cluster.
- */
-export function defaultCoreApiFactory(): () => CoreV1Api {
-	let cached: CoreV1Api | undefined;
-	return () => {
-		if (cached === undefined) {
-			const kc = new KubeConfig();
-			kc.loadFromDefault();
-			cached = kc.makeApiClient(CoreV1Api);
-		}
-		return cached;
-	};
-}
+export { defaultCoreApiFactory } from "./core-api-factory.ts";
 
 /** Bun install cache outside the workspace so `git add .` never sweeps it (§6.1). */
 const BUN_INSTALL_CACHE_DIR = "/tmp/bun-install-cache";
@@ -224,9 +228,12 @@ export class K8sProvider implements RuntimeProvider {
 		const env = this.deps.serverEnv ?? process.env;
 		const config = resolveK8sPodConfig(env, spec.projectResources);
 		const podName = podNameForRun(spec.runId);
+		// warren-c9ac (window 1): mint the init-container clone credential at
+		// pod-spec time so an App-mode token is fresh for the clone.
+		const cloneToken = await cloneTokenEnvOverlay(spec, this.deps.mintGitCredential);
 		const composedSpec: RunSpec = {
 			...spec,
-			env: this.composeAgentEnv(spec.env, config),
+			env: this.composeAgentEnv({ ...spec.env, ...cloneToken }, config),
 		};
 
 		// Admission control (warren-b6f2, design §3.3): refuse the dispatch BEFORE
@@ -463,10 +470,15 @@ export class K8sProvider implements RuntimeProvider {
 	 * authenticated callback AFTER the agent exits), NOT the agent container's
 	 * static env — a compromised agent never holds the push token (blast-radius
 	 * minimization). warren-4e1c: the domain-minted `intent.gitToken` wins; absent,
-	 * sourced from `WARREN_GIT_TOKEN` (falling back to `GITHUB_TOKEN`). */
+	 * the static env fallback is gated on `allowStaticPushTokenFallback` (OFF under
+	 * App mode — warren-c9ac, `./git-tokens.ts`). */
 	finalize(handle: RunHandle, intent: FinalizeIntent): Promise<FinalizeResult> {
 		const env = this.deps.serverEnv ?? process.env;
-		const gitToken = intent.gitToken ?? this.resolvePushToken(env);
+		const gitToken = resolveK8sPushToken({
+			intentToken: intent.gitToken,
+			env,
+			allowStaticEnv: this.deps.allowStaticPushTokenFallback ?? true,
+		});
 		const budgets = resolveFinalizeBudgets(env, {
 			timeoutMs: this.deps.finalizeTimeoutMs, // warren-fd08: env-tunable, explicit dep wins
 			podPollMs: this.deps.finalizePodPollMs,
@@ -478,19 +490,6 @@ export class K8sProvider implements RuntimeProvider {
 			...budgets,
 			...(this.deps.finalizeSetTimer !== undefined ? { setTimer: this.deps.finalizeSetTimer } : {}),
 		});
-	}
-
-	/**
-	 * Resolve the short-lived git push credential for the in-pod finalize:
-	 * `WARREN_GIT_TOKEN` (the operator's push token), falling back to
-	 * `GITHUB_TOKEN` (design §6.3 maps the Fly `GITHUB_TOKEN` secret onto the
-	 * control plane + init container). Blank ⇒ `undefined` (public repos push
-	 * anonymously, matching `workspace-init`'s optional-token posture).
-	 */
-	private resolvePushToken(env: EnvLike): string | undefined {
-		const raw = env.WARREN_GIT_TOKEN ?? env.GITHUB_TOKEN;
-		const trimmed = raw?.trim();
-		return trimmed !== undefined && trimmed !== "" ? trimmed : undefined;
 	}
 
 	/**
