@@ -9,6 +9,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { BurrowClient } from "../burrow-client/index.ts";
 import { openDatabase, type WarrenDb } from "../db/client.ts";
 import { createRepos, type Repos } from "../db/repos/index.ts";
+import { FakeForge } from "../forge/fake/fake-forge.ts";
 import { RunEventBroker } from "../runs/index.ts";
 import { resolveRuntimeProvider } from "../runtime/registry.ts";
 import { bearerAuth, NO_AUTH } from "./auth.ts";
@@ -47,6 +48,7 @@ async function depsFor(repos: Repos): Promise<ServerDeps> {
 	return {
 		repos,
 		runtimeProvider: resolveRuntimeProvider({ burrowClient: () => burrowClient }),
+		forge: new FakeForge(),
 		broker,
 		bridges: createBridgeRegistry({
 			repos,

@@ -7,6 +7,7 @@
 
 import type { AnyWarrenDb } from "../../db/client.ts";
 import type { Repos } from "../../db/repos/index.ts";
+import type { Forge } from "../../forge/contract.ts";
 import type { MetricsRegistry } from "../../observability/metrics-registry.ts";
 import type { PreviewAuth } from "../../preview/cookie.ts";
 import type { loadPreviewEvictionConfigFromEnv } from "../../preview/eviction/index.ts";
@@ -43,6 +44,12 @@ export interface BuildServerDepsInput {
 	 * second instance. Under `local` it is the burrow-backed `LocalProvider`.
 	 */
 	readonly runtimeProvider: RuntimeProvider;
+	/**
+	 * The forge resolved ONCE at boot (`resolveForge`, warren-6c4c) — the same
+	 * composition-point posture as `runtimeProvider` above. Handlers mint
+	 * per-spawn git credentials through this single instance.
+	 */
+	readonly forge: Forge;
 	/**
 	 * Provider-neutral preview sidecar resolver (warren-e24d), gated on the
 	 * runtime's preview-port capability at boot. Threaded onto `ServerDeps` for
@@ -104,6 +111,7 @@ export function buildServerDeps(input: BuildServerDepsInput): ServerDeps {
 		repos,
 		db,
 		runtimeProvider,
+		forge,
 		burrowProbe,
 		broker,
 		bridges,
@@ -143,6 +151,7 @@ export function buildServerDeps(input: BuildServerDepsInput): ServerDeps {
 		// drizzle adapter or a repo out of `deps.db` per request.
 		...createDbSeams(db),
 		runtimeProvider,
+		forge,
 		...(burrowProbe !== undefined ? { burrowProbe } : {}),
 		salvageDir,
 		broker,

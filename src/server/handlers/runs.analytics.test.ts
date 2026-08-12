@@ -3,6 +3,7 @@ import { BurrowClient } from "../../burrow-client/index.ts";
 import { openDatabase, type WarrenDb } from "../../db/client.ts";
 import { createRepos, type Repos } from "../../db/repos/index.ts";
 import type { RunFailureReason, RunState } from "../../db/schema.ts";
+import { FakeForge } from "../../forge/fake/fake-forge.ts";
 import { RunEventBroker } from "../../runs/index.ts";
 import { resolveRuntimeProvider } from "../../runtime/registry.ts";
 import { NO_AUTH } from "../auth.ts";
@@ -18,6 +19,7 @@ function depsFor(repos: Repos): ServerDeps {
 	return {
 		repos,
 		runtimeProvider: resolveRuntimeProvider({ burrowClient: () => client }),
+		forge: new FakeForge(),
 		broker,
 		bridges: createBridgeRegistry({
 			repos,

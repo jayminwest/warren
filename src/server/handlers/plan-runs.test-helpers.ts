@@ -1,6 +1,7 @@
 import { BurrowClient } from "../../burrow-client/index.ts";
 import { openDatabase, type WarrenDb } from "../../db/client.ts";
 import { createRepos, type Repos } from "../../db/repos/index.ts";
+import { FakeForge } from "../../forge/fake/fake-forge.ts";
 import type { SpawnFn, SpawnOptions, SpawnResult } from "../../projects/clone.ts";
 import { RunEventBroker } from "../../runs/index.ts";
 import { resolveRuntimeProvider } from "../../runtime/registry.ts";
@@ -96,6 +97,7 @@ export async function depsFor(input: BuildDepsInput): Promise<ServerDeps> {
 	return {
 		repos: input.repos,
 		runtimeProvider: resolveRuntimeProvider({ burrowClient: () => pool }),
+		forge: new FakeForge(),
 		broker,
 		bridges:
 			input.bridges ??

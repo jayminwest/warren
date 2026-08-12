@@ -31,6 +31,7 @@ import { isTerminalRunState } from "../../core/wire.ts";
 import { openDatabase } from "../../db/client.ts";
 import { DrizzleAdapter } from "../../db/repos/drizzle-adapter.ts";
 import { createRepos } from "../../db/repos/index.ts";
+import { resolveForge } from "../../forge/registry.ts";
 import {
 	loadPreviewEvictionConfigFromEnv,
 	startPreviewEvictionWorker,
@@ -167,6 +168,8 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 	});
 
 	const autoOpenPr = loadAutoOpenPrConfigFromEnv(env);
+	// warren-6c4c: resolve the forge ONCE (runtimeProvider posture); ServerDeps.forge has the doc.
+	const forge = resolveForge({}, env);
 	if (autoOpenPr.enabled && autoOpenPr.token === "") {
 		logger.warn(
 			{},
@@ -219,11 +222,7 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 	//
 	// warren-c531: booted HERE (before `bootBridges`) so the runtime provider can
 	// be resolved once and threaded into the bridge registry, the run-state
-	// poller, and the watchdog — all of which run before `buildServerDeps`. Until
-	// this move, the provider was resolved late (in `buildServerDeps`) and those
-	// background paths defaulted to the burrow-backed `LocalProvider`, so under
-	// `WARREN_RUNTIME=k8s` the bridge/poller spoke burrow directly and never
-	// streamed pod-log events / reconciled terminal pod status.
+	// poller, and the watchdog — all of which run before `buildServerDeps`.
 	const k8sRuntime = bootK8sRuntime({ env, metrics: metricsRegistry, logger });
 	if (k8sRuntime !== undefined) {
 		logger.info({}, "k8s runtime: pod-watcher + pod-GC started");
@@ -388,8 +387,9 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 	const deps = buildServerDeps({
 		repos,
 		db,
-		// warren-c531: the provider resolved once above; deps re-uses it.
+		// warren-c531 / warren-6c4c: provider + forge resolved once above; deps re-uses them.
 		runtimeProvider,
+		forge,
 		// warren-f796: local-topology `/readyz` burrow probe (absent under k8s).
 		...(localBackend !== undefined ? { burrowProbe: localBackend.probeBurrow } : {}),
 		broker,

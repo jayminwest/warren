@@ -6,6 +6,7 @@ import { BurrowClient } from "../burrow-client/index.ts";
 import { ValidationError } from "../core/errors.ts";
 import { openDatabase, type WarrenDb } from "../db/client.ts";
 import { createRepos, type Repos } from "../db/repos/index.ts";
+import { FakeForge } from "../forge/fake/fake-forge.ts";
 import type { SpawnFn } from "../projects/clone.ts";
 import { RunEventBroker } from "../runs/index.ts";
 import { checkBurrowPoolReachable } from "../runtime/local/diagnostics/burrow.ts";
@@ -66,6 +67,7 @@ async function depsFor(
 		repos,
 		...(overrides.db !== undefined ? { db: overrides.db } : {}),
 		runtimeProvider: resolveRuntimeProvider({ burrowClient: () => burrowClient }),
+		forge: new FakeForge(),
 		// warren-f796: the readyz burrow probe is a boot-wired thunk (LocalBootBackend).
 		burrowProbe: () => checkBurrowPoolReachable(burrowClient),
 		broker,

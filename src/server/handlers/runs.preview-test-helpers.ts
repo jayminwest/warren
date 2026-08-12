@@ -1,6 +1,7 @@
 import { BurrowClient } from "../../burrow-client/index.ts";
 import type { AnyWarrenDb } from "../../db/client.ts";
 import type { Repos } from "../../db/repos/index.ts";
+import { FakeForge } from "../../forge/fake/fake-forge.ts";
 import type { PreviewAuth } from "../../preview/cookie.ts";
 import { RunEventBroker } from "../../runs/index.ts";
 import { resolveRuntimeProvider } from "../../runtime/registry.ts";
@@ -48,6 +49,7 @@ export async function depsFor(
 	const deps: ServerDeps = {
 		repos,
 		runtimeProvider: resolveRuntimeProvider({ burrowClient: () => burrowClient }),
+		forge: new FakeForge(),
 		broker,
 		bridges,
 		projectsConfig: { root: "/tmp/projects", gitBinary: "git" },

@@ -12,6 +12,7 @@
 import type { AnyWarrenDb } from "../db/client.ts";
 import type { DrizzleAdapter } from "../db/repos/drizzle-adapter.ts";
 import type { Repos } from "../db/repos/index.ts";
+import type { Forge } from "../forge/contract.ts";
 import type { PreviewAuth } from "../preview/cookie.ts";
 import type { RunPreviewsRepo } from "../preview/eviction/types.ts";
 import type { PreviewProxyHandler } from "../preview/proxy/types.ts";
@@ -163,6 +164,14 @@ export interface ServerDeps {
 	 * `WARREN_RUNTIME`). REQUIRED (warren-f796) — handlers route through it, no
 	 * burrow-client fallback (`local` ⇒ LocalProvider, `k8s` ⇒ K8sProvider). */
 	readonly runtimeProvider: RuntimeProvider;
+	/**
+	 * Boot-resolved forge (`resolveForge` in `src/forge/registry.ts`, honoring
+	 * `WARREN_FORGE`), resolved ONCE in `bootServer` (warren-6c4c) and threaded
+	 * here exactly like `runtimeProvider`. REQUIRED. Handlers mint per-spawn git
+	 * credentials through it (`mintGitCredentialSecret`); the handle must never
+	 * appear in a public projection.
+	 */
+	readonly forge: Forge;
 	/** Local-topology `/readyz` burrow probe (warren-f796), boot-wired by the `LocalBootBackend`; absent under `k8s`. */
 	readonly burrowProbe?: () => Promise<import("../diagnostics/checks.ts").DiagnosticCheck>;
 	/** Preview sidecar resolver (warren-e24d), gated on `previewPorts`. The local
