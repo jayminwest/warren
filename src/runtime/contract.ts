@@ -253,10 +253,9 @@ export interface TeardownResult {
  *   `HEAD` (reap's historical fallback).
  *
  * A THROW means resolution failed (a live burrow that 404'd, an API error): the
- * domain records `workspace_lookup` and skips the success pipeline, as reap did
- * when `burrows.get` threw. A `workspacePath: null` is NOT a failure — it is K8s
- * reporting a legitimately host-unreachable (but finalizable) workspace.
- */
+ * domain records `workspace_lookup` and skips the success pipeline. A
+ * `workspacePath: null` is NOT a failure — K8s reporting a legitimately
+ * host-unreachable (but finalizable) workspace. */
 export interface WorkspaceInfo {
 	workspacePath: string | null;
 	branch: string | null;
@@ -273,8 +272,8 @@ export type { ArtifactDelta, ArtifactDeltaFile } from "./finalize-deltas.ts";
  * worktree; K8s: a post-agent step inside the pod — and returns structured
  * artifacts the domain applies on its own side. The domain keeps orchestration
  * (*when* to reap, whether to open a PR, plan-run chaining); only the
- * workspace-touching execution crosses the seam. Ordering is an explicit
- * obligation: the domain calls `finalize`, then `terminate` (§6.8).
+ * workspace-touching execution crosses the seam. Ordering obligation: the
+ * domain calls `finalize`, then `terminate` (§6.8).
  */
 export interface FinalizeIntent {
 	branch: string;
@@ -282,10 +281,9 @@ export interface FinalizeIntent {
 	push: boolean;
 	/**
 	 * Which artifact sets to extract (the MERGE half — always run in reap),
-	 * named by OPAQUE provider keys (warren-df3e). The finalize contract no
-	 * longer enumerates features: the domain passes the keys it wants merged
-	 * (e.g. `["mulch", "seeds", "plans"]`) and the provider maps each to its own
-	 * merge; the returned {@link FinalizeResult.artifacts} is keyed the same way.
+	 * named by OPAQUE provider keys (warren-df3e — no feature enumeration at
+	 * the seam). The returned {@link FinalizeResult.artifacts} is keyed the
+	 * same way.
 	 */
 	artifacts: string[];
 	/**
@@ -293,28 +291,23 @@ export interface FinalizeIntent {
 	 * reap pipeline runs the tracker merges unconditionally but gates the
 	 * `chore(warren): seeds state` commit on `project.hasSeeds` — so
 	 * merge-gating (`artifacts`) and commit-gating cannot be one set. `commit`
-	 * decouples them: the provider authors the bookkeeping commit for each key
-	 * listed here, keyed off the SAME opaque artifact vocabulary as `artifacts`
-	 * (warren-357c — no feature enumeration at the seam). OMITTED ⇒ defaults to
-	 * `artifacts` (commit whatever we merge).
+	 * decouples them, keyed off the SAME opaque artifact vocabulary as
+	 * `artifacts` (warren-357c). OMITTED ⇒ defaults to `artifacts`.
 	 */
 	commit?: string[];
 	/**
 	 * Base ref for the commits-ahead / empty-push count
 	 * (`git rev-list --count <baseBranch>..HEAD`). A provider-NEUTRAL git ref
 	 * (RunSpec.baseBranch was promoted first-class, §6.2), NOT a host path.
-	 * Omitted ⇒ the count is skipped and `commitsAhead` is `null` — the same
-	 * way reap degrades when burrow exposed no base branch (warren-f3bb).
+	 * Omitted ⇒ `commitsAhead` is `null` (warren-f3bb).
 	 */
 	baseBranch?: string;
 	/**
 	 * SEAM SIGNAL (mirrors `RunSpec.hostClonePathHint`): the host path of the
-	 * project clone the LocalProvider merges each tracker INTO — a host path
-	 * with no provider-neutral home. REQUIRED by the burrow backend whenever
-	 * `artifacts` is non-empty (it does the merge host-side against the shared
-	 * disk, exactly as reap does today); the K8s backend IGNORES it (the in-pod
-	 * finalize has no clone — it emits the deltas above and the control plane
-	 * applies them, plan step 20).
+	 * project clone the LocalProvider merges each tracker INTO. REQUIRED by the
+	 * burrow backend whenever `artifacts` is non-empty; the K8s backend IGNORES
+	 * it (the in-pod finalize has no clone — it emits the deltas above and the
+	 * control plane applies them, plan step 20).
 	 */
 	projectClonePathHint?: string;
 	/**
@@ -331,6 +324,13 @@ export interface FinalizeIntent {
 	 * project it.
 	 */
 	resetSeededPaths?: ReadonlyArray<{ path: string; contents: string }>;
+	/**
+	 * Per-spawn minted git credential for `branch_push` (warren-4e1c, forge
+	 * contract §4.2 — minted via `mintGitCredentialSecret` immediately before
+	 * `finalize`, never held on a config object). LocalProvider splices it into
+	 * the push's `GIT_CONFIG_*` env; K8s prefers it over the env-derived token.
+	 * Undefined ⇒ anonymous push. */
+	gitToken?: string;
 }
 
 /**

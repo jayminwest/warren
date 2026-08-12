@@ -225,6 +225,29 @@ describe("finalize — stage trail + push reporting", () => {
 		expect(result.prBranch).toBe("warren/run-1");
 	});
 
+	test("the push spawns with the intent's minted credential as GIT_CONFIG_* env (warren-4e1c)", async () => {
+		const fs = fakeFs(fullSeed());
+		const exec = fakeExec({ revListCount: "3" });
+		const p = await provider({ fs, exec, seedsPlansBody: "" });
+		const result = await p.finalize(HANDLE, intent({ gitToken: "ghp_pushsecret" }));
+		expect(result.pushed).toBe(true);
+		const push = exec.calls.find((c) => c.cmd === "git" && c.args[0] === "push");
+		expect(push?.env?.GIT_CONFIG_COUNT).toBe("1");
+		expect(push?.env?.GIT_CONFIG_KEY_0).toBe(
+			"url.https://x-access-token:ghp_pushsecret@github.com/.insteadOf",
+		);
+		expect(push?.env?.GIT_CONFIG_VALUE_0).toBe("https://github.com/");
+	});
+
+	test("no intent credential keeps the push anonymous (empty env overrides)", async () => {
+		const fs = fakeFs(fullSeed());
+		const exec = fakeExec({ revListCount: "3" });
+		const p = await provider({ fs, exec, seedsPlansBody: "" });
+		await p.finalize(HANDLE, intent());
+		const push = exec.calls.find((c) => c.cmd === "git" && c.args[0] === "push");
+		expect(push?.env).toEqual({});
+	});
+
 	test("empty push: zero commits ahead → emptyPush true, prBranch null", async () => {
 		const fs = fakeFs(fullSeed());
 		const p = await provider({ fs, exec: fakeExec({ revListCount: "0" }) });

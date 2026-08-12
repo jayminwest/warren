@@ -39,6 +39,7 @@ import { mirrorPlans, mirrorSeeds } from "../../runs/reap/seeds.ts";
 import { stageSeedsForCommit } from "../../runs/reap/stage.ts";
 import type { ReapExec, ReapFs, ReapStep } from "../../runs/reap/types.ts";
 import { defaultExec, defaultFs, workspaceDirtyPaths } from "../../runs/reap/util.ts";
+import { githubCredentialGitEnv } from "../../workspace/git/credential-env.ts";
 import type {
 	ArtifactDelta,
 	ArtifactDeltaFile,
@@ -398,9 +399,13 @@ async function finalizePush(
 	}
 	const refspec = intent.branch === "" ? "HEAD" : `HEAD:${intent.branch}`;
 	try {
+		// warren-4e1c: the push authenticates with the per-spawn credential the
+		// domain minted onto the intent (forge-contract.md §4.2); empty/absent
+		// yields `{}` and anonymous push, the pre-forge behavior.
 		await exec.run("git", ["push", "origin", refspec], {
 			cwd: workspacePath,
 			timeoutMs: 60_000,
+			env: githubCredentialGitEnv(intent.gitToken),
 		});
 		trail.ok("branch_push");
 	} catch (err) {

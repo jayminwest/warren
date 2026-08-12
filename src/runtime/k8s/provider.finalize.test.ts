@@ -70,6 +70,22 @@ describe("K8sProvider.finalize — wiring", () => {
 		await expect(p).resolves.toMatchObject({ pushed: true, commitsAhead: 5 });
 	});
 
+	test("an intent-carried minted credential wins over the env-derived token (warren-4e1c)", async () => {
+		const coordinator = new FinalizeCoordinator();
+		const provider = new K8sProvider({
+			coreApi: () => fakeApi([{ metadata: { name: handle.sandboxId } }]),
+			serverEnv: { WARREN_GIT_TOKEN: "ghp_envtoken" },
+			finalizeCoordinator: coordinator,
+			finalizeSetTimer: inertTimer,
+		});
+		const p = provider.finalize(handle, { ...intent(), gitToken: "minted_per_spawn" });
+		await Promise.resolve();
+		const parked = coordinator.peekIntent(handle.runId);
+		expect(parked?.gitToken).toBe("minted_per_spawn");
+		coordinator.submit(handle.runId, parked?.attemptId ?? "", podResult());
+		await expect(p).resolves.toMatchObject({ pushed: true });
+	});
+
 	test("falls back to GITHUB_TOKEN, and omits the token when neither is set", async () => {
 		const coordinator = new FinalizeCoordinator();
 		const provider = new K8sProvider({

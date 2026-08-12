@@ -6,7 +6,15 @@
  */
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { reapRun } from "./index.ts";
-import { type Ctx, fakeBurrowClient, fakeFs, makeBurrow, reapDeps, setup } from "./test-helpers.ts";
+import {
+	type Ctx,
+	fakeBurrowClient,
+	fakeForge,
+	fakeFs,
+	makeBurrow,
+	reapDeps,
+	setup,
+} from "./test-helpers.ts";
 import type { ReapExec } from "./types.ts";
 
 /**
@@ -47,6 +55,45 @@ describe("reapRun salvage-before-destroy (warren-cd3b)", () => {
 
 	afterEach(async () => {
 		await ctx.db.close();
+	});
+
+	test("the rescue push authenticates with a per-spawn credential minted from the forge (warren-4e1c)", async () => {
+		const f = fakeFs();
+		const pushes: { args: readonly string[]; env?: Record<string, string | undefined> }[] = [];
+		const exec: ReapExec = {
+			run: async (_cmd, args, o) => {
+				if (args[0] === "push") {
+					pushes.push({ args, ...(o.env !== undefined ? { env: o.env } : {}) });
+					if ((args[2] ?? "").includes("refs/heads/warren/rescue/")) {
+						return { stdout: "", stderr: "" };
+					}
+					throw new Error("remote rejected: push protection");
+				}
+				if (args[0] === "rev-list") return { stdout: "1", stderr: "" };
+				return { stdout: "", stderr: "" };
+			},
+		};
+		const result = await reapRun({
+			runId: ctx.runId,
+			outcome: "succeeded",
+			repos: ctx.repos,
+			...reapDeps(fakeBurrowClient(makeBurrow()), { fs: f.fs, exec }),
+			broker: ctx.broker,
+			fs: f.fs,
+			exec,
+			forge: fakeForge(),
+		});
+
+		expect(result.salvageRescueRef).toBe(`warren/rescue/${ctx.runId}`);
+		// Both the finalize branch push and the rescue push minted the credential
+		// per spawn from the forge (FakeForge's static secret).
+		expect(pushes.length).toBeGreaterThanOrEqual(2);
+		for (const push of pushes) {
+			expect(push.env?.GIT_CONFIG_KEY_0).toBe(
+				"url.https://x-access-token:fake-credential@github.com/.insteadOf",
+			);
+			expect(push.env?.GIT_CONFIG_VALUE_0).toBe("https://github.com/");
+		}
 	});
 
 	test("a failed push is rescued to a rescue ref, stamped on the row, and destroy proceeds", async () => {

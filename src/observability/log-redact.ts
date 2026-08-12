@@ -65,6 +65,10 @@ export const SECRET_FIELDS = [
 	// the names so a logged SpawnOptions.env can never leak one.
 	"GIT_CONFIG_KEY_0",
 	"GIT_CONFIG_VALUE_0",
+	// warren-4e1c: the per-spawn minted push credential rides
+	// `FinalizeIntent.gitToken` / `WorkspaceSalvageInput.gitToken` — list the
+	// field name so a logged intent/salvage object can never leak one.
+	"gitToken",
 ] as const;
 
 /**

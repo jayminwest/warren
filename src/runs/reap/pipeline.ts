@@ -21,20 +21,14 @@
 import { join } from "node:path";
 import type { EventRow, ProjectRow, RunRow } from "../../db/schema.ts";
 import type { PreviewSidecarResolver } from "../../preview/launch/index.ts";
-import type {
-	FinalizeIntent,
-	FinalizeResult,
-	FinalizeStage,
-	RunHandle,
-	RuntimeProvider,
-} from "../../runtime/contract.ts";
+import type { FinalizeResult, FinalizeStage, RuntimeProvider } from "../../runtime/contract.ts";
 import { finalizeCommitStage, finalizeMergeStage } from "../../runtime/contract.ts";
 import type { BoundBridgeLogger } from "../stream/index.ts";
 import { dispatchAutoPlanRuns, hasAutoPlanRunFrontmatter, parsePlanIds } from "./auto-plan-run.ts";
 import { applyK8sCloneDeltas } from "./clone-apply.ts";
+import { runProviderFinalize } from "./finalize-intent.ts";
 import { type OpenedPr, runPrOpen } from "./pr-open.ts";
 import { runPreviewAnnotate, runPreviewLaunch } from "./preview.ts";
-import { seededArtifactResetPaths } from "./seed-reset.ts";
 import type { ReapExec, ReapFs, ReapRunInput, ReapStep } from "./types.ts";
 import { classifyEmptyPush } from "./util.ts";
 
@@ -185,32 +179,6 @@ async function snapshotBaselinePlanIds(ctx: ReapPipelineContext): Promise<Set<st
 		// Non-fatal — detection failure degrades to no auto-dispatch.
 		return null;
 	}
-}
-
-/** Build the seam handle + neutral intent, then run the §4 finalize. */
-async function runFinalize(ctx: ReapPipelineContext): Promise<FinalizeResult> {
-	const handle: RunHandle = {
-		runId: ctx.run.id,
-		sandboxId: ctx.run.burrowId as string, // non-null in the pipeline branch (reapRun guards it)
-		providerRunId: ctx.run.burrowRunId ?? "",
-	};
-	// Merges run unconditionally; COMMITS gate on project flags (warren-1f56).
-	const commit: string[] = [];
-	if (ctx.project.hasSeeds) commit.push("seeds");
-	const intent: FinalizeIntent = {
-		branch: ctx.branch ?? "",
-		push: true,
-		// Opaque artifact keys the domain asks the provider to merge (warren-df3e);
-		// the returned `FinalizeResult.artifacts` is keyed the same way.
-		artifacts: ["mulch", "seeds", "plans"],
-		commit,
-		projectClonePathHint: ctx.project.localPath,
-		// warren-8d95: reset warren-seeded artifacts to base before push so a broad
-		// agent commit can't sweep them into the PR (Article IX protected-path guard).
-		resetSeededPaths: seededArtifactResetPaths(ctx.run.renderedAgentJson),
-		...(ctx.baseBranch !== null ? { baseBranch: ctx.baseBranch } : {}),
-	};
-	return ctx.provider.finalize(handle, intent);
 }
 
 /** Re-emit finalize's collected per-record events through reap's real emit. */
@@ -489,7 +457,7 @@ export async function runReapPipeline(
 
 	let finalizeResult: FinalizeResult;
 	try {
-		finalizeResult = await runFinalize(ctx);
+		finalizeResult = await runProviderFinalize(ctx);
 	} catch (err) {
 		// The seam call should not throw on the tested paths (reapRun only runs
 		// the pipeline once the workspace resolved), but degrade to a no-op rather

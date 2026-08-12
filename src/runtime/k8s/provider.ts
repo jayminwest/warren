@@ -462,11 +462,11 @@ export class K8sProvider implements RuntimeProvider {
 	 * The short-lived git push credential rides the intent (fetched over the
 	 * authenticated callback AFTER the agent exits), NOT the agent container's
 	 * static env — a compromised agent never holds the push token (blast-radius
-	 * minimization). Sourced from `WARREN_GIT_TOKEN` (falling back to `GITHUB_TOKEN`).
-	 */
+	 * minimization). warren-4e1c: the domain-minted `intent.gitToken` wins; absent,
+	 * sourced from `WARREN_GIT_TOKEN` (falling back to `GITHUB_TOKEN`). */
 	finalize(handle: RunHandle, intent: FinalizeIntent): Promise<FinalizeResult> {
 		const env = this.deps.serverEnv ?? process.env;
-		const gitToken = this.resolvePushToken(env);
+		const gitToken = intent.gitToken ?? this.resolvePushToken(env);
 		const budgets = resolveFinalizeBudgets(env, {
 			timeoutMs: this.deps.finalizeTimeoutMs, // warren-fd08: env-tunable, explicit dep wins
 			podPollMs: this.deps.finalizePodPollMs,

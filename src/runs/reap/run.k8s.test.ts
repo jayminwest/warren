@@ -144,6 +144,46 @@ describe("reapRun under a K8s-style RuntimeProvider", () => {
 		expect(result.errors).toEqual([]);
 	});
 
+	test("the finalize intent carries a per-spawn credential minted from the forge (warren-4e1c)", async () => {
+		const branch = "warren/run-1";
+		const fake = fakeK8sProvider({ branch, finalizeResult: finalizeResultWithDeltas(branch) });
+		const e = fakeExec({ stagedDelta: true });
+
+		const result = await reapRun({
+			runId: ctx.runId,
+			outcome: "succeeded",
+			repos: ctx.repos,
+			runtimeProvider: fake.provider,
+			broker: ctx.broker,
+			fs: fakeFs().fs,
+			exec: e.exec,
+			forge: fakeForge(),
+		});
+
+		expect(result.state).toBe("succeeded");
+		// Minted from the forge (FakeForge's static secret) immediately before
+		// the finalize call — never read off a config object.
+		expect(fake.calls.lastIntent?.gitToken).toBe("fake-credential");
+	});
+
+	test("no forge on the reap input leaves the finalize intent credential-free", async () => {
+		const branch = "warren/run-1";
+		const fake = fakeK8sProvider({ branch, finalizeResult: finalizeResultWithDeltas(branch) });
+		const e = fakeExec({ stagedDelta: true });
+
+		await reapRun({
+			runId: ctx.runId,
+			outcome: "succeeded",
+			repos: ctx.repos,
+			runtimeProvider: fake.provider,
+			broker: ctx.broker,
+			fs: fakeFs().fs,
+			exec: e.exec,
+		});
+
+		expect(fake.calls.lastIntent && "gitToken" in fake.calls.lastIntent).toBe(false);
+	});
+
 	test("applies finalize mirror deltas to the project clone (leg 2)", async () => {
 		const branch = "warren/run-1";
 		const fake = fakeK8sProvider({ branch, finalizeResult: finalizeResultWithDeltas(branch) });

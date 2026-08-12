@@ -25,6 +25,7 @@
  */
 
 import { rescueBranchFor, salvageBundlePath } from "../../runtime/salvage.ts";
+import { githubCredentialGitEnv } from "../../workspace/git/credential-env.ts";
 import type { ReapExec, ReapFs } from "./types.ts";
 
 export interface WorkspaceSalvageInput {
@@ -34,6 +35,14 @@ export interface WorkspaceSalvageInput {
 	readonly baseBranch: string | null;
 	/** Durable dir for the bundle capture; absent ⇒ only the rescue ref is tried. */
 	readonly salvageDir?: string;
+	/**
+	 * Per-spawn minted git credential for the rescue-ref push (warren-4e1c,
+	 * forge-contract.md §4.2 — minted by the caller immediately before this
+	 * call via `mintGitCredentialSecret`, never held on a config object).
+	 * Undefined ⇒ anonymous push, the pre-forge behavior for a forge that owns
+	 * no credential for the URL.
+	 */
+	readonly gitToken?: string;
 	readonly exec: ReapExec;
 	readonly fs: ReapFs;
 }
@@ -69,6 +78,7 @@ export async function salvageWorkspace(
 		await input.exec.run("git", ["push", "origin", `HEAD:refs/heads/${branch}`], {
 			cwd: input.workspacePath,
 			timeoutMs: 60_000,
+			env: githubCredentialGitEnv(input.gitToken),
 		});
 		rescueRef = branch;
 	} catch (err) {

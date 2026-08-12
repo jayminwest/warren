@@ -48,6 +48,36 @@ describe("salvageWorkspace (warren-cd3b)", () => {
 		expect(calls.find((c) => c.args[0] === "bundle")).toBeUndefined();
 	});
 
+	test("the rescue push carries the minted credential as GIT_CONFIG_* env (warren-4e1c)", async () => {
+		const envs: (Record<string, string | undefined> | undefined)[] = [];
+		const exec: ReapExec = {
+			run: async (_cmd, _args, opts) => {
+				envs.push(opts.env);
+				return { stdout: "", stderr: "" };
+			},
+		};
+		const out = await salvageWorkspace({ ...input, exec, gitToken: "ghp_rescue" });
+		expect(out.rescueRef).toBe("warren/rescue/run_x");
+		expect(envs[0]?.GIT_CONFIG_COUNT).toBe("1");
+		expect(envs[0]?.GIT_CONFIG_KEY_0).toBe(
+			"url.https://x-access-token:ghp_rescue@github.com/.insteadOf",
+		);
+		expect(envs[0]?.GIT_CONFIG_VALUE_0).toBe("https://github.com/");
+	});
+
+	test("no gitToken keeps the rescue push anonymous (empty env overrides)", async () => {
+		const envs: (Record<string, string | undefined> | undefined)[] = [];
+		const exec: ReapExec = {
+			run: async (_cmd, _args, opts) => {
+				envs.push(opts.env);
+				return { stdout: "", stderr: "" };
+			},
+		};
+		const out = await salvageWorkspace({ ...input, exec });
+		expect(out.rescueRef).toBe("warren/rescue/run_x");
+		expect(envs[0]).toEqual({});
+	});
+
 	test("a rejected rescue push falls through to the durable bundle", async () => {
 		const { exec, calls } = fakeExec({ failPush: true });
 		const out = await salvageWorkspace({ ...input, exec });

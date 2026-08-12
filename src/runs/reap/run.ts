@@ -1,4 +1,5 @@
 import type { EventRow, RunFailureReason, RunTerminalState } from "../../db/schema.ts";
+import { mintGitCredentialSecret } from "../../forge/credentials.ts";
 import type { RunHandle, RuntimeProvider, WorkspaceInfo } from "../../runtime/contract.ts";
 import { lifecycleBus } from "../lifecycle-bus.ts";
 import { bindBridgeLogger } from "../stream/index.ts";
@@ -233,11 +234,24 @@ export async function reapRun(input: ReapRunInput): Promise<ReapRunResult> {
 		}
 	}
 	if (state.finalizeFailed && workspacePath !== null) {
+		// warren-4e1c: mint the rescue-push credential immediately before the
+		// salvage spawn (forge-contract.md §4.2 — minted, never held). A mint
+		// failure is recorded and degrades to an anonymous push (which fails
+		// closed on a private repo) rather than skipping the salvage.
+		let gitToken: string | undefined;
+		if (input.forge !== undefined && project !== null) {
+			try {
+				gitToken = await mintGitCredentialSecret(input.forge, project.gitUrl);
+			} catch (err) {
+				await fail("branch_push", err);
+			}
+		}
 		salvage = await salvageWorkspace({
 			runId: run.id,
 			workspacePath,
 			baseBranch,
 			...(input.salvageDir !== undefined ? { salvageDir: input.salvageDir } : {}),
+			...(gitToken !== undefined ? { gitToken } : {}),
 			exec,
 			fs,
 		});

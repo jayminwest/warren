@@ -42,7 +42,9 @@ import {
 	warrenCommitIdentityArgs,
 	warrenCommitIdentityEnv,
 } from "../../bot-identity.ts";
+import { mintGitCredentialSecret } from "../../forge/credentials.ts";
 import type { FinalizeResult } from "../../runtime/contract.ts";
+import { githubCredentialGitEnv } from "../../workspace/git/credential-env.ts";
 import { hasAutoPlanRunFrontmatter } from "./auto-plan-run.ts";
 import type { ReapPipelineContext, ReapPipelineState } from "./pipeline.ts";
 
@@ -188,10 +190,18 @@ export async function pushCloneDeltasToOrigin(
 	ref: string,
 ): Promise<boolean> {
 	try {
+		// warren-4e1c: per-spawn minted credential (forge-contract.md §4.2 —
+		// minted HERE, immediately before the push spawn, never held). A mint
+		// failure throws inside this try and degrades to `clone_apply_push` +
+		// suppressed auto-dispatch, exactly like a rejected push.
+		const secret =
+			ctx.input.forge !== undefined
+				? await mintGitCredentialSecret(ctx.input.forge, ctx.project.gitUrl)
+				: undefined;
 		await ctx.exec.run("git", ["push", "origin", `HEAD:${ref}`], {
 			cwd: ctx.project.localPath,
 			timeoutMs: PUSH_TIMEOUT_MS,
-			env: gitRepoContextScrubEnv(),
+			env: { ...gitRepoContextScrubEnv(), ...githubCredentialGitEnv(secret) },
 		});
 		await ctx.emit("reap.clone_deltas_pushed", { ref });
 		return true;

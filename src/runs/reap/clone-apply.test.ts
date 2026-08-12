@@ -3,10 +3,12 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { WARREN_BOT_IDENTITY } from "../../bot-identity.ts";
+import type { Forge } from "../../forge/contract.ts";
 import type { FinalizeResult } from "../../runtime/contract.ts";
 import { assertFixtureHermetic, gitFixtureEnv } from "../../workspace/git/test-fixture.ts";
-import { applyCloneDeltas } from "./clone-apply.ts";
+import { applyCloneDeltas, pushCloneDeltasToOrigin } from "./clone-apply.ts";
 import { createPipelineState, type ReapPipelineContext } from "./pipeline.ts";
+import { fakeForge, stubForge } from "./test-helpers.ts";
 import type { ReapStep } from "./types.ts";
 import { defaultExec, defaultFs } from "./util.ts";
 
@@ -243,5 +245,81 @@ describe("applyCloneDeltas (leg 2, real git clone)", () => {
 		expect(state2.cloneDeltasApplied).toBe(false);
 		const secondHead = (await git(dir, "rev-parse", "HEAD")).trim();
 		expect(secondHead).toBe(firstHead);
+	});
+});
+
+describe("pushCloneDeltasToOrigin (warren-486c durability + warren-4e1c credential)", () => {
+	/** Recording exec — the push never touches a real remote. */
+	function recordingExec(opts: { failPush?: boolean } = {}) {
+		const calls: { args: readonly string[]; env?: Record<string, string | undefined> }[] = [];
+		const exec: ReapPipelineContext["exec"] = {
+			run: async (_cmd, args, o) => {
+				calls.push({ args, ...(o.env !== undefined ? { env: o.env } : {}) });
+				if (opts.failPush === true && args[0] === "push") throw new Error("push declined");
+				return { stdout: "", stderr: "" };
+			},
+		};
+		return { exec, calls };
+	}
+
+	function pushCtx(
+		exec: ReapPipelineContext["exec"],
+		failed: { step: ReapStep; message: string }[],
+		forge?: Forge,
+	): ReapPipelineContext {
+		return {
+			input: { ...(forge !== undefined ? { forge } : {}) },
+			project: {
+				localPath: "/data/projects/x/y",
+				gitUrl: "https://github.com/x/y.git",
+			},
+			exec,
+			emit: async () => ({}) as never,
+			fail: async (step: ReapStep, err: unknown) => {
+				failed.push({ step, message: err instanceof Error ? err.message : String(err) });
+			},
+		} as unknown as ReapPipelineContext;
+	}
+
+	test("the mirror push carries a credential minted from the forge as GIT_CONFIG_* env", async () => {
+		const { exec, calls } = recordingExec();
+		const failed: { step: ReapStep; message: string }[] = [];
+		const ok = await pushCloneDeltasToOrigin(pushCtx(exec, failed, fakeForge()), "main");
+		expect(ok).toBe(true);
+		expect(failed).toEqual([]);
+		const push = calls.find((c) => c.args[0] === "push");
+		expect(push?.args).toEqual(["push", "origin", "HEAD:main"]);
+		// Minted from the forge (FakeForge's static secret), per-spawn — never held.
+		expect(push?.env?.GIT_CONFIG_COUNT).toBe("1");
+		expect(push?.env?.GIT_CONFIG_KEY_0).toBe(
+			"url.https://x-access-token:fake-credential@github.com/.insteadOf",
+		);
+		expect(push?.env?.GIT_CONFIG_VALUE_0).toBe("https://github.com/");
+		// The repo-context scrub still rides alongside the credential.
+		expect(push?.env?.GIT_DIR).toBeUndefined();
+		expect(push?.env && "GIT_DIR" in push.env).toBe(true);
+	});
+
+	test("no forge on the reap input keeps the mirror push anonymous", async () => {
+		const { exec, calls } = recordingExec();
+		const failed: { step: ReapStep; message: string }[] = [];
+		const ok = await pushCloneDeltasToOrigin(pushCtx(exec, failed), "main");
+		expect(ok).toBe(true);
+		const push = calls.find((c) => c.args[0] === "push");
+		expect(push?.env && "GIT_CONFIG_COUNT" in push.env).toBe(false);
+	});
+
+	test("a mint failure folds into clone_apply_push and suppresses the push", async () => {
+		const { exec, calls } = recordingExec();
+		const failed: { step: ReapStep; message: string }[] = [];
+		const forge = stubForge({
+			gitCredential: () =>
+				Promise.resolve({ ok: false, error: { kind: "unauthorized", detail: "key revoked" } }),
+		});
+		const ok = await pushCloneDeltasToOrigin(pushCtx(exec, failed, forge), "main");
+		expect(ok).toBe(false);
+		expect(calls.find((c) => c.args[0] === "push")).toBeUndefined();
+		expect(failed.map((f) => f.step)).toEqual(["clone_apply_push"]);
+		expect(failed[0]?.message).toContain("key revoked");
 	});
 });
