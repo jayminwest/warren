@@ -12,9 +12,14 @@
  * pair against a bespoke fixture committed under `ctx.tmp`. The shared
  * sample-source isn't reused — scenario 22's seed-extension roundtrip
  * already mutates that path, and the harness boots one warren for every
- * scenario; isolating into a per-scenario stack keeps the GH-merge
- * fetch override (`WARREN_GH_FETCH_OVERRIDE=merged`) scoped to this
- * scenario alone.
+ * scenario; isolating into a per-scenario stack keeps the forge
+ * selection (`WARREN_FORGE=fake`) scoped to this scenario alone.
+ *
+ * warren-2600: the retired `WARREN_GH_FETCH_OVERRIDE=merged` stub is
+ * gone. The project registers on a FakeForge-owned `fake://` URL and the
+ * harness drives the merge transitions GitHub's auto-merge workflow owns
+ * in production by flipping open PRs to `merged` in the fake's state
+ * file (lib/fake-forge.ts).
  *
  * The fixture commits real `.seeds/{config.yaml, issues.jsonl, plans.jsonl}`
  * rows (mirrors scenario 22's posture of writing files rather than shelling
@@ -49,6 +54,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { AcceptanceError, assertEqual, assertTrue, type Scenario } from "../lib/assert.ts";
+import { startFakeForgeAutoMerge } from "../lib/fake-forge.ts";
 import { WarrenHttp } from "../lib/http.ts";
 import { type BootHandle, bootInProc } from "../lib/inproc.ts";
 import {
@@ -69,12 +75,13 @@ import {
 export const scenario: Scenario = {
 	id: "26",
 	title:
-		"Plan-run roundtrip — coordinator dispatches three children, merges via stubbed GH PR; second POST resumes from the next open seed",
+		"Plan-run roundtrip — coordinator dispatches three children, merges via FakeForge PRs; second POST resumes from the next open seed",
 	modes: ["in-proc"],
 	async run(ctx) {
 		const scenarioRoot = await mkdtemp(join(tmpdir(), "warren-acceptance-26-"));
 		const fixturePath = join(scenarioRoot, "fixture");
 		const gitConfigPath = join(scenarioRoot, "git-config");
+		const fakeStateFile = join(scenarioRoot, "fake-forge-state.json");
 
 		await buildPlanRunFixture({
 			fixturePath,
@@ -85,6 +92,10 @@ export const scenario: Scenario = {
 		});
 
 		let handle: BootHandle | undefined;
+		// GitHub's auto-merge workflow, acceptance edition: every PR the
+		// fake records as open flips to merged on the next tick, so the
+		// coordinator's merge gate advances each child in turn.
+		const autoMerge = startFakeForgeAutoMerge(fakeStateFile);
 		try {
 			handle = await bootInProc({
 				tmpRoot: join(scenarioRoot, "warren"),
@@ -93,10 +104,11 @@ export const scenario: Scenario = {
 				gitConfigPath,
 				extraEnv: {
 					WARREN_STUB_SLEEP_MS: "0",
-					// Stub every GitHub REST call so reap's pr_open + the
-					// coordinator's checkPullRequestMerged short-circuit to a
-					// canned `merged` shape — no real GH fixture needed.
-					WARREN_GH_FETCH_OVERRIDE: "merged",
+					// FakeForge owns the project's fake:// URL: reap's pr_open
+					// records into the state file and the coordinator's merge
+					// gate polls it — no GH fixture, no fetch override.
+					WARREN_FORGE: "fake",
+					WARREN_FAKE_FORGE_STATE_FILE: fakeStateFile,
 					// Coordinator tick fires every 1s so the three-child
 					// roundtrip lands inside PLAN_DEADLINE_MS.
 					WARREN_PLAN_RUN_TICK_MS: "1000",
@@ -176,9 +188,9 @@ export const scenario: Scenario = {
 			}
 
 			// Every child merges through the polled-PR path: seed-extension
-			// stamping (warren-fcc9) guarantees a bookkeeping commit, so the
-			// GH-override pr_open stub populates prUrl on all three runs
-			// (warren-e376 — see the header note).
+			// stamping (warren-fcc9) guarantees a bookkeeping commit, so
+			// FakeForge's pr_open records a PR and populates prUrl on all
+			// three runs (warren-e376 — see the header note).
 			for (const seedId of [SEED_A, SEED_B, SEED_C]) {
 				const child = finished.children.find((c) => c.seedId === seedId);
 				if (child === undefined) {
@@ -189,8 +201,8 @@ export const scenario: Scenario = {
 					throw new AcceptanceError(`first POST: no fanned-out run for ${seedId}`);
 				}
 				assertTrue(
-					typeof run.prUrl === "string" && run.prUrl.length > 0,
-					`first POST: ${seedId} run.prUrl populated by the GH-override pr_open stub`,
+					typeof run.prUrl === "string" && run.prUrl.startsWith(`${PLAN_PROJECT_URL}/pulls/`),
+					`first POST: ${seedId} run.prUrl carries the FakeForge PR ref (got ${run.prUrl})`,
 				);
 			}
 
@@ -261,6 +273,7 @@ export const scenario: Scenario = {
 				`second POST: ${SEED_B} carries runId=null (no spawn happened)`,
 			);
 		} finally {
+			autoMerge.stop();
 			if (handle !== undefined) {
 				await handle.stop().catch(() => undefined);
 			}

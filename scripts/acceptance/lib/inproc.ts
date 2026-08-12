@@ -254,7 +254,8 @@ function pickPort(): number {
 //     (lib/github.ts). Without it (and WARREN_ACCEPT_CI_FIXER_REPO) the
 //     scenario records `skipped`, never a failure.
 //   - 26 / 36 (plan-run scenarios): no real credential; they boot with
-//     WARREN_GH_FETCH_OVERRIDE=merged, which short-circuits the HTTP call.
+//     WARREN_FORGE=fake and drive merge transitions through the fake's
+//     state file (lib/fake-forge.ts, warren-2600).
 //   - 12 (supervisor-restart-budget): explicitly blanks GITHUB_TOKEN via
 //     extraEnv to keep the dev-only insteadOf rewrite out of the assertion.
 //   - everything else: auto-open-PR defaults on, but reap pr_open is
