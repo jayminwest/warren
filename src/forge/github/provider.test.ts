@@ -74,6 +74,32 @@ describe("GitHubForge.gitCredential", () => {
 });
 
 describe("GitHubForge.openPullRequest", () => {
+	test("honors the WARREN_GH_FETCH_OVERRIDE=merged acceptance seam (warren-45e6)", async () => {
+		// The seam short-circuits BEFORE the credential check and never touches
+		// fetch — a throwing fetch proves no transport happened.
+		process.env.WARREN_GH_FETCH_OVERRIDE = "merged";
+		try {
+			const forge = new GitHubForge({
+				token: "",
+				fetch: (() => {
+					throw new Error("fetch must not run under the override");
+				}) as unknown as typeof fetch,
+			});
+			const result = await forge.openPullRequest(REF, DRAFT);
+			expect(result).toEqual({
+				ok: true,
+				value: {
+					forge: "github",
+					key: "github.com/octo/widget#1",
+					number: 1,
+					webUrl: "https://github.com/octo/widget/pull/1",
+				},
+			});
+		} finally {
+			delete process.env.WARREN_GH_FETCH_OVERRIDE;
+		}
+	});
+
 	test("creates a PR and maps the response to a PullRequestRef", async () => {
 		const { forge, calls } = forgeWith([jsonResponse(201, prJson(42))]);
 		const result = await forge.openPullRequest(REF, DRAFT);
