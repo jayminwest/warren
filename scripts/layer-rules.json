@@ -106,13 +106,7 @@
 				"@octokit/core",
 				"@octokit/request"
 			],
-			"allow": [
-				{ "path": "src/forge/", "why": "the seam itself" },
-				{
-					"path": "src/ci-fixer/check-runs.ts",
-					"why": "phase-3 migration of the CI-fixer onto the Forge seam deletes this entry (warren-0b49)"
-				}
-			]
+			"allow": [{ "path": "src/forge/", "why": "the seam itself" }]
 		},
 		{
 			"name": "core-kernel-imports-nothing",

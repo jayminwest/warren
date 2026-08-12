@@ -1,20 +1,17 @@
 /**
- * GitHub check-run polling for the CI-fixer (warren-05ea).
+ * Check-run classification for the CI-fixer (warren-05ea; migrated onto the
+ * Forge seam in warren-0b49, plan pl-d1c9 step 12).
  *
- * Pure helper that fetches the check-runs for a commit ref and classifies
- * the aggregate state. The caller (the poller) decides what each shape
- * means; this module does not dispatch.
+ * Pure domain module. The transport that used to live here (the check-runs
+ * GET, the job-log fetch, the `details_url` job-id regex) now lives behind
+ * the Forge contract — `forge.listChecks` / `forge.fetchJobLogTail` — with
+ * the GitHub parsing inside `src/forge/github/provider.ts`. A check-run id
+ * never crosses the seam (forge-contract.md §0); the domain sees only the
+ * provider-neutral `CheckRun` DTO with an opaque `jobId`.
  *
- * Transport lives in `src/forge/github/` (plan pl-d1c9 step 4,
- * warren-e5d3): headers, fail-soft readers, the error classifier, and the
- * single retry policy all come from the consolidated core, and the
- * API-base literal no longer appears here. Two behavior
- * reconciliations are intended per forge-contract.md §6:
- *   - §6.1 — the shared header builder ADDS `content-type`, which this
- *     file's drifted copy omitted.
- *   - §6.5 — this file had NO retry policy; the transport core's single
- *     policy now retries transient failures (network, 5xx, 429).
- * This module holds only the domain meaning of the responses (§3).
+ * `CheckRun` is RE-EXPORTED from the contract, not redeclared — one
+ * definition, one home (the seam DTO lives in `src/forge/contract.ts`
+ * because it never crosses warren's own HTTP wire, §2.1).
  *
  * Classification rules:
  *   - `pending`  — at least one check-run is not `completed`. Wait; don't
@@ -27,18 +24,11 @@
  *                  Fix-eligible.
  *   - `no_checks` — the ref has zero check-runs (no CI configured, or
  *                  checks haven't registered yet). Not fix-eligible.
- *
- * Each failing check-run carries its `id` (the GitHub Actions job id where
- * applicable) and `detailsUrl` so the poller's log-extraction step can
- * fetch the job log or fall back to the details URL for third-party CI.
  */
 
-import { GITHUB_API_BASE } from "../forge/github/headers.ts";
-import { requestGitHub } from "../forge/github/http.ts";
-import { readJson, readText } from "../forge/github/readers.ts";
-import type { GitHubRetryOptions } from "../forge/github/retry.ts";
+import type { CheckRun } from "../forge/contract.ts";
 
-const USER_AGENT = "warren-ci-fixer";
+export type { CheckRun } from "../forge/contract.ts";
 
 /** Conclusions that count as a failure worth dispatching a fixer for. */
 const FAILURE_CONCLUSIONS: ReadonlySet<string> = new Set([
@@ -48,73 +38,6 @@ const FAILURE_CONCLUSIONS: ReadonlySet<string> = new Set([
 	"cancelled",
 	"startup_failure",
 ]);
-
-export interface CheckRun {
-	readonly id: number;
-	readonly name: string;
-	readonly status: string;
-	readonly conclusion: string | null;
-	readonly detailsUrl: string | null;
-}
-
-export interface FetchCheckRunsInput {
-	readonly owner: string;
-	readonly repo: string;
-	/** Commit SHA or branch ref the PR head points at. */
-	readonly ref: string;
-	readonly token: string;
-	readonly fetch?: typeof fetch;
-	/** Retry tuning; defaults to the transport core's single policy. */
-	readonly retry?: GitHubRetryOptions;
-}
-
-export type FetchCheckRunsResult =
-	| { readonly kind: "ok"; readonly checkRuns: readonly CheckRun[] }
-	| { readonly kind: "missing_token"; readonly message: string }
-	| { readonly kind: "http_error"; readonly status: number; readonly message: string };
-
-export async function fetchCheckRuns(input: FetchCheckRunsInput): Promise<FetchCheckRunsResult> {
-	if (input.token === "") {
-		return {
-			kind: "missing_token",
-			message: "GITHUB_TOKEN unset; cannot fetch check-runs",
-		};
-	}
-
-	const ref = encodeURIComponent(input.ref);
-	const result = await requestGitHub({
-		url: `${GITHUB_API_BASE}/repos/${input.owner}/${input.repo}/commits/${ref}/check-runs?per_page=100`,
-		method: "GET",
-		token: input.token,
-		userAgent: USER_AGENT,
-		context: "GET /check-runs",
-		...(input.fetch !== undefined ? { fetch: input.fetch } : {}),
-		...(input.retry !== undefined ? { retry: input.retry } : {}),
-	});
-
-	if (!result.ok) {
-		const error = result.error;
-		return { kind: "http_error", status: error.status, message: error.message };
-	}
-
-	const body = (await readJson(result.response)) as { check_runs?: unknown } | null;
-	const raw = Array.isArray(body?.check_runs) ? body.check_runs : [];
-	const checkRuns = raw.map(parseCheckRun).filter((c): c is CheckRun => c !== null);
-	return { kind: "ok", checkRuns };
-}
-
-function parseCheckRun(raw: unknown): CheckRun | null {
-	if (typeof raw !== "object" || raw === null) return null;
-	const obj = raw as Record<string, unknown>;
-	if (typeof obj.id !== "number") return null;
-	return {
-		id: obj.id,
-		name: typeof obj.name === "string" ? obj.name : "",
-		status: typeof obj.status === "string" ? obj.status : "",
-		conclusion: typeof obj.conclusion === "string" ? obj.conclusion : null,
-		detailsUrl: typeof obj.details_url === "string" ? obj.details_url : null,
-	};
-}
 
 export type CheckRunsVerdict = "pending" | "passing" | "failing" | "no_checks";
 
@@ -126,7 +49,10 @@ export interface ClassifyCheckRunsResult {
 
 /**
  * Classify the aggregate state of a commit's check-runs. The poller treats
- * `failing` as fix-eligible; everything else is a no-op for this tick.
+ * `failing` as fix-eligible; everything else is a no-op for this tick. The
+ * provider's `CheckSummary.conclusion` rollup deliberately has no
+ * `no_checks` arm (it reports `unknown`), so the domain classifies from
+ * `runs` directly.
  */
 export function classifyCheckRuns(checkRuns: readonly CheckRun[]): ClassifyCheckRunsResult {
 	if (checkRuns.length === 0) {
@@ -146,69 +72,13 @@ export function classifyCheckRuns(checkRuns: readonly CheckRun[]): ClassifyCheck
 }
 
 /**
- * Parse the GitHub Actions job id from a check-run's `details_url`. Actions
- * check-runs link to `.../actions/runs/<run_id>/job/<job_id>`; the trailing
- * job id is what `GET /actions/jobs/:id/logs` needs. Falls back to the
- * check-run `id` when the URL has no `job/<id>` segment (third-party CI, or a
- * malformed url) — the logs fetch then resolves against that id or degrades
- * to null, which the caller already handles.
+ * Keep the last `tailLines` lines of `text`, trimming trailing whitespace.
+ * Returns null for an effectively empty log so the caller skips the block.
+ * The forge's `fetchJobLogTail` tails BYTES (its contract unit); the
+ * domain's `logTailLines` budget is lines, so the poller fetches a generous
+ * byte window and tails to the exact line count here.
  */
-export function extractJobId(detailsUrl: string | null, fallbackId: number): number {
-	if (detailsUrl !== null) {
-		const match = /\/job\/(\d+)/.exec(detailsUrl);
-		if (match?.[1] !== undefined) {
-			const parsed = Number.parseInt(match[1], 10);
-			if (Number.isFinite(parsed)) return parsed;
-		}
-	}
-	return fallbackId;
-}
-
-export interface FetchJobLogInput {
-	readonly owner: string;
-	readonly repo: string;
-	readonly jobId: number;
-	readonly token: string;
-	readonly fetch?: typeof fetch;
-	/** Retry tuning; defaults to the transport core's single policy. */
-	readonly retry?: GitHubRetryOptions;
-}
-
-export type FetchJobLogTailFn = (
-	input: FetchJobLogInput,
-	tailLines: number,
-) => Promise<string | null>;
-
-/**
- * Fetch the tail of a GitHub Actions job log so the fixer prompt carries the
- * failure context without the multi-megabyte full log. `GET
- * /actions/jobs/:id/logs` 302-redirects to a plaintext download; fetch
- * follows the redirect and we keep the last `tailLines` lines. Returns null
- * on any failure (missing token, non-2xx — e.g. 410 for expired logs,
- * network error, empty body); `buildFixerPrompt` handles a null tail by
- * telling the agent to diagnose from the check names instead.
- */
-export async function fetchJobLogTail(
-	input: FetchJobLogInput,
-	tailLines: number,
-): Promise<string | null> {
-	if (input.token === "" || tailLines <= 0) return null;
-	const result = await requestGitHub({
-		url: `${GITHUB_API_BASE}/repos/${input.owner}/${input.repo}/actions/jobs/${input.jobId}/logs`,
-		method: "GET",
-		token: input.token,
-		userAgent: USER_AGENT,
-		context: `GET /actions/jobs/${input.jobId}/logs`,
-		...(input.fetch !== undefined ? { fetch: input.fetch } : {}),
-		...(input.retry !== undefined ? { retry: input.retry } : {}),
-	});
-	if (!result.ok) return null;
-	return tailLog(await readText(result.response), tailLines);
-}
-
-/** Keep the last `tailLines` lines of `text`, trimming trailing whitespace.
- * Returns null for an effectively empty log so the caller skips the block. */
-function tailLog(text: string, tailLines: number): string | null {
+export function tailLogLines(text: string, tailLines: number): string | null {
 	const trimmed = text.replace(/\s+$/, "");
 	if (trimmed === "") return null;
 	const lines = trimmed.split("\n");

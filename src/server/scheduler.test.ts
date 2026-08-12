@@ -6,6 +6,7 @@ import type { Burrow, Run as BurrowRun } from "@os-eco/burrow-cli";
 import { openDatabase, type WarrenDb } from "../db/client.ts";
 import { createRepos, type Repos } from "../db/repos/index.ts";
 import { agents } from "../db/schema.ts";
+import { FakeForge } from "../forge/fake/fake-forge.ts";
 import type { SpawnFn } from "../projects/clone.ts";
 import type { ProjectsConfig } from "../projects/config.ts";
 import type { SpawnRunInput, SpawnRunResult } from "../runs/index.ts";
@@ -47,6 +48,10 @@ const NOW = new Date("2026-05-11T00:05:00.000Z");
 // (warren-c531 follow-up: a dropped provider silently falls back to the
 // burrow-backed LocalProvider, which cannot spawn under WARREN_RUNTIME=k8s).
 const RUNTIME_PROVIDER = { kind: "stub" } as unknown as RuntimeProvider;
+
+// FakeForge owns only `fake://` urls, so the github.com fixtures mint no
+// credential (undefined → anonymous git) — the old empty-token passthrough.
+const FORGE = new FakeForge();
 
 describe("bootScheduler", () => {
 	let db: WarrenDb;
@@ -125,6 +130,7 @@ describe("bootScheduler", () => {
 
 		const handle = bootScheduler({
 			repos,
+			forge: FORGE,
 			runtimeProvider: RUNTIME_PROVIDER,
 			bridges: makeBridges(bridgeCalls),
 			warrenConfigs,
@@ -209,6 +215,7 @@ describe("bootScheduler", () => {
 
 		const handle = bootScheduler({
 			repos,
+			forge: FORGE,
 			runtimeProvider: RUNTIME_PROVIDER,
 			bridges: makeBridges(bridgeCalls),
 			warrenConfigs,
@@ -280,6 +287,7 @@ describe("bootScheduler", () => {
 		try {
 			const handle = bootScheduler({
 				repos,
+				forge: FORGE,
 				runtimeProvider: RUNTIME_PROVIDER,
 				bridges: makeBridges([]),
 				warrenConfigs,
@@ -308,6 +316,7 @@ describe("bootScheduler", () => {
 		const setIntervalCalls: { ms: number }[] = [];
 		const handle = bootScheduler({
 			repos,
+			forge: FORGE,
 			runtimeProvider: RUNTIME_PROVIDER,
 			bridges: makeBridges([]),
 			warrenConfigs: createWarrenConfigCache({
@@ -339,6 +348,7 @@ describe("bootScheduler", () => {
 		const clearCalls: number[] = [];
 		const handle = bootScheduler({
 			repos,
+			forge: FORGE,
 			runtimeProvider: RUNTIME_PROVIDER,
 			bridges: makeBridges([]),
 			warrenConfigs: createWarrenConfigCache({

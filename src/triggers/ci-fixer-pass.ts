@@ -19,9 +19,10 @@ import {
 } from "../ci-fixer/poller.ts";
 import type { Repos } from "../db/repos/index.ts";
 import type { ProjectRow } from "../db/schema.ts";
+import type { Forge } from "../forge/contract.ts";
 import { resolveRunBranchPrefix } from "../runs/branch.ts";
 import type { LoadedWarrenConfig } from "../warren-config/index.ts";
-import type { TickLogger } from "./tick.ts";
+import type { SchedulerNoticeGate, TickLogger } from "./tick.ts";
 
 /**
  * Spawn seam the tick hands the CI-fixer poller. The poller only carries
@@ -43,13 +44,15 @@ export type TickCiFixerSpawnFn = (input: TickCiFixerSpawnInput) => Promise<{ run
  * project's `ciFixer.enabled` is a no-op without it.
  */
 export interface TickCiFixerDeps {
-	/** `GITHUB_TOKEN`; an empty value surfaces per-PR `error` results. */
-	readonly githubToken: string;
+	/**
+	 * Boot-resolved forge (`ServerDeps.forge`, warren-0b49) — the poller reads
+	 * check runs and log tails through it, and its capability flags drive the
+	 * §5 degradations. Never a per-tick instance.
+	 */
+	readonly forge: Forge;
 	readonly spawn: TickCiFixerSpawnFn;
 	/** `WARREN_RUN_BRANCH_PREFIX` fallback used to reconstruct PR head refs. */
 	readonly runBranchPrefixDefault?: string;
-	/** Test seam for the GitHub check-runs fetch. */
-	readonly fetch?: typeof fetch;
 }
 
 export interface RunCiFixerPassInput {
@@ -59,12 +62,35 @@ export interface RunCiFixerPassInput {
 	readonly config: LoadedWarrenConfig;
 	readonly now: Date;
 	readonly logger?: TickLogger;
+	/**
+	 * Notice rate-limiter (warren-0b49, §5) — gates the
+	 * `capabilities.checkRuns === false` notice to once per project per
+	 * interval, the same precedent as the project-heal notices.
+	 */
+	readonly noticeGate?: SchedulerNoticeGate;
 }
 
 export async function runCiFixerPass(input: RunCiFixerPassInput): Promise<void> {
 	const { repos, ciFixer, project, config, now, logger } = input;
 	const settings = config.defaults?.ciFixer;
 	if (settings === undefined || !settings.enabled) return;
+
+	// §5 checkRuns degradation (warren-0b49): a forge that cannot read check
+	// runs (fine-grained PAT, §6.7) keeps the poller IDLE — no candidates
+	// enumerated, no forge calls, no dispatches — with ONE notice per project
+	// per notice-gate interval instead of a per-PR per-tick error.
+	if (!ciFixer.forge.capabilities.checkRuns) {
+		if (
+			input.noticeGate?.shouldNotify(`ci_fixer_unsupported:${project.id}`, now.getTime()) ??
+			true
+		) {
+			logger?.warn(
+				{ projectId: project.id, forge: ciFixer.forge.capabilities },
+				"scheduler.ci_fixer_unsupported",
+			);
+		}
+		return;
+	}
 
 	const candidates = await repos.runs.listPrCandidatesByProject(project.id);
 	if (candidates.length === 0) return;
@@ -91,8 +117,7 @@ export async function runCiFixerPass(input: RunCiFixerPassInput): Promise<void> 
 			cooldownMinutes: settings.cooldownMinutes,
 		},
 		branchPrefix,
-		token: ciFixer.githubToken,
-		...(ciFixer.fetch !== undefined ? { fetch: ciFixer.fetch } : {}),
+		forge: ciFixer.forge,
 		history: (prUrl) => repos.runs.fixAttemptHistoryByPrUrl(prUrl),
 		spawn,
 		now,
@@ -100,13 +125,14 @@ export async function runCiFixerPass(input: RunCiFixerPassInput): Promise<void> 
 	});
 
 	for (const result of results) {
-		await handleCiFixerResult(repos, logger, project.id, now, result);
+		await handleCiFixerResult(repos, logger, input.noticeGate, project.id, now, result);
 	}
 }
 
 async function handleCiFixerResult(
 	repos: Pick<Repos, "events">,
 	logger: TickLogger | undefined,
+	noticeGate: SchedulerNoticeGate | undefined,
 	projectId: string,
 	now: Date,
 	result: CiFixerPollResult,
@@ -120,6 +146,15 @@ async function handleCiFixerResult(
 		return;
 	}
 	if (result.kind === "skipped") {
+		// §5: `unsupported` (the poller's defensive arm — the capability
+		// early-out above is the primary one) is a warn, gated to once per
+		// project, never a per-PR per-tick log stream.
+		if (result.reason === "unsupported") {
+			if (noticeGate?.shouldNotify(`ci_fixer_unsupported:${projectId}`, now.getTime()) ?? true) {
+				logger?.warn({ projectId, prUrl: result.prUrl }, "scheduler.ci_fixer_unsupported");
+			}
+			return;
+		}
 		logger?.info(
 			{ projectId, prUrl: result.prUrl, reason: result.reason },
 			"scheduler.ci_fixer_skipped",

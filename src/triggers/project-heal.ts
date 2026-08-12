@@ -154,7 +154,13 @@ export interface ProjectCloneHealerInput {
 	readonly tracker: ProjectHealTracker;
 	readonly config: ProjectsConfig;
 	readonly spawn: SpawnFn;
-	readonly token?: string;
+	/**
+	 * Per-reclone credential mint (warren-0b49, forge-contract.md §4 —
+	 * credentials are minted, never held). Invoked immediately before the
+	 * re-clone spawns git; the boot wiring resolves it from the boot-resolved
+	 * forge via `mintGitCredentialSecret`. Absent → anonymous git.
+	 */
+	readonly mintToken?: (project: ProjectRow) => Promise<string | undefined>;
 	readonly timeoutMs?: number;
 	readonly logger?: HealLogger;
 	/** Filesystem probe — overrideable for tests. */
@@ -188,13 +194,7 @@ export function createProjectCloneHealer(input: ProjectCloneHealerInput): Ensure
 		if (!input.tracker.canAttemptReclone(project.id, nowMs)) return "skip";
 
 		try {
-			await recloneFn({
-				project,
-				config: input.config,
-				spawn: input.spawn,
-				token: input.token,
-				...(input.timeoutMs !== undefined ? { timeoutMs: input.timeoutMs } : {}),
-			});
+			await attemptReclone(input, recloneFn, project);
 			input.tracker.clearRecloneFailure(project.id);
 			input.tracker.clearNotice(noticeKey);
 			input.logger?.info(
@@ -218,4 +218,24 @@ export function createProjectCloneHealer(input: ProjectCloneHealerInput): Ensure
 			return "skip";
 		}
 	};
+}
+
+/**
+ * One re-clone attempt. §4 (warren-0b49): the credential is minted
+ * immediately before the git spawn — a short-lived (App) credential could
+ * not survive a value captured at boot.
+ */
+async function attemptReclone(
+	input: ProjectCloneHealerInput,
+	recloneFn: typeof recloneMissingProject,
+	project: ProjectRow,
+): Promise<void> {
+	const token = input.mintToken !== undefined ? await input.mintToken(project) : undefined;
+	await recloneFn({
+		project,
+		config: input.config,
+		spawn: input.spawn,
+		...(token !== undefined ? { token } : {}),
+		...(input.timeoutMs !== undefined ? { timeoutMs: input.timeoutMs } : {}),
+	});
 }

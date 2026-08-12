@@ -22,6 +22,8 @@
  */
 
 import type { Repos } from "../db/repos/index.ts";
+import type { Forge } from "../forge/contract.ts";
+import { mintGitCredentialSecret } from "../forge/credentials.ts";
 import type { SpawnFn } from "../projects/clone.ts";
 import type { ProjectsConfig } from "../projects/config.ts";
 import { spawnRun } from "../runs/index.ts";
@@ -69,16 +71,16 @@ export interface BootSchedulerInput {
 	 */
 	readonly runBranchPrefixDefault?: string;
 	/**
-	 * `GITHUB_TOKEN` for the CI-fixer poller's check-runs fetch (warren-0b75).
-	 * Resolved from the same env the reap pr-open path reads. Defaults to the
-	 * empty string; the poller surfaces per-PR `error` results when unset.
-	 * Also forwarded onto every scheduled `spawnRun` as the pre-dispatch
-	 * refresh's git credential (`SpawnRunInput.githubToken`) so cron /
-	 * scheduled-for dispatches can fetch private repos on the K8s control
-	 * plane. The acceptance seam's synthetic `stub-token` is inert there:
-	 * the harness's own `insteadOf` rules are longer-prefix and win.
+	 * Boot-resolved forge (`ServerDeps.forge`, warren-0b49 — required,
+	 * resolved ONCE at boot). Replaces the old captured `githubToken`:
+	 *   - the CI-fixer poller reads check runs / log tails through it, and
+	 *     its capability flags drive the §5 degradations;
+	 *   - the self-heal re-clone and the scheduled-dispatch refresh mint
+	 *     their git credential PER SPAWN via `mintGitCredentialSecret`
+	 *     (forge-contract.md §4 — credentials are minted, never held), so a
+	 *     short-lived App credential never has to outlive a tick loop.
 	 */
-	readonly githubToken?: string;
+	readonly forge: Forge;
 	/** Override the spawnRun seam (tests). Defaults to the live `spawnRun`. */
 	readonly spawnRunFn?: typeof spawnRun;
 	/**
@@ -121,7 +123,7 @@ export function bootScheduler(input: BootSchedulerInput): SchedulerHandle {
 		tracker: projectHealTracker,
 		config: input.projectsConfig,
 		spawn: input.projectSpawn,
-		...(input.githubToken !== undefined ? { token: input.githubToken } : {}),
+		mintToken: (project) => mintGitCredentialSecret(input.forge, project.gitUrl),
 		...(input.logger !== undefined ? { logger: input.logger } : {}),
 		...(input.cloneExists !== undefined ? { exists: input.cloneExists } : {}),
 		...(input.now !== undefined ? { now: input.now } : {}),
@@ -130,6 +132,13 @@ export function bootScheduler(input: BootSchedulerInput): SchedulerHandle {
 	const spawnDispatch: DispatchSpawnFn = async (
 		args: DispatchSpawnInput,
 	): Promise<DispatchSpawnResult> => {
+		// §4 per-spawn mint: the pre-dispatch refresh's git credential is
+		// minted from the forge immediately before the spawn, never captured
+		// at boot. An unowned URL or `no_credential` mints undefined →
+		// anonymous git, matching the old empty-token passthrough.
+		const project = await input.repos.projects.get(args.projectId);
+		const gitSecret =
+			project !== null ? await mintGitCredentialSecret(input.forge, project.gitUrl) : undefined;
 		const result = await spawnRunFn({
 			repos: input.repos,
 			runtimeProvider: input.runtimeProvider,
@@ -141,7 +150,7 @@ export function bootScheduler(input: BootSchedulerInput): SchedulerHandle {
 			...(args.maxCostUsd !== undefined ? { maxCostUsdOverride: args.maxCostUsd } : {}),
 			projectsConfig: input.projectsConfig,
 			projectSpawn: input.projectSpawn,
-			githubToken: input.githubToken,
+			githubToken: gitSecret,
 			warrenConfigs: input.warrenConfigs,
 			seedsCli: seedsDeps,
 			// warren-a0a2: forward the cron dispatcher's row-id probe so its
@@ -169,6 +178,9 @@ export function bootScheduler(input: BootSchedulerInput): SchedulerHandle {
 	const ciFixerSpawn: TickCiFixerSpawnFn = async (
 		args: TickCiFixerSpawnInput,
 	): Promise<{ runId: string }> => {
+		const project = await input.repos.projects.get(args.projectId);
+		const gitSecret =
+			project !== null ? await mintGitCredentialSecret(input.forge, project.gitUrl) : undefined;
 		const result = await spawnRunFn({
 			repos: input.repos,
 			runtimeProvider: input.runtimeProvider,
@@ -180,7 +192,7 @@ export function bootScheduler(input: BootSchedulerInput): SchedulerHandle {
 			targetBranch: args.targetBranch,
 			projectsConfig: input.projectsConfig,
 			projectSpawn: input.projectSpawn,
-			githubToken: input.githubToken,
+			githubToken: gitSecret,
 			warrenConfigs: input.warrenConfigs,
 			seedsCli: seedsDeps,
 			...(input.runBranchPrefixDefault !== undefined
@@ -206,7 +218,7 @@ export function bootScheduler(input: BootSchedulerInput): SchedulerHandle {
 		ensureProjectClone,
 		noticeGate: projectHealTracker,
 		ciFixer: {
-			githubToken: input.githubToken ?? "",
+			forge: input.forge,
 			spawn: ciFixerSpawn,
 			...(input.runBranchPrefixDefault !== undefined
 				? { runBranchPrefixDefault: input.runBranchPrefixDefault }

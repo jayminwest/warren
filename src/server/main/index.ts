@@ -301,8 +301,9 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 		projectSpawn: defaultSpawn,
 		config: schedulerConfig,
 		logger: schedulerLoggerFromPino(logger),
-		// warren-0b75: CI-fixer poller reuses the reap pr-open GITHUB_TOKEN.
-		githubToken: autoOpenPr.token,
+		// warren-0b49: the boot-resolved forge drives the CI-fixer poller and
+		// the per-spawn credential mints (§4) — no captured githubToken.
+		forge,
 		...(runBranchPrefixDefault !== undefined ? { runBranchPrefixDefault } : {}),
 		...(opts.now !== undefined ? { now: opts.now } : {}),
 	});

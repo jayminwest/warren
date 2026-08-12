@@ -264,6 +264,7 @@ async function runProjectTick(input: RunProjectTickInput): Promise<void> {
 			config,
 			now,
 			...(deps.logger !== undefined ? { logger: deps.logger } : {}),
+			...(deps.noticeGate !== undefined ? { noticeGate: deps.noticeGate } : {}),
 		});
 	}
 
