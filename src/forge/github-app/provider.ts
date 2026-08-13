@@ -113,6 +113,7 @@ export class GitHubAppForge implements Forge {
 	private readonly appKey: KeyObject;
 	private readonly fetch: typeof fetch;
 	private readonly now: (() => number) | undefined;
+	private readonly tokenSource: InstallationTokenSource;
 	private readonly transport: GitHubForge;
 	private cachedSlug: string | null = null;
 
@@ -134,15 +135,16 @@ export class GitHubAppForge implements Forge {
 		this.appKey = appKey;
 		this.fetch = options.fetch ?? globalThis.fetch;
 		this.now = options.now;
+		this.tokenSource = new InstallationTokenSource({
+			appId: options.appId,
+			privateKey: appKey,
+			installationId: options.installationId,
+			fetch: this.fetch,
+			...(options.now !== undefined ? { now: options.now } : {}),
+			...(options.expiryMarginMs !== undefined ? { expiryMarginMs: options.expiryMarginMs } : {}),
+		});
 		this.transport = new GitHubForge({
-			tokenSource: new InstallationTokenSource({
-				appId: options.appId,
-				privateKey: appKey,
-				installationId: options.installationId,
-				fetch: this.fetch,
-				...(options.now !== undefined ? { now: options.now } : {}),
-				...(options.expiryMarginMs !== undefined ? { expiryMarginMs: options.expiryMarginMs } : {}),
-			}),
+			tokenSource: this.tokenSource,
 			fetch: this.fetch,
 		});
 	}
@@ -200,6 +202,19 @@ export class GitHubAppForge implements Forge {
 				email: `${slug.value}[bot]@users.noreply.github.com`,
 			},
 		};
+	}
+
+	/**
+	 * Credential-heartbeat seam (warren-1295, ./heartbeat.ts): FORCE-mint
+	 * an installation token and report only its expiry — the secret never
+	 * crosses this seam. A successful mint is the whole liveness proof
+	 * (App keys carry no expiry, so a mint GitHub accepts is what "the
+	 * credential is alive" means). Never throws (§2.2).
+	 */
+	async probeCredential(): Promise<ForgeResult<{ expiresAt: number | null }>> {
+		const result = await this.tokenSource.mintFresh();
+		if (!result.ok) return { ok: false, error: result.error };
+		return { ok: true, value: { expiresAt: result.value.expiresAt } };
 	}
 
 	private async appSlug(): Promise<ForgeResult<string>> {

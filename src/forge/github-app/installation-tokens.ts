@@ -82,6 +82,17 @@ export class InstallationTokenSource implements GitHubForgeTokenSource {
 		this.marginMs = options.expiryMarginMs ?? INSTALLATION_TOKEN_EXPIRY_MARGIN_MS;
 	}
 
+	/**
+	 * Force a re-mint, bypassing the cache read (warren-1295). The
+	 * credential heartbeat probe (./heartbeat.ts) uses this: a cache hit
+	 * proves nothing about whether the App credential is still alive, so
+	 * the probe always trades a fresh JWT. The minted token still lands
+	 * in the cache, so a probe tick doubles as a cache warmer.
+	 */
+	async mintFresh(): Promise<ForgeResult<GitHubCredentialSecret>> {
+		return this.reMint();
+	}
+
 	async mint(): Promise<ForgeResult<GitHubCredentialSecret>> {
 		const cached = this.cached;
 		if (cached !== null && this.now() < cached.expiresAt - this.marginMs) {
