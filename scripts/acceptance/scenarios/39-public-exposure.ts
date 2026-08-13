@@ -63,6 +63,8 @@ import {
 	assertAnalyticsRollupsAbsent,
 	assertNoLeak,
 	assertPlanRunFailureReasonAbsent,
+	FLOW_PAGE_PATTERNS,
+	FLOW_ROUTE_EXPECTED_STATUS,
 } from "./39-public-exposure.leaks.ts";
 import {
 	assertBoundedReads,
@@ -234,15 +236,20 @@ async function assertNoLeakOnPublicReads(
 	const calls = publicGetCalls(ids);
 	for (const call of calls) {
 		const res = await fetch(`${base}${call.path}`);
-		if (res.status !== 200) {
+		// warren-a647: flow endpoints (the github-app callback) are probed,
+		// not skipped — a bare hit correctly answers 400 (the `state` nonce
+		// is the route's authentication), and the error body gets the same
+		// leak scan as every projection body.
+		const expected = FLOW_ROUTE_EXPECTED_STATUS[call.pattern] ?? 200;
+		if (res.status !== expected) {
 			throw new AcceptanceError(
-				`GET ${call.pattern}: expected 200 for a spectator, got ${res.status}: ${(await res.text()).slice(0, 400)}`,
+				`GET ${call.pattern}: expected ${expected} for a spectator, got ${res.status}: ${(await res.text()).slice(0, 400)}`,
 			);
 		}
 		const body = await res.text();
 		assertTrue(body.length > 0, `GET ${call.pattern}: empty body — the sweep would pass vacuously`);
 		assertNoLeak(`anonymous GET ${call.pattern}`, body);
-		debug(`scenario-39: GET ${call.pattern} clean (${body.length} bytes)`);
+		debug(`scenario-39: GET ${call.pattern} clean (${res.status}, ${body.length} bytes)`);
 	}
 
 	// The two rollup families whose names collide with public ones, checked
@@ -333,6 +340,36 @@ async function assertSecurityHeadersAndVary(
 	];
 	for (const call of publicGetCalls(ids)) {
 		const res = await fetch(`${base}${call.path}`);
+		// warren-a647: the github-app registration flow pages build their
+		// own locked-down header set (no Vary/HSTS — the body never varies
+		// by caller and `cache-control: no-store` forbids shared caching);
+		// assert THAT set here instead of the projection baseline.
+		if (FLOW_PAGE_PATTERNS.has(call.pattern)) {
+			const expected = FLOW_ROUTE_EXPECTED_STATUS[call.pattern] ?? 200;
+			assertEqual(
+				res.status,
+				expected,
+				`GET ${call.pattern} answers ${expected} for the header sweep`,
+			);
+			await res.body?.cancel();
+			for (const name of [
+				"content-security-policy",
+				"x-content-type-options",
+				"referrer-policy",
+				"x-frame-options",
+			]) {
+				assertTrue(
+					res.headers.get(name) !== null,
+					`GET ${call.pattern}: missing security header ${name}`,
+				);
+			}
+			assertTrue(
+				(res.headers.get("cache-control") ?? "").includes("no-store"),
+				`GET ${call.pattern}: no cache-control: no-store — a flow page must never be shared-cached`,
+			);
+			debug(`scenario-39: GET ${call.pattern} flow-page headers clean`);
+			continue;
+		}
 		assertEqual(res.status, 200, `GET ${call.pattern} is 200 for the header sweep`);
 		await res.body?.cancel();
 		assertTrue(

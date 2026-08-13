@@ -32,6 +32,34 @@ import {
 const FORBIDDEN_FORGE_FRAGMENTS: readonly string[] = ["fake-credential", "fake://"];
 
 /**
+ * Flow endpoints in the readable set that are NOT projections
+ * (warren-a647): `GET /github-app/callback` is GitHub's redirect target
+ * after App creation, and its authentication story is the single-use,
+ * ten-minute `state` nonce — a bare anonymous hit (no `code`/`state`)
+ * CORRECTLY answers 400 and converts nothing. The sweep therefore probes
+ * it expecting that 400 and runs the same `assertNoLeak` over the error
+ * body every other route gets — an error page is exactly where a careless
+ * implementation would echo a `state` or a token back. This is a probe,
+ * not a skip.
+ */
+export const FLOW_ROUTE_EXPECTED_STATUS: Readonly<Record<string, number>> = {
+	"/github-app/callback": 400,
+};
+
+/**
+ * Registration-flow pages whose responses build their own locked-down
+ * header set instead of the projection baseline (see
+ * `src/server/handlers/github-app.ts`): no `Vary: Authorization` because
+ * the body never varies by caller, and `cache-control: no-store` already
+ * forbids shared caching. The header sweep asserts THAT set for these
+ * routes rather than the projection baseline.
+ */
+export const FLOW_PAGE_PATTERNS: ReadonlySet<string> = new Set([
+	"/github-app/register",
+	"/github-app/callback",
+]);
+
+/**
  * The one assertion the whole scenario exists for: `body` — the verbatim
  * bytes an anonymous caller received from `label` — carries no redacted
  * field name, no planted sentinel, no host path, and no live bearer.
