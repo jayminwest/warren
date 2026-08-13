@@ -8,6 +8,8 @@
  * `ROUTE_TABLE` out of THIS file textually.
  */
 
+import { notFound } from "../errors.ts";
+import { jsonResponse } from "../response.ts";
 import type { Route, RouteHandler, RoutePolicy, ServerDeps } from "../types.ts";
 import { getAgentHandler, listAgentsHandler } from "./agents.ts";
 import { healAlertHandler } from "./alerts.ts";
@@ -296,12 +298,34 @@ const ROUTE_TABLE: readonly RouteEntry[] = [
 	},
 ];
 
+/**
+ * warren-e320: every route under the `/github-app` prefix rides the
+ * boot-resolved registration gate (`resolveGitHubAppRegistrationGate`).
+ * Prefix matching is deliberate: the `/github-app/installed` return route
+ * proposed in warren-54c7 must inherit the gate the day it lands, without
+ * anyone remembering to wire it. A gated-off route answers 404 — never
+ * 401/403 — so the public-mode invariant scenario 39 guards holds.
+ */
+const GITHUB_APP_ROUTE_PREFIX = "/github-app";
+
+function gitHubAppRegistrationGatedHandler(pathname: string): Response {
+	const rendered = notFound(pathname);
+	return jsonResponse(rendered.status, rendered.envelope);
+}
+
 export function buildApiRoutes(deps: ServerDeps): Route[] {
+	// Absent gate ⇒ legacy/test wiring keeps the historical always-on
+	// behavior; production boot (`bootServer`) always resolves the gate.
+	const gate = deps.gitHubAppRegistration;
+	const gitHubAppGatedOff = gate !== undefined && !gate.enabled;
 	return ROUTE_TABLE.map((entry) => ({
 		method: entry.method,
 		pattern: entry.pattern,
 		policy: entry.policy,
-		handler: entry.build(deps),
+		handler:
+			gitHubAppGatedOff && entry.pattern.startsWith(GITHUB_APP_ROUTE_PREFIX)
+				? (ctx) => gitHubAppRegistrationGatedHandler(ctx.url.pathname)
+				: entry.build(deps),
 	}));
 }
 

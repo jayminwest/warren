@@ -139,6 +139,11 @@ export const scenario: Scenario = {
 				extraEnv: {
 					WARREN_AUTH: "public",
 					WARREN_PUBLIC_ALLOWLIST: PUBLIC_ORG,
+					// warren-e320: the /github-app/* registration gate defaults OFF
+					// on a public instance; this scenario's job includes probing the
+					// flow pages' leak behavior, so it opts the surface back ON
+					// explicitly (the exact operator override the gate honors).
+					WARREN_GITHUB_APP_REGISTRATION: "on",
 					WARREN_MAX_EVENT_STREAMS_PER_CLIENT: String(MAX_STREAMS_PER_CLIENT),
 					WARREN_MAX_EVENT_STREAMS: String(MAX_STREAMS_GLOBAL),
 					// No triggers on the seeded project; keep the tick loop out of

@@ -203,6 +203,16 @@ function parseConversionBody(body: Record<string, unknown> | null): GitHubAppReg
 /** Default TTL for a pending registration `state` nonce. */
 export const REGISTRATION_STATE_TTL_MS = 10 * 60 * 1000;
 
+/**
+ * Default cap on live pending nonces (warren-e320). The routes minting
+ * them are `anonymous` policy, so without a bound a stranger could grow
+ * the process-local store without limit inside the TTL window — and each
+ * live nonce enables one outbound `POST /app-manifests/{code}/conversions`
+ * from warren's egress. Capping the store transitively bounds outbound
+ * conversions to this many per TTL window.
+ */
+export const REGISTRATION_STATE_MAX_PENDING = 32;
+
 function defaultStateToken(): string {
 	const bytes = new Uint8Array(24);
 	getRandomValues(bytes);
@@ -225,10 +235,22 @@ export class RegistrationSessions {
 		private readonly now: () => number = Date.now,
 		private readonly ttlMs: number = REGISTRATION_STATE_TTL_MS,
 		private readonly random: () => string = defaultStateToken,
+		private readonly maxPending: number = REGISTRATION_STATE_MAX_PENDING,
 	) {}
 
 	begin(): string {
 		this.sweep();
+		// warren-e320: bound the store — evict the OLDEST live nonce once the
+		// cap is reached (Map iteration is insertion-ordered, so the first key
+		// is the oldest). Evict-oldest rather than refuse: a flood then burns
+		// the flooder's own earlier nonces, not the operator's in-flight one
+		// ... unless the flood IS the only traffic, in which case either
+		// policy bounds the store the same.
+		while (this.pending.size >= this.maxPending) {
+			const oldest = this.pending.keys().next();
+			if (oldest.done) break;
+			this.pending.delete(oldest.value);
+		}
 		const state = this.random();
 		this.pending.set(state, this.now() + this.ttlMs);
 		return state;

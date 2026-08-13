@@ -415,6 +415,13 @@ A misconfigured value fails the boot loudly, never silently at first dispatch.
 
 **Register the App (once).** Open `GET /github-app/register` in a browser that can reach the warren UI.
 You need no bearer token.
+
+The registration surface sits behind an existence gate (warren-e320), and a gated-off route answers 404.
+Set `WARREN_GITHUB_APP_REGISTRATION=on` or `=off` to override the gate outright.
+The default derives fail-safe: OFF under `WARREN_AUTH=public`, OFF once `WARREN_FORGE=app` holds working credentials, and ON only for a private instance without App credentials.
+That last case is the first-boot flow the surface exists for.
+Boot logs the resolved verdict, so you can see why the surface is or is not there.
+
 The page shows the exact manifest (contents and pull-requests write, checks read, private visibility) and one button that hands it to GitHub's create-App flow.
 
 GitHub then redirects back to `/github-app/callback`.
@@ -462,6 +469,7 @@ Manifest values live in `deploy/k8s/base/deployment.yaml` plus the overlays.
 | `WARREN_K8S_EPHEMERAL_STORAGE_REQUEST_MIB` / `_LIMIT_MIB` | `10240` / `10240` (10Gi) | cluster-wide default ephemeral-storage budget (request + limit + emptyDir `sizeLimit`). A per-project `resources` block beats it (§7.3.1) |
 | `WARREN_AUTH` | unset ⇒ `token` | auth posture (§2.5); `public` admits credential-less spectators to the public projection |
 | `WARREN_PUBLIC_ALLOWLIST` | unset | owners and/or `owner/repo` entries a public instance may hold; required under `WARREN_AUTH=public` |
+| `WARREN_GITHUB_APP_REGISTRATION` | unset (fail-safe default, §2.6) | existence gate for the `/github-app/*` registration surface (warren-e320). `on`/`off` overrides the default. Gated-off routes answer 404 |
 
 The provider injects these into pods (never set them by hand): `WARREN_API_URL`, `WARREN_RUN_ID`, `WARREN_REPO_URL`, `WARREN_BRANCH`, `WARREN_BASE_BRANCH`, `WARREN_WORKSPACE_PATH`, `WARREN_SEED_MANIFEST`.
 
