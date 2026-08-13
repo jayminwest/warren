@@ -53,6 +53,10 @@ jobs:
       HEAD_BRANCH: ${{ github.event.pull_request.head.ref }}
       PR_NUMBER: ${{ github.event.pull_request.number }}
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # gh runs before any actions/checkout in the gate step, so it must not
+      # infer the repo from a git remote. GH_REPO makes every gh invocation
+      # (pr view, api) repo-explicit regardless of the working directory.
+      GH_REPO: ${{ github.repository }}
     steps:
       - name: Decide whether a heal is needed
         id: gate
