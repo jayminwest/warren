@@ -80,6 +80,25 @@ describe("InstallationTokenSource", () => {
 		expect(calls).toHaveLength(2);
 	});
 
+	test("mintFresh bypasses the cache read — the heartbeat probe's liveness proof (warren-1295)", async () => {
+		const expiresAt = Date.now() + ONE_HOUR_MS;
+		const { fetch, calls } = recordingFetch([
+			tokenResponse("ghs_first", expiresAt),
+			tokenResponse("ghs_fresh", expiresAt),
+		]);
+		const source = makeSource({ fetch });
+		const cached = await source.mint();
+		expect(cached.ok && cached.value.secret === "ghs_first").toBe(true);
+		// A second mint() would be a cache hit; mintFresh must trade a new JWT.
+		const fresh = await source.mintFresh();
+		expect(fresh.ok && fresh.value.secret === "ghs_fresh").toBe(true);
+		expect(calls).toHaveLength(2);
+		// The fresh token lands in the cache — a probe tick warms real traffic.
+		const after = await source.mint();
+		expect(after.ok && after.value.secret === "ghs_fresh").toBe(true);
+		expect(calls).toHaveLength(2);
+	});
+
 	test("maps a 401 (bad App JWT / wrong installation) to unauthorized", async () => {
 		const { fetch } = recordingFetch([jsonResponse(401, { message: "Bad credentials" })]);
 		const source = makeSource({ fetch });

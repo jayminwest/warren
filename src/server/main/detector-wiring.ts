@@ -15,6 +15,9 @@
 
 import type { DrizzleAdapter } from "../../db/repos/drizzle-adapter.ts";
 import type { Repos } from "../../db/repos/index.ts";
+import type { Forge } from "../../forge/contract.ts";
+import type { ForgeHeartbeatHandle } from "../../forge/github-app/heartbeat.ts";
+import type { MetricsRegistry } from "../../observability/metrics-registry.ts";
 import {
 	type AutoOpenPrConfig,
 	bootWatchdog,
@@ -28,6 +31,7 @@ import type { RuntimeProvider } from "../../runtime/contract.ts";
 import type { WarrenConfigCache } from "../../warren-config/index.ts";
 import type { EnvLike } from "../config.ts";
 import type { BridgeRegistry, Logger } from "../types.ts";
+import { bootForgeHeartbeatFromEnv } from "./forge-heartbeat-wiring.ts";
 import { bridgeLoggerFromPino } from "./logging.ts";
 
 export interface WatchdogWiringInput {
@@ -111,6 +115,13 @@ export interface BackgroundDetectorWiringInput {
 	 * Runtime-provider seam — forwarded to the watchdog tick.
 	 */
 	readonly runtimeProvider: RuntimeProvider;
+	/**
+	 * The boot-resolved forge (warren-1295) — the GitHub App credential
+	 * heartbeat boots only when this is the `app` provider.
+	 */
+	readonly forge: Forge;
+	/** Counter sink for the forge-heartbeat probe ticks (warren-1295). */
+	readonly metricsRegistry: MetricsRegistry | undefined;
 	readonly logger: Logger;
 	readonly now?: () => Date;
 }
@@ -119,6 +130,11 @@ export interface BackgroundDetectorHandles {
 	readonly watchdog: WatchdogHandle;
 	/** Periodic operational-stats log line (warren-b2dd / pl-f700 step 6). */
 	readonly opsStatsWorker: OpsStatsWorkerHandle;
+	/**
+	 * GitHub App credential heartbeat (warren-1295) — `undefined` unless the
+	 * resolved forge is the App provider and the probe is not opted out.
+	 */
+	readonly forgeHeartbeat: ForgeHeartbeatHandle | undefined;
 }
 
 /**
@@ -149,5 +165,11 @@ export function bootBackgroundDetectors(
 		logger: input.logger,
 		env: input.env,
 	});
-	return { watchdog, opsStatsWorker };
+	const forgeHeartbeat = bootForgeHeartbeatFromEnv({
+		env: input.env,
+		forge: input.forge,
+		logger: input.logger,
+		metricsRegistry: input.metricsRegistry,
+	});
+	return { watchdog, opsStatsWorker, forgeHeartbeat };
 }

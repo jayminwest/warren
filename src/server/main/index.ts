@@ -138,12 +138,10 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 
 	// Load the operator-facing TOML config (pl-9ba1 step 7 / warren-3909).
 	const fileConfig = await loadWarrenServerConfigFromFile({ env });
-	// warren-288f: multi-worker pooling is retired with the K8s migration — the
-	// self-host backend is a single local burrow built from WARREN_BURROW_* env
-	// vars. The `[workers]` TOML block, the /workers + /burrows surfaces, and the
-	// worker-probe loop are all gone; the workers table itself is dropped in
-	// step 24 (warren-3743). warren-f796: the burrow client no longer lives here —
-	// the `LocalBootBackend` builds + owns it under `local` (none under `k8s`).
+	// warren-288f: multi-worker pooling is retired with the K8s migration; the
+	// self-host backend is a single local burrow from WARREN_BURROW_* env vars.
+	// warren-f796: the burrow client no longer lives here — the `LocalBootBackend`
+	// builds + owns it under `local` (none under `k8s`).
 	const broker = new RunEventBroker();
 
 	logger.info(
@@ -333,9 +331,9 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 		...(opts.now !== undefined ? { now: opts.now } : {}),
 	});
 
-	// Background detectors: run heartbeat watchdog (warren-285d) plus the
-	// periodic ops-stats worker. See detector-wiring.ts.
-	const { watchdog, opsStatsWorker } = bootBackgroundDetectors({
+	// Background detectors: run heartbeat watchdog (warren-285d), periodic
+	// ops-stats worker, forge credential heartbeat (warren-1295). See detector-wiring.ts.
+	const { watchdog, opsStatsWorker, forgeHeartbeat } = bootBackgroundDetectors({
 		env,
 		adapter,
 		repos,
@@ -345,6 +343,8 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 		warrenConfigs,
 		autoOpenPr,
 		runtimeProvider,
+		forge,
+		metricsRegistry,
 		logger,
 		...(opts.now !== undefined ? { now: opts.now } : {}),
 	});
@@ -436,9 +436,8 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 		);
 	}
 
-	// warren-57fd: bound each run-scoped callback token's lifetime to its run.
-	// The auth layer verifies the token's signature and run binding; this probe
-	// is what makes the token invalid once the run reaches a terminal state.
+	// warren-57fd: bound each run-scoped callback token's lifetime to its run;
+	// this probe is what makes the token invalid once the run is terminal.
 	const runActivityCheck: RunActivityCheck = async (runId) => {
 		const row = await deps.repos.runs.get(runId);
 		return row !== null && !isTerminalRunState(row.state);
@@ -471,6 +470,7 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 			await previewEvictionWorker.stop();
 			await workspaceGcWorker.stop();
 			await opsStatsWorker.stop();
+			forgeHeartbeat?.stop();
 			// K8s runtime loops (no-op / undefined under the local backend).
 			await k8sRuntime?.stop();
 			await bridgesBoot.registry.stopAll();
