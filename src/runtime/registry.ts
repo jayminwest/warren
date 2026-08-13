@@ -131,6 +131,20 @@ export interface RuntimeProviderDeps {
 	 * absent ⇒ the pump logs nothing. Boot threads the shared pino logger.
 	 */
 	readonly k8sLogger?: StreamLogger;
+	/**
+	 * OPTIONAL git-credential mint seam for the K8s token windows
+	 * (forge-contract.md §4.1, warren-c9ac) — only consulted for
+	 * `WARREN_RUNTIME=k8s`. Boot wires it to `mintGitCredentialSecret` over the
+	 * resolved forge so `create()` mints the init-container clone credential at
+	 * pod-spec time (window 1).
+	 */
+	readonly k8sMintGitCredential?: (gitUrl: string) => Promise<string | undefined>;
+	/**
+	 * Whether the K8s window-2 finalize push may fall back to the static
+	 * control-plane env token (warren-c9ac). Boot sets it from the forge's
+	 * `credentialLifetime`; absent, the provider's own default (allow) applies.
+	 */
+	readonly k8sAllowStaticPushTokenFallback?: boolean;
 }
 
 /**
@@ -208,5 +222,11 @@ function buildK8sProvider(deps: RuntimeProviderDeps): K8sProvider {
 		...(deps.k8sPodCache !== undefined ? { podCache: deps.k8sPodCache } : {}),
 		...(deps.k8sPodAdmission !== undefined ? { podAdmission: deps.k8sPodAdmission } : {}),
 		...(deps.k8sLogger !== undefined ? { logger: deps.k8sLogger } : {}),
+		...(deps.k8sMintGitCredential !== undefined
+			? { mintGitCredential: deps.k8sMintGitCredential }
+			: {}),
+		...(deps.k8sAllowStaticPushTokenFallback !== undefined
+			? { allowStaticPushTokenFallback: deps.k8sAllowStaticPushTokenFallback }
+			: {}),
 	});
 }

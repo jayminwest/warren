@@ -423,6 +423,8 @@ describe("pollForIntent + runFinalizeEntrypoint", () => {
 					? { status: 200, body: { intent: null } }
 					: { status: 200, body: { intent: intent() } },
 			post: async (url) => {
+				// The window-3 credential re-mint is plumbing, not a capture (warren-c9ac).
+				if (url.endsWith("/git-credential")) return { status: 503 };
 				posted.push(url);
 				return { status: 200 };
 			},

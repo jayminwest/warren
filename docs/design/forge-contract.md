@@ -380,17 +380,37 @@ that spans an expiry, so warren owns the loop. Three windows exist, and each
 gets its own mint:
 
 1. **Init-container clone** — mint at pod-spec time. Short window, low risk.
-2. **Finalize push** — mint after the agent exits. `K8sProvider` already
-   fetches this token over the authenticated callback rather than reusing the
-   pod's copy (`src/runtime/k8s/provider.ts:461-479`), so this path is already
-   refresh-ready.
+   Closed in warren-c9ac: `K8sProvider.create` mints a fresh credential through
+   the boot-wired `mintGitCredential` seam (`mintGitCredentialSecret` over the
+   resolved forge) and injects it as a plain `WARREN_GIT_TOKEN` env value,
+   which `buildInitEnv` prefers over the static `warren-git-token` Secret ref —
+   under App mode the pod never references the long-lived Secret.
+2. **Finalize push** — mint after the agent exits. The *pod* side was already
+   refresh-ready (the credential rides the intent over the authenticated
+   callback), but the *control-plane* side was not: an earlier revision of
+   this section claimed the whole window was refresh-ready, while
+   `K8sProvider.finalize` still fell back to the static
+   `WARREN_GIT_TOKEN` / `GITHUB_TOKEN` env — under App mode exactly the
+   hourly-expiring credential this campaign eliminates. Closed in warren-c9ac:
+   `resolveK8sPushToken` (`src/runtime/k8s/git-tokens.ts`) prefers the
+   per-spawn minted `intent.gitToken` and gates the static env fallback on
+   `allowStaticPushTokenFallback`, which boot wires off when the forge reports
+   `credentialLifetime: "short-lived"`. An App-mode run never depends on the
+   static fallback; a missing mint fails the push closed.
 3. **Reap-side fetch and PR open** — mint in the reap process, per step.
 
-The remaining hazard is the Secret-mounted fallback at
-`src/runtime/k8s/finalize-entrypoint.ts:145` and the salvage push. Both read a
-long-lived Secret and both would break under App mode. The campaign either
-routes them through the callback or accepts a documented PAT-only degradation.
-Open, and it needs a decision before phase 3.
+**DECIDED (2026-08-12, warren-c9ac): the Secret-mounted fallback routes
+through the authenticated callback.** The remaining hazard was the fallback at
+`src/runtime/k8s/finalize-entrypoint.ts:145` and the salvage push, both
+reading a long-lived Secret. `finalize-entrypoint` runs inside the pod and
+cannot hold an App private key, so the pod asks the control plane instead:
+`POST /runs/:id/git-credential` mints a fresh credential off the boot-resolved
+forge over the same run-scoped-token channel the intent poll already uses, and
+the salvage window (`salvage-post.ts`) tries that mint before falling back to
+the pod-carried env token. The static Secret value remains only as the
+PAT-mode last resort for an unreachable control plane (a rollout is exactly
+the `no_intent` case). The rejected alternative — a documented static-Secret
+PAT-only degradation as the primary path — is retired.
 
 ---
 
@@ -578,10 +598,11 @@ no-length-assumption rule is already load-bearing. And the App installation
 token read `GET /commits/:ref/check-runs` with 200 — the §6.7 Checks
 asymmetry confirmed from the App side.
 
-**Two things this document does not decide.** Whether forges eventually follow
-trackers through the bridge stays parked (§3, `extensions.md` §5). Whether the
-K8s Secret fallback and the salvage push move to the callback or accept a
-PAT-only degradation stays open (§4.1).
+**One thing this document does not decide.** Whether forges eventually follow
+trackers through the bridge stays parked (§3, `extensions.md` §5). The K8s
+Secret-fallback question is RESOLVED (§4.1, warren-c9ac): the pod re-mints
+over the authenticated callback; the static Secret is the PAT-mode last
+resort only.
 
 **The go/no-go: decided.** ROADMAP Next item 1 held that implementation
 starts on an explicit owner decision; the owner recorded **GO on

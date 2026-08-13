@@ -75,9 +75,11 @@ describe("runFinalizeEntrypoint salvage (warren-cd3b)", () => {
 		const posted: { url: string; body: unknown }[] = [];
 		const http: FinalizeHttp = {
 			// Never an intent; the entrypoint's maxWaitMs is driven to the deadline
-			// immediately via `now`.
+			// immediately via `now`. The credential re-mint endpoint answers 503
+			// (warren mid-rollout) so the no-credential posture is preserved.
 			get: async () => ({ status: 200, body: { intent: null } }),
 			post: async (url, _t, body) => {
+				if (url.endsWith("/git-credential")) return { status: 503 };
 				posted.push({ url, body });
 				return { status: 200 };
 			},
@@ -114,7 +116,10 @@ describe("runFinalizeEntrypoint salvage (warren-cd3b)", () => {
 		const posted: SalvageEnvelope[] = [];
 		const http: FinalizeHttp = {
 			get: async () => ({ status: 200, body: { intent: null } }),
-			post: async (_url, _t, body) => {
+			post: async (url, _t, body) => {
+				// The window-3 re-mint mints anonymously here, so the pod-carried
+				// token remains the credential under test (warren-c9ac).
+				if (url.endsWith("/git-credential")) return { status: 200, body: { gitToken: null } };
 				posted.push(body as SalvageEnvelope);
 				return { status: 200 };
 			},
@@ -148,6 +153,49 @@ describe("runFinalizeEntrypoint salvage (warren-cd3b)", () => {
 		expect(setUrls[1]?.[3]).toBe("https://github.com/acme/widgets.git");
 		expect(posted[0]?.rescueRef).toBe("warren/rescue/run_x");
 		expect(posted[0]?.bundleBase64).not.toBeNull();
+	});
+
+	test("warren-c9ac: the no_intent window prefers a credential minted over the callback", async () => {
+		const posted: SalvageEnvelope[] = [];
+		const http: FinalizeHttp = {
+			get: async () => ({ status: 200, body: { intent: null } }),
+			post: async (url, _t, body) => {
+				if (url.endsWith("/git-credential")) {
+					return { status: 200, body: { gitToken: "ghs_fresh" } };
+				}
+				posted.push(body as SalvageEnvelope);
+				return { status: 200 };
+			},
+		};
+		const { git, calls } = fakeGit({
+			"remote get-url": { stdout: "https://github.com/acme/widgets.git" },
+		});
+		let clock = 0;
+		const did = await runFinalizeEntrypoint(
+			{
+				...env,
+				WARREN_GIT_TOKEN: "pod-tok",
+				WARREN_FINALIZE_MAX_WAIT_MS: "1",
+				WARREN_SALVAGE_MAX_WAIT_MS: "10",
+			},
+			{
+				...salvageDeps,
+				http,
+				git,
+				fs: fakeFs(),
+				now: () => {
+					clock += 5;
+					return clock;
+				},
+			},
+		);
+		expect(did).toBe(false);
+		// The rescue push re-authed origin with the FRESHLY MINTED token, not the
+		// pod-carried one (the App-mode path — the mounted Secret is never trusted).
+		const setUrls = calls.filter((c) => c[0] === "remote" && c[1] === "set-url");
+		expect(setUrls[0]?.[3]).toContain("ghs_fresh");
+		expect(setUrls[0]?.[3]).not.toContain("pod-tok");
+		expect(posted[0]?.rescueRef).toBe("warren/rescue/run_x");
 	});
 
 	test("warren-6016: in the push_failed window the intent's short-lived token wins over the pod-carried one", async () => {

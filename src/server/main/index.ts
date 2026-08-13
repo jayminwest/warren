@@ -227,9 +227,8 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 
 	// Resolve the runtime provider ONCE (warren-c531) — the SAME instance flows
 	// into the bridge registry, poller, watchdog, and `ServerDeps`. warren-f796:
-	// under `local` the `LocalBootBackend` owns the burrow client + the
-	// capability-gated preview/GC seams + burrow probe; under `k8s` there is no
-	// burrow, so we resolve the `K8sProvider` directly and those seams stay dark.
+	// under `local` the `LocalBootBackend` owns the burrow client + gated seams;
+	// under `k8s` the `K8sProvider` is resolved directly and those seams stay dark.
 	const localBackend =
 		resolveRuntimeKind(env) === "local" ? resolveLocalBootBackend(env) : undefined;
 	const runtimeProvider =
@@ -240,6 +239,7 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 			logger,
 			...(metricsRegistry !== undefined ? { admissionMetrics: metricsRegistry } : {}),
 			...(k8sRuntime !== undefined ? { k8sRuntime } : {}),
+			forge,
 		});
 	const previewSidecars = localBackend?.previewSidecars;
 	const workspaceDestroyer = localBackend?.workspaceDestroyer;

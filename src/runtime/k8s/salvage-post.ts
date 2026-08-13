@@ -33,7 +33,39 @@ export interface SalvagePostEnv {
 
 /** The POST half of the entrypoint's `FinalizeHttp` seam. */
 export interface SalvagePostHttp {
-	post: (url: string, token: string, body: unknown) => Promise<{ status: number }>;
+	post: (url: string, token: string, body: unknown) => Promise<{ status: number; body?: unknown }>;
+}
+
+/**
+ * Window-3 credential re-mint (warren-c9ac, forge-contract.md §4.1): ask the
+ * control plane for a FRESH push credential over the same authenticated
+ * callback channel the intent poll uses (`POST /runs/:id/git-credential`).
+ * The pod cannot hold an App private key, so this callback — not the mounted
+ * static Secret — is how an App-mode salvage window authenticates. Best-effort:
+ * any failure (warren mid-rollout, non-2xx, malformed body) yields `undefined`
+ * and the caller falls back to the pod-carried env token (PAT-mode posture).
+ */
+export async function fetchCallbackGitCredential(
+	env: SalvagePostEnv,
+	http: SalvagePostHttp,
+	log: (m: string) => void,
+): Promise<string | undefined> {
+	try {
+		const res = await http.post(`${env.apiUrl}/runs/${env.runId}/git-credential`, env.apiToken, {});
+		if (res.status < 200 || res.status >= 300) {
+			log(`finalize-entrypoint: git-credential mint answered HTTP ${res.status}`);
+			return undefined;
+		}
+		const body = res.body;
+		if (body === null || typeof body !== "object") return undefined;
+		const token = (body as { gitToken?: unknown }).gitToken;
+		return typeof token === "string" && token.trim() !== "" ? token : undefined;
+	} catch (err) {
+		log(
+			`finalize-entrypoint: git-credential mint failed (${err instanceof Error ? err.message : String(err)})`,
+		);
+		return undefined;
+	}
 }
 
 /**
@@ -62,15 +94,19 @@ export async function salvageAndPost(
 	rm: (path: string) => Promise<void>,
 	bounded?: boolean,
 ): Promise<boolean> {
-	// warren-6016: the intent's short-lived token wins; the pod-carried
-	// `WARREN_GIT_TOKEN` covers the no_intent windows (no intent ever parked
-	// one). Both resolve the same operator credential the reap push uses.
+	// Credential order (warren-c9ac): the intent's short-lived token wins; absent
+	// (the no_intent window), re-mint FRESH over the authenticated callback;
+	// the pod-carried `WARREN_GIT_TOKEN` (warren-6016) is the PAT-mode last
+	// resort for when the control plane itself is unreachable (a rollout is
+	// exactly the no_intent case).
+	const callbackToken =
+		gitToken === undefined ? await fetchCallbackGitCredential(env, http, log) : undefined;
 	const salvage = await collectSalvage(
 		{
 			runId: env.runId,
 			workspacePath: env.workspacePath,
 			baseBranch: env.baseBranch,
-			gitToken: gitToken ?? env.gitToken,
+			gitToken: gitToken ?? callbackToken ?? env.gitToken,
 		},
 		{ git, readFileBytes, rm },
 	);

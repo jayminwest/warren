@@ -312,7 +312,7 @@ Details on the additional checks:
   uploads `coverage/lcov.info`. The ratchet only goes up. Lowering a
   floor means you deleted tests, and it needs a tracker reference.
 - **`gen:docs:check`** (warren-e5fb) — keeps `docs/http-api.md` in sync
-  with the `ROUTE_TABLE` array in `src/server/handlers/index.ts`, the
+  with the `ROUTE_TABLE` array in `src/server/handlers/route-table.ts`, the
   canonical HTTP API surface. Refresh with `bun run gen:docs` and
   commit the result.
 - **`gen:openapi:check`** (warren-b46b) — keeps `docs/openapi.yaml`
