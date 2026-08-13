@@ -15,6 +15,8 @@ tags:
     description: '`/alerts` routes.'
   - name: analytics
     description: '`/analytics` routes.'
+  - name: github-app
+    description: '`/github-app` routes.'
   - name: meta
     description: Liveness, readiness, and version.
   - name: metrics
@@ -105,6 +107,29 @@ paths:
           description: Successful response.
         default:
           description: Error response (see `src/core/errors.ts`).
+  /github-app/callback:
+    get:
+      operationId: gitHubAppCallbackHandler
+      tags:
+        - github-app
+      summary: GET /github-app/callback
+      responses:
+        '200':
+          description: Successful response.
+        default:
+          description: Error response (see `src/core/errors.ts`).
+  /github-app/register:
+    get:
+      operationId: registerGitHubAppHandler
+      tags:
+        - github-app
+      summary: GET /github-app/register
+      responses:
+        '200':
+          description: Successful response.
+        default:
+          description: Error response (see `src/core/errors.ts`).
+      description: 'warren-a647: App manifest registration; anonymous — see ./github-app.ts.'
   /healthz:
     get:
       operationId: healthzHandler

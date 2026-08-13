@@ -1,0 +1,247 @@
+import { describe, expect, test } from "bun:test";
+import {
+	buildGitHubAppManifest,
+	convertManifestCode,
+	escapeHtml,
+	GITHUB_APP_MANIFEST_CREATE_URL,
+	GITHUB_APP_MANIFEST_PERMISSIONS,
+	gitHubOrgManifestCreateUrl,
+	REGISTRATION_STATE_TTL_MS,
+	RegistrationSessions,
+	renderCredentialsPage,
+	renderRegistrationErrorPage,
+	renderRegistrationPage,
+} from "./registration.ts";
+
+describe("buildGitHubAppManifest", () => {
+	test("packs the redirect, state, and the forge's permission set", () => {
+		const manifest = buildGitHubAppManifest({
+			name: "warren-test",
+			homepageUrl: "https://example.test/",
+			redirectUrl: "http://127.0.0.1:8377/github-app/callback",
+			state: "nonce-1",
+		});
+		expect(manifest).toEqual({
+			name: "warren-test",
+			url: "https://example.test/",
+			redirect_url: "http://127.0.0.1:8377/github-app/callback",
+			state: "nonce-1",
+			public: false,
+			default_permissions: GITHUB_APP_MANIFEST_PERMISSIONS,
+		});
+	});
+
+	test("the permission set is contents+pull-requests write, checks read", () => {
+		expect(GITHUB_APP_MANIFEST_PERMISSIONS).toEqual({
+			contents: "write",
+			pull_requests: "write",
+			checks: "read",
+			metadata: "read",
+		});
+	});
+});
+
+describe("manifest create URLs", () => {
+	test("the personal-account endpoint is the default", () => {
+		expect(GITHUB_APP_MANIFEST_CREATE_URL).toBe("https://github.com/settings/apps/new");
+	});
+
+	test("the org variant names the organization", () => {
+		expect(gitHubOrgManifestCreateUrl("os-eco")).toBe(
+			"https://github.com/organizations/os-eco/settings/apps/new",
+		);
+	});
+});
+
+describe("convertManifestCode", () => {
+	const conversionBody = {
+		id: 4560297,
+		slug: "warren-test-app",
+		name: "warren-test-app",
+		html_url: "https://github.com/apps/warren-test-app",
+		client_id: "Iv1.0123456789abcdef",
+		client_secret: "client-secret-value",
+		pem: "-----BEGIN RSA PRIVATE KEY-----\nABC\n-----END RSA PRIVATE KEY-----\n",
+	};
+
+	test("POSTs the conversion with NO Authorization header (spike Q2)", async () => {
+		const calls: { url: string; init?: RequestInit }[] = [];
+		const fetchStub: typeof fetch = (async (url: string | URL | Request, init?: RequestInit) => {
+			calls.push({ url: String(url), init });
+			return new Response(JSON.stringify(conversionBody), { status: 201 });
+		}) as unknown as typeof fetch;
+		const result = await convertManifestCode("code-123", { fetch: fetchStub });
+		expect(result.ok).toBe(true);
+		expect(calls).toHaveLength(1);
+		const call = calls[0];
+		expect(call?.url).toBe("https://api.github.com/app-manifests/code-123/conversions");
+		expect(call?.init?.method).toBe("POST");
+		const headers = new Headers(call?.init?.headers);
+		expect(headers.has("authorization")).toBe(false);
+	});
+
+	test("parses the credential set out of the conversion body", async () => {
+		const fetchStub: typeof fetch = (async () =>
+			new Response(JSON.stringify(conversionBody), { status: 201 })) as unknown as typeof fetch;
+		const result = await convertManifestCode("code-123", { fetch: fetchStub });
+		if (!result.ok) throw new Error("expected ok");
+		expect(result.registration).toEqual({
+			appId: 4560297,
+			slug: "warren-test-app",
+			name: "warren-test-app",
+			htmlUrl: "https://github.com/apps/warren-test-app",
+			clientId: "Iv1.0123456789abcdef",
+			clientSecret: "client-secret-value",
+			pem: "-----BEGIN RSA PRIVATE KEY-----\nABC\n-----END RSA PRIVATE KEY-----\n",
+		});
+	});
+
+	test("a 404 (spent or unknown code) fails with a start-over hint", async () => {
+		const fetchStub: typeof fetch = (async () =>
+			new Response("not found", { status: 404 })) as unknown as typeof fetch;
+		const result = await convertManifestCode("spent-code", { fetch: fetchStub });
+		expect(result.ok).toBe(false);
+		if (result.ok) throw new Error("expected failure");
+		expect(result.status).toBe(404);
+		expect(result.detail).toContain("single-use");
+	});
+
+	test("a non-404 upstream failure reports the status", async () => {
+		const fetchStub: typeof fetch = (async () =>
+			new Response("boom", { status: 500 })) as unknown as typeof fetch;
+		const result = await convertManifestCode("code-123", { fetch: fetchStub });
+		expect(result).toMatchObject({ ok: false, status: 500 });
+	});
+
+	test("a network error fails closed rather than throwing", async () => {
+		const fetchStub: typeof fetch = (async () => {
+			throw new Error("socket hangup");
+		}) as unknown as typeof fetch;
+		const result = await convertManifestCode("code-123", { fetch: fetchStub });
+		expect(result).toMatchObject({ ok: false, status: 0 });
+	});
+
+	test("a response missing a credential field is a failure, not a partial", async () => {
+		const { pem: _pem, ...missingPem } = conversionBody;
+		const fetchStub: typeof fetch = (async () =>
+			new Response(JSON.stringify(missingPem), { status: 201 })) as unknown as typeof fetch;
+		const result = await convertManifestCode("code-123", { fetch: fetchStub });
+		expect(result.ok).toBe(false);
+		if (result.ok) throw new Error("expected failure");
+		expect(result.detail).toContain("pem");
+	});
+});
+
+describe("RegistrationSessions", () => {
+	test("a nonce redeems exactly once", () => {
+		const sessions = new RegistrationSessions(
+			() => 1000,
+			60000,
+			() => "nonce-a",
+		);
+		const state = sessions.begin();
+		expect(state).toBe("nonce-a");
+		expect(sessions.consume(state)).toBe(true);
+		expect(sessions.consume(state)).toBe(false);
+	});
+
+	test("an unknown nonce never redeems", () => {
+		const sessions = new RegistrationSessions();
+		expect(sessions.consume("never-issued")).toBe(false);
+	});
+
+	test("an expired nonce refuses and is swept", () => {
+		let clock = 1000;
+		const sessions = new RegistrationSessions(
+			() => clock,
+			60000,
+			() => "nonce-b",
+		);
+		const state = sessions.begin();
+		clock += 60001;
+		expect(sessions.consume(state)).toBe(false);
+		expect(sessions.size).toBe(0);
+	});
+
+	test("the default TTL is ten minutes", () => {
+		expect(REGISTRATION_STATE_TTL_MS).toBe(600_000);
+	});
+});
+
+describe("escapeHtml", () => {
+	test("escapes the five HTML-significant characters", () => {
+		expect(escapeHtml(`<a href="x">&'`)).toBe("&lt;a href=&quot;x&quot;&gt;&amp;&#39;");
+	});
+});
+
+describe("renderRegistrationPage", () => {
+	test("carries the manifest as the form's hidden field and posts to GitHub", () => {
+		const manifest = buildGitHubAppManifest({
+			name: "warren-test",
+			homepageUrl: "https://example.test/",
+			redirectUrl: "http://127.0.0.1:8377/github-app/callback",
+			state: "nonce-1",
+		});
+		const html = renderRegistrationPage({
+			manifest,
+			createUrl: GITHUB_APP_MANIFEST_CREATE_URL,
+		});
+		expect(html).toContain('action="https://github.com/settings/apps/new"');
+		expect(html).toContain('name="manifest"');
+		expect(html).toContain("&quot;state&quot;:&quot;nonce-1&quot;");
+		expect(html).toContain("http://127.0.0.1:8377/github-app/callback");
+	});
+
+	test("escapes a hostile manifest name in both renderings", () => {
+		const manifest = buildGitHubAppManifest({
+			name: '"><script>alert(1)</script>',
+			homepageUrl: "https://example.test/",
+			redirectUrl: "http://127.0.0.1:8377/github-app/callback",
+			state: "nonce-1",
+		});
+		const html = renderRegistrationPage({
+			manifest,
+			createUrl: GITHUB_APP_MANIFEST_CREATE_URL,
+		});
+		expect(html).not.toContain("<script>alert(1)</script>");
+	});
+});
+
+describe("renderCredentialsPage", () => {
+	const registration = {
+		appId: 4560297,
+		slug: "warren-test-app",
+		name: "warren-test-app",
+		htmlUrl: "https://github.com/apps/warren-test-app",
+		clientId: "Iv1.0123456789abcdef",
+		clientSecret: "client-secret-value",
+		pem: "-----BEGIN RSA PRIVATE KEY-----\nABC\n-----END RSA PRIVATE KEY-----\n",
+	};
+
+	test("renders the whole credential set plus the env block and install link", () => {
+		const html = renderCredentialsPage(registration);
+		expect(html).toContain("4560297");
+		expect(html).toContain("warren-test-app");
+		expect(html).toContain("client-secret-value");
+		expect(html).toContain("BEGIN RSA PRIVATE KEY");
+		expect(html).toContain("WARREN_FORGE=app");
+		expect(html).toContain("WARREN_GITHUB_APP_ID=4560297");
+		expect(html).toContain("WARREN_GITHUB_APP_INSTALLATION_ID");
+		expect(html).toContain("WARREN_GITHUB_APP_PRIVATE_KEY");
+		expect(html).toContain("https://github.com/apps/warren-test-app/installations/new");
+	});
+
+	test("escapes HTML metacharacters in App fields", () => {
+		const html = renderCredentialsPage({ ...registration, name: "<b>x</b>" });
+		expect(html).toContain("&lt;b&gt;x&lt;/b&gt;");
+	});
+});
+
+describe("renderRegistrationErrorPage", () => {
+	test("escapes the title and detail and points back at /register", () => {
+		const html = renderRegistrationErrorPage("<bad>", "detail <here>");
+		expect(html).toContain("&lt;bad&gt;");
+		expect(html).toContain("detail &lt;here&gt;");
+		expect(html).toContain("/github-app/register");
+	});
+});

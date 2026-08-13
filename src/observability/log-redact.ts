@@ -76,6 +76,12 @@ export const SECRET_FIELDS = [
 	"installationToken",
 	"WARREN_GITHUB_APP_PRIVATE_KEY",
 	"jwt",
+	// warren-a647: the manifest-registration conversion response
+	// (src/forge/github-app/registration.ts) carries the new App's PEM under
+	// the bare field name `pem` — a logged conversion/registration object
+	// can never leak the private key. The response's `client_secret` /
+	// `clientSecret` names are already listed above (warren-9bbc).
+	"pem",
 ] as const;
 
 /**

@@ -7,7 +7,7 @@ This page enumerates every HTTP route registered by warren's `Bun.serve` router.
 
 To refresh: `bun run gen:docs`. To check (CI mode): `bun run gen:docs:check`.
 
-Total routes: **40**.
+Total routes: **42**.
 
 ## /agents
 
@@ -29,6 +29,13 @@ Total routes: **40**.
 | `GET` | `/analytics/cost` | `listCostAnalyticsHandler` |  |
 | `GET` | `/analytics/runs` | `listRunAnalyticsHandler` |  |
 | `GET` | `/analytics/behavior` | `listBehaviorAnalyticsHandler` |  |
+
+## /github-app
+
+| Method | Pattern | Handler | Notes |
+| --- | --- | --- | --- |
+| `GET` | `/github-app/register` | `registerGitHubAppHandler` | warren-a647: App manifest registration; anonymous — see ./github-app.ts. |
+| `GET` | `/github-app/callback` | `gitHubAppCallbackHandler` |  |
 
 ## /healthz
 

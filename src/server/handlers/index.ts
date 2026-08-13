@@ -35,6 +35,7 @@ import type { Route, RouteContext, RouteHandler, RoutePolicy, ServerDeps } from 
 import { getAgentHandler, listAgentsHandler } from "./agents.ts";
 import { healAlertHandler } from "./alerts.ts";
 import { readyzHandler } from "./diagnostics.ts";
+import { gitHubAppCallbackHandler, registerGitHubAppHandler } from "./github-app.ts";
 import { healthzHandler, previewConfigHandler, versionHandler, whoamiHandler } from "./meta.ts";
 import { metricsHandler } from "./metrics.ts";
 import {
@@ -218,6 +219,19 @@ const ROUTE_TABLE: readonly RouteEntry[] = [
 	{ method: "GET", pattern: "/healthz", policy: "anonymous", build: () => healthzHandler() },
 	{ method: "GET", pattern: "/readyz", policy: "readOperator", build: readyzHandler },
 	{ method: "GET", pattern: "/version", policy: "anonymous", build: () => versionHandler() },
+	// warren-a647: App manifest registration; anonymous — see ./github-app.ts.
+	{
+		method: "GET",
+		pattern: "/github-app/register",
+		policy: "anonymous",
+		build: () => registerGitHubAppHandler(),
+	},
+	{
+		method: "GET",
+		pattern: "/github-app/callback",
+		policy: "anonymous",
+		build: () => gitHubAppCallbackHandler(),
+	},
 	{ method: "GET", pattern: "/metrics", policy: "readOperator", build: metricsHandler },
 	// warren-e195: `readPublic`, not `anonymous` — an exempt route gets no actor to name.
 	{ method: "GET", pattern: "/whoami", policy: "readPublic", build: () => whoamiHandler() },
@@ -413,6 +427,7 @@ export const API_PREFIXES: readonly string[] = [
 	"/preview",
 	"/plan-runs",
 	"/whoami",
+	"/github-app",
 ];
 
 /**

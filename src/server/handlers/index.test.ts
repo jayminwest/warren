@@ -80,6 +80,11 @@ describe("ROUTE_TABLE policy classification", () => {
 		"GET /plan-runs",
 		"GET /plan-runs/:id",
 		"GET /plan-runs/:id/events",
+		// warren-a647: App registration is a browser flow (no bearer rides a
+		// navigation/redirect); /register discloses nothing server-side and
+		// /callback refuses without a live single-use state nonce.
+		"GET /github-app/register",
+		"GET /github-app/callback",
 	];
 
 	/** Reads that must stay operator-only — each with the reason it is here. */
