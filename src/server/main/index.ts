@@ -330,7 +330,7 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 
 	// Background detectors: run heartbeat watchdog (warren-285d), periodic
 	// ops-stats worker, forge credential heartbeat (warren-1295). See detector-wiring.ts.
-	const { watchdog, opsStatsWorker, forgeHeartbeat } = bootBackgroundDetectors({
+	const { watchdog, opsStatsWorker, forgeHeartbeat, finalizeRecovery } = bootBackgroundDetectors({
 		env,
 		adapter,
 		repos,
@@ -416,6 +416,7 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 		// `/metrics` pod-phase gauges read live from the same pod-watcher at scrape
 		// (warren-7c30); absent under LocalProvider.
 		...(k8sRuntime !== undefined ? { k8sPodWatcher: k8sRuntime.podWatcher } : {}),
+		...(finalizeRecovery !== undefined ? { finalizeRecovery } : {}),
 		...(opts.now !== undefined ? { now: opts.now } : {}),
 	});
 

@@ -109,6 +109,16 @@ export interface FinalizeEntrypointEnv {
 	postMaxAttempts: number;
 	/** Base backoff between result-POST retries (ms); doubles each attempt. */
 	postRetryBaseMs: number;
+	/**
+	 * The AGENT process's exit code (warren-5202), overlaid onto the env by
+	 * `agent-entrypoint` (`WARREN_AGENT_EXIT_CODE`) before this step runs.
+	 * Reported on every intent poll as `?agent_exit=` so a recovering control
+	 * plane can classify the run's outcome without the (possibly log-rotated)
+	 * terminal envelope. `undefined` when the overlay is absent — e.g. a pod
+	 * image predating the hint — and the recovery scan falls back to the
+	 * persisted event log.
+	 */
+	agentExitCode: number | undefined;
 }
 
 export type FinalizeEnvSource = Readonly<Record<string, string | undefined>>;
@@ -155,7 +165,16 @@ export function parseFinalizeEntrypointEnv(env: FinalizeEnvSource): FinalizeEntr
 		salvageMaxWaitMs: intEnv(env, "WARREN_SALVAGE_MAX_WAIT_MS", 120_000, 1),
 		postMaxAttempts: intEnv(env, "WARREN_FINALIZE_POST_MAX_ATTEMPTS", 5, 1),
 		postRetryBaseMs: intEnv(env, "WARREN_FINALIZE_POST_RETRY_BASE_MS", 1_000, 1),
+		agentExitCode: parseAgentExitCode(env.WARREN_AGENT_EXIT_CODE),
 	};
+}
+
+/** Optional `WARREN_AGENT_EXIT_CODE` overlay (warren-5202): an integer 0-255, else absent. */
+function parseAgentExitCode(raw: string | undefined): number | undefined {
+	const trimmed = raw?.trim();
+	if (trimmed === undefined || trimmed === "") return undefined;
+	const n = Number(trimmed);
+	return Number.isInteger(n) && n >= 0 && n <= 255 ? n : undefined;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -271,7 +290,14 @@ export async function pollForIntent(
 	log: (m: string) => void,
 	onEarlySalvage?: () => Promise<unknown>,
 ): Promise<InPodFinalizeIntent | null> {
-	const url = `${env.apiUrl}/runs/${env.runId}/finalize-intent`;
+	// warren-5202: report the agent's exit code on every poll so a recovered
+	// control plane classifies the outcome from the pod's own witness instead
+	// of the (possibly log-rotated) terminal envelope. Pre-hint control planes
+	// ignore the unknown query param.
+	const url =
+		env.agentExitCode !== undefined
+			? `${env.apiUrl}/runs/${env.runId}/finalize-intent?agent_exit=${env.agentExitCode}`
+			: `${env.apiUrl}/runs/${env.runId}/finalize-intent`;
 	const startedAt = now();
 	const deadline = startedAt + env.maxWaitMs;
 	// warren-5ea1: `onEarlySalvage` fires ONCE at the `earlySalvageMs` mark.

@@ -18,6 +18,7 @@ import type { Repos } from "../../db/repos/index.ts";
 import type { Forge } from "../../forge/contract.ts";
 import type { ForgeHeartbeatHandle } from "../../forge/github-app/heartbeat.ts";
 import type { MetricsRegistry } from "../../observability/metrics-registry.ts";
+import { createFinalizeRecovery, type FinalizeRecoveryHook } from "../../runs/finalize-recovery.ts";
 import {
 	type AutoOpenPrConfig,
 	bootWatchdog,
@@ -28,6 +29,7 @@ import {
 } from "../../runs/index.ts";
 import { bootOpsStatsWorker, type OpsStatsWorkerHandle } from "../../runs/ops-stats.ts";
 import type { RuntimeProvider } from "../../runtime/contract.ts";
+import { resolveRuntimeKind } from "../../runtime/registry.ts";
 import type { WarrenConfigCache } from "../../warren-config/index.ts";
 import type { EnvLike } from "../config.ts";
 import type { BridgeRegistry, Logger } from "../types.ts";
@@ -135,6 +137,13 @@ export interface BackgroundDetectorHandles {
 	 * resolved forge is the App provider and the probe is not opted out.
 	 */
 	readonly forgeHeartbeat: ForgeHeartbeatHandle | undefined;
+	/**
+	 * K8s finalize-intent recovery hook (warren-5202) — turns a run pod's
+	 * post-restart `GET /runs/:id/finalize-intent` misses into a recovery reap
+	 * so the finalize handshake completes instead of deadlocking. `undefined`
+	 * under `local` (no pod ever polls the route there).
+	 */
+	readonly finalizeRecovery: FinalizeRecoveryHook | undefined;
 }
 
 /**
@@ -171,5 +180,22 @@ export function bootBackgroundDetectors(
 		logger: input.logger,
 		metricsRegistry: input.metricsRegistry,
 	});
-	return { watchdog, opsStatsWorker, forgeHeartbeat };
+	// warren-5202: a control-plane replacement mid-run wipes the in-memory
+	// finalize coordinator; the surviving pod keeps polling for an intent no
+	// lost reap will ever park. The hook turns that poll into the recovery
+	// signal — a miss that outlives its grace drives a fresh reap, re-parking
+	// the intent so the normal finalize handshake completes. K8s topology only.
+	const finalizeRecovery =
+		resolveRuntimeKind(input.env) === "k8s"
+			? createFinalizeRecovery({
+					repos: input.repos,
+					runtimeProvider: input.runtimeProvider,
+					reap: input.reap,
+					broker: input.broker,
+					autoOpenPr: input.autoOpenPr,
+					logger: bridgeLoggerFromPino(input.logger),
+					...now,
+				})
+			: undefined;
+	return { watchdog, opsStatsWorker, forgeHeartbeat, finalizeRecovery };
 }

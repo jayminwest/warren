@@ -181,6 +181,14 @@ export interface ServerDeps {
 	 * shared singleton, so prod needs no wiring — tests inject a private instance. */
 	readonly finalizeCoordinator?: import("../runtime/k8s/finalize-coordinator.ts").FinalizeCoordinator;
 	/**
+	 * K8s finalize-intent recovery hook (warren-5202). Fired by
+	 * `GET /runs/:id/finalize-intent` on an intent MISS so a post-restart
+	 * control plane re-drives reap for a pod still awaiting its intent.
+	 * Boot-wired only under `WARREN_RUNTIME=k8s`; absent under `local` (no pod
+	 * ever polls the route there) and in tests that don't opt in.
+	 */
+	readonly finalizeRecovery?: import("../runs/finalize-recovery.ts").FinalizeRecoveryHook;
+	/**
 	 * Durable salvage-bundle directory (warren-cd3b). The `POST /runs/:id/salvage`
 	 * intake writes pod-captured git bundles here (`<runId>.bundle`); boot wires
 	 * `<dataDir>/salvage`. Absent ⇒ the intake refuses with a 500 rather than
