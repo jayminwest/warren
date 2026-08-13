@@ -26,6 +26,14 @@
  * than reuse `SECURITY_HEADERS` — whose `form-action 'self'` would block
  * the manifest hand-off.
  *
+ * warren-e320: every route under the `/github-app` prefix rides the
+ * boot-resolved existence gate (`resolveGitHubAppRegistrationGate` in
+ * `src/server/github-app-gate.ts`, applied in `buildApiRoutes`) — OFF by
+ * default on a public instance or once `WARREN_FORGE=app` is configured,
+ * overridable with `WARREN_GITHUB_APP_REGISTRATION=on|off`, 404 when off.
+ * The gate matches the PREFIX on purpose: the `/github-app/installed`
+ * return route proposed in warren-54c7 inherits it the day it lands.
+ *
  * The pending-nonce store is a module-level singleton by default: the two
  * routes are separate `ROUTE_TABLE` entries (separate `build` calls) but
  * must share one store, and the flow's state is process-local by design

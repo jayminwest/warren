@@ -51,6 +51,12 @@ export interface BuildServerDepsInput {
 	 */
 	readonly forge: Forge;
 	/**
+	 * The `/github-app/*` registration gate resolved ONCE at boot
+	 * (warren-e320, `resolveGitHubAppRegistrationGate`) — the same
+	 * composition-point posture as `forge` above.
+	 */
+	readonly gitHubAppRegistration: import("../github-app-gate.ts").GitHubAppRegistrationGate;
+	/**
 	 * Provider-neutral preview sidecar resolver (warren-e24d), gated on the
 	 * runtime's preview-port capability at boot. Threaded onto `ServerDeps` for
 	 * the preview-teardown handler's best-effort sidecar stop. Absent under a
@@ -118,6 +124,7 @@ export function buildServerDeps(input: BuildServerDepsInput): ServerDeps {
 		db,
 		runtimeProvider,
 		forge,
+		gitHubAppRegistration,
 		burrowProbe,
 		broker,
 		bridges,
@@ -159,6 +166,7 @@ export function buildServerDeps(input: BuildServerDepsInput): ServerDeps {
 		...createDbSeams(db),
 		runtimeProvider,
 		forge,
+		gitHubAppRegistration,
 		...(burrowProbe !== undefined ? { burrowProbe } : {}),
 		salvageDir,
 		broker,

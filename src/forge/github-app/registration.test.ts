@@ -6,6 +6,7 @@ import {
 	GITHUB_APP_MANIFEST_CREATE_URL,
 	GITHUB_APP_MANIFEST_PERMISSIONS,
 	gitHubOrgManifestCreateUrl,
+	REGISTRATION_STATE_MAX_PENDING,
 	REGISTRATION_STATE_TTL_MS,
 	RegistrationSessions,
 	renderCredentialsPage,
@@ -164,6 +165,35 @@ describe("RegistrationSessions", () => {
 
 	test("the default TTL is ten minutes", () => {
 		expect(REGISTRATION_STATE_TTL_MS).toBe(600_000);
+	});
+
+	test("the store is capped — begin() evicts the oldest live nonce past the cap (warren-e320)", () => {
+		let n = 0;
+		const sessions = new RegistrationSessions(
+			() => 1000,
+			60000,
+			() => `nonce-${n++}`,
+			3,
+		);
+		const first = sessions.begin();
+		sessions.begin();
+		sessions.begin();
+		expect(sessions.size).toBe(3);
+		// The fourth begin() evicts the oldest (first) nonce.
+		const fourth = sessions.begin();
+		expect(sessions.size).toBe(3);
+		expect(sessions.consume(first)).toBe(false);
+		expect(sessions.consume(fourth)).toBe(true);
+	});
+
+	test("the default cap is 32 (warren-e320)", () => {
+		expect(REGISTRATION_STATE_MAX_PENDING).toBe(32);
+		let n = 0;
+		const sessions = new RegistrationSessions(Date.now, 60000, () => `nonce-${n++}`);
+		for (let i = 0; i < REGISTRATION_STATE_MAX_PENDING + 10; i++) {
+			sessions.begin();
+		}
+		expect(sessions.size).toBe(REGISTRATION_STATE_MAX_PENDING);
 	});
 });
 

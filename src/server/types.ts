@@ -172,6 +172,13 @@ export interface ServerDeps {
 	 * appear in a public projection.
 	 */
 	readonly forge: Forge;
+	/**
+	 * Boot-resolved existence gate for the `/github-app/*` registration
+	 * surface (warren-e320, `resolveGitHubAppRegistrationGate`). Gated-off
+	 * routes answer 404. OPTIONAL: a test that omits it keeps the historical
+	 * always-on behavior; `bootServer` always wires the resolved verdict.
+	 */
+	readonly gitHubAppRegistration?: import("./github-app-gate.ts").GitHubAppRegistrationGate;
 	/** Local-topology `/readyz` burrow probe (warren-f796), boot-wired by the `LocalBootBackend`; absent under `k8s`. */
 	readonly burrowProbe?: () => Promise<import("../diagnostics/checks.ts").DiagnosticCheck>;
 	/** Preview sidecar resolver (warren-e24d), gated on `previewPorts`. The local

@@ -59,6 +59,7 @@ import { createWarrenConfigCache } from "../../warren-config/index.ts";
 import { NO_AUTH, resolveAuth, resolveAuthKind } from "../auth.ts";
 import { bootBridges } from "../bridges.ts";
 import { type EnvLike, loadServerConfigFromEnv } from "../config.ts";
+import { bootGitHubAppRegistrationGate } from "../github-app-gate.ts";
 import { bootScheduler } from "../scheduler.ts";
 import { startServer } from "../server.ts";
 import { loadEventStreamLimitsFromEnv } from "../stream-limits.ts";
@@ -168,6 +169,7 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 	const autoOpenPr = loadAutoOpenPrConfigFromEnv(env);
 	// warren-6c4c: resolve the forge ONCE (runtimeProvider posture); ServerDeps.forge has the doc.
 	const forge = resolveForge({}, env);
+	const gitHubAppRegistration = bootGitHubAppRegistrationGate(env, logger);
 
 	const warrenConfigs = createWarrenConfigCache();
 	const runBranchPrefixDefault = loadRunBranchPrefixFromEnv(env);
@@ -387,6 +389,7 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 		// warren-c531 / warren-6c4c: provider + forge resolved once above; deps re-uses them.
 		runtimeProvider,
 		forge,
+		gitHubAppRegistration,
 		// warren-f796: local-topology `/readyz` burrow probe (absent under k8s).
 		...(localBackend !== undefined ? { burrowProbe: localBackend.probeBurrow } : {}),
 		broker,
