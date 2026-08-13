@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import type { FinalizeResult, RuntimeProvider, WorkspaceInfo } from "../../runtime/contract.ts";
 import { reapRun } from "./index.ts";
 import {
 	type Ctx,
@@ -165,5 +166,85 @@ describe("reapRun provider-error safety net (warren-edc3)", () => {
 		expect(result.state).toBe("cancelled");
 		expect(result.failureReason).toBeNull();
 		expect(result.providerError).toBeNull();
+	});
+
+	test("warren-985e: k8s provider_error run surfaces the pod-posted salvage on the terminal record", async () => {
+		// The 2026-08-12 incident shape: the run died mid-work on OpenRouter
+		// credit exhaustion; the in-pod finalize pushed a ZERO-COMMIT branch
+		// (finalize SUCCEEDED, so `finalizeFailed` never fires) but the pod's
+		// `empty_push_dirty` salvage window captured the dirty tree and stamped
+		// the run row before posting its result. Reap must surface that salvage
+		// instead of reporting both fields null with noChanges:false.
+		const message =
+			'{"type":"error","error":{"type":"invalid_request_error","message":"402: This request requires more credits"}}';
+		await ctx.repos.events.append({
+			runId: ctx.runId,
+			burrowEventSeq: 1,
+			ts: new Date().toISOString(),
+			kind: "state_change",
+			stream: "system",
+			payload: { type: "turn_end", message: { stopReason: "error", errorMessage: message } },
+		});
+		const finalizeResult: FinalizeResult = {
+			pushed: true,
+			commitsAhead: 0,
+			emptyPush: true,
+			dirty: true,
+			dirtyPaths: ["src/runtime/k8s/finalize-entrypoint.salvage.test.ts"],
+			workspacePlansBody: null,
+			events: [],
+			artifacts: {},
+			prBranch: null,
+			stages: [
+				{ stage: "branch_push", status: "ok" },
+				{ stage: "commits_ahead", status: "ok" },
+			],
+		};
+		const provider = {
+			capabilities: {},
+			workspaceInfo: async (): Promise<WorkspaceInfo> => ({
+				workspacePath: null,
+				branch: "warren/run-1",
+			}),
+			finalize: async (): Promise<FinalizeResult> => finalizeResult,
+			terminate: async () => ({
+				archived: true,
+				deletedEvents: 0,
+				deletedMessages: 0,
+				deletedRuns: 0,
+			}),
+		} as unknown as RuntimeProvider;
+		// The pod's salvage POST stamped the row before its result resolved reap.
+		await ctx.repos.runs.setSalvage(ctx.runId, {
+			rescueRef: "warren/rescue/run-1",
+			bundlePath: "/data/salvage/run-1.bundle",
+		});
+
+		const result = await reapRun({
+			runId: ctx.runId,
+			outcome: "succeeded",
+			repos: ctx.repos,
+			runtimeProvider: provider,
+			broker: ctx.broker,
+			fs: fakeFs().fs,
+			exec: fakeExec().exec,
+		});
+
+		expect(result.state).toBe("failed");
+		expect(result.failureReason).toBe("provider_error");
+		expect(result.salvageRescueRef).toBe("warren/rescue/run-1");
+		expect(result.salvagePath).toBe("/data/salvage/run-1.bundle");
+		const events = await ctx.repos.events.listByRun(ctx.runId);
+		const recorded = events.find((ev) => ev.kind === "reap.workspace_salvage_recorded");
+		expect(recorded?.payloadJson).toMatchObject({
+			source: "pod",
+			rescueRef: "warren/rescue/run-1",
+			bundlePath: "/data/salvage/run-1.bundle",
+		});
+		const completed = events.find((ev) => ev.kind === "reap.completed");
+		expect(completed?.payloadJson).toMatchObject({
+			failureReason: "provider_error",
+			salvage: { rescueRef: "warren/rescue/run-1", bundlePath: "/data/salvage/run-1.bundle" },
+		});
 	});
 });

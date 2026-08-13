@@ -7,6 +7,8 @@
  * so it is unit-testable without a cluster or a real repo.
  */
 
+import type { SalvageTrigger } from "../../core/wire.ts";
+import type { FinalizeResult } from "../contract.ts";
 import type { FinalizeGitRunner } from "./finalize-collect.ts";
 import type { SalvageEnvelope } from "./finalize-wire.ts";
 import { IN_POD_FINALIZE_WIRE_VERSION } from "./finalize-wire.ts";
@@ -66,6 +68,27 @@ export async function fetchCallbackGitCredential(
 		);
 		return undefined;
 	}
+}
+
+/**
+ * The loss-window decision over a collected finalize result (warren-cd3b,
+ * warren-985e): which salvage trigger, if any, the pod must run BEFORE the
+ * result POST resolves warren's finalize and the pod is terminated.
+ *
+ *   - `push_failed` — the primary branch push was rejected (push protection,
+ *     timeout, auth).
+ *   - `empty_push_dirty` — the push LANDED but with zero commits ahead and a
+ *     dirty tree: the run died mid-work (e.g. provider_error credit
+ *     exhaustion) before its first commit, so the pushed branch carries
+ *     nothing and the uncommitted diff is the only work to save.
+ *
+ * `null` ⇒ nothing to salvage (a clean push, or commits actually landed).
+ */
+export function salvageTriggerForResult(result: FinalizeResult): SalvageTrigger | null {
+	const pushFailed = result.stages.some((s) => s.stage === "branch_push" && s.status === "failed");
+	if (pushFailed) return "push_failed";
+	if (result.pushed && result.commitsAhead === 0 && result.dirty) return "empty_push_dirty";
+	return null;
 }
 
 /**
@@ -146,7 +169,10 @@ async function postSalvageWithRetry(
 ): Promise<boolean> {
 	const deadline = now() + (trigger === "no_intent" ? env.salvageMaxWaitMs : 0);
 	const exhausted = (attempt: number): boolean =>
-		trigger === "push_failed" || bounded === true
+		// warren-985e: `empty_push_dirty` shares the `push_failed` posture — an
+		// intent arrived, so warren is demonstrably reachable and the bounded
+		// attempt budget applies (only `no_intent` outlasts a rollout).
+		trigger !== "no_intent" || bounded === true
 			? attempt >= env.postMaxAttempts
 			: now() >= deadline;
 	let backoff = env.postRetryBaseMs;

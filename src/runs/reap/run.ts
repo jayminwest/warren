@@ -208,7 +208,12 @@ export async function reapRun(input: ReapRunInput): Promise<ReapRunResult> {
 	// capture also lifts the destroy skip below: the work is safe, so the
 	// workspace no longer needs preserving.
 	let salvage: WorkspaceSalvageOutcome | null = null;
-	if (state.finalizeFailed && workspacePath === null) {
+	// warren-985e: the pod-side surfacing arm also covers a provider_error
+	// failure — that run's finalize SUCCEEDED (it pushed the zero-commit
+	// branch), so `finalizeFailed` never fires, but the pod's
+	// `empty_push_dirty` salvage window may still have captured the
+	// uncommitted work and stamped the row before posting its result.
+	if ((state.finalizeFailed || failedFromProviderError) && workspacePath === null) {
 		// warren-5ea1 (k8s): the control plane cannot reach the pod's emptyDir,
 		// so reap cannot capture anything itself — but the pod may have POSTed a
 		// self-salvage (`/runs/:id/salvage` intake stamps the run row) before
@@ -228,7 +233,9 @@ export async function reapRun(input: ReapRunInput): Promise<ReapRunResult> {
 		} else {
 			await emit("reap.workspace_salvage_failed", {
 				errors: [
-					"pod reached a terminal phase without posting a finalize result or a salvage bundle; committed work is unrecoverable",
+					failedFromProviderError && !state.finalizeFailed
+						? "run failed with provider_error and the pod posted no salvage bundle; any uncommitted work is unrecoverable"
+						: "pod reached a terminal phase without posting a finalize result or a salvage bundle; committed work is unrecoverable",
 				],
 			});
 		}

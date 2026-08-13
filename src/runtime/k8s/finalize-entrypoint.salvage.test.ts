@@ -283,6 +283,59 @@ describe("runFinalizeEntrypoint salvage (warren-cd3b)", () => {
 		expect(bodies[0]?.rescueRef).toBe("warren/rescue/run_x");
 	});
 
+	test("warren-985e: a zero-commit push with a DIRTY tree folds the work into a salvage commit and POSTs salvage before the result", async () => {
+		const order: string[] = [];
+		const bodies: SalvageEnvelope[] = [];
+		const http: FinalizeHttp = {
+			get: async () => ({ status: 200, body: { intent: intent() } }),
+			post: async (url, _t, body) => {
+				order.push(url);
+				if (url.endsWith("/salvage")) bodies.push(body as SalvageEnvelope);
+				return { status: 200 };
+			},
+		};
+		// The primary push LANDS but `main..HEAD` is empty and the tree is dirty
+		// — the run died mid-work (provider_error) before its first commit.
+		const { git, calls } = fakeGit({
+			"rev-list": { stdout: "0" },
+			status: { stdout: " M src/runtime/k8s/finalize-entrypoint.salvage.test.ts\n" },
+		});
+		const did = await runFinalizeEntrypoint(env, { ...salvageDeps, http, git, fs: fakeFs() });
+		expect(did).toBe(true);
+		// Salvage is captured BEFORE the result POST lets warren terminate the pod.
+		expect(order).toEqual([
+			"http://warren:8080/runs/run_x/salvage",
+			"http://warren:8080/runs/run_x/finalize-result",
+		]);
+		expect(bodies[0]?.trigger).toBe("empty_push_dirty");
+		// The dirty tree was folded into a warren bookkeeping commit (never
+		// gated on the project's hooks), then captured both ways.
+		// The commit rides the canonical bot-identity `-c` args, so `commit` is
+		// not argv[0] (src/bot-identity.ts — never re-spelled inline).
+		const commit = calls.find((c) => c.includes("commit"));
+		expect(commit).toBeDefined();
+		expect(commit).toContain("--no-verify");
+		expect(calls.find((c) => c[0] === "add")).toEqual(["add", "-A"]);
+		expect(bodies[0]?.rescueRef).toBe("warren/rescue/run_x");
+		expect(bodies[0]?.bundleBase64).not.toBeNull();
+		expect(calls.find((c) => c[0] === "bundle")?.[3]).toBe("main..HEAD");
+	});
+
+	test("warren-985e: a zero-commit push with a CLEAN tree skips salvage (a deliberate no-op)", async () => {
+		const posted: string[] = [];
+		const http: FinalizeHttp = {
+			get: async () => ({ status: 200, body: { intent: intent() } }),
+			post: async (url) => {
+				posted.push(url);
+				return { status: 200 };
+			},
+		};
+		const { git } = fakeGit({ "rev-list": { stdout: "0" }, status: { stdout: "" } });
+		const did = await runFinalizeEntrypoint(env, { ...salvageDeps, http, git, fs: fakeFs() });
+		expect(did).toBe(true);
+		expect(posted).toEqual(["http://warren:8080/runs/run_x/finalize-result"]);
+	});
+
 	test("a successful push skips salvage entirely", async () => {
 		const posted: string[] = [];
 		const http: FinalizeHttp = {

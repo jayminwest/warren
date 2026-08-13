@@ -31,6 +31,7 @@
  */
 
 import { ValidationError } from "../../core/errors.ts";
+import { isSalvageTrigger, type SalvageTrigger } from "../../core/wire.ts";
 import type {
 	ArtifactDelta,
 	ArtifactDeltaFile,
@@ -92,11 +93,16 @@ export interface FinalizeResultEnvelope {
  * control-plane restart / severed callback). Unlike the finalize result, this
  * carries the work ITSELF (a git bundle) because the pod's volume is about to
  * die with the container. See `../salvage.ts` for the two capture forms.
+ *
+ * warren-985e: a third trigger, `empty_push_dirty`, covers the run that died
+ * mid-work (e.g. provider_error credit exhaustion) with ZERO commits ahead
+ * and a dirty tree — the push "succeeded" but carried nothing, so the
+ * uncommitted diff is folded into a salvage commit and captured here.
  */
 export interface SalvageEnvelope {
 	version: typeof IN_POD_FINALIZE_WIRE_VERSION;
-	/** Why salvage ran. */
-	trigger: "push_failed" | "no_intent";
+	/** Why salvage ran (canonical vocabulary: `src/core/wire.ts`). */
+	trigger: SalvageTrigger;
 	/** The rescue branch the pod pushed to origin, when that push landed. */
 	rescueRef: string | null;
 	/** base64 git bundle of the run's commits, when one was produced. */
@@ -301,10 +307,13 @@ export function parseSalvageEnvelope(value: unknown): SalvageEnvelope {
 			`unsupported salvage wire version ${String(version)} (expected ${IN_POD_FINALIZE_WIRE_VERSION})`,
 		);
 	}
-	const trigger = reqString(o, "trigger", "body");
-	if (trigger !== "push_failed" && trigger !== "no_intent") {
-		throw new ValidationError('body.trigger must be "push_failed" or "no_intent"');
+	const triggerRaw = reqString(o, "trigger", "body");
+	if (!isSalvageTrigger(triggerRaw)) {
+		throw new ValidationError(
+			'body.trigger must be "push_failed", "no_intent", or "empty_push_dirty"',
+		);
 	}
+	const trigger: SalvageTrigger = triggerRaw;
 	const notes = optStringArray(o, "notes", "body");
 	return {
 		version: IN_POD_FINALIZE_WIRE_VERSION,

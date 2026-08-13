@@ -56,7 +56,7 @@ import {
 } from "./finalize-collect.ts";
 import type { FinalizeResultEnvelope, InPodFinalizeIntent } from "./finalize-wire.ts";
 import { IN_POD_FINALIZE_WIRE_VERSION } from "./finalize-wire.ts";
-import { salvageAndPost } from "./salvage-post.ts";
+import { salvageAndPost, salvageTriggerForResult } from "./salvage-post.ts";
 
 /* -------------------------------------------------------------------------- */
 /* Env                                                                        */
@@ -374,7 +374,10 @@ export async function postResultWithRetry(
  * warren-cd3b: both loss windows run salvage BEFORE the process can exit —
  * no intent at all ⇒ bundle + retry through a rollout; a failed branch push
  * ⇒ rescue-ref + bundle BEFORE the result POST. warren-5ea1: and a proactive
- * bundle at the early-salvage mark, mid-wait.
+ * bundle at the early-salvage mark, mid-wait. warren-985e: a third window —
+ * a SUCCESSFUL push with zero commits ahead and a dirty tree (the run died
+ * mid-work before its first commit) folds the dirty tree into a salvage
+ * commit and captures it before the result POST.
  */
 export async function runFinalizeEntrypoint(
 	envSource: FinalizeEnvSource,
@@ -426,11 +429,15 @@ export async function runFinalizeEntrypoint(
 
 	log(`finalize-entrypoint: intent ${intent.attemptId} received; collecting`);
 	const result = await collectFinalizeResult(intent, env.workspacePath, { fs, git });
-	// The primary push failed (timeout / push protection / auth). Salvage FIRST:
-	// the result POST below resolves warren's awaiting finalize, which proceeds
-	// straight to `terminate` (contract §6.8) — after it, this volume is gone.
-	const pushFailed = result.stages.some((s) => s.stage === "branch_push" && s.status === "failed");
-	if (pushFailed) {
+	// Loss-window salvage (warren-cd3b, warren-985e) runs BEFORE the result
+	// POST below resolves warren's awaiting finalize, which proceeds straight
+	// to `terminate` (contract §6.8) — after it, this volume is gone. The
+	// `empty_push_dirty` window is the warren-985e fix: the push can SUCCEED
+	// and still carry nothing (the run died mid-work, e.g. provider_error
+	// credit exhaustion, before its first commit), leaving the uncommitted
+	// diff to die with the emptyDir unless the pod captures it here.
+	const salvageTrigger = salvageTriggerForResult(result);
+	if (salvageTrigger !== null) {
 		// The intent's baseBranch narrows the bundle range; the env carries the
 		// pod-spec copy for the salvage envelope's bookkeeping fields.
 		const salvageEnv: FinalizeEntrypointEnv =
@@ -443,7 +450,7 @@ export async function runFinalizeEntrypoint(
 			sleep,
 			now,
 			log,
-			"push_failed",
+			salvageTrigger,
 			intent.gitToken,
 			git,
 			readFileBytes,

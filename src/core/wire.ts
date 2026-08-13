@@ -2,34 +2,29 @@
  * Canonical wire vocabulary (warren-b229 / pl-b82d step 26).
  *
  * THIS FILE IS THE SINGLE SOURCE OF TRUTH for every enum-shaped value that
- * crosses warren's HTTP wire: run / plan-run / preview lifecycle states,
- * failure-cause discriminators, run mode, clone kind, event stream, the
- * steering-inbox classes, and the HTTP response envelopes (warren-42f1).
- * Every other layer — the drizzle column metadata (`src/db/schema/columns.ts`),
- * the SDK (`src/client/types*.ts`), and the browser UI
- * (`src/ui/src/api/types.ts`) — RE-EXPORTS these names. None of them may
- * redeclare one. `bun run check:wire-types` (warren-d371) enforces that
- * mechanically.
+ * crosses warren's HTTP wire (lifecycle states, failure-cause discriminators,
+ * run mode, clone kind, event stream, inbox classes, salvage triggers, and
+ * the HTTP response envelopes — warren-42f1). Every other layer — the
+ * drizzle column metadata (`src/db/schema/columns.ts`), the SDK
+ * (`src/client/types*.ts`), and the browser UI (`src/ui/src/api/types.ts`) —
+ * RE-EXPORTS these names. None of them may redeclare one.
+ * `bun run check:wire-types` (warren-d371) enforces that mechanically.
  *
  * Why `src/core/` and why this direction:
  *
  *   - `src/core/` is warren's dependency-free kernel (errors + ids). It
- *     imports nothing, so every layer can import it without inheriting a
- *     dependency. The UI is a separate Vite-bundled package that must never
- *     reach into `src/db/schema/` (drizzle + `bun:sqlite` in a browser
- *     bundle); a leaf module with zero imports is reachable from both sides.
- *   - The three surfaces drifted for exactly as long as they were hand-kept
- *     copies: `RunFailureReason` lost `finalize_failed` + `evicted` in both
- *     the SDK and the UI, the UI still typed the deleted `interactive` run
- *     mode, and `RefreshAgentsResponse.removed` was `{name}[]` in the UI
- *     against a server truth of `string[]`.
+ *     imports nothing, so every layer — including the Vite-bundled UI, which
+ *     must never reach `src/db/schema/` — can import it without inheriting a
+ *     dependency.
+ *   - The three surfaces drifted for as long as they were hand-kept copies
+ *     (`RunFailureReason` lost values in the SDK and the UI;
+ *     `RefreshAgentsResponse.removed` read as `{name}[]` against a server
+ *     truth of `string[]`).
  *
  * Container-shape convention: every set is a frozen `as const` tuple
  * narrowed by `satisfies readonly <Union>[]`, so the tuple and the union it
  * derives can never disagree. Membership is tested with the exported type
- * guards, never by rebuilding a `Set` at a call site — the previous
- * `ReadonlySet` / `readonly []` / `as const` three-way split was itself a
- * drift vector.
+ * guards, never by rebuilding a `Set` at a call site.
  *
  * The physical-schema constants (table names, index names, row-id helpers)
  * are NOT wire vocabulary and stay in `src/db/schema/columns.ts`.
@@ -54,10 +49,9 @@ export function isTerminalRunState(state: RunState): state is RunTerminalState {
  * Run mode discriminator (pl-0344 step 1 / warren-67b6). `batch` is the
  * historical single-shot run: warren spawns burrow, agent runs to completion,
  * reap pushes the branch. Mode is fixed at run-create time. TS-only narrowing
- * (mx-2ab984); defaults to `batch` so legacy rows written before this column
- * existed match the historical shape. (The retired `interactive` and
- * `conversation` mode values are intentionally dropped from the enum —
- * warren-d622, warren-ee27.)
+ * (mx-2ab984); defaults to `batch` so legacy rows match the historical shape.
+ * (The retired `interactive` and `conversation` values are intentionally
+ * dropped from the enum — warren-d622, warren-ee27.)
  */
 export const RUN_MODES = ["batch"] as const;
 export type RunMode = (typeof RUN_MODES)[number];
@@ -65,10 +59,10 @@ export type RunMode = (typeof RUN_MODES)[number];
 /**
  * Steering-message priority classes for the `run_inbox` table (warren-3d0b,
  * pl-829f step 18). Mirrors the seam's `MessagePriority`
- * (`src/runtime/contract.ts`) verbatim so the K8sProvider can forward the
- * contract value straight onto a row without translation. Ordering is
- * `urgent > high > normal > low`; the poll endpoint claims priority-desc then
- * FIFO-by-`seq` within a class. TS-only narrowing — no SQL CHECK (mx-2ab984).
+ * (`src/runtime/contract.ts`) verbatim so the K8sProvider forwards the
+ * contract value straight onto a row. Ordering is `urgent > high > normal >
+ * low`; the poll endpoint claims priority-desc then FIFO-by-`seq` within a
+ * class. TS-only narrowing — no SQL CHECK (mx-2ab984).
  */
 export const INBOX_PRIORITIES = ["low", "normal", "high", "urgent"] as const;
 export type InboxPriority = (typeof INBOX_PRIORITIES)[number];
@@ -77,8 +71,8 @@ export type InboxPriority = (typeof INBOX_PRIORITIES)[number];
  * Delivery lifecycle for a `run_inbox` row (warren-3d0b). Mirrors the seam
  * `Message.state` union: a fresh steering message is `unread`; the in-pod
  * poll (`GET /runs/:id/inbox`) atomically flips claimed rows to `delivered`;
- * `failed` is reserved for a delivery that could not be completed (symmetry
- * with burrow's inbox lifecycle — LocalProvider parity). TS-only narrowing.
+ * `failed` is reserved for a delivery that could not be completed. TS-only
+ * narrowing.
  */
 export const INBOX_STATES = ["unread", "delivered", "failed"] as const;
 export type InboxState = (typeof INBOX_STATES)[number];
@@ -86,14 +80,11 @@ export type InboxState = (typeof INBOX_STATES)[number];
 /**
  * Chain-kind discriminator for a run that carries a `parent_run_id`
  * (warren-e96f). Both kinds share the parent back-link column but differ in
- * workspace semantics:
- *
- *   - `continue` (warren-4b11) — the new run's workspace is seeded from the
- *     parent run's pushed branch; a follow-up turn that builds on prior work.
- *   - `replicate` (warren-e96f) — the new run is a fresh re-dispatch of the
- *     parent's exact agent / model / project / prompt against the project's
- *     default base (NOT the parent's pushed branch). Independent of whatever
- *     the parent did — the parent might have failed before pushing.
+ * workspace semantics: `continue` (warren-4b11) seeds the new run's
+ * workspace from the parent's pushed branch; `replicate` (warren-e96f) is a
+ * fresh re-dispatch of the parent's exact agent / model / project / prompt
+ * against the project's default base, independent of whatever the parent
+ * did.
  *
  * Nullable on the row: root runs (no parent) leave it null. TS-only narrowing
  * (mx-2ab984); no SQL CHECK. Set at run-create time and never mutated.
@@ -234,22 +225,30 @@ export const RUN_FAILURE_REASONS = [
 export type RunFailureReason = (typeof RUN_FAILURE_REASONS)[number];
 
 /**
+ * Why an in-pod salvage capture ran (warren-cd3b, warren-985e). Rides
+ * `SalvageEnvelope.trigger` on `POST /runs/:id/salvage` and the
+ * `reap.workspace_salvaged` payload: `push_failed` (rejected primary push),
+ * `no_intent` (severed finalize loop), `empty_push_dirty` (zero-commit push
+ * with a dirty tree — the run died mid-work before its first commit, so the
+ * uncommitted diff is the only work to save).
+ */
+export const SALVAGE_TRIGGERS = ["push_failed", "no_intent", "empty_push_dirty"] as const;
+export type SalvageTrigger = (typeof SALVAGE_TRIGGERS)[number];
+
+/** Membership predicate for {@link SALVAGE_TRIGGERS}. */
+export function isSalvageTrigger(value: unknown): value is SalvageTrigger {
+	return typeof value === "string" && (SALVAGE_TRIGGERS as readonly string[]).includes(value);
+}
+
+/**
  * Pull-request lifecycle as a forge reports it (warren-0993 /
  * docs/design/forge-contract.md §2). The forge seam reports this closed
- * vocabulary; the DOMAIN decides what a merged PR means for a run or the
- * next plan-run child — the state machines stay domain-side (§3).
- *
- *   - `open`            — the PR exists and is mergeable-or-pending; the
- *                         merge gate keeps polling.
- *   - `merged`          — the PR merged; `mergedAt` on the state payload
- *                         carries the epoch-ms stamp the analytics
- *                         merge-watcher blocks on.
- *   - `closed_unmerged` — the PR was closed without merging; fatal for a
- *                         plan-run merge gate (the child flips to `failed`).
- *
- * Canonical here because the UI and the SDK both render these values
- * (AGENTS.md, "The wire vocabulary"). House shape: frozen tuple, derived
- * union, membership guard.
+ * vocabulary; the DOMAIN decides what a merged PR means — the state machines
+ * stay domain-side (§3). `open` (mergeable-or-pending; the merge gate keeps
+ * polling), `merged` (`mergedAt` carries the epoch-ms stamp the analytics
+ * merge-watcher blocks on), `closed_unmerged` (fatal for a plan-run merge
+ * gate — the child flips to `failed`). Canonical here because the UI and
+ * the SDK both render these values (AGENTS.md, "The wire vocabulary").
  */
 export const PULL_REQUEST_LIFECYCLES = ["open", "merged", "closed_unmerged"] as const;
 export type PullRequestLifecycle = (typeof PULL_REQUEST_LIFECYCLES)[number];

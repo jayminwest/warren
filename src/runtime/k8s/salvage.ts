@@ -15,6 +15,12 @@
  *     the rescue push falls back to the pod-carried `WARREN_GIT_TOKEN` (the
  *     same `warren-git-token` Secret the init container clones with —
  *     warren-6016), and the bundle capture + POST always run.
+ *   - `empty_push_dirty` (warren-985e) — the push landed but with zero
+ *     commits ahead and a dirty tree: the run died mid-work (e.g.
+ *     provider_error credit exhaustion) before its first commit, so the
+ *     pushed branch carries nothing and the uncommitted diff is the only
+ *     work to save. The dirty-tree fold-in below is what puts that diff
+ *     into a commit the rescue ref and bundle can capture.
  *
  * warren-6016: before either capture form runs, a DIRTY tree is folded into a
  * warren bookkeeping commit (`git add -A` + commit with the canonical bot
