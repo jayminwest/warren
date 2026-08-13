@@ -167,6 +167,88 @@ describe("finalize callback endpoints", () => {
 		expect(res.status).toBe(400);
 	});
 
+	test("GET finalize-intent miss fires the recovery hook with the agent_exit hint (warren-5202)", async () => {
+		const misses: { runId: string; hint: unknown }[] = [];
+		const deps = await depsFor(repos, inertBurrowClient(), undefined, {
+			finalizeCoordinator: coordinator,
+		});
+		handle = startServer(
+			{
+				...deps,
+				finalizeRecovery: {
+					onIntentMiss: (runId, hint) => {
+						misses.push({ runId, hint });
+					},
+					drivenCount: () => 0,
+				},
+			},
+			{
+				transport: { kind: "tcp", hostname: "127.0.0.1", port: 0 },
+				auth: NO_AUTH,
+				logger: silentLogger,
+			},
+		);
+		const base = tcpUrl(handle);
+
+		const res = await fetch(`${base}/runs/run_x/finalize-intent?agent_exit=0`);
+		expect(res.status).toBe(200);
+		expect(await res.json()).toEqual({ intent: null });
+		expect(misses).toEqual([{ runId: "run_x", hint: { agentExitCode: 0 } }]);
+	});
+
+	test("GET finalize-intent with a parked intent does NOT fire the recovery hook", async () => {
+		coordinator.register("run_x", sampleIntent());
+		const misses: string[] = [];
+		const deps = await depsFor(repos, inertBurrowClient(), undefined, {
+			finalizeCoordinator: coordinator,
+		});
+		handle = startServer(
+			{
+				...deps,
+				finalizeRecovery: {
+					onIntentMiss: (runId) => {
+						misses.push(runId);
+					},
+					drivenCount: () => 0,
+				},
+			},
+			{
+				transport: { kind: "tcp", hostname: "127.0.0.1", port: 0 },
+				auth: NO_AUTH,
+				logger: silentLogger,
+			},
+		);
+		const res = await fetch(`${tcpUrl(handle)}/runs/run_x/finalize-intent?agent_exit=1`);
+		expect(res.status).toBe(200);
+		expect(misses).toEqual([]);
+	});
+
+	test("GET finalize-intent tolerates a malformed agent_exit (hint omitted, still 200)", async () => {
+		const misses: { runId: string; hint: unknown }[] = [];
+		const deps = await depsFor(repos, inertBurrowClient(), undefined, {
+			finalizeCoordinator: coordinator,
+		});
+		handle = startServer(
+			{
+				...deps,
+				finalizeRecovery: {
+					onIntentMiss: (runId, hint) => {
+						misses.push({ runId, hint });
+					},
+					drivenCount: () => 0,
+				},
+			},
+			{
+				transport: { kind: "tcp", hostname: "127.0.0.1", port: 0 },
+				auth: NO_AUTH,
+				logger: silentLogger,
+			},
+		);
+		const res = await fetch(`${tcpUrl(handle)}/runs/run_x/finalize-intent?agent_exit=bogus`);
+		expect(res.status).toBe(200);
+		expect(misses).toEqual([{ runId: "run_x", hint: {} }]);
+	});
+
 	test("both routes are bearer-gated like every /runs route", async () => {
 		coordinator.register("run_x", sampleIntent());
 		const base = await serveWith(bearerAuth("s3cret"));

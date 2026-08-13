@@ -50,7 +50,7 @@ import {
 	RunEventBroker,
 	reapRun,
 } from "../../runs/index.ts";
-import { loadWorkspaceGcConfigFromEnv, startWorkspaceGcWorker } from "../../runs/reap/gc.ts";
+import { loadWorkspaceGcConfigFromEnv } from "../../runs/reap/gc.ts";
 import { resolveLocalBootBackend } from "../../runtime/local/boot-backend.ts";
 import { resolveRuntimeKind } from "../../runtime/registry.ts";
 import { loadWarrenServerConfigFromFile } from "../../server-config/index.ts";
@@ -72,13 +72,13 @@ import {
 	bridgeLoggerFromPino,
 	previewEvictionLoggerFromPino,
 	schedulerLoggerFromPino,
-	workspaceGcLoggerFromPino,
 } from "./logging.ts";
 import { bootObservability, captureBootFailure } from "./observability-wiring.ts";
 import { bootPlanRunCoordinatorWiring } from "./plan-run-wiring.ts";
 import { bootPreviewSurface } from "./preview-wiring.ts";
 import { bootK8sRuntime, resolveBootRuntimeProvider } from "./runtime-wiring.ts";
 import { closeDatabase, defaultSpawn, redactDbUrl, resolvePgPoolMax } from "./utils.ts";
+import { bootWorkspaceGc } from "./workspace-gc-wiring.ts";
 
 // Re-exported so `main.test.ts` keeps its strict round-trip check.
 export { resolvePgPoolMax } from "./utils.ts";
@@ -332,7 +332,7 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 
 	// Background detectors: run heartbeat watchdog (warren-285d), periodic
 	// ops-stats worker, forge credential heartbeat (warren-1295). See detector-wiring.ts.
-	const { watchdog, opsStatsWorker, forgeHeartbeat } = bootBackgroundDetectors({
+	const { watchdog, opsStatsWorker, forgeHeartbeat, finalizeRecovery } = bootBackgroundDetectors({
 		env,
 		adapter,
 		repos,
@@ -364,24 +364,14 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 		logger.info({ ...previewEvictionConfig }, "preview eviction worker running");
 	}
 
-	// Fallback GC for stranded workspaces (warren-0a9a): reclaims workspaces
-	// stranded by a mid-reap crash / out-of-band force-kill. warren-e24d: runs
-	// only when the runtime advertises `workspaceGc` (dark under K8s).
-	const resolvedWorkspaceGcConfig =
-		workspaceDestroyer !== undefined ? workspaceGcConfig : { ...workspaceGcConfig, disabled: true };
-	const workspaceGcWorker = startWorkspaceGcWorker({
+	// Fallback GC for stranded workspaces (warren-0a9a). See workspace-gc-wiring.ts.
+	const workspaceGcWorker = bootWorkspaceGc({
 		repos,
-		destroyWorkspace: workspaceDestroyer ?? (async () => ({ status: "already-gone" as const })),
-		config: resolvedWorkspaceGcConfig,
-		logger: workspaceGcLoggerFromPino(logger),
+		workspaceDestroyer,
+		config: workspaceGcConfig,
+		logger,
 		...(opts.now !== undefined ? { now: opts.now } : {}),
 	});
-	logger.info(
-		{ ...resolvedWorkspaceGcConfig },
-		resolvedWorkspaceGcConfig.disabled
-			? "workspace GC disabled (WARREN_WORKSPACE_GC_DISABLED or runtime lacks workspaceGc capability)"
-			: "workspace GC worker running",
-	);
 
 	const deps = buildServerDeps({
 		repos,
@@ -419,6 +409,7 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 		// `/metrics` pod-phase gauges read live from the same pod-watcher at scrape
 		// (warren-7c30); absent under LocalProvider.
 		...(k8sRuntime !== undefined ? { k8sPodWatcher: k8sRuntime.podWatcher } : {}),
+		...(finalizeRecovery !== undefined ? { finalizeRecovery } : {}),
 		...(opts.now !== undefined ? { now: opts.now } : {}),
 	});
 

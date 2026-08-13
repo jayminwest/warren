@@ -425,7 +425,15 @@ export async function runAgentEntrypoint(
 	let finalizeDelivered = true;
 	if (deps.skipFinalize !== true && canFinalize) {
 		try {
-			finalizeDelivered = await runFinalizeEntrypoint(envSource, deps.finalize);
+			// warren-5202: overlay the agent's exit code so the finalize step can
+			// report it on every intent poll (`?agent_exit=`) — a recovering
+			// control plane classifies the run's outcome from the pod's own
+			// witness, not the (possibly log-rotated) terminal envelope.
+			const finalizeEnvSource: AgentEnvSource = {
+				...envSource,
+				WARREN_AGENT_EXIT_CODE: String(result.exitCode),
+			};
+			finalizeDelivered = await runFinalizeEntrypoint(finalizeEnvSource, deps.finalize);
 		} catch (err) {
 			// A thrown finalize error means nothing was delivered — treat it as a
 			// delivery failure for exit-code purposes (warren-4d6a).

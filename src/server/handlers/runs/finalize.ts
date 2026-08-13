@@ -26,6 +26,7 @@
  * boot wiring); `deps.finalizeCoordinator` overrides it for tests.
  */
 
+import type { FinalizeIntentMissHint } from "../../../runs/finalize-recovery.ts";
 import { sharedFinalizeCoordinator } from "../../../runtime/k8s/finalize-coordinator.ts";
 import { parseFinalizeResultEnvelope } from "../../../runtime/k8s/finalize-wire.ts";
 import { jsonResponse } from "../../response.ts";
@@ -33,16 +34,42 @@ import type { RouteHandler, ServerDeps } from "../../types.ts";
 import { readJsonBody, requireParam } from "../index.ts";
 
 /**
+ * Parse the pod-reported agent exit code off the intent poll's `?agent_exit=`
+ * query param (warren-5202). `undefined` when absent (pre-hint pods) or
+ * malformed — the recovery driver treats both as "no hint" and falls back to
+ * the event-log scan. Never throws: a bad query param must not break the poll.
+ */
+export function parseAgentExitHint(url: URL): FinalizeIntentMissHint {
+	const raw = url.searchParams.get("agent_exit");
+	if (raw === null) return {};
+	const n = Number(raw);
+	if (!Number.isInteger(n) || n < 0 || n > 255) return {};
+	return { agentExitCode: n };
+}
+
+/**
  * `GET /runs/:id/finalize-intent` — serve the parked finalize intent to the
  * in-pod harness, or `{ intent: null }` when none is pending yet (the harness
  * keeps polling). The intent already carries its `attemptId` — the correlation
  * key the harness echoes on its result POST.
+ *
+ * warren-5202: an intent MISS is also the recovery signal. After a
+ * control-plane replacement the in-memory coordinator is empty and the lost
+ * reap will never park again, so the pod's poll is the only signal that
+ * survives the restart. Each miss is reported to the boot-wired
+ * `deps.finalizeRecovery` hook (K8s topology only), which re-drives reap once
+ * the miss outlives its grace. Fire-and-forget: the poll response never waits
+ * on recovery, and the GET appends no run event (it must not reset the
+ * heartbeat watchdog's anchor).
  */
 export function getRunFinalizeIntentHandler(deps: ServerDeps): RouteHandler {
 	const coordinator = deps.finalizeCoordinator ?? sharedFinalizeCoordinator;
 	return async (ctx) => {
 		const id = requireParam(ctx, "id");
 		const intent = coordinator.peekIntent(id);
+		if (intent === undefined) {
+			deps.finalizeRecovery?.onIntentMiss(id, parseAgentExitHint(ctx.url));
+		}
 		return jsonResponse(200, { intent: intent ?? null });
 	};
 }

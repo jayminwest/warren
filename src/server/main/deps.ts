@@ -109,6 +109,12 @@ export interface BuildServerDepsInput {
 	 * `POST /runs/:id/salvage` intake.
 	 */
 	readonly salvageDir: string;
+	/**
+	 * K8s finalize-intent recovery hook (warren-5202), built by the
+	 * orchestrator only under `WARREN_RUNTIME=k8s`. Threaded onto `ServerDeps`
+	 * for the `GET /runs/:id/finalize-intent` intent-miss signal.
+	 */
+	readonly finalizeRecovery?: import("../../runs/finalize-recovery.ts").FinalizeRecoveryHook;
 	readonly now?: () => Date;
 }
 
@@ -140,6 +146,7 @@ export function buildServerDeps(input: BuildServerDepsInput): ServerDeps {
 		metricsRegistry,
 		k8sPodWatcher,
 		salvageDir,
+		finalizeRecovery,
 		now,
 	} = input;
 
@@ -191,6 +198,7 @@ export function buildServerDeps(input: BuildServerDepsInput): ServerDeps {
 		// `/metrics` pod-phase gauges read live from the same pod-watcher at scrape
 		// (pl-829f step 25 / warren-7c30); absent under LocalProvider.
 		...(k8sPodWatcher !== undefined ? { podMetrics: k8sPodWatcher } : {}),
+		...(finalizeRecovery !== undefined ? { finalizeRecovery } : {}),
 		...(now !== undefined ? { now } : {}),
 	};
 }
