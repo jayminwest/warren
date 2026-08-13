@@ -74,6 +74,13 @@ export const PR_FIXER_BUILTIN: AgentDefinition = {
 		source: "builtin",
 		tags: ["agent"],
 		runtime: "pi",
+		// warren-3305: this harness consumes steering only at spawn
+		// (encodeInboxMessage folds pending inbox rows into the prompt);
+		// no builtin runtime reads steering mid-run, so a steer against
+		// a running run must fail 409 rather than record a dead
+		// steer.sent. Flip to "mid-run" only when the runtime gains a
+		// proven live steering channel.
+		steering: "spawn-only",
 		// Sonnet tier (model-tiers.ts): smallest correct fix to a known CI
 		// failure, gated by the PR's re-run CI.
 		...MODEL_TIERS.sonnet,

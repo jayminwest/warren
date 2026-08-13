@@ -83,6 +83,13 @@ export const PLANNER_BUILTIN: AgentDefinition = {
 		// its own. Without this, burrow looks up "planner" in
 		// BUILT_IN_RUNTIMES and the run fails before agent boot.
 		runtime: "pi",
+		// warren-3305: this harness consumes steering only at spawn
+		// (encodeInboxMessage folds pending inbox rows into the prompt);
+		// no builtin runtime reads steering mid-run, so a steer against
+		// a running run must fail 409 rather than record a dead
+		// steer.sent. Flip to "mid-run" only when the runtime gains a
+		// proven live steering channel.
+		steering: "spawn-only",
 		// Opus tier (model-tiers.ts): the plan planner emits caps the
 		// quality of every downstream step.
 		...MODEL_TIERS.opus,

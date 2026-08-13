@@ -56,26 +56,10 @@ export function isTerminalRunState(state: RunState): state is RunTerminalState {
 export const RUN_MODES = ["batch"] as const;
 export type RunMode = (typeof RUN_MODES)[number];
 
-/**
- * Steering-message priority classes for the `run_inbox` table (warren-3d0b,
- * pl-829f step 18). Mirrors the seam's `MessagePriority`
- * (`src/runtime/contract.ts`) verbatim so the K8sProvider forwards the
- * contract value straight onto a row. Ordering is `urgent > high > normal >
- * low`; the poll endpoint claims priority-desc then FIFO-by-`seq` within a
- * class. TS-only narrowing — no SQL CHECK (mx-2ab984).
- */
-export const INBOX_PRIORITIES = ["low", "normal", "high", "urgent"] as const;
-export type InboxPriority = (typeof INBOX_PRIORITIES)[number];
-
-/**
- * Delivery lifecycle for a `run_inbox` row (warren-3d0b). Mirrors the seam
- * `Message.state` union: a fresh steering message is `unread`; the in-pod
- * poll (`GET /runs/:id/inbox`) atomically flips claimed rows to `delivered`;
- * `failed` is reserved for a delivery that could not be completed. TS-only
- * narrowing.
- */
-export const INBOX_STATES = ["unread", "delivered", "failed"] as const;
-export type InboxState = (typeof INBOX_STATES)[number];
+// The steering-inbox vocabulary (warren-3d0b, warren-3305) lives in
+// ./wire-inbox.ts (file-size budget); re-exported here so the canonical
+// import path stays `src/core/wire.ts`.
+export * from "./wire-inbox.ts";
 
 /**
  * Chain-kind discriminator for a run that carries a `parent_run_id`

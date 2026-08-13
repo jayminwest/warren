@@ -131,6 +131,23 @@ export class RunInboxRepo {
 		return claimed.sort(compareForDelivery);
 	}
 
+	/**
+	 * List a run's `unread` rows WITHOUT claiming them (warren-3305) — the
+	 * peek half of `GET /runs/:id/inbox?peek=1`, for operator/UI inspection
+	 * that must not steal messages from the pod's poll. Same delivery order
+	 * as `claimForDelivery` (priority-desc, then FIFO-by-`seq`) so a peek
+	 * shows exactly what the next claim would take.
+	 */
+	async listUnreadByRun(runId: string): Promise<RunInboxRow[]> {
+		const rows = await this.adapter.pickAll<RunInboxRow>(
+			this.db
+				.select()
+				.from(this.runInbox)
+				.where(and(eq(this.runInbox.runId, runId), eq(this.runInbox.state, "unread"))),
+		);
+		return rows.sort(compareForDelivery);
+	}
+
 	/** All rows for a run, oldest-first by `seq` (test/inspection helper). */
 	async listByRun(runId: string): Promise<RunInboxRow[]> {
 		const rows = await this.adapter.pickAll<RunInboxRow>(

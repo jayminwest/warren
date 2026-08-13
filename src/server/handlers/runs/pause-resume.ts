@@ -83,9 +83,15 @@ export function steerRunHandler(deps: ServerDeps): RouteHandler {
 export function pollRunInboxHandler(deps: ServerDeps): RouteHandler {
 	return async (ctx) => {
 		const id = requireParam(ctx, "id");
+		// warren-3305: `?peek=1` lists the unread queue WITHOUT claiming it.
+		// A bare poll is poll-CONSUME — an operator "just checking" would steal
+		// the message from the pod's steering poll. The pod never peeks.
+		const peek = ctx.url.searchParams.get("peek");
 		const result = await pollRunInbox({
 			runId: id,
 			repos: deps.repos,
+			broker: deps.broker,
+			...(peek === "1" || peek === "true" ? { claim: false } : {}),
 			...(deps.now !== undefined ? { now: deps.now } : {}),
 		});
 		return jsonResponse(200, { messages: result.messages });

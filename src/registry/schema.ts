@@ -33,6 +33,8 @@ import { AgentSchemaError } from "./errors.ts";
 // budget); re-export so existing import sites keep resolving it from here.
 export { AGENT_NAME_PATTERN, AgentNameSchema } from "./agent-name.ts";
 
+import { readSteeringCapability } from "./steering.ts";
+
 export const REQUIRED_AGENT_SECTIONS = ["system"] as const;
 export type RequiredAgentSection = (typeof REQUIRED_AGENT_SECTIONS)[number];
 
@@ -93,6 +95,10 @@ export interface AgentDefinition {
  *              propagating their system prompt to child runs that
  *              need to write code. Falls back to the parent run's
  *              agentName when unset.
+ *   steering — steering-consumption capability (warren-3305), one of
+ *              STEERING_CAPABILITIES. Read by `readSteeringCapability`;
+ *              `steerRun` 409s a steer the harness cannot consume.
+ *              Absent = legacy fail-open.
  *   tools    — object (warren-8dee). Per-agent tool allowlist/denylist
  *              consumed by the pi runtime: `{ allow?, deny?, noBuiltins?,
  *              noTools? }` → pi's `--tools` / `--exclude-tools` /
@@ -448,6 +454,8 @@ export function validateAgentDefinition(def: AgentDefinition): void {
 	// warren-c4be: an unknown `frontmatter.runtime` fails at registration /
 	// refresh / seeding instead of dying inside the sandbox at dispatch.
 	validateAgentRuntimeId(def);
+	// warren-3305: a malformed steering capability fails just as loudly.
+	readSteeringCapability(def.frontmatter, def.name);
 }
 
 /**

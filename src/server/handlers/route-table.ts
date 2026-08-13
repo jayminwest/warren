@@ -220,7 +220,10 @@ const ROUTE_TABLE: readonly RouteEntry[] = [
 	// warren-3d0b: the in-pod steering poll for the K8s backend. Bearer-gated
 	// like every /runs route; the pod carries its per-run SCOPED token
 	// (warren-57fd). Destructive on read (it claims unread messages), so for a
-	// non-run caller it is operator-only (warren-b875).
+	// non-run caller it is operator-only (warren-b875). `?peek=1` lists the
+	// unread queue WITHOUT claiming (warren-3305) — the only safe way for an
+	// operator or the UI to inspect it; a bare poll steals the message from
+	// the pod's steering poll.
 	{ method: "GET", pattern: "/runs/:id/inbox", policy: "readOperator", build: pollRunInboxHandler },
 	// warren-0d35: the in-pod finalize callback for the K8s backend — the pod
 	// fetches the reap intent, runs the workspace-dependent half in place, and

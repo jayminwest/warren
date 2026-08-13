@@ -49,6 +49,13 @@ export const PI_BUILTIN: AgentDefinition = {
 		// here for parity with the other harness built-ins even though
 		// readRuntimeId would fall back to it anyway.
 		runtime: "pi",
+		// warren-3305: this harness consumes steering only at spawn
+		// (encodeInboxMessage folds pending inbox rows into the prompt);
+		// no builtin runtime reads steering mid-run, so a steer against
+		// a running run must fail 409 rather than record a dead
+		// steer.sent. Flip to "mid-run" only when the runtime gains a
+		// proven live steering channel.
+		steering: "spawn-only",
 		// Sonnet tier (model-tiers.ts): pi is the plan-run child executor
 		// — the bulk of run volume, running well-decomposed steps where
 		// Sonnet matches Opus at lower cost.

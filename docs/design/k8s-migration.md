@@ -135,6 +135,22 @@ Alternative (pod stdin) was rejected: it requires a running `exec` session to
 the pod, which is stateful and breaks on pod restart or warren restart. The HTTP
 poll is stateless and naturally handles reconnects.
 
+#### The two-inbox split (warren-3305)
+
+Two steering stores exist. Do not conflate them.
+
+- **The burrow per-burrow inbox** — the LocalProvider path. `steerRun` calls `runtimeProvider.sendMessage`. Under `local` that posts to the burrow `POST /burrows/:id/inbox` over the unix socket. The scope is per-BURROW, not per-run, so the returned message carries `runId: null`. The burrow dispatcher drains it. Warren never sees delivery.
+- **The warren `run_inbox` table** — the K8s path. `K8sProvider.sendMessage` persists the message under the warren run id. The in-pod agent harness (`agent-stdin-hold.ts`) polls `GET /runs/:id/inbox` and drains it.
+
+Operational rules:
+
+- **`GET /runs/:id/inbox` reads only the `run_inbox` store.** Under the local topology it knows nothing of the burrow inbox. `{"messages":[]}` after a steer is not proof of delivery. A non-empty read is not proof the agent acted, either.
+- **A bare poll consumes.** It claims every unread row at once and flips it to `delivered`. Any reader other than the pod, such as an operator curl, steals the message before the pod polls.
+- **Use `?peek=1` to inspect.** `GET /runs/:id/inbox?peek=1` (warren-3305) lists the unread queue without claiming. The pod never peeks, so claiming stays exactly-once.
+- **`steer.sent` vs `steer.delivered`.** `steerRun` emits `steer.sent` when warren accepts the message. The poll emits one `steer.delivered` per claimed message (warren-3305). Delivered means the harness took the message, not that the agent acted on it. A steer with `steer.sent` but no `steer.delivered` is the observable non-delivery signature.
+- **Declare the harness capability, never assume it.** `frontmatter.steering` (see `STEERING_CAPABILITIES` in `src/core/wire.ts`) records what the agent runtime consumes. `"mid-run"` means a live stdin channel. No builtin has one today.
+- **All eight builtins are `"spawn-only"`.** The harness folds the message into the prompt at spawn and never reads mid-run. `"none"` rejects every steer. `POST /runs/:id/steer` returns 409 when the declared harness cannot consume the steer. Agents that predate the flag stay fail-open.
+
 ---
 
 ## 2. Sandbox Model

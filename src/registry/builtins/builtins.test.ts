@@ -77,6 +77,16 @@ describe("BUILTIN_AGENTS", () => {
 		}
 	});
 
+	// warren-3305: no builtin runtime consumes steering mid-run (pi reads
+	// stdin only at a turn boundary and warren closes stdin at agent_end), so
+	// every builtin must declare spawn-only — the flag drives the 409 that
+	// replaced the silent steer.sent no-op.
+	test("each builtin declares steering: 'spawn-only' (warren-3305)", () => {
+		for (const builtin of BUILTIN_AGENTS) {
+			expect(builtin.frontmatter.steering).toBe("spawn-only");
+		}
+	});
+
 	// warren-6a34: the operating-contract block for the three interactive
 	// coding built-ins must frame the quality gate as terminal, not advisory.
 	// This regression test prevents the bullet from drifting back to softer

@@ -40,6 +40,13 @@ export const SAPLING_BUILTIN: AgentDefinition = {
 		// explicitly so this built-in keeps dispatching onto the sapling
 		// burrow runtime instead of inheriting the pi default.
 		runtime: "sapling",
+		// warren-3305: this harness consumes steering only at spawn
+		// (encodeInboxMessage folds pending inbox rows into the prompt);
+		// no builtin runtime reads steering mid-run, so a steer against
+		// a running run must fail 409 rather than record a dead
+		// steer.sent. Flip to "mid-run" only when the runtime gains a
+		// proven live steering channel.
+		steering: "spawn-only",
 		// Sonnet tier (model-tiers.ts): alternate coding harness, scoped work.
 		...MODEL_TIERS.sonnet,
 	},

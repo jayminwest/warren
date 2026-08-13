@@ -1,9 +1,10 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Message } from "@os-eco/burrow-cli";
 import { BurrowClient, BurrowUnreachableError } from "../burrow-client/index.ts";
-import { NotFoundError, ValidationError } from "../core/errors.ts";
+import { NotFoundError, StateTransitionError, ValidationError } from "../core/errors.ts";
 import { openDatabase, type WarrenDb } from "../db/client.ts";
 import { createRepos, type Repos } from "../db/repos/index.ts";
+import { AgentSchemaError } from "../registry/errors.ts";
 import type { RuntimeProvider } from "../runtime/contract.ts";
 import { resolveRuntimeProvider } from "../runtime/registry.ts";
 import { RunEventBroker } from "./events.ts";
@@ -131,20 +132,29 @@ describe("steerRun", () => {
 	});
 
 	async function createRunningRun(
-		opts: { burrowId?: string | null; burrowRunId?: string | null } = {},
+		opts: {
+			burrowId?: string | null;
+			burrowRunId?: string | null;
+			renderedAgentJson?: unknown;
+		} = {},
 	): Promise<string> {
 		const burrowId = opts.burrowId === undefined ? "bur_aaaaaaaaaaaa" : opts.burrowId;
 		const run = await repos.runs.create({
 			agentName: "refactor-bot",
 			projectId,
 			prompt: "p",
-			renderedAgentJson: {},
+			renderedAgentJson: opts.renderedAgentJson ?? {},
 			trigger: "manual",
 			burrowId,
 			burrowRunId: opts.burrowRunId === undefined ? "run_zzzzzzzzzzzz" : opts.burrowRunId,
 		});
 		await repos.runs.markRunning(run.id);
 		return run.id;
+	}
+
+	/** A frozen agent definition carrying the given `frontmatter.steering` value. */
+	function renderedWithSteering(steering: unknown): unknown {
+		return { sections: { system: "x" }, frontmatter: { steering } };
 	}
 
 	test("rejects an empty body before touching db or burrow", async () => {
@@ -195,6 +205,101 @@ describe("steerRun", () => {
 			steerRun({ runId, body: "hi", repos, runtimeProvider: await makeProvider(client, repos) }),
 		).rejects.toBeInstanceOf(ValidationError);
 		expect(calls).toHaveLength(0);
+	});
+
+	test("rejects 409 when the harness declares steering: none (warren-3305)", async () => {
+		const runId = await createRunningRun({ renderedAgentJson: renderedWithSteering("none") });
+		const { client, calls } = makeBurrowClient();
+		const err = await steerRun({
+			runId,
+			body: "hi",
+			repos,
+			runtimeProvider: await makeProvider(client, repos),
+		}).catch((e: unknown) => e);
+		expect(err).toBeInstanceOf(StateTransitionError);
+		expect((err as Error).message).toContain("cannot consume steering");
+		expect(calls).toHaveLength(0);
+		expect(await repos.events.countByRun(runId)).toBe(0);
+	});
+
+	test("rejects 409 steering a running spawn-only harness (warren-3305)", async () => {
+		const runId = await createRunningRun({
+			renderedAgentJson: renderedWithSteering("spawn-only"),
+		});
+		const { client, calls } = makeBurrowClient();
+		const err = await steerRun({
+			runId,
+			body: "hi",
+			repos,
+			runtimeProvider: await makeProvider(client, repos),
+		}).catch((e: unknown) => e);
+		expect(err).toBeInstanceOf(StateTransitionError);
+		expect((err as Error).message).toContain("only consumes steering at spawn");
+		expect(calls).toHaveLength(0);
+		expect(await repos.events.countByRun(runId)).toBe(0);
+	});
+
+	test("allows steering a queued spawn-only run (message folds into the spawn prompt)", async () => {
+		const run = await repos.runs.create({
+			agentName: "refactor-bot",
+			projectId,
+			prompt: "p",
+			renderedAgentJson: renderedWithSteering("spawn-only"),
+			trigger: "manual",
+			burrowId: "bur_aaaaaaaaaaaa",
+			burrowRunId: "run_zzzzzzzzzzzz",
+		});
+		const { client, calls } = makeBurrowClient();
+		const result = await steerRun({
+			runId: run.id,
+			body: "hi",
+			repos,
+			runtimeProvider: await makeProvider(client, repos),
+		});
+		expect(result.message.body).toBe("hi");
+		expect(calls).toHaveLength(1);
+	});
+
+	test("allows a mid-run-capable harness on a running run", async () => {
+		const runId = await createRunningRun({ renderedAgentJson: renderedWithSteering("mid-run") });
+		const { client, calls } = makeBurrowClient();
+		const result = await steerRun({
+			runId,
+			body: "hi",
+			repos,
+			runtimeProvider: await makeProvider(client, repos),
+		});
+		expect(result.message.body).toBe("hi");
+		expect(calls).toHaveLength(1);
+	});
+
+	test("fails loudly on a malformed steering capability in the frozen definition", async () => {
+		const runId = await createRunningRun({ renderedAgentJson: renderedWithSteering("sometimes") });
+		const { client, calls } = makeBurrowClient();
+		await expect(
+			steerRun({
+				runId,
+				body: "hi",
+				repos,
+				runtimeProvider: await makeProvider(client, repos),
+			}),
+		).rejects.toBeInstanceOf(AgentSchemaError);
+		expect(calls).toHaveLength(0);
+	});
+
+	test("an agent without a steering declaration stays fail-open (legacy behavior)", async () => {
+		const runId = await createRunningRun({
+			renderedAgentJson: { sections: { system: "x" }, frontmatter: { runtime: "pi" } },
+		});
+		const { client, calls } = makeBurrowClient();
+		const result = await steerRun({
+			runId,
+			body: "hi",
+			repos,
+			runtimeProvider: await makeProvider(client, repos),
+		});
+		expect(result.message.body).toBe("hi");
+		expect(calls).toHaveLength(1);
 	});
 
 	test("forwards body, priority, and fromActor onto the burrow inbox call", async () => {
