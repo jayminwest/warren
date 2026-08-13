@@ -164,6 +164,36 @@ describe("GitHubAppForge delegated surface", () => {
 	});
 });
 
+describe("GitHubAppForge probeCredential (warren-1295 heartbeat seam)", () => {
+	test("force-mints and reports ONLY the expiry — the secret never crosses the seam", async () => {
+		const mints = { count: 0 };
+		const forge = makeForge({ fetch: stubGitHubAppServer({ mints }).fetch });
+		const result = await forge.probeCredential();
+		expect(result.ok).toBe(true);
+		if (!result.ok) return;
+		expect(typeof result.value.expiresAt).toBe("number");
+		expect(JSON.stringify(result.value)).not.toContain("ghs_");
+		expect(mints.count).toBe(1);
+	});
+
+	test("bypasses the token cache — every probe is a fresh liveness proof", async () => {
+		const mints = { count: 0 };
+		const forge = makeForge({ fetch: stubGitHubAppServer({ mints }).fetch });
+		await forge.probeCredential();
+		await forge.probeCredential();
+		expect(mints.count).toBe(2);
+	});
+
+	test("maps a dead credential (401 on the mint) to unauthorized without throwing", async () => {
+		const forge = makeForge({
+			fetch: recordingFetch([jsonResponse(401, { message: "Bad credentials" })]).fetch,
+		});
+		const result = await forge.probeCredential();
+		expect(result.ok).toBe(false);
+		if (!result.ok) expect(result.error.kind).toBe("unauthorized");
+	});
+});
+
 describe("GitHubAppForge botIdentity", () => {
 	test("names the App's bot from the GET /app slug, cached across calls", async () => {
 		const { fetch, calls } = recordingFetch([
