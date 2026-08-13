@@ -338,10 +338,10 @@ the campaign.
 invites capture. Every call site that copies the string into a config object
 re-creates today's bug, and no gate can catch it.
 
-**Rejected: a global git credential helper.** The supervisor writes an
-`insteadOf` rewrite into `$HOME/.gitconfig` once at boot
-(`src/supervisor/git-credentials.ts:62-88`). That mechanism has no refresh
-point, and it is a no-op under `WARREN_RUNTIME=k8s`, where no supervisor runs.
+**Rejected: a global git credential helper.** The supervisor used to write an
+`insteadOf` rewrite into `$HOME/.gitconfig` once at boot (deleted in phase 5,
+warren-5497). That mechanism had no refresh point, and it was a no-op under
+`WARREN_RUNTIME=k8s`, where no supervisor runs.
 A helper would also have to shell back into warren from inside a pod.
 
 **DECIDED (2026-08-08): `gitCredential(ref)` returns a value with an
@@ -484,8 +484,8 @@ count, not an estimate.
    neither does `pr-annotate.ts` — on the same `GET /pulls/:n` that
    pr-merge retries.
 6. **Four git-credential mechanisms, and one of them supplies no credential.**
-   The four: the supervisor's global `insteadOf` rewrite
-   (`src/supervisor/git-credentials.ts:72`), the per-spawn `GIT_CONFIG_*`
+   The four: the supervisor's global `insteadOf` rewrite (deleted in phase 5,
+   warren-5497), the per-spawn `GIT_CONFIG_*`
    env (`src/workspace/git/credential-env.ts:34`, three callers), the
    URL-embedded userinfo of `authenticatedCloneUrl`
    (`src/workspace/git/clone-url.ts:25`, four callers across K8s and reap),
@@ -567,8 +567,9 @@ reduction for almost none of the behavior change.
    spawn paths reference, and green gates are not a working deployment.
 4. **Ship the credential story.** `GitHubApp` and `GitHubPat` as peers, the §4
    re-mint boundary, the manifest registration flow, and a heartbeat probe.
-5. **Delete the old paths.** Remove the supervisor's global rewrite, close the
-   three no-credential push sites, and drop the static-token config fields.
+5. **Delete the old paths.** Remove the supervisor's global rewrite and drop
+   the static-token config fields. (The three no-credential push sites were
+   already closed in phase 4, warren-4e1c.)
 
 **The four phase-4 questions, answered empirically (2026-08-11).** The spike
 ran against a throwaway App (id 4560297) and a scratch repo, per seed

@@ -276,9 +276,8 @@ function buildSupervisorEnv(opts: SupervisorEnvOpts): Record<string, string> {
 		...passthrough,
 		WARREN_API_TOKEN: opts.token,
 		// Bun auto-loads .env from cwd into spawned children. Explicitly
-		// null out the dev-only knobs (GITHUB_TOKEN triggers the supervisor's
-		// git-credentials writer which would clobber the fixture's
-		// GIT_CONFIG_GLOBAL insteadOf rules; the burrow tokens collide with
+		// null out the dev-only knobs (GITHUB_TOKEN would leak into the child's
+		// forge resolution and per-spawn git credentials; the burrow tokens collide with
 		// WARREN_BURROW_NO_AUTH=1's loopback shape; ANTHROPIC_API_KEY is
 		// irrelevant to the stub agent and shouldn't leak).
 		GITHUB_TOKEN: "",
