@@ -114,8 +114,8 @@ export function createProjectHandler(deps: ServerDeps): RouteHandler {
 		// only forwards it. No-op under `WARREN_AUTH=token`
 		// (deps.publicAllowlist is absent).
 		// warren-6c4c: mint the private-repo credential for the host-side clone
-		// per-spawn through the boot forge (forge-contract.md §4.2) instead of
-		// fanning out AutoOpenPrConfig.gitToken.
+		// per-spawn through the boot forge (forge-contract.md §4.2); no config
+		// object holds a token.
 		const gitSecret = await mintGitCredentialSecret(deps.forge, gitUrl);
 		const project = await addProject({
 			repo: deps.repos.projects,
@@ -333,7 +333,7 @@ export function runProjectTriggerHandler(deps: ServerDeps): RouteHandler {
 		const required = await deps.repos.projects.require(id);
 		// warren-6c4c: mint per git spawn (forge-contract.md §4.2) — once for the
 		// refresh fetch below, again for spawnRun's internal clone refresh —
-		// instead of fanning out AutoOpenPrConfig.gitToken. Static under PAT.
+		// — no config object holds a token. Static under PAT.
 		const refreshSecret = await mintGitCredentialSecret(deps.forge, required.gitUrl);
 
 		// Refresh the clone BEFORE reading the trigger entry. The cached

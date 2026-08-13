@@ -168,9 +168,6 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 	const autoOpenPr = loadAutoOpenPrConfigFromEnv(env);
 	// warren-6c4c: resolve the forge ONCE (runtimeProvider posture); ServerDeps.forge has the doc.
 	const forge = resolveForge({}, env);
-	if (autoOpenPr.enabled && autoOpenPr.token === "") {
-		logger.warn({}, "WARREN_AUTO_OPEN_PR enabled but GITHUB_TOKEN unset; pr_open will reap_fail");
-	}
 
 	const warrenConfigs = createWarrenConfigCache();
 	const runBranchPrefixDefault = loadRunBranchPrefixFromEnv(env);

@@ -349,7 +349,8 @@ expiry, and callers re-mint per operation.** Three consequences the campaign
 must carry:
 
 1. **No configuration object holds a token.** `AutoOpenPrConfig.token` and
-   `.gitToken` become a `Forge` handle. The value moves from data to a call.
+   `.gitToken` are deleted (phase 5, warren-5497); callers reach the `Forge`
+   handle instead. The value moves from data to a call.
 2. **Mint immediately before the git process spawns, not once per run.**
    `githubCredentialGitEnv` (`src/workspace/git/credential-env.ts`) is already
    the right shape — it renders the rewrite as per-spawn `GIT_CONFIG_*` env,

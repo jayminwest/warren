@@ -151,7 +151,6 @@ function makePauseResumeClient(fix: PauseResumeFixture, calls: RecordedCall[]): 
 
 const DISABLED_AUTO_OPEN_PR: AutoOpenPrConfig = {
 	enabled: false,
-	token: "",
 	warrenBaseUrl: null,
 };
 

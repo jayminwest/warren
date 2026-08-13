@@ -66,7 +66,7 @@ export interface CreatePlanRunOrchestrationInput {
 	/** Git spawn seam. When wired, the host clone is refreshed before the plan walk (warren-6d60). */
 	readonly spawn?: SpawnFn;
 	readonly projectsConfig: ProjectsConfig;
-	/** Private-repo credential for the host-side refresh fetch (`AutoOpenPrConfig.gitToken`). */
+	/** Private-repo credential for the host-side refresh fetch (minted per-spawn via `mintGitCredentialSecret`). */
 	readonly gitToken?: string;
 	readonly warrenConfigs?: WarrenConfigCache;
 	/** Test seam — defaults to the live `refreshProject`. */

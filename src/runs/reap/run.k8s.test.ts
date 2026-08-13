@@ -296,7 +296,7 @@ describe("reapRun under a K8s-style RuntimeProvider", () => {
 			broker: ctx.broker,
 			fs: fakeFs().fs,
 			exec: e.exec,
-			autoOpenPr: { enabled: true, token: "ghp_xyz", warrenBaseUrl: null },
+			autoOpenPr: { enabled: true, warrenBaseUrl: null },
 			forge,
 		});
 

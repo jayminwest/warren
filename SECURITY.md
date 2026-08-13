@@ -43,7 +43,7 @@ Documented, accepted for V1:
 
 - No multi-tenant auth, no per-user RBAC in V1. Single bearer token, one user. Multi-user identity via OIDC is on the post-V1 roadmap (R-09).
 - No audit log in V1. Warren plans an append-only dispatch/steer/cancel/secret-read ledger post-V1 (R-16). It lands alongside R-09 since it depends on real user identity.
-- No GitHub App auth in V1 — shared PAT via `GITHUB_TOKEN`. Warren plans GitHub App auth with installation-scoped tokens and per-repo allowlists post-V1 (R-18).
+- GitHub credentials run through the forge seam (`WARREN_FORGE`). Static mode uses a shared PAT from `GITHUB_TOKEN`. App mode uses a GitHub App with installation-scoped tokens, minted per spawn. No configuration object holds a token. Per-repo allowlists beyond the App installation scoping remain post-V1 (R-18).
 
 These are limitations for V1, not bugs. V2 candidates: token-pair (read/write), per-token scopes, audit log.
 

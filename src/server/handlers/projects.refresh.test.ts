@@ -121,7 +121,7 @@ describe("POST /projects/:id/refresh — git fetch + hard reset", () => {
 
 	// warren-6c4c: the refresh handler mints the fetch credential per-spawn
 	// through the boot forge (forge-contract.md §4.2) — the secret reaches git
-	// only as per-spawn GIT_CONFIG_* env, never from AutoOpenPrConfig.gitToken.
+	// only as per-spawn GIT_CONFIG_* env, never held on a config object.
 	test("mints the fetch credential through the boot forge into the per-spawn env", async () => {
 		const burrowClient = new BurrowClient({
 			config: { transport: { kind: "unix", path: "/tmp/x.sock" } },

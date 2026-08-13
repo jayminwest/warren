@@ -223,10 +223,9 @@ describe("buildPrContent", () => {
 });
 
 describe("loadAutoOpenPrConfigFromEnv", () => {
-	test("defaults to enabled with empty token when env is empty", () => {
+	test("defaults to enabled when env is empty", () => {
 		const cfg = loadAutoOpenPrConfigFromEnv({});
 		expect(cfg.enabled).toBe(true);
-		expect(cfg.token).toBe("");
 		expect(cfg.warrenBaseUrl).toBeNull();
 	});
 
@@ -242,12 +241,10 @@ describe("loadAutoOpenPrConfigFromEnv", () => {
 		}
 	});
 
-	test("forwards GITHUB_TOKEN and WARREN_BASE_URL", () => {
+	test("forwards WARREN_BASE_URL", () => {
 		const cfg = loadAutoOpenPrConfigFromEnv({
-			GITHUB_TOKEN: "ghp_x",
 			WARREN_BASE_URL: "https://warren.example.com",
 		});
-		expect(cfg.token).toBe("ghp_x");
 		expect(cfg.warrenBaseUrl).toBe("https://warren.example.com");
 	});
 });

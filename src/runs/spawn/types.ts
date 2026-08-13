@@ -99,10 +99,10 @@ export interface SpawnRunInput {
 	readonly projectsConfig?: ProjectsConfig;
 	readonly projectSpawn?: ProjectSpawnFn;
 	/**
-	 * GitHub token for the pre-dispatch refresh's `git fetch` against a
-	 * private repo (`AutoOpenPrConfig.gitToken`, forwarded to
-	 * `refreshProject`). Needed wherever no supervisor-installed global
-	 * `insteadOf` rule exists (K8s control plane). Absent → anonymous.
+	 * GitHub credential for the pre-dispatch refresh's `git fetch`
+	 * against a private repo (minted per-spawn via
+	 * `mintGitCredentialSecret`, forwarded to `refreshProject`).
+	 * Absent → anonymous.
 	 */
 	readonly githubToken?: string;
 	/** Branch, tag, or SHA to refresh to. Defaults to the project's tracked default branch. */

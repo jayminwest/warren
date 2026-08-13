@@ -140,7 +140,7 @@ describe("reapRun pr_open sub-step (warren-f6af; Forge seam warren-45e6)", () =>
 			...reapDeps(fakeBurrowClient(makeBurrow()), { fs: fakeFs().fs, exec: e.exec }),
 			fs: fakeFs().fs,
 			exec: e.exec,
-			autoOpenPr: { enabled: false, token: "ghp_xyz", warrenBaseUrl: null },
+			autoOpenPr: { enabled: false, warrenBaseUrl: null },
 			forge,
 		});
 		expect(result.prUrl).toBeNull();
@@ -231,7 +231,7 @@ describe("reapRun pr_open sub-step (warren-f6af; Forge seam warren-45e6)", () =>
 			...reapDeps(fakeBurrowClient(makeBurrow()), { fs: fakeFs().fs, exec: e.exec }),
 			fs: fakeFs().fs,
 			exec: e.exec,
-			autoOpenPr: { enabled: true, token: "", warrenBaseUrl: null },
+			autoOpenPr: { enabled: true, warrenBaseUrl: null },
 			forge,
 		});
 		expect(result.prUrl).toBeNull();

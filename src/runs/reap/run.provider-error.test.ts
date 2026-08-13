@@ -52,7 +52,7 @@ describe("reapRun provider-error safety net (warren-edc3)", () => {
 			broker: ctx.broker,
 			fs: fakeFs().fs,
 			exec: fakeExec().exec,
-			autoOpenPr: { enabled: true, token: "ghp_xyz", warrenBaseUrl: null },
+			autoOpenPr: { enabled: true, warrenBaseUrl: null },
 		});
 
 		expect(result.state).toBe("failed");
