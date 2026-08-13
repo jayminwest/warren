@@ -1,0 +1,144 @@
+name: seeds-merge-autoheal
+
+# Self-heal for warren-b34b. `.gitattributes` routes `.seeds/*.jsonl` (and the
+# mulch state files) through the custom `merge=seeds-jsonl` driver, a real
+# 3-way id-keyed merge (scripts/merge-seeds-jsonl.ts) registered by
+# package.json's prepare script. GitHub's server-side merge does NOT run custom
+# merge drivers, so every PR that rewrites a `.seeds` row shows
+# mergeable=CONFLICTING on GitHub the moment any other `.seeds` change lands on
+# main — even though the same merge is clean (and correct) in a local clone
+# where the driver exists. `gh pr update-branch` refuses, auto-merge stalls,
+# and the plan-run merge gate cannot clear itself.
+#
+# This workflow watches PRs that touch `.seeds/*.jsonl`. When GitHub reports
+# the PR CONFLICTING, it checks out the PR branch, registers the driver,
+# performs the driver-aware `git merge origin/main`, verifies row integrity
+# (check:seeds-integrity + a duplicate-id scan), and pushes the merge commit
+# back to the PR branch. GitHub then recomputes mergeability and reports
+# MERGEABLE. If the textual conflict is genuine (driver merge fails), the job
+# exits non-zero and leaves the PR for a repair run.
+#
+# Loop guard: the heal push re-triggers this workflow (pull_request
+# synchronize). The sentinel `[seeds-autoheal]` in the head commit message
+# makes the re-trigger exit immediately, so the workflow can never retrigger
+# itself endlessly. A NON-conflicting PR also exits immediately, so ordinary
+# synchronize events cost one cheap mergeability check.
+#
+# Fork PRs are skipped (head repo must equal this repo) — a fork branch is not
+# pushable and must not receive a token.
+#
+# Uses the same GitHub App installation token as auto-merge.yml /
+# bundle-size-autoheal.yml (not GITHUB_TOKEN) so the heal push re-triggers CI;
+# GITHUB_TOKEN-authored pushes are suppressed by GitHub to avoid recursion.
+# NOTE: pull_request workflows run from the MERGE-BASE copy of this file, so
+# this only takes effect once merged to main.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - ".seeds/*.jsonl"
+
+permissions:
+  contents: write
+
+jobs:
+  heal:
+    runs-on: ubuntu-latest
+    # Skip fork PRs and anything targeting main itself.
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref != 'main'
+    env:
+      HEAD_BRANCH: ${{ github.event.pull_request.head.ref }}
+      PR_NUMBER: ${{ github.event.pull_request.number }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Decide whether a heal is needed
+        id: gate
+        run: |
+          set -euo pipefail
+          # Loop guard: our own heal push re-triggers this workflow via
+          # pull_request synchronize. The sentinel in the head commit message
+          # makes that re-trigger exit immediately.
+          msg="$(gh api "repos/${{ github.repository }}/commits/${{ github.event.pull_request.head.sha }}" --jq .commit.message)"
+          if printf '%s' "$msg" | grep -qF '[seeds-autoheal]'; then
+            echo "Head commit is our own heal merge — exiting to avoid a retrigger loop."
+            echo "needed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # GitHub computes mergeability asynchronously; poll briefly for a
+          # definitive answer before deciding there is nothing to heal.
+          state=""
+          for i in 1 2 3 4 5 6; do
+            state="$(gh pr view "$PR_NUMBER" --json mergeable --jq .mergeable)"
+            echo "poll $i: mergeable=$state"
+            [ "$state" = "UNKNOWN" ] || break
+            sleep 10
+          done
+          if [ "$state" != "CONFLICTING" ]; then
+            echo "PR is $state — nothing to heal."
+            echo "needed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "PR is CONFLICTING — attempting the driver-aware heal merge."
+          echo "needed=true" >> "$GITHUB_OUTPUT"
+
+      - name: Mint app installation token
+        id: app-token
+        if: steps.gate.outputs.needed == 'true'
+        uses: actions/create-github-app-token@v3.2.0
+        with:
+          app-id: ${{ vars.AUTO_MERGE_APP_ID }}
+          private-key: ${{ secrets.AUTO_MERGE_APP_PRIVATE_KEY }}
+
+      - uses: actions/checkout@v7.0.1
+        if: steps.gate.outputs.needed == 'true'
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+
+      - uses: oven-sh/setup-bun@v2
+        if: steps.gate.outputs.needed == 'true'
+        with:
+          bun-version-file: .bun-version
+
+      # bun install runs the prepare script, which registers
+      # merge.seeds-jsonl.driver. Register it explicitly too so the heal does
+      # not silently depend on prepare surviving refactors.
+      - name: Install deps and register the seeds-jsonl merge driver
+        if: steps.gate.outputs.needed == 'true'
+        run: |
+          set -euo pipefail
+          bun install
+          git config merge.seeds-jsonl.driver 'bun scripts/merge-seeds-jsonl.ts %O %A %B'
+
+      - name: Driver-aware merge of origin/main into the PR branch
+        if: steps.gate.outputs.needed == 'true'
+        run: |
+          set -euo pipefail
+          git config user.name "factory-droid[bot]"
+          git config user.email "138933559+factory-droid[bot]@users.noreply.github.com"
+          git fetch origin main
+          if ! git merge origin/main --no-edit -m "merge origin/main via seeds-jsonl driver [seeds-autoheal]"; then
+            echo "::error::Driver-aware merge conflicted — this is a genuine textual conflict, not warren-b34b. Leaving the PR for a repair run."
+            git merge --abort || true
+            exit 1
+          fi
+
+      - name: Verify row integrity of the merged tree
+        if: steps.gate.outputs.needed == 'true'
+        run: |
+          set -euo pipefail
+          bun run check:seeds-integrity
+          dups="$(jq -r .id .seeds/issues.jsonl | sort | uniq -d)"
+          if [ -n "$dups" ]; then
+            echo "::error::Duplicate issue ids after merge: $dups"
+            exit 1
+          fi
+          echo "Row integrity OK: $(wc -l < .seeds/issues.jsonl) rows, all ids unique."
+
+      - name: Push the heal merge back to the PR branch
+        if: steps.gate.outputs.needed == 'true'
+        run: git push origin "HEAD:${HEAD_BRANCH}"

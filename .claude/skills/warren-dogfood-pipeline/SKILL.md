@@ -111,7 +111,7 @@ goes stale. Diagnose with
 | State | Fix |
 | --- | --- |
 | `BEHIND`, auto-merge armed | `gh pr update-branch <n>` (re-run after every upstream merge — serial auto-merge is a chase) |
-| `DIRTY` (conflicts) | FIRST verify the conflict is real: `git merge-tree --write-tree origin/main <head-ref>`. Clean (tree hash only) means GitHub's cached mergeability is wrong — push a merge commit to force a recompute, do NOT spend a repair run (warren-fb6e). Genuinely conflicted → dispatch a **repair run** on the PR branch (below) |
+| `DIRTY` (conflicts) | FIRST verify the conflict is real: `git merge-tree --write-tree origin/main <head-ref>`. Clean (tree hash only) has TWO possible meanings — check whether the PR touches `.seeds/*.jsonl` before concluding: (a) PR does NOT touch `.seeds` → GitHub's cached mergeability is stale, push a merge commit to force a recompute, do NOT spend a repair run (warren-fb6e). (b) PR touches `.seeds` → the conflict is REAL for GitHub: the local `merge=seeds-jsonl` driver resolved an id-keyed row rewrite that GitHub's server-side merge genuinely cannot (it runs no custom drivers), so merge-tree-clean is NOT proof of a stale cache (warren-b34b). The `seeds-merge-autoheal` workflow pushes the driver-aware merge automatically; if it has not (or failed), do it manually: checkout the PR branch, `git merge origin/main --no-edit` (driver registered by `bun install`), verify `bun run check:seeds-integrity` + no duplicate ids, push. Genuinely conflicted even with the driver → dispatch a **repair run** on the PR branch (below) |
 | `CLEAN`/green but auto-merge off | Article IX gate declined to arm it; `gh pr merge <n> --auto --squash` — only with operator authorization to unblock merges (ask once, then treat as standing for the session) |
 | CI `FAILURE` | read the failing gate log; bundle-size overshoot after a merge → repair run that runs the bounded `check:bundle-size --update` and commits ONLY the budget diff |
 
@@ -120,9 +120,12 @@ merged on main since the branch was cut; `git fetch origin && git merge
 origin/main`; preserve BOTH sides (deletions on main win over
 incidental touches; this branch's feature always stays);
 `.seeds/issues.jsonl` needs explicit attention even when git reports NO
-conflict — `.gitattributes` sets `merge=union`, so a merge silently
-keeps both copies of every row both sides rewrote, and closing one issue
-rewrites `blockedBy` on every plan sibling (warren-9c90 / warren-db8c).
+conflict — `.gitattributes` routes it through the `merge=seeds-jsonl`
+driver (a 3-way id-keyed merge registered by `bun install`), which is
+correct ONLY in a clone where the driver is registered; verify
+`bun run check:seeds-integrity` after any merge, and remember closing
+one issue rewrites `blockedBy` on every plan sibling (warren-9c90 /
+warren-db8c / warren-b34b).
 Always run `jq -r .id .seeds/issues.jsonl | sort | uniq -d` after the
 merge. Resolve by taking `closed` where either side closed and
 INTERSECTING `blockedBy` — each side only ever removes a blocker, so
