@@ -166,6 +166,9 @@
 - name: "help wanted"
   color: "008672"
   description: "Maintainers welcome external contributions here"
+- name: "good first challenge"
+  color: "b60205"
+  description: "Larger contributor-ready project: scoped, self-contained, gate-verified"
 
 # ---------------------------------------------------------------------------
 # Legacy GitHub defaults -- preserved for backward compatibility.
