@@ -78,7 +78,7 @@ Stable (`0.14.1`), running on GKE in continuous use against real GitHub repos. T
 
 Scenario-based acceptance tests in [`scripts/acceptance/`](scripts/acceptance/) cover the end-to-end path. They span manual runs, cron triggers, K8s pod dispatch, Postgres, previews, restart recovery, cost analytics, the seeds-extensions roundtrip, and serial plan-run dispatch.
 
-The active frontier is the org-readiness cluster: the GitHub App campaign, auth widening, and the issue-tracker seam. See [ROADMAP.md](ROADMAP.md).
+GitHub App mode has shipped. Set `WARREN_FORGE=app` and warren mints short-lived installation tokens per operation instead of holding a static PAT. Register an App in one browser round-trip at `GET /github-app/register` (see [the K8s runbook §2.6](docs/RUNBOOK-K8S.md)). The active frontier is the rest of the org-readiness cluster: auth widening and the issue-tracker seam. See [ROADMAP.md](ROADMAP.md).
 
 ## What you get
 

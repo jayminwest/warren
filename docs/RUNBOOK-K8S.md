@@ -363,7 +363,7 @@ There is one bearer token, and it is not scoped or versioned (see [SECURITY.md](
 Rotation is coarse (edit the Secret, restart) because V1 has no token expiry or scopes.
 The restart is not optional. The public event stream builds its secret-literal matcher from `process.env` once, at the first public event, and never rebuilds it. Rotate any secret that reaches warren via env, then restart warren. Until the restart, public event projections do not redact the new value.
 
-Short-lived per-run GitHub App installation tokens, minted per operation, are the Forge campaign's deliverable ([`docs/design/forge-contract.md`](design/forge-contract.md), plan pl-d1c9).
+GitHub App mode ships short-lived installation tokens, minted per operation. Set `WARREN_FORGE=app` and follow §2.6.
 [ROADMAP.md](../ROADMAP.md) defers per-user identity until paid — the deployment, not the user account, is warren's unit of trust.
 
 ### 2.4 Secrets you must NOT set under k8s
@@ -404,6 +404,40 @@ A misconfigured flip therefore leaves the previous pod in service rather than ex
 The allowlist proves the OWNER, not that each repo under it is public.
 Put an org on the list only when you accept every repo in it becoming visible.
 `scripts/public-auth-wiring.test.ts` guards the wiring that carries both keys into the container.
+
+### 2.6 GitHub App mode (`WARREN_FORGE=app`)
+
+App mode replaces the static PAT with short-lived installation tokens.
+The control plane mints a token per operation and re-mints it on expiry (design: [`docs/design/forge-contract.md`](design/forge-contract.md) §4).
+No bearer token ever sits on a config object.
+The only long-lived secret is the App's PEM private key.
+A misconfigured value fails the boot loudly, never silently at first dispatch.
+
+**Register the App (once).** Open `GET /github-app/register` in a browser that can reach the warren UI.
+You need no bearer token.
+The page shows the exact manifest (contents and pull-requests write, checks read, private visibility) and one button that hands it to GitHub's create-App flow.
+
+GitHub then redirects back to `/github-app/callback`.
+The callback converts the single-use code with no authentication and renders the credential set once: App id, slug, client id and secret, and the PEM private key.
+
+Warren stores nothing, so copy the values into your secret store from that page.
+For an organization-owned App, use `/github-app/register?org=<login>`.
+
+**Install the App.** The credentials page links to `https://github.com/apps/<slug>/installations/new`.
+Install the App on the account or repositories warren may touch.
+Then read the installation id from the URL GitHub lands on (`.../settings/installations/<id>`).
+
+**Supply the credentials.** Add these keys to `warren-secrets` (or to the env of a non-k8s deploy) and rollout-restart:
+
+| Secret key | Env var | Value |
+|---|---|---|
+| `warren-forge` | `WARREN_FORGE` | `app` |
+| `github-app-id` | `WARREN_GITHUB_APP_ID` | the App id from the callback page |
+| `github-app-installation-id` | `WARREN_GITHUB_APP_INSTALLATION_ID` | from the install step above |
+| `github-app-private-key` | `WARREN_GITHUB_APP_PRIVATE_KEY` | the PEM, verbatim (warren unfolds literal `\n` sequences if your store needs the single-line form) |
+
+From then on the control plane mints installation tokens from the cached triple.
+The static `GITHUB_TOKEN` is no longer the forge credential.
 
 ---
 
