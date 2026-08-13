@@ -59,11 +59,25 @@ export async function assertBoundedReads(base: string, ids: SeededIds): Promise<
 	assertTrue(typeof last.seq === "number", "the last replayed line carries a seq to page from");
 	const rest = await fetch(`${base}${eventsPath}?since=${last.seq}`);
 	assertEqual(rest.status, 200, "anonymous event replay with ?since is 200");
-	const restLines = (await rest.text()).trim().split("\n");
+	const restBody = await rest.text();
+	assertNoLeak("anonymous event replay with ?since", restBody);
+	const restLines = restBody.trim().split("\n");
+	// warren-3305: the operator's inbox poll in assertInboxNotDrained (which
+	// runs BEFORE this group) claims the one seeded steering message, and a
+	// claim now appends one `steer.delivered` audit event to the run's log.
+	// It lands past the snapshot bound, so the tail page is the one planted
+	// remainder PLUS that delivery event — two lines, and the second must be
+	// exactly the delivery marker for the seeded message, nothing more.
 	assertEqual(
 		restLines.length,
-		1,
-		"?since pages past the snapshot bound to the one remaining event",
+		2,
+		"?since pages past the snapshot bound to the remaining event plus the steer.delivered from the operator's inbox poll",
+	);
+	const delivered = JSON.parse(restLines[1] ?? "{}") as { kind?: string };
+	assertEqual(
+		delivered.kind,
+		"steer.delivered",
+		"the extra tail event is the steer.delivered the operator's claim emitted",
 	);
 }
 
