@@ -1,5 +1,5 @@
 {
-	"id": "5dc153dd-7c5e-4da7-9e89-49f6810d899c",
+	"id": "1e4282ec-ecfc-4cc0-b3ba-aea985a3c738",
 	"prevId": "5512b45e-4bf9-4828-9998-a13993699fd0",
 	"version": "7",
 	"dialect": "postgresql",
@@ -99,6 +99,12 @@
 				},
 				"stream": {
 					"name": "stream",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"origin": {
+					"name": "origin",
 					"type": "text",
 					"primaryKey": false,
 					"notNull": false
@@ -883,30 +889,6 @@
 				"model": {
 					"name": "model",
 					"type": "text",
-					"primaryKey": false,
-					"notNull": false
-				},
-				"commits_ahead": {
-					"name": "commits_ahead",
-					"type": "integer",
-					"primaryKey": false,
-					"notNull": false
-				},
-				"files_changed": {
-					"name": "files_changed",
-					"type": "integer",
-					"primaryKey": false,
-					"notNull": false
-				},
-				"insertions": {
-					"name": "insertions",
-					"type": "integer",
-					"primaryKey": false,
-					"notNull": false
-				},
-				"deletions": {
-					"name": "deletions",
-					"type": "integer",
 					"primaryKey": false,
 					"notNull": false
 				}

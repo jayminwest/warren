@@ -168,6 +168,9 @@ export const events = pgTable(
 		ts: text("ts").notNull(),
 		kind: text("kind").notNull(),
 		stream: text("stream", { enum: EVENT_STREAMS }),
+		// Parse-boundary provenance (warren-5a07) — mirror of sqlite.
+		// Nullable: historical rows read as unknown, never a real bucket.
+		origin: text("origin"),
 		payloadJson: jsonb("payload_json").notNull(),
 	},
 	(t) => [

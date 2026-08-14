@@ -138,9 +138,15 @@ export function asNdjsonStream<T>(
 
 /**
  * Encode one event row as an NDJSON line, narrowed for `actor`
- * (warren-1cb7). The seven envelope keys are an allowlist by
+ * (warren-1cb7). The eight envelope keys are an allowlist by
  * construction; `projectEvent` owns the payload half and returns `null`
  * for an event a `readPublic`-only caller must not see at all.
+ *
+ * `origin` (warren-5a07) is classified spectator-safe: it is
+ * provenance metadata (`"agent"` vs warren-authored), on par with
+ * `stream`, and carries no payload content. NULL (historical rows,
+ * warren-authored internal appends) stays null on the wire — unknown,
+ * never folded into a real bucket.
  */
 export function eventToNdjson(
 	row: {
@@ -150,6 +156,7 @@ export function eventToNdjson(
 		ts: string;
 		kind: string;
 		stream: string | null;
+		origin: string | null;
 		payloadJson: unknown;
 	},
 	actor?: Actor,
@@ -163,6 +170,7 @@ export function eventToNdjson(
 		ts: projected.ts,
 		kind: projected.kind,
 		stream: projected.stream,
+		origin: projected.origin,
 		payload: projected.payloadJson,
 	})}\n`;
 }

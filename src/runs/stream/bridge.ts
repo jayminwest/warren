@@ -209,6 +209,9 @@ export async function bridgeRunStream(input: BridgeRunStreamInput): Promise<Brid
 				ts: toIsoString(event.ts),
 				kind: event.kind,
 				stream: normalizeStream(event.stream),
+				// warren-5a07: persist the parse-boundary provenance the
+				// in-memory view already carries instead of dropping it.
+				origin: event.origin ?? null,
 				payload: event.payload,
 			});
 			written += 1;

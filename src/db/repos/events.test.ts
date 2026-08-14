@@ -267,6 +267,31 @@ function suite(dialect: "sqlite" | "postgres"): void {
 				await handle.close();
 			}
 		});
+
+		test("origin round-trips and defaults to null (warren-5a07)", async () => {
+			const { handle, events, runId } = await open();
+			try {
+				const withOrigin = await events.append({
+					runId,
+					burrowEventSeq: 1,
+					ts: "2026-05-08T12:00:00.000Z",
+					kind: "text",
+					origin: "agent",
+					payload: {},
+				});
+				const withoutOrigin = await events.append({
+					runId,
+					burrowEventSeq: 2,
+					ts: "2026-05-08T12:00:01.000Z",
+					kind: "text",
+					payload: {},
+				});
+				expect(withOrigin.origin).toBe("agent");
+				expect(withoutOrigin.origin).toBeNull();
+			} finally {
+				await handle.close();
+			}
+		});
 	});
 }
 

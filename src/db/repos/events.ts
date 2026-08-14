@@ -24,6 +24,12 @@ export interface AppendEventInput {
 	ts: string;
 	kind: string;
 	stream?: EventStream | null;
+	/**
+	 * Parse-boundary provenance (warren-5a07). Threaded from the stream
+	 * view's `origin`; NULL on historical rows and on warren-authored
+	 * internal appends reads as unknown — never fold into a real bucket.
+	 */
+	origin?: string | null;
 	payload: unknown;
 }
 
@@ -48,6 +54,7 @@ export class EventsRepo {
 					ts: input.ts,
 					kind: input.kind,
 					stream: input.stream ?? null,
+					origin: input.origin ?? null,
 					payloadJson: input.payload,
 				})
 				.returning(),

@@ -203,6 +203,26 @@ describe("bridgeRunStream — event flow", () => {
 		expect(row?.stream).toBeNull();
 	});
 
+	test("persists the stream view's origin on the appended row (warren-5a07)", async () => {
+		await bridgeRunStream({
+			runId,
+			burrowRunId,
+			repos,
+			broker,
+			burrowId: "bur_aaaaaaaaaaaa",
+			runtimeProvider: makeProvider(),
+			source: source([
+				evt(burrowRunId, 1, { origin: "agent" }),
+				// Absent origin persists as NULL — unknown, never folded
+				// into a real bucket (mixed-semantics rule).
+				evt(burrowRunId, 2),
+			]),
+		});
+		const rows = await repos.events.listByRun(runId);
+		expect(rows[0]?.origin).toBe("agent");
+		expect(rows[1]?.origin).toBeNull();
+	});
+
 	test("source error: logs, sets errored=true, and does not throw", async () => {
 		const errs: object[] = [];
 		const errSource = (): AsyncIterable<StreamEventView> => ({

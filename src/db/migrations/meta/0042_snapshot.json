@@ -1,8 +1,8 @@
 {
 	"version": "6",
 	"dialect": "sqlite",
-	"id": "e16572fa-37b9-43c1-bb4b-c81a52d892da",
-	"prevId": "cd59a7a8-cfa7-4e3c-8cfc-73a00c81c4f7",
+	"id": "b80b952c-2d95-460a-bffb-94a483878773",
+	"prevId": "e16572fa-37b9-43c1-bb4b-c81a52d892da",
 	"tables": {
 		"agents": {
 			"name": "agents",
@@ -825,6 +825,34 @@
 				"model": {
 					"name": "model",
 					"type": "text",
+					"primaryKey": false,
+					"notNull": false,
+					"autoincrement": false
+				},
+				"commits_ahead": {
+					"name": "commits_ahead",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": false,
+					"autoincrement": false
+				},
+				"files_changed": {
+					"name": "files_changed",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": false,
+					"autoincrement": false
+				},
+				"insertions": {
+					"name": "insertions",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": false,
+					"autoincrement": false
+				},
+				"deletions": {
+					"name": "deletions",
+					"type": "integer",
 					"primaryKey": false,
 					"notNull": false,
 					"autoincrement": false
