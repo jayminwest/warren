@@ -56,11 +56,13 @@ export function isTerminalRunState(state: RunState): state is RunTerminalState {
 export const RUN_MODES = ["batch"] as const;
 export type RunMode = (typeof RUN_MODES)[number];
 
+// The actor vocabulary of GET /whoami (warren-3754) lives in
+// ./wire-actor.ts (file-size budget); re-exported for one canonical home.
+export * from "./wire-actor.ts";
 // The steering-inbox vocabulary (warren-3d0b, warren-3305) lives in
 // ./wire-inbox.ts (file-size budget); re-exported here so the canonical
 // import path stays `src/core/wire.ts`.
 export * from "./wire-inbox.ts";
-
 // The analytics-insight vocabulary (warren-be04) lives in
 // ./wire-insight.ts (file-size budget); re-exported for one canonical home.
 export * from "./wire-insight.ts";

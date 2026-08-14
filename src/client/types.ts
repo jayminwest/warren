@@ -8,7 +8,9 @@
 /* the build if you do.                                                     */
 /* ----------------------------------------------------------------------- */
 import type {
+	ActorKind,
 	AgentRow,
+	CapabilityName,
 	CloneKind,
 	ErrorEnvelope,
 	EventStream,
@@ -22,8 +24,11 @@ import type {
 } from "../core/wire.ts";
 
 export {
+	type ActorCapabilities,
+	type ActorKind,
 	type AgentRow,
 	type AgentSource,
+	type CapabilityName,
 	type CloneKind,
 	type EventStream,
 	type ForgeErrorKind,
@@ -40,13 +45,13 @@ export {
 } from "../core/wire.ts";
 
 /**
- * Identity discriminant reported by `GET /whoami` (warren-e195). Mirrors
- * `ActorKind` in src/server/types.ts.
+ * Identity discriminant reported by `GET /whoami` (warren-e195). Kept as
+ * the SDK's published name for this type and derived from `ActorKind`, the
+ * canonical spelling in `src/core/wire.ts`, so the two can never disagree.
+ * The hand-copied union this replaces had already lost the `run` arm that
+ * per-run scoped tokens added (warren-57fd).
  */
-export type ActorIdentity = "operator" | "anonymous";
-
-/** One capability name. Mirrors `CapabilityName` in src/server/types.ts. */
-export type CapabilityName = "readPublic" | "readOperator" | "dispatch" | "admin";
+export type ActorIdentity = ActorKind;
 
 /**
  * `GET /whoami` — who warren thinks the caller is and what it may do.

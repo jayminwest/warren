@@ -5,7 +5,9 @@ import { dirname, join, resolve } from "node:path";
 import {
 	CANONICAL_HOME,
 	canonicalNames,
+	canonicalSources,
 	declaredName,
+	enforcedNames,
 	isDomainName,
 	scan,
 	scanText,
@@ -192,5 +194,61 @@ describe("scan", () => {
 
 	test("the real repository tree is clean", () => {
 		expect(scan(REPO_ROOT)).toEqual([]);
+	});
+});
+
+describe("split canonical modules (warren-3754)", () => {
+	test("canonicalSources reads the home plus every module it re-exports whole", () => {
+		expect(
+			canonicalSources(
+				[
+					"export type RunState = 'queued';",
+					'export * from "./wire-inbox.ts";',
+					'export * from "./wire-actor.ts";',
+					'export type { Elsewhere } from "./not-a-star.ts";',
+					'export * from "../outside/wire.ts";',
+				].join("\n"),
+			),
+		).toEqual([CANONICAL_HOME, "src/core/wire-inbox.ts", "src/core/wire-actor.ts"]);
+	});
+
+	test("a name declared in a re-exported module is enforced", () => {
+		withFixtureRepo(
+			{
+				[CANONICAL_HOME]: `${FIXTURE_HOME}\nexport * from "./wire-actor.ts";\n`,
+				"src/core/wire-actor.ts": "export type ActorKind = 'operator' | 'run';\n",
+				"src/server/types.ts": "export type ActorKind = 'operator';\n",
+			},
+			(dir) => {
+				expect(scan(dir)).toEqual([{ file: "src/server/types.ts", line: 1, name: "ActorKind" }]);
+			},
+		);
+	});
+
+	test("the module that legitimately declares it is not flagged against itself", () => {
+		withFixtureRepo(
+			{
+				[CANONICAL_HOME]: `${FIXTURE_HOME}\nexport * from "./wire-actor.ts";\n`,
+				"src/core/wire-actor.ts": "export type ActorKind = 'operator' | 'run';\n",
+			},
+			(dir) => {
+				expect(scan(dir)).toEqual([]);
+			},
+		);
+	});
+
+	test("enforcedNames unions the home and its modules", () => {
+		withFixtureRepo(
+			{
+				[CANONICAL_HOME]: `${FIXTURE_HOME}\nexport * from "./wire-actor.ts";\n`,
+				"src/core/wire-actor.ts": "export type ActorKind = 'operator';\n",
+			},
+			(dir) => {
+				const { names, sources } = enforcedNames(dir);
+				expect(names).toContain("ActorKind");
+				expect(names).toContain("RunState");
+				expect(sources).toEqual([CANONICAL_HOME, "src/core/wire-actor.ts"]);
+			},
+		);
 	});
 });

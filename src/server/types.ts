@@ -9,6 +9,7 @@
  * `db/repos/` — this file just declares the seams the wiring rides on.
  */
 
+import type { ActorCapabilities, ActorKind, CapabilityName } from "../core/wire.ts";
 import type { AnyWarrenDb } from "../db/client.ts";
 import type { DrizzleAdapter } from "../db/repos/drizzle-adapter.ts";
 import type { Repos } from "../db/repos/index.ts";
@@ -414,33 +415,15 @@ export interface ServeHandle {
 }
 
 /**
- * What a caller is permitted to do — the gate branches on these, it does
- * not re-derive them from who the caller is (warren-1ff0). Named for the
- * permission, not the holder, mirroring `RuntimeCapabilities`
- * (`src/runtime/contract.ts`): a flag says what the surface allows, so a
- * later provider can grant an arbitrary subset without anyone teaching
- * handlers a new identity vocabulary.
+ * The actor vocabulary crosses the wire on `GET /whoami`, so it is declared
+ * once in `src/core/wire.ts` (warren-3754) and re-exported here. Never
+ * redeclare these — `check:wire-types` fails the build if you do.
+ *
+ * `ActorCapabilities` is named for the permission rather than the holder,
+ * the way `RuntimeCapabilities` (`src/runtime/contract.ts`) is. That one
+ * describes a sandbox and is a separate vocabulary.
  */
-export interface ActorCapabilities {
-	/** Read the public projection of runs / projects / agents. */
-	readonly readPublic: boolean;
-	/**
-	 * Read operator-only surfaces — diagnostics, the run inbox, cost
-	 * rollups, raw agent transcripts, per-project warren-config.
-	 */
-	readonly readOperator: boolean;
-	/** Dispatch runs / plan-runs and steer, pause, cancel them. */
-	readonly dispatch: boolean;
-	/** Mutate instance-level state — register projects, triggers, config. */
-	readonly admin: boolean;
-}
-
-/**
- * One capability name. Derived from `ActorCapabilities` rather than
- * re-listed, so a capability added there is automatically a legal route
- * policy and the two vocabularies can't drift.
- */
-export type CapabilityName = keyof ActorCapabilities;
+export type { ActorCapabilities, ActorKind, CapabilityName } from "../core/wire.ts";
 
 /**
  * What a route demands of its caller (warren-b875). Every `ROUTE_TABLE`
@@ -457,17 +440,6 @@ export type CapabilityName = keyof ActorCapabilities;
  * gate refuses with 403 when it doesn't.
  */
 export type RoutePolicy = "anonymous" | CapabilityName;
-
-/**
- * Identity discriminant. `operator` is the single-user V1 caller
- * (SECURITY.md) the token provider authorizes; `anonymous` is the
- * credential-less spectator the `WARREN_AUTH=public` provider mints
- * (warren-851b) — it holds `readPublic` and nothing else. `run` is a
- * sandbox calling back with its per-run scoped token (warren-57fd): it is
- * pinned to a single run's callback surface by the request gate, not by
- * its capability set. Further kinds land with the providers that mint them.
- */
-export type ActorKind = "operator" | "anonymous" | "run";
 
 /**
  * Who is making the request and what they may do. Produced by an
