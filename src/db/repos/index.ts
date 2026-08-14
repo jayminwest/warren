@@ -11,6 +11,7 @@ import { PlanRunsRepo } from "./plan-runs.ts";
 import { ProjectsRepo } from "./projects.ts";
 import { RunInboxRepo } from "./run-inbox.ts";
 import { RunsRepo } from "./runs.ts";
+import { ToolCallsRepo } from "./tool-calls.ts";
 import { TriggersRepo } from "./triggers.ts";
 
 export interface Repos {
@@ -21,6 +22,7 @@ export interface Repos {
 	triggers: TriggersRepo;
 	planRuns: PlanRunsRepo;
 	runInbox: RunInboxRepo;
+	toolCalls: ToolCallsRepo;
 }
 
 export function createRepos(db: AnyWarrenDb): Repos {
@@ -33,7 +35,17 @@ export function createRepos(db: AnyWarrenDb): Repos {
 		triggers: new TriggersRepo(adapter),
 		planRuns: new PlanRunsRepo(adapter),
 		runInbox: new RunInboxRepo(adapter),
+		toolCalls: new ToolCallsRepo(adapter),
 	};
 }
 
-export { AgentsRepo, EventsRepo, PlanRunsRepo, ProjectsRepo, RunInboxRepo, RunsRepo, TriggersRepo };
+export {
+	AgentsRepo,
+	EventsRepo,
+	PlanRunsRepo,
+	ProjectsRepo,
+	RunInboxRepo,
+	RunsRepo,
+	ToolCallsRepo,
+	TriggersRepo,
+};

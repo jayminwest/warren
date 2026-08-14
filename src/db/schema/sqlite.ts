@@ -452,9 +452,63 @@ export const runInbox = sqliteTable(
 	(t) => [index(INDEX_NAMES.runInboxRunState).on(t.runId, t.state)],
 );
 
+/**
+ * Tool-calls rollup (warren-7746 / pl-103e step 9). One row per `tool_use`
+ * event, extracted at event-append time (the stream bridge) or by the
+ * boot-time backfill through the per-runtime shape registries
+ * (`src/core/tool-shape.ts` + `src/core/file-shape.ts`), so the
+ * `/analytics/behavior` command mining reads structured rows instead of
+ * re-parsing raw event payloads under a silent row cap.
+ *
+ * `run_id` FKs `runs.id` ON DELETE CASCADE, so the rollup dies with the run
+ * (and with the project via `runs.project_id` CASCADE) exactly like the
+ * `events` transcript it derives from — retention survival across project
+ * delete is deliberately a phase-4 extension concern, per the plan.
+ *
+ * Column nullability is the extraction report, not schema laxity: a row
+ * whose runtime shape could not read the payload at all lands with
+ * `tool_name`/`command`/`tool_use_id` all NULL (the shape registry's exact
+ * parse-failure condition), which the coverage rollup counts as unparsed.
+ * `is_error` + `result_bytes` start false/NULL on the tool_use row and are
+ * filled in by the matching tool_result's UPDATE on (run_id, tool_use_id);
+ * a result that never arrives reads as non-error, mirroring the old
+ * read-time join semantics.
+ */
+export const toolCalls = sqliteTable(
+	TABLE_NAMES.toolCalls,
+	{
+		id: integer("id").primaryKey({ autoIncrement: true }),
+		runId: text("run_id")
+			.notNull()
+			.references(() => runs.id, { onDelete: "cascade" }),
+		// burrow_event_seq of the tool_use event — orders calls within a run.
+		seq: integer("seq").notNull(),
+		ts: text("ts").notNull(),
+		toolName: text("tool_name"),
+		// Raw command as the harness emitted it; generalization happens at
+		// read time so future queries can re-generalize differently.
+		command: text("command"),
+		// File paths the call touches (fileShape registry); JSON string array.
+		filePaths: text("file_paths", { mode: "json" }),
+		toolUseId: text("tool_use_id"),
+		isError: integer("is_error", { mode: "boolean" }).notNull().default(false),
+		// UTF-8 byte size of the tool_result body (context-waste insight).
+		resultBytes: integer("result_bytes"),
+		// Parse-boundary provenance, mirrored from the source event row
+		// (warren-5a07). NULL reads as unknown, never a real bucket.
+		origin: text("origin"),
+	},
+	(t) => [
+		uniqueIndex(INDEX_NAMES.toolCallsRunSeq).on(t.runId, t.seq),
+		index(INDEX_NAMES.toolCallsRunUseId).on(t.runId, t.toolUseId),
+	],
+);
+
 export type PlanRunRow = typeof planRuns.$inferSelect;
 export type PlanRunInsert = typeof planRuns.$inferInsert;
 export type PlanRunChildRow = typeof planRunChildren.$inferSelect;
 export type PlanRunChildInsert = typeof planRunChildren.$inferInsert;
 export type RunInboxRow = typeof runInbox.$inferSelect;
 export type RunInboxInsert = typeof runInbox.$inferInsert;
+export type ToolCallRow = typeof toolCalls.$inferSelect;
+export type ToolCallInsert = typeof toolCalls.$inferInsert;

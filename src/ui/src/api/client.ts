@@ -688,6 +688,12 @@ export interface RunBehaviorResponse {
 	filter: { projectId: string | null; from: string | null; to: string | null };
 	mining: CommandMining;
 	insights: Insight[];
+	/**
+	 * warren-7746: true when the tool_calls rollup read hit its row cap —
+	 * mining rankings are then computed over a bounded prefix. Reported,
+	 * never silent (the retired event scan truncated without telling).
+	 */
+	truncated: boolean;
 }
 
 export const runAnalyticsApi = {

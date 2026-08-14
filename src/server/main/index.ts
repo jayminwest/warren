@@ -77,6 +77,7 @@ import { bootObservability, captureBootFailure } from "./observability-wiring.ts
 import { bootPlanRunCoordinatorWiring } from "./plan-run-wiring.ts";
 import { bootPreviewSurface } from "./preview-wiring.ts";
 import { bootK8sRuntime, resolveBootRuntimeProvider } from "./runtime-wiring.ts";
+import { bootToolCallsBackfill } from "./tool-calls-backfill-wiring.ts";
 import { closeDatabase, defaultSpawn, redactDbUrl, resolvePgPoolMax } from "./utils.ts";
 import { bootWorkspaceGc } from "./workspace-gc-wiring.ts";
 
@@ -374,6 +375,9 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 		logger,
 		...(opts.now !== undefined ? { now: opts.now } : {}),
 	});
+
+	// Tool-calls rollup backfill (warren-7746). Fire-and-forget; see the wiring module.
+	bootToolCallsBackfill({ repos, logger });
 
 	const deps = buildServerDeps({
 		repos,

@@ -34,6 +34,7 @@ import { providerStreamSource } from "./provider-source.ts";
 import { defaultRunStateProbe, runStatePoller } from "./run-state-poller.ts";
 import { persistInStreamUsage, persistPiStatsDelta, snapshotStats } from "./stats.ts";
 import { detectRuntimeTerminal, isPiAgentEnd } from "./terminal-detect.ts";
+import { recordToolCallRollup, resolveBridgeToolRuntime } from "./tool-call-rollup.ts";
 import {
 	type BridgeLogger,
 	type BridgeRunStreamInput,
@@ -95,6 +96,9 @@ export async function bridgeRunStream(input: BridgeRunStreamInput): Promise<Brid
 	// `runs.rendered_agent_json` (per-trigger override already folded over
 	// the per-agent value at dispatch). A null cap disables enforcement.
 	const costCapUsd = input.costCapUsd ?? (await resolveBridgeCostCap(repos, runId, input.logger));
+	// warren-7746: resolve the run's runtime once so each persisted tool event
+	// extracts through the correct runtime's shapes into the `tool_calls` rollup.
+	const toolRuntime = await resolveBridgeToolRuntime(repos, runId, input.logger);
 	// Budget-cap graceful stop is `provider.cancel(handle, reason)` (warren-1f56).
 	// A test `source` override leaves the provider path inert — default to a no-op
 	// (mirroring the old `sourceClient === null` behavior) so a source-only test
@@ -215,6 +219,9 @@ export async function bridgeRunStream(input: BridgeRunStreamInput): Promise<Brid
 				payload: event.payload,
 			});
 			written += 1;
+			// warren-7746: fold tool events into the `tool_calls` rollup at
+			// append time (best-effort; the boot backfill re-extracts later).
+			await recordToolCallRollup(repos, runId, row, toolRuntime, input.logger);
 			broker.publish(runId, row);
 			// warren-28ca: `event_emitted` is the lifecycle mirror of the
 			// broker publish — one persisted run-event row, fanned to

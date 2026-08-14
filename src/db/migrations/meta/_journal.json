@@ -309,6 +309,13 @@
 			"when": 1786732705768,
 			"tag": "0043_broken_gauntlet",
 			"breakpoints": true
+		},
+		{
+			"idx": 44,
+			"version": "6",
+			"when": 1786736383863,
+			"tag": "0044_lowly_liz_osborn",
+			"breakpoints": true
 		}
 	]
 }

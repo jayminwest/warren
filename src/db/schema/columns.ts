@@ -38,6 +38,7 @@ export const TABLE_NAMES = {
 	planRuns: "plan_runs",
 	planRunChildren: "plan_run_children",
 	runInbox: "run_inbox",
+	toolCalls: "tool_calls",
 } as const;
 
 /**
@@ -83,6 +84,14 @@ export const INDEX_NAMES = {
 	// undelivered-per-run claim a covered index scan instead of a full-table
 	// filter, and FIFO ordering within the claimed set is done in-app by seq.
 	runInboxRunState: "run_inbox_run_state_idx",
+	// warren-7746. The tool_calls rollup writes one row per tool_use event
+	// and joins each tool_result back by (run_id, tool_use_id); the unique
+	// (run_id, seq) index doubles as the backfill idempotency guard (one
+	// row per tool_use event, INSERT ON CONFLICT DO NOTHING) and covers the
+	// analytics read's (run_id, seq) ordering. The (run_id, tool_use_id)
+	// index keeps the result-join UPDATE a covered lookup.
+	toolCallsRunSeq: "tool_calls_run_seq_idx",
+	toolCallsRunUseId: "tool_calls_run_use_id_idx",
 } as const;
 
 /**

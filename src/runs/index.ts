@@ -15,7 +15,7 @@ export {
 	generalizeCommand,
 	isOsEcoCommand,
 	type RuntimeCommandCoverage,
-	type ToolEventRow,
+	type ToolCallMiningRow,
 } from "./analytics/command-mining.ts";
 export {
 	buildInsights,
@@ -47,6 +47,13 @@ export {
 	type TokenBreakdown,
 	type TokenDayBucket,
 } from "./analytics/run-metrics.ts";
+export {
+	extractToolResult,
+	extractToolUse,
+	runtimeFromRenderedAgent,
+	type ToolResultExtraction,
+	type ToolUseExtraction,
+} from "./analytics/tool-call-extract.ts";
 export {
 	composeRunBranch,
 	DEFAULT_RUN_BRANCH_PREFIX,
