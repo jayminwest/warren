@@ -76,6 +76,7 @@ export function GroupTable({
 								<TableHead>{dimension === "agent" ? "Agent" : "Model"}</TableHead>
 								<TableHead className="text-right">Runs</TableHead>
 								<TableHead className="text-right">Success</TableHead>
+								<TableHead className="text-right">Merged</TableHead>
 								<TableHead className="text-right">Avg ctx</TableHead>
 								<TableHead className="text-right">Avg dur</TableHead>
 								{showCost ? <TableHead className="text-right">Cost</TableHead> : null}
@@ -92,6 +93,12 @@ export function GroupTable({
 									</TableCell>
 									<TableCell className="whitespace-nowrap text-right font-mono text-xs">
 										{formatRate(b.successRate)}
+									</TableCell>
+									<TableCell
+										className="whitespace-nowrap text-right font-mono text-xs"
+										title={`${b.prsMerged} merged of ${b.prStateKnown} PR-tracked runs`}
+									>
+										{formatRate(b.mergedPrRate)}
 									</TableCell>
 									<TableCell className="whitespace-nowrap text-right font-mono text-xs">
 										{formatTokensOrDash(b.avgContextTokens)}

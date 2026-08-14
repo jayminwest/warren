@@ -532,6 +532,11 @@ export interface RunAnalyticsTotals {
 	cancelled: number;
 	active: number;
 	successRate: number | null;
+	/** Landed-work rollup (warren-bd57): the merge-rate denominator — NULL
+	 * `pr_state` is unknown, never a failure. Null when nothing resolved. */
+	prStateKnown: number;
+	prsMerged: number;
+	mergedPrRate: number | null;
 	durationMs: RunStatSummary;
 	/**
 	 * Queue wait (`startedAt - createdAt`) over rows where both are known
@@ -566,6 +571,10 @@ export interface RunGroupBucket {
 	succeeded: number;
 	failed: number;
 	successRate: number | null;
+	/** Landed-work rollup for this bucket (warren-bd57) — see totals. */
+	prStateKnown: number;
+	prsMerged: number;
+	mergedPrRate: number | null;
 	contextTokensTotal: number;
 	avgContextTokens: number | null;
 	tokens: TokenBreakdown;
@@ -688,11 +697,8 @@ export interface RunBehaviorResponse {
 	filter: { projectId: string | null; from: string | null; to: string | null };
 	mining: CommandMining;
 	insights: Insight[];
-	/**
-	 * warren-7746: true when the tool_calls rollup read hit its row cap —
-	 * mining rankings are then computed over a bounded prefix. Reported,
-	 * never silent (the retired event scan truncated without telling).
-	 */
+	/** warren-7746: true when the rollup read hit its row cap — rankings
+	 * then cover a bounded prefix. Reported, never silent. */
 	truncated: boolean;
 }
 

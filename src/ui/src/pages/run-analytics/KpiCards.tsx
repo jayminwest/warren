@@ -82,6 +82,18 @@ export function KpiCards({ totals }: { totals: RunAnalyticsTotals | undefined })
 				value={loading ? dash : formatRate(totals.successRate)}
 				hint={loading ? undefined : `${totals.succeeded} of terminal runs`}
 			/>
+			{/* warren-bd57: landed work sits beside exit-code success. Runs
+			    whose PR state is unknown (NULL pr_state) are excluded from the
+			    denominator, so the hint says what the rate is over. */}
+			<KpiCard
+				title="Merged PR rate"
+				value={loading ? dash : formatRate(totals.mergedPrRate)}
+				hint={
+					loading
+						? undefined
+						: `${totals.prsMerged} merged of ${totals.prStateKnown} PR-tracked runs`
+				}
+			/>
 			<KpiCard
 				title="Median duration"
 				value={loading ? dash : formatDurationMs(totals.durationMs.median)}

@@ -2,25 +2,28 @@ import { describe, expect, it } from "bun:test";
 import { NONE_KEY, OTHER_KEY, type RunMetricsRow } from "./run-metrics.ts";
 import { buildTokenDimSeries, buildTokenTimeSeries } from "./run-metrics-token-series.ts";
 
+/** All-null baseline row; `row()` spreads the caller's overrides over it. */
+const ROW_DEFAULTS: Omit<RunMetricsRow, "runId"> = {
+	projectId: null,
+	agentName: "claude-code",
+	provider: null,
+	model: null,
+	seedId: null,
+	state: "succeeded",
+	failureReason: null,
+	costUsd: null,
+	tokensInput: null,
+	tokensCacheRead: null,
+	tokensOutput: null,
+	tokensCacheWrite: null,
+	startedAt: null,
+	endedAt: null,
+	createdAt: null,
+	prState: null,
+};
+
 function row(o: Partial<RunMetricsRow> & { runId: string }): RunMetricsRow {
-	return {
-		runId: o.runId,
-		projectId: o.projectId ?? null,
-		agentName: o.agentName ?? "claude-code",
-		provider: o.provider ?? null,
-		model: o.model ?? null,
-		seedId: o.seedId ?? null,
-		state: o.state ?? "succeeded",
-		failureReason: o.failureReason ?? null,
-		costUsd: o.costUsd ?? null,
-		tokensInput: o.tokensInput ?? null,
-		tokensCacheRead: o.tokensCacheRead ?? null,
-		tokensOutput: o.tokensOutput ?? null,
-		tokensCacheWrite: o.tokensCacheWrite ?? null,
-		startedAt: o.startedAt ?? null,
-		endedAt: o.endedAt ?? null,
-		createdAt: o.createdAt ?? null,
-	};
+	return { ...ROW_DEFAULTS, ...o };
 }
 
 describe("buildTokenTimeSeries", () => {
