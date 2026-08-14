@@ -23,8 +23,20 @@ export {
 	type ContextWasteShare,
 } from "./analytics/context-waste.ts";
 export {
+	buildDirectoryDifficulty,
+	DEFAULT_DIRECTORY_LIMIT,
+	type DirectoryDifficulty,
+	type DirectoryDifficultyTotals,
+	type DirectoryRunOutcome,
+	type DirectoryStat,
+	type DirectoryToolCallRow,
+	MIN_DIRECTORY_RUNS,
+	normalizeDirectory,
+} from "./analytics/directory-difficulty.ts";
+export {
 	buildInsights,
 	buildSteeringSignals,
+	countSteeringByRun,
 	type Insight,
 	type InsightConfidence,
 	type InsightKind,

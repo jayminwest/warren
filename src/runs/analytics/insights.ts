@@ -50,6 +50,9 @@
 import type { InsightConfidence } from "../../core/wire.ts";
 import type { CommandMining, CommandStat } from "./command-mining.ts";
 import type { ContextWasteProxy } from "./context-waste.ts";
+import type { DirectoryDifficulty } from "./directory-difficulty.ts";
+import { contextWasteProxy } from "./insights-context-waste.ts";
+import { hardestDirectory } from "./insights-directory.ts";
 import type { RunOutcomes } from "./outcome-analytics.ts";
 import type { RunGroupBucket, RunMetrics } from "./run-metrics.ts";
 
@@ -68,7 +71,8 @@ export type InsightKind =
 	| "steering-anomaly"
 	| "steering-outcome-delta"
 	| "cost-per-merged-pr"
-	| "context-waste-proxy";
+	| "context-waste-proxy"
+	| "hardest-directory";
 
 export interface Insight {
 	readonly kind: InsightKind;
@@ -127,6 +131,12 @@ export interface InsightsInput {
 	 * callout. The `GET /analytics/behavior` handler supplies it.
 	 */
 	readonly contextWaste?: ContextWasteProxy;
+	/**
+	 * Per-directory difficulty rollup (warren-8f1b). Optional like
+	 * `steering`: when omitted the `hardest-directory` callout is
+	 * skipped. Directories carry their own denominators + confidence.
+	 */
+	readonly directories?: DirectoryDifficulty;
 }
 
 /** Minimum terminal runs before an agent's success rate is worth flagging. */
@@ -147,16 +157,8 @@ const MIN_MODELS_FOR_OUTLIER = 2;
 /** Share-of-runs thresholds for the steering anomaly. */
 const STEERING_CRITICAL_SHARE = 0.5;
 const STEERING_WARNING_SHARE = 0.25;
-
 /** Minimum resolved-PR rows per cohort before a delta is worth reporting. */
 const MIN_OUTCOME_COHORT_KNOWN = 3;
-/** Minimum measured runs (rollup rows AND known context tokens) before a
- * byte share is worth flagging — below that the proxy is noise. */
-const MIN_CONTEXT_WASTE_RUNS_MEASURED = 3;
-/** Byte-share thresholds for the context-waste-proxy callout. */
-const CONTEXT_WASTE_WARNING_SHARE = 0.5;
-const CONTEXT_WASTE_CRITICAL_SHARE = 0.75;
-
 const KIND_ORDER: readonly InsightKind[] = [
 	"worst-success-agent",
 	"most-retried-command",
@@ -166,6 +168,7 @@ const KIND_ORDER: readonly InsightKind[] = [
 	"steering-outcome-delta",
 	"steering-anomaly",
 	"context-waste-proxy",
+	"hardest-directory",
 	"highest-context-seed",
 ];
 
@@ -376,35 +379,6 @@ function costPerMergedPr(outcomes: RunOutcomes): Insight | null {
 	};
 }
 
-/**
- * Context-waste proxy (warren-6d41): the tool whose tool_result bytes
- * dominate run context tokens. Fires only over a measured cohort of at
- * least {@link MIN_CONTEXT_WASTE_RUNS_MEASURED} runs — runs predating the
- * rollup or lacking token data are unknown and never ground the share.
- * The detail names the limitation outright: this is the cheap byte-size
- * proxy, not per-turn usage deltas (design record §10 q4, v0 answer).
- */
-function contextWasteProxy(waste: ContextWasteProxy): Insight | null {
-	if (waste.runsMeasured < MIN_CONTEXT_WASTE_RUNS_MEASURED) return null;
-	const top = waste.byTool.find((t) => t.share !== null);
-	if (top === undefined || top.share === null) return null;
-	if (top.share < CONTEXT_WASTE_WARNING_SHARE) return null;
-	return {
-		kind: "context-waste-proxy",
-		severity: top.share >= CONTEXT_WASTE_CRITICAL_SHARE ? "critical" : "warning",
-		title: "Context dominated by tool output",
-		detail:
-			`Tool "${top.key}" returned ${top.resultBytesTotal} byte(s) across ${top.runsMeasured} measured run(s) ` +
-			`holding ${top.contextTokensTotal} context token(s) — a ${pct(top.share)} byte-share proxy of ` +
-			`context use. Byte size against run-level token totals is a ranking proxy, not per-turn ` +
-			`usage deltas.`,
-		value: top.share,
-		subject: top.key,
-		denominator: top.runsMeasured,
-		confidence: waste.confidence,
-	};
-}
-
 function compareInsights(a: Insight, b: Insight): number {
 	const sev = SEVERITY_RANK[a.severity] - SEVERITY_RANK[b.severity];
 	if (sev !== 0) return sev;
@@ -459,13 +433,27 @@ export function buildSteeringSignals(
 }
 
 /**
+ * Per-run steering-message counts (warren-8f1b): the same `steer.sent`
+ * scan as {@link buildSteeringSignals}, keyed by run id, for aggregators
+ * that join steering to a per-run subject (the directory difficulty map).
+ */
+export function countSteeringByRun(rows: readonly SteeringEventRow[]): Map<string, number> {
+	const counts = new Map<string, number>();
+	for (const row of rows) {
+		if (row.kind !== STEER_SENT_KIND) continue;
+		counts.set(row.runId, (counts.get(row.runId) ?? 0) + 1);
+	}
+	return counts;
+}
+
+/**
  * Distill the run-metrics + command-mining rollups (and optional steering
  * signals) into a ranked list of severity-coded callouts. Returns `[]` for a
  * healthy, low-signal window. O(groups + commands) — a handful of single
  * passes over the already-aggregated breakdowns.
  */
 export function buildInsights(input: InsightsInput): Insight[] {
-	const { metrics, mining, steering } = input;
+	const { metrics, mining, steering, directories, outcomes } = input;
 	const candidates: (Insight | null)[] = [
 		highestContextSeed(metrics),
 		worstSuccessAgent(metrics),
@@ -476,9 +464,12 @@ export function buildInsights(input: InsightsInput): Insight[] {
 	if (steering !== undefined) {
 		candidates.push(steeringAnomaly(steering));
 	}
-	if (input.outcomes !== undefined) {
-		candidates.push(steeringOutcomeDelta(input.outcomes));
-		candidates.push(costPerMergedPr(input.outcomes));
+	if (outcomes !== undefined) {
+		candidates.push(steeringOutcomeDelta(outcomes));
+		candidates.push(costPerMergedPr(outcomes));
+	}
+	if (directories !== undefined) {
+		candidates.push(hardestDirectory(directories));
 	}
 	if (input.contextWaste !== undefined) {
 		candidates.push(contextWasteProxy(input.contextWaste));
