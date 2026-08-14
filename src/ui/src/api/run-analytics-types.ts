@@ -185,7 +185,8 @@ export type InsightKind =
 	| "model-cost-outlier"
 	| "steering-anomaly"
 	| "steering-outcome-delta"
-	| "cost-per-merged-pr";
+	| "cost-per-merged-pr"
+	| "context-waste-proxy";
 
 /** Confidence qualifier for outcome-joined insights (warren-be04). */
 export type InsightConfidence = "low" | "medium" | "high";
@@ -251,11 +252,43 @@ export interface RunOutcomes {
 	costPerMergedPr: CostPerMergedPr;
 }
 
+/* Context-waste proxy (warren-6d41 / pl-103e step 11). Mirrors             */
+/* src/runs/analytics/context-waste.ts. The share is a byte-size proxy      */
+/* against run-level context-token totals, NOT per-turn usage deltas.       */
+
+export interface ContextWasteShare {
+	key: string;
+	invocations: number;
+	resultBytesKnown: number;
+	resultBytesTotal: number;
+	runs: number;
+	/** invoking runs with known context tokens — the share's cohort. */
+	runsMeasured: number;
+	contextTokensTotal: number;
+	share: number | null;
+}
+
+export interface ContextWasteProxy {
+	runsInWindow: number;
+	/** runs with at least one rollup row — the rollup-era cohort. */
+	runsWithRollup: number;
+	/** rollup rows AND known context tokens — the share denominator. */
+	runsMeasured: number;
+	contextTokensTotal: number;
+	resultBytesTotal: number;
+	share: number | null;
+	byTool: ContextWasteShare[];
+	byCommand: ContextWasteShare[];
+	confidence: InsightConfidence;
+}
+
 export interface RunBehaviorResponse {
 	filter: { projectId: string | null; from: string | null; to: string | null };
 	mining: CommandMining;
 	insights: Insight[];
 	outcomes: RunOutcomes;
+	/** warren-6d41: context-waste proxy — byte shares + denominators. */
+	contextWaste: ContextWasteProxy;
 	/** warren-7746: true when the rollup read hit its row cap — rankings
 	 * then cover a bounded prefix. Reported, never silent. */
 	truncated: boolean;

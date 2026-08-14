@@ -25,6 +25,9 @@
  *     merged-PR rates, denominators + confidence attached
  *   - `cost-per-merged-pr` (warren-be04): total priced cost over merged-PR
  *     count, overall with the priciest bucket named
+ *   - `context-waste-proxy` (warren-6d41): the tool whose tool_result byte
+ *     share of run context tokens dominates — a byte-size proxy, not
+ *     per-turn usage deltas, and the payload says so
  *
  * NOTE: the `steering-anomaly` callout fires only when a caller passes the
  * optional {@link SteeringSignals} bundle. The `GET /analytics/behavior`
@@ -46,6 +49,7 @@
 
 import type { InsightConfidence } from "../../core/wire.ts";
 import type { CommandMining, CommandStat } from "./command-mining.ts";
+import type { ContextWasteProxy } from "./context-waste.ts";
 import type { RunOutcomes } from "./outcome-analytics.ts";
 import type { RunGroupBucket, RunMetrics } from "./run-metrics.ts";
 
@@ -63,7 +67,8 @@ export type InsightKind =
 	| "model-cost-outlier"
 	| "steering-anomaly"
 	| "steering-outcome-delta"
-	| "cost-per-merged-pr";
+	| "cost-per-merged-pr"
+	| "context-waste-proxy";
 
 export interface Insight {
 	readonly kind: InsightKind;
@@ -115,6 +120,13 @@ export interface InsightsInput {
 	 * callouts.
 	 */
 	readonly outcomes?: RunOutcomes;
+	/**
+	 * Context-waste proxy rollup (warren-6d41) — tool_result byte shares
+	 * against run context tokens from the `tool_calls` rollup. When
+	 * supplied, `buildInsights` also derives the `context-waste-proxy`
+	 * callout. The `GET /analytics/behavior` handler supplies it.
+	 */
+	readonly contextWaste?: ContextWasteProxy;
 }
 
 /** Minimum terminal runs before an agent's success rate is worth flagging. */
@@ -138,6 +150,12 @@ const STEERING_WARNING_SHARE = 0.25;
 
 /** Minimum resolved-PR rows per cohort before a delta is worth reporting. */
 const MIN_OUTCOME_COHORT_KNOWN = 3;
+/** Minimum measured runs (rollup rows AND known context tokens) before a
+ * byte share is worth flagging — below that the proxy is noise. */
+const MIN_CONTEXT_WASTE_RUNS_MEASURED = 3;
+/** Byte-share thresholds for the context-waste-proxy callout. */
+const CONTEXT_WASTE_WARNING_SHARE = 0.5;
+const CONTEXT_WASTE_CRITICAL_SHARE = 0.75;
 
 const KIND_ORDER: readonly InsightKind[] = [
 	"worst-success-agent",
@@ -147,6 +165,7 @@ const KIND_ORDER: readonly InsightKind[] = [
 	"cost-per-merged-pr",
 	"steering-outcome-delta",
 	"steering-anomaly",
+	"context-waste-proxy",
 	"highest-context-seed",
 ];
 
@@ -357,6 +376,35 @@ function costPerMergedPr(outcomes: RunOutcomes): Insight | null {
 	};
 }
 
+/**
+ * Context-waste proxy (warren-6d41): the tool whose tool_result bytes
+ * dominate run context tokens. Fires only over a measured cohort of at
+ * least {@link MIN_CONTEXT_WASTE_RUNS_MEASURED} runs — runs predating the
+ * rollup or lacking token data are unknown and never ground the share.
+ * The detail names the limitation outright: this is the cheap byte-size
+ * proxy, not per-turn usage deltas (design record §10 q4, v0 answer).
+ */
+function contextWasteProxy(waste: ContextWasteProxy): Insight | null {
+	if (waste.runsMeasured < MIN_CONTEXT_WASTE_RUNS_MEASURED) return null;
+	const top = waste.byTool.find((t) => t.share !== null);
+	if (top === undefined || top.share === null) return null;
+	if (top.share < CONTEXT_WASTE_WARNING_SHARE) return null;
+	return {
+		kind: "context-waste-proxy",
+		severity: top.share >= CONTEXT_WASTE_CRITICAL_SHARE ? "critical" : "warning",
+		title: "Context dominated by tool output",
+		detail:
+			`Tool "${top.key}" returned ${top.resultBytesTotal} byte(s) across ${top.runsMeasured} measured run(s) ` +
+			`holding ${top.contextTokensTotal} context token(s) — a ${pct(top.share)} byte-share proxy of ` +
+			`context use. Byte size against run-level token totals is a ranking proxy, not per-turn ` +
+			`usage deltas.`,
+		value: top.share,
+		subject: top.key,
+		denominator: top.runsMeasured,
+		confidence: waste.confidence,
+	};
+}
+
 function compareInsights(a: Insight, b: Insight): number {
 	const sev = SEVERITY_RANK[a.severity] - SEVERITY_RANK[b.severity];
 	if (sev !== 0) return sev;
@@ -431,6 +479,9 @@ export function buildInsights(input: InsightsInput): Insight[] {
 	if (input.outcomes !== undefined) {
 		candidates.push(steeringOutcomeDelta(input.outcomes));
 		candidates.push(costPerMergedPr(input.outcomes));
+	}
+	if (input.contextWaste !== undefined) {
+		candidates.push(contextWasteProxy(input.contextWaste));
 	}
 	const insights = candidates.filter((i): i is Insight => i !== null);
 	insights.sort(compareInsights);

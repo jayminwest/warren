@@ -17,6 +17,7 @@ import type { RunRow } from "../../../db/schema.ts";
 import { DEFAULT_RUNTIME_ID } from "../../../registry/schema.ts";
 import {
 	buildCommandMining,
+	buildContextWaste,
 	buildInsights,
 	buildRunMetrics,
 	buildRunOutcomes,
@@ -472,10 +473,15 @@ export function listBehaviorAnalyticsHandler(deps: ServerDeps): RouteHandler {
 		]);
 		const mining = buildCommandMining(toolCalls.rows);
 		const steering = buildSteeringSignals(steeringRows, rows.length);
+		const metricsRows = toMetricsRows(rows);
 		// warren-be04: the same trace feeds the outcome-joined rollup, which
 		// both ships structured and drives the two outcome insight kinds.
-		const outcomes = buildRunOutcomes(toMetricsRows(rows), steeringRows, metrics);
-		const insights = buildInsights({ metrics, mining, steering, outcomes });
+		const outcomes = buildRunOutcomes(metricsRows, steeringRows, metrics);
+		// warren-6d41: tool_result byte shares against run context tokens
+		// from the same rollup rows — the context-waste proxy section plus
+		// its insight kind. Pre-rollup runs are unknown, never zero.
+		const contextWaste = buildContextWaste(toolCalls.rows, metricsRows);
+		const insights = buildInsights({ metrics, mining, steering, outcomes, contextWaste });
 		// warren-7746: `truncated` reports the rollup read hitting its row
 		// cap — the retired event scan truncated silently at 20k rows.
 		return jsonResponse(200, {
@@ -483,6 +489,7 @@ export function listBehaviorAnalyticsHandler(deps: ServerDeps): RouteHandler {
 			mining,
 			insights,
 			outcomes,
+			contextWaste,
 			truncated: toolCalls.truncated,
 		});
 	};
