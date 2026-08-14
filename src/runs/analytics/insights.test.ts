@@ -44,7 +44,14 @@ function emptyMetrics(): RunMetrics {
 
 function emptyMining(): CommandMining {
 	return {
-		totals: { toolUses: 0, commands: 0, distinctCommands: 0, failures: 0, retries: 0 },
+		totals: {
+			toolUses: 0,
+			commands: 0,
+			distinctCommands: 0,
+			failures: 0,
+			retries: 0,
+			byRuntime: [],
+		},
 		byFrequency: [],
 		byFailures: [],
 		byStuckScore: [],
