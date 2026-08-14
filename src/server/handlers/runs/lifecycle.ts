@@ -50,6 +50,12 @@ export const PUBLIC_RUN_FIELDS = [
 	// the per-run copy carries no new information.
 	"provider",
 	"model",
+	// warren-3bc6: the merge watcher's PR facts. `prUrl` is already public
+	// and the PR lifecycle is visible to anyone who can open that URL, so
+	// the projected copy carries no new information. NULL reads as
+	// "unknown" (historical rows, or no PR), never "not merged".
+	"prState",
+	"prMergedAt",
 	// warren-ab2b: reap-time measured outcome facts (commits ahead of base +
 	// parsed diff totals). Load-shape metrics of the same class as the token
 	// counts; NULL means unknown (pre-column rows, unmeasured finalize).

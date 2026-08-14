@@ -13,6 +13,11 @@ export {
 	SEED_ID_PLACEHOLDER,
 } from "../core/plan-run-prompt.ts";
 export {
+	type CreatePrMergeCheckerInput,
+	createPrMergeChecker,
+	type PrMergeChecker,
+} from "../runs/pr-merge.ts";
+export {
 	type CancelPlanRunInput,
 	type CancelPlanRunLogger,
 	type CancelPlanRunResult,
@@ -53,11 +58,6 @@ export {
 } from "./create.ts";
 export { type CreatePlanRunSpawnInput, createPlanRunSpawn } from "./dispatch.ts";
 export { PlanHasNoOpenChildrenError, ProjectLacksSeedsError } from "./errors.ts";
-export {
-	type CreatePrMergeCheckerInput,
-	createPrMergeChecker,
-	type PrMergeChecker,
-} from "./pr-merge.ts";
 export {
 	type ComputeReadyPlansInput,
 	computeReadyPlans,
