@@ -246,19 +246,25 @@ CI would reject. `check:ci-parity` proves the local manifest and the CI
 workflow agree in both directions. Per-repo escape hatches live in
 `scripts/ci-parity-config.json`.
 
-Six repo-specific guards ride inside the `lint` gate rather than
+Eight repo-specific guards ride inside the `lint` gate rather than
 taking a manifest slot, because the canonical gate vocabulary is
 frozen. Each also runs standalone under the matching `check:` script
 name.
 
 - `scripts/check-layers.ts`, `scripts/check-version-sync.ts`,
-  `scripts/check-wire-types.ts`, `scripts/check-prose.ts`
+  `scripts/check-wire-types.ts`, `scripts/check-prose.ts`,
+  `scripts/check-merge-strategy.ts`
 - `scripts/check-seeds-integrity.ts` (warren-a71f) — catches duplicate
   and contradictory rows in `.seeds/issues.jsonl`, the shape a git
   auto-merge leaves behind
 - `scripts/check-rls.ts` (warren-3206) — replays the Postgres
   migrations in journal order and fails any still-live table without
   `ENABLE ROW LEVEL SECURITY`
+- `scripts/check-client-contract.ts` (warren-4d2d) reads the request
+  paths in `src/ui/src/api/client.ts` and fails any call that
+  `ROUTE_TABLE` does not serve. A path the parser cannot resolve
+  statically fails too, because a silent skip hides the drift this
+  guard exists to catch
 
 `gen:cli-ref:check` rides the same gate and holds the generated CLI
 reference in place.
