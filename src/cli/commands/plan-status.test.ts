@@ -88,6 +88,7 @@ function runRow(over: Partial<RunRow> = {}): RunRow {
 		renderedAgentJson: {},
 		state: "succeeded",
 		failureReason: null,
+		createdAt: null,
 		startedAt: "2026-06-21T08:00:00.000Z",
 		endedAt: "2026-06-21T08:00:12.500Z",
 		prompt: "",

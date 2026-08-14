@@ -66,7 +66,7 @@ function suite(dialect: "sqlite" | "postgres"): void {
 			});
 		}
 
-		test("create stores a queued run with a run_ id and no timestamps", async () => {
+		test("create stores a queued run with a run_ id and only the queued instant stamped", async () => {
 			const { handle, repo, agentName, projectId } = await open();
 			try {
 				const row = await spawn(repo, agentName, projectId);
@@ -76,6 +76,11 @@ function suite(dialect: "sqlite" | "postgres"): void {
 				expect(row.endedAt).toBeNull();
 				expect(row.burrowId).toBeNull();
 				expect(row.burrowRunId).toBeNull();
+				// warren-0af9: created_at is the queued instant, stamped at insert.
+				expect(typeof row.createdAt).toBe("number");
+				expect(row.createdAt).toBeGreaterThan(0);
+				const reread = await repo.require(row.id);
+				expect(reread.createdAt).toBe(row.createdAt);
 			} finally {
 				await handle.close();
 			}

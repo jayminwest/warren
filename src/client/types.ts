@@ -86,6 +86,12 @@ export interface RunRow {
 	renderedAgentJson: unknown;
 	state: RunState;
 	failureReason: RunFailureReason | null;
+	/**
+	 * The queued instant as epoch ms (warren-0af9 / pl-103e step 1), stamped
+	 * by RunsRepo.create at insert. Null on rows written before the column
+	 * existed — read as "unknown", never as zero queue wait.
+	 */
+	createdAt: number | null;
 	startedAt: string | null;
 	endedAt: string | null;
 	prompt: string;

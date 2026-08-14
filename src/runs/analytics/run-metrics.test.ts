@@ -4,6 +4,7 @@ import {
 	contextTokensOf,
 	durationMsOf,
 	NONE_KEY,
+	queueWaitMsOf,
 	type RunMetricsRow,
 	type TokenBreakdown,
 } from "./run-metrics.ts";
@@ -28,6 +29,7 @@ function row(o: Partial<RunMetricsRow> & { runId: string }): RunMetricsRow {
 		tokensCacheWrite: o.tokensCacheWrite ?? null,
 		startedAt: o.startedAt ?? null,
 		endedAt: o.endedAt ?? null,
+		createdAt: o.createdAt ?? null,
 	};
 }
 
@@ -66,12 +68,35 @@ describe("durationMsOf", () => {
 	});
 });
 
+describe("queueWaitMsOf", () => {
+	it("returns null unless both the queued instant and startedAt are known", () => {
+		// Pre-migration row: createdAt is null — the wait is unknown, not zero.
+		expect(queueWaitMsOf(row({ runId: "r", startedAt: "2026-01-01T00:00:00Z" }))).toBeNull();
+		// Still queued: no startedAt yet.
+		expect(queueWaitMsOf(row({ runId: "r", createdAt: 1_767_225_600_000 }))).toBeNull();
+		expect(queueWaitMsOf(row({ runId: "r", createdAt: 100, startedAt: "nonsense" }))).toBeNull();
+	});
+
+	it("computes startedAt minus createdAt and rejects negative waits", () => {
+		const createdAt = Date.parse("2026-01-01T00:00:00Z");
+		expect(queueWaitMsOf(row({ runId: "r", createdAt, startedAt: "2026-01-01T00:00:05Z" }))).toBe(
+			5000,
+		);
+		expect(
+			queueWaitMsOf(
+				row({ runId: "r", createdAt: createdAt + 5000, startedAt: "2026-01-01T00:00:00Z" }),
+			),
+		).toBeNull();
+	});
+});
+
 describe("buildRunMetrics", () => {
 	it("returns zeroed totals and empty breakdowns for no rows", () => {
 		const m = buildRunMetrics([]);
 		expect(m.totals.runs).toBe(0);
 		expect(m.totals.successRate).toBeNull();
 		expect(m.totals.durationMs).toEqual({ avg: null, median: null, p95: null, count: 0 });
+		expect(m.totals.queueWaitMs).toEqual({ avg: null, median: null, p95: null, count: 0 });
 		expect(m.totals.contextTokens.count).toBe(0);
 		expect(m.totals.tokens).toEqual({ input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 });
 		expect(m.totals.cost).toEqual({ total: 0, avg: null, priced: 0 });
@@ -117,6 +142,22 @@ describe("buildRunMetrics", () => {
 		expect(m.totals.cost.total).toBeCloseTo(6);
 		expect(m.totals.cost.avg).toBeCloseTo(3);
 		expect(m.totals.cost.priced).toBe(2);
+	});
+
+	it("excludes pre-migration rows from queue-wait denominators rather than counting zero", () => {
+		const createdAt = Date.parse("2026-01-01T00:00:00Z");
+		const m = buildRunMetrics([
+			row({ runId: "a", createdAt, startedAt: "2026-01-01T00:00:10Z" }), // 10s wait
+			row({ runId: "b", createdAt, startedAt: "2026-01-01T00:00:20Z" }), // 20s wait
+			row({ runId: "c", startedAt: "2026-01-01T00:00:30Z" }), // pre-migration: unknown
+			row({ runId: "d", createdAt }), // never started: unknown
+		]);
+		// avg over the two known waits = 15s, not 30s/4.
+		expect(m.totals.queueWaitMs.avg).toBeCloseTo(15_000);
+		// nearest-rank percentile over [10s, 20s]: p50 -> 10s, p95 -> 20s.
+		expect(m.totals.queueWaitMs.median).toBeCloseTo(10_000);
+		expect(m.totals.queueWaitMs.p95).toBeCloseTo(20_000);
+		expect(m.totals.queueWaitMs.count).toBe(2);
 	});
 
 	it("computes duration median and p95 over the non-null sample", () => {

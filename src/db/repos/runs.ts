@@ -119,6 +119,11 @@ export interface CreateRunInput {
 	 * (warren-1f81, #419). Null/omitted = no explicit target branch.
 	 */
 	targetBranch?: string | null;
+	/**
+	 * Queued-instant override (warren-0af9): `created_at` is stamped from
+	 * this clock, defaulting to the wall clock at insert. Tests pass a fixed
+	 * instant so golden envelopes stay deterministic.
+	 */
 	now?: Date;
 }
 
@@ -169,6 +174,10 @@ export class RunsRepo {
 			renderedAgentJson: input.renderedAgentJson,
 			state: "queued",
 			failureReason: null,
+			// The queued instant (warren-0af9): stamped here at insert so queue
+			// wait is `startedAt - createdAt`. startedAt keeps being written at
+			// the queued-to-running transition (markRunning / claimById).
+			createdAt: (input.now ?? new Date()).getTime(),
 			startedAt: null,
 			endedAt: null,
 			prompt: input.prompt,

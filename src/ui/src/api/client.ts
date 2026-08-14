@@ -533,6 +533,12 @@ export interface RunAnalyticsTotals {
 	active: number;
 	successRate: number | null;
 	durationMs: RunStatSummary;
+	/**
+	 * Queue wait (`startedAt - createdAt`) over rows where both are known
+	 * (warren-0af9). Pre-migration rows (null `createdAt`) are excluded from
+	 * the sample — `count` is the known-row denominator.
+	 */
+	queueWaitMs: RunStatSummary;
 	contextTokens: RunStatSummary;
 	/**
 	 * OPTIONAL on the wire: the windowed USD rollup is redacted for a

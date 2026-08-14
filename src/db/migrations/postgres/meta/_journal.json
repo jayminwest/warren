@@ -239,6 +239,13 @@
 			"when": 1786160749050,
 			"tag": "0033_futuristic_randall",
 			"breakpoints": true
+		},
+		{
+			"idx": 34,
+			"version": "7",
+			"when": 1786724702243,
+			"tag": "0034_glorious_franklin_richards",
+			"breakpoints": true
 		}
 	]
 }

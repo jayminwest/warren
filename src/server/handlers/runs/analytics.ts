@@ -110,6 +110,7 @@ function toMetricsRows(rows: readonly RunRow[]): RunMetricsRow[] {
 			tokensCacheWrite: r.tokensCacheWrite,
 			startedAt: r.startedAt,
 			endedAt: r.endedAt,
+			createdAt: r.createdAt,
 		};
 	});
 }
@@ -211,6 +212,9 @@ export const PUBLIC_RUN_TOTALS_FIELDS = [
 	"active",
 	"successRate",
 	"durationMs",
+	// warren-0af9: queue wait is a load-shape signal (how backed-up the
+	// instance is), not a private fact — same posture as durationMs.
+	"queueWaitMs",
 	"contextTokens",
 	"tokens",
 ] as const satisfies readonly (keyof RunTotals)[];

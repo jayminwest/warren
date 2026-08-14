@@ -64,6 +64,7 @@ describe("detail-GET envelopes — __golden__ snapshots (warren-7d84)", () => {
 			prompt: "pin the detail envelope",
 			renderedAgentJson: { frontmatter: { provider: "anthropic", model: "opus" } },
 			trigger: "manual",
+			now: NOW,
 		});
 		await repos.runs.markRunning(RUN_ID, NOW);
 		await repos.runs.finalize(RUN_ID, "succeeded", new Date("2026-08-07T00:05:00.000Z"), null);
