@@ -32,7 +32,8 @@ describe("GET /plan-runs", () => {
 		await db.close();
 	});
 
-	test("returns active plan_runs when no filter is set", async () => {
+	/** One queued row and one driven through to succeeded. */
+	async function seedOneOfEach(): Promise<void> {
 		await repos.planRuns.create({
 			planId: "pl-active",
 			projectId: seedyProjectId,
@@ -45,25 +46,61 @@ describe("GET /plan-runs", () => {
 			agentName: "claude-code",
 			children: [{ seq: 1, seedId: "wa-b" }],
 		});
-		// Drive the second through to running → succeeded so listActive omits it.
 		await repos.planRuns.transitionTo(done.planRun.id, "running", {
 			startedAt: new Date().toISOString(),
 		});
 		await repos.planRuns.transitionTo(done.planRun.id, "succeeded", {
 			endedAt: new Date().toISOString(),
 		});
+	}
 
+	async function serve(): Promise<string> {
 		const deps = await depsFor({ repos, sdSpawn: makeSdSpawn([], []) });
 		handle = startServer(deps, {
 			transport: { kind: "tcp", hostname: "127.0.0.1", port: 0 },
 			auth: NO_AUTH,
 			logger: silentLogger,
 		});
+		return tcpUrl(handle);
+	}
 
-		const res = await fetch(`${tcpUrl(handle)}/plan-runs`);
+	async function planIds(url: string): Promise<string[]> {
+		const res = await fetch(url);
 		expect(res.status).toBe(200);
 		const body = (await res.json()) as { planRuns: { planId: string }[] };
-		expect(body.planRuns.map((p) => p.planId)).toEqual(["pl-active"]);
+		return body.planRuns.map((p) => p.planId).sort();
+	}
+
+	// warren-302a: no filter used to mean active-only here and every state on
+	// the project-scoped path, so a quiet instance opened on an empty table
+	// while finished plan-runs sat one click away.
+	test("returns every state when no filter is set", async () => {
+		await seedOneOfEach();
+		const base = await serve();
+		expect(await planIds(`${base}/plan-runs`)).toEqual(["pl-active", "pl-done"]);
+	});
+
+	test("the project-scoped path agrees with it", async () => {
+		await seedOneOfEach();
+		const base = await serve();
+		expect(await planIds(`${base}/plan-runs?project=${seedyProjectId}`)).toEqual([
+			"pl-active",
+			"pl-done",
+		]);
+	});
+
+	test("?state=active is how the live view is asked for now", async () => {
+		await seedOneOfEach();
+		const base = await serve();
+		expect(await planIds(`${base}/plan-runs?state=active`)).toEqual(["pl-active"]);
+	});
+
+	test("?state=active narrows the project-scoped path too", async () => {
+		await seedOneOfEach();
+		const base = await serve();
+		expect(await planIds(`${base}/plan-runs?project=${seedyProjectId}&state=active`)).toEqual([
+			"pl-active",
+		]);
 	});
 
 	test("filters by project + state", async () => {

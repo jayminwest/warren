@@ -26,6 +26,7 @@ export {
 	PLAN_RUN_TERMINAL_STATES,
 	type PlanRunChildState,
 	type PlanRunState,
+	type PlanRunStateFilter,
 	PREVIEW_ACTIVE_STATES,
 	type PreviewState,
 	type PullRequestLifecycle,

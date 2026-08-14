@@ -2,7 +2,13 @@ import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { planRunsApi, projectsApi } from "@/api/client.ts";
-import type { CapabilityName, PlanRunRow, PlanRunState, RunRow } from "@/api/types.ts";
+import type {
+	CapabilityName,
+	PlanRunRow,
+	PlanRunState,
+	PlanRunStateFilter,
+	RunRow,
+} from "@/api/types.ts";
 import { OperatorOnly, useOperatorHint } from "@/components/OperatorOnly.tsx";
 import { PlanRunStateBadge } from "@/components/PlanRunStateBadge.tsx";
 import { Alert } from "@/components/ui/alert.tsx";
@@ -45,8 +51,14 @@ const TABS: { label: string; value: PlanRunsTab }[] = [
 	{ label: "Ready to dispatch", value: "ready" },
 ];
 
-const STATE_FILTERS: { label: string; value: "all" | PlanRunState }[] = [
-	{ label: "Active", value: "all" },
+// warren-302a: the default pill used to read "Active" while carrying the
+// value "all", and the server read a missing `?state` as active-only when no
+// project was selected and as every state when one was. Three different
+// things. "All" is now a real option and the default, so a visitor landing
+// here sees history instead of an empty table on a quiet instance.
+const STATE_FILTERS: { label: string; value: "all" | PlanRunStateFilter }[] = [
+	{ label: "All", value: "all" },
+	{ label: "Active", value: "active" },
 	{ label: "Queued", value: "queued" },
 	{ label: "Running", value: "running" },
 	{ label: "Succeeded", value: "succeeded" },
@@ -57,7 +69,7 @@ const STATE_FILTERS: { label: string; value: "all" | PlanRunState }[] = [
 export function PlanRunsPage() {
 	const caps = useCapabilities();
 	const [tab, setTab] = useState<PlanRunsTab>("plan-runs");
-	const [stateFilter, setStateFilter] = useState<"all" | PlanRunState>("all");
+	const [stateFilter, setStateFilter] = useState<"all" | PlanRunStateFilter>("all");
 	const [projectFilter, setProjectFilter] = useState<string>("");
 
 	const planRuns = useQuery({

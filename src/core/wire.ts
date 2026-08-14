@@ -543,6 +543,14 @@ export function isTerminalPlanRunState(state: PlanRunState): state is PlanRunTer
 }
 
 /**
+ * Values `GET /plan-runs?state=` accepts (warren-302a). `active` is the union
+ * of `PLAN_RUN_ACTIVE_STATES` rather than a state a row can hold, so asking
+ * for the live view is explicit. Omitting the parameter means every state.
+ */
+export const PLAN_RUN_STATE_FILTERS = ["active", ...PLAN_RUN_STATES] as const;
+export type PlanRunStateFilter = (typeof PLAN_RUN_STATE_FILTERS)[number];
+
+/**
  * Per-child lifecycle within a plan-run (pl-a258 step 2 / warren-4d7c).
  *
  *   - `pending`    — child seed not yet dispatched; waiting for its turn.

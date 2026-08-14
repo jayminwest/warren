@@ -2,7 +2,7 @@
  * Plan-run wire types (warren-8ffc), split out of `./types.ts`
  * (warren-fcc8) to keep that file under its line budget.
  */
-import type { PlanRunChildState, PlanRunState } from "../core/wire.ts";
+import type { PlanRunChildState, PlanRunState, PlanRunStateFilter } from "../core/wire.ts";
 import type { RunRow } from "./types.ts";
 
 /* Plan-runs — typed facade over /plan-runs (warren-8ffc).                 */
@@ -81,7 +81,8 @@ export interface PlanRunDetailResponse {
 
 export interface ListPlanRunsFilter {
 	project?: string;
-	state?: PlanRunState;
+	/** Omit for every state; `active` is the live view (warren-302a). */
+	state?: PlanRunStateFilter;
 }
 
 export interface ListPlanRunsResponse {

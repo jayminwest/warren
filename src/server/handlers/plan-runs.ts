@@ -13,6 +13,11 @@
  */
 
 import { ValidationError } from "../../core/errors.ts";
+import {
+	isTerminalPlanRunState,
+	PLAN_RUN_STATE_FILTERS,
+	type PlanRunStateFilter,
+} from "../../core/wire.ts";
 import { mintGitCredentialSecret } from "../../forge/credentials.ts";
 import { cancelPlanRun, createPlanRun, tailPlanRunEvents } from "../../plan-runs/index.ts";
 import { jsonResponse, ndjsonResponse } from "../response.ts";
@@ -39,20 +44,11 @@ import {
 /* Plan runs (warren-f923 / pl-a258 step 6)                                 */
 /* ----------------------------------------------------------------------- */
 
-const PLAN_RUN_STATE_FILTER_VALUES = [
-	"queued",
-	"running",
-	"succeeded",
-	"failed",
-	"cancelled",
-] as const;
-type PlanRunStateFilter = (typeof PLAN_RUN_STATE_FILTER_VALUES)[number];
-
 function parsePlanRunStateFilter(raw: string | null): PlanRunStateFilter | undefined {
 	if (raw === null) return undefined;
-	if (!(PLAN_RUN_STATE_FILTER_VALUES as readonly string[]).includes(raw)) {
+	if (!(PLAN_RUN_STATE_FILTERS as readonly string[]).includes(raw)) {
 		throw new ValidationError(
-			`?state must be one of ${PLAN_RUN_STATE_FILTER_VALUES.join(", ")}; got '${raw}'`,
+			`?state must be one of ${PLAN_RUN_STATE_FILTERS.join(", ")}; got '${raw}'`,
 		);
 	}
 	return raw as PlanRunStateFilter;
@@ -122,18 +118,24 @@ export function listPlanRunsHandler(deps: ServerDeps): RouteHandler {
 		if (projectId !== null) {
 			const rows = await deps.repos.planRuns.listByProjectAndState(
 				projectId,
-				state !== undefined ? state : undefined,
+				state !== undefined && state !== "active" ? state : undefined,
 			);
+			const scoped =
+				state === "active" ? rows.filter((row) => !isTerminalPlanRunState(row.state)) : rows;
 			return jsonResponse(200, {
-				planRuns: rows.map((row) => projectPlanRun(row, ctx.actor)),
+				planRuns: scoped.map((row) => projectPlanRun(row, ctx.actor)),
 			});
 		}
-		// No project filter — return active PlanRuns when no state requested,
-		// or the operator's chosen state across every project.
-		if (state !== undefined) {
-			// listByProjectAndState requires a project; for a state-only view
-			// we walk projects sequentially. Volume is tiny relative to runs
-			// (one plan-run per dispatched plan, not per child).
+		if (state === "active") {
+			const active = await deps.repos.planRuns.listActive();
+			return jsonResponse(200, {
+				planRuns: active.map((row) => projectPlanRun(row, ctx.actor)),
+			});
+		}
+		// listByProjectAndState requires a project, so the unscoped view walks
+		// projects. Volume is tiny relative to runs (one plan-run per
+		// dispatched plan, not per child). `state` undefined means every state.
+		{
 			const projects = await deps.repos.projects.listAll();
 			const all = (
 				await Promise.all(
@@ -144,10 +146,6 @@ export function listPlanRunsHandler(deps: ServerDeps): RouteHandler {
 				planRuns: all.map((row) => projectPlanRun(row, ctx.actor)),
 			});
 		}
-		const active = await deps.repos.planRuns.listActive();
-		return jsonResponse(200, {
-			planRuns: active.map((row) => projectPlanRun(row, ctx.actor)),
-		});
 	};
 }
 

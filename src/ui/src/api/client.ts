@@ -15,7 +15,7 @@ import type {
 	ListRunsResponse,
 	PlanRunDetailResponse,
 	PlanRunRow,
-	PlanRunState,
+	PlanRunStateFilter,
 	PreviewConfigResponse,
 	PreviewLoginResponse,
 	PreviewTeardownResponse,
@@ -329,7 +329,8 @@ export function formatPreviewUrl(
 
 export interface ListPlanRunsFilter {
 	project?: string;
-	state?: PlanRunState;
+	/** Omit for every state; `active` is the live view (warren-302a). */
+	state?: PlanRunStateFilter;
 }
 
 export const planRunsApi = {
