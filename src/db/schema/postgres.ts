@@ -300,9 +300,38 @@ export const runInbox = pgTable(
 	(t) => [index(INDEX_NAMES.runInboxRunState).on(t.runId, t.state)],
 );
 
+/**
+ * Tool-calls rollup (warren-7746) — mirror of sqlite. See sqlite.ts for the
+ * extraction/cascade intent and the nullability semantics.
+ */
+export const toolCalls = pgTable(
+	TABLE_NAMES.toolCalls,
+	{
+		id: serial("id").primaryKey(),
+		runId: text("run_id")
+			.notNull()
+			.references(() => runs.id, { onDelete: "cascade" }),
+		seq: integer("seq").notNull(),
+		ts: text("ts").notNull(),
+		toolName: text("tool_name"),
+		command: text("command"),
+		filePaths: jsonb("file_paths"),
+		toolUseId: text("tool_use_id"),
+		isError: boolean("is_error").notNull().default(false),
+		resultBytes: integer("result_bytes"),
+		origin: text("origin"),
+	},
+	(t) => [
+		uniqueIndex(INDEX_NAMES.toolCallsRunSeq).on(t.runId, t.seq),
+		index(INDEX_NAMES.toolCallsRunUseId).on(t.runId, t.toolUseId),
+	],
+);
+
 export type PlanRunRow = typeof planRuns.$inferSelect;
 export type PlanRunInsert = typeof planRuns.$inferInsert;
 export type PlanRunChildRow = typeof planRunChildren.$inferSelect;
 export type PlanRunChildInsert = typeof planRunChildren.$inferInsert;
 export type RunInboxRow = typeof runInbox.$inferSelect;
 export type RunInboxInsert = typeof runInbox.$inferInsert;
+export type ToolCallRow = typeof toolCalls.$inferSelect;
+export type ToolCallInsert = typeof toolCalls.$inferInsert;

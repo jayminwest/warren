@@ -256,4 +256,7 @@ export interface RunBehaviorResponse {
 	mining: CommandMining;
 	insights: Insight[];
 	outcomes: RunOutcomes;
+	/** warren-7746: true when the rollup read hit its row cap — rankings
+	 * then cover a bounded prefix. Reported, never silent. */
+	truncated: boolean;
 }

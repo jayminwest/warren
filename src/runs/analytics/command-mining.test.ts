@@ -6,39 +6,59 @@ import {
 	categorize,
 	generalizeCommand,
 	isOsEcoCommand,
-	type ToolEventRow,
+	type ToolCallMiningRow,
 } from "./command-mining.ts";
 
 let seq = 0;
 
-function use(
+/** A command-bearing (Bash-class) rollup row. */
+function call(
 	runId: string,
 	command: string,
-	id?: string,
-	runtime: RuntimeId | null = "claude-code",
-): ToolEventRow {
+	opts: { id?: string; isError?: boolean; runtime?: RuntimeId | null } = {},
+): ToolCallMiningRow {
 	seq += 1;
 	return {
 		runId,
-		kind: "tool_use",
 		seq,
-		payload: { name: "Bash", id, input: { command } },
+		toolName: "Bash",
+		command,
+		toolUseId: opts.id ?? null,
+		isError: opts.isError ?? false,
+		resultBytes: null,
+		runtime: opts.runtime === undefined ? "claude-code" : opts.runtime,
+	};
+}
+
+/** A structured (non-command) rollup row, e.g. a Read call. */
+function structured(runId: string, runtime: RuntimeId | null = "claude-code"): ToolCallMiningRow {
+	seq += 1;
+	return {
+		runId,
+		seq,
+		toolName: "Read",
+		command: null,
+		toolUseId: "t9",
+		isError: false,
+		resultBytes: null,
 		runtime,
 	};
 }
 
-function result(
-	runId: string,
-	id: string,
-	isError: boolean,
-	runtime: RuntimeId | null = "claude-code",
-): ToolEventRow {
+/**
+ * A row whose runtime shape could not read the source payload at all —
+ * the all-null extraction (warren-7746).
+ */
+function unparsed(runId: string, runtime: RuntimeId | null): ToolCallMiningRow {
 	seq += 1;
 	return {
 		runId,
-		kind: "tool_result",
 		seq,
-		payload: { tool_use_id: id, is_error: isError },
+		toolName: null,
+		command: null,
+		toolUseId: null,
+		isError: false,
+		resultBytes: null,
 		runtime,
 	};
 }
@@ -141,29 +161,18 @@ describe("categorize", () => {
 });
 
 describe("buildCommandMining", () => {
-	test("counts tool_uses including structured (non-command) tool calls", () => {
-		const rows: ToolEventRow[] = [
-			use("r1", "bun test"),
-			{
-				runId: "r1",
-				kind: "tool_use",
-				seq: 999,
-				payload: { name: "Read", id: "t9", input: { file_path: "x" } },
-				runtime: "claude-code",
-			},
-		];
+	test("counts tool calls including structured (non-command) tool calls", () => {
+		const rows: ToolCallMiningRow[] = [call("r1", "bun test"), structured("r1")];
 		const out = buildCommandMining(rows);
 		expect(out.totals.toolUses).toBe(2);
 		expect(out.totals.commands).toBe(1);
 		expect(out.totals.distinctCommands).toBe(1);
 	});
 
-	test("correlates tool_result.is_error to tool_use via tool_use_id", () => {
-		const rows: ToolEventRow[] = [
-			use("r1", "bun test", "t1"),
-			result("r1", "t1", true),
-			use("r1", "git status", "t2"),
-			result("r1", "t2", false),
+	test("reads failures from the pre-joined is_error flag", () => {
+		const rows: ToolCallMiningRow[] = [
+			call("r1", "bun test", { id: "t1", isError: true }),
+			call("r1", "git status", { id: "t2" }),
 		];
 		const out = buildCommandMining(rows);
 		expect(statFor(out.byFrequency, "bun test").failures).toBe(1);
@@ -171,21 +180,18 @@ describe("buildCommandMining", () => {
 		expect(out.totals.failures).toBe(1);
 	});
 
-	test("treats a tool_use with no matching result as non-error", () => {
-		const out = buildCommandMining([use("r1", "bun test", "t1")]);
+	test("treats a call whose result never arrived as non-error", () => {
+		const out = buildCommandMining([call("r1", "bun test", { id: "t1" })]);
 		expect(statFor(out.byFrequency, "bun test").failures).toBe(0);
 		expect(statFor(out.byFrequency, "bun test").failureRate).toBe(0);
 	});
 
 	test("scores retries and stuck loops within a run", () => {
 		// bun test fails, re-run fails again, third re-run passes.
-		const rows: ToolEventRow[] = [
-			use("r1", "bun test", "a"),
-			result("r1", "a", true),
-			use("r1", "bun test", "b"),
-			result("r1", "b", true),
-			use("r1", "bun test", "c"),
-			result("r1", "c", false),
+		const rows: ToolCallMiningRow[] = [
+			call("r1", "bun test", { id: "a", isError: true }),
+			call("r1", "bun test", { id: "b", isError: true }),
+			call("r1", "bun test", { id: "c" }),
 		];
 		const stat = statFor(buildCommandMining(rows).byStuckScore, "bun test");
 		expect(stat.invocations).toBe(3);
@@ -196,11 +202,9 @@ describe("buildCommandMining", () => {
 	});
 
 	test("does not count a re-run as a retry when no prior run failed", () => {
-		const rows: ToolEventRow[] = [
-			use("r1", "ls", "a"),
-			result("r1", "a", false),
-			use("r1", "ls", "b"),
-			result("r1", "b", false),
+		const rows: ToolCallMiningRow[] = [
+			call("r1", "ls", { id: "a" }),
+			call("r1", "ls", { id: "b" }),
 		];
 		const stat = statFor(buildCommandMining(rows).byFrequency, "ls");
 		expect(stat.invocations).toBe(2);
@@ -209,11 +213,9 @@ describe("buildCommandMining", () => {
 	});
 
 	test("retry tracking is scoped per run", () => {
-		const rows: ToolEventRow[] = [
-			use("r1", "bun test", "a"),
-			result("r1", "a", true),
-			use("r2", "bun test", "b"),
-			result("r2", "b", true),
+		const rows: ToolCallMiningRow[] = [
+			call("r1", "bun test", { id: "a", isError: true }),
+			call("r2", "bun test", { id: "b", isError: true }),
 		];
 		const out = buildCommandMining(rows);
 		const stat = statFor(out.byFrequency, "bun test");
@@ -223,19 +225,18 @@ describe("buildCommandMining", () => {
 	});
 
 	test("byStuckScore excludes commands with no retries", () => {
-		const rows: ToolEventRow[] = [use("r1", "git status", "a"), result("r1", "a", true)];
+		const rows: ToolCallMiningRow[] = [call("r1", "git status", { id: "a", isError: true })];
 		expect(buildCommandMining(rows).byStuckScore).toHaveLength(0);
 	});
 
 	test("ranks frequency, failures, and os-eco deterministically", () => {
-		const rows: ToolEventRow[] = [
-			use("r1", "ls"),
-			use("r1", "ls"),
-			use("r1", "ls"),
-			use("r1", "git status", "g"),
-			result("r1", "g", true),
-			use("r1", "sd close"),
-			use("r1", "ml record"),
+		const rows: ToolCallMiningRow[] = [
+			call("r1", "ls"),
+			call("r1", "ls"),
+			call("r1", "ls"),
+			call("r1", "git status", { id: "g", isError: true }),
+			call("r1", "sd close"),
+			call("r1", "ml record"),
 		];
 		const out = buildCommandMining(rows);
 		expect(out.byFrequency[0]?.command).toBe("ls");
@@ -247,11 +248,10 @@ describe("buildCommandMining", () => {
 	});
 
 	test("rolls invocations and failures up by category", () => {
-		const rows: ToolEventRow[] = [
-			use("r1", "git status", "a"),
-			result("r1", "a", true),
-			use("r1", "git commit"),
-			use("r1", "bun run check:all"),
+		const rows: ToolCallMiningRow[] = [
+			call("r1", "git status", { id: "a", isError: true }),
+			call("r1", "git commit"),
+			call("r1", "bun run check:all"),
 		];
 		const out = buildCommandMining(rows);
 		const vcs = out.byCategory.find((c) => c.category === "vcs");
@@ -260,11 +260,11 @@ describe("buildCommandMining", () => {
 		expect(osEco?.invocations).toBe(1);
 	});
 
-	test("ignores unparseable payloads without throwing", () => {
-		const rows: ToolEventRow[] = [
-			{ runId: "r1", kind: "tool_use", seq: 1, payload: null, runtime: "pi" },
-			{ runId: "r1", kind: "tool_use", seq: 2, payload: "garbage", runtime: "pi" },
-			{ runId: "r1", kind: "tool_use", seq: 3, payload: { input: { command: "" } }, runtime: "pi" },
+	test("counts all-null (unparsed) rows in the per-runtime coverage rollup", () => {
+		const rows: ToolCallMiningRow[] = [
+			unparsed("r1", "pi"),
+			unparsed("r1", "pi"),
+			unparsed("r1", "pi"),
 		];
 		const out = buildCommandMining(rows);
 		expect(out.totals.toolUses).toBe(3);
@@ -275,71 +275,16 @@ describe("buildCommandMining", () => {
 		]);
 	});
 
-	test("reads command from payload.command when input is absent (pi dialect)", () => {
-		const out = buildCommandMining([
-			{ runId: "r1", kind: "tool_use", seq: 1, payload: { command: "bun test" }, runtime: "pi" },
-		]);
-		expect(out.totals.commands).toBe(1);
-		expect(out.byFrequency[0]?.command).toBe("bun test");
-	});
-
-	test("resolves each row through its own runtime's shape", () => {
-		// The same pi-native payload parses under pi but not under claude-code.
-		const piRow: ToolEventRow = {
-			runId: "r1",
-			kind: "tool_use",
-			seq: 1,
-			payload: { toolName: "bash", command: "git status", toolCallId: "c1" },
-			runtime: "pi",
-		};
-		const claudeRow: ToolEventRow = { ...piRow, runId: "r2", runtime: "claude-code" };
-		const out = buildCommandMining([piRow, claudeRow]);
-		expect(out.totals.commands).toBe(1);
-		expect(statFor(out.byFrequency, "git status").runs).toBe(1);
-		expect(out.totals.byRuntime).toEqual([
-			{ runtime: "claude-code", shaped: true, toolUses: 1, commands: 0, unparsed: 1 },
-			{ runtime: "pi", shaped: true, toolUses: 1, commands: 1, unparsed: 0 },
-		]);
-	});
-
-	test("correlates results per runtime dialect (pi isError flag)", () => {
-		const rows: ToolEventRow[] = [
-			{
-				runId: "r1",
-				kind: "tool_use",
-				seq: 1,
-				payload: { toolName: "bash", command: "bun test", toolCallId: "c1" },
-				runtime: "pi",
-			},
-			{
-				runId: "r1",
-				kind: "tool_result",
-				seq: 2,
-				payload: { toolCallId: "c1", isError: true, result: "fail" },
-				runtime: "pi",
-			},
-		];
+	test("distinguishes parsed non-command tools from unparsed rows", () => {
+		const rows: ToolCallMiningRow[] = [structured("r1", "pi"), unparsed("r1", "pi")];
 		const out = buildCommandMining(rows);
-		expect(statFor(out.byFrequency, "bun test").failures).toBe(1);
+		expect(out.totals.byRuntime).toEqual([
+			{ runtime: "pi", shaped: true, toolUses: 2, commands: 0, unparsed: 1 },
+		]);
 	});
 
-	test("marks rows of an unshaped runtime as not-shaped, not unparsed", () => {
-		const rows: ToolEventRow[] = [
-			{
-				runId: "r1",
-				kind: "tool_use",
-				seq: 1,
-				payload: { input: { command: "bun test" } },
-				runtime: "sapling",
-			},
-			{
-				runId: "r2",
-				kind: "tool_use",
-				seq: 2,
-				payload: { name: "Bash", input: { command: "git status" } },
-				runtime: null,
-			},
-		];
+	test("marks rows of an unshaped runtime as not-shaped in the coverage rollup", () => {
+		const rows: ToolCallMiningRow[] = [unparsed("r1", "sapling"), unparsed("r2", null)];
 		const out = buildCommandMining(rows);
 		expect(out.totals.commands).toBe(0);
 		expect(out.totals.byRuntime).toEqual([

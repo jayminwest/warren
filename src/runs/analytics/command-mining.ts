@@ -22,21 +22,22 @@
  * "Generalization" collapses a raw command string to a stable signature — the
  * binary plus (for multi-subcommand CLIs like `git`/`gh`/`sd`/`ml`/`bun`) its
  * first subcommand — so `bun run check:all` and `bun check:all` rank together
- * and per-invocation arguments don't fragment the ranking. Only `tool_use`
- * rows whose runtime shape reads a command out of the payload are mined;
- * structured tool calls (Read/Edit/etc.) are counted in `totals.toolUses`
- * but contribute no command rows.
+ * and per-invocation arguments don't fragment the ranking. Only rows carrying
+ * a command are mined; structured tool calls (Read/Edit/etc.) are counted in
+ * `totals.toolUses` but contribute no command rows.
  *
- * Payload reading goes through the per-runtime tool-shape registry
- * (`src/core/tool-shape.ts`, warren-c116): each row carries its run's
- * runtime id and is read through that runtime's declared shape instead of
- * one hardcoded dialect, so the report can tell "this harness emitted no
- * commands" apart from "commands did not parse" per runtime
- * (`totals.byRuntime`).
+ * Payload reading already happened at extraction time through the per-runtime
+ * shape registries (`src/core/tool-shape.ts`, warren-c116): each row carries
+ * its run's runtime id plus the shape-extracted fields, so the report can
+ * still tell "this harness emitted no commands" (no shape declared, or every
+ * call was a non-command tool) apart from "commands did not parse" per
+ * runtime (`totals.byRuntime`). A row whose runtime shape could not read the
+ * source payload at all lands with `toolName`/`command`/`toolUseId` all null
+ * — the registry's exact parse-failure condition — and counts as unparsed.
  *
- * Failure correlation joins each `tool_result` back to its `tool_use` via
- * `tool_use_id` (per run); a tool_use with no matching result, or no id, is
- * treated as non-error. A "retry" is an invocation of a command that had
+ * Failure correlation is pre-joined in the rollup: the tool_result's
+ * `is_error` was folded onto its tool_use row at extraction time, and a
+ * tool_use whose result never arrived reads as non-error. A "retry" is an invocation of a command that had
  * already failed earlier in the same run; "stuckScore" counts the retries that
  * failed again. Both are computed in run-local seq order, so a tight
  * fail→retry→fail loop scores higher than scattered one-off failures.
@@ -64,21 +65,30 @@ export {
 	isOsEcoCommand,
 } from "./command-generalize.ts";
 
-/** One tool-call trace row, mapped from an `events` row by the handler. */
-export interface ToolEventRow {
+/**
+ * One structured tool-call row (warren-7746): a `tool_calls` rollup row
+ * plus its run's runtime id, resolved by the handler from the rendered
+ * agent frontmatter. All shape reading happened at extraction time — the
+ * fields here are the extraction's output, not a payload to re-parse.
+ */
+export interface ToolCallMiningRow {
 	readonly runId: string;
-	/** `"tool_use"` | `"tool_result"` (other kinds are ignored). */
-	readonly kind: string;
-	/** burrow_event_seq — orders events within a run. */
+	/** burrow_event_seq of the tool_use event — orders calls within a run. */
 	readonly seq: number;
-	/** the raw `payload_json`, parsed defensively. */
-	readonly payload: unknown;
+	/** The invoked tool's name, or null when the shape read none. */
+	readonly toolName: string | null;
+	/** The shell command for Bash-class calls, or null for structured tools. */
+	readonly command: string | null;
+	/** The id the tool_result joined back on, or null. */
+	readonly toolUseId: string | null;
+	/** The tool_result's error flag, pre-joined at extraction time. */
+	readonly isError: boolean;
+	/** UTF-8 byte size of the result body, or null when absent/unjoined. */
+	readonly resultBytes: number | null;
 	/**
-	 * The run's runtime id (warren-c116), resolved by the handler from the
-	 * rendered agent frontmatter. Each row's payload is read through that
-	 * runtime's declared {@link toolShapeFor | tool shape}, so the mining
-	 * no longer hardcodes one harness's payload dialect; `null` marks a
-	 * row whose runtime could not be attributed.
+	 * The run's runtime id (warren-c116). Drives the per-runtime coverage
+	 * rollup's `shaped` flag; `null` marks a row whose runtime could not be
+	 * attributed.
 	 */
 	readonly runtime: RuntimeId | null;
 }
@@ -153,12 +163,8 @@ export interface CommandMining {
 	readonly byCategory: readonly CategoryBucket[];
 }
 
-function asRecord(value: unknown): Record<string, unknown> | null {
-	return typeof value === "object" && value !== null ? (value as Record<string, unknown>) : null;
-}
-
-/** Resolve a row's payload through its runtime's declared tool shape. */
-function shapeForRow(row: ToolEventRow) {
+/** Resolve a row's runtime's declared tool shape (coverage `shaped` flag). */
+function shapeForRow(row: ToolCallMiningRow) {
 	return row.runtime === null ? null : toolShapeFor(row.runtime);
 }
 
@@ -196,8 +202,8 @@ interface UseEntry {
 	isError: boolean;
 }
 
-function groupByRun(rows: readonly ToolEventRow[]): Map<string, ToolEventRow[]> {
-	const grouped = new Map<string, ToolEventRow[]>();
+function groupByRun(rows: readonly ToolCallMiningRow[]): Map<string, ToolCallMiningRow[]> {
+	const grouped = new Map<string, ToolCallMiningRow[]>();
 	for (const r of rows) {
 		let g = grouped.get(r.runId);
 		if (g === undefined) {
@@ -209,36 +215,27 @@ function groupByRun(rows: readonly ToolEventRow[]): Map<string, ToolEventRow[]> 
 	return grouped;
 }
 
-/** tool_use_id → is_error for every tool_result row in a run. */
-function resultMap(sorted: readonly ToolEventRow[]): Map<string, boolean> {
-	const results = new Map<string, boolean>();
-	for (const r of sorted) {
-		if (r.kind !== "tool_result") continue;
-		const reading = shapeForRow(r)?.readToolResult(asRecord(r.payload) ?? {});
-		if (reading?.toolUseId != null) results.set(reading.toolUseId, reading.isError);
-	}
-	return results;
+/**
+ * True when the extraction could not read the source payload at all — the
+ * shape registry's exact parse-failure condition (all three fields null).
+ */
+function isUnparsed(row: ToolCallMiningRow): boolean {
+	return row.toolName === null && row.command === null && row.toolUseId === null;
 }
 
-/** Parse outcome for one tool_use row, for the per-runtime coverage rollup. */
+/** Parse outcome for one rollup row, for the per-runtime coverage rollup. */
 type UseParse =
 	| { readonly outcome: "entry"; readonly entry: UseEntry }
 	| { readonly outcome: "no-command" } // parsed, but a non-command tool
 	| { readonly outcome: "unparsed" }; // the shape could not read the payload
 
-/** Resolve a tool_use row through its runtime's shape to a UseEntry. */
-function parseUse(row: ToolEventRow, results: Map<string, boolean>): UseParse {
-	const payload = asRecord(row.payload);
-	const reading = payload === null ? null : shapeForRow(row)?.readToolUse(payload);
-	if (reading == null) return { outcome: "unparsed" };
-	if (reading.command === null) return { outcome: "no-command" };
-	const command = generalizeCommand(reading.command);
+/** Resolve a rollup row to a UseEntry; is_error is pre-joined. */
+function parseUse(row: ToolCallMiningRow): UseParse {
+	if (isUnparsed(row)) return { outcome: "unparsed" };
+	if (row.command === null) return { outcome: "no-command" };
+	const command = generalizeCommand(row.command);
 	if (command === null) return { outcome: "no-command" };
-	const id = reading.toolUseId;
-	return {
-		outcome: "entry",
-		entry: { command, isError: id !== null && (results.get(id) ?? false) },
-	};
+	return { outcome: "entry", entry: { command, isError: row.isError } };
 }
 
 interface CoverageAcc {
@@ -249,7 +246,7 @@ interface CoverageAcc {
 	unparsed: number;
 }
 
-function coverageFor(acc: Map<string, CoverageAcc>, row: ToolEventRow): CoverageAcc {
+function coverageFor(acc: Map<string, CoverageAcc>, row: ToolCallMiningRow): CoverageAcc {
 	const runtime = row.runtime ?? "unknown";
 	let cov = acc.get(runtime);
 	if (cov === undefined) {
@@ -265,8 +262,8 @@ function coverageFor(acc: Map<string, CoverageAcc>, row: ToolEventRow): Coverage
 	return cov;
 }
 
-/** Group rows by run; within a run, resolve each command-bearing tool_use. */
-function entriesByRun(rows: readonly ToolEventRow[]): {
+/** Group rows by run; within a run, resolve each command-bearing call. */
+function entriesByRun(rows: readonly ToolCallMiningRow[]): {
 	byRun: Map<string, UseEntry[]>;
 	toolUses: number;
 	coverage: RuntimeCommandCoverage[];
@@ -276,14 +273,12 @@ function entriesByRun(rows: readonly ToolEventRow[]): {
 	const byRun = new Map<string, UseEntry[]>();
 	for (const [runId, runRows] of groupByRun(rows)) {
 		const sorted = [...runRows].sort((a, b) => a.seq - b.seq);
-		const results = resultMap(sorted);
 		const entries: UseEntry[] = [];
 		for (const r of sorted) {
-			if (r.kind !== "tool_use") continue;
 			toolUses += 1;
 			const cov = coverageFor(coverageAcc, r);
 			cov.toolUses += 1;
-			const parsed = parseUse(r, results);
+			const parsed = parseUse(r);
 			if (parsed.outcome === "entry") {
 				cov.commands += 1;
 				entries.push(parsed.entry);
@@ -377,10 +372,11 @@ function buildCategories(stats: readonly CommandStat[]): CategoryBucket[] {
 }
 
 /**
- * Build the full command-mining report from tool-call trace `rows`. O(rows) —
- * a group-by-run pass plus a handful of sorts over the distinct-command set.
+ * Build the full command-mining report from structured tool-call `rows`.
+ * O(rows) — a group-by-run pass plus a handful of sorts over the
+ * distinct-command set.
  */
-export function buildCommandMining(rows: readonly ToolEventRow[]): CommandMining {
+export function buildCommandMining(rows: readonly ToolCallMiningRow[]): CommandMining {
 	const { byRun, toolUses, coverage } = entriesByRun(rows);
 	const acc = new Map<string, StatAcc>();
 	accumulate(acc, byRun);

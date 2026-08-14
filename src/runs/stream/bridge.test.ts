@@ -43,6 +43,42 @@ describe("bridgeRunStream — event flow", () => {
 		expect(rows).toEqual([1, 2, 3]);
 	});
 
+	test("folds tool_use/tool_result events into the tool_calls rollup at append time (warren-7746)", async () => {
+		// The seeded run's renderedAgentJson is `{}` → default runtime "pi",
+		// so the pi-native dialect fields are what extract.
+		const result = await bridgeRunStream({
+			runId,
+			burrowRunId,
+			repos,
+			broker,
+			burrowId: "bur_aaaaaaaaaaaa",
+			runtimeProvider: makeProvider(),
+			source: source([
+				evt(burrowRunId, 1, {
+					kind: "tool_use",
+					payload: { toolName: "bash", command: "bun test", toolCallId: "c1" },
+				}),
+				evt(burrowRunId, 2, {
+					kind: "tool_result",
+					payload: { toolCallId: "c1", isError: true, result: "boom" },
+				}),
+				evt(burrowRunId, 3, { kind: "text" }),
+			]),
+		});
+		expect(result.written).toBe(3);
+		const { rows } = await repos.toolCalls.listForRuns([runId]);
+		expect(rows).toHaveLength(1);
+		expect(rows[0]).toMatchObject({
+			runId,
+			seq: 1,
+			toolName: "bash",
+			command: "bun test",
+			toolUseId: "c1",
+			isError: true,
+			resultBytes: 4,
+		});
+	});
+
 	test("publishes each event to the broker after persisting", async () => {
 		const sub = broker.subscribe(runId);
 		const consumed: number[] = [];

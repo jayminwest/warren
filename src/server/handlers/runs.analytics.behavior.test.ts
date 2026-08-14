@@ -46,29 +46,26 @@ describe("GET /analytics/behavior", () => {
 		});
 	}
 
-	async function toolUse(runId: string, seq: number, id: string, command: string): Promise<void> {
-		await repos.events.append({
-			runId,
-			burrowEventSeq: seq,
-			ts: new Date(2026, 4, 20, 10, 0, seq).toISOString(),
-			kind: "tool_use",
-			payload: { id, input: { command } },
-		});
-	}
-
-	async function toolResult(
+	// warren-7746: /analytics/behavior reads the structured tool_calls
+	// rollup, so tests seed rollup rows (one per tool_use, with the
+	// tool_result's is_error pre-joined) instead of raw event payloads.
+	async function toolCall(
 		runId: string,
 		seq: number,
 		id: string,
+		command: string,
 		isError: boolean,
 	): Promise<void> {
-		await repos.events.append({
+		await repos.toolCalls.recordUse({
 			runId,
-			burrowEventSeq: seq,
+			seq,
 			ts: new Date(2026, 4, 20, 10, 0, seq).toISOString(),
-			kind: "tool_result",
-			payload: { tool_use_id: id, is_error: isError },
+			toolName: "Bash",
+			command,
+			filePaths: [],
+			toolUseId: id,
 		});
+		await repos.toolCalls.recordResult({ runId, toolUseId: id, isError, resultBytes: null });
 	}
 
 	test("returns an empty mining + insights envelope on a fresh install (warren-5d50)", async () => {
@@ -105,12 +102,9 @@ describe("GET /analytics/behavior", () => {
 			endedAt: "2026-05-20T10:05:00.000Z",
 		});
 		// `bun run check:all` fails, is re-run, and fails again (a stuck loop).
-		await toolUse(runId, 1, "u1", "bun run check:all");
-		await toolResult(runId, 2, "u1", true);
-		await toolUse(runId, 3, "u2", "bun run check:all");
-		await toolResult(runId, 4, "u2", true);
-		await toolUse(runId, 5, "u3", "ls -la");
-		await toolResult(runId, 6, "u3", false);
+		await toolCall(runId, 1, "u1", "bun run check:all", true);
+		await toolCall(runId, 3, "u2", "bun run check:all", true);
+		await toolCall(runId, 5, "u3", "ls -la", false);
 
 		start();
 		const res = await fetch(`${tcpUrl(handle as ServeHandle)}/analytics/behavior?${WINDOW}`);
@@ -123,7 +117,9 @@ describe("GET /analytics/behavior", () => {
 				osEcoCommands: { command: string; osEco: boolean }[];
 			};
 			insights: { kind: string; subject: string | null }[];
+			truncated: boolean;
 		};
+		expect(body.truncated).toBe(false);
 		expect(body.mining.totals.toolUses).toBe(3);
 		expect(body.mining.totals.failures).toBe(2);
 		const checkAll = body.mining.byFrequency.find((c) => c.command === "bun run check:all");

@@ -12,8 +12,7 @@
  * `filter` echo.
  */
 
-import { isKnownRuntimeId, type RuntimeId } from "../../../core/wire.ts";
-import type { EventsRepo } from "../../../db/repos/events.ts";
+import type { RuntimeId } from "../../../core/wire.ts";
 import type { RunRow } from "../../../db/schema.ts";
 import { DEFAULT_RUNTIME_ID } from "../../../registry/schema.ts";
 import {
@@ -31,9 +30,10 @@ import {
 	type RunMetricsRow,
 	type RunOutcomes,
 	type RunTotals,
+	runtimeFromRenderedAgent,
 	type TokenBreakdown,
 	type TokenDayBucket,
-	type ToolEventRow,
+	type ToolCallMiningRow,
 } from "../../../runs/index.ts";
 import { isPublicOnly, pickFields } from "../../projection.ts";
 import { jsonResponse } from "../../response.ts";
@@ -169,39 +169,31 @@ async function loadRunOutcomes(
 	return buildRunOutcomes(toMetricsRows(rows), steeringRows, metrics);
 }
 
-/** Map capped `tool_use`/`tool_result` event rows into the mining input shape. */
-async function loadToolEventRows(
-	events: EventsRepo,
+/**
+ * Read the structured `tool_calls` rollup (warren-7746) into the mining
+ * input shape, attaching each row's runtime id. Unlike the retired raw
+ * event scan, a capped read REPORTS truncation via the returned flag —
+ * the response surfaces it as `truncated: true`, never silent.
+ */
+async function loadToolCallRows(
+	deps: ServerDeps,
 	runIds: readonly string[],
 	runtimeByRunId: ReadonlyMap<string, RuntimeId>,
-): Promise<ToolEventRow[]> {
-	const rows = await events.listToolEventsForRuns(runIds);
-	return rows.map((e) => ({
-		runId: e.runId,
-		kind: e.kind,
-		seq: e.burrowEventSeq,
-		payload: e.payloadJson,
-		runtime: runtimeByRunId.get(e.runId) ?? DEFAULT_RUNTIME_ID,
-	}));
-}
-
-/**
- * Resolve a run's runtime id from its rendered agent frontmatter
- * (warren-c116), so each tool-event row is mined through the correct
- * runtime's tool shape. Mirrors `readRuntimeId`'s precedence minus the
- * config override (dispatch already froze the choice into the rendered
- * definition): a valid `frontmatter.runtime` wins, anything else falls
- * back to the default runtime.
- */
-function runtimeOfRun(renderedAgentJson: unknown): RuntimeId {
-	if (renderedAgentJson !== null && typeof renderedAgentJson === "object") {
-		const fm = (renderedAgentJson as Record<string, unknown>).frontmatter;
-		if (fm !== null && typeof fm === "object") {
-			const r = (fm as Record<string, unknown>).runtime;
-			if (isKnownRuntimeId(r)) return r;
-		}
-	}
-	return DEFAULT_RUNTIME_ID;
+): Promise<{ rows: ToolCallMiningRow[]; truncated: boolean }> {
+	const { rows, truncated } = await deps.repos.toolCalls.listForRuns(runIds);
+	return {
+		rows: rows.map((r) => ({
+			runId: r.runId,
+			seq: r.seq,
+			toolName: r.toolName,
+			command: r.command,
+			toolUseId: r.toolUseId,
+			isError: r.isError,
+			resultBytes: r.resultBytes,
+			runtime: runtimeByRunId.get(r.runId) ?? DEFAULT_RUNTIME_ID,
+		})),
+		truncated,
+	};
 }
 
 /**
@@ -452,10 +444,11 @@ export function listRunAnalyticsHandler(deps: ServerDeps): RouteHandler {
  * `GET /analytics/behavior?from=&to=&projectId=` (warren-5d50 / pl-ad0f step 9).
  *
  * The heavier companion to `GET /analytics/runs`. Resolves the same window,
- * loads the run-level rollup, then scans the capped `tool_use`/`tool_result`
- * event trace for those runs (`EventsRepo.listToolEventsForRuns`) and mines it
- * for the generalized command-frequency / failure / stuck-loop rankings
- * (`buildCommandMining`). Finally distills the metrics + mining into the
+ * loads the run-level rollup, then reads the structured `tool_calls` rollup
+ * for those runs (`ToolCallsRepo.listForRuns`, warren-7746) and mines it for
+ * the generalized command-frequency / failure / stuck-loop rankings
+ * (`buildCommandMining`). A capped rollup read is reported as top-level
+ * `truncated: true` — never the silent truncation the retired event scan had. Finally distills the metrics + mining into the
  * ranked, severity-coded callout list (`buildInsights`). The run-level rollup
  * itself stays on `/analytics/runs` — this endpoint returns just the behavior
  * layers (`mining` + `insights`) so the fast view can render independently.
@@ -470,17 +463,27 @@ export function listBehaviorAnalyticsHandler(deps: ServerDeps): RouteHandler {
 		const { echo, filter } = parseAnalyticsWindow(ctx);
 		const { rows, metrics } = await loadRunMetrics(deps, filter);
 		const runIds = rows.map((r) => r.id);
-		const runtimeByRunId = new Map(rows.map((r) => [r.id, runtimeOfRun(r.renderedAgentJson)]));
-		const [eventRows, steeringRows] = await Promise.all([
-			loadToolEventRows(deps.repos.events, runIds, runtimeByRunId),
+		const runtimeByRunId = new Map(
+			rows.map((r) => [r.id, runtimeFromRenderedAgent(r.renderedAgentJson)]),
+		);
+		const [toolCalls, steeringRows] = await Promise.all([
+			loadToolCallRows(deps, runIds, runtimeByRunId),
 			deps.repos.events.listSteeringEventsForRuns(runIds),
 		]);
-		const mining = buildCommandMining(eventRows);
+		const mining = buildCommandMining(toolCalls.rows);
 		const steering = buildSteeringSignals(steeringRows, rows.length);
 		// warren-be04: the same trace feeds the outcome-joined rollup, which
 		// both ships structured and drives the two outcome insight kinds.
 		const outcomes = buildRunOutcomes(toMetricsRows(rows), steeringRows, metrics);
 		const insights = buildInsights({ metrics, mining, steering, outcomes });
-		return jsonResponse(200, { filter: echo, mining, insights, outcomes });
+		// warren-7746: `truncated` reports the rollup read hitting its row
+		// cap — the retired event scan truncated silently at 20k rows.
+		return jsonResponse(200, {
+			filter: echo,
+			mining,
+			insights,
+			outcomes,
+			truncated: toolCalls.truncated,
+		});
 	};
 }

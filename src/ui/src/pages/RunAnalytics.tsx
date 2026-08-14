@@ -171,6 +171,15 @@ export function RunAnalyticsPage() {
 				</Card>
 			) : null}
 
+			{isOperator && behaviorData?.truncated ? (
+				<Card>
+					<CardContent className="py-3 text-sm text-(--color-muted-foreground)">
+						Command mining is truncated: the tool-call rollup read hit its row cap, so the rankings
+						below cover a bounded prefix of the window. Narrow the date range for the full picture.
+					</CardContent>
+				</Card>
+			) : null}
+
 			{isOperator ? <InsightCallouts insights={behaviorData?.insights ?? []} /> : null}
 
 			<KpiCards totals={data?.totals} />
