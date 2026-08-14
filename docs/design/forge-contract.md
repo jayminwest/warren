@@ -1,7 +1,10 @@
 # Forge Contract — Design Spike
 
-**Status:** Approved — owner go recorded 2026-08-11 (ROADMAP Next item 1).
-Implementation may start. Seeds plan pl-d1c9 is the work queue.
+**Status:** Shipped — the Forge campaign (pl-d1c9) closed 19/19 and
+landed in v0.15.0. Owner go recorded 2026-08-11 (ROADMAP Next item 1).
+The seam is live: GitHubForge (PAT), GitHubApp (installation tokens),
+and FakeForge boot-resolve via `WARREN_FORGE`, with the boundary held
+by a `check:layers` rule pair.
 **Date:** 2026-08-08. **Amended:** 2026-08-11, from an eight-track audit of
 HEAD that re-verified every §6 claim and settled the four design questions
 the first draft left to house style (§1.1, §2.1, §2.2, §7).

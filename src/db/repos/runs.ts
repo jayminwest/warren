@@ -217,9 +217,9 @@ export class RunsRepo {
 	 *   - Guarded to `state=failed` + `failureReason=never_started`. Any other
 	 *     row (a real queued/running/succeeded run, or a `failed` run that
 	 *     actually dispatched) is left untouched and the method returns false.
-	 *   - `events.run_id` carries no `ON DELETE` cascade, so the write-through
-	 *     event rows are cleared first, then the run row, inside one
-	 *     transaction. `triggers.last_run_id` / `plan_run_children.run_id`
+	 *   - `events.run_id` carries `ON DELETE CASCADE` (since migration 0033),
+	 *     so the write-through event rows fall away with the run row.
+	 *     `triggers.last_run_id` / `plan_run_children.run_id`
 	 *     (both `ON DELETE SET NULL`) and `run_inbox` (`CASCADE`) fall away on
 	 *     their own; a never_started cron retry has none of them anyway.
 	 *
@@ -230,13 +230,11 @@ export class RunsRepo {
 		return this.adapter.runInTransaction(async (tx) => {
 			const txDb = tx.drizzle as SqliteDrizzleDb;
 			const runs = tx.schema.runs;
-			const events = tx.schema.events;
 			const existing = await tx.pickOne<RunRow>(txDb.select().from(runs).where(eq(runs.id, id)));
 			if (!existing) return false;
 			if (existing.state !== "failed" || existing.failureReason !== "never_started") {
 				return false;
 			}
-			await tx.runWrite(txDb.delete(events).where(eq(events.runId, id)));
 			await tx.runWrite(txDb.delete(runs).where(eq(runs.id, id)));
 			return true;
 		});

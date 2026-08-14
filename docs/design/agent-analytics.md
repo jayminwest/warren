@@ -1,10 +1,9 @@
 # Agent Analytics — the telemetry corpus as a pillar
 
-**Status:** Exploration — **not a committed direction**. This record
-names a thesis, an inventory, and a gap list. It commits warren to
-nothing. No roadmap item, no seam, and no schema follows from it until
-an owner go. Every mechanism sketched below is provisional and yields
-to what the paying feature teaches. Modeled on
+**Status:** Approved — owner go recorded 2026-08-14. Seeds plan
+pl-103e (Agent analytics phase 1) is the execution vehicle for phases
+0–3. Phase 4 (observer extension, judge layer) remains explicitly
+deferred. Modeled on
 [`extensions.md`](./extensions.md), which is the house form for a
 direction record rather than a locked contract.
 **Date:** 2026-08-07, from a survey of HEAD plus PHILOSOPHY, ROADMAP,
@@ -12,6 +11,9 @@ direction record rather than a locked contract.
 **Amended:** 2026-08-11 — the Forge campaign got its owner go
 ([`forge-contract.md`](./forge-contract.md), plan pl-d1c9), which is
 the ordering precondition §11 names.
+**Amended:** 2026-08-14 — owner go recorded; plan pl-103e (Agent
+analytics phase 1) is the execution vehicle for phases 0–3, with
+phase 4 (observer extension, judge layer) still deferred.
 **Amended:** 2026-08-12 — §12 records the owner's judge-layer
 decisions: heuristics **and** LLM judges, both on every run;
 extension-first placement with a named in-core exit. Open question 3
