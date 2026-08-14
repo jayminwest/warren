@@ -3,7 +3,7 @@ import { CircleStop, RefreshCw, Send } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { projectsApi, runsApi } from "@/api/client.ts";
-import type { CancelRunResponse } from "@/api/types.ts";
+import type { CancelRunResponse, PullRequestLifecycle } from "@/api/types.ts";
 import { isTerminalRunState } from "@/api/types.ts";
 import { OperatorOnly } from "@/components/OperatorOnly.tsx";
 import { StateBadge } from "@/components/StateBadge.tsx";
@@ -18,6 +18,7 @@ import { Spinner } from "@/components/ui/spinner.tsx";
 import { Textarea } from "@/components/ui/textarea.tsx";
 import { useEventStream } from "@/hooks/useEventStream.ts";
 import { formatError } from "@/lib/format-error.ts";
+import { formatPullRequestLifecycle } from "@/lib/labels.ts";
 import { formatTimestamp, relativeTime } from "@/lib/utils.ts";
 import type { NewRunRouteState } from "@/pages/NewRun.tsx";
 import { CostCard } from "@/pages/run-detail-cost.tsx";
@@ -29,6 +30,39 @@ import { PreviewCard } from "@/pages/run-detail-preview.tsx";
 // here so the existing import sites (Runs, PlanRuns, PlanRunDetail,
 // CostAnalytics, run-analytics/format) keep working unchanged.
 export { formatCostUsd } from "@/pages/run-detail-format.ts";
+
+/**
+ * PR lifecycle badge for the run header (warren-bd57 / pl-103e step 7).
+ * Rendered whenever the run carries PR facts (`prUrl` or a resolved
+ * `prState`); a NULL `prState` on a PR-bearing run means the merge
+ * watcher hasn't resolved it yet — "pr unknown", never a failure.
+ */
+function PrLifecycleBadge({
+	prState,
+	prMergedAt,
+}: {
+	prState: PullRequestLifecycle | null;
+	prMergedAt: string | null;
+}) {
+	if (prState === null) {
+		return (
+			<Badge
+				variant="cancelled"
+				className="font-mono text-xs"
+				title="A PR exists but the merge watcher hasn't polled its state yet"
+			>
+				pr unknown
+			</Badge>
+		);
+	}
+	const variant = prState === "merged" ? "succeeded" : prState === "open" ? "running" : "failed";
+	const title = prState === "merged" && prMergedAt !== null ? `merged ${prMergedAt}` : undefined;
+	return (
+		<Badge variant={variant} className="font-mono text-xs" title={title}>
+			{formatPullRequestLifecycle(prState)}
+		</Badge>
+	);
+}
 
 /**
  * Event kinds whose arrival means the warren run row may have advanced
@@ -156,6 +190,9 @@ export function RunDetailPage() {
 							<Badge variant="succeeded" className="font-mono text-xs">
 								+{reap.commitsAhead} commit{reap.commitsAhead === 1 ? "" : "s"}
 							</Badge>
+						) : null}
+						{r.prUrl !== null || r.prState !== null ? (
+							<PrLifecycleBadge prState={r.prState} prMergedAt={r.prMergedAt} />
 						) : null}
 						{r.prUrl !== null ? (
 							<a

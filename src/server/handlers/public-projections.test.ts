@@ -172,6 +172,9 @@ describe("public projections over the wire (warren-4f6c)", () => {
 			tokensOutput: 20,
 			tokensCacheRead: 40,
 		});
+		// warren-bd57: a resolved merge-watcher state so the landed-work
+		// fields flow through both projections below.
+		await repos.runs.setPrState(run.id, "merged", startedAt.toISOString());
 		handle = startServer(await depsFor(repos, inertBurrowClient()), {
 			transport: { kind: "tcp", hostname: "127.0.0.1", port: 0 },
 			auth: publicReadAuth(bearerAuth(TOKEN)),
@@ -296,6 +299,12 @@ describe("public projections over the wire (warren-4f6c)", () => {
 		expect(totals.runs).toBe(1);
 		expect(totals.succeeded).toBe(1);
 		expect(totals.successRate).toBe(1);
+		// warren-bd57: landed-work fields are public — a rate, not a private fact.
+		expect(totals.prStateKnown).toBe(1);
+		expect(totals.prsMerged).toBe(1);
+		expect(totals.mergedPrRate).toBe(1);
+		const bucket = (body.byAgent as Record<string, unknown>[])[0];
+		expect(bucket?.mergedPrRate).toBe(1);
 		expect((totals.tokens as Record<string, unknown>).total).toBe(160);
 		expect(body.filter).toMatchObject({ projectId: null });
 		// warren-30cc: the resolved window is always bounded — both bounds echo as strings.

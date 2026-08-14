@@ -12,25 +12,28 @@ import {
 // Token-series unit tests live in run-metrics-token-series.test.ts
 // (split to keep each file under the 500-line budget).
 
+/** All-null baseline row; `row()` spreads the caller's overrides over it. */
+const ROW_DEFAULTS: Omit<RunMetricsRow, "runId"> = {
+	projectId: null,
+	agentName: "claude-code",
+	provider: null,
+	model: null,
+	seedId: null,
+	state: "succeeded",
+	failureReason: null,
+	costUsd: null,
+	tokensInput: null,
+	tokensCacheRead: null,
+	tokensOutput: null,
+	tokensCacheWrite: null,
+	startedAt: null,
+	endedAt: null,
+	createdAt: null,
+	prState: null,
+};
+
 function row(o: Partial<RunMetricsRow> & { runId: string }): RunMetricsRow {
-	return {
-		runId: o.runId,
-		projectId: o.projectId ?? null,
-		agentName: o.agentName ?? "claude-code",
-		provider: o.provider ?? null,
-		model: o.model ?? null,
-		seedId: o.seedId ?? null,
-		state: o.state ?? "succeeded",
-		failureReason: o.failureReason ?? null,
-		costUsd: o.costUsd ?? null,
-		tokensInput: o.tokensInput ?? null,
-		tokensCacheRead: o.tokensCacheRead ?? null,
-		tokensOutput: o.tokensOutput ?? null,
-		tokensCacheWrite: o.tokensCacheWrite ?? null,
-		startedAt: o.startedAt ?? null,
-		endedAt: o.endedAt ?? null,
-		createdAt: o.createdAt ?? null,
-	};
+	return { ...ROW_DEFAULTS, ...o };
 }
 
 describe("contextTokensOf", () => {
@@ -401,5 +404,56 @@ describe("buildRunMetrics", () => {
 		expect(m.tokenByModelSeries[0]?.key).toBe("sonnet");
 		expect(m.tokenByProviderSeries.length).toBe(1);
 		expect(m.tokenByProviderSeries[0]?.key).toBe("anthropic");
+	});
+
+	it("rolls merged-PR counts and rates into totals and every bucket (warren-bd57)", () => {
+		const m = buildRunMetrics([
+			row({
+				runId: "a",
+				agentName: "sapling",
+				model: "opus",
+				provider: "anthropic",
+				prState: "merged",
+			}),
+			row({
+				runId: "b",
+				agentName: "sapling",
+				model: "opus",
+				provider: "anthropic",
+				prState: "open",
+			}),
+			row({
+				runId: "c",
+				agentName: "claude-code",
+				model: "sonnet",
+				provider: "anthropic",
+				prState: "closed_unmerged",
+			}),
+			// NULL pr_state: unknown — excluded from every denominator, never a failure.
+			row({ runId: "d", agentName: "sapling", model: "opus", provider: "anthropic" }),
+		]);
+		expect(m.totals.prStateKnown).toBe(3);
+		expect(m.totals.prsMerged).toBe(1);
+		expect(m.totals.mergedPrRate).toBeCloseTo(1 / 3);
+		const sapling = m.byAgent.find((b) => b.key === "sapling");
+		expect(sapling?.prStateKnown).toBe(2);
+		expect(sapling?.prsMerged).toBe(1);
+		expect(sapling?.mergedPrRate).toBeCloseTo(1 / 2);
+		const opus = m.byModel.find((b) => b.key === "opus");
+		expect(opus?.mergedPrRate).toBeCloseTo(1 / 2);
+		const anthropic = m.byProvider.find((b) => b.key === "anthropic");
+		expect(anthropic?.prStateKnown).toBe(3);
+		expect(anthropic?.mergedPrRate).toBeCloseTo(1 / 3);
+	});
+
+	it("reports a null merged-PR rate when no row carries a resolved PR state", () => {
+		const m = buildRunMetrics([row({ runId: "a" }), row({ runId: "b" })]);
+		expect(m.totals.prStateKnown).toBe(0);
+		expect(m.totals.prsMerged).toBe(0);
+		expect(m.totals.mergedPrRate).toBeNull();
+		for (const bucket of [...m.byAgent, ...m.byModel, ...m.byProvider]) {
+			expect(bucket.prStateKnown).toBe(0);
+			expect(bucket.mergedPrRate).toBeNull();
+		}
 	});
 });

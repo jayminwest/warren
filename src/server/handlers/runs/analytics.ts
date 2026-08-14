@@ -121,6 +121,9 @@ function toMetricsRows(rows: readonly RunRow[]): RunMetricsRow[] {
 			startedAt: r.startedAt,
 			endedAt: r.endedAt,
 			createdAt: r.createdAt,
+			// warren-bd57: the merge-watcher column feeds landed-work rates
+			// directly — no rendered_agent_json re-parse in this path.
+			prState: r.prState,
 		};
 	});
 }
@@ -225,6 +228,12 @@ export const PUBLIC_RUN_TOTALS_FIELDS = [
 	// warren-0af9: queue wait is a load-shape signal (how backed-up the
 	// instance is), not a private fact — same posture as durationMs.
 	"queueWaitMs",
+	// warren-bd57: how much dispatched work actually lands is the public
+	// posture's own headline ("how much of it lands") — a rate, not a
+	// private fact.
+	"prStateKnown",
+	"prsMerged",
+	"mergedPrRate",
 	"contextTokens",
 	"tokens",
 ] as const satisfies readonly (keyof RunTotals)[];
@@ -244,6 +253,11 @@ export const PUBLIC_RUN_GROUP_FIELDS = [
 	"failed",
 	"cancelled",
 	"successRate",
+	// warren-bd57: per-bucket landed-work rate, public on the same call as
+	// the totals fields.
+	"prStateKnown",
+	"prsMerged",
+	"mergedPrRate",
 	"contextTokensTotal",
 	"avgContextTokens",
 	"tokens",

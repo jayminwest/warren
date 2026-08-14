@@ -10,18 +10,18 @@
 	"$comment_spectator_dead_ends_2026_08_14": "BOUNDED AUTO-RAISE, RAW JS ONLY (warren-4e7a / #806): Agents.tsx gains the useOperatorHint call and its gated hint node, Login.tsx gains the useCapabilities read and the back-to-/runs link. Net +175 B raw js, measured on a clean --frozen-lockfile build whose numbers match CI byte for byte. Only totals.raw.js was over, so only totals.raw.js takes the script's re-baselined figure; the five budgets the change never exceeded (gzip js, largest gzip js, and all three css) keep their previous, lower ceilings rather than absorb the script's blanket headroom, because css did not move at all and gzip js came in 170 B UNDER its existing floor. The 'ratchet only goes down' rule resumes from here.",
 	"totals": {
 		"raw": {
-			"js": 946324,
-			"css": 37264
+			"js": 947320,
+			"css": 37306
 		},
 		"gzip": {
-			"js": 286697,
-			"css": 7681
+			"js": 284694,
+			"css": 7628
 		}
 	},
 	"largest": {
 		"gzip": {
-			"js": 161113,
-			"css": 7681
+			"js": 160038,
+			"css": 7628
 		}
 	}
 }

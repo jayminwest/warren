@@ -532,6 +532,15 @@ export interface RunAnalyticsTotals {
 	cancelled: number;
 	active: number;
 	successRate: number | null;
+	/**
+	 * Landed-work rollup (warren-bd57): `prStateKnown` rows carry a resolved
+	 * PR lifecycle (the merge-rate denominator — NULL `pr_state` rows are
+	 * unknown, never failures), `prsMerged` of them merged. Rate is null
+	 * when no run in the window has a resolved PR state.
+	 */
+	prStateKnown: number;
+	prsMerged: number;
+	mergedPrRate: number | null;
 	durationMs: RunStatSummary;
 	/**
 	 * Queue wait (`startedAt - createdAt`) over rows where both are known
@@ -566,6 +575,10 @@ export interface RunGroupBucket {
 	succeeded: number;
 	failed: number;
 	successRate: number | null;
+	/** Landed-work rollup for this bucket (warren-bd57) — see totals. */
+	prStateKnown: number;
+	prsMerged: number;
+	mergedPrRate: number | null;
 	contextTokensTotal: number;
 	avgContextTokens: number | null;
 	tokens: TokenBreakdown;
