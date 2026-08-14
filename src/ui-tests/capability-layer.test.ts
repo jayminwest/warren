@@ -173,7 +173,6 @@ describe("every mutation site sits behind the one gate (warren-f53e)", () => {
 
 describe("redacted wire fields render on presence (warren-f53e)", () => {
 	const types = read("api", "types.ts");
-	const client = read("api", "client.ts");
 	const runDetail = read("pages", "RunDetail.tsx");
 
 	test("the fields the public projection drops are optional in the row types", () => {
@@ -221,8 +220,16 @@ describe("redacted wire fields render on presence (warren-f53e)", () => {
 	// the three consumers must render on presence. Before this fix the whole
 	// /run-analytics page threw for an anonymous visitor.
 	test("run-analytics cost fields are optional in the wire types", () => {
-		expect(client).toMatch(/cost\?: \{ total: number; avg: number \| null; priced: number \}/);
-		expect(client).toMatch(/costUsd\?: number;\s*priced\?: number;/);
+		// warren-be04: the run-analytics mirror types moved out of client.ts
+		// (file-size budget) into ./run-analytics-types.ts, re-exported from
+		// client.ts, so the assertion reads the new home.
+		const analyticsTypes = read("api", "run-analytics-types.ts");
+		expect(analyticsTypes).toMatch(
+			/cost\?: \{ total: number; avg: number \| null; priced: number \}/,
+		);
+		expect(analyticsTypes).toMatch(/costUsd\?: number;\s*priced\?: number;/);
+		// The outcome rollup's USD figures are redacted the same way.
+		expect(analyticsTypes).toMatch(/costPerMergedPrUsd\?: number \| null/);
 	});
 
 	test("the run-analytics consumers guard the redacted cost fields", () => {
