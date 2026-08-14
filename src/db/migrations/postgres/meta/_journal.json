@@ -246,6 +246,13 @@
 			"when": 1786724702243,
 			"tag": "0034_glorious_franklin_richards",
 			"breakpoints": true
+		},
+		{
+			"idx": 35,
+			"version": "7",
+			"when": 1786726530006,
+			"tag": "0035_flat_power_pack",
+			"breakpoints": true
 		}
 	]
 }

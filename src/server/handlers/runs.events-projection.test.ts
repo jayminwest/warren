@@ -425,9 +425,22 @@ describe("GET /runs/:id/events under WARREN_AUTH=public (warren-1cb7)", () => {
 	test("the anonymous envelope keeps its historical shape", async () => {
 		const { lines } = await stream();
 		const first = JSON.parse(lines[0] ?? "{}") as Record<string, unknown>;
-		expect(Object.keys(first)).toEqual(["id", "runId", "seq", "ts", "kind", "stream", "payload"]);
+		// `origin` (warren-5a07) is classified spectator-safe provenance
+		// metadata; historical rows carry NULL, which stays null on the
+		// wire (unknown — never folded into a real bucket).
+		expect(Object.keys(first)).toEqual([
+			"id",
+			"runId",
+			"seq",
+			"ts",
+			"kind",
+			"stream",
+			"origin",
+			"payload",
+		]);
 		expect(first.seq).toBe(1);
 		expect(first.stream).toBe("stdout");
+		expect(first.origin).toBeNull();
 	});
 
 	test("the operator stream is unscrubbed and complete", async () => {

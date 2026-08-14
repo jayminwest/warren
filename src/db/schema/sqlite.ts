@@ -237,6 +237,12 @@ export const events = sqliteTable(
 		ts: text("ts").notNull(),
 		kind: text("kind").notNull(),
 		stream: text("stream", { enum: EVENT_STREAMS }),
+		// Parse-boundary provenance (warren-5a07) — `"agent"` marks an
+		// unattributed line re-parsed off a transport the agent can write
+		// to; absent reads as warren-authored in the in-memory stream view.
+		// Nullable: historical rows predate the column and read as unknown
+		// — never fold NULL into a real bucket (mixed-semantics rule).
+		origin: text("origin"),
 		payloadJson: text("payload_json", { mode: "json" }).notNull(),
 	},
 	(t) => [

@@ -57,6 +57,7 @@ describe("tailPlanRunEvents", () => {
 			ts: new Date(seq * 1000).toISOString(),
 			kind,
 			stream: null,
+			origin: null,
 			payloadJson: { seq },
 		};
 	}

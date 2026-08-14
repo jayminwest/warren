@@ -12,6 +12,7 @@ function makeEvent(runId: string, seq: number): EventRow {
 		ts: new Date(2026, 4, 8, 12, 0, seq).toISOString(),
 		kind: "text",
 		stream: "stdout",
+		origin: null,
 		payloadJson: { seq },
 	};
 }
