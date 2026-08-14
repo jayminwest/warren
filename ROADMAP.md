@@ -35,7 +35,7 @@ The brake on all three is PHILOSOPHY rule 1: features pay for seams. Work with n
 
 ## Now — in flight
 
-- Nothing. The Forge campaign (pl-d1c9) shipped in v0.15.0 — see Shipped. Next up is `AgentRuntimeAdapter` phase 1, already seeded as good-first-challenge GH#846.
+- **Agent analytics phase 1** (plan pl-103e, owner go 2026-08-14). Phases 0–3 of `docs/design/agent-analytics.md`: the telemetry corpus as a first-class asset — run timing and model/provider columns, analytics group-bys, and the cost corpus. Phase 4 (observer extension, judge layer) stays deferred. The Forge campaign (pl-d1c9) shipped in v0.15.0 — see Shipped. Also next up: `AgentRuntimeAdapter` phase 1, already seeded as good-first-challenge GH#846.
 
 ## Next — planned, in order
 
