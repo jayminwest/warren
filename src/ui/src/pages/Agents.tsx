@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { agentsApi, projectsApi } from "@/api/client.ts";
 import type { AgentRow } from "@/api/types.ts";
-import { OperatorOnly } from "@/components/OperatorOnly.tsx";
+import { OperatorOnly, useOperatorHint } from "@/components/OperatorOnly.tsx";
 import { Alert } from "@/components/ui/alert.tsx";
 import { Badge } from "@/components/ui/badge.tsx";
 import { Button } from "@/components/ui/button.tsx";
@@ -61,6 +61,17 @@ export function AgentsPage() {
 		initialKey: "name",
 		defaultDirections: { registeredAt: "desc", lastRefreshed: "desc" },
 	});
+	// `readOperator`, not the hook's `dispatch` default: `warren doctor` is a
+	// CLI the reader runs against the instance, and every capability level
+	// above a spectator can run it. A spectator cannot, so the instruction
+	// half of the empty state is theirs to lose (warren-4e7a).
+	const emptyHint = useOperatorHint(
+		<>
+			{" "}
+			If they do not, check <code>warren doctor</code>.
+		</>,
+		"readOperator",
+	);
 
 	return (
 		<div className="space-y-6">
@@ -118,7 +129,7 @@ export function AgentsPage() {
 							description={
 								<>
 									Built-in <code>claude-code</code>, <code>sapling</code>, and <code>pi</code>{" "}
-									should appear here automatically — if not, check <code>warren doctor</code>.
+									should appear here automatically.{emptyHint}
 								</>
 							}
 						/>

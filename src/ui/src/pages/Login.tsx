@@ -1,6 +1,6 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { metaApi, setApiToken, UnauthorizedError } from "@/api/client.ts";
 import { Button } from "@/components/ui/button.tsx";
 import {
@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/card.tsx";
 import { Input } from "@/components/ui/input.tsx";
 import { Label } from "@/components/ui/label.tsx";
+import { useCapabilities } from "@/hooks/use-capabilities.ts";
 
 export function LoginPage() {
 	const navigate = useNavigate();
@@ -19,6 +20,14 @@ export function LoginPage() {
 	const [token, setToken] = useState("");
 	const [error, setError] = useState<string | null>(null);
 	const [pending, setPending] = useState(false);
+	// `App.tsx` mounts `/login` outside `AuthGate`/`Layout`, so this page has
+	// no sidebar and no nav: a spectator who takes the "Log in" button
+	// `Layout` offers them can only leave with the browser back button
+	// (warren-4e7a). Offer the way back only when warren already admitted
+	// this browser, since a `WARREN_AUTH=token` visitor holding no token has
+	// no readable page to return to.
+	const caps = useCapabilities();
+	const admitted = caps.status === "ready";
 
 	const onSubmit = async (e: React.FormEvent): Promise<void> => {
 		e.preventDefault();
@@ -85,6 +94,11 @@ export function LoginPage() {
 							{pending ? "Verifying…" : "Continue"}
 						</Button>
 					</form>
+					{admitted ? (
+						<Button asChild variant="ghost" size="sm" className="mt-4 w-full">
+							<Link to="/runs">Back to browsing</Link>
+						</Button>
+					) : null}
 				</CardContent>
 			</Card>
 		</div>
