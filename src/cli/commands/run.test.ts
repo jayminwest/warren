@@ -58,6 +58,8 @@ function runRow(over: Partial<RunRow> = {}): RunRow {
 		prompt: "do the thing",
 		trigger: "cli",
 		prUrl: "https://github.com/os-eco/warren/pull/42",
+		prState: null,
+		prMergedAt: null,
 		targetBranch: null,
 		salvageRef: null,
 		salvagePath: null,

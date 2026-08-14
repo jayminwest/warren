@@ -43,6 +43,7 @@ import type {
 	PlanRunChildState,
 	PlanRunState,
 	PreviewState,
+	PullRequestLifecycle,
 	RunFailureReason,
 	RunMode,
 	RunState,
@@ -158,6 +159,13 @@ export interface RunRow {
 	 * branch == defaultBranch) or the GitHub call errored.
 	 */
 	prUrl: string | null;
+	/**
+	 * Merge-watcher PR facts (warren-3bc6 / pl-103e step 6). `prState` is
+	 * the forge-reported PR lifecycle; `prMergedAt` its merge instant. Null
+	 * reads as "unknown" (historical rows, no PR), never "not merged".
+	 */
+	prState: PullRequestLifecycle | null;
+	prMergedAt: string | null;
 	/** Existing branch reap pushes the workspace back to (#419). Null when unset. */
 	targetBranch: string | null;
 	/**

@@ -51,6 +51,8 @@ function runRow(over: Partial<RunRow> = {}): RunRow {
 		prompt: "do the thing",
 		trigger: "cli",
 		prUrl: null,
+		prState: null,
+		prMergedAt: null,
 		targetBranch: null,
 		salvageRef: null,
 		salvagePath: null,

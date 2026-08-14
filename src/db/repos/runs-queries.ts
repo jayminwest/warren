@@ -6,7 +6,20 @@
  * the call surface is unchanged.
  */
 
-import { and, asc, desc, eq, gte, inArray, lte, type SQL, sql } from "drizzle-orm";
+import {
+	and,
+	asc,
+	desc,
+	eq,
+	gte,
+	inArray,
+	isNotNull,
+	isNull,
+	lte,
+	or,
+	type SQL,
+	sql,
+} from "drizzle-orm";
 import type { SqliteDrizzleDb } from "../client.ts";
 import type { RunRow, RunState } from "../schema.ts";
 import type { DrizzleAdapter } from "./drizzle-adapter.ts";
@@ -212,4 +225,22 @@ export async function listByState(
 	const runs = adapter.schema.runs;
 	const where = Array.isArray(state) ? inArray(runs.state, state) : eq(runs.state, state);
 	return adapter.pickAll(db.select().from(runs).where(where).orderBy(asc(runs.id)));
+}
+
+/**
+ * Runs whose PR the merge watcher still has to settle (warren-3bc6):
+ * `pr_url` is set and `pr_state` is not yet terminal (NULL — never polled,
+ * or a historical row — or `open`). Boot re-adoption enumerates these so a
+ * restart never orphans an in-flight poll.
+ */
+export async function listWithUnresolvedPr(adapter: DrizzleAdapter): Promise<RunRow[]> {
+	const db = adapter.drizzle as SqliteDrizzleDb;
+	const runs = adapter.schema.runs;
+	return adapter.pickAll(
+		db
+			.select()
+			.from(runs)
+			.where(and(isNotNull(runs.prUrl), or(isNull(runs.prState), eq(runs.prState, "open"))))
+			.orderBy(asc(runs.id)),
+	);
 }

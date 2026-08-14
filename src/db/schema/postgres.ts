@@ -45,6 +45,7 @@ import {
 	PLAN_RUN_CHILD_STATES,
 	PLAN_RUN_STATES,
 	PREVIEW_STATES,
+	PULL_REQUEST_LIFECYCLES,
 	RUN_FAILURE_REASONS,
 	RUN_MODES,
 	RUN_STATES,
@@ -136,6 +137,11 @@ export const runs = pgTable(
 		// + intent.
 		provider: text("provider"),
 		model: text("model"),
+		// Mirror of sqlite pr_state/pr_merged_at (warren-3bc6 / pl-103e step 6).
+		// Merge-watcher PR facts; NULL reads as "unknown". See sqlite.ts for
+		// the full shape + intent.
+		prState: text("pr_state", { enum: PULL_REQUEST_LIFECYCLES }),
+		prMergedAt: text("pr_merged_at"),
 		// Mirror of sqlite commits_ahead/files_changed/insertions/deletions
 		// (warren-ab2b / pl-103e). Reap-time measured outcome facts; see
 		// sqlite.ts for the full shape + NULL-semantics intent.

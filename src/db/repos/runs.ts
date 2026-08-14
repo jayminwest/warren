@@ -14,6 +14,7 @@ import type { SqliteDrizzleDb } from "../client.ts";
 import type {
 	CloneKind,
 	PreviewState,
+	PullRequestLifecycle,
 	RunFailureReason,
 	RunMode,
 	RunRow,
@@ -22,10 +23,12 @@ import type {
 } from "../schema.ts";
 import type { DrizzleAdapter } from "./drizzle-adapter.ts";
 import { fixAttemptHistoryByPrUrl, listPrCandidatesByProject } from "./runs-ci-fixer.ts";
+import { deleteNeverStarted } from "./runs-delete.ts";
 import {
 	type RunOutcomeFacts,
 	setOutcomeFacts as setOutcomeFactsBody,
 } from "./runs-outcome-facts.ts";
+import { setPrState, setPrUrl } from "./runs-pr.ts";
 import {
 	aggregate,
 	listAll,
@@ -34,6 +37,7 @@ import {
 	listByProject,
 	listByState,
 	listForAnalytics,
+	listWithUnresolvedPr,
 } from "./runs-queries.ts";
 
 const ALLOWED_TRANSITIONS: Record<RunState, readonly RunState[]> = {
@@ -77,9 +81,8 @@ const PREVIEW_ALLOWED_TRANSITIONS: Record<PreviewState | "unset", readonly Previ
 
 /**
  * Guard one preview-state advance. A same-state write is an idempotent
- * re-assert (probe retries, repeated teardown) and passes; anything not in
- * the table throws StateTransitionError, which `src/server/errors.ts`
- * renders as HTTP 409.
+ * re-assert and passes; anything not in the table throws
+ * StateTransitionError, which `src/server/errors.ts` renders as HTTP 409.
  */
 export function assertPreviewTransition(from: PreviewState | null, to: PreviewState): void {
 	if (from === to) return;
@@ -179,9 +182,8 @@ export class RunsRepo {
 			renderedAgentJson: input.renderedAgentJson,
 			state: "queued",
 			failureReason: null,
-			// The queued instant (warren-0af9): stamped here at insert so queue
-			// wait is `startedAt - createdAt`. startedAt keeps being written at
-			// the queued-to-running transition (markRunning / claimById).
+			// The queued instant (warren-0af9), stamped at insert; queue wait is
+			// `startedAt - createdAt`.
 			createdAt: (input.now ?? new Date()).getTime(),
 			startedAt: null,
 			endedAt: null,
@@ -191,6 +193,9 @@ export class RunsRepo {
 			targetBranch: input.targetBranch ?? null,
 			provider: input.provider ?? null,
 			model: input.model ?? null,
+			// Merge-watcher facts (warren-3bc6): unset until post_reap settles the PR.
+			prState: null,
+			prMergedAt: null,
 			// Outcome facts (warren-ab2b): unknown until reap measures them — NULL.
 			commitsAhead: null,
 			filesChanged: null,
@@ -228,24 +233,11 @@ export class RunsRepo {
 	}
 
 	/**
-	 * Hard-delete a run row that never reached the runtime (warren-a0a2).
-	 * Guarded to `state=failed` + `failureReason=never_started`; any other
-	 * row returns false. `events.run_id` (`ON DELETE CASCADE`, migration
-	 * 0033) and the SET-NULL back-links fall away with the row. Returns true
-	 * when a row was deleted.
+	 * Hard-delete a run row that never reached the runtime (warren-a0a2);
+	 * the guarded body lives in runs-delete.ts.
 	 */
-	async deleteNeverStarted(id: string): Promise<boolean> {
-		return this.adapter.runInTransaction(async (tx) => {
-			const txDb = tx.drizzle as SqliteDrizzleDb;
-			const runs = tx.schema.runs;
-			const existing = await tx.pickOne<RunRow>(txDb.select().from(runs).where(eq(runs.id, id)));
-			if (!existing) return false;
-			if (existing.state !== "failed" || existing.failureReason !== "never_started") {
-				return false;
-			}
-			await tx.runWrite(txDb.delete(runs).where(eq(runs.id, id)));
-			return true;
-		});
+	deleteNeverStarted(id: string): Promise<boolean> {
+		return deleteNeverStarted(this.adapter, id);
 	}
 
 	/** Read/query methods (warren-ac7f); bodies live in runs-queries.ts. */
@@ -424,18 +416,26 @@ export class RunsRepo {
 		return { ...current, ...patch };
 	}
 
+	/** PR-fact writes (warren-f6af / warren-3bc6); bodies live in runs-pr.ts. */
+	setPrUrl(id: string, prUrl: string | null): Promise<RunRow> {
+		return setPrUrl(this.adapter, id, prUrl);
+	}
+
+	setPrState(
+		id: string,
+		prState: PullRequestLifecycle,
+		prMergedAt: string | null,
+	): Promise<RunRow> {
+		return setPrState(this.adapter, id, prState, prMergedAt);
+	}
+
 	/**
-	 * Persist the PR URL reap's `pr_open` sub-step opened (warren-f6af).
-	 * Last write wins; passing `null` clears the field. Separate from
-	 * `finalize` because reap fires this *before* the terminal transition
-	 * (so the URL lands on the `reap.completed` event payload too).
+	 * Runs whose PR the merge watcher still has to settle (warren-3bc6):
+	 * `pr_url` set and `pr_state` NULL or `open`. Boot re-adoption
+	 * enumerates these so a restart never orphans an in-flight poll.
 	 */
-	async setPrUrl(id: string, prUrl: string | null): Promise<RunRow> {
-		const current = await this.require(id);
-		await this.adapter.runWrite(
-			this.db.update(this.runs).set({ prUrl }).where(eq(this.runs.id, id)),
-		);
-		return { ...current, prUrl };
+	listWithUnresolvedPr(): Promise<RunRow[]> {
+		return listWithUnresolvedPr(this.adapter);
 	}
 
 	/**
