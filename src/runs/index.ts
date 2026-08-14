@@ -35,6 +35,7 @@ export {
 	type GroupDimension as RunGroupDimension,
 	NONE_KEY as RUN_METRICS_NONE_KEY,
 	OTHER_KEY as RUN_METRICS_OTHER_KEY,
+	queueWaitMsOf,
 	type RunDayBucket,
 	type RunGroupBucket,
 	type RunMetrics,

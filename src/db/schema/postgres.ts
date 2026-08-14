@@ -24,6 +24,7 @@
 
 import { sql } from "drizzle-orm";
 import {
+	bigint,
 	boolean,
 	doublePrecision,
 	index,
@@ -98,6 +99,10 @@ export const runs = pgTable(
 		renderedAgentJson: jsonb("rendered_agent_json").notNull(),
 		state: text("state", { enum: RUN_STATES }).notNull(),
 		failureReason: text("failure_reason", { enum: RUN_FAILURE_REASONS }),
+		// Mirror of sqlite created_at (warren-0af9 / pl-103e step 1). Epoch ms,
+		// so bigint (pg integer is 32-bit and overflows ~1.7e12). Nullable for
+		// pre-migration rows; see sqlite.ts for the full shape + intent.
+		createdAt: bigint("created_at", { mode: "number" }),
 		startedAt: text("started_at"),
 		endedAt: text("ended_at"),
 		prompt: text("prompt").notNull(),

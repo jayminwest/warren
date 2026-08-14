@@ -22,6 +22,7 @@ function emptyMetrics(): RunMetrics {
 			active: 0,
 			successRate: null,
 			durationMs: { avg: null, median: null, p95: null, count: 0 },
+			queueWaitMs: { avg: null, median: null, p95: null, count: 0 },
 			contextTokens: { avg: null, median: null, p95: null, count: 0 },
 			tokens: ZERO_TOKENS,
 			cost: { total: 0, avg: null, priced: 0 },

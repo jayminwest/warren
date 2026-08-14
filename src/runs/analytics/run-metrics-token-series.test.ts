@@ -19,6 +19,7 @@ function row(o: Partial<RunMetricsRow> & { runId: string }): RunMetricsRow {
 		tokensCacheWrite: o.tokensCacheWrite ?? null,
 		startedAt: o.startedAt ?? null,
 		endedAt: o.endedAt ?? null,
+		createdAt: o.createdAt ?? null,
 	};
 }
 

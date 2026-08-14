@@ -65,6 +65,12 @@ export interface RunMetricsRow {
 	readonly tokensCacheWrite: number | null;
 	readonly startedAt: string | null;
 	readonly endedAt: string | null;
+	/**
+	 * The queued instant as epoch ms (warren-0af9 / pl-103e step 1). Null on
+	 * rows written before the column existed — those are "unknown", excluded
+	 * from queue-wait denominators, never counted as zero wait.
+	 */
+	readonly createdAt: number | null;
 }
 
 /** avg/median/p95 over the non-null sample, or all-null when the sample is empty. */
@@ -86,6 +92,13 @@ export interface RunTotals {
 	/** succeeded / (succeeded + failed + cancelled), or null when no terminal runs. */
 	readonly successRate: number | null;
 	readonly durationMs: StatSummary;
+	/**
+	 * Queue wait (`startedAt - createdAt`) over rows where both are known
+	 * (warren-0af9). Pre-migration rows (null `createdAt`) and runs that
+	 * never left the queue are excluded from the sample — `count` is the
+	 * known-row denominator.
+	 */
+	readonly queueWaitMs: StatSummary;
 	readonly contextTokens: StatSummary;
 	readonly tokens: TokenBreakdown;
 	readonly cost: {
@@ -187,6 +200,19 @@ export function durationMsOf(row: RunMetricsRow): number | null {
 	return delta < 0 ? null : delta;
 }
 
+/**
+ * Queue wait in milliseconds (`startedAt - createdAt`, warren-0af9), or null
+ * unless both instants are present + valid. A null `createdAt` means the row
+ * predates the column — its wait is unknown, not zero.
+ */
+export function queueWaitMsOf(row: RunMetricsRow): number | null {
+	if (row.createdAt === null || row.startedAt === null) return null;
+	const start = Date.parse(row.startedAt);
+	if (Number.isNaN(start)) return null;
+	const delta = start - row.createdAt;
+	return delta < 0 ? null : delta;
+}
+
 function summarize(values: readonly number[]): StatSummary {
 	if (values.length === 0) return { avg: null, median: null, p95: null, count: 0 };
 	const sorted = [...values].sort((a, b) => a - b);
@@ -235,6 +261,7 @@ function computeTotals(rows: readonly RunMetricsRow[]): RunTotals {
 	let priced = 0;
 	let tokens: TokenBreakdown = ZERO_TOKENS;
 	const durations: number[] = [];
+	const queueWaits: number[] = [];
 	const contexts: number[] = [];
 	for (const r of rows) {
 		if (r.state === "succeeded") succeeded += 1;
@@ -247,6 +274,8 @@ function computeTotals(rows: readonly RunMetricsRow[]): RunTotals {
 		}
 		const dur = durationMsOf(r);
 		if (dur !== null) durations.push(dur);
+		const wait = queueWaitMsOf(r);
+		if (wait !== null) queueWaits.push(wait);
 		const ctx = contextTokensOf(r);
 		if (ctx !== null) contexts.push(ctx);
 		tokens = addTokenBreakdowns(tokens, tokenBreakdownOf(r));
@@ -260,6 +289,7 @@ function computeTotals(rows: readonly RunMetricsRow[]): RunTotals {
 		active,
 		successRate: terminal === 0 ? null : succeeded / terminal,
 		durationMs: summarize(durations),
+		queueWaitMs: summarize(queueWaits),
 		contextTokens: summarize(contexts),
 		tokens,
 		cost: { total: costTotal, avg: priced === 0 ? null : costTotal / priced, priced },

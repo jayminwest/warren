@@ -1,0 +1,1 @@
+ALTER TABLE `runs` ADD `created_at` integer;

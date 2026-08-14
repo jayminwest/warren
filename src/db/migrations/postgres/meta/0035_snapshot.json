@@ -1,6 +1,6 @@
 {
-	"id": "dfc1a092-860d-4c28-9af1-f6d94a578d14",
-	"prevId": "e99e451f-027d-40c4-a4a1-12c262dfb684",
+	"id": "5512b45e-4bf9-4828-9998-a13993699fd0",
+	"prevId": "dfc1a092-860d-4c28-9af1-f6d94a578d14",
 	"version": "7",
 	"dialect": "postgresql",
 	"tables": {
@@ -870,6 +870,18 @@
 				},
 				"clone_kind": {
 					"name": "clone_kind",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"provider": {
+					"name": "provider",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"model": {
+					"name": "model",
 					"type": "text",
 					"primaryKey": false,
 					"notNull": false

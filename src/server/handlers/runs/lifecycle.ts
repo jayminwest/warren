@@ -33,6 +33,9 @@ export const PUBLIC_RUN_FIELDS = [
 	"mode",
 	"state",
 	"failureReason",
+	// warren-0af9: the queued instant — a load-shape timestamp, public for
+	// the same reason startedAt/endedAt are.
+	"createdAt",
 	"startedAt",
 	"endedAt",
 	"prompt",

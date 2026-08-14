@@ -140,6 +140,13 @@ export const runs = sqliteTable(
 		renderedAgentJson: text("rendered_agent_json", { mode: "json" }).notNull(),
 		state: text("state", { enum: RUN_STATES }).notNull(),
 		failureReason: text("failure_reason", { enum: RUN_FAILURE_REASONS }),
+		// The queued instant (warren-0af9 / pl-103e step 1): epoch ms stamped by
+		// RunsRepo.create at insert, so queue wait is `started_at - created_at`.
+		// Epoch-ms integer rather than the ISO8601 TEXT of started_at/ended_at
+		// per the pl-103e spec. Nullable: rows written before the column existed
+		// carry NULL, which analytics must read as "unknown" (excluded from
+		// queue-wait denominators), never as zero wait.
+		createdAt: integer("created_at"),
 		startedAt: text("started_at"),
 		endedAt: text("ended_at"),
 		prompt: text("prompt").notNull(),
