@@ -41,6 +41,7 @@
  */
 
 import type { CommandMining, CommandStat } from "./command-mining.ts";
+import type { DirectoryDifficulty, DirectoryStat } from "./directory-difficulty.ts";
 import type { RunGroupBucket, RunMetrics } from "./run-metrics.ts";
 
 export type InsightSeverity = "info" | "warning" | "critical";
@@ -51,7 +52,8 @@ export type InsightKind =
 	| "most-failed-command"
 	| "most-retried-command"
 	| "model-cost-outlier"
-	| "steering-anomaly";
+	| "steering-anomaly"
+	| "hardest-directory";
 
 export interface Insight {
 	readonly kind: InsightKind;
@@ -84,6 +86,12 @@ export interface InsightsInput {
 	readonly metrics: RunMetrics;
 	readonly mining: CommandMining;
 	readonly steering?: SteeringSignals;
+	/**
+	 * Per-directory difficulty rollup (warren-8f1b). Optional like
+	 * `steering`: when omitted the `hardest-directory` callout is
+	 * skipped. Directories carry their own denominators + confidence.
+	 */
+	readonly directories?: DirectoryDifficulty;
 }
 
 /** Minimum terminal runs before an agent's success rate is worth flagging. */
@@ -104,6 +112,9 @@ const MIN_MODELS_FOR_OUTLIER = 2;
 /** Share-of-runs thresholds for the steering anomaly. */
 const STEERING_CRITICAL_SHARE = 0.5;
 const STEERING_WARNING_SHARE = 0.25;
+/** Difficulty-score thresholds for the hardest-directory callout. */
+const DIRECTORY_WARNING_SCORE = 0.5;
+const DIRECTORY_CRITICAL_FAILURE_SHARE = 0.5;
 
 const KIND_ORDER: readonly InsightKind[] = [
 	"worst-success-agent",
@@ -111,6 +122,7 @@ const KIND_ORDER: readonly InsightKind[] = [
 	"most-failed-command",
 	"model-cost-outlier",
 	"steering-anomaly",
+	"hardest-directory",
 	"highest-context-seed",
 ];
 
@@ -242,6 +254,33 @@ function steeringAnomaly(s: SteeringSignals): Insight | null {
 	};
 }
 
+/**
+ * The hardest-directory callout (warren-8f1b): the ranked directory with
+ * the highest difficulty score, when it clears the warning threshold and
+ * shows real struggle evidence (a failed run or a retry — a zero-evidence
+ * top scorer is noise). The detail carries the denominators and the
+ * confidence qualifier inline, per the plan's insight discipline.
+ */
+function hardestDirectory(directories: DirectoryDifficulty): Insight | null {
+	let top: DirectoryStat | undefined;
+	for (const d of directories.directories) {
+		if (d.runsFailed === 0 && d.retries === 0) continue;
+		if (top === undefined || d.difficultyScore > top.difficultyScore) top = d;
+	}
+	if (top === undefined || top.difficultyScore < DIRECTORY_WARNING_SCORE) return null;
+	const share = top.failureShare ?? 0;
+	return {
+		kind: "hardest-directory",
+		severity: share >= DIRECTORY_CRITICAL_FAILURE_SHARE ? "critical" : "warning",
+		title: "Hardest directory",
+		detail: `"${top.directory}" — ${top.runsFailed} of ${top.runsTouching} run(s) touching it failed; ${top.retries} error-retr${
+			top.retries === 1 ? "y" : "ies"
+		} across ${top.fileTouches} file touch(es), ${top.steeringMessages} steering message(s) (confidence: ${top.confidence}; ${directories.totals.runsWithFilePaths} of ${directories.totals.runsInWindow} run(s) in window have file data).`,
+		value: top.difficultyScore,
+		subject: top.directory,
+	};
+}
+
 function compareInsights(a: Insight, b: Insight): number {
 	const sev = SEVERITY_RANK[a.severity] - SEVERITY_RANK[b.severity];
 	if (sev !== 0) return sev;
@@ -296,13 +335,27 @@ export function buildSteeringSignals(
 }
 
 /**
+ * Per-run steering-message counts (warren-8f1b): the same `steer.sent`
+ * scan as {@link buildSteeringSignals}, keyed by run id, for aggregators
+ * that join steering to a per-run subject (the directory difficulty map).
+ */
+export function countSteeringByRun(rows: readonly SteeringEventRow[]): Map<string, number> {
+	const counts = new Map<string, number>();
+	for (const row of rows) {
+		if (row.kind !== STEER_SENT_KIND) continue;
+		counts.set(row.runId, (counts.get(row.runId) ?? 0) + 1);
+	}
+	return counts;
+}
+
+/**
  * Distill the run-metrics + command-mining rollups (and optional steering
  * signals) into a ranked list of severity-coded callouts. Returns `[]` for a
  * healthy, low-signal window. O(groups + commands) — a handful of single
  * passes over the already-aggregated breakdowns.
  */
 export function buildInsights(input: InsightsInput): Insight[] {
-	const { metrics, mining, steering } = input;
+	const { metrics, mining, steering, directories } = input;
 	const candidates: (Insight | null)[] = [
 		highestContextSeed(metrics),
 		worstSuccessAgent(metrics),
@@ -312,6 +365,9 @@ export function buildInsights(input: InsightsInput): Insight[] {
 	];
 	if (steering !== undefined) {
 		candidates.push(steeringAnomaly(steering));
+	}
+	if (directories !== undefined) {
+		candidates.push(hardestDirectory(directories));
 	}
 	const insights = candidates.filter((i): i is Insight => i !== null);
 	insights.sort(compareInsights);

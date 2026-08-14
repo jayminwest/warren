@@ -17,10 +17,14 @@ import type { RunRow } from "../../../db/schema.ts";
 import { DEFAULT_RUNTIME_ID } from "../../../registry/schema.ts";
 import {
 	buildCommandMining,
+	buildDirectoryDifficulty,
 	buildInsights,
 	buildRunMetrics,
 	buildSteeringSignals,
+	countSteeringByRun,
 	type DimensionTokenSeries,
+	type DirectoryDifficulty,
+	type DirectoryToolCallRow,
 	hydrateRunsUsage,
 	type RunGroupBucket,
 	type RunMetrics,
@@ -157,7 +161,11 @@ async function loadToolCallRows(
 	deps: ServerDeps,
 	runIds: readonly string[],
 	runtimeByRunId: ReadonlyMap<string, RuntimeId>,
-): Promise<{ rows: ToolCallMiningRow[]; truncated: boolean }> {
+): Promise<{
+	rows: ToolCallMiningRow[];
+	directoryRows: DirectoryToolCallRow[];
+	truncated: boolean;
+}> {
 	const { rows, truncated } = await deps.repos.toolCalls.listForRuns(runIds);
 	return {
 		rows: rows.map((r) => ({
@@ -169,6 +177,19 @@ async function loadToolCallRows(
 			isError: r.isError,
 			resultBytes: r.resultBytes,
 			runtime: runtimeByRunId.get(r.runId) ?? DEFAULT_RUNTIME_ID,
+		})),
+		// warren-8f1b: the same rollup rows, reduced to the directory-join
+		// shape. `filePaths` is the JSON column the fileShape extractor
+		// wrote at rollup time; narrow defensively since drizzle types the
+		// json mode as unknown.
+		directoryRows: rows.map((r) => ({
+			runId: r.runId,
+			seq: r.seq,
+			toolName: r.toolName,
+			isError: r.isError,
+			filePaths: Array.isArray(r.filePaths)
+				? r.filePaths.filter((p): p is string => typeof p === "string")
+				: [],
 		})),
 		truncated,
 	};
@@ -377,9 +398,28 @@ export function listBehaviorAnalyticsHandler(deps: ServerDeps): RouteHandler {
 		]);
 		const mining = buildCommandMining(toolCalls.rows);
 		const steering = buildSteeringSignals(steeringRows, rows.length);
-		const insights = buildInsights({ metrics, mining, steering });
+		// warren-8f1b: the per-directory difficulty map. Joins the rollup's
+		// fileShape-extracted paths to run outcomes, path-level retry
+		// clusters, and per-run steering counts. Every bucket carries its
+		// denominators + a confidence qualifier; runs predating the rollup
+		// are unknown and excluded from denominators. Classification: this
+		// route is `readOperator`, so directory names (repo layout) never
+		// reach a `readPublic` spectator — if the policy ever relaxes, a
+		// projection allowlist for `directories` must land first.
+		const directories: DirectoryDifficulty = buildDirectoryDifficulty(
+			toolCalls.directoryRows,
+			rows.map((r) => ({ runId: r.id, state: r.state })),
+			countSteeringByRun(steeringRows),
+		);
+		const insights = buildInsights({ metrics, mining, steering, directories });
 		// warren-7746: `truncated` reports the rollup read hitting its row
 		// cap — the retired event scan truncated silently at 20k rows.
-		return jsonResponse(200, { filter: echo, mining, insights, truncated: toolCalls.truncated });
+		return jsonResponse(200, {
+			filter: echo,
+			mining,
+			directories,
+			insights,
+			truncated: toolCalls.truncated,
+		});
 	};
 }

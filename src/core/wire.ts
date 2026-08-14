@@ -77,6 +77,15 @@ export const CLONE_KINDS = ["replicate", "continue"] as const;
 export type CloneKind = (typeof CLONE_KINDS)[number];
 
 /**
+ * Confidence qualifier for the per-directory difficulty analytics
+ * (warren-8f1b / pl-103e). Derived from the denominator size (runs
+ * touching the directory), so a 3-run sample renders differently than
+ * a 10-run one.
+ */
+export const DIRECTORY_CONFIDENCES = ["low", "medium", "high"] as const;
+export type DirectoryConfidence = (typeof DIRECTORY_CONFIDENCES)[number];
+
+/**
  * Failure-cause discriminator for a `failed` run (warren-3c40, warren-5165).
  * `state:failed` alone can't tell several different failure shapes apart.
  * Reap infers from the warren state on entry plus event content:

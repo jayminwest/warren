@@ -18,8 +18,20 @@ export {
 	type ToolCallMiningRow,
 } from "./analytics/command-mining.ts";
 export {
+	buildDirectoryDifficulty,
+	DEFAULT_DIRECTORY_LIMIT,
+	type DirectoryDifficulty,
+	type DirectoryDifficultyTotals,
+	type DirectoryRunOutcome,
+	type DirectoryStat,
+	type DirectoryToolCallRow,
+	MIN_DIRECTORY_RUNS,
+	normalizeDirectory,
+} from "./analytics/directory-difficulty.ts";
+export {
 	buildInsights,
 	buildSteeringSignals,
+	countSteeringByRun,
 	type Insight,
 	type InsightKind,
 	type InsightSeverity,
