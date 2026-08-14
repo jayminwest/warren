@@ -3,10 +3,11 @@ import type { ReapCompletedPayload, RunEvent, RunRow } from "@/api/types.ts";
 /**
  * Pull the latest `reap.completed` payload off the stream so the header
  * can show whether the push actually shipped commits (warren-f3bb). The
- * run row itself doesn't carry `commitsAhead` — it lives only in the
- * event payload — so without this read the empty-push shape (push exit-0
- * against unchanged HEAD) would be visually identical to a successful
- * real-work run.
+ * run row carries `commitsAhead` as a real column since warren-ab2b, but
+ * rows reaped before that migration read NULL (unknown), so the event
+ * payload stays the fallback source — without this read the empty-push
+ * shape (push exit-0 against unchanged HEAD) would be visually identical
+ * to a successful real-work run.
  */
 export function extractReapSummary(events: RunEvent[]): ReapCompletedPayload | null {
 	for (let i = events.length - 1; i >= 0; i--) {

@@ -136,6 +136,13 @@ export const runs = pgTable(
 		// + intent.
 		provider: text("provider"),
 		model: text("model"),
+		// Mirror of sqlite commits_ahead/files_changed/insertions/deletions
+		// (warren-ab2b / pl-103e). Reap-time measured outcome facts; see
+		// sqlite.ts for the full shape + NULL-semantics intent.
+		commitsAhead: integer("commits_ahead"),
+		filesChanged: integer("files_changed"),
+		insertions: integer("insertions"),
+		deletions: integer("deletions"),
 	},
 	(t) => [
 		index(INDEX_NAMES.runsState).on(t.state),

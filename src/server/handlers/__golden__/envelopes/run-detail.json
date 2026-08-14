@@ -40,7 +40,11 @@
 			"parentRunId": null,
 			"cloneKind": null,
 			"provider": null,
-			"model": null
+			"model": null,
+			"commitsAhead": null,
+			"filesChanged": null,
+			"insertions": null,
+			"deletions": null
 		}
 	}
 }

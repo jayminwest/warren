@@ -140,6 +140,16 @@ export interface RunRow {
 	createdAt: number | null;
 	startedAt: string | null;
 	endedAt: string | null;
+	/**
+	 * Reap-time measured outcome facts (warren-ab2b / pl-103e): commits the
+	 * pushed branch was ahead of the base, plus the parsed diff totals.
+	 * Null = unknown (pre-column rows, unmeasured finalize) — render as
+	 * "unknown", never as zero.
+	 */
+	commitsAhead: number | null;
+	filesChanged: number | null;
+	insertions: number | null;
+	deletions: number | null;
 	prompt: string;
 	trigger: string;
 	/**

@@ -288,6 +288,13 @@
 			"when": 1786726543375,
 			"tag": "0040_chemical_frightful_four",
 			"breakpoints": true
+		},
+		{
+			"idx": 41,
+			"version": "6",
+			"when": 1786728145301,
+			"tag": "0041_big_skullbuster",
+			"breakpoints": true
 		}
 	]
 }

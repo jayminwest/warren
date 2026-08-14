@@ -2,12 +2,9 @@
  * Repository for the `runs` table.
  *
  * Warren's run row mirrors the lifecycle of the underlying burrow run
- * (queued → running → succeeded|failed|cancelled). The state is updated as
- * we observe burrow's stream; warren itself does not pick runs off a queue.
- *
- * `attachBurrow` exists because the composition flow (docs/design/agent-composition.md) creates the warren
- * row before burrow's `POST /burrows` and `POST /burrows/:id/runs` return —
- * the burrow IDs are written back once we have them.
+ * (queued → running → succeeded|failed|cancelled); warren observes, the
+ * runtime owns the queue. `attachBurrow` writes the burrow IDs back once
+ * the runtime returns them (docs/design/agent-composition.md).
  */
 
 import { and, eq } from "drizzle-orm";
@@ -25,6 +22,10 @@ import type {
 } from "../schema.ts";
 import type { DrizzleAdapter } from "./drizzle-adapter.ts";
 import { fixAttemptHistoryByPrUrl, listPrCandidatesByProject } from "./runs-ci-fixer.ts";
+import {
+	type RunOutcomeFacts,
+	setOutcomeFacts as setOutcomeFactsBody,
+} from "./runs-outcome-facts.ts";
 import {
 	aggregate,
 	listAll,
@@ -190,6 +191,11 @@ export class RunsRepo {
 			targetBranch: input.targetBranch ?? null,
 			provider: input.provider ?? null,
 			model: input.model ?? null,
+			// Outcome facts (warren-ab2b): unknown until reap measures them — NULL.
+			commitsAhead: null,
+			filesChanged: null,
+			insertions: null,
+			deletions: null,
 			salvageRef: null,
 			salvagePath: null,
 			costUsd: null,
@@ -223,23 +229,10 @@ export class RunsRepo {
 
 	/**
 	 * Hard-delete a run row that never reached the runtime (warren-a0a2).
-	 *
-	 * The scheduler's bounded-retry GC calls this to drop the transient
-	 * `never_started` rows a persistently-unreachable runtime would otherwise
-	 * mint one-per-tick, so the runs list isn't flooded during an outage. It
-	 * is deliberately narrow:
-	 *
-	 *   - Guarded to `state=failed` + `failureReason=never_started`. Any other
-	 *     row (a real queued/running/succeeded run, or a `failed` run that
-	 *     actually dispatched) is left untouched and the method returns false.
-	 *   - `events.run_id` carries `ON DELETE CASCADE` (since migration 0033),
-	 *     so the write-through event rows fall away with the run row.
-	 *     `triggers.last_run_id` / `plan_run_children.run_id`
-	 *     (both `ON DELETE SET NULL`) and `run_inbox` (`CASCADE`) fall away on
-	 *     their own; a never_started cron retry has none of them anyway.
-	 *
-	 * Returns true when a row was deleted, false when the id was missing or
-	 * the guard rejected it.
+	 * Guarded to `state=failed` + `failureReason=never_started`; any other
+	 * row returns false. `events.run_id` (`ON DELETE CASCADE`, migration
+	 * 0033) and the SET-NULL back-links fall away with the row. Returns true
+	 * when a row was deleted.
 	 */
 	async deleteNeverStarted(id: string): Promise<boolean> {
 		return this.adapter.runInTransaction(async (tx) => {
@@ -448,9 +441,7 @@ export class RunsRepo {
 	/**
 	 * Persist where a failed finalize's work was salvaged to (warren-cd3b):
 	 * the rescue branch on origin (`salvageRef`) and/or the durable git-bundle
-	 * file (`salvagePath`). Written by the salvage intake handler (k8s) or
-	 * reap's local salvage step before the workspace is destroyed. Last write
-	 * wins (a retried/re-dispatched salvage overwrites the stale location).
+	 * file (`salvagePath`). Last write wins.
 	 */
 	async setSalvage(
 		id: string,
@@ -464,6 +455,15 @@ export class RunsRepo {
 				.where(eq(this.runs.id, id)),
 		);
 		return { ...current, salvageRef: salvage.rescueRef, salvagePath: salvage.bundlePath };
+	}
+
+	/**
+	 * Persist the reap-time outcome facts (warren-ab2b / pl-103e). Last
+	 * write wins; NULL means unknown, never zero. Body lives in
+	 * runs-outcome-facts.ts (file-size budget).
+	 */
+	async setOutcomeFacts(id: string, facts: RunOutcomeFacts): Promise<RunRow> {
+		return setOutcomeFactsBody(this.adapter, id, facts);
 	}
 
 	/** CI-fixer queries (warren-0b75); bodies live in runs-ci-fixer.ts. */

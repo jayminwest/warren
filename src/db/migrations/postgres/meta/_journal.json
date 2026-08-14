@@ -253,6 +253,13 @@
 			"when": 1786726545291,
 			"tag": "0035_perpetual_chameleon",
 			"breakpoints": true
+		},
+		{
+			"idx": 36,
+			"version": "7",
+			"when": 1786728146747,
+			"tag": "0036_late_slyde",
+			"breakpoints": true
 		}
 	]
 }

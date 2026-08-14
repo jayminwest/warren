@@ -50,6 +50,13 @@ export const PUBLIC_RUN_FIELDS = [
 	// the per-run copy carries no new information.
 	"provider",
 	"model",
+	// warren-ab2b: reap-time measured outcome facts (commits ahead of base +
+	// parsed diff totals). Load-shape metrics of the same class as the token
+	// counts; NULL means unknown (pre-column rows, unmeasured finalize).
+	"commitsAhead",
+	"filesChanged",
+	"insertions",
+	"deletions",
 	"costUsd",
 	"tokensInput",
 	"tokensOutput",
