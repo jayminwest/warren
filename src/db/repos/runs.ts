@@ -119,6 +119,13 @@ export interface CreateRunInput {
 	 * (warren-1f81, #419). Null/omitted = no explicit target branch.
 	 */
 	targetBranch?: string | null;
+	/**
+	 * Declared provider/model frozen at dispatch (warren-2ede / pl-103e),
+	 * read off the rendered agent frontmatter after the override chain
+	 * resolves. Null/omitted = agent declares none (or a historical row).
+	 */
+	provider?: string | null;
+	model?: string | null;
 	now?: Date;
 }
 
@@ -175,6 +182,8 @@ export class RunsRepo {
 			trigger: input.trigger,
 			prUrl: null,
 			targetBranch: input.targetBranch ?? null,
+			provider: input.provider ?? null,
+			model: input.model ?? null,
 			salvageRef: null,
 			salvagePath: null,
 			costUsd: null,

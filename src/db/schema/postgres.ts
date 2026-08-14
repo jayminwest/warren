@@ -126,6 +126,11 @@ export const runs = pgTable(
 		// Mirror of sqlite clone_kind (warren-e96f). Discriminates `continue`
 		// vs `replicate` chain links; see sqlite.ts for the full shape + intent.
 		cloneKind: text("clone_kind", { enum: CLONE_KINDS }),
+		// Mirror of sqlite provider/model (warren-2ede / pl-103e). Declared
+		// provider/model frozen at dispatch; see sqlite.ts for the full shape
+		// + intent.
+		provider: text("provider"),
+		model: text("model"),
 	},
 	(t) => [
 		index(INDEX_NAMES.runsState).on(t.state),

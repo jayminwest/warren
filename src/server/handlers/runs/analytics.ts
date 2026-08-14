@@ -7,8 +7,8 @@
  * `?projectId` window, fetch the matching `runs` rows via
  * `RunsRepo.listForAnalytics`, hydrate usage so bridge-died terminal
  * runs still carry cost/token totals, map each row into a flat
- * `RunMetricsRow` (extracting `provider`/`model` from the rendered
- * agent frontmatter), then emit the rollup wrapped in the resolved
+ * `RunMetricsRow` (reading the `provider`/`model` columns frozen at
+ * dispatch — warren-2ede), then emit the rollup wrapped in the resolved
  * `filter` echo.
  */
 
@@ -90,16 +90,26 @@ function parseAnalyticsWindow(ctx: { url: URL }): {
 	};
 }
 
-/** Map hydrated `runs` rows into the flat aggregator input shape. */
+/**
+ * Map hydrated `runs` rows into the flat aggregator input shape.
+ *
+ * warren-2ede / pl-103e: `provider`/`model` come from the real columns
+ * written at dispatch. `extractProviderModel` survives only as the
+ * historical-row fallback — rows written before the columns existed have
+ * NULL and get one re-parse of `rendered_agent_json`; rows whose agent
+ * genuinely declares no provider/model stay null, group under NONE_KEY
+ * ("unknown"), and are excluded from the real buckets' denominators.
+ */
 function toMetricsRows(rows: readonly RunRow[]): RunMetricsRow[] {
 	return rows.map((r) => {
-		const { provider, model } = extractProviderModel(r.renderedAgentJson);
+		const fallback =
+			r.provider === null || r.model === null ? extractProviderModel(r.renderedAgentJson) : {};
 		return {
 			runId: r.id,
 			projectId: r.projectId,
 			agentName: r.agentName,
-			provider: provider ?? null,
-			model: model ?? null,
+			provider: r.provider ?? fallback.provider ?? null,
+			model: r.model ?? fallback.model ?? null,
 			seedId: r.seedId,
 			state: r.state,
 			failureReason: r.failureReason,

@@ -42,6 +42,11 @@ export const PUBLIC_RUN_FIELDS = [
 	// warren-cd3b: the rescue ref is operator-recovery metadata (a branch name
 	// carrying the run id, which is already public) — safe for spectators.
 	"salvageRef",
+	// warren-2ede: the declared provider/model frozen at dispatch. Already
+	// spectator-visible as the byModel/byProvider analytics bucket keys, so
+	// the per-run copy carries no new information.
+	"provider",
+	"model",
 	"costUsd",
 	"tokensInput",
 	"tokensOutput",
@@ -231,15 +236,18 @@ export function listCostAnalyticsHandler(deps: ServerDeps): RouteHandler {
 			for (const j of joined) planByRun.set(j.runId, j.planId);
 		}
 		const analyticsRows: CostAnalyticsRow[] = rows.map((r) => {
-			const { provider, model } = extractProviderModel(r.renderedAgentJson);
+			// warren-2ede: read the dispatch-frozen columns; the frontmatter
+			// re-parse survives only as the historical-row (NULL) fallback.
+			const fallback =
+				r.provider === null || r.model === null ? extractProviderModel(r.renderedAgentJson) : {};
 			return {
 				runId: r.id,
 				projectId: r.projectId,
 				agentName: r.agentName,
 				planId: planByRun.get(r.id) ?? null,
 				planRunId: null,
-				provider: provider ?? null,
-				model: model ?? null,
+				provider: r.provider ?? fallback.provider ?? null,
+				model: r.model ?? fallback.model ?? null,
 				costUsd: r.costUsd,
 				startedAt: r.startedAt,
 			};
