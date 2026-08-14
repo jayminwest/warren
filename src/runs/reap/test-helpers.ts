@@ -147,6 +147,11 @@ export interface FakeExecOpts {
 	 */
 	revListCount?: string;
 	/**
+	 * Stdout for `git diff --numstat <base>..<head>` (warren-ab2b outcome
+	 * facts). Default `""` (no rows → zeroed totals).
+	 */
+	numstat?: string;
+	/**
 	 * When `true`, `git diff --cached --quiet …` throws (exit non-zero =
 	 * staged changes present). Default `false` — exits zero = no staged
 	 * delta. Used by warren-343a plot-commit tests to flip the
@@ -197,19 +202,30 @@ export function fakeExec(opts: FakeExecOpts = {}): FakeExec {
 	const failPush = opts.failPush ?? null;
 	const failRevList = opts.failRevList ?? null;
 	const revListCount = opts.revListCount ?? "1";
+	const numstat = opts.numstat ?? "";
 	const stagedDelta = opts.stagedDelta === true;
 	const gitStatus = opts.gitStatus ?? "";
 	const failGitStatus = opts.failGitStatus ?? null;
+	// Routed `git <sub>` reads, split out of `run` to keep both under the
+	// cognitive-complexity budget.
+	const route = (cmd: string, args: readonly string[]): ExecResult | null => {
+		if (isGitSub(cmd, args, "rev-list")) return handleRevList(failRevList, revListCount);
+		if (isGitSub(cmd, args, "status") && args.includes("--porcelain")) {
+			return handleStatus(failGitStatus, gitStatus);
+		}
+		if (isGitSub(cmd, args, "diff") && args.includes("--cached") && args.includes("--quiet")) {
+			return handleDiffCached(stagedDelta);
+		}
+		if (isGitSub(cmd, args, "diff") && args.includes("--numstat")) {
+			return { stdout: numstat, stderr: "" };
+		}
+		return null;
+	};
 	const exec: ReapExec = {
 		run: async (cmd, args, opt) => {
 			calls.push({ cmd, args, cwd: opt.cwd, env: opt.env });
-			if (isGitSub(cmd, args, "rev-list")) return handleRevList(failRevList, revListCount);
-			if (isGitSub(cmd, args, "status") && args.includes("--porcelain")) {
-				return handleStatus(failGitStatus, gitStatus);
-			}
-			if (isGitSub(cmd, args, "diff") && args.includes("--cached") && args.includes("--quiet")) {
-				return handleDiffCached(stagedDelta);
-			}
+			const routed = route(cmd, args);
+			if (routed !== null) return routed;
 			if (failPush !== null && isGitSub(cmd, args, "push")) throw new Error(failPush);
 			if (fail !== null) throw new Error(fail.reason);
 			return { stdout: "", stderr: "" };

@@ -1,5 +1,5 @@
 {
-	"id": "0c9588c3-2cb2-469a-8558-45af74b4df20",
+	"id": "2069eb6b-f687-4ece-bdab-7db61cc76a8f",
 	"prevId": "1e4282ec-ecfc-4cc0-b3ba-aea985a3c738",
 	"version": "7",
 	"dialect": "postgresql",
@@ -892,15 +892,27 @@
 					"primaryKey": false,
 					"notNull": false
 				},
-				"pr_state": {
-					"name": "pr_state",
-					"type": "text",
+				"commits_ahead": {
+					"name": "commits_ahead",
+					"type": "integer",
 					"primaryKey": false,
 					"notNull": false
 				},
-				"pr_merged_at": {
-					"name": "pr_merged_at",
-					"type": "text",
+				"files_changed": {
+					"name": "files_changed",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"insertions": {
+					"name": "insertions",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"deletions": {
+					"name": "deletions",
+					"type": "integer",
 					"primaryKey": false,
 					"notNull": false
 				}

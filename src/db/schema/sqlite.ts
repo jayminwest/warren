@@ -232,6 +232,17 @@ export const runs = sqliteTable(
 		// read NULL as "unknown", never as "not merged".
 		prState: text("pr_state", { enum: PULL_REQUEST_LIFECYCLES }),
 		prMergedAt: text("pr_merged_at"),
+		// Reap-time outcome facts (warren-ab2b / pl-103e): what the reap
+		// pipeline MEASURED at finalize — commits the pushed branch was ahead
+		// of the base, plus the parsed `git diff --numstat` totals. Recorded,
+		// not interpreted: no derived judgments. All nullable — rows written
+		// before the columns existed, runs whose finalize was skipped/failed,
+		// and diffs that could not be measured are NULL, which analytics reads
+		// as "unknown" (excluded from denominators), never as zero.
+		commitsAhead: integer("commits_ahead"),
+		filesChanged: integer("files_changed"),
+		insertions: integer("insertions"),
+		deletions: integer("deletions"),
 	},
 	(t) => [
 		index(INDEX_NAMES.runsState).on(t.state),

@@ -27,6 +27,7 @@ import type { BoundBridgeLogger } from "../stream/index.ts";
 import { dispatchAutoPlanRuns, hasAutoPlanRunFrontmatter, parsePlanIds } from "./auto-plan-run.ts";
 import { applyK8sCloneDeltas } from "./clone-apply.ts";
 import { runProviderFinalize } from "./finalize-intent.ts";
+import { type DiffStats, recordOutcomeFacts } from "./outcome-facts.ts";
 import { type OpenedPr, runPrOpen } from "./pr-open.ts";
 import { runPreviewAnnotate, runPreviewLaunch } from "./preview.ts";
 import type { ReapExec, ReapFs, ReapRunInput, ReapStep } from "./types.ts";
@@ -42,6 +43,9 @@ export interface ReapPipelineState {
 	seedsCommitted: boolean;
 	branchPushed: boolean;
 	commitsAhead: number | null;
+	/** warren-ab2b: parsed `git diff --numstat` totals measured at reap;
+	 * null = unmeasurable (unknown). Persisted on the run row with commitsAhead. */
+	diffStats: DiffStats | null;
 	droppedCommit: boolean;
 	/** warren-89b0: deliberate no-op (clean/bookkeeping-only tree); stays succeeded. */
 	noChanges: boolean;
@@ -84,6 +88,7 @@ export function createPipelineState(): ReapPipelineState {
 		seedsCommitted: false,
 		branchPushed: false,
 		commitsAhead: null,
+		diffStats: null,
 		droppedCommit: false,
 		noChanges: false,
 		finalizeFailed: false,
@@ -475,6 +480,25 @@ export async function runReapPipeline(
 	// the clone host-side. Gated on the K8s discriminator; the local path already
 	// merged into the clone during finalize (byte-identical). See clone-apply.ts.
 	if (ctx.workspacePath === null) await applyK8sCloneDeltas(ctx, state, finalizeResult);
+
+	// warren-ab2b: persist the reap-time outcome facts (commits_ahead + parsed
+	// diff totals) while the workspace / pushed branch is still readable.
+	// Skipped when finalize never measured (commitsAhead null ⇒ all unknown).
+	if (state.commitsAhead !== null) {
+		state.diffStats = await recordOutcomeFacts({
+			runId: ctx.run.id,
+			workspacePath: ctx.workspacePath,
+			branch: ctx.branch,
+			baseBranch: ctx.baseBranch,
+			project: ctx.project,
+			commitsAhead: state.commitsAhead,
+			branchPushed: state.branchPushed,
+			exec: ctx.exec,
+			...(ctx.input.forge !== undefined ? { forge: ctx.input.forge } : {}),
+			log: ctx.log,
+			setOutcomeFacts: (id, facts) => ctx.input.repos.runs.setOutcomeFacts(id, facts),
+		});
+	}
 
 	// warren-df3e: the clone-side seed-close safety net is no longer a pipeline
 	// step — it observes `post_reap` on the observation bus

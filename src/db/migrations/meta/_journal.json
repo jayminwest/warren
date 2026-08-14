@@ -299,8 +299,15 @@
 		{
 			"idx": 42,
 			"version": "6",
-			"when": 1786730083748,
-			"tag": "0042_mean_phantom_reporter",
+			"when": 1786729850984,
+			"tag": "0042_fancy_ezekiel_stane",
+			"breakpoints": true
+		},
+		{
+			"idx": 43,
+			"version": "6",
+			"when": 1786732705768,
+			"tag": "0043_broken_gauntlet",
 			"breakpoints": true
 		}
 	]

@@ -2,12 +2,9 @@
  * Repository for the `runs` table.
  *
  * Warren's run row mirrors the lifecycle of the underlying burrow run
- * (queued → running → succeeded|failed|cancelled). The state is updated as
- * we observe burrow's stream; warren itself does not pick runs off a queue.
- *
- * `attachBurrow` exists because the composition flow (docs/design/agent-composition.md) creates the warren
- * row before burrow's `POST /burrows` and `POST /burrows/:id/runs` return —
- * the burrow IDs are written back once we have them.
+ * (queued → running → succeeded|failed|cancelled); warren observes, the
+ * runtime owns the queue. `attachBurrow` writes the burrow IDs back once
+ * the runtime returns them (docs/design/agent-composition.md).
  */
 
 import { and, eq } from "drizzle-orm";
@@ -27,6 +24,10 @@ import type {
 import type { DrizzleAdapter } from "./drizzle-adapter.ts";
 import { fixAttemptHistoryByPrUrl, listPrCandidatesByProject } from "./runs-ci-fixer.ts";
 import { deleteNeverStarted } from "./runs-delete.ts";
+import {
+	type RunOutcomeFacts,
+	setOutcomeFacts as setOutcomeFactsBody,
+} from "./runs-outcome-facts.ts";
 import { setPrState, setPrUrl } from "./runs-pr.ts";
 import {
 	aggregate,
@@ -80,9 +81,8 @@ const PREVIEW_ALLOWED_TRANSITIONS: Record<PreviewState | "unset", readonly Previ
 
 /**
  * Guard one preview-state advance. A same-state write is an idempotent
- * re-assert (probe retries, repeated teardown) and passes; anything not in
- * the table throws StateTransitionError, which `src/server/errors.ts`
- * renders as HTTP 409.
+ * re-assert and passes; anything not in the table throws
+ * StateTransitionError, which `src/server/errors.ts` renders as HTTP 409.
  */
 export function assertPreviewTransition(from: PreviewState | null, to: PreviewState): void {
 	if (from === to) return;
@@ -182,9 +182,8 @@ export class RunsRepo {
 			renderedAgentJson: input.renderedAgentJson,
 			state: "queued",
 			failureReason: null,
-			// The queued instant (warren-0af9): stamped here at insert so queue
-			// wait is `startedAt - createdAt`. startedAt keeps being written at
-			// the queued-to-running transition (markRunning / claimById).
+			// The queued instant (warren-0af9), stamped at insert; queue wait is
+			// `startedAt - createdAt`.
 			createdAt: (input.now ?? new Date()).getTime(),
 			startedAt: null,
 			endedAt: null,
@@ -194,10 +193,14 @@ export class RunsRepo {
 			targetBranch: input.targetBranch ?? null,
 			provider: input.provider ?? null,
 			model: input.model ?? null,
-			// Merge-watcher facts (warren-3bc6): unset until the post_reap
-			// subscriber settles the run's PR.
+			// Merge-watcher facts (warren-3bc6): unset until post_reap settles the PR.
 			prState: null,
 			prMergedAt: null,
+			// Outcome facts (warren-ab2b): unknown until reap measures them — NULL.
+			commitsAhead: null,
+			filesChanged: null,
+			insertions: null,
+			deletions: null,
 			salvageRef: null,
 			salvagePath: null,
 			costUsd: null,
@@ -230,8 +233,8 @@ export class RunsRepo {
 	}
 
 	/**
-	 * Hard-delete a never-started run row (warren-a0a2); the guarded body
-	 * lives in runs-delete.ts.
+	 * Hard-delete a run row that never reached the runtime (warren-a0a2);
+	 * the guarded body lives in runs-delete.ts.
 	 */
 	deleteNeverStarted(id: string): Promise<boolean> {
 		return deleteNeverStarted(this.adapter, id);
@@ -438,9 +441,7 @@ export class RunsRepo {
 	/**
 	 * Persist where a failed finalize's work was salvaged to (warren-cd3b):
 	 * the rescue branch on origin (`salvageRef`) and/or the durable git-bundle
-	 * file (`salvagePath`). Written by the salvage intake handler (k8s) or
-	 * reap's local salvage step before the workspace is destroyed. Last write
-	 * wins (a retried/re-dispatched salvage overwrites the stale location).
+	 * file (`salvagePath`). Last write wins.
 	 */
 	async setSalvage(
 		id: string,
@@ -454,6 +455,15 @@ export class RunsRepo {
 				.where(eq(this.runs.id, id)),
 		);
 		return { ...current, salvageRef: salvage.rescueRef, salvagePath: salvage.bundlePath };
+	}
+
+	/**
+	 * Persist the reap-time outcome facts (warren-ab2b / pl-103e). Last
+	 * write wins; NULL means unknown, never zero. Body lives in
+	 * runs-outcome-facts.ts (file-size budget).
+	 */
+	async setOutcomeFacts(id: string, facts: RunOutcomeFacts): Promise<RunRow> {
+		return setOutcomeFactsBody(this.adapter, id, facts);
 	}
 
 	/** CI-fixer queries (warren-0b75); bodies live in runs-ci-fixer.ts. */

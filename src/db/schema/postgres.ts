@@ -142,6 +142,13 @@ export const runs = pgTable(
 		// the full shape + intent.
 		prState: text("pr_state", { enum: PULL_REQUEST_LIFECYCLES }),
 		prMergedAt: text("pr_merged_at"),
+		// Mirror of sqlite commits_ahead/files_changed/insertions/deletions
+		// (warren-ab2b / pl-103e). Reap-time measured outcome facts; see
+		// sqlite.ts for the full shape + NULL-semantics intent.
+		commitsAhead: integer("commits_ahead"),
+		filesChanged: integer("files_changed"),
+		insertions: integer("insertions"),
+		deletions: integer("deletions"),
 	},
 	(t) => [
 		index(INDEX_NAMES.runsState).on(t.state),

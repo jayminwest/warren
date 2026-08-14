@@ -36,7 +36,7 @@ describe("reapRun", () => {
 			"/data/projects/x/y/.mulch/expertise/build.jsonl":
 				'{"id":"mx-1","recorded_at":"2026-05-08T20:00:00Z","content":"old"}\n',
 		});
-		const e = fakeExec();
+		const e = fakeExec({ numstat: "3\t1\tsrc/a.ts\n2\t4\tsrc/b.ts\n" });
 
 		const result = await reapRun({
 			runId: ctx.runId,
@@ -57,13 +57,23 @@ describe("reapRun", () => {
 			'"content":"new"',
 		);
 		// Reap runs `git push` then `git rev-list --count <base>..HEAD`
-		// (warren-f3bb).
-		expect(e.calls).toHaveLength(2);
+		// (warren-f3bb), then `git diff --numstat <base>..HEAD` for the
+		// outcome facts (warren-ab2b).
+		expect(e.calls).toHaveLength(3);
 		expect(e.calls[0]?.cmd).toBe("git");
 		expect(e.calls[0]?.args).toEqual(["push", "origin", "HEAD:agent/refactor-bot/run-1"]);
 		expect(e.calls[0]?.cwd).toBe("/data/burrow/ws");
 		expect(e.calls[1]?.cmd).toBe("git");
 		expect(e.calls[1]?.args).toEqual(["rev-list", "--count", "main..HEAD"]);
+		expect(e.calls[2]?.cmd).toBe("git");
+		expect(e.calls[2]?.args).toEqual(["diff", "--numstat", "main..HEAD"]);
+		expect(e.calls[2]?.cwd).toBe("/data/burrow/ws");
+		// The measured facts landed on the run row (warren-ab2b).
+		const row = await ctx.repos.runs.require(ctx.runId);
+		expect(row.commitsAhead).toBe(1);
+		expect(row.filesChanged).toBe(2);
+		expect(row.insertions).toBe(5);
+		expect(row.deletions).toBe(5);
 	});
 
 	test("emits reap.empty_push when push lands zero commits (warren-f3bb)", async () => {

@@ -42,7 +42,11 @@
 			"provider": null,
 			"model": null,
 			"prState": null,
-			"prMergedAt": null
+			"prMergedAt": null,
+			"commitsAhead": null,
+			"filesChanged": null,
+			"insertions": null,
+			"deletions": null
 		}
 	}
 }

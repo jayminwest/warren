@@ -1,8 +1,8 @@
 {
 	"version": "6",
 	"dialect": "sqlite",
-	"id": "b80b952c-2d95-460a-bffb-94a483878773",
-	"prevId": "e16572fa-37b9-43c1-bb4b-c81a52d892da",
+	"id": "6f2c57e1-c6c3-4b87-b43d-d59883e0a945",
+	"prevId": "b80b952c-2d95-460a-bffb-94a483878773",
 	"tables": {
 		"agents": {
 			"name": "agents",
@@ -824,6 +824,20 @@
 				},
 				"model": {
 					"name": "model",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": false,
+					"autoincrement": false
+				},
+				"pr_state": {
+					"name": "pr_state",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": false,
+					"autoincrement": false
+				},
+				"pr_merged_at": {
+					"name": "pr_merged_at",
 					"type": "text",
 					"primaryKey": false,
 					"notNull": false,
