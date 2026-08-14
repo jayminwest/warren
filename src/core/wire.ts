@@ -61,6 +61,10 @@ export type RunMode = (typeof RUN_MODES)[number];
 // import path stays `src/core/wire.ts`.
 export * from "./wire-inbox.ts";
 
+// The analytics-insight vocabulary (warren-be04) lives in
+// ./wire-insight.ts (file-size budget); re-exported for one canonical home.
+export * from "./wire-insight.ts";
+
 /**
  * Chain-kind discriminator for a run that carries a `parent_run_id`
  * (warren-e96f). Both kinds share the parent back-link column but differ in
@@ -75,15 +79,6 @@ export * from "./wire-inbox.ts";
  */
 export const CLONE_KINDS = ["replicate", "continue"] as const;
 export type CloneKind = (typeof CLONE_KINDS)[number];
-
-/**
- * Confidence qualifier for the per-directory difficulty analytics
- * (warren-8f1b / pl-103e). Derived from the denominator size (runs
- * touching the directory), so a 3-run sample renders differently than
- * a 10-run one.
- */
-export const DIRECTORY_CONFIDENCES = ["low", "medium", "high"] as const;
-export type DirectoryConfidence = (typeof DIRECTORY_CONFIDENCES)[number];
 
 /**
  * Failure-cause discriminator for a `failed` run (warren-3c40, warren-5165).

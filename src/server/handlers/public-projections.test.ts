@@ -10,9 +10,12 @@ import type { ServeHandle } from "../types.ts";
 import { PUBLIC_AGENT_FIELDS, REDACTED_AGENT_FIELDS, withAgentSource } from "./agents.ts";
 import { PUBLIC_PROJECT_FIELDS, REDACTED_PROJECT_FIELDS } from "./projects.ts";
 import {
+	PUBLIC_COST_PER_MERGED_PR_BUCKET_FIELDS,
+	PUBLIC_COST_PER_MERGED_PR_OVERALL_FIELDS,
 	PUBLIC_RUN_ANALYTICS_FIELDS,
 	PUBLIC_RUN_GROUP_FIELDS,
 	PUBLIC_RUN_TOTALS_FIELDS,
+	REDACTED_COST_PER_MERGED_PR_OVERALL_FIELDS,
 	REDACTED_RUN_ANALYTICS_FIELDS,
 	REDACTED_RUN_GROUP_FIELDS,
 	REDACTED_RUN_TOTALS_FIELDS,
@@ -273,6 +276,18 @@ describe("public projections over the wire (warren-4f6c)", () => {
 		expect(Object.keys(byAgent ?? {}).sort()).toEqual(
 			[...PUBLIC_RUN_GROUP_FIELDS, ...REDACTED_RUN_GROUP_FIELDS].sort(),
 		);
+		// warren-be04: the operator body carries the full outcome-joined
+		// rollup, cost figures included.
+		const outcomes = body.outcomes as {
+			costPerMergedPr: { overall: Record<string, unknown> };
+		};
+		expect(Object.keys(outcomes.costPerMergedPr.overall).sort()).toEqual(
+			[
+				...PUBLIC_COST_PER_MERGED_PR_OVERALL_FIELDS,
+				...REDACTED_COST_PER_MERGED_PR_OVERALL_FIELDS,
+			].sort(),
+		);
+		expect(outcomes.costPerMergedPr.overall.costUsd).toBe(1.25);
 		expect(totals.cost).toEqual({ total: 1.25, avg: 1.25, priced: 1 });
 		expect(body.topSeedsByContext).toHaveLength(1);
 	});
@@ -284,6 +299,26 @@ describe("public projections over the wire (warren-4f6c)", () => {
 		const totals = body.totals as Record<string, unknown>;
 		expect(Object.keys(totals).sort()).toEqual([...PUBLIC_RUN_TOTALS_FIELDS].sort());
 		expect(totals).not.toHaveProperty("cost");
+		// warren-be04: outcomes survives — steering tallies and merged counts
+		// are public — but every USD figure inside is redacted.
+		const outcomes = body.outcomes as {
+			steering: { steered: { prStateKnown: number }; unsteered: { prStateKnown: number } };
+			costPerMergedPr: {
+				overall: Record<string, unknown>;
+				byAgent: Record<string, unknown>[];
+			};
+		};
+		expect(outcomes.steering.unsteered.prStateKnown).toBe(1);
+		expect(Object.keys(outcomes.costPerMergedPr.overall).sort()).toEqual(
+			[...PUBLIC_COST_PER_MERGED_PR_OVERALL_FIELDS].sort(),
+		);
+		expect(outcomes.costPerMergedPr.overall).not.toHaveProperty("costUsd");
+		expect(outcomes.costPerMergedPr.overall.prsMerged).toBe(1);
+		for (const bucket of outcomes.costPerMergedPr.byAgent) {
+			expect(Object.keys(bucket).sort()).toEqual(
+				[...PUBLIC_COST_PER_MERGED_PR_BUCKET_FIELDS].sort(),
+			);
+		}
 		for (const dimension of ["byAgent", "byModel", "byProvider"] as const) {
 			const buckets = body[dimension] as Record<string, unknown>[];
 			expect(buckets.length).toBeGreaterThan(0);

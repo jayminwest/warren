@@ -33,12 +33,25 @@ export {
 	buildSteeringSignals,
 	countSteeringByRun,
 	type Insight,
+	type InsightConfidence,
 	type InsightKind,
 	type InsightSeverity,
 	type InsightsInput,
 	type SteeringEventRow,
 	type SteeringSignals,
 } from "./analytics/insights.ts";
+export {
+	buildCostPerMergedPr,
+	buildRunOutcomes,
+	buildSteeringOutcomeComparison,
+	type CostPerMergedPr,
+	type CostPerMergedPrBucket,
+	confidenceForSample,
+	type OutcomeTally,
+	type RunOutcomes,
+	type SteeringOutcomeComparison,
+	type SteeringOutcomeEventRow,
+} from "./analytics/outcome-analytics.ts";
 export {
 	buildRunMetrics,
 	contextTokensOf,

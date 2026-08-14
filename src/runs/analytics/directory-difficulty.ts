@@ -18,7 +18,7 @@
  *
  * Aggregation is by normalized directory, ranked top-N by evidence
  * volume (file touches). Every bucket ships its denominators
- * (`runsTouching`, `fileTouches`) and a {@link DirectoryConfidence}
+ * (`runsTouching`, `fileTouches`) and a {@link InsightConfidence}
  * qualifier derived from the denominator size, per the plan's insight
  * discipline (design record §9, measurement validity).
  *
@@ -39,7 +39,7 @@
  * order.
  */
 
-import { DIRECTORY_CONFIDENCES, type DirectoryConfidence } from "../../core/wire.ts";
+import { INSIGHT_CONFIDENCES, type InsightConfidence } from "../../core/wire.ts";
 
 /**
  * Minimum runs touching a directory before it may rank. Below this a
@@ -107,7 +107,7 @@ export interface DirectoryStat {
 	 */
 	readonly difficultyScore: number;
 	/** Confidence qualifier from the `runsTouching` denominator size. */
-	readonly confidence: DirectoryConfidence;
+	readonly confidence: InsightConfidence;
 }
 
 /** Window-level denominators for the difficulty rollup. */
@@ -153,10 +153,10 @@ export function normalizeDirectory(path: string, toolName: string | null): strin
 	return p.slice(0, idx);
 }
 
-function confidenceFor(runsTouching: number): DirectoryConfidence {
-	if (runsTouching >= CONFIDENCE_HIGH_RUNS) return DIRECTORY_CONFIDENCES[2];
-	if (runsTouching >= CONFIDENCE_MEDIUM_RUNS) return DIRECTORY_CONFIDENCES[1];
-	return DIRECTORY_CONFIDENCES[0];
+function confidenceFor(runsTouching: number): InsightConfidence {
+	if (runsTouching >= CONFIDENCE_HIGH_RUNS) return INSIGHT_CONFIDENCES[2];
+	if (runsTouching >= CONFIDENCE_MEDIUM_RUNS) return INSIGHT_CONFIDENCES[1];
+	return INSIGHT_CONFIDENCES[0];
 }
 
 interface DirAccum {

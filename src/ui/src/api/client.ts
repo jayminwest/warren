@@ -5,6 +5,11 @@
 
 import { readNdjsonStream } from "../../../client/ndjson.ts";
 import type {
+	RunAnalyticsFilter,
+	RunAnalyticsResponse,
+	RunBehaviorResponse,
+} from "./run-analytics-types.ts";
+import type {
 	AgentRow,
 	ApiErrorEnvelope,
 	CancelPlanRunResponse,
@@ -23,7 +28,6 @@ import type {
 	ReadyPlansResponse,
 	ReadyzResponse,
 	RefreshProjectResponse,
-	RunAnalyticsTokensSection,
 	RunEvent,
 	RunRow,
 	RunTriggerResponse,
@@ -31,7 +35,6 @@ import type {
 	SeedStatusResponse,
 	SpawnRunResponse,
 	SteerRunResponse,
-	TokenBreakdown,
 	TriggersResponse,
 	WarrenConfigResponse,
 	WhoamiResponse,
@@ -509,198 +512,12 @@ export const analyticsApi = {
 };
 
 /* ----------------------------------------------------------------------- */
-/* Run analytics (warren-df6e / pl-ad0f step 4)                            */
+/* Run + behavior analytics wire types live in ./run-analytics-types.ts    */
+/* (file-size budget, warren-be04); re-exported so import sites are        */
+/* unchanged. The sentinel constants ride along.                           */
 /* ----------------------------------------------------------------------- */
 
-/** Sentinel key for a null group (no startedAt, model, provider, etc.). */
-export const RUN_ANALYTICS_NONE_KEY = "__none__";
-/** Sentinel key for the folded remainder in per-dimension token series (≥6 keys). */
-export const RUN_ANALYTICS_OTHER_KEY = "__other__";
-
-/** avg/median/p95 over the non-null sample, all-null when empty. */
-export interface RunStatSummary {
-	avg: number | null;
-	median: number | null;
-	p95: number | null;
-	count: number;
-}
-
-export interface RunAnalyticsTotals {
-	runs: number;
-	succeeded: number;
-	failed: number;
-	cancelled: number;
-	active: number;
-	successRate: number | null;
-	/** Landed-work rollup (warren-bd57): the merge-rate denominator — NULL
-	 * `pr_state` is unknown, never a failure. Null when nothing resolved. */
-	prStateKnown: number;
-	prsMerged: number;
-	mergedPrRate: number | null;
-	durationMs: RunStatSummary;
-	/**
-	 * Queue wait (`startedAt - createdAt`) over rows where both are known
-	 * (warren-0af9). Pre-migration rows (null `createdAt`) are excluded from
-	 * the sample — `count` is the known-row denominator.
-	 */
-	queueWaitMs: RunStatSummary;
-	contextTokens: RunStatSummary;
-	/**
-	 * OPTIONAL on the wire: the windowed USD rollup is redacted for a
-	 * `readPublic`-only caller (`REDACTED_RUN_TOTALS_FIELDS` in
-	 * `src/server/handlers/runs/analytics.ts`), so a spectator's envelope has
-	 * no such key. Callers must render on presence — dereferencing without a
-	 * guard crashed `/run-analytics` for anonymous visitors (warren-e274).
-	 */
-	cost?: { total: number; avg: number | null; priced: number };
-}
-
-export interface RunDayBucket {
-	key: string;
-	runs: number;
-	succeeded: number;
-	failed: number;
-	cancelled: number;
-	active: number;
-	contextTokensTotal: number;
-}
-
-export interface RunGroupBucket {
-	key: string;
-	runs: number;
-	succeeded: number;
-	failed: number;
-	successRate: number | null;
-	/** Landed-work rollup for this bucket (warren-bd57) — see totals. */
-	prStateKnown: number;
-	prsMerged: number;
-	mergedPrRate: number | null;
-	contextTokensTotal: number;
-	avgContextTokens: number | null;
-	tokens: TokenBreakdown;
-	/**
-	 * OPTIONAL on the wire: per-group USD spend is redacted for a
-	 * `readPublic`-only caller (`REDACTED_RUN_GROUP_FIELDS` in
-	 * `src/server/handlers/runs/analytics.ts`); summing per-group cost would
-	 * reconstruct the aggregate the totals projection just dropped. Callers
-	 * must render on presence (warren-e274).
-	 */
-	costUsd?: number;
-	priced?: number;
-	avgDurationMs: number | null;
-}
-
-export interface RunFailureBucket {
-	key: string;
-	runs: number;
-}
-
-export interface SeedContextBucket {
-	seedId: string;
-	runs: number;
-	contextTokensTotal: number;
-	avgContextTokens: number | null;
-}
-
-export interface RunAnalyticsResponse {
-	filter: { projectId: string | null; from: string | null; to: string | null };
-	totals: RunAnalyticsTotals;
-	timeSeries: RunDayBucket[];
-	byAgent: RunGroupBucket[];
-	byModel: RunGroupBucket[];
-	byProvider: RunGroupBucket[];
-	byFailureReason: RunFailureBucket[];
-	topSeedsByContext: SeedContextBucket[];
-	/** Token analytics section added by warren-1244 / pl-d1a2 step 2. */
-	tokens: RunAnalyticsTokensSection;
-}
-
-export interface RunAnalyticsFilter {
-	projectId?: string;
-	from?: string;
-	to?: string;
-}
-
-/* ----------------------------------------------------------------------- */
-/* Run behavior analytics — command mining + insights (warren-436a /       */
-/* pl-ad0f step 10). Mirrors the server shapes in                          */
-/* src/runs/analytics/command-mining.ts + insights.ts.                     */
-/* ----------------------------------------------------------------------- */
-
-/** Generalized command category — `os-eco` rows are highlighted in the UI. */
-export type CommandCategory =
-	| "os-eco"
-	| "vcs"
-	| "package"
-	| "build"
-	| "test"
-	| "filesystem"
-	| "network"
-	| "other";
-
-export interface CommandStat {
-	command: string;
-	category: CommandCategory;
-	osEco: boolean;
-	runs: number;
-	invocations: number;
-	failures: number;
-	failureRate: number | null;
-	retries: number;
-	stuckScore: number;
-}
-
-export interface CommandCategoryBucket {
-	category: CommandCategory;
-	invocations: number;
-	failures: number;
-	commands: number;
-}
-
-export interface CommandMiningTotals {
-	toolUses: number;
-	commands: number;
-	distinctCommands: number;
-	failures: number;
-	retries: number;
-}
-
-export interface CommandMining {
-	totals: CommandMiningTotals;
-	byFrequency: CommandStat[];
-	byFailures: CommandStat[];
-	byStuckScore: CommandStat[];
-	osEcoCommands: CommandStat[];
-	byCategory: CommandCategoryBucket[];
-}
-
-export type InsightSeverity = "info" | "warning" | "critical";
-
-export type InsightKind =
-	| "highest-context-seed"
-	| "worst-success-agent"
-	| "most-failed-command"
-	| "most-retried-command"
-	| "model-cost-outlier"
-	| "steering-anomaly";
-
-export interface Insight {
-	kind: InsightKind;
-	severity: InsightSeverity;
-	title: string;
-	detail: string;
-	value: number;
-	subject: string | null;
-}
-
-export interface RunBehaviorResponse {
-	filter: { projectId: string | null; from: string | null; to: string | null };
-	mining: CommandMining;
-	insights: Insight[];
-	/** warren-7746: true when the rollup read hit its row cap — rankings
-	 * then cover a bounded prefix. Reported, never silent. */
-	truncated: boolean;
-}
+export * from "./run-analytics-types.ts";
 
 export const runAnalyticsApi = {
 	runs: (filter: RunAnalyticsFilter = {}, signal?: AbortSignal) => {
