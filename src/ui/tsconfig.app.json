@@ -41,6 +41,7 @@
 		"src",
 		"../core/wire.ts",
 		"../core/wire-inbox.ts",
+		"../core/wire-insight.ts",
 		"../core/errors.ts",
 		"../client/ndjson.ts",
 		"../client/errors.ts"

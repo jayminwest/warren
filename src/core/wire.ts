@@ -61,6 +61,10 @@ export type RunMode = (typeof RUN_MODES)[number];
 // import path stays `src/core/wire.ts`.
 export * from "./wire-inbox.ts";
 
+// The analytics-insight vocabulary (warren-be04) lives in
+// ./wire-insight.ts (file-size budget); re-exported for one canonical home.
+export * from "./wire-insight.ts";
+
 /**
  * Chain-kind discriminator for a run that carries a `parent_run_id`
  * (warren-e96f). Both kinds share the parent back-link column but differ in
