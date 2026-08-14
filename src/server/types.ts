@@ -370,10 +370,11 @@ export interface ServeOptions {
 	routes?: readonly Route[];
 	logger?: Logger;
 	/**
-	 * Per-request idle timeout in seconds passed to `Bun.serve`. Defaults
-	 * to 0 (disabled) so long-lived NDJSON streams aren't killed at the
-	 * Bun runtime default of 10s (warren-b8fc). Tests override to assert
-	 * the wire is plumbed.
+	 * Per-request idle timeout in seconds passed to `Bun.serve`. Defaults to
+	 * `DEFAULT_IDLE_TIMEOUT_SECONDS`. The timer watches socket inactivity
+	 * while a request is being read, so it bounds a stalled client without
+	 * touching a long-lived NDJSON tail (warren-b8fc, warren-a676). 0
+	 * disables it for the whole listener.
 	 */
 	idleTimeout?: number;
 	/**

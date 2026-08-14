@@ -25,8 +25,8 @@ spec:
   securityPolicy:
     name: warren-armor
   # The GCE backend-service default is 30s, which would cut every long-lived
-  # NDJSON event stream (GET /runs/:id/events, unbounded by default —
-  # WARREN_EVENT_STREAM_MAX_LIFETIME=0). This is a stream *response* timeout,
+  # NDJSON event stream (GET /runs/:id/events, capped at 4h by default via
+  # WARREN_EVENT_STREAM_MAX_LIFETIME). This is a stream *response* timeout,
   # not an idle timeout, so it must exceed the longest run a client watches.
   timeoutSec: 3600
   # LB request logging is where Cloud Armor decisions surface (the

@@ -21,6 +21,7 @@ import { previewError } from "../preview/proxy/responses.ts";
 import { errorLogFields, renderError } from "./errors.ts";
 import { bindRequestIdLogger, extractOrGenerateRequestId, stampRequestId } from "./request-id.ts";
 import { jsonResponse, withSecurityHeaders } from "./response.ts";
+import { DEFAULT_IDLE_TIMEOUT_SECONDS } from "./server.ts";
 import type { Logger, PreviewProxyHandler, ServeHandle, Transport } from "./types.ts";
 
 export interface PreviewServerOptions {
@@ -29,7 +30,11 @@ export interface PreviewServerOptions {
 	readonly port: number;
 	readonly proxy: PreviewProxyHandler;
 	readonly logger: Logger;
-	/** Matches the main listener's streaming-friendly default (0 = disabled). */
+	/**
+	 * Per-request idle timeout in seconds. Matches the main listener's
+	 * bounded default; 0 disables it. This origin has no streaming route of
+	 * its own, so nothing here opts out (warren-a676).
+	 */
 	readonly idleTimeout?: number;
 }
 
@@ -41,7 +46,7 @@ export interface PreviewServerOptions {
  * mounting it replaced.
  */
 export function startPreviewServer(opts: PreviewServerOptions): ServeHandle {
-	const idleTimeout = opts.idleTimeout ?? 0;
+	const idleTimeout = opts.idleTimeout ?? DEFAULT_IDLE_TIMEOUT_SECONDS;
 	const logger = opts.logger;
 
 	const fetchHandler = async (request: Request): Promise<Response> => {

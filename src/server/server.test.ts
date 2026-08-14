@@ -13,7 +13,7 @@ import { checkBurrowPoolReachable } from "../runtime/local/diagnostics/burrow.ts
 import { resolveRuntimeProvider } from "../runtime/registry.ts";
 import { bearerAuth, NO_AUTH } from "./auth.ts";
 import { createBridgeRegistry } from "./bridges.ts";
-import { startServer } from "./server.ts";
+import { DEFAULT_IDLE_TIMEOUT_SECONDS, startServer } from "./server.ts";
 import type { BridgeRegistry, Route, ServeHandle, ServeOptions, ServerDeps } from "./types.ts";
 
 const silentLogger = {
@@ -277,36 +277,18 @@ describe("startServer — lifecycle", () => {
 		expect(res.status).toBe(500);
 	});
 
-	test("default idleTimeout=0 keeps a >10s-quiet streaming response alive (warren-b8fc)", async () => {
-		// Bun.serve's default idleTimeout is 10s; without our override the
-		// per-request timer would close this connection mid-stream and the
-		// second chunk would never arrive. We pause 11s between chunks so
-		// the fix being plumbed (idleTimeout: 0 default) is what makes the
-		// assertion pass.
-		const routes: Route[] = [
-			{
-				method: "GET",
-				pattern: "/slow",
-				policy: "readPublic",
-				handler: () =>
-					new Response(
-						new ReadableStream({
-							async start(controller) {
-								controller.enqueue(new TextEncoder().encode("a\n"));
-								await new Promise((r) => setTimeout(r, 11_000));
-								controller.enqueue(new TextEncoder().encode("b\n"));
-								controller.close();
-							},
-						}),
-						{ headers: { "content-type": "application/x-ndjson" } },
-					),
-			},
-		];
-		handle = startServer(await depsFor(repos), tcpOpts({ routes }));
-		const res = await fetch(`${tcpUrl(handle)}/slow`);
-		const body = await res.text();
-		expect(body).toBe("a\nb\n");
-	}, 15_000);
+	test("the default idle timeout is bounded (warren-a676)", () => {
+		// The regression this issue is about: the default was 0, which
+		// disables the timer for every route on the listener.
+		//
+		// This is asserted on the constant rather than through a request on
+		// purpose. `idleTimeout` fires on socket inactivity while a request
+		// is being read, and that timer does not run under `bun test`: the
+		// same stalled request a listener closes after ~1s under `bun run`
+		// is served in full here. A behavioural assertion would pass
+		// whatever the default is, which is worse than no test.
+		expect(DEFAULT_IDLE_TIMEOUT_SECONDS).toBeGreaterThan(0);
+	});
 });
 
 describe("startServer — routes", () => {
