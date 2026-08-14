@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import type { RuntimeId } from "../../core/wire.ts";
 import {
 	buildCommandMining,
 	type CommandStat,
@@ -10,19 +11,36 @@ import {
 
 let seq = 0;
 
-function use(runId: string, command: string, id?: string): ToolEventRow {
+function use(
+	runId: string,
+	command: string,
+	id?: string,
+	runtime: RuntimeId | null = "claude-code",
+): ToolEventRow {
 	seq += 1;
 	return {
 		runId,
 		kind: "tool_use",
 		seq,
-		payload: { tool: "bash", id, input: { command } },
+		payload: { name: "Bash", id, input: { command } },
+		runtime,
 	};
 }
 
-function result(runId: string, id: string, isError: boolean): ToolEventRow {
+function result(
+	runId: string,
+	id: string,
+	isError: boolean,
+	runtime: RuntimeId | null = "claude-code",
+): ToolEventRow {
 	seq += 1;
-	return { runId, kind: "tool_result", seq, payload: { tool_use_id: id, is_error: isError } };
+	return {
+		runId,
+		kind: "tool_result",
+		seq,
+		payload: { tool_use_id: id, is_error: isError },
+		runtime,
+	};
 }
 
 function statFor(stats: readonly CommandStat[], command: string): CommandStat {
@@ -126,7 +144,13 @@ describe("buildCommandMining", () => {
 	test("counts tool_uses including structured (non-command) tool calls", () => {
 		const rows: ToolEventRow[] = [
 			use("r1", "bun test"),
-			{ runId: "r1", kind: "tool_use", seq: 999, payload: { tool: "read", input: { path: "x" } } },
+			{
+				runId: "r1",
+				kind: "tool_use",
+				seq: 999,
+				payload: { name: "Read", id: "t9", input: { file_path: "x" } },
+				runtime: "claude-code",
+			},
 		];
 		const out = buildCommandMining(rows);
 		expect(out.totals.toolUses).toBe(2);
@@ -238,22 +262,90 @@ describe("buildCommandMining", () => {
 
 	test("ignores unparseable payloads without throwing", () => {
 		const rows: ToolEventRow[] = [
-			{ runId: "r1", kind: "tool_use", seq: 1, payload: null },
-			{ runId: "r1", kind: "tool_use", seq: 2, payload: "garbage" },
-			{ runId: "r1", kind: "tool_use", seq: 3, payload: { input: { command: "" } } },
+			{ runId: "r1", kind: "tool_use", seq: 1, payload: null, runtime: "pi" },
+			{ runId: "r1", kind: "tool_use", seq: 2, payload: "garbage", runtime: "pi" },
+			{ runId: "r1", kind: "tool_use", seq: 3, payload: { input: { command: "" } }, runtime: "pi" },
 		];
 		const out = buildCommandMining(rows);
 		expect(out.totals.toolUses).toBe(3);
 		expect(out.totals.commands).toBe(0);
 		expect(out.byFrequency).toHaveLength(0);
+		expect(out.totals.byRuntime).toEqual([
+			{ runtime: "pi", shaped: true, toolUses: 3, commands: 0, unparsed: 3 },
+		]);
 	});
 
-	test("reads command from payload.command when input is absent", () => {
+	test("reads command from payload.command when input is absent (pi dialect)", () => {
 		const out = buildCommandMining([
-			{ runId: "r1", kind: "tool_use", seq: 1, payload: { command: "bun test" } },
+			{ runId: "r1", kind: "tool_use", seq: 1, payload: { command: "bun test" }, runtime: "pi" },
 		]);
 		expect(out.totals.commands).toBe(1);
 		expect(out.byFrequency[0]?.command).toBe("bun test");
+	});
+
+	test("resolves each row through its own runtime's shape", () => {
+		// The same pi-native payload parses under pi but not under claude-code.
+		const piRow: ToolEventRow = {
+			runId: "r1",
+			kind: "tool_use",
+			seq: 1,
+			payload: { toolName: "bash", command: "git status", toolCallId: "c1" },
+			runtime: "pi",
+		};
+		const claudeRow: ToolEventRow = { ...piRow, runId: "r2", runtime: "claude-code" };
+		const out = buildCommandMining([piRow, claudeRow]);
+		expect(out.totals.commands).toBe(1);
+		expect(statFor(out.byFrequency, "git status").runs).toBe(1);
+		expect(out.totals.byRuntime).toEqual([
+			{ runtime: "claude-code", shaped: true, toolUses: 1, commands: 0, unparsed: 1 },
+			{ runtime: "pi", shaped: true, toolUses: 1, commands: 1, unparsed: 0 },
+		]);
+	});
+
+	test("correlates results per runtime dialect (pi isError flag)", () => {
+		const rows: ToolEventRow[] = [
+			{
+				runId: "r1",
+				kind: "tool_use",
+				seq: 1,
+				payload: { toolName: "bash", command: "bun test", toolCallId: "c1" },
+				runtime: "pi",
+			},
+			{
+				runId: "r1",
+				kind: "tool_result",
+				seq: 2,
+				payload: { toolCallId: "c1", isError: true, result: "fail" },
+				runtime: "pi",
+			},
+		];
+		const out = buildCommandMining(rows);
+		expect(statFor(out.byFrequency, "bun test").failures).toBe(1);
+	});
+
+	test("marks rows of an unshaped runtime as not-shaped, not unparsed", () => {
+		const rows: ToolEventRow[] = [
+			{
+				runId: "r1",
+				kind: "tool_use",
+				seq: 1,
+				payload: { input: { command: "bun test" } },
+				runtime: "sapling",
+			},
+			{
+				runId: "r2",
+				kind: "tool_use",
+				seq: 2,
+				payload: { name: "Bash", input: { command: "git status" } },
+				runtime: null,
+			},
+		];
+		const out = buildCommandMining(rows);
+		expect(out.totals.commands).toBe(0);
+		expect(out.totals.byRuntime).toEqual([
+			{ runtime: "sapling", shaped: false, toolUses: 1, commands: 0, unparsed: 1 },
+			{ runtime: "unknown", shaped: false, toolUses: 1, commands: 0, unparsed: 1 },
+		]);
 	});
 
 	test("empty input yields an empty report", () => {
@@ -264,6 +356,7 @@ describe("buildCommandMining", () => {
 			distinctCommands: 0,
 			failures: 0,
 			retries: 0,
+			byRuntime: [],
 		});
 		expect(out.byFrequency).toHaveLength(0);
 		expect(out.byCategory).toHaveLength(0);

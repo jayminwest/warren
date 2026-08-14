@@ -14,6 +14,7 @@ export {
 	categorize,
 	generalizeCommand,
 	isOsEcoCommand,
+	type RuntimeCommandCoverage,
 	type ToolEventRow,
 } from "./analytics/command-mining.ts";
 export {

@@ -12,8 +12,10 @@
  * `filter` echo.
  */
 
+import { isKnownRuntimeId, type RuntimeId } from "../../../core/wire.ts";
 import type { EventsRepo } from "../../../db/repos/events.ts";
 import type { RunRow } from "../../../db/schema.ts";
+import { DEFAULT_RUNTIME_ID } from "../../../registry/schema.ts";
 import {
 	buildCommandMining,
 	buildInsights,
@@ -146,6 +148,7 @@ async function loadRunMetrics(
 async function loadToolEventRows(
 	events: EventsRepo,
 	runIds: readonly string[],
+	runtimeByRunId: ReadonlyMap<string, RuntimeId>,
 ): Promise<ToolEventRow[]> {
 	const rows = await events.listToolEventsForRuns(runIds);
 	return rows.map((e) => ({
@@ -153,7 +156,27 @@ async function loadToolEventRows(
 		kind: e.kind,
 		seq: e.burrowEventSeq,
 		payload: e.payloadJson,
+		runtime: runtimeByRunId.get(e.runId) ?? DEFAULT_RUNTIME_ID,
 	}));
+}
+
+/**
+ * Resolve a run's runtime id from its rendered agent frontmatter
+ * (warren-c116), so each tool-event row is mined through the correct
+ * runtime's tool shape. Mirrors `readRuntimeId`'s precedence minus the
+ * config override (dispatch already froze the choice into the rendered
+ * definition): a valid `frontmatter.runtime` wins, anything else falls
+ * back to the default runtime.
+ */
+function runtimeOfRun(renderedAgentJson: unknown): RuntimeId {
+	if (renderedAgentJson !== null && typeof renderedAgentJson === "object") {
+		const fm = (renderedAgentJson as Record<string, unknown>).frontmatter;
+		if (fm !== null && typeof fm === "object") {
+			const r = (fm as Record<string, unknown>).runtime;
+			if (isKnownRuntimeId(r)) return r;
+		}
+	}
+	return DEFAULT_RUNTIME_ID;
 }
 
 /**
@@ -338,8 +361,9 @@ export function listBehaviorAnalyticsHandler(deps: ServerDeps): RouteHandler {
 		const { echo, filter } = parseAnalyticsWindow(ctx);
 		const { rows, metrics } = await loadRunMetrics(deps, filter);
 		const runIds = rows.map((r) => r.id);
+		const runtimeByRunId = new Map(rows.map((r) => [r.id, runtimeOfRun(r.renderedAgentJson)]));
 		const [eventRows, steeringRows] = await Promise.all([
-			loadToolEventRows(deps.repos.events, runIds),
+			loadToolEventRows(deps.repos.events, runIds, runtimeByRunId),
 			deps.repos.events.listSteeringEventsForRuns(runIds),
 		]);
 		const mining = buildCommandMining(eventRows);
