@@ -1,6 +1,6 @@
 {
-	"id": "5512b45e-4bf9-4828-9998-a13993699fd0",
-	"prevId": "dfc1a092-860d-4c28-9af1-f6d94a578d14",
+	"id": "1e4282ec-ecfc-4cc0-b3ba-aea985a3c738",
+	"prevId": "5512b45e-4bf9-4828-9998-a13993699fd0",
 	"version": "7",
 	"dialect": "postgresql",
 	"tables": {
@@ -99,6 +99,12 @@
 				},
 				"stream": {
 					"name": "stream",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": false
+				},
+				"origin": {
+					"name": "origin",
 					"type": "text",
 					"primaryKey": false,
 					"notNull": false

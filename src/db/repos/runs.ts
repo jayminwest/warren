@@ -119,10 +119,14 @@ export interface CreateRunInput {
 	 * (warren-1f81, #419). Null/omitted = no explicit target branch.
 	 */
 	targetBranch?: string | null;
+	/** Declared provider/model frozen at dispatch (warren-2ede / pl-103e).
+	 * Null = agent declares none (or a historical row). */
+	provider?: string | null;
+	model?: string | null;
 	/**
 	 * Queued-instant override (warren-0af9): `created_at` is stamped from
-	 * this clock, defaulting to the wall clock at insert. Tests pass a fixed
-	 * instant so golden envelopes stay deterministic.
+	 * this clock, defaulting to the wall clock at insert. Tests pass a
+	 * fixed instant so golden envelopes stay deterministic.
 	 */
 	now?: Date;
 }
@@ -184,6 +188,8 @@ export class RunsRepo {
 			trigger: input.trigger,
 			prUrl: null,
 			targetBranch: input.targetBranch ?? null,
+			provider: input.provider ?? null,
+			model: input.model ?? null,
 			salvageRef: null,
 			salvagePath: null,
 			costUsd: null,

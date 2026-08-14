@@ -1,7 +1,7 @@
 {
 	"version": "6",
 	"dialect": "sqlite",
-	"id": "bb066bf3-8379-428f-a84a-aeb5879955af",
+	"id": "cd59a7a8-cfa7-4e3c-8cfc-73a00c81c4f7",
 	"prevId": "128c1769-242d-4353-a6ac-914373f4c870",
 	"tables": {
 		"agents": {
@@ -95,13 +95,6 @@
 				},
 				"stream": {
 					"name": "stream",
-					"type": "text",
-					"primaryKey": false,
-					"notNull": false,
-					"autoincrement": false
-				},
-				"origin": {
-					"name": "origin",
 					"type": "text",
 					"primaryKey": false,
 					"notNull": false,
@@ -810,6 +803,20 @@
 				},
 				"clone_kind": {
 					"name": "clone_kind",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": false,
+					"autoincrement": false
+				},
+				"provider": {
+					"name": "provider",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": false,
+					"autoincrement": false
+				},
+				"model": {
+					"name": "model",
 					"type": "text",
 					"primaryKey": false,
 					"notNull": false,

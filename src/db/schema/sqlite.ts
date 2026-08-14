@@ -212,6 +212,16 @@ export const runs = sqliteTable(
 		// parent's pushed branch; `replicate` re-dispatches its exact config
 		// against the project default base. Null for root runs. See `CLONE_KINDS`.
 		cloneKind: text("clone_kind", { enum: CLONE_KINDS }),
+		// Declared provider/model at dispatch time (warren-2ede / pl-103e),
+		// frozen from the rendered agent frontmatter after the override chain
+		// (operator override > project default > agent frontmatter) resolves.
+		// These record the DECLARED model; what the harness actually used is
+		// future work that needs a harness that can emit it. Nullable:
+		// historical rows predate the columns — analytics labels them
+		// "unknown" and excludes them from denominators rather than folding
+		// them into a real bucket.
+		provider: text("provider"),
+		model: text("model"),
 	},
 	(t) => [
 		index(INDEX_NAMES.runsState).on(t.state),

@@ -38,6 +38,7 @@
 import { NotFoundError, ValidationError } from "../../core/errors.ts";
 import { refreshProject } from "../../projects/manage.ts";
 import {
+	readProviderFrontmatter,
 	readRuntimeId,
 	withMaxCostUsdOverride,
 	withProviderOverrides,
@@ -168,11 +169,22 @@ export async function spawnRun(input: SpawnRunInput): Promise<SpawnRunResult> {
 	// runs and every reader (preview / proxy) treats NULL as the local worker.
 	logPlacement(input.logger, WORKER_PLACEMENT_LABEL, projectAfterRefresh.id);
 
+	// warren-2ede / pl-103e: freeze the DECLARED provider/model onto real
+	// columns so analytics group-bys read the columns instead of re-parsing
+	// rendered_agent_json per query. This is the resolved frontmatter value
+	// (override chain already folded in above), not what the harness
+	// actually used — actually-used reporting is future work.
+	const { provider: declaredProvider, model: declaredModel } = readProviderFrontmatter(
+		agent.frontmatter,
+	);
+
 	const run = await input.repos.runs.create({
 		agentName: agent.name,
 		projectId: projectAfterRefresh.id,
 		prompt: input.prompt,
 		renderedAgentJson: agent,
+		...(declaredProvider !== undefined ? { provider: declaredProvider } : {}),
+		...(declaredModel !== undefined ? { model: declaredModel } : {}),
 		trigger: input.trigger ?? "manual",
 		...(input.seedId !== undefined ? { seedId: input.seedId } : {}),
 		...(input.mode !== undefined ? { mode: input.mode } : {}),

@@ -1,178 +1,135 @@
 {
-	"id": "5512b45e-4bf9-4828-9998-a13993699fd0",
-	"prevId": "dfc1a092-860d-4c28-9af1-f6d94a578d14",
-	"version": "7",
-	"dialect": "postgresql",
+	"version": "6",
+	"dialect": "sqlite",
+	"id": "e16572fa-37b9-43c1-bb4b-c81a52d892da",
+	"prevId": "cd59a7a8-cfa7-4e3c-8cfc-73a00c81c4f7",
 	"tables": {
-		"public.agents": {
+		"agents": {
 			"name": "agents",
-			"schema": "",
 			"columns": {
 				"id": {
 					"name": "id",
-					"type": "serial",
+					"type": "integer",
 					"primaryKey": true,
-					"notNull": true
+					"notNull": true,
+					"autoincrement": true
 				},
 				"name": {
 					"name": "name",
 					"type": "text",
 					"primaryKey": false,
-					"notNull": true
+					"notNull": true,
+					"autoincrement": false
 				},
 				"rendered_json": {
 					"name": "rendered_json",
-					"type": "jsonb",
+					"type": "text",
 					"primaryKey": false,
-					"notNull": true
+					"notNull": true,
+					"autoincrement": false
 				},
 				"registered_at": {
 					"name": "registered_at",
 					"type": "text",
 					"primaryKey": false,
-					"notNull": true
+					"notNull": true,
+					"autoincrement": false
 				},
 				"last_refreshed": {
 					"name": "last_refreshed",
 					"type": "text",
 					"primaryKey": false,
-					"notNull": true
+					"notNull": true,
+					"autoincrement": false
 				}
 			},
 			"indexes": {
 				"agents_name_idx": {
 					"name": "agents_name_idx",
-					"columns": [
-						{
-							"expression": "name",
-							"isExpression": false,
-							"asc": true,
-							"nulls": "last"
-						}
-					],
-					"isUnique": true,
-					"concurrently": false,
-					"method": "btree",
-					"with": {}
+					"columns": ["name"],
+					"isUnique": true
 				}
 			},
 			"foreignKeys": {},
 			"compositePrimaryKeys": {},
 			"uniqueConstraints": {},
-			"policies": {},
-			"checkConstraints": {},
-			"isRLSEnabled": false
+			"checkConstraints": {}
 		},
-		"public.events": {
+		"events": {
 			"name": "events",
-			"schema": "",
 			"columns": {
 				"id": {
 					"name": "id",
-					"type": "serial",
+					"type": "integer",
 					"primaryKey": true,
-					"notNull": true
+					"notNull": true,
+					"autoincrement": true
 				},
 				"run_id": {
 					"name": "run_id",
 					"type": "text",
 					"primaryKey": false,
-					"notNull": true
+					"notNull": true,
+					"autoincrement": false
 				},
 				"burrow_event_seq": {
 					"name": "burrow_event_seq",
 					"type": "integer",
 					"primaryKey": false,
-					"notNull": true
+					"notNull": true,
+					"autoincrement": false
 				},
 				"ts": {
 					"name": "ts",
 					"type": "text",
 					"primaryKey": false,
-					"notNull": true
+					"notNull": true,
+					"autoincrement": false
 				},
 				"kind": {
 					"name": "kind",
 					"type": "text",
 					"primaryKey": false,
-					"notNull": true
+					"notNull": true,
+					"autoincrement": false
 				},
 				"stream": {
 					"name": "stream",
 					"type": "text",
 					"primaryKey": false,
-					"notNull": false
+					"notNull": false,
+					"autoincrement": false
+				},
+				"origin": {
+					"name": "origin",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": false,
+					"autoincrement": false
 				},
 				"payload_json": {
 					"name": "payload_json",
-					"type": "jsonb",
+					"type": "text",
 					"primaryKey": false,
-					"notNull": true
+					"notNull": true,
+					"autoincrement": false
 				}
 			},
 			"indexes": {
 				"events_run_seq_idx": {
 					"name": "events_run_seq_idx",
-					"columns": [
-						{
-							"expression": "run_id",
-							"isExpression": false,
-							"asc": true,
-							"nulls": "last"
-						},
-						{
-							"expression": "burrow_event_seq",
-							"isExpression": false,
-							"asc": true,
-							"nulls": "last"
-						}
-					],
-					"isUnique": false,
-					"concurrently": false,
-					"method": "btree",
-					"with": {}
+					"columns": ["run_id", "burrow_event_seq"],
+					"isUnique": false
 				},
 				"events_run_ts_idx": {
 					"name": "events_run_ts_idx",
-					"columns": [
-						{
-							"expression": "run_id",
-							"isExpression": false,
-							"asc": true,
-							"nulls": "last"
-						},
-						{
-							"expression": "ts",
-							"isExpression": false,
-							"asc": true,
-							"nulls": "last"
-						}
-					],
-					"isUnique": false,
-					"concurrently": false,
-					"method": "btree",
-					"with": {}
+					"columns": ["run_id", "ts"],
+					"isUnique": false
 				},
 				"events_kind_ts_idx": {
 					"name": "events_kind_ts_idx",
-					"columns": [
-						{
-							"expression": "kind",
-							"isExpression": false,
-							"asc": true,
-							"nulls": "last"
-						},
-						{
-							"expression": "ts",
-							"isExpression": false,
-							"asc": true,
-							"nulls": "last"
-						}
-					],
-					"isUnique": false,
-					"concurrently": false,
-					"method": "btree",
-					"with": {}
+					"columns": ["kind", "ts"],
+					"isUnique": false
 				}
 			},
 			"foreignKeys": {
@@ -188,117 +145,99 @@
 			},
 			"compositePrimaryKeys": {},
 			"uniqueConstraints": {},
-			"policies": {},
-			"checkConstraints": {},
-			"isRLSEnabled": false
+			"checkConstraints": {}
 		},
-		"public.plan_run_children": {
+		"plan_run_children": {
 			"name": "plan_run_children",
-			"schema": "",
 			"columns": {
 				"plan_run_id": {
 					"name": "plan_run_id",
 					"type": "text",
 					"primaryKey": false,
-					"notNull": true
+					"notNull": true,
+					"autoincrement": false
 				},
 				"seq": {
 					"name": "seq",
 					"type": "integer",
 					"primaryKey": false,
-					"notNull": true
+					"notNull": true,
+					"autoincrement": false
 				},
 				"seed_id": {
 					"name": "seed_id",
 					"type": "text",
 					"primaryKey": false,
-					"notNull": true
+					"notNull": true,
+					"autoincrement": false
 				},
 				"run_id": {
 					"name": "run_id",
 					"type": "text",
 					"primaryKey": false,
-					"notNull": false
+					"notNull": false,
+					"autoincrement": false
 				},
 				"state": {
 					"name": "state",
 					"type": "text",
 					"primaryKey": false,
-					"notNull": true
+					"notNull": true,
+					"autoincrement": false
 				},
 				"created_at": {
 					"name": "created_at",
 					"type": "text",
 					"primaryKey": false,
-					"notNull": true
+					"notNull": true,
+					"autoincrement": false
 				},
 				"updated_at": {
 					"name": "updated_at",
 					"type": "text",
 					"primaryKey": false,
-					"notNull": true
+					"notNull": true,
+					"autoincrement": false
 				},
 				"started_at": {
 					"name": "started_at",
 					"type": "text",
 					"primaryKey": false,
-					"notNull": false
+					"notNull": false,
+					"autoincrement": false
 				},
 				"ended_at": {
 					"name": "ended_at",
 					"type": "text",
 					"primaryKey": false,
-					"notNull": false
+					"notNull": false,
+					"autoincrement": false
 				},
 				"pr_merged_at": {
 					"name": "pr_merged_at",
 					"type": "text",
 					"primaryKey": false,
-					"notNull": false
+					"notNull": false,
+					"autoincrement": false
 				},
 				"failure_reason": {
 					"name": "failure_reason",
 					"type": "text",
 					"primaryKey": false,
-					"notNull": false
+					"notNull": false,
+					"autoincrement": false
 				}
 			},
 			"indexes": {
 				"plan_run_children_run_idx": {
 					"name": "plan_run_children_run_idx",
-					"columns": [
-						{
-							"expression": "run_id",
-							"isExpression": false,
-							"asc": true,
-							"nulls": "last"
-						}
-					],
-					"isUnique": false,
-					"concurrently": false,
-					"method": "btree",
-					"with": {}
+					"columns": ["run_id"],
+					"isUnique": false
 				},
 				"plan_run_children_state_idx": {
 					"name": "plan_run_children_state_idx",
-					"columns": [
-						{
-							"expression": "plan_run_id",
-							"isExpression": false,
-							"asc": true,
-							"nulls": "last"
-						},
-						{
-							"expression": "state",
-							"isExpression": false,
-							"asc": true,
-							"nulls": "last"
-						}
-					],
-					"isUnique": false,
-					"concurrently": false,
-					"method": "btree",
-					"with": {}
+					"columns": ["plan_run_id", "state"],
+					"isUnique": false
 				}
 			},
 			"foreignKeys": {
@@ -323,79 +262,86 @@
 			},
 			"compositePrimaryKeys": {
 				"plan_run_children_plan_run_id_seq_pk": {
-					"name": "plan_run_children_plan_run_id_seq_pk",
-					"columns": ["plan_run_id", "seq"]
+					"columns": ["plan_run_id", "seq"],
+					"name": "plan_run_children_plan_run_id_seq_pk"
 				}
 			},
 			"uniqueConstraints": {},
-			"policies": {},
-			"checkConstraints": {},
-			"isRLSEnabled": false
+			"checkConstraints": {}
 		},
-		"public.plan_runs": {
+		"plan_runs": {
 			"name": "plan_runs",
-			"schema": "",
 			"columns": {
 				"id": {
 					"name": "id",
 					"type": "text",
 					"primaryKey": true,
-					"notNull": true
+					"notNull": true,
+					"autoincrement": false
 				},
 				"plan_id": {
 					"name": "plan_id",
 					"type": "text",
 					"primaryKey": false,
-					"notNull": true
+					"notNull": true,
+					"autoincrement": false
 				},
 				"project_id": {
 					"name": "project_id",
 					"type": "text",
 					"primaryKey": false,
-					"notNull": true
+					"notNull": true,
+					"autoincrement": false
 				},
 				"agent_name": {
 					"name": "agent_name",
 					"type": "text",
 					"primaryKey": false,
-					"notNull": true
+					"notNull": true,
+					"autoincrement": false
 				},
 				"prompt_template": {
 					"name": "prompt_template",
 					"type": "text",
 					"primaryKey": false,
 					"notNull": true,
+					"autoincrement": false,
 					"default": "'work on sd {seed_id}'"
 				},
 				"ref": {
 					"name": "ref",
 					"type": "text",
 					"primaryKey": false,
-					"notNull": false
+					"notNull": false,
+					"autoincrement": false
 				},
 				"provider_override": {
 					"name": "provider_override",
 					"type": "text",
 					"primaryKey": false,
-					"notNull": false
+					"notNull": false,
+					"autoincrement": false
 				},
 				"model_override": {
 					"name": "model_override",
 					"type": "text",
 					"primaryKey": false,
-					"notNull": false
+					"notNull": false,
+					"autoincrement": false
 				},
 				"max_cost_usd": {
 					"name": "max_cost_usd",
-					"type": "double precision",
+					"type": "real",
 					"primaryKey": false,
-					"notNull": false
+					"notNull": false,
+					"autoincrement": false
 				},
 				"dispatcher_handle": {
 					"name": "dispatcher_handle",
 					"type": "text",
 					"primaryKey": false,
 					"notNull": true,
+					"autoincrement": false,
 					"default": "'operator'"
 				},
 				"trigger": {
@@ -403,81 +349,62 @@
 					"type": "text",
 					"primaryKey": false,
 					"notNull": true,
+					"autoincrement": false,
 					"default": "'manual'"
 				},
 				"parent_run_id": {
 					"name": "parent_run_id",
 					"type": "text",
 					"primaryKey": false,
-					"notNull": false
+					"notNull": false,
+					"autoincrement": false
 				},
 				"state": {
 					"name": "state",
 					"type": "text",
 					"primaryKey": false,
-					"notNull": true
+					"notNull": true,
+					"autoincrement": false
 				},
 				"failure_reason": {
 					"name": "failure_reason",
 					"type": "text",
 					"primaryKey": false,
-					"notNull": false
+					"notNull": false,
+					"autoincrement": false
 				},
 				"created_at": {
 					"name": "created_at",
 					"type": "text",
 					"primaryKey": false,
-					"notNull": true
+					"notNull": true,
+					"autoincrement": false
 				},
 				"started_at": {
 					"name": "started_at",
 					"type": "text",
 					"primaryKey": false,
-					"notNull": false
+					"notNull": false,
+					"autoincrement": false
 				},
 				"ended_at": {
 					"name": "ended_at",
 					"type": "text",
 					"primaryKey": false,
-					"notNull": false
+					"notNull": false,
+					"autoincrement": false
 				}
 			},
 			"indexes": {
 				"plan_runs_project_state_idx": {
 					"name": "plan_runs_project_state_idx",
-					"columns": [
-						{
-							"expression": "project_id",
-							"isExpression": false,
-							"asc": true,
-							"nulls": "last"
-						},
-						{
-							"expression": "state",
-							"isExpression": false,
-							"asc": true,
-							"nulls": "last"
-						}
-					],
-					"isUnique": false,
-					"concurrently": false,
-					"method": "btree",
-					"with": {}
+					"columns": ["project_id", "state"],
+					"isUnique": false
 				},
 				"plan_runs_state_idx": {
 					"name": "plan_runs_state_idx",
-					"columns": [
-						{
-							"expression": "state",
-							"isExpression": false,
-							"asc": true,
-							"nulls": "last"
-						}
-					],
-					"isUnique": false,
-					"concurrently": false,
-					"method": "btree",
-					"with": {}
+					"columns": ["state"],
+					"isUnique": false
 				}
 			},
 			"foreignKeys": {
@@ -493,121 +420,118 @@
 			},
 			"compositePrimaryKeys": {},
 			"uniqueConstraints": {},
-			"policies": {},
-			"checkConstraints": {},
-			"isRLSEnabled": false
+			"checkConstraints": {}
 		},
-		"public.projects": {
+		"projects": {
 			"name": "projects",
-			"schema": "",
 			"columns": {
 				"id": {
 					"name": "id",
 					"type": "text",
 					"primaryKey": true,
-					"notNull": true
+					"notNull": true,
+					"autoincrement": false
 				},
 				"git_url": {
 					"name": "git_url",
 					"type": "text",
 					"primaryKey": false,
-					"notNull": true
+					"notNull": true,
+					"autoincrement": false
 				},
 				"local_path": {
 					"name": "local_path",
 					"type": "text",
 					"primaryKey": false,
-					"notNull": true
+					"notNull": true,
+					"autoincrement": false
 				},
 				"default_branch": {
 					"name": "default_branch",
 					"type": "text",
 					"primaryKey": false,
-					"notNull": true
+					"notNull": true,
+					"autoincrement": false
 				},
 				"added_at": {
 					"name": "added_at",
 					"type": "text",
 					"primaryKey": false,
-					"notNull": true
+					"notNull": true,
+					"autoincrement": false
 				},
 				"last_fetched_at": {
 					"name": "last_fetched_at",
 					"type": "text",
 					"primaryKey": false,
-					"notNull": false
+					"notNull": false,
+					"autoincrement": false
 				},
 				"last_head_sha": {
 					"name": "last_head_sha",
 					"type": "text",
 					"primaryKey": false,
-					"notNull": false
+					"notNull": false,
+					"autoincrement": false
 				},
 				"has_seeds": {
 					"name": "has_seeds",
-					"type": "boolean",
+					"type": "integer",
 					"primaryKey": false,
 					"notNull": true,
+					"autoincrement": false,
 					"default": false
 				}
 			},
 			"indexes": {
 				"projects_git_url_idx": {
 					"name": "projects_git_url_idx",
-					"columns": [
-						{
-							"expression": "git_url",
-							"isExpression": false,
-							"asc": true,
-							"nulls": "last"
-						}
-					],
-					"isUnique": false,
-					"concurrently": false,
-					"method": "btree",
-					"with": {}
+					"columns": ["git_url"],
+					"isUnique": false
 				}
 			},
 			"foreignKeys": {},
 			"compositePrimaryKeys": {},
 			"uniqueConstraints": {},
-			"policies": {},
-			"checkConstraints": {},
-			"isRLSEnabled": false
+			"checkConstraints": {}
 		},
-		"public.run_inbox": {
+		"run_inbox": {
 			"name": "run_inbox",
-			"schema": "",
 			"columns": {
 				"id": {
 					"name": "id",
 					"type": "text",
 					"primaryKey": true,
-					"notNull": true
+					"notNull": true,
+					"autoincrement": false
 				},
 				"run_id": {
 					"name": "run_id",
 					"type": "text",
 					"primaryKey": false,
-					"notNull": true
+					"notNull": true,
+					"autoincrement": false
 				},
 				"seq": {
 					"name": "seq",
 					"type": "integer",
 					"primaryKey": false,
-					"notNull": true
+					"notNull": true,
+					"autoincrement": false
 				},
 				"body": {
 					"name": "body",
 					"type": "text",
 					"primaryKey": false,
-					"notNull": true
+					"notNull": true,
+					"autoincrement": false
 				},
 				"priority": {
 					"name": "priority",
 					"type": "text",
 					"primaryKey": false,
 					"notNull": true,
+					"autoincrement": false,
 					"default": "'normal'"
 				},
 				"from_actor": {
@@ -615,6 +539,7 @@
 					"type": "text",
 					"primaryKey": false,
 					"notNull": true,
+					"autoincrement": false,
 					"default": "'operator'"
 				},
 				"state": {
@@ -622,42 +547,29 @@
 					"type": "text",
 					"primaryKey": false,
 					"notNull": true,
+					"autoincrement": false,
 					"default": "'unread'"
 				},
 				"created_at": {
 					"name": "created_at",
 					"type": "text",
 					"primaryKey": false,
-					"notNull": true
+					"notNull": true,
+					"autoincrement": false
 				},
 				"delivered_at": {
 					"name": "delivered_at",
 					"type": "text",
 					"primaryKey": false,
-					"notNull": false
+					"notNull": false,
+					"autoincrement": false
 				}
 			},
 			"indexes": {
 				"run_inbox_run_state_idx": {
 					"name": "run_inbox_run_state_idx",
-					"columns": [
-						{
-							"expression": "run_id",
-							"isExpression": false,
-							"asc": true,
-							"nulls": "last"
-						},
-						{
-							"expression": "state",
-							"isExpression": false,
-							"asc": true,
-							"nulls": "last"
-						}
-					],
-					"isUnique": false,
-					"concurrently": false,
-					"method": "btree",
-					"with": {}
+					"columns": ["run_id", "state"],
+					"isUnique": false
 				}
 			},
 			"foreignKeys": {
@@ -673,328 +585,281 @@
 			},
 			"compositePrimaryKeys": {},
 			"uniqueConstraints": {},
-			"policies": {},
-			"checkConstraints": {},
-			"isRLSEnabled": false
+			"checkConstraints": {}
 		},
-		"public.runs": {
+		"runs": {
 			"name": "runs",
-			"schema": "",
 			"columns": {
 				"id": {
 					"name": "id",
 					"type": "text",
 					"primaryKey": true,
-					"notNull": true
+					"notNull": true,
+					"autoincrement": false
 				},
 				"agent_name": {
 					"name": "agent_name",
 					"type": "text",
 					"primaryKey": false,
-					"notNull": true
+					"notNull": true,
+					"autoincrement": false
 				},
 				"project_id": {
 					"name": "project_id",
 					"type": "text",
 					"primaryKey": false,
-					"notNull": false
+					"notNull": false,
+					"autoincrement": false
 				},
 				"burrow_id": {
 					"name": "burrow_id",
 					"type": "text",
 					"primaryKey": false,
-					"notNull": false
+					"notNull": false,
+					"autoincrement": false
 				},
 				"burrow_run_id": {
 					"name": "burrow_run_id",
 					"type": "text",
 					"primaryKey": false,
-					"notNull": false
+					"notNull": false,
+					"autoincrement": false
 				},
 				"worker_id": {
 					"name": "worker_id",
 					"type": "text",
 					"primaryKey": false,
-					"notNull": false
+					"notNull": false,
+					"autoincrement": false
 				},
 				"seed_id": {
 					"name": "seed_id",
 					"type": "text",
 					"primaryKey": false,
-					"notNull": false
+					"notNull": false,
+					"autoincrement": false
 				},
 				"rendered_agent_json": {
 					"name": "rendered_agent_json",
-					"type": "jsonb",
+					"type": "text",
 					"primaryKey": false,
-					"notNull": true
+					"notNull": true,
+					"autoincrement": false
 				},
 				"state": {
 					"name": "state",
 					"type": "text",
 					"primaryKey": false,
-					"notNull": true
+					"notNull": true,
+					"autoincrement": false
 				},
 				"failure_reason": {
 					"name": "failure_reason",
 					"type": "text",
 					"primaryKey": false,
-					"notNull": false
+					"notNull": false,
+					"autoincrement": false
 				},
 				"created_at": {
 					"name": "created_at",
-					"type": "bigint",
+					"type": "integer",
 					"primaryKey": false,
-					"notNull": false
+					"notNull": false,
+					"autoincrement": false
 				},
 				"started_at": {
 					"name": "started_at",
 					"type": "text",
 					"primaryKey": false,
-					"notNull": false
+					"notNull": false,
+					"autoincrement": false
 				},
 				"ended_at": {
 					"name": "ended_at",
 					"type": "text",
 					"primaryKey": false,
-					"notNull": false
+					"notNull": false,
+					"autoincrement": false
 				},
 				"prompt": {
 					"name": "prompt",
 					"type": "text",
 					"primaryKey": false,
-					"notNull": true
+					"notNull": true,
+					"autoincrement": false
 				},
 				"trigger": {
 					"name": "trigger",
 					"type": "text",
 					"primaryKey": false,
-					"notNull": true
+					"notNull": true,
+					"autoincrement": false
 				},
 				"pr_url": {
 					"name": "pr_url",
 					"type": "text",
 					"primaryKey": false,
-					"notNull": false
+					"notNull": false,
+					"autoincrement": false
 				},
 				"target_branch": {
 					"name": "target_branch",
 					"type": "text",
 					"primaryKey": false,
-					"notNull": false
+					"notNull": false,
+					"autoincrement": false
 				},
 				"salvage_ref": {
 					"name": "salvage_ref",
 					"type": "text",
 					"primaryKey": false,
-					"notNull": false
+					"notNull": false,
+					"autoincrement": false
 				},
 				"salvage_path": {
 					"name": "salvage_path",
 					"type": "text",
 					"primaryKey": false,
-					"notNull": false
+					"notNull": false,
+					"autoincrement": false
 				},
 				"cost_usd": {
 					"name": "cost_usd",
-					"type": "double precision",
+					"type": "real",
 					"primaryKey": false,
-					"notNull": false
+					"notNull": false,
+					"autoincrement": false
 				},
 				"tokens_input": {
 					"name": "tokens_input",
 					"type": "integer",
 					"primaryKey": false,
-					"notNull": false
+					"notNull": false,
+					"autoincrement": false
 				},
 				"tokens_output": {
 					"name": "tokens_output",
 					"type": "integer",
 					"primaryKey": false,
-					"notNull": false
+					"notNull": false,
+					"autoincrement": false
 				},
 				"tokens_cache_read": {
 					"name": "tokens_cache_read",
 					"type": "integer",
 					"primaryKey": false,
-					"notNull": false
+					"notNull": false,
+					"autoincrement": false
 				},
 				"tokens_cache_write": {
 					"name": "tokens_cache_write",
 					"type": "integer",
 					"primaryKey": false,
-					"notNull": false
+					"notNull": false,
+					"autoincrement": false
 				},
 				"preview_state": {
 					"name": "preview_state",
 					"type": "text",
 					"primaryKey": false,
-					"notNull": false
+					"notNull": false,
+					"autoincrement": false
 				},
 				"preview_port": {
 					"name": "preview_port",
 					"type": "integer",
 					"primaryKey": false,
-					"notNull": false
+					"notNull": false,
+					"autoincrement": false
 				},
 				"preview_started_at": {
 					"name": "preview_started_at",
 					"type": "text",
 					"primaryKey": false,
-					"notNull": false
+					"notNull": false,
+					"autoincrement": false
 				},
 				"preview_last_hit_at": {
 					"name": "preview_last_hit_at",
 					"type": "text",
 					"primaryKey": false,
-					"notNull": false
+					"notNull": false,
+					"autoincrement": false
 				},
 				"preview_failure_message": {
 					"name": "preview_failure_message",
 					"type": "text",
 					"primaryKey": false,
-					"notNull": false
+					"notNull": false,
+					"autoincrement": false
 				},
 				"mode": {
 					"name": "mode",
 					"type": "text",
 					"primaryKey": false,
 					"notNull": true,
+					"autoincrement": false,
 					"default": "'batch'"
 				},
 				"parent_run_id": {
 					"name": "parent_run_id",
 					"type": "text",
 					"primaryKey": false,
-					"notNull": false
+					"notNull": false,
+					"autoincrement": false
 				},
 				"clone_kind": {
 					"name": "clone_kind",
 					"type": "text",
 					"primaryKey": false,
-					"notNull": false
+					"notNull": false,
+					"autoincrement": false
 				},
 				"provider": {
 					"name": "provider",
 					"type": "text",
 					"primaryKey": false,
-					"notNull": false
+					"notNull": false,
+					"autoincrement": false
 				},
 				"model": {
 					"name": "model",
 					"type": "text",
 					"primaryKey": false,
-					"notNull": false
+					"notNull": false,
+					"autoincrement": false
 				}
 			},
 			"indexes": {
 				"runs_state_idx": {
 					"name": "runs_state_idx",
-					"columns": [
-						{
-							"expression": "state",
-							"isExpression": false,
-							"asc": true,
-							"nulls": "last"
-						}
-					],
-					"isUnique": false,
-					"concurrently": false,
-					"method": "btree",
-					"with": {}
+					"columns": ["state"],
+					"isUnique": false
 				},
 				"runs_project_started_idx": {
 					"name": "runs_project_started_idx",
-					"columns": [
-						{
-							"expression": "project_id",
-							"isExpression": false,
-							"asc": true,
-							"nulls": "last"
-						},
-						{
-							"expression": "\"started_at\" DESC",
-							"asc": true,
-							"isExpression": true,
-							"nulls": "last"
-						}
-					],
-					"isUnique": false,
-					"concurrently": false,
-					"method": "btree",
-					"with": {}
+					"columns": ["project_id", "\"started_at\" DESC"],
+					"isUnique": false
 				},
 				"runs_agent_started_idx": {
 					"name": "runs_agent_started_idx",
-					"columns": [
-						{
-							"expression": "agent_name",
-							"isExpression": false,
-							"asc": true,
-							"nulls": "last"
-						},
-						{
-							"expression": "\"started_at\" DESC",
-							"asc": true,
-							"isExpression": true,
-							"nulls": "last"
-						}
-					],
-					"isUnique": false,
-					"concurrently": false,
-					"method": "btree",
-					"with": {}
+					"columns": ["agent_name", "\"started_at\" DESC"],
+					"isUnique": false
 				},
 				"runs_worker_state_idx": {
 					"name": "runs_worker_state_idx",
-					"columns": [
-						{
-							"expression": "worker_id",
-							"isExpression": false,
-							"asc": true,
-							"nulls": "last"
-						},
-						{
-							"expression": "state",
-							"isExpression": false,
-							"asc": true,
-							"nulls": "last"
-						}
-					],
-					"isUnique": false,
-					"concurrently": false,
-					"method": "btree",
-					"with": {}
+					"columns": ["worker_id", "state"],
+					"isUnique": false
 				},
 				"runs_mode_idx": {
 					"name": "runs_mode_idx",
-					"columns": [
-						{
-							"expression": "mode",
-							"isExpression": false,
-							"asc": true,
-							"nulls": "last"
-						}
-					],
-					"isUnique": false,
-					"concurrently": false,
-					"method": "btree",
-					"with": {}
+					"columns": ["mode"],
+					"isUnique": false
 				},
 				"runs_pr_url_idx": {
 					"name": "runs_pr_url_idx",
-					"columns": [
-						{
-							"expression": "pr_url",
-							"isExpression": false,
-							"asc": true,
-							"nulls": "last"
-						}
-					],
-					"isUnique": false,
-					"concurrently": false,
-					"method": "btree",
-					"with": {}
+					"columns": ["pr_url"],
+					"isUnique": false
 				}
 			},
 			"foreignKeys": {
@@ -1010,66 +875,59 @@
 			},
 			"compositePrimaryKeys": {},
 			"uniqueConstraints": {},
-			"policies": {},
-			"checkConstraints": {},
-			"isRLSEnabled": false
+			"checkConstraints": {}
 		},
-		"public.triggers": {
+		"triggers": {
 			"name": "triggers",
-			"schema": "",
 			"columns": {
 				"id": {
 					"name": "id",
 					"type": "text",
 					"primaryKey": true,
-					"notNull": true
+					"notNull": true,
+					"autoincrement": false
 				},
 				"project_id": {
 					"name": "project_id",
 					"type": "text",
 					"primaryKey": false,
-					"notNull": true
+					"notNull": true,
+					"autoincrement": false
 				},
 				"trigger_id": {
 					"name": "trigger_id",
 					"type": "text",
 					"primaryKey": false,
-					"notNull": true
+					"notNull": true,
+					"autoincrement": false
 				},
 				"last_fired_at": {
 					"name": "last_fired_at",
 					"type": "text",
 					"primaryKey": false,
-					"notNull": false
+					"notNull": false,
+					"autoincrement": false
 				},
 				"next_fire_at": {
 					"name": "next_fire_at",
 					"type": "text",
 					"primaryKey": false,
-					"notNull": false
+					"notNull": false,
+					"autoincrement": false
 				},
 				"last_run_id": {
 					"name": "last_run_id",
 					"type": "text",
 					"primaryKey": false,
-					"notNull": false
+					"notNull": false,
+					"autoincrement": false
 				}
 			},
 			"indexes": {
 				"triggers_project_idx": {
 					"name": "triggers_project_idx",
-					"columns": [
-						{
-							"expression": "project_id",
-							"isExpression": false,
-							"asc": true,
-							"nulls": "last"
-						}
-					],
-					"isUnique": false,
-					"concurrently": false,
-					"method": "btree",
-					"with": {}
+					"columns": ["project_id"],
+					"isUnique": false
 				}
 			},
 			"foreignKeys": {
@@ -1094,20 +952,32 @@
 			},
 			"compositePrimaryKeys": {},
 			"uniqueConstraints": {},
-			"policies": {},
-			"checkConstraints": {},
-			"isRLSEnabled": false
+			"checkConstraints": {}
 		}
 	},
-	"enums": {},
-	"schemas": {},
-	"sequences": {},
-	"roles": {},
-	"policies": {},
 	"views": {},
+	"enums": {},
 	"_meta": {
-		"columns": {},
 		"schemas": {},
-		"tables": {}
+		"tables": {},
+		"columns": {}
+	},
+	"internal": {
+		"indexes": {
+			"runs_project_started_idx": {
+				"columns": {
+					"\"started_at\" DESC": {
+						"isExpression": true
+					}
+				}
+			},
+			"runs_agent_started_idx": {
+				"columns": {
+					"\"started_at\" DESC": {
+						"isExpression": true
+					}
+				}
+			}
+		}
 	}
 }

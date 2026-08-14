@@ -38,7 +38,9 @@
 			"previewFailureMessage": null,
 			"mode": "batch",
 			"parentRunId": null,
-			"cloneKind": null
+			"cloneKind": null,
+			"provider": null,
+			"model": null
 		}
 	}
 }

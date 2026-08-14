@@ -250,8 +250,15 @@
 		{
 			"idx": 35,
 			"version": "7",
-			"when": 1786726530006,
-			"tag": "0035_flat_power_pack",
+			"when": 1786726545291,
+			"tag": "0035_perpetual_chameleon",
+			"breakpoints": true
+		},
+		{
+			"idx": 36,
+			"version": "7",
+			"when": 1786727687602,
+			"tag": "0036_easy_warlock",
 			"breakpoints": true
 		}
 	]
