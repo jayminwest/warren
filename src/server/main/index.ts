@@ -204,7 +204,9 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 	// `post_reap`), so no lifecycle emit is dropped on the floor at boot. Wired
 	// here (after `repos`/`broker`/`seedsCli`) so the seed-close subscriber can
 	// resolve run/project rows + drive `sd close`. See lifecycle-bus-wiring.ts.
-	const lifecycleBusHandle = bootLifecycleBus({ logger, repos, seedsCli, broker });
+	// warren-3bc6: `forge` here is the boot-resolved instance from above —
+	// the merge watcher consumes the Forge seam, never the GitHub REST API.
+	const lifecycleBusHandle = bootLifecycleBus({ logger, repos, seedsCli, broker, forge });
 
 	// K8s runtime background loops (pl-829f step 25 / warren-7c30). Under
 	// `WARREN_RUNTIME=k8s` this constructs + starts the pod-watcher informer and

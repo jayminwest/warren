@@ -25,6 +25,7 @@
 import { formatError } from "../core/errors.ts";
 import type { Repos } from "../db/repos/index.ts";
 import type { PlanRunRow } from "../db/schema.ts";
+import type { PrMergeChecker } from "../runs/pr-merge.ts";
 import {
 	type AdvanceResult,
 	advancePlanRun,
@@ -36,7 +37,6 @@ import {
 	type CoordinatorSpawnFn,
 	type PlanRunEventKind,
 } from "./coordinator.ts";
-import type { PrMergeChecker } from "./pr-merge.ts";
 
 export interface PlanRunTickLogger {
 	info(obj: Record<string, unknown>, msg?: string): void;

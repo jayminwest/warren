@@ -15,6 +15,7 @@ import type {
 	InboxPriority,
 	InboxState,
 	PreviewState,
+	PullRequestLifecycle,
 	RunFailureReason,
 	RunMode,
 	RunState,
@@ -97,6 +98,14 @@ export interface RunRow {
 	prompt: string;
 	trigger: string;
 	prUrl: string | null;
+	/**
+	 * Merge-watcher PR facts (warren-3bc6 / pl-103e step 6). `prState` is
+	 * the forge-reported PR lifecycle; `prMergedAt` its merge instant. Null
+	 * on runs that never opened a PR or predate the watcher — read null as
+	 * "unknown", never as "not merged".
+	 */
+	prState: PullRequestLifecycle | null;
+	prMergedAt: string | null;
 	targetBranch: string | null;
 	/**
 	 * Salvage-before-destroy (warren-cd3b): where a finalize_failed run's

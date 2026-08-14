@@ -10,6 +10,7 @@
  */
 
 import type { PlanRunChildRow, PlanRunRow, RunRow } from "../db/schema.ts";
+import type { PrMergeChecker } from "../runs/pr-merge.ts";
 import { SeedNotFoundError } from "../seeds-cli/index.ts";
 import type {
 	AdvanceResult,
@@ -26,7 +27,6 @@ import {
 	mergeDeadlineExceeded,
 	resolveChildPrReopen,
 } from "./merge-gate.ts";
-import type { PrMergeChecker } from "./pr-merge.ts";
 
 export interface HandleInFlightInput {
 	readonly planRun: PlanRunRow;

@@ -37,10 +37,10 @@ import { formatError } from "../core/errors.ts";
 import { renderPlanRunPrompt } from "../core/plan-run-prompt.ts";
 import type { Repos } from "../db/repos/index.ts";
 import type { PlanRunChildRow, PlanRunChildState, PlanRunRow } from "../db/schema.ts";
+import type { PrMergeChecker } from "../runs/pr-merge.ts";
 import { SeedNotFoundError, type SeedShowResult } from "../seeds-cli/index.ts";
 import { handleInFlight } from "./in-flight.ts";
 import { type CoordinatorReopenPrFn, checkParentRunMerged } from "./merge-gate.ts";
-import type { PrMergeChecker } from "./pr-merge.ts";
 
 export type { CoordinatorReopenPrFn } from "./merge-gate.ts";
 

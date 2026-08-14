@@ -260,6 +260,13 @@
 			"when": 1786727687602,
 			"tag": "0036_easy_warlock",
 			"breakpoints": true
+		},
+		{
+			"idx": 37,
+			"version": "7",
+			"when": 1786730085252,
+			"tag": "0037_steep_invisible_woman",
+			"breakpoints": true
 		}
 	]
 }

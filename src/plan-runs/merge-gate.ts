@@ -49,7 +49,7 @@ export async function resolveChildPrReopen(input: {
 	return { kind: "pending" };
 }
 
-import type { PrMergeChecker, PrMergePollResult } from "./pr-merge.ts";
+import type { PrMergeChecker, PrMergePollResult } from "../runs/pr-merge.ts";
 
 /**
  * Gate auto-plan-runs on the parent run's PR being merged (warren-d9a2).

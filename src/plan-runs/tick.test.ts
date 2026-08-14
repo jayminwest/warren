@@ -2,8 +2,8 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { openDatabase, type WarrenDb } from "../db/client.ts";
 import { createRepos, type Repos } from "../db/repos/index.ts";
 import { agents } from "../db/schema.ts";
+import type { PrMergeChecker } from "../runs/pr-merge.ts";
 import type { CoordinatorShowSeedFn, CoordinatorSpawnFn } from "./coordinator.ts";
-import type { PrMergeChecker } from "./pr-merge.ts";
 import { bootPlanRunCoordinator, runPlanRunTick } from "./tick.ts";
 
 const NOW = new Date("2026-05-17T00:00:00.000Z");

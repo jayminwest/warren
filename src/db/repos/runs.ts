@@ -17,6 +17,7 @@ import type { SqliteDrizzleDb } from "../client.ts";
 import type {
 	CloneKind,
 	PreviewState,
+	PullRequestLifecycle,
 	RunFailureReason,
 	RunMode,
 	RunRow,
@@ -25,6 +26,8 @@ import type {
 } from "../schema.ts";
 import type { DrizzleAdapter } from "./drizzle-adapter.ts";
 import { fixAttemptHistoryByPrUrl, listPrCandidatesByProject } from "./runs-ci-fixer.ts";
+import { deleteNeverStarted } from "./runs-delete.ts";
+import { setPrState, setPrUrl } from "./runs-pr.ts";
 import {
 	aggregate,
 	listAll,
@@ -33,6 +36,7 @@ import {
 	listByProject,
 	listByState,
 	listForAnalytics,
+	listWithUnresolvedPr,
 } from "./runs-queries.ts";
 
 const ALLOWED_TRANSITIONS: Record<RunState, readonly RunState[]> = {
@@ -190,6 +194,10 @@ export class RunsRepo {
 			targetBranch: input.targetBranch ?? null,
 			provider: input.provider ?? null,
 			model: input.model ?? null,
+			// Merge-watcher facts (warren-3bc6): unset until the post_reap
+			// subscriber settles the run's PR.
+			prState: null,
+			prMergedAt: null,
 			salvageRef: null,
 			salvagePath: null,
 			costUsd: null,
@@ -222,37 +230,11 @@ export class RunsRepo {
 	}
 
 	/**
-	 * Hard-delete a run row that never reached the runtime (warren-a0a2).
-	 *
-	 * The scheduler's bounded-retry GC calls this to drop the transient
-	 * `never_started` rows a persistently-unreachable runtime would otherwise
-	 * mint one-per-tick, so the runs list isn't flooded during an outage. It
-	 * is deliberately narrow:
-	 *
-	 *   - Guarded to `state=failed` + `failureReason=never_started`. Any other
-	 *     row (a real queued/running/succeeded run, or a `failed` run that
-	 *     actually dispatched) is left untouched and the method returns false.
-	 *   - `events.run_id` carries `ON DELETE CASCADE` (since migration 0033),
-	 *     so the write-through event rows fall away with the run row.
-	 *     `triggers.last_run_id` / `plan_run_children.run_id`
-	 *     (both `ON DELETE SET NULL`) and `run_inbox` (`CASCADE`) fall away on
-	 *     their own; a never_started cron retry has none of them anyway.
-	 *
-	 * Returns true when a row was deleted, false when the id was missing or
-	 * the guard rejected it.
+	 * Hard-delete a never-started run row (warren-a0a2); the guarded body
+	 * lives in runs-delete.ts.
 	 */
-	async deleteNeverStarted(id: string): Promise<boolean> {
-		return this.adapter.runInTransaction(async (tx) => {
-			const txDb = tx.drizzle as SqliteDrizzleDb;
-			const runs = tx.schema.runs;
-			const existing = await tx.pickOne<RunRow>(txDb.select().from(runs).where(eq(runs.id, id)));
-			if (!existing) return false;
-			if (existing.state !== "failed" || existing.failureReason !== "never_started") {
-				return false;
-			}
-			await tx.runWrite(txDb.delete(runs).where(eq(runs.id, id)));
-			return true;
-		});
+	deleteNeverStarted(id: string): Promise<boolean> {
+		return deleteNeverStarted(this.adapter, id);
 	}
 
 	/** Read/query methods (warren-ac7f); bodies live in runs-queries.ts. */
@@ -431,18 +413,26 @@ export class RunsRepo {
 		return { ...current, ...patch };
 	}
 
+	/** PR-fact writes (warren-f6af / warren-3bc6); bodies live in runs-pr.ts. */
+	setPrUrl(id: string, prUrl: string | null): Promise<RunRow> {
+		return setPrUrl(this.adapter, id, prUrl);
+	}
+
+	setPrState(
+		id: string,
+		prState: PullRequestLifecycle,
+		prMergedAt: string | null,
+	): Promise<RunRow> {
+		return setPrState(this.adapter, id, prState, prMergedAt);
+	}
+
 	/**
-	 * Persist the PR URL reap's `pr_open` sub-step opened (warren-f6af).
-	 * Last write wins; passing `null` clears the field. Separate from
-	 * `finalize` because reap fires this *before* the terminal transition
-	 * (so the URL lands on the `reap.completed` event payload too).
+	 * Runs whose PR the merge watcher still has to settle (warren-3bc6):
+	 * `pr_url` set and `pr_state` NULL or `open`. Boot re-adoption
+	 * enumerates these so a restart never orphans an in-flight poll.
 	 */
-	async setPrUrl(id: string, prUrl: string | null): Promise<RunRow> {
-		const current = await this.require(id);
-		await this.adapter.runWrite(
-			this.db.update(this.runs).set({ prUrl }).where(eq(this.runs.id, id)),
-		);
-		return { ...current, prUrl };
+	listWithUnresolvedPr(): Promise<RunRow[]> {
+		return listWithUnresolvedPr(this.adapter);
 	}
 
 	/**

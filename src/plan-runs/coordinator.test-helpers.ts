@@ -2,13 +2,13 @@ import { openDatabase, type WarrenDb } from "../db/client.ts";
 import { createRepos, type Repos } from "../db/repos/index.ts";
 import type { PlanRunChildState, PlanRunRow } from "../db/schema.ts";
 import { agents } from "../db/schema.ts";
+import type { PrMergeChecker } from "../runs/pr-merge.ts";
 import { SeedNotFoundError } from "../seeds-cli/index.ts";
 import type {
 	CoordinatorEmitFn,
 	CoordinatorShowSeedFn,
 	CoordinatorSpawnFn,
 } from "./coordinator.ts";
-import type { PrMergeChecker } from "./pr-merge.ts";
 
 export const NOW = new Date("2026-05-17T00:00:00.000Z");
 

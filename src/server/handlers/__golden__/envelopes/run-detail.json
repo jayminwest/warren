@@ -40,7 +40,9 @@
 			"parentRunId": null,
 			"cloneKind": null,
 			"provider": null,
-			"model": null
+			"model": null,
+			"prState": null,
+			"prMergedAt": null
 		}
 	}
 }

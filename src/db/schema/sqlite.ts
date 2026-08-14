@@ -44,6 +44,7 @@ import {
 	PLAN_RUN_CHILD_STATES,
 	PLAN_RUN_STATES,
 	PREVIEW_STATES,
+	PULL_REQUEST_LIFECYCLES,
 	RUN_FAILURE_REASONS,
 	RUN_MODES,
 	RUN_STATES,
@@ -222,6 +223,15 @@ export const runs = sqliteTable(
 		// them into a real bucket.
 		provider: text("provider"),
 		model: text("model"),
+		// Merge-watcher PR facts (warren-3bc6 / pl-103e step 6). The post_reap
+		// lifecycle subscriber polls the run's PR through the boot-resolved
+		// forge until terminal and writes the provider-neutral lifecycle here;
+		// pr_merged_at is the forge-reported merge instant (ISO8601 TEXT, the
+		// started_at/ended_at convention). Both nullable: rows whose run never
+		// opened a PR (pr_url null) or that predate the watcher stay NULL —
+		// read NULL as "unknown", never as "not merged".
+		prState: text("pr_state", { enum: PULL_REQUEST_LIFECYCLES }),
+		prMergedAt: text("pr_merged_at"),
 	},
 	(t) => [
 		index(INDEX_NAMES.runsState).on(t.state),
