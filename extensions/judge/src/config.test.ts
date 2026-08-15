@@ -21,6 +21,9 @@ describe("resolveConfig", () => {
 		expect(config.pollIntervalMs).toBe(30_000);
 		expect(config.maxCostUsdPerJudgment).toBe(0.25);
 		expect(config.dailyBudgetUsd).toBe(5);
+		expect(config.maxRetries).toBe(2);
+		expect(config.maxPages).toBe(40);
+		expect(config.eventsPageSize).toBe(200);
 	});
 
 	test("honors an explicit judge provider and model pair", () => {

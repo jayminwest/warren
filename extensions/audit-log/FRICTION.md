@@ -223,3 +223,49 @@ a `PLUGIN_*`-style config injection stage, scoped per-extension
 credentials, a discoverable health probe, and a distribution channel,
 so operators configure, trust, probe, and obtain an extension once, in
 one place.
+
+## 5. Judge loop — the pi SDK as the in-ecosystem driver
+
+Logged by the judge extension (`extensions/judge/`, plan pl-17ca step 5,
+warren-1dcd), which drives a bounded read-only agent loop over
+`@earendil-works/pi-coding-agent` — the sanctioned in-ecosystem driver
+(agent-analytics §12.2). None of this is warren-surface friction; it is
+the cost of using the pi session API as a non-interactive judge.
+
+- `[worked around]` **No provider tool_choice forcing at the session
+  API.** `createAgentSession` exposes no way to force the model to call
+  one final tool, so verdict emission is prompt-enforced: the
+  `report_verdict` tool's `promptGuidelines` make it the mandatory final
+  action, and a judgment that ends in plain text consumes the bounded
+  retry budget (`judge-loop.ts`). The tool result's `terminate: true`
+  hint exists and ends the loop cleanly — but a model that never calls
+  the tool is only caught at the policy layer, never at the protocol
+  layer.
+- `[worked around]` **TypeBox package split.** The extension builds
+  tool parameter schemas with `@sinclair/typebox`; pi pins the `typebox`
+  package. The runtime objects are structurally identical JSON-schema
+  objects, but the nominal TS types differ, so the adapter
+  (`pi-session.ts`) casts `parameters` through the pi `ToolDefinition`
+  type. A third party building tools outside pi's own dependency tree
+  hits this on every tool.
+- `[worked around]` **`promptGuidelines` shape.** pi's
+  `ToolDefinition.promptGuidelines` is `string[]` (one bullet per
+  entry); the extension authored its guideline block as one multi-line
+  string. The adapter splits on newlines. Minor, but it is a shape a
+  tool author has to discover from pi's source, not from any documented
+  tool-authoring contract.
+- `[worked around]` **No hermetic session preset.** The default
+  resource loader pulls the cwd's AGENTS.md, skills, and `.pi`
+  extensions into the session context — exactly the contamination a
+  judge must not see (and the Goodhart door §12.5 forbids). The
+  extension hand-implements a `ResourceLoader` returning empty
+  everything plus the rubric system prompt (`JudgeResourceLoader` in
+  `pi-session.ts`). A documented "empty session" preset (no project
+  resources, no skills, in-memory session manager) would be the
+  non-interactive-judge counterpart of the SDK's interactive defaults.
+
+**What the future mechanism must provide:** a documented, non-interactive
+session preset in the pi SDK — hermetic resources, in-memory session
+state, and a first-class "final tool" or forced-tool-choice option — so a
+read-only judge (or any bounded evaluator) does not rebuild policy that
+belongs in the driver.

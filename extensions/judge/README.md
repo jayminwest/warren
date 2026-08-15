@@ -52,9 +52,25 @@ Step 4 (warren-560c) adds rubric v1 authoring:
   rubricVersion hash for the canonical input (`rubric.version.json`).
   Regenerate with `JUDGE_UPDATE_GOLDENS=1 bun test src/rubric.golden.test.ts`.
 
-The judge loop itself (the pi SDK driver, the warren read client, the verdict
-store, the cost-capped scheduler) lands in the later steps of
-[pl-17ca](../../docs/design/agent-analytics.md) — run `sd plan show pl-17ca`.
+- [`src/judge-tools.ts`](src/judge-tools.ts) — the judge's entire tool
+  surface (§12.2): `get_run_facts`, `page_events` (cursoring NormalizedEvent
+  rows with a hard per-judgment page cap), and `report_verdict` (whose
+  execute terminates the loop). SDK-agnostic, so the policy is testable
+  without a provider.
+- [`src/judge-loop.ts`](src/judge-loop.ts) — the bounded judgment: one fresh
+  session per attempt, prompt-enforced verdict emission (a plain-text end
+  consumes the retry budget), bounded retries then an unjudged marker
+  (`malformed_verdict` / `judge_error` / `budget_exceeded`), and
+  per-judgment token/cost accounting into provenance.
+- [`src/pi-session.ts`](src/pi-session.ts) — the production adapter over
+  `@earendil-works/pi-coding-agent`: `createAgentSession` with
+  `noTools: "builtin"` (coding toolset stripped), the model resolved via
+  `ModelRuntime` from `JUDGE_PROVIDER`/`JUDGE_MODEL`, and a hermetic
+  resource loader so no project files or `.pi` extensions leak into the
+  judge's context.
+
+The collector daemon (polling, cursor, budget gates) lands in the next step
+of [pl-17ca](../../docs/design/agent-analytics.md) — run `sd plan show pl-17ca`.
 
 ## Boundary contract
 
@@ -82,6 +98,9 @@ extension's own store, never a core table.
 | `JUDGE_POLL_INTERVAL_MS` | no | Delay between terminal-run discovery polls (default `30000`) |
 | `JUDGE_MAX_COST_USD_PER_JUDGMENT` | no | Per-judgment USD cost cap (default `0.25`) — the §12.5 analog of `maxCostUsd` |
 | `JUDGE_DAILY_BUDGET_USD` | no | Fleet-level daily judge budget (default `5`); past it, runs are marked `unjudged` rather than degraded silently |
+| `JUDGE_MAX_RETRIES` | no | Malformed/missing-verdict retries per judgment (default `2`) |
+| `JUDGE_MAX_PAGES` | no | Hard cap on events pages per judgment (default `40`); past it the tail degrades to a lower-confidence verdict, never unbounded spend |
+| `JUDGE_EVENTS_PAGE_SIZE` | no | Default events page size when the model omits `limit` (default `200`) |
 
 The judge model pair is **provider-agnostic** — set `JUDGE_PROVIDER` and
 `JUDGE_MODEL` together; nothing defaults to one vendor by hardcoding.

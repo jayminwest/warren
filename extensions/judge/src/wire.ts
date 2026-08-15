@@ -88,6 +88,17 @@ export interface VerdictProvenance {
 	readonly judgedAt: string;
 	/** USD cost of producing this judgment. */
 	readonly costUsd: number;
+	/**
+	 * Events pages the judge read (across retries). Absent on judgments
+	 * produced by rubric versions predating the page-cap mechanics.
+	 */
+	readonly pagesRead?: number;
+	/**
+	 * True when the judgment hit the hard events-page cap: the transcript
+	 * tail was truncated and the verdict was judged from partial evidence.
+	 * Distinguishes a capped judgment from a full one (§12.2).
+	 */
+	readonly pageCapHit?: boolean;
 }
 
 /** A rubric-v1 verdict over one run's transcript. */
@@ -187,12 +198,24 @@ function parseProvenance(value: unknown): VerdictProvenance {
 	if (typeof costUsd !== "number" || !Number.isFinite(costUsd) || costUsd < 0) {
 		fail("provenance.costUsd: must be a finite non-negative number");
 	}
+	const { pagesRead, pageCapHit } = value;
+	if (
+		pagesRead !== undefined &&
+		(typeof pagesRead !== "number" || !Number.isInteger(pagesRead) || pagesRead < 0)
+	) {
+		fail("provenance.pagesRead: must be a non-negative integer when present");
+	}
+	if (pageCapHit !== undefined && typeof pageCapHit !== "boolean") {
+		fail("provenance.pageCapHit: must be a boolean when present");
+	}
 	return {
 		provider: provider as string,
 		model: model as string,
 		rubricVersion: rubricVersion as string,
 		judgedAt: judgedAt as string,
 		costUsd: costUsd as number,
+		...(pagesRead !== undefined ? { pagesRead: pagesRead as number } : {}),
+		...(pageCapHit !== undefined ? { pageCapHit: pageCapHit as boolean } : {}),
 	};
 }
 
