@@ -121,6 +121,16 @@ and keep them in sync by hand.
   None found so far: the observed `?since` exclusivity, `?limit`
   implying `follow=false`, and the seven-key envelope all match the
   documented behavior.
+- `[worked around]` **Per-route envelope knowledge (hit again by the
+  judge, warren-4e8c).** `GET /runs/:id` and `POST /runs` wrap the
+  payload as `{run: {...}}` (warren-7d84), while `GET /runs` returns
+  the array at the top level and `GET /runs/:id/events` is bare NDJSON.
+  Nothing on the wire says which shape a route uses — the judge's read
+  client hardcodes the unwrap per route, and a client that parsed the
+  bare body would fail only at runtime. What the future mechanism must
+  provide: one envelope convention across the API (or an explicit
+  envelope marker in the published schema artifact §2 asks for), so a
+  consumer never needs per-route body-shape trivia.
 
 **What the future mechanism must provide:** a versioned, published wire
 contract — a protocol version string (the `warren-ext/v1` model) plus a
