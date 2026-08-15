@@ -36,6 +36,7 @@ import {
 	TopSeedsByContextChart,
 } from "./run-analytics/Charts.tsx";
 import { CommandCategoryChart, StuckCommandTable } from "./run-analytics/CommandMining.tsx";
+import { DirectoryStruggleTable } from "./run-analytics/directory-struggle.tsx";
 import { InsightCallouts } from "./run-analytics/Insights.tsx";
 import { KpiCards } from "./run-analytics/KpiCards.tsx";
 import { GroupTable } from "./run-analytics/Tables.tsx";
@@ -245,10 +246,20 @@ export function RunAnalyticsPage() {
 			</div>
 
 			{isOperator ? (
-				<div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-					<CommandCategoryChart byCategory={behaviorData?.mining.byCategory ?? []} />
-					<StuckCommandTable byStuckScore={behaviorData?.mining.byStuckScore ?? []} />
-				</div>
+				<>
+					<div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+						<CommandCategoryChart byCategory={behaviorData?.mining.byCategory ?? []} />
+						<StuckCommandTable byStuckScore={behaviorData?.mining.byStuckScore ?? []} />
+					</div>
+					{/* warren-25b7: per-directory struggle view. Operator-only like
+					    the rest of the behavior surface — directory names are repo
+					    layout and /analytics/behavior is readOperator. Render only
+					    once the query resolves so the empty-window placeholder
+					    does not flash during the fetch. */}
+					{behaviorData !== undefined ? (
+						<DirectoryStruggleTable directories={behaviorData.directories} />
+					) : null}
+				</>
 			) : null}
 		</div>
 	);
