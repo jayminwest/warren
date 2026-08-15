@@ -10,8 +10,14 @@
  * the UI just maps it. Renders nothing when there are no insights so the
  * section collapses cleanly on a quiet window.
  */
-import type { Insight, InsightSeverity } from "@/api/client.ts";
+import type { Insight, InsightConfidence, InsightSeverity } from "@/api/client.ts";
 import { Card, CardContent } from "@/components/ui/card.tsx";
+
+const CONFIDENCE_LABEL: Record<InsightConfidence, string> = {
+	high: "high confidence",
+	medium: "medium confidence",
+	low: "low confidence",
+};
 
 const SEVERITY_STYLE: Record<InsightSeverity, { border: string; badge: string; label: string }> = {
 	critical: {
@@ -47,6 +53,25 @@ function InsightCard({ insight }: { insight: Insight }) {
 				<p className="text-xs text-(--color-muted-foreground)">{insight.detail}</p>
 				{insight.subject !== null ? (
 					<p className="font-mono text-[11px] text-(--color-muted-foreground)">{insight.subject}</p>
+				) : null}
+				{/* warren-25b7: outcome-joined callouts ship every rate/ratio
+				    with its denominator and a confidence qualifier (warren-be04)
+				    — render "of N" + the qualifier badge so the number reads as
+				    the sample it actually is, not a headline. Count-shaped
+				    callouts omit both. */}
+				{insight.denominator !== undefined || insight.confidence !== undefined ? (
+					<div className="flex items-center gap-2">
+						{insight.denominator !== undefined ? (
+							<span className="text-[11px] text-(--color-muted-foreground)">
+								of {insight.denominator}
+							</span>
+						) : null}
+						{insight.confidence !== undefined ? (
+							<span className="rounded-full bg-(--color-muted) px-2 py-0.5 text-[10px] font-medium text-(--color-muted-foreground)">
+								{CONFIDENCE_LABEL[insight.confidence]}
+							</span>
+						) : null}
+					</div>
 				) : null}
 			</CardContent>
 		</Card>
