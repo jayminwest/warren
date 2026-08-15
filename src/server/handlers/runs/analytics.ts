@@ -16,21 +16,18 @@ import type { RuntimeId } from "../../../core/wire.ts";
 import type { RunRow } from "../../../db/schema.ts";
 import { DEFAULT_RUNTIME_ID } from "../../../registry/schema.ts";
 import {
-	buildCommandMining,
-	buildInsights,
 	buildRunMetrics,
 	buildRunOutcomes,
-	buildSteeringSignals,
 	type CostPerMergedPr,
 	type CostPerMergedPrBucket,
 	type DimensionTokenSeries,
+	type DirectoryToolCallRow,
 	hydrateRunsUsage,
 	type RunGroupBucket,
 	type RunMetrics,
 	type RunMetricsRow,
 	type RunOutcomes,
 	type RunTotals,
-	runtimeFromRenderedAgent,
 	type TokenBreakdown,
 	type TokenDayBucket,
 	type ToolCallMiningRow,
@@ -80,7 +77,7 @@ interface AnalyticsWindow {
  * lexicographic ISO8601 compare in `listForAnalytics` would silently produce
  * surprising results otherwise.
  */
-function parseAnalyticsWindow(ctx: { url: URL }): {
+export function parseAnalyticsWindow(ctx: { url: URL }): {
 	echo: { projectId: string | null; from: string | null; to: string | null };
 	filter: AnalyticsWindow;
 } {
@@ -106,7 +103,7 @@ function parseAnalyticsWindow(ctx: { url: URL }): {
  * genuinely declares no provider/model stay null, group under NONE_KEY
  * ("unknown"), and are excluded from the real buckets' denominators.
  */
-function toMetricsRows(rows: readonly RunRow[]): RunMetricsRow[] {
+export function toMetricsRows(rows: readonly RunRow[]): RunMetricsRow[] {
 	return rows.map((r) => {
 		const fallback =
 			r.provider === null || r.model === null ? extractProviderModel(r.renderedAgentJson) : {};
@@ -141,7 +138,7 @@ function toMetricsRows(rows: readonly RunRow[]): RunMetricsRow[] {
  * insights layer). Returns the hydrated rows too so the behavior handler can
  * derive the run-id set for its event scan without a second query.
  */
-async function loadRunMetrics(
+export async function loadRunMetrics(
 	deps: ServerDeps,
 	filter: AnalyticsWindow,
 ): Promise<{ rows: RunRow[]; metrics: RunMetrics }> {
@@ -175,11 +172,15 @@ async function loadRunOutcomes(
  * event scan, a capped read REPORTS truncation via the returned flag —
  * the response surfaces it as `truncated: true`, never silent.
  */
-async function loadToolCallRows(
+export async function loadToolCallRows(
 	deps: ServerDeps,
 	runIds: readonly string[],
 	runtimeByRunId: ReadonlyMap<string, RuntimeId>,
-): Promise<{ rows: ToolCallMiningRow[]; truncated: boolean }> {
+): Promise<{
+	rows: ToolCallMiningRow[];
+	directoryRows: DirectoryToolCallRow[];
+	truncated: boolean;
+}> {
 	const { rows, truncated } = await deps.repos.toolCalls.listForRuns(runIds);
 	return {
 		rows: rows.map((r) => ({
@@ -191,6 +192,19 @@ async function loadToolCallRows(
 			isError: r.isError,
 			resultBytes: r.resultBytes,
 			runtime: runtimeByRunId.get(r.runId) ?? DEFAULT_RUNTIME_ID,
+		})),
+		// warren-8f1b: the same rollup rows, reduced to the directory-join
+		// shape. `filePaths` is the JSON column the fileShape extractor
+		// wrote at rollup time; narrow defensively since drizzle types the
+		// json mode as unknown.
+		directoryRows: rows.map((r) => ({
+			runId: r.runId,
+			seq: r.seq,
+			toolName: r.toolName,
+			isError: r.isError,
+			filePaths: Array.isArray(r.filePaths)
+				? r.filePaths.filter((p): p is string => typeof p === "string")
+				: [],
 		})),
 		truncated,
 	};
@@ -437,53 +451,5 @@ export function listRunAnalyticsHandler(deps: ServerDeps): RouteHandler {
 		const outcomes = await loadRunOutcomes(deps, rows, metrics);
 		const body: RunAnalyticsBody = { filter: echo, ...metrics, tokens, outcomes };
 		return jsonResponse(200, projectRunAnalytics(body, ctx.actor));
-	};
-}
-
-/**
- * `GET /analytics/behavior?from=&to=&projectId=` (warren-5d50 / pl-ad0f step 9).
- *
- * The heavier companion to `GET /analytics/runs`. Resolves the same window,
- * loads the run-level rollup, then reads the structured `tool_calls` rollup
- * for those runs (`ToolCallsRepo.listForRuns`, warren-7746) and mines it for
- * the generalized command-frequency / failure / stuck-loop rankings
- * (`buildCommandMining`). A capped rollup read is reported as top-level
- * `truncated: true` — never the silent truncation the retired event scan had. Finally distills the metrics + mining into the
- * ranked, severity-coded callout list (`buildInsights`). The run-level rollup
- * itself stays on `/analytics/runs` — this endpoint returns just the behavior
- * layers (`mining` + `insights`) so the fast view can render independently.
- *
- * Steering event kinds scanned when building {@link SteeringSignals}
- * for `buildInsights`. The `steer.sent` kind is lightweight (at most a
- * handful per run) so it is fetched in a separate, uncapped query rather
- * than being mixed into the tool-event cap that bounds command mining.
- */
-export function listBehaviorAnalyticsHandler(deps: ServerDeps): RouteHandler {
-	return async (ctx) => {
-		const { echo, filter } = parseAnalyticsWindow(ctx);
-		const { rows, metrics } = await loadRunMetrics(deps, filter);
-		const runIds = rows.map((r) => r.id);
-		const runtimeByRunId = new Map(
-			rows.map((r) => [r.id, runtimeFromRenderedAgent(r.renderedAgentJson)]),
-		);
-		const [toolCalls, steeringRows] = await Promise.all([
-			loadToolCallRows(deps, runIds, runtimeByRunId),
-			deps.repos.events.listSteeringEventsForRuns(runIds),
-		]);
-		const mining = buildCommandMining(toolCalls.rows);
-		const steering = buildSteeringSignals(steeringRows, rows.length);
-		// warren-be04: the same trace feeds the outcome-joined rollup, which
-		// both ships structured and drives the two outcome insight kinds.
-		const outcomes = buildRunOutcomes(toMetricsRows(rows), steeringRows, metrics);
-		const insights = buildInsights({ metrics, mining, steering, outcomes });
-		// warren-7746: `truncated` reports the rollup read hitting its row
-		// cap — the retired event scan truncated silently at 20k rows.
-		return jsonResponse(200, {
-			filter: echo,
-			mining,
-			insights,
-			outcomes,
-			truncated: toolCalls.truncated,
-		});
 	};
 }

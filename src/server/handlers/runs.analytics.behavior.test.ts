@@ -187,6 +187,81 @@ describe("GET /analytics/behavior", () => {
 		expect(body.outcomes.steering.mergedPrRateDelta).toBeCloseTo(0.75, 5);
 	});
 
+	test("ships the context-waste proxy section + insight with denominators (warren-6d41)", async () => {
+		// Three measured runs (rollup rows AND known context tokens); one
+		// pre-rollup run whose 10k tokens sit in NO denominator.
+		for (let i = 0; i < 3; i += 1) {
+			const runId = await seedRunReturningId(repos, {
+				projectId,
+				agentName: "claude-code",
+				provider: "anthropic",
+				model: "sonnet",
+				state: "succeeded",
+				tokensInput: 800,
+				tokensCacheRead: 200,
+				startedAt: `2026-05-2${i}T10:00:00.000Z`,
+				endedAt: `2026-05-2${i}T10:05:00.000Z`,
+			});
+			await repos.toolCalls.recordUse({
+				runId,
+				seq: 1,
+				ts: `2026-05-2${i}T10:01:00.000Z`,
+				toolName: "Bash",
+				command: "bun test",
+				filePaths: [],
+				toolUseId: `u${i}`,
+			});
+			await repos.toolCalls.recordResult({
+				runId,
+				toolUseId: `u${i}`,
+				isError: false,
+				resultBytes: 600,
+			});
+		}
+		await seedRunReturningId(repos, {
+			projectId,
+			agentName: "claude-code",
+			provider: "anthropic",
+			model: "sonnet",
+			state: "succeeded",
+			tokensInput: 10_000,
+			startedAt: "2026-05-25T10:00:00.000Z",
+			endedAt: "2026-05-25T10:05:00.000Z",
+		});
+		start();
+		const res = await fetch(`${tcpUrl(handle as ServeHandle)}/analytics/behavior?${WINDOW}`);
+		expect(res.status).toBe(200);
+		const body = (await res.json()) as {
+			contextWaste: {
+				runsInWindow: number;
+				runsWithRollup: number;
+				runsMeasured: number;
+				contextTokensTotal: number;
+				resultBytesTotal: number;
+				share: number | null;
+				confidence: string;
+				byTool: { key: string; resultBytesTotal: number; share: number | null }[];
+				byCommand: { key: string }[];
+			};
+			insights: { kind: string; subject: string | null; denominator?: number }[];
+		};
+		expect(body.contextWaste).toMatchObject({
+			runsInWindow: 4,
+			runsWithRollup: 3,
+			runsMeasured: 3,
+			contextTokensTotal: 3000,
+			resultBytesTotal: 1800,
+			confidence: "low",
+		});
+		expect(body.contextWaste.share).toBeCloseTo(0.6, 5);
+		expect(body.contextWaste.byTool[0]).toMatchObject({ key: "Bash", resultBytesTotal: 1800 });
+		expect(body.contextWaste.byCommand.map((c) => c.key)).toEqual(["bun test"]);
+		const hit = body.insights.find((i) => i.kind === "context-waste-proxy");
+		expect(hit).toBeDefined();
+		expect(hit?.subject).toBe("Bash");
+		expect(hit?.denominator).toBe(3);
+	});
+
 	test("rejects malformed ?from (warren-5d50)", async () => {
 		start();
 		const bad = await fetch(`${tcpUrl(handle as ServeHandle)}/analytics/behavior?from=nope`);

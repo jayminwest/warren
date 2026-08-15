@@ -20,6 +20,12 @@ import {
 	REDACTED_RUN_GROUP_FIELDS,
 	REDACTED_RUN_TOTALS_FIELDS,
 } from "./runs/analytics.ts";
+import {
+	PUBLIC_CONTEXT_WASTE_FIELDS,
+	PUBLIC_CONTEXT_WASTE_SHARE_FIELDS,
+	REDACTED_CONTEXT_WASTE_FIELDS,
+	REDACTED_CONTEXT_WASTE_SHARE_FIELDS,
+} from "./runs/analytics-waste.ts";
 import { depsFor, silentLogger, stub, tcpUrl } from "./runs.test-helpers.ts";
 
 /**
@@ -129,6 +135,47 @@ describe("project + agent field classification (warren-4f6c)", () => {
 		expect(decorated.description).toBeNull();
 		expect(decorated.provider).toBeNull();
 		expect(decorated.model).toBeNull();
+	});
+});
+
+describe("context-waste field classification (warren-6d41)", () => {
+	test("every ContextWasteProxy field is classified exactly once, all operator-only", () => {
+		// `/analytics/behavior` — the section's only surface — is readOperator,
+		// so the public lists are empty and every field sits in the redacted
+		// (operator-only) list: per-tool/per-command keys are internal tooling
+		// detail, and the byte/token totals ride along.
+		expect(PUBLIC_CONTEXT_WASTE_FIELDS).toHaveLength(0);
+		const fields: string[] = [...REDACTED_CONTEXT_WASTE_FIELDS];
+		expect(fields.sort()).toEqual(
+			[
+				"byCommand",
+				"byTool",
+				"confidence",
+				"contextTokensTotal",
+				"resultBytesTotal",
+				"runsInWindow",
+				"runsMeasured",
+				"runsWithRollup",
+				"share",
+			].sort(),
+		);
+	});
+
+	test("every ContextWasteShare field is classified exactly once, all operator-only", () => {
+		expect(PUBLIC_CONTEXT_WASTE_SHARE_FIELDS).toHaveLength(0);
+		const shareFields: string[] = [...REDACTED_CONTEXT_WASTE_SHARE_FIELDS];
+		expect(shareFields.sort()).toEqual(
+			[
+				"contextTokensTotal",
+				"invocations",
+				"key",
+				"resultBytesKnown",
+				"resultBytesTotal",
+				"runs",
+				"runsMeasured",
+				"share",
+			].sort(),
+		);
 	});
 });
 

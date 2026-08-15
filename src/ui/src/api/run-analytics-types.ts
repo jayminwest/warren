@@ -5,6 +5,7 @@
 /* existing import sites are unchanged.                                    */
 /* ----------------------------------------------------------------------- */
 
+import type { InsightConfidence } from "../../../core/wire.ts";
 import type { RunAnalyticsTokensSection, TokenBreakdown } from "./types.ts";
 
 /** Sentinel key for a null group (no startedAt, model, provider, etc.). */
@@ -185,10 +186,14 @@ export type InsightKind =
 	| "model-cost-outlier"
 	| "steering-anomaly"
 	| "steering-outcome-delta"
-	| "cost-per-merged-pr";
+	| "cost-per-merged-pr"
+	| "context-waste-proxy"
+	| "hardest-directory";
 
-/** Confidence qualifier for outcome-joined insights (warren-be04). */
-export type InsightConfidence = "low" | "medium" | "high";
+// The confidence qualifier vocabulary is canonical in the wire kernel
+// (src/core/wire-insight.ts, warren-be04) — re-exported, never
+// redeclared. tsconfig.app.json includes ../core/wire-insight.ts.
+export type { InsightConfidence };
 
 export interface Insight {
 	kind: InsightKind;
@@ -251,11 +256,78 @@ export interface RunOutcomes {
 	costPerMergedPr: CostPerMergedPr;
 }
 
+/* Context-waste proxy (warren-6d41 / pl-103e step 11). Mirrors             */
+/* src/runs/analytics/context-waste.ts. The share is a byte-size proxy      */
+/* against run-level context-token totals, NOT per-turn usage deltas.       */
+
+export interface ContextWasteShare {
+	key: string;
+	invocations: number;
+	resultBytesKnown: number;
+	resultBytesTotal: number;
+	runs: number;
+	/** invoking runs with known context tokens — the share's cohort. */
+	runsMeasured: number;
+	contextTokensTotal: number;
+	share: number | null;
+}
+
+export interface ContextWasteProxy {
+	runsInWindow: number;
+	/** runs with at least one rollup row — the rollup-era cohort. */
+	runsWithRollup: number;
+	/** rollup rows AND known context tokens — the share denominator. */
+	runsMeasured: number;
+	contextTokensTotal: number;
+	resultBytesTotal: number;
+	share: number | null;
+	byTool: ContextWasteShare[];
+	byCommand: ContextWasteShare[];
+	confidence: InsightConfidence;
+}
+
+/* Per-directory difficulty rollup (warren-8f1b / pl-103e step 10).      */
+/* Mirrors src/runs/analytics/directory-difficulty.ts. Operator-only:    */
+/* directory names are repo layout, and /analytics/behavior is           */
+/* readOperator, so this shape never crosses the public projection.      */
+
+export interface DirectoryStat {
+	directory: string;
+	/** Denominator: distinct runs with at least one file touch here. */
+	runsTouching: number;
+	runsFailed: number;
+	failureShare: number | null;
+	fileTouches: number;
+	errorTouches: number;
+	retries: number;
+	steeringMessages: number;
+	difficultyScore: number;
+	confidence: InsightConfidence;
+}
+
+export interface DirectoryDifficultyTotals {
+	runsInWindow: number;
+	/** Runs with at least one extracted path — the KNOWN subset. */
+	runsWithFilePaths: number;
+	fileTouches: number;
+	directoriesRanked: number;
+	directoriesBelowMinN: number;
+}
+
+export interface DirectoryDifficulty {
+	directories: DirectoryStat[];
+	totals: DirectoryDifficultyTotals;
+}
+
 export interface RunBehaviorResponse {
 	filter: { projectId: string | null; from: string | null; to: string | null };
 	mining: CommandMining;
 	insights: Insight[];
 	outcomes: RunOutcomes;
+	/** warren-6d41: context-waste proxy — byte shares + denominators. */
+	contextWaste: ContextWasteProxy;
+	/** warren-8f1b: per-directory difficulty — ranked buckets + denominators. */
+	directories: DirectoryDifficulty;
 	/** warren-7746: true when the rollup read hit its row cap — rankings
 	 * then cover a bounded prefix. Reported, never silent. */
 	truncated: boolean;
