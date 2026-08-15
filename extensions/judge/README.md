@@ -33,6 +33,25 @@ JSON shape. Regenerate after an intentional shape change with
 `JUDGE_UPDATE_GOLDENS=1 bun test src/wire.golden.test.ts` and diff the
 fixtures.
 
+Step 4 (warren-560c) adds rubric v1 authoring:
+
+- [`src/rubric.ts`](src/rubric.ts) — the judge system prompt rendering the
+  full §12.4 taxonomy with per-class definitions and evidence-pointability
+  instructions, plus `computeRubricVersion()`: a `sha256:` hash over a
+  CANONICAL serialization of prompt + taxonomy (stable key order,
+  normalized whitespace), so an intentional edit forks the version and
+  whitespace churn does not.
+- [`src/report-verdict-tool.ts`](src/report-verdict-tool.ts) — the
+  `report_verdict` tool: TypeBox parameters derived from `wire.ts`
+  (schema-validated at the tool layer, multi-label, banded confidence,
+  evidence ranges, 200-char note cap) and the `promptGuidelines` snippet
+  making `report_verdict` the MANDATORY final action — the pi session API
+  surfaces no provider tool_choice forcing, so the prompt carries the
+  enforcement.
+- Goldens pin the rendered prompt (`rubric.system-prompt.txt`) and the
+  rubricVersion hash for the canonical input (`rubric.version.json`).
+  Regenerate with `JUDGE_UPDATE_GOLDENS=1 bun test src/rubric.golden.test.ts`.
+
 The judge loop itself (the pi SDK driver, the warren read client, the verdict
 store, the cost-capped scheduler) lands in the later steps of
 [pl-17ca](../../docs/design/agent-analytics.md) — run `sd plan show pl-17ca`.
