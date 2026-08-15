@@ -12,7 +12,7 @@ CREATE TABLE "tool_calls" (
 	"origin" text
 );
 --> statement-breakpoint
-ALTER TABLE "tool_calls" ADD CONSTRAINT "tool_calls_run_id_runs_id_fk" FOREIGN KEY ("run_id") REFERENCES "public"."runs"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "tool_calls" ADD CONSTRAINT "tool_calls_run_id_runs_id_fk" FOREIGN KEY ("run_id") REFERENCES "runs"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 CREATE UNIQUE INDEX "tool_calls_run_seq_idx" ON "tool_calls" USING btree ("run_id","seq");--> statement-breakpoint
 CREATE INDEX "tool_calls_run_use_id_idx" ON "tool_calls" USING btree ("run_id","tool_use_id");--> statement-breakpoint
 ALTER TABLE "tool_calls" ENABLE ROW LEVEL SECURITY;
