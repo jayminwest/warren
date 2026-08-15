@@ -17,6 +17,7 @@ import type {
 	CreatePlanRunInput,
 	CreatePlanRunResponse,
 	CreateRunInput,
+	LifecycleStreamNotification,
 	ListRunsResponse,
 	PlanRunDetailResponse,
 	PlanRunRow,
@@ -396,6 +397,21 @@ export async function* streamRunEvents(
 }
 
 /**
+ * Async iterator over the global lifecycle notification stream
+ * (`GET /events/stream`, warren-f566). One connection per tab feeds the
+ * list pages' debounce-invalidation in place of their old 5s polls.
+ * The server holds no replay — the reader invalidates its queries on
+ * each line, so nothing is lost across a reconnect. Operator-gated: a
+ * 403/401 surfaces as a permanent stop so the caller stays on its
+ * fallback poll.
+ */
+export async function* streamLifecycleEvents(
+	opts: StreamRunEventsOptions = {},
+): AsyncGenerator<LifecycleStreamNotification, void, void> {
+	yield* streamNdjsonEvents("/events/stream", { ...opts, follow: opts.follow ?? true });
+}
+
+/**
  * Shared NDJSON consumer for run + plan-run event streams. The server
  * uses the same `eventToNdjson` serializer for both, so the wire shape
  * matches and the only thing that varies is the URL prefix + `runId`
@@ -405,10 +421,10 @@ export async function* streamRunEvents(
  * UI's error factory injected, so this wrapper only owns URL/header
  * assembly and the 401 token-clearing side effect.
  */
-async function* streamNdjsonEvents(
+async function* streamNdjsonEvents<T = RunEvent>(
 	basePath: string,
 	opts: StreamRunEventsOptions,
-): AsyncGenerator<RunEvent, void, void> {
+): AsyncGenerator<T, void, void> {
 	const params = new URLSearchParams();
 	if (opts.follow) params.set("follow", "1");
 	if (opts.sinceSeq !== undefined) params.set("since", String(opts.sinceSeq));
@@ -422,7 +438,7 @@ async function* streamNdjsonEvents(
 	const init: RequestInit = { headers };
 	if (opts.signal) init.signal = opts.signal;
 
-	yield* readNdjsonStream<RunEvent>(() => fetch(url, init), {
+	yield* readNdjsonStream<T>(() => fetch(url, init), {
 		errorFactory: streamErrorFromResponse,
 	});
 }

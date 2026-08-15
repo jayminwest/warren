@@ -359,6 +359,20 @@ export interface RunEvent {
 }
 
 /**
+ * One slim line on the global lifecycle stream (`GET /events/stream`,
+ * warren-f566). A pure invalidation hint for the list pages — the
+ * server carries no replay, so the consumer re-reads its list queries
+ * on receipt. `state` is the run's best-known state after the
+ * transition, or null when the hook carries no state change.
+ */
+export interface LifecycleStreamNotification {
+	runId: string;
+	hook: string;
+	state: RunState | null;
+	ts: string;
+}
+
+/**
  * Payload shape of the `reap.completed` system event (warren-f3bb,
  * warren-3c40). Fields are typed loosely because the wire is JSON; use
  * narrow guards before reading. `commitsAhead` is null when reap could

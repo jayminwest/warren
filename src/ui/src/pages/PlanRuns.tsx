@@ -82,7 +82,8 @@ export function PlanRunsPage() {
 				},
 				signal,
 			),
-		refetchInterval: 5000,
+		// warren-f566: stream-driven invalidation + slow fallback poll.
+		refetchInterval: 45_000,
 	});
 
 	const projects = useQuery({

@@ -46,10 +46,12 @@ describe("PlanRuns 'Ready to dispatch' tab (pl-3fc4 step 7)", () => {
 });
 
 describe("ReadyPlansView body (pl-3fc4 step 7)", () => {
-	test("fetches projectsApi.readyPlans with a 5s refetch, gated on a project", () => {
+	test("fetches projectsApi.readyPlans with a 45s fallback refetch, gated on a project", () => {
 		expect(READY_PLANS_SOURCE).toMatch(/queryKey: \["ready-plans", projectId\]/);
 		expect(READY_PLANS_SOURCE).toMatch(/projectsApi\.readyPlans\(projectId, signal\)/);
-		expect(READY_PLANS_SOURCE).toMatch(/refetchInterval: 5000/);
+		// warren-f566: the global lifecycle stream drives invalidation; the
+		// poll is only the slow fallback.
+		expect(READY_PLANS_SOURCE).toMatch(/refetchInterval: 45_000/);
 		expect(READY_PLANS_SOURCE).toMatch(/enabled: hasProject/);
 	});
 

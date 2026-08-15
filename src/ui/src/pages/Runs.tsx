@@ -93,7 +93,9 @@ export function RunsPage() {
 	const runs = useQuery({
 		queryKey: ["runs", filter, sort, dir, pageSize, offset],
 		queryFn: ({ signal }) => runsApi.list(filterApi, signal),
-		refetchInterval: 5000,
+		// warren-f566: the global lifecycle stream drives invalidation; this
+		// is only the slow fallback for public mode / dropped notifications.
+		refetchInterval: 45_000,
 	});
 	const emptyHint = useOperatorHint("Dispatch one above.");
 

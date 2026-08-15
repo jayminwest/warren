@@ -16,6 +16,8 @@ tags:
     description: '`/alerts` routes.'
   - name: analytics
     description: '`/analytics` routes.'
+  - name: events
+    description: '`/events` routes.'
   - name: github-app
     description: '`/github-app` routes.'
   - name: meta
@@ -108,6 +110,24 @@ paths:
           description: Successful response.
         default:
           description: Error response (see `src/core/errors.ts`).
+  /events/stream:
+    get:
+      operationId: streamLifecycleEventsHandler
+      tags:
+        - events
+      summary: GET /events/stream
+      responses:
+        '200':
+          description: Successful response.
+        default:
+          description: Error response (see `src/core/errors.ts`).
+      description: >-
+        warren-f566: the global lifecycle notification stream (NDJSON, one `{runId, hook, state,
+        ts}` line per lifecycle transition). The list pages hold ONE connection per tab and
+        debounce-invalidate their list queries instead of polling /runs every 5s. `?follow=0` is a
+        probe shorthand (immediate clean close, empty body). Operator-gated — a public spectator
+        never gets a held-open feed of every run id on the instance (scenario 39); it stays on the
+        fallback poll.
   /github-app/callback:
     get:
       operationId: gitHubAppCallbackHandler

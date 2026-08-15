@@ -33,7 +33,8 @@ export function ReadyPlansView({ projectId }: { projectId: string }): JSX.Elemen
 	const readyPlans = useQuery({
 		queryKey: ["ready-plans", projectId],
 		queryFn: ({ signal }) => projectsApi.readyPlans(projectId, signal),
-		refetchInterval: 5000,
+		// warren-f566: stream-driven invalidation + slow fallback poll.
+		refetchInterval: 45_000,
 		enabled: hasProject,
 	});
 

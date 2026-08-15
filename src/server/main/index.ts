@@ -389,6 +389,8 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 		// warren-f796: local-topology `/readyz` burrow probe (absent under k8s).
 		...(localBackend !== undefined ? { burrowProbe: localBackend.probeBurrow } : {}),
 		broker,
+		// warren-f566: the global lifecycle stream broker the bus wiring owns.
+		lifecycleStream: lifecycleBusHandle.lifecycleStream,
 		bridges: bridgesBoot.registry,
 		projectsConfig,
 		logger,

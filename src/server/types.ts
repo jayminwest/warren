@@ -204,6 +204,14 @@ export interface ServerDeps {
 	 */
 	readonly salvageDir?: string;
 	readonly broker: RunEventBroker;
+	/**
+	 * Global lifecycle notification broker (warren-f566), built ONCE at boot
+	 * and fed by a Tier-1 bus extension registered in the same
+	 * `bootLifecycleBus` batch as the healer / seed-close consumers. Serves
+	 * `GET /events/stream`. Optional: a test omitting it gets a 501 instead
+	 * of a dangling open connection.
+	 */
+	readonly lifecycleStream?: import("../runs/lifecycle-stream.ts").LifecycleStreamBroker;
 	readonly bridges: BridgeRegistry;
 	readonly projectsConfig: ProjectsConfig;
 	readonly logger: Logger;

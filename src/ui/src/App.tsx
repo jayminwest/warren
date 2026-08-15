@@ -6,6 +6,7 @@ import { Layout } from "@/components/Layout.tsx";
 import { OperatorRoute } from "@/components/OperatorOnly.tsx";
 import { MotionProvider } from "@/components/ui/motion.tsx";
 import { ToastProvider } from "@/components/ui/toast.tsx";
+import { useLifecycleStreamInvalidation } from "@/hooks/use-lifecycle-stream-invalidation.ts";
 import { AgentsPage } from "@/pages/Agents.tsx";
 import { LoginPage } from "@/pages/Login.tsx";
 import { NewPlanRunPage } from "@/pages/NewPlanRun.tsx";
@@ -49,9 +50,21 @@ function AnalyticsFallback() {
 	return <div className="p-4 text-sm text-(--color-muted-foreground)">Loading analytics…</div>;
 }
 
+/**
+ * warren-f566: one global lifecycle stream per tab drives the list
+ * pages' query invalidation, replacing their old 5s polls (the pages
+ * keep a 45s fallback). Mounted once above the router so navigation
+ * never tears the connection down.
+ */
+function LifecycleStreamBridge() {
+	useLifecycleStreamInvalidation();
+	return null;
+}
+
 export function App() {
 	return (
 		<QueryClientProvider client={queryClient}>
+			<LifecycleStreamBridge />
 			<MotionProvider>
 				<ToastProvider>
 					<HashRouter>

@@ -7,9 +7,16 @@ export type StreamStatus = "idle" | "connecting" | "live" | "ended" | "error";
  * loop itself is a pure async function the tests can drive with the same
  * streaming-fetch stub harness as `src/ui/src/api/client.stream.test.ts`.
  */
-export interface EventStreamLoopDeps {
+export interface EventStreamLoopDeps<T = RunEvent> {
 	/** Open the NDJSON stream; `sinceSeq` resumes after a reconnect. */
-	readonly openStream: (sinceSeq: number | undefined) => AsyncIterable<RunEvent>;
+	readonly openStream: (sinceSeq: number | undefined) => AsyncIterable<T>;
+	/**
+	 * Resume cursor for `openStream` (warren-f566). Defaults to the
+	 * per-run `RunEvent.seq`. A stream with no replay surface (the global
+	 * lifecycle stream) passes `() => undefined`, so reconnects re-open
+	 * without a `since`.
+	 */
+	readonly seqOf?: (evt: T) => number | undefined;
 	/**
 	 * Fresh read of whether the run has reached a terminal state. This is
 	 * the discriminator between a genuine end-of-stream (the broker
@@ -21,7 +28,7 @@ export interface EventStreamLoopDeps {
 	readonly hasRunEnded: () => Promise<boolean>;
 	readonly follow: boolean;
 	readonly isCancelled: () => boolean;
-	readonly onEvent: (evt: RunEvent) => void;
+	readonly onEvent: (evt: T) => void;
 	readonly onStatus: (status: StreamStatus, error: string | null) => void;
 	readonly isAuthError: (err: unknown) => boolean;
 	/** Overridable in tests; defaults to a real timer. */
@@ -50,13 +57,15 @@ function errorMessage(err: unknown): string {
  *     (the server's lifetime cap expired; the run is still going)
  *   - auth error                       → "error", no retry
  */
-export async function runEventStreamLoop(deps: EventStreamLoopDeps): Promise<void> {
+export async function runEventStreamLoop<T = RunEvent>(
+	deps: EventStreamLoopDeps<T>,
+): Promise<void> {
 	const sleep = deps.sleep ?? defaultSleep;
 	let backoff = STREAM_RECONNECT_BASE_BACKOFF_MS;
 	let lastSeq: number | null = null;
 
 	while (!deps.isCancelled()) {
-		const result = await attachOnce(deps, lastSeq);
+		const result: AttachResult = await attachOnce(deps, lastSeq);
 		lastSeq = result.lastSeq;
 		if (result.action === "stop") return;
 		if (result.action === "ended") {
@@ -80,17 +89,18 @@ type AttachResult =
  * classify what the loop should do next. Split out of `runEventStreamLoop`
  * to keep both under the cognitive-complexity ceiling.
  */
-async function attachOnce(
-	deps: EventStreamLoopDeps,
+async function attachOnce<T>(
+	deps: EventStreamLoopDeps<T>,
 	lastSeq: number | null,
 ): Promise<AttachResult> {
+	const seqOf = deps.seqOf ?? ((evt: T) => (evt as unknown as RunEvent).seq);
 	deps.onStatus("connecting", null);
 	try {
 		const iter = deps.openStream(lastSeq === null ? undefined : lastSeq + 1);
 		deps.onStatus("live", null);
 		for await (const evt of iter) {
 			if (deps.isCancelled()) return { action: "stop", lastSeq };
-			lastSeq = evt.seq;
+			lastSeq = seqOf(evt) ?? lastSeq;
 			deps.onEvent(evt);
 		}
 		if (deps.isCancelled()) return { action: "stop", lastSeq };

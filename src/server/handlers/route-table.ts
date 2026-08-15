@@ -14,6 +14,7 @@ import type { Route, RouteHandler, RoutePolicy, ServerDeps } from "../types.ts";
 import { getAgentHandler, listAgentsHandler } from "./agents.ts";
 import { healAlertHandler } from "./alerts.ts";
 import { readyzHandler } from "./diagnostics.ts";
+import { streamLifecycleEventsHandler } from "./events-stream.ts";
 import { gitHubAppCallbackHandler, registerGitHubAppHandler } from "./github-app.ts";
 import { healthzHandler, previewConfigHandler, versionHandler, whoamiHandler } from "./meta.ts";
 import { metricsHandler } from "./metrics.ts";
@@ -204,6 +205,19 @@ const ROUTE_TABLE: readonly RouteEntry[] = [
 		build: listBehaviorAnalyticsHandler,
 	},
 	{ method: "GET", pattern: "/runs", policy: "readPublic", build: listRunsHandler },
+	// warren-f566: the global lifecycle notification stream (NDJSON, one
+	// `{runId, hook, state, ts}` line per lifecycle transition). The list
+	// pages hold ONE connection per tab and debounce-invalidate their list
+	// queries instead of polling /runs every 5s. `?follow=0` is a probe
+	// shorthand (immediate clean close, empty body). Operator-gated — a
+	// public spectator never gets a held-open feed of every run id on the
+	// instance (scenario 39); it stays on the fallback poll.
+	{
+		method: "GET",
+		pattern: "/events/stream",
+		policy: "readOperator",
+		build: streamLifecycleEventsHandler,
+	},
 	{ method: "POST", pattern: "/runs", policy: "dispatch", build: createRunHandler },
 	{ method: "GET", pattern: "/runs/:id", policy: "readPublic", build: getRunHandler },
 	// NDJSON event tail. `?follow=1` live-tails (the default while the run
@@ -355,6 +369,8 @@ export const API_PREFIXES: readonly string[] = [
 	"/plan-runs",
 	"/whoami",
 	"/github-app",
+	// warren-f566: the global lifecycle stream (`/events/stream`).
+	"/events",
 ];
 
 /**

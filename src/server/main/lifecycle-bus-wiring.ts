@@ -28,8 +28,10 @@ import { createHealerLifecycleExtension } from "../../healer/lifecycle.ts";
 import type { RunEventBroker } from "../../runs/events.ts";
 import {
 	clearLifecycleBus,
+	createLifecycleStreamExtension,
 	installLifecycleBus,
 	LifecycleBus,
+	LifecycleStreamBroker,
 	registerExtensions,
 } from "../../runs/index.ts";
 import {
@@ -46,6 +48,7 @@ export interface LifecycleBusWiringInput {
 	readonly seedsCli: SeedsCliDeps;
 	/** Broker so the seed-close observability event reaches live tailers too. */
 	readonly broker?: RunEventBroker;
+
 	/**
 	 * Boot-resolved forge (warren-3bc6). When present, the merge watcher
 	 * subscribes to post_reap and settles each run's `pr_state` /
@@ -56,6 +59,13 @@ export interface LifecycleBusWiringInput {
 
 export interface LifecycleBusHandle {
 	readonly bus: LifecycleBus;
+	/**
+	 * The global lifecycle notification broker (warren-f566) serving
+	 * `GET /events/stream`, built here and fed by a bus extension in the
+	 * batch below. The orchestrator threads the same instance onto
+	 * `ServerDeps`.
+	 */
+	readonly lifecycleStream: LifecycleStreamBroker;
 	/** Detach every registered consumer and uninstall the process singleton. */
 	stop(): void;
 }
@@ -68,6 +78,7 @@ export interface LifecycleBusHandle {
  */
 export function bootLifecycleBus(input: LifecycleBusWiringInput): LifecycleBusHandle {
 	const { logger, repos, seedsCli, broker } = input;
+	const lifecycleStream = new LifecycleStreamBroker();
 	const bus = new LifecycleBus({
 		onError: ({ extension, hook, runId, error }) => {
 			logger.error(
@@ -105,6 +116,10 @@ export function bootLifecycleBus(input: LifecycleBusWiringInput): LifecycleBusHa
 			...(broker !== undefined ? { broker } : {}),
 		}),
 		...(mergeWatcher !== undefined ? [mergeWatcher.extension] : []),
+		// warren-f566: consumer 4 is the global lifecycle stream broker —
+		// it projects lifecycle envelopes into the slim notifications the
+		// list pages consume over GET /events/stream.
+		createLifecycleStreamExtension(lifecycleStream),
 	]);
 
 	if (mergeWatcher !== undefined) {
@@ -116,6 +131,7 @@ export function bootLifecycleBus(input: LifecycleBusWiringInput): LifecycleBusHa
 
 	return {
 		bus,
+		lifecycleStream,
 		stop() {
 			mergeWatcher?.stop();
 			registration.unregisterAll();

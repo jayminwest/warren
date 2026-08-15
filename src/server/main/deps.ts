@@ -69,6 +69,12 @@ export interface BuildServerDepsInput {
 	 */
 	readonly burrowProbe?: () => Promise<import("../../diagnostics/checks.ts").DiagnosticCheck>;
 	readonly broker: RunEventBroker;
+	/**
+	 * Global lifecycle notification broker (warren-f566), built and fed by
+	 * the lifecycle-bus wiring (`LifecycleBusHandle.lifecycleStream`).
+	 * Serves `GET /events/stream`.
+	 */
+	readonly lifecycleStream: import("../../runs/lifecycle-stream.ts").LifecycleStreamBroker;
 	readonly bridges: BridgeRegistry;
 	readonly projectsConfig: ProjectsConfig;
 	readonly logger: Logger;
@@ -127,6 +133,7 @@ export function buildServerDeps(input: BuildServerDepsInput): ServerDeps {
 		gitHubAppRegistration,
 		burrowProbe,
 		broker,
+		lifecycleStream,
 		bridges,
 		projectsConfig,
 		logger,
@@ -170,6 +177,7 @@ export function buildServerDeps(input: BuildServerDepsInput): ServerDeps {
 		...(burrowProbe !== undefined ? { burrowProbe } : {}),
 		salvageDir,
 		broker,
+		lifecycleStream,
 		bridges,
 		projectsConfig,
 		logger,

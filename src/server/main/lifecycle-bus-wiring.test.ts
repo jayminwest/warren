@@ -46,7 +46,7 @@ describe("bootLifecycleBus", () => {
 	test("registers the healer + seed-close consumers and installs the process singleton", () => {
 		const { logger } = recordingLogger();
 		const handle = bootLifecycleBus(wiringInput(logger));
-		expect(handle.bus.extensionNames()).toEqual(["healer", "seed-close"]);
+		expect(handle.bus.extensionNames()).toEqual(["healer", "seed-close", "lifecycle-stream"]);
 		expect(lifecycleBus()).toBe(handle.bus);
 	});
 
@@ -105,7 +105,12 @@ describe("bootLifecycleBus", () => {
 		await repos.runs.setPrUrl(run.id, opened.value.webUrl);
 
 		const handle = bootLifecycleBus({ ...wiringInput(logger), forge });
-		expect(handle.bus.extensionNames()).toEqual(["healer", "seed-close", "pr-merge-watcher"]);
+		expect(handle.bus.extensionNames()).toEqual([
+			"healer",
+			"seed-close",
+			"pr-merge-watcher",
+			"lifecycle-stream",
+		]);
 		// Boot re-adoption is fire-and-forget; wait for the row to settle.
 		const deadline = Date.now() + 2_000;
 		let row = await repos.runs.get(run.id);

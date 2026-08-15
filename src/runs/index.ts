@@ -140,6 +140,13 @@ export {
 	type WarrenExtProtocol,
 } from "./lifecycle-bus.ts";
 export {
+	createLifecycleStreamExtension,
+	DEFAULT_LIFECYCLE_STREAM_BUFFER,
+	LifecycleStreamBroker,
+	type LifecycleStreamNotification,
+	type LifecycleStreamSubscribeOptions,
+} from "./lifecycle-stream.ts";
+export {
 	type AutoOpenPrConfig,
 	buildPrContent,
 	loadAutoOpenPrConfigFromEnv,

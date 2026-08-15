@@ -7,7 +7,7 @@ This page enumerates every HTTP route registered by warren's `Bun.serve` router.
 
 To refresh: `bun run gen:docs`. To check (CI mode): `bun run gen:docs:check`.
 
-Total routes: **43**.
+Total routes: **44**.
 
 ## /agents
 
@@ -29,6 +29,12 @@ Total routes: **43**.
 | `GET` | `/analytics/cost` | `listCostAnalyticsHandler` |  |
 | `GET` | `/analytics/runs` | `listRunAnalyticsHandler` |  |
 | `GET` | `/analytics/behavior` | `listBehaviorAnalyticsHandler` |  |
+
+## /events
+
+| Method | Pattern | Handler | Notes |
+| --- | --- | --- | --- |
+| `GET` | `/events/stream` | `streamLifecycleEventsHandler` | warren-f566: the global lifecycle notification stream (NDJSON, one `{runId, hook, state, ts}` line per lifecycle transition). The list pages hold ONE connection per tab and debounce-invalidate their list queries instead of polling /runs every 5s. `?follow=0` is a probe shorthand (immediate clean close, empty body). Operator-gated — a public spectator never gets a held-open feed of every run id on the instance (scenario 39); it stays on the fallback poll. |
 
 ## /github-app
 
