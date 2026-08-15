@@ -4,6 +4,10 @@
 		"(docs/check-all-standard.md §6). Justify every entry:",
 		"aliases.check:coverage:ci — check:coverage plus a JUnit reporter for the CI",
 		"  test-timing summary; the underlying gate (tests + coverage ratchet) is identical.",
+		"ciOnly.ext:install — extensions/*/ are standalone packages with their own manifests;",
+		"  CI must install their deps before the root `bun test` sweep discovers their",
+		"  test files (extensions/judge is the first with a runtime dep). Locally the",
+		"  dev runs `bun run ext:install` once; it is setup, not a gate.",
 		"ciOnly.ui:install — UI workspace dep install so check:deps (knip) can resolve the",
 		"  src/ui workspace in CI; locally covered by the root bun install + the",
 		"  frozen-lockfile install embedded in check:bundle-size --build.",
@@ -23,6 +27,12 @@
 	"aliases": {
 		"check:coverage:ci": "check:coverage"
 	},
-	"ciOnly": ["ui:install", "build:ui", "report:test-timing", "report:quality-metrics"],
+	"ciOnly": [
+		"ext:install",
+		"ui:install",
+		"build:ui",
+		"report:test-timing",
+		"report:quality-metrics"
+	],
 	"localOnly": []
 }

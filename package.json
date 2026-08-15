@@ -85,6 +85,7 @@
 		"db:generate:sqlite": "drizzle-kit generate --config=drizzle.config.sqlite.ts",
 		"db:generate:postgres": "drizzle-kit generate --config=drizzle.config.postgres.ts",
 		"ui:install": "cd src/ui && bun install",
+		"ext:install": "for d in extensions/*/; do [ -f \"$d/package.json\" ] && (cd \"$d\" && bun install); done",
 		"ui:dev": "cd src/ui && bun run dev",
 		"build:ui": "cd src/ui && bun install --frozen-lockfile && bun run build",
 		"acceptance": "bun run scripts/acceptance/run.ts",

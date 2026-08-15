@@ -49,4 +49,5 @@ jobs:
           bun-version-file: .bun-version
 
       - run: bun install
+      - run: bun run ext:install
       - run: bun test

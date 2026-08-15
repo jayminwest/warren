@@ -34,6 +34,7 @@ jobs:
       # because check:deps (knip) resolves the src/ui workspace and runs
       # before check:bundle-size builds it.
       - run: bun run ui:install
+      - run: bun run ext:install
       - run: bun run check:all
 
       - name: Check if version is unreleased
