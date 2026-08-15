@@ -269,3 +269,33 @@ session preset in the pi SDK — hermetic resources, in-memory session
 state, and a first-class "final tool" or forced-tool-choice option — so a
 read-only judge (or any bounded evaluator) does not rebuild policy that
 belongs in the driver.
+
+## 6. Budget enforcement — observing your own spend
+
+Logged by the judge extension (plan pl-17ca step 6, warren-33da).
+
+- `[worked around]` **No usage or cost surface for an observer.**
+  `JUDGE_DAILY_BUDGET_USD` is a fleet-wide gate the judge must enforce
+  on itself, but warren exposes no endpoint an extension can read its
+  own accrued spend back from — `GET /runs/:id` reports the JUDGED
+  run's cost, never the observer's. The judge therefore keeps its own
+  durable spend ledger in extension-owned SQLite
+  (`extensions/judge/src/spend-ledger.ts`), summed per UTC day. Cost:
+  the budget is only as accurate as the extension's own bookkeeping —
+  a second judge replica pointed at the same warren with a separate
+  database gets its own independent "fleet" budget, so the gate is
+  per-deployment-of-the-extension, not truly fleet-wide.
+- `[worked around]` **No "became terminal since" discovery feed.** The
+  judge's discovery gate is "run is in a terminal state," but `GET
+  /runs` has no `?state=` filter and no transition timestamp to
+  incremental-sync against, so every poll cycle re-lists the full
+  history and filters client-side (§1's moving-desc-page caveat
+  applies verbatim). The per-run judgment cursor absorbs the re-seen
+  rows; the cost is O(all runs ever) list traffic per cycle, growing
+  forever.
+
+**What the future mechanism must provide:** a read-only usage surface
+(`GET /usage?since=`) that any token holder can scope to itself, and a
+`?state=terminal&since=<ts>` filter on `GET /runs`, so a bounded
+observer can enforce a fleet budget against server truth and
+incremental-sync terminal transitions instead of re-listing history.

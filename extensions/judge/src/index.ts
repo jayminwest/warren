@@ -1,26 +1,117 @@
 /**
- * @warren-ext/judge entrypoint.
+ * @warren-ext/judge entrypoint: the collector daemon.
  *
- * Resolves and validates the environment contract, then reports readiness.
- * Steps 1–5 of plan pl-17ca landed the wire types, warren read client,
- * verdict store, rubric v1, and the bounded pi-SDK judge loop
- * (`judge-loop.ts` / `pi-session.ts`). The collector daemon that polls for
- * terminal runs and drives judgments is step 6 — see `sd plan show pl-17ca`.
+ * Resolves the environment contract, opens the extension-owned stores
+ * (verdicts, judgment cursors, spend ledger — all in the one SQLite file),
+ * builds the pi-SDK judge session factory, and runs the collector loop:
+ * poll `GET /runs` for newly-terminal runs, judge each under rubric v1,
+ * checkpoint only after the verdict store accepts. SIGTERM/SIGINT aborts
+ * the loop between cycles, so the in-flight judgment always finishes and
+ * checkpoints before exit.
+ *
+ * Boundary contract (enforced by scripts/check-layers.ts): this package
+ * imports nothing from warren's `src/` or `scripts/`. Everything it knows
+ * about warren's wire shapes is hand-derived in `warren-wire.ts`.
  */
+import { createClient } from "./client.ts";
+import { type JudgeFn, runJudgeCollector } from "./collector.ts";
 import { ConfigError, resolveConfig } from "./config.ts";
+import { JudgmentCursorStore } from "./cursor-store.ts";
+import { judgeRun } from "./judge-loop.ts";
+import { createPiSessionFactory } from "./pi-session.ts";
+import { computeRubricVersion } from "./rubric.ts";
+import { SpendLedger } from "./spend-ledger.ts";
+import { VerdictStore } from "./verdict-store.ts";
 
-if (import.meta.main) {
+export const EXTENSION_NAME = "judge";
+export const EXTENSION_VERSION = "0.0.0";
+
+export { createClient, WarrenHttpError } from "./client.ts";
+export { collectOnce, runJudgeCollector, type JudgeCycleStats, type JudgeFn } from "./collector.ts";
+export { type JudgeConfig, resolveConfig } from "./config.ts";
+export { JudgmentCursorStore, type JudgmentCursor } from "./cursor-store.ts";
+export { type JudgeOutcome, judgeRun } from "./judge-loop.ts";
+export { computeRubricVersion, renderJudgeSystemPrompt } from "./rubric.ts";
+export { dayKey, SpendLedger } from "./spend-ledger.ts";
+export { VerdictStore } from "./verdict-store.ts";
+
+async function main(): Promise<void> {
 	let config;
 	try {
 		config = resolveConfig(process.env);
 	} catch (error) {
 		const message = error instanceof ConfigError ? error.message : String(error);
-		console.error(`@warren-ext/judge: ${message}`);
+		console.error(`${EXTENSION_NAME}: ${message}`);
 		process.exit(1);
 	}
-	console.log(
-		`@warren-ext/judge: config ok (warren=${config.warrenBaseUrl}, ` +
-			`judge=${config.provider}/${config.model}) — the judge loop is wired ` +
-			"but the collector daemon is not yet implemented (plan pl-17ca step 6); exiting.",
+
+	const client = createClient({
+		baseUrl: config.warrenBaseUrl,
+		token: config.warrenApiToken,
+	});
+	const verdicts = new VerdictStore(config.dbPath);
+	const cursors = new JudgmentCursorStore(config.dbPath);
+	const spend = new SpendLedger(config.dbPath);
+	const rubricVersion = computeRubricVersion();
+	const sessionFactory = createPiSessionFactory({
+		provider: config.provider,
+		model: config.model,
+	});
+
+	const judge: JudgeFn = (runId, { maxCostUsd }) =>
+		judgeRun({
+			client,
+			runId,
+			provider: config.provider,
+			model: config.model,
+			rubricVersion,
+			sessionFactory,
+			maxRetries: config.maxRetries,
+			maxPages: config.maxPages,
+			eventsPageSize: config.eventsPageSize,
+			maxCostUsdPerJudgment: maxCostUsd,
+		});
+
+	const ctrl = new AbortController();
+	const shutdown = (): void => ctrl.abort();
+	process.on("SIGTERM", shutdown);
+	process.on("SIGINT", shutdown);
+
+	console.error(
+		`${EXTENSION_NAME} ${EXTENSION_VERSION}: judging ${config.warrenBaseUrl} ` +
+			`every ${config.pollIntervalMs}ms (db ${config.dbPath}, ` +
+			`judge=${config.provider}/${config.model}, rubric=${rubricVersion}, ` +
+			`caps $${config.maxCostUsdPerJudgment}/judgment, ` +
+			`$${config.dailyBudgetUsd}/day)`,
 	);
+	await runJudgeCollector({
+		client,
+		verdicts,
+		cursors,
+		spend,
+		judge,
+		rubricVersion,
+		judgeModelId: config.model,
+		maxCostUsdPerJudgment: config.maxCostUsdPerJudgment,
+		dailyBudgetUsd: config.dailyBudgetUsd,
+		pollIntervalMs: config.pollIntervalMs,
+		signal: ctrl.signal,
+		onCycle: (stats) =>
+			console.error(
+				`${EXTENSION_NAME}: cycle — ${stats.terminalRuns} terminal, ` +
+					`${stats.judged} judged, ${stats.alreadyJudged} current, ` +
+					`${stats.budgetSkipped} budget-skipped`,
+			),
+		onCycleError: (err) => console.error(`${EXTENSION_NAME}: cycle failed:`, err),
+		onRunError: (runId, err) =>
+			console.error(`${EXTENSION_NAME}: judgment for run ${runId} failed:`, err),
+		onBudgetSkip: (runId, detail) =>
+			console.error(`${EXTENSION_NAME}: run ${runId} unjudged (budget_exceeded): ${detail}`),
+	});
+	verdicts.close();
+	cursors.close();
+	spend.close();
+	console.error(`${EXTENSION_NAME}: stopped; ${verdicts.count()} verdict rows stored`);
 }
+
+if (import.meta.main) await main();

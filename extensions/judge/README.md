@@ -69,8 +69,28 @@ Step 4 (warren-560c) adds rubric v1 authoring:
   resource loader so no project files or `.pi` extensions leak into the
   judge's context.
 
-The collector daemon (polling, cursor, budget gates) lands in the next step
-of [pl-17ca](../../docs/design/agent-analytics.md) — run `sd plan show pl-17ca`.
+Step 6 (warren-33da) adds the collector daemon:
+
+- [`src/collector.ts`](src/collector.ts) — the poll loop: discover terminal
+  runs via `GET /runs`, drive one judgment per run, checkpoint the cursor
+  ONLY after the verdict store accepts (the audit-log delivery discipline —
+  a crash never skips a run, and the store's dedupe key makes a replay an
+  exact no-op). Serial by design: one judgment at a time, so the daily
+  budget gate is race-free and a graceful shutdown has at most one
+  in-flight judgment to finish.
+- [`src/cursor-store.ts`](src/cursor-store.ts) — durable per-run judgment
+  cursors keyed by run id, recording WHICH rubric version + judge model the
+  accepted judgment was produced under; a new pair re-opens the run.
+- [`src/spend-ledger.ts`](src/spend-ledger.ts) — the fleet-wide spend
+  ledger: every judgment's accrued USD cost, summed per UTC day to enforce
+  `JUDGE_DAILY_BUDGET_USD`. Spend is ledgered for verdicts AND unjudged
+  markers alike — the provider billed the attempts either way.
+- Budget gates (§12.5): past the daily budget the judgment is SKIPPED and a
+  visible `unjudged` marker with reason `budget_exceeded` is recorded —
+  never a silent drop. The per-judgment cap is clamped to the remaining
+  daily budget so one judgment cannot push the fleet past the day gate.
+- SIGTERM/SIGINT abort the loop between cycles; the in-flight judgment
+  always finishes and checkpoints before exit.
 
 ## Boundary contract
 
@@ -96,7 +116,7 @@ extension's own store, never a core table.
 | `JUDGE_MODEL`     | no       | Judge model id (default `claude-haiku-4-5`) |
 | `JUDGE_DB_PATH`   | no       | SQLite store path (default `./data/judge.db`) |
 | `JUDGE_POLL_INTERVAL_MS` | no | Delay between terminal-run discovery polls (default `30000`) |
-| `JUDGE_MAX_COST_USD_PER_JUDGMENT` | no | Per-judgment USD cost cap (default `0.25`) — the §12.5 analog of `maxCostUsd` |
+| `JUDGE_MAX_COST_USD` | no | Per-judgment USD cost cap (default `0.25`) — the §12.5 analog of `maxCostUsd`. The legacy `JUDGE_MAX_COST_USD_PER_JUDGMENT` spelling still resolves as a fallback alias |
 | `JUDGE_DAILY_BUDGET_USD` | no | Fleet-level daily judge budget (default `5`); past it, runs are marked `unjudged` rather than degraded silently |
 | `JUDGE_MAX_RETRIES` | no | Malformed/missing-verdict retries per judgment (default `2`) |
 | `JUDGE_MAX_PAGES` | no | Hard cap on events pages per judgment (default `40`); past it the tail degrades to a lower-confidence verdict, never unbounded spend |
@@ -136,8 +156,8 @@ Notes:
 - The image runs as the non-root `bun` user; `/app/data` is the only writable
   state and should be a volume so the verdict store survives replacement.
 - Every `JUDGE_*` knob can be overridden with `-e` at run time.
-- While the package is a scaffold, the process validates its environment and
-  exits reporting that the loop is not yet implemented.
+- The process runs the collector daemon until SIGTERM/SIGINT; the
+  in-flight judgment finishes and checkpoints before exit.
 
 ## Development
 

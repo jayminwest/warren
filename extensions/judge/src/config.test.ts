@@ -41,7 +41,7 @@ describe("resolveConfig", () => {
 			...BASE_ENV,
 			JUDGE_DB_PATH: "/tmp/judge.db",
 			JUDGE_POLL_INTERVAL_MS: "1000",
-			JUDGE_MAX_COST_USD_PER_JUDGMENT: "0.05",
+			JUDGE_MAX_COST_USD: "0.05",
 			JUDGE_DAILY_BUDGET_USD: "1.5",
 		});
 		expect(config.dbPath).toBe("/tmp/judge.db");
@@ -60,6 +60,17 @@ describe("resolveConfig", () => {
 		expect(() => resolveConfig({ WARREN_BASE_URL: "https://w.example.com" })).toThrow(
 			/WARREN_API_TOKEN/,
 		);
+	});
+
+	test("resolves the legacy per-judgment cap spelling as a fallback alias", () => {
+		const config = resolveConfig({ ...BASE_ENV, JUDGE_MAX_COST_USD_PER_JUDGMENT: "0.07" });
+		expect(config.maxCostUsdPerJudgment).toBe(0.07);
+		const both = resolveConfig({
+			...BASE_ENV,
+			JUDGE_MAX_COST_USD: "0.09",
+			JUDGE_MAX_COST_USD_PER_JUDGMENT: "0.07",
+		});
+		expect(both.maxCostUsdPerJudgment).toBe(0.09);
 	});
 
 	test("rejects a malformed numeric knob", () => {

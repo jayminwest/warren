@@ -20,7 +20,9 @@ export interface JudgeConfig {
 	readonly dbPath: string;
 	/** Delay between terminal-run discovery polls. */
 	readonly pollIntervalMs: number;
-	/** Per-judgment USD cost cap — the §12.5 analog of `maxCostUsd`. */
+	/** Per-judgment USD cost cap (JUDGE_MAX_COST_USD) — the §12.5 analog
+	 *  of `maxCostUsd`. The legacy JUDGE_MAX_COST_USD_PER_JUDGMENT spelling
+	 *  still resolves as a fallback alias. */
 	readonly maxCostUsdPerJudgment: number;
 	/** Fleet-level daily judge budget; judging skips past it (§12.5). */
 	readonly dailyBudgetUsd: number;
@@ -72,7 +74,10 @@ export function resolveConfig(env: Record<string, string | undefined>): JudgeCon
 		model: env.JUDGE_MODEL || DEFAULT_JUDGE_MODEL,
 		dbPath: env.JUDGE_DB_PATH || "./data/judge.db",
 		pollIntervalMs: positiveNumber(env, "JUDGE_POLL_INTERVAL_MS", 30_000),
-		maxCostUsdPerJudgment: positiveNumber(env, "JUDGE_MAX_COST_USD_PER_JUDGMENT", 0.25),
+		maxCostUsdPerJudgment:
+			env.JUDGE_MAX_COST_USD !== undefined && env.JUDGE_MAX_COST_USD.length > 0
+				? positiveNumber(env, "JUDGE_MAX_COST_USD", 0.25)
+				: positiveNumber(env, "JUDGE_MAX_COST_USD_PER_JUDGMENT", 0.25),
 		dailyBudgetUsd: positiveNumber(env, "JUDGE_DAILY_BUDGET_USD", 5),
 		maxRetries: positiveNumber(env, "JUDGE_MAX_RETRIES", 2),
 		maxPages: positiveNumber(env, "JUDGE_MAX_PAGES", 40),
