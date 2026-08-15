@@ -2,7 +2,8 @@
  * Composite export for the runs handlers domain (warren-6566 / pl-3255 step 3).
  */
 
-export { listBehaviorAnalyticsHandler, listRunAnalyticsHandler } from "./analytics.ts";
+export { listRunAnalyticsHandler } from "./analytics.ts";
+export { listBehaviorAnalyticsHandler } from "./analytics-behavior.ts";
 export { createRunHandler } from "./dispatch.ts";
 export {
 	asNdjsonStream,

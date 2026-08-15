@@ -6,7 +6,7 @@ import type { RunMetrics } from "./run-metrics.ts";
 
 const ZERO_TOKENS = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 };
 
-function emptyMetrics(): RunMetrics {
+export function emptyMetrics(): RunMetrics {
 	return {
 		totals: {
 			runs: 0,
@@ -36,7 +36,7 @@ function emptyMetrics(): RunMetrics {
 	};
 }
 
-function emptyMining(): CommandMining {
+export function emptyMining(): CommandMining {
 	return {
 		totals: {
 			toolUses: 0,
