@@ -40,9 +40,13 @@ USER bun
 
 # In-image defaults so the container runs given only the required variables.
 # Every knob stays overridable at run time.
-ENV JUDGE_DB_PATH=/app/data/judge.db
+ENV JUDGE_DB_PATH=/app/data/judge.db \
+    JUDGE_EXPORT_PORT=8080
 
-# The judge serves no HTTP surface yet, so there is no HEALTHCHECK. Liveness
-# is the process itself; a later step adds a probe when the loop lands.
+# The export surface (GET /verdicts.jsonl, GET /agreement) listens here when
+# JUDGE_EXPORT_TOKEN is set; /healthz is the one unauthenticated route.
+EXPOSE 8080
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+	CMD bun -e "fetch('http://127.0.0.1:'+(process.env.JUDGE_EXPORT_PORT??'8080')+'/healthz').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 
 CMD ["bun", "run", "src/index.ts"]

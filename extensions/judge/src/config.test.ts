@@ -24,6 +24,19 @@ describe("resolveConfig", () => {
 		expect(config.maxRetries).toBe(2);
 		expect(config.maxPages).toBe(40);
 		expect(config.eventsPageSize).toBe(200);
+		expect(config.exportPort).toBe(8080);
+		expect(config.exportToken).toBeNull();
+	});
+
+	test("resolves the export surface knobs; an empty token disables the surface", () => {
+		const config = resolveConfig({
+			...BASE_ENV,
+			JUDGE_EXPORT_PORT: "9471",
+			JUDGE_EXPORT_TOKEN: "static-token",
+		});
+		expect(config.exportPort).toBe(9471);
+		expect(config.exportToken).toBe("static-token");
+		expect(resolveConfig({ ...BASE_ENV, JUDGE_EXPORT_TOKEN: "" }).exportToken).toBeNull();
 	});
 
 	test("honors an explicit judge provider and model pair", () => {

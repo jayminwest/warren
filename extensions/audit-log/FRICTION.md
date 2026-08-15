@@ -176,6 +176,23 @@ causation.
   behind the horizon and sees a silent gap. Step 4 documents the gap
   semantics rather than inventing a cursor-expiry signal the wire has
   no vocabulary for.
+- `[worked around]` **No auth contract, second hit — the judge's export
+  surface (warren-265d).** The judge's `/verdicts.jsonl` needed bearer
+  auth FROM BIRTH (verdicts are operator-only under the §12.5 Goodhart
+  guard; a public projection like warren's own `WARREN_AUTH=public`
+  would be a leak, not a feature). Nothing has changed since the first
+  hit above: warren still cannot mint a scoped credential for an
+  extension's consumers, and there is still no introspection endpoint an
+  extension could verify a caller's warren token against. The judge
+  therefore mints its own static bearer credential
+  (`JUDGE_EXPORT_TOKEN`), compares it in constant time, and disables the
+  surface entirely when the variable is unset — every extension
+  re-implements the same static-token gate, with its own env spelling,
+  its own compare, and its own operator docs. What the future mechanism
+  must provide: an extension-auth delegation contract — warren mints (or
+  at least verifies) scoped credentials for an extension's own surface,
+  so "token-gated from birth" is the default an extension inherits, not
+  a gate each one hand-rolls.
 - `[worked around]` **No manifest format.** Nothing declares to warren
   "this container is an observer consuming the run lifecycle at
   protocol version X with config schema Y." Step 5 (warren-88b8) ships

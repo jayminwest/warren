@@ -18,6 +18,7 @@ import { createClient } from "./client.ts";
 import { type JudgeFn, runJudgeCollector } from "./collector.ts";
 import { ConfigError, resolveConfig } from "./config.ts";
 import { JudgmentCursorStore } from "./cursor-store.ts";
+import { createExportServer } from "./server.ts";
 import { judgeRun } from "./judge-loop.ts";
 import { createPiSessionFactory } from "./pi-session.ts";
 import { computeRubricVersion } from "./rubric.ts";
@@ -41,6 +42,7 @@ export { type JudgeConfig, resolveConfig } from "./config.ts";
 export { JudgmentCursorStore, type JudgmentCursor } from "./cursor-store.ts";
 export { type JudgeOutcome, judgeRun } from "./judge-loop.ts";
 export { computeRubricVersion, renderJudgeSystemPrompt } from "./rubric.ts";
+export { createExportServer, createFetchHandler } from "./server.ts";
 export { dayKey, SpendLedger } from "./spend-ledger.ts";
 export { VerdictStore } from "./verdict-store.ts";
 
@@ -82,7 +84,11 @@ async function main(): Promise<void> {
 		});
 
 	const ctrl = new AbortController();
-	const shutdown = (): void => ctrl.abort();
+	let exportServer: ReturnType<typeof createExportServer> | null = null;
+	const shutdown = (): void => {
+		ctrl.abort();
+		exportServer?.stop(true);
+	};
 	process.on("SIGTERM", shutdown);
 	process.on("SIGINT", shutdown);
 
@@ -136,6 +142,25 @@ async function main(): Promise<void> {
 							`${EXTENSION_NAME}: run ${runId} calibration-unjudged (budget_exceeded): ${detail}`,
 						),
 				});
+	exportServer =
+		config.exportToken === null
+			? null
+			: createExportServer({
+					verdicts,
+					metrics,
+					exportToken: config.exportToken,
+					extensionName: EXTENSION_NAME,
+					extensionVersion: EXTENSION_VERSION,
+					port: config.exportPort,
+				});
+	if (exportServer === null) {
+		console.error(
+			`${EXTENSION_NAME}: JUDGE_EXPORT_TOKEN unset — export surface disabled ` +
+				`(no public projection exists; set the token to serve /verdicts.jsonl)`,
+		);
+	} else {
+		console.error(`${EXTENSION_NAME}: export surface on :${config.exportPort} (bearer-gated)`);
+	}
 	if (calibration !== null) {
 		console.error(
 			`${EXTENSION_NAME}: calibration ${calibration.provider}/${calibration.model} ` +

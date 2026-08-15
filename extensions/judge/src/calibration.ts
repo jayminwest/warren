@@ -210,6 +210,14 @@ export class CalibrationMetricStore {
 		return row === null ? null : toReport(row);
 	}
 
+	/** Every rubric version with at least one stored report, sorted. */
+	rubricVersions(): string[] {
+		const rows = this.#db
+		.query("SELECT DISTINCT rubric_version AS v FROM calibration_metrics ORDER BY v")
+		.all() as unknown as Array<{ v: string }>;
+		return rows.map((row) => row.v);
+	}
+
 	/** Report history for one rubric version, newest first. */
 	historyForRubric(rubricVersion: string, limit: number): AgreementReport[] {
 		const rows = this.#db

@@ -15,6 +15,8 @@ export const DEFAULT_JUDGE_MODEL = "claude-haiku-4-5";
 export const DEFAULT_CALIBRATION_SAMPLE_SIZE = 20;
 /** Default cadence between calibration passes: six hours. */
 export const DEFAULT_CALIBRATION_INTERVAL_MS = 6 * 60 * 60 * 1000;
+/** Default listen port for the export surface (JUDGE_EXPORT_PORT). */
+export const DEFAULT_EXPORT_PORT = 8080;
 
 /**
  * The calibration re-judge contract (§12.5): a periodic strong-model pass
@@ -56,6 +58,14 @@ export interface JudgeConfig {
 	readonly eventsPageSize: number;
 	/** The strong-model calibration pass, or null when disabled. */
 	readonly calibration: CalibrationConfig | null;
+	/** Listen port for the export surface (JUDGE_EXPORT_PORT). */
+	readonly exportPort: number;
+	/**
+	 * Static bearer credential gating the export surface
+	 * (JUDGE_EXPORT_TOKEN). Null disables the surface entirely — there is
+	 * no public projection, so no token means no export.
+	 */
+	readonly exportToken: string | null;
 }
 
 /** Raised when the environment contract is violated at boot. */
@@ -106,6 +116,11 @@ export function resolveConfig(env: Record<string, string | undefined>): JudgeCon
 		maxPages: positiveNumber(env, "JUDGE_MAX_PAGES", 40),
 		eventsPageSize: positiveNumber(env, "JUDGE_EVENTS_PAGE_SIZE", 200),
 		calibration: resolveCalibration(env),
+		exportPort: Math.floor(positiveNumber(env, "JUDGE_EXPORT_PORT", DEFAULT_EXPORT_PORT)),
+		exportToken:
+			env.JUDGE_EXPORT_TOKEN !== undefined && env.JUDGE_EXPORT_TOKEN.length > 0
+				? env.JUDGE_EXPORT_TOKEN
+				: null,
 	};
 }
 

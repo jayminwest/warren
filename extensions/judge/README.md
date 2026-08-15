@@ -104,6 +104,55 @@ Step 6 (warren-33da) adds the collector daemon:
   model id, never a silent skip. Disabled unless
   `JUDGE_CALIBRATION_MODEL` is set.
 
+Step 8 (warren-265d) adds the export surface and the end-to-end smoke:
+
+- [`src/server.ts`](src/server.ts) — the token-gated export surface
+  (below). Bearer auth from birth; there is no public projection.
+- [`src/smoke.test.ts`](src/smoke.test.ts) — the end-to-end smoke against
+  the fake-warren double with a stubbed judge (no provider calls):
+  terminal run → judged → validated verdict exported over
+  `/verdicts.jsonl`; the budget-skip path exports a visible `unjudged`
+  marker; the re-judge append path keeps both verdicts readable keyed by
+  rubric version, with the stored calibration metric served by
+  `/agreement`.
+
+## Export surface
+
+Enabled only when `JUDGE_EXPORT_TOKEN` is set — no token, no surface.
+Every route except a minimal `/healthz` requires
+`Authorization: Bearer <JUDGE_EXPORT_TOKEN>`; a missing or wrong token is
+a flat 401, never a degraded read-only view. The token is a static
+operator-minted credential (warren has no extension-auth contract to
+delegate to — FRICTION §4); hold it in a secret manager and never log it.
+
+- `GET /verdicts.jsonl?since=<id>&limit=<n>` — pages the append-only
+  verdict store oldest-first (`id` is the SQLite rowid; `since` is
+  exclusive). Verdict rows and `unjudged` markers export side by side —
+  a budget skip is a first-class visible row, never a silent gap. The
+  `X-Verdicts-Max-Id` response header is the high-water mark to
+  checkpoint against, even on an empty page. A re-judge under a new
+  rubric version (or the calibration pass's strong model) APPENDS a row;
+  filter by `rubricVersion` + `judgeModelId` — trend lines must never
+  mix rubric versions (§12.3).
+- `GET /agreement` — the stored calibration metric (§12.5): the latest
+  cheap↔strong band-agreement report for every rubric version that has
+  one. `?rubricVersion=<v>` returns that version's latest report plus
+  history (`?limit=<n>`, newest first); unknown versions 404. When
+  calibration is disabled the endpoint serves an empty report list.
+- `GET /healthz` — minimal liveness (status, version, uptime), the one
+  unauthenticated route, and it reports no data.
+
+## The Goodhart guard (§12.5)
+
+Verdicts are an interpretation layer for OPERATORS, not feedback for
+agents. **A verdict never enters an agent's context raw** — no prompt,
+no steering message, no tool result ever carries one, because a judge
+score an agent can see is a score it can optimize against. In v1 there
+is **no mulch write path at all**: the only consumers are the export
+surface above and the operator reading it. Any future feedback loop
+arrives aggregated and delayed per §12.5, and it is a deliberate design
+change, not a config knob.
+
 ## Boundary contract
 
 This is a fully standalone Bun package: its own `package.json`, its own
@@ -137,6 +186,8 @@ extension's own store, never a core table.
 | `JUDGE_CALIBRATION_MODEL` | no | Calibration model id — the pass is disabled unless set |
 | `JUDGE_CALIBRATION_SAMPLE_SIZE` | no | Random sample size per calibration pass (default `20`) |
 | `JUDGE_CALIBRATION_INTERVAL_MS` | no | Cadence between calibration passes (default `21600000`, six hours) |
+| `JUDGE_EXPORT_PORT` | no | Listen port for the export surface (default `8080`) |
+| `JUDGE_EXPORT_TOKEN` | no | Static bearer credential gating `/verdicts.jsonl` and `/agreement`; unset disables the surface entirely (no public projection exists) |
 
 The judge model pair is **provider-agnostic** — set `JUDGE_PROVIDER` and
 `JUDGE_MODEL` together; nothing defaults to one vendor by hardcoding.
@@ -164,6 +215,21 @@ docker run --rm -v judge-data:/app/data \
   -e WARREN_BASE_URL=https://warren.example.com \
   -e WARREN_API_TOKEN=<token> \
   -e ANTHROPIC_API_KEY=<key> \
+  warren-ext-judge
+```
+
+Deploy it **beside warren** — same host or same compose project, one
+judge per warren instance. The judge needs nothing from warren beyond
+the two `WARREN_*` variables; it never shares a database, a volume, or a
+process with warren. To serve the export surface, publish the port and
+mint a static token:
+
+```bash
+docker run --rm -v judge-data:/app/data -p 8080:8080 \
+  -e WARREN_BASE_URL=https://warren.example.com \
+  -e WARREN_API_TOKEN=<token> \
+  -e ANTHROPIC_API_KEY=<key> \
+  -e JUDGE_EXPORT_TOKEN=$(openssl rand -hex 32) \
   warren-ext-judge
 ```
 
