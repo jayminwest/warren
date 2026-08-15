@@ -1,0 +1,26 @@
+{
+	"runId": "run_01J8Z7XYZABC",
+	"assignments": [
+		{
+			"class": "spin_loop",
+			"confidence": "high",
+			"evidence": [{ "fromSeq": 340, "toSeq": 612 }],
+			"note": "Agent re-ran the same failing test 14 times without a code change."
+		},
+		{
+			"class": "env_fumble",
+			"confidence": "medium",
+			"evidence": [
+				{ "fromSeq": 12, "toSeq": 45 },
+				{ "fromSeq": 340, "toSeq": 341 }
+			]
+		}
+	],
+	"provenance": {
+		"provider": "anthropic",
+		"model": "claude-haiku-4-5",
+		"rubricVersion": "sha256:9f2c1d4a7b3e5f60c1a2b3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718",
+		"judgedAt": "2026-08-15T16:04:11.000Z",
+		"costUsd": 0.0031
+	}
+}
