@@ -18,6 +18,12 @@ phase 4 (observer extension, judge layer) still deferred.
 decisions: heuristics **and** LLM judges, both on every run;
 extension-first placement with a named in-core exit. Open question 3
 is resolved, and question 1 gets a recorded leaning.
+**Amended:** 2026-08-15 — phases 0–3 shipped: pl-103e closed
+(success, 13/13 children merged). Phase 4 remains deferred behind
+warren-f566 and the FRICTION.md surfaces. The §12.6 owner cut is
+recorded: rubric v1 launches with the full 15-class taxonomy
+(§12.4), and the verdict shape is locked (§12.3) — confidence as
+three bands, evidence ranges plus a capped note.
 **Grounds:** [`PHILOSOPHY.md`](../PHILOSOPHY.md) operating rules 1, 2,
 5, and 6; [`ROADMAP.md`](../../ROADMAP.md) Next items 1, 2, and 6;
 [`tier1-observation-bus.md`](./tier1-observation-bus.md);
@@ -426,15 +432,25 @@ The judge holds no mutation capability of any kind. The constraint
 is the design: its entire tool surface is "page the transcript, emit
 a verdict."
 
-### 12.3 The verdict shape (candidates, not columns)
+### 12.3 The verdict shape (locked v1, owner cut 2026-08-15)
 
 A verdict is an interpretation, not a fact, so provenance is
 mandatory:
 
 - The taxonomy classes assigned — **multi-label**, a run can be
   `spin_loop` and `env_fumble` at once — each with a confidence.
-- **Evidence pointers:** event sequence ranges, not prose.
-  "`spin_loop`, events 340–612" is auditable. A paragraph is not.
+  **Confidence is a band, not a float:** `low | medium | high`. A
+  cheap judge does not own the calibration a 0–1 float pretends to,
+  the Goodhart door (§12.5) only needs a high-confidence threshold,
+  and the strong-model re-judge measures band agreement directly.
+- `clean` is exclusive: a verdict that assigns it assigns nothing
+  else, so every denominator exists without double counting.
+- **Evidence pointers:** every assigned class except `clean` carries
+  at least one event sequence range.
+  "`spin_loop`, events 340–612" is auditable. A paragraph is not. A
+  class may add one optional free-text note, capped at 200
+  characters, as a human-review hint — the ranges remain the
+  evidence, and a note never substitutes for them.
 - **Provenance:** judge model id, rubric version (a hash of prompt +
   taxonomy), judged-at, and the cost of the judgment itself.
 - Re-judging under a new rubric version **appends** a verdict, never
@@ -442,13 +458,19 @@ mandatory:
   by default, and the version field is what lets a query refuse the
   mix.
 
-### 12.4 Behavioral failure taxonomy — draft candidates
+### 12.4 Behavioral failure taxonomy — rubric v1 (owner cut 2026-08-15)
 
-A starting list to cut down, deliberately over-provisioned per the
-owner's ask. The classes are behavioral and orthogonal to
-`RUN_FAILURE_REASONS` (infrastructure). Admission rule: a class must
-be evidence-pointable to event ranges, or it does not belong.
-Multi-label by design.
+The owner pass ran on 2026-08-15 and kept **all fifteen classes** as
+the rubric v1 launch list. The recorded rationale: maximum corpus
+resolution from day one, accepting that the strong-model re-judge
+(§12.5) will show more disagreement on the fine distinctions
+(`wrong_approach` versus `misread_requirements`, `tool_misuse`
+versus `env_fumble`) — that disagreement rate is itself the signal
+that drives any future narrowing, and a narrowing is a new rubric
+version, never an in-place edit. The classes are behavioral and
+orthogonal to `RUN_FAILURE_REASONS` (infrastructure). Admission
+rule: a class must be evidence-pointable to event ranges, or it does
+not belong. Multi-label by design.
 
 | Class | Meaning |
 |---|---|
@@ -468,8 +490,11 @@ Multi-label by design.
 | `steering_rescued` | Succeeded only after human steering redirected it. A positive signal for the §4 steering insight, not a demerit. |
 | `steering_resistant` | Received steering and failed to incorporate it. |
 
-Fifteen is more than a launch list wants. The list exists to be cut,
-and the cut is an owner pass.
+The 2026-08-12 draft note said fifteen is more than a launch list
+wants. The owner pass considered a 13-class and a 9-class cut and
+rejected both — an unlogged class is a hole in the corpus the same
+way an unjudged run is, and the calibration mechanics already exist
+to measure whether the fine distinctions hold up.
 
 ### 12.5 Cost and validity mechanics
 
@@ -501,9 +526,12 @@ stream, the scoped observer credential, and the published wire-schema
 artifact from `FRICTION.md`. It need not wait for that stream to
 exist: the audit-log extension already tails runs against today's
 HTTP surface with the friction logged, and the judge can be born the
-same way. The verdict shape and the taxonomy, though, want deciding
-before the first judgment runs — a corpus of verdicts under a
-throwaway schema is worth less than no corpus at all.
+same way. The verdict shape and the taxonomy wanted deciding before
+the first judgment runs — a corpus of verdicts under a throwaway
+schema is worth less than no corpus at all. That cut is now
+recorded: §12.3 locks the verdict shape and §12.4 locks rubric v1
+(2026-08-15), so nothing gates the judge's birth except someone
+building it.
 
 ## Appendix — pointers into the code
 
