@@ -91,6 +91,18 @@ Step 6 (warren-33da) adds the collector daemon:
   daily budget so one judgment cannot push the fleet past the day gate.
 - SIGTERM/SIGINT abort the loop between cycles; the in-flight judgment
   always finishes and checkpoints before exit.
+- [`src/calibration.ts`](src/calibration.ts) — the calibration re-judge
+  (§12.5): a periodic strong-model pass over a random sample of
+  already-judged runs, appending verdicts under the SAME rubric version
+  with the strong model's provider-qualified id (the store's dedupe key
+  makes this an append, never an overwrite). Per-class and overall
+  band-agreement between the cheap and strong verdicts is computed from
+  the store's calibration join and persisted per rubric version in the
+  `calibration_metrics` table — the disagreement rate is itself the
+  tracked signal. Budget gates apply to calibration judgments too: a
+  budget breach writes a visible `unjudged` marker under the strong
+  model id, never a silent skip. Disabled unless
+  `JUDGE_CALIBRATION_MODEL` is set.
 
 ## Boundary contract
 
@@ -121,6 +133,10 @@ extension's own store, never a core table.
 | `JUDGE_MAX_RETRIES` | no | Malformed/missing-verdict retries per judgment (default `2`) |
 | `JUDGE_MAX_PAGES` | no | Hard cap on events pages per judgment (default `40`); past it the tail degrades to a lower-confidence verdict, never unbounded spend |
 | `JUDGE_EVENTS_PAGE_SIZE` | no | Default events page size when the model omits `limit` (default `200`) |
+| `JUDGE_CALIBRATION_PROVIDER` | no | Calibration (strong-model) provider id; falls back to `JUDGE_PROVIDER` |
+| `JUDGE_CALIBRATION_MODEL` | no | Calibration model id — the pass is disabled unless set |
+| `JUDGE_CALIBRATION_SAMPLE_SIZE` | no | Random sample size per calibration pass (default `20`) |
+| `JUDGE_CALIBRATION_INTERVAL_MS` | no | Cadence between calibration passes (default `21600000`, six hours) |
 
 The judge model pair is **provider-agnostic** — set `JUDGE_PROVIDER` and
 `JUDGE_MODEL` together; nothing defaults to one vendor by hardcoding.

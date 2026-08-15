@@ -11,6 +11,27 @@
 export const DEFAULT_JUDGE_PROVIDER = "anthropic";
 export const DEFAULT_JUDGE_MODEL = "claude-haiku-4-5";
 
+/** Default random sample size per calibration pass. */
+export const DEFAULT_CALIBRATION_SAMPLE_SIZE = 20;
+/** Default cadence between calibration passes: six hours. */
+export const DEFAULT_CALIBRATION_INTERVAL_MS = 6 * 60 * 60 * 1000;
+
+/**
+ * The calibration re-judge contract (§12.5): a periodic strong-model pass
+ * over a random sample of already-judged runs. Resolved the same way as the
+ * cheap judge pair — `JUDGE_CALIBRATION_PROVIDER` / `JUDGE_CALIBRATION_MODEL`,
+ * cross-provider capable, with the pi SDK resolving the provider's own
+ * credential. Disabled unless `JUDGE_CALIBRATION_MODEL` is set.
+ */
+export interface CalibrationConfig {
+	readonly provider: string;
+	readonly model: string;
+	/** Random sample size per pass (JUDGE_CALIBRATION_SAMPLE_SIZE). */
+	readonly sampleSize: number;
+	/** Cadence between passes (JUDGE_CALIBRATION_INTERVAL_MS). */
+	readonly intervalMs: number;
+}
+
 export interface JudgeConfig {
 	readonly warrenBaseUrl: string;
 	readonly warrenApiToken: string;
@@ -33,6 +54,8 @@ export interface JudgeConfig {
 	readonly maxPages: number;
 	/** Default events page size when the model omits `limit`. */
 	readonly eventsPageSize: number;
+	/** The strong-model calibration pass, or null when disabled. */
+	readonly calibration: CalibrationConfig | null;
 }
 
 /** Raised when the environment contract is violated at boot. */
@@ -82,5 +105,21 @@ export function resolveConfig(env: Record<string, string | undefined>): JudgeCon
 		maxRetries: positiveNumber(env, "JUDGE_MAX_RETRIES", 2),
 		maxPages: positiveNumber(env, "JUDGE_MAX_PAGES", 40),
 		eventsPageSize: positiveNumber(env, "JUDGE_EVENTS_PAGE_SIZE", 200),
+		calibration: resolveCalibration(env),
+	};
+}
+
+function resolveCalibration(
+	env: Record<string, string | undefined>,
+): CalibrationConfig | null {
+	const model = env.JUDGE_CALIBRATION_MODEL;
+	if (model === undefined || model.length === 0) return null;
+	return {
+		provider: env.JUDGE_CALIBRATION_PROVIDER || env.JUDGE_PROVIDER || DEFAULT_JUDGE_PROVIDER,
+		model,
+		sampleSize: Math.floor(
+			positiveNumber(env, "JUDGE_CALIBRATION_SAMPLE_SIZE", DEFAULT_CALIBRATION_SAMPLE_SIZE),
+		),
+		intervalMs: positiveNumber(env, "JUDGE_CALIBRATION_INTERVAL_MS", DEFAULT_CALIBRATION_INTERVAL_MS),
 	};
 }

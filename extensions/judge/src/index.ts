@@ -13,6 +13,7 @@
  * imports nothing from warren's `src/` or `scripts/`. Everything it knows
  * about warren's wire shapes is hand-derived in `warren-wire.ts`.
  */
+import { CalibrationMetricStore, runCalibrationLoop } from "./calibration.ts";
 import { createClient } from "./client.ts";
 import { type JudgeFn, runJudgeCollector } from "./collector.ts";
 import { ConfigError, resolveConfig } from "./config.ts";
@@ -26,6 +27,14 @@ import { VerdictStore } from "./verdict-store.ts";
 export const EXTENSION_NAME = "judge";
 export const EXTENSION_VERSION = "0.0.0";
 
+export {
+	type AgreementReport,
+	CalibrationMetricStore,
+	calibrateOnce,
+	computeAgreement,
+	runCalibrationLoop,
+	strongJudgeModelId,
+} from "./calibration.ts";
 export { createClient, WarrenHttpError } from "./client.ts";
 export { collectOnce, runJudgeCollector, type JudgeCycleStats, type JudgeFn } from "./collector.ts";
 export { type JudgeConfig, resolveConfig } from "./config.ts";
@@ -77,6 +86,63 @@ async function main(): Promise<void> {
 	process.on("SIGTERM", shutdown);
 	process.on("SIGINT", shutdown);
 
+	const calibration = config.calibration;
+	const metrics = calibration === null ? null : new CalibrationMetricStore(config.dbPath);
+	const calibrationLoop =
+		calibration === null || metrics === null
+			? null
+			: runCalibrationLoop({
+					verdicts,
+					metrics,
+					spend,
+					judge: (runId, { maxCostUsd }) =>
+						judgeRun({
+							client,
+							runId,
+							provider: calibration.provider,
+							model: calibration.model,
+							rubricVersion,
+							sessionFactory: createPiSessionFactory({
+								provider: calibration.provider,
+								model: calibration.model,
+							}),
+							maxRetries: config.maxRetries,
+							maxPages: config.maxPages,
+							eventsPageSize: config.eventsPageSize,
+							maxCostUsdPerJudgment: maxCostUsd,
+						}),
+					rubricVersion,
+					cheapModelId: config.model,
+					strongProvider: calibration.provider,
+					strongModelId: calibration.model,
+					sampleSize: calibration.sampleSize,
+					maxCostUsdPerJudgment: config.maxCostUsdPerJudgment,
+					dailyBudgetUsd: config.dailyBudgetUsd,
+					intervalMs: calibration.intervalMs,
+					signal: ctrl.signal,
+					onCycle: (stats) =>
+						console.error(
+							`${EXTENSION_NAME}: calibration — ${stats.sampled} sampled, ` +
+								`${stats.rejudged} re-judged, ${stats.budgetSkipped} budget-skipped, ` +
+								`agreement ${String(stats.report.overallRate)} over ` +
+								`${stats.report.sampledPairs} pairs`,
+						),
+					onCycleError: (err) =>
+						console.error(`${EXTENSION_NAME}: calibration pass failed:`, err),
+					onRunError: (runId, err) =>
+						console.error(`${EXTENSION_NAME}: calibration re-judge for run ${runId} failed:`, err),
+					onBudgetSkip: (runId, detail) =>
+						console.error(
+							`${EXTENSION_NAME}: run ${runId} calibration-unjudged (budget_exceeded): ${detail}`,
+						),
+				});
+	if (calibration !== null) {
+		console.error(
+			`${EXTENSION_NAME}: calibration ${calibration.provider}/${calibration.model} ` +
+				`every ${calibration.intervalMs}ms, sample ${calibration.sampleSize}`,
+		);
+	}
+
 	console.error(
 		`${EXTENSION_NAME} ${EXTENSION_VERSION}: judging ${config.warrenBaseUrl} ` +
 			`every ${config.pollIntervalMs}ms (db ${config.dbPath}, ` +
@@ -84,7 +150,9 @@ async function main(): Promise<void> {
 			`caps $${config.maxCostUsdPerJudgment}/judgment, ` +
 			`$${config.dailyBudgetUsd}/day)`,
 	);
-	await runJudgeCollector({
+	await Promise.all([
+		...(calibrationLoop === null ? [] : [calibrationLoop]),
+		runJudgeCollector({
 		client,
 		verdicts,
 		cursors,
@@ -105,12 +173,14 @@ async function main(): Promise<void> {
 		onCycleError: (err) => console.error(`${EXTENSION_NAME}: cycle failed:`, err),
 		onRunError: (runId, err) =>
 			console.error(`${EXTENSION_NAME}: judgment for run ${runId} failed:`, err),
-		onBudgetSkip: (runId, detail) =>
-			console.error(`${EXTENSION_NAME}: run ${runId} unjudged (budget_exceeded): ${detail}`),
-	});
+			onBudgetSkip: (runId, detail) =>
+				console.error(`${EXTENSION_NAME}: run ${runId} unjudged (budget_exceeded): ${detail}`),
+		}),
+	]);
 	verdicts.close();
 	cursors.close();
 	spend.close();
+	metrics?.close();
 	console.error(`${EXTENSION_NAME}: stopped; ${verdicts.count()} verdict rows stored`);
 }
 

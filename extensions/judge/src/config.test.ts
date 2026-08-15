@@ -82,3 +82,55 @@ describe("resolveConfig", () => {
 		).toThrow(ConfigError);
 	});
 });
+
+describe("resolveConfig calibration", () => {
+	test("disables calibration unless JUDGE_CALIBRATION_MODEL is set", () => {
+		expect(resolveConfig({ ...BASE_ENV }).calibration).toBeNull();
+	});
+
+	test("resolves the strong-model pair with sample and cadence defaults", () => {
+		const config = resolveConfig({ ...BASE_ENV, JUDGE_CALIBRATION_MODEL: "claude-opus-4-1" });
+		expect(config.calibration).toEqual({
+			provider: DEFAULT_JUDGE_PROVIDER,
+			model: "claude-opus-4-1",
+			sampleSize: 20,
+			intervalMs: 6 * 60 * 60 * 1000,
+		});
+	});
+
+	test("resolves a cross-provider pair and the JUDGE_CALIBRATION_* knobs", () => {
+		const config = resolveConfig({
+			...BASE_ENV,
+			JUDGE_PROVIDER: "anthropic",
+			JUDGE_CALIBRATION_PROVIDER: "openai",
+			JUDGE_CALIBRATION_MODEL: "gpt-5",
+			JUDGE_CALIBRATION_SAMPLE_SIZE: "7",
+			JUDGE_CALIBRATION_INTERVAL_MS: "60000",
+		});
+		expect(config.calibration).toEqual({
+			provider: "openai",
+			model: "gpt-5",
+			sampleSize: 7,
+			intervalMs: 60_000,
+		});
+	});
+
+	test("falls back to JUDGE_PROVIDER when JUDGE_CALIBRATION_PROVIDER is unset", () => {
+		const config = resolveConfig({
+			...BASE_ENV,
+			JUDGE_PROVIDER: "openai",
+			JUDGE_CALIBRATION_MODEL: "gpt-5",
+		});
+		expect(config.calibration?.provider).toBe("openai");
+	});
+
+	test("rejects a malformed calibration sample size", () => {
+		expect(() =>
+			resolveConfig({
+				...BASE_ENV,
+				JUDGE_CALIBRATION_MODEL: "gpt-5",
+				JUDGE_CALIBRATION_SAMPLE_SIZE: "abc",
+			}),
+		).toThrow(ConfigError);
+	});
+});
