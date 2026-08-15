@@ -60,10 +60,32 @@ import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
 
 const REPO_ROOT = resolve(import.meta.dir, "..");
-const SRC_ROOT = resolve(REPO_ROOT, "src");
 
 /** The one home, repo-relative POSIX. Everything else re-exports it. */
 export const CANONICAL_HOME = "src/core/wire.ts";
+
+/**
+ * The home re-exports whole sibling modules that hold part of the
+ * vocabulary, so the file-size ratchet on `wire.ts` can keep going down
+ * (`./wire-inbox.ts`, `./wire-insight.ts`, `./wire-actor.ts`). Reading only
+ * the home would drop every name those modules declare, since
+ * `export * from` carries no declaration keyword to match.
+ */
+const STAR_REEXPORT_RE = /^export\s+\*\s+from\s+"\.\/([\w.-]+)"\s*;/;
+
+/**
+ * The home plus the modules it re-exports wholesale, repo-relative POSIX.
+ * Derived from the home's own source, so a fourth split module joins the
+ * guarded set the moment it is re-exported.
+ */
+export function canonicalSources(homeText: string): string[] {
+	const sources = [CANONICAL_HOME];
+	for (const line of homeText.split("\n")) {
+		const found = STAR_REEXPORT_RE.exec(line.trim());
+		if (found?.[1] !== undefined) sources.push(`src/core/${found[1]}`);
+	}
+	return sources;
+}
 
 /**
  * Domain nouns that make an exported name "wire vocabulary". A canonical
@@ -92,6 +114,15 @@ export const DOMAIN_STEMS = [
 	// the canonical home too — without this stem the guard would derive the
 	// name but never enforce it, recreating the warren-5334 blindness.
 	"envelope",
+	// warren-3754: the actor vocabulary of GET /whoami (ActorKind,
+	// ActorCapabilities, CapabilityName). Both stems are needed, since
+	// "actor" alone misses CapabilityName. "capability" is safe next to the
+	// warren-0993 warning because redeclaration matching is by exact name:
+	// RuntimeCapabilities (src/runtime/contract.ts) is a different name and
+	// never becomes canonical, since only src/core/wire.ts is read for the
+	// enforced list.
+	"actor",
+	"capability",
 ] as const;
 
 /**
@@ -190,21 +221,37 @@ function* walk(dir: string): Generator<string> {
 	}
 }
 
+/** Every name the home and its re-exported modules declare. */
+export function enforcedNames(repoRoot: string = REPO_ROOT): {
+	names: string[];
+	sources: string[];
+} {
+	const homeText = readFileSync(resolve(repoRoot, CANONICAL_HOME), "utf8");
+	const sources = canonicalSources(homeText);
+	const names = new Set<string>();
+	for (const rel of sources) {
+		for (const name of canonicalNames(readFileSync(resolve(repoRoot, rel), "utf8"))) {
+			names.add(name);
+		}
+	}
+	return { names: [...names].sort(), sources };
+}
+
 /** Walk `<repoRoot>/src` and collect every redeclaration outside the home. */
 export function scan(repoRoot: string = REPO_ROOT): Violation[] {
-	const home = resolve(repoRoot, CANONICAL_HOME);
-	const names = new Set(canonicalNames(readFileSync(home, "utf8")));
+	const { names, sources } = enforcedNames(repoRoot);
+	const enforced = new Set(names);
 	const violations: Violation[] = [];
 	for (const abs of walk(resolve(repoRoot, "src"))) {
 		const rel = relative(repoRoot, abs).split("\\").join("/");
-		if (rel === CANONICAL_HOME || isTestFile(rel) || ALLOW.includes(rel)) continue;
-		violations.push(...scanText(rel, readFileSync(abs, "utf8"), names));
+		if (sources.includes(rel) || isTestFile(rel) || ALLOW.includes(rel)) continue;
+		violations.push(...scanText(rel, readFileSync(abs, "utf8"), enforced));
 	}
 	return violations;
 }
 
 function main(): void {
-	const names = canonicalNames(readFileSync(resolve(SRC_ROOT, "core/wire.ts"), "utf8"));
+	const { names } = enforcedNames();
 	const violations = scan();
 	if (violations.length === 0) {
 		console.log(`check:wire-types — ok (${names.length} canonical names, no redeclarations)`);

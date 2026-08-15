@@ -37,6 +37,8 @@ export {
 } from "../../../core/wire.ts";
 
 import type {
+	ActorKind,
+	CapabilityName,
 	CloneKind,
 	ErrorEnvelope,
 	EventStream,
@@ -387,17 +389,19 @@ export type ApiErrorEnvelope = ErrorEnvelope;
 /* ----------------------------------------------------------------------- */
 /* Caller identity — `GET /whoami` (warren-e195).                          */
 /*                                                                         */
-/* Mirrors `ActorKind` / `CapabilityName` / the whoami body in             */
-/* src/server/types.ts + src/server/handlers/whoami.ts — kept manually in  */
-/* sync because src/ui/ is excluded from the root tsconfig and the         */
-/* boundary is the HTTP wire, not a TS import (mx-2e4a1a).                 */
+/* `ActorKind` and `CapabilityName` are declared once in src/core/wire.ts  */
+/* (warren-3754) and re-exported here, the way this file already treats    */
+/* the rest of the wire vocabulary. The hand-kept copies they replace had  */
+/* already lost the `run` arm that per-run scoped tokens added.            */
 /* ----------------------------------------------------------------------- */
 
-/** Who warren admitted this browser as. */
-export type ActorIdentity = "operator" | "anonymous";
+export type { ActorCapabilities, ActorKind, CapabilityName } from "../../../core/wire.ts";
 
-/** One capability name. `readPublic` is all a public-instance visitor holds. */
-export type CapabilityName = "readPublic" | "readOperator" | "dispatch" | "admin";
+/**
+ * Who warren admitted this browser as. Kept as the UI's own spelling and
+ * derived from `ActorKind`, so the two can never disagree.
+ */
+export type ActorIdentity = ActorKind;
 
 /**
  * Wire envelope of `GET /whoami`. `capabilities` lists only the granted
