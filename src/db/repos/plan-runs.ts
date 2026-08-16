@@ -274,6 +274,19 @@ export class PlanRunsRepo {
 		return out;
 	}
 
+	/**
+	 * Reverse lookup: the plan-run child a run was dispatched for, if any
+	 * (warren-4af7). The run-level infra-lost retry uses this to stand down
+	 * on plan-run children — the coordinator's own child-retry shape
+	 * (warren-6de9) owns those, and a double retry must never fire.
+	 */
+	async findChildByRunId(runId: string): Promise<PlanRunChildRow | null> {
+		const row = await this.adapter.pickOne(
+			this.db.select().from(this.planRunChildren).where(eq(this.planRunChildren.runId, runId)),
+		);
+		return row ?? null;
+	}
+
 	async listChildren(planRunId: string): Promise<PlanRunChildRow[]> {
 		return this.adapter.pickAll(
 			this.db

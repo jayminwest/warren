@@ -88,6 +88,8 @@ export interface RunRow {
 	/** Chain back-link (warren-4b11 / warren-e96f); null for root runs. */
 	parentRunId: string | null;
 	cloneKind: CloneKind | null;
+	/** Infra-lost auto-retry back-link (warren-4af7); null for first-attempt runs. */
+	retryOf: string | null;
 	mode: RunMode;
 	renderedAgentJson: unknown;
 	state: RunState;

@@ -103,11 +103,8 @@ export interface RunRow {
 	/**
 	 * Back-link to the seeds issue this run was dispatched against
 	 * (pl-bb70 step 3 / warren-805a). Null encodes "no seed" — manual
-	 * prompts from POST /runs without `seedId`, or legacy rows written
-	 * before the column existed. Surfaced as a MetaCard on RunDetail so
-	 * operators can navigate from a run back to its issue (pl-bb70 step
-	 * 6 / warren-c845). R-04 will turn this into a proper hyperlink
-	 * when the issues page lands.
+	 * prompts from POST /runs without `seedId`, or legacy rows. Surfaced
+	 * as a MetaCard on RunDetail (pl-bb70 step 6 / warren-c845).
 	 */
 	seedId: string | null;
 	/**
@@ -126,6 +123,8 @@ export interface RunRow {
 	 * the project default base). Null for root runs.
 	 */
 	cloneKind: CloneKind | null;
+	/** Infra-lost auto-retry back-link (warren-4af7); null for first-attempt runs. */
+	retryOf: string | null;
 	/**
 	 * Run mode discriminator (pl-0344 step 1 / warren-67b6). Pinned at row
 	 * creation; warren-side only (burrow doesn't know about run mode).

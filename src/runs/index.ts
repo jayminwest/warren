@@ -162,6 +162,19 @@ export {
 	reapRun,
 } from "./reap/index.ts";
 export {
+	type CreateInfraLostRetryHookInput,
+	createInfraLostRetryHook,
+	decideInfraLostRetry,
+	INFRA_LOST_RUN_FAILURE_REASONS,
+	type InfraLostRetryDecision,
+	type InfraLostRetryHook,
+	type InfraLostRetrySkip,
+	type InfraLostRunFailureReason,
+	isInfraLostRunFailure,
+	RUN_RETRY_DISPATCHED_KIND,
+	RUN_RETRY_OF_KIND,
+} from "./retry/infra-lost-retry.ts";
+export {
 	classifyProviderError,
 	createProviderRetryLifecycleExtension,
 	PROVIDER_RETRY_EVENTS,

@@ -181,8 +181,7 @@ export async function spawnRun(input: SpawnRunInput): Promise<SpawnRunResult> {
 	// warren-2ede / pl-103e: freeze the DECLARED provider/model onto real
 	// columns so analytics group-bys read the columns instead of re-parsing
 	// rendered_agent_json per query. This is the resolved frontmatter value
-	// (override chain already folded in above), not what the harness
-	// actually used — actually-used reporting is future work.
+	// (override chain already folded in above), not what the harness used.
 	const run = await input.repos.runs.create({
 		agentName: agent.name,
 		projectId: projectAfterRefresh.id,
@@ -196,6 +195,7 @@ export async function spawnRun(input: SpawnRunInput): Promise<SpawnRunResult> {
 		...(input.parentRunId !== undefined && input.parentRunId !== ""
 			? { parentRunId: input.parentRunId, cloneKind: input.cloneKind ?? "continue" }
 			: {}),
+		...(input.retryOf !== undefined && input.retryOf !== "" ? { retryOf: input.retryOf } : {}),
 		...(targetBranch !== undefined ? { targetBranch } : {}),
 		// warren-afeb: freeze the explicit dispatch-supplied clone ref onto the
 		// row so POST /runs and GET /runs/:id can echo that it took.

@@ -95,6 +95,16 @@ export interface ReapRunInput {
 	 */
 	readonly failureReason?: RunFailureReason;
 	/**
+	 * Infra-lost auto-retry hook (warren-4af7). Fired once, after the
+	 * terminal transition + workspace teardown, when the run finalized
+	 * `failed` with an infra-lost failure reason (`sandbox_run_lost`). The
+	 * hook re-dispatches ONE replacement run linked via `runs.retry_of`
+	 * (see `src/runs/retry/infra-lost-retry.ts`); boot wires it, tests omit it (no retry).
+	 * Fire-and-log: a hook throw is caught by reap and surfaced as a
+	 * `run.retry_failed` event, never as a reap failure.
+	 */
+	readonly onInfraLostRun?: (runId: string) => Promise<void>;
+	/**
 	 * Auto-open-PR config (warren-f6af). When omitted or `enabled: false`,
 	 * the `pr_open` sub-step is skipped entirely (no event emitted, no
 	 * runs.pr_url update). Higher-level callers (HTTP server boot, CLI

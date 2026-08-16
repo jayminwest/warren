@@ -1,25 +1,14 @@
 /**
  * Boot entry for `warren serve` (docs/design/runtime-and-supervisor.md).
  *
- * Wires together every layer the server depends on:
- *   - load env-driven config (server bind, data dir, UI dist),
- *   - open the SQLite db (creates + migrates if missing),
- *   - construct the BurrowClient + RunEventBroker,
- *   - boot the BridgeRegistry (resumes in-flight runs; see runtime-and-supervisor.md),
- *   - load the projects sub-configs, resolve the AuthProvider, call `startServer`.
+ * Wires together every layer the server depends on (env config, db,
+ * BurrowClient + RunEventBroker, BridgeRegistry, projects, auth) and calls
+ * `startServer`. Returns a `WarrenServerHandle` whose `stop()` tears
+ * everything down in reverse order; the supervisor owns SIGTERM/SIGINT
+ * plumbing. `bootServer` is async.
  *
- * Returns a `WarrenServerHandle` whose `stop()` tears everything down
- * in reverse order: aborts the wire, drains the bridges, closes the db,
- * closes the burrow client. The supervisor owns SIGTERM/SIGINT plumbing;
- * this entry just exposes stop so a test or the CLI can call it directly.
- *
- * `bootServer` is async.
- *
- * Split into a `main/` subdirectory (warren-8d3d / pl-9088 step 10):
- * - `./utils.ts`         — env/process/db helpers (incl. `defaultSpawn`,
- *                          `resolvePgPoolMax`)
- * - `./logging.ts`       — pino → narrow logger adapters
- * - `./preview-wiring.ts` — preview signed-cookie + proxy assembly
+ * Split into a `main/` subdirectory (warren-8d3d / pl-9088 step 10) — one
+ * `*-wiring.ts` module per boot concern; this file is the composition root.
  */
 
 import { join } from "node:path";
@@ -71,6 +60,7 @@ import {
 import { bootObservability, captureBootFailure } from "./observability-wiring.ts";
 import { bootPlanRunCoordinatorWiring } from "./plan-run-wiring.ts";
 import { bootPreviewSurface } from "./preview-wiring.ts";
+import { wireInfraLostRetry } from "./retry-wiring.ts";
 import { bootK8sRuntime, resolveBootRuntimeProvider } from "./runtime-wiring.ts";
 import { bootToolCallsBackfill } from "./tool-calls-backfill-wiring.ts";
 import { closeDatabase, defaultSpawn, redactDbUrl, resolvePgPoolMax } from "./utils.ts";
@@ -200,31 +190,24 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 	const previewEvictionConfig = loadPreviewEvictionConfigFromEnv(env);
 	const workspaceGcConfig = loadWorkspaceGcConfigFromEnv(env);
 
-	// Seeds-CLI seam shared by the bridge reap path (warren-41d5 auto_plan_run
-	// child-seed validation) and the plan-run coordinator below.
+	// Seeds-CLI seam shared by the bridge reap path (warren-41d5) and the plan-run coordinator.
 	const schedulerConfig = loadTriggerSchedulerConfigFromEnv(env);
 	const seedsCli = { sdBinary: schedulerConfig.sdBinary, spawn: defaultSpawn };
 
-	// Tier-1 observation bus (warren-bb60) + first-party consumers (warren-4e74
-	// healer, warren-df3e seed-close). Installed BEFORE bridges resume in-flight
-	// runs so no emit is dropped; wired here so seed-close can resolve rows +
-	// drive `sd close` (see lifecycle-bus-wiring.ts). warren-3bc6: `forge` is the
-	// boot-resolved instance — the merge watcher consumes the Forge seam.
+	// Tier-1 observation bus (warren-bb60) + first-party consumers (warren-4e74 healer,
+	// warren-df3e seed-close). Installed BEFORE bridges resume in-flight runs so no emit
+	// is dropped (see lifecycle-bus-wiring.ts). warren-3bc6: `forge` is the boot-resolved instance.
 	const lifecycleBusHandle = bootLifecycleBus({ logger, repos, seedsCli, broker, forge });
 
-	// K8s runtime background loops (pl-829f step 25 / warren-7c30). Under
-	// `WARREN_RUNTIME=k8s` this starts the pod-watcher informer + pod-GC loop;
-	// returns `undefined` for the default `local` backend. warren-c531: booted
-	// HERE (before `bootBridges`) so the provider can be threaded everywhere.
+	// K8s runtime background loops (pl-829f step 25 / warren-7c30); undefined under the
+	// default `local` backend. warren-c531: booted HERE (before `bootBridges`).
 	const k8sRuntime = bootK8sRuntime({ env, metrics: metricsRegistry, logger });
 	if (k8sRuntime !== undefined) {
 		logger.info({}, "k8s runtime: pod-watcher + pod-GC started");
 	}
 
-	// Resolve the runtime provider ONCE (warren-c531) — the SAME instance flows
-	// into the bridge registry, poller, watchdog, and `ServerDeps`. warren-f796:
-	// under `local` the `LocalBootBackend` owns the burrow client + gated seams;
-	// under `k8s` the `K8sProvider` is resolved directly and those seams stay dark.
+	// Resolve the runtime provider ONCE (warren-c531) — the SAME instance flows into the
+	// bridge registry, poller, watchdog, and `ServerDeps` (warren-f796: local vs k8s seams).
 	const localBackend =
 		resolveRuntimeKind(env) === "local" ? resolveLocalBootBackend(env) : undefined;
 	const runtimeProvider =
@@ -252,7 +235,22 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 	// warren-cd3b: the salvage bundle capture lands beside the salvage intake dir.
 	// warren-45e6: the boot-resolved forge drives reap's PR sub-steps.
 	const salvageDir = join(serverConfig.dataDir, "salvage");
-	const bindReap = bindReapWithBootDeps({ forge, previewSidecars, salvageDir });
+	// warren-4af7: infra-lost auto-retry (src/runs/retry/infra-lost-retry.ts) —
+	// see retry-wiring.ts.
+	const { onInfraLostRun, onRegistryCreated } = wireInfraLostRetry({
+		repos,
+		runtimeProvider,
+		broker,
+		projectsConfig,
+		warrenConfigs,
+		seedsCli,
+		env,
+		logger,
+		projectSpawn: defaultSpawn,
+		...(runBranchPrefixDefault !== undefined ? { runBranchPrefixDefault } : {}),
+		...(opts.now !== undefined ? { now: opts.now } : {}),
+	});
+	const bindReap = bindReapWithBootDeps({ forge, previewSidecars, salvageDir, onInfraLostRun });
 
 	// warren-339d: bridge boot + provider-retry registration (see bridges-wiring.ts).
 	const { bridgesBoot, providerRetryRegistration } = await bootBridgesAndProviderRetry({
@@ -268,6 +266,9 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 			portAllocator,
 			previewLaunchConfig: previewSurface.launchConfig,
 			seedsCli,
+			// warren-4af7: infra-lost ghost-reconcile + registry late-binding.
+			onInfraLostRun,
+			onRegistryCreated,
 		},
 		logger,
 		bus: lifecycleBusHandle.bus,

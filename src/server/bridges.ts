@@ -180,6 +180,21 @@ export interface CreateBridgeRegistryInput {
 	 * manual `POST /plan-runs` handler. Omit to skip validation (tests).
 	 */
 	readonly seedsCli?: SeedsCliDeps;
+	/**
+	 * Infra-lost auto-retry hook (warren-4af7). Threaded into every bridge's
+	 * `runWithReconnect` (the mid-stream 404 reconcile) and into the
+	 * `bootBridges` ghost-run reconcile, so a run that terminalizes
+	 * `failed`/`sandbox_run_lost` earns ONE automatic re-dispatch
+	 * (`src/runs/retry/infra-lost-retry.ts`). Omit to disable (tests).
+	 */
+	readonly onInfraLostRun?: (runId: string) => Promise<void>;
+	/**
+	 * Called with the freshly-created registry inside `bootBridges`, BEFORE
+	 * the ghost-run reconcile loop (warren-4af7). Lets the boot wiring
+	 * late-bind the retry hook's bridge facade so a retry dispatched during
+	 * the boot reconcile still gets its event stream attached.
+	 */
+	readonly onRegistryCreated?: (registry: BridgeRegistry) => void;
 }
 
 export function createBridgeRegistry(input: CreateBridgeRegistryInput): BridgeRegistry {
@@ -224,6 +239,7 @@ export function createBridgeRegistry(input: CreateBridgeRegistryInput): BridgeRe
 				? { previewLaunchConfig: input.previewLaunchConfig }
 				: {}),
 			...(input.seedsCli !== undefined ? { seedsCli: input.seedsCli } : {}),
+			...(input.onInfraLostRun !== undefined ? { onInfraLostRun: input.onInfraLostRun } : {}),
 		});
 		const entry: BridgeEntry = { burrowRunId, abort, done };
 		live.set(runId, entry);
@@ -304,6 +320,10 @@ export interface BootBridgesResult {
  */
 export async function bootBridges(input: CreateBridgeRegistryInput): Promise<BootBridgesResult> {
 	const registry = createBridgeRegistry(input);
+	// warren-4af7: expose the registry to the boot wiring before the ghost
+	// reconcile below can fire the retry hook, so a boot-time retry's bridge
+	// attaches to THIS registry.
+	input.onRegistryCreated?.(registry);
 	// warren-c531 / warren-5a3f: the ghost-run pre-probe reconciles via
 	// `provider.status()` so it is runtime-aware — under `WARREN_RUNTIME=k8s` a GC'd
 	// pod surfaces as `exists:false` exactly as burrow's 404 did, with no direct
@@ -366,6 +386,7 @@ export async function bootBridges(input: CreateBridgeRegistryInput): Promise<Boo
 				burrowRunId: run.burrowRunId,
 				repos: input.repos,
 				broker: input.broker,
+				...(input.onInfraLostRun !== undefined ? { onInfraLostRun: input.onInfraLostRun } : {}),
 				// warren-a7cb / warren-5a3f: route lost-run teardown through the active
 				// backend so a boot-time reconcile deletes the pod (K8s) / destroys the
 				// burrow (local) via `provider.terminate()`.

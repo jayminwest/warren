@@ -31,6 +31,8 @@ export interface ReapBindingDeps {
 	readonly forge: Forge;
 	readonly previewSidecars: Parameters<typeof reapRun>[0]["previewSidecars"];
 	readonly salvageDir: string;
+	/** warren-4af7: infra-lost terminalization earns one automatic retry. */
+	readonly onInfraLostRun?: Parameters<typeof reapRun>[0]["onInfraLostRun"];
 }
 
 /**
@@ -48,6 +50,7 @@ export function bindReapWithBootDeps(
 			forge: deps.forge,
 			...(deps.previewSidecars !== undefined ? { previewSidecars: deps.previewSidecars } : {}),
 			salvageDir: deps.salvageDir,
+			...(deps.onInfraLostRun !== undefined ? { onInfraLostRun: deps.onInfraLostRun } : {}),
 		});
 }
 
