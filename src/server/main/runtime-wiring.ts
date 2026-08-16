@@ -29,11 +29,24 @@
  * self-host boot path is byte-identical.
  */
 
-import { ApiException, CoreV1Api, KubeConfig, type V1Pod, Watch } from "@kubernetes/client-node";
+import {
+	ApiException,
+	CoreV1Api,
+	type CoreV1Event,
+	KubeConfig,
+	type V1Pod,
+	Watch,
+} from "@kubernetes/client-node";
 import type { Forge } from "../../forge/contract.ts";
 import { mintGitCredentialSecret } from "../../forge/credentials.ts";
 import type { RuntimeProvider } from "../../runtime/contract.ts";
 import type { AdmissionCounterSink } from "../../runtime/k8s/admission.ts";
+import {
+	type EventListFn,
+	type EventWatchFn,
+	PodEventWatcher,
+	type PodWarningSignal,
+} from "../../runtime/k8s/pod-event-watcher.ts";
 import { PodGc } from "../../runtime/k8s/pod-gc.ts";
 import { LABEL_RUN_ID, resolveK8sPodConfig } from "../../runtime/k8s/pod-spec.ts";
 import {
@@ -71,12 +84,20 @@ export interface BootK8sRuntimeInput {
 	 */
 	readonly watch?: WatchFn;
 	readonly now?: () => Date;
+	/**
+	 * Sink for deduplicated pod WARNING events (warren-32f8) —
+	 * `FailedAttachVolume`, `FailedScheduling`, `ImagePullBackOff`-class stalls
+	 * that pod status cannot express. Boot wires this to append onto the run's
+	 * event stream (`k8s-pod-warning-sink.ts`); absent ⇒ warn-log only.
+	 */
+	readonly onPodWarning?: (signal: PodWarningSignal) => void;
 }
 
 /** Handle over the started K8s background loops. `stop()` is idempotent. */
 export interface K8sRuntimeHandle {
 	readonly podWatcher: PodWatcher;
 	readonly podGc: PodGc;
+	readonly podEventWatcher: PodEventWatcher;
 	/**
 	 * The shared lazy core-API factory — threaded onto the `K8sProvider` (via
 	 * `buildServerDeps`) so the provider's own pod create/get/delete calls reuse
@@ -157,18 +178,42 @@ export function bootK8sRuntime(input: BootK8sRuntimeInput): K8sRuntimeHandle | u
 		...(input.now !== undefined ? { now: input.now } : {}),
 	});
 
+	// warren-32f8: warning-events informer. Correlates core v1 Warning events
+	// (FailedAttachVolume / FailedScheduling / pull-backoffs) to runs via the
+	// pod-watcher's cache, so a wedged pod surfaces on the run's event stream
+	// instead of reading as a bare `queued`.
+	const podEventWatcher = new PodEventWatcher({
+		list: realEventList(coreApi, namespace),
+		watch: clients.watchEvents,
+		namespace,
+		runIdForPodName: (podName) => podWatcher.runIdForPodName(podName),
+		podPhaseForRunId: (runId) => podWatcher.getByRunId(runId)?.status?.phase,
+		onWarning:
+			input.onPodWarning ??
+			((signal) =>
+				wireLogger.warn(
+					{ runId: signal.runId, reason: signal.reason, podName: signal.podName },
+					"run pod warning (no run-stream sink wired)",
+				)),
+		logger: wireLogger,
+		resyncPeriodMs: resolveResyncPeriodMs(input.env),
+	});
+
 	podWatcher.start();
 	podGc.start();
+	podEventWatcher.start();
 
 	return {
 		podWatcher,
 		podGc,
+		podEventWatcher,
 		coreApi,
 		stop: async () => {
-			// Stop the GC first (it only sweeps) then the watcher, awaiting both so
+			// Stop the GC first (it only sweeps) then the watchers, awaiting all so
 			// no loop outlives boot teardown.
 			await podGc.stop();
 			await podWatcher.stop();
+			await podEventWatcher.stop();
 		},
 	};
 }
@@ -259,9 +304,17 @@ export function resolveBootRuntimeProvider(
 function resolveK8sClients(input: BootK8sRuntimeInput): {
 	coreApi: () => CoreV1Api;
 	watch: WatchFn;
+	watchEvents: EventWatchFn;
 } {
 	if (input.coreApi !== undefined && input.watch !== undefined) {
-		return { coreApi: input.coreApi, watch: input.watch };
+		const injected = input.watch;
+		return {
+			coreApi: input.coreApi,
+			watch: injected,
+			// Tests inject one scripted watch seam; the events watcher reuses it
+			// (cast: the fake delivers whatever objects the test scripts).
+			watchEvents: injected as unknown as EventWatchFn,
+		};
 	}
 	let kubeConfig: KubeConfig | undefined;
 	const loadConfig = (): KubeConfig => {
@@ -281,9 +334,19 @@ function resolveK8sClients(input: BootK8sRuntimeInput): {
 		if (cachedWatch === undefined) cachedWatch = new Watch(loadConfig());
 		return cachedWatch.watch(path, query, (phase, obj) => onEvent(phase, obj as V1Pod), onDone);
 	};
+	const defaultWatchEvents: EventWatchFn = (path, query, onEvent, onDone) => {
+		if (cachedWatch === undefined) cachedWatch = new Watch(loadConfig());
+		return cachedWatch.watch(
+			path,
+			query,
+			(phase, obj) => onEvent(phase, obj as CoreV1Event),
+			onDone,
+		);
+	};
 	return {
 		coreApi: input.coreApi ?? defaultCoreApi,
 		watch: input.watch ?? defaultWatch,
+		watchEvents: defaultWatchEvents,
 	};
 }
 
@@ -291,6 +354,17 @@ function resolveK8sClients(input: BootK8sRuntimeInput): {
 function realPodList(coreApi: () => CoreV1Api, namespace: string): PodListFn {
 	return async () => {
 		const list = await coreApi().listNamespacedPod({ namespace, labelSelector: LABEL_RUN_ID });
+		return { items: list.items, resourceVersion: list.metadata?.resourceVersion };
+	};
+}
+
+/** Events list seam: the warning events in the run namespace (warren-32f8). */
+function realEventList(coreApi: () => CoreV1Api, namespace: string): EventListFn {
+	return async () => {
+		const list = await coreApi().listNamespacedEvent({
+			namespace,
+			fieldSelector: "type=Warning",
+		});
 		return { items: list.items, resourceVersion: list.metadata?.resourceVersion };
 	};
 }
