@@ -27,7 +27,21 @@ import { claudeCodeAdapter } from "./claude-code.ts";
 import { piAdapter } from "./pi.ts";
 import type { AgentRuntimeAdapter } from "./types.ts";
 
-export type { AgentRuntimeAdapter } from "./types.ts";
+// Phase-2 harness surface (warren-7933) — additive re-exports so the k8s
+// in-pod rewiring (warren-0efe) can consume the lifted types from the
+// registry root.
+export type {
+	AdapterEventKind,
+	AdapterExtractMetadataContext,
+	AdapterPrepareContext,
+	AdapterRuntimeEvent,
+	AdapterSpawnContext,
+	AgentFrontmatter,
+	AgentRuntimeAdapter,
+	PiFrontmatterOptions,
+	SpawnCommand,
+	SteeringMessage,
+} from "./types.ts";
 
 /**
  * Every adapter, keyed by runtime id. `satisfies` rather than a bare
