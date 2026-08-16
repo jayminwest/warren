@@ -104,6 +104,74 @@ describe("mergeJsonl", () => {
 		expect(mergeJsonl(ancestor, ours, theirs)).toBe(file([row("warren-aaaa", { priority: 1 })]));
 	});
 
+	test("auto-resolves both-sides-closed rows differing only in timestamps (warren-5f0d)", () => {
+		const ancestor = file([row("warren-aaaa", { updatedAt: "2026-08-11T00:00:00Z" })]);
+		const ours = file([
+			row("warren-aaaa", {
+				status: "closed",
+				updatedAt: "2026-08-11T01:00:00Z",
+				closedAt: "2026-08-11T01:00:00Z",
+			}),
+		]);
+		const theirs = file([
+			row("warren-aaaa", {
+				status: "closed",
+				updatedAt: "2026-08-11T02:00:00Z",
+				closedAt: "2026-08-11T02:00:00Z",
+			}),
+		]);
+		expect(mergeJsonl(ancestor, ours, theirs)).toBe(theirs);
+		expect(mergeJsonl(ancestor, theirs, ours)).toBe(theirs);
+	});
+
+	test("auto-resolves an updatedAt-only race on an otherwise identically-edited row", () => {
+		const ancestor = file([row("warren-aaaa", { priority: 2 })]);
+		const ours = file([row("warren-aaaa", { priority: 1, updatedAt: "2026-08-11T01:00:00Z" })]);
+		const theirs = file([row("warren-aaaa", { priority: 1, updatedAt: "2026-08-11T03:00:00Z" })]);
+		expect(mergeJsonl(ancestor, ours, theirs)).toBe(
+			file([row("warren-aaaa", { priority: 1, updatedAt: "2026-08-11T03:00:00Z" })]),
+		);
+	});
+
+	test("still conflicts on a genuine content disagreement alongside timestamps", () => {
+		const ancestor = file([row("warren-aaaa", { title: "old" })]);
+		const ours = file([row("warren-aaaa", { title: "ours", updatedAt: "2026-08-11T01:00:00Z" })]);
+		const theirs = file([
+			row("warren-aaaa", { title: "theirs", updatedAt: "2026-08-11T02:00:00Z" }),
+		]);
+		expect(mergeJsonl(ancestor, ours, theirs)).toBeUndefined();
+	});
+
+	test("still conflicts on closedAt when only one side closed the row", () => {
+		const ancestor = file([row("warren-aaaa", { updatedAt: "2026-08-11T00:00:00Z" })]);
+		const ours = file([
+			row("warren-aaaa", {
+				status: "closed",
+				updatedAt: "2026-08-11T01:00:00Z",
+				closedAt: "2026-08-11T01:00:00Z",
+			}),
+		]);
+		// A real closedAt disagreement (both sides set different closedAt
+		// without agreeing on closed status) must conflict.
+		const ours2 = file([
+			row("warren-aaaa", {
+				status: "open",
+				updatedAt: "2026-08-11T01:00:00Z",
+				closedAt: "2026-08-11T01:00:00Z",
+			}),
+		]);
+		const theirs2 = file([
+			row("warren-aaaa", {
+				status: "open",
+				updatedAt: "2026-08-11T02:00:00Z",
+				closedAt: "2026-08-11T02:00:00Z",
+			}),
+		]);
+		expect(mergeJsonl(ancestor, ours2, theirs2)).toBeUndefined();
+		// One-side-closed against an untouched row keeps prior behaviour.
+		expect(mergeJsonl(ancestor, ours, ancestor)).toBe(ours);
+	});
+
 	test("produces byte-identical output when one side is unchanged", () => {
 		const ancestor = file([
 			row("warren-aaaa"),
