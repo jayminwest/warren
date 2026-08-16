@@ -223,6 +223,23 @@ describe("renderRegistrationPage", () => {
 		expect(html).toContain("http://127.0.0.1:8377/github-app/callback");
 	});
 
+	test("states the single-use, 10-minute nonce TTL and the manual-form trap", () => {
+		const manifest = buildGitHubAppManifest({
+			name: "warren-test",
+			homepageUrl: "https://example.test/",
+			redirectUrl: "http://127.0.0.1:8377/github-app/callback",
+		});
+		const html = renderRegistrationPage({
+			manifest,
+			createUrl: GITHUB_APP_MANIFEST_CREATE_URL,
+			state: "nonce-1",
+		});
+		expect(html).toContain("single-use");
+		expect(html).toContain("10 minutes");
+		expect(html).toContain("/github-app/register");
+		expect(html).toContain("back out and restart");
+	});
+
 	test("escapes a hostile manifest name in both renderings", () => {
 		const manifest = buildGitHubAppManifest({
 			name: '"><script>alert(1)</script>',
@@ -260,6 +277,28 @@ describe("renderCredentialsPage", () => {
 		expect(html).toContain("WARREN_GITHUB_APP_INSTALLATION_ID");
 		expect(html).toContain("WARREN_GITHUB_APP_PRIVATE_KEY");
 		expect(html).toContain("https://github.com/apps/warren-test-app/installations/new");
+	});
+
+	test("renders copy-paste secret blocks per deploy shape, with the App id pre-filled", () => {
+		const html = renderCredentialsPage(registration);
+		// K8s: kubectl patch against the RUNBOOK secret and key names.
+		expect(html).toContain("kubectl -n warren patch secret warren-secrets");
+		expect(html).toContain(
+			"&#39;{&quot;stringData&quot;:{&quot;warren-forge&quot;:&quot;app&quot;,",
+		);
+		expect(html).toContain("&quot;github-app-id&quot;:&quot;4560297&quot;");
+		expect(html).toContain("&quot;github-app-installation-id&quot;");
+		expect(html).toContain("&quot;github-app-private-key&quot;");
+		// docker compose environment: block.
+		expect(html).toContain("environment:");
+		expect(html).toContain("WARREN_FORGE: app");
+		expect(html).toContain("WARREN_GITHUB_APP_ID: &quot;4560297&quot;");
+		// .env block already covered by the test above.
+	});
+
+	test("notes that client id/secret are unused by warren", () => {
+		const html = renderCredentialsPage(registration);
+		expect(html).toContain("does NOT use the client id or client secret");
 	});
 
 	test("escapes HTML metacharacters in App fields", () => {
