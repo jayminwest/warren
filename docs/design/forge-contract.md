@@ -21,15 +21,29 @@ references read the same day.
 The domain must never leak `api.github.com`, a bearer token, the literal
 `x-access-token`, an owner/repo pair parsed out of a GitHub URL, a PR number
 joined to a `github.com` path, or a check-run id across the seam. If a swap of
-the forge forces a change in `src/runs/*`, `src/plan-runs/*`, or
-`src/triggers/*`, the abstraction failed (design bible: *"if swapping the
-framework requires rewriting the domain, the domain wasn't separated"*).
+the forge forces a change in `src/projects/*`, `src/runs/*`, `src/plan-runs/*`,
+`src/triggers/*`, or `src/ci-fixer/*`, the abstraction failed (design bible:
+*"if swapping the framework requires rewriting the domain, the domain wasn't
+separated"*).
+
+The list above is derived from the live consumers of the boot-resolved
+`Forge` instance, audited 2026-08-16, not from memory. `src/projects/`
+(`manage.ts`, `url.ts`) routes repo-URL parsing through `forge.parseRepoRef`
+at the registration boundary. `src/runs/` and `src/plan-runs/` consume forge
+data through dispatch, reap, and the merge gate. `src/triggers/ci-fixer-pass.ts`
+and `src/ci-fixer/` invoke check-run methods against the project's forge.
+`src/projects/`, `src/triggers/*`, and `src/ci-fixer/*` were absent from the
+original list, which is how the pl-d1c9 falsification test (warren-27e3)
+surfaced that registration was still GitHub-only.
 
 ROADMAP Next item 1 fixes two falsification tests, and this contract adopts
 both without amendment:
 
-1. A FakeForge project completes dispatch → reap → push → PR with zero
-   domain-code changes.
+1. A FakeForge-owned project registers (`POST /projects` on a forge-owned
+   clone URL) and completes dispatch → reap → push → PR with zero domain-code
+   changes. Registration is named explicitly: it is domain code that must not
+   know which forge owns a URL, and it was the first boundary scenario 40 hit
+   (warren-27e3).
 2. Acceptance scenario 39, the public-instance leak guard, stays green at every
    commit of the campaign.
 
