@@ -6,9 +6,10 @@ info:
   version: 0.16.0
   description: >-
     Auto-generated from `src/server/handlers/route-table.ts`'s `ROUTE_TABLE`. Run `bun run
-    gen:openapi` to refresh; CI fails if this schema drifts from the handler module.
-    Request/response bodies are intentionally left permissive in V1 — see docs/http-api.md for the
-    canonical handler contracts.
+    gen:openapi` to refresh; CI fails if this schema drifts from the handler module. Response
+    schemas for the core documents live under `components.schemas`, with enum vocabulary derived
+    from `src/core/wire.ts`; request bodies and routes without a known envelope stay permissive —
+    see docs/http-api.md for the canonical handler contracts.
 tags:
   - name: agents
     description: '`/agents` routes.'
@@ -44,8 +45,23 @@ paths:
       responses:
         '200':
           description: Successful response.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  agents:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Agent'
+                required:
+                  - agents
         default:
           description: Error response (see `src/core/errors.ts`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
   /agents/{name}:
     get:
       operationId: getAgentHandler
@@ -57,6 +73,10 @@ paths:
           description: Successful response.
         default:
           description: Error response (see `src/core/errors.ts`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
       parameters:
         - name: name
           in: path
@@ -74,6 +94,10 @@ paths:
           description: Successful response.
         default:
           description: Error response (see `src/core/errors.ts`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
       description: >-
         warren-3db0: closed-loop alert intake. Token-gated via the standard bearer gate (not
         auth-exempt); webhook senders carry the bearer.
@@ -88,6 +112,10 @@ paths:
           description: Successful response.
         default:
           description: Error response (see `src/core/errors.ts`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
   /analytics/cost:
     get:
       operationId: listCostAnalyticsHandler
@@ -99,6 +127,10 @@ paths:
           description: Successful response.
         default:
           description: Error response (see `src/core/errors.ts`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
   /analytics/runs:
     get:
       operationId: listRunAnalyticsHandler
@@ -110,6 +142,10 @@ paths:
           description: Successful response.
         default:
           description: Error response (see `src/core/errors.ts`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
   /events/stream:
     get:
       operationId: streamLifecycleEventsHandler
@@ -121,6 +157,10 @@ paths:
           description: Successful response.
         default:
           description: Error response (see `src/core/errors.ts`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
       description: >-
         warren-f566: the global lifecycle notification stream (NDJSON, one `{runId, hook, state,
         ts}` line per lifecycle transition). The list pages hold ONE connection per tab and
@@ -139,6 +179,10 @@ paths:
           description: Successful response.
         default:
           description: Error response (see `src/core/errors.ts`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
   /github-app/register:
     get:
       operationId: registerGitHubAppHandler
@@ -150,6 +194,10 @@ paths:
           description: Successful response.
         default:
           description: Error response (see `src/core/errors.ts`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
       description: 'warren-a647: App manifest registration; anonymous — see ./github-app.ts.'
   /healthz:
     get:
@@ -162,6 +210,10 @@ paths:
           description: Successful response.
         default:
           description: Error response (see `src/core/errors.ts`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
   /metrics:
     get:
       operationId: metricsHandler
@@ -173,6 +225,10 @@ paths:
           description: Successful response.
         default:
           description: Error response (see `src/core/errors.ts`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
   /plan-runs:
     get:
       operationId: listPlanRunsHandler
@@ -182,8 +238,23 @@ paths:
       responses:
         '200':
           description: Successful response.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  planRuns:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/PlanRun'
+                required:
+                  - planRuns
         default:
           description: Error response (see `src/core/errors.ts`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
     post:
       operationId: createPlanRunHandler
       tags:
@@ -192,8 +263,26 @@ paths:
       responses:
         '200':
           description: Successful response.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  planRun:
+                    $ref: '#/components/schemas/PlanRun'
+                  children:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/PlanRunChild'
+                required:
+                  - planRun
+                  - children
         default:
           description: Error response (see `src/core/errors.ts`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
   /plan-runs/{id}:
     get:
       operationId: getPlanRunHandler
@@ -203,8 +292,31 @@ paths:
       responses:
         '200':
           description: Successful response.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  planRun:
+                    $ref: '#/components/schemas/PlanRun'
+                  children:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/PlanRunChild'
+                  runs:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Run'
+                required:
+                  - planRun
+                  - children
+                  - runs
         default:
           description: Error response (see `src/core/errors.ts`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
       parameters:
         - name: id
           in: path
@@ -220,8 +332,34 @@ paths:
       responses:
         '200':
           description: Successful response.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  planRun:
+                    $ref: '#/components/schemas/PlanRun'
+                  cancelledChild:
+                    type:
+                      - object
+                      - 'null'
+                    properties:
+                      childSeq:
+                        type: integer
+                      runId:
+                        type: string
+                  alreadyTerminal:
+                    type: boolean
+                required:
+                  - planRun
+                  - cancelledChild
+                  - alreadyTerminal
         default:
           description: Error response (see `src/core/errors.ts`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
       parameters:
         - name: id
           in: path
@@ -239,6 +377,10 @@ paths:
           description: Successful response.
         default:
           description: Error response (see `src/core/errors.ts`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
       parameters:
         - name: id
           in: path
@@ -256,6 +398,10 @@ paths:
           description: Successful response.
         default:
           description: Error response (see `src/core/errors.ts`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
   /projects:
     get:
       operationId: listProjectsHandler
@@ -265,8 +411,23 @@ paths:
       responses:
         '200':
           description: Successful response.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  projects:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Project'
+                required:
+                  - projects
         default:
           description: Error response (see `src/core/errors.ts`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
     post:
       operationId: createProjectHandler
       tags:
@@ -275,8 +436,21 @@ paths:
       responses:
         '200':
           description: Successful response.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  project:
+                    $ref: '#/components/schemas/Project'
+                required:
+                  - project
         default:
           description: Error response (see `src/core/errors.ts`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
   /projects/{id}:
     get:
       operationId: getProjectHandler
@@ -286,8 +460,21 @@ paths:
       responses:
         '200':
           description: Successful response.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  project:
+                    $ref: '#/components/schemas/Project'
+                required:
+                  - project
         default:
           description: Error response (see `src/core/errors.ts`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
       parameters:
         - name: id
           in: path
@@ -304,6 +491,10 @@ paths:
           description: Successful response.
         default:
           description: Error response (see `src/core/errors.ts`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
       parameters:
         - name: id
           in: path
@@ -321,6 +512,10 @@ paths:
           description: Successful response.
         default:
           description: Error response (see `src/core/errors.ts`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
       parameters:
         - name: id
           in: path
@@ -338,6 +533,10 @@ paths:
           description: Successful response.
         default:
           description: Error response (see `src/core/errors.ts`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
       parameters:
         - name: id
           in: path
@@ -355,6 +554,10 @@ paths:
           description: Successful response.
         default:
           description: Error response (see `src/core/errors.ts`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
       description: >-
         Static path — must precede `/projects/:id/seeds/:seedId` so the param route doesn't swallow
         `plans` as a seed id.
@@ -375,6 +578,10 @@ paths:
           description: Successful response.
         default:
           description: Error response (see `src/core/errors.ts`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
       parameters:
         - name: id
           in: path
@@ -397,6 +604,10 @@ paths:
           description: Successful response.
         default:
           description: Error response (see `src/core/errors.ts`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
       parameters:
         - name: id
           in: path
@@ -414,6 +625,10 @@ paths:
           description: Successful response.
         default:
           description: Error response (see `src/core/errors.ts`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
       parameters:
         - name: id
           in: path
@@ -436,6 +651,10 @@ paths:
           description: Successful response.
         default:
           description: Error response (see `src/core/errors.ts`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
       parameters:
         - name: id
           in: path
@@ -453,6 +672,10 @@ paths:
           description: Successful response.
         default:
           description: Error response (see `src/core/errors.ts`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
   /runs:
     get:
       operationId: listRunsHandler
@@ -462,8 +685,40 @@ paths:
       responses:
         '200':
           description: Successful response.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  runs:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Run'
+                  total:
+                    type: integer
+                  limit:
+                    type: integer
+                  offset:
+                    type: integer
+                  costTotalUsd:
+                    type:
+                      - number
+                      - 'null'
+                  costPricedCount:
+                    type: integer
+                required:
+                  - runs
+                  - total
+                  - limit
+                  - offset
+                  - costTotalUsd
+                  - costPricedCount
         default:
           description: Error response (see `src/core/errors.ts`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
     post:
       operationId: createRunHandler
       tags:
@@ -472,8 +727,32 @@ paths:
       responses:
         '200':
           description: Successful response.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  run:
+                    $ref: '#/components/schemas/Run'
+                  burrow:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                      workspacePath:
+                        type: string
+                    required:
+                      - id
+                      - workspacePath
+                required:
+                  - run
+                  - burrow
         default:
           description: Error response (see `src/core/errors.ts`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
   /runs/{id}:
     get:
       operationId: getRunHandler
@@ -483,8 +762,21 @@ paths:
       responses:
         '200':
           description: Successful response.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  run:
+                    $ref: '#/components/schemas/Run'
+                required:
+                  - run
         default:
           description: Error response (see `src/core/errors.ts`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
       parameters:
         - name: id
           in: path
@@ -502,6 +794,10 @@ paths:
           description: Successful response.
         default:
           description: Error response (see `src/core/errors.ts`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
       parameters:
         - name: id
           in: path
@@ -519,6 +815,10 @@ paths:
           description: Successful response.
         default:
           description: Error response (see `src/core/errors.ts`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
       description: >-
         NDJSON event tail. `?follow=1` live-tails (the default while the run is non-terminal);
         `?limit=N` requests a bounded non-streaming read of at most N events and implies
@@ -541,6 +841,10 @@ paths:
           description: Successful response.
         default:
           description: Error response (see `src/core/errors.ts`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
       description: >-
         warren-0d35: the in-pod finalize callback for the K8s backend — the pod fetches the reap
         intent, runs the workspace-dependent half in place, and POSTs the FinalizeResult back.
@@ -562,6 +866,10 @@ paths:
           description: Successful response.
         default:
           description: Error response (see `src/core/errors.ts`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
       parameters:
         - name: id
           in: path
@@ -579,6 +887,10 @@ paths:
           description: Successful response.
         default:
           description: Error response (see `src/core/errors.ts`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
       description: >-
         warren-c9ac: the in-pod credential re-mint (forge-contract.md §4.1 window 3) — the pod
         requests a freshly-minted push credential over the same authenticated callback channel
@@ -600,6 +912,10 @@ paths:
           description: Successful response.
         default:
           description: Error response (see `src/core/errors.ts`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
       description: >-
         warren-3d0b: the in-pod steering poll for the K8s backend. Bearer-gated like every /runs
         route; the pod carries its per-run SCOPED token (warren-57fd). Destructive on read (it
@@ -624,6 +940,10 @@ paths:
           description: Successful response.
         default:
           description: Error response (see `src/core/errors.ts`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
       description: >-
         warren-e1b0: POST, not GET — the bearer rides the `Authorization` header like every other
         /runs route instead of a `?token=` query string that would land in history / Referer / proxy
@@ -645,6 +965,10 @@ paths:
           description: Successful response.
         default:
           description: Error response (see `src/core/errors.ts`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
       parameters:
         - name: id
           in: path
@@ -662,6 +986,10 @@ paths:
           description: Successful response.
         default:
           description: Error response (see `src/core/errors.ts`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
       description: >-
         warren-cd3b: the in-pod salvage intake — the pod POSTs the work it captured (rescue ref +
         git bundle) when the finalize branch push failed or no reap intent ever arrived, BEFORE its
@@ -683,6 +1011,10 @@ paths:
           description: Successful response.
         default:
           description: Error response (see `src/core/errors.ts`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
       parameters:
         - name: id
           in: path
@@ -700,6 +1032,10 @@ paths:
           description: Successful response.
         default:
           description: Error response (see `src/core/errors.ts`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
   /whoami:
     get:
       operationId: whoamiHandler
@@ -711,4 +1047,454 @@ paths:
           description: Successful response.
         default:
           description: Error response (see `src/core/errors.ts`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
       description: 'warren-e195: `readPublic`, not `anonymous` — an exempt route gets no actor to name.'
+components:
+  schemas:
+    RunState:
+      type: string
+      enum:
+        - queued
+        - running
+        - succeeded
+        - failed
+        - cancelled
+    RunFailureReason:
+      type: string
+      enum:
+        - never_started
+        - no_model_response
+        - sandbox_failed
+        - crashed
+        - timed_out
+        - burrow_run_lost
+        - burrow_unreachable
+        - dropped_commit
+        - finalize_failed
+        - push_rejected_policy
+        - finalize_unposted
+        - provider_error
+        - oom_killed
+        - evicted
+    RunMode:
+      type: string
+      enum:
+        - batch
+    CloneKind:
+      type: string
+      enum:
+        - replicate
+        - continue
+    PreviewState:
+      type: string
+      enum:
+        - starting
+        - live
+        - failed
+        - torn-down
+    EventStream:
+      type: string
+      enum:
+        - stdout
+        - stderr
+        - system
+    PlanRunState:
+      type: string
+      enum:
+        - queued
+        - running
+        - succeeded
+        - failed
+        - cancelled
+    PlanRunChildState:
+      type: string
+      enum:
+        - pending
+        - dispatched
+        - running
+        - pr_open
+        - merged
+        - failed
+        - skipped
+    AgentSource:
+      type: string
+      enum:
+        - builtin
+        - library
+    PullRequestLifecycle:
+      type: string
+      enum:
+        - open
+        - merged
+        - closed_unmerged
+    ErrorEnvelope:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+            hint:
+              type: string
+          required:
+            - code
+            - message
+      required:
+        - error
+    Project:
+      type: object
+      properties:
+        id:
+          type: string
+        gitUrl:
+          type: string
+        localPath:
+          type: string
+        defaultBranch:
+          type: string
+        addedAt:
+          type: string
+        lastFetchedAt:
+          type:
+            - string
+            - 'null'
+        lastHeadSha:
+          type:
+            - string
+            - 'null'
+        hasSeeds:
+          type: boolean
+      required:
+        - id
+        - gitUrl
+        - localPath
+        - defaultBranch
+        - addedAt
+        - lastFetchedAt
+        - lastHeadSha
+        - hasSeeds
+    Agent:
+      type: object
+      properties:
+        name:
+          type: string
+        renderedJson: {}
+        registeredAt:
+          type: string
+        lastRefreshed:
+          type: string
+        description:
+          type:
+            - string
+            - 'null'
+        provider:
+          type:
+            - string
+            - 'null'
+        model:
+          type:
+            - string
+            - 'null'
+        source:
+          $ref: '#/components/schemas/AgentSource'
+      required:
+        - name
+        - registeredAt
+        - lastRefreshed
+        - description
+        - provider
+        - model
+    Run:
+      type: object
+      properties:
+        id:
+          type: string
+        agentName:
+          type: string
+        projectId:
+          type:
+            - string
+            - 'null'
+        burrowId:
+          type:
+            - string
+            - 'null'
+        burrowRunId:
+          type:
+            - string
+            - 'null'
+        seedId:
+          type:
+            - string
+            - 'null'
+        parentRunId:
+          type:
+            - string
+            - 'null'
+        cloneKind:
+          type:
+            - string
+            - 'null'
+          enum:
+            - replicate
+            - continue
+            - null
+        mode:
+          $ref: '#/components/schemas/RunMode'
+        provider:
+          type:
+            - string
+            - 'null'
+        model:
+          type:
+            - string
+            - 'null'
+        renderedAgentJson: {}
+        state:
+          $ref: '#/components/schemas/RunState'
+        failureReason:
+          type:
+            - string
+            - 'null'
+          enum:
+            - never_started
+            - no_model_response
+            - sandbox_failed
+            - crashed
+            - timed_out
+            - burrow_run_lost
+            - burrow_unreachable
+            - dropped_commit
+            - finalize_failed
+            - push_rejected_policy
+            - finalize_unposted
+            - provider_error
+            - oom_killed
+            - evicted
+            - null
+        createdAt:
+          type:
+            - number
+            - 'null'
+        startedAt:
+          type:
+            - string
+            - 'null'
+        endedAt:
+          type:
+            - string
+            - 'null'
+        commitsAhead:
+          type:
+            - integer
+            - 'null'
+        filesChanged:
+          type:
+            - integer
+            - 'null'
+        insertions:
+          type:
+            - integer
+            - 'null'
+        deletions:
+          type:
+            - integer
+            - 'null'
+        prompt:
+          type: string
+        trigger:
+          type: string
+        prUrl:
+          type:
+            - string
+            - 'null'
+        prState:
+          type:
+            - string
+            - 'null'
+          enum:
+            - open
+            - merged
+            - closed_unmerged
+            - null
+        prMergedAt:
+          type:
+            - string
+            - 'null'
+        targetBranch:
+          type:
+            - string
+            - 'null'
+        ref:
+          type:
+            - string
+            - 'null'
+        salvageRef:
+          type:
+            - string
+            - 'null'
+        salvagePath:
+          type:
+            - string
+            - 'null'
+        costUsd:
+          type:
+            - number
+            - 'null'
+        tokensInput:
+          type:
+            - integer
+            - 'null'
+        tokensOutput:
+          type:
+            - integer
+            - 'null'
+        tokensCacheRead:
+          type:
+            - integer
+            - 'null'
+        tokensCacheWrite:
+          type:
+            - integer
+            - 'null'
+        previewState:
+          type:
+            - string
+            - 'null'
+          enum:
+            - starting
+            - live
+            - failed
+            - torn-down
+            - null
+        previewPort:
+          type:
+            - integer
+            - 'null'
+        previewStartedAt:
+          type:
+            - string
+            - 'null'
+        previewLastHitAt:
+          type:
+            - string
+            - 'null'
+        previewFailureMessage:
+          type:
+            - string
+            - 'null'
+      required:
+        - id
+        - agentName
+        - mode
+        - state
+        - prompt
+        - trigger
+    PlanRun:
+      type: object
+      properties:
+        id:
+          type: string
+        planId:
+          type: string
+        projectId:
+          type: string
+        agentName:
+          type: string
+        promptTemplate:
+          type: string
+        ref:
+          type:
+            - string
+            - 'null'
+        providerOverride:
+          type:
+            - string
+            - 'null'
+        modelOverride:
+          type:
+            - string
+            - 'null'
+        maxCostUsd:
+          type:
+            - number
+            - 'null'
+        dispatcherHandle:
+          type: string
+        trigger:
+          type: string
+        state:
+          $ref: '#/components/schemas/PlanRunState'
+        failureReason:
+          type:
+            - string
+            - 'null'
+        createdAt:
+          type: string
+        startedAt:
+          type:
+            - string
+            - 'null'
+        endedAt:
+          type:
+            - string
+            - 'null'
+      required:
+        - id
+        - planId
+        - projectId
+        - agentName
+        - promptTemplate
+        - dispatcherHandle
+        - trigger
+        - state
+        - createdAt
+    PlanRunChild:
+      type: object
+      properties:
+        planRunId:
+          type: string
+        seq:
+          type: integer
+        seedId:
+          type: string
+        runId:
+          type:
+            - string
+            - 'null'
+        state:
+          $ref: '#/components/schemas/PlanRunChildState'
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+        startedAt:
+          type:
+            - string
+            - 'null'
+        endedAt:
+          type:
+            - string
+            - 'null'
+        prMergedAt:
+          type:
+            - string
+            - 'null'
+        failureReason:
+          type:
+            - string
+            - 'null'
+      required:
+        - planRunId
+        - seq
+        - seedId
+        - runId
+        - state
+        - createdAt
+        - updatedAt
