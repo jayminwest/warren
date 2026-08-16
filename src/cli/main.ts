@@ -128,7 +128,8 @@ export function buildProgram(baseContext: CliContext): Command {
 				"--max-cost-usd <usd>",
 				"per-run USD spend cap; wins over the agent's own and the project default",
 				parseMaxCostUsd,
-			),
+			)
+			.option("--seed <id>", "link the run to a seeds issue (POST /runs seedId)"),
 	).action(
 		async (
 			agent: string,
@@ -139,6 +140,7 @@ export function buildProgram(baseContext: CliContext): Command {
 				provider?: string;
 				model?: string;
 				maxCostUsd?: number;
+				seed?: string;
 			} & RemoteOpts,
 		) => {
 			const client = resolveWarrenClient(context.env, clientFlags(opts));
@@ -153,6 +155,7 @@ export function buildProgram(baseContext: CliContext): Command {
 					...(opts.provider !== undefined ? { providerOverride: opts.provider } : {}),
 					...(opts.model !== undefined ? { modelOverride: opts.model } : {}),
 					...(opts.maxCostUsd !== undefined ? { maxCostUsd: opts.maxCostUsd } : {}),
+					...(opts.seed !== undefined ? { seedId: opts.seed } : {}),
 				},
 			);
 			process.exit(result.exitCode);

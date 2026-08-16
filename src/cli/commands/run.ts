@@ -50,6 +50,8 @@ export interface RunArgs {
 	readonly modelOverride?: string;
 	/** Per-run USD spend cap (warren-a63d): wins over the agent's own and the project default. */
 	readonly maxCostUsd?: number;
+	/** Seeds issue to link the run to (warren-ca2f), forwarded to `POST /runs` seedId. */
+	readonly seedId?: string;
 }
 
 export interface RunDeps extends RemoteTailDeps {}
@@ -85,6 +87,7 @@ export async function runRun(
 			...(args.providerOverride !== undefined ? { providerOverride: args.providerOverride } : {}),
 			...(args.modelOverride !== undefined ? { modelOverride: args.modelOverride } : {}),
 			...(args.maxCostUsd !== undefined ? { maxCostUsd: args.maxCostUsd } : {}),
+			...(args.seedId !== undefined ? { seedId: args.seedId } : {}),
 		});
 		runId = spawned.run.id;
 		if (mode === "ndjson") {
