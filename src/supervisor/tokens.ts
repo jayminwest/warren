@@ -19,7 +19,7 @@
  * escape hatch from `resolveCommandFromEnv` (see main.ts).
  */
 
-import { createHash, timingSafeEqual } from "node:crypto";
+import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 
 export interface TokenValidationConfig {
 	readonly burrowApiToken: string | undefined;
@@ -33,6 +33,37 @@ export interface TokenValidationResult {
 }
 
 /**
+ * Mint the shared in-container secret (warren-8071). Both ends of the
+ * warren↔burrow channel live inside the one container the supervisor
+ * spawns, so the supervisor generates the token itself at boot and
+ * exports it to both children. 256 bits of CSPRNG entropy, hex-encoded.
+ */
+export function mintSharedBurrowToken(): string {
+	return randomBytes(32).toString("hex");
+}
+
+export interface EnsureBurrowAuthConfig {
+	readonly noAuth: boolean;
+}
+
+export interface EnsureBurrowAuthResult {
+	readonly fingerprint: string | null;
+	/** true when the supervisor minted the token because the operator set neither var. */
+	readonly minted: boolean;
+}
+
+/**
+ * Resolve the burrow auth token pair for this boot, mutating `env` so the
+ * values reach both child processes (Bun.spawn inherits process.env).
+ *
+ * - Both unset (and not noAuth): mint one ephemeral token and export it as
+ *   BOTH vars — the standalone self-host path needs no operator secret.
+ * - One or both set: fall through to `validateBurrowAuthTokens` unchanged,
+ *   so operator-supplied values still win (k8s / split topologies) and a
+ *   half-set pair still fails fast instead of silently minting.
+ */
+
+/**
  * Thrown by `validateBurrowAuthTokens` when env is misconfigured. Carries a
  * `recoveryHint` so the supervisor can print actionable guidance without the
  * caller having to map message → fix.
@@ -44,6 +75,28 @@ export class TokenValidationError extends Error {
 		this.name = "TokenValidationError";
 		this.recoveryHint = recoveryHint;
 	}
+}
+
+export function ensureBurrowAuthTokens(
+	env: Record<string, string | undefined>,
+	cfg: EnsureBurrowAuthConfig,
+	mint: () => string = mintSharedBurrowToken,
+): EnsureBurrowAuthResult {
+	if (cfg.noAuth) return { fingerprint: null, minted: false };
+	const burrow = env.BURROW_API_TOKEN ?? "";
+	const warren = env.WARREN_BURROW_TOKEN ?? "";
+	if (burrow === "" && warren === "") {
+		const token = mint();
+		env.BURROW_API_TOKEN = token;
+		env.WARREN_BURROW_TOKEN = token;
+		return { fingerprint: tokenFingerprint(token), minted: true };
+	}
+	const validated = validateBurrowAuthTokens({
+		burrowApiToken: env.BURROW_API_TOKEN,
+		warrenBurrowToken: env.WARREN_BURROW_TOKEN,
+		noAuth: false,
+	});
+	return { fingerprint: validated.fingerprint, minted: false };
 }
 
 const SHARED_HINT =

@@ -29,7 +29,6 @@ Warren publishes a prebuilt image to `ghcr.io/jayminwest/warren`. Nothing to clo
 
 ```bash
 export WARREN_API_TOKEN=$(openssl rand -hex 32)
-export BURROW_TOKEN=$(openssl rand -hex 32)
 export ANTHROPIC_API_KEY=sk-ant-...     # your key
 export GITHUB_TOKEN=ghp_...             # repo scope: clone + push
 
@@ -41,8 +40,6 @@ docker run -d --name warren --restart unless-stopped -p 8080:8080 -v warren_data
   -e WARREN_API_TOKEN \
   -e ANTHROPIC_API_KEY \
   -e GITHUB_TOKEN \
-  -e BURROW_API_TOKEN="$BURROW_TOKEN" \
-  -e WARREN_BURROW_TOKEN="$BURROW_TOKEN" \
   ghcr.io/jayminwest/warren:latest
 
 echo "$WARREN_API_TOKEN"   # paste this into the UI
@@ -56,7 +53,9 @@ Then **Dispatch run**, pick `claude-code`, write a prompt, and start it. The eve
 
 The four security flags relax the outer container so the sandbox runtime can nest its own user namespaces (see [docs/design/runtime-and-supervisor.md](docs/design/runtime-and-supervisor.md)). Remove any one of them and sandbox provisioning fails.
 
-The quickstart exports the four required variables. `WARREN_BURROW_TOKEN` must equal `BURROW_API_TOKEN`, because they are the two ends of one channel. [`.env.example`](.env.example) documents the full knob set. To manage the same container declaratively, use the compose file instead. It pulls the same image and applies the same flags:
+The quickstart exports the three required variables. The warren↔burrow channel token needs no setup. Both ends live inside the one container, so the supervisor mints the shared secret at boot (warren-8071). Set `BURROW_API_TOKEN` + `WARREN_BURROW_TOKEN` yourself only in a split topology where burrow runs outside warren's container. [`.env.example`](.env.example) documents the full knob set.
+
+To manage the same container declaratively, use the compose file instead. It pulls the same image and applies the same flags:
 
 ```bash
 git clone https://github.com/jayminwest/warren && cd warren
