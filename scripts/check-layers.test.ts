@@ -201,8 +201,8 @@ describe("scan — the burrow seam warren-f796 used to own alone", () => {
 			},
 			(dir) => {
 				expect(scan(dir, RULES).map((v) => `${v.rule} ${v.file}`)).toEqual([
-					"burrow-package-is-local-only src/runtime/k8s/agent-entrypoint.ts",
 					"burrow-package-is-local-only src/projects/clone.ts",
+					"burrow-package-is-local-only src/runtime/k8s/agent-entrypoint.ts",
 				]);
 			},
 		);
