@@ -21,7 +21,9 @@
  *     one side takes that side, changed by both to the same value takes
  *     it, changed by both to different values is a conflict — except
  *     array fields, where each side's additions and removals relative
- *     to the ancestor are both applied
+ *     to the ancestor are both applied, and pure-timestamp fields
+ *     (updatedAt always; closedAt when both sides agree the row is
+ *     closed), which auto-resolve to the later timestamp (warren-5f0d)
  *   - deleted on one side and unchanged on the other: deleted wins
  *   - deleted on one side and changed on the other: conflict
  *
@@ -100,9 +102,10 @@ function mergeRow(
 ): Record<string, unknown> | undefined {
 	const merged: Record<string, unknown> = {};
 	const localConflicts: string[] = [];
+	const bothClosed = ours.status === "closed" && theirs.status === "closed";
 	const keys = new Set([...Object.keys(ours), ...Object.keys(theirs)]);
 	for (const key of keys) {
-		const resolved = mergeField(anc[key], ours[key], theirs[key]);
+		const resolved = mergeField(key, anc[key], ours[key], theirs[key], bothClosed);
 		if (resolved.conflict) localConflicts.push(`${id}.${key}`);
 		else if (resolved.value !== undefined) merged[key] = resolved.value;
 	}
@@ -113,8 +116,25 @@ function mergeRow(
 	return merged;
 }
 
-/** Resolve one field of a both-sides-changed row against the ancestor. */
-function mergeField(a: unknown, o: unknown, t: unknown): { value?: unknown; conflict?: boolean } {
+/** Parse an ISO timestamp string to millis, or undefined when not a timestamp. */
+function asTimestamp(value: unknown): number | undefined {
+	if (typeof value !== "string") return undefined;
+	const ms = Date.parse(value);
+	return Number.isNaN(ms) ? undefined : ms;
+}
+
+/**
+ * Resolve one field of a both-sides-changed row against the ancestor.
+ * `bothClosed` is true when ours and theirs both carry status "closed",
+ * which makes closedAt a pure timestamp rather than contested content.
+ */
+function mergeField(
+	key: string,
+	a: unknown,
+	o: unknown,
+	t: unknown,
+	bothClosed: boolean,
+): { value?: unknown; conflict?: boolean } {
 	const oursChanged = !same(o, a);
 	const theirsChanged = !same(t, a);
 	if (!oursChanged) return { value: t };
@@ -124,6 +144,14 @@ function mergeField(a: unknown, o: unknown, t: unknown): { value?: unknown; conf
 		asStringArray(o) !== undefined ||
 		asStringArray(t) !== undefined;
 	if (isArray) return { value: mergeArrayField(a, o, t) };
+	// Pure-timestamp fields auto-resolve to the later value (warren-5f0d):
+	// updatedAt is bookkeeping, and closedAt is bookkeeping once both
+	// sides agree the row is closed. Non-timestamp values still conflict.
+	if (key === "updatedAt" || (key === "closedAt" && bothClosed)) {
+		const oMs = asTimestamp(o);
+		const tMs = asTimestamp(t);
+		if (oMs !== undefined && tMs !== undefined) return { value: oMs >= tMs ? o : t };
+	}
 	return { conflict: true };
 }
 
