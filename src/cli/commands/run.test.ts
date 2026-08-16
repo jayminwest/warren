@@ -187,6 +187,24 @@ describe("runRun", () => {
 		expect(createCalls[0]?.maxCostUsd).toBe(3.5);
 	});
 
+	test("forwards --seed as seedId on POST /runs (warren-ca2f)", async () => {
+		const { context } = captureContext();
+		const createCalls: CreateRunInput[] = [];
+		await runRun(
+			context,
+			{ client: mockClient({ createCalls }) },
+			{ ...ARGS, seedId: "warren-ca2f" },
+		);
+		expect(createCalls[0]?.seedId).toBe("warren-ca2f");
+	});
+
+	test("omits seedId when --seed is not given", async () => {
+		const { context } = captureContext();
+		const createCalls: CreateRunInput[] = [];
+		await runRun(context, { client: mockClient({ createCalls }) }, ARGS);
+		expect(createCalls[0]?.seedId).toBeUndefined();
+	});
+
 	test("defaults the trigger label to cli", async () => {
 		const { context } = captureContext();
 		const createCalls: CreateRunInput[] = [];

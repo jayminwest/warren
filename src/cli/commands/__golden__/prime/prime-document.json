@@ -45,6 +45,10 @@
           "description": "per-run USD spend cap; wins over the agent's own and the project default"
         },
         {
+          "flags": "--seed <id>",
+          "description": "link the run to a seeds issue (POST /runs seedId)"
+        },
+        {
           "flags": "--url <url>",
           "description": "warren server base URL (env WARREN_BASE_URL)"
         },

@@ -67,6 +67,7 @@ warren run [options] <agent> <project>
 | `--provider <name>` |  |  | per-run override of agent frontmatter.provider |
 | `--model <name>` |  |  | per-run override of agent frontmatter.model |
 | `--max-cost-usd <usd>` |  |  | per-run USD spend cap; wins over the agent's own and the project default |
+| `--seed <id>` |  |  | link the run to a seeds issue (POST /runs seedId) |
 | `--url <url>` |  |  | warren server base URL (env WARREN_BASE_URL) |
 | `--token <token>` |  |  | bearer token (env WARREN_API_TOKEN) |
 
