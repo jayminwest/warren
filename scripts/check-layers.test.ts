@@ -189,7 +189,10 @@ describe("scan — the burrow seam warren-f796 used to own alone", () => {
 		);
 	});
 
-	test("flags the @os-eco/burrow-cli package outside its allowlist but not in src/runtime/k8s/", () => {
+	test("flags the @os-eco/burrow-cli package outside its allowlist, including src/runtime/k8s/", () => {
+		// warren-0efe (plan pl-3007 phase-2 exit): the k8s carve-out is gone — the
+		// in-pod trio runs on warren's own adapters, so a burrow import anywhere
+		// under src/runtime/k8s/ now fails the seam like everywhere else.
 		withFixtureRepo(
 			{
 				"src/runtime/k8s/agent-entrypoint.ts":
@@ -199,6 +202,7 @@ describe("scan — the burrow seam warren-f796 used to own alone", () => {
 			(dir) => {
 				expect(scan(dir, RULES).map((v) => `${v.rule} ${v.file}`)).toEqual([
 					"burrow-package-is-local-only src/projects/clone.ts",
+					"burrow-package-is-local-only src/runtime/k8s/agent-entrypoint.ts",
 				]);
 			},
 		);

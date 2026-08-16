@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
 	composeBody,
 	composeTitle,
+	MAX_PR_BODY_LENGTH,
 	PR_BODY_FRAGMENT_NAMES,
 	PR_FRAGMENT_NAMES,
 	type PrFragmentContext,
@@ -158,6 +159,46 @@ describe("composeBody", () => {
 		// Spot-check that the registry exposes the documented body order.
 		expect(PR_BODY_FRAGMENT_NAMES[0]).toBe("summary");
 		expect(PR_BODY_FRAGMENT_NAMES[PR_BODY_FRAGMENT_NAMES.length - 1]).toBe("trailer");
+	});
+
+	test("renders ## Agent notes under Summary from the final commit body (warren-5e86)", () => {
+		const body = composeBody({
+			...BASE_CTX,
+			commits: [{ sha: "abc123def456", subject: "fix the thing" }],
+			agentNotes:
+				"Chose the adapter pattern because the seam was already there.\n\nHandoff: watch the retry path.",
+		});
+		expect(body).toContain("## Agent notes");
+		expect(body).toContain("Chose the adapter pattern");
+		// Spliced under Summary, before ## Run.
+		expect(body.indexOf("## Summary")).toBeLessThan(body.indexOf("## Agent notes"));
+		expect(body.indexOf("## Agent notes")).toBeLessThan(body.indexOf("## Run"));
+	});
+
+	test("omits ## Agent notes entirely for an empty or whitespace-only commit body", () => {
+		expect(composeBody({ ...BASE_CTX, agentNotes: "" })).not.toContain("## Agent notes");
+		expect(composeBody({ ...BASE_CTX, agentNotes: "  \n \n  " })).not.toContain("## Agent notes");
+		expect(composeBody(BASE_CTX)).not.toContain("## Agent notes");
+	});
+
+	test("fences a commit body containing markdown headers so the PR structure survives", () => {
+		const body = composeBody({
+			...BASE_CTX,
+			agentNotes: "## Why\n\nBecause reasons.",
+		});
+		expect(body).toContain("## Agent notes\n\n```markdown\n## Why\n\nBecause reasons.\n```");
+	});
+
+	test("strips trailing whitespace from the commit body", () => {
+		const body = composeBody({ ...BASE_CTX, agentNotes: "line one   \nline two\t\n" });
+		expect(body).toContain("line one\nline two");
+		expect(body).not.toContain("line one   ");
+	});
+
+	test("an oversized commit body still passes through the 64KB clamp", () => {
+		const body = composeBody({ ...BASE_CTX, agentNotes: `x`.repeat(200_000) });
+		expect(body.length).toBeLessThanOrEqual(MAX_PR_BODY_LENGTH);
+		expect(body.endsWith("…")).toBe(true);
 	});
 });
 

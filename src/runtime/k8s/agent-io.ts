@@ -10,13 +10,12 @@
  */
 
 import type {
-	Burrow,
-	Message as BurrowMessage,
-	Run,
-	RuntimeEvent,
+	AdapterRuntimeEvent,
+	AdapterSpawnContext,
+	AgentFrontmatter,
 	SpawnCommand,
-	SpawnContext,
-} from "@os-eco/burrow-cli";
+	SteeringMessage,
+} from "../adapters/index.ts";
 import type { Message } from "../contract.ts";
 import type { AgentEntrypointEnv } from "./agent-entrypoint.ts";
 import { WARREN_ORIGIN_MARKER } from "./log-parse.ts";
@@ -40,7 +39,21 @@ import { WARREN_ORIGIN_MARKER } from "./log-parse.ts";
  * (an agent writing NDJSON at the entrypoint's stdout fd) lacks the marker and
  * `toNormalizedEvent` strips its system-stream authority.
  */
-export function formatEventLine(ev: RuntimeEvent): string {
+
+/**
+ * The structural event shape this pipeline serializes. A parser-emitted
+ * {@link AdapterRuntimeEvent} satisfies it; so do the entrypoint's own
+ * system diagnostics (`oom_killed`, `stdin_hold_timeout`, …), whose kinds
+ * sit outside the adapters' closed event-kind union.
+ */
+export interface PodLogEvent {
+	readonly kind: string;
+	readonly stream: string;
+	readonly payload: unknown;
+	readonly ts?: Date;
+}
+
+export function formatEventLine(ev: PodLogEvent): string {
 	return JSON.stringify({
 		kind: ev.kind,
 		stream: ev.stream,
@@ -81,8 +94,17 @@ export interface AgentProc {
 	kill?: () => void;
 }
 
+/**
+ * The spawn command the entrypoint hands the spawn seam: the adapter-rendered
+ * argv/stdin plus the k8s-side `holdStdin` directive (the entrypoint sets it
+ * for a runtime that declares `shouldCloseStdinOnEvent`, warren-7a43).
+ */
+export interface AgentSpawnCommand extends SpawnCommand {
+	readonly holdStdin?: boolean;
+}
+
 export type AgentSpawn = (
-	command: SpawnCommand,
+	command: AgentSpawnCommand,
 	opts: { cwd: string },
 ) => AgentProc | Promise<AgentProc>;
 
@@ -103,21 +125,13 @@ export function extractInboxMessages(body: unknown): Message[] {
 }
 
 /**
- * Map a warren seam `Message` onto the burrow `Message` shape the runtime's
- * `buildSpawnCommand` reads (only `body` + `priority` are consulted by the
- * claude-code / sapling steering encoders). Cast through `unknown` at this trust
- * boundary — the burrow row type carries columns the encoders never touch.
+ * Narrow a warren seam `Message` to the {@link SteeringMessage} shape the
+ * adapters' steering encoders read (`body` + `priority` only). The seam row
+ * already satisfies it structurally; the explicit pick documents exactly
+ * which columns cross into the harness layer.
  */
-function toBurrowMessage(msg: Message): BurrowMessage {
-	return {
-		id: msg.id,
-		body: msg.body,
-		priority: msg.priority,
-		fromActor: msg.fromActor,
-		state: "delivered",
-		createdAt: msg.createdAt,
-		deliveredAt: msg.deliveredAt,
-	} as unknown as BurrowMessage;
+function toSteeringMessage(msg: Message): SteeringMessage {
+	return { body: msg.body, priority: msg.priority };
 }
 
 /**
@@ -131,7 +145,7 @@ export async function drainInbox(
 	env: AgentEntrypointEnv,
 	http: AgentInboxHttp,
 	log: (m: string) => void,
-): Promise<BurrowMessage[]> {
+): Promise<SteeringMessage[]> {
 	if (env.apiUrl === undefined || env.apiToken === undefined) return [];
 	try {
 		const res = await http.get(`${env.apiUrl}/runs/${env.runId}/inbox`, env.apiToken);
@@ -139,7 +153,7 @@ export async function drainInbox(
 		const messages = extractInboxMessages(res.body);
 		if (messages.length > 0)
 			log(`agent-entrypoint: drained ${messages.length} steering message(s)`);
-		return messages.map(toBurrowMessage);
+		return messages.map(toSteeringMessage);
 	} catch (err) {
 		log(`agent-entrypoint: inbox drain failed (${err instanceof Error ? err.message : err})`);
 		return [];
@@ -147,38 +161,28 @@ export async function drainInbox(
 }
 
 /* -------------------------------------------------------------------------- */
-/* Minimal burrow-shaped context (the runtimes only read a few fields)          */
+/* Adapter spawn context                                                       */
 /* -------------------------------------------------------------------------- */
 
 /**
- * Build the `SpawnContext` the runtime's `buildSpawnCommand`/`parseEvents`
- * consume. The v1 runtimes (claude-code, sapling) read only `prompt`,
- * `pendingMessages`, and `workspacePath`; `burrow`/`run` are required by the
- * type but unused by those runtimes, so minimal stubs (cast through `unknown`)
- * satisfy the contract without reconstructing burrow's full DB rows.
+ * Build the {@link AdapterSpawnContext} the adapter's `buildSpawnCommand`
+ * consumes: run id, prompt, the drained steering batch, the workspace path,
+ * and the optional frontmatter override (parsed off `WARREN_AGENT_METADATA`;
+ * a malformed value already failed open to `undefined` in
+ * `parseAgentFrontmatter`, so the assertion only re-labels the shape).
  */
 export function buildSpawnContext(
 	env: AgentEntrypointEnv,
-	pendingMessages: BurrowMessage[],
-): SpawnContext {
-	const burrow = {
-		id: `burrow_${env.runId}`,
-		workspacePath: env.workspacePath,
-	} as unknown as Burrow;
-	const run = {
-		id: env.runId,
-		prompt: env.prompt,
-		agentId: env.runtimeId,
-		metadataJson: env.frontmatter !== undefined ? { frontmatter: env.frontmatter } : {},
-	} as unknown as Run;
+	pendingMessages: readonly SteeringMessage[],
+): AdapterSpawnContext {
 	return {
-		burrow,
-		run,
+		runId: env.runId,
 		prompt: env.prompt,
 		pendingMessages,
-		envResolved: {},
 		workspacePath: env.workspacePath,
-		...(env.frontmatter !== undefined ? { frontmatter: env.frontmatter } : {}),
+		...(env.frontmatter !== undefined
+			? { frontmatter: env.frontmatter as unknown as AgentFrontmatter }
+			: {}),
 	};
 }
 
@@ -270,7 +274,7 @@ export const defaultSpawn: AgentSpawn = async (command, opts) => {
 	});
 	const holdStdin = command.holdStdin ?? false;
 	// Two stdin regimes (design mirrors burrow `provider/local/sandbox.ts`):
-	//   • batch (claude-code / sapling): write the encoded prompt, then END —
+	//   • batch (claude-code): write the encoded prompt, then END —
 	//     they read stdin to EOF to flush their final output.
 	//   • stdin-hold (pi): write the prompt then FLUSH but leave the write side
 	//     open. `sink.write()` alone only buffers in bun's userland (burrow-029d),

@@ -9,8 +9,9 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import type { AgentRuntime, RuntimeEvent, SpawnCommand } from "@os-eco/burrow-cli";
+import type { RuntimeId } from "../../core/wire.ts";
 import { detectRuntimeTerminal } from "../../runs/stream/terminal-detect.ts";
+import type { AdapterRuntimeEvent, AgentRuntimeAdapter, SpawnCommand } from "../adapters/index.ts";
 import {
 	type AgentEnvSource,
 	DEFAULT_STDIN_HOLD_KILL_GRACE_MS,
@@ -52,20 +53,21 @@ const silent = (): void => {};
 
 const emptyInbox: AgentInboxHttp = { get: async () => ({ status: 200, body: { messages: [] } }) };
 
-/** A batch runtime: one stdout line → one `text` event, never a terminal. */
-const textOnlyRuntime: AgentRuntime = {
-	id: "test-runtime",
-	displayName: "Test Runtime",
-	supportsResume: false,
-	installCheck: async () => ({ installed: true }),
+/** A batch adapter: one stdout line → one `text` event, never a terminal. */
+const textOnlyRuntime: AgentRuntimeAdapter = {
+	runtimeId: "test-runtime" as RuntimeId,
+	harnessStatePrefixes: [],
+	terminalErrorEnvelopeTypes: [],
 	buildSpawnCommand: (ctx): SpawnCommand => ({ argv: ["test-agent"], stdin: ctx.prompt }),
-	parseEvents: (line): RuntimeEvent[] => [{ kind: "text", stream: "stdout", payload: { line } }],
+	parseEvents: (line): AdapterRuntimeEvent[] => [
+		{ kind: "text", stream: "stdout", payload: { line } },
+	],
 };
 
-/** A runtime whose parser maps a `{type}` JSON line to the matching envelope. */
-const envelopeRuntime: AgentRuntime = {
+/** An adapter whose parser maps a `{type}` JSON line to the matching envelope. */
+const envelopeRuntime: AgentRuntimeAdapter = {
 	...textOnlyRuntime,
-	parseEvents: (line): RuntimeEvent[] => {
+	parseEvents: (line): AdapterRuntimeEvent[] => {
 		const type = (JSON.parse(line) as { type: string }).type;
 		return type === "agent_end"
 			? [{ kind: "state_change", stream: "system", payload: { type } }]
@@ -78,8 +80,10 @@ const envelopeRuntime: AgentRuntime = {
 	},
 };
 
-function stubRegistry(rt: AgentRuntime): { get(id: string): AgentRuntime | undefined } {
-	return { get: (id) => (id === rt.id ? rt : undefined) };
+function stubRegistry(rt: AgentRuntimeAdapter): {
+	get(id: string): AgentRuntimeAdapter | undefined;
+} {
+	return { get: (id) => (id === rt.runtimeId ? rt : undefined) };
 }
 
 function stubSpawn(opts: { stdout?: string; exitCode?: number }): AgentSpawn {

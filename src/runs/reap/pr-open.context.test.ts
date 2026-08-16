@@ -158,4 +158,48 @@ describe("gatherPrContext K8s clone fetch (warren-ab66)", () => {
 		const refs = await git(clone, "for-each-ref", "--format=%(refname)", "refs/warren/");
 		expect(refs.trim()).toBe("");
 	});
+
+	test("lifts the final commit body (not the subject) for the Agent notes section (warren-5e86)", async () => {
+		// Reword the tip of run-1 with a multi-paragraph body.
+		await git(origin, "checkout", "-q", "run-1");
+		await git(
+			origin,
+			"-c",
+			"user.email=t@t.dev",
+			"-c",
+			"user.name=Tester",
+			"commit",
+			"--amend",
+			"-q",
+			"-m",
+			"feat: add b",
+			"-m",
+			"Rationale: the seam was already there.\n\nHandoff: watch the retry path.",
+		);
+		await git(origin, "checkout", "-q", "main");
+		const ctx = await gatherPrContext({
+			workspacePath: null,
+			projectPath: clone,
+			baseBranch: "main",
+			prompt: "no seed here",
+			exec: realExec,
+			cloneFetch: { runBranch: "run-1", runId: "run-body", gitUrl: origin, token: "" },
+		});
+		expect(ctx.finalCommitBody).toBe(
+			"Rationale: the seam was already there.\n\nHandoff: watch the retry path.",
+		);
+		expect(ctx.finalCommitBody).not.toContain("feat: add b");
+	});
+
+	test("a subject-only final commit yields a null body (section omitted)", async () => {
+		const ctx = await gatherPrContext({
+			workspacePath: null,
+			projectPath: clone,
+			baseBranch: "main",
+			prompt: "no seed here",
+			exec: realExec,
+			cloneFetch: { runBranch: "run-1", runId: "run-nobody", gitUrl: origin, token: "" },
+		});
+		expect(ctx.finalCommitBody).toBeNull();
+	});
 });

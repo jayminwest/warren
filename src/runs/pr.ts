@@ -70,6 +70,12 @@ export interface BuildPrContentInput {
 	 */
 	readonly previewOptedIn?: boolean;
 	/**
+	 * Body (not the subject) of the run's final commit, lifted at reap into
+	 * an `## Agent notes` section under Summary (warren-5e86). Empty or
+	 * absent → no section.
+	 */
+	readonly agentNotes?: string;
+	/**
 	 * Per-project PR-template overrides (warren-bd49). Loaded from
 	 * `.warren/pr-template.md` by `loadPrTemplate` and threaded through
 	 * `reapRun`. Each key is a fragment name from `PR_FRAGMENT_NAMES`
@@ -139,6 +145,7 @@ function buildContext(input: BuildPrContentInput): PrFragmentContext {
 		tokensOutput?: number;
 		tokensCacheRead?: number;
 		previewOptedIn?: boolean;
+		agentNotes?: string;
 	} = {
 		prompt: input.prompt,
 		runId: input.runId,
@@ -155,6 +162,7 @@ function buildContext(input: BuildPrContentInput): PrFragmentContext {
 	if (input.tokensOutput !== undefined) ctx.tokensOutput = input.tokensOutput;
 	if (input.tokensCacheRead !== undefined) ctx.tokensCacheRead = input.tokensCacheRead;
 	if (input.previewOptedIn !== undefined) ctx.previewOptedIn = input.previewOptedIn;
+	if (input.agentNotes !== undefined) ctx.agentNotes = input.agentNotes;
 	return ctx;
 }
 

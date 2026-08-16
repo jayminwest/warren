@@ -6,19 +6,19 @@
  * does host-side in the LocalProvider path.
  *
  * With pod-per-run there is no `burrow serve` driving the agent, so this thin
- * Bun entrypoint REUSES burrow's agent-launch machinery rather than inventing a
- * parallel one: it resolves the selected runtime off burrow's `AgentRegistry`
- * (`@os-eco/burrow-cli`), calls the runtime's own `buildSpawnCommand` (argv +
- * stdin) and `parseEvents` (stdout line → structured event), and drives them
- * with a minimal spawn loop. The only thing it replaces is the sandbox: the pod
- * IS the sandbox (design §2.2), so the agent argv is spawned directly instead of
+ * Bun entrypoint REUSES warren's agent-runtime adapters (`../adapters/`,
+ * warren-7933) rather than inventing a parallel harness layer: it resolves the
+ * selected runtime's adapter, calls its `buildSpawnCommand` (argv + stdin) and
+ * `parseEvents` (stdout line → structured event), and drives them with a
+ * minimal spawn loop. The only thing it replaces is the sandbox: the pod IS
+ * the sandbox (design §2.2), so the agent argv is spawned directly instead of
  * through bwrap/`runSandboxed`.
  *
  * Lifecycle (the contract the agent image wires around, design §5.1):
  *
  *   1. DRAIN the steering inbox once over `GET /runs/:id/inbox`. A batch runtime
- *      (claude-code/sapling) closes stdin at spawn, so pending steering rides as
- *      the turn's `pendingMessages`, folded into the prompt by the runtime's own
+ *      (claude-code) closes stdin at spawn, so pending steering rides as the
+ *      turn's `pendingMessages`, folded into the prompt by the adapter's own
  *      encoder. A stdin-held runtime (pi — one that declares
  *      `shouldCloseStdinOnEvent`) instead KEEPS stdin open past the prompt and,
  *      if it also declares `encodeSteeringMessage`, receives later inbox messages
@@ -58,16 +58,16 @@
  * a real agent binary, or a real network.
  */
 
-import {
-	AgentRegistry,
-	type AgentRuntime,
-	type RuntimeEvent,
-	type SpawnCommand,
-} from "@os-eco/burrow-cli";
 import { extractAgentEventEnvelope } from "../../core/event-envelope.ts";
+import {
+	type AdapterRuntimeEvent,
+	type AgentRuntimeAdapter,
+	allAdapters,
+} from "../adapters/index.ts";
 import {
 	type AgentInboxHttp,
 	type AgentSpawn,
+	type AgentSpawnCommand,
 	buildSpawnContext,
 	defaultHttp,
 	defaultSpawn,
@@ -108,7 +108,7 @@ export interface AgentEntrypointEnv {
 	 * the runtime to exit on EOF) and force-kills as a backstop — so a hung
 	 * inference can't pin the pod forever waiting on a close-trigger event that
 	 * never arrives. `0` disables the watchdog. Runtimes that close stdin at
-	 * spawn (claude-code, sapling) never arm it. (warren-7a43)
+	 * spawn (claude-code) never arm it. (warren-7a43)
 	 */
 	stdinHoldIdleTimeoutMs: number;
 }
@@ -201,9 +201,14 @@ export function parseAgentEntrypointEnv(env: AgentEnvSource): AgentEntrypointEnv
 /* Injectable deps                                                            */
 /* -------------------------------------------------------------------------- */
 
+/** The default adapter registry: warren's built-in runtime adapters. */
+const DEFAULT_ADAPTER_REGISTRY: { get(id: string): AgentRuntimeAdapter | undefined } = {
+	get: (id) => allAdapters().find((adapter) => adapter.runtimeId === id),
+};
+
 export interface AgentEntrypointDeps {
-	/** Runtime registry — defaults to burrow's built-ins (`new AgentRegistry()`). */
-	registry?: { get(id: string): AgentRuntime | undefined };
+	/** Adapter registry — defaults to warren's built-ins (`allAdapters()`). */
+	registry?: { get(id: string): AgentRuntimeAdapter | undefined };
 	/** Spawn seam — defaults to `Bun.spawn`. */
 	spawn?: AgentSpawn;
 	/** Inbox-poll HTTP seam — defaults to `fetch`. */
@@ -235,7 +240,7 @@ export interface AgentRunResult {
  * sync by going through the same shared extractor
  * (`src/core/event-envelope.ts`). (warren-9a4a)
  */
-export function isTerminalEnvelope(ev: RuntimeEvent): boolean {
+export function isTerminalEnvelope(ev: AdapterRuntimeEvent): boolean {
 	const env = extractAgentEventEnvelope(ev);
 	return env !== null && (env.type === "result" || env.type === "agent_end");
 }
@@ -279,7 +284,7 @@ export async function runAgent(
 	env: AgentEntrypointEnv,
 	deps: AgentEntrypointDeps = {},
 ): Promise<AgentRunResult> {
-	const registry = deps.registry ?? new AgentRegistry();
+	const registry = deps.registry ?? DEFAULT_ADAPTER_REGISTRY;
 	const spawn = deps.spawn ?? defaultSpawn;
 	const http = deps.http ?? defaultHttp;
 	const out = deps.out ?? ((line: string) => process.stdout.write(`${line}\n`));
@@ -296,21 +301,28 @@ export async function runAgent(
 
 	if (runtime.prepareWorkspace !== undefined) {
 		await runtime.prepareWorkspace({
-			burrow: ctx.burrow,
-			run: ctx.run,
+			runId: env.runId,
 			workspacePath: env.workspacePath,
 		});
 	}
+	if (runtime.buildSpawnCommand === undefined) {
+		emitSystem(out, "error", {
+			message: `runtime '${env.runtimeId}' declares no buildSpawnCommand`,
+		});
+		return { exitCode: 1, phase: "failed" };
+	}
 
-	// A runtime that declares `shouldCloseStdinOnEvent` (pi/leveret/healer) exits
-	// the instant stdin closes mid-inference — so it MUST keep stdin open until
-	// its terminal event lands (mirrors burrow `dispatch.ts` `useStdinHold`).
-	// Batch runtimes (claude-code `--print`, sapling) leave the seam undefined and
-	// keep the write-and-close-at-spawn behavior. (warren-7a43)
+	// A runtime that declares `shouldCloseStdinOnEvent` (pi) exits the instant
+	// stdin closes mid-inference — so it MUST keep stdin open until its terminal
+	// event lands (mirrors burrow `dispatch.ts` `useStdinHold`). Batch runtimes
+	// (claude-code `--print`) leave the seam undefined and keep the
+	// write-and-close-at-spawn behavior. (warren-7a43)
 	const useStdinHold = typeof runtime.shouldCloseStdinOnEvent === "function";
 	const baseCommand = runtime.buildSpawnCommand(ctx);
-	const command: SpawnCommand = useStdinHold ? { ...baseCommand, holdStdin: true } : baseCommand;
-	log(`agent-entrypoint: launching '${runtime.id}' in ${env.workspacePath}`);
+	const command: AgentSpawnCommand = useStdinHold
+		? { ...baseCommand, holdStdin: true }
+		: baseCommand;
+	log(`agent-entrypoint: launching '${runtime.runtimeId}' in ${env.workspacePath}`);
 	const proc = await spawn(command, { cwd: env.workspacePath });
 
 	// All the stdin-hold machinery (close-on-trigger, auto-reply, idle watchdog,
@@ -331,7 +343,7 @@ export async function runAgent(
 		for await (const line of readLines(proc.stdout)) {
 			hold.onOutput(); // any output resets the idle watchdog
 			if (line.length === 0) continue;
-			const events = [...runtime.parseEvents(line, { burrow: ctx.burrow, run: ctx.run })];
+			const events = [...(runtime.parseEvents?.(line) ?? [])];
 			for (const ev of events) {
 				out(formatEventLine(ev));
 				if (isTerminalEnvelope(ev)) sawTerminalEnvelope = true;
@@ -384,7 +396,7 @@ export async function runAgent(
 	}
 	emitSynthesizedTerminalEnvelope(out, sawTerminalEnvelope, exitCode);
 	const phase = exitCode === 0 ? "succeeded" : "failed";
-	log(`agent-entrypoint: '${runtime.id}' exited ${exitCode} (${phase})`);
+	log(`agent-entrypoint: '${runtime.runtimeId}' exited ${exitCode} (${phase})`);
 	return { exitCode, phase };
 }
 

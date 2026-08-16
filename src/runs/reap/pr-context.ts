@@ -76,14 +76,21 @@ export interface PrContext {
 	readonly commits: readonly PrCommit[];
 	readonly diffStat: string;
 	readonly seed: PrSeed | null;
+	/**
+	 * Body (not subject) of the range's final commit — the agent's handoff
+	 * notes lifted into the PR body's `## Agent notes` section (warren-5e86).
+	 * `null` when unreadable or empty.
+	 */
+	readonly finalCommitBody: string | null;
 }
 
 interface CommitStats {
 	readonly commits: readonly PrCommit[];
 	readonly diffStat: string;
+	readonly finalCommitBody: string | null;
 }
 
-const EMPTY_STATS: CommitStats = { commits: [], diffStat: "" };
+const EMPTY_STATS: CommitStats = { commits: [], diffStat: "", finalCommitBody: null };
 
 /** Temp-ref namespace for the K8s pr-open fetch; deleted after the reads. */
 const CLONE_FETCH_REF_PREFIX = "refs/warren/pr-open/";
@@ -103,7 +110,12 @@ export async function gatherPrContext(input: GatherPrContextInput): Promise<PrCo
 			input.exec,
 		),
 	]);
-	return { commits: stats.commits, diffStat: stats.diffStat, seed };
+	return {
+		commits: stats.commits,
+		diffStat: stats.diffStat,
+		seed,
+		finalCommitBody: stats.finalCommitBody,
+	};
 }
 
 async function gatherCommitStats(input: GatherPrContextInput): Promise<CommitStats> {
@@ -180,8 +192,31 @@ interface GitRange {
 }
 
 async function collectRange(range: GitRange): Promise<CommitStats> {
-	const [commits, diffStat] = await Promise.all([collectCommits(range), collectDiffStat(range)]);
-	return { commits, diffStat };
+	const [commits, diffStat, finalCommitBody] = await Promise.all([
+		collectCommits(range),
+		collectDiffStat(range),
+		collectFinalCommitBody(range),
+	]);
+	return { commits, diffStat, finalCommitBody };
+}
+
+/**
+ * `git log -1 --format=%b <head>` — the body of the newest commit in the
+ * range, the agent's final handoff notes (warren-5e86). `%b` reads the body
+ * only, never the subject. Best-effort: a git error or an empty body
+ * resolves to null (the PR body then omits the section).
+ */
+async function collectFinalCommitBody(range: GitRange): Promise<string | null> {
+	try {
+		const out = await range.exec.run("git", ["log", "-1", "--format=%b", range.headRef], {
+			cwd: range.cwd,
+			timeoutMs: 10_000,
+		});
+		const body = out.stdout.trim();
+		return body === "" ? null : body;
+	} catch {
+		return null;
+	}
 }
 
 async function collectCommits(range: GitRange): Promise<PrCommit[]> {
