@@ -178,6 +178,23 @@ describe("runWait", () => {
 		expect(err.join("")).toContain("wait_timeout");
 	});
 
+	test("summary-emits-the-compact-projection-as-one-line", async () => {
+		const { context, out } = captureContext();
+		const res = await runWait(context, { client: client() }, { runId: "run-1", summary: true });
+		expect(res.exitCode).toBe(0);
+		const lines = out.join("").trimEnd().split("\n");
+		expect(lines).toHaveLength(1);
+		const parsed = JSON.parse(lines[0] ?? "") as Record<string, unknown>;
+		expect(parsed).toEqual({
+			id: "run-1",
+			state: "succeeded",
+			failureReason: null,
+			prUrl: null,
+			costUsd: 0.01,
+			endedAt: "2026-08-04T00:00:04.200Z",
+		});
+	});
+
 	test("pretty-renders-the-glyph-summary", async () => {
 		const { context, out } = captureContext("pretty");
 		const res = await runWait(context, { client: client() }, { runId: "run-1" });

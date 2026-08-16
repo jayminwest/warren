@@ -253,6 +253,7 @@ warren show [options] <run-id>
 
 | Flag | Required | Default | Description |
 | --- | --- | --- | --- |
+| `--summary` |  |  | emit a compact projection (id, state, failureReason, prUrl, costUsd, endedAt) |
 | `--url <url>` |  |  | warren server base URL (env WARREN_BASE_URL) |
 | `--token <token>` |  |  | bearer token (env WARREN_API_TOKEN) |
 
@@ -271,6 +272,7 @@ warren wait [options] <run-id>
 | Flag | Required | Default | Description |
 | --- | --- | --- | --- |
 | `--timeout <seconds>` |  |  | overall wait budget in seconds (default 1800) |
+| `--summary` |  |  | emit a compact projection (id, state, failureReason, prUrl, costUsd, endedAt) |
 | `--url <url>` |  |  | warren server base URL (env WARREN_BASE_URL) |
 | `--token <token>` |  |  | bearer token (env WARREN_API_TOKEN) |
 

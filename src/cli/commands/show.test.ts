@@ -132,6 +132,40 @@ describe("runShow", () => {
 		expect(text).toContain("https://github.com/os-eco/warren/pull/42");
 	});
 
+	test("summary-emits-the-compact-projection-as-one-line", async () => {
+		const { context, out } = captureContext();
+		const res = await runShow(context, { client: client() }, { runId: "run-1", summary: true });
+		expect(res.exitCode).toBe(0);
+		const lines = out.join("").trimEnd().split("\n");
+		expect(lines).toHaveLength(1);
+		const parsed = JSON.parse(lines[0] ?? "") as Record<string, unknown>;
+		expect(parsed).toEqual({
+			id: "run-1",
+			state: "succeeded",
+			failureReason: null,
+			prUrl: "https://github.com/os-eco/warren/pull/42",
+			costUsd: 0.01,
+			endedAt: "2026-08-04T00:01:00.000Z",
+		});
+	});
+
+	test("summary-in-json-mode-emits-the-indented-projection", async () => {
+		const { context, out } = captureContext("json");
+		const res = await runShow(context, { client: client() }, { runId: "run-1", summary: true });
+		expect(res.exitCode).toBe(0);
+		const text = out.join("");
+		expect(text).toContain("\n  ");
+		const parsed = JSON.parse(text) as Record<string, unknown>;
+		expect(Object.keys(parsed).sort()).toEqual([
+			"costUsd",
+			"endedAt",
+			"failureReason",
+			"id",
+			"prUrl",
+			"state",
+		]);
+	});
+
 	test("maps-a-getRun-failure-to-exit-1", async () => {
 		const { context, err } = captureContext();
 		const res = await runShow(

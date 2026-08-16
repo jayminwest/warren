@@ -19,10 +19,14 @@ export function registerRunCommands(program: Command, context: CliContext): void
 		program
 			.command("show")
 			.description("render a run's detail (GET /runs/:id; json mode is the raw run document)")
-			.argument("<run-id>", "run id"),
-	).action(async (runId: string, opts: RemoteOpts) => {
+			.argument("<run-id>", "run id")
+			.option(
+				"--summary",
+				"emit a compact projection (id, state, failureReason, prUrl, costUsd, endedAt)",
+			),
+	).action(async (runId: string, opts: { summary?: boolean } & RemoteOpts) => {
 		const client = resolveWarrenClient(context.env, clientFlags(opts));
-		const result = await runShow(context, { client }, { runId });
+		const result = await runShow(context, { client }, { runId, summary: opts.summary === true });
 		process.exit(result.exitCode);
 	});
 
@@ -31,8 +35,12 @@ export function registerRunCommands(program: Command, context: CliContext): void
 			.command("wait")
 			.description("poll a run to its terminal state (SDK waitForRun; exit 0 on succeeded)")
 			.argument("<run-id>", "run id")
-			.option("--timeout <seconds>", "overall wait budget in seconds (default 1800)"),
-	).action(async (runId: string, opts: { timeout?: string } & RemoteOpts) => {
+			.option("--timeout <seconds>", "overall wait budget in seconds (default 1800)")
+			.option(
+				"--summary",
+				"emit a compact projection (id, state, failureReason, prUrl, costUsd, endedAt)",
+			),
+	).action(async (runId: string, opts: { timeout?: string; summary?: boolean } & RemoteOpts) => {
 		const timeoutSeconds = opts.timeout !== undefined ? Number(opts.timeout) : undefined;
 		if (timeoutSeconds !== undefined && !(Number.isFinite(timeoutSeconds) && timeoutSeconds > 0)) {
 			context.stdio.stderr.write("warren: --timeout must be a positive number of seconds\n");
@@ -44,6 +52,7 @@ export function registerRunCommands(program: Command, context: CliContext): void
 			{ client },
 			{
 				runId,
+				summary: opts.summary === true,
 				...(timeoutSeconds !== undefined ? { timeoutMs: timeoutSeconds * 1_000 } : {}),
 			},
 		);

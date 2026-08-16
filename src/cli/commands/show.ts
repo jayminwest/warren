@@ -12,11 +12,13 @@ import type { WarrenClient } from "../../client/index.ts";
 import type { RunRow } from "../../client/types.ts";
 import type { CliContext } from "../output.ts";
 import { commandFailure, writeResult } from "../output.ts";
-import { renderRunPretty } from "../run-renderer.ts";
+import { renderRunPretty, runSummary } from "../run-renderer.ts";
 import { guardRemoteRun } from "./probe.ts";
 
 export interface ShowArgs {
 	readonly runId: string;
+	/** Emit the compact RunSummary projection instead of the full document. */
+	readonly summary?: boolean;
 }
 
 export interface ShowDeps {
@@ -39,7 +41,7 @@ export async function runShow(
 	if (guard !== null) return guard;
 	try {
 		const run = await deps.client.getRun(args.runId);
-		writeResult(context, run, renderRunPretty(run));
+		writeResult(context, args.summary === true ? runSummary(run) : run, renderRunPretty(run));
 		return { exitCode: 0, runId: run.id, state: run.state };
 	} catch (err) {
 		return { ...commandFailure(context, err), runId: args.runId };

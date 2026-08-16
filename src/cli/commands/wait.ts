@@ -14,13 +14,15 @@ import type { WarrenClient } from "../../client/index.ts";
 import type { RunRow } from "../../client/types.ts";
 import type { CliContext } from "../output.ts";
 import { commandFailure, EXIT_RUN_FAILED, EXIT_SUCCESS, writeResult } from "../output.ts";
-import { renderRunPretty } from "../run-renderer.ts";
+import { renderRunPretty, runSummary } from "../run-renderer.ts";
 import { guardRemoteRun } from "./probe.ts";
 
 export interface WaitArgs {
 	readonly runId: string;
 	/** Overall budget in ms; forwarded to the SDK's `waitForRun` when set. */
 	readonly timeoutMs?: number;
+	/** Emit the compact RunSummary projection instead of the full document. */
+	readonly summary?: boolean;
 }
 
 export interface WaitDeps {
@@ -46,7 +48,7 @@ export async function runWait(
 			args.runId,
 			args.timeoutMs !== undefined ? { timeoutMs: args.timeoutMs } : {},
 		);
-		writeResult(context, run, renderRunPretty(run));
+		writeResult(context, args.summary === true ? runSummary(run) : run, renderRunPretty(run));
 		return {
 			exitCode: run.state === "succeeded" ? EXIT_SUCCESS : EXIT_RUN_FAILED,
 			runId: run.id,

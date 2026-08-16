@@ -278,6 +278,10 @@
       "description": "render a run's detail (GET /runs/:id; json mode is the raw run document)",
       "options": [
         {
+          "flags": "--summary",
+          "description": "emit a compact projection (id, state, failureReason, prUrl, costUsd, endedAt)"
+        },
+        {
           "flags": "--url <url>",
           "description": "warren server base URL (env WARREN_BASE_URL)"
         },
@@ -294,6 +298,10 @@
         {
           "flags": "--timeout <seconds>",
           "description": "overall wait budget in seconds (default 1800)"
+        },
+        {
+          "flags": "--summary",
+          "description": "emit a compact projection (id, state, failureReason, prUrl, costUsd, endedAt)"
         },
         {
           "flags": "--url <url>",

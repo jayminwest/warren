@@ -11,6 +11,32 @@ import type { RunRow } from "../client/types.ts";
 import { formatDurationMs } from "./output.ts";
 import { terminalGlyph } from "./plan-run-renderer.ts";
 
+/**
+ * Compact run projection for `warren show|wait --summary` (warren-8447) —
+ * the fields a shepherding loop greps for, without the multi-KB
+ * renderedAgentJson / prompt noise of the full document.
+ */
+export interface RunSummary {
+	readonly id: string;
+	readonly state: RunRow["state"];
+	readonly failureReason: RunRow["failureReason"];
+	readonly prUrl: RunRow["prUrl"];
+	readonly costUsd: RunRow["costUsd"];
+	readonly endedAt: RunRow["endedAt"];
+}
+
+/** Project a run row to its `--summary` shape. */
+export function runSummary(run: RunRow): RunSummary {
+	return {
+		id: run.id,
+		state: run.state,
+		failureReason: run.failureReason,
+		prUrl: run.prUrl,
+		costUsd: run.costUsd,
+		endedAt: run.endedAt,
+	};
+}
+
 /** A run's wall-clock duration (D6), or an em-dash when unknown. */
 export function runDuration(run: RunRow | null): string {
 	if (run === null || run.startedAt === null || run.endedAt === null) return "—";
