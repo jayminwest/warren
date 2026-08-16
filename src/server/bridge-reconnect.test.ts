@@ -292,7 +292,7 @@ describe("reap orchestration through the provider seam (warren-a7cb)", () => {
 			repos,
 			broker: new RunEventBroker(),
 			runtimeProvider: provider,
-			failureReason: "burrow_run_lost",
+			failureReason: "sandbox_run_lost",
 		});
 
 		// terminate() got the seam handle (opaque ids), NOT a burrow-typed call.

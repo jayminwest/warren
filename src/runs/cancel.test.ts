@@ -456,7 +456,7 @@ describe("cancelRun", () => {
 		expect((await repos.runs.require(runId)).state).toBe("running");
 	});
 
-	test("warren-b1a9: backend run-not-found reconciles the run to failed/burrow_run_lost", async () => {
+	test("warren-b1a9: backend run-not-found reconciles the run to failed/sandbox_run_lost", async () => {
 		const runId = await createRun({ state: "running" });
 		const { client } = makeBurrowClient({
 			status: 404,
@@ -472,12 +472,12 @@ describe("cancelRun", () => {
 		expect(result.alreadyTerminal).toBe(false);
 		const run = await repos.runs.require(runId);
 		expect(run.state).toBe("failed");
-		expect(run.failureReason).toBe("burrow_run_lost");
+		expect(run.failureReason).toBe("sandbox_run_lost");
 		// Audit event landed describing the reconciliation.
 		const events = await repos.events.listByRun(runId);
 		expect(events.length).toBe(1);
 		expect(events[0]?.kind).toBe("cancel.requested");
-		expect((events[0]?.payloadJson as { mode: string }).mode).toBe("burrow_run_lost");
+		expect((events[0]?.payloadJson as { mode: string }).mode).toBe("sandbox_run_lost");
 	});
 
 	test("non-not-found backend errors still propagate without emitting an audit event", async () => {

@@ -74,6 +74,7 @@ export function bootWatchdogFromEnv(input: WatchdogWiringInput): WatchdogHandle 
 		reap: input.reap,
 		heartbeatTimeoutMs: config.heartbeatTimeoutMs,
 		terminalReconcileGraceMs: config.terminalReconcileGraceMs,
+		cancelReconcileGraceMs: config.cancelReconcileGraceMs,
 		tickMs: config.tickMs,
 		disabled: !config.enabled,
 		logger: bridgeLoggerFromPino(logger),
@@ -87,6 +88,7 @@ export function bootWatchdogFromEnv(input: WatchdogWiringInput): WatchdogHandle 
 				tickMs: config.tickMs,
 				heartbeatTimeoutMs: config.heartbeatTimeoutMs,
 				terminalReconcileGraceMs: config.terminalReconcileGraceMs,
+				cancelReconcileGraceMs: config.cancelReconcileGraceMs,
 			},
 			"run watchdog running",
 		);

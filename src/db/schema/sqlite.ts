@@ -219,7 +219,7 @@ export const runs = sqliteTable(
 		// against the project default base. Null for root runs. See `CLONE_KINDS`.
 		cloneKind: text("clone_kind", { enum: CLONE_KINDS }),
 		// Infra-lost auto-retry back-link (warren-4af7): when a run terminalizes
-		// `failed` with an infra-lost failure reason (`burrow_run_lost`), warren
+		// `failed` with an infra-lost failure reason (`sandbox_run_lost`), warren
 		// dispatches ONE replacement run and records the original run's id here.
 		// Distinct from `parent_run_id`: a retry re-dispatches the SAME prompt
 		// against the same base (no continuation), and the link drives the

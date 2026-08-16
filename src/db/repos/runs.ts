@@ -284,7 +284,7 @@ export class RunsRepo {
 		return listByState(this.adapter, state);
 	}
 
-	/** The retry a `burrow_run_lost` original spawned (warren-4af7); body in runs-queries.ts. */
+	/** The retry a `sandbox_run_lost` original spawned (warren-4af7); body in runs-queries.ts. */
 	findByRetryOf(runId: string): Promise<RunRow | null> {
 		return findByRetryOf(this.adapter, runId);
 	}

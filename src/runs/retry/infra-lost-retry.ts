@@ -2,7 +2,7 @@
  * Automatic retry for infra-lost runs (warren-4af7).
  *
  * A run that terminalizes `failed` with an infra-lost failure reason
- * (`burrow_run_lost` — the sandbox/pod vanished under a healthy run: burrow
+ * (`sandbox_run_lost` — the sandbox/pod vanished under a healthy run: burrow
  * 404s the run, a GC'd pod, a lost worker) says nothing about the prompt,
  * the seed, or the agent — the failure is in the substrate. Warren therefore
  * dispatches ONE replacement run automatically:
@@ -58,7 +58,7 @@ import type { BridgeRegistry } from "../stream/types.ts";
  * appending, per the warren-6de9 factored-shape precedent.
  */
 export const INFRA_LOST_RUN_FAILURE_REASONS = [
-	"burrow_run_lost",
+	"sandbox_run_lost",
 ] as const satisfies readonly RunFailureReason[];
 
 export type InfraLostRunFailureReason = (typeof INFRA_LOST_RUN_FAILURE_REASONS)[number];

@@ -14,7 +14,7 @@ import {
 } from "./infra-lost-retry.ts";
 
 /**
- * warren-4af7: a run that terminalizes `failed`/`burrow_run_lost` earns ONE
+ * warren-4af7: a run that terminalizes `failed`/`sandbox_run_lost` earns ONE
  * automatic re-dispatch — a NEW run id linked via `runs.retry_of`, same
  * agent/project/prompt/seed, with the original cap MINUS the first attempt's
  * spend on the override slot. A retry that lands infra-lost stays terminal;
@@ -59,7 +59,7 @@ interface Harness {
 		retryOf?: string;
 		costUsd?: number;
 		maxCostUsd?: number;
-		failureReason?: "burrow_run_lost" | "crashed" | "provider_error";
+		failureReason?: "sandbox_run_lost" | "crashed" | "provider_error";
 	}) => Promise<RunRow>;
 }
 
@@ -95,7 +95,7 @@ async function setup(): Promise<Harness> {
 			if (over.costUsd !== undefined) {
 				await repos.runs.attachStats(run.id, { costUsd: over.costUsd });
 			}
-			return repos.runs.finalize(run.id, "failed", NOW, over.failureReason ?? "burrow_run_lost");
+			return repos.runs.finalize(run.id, "failed", NOW, over.failureReason ?? "sandbox_run_lost");
 		},
 	};
 	return h;
@@ -213,7 +213,7 @@ describe("infra-lost run auto-retry (warren-4af7)", () => {
 		await hookFor(h)(crashed.id);
 		expect(h.spawnCalls).toHaveLength(0);
 		expect(isInfraLostRunFailure("crashed")).toBe(false);
-		expect(isInfraLostRunFailure("burrow_run_lost")).toBe(true);
+		expect(isInfraLostRunFailure("sandbox_run_lost")).toBe(true);
 	});
 
 	test("exhausted budget → no retry", async () => {
@@ -248,6 +248,6 @@ describe("infra-lost run auto-retry (warren-4af7)", () => {
 		expect(decision.skip).toBe("plan_run_child");
 		// …and the coordinator shape now recognises the infra-lost cause.
 		const child = (await h.repos.planRuns.listChildren(planRun.id))[0];
-		expect(child !== undefined && shouldRetryChild(child, "burrow_run_lost")).toBe(true);
+		expect(child !== undefined && shouldRetryChild(child, "sandbox_run_lost")).toBe(true);
 	});
 });

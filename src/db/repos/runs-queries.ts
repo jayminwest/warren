@@ -228,7 +228,7 @@ export async function listByState(
 }
 
 /**
- * The retry run a `burrow_run_lost` original spawned (warren-4af7), if any.
+ * The retry run a `sandbox_run_lost` original spawned (warren-4af7), if any.
  * At most one row can exist — the retry decision checks this before
  * dispatching — so a `pickOne` read is exact.
  */

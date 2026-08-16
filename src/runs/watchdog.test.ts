@@ -32,10 +32,10 @@ import {
 	bootWatchdog,
 	computeIdleMs,
 	DEFAULT_WATCHDOG_HEARTBEAT_TIMEOUT_MS,
-	loadWatchdogConfigFromEnv,
 	tickWatchdog,
 	WATCHDOG_TIMED_OUT_KIND,
 } from "./watchdog.ts";
+import { loadWatchdogConfigFromEnv } from "./watchdog-config.ts";
 import { DEFAULT_WATCHDOG_TERMINAL_RECONCILE_GRACE_MS } from "./watchdog-reconcile.ts";
 
 describe("computeIdleMs", () => {
