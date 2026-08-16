@@ -259,6 +259,16 @@ function summarizeReap(kind: string, payload: Record<string, unknown>): string {
 	if (kind === "reap.empty_push") {
 		return readString(payload.message) ?? "empty push";
 	}
+	// warren-b68d: the remediation is the point of this event, so the unblock
+	// URL goes in the one-line summary rather than only in the expanded payload.
+	if (kind === "reap.push_rejected") {
+		const urls = Array.isArray(payload.unblockUrls) ? payload.unblockUrls : [];
+		const locations = Array.isArray(payload.locations) ? payload.locations : [];
+		const parts = ["push blocked by repository policy"];
+		if (locations.length > 0) parts.push(`${locations.length} location(s)`);
+		if (typeof urls[0] === "string") parts.push(`unblock: ${urls[0]}`);
+		return parts.join(" · ");
+	}
 	if (kind === "reap.orphaned") {
 		return readString(payload.message) ?? "orphaned";
 	}

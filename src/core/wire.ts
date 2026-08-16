@@ -145,6 +145,8 @@ export type CloneKind = (typeof CLONE_KINDS)[number];
  *     recoverable instead of being silently destroyed. Distinct from
  *     `dropped_commit` (push succeeded but landed zero commits over a
  *     still-dirty tree): here the push itself never completed.
+ *   - `push_rejected_policy` (warren-b68d) narrows `finalize_failed` to a push
+ *     the REMOTE refused on policy grounds; see `../runtime/push-rejection.ts`.
  *   - `finalize_unposted` (warren-5ea1) means the K8s in-pod finalize
  *     never POSTed a result at all — the pod reached a terminal phase
  *     (or vanished, or the round-trip timed out) while warren was still
@@ -207,6 +209,7 @@ export const RUN_FAILURE_REASONS = [
 	"burrow_unreachable",
 	"dropped_commit",
 	"finalize_failed",
+	"push_rejected_policy",
 	"finalize_unposted",
 	"provider_error",
 	"oom_killed",

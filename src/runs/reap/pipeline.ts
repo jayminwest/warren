@@ -23,6 +23,7 @@ import type { EventRow, ProjectRow, RunRow } from "../../db/schema.ts";
 import type { PreviewSidecarResolver } from "../../preview/launch/index.ts";
 import type { FinalizeResult, FinalizeStage, RuntimeProvider } from "../../runtime/contract.ts";
 import { finalizeCommitStage, finalizeMergeStage } from "../../runtime/contract.ts";
+import { PUSH_REJECTED_EVENT } from "../../runtime/push-rejection.ts";
 import type { BoundBridgeLogger } from "../stream/index.ts";
 import { dispatchAutoPlanRuns, hasAutoPlanRunFrontmatter, parsePlanIds } from "./auto-plan-run.ts";
 import { applyK8sCloneDeltas } from "./clone-apply.ts";
@@ -58,6 +59,10 @@ export interface ReapPipelineState {
 	 * `finalize_failed` in reap.
 	 */
 	finalizeUnposted: NonNullable<FinalizeResult["unposted"]> | null;
+	/** warren-b68d: the REMOTE refused the push on policy grounds, narrowing
+	 * `finalizeFailed` to `push_rejected_policy`. False for a non-fast-forward,
+	 * which stays `finalize_failed`; the unblock URL rides the replayed event. */
+	pushRejectedByPolicy: boolean;
 	/** warren-e9e1 (leg 2): K8s finalize's mirror deltas applied to the clone; local=false. */
 	cloneDeltasApplied: boolean;
 	/**
@@ -93,6 +98,7 @@ export function createPipelineState(): ReapPipelineState {
 		noChanges: false,
 		finalizeFailed: false,
 		finalizeUnposted: null,
+		pushRejectedByPolicy: false,
 		cloneDeltasApplied: false,
 		mirrorDurabilityFailed: false,
 		prUrl: null,
@@ -226,6 +232,9 @@ function applyFinalizeToState(state: ReapPipelineState, r: FinalizeResult): void
 	state.finalizeFailed = r.stages.some((s) => s.stage === "branch_push" && s.status === "failed");
 	// warren-5ea1: a warren-synthesized result (pod never posted) carries its cause.
 	state.finalizeUnposted = r.unposted ?? null;
+	// warren-b68d: trust a POLICY refusal only alongside a failed push stage.
+	state.pushRejectedByPolicy =
+		state.finalizeFailed && r.events.some((e) => e.kind === PUSH_REJECTED_EVENT);
 }
 
 /**

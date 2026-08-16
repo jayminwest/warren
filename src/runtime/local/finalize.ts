@@ -52,6 +52,7 @@ import type {
 } from "../contract.ts";
 import { finalizeCommitStage, finalizeMergeStage } from "../contract.ts";
 import { RuntimeProviderError } from "../errors.ts";
+import { PUSH_REJECTED_EVENT, parsePushRejection } from "../push-rejection.ts";
 import { finalizeSeedReset } from "./finalize-seed-reset.ts";
 
 /** Clone-relative (posix) tracker paths — the delta `path` fields + read-back keys. */
@@ -412,6 +413,12 @@ async function finalizePush(
 		trail.failed("branch_push", err);
 		await collector.fail("branch_push", err, workspacePath);
 		trail.skipped("commits_ahead");
+		// warren-b68d: `ReapExec.run` rejects with an Error whose message carries
+		// stderr, so the remote's own refusal text is what gets parsed here.
+		const rejection = parsePushRejection(err instanceof Error ? err.message : String(err));
+		if (rejection !== null) {
+			collector.events.push({ kind: PUSH_REJECTED_EVENT, payload: rejection });
+		}
 		return { pushed: false, commitsAhead: null, emptyPush: false, dirty: false, dirtyPaths: [] };
 	}
 	const commitsAhead = await countCommitsAhead(intent, workspacePath, exec, trail);
