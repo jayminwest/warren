@@ -30,6 +30,7 @@
 
 import { type AgentEventEnvelope, extractAgentEventEnvelope } from "../../core/event-envelope.ts";
 import type { Repos } from "../../db/repos/index.ts";
+import { providerErrorEnvelopeTypes } from "../../runtime/adapters/index.ts";
 
 /** Structural event shape the classifier consumes (subset of `EventRow`). */
 export interface ProviderErrorEventInput {
@@ -63,8 +64,17 @@ type EnvelopeVerdict =
 	| { readonly kind: "clear" }
 	| { readonly kind: "ignore" };
 
+/**
+ * warren-c80e: which envelope types are authoritative is a per-harness fact
+ * and now lives in the adapter registry. Read once at module load, as the
+ * registry is static. This is the union across every adapter, which is the
+ * same scope the hardcoded `turn_end` / `agent_end` pair had: the classifier
+ * walks a persisted event log without the run's runtime id in hand.
+ */
+const TERMINAL_ERROR_ENVELOPE_TYPES = new Set(providerErrorEnvelopeTypes());
+
 function classifyEnvelope(env: AgentEventEnvelope): EnvelopeVerdict {
-	if (env.type !== "turn_end" && env.type !== "agent_end") return { kind: "ignore" };
+	if (!TERMINAL_ERROR_ENVELOPE_TYPES.has(env.type)) return { kind: "ignore" };
 	const stopReason = env.stopReason;
 	if (stopReason === undefined) return { kind: "ignore" };
 	const errorMessage = env.errorMessage;

@@ -3,6 +3,7 @@ import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { promisify } from "node:util";
 import type { RunRow, RunTerminalState } from "../../db/schema.ts";
 import { resolveSpawnEnv } from "../../projects/clone.ts";
+import { harnessStatePrefixes } from "../../runtime/adapters/index.ts";
 import type { ReapExec, ReapFs, ReapRunResult } from "./types.ts";
 
 const execFileAsync = promisify(execFile);
@@ -171,8 +172,14 @@ export const BOOKKEEPING_ARTIFACT_PREFIXES: readonly string[] = [".mulch/", ".se
  * are harness scratch is a deliberate no-op, not a dropped commit. Kept as its
  * own constant rather than overloading the bookkeeping list, because the reason
  * they are ignorable is different (harness-written, not warren-committed).
+ *
+ * warren-c80e: the membership now comes from the adapter registry rather than
+ * a literal here, so a new runtime declares its own scratch dirs beside the
+ * rest of its per-harness facts. Reap classifies a workspace without knowing
+ * which harness produced it, so this is the union across every adapter — the
+ * same scope the flat literal had.
  */
-export const HARNESS_STATE_PREFIXES: readonly string[] = [".claude/"];
+export const HARNESS_STATE_PREFIXES: readonly string[] = harnessStatePrefixes();
 
 /**
  * Prefixes whose dirty paths are never lost agent work: warren-committed
