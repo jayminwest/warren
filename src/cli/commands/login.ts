@@ -7,10 +7,17 @@
  * invocations resolve the server without flags or env. The file holds
  * base URL + token ONLY — never a DB credential.
  *
- * Token source precedence: `--token` flag > `WARREN_API_TOKEN` env >
- * stdin. The stdin arm exists so an interactive operator keeps the
- * credential out of shell history. The token is NEVER echoed back — the
- * emitted result carries its length and a masked prefix only.
+ * Token source precedence: `--token` flag > piped stdin >
+ * `WARREN_API_TOKEN` env. An explicitly piped stdin token wins over an
+ * ambient env token (warren-2244): the operator typed that credential
+ * deliberately, while the env value may be a stale `.env` that Bun
+ * auto-loaded from the invoking cwd (warren-8807). This login-local
+ * precedence overrides the global flag > env > file order only when
+ * stdin actually carries a token — every other command keeps the
+ * documented global precedence. The stdin arm exists so an interactive
+ * operator keeps the credential out of shell history. The token is
+ * NEVER echoed back — the emitted result carries its length and a
+ * masked prefix only.
  */
 
 import { saveWarrenClientConfigToFile } from "../../client/config-file.ts";
@@ -86,10 +93,21 @@ async function resolveToken(
 	args: LoginArgs,
 ): Promise<string | undefined> {
 	if (args.token !== undefined && args.token !== "") return args.token;
-	const fromEnv = context.env.WARREN_API_TOKEN;
-	if (fromEnv !== undefined && fromEnv !== "") return fromEnv;
+	// Piped stdin outranks a merely ambient env token (warren-2244). A TTY
+	// stdin yields "" instantly, so an interactive run with no env still
+	// fails fast instead of blocking.
 	const fromStdin = (await deps.readTokenFromStdin()).trim();
-	return fromStdin === "" ? undefined : fromStdin;
+	const fromEnv = context.env.WARREN_API_TOKEN;
+	if (fromStdin !== "") {
+		if (fromEnv !== undefined && fromEnv !== "" && fromEnv !== fromStdin) {
+			context.stdio.stderr.write(
+				"warren: using token piped on stdin; ignoring WARREN_API_TOKEN from environment " +
+					"(Bun auto-loads `.env` from your cwd — unset it to silence this warning)\n",
+			);
+		}
+		return fromStdin;
+	}
+	return fromEnv !== "" ? fromEnv : undefined;
 }
 
 /** Mask a token for display: first 4 chars + bullet run, never the full value. */

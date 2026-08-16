@@ -390,7 +390,7 @@
     },
     {
       "name": "WARREN_API_TOKEN",
-      "summary": "bearer token for the server (required unless WARREN_AUTH=public)"
+      "summary": "bearer token for the server (required unless WARREN_AUTH=public); note the Bun CLI auto-loads `.env` from your cwd — a stale token there overrides the client config file on every command (`warren login` still prefers a piped stdin token over it)"
     },
     {
       "name": "WARREN_CLIENT_CONFIG",
