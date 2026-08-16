@@ -54,6 +54,7 @@ import { validateTargetBranch } from "../target-branch.ts";
 import { readCachedAgent, readProjectDefaults, resolveOverride } from "./agent-cache.ts";
 import { injectWarrenCallbackEnv } from "./callback-env.ts";
 import { injectGitIdentityEnv, warnIfGitIdentityUnconfigured } from "./git-identity.ts";
+import { assertNoKnownProviderModelMismatch } from "./provider-model.ts";
 import {
 	bindRunLogger,
 	logDispatched,
@@ -157,6 +158,12 @@ export async function spawnRun(input: SpawnRunInput): Promise<SpawnRunResult> {
 		}),
 		capOverride,
 	);
+	// warren-bad5: validate only after the override > project default >
+	// agent frontmatter chain has been fully resolved.
+	const { provider: declaredProvider, model: declaredModel } = readProviderFrontmatter(
+		agent.frontmatter,
+	);
+	assertNoKnownProviderModelMismatch(declaredProvider, declaredModel);
 
 	// Build the seed payload BEFORE creating the warren row so a malformed
 	// expertise_seed / pi_skills / pi_prompts section surfaces as a clean
@@ -175,10 +182,6 @@ export async function spawnRun(input: SpawnRunInput): Promise<SpawnRunResult> {
 	// rendered_agent_json per query. This is the resolved frontmatter value
 	// (override chain already folded in above), not what the harness
 	// actually used — actually-used reporting is future work.
-	const { provider: declaredProvider, model: declaredModel } = readProviderFrontmatter(
-		agent.frontmatter,
-	);
-
 	const run = await input.repos.runs.create({
 		agentName: agent.name,
 		projectId: projectAfterRefresh.id,
