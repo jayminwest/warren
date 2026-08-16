@@ -86,6 +86,7 @@ describe("runRemoteDoctor", () => {
 		const auth = result.checks.find((c) => c.name === "auth_valid");
 		expect(auth?.ok).toBe(false);
 		expect(auth?.hint).toContain("WARREN_API_TOKEN");
+		expect(auth?.hint).toContain("warren login");
 	});
 
 	test("--no-auth skips the auth check", async () => {

@@ -45,6 +45,28 @@ describe("loadWarrenClientConfigFromFile", () => {
 			});
 		}));
 
+	test("trims surrounding whitespace off a hand-edited token (warren-c550)", () =>
+		withTempDir(async (dir) => {
+			const path = join(dir, "client.json");
+			await writeFile(
+				path,
+				JSON.stringify({ baseUrl: "https://w.example.com", token: "  tok-padded\n" }),
+			);
+			expect(loadWarrenClientConfigFromFile({ WARREN_CLIENT_CONFIG: path })).toEqual({
+				baseUrl: "https://w.example.com",
+				token: "tok-padded",
+			});
+		}));
+
+	test("treats a whitespace-only token as absent", () =>
+		withTempDir(async (dir) => {
+			const path = join(dir, "client.json");
+			await writeFile(path, JSON.stringify({ baseUrl: "https://w.example.com", token: " \n " }));
+			expect(loadWarrenClientConfigFromFile({ WARREN_CLIENT_CONFIG: path })).toEqual({
+				baseUrl: "https://w.example.com",
+			});
+		}));
+
 	test("rejects an unparseable file with a validation error", () =>
 		withTempDir(async (dir) => {
 			const path = join(dir, "client.json");
