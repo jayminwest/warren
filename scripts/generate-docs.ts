@@ -10,6 +10,20 @@
  * the docs from it avoids the usual drift between a hand-written endpoint list and the
  * real router.
  *
+ * The script ALSO emits `docs/builtin-agents.json` (warren-7b32), a
+ * machine-readable manifest of the built-in agents derived from
+ * `BUILTIN_AGENTS` in `src/registry/builtins/`, so downstream consumers
+ * (warren-site's facts pipeline) never hand-maintain agent names or
+ * counts. The registry itself is an Article IX protected path; this
+ * script is strictly read-only against it — it imports and serializes,
+ * never modifies.
+ *
+ * One-line roles are not a registry field, so they live in the
+ * `BUILTIN_AGENT_ROLES` table below. Drift fails hard both ways: adding
+ * a builtin without a role entry (or leaving a stale entry) throws, so
+ * `gen:docs:check` goes red until the table and the manifest agree with
+ * the registry.
+ *
  * Why this shape (not typedoc):
  * - The HTTP routes are the meaningful API contract; internal TS APIs
  *   change shape too often to be worth typedoc'ing.
@@ -21,20 +35,22 @@
  *   stays fast in CI.
  *
  * Modes:
- *   bun run gen:docs            # write docs/http-api.md
- *   bun run gen:docs:check      # exit 1 if docs/http-api.md is stale
+ *   bun run gen:docs            # write docs/http-api.md + docs/builtin-agents.json
+ *   bun run gen:docs:check      # exit 1 if either artifact is stale
  *
  * The check mode is wired into `bun run check:all`; CI fails when the
- * route table changes but the doc isn't regenerated. Fix by running
- * `bun run gen:docs` and committing the result.
+ * route table or the builtin registry changes but the docs aren't
+ * regenerated. Fix by running `bun run gen:docs` and committing the result.
  */
 
 import { readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { BUILTIN_AGENTS } from "../src/registry/builtins/index.ts";
 
 const REPO_ROOT = resolve(import.meta.dir, "..");
 const HANDLERS_PATH = resolve(REPO_ROOT, "src/server/handlers/route-table.ts");
 const OUTPUT_PATH = resolve(REPO_ROOT, "docs/http-api.md");
+const MANIFEST_PATH = resolve(REPO_ROOT, "docs/builtin-agents.json");
 
 export type Route = {
 	method: string;
@@ -235,6 +251,75 @@ function escapeCell(text: string): string {
 	return text.replace(/\|/g, "\\|");
 }
 
+/**
+ * One-line roles for each builtin agent (warren-7b32). The registry
+ * definitions carry no role field and are an Article IX protected path,
+ * so the canonical one-liners live here, next to the generator that
+ * consumes them. `generateBuiltinAgentsManifest` throws when this
+ * table and `BUILTIN_AGENTS` disagree in either direction, which turns
+ * `gen:docs:check` red on registry drift.
+ */
+const BUILTIN_AGENT_ROLES: Readonly<Record<string, string>> = {
+	bugwatch: "Bug triage agent — investigates open bug seeds and produces a seeds fix plan per bug.",
+	"claude-code":
+		"General-purpose coding agent on the claude-code harness; dispatchable on a fresh install.",
+	healer:
+		"Closed-loop repair agent — diagnoses production alerts and opens a fresh fix branch + PR.",
+	nightwatch:
+		"Code patrol agent — scans repos for quality issues and files a seeds plan to fix them.",
+	pi: "Multi-provider coding-agent runtime (@earendil-works/pi-coding-agent); warren's default runtime.",
+	planner: "Interactive planning agent that turns a finalized intent into a structured seeds plan.",
+	"pr-fixer":
+		"CI-repair agent — fixes failing checks on warren-opened PRs directly on the PR branch.",
+	sapling: "Alternate steerable coding harness shipped inline alongside claude-code.",
+};
+
+export type BuiltinAgentsManifest = {
+	source: string;
+	count: number;
+	agents: { name: string; role: string }[];
+};
+
+/**
+ * Serialize the builtin-agent manifest for `docs/builtin-agents.json`.
+ * Deterministic (agents sorted by name, fixed key order, no timestamps)
+ * so --check can byte-compare against the committed file.
+ */
+export function generateBuiltinAgentsManifest(): {
+	content: string;
+	manifest: BuiltinAgentsManifest;
+} {
+	const names = BUILTIN_AGENTS.map((agent) => agent.name).sort();
+	const missingRoles = names.filter((name) => !(name in BUILTIN_AGENT_ROLES));
+	const staleRoles = Object.keys(BUILTIN_AGENT_ROLES).filter((name) => !names.includes(name));
+	if (missingRoles.length > 0 || staleRoles.length > 0) {
+		const parts: string[] = [];
+		if (missingRoles.length > 0) {
+			parts.push(`no role entry for builtin(s): ${missingRoles.join(", ")}`);
+		}
+		if (staleRoles.length > 0) {
+			parts.push(`role entries with no matching builtin: ${staleRoles.join(", ")}`);
+		}
+		throw new Error(
+			`BUILTIN_AGENT_ROLES drifted from BUILTIN_AGENTS — ${parts.join("; ")}. ` +
+				"Update scripts/generate-docs.ts alongside the registry change.",
+		);
+	}
+	const agents = names.map((name) => {
+		const role = BUILTIN_AGENT_ROLES[name];
+		if (role === undefined) {
+			throw new Error(`unreachable: role for ${name} passed the drift check`);
+		}
+		return { name, role };
+	});
+	const manifest: BuiltinAgentsManifest = {
+		source: "src/registry/builtins/index.ts (BUILTIN_AGENTS)",
+		count: agents.length,
+		agents,
+	};
+	return { content: `${JSON.stringify(manifest, null, "\t")}\n`, manifest };
+}
+
 export function generate(): { content: string; routes: Route[] } {
 	const source = readFileSync(HANDLERS_PATH, "utf8");
 	const routes = extractRoutes(source);
@@ -244,35 +329,46 @@ export function generate(): { content: string; routes: Route[] } {
 	return { content: renderMarkdown(routes), routes };
 }
 
-function readExisting(): string | null {
+function readExisting(path: string): string | null {
 	try {
-		return readFileSync(OUTPUT_PATH, "utf8");
+		return readFileSync(path, "utf8");
 	} catch {
 		return null;
 	}
 }
 
+/** Check (or report staleness for) one generated artifact against disk. */
+function checkArtifact(path: string, relPath: string, content: string): boolean {
+	const existing = readExisting(path);
+	if (existing === null) {
+		console.error(`${relPath} is missing. Run \`bun run gen:docs\` and commit the result.`);
+		return false;
+	}
+	if (existing !== content) {
+		console.error(`${relPath} is stale relative to its generator sources.`);
+		console.error("Run `bun run gen:docs` and commit the result.");
+		return false;
+	}
+	return true;
+}
+
 function main(): void {
 	const checkMode = process.argv.includes("--check");
 	const { content, routes } = generate();
-	const existing = readExisting();
+	const { content: manifestContent, manifest } = generateBuiltinAgentsManifest();
 
 	if (checkMode) {
-		if (existing === null) {
-			console.error(`docs/http-api.md is missing. Run \`bun run gen:docs\` and commit the result.`);
-			process.exit(1);
-		}
-		if (existing !== content) {
-			console.error("docs/http-api.md is stale relative to src/server/handlers/route-table.ts.");
-			console.error("Run `bun run gen:docs` and commit the result.");
-			process.exit(1);
-		}
-		console.log(`gen:docs ok (${routes.length} routes).`);
+		const docOk = checkArtifact(OUTPUT_PATH, "docs/http-api.md", content);
+		const manifestOk = checkArtifact(MANIFEST_PATH, "docs/builtin-agents.json", manifestContent);
+		if (!docOk || !manifestOk) process.exit(1);
+		console.log(`gen:docs ok (${routes.length} routes, ${manifest.count} builtin agents).`);
 		return;
 	}
 
 	writeFileSync(OUTPUT_PATH, content);
 	console.log(`Wrote docs/http-api.md (${routes.length} routes).`);
+	writeFileSync(MANIFEST_PATH, manifestContent);
+	console.log(`Wrote docs/builtin-agents.json (${manifest.count} builtin agents).`);
 }
 
 if (import.meta.main) main();
