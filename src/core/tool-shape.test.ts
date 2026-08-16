@@ -3,11 +3,10 @@ import { TOOL_SHAPES, toolShapeFor } from "./tool-shape.ts";
 import { KNOWN_RUNTIME_IDS } from "./wire.ts";
 
 describe("toolShape registry", () => {
-	test("covers claude-code and pi; sapling is intentionally uncovered", () => {
+	test("covers claude-code and pi", () => {
 		expect(Object.keys(TOOL_SHAPES).sort()).toEqual(["claude-code", "pi"]);
 		expect(toolShapeFor("claude-code")?.runtime).toBe("claude-code");
 		expect(toolShapeFor("pi")?.runtime).toBe("pi");
-		expect(toolShapeFor("sapling")).toBeNull();
 		for (const id of KNOWN_RUNTIME_IDS) {
 			const shape = toolShapeFor(id);
 			if (shape !== null) expect(shape.runtime).toBe(id);

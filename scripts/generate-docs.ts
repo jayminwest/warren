@@ -271,7 +271,6 @@ const BUILTIN_AGENT_ROLES: Readonly<Record<string, string>> = {
 	planner: "Interactive planning agent that turns a finalized intent into a structured seeds plan.",
 	"pr-fixer":
 		"CI-repair agent — fixes failing checks on warren-opened PRs directly on the PR branch.",
-	sapling: "Alternate steerable coding harness shipped inline alongside claude-code.",
 };
 
 export type BuiltinAgentsManifest = {

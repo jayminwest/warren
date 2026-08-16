@@ -12,7 +12,6 @@
  * in". The rollup table that consumes it is warren-7746; this module
  * is only the pure, unit-tested extractor.
  *
- * Sapling is intentionally uncovered: it is being retired, so
  * {@link FILE_SHAPES} declares `claude-code` and `pi` only.
  *
  * `src/core/` imports nothing outside itself (check:layers), so the
@@ -113,8 +112,7 @@ const PI_FILE_SHAPE: FileShape = {
 
 /**
  * The file shapes, declared per runtime id. Keyed off
- * {@link KNOWN_RUNTIME_IDS} via `Partial<Record<RuntimeId, …>>` —
- * sapling, being retired, is deliberately absent.
+ * {@link KNOWN_RUNTIME_IDS} via `Partial<Record<RuntimeId, …>>`.
  */
 export const FILE_SHAPES: Readonly<Partial<Record<RuntimeId, FileShape>>> = {
 	"claude-code": CLAUDE_CODE_FILE_SHAPE,
@@ -123,7 +121,7 @@ export const FILE_SHAPES: Readonly<Partial<Record<RuntimeId, FileShape>>> = {
 
 /**
  * Look up the declared file shape for a runtime id, or `null` when the
- * runtime's tool events are not covered (sapling today).
+ * runtime's tool events are not covered.
  */
 export function fileShapeFor(runtime: RuntimeId): FileShape | null {
 	return FILE_SHAPES[runtime] ?? null;

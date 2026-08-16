@@ -19,7 +19,6 @@
  * was a non-command tool) from "commands did not parse" (a declared
  * shape rejected the payload).
  *
- * Sapling is intentionally uncovered: it is being retired, so
  * {@link TOOL_SHAPES} declares `claude-code` and `pi` only. A runtime
  * with no entry resolves to `null` and its rows count as unshaped, not
  * as parse failures.
@@ -181,8 +180,7 @@ const PI_TOOL_SHAPE: ToolShape = {
 
 /**
  * The tool shapes, declared per runtime id. Keyed off
- * {@link KNOWN_RUNTIME_IDS} via `Partial<Record<RuntimeId, …>>` —
- * sapling, being retired, is deliberately absent.
+ * {@link KNOWN_RUNTIME_IDS} via `Partial<Record<RuntimeId, …>>`.
  */
 export const TOOL_SHAPES: Readonly<Partial<Record<RuntimeId, ToolShape>>> = {
 	"claude-code": CLAUDE_CODE_TOOL_SHAPE,
@@ -191,7 +189,7 @@ export const TOOL_SHAPES: Readonly<Partial<Record<RuntimeId, ToolShape>>> = {
 
 /**
  * Look up the declared tool shape for a runtime id, or `null` when the
- * runtime's tool events are not covered (sapling today). A `null` here
+ * runtime's tool events are not covered. A `null` here
  * means "harness emitted no readable commands", never "commands did not
  * parse" — the reader returning `null` is the parse-failure signal.
  */

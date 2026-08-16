@@ -17,7 +17,7 @@
  *   - warren and burrow start as siblings on the in-container socket,
  *   - /healthz responds 200 (auth-exempt),
  *   - GET /agents (with auth) returns the three built-in agents,
- *     `claude-code`, `sapling`, and `pi`, all with `source: "builtin"`,
+ *     `claude-code` and `pi`, all with `source: "builtin"`,
  *   - /readyz returns a structured `{ ok, checks: [...] }` body
  *     (we don't assert ok=true; bwrap probe behaviour on macOS Docker
  *     Desktop is host-dependent — see body comment below).
@@ -81,7 +81,7 @@ export const scenario: Scenario = {
 			`GET /agents body shape unexpected: ${JSON.stringify(agentsBody).slice(0, 200)}`,
 		);
 		const names = new Set(agentsBody.agents.map((a) => a.name));
-		for (const expected of ["claude-code", "sapling", "pi"]) {
+		for (const expected of ["claude-code", "pi"]) {
 			assertTrue(
 				names.has(expected),
 				`GET /agents missing builtin ${expected}; got [${[...names].join(", ")}]`,

@@ -1,11 +1,10 @@
 /**
  * Built-in `pi` agent definition.
  *
- * Pi (`@earendil-works/pi-coding-agent`) is the third coding-agent
- * runtime warren ships out of the box, alongside `claude-code` and
- * `sapling`. Including it as a built-in lets a fresh warren install
- * dispatch a multi-provider run without standing up a canopy library
- * first — same parity wedge sapling landed via SAPLING_BUILTIN.
+ * Pi (`@earendil-works/pi-coding-agent`) is a coding-agent runtime
+ * warren ships out of the box, alongside `claude-code`. Including it
+ * as a built-in lets a fresh warren install dispatch a multi-provider
+ * run without standing up a canopy library first.
  *
  * The pi-specific surfaces (multi-provider override, cost reporting,
  * `.pi/skills/` and `.pi/prompts/` materialization) layer on top in

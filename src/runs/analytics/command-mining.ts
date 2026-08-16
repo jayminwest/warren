@@ -125,7 +125,7 @@ export interface CategoryBucket {
  * runtime's declared tool shape could not read at all. This is what
  * lets `/analytics/behavior` distinguish "the harness emitted no
  * commands" (`shaped: false` — no tool shape is declared for the
- * runtime, e.g. sapling; or every call was a non-command tool) from
+ * runtime; or every call was a non-command tool) from
  * "commands did not parse" (`unparsed > 0`).
  */
 export interface RuntimeCommandCoverage {

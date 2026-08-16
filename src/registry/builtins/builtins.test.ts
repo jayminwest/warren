@@ -17,15 +17,14 @@ import {
 	PLANNER_BUILTIN,
 	PR_FIXER_BUILTIN,
 	readAgentSource,
-	SAPLING_BUILTIN,
 	seedBuiltinAgents,
 	stampAgentSource,
 } from "./index.ts";
 
 describe("BUILTIN_AGENTS", () => {
-	test("includes claude-code, sapling, pi, planner, pr-fixer, and healer", () => {
+	test("includes claude-code, pi, planner, pr-fixer, and healer", () => {
 		expect(BUILTIN_AGENT_NAMES.has("claude-code")).toBe(true);
-		expect(BUILTIN_AGENT_NAMES.has("sapling")).toBe(true);
+		expect(BUILTIN_AGENT_NAMES.has("sapling")).toBe(false);
 		expect(BUILTIN_AGENT_NAMES.has("pi")).toBe(true);
 		expect(BUILTIN_AGENT_NAMES.has("brainstorm")).toBe(false);
 		expect(BUILTIN_AGENT_NAMES.has("planner")).toBe(true);
@@ -92,8 +91,8 @@ describe("BUILTIN_AGENTS", () => {
 	// This regression test prevents the bullet from drifting back to softer
 	// "run gates before committing" wording that lets agents declare success
 	// on a red tree.
-	test("claude-code / sapling / pi declare the quality gate as terminal (warren-6a34)", () => {
-		for (const builtin of [CLAUDE_CODE_BUILTIN, SAPLING_BUILTIN, PI_BUILTIN]) {
+	test("claude-code / pi declare the quality gate as terminal (warren-6a34)", () => {
+		for (const builtin of [CLAUDE_CODE_BUILTIN, PI_BUILTIN]) {
 			const system = builtin.sections.system ?? "";
 			expect(system).toContain("$WARREN_QUALITY_GATE");
 			expect(system).toContain("NOT done until the gate exits zero");
@@ -106,7 +105,6 @@ describe("BUILTIN_AGENTS", () => {
 describe("readAgentSource", () => {
 	test("returns 'builtin' when frontmatter.source === 'builtin'", () => {
 		expect(readAgentSource(CLAUDE_CODE_BUILTIN)).toBe("builtin");
-		expect(readAgentSource(SAPLING_BUILTIN)).toBe("builtin");
 		expect(readAgentSource(PI_BUILTIN)).toBe("builtin");
 		expect(readAgentSource(PLANNER_BUILTIN)).toBe("builtin");
 	});

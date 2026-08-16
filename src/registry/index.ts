@@ -14,7 +14,6 @@ export {
 	LIBRARY_AGENT_SOURCE,
 	type LibraryAgentSource,
 	readAgentSource,
-	SAPLING_BUILTIN,
 	type SeedBuiltinAgentsResult,
 	seedBuiltinAgents,
 	stampAgentSource,

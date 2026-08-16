@@ -41,8 +41,8 @@ export type InboxState = (typeof INBOX_STATES)[number];
  *     incident). Reserved for a future pi `steer`/`follow_up` rpc command.
  *   - `"spawn-only"` — steering is only consumed when drained BEFORE the
  *     agent process spawns (the runtime's `encodeInboxMessage` folds pending
- *     messages into the prompt). All eight builtins are here: pi, claude-code,
- *     and sapling all fold at spawn and none consume mid-run. `POST
+ *     messages into the prompt). All eight builtins are here: pi and claude-code
+ *     both fold at spawn and neither consumes mid-run. `POST
  *     /runs/:id/steer` against a running run with this capability fails 409
  *     instead of silently recording `steer.sent` for a message no one reads.
  *   - `"none"`       — the harness has no steering channel at all; every

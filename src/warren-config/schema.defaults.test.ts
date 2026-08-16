@@ -143,11 +143,11 @@ describe("DefaultsConfigSchema interactiveAgents block (warren-b802)", () => {
 
 	test("accepts plannerRuntime field", () => {
 		const parsed = DefaultsConfigSchema.safeParse({
-			interactiveAgents: { plannerRuntime: "sapling" },
+			interactiveAgents: { plannerRuntime: "claude-code" },
 		});
 		expect(parsed.success).toBe(true);
 		if (parsed.success) {
-			expect(parsed.data.interactiveAgents?.plannerRuntime).toBe("sapling");
+			expect(parsed.data.interactiveAgents?.plannerRuntime).toBe("claude-code");
 		}
 	});
 
@@ -192,14 +192,14 @@ describe("interactiveRuntimeOverride (warren-b802)", () => {
 	});
 
 	test("returns the configured runtime for planner", () => {
-		const defaults = { interactiveAgents: { plannerRuntime: "sapling" as const } };
-		expect(interactiveRuntimeOverride("planner", defaults)).toBe("sapling");
+		const defaults = { interactiveAgents: { plannerRuntime: "claude-code" as const } };
+		expect(interactiveRuntimeOverride("planner", defaults)).toBe("claude-code");
 	});
 
 	test("returns undefined for non-interactive agents", () => {
 		const defaults = {
 			interactiveAgents: {
-				plannerRuntime: "sapling" as const,
+				plannerRuntime: "claude-code" as const,
 			},
 		};
 		expect(interactiveRuntimeOverride("claude-code", defaults)).toBeUndefined();

@@ -25,7 +25,6 @@
 import { KNOWN_RUNTIME_IDS, type RuntimeId } from "../../core/wire.ts";
 import { claudeCodeAdapter } from "./claude-code.ts";
 import { piAdapter } from "./pi.ts";
-import { saplingAdapter } from "./sapling.ts";
 import type { AgentRuntimeAdapter } from "./types.ts";
 
 export type { AgentRuntimeAdapter } from "./types.ts";
@@ -37,7 +36,6 @@ export type { AgentRuntimeAdapter } from "./types.ts";
 export const RUNTIME_ADAPTERS = {
 	"claude-code": claudeCodeAdapter,
 	pi: piAdapter,
-	sapling: saplingAdapter,
 } satisfies Record<RuntimeId, AgentRuntimeAdapter>;
 
 /** The adapter for one runtime id. Total over the union, so never null. */
