@@ -6,7 +6,9 @@
  * R-19 / docs/design/preview-environments.md (warren-8a10; path-mode scope warren-edff). Both
  * surfaces (login handshake + proxy preamble) need the same secret;
  * derive from `WARREN_API_TOKEN` so a fresh-install operator doesn't
- * have a second token to manage.
+ * have a second token to manage (warren-ef6e: under the first-boot
+ * token bootstrap, `serverConfig.token` carries the mint-or-reused
+ * persisted token, so the preview signer follows it automatically).
  *
  * Subdomain mode requires `WARREN_PREVIEW_HOST` (the cookie's Domain
  * scope and the proxy's Host match both anchor to it). Path mode
