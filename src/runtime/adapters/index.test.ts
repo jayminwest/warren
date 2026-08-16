@@ -59,8 +59,6 @@ describe("what the seam must not lose (warren-c80e)", () => {
 	test("a runtime with nothing to declare says so with an empty list", () => {
 		// Empty is a claim backed by the per-adapter doc comment, never an
 		// accidental hole: `undefined` would type-error at the interface.
-		expect(adapterFor("sapling").harnessStatePrefixes).toEqual([]);
-		expect(adapterFor("sapling").terminalErrorEnvelopeTypes).toEqual([]);
 		expect(adapterFor("claude-code").terminalErrorEnvelopeTypes).toEqual([]);
 	});
 });

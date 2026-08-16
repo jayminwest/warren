@@ -53,9 +53,8 @@ describe("extractToolUse", () => {
 		expect(extractToolUse("pi", { input: { command: "" } })).toEqual(empty);
 	});
 
-	test("lands the all-null extraction for an unshaped or unattributed runtime", () => {
+	test("lands the all-null extraction for an unattributed runtime", () => {
 		const empty = { toolName: null, command: null, toolUseId: null, filePaths: [] };
-		expect(extractToolUse("sapling", { input: { command: "bun test" } })).toEqual(empty);
 		expect(extractToolUse(null, { name: "Bash", input: { command: "git status" } })).toEqual(empty);
 	});
 });
@@ -79,7 +78,6 @@ describe("extractToolResult", () => {
 	test("returns null when no join id is present (nothing to update)", () => {
 		expect(extractToolResult("claude-code", { is_error: true })).toBeNull();
 		expect(extractToolResult("claude-code", null)).toBeNull();
-		expect(extractToolResult("sapling", { tool_use_id: "u1" })).toBeNull();
 		expect(extractToolResult(null, { tool_use_id: "u1" })).toBeNull();
 	});
 });

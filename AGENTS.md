@@ -23,12 +23,10 @@ infrastructure.
   `.mulch/` directory in the project.
 - **seeds** — the integrated issue queue agents read from and write to.
   Activated by a `.seeds/` directory.
-- **sapling** — alternative steerable coding harness. Ships inline as a
-  built-in agent.
 
 The agent registry is entirely inline. `BUILTIN_AGENTS`
-(`src/registry/builtins/`) ships eight agents and boot seeds them into
-the agents table on every start: `claude-code`, `sapling`, `pi`,
+(`src/registry/builtins/`) ships seven agents and boot seeds them into
+the agents table on every start: `claude-code`, `pi`,
 `planner`, `nightwatch`, `bugwatch`, `pr-fixer`, and `healer`. There is
 no external agent library. `GET /agents` still reports
 `source: "builtin" | "library"` provenance. The `library` arm survives

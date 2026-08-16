@@ -96,7 +96,7 @@ interface RunSpec {
   hostClonePathHint?: string;  // optional burrow worktree optimization; K8s ignores it.
 
   // Agent.
-  runtimeId: string;           // claude-code | pi | codex | sapling — selects image/toolchain
+  runtimeId: string;           // claude-code | pi | codex — selects image/toolchain
   prompt: string;              // system section already prepended by the domain
   metadata?: Record<string, unknown>;   // e.g. { frontmatter } — provider carries to runtime
   mode: "batch" | "conversation";

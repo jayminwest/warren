@@ -1,6 +1,6 @@
 {
 	"source": "src/registry/builtins/index.ts (BUILTIN_AGENTS)",
-	"count": 8,
+	"count": 7,
 	"agents": [
 		{
 			"name": "bugwatch",
@@ -29,10 +29,6 @@
 		{
 			"name": "pr-fixer",
 			"role": "CI-repair agent — fixes failing checks on warren-opened PRs directly on the PR branch."
-		},
-		{
-			"name": "sapling",
-			"role": "Alternate steerable coding harness shipped inline alongside claude-code."
 		}
 	]
 }

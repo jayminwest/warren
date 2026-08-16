@@ -145,7 +145,7 @@ const CLAUDE_CODE_USAGE_SHAPE: UsageShape = {
 /**
  * The usage shapes, declared per runtime id. Keyed off
  * {@link KNOWN_RUNTIME_IDS} via `Record<RuntimeId, …>` — a runtime
- * without a usage envelope (sapling today) is simply absent.
+ * without a usage envelope is simply absent.
  */
 export const USAGE_SHAPES: Readonly<Partial<Record<RuntimeId, UsageShape>>> = {
 	pi: PI_USAGE_SHAPE,

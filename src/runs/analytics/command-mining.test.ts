@@ -283,12 +283,11 @@ describe("buildCommandMining", () => {
 		]);
 	});
 
-	test("marks rows of an unshaped runtime as not-shaped in the coverage rollup", () => {
-		const rows: ToolCallMiningRow[] = [unparsed("r1", "sapling"), unparsed("r2", null)];
+	test("marks rows of an unattributed runtime as not-shaped in the coverage rollup", () => {
+		const rows: ToolCallMiningRow[] = [unparsed("r2", null)];
 		const out = buildCommandMining(rows);
 		expect(out.totals.commands).toBe(0);
 		expect(out.totals.byRuntime).toEqual([
-			{ runtime: "sapling", shaped: false, toolUses: 1, commands: 0, unparsed: 1 },
 			{ runtime: "unknown", shaped: false, toolUses: 1, commands: 0, unparsed: 1 },
 		]);
 	});

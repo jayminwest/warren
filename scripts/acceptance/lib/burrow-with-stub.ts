@@ -3,8 +3,8 @@
  * pre-registered in the runtime registry.
  *
  * `burrow serve` starts an HTTP server backed by `Client.open()` whose
- * AgentRegistry only carries the three built-in runtimes (claude-code,
- * sapling, codex). The acceptance harness needs a deterministic agent
+ * AgentRegistry only carries the built-in runtimes (claude-code,
+ * codex). The acceptance harness needs a deterministic agent
  * with no API key dependency, so it ships its own `stub-shell` declared
  * via the project's `burrow.toml [[agents]]` block — but burrow doesn't
  * auto-register declarative configs from a project's burrow.toml at
@@ -132,7 +132,7 @@ const STUB_AGENT_CONFIG = {
 };
 
 // Pi (`@earendil-works/pi-coding-agent`) is the third built-in coding-agent
-// runtime warren ships (alongside claude-code + sapling). Burrow's piRuntime
+// runtime warren ships (alongside claude-code). Burrow's piRuntime
 // is the cross-repo half of pl-4374 (warren-0e06) and is not yet shipped in
 // @os-eco/burrow-cli; until it lands, the acceptance harness registers a
 // custom AgentRuntime for the `pi` id (warren-17a4):

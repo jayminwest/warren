@@ -4,7 +4,7 @@
 #   1. ui-builder — build the React/Vite SPA into src/ui/dist.
 #   2. runtime    — bun + bwrap + uidmap, warren source, burrow itself
 #                   plus the bundled os-eco CLIs warren shells out to for
-#                   opt-in features (mulch/seeds/sapling), and the
+#                   opt-in features (mulch/seeds), and the
 #                   SPA bundle copied from stage 1.
 #
 # The supervisor (src/supervisor/main.ts) is the ENTRYPOINT — it owns
@@ -83,7 +83,7 @@ RUN apt-get update \
 
 # Bundled CLIs warren shells out to during run setup, reap, and project
 # management, plus burrow itself (the supervisor execs `burrow serve`).
-# The three os-eco CLIs (seeds/mulch/sapling) back warren's opt-in
+# The two os-eco CLIs (seeds/mulch) back warren's opt-in
 # features — they ship in every image so the features light up the moment
 # a project or operator opts in, with no separate install. Versions track
 # each tool's current release; bumping them is a deliberate image-rebuild
@@ -100,7 +100,7 @@ RUN apt-get update \
 # /root/.bun/install/global into /usr/local/install/global. Burrow's bwrap
 # profile only ro-binds /usr, /etc, /lib, /lib64, /bin, /sbin, /opt (see
 # burrow src/provider/local/bwrap.ts SYSTEM_RO_MOUNTS) — /root is not visible
-# inside the sandbox, so symlinks at /usr/local/bin/{sd,ml,sapling,burrow}
+# inside the sandbox, so symlinks at /usr/local/bin/{sd,ml,burrow}
 # pointing into /root/.bun would dangle for the UID-1000 agent (warren-1eaa).
 # /usr/local sits under /usr so the symlink targets resolve inside the sandbox.
 ENV BUN_INSTALL=/usr/local
@@ -108,7 +108,6 @@ RUN bun install -g \
     @os-eco/burrow-cli@0.3.15 \
     @os-eco/seeds-cli@0.5.13 \
     @os-eco/mulch-cli@0.10.7 \
-    @os-eco/sapling-cli@0.3.2 \
     @anthropic-ai/claude-code@2.1.150 \
     @earendil-works/pi-coding-agent@0.83.0 \
     pnpm@11.1.2

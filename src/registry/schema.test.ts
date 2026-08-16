@@ -176,7 +176,7 @@ describe("readRuntimeId", () => {
 	});
 
 	test("config override wins over agent.name fallback", () => {
-		expect(readRuntimeId(NAME_MATCH, "sapling")).toBe("sapling");
+		expect(readRuntimeId(NAME_MATCH, "claude-code")).toBe("claude-code");
 	});
 
 	test("ignores empty / undefined config override", () => {
@@ -192,7 +192,7 @@ describe("readRuntimeId", () => {
 			frontmatter: { source: "library", runtime: "planner" },
 		};
 		expect(() => readRuntimeId(legacy)).toThrow(AgentSchemaError);
-		expect(() => readRuntimeId(legacy)).toThrow(/claude-code, sapling, pi/);
+		expect(() => readRuntimeId(legacy)).toThrow(/claude-code, pi/);
 	});
 
 	test("rejects an unknown config override", () => {
@@ -250,7 +250,7 @@ describe("readExtraRuntimeIds", () => {
 	test("returns empty for unset / blank, and drops canonical ids", () => {
 		expect(readExtraRuntimeIds({})).toEqual([]);
 		expect(readExtraRuntimeIds({ WARREN_EXTRA_RUNTIME_IDS: "" })).toEqual([]);
-		expect(readExtraRuntimeIds({ WARREN_EXTRA_RUNTIME_IDS: "pi,sapling" })).toEqual([]);
+		expect(readExtraRuntimeIds({ WARREN_EXTRA_RUNTIME_IDS: "pi,claude-code" })).toEqual([]);
 	});
 
 	test("acceptedRuntimeIds is the canonical list plus the extras", () => {
@@ -299,8 +299,8 @@ describe("parseRenderedAgent runtime validation", () => {
 	});
 
 	test("accepts a rendered agent pinning a known runtime", () => {
-		const def = parseRenderedAgent({ ...VALID, frontmatter: { runtime: "sapling" } });
-		expect(readRuntimeId(def)).toBe("sapling");
+		const def = parseRenderedAgent({ ...VALID, frontmatter: { runtime: "claude-code" } });
+		expect(readRuntimeId(def)).toBe("claude-code");
 	});
 });
 

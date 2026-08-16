@@ -3,11 +3,10 @@ import { FILE_SHAPES, fileShapeFor } from "./file-shape.ts";
 import { KNOWN_RUNTIME_IDS } from "./wire.ts";
 
 describe("fileShape registry", () => {
-	test("covers claude-code and pi; sapling is intentionally uncovered", () => {
+	test("covers claude-code and pi", () => {
 		expect(Object.keys(FILE_SHAPES).sort()).toEqual(["claude-code", "pi"]);
 		expect(fileShapeFor("claude-code")?.runtime).toBe("claude-code");
 		expect(fileShapeFor("pi")?.runtime).toBe("pi");
-		expect(fileShapeFor("sapling")).toBeNull();
 		for (const id of KNOWN_RUNTIME_IDS) {
 			const shape = fileShapeFor(id);
 			if (shape !== null) expect(shape.runtime).toBe(id);
