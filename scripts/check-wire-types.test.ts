@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import {
+	allExportNames,
 	CANONICAL_HOME,
 	canonicalNames,
 	canonicalSources,
@@ -11,6 +12,7 @@ import {
 	isDomainName,
 	scan,
 	scanText,
+	unguardedExports,
 } from "./check-wire-types.ts";
 
 const REPO_ROOT = resolve(import.meta.dir, "..");
@@ -130,6 +132,58 @@ describe("scanText", () => {
 	test("stays silent on a pure re-export file", () => {
 		const text = 'export { RUN_STATES, type RunState } from "../core/wire.ts";\n';
 		expect(scanText("src/client/types.ts", text, names)).toEqual([]);
+	});
+});
+
+describe("unguarded exports (warren-7483)", () => {
+	test("allExportNames sees every top-level export, stems or not", () => {
+		const names = allExportNames(FIXTURE_HOME);
+		expect(names).toContain("MAX_ATTEMPTS");
+		expect(names).toContain("RUN_STATES");
+		expect(names).not.toContain("RUN_MODES"); // doc comment, not a declaration
+	});
+
+	test("unguardedExports lists a stem-less canonical export instead of skipping it", () => {
+		withFixtureRepo({}, (dir) => {
+			expect(unguardedExports(dir)).toEqual(["MAX_ATTEMPTS"]);
+		});
+	});
+
+	test("unguardedExports is empty when every canonical export carries a stem", () => {
+		withFixtureRepo(
+			{
+				[CANONICAL_HOME]: [
+					"export const RUN_STATES = ['queued'] as const;",
+					"export type RunState = (typeof RUN_STATES)[number];",
+					'export * from "./wire-inbox.ts";',
+					"",
+				].join("\n"),
+				"src/core/wire-inbox.ts": "export type InboxPriority = 'normal';\n",
+			},
+			(dir) => {
+				expect(unguardedExports(dir)).toEqual([]);
+			},
+		);
+	});
+
+	test("unguardedExports also audits re-exported split modules", () => {
+		withFixtureRepo(
+			{
+				[CANONICAL_HOME]: [
+					"export const RUN_STATES = ['queued'] as const;",
+					'export * from "./wire-actor.ts";',
+					"",
+				].join("\n"),
+				"src/core/wire-actor.ts": "export const MAX_RETRIES = 3;\n",
+			},
+			(dir) => {
+				expect(unguardedExports(dir)).toEqual(["MAX_RETRIES"]);
+			},
+		);
+	});
+
+	test("the real src/core/wire.ts has no unguarded exports", () => {
+		expect(unguardedExports(REPO_ROOT)).toEqual([]);
 	});
 });
 
