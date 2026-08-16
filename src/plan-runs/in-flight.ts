@@ -9,6 +9,8 @@
  * `AdvanceResult`.
  */
 
+import { formatError } from "../core/errors.ts";
+import { renderPlanRunPrompt } from "../core/plan-run-prompt.ts";
 import type { PlanRunChildRow, PlanRunRow, RunRow } from "../db/schema.ts";
 import type { PrMergeChecker } from "../runs/pr-merge.ts";
 import { SeedNotFoundError } from "../seeds-cli/index.ts";
@@ -18,6 +20,8 @@ import type {
 	CoordinatorEmitFn,
 	CoordinatorRepos,
 	CoordinatorShowSeedFn,
+	CoordinatorSpawnFn,
+	CoordinatorSpawnResult,
 } from "./coordinator.ts";
 import {
 	type CoordinatorReopenPrFn,
@@ -27,6 +31,7 @@ import {
 	mergeDeadlineExceeded,
 	resolveChildPrReopen,
 } from "./merge-gate.ts";
+import { shouldRetryChild } from "./retry.ts";
 
 export interface HandleInFlightInput {
 	readonly planRun: PlanRunRow;
@@ -39,6 +44,7 @@ export interface HandleInFlightInput {
 	readonly now: () => Date;
 	readonly reopenPr?: CoordinatorReopenPrFn; // warren-22de: (re)open PR before failing
 	readonly closeChildSeed?: CoordinatorCloseChildSeedFn; // warren-3806: host-side seed close on merge
+	readonly spawn: CoordinatorSpawnFn; // warren-6de9: automatic child re-dispatch
 }
 
 /**
@@ -311,6 +317,51 @@ async function pollMergeState(
 	return { kind: "result", result: { kind: "waiting_for_merge" } };
 }
 
+/**
+ * warren-6de9: re-dispatch the in-flight child once after a retryable
+ * failure (see ./retry.ts). Spawns a fresh run for the same seed with the
+ * same rendered prompt, re-points the child row at the new run, and bumps
+ * the persisted `retryCount` so a resumed/re-driven plan-run never grants
+ * a second retry. Emits `plan_run.child_retried` on the NEW run id so the
+ * plan-run event tail (which fans out over current child run ids) keeps
+ * the retry visible on the UI timeline. A spawn failure falls back to the
+ * ordinary terminal failure path rather than losing the diagnostic.
+ */
+async function retryChild(
+	input: HandleInFlightInput,
+	run: RunRow,
+): Promise<HandleInFlightDecision> {
+	const { repos, planRun, child, emit, spawn, now } = input;
+	const prompt = renderPlanRunPrompt(planRun.promptTemplate, child.seedId);
+	let spawnResult: CoordinatorSpawnResult;
+	try {
+		spawnResult = await spawn({ planRun, child, prompt });
+	} catch (err) {
+		return await failChild(input, run, `dispatch_failed:${formatError(err)}`);
+	}
+	const retryCount = child.retryCount + 1;
+	await repos.planRuns.updateChild({
+		planRunId: planRun.id,
+		seq: child.seq,
+		patch: {
+			runId: spawnResult.runId,
+			state: "dispatched",
+			startedAt: now().toISOString(),
+			retryCount,
+		},
+		now: now(),
+	});
+	await emit(spawnResult.runId, "plan_run.child_retried", {
+		planRunId: planRun.id,
+		seq: child.seq,
+		seedId: child.seedId,
+		previousRunId: run.id,
+		failureReason: run.failureReason,
+		retryCount,
+	});
+	return { kind: "result", result: { kind: "dispatched", childRunId: spawnResult.runId } };
+}
+
 export async function handleInFlight(input: HandleInFlightInput): Promise<HandleInFlightDecision> {
 	const { child, repos } = input;
 	if (child.runId === null) {
@@ -330,6 +381,11 @@ export async function handleInFlight(input: HandleInFlightInput): Promise<Handle
 		return await handleNonTerminalRun(input, run);
 	}
 	if (run.state === "failed" || run.state === "cancelled") {
+		// warren-6de9: one automatic re-dispatch for a retryable failure
+		// cause (provider_error) before the plan-run fails terminally.
+		if (run.state === "failed" && shouldRetryChild(child, run.failureReason)) {
+			return await retryChild(input, run);
+		}
 		return await failChild(input, run, `child_${run.failureReason ?? run.state}`);
 	}
 	// run.state === 'succeeded': advance to pr_open, then poll the PR.

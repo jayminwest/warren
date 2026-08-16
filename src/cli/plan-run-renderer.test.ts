@@ -51,6 +51,7 @@ function child(seq: number, state: PlanRunChildRow["state"]): PlanRunChildRow {
 		endedAt: null,
 		prMergedAt: null,
 		failureReason: null,
+		retryCount: 0,
 	};
 }
 

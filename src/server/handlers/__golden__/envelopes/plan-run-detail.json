@@ -32,7 +32,8 @@
 				"startedAt": null,
 				"endedAt": null,
 				"prMergedAt": null,
-				"failureReason": null
+				"failureReason": null,
+				"retryCount": 0
 			},
 			{
 				"planRunId": "planRun_golden7d84",
@@ -45,7 +46,8 @@
 				"startedAt": null,
 				"endedAt": null,
 				"prMergedAt": null,
-				"failureReason": null
+				"failureReason": null,
+				"retryCount": 0
 			}
 		],
 		"runs": []

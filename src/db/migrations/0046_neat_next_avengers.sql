@@ -1,0 +1,1 @@
+ALTER TABLE `plan_run_children` ADD `retry_count` integer DEFAULT 0 NOT NULL;

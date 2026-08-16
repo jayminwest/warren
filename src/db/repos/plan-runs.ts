@@ -67,7 +67,10 @@ export function assertPlanRunTransition(from: PlanRunState, to: PlanRunState): v
 const CHILD_ALLOWED_TRANSITIONS: Record<PlanRunChildState, readonly PlanRunChildState[]> = {
 	pending: ["dispatched", "failed", "skipped"],
 	dispatched: ["running", "pr_open", "merged", "failed"],
-	running: ["pr_open", "merged", "failed"],
+	// running → dispatched is the warren-6de9 automatic child retry: the
+	// first run terminalized with a retryable cause and the coordinator
+	// re-dispatched a fresh run for the same child.
+	running: ["pr_open", "merged", "failed", "dispatched"],
 	pr_open: ["merged", "failed"],
 	merged: [],
 	failed: [],
@@ -142,6 +145,8 @@ export interface PlanRunChildPatch {
 	endedAt?: string | null;
 	prMergedAt?: string | null;
 	failureReason?: string | null;
+	/** warren-6de9: bump the persisted automatic-retry budget on re-dispatch. */
+	retryCount?: number;
 }
 
 const CHILD_PATCH_KEYS = [
@@ -151,6 +156,7 @@ const CHILD_PATCH_KEYS = [
 	"endedAt",
 	"prMergedAt",
 	"failureReason",
+	"retryCount",
 ] as const satisfies readonly (keyof PlanRunChildPatch)[];
 
 export class PlanRunsRepo {
@@ -212,6 +218,7 @@ export class PlanRunsRepo {
 			endedAt: null,
 			prMergedAt: null,
 			failureReason: null,
+			retryCount: 0,
 		}));
 		return this.adapter.runInTransaction(async (tx) => {
 			const txDb = tx.drizzle as SqliteDrizzleDb;
