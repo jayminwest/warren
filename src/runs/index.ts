@@ -162,6 +162,14 @@ export {
 	reapRun,
 } from "./reap/index.ts";
 export {
+	classifyProviderError,
+	createProviderRetryLifecycleExtension,
+	PROVIDER_RETRY_EVENTS,
+	type ProviderErrorClass,
+	type ProviderRetryLifecycleExtensionInput,
+	type ProviderRetryLogger,
+} from "./retry/provider-retry.ts";
+export {
 	type BuildSeedFilesResult,
 	buildSeedFiles,
 	type SeedFile,

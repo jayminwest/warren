@@ -1,0 +1,358 @@
+/**
+ * Run-level provider-error retry (warren-339d).
+ *
+ * Observed 2026-08-07 on run_htwpffq19pmr (pi + openrouter/kimi-k3):
+ * mid-implementation the provider stream dropped ("Network connection
+ * lost."), the run terminalized `failed`/`provider_error` with zero
+ * retry, and the workspace was destroyed with the agent's uncommitted
+ * work. A single transient TCP reset cost the whole run. The pi harness
+ * owns the in-stream reconnect, which warren cannot reach from the
+ * control plane — so this module is the run-level fallback: when a run
+ * reaps `failed`/`provider_error` and the provider's terminal message is
+ * NETWORK-CLASS (connection reset/lost, timeout, 5xx), warren
+ * auto-redispatches the run ONCE as a fresh run with the same
+ * agent/project/prompt/seed, recording the lineage in both runs' event
+ * streams.
+ *
+ * ## Transient vs durable
+ *
+ * {@link classifyProviderError} is the single discriminator. Only an
+ * explicit TRANSIENT match retries; durable rejections (auth failure,
+ * model-not-found, quota/credit, rate-limit, malformed request) and
+ * anything unrecognized fail closed — a retry that can never succeed
+ * just burns a second sandbox.
+ *
+ * ## The single-retry bound
+ *
+ * The redispatch stamps a `spawn.provider_retry` lineage event onto the
+ * NEW run's stream. A later failure of that run sees the marker and
+ * stops — the retry of a retry is never dispatched, so the bound holds
+ * across restarts without any new schema. The origin run gets a
+ * `reap.provider_retry_dispatched` event naming the successor.
+ *
+ * ## Wiring
+ *
+ * Like the seed-close safety net (`../reap/seed-close-lifecycle.ts`),
+ * this is an observe-only Tier-1 lifecycle consumer: it subscribes to
+ * `post_reap` and registers through the bus's boot-time registration
+ * API. Plan-run children are EXCLUDED — the plan-run coordinator owns
+ * child-level retry on `child_provider_error` (warren-6de9), and a
+ * run-level retry underneath it would double-dispatch.
+ */
+
+import type { Repos } from "../../db/repos/index.ts";
+import type { EventRow } from "../../db/schema.ts";
+import type { Forge } from "../../forge/contract.ts";
+import { mintGitCredentialSecret } from "../../forge/credentials.ts";
+import type { SpawnFn as ProjectSpawnFn } from "../../projects/clone.ts";
+import type { ProjectsConfig } from "../../projects/config.ts";
+import type { RuntimeProvider } from "../../runtime/contract.ts";
+import type { SeedsCliDeps } from "../../seeds-cli/index.ts";
+import type { WarrenConfigCache } from "../../warren-config/index.ts";
+import type { RunEventBroker } from "../events.ts";
+import { type LifecycleExtension, WARREN_EXT_PROTOCOL } from "../lifecycle-bus.ts";
+import { spawnRun } from "../spawn/index.ts";
+import type { SpawnLogger } from "../spawn/types.ts";
+import type { BridgeRegistry } from "../stream/types.ts";
+
+/** Event kinds this module stamps for lineage + observability. */
+export const PROVIDER_RETRY_EVENTS = {
+	/** Appended to the NEW run: it exists because `retriedFromRunId` failed transiently. */
+	spawnRetry: "spawn.provider_retry",
+	/** Appended to the FAILED run: names the successor run warren dispatched. */
+	retryDispatched: "reap.provider_retry_dispatched",
+	/** Appended to the FAILED run when the redispatch itself threw. */
+	retryFailed: "reap.provider_retry_failed",
+} as const;
+
+/**
+ * The retry verdict for a provider's terminal error message.
+ *   - `transient` — network-class / upstream-class failure; worth one retry.
+ *   - `durable`   — the provider rejected the request itself; a retry fails
+ *                   the same way (auth, model, quota, rate-limit, 4xx).
+ *   - `unknown`   — unrecognized; fails CLOSED (no retry).
+ */
+export type ProviderErrorClass = "transient" | "durable" | "unknown";
+
+/**
+ * Durable rejection patterns, checked FIRST — a message that names both a
+ * network symptom and an auth/quota cause ("request failed: 401 ...") must
+ * not retry. Case-insensitive substring/regex match against the provider's
+ * terminal `errorMessage`.
+ */
+const DURABLE_PATTERNS: readonly RegExp[] = [
+	// Auth / permission.
+	/\b401\b/,
+	/\b403\b/,
+	/unauthorized/,
+	/unauthenticated/,
+	/authentication/,
+	/invalid\s.*api[-_ ]?key/,
+	/api[-_ ]?key/,
+	/permission denied/,
+	/forbidden/,
+	// Model rejection.
+	/model.*(not found|does not exist|not supported|invalid)/,
+	/(not found|does not exist|invalid).*model/,
+	/no such model/,
+	/not_found_error/,
+	/\b404\b/,
+	// Quota / billing.
+	/\b402\b/,
+	/credit balance/,
+	/quota/,
+	/billing/,
+	/insufficient/,
+	// Rate limiting — a run-level redispatch has no backoff worth the name,
+	// so an immediate retry would just hit the limiter again.
+	/\b429\b/,
+	/rate[ -]?limit/,
+	/too many requests/,
+	// Malformed request.
+	/\b400\b/,
+	/invalid_request/,
+];
+
+/** Transient network/upstream patterns — the only class that retries. */
+const TRANSIENT_PATTERNS: readonly RegExp[] = [
+	// Connection-class (the warren-339d case: "Network connection lost.").
+	/network connection lost/,
+	/connection (lost|reset|refused|closed|aborted|terminated)/,
+	/econnreset/,
+	/econnrefused/,
+	/econnaborted/,
+	/epipe/,
+	/socket hang up/,
+	/socket.*(closed|timeout)/,
+	/fetch failed/,
+	/network error/,
+	/\bnetwork\b/,
+	/dns/,
+	/eai_again/,
+	// Timeout-class.
+	/etimedout/,
+	/esockettimedout/,
+	/\btimeout\b/,
+	/timed out/,
+	// Upstream 5xx / overload (529 overloaded_error — cf. warren-e281).
+	/\b5\d\d\b/,
+	/internal server error/,
+	/bad gateway/,
+	/service unavailable/,
+	/gateway timeout/,
+	/overloaded/,
+	/upstream/,
+];
+
+/**
+ * Classify a provider's terminal error message for retry. Durable wins
+ * over transient when both match; no match fails closed as `unknown`.
+ * Pure + defensive: any input (empty, whitespace, non-string coerced by
+ * the caller) classifies without throwing.
+ */
+export function classifyProviderError(message: string): ProviderErrorClass {
+	const text = message.toLowerCase();
+	if (DURABLE_PATTERNS.some((p) => p.test(text))) return "durable";
+	if (TRANSIENT_PATTERNS.some((p) => p.test(text))) return "transient";
+	return "unknown";
+}
+
+/** Minimal structured-logger surface (pino-shaped), like the spawn flow's. */
+export type ProviderRetryLogger = SpawnLogger;
+
+export interface ProviderRetryLifecycleExtensionInput {
+	readonly repos: Repos;
+	/** Boot-resolved provider the redispatch runs through (same as `POST /runs`). */
+	readonly runtimeProvider: RuntimeProvider;
+	/** Bridge registry so the retried run's events stream into warren. */
+	readonly bridges: BridgeRegistry;
+	readonly projectsConfig: ProjectsConfig;
+	readonly projectSpawn: ProjectSpawnFn;
+	/** Boot-resolved forge for the per-spawn credential mint (§4 — minted, never held). */
+	readonly forge?: Forge;
+	readonly warrenConfigs?: WarrenConfigCache;
+	readonly runBranchPrefixDefault?: string;
+	readonly seedsCli?: SeedsCliDeps;
+	readonly logger: ProviderRetryLogger;
+	/** Broker so the lineage events reach live tailers too. */
+	readonly broker?: RunEventBroker;
+	/** Override the spawnRun seam (tests). Defaults to the live `spawnRun`. */
+	readonly spawnRunFn?: typeof spawnRun;
+	/** Injectable clock for the appended event timestamps (tests). */
+	readonly now?: () => Date;
+}
+
+/**
+ * Build the provider-retry observe-only lifecycle extension. Register it
+ * via `bus.register(createProviderRetryLifecycleExtension({ … }))` at
+ * boot (after the bridge registry exists — the redispatch attaches one).
+ */
+export function createProviderRetryLifecycleExtension(
+	input: ProviderRetryLifecycleExtensionInput,
+): LifecycleExtension {
+	const now = input.now ?? (() => new Date());
+	return {
+		name: "provider-retry",
+		protocol: WARREN_EXT_PROTOCOL,
+		hooks: {
+			post_reap: async (envelope) => {
+				if (envelope.payload.outcome !== "failed") return;
+				await maybeRetryProviderError(input, now, envelope.payload.runId);
+			},
+		},
+	};
+}
+
+/**
+ * The retry decision + redispatch. Every gate fails closed: any
+ * uncertainty (missing row, missing message, unrecognized error) means
+ * NO retry, and a thrown redispatch is logged + recorded as an event
+ * rather than propagated (the bus would swallow it anyway — this way the
+ * failure is visible on the run's stream).
+ */
+async function maybeRetryProviderError(
+	input: ProviderRetryLifecycleExtensionInput,
+	now: () => Date,
+	runId: string,
+): Promise<void> {
+	const run = await input.repos.runs.get(runId);
+	if (run === null) return;
+	if (run.failureReason !== "provider_error") return;
+	const projectId = run.projectId;
+	if (projectId === null) return;
+	// Plan-run children retry at the coordinator level (warren-6de9); a
+	// run-level retry underneath would double-dispatch the child.
+	if (run.trigger === "plan-run" || run.trigger === "auto_plan_run") return;
+
+	const events = await input.repos.events.listByRun(runId);
+	// The single-retry bound: a run that was itself dispatched as a
+	// provider retry carries the lineage marker and never retries again.
+	if (events.some((e) => e.kind === PROVIDER_RETRY_EVENTS.spawnRetry)) return;
+	const message = lastProviderErrorMessage(events);
+	if (message === null) return;
+	const verdict = classifyProviderError(message);
+	if (verdict !== "transient") {
+		input.logger.info(
+			{ runId, verdict, providerError: message },
+			"provider-retry.skipped: error is not transient",
+		);
+		return;
+	}
+
+	await dispatchProviderRetry(input, now, { ...run, projectId }, message);
+}
+
+/**
+ * The redispatch itself: mint the per-spawn credential, spawn the
+ * successor (`replicate` lineage off the failed run), attach its bridge,
+ * and stamp the lineage events on both streams. A thrown redispatch is
+ * logged + recorded as a `reap.provider_retry_failed` event rather than
+ * propagated — the bus would swallow it anyway, and this way the failure
+ * is visible on the run's stream.
+ */
+async function dispatchProviderRetry(
+	input: ProviderRetryLifecycleExtensionInput,
+	now: () => Date,
+	run: {
+		readonly id: string;
+		readonly agentName: string;
+		readonly projectId: string;
+		readonly prompt: string;
+		readonly trigger: string;
+		readonly seedId: string | null;
+		readonly mode: "batch";
+	},
+	message: string,
+): Promise<void> {
+	const emit = makeRunEventEmitter(input, now);
+	try {
+		const project = await input.repos.projects.get(run.projectId);
+		const gitSecret =
+			input.forge !== undefined && project !== null
+				? await mintGitCredentialSecret(input.forge, project.gitUrl)
+				: undefined;
+		const spawnRunFn = input.spawnRunFn ?? spawnRun;
+		const result = await spawnRunFn({
+			repos: input.repos,
+			runtimeProvider: input.runtimeProvider,
+			agentName: run.agentName,
+			projectId: run.projectId,
+			prompt: run.prompt,
+			trigger: run.trigger,
+			...(run.seedId !== null ? { seedId: run.seedId } : {}),
+			mode: run.mode,
+			// Lineage on the row (warren-e96f `replicate` semantics): a fresh
+			// re-dispatch of the failed run's config off the project default
+			// branch, independent of whatever the failed run did. The event
+			// markers below carry the retry-specific provenance.
+			parentRunId: run.id,
+			cloneKind: "replicate",
+			projectsConfig: input.projectsConfig,
+			projectSpawn: input.projectSpawn,
+			githubToken: gitSecret,
+			...(input.warrenConfigs !== undefined ? { warrenConfigs: input.warrenConfigs } : {}),
+			...(input.runBranchPrefixDefault !== undefined
+				? { runBranchPrefixDefault: input.runBranchPrefixDefault }
+				: {}),
+			...(input.seedsCli !== undefined ? { seedsCli: input.seedsCli } : {}),
+			logger: input.logger,
+			now,
+		});
+		input.bridges.start(result.run.id, result.burrowRun.id, result.burrow.id, result.run.mode);
+		// Lineage on BOTH streams: the successor names its origin (this is
+		// also the single-retry bound marker), the origin names its successor.
+		await emit(result.run.id, PROVIDER_RETRY_EVENTS.spawnRetry, {
+			retriedFromRunId: run.id,
+			providerError: message,
+		});
+		await emit(run.id, PROVIDER_RETRY_EVENTS.retryDispatched, {
+			newRunId: result.run.id,
+			providerError: message,
+		});
+		input.logger.info(
+			{ runId: run.id, newRunId: result.run.id, providerError: message },
+			"provider-retry.dispatched",
+		);
+	} catch (err) {
+		const reason = err instanceof Error ? err.message : String(err);
+		input.logger.error({ runId: run.id, reason }, "provider-retry.failed");
+		await emit(run.id, PROVIDER_RETRY_EVENTS.retryFailed, { error: reason }).catch(() => {});
+	}
+}
+
+/** The last `reap.provider_error` message on the run's stream, if any. */
+function lastProviderErrorMessage(events: readonly EventRow[]): string | null {
+	let message: string | null = null;
+	for (const event of events) {
+		if (event.kind !== "reap.provider_error") continue;
+		const payload = event.payloadJson as { message?: unknown } | null;
+		if (payload !== null && typeof payload.message === "string" && payload.message.length > 0) {
+			message = payload.message;
+		}
+	}
+	return message;
+}
+
+/**
+ * An `emit(runId, kind, payload)` closure appending a run event with a
+ * fresh monotonic seq and publishing it to the broker (best-effort) —
+ * same shape as the seed-close subscriber's emitter.
+ */
+function makeRunEventEmitter(
+	input: ProviderRetryLifecycleExtensionInput,
+	now: () => Date,
+): (runId: string, kind: string, payload: unknown) => Promise<EventRow> {
+	return async (runId, kind, payload) => {
+		const maxSeq = (await input.repos.events.maxSeqForRun(runId)) ?? 0;
+		const row = await input.repos.events.append({
+			runId,
+			burrowEventSeq: maxSeq + 1,
+			ts: now().toISOString(),
+			kind,
+			stream: "system",
+			payload,
+		});
+		input.broker?.publish(runId, row);
+		return row;
+	};
+}
