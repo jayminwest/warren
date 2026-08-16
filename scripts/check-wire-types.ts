@@ -32,6 +32,14 @@
  *   2. `ALLOW` is an explicit, commented escape hatch for a deliberate local
  *      declaration. It is empty today; every entry needs a reason.
  *
+ * The DOMAIN_STEMS narrowing carries one hard rule, added by warren-7483:
+ * SILENCE IS NOT ALLOWED. A canonical export whose name carries no stem is no
+ * longer skipped quietly — the gate fails with an "unguarded export: <name>"
+ * error telling the author to widen DOMAIN_STEMS (making the name enforced) or
+ * to add the name to UNGUARDED_ALLOW with a reason. Before warren-7483 such
+ * an export was silently unenforced: the failure mode this gate exists to
+ * prevent, recreated one name at a time.
+ *
  * Known blind spot (warren-7b7a): the guard matches on NAMES, so a parallel
  * copy spelled differently is invisible to it — `src/runtime/contract.ts` once
  * declared `RunPhase` (a hand-listed `RUN_STATES`), `MessagePriority` (an
@@ -39,9 +47,12 @@
  * and both stream adapters carried a private `NORMALIZED_STREAMS`
  * (`EVENT_STREAMS`). Those are now type aliases over the canonical names, which
  * is the convention for a seam that wants its own vocabulary word: alias, never
- * re-list. Widening DOMAIN_STEMS would not have caught them — every canonical
- * export in `src/core/wire.ts` already carries a stem — so the defence against
- * an aliased re-list stays review plus this note.
+ * re-list. Widening DOMAIN_STEMS would not have caught them — the drift was a
+ * DIFFERENT name, not a stem-less one — so the defence against an aliased
+ * re-list stays review plus this note. The companion invariant "every
+ * canonical export carries a stem" that this paragraph once asserted by
+ * observation is now mechanical (warren-7483): the unguarded-export check
+ * below fails the gate the day a stem-less export lands.
  *
  * Scope note: this guard walks ALL of `src/` INCLUDING `src/ui/`, which biome,
  * `check:size` and `check:debt` all exclude — the UI is a separate
@@ -123,6 +134,21 @@ export const DOMAIN_STEMS = [
 	// enforced list.
 	"actor",
 	"capability",
+	// warren-7483: three vocabularies were silently UNENFORCED before the
+	// unguarded-export check existed — the runtime-id seam (RuntimeId,
+	// KNOWN_RUNTIME_IDS), the insight-confidence seam (InsightConfidence,
+	// INSIGHT_CONFIDENCES), and the salvage-trigger seam (SalvageTrigger,
+	// SALVAGE_TRIGGERS). Their stems join the list so every canonical export
+	// the home ships today is covered; any new stem-less export now fails the
+	// gate instead of drifting.
+	"runtime",
+	"insight",
+	"salvage",
+	// Same warren-7483 sweep: STEERING_CAPABILITIES alone misses "capability"
+	// (plural — substring matching never rejoins the singular), so the
+	// steering-inbox constant needs its own stem. SteeringCapability the type
+	// was already guarded by "capability".
+	"steering",
 ] as const;
 
 /**
@@ -131,6 +157,14 @@ export const DOMAIN_STEMS = [
  * deliberate and how it is kept in sync.
  */
 const ALLOW: readonly string[] = [];
+
+/**
+ * Canonical export NAMES (not files) excused from the every-export-carries-a-
+ * stem rule (warren-7483). Empty on purpose. Add an entry only when a new
+ * export is genuinely generic vocabulary no stem fits — with a comment saying
+ * why — accepting that the guard then cannot enforce that name.
+ */
+const UNGUARDED_ALLOW: readonly string[] = [];
 
 /** `export const X` / `export type X` / … in the canonical home. */
 const CANONICAL_EXPORT_RE =
@@ -221,6 +255,28 @@ function* walk(dir: string): Generator<string> {
 	}
 }
 
+/** Every top-level export the text declares, stems or not. */
+export function allExportNames(text: string): string[] {
+	const names = new Set<string>();
+	for (const line of text.split("\n")) {
+		const found = CANONICAL_EXPORT_RE.exec(line);
+		if (found?.[1] !== undefined) names.add(found[1]);
+	}
+	return [...names].sort();
+}
+
+/** Canonical exports the guard would silently skip — the gate must fail. */
+export function unguardedExports(repoRoot: string = REPO_ROOT): string[] {
+	const homeText = readFileSync(resolve(repoRoot, CANONICAL_HOME), "utf8");
+	const unguarded = new Set<string>();
+	for (const rel of canonicalSources(homeText)) {
+		for (const name of allExportNames(readFileSync(resolve(repoRoot, rel), "utf8"))) {
+			if (!isDomainName(name) && !UNGUARDED_ALLOW.includes(name)) unguarded.add(name);
+		}
+	}
+	return [...unguarded].sort();
+}
+
 /** Every name the home and its re-exported modules declare. */
 export function enforcedNames(repoRoot: string = REPO_ROOT): {
 	names: string[];
@@ -251,6 +307,26 @@ export function scan(repoRoot: string = REPO_ROOT): Violation[] {
 }
 
 function main(): void {
+	const unguarded = unguardedExports();
+	if (unguarded.length > 0) {
+		console.error(
+			`check:wire-types — ${unguarded.length} unguarded canonical export(s) in ${CANONICAL_HOME}:\n`,
+		);
+		for (const name of unguarded) {
+			console.error(
+				`  unguarded export: ${name} — widen DOMAIN_STEMS or add an explicit UNGUARDED_ALLOW entry`,
+			);
+		}
+		console.error(
+			"\nA canonical export whose name carries no domain stem is INVISIBLE to this guard,\n" +
+				"recreating the silent-drift failure mode the gate exists to prevent (warren-7483).\n" +
+				"Decide: add a stem to DOMAIN_STEMS in scripts/check-wire-types.ts so the name is\n" +
+				"enforced, or list the name in UNGUARDED_ALLOW with a comment saying why a generic\n" +
+				"export can never collide.",
+		);
+		process.exit(1);
+	}
+
 	const { names } = enforcedNames();
 	const violations = scan();
 	if (violations.length === 0) {
