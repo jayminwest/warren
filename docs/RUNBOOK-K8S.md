@@ -446,6 +446,8 @@ Then read the installation id from the URL GitHub lands on (`.../settings/instal
 From then on the control plane mints installation tokens from the cached triple.
 The static `GITHUB_TOKEN` is no longer the forge credential.
 
+**Update the auto-merge bot login (migrating from PAT mode).** On every repo warren dispatches against, set the `AUTO_MERGE_BOT_LOGIN` repository variable to the App's `<slug>[bot]` login (for example `warren-forge-abc123[bot]`), replacing the old PAT account's login. Under App mode the App's bot identity authors agent PRs, and the auto-merge workflow's enable-auto-merge job matches the PR author login against this variable. Leave it on the PAT login and the job silently skips every agent PR with no error surfaced.
+
 ---
 
 ## 3. Control-plane configuration (env)
