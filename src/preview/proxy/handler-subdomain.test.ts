@@ -63,7 +63,12 @@ describe("createPreviewProxyHandler (subdomain mode)", () => {
 			config: { mode: "subdomain", host: HOST },
 			fetch: fetchStub(async () => new Response("nope")),
 		});
-		const { request, url } = buildRequest({ host: `run-doesnotexist.${HOST}` });
+		// warren-820e: run-existence answers are post-auth; the distinct 404
+		// only reaches a cookie-verified caller.
+		const { request, url } = buildRequest({
+			host: `run-doesnotexist.${HOST}`,
+			cookie: validCookieFor("doesnotexist", new Date()),
+		});
 		const res = await handler(request, url);
 		expect(res?.status).toBe(404);
 	});
@@ -76,7 +81,10 @@ describe("createPreviewProxyHandler (subdomain mode)", () => {
 			config: { mode: "subdomain", host: HOST },
 			fetch: fetchStub(async () => new Response("nope")),
 		});
-		const { request, url } = buildRequest({ host: `run-${runId}.${HOST}` });
+		const { request, url } = buildRequest({
+			host: `run-${runId}.${HOST}`,
+			cookie: validCookieFor(runId, new Date()),
+		});
 		const res = await handler(request, url);
 		expect(res?.status).toBe(501);
 		const body = (await res?.json()) as { error: { code: string; message: string } };

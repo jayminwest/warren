@@ -37,15 +37,22 @@
  *
  * In either mode the rest of the seam is identical:
  *
- *   1. **Resolve the run.** `runs.preview_state` must be `live`;
+ *   1. **Signed-cookie auth** (warren-820e: FIRST, before any run
+ *      lookup). The preamble runs below warren's auth gate, so
+ *      unauthenticated callers must see one uniform **401** whether
+ *      the runId is unknown, previewless, or remote — anything else
+ *      is a run-existence / topology oracle. The cookie verifies
+ *      against the URL-derived runId alone, so it can be checked
+ *      without touching the database.
+ *
+ *   2. **Resolve the run.** `runs.preview_state` must be `live`;
  *      anything else (`starting`, `failed`, `torn-down`, null) → 503.
- *      Unknown runId → 404.
+ *      Unknown runId → 404. These distinct answers only reach
+ *      cookie-verified callers.
  *
- *   2. **Cross-host check.** `runs.worker_id !== LOCAL_WORKER_NAME`
- *      returns **501** with an R-12 deferral message.
- *
- *   3. **Signed-cookie auth.** Missing / invalid / expired cookie →
- *      **401** pointing the browser at `/runs/:id/preview/login`.
+ *   3. **Cross-host check.** `runs.worker_id !== LOCAL_WORKER_NAME`
+ *      returns **501** with an R-12 deferral message that never
+ *      interpolates the worker id.
  *
  *   4. **last_hit_at debounce.** Update `runs.preview_last_hit_at`
  *      **before** forwarding (docs/design/preview-environments.md) — debounced via an in-memory
@@ -152,6 +159,15 @@ export function createPreviewProxyHandler(deps: PreviewProxyDeps): PreviewProxyH
 			}
 		}
 
+		// Auth FIRST (warren-820e): closing the run-existence oracle means the
+		// uniform 401 must be decided from the URL + cookie alone, before any
+		// repo lookup. Signed cookie verifies against this run's id (so a cookie
+		// scoped to .<host> can't be used to reach a sibling preview).
+		const cookieHeader = request.headers.get("cookie");
+		if (!deps.previewAuth.verifyCookie(cookieHeader, runId, now())) {
+			return previewUnauthorized(runId, deps.config, url);
+		}
+
 		const run = await deps.repos.runs.get(runId);
 		if (run === null) {
 			return previewError(404, "preview_not_found", `no run with id ${runId}`);
@@ -198,13 +214,6 @@ export function createPreviewProxyHandler(deps: PreviewProxyDeps): PreviewProxyH
 				"preview_ws_not_implemented",
 				"WebSocket proxying is not yet implemented for preview environments",
 			);
-		}
-
-		// Auth: signed cookie verifies against this run's id (so a cookie
-		// scoped to .<host> can't be used to reach a sibling preview).
-		const cookieHeader = request.headers.get("cookie");
-		if (!deps.previewAuth.verifyCookie(cookieHeader, runId, now())) {
-			return previewUnauthorized(runId, deps.config, url);
 		}
 
 		// docs/design/preview-environments.md: update last_hit_at BEFORE forwarding (debounced).

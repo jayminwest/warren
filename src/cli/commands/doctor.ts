@@ -22,6 +22,7 @@ import { createRepos } from "../../db/repos/index.ts";
 import {
 	checkBwrap,
 	checkDatabaseReachable,
+	checkGitIdentity,
 	checkPreviewAuthStrength,
 	checkPreviewPortAllocator,
 	checkWarrenConfig,
@@ -101,6 +102,9 @@ export async function runDoctor(
 	const isLocalTopology = resolveRuntimeKind(context.env) === "local";
 
 	checks.push(envCheck("WARREN_API_TOKEN", context.env, args.noAuth ?? false));
+	// warren-e7b7: unset agent git identity is a WARNING (always ok:true),
+	// surfaced here because the K8s topology has no supervisor to warn.
+	checks.push(checkGitIdentity(context.env));
 
 	// Threaded per-call, never a global: only the probes that already
 	// accept a `log` seam (warren-51de) receive it, and only under

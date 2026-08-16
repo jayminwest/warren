@@ -36,6 +36,7 @@ describe("createPreviewAuthAndProxy", () => {
 				mode: "subdomain",
 				host: "preview.example",
 			} as ReturnType<typeof Object>,
+			previewPorts: true,
 			repos: stubRepos,
 			logger,
 		});
@@ -48,6 +49,7 @@ describe("createPreviewAuthAndProxy", () => {
 		const result = createPreviewAuthAndProxy({
 			token: "secret",
 			previewLaunchConfig: { mode: "subdomain", host: null } as ReturnType<typeof Object>,
+			previewPorts: true,
 			repos: stubRepos,
 			logger,
 		});
@@ -64,6 +66,7 @@ describe("createPreviewAuthAndProxy", () => {
 				mode: "subdomain",
 				host: "preview.example",
 			} as ReturnType<typeof Object>,
+			previewPorts: true,
 			repos: stubRepos,
 			logger,
 		});
@@ -77,11 +80,34 @@ describe("createPreviewAuthAndProxy", () => {
 		const result = createPreviewAuthAndProxy({
 			token: "secret",
 			previewLaunchConfig: { mode: "path", host: null } as ReturnType<typeof Object>,
+			previewPorts: true,
 			repos: stubRepos,
 			logger,
 		});
 		expect(result.previewAuth).toBeDefined();
 		expect(result.previewProxy).toBeDefined();
+	});
+	test("previewPorts: false → off in every mode, regardless of token/host (warren-820e)", () => {
+		const { logger } = makeLogger();
+		const cases = [
+			{ mode: "path", host: null },
+			{ mode: "path", host: "preview.example" },
+			{ mode: "subdomain", host: null },
+			{ mode: "subdomain", host: "preview.example" },
+		];
+		for (const previewLaunchConfig of cases) {
+			const result = createPreviewAuthAndProxy({
+				token: "secret",
+				previewLaunchConfig: {
+					...previewLaunchConfig,
+				} as ReturnType<typeof Object>,
+				previewPorts: false,
+				repos: stubRepos,
+				logger,
+			});
+			expect(result.previewAuth).toBeUndefined();
+			expect(result.previewProxy).toBeUndefined();
+		}
 	});
 });
 
@@ -91,6 +117,7 @@ describe("bootPreviewSurface (warren-3f8a)", () => {
 		const surface = bootPreviewSurface({
 			token: "secret",
 			previewLaunchConfig: { mode: "path", host: null, port: null },
+			previewPorts: true,
 			repos: stubRepos,
 			logger,
 			transport: { kind: "tcp", hostname: "127.0.0.1", port: 0 },
@@ -119,6 +146,7 @@ describe("bootPreviewSurface (warren-3f8a)", () => {
 		const surface = bootPreviewSurface({
 			token: "secret",
 			previewLaunchConfig: { mode: "path", host: null, port: null },
+			previewPorts: true,
 			repos: stubRepos,
 			logger,
 			transport: { kind: "tcp", hostname: "127.0.0.1", port: 0 },
@@ -138,6 +166,7 @@ describe("bootPreviewSurface (warren-3f8a)", () => {
 		const surface = bootPreviewSurface({
 			token: "secret",
 			previewLaunchConfig: { mode: "subdomain", host: "preview.example", port: null },
+			previewPorts: true,
 			repos: stubRepos,
 			logger,
 			transport: { kind: "tcp", hostname: "127.0.0.1", port: 0 },
@@ -152,6 +181,7 @@ describe("bootPreviewSurface (warren-3f8a)", () => {
 		const surface = bootPreviewSurface({
 			token: "secret",
 			previewLaunchConfig: { mode: "path", host: null, port: null },
+			previewPorts: true,
 			repos: stubRepos,
 			logger,
 			transport: { kind: "unix", path: "/tmp/warren-test.sock" },
@@ -162,11 +192,29 @@ describe("bootPreviewSurface (warren-3f8a)", () => {
 		expect(warns.some((w) => w.msg?.includes("warren-3f8a"))).toBe(true);
 	});
 
+	test("previewPorts: false disables the whole surface (no preamble, no listener)", () => {
+		const { logger, warns } = makeLogger();
+		const surface = bootPreviewSurface({
+			token: "secret",
+			previewLaunchConfig: { mode: "path", host: null, port: null },
+			previewPorts: false,
+			repos: stubRepos,
+			logger,
+			transport: { kind: "tcp", hostname: "127.0.0.1", port: 0 },
+		});
+		expect(surface.previewAuth).toBeUndefined();
+		expect(surface.mainPreamble).toBeUndefined();
+		expect(surface.previewListener).toBeUndefined();
+		expect(surface.launchConfig.port).toBeNull();
+		expect(warns).toEqual([]);
+	});
+
 	test("disabled surface (token null) yields no preamble and no listener", () => {
 		const { logger } = makeLogger();
 		const surface = bootPreviewSurface({
 			token: null,
 			previewLaunchConfig: { mode: "path", host: null, port: null },
+			previewPorts: true,
 			repos: stubRepos,
 			logger,
 			transport: { kind: "tcp", hostname: "127.0.0.1", port: 0 },

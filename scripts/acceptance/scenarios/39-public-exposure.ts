@@ -23,9 +23,12 @@
  *      past 500 (warren-ee50) and an event replay is one bounded page the
  *      client pages beyond with `?since` (warren-2a8b) — never the whole
  *      transcript in one shot.
- *   8. The pre-auth preview-proxy preamble narrates nothing: not the
- *      redacted `workerId` on its 501, and the warren-e2a4 security
- *      headers reach its below-the-gate envelopes (warren-b0bd).
+ *   8. The pre-auth preview-proxy preamble narrates nothing: cookie
+ *      verification precedes any run lookup (warren-820e), so an
+ *      anonymous caller — runId known, unknown, or remote — sees one
+ *      uniform 401 and the R-12 501 never leaks the redacted
+ *      `workerId`; the warren-e2a4 security headers still reach its
+ *      below-the-gate envelopes (warren-b0bd).
  *   9. Fail-closed: token mode grants anonymity nothing, an unrecognized
  *      `WARREN_AUTH` refuses the boot, and public mode refuses to boot with
  *      an empty or non-matching org allowlist (warren-851b / warren-ce9b).

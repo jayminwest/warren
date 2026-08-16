@@ -181,16 +181,6 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 	const adapter = DrizzleAdapter.for(db);
 	const portAllocator = new PreviewPortAllocator(adapter, previewPortRange);
 	const previewLaunchConfig = loadPreviewLaunchConfigFromEnv(env);
-	// warren-3f8a: path mode on TCP boots a DEDICATED preview listener (own
-	// port → own browser origin); `launchConfig` carries its resolved port.
-	const previewSurface = bootPreviewSurface({
-		token: serverConfig.token,
-		previewLaunchConfig,
-		repos,
-		logger,
-		transport: serverConfig.transport,
-		...(opts.now !== undefined ? { now: opts.now } : {}),
-	});
 	const previewEvictionConfig = loadPreviewEvictionConfigFromEnv(env);
 	const workspaceGcConfig = loadWorkspaceGcConfigFromEnv(env);
 
@@ -241,6 +231,17 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 			...(k8sRuntime !== undefined ? { k8sRuntime } : {}),
 			forge,
 		});
+	// warren-3f8a: path mode boots a DEDICATED preview listener (own port → own
+	// origin); warren-820e: after provider resolution so previewPorts gates it.
+	const previewSurface = bootPreviewSurface({
+		token: serverConfig.token,
+		previewLaunchConfig,
+		repos,
+		logger,
+		transport: serverConfig.transport,
+		previewPorts: runtimeProvider.capabilities.previewPorts,
+		...(opts.now !== undefined ? { now: opts.now } : {}),
+	});
 	const previewSidecars = localBackend?.previewSidecars;
 	const workspaceDestroyer = localBackend?.workspaceDestroyer;
 	// warren-cd3b: the salvage bundle capture lands beside the salvage intake dir.
