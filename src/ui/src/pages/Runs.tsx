@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { agentsApi, projectsApi, runsApi } from "@/api/client.ts";
 import { OperatorOnly, useOperatorHint } from "@/components/OperatorOnly.tsx";
-import { StateBadge } from "@/components/StateBadge.tsx";
+import { StateBadge } from "@/components/state-badge.tsx";
 import { Alert } from "@/components/ui/alert.tsx";
 import { Button } from "@/components/ui/button.tsx";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card.tsx";

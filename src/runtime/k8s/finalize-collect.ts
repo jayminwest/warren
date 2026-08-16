@@ -24,6 +24,7 @@ import type {
 	FinalizeStageOutcome,
 } from "../contract.ts";
 import { finalizeCommitStage, finalizeMergeStage } from "../contract.ts";
+import { PUSH_REJECTED_EVENT, parsePushRejection } from "../push-rejection.ts";
 import type { InPodFinalizeIntent } from "./finalize-wire.ts";
 
 /** Clone-relative (posix) tracker paths — the delta `path` fields (match `../local/finalize.ts`). */
@@ -228,6 +229,13 @@ async function runPush(
 			trail.failed("branch_push", err);
 			collector.fail("branch_push", err, workspacePath);
 			trail.skipped("commits_ahead");
+			// warren-b68d: a policy refusal carries its own remediation onward.
+			// Both streams are read because git splits the remote's echo across
+			// them by version.
+			const rejection = parsePushRejection(`${push.stderr}\n${push.stdout}`);
+			if (rejection !== null) {
+				collector.events.push({ kind: PUSH_REJECTED_EVENT, payload: rejection });
+			}
 			return NO_PUSH;
 		}
 		trail.ok("branch_push");

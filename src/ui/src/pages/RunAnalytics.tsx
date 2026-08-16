@@ -34,14 +34,14 @@ import {
 	FailureReasonChart,
 	RunsOverTimeChart,
 	TopSeedsByContextChart,
-} from "./run-analytics/Charts.tsx";
-import { CommandCategoryChart, StuckCommandTable } from "./run-analytics/CommandMining.tsx";
+} from "./run-analytics/charts.tsx";
+import { CommandCategoryChart, StuckCommandTable } from "./run-analytics/command-mining.tsx";
 import { DirectoryStruggleTable } from "./run-analytics/directory-struggle.tsx";
-import { InsightCallouts } from "./run-analytics/Insights.tsx";
-import { KpiCards } from "./run-analytics/KpiCards.tsx";
-import { GroupTable } from "./run-analytics/Tables.tsx";
-import { TokenConsumptionChart } from "./run-analytics/TokenConsumptionChart.tsx";
-import { TokenGroupTable, TokenKpiCards } from "./run-analytics/TokenStats.tsx";
+import { InsightCallouts } from "./run-analytics/insights.tsx";
+import { KpiCards } from "./run-analytics/kpi-cards.tsx";
+import { GroupTable } from "./run-analytics/tables.tsx";
+import { TokenConsumptionChart } from "./run-analytics/token-consumption-chart.tsx";
+import { TokenGroupTable, TokenKpiCards } from "./run-analytics/token-stats.tsx";
 
 /** Default date window: last 30 days. Mirrors the server default. */
 function defaultFrom(): string {
