@@ -103,9 +103,55 @@ jobs:
           app-id: ${{ vars.AUTO_MERGE_APP_ID }}
           private-key: ${{ secrets.AUTO_MERGE_APP_PRIVATE_KEY }}
 
+      # warren-4681: two live failures (pl-882c, #783 and #784) came from this
+      # step firing exactly once against GitHub's ASYNCHRONOUS mergeability
+      # computation. At `opened`, and after a conflict-repair push re-triggers
+      # us via `synchronize`, GitHub is mid-recompute and `gh pr merge --auto`
+      # errors out with no retry — the PR stayed unarmed until a human ran it
+      # by hand. Poll for a definitive mergeable state, skip CONFLICTING PRs
+      # (the seeds-merge-autoheal repair push will re-trigger us), and retry
+      # the arm itself.
       - name: Enable auto-merge (squash)
         if: steps.protected.outputs.hit == 'false'
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           PR_URL: ${{ github.event.pull_request.html_url }}
-        run: gh pr merge --auto --squash "$PR_URL"
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -uo pipefail
+
+          # Idempotent: a re-triggered run on an already-armed PR is a no-op,
+          # not an error.
+          if [ -n "$(gh pr view "$PR_NUMBER" --json autoMergeRequest --jq '.autoMergeRequest.enabledAt // empty')" ]; then
+            echo "auto-merge already armed — nothing to do."
+            exit 0
+          fi
+
+          # GitHub computes mergeability asynchronously; poll briefly for a
+          # definitive answer before deciding what to do.
+          state=""
+          for i in 1 2 3 4 5 6; do
+            state="$(gh pr view "$PR_NUMBER" --json mergeable --jq .mergeable)"
+            echo "poll $i: mergeable=$state"
+            [ "$state" = "UNKNOWN" ] || break
+            sleep 10
+          done
+
+          # A CONFLICTING PR cannot be armed yet. The conflict-repair push
+          # (seeds-merge-autoheal) re-triggers this workflow via synchronize,
+          # so leaving it for that run is the designed path — not a failure.
+          if [ "$state" = "CONFLICTING" ]; then
+            echo "PR is CONFLICTING — deferring the arm to the post-repair synchronize run."
+            exit 0
+          fi
+
+          for attempt in 1 2 3 4 5 6; do
+            if gh pr merge --auto --squash "$PR_URL"; then
+              echo "auto-merge armed (attempt $attempt)."
+              exit 0
+            fi
+            echo "::warning::arm attempt $attempt failed — GitHub may still be computing mergeability; retrying in 10s."
+            sleep 10
+          done
+          echo "::error::auto-merge could not be armed after 6 attempts."
+          exit 1
