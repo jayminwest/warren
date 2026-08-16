@@ -39,6 +39,8 @@ export const PUBLIC_PLAN_RUN_FIELDS = [
 	"createdAt",
 	"startedAt",
 	"endedAt",
+	// warren-1eff: lifecycle timestamp, same posture as startedAt/endedAt.
+	"resumedAt",
 ] as const satisfies readonly (keyof PlanRunRow)[];
 
 /**

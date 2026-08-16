@@ -19,7 +19,13 @@ import {
 	type PlanRunStateFilter,
 } from "../../core/wire.ts";
 import { mintGitCredentialSecret } from "../../forge/credentials.ts";
-import { cancelPlanRun, createPlanRun, tailPlanRunEvents } from "../../plan-runs/index.ts";
+import {
+	buildDefaultPlanRunEmit,
+	cancelPlanRun,
+	createPlanRun,
+	resumePlanRun,
+	tailPlanRunEvents,
+} from "../../plan-runs/index.ts";
 import { jsonResponse, ndjsonResponse } from "../response.ts";
 import { reserveEventStreamSlot } from "../stream-limits.ts";
 import type { RouteHandler, ServerDeps } from "../types.ts";
@@ -195,6 +201,28 @@ export function cancelPlanRunHandler(deps: ServerDeps): RouteHandler {
 			...cancelRunWiring(deps), // warren-b223: provider + burrow-bound inline reap
 			...(deps.autoOpenPr !== undefined ? { autoOpenPr: deps.autoOpenPr } : {}),
 			logger: deps.logger,
+			...(deps.now !== undefined ? { now: deps.now } : {}),
+		});
+		return jsonResponse(200, result);
+	};
+}
+
+/**
+ * `POST /plan-runs/:id/resume` — re-drive the SAME plan-run row after a
+ * merge-timeout failure (warren-1eff, Option A). Only the two
+ * human-merge-stall failure reasons (`child_pr_merge_timeout`,
+ * `parent_pr_merge_timeout`) are resumable; anything else — including a
+ * non-failed plan-run — gets a typed 409 from StateTransitionError with
+ * no state change. The orchestration is `resumePlanRun` in the domain;
+ * the coordinator picks the row up on its next tick and re-polls the
+ * existing PR against a re-armed merge clock.
+ */
+export function resumePlanRunHandler(deps: ServerDeps): RouteHandler {
+	return async (ctx) => {
+		const result = await resumePlanRun({
+			planRunId: requireParam(ctx, "id"),
+			repos: deps.repos,
+			emit: buildDefaultPlanRunEmit(deps.repos, deps.now),
 			...(deps.now !== undefined ? { now: deps.now } : {}),
 		});
 		return jsonResponse(200, result);

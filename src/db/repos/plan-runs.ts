@@ -15,7 +15,8 @@
  *
  *   queued    → running, cancelled
  *   running   → succeeded, failed, cancelled
- *   succeeded → ø    failed → ø    cancelled → ø
+ *   failed    → running   (warren-1eff same-row resume after a merge timeout)
+ *   succeeded → ø    cancelled → ø
  *
  * Child state transitions ARE guarded here as of warren-66d2:
  *
@@ -23,7 +24,8 @@
  *   dispatched → running, pr_open, merged, failed
  *   running    → pr_open, merged, failed
  *   pr_open    → merged, failed
- *   merged → ø    failed → ø    skipped → ø
+ *   failed     → pr_open   (warren-1eff merge-timeout resume re-arms the poll)
+ *   merged → ø    skipped → ø
  *
  * Every writer (the coordinator and the in-flight poller, the only two
  * live call sites) goes through `updateChild`, so one guard covers them
@@ -45,7 +47,10 @@ const ALLOWED_TRANSITIONS: Record<PlanRunState, readonly PlanRunState[]> = {
 	queued: ["running", "cancelled"],
 	running: ["succeeded", "failed", "cancelled"],
 	succeeded: [],
-	failed: [],
+	// warren-1eff: POST /plan-runs/:id/resume re-drives the SAME row after a
+	// merge-timeout failure. Only the resume domain function is gated on the
+	// failure reason; the repo allows the bare transition.
+	failed: ["running"],
 	cancelled: [],
 };
 
@@ -60,9 +65,11 @@ export function assertPlanRunTransition(from: PlanRunState, to: PlanRunState): v
  * writers — `src/plan-runs/coordinator.ts` (dispatch / skip / seed-not-found
  * and dispatch failures) and `src/plan-runs/in-flight.ts` (run sync, PR
  * open, trivial merge, poll-confirmed merge, terminal failure). The three
- * states in PLAN_RUN_CHILD_TERMINAL_STATES have no exits: a resumed plan
- * dispatch inserts a fresh plan_run row with fresh children rather than
- * re-opening a settled child.
+ * states in PLAN_RUN_CHILD_TERMINAL_STATES have no exits, with one
+ * exception: `failed → pr_open` is the warren-1eff same-row resume,
+ * which re-opens the merge-timed-out child so the coordinator re-polls
+ * its existing PR. A re-dispatch resume (fresh POST /plan-runs) still
+ * inserts a fresh plan_run row with fresh children.
  */
 const CHILD_ALLOWED_TRANSITIONS: Record<PlanRunChildState, readonly PlanRunChildState[]> = {
 	pending: ["dispatched", "failed", "skipped"],
@@ -73,7 +80,9 @@ const CHILD_ALLOWED_TRANSITIONS: Record<PlanRunChildState, readonly PlanRunChild
 	running: ["pr_open", "merged", "failed", "dispatched"],
 	pr_open: ["merged", "failed"],
 	merged: [],
-	failed: [],
+	// warren-1eff: resume resets the merge-timed-out child back to pr_open so
+	// the coordinator re-polls the EXISTING PR (runId/prUrl preserved).
+	failed: ["pr_open"],
 	skipped: [],
 };
 
@@ -129,6 +138,8 @@ export interface TransitionPlanRunOptions {
 	failureReason?: string | null;
 	startedAt?: string | null;
 	endedAt?: string | null;
+	/** warren-1eff: stamp the same-row resume time (re-arms the merge clock). */
+	resumedAt?: string | null;
 }
 
 export interface UpdateChildInput {
@@ -205,6 +216,7 @@ export class PlanRunsRepo {
 			createdAt: nowIso,
 			startedAt: null,
 			endedAt: null,
+			resumedAt: null,
 		};
 		const childRows: PlanRunChildRow[] = input.children.map((c) => ({
 			planRunId: id,
@@ -368,6 +380,7 @@ export class PlanRunsRepo {
 		if (opts.startedAt !== undefined) patch.startedAt = opts.startedAt;
 		if (opts.endedAt !== undefined) patch.endedAt = opts.endedAt;
 		if (opts.failureReason !== undefined) patch.failureReason = opts.failureReason;
+		if (opts.resumedAt !== undefined) patch.resumedAt = opts.resumedAt;
 		await this.adapter.runWrite(
 			this.db.update(this.planRuns).set(patch).where(eq(this.planRuns.id, id)),
 		);

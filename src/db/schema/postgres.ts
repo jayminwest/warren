@@ -238,6 +238,9 @@ export const planRuns = pgTable(
 		createdAt: text("created_at").notNull(),
 		startedAt: text("started_at"),
 		endedAt: text("ended_at"),
+		// Mirror of sqlite plan_runs.resumed_at (warren-1eff). See
+		// sqlite.ts for shape + resume-clock intent.
+		resumedAt: text("resumed_at"),
 	},
 	(t) => [
 		index(INDEX_NAMES.planRunsProjectState).on(t.projectId, t.state),

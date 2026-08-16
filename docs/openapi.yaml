@@ -387,6 +387,27 @@ paths:
           required: true
           schema:
             type: string
+  /plan-runs/{id}/resume:
+    post:
+      operationId: resumePlanRunHandler
+      tags:
+        - plan-runs
+      summary: POST /plan-runs/:id/resume
+      responses:
+        '200':
+          description: Successful response.
+        default:
+          description: Error response (see `src/core/errors.ts`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
   /preview/config:
     get:
       operationId: previewConfigHandler
