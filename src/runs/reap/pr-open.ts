@@ -105,6 +105,9 @@ export async function tryOpenPr(input: TryOpenPrInput): Promise<TryOpenPrResult>
 			? { warrenBaseUrl: input.autoOpen.warrenBaseUrl }
 			: {}),
 		...(input.prContext.seed !== null ? { seed: input.prContext.seed } : {}),
+		...(input.prContext.finalCommitBody !== null
+			? { agentNotes: input.prContext.finalCommitBody }
+			: {}),
 		...(input.run.startedAt !== null ? { startedAt: input.run.startedAt } : {}),
 		...(input.run.endedAt !== null ? { endedAt: input.run.endedAt } : {}),
 		...(input.run.costUsd !== null ? { costUsd: input.run.costUsd } : {}),
