@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { RunEvent } from "@/api/types.ts";
-import { StatusIndicator } from "@/components/StatusIndicator.tsx";
+import { StatusIndicator } from "@/components/status-indicator.tsx";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card.tsx";
 import { AnimatePresence, StreamItem } from "@/components/ui/motion.tsx";
 import {

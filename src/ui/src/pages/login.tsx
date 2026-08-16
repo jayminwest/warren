@@ -20,7 +20,7 @@ export function LoginPage() {
 	const [token, setToken] = useState("");
 	const [error, setError] = useState<string | null>(null);
 	const [pending, setPending] = useState(false);
-	// `App.tsx` mounts `/login` outside `AuthGate`/`Layout`, so this page has
+	// `app.tsx` mounts `/login` outside `AuthGate`/`Layout`, so this page has
 	// no sidebar and no nav: a spectator who takes the "Log in" button
 	// `Layout` offers them can only leave with the browser back button
 	// (warren-4e7a). Offer the way back only when warren already admitted

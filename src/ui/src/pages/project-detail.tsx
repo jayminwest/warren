@@ -10,7 +10,7 @@ import type {
 	WarrenConfigFileError,
 	WarrenConfigResponse,
 } from "@/api/types.ts";
-import { OperatorOnly } from "@/components/OperatorOnly.tsx";
+import { OperatorOnly } from "@/components/operator-only.tsx";
 import { Alert } from "@/components/ui/alert.tsx";
 import { Badge } from "@/components/ui/badge.tsx";
 import { Button } from "@/components/ui/button.tsx";

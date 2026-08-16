@@ -7,7 +7,7 @@
  * context desc; the null group key (`RUN_ANALYTICS_NONE_KEY`) renders
  * as an em-dash. Agent rows deep-link to the Agents list with that
  * agent's row pre-expanded (`/agents?agent=<name>`, warren-14fc / #641 —
- * they used to point at `/agents/:name`, a route `App.tsx` never
+ * they used to point at `/agents/:name`, a route `app.tsx` never
  * registered, so the catch-all silently bounced the visitor to `/runs`).
  * Model rows are plain monospace (no agents-by-model route in the UI).
  */

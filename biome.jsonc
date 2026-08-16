@@ -123,17 +123,17 @@
 				"src/ui/src/api/client.ts",
 				"src/ui/src/components/dispatch-plan-dialog.tsx",
 				"src/ui/src/components/ui/field.tsx",
-				"src/ui/src/hooks/useEventStream.ts",
-				"src/ui/src/pages/Agents.tsx",
-				"src/ui/src/pages/NewPlanRun.tsx",
-				"src/ui/src/pages/NewRun.tsx",
-				"src/ui/src/pages/PlanRuns.tsx",
-				"src/ui/src/pages/ProjectDetail.tsx",
-				"src/ui/src/pages/Projects.tsx",
-				"src/ui/src/pages/RunAnalytics.tsx",
-				"src/ui/src/pages/RunDetail.tsx",
+				"src/ui/src/hooks/use-event-stream.ts",
+				"src/ui/src/pages/agents.tsx",
+				"src/ui/src/pages/new-plan-run.tsx",
+				"src/ui/src/pages/new-run.tsx",
+				"src/ui/src/pages/plan-runs.tsx",
+				"src/ui/src/pages/project-detail.tsx",
+				"src/ui/src/pages/projects.tsx",
+				"src/ui/src/pages/run-analytics.tsx",
+				"src/ui/src/pages/run-detail.tsx",
 				"src/ui/src/pages/run-detail-events.tsx",
-				"src/ui/src/pages/Runs.tsx",
+				"src/ui/src/pages/runs.tsx",
 				"src/ui/src/pages/plan-run-detail/child-table.tsx",
 				"src/ui/src/pages/run-analytics/token-consumption-chart.tsx"
 			],
@@ -141,38 +141,6 @@
 				"rules": {
 					"complexity": {
 						"noExcessiveCognitiveComplexity": "off"
-					}
-				}
-			}
-		},
-		// These 32 legacy PascalCase and camelCase UI filenames predate the kebab-case rule.
-		// New UI files must use kebab-case. Rename a legacy file, then remove its line from
-		// this ratchet (warren-4e87); never add new exceptions.
-		{
-			"includes": [
-				"src/ui/src/App.tsx",
-				"src/ui/src/components/OperatorOnly.tsx",
-				"src/ui/src/components/PlanRunStateBadge.tsx",
-				"src/ui/src/components/StatusIndicator.tsx",
-				"src/ui/src/hooks/useEventStream.ts",
-				"src/ui/src/hooks/useTheme.ts",
-				"src/ui/src/pages/Agents.tsx",
-				"src/ui/src/pages/CostAnalytics.tsx",
-				"src/ui/src/pages/Login.tsx",
-				"src/ui/src/pages/NewPlanRun.tsx",
-				"src/ui/src/pages/NewRun.tsx",
-				"src/ui/src/pages/PlanRunDetail.tsx",
-				"src/ui/src/pages/PlanRuns.tsx",
-				"src/ui/src/pages/ProjectDetail.tsx",
-				"src/ui/src/pages/Projects.tsx",
-				"src/ui/src/pages/RunAnalytics.tsx",
-				"src/ui/src/pages/RunDetail.tsx",
-				"src/ui/src/pages/Runs.tsx"
-			],
-			"linter": {
-				"rules": {
-					"style": {
-						"useFilenamingConvention": "off"
 					}
 				}
 			}

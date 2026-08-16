@@ -22,8 +22,8 @@ const UI_PAGES = join(import.meta.dir, "..", "ui", "src", "pages");
 const read = (file: string): string => readFileSync(join(UI_PAGES, file), "utf8");
 
 const SURFACES = [
-	{ file: "Runs.tsx", what: "the runs list" },
-	{ file: "PlanRuns.tsx", what: "the plan-runs list and its rows" },
+	{ file: "runs.tsx", what: "the runs list" },
+	{ file: "plan-runs.tsx", what: "the plan-runs list and its rows" },
 	{ file: "ready-plans.tsx", what: "the ready-to-dispatch view" },
 ] as const;
 
@@ -39,7 +39,7 @@ describe("warren-f566 polling fallback (GH #847)", () => {
 	}
 
 	test("the per-row plan-run query polls on the fallback cadence, not per-row fast", () => {
-		const source = read("PlanRuns.tsx");
+		const source = read("plan-runs.tsx");
 		// The row key is a PREFIX match for the `["plan-runs"]` key the
 		// invalidation hook busts, so the stream already refreshes these rows;
 		// the timer is the public-mode fallback only.

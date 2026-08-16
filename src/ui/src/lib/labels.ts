@@ -16,7 +16,7 @@
  *     leaking underscores, so a reason added server-side before this UI
  *     ships still reads as prose.
  *
- * Status-PILL labels are deliberately NOT here: `components/StatusIndicator.tsx`
+ * Status-PILL labels are deliberately NOT here: `components/status-indicator.tsx`
  * is already the single registry for `{label, variant, icon, pulse}`, and a
  * second copy of those labels is exactly the drift this file exists to
  * prevent. It imports `humanizeWireValue` for its unknown-status fallback.
