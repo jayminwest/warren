@@ -3,8 +3,7 @@
  *
  * Warren's run row mirrors the lifecycle of the underlying burrow run
  * (queued → running → succeeded|failed|cancelled); warren observes, the
- * runtime owns the queue. `attachBurrow` writes the burrow IDs back once
- * the runtime returns them (docs/design/agent-composition.md).
+ * runtime owns the queue.
  */
 
 import { and, eq } from "drizzle-orm";
@@ -39,6 +38,7 @@ import {
 	listForAnalytics,
 	listWithUnresolvedPr,
 } from "./runs-queries.ts";
+import { clearBurrowIdForWorkspace } from "./runs-workspace.ts";
 
 const ALLOWED_TRANSITIONS: Record<RunState, readonly RunState[]> = {
 	queued: ["running", "cancelled"],
@@ -110,28 +110,17 @@ export interface CreateRunInput {
 	 * primitive (warren-1117). Fixed at run-create time.
 	 */
 	mode?: RunMode;
-	/**
-	 * Continuation/replicate back-link (warren-4b11 / warren-e96f). Null for
-	 * root runs; plain text id, no FK. `cloneKind` tells the two chain kinds
-	 * apart: `continue` (seed from parent's pushed branch) vs `replicate`.
-	 */
+	/** Continuation/replicate back-link (warren-4b11 / warren-e96f); null for root runs. */
 	parentRunId?: string | null;
 	/** Chain kind (warren-e96f); null for root runs. */
 	cloneKind?: CloneKind | null;
-	/**
-	 * Operator-requested target branch the run was dispatched against
-	 * (warren-1f81, #419). Null/omitted = no explicit target branch.
-	 */
+	/** Operator-requested target branch (warren-1f81, #419); null = none. */
 	targetBranch?: string | null;
 	/** Declared provider/model frozen at dispatch (warren-2ede / pl-103e).
 	 * Null = agent declares none (or a historical row). */
 	provider?: string | null;
 	model?: string | null;
-	/**
-	 * Queued-instant override (warren-0af9): `created_at` is stamped from
-	 * this clock, defaulting to the wall clock at insert. Tests pass a
-	 * fixed instant so golden envelopes stay deterministic.
-	 */
+	/** Queued-instant override (warren-0af9); defaults to the wall clock at insert. */
 	now?: Date;
 }
 
@@ -232,10 +221,7 @@ export class RunsRepo {
 		return row;
 	}
 
-	/**
-	 * Hard-delete a run row that never reached the runtime (warren-a0a2);
-	 * the guarded body lives in runs-delete.ts.
-	 */
+	/** Hard-delete a never-started run row (warren-a0a2); body in runs-delete.ts. */
 	deleteNeverStarted(id: string): Promise<boolean> {
 		return deleteNeverStarted(this.adapter, id);
 	}
@@ -299,10 +285,9 @@ export class RunsRepo {
 	}
 
 	/**
-	 * Write back the burrow IDs as they become available. The spawn flow (docs/design/agent-composition.md)
-	 * provisions the burrow first (`POST /burrows`) and dispatches the run
-	 * second (`POST /burrows/:id/runs`), so each ID lands on a different turn.
-	 * Both fields are optional, but at least one must be set.
+	 * Write back the burrow IDs as they become available (the spawn flow
+	 * provisions the burrow first, dispatches the run second). At least one
+	 * field must be set.
 	 */
 	async attachBurrow(id: string, input: AttachBurrowInput): Promise<RunRow> {
 		if (
@@ -321,6 +306,16 @@ export class RunsRepo {
 		if (input.workerId !== undefined) patch.workerId = input.workerId;
 		await this.adapter.runWrite(this.db.update(this.runs).set(patch).where(eq(this.runs.id, id)));
 		return { ...current, ...patch };
+	}
+
+	/**
+	 * Persist a confirmed workspace destruction (warren-9b77) by nulling
+	 * `burrowId` on every run row that referenced it, so the fallback GC
+	 * and the readyz stale-workspace diagnostic never re-strand it. Body
+	 * lives in runs-workspace.ts.
+	 */
+	clearBurrowIdForWorkspace(burrowId: string): Promise<void> {
+		return clearBurrowIdForWorkspace(this.adapter, burrowId);
 	}
 
 	async markRunning(id: string, now: Date = new Date()): Promise<RunRow> {

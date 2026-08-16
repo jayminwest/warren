@@ -209,6 +209,13 @@ export interface WorkspaceGcLogger {
 export interface WorkspaceGcReposLike {
 	readonly runs: {
 		listByState(state: RunState[]): Promise<RunRow[]>;
+		/**
+		 * Persist a confirmed destruction (warren-9b77) by nulling `burrowId`
+		 * on every run row that referenced the workspace, so the next sweep
+		 * (and the `/readyz` stale-workspace diagnostic, which reuses
+		 * `findStrandedBurrows`) never re-strands it.
+		 */
+		clearBurrowIdForWorkspace(burrowId: string): Promise<void>;
 	};
 }
 
@@ -298,12 +305,14 @@ async function destroyOne(
 			},
 			"workspace_gc.destroyed",
 		);
+		await persistDestruction(input, candidate.burrowId);
 		return true;
 	}
 	if (outcome.status === "already-gone") {
 		// The workspace is already gone on the backend's side — count it as
 		// reclaimed so we don't churn on it every sweep.
 		input.logger?.info({ burrowId: candidate.burrowId }, "workspace_gc.already_gone");
+		await persistDestruction(input, candidate.burrowId);
 		return true;
 	}
 	input.logger?.warn(
@@ -311,6 +320,23 @@ async function destroyOne(
 		"workspace_gc.destroy_failed",
 	);
 	return false;
+}
+
+/**
+ * warren-9b77: record a confirmed destruction warren-side so the sweep
+ * converges. Best-effort like the destroy itself — a bookkeeping failure
+ * is logged and the workspace simply re-strands next tick (the pre-9b77
+ * behaviour), never fails the sweep.
+ */
+async function persistDestruction(input: WorkspaceGcTickInput, burrowId: string): Promise<void> {
+	try {
+		await input.repos.runs.clearBurrowIdForWorkspace(burrowId);
+	} catch (err) {
+		input.logger?.warn(
+			{ burrowId, err: err instanceof Error ? err.message : String(err) },
+			"workspace_gc.persist_failed",
+		);
+	}
 }
 
 /* ----------------------------------------------------------------------- */

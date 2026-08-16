@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { buildBurrowActivity, findStrandedBurrows } from "./gc.ts";
 import { reapRun } from "./index.ts";
 import {
 	type Burrow,
@@ -355,6 +356,14 @@ describe("reapRun", () => {
 		// Emitted after the terminal transition, so reap.completed precedes it.
 		const order = events.map((ev) => ev.kind);
 		expect(order.indexOf("reap.completed")).toBeLessThan(order.indexOf("reap.workspace_destroyed"));
+
+		// warren-9b77: the destruction is persisted — burrowId is nulled, so
+		// the fallback GC predicate (and the readyz diagnostic that reuses
+		// it) never re-strands this workspace.
+		const reaped = await ctx.repos.runs.require(ctx.runId);
+		expect(reaped.burrowId).toBeNull();
+		const activity = buildBurrowActivity([], [reaped]);
+		expect(findStrandedBurrows({ ...activity, ttlMs: 0, now: new Date() })).toEqual([]);
 	});
 
 	test("never-started (queued) run skips workspace pipeline and emits reap.never_started_skip (warren-5e53)", async () => {

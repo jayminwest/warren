@@ -50,6 +50,26 @@ describe("checkStaleBurrowWorkspaces", () => {
 		expect(result.ok).toBe(true);
 	});
 
+	test("goes green once a stranded workspace's destruction is persisted (warren-9b77)", async () => {
+		// Before the GC persists the outcome the burrow is reported stranded…
+		const before = await checkStaleBurrowWorkspaces({
+			probe: probe([], [terminalRun("bur_old", "2026-05-29T09:00:00.000Z")]),
+			ttlMs: 60 * 60_000,
+			now: NOW,
+		});
+		expect(before.ok).toBe(false);
+		// …and once the sweep nulls burrowId (the persisted destruction
+		// marker) the same rows no longer strand anything.
+		const cleared = { ...terminalRun("bur_old", "2026-05-29T09:00:00.000Z"), burrowId: null };
+		const after = await checkStaleBurrowWorkspaces({
+			probe: probe([], [cleared]),
+			ttlMs: 60 * 60_000,
+			now: NOW,
+		});
+		expect(after.ok).toBe(true);
+		expect(after.message).toContain("none stranded");
+	});
+
 	test("an active run is never stranded", async () => {
 		const result = await checkStaleBurrowWorkspaces({
 			probe: probe([activeRun("bur_live")], [terminalRun("bur_live", "2026-05-01T00:00:00.000Z")]),

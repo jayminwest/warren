@@ -371,6 +371,21 @@ export async function reapRun(input: ReapRunInput): Promise<ReapRunResult> {
 		fail: (step, err) => fail(step, err),
 	});
 
+	// warren-9b77: persist the destruction warren-side so the fallback GC
+	// sweep and the `/readyz` stale-workspace diagnostic never re-strand
+	// this workspace. Best-effort like the destroy itself — a bookkeeping
+	// failure surfaces as an event and the GC simply reclaims it later.
+	if (workspaceDestroyed && run.burrowId !== null) {
+		try {
+			await input.repos.runs.clearBurrowIdForWorkspace(run.burrowId);
+		} catch (err) {
+			await emit("reap.workspace_destroy_record_failed", {
+				burrowId: run.burrowId,
+				error: err instanceof Error ? err.message : String(err),
+			});
+		}
+	}
+
 	// warren-4e74: observe-only lifecycle emits, after the terminal
 	// transition and workspace teardown. `branch_pushed` fires only when
 	// finalize actually pushed commits; `post_reap` always fires so a

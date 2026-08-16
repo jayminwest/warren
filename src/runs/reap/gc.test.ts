@@ -104,6 +104,8 @@ interface Harness {
 	activeRuns: RunRow[];
 	terminalRuns: RunRow[];
 	destroyed: string[];
+	/** Burrow ids whose destruction was persisted (warren-9b77). */
+	cleared: string[];
 }
 
 function tickInput(
@@ -115,6 +117,14 @@ function tickInput(
 		repos: {
 			runs: {
 				listByState: async (states) => (states.includes("running") ? h.activeRuns : h.terminalRuns),
+				clearBurrowIdForWorkspace: async (burrowId) => {
+					h.cleared.push(burrowId);
+					// Mirror the real repo: null out burrowId so the next sweep
+					// (and the readyz diagnostic) never re-strands the workspace.
+					h.terminalRuns = h.terminalRuns.map((r) =>
+						r.burrowId === burrowId ? ({ ...r, burrowId: null } as RunRow) : r,
+					);
+				},
 			},
 		},
 		config: { ttlMs: 60 * 60_000, tickMs: 1000, disabled: false, ...config },
@@ -133,6 +143,7 @@ describe("runWorkspaceGcTick", () => {
 			activeRuns: [],
 			terminalRuns: [terminalRun("bur_old", "2026-05-29T09:00:00.000Z")],
 			destroyed: [],
+			cleared: [],
 		};
 		const result = await runWorkspaceGcTick(tickInput(h));
 		expect(result).toEqual({ scanned: 1, stranded: 1, destroyed: 1, failed: 0 });
@@ -144,6 +155,7 @@ describe("runWorkspaceGcTick", () => {
 			activeRuns: [activeRun("bur_live")],
 			terminalRuns: [terminalRun("bur_live", "2026-05-29T00:00:00.000Z")],
 			destroyed: [],
+			cleared: [],
 		};
 		const result = await runWorkspaceGcTick(tickInput(h));
 		expect(result.scanned).toBe(0);
@@ -156,6 +168,7 @@ describe("runWorkspaceGcTick", () => {
 			activeRuns: [],
 			terminalRuns: [terminalRun("bur_old", "2026-05-29T09:00:00.000Z")],
 			destroyed: [],
+			cleared: [],
 		};
 		const result = await runWorkspaceGcTick(
 			tickInput(h, {
@@ -170,6 +183,7 @@ describe("runWorkspaceGcTick", () => {
 			activeRuns: [],
 			terminalRuns: [terminalRun("bur_old", "2026-05-29T09:00:00.000Z")],
 			destroyed: [],
+			cleared: [],
 		};
 		const logs: string[] = [];
 		const result = await runWorkspaceGcTick(
@@ -188,6 +202,89 @@ describe("runWorkspaceGcTick", () => {
 		expect(result).toEqual({ scanned: 1, stranded: 1, destroyed: 1, failed: 0 });
 		// Logged at info, not warn — it's not an error.
 		expect(logs.some((m) => m.includes("already_gone") || m.includes("bur_old"))).toBe(true);
+	});
+
+	test("persists a destroy success so the workspace never re-strands (warren-9b77)", async () => {
+		const h: Harness = {
+			activeRuns: [],
+			terminalRuns: [terminalRun("bur_old", "2026-05-29T09:00:00.000Z")],
+			destroyed: [],
+			cleared: [],
+		};
+		const input = tickInput(h);
+		const first = await runWorkspaceGcTick(input);
+		expect(first.destroyed).toBe(1);
+		expect(h.cleared).toEqual(["bur_old"]);
+		// Convergence: the next sweep finds nothing — the persisted marker
+		// (burrowId nulled) removes the burrow from the candidate universe.
+		const second = await runWorkspaceGcTick(input);
+		expect(second).toEqual({ scanned: 0, stranded: 0, destroyed: 0, failed: 0 });
+		expect(h.destroyed).toEqual(["bur_old"]);
+	});
+
+	test("persists an already-gone outcome too (warren-9b77)", async () => {
+		const h: Harness = {
+			activeRuns: [],
+			terminalRuns: [terminalRun("bur_old", "2026-05-29T09:00:00.000Z")],
+			destroyed: [],
+			cleared: [],
+		};
+		const input = tickInput(h, {
+			destroyWorkspace: async () => ({ status: "already-gone" }),
+		});
+		const first = await runWorkspaceGcTick(input);
+		expect(first.destroyed).toBe(1);
+		expect(h.cleared).toEqual(["bur_old"]);
+		const second = await runWorkspaceGcTick(input);
+		expect(second).toEqual({ scanned: 0, stranded: 0, destroyed: 0, failed: 0 });
+	});
+
+	test("does not persist a failed destroy — the workspace stays stranded", async () => {
+		const h: Harness = {
+			activeRuns: [],
+			terminalRuns: [terminalRun("bur_old", "2026-05-29T09:00:00.000Z")],
+			destroyed: [],
+			cleared: [],
+		};
+		const result = await runWorkspaceGcTick(
+			tickInput(h, {
+				destroyWorkspace: async () => ({ status: "failed", error: "worker unreachable" }),
+			}),
+		);
+		expect(result.failed).toBe(1);
+		expect(h.cleared).toEqual([]);
+	});
+
+	test("a bookkeeping failure is logged and never fails the sweep (warren-9b77)", async () => {
+		const h: Harness = {
+			activeRuns: [],
+			terminalRuns: [terminalRun("bur_old", "2026-05-29T09:00:00.000Z")],
+			destroyed: [],
+			cleared: [],
+		};
+		const warnings: string[] = [];
+		const base = tickInput(h);
+		const result = await runWorkspaceGcTick({
+			...base,
+			repos: {
+				runs: {
+					...base.repos.runs,
+					clearBurrowIdForWorkspace: async () => {
+						throw new Error("db read-only");
+					},
+				},
+			},
+			logger: {
+				info: () => {},
+				warn: (obj) => {
+					warnings.push(JSON.stringify(obj));
+				},
+				error: () => {},
+			},
+		});
+		expect(result.destroyed).toBe(1);
+		expect(result.failed).toBe(0);
+		expect(warnings.some((w) => w.includes("db read-only"))).toBe(true);
 	});
 });
 
@@ -229,6 +326,7 @@ describe("startWorkspaceGcWorker", () => {
 			activeRuns: [],
 			terminalRuns: [terminalRun("bur_old", "2026-05-29T09:00:00.000Z")],
 			destroyed: [],
+			cleared: [],
 		};
 		const worker = startWorkspaceGcWorker({
 			...tickInput(h),
@@ -242,7 +340,7 @@ describe("startWorkspaceGcWorker", () => {
 	});
 
 	test("disabled config never schedules an interval", async () => {
-		const h: Harness = { activeRuns: [], terminalRuns: [], destroyed: [] };
+		const h: Harness = { activeRuns: [], terminalRuns: [], destroyed: [], cleared: [] };
 		let scheduled = false;
 		const worker = startWorkspaceGcWorker({
 			...tickInput(h, {}, { disabled: true }),
@@ -261,6 +359,7 @@ describe("startWorkspaceGcWorker", () => {
 			activeRuns: [],
 			terminalRuns: [terminalRun("bur_old", "2026-05-29T09:00:00.000Z")],
 			destroyed: [],
+			cleared: [],
 		};
 		let release: () => void = () => {};
 		const gate = new Promise<void>((r) => {

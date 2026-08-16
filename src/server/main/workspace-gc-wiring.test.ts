@@ -19,7 +19,9 @@ function makeLogger(): { logger: Logger; lines: LogLine[] } {
 }
 
 function emptyRepos(): WorkspaceGcReposLike {
-	return { runs: { listByState: async () => [] } };
+	return {
+		runs: { listByState: async () => [], clearBurrowIdForWorkspace: async () => {} },
+	};
 }
 
 const CONFIG = { ttlMs: 60_000, tickMs: 60_000, disabled: false };
