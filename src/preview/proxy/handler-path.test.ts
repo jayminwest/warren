@@ -85,7 +85,12 @@ describe("createPreviewProxyHandler (path mode)", () => {
 			config: { mode: "path" },
 			fetch: fetchStub(async () => new Response("nope")),
 		});
-		const { request, url } = buildPathRequest({ path: "/p/run_doesnotexist/" });
+		// warren-820e: run-existence answers are post-auth; the distinct 404
+		// only reaches a cookie-verified caller.
+		const { request, url } = buildPathRequest({
+			path: "/p/run_doesnotexist/",
+			cookie: validCookieFor("run_doesnotexist", new Date()),
+		});
 		const res = await handler(request, url);
 		expect(res?.status).toBe(404);
 	});
@@ -98,7 +103,10 @@ describe("createPreviewProxyHandler (path mode)", () => {
 			config: { mode: "path" },
 			fetch: fetchStub(async () => new Response("nope")),
 		});
-		const { request, url } = buildPathRequest({ path: `/p/${runId}/` });
+		const { request, url } = buildPathRequest({
+			path: `/p/${runId}/`,
+			cookie: validCookieFor(runId, new Date()),
+		});
 		const res = await handler(request, url);
 		expect(res?.status).toBe(501);
 		const body = (await res?.json()) as { error: { code: string; message: string } };

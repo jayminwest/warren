@@ -48,6 +48,15 @@ export interface PreviewWiringInput {
 	readonly repos: Repos;
 	readonly logger: Logger;
 	/**
+	 * `RuntimeProvider.capabilities.previewPorts` from the boot-resolved
+	 * provider (warren-820e). A provider that can never allocate preview
+	 * ports must not install the pre-auth preview preamble at all —
+	 * capabilities-not-conditionals applied to a boot-time wiring
+	 * decision, and it removes the pre-auth `/p/<runId>` surface on
+	 * deployments (K8s today) where it is dead code.
+	 */
+	readonly previewPorts: boolean;
+	/**
 	 * The warren API listener's TCP port (warren-3f8a), threaded into the
 	 * path-mode proxy config so 401 hints can name the login origin.
 	 * Omit on the unix transport or when the bind port is ephemeral.
@@ -77,6 +86,13 @@ function proxyConfigFor(
 
 export function createPreviewAuthAndProxy(input: PreviewWiringInput): PreviewWiring {
 	const { token, previewLaunchConfig, repos, logger, apiPort, now } = input;
+	if (!input.previewPorts) {
+		logger.info(
+			{},
+			"runtime provider lacks the previewPorts capability; preview surface disabled (warren-820e)",
+		);
+		return { previewAuth: undefined, previewProxy: undefined };
+	}
 	const previewAuth: PreviewAuth | undefined =
 		token !== null && (previewLaunchConfig.mode === "path" || previewLaunchConfig.host !== null)
 			? createPreviewAuth(token, {
