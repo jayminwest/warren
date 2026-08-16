@@ -31,12 +31,19 @@ on:
 permissions:
   contents: write
 
+# warren-ffd2: do NOT guard on `github.event.workflow_run.event ==
+# 'pull_request'` here. Warren pushes agent branches directly, so a PR
+# branch's CI run often carries the `push` event, and a pull_request-only
+# guard silently drops the failure this workflow exists to heal (PR #656
+# needed a manual re-baseline). Instead accept any failed same-repo CI run on
+# a non-main branch and let the `pr-gate` step prove the branch has an open
+# same-repo PR before spending a token or a checkout on it.
+
 jobs:
   autoheal:
     runs-on: ubuntu-latest
     if: >-
       github.event.workflow_run.conclusion == 'failure' &&
-      github.event.workflow_run.event == 'pull_request' &&
       github.event.workflow_run.head_branch != 'main' &&
       github.event.workflow_run.head_repository.full_name == github.repository
     env:
@@ -49,21 +56,47 @@ jobs:
           app-id: ${{ vars.AUTO_MERGE_APP_ID }}
           private-key: ${{ secrets.AUTO_MERGE_APP_PRIVATE_KEY }}
 
+      # Only heal a branch with an open same-repo PR. A push-event CI failure
+      # on a branch with no open PR is not this workflow's problem, and this
+      # keeps the fork semantics intact (an open fork PR fails the head-repo
+      # job-level check before we ever get here).
+      - name: Require an open same-repo PR on the head branch
+        id: pr-gate
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          GH_REPO: ${{ github.repository }}
+          HEAD_REF: ${{ github.repository_owner }}:${{ github.event.workflow_run.head_branch }}
+        run: |
+          set -euo pipefail
+          prs=$(gh api "repos/${GH_REPO}/pulls?head=${HEAD_REF}&state=open" --jq 'length')
+          if [ "$prs" -eq 0 ]; then
+            echo "No open PR for ${HEAD_BRANCH} — nothing to heal. Skipping."
+            echo "has-pr=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "has-pr=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - uses: actions/checkout@v7.0.1
+        if: steps.pr-gate.outputs.has-pr == 'true'
         with:
           token: ${{ steps.app-token.outputs.token }}
           ref: ${{ github.event.workflow_run.head_branch }}
           fetch-depth: 0
 
       - uses: oven-sh/setup-bun@v2
+        if: steps.pr-gate.outputs.has-pr == 'true'
         with:
           bun-version-file: .bun-version
 
-      - run: bun install
-      - run: bun run ui:install
-      - run: bun run build:ui
+      - if: steps.pr-gate.outputs.has-pr == 'true'
+        run: bun install
+      - if: steps.pr-gate.outputs.has-pr == 'true'
+        run: bun run ui:install
+      - if: steps.pr-gate.outputs.has-pr == 'true'
+        run: bun run build:ui
 
       - name: Re-baseline bundle-size budgets if (and only if) that was the failure
+        if: steps.pr-gate.outputs.has-pr == 'true'
         run: |
           set -euo pipefail
           if bun run check:bundle-size; then

@@ -220,7 +220,24 @@ export function formatDurationMs(ms: number): string {
  */
 export function commandFailure(context: CliContext, err: unknown): { readonly exitCode: number } {
 	context.stdio.stderr.write(`warren: ${formatError(err)}\n`);
+	// warren-8807: when the env supplied the token, name the source on an
+	// auth rejection so the operator sees WHY the wrong credential won —
+	// Bun auto-loads `.env` from the invoking cwd, and a stale
+	// WARREN_API_TOKEN there silently outranks the client config file.
+	if (exitCodeForError(err) === EXIT_AUTH_REJECTED && hasEnvToken(context.env)) {
+		context.stdio.stderr.write(
+			"  hint: token came from WARREN_API_TOKEN in the environment — a stale `.env` " +
+				"in your cwd is auto-loaded by Bun and overrides ~/.warren/client.json; " +
+				"unset it or pass --token\n",
+		);
+	}
 	return { exitCode: exitCodeForError(err) };
+}
+
+/** True when the environment carries a non-empty WARREN_API_TOKEN. */
+function hasEnvToken(env: EnvLike): boolean {
+	const token = env.WARREN_API_TOKEN;
+	return token !== undefined && token !== "";
 }
 
 /** Format a thrown error for human stderr output. */

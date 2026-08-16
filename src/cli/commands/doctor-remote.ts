@@ -91,7 +91,7 @@ async function authCheck(client: WarrenClient): Promise<DoctorCheck> {
 			name: "auth_valid",
 			ok: false,
 			message: formatError(err),
-			hint: "check WARREN_API_TOKEN / --token or the token `warren login` saved in the client config file (~/.warren/client.json, WARREN_CLIENT_CONFIG) against the server's credential",
+			hint: "check WARREN_API_TOKEN / --token or the token `warren login` saved in the client config file (~/.warren/client.json, WARREN_CLIENT_CONFIG) against the server's credential; if this only fails from inside a repo, a stale `.env` in your cwd (auto-loaded by Bun) may be overriding the config file",
 		};
 	}
 }
