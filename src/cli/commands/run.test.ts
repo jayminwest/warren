@@ -62,6 +62,8 @@ function runRow(over: Partial<RunRow> = {}): RunRow {
 		prMergedAt: null,
 		targetBranch: null,
 		ref: null,
+		provider: null,
+		model: null,
 		salvageRef: null,
 		salvagePath: null,
 		costUsd: 0.01,

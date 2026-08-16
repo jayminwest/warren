@@ -171,19 +171,17 @@ export interface RunRow {
 	targetBranch: string | null;
 	/** Dispatch-supplied clone ref (warren-afeb). Null when unset. */
 	ref: string | null;
+	/** Declared provider/model frozen at dispatch (warren-2ede / #860). Null = predates the columns. */
+	provider: string | null;
+	model: string | null;
 	/**
 	 * Salvage-before-destroy (warren-cd3b): where a finalize_failed run's
 	 * committed work was captured — `salvageRef` is the `warren/rescue/<runId>`
-	 * branch on origin, `salvagePath` the durable git-bundle file. Both null when
-	 * nothing was captured (or needed).
+	 * branch on origin, `salvagePath` the durable git-bundle file. Null = none captured.
 	 */
 	salvageRef: string | null;
 	salvagePath: string | null;
-	/**
-	 * Per-run cost in USD (warren-a7dc). Populated only for `pi`-runtime runs —
-	 * the bridge snapshots `get_session_stats` at run-start + run-end and
-	 * persists the delta. Null for non-pi runtimes and failed stats RPCs.
-	 */
+	/** Per-run cost in USD (warren-a7dc), the bridge's `get_session_stats` start/end delta. Null for non-pi runtimes. */
 	costUsd: number | null;
 	/** Input tokens consumed (warren-a7dc); see `costUsd` for nullability. */
 	tokensInput: number | null;

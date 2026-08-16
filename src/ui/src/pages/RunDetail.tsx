@@ -278,6 +278,16 @@ export function RunDetailPage() {
 				<MetaCard label="Started">{formatTimestamp(r.startedAt)}</MetaCard>
 				<MetaCard label="Ended">{formatTimestamp(r.endedAt)}</MetaCard>
 				<MetaCard label="Trigger">{r.trigger}</MetaCard>
+				{r.provider !== null ? (
+					<MetaCard label="Provider">
+						<span className="font-mono text-xs">{r.provider}</span>
+					</MetaCard>
+				) : null}
+				{r.model !== null ? (
+					<MetaCard label="Model">
+						<span className="font-mono text-xs">{r.model}</span>
+					</MetaCard>
+				) : null}
 				{/* Gated on presence (warren-f53e): runtime handles — burrow ids under
 				    burrow, pod name/UID under k8s (NOT null there; warren-0965) — and
 				    absent from a spectator's projection, where they rendered as two

@@ -125,6 +125,12 @@ export interface RunRow {
 	/** Dispatch-supplied git ref the workspace was cloned from (warren-afeb). Null when unset. */
 	ref: string | null;
 	/**
+	 * Declared provider/model frozen at dispatch (warren-2ede / #860).
+	 * Null on rows predating the columns — read as "unknown".
+	 */
+	provider: string | null;
+	model: string | null;
+	/**
 	 * Salvage-before-destroy (warren-cd3b): where a finalize_failed run's
 	 * committed work was captured. `salvageRef` is the `warren/rescue/<runId>`
 	 * branch on origin; `salvagePath` is the durable git-bundle file. Both null
