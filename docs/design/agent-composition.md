@@ -21,7 +21,7 @@
 | **Mind** (persona, skills) | inline built-ins in `src/registry/builtins/`, frozen onto the run row | warren registry |
 | **Memory** (expertise) | `.mulch/expertise/<domain>.jsonl` (per-project) | mulch |
 | **Worklist** (tasks) | `.seeds/issues.jsonl` (per-project) | seeds |
-| **Body** (loop, tools) | `pi`, `claude-code`, or `sapling` | the runtime |
+| **Body** (loop, tools) | `pi` or `claude-code` | the runtime |
 
 Burrow is the cell the agent runs in. Warren is the operator that picks
 who runs where, when, and on what. The os-eco canopy tool lives on to
@@ -68,7 +68,7 @@ sections:
 `system`, `skills`, `expertise_seed`, `burrow_config`, `workflow`. Only
 `system` is required (`REQUIRED_AGENT_SECTIONS`); the rest are consumed
 at run-spawn time. Pi-namespaced sections (consumed only by the `pi`
-built-in; ignored by `claude-code` / `sapling`): `pi_skills`,
+built-in; ignored by `claude-code`): `pi_skills`,
 `pi_prompts`. Pi-section bodies are JSON-Lines envelopes of
 `{name, body}` — one artifact per line — which `src/runs/seed.ts`
 materializes into `.pi/skills/<name>/SKILL.md` and
@@ -85,7 +85,7 @@ rev — `readProviderFrontmatter` / `readToolsFrontmatter` in
 - `provider`, `model` — free-form strings the multi-provider surface
   reads (see the pi contract below).
 - `runtime` — burrow runtime id the agent dispatches onto (`pi`,
-  `claude-code`, `sapling`). When unset, warren falls back to
+  `claude-code`). When unset, warren falls back to
   `DEFAULT_RUNTIME_ID` (`"pi"`); `claude-code` is opt-in via this field
   (warren-16f8).
 - `auto_plan_run` (boolean, warren-a32a) — on run success, reap diffs

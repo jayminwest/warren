@@ -12,7 +12,7 @@
  * documents: a `tool_use` payload its runtime's shape cannot read at all
  * extracts to all-null fields (the registry's exact parse-failure
  * condition), which the command-mining coverage rollup later counts as
- * unparsed. An UNCOVERED runtime (no declared shape, e.g. sapling)
+ * unparsed. An UNCOVERED runtime (no declared shape)
  * extracts to the same all-null row — the coverage rollup distinguishes
  * the two via its `shaped` flag, so nothing is laundered.
  */

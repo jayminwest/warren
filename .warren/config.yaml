@@ -33,7 +33,7 @@ runBranchPrefix: warren
 
 # Canonical green-tree command for this repo. Surfaced to agents via
 # $WARREN_QUALITY_GATE (composeRunEnv in src/runs/spawn.ts) so the
-# built-in claude-code / sapling / pi prompts don't fall back to the
+# built-in claude-code / pi prompts don't fall back to the
 # fuzzy "look for it in CLAUDE.md" heuristic. Must mirror CI — see
 # warren-57cd / pl-da5b step 4 and AGENTS.md "Quality gates".
 qualityGate: bun run check:all

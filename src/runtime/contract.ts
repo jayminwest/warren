@@ -69,7 +69,7 @@ export interface RunSpec {
 	maxProjectConcurrency?: number;
 
 	// Agent.
-	/** claude-code | pi | codex | sapling — selects image/toolchain */
+	/** claude-code | pi | codex — selects image/toolchain */
 	runtimeId: string;
 	/** system section already prepended by the domain */
 	prompt: string;

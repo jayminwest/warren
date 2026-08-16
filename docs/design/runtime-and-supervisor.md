@@ -109,8 +109,7 @@ terminated runs but not for running ones.
 FROM ghcr.io/jayminwest/burrow-base:0.2.0   # bun + bwrap + uidmap + burrow CLI
 RUN bun install -g \
     @os-eco/seeds-cli@<v> \
-    @os-eco/mulch-cli@<v> \
-    @os-eco/sapling-cli@<v>
+    @os-eco/mulch-cli@<v>
 WORKDIR /app
 COPY . /app
 RUN bun install && bun run build:ui

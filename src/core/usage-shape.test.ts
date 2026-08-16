@@ -56,7 +56,6 @@ describe("USAGE_SHAPES", () => {
 			const shape = usageShapeFor(id);
 			if (shape !== null) expect(shape.runtime).toBe(id);
 		}
-		expect(usageShapeFor("sapling")).toBeNull();
 		expect(usageShapeFor("pi")?.mode).toBe("sum");
 		expect(usageShapeFor("claude-code")?.mode).toBe("assign");
 	});

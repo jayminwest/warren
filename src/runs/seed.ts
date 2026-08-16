@@ -11,7 +11,7 @@
  * Five drops:
  *
  *   `.warren/agent.json` — the rendered AgentDefinition envelope. The
- *      harness (claude-code or sapling) reads whichever sections it
+ *      harness (claude-code or pi) reads whichever sections it
  *      needs; packaging the whole envelope avoids prematurely freezing
  *      a per-section file layout before harness expectations stabilize.
  *

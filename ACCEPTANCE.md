@@ -137,8 +137,8 @@ What container mode actually verifies (scenarios 01 + 13):
   cap_add=SYS_ADMIN),
 - warren and burrow start as siblings on `/var/run/burrow.sock`,
 - `/healthz` is auth-exempt and returns 200,
-- `GET /agents` returns the two built-in agents (`claude-code`,
-  `sapling`) seeded by `seedBuiltinAgents`,
+- `GET /agents` returns the built-in coding agents (`claude-code`,
+  `pi`) seeded by `seedBuiltinAgents`,
 - `/readyz` returns a structured `{ ok, checks: [...] }` body.
 
 Scenarios that depend on host-side fixtures (a sample project repo)
@@ -269,7 +269,7 @@ open http://localhost:8080
 1. **Login screen.** Paste `WARREN_API_TOKEN` into the bearer-token
    input (stored in localStorage under `warren.apiToken`). The
    ProjectsPage should load without redirecting back to login.
-2. **Agents page.** Built-in agents (`claude-code`, `sapling`, `pi`)
+2. **Agents page.** Built-in agents (`claude-code`, `pi`)
    appear in the registry table. Expand a row to inspect its rendered
    definition.
 3. **Projects page.** `Add project` accepts a github.com URL and

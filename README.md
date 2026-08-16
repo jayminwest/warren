@@ -83,7 +83,7 @@ GitHub App mode has shipped. Set `WARREN_FORGE=app` and warren mints short-lived
 
 - **One image, one volume.** The supervisor (`src/supervisor/main.ts`) is the container ENTRYPOINT. It spawns the sandbox runtime first, waits for the unix socket, then spawns warren. SIGTERM and SIGINT forward to both children. The runtime restarts under a 5-in-60s budget on unexpected exit.
 - **Native sandboxing per run.** In the default `local` topology every run gets a fresh `bwrap`-isolated workspace under `/data/burrow/`. The host is unreachable, and warren talks to the runtime over a unix socket with a shared bearer token. Under `WARREN_RUNTIME=k8s` the pod boundary is the sandbox instead (kubelet-enforced CPU and memory, no bwrap). See [the K8s runbook](docs/RUNBOOK-K8S.md).
-- **Built-in agents.** `claude-code`, `sapling`, and `pi` ship inline (`src/registry/builtins/`), so a dispatch needs no extra setup.
+- **Built-in agents.** `claude-code` and `pi` ship inline (`src/registry/builtins/`), so a dispatch needs no extra setup.
 - **Live event stream.** NDJSON events persist to warren's SQLite log. Clients tail them over `GET /runs/:id/events?follow=1`. The UI, the CLI (`warren run`), and HTTP clients all read the same stream.
 - **Steerable mid-run.** `POST /runs/:id/steer` lands a message in the agent's inbox, and the next turn picks it up. `POST /runs/:id/cancel` aborts cleanly.
 - **Scheduled runs.** `.warren/triggers.yaml` defines cron triggers per project. The in-process scheduler dispatches them on the same composition path as manual runs.
@@ -139,8 +139,6 @@ Warren bundles a few [os-eco](https://github.com/jayminwest/os-eco) tools as opt
 
 - **Agent memory.** A project with a `.mulch/` directory gets its expertise primed into every run, and reap merges new records back with last-write-wins by timestamp.
 - **Issue queue.** A project with a `.seeds/` directory lets agents read the queue, claim work, file follow-ups, and close finished issues. `.seeds/` also unlocks serial plan-run dispatch and past-due `extensions.scheduledFor` triggers (see [docs/design/scheduler.md](docs/design/scheduler.md) and [docs/design/plan-run-coordinator.md](docs/design/plan-run-coordinator.md)). Tune the plan-run coordinator with `WARREN_PLAN_RUN_TICK_MS` (default 10s), or turn it off with `WARREN_PLAN_RUN_DISABLED=1`.
-- **Alternative harness.** The built-in `sapling` agent is a second coding harness on the same dispatch path. Use it the way you use `claude-code`.
-
 See the topic records under [docs/design/](docs/design/) for the full contracts.
 
 ## PR-body template

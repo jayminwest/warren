@@ -168,7 +168,7 @@ export interface BridgeRunStreamInput {
 	 * the pi runtime; the bridge then snapshots `get_session_stats` at
 	 * run-start + run-end and persists the delta via `RunsRepo.attachStats`.
 	 * Omit for non-pi runs — the stats columns stay null, identical to the
-	 * pre-warren-a7dc behaviour for claude-code/sapling runs.
+	 * pre-warren-a7dc behaviour for claude-code runs.
 	 */
 	readonly piStats?: PiStatsClient;
 	/**

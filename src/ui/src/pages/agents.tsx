@@ -80,8 +80,8 @@ export function AgentsPage() {
 				title="Agents"
 				description={
 					<>
-						Agents available for dispatch. <code>claude-code</code>, <code>sapling</code>, and{" "}
-						<code>pi</code> ship inline. Pick a project to scope the list.
+						Agents available for dispatch. <code>claude-code</code> and <code>pi</code> ship inline.
+						Pick a project to scope the list.
 					</>
 				}
 				actions={
@@ -128,8 +128,8 @@ export function AgentsPage() {
 							title="No agents registered"
 							description={
 								<>
-									Built-in <code>claude-code</code>, <code>sapling</code>, and <code>pi</code>{" "}
-									should appear here automatically.{emptyHint}
+									Built-in <code>claude-code</code> and <code>pi</code> should appear here
+									automatically.{emptyHint}
 								</>
 							}
 						/>
