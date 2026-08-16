@@ -14,6 +14,7 @@ import type { AgentDefinition } from "../../registry/schema.ts";
 import type { RuntimeProvider } from "../../runtime/contract.ts";
 import type { SeedsCliDeps } from "../../seeds-cli/index.ts";
 import type { WarrenConfigCache } from "../../warren-config/index.ts";
+import type { MigrationHealFn } from "./migration-preflight.ts";
 
 /**
  * Narrow structured logger for the spawn flow (warren-c686 / pl-f700
@@ -201,6 +202,14 @@ export interface SpawnRunInput {
 	 * runs list with. Best-effort: the callback must not throw.
 	 */
 	readonly onRunRowCreated?: (runId: string) => void;
+	/**
+	 * Migration journal preflight seam (warren-1f03). For ref-dispatches onto
+	 * an existing branch, spawnRun runs a drizzle journal-slot collision check
+	 * against fresh main after the refresh and heals prompt-free (delete the
+	 * colliding migration, re-run `bun run db:generate`, commit). Tests
+	 * override; production resolves to `healMigrationJournalCollisions`.
+	 */
+	readonly migrationHealFn?: MigrationHealFn;
 }
 
 export interface SpawnRunResult {
