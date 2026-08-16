@@ -52,10 +52,13 @@ export interface LocalBootBackend {
 
 /**
  * Resolve the `local` server backend (warren-f796). Builds the single burrow
- * client from env LAZILY, threads `resolveRuntimeProvider` over it, and gates
- * the preview-sidecar + workspace-GC seams on the provider's advertised
- * capabilities — the same wiring `bootServer` did inline before the eviction,
- * now owned here so the boot orchestrator never imports `burrow-client`.
+ * client from env LAZILY (preview sidecars + the /readyz probe only — the
+ * spawn path is the in-process engine since warren-413d), threads
+ * `resolveRuntimeProvider` over env alone, and gates the preview-sidecar +
+ * workspace-GC seams on the provider's advertised capabilities — the same
+ * wiring `bootServer` did inline before the eviction, now owned here so the
+ * boot orchestrator never imports `burrow-client`. The workspace destroyer
+ * is the manifest-backed one (`./workspace-gc.ts`) — no burrow call.
  *
  * Call this ONLY under `WARREN_RUNTIME=local`; the k8s boot path resolves the
  * `K8sProvider` directly (no burrow).
@@ -66,12 +69,16 @@ export function resolveLocalBootBackend(env: EnvLike): LocalBootBackend {
 		if (client === undefined) client = BurrowClient.fromEnv(env);
 		return client;
 	};
-	const runtimeProvider = resolveRuntimeProvider({ burrowClient: getClient }, env);
+	// warren-413d: the provider is built WITHOUT a burrow client, so it runs
+	// the in-process engine — the burrow daemon is off the spawn path. The
+	// client below still backs the preview-sidecar seam (warren-4bf3 re-homes
+	// it) and the /readyz probe (warren-9a26 drops it with the daemon).
+	const runtimeProvider = resolveRuntimeProvider({ serverEnv: env }, env);
 	const caps = runtimeProvider.capabilities;
 	return {
 		runtimeProvider,
 		...(caps.previewPorts ? { previewSidecars: createLocalSidecarsResolver(getClient()) } : {}),
-		...(caps.workspaceGc ? { workspaceDestroyer: createLocalWorkspaceDestroyer(getClient()) } : {}),
+		...(caps.workspaceGc ? { workspaceDestroyer: createLocalWorkspaceDestroyer(env) } : {}),
 		probeBurrow: () => checkBurrowPoolReachable(getClient()),
 		close: async () => {
 			if (client !== undefined) await client.close().catch(() => undefined);

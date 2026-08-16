@@ -14,13 +14,15 @@
  *   - anything else → `UnknownRuntimeError` (fail loud — never silently fall
  *     back to the default, so a typo can't route runs onto the wrong backend).
  *
- * Composition point: `src/server/main/index.ts` (`bootServer`) builds the
- * single `burrowClient` and threads a `resolveRuntimeProvider({ burrowClient:
- * () => client })` provider onto `ServerDeps` for the domain.
+ * Composition point: `src/server/main/index.ts` (`bootServer`) resolves the
+ * local backend via `src/runtime/local/boot-backend.ts`, which builds the
+ * provider WITHOUT a burrow client — the in-process engine (warren-413d).
+ * Supplying `burrowClient` explicitly still selects the legacy burrow-backed
+ * mode the test harnesses drive.
  */
 
 import type { CoreV1Api } from "@kubernetes/client-node";
-import { BurrowClient } from "../burrow-client/index.ts";
+import type { BurrowClient } from "../burrow-client/index.ts";
 import type { ReapExec, ReapFs } from "../runs/reap/types.ts";
 import type { EnvLike } from "../runs/spawn/callback-env.ts";
 import type { RuntimeProvider } from "./contract.ts";
@@ -53,12 +55,11 @@ export type RuntimeEnv = Readonly<Record<string, string | undefined>>;
  */
 export interface RuntimeProviderDeps {
 	/**
-	 * OPTIONAL burrow client factory the `local` backend's `LocalProvider` wraps
-	 * (warren-f796). Callers that own a live client (the server boot backend in
-	 * `src/runtime/local/boot-backend.ts`, the CLI's `resolveLocalRunBackend`,
-	 * tests) supply it so they can share + close the client; when omitted for
-	 * `local` the selector builds one lazily from env (`BurrowClient.fromEnv`).
-	 * Ignored entirely by the `k8s` backend — agents run in pods, no burrow.
+	 * OPTIONAL burrow client factory selecting the LocalProvider's LEGACY
+	 * burrow-backed mode (warren-f796; demoted to transition-only in
+	 * warren-413d). Test harnesses that drive finalize/terminate through a
+	 * fake burrow client supply it; production boot OMITS it so the provider
+	 * runs the in-process engine. Ignored entirely by the `k8s` backend.
 	 */
 	readonly burrowClient?: () => BurrowClient;
 	/**
@@ -176,8 +177,12 @@ export function resolveRuntimeProvider(
 	const kind = resolveRuntimeKind(env);
 	switch (kind) {
 		case "local":
+			// warren-413d: only an EXPLICITLY supplied burrow client selects the
+			// legacy burrow-backed mode (test harnesses). No client ⇒ the
+			// in-process engine — production boot passes none, so the burrow
+			// daemon is off the spawn path.
 			return new LocalProvider({
-				burrowClient: deps.burrowClient ?? lazyBurrowClientFromEnv(env),
+				...(deps.burrowClient !== undefined ? { burrowClient: deps.burrowClient } : {}),
 				...(deps.serverEnv !== undefined ? { serverEnv: deps.serverEnv } : {}),
 				...(deps.fs !== undefined ? { fs: deps.fs } : {}),
 				...(deps.exec !== undefined ? { exec: deps.exec } : {}),
@@ -194,20 +199,6 @@ export function resolveRuntimeProvider(
  * coordinator, cache-cold status/admission). Extracted from
  * `resolveRuntimeProvider` to keep that selector under the complexity budget.
  */
-/**
- * Lazy env-derived burrow client factory for `local` callers that don't own a
- * client (warren-f796). The client is built on first use so `resolveRuntimeProvider`
- * never touches a socket at construction time; callers that need to close it (boot)
- * pass their own factory instead.
- */
-function lazyBurrowClientFromEnv(env: RuntimeEnv): () => BurrowClient {
-	let client: BurrowClient | undefined;
-	return () => {
-		if (client === undefined) client = BurrowClient.fromEnv(env);
-		return client;
-	};
-}
-
 function buildK8sProvider(deps: RuntimeProviderDeps): K8sProvider {
 	return new K8sProvider({
 		coreApi: deps.k8sCoreApi ?? defaultCoreApiFactory(),

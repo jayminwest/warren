@@ -146,7 +146,10 @@ export function resolveLocalRunBackend(env: EnvLike): LocalRunBackend {
 		if (client === undefined) client = BurrowClient.fromEnv(env);
 		return client;
 	};
-	const runtimeProvider = resolveRuntimeProvider({ burrowClient: getClient }, env);
+	// warren-413d: no burrow client on the provider ⇒ the in-process engine
+	// (the daemon is off the spawn path for `warren run` too). The client
+	// below backs only the preview-sidecar seam until warren-4bf3 re-homes it.
+	const runtimeProvider = resolveRuntimeProvider({ serverEnv: env }, env);
 	const previewSidecars = runtimeProvider.capabilities.previewPorts
 		? createLocalSidecarsResolver(getClient())
 		: undefined;
