@@ -82,31 +82,39 @@ export async function assertBoundedReads(base: string, ids: SeededIds): Promise<
 }
 
 /**
- * Assertion group 8 (warren-b0bd). The preview-proxy preamble runs BEFORE
- * the auth gate (`src/server/server.ts`), so its envelopes reach anonymous
- * callers verbatim — the one pre-auth surface the route-policy sweep can
- * never see. The seeded run carries the `workerId` sentinel, which trips
- * the cross-host 501: the body must not quote the sentinel back
- * (warren-946f classifies `workerId` as operator-only), and the
- * warren-e2a4 security headers must reach even this below-the-gate
- * response. An unknown run id is a clean 404.
+ * Assertion group 8 (warren-b0bd, re-shaped by warren-820e). The
+ * preview-proxy preamble runs BEFORE the auth gate
+ * (`src/server/server.ts`), so its envelopes reach anonymous callers
+ * verbatim — the one pre-auth surface the route-policy sweep can never
+ * see. warren-820e moved signed-cookie verification ahead of ANY run
+ * lookup (and gates the whole preamble off on providers without the
+ * `previewPorts` capability), so an anonymous caller sees one uniform
+ * 401 whether the runId is unknown, previewless, or remote — the
+ * "no run-existence / topology oracle" contract. The R-12 501 and the
+ * 404 are now only reachable past a verified cookie, and the
+ * warren-e2a4 security headers still reach even this below-the-gate
+ * envelope.
  */
 export async function assertPreviewProxyPreamble(base: string, ids: SeededIds): Promise<void> {
 	const crossHost = await fetch(`${base}/p/${encodeURIComponent(ids.runId)}/`);
 	assertEqual(
 		crossHost.status,
-		501,
-		"anonymous preview-proxy hit on a remote-worker run is the R-12 501",
+		401,
+		"preamble gated off without previewPorts capability; anonymous caller sees uniform 401, no preview oracle",
 	);
-	assertNoLeak("anonymous preview-proxy 501", await crossHost.text());
+	assertNoLeak("anonymous preview-proxy 401", await crossHost.text());
 	assertTrue(
 		crossHost.headers.get("content-security-policy") !== null,
 		"the preview-proxy preamble response carries the security-header baseline",
 	);
 
 	const unknown = await fetch(`${base}/p/acceptance-unreached/`);
-	assertEqual(unknown.status, 404, "anonymous preview-proxy hit on an unknown run is 404");
-	assertNoLeak("anonymous preview-proxy 404", await unknown.text());
+	assertEqual(
+		unknown.status,
+		401,
+		"an unknown run id gets the same uniform 401 — cookie check precedes any run lookup, so the preamble is no run-existence oracle",
+	);
+	assertNoLeak("anonymous preview-proxy unknown-run 401", await unknown.text());
 }
 
 /**
