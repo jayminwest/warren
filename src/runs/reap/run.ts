@@ -193,7 +193,16 @@ export async function reapRun(input: ReapRunInput): Promise<ReapRunResult> {
 		// reached a terminal phase / vanished / timed out without posting
 		// anything, so the workspace died with it and salvage is the only
 		// recovery path.
-		failureReason = state.finalizeUnposted !== null ? "finalize_unposted" : "finalize_failed";
+		// warren-b68d: a pod-computed result whose push the REMOTE refused on
+		// policy grounds narrows one step further. `finalize_unposted` still wins
+		// the tie: no push was ever attempted, so a rejection cannot be live. The
+		// remediation itself already reached the operator — finalize appended
+		// `reap.push_rejected` and the pipeline replayed it.
+		if (state.finalizeUnposted !== null) {
+			failureReason = "finalize_unposted";
+		} else {
+			failureReason = state.pushRejectedByPolicy ? "push_rejected_policy" : "finalize_failed";
+		}
 	} else if (effectiveOutcome === "failed") {
 		failureReason =
 			input.failureReason ?? (await inferFailureReason(input.repos, run.id, stateOnEntry));
