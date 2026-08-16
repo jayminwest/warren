@@ -10,6 +10,71 @@ Releases **0.9.10 and earlier** live in
 
 ## [Unreleased]
 
+## [0.16.1] — 2026-08-16
+
+The dogfood release. Nearly every change here (#899–#923) was authored
+by warren-dispatched agents working warren's own tech-debt backlog —
+23 PRs dispatched, shepherded, and merged through the pipeline in a
+single day, at about $13 of total agent spend.
+
+### Added
+
+- `warren show --summary` / `warren wait --summary` — a compact
+  single-object projection of a run for scripts and agents
+  (warren-8447, #923).
+- `warren run --seed <id>` links the dispatched run to a seeds issue
+  at dispatch time (warren-ca2f, #920).
+- A machine-readable builtin-agents manifest, so downstream sites can
+  derive the agent roster from the code instead of prose (#917).
+- `gen:openapi` now emits `components:` response schemas in
+  `docs/openapi.yaml` instead of inlining everything (#919).
+- CI surfaces failing test names as GitHub annotations parsed from
+  `junit.xml` (warren-3144, #907).
+- `warren doctor` and the K8s dispatch path warn when
+  `WARREN_GIT_AUTHOR_NAME` / `WARREN_GIT_AUTHOR_EMAIL` are unset, so
+  agent commits don't silently attribute to the wrong identity
+  (warren-e7b7, #915).
+- `docker-compose.yml` host ports are env-parameterized for
+  multi-instance hosts (warren-d915, #911).
+
+### Fixed
+
+- CLI commands now actually read the bearer token from
+  `~/.warren/client.json` — `warren login` credentials were written
+  but never used by subsequent commands (#899).
+- `POST /runs` persists and echoes the requested `ref`, so
+  dispatchers can verify what they asked for (#916).
+- SDK and UI `RunRow` types carry the `provider` / `model` columns
+  the server already sends (#918).
+- The pre-auth preview-proxy preamble no longer runs on the public
+  instance outside the uniform-401 contract (#914).
+- Workspace GC converges: already-gone or destroyed burrows no longer
+  re-strand the same workspaces every sweep (#913).
+- The seeds JSONL merge driver auto-resolves timestamp-only conflicts
+  by `max()` (warren-5f0d, #910) and no longer commits pure-`ours`
+  content on an unresolvable conflict (#912).
+- `check:coverage` no longer truncates bun test output on exit
+  (warren-66a7, #906); the public-projections cost-leak test asserts
+  structurally (warren-6163, #908); acceptance scenario 39 rides out
+  the public instance's 10s healthz boot window instead of flaking
+  (#909).
+- Guard hardening: `check:wire-types` fails on a canonical wire name
+  outside its stem list instead of silently unenforcing it (#905),
+  and `check:layers` walks `scripts/` so forge-boundary hits there
+  are caught (#904).
+
+### Changed
+
+- All 32 grandfathered PascalCase/camelCase filenames in `src/ui`
+  renamed to kebab-case; the Biome exception list is now empty
+  (#922).
+- Operator docs: smoother GitHub App registration instructions
+  (#903), an `AUTO_MERGE_BOT_LOGIN` step in the K8s App-mode
+  migration runbook (warren-da62, #902), and forge-contract doc
+  cleanups (#900, #901, #921).
+- ROADMAP: the self-host push moves ahead of IssueTracker; new
+  corpus-flywheel design records land under `docs/design/`.
+
 ## [0.16.0] — 2026-08-15
 
 The analytics release. Warren now measures its own fleet: the

@@ -342,9 +342,9 @@ ratchet policies inline in `biome.jsonc`; both lists only shrink.
   dot-segment must itself be kebab-case. Biome's
   `useFilenamingConvention` rule enforces this.
 - **Filenames (`src/ui/`):** the same kebab-case rule applies as of
-  warren-c8bd. Write new UI files in kebab-case. To clear a
-  grandfathered entry, rename the file and delete its line in
-  `biome.jsonc`.
+  warren-c8bd. Write new UI files in kebab-case. PR #922 cleared the
+  grandfathered exception list in `biome.jsonc`, so the rule now
+  applies to every UI filename with no exceptions.
 - **Directories:** `kebab-case` (`src/burrow-client/`,
   `src/plan-runs/`, `src/warren-config/`).
 - **Identifiers:** `camelCase` for functions, variables, and instance
