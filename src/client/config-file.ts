@@ -59,8 +59,16 @@ export function loadWarrenClientConfigFromFile(
 			recoveryHint: "re-run `warren login --url <base>` to rewrite it",
 		});
 	}
+	// Trim the token on load (warren-c550): a hand-edited file with a
+	// trailing newline or space would otherwise produce a standalone
+	// `[unauthorized] invalid bearer token` — the credential visibly
+	// exists on disk, but every request carries the wrong bytes.
 	const token = record.token;
-	return typeof token === "string" && token !== "" ? { baseUrl, token } : { baseUrl };
+	if (typeof token === "string") {
+		const trimmed = token.trim();
+		return trimmed !== "" ? { baseUrl, token: trimmed } : { baseUrl };
+	}
+	return { baseUrl };
 }
 
 /**

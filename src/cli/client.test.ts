@@ -2,8 +2,8 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { DEFAULT_WARREN_BASE_URL } from "../client/index.ts";
-import { resolveWarrenClient } from "./client.ts";
+import { DEFAULT_WARREN_BASE_URL, WarrenClient } from "../client/index.ts";
+import { resolveClientConfig, resolveWarrenClient } from "./client.ts";
 
 // Point the config-file slot at a path that cannot exist, so a real
 // `~/.warren/client.json` on the dev machine (written by `warren login`)
@@ -68,6 +68,29 @@ describe("resolveWarrenClient", () => {
 			);
 			expect(flagWins.config.baseUrl).toBe("https://flag.example.com");
 			expect(flagWins.config.token).toBe("tok-file");
+		} finally {
+			await rm(dir, { recursive: true, force: true });
+		}
+	});
+
+	test("the file token actually rides the wire as the Authorization header (warren-c550)", async () => {
+		const dir = await mkdtemp(join(tmpdir(), "warren-client-test-"));
+		try {
+			const path = join(dir, "client.json");
+			await writeFile(
+				path,
+				JSON.stringify({ baseUrl: "https://file.example.com", token: "tok-file" }),
+			);
+			const config = resolveClientConfig({ WARREN_CLIENT_CONFIG: path });
+			let observedAuth: string | null = null;
+			const stubFetch = (async (_url: unknown, init?: RequestInit) => {
+				observedAuth = init?.headers ? new Headers(init.headers).get("authorization") : null;
+				return Response.json({ identity: "operator", capabilities: [] });
+			}) as unknown as typeof fetch;
+			const client = new WarrenClient({ config, fetch: stubFetch });
+			const who = await client.whoami();
+			expect(who.identity).toBe("operator");
+			expect(observedAuth as string | null).toBe("Bearer tok-file");
 		} finally {
 			await rm(dir, { recursive: true, force: true });
 		}
