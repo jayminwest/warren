@@ -38,10 +38,16 @@
  * a guard whose job is to stop the accidental regression. Note it, do not
  * route around it.
  *
- * The walk covers `src/` and `extensions/` (warren-0781, plan pl-116e): the
+ * The walk covers `src/`, `extensions/` (warren-0781, plan pl-116e — the
  * audit-log flagship is a standalone package inside this repo, and the two
  * extension-boundary rules in the manifest only have teeth if the walk reaches
- * both sides of the seam.
+ * both sides of the seam) and `scripts/` (warren-c042). The walk historically
+ * covered only `src/` since the guard's birth (warren-89a6); the one
+ * deliberate exclusion ever made was skipping generated output (`dist`,
+ * warren-30ef), which never applied to `scripts/`. Widening gives
+ * `core-does-not-import-extensions` its teeth over gate scripts and lets the
+ * forge pair now declare `scripts/` in `from` so an api.github.com literal
+ * cannot silently return there (docs/design/forge-contract.md §7).
  *
  * Chained into `bun run lint` (alongside check-version-sync.ts,
  * check-wire-types.ts and check-prose.ts) in the slot check-burrow-boundary.ts
@@ -196,7 +202,7 @@ export function loadRules(repoRoot: string = REPO_ROOT): LayerRule[] {
 }
 
 /** Directory trees the walk covers, relative to the repo root. */
-export const WALK_ROOTS = ["src", "extensions"] as const;
+export const WALK_ROOTS = ["src", "extensions", "scripts"] as const;
 
 /** Walk every WALK_ROOTS tree under `repoRoot` and collect every violation. */
 export function scan(

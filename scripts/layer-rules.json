@@ -88,8 +88,8 @@
 		},
 		{
 			"name": "github-api-literal-is-forge-only",
-			"why": "The api.github.com literal lives only inside the forge seam (docs/design/forge-contract.md §0). Domain code names a RepoRef, never a GitHub URL; a new literal outside src/forge/ is a leak across the seam.",
-			"from": ["src/"],
+			"why": "The api.github.com literal lives only inside the forge seam (docs/design/forge-contract.md §0). Domain code names a RepoRef, never a GitHub URL; a new literal outside src/forge/ is a leak across the seam. scripts/ joined `from` in warren-c042 when the walk widened to cover it.",
+			"from": ["src/", "scripts/"],
 			"forbidPattern": "api\\.github\\.com",
 			"allow": [
 				{ "path": "src/forge/", "why": "the forge seam itself — it owns the GitHub transport" }
@@ -98,7 +98,7 @@
 		{
 			"name": "forge-transport-is-forge-only",
 			"why": "GitHub transport (src/forge/github/ internals, octokit-family packages) is reached only through the Forge contract (src/forge/contract.ts). The allow list below is the phase-3 ratchet (plan pl-d1c9): it only shrinks, and reaches zero when the callers migrate onto the seam.",
-			"from": ["src/"],
+			"from": ["src/", "scripts/"],
 			"forbidImports": [
 				"src/forge/github/",
 				"octokit",
@@ -106,7 +106,13 @@
 				"@octokit/core",
 				"@octokit/request"
 			],
-			"allow": [{ "path": "src/forge/", "why": "the seam itself" }]
+			"allow": [
+				{ "path": "src/forge/", "why": "the seam itself" },
+				{
+					"path": "scripts/acceptance/lib/github.ts",
+					"why": "the acceptance harness's GitHub helper deliberately reuses the seam's header builder and GITHUB_API_BASE instead of carrying a fifth copy (warren-2740) — it adds no new transport"
+				}
+			]
 		},
 		{
 			"name": "core-kernel-imports-nothing",

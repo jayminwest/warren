@@ -325,6 +325,63 @@ describe("scan — walk scope", () => {
 	});
 });
 
+describe("scan — the widened scripts/ walk (warren-c042)", () => {
+	test("the walk reaches scripts/: a scripts file importing an extension is flagged", () => {
+		// `core-does-not-import-extensions` declares scripts/ in `from` and was
+		// inert before the walk widened. This fixture has no src/ tree at all —
+		// a hit proves the scripts/ walk exists.
+		withFixtureRepo(
+			{
+				"scripts/foo.ts": 'import { z } from "../extensions/audit-log/src/index.ts";\n',
+			},
+			(dir) => {
+				expect(scan(dir, RULES).map((v) => v.rule)).toEqual(["core-does-not-import-extensions"]);
+			},
+		);
+	});
+
+	test("flags an api.github.com literal in scripts/", () => {
+		withFixtureRepo(
+			{
+				"scripts/acceptance/scenarios/99-foo.ts":
+					'const BASE = "https://api.github.com/repos/o/r";\n',
+			},
+			(dir) => {
+				expect(scan(dir, RULES).map((v) => v.rule)).toEqual(["github-api-literal-is-forge-only"]);
+			},
+		);
+	});
+
+	test("the forge literal rule spares source-level comments in scripts/", () => {
+		withFixtureRepo(
+			{
+				"scripts/acceptance/scenarios/99-foo.ts":
+					" * hits the `api.github.com` check-runs endpoint\n",
+			},
+			(dir) => {
+				expect(scan(dir, RULES)).toEqual([]);
+			},
+		);
+	});
+
+	test("flags a scripts file importing forge transport, except the acceptance seam helper", () => {
+		withFixtureRepo(
+			{
+				"scripts/acceptance/lib/github.ts":
+					'import { GITHUB_API_BASE } from "../../../src/forge/github/headers.ts";\n',
+				"scripts/fresh-client.ts":
+					'import { request } from "octokit";\nimport { h } from "../src/forge/github/headers.ts";\n',
+			},
+			(dir) => {
+				expect(scan(dir, RULES).map((v) => `${v.rule} ${v.file} ${v.line}`)).toEqual([
+					"forge-transport-is-forge-only scripts/fresh-client.ts 1",
+					"forge-transport-is-forge-only scripts/fresh-client.ts 2",
+				]);
+			},
+		);
+	});
+});
+
 describe("scan — the extension boundary (warren-0781, plan pl-116e)", () => {
 	test("flags an extension importing warren's src/ or scripts/", () => {
 		withFixtureRepo(
