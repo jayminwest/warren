@@ -326,7 +326,7 @@ export interface FinalizeIntent {
 	resetSeededPaths?: ReadonlyArray<{ path: string; contents: string }>;
 	/**
 	 * Per-spawn minted git credential for `branch_push` (warren-4e1c, forge
-	 * contract §4.2 — minted via `mintGitCredentialSecret` immediately before
+	 * contract §4 — minted via `mintGitCredentialSecret` immediately before
 	 * `finalize`, never held on a config object). LocalProvider splices it into
 	 * the push's `GIT_CONFIG_*` env; K8s prefers it over the env-derived token.
 	 * Undefined ⇒ anonymous push. */
