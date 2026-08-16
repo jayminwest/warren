@@ -190,7 +190,7 @@ export async function pushCloneDeltasToOrigin(
 	ref: string,
 ): Promise<boolean> {
 	try {
-		// warren-4e1c: per-spawn minted credential (forge-contract.md §4.2 —
+		// warren-4e1c: per-spawn minted credential (forge-contract.md §4 —
 		// minted HERE, immediately before the push spawn, never held). A mint
 		// failure throws inside this try and degrades to `clone_apply_push` +
 		// suppressed auto-dispatch, exactly like a rejected push.

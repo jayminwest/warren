@@ -401,7 +401,7 @@ async function finalizePush(
 	const refspec = intent.branch === "" ? "HEAD" : `HEAD:${intent.branch}`;
 	try {
 		// warren-4e1c: the push authenticates with the per-spawn credential the
-		// domain minted onto the intent (forge-contract.md §4.2); empty/absent
+		// domain minted onto the intent (forge-contract.md §4); empty/absent
 		// yields `{}` and anonymous push, the pre-forge behavior.
 		await exec.run("git", ["push", "origin", refspec], {
 			cwd: workspacePath,

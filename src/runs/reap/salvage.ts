@@ -37,7 +37,7 @@ export interface WorkspaceSalvageInput {
 	readonly salvageDir?: string;
 	/**
 	 * Per-spawn minted git credential for the rescue-ref push (warren-4e1c,
-	 * forge-contract.md §4.2 — minted by the caller immediately before this
+	 * forge-contract.md §4 — minted by the caller immediately before this
 	 * call via `mintGitCredentialSecret`, never held on a config object).
 	 * Undefined ⇒ anonymous push, the pre-forge behavior for a forge that owns
 	 * no credential for the URL.

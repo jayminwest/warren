@@ -75,7 +75,7 @@ export function createPlanRunHandler(deps: ServerDeps): RouteHandler {
 
 		const projectId = requireString(body, "project");
 		// warren-6c4c: mint the pre-dispatch refresh-fetch credential per-spawn
-		// through the boot forge (forge-contract.md §4.2); no config object
+		// through the boot forge (forge-contract.md §4); no config object
 		// holds a token.
 		const project = await deps.repos.projects.require(projectId);
 		const gitSecret = await mintGitCredentialSecret(deps.forge, project.gitUrl);
