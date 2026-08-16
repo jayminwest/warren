@@ -5,7 +5,7 @@ import { Link } from "react-router-dom";
 import { projectsApi } from "@/api/client.ts";
 import type { ProjectRow } from "@/api/types.ts";
 import { OperatorOnly, useOperatorHint } from "@/components/OperatorOnly.tsx";
-import { RefreshProjectsCTA } from "@/components/RefreshProjectsCTA.tsx";
+import { RefreshProjectsCTA } from "@/components/refresh-projects-cta.tsx";
 import { Alert } from "@/components/ui/alert.tsx";
 import { Button } from "@/components/ui/button.tsx";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card.tsx";

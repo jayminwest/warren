@@ -62,7 +62,7 @@ describe("useCapabilities (warren-f53e)", () => {
 	});
 
 	test("both token-mutating sites clear the cache so the answer is re-asked", () => {
-		expect(read("components", "Layout.tsx")).toMatch(
+		expect(read("components", "layout.tsx")).toMatch(
 			/setApiToken\(null\);[\s\S]{0,400}qc\.clear\(\)/,
 		);
 		expect(read("pages", "Login.tsx")).toMatch(/qc\.clear\(\)/);
@@ -70,7 +70,7 @@ describe("useCapabilities (warren-f53e)", () => {
 });
 
 describe("AuthGate lets an anonymous visitor through (warren-f53e)", () => {
-	const gate = read("components", "AuthGate.tsx");
+	const gate = read("components", "auth-gate.tsx");
 
 	test("decides from the capability layer, not from a stored token", () => {
 		expect(gate).toMatch(/useCapabilities/);
@@ -91,7 +91,7 @@ describe("AuthGate lets an anonymous visitor through (warren-f53e)", () => {
 
 describe("route guards and nav filtering (warren-f53e)", () => {
 	const app = read("App.tsx");
-	const layout = read("components", "Layout.tsx");
+	const layout = read("components", "layout.tsx");
 
 	test("both dispatch forms are wrapped in OperatorRoute", () => {
 		for (const page of ["NewRunPage", "NewPlanRunPage"]) {
@@ -132,7 +132,7 @@ describe("route guards and nav filtering (warren-f53e)", () => {
  * only reason to exist is the dispatch it submits).
  */
 describe("every mutation site sits behind the one gate (warren-f53e)", () => {
-	const GATED_ELSEWHERE = new Set(["RefreshProjectsCTA.tsx", "NewRun.tsx"]);
+	const GATED_ELSEWHERE = new Set(["refresh-projects-cta.tsx", "NewRun.tsx"]);
 
 	test("no file calls useMutation without importing OperatorOnly", () => {
 		const offenders: string[] = [];
@@ -233,9 +233,9 @@ describe("redacted wire fields render on presence (warren-f53e)", () => {
 	});
 
 	test("the run-analytics consumers guard the redacted cost fields", () => {
-		const kpi = read("pages", "run-analytics", "KpiCards.tsx");
-		const tables = read("pages", "run-analytics", "Tables.tsx");
-		const tokenStats = read("pages", "run-analytics", "TokenStats.tsx");
+		const kpi = read("pages", "run-analytics", "kpi-cards.tsx");
+		const tables = read("pages", "run-analytics", "tables.tsx");
+		const tokenStats = read("pages", "run-analytics", "token-stats.tsx");
 		// KpiCards: the `Total cost` card renders only when `cost` is present.
 		expect(kpi).toMatch(/cost !== undefined \?/);
 		expect(kpi).not.toMatch(/totals\.cost\.total/);
@@ -329,7 +329,7 @@ describe("demo polish (warren-f53e)", () => {
 	});
 
 	test("the plot-era residue is gone from the two files that carried it", () => {
-		const cta = read("components", "RefreshProjectsCTA.tsx");
+		const cta = read("components", "refresh-projects-cta.tsx");
 		// Dead cache invalidations for surfaces deleted in pl-3a79.
 		expect(cta).not.toMatch(/\["plots"\]/);
 		expect(cta).not.toMatch(/\["plot"\]/);

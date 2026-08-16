@@ -17,11 +17,11 @@ import { useEffect, useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { metaApi, setApiToken } from "@/api/client.ts";
 import type { CapabilityName } from "@/api/types.ts";
-import { ErrorBoundary } from "@/components/ErrorBoundary.tsx";
+import { ErrorBoundary } from "@/components/error-boundary.tsx";
 import { OperatorOnly } from "@/components/OperatorOnly.tsx";
-import { ThemeToggle } from "@/components/ThemeToggle.tsx";
+import { ThemeToggle } from "@/components/theme-toggle.tsx";
 import { Button } from "@/components/ui/button.tsx";
-import { WarrenLogo } from "@/components/WarrenLogo.tsx";
+import { WarrenLogo } from "@/components/warren-logo.tsx";
 import { useCapabilities } from "@/hooks/use-capabilities.ts";
 import { cn } from "@/lib/utils.ts";
 

@@ -135,7 +135,7 @@
 				"src/ui/src/pages/run-detail-events.tsx",
 				"src/ui/src/pages/Runs.tsx",
 				"src/ui/src/pages/plan-run-detail/child-table.tsx",
-				"src/ui/src/pages/run-analytics/TokenConsumptionChart.tsx"
+				"src/ui/src/pages/run-analytics/token-consumption-chart.tsx"
 			],
 			"linter": {
 				"rules": {
@@ -151,16 +151,9 @@
 		{
 			"includes": [
 				"src/ui/src/App.tsx",
-				"src/ui/src/components/AuthGate.tsx",
-				"src/ui/src/components/ErrorBoundary.tsx",
-				"src/ui/src/components/Layout.tsx",
 				"src/ui/src/components/OperatorOnly.tsx",
 				"src/ui/src/components/PlanRunStateBadge.tsx",
-				"src/ui/src/components/RefreshProjectsCTA.tsx",
-				"src/ui/src/components/StateBadge.tsx",
 				"src/ui/src/components/StatusIndicator.tsx",
-				"src/ui/src/components/ThemeToggle.tsx",
-				"src/ui/src/components/WarrenLogo.tsx",
 				"src/ui/src/hooks/useEventStream.ts",
 				"src/ui/src/hooks/useTheme.ts",
 				"src/ui/src/pages/Agents.tsx",
@@ -174,14 +167,7 @@
 				"src/ui/src/pages/Projects.tsx",
 				"src/ui/src/pages/RunAnalytics.tsx",
 				"src/ui/src/pages/RunDetail.tsx",
-				"src/ui/src/pages/Runs.tsx",
-				"src/ui/src/pages/run-analytics/Charts.tsx",
-				"src/ui/src/pages/run-analytics/CommandMining.tsx",
-				"src/ui/src/pages/run-analytics/Insights.tsx",
-				"src/ui/src/pages/run-analytics/KpiCards.tsx",
-				"src/ui/src/pages/run-analytics/Tables.tsx",
-				"src/ui/src/pages/run-analytics/TokenConsumptionChart.tsx",
-				"src/ui/src/pages/run-analytics/TokenStats.tsx"
+				"src/ui/src/pages/Runs.tsx"
 			],
 			"linter": {
 				"rules": {

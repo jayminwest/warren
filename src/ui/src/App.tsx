@@ -1,8 +1,8 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { lazy, Suspense } from "react";
 import { HashRouter, Navigate, Route, Routes } from "react-router-dom";
-import { AuthGate } from "@/components/AuthGate.tsx";
-import { Layout } from "@/components/Layout.tsx";
+import { AuthGate } from "@/components/auth-gate.tsx";
+import { Layout } from "@/components/layout.tsx";
 import { OperatorRoute } from "@/components/OperatorOnly.tsx";
 import { MotionProvider } from "@/components/ui/motion.tsx";
 import { ToastProvider } from "@/components/ui/toast.tsx";
