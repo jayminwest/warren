@@ -277,7 +277,12 @@ function PlanRunListRow({
 	const detail = useQuery({
 		queryKey: ["plan-runs", planRunId],
 		queryFn: ({ signal }) => planRunsApi.get(planRunId, signal),
-		refetchInterval: 5000,
+		// warren-f566: the lifecycle stream invalidates `["plan-runs"]`, which
+		// prefix-matches this per-row key, so this is only the slow fallback for
+		// public mode / dropped notifications — same posture as the list query
+		// above. At 5s it was the N+1 the issue named: one request per row per
+		// 5s per open tab, so a 20-row page out-polled the list twelvefold.
+		refetchInterval: 45_000,
 	});
 	const counts = formatChildStateCounts(detail.data?.children ?? []);
 	const cost = summarizeCost(detail.data?.runs ?? []);
