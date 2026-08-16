@@ -1,6 +1,6 @@
 import { Monitor, Moon, Sun } from "lucide-react";
 import { Button } from "@/components/ui/button.tsx";
-import { type Theme, useTheme } from "@/hooks/useTheme.ts";
+import { type Theme, useTheme } from "@/hooks/use-theme.ts";
 
 const NEXT: Record<Theme, Theme> = {
 	light: "dark",

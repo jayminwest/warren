@@ -65,7 +65,7 @@ describe("useCapabilities (warren-f53e)", () => {
 		expect(read("components", "layout.tsx")).toMatch(
 			/setApiToken\(null\);[\s\S]{0,400}qc\.clear\(\)/,
 		);
-		expect(read("pages", "Login.tsx")).toMatch(/qc\.clear\(\)/);
+		expect(read("pages", "login.tsx")).toMatch(/qc\.clear\(\)/);
 	});
 });
 
@@ -90,7 +90,7 @@ describe("AuthGate lets an anonymous visitor through (warren-f53e)", () => {
 });
 
 describe("route guards and nav filtering (warren-f53e)", () => {
-	const app = read("App.tsx");
+	const app = read("app.tsx");
 	const layout = read("components", "layout.tsx");
 
 	test("both dispatch forms are wrapped in OperatorRoute", () => {
@@ -100,7 +100,7 @@ describe("route guards and nav filtering (warren-f53e)", () => {
 	});
 
 	test("OperatorRoute bounces to a surface every caller can read", () => {
-		const guard = read("components", "OperatorOnly.tsx");
+		const guard = read("components", "operator-only.tsx");
 		expect(guard).toMatch(/<Navigate to="\/runs" replace \/>/);
 		// Waits for the answer rather than bouncing an operator mid-load.
 		expect(guard).toMatch(/status === "loading"\) return null/);
@@ -128,11 +128,11 @@ describe("route guards and nav filtering (warren-f53e)", () => {
  * `mutationFn` is the marker — a `useMutation` is the only way the UI
  * writes. The exemptions are NAMED, not pattern-matched, and each is
  * asserted separately below: `RefreshProjectsCTA.tsx` is a leaf gated by
- * its caller, and `NewRun.tsx` is a whole page guarded at the route (its
+ * its caller, and `new-run.tsx` is a whole page guarded at the route (its
  * only reason to exist is the dispatch it submits).
  */
 describe("every mutation site sits behind the one gate (warren-f53e)", () => {
-	const GATED_ELSEWHERE = new Set(["refresh-projects-cta.tsx", "NewRun.tsx"]);
+	const GATED_ELSEWHERE = new Set(["refresh-projects-cta.tsx", "new-run.tsx"]);
 
 	test("no file calls useMutation without importing OperatorOnly", () => {
 		const offenders: string[] = [];
@@ -148,7 +148,7 @@ describe("every mutation site sits behind the one gate (warren-f53e)", () => {
 	});
 
 	test("the caller-gated leaf is gated by every one of its callers", () => {
-		const projects = read("pages", "Projects.tsx");
+		const projects = read("pages", "projects.tsx");
 		expect(projects).toMatch(
 			/<OperatorOnly capability="admin">\s*<RefreshProjectsCTA \/>\s*<\/OperatorOnly>/,
 		);
@@ -164,16 +164,16 @@ describe("every mutation site sits behind the one gate (warren-f53e)", () => {
 		// ROUTE_TABLE (warren-b875). The canopy `/agents/refresh` routes were
 		// removed in the deletion pass (warren-6fcd), so the Agents page no
 		// longer carries an admin mutation control.
-		expect(read("pages", "Projects.tsx")).toMatch(
+		expect(read("pages", "projects.tsx")).toMatch(
 			/<OperatorOnly capability="admin">\s*<AddProjectForm/,
 		);
-		expect(read("pages", "NewPlanRun.tsx")).toMatch(/<OperatorOnly capability="admin">/);
+		expect(read("pages", "new-plan-run.tsx")).toMatch(/<OperatorOnly capability="admin">/);
 	});
 });
 
 describe("redacted wire fields render on presence (warren-f53e)", () => {
 	const types = read("api", "types.ts");
-	const runDetail = read("pages", "RunDetail.tsx");
+	const runDetail = read("pages", "run-detail.tsx");
 
 	test("the fields the public projection drops are optional in the row types", () => {
 		// `undefined !== null` is TRUE — the exact shape that blanked every
@@ -200,13 +200,13 @@ describe("redacted wire fields render on presence (warren-f53e)", () => {
 	});
 
 	test("the runs list renders its all-time cost tile on presence", () => {
-		const runs = read("pages", "Runs.tsx");
+		const runs = read("pages", "runs.tsx");
 		expect(runs).toMatch(/total: runs\.data\?\.costTotalUsd,/);
 		expect(runs).toMatch(/costTotals\.total !== undefined/);
 	});
 
 	test("the agents panel reads the flat metadata that survives projection", () => {
-		const agents = read("pages", "Agents.tsx");
+		const agents = read("pages", "agents.tsx");
 		expect(agents).toMatch(/agent\.provider \?\?/);
 		expect(agents).toMatch(/agent\.model \?\?/);
 		// The rendered envelope (system prompt, canopy paths) is dropped for
@@ -260,7 +260,7 @@ describe("redacted wire fields render on presence (warren-f53e)", () => {
  */
 describe("empty states don't point a spectator at a hidden control (warren-b67b)", () => {
 	test("the hint hook yields the copy only for a caller holding the capability", () => {
-		const guard = read("components", "OperatorOnly.tsx");
+		const guard = read("components", "operator-only.tsx");
 		expect(guard).toMatch(/export function useOperatorHint\(/);
 		expect(guard).toMatch(/return caps\.can\(capability\) \? hint : undefined;/);
 	});
@@ -273,7 +273,7 @@ describe("empty states don't point a spectator at a hidden control (warren-b67b)
 	});
 
 	test("the two dispatch lists gate their instruction on `dispatch`", () => {
-		for (const page of ["Runs.tsx", "PlanRuns.tsx"]) {
+		for (const page of ["runs.tsx", "plan-runs.tsx"]) {
 			const src = read("pages", page);
 			expect(src).toMatch(/useOperatorHint\("Dispatch one above\."\)/);
 			expect(src).toMatch(/description=\{emptyHint\}/);
@@ -284,7 +284,7 @@ describe("empty states don't point a spectator at a hidden control (warren-b67b)
 		// `POST /projects` is `admin`, not `dispatch` (warren-b875) — gating
 		// the copy on `dispatch` would print it for a caller who still can't
 		// see the form.
-		const projects = read("pages", "Projects.tsx");
+		const projects = read("pages", "projects.tsx");
 		expect(projects).toMatch(/useOperatorHint\("Add one with a GitHub URL above\.", "admin"\)/);
 		expect(projects).toMatch(/description=\{emptyHint\}/);
 	});
@@ -296,7 +296,7 @@ describe("empty states don't point a spectator at a hidden control (warren-b67b)
 	 * That catches a fourth page without this test naming it.
 	 *
 	 * One named exemption, in the style of `GATED_ELSEWHERE` above:
-	 * `ready-plans.tsx` lives inside a `readOperator` tab that `PlanRuns.tsx`
+	 * `ready-plans.tsx` lives inside a `readOperator` tab that `plan-runs.tsx`
 	 * drops for a spectator, so its "choose one above" never reaches one.
 	 *
 	 * Expression descriptions are outside the guard by design — the Agents
@@ -320,7 +320,7 @@ describe("empty states don't point a spectator at a hidden control (warren-b67b)
 
 describe("demo polish (warren-f53e)", () => {
 	test("the steer form sits above the 480px event tail", () => {
-		const runDetail = read("pages", "RunDetail.tsx");
+		const runDetail = read("pages", "run-detail.tsx");
 		const steer = runDetail.indexOf("<SteerForm");
 		const tail = runDetail.indexOf("<EventTail");
 		expect(steer).toBeGreaterThan(-1);
@@ -334,7 +334,7 @@ describe("demo polish (warren-f53e)", () => {
 		expect(cta).not.toMatch(/\["plots"\]/);
 		expect(cta).not.toMatch(/\["plot"\]/);
 		expect(cta).not.toMatch(/discover new Plots/);
-		const status = read("components", "StatusIndicator.tsx");
+		const status = read("components", "status-indicator.tsx");
 		expect(status).not.toMatch(/PLOT_STATUS/);
 		expect(status).not.toMatch(/^\tplot: /m);
 	});

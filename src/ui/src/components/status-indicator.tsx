@@ -9,8 +9,8 @@
  * optional `motion-safe:animate-pulse` hint — is centralised in
  * `<StatusIndicator>`. The legacy wrappers (`StateBadge`,
  * `PlanRunStateBadge`, `PlanRunChildStateBadge`,
- * the inline `PreviewStateBadge` in `RunDetail.tsx`, and the
- * inline `statusVariant()` switch in `RunDetail.tsx`) all delegate
+ * the inline `PreviewStateBadge` in `run-detail.tsx`, and the
+ * inline `statusVariant()` switch in `run-detail.tsx`) all delegate
  * here so adding a new state or swapping a colour token is a
  * one-line change rather than a multi-file grep.
  *

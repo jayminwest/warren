@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ApiError, agentsApi, planRunsApi, projectsApi } from "@/api/client.ts";
-import { OperatorOnly } from "@/components/OperatorOnly.tsx";
+import { OperatorOnly } from "@/components/operator-only.tsx";
 import { Button } from "@/components/ui/button.tsx";
 import {
 	Dialog,

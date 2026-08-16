@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils.ts";
  * Phase 6 layout primitive (warren-e6b3 / pl-55a3 step 7):
  *
  * FilterPill — the canonical "rounded chip toggle" surface. Extracted
- * from Runs.tsx's inline FilterPill (the original implementation) so
+ * from runs.tsx's inline FilterPill (the original implementation) so
  * every filter strip can share the active / hover / focus treatment.
  *
  * Active pills paint with the primary token; inactive pills sit on

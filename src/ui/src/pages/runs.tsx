@@ -3,7 +3,7 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { agentsApi, projectsApi, runsApi } from "@/api/client.ts";
-import { OperatorOnly, useOperatorHint } from "@/components/OperatorOnly.tsx";
+import { OperatorOnly, useOperatorHint } from "@/components/operator-only.tsx";
 import { StateBadge } from "@/components/state-badge.tsx";
 import { Alert } from "@/components/ui/alert.tsx";
 import { Button } from "@/components/ui/button.tsx";
@@ -25,7 +25,7 @@ import {
 } from "@/components/ui/table.tsx";
 import { formatError } from "@/lib/format-error.ts";
 import { relativeTime } from "@/lib/utils.ts";
-import { formatCostUsd } from "./RunDetail.tsx";
+import { formatCostUsd } from "./run-detail.tsx";
 
 // Cost column is on by default (warren-a7ec): pi runs are the common
 // runtime today and hydrate `costUsd` via in-stream extraction

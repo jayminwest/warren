@@ -286,7 +286,7 @@ appear in one stream (mixed runtimes — unlikely in practice), pi wins
 for parity with the pre-warren-87f9 behavior. `sapling` runs leave every
 column `null` (no terminal cost emission yet — separate seed). RPC
 failures are logged as a system event and do not fail the run.
-`RunDetail.tsx` renders a header cost badge using `formatCostUsd()`
+`run-detail.tsx` renders a header cost badge using `formatCostUsd()`
 (`mx-9d987a`): `≥$1` → 2 decimals, `<$1` → 3 decimals; badge omitted
 when `cost_usd` is `null`. `Runs.tsx` adds an opt-in Cost column
 (hidden by default, toggled via the toolbar).
@@ -302,7 +302,7 @@ reporting (observability); the budget rollups remain the deferred half.
 `auto_retry_start`/`end`, `extension_error`, `queue_update`) is
 collapsed by burrow's pi parser (`src/runtime/parsers/pi.ts`) into
 burrow's stable event taxonomy, with the original pi envelope `type`
-preserved in `payload.type`. `RunDetail.tsx` `EventLine` detects pi
+preserved in `payload.type`. `run-detail.tsx` `EventLine` detects pi
 sub-kinds by peeking at `payload.type` when `event.kind` is
 `state_change` or `telemetry` (`mx-66ff69`); `PI_SUBKIND_LABELS` maps
 each to a friendlier display label; `extension_error` additionally tints

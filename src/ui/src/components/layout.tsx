@@ -18,7 +18,7 @@ import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { metaApi, setApiToken } from "@/api/client.ts";
 import type { CapabilityName } from "@/api/types.ts";
 import { ErrorBoundary } from "@/components/error-boundary.tsx";
-import { OperatorOnly } from "@/components/OperatorOnly.tsx";
+import { OperatorOnly } from "@/components/operator-only.tsx";
 import { ThemeToggle } from "@/components/theme-toggle.tsx";
 import { Button } from "@/components/ui/button.tsx";
 import { WarrenLogo } from "@/components/warren-logo.tsx";

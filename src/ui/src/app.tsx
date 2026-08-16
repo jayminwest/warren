@@ -3,30 +3,30 @@ import { lazy, Suspense } from "react";
 import { HashRouter, Navigate, Route, Routes } from "react-router-dom";
 import { AuthGate } from "@/components/auth-gate.tsx";
 import { Layout } from "@/components/layout.tsx";
-import { OperatorRoute } from "@/components/OperatorOnly.tsx";
+import { OperatorRoute } from "@/components/operator-only.tsx";
 import { MotionProvider } from "@/components/ui/motion.tsx";
 import { ToastProvider } from "@/components/ui/toast.tsx";
 import { useLifecycleStreamInvalidation } from "@/hooks/use-lifecycle-stream-invalidation.ts";
-import { AgentsPage } from "@/pages/Agents.tsx";
-import { LoginPage } from "@/pages/Login.tsx";
-import { NewPlanRunPage } from "@/pages/NewPlanRun.tsx";
-import { NewRunPage } from "@/pages/NewRun.tsx";
-import { PlanRunDetailPage } from "@/pages/PlanRunDetail.tsx";
-import { PlanRunsPage } from "@/pages/PlanRuns.tsx";
-import { ProjectDetailPage } from "@/pages/ProjectDetail.tsx";
-import { ProjectsPage } from "@/pages/Projects.tsx";
-import { RunDetailPage } from "@/pages/RunDetail.tsx";
-import { RunsPage } from "@/pages/Runs.tsx";
+import { AgentsPage } from "@/pages/agents.tsx";
+import { LoginPage } from "@/pages/login.tsx";
+import { NewPlanRunPage } from "@/pages/new-plan-run.tsx";
+import { NewRunPage } from "@/pages/new-run.tsx";
+import { PlanRunDetailPage } from "@/pages/plan-run-detail.tsx";
+import { PlanRunsPage } from "@/pages/plan-runs.tsx";
+import { ProjectDetailPage } from "@/pages/project-detail.tsx";
+import { ProjectsPage } from "@/pages/projects.tsx";
+import { RunDetailPage } from "@/pages/run-detail.tsx";
+import { RunsPage } from "@/pages/runs.tsx";
 
 // recharts is heavy and tree-shakes poorly (warren-876c). The two
 // analytics pages are its only consumers, so they're code-split into a
 // lazy chunk — recharts stays out of the initial-load bundle and the
 // main chunk holds near the pre-recharts floor (warren-638a / pl-ad0f).
 const CostAnalyticsPage = lazy(() =>
-	import("@/pages/CostAnalytics.tsx").then((m) => ({ default: m.CostAnalyticsPage })),
+	import("@/pages/cost-analytics.tsx").then((m) => ({ default: m.CostAnalyticsPage })),
 );
 const RunAnalyticsPage = lazy(() =>
-	import("@/pages/RunAnalytics.tsx").then((m) => ({ default: m.RunAnalyticsPage })),
+	import("@/pages/run-analytics.tsx").then((m) => ({ default: m.RunAnalyticsPage })),
 );
 
 const queryClient = new QueryClient({

@@ -9,8 +9,8 @@ import type {
 	PlanRunStateFilter,
 	RunRow,
 } from "@/api/types.ts";
-import { OperatorOnly, useOperatorHint } from "@/components/OperatorOnly.tsx";
-import { PlanRunStateBadge } from "@/components/PlanRunStateBadge.tsx";
+import { OperatorOnly, useOperatorHint } from "@/components/operator-only.tsx";
+import { PlanRunStateBadge } from "@/components/plan-run-state-badge.tsx";
 import { Alert } from "@/components/ui/alert.tsx";
 import { Button } from "@/components/ui/button.tsx";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card.tsx";
@@ -32,8 +32,8 @@ import { type Comparator, compareStrings, useClientSort } from "@/hooks/use-clie
 import { formatError } from "@/lib/format-error.ts";
 import { formatChildStateCounts } from "@/lib/labels.ts";
 import { relativeTime } from "@/lib/utils.ts";
-import { formatCostUsd } from "./RunDetail.tsx";
 import { ReadyPlansView } from "./ready-plans.tsx";
+import { formatCostUsd } from "./run-detail.tsx";
 
 type PlanRunsTab = "plan-runs" | "ready";
 

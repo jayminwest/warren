@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import { Link } from "react-router-dom";
 import type { PlanRunChildRow, RunRow } from "@/api/types.ts";
-import { PlanRunChildStateBadge } from "@/components/PlanRunStateBadge.tsx";
+import { PlanRunChildStateBadge } from "@/components/plan-run-state-badge.tsx";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card.tsx";
 import {
 	Table,

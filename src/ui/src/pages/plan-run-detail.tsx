@@ -4,8 +4,8 @@ import { useParams } from "react-router-dom";
 import { planRunsApi } from "@/api/client.ts";
 import type { PlanRunRow, RunRow } from "@/api/types.ts";
 import { isTerminalPlanRunState } from "@/api/types.ts";
-import { OperatorOnly } from "@/components/OperatorOnly.tsx";
-import { PlanRunStateBadge } from "@/components/PlanRunStateBadge.tsx";
+import { OperatorOnly } from "@/components/operator-only.tsx";
+import { PlanRunStateBadge } from "@/components/plan-run-state-badge.tsx";
 import { Alert } from "@/components/ui/alert.tsx";
 import { Button } from "@/components/ui/button.tsx";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card.tsx";
@@ -14,7 +14,7 @@ import { formatError } from "@/lib/format-error.ts";
 import { formatPlanRunFailureReason } from "@/lib/labels.ts";
 import { formatTimestamp, relativeTime } from "@/lib/utils.ts";
 import { PlanRunChildTable } from "./plan-run-detail/child-table.tsx";
-import { formatCostUsd } from "./RunDetail.tsx";
+import { formatCostUsd } from "./run-detail.tsx";
 
 const ACTIVE_STATES = new Set<PlanRunRow["state"]>(["queued", "running"]);
 

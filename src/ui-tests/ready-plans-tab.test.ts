@@ -5,7 +5,7 @@
  * The warren UI package (src/ui) intentionally ships without a React
  * test harness (no jsdom, no @testing-library, mx-a86ce6), so the tab
  * + one-click-dispatch behaviour is pinned at the source level: this
- * file readFileSyncs PlanRuns.tsx and ready-plans.tsx and asserts the
+ * file readFileSyncs plan-runs.tsx and ready-plans.tsx and asserts the
  * invariants from pl-3fc4 step 7 that a future regression would break.
  */
 
@@ -14,7 +14,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 const UI_PAGES = join(import.meta.dir, "..", "ui", "src", "pages");
-const PLAN_RUNS_SOURCE = readFileSync(join(UI_PAGES, "PlanRuns.tsx"), "utf8");
+const PLAN_RUNS_SOURCE = readFileSync(join(UI_PAGES, "plan-runs.tsx"), "utf8");
 const READY_PLANS_SOURCE = readFileSync(join(UI_PAGES, "ready-plans.tsx"), "utf8");
 
 describe("PlanRuns 'Ready to dispatch' tab (pl-3fc4 step 7)", () => {

@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { agentsApi, projectsApi } from "@/api/client.ts";
 import type { AgentRow } from "@/api/types.ts";
-import { OperatorOnly, useOperatorHint } from "@/components/OperatorOnly.tsx";
+import { OperatorOnly, useOperatorHint } from "@/components/operator-only.tsx";
 import { Alert } from "@/components/ui/alert.tsx";
 import { Badge } from "@/components/ui/badge.tsx";
 import { Button } from "@/components/ui/button.tsx";
