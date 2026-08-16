@@ -19,24 +19,13 @@
  * exercised against a mocked watch. The `Watch.watch` low-level callback API is
  * the most mockable seam the library exposes.
  *
- * ## Reconnect story (design doc §1.3 "watch latency ~1-2s")
- *   - Initial `list` seeds the cache and captures a `resourceVersion`.
- *   - `watch` resumes from that `resourceVersion`; each event advances it, so a
- *     clean disconnect RESUMES without a relist (no missed events, no dup work).
- *   - A `410 Gone` (resourceVersion aged out of etcd's window) forces a full
- *     relist — the only correct recovery — refreshing the cache + version.
- *   - Any other disconnect reconnects after an exponential backoff, resuming
- *     from the last `resourceVersion`. Every reconnect bumps the reconnect
- *     counter.
- *
- * ## Periodic resync (warren-4f2b)
- * A watch that silently stops delivering events (server stall, missed DELETED
- * whose RV has aged out of our resume cursor) leaves a phantom cache entry
- * indefinitely — the loop has no reason to reconnect — masking a real
- * termination from `K8sProvider.status()` and the watchdog terminal-reconcile
- * net, so a run row wedges `running`. An independent `resyncPeriodMs` timer
- * (default 5 min) force-relists: `reconcileCache` drops any run id absent from
- * the fresh page, so a phantom cannot survive past one window.
+ * ## Loop machinery (warren-32f8)
+ * The reconnect / backoff / 410-relist / periodic-resync loop itself is the
+ * generic `ListWatchLoop` in `./list-watch.ts`, extracted so the pod-warning
+ * events watcher (`./pod-event-watcher.ts`) shares it rather than copy-pasting
+ * (see that module for the reconnect + resync story, warren-4f2b). This class
+ * keeps only the pod-specific state: the run-id cache, the OOM / eviction /
+ * init-terminal metric accounting.
  *
  * ## Scope (warren-a7ff)
  * Provider-internal plumbing + metrics ONLY. This watcher does NOT mutate warren
@@ -51,6 +40,13 @@ import {
 	countPodsForAdmission,
 	type PodAdmissionSource,
 } from "./admission.ts";
+import {
+	DEFAULT_RESYNC_PERIOD_MS,
+	type ListWatchFn,
+	ListWatchLoop,
+	type WatchController,
+	type WatchPhase,
+} from "./list-watch.ts";
 import {
 	METRIC_EVICTED_TOTAL,
 	METRIC_INIT_FAILURES_TOTAL,
@@ -70,27 +66,10 @@ export interface CounterSink {
 	increment(name: string, labels?: Readonly<Record<string, string>>, by?: number): void;
 }
 
-/** The watch phases the K8s watch callback delivers. */
-export type WatchPhase = "ADDED" | "MODIFIED" | "DELETED" | "BOOKMARK" | string;
+export { DEFAULT_RESYNC_PERIOD_MS, type WatchController, type WatchPhase };
 
-/** Aborts an in-flight watch — `AbortController` satisfies this structurally. */
-export interface WatchController {
-	abort(): void;
-}
-
-/**
- * The low-level watch seam (mirrors `@kubernetes/client-node`'s `Watch.watch`):
- * open a watch at `path` with `queryParams`, invoking `onEvent(phase, obj)` per
- * event and `onDone(err)` exactly once when the stream ends (err is the failure
- * or `undefined`/`null` on a clean server close). Resolves to a controller that
- * aborts the stream.
- */
-export type WatchFn = (
-	path: string,
-	queryParams: Readonly<Record<string, string | number | boolean | undefined>>,
-	onEvent: (phase: WatchPhase, obj: V1Pod) => void,
-	onDone: (err: unknown) => void,
-) => Promise<WatchController>;
+/** The pod-typed watch seam (mirrors `@kubernetes/client-node`'s `Watch.watch`). */
+export type WatchFn = ListWatchFn<V1Pod>;
 
 /** Lists the current run pods — one page is assumed (the run namespace is small). */
 export type PodListFn = () => Promise<{
@@ -112,10 +91,7 @@ export interface PodWatcherDeps {
 	readonly backoffMaxMs?: number;
 	/**
 	 * Periodic force-relist cadence (ms). Default `DEFAULT_RESYNC_PERIOD_MS`
-	 * (5 min); `0` disables the resync. A watch that silently stops delivering
-	 * events (server stall, missed DELETED) can leave the cache stale
-	 * indefinitely; every resync tick force-relists so a phantom pod cannot
-	 * survive more than one window past its real deletion (warren-4f2b).
+	 * (5 min); `0` disables the resync. See `ListWatchLoop` (warren-4f2b).
 	 */
 	readonly resyncPeriodMs?: number;
 	readonly logger?: {
@@ -129,24 +105,11 @@ export interface PodCacheReader {
 	getByRunId(runId: string): V1Pod | undefined;
 }
 
-const DEFAULT_BACKOFF_BASE_MS = 1_000;
-const DEFAULT_BACKOFF_MAX_MS = 30_000;
-
 /**
- * Force-relist cadence (warren-4f2b): 5 minutes. Bounds the worst-case window a
- * phantom cache entry can survive a silent watch by. Long enough that the
- * healthy path (watch delivers DELETED within ~1-2s of pod deletion) pays no
- * meaningful API-list overhead; short enough that a zombie run reaches the
- * watchdog's terminal-reconcile net (2 min grace, 30s tick) inside ~8 minutes
- * worst-case rather than the 30+ min the incident saw. Override via
- * `WARREN_K8S_POD_WATCHER_RESYNC_MS`; `0` disables.
- */
-export const DEFAULT_RESYNC_PERIOD_MS = 5 * 60 * 1000;
-
-/**
- * The list-then-watch informer. Construct with the injected seams, call
- * `start()` to seed the cache + begin watching, `stop()` to abort. Implements
- * both `PodCacheReader` (for `status()`) and `PodMetricsSource` (for `/metrics`).
+ * The pod informer. Construct with the injected seams, call `start()` to seed
+ * the cache + begin watching, `stop()` to abort. Implements `PodCacheReader`
+ * (for `status()`), `PodMetricsSource` (for `/metrics`), and
+ * `PodAdmissionSource` (for the admission gate).
  */
 export class PodWatcher implements PodCacheReader, PodMetricsSource, PodAdmissionSource {
 	private readonly cache = new Map<string, V1Pod>();
@@ -157,21 +120,23 @@ export class PodWatcher implements PodCacheReader, PodMetricsSource, PodAdmissio
 	/** runIds whose workspace-init terminal we have already accounted for. */
 	private readonly initAccounted = new Set<string>();
 	private lastInitDurationSeconds: number | null = null;
-	private resourceVersion: string | undefined;
-	private running = false;
-	private activeWatch: WatchController | undefined;
-	/** Resolver for the in-flight `watchOnce` — invoked by `stop()` so the loop
-	 * unparks even when the underlying watch never fires its own `done`. */
-	private resolveWatch: ((err: unknown) => void) | undefined;
-	private loopDone: Promise<void> | undefined;
-	private backoffMs: number;
-	/** Periodic force-relist timer (warren-4f2b). Cleared by `stop()`. */
-	private resyncTimer: ReturnType<typeof setInterval> | undefined;
-	/** Serializes a resync relist against the watch loop's own relist path. */
-	private relistInFlight: Promise<void> | undefined;
+	private readonly loop: ListWatchLoop<V1Pod>;
 
 	constructor(private readonly deps: PodWatcherDeps) {
-		this.backoffMs = deps.backoffBaseMs ?? DEFAULT_BACKOFF_BASE_MS;
+		this.loop = new ListWatchLoop<V1Pod>({
+			label: "pod-watch",
+			path: `/api/v1/namespaces/${deps.namespace}/pods`,
+			query: { labelSelector: LABEL_RUN_ID, allowWatchBookmarks: true },
+			list: deps.list,
+			watch: deps.watch,
+			onRelist: (items) => this.reconcileCache(items),
+			onEvent: (phase, obj) => this.handleEvent(phase, obj),
+			onReconnect: () => deps.metrics.increment(METRIC_WATCH_RECONNECTS_TOTAL),
+			...(deps.backoffBaseMs !== undefined ? { backoffBaseMs: deps.backoffBaseMs } : {}),
+			...(deps.backoffMaxMs !== undefined ? { backoffMaxMs: deps.backoffMaxMs } : {}),
+			...(deps.resyncPeriodMs !== undefined ? { resyncPeriodMs: deps.resyncPeriodMs } : {}),
+			...(deps.logger !== undefined ? { logger: deps.logger } : {}),
+		});
 	}
 
 	private get now(): () => Date {
@@ -180,72 +145,31 @@ export class PodWatcher implements PodCacheReader, PodMetricsSource, PodAdmissio
 
 	/** Begin watching. Idempotent — a second call while running is a no-op. */
 	start(): void {
-		if (this.running) return;
-		this.running = true;
-		this.loopDone = this.loop();
-		this.scheduleResync();
+		this.loop.start();
 	}
 
 	/** Abort the watch and await the loop's exit. Idempotent. */
 	async stop(): Promise<void> {
-		this.running = false;
-		if (this.resyncTimer !== undefined) {
-			clearInterval(this.resyncTimer);
-			this.resyncTimer = undefined;
-		}
-		this.activeWatch?.abort();
-		this.activeWatch = undefined;
-		// Unpark a `watchOnce` that is still waiting on `done` (abort may not fire
-		// it) so the loop sees `!running` and exits rather than hanging `stop()`.
-		this.resolveWatch?.(undefined);
-		await this.loopDone?.catch(() => {});
-		this.loopDone = undefined;
-	}
-
-	/**
-	 * Schedule the periodic force-relist (warren-4f2b). Cache staleness caused by
-	 * a silently-stalled watch or a missed DELETED event otherwise persists until
-	 * the next natural reconnect/410 — potentially hours. A resync tick is a
-	 * definitive server-truth snapshot: `reconcileCache` drops any run id not in
-	 * the returned page, so a phantom cache entry (with its stale `phase: Running`)
-	 * cannot survive past one window. `resyncPeriodMs: 0` opts out.
-	 */
-	private scheduleResync(): void {
-		const period = this.deps.resyncPeriodMs ?? DEFAULT_RESYNC_PERIOD_MS;
-		if (period <= 0) return;
-		this.resyncTimer = setInterval(() => {
-			if (!this.running) return;
-			// Fire-and-forget: the loop's own relist path awaits `relistInFlight`
-			// so this can't race with a concurrent 410 relist.
-			void this.resyncRelist();
-		}, period);
-	}
-
-	/**
-	 * Serialize a force-relist against the watch loop's own relist (warren-4f2b).
-	 * A resync tick that fires while the loop is already relisting after a 410
-	 * awaits that relist rather than issuing a redundant API call.
-	 */
-	private async resyncRelist(): Promise<void> {
-		if (this.relistInFlight !== undefined) {
-			await this.relistInFlight;
-			return;
-		}
-		this.deps.logger?.info?.(
-			{ namespace: this.deps.namespace },
-			"pod-watch periodic resync; relisting",
-		);
-		const promise = this.safeRelist();
-		this.relistInFlight = promise.finally(() => {
-			this.relistInFlight = undefined;
-		});
-		await this.relistInFlight;
+		await this.loop.stop();
 	}
 
 	// --- PodCacheReader ------------------------------------------------------
 
 	getByRunId(runId: string): V1Pod | undefined {
 		return this.cache.get(runId);
+	}
+
+	/**
+	 * Reverse lookup — pod NAME → run id (warren-32f8). The pod-warning events
+	 * watcher correlates a core Event's `involvedObject.name` back to the run
+	 * through this, because the DNS-1123-sanitized pod name cannot be
+	 * losslessly reversed (the verbatim run id lives only on the label).
+	 */
+	runIdForPodName(podName: string): string | undefined {
+		for (const [runId, pod] of this.cache) {
+			if (pod.metadata?.name === podName) return runId;
+		}
+		return undefined;
 	}
 
 	// --- PodAdmissionSource --------------------------------------------------
@@ -281,78 +205,6 @@ export class PodWatcher implements PodCacheReader, PodMetricsSource, PodAdmissio
 		};
 	}
 
-	// --- Watch loop ----------------------------------------------------------
-
-	private async loop(): Promise<void> {
-		await this.safeRelist();
-		while (this.running) {
-			const err = await this.watchOnce();
-			if (!this.running) break;
-			// The watch stream ended (clean close or error). Re-attach.
-			this.deps.metrics.increment(METRIC_WATCH_RECONNECTS_TOTAL);
-			if (isGone(err)) {
-				this.deps.logger?.info?.(
-					{ namespace: this.deps.namespace },
-					"pod-watch 410 gone; relisting",
-				);
-				await this.safeRelist();
-				this.resetBackoff();
-			} else {
-				this.deps.logger?.warn?.(
-					{ namespace: this.deps.namespace, err: errText(err) },
-					"pod-watch disconnected; backing off before resume",
-				);
-				await this.sleep(this.nextBackoff());
-			}
-		}
-	}
-
-	/** Re-list from scratch: refresh the cache to the server's truth + capture RV. */
-	private async safeRelist(): Promise<void> {
-		try {
-			const { items, resourceVersion } = await this.deps.list();
-			this.reconcileCache(items);
-			this.resourceVersion = resourceVersion;
-			this.resetBackoff();
-		} catch (err) {
-			this.deps.logger?.warn?.(
-				{ namespace: this.deps.namespace, err: errText(err) },
-				"pod-watch list failed; backing off",
-			);
-			if (this.running) await this.sleep(this.nextBackoff());
-		}
-	}
-
-	/** Open one watch; resolve with the terminating error (or `undefined`). */
-	private watchOnce(): Promise<unknown> {
-		return new Promise<unknown>((resolve) => {
-			let settled = false;
-			const done = (err: unknown): void => {
-				if (settled) return;
-				settled = true;
-				this.resolveWatch = undefined;
-				resolve(err);
-			};
-			this.resolveWatch = done;
-			const query: Record<string, string | number | boolean | undefined> = {
-				labelSelector: LABEL_RUN_ID,
-				allowWatchBookmarks: true,
-				...(this.resourceVersion !== undefined ? { resourceVersion: this.resourceVersion } : {}),
-			};
-			this.deps
-				.watch(this.watchPath(), query, (phase, obj) => this.onEvent(phase, obj), done)
-				.then((controller) => {
-					this.activeWatch = controller;
-					if (!this.running) controller.abort();
-				})
-				.catch((err) => done(err));
-		});
-	}
-
-	private watchPath(): string {
-		return `/api/v1/namespaces/${this.deps.namespace}/pods`;
-	}
-
 	// --- Cache + metric reconciliation ---------------------------------------
 
 	/** Replace the cache with a fresh list, dropping run ids no longer present. */
@@ -369,15 +221,7 @@ export class PodWatcher implements PodCacheReader, PodMetricsSource, PodAdmissio
 		}
 	}
 
-	private onEvent(phase: WatchPhase, obj: V1Pod): void {
-		if (phase === "BOOKMARK") {
-			// Bookmarks carry only an advanced resourceVersion (no pod payload).
-			const rv = obj.metadata?.resourceVersion;
-			if (rv !== undefined) this.resourceVersion = rv;
-			return;
-		}
-		const rv = obj.metadata?.resourceVersion;
-		if (rv !== undefined) this.resourceVersion = rv;
+	private handleEvent(phase: WatchPhase, obj: V1Pod): void {
 		const runId = runIdOf(obj);
 		if (runId === undefined) return;
 		if (phase === "DELETED") {
@@ -450,24 +294,6 @@ export class PodWatcher implements PodCacheReader, PodMetricsSource, PodAdmissio
 			this.deps.metrics.increment(METRIC_INIT_FAILURES_TOTAL);
 		}
 	}
-
-	// --- Backoff -------------------------------------------------------------
-
-	private nextBackoff(): number {
-		const current = this.backoffMs;
-		const max = this.deps.backoffMaxMs ?? DEFAULT_BACKOFF_MAX_MS;
-		this.backoffMs = Math.min(current * 2, max);
-		return current;
-	}
-
-	private resetBackoff(): void {
-		this.backoffMs = this.deps.backoffBaseMs ?? DEFAULT_BACKOFF_BASE_MS;
-	}
-
-	private sleep(ms: number): Promise<void> {
-		if (ms <= 0) return Promise.resolve();
-		return new Promise((resolve) => setTimeout(resolve, ms));
-	}
 }
 
 /** The `warren.io/run-id` label value — the run correlation key. */
@@ -495,20 +321,4 @@ function durationSeconds(
 
 function toMs(value: Date | string): number {
 	return (value instanceof Date ? value : new Date(value)).getTime();
-}
-
-/** A `410 Gone` — the resourceVersion aged out of etcd's window; relist. */
-function isGone(err: unknown): boolean {
-	if (err === undefined || err === null) return false;
-	const code = (err as { code?: unknown; statusCode?: unknown }).code;
-	const statusCode = (err as { statusCode?: unknown }).statusCode;
-	if (code === 410 || statusCode === 410) return true;
-	const msg = errText(err);
-	return /\b410\b/.test(msg) || /gone|expired|too old resource version/i.test(msg);
-}
-
-function errText(err: unknown): string {
-	if (err === undefined || err === null) return "";
-	if (err instanceof Error) return err.message;
-	return String(err);
 }

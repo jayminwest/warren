@@ -51,6 +51,7 @@ import { seedAgentsAtBoot } from "./agent-seeding.ts";
 import { bindReapWithBootDeps, bootBridgesAndProviderRetry } from "./bridges-wiring.ts";
 import { buildServerDeps } from "./deps.ts";
 import { bootBackgroundDetectors } from "./detector-wiring.ts";
+import { makePodWarningRunEventSink } from "./k8s-pod-warning-sink.ts";
 import { bootLifecycleBus } from "./lifecycle-bus-wiring.ts";
 import {
 	bridgeLoggerFromPino,
@@ -201,7 +202,9 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 
 	// K8s runtime background loops (pl-829f step 25 / warren-7c30); undefined under the
 	// default `local` backend. warren-c531: booted HERE (before `bootBridges`).
-	const k8sRuntime = bootK8sRuntime({ env, metrics: metricsRegistry, logger });
+	// warren-32f8: onPodWarning surfaces pod-level stalls (FailedAttachVolume & co.) onto the run's event stream.
+	const onPodWarning = makePodWarningRunEventSink({ repos, broker, logger });
+	const k8sRuntime = bootK8sRuntime({ env, metrics: metricsRegistry, logger, onPodWarning });
 	if (k8sRuntime !== undefined) {
 		logger.info({}, "k8s runtime: pod-watcher + pod-GC started");
 	}
