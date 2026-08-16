@@ -1,4 +1,8 @@
 import { describe, expect, test } from "bun:test";
+import { spawnSync } from "node:child_process";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 import {
 	type CoverageBudgets,
 	type CoverageTotals,
@@ -67,5 +71,59 @@ describe("checkBudgets", () => {
 		const totals: CoverageTotals = { functions: 10, lines: 20 };
 		const failures = checkBudgets(totals, budgets);
 		expect(failures.map((f) => f.metric).sort()).toEqual(["functions", "lines"]);
+	});
+});
+
+describe("check-coverage CLI (--parse)", () => {
+	const SCRIPT = resolve(import.meta.dir, "check-coverage.ts");
+
+	function runParse(log: string | undefined): { status: number; stdout: string; stderr: string } {
+		const dir = mkdtempSync(join(tmpdir(), "check-coverage-"));
+		try {
+			const args = [SCRIPT, "--parse"];
+			if (log !== undefined) {
+				const file = join(dir, "log.txt");
+				writeFileSync(file, log);
+				args.push(file);
+			} else {
+				args.push(join(dir, "missing.txt"));
+			}
+			const result = spawnSync("bun", args, { encoding: "utf8" });
+			return {
+				status: result.status ?? -1,
+				stdout: result.stdout ?? "",
+				stderr: result.stderr ?? "",
+			};
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
+	}
+
+	test("exits 0 and prints the summary when totals clear the floors", () => {
+		const log = " All files                            |  100.00 |  100.00 |\n";
+		const r = runParse(log);
+		expect(r.status).toBe(0);
+		expect(r.stderr).toContain("Coverage — functions 100.00%");
+	});
+
+	test("exits 1 when a floor is missed (warren-66a7: no process.exit truncation)", () => {
+		// Large tail after the table — the whole buffer must survive to the pipe.
+		const tail = `${"x".repeat(1_000_000)}\nTAIL-MARKER\n`;
+		const log = ` All files                            |    0.00 |    0.00 |\n${tail}`;
+		const r = runParse(log);
+		expect(r.status).toBe(1);
+		expect(r.stderr).toContain("functions coverage 0.00% is below floor");
+	});
+
+	test("exits 1 when the All files row is missing", () => {
+		const r = runParse("no table\n");
+		expect(r.status).toBe(1);
+		expect(r.stderr).toContain("could not find 'All files' row");
+	});
+
+	test("exits 2 when the --parse file does not exist", () => {
+		const r = runParse(undefined);
+		expect(r.status).toBe(2);
+		expect(r.stderr).toContain("--parse expected an existing file");
 	});
 });

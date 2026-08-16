@@ -163,7 +163,12 @@ function reportResult(
 	return testExitCode;
 }
 
-function runBunTest(emitJUnit: boolean): { exitCode: number; combined: string } {
+function runBunTest(emitJUnit: boolean): {
+	exitCode: number;
+	stdout: string;
+	stderr: string;
+	combined: string;
+} {
 	mkdirSync(COVERAGE_DIR, { recursive: true });
 	const args = [
 		"test",
@@ -182,10 +187,24 @@ function runBunTest(emitJUnit: boolean): { exitCode: number; combined: string } 
 	const result = spawnSync("bun", args, { cwd: REPO_ROOT, encoding: "utf8" });
 	const stdout = result.stdout ?? "";
 	const stderr = result.stderr ?? "";
-	process.stdout.write(stdout);
-	process.stderr.write(stderr);
+	// Do NOT write these buffers to the streams in-line here and then call
+	// process.exit(...) on the result later: process.exit does not wait for
+	// stream flushes, so a multi-MB buffer gets clipped and CI logs lose the
+	// failing tail (warren-66a7). The caller replays the output with awaited
+	// writes, then avoids process.exit entirely by setting process.exitCode.
 	const exitCode = result.status ?? (result.signal ? 1 : 0);
-	return { exitCode, combined: `${stdout}\n${stderr}` };
+	return { exitCode, stdout, stderr, combined: `${stdout}\n${stderr}` };
+}
+
+/**
+ * Write `chunk` to `stream` and resolve only once the write completes.
+ * Awaiting the callback (instead of fire-and-forget + process.exit) is what
+ * keeps the tail of a large buffered test log from being dropped.
+ */
+function writeAndFlush(stream: NodeJS.WriteStream, chunk: string): Promise<void> {
+	return new Promise((resolvePromise, reject) => {
+		stream.write(chunk, (err) => (err ? reject(err) : resolvePromise()));
+	});
 }
 
 async function main(): Promise<void> {
@@ -199,15 +218,23 @@ async function main(): Promise<void> {
 		const file = argv[parseIdx + 1];
 		if (!file || !existsSync(file)) {
 			console.error(`check-coverage: --parse expected an existing file, got ${file ?? "<none>"}`);
-			process.exit(2);
+			process.exitCode = 2;
+			return;
 		}
 		const totals = parseAllFilesRow(readFileSync(file, "utf8"));
-		process.exit(reportResult(totals, budgets, 0));
+		process.exitCode = reportResult(totals, budgets, 0);
+		return;
 	}
 
-	const { exitCode, combined } = runBunTest(emitJUnit);
+	const { exitCode, stdout, stderr, combined } = runBunTest(emitJUnit);
+	// Replay the captured test output with awaited writes so nothing is left
+	// in a stream buffer when the process decides its exit code.
+	if (stdout) await writeAndFlush(process.stdout, stdout);
+	if (stderr) await writeAndFlush(process.stderr, stderr);
 	const totals = parseAllFilesRow(combined);
-	process.exit(reportResult(totals, budgets, exitCode));
+	// Set the exit code and let the loop drain naturally — never process.exit
+	// right after large writes (warren-66a7).
+	process.exitCode = reportResult(totals, budgets, exitCode);
 }
 
 if (import.meta.main) {
