@@ -46,7 +46,8 @@ export const ENV_CONTRACT: PrimeDocument["env"] = [
 	{ name: "WARREN_BASE_URL", summary: "warren server base URL (default http://localhost:8080)" },
 	{
 		name: "WARREN_API_TOKEN",
-		summary: "bearer token for the server (required unless WARREN_AUTH=public)",
+		summary:
+			"bearer token for the server (required unless WARREN_AUTH=public); note the Bun CLI auto-loads `.env` from your cwd — a stale token there overrides the client config file on every command (`warren login` still prefers a piped stdin token over it)",
 	},
 	{
 		name: CLIENT_CONFIG_PATH_ENV,

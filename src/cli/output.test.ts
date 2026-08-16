@@ -180,6 +180,32 @@ describe("exit-code contract", () => {
 		expect(commandFailure(context, new ValidationError("bad")).exitCode).toBe(2);
 		expect(errSink.chunks.join("")).toContain("down");
 	});
+
+	test("commandFailure names the env token source on an auth rejection (warren-8807)", () => {
+		const errSink = sink();
+		const context = {
+			env: { WARREN_API_TOKEN: "tok-stale" },
+			stdio: { stdout: sink(), stderr: errSink },
+			spawn: defaultSpawn,
+		};
+		const { exitCode } = commandFailure(context, new WarrenClientError(401, "unauthorized", "no"));
+		expect(exitCode).toBe(4);
+		const text = errSink.chunks.join("");
+		expect(text).toContain("token came from WARREN_API_TOKEN in the environment");
+		expect(text).toContain(".env`");
+		expect(text).not.toContain("tok-stale");
+	});
+
+	test("commandFailure stays silent about the source when no env token is set", () => {
+		const errSink = sink();
+		const context = {
+			env: {},
+			stdio: { stdout: sink(), stderr: errSink },
+			spawn: defaultSpawn,
+		};
+		commandFailure(context, new WarrenClientError(401, "unauthorized", "no"));
+		expect(errSink.chunks.join("")).not.toContain("token came from");
+	});
 });
 
 describe("formatDurationMs (D6)", () => {

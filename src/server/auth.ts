@@ -37,7 +37,9 @@
  * threat-model assumption (single-user, single-token).
  */
 
-import { timingSafeEqual } from "node:crypto";
+import { randomBytes, timingSafeEqual } from "node:crypto";
+import { chmodSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { ValidationError, WarrenError } from "../core/errors.ts";
 import { isRunScopedToken, verifyRunScopedToken } from "../runs/spawn/run-token.ts";
 import type {
@@ -266,6 +268,84 @@ export function publicReadAuth(operator: AuthProvider): AuthProvider {
 
 /** Auth backends the `WARREN_AUTH` selector understands. */
 export type AuthKind = "token" | "public";
+
+/**
+ * Filename of the persisted operator token under `WARREN_DATA_DIR`
+ * (warren-ef6e). One line, mode 0600. The name is deliberately generic —
+ * it is the instance's own credential, not scoped to the auth selector.
+ */
+export const OPERATOR_TOKEN_FILE = "operator-token";
+
+/** Where the operator token came from on this boot. */
+export type OperatorTokenSource =
+	/** `WARREN_API_TOKEN` was set explicitly — always wins (warren-ef6e). */
+	| "env"
+	/** The persisted token file existed from a previous boot; reused as-is. */
+	| "file"
+	/** Nothing existed; a fresh token was minted and persisted this boot. */
+	| "minted";
+
+export interface OperatorTokenResolution {
+	readonly token: string;
+	readonly source: OperatorTokenSource;
+	/** Path of the persisted token file (absent when `source` is `"env"`). */
+	readonly path?: string;
+}
+
+/**
+ * Resolve the operator bearer token for this boot (warren-ef6e), minting +
+ * persisting one on first boot so a fresh-install operator never hand-mints
+ * a credential.
+ *
+ * Precedence: a non-empty `WARREN_API_TOKEN` ALWAYS wins, even over the
+ * persisted file. Failing that, `<dataDir>/operator-token` is read (a reused
+ * file is chmod-renormalized to 0600, best-effort). Failing that, 32 random
+ * bytes are minted as base64url, persisted with mode 0600 under `dataDir`
+ * (created 0700), and returned with `source: "minted"` so the boot wiring
+ * can print it exactly once. An empty-string env is treated as unset,
+ * matching `resolveToken` in `server/config.ts`.
+ *
+ * A persisted-file read or write failure throws a `ValidationError` naming
+ * the path — silently booting on a DIFFERENT token than the one on disk
+ * would strand every client holding the old one.
+ */
+export function resolveOperatorToken(env: AuthEnv, dataDir: string): OperatorTokenResolution {
+	const explicit = env.WARREN_API_TOKEN;
+	if (explicit !== undefined && explicit !== "") {
+		return { token: explicit, source: "env" };
+	}
+	const path = join(dataDir, OPERATOR_TOKEN_FILE);
+	let persisted: string | undefined;
+	try {
+		persisted = readFileSync(path, "utf8").trim();
+	} catch (err) {
+		if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
+			throw new ValidationError(`failed to read the persisted operator token at ${path}`, {
+				cause: err,
+				recoveryHint: `remove or fix ${path}, or export WARREN_API_TOKEN to override it`,
+			});
+		}
+	}
+	if (persisted !== undefined && persisted !== "") {
+		try {
+			chmodSync(path, 0o600);
+		} catch {
+			// best-effort permission hygiene; never block the boot on it
+		}
+		return { token: persisted, source: "file", path };
+	}
+	const token = randomBytes(32).toString("base64url");
+	try {
+		mkdirSync(dataDir, { recursive: true, mode: 0o700 });
+		writeFileSync(path, `${token}\n`, { mode: 0o600 });
+	} catch (err) {
+		throw new ValidationError(`failed to persist the minted operator token at ${path}`, {
+			cause: err,
+			recoveryHint: `make ${dataDir} writable, or export WARREN_API_TOKEN to skip the bootstrap`,
+		});
+	}
+	return { token, source: "minted", path };
+}
 
 /** Selector default when `WARREN_AUTH` is unset — the fresh-install posture. */
 export const DEFAULT_AUTH_KIND: AuthKind = "token";

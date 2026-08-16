@@ -144,6 +144,14 @@ The same walk generates `docs/cli-reference.md` (`bun run gen:cli-ref`).
 The env contract documents `WARREN_BASE_URL`, `WARREN_API_TOKEN`, and
 `WARREN_CLIENT_CONFIG`.
 
+- Bun auto-loads `.env` from the invoking cwd — a stale
+  `WARREN_API_TOKEN` there outranks the client config file on every
+  command (warren-8807, warren-2244).
+- `warren login` prefers a token piped on stdin over an ambient env
+  token.
+- Auth-rejection errors name the environment as the token source when
+  it supplied the credential.
+
 The exit-code table is the stable warren-b61e one. The workflows cover
 dispatch-and-wait, tail-and-steer, and plan runs. Default output is
 ndjson for machines. Pass `--output pretty` for humans.

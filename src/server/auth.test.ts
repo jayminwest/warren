@@ -1,4 +1,7 @@
 import { describe, expect, test } from "bun:test";
+import { mkdtempSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { ValidationError } from "../core/errors.ts";
 import { createHmacRunTokenMinter } from "../runs/spawn/run-token.ts";
 import {
@@ -7,10 +10,12 @@ import {
 	DEFAULT_AUTH_KIND,
 	NO_AUTH,
 	OPERATOR_ACTOR,
+	OPERATOR_TOKEN_FILE,
 	policyAllows,
 	publicReadAuth,
 	resolveAuth,
 	resolveAuthKind,
+	resolveOperatorToken,
 	runScopedAuth,
 	UnknownAuthProviderError,
 } from "./auth.ts";
@@ -129,6 +134,71 @@ describe("resolveAuth", () => {
 
 	test("throws ValidationError on empty token", () => {
 		expect(() => resolveAuth({ env: { WARREN_API_TOKEN: "" } })).toThrow(ValidationError);
+	});
+});
+
+describe("resolveOperatorToken (warren-ef6e)", () => {
+	const freshDataDir = (): string => mkdtempSync(join(tmpdir(), "warren-token-boot-"));
+
+	test("explicit WARREN_API_TOKEN always wins and never touches the data dir", () => {
+		const dir = freshDataDir();
+		writeFileSync(join(dir, OPERATOR_TOKEN_FILE), "persisted\n");
+		const result = resolveOperatorToken({ WARREN_API_TOKEN: "explicit" }, dir);
+		expect(result).toEqual({ token: "explicit", source: "env" });
+		expect(readFileSync(join(dir, OPERATOR_TOKEN_FILE), "utf8")).toBe("persisted\n");
+	});
+
+	test("mints a base64url token and persists it 0600 when nothing is set", () => {
+		const dir = freshDataDir();
+		const result = resolveOperatorToken({}, join(dir, "nested"));
+		expect(result.source).toBe("minted");
+		expect(result.token).toMatch(/^[A-Za-z0-9_-]{43}$/);
+		if (result.path === undefined) throw new Error("expected a persisted path");
+		expect(readFileSync(result.path, "utf8")).toBe(`${result.token}\n`);
+		expect(statSync(result.path).mode & 0o777).toBe(0o600);
+	});
+
+	test("reuses the persisted token on the next boot without re-minting", () => {
+		const dir = freshDataDir();
+		const first = resolveOperatorToken({}, dir);
+		const second = resolveOperatorToken({}, dir);
+		expect(first.source).toBe("minted");
+		expect(second.source).toBe("file");
+		expect(second.token).toBe(first.token);
+		expect(second.path).toBe(first.path);
+	});
+
+	test("treats an empty WARREN_API_TOKEN as unset", () => {
+		const dir = freshDataDir();
+		const result = resolveOperatorToken({ WARREN_API_TOKEN: "" }, dir);
+		expect(result.source).toBe("minted");
+	});
+
+	test("renormalizes a loosely-permissioned persisted token to 0600", () => {
+		const dir = freshDataDir();
+		const path = join(dir, OPERATOR_TOKEN_FILE);
+		writeFileSync(path, "persisted\n", { mode: 0o644 });
+		const result = resolveOperatorToken({}, dir);
+		expect(result).toEqual({ token: "persisted", source: "file", path });
+		expect(statSync(path).mode & 0o777).toBe(0o600);
+	});
+
+	test("mints over an empty persisted file instead of booting with an empty token", () => {
+		const dir = freshDataDir();
+		const path = join(dir, OPERATOR_TOKEN_FILE);
+		writeFileSync(path, "  \n");
+		const result = resolveOperatorToken({}, dir);
+		expect(result.source).toBe("minted");
+		expect(result.token).not.toBe("");
+		expect(readFileSync(path, "utf8")).toBe(`${result.token}\n`);
+	});
+
+	test("throws a ValidationError when the persisted token is unreadable", () => {
+		// A dataDir that is a regular FILE makes the token path unreadable (ENOTDIR).
+		const dir = freshDataDir();
+		const file = join(dir, "not-a-dir");
+		writeFileSync(file, "x");
+		expect(() => resolveOperatorToken({}, file)).toThrow(ValidationError);
 	});
 });
 

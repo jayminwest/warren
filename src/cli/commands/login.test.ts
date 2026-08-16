@@ -119,6 +119,61 @@ describe("runLogin", () => {
 			expect(loadWarrenClientConfigFromFile(env)?.token).toBe("tok-env");
 		}));
 
+	test("a piped stdin token wins over an ambient env token and warns (warren-2244)", () =>
+		withTempConfig(async (env) => {
+			const recorded: { config?: WarrenClientConfig } = {};
+			const { context, err } = captureContext({ ...env, WARREN_API_TOKEN: "tok-stale-env" });
+			const result = await runLogin(
+				context,
+				{
+					resolveConfig: RESOLVE,
+					makeClient: okClient(recorded),
+					readTokenFromStdin: async () => "tok-piped\n",
+				},
+				{},
+			);
+			expect(result.exitCode).toBe(0);
+			expect(recorded.config?.token).toBe("tok-piped");
+			expect(loadWarrenClientConfigFromFile(env)?.token).toBe("tok-piped");
+			const warning = err.join("");
+			expect(warning).toContain("using token piped on stdin");
+			expect(warning).toContain("WARREN_API_TOKEN");
+			expect(warning).not.toContain("tok-stale-env");
+		}));
+
+	test("skips the stdin warning when the piped token matches the env token", () =>
+		withTempConfig(async (env) => {
+			const { context, err } = captureContext({ ...env, WARREN_API_TOKEN: "tok-same" });
+			const result = await runLogin(
+				context,
+				{
+					resolveConfig: RESOLVE,
+					makeClient: okClient({}),
+					readTokenFromStdin: async () => "tok-same\n",
+				},
+				{},
+			);
+			expect(result.exitCode).toBe(0);
+			expect(err.join("")).not.toContain("ignoring WARREN_API_TOKEN");
+		}));
+
+	test("--token still outranks both stdin and env", () =>
+		withTempConfig(async (env) => {
+			const recorded: { config?: WarrenClientConfig } = {};
+			const { context } = captureContext({ ...env, WARREN_API_TOKEN: "tok-env" });
+			const result = await runLogin(
+				context,
+				{
+					resolveConfig: RESOLVE,
+					makeClient: okClient(recorded),
+					readTokenFromStdin: async () => "tok-piped",
+				},
+				{ token: "tok-flag" },
+			);
+			expect(result.exitCode).toBe(0);
+			expect(recorded.config?.token).toBe("tok-flag");
+		}));
+
 	test("fails with exit 2 when no token is available anywhere", () =>
 		withTempConfig(async (env) => {
 			const { context, err } = captureContext(env);
