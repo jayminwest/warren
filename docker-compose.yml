@@ -17,7 +17,10 @@
 #   - the runtime env loaded from .env (`cp .env.example .env` first).
 #
 # The supervisor inside the container spawns `burrow serve` and `warren`
-# as siblings — there is no separate burrow service in compose. See
+# as siblings — there is no separate burrow service in compose. It also
+# mints the shared warren↔burrow bearer token itself at boot (warren-8071),
+# so no BURROW_API_TOKEN / WARREN_BURROW_TOKEN belongs in .env for this
+# topology. See
 # docs/design/runtime-and-supervisor.md for the supervisor contract and src/supervisor/main.ts for
 # the implementation.
 

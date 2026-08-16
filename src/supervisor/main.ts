@@ -25,7 +25,7 @@
 import { backoffMs, RestartBudget } from "./budget.ts";
 import { defaultGitIdentityRun, installGitAuthor } from "./git-identity.ts";
 import { waitForSocket } from "./socket.ts";
-import { TokenValidationError, validateBurrowAuthTokens } from "./tokens.ts";
+import { ensureBurrowAuthTokens, TokenValidationError } from "./tokens.ts";
 
 export interface SupervisedChild {
 	readonly name: string;
@@ -403,15 +403,16 @@ if (import.meta.main) {
 	const cmd = resolveCommandFromEnv();
 	try {
 		const noAuth = parseBoolEnv(process.env.WARREN_BURROW_NO_AUTH);
-		const tokens = validateBurrowAuthTokens({
-			burrowApiToken: process.env.BURROW_API_TOKEN,
-			warrenBurrowToken: process.env.WARREN_BURROW_TOKEN,
-			noAuth,
-		});
+		const tokens = ensureBurrowAuthTokens(process.env, { noAuth });
 		if (tokens.fingerprint === null) {
 			logger.warn(
 				{},
 				"supervisor: WARREN_BURROW_NO_AUTH=1 — burrow will serve without auth (loopback-dev mode)",
+			);
+		} else if (tokens.minted) {
+			logger.info(
+				{ fingerprint: tokens.fingerprint },
+				"supervisor: minted ephemeral in-container burrow auth token (set BURROW_API_TOKEN + WARREN_BURROW_TOKEN to pin your own)",
 			);
 		} else {
 			logger.info(

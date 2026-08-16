@@ -54,6 +54,7 @@ import { validateTargetBranch } from "../target-branch.ts";
 import { readCachedAgent, readProjectDefaults, resolveOverride } from "./agent-cache.ts";
 import { injectWarrenCallbackEnv } from "./callback-env.ts";
 import { injectGitIdentityEnv, warnIfGitIdentityUnconfigured } from "./git-identity.ts";
+import { healMigrationJournalCollisions, recordMigrationHealEvent } from "./migration-preflight.ts";
 import { assertNoKnownProviderModelMismatch } from "./provider-model.ts";
 import {
 	bindRunLogger,
@@ -278,6 +279,42 @@ export async function spawnRun(input: SpawnRunInput): Promise<SpawnRunResult> {
 		env: runEnv,
 	};
 	try {
+		// warren-1f03: dispatch-time drizzle migration preflight. A ref-dispatch
+		// onto an existing branch whose generated migrations collide with a
+		// journal slot main landed after the branch was cut is healed prompt-free
+		// (colliding artifacts deleted, `bun run db:generate`, heal commit on the
+		// host clone branch) BEFORE the provider forks the workspace. A fresh
+		// dispatch from the default branch cannot collide, so it is skipped.
+		if (
+			refreshed !== null &&
+			baseRef !== undefined &&
+			baseRef !== projectAfterRefresh.defaultBranch &&
+			input.projectSpawn !== undefined
+		) {
+			const heal = await (input.migrationHealFn ?? healMigrationJournalCollisions)({
+				spawn: input.projectSpawn,
+				projectPath: projectAfterRefresh.localPath,
+				defaultBranch: projectAfterRefresh.defaultBranch,
+				baseRef,
+				...(input.projectsConfig?.gitBinary !== undefined
+					? { gitBinary: input.projectsConfig.gitBinary }
+					: {}),
+				...(input.serverEnv !== undefined ? { env: input.serverEnv } : {}),
+			});
+			if (heal.collisions.length > 0) {
+				log.info(
+					{ collisions: heal.collisions, commit_sha: heal.commitSha, base_ref: baseRef },
+					"spawn.migration_journal_heal",
+				);
+				await recordMigrationHealEvent(
+					input.repos,
+					run.id,
+					heal,
+					baseRef,
+					input.now?.() ?? new Date(),
+				);
+			}
+		}
 		const dispatchStart = Date.now();
 		const handle = await provider.create(spec);
 		logProvisioned(log, handle.sandboxId, WORKER_PLACEMENT_LABEL, dispatchStart);

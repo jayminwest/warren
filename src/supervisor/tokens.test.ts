@@ -1,5 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { TokenValidationError, tokenFingerprint, validateBurrowAuthTokens } from "./tokens.ts";
+import {
+	ensureBurrowAuthTokens,
+	mintSharedBurrowToken,
+	TokenValidationError,
+	tokenFingerprint,
+	validateBurrowAuthTokens,
+} from "./tokens.ts";
 
 describe("validateBurrowAuthTokens", () => {
 	test("noAuth=true skips validation and returns null fingerprint", () => {
@@ -166,5 +172,80 @@ describe("tokenFingerprint", () => {
 	test("never includes the token in the output", () => {
 		const fp = tokenFingerprint("super-secret-value");
 		expect(fp).not.toContain("super-secret-value");
+	});
+});
+
+describe("mintSharedBurrowToken", () => {
+	test("returns 64 lowercase hex chars (256 bits)", () => {
+		expect(mintSharedBurrowToken()).toMatch(/^[0-9a-f]{64}$/);
+	});
+
+	test("generates a distinct token on every call", () => {
+		const seen = new Set(Array.from({ length: 100 }, () => mintSharedBurrowToken()));
+		expect(seen.size).toBe(100);
+	});
+});
+
+describe("ensureBurrowAuthTokens", () => {
+	test("mints one token into both vars when neither is set", () => {
+		const env: Record<string, string | undefined> = {};
+		const result = ensureBurrowAuthTokens(env, { noAuth: false });
+		expect(result.minted).toBe(true);
+		expect(env.BURROW_API_TOKEN).toMatch(/^[0-9a-f]{64}$/);
+		expect(env.WARREN_BURROW_TOKEN).toBe(env.BURROW_API_TOKEN);
+		expect(result.fingerprint).toBe(tokenFingerprint(env.BURROW_API_TOKEN ?? ""));
+	});
+
+	test("treats empty strings the same as unset and mints", () => {
+		const env: Record<string, string | undefined> = {
+			BURROW_API_TOKEN: "",
+			WARREN_BURROW_TOKEN: "",
+		};
+		const result = ensureBurrowAuthTokens(env, { noAuth: false });
+		expect(result.minted).toBe(true);
+		expect(env.BURROW_API_TOKEN).toMatch(/^[0-9a-f]{64}$/);
+	});
+
+	test("keeps operator-supplied values when both are set and matching", () => {
+		const env: Record<string, string | undefined> = {
+			BURROW_API_TOKEN: "operator-secret",
+			WARREN_BURROW_TOKEN: "operator-secret",
+		};
+		const result = ensureBurrowAuthTokens(env, { noAuth: false });
+		expect(result.minted).toBe(false);
+		expect(env.BURROW_API_TOKEN).toBe("operator-secret");
+		expect(env.WARREN_BURROW_TOKEN).toBe("operator-secret");
+		expect(result.fingerprint).toBe(tokenFingerprint("operator-secret"));
+	});
+
+	test("still fails fast when only one var is set (no silent mint)", () => {
+		const env: Record<string, string | undefined> = { WARREN_BURROW_TOKEN: "tok" };
+		expect(() => ensureBurrowAuthTokens(env, { noAuth: false })).toThrow(TokenValidationError);
+		expect(env.BURROW_API_TOKEN).toBeUndefined();
+	});
+
+	test("still fails fast when the two operator values disagree", () => {
+		const env: Record<string, string | undefined> = {
+			BURROW_API_TOKEN: "a",
+			WARREN_BURROW_TOKEN: "b",
+		};
+		expect(() => ensureBurrowAuthTokens(env, { noAuth: false })).toThrow(/do not match/);
+	});
+
+	test("noAuth skips minting and returns null fingerprint", () => {
+		const env: Record<string, string | undefined> = {};
+		const result = ensureBurrowAuthTokens(env, { noAuth: true });
+		expect(result.minted).toBe(false);
+		expect(result.fingerprint).toBeNull();
+		expect(env.BURROW_API_TOKEN).toBeUndefined();
+		expect(env.WARREN_BURROW_TOKEN).toBeUndefined();
+	});
+
+	test("uses the injected mint function", () => {
+		const env: Record<string, string | undefined> = {};
+		const result = ensureBurrowAuthTokens(env, { noAuth: false }, () => "minted-fixed");
+		expect(result.minted).toBe(true);
+		expect(env.BURROW_API_TOKEN).toBe("minted-fixed");
+		expect(env.WARREN_BURROW_TOKEN).toBe("minted-fixed");
 	});
 });
