@@ -251,7 +251,7 @@ export async function reapRun(input: ReapRunInput): Promise<ReapRunResult> {
 	}
 	if (state.finalizeFailed && workspacePath !== null) {
 		// warren-4e1c: mint the rescue-push credential immediately before the
-		// salvage spawn (forge-contract.md §4.2 — minted, never held). A mint
+		// salvage spawn (forge-contract.md §4 — minted, never held). A mint
 		// failure is recorded and degrades to an anonymous push (which fails
 		// closed on a private repo) rather than skipping the salvage.
 		let gitToken: string | undefined;

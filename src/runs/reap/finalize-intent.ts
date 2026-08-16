@@ -21,7 +21,7 @@ export async function runProviderFinalize(ctx: ReapPipelineContext): Promise<Fin
 	const commit: string[] = [];
 	if (ctx.project.hasSeeds) commit.push("seeds");
 	// warren-4e1c: mint the branch-push credential immediately before the
-	// finalize spawn (forge-contract.md §4.2 — minted, never held on a config).
+	// finalize spawn (forge-contract.md §4 — minted, never held on a config).
 	// A mint failure is recorded and degrades to an anonymous push, which fails
 	// closed as a `branch_push` stage failure on a private repo — rather than
 	// skipping the merges wholesale.

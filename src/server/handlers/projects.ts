@@ -114,7 +114,7 @@ export function createProjectHandler(deps: ServerDeps): RouteHandler {
 		// only forwards it. No-op under `WARREN_AUTH=token`
 		// (deps.publicAllowlist is absent).
 		// warren-6c4c: mint the private-repo credential for the host-side clone
-		// per-spawn through the boot forge (forge-contract.md §4.2); no config
+		// per-spawn through the boot forge (forge-contract.md §4); no config
 		// object holds a token.
 		const gitSecret = await mintGitCredentialSecret(deps.forge, gitUrl);
 		const project = await addProject({
@@ -331,7 +331,7 @@ export function runProjectTriggerHandler(deps: ServerDeps): RouteHandler {
 		// Project 404 must come before warren-config load so a typo'd
 		// project id doesn't end up parsing some other project's YAML.
 		const required = await deps.repos.projects.require(id);
-		// warren-6c4c: mint per git spawn (forge-contract.md §4.2) — once for the
+		// warren-6c4c: mint per git spawn (forge-contract.md §4) — once for the
 		// refresh fetch below, again for spawnRun's internal clone refresh —
 		// — no config object holds a token. Static under PAT.
 		const refreshSecret = await mintGitCredentialSecret(deps.forge, required.gitUrl);
@@ -448,7 +448,7 @@ export function refreshProjectHandler(deps: ServerDeps): RouteHandler {
 		const body = await readJsonBodyOrEmpty(ctx);
 		const ref = body !== null ? optionalString(body, "ref") : undefined;
 		// warren-6c4c: mint the private-repo fetch credential per-spawn through
-		// the boot forge (forge-contract.md §4.2). The project row is loaded for
+		// the boot forge (forge-contract.md §4). The project row is loaded for
 		// its gitUrl; refreshProject re-requires it internally.
 		const project = await deps.repos.projects.require(id);
 		const gitSecret = await mintGitCredentialSecret(deps.forge, project.gitUrl);
