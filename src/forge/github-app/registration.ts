@@ -343,6 +343,15 @@ GitHub:</p>
 <input type="hidden" name="manifest" value="${manifestJson}">
 <button type="submit">Create the GitHub App on github.com</button>
 </form>
+<p>The link this form hands to GitHub carries a <strong>single-use nonce
+that expires in 10 minutes</strong> — move through the GitHub step promptly.
+If it stalls or expires, just reload <code>/github-app/register</code> and
+start again.</p>
+<p><strong>Manual-form trap:</strong> the button should land on GitHub's
+pre-filled confirmation page for this exact manifest. If GitHub instead
+shows the full &ldquo;Register new GitHub App&rdquo; form asking you to pick
+permissions by hand, <strong>back out and restart here</strong> — filling
+that form in manually creates an App that never redirects back to warren.</p>
 <p class="note">GitHub returns you here with a single-use code; warren converts
 it into the App credentials and shows them to you once. Nothing is stored.</p>`;
 	return page("Register a GitHub App", body);
@@ -363,6 +372,20 @@ export function renderCredentialsPage(registration: GitHubAppRegistration): stri
 		"WARREN_GITHUB_APP_INSTALLATION_ID=<from the install step below>",
 		"WARREN_GITHUB_APP_PRIVATE_KEY=<the PEM below>",
 	].join("\n");
+	const k8sBlock = [
+		"kubectl -n warren patch secret warren-secrets --type merge -p \\",
+		'  \'{"stringData":{"warren-forge":"app",',
+		`    "github-app-id":"${registration.appId}",`,
+		'    "github-app-installation-id":"<from the install step below>",',
+		'    "github-app-private-key":"<the PEM below, as ONE line with literal \\n escapes>"}}\'',
+	].join("\n");
+	const composeBlock = [
+		"environment:",
+		"  WARREN_FORGE: app",
+		`  WARREN_GITHUB_APP_ID: "${registration.appId}"`,
+		'  WARREN_GITHUB_APP_INSTALLATION_ID: "<from the install step below>"',
+		'  WARREN_GITHUB_APP_PRIVATE_KEY: "<the PEM below>"',
+	].join("\n");
 	const body = `<h1>App registered: ${escapeHtml(registration.name)}</h1>
 <p>Copy these values into your secret store NOW — warren keeps no copy, and
 this page is the only place they appear.</p>
@@ -370,6 +393,9 @@ this page is the only place they appear.</p>
 <dt>App id</dt><dd><pre>${registration.appId}</pre></dd>
 <dt>Slug</dt><dd><pre>${escapeHtml(registration.slug)}</pre></dd>
 <dt>Client id</dt><dd><pre>${escapeHtml(registration.clientId)}</pre></dd>
+<p class="note">warren does NOT use the client id or client secret — only the
+App id, installation id, and private key matter. These two are shown only
+because GitHub returns them; you do not need to store them.</p>
 <dt>Client secret</dt><dd><pre>${escapeHtml(registration.clientSecret)}</pre></dd>
 <dt>Private key (PEM)</dt><dd><pre>${escapeHtml(registration.pem)}</pre></dd>
 </dl>
@@ -379,11 +405,21 @@ App is installed on an account or repository. Open
 <a href="${escapeHtml(installUrl)}">${escapeHtml(installUrl)}</a>,
 pick the account/repos warren may touch, and read the installation id from the
 URL GitHub lands on (<code>.../settings/installations/&lt;id&gt;</code>).</p>
-<h1>Environment</h1>
+<h1>Install the secrets</h1>
+<p>Pick the block matching your deploy shape and paste it as-is. warren can't
+know your deploy shape, so this step stays manual — each variant is one paste.</p>
+<h2>Kubernetes (the <code>warren-secrets</code> Secret, see docs/RUNBOOK-K8S.md)</h2>
+<pre>${escapeHtml(k8sBlock)}</pre>
+<p class="note">The private key goes in as ONE line with literal
+<code>\n</code> escapes — warren unfolds them at boot. If you saved the PEM
+to a file, join its lines with two-character <code>\n</code> sequences
+first.</p>
+<h2>docker compose (<code>environment:</code> on the warren service)</h2>
+<pre>${escapeHtml(composeBlock)}</pre>
+<h2>Plain <code>.env</code></h2>
 <pre>${escapeHtml(envBlock)}</pre>
-<p class="note">Set these on the warren process (K8s: the <code>warren-secrets</code>
-Secret, see docs/RUNBOOK-K8S.md) and restart. A missing or unparseable value
-fails boot loudly.</p>`;
+<p class="note">Set these on the warren process and restart. A missing or
+unparseable value fails boot loudly.</p>`;
 	return page("GitHub App credentials", body);
 }
 
