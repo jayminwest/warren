@@ -85,6 +85,7 @@ export const PUBLIC_PLAN_RUN_CHILD_FIELDS = [
 	"startedAt",
 	"endedAt",
 	"prMergedAt",
+	"retryCount",
 ] as const satisfies readonly (keyof PlanRunChildRow)[];
 
 /**

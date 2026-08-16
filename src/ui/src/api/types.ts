@@ -669,6 +669,8 @@ export interface PlanRunChildRow {
 	endedAt: string | null;
 	prMergedAt: string | null;
 	failureReason: string | null;
+	/** warren-6de9: automatic child re-dispatch budget consumed so far. */
+	retryCount: number;
 }
 
 /** `POST /plan-runs` request body (warren-f923). */

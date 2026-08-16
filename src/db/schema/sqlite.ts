@@ -405,6 +405,10 @@ export const planRunChildren = sqliteTable(
 		endedAt: text("ended_at"),
 		prMergedAt: text("pr_merged_at"),
 		failureReason: text("failure_reason"),
+		// warren-6de9: automatic child re-dispatch budget consumed so far.
+		// Persisted so a coordinator restart / re-driven tick never grants a
+		// child a fresh retry.
+		retryCount: integer("retry_count").notNull().default(0),
 	},
 	(t) => [
 		primaryKey({ columns: [t.planRunId, t.seq] }),

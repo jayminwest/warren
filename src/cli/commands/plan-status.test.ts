@@ -70,6 +70,7 @@ function childRow(over: Partial<PlanRunChildRow> = {}): PlanRunChildRow {
 		endedAt: null,
 		prMergedAt: null,
 		failureReason: null,
+		retryCount: 0,
 		...over,
 	};
 }

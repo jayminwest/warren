@@ -262,6 +262,8 @@ export const planRunChildren = pgTable(
 		endedAt: text("ended_at"),
 		prMergedAt: text("pr_merged_at"),
 		failureReason: text("failure_reason"),
+		// warren-6de9: automatic child re-dispatch budget consumed so far.
+		retryCount: integer("retry_count").notNull().default(0),
 	},
 	(t) => [
 		primaryKey({ columns: [t.planRunId, t.seq] }),

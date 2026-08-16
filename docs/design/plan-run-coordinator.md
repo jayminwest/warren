@@ -84,7 +84,9 @@ Transitions, per advance call:
      `http_error` 4xx → `plan_failed` with reason
      `pr_closed_without_merge`;
    - linked run terminal-failed/cancelled → `plan_failed` with
-     reason `` `child_${reason ?? 'failed'}` ``.
+     reason `` `child_${reason ?? 'failed'}` `` — UNLESS the failure
+     cause is retryable and the child still has its one automatic
+     retry left (see the child-retry rule below).
 3. If no in-flight child, call `pickNextPending`:
    - null → `plan_succeeded` (transition the parent row, stamp
      `endedAt`);
@@ -98,7 +100,28 @@ Transitions, per advance call:
 Every transition is mirrored as a system event on the most-recently-
 dispatched child run via the existing emit seam — kinds: `plan_run.advanced`,
 `plan_run.dispatched`, `plan_run.waiting_for_merge`, `plan_run.merged`,
-`plan_run.failed`, `plan_run.succeeded`.
+`plan_run.failed`, `plan_run.succeeded`, `plan_run.child_retried`.
+
+**Automatic child retry (warren-6de9).** A child run that terminalizes
+`failed` with a retryable failure cause gets ONE automatic re-dispatch —
+a fresh run, same seed, same rendered prompt — before the coordinator
+declares the plan-run failed. The retryable-cause list lives in
+`src/plan-runs/retry.ts` (`RETRYABLE_CHILD_FAILURE_REASONS`, today just
+`provider_error`: a transient upstream 5xx says nothing about the
+workspace, prompt, or seed, so a fresh run has a real chance). The
+decision is two pure predicates — `isRetryableChildFailure(reason)` and
+`hasChildRetryBudget(child)` — so a second cause (warren-4af7,
+infra-lost runs) joins by appending to the list. The budget is
+per-child (`MAX_CHILD_RETRIES = 1`), persisted on
+`plan_run_children.retry_count`, so a coordinator restart or re-driven
+tick never grants a fresh retry; a second consecutive provider error on
+the same child fails the plan-run with `child_provider_error` as before.
+The re-dispatch re-points the child's `run_id` at the new run and emits
+`plan_run.child_retried` on the NEW run id (payload: `previousRunId`,
+`failureReason`, `retryCount`) so the plan-run event tail — which fans
+out over current child run ids — keeps the retry visible on the UI
+timeline. A spawn failure during retry falls back to the ordinary
+`dispatch_failed:` terminal path.
 
 **Trivial-merge advance rule.** A child run that succeeded but produced
 no commits is treated as merged without ever opening a PR. The signal

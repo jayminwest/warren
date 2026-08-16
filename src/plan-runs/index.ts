@@ -65,6 +65,14 @@ export {
 	type ReadyPlanInput,
 } from "./ready-plans.ts";
 export {
+	hasChildRetryBudget,
+	isRetryableChildFailure,
+	MAX_CHILD_RETRIES,
+	RETRYABLE_CHILD_FAILURE_REASONS,
+	type RetryableChildFailureReason,
+	shouldRetryChild,
+} from "./retry.ts";
+export {
 	type PlanRunEventRow,
 	type TailPlanRunEventsInput,
 	tailPlanRunEvents,
