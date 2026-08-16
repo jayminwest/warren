@@ -179,6 +179,31 @@ describe("context-waste field classification (warren-6d41)", () => {
 	});
 });
 
+// warren-6163: walk a parsed response body and report every cost-named key
+// (except the public costPerMergedPr rollup, whose counts are public) and
+// every occurrence of the seeded cost figure. Structural, so it cannot
+// collide with ISO millisecond timestamps the way a substring match can.
+function flattenEntries(body: unknown): [string, unknown][] {
+	const out: [string, unknown][] = [];
+	const stack: [string, unknown][] = [["", body]];
+	while (stack.length > 0) {
+		const [key, value] = stack.pop() as [string, unknown];
+		out.push([key, value]);
+		if (value === null || typeof value !== "object") continue;
+		const children: [string, unknown][] = Array.isArray(value)
+			? value.map((item) => ["", item])
+			: Object.entries(value);
+		stack.push(...children);
+	}
+	return out;
+}
+
+function findCostLeaks(body: unknown, seededCost: number): string[] {
+	return flattenEntries(body)
+		.filter(([key, value]) => /cost(?!PerMergedPr)/i.test(key) || value === seededCost)
+		.map(([key, value]) => (value === seededCost ? `value:${key}` : `key:${key}`));
+}
+
 describe("public projections over the wire (warren-4f6c)", () => {
 	let db: WarrenDb;
 	let repos: Repos;
@@ -217,7 +242,7 @@ describe("public projections over the wire (warren-4f6c)", () => {
 			null,
 		);
 		await repos.runs.attachStats(run.id, {
-			costUsd: 1.25,
+			costUsd: 987.6543,
 			tokensInput: 100,
 			tokensOutput: 20,
 			tokensCacheRead: 40,
@@ -334,8 +359,8 @@ describe("public projections over the wire (warren-4f6c)", () => {
 				...REDACTED_COST_PER_MERGED_PR_OVERALL_FIELDS,
 			].sort(),
 		);
-		expect(outcomes.costPerMergedPr.overall.costUsd).toBe(1.25);
-		expect(totals.cost).toEqual({ total: 1.25, avg: 1.25, priced: 1 });
+		expect(outcomes.costPerMergedPr.overall.costUsd).toBe(987.6543);
+		expect(totals.cost).toEqual({ total: 987.6543, avg: 987.6543, priced: 1 });
 		expect(body.topSeedsByContext).toHaveLength(1);
 	});
 
@@ -399,9 +424,13 @@ describe("public projections over the wire (warren-4f6c)", () => {
 	});
 
 	test("no cost figure survives anywhere in the anonymous analytics body", async () => {
-		const body = JSON.stringify(await get("/analytics/runs"));
-		expect(body).not.toContain("costUsd");
-		expect(body).not.toContain("1.25");
-		expect(body).not.toContain("warren-4f6c");
+		const body = await get("/analytics/runs");
+		// warren-6163: structural check, not a raw substring match — a seeded
+		// figure like "1.25" can collide with an ISO millisecond timestamp
+		// ("...:01.250Z") and flake the assertion. Walk the parsed body and
+		// fail on any cost-named key or any occurrence of the seeded figure.
+		const leaks = findCostLeaks(body, 987.6543);
+		expect(leaks).toEqual([]);
+		expect(JSON.stringify(body)).not.toContain("warren-4f6c");
 	});
 });
