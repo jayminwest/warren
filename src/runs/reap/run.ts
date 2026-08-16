@@ -6,7 +6,7 @@ import { isInfraLostRunFailure } from "../retry/infra-lost-retry.ts";
 import { bindBridgeLogger } from "../stream/index.ts";
 import { runWorkspaceDestroy } from "./destroy.ts";
 import { createPipelineState, runReapPipeline } from "./pipeline.ts";
-import { detectTerminalProviderError } from "./provider-error.ts";
+import { detectTerminalProviderError, providerErrorEventPayload } from "./provider-error.ts";
 import { salvageWorkspace, type WorkspaceSalvageOutcome } from "./salvage.ts";
 import { inferFailureReason, isTerminal, transitionToTerminal } from "./state.ts";
 import type { ReapRunInput, ReapRunResult, ReapStep, ReapStepError } from "./types.ts";
@@ -43,7 +43,12 @@ export async function reapRun(input: ReapRunInput): Promise<ReapRunResult> {
 	// `turn_end` envelope slips through. This reap-time scan of the
 	// persisted event log is the safety net; the provider message is
 	// surfaced on the `reap.provider_error` event.
-	const providerError = await detectTerminalProviderError(input.repos, run.id);
+	// warren-4001: the run row's declared provider/model (warren-2ede) ride
+	// as the fallback so an opaque harness message still names the pair.
+	const providerError = await detectTerminalProviderError(input.repos, run.id, {
+		fallbackProvider: run.provider,
+		fallbackModel: run.model,
+	});
 	const providerErrorMessage = providerError?.message ?? null;
 	const failedFromProviderError = providerError !== null && input.outcome !== "cancelled";
 	// The success pipeline gates PR-open / seed-close / preview / auto-dispatch
@@ -178,8 +183,11 @@ export async function reapRun(input: ReapRunInput): Promise<ReapRunResult> {
 	const effectiveOutcome: RunTerminalState =
 		state.droppedCommit || failedFromProviderError || finalizeFailed ? "failed" : input.outcome;
 
-	if (failedFromProviderError) {
-		await emit("reap.provider_error", { message: providerErrorMessage });
+	if (failedFromProviderError && providerError !== null) {
+		// warren-4001: structured provider-error surface — the payload names
+		// provider/model/status so a degraded upstream pool is diagnosable
+		// from the event stream alone.
+		await emit("reap.provider_error", providerErrorEventPayload(providerError));
 	}
 
 	let failureReason: RunFailureReason | null = null;

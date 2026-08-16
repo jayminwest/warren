@@ -8,6 +8,8 @@ function envEvent(env: Record<string, unknown>): ProviderErrorEventInput {
 
 const CREDIT_MESSAGE =
 	'{"type":"error","error":{"type":"invalid_request_error","message":"Your credit balance is too low to access the Anthropic API"}}';
+/** The upstream body's own error.message — the enriched signal prefers it (warren-4001). */
+const CREDIT_INNER = "Your credit balance is too low to access the Anthropic API";
 
 describe("classifyTerminalProviderError (warren-edc3)", () => {
 	test("turn_end with stopReason=error + errorMessage -> terminal provider error", () => {
@@ -21,7 +23,9 @@ describe("classifyTerminalProviderError (warren-edc3)", () => {
 				message: { stopReason: "error", errorMessage: CREDIT_MESSAGE },
 			}),
 		];
-		expect(classifyTerminalProviderError(events)).toEqual({ message: CREDIT_MESSAGE });
+		const signal = classifyTerminalProviderError(events);
+		expect(signal?.message).toBe(CREDIT_INNER);
+		expect(signal?.upstreamBody).toBe(CREDIT_MESSAGE);
 	});
 
 	test("agent_end with top-level stopReason=error + errorMessage -> terminal provider error", () => {
@@ -31,7 +35,13 @@ describe("classifyTerminalProviderError (warren-edc3)", () => {
 		const events = [
 			envEvent({ type: "agent_end", stopReason: "error", errorMessage: "overloaded_error" }),
 		];
-		expect(classifyTerminalProviderError(events)).toEqual({ message: "overloaded_error" });
+		expect(classifyTerminalProviderError(events)).toEqual({
+			message: "overloaded_error",
+			provider: null,
+			model: null,
+			httpStatus: null,
+			upstreamBody: null,
+		});
 	});
 
 	test("success turn_end (stopReason=stop) -> no provider error", () => {
@@ -54,7 +64,9 @@ describe("classifyTerminalProviderError (warren-edc3)", () => {
 			}),
 			envEvent({ type: "agent_end", messages: [{ role: "assistant", content: [] }] }),
 		];
-		expect(classifyTerminalProviderError(events)).toEqual({ message: CREDIT_MESSAGE });
+		const signal = classifyTerminalProviderError(events);
+		expect(signal?.message).toBe(CREDIT_INNER);
+		expect(signal?.upstreamBody).toBe(CREDIT_MESSAGE);
 	});
 
 	test("a later successful turn clears an earlier error turn (retried-then-succeeded)", () => {
@@ -116,7 +128,9 @@ describe("classifyTerminalProviderError (warren-edc3)", () => {
 		const events = [
 			envEvent({ type: "turn_end", stopReason: "error", errorMessage: CREDIT_MESSAGE }),
 		];
-		expect(classifyTerminalProviderError(events)).toEqual({ message: CREDIT_MESSAGE });
+		const signal = classifyTerminalProviderError(events);
+		expect(signal?.message).toBe(CREDIT_INNER);
+		expect(signal?.upstreamBody).toBe(CREDIT_MESSAGE);
 	});
 
 	test("first-turn 400 (0 tokens, no prior output) is detected", () => {
@@ -130,6 +144,134 @@ describe("classifyTerminalProviderError (warren-edc3)", () => {
 				message: { stopReason: "error", errorMessage: CREDIT_MESSAGE },
 			}),
 		];
-		expect(classifyTerminalProviderError(events)).toEqual({ message: CREDIT_MESSAGE });
+		const signal = classifyTerminalProviderError(events);
+		expect(signal?.message).toBe(CREDIT_INNER);
+		expect(signal?.upstreamBody).toBe(CREDIT_MESSAGE);
+	});
+});
+
+describe("classifyTerminalProviderError — enriched signal (warren-4001)", () => {
+	test("opaque 'Provider returned error' gains provider/model context from the envelope", () => {
+		// The pl-61a4 shape: pi's openrouter path terminalized with the
+		// literal "Provider returned error" and nothing else. The envelope's
+		// assistant message still stamps provider + model, so the stored
+		// message must name them.
+		const events = [
+			envEvent({
+				type: "turn_end",
+				message: {
+					stopReason: "error",
+					errorMessage: "Provider returned error",
+					provider: "openrouter",
+					model: "moonshotai/kimi-k3",
+				},
+			}),
+		];
+		const signal = classifyTerminalProviderError(events, { envPattern: null });
+		expect(signal?.message).toBe(
+			"Provider returned error (provider=openrouter, model=moonshotai/kimi-k3)",
+		);
+		expect(signal?.provider).toBe("openrouter");
+		expect(signal?.model).toBe("moonshotai/kimi-k3");
+		expect(signal?.httpStatus).toBeNull();
+		expect(signal?.upstreamBody).toBeNull();
+	});
+
+	test("opaque message with no envelope context is stored unchanged", () => {
+		const events = [
+			envEvent({
+				type: "turn_end",
+				message: { stopReason: "error", errorMessage: "Provider returned error" },
+			}),
+		];
+		const signal = classifyTerminalProviderError(events, { envPattern: null });
+		expect(signal?.message).toBe("Provider returned error");
+		expect(signal?.provider).toBeNull();
+		expect(signal?.model).toBeNull();
+	});
+
+	test("httpStatus is parsed out of the error text", () => {
+		const events = [
+			envEvent({
+				type: "agent_end",
+				stopReason: "error",
+				errorMessage: "Request failed with status code 529: overloaded_error",
+			}),
+		];
+		const signal = classifyTerminalProviderError(events, { envPattern: null });
+		expect(signal?.httpStatus).toBe(529);
+		expect(signal?.message).toBe("Request failed with status code 529: overloaded_error");
+	});
+
+	test("embedded upstream JSON body is lifted into upstreamBody and its error.message preferred", () => {
+		const events = [
+			envEvent({
+				type: "turn_end",
+				message: { stopReason: "error", errorMessage: CREDIT_MESSAGE, provider: "anthropic" },
+			}),
+		];
+		const signal = classifyTerminalProviderError(events, { envPattern: null });
+		expect(signal?.message).toBe(CREDIT_INNER);
+		expect(signal?.upstreamBody).toBe(CREDIT_MESSAGE);
+		expect(signal?.provider).toBe("anthropic");
+	});
+
+	test("credential shapes in the error text are redacted before storing", () => {
+		// warren-cbd8: an upstream body that echoes the request's API key
+		// back must never reach the event log in the clear.
+		const events = [
+			envEvent({
+				type: "turn_end",
+				message: {
+					stopReason: "error",
+					errorMessage:
+						"Request failed with status code 401 for key sk-ant-api03-abcdef1234567890abcdef",
+				},
+			}),
+		];
+		const signal = classifyTerminalProviderError(events, { envPattern: null });
+		expect(signal?.message).not.toContain("sk-ant-");
+		expect(signal?.message).toContain("[redacted]");
+	});
+
+	test("instance env secrets in the error text are redacted via the injected pattern", () => {
+		const envPattern = /hunter2hunter2hunter2/g;
+		const events = [
+			envEvent({
+				type: "turn_end",
+				message: {
+					stopReason: "error",
+					errorMessage: "upstream rejected token hunter2hunter2hunter2 with 403",
+				},
+			}),
+		];
+		const signal = classifyTerminalProviderError(events, { envPattern });
+		expect(signal?.message).toBe("upstream rejected token [redacted] with 403");
+	});
+
+	test("overlong error text is truncated to the cap with a marker", () => {
+		const huge = `x${"y".repeat(5000)}`;
+		const events = [
+			envEvent({
+				type: "turn_end",
+				message: { stopReason: "error", errorMessage: huge },
+			}),
+		];
+		const signal = classifyTerminalProviderError(events, { envPattern: null });
+		expect(signal?.message.length).toBeLessThanOrEqual(2000 + "…[truncated]".length);
+		expect(signal?.message.endsWith("…[truncated]")).toBe(true);
+	});
+
+	test("overlong upstream body is truncated to the cap", () => {
+		const body = `{"type":"error","error":{"message":"${"z".repeat(5000)}"}}`;
+		const events = [
+			envEvent({
+				type: "turn_end",
+				message: { stopReason: "error", errorMessage: body },
+			}),
+		];
+		const signal = classifyTerminalProviderError(events, { envPattern: null });
+		expect(signal?.upstreamBody?.endsWith("…[truncated]")).toBe(true);
+		expect(signal?.upstreamBody?.length).toBeLessThanOrEqual(2000 + "…[truncated]".length);
 	});
 });

@@ -56,23 +56,87 @@ describe("reapRun provider-error safety net (warren-edc3)", () => {
 			autoOpenPr: { enabled: true, warrenBaseUrl: null },
 		});
 
+		// warren-4001: the enriched signal prefers the upstream body's own
+		// error.message; the raw JSON body rides `upstreamBody`.
+		const inner = "Your credit balance is too low to access the Anthropic API";
 		expect(result.state).toBe("failed");
 		expect(result.failureReason).toBe("provider_error");
-		expect(result.providerError).toBe(message);
+		expect(result.providerError).toBe(inner);
 		// No bookkeeping-only PR ships for a provider-error run.
 		expect(result.prUrl).toBeNull();
 		const events = await ctx.repos.events.listByRun(ctx.runId);
 		expect(events.find((ev) => ev.kind === "reap.provider_error")).toMatchObject({
-			payloadJson: { message },
+			payloadJson: { message: inner, upstreamBody: message, httpStatus: null },
 		});
 		const completed = events.find((ev) => ev.kind === "reap.completed");
 		expect(completed?.payloadJson).toMatchObject({
 			failureReason: "provider_error",
-			providerError: message,
+			providerError: inner,
 		});
 		const run = await ctx.repos.runs.require(ctx.runId);
 		expect(run.state).toBe("failed");
 		expect(run.failureReason).toBe("provider_error");
+	});
+
+	test("warren-4001: opaque harness message is enriched with envelope + run-row context", async () => {
+		// The pl-61a4 shape end-to-end: pi terminalized with the literal
+		// "Provider returned error" and the payload must still name the
+		// provider/model — the envelope's pair wins, the run row's declared
+		// pair (warren-2ede) is the fallback.
+		const project = await ctx.repos.projects.create({
+			gitUrl: "https://github.com/x/z.git",
+			localPath: "/data/projects/x/z",
+			defaultBranch: "main",
+		});
+		const run = await ctx.repos.runs.create({
+			agentName: "refactor-bot",
+			projectId: project.id,
+			prompt: "p",
+			renderedAgentJson: {},
+			trigger: "manual",
+			burrowId: "bur_bbbbbbbbbbbb",
+			burrowRunId: "run_yyyyyyyyyyyy",
+			provider: "openrouter",
+			model: "moonshotai/kimi-k3",
+		});
+		await ctx.repos.runs.markRunning(run.id);
+		await ctx.repos.events.append({
+			runId: run.id,
+			burrowEventSeq: 1,
+			ts: new Date().toISOString(),
+			kind: "state_change",
+			stream: "system",
+			payload: {
+				type: "turn_end",
+				message: { stopReason: "error", errorMessage: "Provider returned error" },
+			},
+		});
+
+		const result = await reapRun({
+			runId: run.id,
+			outcome: "succeeded",
+			repos: ctx.repos,
+			...reapDeps(fakeBurrowClient(makeBurrow()), { fs: fakeFs().fs, exec: fakeExec().exec }),
+			broker: ctx.broker,
+			fs: fakeFs().fs,
+			exec: fakeExec().exec,
+			autoOpenPr: { enabled: false, warrenBaseUrl: null },
+		});
+
+		expect(result.failureReason).toBe("provider_error");
+		expect(result.providerError).toBe(
+			"Provider returned error (provider=openrouter, model=moonshotai/kimi-k3)",
+		);
+		const events = await ctx.repos.events.listByRun(run.id);
+		expect(events.find((ev) => ev.kind === "reap.provider_error")).toMatchObject({
+			payloadJson: {
+				message: "Provider returned error (provider=openrouter, model=moonshotai/kimi-k3)",
+				provider: "openrouter",
+				model: "moonshotai/kimi-k3",
+				httpStatus: null,
+				upstreamBody: null,
+			},
+		});
 	});
 
 	test("does not trip on a run that ended on a normal stop", async () => {
