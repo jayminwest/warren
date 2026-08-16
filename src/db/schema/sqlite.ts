@@ -379,6 +379,11 @@ export const planRuns = sqliteTable(
 		createdAt: text("created_at").notNull(),
 		startedAt: text("started_at"),
 		endedAt: text("ended_at"),
+		// warren-1eff: last same-row resume time. The merge-wait clock
+		// derives from the later of the producing run's endedAt and this
+		// stamp, so a resume re-arms the budget instead of instantly
+		// re-timing out on the stale run.endedAt. Null until first resume.
+		resumedAt: text("resumed_at"),
 	},
 	(t) => [
 		index(INDEX_NAMES.planRunsProjectState).on(t.projectId, t.state),

@@ -90,6 +90,7 @@ export const PLAN_RUN_EVENT_KINDS = [
 	"plan_run.succeeded",
 	"plan_run.waiting_for_pr_reopen",
 	"plan_run.child_retried",
+	"plan_run.resumed",
 ] as const;
 export type PlanRunEventKind = (typeof PLAN_RUN_EVENT_KINDS)[number];
 

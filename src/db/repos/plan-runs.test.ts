@@ -29,10 +29,12 @@ describe("assertPlanRunTransition", () => {
 		expect(() => assertPlanRunTransition("queued", "succeeded")).toThrow(StateTransitionError);
 	});
 
-	test("terminal states are sticky", () => {
+	test("terminal states are sticky, except the warren-1eff resume", () => {
 		expect(() => assertPlanRunTransition("succeeded", "running")).toThrow(StateTransitionError);
-		expect(() => assertPlanRunTransition("failed", "running")).toThrow(StateTransitionError);
 		expect(() => assertPlanRunTransition("cancelled", "running")).toThrow(StateTransitionError);
+		// warren-1eff: POST /plan-runs/:id/resume re-drives the same row.
+		expect(() => assertPlanRunTransition("failed", "running")).not.toThrow();
+		expect(() => assertPlanRunTransition("failed", "succeeded")).toThrow(StateTransitionError);
 	});
 });
 
@@ -53,6 +55,8 @@ describe("assertPlanRunChildTransition", () => {
 			["running", "failed"],
 			["pr_open", "merged"],
 			["pr_open", "failed"],
+			// resume.ts (warren-1eff): merge-timeout resume re-arms the PR poll.
+			["failed", "pr_open"],
 		] as const;
 		for (const [from, to] of legal) {
 			expect(() => assertPlanRunChildTransition(from, to)).not.toThrow();
@@ -63,12 +67,17 @@ describe("assertPlanRunChildTransition", () => {
 		expect(() => assertPlanRunChildTransition("merged", "pending")).toThrow(StateTransitionError);
 	});
 
-	test("terminal child states have no exits", () => {
-		for (const from of ["merged", "failed", "skipped"] as const) {
+	test("terminal child states have no exits, except the warren-1eff resume", () => {
+		for (const from of ["merged", "skipped"] as const) {
 			for (const to of ["pending", "dispatched", "running", "pr_open"] as const) {
 				expect(() => assertPlanRunChildTransition(from, to)).toThrow(StateTransitionError);
 			}
 		}
+		for (const to of ["pending", "dispatched", "running"] as const) {
+			expect(() => assertPlanRunChildTransition("failed", to)).toThrow(StateTransitionError);
+		}
+		// warren-1eff: failed → pr_open is the one sanctioned exit.
+		expect(() => assertPlanRunChildTransition("failed", "pr_open")).not.toThrow();
 		expect(() => assertPlanRunChildTransition("failed", "merged")).toThrow(StateTransitionError);
 		expect(() => assertPlanRunChildTransition("skipped", "merged")).toThrow(StateTransitionError);
 	});

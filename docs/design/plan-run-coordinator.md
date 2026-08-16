@@ -163,6 +163,28 @@ child. This makes PlanRun safe to re-invoke as a "resume from the
 next open child" operation without bookkeeping about which previous
 plan-run owned which child.
 
+**Resume semantics on the same row (warren-1eff).** Re-dispatch does
+not fit the merge-timeout failure shapes: when a child's PR waits on a
+human merge past the merge-wait budget (`child_pr_merge_timeout`), the
+child's seed is already CLOSED while its PR is still unmerged, so a
+fresh `POST /plan-runs` would skip it and bypass the merge gate.
+`POST /plan-runs/:id/resume` re-drives the SAME plan-run row instead.
+It accepts only the two human-merge-stall failure reasons —
+`child_pr_merge_timeout` and `parent_pr_merge_timeout`; any other state
+or failure reason gets a typed 409 with no state change. For the child
+shape the timed-out child flips `failed → pr_open` preserving its
+`runId` (and thereby its `prUrl`); for the parent shape no child exists
+yet, so only the plan-run row resets. Either way the plan-run goes
+`failed → running` with its `resumed_at` column stamped to the resume
+moment — the merge clock derives from the later of `run.endedAt` and
+`planRun.resumedAt` (`mergeWaitBaseline`), so the wait budget re-arms
+instead of instantly re-timing out on the stale `run.endedAt`. The
+coordinator's next tick then re-polls the EXISTING PR: merged → advance
+to the next child (no new run for the completed one); still open → wait
+within the fresh budget. `pr_closed_without_merge`, `dispatch_failed`,
+and `child_seed_not_found` remain genuine failures and are not
+resumable.
+
 **Server API.**
 
 ```
@@ -170,6 +192,7 @@ POST   /plan-runs                 dispatch (rejects without project.hasSeeds)
 GET    /plan-runs                 list (filter by project / state)
 GET    /plan-runs/:id             detail + fanned-out child runs[]
 POST   /plan-runs/:id/cancel      sets state='cancelled', cancels in-flight run
+POST   /plan-runs/:id/resume      re-drives the same row after a merge timeout (warren-1eff)
 GET    /plan-runs/:id/events      tails the union of every child run's events
 ```
 

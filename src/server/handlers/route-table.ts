@@ -23,6 +23,7 @@ import {
 	createPlanRunHandler,
 	getPlanRunHandler,
 	listPlanRunsHandler,
+	resumePlanRunHandler,
 	streamPlanRunEventsHandler,
 } from "./plan-runs.ts";
 import {
@@ -306,6 +307,12 @@ const ROUTE_TABLE: readonly RouteEntry[] = [
 		pattern: "/plan-runs/:id/cancel",
 		policy: "dispatch",
 		build: cancelPlanRunHandler,
+	},
+	{
+		method: "POST",
+		pattern: "/plan-runs/:id/resume",
+		policy: "dispatch",
+		build: resumePlanRunHandler,
 	},
 	{
 		method: "GET",

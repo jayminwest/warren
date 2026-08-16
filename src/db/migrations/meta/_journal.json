@@ -337,6 +337,13 @@
 			"when": 1786908874504,
 			"tag": "0047_dapper_thor_girl",
 			"breakpoints": true
+		},
+		{
+			"idx": 48,
+			"version": "6",
+			"when": 1786917354249,
+			"tag": "0048_stormy_gabe_jones",
+			"breakpoints": true
 		}
 	]
 }

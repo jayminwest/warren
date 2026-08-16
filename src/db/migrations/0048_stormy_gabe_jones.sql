@@ -1,0 +1,1 @@
+ALTER TABLE `plan_runs` ADD `resumed_at` text;

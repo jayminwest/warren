@@ -99,7 +99,13 @@ export async function checkParentRunMerged(input: {
 		// checks, BLOCKED mergeStateStatus, stuck auto-merge) would otherwise
 		// block the plan forever. Bound the wait by a wall-clock budget that
 		// starts when the parent run ended (PR-open time), then fail.
-		if (mergeDeadlineExceeded(parentRun.endedAt, now, mergeTimeoutMs)) {
+		if (
+			mergeDeadlineExceeded(
+				mergeWaitBaseline(parentRun.endedAt, planRun.resumedAt),
+				now,
+				mergeTimeoutMs,
+			)
+		) {
 			return failParentGate({
 				planRun,
 				repos,
@@ -162,6 +168,28 @@ async function failParentGate(input: {
  * timeout is disabled (≤ 0), the run hasn't ended, or the timestamp is
  * unparseable — i.e. err toward waiting rather than a spurious failure.
  */
+/**
+ * Merge-wait clock baseline (warren-1eff). The budget normally starts at
+ * the producing run's `endedAt` (the PR-open moment), but a same-row
+ * resume stamps the plan-run's `resumedAt` — the stale `run.endedAt`
+ * would otherwise instantly re-timeout. The effective baseline is the
+ * LATER of the two. Unparseable timestamps defer to the other side;
+ * both null/unparseable returns null (err toward waiting, matching
+ * mergeDeadlineExceeded's own posture).
+ */
+export function mergeWaitBaseline(
+	runEndedAt: string | null,
+	planRunResumedAt: string | null,
+): string | null {
+	if (planRunResumedAt === null) return runEndedAt;
+	if (runEndedAt === null) return planRunResumedAt;
+	const ended = Date.parse(runEndedAt);
+	const resumed = Date.parse(planRunResumedAt);
+	if (Number.isNaN(ended)) return planRunResumedAt;
+	if (Number.isNaN(resumed)) return runEndedAt;
+	return resumed > ended ? planRunResumedAt : runEndedAt;
+}
+
 export function mergeDeadlineExceeded(
 	endedAt: string | null,
 	now: () => Date,
