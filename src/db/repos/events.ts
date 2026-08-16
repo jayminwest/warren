@@ -107,6 +107,23 @@ export class EventsRepo {
 	}
 
 	/**
+	 * Does the run carry at least one event of `kind`? Powers the cancel-intent
+	 * probe (warren-fe9b): the watchdog terminal-reconcile net checks for a
+	 * `cancel.requested` row so a pod warren deleted itself reconciles to
+	 * `cancelled` rather than `failed/sandbox_run_lost`.
+	 */
+	async hasKind(runId: string, kind: string): Promise<boolean> {
+		const row = await this.adapter.pickOne<{ id: number }>(
+			this.db
+				.select({ id: this.events.id })
+				.from(this.events)
+				.where(and(eq(this.events.runId, runId), eq(this.events.kind, kind)))
+				.limit(1),
+		);
+		return row !== undefined;
+	}
+
+	/**
 	 * Highest burrow_event_seq we've persisted for a run, or null if none.
 	 * Used at warren startup to compute the resume offset for live runs
 	 * ("MAX(events.burrow_event_seq) + 1", docs/design/runtime-and-supervisor.md).

@@ -51,7 +51,7 @@ export const RUN_FAILURE_REASONS = [
 	"sandbox_failed",
 	"crashed",
 	"timed_out",
-	"burrow_run_lost",
+	"sandbox_run_lost",
 	"burrow_unreachable",
 	"dropped_commit",
 	"finalize_failed",

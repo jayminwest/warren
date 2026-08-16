@@ -240,7 +240,7 @@ export interface BridgeRunStreamResult {
 	 * "ghost run" — typically a warren-machine restart wiped burrow's
 	 * in-memory run state for an in-flight run. The registry treats this
 	 * as terminal: it stops the reconnect loop and reconciles the warren
-	 * row to `failed` with `failure_reason='burrow_run_lost'` rather than
+	 * row to `failed` with `failure_reason='sandbox_run_lost'` rather than
 	 * spinning forever on backoff. Mutually exclusive with
 	 * `terminalDetected`.
 	 */

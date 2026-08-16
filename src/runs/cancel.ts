@@ -172,10 +172,10 @@ export async function cancelRun(input: CancelRunInput): Promise<CancelRunResult>
 			if (run.state === "queued") {
 				await input.repos.runs.markRunning(run.id, now);
 			}
-			const finalized = await input.repos.runs.finalize(run.id, "failed", now, "burrow_run_lost");
+			const finalized = await input.repos.runs.finalize(run.id, "failed", now, "sandbox_run_lost");
 			await emitCancelEvent(input, run.id, {
 				reason: input.reason,
-				mode: "burrow_run_lost",
+				mode: "sandbox_run_lost",
 				burrowRunId,
 			});
 			return { state: finalized.state, burrowRun: null, alreadyTerminal: false };
@@ -188,7 +188,13 @@ export async function cancelRun(input: CancelRunInput): Promise<CancelRunResult>
 	// needs it for the inline-reap decision and the HTTP response's
 	// `burrowRun.state`.
 	const status = await input.runtimeProvider.status(handle);
-	const burrowState = status.phase;
+	// warren-fe9b / warren-d15c: when the post-cancel read shows the run already
+	// GONE (`exists:false`), that absence is our own delete landing — the cancel
+	// intent wins over the lost mapping, so the row reaps to `cancelled`, never
+	// `failed/sandbox_run_lost`. (On K8s the common case is a `Terminating` pod
+	// still reading `running`; the watchdog's cancel fast path then finalizes
+	// the row once the pod is confirmed gone.)
+	const burrowState: RunState = status.exists ? status.phase : "cancelled";
 
 	await emitCancelEvent(input, run.id, {
 		reason: input.reason,

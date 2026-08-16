@@ -48,7 +48,7 @@ describe("formatRunFailureReason", () => {
 		expect(formatRunFailureReason("finalize_failed")).toBe("Finalize failed");
 		expect(formatRunFailureReason("finalize_unposted")).toBe("Finalize not posted");
 		expect(formatRunFailureReason("oom_killed")).toBe("Out of memory");
-		expect(formatRunFailureReason("burrow_run_lost")).toBe("Sandbox run lost");
+		expect(formatRunFailureReason("sandbox_run_lost")).toBe("Sandbox run lost");
 	});
 
 	test("falls back to humanized prose for an unmapped reason", () => {

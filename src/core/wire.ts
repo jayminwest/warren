@@ -104,18 +104,18 @@ export type CloneKind = (typeof CLONE_KINDS)[number];
  *     reaps it `failed` so the sandbox process tree is torn down instead
  *     of pinning CPU forever. burrow itself reports no separate timeout
  *     state, so warren owns the deadline.
- *   - `burrow_run_lost` (warren-b1a9) means burrow returned 404 for the
- *     run's `burrow_run_id` — typically a warren-machine restart that
- *     wiped burrow's in-memory run state. The reconciler (bootBridges)
- *     and the bridge's mid-stream 404 catch both mark the warren row
- *     `failed` with this reason instead of looping forever.
+ *   - `sandbox_run_lost` (warren-b1a9; renamed from `burrow_run_lost` in
+ *     warren-d15c for the runtime-neutral warren-36cb taxonomy) means the
+ *     runtime backend has no record of the run — a burrow 404 (local) or a
+ *     pod vanished from the API with no cancel intent (K8s). A pod warren
+ *     deleted itself is NOT lost: cancel intent wins → `cancelled` (warren-fe9b).
  *   - `burrow_unreachable` (warren-af76) means burrow stayed up but
  *     unresponsive — the socket probe timed out, so the bridge errored
  *     with `burrowRunMissing:false` and reconnected with no forward
  *     progress past `BRIDGE_STALL_CEILING` consecutive attempts. The
  *     reconnect loop gives up and finalizes the warren row `failed` with
  *     this reason instead of spinning forever (the run otherwise wedges
- *     in `running`). Distinct from `burrow_run_lost`, which is a clean
+ *     in `running`). Distinct from `sandbox_run_lost`, which is a clean
  *     404; here burrow never answered at all.
  *   - `dropped_commit` (warren-72b9) means reap's `git push` landed zero
  *     commits ahead of the base branch (`reap.empty_push`) AND the
@@ -205,7 +205,7 @@ export const RUN_FAILURE_REASONS = [
 	"sandbox_failed",
 	"crashed",
 	"timed_out",
-	"burrow_run_lost",
+	"sandbox_run_lost",
 	"burrow_unreachable",
 	"dropped_commit",
 	"finalize_failed",

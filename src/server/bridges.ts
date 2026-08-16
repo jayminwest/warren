@@ -30,7 +30,7 @@
  * restarted and burrow lost its in-memory run state), the bridge sets
  * `burrowRunMissing: true` instead of `errored: true`. The registry
  * catches this, stops the reconnect loop, transitions the warren row to
- * `failed` with `failure_reason='burrow_run_lost'`, and emits a
+ * `failed` with `failure_reason='sandbox_run_lost'`, and emits a
  * `bridge_lost` system event. `bootBridges` also pre-probes each active
  * run via `http.runs.get` and runs the same reconciler before starting
  * a bridge — so a deploy that wipes burrow's in-memory state cleans up
@@ -288,7 +288,7 @@ export interface BootBridgesResult {
 	 * Active rows we did NOT attach a bridge to. Reasons:
 	 *   - `no_burrow_run_id` / `no_burrow_id` — partial spawn (spawn-rollback territory).
 	 *   - `no_placement` — pre-pl-9ba1 orphan: `burrow_id` is set but `burrows` row missing.
-	 *   - `burrow_run_lost` (warren-b1a9) — burrow returned 404 for the
+	 *   - `sandbox_run_lost` (warren-b1a9) — burrow returned 404 for the
 	 *     `burrow_run_id`. The reconciler already finalized the warren
 	 *     row to `failed`; the bridge isn't started because there's
 	 *     nothing to stream.
@@ -360,7 +360,7 @@ export async function bootBridges(input: CreateBridgeRegistryInput): Promise<Boo
 			);
 		}
 		if (lost) {
-			skipped.push({ runId: run.id, reason: "burrow_run_lost" });
+			skipped.push({ runId: run.id, reason: "sandbox_run_lost" });
 			await reconcileLostBurrowRun({
 				runId: run.id,
 				burrowRunId: run.burrowRunId,

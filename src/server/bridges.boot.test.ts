@@ -114,7 +114,7 @@ describe("bootBridges", () => {
 		await result.registry.stopAll();
 	});
 
-	test("warren-b1a9: pre-probe 404 reconciles run to failed/burrow_run_lost without starting bridge", async () => {
+	test("warren-b1a9: pre-probe 404 reconciles run to failed/sandbox_run_lost without starting bridge", async () => {
 		const project = (await repos.projects.listAll())[0];
 		if (!project) throw new Error("project missing");
 
@@ -152,13 +152,13 @@ describe("bootBridges", () => {
 
 		expect(calls).toEqual([]);
 		expect(result.resumed).toEqual([]);
-		expect(result.skipped).toEqual([{ runId: r.id, reason: "burrow_run_lost" }]);
+		expect(result.skipped).toEqual([{ runId: r.id, reason: "sandbox_run_lost" }]);
 		const run = await repos.runs.require(r.id);
 		expect(run.state).toBe("failed");
-		expect(run.failureReason).toBe("burrow_run_lost");
+		expect(run.failureReason).toBe("sandbox_run_lost");
 		const events = await repos.events.listByRun(r.id);
 		expect(events[0]?.kind).toBe("bridge_lost");
-		expect((events[0]?.payloadJson as { reason: string }).reason).toBe("burrow_run_lost");
+		expect((events[0]?.payloadJson as { reason: string }).reason).toBe("sandbox_run_lost");
 		expect(events.map((e) => e.kind)).toContain("reap.workspace_destroy_failed"); // warren-4f01
 		await result.registry.stopAll();
 	});
@@ -196,7 +196,7 @@ describe("bootBridges", () => {
 		expect(calls).toBe(1); // No reconnect after burrowRunMissing.
 		const run = await repos.runs.require(r.id);
 		expect(run.state).toBe("failed");
-		expect(run.failureReason).toBe("burrow_run_lost");
+		expect(run.failureReason).toBe("sandbox_run_lost");
 		const events = await repos.events.listByRun(r.id);
 		expect(events.some((e) => e.kind === "bridge_lost")).toBe(true);
 	});

@@ -344,7 +344,7 @@ interface ReconcileLostBurrowRunInput {
 	readonly now?: () => Date;
 	/**
 	 * warren-af76: failure reason for `runs.finalize` + `bridge_lost`.
-	 * Default `'burrow_run_lost'`; stall-ceiling caller passes
+	 * Default `'sandbox_run_lost'`; stall-ceiling caller passes
 	 * `'burrow_unreachable'`.
 	 */
 	readonly failureReason?: RunFailureReason;
@@ -359,7 +359,7 @@ interface ReconcileLostBurrowRunInput {
 
 /**
  * warren-b1a9: transition a non-terminal warren run to `failed` with
- * `failure_reason='burrow_run_lost'` and emit a `bridge_lost` audit event.
+ * `failure_reason='sandbox_run_lost'` and emit a `bridge_lost` audit event.
  * Used both by the live-bridge 404 catch and by the boot-time reconciler.
  * Idempotent: an already-terminal run is left alone (the event is still
  * appended). The state machine forbids `queued → failed` directly, so this
@@ -367,7 +367,7 @@ interface ReconcileLostBurrowRunInput {
  */
 export async function reconcileLostBurrowRun(input: ReconcileLostBurrowRunInput): Promise<void> {
 	const now = (input.now ?? (() => new Date()))();
-	const failureReason: RunFailureReason = input.failureReason ?? "burrow_run_lost";
+	const failureReason: RunFailureReason = input.failureReason ?? "sandbox_run_lost";
 	const log = bindBridgeLogger(input.logger, {
 		run_id: input.runId,
 		burrow_run_id: input.burrowRunId,

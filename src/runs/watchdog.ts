@@ -54,10 +54,7 @@ import type { RunEventBroker } from "./events.ts";
 import type { AutoOpenPrConfig } from "./pr.ts";
 import type { ReapRunInput, ReapRunResult } from "./reap/index.ts";
 import { type BridgeLogger, bindBridgeLogger } from "./stream/index.ts";
-import {
-	DEFAULT_WATCHDOG_TERMINAL_RECONCILE_GRACE_MS,
-	maybeReconcileTerminal,
-} from "./watchdog-reconcile.ts";
+import { hasCancelIntent, maybeReconcileTerminal } from "./watchdog-reconcile.ts";
 
 /**
  * The reap seam the watchdog force-fails a hung run through (warren-1fce). The
@@ -73,6 +70,22 @@ export const WATCHDOG_TIMED_OUT_KIND = "watchdog.timed_out";
 
 /** Default tick cadence for the heartbeat watchdog (ms). */
 export const DEFAULT_WATCHDOG_TICK_MS = 30_000;
+
+/**
+ * Fast-path reconcile grace (ms) for a run with a recorded CANCEL intent
+ * (warren-fe9b). A cancel deletes the pod immediately, but the pod lingers in
+ * `Terminating` (phase still `Running`) for its SIGTERM grace, so the cancel
+ * path's inline terminal-detect usually reads a non-terminal phase and hands
+ * off to this net. Waiting the full 2-min terminal-reconcile grace (plus a
+ * 30s tick) stranded cancelled runs `running` for far longer than any poller
+ * tolerates — the GKE incident saw ~25 min — while holding an admission slot.
+ * Once the run is idle past this shorter grace AND carries a `cancel.requested`
+ * event, the tick probes `status()` right away, so a deliberately-deleted pod
+ * reconciles to `cancelled` in seconds-to-a-minute. Runs WITHOUT a cancel
+ * intent keep the full grace (no extra probes for healthy runs). Override with
+ * `WARREN_RUN_CANCEL_RECONCILE_GRACE_MS`; `0` disables the fast path.
+ */
+export const DEFAULT_WATCHDOG_CANCEL_RECONCILE_GRACE_MS = 15_000;
 
 /**
  * Built-in heartbeat budget when the watchdog is left on-by-default
@@ -109,6 +122,17 @@ export interface WatchdogTickDeps {
 	 * healthy run emitting events is never probed.
 	 */
 	readonly terminalReconcileGraceMs?: number;
+	/**
+	 * Fast-path grace (ms) for runs with a recorded cancel intent (warren-fe9b).
+	 * A run idle past this grace that carries a `cancel.requested` event is
+	 * probed immediately rather than waiting out `terminalReconcileGraceMs`, so
+	 * an operator cancel reconciles to `cancelled` in seconds-to-a-minute
+	 * instead of lingering `running` while holding an admission slot. Only
+	 * armed when the reconcile net itself is armed (`terminalReconcileGraceMs`
+	 * > 0). Defaults to `DEFAULT_WATCHDOG_CANCEL_RECONCILE_GRACE_MS`; `0`
+	 * disables the fast path.
+	 */
+	readonly cancelReconcileGraceMs?: number;
 	readonly broker?: RunEventBroker;
 	/** Forwarded to reap so a timed-out run still gets the configured PR/branch handling. */
 	readonly autoOpenPr?: AutoOpenPrConfig;
@@ -227,6 +251,20 @@ async function evaluateRun(
 	if (graceMs > 0 && idleMs >= graceMs) {
 		const outcome = await maybeReconcileTerminal(deps, run, idleMs, now);
 		if (outcome !== null) return { kind: "reconciled", idleMs, outcome };
+		return { kind: "none" };
+	}
+	// warren-fe9b: cancel fast path. A run with a recorded cancel intent whose
+	// pod warren deleted itself gets probed after the SHORTER cancel grace, so a
+	// deliberate stop reconciles to `cancelled` in seconds-to-a-minute rather
+	// than waiting out the full reconcile grace while holding an admission slot.
+	// The intent query is one indexed row lookup, paid only by runs already idle
+	// past the fast-path grace.
+	const cancelGraceMs = deps.cancelReconcileGraceMs ?? DEFAULT_WATCHDOG_CANCEL_RECONCILE_GRACE_MS;
+	if (graceMs > 0 && cancelGraceMs > 0 && idleMs >= cancelGraceMs) {
+		if (await hasCancelIntent(deps.repos, run.id)) {
+			const outcome = await maybeReconcileTerminal(deps, run, idleMs, now);
+			if (outcome !== null) return { kind: "reconciled", idleMs, outcome };
+		}
 	}
 	return { kind: "none" };
 }
@@ -320,89 +358,6 @@ async function emitTimedOutEvent(
 		},
 	});
 	deps.broker?.publish(run.id, row);
-}
-
-/* -------------------------------------------------------------------- */
-/* Env config                                                            */
-/* -------------------------------------------------------------------- */
-
-export interface WatchdogConfig {
-	/**
-	 * Armed unless explicitly opted out (`WARREN_WATCHDOG_DISABLED`) or the
-	 * budget is pinned to 0. On by default (warren-b2dc).
-	 */
-	readonly enabled: boolean;
-	readonly heartbeatTimeoutMs: number;
-	readonly tickMs: number;
-	/**
-	 * Terminal-reconcile grace (ms) for the warren-c433 safety net. Defaults to
-	 * `DEFAULT_WATCHDOG_TERMINAL_RECONCILE_GRACE_MS`; `0` disables the net.
-	 */
-	readonly terminalReconcileGraceMs: number;
-}
-
-interface WatchdogEnvLike {
-	readonly WARREN_RUN_HEARTBEAT_TIMEOUT_MS?: string;
-	readonly WARREN_WATCHDOG_TICK_MS?: string;
-	readonly WARREN_WATCHDOG_DISABLED?: string;
-	readonly WARREN_RUN_TERMINAL_RECONCILE_GRACE_MS?: string;
-}
-
-/**
- * Resolve watchdog config from env. The detector is on by default
- * (warren-b2dc): when `WARREN_RUN_HEARTBEAT_TIMEOUT_MS` is unset it arms
- * with the generous built-in `DEFAULT_WATCHDOG_HEARTBEAT_TIMEOUT_MS`
- * budget. Operators opt out with `WARREN_WATCHDOG_DISABLED=1` (or by
- * pinning the budget to 0). An invalid timeout/tick throws so a typo in a
- * deploy config fails loud rather than silently mis-arming the safety net.
- */
-export function loadWatchdogConfigFromEnv(env: WatchdogEnvLike): WatchdogConfig {
-	const heartbeatTimeoutMs = parseNonNegativeInt(
-		env.WARREN_RUN_HEARTBEAT_TIMEOUT_MS,
-		"WARREN_RUN_HEARTBEAT_TIMEOUT_MS",
-		DEFAULT_WATCHDOG_HEARTBEAT_TIMEOUT_MS,
-	);
-	const tickMs = parsePositiveInt(
-		env.WARREN_WATCHDOG_TICK_MS,
-		"WARREN_WATCHDOG_TICK_MS",
-		DEFAULT_WATCHDOG_TICK_MS,
-	);
-	const terminalReconcileGraceMs = parseNonNegativeInt(
-		env.WARREN_RUN_TERMINAL_RECONCILE_GRACE_MS,
-		"WARREN_RUN_TERMINAL_RECONCILE_GRACE_MS",
-		DEFAULT_WATCHDOG_TERMINAL_RECONCILE_GRACE_MS,
-	);
-	const optedOut = parseDisabledFlag(env.WARREN_WATCHDOG_DISABLED);
-	return {
-		enabled: !optedOut && heartbeatTimeoutMs > 0,
-		heartbeatTimeoutMs,
-		tickMs,
-		terminalReconcileGraceMs,
-	};
-}
-
-function parseDisabledFlag(raw: string | undefined): boolean {
-	if (raw === undefined) return false;
-	const t = raw.trim().toLowerCase();
-	return t === "1" || t === "true" || t === "yes" || t === "on";
-}
-
-function parseNonNegativeInt(raw: string | undefined, name: string, fallback: number): number {
-	if (raw === undefined || raw.trim() === "") return fallback;
-	const n = Number(raw);
-	if (!Number.isInteger(n) || n < 0) {
-		throw new Error(`${name} must be a non-negative integer, got "${raw}"`);
-	}
-	return n;
-}
-
-function parsePositiveInt(raw: string | undefined, name: string, fallback: number): number {
-	if (raw === undefined || raw.trim() === "") return fallback;
-	const n = Number(raw);
-	if (!Number.isInteger(n) || n <= 0) {
-		throw new Error(`${name} must be a positive integer, got "${raw}"`);
-	}
-	return n;
 }
 
 /* -------------------------------------------------------------------- */

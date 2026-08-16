@@ -211,12 +211,14 @@ export {
 	bootWatchdog,
 	computeIdleMs,
 	DEFAULT_WATCHDOG_TICK_MS,
-	loadWatchdogConfigFromEnv,
 	tickWatchdog,
 	WATCHDOG_TIMED_OUT_KIND,
-	type WatchdogConfig,
 	type WatchdogHandle,
 	type WatchdogReap,
 	type WatchdogTickDeps,
 	type WatchdogTickResult,
 } from "./watchdog.ts";
+export {
+	loadWatchdogConfigFromEnv,
+	type WatchdogConfig,
+} from "./watchdog-config.ts";

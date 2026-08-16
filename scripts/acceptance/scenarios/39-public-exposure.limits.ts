@@ -124,7 +124,7 @@ export async function assertPreviewProxyPreamble(base: string, ids: SeededIds): 
  *
  * The slots are held against the PLAN-RUN stream, not the run stream:
  * the seeded run is terminal (it must be — boot-time bridge resume
- * reconciles a seeded `running` run to `burrow_run_lost`), and since
+ * reconciles a seeded `running` run to `sandbox_run_lost`), and since
  * warren-7bff a follow tail on a terminal run closes right after
  * replay, releasing its slot before the next probe. The plan-run tail
  * holds until the client disconnects, so it pins the slots

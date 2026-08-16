@@ -8,7 +8,7 @@
  * seed, same prompt — before declaring the plan-run failed.
  *
  * The decision is factored into two pure predicates so a second retryable
- * failure cause (warren-4af7: infra-lost runs like `burrow_run_lost`)
+ * failure cause (warren-4af7: infra-lost runs like `sandbox_run_lost`)
  * joins by appending to {@link RETRYABLE_CHILD_FAILURE_REASONS} — no
  * coordinator surgery required.
  *
