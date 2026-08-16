@@ -1,7 +1,14 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { extractRoutes, generate, groupRoutes, renderMarkdown } from "./generate-docs.ts";
+import { BUILTIN_AGENTS } from "../src/registry/builtins/index.ts";
+import {
+	extractRoutes,
+	generate,
+	generateBuiltinAgentsManifest,
+	groupRoutes,
+	renderMarkdown,
+} from "./generate-docs.ts";
 
 const REPO_ROOT = resolve(import.meta.dir, "..");
 
@@ -105,5 +112,38 @@ describe("generate-docs", () => {
 			},
 		]);
 		expect(md).toContain("a\\|b");
+	});
+});
+
+describe("generate-docs builtin-agents manifest", () => {
+	test("docs/builtin-agents.json is in sync with BUILTIN_AGENTS", () => {
+		const { content } = generateBuiltinAgentsManifest();
+		const onDisk = readFileSync(resolve(REPO_ROOT, "docs/builtin-agents.json"), "utf8");
+		expect(onDisk).toBe(content);
+	});
+
+	test("manifest lists every builtin exactly once with a non-empty role", () => {
+		const { manifest } = generateBuiltinAgentsManifest();
+		expect(manifest.count).toBe(BUILTIN_AGENTS.length);
+		expect(manifest.count).toBeGreaterThan(0);
+		const names = manifest.agents.map((a) => a.name);
+		expect(new Set(names).size).toBe(names.length);
+		expect([...names].sort()).toEqual([...BUILTIN_AGENTS.map((a) => a.name)].sort());
+		for (const agent of manifest.agents) {
+			expect(agent.role.trim().length).toBeGreaterThan(0);
+			expect(agent.role).not.toContain("\n");
+		}
+	});
+
+	test("manifest is deterministic across runs", () => {
+		expect(generateBuiltinAgentsManifest().content).toBe(generateBuiltinAgentsManifest().content);
+	});
+
+	test("manifest content is valid JSON with the stable top-level shape", () => {
+		const { content } = generateBuiltinAgentsManifest();
+		const parsed = JSON.parse(content) as Record<string, unknown>;
+		expect(Object.keys(parsed)).toEqual(["source", "count", "agents"]);
+		expect(parsed.count).toBe((parsed.agents as unknown[]).length);
+		expect(content.endsWith("\n")).toBe(true);
 	});
 });

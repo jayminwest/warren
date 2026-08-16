@@ -1,0 +1,38 @@
+{
+	"source": "src/registry/builtins/index.ts (BUILTIN_AGENTS)",
+	"count": 8,
+	"agents": [
+		{
+			"name": "bugwatch",
+			"role": "Bug triage agent — investigates open bug seeds and produces a seeds fix plan per bug."
+		},
+		{
+			"name": "claude-code",
+			"role": "General-purpose coding agent on the claude-code harness; dispatchable on a fresh install."
+		},
+		{
+			"name": "healer",
+			"role": "Closed-loop repair agent — diagnoses production alerts and opens a fresh fix branch + PR."
+		},
+		{
+			"name": "nightwatch",
+			"role": "Code patrol agent — scans repos for quality issues and files a seeds plan to fix them."
+		},
+		{
+			"name": "pi",
+			"role": "Multi-provider coding-agent runtime (@earendil-works/pi-coding-agent); warren's default runtime."
+		},
+		{
+			"name": "planner",
+			"role": "Interactive planning agent that turns a finalized intent into a structured seeds plan."
+		},
+		{
+			"name": "pr-fixer",
+			"role": "CI-repair agent — fixes failing checks on warren-opened PRs directly on the PR branch."
+		},
+		{
+			"name": "sapling",
+			"role": "Alternate steerable coding harness shipped inline alongside claude-code."
+		}
+	]
+}
