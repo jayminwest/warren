@@ -2,6 +2,16 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { load } from "js-yaml";
+import {
+	AGENT_SOURCES,
+	EVENT_STREAMS,
+	PLAN_RUN_CHILD_STATES,
+	PLAN_RUN_STATES,
+	PREVIEW_STATES,
+	PULL_REQUEST_LIFECYCLES,
+	RUN_FAILURE_REASONS,
+	RUN_STATES,
+} from "../src/core/wire.ts";
 import { buildDocument, convertPattern, generate, tagFor } from "./generate-openapi.ts";
 
 const REPO_ROOT = resolve(import.meta.dir, "..");
@@ -90,5 +100,68 @@ describe("generate-openapi", () => {
 		const op = doc.paths["/healthz"]?.get;
 		expect(op?.responses["200"]).toBeDefined();
 		expect(op?.responses.default).toBeDefined();
+	});
+
+	test("components.schemas derives enum vocabulary from src/core/wire.ts", () => {
+		const doc = buildDocument([], "0.0.0");
+		const schemas = doc.components.schemas as Record<string, { type?: unknown; enum?: unknown[] }>;
+		expect(schemas.RunState?.enum).toEqual([...RUN_STATES]);
+		expect(schemas.RunFailureReason?.enum).toEqual([...RUN_FAILURE_REASONS]);
+		expect(schemas.PlanRunState?.enum).toEqual([...PLAN_RUN_STATES]);
+		expect(schemas.PlanRunChildState?.enum).toEqual([...PLAN_RUN_CHILD_STATES]);
+		expect(schemas.PreviewState?.enum).toEqual([...PREVIEW_STATES]);
+		expect(schemas.EventStream?.enum).toEqual([...EVENT_STREAMS]);
+		expect(schemas.AgentSource?.enum).toEqual([...AGENT_SOURCES]);
+		expect(schemas.PullRequestLifecycle?.enum).toEqual([...PULL_REQUEST_LIFECYCLES]);
+	});
+
+	test("components.schemas covers the core document shapes", () => {
+		const doc = buildDocument([], "0.0.0");
+		for (const name of ["Run", "PlanRun", "PlanRunChild", "Project", "Agent", "ErrorEnvelope"]) {
+			expect(doc.components.schemas[name]).toBeDefined();
+		}
+		// The run document carries the dispatch-time ref (warren-afeb / PR #916).
+		const run = doc.components.schemas.Run as { properties: Record<string, unknown> };
+		expect(run.properties.ref).toBeDefined();
+		expect(run.properties.state).toEqual({ $ref: "#/components/schemas/RunState" });
+	});
+
+	test("default error response references the ErrorEnvelope schema", () => {
+		const doc = buildDocument(
+			[{ method: "GET", pattern: "/healthz", handler: "healthz" }],
+			"0.0.0",
+		);
+		const op = doc.paths["/healthz"]?.get;
+		expect(op?.responses.default?.content?.["application/json"]?.schema).toEqual({
+			$ref: "#/components/schemas/ErrorEnvelope",
+		});
+	});
+
+	test("known routes wire their 200 response to a component schema", () => {
+		const doc = buildDocument(
+			[
+				{ method: "GET", pattern: "/runs/:id", handler: "getRunHandler" },
+				{ method: "GET", pattern: "/agents", handler: "listAgentsHandler" },
+			],
+			"0.0.0",
+		);
+		const runBody = doc.paths["/runs/{id}"]?.get?.responses["200"]?.content?.["application/json"]
+			?.schema as { properties: Record<string, unknown> };
+		expect(runBody.properties.run).toEqual({ $ref: "#/components/schemas/Run" });
+		const agentsBody = doc.paths["/agents"]?.get?.responses["200"]?.content?.["application/json"]
+			?.schema as { properties: { agents: { items: unknown } } };
+		expect(agentsBody.properties.agents.items).toEqual({
+			$ref: "#/components/schemas/Agent",
+		});
+	});
+
+	test("unknown routes keep a permissive 200 with no body schema", () => {
+		const doc = buildDocument(
+			[{ method: "POST", pattern: "/runs/:id/steer", handler: "steerRunHandler" }],
+			"0.0.0",
+		);
+		const ok = doc.paths["/runs/{id}/steer"]?.post?.responses["200"];
+		expect(ok?.description).toBe("Successful response.");
+		expect(ok?.content).toBeUndefined();
 	});
 });
