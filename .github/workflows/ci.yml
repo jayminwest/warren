@@ -38,6 +38,10 @@ jobs:
         if: always()
         run: bun run report:test-timing
 
+      - name: Surface failing tests as annotations
+        if: failure()
+        run: bun run report:test-failures
+
       - name: Code-quality metrics summary
         if: always()
         run: bun run report:quality-metrics
