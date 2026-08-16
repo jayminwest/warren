@@ -1,17 +1,17 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { openDatabase, type WarrenDb } from "../db/client.ts";
-import { createRepos, type Repos } from "../db/repos/index.ts";
-import type { RunRow } from "../db/schema.ts";
-import { shouldRetryChild } from "../plan-runs/retry.ts";
-import type { RuntimeProvider } from "../runtime/contract.ts";
+import { openDatabase, type WarrenDb } from "../../db/client.ts";
+import { createRepos, type Repos } from "../../db/repos/index.ts";
+import type { RunRow } from "../../db/schema.ts";
+import { shouldRetryChild } from "../../plan-runs/retry.ts";
+import type { RuntimeProvider } from "../../runtime/contract.ts";
+import type { SpawnRunInput, SpawnRunResult } from "../spawn/types.ts";
 import {
 	createInfraLostRetryHook,
 	decideInfraLostRetry,
 	isInfraLostRunFailure,
 	RUN_RETRY_DISPATCHED_KIND,
 	RUN_RETRY_OF_KIND,
-} from "./retry.ts";
-import type { SpawnRunInput, SpawnRunResult } from "./spawn/types.ts";
+} from "./infra-lost-retry.ts";
 
 /**
  * warren-4af7: a run that terminalizes `failed`/`burrow_run_lost` earns ONE

@@ -2,7 +2,7 @@ import type { EventRow, RunFailureReason, RunTerminalState } from "../../db/sche
 import { mintGitCredentialSecret } from "../../forge/credentials.ts";
 import type { RunHandle, RuntimeProvider, WorkspaceInfo } from "../../runtime/contract.ts";
 import { lifecycleBus } from "../lifecycle-bus.ts";
-import { isInfraLostRunFailure } from "../retry.ts";
+import { isInfraLostRunFailure } from "../retry/infra-lost-retry.ts";
 import { bindBridgeLogger } from "../stream/index.ts";
 import { runWorkspaceDestroy } from "./destroy.ts";
 import { createPipelineState, runReapPipeline } from "./pipeline.ts";

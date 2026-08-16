@@ -173,7 +173,15 @@ export {
 	isInfraLostRunFailure,
 	RUN_RETRY_DISPATCHED_KIND,
 	RUN_RETRY_OF_KIND,
-} from "./retry.ts";
+} from "./retry/infra-lost-retry.ts";
+export {
+	classifyProviderError,
+	createProviderRetryLifecycleExtension,
+	PROVIDER_RETRY_EVENTS,
+	type ProviderErrorClass,
+	type ProviderRetryLifecycleExtensionInput,
+	type ProviderRetryLogger,
+} from "./retry/provider-retry.ts";
 export {
 	type BuildSeedFilesResult,
 	buildSeedFiles,

@@ -12,7 +12,7 @@
  * — no coordinator surgery required. warren-4af7 did exactly that: an
  * infra-lost child run (`burrow_run_lost` — the sandbox/pod vanished under a
  * healthy run) earns the same single automatic re-dispatch. The run-level
- * retry (`src/runs/retry.ts`) stands down on plan-run children (it checks
+ * retry (`src/runs/retry/infra-lost-retry.ts`) stands down on plan-run children (it checks
  * `planRuns.findChildByRunId`) so a child never double-retries.
  *
  * The retry budget is per-child, not per-plan, and is persisted on the

@@ -185,7 +185,7 @@ export interface CreateBridgeRegistryInput {
 	 * `runWithReconnect` (the mid-stream 404 reconcile) and into the
 	 * `bootBridges` ghost-run reconcile, so a run that terminalizes
 	 * `failed`/`burrow_run_lost` earns ONE automatic re-dispatch
-	 * (`src/runs/retry.ts`). Omit to disable (tests).
+	 * (`src/runs/retry/infra-lost-retry.ts`). Omit to disable (tests).
 	 */
 	readonly onInfraLostRun?: (runId: string) => Promise<void>;
 	/**

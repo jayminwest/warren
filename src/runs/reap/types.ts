@@ -99,7 +99,7 @@ export interface ReapRunInput {
 	 * terminal transition + workspace teardown, when the run finalized
 	 * `failed` with an infra-lost failure reason (`burrow_run_lost`). The
 	 * hook re-dispatches ONE replacement run linked via `runs.retry_of`
-	 * (see `src/runs/retry.ts`); boot wires it, tests omit it (no retry).
+	 * (see `src/runs/retry/infra-lost-retry.ts`); boot wires it, tests omit it (no retry).
 	 * Fire-and-log: a hook throw is caught by reap and surfaced as a
 	 * `run.retry_failed` event, never as a reap failure.
 	 */

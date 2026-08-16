@@ -354,7 +354,7 @@ interface ReconcileLostBurrowRunInput {
 	readonly failureReason?: RunFailureReason;
 	/**
 	 * Infra-lost auto-retry hook (warren-4af7), fired after a successful
-	 * infra-lost finalize — see `src/runs/retry.ts`. Fire-and-log.
+	 * infra-lost finalize — see `src/runs/retry/infra-lost-retry.ts`. Fire-and-log.
 	 */
 	readonly onInfraLostRun?: (runId: string) => Promise<void>;
 	/**
@@ -463,7 +463,7 @@ export async function reconcileLostBurrowRun(input: ReconcileLostBurrowRunInput)
 		"reconciled ghost run: burrow no longer knows this burrow_run_id",
 	);
 	// warren-4af7: a freshly-finalized infra-lost run earns ONE automatic retry
-	// (src/runs/retry.ts); a stall-ceiling `burrow_unreachable` does not qualify.
+	// (src/runs/retry/infra-lost-retry.ts); a stall-ceiling `burrow_unreachable` does not qualify.
 	if (finalized && isInfraLostRunFailure(failureReason) && input.onInfraLostRun !== undefined) {
 		try {
 			await input.onInfraLostRun(input.runId);

@@ -130,7 +130,7 @@ export interface SpawnRunInput {
 	readonly cloneKind?: CloneKind;
 	/**
 	 * Infra-lost auto-retry back-link (warren-4af7). Set only by the
-	 * run-level retry path (`src/runs/retry.ts`): this run is the single
+	 * run-level retry path (`src/runs/retry/infra-lost-retry.ts`): this run is the single
 	 * automatic re-dispatch of a run that terminalized `failed` with an
 	 * infra-lost failure reason (`burrow_run_lost`). Persisted to
 	 * `runs.retry_of`; the retry budget reads it (a run carrying `retryOf`

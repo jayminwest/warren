@@ -3,7 +3,7 @@
  * `bootServer` in `index.ts` so the orchestrator stays under the per-file
  * size budget, mirroring the sibling `*-wiring.ts` precedent.
  *
- * Builds the run-level retry hook (`src/runs/retry.ts`) once and hands the
+ * Builds the run-level retry hook (`src/runs/retry/infra-lost-retry.ts`) once and hands the
  * caller the two seams it threads:
  *
  *   - `onInfraLostRun` — into reap (`bindReap`) and the bridge registry /

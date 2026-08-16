@@ -33,7 +33,6 @@ import {
 	loadAutoOpenPrConfigFromEnv,
 	loadRunBranchPrefixFromEnv,
 	RunEventBroker,
-	reapRun,
 } from "../../runs/index.ts";
 import { loadWorkspaceGcConfigFromEnv } from "../../runs/reap/gc.ts";
 import { resolveLocalBootBackend } from "../../runtime/local/boot-backend.ts";
@@ -42,7 +41,6 @@ import { loadWarrenServerConfigFromFile } from "../../server-config/index.ts";
 import { loadTriggerSchedulerConfigFromEnv } from "../../triggers/index.ts";
 import { createWarrenConfigCache } from "../../warren-config/index.ts";
 import { NO_AUTH, resolveAuth, resolveAuthKind, resolveOperatorToken } from "../auth.ts";
-import { bootBridges } from "../bridges.ts";
 import { DEFAULT_DATA_DIR, type EnvLike, loadServerConfigFromEnv } from "../config.ts";
 import { bootGitHubAppRegistrationGate } from "../github-app-gate.ts";
 import { bootScheduler } from "../scheduler.ts";
@@ -50,6 +48,7 @@ import { startServer } from "../server.ts";
 import { loadEventStreamLimitsFromEnv } from "../stream-limits.ts";
 import type { AuthProvider, RunActivityCheck, ServeHandle } from "../types.ts";
 import { seedAgentsAtBoot } from "./agent-seeding.ts";
+import { bindReapWithBootDeps, bootBridgesAndProviderRetry } from "./bridges-wiring.ts";
 import { buildServerDeps } from "./deps.ts";
 import { bootBackgroundDetectors } from "./detector-wiring.ts";
 import { bootLifecycleBus } from "./lifecycle-bus-wiring.ts";
@@ -234,8 +233,10 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 	const previewSidecars = localBackend?.previewSidecars;
 	const workspaceDestroyer = localBackend?.workspaceDestroyer;
 	// warren-cd3b: the salvage bundle capture lands beside the salvage intake dir.
+	// warren-45e6: the boot-resolved forge drives reap's PR sub-steps.
 	const salvageDir = join(serverConfig.dataDir, "salvage");
-	// warren-4af7: infra-lost auto-retry (src/runs/retry.ts) — see retry-wiring.ts.
+	// warren-4af7: infra-lost auto-retry (src/runs/retry/infra-lost-retry.ts) —
+	// see retry-wiring.ts.
 	const { onInfraLostRun, onRegistryCreated } = wireInfraLostRetry({
 		repos,
 		runtimeProvider,
@@ -249,43 +250,39 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 		...(runBranchPrefixDefault !== undefined ? { runBranchPrefixDefault } : {}),
 		...(opts.now !== undefined ? { now: opts.now } : {}),
 	});
-	const bindReap = (i: Parameters<typeof reapRun>[0]) =>
-		reapRun({
-			...i,
-			// warren-45e6: the boot-resolved forge drives reap's PR sub-steps.
-			forge,
-			...(previewSidecars !== undefined ? { previewSidecars } : {}),
-			salvageDir,
-			onInfraLostRun,
-		});
+	const bindReap = bindReapWithBootDeps({ forge, previewSidecars, salvageDir, onInfraLostRun });
 
-	const bridgesBoot = await bootBridges({
+	// warren-339d: bridge boot + provider-retry registration (see bridges-wiring.ts).
+	const { bridgesBoot, providerRetryRegistration } = await bootBridgesAndProviderRetry({
+		bridges: {
+			repos,
+			broker,
+			runtimeProvider,
+			// warren-e24d: reap seam pre-bound with the provider-derived preview seam.
+			reap: bindReap,
+			logger: bridgeLoggerFromPino(logger),
+			autoOpenPr,
+			warrenConfigs,
+			portAllocator,
+			previewLaunchConfig: previewSurface.launchConfig,
+			seedsCli,
+			// warren-4af7: infra-lost ghost-reconcile + registry late-binding.
+			onInfraLostRun,
+			onRegistryCreated,
+		},
+		logger,
+		bus: lifecycleBusHandle.bus,
 		repos,
-		broker,
 		runtimeProvider,
-		// warren-e24d: reap seam pre-bound with the provider-derived preview seam.
-		reap: bindReap,
-		onInfraLostRun,
-		onRegistryCreated,
-		logger: bridgeLoggerFromPino(logger),
-		autoOpenPr,
+		projectsConfig,
+		projectSpawn: defaultSpawn,
+		forge,
 		warrenConfigs,
-		portAllocator,
-		previewLaunchConfig: previewSurface.launchConfig,
 		seedsCli,
+		broker,
+		...(runBranchPrefixDefault !== undefined ? { runBranchPrefixDefault } : {}),
+		...(opts.now !== undefined ? { now: opts.now } : {}),
 	});
-	if (bridgesBoot.resumed.length > 0) {
-		logger.info(
-			{ count: bridgesBoot.resumed.length },
-			"resumed run-stream bridges from active runs",
-		);
-	}
-	if (bridgesBoot.skipped.length > 0) {
-		logger.warn(
-			{ count: bridgesBoot.skipped.length, runs: bridgesBoot.skipped },
-			"skipped runs without burrow_run_id",
-		);
-	}
 
 	// Startup burrow probe — local backend only; k8s has no socket (warren-c128).
 	if (localBackend !== undefined) {
@@ -475,6 +472,7 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 			await bridgesBoot.registry.stopAll();
 			// Detach the lifecycle-bus consumers + uninstall the singleton so a
 			// teardown leaves no global emit target behind (warren-4e74).
+			providerRetryRegistration.unregister();
 			lifecycleBusHandle.stop();
 			// warren-f796: close the local backend's burrow client (undefined under k8s).
 			await localBackend?.close();
