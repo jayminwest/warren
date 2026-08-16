@@ -153,6 +153,7 @@ describe("runDoctor", () => {
 		const names = result.checks.map((c) => c.name);
 		expect(names).toEqual([
 			"WARREN_API_TOKEN",
+			"git_identity",
 			"warren_db",
 			"db_reachable",
 			"projects_root",
@@ -324,6 +325,39 @@ describe("runDoctor", () => {
 			expect(reach?.ok).toBe(false);
 			expect(reach?.message).toBe("probe failed (reason=unreachable)");
 			expect(err.join("")).not.toContain(RAW_DRIVER_TEXT);
+		});
+	});
+
+	describe("git_identity check (warren-e7b7)", () => {
+		test("warns on unset WARREN_GIT_AUTHOR_* (ok:true — a warning, not a failure)", async () => {
+			const { context } = captureContext({ WARREN_API_TOKEN: "tok" });
+			const result = await runDoctor(
+				context,
+				{ existsSync: () => true, probeBurrow: async () => undefined },
+				{},
+			);
+			const check = result.checks.find((c: DoctorCheck) => c.name === "git_identity");
+			expect(check?.ok).toBe(true);
+			expect(check?.message).toContain("warning");
+			expect(check?.hint).toContain("machine account");
+			expect(result.exitCode).toBe(0);
+		});
+
+		test("reports configured when both WARREN_GIT_AUTHOR_* vars are set", async () => {
+			const { context } = captureContext({
+				WARREN_API_TOKEN: "tok",
+				WARREN_GIT_AUTHOR_NAME: "warren-bot",
+				WARREN_GIT_AUTHOR_EMAIL: "12345+warren-bot@users.noreply.github.com",
+			});
+			const result = await runDoctor(
+				context,
+				{ existsSync: () => true, probeBurrow: async () => undefined },
+				{},
+			);
+			const check = result.checks.find((c: DoctorCheck) => c.name === "git_identity");
+			expect(check?.ok).toBe(true);
+			expect(check?.message).toContain("configured");
+			expect(check?.hint).toBeUndefined();
 		});
 	});
 });
