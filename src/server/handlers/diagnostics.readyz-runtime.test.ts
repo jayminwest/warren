@@ -33,6 +33,7 @@ const failBwrap: SpawnFn = async (cmd) => {
 
 async function readyzChecks(
 	db: WarrenDb,
+	k8sPodSync?: { isSynced(): boolean },
 ): Promise<{ status: number; names: string[]; ok: boolean }> {
 	const repos = createRepos(db);
 	await repos.agents.upsert({
@@ -49,6 +50,7 @@ async function readyzChecks(
 		projectsConfig: { root: "/tmp/projects", gitBinary: "git" },
 		logger: silentLogger,
 		uiDistDir: null,
+		...(k8sPodSync !== undefined ? { k8sPodSync } : {}),
 	} as unknown as ServerDeps;
 	const res = await readyzHandler(deps)({} as RouteContext);
 	const body = (await res.json()) as { ok: boolean; checks: { name: string }[] };
@@ -78,7 +80,7 @@ describe("/readyz runtime-topology scoping (warren-c128)", () => {
 	test("k8s backend scopes burrow probes out entirely (⇒ 200)", async () => {
 		process.env.WARREN_RUNTIME = "k8s";
 		db = await openDatabase({ path: ":memory:" });
-		const { status, ok, names } = await readyzChecks(db);
+		const { status, ok, names } = await readyzChecks(db, { isSynced: () => true });
 		expect(status).toBe(200);
 		expect(ok).toBe(true);
 		expect(names).not.toContain("burrow_reachable");

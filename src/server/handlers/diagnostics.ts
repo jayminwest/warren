@@ -51,6 +51,12 @@ export function readyzHandler(deps: ServerDeps): RouteHandler {
 		// so probing it just reports "burrow unreachable" and needlessly degrades
 		// readiness (warren-c128). `burrowReadyzChecks` returns [] under k8s.
 		checks.push(...(await burrowReadyzChecks(deps, spawn)));
+		// The K8s-topology counterpart (warren-39e1): under `WARREN_RUNTIME=k8s`
+		// /readyz asserts something POSITIVE about the control plane — the pod
+		// watcher's informer sync state — rather than just skipping the burrow
+		// probes. Returns null under `local` so the check is absent there.
+		const k8sCheck = k8sApiReachableReadyzCheck(deps);
+		if (k8sCheck !== null) checks.push(k8sCheck);
 		checks.push(await checkAgentsRegistered(deps));
 		const warrenConfigProjects = (await deps.repos.projects.listAll()).map((p) => ({
 			id: p.id,
@@ -103,6 +109,38 @@ async function burrowReadyzChecks(deps: ServerDeps, spawn: SpawnFn): Promise<Dia
 		}),
 		await staleBurrowWorkspacesReadyzCheck(deps),
 	];
+}
+
+/**
+ * The K8s-topology readiness probe (warren-39e1): `k8s_api_reachable`. Under
+ * `WARREN_RUNTIME=k8s` the burrow probes are scoped out (warren-c128), so
+ * without this check /readyz asserted nothing positive about the K8s control
+ * plane — a warren pod with a broken API-server connection would report
+ * ready. The probe reads the pod-watcher informer's sync state (its
+ * `isSynced()` seam): synced means the informer has listed against the API
+ * server and holds a live watch; unsynced means the API is unreachable or the
+ * stream is down. Returns `null` under `local` — the check is absent there.
+ */
+function k8sApiReachableReadyzCheck(deps: ServerDeps): DiagnosticCheck | null {
+	if (resolveRuntimeKind() !== "k8s") return null;
+	const sync = deps.k8sPodSync;
+	if (sync === undefined) {
+		return {
+			name: "k8s_api_reachable",
+			ok: false,
+			message: "pod watcher not wired",
+			hint: "the K8s runtime backend must start the pod watcher before serving",
+		};
+	}
+	if (!sync.isSynced()) {
+		return {
+			name: "k8s_api_reachable",
+			ok: false,
+			message: "pod watcher not synced with the K8s API server",
+			hint: "check API-server reachability from this pod (service account, network policy)",
+		};
+	}
+	return { name: "k8s_api_reachable", ok: true };
 }
 
 async function previewPortAllocatorReadyzCheck(deps: ServerDeps): Promise<DiagnosticCheck> {
