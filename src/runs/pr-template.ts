@@ -36,6 +36,7 @@ import { PREVIEW_FRAGMENT_END, PREVIEW_FRAGMENT_START, type PrCommit, type PrSee
 export const PR_FRAGMENT_NAMES = [
 	"title",
 	"summary",
+	"agent_notes",
 	"run",
 	"seeds",
 	"preview_url_or_placeholder",
@@ -104,6 +105,12 @@ export interface PrFragmentContext {
 	readonly tokensOutput?: number;
 	readonly tokensCacheRead?: number;
 	readonly previewOptedIn?: boolean;
+	/**
+	 * Body (not the subject) of the run's final commit, lifted at reap time
+	 * into an `## Agent notes` section under Summary (warren-5e86). Empty /
+	 * whitespace-only / undefined → the fragment is omitted entirely.
+	 */
+	readonly agentNotes?: string;
 }
 
 /**
@@ -273,6 +280,8 @@ function defaultRender(name: PrFragmentName, ctx: PrFragmentContext): string | n
 			return null; // handled by composeTitle
 		case "summary":
 			return defaultSummary(ctx);
+		case "agent_notes":
+			return ctx.agentNotes !== undefined ? defaultAgentNotes(ctx.agentNotes) : null;
 		case "run":
 			return defaultRun(ctx);
 		case "seeds":
@@ -302,6 +311,25 @@ function defaultSummary(ctx: PrFragmentContext): string {
 	const duration = formatDuration(ctx.startedAt, ctx.endedAt);
 	const tail = duration === null ? "no commits." : `for ${duration}; no commits.`;
 	return `## Summary\n\nAgent \`${ctx.agentName}\` ran ${tail}`;
+}
+
+/**
+ * `## Agent notes` from the final commit's body (warren-5e86). Sanitized:
+ * trailing whitespace stripped per line and the whole body trimmed; an empty
+ * result omits the section (returns null). A body containing markdown
+ * headers is fenced wholesale so it cannot break the PR body's own `##`
+ * section structure.
+ */
+function defaultAgentNotes(rawBody: string): string | null {
+	const body = rawBody
+		.split("\n")
+		.map((line) => line.trimEnd())
+		.join("\n")
+		.trim();
+	if (body === "") return null;
+	const hasHeaders = body.split("\n").some((line) => line.startsWith("#"));
+	const rendered = hasHeaders ? `\`\`\`markdown\n${body}\n\`\`\`` : body;
+	return `## Agent notes\n\n${rendered}`;
 }
 
 function defaultRun(ctx: PrFragmentContext): string {
