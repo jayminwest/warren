@@ -52,7 +52,8 @@ import { lifecycleBus } from "../lifecycle-bus.ts";
 import { buildSeedFiles } from "../seed.ts";
 import { validateTargetBranch } from "../target-branch.ts";
 import { readCachedAgent, readProjectDefaults, resolveOverride } from "./agent-cache.ts";
-import { type EnvLike, injectWarrenCallbackEnv } from "./callback-env.ts";
+import { injectWarrenCallbackEnv } from "./callback-env.ts";
+import { injectGitIdentityEnv, warnIfGitIdentityUnconfigured } from "./git-identity.ts";
 import {
 	bindRunLogger,
 	logDispatched,
@@ -218,6 +219,10 @@ export async function spawnRun(input: SpawnRunInput): Promise<SpawnRunResult> {
 	const runtimeOverride = interactiveRuntimeOverride(agent.name, projectDefaults);
 
 	const log = bindRunLogger(input.logger, run.id);
+	// warren-e7b7: on the K8s topology no supervisor exists to install a
+	// gitconfig or warn about a missing agent identity — emit one structured
+	// warn per dispatch so the operator sees the misconfiguration per-run.
+	warnIfGitIdentityUnconfigured(log, input.serverEnv ?? process.env);
 	// Runtime-provider seam (warren-c42c: burrow-client eviction, bucket 2).
 	// `provider.create` collapses burrow's provision + dispatch (`burrowsUp` +
 	// `runs.create`) into one call and owns the sandbox-half rollback on a partial
@@ -409,27 +414,8 @@ function composeRunEnv(
 	return env;
 }
 
-/**
- * Forward the operator's agent-commit identity (`WARREN_GIT_AUTHOR_NAME` /
- * `WARREN_GIT_AUTHOR_EMAIL`, see `.env.example`) into the sandbox as the four
- * `GIT_AUTHOR_*` / `GIT_COMMITTER_*` env vars git reads ahead of any config.
- *
- * On the Local path the supervisor already exports these into its own process
- * env (`src/supervisor/git-identity.ts`) and burrow passes them through, so
- * this is a no-op re-assertion of the same values. On the K8s path there is NO
- * supervisor and the run pod has no gitconfig at all — without this every
- * agent `git commit` dies with "Author identity unknown" exit 128 (hit live on
- * GKE, warren-4e36). Mirrors the supervisor's rule: both halves or nothing.
- */
-function injectGitIdentityEnv(env: Record<string, string>, serverEnv: EnvLike): void {
-	const name = serverEnv.WARREN_GIT_AUTHOR_NAME?.trim();
-	const email = serverEnv.WARREN_GIT_AUTHOR_EMAIL?.trim();
-	if (name === undefined || name === "" || email === undefined || email === "") return;
-	env.GIT_AUTHOR_NAME = name;
-	env.GIT_AUTHOR_EMAIL = email;
-	env.GIT_COMMITTER_NAME = name;
-	env.GIT_COMMITTER_EMAIL = email;
-}
+// warren-4e36 / warren-e7b7: the git-identity env helpers moved to
+// `./git-identity.ts` (size budget, warren-4553).
 
 /**
  * Prefix the user's run prompt with the agent's `system` section so the

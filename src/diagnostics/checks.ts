@@ -46,6 +46,36 @@ export interface DiagnosticLogger {
 	warn(obj: object, msg?: string): void;
 }
 
+/**
+ * Agent git-identity check (warren-e7b7). When both
+ * `WARREN_GIT_AUTHOR_NAME` and `WARREN_GIT_AUTHOR_EMAIL` are set, agent
+ * commits attribute to the operator's dedicated bot identity. When either
+ * is unset, agent commits attribute to whatever identity the sandbox
+ * happens to have — the Local supervisor's warn fallback logs it, but the
+ * K8s topology has no supervisor, so this check is the operator's signal.
+ * Always `ok: true` (a WARNING, not a failure): a warren install works
+ * without the vars, the attribution is just wrong. Never echoes the
+ * configured values onto the wire (warren-51de precedent).
+ */
+export function checkGitIdentity(env: EnvLike): DiagnosticCheck {
+	const name = env.WARREN_GIT_AUTHOR_NAME?.trim() ?? "";
+	const email = env.WARREN_GIT_AUTHOR_EMAIL?.trim() ?? "";
+	if (name !== "" && email !== "") {
+		return {
+			name: "git_identity",
+			ok: true,
+			message: "WARREN_GIT_AUTHOR_NAME / WARREN_GIT_AUTHOR_EMAIL configured",
+		};
+	}
+	return {
+		name: "git_identity",
+		ok: true,
+		message:
+			"warning: WARREN_GIT_AUTHOR_NAME / WARREN_GIT_AUTHOR_EMAIL not set — agent commits attribute to the sandbox's fallback git identity",
+		hint: "set both vars to a dedicated GitHub machine account's noreply address (e.g. warren-bot <12345+warren-bot@users.noreply.github.com>)",
+	};
+}
+
 export {
 	type CheckWarrenConfigDeps,
 	checkDatabaseReachable,
