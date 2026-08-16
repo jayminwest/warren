@@ -64,6 +64,8 @@ export type TryOpenPrResult =
 export interface TryOpenPrInput {
 	readonly project: { gitUrl: string; defaultBranch: string };
 	readonly branch: string;
+	/** Resolved PR base (warren-8cbf): the run's clone ref, else the project default branch. */
+	readonly baseBranch: string;
 	readonly autoOpen: AutoOpenPrConfig;
 	/** The boot-resolved forge (warren-45e6). Owns URL parsing, credentials, transport. */
 	readonly forge: Forge;
@@ -118,7 +120,7 @@ export async function tryOpenPr(input: TryOpenPrInput): Promise<TryOpenPrResult>
 		title: content.title,
 		body: content.body,
 		headBranch: input.branch,
-		baseBranch: input.project.defaultBranch,
+		baseBranch: input.baseBranch,
 	};
 	// Find-then-open keeps the re-reap sweep idempotent WITHOUT a POST: a PR
 	// already covering this head→base resolves to mode "exists" (the provider's
@@ -127,7 +129,7 @@ export async function tryOpenPr(input: TryOpenPrInput): Promise<TryOpenPrResult>
 	// provider's duplicate resolution is the backstop.
 	const found = await input.forge.findPullRequest(ref, {
 		headBranch: input.branch,
-		baseBranch: input.project.defaultBranch,
+		baseBranch: input.baseBranch,
 	});
 	if (found.ok && found.value !== null) {
 		return {
@@ -171,6 +173,9 @@ export interface RunPrOpenInput {
 		seedId?: string | null;
 	};
 	readonly branch: string;
+	/** Resolved base branch (warren-8cbf): the run's clone ref when one was
+	 * frozen on the row, else the project default branch. null falls back to
+	 * the project default branch here. */
 	readonly baseBranch: string | null;
 	/** Host workspace path, or `null` under K8s (PR-context git reads degrade). */
 	readonly workspacePath: string | null;
@@ -187,6 +192,36 @@ export interface RunPrOpenInput {
 }
 
 /**
+ * warren-8cbf: the effective PR base — the run's frozen clone ref when one
+ * was threaded through reap, else the project default branch (byte-identical
+ * to the pre-warren-8cbf behavior for a ref-less dispatch). Merging the PR
+ * into the ref IS the parent-branch advance a chained plan-run needs.
+ */
+function resolvePrBase(input: RunPrOpenInput): string {
+	return input.baseBranch ?? input.project.defaultBranch;
+}
+
+/**
+ * warren-ab66 (K8s): with no host workspace, mint a fetch credential from
+ * the forge (warren-45e6, §4) so the PR-context sections can be rebuilt from
+ * the pushed run branch fetched into the project clone. A forge that owns no
+ * credential for the URL keeps the pre-warren-ab66 empty-section path.
+ */
+async function resolveCloneFetchConfig(
+	input: RunPrOpenInput,
+): Promise<CloneFetchConfig | undefined> {
+	if (input.workspacePath !== null) return undefined;
+	const secret = await mintGitCredentialSecret(input.forge, input.project.gitUrl);
+	if (secret === undefined) return undefined;
+	return {
+		runBranch: input.branch,
+		runId: input.run.id,
+		gitUrl: input.project.gitUrl,
+		token: secret,
+	};
+}
+
+/**
  * Best-effort PR-open sub-step. Returns the opened PR handle (URL persisted
  * via `setPrUrl`; refs + composed body threaded to `pr_annotate_preview`);
  * `null` on skip / failure. Mirrors the original inline block in `reapRun` —
@@ -200,28 +235,20 @@ export async function runPrOpen(input: RunPrOpenInput): Promise<OpenedPr | null>
 		await input.emit("reap.pr_open_skipped", { reason: "ci_fixer_run", branch: input.branch });
 		return null;
 	}
+	// warren-8cbf: a run whose ref IS its push branch (the repair-run
+	// pattern — targetBranch pins the workspace branch to the ref) must
+	// never open a head==base PR now that the ref resolves as the base.
+	const baseBranch = resolvePrBase(input);
+	if (input.branch === baseBranch) {
+		await input.emit("reap.pr_open_skipped", { reason: "branch_is_base", branch: input.branch });
+		return null;
+	}
 	try {
-		// warren-ab66: under K8s (no host workspace) rebuild the commit/diff-stat
-		// sections from the pushed run branch fetched into the project clone. The
-		// fetch credential is MINTED from the forge (warren-45e6, §4) instead of
-		// read off the auto-open config; a forge that owns no credential for the
-		// URL keeps the pre-warren-ab66 empty-section path.
-		let cloneFetch: CloneFetchConfig | undefined;
-		if (input.workspacePath === null) {
-			const secret = await mintGitCredentialSecret(input.forge, input.project.gitUrl);
-			if (secret !== undefined) {
-				cloneFetch = {
-					runBranch: input.branch,
-					runId: input.run.id,
-					gitUrl: input.project.gitUrl,
-					token: secret,
-				};
-			}
-		}
+		const cloneFetch = await resolveCloneFetchConfig(input);
 		const prContext = await gatherPrContext({
 			workspacePath: input.workspacePath,
 			projectPath: input.project.localPath,
-			baseBranch: input.project.defaultBranch,
+			baseBranch,
 			prompt: input.run.prompt,
 			seedId: input.run.seedId ?? null,
 			exec: input.exec,
@@ -231,6 +258,7 @@ export async function runPrOpen(input: RunPrOpenInput): Promise<OpenedPr | null>
 		const prArgs: TryOpenPrInput = {
 			project: input.project,
 			branch: input.branch,
+			baseBranch,
 			autoOpen: input.autoOpen,
 			forge: input.forge,
 			run: input.run,

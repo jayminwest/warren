@@ -124,11 +124,12 @@ export async function reapRun(input: ReapRunInput): Promise<ReapRunResult> {
 			await fail("workspace_lookup", err);
 		}
 	}
-	// Base branch for the empty-push count comes from the project row, not
-	// burrow (which doesn't expose baseBranch at the top level). For V1 the
-	// primary flow always carves the workspace branch off
-	// `project.defaultBranch`, the correct ref for `rev-list --count`.
-	const baseBranch: string | null = project?.defaultBranch ?? null;
+	// Base branch for the empty-push count comes from the run's frozen clone
+	// ref (warren-8cbf: the workspace was cut from it, so it is the correct
+	// ref for `rev-list --count` and the downstream PR base), falling back to
+	// the project row (burrow doesn't expose baseBranch at the top level). A
+	// run dispatched without a ref behaves exactly as before: defaultBranch.
+	const baseBranch: string | null = run.ref ?? project?.defaultBranch ?? null;
 
 	// warren-4e74: observe-only `pre_reap` — reap is about to touch the
 	// workspace. A no-op unless a bus is installed with a subscriber; fired

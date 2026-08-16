@@ -60,6 +60,44 @@ describe("advancePlanRun — parentRunId gate (warren-d9a2)", () => {
 		expect(result.kind).toBe("dispatched");
 	});
 
+	test("plan-run with ref: parent PR merged-into-ref passes the gate and the child spawn keeps the ref (warren-8cbf)", async () => {
+		const parentRunId = await h.makeRun("warren-parent");
+		await h.repos.runs.markRunning(parentRunId, NOW);
+		await h.repos.runs.finalize(parentRunId, "succeeded", NOW);
+		await h.repos.runs.setPrUrl(parentRunId, "https://github.com/x/y/pull/99");
+		const { planRun } = await h.repos.planRuns.create({
+			planId: "pl-ref-gate",
+			projectId: h.projectId,
+			agentName: "claude-code",
+			parentRunId,
+			ref: "feature/parent",
+			children: [{ seq: 1, seedId: "warren-c" }],
+			now: NOW,
+		});
+		let seenRef: string | null | undefined;
+		const innerSpawn = h.spawnStub(() => "run_child");
+		const result = await advancePlanRun({
+			planRun,
+			repos: h.repos,
+			showSeed: h.showSeedStub("open"),
+			// The merged check polls the PR itself; with reap threading the run's
+			// ref as the PR base, "merged" here means merged-into-ref — the gate
+			// needs no extra base input.
+			checkPrMerged: async (url) => {
+				expect(url).toBe("https://github.com/x/y/pull/99");
+				return { kind: "merged", mergedAt: NOW.toISOString() };
+			},
+			spawn: (args) => {
+				seenRef = args.planRun.ref;
+				return innerSpawn(args);
+			},
+			emit: h.emit,
+			now: () => NOW,
+		});
+		expect(result.kind).toBe("dispatched");
+		expect(seenRef).toBe("feature/parent");
+	});
+
 	test("parentRunId set, parent PR open → waiting_for_parent_merge", async () => {
 		const parentRunId = await h.makeRun("warren-parent");
 		await h.repos.runs.markRunning(parentRunId, NOW);
