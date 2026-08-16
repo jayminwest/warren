@@ -44,12 +44,12 @@ services:
       - SYS_ADMIN
 
     ports:
-      - "8080:8080"
+      - "${WARREN_HOST_PORT:-8080}:8080"
       # Dedicated path-mode preview origin (warren-3f8a): previews are
       # served from WARREN_PREVIEW_PORT (default: bind port + 1) so
       # agent-authored preview code cannot read the operator token off
       # the warren UI origin. Publish it next to the API port.
-      - "8081:8081"
+      - "${WARREN_HOST_PREVIEW_PORT:-8081}:8081"
 
     # Cap and rotate container logs (warren-26c2 / pl-f700 step 4) so the
     # per-request access log can't fill the host disk. json-file is the

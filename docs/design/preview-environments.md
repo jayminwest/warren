@@ -429,8 +429,8 @@ by moving path-mode previews onto a **dedicated listener**:
   Subdomain mode is unchanged — its origin boundary is the per-run
   host.
 - Operator impact: publish the preview port next to the API port.
-  docker-compose maps `8081:8081`; a reverse proxy forwards a second
-  port on the same hostname.
+  docker-compose maps `"${WARREN_HOST_PREVIEW_PORT:-8081}:8081"`; a
+  reverse proxy forwards a second port on the same hostname.
 
 ## PR-body template (warren-bd49, 2026-05-14)
 
