@@ -75,23 +75,37 @@ export async function pollAcceptance<T>(input: PollAcceptanceInput<T>): Promise<
 	}
 }
 
-/** Poll `GET <baseUrl>/healthz` until it answers 200 (warren boot). */
+/**
+ * Poll `GET <baseUrl>/healthz` until it answers 200 (warren boot).
+ *
+ * Uses its own backoff loop instead of the fixed-cadence pollAcceptance
+ * (warren-f074): the happy path is a boot that answers within the first
+ * few hundred ms, so the loop starts at 100ms and doubles up to a 1s
+ * cap. Slow CI runners get the full timeout window without paying a
+ * fixed 500ms cadence; local runs stay fast. The timeout error mirrors
+ * pollUntilTerminal's message shape so scenario output reads the same.
+ */
 export async function waitForHealthz(baseUrl: string, timeoutMs: number): Promise<void> {
-	await pollAcceptance({
-		label: "healthz",
-		id: baseUrl,
-		timeoutMs,
-		fetchRow: async () => {
-			try {
-				const res = await fetch(`${baseUrl}/healthz`, { method: "GET" });
-				return res.status === 200 ? "ok" : `status ${res.status}`;
-			} catch (err) {
-				return `error: ${err instanceof Error ? err.message : String(err)}`;
-			}
-		},
-		isDone: (probe) => probe === "ok",
-		describe: (probe) => probe,
-	});
+	const deadline = Date.now() + timeoutMs;
+	let intervalMs = 100;
+	let last = "no probe completed";
+	for (;;) {
+		try {
+			const res = await fetch(`${baseUrl}/healthz`, { method: "GET" });
+			last = res.status === 200 ? "ok" : `status ${res.status}`;
+		} catch (err) {
+			last = `error: ${err instanceof Error ? err.message : String(err)}`;
+		}
+		if (last === "ok") return;
+		const remaining = deadline - Date.now();
+		if (remaining <= 0) {
+			throw new AcceptanceError(
+				`healthz did not reach a terminal state within ${timeoutMs}ms (last state: ${last})`,
+			);
+		}
+		await new Promise((resolve) => setTimeout(resolve, Math.min(intervalMs, remaining)));
+		intervalMs = Math.min(intervalMs * 2, 1_000);
+	}
 }
 
 /**

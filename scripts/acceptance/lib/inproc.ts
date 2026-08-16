@@ -71,7 +71,10 @@ export interface BootHandle {
 }
 
 const SOCKET_WAIT_TIMEOUT_MS = 5_000;
-const HEALTHZ_WAIT_TIMEOUT_MS = 10_000;
+// 30s (warren-f074): 10s flaked on loaded CI runners booting the seeded
+// second (public-mode) instance. waitForHealthz polls with backoff, so
+// the happy path still resolves in the first few hundred ms locally.
+const HEALTHZ_WAIT_TIMEOUT_MS = 30_000;
 
 export async function bootInProc(opts: InProcBootOptions): Promise<BootHandle> {
 	const tmpRoot = opts.tmpRoot;
