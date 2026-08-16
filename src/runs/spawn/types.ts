@@ -129,6 +129,17 @@ export interface SpawnRunInput {
 	 */
 	readonly cloneKind?: CloneKind;
 	/**
+	 * Infra-lost auto-retry back-link (warren-4af7). Set only by the
+	 * run-level retry path (`src/runs/retry.ts`): this run is the single
+	 * automatic re-dispatch of a run that terminalized `failed` with an
+	 * infra-lost failure reason (`burrow_run_lost`). Persisted to
+	 * `runs.retry_of`; the retry budget reads it (a run carrying `retryOf`
+	 * never earns a further automatic retry). Distinct from `parentRunId`:
+	 * no continuation base-ref semantics — the retry re-dispatches the same
+	 * prompt against the same ref.
+	 */
+	readonly retryOf?: string;
+	/**
 	 * Existing branch the run must push to instead of the composed
 	 * `${prefix}/${runId}` (warren-a993). The CI-fixer poller sets this to
 	 * the PR head branch so the fixer's commits push to the open PR and its

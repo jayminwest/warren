@@ -2,6 +2,7 @@ import type { EventRow, RunFailureReason, RunTerminalState } from "../../db/sche
 import { mintGitCredentialSecret } from "../../forge/credentials.ts";
 import type { RunHandle, RuntimeProvider, WorkspaceInfo } from "../../runtime/contract.ts";
 import { lifecycleBus } from "../lifecycle-bus.ts";
+import { isInfraLostRunFailure } from "../retry.ts";
 import { bindBridgeLogger } from "../stream/index.ts";
 import { runWorkspaceDestroy } from "./destroy.ts";
 import { createPipelineState, runReapPipeline } from "./pipeline.ts";
@@ -409,6 +410,25 @@ export async function reapRun(input: ReapRunInput): Promise<ReapRunResult> {
 			commitsAhead: state.commitsAhead,
 			prUrl: state.prUrl,
 		});
+	}
+
+	// warren-4af7: an infra-lost terminalization earns ONE automatic retry —
+	// a fresh run linked via `runs.retry_of`, dispatched by the boot-wired
+	// hook after the workspace is torn down. Plan-run children stand down
+	// inside the hook (the coordinator's child retry owns them). Fire-and-log:
+	// a hook failure lands as `run.retry_failed` and never fails the reap.
+	if (
+		finalState === "failed" &&
+		isInfraLostRunFailure(failureReason) &&
+		input.onInfraLostRun !== undefined
+	) {
+		try {
+			await input.onInfraLostRun(run.id);
+		} catch (err) {
+			const message = err instanceof Error ? err.message : String(err);
+			await emit("run.retry_failed", { error: message });
+			log.error({ event: "run.retry_failed", err: message }, "infra-lost run retry failed");
+		}
 	}
 
 	if (input.broker !== undefined) input.broker.close(run.id);

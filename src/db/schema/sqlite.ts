@@ -218,6 +218,16 @@ export const runs = sqliteTable(
 		// parent's pushed branch; `replicate` re-dispatches its exact config
 		// against the project default base. Null for root runs. See `CLONE_KINDS`.
 		cloneKind: text("clone_kind", { enum: CLONE_KINDS }),
+		// Infra-lost auto-retry back-link (warren-4af7): when a run terminalizes
+		// `failed` with an infra-lost failure reason (`burrow_run_lost`), warren
+		// dispatches ONE replacement run and records the original run's id here.
+		// Distinct from `parent_run_id`: a retry re-dispatches the SAME prompt
+		// against the same base (no continuation), and the link drives the
+		// one-retry budget — a run whose `retry_of` is set, or that already has
+		// a retry pointing at it, gets no further automatic retry. Nullable:
+		// the overwhelming majority of runs are first attempts. Plain text (no
+		// FK) for symmetry with the other run back-links.
+		retryOf: text("retry_of"),
 		// Declared provider/model at dispatch time (warren-2ede / pl-103e),
 		// frozen from the rendered agent frontmatter after the override chain
 		// (operator override > project default > agent frontmatter) resolves.

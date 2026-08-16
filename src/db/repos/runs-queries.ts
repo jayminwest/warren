@@ -228,6 +228,21 @@ export async function listByState(
 }
 
 /**
+ * The retry run a `burrow_run_lost` original spawned (warren-4af7), if any.
+ * At most one row can exist — the retry decision checks this before
+ * dispatching — so a `pickOne` read is exact.
+ */
+export async function findByRetryOf(
+	adapter: DrizzleAdapter,
+	runId: string,
+): Promise<RunRow | null> {
+	const db = adapter.drizzle as SqliteDrizzleDb;
+	const runs = adapter.schema.runs;
+	const row = await adapter.pickOne(db.select().from(runs).where(eq(runs.retryOf, runId)));
+	return row ?? null;
+}
+
+/**
  * Runs whose PR the merge watcher still has to settle (warren-3bc6):
  * `pr_url` is set and `pr_state` is not yet terminal (NULL — never polled,
  * or a historical row — or `open`). Boot re-adoption enumerates these so a

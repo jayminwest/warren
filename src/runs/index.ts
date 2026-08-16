@@ -162,6 +162,19 @@ export {
 	reapRun,
 } from "./reap/index.ts";
 export {
+	type CreateInfraLostRetryHookInput,
+	createInfraLostRetryHook,
+	decideInfraLostRetry,
+	INFRA_LOST_RUN_FAILURE_REASONS,
+	type InfraLostRetryDecision,
+	type InfraLostRetryHook,
+	type InfraLostRetrySkip,
+	type InfraLostRunFailureReason,
+	isInfraLostRunFailure,
+	RUN_RETRY_DISPATCHED_KIND,
+	RUN_RETRY_OF_KIND,
+} from "./retry.ts";
+export {
 	type BuildSeedFilesResult,
 	buildSeedFiles,
 	type SeedFile,

@@ -1,0 +1,1 @@
+ALTER TABLE `runs` ADD `retry_of` text;

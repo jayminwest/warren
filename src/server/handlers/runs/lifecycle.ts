@@ -30,6 +30,9 @@ export const PUBLIC_RUN_FIELDS = [
 	"seedId",
 	"parentRunId",
 	"cloneKind",
+	// warren-4af7: the infra-lost retry back-link — a run-id back-reference of
+	// the same class as parentRunId, safe for spectators.
+	"retryOf",
 	"mode",
 	"state",
 	"failureReason",

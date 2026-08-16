@@ -43,6 +43,7 @@ function runRow(over: Partial<RunRow> = {}): RunRow {
 		burrowRunId: "brun-1",
 		seedId: null,
 		parentRunId: null,
+		retryOf: null,
 		cloneKind: null,
 		mode: "batch",
 		renderedAgentJson: {},

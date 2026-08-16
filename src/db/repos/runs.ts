@@ -30,6 +30,7 @@ import {
 import { setPrState, setPrUrl } from "./runs-pr.ts";
 import {
 	aggregate,
+	findByRetryOf,
 	listAll,
 	listByAgent,
 	listByIds,
@@ -56,20 +57,14 @@ export function assertRunTransition(from: RunState, to: RunState): void {
 
 /**
  * Legal per-run preview-environment advances (warren-66d2). Enumerated from
- * the live writers:
+ * the live writers: the port allocator stamps `starting` (its own CAS),
+ * launch/reap write `live`/`failed` through `attachPreview`, and teardown /
+ * eviction flip `starting`/`live` → `torn-down` with a state-filtered CAS.
  *
- *   - `src/preview/port-allocator.ts` claims a port and stamps `starting`
- *     (its own CAS write, not attachPreview).
- *   - `src/preview/launch/orchestrate.ts` + `src/runs/reap/preview.ts` write
- *     `live` / `failed` through `attachPreview`.
- *   - `src/preview/teardown.ts` / `src/preview/eviction/repo.ts` flip
- *     `starting`/`live` → `torn-down` with a state-filtered CAS.
- *
- * `null` is the unset arm: a run whose project never opted into previews,
- * or one whose port allocation failed before `starting` was stamped — hence
- * `null → failed`. `torn-down` and `failed` release the port; a retry
- * re-enters at `starting`, which is why `failed → starting` is legal while
- * `torn-down → live` (the case warren-66d2 flagged) is not.
+ * `null` is the unset arm (project never opted in, or allocation failed
+ * before `starting`) — hence `null → failed`. `torn-down` and `failed`
+ * release the port; a retry re-enters at `starting`, which is why
+ * `failed → starting` is legal while `torn-down → live` (warren-66d2) is not.
  */
 const PREVIEW_ALLOWED_TRANSITIONS: Record<PreviewState | "unset", readonly PreviewState[]> = {
 	unset: ["starting", "live", "failed"],
@@ -80,9 +75,8 @@ const PREVIEW_ALLOWED_TRANSITIONS: Record<PreviewState | "unset", readonly Previ
 };
 
 /**
- * Guard one preview-state advance. A same-state write is an idempotent
- * re-assert and passes; anything not in the table throws
- * StateTransitionError, which `src/server/errors.ts` renders as HTTP 409.
+ * Guard one preview-state advance. A same-state write is an idempotent re-assert;
+ * anything not in the table throws StateTransitionError (HTTP 409 via server/errors).
  */
 export function assertPreviewTransition(from: PreviewState | null, to: PreviewState): void {
 	if (from === to) return;
@@ -112,6 +106,8 @@ export interface CreateRunInput {
 	mode?: RunMode;
 	/** Continuation/replicate back-link (warren-4b11 / warren-e96f); null for root runs. */
 	parentRunId?: string | null;
+	/** Infra-lost auto-retry back-link (warren-4af7); null for first attempts. */
+	retryOf?: string | null;
 	/** Chain kind (warren-e96f); null for root runs. */
 	cloneKind?: CloneKind | null;
 	/** Operator-requested target branch (warren-1f81, #419); null = none. */
@@ -170,6 +166,7 @@ export class RunsRepo {
 			seedId: input.seedId ?? null,
 			parentRunId: input.parentRunId ?? null,
 			cloneKind: input.cloneKind ?? null,
+			retryOf: input.retryOf ?? null,
 			renderedAgentJson: input.renderedAgentJson,
 			state: "queued",
 			failureReason: null,
@@ -285,6 +282,11 @@ export class RunsRepo {
 
 	listByState(state: RunState | RunState[]): Promise<RunRow[]> {
 		return listByState(this.adapter, state);
+	}
+
+	/** The retry a `burrow_run_lost` original spawned (warren-4af7); body in runs-queries.ts. */
+	findByRetryOf(runId: string): Promise<RunRow | null> {
+		return findByRetryOf(this.adapter, runId);
 	}
 
 	/**

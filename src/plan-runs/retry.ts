@@ -8,9 +8,12 @@
  * seed, same prompt — before declaring the plan-run failed.
  *
  * The decision is factored into two pure predicates so a second retryable
- * failure cause (warren-4af7: infra-lost runs like `burrow_run_lost`)
- * joins by appending to {@link RETRYABLE_CHILD_FAILURE_REASONS} — no
- * coordinator surgery required.
+ * failure cause joins by appending to {@link RETRYABLE_CHILD_FAILURE_REASONS}
+ * — no coordinator surgery required. warren-4af7 did exactly that: an
+ * infra-lost child run (`burrow_run_lost` — the sandbox/pod vanished under a
+ * healthy run) earns the same single automatic re-dispatch. The run-level
+ * retry (`src/runs/retry.ts`) stands down on plan-run children (it checks
+ * `planRuns.findChildByRunId`) so a child never double-retries.
  *
  * The retry budget is per-child, not per-plan, and is persisted on the
  * child row (`plan_run_children.retry_count`) so a coordinator restart or
@@ -28,6 +31,10 @@ import type { PlanRunChildRow } from "../db/schema.ts";
  */
 export const RETRYABLE_CHILD_FAILURE_REASONS = [
 	"provider_error",
+	// warren-4af7: infra-lost — the sandbox/pod disappeared mid-run with the
+	// warren row still live. The workspace is gone but the failure says
+	// nothing about the prompt or seed, so a fresh run has a real chance.
+	"burrow_run_lost",
 ] as const satisfies readonly RunFailureReason[];
 
 export type RetryableChildFailureReason = (typeof RETRYABLE_CHILD_FAILURE_REASONS)[number];

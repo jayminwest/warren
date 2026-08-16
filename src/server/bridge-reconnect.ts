@@ -19,6 +19,7 @@ import {
 	type BridgeRunStreamInput,
 	type BridgeRunStreamResult,
 	bindBridgeLogger,
+	isInfraLostRunFailure,
 	type RunEventBroker,
 	type WatchdogReap,
 } from "../runs/index.ts";
@@ -77,6 +78,8 @@ export interface RunWithReconnectInput {
 	 * before dispatching a plan-run.
 	 */
 	readonly seedsCli?: SeedsCliDeps;
+	/** Infra-lost auto-retry hook (warren-4af7), forwarded to the 404 reconcile. */
+	readonly onInfraLostRun?: (runId: string) => Promise<void>;
 }
 
 /**
@@ -154,6 +157,7 @@ export async function runWithReconnect(
 				// warren-a7cb: route lost-run teardown through the active backend.
 				runtimeProvider: input.runtimeProvider,
 				logger: log,
+				...(input.onInfraLostRun !== undefined ? { onInfraLostRun: input.onInfraLostRun } : {}),
 			});
 			return { written: totalWritten, skipped: totalSkipped, errored: false };
 		}
@@ -349,6 +353,11 @@ interface ReconcileLostBurrowRunInput {
 	 */
 	readonly failureReason?: RunFailureReason;
 	/**
+	 * Infra-lost auto-retry hook (warren-4af7), fired after a successful
+	 * infra-lost finalize — see `src/runs/retry.ts`. Fire-and-log.
+	 */
+	readonly onInfraLostRun?: (runId: string) => Promise<void>;
+	/**
 	 * warren-a7cb / warren-5a3f: active backend the lost-run teardown routes through
 	 * (`provider.terminate` — K8s pod delete / burrow destroy) so a wedged run's
 	 * sandbox doesn't leak. The boot-resolved provider is always threaded here; the
@@ -453,6 +462,18 @@ export async function reconcileLostBurrowRun(input: ReconcileLostBurrowRunInput)
 		{ event: "bridge.reconciled", finalized },
 		"reconciled ghost run: burrow no longer knows this burrow_run_id",
 	);
+	// warren-4af7: a freshly-finalized infra-lost run earns ONE automatic retry
+	// (src/runs/retry.ts); a stall-ceiling `burrow_unreachable` does not qualify.
+	if (finalized && isInfraLostRunFailure(failureReason) && input.onInfraLostRun !== undefined) {
+		try {
+			await input.onInfraLostRun(input.runId);
+		} catch (err) {
+			log.error(
+				{ event: "run.retry_failed", err: err instanceof Error ? err.message : String(err) },
+				"infra-lost run retry failed",
+			);
+		}
+	}
 }
 
 export function defaultSleep(ms: number, signal: AbortSignal): Promise<void> {

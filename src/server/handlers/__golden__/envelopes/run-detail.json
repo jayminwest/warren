@@ -40,6 +40,7 @@
 			"mode": "batch",
 			"parentRunId": null,
 			"cloneKind": null,
+			"retryOf": null,
 			"provider": null,
 			"model": null,
 			"prState": null,
