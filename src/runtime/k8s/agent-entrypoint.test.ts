@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import type { AgentRuntime, RuntimeEvent, SpawnCommand } from "@os-eco/burrow-cli";
+import type { RuntimeId } from "../../core/wire.ts";
+import type { AdapterRuntimeEvent, AgentRuntimeAdapter, SpawnCommand } from "../adapters/index.ts";
 import {
 	type AgentEnvSource,
 	EXIT_FINALIZE_NOT_DELIVERED,
@@ -49,26 +50,27 @@ function stubSpawn(opts: {
 }
 
 /**
- * A minimal runtime that echoes the prompt + pending steering bodies into stdin
+ * A minimal adapter that echoes the prompt + pending steering bodies into stdin
  * (so a test can assert inbox delivery reached the spawn command) and parses
  * each stdout line into one `text` event.
  */
-const echoRuntime: AgentRuntime = {
-	id: "test-runtime",
-	displayName: "Test Runtime",
-	supportsResume: false,
-	installCheck: async () => ({ installed: true }),
+const echoRuntime: AgentRuntimeAdapter = {
+	runtimeId: "test-runtime" as RuntimeId,
+	harnessStatePrefixes: [],
+	terminalErrorEnvelopeTypes: [],
 	buildSpawnCommand: (ctx): SpawnCommand => ({
 		argv: ["test-agent"],
 		stdin: [ctx.prompt, ...ctx.pendingMessages.map((m) => m.body)].join("\n"),
 	}),
-	parseEvents: (line): RuntimeEvent[] => [{ kind: "text", stream: "stdout", payload: { line } }],
+	parseEvents: (line): AdapterRuntimeEvent[] => [
+		{ kind: "text", stream: "stdout", payload: { line } },
+	],
 };
 
-function stubRegistry(rt: AgentRuntime = echoRuntime): {
-	get(id: string): AgentRuntime | undefined;
+function stubRegistry(rt: AgentRuntimeAdapter = echoRuntime): {
+	get(id: string): AgentRuntimeAdapter | undefined;
 } {
-	return { get: (id) => (id === rt.id ? rt : undefined) };
+	return { get: (id) => (id === rt.runtimeId ? rt : undefined) };
 }
 
 function baseEnv(overrides: Partial<Record<string, string>> = {}): AgentEnvSource {
@@ -148,7 +150,7 @@ describe("parseAgentFrontmatter", () => {
 
 describe("formatEventLine ⇄ log-parse round-trip", () => {
 	test("a bare NDJSON line re-parses to the same normalized event", () => {
-		const ev: RuntimeEvent = {
+		const ev: AdapterRuntimeEvent = {
 			kind: "state_change",
 			stream: "system",
 			payload: { type: "result", is_error: false, result: "done" },
@@ -198,7 +200,7 @@ describe("extractInboxMessages", () => {
 });
 
 describe("drainInbox", () => {
-	test("maps claimed messages to burrow messages (body + priority)", async () => {
+	test("maps claimed messages to steering messages (body + priority)", async () => {
 		const http: AgentInboxHttp = {
 			get: async (url, token) => {
 				expect(url).toBe("http://warren:8080/runs/run_x/inbox");

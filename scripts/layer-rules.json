@@ -27,11 +27,7 @@
 			"allow": [
 				{ "path": "src/burrow-client/", "why": "the facade itself" },
 				{ "path": "src/runtime/local/", "why": "the LocalProvider and its seams" },
-				{ "path": "src/supervisor/", "why": "local-topology by definition" },
-				{
-					"path": "src/runtime/k8s/",
-					"why": "the pod agent harness uses burrow-cli's AgentRegistry / AgentRuntime — residual burrow surface, deliberately left"
-				}
+				{ "path": "src/supervisor/", "why": "local-topology by definition" }
 			]
 		},
 		{

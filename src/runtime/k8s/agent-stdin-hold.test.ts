@@ -1,5 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import type { AgentRuntime, Message, RuntimeEvent, SpawnCommand } from "@os-eco/burrow-cli";
+import type { RuntimeId } from "../../core/wire.ts";
+import type {
+	AdapterRuntimeEvent,
+	AgentRuntimeAdapter,
+	SpawnCommand,
+	SteeringMessage,
+} from "../adapters/index.ts";
 import { type AgentEnvSource, parseAgentEntrypointEnv, runAgent } from "./agent-entrypoint.ts";
 import type { AgentInboxHttp, AgentProc, AgentSpawn } from "./agent-io.ts";
 
@@ -44,13 +50,12 @@ const emptyInbox: AgentInboxHttp = { get: async () => ({ status: 200, body: { me
  * `{ type }` envelope; `agent_end` maps to a `state_change`/`system` event the
  * close-trigger predicate matches.
  */
-const piStyleRuntime: AgentRuntime = {
-	id: "pi-style",
-	displayName: "Pi Style",
-	supportsResume: false,
-	installCheck: async () => ({ installed: true }),
+const piStyleRuntime: AgentRuntimeAdapter = {
+	runtimeId: "pi-style" as RuntimeId,
+	harnessStatePrefixes: [],
+	terminalErrorEnvelopeTypes: [],
 	buildSpawnCommand: (ctx): SpawnCommand => ({ argv: ["pi"], stdin: ctx.prompt }),
-	parseEvents: (line): RuntimeEvent[] => {
+	parseEvents: (line): AdapterRuntimeEvent[] => {
 		const type = (JSON.parse(line) as { type: string }).type;
 		return type === "agent_end"
 			? [{ kind: "state_change", stream: "system", payload: { type } }]
@@ -61,21 +66,26 @@ const piStyleRuntime: AgentRuntime = {
 		const payload = ev.payload as { type?: unknown } | null | undefined;
 		return !!payload && payload.type === "agent_end";
 	},
-	encodeSteeringMessage: (m: Message): { stdin: string } => ({ stdin: `/prompt ${m.body}\n` }),
+	encodeSteeringMessage: (m: SteeringMessage): { stdin: string } => ({
+		stdin: `/prompt ${m.body}\n`,
+	}),
 };
 
-/** A batch runtime with no stdin-hold seam (claude-code/sapling shape). */
-const batchRuntime: AgentRuntime = {
-	id: "batch",
-	displayName: "Batch",
-	supportsResume: false,
-	installCheck: async () => ({ installed: true }),
+/** A batch adapter with no stdin-hold seam (claude-code shape). */
+const batchRuntime: AgentRuntimeAdapter = {
+	runtimeId: "batch" as RuntimeId,
+	harnessStatePrefixes: [],
+	terminalErrorEnvelopeTypes: [],
 	buildSpawnCommand: (ctx): SpawnCommand => ({ argv: ["batch"], stdin: ctx.prompt }),
-	parseEvents: (line): RuntimeEvent[] => [{ kind: "text", stream: "stdout", payload: { line } }],
+	parseEvents: (line): AdapterRuntimeEvent[] => [
+		{ kind: "text", stream: "stdout", payload: { line } },
+	],
 };
 
-function stubRegistry(rt: AgentRuntime): { get(id: string): AgentRuntime | undefined } {
-	return { get: (id) => (id === rt.id ? rt : undefined) };
+function stubRegistry(rt: AgentRuntimeAdapter): {
+	get(id: string): AgentRuntimeAdapter | undefined;
+} {
+	return { get: (id) => (id === rt.runtimeId ? rt : undefined) };
 }
 
 interface StdinHoldCapture {
