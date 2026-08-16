@@ -33,20 +33,43 @@ name: seeds-merge-autoheal
 # NOTE: pull_request workflows run from the MERGE-BASE copy of this file, so
 # this only takes effect once merged to main.
 
+# warren-c84c: the CONFLICTING state this workflow heals is CREATED by a
+# push to main (another PR's `.seeds` change merging), not by any event on
+# the still-open victim PR. A `pull_request`-only trigger therefore never
+# fires for exactly the case this workflow exists for unless the agent
+# happens to push again. The `push` trigger below closes that gap: after
+# every `.seeds` merge to main, the scan job finds open CONFLICTING PRs that
+# touch `.seeds/*.jsonl` and the heal-scan matrix heals each one serially
+# (max-parallel: 1, so two heals never race on `.seeds` state).
+
 on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - ".seeds/*.jsonl"
+  push:
+    branches: [main]
+    paths:
+      - ".seeds/*.jsonl"
 
 permissions:
   contents: write
+  pull-requests: read
+
+# One global, non-cancelling group serializes every run of this workflow, so
+# a main-push scan (and its heal matrix) can never race a pull_request-event
+# heal on the same branch. Sequence beats speed here: a queued heal simply
+# finds the PR already mergeable and exits in the gate step.
+concurrency:
+  group: seeds-autoheal
+  cancel-in-progress: false
 
 jobs:
   heal:
     runs-on: ubuntu-latest
     # Skip fork PRs and anything targeting main itself.
     if: >-
+      github.event_name == 'pull_request' &&
       github.event.pull_request.head.repo.full_name == github.repository &&
       github.event.pull_request.head.ref != 'main'
     env:
@@ -111,6 +134,138 @@ jobs:
       # bun install runs the prepare script, which registers
       # merge.seeds-jsonl.driver. Register it explicitly too so the heal does
       # not silently depend on prepare surviving refactors.
+      - name: Install deps and register the seeds-jsonl merge driver
+        if: steps.gate.outputs.needed == 'true'
+        run: |
+          set -euo pipefail
+          bun install
+          git config merge.seeds-jsonl.driver 'bun scripts/merge-seeds-jsonl.ts %O %A %B'
+
+      - name: Driver-aware merge of origin/main into the PR branch
+        if: steps.gate.outputs.needed == 'true'
+        run: |
+          set -euo pipefail
+          git config user.name "factory-droid[bot]"
+          git config user.email "138933559+factory-droid[bot]@users.noreply.github.com"
+          git fetch origin main
+          if ! git merge origin/main --no-edit -m "merge origin/main via seeds-jsonl driver [seeds-autoheal]"; then
+            echo "::error::Driver-aware merge conflicted — this is a genuine textual conflict, not warren-b34b. Leaving the PR for a repair run."
+            git merge --abort || true
+            exit 1
+          fi
+
+      - name: Verify row integrity of the merged tree
+        if: steps.gate.outputs.needed == 'true'
+        run: |
+          set -euo pipefail
+          bun run check:seeds-integrity
+          dups="$(jq -r .id .seeds/issues.jsonl | sort | uniq -d)"
+          if [ -n "$dups" ]; then
+            echo "::error::Duplicate issue ids after merge: $dups"
+            exit 1
+          fi
+          echo "Row integrity OK: $(wc -l < .seeds/issues.jsonl) rows, all ids unique."
+
+      - name: Push the heal merge back to the PR branch
+        if: steps.gate.outputs.needed == 'true'
+        run: git push origin "HEAD:${HEAD_BRANCH}"
+
+  # Push-to-main trigger (warren-c84c): a `.seeds` merge to main is what
+  # makes open `.seeds`-touching PRs flip to CONFLICTING, and no pull_request
+  # event fires on those PRs when it happens. Scan for them here.
+  scan:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    outputs:
+      prs: ${{ steps.scan.outputs.prs }}
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - name: Find open CONFLICTING PRs that touch .seeds/*.jsonl
+        id: scan
+        run: |
+          set -euo pipefail
+          prs="[]"
+          # Only same-repo PRs are candidates: a fork branch is not pushable
+          # and must never receive a token (same rule as the heal job).
+          for n in $(gh pr list --state open --json number,mergeable,isCrossRepository \
+              --jq '.[] | select(.mergeable == "CONFLICTING") | select(.isCrossRepository | not) | .number'); do
+            if gh pr view "$n" --json files --jq '.[].path' | grep -qE '^\.seeds/.*\.jsonl$'; then
+              echo "candidate: PR #$n"
+              prs="$(printf '%s' "$prs" | jq -c --argjson n "$n" '. + [$n]')"
+            fi
+          done
+          echo "heal candidates: $prs"
+          echo "prs=$prs" >> "$GITHUB_OUTPUT"
+
+  heal-scan:
+    needs: scan
+    if: github.event_name == 'push' && needs.scan.outputs.prs != '[]'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      # Serial: two heals running concurrently would push competing merge
+      # commits to different branches off the same origin/main, and GitHub
+      # recomputes mergeability per push anyway. One at a time is correct.
+      max-parallel: 1
+      matrix:
+        pr: ${{ fromJSON(needs.scan.outputs.prs) }}
+    env:
+      PR_NUMBER: ${{ matrix.pr }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - name: Decide whether a heal is needed
+        id: gate
+        run: |
+          set -euo pipefail
+          HEAD_BRANCH="$(gh pr view "$PR_NUMBER" --json headRefName --jq .headRefName)"
+          echo "HEAD_BRANCH=$HEAD_BRANCH" >> "$GITHUB_ENV"
+          # A queued scan-run may arrive after the PR merged or after a
+          # successful heal; skip cheaply in both cases.
+          pr_state="$(gh pr view "$PR_NUMBER" --json state --jq .state)"
+          if [ "$pr_state" != "OPEN" ]; then
+            echo "PR is $pr_state — nothing to heal."
+            echo "needed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          sha="$(gh pr view "$PR_NUMBER" --json headRefOid --jq .headRefOid)"
+          msg="$(gh api "repos/${{ github.repository }}/commits/$sha" --jq .commit.message)"
+          if printf '%s' "$msg" | grep -qF '[seeds-autoheal]'; then
+            echo "Head commit is our own heal merge — exiting to avoid a retrigger loop."
+            echo "needed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          state="$(gh pr view "$PR_NUMBER" --json mergeable --jq .mergeable)"
+          if [ "$state" != "CONFLICTING" ]; then
+            echo "PR is $state — nothing to heal."
+            echo "needed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "PR is CONFLICTING — attempting the driver-aware heal merge."
+          echo "needed=true" >> "$GITHUB_OUTPUT"
+
+      - name: Mint app installation token
+        id: app-token
+        if: steps.gate.outputs.needed == 'true'
+        uses: actions/create-github-app-token@v3.2.0
+        with:
+          app-id: ${{ vars.AUTO_MERGE_APP_ID }}
+          private-key: ${{ secrets.AUTO_MERGE_APP_PRIVATE_KEY }}
+
+      - uses: actions/checkout@v7.0.1
+        if: steps.gate.outputs.needed == 'true'
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+          ref: ${{ env.HEAD_BRANCH }}
+          fetch-depth: 0
+
+      - uses: oven-sh/setup-bun@v2
+        if: steps.gate.outputs.needed == 'true'
+        with:
+          bun-version-file: .bun-version
+
       - name: Install deps and register the seeds-jsonl merge driver
         if: steps.gate.outputs.needed == 'true'
         run: |
