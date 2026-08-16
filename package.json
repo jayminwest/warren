@@ -53,6 +53,7 @@
 		"test:ci": "mkdir -p test-results && bun test --reporter=junit --reporter-outfile=test-results/junit.xml",
 		"test:pg": "bun run scripts/test-pg.ts",
 		"report:test-timing": "bun run scripts/report-test-timing.ts",
+		"report:test-failures": "bun run scripts/report-test-failures.ts",
 		"report:quality-metrics": "bun run scripts/report-quality-metrics.ts",
 		"lint": "biome check --error-on-warnings . && bun run scripts/check-layers.ts && bun run scripts/check-version-sync.ts && bun run scripts/check-wire-types.ts && bun run scripts/check-prose.ts && bun run scripts/check-seeds-integrity.ts && bun run scripts/check-merge-strategy.ts && bun run scripts/check-rls.ts && bun run scripts/check-client-contract.ts && bun run gen:cli-ref:check",
 		"lint:fix": "biome check --write --error-on-warnings . && bun run scripts/check-layers.ts && bun run scripts/check-version-sync.ts && bun run scripts/check-wire-types.ts && bun run scripts/check-prose.ts && bun run gen:cli-ref:check",
