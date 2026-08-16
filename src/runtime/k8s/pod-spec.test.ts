@@ -385,8 +385,8 @@ describe("buildRunPod", () => {
 		const agent = buildRunPod(baseSpec(), config).spec?.containers?.[0];
 		const anthropic = (agent?.env ?? []).find((e) => e.name === "ANTHROPIC_API_KEY");
 		expect(anthropic?.valueFrom?.secretKeyRef).toEqual({
-			name: config.anthropicSecret.name,
-			key: config.anthropicSecret.key,
+			name: "warren-anthropic-key",
+			key: "api-key",
 			optional: true,
 		});
 	});
@@ -408,8 +408,8 @@ describe("buildRunPod", () => {
 		const agent = buildRunPod(baseSpec(), config).spec?.containers?.[0];
 		const openrouter = (agent?.env ?? []).find((e) => e.name === "OPENROUTER_API_KEY");
 		expect(openrouter?.valueFrom?.secretKeyRef).toEqual({
-			name: config.openrouterSecret.name,
-			key: config.openrouterSecret.key,
+			name: "warren-openrouter-key",
+			key: "api-key",
 			optional: true,
 		});
 	});

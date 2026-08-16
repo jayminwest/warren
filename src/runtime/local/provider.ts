@@ -25,6 +25,7 @@
  */
 
 import { type BurrowClient, withTransportMapping } from "../../burrow-client/index.ts";
+import { collectProviderEnv } from "../../core/providers.ts";
 import type { ReapExec, ReapFs } from "../../runs/reap/types.ts";
 import type { EnvLike } from "../../runs/spawn/callback-env.ts";
 import { loopbackApiUrl } from "../../runs/spawn/callback-env.ts";
@@ -171,7 +172,17 @@ export class LocalProvider implements RuntimeProvider {
 	 * provider owns URL derivation.
 	 */
 	private composeSandboxEnv(domainEnv: Record<string, string>): Record<string, string> {
-		const env: Record<string, string> = { ...domainEnv, BUN_INSTALL_CACHE_DIR };
+		// warren-fb8d: deliver every provider credential the server env holds
+		// (the core registry's keys, opaquely — the provider does not interpret
+		// them) into the sandbox env. The DOMAIN env wins on overlap (an
+		// OAuth-token flow's ANTHROPIC_API_KEY must not be shadowed). Burrow's
+		// own env allowlist still gates which keys reach the agent process;
+		// widening it is the burrow-side half of warren-fb8d.
+		const env: Record<string, string> = {
+			...collectProviderEnv(this.deps.serverEnv ?? process.env),
+			...domainEnv,
+			BUN_INSTALL_CACHE_DIR,
+		};
 		const token = domainEnv.WARREN_API_TOKEN;
 		if (token !== undefined && token !== "") {
 			const url = loopbackApiUrl(this.deps.serverEnv ?? process.env);

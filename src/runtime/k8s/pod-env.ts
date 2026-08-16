@@ -11,6 +11,7 @@
  */
 
 import type { V1EnvVar, V1Volume, V1VolumeMount } from "@kubernetes/client-node";
+import { KNOWN_PROVIDER_NAMES, primaryProviderEnvKey } from "../../core/providers.ts";
 import type { RunSpec } from "../contract.ts";
 import {
 	type BuildRunPodOptions,
@@ -46,15 +47,45 @@ export function serviceDnsCallbackUrl(config: K8sPodConfig): string {
  */
 export const DEFAULT_K8S_GIT_SECRET_NAME = "warren-git-token";
 export const DEFAULT_K8S_GIT_SECRET_KEY = "token";
-/** Agent container's `ANTHROPIC_API_KEY` source — from a Secret, NOT the control
- * plane's process env; a key riding `spec.env` (OAuth-token flow) wins. */
-export const DEFAULT_K8S_ANTHROPIC_SECRET_NAME = "warren-anthropic-key";
-export const DEFAULT_K8S_ANTHROPIC_SECRET_KEY = "api-key";
-/** Agent container's `OPENROUTER_API_KEY` source — the multi-provider sibling,
- * needed when a run's provider is `openrouter` (pi harness only; e.g. the
- * moonshotai/kimi-k3 project default). */
-export const DEFAULT_K8S_OPENROUTER_SECRET_NAME = "warren-openrouter-key";
-export const DEFAULT_K8S_OPENROUTER_SECRET_KEY = "api-key";
+
+/**
+ * Default Secret key every provider credential rides under (warren-fb8d) —
+ * one `api-key` entry per provider Secret, provisioned by the manifests step
+ * (deploy/k8s/base/secrets.yaml).
+ */
+export const DEFAULT_PROVIDER_SECRET_KEY = "api-key";
+
+/**
+ * Default Secret name for a registry provider's credential —
+ * `warren-<provider>-key` (e.g. `warren-anthropic-key`,
+ * `warren-openrouter-key`). Generic derivation off `src/core/providers.ts`,
+ * so a new registry entry needs no warren code change here.
+ */
+export function defaultProviderSecretName(provider: string): string {
+	return `warren-${provider}-key`;
+}
+
+/**
+ * Resolve the Secret coordinates for EVERY registry provider (warren-fb8d):
+ * each defaults to `warren-<provider>-key` / `api-key` and is overridable
+ * per provider via `WARREN_K8S_<PROVIDER>_SECRET_NAME` / `_KEY` (provider
+ * uppercased — e.g. `WARREN_K8S_OPENROUTER_SECRET_NAME`).
+ */
+export function resolveProviderSecrets(
+	env: K8sPodConfigEnv,
+): Record<string, { name: string; key: string }> {
+	const out: Record<string, { name: string; key: string }> = {};
+	for (const provider of KNOWN_PROVIDER_NAMES) {
+		const stem = provider.toUpperCase();
+		const name = env[`WARREN_K8S_${stem}_SECRET_NAME`]?.trim();
+		const key = env[`WARREN_K8S_${stem}_SECRET_KEY`]?.trim();
+		out[provider] = {
+			name: name === undefined || name === "" ? defaultProviderSecretName(provider) : name,
+			key: key === undefined || key === "" ? DEFAULT_PROVIDER_SECRET_KEY : key,
+		};
+	}
+	return out;
+}
 
 // --- Repo-cache PVC (design §4.3, R2 — warren-e908) -------------------------
 
@@ -228,14 +259,13 @@ export function buildInitVolumeMounts(
  *     These plus `WARREN_API_URL`/`WARREN_API_TOKEN` satisfy the finalize
  *     entrypoint's env contract (`./finalize-entrypoint.ts`), which the runner
  *     execs after the agent exits.
- *   - `ANTHROPIC_API_KEY` rides as an OPTIONAL secretKeyRef (design §6.3 —
- *     sourced from a Secret, not the control plane's env) UNLESS the domain env
- *     already carries it (an OAuth-token flow), which would make a duplicate env
- *     name illegal.
- *   - `OPENROUTER_API_KEY` rides the same way from its own Secret, so runs
- *     whose provider is `openrouter` (pi harness) can authenticate. The pod
- *     entrypoint spawns the agent with the full pod env, so presence here is
- *     sufficient — pi reads the var directly.
+ *   - Every provider in the core registry (`src/core/providers.ts`,
+ *     warren-fb8d) contributes its canonical credential key as an OPTIONAL
+ *     secretKeyRef from its per-provider Secret (design §6.3 — sourced from
+ *     a Secret, not the control plane's env) UNLESS the domain env already
+ *     carries it (an OAuth-token flow), which would make a duplicate env
+ *     name illegal. A run whose provider is unknown to the registry gets no
+ *     extra ref — unknown is not invalid, just unprovisioned.
  *
  * The prompt travels as an env var: composed prompts are bounded (system section
  * + user input) and fit comfortably under K8s's per-pod object size. A prompt
@@ -283,27 +313,23 @@ export function buildAgentEnv(spec: RunSpec, config: K8sPodConfig): V1EnvVar[] {
 			},
 		});
 	}
-	if (spec.env.ANTHROPIC_API_KEY === undefined) {
+	// warren-fb8d: every registry provider's canonical credential key rides as
+	// an OPTIONAL secretKeyRef from its per-provider Secret (design §6.3 —
+	// sourced from a Secret, not the control plane's env) UNLESS the domain env
+	// already carries it (an OAuth-token flow), which would make a duplicate env
+	// name illegal. Generic over `src/core/providers.ts` — the builder knows no
+	// provider names; a run whose provider is unknown to the registry simply
+	// gets no extra ref. The pod entrypoint spawns the agent with the full pod
+	// env, so presence here is sufficient — pi reads the var directly.
+	for (const provider of KNOWN_PROVIDER_NAMES) {
+		const envKey = primaryProviderEnvKey(provider);
+		const secret = config.providerSecrets[provider];
+		if (envKey === undefined || secret === undefined) continue;
+		if (spec.env[envKey] !== undefined) continue;
 		vars.push({
-			name: "ANTHROPIC_API_KEY",
+			name: envKey,
 			valueFrom: {
-				secretKeyRef: {
-					name: config.anthropicSecret.name,
-					key: config.anthropicSecret.key,
-					optional: true,
-				},
-			},
-		});
-	}
-	if (spec.env.OPENROUTER_API_KEY === undefined) {
-		vars.push({
-			name: "OPENROUTER_API_KEY",
-			valueFrom: {
-				secretKeyRef: {
-					name: config.openrouterSecret.name,
-					key: config.openrouterSecret.key,
-					optional: true,
-				},
+				secretKeyRef: { name: secret.name, key: secret.key, optional: true },
 			},
 		});
 	}
