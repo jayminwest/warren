@@ -65,6 +65,14 @@ export {
 	type ReadyPlanInput,
 } from "./ready-plans.ts";
 export {
+	isResumablePlanRunFailure,
+	RESUMABLE_PLAN_RUN_FAILURE_REASONS,
+	type ResumablePlanRunFailureReason,
+	type ResumePlanRunInput,
+	type ResumePlanRunResult,
+	resumePlanRun,
+} from "./resume.ts";
+export {
 	hasChildRetryBudget,
 	isRetryableChildFailure,
 	MAX_CHILD_RETRIES,
@@ -80,6 +88,7 @@ export {
 export {
 	type BootPlanRunCoordinatorInput,
 	bootPlanRunCoordinator,
+	buildDefaultPlanRunEmit,
 	type PlanRunAdvanceLog,
 	type PlanRunCoordinatorHandle,
 	type PlanRunCoordinatorTimerHandle,

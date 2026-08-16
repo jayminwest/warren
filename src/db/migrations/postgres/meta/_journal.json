@@ -302,6 +302,13 @@
 			"when": 1786908875883,
 			"tag": "0042_amazing_gravity",
 			"breakpoints": true
+		},
+		{
+			"idx": 43,
+			"version": "7",
+			"when": 1786917355769,
+			"tag": "0043_fantastic_shooting_star",
+			"breakpoints": true
 		}
 	]
 }

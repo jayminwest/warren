@@ -18,7 +18,8 @@
 			"failureReason": null,
 			"createdAt": "2026-08-07T00:00:00.000Z",
 			"startedAt": null,
-			"endedAt": null
+			"endedAt": null,
+			"resumedAt": null
 		},
 		"children": [
 			{
