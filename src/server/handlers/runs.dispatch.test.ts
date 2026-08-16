@@ -191,6 +191,59 @@ describe("POST /runs — spawn flow", () => {
 		expect((up?.body as { branch?: string } | undefined)?.branch).toBe("fix/pr-head");
 	});
 
+	test("optional ref persists onto runs.ref and echoes in the POST /runs response (warren-afeb)", async () => {
+		const project = (await repos.projects.listAll())[0];
+		if (!project) throw new Error("project missing");
+
+		const { mkdtemp } = await import("node:fs/promises");
+		const { tmpdir } = await import("node:os");
+		const { join } = await import("node:path");
+		const tmpWs = await mkdtemp(join(tmpdir(), "warren-handlers-ref-"));
+
+		const calls: { method: string; path: string; body: unknown }[] = [];
+		const burrowClient = makeBurrowClient(
+			{ burrowId: "bur_ref000000000", burrowRunId: "run_refrun000000", workspacePath: tmpWs },
+			calls,
+		);
+		const deps = await depsFor(repos, burrowClient);
+		handle = startServer(deps, {
+			transport: { kind: "tcp", hostname: "127.0.0.1", port: 0 },
+			auth: NO_AUTH,
+			logger: silentLogger,
+		});
+
+		const res = await fetch(`${tcpUrl(handle)}/runs`, {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({
+				agent: "refactor-bot",
+				project: project.id,
+				prompt: "repair the PR",
+				ref: "fix/pr-head",
+			}),
+		});
+		expect(res.status).toBe(201);
+		const body = (await res.json()) as { run: { id: string; ref: string | null } };
+		expect(body.run.ref).toBe("fix/pr-head");
+
+		const persisted = await repos.runs.require(body.run.id);
+		expect(persisted.ref).toBe("fix/pr-head");
+
+		// A ref-less dispatch echoes null, not a dropped field.
+		const res2 = await fetch(`${tcpUrl(handle)}/runs`, {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({
+				agent: "refactor-bot",
+				project: project.id,
+				prompt: "ordinary run",
+			}),
+		});
+		expect(res2.status).toBe(201);
+		const body2 = (await res2.json()) as { run: { id: string; ref: string | null } };
+		expect(body2.run.ref).toBeNull();
+	});
+
 	test("continueFromRunId persists onto runs.parent_run_id (warren-4b11)", async () => {
 		const project = (await repos.projects.listAll())[0];
 		if (!project) throw new Error("project missing");

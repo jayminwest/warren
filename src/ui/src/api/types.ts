@@ -156,33 +156,33 @@ export interface RunRow {
 	prompt: string;
 	trigger: string;
 	/**
-	 * URL of the PR reap opened (warren-f6af). Null when reap's `pr_open`
-	 * sub-step was skipped (auto-open disabled, no commits, push failed,
-	 * branch == defaultBranch) or the GitHub call errored.
+	 * URL of the PR reap opened (warren-f6af). Null when reap's `pr_open` sub-step
+	 * was skipped or the GitHub call errored.
 	 */
 	prUrl: string | null;
 	/**
 	 * Merge-watcher PR facts (warren-3bc6 / pl-103e step 6). `prState` is
-	 * the forge-reported PR lifecycle; `prMergedAt` its merge instant. Null
-	 * reads as "unknown" (historical rows, no PR), never "not merged".
+	 * the forge-reported PR lifecycle; `prMergedAt` its merge instant. Null reads
+	 * as "unknown" (historical rows, no PR), never "not merged".
 	 */
 	prState: PullRequestLifecycle | null;
 	prMergedAt: string | null;
 	/** Existing branch reap pushes the workspace back to (#419). Null when unset. */
 	targetBranch: string | null;
+	/** Dispatch-supplied clone ref (warren-afeb). Null when unset. */
+	ref: string | null;
 	/**
 	 * Salvage-before-destroy (warren-cd3b): where a finalize_failed run's
 	 * committed work was captured — `salvageRef` is the `warren/rescue/<runId>`
-	 * branch on origin, `salvagePath` the durable git-bundle file. Both null
-	 * when nothing was captured (or needed).
+	 * branch on origin, `salvagePath` the durable git-bundle file. Both null when
+	 * nothing was captured (or needed).
 	 */
 	salvageRef: string | null;
 	salvagePath: string | null;
 	/**
-	 * Per-run cost in USD (warren-a7dc). Currently populated only for runs
-	 * dispatched against the `pi` runtime — the bridge snapshots
-	 * `get_session_stats` at run-start + run-end and persists the delta.
-	 * Null for non-pi runtimes and for pi runs whose stats RPC failed.
+	 * Per-run cost in USD (warren-a7dc). Populated only for `pi`-runtime runs —
+	 * the bridge snapshots `get_session_stats` at run-start + run-end and
+	 * persists the delta. Null for non-pi runtimes and failed stats RPCs.
 	 */
 	costUsd: number | null;
 	/** Input tokens consumed (warren-a7dc); see `costUsd` for nullability. */

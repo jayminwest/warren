@@ -116,6 +116,8 @@ export interface CreateRunInput {
 	cloneKind?: CloneKind | null;
 	/** Operator-requested target branch (warren-1f81, #419); null = none. */
 	targetBranch?: string | null;
+	/** Dispatch-supplied git ref the workspace clones from (warren-afeb); null = none. */
+	ref?: string | null;
 	/** Declared provider/model frozen at dispatch (warren-2ede / pl-103e).
 	 * Null = agent declares none (or a historical row). */
 	provider?: string | null;
@@ -180,6 +182,7 @@ export class RunsRepo {
 			trigger: input.trigger,
 			prUrl: null,
 			targetBranch: input.targetBranch ?? null,
+			ref: input.ref ?? null,
 			provider: input.provider ?? null,
 			model: input.model ?? null,
 			// Merge-watcher facts (warren-3bc6): unset until post_reap settles the PR.

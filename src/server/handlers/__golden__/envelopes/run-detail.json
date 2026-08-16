@@ -24,6 +24,7 @@
 			"trigger": "manual",
 			"prUrl": null,
 			"targetBranch": null,
+			"ref": null,
 			"salvageRef": null,
 			"salvagePath": null,
 			"costUsd": null,

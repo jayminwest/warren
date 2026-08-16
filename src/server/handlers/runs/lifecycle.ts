@@ -42,6 +42,9 @@ export const PUBLIC_RUN_FIELDS = [
 	"trigger",
 	"prUrl",
 	"targetBranch",
+	// warren-afeb: the dispatch-supplied clone ref — a branch/tag/SHA name of
+	// the same class as targetBranch and salvageRef, safe for spectators.
+	"ref",
 	// warren-cd3b: the rescue ref is operator-recovery metadata (a branch name
 	// carrying the run id, which is already public) — safe for spectators.
 	"salvageRef",

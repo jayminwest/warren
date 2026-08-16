@@ -160,6 +160,11 @@ export const runs = sqliteTable(
 		prUrl: text("pr_url"),
 		// Operator-requested target branch (warren-1f81, #419); null = none.
 		targetBranch: text("target_branch"),
+		// Operator-requested git ref the workspace was cloned from (warren-afeb),
+		// frozen from the dispatch body's explicit `ref` so POST /runs and the
+		// run projections can echo what a ref-pinned dispatch took. Null = the
+		// run dispatched against the resolved default/continuation base.
+		ref: text("ref"),
 		// Salvage-before-destroy (warren-cd3b). When a reap's branch push never
 		// landed, the workspace's committed work is captured BEFORE destroy:
 		// `salvage_ref` is the rescue branch pushed to origin

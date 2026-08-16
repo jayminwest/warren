@@ -122,6 +122,8 @@ export interface RunRow {
 	prState: PullRequestLifecycle | null;
 	prMergedAt: string | null;
 	targetBranch: string | null;
+	/** Dispatch-supplied git ref the workspace was cloned from (warren-afeb). Null when unset. */
+	ref: string | null;
 	/**
 	 * Salvage-before-destroy (warren-cd3b): where a finalize_failed run's
 	 * committed work was captured. `salvageRef` is the `warren/rescue/<runId>`

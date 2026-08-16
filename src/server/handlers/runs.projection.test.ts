@@ -159,6 +159,24 @@ describe("GET /runs projections under WARREN_AUTH=public (warren-946f)", () => {
 		expect(run?.state).toBe("succeeded");
 	});
 
+	test("anonymous GET /runs/:id round-trips the dispatch-supplied ref (warren-afeb)", async () => {
+		const project = (await repos.projects.listAll())[0];
+		if (!project) throw new Error("project missing");
+		const row = await repos.runs.create({
+			agentName: "claude-code",
+			projectId: project.id,
+			prompt: "repair the PR",
+			renderedAgentJson: { frontmatter: {} },
+			trigger: "manual",
+			ref: "fix/pr-head",
+		});
+		const body = await get(`/runs/${row.id}`);
+		expect((body.run as Record<string, unknown>).ref).toBe("fix/pr-head");
+		// The ref-less sibling row reads null, never undefined/absent.
+		const other = await get(`/runs/${runId}`);
+		expect((other.run as Record<string, unknown>).ref).toBeNull();
+	});
+
 	test("anonymous GET /runs/:id wraps the public field set in {run} (warren-7d84)", async () => {
 		const body = await get(`/runs/${runId}`);
 		expect(Object.keys(body)).toEqual(["run"]);

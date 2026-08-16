@@ -316,6 +316,13 @@
 			"when": 1786736383863,
 			"tag": "0044_lowly_liz_osborn",
 			"breakpoints": true
+		},
+		{
+			"idx": 45,
+			"version": "6",
+			"when": 1786880589375,
+			"tag": "0045_rare_sharon_ventura",
+			"breakpoints": true
 		}
 	]
 }

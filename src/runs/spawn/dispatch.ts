@@ -192,6 +192,9 @@ export async function spawnRun(input: SpawnRunInput): Promise<SpawnRunResult> {
 			? { parentRunId: input.parentRunId, cloneKind: input.cloneKind ?? "continue" }
 			: {}),
 		...(targetBranch !== undefined ? { targetBranch } : {}),
+		// warren-afeb: freeze the explicit dispatch-supplied clone ref onto the
+		// row so POST /runs and GET /runs/:id can echo that it took.
+		...(input.ref !== undefined ? { ref: input.ref } : {}),
 		now: input.now?.(),
 	});
 	// warren-a0a2: expose the run id the instant the row exists so the cron
