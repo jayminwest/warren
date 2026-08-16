@@ -10,8 +10,15 @@
  *   merge.seeds-jsonl.driver = bun scripts/merge-seeds-jsonl.ts %O %A %B
  *
  * %O = common ancestor, %A = ours (result is written over this file),
- * %B = theirs. Exit 0 = resolved; non-zero = genuine conflict, left for
- * a human. The driver never silently picks a side on a real conflict.
+ * %B = theirs. Exit 0 = resolved; non-zero = genuine conflict. On a
+ * genuine conflict the driver still writes a best-effort merge over %A:
+ * every resolvable row is 3-way merged, and only the unresolvable rows
+ * carry standard git conflict markers (<<<<<<< ours / ======= /
+ * >>>>>>> theirs). Leaving pure ours-content in %A silently resurrected
+ * the other side's closes when a repair flow committed the working file
+ * (warren-585f, observed live on PR #859). The marker lines are invalid
+ * JSONL on purpose — `check:seeds-integrity` refuses them, so the file
+ * cannot be committed without a human decision.
  *
  * Merge rules (all comparisons are against the ancestor, per row keyed
  * by `id`):
@@ -155,16 +162,23 @@ function mergeField(
 	return { conflict: true };
 }
 
-type RowResolution = { kind: "take"; line: string } | { kind: "drop" } | { kind: "conflict" };
+type RowResolution =
+	| { kind: "take"; line: string }
+	| { kind: "drop" }
+	| { kind: "conflict"; oursLine?: string; theirsLine?: string };
 
 /**
  * Resolve a row present on only one side: added there (take it), or
  * deleted by the other side (deletion wins unless this side edited it,
  * which is a genuine edit/delete conflict).
  */
-function resolveOneSided(present: Row, a: Row | undefined): RowResolution {
+function resolveOneSided(present: Row, a: Row | undefined, side: "ours" | "theirs"): RowResolution {
 	if (!a) return { kind: "take", line: present.line };
-	if (!same(present.obj, a.obj)) return { kind: "conflict" };
+	if (!same(present.obj, a.obj)) {
+		return side === "ours"
+			? { kind: "conflict", oursLine: present.line }
+			: { kind: "conflict", theirsLine: present.line };
+	}
 	return { kind: "drop" };
 }
 
@@ -176,8 +190,8 @@ function resolveRow(
 	t: Row | undefined,
 	conflicts: string[],
 ): RowResolution {
-	if (o && !t) return resolveOneSided(o, a);
-	if (t && !o) return resolveOneSided(t, a);
+	if (o && !t) return resolveOneSided(o, a, "ours");
+	if (t && !o) return resolveOneSided(t, a, "theirs");
 	if (!o || !t) return { kind: "drop" }; // deleted by both
 	const ancObj = a?.obj ?? {}; // absent ancestor: both sides added this id
 	const oursChanged = a === undefined || !same(o.obj, ancObj);
@@ -185,18 +199,33 @@ function resolveRow(
 	if (!oursChanged) return { kind: "take", line: t.line };
 	if (!theirsChanged || same(o.obj, t.obj)) return { kind: "take", line: o.line };
 	const merged = mergeRow(id, ancObj, o.obj, t.obj, conflicts);
-	return merged ? { kind: "take", line: JSON.stringify(merged) } : { kind: "conflict" };
+	return merged
+		? { kind: "take", line: JSON.stringify(merged) }
+		: { kind: "conflict", oursLine: o.line, theirsLine: t.line };
+}
+
+/** Standard git conflict-marker block around the two versions of a row. */
+function conflictBlock(oursLine: string | undefined, theirsLine: string | undefined): string {
+	return [
+		"<<<<<<< ours",
+		...(oursLine !== undefined ? [oursLine] : []),
+		"=======",
+		...(theirsLine !== undefined ? [theirsLine] : []),
+		">>>>>>> theirs",
+	].join("\n");
 }
 
 /**
- * Three-way merge of id-keyed JSONL. Returns the merged file content,
- * or undefined when a genuine conflict requires a human.
+ * Three-way merge of id-keyed JSONL. Always returns the merged file
+ * content plus the list of genuine conflicts. Resolvable rows are 3-way
+ * merged; unresolvable rows are emitted as git conflict-marker blocks so
+ * the result cannot be committed silently (warren-585f).
  */
 export function mergeJsonl(
 	ancestorContent: string,
 	oursContent: string,
 	theirsContent: string,
-): string | undefined {
+): { content: string; conflicts: string[] } {
 	const anc = parseStage(ancestorContent, "ancestor");
 	const ours = parseStage(oursContent, "ours");
 	const theirs = parseStage(theirsContent, "theirs");
@@ -215,7 +244,10 @@ export function mergeJsonl(
 			conflicts,
 		);
 		if (resolution.kind === "take") out.push(resolution.line);
-		else if (resolution.kind === "conflict") conflictIds.push(id);
+		else if (resolution.kind === "conflict") {
+			conflictIds.push(id);
+			out.push(conflictBlock(resolution.oursLine, resolution.theirsLine));
+		}
 	}
 	for (const id of conflictIds) {
 		if (!conflicts.some((c) => c.startsWith(`${id}.`))) conflicts.push(`${id} (edit/delete race)`);
@@ -223,9 +255,8 @@ export function mergeJsonl(
 
 	if (conflicts.length > 0) {
 		console.error(`merge-seeds-jsonl: unresolvable conflicts:\n  ${conflicts.join("\n  ")}`);
-		return undefined;
 	}
-	return `${out.join("\n")}\n`;
+	return { content: `${out.join("\n")}\n`, conflicts };
 }
 
 async function main(): Promise<number> {
@@ -239,16 +270,17 @@ async function main(): Promise<number> {
 		Bun.file(oursPath).text(),
 		Bun.file(theirsPath).text(),
 	]);
-	let merged: string | undefined;
+	let merged: { content: string; conflicts: string[] };
 	try {
 		merged = mergeJsonl(ancestor, oursFile, theirs);
 	} catch (err) {
 		console.error(`merge-seeds-jsonl: ${err instanceof Error ? err.message : String(err)}`);
 		return 1;
 	}
-	if (merged === undefined) return 1;
-	await Bun.write(oursPath, merged);
-	return 0;
+	// Best-effort result is always written over %A, even on conflict, so
+	// the working file shows both sides instead of silently keeping ours.
+	await Bun.write(oursPath, merged.content);
+	return merged.conflicts.length > 0 ? 1 : 0;
 }
 
 if (import.meta.main) {

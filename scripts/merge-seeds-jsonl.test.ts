@@ -2,7 +2,14 @@ import { describe, expect, test } from "bun:test";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { scanText } from "./check-seeds-integrity.ts";
 import { mergeJsonl } from "./merge-seeds-jsonl.ts";
+
+const merged = (ancestor: string, ours: string, theirs: string) =>
+	mergeJsonl(ancestor, ours, theirs).content;
+
+const conflicted = (ancestor: string, ours: string, theirs: string) =>
+	mergeJsonl(ancestor, ours, theirs).conflicts;
 
 const row = (id: string, extra: Record<string, unknown> = {}) =>
 	JSON.stringify({ id, status: "open", ...extra });
@@ -50,7 +57,7 @@ describe("mergeJsonl", () => {
 			row("warren-bbbb"),
 			row("warren-cccc", { status: "closed", closedAt: "2026-08-11T02:00:00Z" }),
 		]);
-		expect(mergeJsonl(ancestor, ours, theirs)).toBe(
+		expect(merged(ancestor, ours, theirs)).toBe(
 			file([
 				row("warren-aaaa", { blockedBy: [] }),
 				row("warren-bbbb", { status: "closed", closedAt: "2026-08-11T01:00:00Z" }),
@@ -67,16 +74,14 @@ describe("mergeJsonl", () => {
 		// principled version.
 		const ours = file([row("warren-umbrella", { blockedBy: ["warren-2222"] })]);
 		const theirs = file([row("warren-umbrella", { blockedBy: ["warren-1111"] })]);
-		expect(mergeJsonl(ancestor, ours, theirs)).toBe(
-			file([row("warren-umbrella", { blockedBy: [] })]),
-		);
+		expect(merged(ancestor, ours, theirs)).toBe(file([row("warren-umbrella", { blockedBy: [] })]));
 	});
 
 	test("applies one side's blockedBy addition alongside the other's removal", () => {
 		const ancestor = file([row("warren-umbrella", { blockedBy: ["warren-1111"] })]);
 		const ours = file([row("warren-umbrella", { blockedBy: ["warren-1111", "warren-3333"] })]);
 		const theirs = file([row("warren-umbrella", { blockedBy: [] })]);
-		expect(mergeJsonl(ancestor, ours, theirs)).toBe(
+		expect(merged(ancestor, ours, theirs)).toBe(
 			file([row("warren-umbrella", { blockedBy: ["warren-3333"] })]),
 		);
 	});
@@ -85,23 +90,23 @@ describe("mergeJsonl", () => {
 		const ancestor = file([row("warren-aaaa")]);
 		const ours = file([row("warren-aaaa"), row("warren-bbbb", { status: "closed" })]);
 		const theirs = file([row("warren-aaaa"), row("warren-cccc")]);
-		expect(mergeJsonl(ancestor, ours, theirs)).toBe(
+		expect(merged(ancestor, ours, theirs)).toBe(
 			file([row("warren-aaaa"), row("warren-bbbb", { status: "closed" }), row("warren-cccc")]),
 		);
 	});
 
-	test("returns undefined on a genuine field conflict changed differently by both sides", () => {
+	test("reports a genuine field conflict changed differently by both sides", () => {
 		const ancestor = file([row("warren-aaaa", { priority: 2 })]);
 		const ours = file([row("warren-aaaa", { priority: 1 })]);
 		const theirs = file([row("warren-aaaa", { priority: 3 })]);
-		expect(mergeJsonl(ancestor, ours, theirs)).toBeUndefined();
+		expect(conflicted(ancestor, ours, theirs)).toEqual(["warren-aaaa.priority"]);
 	});
 
 	test("takes the value when both sides changed a field identically", () => {
 		const ancestor = file([row("warren-aaaa", { priority: 2 })]);
 		const ours = file([row("warren-aaaa", { priority: 1 })]);
 		const theirs = file([row("warren-aaaa", { priority: 1 })]);
-		expect(mergeJsonl(ancestor, ours, theirs)).toBe(file([row("warren-aaaa", { priority: 1 })]));
+		expect(merged(ancestor, ours, theirs)).toBe(file([row("warren-aaaa", { priority: 1 })]));
 	});
 
 	test("auto-resolves both-sides-closed rows differing only in timestamps (warren-5f0d)", () => {
@@ -120,15 +125,15 @@ describe("mergeJsonl", () => {
 				closedAt: "2026-08-11T02:00:00Z",
 			}),
 		]);
-		expect(mergeJsonl(ancestor, ours, theirs)).toBe(theirs);
-		expect(mergeJsonl(ancestor, theirs, ours)).toBe(theirs);
+		expect(merged(ancestor, ours, theirs)).toBe(theirs);
+		expect(merged(ancestor, theirs, ours)).toBe(theirs);
 	});
 
 	test("auto-resolves an updatedAt-only race on an otherwise identically-edited row", () => {
 		const ancestor = file([row("warren-aaaa", { priority: 2 })]);
 		const ours = file([row("warren-aaaa", { priority: 1, updatedAt: "2026-08-11T01:00:00Z" })]);
 		const theirs = file([row("warren-aaaa", { priority: 1, updatedAt: "2026-08-11T03:00:00Z" })]);
-		expect(mergeJsonl(ancestor, ours, theirs)).toBe(
+		expect(merged(ancestor, ours, theirs)).toBe(
 			file([row("warren-aaaa", { priority: 1, updatedAt: "2026-08-11T03:00:00Z" })]),
 		);
 	});
@@ -139,7 +144,7 @@ describe("mergeJsonl", () => {
 		const theirs = file([
 			row("warren-aaaa", { title: "theirs", updatedAt: "2026-08-11T02:00:00Z" }),
 		]);
-		expect(mergeJsonl(ancestor, ours, theirs)).toBeUndefined();
+		expect(conflicted(ancestor, ours, theirs)).toEqual(["warren-aaaa.title"]);
 	});
 
 	test("still conflicts on closedAt when only one side closed the row", () => {
@@ -167,9 +172,9 @@ describe("mergeJsonl", () => {
 				closedAt: "2026-08-11T02:00:00Z",
 			}),
 		]);
-		expect(mergeJsonl(ancestor, ours2, theirs2)).toBeUndefined();
+		expect(conflicted(ancestor, ours2, theirs2).length).toBeGreaterThan(0);
 		// One-side-closed against an untouched row keeps prior behaviour.
-		expect(mergeJsonl(ancestor, ours, ancestor)).toBe(ours);
+		expect(merged(ancestor, ours, ancestor)).toBe(ours);
 	});
 
 	test("produces byte-identical output when one side is unchanged", () => {
@@ -181,21 +186,52 @@ describe("mergeJsonl", () => {
 			row("warren-aaaa", { status: "closed", closedAt: "2026-08-11T01:00:00Z" }),
 			row("warren-bbbb", { title: 'a "quoted" é title' }),
 		]);
-		expect(mergeJsonl(ancestor, ours, ancestor)).toBe(ours);
-		expect(mergeJsonl(ancestor, ancestor, ours)).toBe(ours);
+		expect(merged(ancestor, ours, ancestor)).toBe(ours);
+		expect(merged(ancestor, ancestor, ours)).toBe(ours);
 	});
 
 	test("lets a deletion win when the other side left the row unchanged", () => {
 		const ancestor = file([row("warren-aaaa"), row("warren-bbbb")]);
 		const ours = file([row("warren-aaaa")]);
-		expect(mergeJsonl(ancestor, ours, ancestor)).toBe(file([row("warren-aaaa")]));
+		expect(merged(ancestor, ours, ancestor)).toBe(file([row("warren-aaaa")]));
 	});
 
 	test("conflicts on a delete-versus-edit race", () => {
 		const ancestor = file([row("warren-aaaa"), row("warren-bbbb")]);
 		const ours = file([row("warren-aaaa"), row("warren-bbbb", { status: "closed" })]);
 		const theirs = file([row("warren-aaaa")]);
-		expect(mergeJsonl(ancestor, ours, theirs)).toBeUndefined();
+		expect(conflicted(ancestor, ours, theirs)).toEqual(["warren-bbbb (edit/delete race)"]);
+	});
+
+	test("emits conflict markers only on the unresolvable row, merging the rest (warren-585f)", () => {
+		const ancestor = file([row("warren-aaaa", { priority: 2 }), row("warren-bbbb")]);
+		const ours = file([
+			row("warren-aaaa", { priority: 1 }),
+			row("warren-bbbb", { status: "closed", closedAt: "2026-08-11T01:00:00Z" }),
+		]);
+		const theirs = file([row("warren-aaaa", { priority: 3 }), row("warren-bbbb")]);
+		const result = mergeJsonl(ancestor, ours, theirs);
+		expect(result.conflicts).toEqual(["warren-aaaa.priority"]);
+		expect(result.content).toBe(
+			file([
+				"<<<<<<< ours",
+				row("warren-aaaa", { priority: 1 }),
+				"=======",
+				row("warren-aaaa", { priority: 3 }),
+				">>>>>>> theirs",
+				row("warren-bbbb", { status: "closed", closedAt: "2026-08-11T01:00:00Z" }),
+			]),
+		);
+	});
+
+	test("conflict-marker output fails the seeds-integrity guard, so it cannot be committed silently", () => {
+		const ancestor = file([row("warren-aaaa", { priority: 2 })]);
+		const ours = file([row("warren-aaaa", { priority: 1 })]);
+		const theirs = file([row("warren-aaaa", { priority: 3 })]);
+		const result = mergeJsonl(ancestor, ours, theirs);
+		const violations = scanText(".seeds/issues.jsonl", result.content);
+		expect(violations.length).toBeGreaterThan(0);
+		expect(violations.some((v) => v.kind === "invalid-json")).toBe(true);
 	});
 });
 
@@ -209,12 +245,27 @@ describe("merge-seeds-jsonl driver CLI", () => {
 		expect(result).toBe(file([row("warren-aaaa", { blockedBy: [], status: "closed" })]));
 	});
 
-	test("exits non-zero and leaves %A untouched on a genuine conflict", () => {
-		const ancestor = file([row("warren-aaaa", { priority: 2 })]);
-		const ours = file([row("warren-aaaa", { priority: 1 })]);
-		const theirs = file([row("warren-aaaa", { priority: 3 })]);
+	test("exits non-zero and writes a best-effort %A with conflict markers on a genuine conflict", () => {
+		const ancestor = file([row("warren-aaaa", { priority: 2 }), row("warren-bbbb")]);
+		const ours = file([
+			row("warren-aaaa", { priority: 1 }),
+			row("warren-bbbb", { status: "closed", closedAt: "2026-08-11T01:00:00Z" }),
+		]);
+		const theirs = file([row("warren-aaaa", { priority: 3 }), row("warren-bbbb")]);
 		const { code, result } = runDriver(ancestor, ours, theirs);
 		expect(code).toBe(1);
-		expect(result).toBe(ours);
+		// The other side's non-conflicted context is visible and the
+		// conflicted row carries markers — never pure ours-content.
+		expect(result).toBe(
+			file([
+				"<<<<<<< ours",
+				row("warren-aaaa", { priority: 1 }),
+				"=======",
+				row("warren-aaaa", { priority: 3 }),
+				">>>>>>> theirs",
+				row("warren-bbbb", { status: "closed", closedAt: "2026-08-11T01:00:00Z" }),
+			]),
+		);
+		expect(scanText(".seeds/issues.jsonl", result).length).toBeGreaterThan(0);
 	});
 });
