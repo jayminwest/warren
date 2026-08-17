@@ -200,7 +200,13 @@ describe("scan — the burrow seam warren-f796 used to own alone", () => {
 				"src/projects/clone.ts": 'import { HttpClient } from "@os-eco/burrow-cli";\n',
 			},
 			(dir) => {
-				expect(scan(dir, RULES).map((v) => `${v.rule} ${v.file}`)).toEqual([
+				// Sorted: the walk's readdir order is filesystem-dependent, so the
+				// assertion must not bake one in (fails on overlayfs ordering).
+				expect(
+					scan(dir, RULES)
+						.map((v) => `${v.rule} ${v.file}`)
+						.sort(),
+				).toEqual([
 					"burrow-package-is-local-only src/projects/clone.ts",
 					"burrow-package-is-local-only src/runtime/k8s/agent-entrypoint.ts",
 				]);

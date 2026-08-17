@@ -108,6 +108,20 @@ export interface FinalizeDeps {
 }
 
 /**
+ * The finalize TARGET the pipeline runs against (warren-413d): a live
+ * workspace path plus a tracker-file reader. The legacy burrow-backed mode
+ * resolves both off the daemon (`GET /burrows/:id` + `http.files.read`);
+ * the in-process backend resolves the path off its run store and reads
+ * tracker files straight off the host FS — the workspace is a local
+ * worktree, so no daemon round-trip remains.
+ */
+export interface FinalizeTarget {
+	readonly workspacePath: string;
+	/** Read a workspace-relative tracker file; `null` when absent. */
+	readonly readTracker: (relPath: string) => Promise<string | null>;
+}
+
+/**
  * Run the workspace-dependent half of reap against the run's live burrow
  * workspace and assemble a `FinalizeResult`. `client` is the resolved
  * single-container burrow client; `handle.sandboxId` is the burrowId.
@@ -118,6 +132,25 @@ export async function finalizeLocalRun(
 	intent: FinalizeIntent,
 	deps: FinalizeDeps = {},
 ): Promise<FinalizeResult> {
+	const workspacePath = await resolveWorkspacePath(client, handle.sandboxId);
+	const target: FinalizeTarget = {
+		workspacePath,
+		readTracker: (relPath) => readWorkspaceTracker(client, handle.sandboxId, relPath),
+	};
+	return finalizeLocalWorkspace(target, intent, deps);
+}
+
+/**
+ * The finalize pipeline over an already-resolved target (warren-413d). The
+ * in-process LocalProvider calls this directly with its store-resolved
+ * workspace path + host-FS tracker reads; the burrow-backed legacy mode
+ * reaches it through the `finalizeLocalRun` wrapper above.
+ */
+export async function finalizeLocalWorkspace(
+	target: FinalizeTarget,
+	intent: FinalizeIntent,
+	deps: FinalizeDeps = {},
+): Promise<FinalizeResult> {
 	const fs = deps.fs ?? defaultFs;
 	const exec = deps.exec ?? defaultExec;
 	const trail = new StageTrail();
@@ -125,17 +158,17 @@ export async function finalizeLocalRun(
 	const artifacts = new Set(intent.artifacts);
 	// Commit-gating decouples from merge-gating (warren-1f56); default to the merge set.
 	const commit = new Set(intent.commit ?? intent.artifacts);
-	const workspacePath = await resolveWorkspacePath(client, handle.sandboxId);
+	const workspacePath = target.workspacePath;
 	const clonePath = resolveClonePath(intent, artifacts);
 
 	const mulch = artifacts.has("mulch")
 		? await finalizeMulch(workspacePath, clonePath, fs, trail, collector)
 		: undefined;
 	const seeds = artifacts.has("seeds")
-		? await finalizeSeeds(client, handle.sandboxId, clonePath, fs, trail, collector)
+		? await finalizeSeeds(target, clonePath, fs, trail, collector)
 		: undefined;
 	const plans = artifacts.has("plans")
-		? await finalizePlans(client, handle.sandboxId, clonePath, fs, trail, collector)
+		? await finalizePlans(target, clonePath, fs, trail, collector)
 		: undefined;
 
 	// Snapshot the workspace plans.jsonl BEFORE the seeds commit copies the
@@ -283,15 +316,14 @@ async function readWorkspaceTracker(
 }
 
 async function finalizeSeeds(
-	client: BurrowClient,
-	sandboxId: string,
+	target: FinalizeTarget,
 	clonePath: string,
 	fs: ReapFs,
 	trail: StageTrail,
 	collector: EventCollector,
 ): Promise<ArtifactDelta> {
 	try {
-		const workspaceBody = await readWorkspaceTracker(client, sandboxId, ".seeds/issues.jsonl");
+		const workspaceBody = await target.readTracker(".seeds/issues.jsonl");
 		const result = await mirrorSeeds({
 			workspaceBody,
 			projectPath: clonePath,
@@ -322,15 +354,14 @@ function singleFile(path: string, mergedBody: string | null): ArtifactDeltaFile[
 }
 
 async function finalizePlans(
-	client: BurrowClient,
-	sandboxId: string,
+	target: FinalizeTarget,
 	clonePath: string,
 	fs: ReapFs,
 	trail: StageTrail,
 	collector: EventCollector,
 ): Promise<ArtifactDelta> {
 	try {
-		const workspaceBody = await readWorkspaceTracker(client, sandboxId, ".seeds/plans.jsonl");
+		const workspaceBody = await target.readTracker(".seeds/plans.jsonl");
 		const appended = await mirrorPlans({
 			workspaceBody,
 			projectPath: clonePath,
