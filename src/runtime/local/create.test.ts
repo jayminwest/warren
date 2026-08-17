@@ -122,6 +122,30 @@ describe("LocalProvider.create", () => {
 		expect(env.WARREN_API_URL).toBeUndefined();
 	});
 
+	test("delivers registry provider credentials from the server env, domain wins (warren-fb8d)", async () => {
+		const { provider, calls } = await localProvider(
+			{},
+			{
+				WARREN_BIND_PORT: "8080",
+				OPENROUTER_API_KEY: "sk-or-server",
+				GROQ_API_KEY: "gsk_server",
+				ANTHROPIC_API_KEY: "sk-ant-server",
+				UNRELATED_SECRET: "never-forwarded",
+			},
+		);
+		await provider.create(
+			newSpec({ env: { WARREN_API_TOKEN: "tok", ANTHROPIC_API_KEY: "sk-ant-domain" } }),
+		);
+		const env = (calls[0]?.body as { env: Record<string, string> }).env;
+		// registry keys present in the server env are delivered opaquely
+		expect(env.OPENROUTER_API_KEY).toBe("sk-or-server");
+		expect(env.GROQ_API_KEY).toBe("gsk_server");
+		// a domain-supplied key (OAuth-token flow) is not shadowed
+		expect(env.ANTHROPIC_API_KEY).toBe("sk-ant-domain");
+		// non-registry env vars are never swept in
+		expect(env.UNRELATED_SECRET).toBeUndefined();
+	});
+
 	test("merges domain env with provider plumbing (provider keys win)", async () => {
 		const { provider, calls } = await localProvider({}, { WARREN_BIND_PORT: "8080" });
 		await provider.create(

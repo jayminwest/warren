@@ -9,6 +9,9 @@ package, per ROADMAP rule 2. Nothing here is scheduled.
 Additions: the mission positioning (§0), mirrors instead of forks
 (§3 step 3), the consent ladder and disclosure (§5), and historical
 issue replay (§6). Risks and open questions grew to match.
+**Amended:** 2026-08-16 — §9, the core/extension tripwire and the
+join-ownership tension, from an owner conversation. Tracked as
+warren-9236.
 **Grounds:** [`agent-analytics.md`](./agent-analytics.md) §1 (the
 corpus thesis), §8 (the closed loop), §12 (the judge layer);
 [`PHILOSOPHY.md`](../PHILOSOPHY.md) rules 1, 2, and 5;
@@ -283,3 +286,48 @@ its own forge token for mining and reads warren's published surfaces.
    experimental result with ground truth — the §8 closed loop of
    the analytics record, finally testable. No new memory system.
    Mulch is the substrate, and the delivery path is the gap.
+
+## 9. The tripwire — core never reads an extension endpoint
+
+Added 2026-08-16 from an owner conversation. Tracked as warren-9236.
+
+§1 claims warren computes the join `trajectory × outcome ×
+verdict`, and only a control plane can. But verdicts live in the
+judge extension's own store. Both statements cannot stay true: if
+core computes the join, core reads verdicts. The failure mode to
+refuse is the middle state — a core reader (UI included) pointed at
+an extension's endpoint, degrading when the extension is absent.
+That state has neither the clean kernel nor the integrated feature,
+and `check:layers` cannot see it, because the dependency is HTTP,
+not an import.
+
+The rule, effective now: **no core code reads from an extension
+endpoint.** Until the decision below, the judge stays export-only
+and every verdict consumer lives outside core.
+
+The decision, deferred to a named trigger: when the first join
+consumer becomes a seed — the §3 step 4 review queue, the step 5
+router, or the step 2 dispatch-context log — the verdict ingest
+surface is decided **as one cut**, choosing between:
+
+- **Ingest-surface promotion.** Core owns a verdict/annotation fact
+  table and a `POST` endpoint under the locked §12.3 shape. The
+  judge becomes one pluggable producer among possible others
+  (strong-model re-judge, human review). An absent judge is an
+  empty table, the same way an absent `.seeds/` is an empty queue.
+  Core computes nothing and depends on nothing; it offers a typed
+  shelf. This puts interpretation *rows* in a core table — a
+  conscious PHILOSOPHY amendment, small because §12.3 locked the
+  shape like a wire contract precisely so this promotion would not
+  need a schema rethink.
+- **The §12.1 in-core move.** The whole executor moves into core.
+  Note the true cost: warren's pod then holds an LLM credential and
+  spends provider money on interpretation, where core today spends
+  only on sandboxed runs the operator dispatched.
+
+The recorded leaning is the promotion, matching §4's split (core
+provides the small dispatch surfaces only core can; extensions
+interpret) and the shape open question 1 is circling for the
+dispatch-context log. The corpus collected in the meantime is the
+evidence the cut wants: whether the verdicts are good enough to
+build core surfaces on.

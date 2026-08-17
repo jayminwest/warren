@@ -6,35 +6,31 @@
  * ever hand-assembling an App in the GitHub UI:
  *
  *   1. `GET /github-app/register` renders a page carrying an App MANIFEST
- *      (name, homepage, loopback `redirect_url`, and the permission set the
- *      forge needs) as a single form field. The random `state` nonce rides
- *      the form's ACTION URL as a query parameter — GitHub's manifest
- *      schema rejects a `state` key inside the manifest itself
- *      (`"state" is not a permitted key`, hit live 2026-08-13). Pressing
- *      the button POSTs the manifest to GitHub's "Create GitHub App"
- *      endpoint.
+ *      (name, homepage, loopback `redirect_url`, `setup_url`, and the
+ *      permission set the forge needs) as a single form field. The random
+ *      `state` nonce rides the form's ACTION URL as a query parameter —
+ *      GitHub's manifest schema rejects a `state` key inside the manifest
+ *      itself (`"state" is not a permitted key`, hit live 2026-08-13).
  *   2. GitHub creates the App under the operator's own account and redirects
  *      the browser to the manifest's `redirect_url` — warren's
  *      `GET /github-app/callback` — with `?code=…&state=…`. Q1 (spike
  *      warren-bc4c): a loopback `redirect_url` IS accepted and the
- *      query-parameter `state` round-trips intact, so the local-operator
- *      flow works behind NAT.
- *   3. The callback validates `state` against the single-use,
- *      short-TTL {@link RegistrationSessions} store, then converts the code:
+ *      query-parameter `state` round-trips intact, so the flow works behind NAT.
+ *   3. The callback validates `state` against the single-use, short-TTL
+ *      {@link RegistrationSessions} store, then converts the code:
  *      `POST /app-manifests/{code}/conversions`. Q2 (same spike): that call
  *      needs NO authentication, the code is single-use, and the response
  *      carries the App id, slug, PEM private key, and client id/secret — the
- *      whole credential set the `app` forge arm consumes. The callback
- *      renders them once, for the operator to copy into their secret store.
+ *      whole credential set the `app` forge arm consumes, rendered once for
+ *      the operator to copy into their secret store.
+ *   4. Installing the App redirects to the manifest's `setup_url` (`/github-app/installed`) with the installation id (warren-54c7).
  *
- * Nothing here persists: the converted credentials exist only in the
- * rendered callback page, and the pending `state` nonces live in process
- * memory with a ten-minute TTL. A warren restart mid-flow just means the
- * operator starts over — GitHub lets them delete the half-created App.
+ * Nothing here persists: the converted credentials exist only in the rendered
+ * callback page, and the pending `state` nonces live in process memory with a
+ * ten-minute TTL — a restart mid-flow just means starting over.
  *
  * This module is the domain half; the HTTP surface lives in
- * `src/server/handlers/github-app.ts`. It imports nothing server-side so
- * the seam direction stays forge-inward (warren-89a6).
+ * `src/server/handlers/github-app.ts` (seam stays forge-inward, warren-89a6).
  */
 
 import { getRandomValues } from "node:crypto";
@@ -82,6 +78,7 @@ export interface GitHubAppManifest {
 	readonly name: string;
 	readonly url: string;
 	readonly redirect_url: string;
+	readonly setup_url: string;
 	readonly public: boolean;
 	readonly default_permissions: typeof GITHUB_APP_MANIFEST_PERMISSIONS;
 }
@@ -90,11 +87,17 @@ export function buildGitHubAppManifest(input: {
 	readonly name: string;
 	readonly homepageUrl: string;
 	readonly redirectUrl: string;
+	readonly setupUrl: string;
 }): GitHubAppManifest {
 	return {
 		name: input.name,
 		url: input.homepageUrl,
 		redirect_url: input.redirectUrl,
+		// warren-54c7: GitHub redirects here after INSTALLATION with
+		// ?installation_id=<id>&setup_action=install appended, so the last
+		// credential-triple value comes home on its own. Verified against
+		// GitHub's manifest schema docs — a documented key, unlike `state`.
+		setup_url: input.setupUrl,
 		// Private by default: the App exists to serve this one warren
 		// deployment, and a public App is installable by anyone.
 		public: false,
@@ -361,8 +364,10 @@ it into the App credentials and shows them to you once. Nothing is stored.</p>`;
  * The callback page: the converted credential set, rendered once. The PEM
  * is shown verbatim (the operator pastes it into their secret store; the
  * forge unfolds literal `\n` sequences if their store needs the single-line
- * form). The install link lands on GitHub's installation flow, which yields
- * the installation id the env triple needs.
+ * form). The install link lands on GitHub's installation flow; the manifest's
+ * `setup_url` then brings the browser back to `/github-app/installed` with
+ * the installation id on the query string (warren-54c7). The manual
+ * URL-scavenging instructions stay as fallback.
  */
 export function renderCredentialsPage(registration: GitHubAppRegistration): string {
 	const installUrl = `https://github.com/apps/${registration.slug}/installations/new`;
@@ -401,10 +406,13 @@ because GitHub returns them; you do not need to store them.</p>
 </dl>
 <h1>One step left: install the App</h1>
 <p>The credential triple needs the installation id, which only exists once the
-App is installed on an account or repository. Open
-<a href="${escapeHtml(installUrl)}">${escapeHtml(installUrl)}</a>,
-pick the account/repos warren may touch, and read the installation id from the
-URL GitHub lands on (<code>.../settings/installations/&lt;id&gt;</code>).</p>
+App is installed. Open
+<a href="${escapeHtml(installUrl)}">${escapeHtml(installUrl)}</a>
+and pick the account/repos warren may touch. When the install finishes GitHub
+returns you to warren (<code>/github-app/installed</code>) with the id on the
+query string and the secret-store blocks completed. If that redirect can't
+reach this warren, read the id by hand from the URL GitHub lands on
+(<code>.../settings/installations/&lt;id&gt;</code>) and use the blocks below.</p>
 <h1>Install the secrets</h1>
 <p>Pick the block matching your deploy shape and paste it as-is. warren can't
 know your deploy shape, so this step stays manual — each variant is one paste.</p>
@@ -421,6 +429,66 @@ first.</p>
 <p class="note">Set these on the warren process and restart. A missing or
 unparseable value fails boot loudly.</p>`;
 	return page("GitHub App credentials", body);
+}
+
+/**
+ * The installed page (warren-54c7): the manifest `setup_url` target. GitHub
+ * appends `?installation_id=<id>&setup_action=install`, so this page renders
+ * the id plus the secret-store blocks with it filled in (App id and PEM stay
+ * placeholders — they appeared once on the credentials page). A missing or
+ * malformed id renders the fallback manual instructions, not an error: the
+ * install already happened on GitHub's side, so a 500 only strands harder.
+ */
+export function renderInstalledPage(input: { readonly installationId: string | null }): string {
+	const id = input.installationId ?? "<from .../settings/installations/<id>>";
+	const envBlock = [
+		"WARREN_FORGE=app",
+		"WARREN_GITHUB_APP_ID=<the App id from the credentials page>",
+		`WARREN_GITHUB_APP_INSTALLATION_ID=${id}`,
+		"WARREN_GITHUB_APP_PRIVATE_KEY=<the PEM from the credentials page>",
+	].join("\n");
+	const k8sBlock = [
+		"kubectl -n warren patch secret warren-secrets --type merge -p \\",
+		'  \'{"stringData":{"warren-forge":"app",',
+		'    "github-app-id":"<the App id from the credentials page>",',
+		`    "github-app-installation-id":"${id}",`,
+		'    "github-app-private-key":"<the PEM, as ONE line with literal \\n escapes>"}}\'',
+	].join("\n");
+	const composeBlock = [
+		"environment:",
+		"  WARREN_FORGE: app",
+		'  WARREN_GITHUB_APP_ID: "<the App id from the credentials page>"',
+		`  WARREN_GITHUB_APP_INSTALLATION_ID: "${id}"`,
+		'  WARREN_GITHUB_APP_PRIVATE_KEY: "<the PEM from the credentials page>"',
+	].join("\n");
+	const idSection =
+		input.installationId === null
+			? `<h1>Installation id not on this URL</h1>
+<p>GitHub normally appends <code>?installation_id=&lt;id&gt;</code> to this
+redirect, but this visit has none warren can read. The install still went
+through — find the id by hand under your account's <code>Settings &rarr;
+Applications &rarr; Configure</code> (the URL reads
+<code>.../settings/installations/&lt;id&gt;</code>) and paste it below.</p>`
+			: `<h1>App installed — installation id</h1>
+<pre>${escapeHtml(input.installationId)}</pre>
+<p>This is the last value the credential triple needed. The blocks below
+have it filled in; the App id and private key come from the credentials page
+warren showed you right after the App was created.</p>`;
+	const body = `${idSection}
+<h1>Install the secrets</h1>
+<p>Pick the block matching your deploy shape and paste it as-is, substituting the
+two values from the credentials page.</p>
+<h2>Kubernetes (the <code>warren-secrets</code> Secret, see docs/RUNBOOK-K8S.md)</h2>
+<pre>${escapeHtml(k8sBlock)}</pre>
+<p class="note">The private key goes in as ONE line with literal
+<code>\n</code> escapes — warren unfolds them at boot.</p>
+<h2>docker compose (<code>environment:</code> on the warren service)</h2>
+<pre>${escapeHtml(composeBlock)}</pre>
+<h2>Plain <code>.env</code></h2>
+<pre>${escapeHtml(envBlock)}</pre>
+<p class="note">Set these on the warren process and restart. A missing or
+unparseable value fails boot loudly.</p>`;
+	return page("GitHub App installed", body);
 }
 
 /** A registration-flow failure page (bad state, spent code, upstream error). */
