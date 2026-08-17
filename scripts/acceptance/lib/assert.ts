@@ -41,6 +41,13 @@ export interface ScenarioCtx {
 		 * PATH via extraEnv. Empty in container mode.
 		 */
 		readonly shimBinDir: string;
+		/**
+		 * Path to the WARREN_SEED_AGENTS_FILE JSON payload the harness boots
+		 * warren with (warren-e376). Scenarios that need to exercise
+		 * boot-time re-seeding on drift (04) rewrite this file and restart
+		 * warren via ctx.lifecycle. Empty in container mode.
+		 */
+		readonly seedAgentsFilePath: string;
 	};
 	readonly logger: ScenarioLogger;
 	readonly tmp: string;

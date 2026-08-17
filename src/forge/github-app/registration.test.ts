@@ -322,6 +322,68 @@ describe("renderRegistrationErrorPage", () => {
 	});
 });
 
+describe("shared page chrome (warren-4f1e)", () => {
+	const manifest = buildGitHubAppManifest({
+		name: "warren-test",
+		homepageUrl: "https://example.test/",
+		redirectUrl: "http://127.0.0.1:8377/github-app/callback",
+		setupUrl: "http://127.0.0.1:8377/github-app/installed",
+	});
+	const pages: Array<[string, string]> = [
+		[
+			"register",
+			renderRegistrationPage({
+				manifest,
+				createUrl: GITHUB_APP_MANIFEST_CREATE_URL,
+				state: "nonce-1",
+			}),
+		],
+		[
+			"credentials",
+			renderCredentialsPage({
+				appId: 4560297,
+				slug: "warren-test-app",
+				name: "warren-test-app",
+				htmlUrl: "https://github.com/apps/warren-test-app",
+				clientId: "Iv1.0123456789abcdef",
+				clientSecret: "client-secret-value",
+				pem: "-----BEGIN RSA PRIVATE KEY-----\nABC\n-----END RSA PRIVATE KEY-----\n",
+			}),
+		],
+		["installed", renderInstalledPage({ installationId: "87654321" })],
+		["installed-fallback", renderInstalledPage({ installationId: null })],
+		["error", renderRegistrationErrorPage("boom", "detail")],
+	];
+
+	test("every page renders through the shared chrome (brand header, inline style, main)", () => {
+		for (const [name, html] of pages) {
+			expect(html, name).toStartWith("<!doctype html>");
+			expect(html, name).toContain('<html lang="en" data-theme="dark">');
+			expect(html, name).toContain('<header><div class="brand">warren');
+			expect(html, name).toContain("<main>");
+			// The inline stylesheet carries the SPA dark tokens (oklch
+			// neutrals and the brand green at 152 hue).
+			expect(html, name).toContain("<style>");
+			expect(html, name).toContain("oklch(72% 0.11 152)");
+		}
+	});
+
+	test("no page carries a <script> tag — CSP default-src 'none' forbids it", () => {
+		for (const [name, html] of pages) {
+			expect(html.toLowerCase(), name).not.toContain("<script");
+		}
+	});
+
+	test("no page fetches external assets (link/img/font-face/import)", () => {
+		for (const [name, html] of pages) {
+			expect(html.toLowerCase(), name).not.toContain("<link");
+			expect(html.toLowerCase(), name).not.toContain("<img");
+			expect(html, name).not.toContain("@font-face");
+			expect(html, name).not.toContain("@import");
+		}
+	});
+});
+
 describe("renderInstalledPage", () => {
 	test("renders the installation id into every secret-store block (warren-54c7)", () => {
 		const html = renderInstalledPage({ installationId: "87654321" });

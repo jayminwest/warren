@@ -35,6 +35,7 @@
 
 import { getRandomValues } from "node:crypto";
 import { GITHUB_API_BASE } from "../github/headers.ts";
+import { renderRegistrationChrome } from "./page-chrome.ts";
 
 /** GitHub's manifest-flow endpoint for a personal-account App. */
 export const GITHUB_APP_MANIFEST_CREATE_URL = "https://github.com/settings/apps/new";
@@ -296,29 +297,14 @@ export function escapeHtml(value: string): string {
 		.join("&#39;");
 }
 
-const PAGE_STYLE = `
-	body { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; max-width: 52rem; margin: 2rem auto; padding: 0 1rem; background: #0d1117; color: #e6edf3; }
-	h1 { font-size: 1.3rem; }
-	pre { background: #161b22; border: 1px solid #30363d; border-radius: 6px; padding: 0.75rem; overflow-x: auto; white-space: pre-wrap; word-break: break-all; }
-	button { font: inherit; padding: 0.5rem 1rem; border-radius: 6px; border: 1px solid #30363d; background: #238636; color: #fff; cursor: pointer; }
-	dt { font-weight: bold; margin-top: 0.5rem; }
-	dd { margin-left: 0; }
-	.note { color: #9da7b3; }
-`;
-
+/**
+ * Shared chrome for every page in this flow (warren-4f1e): the layout,
+ * brand header, and design tokens live once in `page-chrome.ts`, mirrored
+ * from the SPA's dark-theme tokens. `body` is trusted, already-escaped
+ * markup from the renderers below; `title` is plain text escaped here.
+ */
 function page(title: string, body: string): string {
-	return `<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<title>warren — ${escapeHtml(title)}</title>
-<style>${PAGE_STYLE}</style>
-</head>
-<body>
-${body}
-</body>
-</html>
-`;
+	return renderRegistrationChrome(escapeHtml(title), body);
 }
 
 /**

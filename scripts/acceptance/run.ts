@@ -219,6 +219,12 @@ async function runInProcMode(opts: RunModeArgs): Promise<number> {
 		// extension so registration and dispatch accept it while validation
 		// stays fail-closed by default (warren-c4be).
 		process.env.WARREN_EXTRA_RUNTIME_IDS = fixtures.stubAgentName;
+		// The stub agent pins runtime=claude-code and the internalized local
+		// engine execs the bare `claude` binary (warren-dc19). Prepend the
+		// fixture shim dir so every warren this harness boots (shared and
+		// scenario-owned, via PATH passthrough) resolves the deterministic
+		// stub instead of a real claude install.
+		process.env.PATH = `${fixtures.claudeShimBinDir}:${process.env.PATH ?? ""}`;
 		handle = await bootInProc({
 			tmpRoot,
 			token,
@@ -261,6 +267,7 @@ async function runInProcMode(opts: RunModeArgs): Promise<number> {
 				knownMulchDomain: fixtures.knownMulchDomain,
 				gitConfigPath: fixtures.gitConfigPath,
 				shimBinDir: fixtures.shimBinDir,
+				seedAgentsFilePath: fixtures.seedAgentsFilePath,
 			},
 			logger,
 			tmp: tmpRoot,
@@ -411,6 +418,7 @@ async function runContainerMode(opts: RunModeArgs): Promise<number> {
 				knownMulchDomain: "",
 				gitConfigPath: "",
 				shimBinDir: "",
+				seedAgentsFilePath: "",
 			},
 			logger,
 			tmp: tmpRoot,
