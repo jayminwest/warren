@@ -66,6 +66,9 @@ export * from "./wire-inbox.ts";
 // The analytics-insight vocabulary (warren-be04) lives in
 // ./wire-insight.ts (file-size budget); re-exported for one canonical home.
 export * from "./wire-insight.ts";
+// The runtime-id vocabulary (warren-c4be) lives in ./wire-runtime.ts
+// (file-size budget); re-exported for one canonical home.
+export * from "./wire-runtime.ts";
 
 /**
  * Chain-kind discriminator for a run that carries a `parent_run_id`
@@ -422,30 +425,6 @@ export function normalizeRunTriggerKind(value: string | undefined): RunTriggerKi
  */
 export const AGENT_SOURCES = ["builtin", "library"] as const;
 export type AgentSource = (typeof AGENT_SOURCES)[number];
-
-/**
- * The burrow/pod runtime ids warren can dispatch an agent onto
- * (warren-c4be). Canonical here because two independent surfaces need the
- * same vocabulary: the per-project `.warren/config.yaml` runtime override
- * (`src/warren-config/schema.ts`, which zod-enforces it) and the agent
- * registry (`src/registry/schema.ts`, which resolves an agent's
- * `frontmatter.runtime` at registration and at dispatch).
- *
- * Before this lived here, only the config half validated. An agent row
- * carrying an unknown runtime id sailed through registration and died
- * sandbox-side at dispatch, past every 4xx boundary — the warren-ebca
- * incident class (the planner agent pinned no runtime, burrow looked up
- * "planner" in its built-in runtime table, and the run died before agent
- * boot). Validating the id where agents enter the system turns that into a
- * typed 422 that names the known ids.
- */
-export const KNOWN_RUNTIME_IDS = ["claude-code", "pi"] as const;
-export type RuntimeId = (typeof KNOWN_RUNTIME_IDS)[number];
-
-/** Membership predicate for {@link KNOWN_RUNTIME_IDS}. */
-export function isKnownRuntimeId(value: unknown): value is RuntimeId {
-	return typeof value === "string" && (KNOWN_RUNTIME_IDS as readonly string[]).includes(value);
-}
 
 /**
  * The `GET /agents` row shape as every consumer sees it (warren-4253 /

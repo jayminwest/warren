@@ -12,6 +12,7 @@
  */
 
 import type {
+	AcceptedRuntimeId,
 	EventOrigin,
 	EventStream,
 	InboxPriority,
@@ -69,8 +70,7 @@ export interface RunSpec {
 	maxProjectConcurrency?: number;
 
 	// Agent.
-	/** claude-code | pi | codex — selects image/toolchain */
-	runtimeId: string;
+	runtimeId: AcceptedRuntimeId;
 	/** system section already prepended by the domain */
 	prompt: string;
 	/** e.g. `{ frontmatter }` — provider carries to runtime */

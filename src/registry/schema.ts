@@ -25,7 +25,7 @@
  */
 
 import { z } from "zod";
-import { isKnownRuntimeId, KNOWN_RUNTIME_IDS, type RuntimeId } from "../core/wire.ts";
+import { type AcceptedRuntimeId, isKnownRuntimeId, KNOWN_RUNTIME_IDS } from "../core/wire.ts";
 import { AgentNameSchema } from "./agent-name.ts";
 import { AgentSchemaError } from "./errors.ts";
 
@@ -299,12 +299,11 @@ export function readRuntimeId(agent: AgentDefinition, configOverride?: string): 
 export const EXTRA_RUNTIME_IDS_ENV = "WARREN_EXTRA_RUNTIME_IDS";
 
 /**
- * A runtime id that passed validation: either a {@link KNOWN_RUNTIME_IDS}
- * member or an operator-declared extension from
- * {@link EXTRA_RUNTIME_IDS_ENV}. Widens to `string` because the extension
- * list is only known at run time; `RunSpec.runtimeId` is a `string` too.
+ * A runtime id that passed validation, declared in the canonical wire home
+ * (`src/core/wire-runtime.ts`) because the dispatch seam now types on it too.
+ * Re-exported here so this module keeps its own vocabulary word.
  */
-export type AcceptedRuntimeId = RuntimeId | string;
+export type { AcceptedRuntimeId };
 
 /** Parse {@link EXTRA_RUNTIME_IDS_ENV} into a deduped, trimmed id list. */
 export function readExtraRuntimeIds(

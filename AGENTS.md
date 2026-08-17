@@ -245,7 +245,7 @@ CI would reject. `check:ci-parity` proves the local manifest and the CI
 workflow agree in both directions. Per-repo escape hatches live in
 `scripts/ci-parity-config.json`.
 
-Eight repo-specific guards ride inside the `lint` gate rather than
+Nine repo-specific guards ride inside the `lint` gate rather than
 taking a manifest slot, because the canonical gate vocabulary is
 frozen. Each also runs standalone under the matching `check:` script
 name.
@@ -259,6 +259,11 @@ name.
 - `scripts/check-rls.ts` (warren-3206) — replays the Postgres
   migrations in journal order and fails any still-live table without
   `ENABLE ROW LEVEL SECURITY`
+- `scripts/check-runtime-ids.ts` (warren-c80e) — fails a runtime-id
+  literal written outside `src/runtime/adapters/`. Per-runtime behavior
+  belongs behind the adapter registry. The allowlist has two buckets:
+  files that name a runtime on purpose, and the older conditional code
+  that phase 2 moves behind the seam
 - `scripts/check-client-contract.ts` (warren-4d2d) reads the request
   paths in `src/ui/src/api/client.ts` and fails any call that
   `ROUTE_TABLE` does not serve. A path the parser cannot resolve

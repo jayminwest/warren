@@ -318,7 +318,7 @@ export async function bridgeRunStream(input: BridgeRunStreamInput): Promise<Brid
 					} else {
 						await persistInStreamUsage({
 							usage: claudeUsage,
-							runtime: "claude",
+							runtime: "claude-code",
 							runId,
 							sandboxRunId,
 							repos,

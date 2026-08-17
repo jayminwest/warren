@@ -12,6 +12,7 @@
  * swallowed so a cost-write error never fails the bridge or the run.
  */
 
+import type { RuntimeId } from "../../core/wire.ts";
 import type { Repos } from "../../db/repos/index.ts";
 import type { SessionStatsAccumulator } from "../usage-aggregate.ts";
 import type { BridgeLogger, PiStatsClient, SessionStats } from "./types.ts";
@@ -115,7 +116,7 @@ export async function persistPiStatsDelta(input: PersistPiStatsInput): Promise<v
 
 export interface PersistInStreamUsageInput {
 	readonly usage: SessionStatsAccumulator;
-	readonly runtime: "pi" | "claude";
+	readonly runtime: RuntimeId;
 	readonly runId: string;
 	readonly sandboxRunId: string;
 	readonly repos: Repos;
@@ -128,7 +129,10 @@ export interface PersistInStreamUsageInput {
  * stay null. attachStats throws on storage errors; we log + swallow to
  * match the PiStatsClient path's best-effort posture. The `runtime`
  * tag distinguishes pi (`turn_end` accumulator, warren-17a4) from
- * claude-code (`result` single-shot, warren-87f9) in the log line.
+ * claude-code (`result` single-shot, warren-87f9) in the log line. It is a
+ * {@link RuntimeId}, so the tag reads the same as every other runtime id in
+ * the system: before warren-c80e this field carried the literal "claude",
+ * which is not a runtime id, so filtering logs by runtime missed these rows.
  */
 export async function persistInStreamUsage(input: PersistInStreamUsageInput): Promise<void> {
 	if (!input.usage.seen) return;

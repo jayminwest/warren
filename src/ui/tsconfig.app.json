@@ -43,6 +43,7 @@
 		"../core/wire-inbox.ts",
 		"../core/wire-insight.ts",
 		"../core/wire-actor.ts",
+		"../core/wire-runtime.ts",
 		"../core/errors.ts",
 		"../client/ndjson.ts",
 		"../client/errors.ts"

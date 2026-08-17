@@ -59,6 +59,7 @@
  */
 
 import { extractAgentEventEnvelope } from "../../core/event-envelope.ts";
+import type { AcceptedRuntimeId } from "../../core/wire.ts";
 import {
 	type AdapterRuntimeEvent,
 	type AgentRuntimeAdapter,
@@ -85,7 +86,7 @@ import { type FinalizeEntrypointDeps, runFinalizeEntrypoint } from "./finalize-e
 
 export interface AgentEntrypointEnv {
 	runId: string;
-	runtimeId: string;
+	runtimeId: AcceptedRuntimeId;
 	prompt: string;
 	workspacePath: string;
 	/** Callback base URL (Service DNS) — inbox drain + finalize; absent ⇒ both skipped. */

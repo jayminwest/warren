@@ -62,7 +62,7 @@ export async function enforceBudgetCap(input: EnforceBudgetCapInput): Promise<bo
 	// Persist the spend that tripped the cap so cost_usd isn't left null.
 	await persistInStreamUsage({
 		usage: usePi ? input.piUsage : input.claudeUsage,
-		runtime: usePi ? "pi" : "claude",
+		runtime: usePi ? "pi" : "claude-code",
 		runId: input.runId,
 		sandboxRunId: input.sandboxRunId,
 		repos: input.repos,

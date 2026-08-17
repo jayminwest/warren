@@ -30,6 +30,7 @@ import { existsSync, realpathSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
+import type { AcceptedRuntimeId } from "../../core/wire.ts";
 import type { SandboxProfile } from "../../sandbox/types.ts";
 import type { MaterializedWorkspace } from "../../workspace/materialize.ts";
 import type { RunSpec } from "../contract.ts";
@@ -74,7 +75,7 @@ export const PI_PROVIDER_ENV_KEYS: Readonly<Record<string, readonly string[]>> =
  * burrow's up-time (base) + dispatch-time (provider delta) union in one pass.
  */
 export function resolveEnvPassthrough(
-	runtimeId: string,
+	runtimeId: AcceptedRuntimeId,
 	frontmatter: Record<string, unknown> | undefined,
 ): string[] {
 	if (runtimeId === "claude-code") return [...CLAUDE_CODE_ENV_PASSTHROUGH];
@@ -115,7 +116,7 @@ function isUnderSystemMounts(path: string): boolean {
  * the spawn itself surfaces a clear ENOENT.
  */
 export function resolveToolchainPaths(
-	runtimeId: string,
+	runtimeId: AcceptedRuntimeId,
 	which: (name: string) => string | null = (name) => Bun.which(name),
 ): string[] {
 	const names = [...(AGENT_BINARIES[runtimeId] ?? []), ...COMMON_BINARIES];

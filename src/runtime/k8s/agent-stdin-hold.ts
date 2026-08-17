@@ -19,6 +19,7 @@
  * entrypoint keeps its write-and-close-at-spawn behavior unchanged.
  */
 
+import type { AcceptedRuntimeId } from "../../core/wire.ts";
 import type {
 	AdapterRuntimeEvent,
 	AgentRuntimeAdapter,
@@ -184,7 +185,7 @@ interface IdleWatchdogArgs {
 	timeoutMs: number;
 	/** Grace between the stdin close and the hard kill (warren-9a4a env knob). */
 	killGraceMs: number;
-	runtimeId: string;
+	runtimeId: AcceptedRuntimeId;
 	out: (line: string) => void;
 	log: (m: string) => void;
 	isStdinClosed: () => boolean;
