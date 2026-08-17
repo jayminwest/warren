@@ -77,7 +77,8 @@ interface ErrorEnvelope {
 }
 
 const RUN_ID_PATTERN = /^run_[0-9a-hjkmnpqrstvwxyz]{12}$/;
-const MESSAGE_ID_PATTERN = /^msg_[0-9a-hjkmnpqrstvwxyz]+$/;
+// Inbox message ids are `msg_<uuid>` (src/runtime/local/run-store.ts).
+const MESSAGE_ID_PATTERN = /^msg_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 export const scenario: Scenario = {
 	id: "07",
@@ -92,7 +93,14 @@ export const scenario: Scenario = {
 		// harness invocation), so the sample project may already exist
 		// from a sibling scenario — reuse it instead of failing on the
 		// "already exists" 400.
-		await http.expectStatus("POST", "/agents/refresh", 200);
+		// The stub agent was seeded at boot via WARREN_SEED_AGENTS_FILE
+		// (warren-e376); POST /agents/refresh is deleted (pl-3a79). GET it
+		// to prove boot seeding landed before spawning against it.
+		await http.expectStatus(
+			"GET",
+			`/agents/${encodeURIComponent(ctx.fixtures.stubAgentName)}`,
+			200,
+		);
 		const project = await ensureSampleProject(http, ctx.fixtures.sampleProjectGitUrl);
 
 		// Spawn a long-running run. The stub agent reads `[sleep_ms=...]`

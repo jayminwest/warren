@@ -214,12 +214,12 @@ async function runInProcMode(opts: RunModeArgs): Promise<number> {
 		// POST /agents/refresh endpoint the scenarios used to call was
 		// deleted in pl-3a79. bootInProc passes this var through.
 		process.env.WARREN_SEED_AGENTS_FILE = fixtures.seedAgentsFilePath;
-		// The stub agent pins runtime=stub-shell (warren-83b5), a real burrow
-		// runtime burrow-with-stub registers but one outside warren's canonical
-		// KNOWN_RUNTIME_IDS. Declare it as an operator extension so registration
-		// and dispatch accept it while validation stays fail-closed by default
-		// (warren-c4be).
-		process.env.WARREN_EXTRA_RUNTIME_IDS = fixtures.stubAgentName;
+		// The stub agent pins runtime=claude-code and the internalized local
+		// engine execs the bare `claude` binary (warren-dc19). Prepend the
+		// fixture shim dir so every warren this harness boots (shared and
+		// scenario-owned, via PATH passthrough) resolves the deterministic
+		// stub instead of a real claude install.
+		process.env.PATH = `${fixtures.claudeShimBinDir}:${process.env.PATH ?? ""}`;
 		handle = await bootInProc({
 			tmpRoot,
 			token,
@@ -258,6 +258,7 @@ async function runInProcMode(opts: RunModeArgs): Promise<number> {
 				knownSeedTitle: fixtures.knownSeedTitle,
 				knownMulchDomain: fixtures.knownMulchDomain,
 				gitConfigPath: fixtures.gitConfigPath,
+				seedAgentsFilePath: fixtures.seedAgentsFilePath,
 			},
 			logger,
 			tmp: tmpRoot,
@@ -410,6 +411,7 @@ async function runContainerMode(opts: RunModeArgs): Promise<number> {
 				knownSeedTitle: "",
 				knownMulchDomain: "",
 				gitConfigPath: "",
+				seedAgentsFilePath: "",
 			},
 			logger,
 			tmp: tmpRoot,

@@ -65,12 +65,19 @@ export const scenario: Scenario = {
 	id: "05",
 	title: "GET /runs/:id/events follows NDJSON; events durable in events table",
 	// Events stream requires a spawned run, which needs the host-side
-	// sample project + canopy fixture. In-proc only.
+	// sample project + boot-seeded stub agent. In-proc only.
 	modes: ["in-proc"],
 	async run(ctx) {
 		const http = new WarrenHttp({ baseUrl: ctx.warrenUrl, token: ctx.token });
 
-		await http.expectStatus("POST", "/agents/refresh", 200);
+		// The stub agent was seeded at boot via WARREN_SEED_AGENTS_FILE
+		// (warren-e376); POST /agents/refresh is deleted (pl-3a79). GET it
+		// to prove boot seeding landed before spawning against it.
+		await http.expectStatus(
+			"GET",
+			`/agents/${encodeURIComponent(ctx.fixtures.stubAgentName)}`,
+			200,
+		);
 		const project = await ensureProject(http, ctx.fixtures.sampleProjectGitUrl);
 
 		const created = await http.expectJson<CreateRunResponse>("POST", "/runs", 201, {

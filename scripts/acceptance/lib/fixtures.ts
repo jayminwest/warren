@@ -25,7 +25,7 @@
  * Cleanup: the in-proc launcher removes `tmpRoot` recursively on stop.
  * Builders here just write files; lifecycle is the launcher's problem.
  */
-import { copyFile, mkdir, writeFile } from "node:fs/promises";
+import { chmod, copyFile, mkdir, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
 export interface FixtureRoots {
@@ -45,6 +45,15 @@ export interface BuiltFixtures {
 	readonly knownMulchRecordId: string;
 	/** Path to the stub bash script committed inside the sample project. */
 	readonly stubAgentScriptInProject: string;
+	/**
+	 * Directory holding the `claude` PATH-shim stub
+	 * (lib/stub-agent/claude-code-path-shim.sh). The harness prepends it
+	 * to PATH before booting warren so the internalized local engine's
+	 * claude-code adapter execs the deterministic stub instead of a real
+	 * claude binary (warren-dc19 — replaces the retired stub-shell burrow
+	 * runtime for scenarios 05/07/09/10).
+	 */
+	readonly claudeShimBinDir: string;
 	readonly gitConfigPath: string;
 	/**
 	 * Path to a JSON array of AgentDefinition objects the booted warren
@@ -81,6 +90,8 @@ export async function buildFixtures(roots: FixtureRoots): Promise<BuiltFixtures>
 	await buildSampleProject(sampleProjectPath);
 	const seedAgentsFilePath = join(fixturesRoot, "stub-agents.json");
 	await buildSeedAgentsFile(seedAgentsFilePath);
+	const claudeShimBinDir = join(fixturesRoot, "bin");
+	await buildPathShims(claudeShimBinDir);
 	await writeGitConfigRedirects(gitConfigPath, [
 		{ fakeUrl: canopyRepoUrl, localPath: canopyRepoPath },
 		{ fakeUrl: sampleProjectGitUrl, localPath: sampleProjectPath },
@@ -108,6 +119,7 @@ export async function buildFixtures(roots: FixtureRoots): Promise<BuiltFixtures>
 		knownMulchDomain: KNOWN_MULCH_DOMAIN,
 		knownMulchRecordId: KNOWN_MULCH_RECORD_ID,
 		stubAgentScriptInProject: join(sampleProjectPath, "tools", "stub-agent.sh"),
+		claudeShimBinDir,
 		gitConfigPath,
 		seedAgentsFilePath,
 	};
@@ -115,10 +127,11 @@ export async function buildFixtures(roots: FixtureRoots): Promise<BuiltFixtures>
 
 /**
  * Write the WARREN_SEED_AGENTS_FILE payload: the `stub-shell` agent as a
- * warren AgentDefinition (mirrors the canopy fixture's sections and
- * `runtime=stub-shell` frontmatter so dispatch resolves the runtime the
- * burrow-with-stub wrapper registered). `source: "builtin"` lets
- * seedBuiltinAgents upsert on drift across reboots.
+ * warren AgentDefinition. Its `runtime=claude-code` frontmatter resolves
+ * the internalized local engine's claude-code adapter (src/runtime/
+ * adapters/), whose `claude` binary the harness stubs via the PATH shim
+ * (buildClaudeShim below). `source: "builtin"` lets seedBuiltinAgents
+ * upsert on drift across reboots.
  */
 async function buildSeedAgentsFile(path: string): Promise<void> {
 	const stubAgent = {
@@ -133,10 +146,41 @@ async function buildSeedAgentsFile(path: string): Promise<void> {
 			source: "builtin",
 			tags: ["agent"],
 			description: "Deterministic stub agent for warren acceptance",
-			runtime: STUB_AGENT_NAME,
+			runtime: "claude-code",
 		},
 	};
 	await writeFile(path, `${JSON.stringify([stubAgent], null, 2)}\n`);
+}
+
+/**
+ * Install the `claude` PATH-shim stub (lib/stub-agent/
+ * claude-code-path-shim.sh) into a bin dir the harness prepends to the
+ * booted warren's PATH. Warren's internalized local engine execs the
+ * bare name `claude` inside its sandbox; profile generation probes it
+ * via Bun.which and binds the shim dir in (src/runtime/local/profile.ts).
+ */
+async function buildPathShims(binDir: string): Promise<void> {
+	const shims: Array<readonly [string, string]> = [
+		["claude", "./stub-agent/claude-code-path-shim.sh"],
+	];
+	// Fake bwrap (warren-dc19): the internalized engine spawns agents
+	// through `bwrap`, which acceptance hosts may neither ship nor be able
+	// to unshare. The shim applies the workspace/home mappings and execs
+	// the child — see lib/stub-agent/bwrap-shim.sh. It must live in the
+	// SAME bin dir as the claude shim (Bun.spawn resolves the bare `bwrap`
+	// against the composed sandbox PATH, which only carries probed
+	// toolchain dirs), so install it only when the host has no real bwrap
+	// — a nightly runner with bubblewrap keeps the real sandbox.
+	if (Bun.which("bwrap") === null) {
+		shims.push(["bwrap", "./stub-agent/bwrap-shim.sh"]);
+	}
+	await mkdir(binDir, { recursive: true });
+	for (const [name, relSource] of shims) {
+		const source = new URL(relSource, import.meta.url);
+		const target = join(binDir, name);
+		await copyFile(source, target);
+		await chmod(target, 0o755);
+	}
 }
 
 // The stub agent's two sections, shared between the canopy fixture
