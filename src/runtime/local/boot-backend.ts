@@ -7,11 +7,13 @@
  * stopped `bootServer` from threading a live client through its wiring. What is
  * left is genuinely local-topology-specific: the self-host backend co-tenants a
  * burrow daemon, so under `WARREN_RUNTIME=local` boot needs a burrow client to
- * (a) back the `LocalProvider`, (b) build the capability-gated preview-sidecar +
- * workspace-GC seams, (c) probe the socket for `/readyz` + the startup warning,
- * and (d) close the client on shutdown. All of that is re-homed HERE, under
- * `src/runtime/local/`, out of `src/server/main/`, mirroring the CLI's
- * `resolveLocalRunBackend` (`./diagnostics/burrow.ts`, warren-11cc).
+ * probe the socket for `/readyz` + the startup warning, and to close on
+ * shutdown. The spawn path (warren-413d) and the preview-sidecar seam
+ * (warren-4bf3) are both warren-owned now; the daemon's last consumer here is
+ * the probe, which warren-9a26 drops with the daemon itself. All of that is
+ * re-homed HERE, under `src/runtime/local/`, out of `src/server/main/`,
+ * mirroring the CLI's `resolveLocalRunBackend` (`./diagnostics/burrow.ts`,
+ * warren-11cc).
  *
  * Under `WARREN_RUNTIME=k8s` there is no burrow at all (agents run in pods), so
  * boot never constructs this backend — it resolves the `K8sProvider` directly
@@ -30,7 +32,9 @@ import type { EnvLike } from "../../runs/spawn/callback-env.ts";
 import type { RuntimeProvider } from "../contract.ts";
 import { resolveRuntimeProvider } from "../registry.ts";
 import { checkBurrowPoolReachable } from "./diagnostics/burrow.ts";
+import { LocalSidecarRegistry } from "./preview/registry.ts";
 import { createLocalSidecarsResolver, type LocalSidecarsResolver } from "./preview/sidecars.ts";
+import { LocalRunStore } from "./run-store.ts";
 import { createLocalWorkspaceDestroyer } from "./workspace-gc.ts";
 
 /**
@@ -70,17 +74,28 @@ export function resolveLocalBootBackend(env: EnvLike): LocalBootBackend {
 		return client;
 	};
 	// warren-413d: the provider is built WITHOUT a burrow client, so it runs
-	// the in-process engine — the burrow daemon is off the spawn path. The
-	// client below still backs the preview-sidecar seam (warren-4bf3 re-homes
-	// it) and the /readyz probe (warren-9a26 drops it with the daemon).
-	const runtimeProvider = resolveRuntimeProvider({ serverEnv: env }, env);
+	// the in-process engine — the burrow daemon is off the spawn path.
+	// warren-4bf3: the preview-sidecar seam is warren-owned too — the shared
+	// run store lets the registry resolve each sandbox's profile, and the
+	// registry rides the provider so `terminate` cascades sidecar teardown.
+	// The burrow client below backs only the /readyz probe (warren-9a26
+	// drops it with the daemon).
+	const store = new LocalRunStore();
+	const sidecarRegistry = new LocalSidecarRegistry({
+		profileFor: (sandboxId) => store.getBySandboxId(sandboxId)?.profile ?? null,
+	});
+	const runtimeProvider = resolveRuntimeProvider(
+		{ serverEnv: env, localStore: store, localSidecars: sidecarRegistry },
+		env,
+	);
 	const caps = runtimeProvider.capabilities;
 	return {
 		runtimeProvider,
-		...(caps.previewPorts ? { previewSidecars: createLocalSidecarsResolver(getClient()) } : {}),
+		...(caps.previewPorts ? { previewSidecars: createLocalSidecarsResolver(sidecarRegistry) } : {}),
 		...(caps.workspaceGc ? { workspaceDestroyer: createLocalWorkspaceDestroyer(env) } : {}),
 		probeBurrow: () => checkBurrowPoolReachable(getClient()),
 		close: async () => {
+			await sidecarRegistry.shutdownAll().catch(() => undefined);
 			if (client !== undefined) await client.close().catch(() => undefined);
 		},
 	};

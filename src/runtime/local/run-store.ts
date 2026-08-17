@@ -21,7 +21,7 @@
  */
 
 import type { EventStream, InboxState } from "../../core/wire.ts";
-import type { SpawnResult } from "../../sandbox/types.ts";
+import type { SandboxProfile, SpawnResult } from "../../sandbox/types.ts";
 import type { MessagePriority, NormalizedEvent, RunPhase, TerminalReason } from "../contract.ts";
 
 /** One persisted event — the store assigns `seq`/`ts` at append time. */
@@ -78,6 +78,13 @@ export interface LocalRunRecord {
 	nextSeq: number;
 	/** The live sandboxed child; null before spawn completes / after teardown. */
 	proc: SpawnResult | null;
+	/**
+	 * The sandbox profile the agent spawned with (warren-4bf3). Preview
+	 * sidecars inherit it so a dev server runs inside the same sandbox
+	 * profile the agent used. Null only for records created without one
+	 * (unit-test fixtures); the engine always sets it.
+	 */
+	readonly profile: SandboxProfile | null;
 	/** Wakes suspended `streamEvents` consumers on append/terminalize. */
 	readonly waiters: Set<() => void>;
 }
@@ -88,6 +95,8 @@ export interface CreateRecordInput {
 	readonly workspacePath: string;
 	readonly homePath: string;
 	readonly branch: string;
+	/** The run's sandbox profile (see `LocalRunRecord.profile`). */
+	readonly profile?: SandboxProfile;
 }
 
 export class LocalRunStore {
@@ -111,6 +120,7 @@ export class LocalRunStore {
 			inbox: [],
 			nextSeq: 1,
 			proc: null,
+			profile: input.profile ?? null,
 			waiters: new Set(),
 		};
 		this.byRunId.set(record.providerRunId, record);

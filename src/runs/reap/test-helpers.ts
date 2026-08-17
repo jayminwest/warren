@@ -7,8 +7,10 @@ import type { Forge, RepoRef } from "../../forge/contract.ts";
 import { FAKE_FORGE_KIND, FakeForge, type FakeForgeOptions } from "../../forge/fake/fake-forge.ts";
 import type { PreviewSidecarResolver } from "../../preview/launch/index.ts";
 import type { RuntimeProvider } from "../../runtime/contract.ts";
+import { LocalSidecarRegistry } from "../../runtime/local/preview/registry.ts";
 import { createLocalSidecarsResolver } from "../../runtime/local/preview/sidecars.ts";
 import { LocalProvider } from "../../runtime/local/provider.ts";
+import type { SandboxProfile } from "../../sandbox/types.ts";
 import { RunEventBroker } from "../events.ts";
 import type { ReapExec, ReapFs, ReapRunResult } from "./types.ts";
 
@@ -31,7 +33,26 @@ export function reapDeps(
 			...(opts.fs !== undefined ? { fs: opts.fs } : {}),
 			...(opts.exec !== undefined ? { exec: opts.exec } : {}),
 		}),
-		previewSidecars: createLocalSidecarsResolver(client),
+		// warren-4bf3: the sidecar resolver is warren-owned now. Reap tests
+		// never spawn sidecars (launch is faked), so a registry over a stub
+		// profile lookup gives the resolver a real-but-empty facade — list
+		// returns [], delete throws NotFoundError the sweeps tolerate.
+		previewSidecars: createLocalSidecarsResolver(
+			new LocalSidecarRegistry({ profileFor: () => stubProfile() }),
+		),
+	};
+}
+
+function stubProfile(): SandboxProfile {
+	return {
+		workspace: "/tmp/ws",
+		home: "/tmp/home",
+		readOnlyMounts: [],
+		network: "none",
+		allowedDomains: [],
+		envPassthrough: [],
+		setEnv: {},
+		toolchainPaths: [],
 	};
 }
 

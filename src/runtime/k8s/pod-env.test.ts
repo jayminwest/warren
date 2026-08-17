@@ -148,3 +148,60 @@ describe("agent-container env (warren-6016)", () => {
 		expect(defaultNames).not.toContain("WARREN_BOT_NAME");
 	});
 });
+
+describe("generic provider Secret mapping (warren-fb8d)", () => {
+	test("a third registry provider maps generically to its own Secret", () => {
+		const agent = buildRunPod(baseSpec(), config).spec?.containers?.[0];
+		const groq = (agent?.env ?? []).find((e) => e.name === "GROQ_API_KEY");
+		expect(groq?.valueFrom?.secretKeyRef).toEqual({
+			name: "warren-groq-key",
+			key: "api-key",
+			optional: true,
+		});
+	});
+
+	test("provider Secret coordinates honor the per-provider env override", () => {
+		const overridden = resolveK8sPodConfig({
+			WARREN_K8S_GROQ_SECRET_NAME: "custom-groq",
+			WARREN_K8S_GROQ_SECRET_KEY: "creds",
+		});
+		expect(overridden.providerSecrets.groq).toEqual({ name: "custom-groq", key: "creds" });
+		const agent = buildRunPod(baseSpec(), overridden).spec?.containers?.[0];
+		const groq = (agent?.env ?? []).find((e) => e.name === "GROQ_API_KEY");
+		expect(groq?.valueFrom?.secretKeyRef).toEqual({
+			name: "custom-groq",
+			key: "creds",
+			optional: true,
+		});
+	});
+
+	test("every registry provider's canonical key rides an optional secretKeyRef", () => {
+		const env = buildRunPod(baseSpec(), config).spec?.containers?.[0]?.env ?? [];
+		for (const [provider, envKey] of [
+			["anthropic", "ANTHROPIC_API_KEY"],
+			["openrouter", "OPENROUTER_API_KEY"],
+			["groq", "GROQ_API_KEY"],
+		] as const) {
+			const found = env.find((e) => e.name === envKey);
+			expect(found?.valueFrom?.secretKeyRef).toEqual({
+				name: `warren-${provider}-key`,
+				key: "api-key",
+				optional: true,
+			});
+		}
+	});
+
+	test("an unknown provider contributes no secretKeyRef and breaks nothing", () => {
+		const pod = buildRunPod(
+			baseSpec({ metadata: { frontmatter: { provider: "acme-custom" } } }),
+			config,
+		);
+		const secretRefs = (pod.spec?.containers?.[0]?.env ?? []).filter(
+			(e) => e.valueFrom?.secretKeyRef !== undefined,
+		);
+		for (const ref of secretRefs) {
+			expect(ref.valueFrom?.secretKeyRef?.name).toMatch(/^warren-/);
+		}
+		expect(secretRefs.some((e) => e.name.includes("ACME"))).toBe(false);
+	});
+});

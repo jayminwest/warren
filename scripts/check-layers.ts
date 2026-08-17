@@ -221,7 +221,12 @@ export function scan(
 			violations.push(...scanFile(rel, readFileSync(abs, "utf8"), rules));
 		}
 	}
-	return violations;
+	// Deterministic order: `readdirSync` order is filesystem-dependent, so an
+	// unsorted walk made multi-violation output (and its tests) flaky across
+	// machines. Sort by file, then line, then rule.
+	return violations.sort(
+		(a, b) => a.file.localeCompare(b.file) || a.line - b.line || a.rule.localeCompare(b.rule),
+	);
 }
 
 /** Every violation of every applicable rule inside one file. */
