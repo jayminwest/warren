@@ -6,10 +6,10 @@
  */
 
 import { NotFoundError, ValidationError } from "../../core/errors.ts";
-import type { ProjectRow } from "../../db/schema.ts";
 import { mintGitCredentialSecret } from "../../forge/credentials.ts";
 import { ProjectLacksSeedsError } from "../../plan-runs/errors.ts";
 import { computeReadyPlans, type ReadyPlanInput } from "../../plan-runs/index.ts";
+import type { ProjectRow } from "../../projects/index.ts";
 import {
 	addProject,
 	deleteProject,
