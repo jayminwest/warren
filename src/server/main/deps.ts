@@ -63,11 +63,6 @@ export interface BuildServerDepsInput {
 	 * backend without preview ports.
 	 */
 	readonly previewSidecars?: import("../../runtime/local/preview/sidecars.ts").LocalSidecarsResolver;
-	/**
-	 * Local-topology `/readyz` burrow probe (warren-f796). Present only under
-	 * `WARREN_RUNTIME=local` (from the `LocalBootBackend`); absent under k8s.
-	 */
-	readonly burrowProbe?: () => Promise<import("../../diagnostics/checks.ts").DiagnosticCheck>;
 	readonly broker: RunEventBroker;
 	/**
 	 * Global lifecycle notification broker (warren-f566), built and fed by
@@ -131,7 +126,6 @@ export function buildServerDeps(input: BuildServerDepsInput): ServerDeps {
 		runtimeProvider,
 		forge,
 		gitHubAppRegistration,
-		burrowProbe,
 		broker,
 		lifecycleStream,
 		bridges,
@@ -174,7 +168,6 @@ export function buildServerDeps(input: BuildServerDepsInput): ServerDeps {
 		runtimeProvider,
 		forge,
 		gitHubAppRegistration,
-		...(burrowProbe !== undefined ? { burrowProbe } : {}),
 		salvageDir,
 		broker,
 		lifecycleStream,

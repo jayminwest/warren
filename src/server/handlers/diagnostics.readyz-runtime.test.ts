@@ -1,29 +1,22 @@
 /**
- * `/readyz` runtime-topology scoping (warren-c128). The burrow socket, bwrap,
- * and stale-burrow-workspace probes only make sense for the local backend. Under
- * `WARREN_RUNTIME=k8s` there is no co-tenanted burrow daemon, so those probes
- * must be scoped out of readiness rather than reporting "burrow unreachable" and
- * degrading an otherwise-healthy control plane.
+ * `/readyz` runtime-topology scoping (warren-c128). The bwrap and
+ * stale-burrow-workspace probes only make sense for the local backend, where
+ * warren runs sandboxes in-process on the host. Under `WARREN_RUNTIME=k8s`
+ * agents run in pods and bwrap lives in the agent image, so those probes must
+ * be scoped out of readiness rather than reporting "bwrap not found" and
+ * degrading an otherwise-healthy control plane. The burrow-daemon socket probe
+ * died with the daemon (warren-9a26) — there is no `burrow_reachable` check on
+ * either topology anymore.
  */
 
 import { afterEach, describe, expect, test } from "bun:test";
-import { BurrowClient } from "../../burrow-client/index.ts";
 import { openDatabase, type WarrenDb } from "../../db/client.ts";
 import { createRepos } from "../../db/repos/index.ts";
 import type { SpawnFn } from "../../projects/clone.ts";
-import { checkBurrowPoolReachable } from "../../runtime/local/diagnostics/burrow.ts";
 import type { RouteContext, ServerDeps } from "../types.ts";
 import { readyzHandler } from "./diagnostics.ts";
 
 const silentLogger = { info() {}, warn() {}, error() {}, debug() {} };
-
-/** A burrow client whose `/healthz` probe fails — as if no daemon is running. */
-function unreachableBurrow(): BurrowClient {
-	return new BurrowClient({
-		config: { transport: { kind: "unix", path: "/tmp/nope.sock" } },
-		fetch: (async () => new Response("down", { status: 503 })) as unknown as typeof fetch,
-	});
-}
 
 /** Spawn stub that fails `bwrap --version` (host has no bubblewrap). */
 const failBwrap: SpawnFn = async (cmd) => {
@@ -43,9 +36,6 @@ async function readyzChecks(
 	const deps = {
 		repos,
 		db,
-		// warren-f796: the burrow probe is a boot-wired thunk on ServerDeps, not a
-		// live client. Mirror the LocalBootBackend by probing an unreachable client.
-		burrowProbe: () => checkBurrowPoolReachable(unreachableBurrow()),
 		spawn: failBwrap,
 		projectsConfig: { root: "/tmp/projects", gitBinary: "git" },
 		logger: silentLogger,
@@ -68,16 +58,16 @@ describe("/readyz runtime-topology scoping (warren-c128)", () => {
 		db = null;
 	});
 
-	test("local backend still weighs the burrow probes (unreachable burrow ⇒ 503)", async () => {
+	test("local backend still weighs the bwrap probe (no bwrap ⇒ 503), with no burrow probe", async () => {
 		process.env.WARREN_RUNTIME = "local";
 		db = await openDatabase({ path: ":memory:" });
 		const { status, names } = await readyzChecks(db);
 		expect(status).toBe(503);
-		expect(names).toContain("burrow_reachable");
 		expect(names).toContain("bwrap");
+		expect(names).not.toContain("burrow_reachable");
 	});
 
-	test("k8s backend scopes burrow probes out entirely (⇒ 200)", async () => {
+	test("k8s backend scopes local-sandbox probes out entirely (⇒ 200)", async () => {
 		process.env.WARREN_RUNTIME = "k8s";
 		db = await openDatabase({ path: ":memory:" });
 		const { status, ok, names } = await readyzChecks(db, { isSynced: () => true });

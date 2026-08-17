@@ -9,7 +9,6 @@ import { createRepos, type Repos } from "../db/repos/index.ts";
 import { FakeForge } from "../forge/fake/fake-forge.ts";
 import type { SpawnFn } from "../projects/clone.ts";
 import { RunEventBroker } from "../runs/index.ts";
-import { checkBurrowPoolReachable } from "../runtime/local/diagnostics/burrow.ts";
 import { resolveRuntimeProvider } from "../runtime/registry.ts";
 import { bearerAuth, NO_AUTH } from "./auth.ts";
 import { createBridgeRegistry } from "./bridges.ts";
@@ -68,8 +67,6 @@ async function depsFor(
 		...(overrides.db !== undefined ? { db: overrides.db } : {}),
 		runtimeProvider: resolveRuntimeProvider({ burrowClient: () => burrowClient }),
 		forge: new FakeForge(),
-		// warren-f796: the readyz burrow probe is a boot-wired thunk (LocalBootBackend).
-		burrowProbe: () => checkBurrowPoolReachable(burrowClient),
 		broker,
 		bridges:
 			bridges ??
@@ -412,7 +409,6 @@ describe("startServer — routes", () => {
 			};
 			expect(body.ok).toBe(false);
 			const names = body.checks.map((c) => c.name);
-			expect(names).toContain("burrow_reachable");
 			expect(names).toContain("agents");
 			expect(names).toContain("bwrap");
 			expect(names).toContain("warren_config");
@@ -425,7 +421,7 @@ describe("startServer — routes", () => {
 	});
 
 	test("/readyz returns 200 when every mirrored check passes", async () => {
-		// At least one agent registered + burrow probe succeeds (stubbed) + bwrap.
+		// At least one agent registered + bwrap.
 		handle = startServer(await depsFor(repos, undefined, { db }), tcpOpts());
 		const res = await fetch(`${tcpUrl(handle)}/readyz`);
 		expect(res.status).toBe(200);

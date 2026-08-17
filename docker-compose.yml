@@ -7,8 +7,9 @@
 #
 # It boots a single warren container with:
 #   - the four bwrap-friendly security flags (docs/design/runtime-and-supervisor.md / mx-94901b /
-#     mx-c085ba). They relax the outer container so burrow's nested
-#     userns sandboxes can come up.
+#     mx-c085ba). They relax the outer container so warren's own bwrap
+#     userns sandboxes can come up (warren runs bwrap itself since the
+#     burrow daemon was internalized, warren-9a26).
 #   - a named volume mounted at /data for warren.db (SQLite default)
 #     and cloned project repos. When WARREN_DB_URL points at an external
 #     Postgres (R-13, shipped 2026-05-14), warren.db is unused but the
@@ -16,11 +17,10 @@
 #     either way.
 #   - the runtime env loaded from .env (`cp .env.example .env` first).
 #
-# The supervisor inside the container spawns `burrow serve` and `warren`
-# as siblings — there is no separate burrow service in compose. It also
-# mints the shared warren↔burrow bearer token itself at boot (warren-8071),
-# so no BURROW_API_TOKEN / WARREN_BURROW_TOKEN belongs in .env for this
-# topology. See
+# The supervisor inside the container spawns `warren` as its single child
+# and forwards signals to it — there is no burrow service anywhere in this
+# topology (warren-9a26), so no BURROW_API_TOKEN / WARREN_BURROW_TOKEN /
+# WARREN_BURROW_SOCKET belongs in .env. See
 # docs/design/runtime-and-supervisor.md for the supervisor contract and src/supervisor/main.ts for
 # the implementation.
 
@@ -38,7 +38,8 @@ services:
     restart: unless-stopped
 
     # Required for nested bwrap (docs/design/runtime-and-supervisor.md, mx-94901b/mx-c085ba). Remove
-    # any one of these and `burrow up` fails inside the container.
+    # any one of these and warren's in-process sandbox engine cannot bring
+    # up a bwrap sandbox inside the container.
     security_opt:
       - apparmor=unconfined
       - seccomp=unconfined

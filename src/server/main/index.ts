@@ -150,8 +150,8 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 
 	// Load the operator-facing TOML config (pl-9ba1 step 7 / warren-3909).
 	const fileConfig = await loadWarrenServerConfigFromFile({ env });
-	// warren-288f: single local burrow from WARREN_BURROW_* env vars (multi-worker
-	// pooling retired); warren-f796: LocalBootBackend builds + owns the client.
+	// warren-f796: the LocalBootBackend owns the local-topology seams; warren-9a26
+	// dropped the burrow client from it (the daemon is gone).
 	const broker = new RunEventBroker();
 
 	logger.info(
@@ -287,18 +287,6 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 		...(opts.now !== undefined ? { now: opts.now } : {}),
 	});
 
-	// Startup burrow probe — local backend only; k8s has no socket (warren-c128).
-	if (localBackend !== undefined) {
-		localBackend.probeBurrow().then((result) => {
-			if (!result.ok) {
-				logger.warn(
-					{ err: result.message ?? "unknown" },
-					"burrow probe failed at boot — /readyz will reflect this",
-				);
-			}
-		});
-	}
-
 	const scheduler = bootScheduler({
 		repos,
 		runtimeProvider,
@@ -393,8 +381,6 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 		runtimeProvider,
 		forge,
 		gitHubAppRegistration,
-		// warren-f796: local-topology `/readyz` burrow probe (absent under k8s).
-		...(localBackend !== undefined ? { burrowProbe: localBackend.probeBurrow } : {}),
 		broker,
 		// warren-f566: the global lifecycle stream broker the bus wiring owns.
 		lifecycleStream: lifecycleBusHandle.lifecycleStream,
