@@ -180,8 +180,6 @@ export interface ServerDeps {
 	 * always-on behavior; `bootServer` always wires the resolved verdict.
 	 */
 	readonly gitHubAppRegistration?: import("./github-app-gate.ts").GitHubAppRegistrationGate;
-	/** Local-topology `/readyz` burrow probe (warren-f796), boot-wired by the `LocalBootBackend`; absent under `k8s`. */
-	readonly burrowProbe?: () => Promise<import("../diagnostics/checks.ts").DiagnosticCheck>;
 	/** K8s-topology `/readyz` sync seam (warren-39e1), boot-wired from the started
 	 * pod-watcher under `WARREN_RUNTIME=k8s`; absent under `local`. */
 	readonly k8sPodSync?: import("../runtime/k8s/pod-watcher.ts").PodSyncSource;

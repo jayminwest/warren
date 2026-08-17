@@ -12,6 +12,9 @@ export {
 	renderPlanRunPrompt,
 	SEED_ID_PLACEHOLDER,
 } from "../core/plan-run-prompt.ts";
+// Row type re-exports at the domain seam (warren-02c9): the drizzle schema
+// stays the source of the inferred types; handlers import them from here.
+export type { PlanRunChildRow, PlanRunRow } from "../db/schema.ts";
 export {
 	type CreatePrMergeCheckerInput,
 	createPrMergeChecker,

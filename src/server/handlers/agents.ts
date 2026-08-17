@@ -7,8 +7,8 @@
  */
 
 import { NotFoundError } from "../../core/errors.ts";
-import type { AgentDbRow } from "../../db/schema.ts";
 import { type AgentSource, readAgentSource } from "../../registry/builtins/index.ts";
+import type { AgentDbRow } from "../../registry/index.ts";
 import { readProviderFrontmatter } from "../../registry/schema.ts";
 import { isPublicOnly, pickFields } from "../projection.ts";
 import { jsonResponse } from "../response.ts";

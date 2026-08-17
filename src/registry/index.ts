@@ -4,6 +4,9 @@
  * out to call sites.
  */
 
+// Row type re-export at the domain seam (warren-02c9): the drizzle schema
+// stays the source of the inferred type; handlers import `AgentDbRow` here.
+export type { AgentDbRow } from "../db/schema.ts";
 export {
 	type AgentSource,
 	BUILTIN_AGENT_NAMES,

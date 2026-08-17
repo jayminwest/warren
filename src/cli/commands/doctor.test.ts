@@ -32,7 +32,7 @@ describe("runDoctor", () => {
 			context,
 			{
 				existsSync: () => true,
-				probeBurrow: async () => undefined,
+				probeLocalRuntime: async () => undefined,
 			},
 			{},
 		);
@@ -47,7 +47,7 @@ describe("runDoctor", () => {
 			context,
 			{
 				existsSync: () => true,
-				probeBurrow: async () => undefined,
+				probeLocalRuntime: async () => undefined,
 			},
 			{},
 		);
@@ -63,7 +63,7 @@ describe("runDoctor", () => {
 			context,
 			{
 				existsSync: () => true,
-				probeBurrow: async () => undefined,
+				probeLocalRuntime: async () => undefined,
 			},
 			{ noAuth: true },
 		);
@@ -82,13 +82,13 @@ describe("runDoctor", () => {
 			context,
 			{
 				existsSync: () => true,
-				probeBurrow: async () => {
+				probeLocalRuntime: async () => {
 					throw new Error("ECONNREFUSED /var/run/burrow.sock");
 				},
 			},
 			{},
 		);
-		const burrowCheck = result.checks.find((c: DoctorCheck) => c.name === "burrow_reachable");
+		const burrowCheck = result.checks.find((c: DoctorCheck) => c.name === "local_runtime");
 		expect(burrowCheck?.ok).toBe(false);
 		expect(burrowCheck?.message).toContain("ECONNREFUSED");
 		expect(result.exitCode).toBe(1);
@@ -102,7 +102,7 @@ describe("runDoctor", () => {
 			context,
 			{
 				existsSync: () => true,
-				probeBurrow: async () => undefined,
+				probeLocalRuntime: async () => undefined,
 			},
 			{},
 		);
@@ -127,7 +127,7 @@ describe("runDoctor", () => {
 			context,
 			{
 				existsSync: () => true,
-				probeBurrow: async () => undefined,
+				probeLocalRuntime: async () => undefined,
 				platform: "linux",
 			},
 			{},
@@ -146,7 +146,7 @@ describe("runDoctor", () => {
 			context,
 			{
 				existsSync: () => true,
-				probeBurrow: async () => undefined,
+				probeLocalRuntime: async () => undefined,
 			},
 			{},
 		);
@@ -163,7 +163,7 @@ describe("runDoctor", () => {
 			"preview_port_allocator",
 			"stale_burrow_workspaces",
 			"preview_auth_strength",
-			"burrow_reachable",
+			"local_runtime",
 		]);
 	});
 
@@ -179,7 +179,7 @@ describe("runDoctor", () => {
 				existsSync: () => true,
 				// A throwing probe would fail the check under local; under k8s it must
 				// never be consulted at all.
-				probeBurrow: async () => {
+				probeLocalRuntime: async () => {
 					throw new Error("burrow must not be probed under k8s");
 				},
 			},
@@ -188,7 +188,7 @@ describe("runDoctor", () => {
 		const names = result.checks.map((c) => c.name);
 		expect(names).not.toContain("bwrap");
 		expect(names).not.toContain("stale_burrow_workspaces");
-		expect(names).not.toContain("burrow_reachable");
+		expect(names).not.toContain("local_runtime");
 		const runtime = result.checks.find((c: DoctorCheck) => c.name === "runtime_backend");
 		expect(runtime?.ok).toBe(true);
 		expect(runtime?.message).toContain("k8s");
@@ -202,7 +202,7 @@ describe("runDoctor", () => {
 		});
 		const result = await runDoctor(
 			context,
-			{ existsSync: () => true, probeBurrow: async () => undefined },
+			{ existsSync: () => true, probeLocalRuntime: async () => undefined },
 			{},
 		);
 		const dbCheck = result.checks.find((c: DoctorCheck) => c.name === "warren_db");
@@ -218,7 +218,7 @@ describe("runDoctor", () => {
 		});
 		const result = await runDoctor(
 			context,
-			{ existsSync: () => true, probeBurrow: async () => undefined },
+			{ existsSync: () => true, probeLocalRuntime: async () => undefined },
 			{},
 		);
 		const dbCheck = result.checks.find((c: DoctorCheck) => c.name === "warren_db");
@@ -234,7 +234,7 @@ describe("runDoctor", () => {
 		});
 		const result = await runDoctor(
 			context,
-			{ existsSync: () => true, probeBurrow: async () => undefined },
+			{ existsSync: () => true, probeLocalRuntime: async () => undefined },
 			{},
 		);
 		const db = result.checks.find((c: DoctorCheck) => c.name === "db_reachable");
@@ -252,7 +252,7 @@ describe("runDoctor", () => {
 			});
 			const result = await runDoctor(
 				context,
-				{ existsSync: () => true, probeBurrow: async () => undefined, db },
+				{ existsSync: () => true, probeLocalRuntime: async () => undefined, db },
 				{},
 			);
 			const reach = result.checks.find((c: DoctorCheck) => c.name === "db_reachable");
@@ -272,7 +272,7 @@ describe("runDoctor", () => {
 			context,
 			{
 				existsSync: () => true,
-				probeBurrow: async () => undefined,
+				probeLocalRuntime: async () => undefined,
 			},
 			{},
 		);
@@ -303,7 +303,7 @@ describe("runDoctor", () => {
 			const { context, err } = captureContext({ WARREN_API_TOKEN: "tok" });
 			const result = await runDoctor(
 				context,
-				{ existsSync: () => true, probeBurrow: async () => undefined, db: failingDb() },
+				{ existsSync: () => true, probeLocalRuntime: async () => undefined, db: failingDb() },
 				{ verbose: true },
 			);
 			const reach = result.checks.find((c: DoctorCheck) => c.name === "db_reachable");
@@ -318,7 +318,7 @@ describe("runDoctor", () => {
 			const { context, err } = captureContext({ WARREN_API_TOKEN: "tok" });
 			const result = await runDoctor(
 				context,
-				{ existsSync: () => true, probeBurrow: async () => undefined, db: failingDb() },
+				{ existsSync: () => true, probeLocalRuntime: async () => undefined, db: failingDb() },
 				{},
 			);
 			const reach = result.checks.find((c: DoctorCheck) => c.name === "db_reachable");
@@ -333,7 +333,7 @@ describe("runDoctor", () => {
 			const { context } = captureContext({ WARREN_API_TOKEN: "tok" });
 			const result = await runDoctor(
 				context,
-				{ existsSync: () => true, probeBurrow: async () => undefined },
+				{ existsSync: () => true, probeLocalRuntime: async () => undefined },
 				{},
 			);
 			const check = result.checks.find((c: DoctorCheck) => c.name === "git_identity");
@@ -351,7 +351,7 @@ describe("runDoctor", () => {
 			});
 			const result = await runDoctor(
 				context,
-				{ existsSync: () => true, probeBurrow: async () => undefined },
+				{ existsSync: () => true, probeLocalRuntime: async () => undefined },
 				{},
 			);
 			const check = result.checks.find((c: DoctorCheck) => c.name === "git_identity");

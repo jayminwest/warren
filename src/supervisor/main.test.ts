@@ -15,7 +15,7 @@ interface FakeChild extends SupervisedChild {
 	resolveExit(code: number): void;
 }
 
-function makeChild(name: "burrow" | "warren", pid = 1234): FakeChild {
+function makeChild(name: "warren", pid = 1234): FakeChild {
 	let resolver: ((code: number) => void) | undefined;
 	const exited = new Promise<number>((resolve) => {
 		resolver = resolve;
@@ -37,34 +37,29 @@ interface Harness {
 	deps: SupervisorDeps;
 	logs: { level: "info" | "warn" | "error"; obj: object; msg?: string }[];
 	signalHandlers: Map<SignalName, () => void>;
-	socketReady: boolean;
-	socketCalls: number;
-	spawned: { name: "burrow" | "warren"; cmd: readonly string[] }[];
-	queueChild(name: "burrow" | "warren", child: FakeChild): void;
-	now: number;
-	advance(ms: number): void;
+	spawned: { name: "warren"; cmd: readonly string[] }[];
+	warren: FakeChild;
+	/** Resolve every pending sleep immediately (the grace timer fires). */
+	sleepImmediately: boolean;
 }
 
-function makeHarness(
-	opts: { socketReady?: boolean; burrowChildren?: FakeChild[]; warrenChildren?: FakeChild[] } = {},
-): Harness {
-	const burrowQueue: FakeChild[] = [...(opts.burrowChildren ?? [])];
-	const warrenQueue: FakeChild[] = [...(opts.warrenChildren ?? [])];
+function makeHarness(opts: { warren?: FakeChild } = {}): Harness {
+	const warren = opts.warren ?? makeChild("warren");
 	const spawned: Harness["spawned"] = [];
 	const logs: Harness["logs"] = [];
 	const signalHandlers = new Map<SignalName, () => void>();
-	let socketReady = opts.socketReady ?? true;
-	let socketCalls = 0;
-	let now = 0;
+	const harness: Harness = {
+		logs,
+		signalHandlers,
+		spawned,
+		warren,
+		sleepImmediately: false,
+		deps: undefined as unknown as SupervisorDeps,
+	};
 
 	const spawn: SpawnFn = (cmd, name) => {
 		spawned.push({ name, cmd });
-		const queue = name === "burrow" ? burrowQueue : warrenQueue;
-		const next = queue.shift();
-		if (next === undefined) {
-			throw new Error(`harness ran out of queued children for ${name}`);
-		}
-		return next;
+		return warren;
 	};
 
 	const installSignalHandler: InstallSignalHandler = (signal, handler) => {
@@ -80,379 +75,132 @@ function makeHarness(
 		error: (obj, msg) => logs.push({ level: "error", obj, msg }),
 	};
 
-	const deps: SupervisorDeps = {
+	harness.deps = {
 		spawn,
-		waitForSocket: async () => {
-			socketCalls += 1;
-			return socketReady;
-		},
 		installSignalHandler,
-		sleep: async () => undefined,
-		now: () => now,
+		sleep: async () => {
+			if (harness.sleepImmediately) return;
+			// Park forever: the grace timer is not under test unless the
+			// harness opts in.
+			await new Promise<never>(() => undefined);
+		},
 		logger,
-	};
-
-	const harness: Harness = {
-		deps,
-		logs,
-		signalHandlers,
-		spawned,
-		get socketReady() {
-			return socketReady;
-		},
-		set socketReady(v: boolean) {
-			socketReady = v;
-		},
-		get socketCalls() {
-			return socketCalls;
-		},
-		queueChild: (name, child) => {
-			(name === "burrow" ? burrowQueue : warrenQueue).push(child);
-		},
-		get now() {
-			return now;
-		},
-		set now(v: number) {
-			now = v;
-		},
-		advance: (ms: number) => {
-			now += ms;
-		},
 	};
 	return harness;
 }
 
-const cmd = {
-	socketPath: "/tmp/burrow.sock",
-	burrowCmd: ["burrow", "serve", "--socket", "/tmp/burrow.sock"],
-	warrenCmd: ["bun", "run", "src/server/main/index.ts"],
-};
+const WARREN_CMD = ["bun", "run", "src/server/main/index.ts"] as const;
 
 describe("runSupervisor", () => {
-	test("happy path: spawns burrow, waits for socket, spawns warren, exits with warren's code", async () => {
-		const burrow = makeChild("burrow");
-		const warren = makeChild("warren");
-		const h = makeHarness({ burrowChildren: [burrow], warrenChildren: [warren] });
-
-		const supervisorP = runSupervisor(h.deps, cmd);
-		// Let microtasks drain.
-		await Promise.resolve();
-		expect(h.spawned[0]).toEqual({ name: "burrow", cmd: cmd.burrowCmd });
-		// Wait one tick so the socket-poll resolves and warren spawns.
-		await Promise.resolve();
-		await Promise.resolve();
-		await Promise.resolve();
-
-		// Warren exits cleanly.
-		warren.resolveExit(0);
-		// Burrow gets SIGTERM and then exits.
-		await Promise.resolve();
-		await Promise.resolve();
-		burrow.resolveExit(0);
-
-		const result = await supervisorP;
-		expect(result.exitCode).toBe(0);
-		expect(result.reason).toBe("warren_exited");
-		expect(burrow.signalsReceived).toContain("SIGTERM");
-		expect(h.spawned.map((s) => s.name)).toEqual(["burrow", "warren"]);
+	test("spawns warren as the only supervised child", async () => {
+		const h = makeHarness();
+		const done = runSupervisor(h.deps, { warrenCmd: WARREN_CMD });
+		expect(h.spawned).toEqual([{ name: "warren", cmd: WARREN_CMD }]);
+		h.warren.resolveExit(0);
+		await done;
 	});
 
-	test("warren non-zero exit propagates to supervisor exit code", async () => {
-		const burrow = makeChild("burrow");
-		const warren = makeChild("warren");
-		const h = makeHarness({ burrowChildren: [burrow], warrenChildren: [warren] });
-
-		const supervisorP = runSupervisor(h.deps, cmd);
-		await flushMicrotasks();
-
-		warren.resolveExit(2);
-		await flushMicrotasks();
-		burrow.resolveExit(0);
-
-		const result = await supervisorP;
-		expect(result.exitCode).toBe(2);
-		expect(result.reason).toBe("warren_exited");
+	test("passes warren's exit code through when warren exits on its own", async () => {
+		const h = makeHarness();
+		const done = runSupervisor(h.deps, { warrenCmd: WARREN_CMD });
+		h.warren.resolveExit(3);
+		const result = await done;
+		expect(result).toEqual({ exitCode: 3, reason: "warren_exited" });
+		expect(h.warren.signalsReceived).toEqual([]);
 	});
 
-	test("socket timeout: kills burrow and exits 1 without spawning warren", async () => {
-		const burrow = makeChild("burrow");
-		const h = makeHarness({
-			socketReady: false,
-			burrowChildren: [burrow],
-		});
-
-		const supervisorP = runSupervisor(h.deps, cmd);
-		await flushMicrotasks();
-		burrow.resolveExit(143); // SIGTERM exit code
-
-		const result = await supervisorP;
-		expect(result.exitCode).toBe(1);
-		expect(result.reason).toBe("socket_timeout");
-		expect(h.spawned.map((s) => s.name)).toEqual(["burrow"]);
-		expect(burrow.signalsReceived).toContain("SIGTERM");
-	});
-
-	test("burrow non-zero exit triggers a restart inside the budget", async () => {
-		const burrow1 = makeChild("burrow", 1);
-		const burrow2 = makeChild("burrow", 2);
-		const warren = makeChild("warren");
-		const h = makeHarness({
-			burrowChildren: [burrow1, burrow2],
-			warrenChildren: [warren],
-		});
-
-		const supervisorP = runSupervisor(h.deps, cmd);
-		await flushMicrotasks();
-
-		// First burrow crashes.
-		burrow1.resolveExit(1);
-		await flushMicrotasks();
-		// Second burrow has been spawned.
-		expect(h.spawned.filter((s) => s.name === "burrow")).toHaveLength(2);
-
-		// Now warren exits, supervisor tears down.
-		warren.resolveExit(0);
-		await flushMicrotasks();
-		burrow2.resolveExit(0);
-
-		const result = await supervisorP;
-		expect(result.exitCode).toBe(0);
-		expect(result.reason).toBe("warren_exited");
-	});
-
-	test("burrow exhausts its restart budget; supervisor exits 1 and kills warren", async () => {
-		const burrowChildren = [
-			makeChild("burrow", 1),
-			makeChild("burrow", 2),
-			makeChild("burrow", 3),
-			makeChild("burrow", 4),
-			makeChild("burrow", 5),
-		];
-		const warren = makeChild("warren");
-		const h = makeHarness({
-			burrowChildren,
-			warrenChildren: [warren],
-		});
-
-		const supervisorP = runSupervisor(h.deps, {
-			...cmd,
-			burrowRestartBudget: 4,
-			burrowRestartWindowMs: 60_000,
-			signalGraceMs: 100,
-		});
-		await flushMicrotasks();
-
-		// 4 restarts allowed, 5th attempt blows the budget.
-		for (let i = 0; i < burrowChildren.length; i++) {
-			const child = burrowChildren[i];
-			if (child === undefined) throw new Error(`missing child ${i}`);
-			child.resolveExit(1);
-			await flushMicrotasks();
-		}
-
-		// Supervisor should now be tearing down warren.
-		warren.resolveExit(143);
-
-		const result = await supervisorP;
-		expect(result.exitCode).toBe(1);
-		expect(result.reason).toBe("burrow_budget_exhausted");
-		expect(warren.signalsReceived).toContain("SIGTERM");
-	});
-
-	test("SIGTERM forwards to both children and resolves with warren's exit code", async () => {
-		const burrow = makeChild("burrow");
-		const warren = makeChild("warren");
-		const h = makeHarness({ burrowChildren: [burrow], warrenChildren: [warren] });
-
-		const supervisorP = runSupervisor(h.deps, cmd);
-		await flushMicrotasks();
-
-		const term = h.signalHandlers.get("SIGTERM");
-		expect(term).toBeDefined();
-		term?.();
-		expect(warren.signalsReceived).toContain("SIGTERM");
-		expect(burrow.signalsReceived).toContain("SIGTERM");
-
-		// Children exit in response.
-		warren.resolveExit(0);
-		await flushMicrotasks();
-		burrow.resolveExit(0);
-
-		const result = await supervisorP;
-		expect(result.exitCode).toBe(0);
-		expect(result.reason).toBe("warren_exited");
-	});
-
-	test("SIGINT triggers the same shutdown path as SIGTERM", async () => {
-		const burrow = makeChild("burrow");
-		const warren = makeChild("warren");
-		const h = makeHarness({ burrowChildren: [burrow], warrenChildren: [warren] });
-
-		const supervisorP = runSupervisor(h.deps, cmd);
-		await flushMicrotasks();
-
-		h.signalHandlers.get("SIGINT")?.();
-		warren.resolveExit(0);
-		await flushMicrotasks();
-		burrow.resolveExit(0);
-
-		const result = await supervisorP;
-		expect(result.exitCode).toBe(0);
-		expect(warren.signalsReceived).toContain("SIGTERM");
-	});
-
-	test("during shutdown, a burrow exit does not trigger a restart", async () => {
-		const burrow = makeChild("burrow");
-		const warren = makeChild("warren");
-		const h = makeHarness({ burrowChildren: [burrow], warrenChildren: [warren] });
-
-		const supervisorP = runSupervisor(h.deps, cmd);
-		await flushMicrotasks();
-
-		// SIGTERM, then both children exit. Burrow exits with non-zero — but
-		// shutdown is in progress, so no restart should be attempted.
+	test("forwards SIGTERM to warren and exits with warren's code", async () => {
+		const h = makeHarness();
+		const done = runSupervisor(h.deps, { warrenCmd: WARREN_CMD });
 		h.signalHandlers.get("SIGTERM")?.();
-		burrow.resolveExit(143);
-		warren.resolveExit(0);
-
-		const result = await supervisorP;
-		expect(result.reason).toBe("warren_exited");
-		// Only the original burrow was spawned.
-		expect(h.spawned.filter((s) => s.name === "burrow")).toHaveLength(1);
+		expect(h.warren.signalsReceived).toEqual(["SIGTERM"]);
+		h.warren.resolveExit(0);
+		const result = await done;
+		expect(result.exitCode).toBe(0);
 	});
 
-	test("clean (zero) exit from burrow without shutdown is treated as fatal", async () => {
-		const burrow = makeChild("burrow");
-		const warren = makeChild("warren");
-		const h = makeHarness({ burrowChildren: [burrow], warrenChildren: [warren] });
-
-		const supervisorP = runSupervisor(h.deps, cmd);
-		await flushMicrotasks();
-
-		burrow.resolveExit(0);
-		// Supervisor should now tear down warren.
-		await flushMicrotasks();
-		warren.resolveExit(143);
-
-		const result = await supervisorP;
-		expect(result.exitCode).toBe(1);
-		expect(result.reason).toBe("burrow_clean_exit");
+	test("forwards SIGINT to warren", async () => {
+		const h = makeHarness();
+		const done = runSupervisor(h.deps, { warrenCmd: WARREN_CMD });
+		h.signalHandlers.get("SIGINT")?.();
+		expect(h.warren.signalsReceived).toEqual(["SIGTERM"]);
+		h.warren.resolveExit(0);
+		await done;
 	});
 
-	test("uninstalls signal handlers on exit", async () => {
-		const burrow = makeChild("burrow");
-		const warren = makeChild("warren");
-		const h = makeHarness({ burrowChildren: [burrow], warrenChildren: [warren] });
+	test("forwards a shutdown signal only once", async () => {
+		const h = makeHarness();
+		const done = runSupervisor(h.deps, { warrenCmd: WARREN_CMD });
+		h.signalHandlers.get("SIGTERM")?.();
+		h.signalHandlers.get("SIGINT")?.();
+		expect(h.warren.signalsReceived).toEqual(["SIGTERM"]);
+		h.warren.resolveExit(0);
+		await done;
+	});
 
-		const supervisorP = runSupervisor(h.deps, cmd);
-		await flushMicrotasks();
+	test("escalates to SIGKILL when warren outlives the shutdown grace", async () => {
+		const h = makeHarness();
+		h.sleepImmediately = true;
+		const done = runSupervisor(h.deps, { warrenCmd: WARREN_CMD });
+		h.signalHandlers.get("SIGTERM")?.();
+		// Let the fire-and-forget grace timer run.
+		await Promise.resolve();
+		await Promise.resolve();
+		expect(h.warren.signalsReceived).toEqual(["SIGTERM", "SIGKILL"]);
+		h.warren.resolveExit(137);
+		const result = await done;
+		expect(result.exitCode).toBe(137);
+	});
+
+	test("does not SIGKILL a warren that exited inside the grace window", async () => {
+		const h = makeHarness();
+		const done = runSupervisor(h.deps, { warrenCmd: WARREN_CMD });
+		h.signalHandlers.get("SIGTERM")?.();
+		h.warren.resolveExit(0);
+		await done;
+		// Even if the grace timer fires late, the exited flag suppresses it.
+		h.sleepImmediately = true;
+		await Promise.resolve();
+		expect(h.warren.signalsReceived).toEqual(["SIGTERM"]);
+	});
+
+	test("uninstalls both signal handlers when warren exits", async () => {
+		const h = makeHarness();
+		const done = runSupervisor(h.deps, { warrenCmd: WARREN_CMD });
 		expect(h.signalHandlers.size).toBe(2);
-
-		warren.resolveExit(0);
-		await flushMicrotasks();
-		burrow.resolveExit(0);
-		await supervisorP;
-
+		h.warren.resolveExit(0);
+		await done;
 		expect(h.signalHandlers.size).toBe(0);
 	});
 });
 
 describe("resolveCommandFromEnv", () => {
-	test("falls back to the canonical defaults when env is empty", () => {
+	test("defaults to bun running the canonical server entry", () => {
 		const cmd = resolveCommandFromEnv({ env: {} });
-		expect(cmd.socketPath).toBe("/var/run/burrow.sock");
-		expect(cmd.burrowCmd).toEqual(["burrow", "serve", "--socket", "/var/run/burrow.sock"]);
 		expect(cmd.warrenCmd).toEqual(["bun", "run", "src/server/main/index.ts"]);
 	});
 
-	test("env overrides flow through to both commands", () => {
+	test("honors WARREN_SUPERVISOR_BUN and WARREN_SERVER_ENTRY overrides", () => {
+		const cmd = resolveCommandFromEnv({
+			env: {
+				WARREN_SUPERVISOR_BUN: "/usr/local/bin/bun",
+				WARREN_SERVER_ENTRY: "dist/server.js",
+			},
+		});
+		expect(cmd.warrenCmd).toEqual(["/usr/local/bin/bun", "run", "dist/server.js"]);
+	});
+
+	test("ignores the retired burrow env knobs", () => {
 		const cmd = resolveCommandFromEnv({
 			env: {
 				WARREN_BURROW_SOCKET: "/run/burrow/test.sock",
 				WARREN_BURROW_BIN: "/usr/local/bin/burrow",
-				WARREN_SUPERVISOR_BUN: "/opt/bun/bin/bun",
-				WARREN_SERVER_ENTRY: "dist/server.js",
+				WARREN_BURROW_NO_AUTH: "1",
+				WARREN_BURROW_ARGS: "--log-level debug",
 			},
 		});
-		expect(cmd.socketPath).toBe("/run/burrow/test.sock");
-		expect(cmd.burrowCmd).toEqual([
-			"/usr/local/bin/burrow",
-			"serve",
-			"--socket",
-			"/run/burrow/test.sock",
-		]);
-		expect(cmd.warrenCmd).toEqual(["/opt/bun/bin/bun", "run", "dist/server.js"]);
-	});
-
-	test("WARREN_BURROW_NO_AUTH=1 appends --no-auth", () => {
-		const cmd = resolveCommandFromEnv({ env: { WARREN_BURROW_NO_AUTH: "1" } });
-		expect(cmd.burrowCmd).toEqual([
-			"burrow",
-			"serve",
-			"--socket",
-			"/var/run/burrow.sock",
-			"--no-auth",
-		]);
-	});
-
-	test("WARREN_BURROW_NO_AUTH accepts 'true' (case-insensitive)", () => {
-		const cmd = resolveCommandFromEnv({ env: { WARREN_BURROW_NO_AUTH: "TRUE" } });
-		expect(cmd.burrowCmd).toContain("--no-auth");
-	});
-
-	test("WARREN_BURROW_NO_AUTH accepts 'yes'/'on' (case-insensitive, trimmed)", () => {
-		for (const raw of ["yes", "ON", " on ", "Yes"]) {
-			const cmd = resolveCommandFromEnv({ env: { WARREN_BURROW_NO_AUTH: raw } });
-			expect(cmd.burrowCmd).toContain("--no-auth");
-		}
-	});
-
-	test("WARREN_BURROW_NO_AUTH=0 leaves the command unchanged", () => {
-		const cmd = resolveCommandFromEnv({ env: { WARREN_BURROW_NO_AUTH: "0" } });
-		expect(cmd.burrowCmd).not.toContain("--no-auth");
-	});
-
-	test("WARREN_BURROW_ARGS splits on whitespace and appends", () => {
-		const cmd = resolveCommandFromEnv({
-			env: { WARREN_BURROW_ARGS: "--log-level debug --max-runs 4" },
-		});
-		expect(cmd.burrowCmd).toEqual([
-			"burrow",
-			"serve",
-			"--socket",
-			"/var/run/burrow.sock",
-			"--log-level",
-			"debug",
-			"--max-runs",
-			"4",
-		]);
-	});
-
-	test("empty WARREN_BURROW_ARGS is treated as absent", () => {
-		const cmd = resolveCommandFromEnv({ env: { WARREN_BURROW_ARGS: "   " } });
-		expect(cmd.burrowCmd).toEqual(["burrow", "serve", "--socket", "/var/run/burrow.sock"]);
-	});
-
-	test("WARREN_BURROW_NO_AUTH and WARREN_BURROW_ARGS compose, with --no-auth first", () => {
-		const cmd = resolveCommandFromEnv({
-			env: { WARREN_BURROW_NO_AUTH: "1", WARREN_BURROW_ARGS: "--verbose" },
-		});
-		expect(cmd.burrowCmd).toEqual([
-			"burrow",
-			"serve",
-			"--socket",
-			"/var/run/burrow.sock",
-			"--no-auth",
-			"--verbose",
-		]);
+		expect(cmd.warrenCmd).toEqual(["bun", "run", "src/server/main/index.ts"]);
+		expect("socketPath" in cmd).toBe(false);
+		expect("burrowCmd" in cmd).toBe(false);
 	});
 });
-
-/** Drain the microtask queue several turns. Several awaits in the supervisor
- * compound (spawn, await waitForSocket, spawn again, install handlers, race),
- * so we flush a few times to let each one resolve. */
-async function flushMicrotasks(): Promise<void> {
-	for (let i = 0; i < 20; i++) {
-		await Promise.resolve();
-	}
-}

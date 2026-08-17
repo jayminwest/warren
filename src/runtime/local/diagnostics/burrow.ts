@@ -1,28 +1,22 @@
 /**
- * Local-topology burrow access — the SINGLE allowlisted home for direct
- * `burrow-client` imports on the CLI + diagnostics surface (warren-11cc).
+ * Local-topology diagnostics + the `warren run` backend resolver (warren-11cc).
  *
  * Bucket 8 of the burrow-client eviction routed everything the
  * `RuntimeProvider` can serve (run dispatch via `provider.create`, sandbox
- * health via `provider.status`) through the seam. What is left is genuinely
- * local-topology-specific: probing the co-tenanted burrow daemon's unix socket
- * and constructing the local burrow client the `LocalProvider` runs against.
- * Neither has a provider-neutral home — they only exist because the LOCAL
- * backend co-tenants a burrow daemon — so they are scoped HERE, under
- * `src/runtime/local/`, out of `src/cli/` and `src/diagnostics/`, with this
- * doc comment stating why. Under `WARREN_RUNTIME=k8s` there is no burrow at all
- * (agents run in pods), so callers skip these probes entirely (mirroring the
- * `/readyz` behavior from warren-c128, `src/server/handlers/diagnostics.ts`).
- *
- * Covers: burrow socket reachability (single-client + local probe variants),
- * the `warren doctor` env-derived burrow check, and the `warren run`
- * local-backend resolver (burrow client + provider + capability-gated preview
- * seam).
+ * health via `provider.status`) through the seam. The burrow daemon itself is
+ * gone now (warren-9a26): the spawn path is warren's in-process engine
+ * (warren-413d) and the preview-sidecar seam is warren-owned (warren-4bf3), so
+ * the socket probes this module used to export died with the daemon. What is
+ * left is genuinely local-topology-specific: the `warren doctor` local-runtime
+ * check and the `warren run` local-backend resolver (provider +
+ * capability-gated preview seam). Neither has a provider-neutral home — they
+ * only exist for the LOCAL backend — so they are scoped HERE, under
+ * `src/runtime/local/`, out of `src/cli/` and `src/diagnostics/`. Under
+ * `WARREN_RUNTIME=k8s` agents run in pods, so callers skip these entirely
+ * (mirroring the `/readyz` behavior from warren-c128,
+ * `src/server/handlers/diagnostics.ts`).
  */
 
-import { withTransportMapping } from "../../../burrow-client/client.ts";
-import { BurrowClient, probeBurrowClient } from "../../../burrow-client/index.ts";
-import { ValidationError } from "../../../core/errors.ts";
 import type { DiagnosticCheck } from "../../../diagnostics/checks.ts";
 import type { RuntimeProvider } from "../../contract.ts";
 import { resolveRuntimeProvider } from "../../registry.ts";
@@ -32,95 +26,59 @@ import { LocalRunStore } from "../run-store.ts";
 
 type EnvLike = Readonly<Record<string, string | undefined>>;
 
-const BURROW_UNREACHABLE_HINT =
-	"check that burrow serve is running and WARREN_BURROW_SOCKET / WARREN_BURROW_HOST point to it";
+/**
+ * Env knobs that configured the retired burrow daemon channel. They are dead
+ * config under the internalized runtime (warren-9a26) — nothing reads them
+ * anymore — so the doctor check surfaces them instead of letting an operator
+ * believe they still do something.
+ */
+const RETIRED_BURROW_ENV_VARS = [
+	"WARREN_BURROW_SOCKET",
+	"WARREN_BURROW_HOST",
+	"WARREN_BURROW_TOKEN",
+	"BURROW_API_TOKEN",
+	"WARREN_BURROW_NO_AUTH",
+] as const;
 
 /**
- * Probe burrow's socket via `BurrowClient.probe()`. Wraps transport errors into
- * the same readable shape `withTransportMapping` produces for §4.3 spawn-flow
- * callers. Used by `warren doctor`, which probes a single env-derived client.
+ * `warren doctor`'s local-runtime check (reworked in warren-9a26 — this used
+ * to probe the co-tenanted burrow daemon's socket, and the daemon is gone).
+ * The internalized reality: the local topology runs agents through warren's
+ * own in-process sandbox engine, so there is nothing to dial. The check
+ * reports that and flags any retired burrow env vars still set as dead
+ * config. Informational — always `ok: true`; a stale env var must not fail a
+ * deployment that is otherwise healthy. When `override` is supplied (tests)
+ * it drives that instead and a throw becomes a real failure.
  */
-export async function checkBurrowReachable(deps: {
-	readonly burrowClient: BurrowClient;
-}): Promise<DiagnosticCheck> {
-	try {
-		await withTransportMapping(deps.burrowClient.config, () => deps.burrowClient.probe());
-		return { name: "burrow_reachable", ok: true };
-	} catch (err) {
-		return {
-			name: "burrow_reachable",
-			ok: false,
-			message: err instanceof Error ? err.message : String(err),
-			hint: BURROW_UNREACHABLE_HINT,
-		};
-	}
-}
-
-/**
- * Probe the single local burrow for the server's /readyz handler (warren-76c5).
- * Multi-worker aggregation was retired with the K8s migration — the self-host
- * backend is one local burrow — so this is a single `/healthz` probe shaped as
- * the readyz check envelope.
- */
-export async function checkBurrowPoolReachable(client: BurrowClient): Promise<DiagnosticCheck> {
-	const result = await probeBurrowClient(client);
-	if (result.ok) {
-		return { name: "burrow_reachable", ok: true };
-	}
-	return {
-		name: "burrow_reachable",
-		ok: false,
-		message: `${result.workerName}: ${result.error?.message ?? "unknown"}`,
-		hint: BURROW_UNREACHABLE_HINT,
-	};
-}
-
-/**
- * `warren doctor`'s burrow-socket check (moved out of `cli/commands/doctor.ts`,
- * warren-11cc). When `override` is supplied (tests) it drives that instead of
- * touching a socket; otherwise it builds a single env-derived `BurrowClient` and
- * probes it, mapping `ValidationError` config failures to a check failure with
- * the config's recovery hint.
- */
-export async function doctorBurrowCheck(
+export async function doctorLocalRuntimeCheck(
 	env: EnvLike,
 	override?: (env: EnvLike) => Promise<void>,
 ): Promise<DiagnosticCheck> {
 	if (override !== undefined) {
 		try {
 			await override(env);
-			return { name: "burrow_reachable", ok: true };
+			return { name: "local_runtime", ok: true };
 		} catch (err) {
-			return burrowFailure(err);
+			return {
+				name: "local_runtime",
+				ok: false,
+				message: err instanceof Error ? err.message : String(err),
+			};
 		}
 	}
-	let client: BurrowClient;
-	try {
-		client = BurrowClient.fromEnv(env);
-	} catch (err) {
-		return burrowFailure(err);
-	}
-	try {
-		return await checkBurrowReachable({ burrowClient: client });
-	} finally {
-		await client.close().catch(() => undefined);
-	}
-}
-
-function burrowFailure(err: unknown): DiagnosticCheck {
-	if (err instanceof ValidationError) {
-		return {
-			name: "burrow_reachable",
-			ok: false,
-			message: err.message,
-			...(err.recoveryHint !== undefined ? { hint: err.recoveryHint } : {}),
-		};
+	const stale = RETIRED_BURROW_ENV_VARS.filter((name) => {
+		const value = env[name];
+		return value !== undefined && value !== "";
+	});
+	const base = "in-process sandbox engine (no co-tenanted burrow daemon)";
+	if (stale.length === 0) {
+		return { name: "local_runtime", ok: true, message: base };
 	}
 	return {
-		name: "burrow_reachable",
-		ok: false,
-		message: err instanceof Error ? err.message : String(err),
-		hint: BURROW_UNREACHABLE_HINT,
+		name: "local_runtime",
+		ok: true,
+		message: `${base}; retired burrow env vars still set (dead config): ${stale.join(", ")}`,
+		hint: "remove them from your environment — nothing reads them since the burrow daemon was internalized",
 	};
 }
 

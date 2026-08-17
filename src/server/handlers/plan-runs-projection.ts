@@ -18,7 +18,7 @@
  * until someone classifies it here.
  */
 
-import type { PlanRunChildRow, PlanRunRow } from "../../db/schema.ts";
+import type { PlanRunChildRow, PlanRunRow } from "../../plan-runs/index.ts";
 import { isPublicOnly, pickFields } from "../projection.ts";
 import type { Actor } from "../types.ts";
 

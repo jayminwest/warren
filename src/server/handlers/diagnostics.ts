@@ -45,12 +45,14 @@ export function readyzHandler(deps: ServerDeps): RouteHandler {
 				log: deps.logger,
 			}),
 		);
-		// The burrow socket, bwrap, and stale-burrow-workspace probes only make
-		// sense for the local backend, where warren co-tenants a burrow daemon.
-		// Under `WARREN_RUNTIME=k8s` there is no burrow at all (agents run in pods),
-		// so probing it just reports "burrow unreachable" and needlessly degrades
-		// readiness (warren-c128). `burrowReadyzChecks` returns [] under k8s.
-		checks.push(...(await burrowReadyzChecks(deps, spawn)));
+		// The bwrap and stale-workspace probes only make sense for the local
+		// backend, where warren runs sandboxes in-process on the host (warren-413d).
+		// The co-tenanted burrow daemon is gone (warren-9a26), so its socket probe
+		// is gone with it. Under `WARREN_RUNTIME=k8s` agents run in pods and bwrap
+		// runs inside the agent image, so probing it here just reports "bwrap not
+		// found" and needlessly degrades readiness (warren-c128).
+		// `localReadyzChecks` returns [] under k8s.
+		checks.push(...(await localReadyzChecks(deps, spawn)));
 		// The K8s-topology counterpart (warren-39e1): under `WARREN_RUNTIME=k8s`
 		// /readyz asserts something POSITIVE about the control plane — the pod
 		// watcher's informer sync state — rather than just skipping the burrow
@@ -87,22 +89,20 @@ export function readyzHandler(deps: ServerDeps): RouteHandler {
 }
 
 /**
- * The burrow-specific readyz probes — socket reachability, bwrap bring-up, and
- * stale burrow workspaces. Only meaningful under the local backend: the K8s
- * runtime (`WARREN_RUNTIME=k8s`) runs agents in pods with no co-tenanted burrow
- * daemon, so these would only ever report "burrow unreachable" and degrade an
- * otherwise-healthy control plane (warren-c128). Returns `[]` under k8s. Reads
- * `WARREN_RUNTIME` off `process.env` directly, mirroring the auth-strength probe
- * above (server boot already validated the value via `resolveRuntimeProvider`).
+ * The local-topology readyz probes — bwrap bring-up and stale workspaces.
+ * Only meaningful under the local backend, where warren itself execs bwrap
+ * for the in-process sandbox engine (warren-413d): the K8s runtime
+ * (`WARREN_RUNTIME=k8s`) runs agents in pods and bwrap lives in the agent
+ * image, so probing it here would only ever report "bwrap not found" and
+ * degrade an otherwise-healthy control plane (warren-c128). The burrow-daemon
+ * socket probe died with the daemon (warren-9a26). Returns `[]` under k8s.
+ * Reads `WARREN_RUNTIME` off `process.env` directly, mirroring the
+ * auth-strength probe above (server boot already validated the value via
+ * `resolveRuntimeProvider`).
  */
-async function burrowReadyzChecks(deps: ServerDeps, spawn: SpawnFn): Promise<DiagnosticCheck[]> {
+async function localReadyzChecks(deps: ServerDeps, spawn: SpawnFn): Promise<DiagnosticCheck[]> {
 	if (resolveRuntimeKind() !== "local") return [];
-	// warren-f796: the burrow-socket probe is a boot-wired thunk (`deps.burrowProbe`,
-	// built by the `LocalBootBackend`) rather than a `burrowClient` on ServerDeps.
-	// Tests that omit it degrade to just the bwrap + stale-workspace probes.
-	const burrowProbe = deps.burrowProbe;
 	return [
-		...(burrowProbe !== undefined ? [await burrowProbe()] : []),
 		await checkBwrap({
 			spawn,
 			...(deps.platform !== undefined ? { platform: deps.platform } : {}),

@@ -43,7 +43,6 @@ import { scenario as scenario08 } from "./scenarios/08-cancel.ts";
 import { scenario as scenario09 } from "./scenarios/09-reap-mulch-roundtrip.ts";
 import { scenario as scenario10 } from "./scenarios/10-reap-seeds-roundtrip.ts";
 import { scenario as scenario11 } from "./scenarios/11-doctor-exit-codes.ts";
-import { scenario as scenario12 } from "./scenarios/12-supervisor-restart-budget.ts";
 import { scenario as scenario13 } from "./scenarios/13-container-smoke.ts";
 import { scenario as scenario14 } from "./scenarios/14-warren-config.ts";
 import { scenario as scenario15 } from "./scenarios/15-triggers-roundtrip.ts";
@@ -76,7 +75,6 @@ const SCENARIOS: readonly Scenario[] = [
 	scenario09,
 	scenario10,
 	scenario11,
-	scenario12,
 	scenario13,
 	scenario14,
 	scenario15,
