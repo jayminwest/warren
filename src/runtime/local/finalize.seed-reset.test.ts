@@ -90,7 +90,25 @@ describe("finalize — seed_reset stage (warren-8d95)", () => {
 
 		expect(result.stages.find((s) => s.stage === "seed_reset")?.status).toBe("ok");
 		expect(gitCall(exec, "checkout", "main", "--", AGENT_ENVELOPE)).toBeUndefined();
+		expect(gitCall(exec, "clean", "-f", "--", AGENT_ENVELOPE)).toBeUndefined();
 		expect(result.events.some((e) => e.kind === "reap.seed_reset")).toBe(false);
+	});
+
+	test("sweeps an untracked seed drop out of the worktree via git clean (warren-0f18)", async () => {
+		// cat-file fails ⇒ the drop exists in NO ref: `git rm --ignore-unmatch`
+		// no-ops on it, so seed_reset must also `git clean -f` the worktree
+		// bytes (verified equal to what warren seeded) — otherwise the residue
+		// reads as a dirty `.warren/` path at empty-push classification and
+		// trips dropped_commit on a genuine no-op run.
+		const fs = fakeFs({ [`${WS}/${AGENT_ENVELOPE}`]: SEED });
+		const exec = fakeExec({ failCatFile: true });
+		const p = await provider(fs, exec);
+		const result = await p.finalize(HANDLE, intent());
+
+		expect(result.stages.find((s) => s.stage === "seed_reset")?.status).toBe("ok");
+		expect(gitCall(exec, "rm", "-f", "--ignore-unmatch", "--", AGENT_ENVELOPE)).toBeDefined();
+		expect(gitCall(exec, "clean", "-f", "--", AGENT_ENVELOPE)).toBeDefined();
+		expect(gitCall(exec, "checkout", "main", "--", AGENT_ENVELOPE)).toBeUndefined();
 	});
 
 	test("no-op when the seeded artifact never materialized in the workspace", async () => {

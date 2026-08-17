@@ -60,9 +60,9 @@
 		},
 		{
 			"name": "handlers-are-a-thin-surface",
-			"why": "HTTP handlers talk to repos, never to drizzle tables. Reaching into src/db/schema/ puts a query in the request path instead of in the repo that owns it.",
+			"why": "HTTP handlers talk to repos, never to drizzle tables. Reaching into src/db/schema/ puts a query in the request path instead of in the repo that owns it. The barrel src/db/schema.ts is banned too (warren-02c9): the row types handlers legitimately need are re-exported at the domain seams (src/runs/, src/projects/, src/plan-runs/, src/registry/ index.ts), so no handler import of the barrel remains legitimate.",
 			"from": ["src/server/handlers/"],
-			"forbidImports": ["src/db/schema/"]
+			"forbidImports": ["src/db/schema/", "src/db/schema.ts"]
 		},
 		{
 			"name": "handlers-do-not-build-repos",

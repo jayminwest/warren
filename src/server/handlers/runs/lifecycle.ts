@@ -1,6 +1,6 @@
 import { ValidationError } from "../../../core/errors.ts";
-import type { RunRow } from "../../../db/schema.ts";
 import { readProviderFrontmatter } from "../../../registry/index.ts";
+import type { RunRow } from "../../../runs/index.ts";
 import {
 	buildCostAnalytics,
 	type CostAnalyticsRow,

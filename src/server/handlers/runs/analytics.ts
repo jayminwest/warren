@@ -13,8 +13,8 @@
  */
 
 import type { RuntimeId } from "../../../core/wire.ts";
-import type { RunRow } from "../../../db/schema.ts";
 import { DEFAULT_RUNTIME_ID } from "../../../registry/schema.ts";
+import type { RunRow } from "../../../runs/index.ts";
 import {
 	buildRunMetrics,
 	buildRunOutcomes,

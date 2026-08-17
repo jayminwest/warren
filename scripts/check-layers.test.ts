@@ -274,18 +274,16 @@ describe("scan — the seams warren-89a6 added", () => {
 	});
 
 	test("flags a handler reaching for a drizzle table", () => {
-		withFixtureRepo(
-			{
-				"src/server/handlers/runs/lifecycle.ts":
-					'import type { RunRow } from "../../../db/schema.ts";\n',
-				"src/server/handlers/agents.ts": 'import { agents } from "../../db/schema/agents.ts";\n',
-			},
-			(dir) => {
-				// `src/db/schema.ts` is the type barrel and stays legal; the rule is
-				// about the drizzle table modules under `src/db/schema/`.
-				expect(scan(dir, RULES).map((v) => v.file)).toEqual(["src/server/handlers/agents.ts"]);
-			},
+		const rule = ruleNamed("handlers-are-a-thin-surface");
+		const rel = "src/server/handlers/x.ts";
+		// warren-02c9: the barrel `src/db/schema.ts` is banned too; row types live at the seams.
+		expect(scanText(rule, rel, 'import { runs } from "../../db/schema/runs.ts";\n')).toHaveLength(
+			1,
 		);
+		expect(scanText(rule, rel, 'import type { RunRow } from "../../db/schema.ts";\n')).toHaveLength(
+			1,
+		);
+		expect(scanText(rule, rel, 'import type { RunRow } from "../../runs/index.ts";\n')).toEqual([]);
 	});
 
 	test("flags a handler assembling a repo from deps.db", () => {
