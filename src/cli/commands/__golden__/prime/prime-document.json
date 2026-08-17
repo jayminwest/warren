@@ -274,6 +274,20 @@
       ]
     },
     {
+      "name": "projects",
+      "description": "list the projects registered on the warren server (GET /projects)",
+      "options": [
+        {
+          "flags": "--url <url>",
+          "description": "warren server base URL (env WARREN_BASE_URL)"
+        },
+        {
+          "flags": "--token <token>",
+          "description": "bearer token (env WARREN_API_TOKEN)"
+        }
+      ]
+    },
+    {
       "name": "show",
       "description": "render a run's detail (GET /runs/:id; json mode is the raw run document)",
       "options": [

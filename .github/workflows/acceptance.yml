@@ -28,7 +28,13 @@ name: Acceptance (nightly)
 #
 # INCLUDED (deterministic boot/doctor/config/triggers/roundtrip core):
 #   01, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 14, 15, 16, 17,
-#   21, 22, 26, 30, 35, 36
+#   21, 22, 26, 30, 35, 36, 41
+#
+#   - 41 (local-topology self-host) — pins the internalized local
+#     runtime (warren-413d) end-to-end, including the warren-c865
+#     falsification (a no-commit run must not fail dropped_commit).
+#     Runs here, not per-PR, because the warren-owned bwrap sandbox
+#     needs the user-namespace privileges this runner provisions.
 #
 # EXCLUDED, with reasons:
 #   - 13 (container-smoke)      — needs docker-in-docker.

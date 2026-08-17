@@ -162,6 +162,12 @@ export interface FakeExecOpts {
 	/** Throw on git rev-list calls (default: succeed). */
 	failRevList?: string;
 	/**
+	 * Throw on `git cat-file -e <ref>:<path>` (default: succeed) — simulates
+	 * a seed drop absent from the base ref, i.e. untracked in every ref
+	 * (warren-0f18's seed_reset sweep test).
+	 */
+	failCatFile?: boolean;
+	/**
 	 * Stdout for `git rev-list --count <ref>..HEAD`. Default `"1"` so
 	 * existing tests with `branchPushed: true` see commitsAhead=1 (real
 	 * work shipped) rather than the empty-push shape (warren-f3bb).
@@ -197,6 +203,11 @@ function isGitSub(cmd: string, args: readonly string[], sub: string): boolean {
 
 type ExecResult = { stdout: string; stderr: string };
 
+function handleCatFile(failCatFile: boolean): ExecResult {
+	if (failCatFile) throw new Error("path does not exist in ref");
+	return { stdout: "", stderr: "" };
+}
+
 function handleRevList(failRevList: string | null, revListCount: string): ExecResult {
 	if (failRevList !== null) throw new Error(failRevList);
 	return { stdout: `${revListCount}\n`, stderr: "" };
@@ -222,6 +233,7 @@ export function fakeExec(opts: FakeExecOpts = {}): FakeExec {
 	const fail = opts.fail !== undefined ? { reason: opts.fail } : null;
 	const failPush = opts.failPush ?? null;
 	const failRevList = opts.failRevList ?? null;
+	const failCatFile = opts.failCatFile === true;
 	const revListCount = opts.revListCount ?? "1";
 	const numstat = opts.numstat ?? "";
 	const stagedDelta = opts.stagedDelta === true;
@@ -230,6 +242,7 @@ export function fakeExec(opts: FakeExecOpts = {}): FakeExec {
 	// Routed `git <sub>` reads, split out of `run` to keep both under the
 	// cognitive-complexity budget.
 	const route = (cmd: string, args: readonly string[]): ExecResult | null => {
+		if (isGitSub(cmd, args, "cat-file")) return handleCatFile(failCatFile);
 		if (isGitSub(cmd, args, "rev-list")) return handleRevList(failRevList, revListCount);
 		if (isGitSub(cmd, args, "status") && args.includes("--porcelain")) {
 			return handleStatus(failGitStatus, gitStatus);

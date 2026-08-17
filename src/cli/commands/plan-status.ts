@@ -31,6 +31,7 @@ import {
 } from "../output.ts";
 import type { PlanRunOutput } from "../plan-run-renderer.ts";
 import { runCost, runDuration } from "../run-renderer.ts";
+import { columnWidths, formatRow, renderTable } from "../table.ts";
 import { guardRemotePlanRun, probeOrReport } from "./probe.ts";
 
 export interface PlanStatusArgs {
@@ -167,28 +168,5 @@ function renderListPretty(sink: WriteSink, planRuns: readonly PlanRunRow[]): voi
 		pr.agentName,
 		pr.createdAt,
 	]);
-	const widths = columnWidths([header, ...rows]);
-	line(formatRow(header, widths));
-	for (const row of rows) {
-		line(formatRow(row, widths));
-	}
-}
-
-/** Compute the max width of each column across all rows. */
-function columnWidths(rows: readonly (readonly string[])[]): number[] {
-	const widths: number[] = [];
-	for (const row of rows) {
-		row.forEach((cell, i) => {
-			widths[i] = Math.max(widths[i] ?? 0, cell.length);
-		});
-	}
-	return widths;
-}
-
-/** Left-pad each cell to its column width and join with two spaces. */
-function formatRow(row: readonly string[], widths: readonly number[]): string {
-	return row
-		.map((cell, i) => cell.padEnd(widths[i] ?? cell.length))
-		.join("  ")
-		.trimEnd();
+	renderTable(sink, header, rows);
 }
