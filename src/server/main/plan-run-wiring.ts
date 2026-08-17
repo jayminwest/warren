@@ -99,7 +99,9 @@ function createReopenPr(
 			const content = buildReopenPrContent(run, autoOpenPr);
 			const result = await forge.openPullRequest(ref, {
 				headBranch: branch,
-				baseBranch: project.defaultBranch,
+				// warren-8cbf: the reopened PR targets the same base reap would
+				// have used — the run's frozen clone ref, else the default branch.
+				baseBranch: run.ref ?? project.defaultBranch,
 				title: content.title,
 				body: content.body,
 			});

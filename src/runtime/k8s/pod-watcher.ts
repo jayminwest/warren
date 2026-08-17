@@ -106,12 +106,24 @@ export interface PodCacheReader {
 }
 
 /**
+ * Informer sync-state seam (warren-39e1). The `/readyz` `k8s_api_reachable`
+ * check reads this as the positive K8s-topology readiness signal: `true`
+ * means the watcher has listed against the API server and holds a live watch;
+ * `false` means the API is unreachable or the stream is down.
+ */
+export interface PodSyncSource {
+	isSynced(): boolean;
+}
+
+/**
  * The pod informer. Construct with the injected seams, call `start()` to seed
  * the cache + begin watching, `stop()` to abort. Implements `PodCacheReader`
  * (for `status()`), `PodMetricsSource` (for `/metrics`), and
  * `PodAdmissionSource` (for the admission gate).
  */
-export class PodWatcher implements PodCacheReader, PodMetricsSource, PodAdmissionSource {
+export class PodWatcher
+	implements PodCacheReader, PodMetricsSource, PodAdmissionSource, PodSyncSource
+{
 	private readonly cache = new Map<string, V1Pod>();
 	/** runIds whose OOM kill we have already counted (count once, not per event). */
 	private readonly oomCounted = new Set<string>();
@@ -151,6 +163,17 @@ export class PodWatcher implements PodCacheReader, PodMetricsSource, PodAdmissio
 	/** Abort the watch and await the loop's exit. Idempotent. */
 	async stop(): Promise<void> {
 		await this.loop.stop();
+	}
+
+	// --- PodSyncSource -------------------------------------------------------
+
+	/**
+	 * Whether the informer is synced against the K8s API server (warren-39e1).
+	 * Delegates to the loop's sync state; `/readyz` consults it for the
+	 * `k8s_api_reachable` check.
+	 */
+	isSynced(): boolean {
+		return this.loop.isSynced();
 	}
 
 	// --- PodCacheReader ------------------------------------------------------
