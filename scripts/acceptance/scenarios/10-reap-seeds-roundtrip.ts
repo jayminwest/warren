@@ -7,9 +7,11 @@
  *   close mirrored. /runs/:id/events surfaces a `seeds.closed` event
  *   per mirrored row; reap.completed payload reports the count."
  *
- * The stub agent (scripts/acceptance/lib/stub-agent/agent.sh) honors
- * `[seed_id=...]` and `[seed_ts=...]` knobs so we can drive a fresh
- * close-mirror through reap on demand. The single happy path
+ * The stub agent (scripts/acceptance/lib/stub-agent/
+ * claude-code-path-shim.sh, installed as the `claude` binary the
+ * internalized local engine execs — warren-dc19) honors
+ * `[seed_id=...]` and `[seed_ts=...]` prompt knobs so we can drive a
+ * fresh close-mirror through reap on demand. The single happy path
  * exercised here:
  *
  *   Run: id=ah-acceptance-10 status=closed ts=2026-05-09T12:00:00.000Z
@@ -32,8 +34,10 @@
  * tracked in the fixture (only `.mulch/.gitkeep` is committed), which
  * is why scenario 09 *can* exercise all three LWW branches.
  *
- * warren-3c40: poll for state=running before cancel so reap doesn't
- * misclassify as `never_started`.
+ * warren-dc19: the runs complete naturally (a brief `[sleep_ms=1500]`)
+ * instead of the historical mid-flight cancel — under the internalized
+ * engine a cancel settles on the watchdog's 30s reconcile tick, well
+ * past any scenario budget, while a natural completion reaps inline.
  *
  * warren-dcf3: branch_push will fail against the non-bare local
  * fixture; reap_failed (step=branch_push) is tolerated. Seed
@@ -51,7 +55,7 @@ import { join } from "node:path";
 
 import { AcceptanceError, assertEqual, assertTrue, type Scenario } from "../lib/assert.ts";
 import { WarrenHttp } from "../lib/http.ts";
-import { waitForRunState, waitForRunTerminal } from "./lib/poll-helpers.ts";
+import { waitForRunTerminal } from "./lib/poll-helpers.ts";
 
 interface ProjectRow {
 	readonly id: string;
@@ -72,12 +76,6 @@ interface CreateRunResponse {
 	readonly run: RunRow;
 }
 
-interface CancelResponse {
-	readonly state: string;
-	readonly alreadyTerminal: boolean;
-	readonly burrowRun: { readonly state: string } | null;
-}
-
 interface EventRow {
 	readonly id: number;
 	readonly runId: string;
@@ -88,7 +86,6 @@ interface EventRow {
 	readonly payload: Record<string, unknown> | null;
 }
 
-const TERMINAL_STATES = new Set(["succeeded", "failed", "cancelled"]);
 const SEED_ID = "ah-acceptance-10";
 const TS_BASELINE = "2026-05-09T12:00:00.000Z";
 
@@ -102,7 +99,14 @@ export const scenario: Scenario = {
 	async run(ctx) {
 		const http = new WarrenHttp({ baseUrl: ctx.warrenUrl, token: ctx.token });
 
-		await http.expectStatus("POST", "/agents/refresh", 200);
+		// The stub agent was seeded at boot via WARREN_SEED_AGENTS_FILE
+		// (warren-e376); POST /agents/refresh is deleted (pl-3a79). GET it
+		// to prove boot seeding landed before spawning against it.
+		await http.expectStatus(
+			"GET",
+			`/agents/${encodeURIComponent(ctx.fixtures.stubAgentName)}`,
+			200,
+		);
 		const project = await ensureSampleProject(http, ctx.fixtures.sampleProjectGitUrl);
 		const projectSeedsFile = join(project.localPath, ".seeds", "issues.jsonl");
 
@@ -164,7 +168,11 @@ async function runStubAndReap(
 	agentName: string,
 	promptKnobs: readonly string[],
 ): Promise<RunRow> {
-	const prompt = `[sleep_ms=4000] ${promptKnobs.join(" ")} scenario-10 seeds roundtrip`.trim();
+	// warren-dc19: natural completion instead of mid-flight cancel — see
+	// the sibling note in 09's runStubAndReap. The shim writes its seeds
+	// side effect before the brief sleep, so the LWW mirror sees the same
+	// on-disk shape either way.
+	const prompt = `[sleep_ms=1500] ${promptKnobs.join(" ")} scenario-10 seeds roundtrip`.trim();
 	const created = await http.expectJson<CreateRunResponse>("POST", "/runs", 201, {
 		body: { agent: agentName, project: projectId, prompt },
 	});
@@ -173,35 +181,13 @@ async function runStubAndReap(
 		typeof run.burrowRunId === "string" && run.burrowRunId !== null && run.burrowRunId.length > 0,
 		"spawn response missing burrowRunId",
 	);
-	await waitForRunning(http, run.id, 5_000);
-	const cancelRes = await http.expectJson<CancelResponse>(
-		"POST",
-		`/runs/${encodeURIComponent(run.id)}/cancel`,
-		200,
-		{ body: { reason: "scenario-10 seeds roundtrip" } },
-	);
+	const finalState = await waitForTerminal(http, run.id, 30_000);
 	assertEqual(
-		cancelRes.alreadyTerminal,
-		false,
-		"reap-roundtrip cancel should not report alreadyTerminal=true",
-	);
-	const finalState = await waitForTerminal(http, run.id, 8_000);
-	assertTrue(
-		TERMINAL_STATES.has(finalState),
-		`run ${run.id} did not reach a terminal state; ended at '${finalState}'`,
+		finalState,
+		"succeeded",
+		`run ${run.id} should succeed under the claude path-shim; ended at '${finalState}'`,
 	);
 	return { ...run, state: finalState };
-}
-
-async function waitForRunning(http: WarrenHttp, runId: string, timeoutMs: number): Promise<void> {
-	await waitForRunState(
-		http,
-		runId,
-		"running",
-		timeoutMs,
-		(row) =>
-			`run ${runId} reached terminal state '${row.state}' before bridge mirrored running — reap will misclassify (warren-3c40 territory)`,
-	);
 }
 
 async function waitForTerminal(

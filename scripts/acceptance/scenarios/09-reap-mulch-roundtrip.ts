@@ -10,19 +10,16 @@
  *   project's existing ts, and `mulch.record.skipped` when the incoming
  *   ts is older-or-equal."
  *
- * The stub agent (scripts/acceptance/lib/stub-agent/agent.sh) honors
- * `[mulch_id=...]` and `[mulch_ts=...]` knobs in its prompt arg, so we
- * can drive all three LWW branches from a single warren+burrow boot
- * without restarting anything. Each run cancels mid-flight (mx-bade10:
- * cancel reaps inline) so we don't have to wait for the natural sleep
- * window — the agent has already appended its mulch record to the
- * burrow workspace by the time the bridge mirrors queued → running
- * (lines 1-2 in agent.sh run before any sleep), so reap captures the
- * write regardless of when we cancel.
- *
- * warren-3c40 caveat: the run must be observed in `running` before
- * cancel so reap doesn't classify it as `never_started`. We poll
- * `/runs/:id` after spawn and assert state=running before posting cancel.
+ * The stub agent (scripts/acceptance/lib/stub-agent/
+ * claude-code-path-shim.sh, installed as the `claude` binary the
+ * internalized local engine execs — warren-dc19) honors
+ * `[mulch_id=...]` and `[mulch_ts=...]` knobs in its prompt, so we can
+ * drive all three LWW branches from a single warren boot without
+ * restarting anything. Each run completes naturally after a brief
+ * `[sleep_ms=1500]` (the shim writes its mulch record before the
+ * sleep): under the internalized engine a mid-flight cancel settles on
+ * the watchdog's 30s reconcile tick, far past any scenario budget,
+ * while a natural completion reaps inline on the same code path.
  *
  * warren-dcf3 caveat: the harness's git-config insteadOf rewrites point
  * pushes at the local non-bare fixture repo, which rejects pushes to a
@@ -51,7 +48,7 @@ import { join } from "node:path";
 
 import { AcceptanceError, assertEqual, assertTrue, type Scenario } from "../lib/assert.ts";
 import { WarrenHttp } from "../lib/http.ts";
-import { waitForRunState, waitForRunTerminal } from "./lib/poll-helpers.ts";
+import { waitForRunTerminal } from "./lib/poll-helpers.ts";
 
 interface ProjectRow {
 	readonly id: string;
@@ -72,12 +69,6 @@ interface CreateRunResponse {
 	readonly run: RunRow;
 }
 
-interface CancelResponse {
-	readonly state: string;
-	readonly alreadyTerminal: boolean;
-	readonly burrowRun: { readonly state: string } | null;
-}
-
 interface EventRow {
 	readonly id: number;
 	readonly runId: string;
@@ -88,7 +79,6 @@ interface EventRow {
 	readonly payload: Record<string, unknown> | null;
 }
 
-const TERMINAL_STATES = new Set(["succeeded", "failed", "cancelled"]);
 const MULCH_DOMAIN = "acceptance";
 const MULCH_ID = "mx-acceptance-09";
 const TS_BASELINE = "2026-05-09T12:00:00.000Z";
@@ -105,7 +95,14 @@ export const scenario: Scenario = {
 	async run(ctx) {
 		const http = new WarrenHttp({ baseUrl: ctx.warrenUrl, token: ctx.token });
 
-		await http.expectStatus("POST", "/agents/refresh", 200);
+		// The stub agent was seeded at boot via WARREN_SEED_AGENTS_FILE
+		// (warren-e376); POST /agents/refresh is deleted (pl-3a79). GET it
+		// to prove boot seeding landed before spawning against it.
+		await http.expectStatus(
+			"GET",
+			`/agents/${encodeURIComponent(ctx.fixtures.stubAgentName)}`,
+			200,
+		);
 		const project = await ensureSampleProject(http, ctx.fixtures.sampleProjectGitUrl);
 		const projectMulchFile = join(
 			project.localPath,
@@ -264,9 +261,15 @@ async function runStubAndReap(
 	agentName: string,
 	promptKnobs: readonly string[],
 ): Promise<RunRow> {
-	// `[sleep_ms=4000]` keeps the agent alive long enough for the bridge
-	// to mirror queued → running before our cancel call lands.
-	const prompt = `[sleep_ms=4000] ${promptKnobs.join(" ")} scenario-09 reap roundtrip`.trim();
+	// warren-dc19: no mid-flight cancel. Under the internalized local
+	// engine the cancel → store-terminalize → watchdog reconcile path
+	// settles on the watchdog's 30s tick, far past any scenario budget;
+	// a short natural completion reaps inline on the same code path and
+	// exercises the identical LWW mirror. The shim (claude-code-path-shim)
+	// writes its mulch/seeds side effects before the sleep, so the brief
+	// `[sleep_ms=1500]` only exists to prove the run goes through a real
+	// running phase.
+	const prompt = `[sleep_ms=1500] ${promptKnobs.join(" ")} scenario-09 reap roundtrip`.trim();
 	const created = await http.expectJson<CreateRunResponse>("POST", "/runs", 201, {
 		body: { agent: agentName, project: projectId, prompt },
 	});
@@ -276,37 +279,13 @@ async function runStubAndReap(
 		"spawn response missing burrowRunId — reap path needs the burrow run id",
 	);
 
-	await waitForRunning(http, run.id, 5_000);
-
-	const cancelRes = await http.expectJson<CancelResponse>(
-		"POST",
-		`/runs/${encodeURIComponent(run.id)}/cancel`,
-		200,
-		{ body: { reason: "scenario-09 reap roundtrip" } },
-	);
+	const finalState = await waitForTerminal(http, run.id, 30_000);
 	assertEqual(
-		cancelRes.alreadyTerminal,
-		false,
-		"reap-roundtrip cancel should not report alreadyTerminal=true",
-	);
-
-	const finalState = await waitForTerminal(http, run.id, 8_000);
-	assertTrue(
-		TERMINAL_STATES.has(finalState),
-		`run ${run.id} did not reach a terminal state; ended at '${finalState}'`,
+		finalState,
+		"succeeded",
+		`run ${run.id} should succeed under the claude path-shim; ended at '${finalState}'`,
 	);
 	return { ...run, state: finalState };
-}
-
-async function waitForRunning(http: WarrenHttp, runId: string, timeoutMs: number): Promise<void> {
-	await waitForRunState(
-		http,
-		runId,
-		"running",
-		timeoutMs,
-		(row) =>
-			`run ${runId} reached terminal state '${row.state}' before bridge mirrored running — reap will misclassify (warren-3c40 territory)`,
-	);
 }
 
 async function waitForTerminal(

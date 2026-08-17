@@ -9,24 +9,34 @@
  * The spawn path (src/runs/spawn/dispatch.ts) reads the agent definition from
  * the agents-table cache and writes it onto runs.rendered_agent_json
  * before any burrow call. Re-rendering at run time would (a) shell out
- * to `cn` on every dispatch, and (b) drift the run's frozen prompt
- * away from what the operator saw when they hit POST /runs (mx-e1ecb1).
+ * to an external registry on every dispatch, and (b) drift the run's
+ * frozen prompt away from what the operator saw when they hit
+ * POST /runs (mx-e1ecb1).
  *
- * Verifying the freeze:
+ * Verifying the freeze against the builtins-only registry (warren-dc19 —
+ * the pre-pl-3a79 version of this scenario drifted the envelope through
+ * the canopy fixture + POST /agents/refresh; both are deleted):
  *
- *   1. Spawn r1 against the canopy-cached stub agent. Capture
+ *   1. Spawn r1 against the boot-seeded stub agent. Capture
  *      r1.renderedAgentJson off the 201 body.
- *   2. Mutate the canopy fixture (`cn update <name> --section system
- *      --body "<drift>"` + `cn sync`) and POST /agents/refresh so the
- *      agents row picks up the new envelope.
+ *   2. Rewrite the WARREN_SEED_AGENTS_FILE payload with a drifted
+ *      `system` section and restart warren (ctx.lifecycle). Boot-time
+ *      seeding (seedBuiltinAgents, src/registry/builtins/index.ts)
+ *      upserts builtin-sourced rows on drift, so the agents row picks
+ *      up the new envelope — this also guards the "builtin seeding on
+ *      boot" contract and the GET /agents `source: "builtin"`
+ *      provenance.
  *   3. GET /runs/:r1 — r1.renderedAgentJson is unchanged from step 1.
- *      (Bridge events flow into events table, not runs row.)
- *   4. Spawn r2 — its frozen JSON reflects the post-refresh envelope,
+ *   4. Spawn r2 — its frozen JSON reflects the post-restart envelope,
  *      proving the freeze is per-run, not per-agent.
  *
- * Cancels both runs at the end so teardown doesn't trip over a live
- * burrow workspace.
+ * The scenario shares one warren+burrow pair with its siblings, so it
+ * restores the original seed payload and restarts warren again at the
+ * end, leaving the registry in its pre-scenario state. Cancels both
+ * runs so teardown doesn't trip over a live burrow workspace.
  */
+
+import { readFile, writeFile } from "node:fs/promises";
 
 import { AcceptanceError, assertEqual, assertTrue, type Scenario } from "../lib/assert.ts";
 import { WarrenHttp } from "../lib/http.ts";
@@ -49,6 +59,7 @@ interface AgentDefinitionEnvelope {
 
 interface AgentRow {
 	readonly name: string;
+	readonly source: string;
 	readonly renderedJson: AgentDefinitionEnvelope;
 }
 
@@ -76,26 +87,38 @@ const RUN_ID_PATTERN = /^run_[0-9a-hjkmnpqrstvwxyz]{12}$/;
 export const scenario: Scenario = {
 	id: "04",
 	title: "POST /runs returns 201 + run_xxx; renderedAgentJson populated and frozen at spawn",
-	// Run spawn requires the host-side sample project + canopy fixture,
-	// neither of which the compose harness bind-mounts. In-proc only.
+	// Run spawn requires the host-side sample project + seeded stub agent,
+	// and the drift step drives warren process control. In-proc only.
 	modes: ["in-proc"],
 	async run(ctx) {
 		const http = new WarrenHttp({ baseUrl: ctx.warrenUrl, token: ctx.token });
+		const lifecycle = ctx.lifecycle;
+		if (lifecycle === undefined) {
+			throw new AcceptanceError("scenario-04 requires the in-proc lifecycle handle");
+		}
 
-		// Pre-reqs: register agents and add the project. Each scenario
-		// boots its own warren+burrow, so we can't rely on scenario 02/03
-		// having seeded these.
-		await http.expectStatus("POST", "/agents/refresh", 200);
+		// Pre-req: add the project. The stub agent itself was seeded at
+		// boot via WARREN_SEED_AGENTS_FILE (warren-e376) — there is no
+		// runtime registration call anymore. GET /agents proves the boot
+		// seeding landed before we spawn against it.
 		const project = await http.expectJson<ProjectRow>("POST", "/projects", 201, {
 			body: { gitUrl: ctx.fixtures.sampleProjectGitUrl },
 		});
 
 		// Capture the agent envelope warren has cached pre-spawn — this
-		// is what we expect r1.renderedAgentJson to deeply match.
+		// is what we expect r1.renderedAgentJson to deeply match. The
+		// `source` provenance must read "builtin": the seed-file payload
+		// declares frontmatter.source="builtin" so boot seeding owns the
+		// row and upserts it on drift.
 		const agentBefore = await http.expectJson<AgentRow>(
 			"GET",
 			`/agents/${encodeURIComponent(ctx.fixtures.stubAgentName)}`,
 			200,
+		);
+		assertEqual(
+			agentBefore.source,
+			"builtin",
+			"GET /agents/:name provenance for the boot-seeded stub agent",
 		);
 		const systemBefore = agentBefore.renderedJson.sections.system;
 		assertTrue(
@@ -187,33 +210,31 @@ export const scenario: Scenario = {
 			"GET /runs/:id sections.system matches POST response",
 		);
 
-		// 2. Mutate the canopy fixture: change stub-shell's system body,
-		// commit, then POST /agents/refresh so warren picks it up.
+		// 2. Drift the stub agent's envelope: rewrite the seed payload
+		// with a changed system body, then restart warren. Boot-time
+		// seeding upserts builtin-sourced rows whose rendered envelope
+		// diverged (isAlreadySeeded deep-equal), so the agents row picks
+		// up the drift with no runtime registration call.
 		const driftBody = `${systemBefore}\n[scenario-04 drift marker — must NOT appear on r1]`;
-		await runIn(ctx.fixtures.canopyRepoPath, [
-			"cn",
-			"update",
-			ctx.fixtures.stubAgentName,
-			"--section",
-			"system",
-			"--body",
-			driftBody,
-		]);
-		// `cn sync` stages and commits the .canopy/ dirty state. Fall back
-		// to a plain git commit if cn sync isn't available in this build.
-		try {
-			await runIn(ctx.fixtures.canopyRepoPath, ["cn", "sync"]);
-		} catch {
-			await runIn(ctx.fixtures.canopyRepoPath, ["git", "add", "."]);
-			await runIn(ctx.fixtures.canopyRepoPath, [
-				"git",
-				"commit",
-				"-m",
-				"scenario-04: drift the stub agent system body",
-			]);
+		const seedFilePath = ctx.fixtures.seedAgentsFilePath;
+		const originalSeedPayload = await readFile(seedFilePath, "utf8");
+		const seedAgents = JSON.parse(originalSeedPayload) as Array<{
+			sections: Record<string, string>;
+		}>;
+		const stubSeed = seedAgents.find(
+			(a) => (a as { name?: string }).name === ctx.fixtures.stubAgentName,
+		);
+		if (stubSeed === undefined) {
+			throw new AcceptanceError(
+				`seed agents file ${seedFilePath} does not carry ${ctx.fixtures.stubAgentName}`,
+			);
 		}
+		stubSeed.sections.system = driftBody;
+		await writeFile(seedFilePath, `${JSON.stringify(seedAgents, null, 2)}\n`);
 
-		await http.expectStatus("POST", "/agents/refresh", 200);
+		await lifecycle.killWarren();
+		await lifecycle.restartWarren();
+
 		const agentAfter = await http.expectJson<AgentRow>(
 			"GET",
 			`/agents/${encodeURIComponent(ctx.fixtures.stubAgentName)}`,
@@ -222,7 +243,7 @@ export const scenario: Scenario = {
 		assertEqual(
 			agentAfter.renderedJson.sections.system,
 			driftBody,
-			"agents row.renderedJson.sections.system reflects post-refresh canopy fixture",
+			"agents row.renderedJson.sections.system reflects the drifted seed payload after boot re-seed",
 		);
 
 		// 3. r1's frozen JSON is unchanged.
@@ -234,11 +255,11 @@ export const scenario: Scenario = {
 		assertEqual(
 			r1AfterDrift.renderedAgentJson.sections.system,
 			systemBefore,
-			"GET /runs/:id after canopy drift — r1.renderedAgentJson must remain frozen at spawn-time value",
+			"GET /runs/:id after seed drift — r1.renderedAgentJson must remain frozen at spawn-time value",
 		);
 		if (r1AfterDrift.renderedAgentJson.sections.system === driftBody) {
 			throw new AcceptanceError(
-				"r1.renderedAgentJson was re-read after canopy drift — spawn-time freeze contract violated",
+				"r1.renderedAgentJson was re-read after the agent envelope drifted — spawn-time freeze contract violated",
 			);
 		}
 
@@ -256,7 +277,7 @@ export const scenario: Scenario = {
 		assertEqual(
 			r2.renderedAgentJson.sections.system,
 			driftBody,
-			"r2.renderedAgentJson reflects the post-refresh envelope",
+			"r2.renderedAgentJson reflects the post-drift envelope",
 		);
 
 		// Negative paths — POST /runs validates at the wire.
@@ -278,33 +299,24 @@ export const scenario: Scenario = {
 				// Best-effort — the run may already be terminal.
 			}
 		}
+
+		// Restore the shared warren to its pre-scenario registry state:
+		// put the original seed payload back and restart once more so the
+		// boot re-seed reverts the drifted row. Sibling scenarios dispatch
+		// against this agent, and a second harness pass must observe the
+		// same fixture (idempotency).
+		await writeFile(seedFilePath, originalSeedPayload);
+		await lifecycle.killWarren();
+		await lifecycle.restartWarren();
+		const agentRestored = await http.expectJson<AgentRow>(
+			"GET",
+			`/agents/${encodeURIComponent(ctx.fixtures.stubAgentName)}`,
+			200,
+		);
+		assertEqual(
+			agentRestored.renderedJson.sections.system,
+			systemBefore,
+			"agents row restored to the pre-scenario envelope after seed-file restore + restart",
+		);
 	},
 };
-
-async function runIn(cwd: string, cmd: readonly string[]): Promise<void> {
-	const proc = Bun.spawn({
-		cmd: [...cmd],
-		cwd,
-		env: {
-			PATH: process.env.PATH ?? "",
-			HOME: process.env.HOME ?? "/tmp",
-			GIT_AUTHOR_NAME: "Warren Acceptance",
-			GIT_AUTHOR_EMAIL: "acceptance@warren.invalid",
-			GIT_COMMITTER_NAME: "Warren Acceptance",
-			GIT_COMMITTER_EMAIL: "acceptance@warren.invalid",
-		},
-		stdin: "ignore",
-		stdout: "pipe",
-		stderr: "pipe",
-	});
-	const [stdout, stderr, exitCode] = await Promise.all([
-		new Response(proc.stdout).text(),
-		new Response(proc.stderr).text(),
-		proc.exited,
-	]);
-	if ((exitCode ?? 0) !== 0) {
-		throw new AcceptanceError(
-			`fixture command failed (${cmd.join(" ")} in ${cwd}): exit ${exitCode}\nstdout: ${stdout}\nstderr: ${stderr}`,
-		);
-	}
-}
