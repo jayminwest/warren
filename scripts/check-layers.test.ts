@@ -3,7 +3,6 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import {
-	importSpec,
 	type LayerRule,
 	loadRules,
 	matchesPath,
@@ -93,19 +92,8 @@ describe("resolveSpec", () => {
 	});
 });
 
-describe("importSpec", () => {
-	test("sees import, side-effect import, re-export and multi-line closing forms", () => {
-		expect(importSpec('import { x } from "../server/types.ts";')).toBe("../server/types.ts");
-		expect(importSpec('import "@os-eco/burrow-cli";')).toBe("@os-eco/burrow-cli");
-		expect(importSpec('export { x } from "./types.ts";')).toBe("./types.ts");
-		expect(importSpec('} from "../../seeds-cli/index.ts";')).toBe("../../seeds-cli/index.ts");
-	});
-
-	test("ignores comment lines", () => {
-		expect(importSpec('// import { x } from "../server/types.ts";')).toBeUndefined();
-		expect(importSpec(' * see `from "../server/types.ts"`')).toBeUndefined();
-	});
-});
+// Edge extraction itself (dynamic import, require, export-from, type-only,
+// comment/string blindness) is covered in scripts/layer-graph.test.ts.
 
 describe("scanText", () => {
 	test("reports the 1-based line and the specifier as written", () => {
