@@ -46,7 +46,7 @@ import type {
 } from "../contract.ts";
 import { cancelLocalRun } from "./cancel.ts";
 import type { DriveDeps } from "./drive.ts";
-import { LocalEngine } from "./engine.ts";
+import { LocalEngine, type SidecarCascade } from "./engine.ts";
 import { finalizeLocalRun } from "./finalize.ts";
 import { legacyCreate } from "./legacy-create.ts";
 import type { LocalRunStore } from "./run-store.ts";
@@ -84,6 +84,12 @@ export interface LocalProviderDeps {
 	readonly store?: LocalRunStore;
 	/** OPTIONAL drive-loop seams (in-process mode tests): spawn / registry. */
 	readonly drive?: DriveDeps;
+	/**
+	 * OPTIONAL preview sidecar cascade (in-process mode, warren-4bf3) —
+	 * `terminate` cascade-deletes the sandbox's sidecars through it. Boot
+	 * threads the warren-owned registry; tests omit it.
+	 */
+	readonly sidecars?: SidecarCascade;
 }
 
 /**
@@ -118,6 +124,7 @@ export class LocalProvider implements RuntimeProvider {
 						...(deps.fs !== undefined ? { fs: deps.fs } : {}),
 						...(deps.exec !== undefined ? { exec: deps.exec } : {}),
 						...(deps.drive !== undefined ? { drive: deps.drive } : {}),
+						...(deps.sidecars !== undefined ? { sidecars: deps.sidecars } : {}),
 					})
 				: null;
 	}

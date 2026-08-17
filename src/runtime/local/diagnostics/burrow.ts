@@ -26,7 +26,9 @@ import { ValidationError } from "../../../core/errors.ts";
 import type { DiagnosticCheck } from "../../../diagnostics/checks.ts";
 import type { RuntimeProvider } from "../../contract.ts";
 import { resolveRuntimeProvider } from "../../registry.ts";
+import { LocalSidecarRegistry } from "../preview/registry.ts";
 import { createLocalSidecarsResolver, type LocalSidecarsResolver } from "../preview/sidecars.ts";
+import { LocalRunStore } from "../run-store.ts";
 
 type EnvLike = Readonly<Record<string, string | undefined>>;
 
@@ -127,37 +129,40 @@ export interface LocalRunBackend {
 	readonly runtimeProvider: RuntimeProvider;
 	/** Preview sidecar resolver (present iff `capabilities.previewPorts`). */
 	readonly previewSidecars?: LocalSidecarsResolver;
-	/** Close any burrow client this backend lazily constructed. */
+	/** Shut the sidecar registry down (idempotent). */
 	close(): Promise<void>;
 }
 
 /**
  * Resolve the runtime backend for `warren run` (warren-11cc). Mirrors how
- * `bootServer` + `preview-gc-wiring.ts` wire the server: build the burrow client
- * lazily, thread `resolveRuntimeProvider` over it (honoring `WARREN_RUNTIME`),
- * and gate the preview sidecar seam on `capabilities.previewPorts`. Under
- * `WARREN_RUNTIME=k8s` the provider never calls the burrow factory and
- * `previewPorts` is `false`, so no burrow client is ever constructed and
- * `close()` is a no-op.
+ * `bootServer` + `preview-gc-wiring.ts` wire the server: thread
+ * `resolveRuntimeProvider` over env (honoring `WARREN_RUNTIME`) and gate the
+ * preview sidecar seam on `capabilities.previewPorts`. Under
+ * `WARREN_RUNTIME=k8s` `previewPorts` is `false`, so no burrow client is ever
+ * constructed and `close()` only shuts the (empty) sidecar registry down.
  */
 export function resolveLocalRunBackend(env: EnvLike): LocalRunBackend {
-	let client: BurrowClient | undefined;
-	const getClient = (): BurrowClient => {
-		if (client === undefined) client = BurrowClient.fromEnv(env);
-		return client;
-	};
 	// warren-413d: no burrow client on the provider ⇒ the in-process engine
-	// (the daemon is off the spawn path for `warren run` too). The client
-	// below backs only the preview-sidecar seam until warren-4bf3 re-homes it.
-	const runtimeProvider = resolveRuntimeProvider({ serverEnv: env }, env);
+	// (the daemon is off the spawn path for `warren run` too). warren-4bf3:
+	// the preview-sidecar seam is warren-owned — the shared run store backs
+	// the registry's profile lookup, and no burrow client is constructed at
+	// all. Under k8s the store + registry stay dark (previewPorts is false).
+	const store = new LocalRunStore();
+	const sidecarRegistry = new LocalSidecarRegistry({
+		profileFor: (sandboxId) => store.getBySandboxId(sandboxId)?.profile ?? null,
+	});
+	const runtimeProvider = resolveRuntimeProvider(
+		{ serverEnv: env, localStore: store, localSidecars: sidecarRegistry },
+		env,
+	);
 	const previewSidecars = runtimeProvider.capabilities.previewPorts
-		? createLocalSidecarsResolver(getClient())
+		? createLocalSidecarsResolver(sidecarRegistry)
 		: undefined;
 	return {
 		runtimeProvider,
 		...(previewSidecars !== undefined ? { previewSidecars } : {}),
 		close: async () => {
-			if (client !== undefined) await client.close().catch(() => undefined);
+			await sidecarRegistry.shutdownAll().catch(() => undefined);
 		},
 	};
 }
