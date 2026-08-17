@@ -1,35 +1,6 @@
 {
-	"$comment": "Declared seams for scripts/check-layers.ts (warren-89a6). One entry per architectural boundary. `from` and `allow` hold repo-relative POSIX paths: a trailing slash is a directory prefix, anything else is an exact file. `forbidImports` holds module targets — a relative specifier is resolved against the importing file first, so `src/server/` catches `../server/types.ts` but not `../seeds-cli/index.ts`; a bare entry matches a package and its subpaths; `*` matches every target. `exceptImports` carves targets back out of `forbidImports`. `forbidPattern` is a JS regex applied to each non-comment source line, for a rule that is not about imports. Every `allow` entry states why the exception is legitimate. Adding a seam here is a data edit — new seams are born enforced.",
+	"$comment": "Declared seams for scripts/check-layers.ts (warren-89a6). One entry per architectural boundary. `from` and `allow` hold repo-relative POSIX paths: a trailing slash is a directory prefix, anything else is an exact file. `forbidImports` holds module targets \u2014 a relative specifier is resolved against the importing file first, so `src/server/` catches `../server/types.ts` but not `../seeds-cli/index.ts`; a bare entry matches a package and its subpaths; `*` matches every target. `exceptImports` carves targets back out of `forbidImports`. `forbidPattern` is a JS regex applied to each non-comment source line, for a rule that is not about imports. Every `allow` entry states why the exception is legitimate. Adding a seam here is a data edit \u2014 new seams are born enforced.",
 	"rules": [
-		{
-			"name": "burrow-facade-is-local-only",
-			"why": "The src/burrow-client/ facade is local-topology only. Route runtime calls through the RuntimeProvider seam (src/runtime/contract.ts) instead, or move the coupling under src/runtime/local/.",
-			"from": ["src/"],
-			"forbidImports": ["src/burrow-client/"],
-			"allow": [
-				{ "path": "src/burrow-client/", "why": "the facade itself" },
-				{
-					"path": "src/runtime/local/",
-					"why": "the LocalProvider and its seams, including diagnostics/burrow.ts and boot-backend.ts"
-				},
-				{
-					"path": "src/supervisor/",
-					"why": "local-topology by definition — it spawns burrow serve"
-				},
-				{ "path": "src/runtime/registry.ts", "why": "the () => BurrowClient factory seam" }
-			]
-		},
-		{
-			"name": "burrow-package-is-local-only",
-			"why": "@os-eco/burrow-cli is burrow's own library (transport and error types plus the in-pod agent framework). It is local-topology only; under WARREN_RUNTIME=k8s there is no burrow at all.",
-			"from": ["src/"],
-			"forbidImports": ["@os-eco/burrow-cli"],
-			"allow": [
-				{ "path": "src/burrow-client/", "why": "the facade itself" },
-				{ "path": "src/runtime/local/", "why": "the LocalProvider and its seams" },
-				{ "path": "src/supervisor/", "why": "local-topology by definition" }
-			]
-		},
 		{
 			"name": "domain-owns-the-logic",
 			"why": "The domain modules own the logic. The HTTP handlers and the CLI are surfaces over them, so the dependency points inward only. A type the domain needs belongs in the domain; src/server/types.ts may re-export it outward.",
@@ -54,7 +25,7 @@
 			"allow": [
 				{
 					"path": "src/cli/commands/serve.ts",
-					"why": "`warren serve` boots the server in-process — this command IS the server's entry point, so importing bootServer is the command's whole job"
+					"why": "`warren serve` boots the server in-process \u2014 this command IS the server's entry point, so importing bootServer is the command's whole job"
 				}
 			]
 		},
@@ -84,11 +55,14 @@
 		},
 		{
 			"name": "github-api-literal-is-forge-only",
-			"why": "The api.github.com literal lives only inside the forge seam (docs/design/forge-contract.md §0). Domain code names a RepoRef, never a GitHub URL; a new literal outside src/forge/ is a leak across the seam. scripts/ joined `from` in warren-c042 when the walk widened to cover it.",
+			"why": "The api.github.com literal lives only inside the forge seam (docs/design/forge-contract.md \u00a70). Domain code names a RepoRef, never a GitHub URL; a new literal outside src/forge/ is a leak across the seam. scripts/ joined `from` in warren-c042 when the walk widened to cover it.",
 			"from": ["src/", "scripts/"],
 			"forbidPattern": "api\\.github\\.com",
 			"allow": [
-				{ "path": "src/forge/", "why": "the forge seam itself — it owns the GitHub transport" }
+				{
+					"path": "src/forge/",
+					"why": "the forge seam itself \u2014 it owns the GitHub transport"
+				}
 			]
 		},
 		{
@@ -103,16 +77,19 @@
 				"@octokit/request"
 			],
 			"allow": [
-				{ "path": "src/forge/", "why": "the seam itself" },
+				{
+					"path": "src/forge/",
+					"why": "the seam itself"
+				},
 				{
 					"path": "scripts/acceptance/lib/github.ts",
-					"why": "the acceptance harness's GitHub helper deliberately reuses the seam's header builder and GITHUB_API_BASE instead of carrying a fifth copy (warren-2740) — it adds no new transport"
+					"why": "the acceptance harness's GitHub helper deliberately reuses the seam's header builder and GITHUB_API_BASE instead of carrying a fifth copy (warren-2740) \u2014 it adds no new transport"
 				}
 			]
 		},
 		{
 			"name": "ui-is-a-browser-consumer",
-			"why": "The UI is a Vite browser bundle. It consumes the import-nothing kernel (src/core/) and the SDK's browser-safe NDJSON reader, and nothing else in src/: any other module drags bun:sqlite or drizzle toward the browser. tsconfig.app.json's `include` list failing with TS6307 is a build accident, not a seam guard — this rule is the guard. Mirrors AGENTS.md: the UI consumes src/core, its own code, and the re-exported client types.",
+			"why": "The UI is a Vite browser bundle. It consumes the import-nothing kernel (src/core/) and the SDK's browser-safe NDJSON reader, and nothing else in src/: any other module drags bun:sqlite or drizzle toward the browser. tsconfig.app.json's `include` list failing with TS6307 is a build accident, not a seam guard \u2014 this rule is the guard. Mirrors AGENTS.md: the UI consumes src/core, its own code, and the re-exported client types.",
 			"from": ["src/ui/"],
 			"forbidImports": ["src/"],
 			"exceptImports": ["src/ui/", "src/core/", "src/client/ndjson.ts"]

@@ -37,8 +37,7 @@ export class ForgeConfigError extends WarrenError {
 /**
  * Provider-neutral HTTP status for a seam-level `ForgeError`, keyed by its
  * `ForgeErrorKind`, so the HTTP layer can render `{code, message, hint}`
- * without an `instanceof` against any provider class. Mirrors
- * `RUNTIME_BACKEND_STATUS_BY_CODE` (warren-36cb): kinds the domain caused
+ * without an `instanceof` against any provider class. Kinds the domain caused
  * map to 4xx (`no_credential`/`unauthorized` → 401, `forbidden` → 403,
  * `not_found` → 404, `conflict` → 409, `rate_limited` → 429,
  * `push_protected` → 422, `unsupported` → 424 — the request is

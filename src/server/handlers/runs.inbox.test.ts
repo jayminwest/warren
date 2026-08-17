@@ -1,11 +1,11 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { BurrowClient } from "../../burrow-client/index.ts";
 import { openDatabase, type WarrenDb } from "../../db/client.ts";
 import { createRepos, type Repos } from "../../db/repos/index.ts";
+import { FakeProvider } from "../../runtime/fake/fake-provider.ts";
 import { bearerAuth, NO_AUTH, publicReadAuth } from "../auth.ts";
 import { startServer } from "../server.ts";
 import type { ServeHandle } from "../types.ts";
-import { depsFor, silentLogger, stub, tcpUrl } from "./runs.test-helpers.ts";
+import { depsFor, silentLogger, tcpUrl } from "./runs.test-helpers.ts";
 
 /**
  * HTTP-layer coverage for `GET /runs/:id/inbox` — the in-pod steering poll
@@ -15,13 +15,8 @@ import { depsFor, silentLogger, stub, tcpUrl } from "./runs.test-helpers.ts";
  */
 
 /** A burrow client that 404s everything — the inbox poll never touches burrow. */
-function inertBurrowClient(): BurrowClient {
-	return new BurrowClient({
-		config: { transport: { kind: "unix", path: "/tmp/x.sock" } },
-		fetch: stub(
-			async () => new Response(JSON.stringify({ error: { code: "not_found" } }), { status: 404 }),
-		),
-	});
+function inertBurrowClient(): FakeProvider {
+	return new FakeProvider();
 }
 
 describe("GET /runs/:id/inbox — HTTP handler", () => {

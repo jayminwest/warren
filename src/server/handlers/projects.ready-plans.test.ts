@@ -1,11 +1,11 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { BurrowClient } from "../../burrow-client/index.ts";
 import { openDatabase, type WarrenDb } from "../../db/client.ts";
 import { createRepos, type Repos } from "../../db/repos/index.ts";
+import { FakeProvider } from "../../runtime/fake/fake-provider.ts";
 import { NO_AUTH } from "../auth.ts";
 import { startServer } from "../server.ts";
 import type { ServeHandle, ServerDeps } from "../types.ts";
-import { depsFor, silentLogger, stub, tcpUrl } from "./projects.test-helpers.ts";
+import { depsFor, silentLogger, tcpUrl } from "./projects.test-helpers.ts";
 
 interface ReadyPlanWire {
 	id: string;
@@ -92,11 +92,8 @@ describe("GET /projects/:id/ready-plans — ready-to-dispatch plans (warren-f716
 		await db.close();
 	});
 
-	function silentBurrow(): BurrowClient {
-		return new BurrowClient({
-			config: { transport: { kind: "unix", path: "/tmp/x.sock" } },
-			fetch: stub(async () => new Response("{}", { status: 200 })),
-		});
+	function silentBurrow(): FakeProvider {
+		return new FakeProvider();
 	}
 
 	async function depsWithSpawn(spawn: SpawnFn): Promise<ServerDeps> {

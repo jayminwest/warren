@@ -9,13 +9,12 @@
  * `tokens_cache_read` / `tokens_cache_write` columns, the same way pi
  * runs do.
  *
- * The acceptance harness overrides burrow's built-in `claude-code`
- * runtime (which would otherwise invoke the real `claude` CLI and
- * require an Anthropic API key) with a custom AgentRuntime in
- * `burrow-with-stub.ts` — declarative spawn into
- * `tools/claude-code-stub-agent.sh`, event parsing via burrow's real
- * `parseJsonlClaude`. The stub emits a fixed-shape stream-json result
- * envelope so cost assertions are deterministic.
+ * The acceptance harness injects a stub `claude` binary via a PATH
+ * shim (lib/stub-agent/claude-code-path-shim.sh, warren-0f18), so no
+ * real Anthropic API key is needed. The shim emits a fixed-shape
+ * stream-json result envelope that warren's own parseJsonlClaude
+ * (src/runtime/adapters/parsers/) reads, so cost assertions are
+ * deterministic.
  */
 
 import {
@@ -75,7 +74,7 @@ export const scenario: Scenario = {
 	title:
 		"claude-code cost smoke — POST /runs agent=claude-code populates cost_usd/tokens_* on terminal",
 	// Same constraint as 16: needs the host-side sample project + the
-	// claude-code stub registered in burrow-with-stub.ts.
+	// claude-code PATH-shim stub (fixtures shim-bin, warren-ea0a).
 	modes: ["in-proc"],
 	async run(ctx) {
 		const http = new WarrenHttp({ baseUrl: ctx.warrenUrl, token: ctx.token });

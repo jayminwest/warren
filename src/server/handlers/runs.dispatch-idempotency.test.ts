@@ -1,12 +1,13 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { BurrowClient } from "../../burrow-client/index.ts";
 import { openDatabase, type WarrenDb } from "../../db/client.ts";
 import { createRepos, type Repos } from "../../db/repos/index.ts";
+import type { RunHandle, RunSpec } from "../../runtime/contract.ts";
+import { FakeProvider } from "../../runtime/fake/fake-provider.ts";
 import { NO_AUTH } from "../auth.ts";
 import { IdempotencyStore } from "../idempotency.ts";
 import { startServer } from "../server.ts";
 import type { ServeHandle, ServerDeps } from "../types.ts";
-import { depsFor, silentLogger, stub, tcpUrl } from "./runs.test-helpers.ts";
+import { depsFor, silentLogger, tcpUrl } from "./runs.test-helpers.ts";
 
 /**
  * `POST /runs` idempotency (warren-d525). A duplicate delivery carrying
@@ -15,71 +16,30 @@ import { depsFor, silentLogger, stub, tcpUrl } from "./runs.test-helpers.ts";
  */
 
 /**
- * Burrow client that mints a FRESH burrow + run id on every `POST /burrows`
- * so two real spawns don't collide on a duplicate primary key. The
+ * Provider fake that mints a FRESH sandbox + run id on every `create` so two
+ * real spawns don't collide on a duplicate primary key. The
  * `burrowCreateCount` it returns is the spawn signal the dedupe assertions
- * key on: one logical dispatch must hit `POST /burrows` exactly once.
+ * key on: one logical dispatch must reach `create` exactly once.
  */
 function countingBurrowClient(workspacePath: string): {
-	client: BurrowClient;
+	client: FakeProvider;
 	burrowCreateCount: () => number;
 } {
-	let n = 0;
-	const client = new BurrowClient({
-		config: { transport: { kind: "unix", path: "/tmp/x.sock" } },
-		fetch: stub(async (input, init) => {
-			const url = new URL(String(input), "http://localhost");
-			const path = url.pathname;
-			const method = init?.method ?? "GET";
-			if (method === "POST" && path === "/burrows") {
-				n += 1;
-				const id = `bur_${String(n).padStart(12, "0")}`;
-				return new Response(
-					JSON.stringify({
-						id,
-						name: "burrow",
-						kind: "task",
-						projectRoot: "/data/projects/x/y",
-						branch: "main",
-						baseBranch: "main",
-						originUrl: "https://github.com/x/y.git",
-						workspacePath,
-						provider: "local",
-						sandbox: { network: "open" },
-						state: "running",
-						createdAt: "2026-05-08T12:00:00Z",
-						updatedAt: "2026-05-08T12:00:00Z",
-					}),
-					{ status: 201, headers: { "content-type": "application/json" } },
-				);
-			}
-			const burrowRunsMatch = path.match(/^\/burrows\/(bur_\w+)\/runs$/);
-			if (method === "POST" && burrowRunsMatch) {
-				return new Response(
-					JSON.stringify({
-						id: `run_${String(n).padStart(12, "0")}`,
-						burrowId: burrowRunsMatch[1],
-						agentId: "refactor-bot",
-						prompt: "hello",
-						resumeOfRunId: null,
-						state: "queued",
-						exitCode: null,
-						errorMessage: null,
-						metadataJson: null,
-						queuedAt: "2026-05-08T12:00:01Z",
-						startedAt: null,
-						completedAt: null,
-					}),
-					{ status: 201, headers: { "content-type": "application/json" } },
-				);
-			}
-			return new Response(
-				JSON.stringify({ error: { code: "not_found", message: `unmatched ${method} ${path}` } }),
-				{ status: 404, headers: { "content-type": "application/json" } },
-			);
-		}),
-	});
-	return { client, burrowCreateCount: () => n };
+	class CountingProvider extends FakeProvider {
+		private n = 0;
+		override create(spec: RunSpec): Promise<RunHandle> {
+			this.n += 1;
+			const id = `bur_${String(this.n).padStart(12, "0")}`;
+			this.plan.sandboxId = id;
+			this.plan.providerRunId = `run_${String(this.n).padStart(12, "0")}`;
+			return super.create(spec);
+		}
+	}
+	const client = new CountingProvider({ workspacePath });
+	return {
+		client,
+		burrowCreateCount: () => client.calls.filter((c) => c.path === "/burrows").length,
+	};
 }
 
 interface DispatchResponse {

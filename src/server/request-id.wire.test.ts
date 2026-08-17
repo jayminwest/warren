@@ -6,12 +6,11 @@
  */
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { BurrowClient } from "../burrow-client/index.ts";
 import { openDatabase, type WarrenDb } from "../db/client.ts";
 import { createRepos, type Repos } from "../db/repos/index.ts";
 import { FakeForge } from "../forge/fake/fake-forge.ts";
 import { RunEventBroker } from "../runs/index.ts";
-import { resolveRuntimeProvider } from "../runtime/registry.ts";
+import { FakeProvider } from "../runtime/fake/fake-provider.ts";
 import { bearerAuth, NO_AUTH } from "./auth.ts";
 import { createBridgeRegistry } from "./bridges.ts";
 import { startServer } from "./server.ts";
@@ -35,25 +34,18 @@ function captureLogger(level: "info" | "warn" | "error") {
 	return { events, logger };
 }
 
-function stubFetch(): typeof fetch {
-	return (async () => new Response(JSON.stringify({ ok: true }), { status: 200 })) as never;
-}
-
 async function depsFor(repos: Repos): Promise<ServerDeps> {
-	const burrowClient = new BurrowClient({
-		config: { transport: { kind: "unix", path: "/tmp/x.sock" } },
-		fetch: stubFetch(),
-	});
+	const burrowClient = new FakeProvider();
 	const broker = new RunEventBroker();
 	return {
 		repos,
-		runtimeProvider: resolveRuntimeProvider({ burrowClient: () => burrowClient }),
+		runtimeProvider: burrowClient,
 		forge: new FakeForge(),
 		broker,
 		bridges: createBridgeRegistry({
 			repos,
 			broker,
-			runtimeProvider: resolveRuntimeProvider({ burrowClient: () => burrowClient }),
+			runtimeProvider: burrowClient,
 			bridge: async () => ({ written: 0, skipped: 0, errored: false }),
 		}),
 		projectsConfig: { root: "/tmp/projects", gitBinary: "git" },

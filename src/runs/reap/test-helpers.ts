@@ -1,5 +1,3 @@
-import { type Burrow, NotFoundError } from "@os-eco/burrow-cli";
-import { BurrowClient } from "../../burrow-client/index.ts";
 import { openDatabase, type WarrenDb } from "../../db/client.ts";
 import { createRepos, type Repos } from "../../db/repos/index.ts";
 import type { RunTerminalState } from "../../db/schema.ts";
@@ -7,32 +5,28 @@ import type { Forge, RepoRef } from "../../forge/contract.ts";
 import { FAKE_FORGE_KIND, FakeForge, type FakeForgeOptions } from "../../forge/fake/fake-forge.ts";
 import type { PreviewSidecarResolver } from "../../preview/launch/index.ts";
 import type { RuntimeProvider } from "../../runtime/contract.ts";
+import { FakeProvider } from "../../runtime/fake/fake-provider.ts";
 import { LocalSidecarRegistry } from "../../runtime/local/preview/registry.ts";
 import { createLocalSidecarsResolver } from "../../runtime/local/preview/sidecars.ts";
-import { LocalProvider } from "../../runtime/local/provider.ts";
 import type { SandboxProfile } from "../../sandbox/types.ts";
 import { RunEventBroker } from "../events.ts";
 import type { ReapExec, ReapFs, ReapRunResult } from "./types.ts";
 
 /**
- * Build the reap runtime seams for tests over a fake burrow client (warren-e24d).
- * Reap no longer takes a burrow client: it drives finalize/terminate/workspace
- * resolution through a `RuntimeProvider` and preview through a neutral sidecar
- * resolver. This helper wraps a `fakeBurrowClient` into the burrow-backed
- * `LocalProvider` (with the test's fake `fs`/`exec` so finalize runs against
- * them) plus the sidecar resolver, so a test spreads `...reapDeps(client, {
- * fs, exec })` where it used to pass `burrowClient`.
+ * Build the reap runtime seams for tests over a fake provider (warren-e24d;
+ * re-based onto `FakeProvider` in warren-ea0a when the burrow facade left).
+ * Reap drives finalize/terminate/workspace resolution through a
+ * `RuntimeProvider` and preview through a neutral sidecar resolver. This
+ * helper threads the test's fake `fs`/`exec` into the provider's finalize
+ * seams plus the sidecar resolver, so a test spreads `...reapDeps(provider,
+ * { fs, exec })`.
  */
 export function reapDeps(
-	client: BurrowClient,
+	provider: FakeProvider,
 	opts: { fs?: ReapFs; exec?: ReapExec } = {},
 ): { runtimeProvider: RuntimeProvider; previewSidecars: PreviewSidecarResolver } {
 	return {
-		runtimeProvider: new LocalProvider({
-			burrowClient: () => client,
-			...(opts.fs !== undefined ? { fs: opts.fs } : {}),
-			...(opts.exec !== undefined ? { exec: opts.exec } : {}),
-		}),
+		runtimeProvider: provider.withFinalizeSeams(opts.fs, opts.exec),
 		// warren-4bf3: the sidecar resolver is warren-owned now. Reap tests
 		// never spawn sidecars (launch is faked), so a registry over a stub
 		// profile lookup gives the resolver a real-but-empty facade — list
@@ -90,20 +84,6 @@ export function makeReapRunResult(overrides: Partial<ReapRunResult> = {}): ReapR
 		alreadyTerminal: false,
 		...overrides,
 	};
-}
-
-/**
- * Historical one-worker pool wrapper (warren-c0c9). Placement + the
- * workers/burrows tables were retired (warren-76c5 / warren-3743), so this is
- * now a pass-through kept for call-site stability; the `_repos` param is
- * vestigial.
- */
-export async function makePool(
-	client: BurrowClient,
-	_repos: Repos,
-	_workerName = "local",
-): Promise<BurrowClient> {
-	return client;
 }
 
 export interface FakeFs {
@@ -270,67 +250,62 @@ export function fakeExec(opts: FakeExecOpts = {}): FakeExec {
 
 export interface FakeBurrowClientOpts {
 	/**
-	 * Body the workspace-side seeds file (`.seeds/issues.jsonl`) returns
-	 * over `client.http.files.read`. `undefined` (default) makes the read
-	 * throw `NotFoundError` — i.e. the agent never created the file —
-	 * mirroring the no-op path. Pass a string to exercise the mirror code.
+	 * Body the workspace-side seeds file (`.seeds/issues.jsonl`) returns from
+	 * the provider's tracker-read seam. `undefined` (default) reads as absent
+	 * — i.e. the agent never created the file — mirroring the no-op path.
+	 * Pass a string to exercise the mirror code.
 	 */
 	seedsIssuesBody?: string;
 	/**
-	 * Body the workspace-side plans file (`.seeds/plans.jsonl`) returns
-	 * over `client.http.files.read`. `undefined` (default) makes the read
-	 * throw `NotFoundError`. Pass a string to exercise mirrorPlans.
+	 * Body the workspace-side plans file (`.seeds/plans.jsonl`) returns.
+	 * `undefined` (default) reads as absent. Pass a string to exercise
+	 * mirrorPlans.
 	 */
 	seedsPlansBody?: string;
-	/** Override `client.http.files.read` end-to-end (advanced). */
-	filesRead?: (burrowId: string, path: string) => Promise<{ contents: string }>;
+	/** Override the tracker-read seam end-to-end (advanced). */
+	filesRead?: (sandboxId: string, path: string) => Promise<{ contents: string }>;
 }
 
-export function fakeBurrowClient(burrow: Burrow, opts: FakeBurrowClientOpts = {}): BurrowClient {
-	const client = new BurrowClient({
-		config: { transport: { kind: "unix", path: "/tmp/x.sock" } },
-		fetch: (async () =>
-			new Response("{}", {
-				status: 200,
-				headers: { "content-type": "application/json" },
-			})) as unknown as typeof fetch,
+/**
+ * The sandbox fixture shape `fakeBurrowClient` consumes. Kept under the
+ * historical helper names (warren-ea0a): the record is the workspace slice
+ * the provider's `workspaceInfo` resolves.
+ */
+export interface FakeSandbox {
+	id: string;
+	workspacePath: string | null;
+	branch: string;
+}
+
+export function fakeBurrowClient(
+	sandbox: FakeSandbox,
+	opts: FakeBurrowClientOpts = {},
+): FakeProvider {
+	// A filesRead override propagates its throws verbatim — the finalize
+	// pipeline surfaces them as failed stages (only ABSENCE reads as null).
+	const readTracker =
+		opts.filesRead !== undefined
+			? async (relPath: string) => (await opts.filesRead?.(sandbox.id, relPath))?.contents ?? null
+			: async (relPath: string) => {
+					if (relPath === ".seeds/issues.jsonl") return opts.seedsIssuesBody ?? null;
+					if (relPath === ".seeds/plans.jsonl") return opts.seedsPlansBody ?? null;
+					return null;
+				};
+	return new FakeProvider({
+		sandboxId: sandbox.id,
+		workspacePath: sandbox.workspacePath,
+		branch: sandbox.branch,
+		readTracker,
 	});
-	(client.http.burrows as unknown as { get: (id: string) => Promise<Burrow> }).get = async () =>
-		burrow;
-	const filesRead =
-		opts.filesRead ??
-		(async (_burrowId: string, path: string) => {
-			if (path === ".seeds/issues.jsonl" && opts.seedsIssuesBody !== undefined) {
-				return { contents: opts.seedsIssuesBody };
-			}
-			if (path === ".seeds/plans.jsonl" && opts.seedsPlansBody !== undefined) {
-				return { contents: opts.seedsPlansBody };
-			}
-			throw new NotFoundError(`file not found: ${path}`);
-		});
-	(
-		client.http.files as unknown as {
-			read: (burrowId: string, path: string) => Promise<{ contents: string }>;
-		}
-	).read = filesRead;
-	return client;
 }
 
-export function makeBurrow(overrides: Partial<Burrow> = {}): Burrow {
-	const now = new Date(2026, 4, 8, 12, 0, 0);
+export function makeBurrow(overrides: Partial<FakeSandbox> = {}): FakeSandbox {
 	return {
 		id: "bur_aaaaaaaaaaaa",
-		state: "active",
-		projectRoot: "/data/projects/x/y",
 		workspacePath: "/data/burrow/ws",
 		branch: "agent/refactor-bot/run-1",
-		baseBranch: "main",
-		network: "restricted",
-		createdAt: now,
-		updatedAt: now,
-		destroyedAt: null,
 		...overrides,
-	} as unknown as Burrow;
+	};
 }
 
 export interface Ctx {
@@ -419,4 +394,4 @@ export function stubForge(overrides: Partial<Forge> = {}): Forge {
 	};
 }
 
-export { type Burrow, BurrowClient, createRepos, NotFoundError, openDatabase, RunEventBroker };
+export { createRepos, openDatabase, RunEventBroker };

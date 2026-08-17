@@ -1,11 +1,10 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { BurrowClient } from "../../burrow-client/index.ts";
 import { type AnyWarrenDb, openDatabase, type WarrenDb } from "../../db/client.ts";
 import { createRepos, type Repos } from "../../db/repos/index.ts";
 import { FakeForge } from "../../forge/fake/fake-forge.ts";
 import { createPreviewAuth, type PreviewAuth } from "../../preview/cookie.ts";
 import { RunEventBroker } from "../../runs/index.ts";
-import { resolveRuntimeProvider } from "../../runtime/registry.ts";
+import { FakeProvider } from "../../runtime/fake/fake-provider.ts";
 import { bearerAuth } from "../auth.ts";
 import { createBridgeRegistry } from "../bridges.ts";
 import { startServer } from "../server.ts";
@@ -21,11 +20,8 @@ const silentLogger = {
 	debug() {},
 };
 
-function makeBurrowClient(): BurrowClient {
-	return new BurrowClient({
-		config: { transport: { kind: "unix", path: "/tmp/x.sock" } },
-		fetch: (async () => new Response(JSON.stringify({ ok: true }))) as unknown as typeof fetch,
-	});
+function makeBurrowClient(): FakeProvider {
+	return new FakeProvider();
 }
 
 async function depsFor(
@@ -39,7 +35,7 @@ async function depsFor(
 	const bridges = createBridgeRegistry({
 		repos,
 		broker,
-		runtimeProvider: resolveRuntimeProvider({ burrowClient: () => burrowClient }),
+		runtimeProvider: burrowClient,
 		bridge: async () => ({ written: 0, skipped: 0, errored: false }),
 	});
 	const previewExtras =
@@ -50,7 +46,7 @@ async function depsFor(
 				: { previewAuth, previewMode: "subdomain" as const, previewHost: HOST };
 	const deps: ServerDeps = {
 		repos,
-		runtimeProvider: resolveRuntimeProvider({ burrowClient: () => burrowClient }),
+		runtimeProvider: burrowClient,
 		forge: new FakeForge(),
 		broker,
 		bridges,

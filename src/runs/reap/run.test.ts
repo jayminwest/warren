@@ -2,8 +2,6 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { buildBurrowActivity, findStrandedBurrows } from "./gc.ts";
 import { reapRun } from "./index.ts";
 import {
-	type Burrow,
-	BurrowClient,
 	type Ctx,
 	createRepos,
 	fakeBurrowClient,
@@ -297,18 +295,9 @@ describe("reapRun", () => {
 		expect(skipped?.payloadJson).toMatchObject({ reason: "branch_push_failed" });
 	});
 
-	test("logs reap_failed when burrow lookup fails and skips file work", async () => {
-		const client = new BurrowClient({
-			config: { transport: { kind: "unix", path: "/tmp/x.sock" } },
-			fetch: (async () =>
-				new Response("{}", {
-					status: 200,
-					headers: { "content-type": "application/json" },
-				})) as unknown as typeof fetch,
-		});
-		(client.http.burrows as unknown as { get: () => Promise<Burrow> }).get = async () => {
-			throw new Error("burrow gone");
-		};
+	test("logs reap_failed when the workspace lookup fails and skips file work", async () => {
+		const client = fakeBurrowClient(makeBurrow());
+		client.plan.workspaceInfoError = new Error("burrow gone");
 		const e = fakeExec();
 		const result = await reapRun({
 			runId: ctx.runId,

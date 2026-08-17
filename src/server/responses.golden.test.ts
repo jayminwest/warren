@@ -14,8 +14,7 @@
  * producer was destabilised (and should be reverted) rather than the
  * goldens needing a refresh.
  *
- * Mirrors burrow's parser `__golden__/` convention (`burrow/src/runtime/
- * parsers/__golden__/`). Keep new golden directories named `__golden__/`
+ * Keep new golden directories named `__golden__/`
  * so the existing exclusions in `scripts/check-file-sizes.ts`,
  * `scripts/check-debt-markers.ts`, `.jscpd.json`, and `biome.jsonc` keep
  * applying.
@@ -24,12 +23,8 @@
 import { describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import {
-	NotFoundError as BurrowNotFoundError,
-	ValidationError as BurrowValidationError,
-} from "@os-eco/burrow-cli";
-import { BurrowUnreachableError } from "../burrow-client/errors.ts";
 import { NotFoundError, StateTransitionError, ValidationError } from "../core/errors.ts";
+import { RuntimeUnreachableError } from "../runtime/errors.ts";
 import {
 	forbidden,
 	methodNotAllowed,
@@ -88,17 +83,8 @@ const cases: ReadonlyArray<{ name: string; produce: () => Snapshot }> = [
 		produce: () => snapshot(renderError(new StateTransitionError("cannot cancel finished run"))),
 	},
 	{
-		name: "warren-burrow-unreachable",
-		produce: () => snapshot(renderError(new BurrowUnreachableError("socket closed"))),
-	},
-	{
-		name: "burrow-not-found-passthrough",
-		produce: () =>
-			snapshot(renderError(new BurrowNotFoundError("agent claude-code not installed"))),
-	},
-	{
-		name: "burrow-validation-passthrough",
-		produce: () => snapshot(renderError(new BurrowValidationError("bad body"))),
+		name: "warren-runtime-unreachable",
+		produce: () => snapshot(renderError(new RuntimeUnreachableError("socket closed"))),
 	},
 	{
 		name: "internal-error-from-error",

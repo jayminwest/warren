@@ -17,9 +17,9 @@
  *   2. Burrow's dispatcher reads `Run.metadataJson.frontmatter`, calls
  *      `piEnvPassthrough({frontmatter})`, and unions the matching
  *      provider key (OPENAI_API_KEY for provider='openai') onto the
- *      per-spawn SandboxProfile.envPassthrough (burrow-6f3f).
- *   3. The dispatcher's spawn step (here `noSandboxSpawn` in
- *      burrow-with-stub.ts) reads process.env for each name in
+ *      per-spawn SandboxProfile.envPassthrough (burrow-6f3f, lifted
+ *      into src/runtime/local/profile.ts).
+ *   3. The engine's spawn step reads process.env for each name in
  *      profile.envPassthrough and forwards them into the agent's
  *      env — so OPENAI_API_KEY lands inside the stub process.
  *   4. The pi stub emits `{"type":"env_keys_visible","keys":[...]}`
@@ -38,12 +38,11 @@
  * end-to-end proof that the warren↔burrow handoff is intact across
  * the burrow-cli 0.3.3 bump.
  *
- * Boot mode: in-proc only — relies on burrow-with-stub.ts to register
- * a pi-id runtime whose `envPassthrough = piEnvPassthrough` and whose
- * spawn path is `noSandboxSpawn` (which honors `profile.envPassthrough`
- * directly). Container mode runs the real pi binary against the real
- * piRuntime and is gated on a host with valid provider credentials —
- * out of scope here.
+ * Boot mode: in-proc only — relies on the pi PATH shim
+ * (lib/stub-agent/pi-path-shim.sh, warren-ea0a) and the profile's
+ * frontmatter-conditional envPassthrough (src/runtime/local/profile.ts).
+ * Container mode runs the real pi binary and is gated on a host with
+ * valid provider credentials — out of scope here.
  */
 
 import { join } from "node:path";
@@ -94,13 +93,13 @@ export const scenario: Scenario = {
 		"pi multi-provider env passthrough — providerOverride='openai' surfaces OPENAI_API_KEY in the spawned sandbox",
 	modes: ["in-proc"],
 	async run(ctx) {
-		// Boot a dedicated warren+burrow pair with OPENAI_API_KEY already
-		// in the child processes' env (warren-e376). The shared harness
-		// boot can't be used: burrow's noSandboxSpawn reads ITS OWN
-		// process.env for each name in profile.envPassthrough, and the
-		// shared burrow was spawned before any scenario ran — a
-		// process.env mutation here would never reach it (that was the
-		// nightly failure: the key silently never entered the sandbox).
+		// Boot a dedicated warren with OPENAI_API_KEY already in the child
+		// process's env (warren-e376). The shared harness boot can't be
+		// used: the engine's spawn reads warren's OWN process.env for each
+		// name in profile.envPassthrough, and the shared warren was spawned
+		// before any scenario ran — a process.env mutation here would never
+		// reach it (that was the nightly failure: the key silently never
+		// entered the sandbox).
 		let handle: BootHandle | undefined;
 		try {
 			handle = await bootInProc({
@@ -108,7 +107,12 @@ export const scenario: Scenario = {
 				token: ctx.token,
 				canopyRepoUrl: ctx.fixtures.canopyRepoUrl,
 				gitConfigPath: ctx.fixtures.gitConfigPath,
-				extraEnv: { OPENAI_API_KEY: TEST_OPENAI_KEY },
+				extraEnv: {
+					OPENAI_API_KEY: TEST_OPENAI_KEY,
+					// The internalized engine execs the bare name `pi`
+					// (warren-ea0a) — inject the stub via PATH shim.
+					PATH: `${ctx.fixtures.shimBinDir}:${process.env.PATH ?? ""}`,
+				},
 			});
 			const http = new WarrenHttp({ baseUrl: handle.warrenUrl, token: handle.token });
 

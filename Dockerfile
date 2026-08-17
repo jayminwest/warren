@@ -2,20 +2,19 @@
 #
 # Two-stage build:
 #   1. ui-builder — build the React/Vite SPA into src/ui/dist.
-#   2. runtime    — bun + bwrap + uidmap, warren source, burrow itself
-#                   plus the bundled os-eco CLIs warren shells out to for
-#                   opt-in features (mulch/seeds), and the
-#                   SPA bundle copied from stage 1.
+#   2. runtime    — bun + bwrap + uidmap, warren source, plus the bundled
+#                   os-eco CLIs warren shells out to for opt-in features
+#                   (mulch/seeds), and the SPA bundle copied from stage 1.
 #
 # The supervisor (src/supervisor/main.ts) is the ENTRYPOINT — it owns
-# spawning + signal-forwarding + restart policy for `burrow serve` and
-# warren's HTTP server. See docs/design/runtime-and-supervisor.md for the contract.
+# spawning + signal-forwarding for warren's HTTP server. See
+# docs/design/runtime-and-supervisor.md for the contract.
 #
 # The four `bwrap` security flags (apparmor=unconfined, seccomp=unconfined,
 # systempaths=unconfined, cap_add=SYS_ADMIN) are applied by the orchestrator
 # (docker-compose.yml in the `local` topology), not the image. Under the
 # `k8s` runtime there is no bwrap — the pod boundary is the sandbox. See
-# docs/design/runtime-and-supervisor.md and burrow's DEPLOY.md for the rationale.
+# docs/design/runtime-and-supervisor.md for the rationale.
 
 # ---------- stage 1: build the UI ----------
 #
@@ -45,10 +44,10 @@ RUN bun run build
 # ---------- stage 2: runtime ----------
 FROM oven/bun:1.2
 
-# bubblewrap is the sandbox primitive burrow uses (see burrow DEPLOY.md);
-# uidmap provides newuidmap/newgidmap for the userns nesting. ca-certificates
-# is needed by git over https. curl is kept around for first-run diagnostics
-# against the burrow socket (saves having to bun -e fetch() workarounds).
+# bubblewrap is the sandbox primitive warren's own sandbox uses
+# (src/sandbox/, warren-5af7); uidmap provides newuidmap/newgidmap for the
+# userns nesting. ca-certificates is needed by git over https. curl is kept
+# around for first-run diagnostics.
 #
 # nodejs (real Node, not the bun-shim) is required by preview sidecars
 # (warren-a82b): per-run JS dev servers (`pnpm dev`, `npm run dev`, `next`,
@@ -59,9 +58,9 @@ FROM oven/bun:1.2
 # Next.js / Remix project on startup. NodeSource ships a recent LTS — bookworm's
 # stock `nodejs` package is too old (18.19) for current frontend stacks.
 #
-# netcat-openbsd is required by burrow's inbound port-forwarder (../burrow/SPEC.md §8.7,
-# `../burrow/src/provider/local/inbound-forward.ts`): the forwarder accepts
-# host-loopback connections and `nsenter`s into the burrow netns to relay
+# netcat-openbsd is required by warren's inbound port-forwarder
+# (src/sandbox/inbound-forward.ts): the forwarder accepts
+# host-loopback connections and `nsenter`s into the sandbox netns to relay
 # via `nc 127.0.0.1 <sandboxPort>`. Without it, every accepted connection's
 # relay spawn fails, the host socket gets terminated, and any client (the
 # warren readiness probe in particular) just sees connection drops until
@@ -82,8 +81,7 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 # Bundled CLIs warren shells out to during run setup, reap, and project
-# management, plus burrow itself (the supervisor execs `burrow serve`).
-# The two os-eco CLIs (seeds/mulch) back warren's opt-in
+# management. The two os-eco CLIs (seeds/mulch) back warren's opt-in
 # features — they ship in every image so the features light up the moment
 # a project or operator opts in, with no separate install. Versions track
 # each tool's current release; bumping them is a deliberate image-rebuild
@@ -97,15 +95,13 @@ RUN apt-get update \
 # module a project's deps reach for resolves correctly.
 #
 # BUN_INSTALL=/usr/local relocates the global package store from the default
-# /root/.bun/install/global into /usr/local/install/global. Burrow's bwrap
-# profile only ro-binds /usr, /etc, /lib, /lib64, /bin, /sbin, /opt (see
-# burrow src/provider/local/bwrap.ts SYSTEM_RO_MOUNTS) — /root is not visible
-# inside the sandbox, so symlinks at /usr/local/bin/{sd,ml,burrow}
+# /root/.bun/install/global into /usr/local/install/global. The sandbox bwrap
+# profile only ro-binds /usr, /etc, /lib, /lib64, /bin, /sbin, /opt — /root is
+# not visible inside the sandbox, so symlinks at /usr/local/bin/{sd,ml}
 # pointing into /root/.bun would dangle for the UID-1000 agent (warren-1eaa).
 # /usr/local sits under /usr so the symlink targets resolve inside the sandbox.
 ENV BUN_INSTALL=/usr/local
 RUN bun install -g \
-    @os-eco/burrow-cli@0.3.15 \
     @os-eco/seeds-cli@0.5.13 \
     @os-eco/mulch-cli@0.10.7 \
     @anthropic-ai/claude-code@2.1.150 \
@@ -115,7 +111,7 @@ RUN bun install -g \
 # bun install -g skips lifecycle scripts by default, so claude-code's
 # postinstall (which downloads the platform-native `claude` binary) doesn't
 # run. Invoke it explicitly so /usr/local/bin/claude is wired up before
-# burrow tries to spawn it.
+# a run tries to spawn it.
 RUN bun run /usr/local/install/global/node_modules/@anthropic-ai/claude-code/install.cjs
 
 # Pi ships dist/cli.js with a `#!/usr/bin/env node` shebang. Historically we
@@ -153,27 +149,10 @@ RUN ln -s /app/src/cli/main.ts /usr/local/bin/warren \
 
 # Default data root — the deploy mounts a persistent volume here.
 ENV WARREN_DATA_DIR=/data
-ENV WARREN_BURROW_SOCKET=/var/run/burrow.sock
 
-# Pin burrow's data dir onto the same persistent volume warren uses.
-# Burrow's default is XDG_DATA_HOME/burrow (~/.local/share/burrow on the
-# container's writable overlay), which gets wiped on every redeploy and
-# orphans any in-flight runs whose warren-side state still says 'running'
-# but whose burrow-side execution state was the freshly-erased SQLite
-# (warren-0375). BURROW_DATA_DIR is read by burrow's path resolver
-# (node_modules/@os-eco/burrow-cli/src/config/paths.ts) ahead of
-# XDG_DATA_HOME and lands db.sqlite, archive/, projects/ under /data.
-# The supervisor's burrow child inherits this env (src/supervisor/main.ts).
-ENV BURROW_DATA_DIR=/data/burrow
-
-# /data is a persistence boundary (sqlite + cloned project
-# repos + burrow's db.sqlite under /data/burrow). /var/run is where the
-# supervisor binds burrow's unix socket; the directory must exist for
-# `burrow serve --socket /var/run/burrow.sock`. /data/burrow itself is
-# created by burrow's db client (mkdir -p of dbPath's dirname) on first
-# open — it doesn't need pre-creation here (it'd be shadowed by the
-# volume mount anyway).
-RUN mkdir -p /data /var/run
+# /data is a persistence boundary (sqlite + cloned project repos + the
+# local backend's run state).
+RUN mkdir -p /data
 
 EXPOSE 8080
 

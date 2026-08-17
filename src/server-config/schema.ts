@@ -5,7 +5,7 @@
  * The schema is an empty `.strict()` object today: the `[[workers]]`
  * block that once lived here was retired with the K8s migration
  * (warren-288f; multi-worker pooling is gone, warren's self-host backend
- * is a single local burrow built from `WARREN_BURROW_*` env vars).
+ * is the in-process local engine).
  * `.strict()` means any top-level key in a `warren.toml` — including a
  * stray `[[workers]]` — is rejected with a field-level ValidationError
  * until its own seed grows the schema.

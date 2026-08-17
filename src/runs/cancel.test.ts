@@ -1,127 +1,66 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import type { Run as BurrowRun } from "@os-eco/burrow-cli";
-import { BurrowClient, BurrowUnreachableError } from "../burrow-client/index.ts";
 import { NotFoundError, ValidationError } from "../core/errors.ts";
+import type { RunState } from "../core/wire.ts";
 import { openDatabase, type WarrenDb } from "../db/client.ts";
 import { createRepos, type Repos } from "../db/repos/index.ts";
 import type { RunTerminalState } from "../db/schema.ts";
 import type { RuntimeProvider } from "../runtime/contract.ts";
-import { resolveRuntimeProvider } from "../runtime/registry.ts";
+import { RuntimeRunNotFoundError, RuntimeUnreachableError } from "../runtime/errors.ts";
+import {
+	type FakeProvider,
+	type FakeProviderCall,
+	makeFakeProvider,
+} from "../runtime/fake/fake-provider.ts";
 import { cancelRun } from "./cancel.ts";
 import { RunEventBroker } from "./events.ts";
 import type { ReapRunResult } from "./reap/index.ts";
 import { makeReapRunResult } from "./reap/test-helpers.ts";
 
 /**
- * One-worker pool wired to a stub burrow client (warren-c0c9). Upserts a
- * `local` worker row so `pool.clientFor` resolves cleanly.
+ * The provider seam `cancelRun` speaks (warren-b223; re-based onto the
+ * contract-typed `FakeProvider` in warren-ea0a when the burrow facade left).
+ * `cancelRun` calls only `provider.cancel` / `provider.status`; the fake
+ * records the cancel and reports the canned post-cancel phase, so the corner
+ * cases below assert on the same provider-boundary behavior as before.
  */
-async function makePool(
-	client: BurrowClient,
-	_repos: Repos,
-	_workerName = "local",
-): Promise<BurrowClient> {
+async function makeProvider(client: FakeProvider, _repos: Repos): Promise<RuntimeProvider> {
 	return client;
-}
-
-/**
- * Build the runtime-provider seam over the single-`local`-worker pool
- * (pl-829f step 13 / warren-b223). `cancelRun` speaks only `provider.cancel` /
- * `provider.status` now; the real LocalProvider still resolves the sole burrow
- * worker and drives the same burrow HTTP the pre-seam client did, so the corner
- * cases below assert on the exact same wire the stub records.
- */
-async function makeProvider(client: BurrowClient, repos: Repos): Promise<RuntimeProvider> {
-	const pool = await makePool(client, repos);
-	return resolveRuntimeProvider({ burrowClient: () => pool });
 }
 
 function reapStub(outcome: RunTerminalState): ReapRunResult {
 	return makeReapRunResult({ state: outcome });
 }
 
-function stub(
-	impl: (input: URL | RequestInfo, init?: RequestInit) => Promise<Response>,
-): typeof fetch {
-	return impl as unknown as typeof fetch;
-}
-
-function jsonResponse(status: number, body: unknown): Response {
-	return new Response(JSON.stringify(body), {
-		status,
-		headers: { "content-type": "application/json" },
-	});
-}
-
-interface RecordedCall {
-	method: string;
-	path: string;
-	body: unknown;
-}
-
 interface CancelFetchPlan {
-	run?: Partial<BurrowRun>;
+	/** Post-cancel phase `provider.status` reports (default "cancelled"). */
+	run?: { state?: RunState };
+	/** 404 ⇒ backend run-not-found; 500 ⇒ a non-not-found backend failure. */
 	status?: number;
-	body?: unknown;
 }
 
 function makeBurrowClient(plan: CancelFetchPlan = {}): {
-	client: BurrowClient;
-	calls: RecordedCall[];
+	client: FakeProvider;
+	calls: FakeProviderCall[];
 } {
-	const calls: RecordedCall[] = [];
-	const run: BurrowRun = {
-		id: "run_zzzzzzzzzzzz",
-		burrowId: "bur_aaaaaaaaaaaa",
-		agentId: "refactor-bot",
-		prompt: "p",
-		resumeOfRunId: null,
-		state: "cancelled",
-		exitCode: null,
-		errorMessage: null,
-		metadataJson: null,
-		queuedAt: new Date("2026-05-08T12:00:00Z"),
-		startedAt: null,
-		completedAt: new Date("2026-05-08T12:00:01Z"),
-		...plan.run,
-	};
-	const fetchImpl = stub(async (input, init) => {
-		const url = new URL(String(input), "http://localhost");
-		const path = url.pathname;
-		const method = init?.method ?? "GET";
-		const reqBody = typeof init?.body === "string" ? JSON.parse(init.body) : undefined;
-		calls.push({ method, path, body: reqBody });
-		if (method === "POST" && path.match(/^\/runs\/[^/]+\/cancel$/)) {
-			return jsonResponse(plan.status ?? 200, plan.body ?? serializeRun(run));
-		}
-		// warren-1f56: cancel now re-reads the post-cancel phase via
-		// `provider.status()`, which drives `runs.get` + a bounded `events`
-		// replay. Route both so the status snapshot resolves against the same
-		// (post-cancel) run row.
-		if (method === "GET" && /^\/burrows\/[^/]+\/events$/.test(path)) {
-			return new Response("", { status: 200, headers: { "content-type": "application/x-ndjson" } });
-		}
-		if (method === "GET" && /^\/runs\/[^/]+$/.test(path)) {
-			return jsonResponse(200, serializeRun(run));
-		}
-		return jsonResponse(404, {
-			error: { code: "not_found", message: `unmatched ${method} ${path}` },
-		});
+	const cancelError =
+		plan.status === 404
+			? new RuntimeRunNotFoundError("run not found: rb_a", {
+					recoveryHint: "the run is unknown to the backend; terminalize the warren row",
+				})
+			: plan.status !== undefined
+				? new Error("boom")
+				: undefined;
+	const client = makeFakeProvider({
+		statusValue: {
+			phase: plan.run?.state ?? "cancelled",
+			exitCode: 0,
+			lastEventSeq: 0,
+			lastEventTs: null,
+			exists: true,
+		},
+		...(cancelError !== undefined ? { cancelError } : {}),
 	});
-	const client = new BurrowClient({
-		config: { transport: { kind: "unix", path: "/tmp/x.sock" } },
-		fetch: fetchImpl,
-	});
-	return { client, calls };
-}
-
-function serializeRun(r: BurrowRun): unknown {
-	return {
-		...r,
-		queuedAt: r.queuedAt.toISOString(),
-		startedAt: r.startedAt?.toISOString() ?? null,
-		completedAt: r.completedAt?.toISOString() ?? null,
-	};
+	return { client, calls: client.calls };
 }
 
 describe("cancelRun", () => {
@@ -439,18 +378,14 @@ describe("cancelRun", () => {
 		expect(requested?.burrowEventSeq).toBe(13);
 	});
 
-	test("transport errors are mapped to BurrowUnreachableError", async () => {
+	test("transport errors surface as RuntimeUnreachableError", async () => {
 		const runId = await createRun({ state: "running" });
-		const fetchImpl = stub(async () => {
-			throw new TypeError("fetch failed");
-		});
-		const client = new BurrowClient({
-			config: { transport: { kind: "unix", path: "/tmp/x.sock" } },
-			fetch: fetchImpl,
+		const client = makeFakeProvider({
+			cancelError: new RuntimeUnreachableError("fetch failed"),
 		});
 		await expect(
 			cancelRun({ runId, repos, runtimeProvider: await makeProvider(client, repos) }),
-		).rejects.toBeInstanceOf(BurrowUnreachableError);
+		).rejects.toBeInstanceOf(RuntimeUnreachableError);
 		// No audit event was emitted, and the run is still running.
 		expect(await repos.events.countByRun(runId)).toBe(0);
 		expect((await repos.runs.require(runId)).state).toBe("running");
@@ -458,10 +393,7 @@ describe("cancelRun", () => {
 
 	test("warren-b1a9: backend run-not-found reconciles the run to failed/sandbox_run_lost", async () => {
 		const runId = await createRun({ state: "running" });
-		const { client } = makeBurrowClient({
-			status: 404,
-			body: { error: { code: "not_found", message: "run not found: rb_a" } },
-		});
+		const { client } = makeBurrowClient({ status: 404 });
 		const result = await cancelRun({
 			runId,
 			repos,
@@ -482,10 +414,7 @@ describe("cancelRun", () => {
 
 	test("non-not-found backend errors still propagate without emitting an audit event", async () => {
 		const runId = await createRun({ state: "running" });
-		const { client } = makeBurrowClient({
-			status: 500,
-			body: { error: { code: "internal", message: "boom" } },
-		});
+		const { client } = makeBurrowClient({ status: 500 });
 		await expect(
 			cancelRun({ runId, repos, runtimeProvider: await makeProvider(client, repos) }),
 		).rejects.toThrow();

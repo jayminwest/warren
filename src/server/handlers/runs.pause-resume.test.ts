@@ -1,14 +1,13 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import type { Run as BurrowRun, Message } from "@os-eco/burrow-cli";
-import { BurrowClient } from "../../burrow-client/index.ts";
 import { INBOX_PRIORITIES } from "../../core/wire.ts";
 import { openDatabase, type WarrenDb } from "../../db/client.ts";
 import { createRepos, type Repos } from "../../db/repos/index.ts";
 import type { AutoOpenPrConfig } from "../../runs/pr.ts";
+import { FakeProvider } from "../../runtime/fake/fake-provider.ts";
 import { NO_AUTH } from "../auth.ts";
 import { startServer } from "../server.ts";
 import type { ServeHandle } from "../types.ts";
-import { depsFor, silentLogger, stub, tcpUrl } from "./runs.test-helpers.ts";
+import { depsFor, silentLogger, tcpUrl } from "./runs.test-helpers.ts";
 
 /**
  * HTTP-layer coverage for `steerRunHandler` and `cancelRunHandler`
@@ -36,117 +35,29 @@ interface PauseResumeFixture {
 	burrowRunId: string;
 }
 
-function jsonResponse(status: number, body: unknown): Response {
-	return new Response(JSON.stringify(body), {
-		status,
-		headers: { "content-type": "application/json" },
-	});
-}
-
-function serializeMessage(m: Message): unknown {
-	return {
-		...m,
-		createdAt: m.createdAt.toISOString(),
-		deliveredAt: m.deliveredAt?.toISOString() ?? null,
-	};
-}
-
-function serializeRun(r: BurrowRun): unknown {
-	return {
-		...r,
-		queuedAt: r.queuedAt.toISOString(),
-		startedAt: r.startedAt?.toISOString() ?? null,
-		completedAt: r.completedAt?.toISOString() ?? null,
-	};
-}
-
 /**
- * Burrow client whose fetch stub answers the two endpoints the pause/
- * resume handlers hit — `POST /burrows/:id/inbox` (steer) and
- * `POST /runs/:id/cancel` (cancel) — and records every call so tests can
- * assert on the forwarded wire body. Anything else falls through to a 404
- * so an accidental extra wire call surfaces loudly.
+ * Provider fake for the pause/resume handler tests (warren-ea0a). Steer
+ * records the inbox call and echoes the body on the returned message; the
+ * status snapshot stays `running` so cancel keeps off the inline-reap path
+ * (warren-a69a). Every call is recorded so tests can assert on the
+ * forwarded body.
  */
-/** A non-terminal (`running`) burrow run — keeps cancel off the inline reap path. */
-function runningBurrowRun(fix: PauseResumeFixture): BurrowRun {
-	return {
-		id: fix.burrowRunId,
-		burrowId: fix.burrowId,
-		agentId: "refactor-bot",
-		prompt: "p",
-		resumeOfRunId: null,
-		state: "running",
-		exitCode: null,
-		errorMessage: null,
-		metadataJson: null,
-		queuedAt: new Date("2026-05-08T12:00:00Z"),
-		startedAt: null,
-		completedAt: null,
-	};
-}
-
-/** Burrow inbox-send response for the steer path. */
-function inboxSendResponse(fix: PauseResumeFixture, reqBody: unknown): Response {
-	const body =
-		typeof reqBody === "object" && reqBody !== null
-			? String((reqBody as { body?: unknown }).body ?? "")
-			: "";
-	const message: Message = {
-		id: "msg_aaaaaaaaaaaa",
-		burrowId: fix.burrowId,
-		fromActor: "operator",
-		body,
-		priority: "normal",
-		state: "unread",
-		deliveredAtRunId: null,
-		createdAt: new Date("2026-05-08T12:00:00Z"),
-		deliveredAt: null,
-	};
-	return jsonResponse(201, serializeMessage(message));
-}
-
-/**
- * Route one burrow request for the pause/resume handler tests. Steer hits the
- * inbox; cancel hits `POST /runs/:id/cancel` then re-reads phase via
- * `provider.status()` (runs.get + a bounded events replay, warren-1f56) — both
- * resolve the run as still `running` to keep these tests off the inline-reap
- * path (warren-a69a).
- */
-function routePauseResume(
-	fix: PauseResumeFixture,
-	method: string,
-	path: string,
-	reqBody: unknown,
-): Response {
-	if (method === "POST" && path === `/burrows/${fix.burrowId}/inbox`) {
-		return inboxSendResponse(fix, reqBody);
-	}
-	if (method === "POST" && path === `/runs/${fix.burrowRunId}/cancel`) {
-		return jsonResponse(200, serializeRun(runningBurrowRun(fix)));
-	}
-	if (method === "GET" && path === `/burrows/${fix.burrowId}/events`) {
-		return new Response("", { status: 200, headers: { "content-type": "application/x-ndjson" } });
-	}
-	if (method === "GET" && path === `/runs/${fix.burrowRunId}`) {
-		return jsonResponse(200, serializeRun(runningBurrowRun(fix)));
-	}
-	return jsonResponse(404, {
-		error: { code: "not_found", message: `unmatched ${method} ${path}` },
-	});
-}
-
-function makePauseResumeClient(fix: PauseResumeFixture, calls: RecordedCall[]): BurrowClient {
-	return new BurrowClient({
-		config: { transport: { kind: "unix", path: "/tmp/x.sock" } },
-		fetch: stub(async (input, init) => {
-			const url = new URL(String(input), "http://localhost");
-			const path = url.pathname;
-			const method = init?.method ?? "GET";
-			const reqBody = typeof init?.body === "string" ? JSON.parse(init.body) : undefined;
-			calls.push({ method, path, body: reqBody });
-			return routePauseResume(fix, method, path, reqBody);
-		}),
-	});
+function makePauseResumeClient(fix: PauseResumeFixture, calls: RecordedCall[]): FakeProvider {
+	return new FakeProvider(
+		{
+			sandboxId: fix.burrowId,
+			providerRunId: fix.burrowRunId,
+			statusValue: {
+				phase: "running",
+				exitCode: null,
+				lastEventSeq: 0,
+				lastEventTs: null,
+				exists: true,
+			},
+		},
+		undefined,
+		calls,
+	);
 }
 
 const DISABLED_AUTO_OPEN_PR: AutoOpenPrConfig = {

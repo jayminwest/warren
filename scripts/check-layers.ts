@@ -9,8 +9,8 @@
  * drizzle and `bun:sqlite` out of the browser bundle.
  *
  * This guard enforces those seams mechanically. It generalizes
- * `check-burrow-boundary.ts` (warren-f796), which enforced exactly one of
- * them with two hard-coded allowlists — the burrow boundary is now two
+ * `check-burrow-boundary.ts` (warren-f796), which enforced one of them with
+ * two hard-coded allowlists (the burrow boundary itself left in warren-ea0a).
  * ordinary entries in `scripts/layer-rules.json` alongside the rest, so a
  * new seam is a data edit and is born enforced rather than retrofitted.
  *
@@ -20,7 +20,7 @@
  *     directories may not reach. A relative specifier is RESOLVED against the
  *     importing file first, so `src/server/` catches `../server/types.ts` from
  *     `src/plan-runs/` and leaves `../seeds-cli/index.ts` alone. A bare entry
- *     matches a package and its subpaths (`@os-eco/burrow-cli`), `*` matches
+ *     matches a package and its subpaths (`@kubernetes/client-node`), `*` matches
  *     everything, and `exceptImports` carves targets back out.
  *   - **Pattern rules** (`forbidPattern`) apply a regex to each non-comment
  *     source line, for a seam that is not about imports — today, a handler
@@ -50,7 +50,7 @@
  * cannot silently return there (docs/design/forge-contract.md §7).
  *
  * Chained into `bun run lint` (alongside check-version-sync.ts,
- * check-wire-types.ts and check-prose.ts) in the slot check-burrow-boundary.ts
+ * check-wire-types.ts and check-prose.ts) in the old burrow-boundary slot
  * used to hold, rather than registered as its own gate: `scripts/check-all.ts`
  * is byte-identical to the l5-toolkit template and its gate vocabulary is
  * frozen, so a repo-specific assertion folds into an existing gate. Also

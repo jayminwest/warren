@@ -158,74 +158,6 @@ describe("scanText", () => {
 	});
 });
 
-describe("scan — the burrow seam warren-f796 used to own alone", () => {
-	test("flags a facade import outside the local-topology allowlist", () => {
-		withFixtureRepo(
-			{ "src/runs/spawn.ts": 'import { c } from "../burrow-client/index.ts";\n' },
-			(dir) => {
-				expect(scan(dir, RULES)).toEqual([
-					{
-						rule: "burrow-facade-is-local-only",
-						file: "src/runs/spawn.ts",
-						line: 1,
-						reason: 'imports "../burrow-client/index.ts"',
-					},
-				]);
-			},
-		);
-	});
-
-	test("allows the facade in the four homes the old guard allowed", () => {
-		withFixtureRepo(
-			{
-				"src/burrow-client/client.ts": 'import { e } from "./errors.ts";\n',
-				"src/runtime/local/provider.ts": 'import { c } from "../../burrow-client/index.ts";\n',
-				"src/supervisor/main.ts": 'import { c } from "../burrow-client/index.ts";\n',
-				"src/runtime/registry.ts": 'import { c } from "../burrow-client/index.ts";\n',
-			},
-			(dir) => {
-				expect(scan(dir, RULES)).toEqual([]);
-			},
-		);
-	});
-
-	test("flags the @os-eco/burrow-cli package outside its allowlist, including src/runtime/k8s/", () => {
-		// warren-0efe (plan pl-3007 phase-2 exit): the k8s carve-out is gone — the
-		// in-pod trio runs on warren's own adapters, so a burrow import anywhere
-		// under src/runtime/k8s/ now fails the seam like everywhere else.
-		withFixtureRepo(
-			{
-				"src/runtime/k8s/agent-entrypoint.ts":
-					'import { AgentRegistry } from "@os-eco/burrow-cli";\n',
-				"src/projects/clone.ts": 'import { HttpClient } from "@os-eco/burrow-cli";\n',
-			},
-			(dir) => {
-				// Sorted: the walk's readdir order is filesystem-dependent, so the
-				// assertion must not bake one in (fails on overlayfs ordering).
-				expect(
-					scan(dir, RULES)
-						.map((v) => `${v.rule} ${v.file}`)
-						.sort(),
-				).toEqual([
-					"burrow-package-is-local-only src/projects/clone.ts",
-					"burrow-package-is-local-only src/runtime/k8s/agent-entrypoint.ts",
-				]);
-			},
-		);
-	});
-
-	test("the package allowlist stays narrower than the facade's, as warren-f796 had it", () => {
-		// `src/runtime/registry.ts` may hold the `() => BurrowClient` factory seam
-		// but not reach for burrow's own library.
-		withFixtureRepo(
-			{ "src/runtime/registry.ts": 'import { HttpClient } from "@os-eco/burrow-cli";\n' },
-			(dir) => {
-				expect(scan(dir, RULES).map((v) => v.rule)).toEqual(["burrow-package-is-local-only"]);
-			},
-		);
-	});
-});
-
 describe("scan — the seams warren-89a6 added", () => {
 	test("flags the three domain to server imports it had to repair", () => {
 		withFixtureRepo(
@@ -320,7 +252,7 @@ describe("scan — the seams warren-89a6 added", () => {
 describe("scan — walk scope", () => {
 	test("skips the built UI bundle under dist (warren-30ef)", () => {
 		withFixtureRepo(
-			{ "src/ui/dist/assets/bundle.ts": 'import { c } from "../../../burrow-client/index.ts";\n' },
+			{ "src/ui/dist/assets/bundle.ts": 'import { c } from "../../../server/types.ts";\n' },
 			(dir) => {
 				expect(scan(dir, RULES)).toEqual([]);
 			},
@@ -330,7 +262,7 @@ describe("scan — walk scope", () => {
 	test("exempts test files and test helpers", () => {
 		withFixtureRepo(
 			{
-				"src/runs/spawn.test.ts": 'import { c } from "../burrow-client/index.ts";\n',
+				"src/runs/spawn.test.ts": 'import { c } from "../server/types.ts";\n',
 				"src/runs/spawn.test-helpers.ts": 'import type { B } from "../server/types.ts";\n',
 			},
 			(dir) => {
@@ -466,10 +398,13 @@ describe("scan — the extension boundary (warren-0781, plan pl-116e)", () => {
 });
 
 describe("the shipped manifest", () => {
-	test("still declares both halves of the retired burrow guard", () => {
+	test("the retired burrow guard is gone with its import targets (warren-ea0a)", () => {
+		// Both burrow rules guarded `src/burrow-client/` and `@os-eco/burrow-cli`.
+		// The excision deleted both targets, so the rules guard nothing real and
+		// left with them — this pins the retirement.
 		const names = RULES.map((r) => r.name);
-		expect(names).toContain("burrow-facade-is-local-only");
-		expect(names).toContain("burrow-package-is-local-only");
+		expect(names).not.toContain("burrow-facade-is-local-only");
+		expect(names).not.toContain("burrow-package-is-local-only");
 	});
 
 	test("declares both directions of the extension boundary", () => {

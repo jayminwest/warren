@@ -1,9 +1,10 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { BurrowClient } from "../../burrow-client/index.ts";
 import type { WarrenDb } from "../../db/client.ts";
 import type { Repos } from "../../db/repos/index.ts";
+import { RuntimeUnreachableError } from "../../runtime/errors.ts";
+import { FakeProvider } from "../../runtime/fake/fake-provider.ts";
 import { spawnRun } from "./index.ts";
-import { makeBurrowClient, makeProvider, setupRepos, stub } from "./test-helpers.ts";
+import { makeBurrowClient, makeProvider, setupRepos } from "./test-helpers.ts";
 import type { SpawnLogger } from "./types.ts";
 
 interface LogLine {
@@ -103,40 +104,8 @@ describe("spawnRun: instrumentation (warren-c686)", () => {
 		// `spawn.rollback.burrow_destroy_failed`. Provision succeeds, dispatch AND
 		// the provider's cleanup DELETE both throw; the domain surfaces the
 		// original failure as `spawn.failed` and unwinds the warren row.
-		let call = 0;
-		const fetchImpl = stub(async (input, init) => {
-			const path = new URL(String(input), "http://localhost").pathname;
-			const method = init?.method ?? "GET";
-			call += 1;
-			if (method === "POST" && path === "/burrows") {
-				return new Response(
-					JSON.stringify({
-						id: "bur_aaaaaaaaaaaa",
-						parentId: null,
-						kind: "task",
-						name: null,
-						projectRoot: "/data/projects/x/y",
-						workspacePath: "/w",
-						branch: "b",
-						provider: "local",
-						providerStateJson: null,
-						profileJson: {},
-						state: "active",
-						createdAt: "2026-05-08T12:00:00Z",
-						updatedAt: "2026-05-08T12:00:00Z",
-						destroyedAt: null,
-					}),
-					{ status: 201, headers: { "content-type": "application/json" } },
-				);
-			}
-			// Both the dispatch (POST .../runs) and the destroy (DELETE) throw.
-			const e = new TypeError("fetch failed");
-			(e as unknown as { cause: { code: string } }).cause = { code: "ECONNREFUSED" };
-			throw e;
-		});
-		const client = new BurrowClient({
-			config: { transport: { kind: "unix", path: "/tmp/x.sock" } },
-			fetch: fetchImpl,
+		const client = new FakeProvider({
+			dispatchError: new RuntimeUnreachableError("fetch failed"),
 		});
 		const { logger, lines } = makeRecordingLogger();
 		await expect(
@@ -150,8 +119,8 @@ describe("spawnRun: instrumentation (warren-c686)", () => {
 			}),
 		).rejects.toBeDefined();
 
-		// burrowsUp + runs.create + the provider's cleanup DELETE all fired.
-		expect(call).toBeGreaterThan(1);
+		// Provision + dispatch + the provider's cleanup DELETE all fired.
+		expect(client.calls.length).toBeGreaterThan(1);
 		// The domain surfaces the dispatch failure it saw rethrown…
 		const failed = lines.find((l) => l.obj.event === "spawn.failed");
 		expect(failed?.level).toBe("warn");

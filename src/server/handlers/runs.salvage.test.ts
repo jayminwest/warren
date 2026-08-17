@@ -3,16 +3,16 @@ import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, readdir, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { BurrowClient } from "../../burrow-client/index.ts";
 import { openDatabase, type WarrenDb } from "../../db/client.ts";
 import { createRepos, type Repos } from "../../db/repos/index.ts";
+import { FakeProvider } from "../../runtime/fake/fake-provider.ts";
 import { IN_POD_FINALIZE_WIRE_VERSION } from "../../runtime/k8s/finalize-wire.ts";
 import { MAX_SALVAGE_BUNDLE_BYTES } from "../../runtime/salvage.ts";
 import { NO_AUTH } from "../auth.ts";
 import { startServer } from "../server.ts";
 import type { ServeHandle } from "../types.ts";
 import { salvageUploadLimiter } from "./runs/salvage.ts";
-import { depsFor, silentLogger, stub, tcpUrl } from "./runs.test-helpers.ts";
+import { depsFor, silentLogger, tcpUrl } from "./runs.test-helpers.ts";
 
 /**
  * HTTP coverage for the salvage intake (warren-cd3b):
@@ -21,13 +21,8 @@ import { depsFor, silentLogger, stub, tcpUrl } from "./runs.test-helpers.ts";
  *   location, and a `reap.workspace_salvaged` event surfaces it to operators.
  */
 
-function inertBurrowClient(): BurrowClient {
-	return new BurrowClient({
-		config: { transport: { kind: "unix", path: "/tmp/x.sock" } },
-		fetch: stub(
-			async () => new Response(JSON.stringify({ error: { code: "not_found" } }), { status: 404 }),
-		),
-	});
+function inertBurrowClient(): FakeProvider {
+	return new FakeProvider();
 }
 
 function envelope(over: Record<string, unknown> = {}): Record<string, unknown> {

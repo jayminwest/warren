@@ -50,44 +50,37 @@ from `WARREN_RUNTIME` (`src/runtime/registry.ts`) behind the
 `RuntimeProvider` contract (`src/runtime/contract.ts`). Two backends
 exist.
 
-- `LocalProvider` (`src/runtime/local/`, the default) wraps the
-  co-tenanted [burrow](https://github.com/jayminwest/burrow) sandbox
-  daemon.
+- `LocalProvider` (`src/runtime/local/`, the default) runs the
+  in-process engine. It materializes a worktree, composes a bwrap
+  profile from the warren-owned sandbox (`src/sandbox/`), and drives
+  the agent through a host-side loop. The runtime adapters
+  (`src/runtime/adapters/`) own the per-harness command, parser, and
+  steering shapes.
 - `K8sProvider` (`src/runtime/k8s/`, `WARREN_RUNTIME=k8s`) runs each
-  agent as a Kubernetes pod. No burrow daemon runs there, so no
-  `burrow serve`, no unix socket, and no bwrap. The pod boundary is the
-  sandbox, and `/readyz` drops the burrow probes. Warren still links
-  `@os-eco/burrow-cli` as a library for shared types and error classes.
+  agent as a Kubernetes pod. The pod boundary is the sandbox, so no
+  bwrap runs there.
 
-Burrow the daemon is the LocalProvider's substrate, not a required
-warren dependency. For the K8s topology see
+For the K8s topology see
 [docs/RUNBOOK-K8S.md](docs/RUNBOOK-K8S.md) and the design records
 [docs/design/runtime-provider-contract.md](docs/design/runtime-provider-contract.md)
 and [docs/design/k8s-migration.md](docs/design/k8s-migration.md).
 
-### Relationship to burrow (local topology)
+### The burrow absorption (plan pl-3007)
 
-Under `local`, burrow is the sandbox runtime and warren is the
-orchestrator that spawns it and talks to it over HTTP. **Read
-`../burrow/SPEC.md` before changing anything that crosses the
-warren↔burrow boundary**. That boundary covers the supervisor's
-`burrow serve` invocation (`src/supervisor/main.ts`), the
-`src/burrow-client/` HTTP facade, and the bwrap-friendly security flags
-in `docker-compose.yml`.
+Warren once delegated the local sandbox to the co-tenanted
+[burrow](https://github.com/jayminwest/burrow) daemon. Plan pl-3007
+absorbed that substrate: the sandbox, the harness adapters, the spawn
+path, and the preview sidecars are warren-owned now. Warren no longer
+spawns `burrow serve`, links `@os-eco/burrow-cli`, or talks to a burrow
+socket. The burrow repo stays a standalone project.
 
-- The supervisor spawns `burrow serve` as a sibling process and
-  forwards SIGTERM/SIGINT. The two share a unix socket (default path
-  `/var/run/burrow.sock`) and a bearer token (`BURROW_API_TOKEN` equals
-  `WARREN_BURROW_TOKEN`).
-- `src/burrow-client/` is a typed facade over burrow's `HttpClient`.
-  Call the facade, never the socket directly, so the HTTP surface stays
-  mirrored.
-- The `@os-eco/burrow-cli` pin lives in two places, the `Dockerfile`
-  global install and `package.json` + `bun.lock`. Bumping only one is a
-  no-op, because the supervisor resolves the local copy from
-  node_modules before PATH. Update both and regenerate the lockfile.
-- Burrow needs three apparmor/seccomp/systempaths-unconfined flags plus
-  `cap_add: SYS_ADMIN` on Linux for user-namespace nesting.
+- The supervisor spawns only warren's HTTP server and forwards
+  SIGTERM/SIGINT to it.
+- The local engine persists run state in-process
+  (`src/runtime/local/run-store.ts`). A warren restart reconciles live
+  rows as lost, same as a daemon restart did.
+- The sandbox needs three apparmor/seccomp/systempaths-unconfined flags
+  plus `cap_add: SYS_ADMIN` on Linux for user-namespace nesting.
   `docker-compose.yml` bakes them in. See
   [docs/design/runtime-and-supervisor.md](docs/design/runtime-and-supervisor.md).
 
@@ -176,8 +169,8 @@ precedence everywhere: flags > env > config file > built-in default.
 - **UI:** React + Vite + Tailwind + shadcn-style components, in
   `src/ui/` as the `@os-eco/warren-ui` package, built into `src/ui/dist/`
 - **Sandbox primitive:** a `RuntimeProvider` (`src/runtime/`), not a
-  direct dependency. `LocalProvider` delegates to burrow over a unix
-  socket. `K8sProvider` runs pods.
+  direct dependency. `LocalProvider` runs the in-process engine.
+  `K8sProvider` runs pods.
 
 ## Build & test commands
 
@@ -351,8 +344,8 @@ ratchet policies inline in `biome.jsonc`; both lists only shrink.
   warren-c8bd. Write new UI files in kebab-case. PR #922 cleared the
   grandfathered exception list in `biome.jsonc`, so the rule now
   applies to every UI filename with no exceptions.
-- **Directories:** `kebab-case` (`src/burrow-client/`,
-  `src/plan-runs/`, `src/warren-config/`).
+- **Directories:** `kebab-case` (`src/plan-runs/`,
+  `src/warren-config/`, `src/runtime/local/`).
 - **Identifiers:** `camelCase` for functions, variables, and instance
   fields. `PascalCase` for types, interfaces, classes, and React
   components. `SCREAMING_SNAKE_CASE` for true module-level constants
@@ -429,11 +422,9 @@ Two guards hold the rule, and both run inside `bun run lint`.
   prints `file:line` plus the rule's `why`. A deliberate exception goes
   in that rule's `allow` list with a `why` field.
 
-Twelve seams ship today:
+Ten seams ship today (the two burrow boundaries left with the facade
+and the package in warren-ea0a):
 
-- The two burrow boundaries inherited from the retired burrow-boundary
-  guard (warren-f796). No direct `src/burrow-client/` or
-  `@os-eco/burrow-cli` import outside the local-topology allowlist.
 - Domain modules must not import `src/server/**` or `src/cli/**`.
 - `src/cli/**` must not import `src/server/**`.
   `src/cli/commands/serve.ts` is the one exception, because booting the
@@ -510,8 +501,7 @@ it from the matching `CHANGELOG.md` section.
 
 `bun run check:version-sync` (warren-0210,
 `scripts/check-version-sync.ts`) asserts on every PR that all four
-sites agree. It also checks that the `@os-eco/burrow-cli` pin agrees
-across the `Dockerfile`, `package.json`, and the README. It shares the
+sites agree. It shares the
 README locator with `scripts/version-bump.ts`, so the gate and the
 bumper can never disagree about where the version lives. It rides
 inside `bun run lint` because the canonical gate manifest is frozen.
@@ -609,7 +599,7 @@ directories under the same name so those exclusions keep applying.
 ## Acceptance harness
 
 `scripts/acceptance/` runs scenario-based end-to-end checks against a
-real warren+burrow stack. Scenarios live in
+real warren boot. Scenarios live in
 `scripts/acceptance/scenarios/` and use the helpers in
 `scripts/acceptance/lib/`. New scenarios must be deterministic,
 idempotent, and clean up after themselves.

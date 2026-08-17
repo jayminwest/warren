@@ -53,7 +53,7 @@ Then **Dispatch run**, pick `claude-code`, write a prompt, and start it. The eve
 
 The four security flags relax the outer container so the sandbox runtime can nest its own user namespaces (see [docs/design/runtime-and-supervisor.md](docs/design/runtime-and-supervisor.md)). Remove any one of them and sandbox provisioning fails.
 
-The quickstart exports the three required variables. The warren↔burrow channel token needs no setup. Both ends live inside the one container, so the supervisor mints the shared secret at boot (warren-8071). Set `BURROW_API_TOKEN` + `WARREN_BURROW_TOKEN` yourself only in a split topology where burrow runs outside warren's container. [`.env.example`](.env.example) documents the full knob set.
+The quickstart exports the three required variables. [`.env.example`](.env.example) documents the full knob set.
 
 To manage the same container declaratively, use the compose file instead. It pulls the same image and applies the same flags:
 
@@ -63,7 +63,7 @@ cp .env.example .env && $EDITOR .env
 docker compose up -d
 ```
 
-> **Image requirement (self-host, `local` runtime): burrow-cli 0.3.15 or newer.** In the default topology warren shares the container with [burrow](https://github.com/jayminwest/burrow) and talks to it over a unix socket. The published image pins `@os-eco/burrow-cli@0.3.15` (see [`Dockerfile`](Dockerfile)). If you build your own image, install 0.3.15 or newer. Earlier releases predate the runtime contract warren depends on (agent spawn shape, resume support, event kinds) and fail at dispatch. Under `WARREN_RUNTIME=k8s` this does not apply, because the run pods carry their own toolchain image and no burrow.
+> **Image requirement (self-host, `local` runtime): bubblewrap + user namespaces.** In the default topology warren sandboxes each run itself with `bwrap`. The published image installs every dependency (see [`Dockerfile`](Dockerfile)). Under `WARREN_RUNTIME=k8s` this does not apply, because the run pods carry their own toolchain image.
 
 ## Who this is for
 
@@ -81,8 +81,8 @@ GitHub App mode has shipped. Set `WARREN_FORGE=app` and warren mints short-lived
 
 ## What you get
 
-- **One image, one volume.** The supervisor (`src/supervisor/main.ts`) is the container ENTRYPOINT. It spawns the sandbox runtime first, waits for the unix socket, then spawns warren. SIGTERM and SIGINT forward to both children. The runtime restarts under a 5-in-60s budget on unexpected exit.
-- **Native sandboxing per run.** In the default `local` topology every run gets a fresh `bwrap`-isolated workspace under `/data/burrow/`. The host is unreachable, and warren talks to the runtime over a unix socket with a shared bearer token. Under `WARREN_RUNTIME=k8s` the pod boundary is the sandbox instead (kubelet-enforced CPU and memory, no bwrap). See [the K8s runbook](docs/RUNBOOK-K8S.md).
+- **One image, one volume.** The supervisor (`src/supervisor/main.ts`) is the container ENTRYPOINT. It spawns warren and forwards SIGTERM and SIGINT to it.
+- **Native sandboxing per run.** In the default `local` topology every run gets a fresh `bwrap`-isolated workspace. The host is unreachable from the sandbox. Under `WARREN_RUNTIME=k8s` the pod boundary is the sandbox instead (kubelet-enforced CPU and memory, no bwrap). See [the K8s runbook](docs/RUNBOOK-K8S.md).
 - **Built-in agents.** `claude-code` and `pi` ship inline (`src/registry/builtins/`), so a dispatch needs no extra setup.
 - **Live event stream.** NDJSON events persist to warren's SQLite log. Clients tail them over `GET /runs/:id/events?follow=1`. The UI, the CLI (`warren run`), and HTTP clients all read the same stream.
 - **Steerable mid-run.** `POST /runs/:id/steer` lands a message in the agent's inbox, and the next turn picks it up. `POST /runs/:id/cancel` aborts cleanly.
@@ -94,8 +94,8 @@ GitHub App mode has shipped. Set `WARREN_FORGE=app` and warren mints short-lived
 
 Two supported paths:
 
-- **Single box (`local` runtime).** The [Quickstart](#quickstart) above *is* a complete deploy — one container, one volume, warren and burrow together. Run it on a home server or any Docker host. Warren serves plain HTTP. Put TLS on your edge with Caddy on a home server, or with your ingress.
-- **Cluster (`k8s` runtime), the hosted target.** Deploy to Kubernetes. **GKE Autopilot is the reference cluster.** Each run is its own pod, there is no burrow, and admission caps shed load before the cluster thrashes. The canonical procedure is **[docs/RUNBOOK-K8S.md](docs/RUNBOOK-K8S.md)**. The manifest quick-start is [`deploy/k8s/README.md`](deploy/k8s/README.md).
+- **Single box (`local` runtime).** The [Quickstart](#quickstart) above *is* a complete deploy — one container, one volume. Run it on a home server or any Docker host. Warren serves plain HTTP. Put TLS on your edge with Caddy on a home server, or with your ingress.
+- **Cluster (`k8s` runtime), the hosted target.** Deploy to Kubernetes. **GKE Autopilot is the reference cluster.** Each run is its own pod, and admission caps shed load before the cluster thrashes. The canonical procedure is **[docs/RUNBOOK-K8S.md](docs/RUNBOOK-K8S.md)**. The manifest quick-start is [`deploy/k8s/README.md`](deploy/k8s/README.md).
 
 Continuous deployment ships in [`.github/workflows/deploy-gke.yml`](.github/workflows/deploy-gke.yml).
 
@@ -109,7 +109,7 @@ Auth is GCP Workload Identity Federation, so there are no long-lived keys. The O
 
 The `local` topology is one box, and one host is the concurrency ceiling. The `k8s` topology lifts that ceiling by running **each agent run as its own pod**.
 
-Kubelet enforces per-run CPU and memory natively. A runaway run kills its own pod instead of the control plane, and admission caps shed load before the cluster thrashes. There is no burrow — the pod boundary is the sandbox.
+Kubelet enforces per-run CPU and memory natively. A runaway run kills its own pod instead of the control plane, and admission caps shed load before the cluster thrashes. The pod boundary is the sandbox.
 
 Set `WARREN_RUNTIME=k8s` on the control-plane Deployment and follow **[docs/RUNBOOK-K8S.md](docs/RUNBOOK-K8S.md)**. The runbook owns the image build, manifest overlays, secrets, and admission procedure. The manifest quick-start is [`deploy/k8s/README.md`](deploy/k8s/README.md).
 
@@ -161,7 +161,7 @@ A whitespace-only body removes the fragment entirely. Unknown names and unbalanc
 
 ## Per-run preview environments
 
-When a project ships a `.warren/preview.yaml`, warren launches `preview.command` as a sidecar inside the same burrow workspace after a successful run. It then allocates a port and exposes the running app at `https://run-<runId>.<WARREN_PREVIEW_HOST>`.
+When a project ships a `.warren/preview.yaml`, warren launches `preview.command` as a sidecar inside the same run workspace after a successful run. It then allocates a port and exposes the running app at `https://run-<runId>.<WARREN_PREVIEW_HOST>`.
 
 Reviewers click the URL instead of a `git checkout`. Warren reaps idle sessions automatically, and the run-detail page surfaces a status badge and a manual teardown button. Opt in with two pieces:
 
@@ -222,19 +222,17 @@ Warren does not route cross-host preview traffic: the proxy returns **501** for 
 
 Warren runs against a swappable **runtime provider**, selected once at boot by `WARREN_RUNTIME` (`src/runtime/registry.ts`), behind one contract (`src/runtime/contract.ts`). Two topologies share the same domain code:
 
-- **`local` (default) — self-host.** The whole system is one container: warren plus a co-tenanted [burrow](https://github.com/jayminwest/burrow) sandbox daemon that isolates each run with `bwrap`. This is the primary path everything above describes.
-- **`k8s` — scale-out.** Each run is its own Kubernetes pod, and there is no burrow. Built for clusters and GKE Autopilot. See [**the K8s runbook**](docs/RUNBOOK-K8S.md) and [`deploy/k8s/`](deploy/k8s/README.md).
-
-Burrow is the LocalProvider's substrate, not a required dependency of warren. Under `WARREN_RUNTIME=k8s` there is no burrow at all.
+- **`local` (default) — self-host.** The whole system is one container. Warren isolates each run with `bwrap` through its own in-process engine. This is the primary path everything above describes.
+- **`k8s` — scale-out.** Each run is its own Kubernetes pod. Built for clusters and GKE Autopilot. See [**the K8s runbook**](docs/RUNBOOK-K8S.md) and [`deploy/k8s/`](deploy/k8s/README.md).
 
 ```
 ┌──────────────── container (bwrap-friendly host) ────────────────┐
-│  supervisor  ─┬─►  sandbox runtime  (unix socket: /var/run/...) │
-│  (Bun parent) └─►  warren           (Bun.serve :8080, SPA + API)│
+│  supervisor  ───►  warren        (Bun.serve :8080, SPA + API)   │
+│  (Bun parent)        └─► in-process engine drives bwrap runs    │
 │                                                                 │
 │  /data/                                                         │
 │  ├── projects/<o>/<n>/    ← cloned project repos                │
-│  ├── burrow/              ← runtime home (SQLite, workspaces)   │
+│  ├── local/               ← engine home (workspaces, run state) │
 │  └── warren.db            ← warren's SQLite (runs, events)      │
 └─────────────────────────────────────────────────────────────────┘
                               ▲
@@ -242,15 +240,15 @@ Burrow is the LocalProvider's substrate, not a required dependency of warren. Un
                           [browser]
 ```
 
-That is the default (`local`) topology. Warren and burrow share the container, a unix socket, and a bearer token (`BURROW_API_TOKEN` == `WARREN_BURROW_TOKEN`). See [docs/design/runtime-and-supervisor.md](docs/design/runtime-and-supervisor.md) for the full layout.
+That is the default (`local`) topology. Warren owns the sandbox engine in-process. See [docs/design/runtime-and-supervisor.md](docs/design/runtime-and-supervisor.md) for the full layout.
 
-Under `WARREN_RUNTIME=k8s` this diagram changes shape entirely: no burrow, no supervisor, no unix socket. Warren is a Deployment, and each run is a pod ([docs/RUNBOOK-K8S.md](docs/RUNBOOK-K8S.md)).
+Under `WARREN_RUNTIME=k8s` this diagram changes shape entirely. Warren is a Deployment, and each run is a pod ([docs/RUNBOOK-K8S.md](docs/RUNBOOK-K8S.md)).
 
 ## CLI
 
 The `warren` (or `wr`) CLI is the agent-facing surface — the same pipeline the web UI drives, scriptable from any shell. The web UI is for daily human work.
 
-Install it from npm. The package ships raw bun-shebang TypeScript (fleet precedent: `@os-eco/burrow-cli`), so it requires [Bun](https://bun.sh) v1.1+ on the machine that runs it — no build step, no Node fallback:
+Install it from npm. The package ships raw bun-shebang TypeScript, so it requires [Bun](https://bun.sh) v1.1+ on the machine that runs it — no build step, no Node fallback:
 
 ```bash
 npm i -g @os-eco/warren-cli
@@ -326,8 +324,8 @@ src/
 ├── warren-config/      .warren/ per-project config loader + cache (docs/design/warren-config.md)
 ├── client/             typed SDK for driving warren's HTTP API programmatically
 ├── runtime/            RuntimeProvider contract + local and k8s backends
-├── burrow-client/      facade over the sandbox runtime's HttpClient
-├── supervisor/         container entrypoint (spawns warren + runtime)
+├── sandbox/            warren-owned bwrap sandbox primitives
+├── supervisor/         container entrypoint (spawns warren)
 ├── server/             Bun.serve HTTP API + static UI serving
 ├── db/                 drizzle schema + bun:sqlite repos
 ├── cli/                warren admin commands
@@ -431,8 +429,8 @@ How the current release is scoped. Full details in [SECURITY.md](SECURITY.md#v1-
 - **TLS is upstream's job.** Direct HTTP on a non-loopback bind is a misconfiguration, and `warren doctor` warns.
 - **Trust-the-socket** between warren and the runtime inside the container, which share the container by design.
 - **No CSRF, single-user.** The UI calls warren's API with the bearer, and CORS is strict.
-- **SQLite by default, Postgres optional.** Run history and scheduler state live in `/data/warren.db` on the local volume out of the box. Org-scale deploys can attach a managed Postgres by setting `WARREN_DB_URL=postgres://user:pw@host/db`. Burrow's per-run SQLite stays untouched either way.
-- **One host is the concurrency ceiling — in the `local` topology.** A single container caps concurrency at what one box can sandbox. The scale-out answer is the `k8s` runtime (each run a pod, cluster-scheduled with admission caps), not a multi-worker burrow fan-out. See [docs/RUNBOOK-K8S.md](docs/RUNBOOK-K8S.md).
+- **SQLite by default, Postgres optional.** Run history and scheduler state live in `/data/warren.db` on the local volume out of the box. Org-scale deploys can attach a managed Postgres by setting `WARREN_DB_URL=postgres://user:pw@host/db`.
+- **One host is the concurrency ceiling — in the `local` topology.** A single container caps concurrency at what one box can sandbox. The scale-out answer is the `k8s` runtime (each run a pod, cluster-scheduled with admission caps). See [docs/RUNBOOK-K8S.md](docs/RUNBOOK-K8S.md).
 
 ## Roadmap
 

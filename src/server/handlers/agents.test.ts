@@ -1,25 +1,13 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { BurrowClient } from "../../burrow-client/index.ts";
 import { openDatabase, type WarrenDb } from "../../db/client.ts";
 import { createRepos, type Repos } from "../../db/repos/index.ts";
 import { FakeForge } from "../../forge/fake/fake-forge.ts";
 import { RunEventBroker } from "../../runs/index.ts";
-import { resolveRuntimeProvider } from "../../runtime/registry.ts";
+import { FakeProvider } from "../../runtime/fake/fake-provider.ts";
 import { NO_AUTH } from "../auth.ts";
 import { createBridgeRegistry } from "../bridges.ts";
 import { startServer } from "../server.ts";
 import type { BridgeRegistry, ServeHandle, ServerDeps } from "../types.ts";
-
-/**
- * Build a single-worker `BurrowClient` from a stubbed `BurrowClient`
- * so `POST /runs` and `POST /projects/:id/triggers/:triggerId/run` can
- * route through `spawnRun`'s placement seam (warren-39c3). Upserts the
- * synthetic `local` worker row so `placeForProject` has a healthy
- * candidate.
- */
-async function poolFor(_repos: Repos, client: BurrowClient): Promise<BurrowClient> {
-	return client;
-}
 
 const silentLogger = {
 	info() {},
@@ -27,23 +15,16 @@ const silentLogger = {
 	error() {},
 };
 
-function stub(
-	impl: (input: URL | RequestInfo, init?: RequestInit) => Promise<Response>,
-): typeof fetch {
-	return impl as unknown as typeof fetch;
-}
-
 async function depsFor(
 	repos: Repos,
-	burrowClient: BurrowClient,
+	provider: FakeProvider,
 	bridges?: BridgeRegistry,
 	_extras?: Record<string, never>,
 ): Promise<ServerDeps> {
 	const broker = new RunEventBroker();
-	await poolFor(repos, burrowClient);
 	return {
 		repos,
-		runtimeProvider: resolveRuntimeProvider({ burrowClient: () => burrowClient }),
+		runtimeProvider: provider,
 		forge: new FakeForge(),
 		broker,
 		bridges:
@@ -51,7 +32,7 @@ async function depsFor(
 			createBridgeRegistry({
 				repos,
 				broker,
-				runtimeProvider: resolveRuntimeProvider({ burrowClient: () => burrowClient }),
+				runtimeProvider: provider,
 				bridge: async () => ({ written: 0, skipped: 0, errored: false }),
 			}),
 		projectsConfig: { root: "/tmp/projects", gitBinary: "git" },
@@ -106,10 +87,7 @@ describe("GET /agents — listing with source provenance (warren-d3e9)", () => {
 				frontmatter: { source: "builtin" },
 			},
 		});
-		const burrowClient = new BurrowClient({
-			config: { transport: { kind: "unix", path: "/tmp/x.sock" } },
-			fetch: stub(async () => new Response("{}", { status: 200 })),
-		});
+		const burrowClient = new FakeProvider();
 		const deps = await depsFor(repos, burrowClient);
 		handle = startServer(deps, {
 			transport: { kind: "tcp", hostname: "127.0.0.1", port: 0 },
@@ -134,10 +112,7 @@ describe("GET /agents — listing with source provenance (warren-d3e9)", () => {
 				frontmatter: {},
 			},
 		});
-		const burrowClient = new BurrowClient({
-			config: { transport: { kind: "unix", path: "/tmp/x.sock" } },
-			fetch: stub(async () => new Response("{}", { status: 200 })),
-		});
+		const burrowClient = new FakeProvider();
 		const deps = await depsFor(repos, burrowClient);
 		handle = startServer(deps, {
 			transport: { kind: "tcp", hostname: "127.0.0.1", port: 0 },

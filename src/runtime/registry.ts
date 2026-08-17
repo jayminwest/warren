@@ -3,26 +3,23 @@
  *
  * One place resolves which `RuntimeProvider` (contract in `./contract.ts`) a
  * warren process runs against, exactly once at boot. The default is the
- * burrow-backed `LocalProvider`; the `k8s` backend (`K8sProvider`, pl-829f phase
+ * in-process `LocalProvider`; the `k8s` backend (`K8sProvider`, pl-829f phase
  * K8S) is opt-in behind `WARREN_RUNTIME=k8s`.
  *
  * Selection rules (design doc §5 registry/selector semantics):
  *   - `WARREN_RUNTIME` unset (or blank) → `local` (the default backend).
- *   - `local` → burrow-backed `LocalProvider`.
- *   - `k8s`   → `K8sProvider` (skeleton at step 14 — the pod-spec builder is real,
- *     the method bodies land in later steps and throw until then).
+ *   - `local` → in-process `LocalProvider` (warren-413d; the burrow-backed
+ *     legacy mode was deleted in warren-ea0a).
+ *   - `k8s`   → `K8sProvider`.
  *   - anything else → `UnknownRuntimeError` (fail loud — never silently fall
  *     back to the default, so a typo can't route runs onto the wrong backend).
  *
  * Composition point: `src/server/main/index.ts` (`bootServer`) resolves the
  * local backend via `src/runtime/local/boot-backend.ts`, which builds the
- * provider WITHOUT a burrow client — the in-process engine (warren-413d).
- * Supplying `burrowClient` explicitly still selects the legacy burrow-backed
- * mode the test harnesses drive.
+ * in-process engine directly (warren-413d).
  */
 
 import type { CoreV1Api } from "@kubernetes/client-node";
-import type { BurrowClient } from "../burrow-client/index.ts";
 import type { ReapExec, ReapFs } from "../runs/reap/types.ts";
 import type { EnvLike } from "../runs/spawn/callback-env.ts";
 import type { RuntimeProvider } from "./contract.ts";
@@ -57,14 +54,6 @@ export type RuntimeEnv = Readonly<Record<string, string | undefined>>;
  */
 export interface RuntimeProviderDeps {
 	/**
-	 * OPTIONAL burrow client factory selecting the LocalProvider's LEGACY
-	 * burrow-backed mode (warren-f796; demoted to transition-only in
-	 * warren-413d). Test harnesses that drive finalize/terminate through a
-	 * fake burrow client supply it; production boot OMITS it so the provider
-	 * runs the in-process engine. Ignored entirely by the `k8s` backend.
-	 */
-	readonly burrowClient?: () => BurrowClient;
-	/**
 	 * Server-process env a provider reads to compute its own plumbing (the
 	 * LocalProvider's loopback callback URL, §6.3). Optional — providers
 	 * default to `process.env`. Kept on the shared bag so the selector's
@@ -72,7 +61,7 @@ export interface RuntimeProviderDeps {
 	 */
 	readonly serverEnv?: EnvLike;
 	/**
-	 * Disk/shell seam the burrow-backed `LocalProvider.finalize()` runs the reap
+	 * Disk/shell seam the `LocalProvider.finalize()` runs the reap
 	 * merge functions over (`ReapFs` / `ReapExec`, `src/runs/reap/types.ts`) —
 	 * only consulted for `WARREN_RUNTIME=local`; the `K8sProvider` ignores them.
 	 * Optional so callers (and tests) that accept the real `defaultFs` /
@@ -194,12 +183,9 @@ export function resolveRuntimeProvider(
 	const kind = resolveRuntimeKind(env);
 	switch (kind) {
 		case "local":
-			// warren-413d: only an EXPLICITLY supplied burrow client selects the
-			// legacy burrow-backed mode (test harnesses). No client ⇒ the
-			// in-process engine — production boot passes none, so the burrow
-			// daemon is off the spawn path.
+			// warren-413d + warren-ea0a: the local backend is the in-process
+			// engine, full stop — there is no client to wire.
 			return new LocalProvider({
-				...(deps.burrowClient !== undefined ? { burrowClient: deps.burrowClient } : {}),
 				...(deps.serverEnv !== undefined ? { serverEnv: deps.serverEnv } : {}),
 				...(deps.fs !== undefined ? { fs: deps.fs } : {}),
 				...(deps.exec !== undefined ? { exec: deps.exec } : {}),

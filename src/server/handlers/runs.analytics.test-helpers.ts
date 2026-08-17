@@ -4,12 +4,11 @@
  * analytics window, and the run-seeding helpers both suites use.
  */
 
-import { BurrowClient } from "../../burrow-client/index.ts";
 import type { Repos } from "../../db/repos/index.ts";
 import type { RunFailureReason, RunState } from "../../db/schema.ts";
 import { FakeForge } from "../../forge/fake/fake-forge.ts";
 import { RunEventBroker } from "../../runs/index.ts";
-import { resolveRuntimeProvider } from "../../runtime/registry.ts";
+import { FakeProvider } from "../../runtime/fake/fake-provider.ts";
 import { NO_AUTH } from "../auth.ts";
 import { createBridgeRegistry } from "../bridges.ts";
 import { startServer } from "../server.ts";
@@ -19,16 +18,16 @@ export const silentLogger: Logger = { info() {}, warn() {}, error() {} };
 
 export function depsFor(repos: Repos): ServerDeps {
 	const broker = new RunEventBroker();
-	const client = new BurrowClient({ config: { transport: { kind: "unix", path: "/tmp/x.sock" } } });
+	const provider = new FakeProvider();
 	return {
 		repos,
-		runtimeProvider: resolveRuntimeProvider({ burrowClient: () => client }),
+		runtimeProvider: provider,
 		forge: new FakeForge(),
 		broker,
 		bridges: createBridgeRegistry({
 			repos,
 			broker,
-			runtimeProvider: resolveRuntimeProvider({ burrowClient: () => client }),
+			runtimeProvider: provider,
 			bridge: async () => ({ written: 0, skipped: 0, errored: false }),
 		}),
 		projectsConfig: { root: "/tmp/projects", gitBinary: "git" },

@@ -1,11 +1,10 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { BurrowClient } from "../burrow-client/index.ts";
 import { ValidationError } from "../core/errors.ts";
 import { openDatabase, type WarrenDb } from "../db/client.ts";
 import { createRepos, type Repos } from "../db/repos/index.ts";
 import { FakeForge } from "../forge/fake/fake-forge.ts";
 import { RunEventBroker } from "../runs/index.ts";
-import { resolveRuntimeProvider } from "../runtime/registry.ts";
+import { FakeProvider } from "../runtime/fake/fake-provider.ts";
 import { NO_AUTH } from "./auth.ts";
 import { createBridgeRegistry } from "./bridges.ts";
 import {
@@ -104,12 +103,7 @@ describe("/github-app/* registration gate (wire)", () => {
 	});
 
 	function depsWithGate(enabled: boolean): ServerDeps {
-		const burrowClient = new BurrowClient({
-			config: { transport: { kind: "unix", path: "/tmp/x.sock" } },
-			fetch: (async () =>
-				new Response(JSON.stringify({ ok: true }), { status: 200 })) as unknown as typeof fetch,
-		});
-		const runtimeProvider = resolveRuntimeProvider({ burrowClient: () => burrowClient });
+		const runtimeProvider = new FakeProvider();
 		const broker = new RunEventBroker();
 		return {
 			repos,

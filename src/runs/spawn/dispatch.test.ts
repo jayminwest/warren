@@ -1,12 +1,13 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { BurrowClient, BurrowUnreachableError } from "../../burrow-client/index.ts";
 import { NotFoundError, ValidationError } from "../../core/errors.ts";
 import { isId } from "../../core/ids.ts";
 import type { WarrenDb } from "../../db/client.ts";
 import type { Repos } from "../../db/repos/index.ts";
+import { RuntimeUnreachableError } from "../../runtime/errors.ts";
+import { FakeProvider } from "../../runtime/fake/fake-provider.ts";
 import { composeDispatchPrompt, spawnRun } from "./index.ts";
 import { isRunScopedToken, verifyRunScopedToken } from "./run-token.ts";
-import { makeAgentJson, makeBurrowClient, makeProvider, setupRepos, stub } from "./test-helpers.ts";
+import { makeAgentJson, makeBurrowClient, makeProvider, setupRepos } from "./test-helpers.ts";
 
 describe("spawnRun: validation", () => {
 	let db: WarrenDb;
@@ -440,15 +441,9 @@ describe("spawnRun: rollback", () => {
 		expect(methods).toContain("DELETE /burrows/bur_aaaaaaaaaaaa");
 	});
 
-	test("propagates burrow transport failures and leaves no warren row attached to a burrow", async () => {
-		const errFetch = stub(async () => {
-			const e = new TypeError("fetch failed");
-			(e as unknown as { cause: { code: string } }).cause = { code: "ECONNREFUSED" };
-			throw e;
-		});
-		const client = new BurrowClient({
-			config: { transport: { kind: "unix", path: "/tmp/x.sock" } },
-			fetch: errFetch,
+	test("propagates provider transport failures and leaves no warren row attached to a sandbox", async () => {
+		const client = new FakeProvider({
+			provisionError: new RuntimeUnreachableError("fetch failed"),
 		});
 		await expect(
 			spawnRun({
@@ -458,7 +453,7 @@ describe("spawnRun: rollback", () => {
 				projectId: "prj_xxxxxxxxxxxx",
 				prompt: "p",
 			}),
-		).rejects.toBeInstanceOf(BurrowUnreachableError);
+		).rejects.toBeInstanceOf(RuntimeUnreachableError);
 
 		const rows = await repos.runs.listAll();
 		expect(rows).toHaveLength(1);

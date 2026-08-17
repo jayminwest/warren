@@ -1,12 +1,12 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { BurrowClient } from "../../burrow-client/index.ts";
 import { openDatabase, type WarrenDb } from "../../db/client.ts";
 import { createRepos, type Repos } from "../../db/repos/index.ts";
+import { FakeProvider } from "../../runtime/fake/fake-provider.ts";
 import { bearerAuth, publicReadAuth } from "../auth.ts";
 import { startServer } from "../server.ts";
 import type { ServeHandle } from "../types.ts";
 import { API_ROUTE_POLICIES } from "./index.ts";
-import { depsFor, silentLogger, stub, tcpUrl } from "./runs.test-helpers.ts";
+import { depsFor, silentLogger, tcpUrl } from "./runs.test-helpers.ts";
 
 /**
  * Wire-level proof that the route policy table (warren-b875) is actually
@@ -23,13 +23,8 @@ import { depsFor, silentLogger, stub, tcpUrl } from "./runs.test-helpers.ts";
 const TOKEN = "s3cret";
 
 /** A burrow client that 404s everything — no gated route here reaches it. */
-function inertBurrowClient(): BurrowClient {
-	return new BurrowClient({
-		config: { transport: { kind: "unix", path: "/tmp/x.sock" } },
-		fetch: stub(
-			async () => new Response(JSON.stringify({ error: { code: "not_found" } }), { status: 404 }),
-		),
-	});
+function inertBurrowClient(): FakeProvider {
+	return new FakeProvider();
 }
 
 /** Substitute a placeholder for each `:param` so the pattern is a real path. */

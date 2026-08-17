@@ -9,14 +9,6 @@
  *      not enumerated here to avoid drift. The provider-neutral runtime
  *      errors (`RuntimeUnreachableError`, `RuntimeRunNotFoundError`,
  *      `RuntimeConflictError`, `RuntimeAdmissionError`) live in this family.
- *   - Backend-reported failures that reach the HTTP layer still carrying a
- *      backend `code` — a provider surfaced a server envelope without wrapping
- *      it in a neutral runtime class (a `@os-eco/burrow-cli` `BurrowError` from
- *      a call the runtime seam does not yet route through `RuntimeProvider`).
- *      Mapped by `code` alone via `runtimeBackendStatusFor` (warren-36cb): this
- *      file imports NOTHING from `@os-eco/burrow-cli` or `src/burrow-client`, yet
- *      an HTTP consumer still sees the same `{code, message, hint}` they'd see
- *      hitting the backend directly.
  *   - Anything else → 500 internal_error with a FIXED generic message plus
  *      the request's correlation id (warren-4385). An untyped throw carries
  *      whatever the failing layer produced — subprocess stderr, filesystem
@@ -51,7 +43,6 @@ import {
 	RuntimeConflictError,
 	RuntimeRunNotFoundError,
 	RuntimeUnreachableError,
-	runtimeBackendStatusFor,
 } from "../runtime/errors.ts";
 import { WarrenConfigInvalidError, WarrenConfigUnavailableError } from "../warren-config/errors.ts";
 import { EventStreamCapacityError } from "./stream-limits.ts";
@@ -110,17 +101,6 @@ export function renderError(err: unknown, requestId?: string): RenderedError {
 	if (err instanceof WarrenError) {
 		const envelope = buildEnvelope(err.code, err.message, err.recoveryHint);
 		return { status: warrenStatusFor(err), envelope };
-	}
-	// Backend-reported failure leaking from a call the runtime seam does not yet
-	// route through `RuntimeProvider` (a raw burrow server envelope). Mapped by
-	// its own `code` so the envelope forwards verbatim — no `@os-eco/burrow-cli`
-	// import (warren-36cb). WarrenError is handled above, so this only fires for
-	// non-warren backend errors; a warren class that shares a code (e.g.
-	// `validation_error`) never reaches here.
-	const backendStatus = runtimeBackendStatusFor(err);
-	if (backendStatus !== undefined) {
-		const { code, message, hint } = readBackendEnvelope(err);
-		return { status: backendStatus, envelope: buildEnvelope(code, message, hint) };
 	}
 	// Untyped throw (Error or otherwise): nothing above claimed it, so its
 	// message is unvetted and never reaches the body (warren-4385).
@@ -233,33 +213,15 @@ function buildEnvelope(code: string, message: string, hint?: string): ErrorEnvel
 	return { error };
 }
 
-/**
- * Read the `{code, message, hint}` an error already carries, defensively off an
- * `unknown`. Used for backend-reported failures whose status came from
- * `runtimeBackendStatusFor` — the envelope forwards the backend's own fields so
- * a consumer sees the same shape they'd see hitting the backend directly, with
- * NO `@os-eco/burrow-cli` import (warren-36cb). `recoveryHint` is warren's field
- * name; `hint` is the raw wire name — either is honored.
- */
-function readBackendEnvelope(err: unknown): { code: string; message: string; hint?: string } {
-	const e = err as { code?: unknown; message?: unknown; recoveryHint?: unknown; hint?: unknown };
-	const code = typeof e.code === "string" ? e.code : "internal_error";
-	const message = typeof e.message === "string" ? e.message : String(err);
-	const hintValue = e.recoveryHint ?? e.hint;
-	const hint = typeof hintValue === "string" ? hintValue : undefined;
-	return hint !== undefined ? { code, message, hint } : { code, message };
-}
-
 function warrenStatusFor(err: WarrenError): number {
 	if (err instanceof NotFoundError) return 404;
 	if (err instanceof ValidationError) return 400;
 	if (err instanceof ProjectLacksSeedsError) return 400;
 	if (err instanceof PlanHasNoOpenChildrenError) return 400;
 	if (err instanceof StateTransitionError) return 409;
-	// Provider-neutral runtime errors (warren-36cb). `RuntimeUnreachableError`
-	// covers the LocalProvider's `BurrowUnreachableError` (which extends it) and
-	// K8sProvider transport failures alike; the run-not-found / conflict cases
-	// mirror burrow's `not_found`→404 / `toolchain_mismatch`→409.
+	// Provider-neutral runtime errors (warren-36cb): K8sProvider transport
+	// failures ride `RuntimeUnreachableError`; run-not-found maps to 404 and a
+	// backend state clash (`RuntimeConflictError`) to 409.
 	if (err instanceof RuntimeUnreachableError) return 503;
 	if (err instanceof RuntimeRunNotFoundError) return 404;
 	if (err instanceof RuntimeConflictError) return 409;
@@ -269,7 +231,7 @@ function warrenStatusFor(err: WarrenError): number {
 	// input, not a host failure — 422, same family as AgentSchemaError.
 	if (err instanceof WarrenConfigInvalidError) return 422;
 	// Multi-worker placement errors were retired with the K8s migration
-	// (warren-76c5): the self-host backend is a single local burrow, so there
+	// (warren-76c5): the self-host backend is a single local sandbox, so there
 	// is no placement/sticky-worker failure to map. The /workers + /burrows
 	// admin surface was likewise removed (warren-288f); NotFoundError now only
 	// maps the run/project/plot not-found cases below.

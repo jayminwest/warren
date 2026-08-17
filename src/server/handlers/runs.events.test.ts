@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { BurrowClient } from "../../burrow-client/index.ts";
 import { openDatabase, type WarrenDb } from "../../db/client.ts";
 import { createRepos, type Repos } from "../../db/repos/index.ts";
+import { FakeProvider } from "../../runtime/fake/fake-provider.ts";
 import { NO_AUTH } from "../auth.ts";
 import { startServer } from "../server.ts";
 import {
@@ -10,7 +10,7 @@ import {
 	type EventStreamLimits,
 } from "../stream-limits.ts";
 import type { Logger, ServeHandle, ServerDeps } from "../types.ts";
-import { depsFor, silentLogger, stub, tcpUrl } from "./runs.test-helpers.ts";
+import { depsFor, silentLogger, tcpUrl } from "./runs.test-helpers.ts";
 
 describe("GET /runs/:id/events — NDJSON tail", () => {
 	let db: WarrenDb;
@@ -60,10 +60,7 @@ describe("GET /runs/:id/events — NDJSON tail", () => {
 	});
 
 	test("non-follow returns the events as NDJSON", async () => {
-		const burrowClient = new BurrowClient({
-			config: { transport: { kind: "unix", path: "/tmp/x.sock" } },
-			fetch: stub(async () => new Response("{}", { status: 200 })),
-		});
+		const burrowClient = new FakeProvider();
 		const deps = await depsFor(repos, burrowClient);
 		handle = startServer(deps, {
 			transport: { kind: "tcp", hostname: "127.0.0.1", port: 0 },
@@ -90,10 +87,7 @@ describe("GET /runs/:id/events — NDJSON tail", () => {
 	});
 
 	test("?limit=N returns a bounded read and closes (warren-17c1)", async () => {
-		const burrowClient = new BurrowClient({
-			config: { transport: { kind: "unix", path: "/tmp/x.sock" } },
-			fetch: stub(async () => new Response("{}", { status: 200 })),
-		});
+		const burrowClient = new FakeProvider();
 		const deps = await depsFor(repos, burrowClient);
 		handle = startServer(deps, {
 			transport: { kind: "tcp", hostname: "127.0.0.1", port: 0 },
@@ -120,10 +114,7 @@ describe("GET /runs/:id/events — NDJSON tail", () => {
 	});
 
 	test("?limit wins over an explicit ?follow=1 (warren-17c1)", async () => {
-		const burrowClient = new BurrowClient({
-			config: { transport: { kind: "unix", path: "/tmp/x.sock" } },
-			fetch: stub(async () => new Response("{}", { status: 200 })),
-		});
+		const burrowClient = new FakeProvider();
 		const deps = await depsFor(repos, burrowClient);
 		handle = startServer(deps, {
 			transport: { kind: "tcp", hostname: "127.0.0.1", port: 0 },
@@ -146,10 +137,7 @@ describe("GET /runs/:id/events — NDJSON tail", () => {
 	});
 
 	test("?limit rejects garbage and zero (warren-17c1)", async () => {
-		const burrowClient = new BurrowClient({
-			config: { transport: { kind: "unix", path: "/tmp/x.sock" } },
-			fetch: stub(async () => new Response("{}", { status: 200 })),
-		});
+		const burrowClient = new FakeProvider();
 		const deps = await depsFor(repos, burrowClient);
 		handle = startServer(deps, {
 			transport: { kind: "tcp", hostname: "127.0.0.1", port: 0 },
@@ -168,10 +156,7 @@ describe("GET /runs/:id/events — NDJSON tail", () => {
 	});
 
 	test("404 on unknown run id", async () => {
-		const burrowClient = new BurrowClient({
-			config: { transport: { kind: "unix", path: "/tmp/x.sock" } },
-			fetch: stub(async () => new Response("{}", { status: 200 })),
-		});
+		const burrowClient = new FakeProvider();
 		const deps = await depsFor(repos, burrowClient);
 		handle = startServer(deps, {
 			transport: { kind: "tcp", hostname: "127.0.0.1", port: 0 },
@@ -236,10 +221,7 @@ describe("GET /runs/:id/events — concurrency caps", () => {
 	});
 
 	async function serve(limits: EventStreamLimits, logger: Logger = silentLogger): Promise<string> {
-		const burrowClient = new BurrowClient({
-			config: { transport: { kind: "unix", path: "/tmp/x.sock" } },
-			fetch: stub(async () => new Response("{}", { status: 200 })),
-		});
+		const burrowClient = new FakeProvider();
 		const deps = await depsFor(repos, burrowClient, undefined, {
 			streamLimiter: new EventStreamLimiter(limits),
 		});
@@ -391,10 +373,7 @@ describe("GET /runs/:id/events — follow-by-default on live runs (warren-7bff)"
 	});
 
 	async function serve(): Promise<{ url: string; runId: string; deps: ServerDeps }> {
-		const burrowClient = new BurrowClient({
-			config: { transport: { kind: "unix", path: "/tmp/x.sock" } },
-			fetch: stub(async () => new Response("{}", { status: 200 })),
-		});
+		const burrowClient = new FakeProvider();
 		const deps = await depsFor(repos, burrowClient);
 		handle = startServer(deps, {
 			transport: { kind: "tcp", hostname: "127.0.0.1", port: 0 },

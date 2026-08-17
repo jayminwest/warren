@@ -1,14 +1,14 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { getTableColumns } from "drizzle-orm";
-import { BurrowClient } from "../../burrow-client/index.ts";
 import { openDatabase, type WarrenDb } from "../../db/client.ts";
 import { createRepos, type Repos } from "../../db/repos/index.ts";
 import { type RunRow, runs } from "../../db/schema.ts";
+import { FakeProvider } from "../../runtime/fake/fake-provider.ts";
 import { bearerAuth, publicReadAuth } from "../auth.ts";
 import { startServer } from "../server.ts";
 import type { ServeHandle } from "../types.ts";
 import { PUBLIC_RUN_FIELDS, REDACTED_RUN_FIELDS } from "./runs/lifecycle.ts";
-import { depsFor, silentLogger, stub, tcpUrl } from "./runs.test-helpers.ts";
+import { depsFor, silentLogger, tcpUrl } from "./runs.test-helpers.ts";
 
 /**
  * Public projections for `GET /runs` and `GET /runs/:id` (warren-946f /
@@ -24,13 +24,8 @@ import { depsFor, silentLogger, stub, tcpUrl } from "./runs.test-helpers.ts";
 const TOKEN = "s3cret";
 
 /** A burrow client that 404s everything — no route here reaches it. */
-function inertBurrowClient(): BurrowClient {
-	return new BurrowClient({
-		config: { transport: { kind: "unix", path: "/tmp/x.sock" } },
-		fetch: stub(
-			async () => new Response(JSON.stringify({ error: { code: "not_found" } }), { status: 404 }),
-		),
-	});
+function inertBurrowClient(): FakeProvider {
+	return new FakeProvider();
 }
 
 describe("run field classification (warren-946f)", () => {

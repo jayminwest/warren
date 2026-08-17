@@ -19,14 +19,6 @@ export interface ScenarioCtx {
 	readonly mode: BootMode;
 	readonly warrenUrl: string;
 	readonly token: string;
-	/**
-	 * Burrow's unix socket path inside the harness. Scenarios that need
-	 * to point an out-of-band warren CLI (e.g. `warren doctor` in scenario
-	 * 11) at the same burrow process read this. Container mode supplies
-	 * the in-container path; `--container` is deferred so today this is
-	 * always the in-proc layout's `${tmp}/sock/burrow.sock`.
-	 */
-	readonly socketPath: string;
 	readonly fixtures: {
 		readonly canopyRepoUrl: string;
 		readonly canopyRepoPath: string;
@@ -43,6 +35,12 @@ export interface ScenarioCtx {
 		 * Empty in container mode.
 		 */
 		readonly gitConfigPath: string;
+		/**
+		 * PATH-shim dir holding the stub `pi`/`claude` binaries
+		 * (warren-ea0a). Scenario-owned boots prepend it to the child's
+		 * PATH via extraEnv. Empty in container mode.
+		 */
+		readonly shimBinDir: string;
 	};
 	readonly logger: ScenarioLogger;
 	readonly tmp: string;
@@ -57,12 +55,10 @@ export interface ScenarioCtx {
 }
 
 export interface ScenarioLifecycle {
-	/** Force-stop warren; burrow keeps running. Bridge connections drop. */
+	/** Force-stop warren; live run bridges drop. */
 	killWarren(): Promise<void>;
 	/** Re-spawn warren after killWarren and wait for /healthz. */
 	restartWarren(): Promise<void>;
-	/** Force-stop burrow (for supervisor restart-budget scenarios). */
-	killBurrow(): Promise<void>;
 }
 
 export interface ScenarioLogger {

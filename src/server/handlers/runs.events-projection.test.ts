@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { BurrowClient } from "../../burrow-client/index.ts";
 import { openDatabase, type WarrenDb } from "../../db/client.ts";
 import { createRepos, type Repos } from "../../db/repos/index.ts";
+import { FakeProvider } from "../../runtime/fake/fake-provider.ts";
 import { ANONYMOUS_ACTOR, bearerAuth, OPERATOR_ACTOR, publicReadAuth } from "../auth.ts";
 import { startServer } from "../server.ts";
 import type { ServeHandle } from "../types.ts";
@@ -13,7 +13,7 @@ import {
 	scrubSecrets,
 } from "./runs/event-projection.ts";
 import { CORPUS } from "./runs.events-projection.test-corpus.ts";
-import { depsFor, silentLogger, stub, tcpUrl } from "./runs.test-helpers.ts";
+import { depsFor, silentLogger, tcpUrl } from "./runs.test-helpers.ts";
 
 /**
  * Secret scrubber + public projection for the run event stream
@@ -299,13 +299,8 @@ describe("projectEvent (warren-1cb7)", () => {
 });
 
 /** A burrow client that 404s everything — no route here reaches it. */
-function inertBurrowClient(): BurrowClient {
-	return new BurrowClient({
-		config: { transport: { kind: "unix", path: "/tmp/x.sock" } },
-		fetch: stub(
-			async () => new Response(JSON.stringify({ error: { code: "not_found" } }), { status: 404 }),
-		),
-	});
+function inertBurrowClient(): FakeProvider {
+	return new FakeProvider();
 }
 
 describe("GET /runs/:id/events under WARREN_AUTH=public (warren-1cb7)", () => {

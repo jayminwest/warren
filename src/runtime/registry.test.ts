@@ -1,6 +1,5 @@
 import { describe, expect, test } from "bun:test";
 import type { CoreV1Api, V1Pod } from "@kubernetes/client-node";
-import type { BurrowClient } from "../burrow-client/index.ts";
 import type { ReapExec, ReapFs } from "../runs/reap/types.ts";
 import { UnknownRuntimeError } from "./errors.ts";
 import { K8sProvider } from "./k8s/provider.ts";
@@ -13,15 +12,11 @@ import {
 } from "./registry.ts";
 
 /**
- * Hermetic deps: the pool factory throws if invoked. No stub method calls it, so
- * resolution + capability reads never touch burrow — no socket, no DB.
+ * Hermetic deps: the K8s client factory throws if invoked. No shell method
+ * calls it, so building a K8sProvider off WARREN_RUNTIME=k8s never touches a
+ * cluster — and the local backend needs nothing at all (warren-ea0a).
  */
 const deps: RuntimeProviderDeps = {
-	burrowClient: (): BurrowClient => {
-		throw new Error("burrowClient factory must not be called by the LocalProvider shell");
-	},
-	// Fake K8s client factory: throws if invoked. No shell method calls it, so
-	// building a K8sProvider off WARREN_RUNTIME=k8s never touches a cluster.
 	k8sCoreApi: (): CoreV1Api => {
 		throw new Error("k8sCoreApi factory must not be called by the K8sProvider shell");
 	},
@@ -64,9 +59,9 @@ describe("resolveRuntimeProvider", () => {
 
 	test("accepts the LocalProvider fs/exec seam so reap's fallback can route through the registry", () => {
 		// warren-aa4a: the reap pipeline's fallback resolves through
-		// `resolveRuntimeProvider({ burrowClient, fs, exec })` instead of
-		// constructing a LocalProvider inline. The fs/exec slices are LocalProvider-
-		// only (finalize's disk/shell seam) and must not disturb resolution.
+		// `resolveRuntimeProvider({ fs, exec })` instead of constructing a
+		// LocalProvider inline. The fs/exec slices are LocalProvider-only
+		// (finalize's disk/shell seam) and must not disturb resolution.
 		const fs: ReapFs = {
 			mkdirp: () => Promise.resolve(),
 			readFile: () => Promise.resolve(null),
@@ -80,7 +75,7 @@ describe("resolveRuntimeProvider", () => {
 		expect(provider).toBeInstanceOf(LocalProvider);
 	});
 
-	test("advertises the full burrow capability set", () => {
+	test("advertises the full local capability set", () => {
 		const provider = resolveRuntimeProvider(deps, {});
 		expect(provider.capabilities).toEqual({
 			previewPorts: true,

@@ -1,10 +1,9 @@
-import { BurrowClient } from "../../burrow-client/index.ts";
 import type { AnyWarrenDb } from "../../db/client.ts";
 import type { Repos } from "../../db/repos/index.ts";
 import { FakeForge } from "../../forge/fake/fake-forge.ts";
 import type { PreviewAuth } from "../../preview/cookie.ts";
 import { RunEventBroker } from "../../runs/index.ts";
-import { resolveRuntimeProvider } from "../../runtime/registry.ts";
+import { FakeProvider } from "../../runtime/fake/fake-provider.ts";
 import { createBridgeRegistry } from "../bridges.ts";
 import { createDbSeams } from "../db-seams.ts";
 import type { BridgeRegistry, ServeHandle, ServerDeps } from "../types.ts";
@@ -19,11 +18,9 @@ export const silentLogger = {
 	debug() {},
 };
 
-export function makeBurrowClient(): BurrowClient {
-	return new BurrowClient({
-		config: { transport: { kind: "unix", path: "/tmp/x.sock" } },
-		fetch: (async () => new Response(JSON.stringify({ ok: true }))) as unknown as typeof fetch,
-	});
+/** An inert provider — the preview handlers never reach the runtime seam. */
+export function makeBurrowClient(): FakeProvider {
+	return new FakeProvider();
 }
 
 export async function depsFor(
@@ -32,12 +29,12 @@ export async function depsFor(
 	db?: AnyWarrenDb,
 	previewMode: "subdomain" | "path" = "subdomain",
 ): Promise<{ deps: ServerDeps; bridges: BridgeRegistry }> {
-	const burrowClient = makeBurrowClient();
+	const provider = makeBurrowClient();
 	const broker = new RunEventBroker();
 	const bridges = createBridgeRegistry({
 		repos,
 		broker,
-		runtimeProvider: resolveRuntimeProvider({ burrowClient: () => burrowClient }),
+		runtimeProvider: provider,
 		bridge: async () => ({ written: 0, skipped: 0, errored: false }),
 	});
 	const previewExtras =
@@ -48,7 +45,7 @@ export async function depsFor(
 				: { previewAuth, previewMode: "subdomain" as const, previewHost: HOST };
 	const deps: ServerDeps = {
 		repos,
-		runtimeProvider: resolveRuntimeProvider({ burrowClient: () => burrowClient }),
+		runtimeProvider: provider,
 		forge: new FakeForge(),
 		broker,
 		bridges,

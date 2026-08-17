@@ -12,8 +12,8 @@
  *
  * The schema is currently an empty `.strict()` object — the `[[workers]]`
  * block was retired with the K8s migration (warren-288f; multi-worker
- * pooling is gone, warren's self-host backend is a single local burrow
- * built from `WARREN_BURROW_*` env vars). The loader scaffolding is kept
+ * pooling is gone, warren's self-host backend is the in-process local
+ * engine). The loader scaffolding is kept
  * so a future top-level config key can grow the schema on a tested
  * foundation without re-plumbing the boot path.
  *

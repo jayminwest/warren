@@ -1,12 +1,12 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { BurrowClient } from "../../burrow-client/index.ts";
 import { openDatabase, type WarrenDb } from "../../db/client.ts";
 import { createRepos, type Repos } from "../../db/repos/index.ts";
 import { GitHubForge } from "../../forge/github/provider.ts";
+import { FakeProvider } from "../../runtime/fake/fake-provider.ts";
 import { NO_AUTH } from "../auth.ts";
 import { startServer } from "../server.ts";
 import type { ServeHandle, ServerDeps } from "../types.ts";
-import { depsFor, silentLogger, stub, tcpUrl } from "./projects.test-helpers.ts";
+import { depsFor, silentLogger, tcpUrl } from "./projects.test-helpers.ts";
 
 describe("POST /projects/:id/refresh — git fetch + hard reset", () => {
 	let db: WarrenDb;
@@ -41,10 +41,7 @@ describe("POST /projects/:id/refresh — git fetch + hard reset", () => {
 	});
 
 	test("refreshes the clone, stamps lastFetchedAt + lastHeadSha, returns 200", async () => {
-		const burrowClient = new BurrowClient({
-			config: { transport: { kind: "unix", path: "/tmp/x.sock" } },
-			fetch: stub(async () => new Response("{}", { status: 200 })),
-		});
+		const burrowClient = new FakeProvider();
 		const deps = await depsFor(repos, burrowClient);
 		handle = startServer(deps, {
 			transport: { kind: "tcp", hostname: "127.0.0.1", port: 0 },
@@ -69,10 +66,7 @@ describe("POST /projects/:id/refresh — git fetch + hard reset", () => {
 	});
 
 	test("forwards an explicit ref into the refresh", async () => {
-		const burrowClient = new BurrowClient({
-			config: { transport: { kind: "unix", path: "/tmp/x.sock" } },
-			fetch: stub(async () => new Response("{}", { status: 200 })),
-		});
+		const burrowClient = new FakeProvider();
 		const seenRefs: string[] = [];
 		const deps: ServerDeps = {
 			...(await depsFor(repos, burrowClient)),
@@ -102,10 +96,7 @@ describe("POST /projects/:id/refresh — git fetch + hard reset", () => {
 	});
 
 	test("returns 404 for an unknown project id", async () => {
-		const burrowClient = new BurrowClient({
-			config: { transport: { kind: "unix", path: "/tmp/x.sock" } },
-			fetch: stub(async () => new Response("{}", { status: 200 })),
-		});
+		const burrowClient = new FakeProvider();
 		const deps = await depsFor(repos, burrowClient);
 		handle = startServer(deps, {
 			transport: { kind: "tcp", hostname: "127.0.0.1", port: 0 },
@@ -123,10 +114,7 @@ describe("POST /projects/:id/refresh — git fetch + hard reset", () => {
 	// through the boot forge (forge-contract.md §4) — the secret reaches git
 	// only as per-spawn GIT_CONFIG_* env, never held on a config object.
 	test("mints the fetch credential through the boot forge into the per-spawn env", async () => {
-		const burrowClient = new BurrowClient({
-			config: { transport: { kind: "unix", path: "/tmp/x.sock" } },
-			fetch: stub(async () => new Response("{}", { status: 200 })),
-		});
+		const burrowClient = new FakeProvider();
 		const spawnEnvs: (Record<string, string | undefined> | undefined)[] = [];
 		const deps: ServerDeps = {
 			...(await depsFor(repos, burrowClient)),
@@ -157,10 +145,7 @@ describe("POST /projects/:id/refresh — git fetch + hard reset", () => {
 	});
 
 	test("a forge that does not own the clone URL spawns anonymous git", async () => {
-		const burrowClient = new BurrowClient({
-			config: { transport: { kind: "unix", path: "/tmp/x.sock" } },
-			fetch: stub(async () => new Response("{}", { status: 200 })),
-		});
+		const burrowClient = new FakeProvider();
 		// depsFor wires FakeForge, which owns only fake:// URLs — the github.com
 		// project above parses to null, so no credential is minted.
 		const spawnEnvs: (Record<string, string | undefined> | undefined)[] = [];

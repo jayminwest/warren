@@ -1,7 +1,7 @@
 /**
  * `LocalProvider.finalize` body (pl-829f step 12 / warren-371a; events+dirty+
  * plans parity refinement warren-1f56, step 13) — the load-bearing §4 seam. Runs
- * the workspace-DEPENDENT half of reap while the burrow workspace is still live
+ * the workspace-DEPENDENT half of reap while the run workspace is still live
  * and returns structured deltas the domain applies to its project clone.
  *
  * A THIN host-side WRAPPER over the EXISTING reap merge functions (`mergeMulch`,
@@ -9,13 +9,13 @@
  * `finalizeSeedReset`) — it calls them, it does NOT fork their logic; the pushed
  * branch stays reap's.
  *
- * ## Burrow file-reads live HERE (warren-fbbf)
+ * ## Tracker file-reads (warren-fbbf, warren-ea0a)
  *
- * `mirrorSeeds`/`mirrorPlans` are pure string→clone merges now; the burrow
- * `http.files.read` for `.seeds/{issues,plans}.jsonl` was evicted from
- * `src/runs/reap/seeds.ts` into this module (`readWorkspaceTracker`) — the ONE
- * finalize-path burrow read. `NotFoundError` maps to `null` (no-op mirror),
- * keeping reap core free of burrow-client imports.
+ * `mirrorSeeds`/`mirrorPlans` are pure string→clone merges; reading the
+ * workspace-side `.seeds/{issues,plans}.jsonl` lives behind the
+ * `FinalizeTarget.readTracker` seam — a missing file reads as `null` (no-op
+ * mirror), keeping reap core free of backend concerns. The in-process engine
+ * resolves the target off its run store and reads straight off the host FS.
  *
  * - **Event capture**: the merge functions emit ~10 per-record kinds
  *   (`mulch.record.*`, `seeds.closed/created`, `seeds.plan_mirrored`,
@@ -31,8 +31,6 @@
  */
 
 import { join } from "node:path";
-import { NotFoundError } from "@os-eco/burrow-cli";
-import { type BurrowClient, withTransportMapping } from "../../burrow-client/index.ts";
 import type { EventRow } from "../../db/schema.ts";
 import { mergeMulch } from "../../runs/reap/mulch.ts";
 import { mirrorPlans, mirrorSeeds } from "../../runs/reap/seeds.ts";
@@ -48,7 +46,6 @@ import type {
 	FinalizeResult,
 	FinalizeStage,
 	FinalizeStageOutcome,
-	RunHandle,
 } from "../contract.ts";
 import { finalizeCommitStage, finalizeMergeStage } from "../contract.ts";
 import { RuntimeProviderError } from "../errors.ts";
@@ -109,11 +106,9 @@ export interface FinalizeDeps {
 
 /**
  * The finalize TARGET the pipeline runs against (warren-413d): a live
- * workspace path plus a tracker-file reader. The legacy burrow-backed mode
- * resolves both off the daemon (`GET /burrows/:id` + `http.files.read`);
- * the in-process backend resolves the path off its run store and reads
- * tracker files straight off the host FS — the workspace is a local
- * worktree, so no daemon round-trip remains.
+ * workspace path plus a tracker-file reader. The in-process backend resolves
+ * the path off its run store and reads tracker files straight off the host
+ * FS — the workspace is a local worktree.
  */
 export interface FinalizeTarget {
 	readonly workspacePath: string;
@@ -122,29 +117,9 @@ export interface FinalizeTarget {
 }
 
 /**
- * Run the workspace-dependent half of reap against the run's live burrow
- * workspace and assemble a `FinalizeResult`. `client` is the resolved
- * single-container burrow client; `handle.sandboxId` is the burrowId.
- */
-export async function finalizeLocalRun(
-	client: BurrowClient,
-	handle: RunHandle,
-	intent: FinalizeIntent,
-	deps: FinalizeDeps = {},
-): Promise<FinalizeResult> {
-	const workspacePath = await resolveWorkspacePath(client, handle.sandboxId);
-	const target: FinalizeTarget = {
-		workspacePath,
-		readTracker: (relPath) => readWorkspaceTracker(client, handle.sandboxId, relPath),
-	};
-	return finalizeLocalWorkspace(target, intent, deps);
-}
-
-/**
  * The finalize pipeline over an already-resolved target (warren-413d). The
  * in-process LocalProvider calls this directly with its store-resolved
- * workspace path + host-FS tracker reads; the burrow-backed legacy mode
- * reaches it through the `finalizeLocalRun` wrapper above.
+ * workspace path + host-FS tracker reads.
  */
 export async function finalizeLocalWorkspace(
 	target: FinalizeTarget,
@@ -205,27 +180,9 @@ export async function finalizeLocalWorkspace(
 }
 
 /**
- * Look up the live workspace path from burrow (`GET /burrows/:id`). Transport-
- * mapped so a dead socket surfaces as `BurrowUnreachableError`.
- */
-async function resolveWorkspacePath(client: BurrowClient, sandboxId: string): Promise<string> {
-	const burrow = await withTransportMapping(client.config, () =>
-		client.http.burrows.get(sandboxId),
-	);
-	const workspacePath = burrow.workspacePath;
-	if (typeof workspacePath !== "string" || workspacePath === "") {
-		throw new RuntimeProviderError(
-			`LocalProvider.finalize: burrow ${sandboxId} exposed no workspace path`,
-			{ recoveryHint: "a burrow with no workspacePath cannot be finalized (already torn down?)" },
-		);
-	}
-	return workspacePath;
-}
-
-/**
  * Resolve the host project-clone path the merges write into. `""` (unused
  * sentinel) when `artifacts` is empty; otherwise the hint is mandatory — the
- * burrow backend cannot merge without it (mirrors `create()`'s `hostClonePathHint`).
+ * local backend cannot merge without it (mirrors `create()`'s `hostClonePathHint`).
  */
 function resolveClonePath(intent: FinalizeIntent, artifacts: Set<string>): string {
 	if (artifacts.size === 0) return "";
@@ -293,26 +250,6 @@ async function readMergedMulchFiles(
 		});
 	}
 	return files;
-}
-
-/**
- * Read a workspace tracker file off the live burrow (warren-fbbf). `null` on
- * `NotFoundError`; any other error propagates to a failed stage.
- */
-async function readWorkspaceTracker(
-	client: BurrowClient,
-	sandboxId: string,
-	relPath: string,
-): Promise<string | null> {
-	try {
-		const out = await withTransportMapping(client.config, () =>
-			client.http.files.read(sandboxId, relPath),
-		);
-		return out.contents;
-	} catch (err) {
-		if (err instanceof NotFoundError) return null;
-		throw err;
-	}
 }
 
 async function finalizeSeeds(

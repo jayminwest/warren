@@ -9,9 +9,9 @@
  */
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { BurrowClient } from "../../burrow-client/index.ts";
 import { openDatabase, type WarrenDb } from "../../db/client.ts";
 import { createRepos, type Repos } from "../../db/repos/index.ts";
+import { FakeProvider } from "../../runtime/fake/fake-provider.ts";
 import {
 	ANONYMOUS_ACTOR,
 	bearerAuth,
@@ -22,7 +22,7 @@ import {
 } from "../auth.ts";
 import { startServer } from "../server.ts";
 import type { AuthProvider, ServeHandle } from "../types.ts";
-import { depsFor, silentLogger, stub, tcpUrl } from "./runs.test-helpers.ts";
+import { depsFor, silentLogger, tcpUrl } from "./runs.test-helpers.ts";
 
 const TOKEN = "s3cret";
 
@@ -32,13 +32,8 @@ interface WhoamiBody {
 }
 
 /** A burrow client that 404s everything — `/whoami` never reaches it. */
-function inertBurrowClient(): BurrowClient {
-	return new BurrowClient({
-		config: { transport: { kind: "unix", path: "/tmp/x.sock" } },
-		fetch: stub(
-			async () => new Response(JSON.stringify({ error: { code: "not_found" } }), { status: 404 }),
-		),
-	});
+function inertBurrowClient(): FakeProvider {
+	return new FakeProvider();
 }
 
 describe("GET /whoami", () => {

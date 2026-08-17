@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { BurrowClient } from "../../burrow-client/index.ts";
 import { openDatabase, type WarrenDb } from "../../db/client.ts";
 import { createRepos, type Repos } from "../../db/repos/index.ts";
 import type { FinalizeResult } from "../../runtime/contract.ts";
+import { FakeProvider } from "../../runtime/fake/fake-provider.ts";
 import { FinalizeCoordinator } from "../../runtime/k8s/finalize-coordinator.ts";
 import {
 	IN_POD_FINALIZE_WIRE_VERSION,
@@ -11,7 +11,7 @@ import {
 import { bearerAuth, NO_AUTH } from "../auth.ts";
 import { startServer } from "../server.ts";
 import type { ServeHandle } from "../types.ts";
-import { depsFor, silentLogger, stub, tcpUrl } from "./runs.test-helpers.ts";
+import { depsFor, silentLogger, tcpUrl } from "./runs.test-helpers.ts";
 
 /**
  * HTTP coverage for the K8s finalize callback (warren-0d35):
@@ -22,13 +22,8 @@ import { depsFor, silentLogger, stub, tcpUrl } from "./runs.test-helpers.ts";
  * idempotent re-POST.
  */
 
-function inertBurrowClient(): BurrowClient {
-	return new BurrowClient({
-		config: { transport: { kind: "unix", path: "/tmp/x.sock" } },
-		fetch: stub(
-			async () => new Response(JSON.stringify({ error: { code: "not_found" } }), { status: 404 }),
-		),
-	});
+function inertBurrowClient(): FakeProvider {
+	return new FakeProvider();
 }
 
 function sampleIntent(): Omit<InPodFinalizeIntent, "attemptId"> {

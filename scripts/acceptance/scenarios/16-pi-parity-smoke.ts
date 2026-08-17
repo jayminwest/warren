@@ -1,11 +1,11 @@
 /**
  * Scenario 16 — pi built-in agent parity smoke (warren-d18e / pl-4374 step 2).
  *
- * Acceptance criterion (warren-d18e):
- *   "POST /runs with agentName='pi' returns 201 + run_xxx; burrow.up is
- *   invoked with agents: ['pi']; the run reaches state='running' and
- *   emits at least one event through warren's events table; cleanup
- *   cancels the run."
+ * Acceptance criterion (warren-d18e; re-based onto the internalized
+ * runtime in warren-ea0a):
+ *   "POST /runs with agentName='pi' returns 201 + run_xxx; the local
+ *   engine dispatches the pi runtime; the run emits at least one event
+ *   through warren's events table; cleanup cancels the run."
  *
  * This is the parity wedge for pl-4374 — the same minimal proof scenario
  * 04 does for stub-shell, but for the pi built-in shipped in
@@ -14,25 +14,23 @@
  *   1. The pi built-in is seeded into warren's agents registry on boot
  *      (GET /agents/pi returns the AgentDefinition with frontmatter.source
  *      = "builtin").
- *   2. POST /runs accepts agentName='pi' and dispatches through burrow —
- *      burrowId + burrowRunId are populated on the 201 (proving burrow.up
- *      was invoked with `agents: ['pi']` per src/runs/spawn/dispatch.ts:414).
+ *   2. POST /runs accepts agentName='pi' and dispatches through the
+ *      in-process engine — burrowId + burrowRunId (the provider-neutral
+ *      sandbox/run ids) are populated on the 201.
  *   3. The run's renderedAgentJson is frozen from the pi built-in
  *      (name='pi', frontmatter.source='builtin').
  *   4. At least one event lands in the events table — the durable signal
- *      that warren's bridge picked the run up off burrow's event stream.
+ *      that warren's bridge picked the run up off the engine's event
+ *      stream.
  *   5. Cleanup cancels the run so teardown doesn't race a live agent.
  *
- * Why "at least one event" instead of "agent_start specifically": burrow's
- * upstream piRuntime (--mode rpc) is the cross-repo step warren-0e06,
- * not yet shipped in @os-eco/burrow-cli 0.2.12. Until it lands, the
- * acceptance harness registers a CUSTOM AgentRuntime for the `pi` id
- * (burrow-with-stub.ts) that combines burrow's declarative spawn
- * machinery with its real `parsePiEvents` parser — so the pi-shaped
- * JSONL emitted by `tools/pi-stub-agent.sh` lands as `state_change`
- * events whose payload preserves the original pi envelope verbatim.
- * Once piRuntime ships, this scenario can tighten the assertion to
- * kind='agent_start' (follow-on warren-70af).
+ * Stub injection (warren-ea0a): the pi adapter's buildSpawnCommand execs
+ * the bare name `pi`, so the harness prepends the fixture shim dir
+ * (lib/stub-agent/pi-path-shim.sh) to the shared boot's PATH. The shim
+ * emits pi RPC JSONL — a `turn_end` usage envelope plus `agent_end` —
+ * which warren's own parsePiEvents (src/runtime/adapters/parsers/)
+ * collapses into `state_change` events whose payload preserves the
+ * original pi envelope verbatim.
  *
  * warren-17a4 extension: this scenario also asserts that the run's
  * cost_usd / tokens_input / tokens_output columns are non-null after
@@ -101,10 +99,10 @@ const PI_USAGE_TIMEOUT_MS = 15_000;
 export const scenario: Scenario = {
 	id: "16",
 	title:
-		"pi built-in parity smoke — POST /runs agent=pi dispatches through burrow and emits events",
+		"pi built-in parity smoke — POST /runs agent=pi dispatches through the local engine and emits events",
 	// Same constraint as scenario 04: needs the host-side sample project,
-	// canopy fixture, and the declarative-pi registration in burrow-with-stub.
-	// Container mode does not bind-mount any of those.
+	// the canopy fixture, and the pi PATH shim. Container mode does not
+	// bind-mount any of those.
 	modes: ["in-proc"],
 	async run(ctx) {
 		const http = new WarrenHttp({ baseUrl: ctx.warrenUrl, token: ctx.token });
@@ -128,8 +126,8 @@ export const scenario: Scenario = {
 
 		const project = await ensureProject(http, ctx.fixtures.sampleProjectGitUrl);
 
-		// 2. POST /runs with agent='pi' — 201 + run_xxx, burrowId/burrowRunId
-		// populated by spawnRun (proves burrow.up was called with agents: ['pi']).
+		// 2. POST /runs with agent='pi' — 201 + run_xxx, the sandbox/run ids
+		// populated by spawnRun (proves the engine accepted the dispatch).
 		const created = await http.expectJson<CreateRunResponse>("POST", "/runs", 201, {
 			body: {
 				agent: "pi",
@@ -146,7 +144,7 @@ export const scenario: Scenario = {
 		assertEqual(run.projectId, project.id, "POST /runs run.projectId");
 		assertTrue(
 			typeof run.burrowId === "string" && run.burrowId !== null && run.burrowId.length > 0,
-			"POST /runs run.burrowId populated (proves burrow.up was invoked)",
+			"POST /runs run.burrowId populated (proves the engine accepted the dispatch)",
 		);
 		assertTrue(
 			typeof run.burrowRunId === "string" && run.burrowRunId !== null && run.burrowRunId.length > 0,
@@ -170,8 +168,7 @@ export const scenario: Scenario = {
 			await waitForFirstEvent(http, run.id, FIRST_EVENT_TIMEOUT_MS);
 
 			// 5. Wait for pi `turn_end` accumulation to land on the run row
-			// (warren-17a4). The acceptance pi runtime (burrow-with-stub.ts)
-			// dispatches `tools/pi-stub-agent.sh`, which emits a pi RPC
+			// (warren-17a4). The pi PATH shim (pi-path-shim.sh) emits a pi RPC
 			// `turn_end` envelope with `message.usage.cost.total=0.000666`
 			// plus token counts, followed by `agent_end`. Warren's bridge
 			// (src/runs/stream/bridge.ts) accumulates `turn_end` usage and calls

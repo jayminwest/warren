@@ -1,23 +1,14 @@
 import { describe, expect, test } from "bun:test";
-import type { BurrowClient } from "../../burrow-client/index.ts";
-import { LOCAL_PROVIDER_CAPABILITIES, LocalProvider, type LocalProviderDeps } from "./provider.ts";
+import { LOCAL_PROVIDER_CAPABILITIES, LocalProvider } from "./provider.ts";
 
 /**
- * Hermetic deps for the capability assertions below: the factory throws if a
- * method ever touches the pool. Every method now has a real body — the live
- * paths are covered per-method (`create.test.ts`, `stream.test.ts`,
- * `status.test.ts`, `send-message.test.ts`, `cancel.test.ts`,
- * `teardown.test.ts`, `finalize.test.ts`).
+ * The provider is engine-only now (warren-ea0a): building it with no deps
+ * yields the in-process engine. The live method paths are covered per-method
+ * (`engine.test.ts`, `finalize.test.ts`, `drive.test.ts`).
  */
-const deps: LocalProviderDeps = {
-	burrowClient: (): BurrowClient => {
-		throw new Error("burrowClient factory must not be called by a LocalProvider stub");
-	},
-};
-
 describe("LocalProvider", () => {
-	test("advertises the full burrow capability set", () => {
-		const provider = new LocalProvider(deps);
+	test("advertises the full local capability set", () => {
+		const provider = new LocalProvider();
 		expect(provider.capabilities).toBe(LOCAL_PROVIDER_CAPABILITIES);
 		expect(provider.capabilities).toEqual({
 			previewPorts: true,

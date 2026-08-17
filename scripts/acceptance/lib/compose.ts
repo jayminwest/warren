@@ -19,8 +19,8 @@
  *     tag.
  *
  * Why this is a thin wrapper, not a re-implementation of inproc.ts:
- *   - The supervisor inside the container owns burrow lifecycle. We do
- *     not get killWarren/restartWarren/killBurrow for free — those would
+ *   - The supervisor inside the container owns process lifecycle. We do
+ *     not get killWarren/restartWarren for free — those would
  *     fight the supervisor's restart policy and aren't a useful test of
  *     production behaviour anyway. Scenarios that need lifecycle declare
  *     `modes: ["in-proc"]` and stay in-proc-only.
@@ -68,8 +68,6 @@ export interface ComposeBootHandle {
 	readonly warrenUrl: string;
 	readonly token: string;
 	readonly tmpRoot: string;
-	/** Burrow socket path *inside* the container; not reachable from the host. */
-	readonly socketPath: string;
 	readonly projectName: string;
 	readonly hostPort: number;
 	stop(): Promise<void>;
@@ -128,9 +126,6 @@ export async function bootCompose(opts: ComposeBootOptions): Promise<ComposeBoot
 		warrenUrl,
 		token: opts.token,
 		tmpRoot: opts.tmpRoot,
-		// docs/design/runtime-and-supervisor.md + Dockerfile ENV: container's burrow socket lives here.
-		// Surfaced for parity with InProc; not reachable from the host.
-		socketPath: "/var/run/burrow.sock",
 		projectName,
 		hostPort,
 		stop: async () => {

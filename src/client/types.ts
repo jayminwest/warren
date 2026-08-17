@@ -275,9 +275,8 @@ export interface RefreshProjectResponse {
 }
 
 /**
- * Burrow inbox message priority. Alias of the canonical `InboxPriority`
- * (`src/core/wire.ts`), kept under the SDK's historical name; both mirror
- * `MESSAGE_PRIORITIES` from `@os-eco/burrow-cli`.
+ * Inbox message priority. Alias of the canonical `InboxPriority`
+ * (`src/core/wire.ts`), kept under the SDK's historical name.
  */
 export type MessagePriority = InboxPriority;
 

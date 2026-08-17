@@ -1,11 +1,11 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { BurrowClient } from "../../burrow-client/index.ts";
 import { openDatabase, type WarrenDb } from "../../db/client.ts";
 import { createRepos, type Repos } from "../../db/repos/index.ts";
+import { FakeProvider } from "../../runtime/fake/fake-provider.ts";
 import { NO_AUTH } from "../auth.ts";
 import { startServer } from "../server.ts";
 import type { ServeHandle, ServerDeps } from "../types.ts";
-import { depsFor, silentLogger, stub, tcpUrl } from "./projects.test-helpers.ts";
+import { depsFor, silentLogger, tcpUrl } from "./projects.test-helpers.ts";
 
 interface PlanSummaryWire {
 	id: string;
@@ -54,22 +54,19 @@ describe("GET /projects/:id/seeds/plans — list a project's seeds plans (warren
 	});
 
 	function depsWithSdSpawn(
-		burrowClient: BurrowClient,
+		provider: FakeProvider,
 		sdSpawn: (
 			cmd: readonly string[],
 		) => Promise<{ stdout: string; stderr: string; exitCode: number }>,
 	): Promise<ServerDeps> {
 		return (async () => {
-			const base = await depsFor(repos, burrowClient);
+			const base = await depsFor(repos, provider);
 			return { ...base, seedsCli: { sdBinary: "sd", spawn: sdSpawn } };
 		})();
 	}
 
-	function silentBurrow(): BurrowClient {
-		return new BurrowClient({
-			config: { transport: { kind: "unix", path: "/tmp/x.sock" } },
-			fetch: stub(async () => new Response("{}", { status: 200 })),
-		});
+	function silentBurrow(): FakeProvider {
+		return new FakeProvider();
 	}
 
 	test("returns lean plan summaries and shells out to `sd plan list --json`", async () => {

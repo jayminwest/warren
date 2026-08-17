@@ -22,13 +22,13 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { BurrowClient } from "../../burrow-client/index.ts";
 import { openDatabase, type WarrenDb } from "../../db/client.ts";
 import { createRepos, type Repos } from "../../db/repos/index.ts";
+import { FakeProvider } from "../../runtime/fake/fake-provider.ts";
 import { NO_AUTH } from "../auth.ts";
 import { startServer } from "../server.ts";
 import type { ServeHandle } from "../types.ts";
-import { depsFor, silentLogger, stub, tcpUrl } from "./runs.test-helpers.ts";
+import { depsFor, silentLogger, tcpUrl } from "./runs.test-helpers.ts";
 
 const GOLDEN_DIR = join(import.meta.dir, "__golden__", "envelopes");
 const UPDATE = process.env.WARREN_UPDATE_GOLDENS === "1";
@@ -79,13 +79,7 @@ describe("detail-GET envelopes — __golden__ snapshots (warren-7d84)", () => {
 			],
 			now: NOW,
 		});
-		const burrowClient = new BurrowClient({
-			config: { transport: { kind: "unix", path: "/tmp/x.sock" } },
-			fetch: stub(
-				async () => new Response(JSON.stringify({ error: { code: "not_found" } }), { status: 404 }),
-			),
-		});
-		handle = startServer(await depsFor(repos, burrowClient), {
+		handle = startServer(await depsFor(repos, new FakeProvider()), {
 			transport: { kind: "tcp", hostname: "127.0.0.1", port: 0 },
 			auth: NO_AUTH,
 			logger: silentLogger,

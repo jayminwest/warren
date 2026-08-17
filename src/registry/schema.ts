@@ -288,11 +288,10 @@ export function readRuntimeId(agent: AgentDefinition, configOverride?: string): 
 }
 
 /**
- * Env var an operator sets when their burrow build registers runtime ids
- * beyond warren's canonical three (warren-c4be). Comma-separated; empty /
+ * Env var an operator sets when their deployment registers runtime ids
+ * beyond warren's canonical ones (warren-c4be). Comma-separated; empty /
  * unset means the canonical list alone, so validation stays fail-closed by
- * default. The acceptance harness uses it for its `stub-shell` runtime,
- * which burrow-with-stub really does register.
+ * default. The acceptance harness uses it for its `stub-shell` runtime.
  *
  * Scope: agent `frontmatter.runtime` and the dispatch-time override. The
  * `.warren/config.yaml` `plannerRuntime` enum stays strictly canonical.

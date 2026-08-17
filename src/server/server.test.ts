@@ -2,14 +2,13 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { BurrowClient } from "../burrow-client/index.ts";
 import { ValidationError } from "../core/errors.ts";
 import { openDatabase, type WarrenDb } from "../db/client.ts";
 import { createRepos, type Repos } from "../db/repos/index.ts";
 import { FakeForge } from "../forge/fake/fake-forge.ts";
 import type { SpawnFn } from "../projects/clone.ts";
 import { RunEventBroker } from "../runs/index.ts";
-import { resolveRuntimeProvider } from "../runtime/registry.ts";
+import { FakeProvider } from "../runtime/fake/fake-provider.ts";
 import { bearerAuth, NO_AUTH } from "./auth.ts";
 import { createBridgeRegistry } from "./bridges.ts";
 import { DEFAULT_IDLE_TIMEOUT_SECONDS, startServer } from "./server.ts";
@@ -22,17 +21,8 @@ const silentLogger = {
 	debug() {},
 };
 
-function stub(
-	impl: (input: URL | RequestInfo, init?: RequestInit) => Promise<Response>,
-): typeof fetch {
-	return impl as unknown as typeof fetch;
-}
-
-function makeBurrowClient(): BurrowClient {
-	return new BurrowClient({
-		config: { transport: { kind: "unix", path: "/tmp/x.sock" } },
-		fetch: stub(async () => new Response(JSON.stringify({ ok: true }), { status: 200 })),
-	});
+function makeBurrowClient(): FakeProvider {
+	return new FakeProvider();
 }
 
 /**
@@ -65,7 +55,7 @@ async function depsFor(
 	return {
 		repos,
 		...(overrides.db !== undefined ? { db: overrides.db } : {}),
-		runtimeProvider: resolveRuntimeProvider({ burrowClient: () => burrowClient }),
+		runtimeProvider: burrowClient,
 		forge: new FakeForge(),
 		broker,
 		bridges:
@@ -73,7 +63,7 @@ async function depsFor(
 			createBridgeRegistry({
 				repos,
 				broker,
-				runtimeProvider: resolveRuntimeProvider({ burrowClient: () => burrowClient }),
+				runtimeProvider: burrowClient,
 				bridge: async () => ({ written: 0, skipped: 0, errored: false }),
 			}),
 		projectsConfig: { root: "/tmp/projects", gitBinary: "git" },

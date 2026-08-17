@@ -2,7 +2,6 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { Burrow, Run as BurrowRun } from "@os-eco/burrow-cli";
 import { openDatabase, type WarrenDb } from "../db/client.ts";
 import { createRepos, type Repos } from "../db/repos/index.ts";
 import { agents } from "../db/schema.ts";
@@ -122,8 +121,8 @@ describe("bootScheduler", () => {
 			});
 			return {
 				run,
-				burrow: { id: "bur_a", workspacePath: "/ws" } as Burrow,
-				burrowRun: { id: "rb_a" } as BurrowRun,
+				burrow: { id: "bur_a", workspacePath: "/ws" },
+				burrowRun: { id: "rb_a" },
 				agent: { name: input.agentName, sections: {} } as never,
 			};
 		};
@@ -207,8 +206,8 @@ describe("bootScheduler", () => {
 			});
 			return {
 				run,
-				burrow: { id: "bur_b", workspacePath: "/ws" } as Burrow,
-				burrowRun: { id: "rb_b" } as BurrowRun,
+				burrow: { id: "bur_b", workspacePath: "/ws" },
+				burrowRun: { id: "rb_b" },
 				agent: { name: input.agentName, sections: {} } as never,
 			};
 		};
