@@ -27,6 +27,7 @@
 
 import { mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
+import { collectProviderEnv } from "../../core/providers.ts";
 import type { ReapExec, ReapFs } from "../../runs/reap/types.ts";
 import { defaultFs } from "../../runs/reap/util.ts";
 import type { EnvLike } from "../../runs/spawn/callback-env.ts";
@@ -190,9 +191,18 @@ export class LocalEngine {
 	 * (`BUN_INSTALL_CACHE_DIR` + the computed `WARREN_API_URL` callback, §6.3).
 	 * Unchanged from the burrow-backed mode: the callback URL rides only when
 	 * the domain supplied a token.
+	 *
+	 * warren-fb8d: every provider credential the server env holds (the core
+	 * registry's keys, delivered opaquely — the provider does not interpret
+	 * them) folds into the sandbox env. The DOMAIN env wins on overlap (an
+	 * OAuth-token flow's ANTHROPIC_API_KEY must not be shadowed).
 	 */
 	private composeSandboxEnv(domainEnv: Record<string, string>): Record<string, string> {
-		const env: Record<string, string> = { ...domainEnv, BUN_INSTALL_CACHE_DIR };
+		const env: Record<string, string> = {
+			...collectProviderEnv(this.serverEnv ?? process.env),
+			...domainEnv,
+			BUN_INSTALL_CACHE_DIR,
+		};
 		const token = domainEnv.WARREN_API_TOKEN;
 		if (token !== undefined && token !== "") {
 			const url = loopbackApiUrl(this.serverEnv ?? process.env);

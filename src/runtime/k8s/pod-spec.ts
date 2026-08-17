@@ -47,13 +47,10 @@ import {
 	buildInitEnv,
 	buildInitVolumeMounts,
 	buildRunPodVolumes,
-	DEFAULT_K8S_ANTHROPIC_SECRET_KEY,
-	DEFAULT_K8S_ANTHROPIC_SECRET_NAME,
 	DEFAULT_K8S_GIT_SECRET_KEY,
 	DEFAULT_K8S_GIT_SECRET_NAME,
-	DEFAULT_K8S_OPENROUTER_SECRET_KEY,
-	DEFAULT_K8S_OPENROUTER_SECRET_NAME,
 	pickImagePullPolicy,
+	resolveProviderSecrets,
 	resolveRepoCacheConfig,
 } from "./pod-env.ts";
 import {
@@ -70,12 +67,10 @@ export {
 	buildAgentEnv,
 	buildInitEnv,
 	buildInitVolumeMounts,
-	DEFAULT_K8S_ANTHROPIC_SECRET_KEY,
-	DEFAULT_K8S_ANTHROPIC_SECRET_NAME,
 	DEFAULT_K8S_GIT_SECRET_KEY,
 	DEFAULT_K8S_GIT_SECRET_NAME,
-	DEFAULT_K8S_OPENROUTER_SECRET_KEY,
-	DEFAULT_K8S_OPENROUTER_SECRET_NAME,
+	DEFAULT_PROVIDER_SECRET_KEY,
+	defaultProviderSecretName,
 	ENV_AGENT_METADATA,
 	ENV_AGENT_RUNTIME,
 	ENV_PROMPT,
@@ -215,9 +210,14 @@ export interface K8sPodConfig {
 	 * (Article VII; warren-6016). Absent ⇒ the canonical default applies.
 	 */
 	botIdentity?: { name: string; email: string };
-	/** Agent-container API-key Secrets: `ANTHROPIC_API_KEY` / `OPENROUTER_API_KEY` (§6.3). */
-	anthropicSecret: { name: string; key: string };
-	openrouterSecret: { name: string; key: string };
+	/**
+	 * Agent-container API-key Secrets (§6.3, warren-fb8d): one entry per
+	 * provider in the core registry (`src/core/providers.ts`), resolved
+	 * generically by `resolveProviderSecrets` — the pod-spec builder maps each
+	 * provider's canonical env key to its Secret without knowing any provider
+	 * names.
+	 */
+	providerSecrets: Record<string, { name: string; key: string }>;
 	/** Optional PVC-backed git-mirror cache on the init container (§4.3, pod-env.ts). */
 	repoCache?: { claimName: string; mountPath: string };
 	/** SIGTERM grace (seconds) `cancel()` deletes the pod with (step 19). */
@@ -294,18 +294,7 @@ export function resolveK8sPodConfig(
 			name: pickString(env, "WARREN_K8S_GIT_SECRET_NAME", DEFAULT_K8S_GIT_SECRET_NAME),
 			key: pickString(env, "WARREN_K8S_GIT_SECRET_KEY", DEFAULT_K8S_GIT_SECRET_KEY),
 		},
-		anthropicSecret: {
-			name: pickString(env, "WARREN_K8S_ANTHROPIC_SECRET_NAME", DEFAULT_K8S_ANTHROPIC_SECRET_NAME),
-			key: pickString(env, "WARREN_K8S_ANTHROPIC_SECRET_KEY", DEFAULT_K8S_ANTHROPIC_SECRET_KEY),
-		},
-		openrouterSecret: {
-			name: pickString(
-				env,
-				"WARREN_K8S_OPENROUTER_SECRET_NAME",
-				DEFAULT_K8S_OPENROUTER_SECRET_NAME,
-			),
-			key: pickString(env, "WARREN_K8S_OPENROUTER_SECRET_KEY", DEFAULT_K8S_OPENROUTER_SECRET_KEY),
-		},
+		providerSecrets: resolveProviderSecrets(env),
 		cancelGracePeriodSeconds: pickNonNegativeInt(
 			env,
 			"WARREN_K8S_CANCEL_GRACE_SECONDS",

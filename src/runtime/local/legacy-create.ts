@@ -13,6 +13,7 @@
  */
 
 import { type BurrowClient, withTransportMapping } from "../../burrow-client/index.ts";
+import { collectProviderEnv } from "../../core/providers.ts";
 import type { EnvLike } from "../../runs/spawn/callback-env.ts";
 import { loopbackApiUrl } from "../../runs/spawn/callback-env.ts";
 import type { RunHandle, RunSpec } from "../contract.ts";
@@ -50,12 +51,23 @@ export async function legacyCreate(
  * Merge the DOMAIN env with the provider's OWN plumbing. Provider keys are
  * applied last so they win — the domain must not set them. The callback URL
  * rides only when the domain supplied a `WARREN_API_TOKEN`.
+ *
+ * warren-fb8d: every provider credential the server env holds (the core
+ * registry's keys, delivered opaquely — the provider does not interpret
+ * them) folds into the sandbox env. The DOMAIN env wins on overlap (an
+ * OAuth-token flow's ANTHROPIC_API_KEY must not be shadowed). Burrow's own
+ * env allowlist still gates which keys reach the agent process; widening it
+ * is the burrow-side half of warren-fb8d.
  */
 function composeLegacySandboxEnv(
 	domainEnv: Record<string, string>,
 	serverEnv: EnvLike | undefined,
 ): Record<string, string> {
-	const env: Record<string, string> = { ...domainEnv, BUN_INSTALL_CACHE_DIR };
+	const env: Record<string, string> = {
+		...collectProviderEnv(serverEnv ?? process.env),
+		...domainEnv,
+		BUN_INSTALL_CACHE_DIR,
+	};
 	const token = domainEnv.WARREN_API_TOKEN;
 	if (token !== undefined && token !== "") {
 		const url = loopbackApiUrl(serverEnv ?? process.env);

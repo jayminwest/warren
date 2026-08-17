@@ -90,12 +90,29 @@ describe("spawnRun: provider/model compatibility (warren-bad5)", () => {
 		expect(await repos.runs.listAll()).toHaveLength(0);
 	});
 
+	test("rejects a casing variant of a known provider via the core registry (warren-fb8d)", async () => {
+		const { client, calls } = makeBurrowClient();
+		const error = await captureValidation(
+			spawnRun({
+				repos,
+				runtimeProvider: makeProvider(client),
+				agentName: "refactor-bot",
+				projectId: "prj_xxxxxxxxxxxx",
+				prompt: "run",
+				providerOverride: "OpenRouter",
+				modelOverride: "claude-opus-4-8",
+			}),
+		);
+
+		expect(error.message).toContain('provider "OpenRouter"');
+		expect(calls).toHaveLength(0);
+		expect(await repos.runs.listAll()).toHaveLength(0);
+	});
+
 	test.each<[string, string]>([
 		["openrouter", "moonshotai/kimi-k3"],
 		["anthropic", "claude-opus-4-8"],
 		["openrouter", "gpt-4o"],
-		["OpenRouter", "claude-opus-4-8"],
-		["Anthropic", "moonshotai/kimi-k3"],
 		["openrouter", "Claude-opus-4-8"],
 		["openrouter", "claude-opus/experimental"],
 		["custom-provider", "vendor/model"],
