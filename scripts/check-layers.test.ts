@@ -240,7 +240,7 @@ describe("scan — the seams warren-89a6 added", () => {
 describe("scan — walk scope", () => {
 	test("skips the built UI bundle under dist (warren-30ef)", () => {
 		withFixtureRepo(
-			{ "src/ui/dist/assets/bundle.ts": 'import { c } from "../../../server/types.ts";\n' },
+			{ "src/ui/dist/assets/bundle.ts": 'import { c } from "../../../burrow-client/index.ts";\n' },
 			(dir) => {
 				expect(scan(dir, RULES)).toEqual([]);
 			},
@@ -250,7 +250,7 @@ describe("scan — walk scope", () => {
 	test("exempts test files and test helpers", () => {
 		withFixtureRepo(
 			{
-				"src/runs/spawn.test.ts": 'import { c } from "../server/types.ts";\n',
+				"src/runs/spawn.test.ts": 'import { c } from "../burrow-client/index.ts";\n',
 				"src/runs/spawn.test-helpers.ts": 'import type { B } from "../server/types.ts";\n',
 			},
 			(dir) => {

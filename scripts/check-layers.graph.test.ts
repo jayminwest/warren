@@ -46,9 +46,9 @@ describe("scan — the module-graph edges warren-d382 added", () => {
 
 	test("flags a require() crossing a seam", () => {
 		withFixtureRepo(
-			{ "src/runs/legacy.ts": 'const c = require("../burrow-client/index.ts");\n' },
+			{ "src/runs/legacy.ts": 'const c = require("../server/main/index.ts");\n' },
 			(dir) => {
-				expect(scan(dir, RULES).map((v) => v.rule)).toEqual(["burrow-facade-is-local-only"]);
+				expect(scan(dir, RULES).map((v) => v.rule)).toEqual(["domain-owns-the-logic"]);
 			},
 		);
 	});
@@ -85,16 +85,15 @@ describe("scan — the module-graph edges warren-d382 added", () => {
 	test("the allow list exempts a module's own edges but does not launder them for others", () => {
 		withFixtureRepo(
 			{
-				// src/supervisor/ is on the burrow-facade allow list: its own
-				// re-export is exempt. A consumer outside the allow list that imports
-				// the supervisor barrel still reaches the facade — and is flagged.
-				"src/supervisor/reexport.ts": 'export { c } from "../burrow-client/index.ts";\n',
-				"src/runtime/local/provider.ts": 'import { c } from "../../supervisor/reexport.ts";\n',
-				"src/runs/consumer.ts": 'import { c } from "../supervisor/reexport.ts";\n',
+				// src/cli/commands/serve.ts is on the cli-is-a-consumer allow list:
+				// its own server import is exempt. A CLI file outside the allow list
+				// that imports serve.ts still reaches the server — and is flagged.
+				"src/cli/commands/serve.ts": 'export { bootServer } from "../../server/main/index.ts";\n',
+				"src/cli/commands/other.ts": 'import { bootServer } from "./serve.ts";\n',
 			},
 			(dir) => {
 				expect(scan(dir, RULES).map((v) => `${v.file}:${v.line}`)).toEqual([
-					"src/runs/consumer.ts:1",
+					"src/cli/commands/other.ts:1",
 				]);
 			},
 		);
