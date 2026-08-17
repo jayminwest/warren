@@ -32,7 +32,7 @@
  * default on a public instance or once `WARREN_FORGE=app` is configured,
  * overridable with `WARREN_GITHUB_APP_REGISTRATION=on|off`, 404 when off.
  * The gate matches the PREFIX on purpose: the `/github-app/installed`
- * return route proposed in warren-54c7 inherits it the day it lands.
+ * return route (warren-54c7) inherits it with no route-table special-casing.
  *
  * The pending-nonce store is a module-level singleton by default: the two
  * routes are separate `ROUTE_TABLE` entries (separate `build` calls) but
@@ -48,6 +48,7 @@ import {
 	gitHubOrgManifestCreateUrl,
 	RegistrationSessions,
 	renderCredentialsPage,
+	renderInstalledPage,
 	renderRegistrationErrorPage,
 	renderRegistrationPage,
 } from "../../forge/github-app/registration.ts";
@@ -123,6 +124,7 @@ export function registerGitHubAppHandler(options: GitHubAppHandlerOptions = {}):
 			name,
 			homepageUrl: WARREN_HOMEPAGE_URL,
 			redirectUrl: `${ctx.url.origin}/github-app/callback`,
+			setupUrl: `${ctx.url.origin}/github-app/installed`,
 		});
 		const createUrl =
 			org === null ? GITHUB_APP_MANIFEST_CREATE_URL : gitHubOrgManifestCreateUrl(org);
@@ -172,5 +174,30 @@ export function gitHubAppCallbackHandler(options: GitHubAppHandlerOptions = {}):
 			);
 		}
 		return htmlResponse(200, renderCredentialsPage(result.registration));
+	};
+}
+
+/**
+ * GitHub installation ids are numeric. Anything else — a stray string, a
+ * negative, an empty value — is treated as absent so the page falls back
+ * to the manual instructions instead of rendering junk into a shell block.
+ */
+const INSTALLATION_ID_PATTERN = /^[0-9]+$/;
+
+/**
+ * `GET /github-app/installed?installation_id=<id>&setup_action=install` —
+ * the manifest `setup_url` target (warren-54c7). GitHub redirects the
+ * browser here after the operator installs the App, carrying the
+ * installation id the credential triple still needs. Anonymous policy like
+ * its siblings (no bearer rides a GitHub redirect); it renders nothing
+ * server-side — the id arrives on the query string from GitHub itself.
+ * Always 200 with page content: a missing/malformed `installation_id`
+ * means the fallback manual instructions render, not an error page.
+ */
+export function gitHubAppInstalledHandler(): RouteHandler {
+	return (ctx) => {
+		const raw = ctx.url.searchParams.get("installation_id");
+		const installationId = raw !== null && INSTALLATION_ID_PATTERN.test(raw) ? raw : null;
+		return htmlResponse(200, renderInstalledPage({ installationId }));
 	};
 }

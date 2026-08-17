@@ -1,7 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import { RegistrationSessions } from "../../forge/github-app/registration.ts";
 import type { RouteContext } from "../types.ts";
-import { gitHubAppCallbackHandler, registerGitHubAppHandler } from "./github-app.ts";
+import {
+	gitHubAppCallbackHandler,
+	gitHubAppInstalledHandler,
+	registerGitHubAppHandler,
+} from "./github-app.ts";
 
 function ctxFor(url: string): RouteContext {
 	return {
@@ -158,5 +162,38 @@ describe("gitHubAppCallbackHandler", () => {
 		const res = await handler(ctxFor(`${BASE}/github-app/callback?code=spent&state=nonce-live`));
 		expect(res.status).toBe(502);
 		expect(await res.text()).toContain("single-use");
+	});
+});
+
+describe("gitHubAppInstalledHandler", () => {
+	test("renders the installation id from the query string", async () => {
+		const handler = gitHubAppInstalledHandler();
+		const res = await handler(
+			ctxFor(`${BASE}/github-app/installed?installation_id=12345678&setup_action=install`),
+		);
+		expect(res.status).toBe(200);
+		expect(res.headers.get("content-type")).toContain("text/html");
+		expect(res.headers.get("content-security-policy")).toContain("default-src 'none'");
+		const html = await res.text();
+		expect(html).toContain("WARREN_GITHUB_APP_INSTALLATION_ID=12345678");
+	});
+
+	test("missing params render the fallback page, never a 500 or 401/403", async () => {
+		const handler = gitHubAppInstalledHandler();
+		const res = await handler(ctxFor(`${BASE}/github-app/installed`));
+		expect(res.status).toBe(200);
+		expect(res.status).not.toBe(401);
+		expect(res.status).not.toBe(403);
+		const html = await res.text();
+		expect(html).toContain("Installation id not on this URL");
+	});
+
+	test("a malformed installation_id falls back instead of rendering junk", async () => {
+		const handler = gitHubAppInstalledHandler();
+		const res = await handler(ctxFor(`${BASE}/github-app/installed?installation_id=abc';drop`));
+		expect(res.status).toBe(200);
+		const html = await res.text();
+		expect(html).toContain("Installation id not on this URL");
+		expect(html).not.toContain("abc';drop");
 	});
 });

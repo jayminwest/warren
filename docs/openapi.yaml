@@ -183,6 +183,24 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
+  /github-app/installed:
+    get:
+      operationId: gitHubAppInstalledHandler
+      tags:
+        - github-app
+      summary: GET /github-app/installed
+      responses:
+        '200':
+          description: Successful response.
+        default:
+          description: Error response (see `src/core/errors.ts`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+      description: >-
+        warren-54c7: the manifest setup_url target — GitHub's post-install redirect lands here
+        carrying the installation id.
   /github-app/register:
     get:
       operationId: registerGitHubAppHandler
