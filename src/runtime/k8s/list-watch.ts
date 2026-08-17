@@ -108,6 +108,14 @@ export class ListWatchLoop<T> {
 	private resyncTimer: ReturnType<typeof setInterval> | undefined;
 	/** Serializes a resync relist against the watch loop's own relist path. */
 	private relistInFlight: Promise<void> | undefined;
+	/**
+	 * Informer sync state (warren-39e1): `true` once a list has seeded the
+	 * consumer and the watch stream is attached; flips `false` when the API
+	 * server becomes unreachable (list failure or watch-attach/stream error).
+	 * The `/readyz` `k8s_api_reachable` check reads this as the positive
+	 * K8s-topology readiness signal.
+	 */
+	private synced = false;
 
 	constructor(private readonly deps: ListWatchLoopDeps<T>) {
 		this.backoffMs = deps.backoffBaseMs ?? DEFAULT_BACKOFF_BASE_MS;
@@ -119,6 +127,16 @@ export class ListWatchLoop<T> {
 		this.running = true;
 		this.loopDone = this.loop();
 		this.scheduleResync();
+	}
+
+	/**
+	 * Whether the informer has synced against the API server (warren-39e1).
+	 * `true` after the initial list succeeds and while a watch stream is
+	 * attached; `false` before the first successful list and after a list
+	 * failure or a watch error (until the next successful attach/relist).
+	 */
+	isSynced(): boolean {
+		return this.synced;
 	}
 
 	/** Abort the watch and await the loop's exit. Idempotent. */
@@ -207,8 +225,10 @@ export class ListWatchLoop<T> {
 			const { items, resourceVersion } = await this.deps.list();
 			this.deps.onRelist(items);
 			this.resourceVersion = resourceVersion;
+			this.synced = true;
 			this.resetBackoff();
 		} catch (err) {
+			this.synced = false;
 			this.deps.logger?.warn?.(
 				{ label: this.deps.label, err: errText(err) },
 				`${this.deps.label} list failed; backing off`,
@@ -225,6 +245,9 @@ export class ListWatchLoop<T> {
 				if (settled) return;
 				settled = true;
 				this.resolveWatch = undefined;
+				// An error terminating the stream means the API connection broke;
+				// a clean server close keeps the synced state (we resume).
+				if (err !== undefined && err !== null) this.synced = false;
 				resolve(err);
 			};
 			this.resolveWatch = done;
@@ -236,9 +259,15 @@ export class ListWatchLoop<T> {
 				.watch(this.deps.path, query, (phase, obj) => this.handleEvent(phase, obj), done)
 				.then((controller) => {
 					this.activeWatch = controller;
+					// A successful attach re-establishes the API connection after a
+					// transient disconnect — the informer is live again.
+					this.synced = true;
 					if (!this.running) controller.abort();
 				})
-				.catch((err) => done(err));
+				.catch((err) => {
+					this.synced = false;
+					done(err);
+				});
 		});
 	}
 

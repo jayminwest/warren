@@ -19,7 +19,7 @@ import type { loadAutoOpenPrConfigFromEnv, RunEventBroker } from "../../runs/ind
 import type { RuntimeProvider } from "../../runtime/contract.ts";
 import type { PodAdmissionSource } from "../../runtime/k8s/admission.ts";
 import type { PodMetricsSource } from "../../runtime/k8s/pod-metrics.ts";
-import type { PodCacheReader } from "../../runtime/k8s/pod-watcher.ts";
+import type { PodCacheReader, PodSyncSource } from "../../runtime/k8s/pod-watcher.ts";
 import type { createWarrenConfigCache } from "../../warren-config/index.ts";
 import { createDbSeams } from "../db-seams.ts";
 import { IdempotencyStore } from "../idempotency.ts";
@@ -108,7 +108,7 @@ export interface BuildServerDepsInput {
 	 * below) and the `/metrics` pod-gauge source (`ServerDeps.podMetrics`).
 	 * Absent under `local` — no pod plumbing is wired.
 	 */
-	readonly k8sPodWatcher?: PodCacheReader & PodAdmissionSource & PodMetricsSource;
+	readonly k8sPodWatcher?: PodCacheReader & PodAdmissionSource & PodMetricsSource & PodSyncSource;
 	/**
 	 * Durable salvage-bundle directory (warren-cd3b), resolved by the
 	 * orchestrator to `<dataDir>/salvage`. Threaded onto `ServerDeps` for the
@@ -206,6 +206,9 @@ export function buildServerDeps(input: BuildServerDepsInput): ServerDeps {
 		// `/metrics` pod-phase gauges read live from the same pod-watcher at scrape
 		// (pl-829f step 25 / warren-7c30); absent under LocalProvider.
 		...(k8sPodWatcher !== undefined ? { podMetrics: k8sPodWatcher } : {}),
+		// `/readyz` `k8s_api_reachable` check reads the same watcher's informer
+		// sync state (warren-39e1); absent under LocalProvider.
+		...(k8sPodWatcher !== undefined ? { k8sPodSync: k8sPodWatcher } : {}),
 		...(finalizeRecovery !== undefined ? { finalizeRecovery } : {}),
 		...(now !== undefined ? { now } : {}),
 	};

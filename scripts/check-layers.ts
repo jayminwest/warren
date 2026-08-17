@@ -180,7 +180,9 @@ export function scanText(rule: LayerRule, rel: string, text: string): Violation[
 }
 
 function* walk(dir: string): Generator<string> {
-	for (const entry of readdirSync(dir)) {
+	// Sort so the walk order (and therefore violation ordering) is
+	// deterministic across filesystems — readdir order is not guaranteed.
+	for (const entry of readdirSync(dir).sort()) {
 		const abs = join(dir, entry);
 		if (statSync(abs).isDirectory()) {
 			// `dist` is the built UI bundle (warren-30ef): the burrow guard walked
