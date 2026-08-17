@@ -32,6 +32,17 @@ These two documents record the design of the Kubernetes runtime. Both shipped in
 - [`design/k8s-migration.md`](design/k8s-migration.md) — why each run became a pod: the OOM postmortem, pod-per-run, the init container, pod-log event streams, and `run_inbox` steering.
 - [`design/runtime-provider-contract.md`](design/runtime-provider-contract.md) — the `RuntimeProvider` seam that lets the `local` and `k8s` backends swap without a domain rewrite.
 
+## Tombstones
+
+Docs paths are a public surface (warren-d602). When a document is
+deleted or moved, its old path stays here as a one-line pointer,
+`<old path> -> <successor>` or `<old path> — retired, see <X>`, so
+inbound links never dead-end silently.
+
+- `deploy/gke-deploy-prep.md` — retired, see [`RUNBOOK-K8S.md`](RUNBOOK-K8S.md) §1.5 (warren-c69e)
+- `design/k8s-migration-plan.md` — retired, see [`design/k8s-migration.md`](design/k8s-migration.md) (pre-implementation plan, shipped in v0.10.0, warren-c69e)
+- `design/data-plane-trajectory.md` — retired (direction-not-commitment note for a feature that no longer exists, warren-c69e)
+
 ## History
 
 - [`CHANGELOG-archive.md`](CHANGELOG-archive.md) — released versions older than the window the current [`../CHANGELOG.md`](../CHANGELOG.md) keeps.

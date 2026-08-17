@@ -333,6 +333,16 @@ holds a project-wide complexity budget. New code must stay under the
 threshold. Existing complexity and filename exceptions document their
 ratchet policies inline in `biome.jsonc`; both lists only shrink.
 
+## Docs are a public surface
+
+Downstream readers link to `docs/` paths, so treat every one as
+published (warren-d602).
+
+- Deleting or moving any `docs/` path requires a one-line pointer entry
+  in `docs/README.md` of the form `<old path> -> <successor>` or
+  `<old path> — retired, see <X>`.
+- Add the tombstone in the same commit that removes or renames the file.
+
 ## Naming conventions
 
 - **Filenames (server/scripts):** `kebab-case.ts`. Tests are
