@@ -4,7 +4,7 @@ import type { Repos } from "../../db/repos/index.ts";
 import type { SpawnFn as ProjectSpawnFn, SpawnResult } from "../../projects/clone.ts";
 import { spawnRun } from "./index.ts";
 import { UNKNOWN_TRIGGER_EVENT } from "./seed-extensions.ts";
-import { makeBurrowClient, makeProvider, setupRepos } from "./test-helpers.ts";
+import { makeProvider, makeSandboxClient, setupRepos } from "./test-helpers.ts";
 import type { SpawnLogger } from "./types.ts";
 
 describe("spawnRun: post-dispatch seed extension write (pl-bb70)", () => {
@@ -19,7 +19,7 @@ describe("spawnRun: post-dispatch seed extension write (pl-bb70)", () => {
 	});
 
 	test("stamps {role,trigger,lastRunId,lastRunAt} on the seed when seedId + seedsCli are wired", async () => {
-		const { client } = makeBurrowClient();
+		const { client } = makeSandboxClient();
 		const sdCalls: { cmd: readonly string[]; cwd: string }[] = [];
 		const seedsSpawn: ProjectSpawnFn = async (cmd, opts) => {
 			sdCalls.push({ cmd, cwd: opts.cwd });
@@ -57,7 +57,7 @@ describe("spawnRun: post-dispatch seed extension write (pl-bb70)", () => {
 	});
 
 	test("seedId without seedsCli is a no-op extension write (legacy callers, CLI)", async () => {
-		const { client } = makeBurrowClient();
+		const { client } = makeSandboxClient();
 		const result = await spawnRun({
 			repos,
 			runtimeProvider: makeProvider(client),
@@ -71,7 +71,7 @@ describe("spawnRun: post-dispatch seed extension write (pl-bb70)", () => {
 	});
 
 	test("seedsCli without seedId never shells out", async () => {
-		const { client } = makeBurrowClient();
+		const { client } = makeSandboxClient();
 		let sdCalled = false;
 		const seedsSpawn: ProjectSpawnFn = async () => {
 			sdCalled = true;
@@ -89,7 +89,7 @@ describe("spawnRun: post-dispatch seed extension write (pl-bb70)", () => {
 	});
 
 	test("emits seeds_extension_write_failed on a failing sd update without rolling back the run (acceptance #5)", async () => {
-		const { client } = makeBurrowClient();
+		const { client } = makeSandboxClient();
 		const seedsSpawn: ProjectSpawnFn = async () => ({
 			stdout: "",
 			stderr: "seeds: no such issue warren-abc",
@@ -111,8 +111,8 @@ describe("spawnRun: post-dispatch seed extension write (pl-bb70)", () => {
 		// state stayed queued.
 		const reread = await repos.runs.require(result.run.id);
 		expect(reread.state).toBe("queued");
-		expect(reread.burrowId).toBe("bur_aaaaaaaaaaaa");
-		expect(reread.burrowRunId).toBe("run_zzzzzzzzzzzz");
+		expect(reread.sandboxId).toBe("bur_aaaaaaaaaaaa");
+		expect(reread.sandboxRunId).toBe("run_zzzzzzzzzzzz");
 
 		// A single system event surfaces the lingering extension to the
 		// operator without forcing them to tail logs.
@@ -122,7 +122,7 @@ describe("spawnRun: post-dispatch seed extension write (pl-bb70)", () => {
 		if (evt === undefined) throw new Error("expected one event");
 		expect(evt.kind).toBe("seeds_extension_write_failed");
 		expect(evt.stream).toBe("system");
-		expect(evt.burrowEventSeq).toBe(1);
+		expect(evt.sandboxEventSeq).toBe(1);
 		const payload = evt.payloadJson as { seedId: string; reason: string };
 		expect(payload.seedId).toBe("warren-abc");
 		expect(payload.reason).toContain("sd update");
@@ -147,7 +147,7 @@ describe("spawnRun: post-dispatch seed extension write (pl-bb70)", () => {
 		["manual-trigger", "manual"],
 	] as const) {
 		test(`round-trips trigger '${trigger}' into the seed extensions`, async () => {
-			const { client } = makeBurrowClient();
+			const { client } = makeSandboxClient();
 			const sdCalls: { cmd: readonly string[] }[] = [];
 			const seedsSpawn: ProjectSpawnFn = async (cmd) => {
 				sdCalls.push({ cmd });
@@ -178,7 +178,7 @@ describe("spawnRun: post-dispatch seed extension write (pl-bb70)", () => {
 	}
 
 	test("drops an unknown trigger string LOUDLY: warns + emits seeds_trigger_kind_unknown", async () => {
-		const { client } = makeBurrowClient();
+		const { client } = makeSandboxClient();
 		const warnings: { trigger: string }[] = [];
 		const logger: SpawnLogger = {
 			info: () => {},

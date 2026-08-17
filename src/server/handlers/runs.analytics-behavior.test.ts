@@ -262,7 +262,7 @@ describe("GET /analytics/behavior", () => {
 		await fileCall(r3, 1, "f4", ["src/server/c.ts"], true);
 		await repos.events.append({
 			runId: r2,
-			burrowEventSeq: 99,
+			sandboxEventSeq: 99,
 			ts: "2026-05-21T10:02:00.000Z",
 			kind: "steer.sent",
 			payload: {},

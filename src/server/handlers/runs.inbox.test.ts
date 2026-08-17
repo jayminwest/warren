@@ -15,7 +15,7 @@ import { depsFor, silentLogger, tcpUrl } from "./runs.test-helpers.ts";
  */
 
 /** A burrow client that 404s everything — the inbox poll never touches burrow. */
-function inertBurrowClient(): FakeProvider {
+function inertSandboxClient(): FakeProvider {
 	return new FakeProvider();
 }
 
@@ -56,7 +56,7 @@ describe("GET /runs/:id/inbox — HTTP handler", () => {
 	}
 
 	async function serveWith(auth = NO_AUTH): Promise<string> {
-		const deps = await depsFor(repos, inertBurrowClient());
+		const deps = await depsFor(repos, inertSandboxClient());
 		handle = startServer(deps, {
 			transport: { kind: "tcp", hostname: "127.0.0.1", port: 0 },
 			auth,

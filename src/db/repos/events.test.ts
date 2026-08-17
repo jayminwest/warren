@@ -40,7 +40,7 @@ function suite(dialect: "sqlite" | "postgres"): void {
 		) {
 			return events.append({
 				runId,
-				burrowEventSeq: seq,
+				sandboxEventSeq: seq,
 				ts: new Date(2026, 4, 8, 12, 0, seq).toISOString(),
 				kind,
 				stream,
@@ -54,20 +54,20 @@ function suite(dialect: "sqlite" | "postgres"): void {
 				const row = await append(events, runId, 1);
 				expect(row.id).toBeGreaterThan(0);
 				expect(row.runId).toBe(runId);
-				expect(row.burrowEventSeq).toBe(1);
+				expect(row.sandboxEventSeq).toBe(1);
 				expect(row.payloadJson).toEqual({ seq: 1 });
 			} finally {
 				await handle.close();
 			}
 		});
 
-		test("listByRun returns events ordered by burrow_event_seq", async () => {
+		test("listByRun returns events ordered by sandbox_event_seq", async () => {
 			const { handle, events, runId } = await open();
 			try {
 				await append(events, runId, 3);
 				await append(events, runId, 1);
 				await append(events, runId, 2);
-				const got = (await events.listByRun(runId)).map((e) => e.burrowEventSeq);
+				const got = (await events.listByRun(runId)).map((e) => e.sandboxEventSeq);
 				expect(got).toEqual([1, 2, 3]);
 			} finally {
 				await handle.close();
@@ -80,7 +80,7 @@ function suite(dialect: "sqlite" | "postgres"): void {
 				await append(events, runId, 1);
 				await append(events, runId, 2);
 				await append(events, runId, 3);
-				const got = (await events.listByRun(runId, { sinceSeq: 1 })).map((e) => e.burrowEventSeq);
+				const got = (await events.listByRun(runId, { sinceSeq: 1 })).map((e) => e.sandboxEventSeq);
 				expect(got).toEqual([2, 3]);
 			} finally {
 				await handle.close();
@@ -91,9 +91,9 @@ function suite(dialect: "sqlite" | "postgres"): void {
 			const { handle, events, runId } = await open();
 			try {
 				for (let i = 1; i <= 10; i++) await append(events, runId, i);
-				expect((await events.listByRun(runId, { limit: 3 })).map((e) => e.burrowEventSeq)).toEqual([
-					1, 2, 3,
-				]);
+				expect((await events.listByRun(runId, { limit: 3 })).map((e) => e.sandboxEventSeq)).toEqual(
+					[1, 2, 3],
+				);
 			} finally {
 				await handle.close();
 			}
@@ -103,7 +103,7 @@ function suite(dialect: "sqlite" | "postgres"): void {
 			const { handle, events, runId } = await open();
 			try {
 				for (let i = 1; i <= 5; i++) await append(events, runId, i);
-				expect((await events.listTail(runId, 2)).map((e) => e.burrowEventSeq)).toEqual([4, 5]);
+				expect((await events.listTail(runId, 2)).map((e) => e.sandboxEventSeq)).toEqual([4, 5]);
 			} finally {
 				await handle.close();
 			}
@@ -153,7 +153,7 @@ function suite(dialect: "sqlite" | "postgres"): void {
 				await append(events, runId, 2, "tool_use");
 				await append(events, runId, 3, "thinking");
 				const rows = await events.listToolEventsForRun(runId);
-				expect(rows.map((r) => [r.kind, r.burrowEventSeq])).toEqual([
+				expect(rows.map((r) => [r.kind, r.sandboxEventSeq])).toEqual([
 					["tool_use", 2],
 					["tool_result", 4],
 				]);
@@ -169,7 +169,7 @@ function suite(dialect: "sqlite" | "postgres"): void {
 					await append(events, runId, seq, "tool_use");
 				}
 				const rows = await events.listToolEventsForRun(runId);
-				expect(rows.map((r) => r.burrowEventSeq)).toEqual([1, 2, 3, 4, 5]);
+				expect(rows.map((r) => r.sandboxEventSeq)).toEqual([1, 2, 3, 4, 5]);
 			} finally {
 				await handle.close();
 			}
@@ -181,7 +181,7 @@ function suite(dialect: "sqlite" | "postgres"): void {
 				const append1 = (seq: number, fingerprint: string, ts: string) =>
 					events.append({
 						runId,
-						burrowEventSeq: seq,
+						sandboxEventSeq: seq,
 						ts,
 						kind: "heal.dispatched",
 						payload: { fingerprint },
@@ -224,7 +224,7 @@ function suite(dialect: "sqlite" | "postgres"): void {
 			try {
 				await events.append({
 					runId,
-					burrowEventSeq: 1,
+					sandboxEventSeq: 1,
 					ts: "2026-05-01T00:00:00.000Z",
 					kind: "other.kind",
 					payload: { fingerprint: "fp-a" },
@@ -247,7 +247,7 @@ function suite(dialect: "sqlite" | "postgres"): void {
 			try {
 				const row = await events.append({
 					runId,
-					burrowEventSeq: 1,
+					sandboxEventSeq: 1,
 					ts: "2026-05-08T12:00:00.000Z",
 					kind: "system",
 					payload: {},
@@ -263,7 +263,7 @@ function suite(dialect: "sqlite" | "postgres"): void {
 			try {
 				const withOrigin = await events.append({
 					runId,
-					burrowEventSeq: 1,
+					sandboxEventSeq: 1,
 					ts: "2026-05-08T12:00:00.000Z",
 					kind: "text",
 					origin: "agent",
@@ -271,7 +271,7 @@ function suite(dialect: "sqlite" | "postgres"): void {
 				});
 				const withoutOrigin = await events.append({
 					runId,
-					burrowEventSeq: 2,
+					sandboxEventSeq: 2,
 					ts: "2026-05-08T12:00:01.000Z",
 					kind: "text",
 					payload: {},

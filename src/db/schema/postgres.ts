@@ -93,8 +93,8 @@ export const runs = pgTable(
 		// project removes its runs and (via events.run_id CASCADE) their
 		// event transcripts rather than orphaning them. See sqlite.ts.
 		projectId: text("project_id").references(() => projects.id, { onDelete: "cascade" }),
-		burrowId: text("burrow_id"),
-		burrowRunId: text("burrow_run_id"),
+		sandboxId: text("sandbox_id"),
+		sandboxRunId: text("sandbox_run_id"),
 		workerId: text("worker_id"),
 		seedId: text("seed_id"),
 		renderedAgentJson: jsonb("rendered_agent_json").notNull(),
@@ -175,7 +175,7 @@ export const events = pgTable(
 		runId: text("run_id")
 			.notNull()
 			.references(() => runs.id, { onDelete: "cascade" }),
-		burrowEventSeq: integer("burrow_event_seq").notNull(),
+		sandboxEventSeq: integer("sandbox_event_seq").notNull(),
 		ts: text("ts").notNull(),
 		kind: text("kind").notNull(),
 		stream: text("stream", { enum: EVENT_STREAMS }),
@@ -185,7 +185,7 @@ export const events = pgTable(
 		payloadJson: jsonb("payload_json").notNull(),
 	},
 	(t) => [
-		index(INDEX_NAMES.eventsRunSeq).on(t.runId, t.burrowEventSeq),
+		index(INDEX_NAMES.eventsRunSeq).on(t.runId, t.sandboxEventSeq),
 		index(INDEX_NAMES.eventsRunTs).on(t.runId, t.ts),
 		// warren-55cf: healer attempt history filters by kind + payload
 		// fingerprint at the SQL level; this keeps the kind scan bounded.

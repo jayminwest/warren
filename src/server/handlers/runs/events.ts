@@ -152,7 +152,7 @@ export function eventToNdjson(
 	row: {
 		id: number;
 		runId: string;
-		burrowEventSeq: number;
+		sandboxEventSeq: number;
 		ts: string;
 		kind: string;
 		stream: string | null;
@@ -166,7 +166,7 @@ export function eventToNdjson(
 	return `${JSON.stringify({
 		id: projected.id,
 		runId: projected.runId,
-		seq: projected.burrowEventSeq,
+		seq: projected.sandboxEventSeq,
 		ts: projected.ts,
 		kind: projected.kind,
 		stream: projected.stream,

@@ -40,8 +40,8 @@ describe("GET /projects/:id/warren-config — per-project .warren/ envelope (war
 	});
 
 	test("returns null fields + empty errors when .warren/ is absent", async () => {
-		const burrowClient = new FakeProvider();
-		const deps = await depsFor(repos, burrowClient);
+		const sandboxClient = new FakeProvider();
+		const deps = await depsFor(repos, sandboxClient);
 		handle = startServer(deps, {
 			transport: { kind: "tcp", hostname: "127.0.0.1", port: 0 },
 			auth: NO_AUTH,
@@ -75,8 +75,8 @@ describe("GET /projects/:id/warren-config — per-project .warren/ envelope (war
 			JSON.stringify({ defaultBranch: "main", defaultRole: "refactor-bot" }),
 		);
 
-		const burrowClient = new FakeProvider();
-		const deps = await depsFor(repos, burrowClient);
+		const sandboxClient = new FakeProvider();
+		const deps = await depsFor(repos, sandboxClient);
 		handle = startServer(deps, {
 			transport: { kind: "tcp", hostname: "127.0.0.1", port: 0 },
 			auth: NO_AUTH,
@@ -112,8 +112,8 @@ describe("GET /projects/:id/warren-config — per-project .warren/ envelope (war
 		// JSON parse error.
 		await writeFile(join(projectLocalPath, ".warren", "defaults.json"), "{not-json");
 
-		const burrowClient = new FakeProvider();
-		const deps = await depsFor(repos, burrowClient);
+		const sandboxClient = new FakeProvider();
+		const deps = await depsFor(repos, sandboxClient);
 		handle = startServer(deps, {
 			transport: { kind: "tcp", hostname: "127.0.0.1", port: 0 },
 			auth: NO_AUTH,
@@ -137,8 +137,8 @@ describe("GET /projects/:id/warren-config — per-project .warren/ envelope (war
 	});
 
 	test("returns 404 for an unknown project id", async () => {
-		const burrowClient = new FakeProvider();
-		const deps = await depsFor(repos, burrowClient);
+		const sandboxClient = new FakeProvider();
+		const deps = await depsFor(repos, sandboxClient);
 		handle = startServer(deps, {
 			transport: { kind: "tcp", hostname: "127.0.0.1", port: 0 },
 			auth: NO_AUTH,
@@ -153,8 +153,8 @@ describe("GET /projects/:id/warren-config — per-project .warren/ envelope (war
 		const { rm } = await import("node:fs/promises");
 		await rm(projectLocalPath, { recursive: true, force: true });
 
-		const burrowClient = new FakeProvider();
-		const deps = await depsFor(repos, burrowClient);
+		const sandboxClient = new FakeProvider();
+		const deps = await depsFor(repos, sandboxClient);
 		handle = startServer(deps, {
 			transport: { kind: "tcp", hostname: "127.0.0.1", port: 0 },
 			auth: NO_AUTH,

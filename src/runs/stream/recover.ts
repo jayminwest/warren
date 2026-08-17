@@ -1,7 +1,7 @@
 /**
  * Active-stream recovery (warren-041e split). On warren restart, walk
  * the runs table for rows in {queued, running} that already have a
- * `burrow_run_id` and start a bridge for each. Idempotent across
+ * `sandbox_run_id` and start a bridge for each. Idempotent across
  * restarts: the resume-seq filter inside the bridge means re-subscribing
  * to a run we already have full history for is harmless.
  */
@@ -29,7 +29,7 @@ export interface RecoverActiveRunStreamsInput {
 
 export interface ActiveBridge {
 	readonly runId: string;
-	readonly burrowRunId: string;
+	readonly sandboxRunId: string;
 	readonly abort: AbortController;
 	readonly done: Promise<BridgeRunStreamResult>;
 }
@@ -38,18 +38,18 @@ export interface RecoverActiveRunStreamsResult {
 	readonly bridges: readonly ActiveBridge[];
 	readonly skipped: readonly {
 		runId: string;
-		reason: "no_burrow_run_id" | "no_burrow_id";
+		reason: "no_sandbox_run_id" | "no_sandbox_id";
 	}[];
 }
 
 /**
  * Walk the runs table for rows in {queued, running} that have a
- * `burrow_run_id` attached and start a bridge for each. Idempotent
+ * `sandbox_run_id` attached and start a bridge for each. Idempotent
  * across restarts; the resume seq filter means re-subscribing to a
  * run we already have full history for is harmless. Returns
  * controllers so the caller can `abort()` on shutdown.
  *
- * Runs in active states without a `burrow_run_id` are skipped — those
+ * Runs in active states without a `sandbox_run_id` are skipped — those
  * are partial spawns (a burrow was provisioned but `POST /runs`
  * never landed) which the spawn flow's rollback should already have
  * cancelled. Surfaced in `skipped` so the operator sees them.
@@ -62,33 +62,33 @@ export async function recoverActiveRunStreams(
 	const candidates = await repos.runs.listByState(["queued", "running"]);
 
 	const bridges: ActiveBridge[] = [];
-	const skipped: { runId: string; reason: "no_burrow_run_id" | "no_burrow_id" }[] = [];
+	const skipped: { runId: string; reason: "no_sandbox_run_id" | "no_sandbox_id" }[] = [];
 
 	for (const run of candidates) {
-		if (run.burrowRunId === null) {
-			skipped.push({ runId: run.id, reason: "no_burrow_run_id" });
+		if (run.sandboxRunId === null) {
+			skipped.push({ runId: run.id, reason: "no_sandbox_run_id" });
 			logger?.warn?.(
 				{ runId: run.id, state: run.state },
-				"skipping recovery: run has no burrow_run_id",
+				"skipping recovery: run has no sandbox_run_id",
 			);
 			continue;
 		}
-		if (run.burrowId === null) {
-			// Active row with a burrow_run_id but no burrow_id is malformed
-			// (spawn writes burrow_id first). Skip rather than crash; warren
+		if (run.sandboxId === null) {
+			// Active row with a sandbox_run_id but no sandbox_id is malformed
+			// (spawn writes sandbox_id first). Skip rather than crash; warren
 			// doctor surfaces orphaned rows.
-			skipped.push({ runId: run.id, reason: "no_burrow_id" });
+			skipped.push({ runId: run.id, reason: "no_sandbox_id" });
 			logger?.warn?.(
-				{ runId: run.id, state: run.state, burrowRunId: run.burrowRunId },
-				"skipping recovery: run has burrow_run_id but no burrow_id",
+				{ runId: run.id, state: run.state, sandboxRunId: run.sandboxRunId },
+				"skipping recovery: run has sandbox_run_id but no sandbox_id",
 			);
 			continue;
 		}
 		const abort = new AbortController();
 		const bridgeInput: BridgeRunStreamInput = {
 			runId: run.id,
-			burrowRunId: run.burrowRunId,
-			burrowId: run.burrowId,
+			sandboxRunId: run.sandboxRunId,
+			sandboxId: run.sandboxId,
 			repos,
 			broker,
 			runtimeProvider,
@@ -98,12 +98,12 @@ export async function recoverActiveRunStreams(
 		const done = bridge(bridgeInput);
 		bridges.push({
 			runId: run.id,
-			burrowRunId: run.burrowRunId,
+			sandboxRunId: run.sandboxRunId,
 			abort,
 			done,
 		});
 		logger?.info?.(
-			{ runId: run.id, burrowRunId: run.burrowRunId, state: run.state },
+			{ runId: run.id, sandboxRunId: run.sandboxRunId, state: run.state },
 			"resumed run stream bridge",
 		);
 	}

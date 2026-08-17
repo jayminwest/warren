@@ -64,7 +64,7 @@ async function recordEvent(
 	runtime: ReturnType<typeof runtimeFromRenderedAgent>,
 	row: {
 		kind: string;
-		burrowEventSeq: number;
+		sandboxEventSeq: number;
 		ts: string;
 		origin: string | null;
 		payloadJson: unknown;
@@ -74,7 +74,7 @@ async function recordEvent(
 		const extraction = extractToolUse(runtime, row.payloadJson);
 		await repos.toolCalls.recordUse({
 			runId,
-			seq: row.burrowEventSeq,
+			seq: row.sandboxEventSeq,
 			ts: row.ts,
 			toolName: extraction.toolName,
 			command: extraction.command,

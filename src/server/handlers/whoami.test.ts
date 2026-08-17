@@ -32,7 +32,7 @@ interface WhoamiBody {
 }
 
 /** A burrow client that 404s everything — `/whoami` never reaches it. */
-function inertBurrowClient(): FakeProvider {
+function inertSandboxClient(): FakeProvider {
 	return new FakeProvider();
 }
 
@@ -55,7 +55,7 @@ describe("GET /whoami", () => {
 	});
 
 	async function serve(auth: AuthProvider): Promise<string> {
-		handle = startServer(await depsFor(repos, inertBurrowClient()), {
+		handle = startServer(await depsFor(repos, inertSandboxClient()), {
 			transport: { kind: "tcp", hostname: "127.0.0.1", port: 0 },
 			auth,
 			logger: silentLogger,

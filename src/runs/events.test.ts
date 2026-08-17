@@ -8,7 +8,7 @@ function makeEvent(runId: string, seq: number): EventRow {
 	return {
 		id: seq,
 		runId,
-		burrowEventSeq: seq,
+		sandboxEventSeq: seq,
 		ts: new Date(2026, 4, 8, 12, 0, seq).toISOString(),
 		kind: "text",
 		stream: "stdout",
@@ -35,7 +35,7 @@ describe("RunEventBroker", () => {
 			broker.publish("run_a", makeEvent("run_a", 2));
 		}, 0);
 		const got = await collect(sub, 2);
-		expect(got.map((e) => e.burrowEventSeq)).toEqual([1, 2]);
+		expect(got.map((e) => e.sandboxEventSeq)).toEqual([1, 2]);
 	});
 
 	test("publish to a runId with no subscribers is a no-op", () => {
@@ -52,7 +52,7 @@ describe("RunEventBroker", () => {
 		broker.close("run_a");
 		const out: EventRow[] = [];
 		for await (const ev of sub) out.push(ev);
-		expect(out.map((e) => e.burrowEventSeq)).toEqual([1, 2]);
+		expect(out.map((e) => e.sandboxEventSeq)).toEqual([1, 2]);
 		expect(broker.subscriberCount("run_a")).toBe(0);
 	});
 
@@ -69,8 +69,8 @@ describe("RunEventBroker", () => {
 		const bOut: EventRow[] = [];
 		for await (const ev of a) aOut.push(ev);
 		for await (const ev of b) bOut.push(ev);
-		expect(aOut.map((e) => e.burrowEventSeq)).toEqual([1, 2]);
-		expect(bOut.map((e) => e.burrowEventSeq)).toEqual([1, 2]);
+		expect(aOut.map((e) => e.sandboxEventSeq)).toEqual([1, 2]);
+		expect(bOut.map((e) => e.sandboxEventSeq)).toEqual([1, 2]);
 	});
 
 	test("subscribers for different runIds are isolated", async () => {
@@ -87,8 +87,8 @@ describe("RunEventBroker", () => {
 		const bOut: EventRow[] = [];
 		for await (const ev of a) aOut.push(ev);
 		for await (const ev of b) bOut.push(ev);
-		expect(aOut.map((e) => e.burrowEventSeq)).toEqual([1]);
-		expect(bOut.map((e) => e.burrowEventSeq)).toEqual([9]);
+		expect(aOut.map((e) => e.sandboxEventSeq)).toEqual([1]);
+		expect(bOut.map((e) => e.sandboxEventSeq)).toEqual([9]);
 	});
 
 	test("AbortSignal ends the subscriber generator and detaches", async () => {
@@ -100,7 +100,7 @@ describe("RunEventBroker", () => {
 		const out: EventRow[] = [];
 		for await (const ev of sub) out.push(ev);
 		// The buffered event is still yielded before the generator returns.
-		expect(out.map((e) => e.burrowEventSeq)).toEqual([1]);
+		expect(out.map((e) => e.sandboxEventSeq)).toEqual([1]);
 		expect(broker.subscriberCount("run_a")).toBe(0);
 	});
 
@@ -123,7 +123,7 @@ describe("RunEventBroker", () => {
 		broker.close("run_a");
 		const out: EventRow[] = [];
 		for await (const ev of sub) out.push(ev);
-		expect(out.map((e) => e.burrowEventSeq)).toEqual([2, 3]);
+		expect(out.map((e) => e.sandboxEventSeq)).toEqual([2, 3]);
 	});
 });
 
@@ -160,7 +160,7 @@ describe("tailRunEvents", () => {
 	async function appendRow(seq: number): Promise<EventRow> {
 		return await repos.events.append({
 			runId,
-			burrowEventSeq: seq,
+			sandboxEventSeq: seq,
 			ts: new Date(2026, 4, 8, 12, 0, seq).toISOString(),
 			kind: "text",
 			stream: "stdout",
@@ -175,7 +175,7 @@ describe("tailRunEvents", () => {
 		const tail = tailRunEvents({ runId, repos, broker, follow: false });
 		const out: EventRow[] = [];
 		for await (const ev of tail) out.push(ev);
-		expect(out.map((e) => e.burrowEventSeq)).toEqual([1, 2, 3]);
+		expect(out.map((e) => e.sandboxEventSeq)).toEqual([1, 2, 3]);
 	});
 
 	test("follow=false respects sinceSeq", async () => {
@@ -185,7 +185,7 @@ describe("tailRunEvents", () => {
 		const tail = tailRunEvents({ runId, repos, broker, follow: false, sinceSeq: 1 });
 		const out: EventRow[] = [];
 		for await (const ev of tail) out.push(ev);
-		expect(out.map((e) => e.burrowEventSeq)).toEqual([2, 3]);
+		expect(out.map((e) => e.sandboxEventSeq)).toEqual([2, 3]);
 	});
 
 	test("follow=false bounds the snapshot to one page (warren-2a8b)", async () => {
@@ -193,7 +193,7 @@ describe("tailRunEvents", () => {
 		const tail = tailRunEvents({ runId, repos, broker, follow: false, snapshotLimit: 2 });
 		const out: EventRow[] = [];
 		for await (const ev of tail) out.push(ev);
-		expect(out.map((e) => e.burrowEventSeq)).toEqual([1, 2]);
+		expect(out.map((e) => e.sandboxEventSeq)).toEqual([1, 2]);
 	});
 
 	test("follow=false pages the full transcript via sinceSeq (warren-2a8b)", async () => {
@@ -212,8 +212,8 @@ describe("tailRunEvents", () => {
 			const page: EventRow[] = [];
 			for await (const ev of tail) page.push(ev);
 			if (page.length === 0) break;
-			for (const ev of page) seen.push(ev.burrowEventSeq);
-			sinceSeq = page[page.length - 1]?.burrowEventSeq ?? sinceSeq;
+			for (const ev of page) seen.push(ev.sandboxEventSeq);
+			sinceSeq = page[page.length - 1]?.sandboxEventSeq ?? sinceSeq;
 		}
 		expect(seen).toEqual([1, 2, 3, 4, 5]);
 	});
@@ -228,7 +228,7 @@ describe("tailRunEvents", () => {
 		await new Promise((r) => setTimeout(r, 20));
 		broker.close(runId);
 		await done;
-		expect(out.map((e) => e.burrowEventSeq)).toEqual([1, 2, 3, 4, 5]);
+		expect(out.map((e) => e.sandboxEventSeq)).toEqual([1, 2, 3, 4, 5]);
 	});
 
 	test("follow=true: history first, then live events, dedup at the seam", async () => {
@@ -256,7 +256,7 @@ describe("tailRunEvents", () => {
 		broker.publish(runId, freshRow);
 
 		await consumer;
-		expect(out.map((e) => e.burrowEventSeq)).toEqual([1, 2, 3]);
+		expect(out.map((e) => e.sandboxEventSeq)).toEqual([1, 2, 3]);
 	});
 
 	test("follow=true subscribes BEFORE reading history (no gap drop)", async () => {
@@ -279,7 +279,7 @@ describe("tailRunEvents", () => {
 		const row = await appendRow(2);
 		broker.publish(runId, row);
 		await consumer;
-		expect(out.map((e) => e.burrowEventSeq)).toEqual([1, 2]);
+		expect(out.map((e) => e.sandboxEventSeq)).toEqual([1, 2]);
 	});
 
 	test("follow=true returns when broker.close() is called and history is exhausted", async () => {
@@ -292,7 +292,7 @@ describe("tailRunEvents", () => {
 		await new Promise((r) => setTimeout(r, 5));
 		broker.close(runId);
 		await done;
-		expect(out.map((e) => e.burrowEventSeq)).toEqual([1]);
+		expect(out.map((e) => e.sandboxEventSeq)).toEqual([1]);
 	});
 
 	test("terminal backstop ends a follow tail with no live bridge (warren-7bff)", async () => {
@@ -316,7 +316,7 @@ describe("tailRunEvents", () => {
 		terminal = true;
 		await done;
 		// The tail drained the never-published final event, then closed.
-		expect(out.map((e) => e.burrowEventSeq)).toEqual([1, 2]);
+		expect(out.map((e) => e.sandboxEventSeq)).toEqual([1, 2]);
 	});
 
 	test("terminal backstop: transient probe failures keep the tail alive", async () => {
@@ -338,7 +338,7 @@ describe("tailRunEvents", () => {
 		});
 		const out: EventRow[] = [];
 		for await (const ev of tail) out.push(ev);
-		expect(out.map((e) => e.burrowEventSeq)).toEqual([1]);
+		expect(out.map((e) => e.sandboxEventSeq)).toEqual([1]);
 		expect(calls).toBeGreaterThanOrEqual(3);
 	});
 });

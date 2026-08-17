@@ -85,8 +85,8 @@ describe("createPlanRunSpawn", () => {
 			});
 			return {
 				run,
-				burrow: { id: "bur_a", workspacePath: "/ws" },
-				burrowRun: { id: "rb_a" },
+				sandbox: { id: "bur_a", workspacePath: "/ws" },
+				sandboxRun: { id: "rb_a" },
 				agent: { name: input.agentName, sections: {} } as never,
 			};
 		};
@@ -153,8 +153,8 @@ describe("createPlanRunSpawn", () => {
 			});
 			return {
 				run,
-				burrow: { id: "bur_b", workspacePath: "/ws" },
-				burrowRun: { id: "rb_b" },
+				sandbox: { id: "bur_b", workspacePath: "/ws" },
+				sandboxRun: { id: "rb_b" },
 				agent: { name: input.agentName, sections: {} } as never,
 			};
 		};

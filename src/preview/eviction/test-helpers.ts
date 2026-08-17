@@ -7,17 +7,17 @@ import type { PreviewEvictionConfig, SidecarClient, SidecarResolver } from "./ty
 
 export interface FakeSidecars {
 	resolver: SidecarResolver;
-	calls: Array<{ burrowId: string; sidecarId: string }>;
+	calls: Array<{ sandboxId: string; sidecarId: string }>;
 	listings: Map<string, string[]>;
 }
 
 export function fakeSidecars(): FakeSidecars {
 	const listings = new Map<string, string[]>();
-	const calls: Array<{ burrowId: string; sidecarId: string }> = [];
-	const resolver: SidecarResolver = async (_burrowId): Promise<SidecarClient> => ({
+	const calls: Array<{ sandboxId: string; sidecarId: string }> = [];
+	const resolver: SidecarResolver = async (_sandboxId): Promise<SidecarClient> => ({
 		list: async (id) => (listings.get(id) ?? []).map((sid) => ({ id: sid })),
 		delete: async (id, scid) => {
-			calls.push({ burrowId: id, sidecarId: scid });
+			calls.push({ sandboxId: id, sidecarId: scid });
 			const cur = listings.get(id) ?? [];
 			listings.set(
 				id,
@@ -25,9 +25,9 @@ export function fakeSidecars(): FakeSidecars {
 			);
 		},
 	});
-	const seededResolver: SidecarResolver = async (burrowId) => {
-		if (!listings.has(burrowId)) listings.set(burrowId, [`sc_${burrowId}`]);
-		return resolver(burrowId);
+	const seededResolver: SidecarResolver = async (sandboxId) => {
+		if (!listings.has(sandboxId)) listings.set(sandboxId, [`sc_${sandboxId}`]);
+		return resolver(sandboxId);
 	};
 	return { resolver: seededResolver, calls, listings };
 }

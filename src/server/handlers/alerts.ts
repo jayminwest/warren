@@ -211,7 +211,7 @@ async function dispatchHealer(
 		...(deps.now !== undefined ? { now: deps.now } : {}),
 		logger: deps.logger,
 	});
-	deps.bridges.start(result.run.id, result.burrowRun.id, result.burrow.id);
+	deps.bridges.start(result.run.id, result.sandboxRun.id, result.sandbox.id);
 	await stampDispatchedEvent(deps, result.run.id, alert);
 	return result.run.id;
 }

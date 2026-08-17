@@ -57,7 +57,7 @@ async function appendPodWarning(deps: PodWarningSinkDeps, signal: PodWarningSign
 	const seq = ((await deps.repos.events.maxSeqForRun(signal.runId)) ?? 0) + 1;
 	const row = await deps.repos.events.append({
 		runId: signal.runId,
-		burrowEventSeq: seq,
+		sandboxEventSeq: seq,
 		ts: now().toISOString(),
 		kind: K8S_POD_WARNING_KIND,
 		stream: "system",

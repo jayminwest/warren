@@ -3,7 +3,7 @@ import { ValidationError } from "../../core/errors.ts";
 import type { WarrenDb } from "../../db/client.ts";
 import type { Repos } from "../../db/repos/index.ts";
 import { spawnRun } from "./index.ts";
-import { makeAgentJson, makeBurrowClient, makeProvider, setupRepos } from "./test-helpers.ts";
+import { makeAgentJson, makeProvider, makeSandboxClient, setupRepos } from "./test-helpers.ts";
 
 /**
  * warren-4b11: a continuation run ("re-run with follow-up") seeds its
@@ -34,7 +34,7 @@ describe("spawnRun: continuation (warren-4b11)", () => {
 
 	test("refreshes to the parent's pushed branch and records parent_run_id", async () => {
 		const parentId = await makeParent();
-		const { client } = makeBurrowClient();
+		const { client } = makeSandboxClient();
 		let refreshRef: string | undefined;
 		const { run } = await spawnRun({
 			repos,
@@ -62,7 +62,7 @@ describe("spawnRun: continuation (warren-4b11)", () => {
 
 	test("honors a project runBranchPrefix when recomposing the parent branch", async () => {
 		const parentId = await makeParent();
-		const { client } = makeBurrowClient();
+		const { client } = makeSandboxClient();
 		let refreshRef: string | undefined;
 		await spawnRun({
 			repos,
@@ -89,7 +89,7 @@ describe("spawnRun: continuation (warren-4b11)", () => {
 
 	test("parent branch wins over an explicit ref", async () => {
 		const parentId = await makeParent();
-		const { client } = makeBurrowClient();
+		const { client } = makeSandboxClient();
 		let refreshRef: string | undefined;
 		await spawnRun({
 			repos,
@@ -116,7 +116,7 @@ describe("spawnRun: continuation (warren-4b11)", () => {
 
 	test("targetBranch pins the burrow branch to the PR head ref (warren-a993)", async () => {
 		const parentId = await makeParent();
-		const { client, calls } = makeBurrowClient();
+		const { client, calls } = makeSandboxClient();
 		await spawnRun({
 			repos,
 			runtimeProvider: makeProvider(client),
@@ -138,7 +138,7 @@ describe("spawnRun: continuation (warren-4b11)", () => {
 
 		// The burrow workspace branch is the PR head (parent's branch), not a
 		// fresh `burrow/<fixerRunId>` — so reap pushes back onto the open PR.
-		const up = calls.find((c) => c.method === "POST" && c.path === "/burrows");
+		const up = calls.find((c) => c.method === "POST" && c.path === "/sandboxes");
 		expect((up?.body as { branch?: string }).branch).toBe(`burrow/${parentId}`);
 	});
 
@@ -156,7 +156,7 @@ describe("spawnRun: continuation (warren-4b11)", () => {
 			renderedAgentJson: makeAgentJson(),
 			trigger: "manual",
 		});
-		const { client } = makeBurrowClient();
+		const { client } = makeSandboxClient();
 		await expect(
 			spawnRun({
 				repos,
@@ -170,7 +170,7 @@ describe("spawnRun: continuation (warren-4b11)", () => {
 	});
 
 	test("a missing parent run id is a NotFoundError", async () => {
-		const { client } = makeBurrowClient();
+		const { client } = makeSandboxClient();
 		await expect(
 			spawnRun({
 				repos,
@@ -184,7 +184,7 @@ describe("spawnRun: continuation (warren-4b11)", () => {
 	});
 
 	test("omitting parentRunId leaves parent_run_id null (root run)", async () => {
-		const { client } = makeBurrowClient();
+		const { client } = makeSandboxClient();
 		const { run } = await spawnRun({
 			repos,
 			runtimeProvider: makeProvider(client),

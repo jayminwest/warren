@@ -49,7 +49,7 @@ export interface BridgeLogger {
 	/**
 	 * pino's `.child(bindings)` — present on real loggers, optional here so
 	 * tests can pass a partial logger. `bindBridgeLogger` (./logger.ts) uses
-	 * it to bind `run_id` / `burrow_run_id` / `worker` once per run.
+	 * it to bind `run_id` / `sandbox_run_id` / `worker` once per run.
 	 */
 	child?(bindings: object): BridgeLogger;
 }
@@ -91,7 +91,7 @@ export interface SessionStats {
  * runtimes). When both paths produce data, the explicit client wins.
  */
 export interface PiStatsClient {
-	fetch(burrowRunId: string, signal: AbortSignal): Promise<SessionStats | null>;
+	fetch(sandboxRunId: string, signal: AbortSignal): Promise<SessionStats | null>;
 }
 
 /**
@@ -101,11 +101,11 @@ export interface PiStatsClient {
  * Returns the current burrow run state, or `null` if the row was lost
  * (handled by the BurrowNotFoundError path).
  *
- * Production default: `client.http.runs.get(burrowRunId)` projected to
+ * Production default: `client.http.runs.get(sandboxRunId)` projected to
  * `{state, exitCode}`. Tests override with a synthetic probe.
  */
 export type RunStateProbe = (
-	burrowRunId: string,
+	sandboxRunId: string,
 	signal: AbortSignal,
 ) => Promise<{
 	state: "queued" | "running" | "succeeded" | "failed" | "cancelled";
@@ -131,14 +131,14 @@ export const DEFAULT_RUN_STATE_DRAIN_MS = 1_000;
 
 export interface BridgeRunStreamInput {
 	readonly runId: string;
-	/** Burrow's run id (column `runs.burrow_run_id`). */
-	readonly burrowRunId: string;
+	/** Burrow's run id (column `runs.sandbox_run_id`). */
+	readonly sandboxRunId: string;
 	/**
-	 * The run's sandbox id (column `runs.burrow_id`). Carried opaquely into the
+	 * The run's sandbox id (column `runs.sandbox_id`). Carried opaquely into the
 	 * `RunHandle` the bridge hands the provider so `streamEvents` / `status` /
 	 * `cancel` land on the backend that hosts this run.
 	 */
-	readonly burrowId: string;
+	readonly sandboxId: string;
 	readonly repos: Repos;
 	readonly broker: RunEventBroker;
 	/**
@@ -236,7 +236,7 @@ export interface BridgeRunStreamResult {
 	};
 	/**
 	 * Set when burrow returned 404 / NotFoundError for the run's
-	 * `burrow_run_id` while polling the stream (warren-b1a9). Indicates a
+	 * `sandbox_run_id` while polling the stream (warren-b1a9). Indicates a
 	 * "ghost run" — typically a warren-machine restart wiped burrow's
 	 * in-memory run state for an in-flight run. The registry treats this
 	 * as terminal: it stops the reconnect loop and reconciles the warren
@@ -244,7 +244,7 @@ export interface BridgeRunStreamResult {
 	 * spinning forever on backoff. Mutually exclusive with
 	 * `terminalDetected`.
 	 */
-	readonly burrowRunMissing?: true;
+	readonly sandboxRunMissing?: true;
 }
 
 export interface BurrowTerminalSnapshot {
@@ -273,12 +273,12 @@ export interface BurrowTerminalSnapshot {
 export interface BridgeRegistry {
 	/**
 	 * Start a bridge for the given run; idempotent against a running bridge.
-	 * `burrowId` is required so the bridge can resolve the owning worker via
+	 * `sandboxId` is required so the bridge can resolve the owning worker via
 	 * `BurrowClient.clientFor` (warren-c0c9). `mode` (warren-df71) makes a
 	 * `'conversation'` run keep-alive across pi `agent_end` turn boundaries;
 	 * omit / `'batch'` retains the prior one-shot terminal behaviour.
 	 */
-	start(runId: string, burrowRunId: string, burrowId: string, mode?: RunMode): void;
+	start(runId: string, sandboxRunId: string, sandboxId: string, mode?: RunMode): void;
 	/** Abort all in-flight bridges and await their drain. */
 	stopAll(): Promise<void>;
 	/** Test/diagnostic surface — number of currently-attached bridges. */

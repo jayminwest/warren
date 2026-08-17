@@ -437,8 +437,8 @@ describe("runPrOpen semantic retry (warren-70c6; classified kinds warren-45e6)",
 			prompt: "fix ci",
 			renderedAgentJson: {},
 			trigger: "ci-fixer",
-			burrowId: "bur_aaaaaaaaaaaa",
-			burrowRunId: "run_yyyyyyyyyyyy",
+			sandboxId: "bur_aaaaaaaaaaaa",
+			sandboxRunId: "run_yyyyyyyyyyyy",
 		});
 		await ctx.repos.runs.markRunning(fixer.id);
 		const forge = fakeForge();

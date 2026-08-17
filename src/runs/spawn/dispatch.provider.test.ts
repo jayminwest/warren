@@ -115,11 +115,11 @@ describe("spawnRun: provider-neutral dispatch (k8s-shaped backend)", () => {
 
 		// The handle's ids are attached back onto the run row — pod name / pod uid,
 		// not burrow ids. spawn makes no shape assumption.
-		expect(result.burrow.id).toBe("warren-run-pod-abc");
-		expect(result.burrowRun.id).toBe("pod-uid-xyz");
+		expect(result.sandbox.id).toBe("warren-run-pod-abc");
+		expect(result.sandboxRun.id).toBe("pod-uid-xyz");
 		const reread = await repos.runs.require(result.run.id);
-		expect(reread.burrowId).toBe("warren-run-pod-abc");
-		expect(reread.burrowRunId).toBe("pod-uid-xyz");
+		expect(reread.sandboxId).toBe("warren-run-pod-abc");
+		expect(reread.sandboxRunId).toBe("pod-uid-xyz");
 		expect(reread.state).toBe("queued");
 	});
 
@@ -197,8 +197,8 @@ describe("spawnRun: provider-neutral dispatch (k8s-shaped backend)", () => {
 		// No sandbox id was ever attached (create threw) — the spawn_failed event
 		// elides it, matching the burrow-backed rollback path.
 		const ev = (await repos.events.listByRun(row?.id ?? "")).find((e) => e.kind === "spawn_failed");
-		const payload = ev?.payloadJson as { message?: string; burrowId?: string };
+		const payload = ev?.payloadJson as { message?: string; sandboxId?: string };
 		expect(payload?.message).toContain("pod admission rejected");
-		expect(payload?.burrowId).toBeUndefined();
+		expect(payload?.sandboxId).toBeUndefined();
 	});
 });

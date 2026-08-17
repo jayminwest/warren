@@ -115,7 +115,7 @@ export function cancelRunHandler(deps: ServerDeps): RouteHandler {
 		return jsonResponse(200, {
 			state: result.state,
 			alreadyTerminal: result.alreadyTerminal,
-			burrowRun: result.burrowRun,
+			sandboxRun: result.sandboxRun,
 		});
 	};
 }

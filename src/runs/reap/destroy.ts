@@ -8,7 +8,7 @@ import type { TeardownResult } from "../../runtime/contract.ts";
 export interface RunWorkspaceDestroyInput {
 	readonly run: {
 		readonly id: string;
-		readonly burrowId: string | null;
+		readonly sandboxId: string | null;
 		readonly mode: RunMode;
 		readonly previewState: PreviewState | null;
 	};
@@ -70,11 +70,11 @@ export interface RunWorkspaceDestroyInput {
  */
 export async function runWorkspaceDestroy(input: RunWorkspaceDestroyInput): Promise<boolean> {
 	const { run, terminate } = input;
-	if (run.burrowId === null || terminate === null) return false;
+	if (run.sandboxId === null || terminate === null) return false;
 
 	if (input.branchPushFailed === true) {
 		await input.emit("reap.workspace_destroy_skipped", {
-			burrowId: run.burrowId,
+			sandboxId: run.sandboxId,
 			reason: "branch_push_failed",
 		});
 		return false;
@@ -86,7 +86,7 @@ export async function runWorkspaceDestroy(input: RunWorkspaceDestroyInput): Prom
 		run.previewState === "live";
 	if (previewActive) {
 		await input.emit("reap.workspace_destroy_skipped", {
-			burrowId: run.burrowId,
+			sandboxId: run.sandboxId,
 			reason: "preview_active",
 		});
 		return false;
@@ -95,7 +95,7 @@ export async function runWorkspaceDestroy(input: RunWorkspaceDestroyInput): Prom
 	try {
 		const result = await terminate();
 		await input.emit("reap.workspace_destroyed", {
-			burrowId: run.burrowId,
+			sandboxId: run.sandboxId,
 			archived: result.archived,
 			deletedEvents: result.deletedEvents,
 			deletedMessages: result.deletedMessages,

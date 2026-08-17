@@ -1,5 +1,5 @@
 /**
- * Lost-run sandbox teardown for `reconcileLostBurrowRun` (`./bridge-reconnect.ts`).
+ * Lost-run sandbox teardown for `reconcileLostSandboxRun` (`./bridge-reconnect.ts`).
  * Extracted to keep that file under the file-size ratchet (warren-a7cb).
  *
  * The teardown routes exclusively through the RuntimeProvider seam
@@ -17,9 +17,9 @@ import type { RunHandle, RuntimeProvider } from "../runtime/contract.ts";
 
 export interface LostRunTeardownInput {
 	readonly runId: string;
-	readonly burrowRunId: string;
+	readonly sandboxRunId: string;
 	/** The run's burrow/pod id + mode, resolved by the reconciler. */
-	readonly burrow: { readonly id: string; readonly mode: RunMode };
+	readonly sandbox: { readonly id: string; readonly mode: RunMode };
 	/** Active backend the teardown routes `provider.terminate()` through. */
 	readonly runtimeProvider: RuntimeProvider;
 	/** Append + publish a `stream:'system'` event on the run. */
@@ -50,16 +50,16 @@ async function terminateLostWorkspace(
 	input: LostRunTeardownInput,
 	provider: RuntimeProvider,
 ): Promise<void> {
-	const { burrow } = input;
+	const { sandbox } = input;
 	const handle: RunHandle = {
 		runId: input.runId,
-		sandboxId: burrow.id,
-		providerRunId: input.burrowRunId,
+		sandboxId: sandbox.id,
+		providerRunId: input.sandboxRunId,
 	};
 	try {
 		const result = await provider.terminate(handle);
 		await input.emit("reap.workspace_destroyed", {
-			burrowId: burrow.id,
+			sandboxId: sandbox.id,
 			archived: result.archived,
 			deletedEvents: result.deletedEvents,
 			deletedMessages: result.deletedMessages,
@@ -67,7 +67,7 @@ async function terminateLostWorkspace(
 		});
 	} catch (err) {
 		await input.emit("reap.workspace_destroy_failed", {
-			burrowId: burrow.id,
+			sandboxId: sandbox.id,
 			step: "destroy",
 			message: err instanceof Error ? err.message : String(err),
 		});

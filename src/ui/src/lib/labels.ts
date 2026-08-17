@@ -47,7 +47,7 @@ export function humanizeWireValue(raw: string): string {
  * compiler still fails the build when `src/core/wire.ts` grows a reason
  * this map does not carry.
  *
- * `sandbox_run_lost` / `burrow_unreachable` say "sandbox", not "burrow":
+ * `sandbox_run_lost` / `sandbox_unreachable` say "sandbox", not "burrow":
  * burrow is the LocalProvider's substrate, an implementation detail a
  * visitor has no name for. The raw value stays in the tooltip.
  */
@@ -58,7 +58,7 @@ const RUN_FAILURE_REASON_LABELS: Readonly<Record<string, string>> = {
 	crashed: "Crashed",
 	timed_out: "Timed out",
 	sandbox_run_lost: "Sandbox run lost",
-	burrow_unreachable: "Sandbox unreachable",
+	sandbox_unreachable: "Sandbox unreachable",
 	dropped_commit: "Dropped commit",
 	finalize_failed: "Finalize failed",
 	push_rejected_policy: "Push blocked by repository policy",

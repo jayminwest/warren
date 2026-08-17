@@ -7,7 +7,7 @@ import { createRepos, type Repos } from "../../db/repos/index.ts";
 import { NO_AUTH } from "../auth.ts";
 import { startServer } from "../server.ts";
 import type { ServeHandle } from "../types.ts";
-import { depsFor, makeBurrowClient, silentLogger, tcpUrl } from "./runs.test-helpers.ts";
+import { depsFor, makeSandboxClient, silentLogger, tcpUrl } from "./runs.test-helpers.ts";
 
 const SENTRY_PAYLOAD = {
 	data: {
@@ -59,11 +59,11 @@ describe("POST /alerts/heal", () => {
 
 	async function serve(): Promise<void> {
 		const tmpWs = await mkdtemp(join(tmpdir(), "warren-heal-ws-"));
-		const burrowClient = makeBurrowClient(
-			{ burrowId: "bur_heal0000000", burrowRunId: "run_healrun00000", workspacePath: tmpWs },
+		const sandboxClient = makeSandboxClient(
+			{ sandboxId: "bur_heal0000000", sandboxRunId: "run_healrun00000", workspacePath: tmpWs },
 			[],
 		);
-		const deps = await depsFor(repos, burrowClient);
+		const deps = await depsFor(repos, sandboxClient);
 		handle = startServer(deps, {
 			transport: { kind: "tcp", hostname: "127.0.0.1", port: 0 },
 			auth: NO_AUTH,
@@ -156,7 +156,7 @@ describe("POST /alerts/heal", () => {
 		for (let i = 0; i < 600; i++) {
 			await repos.events.append({
 				runId,
-				burrowEventSeq: 10_000 + i,
+				sandboxEventSeq: 10_000 + i,
 				ts: `2099-01-01T00:00:00.${String(i).padStart(3, "0")}Z`,
 				kind: "heal.dispatched",
 				payload: { fingerprint: `fp-noise-${i}`, source: "sentry", title: "noise" },

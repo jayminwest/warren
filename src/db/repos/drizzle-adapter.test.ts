@@ -111,8 +111,8 @@ describe("DrizzleAdapter (sqlite)", () => {
 				id: "run_test",
 				agentName: "claude-code",
 				projectId: "proj_test",
-				burrowId: null,
-				burrowRunId: null,
+				sandboxId: null,
+				sandboxRunId: null,
 				workerId: null,
 				renderedAgentJson: {},
 				state: "queued",
@@ -139,7 +139,7 @@ describe("DrizzleAdapter (sqlite)", () => {
 				.insert(events)
 				.values({
 					runId: "run_test",
-					burrowEventSeq: 1,
+					sandboxEventSeq: 1,
 					ts,
 					kind: "test",
 					stream: null,
@@ -324,8 +324,8 @@ describe.skipIf(!isPostgresTestEnabled())("DrizzleAdapter (postgres)", () => {
 				id: "run_test",
 				agentName: "claude-code",
 				projectId: "proj_test",
-				burrowId: null,
-				burrowRunId: null,
+				sandboxId: null,
+				sandboxRunId: null,
 				workerId: null,
 				renderedAgentJson: {},
 				state: "queued",
@@ -352,7 +352,7 @@ describe.skipIf(!isPostgresTestEnabled())("DrizzleAdapter (postgres)", () => {
 				.insert(events)
 				.values({
 					runId: "run_test",
-					burrowEventSeq: 1,
+					sandboxEventSeq: 1,
 					ts,
 					kind: "test",
 					stream: null,

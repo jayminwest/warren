@@ -122,9 +122,9 @@ export async function teardownPreview(input: TeardownPreviewInput): Promise<Tear
 		};
 	}
 
-	if (claim.burrowId !== null && resolveSidecar !== null) {
+	if (claim.sandboxId !== null && resolveSidecar !== null) {
 		await stopSidecarsBestEffort({
-			burrowId: claim.burrowId,
+			sandboxId: claim.sandboxId,
 			runId: input.runId,
 			resolveSidecar,
 			...(input.logger !== undefined ? { logger: input.logger } : {}),
@@ -161,7 +161,7 @@ export async function teardownPreview(input: TeardownPreviewInput): Promise<Tear
 }
 
 interface StopSidecarsInput {
-	readonly burrowId: string;
+	readonly sandboxId: string;
 	readonly runId: string;
 	readonly resolveSidecar: SidecarResolver;
 	readonly logger?: PreviewEvictionLogger;
@@ -169,23 +169,23 @@ interface StopSidecarsInput {
 
 async function stopSidecarsBestEffort(input: StopSidecarsInput): Promise<void> {
 	try {
-		const sidecars = await input.resolveSidecar(input.burrowId);
+		const sidecars = await input.resolveSidecar(input.sandboxId);
 		if (sidecars === null) {
 			input.logger?.warn(
-				{ runId: input.runId, burrowId: input.burrowId },
+				{ runId: input.runId, sandboxId: input.sandboxId },
 				"preview_teardown.sidecar_resolver_returned_null",
 			);
 			return;
 		}
-		const list = await sidecars.list(input.burrowId);
+		const list = await sidecars.list(input.sandboxId);
 		for (const sc of list) {
 			try {
-				await sidecars.delete(input.burrowId, sc.id);
+				await sidecars.delete(input.sandboxId, sc.id);
 			} catch (err) {
 				input.logger?.warn(
 					{
 						runId: input.runId,
-						burrowId: input.burrowId,
+						sandboxId: input.sandboxId,
 						sidecarId: sc.id,
 						err: err instanceof Error ? err.message : String(err),
 					},
@@ -197,7 +197,7 @@ async function stopSidecarsBestEffort(input: StopSidecarsInput): Promise<void> {
 		input.logger?.warn(
 			{
 				runId: input.runId,
-				burrowId: input.burrowId,
+				sandboxId: input.sandboxId,
 				err: err instanceof Error ? err.message : String(err),
 			},
 			"preview_teardown.sidecar_stop_failed",
@@ -221,7 +221,7 @@ async function emitTornDownEvent(input: EmitTornDownInput): Promise<void> {
 		const seq = ((await input.repos.events.maxSeqForRun(input.runId)) ?? 0) + 1;
 		const row = await input.repos.events.append({
 			runId: input.runId,
-			burrowEventSeq: seq,
+			sandboxEventSeq: seq,
 			ts: input.now.toISOString(),
 			kind: PREVIEW_TORN_DOWN_EVENT_KIND,
 			stream: "system",

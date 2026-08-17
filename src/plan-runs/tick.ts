@@ -165,7 +165,7 @@ export function buildDefaultPlanRunEmit(
 		const ts = (now?.() ?? new Date()).toISOString();
 		await repos.events.append({
 			runId,
-			burrowEventSeq: seq,
+			sandboxEventSeq: seq,
 			ts,
 			kind,
 			stream: "system",

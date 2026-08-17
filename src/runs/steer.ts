@@ -15,8 +15,8 @@
  *     meaningless. Returns `ValidationError`, not `StateTransitionError`,
  *     to match the error envelope (src/core/wire.ts) used by the rest of warren's HTTP
  *     surface for "operator asked for an impossible action".
- *   - run must have a `burrow_id` attached. A queued warren row without a
- *     burrowId is the spawn-rollback window; sending an inbox message in
+ *   - run must have a `sandbox_id` attached. A queued warren row without a
+ *     sandboxId is the spawn-rollback window; sending an inbox message in
  *     that window has nothing to attach to.
  *   - the run's harness must be able to consume the steer (warren-3305):
  *     `frontmatter.steering` "none" always rejects 409; "spawn-only"
@@ -80,18 +80,18 @@ export async function steerRun(input: SteerRunInput): Promise<SteerRunResult> {
 		});
 	}
 	assertHarnessCanSteer(run.agentName, steeringCapabilityOf(run.renderedAgentJson), run.state);
-	if (run.burrowId === null) {
-		throw new ValidationError("run has no burrow_id; cannot steer", {
+	if (run.sandboxId === null) {
+		throw new ValidationError("run has no sandbox_id; cannot steer", {
 			recoveryHint: "the burrow is provisioned during spawn — wait for spawn to complete",
 		});
 	}
 
-	const burrowId = run.burrowId;
-	// The seam `RunHandle`: `sandboxId` is the burrowId the inbox is scoped to
+	const sandboxId = run.sandboxId;
+	// The seam `RunHandle`: `sandboxId` is the sandboxId the inbox is scoped to
 	// (the only field `sendMessage` reads). `providerRunId` is carried for
 	// completeness — burrow attributes delivery itself when a turn claims the
 	// message, so a fresh send doesn't need it.
-	const handle = { runId: run.id, sandboxId: burrowId, providerRunId: run.burrowRunId ?? "" };
+	const handle = { runId: run.id, sandboxId: sandboxId, providerRunId: run.sandboxRunId ?? "" };
 	let message: Message;
 	try {
 		message = await input.runtimeProvider.sendMessage(handle, {
@@ -106,7 +106,7 @@ export async function steerRun(input: SteerRunInput): Promise<SteerRunResult> {
 			// ValidationError so the UI knows to refresh — the bridge or the
 			// next bootBridges pass will reconcile the warren row to `failed`.
 			throw new ValidationError(
-				`burrow '${burrowId}' is unknown to the worker; the run is likely lost`,
+				`burrow '${sandboxId}' is unknown to the worker; the run is likely lost`,
 				{ recoveryHint: "refresh — the bridge will reconcile this run to failed" },
 			);
 		}
@@ -126,7 +126,7 @@ async function emitSteerEvent(
 	const seq = ((await input.repos.events.maxSeqForRun(runId)) ?? 0) + 1;
 	const row = await input.repos.events.append({
 		runId,
-		burrowEventSeq: seq,
+		sandboxEventSeq: seq,
 		ts: now().toISOString(),
 		kind: "steer.sent",
 		stream: "system",
@@ -166,7 +166,7 @@ function steeringCapabilityOf(renderedAgentJson: unknown): SteeringCapability | 
  *
  * `"spawn-only"` still allows steering a QUEUED run: the message waits in the
  * inbox and the runtime's `encodeInboxMessage` folds it into the prompt at
- * spawn. (The existing `burrow_id` gate below may still reject a queued run
+ * spawn. (The existing `sandbox_id` gate below may still reject a queued run
  * on the local topology — that error is already loud.)
  */
 function assertHarnessCanSteer(

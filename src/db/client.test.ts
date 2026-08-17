@@ -121,7 +121,7 @@ describe("openDatabase", () => {
 			);
 			for (let seq = 0; seq < 5; seq++) {
 				a.raw.exec(
-					`INSERT INTO events (run_id, burrow_event_seq, ts, kind, payload_json) VALUES ('r1', ${seq}, '2026-05-09T00:00:00Z', 'message', '{}')`,
+					`INSERT INTO events (run_id, burrow_event_seq, ts, kind, payload_json) VALUES ('r1', ${seq}, '2026-05-09T00:00:00Z', 'message', '{}')`, // pre-0049 column name: partial folder stops at 0002
 				);
 			}
 			a.close();

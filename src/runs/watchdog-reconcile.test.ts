@@ -86,7 +86,7 @@ describe("tickWatchdog — terminal-reconcile net (warren-c433)", () => {
 			mode: "batch",
 		});
 		await repos.runs.markRunning(row.id, new Date(startedAt));
-		await repos.runs.attachBurrow(row.id, { burrowId: "bur_1", burrowRunId: "run_b1" });
+		await repos.runs.attachBurrow(row.id, { sandboxId: "bur_1", sandboxRunId: "run_b1" });
 		return row.id;
 	}
 
@@ -132,7 +132,7 @@ describe("tickWatchdog — terminal-reconcile net (warren-c433)", () => {
 		// reconciliation must NOT override the operator's cancel.
 		await repos.events.append({
 			runId,
-			burrowEventSeq: 1,
+			sandboxEventSeq: 1,
 			ts: "2026-06-05T00:04:30Z",
 			kind: "cancel.requested",
 			stream: "system",
@@ -166,7 +166,7 @@ describe("tickWatchdog — terminal-reconcile net (warren-c433)", () => {
 		const runId = await seedRunningWithBurrow("2026-06-05T00:00:00Z");
 		await repos.events.append({
 			runId,
-			burrowEventSeq: 1,
+			sandboxEventSeq: 1,
 			ts: "2026-06-05T00:00:20Z",
 			kind: "cancel.requested",
 			stream: "system",

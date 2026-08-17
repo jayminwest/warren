@@ -4,7 +4,7 @@ import type { WarrenDb } from "../../db/client.ts";
 import type { Repos } from "../../db/repos/index.ts";
 import type { DefaultsConfig, WarrenConfigCache } from "../../warren-config/index.ts";
 import { spawnRun } from "./index.ts";
-import { makeAgentJson, makeBurrowClient, makeProvider, setupRepos } from "./test-helpers.ts";
+import { makeAgentJson, makeProvider, makeSandboxClient, setupRepos } from "./test-helpers.ts";
 
 function configWith(defaults: DefaultsConfig): WarrenConfigCache {
 	return {
@@ -44,7 +44,7 @@ describe("spawnRun: provider/model compatibility (warren-bad5)", () => {
 	});
 
 	test("rejects an Anthropic model override against the OpenRouter project default", async () => {
-		const { client, calls } = makeBurrowClient();
+		const { client, calls } = makeSandboxClient();
 		const error = await captureValidation(
 			spawnRun({
 				repos,
@@ -71,7 +71,7 @@ describe("spawnRun: provider/model compatibility (warren-bad5)", () => {
 				frontmatter: { model: "moonshotai/kimi-k3" },
 			}),
 		});
-		const { client, calls } = makeBurrowClient();
+		const { client, calls } = makeSandboxClient();
 		const error = await captureValidation(
 			spawnRun({
 				repos,
@@ -91,7 +91,7 @@ describe("spawnRun: provider/model compatibility (warren-bad5)", () => {
 	});
 
 	test("rejects a casing variant of a known provider via the core registry (warren-fb8d)", async () => {
-		const { client, calls } = makeBurrowClient();
+		const { client, calls } = makeSandboxClient();
 		const error = await captureValidation(
 			spawnRun({
 				repos,
@@ -117,7 +117,7 @@ describe("spawnRun: provider/model compatibility (warren-bad5)", () => {
 		["openrouter", "claude-opus/experimental"],
 		["custom-provider", "vendor/model"],
 	])("allows compatible or ambiguous pair %s / %s", async (provider, model) => {
-		const { client, calls } = makeBurrowClient();
+		const { client, calls } = makeSandboxClient();
 		const result = await spawnRun({
 			repos,
 			runtimeProvider: makeProvider(client),

@@ -99,14 +99,14 @@ describe("bridgeRunStream — OOM propagation (warren-9cce)", () => {
 	let repos: Repos;
 	let broker: RunEventBroker;
 	let runId: string;
-	let burrowRunId: string;
+	let sandboxRunId: string;
 
 	beforeEach(async () => {
 		db = await openDatabase({ path: ":memory:" });
 		repos = createRepos(db);
 		const ids = await seedBridgeRun(repos);
 		runId = ids.runId;
-		burrowRunId = ids.burrowRunId;
+		sandboxRunId = ids.sandboxRunId;
 		broker = new RunEventBroker();
 	});
 
@@ -126,10 +126,10 @@ describe("bridgeRunStream — OOM propagation (warren-9cce)", () => {
 
 		const result = await bridgeRunStream({
 			runId,
-			burrowRunId,
+			sandboxRunId,
 			repos,
 			broker,
-			burrowId: "bur_aaaaaaaaaaaa",
+			sandboxId: "bur_aaaaaaaaaaaa",
 			runtimeProvider: provider,
 			runStatePollMs: 5,
 			runStateDrainMs: 10,
@@ -137,7 +137,7 @@ describe("bridgeRunStream — OOM propagation (warren-9cce)", () => {
 
 		expect(result.terminalDetected).toEqual({ outcome: "failed", failureReason: "oom_killed" });
 		expect(result.errored).toBe(false);
-		expect(result.burrowRunMissing).toBeUndefined();
+		expect(result.sandboxRunMissing).toBeUndefined();
 		// Events streamed through the seam were persisted (proves the provider
 		// source pumped, not just the poller).
 		expect(result.written).toBeGreaterThan(0);
@@ -155,10 +155,10 @@ describe("bridgeRunStream — OOM propagation (warren-9cce)", () => {
 
 		const result = await bridgeRunStream({
 			runId,
-			burrowRunId,
+			sandboxRunId,
 			repos,
 			broker,
-			burrowId: "bur_aaaaaaaaaaaa",
+			sandboxId: "bur_aaaaaaaaaaaa",
 			runtimeProvider: provider,
 			runStatePollMs: 5,
 			runStateDrainMs: 10,
@@ -181,10 +181,10 @@ describe("bridgeRunStream — OOM propagation (warren-9cce)", () => {
 
 		const result = await bridgeRunStream({
 			runId,
-			burrowRunId,
+			sandboxRunId,
 			repos,
 			broker,
-			burrowId: "bur_aaaaaaaaaaaa",
+			sandboxId: "bur_aaaaaaaaaaaa",
 			runtimeProvider: provider,
 			runStatePollMs: 5,
 			runStateDrainMs: 10,
@@ -192,6 +192,6 @@ describe("bridgeRunStream — OOM propagation (warren-9cce)", () => {
 
 		expect(result.terminalDetected).toEqual({ outcome: "failed", failureReason: "evicted" });
 		expect(result.errored).toBe(false);
-		expect(result.burrowRunMissing).toBeUndefined();
+		expect(result.sandboxRunMissing).toBeUndefined();
 	});
 });

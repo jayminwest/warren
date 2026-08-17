@@ -40,7 +40,7 @@ describe("backfillToolCallRollup", () => {
 	}
 
 	function appendToolEvent(runId: string, seq: number, kind: string, payload: unknown, ts: string) {
-		return repos.events.append({ runId, burrowEventSeq: seq, ts, kind, payload });
+		return repos.events.append({ runId, sandboxEventSeq: seq, ts, kind, payload });
 	}
 
 	test("re-extracts a pre-rollup run's tool history through the shape registries", async () => {

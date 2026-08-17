@@ -112,7 +112,7 @@ describe.skipIf(!pgEnabled)("runMigrateToPostgres", () => {
 		});
 		await sourceRepos.events.append({
 			runId: run.id,
-			burrowEventSeq: 1,
+			sandboxEventSeq: 1,
 			ts: "2026-05-14T00:00:00.000Z",
 			kind: "burrow.stream.line",
 			stream: "stdout",
@@ -120,7 +120,7 @@ describe.skipIf(!pgEnabled)("runMigrateToPostgres", () => {
 		});
 		await sourceRepos.events.append({
 			runId: run.id,
-			burrowEventSeq: 2,
+			sandboxEventSeq: 2,
 			ts: "2026-05-14T00:00:01.000Z",
 			kind: "burrow.stream.line",
 			stream: "stdout",
@@ -163,10 +163,10 @@ describe.skipIf(!pgEnabled)("runMigrateToPostgres", () => {
 
 		const eventRows = await target.raw.query<{
 			id: number;
-			burrow_event_seq: number;
+			sandbox_event_seq: number;
 			payload_json: unknown;
-		}>("SELECT id, burrow_event_seq, payload_json FROM events ORDER BY id");
-		expect(eventRows.rows.map((r) => r.burrow_event_seq)).toEqual([1, 2]);
+		}>("SELECT id, sandbox_event_seq, payload_json FROM events ORDER BY id");
+		expect(eventRows.rows.map((r) => r.sandbox_event_seq)).toEqual([1, 2]);
 		expect(eventRows.rows[0]?.payload_json).toEqual({ text: "hi" });
 
 		const triggerRows = await target.raw.query<{ id: string; last_run_id: string }>(
@@ -178,7 +178,7 @@ describe.skipIf(!pgEnabled)("runMigrateToPostgres", () => {
 		// picks `MAX(id) + 1` instead of colliding with the seeded PKs.
 		const seededMaxId = Math.max(...eventRows.rows.map((r) => r.id));
 		const nextInsert = await target.raw.query<{ id: number }>(
-			"INSERT INTO events (run_id, burrow_event_seq, ts, kind, stream, payload_json) " +
+			"INSERT INTO events (run_id, sandbox_event_seq, ts, kind, stream, payload_json) " +
 				"VALUES ($1, $2, $3, $4, $5, $6::jsonb) RETURNING id",
 			[
 				"run_test",
@@ -251,7 +251,7 @@ describe.skipIf(!pgEnabled)("runMigrateToPostgres", () => {
 				"VALUES ('r1', 'a', 'p1', '{}'::jsonb, 'queued', 'p', 'cli')",
 		);
 		const inserted = await target.raw.query<{ id: number }>(
-			"INSERT INTO events (run_id, burrow_event_seq, ts, kind, stream, payload_json) " +
+			"INSERT INTO events (run_id, sandbox_event_seq, ts, kind, stream, payload_json) " +
 				"VALUES ('r1', 1, 't', 'k', 'stdout', '{}'::jsonb) RETURNING id",
 		);
 		expect(inserted.rows[0]?.id).toBe(1);

@@ -182,7 +182,7 @@ async function appendDispatchedEvent(
 		const seq = ((await repos.events.maxSeqForRun(result.parentRunId)) ?? 0) + 1;
 		await repos.events.append({
 			runId: result.parentRunId,
-			burrowEventSeq: seq,
+			sandboxEventSeq: seq,
 			ts: now.toISOString(),
 			kind: CI_FIXER_DISPATCHED_EVENT,
 			stream: "system",

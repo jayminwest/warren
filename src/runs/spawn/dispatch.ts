@@ -174,7 +174,7 @@ export async function spawnRun(input: SpawnRunInput): Promise<SpawnRunResult> {
 
 	// warren-76c5 / warren-3743: multi-worker placement is retired — the
 	// self-host backend is a single local burrow. `runs.worker_id` is no longer
-	// written (the workers/burrows tables were dropped); it stays NULL for new
+	// written (the workers/sandboxes tables were dropped); it stays NULL for new
 	// runs and every reader (preview / proxy) treats NULL as the local worker.
 	logPlacement(input.logger, WORKER_PLACEMENT_LABEL, projectAfterRefresh.id);
 
@@ -231,12 +231,12 @@ export async function spawnRun(input: SpawnRunInput): Promise<SpawnRunResult> {
 	// warn per dispatch so the operator sees the misconfiguration per-run.
 	warnIfGitIdentityUnconfigured(log, input.serverEnv ?? process.env);
 	// Runtime-provider seam (warren-c42c: burrow-client eviction, bucket 2).
-	// `provider.create` collapses burrow's provision + dispatch (`burrowsUp` +
+	// `provider.create` collapses burrow's provision + dispatch (`sandboxUp` +
 	// `runs.create`) into one call and owns the sandbox-half rollback on a partial
 	// failure (best-effort destroy + rethrow). The spawn path is now EXCLUSIVELY
 	// the provider path — no burrow-direct fallback. Callers resolve the
 	// boot-selected provider (`resolveRuntimeProvider`, honoring `WARREN_RUNTIME`)
-	// and thread it in; there is no `burrowClient` on this seam to fall back to.
+	// and thread it in; there is no `sandboxClient` on this seam to fall back to.
 	const provider: RuntimeProvider = input.runtimeProvider;
 	const runtimeId = readRuntimeId(agent, runtimeOverride);
 	// Neutral RunSpec (provider maps it to the two burrow calls). `network` is
@@ -320,12 +320,12 @@ export async function spawnRun(input: SpawnRunInput): Promise<SpawnRunResult> {
 		logProvisioned(log, handle.sandboxId, WORKER_PLACEMENT_LABEL, dispatchStart);
 		// warren-3743: the provider owns partial-failure cleanup, so the burrow
 		// correlation ids are written back onto the run only after `create` fully
-		// succeeds — a dispatch that fails mid-flight leaves no burrow_id on the
+		// succeeds — a dispatch that fails mid-flight leaves no sandbox_id on the
 		// run (the provider already destroyed the burrow). These ids are
 		// load-bearing for LocalProvider resume across a host restart.
-		await input.repos.runs.attachBurrow(run.id, { burrowId: handle.sandboxId });
+		await input.repos.runs.attachBurrow(run.id, { sandboxId: handle.sandboxId });
 		const updated = await input.repos.runs.attachBurrow(run.id, {
-			burrowRunId: handle.providerRunId,
+			sandboxRunId: handle.providerRunId,
 		});
 		logDispatched(log, handle.sandboxId, handle.providerRunId, dispatchStart);
 		// warren-4e74: fire the observe-only `run_dispatched` lifecycle hook.
@@ -362,12 +362,12 @@ export async function spawnRun(input: SpawnRunInput): Promise<SpawnRunResult> {
 		// `workspacePath` is a burrow host path with no provider-neutral home, so
 		// the seam's `RunHandle` drops it (design §: the domain must never leak a
 		// host path). It survives as a display-only field on the HTTP response +
-		// UI, slated for removal with the multi-worker/`/burrows` surface (plan
+		// UI, slated for removal with the multi-worker/`/sandboxes` surface (plan
 		// §5.C); no value is available across the seam, so it is empty here.
 		return {
 			run: updated,
-			burrow: { id: handle.sandboxId, workspacePath: "" },
-			burrowRun: { id: handle.providerRunId },
+			sandbox: { id: handle.sandboxId, workspacePath: "" },
+			sandboxRun: { id: handle.providerRunId },
 			agent,
 		};
 	} catch (err) {
@@ -469,7 +469,7 @@ function composeRunEnv(
  * body is dead text on disk.
  *
  * `runs.prompt` (warren-side) keeps the user-typed input verbatim; only
- * the body sent on POST /burrows/:id/runs is composed.
+ * the body sent on POST /sandboxes/:id/runs is composed.
  */
 export function composeDispatchPrompt(systemBody: string | undefined, userPrompt: string): string {
 	const trimmed = (systemBody ?? "").trim();

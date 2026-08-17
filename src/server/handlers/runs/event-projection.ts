@@ -70,7 +70,7 @@ export { buildEnvSecretPattern, REDACTED_MARKER, scrubSecrets };
  * Event kinds a `readPublic`-only caller never sees.
  *
  * The bridge lifecycle events are warren's own reconnect bookkeeping and
- * their payloads are `{ burrowRunId, burrowId, attempts, … }` — the
+ * their payloads are `{ sandboxRunId, sandboxId, attempts, … }` — the
  * internal runtime handles `REDACTED_RUN_FIELDS` (warren-946f) already
  * withholds from the run row. Serving them here would hand back through
  * the transcript exactly what the run projection drops, and a spectator

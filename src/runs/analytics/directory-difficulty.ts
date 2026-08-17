@@ -66,7 +66,7 @@ const DIRECTORY_SCOPED_TOOLS: ReadonlySet<string> = new Set(["Glob", "Grep", "LS
  */
 export interface DirectoryToolCallRow {
 	readonly runId: string;
-	/** burrow_event_seq of the tool_use event — orders calls within a run. */
+	/** sandbox_event_seq of the tool_use event — orders calls within a run. */
 	readonly seq: number;
 	readonly toolName: string | null;
 	readonly isError: boolean;

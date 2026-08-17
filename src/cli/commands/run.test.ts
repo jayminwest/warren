@@ -39,8 +39,8 @@ function runRow(over: Partial<RunRow> = {}): RunRow {
 		id: "run-1",
 		agentName: "claude-code",
 		projectId: "prj_1",
-		burrowId: "bur-1",
-		burrowRunId: "brun-1",
+		sandboxId: "bur-1",
+		sandboxRunId: "brun-1",
 		seedId: null,
 		parentRunId: null,
 		retryOf: null,
@@ -115,7 +115,7 @@ function mockClient(input: MockClientInput = {}): WarrenClient {
 			if (input.createError !== undefined) throw input.createError;
 			const spawned: SpawnRunResponse = {
 				run: input.row ?? runRow(),
-				burrow: { id: "bur-1", workspacePath: "/ws/run-1" },
+				sandbox: { id: "bur-1", workspacePath: "/ws/run-1" },
 			};
 			return spawned;
 		},

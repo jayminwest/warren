@@ -3,7 +3,7 @@
  *
  * Acceptance criterion #7:
  *   "POST /runs/:id/steer accepts a steering body, forwards it to the
- *   burrow inbox (`POST /burrows/:burrow_id/inbox` under the hood), and
+ *   burrow inbox (`POST /burrows/:sandbox_id/inbox` under the hood), and
  *   emits a `steer.sent` audit event onto the warren run's event log."
  *
  * The verification surface uses two pieces of evidence the operator can
@@ -41,8 +41,8 @@ interface ProjectRow {
 
 interface RunRow {
 	readonly id: string;
-	readonly burrowId: string | null;
-	readonly burrowRunId: string | null;
+	readonly sandboxId: string | null;
+	readonly sandboxRunId: string | null;
 	readonly state: string;
 }
 
@@ -120,8 +120,8 @@ export const scenario: Scenario = {
 			`spawn run.id ${run.id} does not match ${RUN_ID_PATTERN}`,
 		);
 		assertTrue(
-			typeof run.burrowId === "string" && run.burrowId !== null && run.burrowId.length > 0,
-			"spawn response missing burrowId — steer needs burrow_id (mx-37e6ff)",
+			typeof run.sandboxId === "string" && run.sandboxId !== null && run.sandboxId.length > 0,
+			"spawn response missing sandboxId — steer needs sandbox_id (mx-37e6ff)",
 		);
 
 		// 1. Steer with a known body. 200 + message envelope from burrow.

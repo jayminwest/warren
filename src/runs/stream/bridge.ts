@@ -57,7 +57,7 @@ import {
  * resume against a still-live burrow run.
  */
 export async function bridgeRunStream(input: BridgeRunStreamInput): Promise<BridgeRunStreamResult> {
-	const { runId, burrowRunId, repos, broker } = input;
+	const { runId, sandboxRunId, repos, broker } = input;
 	const ctrl = new AbortController();
 	const onAbort = (): void => ctrl.abort();
 	if (input.signal !== undefined) {
@@ -72,11 +72,11 @@ export async function bridgeRunStream(input: BridgeRunStreamInput): Promise<Brid
 	// cancel — route through the provider the domain resolved at boot; there is no
 	// burrow fallback here (the caller always threads the active provider).
 	const provider = input.runtimeProvider;
-	// Seam handle: `sandboxId` is the burrowId, `providerRunId` the burrowRunId.
+	// Seam handle: `sandboxId` is the sandboxId, `providerRunId` the sandboxRunId.
 	const handle: RunHandle = {
 		runId,
-		sandboxId: input.burrowId,
-		providerRunId: burrowRunId,
+		sandboxId: input.sandboxId,
+		providerRunId: sandboxRunId,
 	};
 
 	// Stream source. Default: `provider.streamEvents(handle, { sinceSeq })` adapted
@@ -122,7 +122,7 @@ export async function bridgeRunStream(input: BridgeRunStreamInput): Promise<Brid
 		runStateProbe !== null
 			? runStatePoller({
 					probe: runStateProbe,
-					burrowRunId,
+					sandboxRunId,
 					ctrl,
 					pollIntervalMs: input.runStatePollMs ?? DEFAULT_RUN_STATE_POLL_MS,
 					drainMs: input.runStateDrainMs ?? DEFAULT_RUN_STATE_DRAIN_MS,
@@ -138,7 +138,7 @@ export async function bridgeRunStream(input: BridgeRunStreamInput): Promise<Brid
 	let errored = false;
 	let claimed = false;
 	let terminalDetected: { outcome: RunTerminalState } | undefined;
-	let burrowRunMissing = false;
+	let sandboxRunMissing = false;
 	// pi cost tracking (warren-a7dc, warren-17a4). Two paths:
 	//   1. In-stream extraction (default): accumulate `turn_end` usage as
 	//      events flow through the bridge. Persisted on terminal.
@@ -162,7 +162,7 @@ export async function bridgeRunStream(input: BridgeRunStreamInput): Promise<Brid
 			if (!claimed) {
 				const claimedRun = await repos.runs.claimById(runId);
 				if (claimedRun !== null) {
-					input.logger?.info?.({ runId, burrowRunId }, "bridge transitioned run queued → running");
+					input.logger?.info?.({ runId, sandboxRunId }, "bridge transitioned run queued → running");
 					// warren-28ca: the queued → running edge is the production
 					// emit for the `run_started` lifecycle hook. `claimById`
 					// returns non-null exactly once (the atomic claim), so this
@@ -173,7 +173,7 @@ export async function bridgeRunStream(input: BridgeRunStreamInput): Promise<Brid
 				if (input.piStats !== undefined) {
 					statsBaseline = snapshotStats(
 						input.piStats,
-						burrowRunId,
+						sandboxRunId,
 						ctrl.signal,
 						"baseline",
 						runId,
@@ -196,7 +196,7 @@ export async function bridgeRunStream(input: BridgeRunStreamInput): Promise<Brid
 				if (resumedOutcome !== null) {
 					terminalDetected = { outcome: resumedOutcome };
 					input.logger?.info?.(
-						{ runId, burrowRunId, outcome: resumedOutcome, seq: event.seq },
+						{ runId, sandboxRunId, outcome: resumedOutcome, seq: event.seq },
 						"bridge observed runtime-terminal on an already-persisted event; reap will finalize",
 					);
 					break;
@@ -209,7 +209,7 @@ export async function bridgeRunStream(input: BridgeRunStreamInput): Promise<Brid
 			}
 			const row = await repos.events.append({
 				runId,
-				burrowEventSeq: event.seq,
+				sandboxEventSeq: event.seq,
 				ts: toIsoString(event.ts),
 				kind: event.kind,
 				stream: normalizeStream(event.stream),
@@ -230,7 +230,7 @@ export async function bridgeRunStream(input: BridgeRunStreamInput): Promise<Brid
 			// production call-site (design doc §5).
 			lifecycleBus()?.emitEventEmitted({
 				runId,
-				seq: row.burrowEventSeq,
+				seq: row.sandboxEventSeq,
 				kind: row.kind,
 				stream: row.stream ?? "",
 			});
@@ -245,7 +245,7 @@ export async function bridgeRunStream(input: BridgeRunStreamInput): Promise<Brid
 			if (costCapUsd !== null) {
 				const exceeded = await enforceBudgetCap({
 					runId,
-					burrowRunId,
+					sandboxRunId,
 					costCapUsd,
 					piUsage,
 					claudeUsage,
@@ -266,7 +266,7 @@ export async function bridgeRunStream(input: BridgeRunStreamInput): Promise<Brid
 				if (input.piStats !== undefined) {
 					await persistPiStatsDelta({
 						piStats: input.piStats,
-						burrowRunId,
+						sandboxRunId,
 						runId,
 						repos,
 						baseline: statsBaseline,
@@ -278,7 +278,7 @@ export async function bridgeRunStream(input: BridgeRunStreamInput): Promise<Brid
 						usage: piUsage,
 						runtime: "pi",
 						runId,
-						burrowRunId,
+						sandboxRunId,
 						repos,
 						logger: input.logger,
 					});
@@ -289,7 +289,7 @@ export async function bridgeRunStream(input: BridgeRunStreamInput): Promise<Brid
 			if (outcome !== null) {
 				terminalDetected = { outcome };
 				input.logger?.info?.(
-					{ runId, burrowRunId, outcome, seq: event.seq },
+					{ runId, sandboxRunId, outcome, seq: event.seq },
 					"bridge observed runtime-terminal event; reap will finalize",
 				);
 				if (!statsPersisted) {
@@ -297,7 +297,7 @@ export async function bridgeRunStream(input: BridgeRunStreamInput): Promise<Brid
 					if (input.piStats !== undefined) {
 						await persistPiStatsDelta({
 							piStats: input.piStats,
-							burrowRunId,
+							sandboxRunId,
 							runId,
 							repos,
 							baseline: statsBaseline,
@@ -311,7 +311,7 @@ export async function bridgeRunStream(input: BridgeRunStreamInput): Promise<Brid
 							usage: piUsage,
 							runtime: "pi",
 							runId,
-							burrowRunId,
+							sandboxRunId,
 							repos,
 							logger: input.logger,
 						});
@@ -320,7 +320,7 @@ export async function bridgeRunStream(input: BridgeRunStreamInput): Promise<Brid
 							usage: claudeUsage,
 							runtime: "claude",
 							runId,
-							burrowRunId,
+							sandboxRunId,
 							repos,
 							logger: input.logger,
 						});
@@ -339,9 +339,9 @@ export async function bridgeRunStream(input: BridgeRunStreamInput): Promise<Brid
 			// instead of spinning on backoff. Don't set `errored` — errored=true
 			// triggers the reconnect loop; the missing-run signal is exactly the case
 			// where reconnect is hopeless.
-			burrowRunMissing = true;
+			sandboxRunMissing = true;
 			input.logger?.warn?.(
-				{ runId, burrowRunId, written, skipped, err: err.message },
+				{ runId, sandboxRunId, written, skipped, err: err.message },
 				"run stream bridge: backend reports run not found (ghost run)",
 			);
 		} else if (probedTerminal.value !== null) {
@@ -352,8 +352,8 @@ export async function bridgeRunStream(input: BridgeRunStreamInput): Promise<Brid
 			input.logger?.info?.(
 				{
 					runId,
-					burrowRunId,
-					burrowState: probedTerminal.value.state,
+					sandboxRunId,
+					sandboxState: probedTerminal.value.state,
 					err: err instanceof Error ? err.message : String(err),
 				},
 				"run stream bridge: stream aborted by run-state poller after terminal observation",
@@ -363,7 +363,7 @@ export async function bridgeRunStream(input: BridgeRunStreamInput): Promise<Brid
 			input.logger?.error?.(
 				{
 					runId,
-					burrowRunId,
+					sandboxRunId,
 					written,
 					skipped,
 					err: err instanceof Error ? err.message : String(err),
@@ -384,7 +384,7 @@ export async function bridgeRunStream(input: BridgeRunStreamInput): Promise<Brid
 	// state (succeeded/failed/cancelled). Skipped when terminal was already
 	// detected in-stream — the in-stream path is authoritative because it
 	// carries exit_code semantics from the runtime parser.
-	if (terminalDetected === undefined && !burrowRunMissing && probedTerminal.value !== null) {
+	if (terminalDetected === undefined && !sandboxRunMissing && probedTerminal.value !== null) {
 		// warren-9cce: carry the poller's distilled `failure_reason` (only
 		// `oom_killed` today) onto the synthesized terminal so the registry's
 		// inline reap finalizes with it instead of inferring an anonymous cause.
@@ -396,7 +396,7 @@ export async function bridgeRunStream(input: BridgeRunStreamInput): Promise<Brid
 		input.logger?.info?.(
 			{
 				runId,
-				burrowRunId,
+				sandboxRunId,
 				outcome: state,
 				...(failureReason !== undefined ? { failureReason } : {}),
 			},
@@ -405,11 +405,11 @@ export async function bridgeRunStream(input: BridgeRunStreamInput): Promise<Brid
 	}
 
 	input.logger?.info?.(
-		{ runId, burrowRunId, written, skipped, dropped, errored, burrowRunMissing },
+		{ runId, sandboxRunId, written, skipped, dropped, errored, sandboxRunMissing },
 		"run stream bridge ended",
 	);
-	if (burrowRunMissing) {
-		return { written, skipped, errored, burrowRunMissing: true };
+	if (sandboxRunMissing) {
+		return { written, skipped, errored, sandboxRunMissing: true };
 	}
 	return terminalDetected !== undefined
 		? { written, skipped, errored, terminalDetected }

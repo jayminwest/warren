@@ -33,7 +33,7 @@ import type { ManualTeardownClaim, RunPreviewRow, RunPreviewsRepo } from "./type
 interface PreviewTxState {
 	readonly previewState: PreviewState | null;
 	readonly previewPort: number | null;
-	readonly burrowId: string | null;
+	readonly sandboxId: string | null;
 }
 
 async function lockRowForPostgres(tx: DrizzleAdapter, runId: string): Promise<void> {
@@ -59,7 +59,7 @@ async function readCurrentPreview(
 			.select({
 				previewState: txRuns.previewState,
 				previewPort: txRuns.previewPort,
-				burrowId: txRuns.burrowId,
+				sandboxId: txRuns.sandboxId,
 			})
 			.from(txRuns)
 			.where(eq(txRuns.id, runId)),
@@ -86,7 +86,7 @@ function shapeNonClaimable(
 			status: "already-torn-down",
 			previousState,
 			port: current.previewPort,
-			burrowId: current.burrowId,
+			sandboxId: current.sandboxId,
 		};
 	}
 	if (previousState === "failed") {
@@ -94,14 +94,14 @@ function shapeNonClaimable(
 			status: "already-failed",
 			previousState,
 			port: current.previewPort,
-			burrowId: current.burrowId,
+			sandboxId: current.sandboxId,
 		};
 	}
 	return {
 		status: "never-launched",
 		previousState: null,
 		port: current.previewPort,
-		burrowId: current.burrowId,
+		sandboxId: current.sandboxId,
 	};
 }
 
@@ -115,7 +115,7 @@ export function createRunPreviewsRepo(db: AnyWarrenDb): RunPreviewsRepo {
 			const rows = await adapter.pickAll<{
 				runId: string;
 				projectId: string | null;
-				burrowId: string | null;
+				sandboxId: string | null;
 				workerId: string | null;
 				previewState: PreviewState | null;
 				previewPort: number | null;
@@ -126,7 +126,7 @@ export function createRunPreviewsRepo(db: AnyWarrenDb): RunPreviewsRepo {
 					.select({
 						runId: runs.id,
 						projectId: runs.projectId,
-						burrowId: runs.burrowId,
+						sandboxId: runs.sandboxId,
 						workerId: runs.workerId,
 						previewState: runs.previewState,
 						previewPort: runs.previewPort,
@@ -140,7 +140,7 @@ export function createRunPreviewsRepo(db: AnyWarrenDb): RunPreviewsRepo {
 			return rows.map((r) => ({
 				runId: r.runId,
 				projectId: r.projectId,
-				burrowId: r.burrowId,
+				sandboxId: r.sandboxId,
 				workerId: r.workerId,
 				previewState: r.previewState as "starting" | "live",
 				previewPort: r.previewPort,
@@ -180,7 +180,7 @@ export function createRunPreviewsRepo(db: AnyWarrenDb): RunPreviewsRepo {
 						status: "never-launched",
 						previousState: null,
 						port: null,
-						burrowId: null,
+						sandboxId: null,
 					};
 				}
 				const previousState = current.previewState;
@@ -190,7 +190,7 @@ export function createRunPreviewsRepo(db: AnyWarrenDb): RunPreviewsRepo {
 						status: "torn-down",
 						previousState,
 						port: current.previewPort,
-						burrowId: current.burrowId,
+						sandboxId: current.sandboxId,
 					};
 				}
 				return shapeNonClaimable(previousState, current);

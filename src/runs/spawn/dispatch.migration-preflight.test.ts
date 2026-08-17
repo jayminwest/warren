@@ -3,7 +3,7 @@ import type { WarrenDb } from "../../db/client.ts";
 import type { Repos } from "../../db/repos/index.ts";
 import { spawnRun } from "./index.ts";
 import type { MigrationHealOutcome } from "./migration-preflight.ts";
-import { makeBurrowClient, makeProvider, setupRepos } from "./test-helpers.ts";
+import { makeProvider, makeSandboxClient, setupRepos } from "./test-helpers.ts";
 
 /**
  * warren-1f03: spawnRun runs the drizzle migration journal preflight for
@@ -37,7 +37,7 @@ describe("spawnRun: migration journal preflight (warren-1f03)", () => {
 	}
 
 	test("a healed collision on a ref-dispatch emits a migration_journal_heal system event", async () => {
-		const { client } = makeBurrowClient();
+		const { client } = makeSandboxClient();
 		let healBaseRef: string | undefined;
 		const outcome: MigrationHealOutcome = {
 			collisions: [
@@ -76,7 +76,7 @@ describe("spawnRun: migration journal preflight (warren-1f03)", () => {
 	});
 
 	test("no collision → no event; a fresh dispatch from main skips the preflight entirely", async () => {
-		const { client } = makeBurrowClient();
+		const { client } = makeSandboxClient();
 		let healCalls = 0;
 		const { run } = await spawnRun({
 			repos,

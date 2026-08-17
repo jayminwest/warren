@@ -65,13 +65,13 @@ describe("GET /projects/:id/seeds/plans — list a project's seeds plans (warren
 		})();
 	}
 
-	function silentBurrow(): FakeProvider {
+	function silentSandbox(): FakeProvider {
 		return new FakeProvider();
 	}
 
 	test("returns lean plan summaries and shells out to `sd plan list --json`", async () => {
 		const calls: (readonly string[])[] = [];
-		const deps = await depsWithSdSpawn(silentBurrow(), async (cmd) => {
+		const deps = await depsWithSdSpawn(silentSandbox(), async (cmd) => {
 			calls.push(cmd);
 			return {
 				stdout: JSON.stringify({
@@ -123,7 +123,7 @@ describe("GET /projects/:id/seeds/plans — list a project's seeds plans (warren
 	});
 
 	test("returns an empty array for a project with no plans", async () => {
-		const deps = await depsWithSdSpawn(silentBurrow(), async () => ({
+		const deps = await depsWithSdSpawn(silentSandbox(), async () => ({
 			stdout: JSON.stringify({ success: true, plans: [] }),
 			stderr: "",
 			exitCode: 0,
@@ -141,7 +141,7 @@ describe("GET /projects/:id/seeds/plans — list a project's seeds plans (warren
 	});
 
 	test("404 for unknown project id", async () => {
-		const deps = await depsWithSdSpawn(silentBurrow(), async () => ({
+		const deps = await depsWithSdSpawn(silentSandbox(), async () => ({
 			stdout: "",
 			stderr: "",
 			exitCode: 0,
@@ -157,7 +157,7 @@ describe("GET /projects/:id/seeds/plans — list a project's seeds plans (warren
 	});
 
 	test("400 ProjectLacksSeedsError when project has no .seeds/", async () => {
-		const deps = await depsWithSdSpawn(silentBurrow(), async () => ({
+		const deps = await depsWithSdSpawn(silentSandbox(), async () => ({
 			stdout: "",
 			stderr: "",
 			exitCode: 0,
@@ -175,7 +175,7 @@ describe("GET /projects/:id/seeds/plans — list a project's seeds plans (warren
 	});
 
 	test("400 ValidationError when seeds CLI is not configured on warren", async () => {
-		const deps = await depsFor(repos, silentBurrow());
+		const deps = await depsFor(repos, silentSandbox());
 		handle = startServer(deps, {
 			transport: { kind: "tcp", hostname: "127.0.0.1", port: 0 },
 			auth: NO_AUTH,
@@ -190,7 +190,7 @@ describe("GET /projects/:id/seeds/plans — list a project's seeds plans (warren
 
 	test("`plans` is not swallowed by the :seedId param route", async () => {
 		const calls: (readonly string[])[] = [];
-		const deps = await depsWithSdSpawn(silentBurrow(), async (cmd) => {
+		const deps = await depsWithSdSpawn(silentSandbox(), async (cmd) => {
 			calls.push(cmd);
 			return { stdout: JSON.stringify({ success: true, plans: [] }), stderr: "", exitCode: 0 };
 		});

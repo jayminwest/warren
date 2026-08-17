@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { WarrenDb } from "../../db/client.ts";
 import type { Repos } from "../../db/repos/index.ts";
 import { spawnRun } from "./index.ts";
-import { makeAgentJson, makeBurrowClient, makeProvider, setupRepos } from "./test-helpers.ts";
+import { makeAgentJson, makeProvider, makeSandboxClient, setupRepos } from "./test-helpers.ts";
 
 describe("spawnRun: per-agent tool policy (warren-8dee)", () => {
 	let db: WarrenDb;
@@ -27,7 +27,7 @@ describe("spawnRun: per-agent tool policy (warren-8dee)", () => {
 				},
 			}),
 		});
-		const { client, calls } = makeBurrowClient();
+		const { client, calls } = makeSandboxClient();
 		await spawnRun({
 			repos,
 			runtimeProvider: makeProvider(client),
@@ -36,7 +36,7 @@ describe("spawnRun: per-agent tool policy (warren-8dee)", () => {
 			prompt: "p",
 		});
 
-		const dispatch = calls.find((c) => c.path === "/burrows/bur_aaaaaaaaaaaa/runs");
+		const dispatch = calls.find((c) => c.path === "/sandboxes/bur_aaaaaaaaaaaa/runs");
 		expect(dispatch).toBeDefined();
 		const body = dispatch?.body as { metadata: { frontmatter: Record<string, unknown> } };
 		expect(body.metadata.frontmatter.tools).toEqual({
@@ -51,7 +51,7 @@ describe("spawnRun: per-agent tool policy (warren-8dee)", () => {
 			name: "pi",
 			renderedJson: makeAgentJson({ name: "pi", frontmatter: { source: "builtin" } }),
 		});
-		const { client, calls } = makeBurrowClient();
+		const { client, calls } = makeSandboxClient();
 		await spawnRun({
 			repos,
 			runtimeProvider: makeProvider(client),
@@ -60,7 +60,7 @@ describe("spawnRun: per-agent tool policy (warren-8dee)", () => {
 			prompt: "p",
 		});
 
-		const dispatch = calls.find((c) => c.path === "/burrows/bur_aaaaaaaaaaaa/runs");
+		const dispatch = calls.find((c) => c.path === "/sandboxes/bur_aaaaaaaaaaaa/runs");
 		const body = dispatch?.body as { metadata: { frontmatter: Record<string, unknown> } };
 		expect(body.metadata.frontmatter.tools).toBeUndefined();
 	});

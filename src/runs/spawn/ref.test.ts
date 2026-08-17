@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { WarrenDb } from "../../db/client.ts";
 import type { Repos } from "../../db/repos/index.ts";
 import { spawnRun } from "./index.ts";
-import { makeBurrowClient, makeProvider, setupRepos } from "./test-helpers.ts";
+import { makeProvider, makeSandboxClient, setupRepos } from "./test-helpers.ts";
 
 /**
  * warren-afeb: a run dispatched with an explicit `ref` persists it on
@@ -22,7 +22,7 @@ describe("spawnRun: ref persistence (warren-afeb)", () => {
 	});
 
 	test("persists the explicit ref on the run row and echoes it", async () => {
-		const { client, calls } = makeBurrowClient();
+		const { client, calls } = makeSandboxClient();
 		const { run } = await spawnRun({
 			repos,
 			runtimeProvider: makeProvider(client),
@@ -42,7 +42,7 @@ describe("spawnRun: ref persistence (warren-afeb)", () => {
 	});
 
 	test("a dispatch without ref reads back null", async () => {
-		const { client } = makeBurrowClient();
+		const { client } = makeSandboxClient();
 		const { run } = await spawnRun({
 			repos,
 			runtimeProvider: makeProvider(client),

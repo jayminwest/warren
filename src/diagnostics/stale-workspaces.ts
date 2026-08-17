@@ -1,5 +1,5 @@
 /**
- * `stale_burrow_workspaces` diagnostic for `warren doctor` / `GET /readyz`
+ * `stale_sandbox_workspaces` diagnostic for `warren doctor` / `GET /readyz`
  * (warren-0a9a). Reports burrow workspaces whose runs are all terminal and
  * whose newest activity is older than the fallback workspace-GC TTL.
  *
@@ -25,7 +25,7 @@ export interface StaleBurrowWorkspaceProbe {
 	listByState(state: RunState[]): Promise<RunRow[]>;
 }
 
-export async function checkStaleBurrowWorkspaces(deps: {
+export async function checkStaleSandboxWorkspaces(deps: {
 	readonly probe: StaleBurrowWorkspaceProbe;
 	readonly ttlMs: number;
 	readonly now?: Date;
@@ -41,16 +41,16 @@ export async function checkStaleBurrowWorkspaces(deps: {
 		]);
 	} catch (err) {
 		return {
-			name: "stale_burrow_workspaces",
+			name: "stale_sandbox_workspaces",
 			ok: false,
-			message: dbFailureMessage("stale_burrow_workspaces", err, deps.log),
+			message: dbFailureMessage("stale_sandbox_workspaces", err, deps.log),
 			hint: "verify the database is reachable and the runs table exists",
 		};
 	}
 	const activity = buildBurrowActivity(activeRuns, terminalRuns);
 	let tracked = 0;
-	for (const burrowId of activity.latestEndedAt.keys()) {
-		if (!activity.activeBurrowIds.has(burrowId)) tracked += 1;
+	for (const sandboxId of activity.latestEndedAt.keys()) {
+		if (!activity.activeBurrowIds.has(sandboxId)) tracked += 1;
 	}
 	const stranded = findStrandedBurrows({
 		...activity,
@@ -59,13 +59,13 @@ export async function checkStaleBurrowWorkspaces(deps: {
 	});
 	if (stranded.length === 0) {
 		return {
-			name: "stale_burrow_workspaces",
+			name: "stale_sandbox_workspaces",
 			ok: true,
 			message: `${tracked} tracked burrow workspace${tracked === 1 ? "" : "s"}, none stranded`,
 		};
 	}
 	return {
-		name: "stale_burrow_workspaces",
+		name: "stale_sandbox_workspaces",
 		ok: false,
 		message: `${stranded.length} stranded burrow workspace${stranded.length === 1 ? "" : "s"} (terminal runs older than the GC TTL)`,
 		hint: "the fallback workspace GC reclaims these on its next sweep; if WARREN_WORKSPACE_GC_DISABLED is set, re-enable it or destroy the burrows manually via burrow",

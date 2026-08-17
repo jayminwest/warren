@@ -18,12 +18,12 @@ import { depsFor, silentLogger, tcpUrl } from "./runs.test-helpers.ts";
 /**
  * Provider fake that mints a FRESH sandbox + run id on every `create` so two
  * real spawns don't collide on a duplicate primary key. The
- * `burrowCreateCount` it returns is the spawn signal the dedupe assertions
+ * `sandboxCreateCount` it returns is the spawn signal the dedupe assertions
  * key on: one logical dispatch must reach `create` exactly once.
  */
 function countingBurrowClient(workspacePath: string): {
 	client: FakeProvider;
-	burrowCreateCount: () => number;
+	sandboxCreateCount: () => number;
 } {
 	class CountingProvider extends FakeProvider {
 		private n = 0;
@@ -38,13 +38,13 @@ function countingBurrowClient(workspacePath: string): {
 	const client = new CountingProvider({ workspacePath });
 	return {
 		client,
-		burrowCreateCount: () => client.calls.filter((c) => c.path === "/burrows").length,
+		sandboxCreateCount: () => client.calls.filter((c) => c.path === "/sandboxes").length,
 	};
 }
 
 interface DispatchResponse {
 	run: { id: string };
-	burrow: { id: string };
+	sandbox: { id: string };
 }
 
 async function postRun(
@@ -115,7 +115,7 @@ describe("POST /runs — Idempotency-Key dedupe (warren-d525)", () => {
 	test("same key within window spawns once; both responses reference it", async () => {
 		const project = (await repos.projects.listAll())[0];
 		if (!project) throw new Error("project missing");
-		const { client, burrowCreateCount } = countingBurrowClient(workspacePath);
+		const { client, sandboxCreateCount } = countingBurrowClient(workspacePath);
 		const deps: ServerDeps = {
 			...(await depsFor(repos, client)),
 			idempotencyStore: new IdempotencyStore(),
@@ -125,16 +125,16 @@ describe("POST /runs — Idempotency-Key dedupe (warren-d525)", () => {
 		const first = await postRun(h, project.id, "dispatch-abc");
 		const second = await postRun(h, project.id, "dispatch-abc");
 
-		expect(burrowCreateCount()).toBe(1);
+		expect(sandboxCreateCount()).toBe(1);
 		expect(second.run.id).toBe(first.run.id);
-		expect(second.burrow.id).toBe(first.burrow.id);
+		expect(second.sandbox.id).toBe(first.sandbox.id);
 		expect((await repos.runs.listAll()).length).toBe(1);
 	});
 
 	test("different key spawns a new run", async () => {
 		const project = (await repos.projects.listAll())[0];
 		if (!project) throw new Error("project missing");
-		const { client, burrowCreateCount } = countingBurrowClient(workspacePath);
+		const { client, sandboxCreateCount } = countingBurrowClient(workspacePath);
 		const deps: ServerDeps = {
 			...(await depsFor(repos, client)),
 			idempotencyStore: new IdempotencyStore(),
@@ -144,14 +144,14 @@ describe("POST /runs — Idempotency-Key dedupe (warren-d525)", () => {
 		const first = await postRun(h, project.id, "key-1");
 		const second = await postRun(h, project.id, "key-2");
 
-		expect(burrowCreateCount()).toBe(2);
+		expect(sandboxCreateCount()).toBe(2);
 		expect(second.run.id).not.toBe(first.run.id);
 	});
 
 	test("same key after the window expires spawns a new run", async () => {
 		const project = (await repos.projects.listAll())[0];
 		if (!project) throw new Error("project missing");
-		const { client, burrowCreateCount } = countingBurrowClient(workspacePath);
+		const { client, sandboxCreateCount } = countingBurrowClient(workspacePath);
 		let clock = 1_000_000;
 		const store = new IdempotencyStore({ ttlMs: 1000, now: () => clock });
 		const deps: ServerDeps = { ...(await depsFor(repos, client)), idempotencyStore: store };
@@ -161,14 +161,14 @@ describe("POST /runs — Idempotency-Key dedupe (warren-d525)", () => {
 		clock += 5000;
 		const second = await postRun(h, project.id, "windowed");
 
-		expect(burrowCreateCount()).toBe(2);
+		expect(sandboxCreateCount()).toBe(2);
 		expect(second.run.id).not.toBe(first.run.id);
 	});
 
 	test("no header preserves always-spawn behavior", async () => {
 		const project = (await repos.projects.listAll())[0];
 		if (!project) throw new Error("project missing");
-		const { client, burrowCreateCount } = countingBurrowClient(workspacePath);
+		const { client, sandboxCreateCount } = countingBurrowClient(workspacePath);
 		const deps: ServerDeps = {
 			...(await depsFor(repos, client)),
 			idempotencyStore: new IdempotencyStore(),
@@ -178,7 +178,7 @@ describe("POST /runs — Idempotency-Key dedupe (warren-d525)", () => {
 		const first = await postRun(h, project.id);
 		const second = await postRun(h, project.id);
 
-		expect(burrowCreateCount()).toBe(2);
+		expect(sandboxCreateCount()).toBe(2);
 		expect(second.run.id).not.toBe(first.run.id);
 	});
 
@@ -197,7 +197,7 @@ describe("POST /runs — Idempotency-Key dedupe (warren-d525)", () => {
 		const projectB = (await repos.projects.listAll()).find((p) => p.id !== projectA.id);
 		if (!projectB) throw new Error("second project missing");
 
-		const { client, burrowCreateCount } = countingBurrowClient(workspacePath);
+		const { client, sandboxCreateCount } = countingBurrowClient(workspacePath);
 		const deps: ServerDeps = {
 			...(await depsFor(repos, client)),
 			idempotencyStore: new IdempotencyStore(),
@@ -207,7 +207,7 @@ describe("POST /runs — Idempotency-Key dedupe (warren-d525)", () => {
 		const a = await postRun(h, projectA.id, "shared-key");
 		const b = await postRun(h, projectB.id, "shared-key");
 
-		expect(burrowCreateCount()).toBe(2);
+		expect(sandboxCreateCount()).toBe(2);
 		expect(b.run.id).not.toBe(a.run.id);
 	});
 });

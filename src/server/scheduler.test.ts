@@ -17,13 +17,13 @@ import type { BridgeRegistry } from "./types.ts";
 
 interface BridgeCall {
 	readonly runId: string;
-	readonly burrowRunId: string;
+	readonly sandboxRunId: string;
 }
 
 function makeBridges(calls: BridgeCall[]): BridgeRegistry {
 	return {
-		start(runId, burrowRunId) {
-			calls.push({ runId, burrowRunId });
+		start(runId, sandboxRunId) {
+			calls.push({ runId, sandboxRunId });
 		},
 		async stopAll() {},
 		size: () => 0,
@@ -121,8 +121,8 @@ describe("bootScheduler", () => {
 			});
 			return {
 				run,
-				burrow: { id: "bur_a", workspacePath: "/ws" },
-				burrowRun: { id: "rb_a" },
+				sandbox: { id: "bur_a", workspacePath: "/ws" },
+				sandboxRun: { id: "rb_a" },
 				agent: { name: input.agentName, sections: {} } as never,
 			};
 		};
@@ -157,7 +157,7 @@ describe("bootScheduler", () => {
 		expect(spawnRunCalls[0]?.warrenConfigs).toBe(warrenConfigs);
 		expect(spawnRunCalls[0]?.runtimeProvider).toBe(RUNTIME_PROVIDER);
 		expect(bridgeCalls).toHaveLength(1);
-		expect(bridgeCalls[0]?.burrowRunId).toBe("rb_a");
+		expect(bridgeCalls[0]?.sandboxRunId).toBe("rb_a");
 	});
 
 	test("listScheduledSeeds + updateExtensions use the configured sdBinary and projectSpawn", async () => {
@@ -206,8 +206,8 @@ describe("bootScheduler", () => {
 			});
 			return {
 				run,
-				burrow: { id: "bur_b", workspacePath: "/ws" },
-				burrowRun: { id: "rb_b" },
+				sandbox: { id: "bur_b", workspacePath: "/ws" },
+				sandboxRun: { id: "rb_b" },
 				agent: { name: input.agentName, sections: {} } as never,
 			};
 		};

@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { WarrenDb } from "../../db/client.ts";
 import type { Repos } from "../../db/repos/index.ts";
 import { spawnRun } from "./index.ts";
-import { makeBurrowClient, makeProvider, setupRepos } from "./test-helpers.ts";
+import { makeProvider, makeSandboxClient, setupRepos } from "./test-helpers.ts";
 import type { SpawnLogger } from "./types.ts";
 
 interface LogLine {
@@ -36,7 +36,7 @@ describe("spawnRun: agent git identity env (warren-4e36)", () => {
 	test("forwards WARREN_GIT_AUTHOR_* as the four GIT_* identity vars", async () => {
 		// On K8s there is no supervisor gitconfig install — without these the
 		// in-pod `git commit` fails with "Author identity unknown" exit 128.
-		const { client, calls } = makeBurrowClient();
+		const { client, calls } = makeSandboxClient();
 		await spawnRun({
 			repos,
 			runtimeProvider: makeProvider(client),
@@ -48,7 +48,7 @@ describe("spawnRun: agent git identity env (warren-4e36)", () => {
 				WARREN_GIT_AUTHOR_EMAIL: "op+warren@users.noreply.github.com",
 			},
 		});
-		const up = calls.find((c) => c.path === "/burrows");
+		const up = calls.find((c) => c.path === "/sandboxes");
 		const env = (up?.body as { env?: Record<string, string> }).env;
 		expect(env?.GIT_AUTHOR_NAME).toBe("warren");
 		expect(env?.GIT_AUTHOR_EMAIL).toBe("op+warren@users.noreply.github.com");
@@ -57,7 +57,7 @@ describe("spawnRun: agent git identity env (warren-4e36)", () => {
 	});
 
 	test("git identity is all-or-nothing: half a pair injects none of the GIT_* vars", async () => {
-		const { client, calls } = makeBurrowClient();
+		const { client, calls } = makeSandboxClient();
 		await spawnRun({
 			repos,
 			runtimeProvider: makeProvider(client),
@@ -66,7 +66,7 @@ describe("spawnRun: agent git identity env (warren-4e36)", () => {
 			prompt: "fix it",
 			serverEnv: { WARREN_GIT_AUTHOR_NAME: "warren", WARREN_GIT_AUTHOR_EMAIL: "  " },
 		});
-		const up = calls.find((c) => c.path === "/burrows");
+		const up = calls.find((c) => c.path === "/sandboxes");
 		const env = (up?.body as { env?: Record<string, string> }).env;
 		expect(env?.GIT_AUTHOR_NAME).toBeUndefined();
 		expect(env?.GIT_AUTHOR_EMAIL).toBeUndefined();
@@ -89,7 +89,7 @@ describe("spawnRun: unconfigured git identity surfacing (warren-e7b7)", () => {
 	test("k8s + unset vars warns exactly once per dispatch", async () => {
 		// No supervisor exists on the K8s topology to warn — the per-run
 		// structured warn is the only operator-facing signal.
-		const { client } = makeBurrowClient();
+		const { client } = makeSandboxClient();
 		const { logger, lines } = makeRecordingLogger();
 		await spawnRun({
 			repos,
@@ -108,7 +108,7 @@ describe("spawnRun: unconfigured git identity surfacing (warren-e7b7)", () => {
 	});
 
 	test("k8s + configured vars emits no identity warn", async () => {
-		const { client } = makeBurrowClient();
+		const { client } = makeSandboxClient();
 		const { logger, lines } = makeRecordingLogger();
 		await spawnRun({
 			repos,
@@ -127,7 +127,7 @@ describe("spawnRun: unconfigured git identity surfacing (warren-e7b7)", () => {
 	});
 
 	test("local topology stays silent (the supervisor already warns)", async () => {
-		const { client } = makeBurrowClient();
+		const { client } = makeSandboxClient();
 		const { logger, lines } = makeRecordingLogger();
 		await spawnRun({
 			repos,

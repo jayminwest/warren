@@ -66,7 +66,7 @@ describe("makePodWarningRunEventSink (warren-32f8)", () => {
 			const row = rows[0];
 			expect(row?.kind).toBe(K8S_POD_WARNING_KIND);
 			expect(row?.stream).toBe("system");
-			expect(row?.burrowEventSeq).toBe(1);
+			expect(row?.sandboxEventSeq).toBe(1);
 			expect(row?.payloadJson).toEqual({
 				reason: "FailedAttachVolume",
 				message: "Multi-Attach error for volume pvc-123",
@@ -90,7 +90,7 @@ describe("makePodWarningRunEventSink (warren-32f8)", () => {
 			const runId = await openRun(repos);
 			await repos.events.append({
 				runId,
-				burrowEventSeq: 41,
+				sandboxEventSeq: 41,
 				ts: new Date().toISOString(),
 				kind: "text",
 				stream: "stdout",
@@ -101,7 +101,7 @@ describe("makePodWarningRunEventSink (warren-32f8)", () => {
 			await flush();
 			const rows = await repos.events.listByRun(runId);
 			const warning = rows.find((r) => r.kind === K8S_POD_WARNING_KIND);
-			expect(warning?.burrowEventSeq).toBe(42);
+			expect(warning?.sandboxEventSeq).toBe(42);
 			expect(warning?.payloadJson).toMatchObject({ reason: "FailedScheduling" });
 		} finally {
 			await handle.close();

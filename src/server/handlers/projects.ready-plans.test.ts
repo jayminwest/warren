@@ -92,12 +92,12 @@ describe("GET /projects/:id/ready-plans — ready-to-dispatch plans (warren-f716
 		await db.close();
 	});
 
-	function silentBurrow(): FakeProvider {
+	function silentSandbox(): FakeProvider {
 		return new FakeProvider();
 	}
 
 	async function depsWithSpawn(spawn: SpawnFn): Promise<ServerDeps> {
-		const base = await depsFor(repos, silentBurrow());
+		const base = await depsFor(repos, silentSandbox());
 		return { ...base, seedsCli: { sdBinary: "sd", spawn } };
 	}
 

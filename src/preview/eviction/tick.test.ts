@@ -40,7 +40,7 @@ function tickSuite(dialect: "sqlite" | "postgres"): void {
 			port: number;
 			startedAt: string;
 			lastHitAt?: string;
-			burrowId?: string;
+			sandboxId?: string;
 			state?: "starting" | "live";
 		}): Promise<string> {
 			const run = await repos.runs.create({
@@ -49,7 +49,7 @@ function tickSuite(dialect: "sqlite" | "postgres"): void {
 				prompt: "p",
 				renderedAgentJson: {},
 				trigger: "manual",
-				burrowId: opts.burrowId ?? `bur_${opts.port}`,
+				sandboxId: opts.sandboxId ?? `bur_${opts.port}`,
 			});
 			await repos.runs.attachPreview(run.id, {
 				previewState: opts.state ?? "live",

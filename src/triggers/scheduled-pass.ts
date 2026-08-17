@@ -128,7 +128,7 @@ async function recordClearFailure(
 		const now = deps.now?.() ?? new Date();
 		await deps.repos.events.append({
 			runId,
-			burrowEventSeq: seq,
+			sandboxEventSeq: seq,
 			ts: now.toISOString(),
 			kind: "trigger.cleared_extension_failed",
 			stream: "system",

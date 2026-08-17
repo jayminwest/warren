@@ -28,7 +28,7 @@ describe("POST /runs/:id/preview/teardown", () => {
 			prompt: "p",
 			renderedAgentJson: {},
 			trigger: "manual",
-			burrowId: "bur_teardown",
+			sandboxId: "bur_teardown",
 		});
 		runId = run.id;
 		await repos.runs.attachPreview(run.id, {
@@ -234,7 +234,7 @@ describe.skipIf(!isPostgresTestEnabled())("POST /runs/:id/preview/teardown (post
 			prompt: "p",
 			renderedAgentJson: {},
 			trigger: "manual",
-			burrowId: "bur_teardown_pg",
+			sandboxId: "bur_teardown_pg",
 		});
 		runId = run.id;
 		await repos.runs.attachPreview(run.id, {

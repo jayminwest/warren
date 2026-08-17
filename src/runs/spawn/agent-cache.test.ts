@@ -5,8 +5,8 @@ import { RunSpawnError } from "../errors.ts";
 import { spawnRun } from "./index.ts";
 import {
 	makeAgentJson,
-	makeBurrowClient,
 	makeProvider,
+	makeSandboxClient,
 	readAgentEnvelopeFrontmatter,
 	setupRepos,
 } from "./test-helpers.ts";
@@ -36,7 +36,7 @@ describe("readCachedAgent (via spawnRun)", () => {
 				sections: [{ name: "system", body: "s" }],
 			},
 		});
-		const { client } = makeBurrowClient();
+		const { client } = makeSandboxClient();
 		const result = await spawnRun({
 			repos,
 			runtimeProvider: makeProvider(client),
@@ -53,7 +53,7 @@ describe("readCachedAgent (via spawnRun)", () => {
 			name: "refactor-bot",
 			renderedJson: { name: "refactor-bot", version: 1, sections: { system: 42 } },
 		});
-		const { client } = makeBurrowClient();
+		const { client } = makeSandboxClient();
 		await expect(
 			spawnRun({
 				repos,
@@ -85,7 +85,7 @@ describe("provider/model override resolution (warren-618b / warren-f8c0)", () =>
 				frontmatter: { source: "builtin", provider: "anthropic", model: "claude-sonnet-4-6" },
 			}),
 		});
-		const { client, calls } = makeBurrowClient();
+		const { client, calls } = makeSandboxClient();
 		const result = await spawnRun({
 			repos,
 			runtimeProvider: makeProvider(client),
@@ -128,7 +128,7 @@ describe("provider/model override resolution (warren-618b / warren-f8c0)", () =>
 				frontmatter: { source: "builtin", provider: "pi", model: "pi-default" },
 			}),
 		});
-		const { client, calls } = makeBurrowClient();
+		const { client, calls } = makeSandboxClient();
 		const result = await spawnRun({
 			repos,
 			runtimeProvider: makeProvider(client),
@@ -169,7 +169,7 @@ describe("provider/model override resolution (warren-618b / warren-f8c0)", () =>
 				frontmatter: { provider: "pi", model: "pi-default" },
 			}),
 		});
-		const { client } = makeBurrowClient();
+		const { client } = makeSandboxClient();
 		const result = await spawnRun({
 			repos,
 			runtimeProvider: makeProvider(client),
@@ -206,7 +206,7 @@ describe("provider/model override resolution (warren-618b / warren-f8c0)", () =>
 				frontmatter: { provider: "anthropic" },
 			}),
 		});
-		const { client } = makeBurrowClient();
+		const { client } = makeSandboxClient();
 		const result = await spawnRun({
 			repos,
 			runtimeProvider: makeProvider(client),

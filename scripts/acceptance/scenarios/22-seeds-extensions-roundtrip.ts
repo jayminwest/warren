@@ -50,8 +50,8 @@ interface RunRow {
 	readonly agentName: string;
 	readonly projectId: string | null;
 	readonly seedId: string | null;
-	readonly burrowId: string | null;
-	readonly burrowRunId: string | null;
+	readonly sandboxId: string | null;
+	readonly sandboxRunId: string | null;
 }
 
 interface CreateRunResponse {
@@ -205,8 +205,8 @@ export const scenario: Scenario = {
 			"POST /runs (bogus seed): seedId persists on the row regardless of the downstream update outcome",
 		);
 		assertTrue(
-			typeof failing.run.burrowRunId === "string" && failing.run.burrowRunId.length > 0,
-			"POST /runs (bogus seed): burrowRunId attached — dispatch succeeded; only the extension write failed",
+			typeof failing.run.sandboxRunId === "string" && failing.run.sandboxRunId.length > 0,
+			"POST /runs (bogus seed): sandboxRunId attached — dispatch succeeded; only the extension write failed",
 		);
 
 		const events = await fetchAllEvents(http, failing.run.id);

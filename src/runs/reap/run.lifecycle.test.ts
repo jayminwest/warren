@@ -43,8 +43,8 @@ async function setup(): Promise<{
 		prompt: "p",
 		renderedAgentJson: {},
 		trigger: "manual",
-		burrowId: "bur_aaaaaaaaaaaa",
-		burrowRunId: "run_zzzzzzzzzzzz",
+		sandboxId: "bur_aaaaaaaaaaaa",
+		sandboxRunId: "run_zzzzzzzzzzzz",
 	});
 	await repos.runs.markRunning(run.id);
 	return { repos, runId: run.id, projectId: project.id };

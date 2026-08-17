@@ -247,7 +247,7 @@ async function applyEviction(input: ApplyEvictionInput): Promise<void> {
 		return;
 	}
 
-	if (input.row.burrowId !== null) {
+	if (input.row.sandboxId !== null) {
 		await stopSidecarsForRow(input);
 	}
 
@@ -266,33 +266,33 @@ async function applyEviction(input: ApplyEvictionInput): Promise<void> {
 }
 
 async function stopSidecarsForRow(input: ApplyEvictionInput): Promise<void> {
-	const burrowId = input.row.burrowId;
-	if (burrowId === null) return;
+	const sandboxId = input.row.sandboxId;
+	if (sandboxId === null) return;
 	if (input.resolveSidecar === null) {
 		input.logger?.warn(
-			{ runId: input.row.runId, burrowId },
+			{ runId: input.row.runId, sandboxId },
 			"preview_eviction.sidecar_resolver_unavailable",
 		);
 		return;
 	}
 	try {
-		const sidecars = await input.resolveSidecar(burrowId);
+		const sidecars = await input.resolveSidecar(sandboxId);
 		if (sidecars === null) {
 			input.logger?.warn(
-				{ runId: input.row.runId, burrowId },
+				{ runId: input.row.runId, sandboxId },
 				"preview_eviction.sidecar_resolver_returned_null",
 			);
 			return;
 		}
-		const list = await sidecars.list(burrowId);
+		const list = await sidecars.list(sandboxId);
 		for (const sc of list) {
-			await deleteSidecarSafely(input, sidecars, burrowId, sc.id);
+			await deleteSidecarSafely(input, sidecars, sandboxId, sc.id);
 		}
 	} catch (err) {
 		input.logger?.warn(
 			{
 				runId: input.row.runId,
-				burrowId,
+				sandboxId,
 				err: err instanceof Error ? err.message : String(err),
 			},
 			"preview_eviction.sidecar_stop_failed",
@@ -303,16 +303,16 @@ async function stopSidecarsForRow(input: ApplyEvictionInput): Promise<void> {
 async function deleteSidecarSafely(
 	input: ApplyEvictionInput,
 	sidecars: SidecarClient,
-	burrowId: string,
+	sandboxId: string,
 	sidecarId: string,
 ): Promise<void> {
 	try {
-		await sidecars.delete(burrowId, sidecarId);
+		await sidecars.delete(sandboxId, sidecarId);
 	} catch (err) {
 		input.logger?.warn(
 			{
 				runId: input.row.runId,
-				burrowId,
+				sandboxId,
 				sidecarId,
 				err: err instanceof Error ? err.message : String(err),
 			},
@@ -326,7 +326,7 @@ async function emitEvictedEvent(input: ApplyEvictionInput): Promise<void> {
 		const seq = ((await input.repos.events.maxSeqForRun(input.row.runId)) ?? 0) + 1;
 		const event = await input.repos.events.append({
 			runId: input.row.runId,
-			burrowEventSeq: seq,
+			sandboxEventSeq: seq,
 			ts: input.now.toISOString(),
 			kind: "preview_evicted",
 			stream: "system",

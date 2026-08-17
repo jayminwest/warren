@@ -2,7 +2,7 @@
  * Repository for the `events` table.
  *
  * Warren's events table is a write-through cache of burrow's stream (docs/design/runtime-and-supervisor.md). Each row carries the burrow-side `seq` so we can resume the stream
- * at MAX(burrow_event_seq) + 1 after a warren restart mid-run, and so the UI
+ * at MAX(sandbox_event_seq) + 1 after a warren restart mid-run, and so the UI
  * replays events in the same order burrow emitted them.
  */
 
@@ -13,7 +13,7 @@ import type { DrizzleAdapter } from "./drizzle-adapter.ts";
 
 export interface AppendEventInput {
 	runId: string;
-	burrowEventSeq: number;
+	sandboxEventSeq: number;
 	ts: string;
 	kind: string;
 	stream?: EventStream | null;
@@ -43,7 +43,7 @@ export class EventsRepo {
 				.insert(this.events)
 				.values({
 					runId: input.runId,
-					burrowEventSeq: input.burrowEventSeq,
+					sandboxEventSeq: input.sandboxEventSeq,
 					ts: input.ts,
 					kind: input.kind,
 					stream: input.stream ?? null,
@@ -78,13 +78,13 @@ export class EventsRepo {
 	): Promise<EventRow[]> {
 		const where =
 			opts.sinceSeq !== undefined
-				? and(eq(this.events.runId, runId), gt(this.events.burrowEventSeq, opts.sinceSeq))
+				? and(eq(this.events.runId, runId), gt(this.events.sandboxEventSeq, opts.sinceSeq))
 				: eq(this.events.runId, runId);
 		const q = this.db
 			.select()
 			.from(this.events)
 			.where(where)
-			.orderBy(asc(this.events.burrowEventSeq));
+			.orderBy(asc(this.events.sandboxEventSeq));
 		return this.adapter.pickAll(opts.limit ? q.limit(opts.limit) : q);
 	}
 
@@ -100,7 +100,7 @@ export class EventsRepo {
 				.select()
 				.from(this.events)
 				.where(eq(this.events.runId, runId))
-				.orderBy(desc(this.events.burrowEventSeq))
+				.orderBy(desc(this.events.sandboxEventSeq))
 				.limit(limit),
 		);
 		return rows.reverse();
@@ -124,14 +124,14 @@ export class EventsRepo {
 	}
 
 	/**
-	 * Highest burrow_event_seq we've persisted for a run, or null if none.
+	 * Highest sandbox_event_seq we've persisted for a run, or null if none.
 	 * Used at warren startup to compute the resume offset for live runs
-	 * ("MAX(events.burrow_event_seq) + 1", docs/design/runtime-and-supervisor.md).
+	 * ("MAX(events.sandbox_event_seq) + 1", docs/design/runtime-and-supervisor.md).
 	 */
 	async maxSeqForRun(runId: string): Promise<number | null> {
 		const row = await this.adapter.pickOne<{ max: number | null }>(
 			this.db
-				.select({ max: sql<number | null>`max(${this.events.burrowEventSeq})` })
+				.select({ max: sql<number | null>`max(${this.events.sandboxEventSeq})` })
 				.from(this.events)
 				.where(eq(this.events.runId, runId)),
 		);
@@ -162,7 +162,7 @@ export class EventsRepo {
 						eq(this.events.stream, "system"),
 					),
 				)
-				.orderBy(asc(this.events.runId), asc(this.events.burrowEventSeq)),
+				.orderBy(asc(this.events.runId), asc(this.events.sandboxEventSeq)),
 		);
 	}
 
@@ -183,7 +183,7 @@ export class EventsRepo {
 				.where(
 					and(eq(this.events.runId, runId), inArray(this.events.kind, ["tool_use", "tool_result"])),
 				)
-				.orderBy(asc(this.events.burrowEventSeq)),
+				.orderBy(asc(this.events.sandboxEventSeq)),
 		);
 	}
 
@@ -206,7 +206,7 @@ export class EventsRepo {
 						inArray(this.events.kind, ["steer.sent"]),
 					),
 				)
-				.orderBy(asc(this.events.runId), asc(this.events.burrowEventSeq)),
+				.orderBy(asc(this.events.runId), asc(this.events.sandboxEventSeq)),
 		);
 	}
 

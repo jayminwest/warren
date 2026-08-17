@@ -118,11 +118,11 @@ export const runs = sqliteTable(
 		// the bridge/reconnect path (`bootBridges`, `server/bridge-reconnect.ts`)
 		// reads it after a host restart to re-attach the run's live event stream.
 		// Nullable — a run that fails before dispatch never gets one.
-		burrowId: text("burrow_id"),
+		sandboxId: text("sandbox_id"),
 		// Provider-side run/dispatch id (burrow run id under LocalProvider).
-		// Load-bearing alongside `burrow_id` for the same resume path (it scopes
+		// Load-bearing alongside `sandbox_id` for the same resume path (it scopes
 		// cancel / steer / status against the sandbox). Nullable, same reason.
-		burrowRunId: text("burrow_run_id"),
+		sandboxRunId: text("sandbox_run_id"),
 		// Retired multi-worker placement copy (warren-135b / pl-9ba1 step 2).
 		// The workers + burrows placement tables were dropped in warren-3743 once
 		// LocalProvider absorbed the single-burrow runtime; new runs write NULL.
@@ -279,7 +279,7 @@ export const events = sqliteTable(
 		runId: text("run_id")
 			.notNull()
 			.references(() => runs.id, { onDelete: "cascade" }),
-		burrowEventSeq: integer("burrow_event_seq").notNull(),
+		sandboxEventSeq: integer("sandbox_event_seq").notNull(),
 		ts: text("ts").notNull(),
 		kind: text("kind").notNull(),
 		stream: text("stream", { enum: EVENT_STREAMS }),
@@ -292,7 +292,7 @@ export const events = sqliteTable(
 		payloadJson: text("payload_json", { mode: "json" }).notNull(),
 	},
 	(t) => [
-		index(INDEX_NAMES.eventsRunSeq).on(t.runId, t.burrowEventSeq),
+		index(INDEX_NAMES.eventsRunSeq).on(t.runId, t.sandboxEventSeq),
 		index(INDEX_NAMES.eventsRunTs).on(t.runId, t.ts),
 		// warren-55cf: healer attempt history filters by kind + payload
 		// fingerprint at the SQL level; this keeps the kind scan bounded.
@@ -505,7 +505,7 @@ export const toolCalls = sqliteTable(
 		runId: text("run_id")
 			.notNull()
 			.references(() => runs.id, { onDelete: "cascade" }),
-		// burrow_event_seq of the tool_use event — orders calls within a run.
+		// sandbox_event_seq of the tool_use event — orders calls within a run.
 		seq: integer("seq").notNull(),
 		ts: text("ts").notNull(),
 		toolName: text("tool_name"),

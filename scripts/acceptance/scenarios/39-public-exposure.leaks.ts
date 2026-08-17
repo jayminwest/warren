@@ -73,14 +73,14 @@ export const FLOW_PAGE_PATTERNS: ReadonlySet<string> = new Set([
  */
 export function assertNoLeak(label: string, body: string): void {
 	// The event scrubber censors the internal runtime handles on the KEY
-	// (warren-5f59 / warren-d8f4), leaving `"burrowId":"[redacted]"` on
+	// (warren-5f59 / warren-d8f4), leaving `"sandboxId":"[redacted]"` on
 	// the wire on purpose — the same posture as `Bearer [redacted]`. Blank
 	// those censored pairs before the field-name scan so only a LIVE value
 	// under the key trips it.
 	const names = body
-		.split('"burrowId":"[redacted]"')
+		.split('"sandboxId":"[redacted]"')
 		.join("")
-		.split('"burrowRunId":"[redacted]"')
+		.split('"sandboxRunId":"[redacted]"')
 		.join("");
 	for (const name of FORBIDDEN_FIELD_NAMES) {
 		if (names.includes(name)) {

@@ -773,7 +773,7 @@ paths:
                 properties:
                   run:
                     $ref: '#/components/schemas/Run'
-                  burrow:
+                  sandbox:
                     type: object
                     properties:
                       id:
@@ -785,7 +785,7 @@ paths:
                       - workspacePath
                 required:
                   - run
-                  - burrow
+                  - sandbox
         default:
           description: Error response (see `src/core/errors.ts`).
           content:
@@ -1110,7 +1110,7 @@ components:
         - crashed
         - timed_out
         - sandbox_run_lost
-        - burrow_unreachable
+        - sandbox_unreachable
         - dropped_commit
         - finalize_failed
         - push_rejected_policy
@@ -1260,11 +1260,11 @@ components:
           type:
             - string
             - 'null'
-        burrowId:
+        sandboxId:
           type:
             - string
             - 'null'
-        burrowRunId:
+        sandboxRunId:
           type:
             - string
             - 'null'
@@ -1308,7 +1308,7 @@ components:
             - crashed
             - timed_out
             - sandbox_run_lost
-            - burrow_unreachable
+            - sandbox_unreachable
             - dropped_commit
             - finalize_failed
             - push_rejected_policy

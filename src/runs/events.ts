@@ -15,7 +15,7 @@
  *      comes from `EventsRepo.listByRun`, live events come from the
  *      broker subscription. Subscription is opened **before** history
  *      is read so events arriving in the gap aren't dropped; the
- *      handoff dedupes by `burrow_event_seq` so subscribers don't see
+ *      handoff dedupes by `sandbox_event_seq` so subscribers don't see
  *      the same row twice.
  *
  * The broker is intentionally not durable. Burrow owns the canonical
@@ -194,7 +194,7 @@ export interface TailRunEventsInput {
 	 * `false`: replay history and return.
 	 */
 	readonly follow: boolean;
-	/** Skip events with `burrow_event_seq <= sinceSeq`. Default: 0 (all). */
+	/** Skip events with `sandbox_event_seq <= sinceSeq`. Default: 0 (all). */
 	readonly sinceSeq?: number;
 	readonly signal?: AbortSignal;
 	/**
@@ -340,7 +340,7 @@ async function* pageHistory(
 }
 
 /**
- * Yield every row whose `burrowEventSeq` is above `lastYielded`, returning
+ * Yield every row whose `sandboxEventSeq` is above `lastYielded`, returning
  * the new high-water mark via the generator's return value (`yield*`
  * captures it). Shared by the snapshot replay, the live tail and the
  * terminal drain so the dedup rule lives in exactly one place.
@@ -351,9 +351,9 @@ async function* yieldNewerRows(
 ): AsyncGenerator<EventRow, number, void> {
 	let last = lastYielded;
 	for await (const row of rows) {
-		if (row.burrowEventSeq <= last) continue;
+		if (row.sandboxEventSeq <= last) continue;
 		yield row;
-		last = row.burrowEventSeq;
+		last = row.sandboxEventSeq;
 	}
 	return last;
 }

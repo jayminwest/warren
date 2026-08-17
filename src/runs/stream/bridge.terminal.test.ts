@@ -12,14 +12,14 @@ describe("bridgeRunStream — in-stream terminal detection", () => {
 	let repos: Repos;
 	let broker: RunEventBroker;
 	let runId: string;
-	let burrowRunId: string;
+	let sandboxRunId: string;
 
 	beforeEach(async () => {
 		db = await openDatabase({ path: ":memory:" });
 		repos = createRepos(db);
 		const ids = await seedBridgeRun(repos);
 		runId = ids.runId;
-		burrowRunId = ids.burrowRunId;
+		sandboxRunId = ids.sandboxRunId;
 		broker = new RunEventBroker();
 	});
 
@@ -28,38 +28,38 @@ describe("bridgeRunStream — in-stream terminal detection", () => {
 	});
 
 	test("warren-a69a: claude-code result event sets terminalDetected and breaks the loop", async () => {
-		const claudeResultEvt = evt(burrowRunId, 1, {
+		const claudeResultEvt = evt(sandboxRunId, 1, {
 			kind: "state_change",
 			stream: "system",
 			payload: { type: "result", subtype: "result", is_error: false, terminal_reason: "completed" },
 		});
-		const trailing = evt(burrowRunId, 2, { kind: "text", payload: { text: "post-terminal" } });
+		const trailing = evt(sandboxRunId, 2, { kind: "text", payload: { text: "post-terminal" } });
 		const result = await bridgeRunStream({
 			runId,
-			burrowRunId,
+			sandboxRunId,
 			repos,
 			broker,
-			burrowId: "bur_aaaaaaaaaaaa",
+			sandboxId: "bur_aaaaaaaaaaaa",
 			runtimeProvider: makeProvider(),
 			source: source([claudeResultEvt, trailing]),
 		});
 		expect(result.terminalDetected).toEqual({ outcome: "succeeded" });
-		const seqs = (await repos.events.listByRun(runId)).map((e) => e.burrowEventSeq);
+		const seqs = (await repos.events.listByRun(runId)).map((e) => e.sandboxEventSeq);
 		expect(seqs).toEqual([1]);
 	});
 
 	test("warren-a69a: claude-code result with is_error=true maps to failed", async () => {
-		const claudeFail = evt(burrowRunId, 1, {
+		const claudeFail = evt(sandboxRunId, 1, {
 			kind: "state_change",
 			stream: "system",
 			payload: { type: "result", subtype: "result", is_error: true, terminal_reason: "completed" },
 		});
 		const result = await bridgeRunStream({
 			runId,
-			burrowRunId,
+			sandboxRunId,
 			repos,
 			broker,
-			burrowId: "bur_aaaaaaaaaaaa",
+			sandboxId: "bur_aaaaaaaaaaaa",
 			runtimeProvider: makeProvider(),
 			source: source([claudeFail]),
 		});
@@ -67,17 +67,17 @@ describe("bridgeRunStream — in-stream terminal detection", () => {
 	});
 
 	test("warren-a69a: non-terminal state_change events do not set terminalDetected", async () => {
-		const init = evt(burrowRunId, 1, {
+		const init = evt(sandboxRunId, 1, {
 			kind: "state_change",
 			stream: "system",
 			payload: { type: "system", subtype: "init" },
 		});
 		const result = await bridgeRunStream({
 			runId,
-			burrowRunId,
+			sandboxRunId,
 			repos,
 			broker,
-			burrowId: "bur_aaaaaaaaaaaa",
+			sandboxId: "bur_aaaaaaaaaaaa",
 			runtimeProvider: makeProvider(),
 			source: source([init]),
 		});
@@ -85,38 +85,38 @@ describe("bridgeRunStream — in-stream terminal detection", () => {
 	});
 
 	test("warren-2687: pi agent_end envelope sets terminalDetected and breaks the loop", async () => {
-		const piEnd = evt(burrowRunId, 1, {
+		const piEnd = evt(sandboxRunId, 1, {
 			kind: "state_change",
 			stream: "system",
 			payload: { type: "agent_end", messages: [] },
 		});
-		const trailing = evt(burrowRunId, 2, { kind: "text", payload: { text: "post-terminal" } });
+		const trailing = evt(sandboxRunId, 2, { kind: "text", payload: { text: "post-terminal" } });
 		const result = await bridgeRunStream({
 			runId,
-			burrowRunId,
+			sandboxRunId,
 			repos,
 			broker,
-			burrowId: "bur_aaaaaaaaaaaa",
+			sandboxId: "bur_aaaaaaaaaaaa",
 			runtimeProvider: makeProvider(),
 			source: source([piEnd, trailing]),
 		});
 		expect(result.terminalDetected).toEqual({ outcome: "succeeded" });
-		const seqs = (await repos.events.listByRun(runId)).map((e) => e.burrowEventSeq);
+		const seqs = (await repos.events.listByRun(runId)).map((e) => e.sandboxEventSeq);
 		expect(seqs).toEqual([1]);
 	});
 
 	test("warren-2687: pi agent_end on non-system stream does not set terminalDetected", async () => {
-		const offStream = evt(burrowRunId, 1, {
+		const offStream = evt(sandboxRunId, 1, {
 			kind: "state_change",
 			stream: "stdout",
 			payload: { type: "agent_end", messages: [] },
 		});
 		const result = await bridgeRunStream({
 			runId,
-			burrowRunId,
+			sandboxRunId,
 			repos,
 			broker,
-			burrowId: "bur_aaaaaaaaaaaa",
+			sandboxId: "bur_aaaaaaaaaaaa",
 			runtimeProvider: makeProvider(),
 			source: source([offStream]),
 		});
@@ -134,24 +134,24 @@ describe("bridgeRunStream — in-stream terminal detection", () => {
 		};
 		await repos.events.append({
 			runId,
-			burrowEventSeq: 1,
+			sandboxEventSeq: 1,
 			ts: new Date().toISOString(),
 			kind: "state_change",
 			stream: "system",
 			payload: terminalPayload,
 		});
 		// The resumed stream replays that same terminal event (seq 1 <= resumeSeq).
-		const replayed = evt(burrowRunId, 1, {
+		const replayed = evt(sandboxRunId, 1, {
 			kind: "state_change",
 			stream: "system",
 			payload: terminalPayload,
 		});
 		const result = await bridgeRunStream({
 			runId,
-			burrowRunId,
+			sandboxRunId,
 			repos,
 			broker,
-			burrowId: "bur_aaaaaaaaaaaa",
+			sandboxId: "bur_aaaaaaaaaaaa",
 			runtimeProvider: makeProvider(),
 			source: source([replayed]),
 		});
@@ -160,32 +160,32 @@ describe("bridgeRunStream — in-stream terminal detection", () => {
 		expect(result.terminalDetected).toEqual({ outcome: "failed" });
 		expect(result.written).toBe(0);
 		expect(result.skipped).toBe(1);
-		const seqs = (await repos.events.listByRun(runId)).map((e) => e.burrowEventSeq);
+		const seqs = (await repos.events.listByRun(runId)).map((e) => e.sandboxEventSeq);
 		expect(seqs).toEqual([1]); // no duplicate row appended
 	});
 
-	test("warren-b1a9: RuntimeRunNotFoundError from source sets burrowRunMissing, not errored", async () => {
+	test("warren-b1a9: RuntimeRunNotFoundError from source sets sandboxRunMissing, not errored", async () => {
 		// The seam neutralizes burrow's raw 404 into `RuntimeRunNotFoundError`
 		// (warren-1f56); the bridge's ghost-run catch keys off the neutral class.
 		const missingSource = (): AsyncIterable<StreamEventView> => ({
 			[Symbol.asyncIterator](): AsyncIterator<StreamEventView> {
 				return {
 					next: async () => {
-						throw new RuntimeRunNotFoundError(`run not found: ${burrowRunId}`);
+						throw new RuntimeRunNotFoundError(`run not found: ${sandboxRunId}`);
 					},
 				};
 			},
 		});
 		const result = await bridgeRunStream({
 			runId,
-			burrowRunId,
+			sandboxRunId,
 			repos,
 			broker,
-			burrowId: "bur_aaaaaaaaaaaa",
+			sandboxId: "bur_aaaaaaaaaaaa",
 			runtimeProvider: makeProvider(),
 			source: missingSource,
 		});
-		expect(result.burrowRunMissing).toBe(true);
+		expect(result.sandboxRunMissing).toBe(true);
 		expect(result.errored).toBe(false);
 		expect(result.terminalDetected).toBeUndefined();
 	});
@@ -202,14 +202,14 @@ describe("bridgeRunStream — in-stream terminal detection", () => {
 		});
 		const result = await bridgeRunStream({
 			runId,
-			burrowRunId,
+			sandboxRunId,
 			repos,
 			broker,
-			burrowId: "bur_aaaaaaaaaaaa",
+			sandboxId: "bur_aaaaaaaaaaaa",
 			runtimeProvider: makeProvider(),
 			source: transportSource,
 		});
-		expect(result.burrowRunMissing).toBeUndefined();
+		expect(result.sandboxRunMissing).toBeUndefined();
 		expect(result.errored).toBe(true);
 	});
 });

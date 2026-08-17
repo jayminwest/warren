@@ -7,7 +7,7 @@ import { makeProvider, seedBridgeRun, source } from "./test-helpers.ts";
 import type { StreamEventView } from "./types.ts";
 
 /** Pi `turn_end` envelope carrying a per-turn cost total. */
-function turnEnd(_burrowRunId: string, seq: number, costTotal: number): StreamEventView {
+function turnEnd(_sandboxRunId: string, seq: number, costTotal: number): StreamEventView {
 	return {
 		seq,
 		kind: "state_change",
@@ -25,14 +25,14 @@ describe("bridgeRunStream — spend-cap enforcement (warren-a63d)", () => {
 	let repos: Repos;
 	let broker: RunEventBroker;
 	let runId: string;
-	let burrowRunId: string;
+	let sandboxRunId: string;
 
 	beforeEach(async () => {
 		db = await openDatabase({ path: ":memory:" });
 		repos = createRepos(db);
 		const ids = await seedBridgeRun(repos);
 		runId = ids.runId;
-		burrowRunId = ids.burrowRunId;
+		sandboxRunId = ids.sandboxRunId;
 		broker = new RunEventBroker();
 	});
 
@@ -40,17 +40,17 @@ describe("bridgeRunStream — spend-cap enforcement (warren-a63d)", () => {
 		const cancels: string[] = [];
 		const result = await bridgeRunStream({
 			runId,
-			burrowRunId,
+			sandboxRunId,
 			repos,
 			broker,
-			burrowId: "bur_aaaaaaaaaaaa",
+			sandboxId: "bur_aaaaaaaaaaaa",
 			runtimeProvider: makeProvider(),
 			costCapUsd: 1,
 			cancelBurrowRun: async (reason) => {
 				cancels.push(reason);
 			},
 			// Two turns of $0.6 each: cumulative crosses $1 on the second.
-			source: source([turnEnd(burrowRunId, 1, 0.6), turnEnd(burrowRunId, 2, 0.6)]),
+			source: source([turnEnd(sandboxRunId, 1, 0.6), turnEnd(sandboxRunId, 2, 0.6)]),
 		});
 
 		expect(result.terminalDetected).toEqual({ outcome: "cancelled" });
@@ -71,16 +71,16 @@ describe("bridgeRunStream — spend-cap enforcement (warren-a63d)", () => {
 		const cancels: string[] = [];
 		const result = await bridgeRunStream({
 			runId,
-			burrowRunId,
+			sandboxRunId,
 			repos,
 			broker,
-			burrowId: "bur_aaaaaaaaaaaa",
+			sandboxId: "bur_aaaaaaaaaaaa",
 			runtimeProvider: makeProvider(),
 			costCapUsd: 5,
 			cancelBurrowRun: async (reason) => {
 				cancels.push(reason);
 			},
-			source: source([turnEnd(burrowRunId, 1, 1), turnEnd(burrowRunId, 2, 1)]),
+			source: source([turnEnd(sandboxRunId, 1, 1), turnEnd(sandboxRunId, 2, 1)]),
 		});
 
 		expect(cancels).toHaveLength(0);
@@ -91,15 +91,15 @@ describe("bridgeRunStream — spend-cap enforcement (warren-a63d)", () => {
 		const cancels: string[] = [];
 		await bridgeRunStream({
 			runId,
-			burrowRunId,
+			sandboxRunId,
 			repos,
 			broker,
-			burrowId: "bur_aaaaaaaaaaaa",
+			sandboxId: "bur_aaaaaaaaaaaa",
 			runtimeProvider: makeProvider(),
 			cancelBurrowRun: async (reason) => {
 				cancels.push(reason);
 			},
-			source: source([turnEnd(burrowRunId, 1, 100)]),
+			source: source([turnEnd(sandboxRunId, 1, 100)]),
 		});
 		expect(cancels).toHaveLength(0);
 	});

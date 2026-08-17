@@ -51,7 +51,7 @@ export function makeProvider(): RuntimeProvider {
  * seam's `NormalizedEvent`, so the fixture drops the burrow-cli dependency.
  */
 export function evt(
-	_burrowRunId: string,
+	_sandboxRunId: string,
 	seq: number,
 	overrides: Partial<StreamEventView> = {},
 ): StreamEventView {
@@ -81,8 +81,8 @@ export function source(
  * Mirrors burrow `src/runtime/parsers/pi.ts:86-98` (warren-36c0). The
  * synthetic `{kind:"agent_end"}` shape never appears in production.
  */
-export function piAgentEnd(burrowRunId: string, seq: number): StreamEventView {
-	return evt(burrowRunId, seq, {
+export function piAgentEnd(sandboxRunId: string, seq: number): StreamEventView {
+	return evt(sandboxRunId, seq, {
 		kind: "state_change",
 		stream: "system",
 		payload: { type: "agent_end", messages: [] },
@@ -97,7 +97,7 @@ export function piAgentEnd(burrowRunId: string, seq: number): StreamEventView {
  * run-level totals at `agent_end`, no PiStatsClient required.
  */
 export function piTurnEnd(
-	burrowRunId: string,
+	sandboxRunId: string,
 	seq: number,
 	usage: {
 		input: number;
@@ -107,7 +107,7 @@ export function piTurnEnd(
 		costTotal: number;
 	},
 ): StreamEventView {
-	return evt(burrowRunId, seq, {
+	return evt(sandboxRunId, seq, {
 		kind: "state_change",
 		stream: "system",
 		payload: {
@@ -138,7 +138,7 @@ export function piTurnEnd(
  * sniffs the payload shape to extract cost.
  */
 export function claudeResult(
-	burrowRunId: string,
+	sandboxRunId: string,
 	seq: number,
 	usage: {
 		inputTokens: number;
@@ -149,7 +149,7 @@ export function claudeResult(
 		isError?: boolean;
 	},
 ): StreamEventView {
-	return evt(burrowRunId, seq, {
+	return evt(sandboxRunId, seq, {
 		kind: "state_change",
 		stream: "system",
 		payload: {
@@ -175,8 +175,8 @@ export function claudeResult(
  */
 export interface BridgeFixtureIds {
 	readonly runId: string;
-	readonly burrowId: string;
-	readonly burrowRunId: string;
+	readonly sandboxId: string;
+	readonly sandboxRunId: string;
 }
 
 export async function seedBridgeRun(
@@ -189,16 +189,16 @@ export async function seedBridgeRun(
 		localPath: "/data/projects/x/y",
 		defaultBranch: "main",
 	});
-	const burrowId = overrides?.burrowId ?? "bur_aaaaaaaaaaaa";
-	const burrowRunId = overrides?.burrowRunId ?? "run_zzzzzzzzzzzz";
+	const sandboxId = overrides?.sandboxId ?? "bur_aaaaaaaaaaaa";
+	const sandboxRunId = overrides?.sandboxRunId ?? "run_zzzzzzzzzzzz";
 	const run = await repos.runs.create({
 		agentName: "refactor-bot",
 		projectId: project.id,
 		prompt: "p",
 		renderedAgentJson: {},
 		trigger: "manual",
-		burrowId,
-		burrowRunId,
+		sandboxId,
+		sandboxRunId,
 	});
-	return { runId: run.id, burrowId, burrowRunId };
+	return { runId: run.id, sandboxId, sandboxRunId };
 }

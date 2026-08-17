@@ -23,11 +23,11 @@ function makeRecordingLogger(): { logger: BridgeLogger; recorded: Recorded } {
 }
 
 describe("bindBridgeLogger", () => {
-	test("binds run_id and burrow_run_id via child once", () => {
+	test("binds run_id and sandbox_run_id via child once", () => {
 		const { logger, recorded } = makeRecordingLogger();
-		const log = bindBridgeLogger(logger, { run_id: "run_1", burrow_run_id: "br_1" });
+		const log = bindBridgeLogger(logger, { run_id: "run_1", sandbox_run_id: "br_1" });
 		log.info({ event: "bridge.stalled" }, "stalled");
-		expect(recorded.bindings).toEqual({ run_id: "run_1", burrow_run_id: "br_1" });
+		expect(recorded.bindings).toEqual({ run_id: "run_1", sandbox_run_id: "br_1" });
 		expect(recorded.calls).toHaveLength(1);
 		expect(recorded.calls[0]).toMatchObject({ level: "info", obj: { event: "bridge.stalled" } });
 	});
@@ -41,10 +41,10 @@ describe("bindBridgeLogger", () => {
 
 	test("includes worker when supplied", () => {
 		const { logger, recorded } = makeRecordingLogger();
-		bindBridgeLogger(logger, { run_id: "run_1", burrow_run_id: "br_1", worker: "alpha" });
+		bindBridgeLogger(logger, { run_id: "run_1", sandbox_run_id: "br_1", worker: "alpha" });
 		expect(recorded.bindings).toEqual({
 			run_id: "run_1",
-			burrow_run_id: "br_1",
+			sandbox_run_id: "br_1",
 			worker: "alpha",
 		});
 	});

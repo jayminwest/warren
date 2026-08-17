@@ -227,7 +227,7 @@ export function buildProgram(baseContext: CliContext): Command {
 			)
 			.option(
 				"--local",
-				"run the deployment-side checks instead (env vars, burrow socket, bwrap, DB)",
+				"run the deployment-side checks instead (env vars, sandbox runtime, bwrap, DB)",
 			)
 			.option("--no-auth", "skip the auth check (loopback dev mode)")
 			.option(

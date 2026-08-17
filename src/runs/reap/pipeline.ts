@@ -351,7 +351,7 @@ async function previewLaunchStep(
 	ctx: ReapPipelineContext,
 	state: ReapPipelineState,
 ): Promise<void> {
-	const { burrowId } = ctx.run;
+	const { sandboxId } = ctx.run;
 	// Surface the skip only when a successful, committed run opted in (preview
 	// WOULD have launched locally); otherwise stay silent.
 	if (!ctx.provider.capabilities.previewPorts) {
@@ -379,18 +379,18 @@ async function previewLaunchStep(
 			ctx.input.previewConfig !== undefined &&
 			ctx.input.portAllocator !== undefined &&
 			ctx.previewSidecars !== undefined &&
-			burrowId !== null
+			sandboxId !== null
 		)
 	) {
 		return;
 	}
 	// Resolve the sandbox sidecars facade through the neutral seam; a null
 	// resolution (sandbox gone) skips the launch (warren-e24d).
-	const sidecars = await ctx.previewSidecars(burrowId);
+	const sidecars = await ctx.previewSidecars(sandboxId);
 	if (sidecars === null) return;
 	const pv = await runPreviewLaunch({
 		runId: ctx.run.id,
-		burrowId,
+		sandboxId,
 		workerId: ctx.run.workerId,
 		outcome: ctx.input.outcome,
 		previewConfig: ctx.input.previewConfig,

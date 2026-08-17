@@ -17,7 +17,7 @@
  *      same order — proving the events-first/broker-after ordering and
  *      the table's durability across the bridge handoff.
  *   3. `?since=<seq>` drops every row at-or-below that seq. This is the
- *      "MAX(events.burrow_event_seq)+1" recovery primitive scenario 06
+ *      "MAX(events.sandbox_event_seq)+1" recovery primitive scenario 06
  *      depends on.
  *
  * Why not assert specific event counts: the stub agent emits ~3 setup

@@ -61,8 +61,8 @@ interface ProjectRow {
 interface RunRow {
 	readonly id: string;
 	readonly state: string;
-	readonly burrowId: string | null;
-	readonly burrowRunId: string | null;
+	readonly sandboxId: string | null;
+	readonly sandboxRunId: string | null;
 }
 
 interface CreateRunResponse {
@@ -275,8 +275,10 @@ async function runStubAndReap(
 	});
 	const run = created.run;
 	assertTrue(
-		typeof run.burrowRunId === "string" && run.burrowRunId !== null && run.burrowRunId.length > 0,
-		"spawn response missing burrowRunId — reap path needs the burrow run id",
+		typeof run.sandboxRunId === "string" &&
+			run.sandboxRunId !== null &&
+			run.sandboxRunId.length > 0,
+		"spawn response missing sandboxRunId — reap path needs the burrow run id",
 	);
 
 	const finalState = await waitForTerminal(http, run.id, 30_000);

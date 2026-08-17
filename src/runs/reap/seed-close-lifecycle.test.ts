@@ -76,8 +76,8 @@ async function setup(opts: { seedId?: string | null; hasSeeds?: boolean } = {}):
 		prompt: "p",
 		renderedAgentJson: {},
 		trigger: "manual",
-		burrowId: "bur_aaaaaaaaaaaa",
-		burrowRunId: "run_zzzzzzzzzzzz",
+		sandboxId: "bur_aaaaaaaaaaaa",
+		sandboxRunId: "run_zzzzzzzzzzzz",
 		...(seedId !== null ? { seedId } : {}),
 	});
 	await repos.runs.markRunning(run.id);

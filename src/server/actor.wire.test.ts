@@ -29,17 +29,17 @@ const silentLogger = {
 };
 
 async function depsFor(repos: Repos): Promise<ServerDeps> {
-	const burrowClient = new FakeProvider();
+	const sandboxClient = new FakeProvider();
 	const broker = new RunEventBroker();
 	return {
 		repos,
-		runtimeProvider: burrowClient,
+		runtimeProvider: sandboxClient,
 		forge: new FakeForge(),
 		broker,
 		bridges: createBridgeRegistry({
 			repos,
 			broker,
-			runtimeProvider: burrowClient,
+			runtimeProvider: sandboxClient,
 			bridge: async () => ({ written: 0, skipped: 0, errored: false }),
 		}),
 		projectsConfig: { root: "/tmp/projects", gitBinary: "git" },

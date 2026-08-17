@@ -6,7 +6,7 @@
  *
  * Covers: bwrap bring-up. Burrow socket reachability lives in the
  * allowlisted local-topology module
- * `src/runtime/local/diagnostics/burrow.ts` (warren-11cc) so this
+ * `src/runtime/local/diagnostics/local-runtime.ts` (warren-11cc) so this
  * diagnostics surface stays free of any direct burrow client import.
  */
 

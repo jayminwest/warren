@@ -9,7 +9,7 @@ import type { WarrenDb } from "../../db/client.ts";
 import type { Repos } from "../../db/repos/index.ts";
 import { createWarrenConfigCache } from "../../warren-config/cache.ts";
 import { spawnRun } from "./index.ts";
-import { makeAgentJson, makeBurrowClient, makeProvider, setupRepos } from "./test-helpers.ts";
+import { makeAgentJson, makeProvider, makeSandboxClient, setupRepos } from "./test-helpers.ts";
 
 const capConfigs = (maxCostUsd: number) =>
 	createWarrenConfigCache({
@@ -26,7 +26,7 @@ const capConfigs = (maxCostUsd: number) =>
 const dispatchedFrontmatter = (
 	calls: readonly { path: string; body?: unknown }[],
 ): Record<string, unknown> => {
-	const dispatch = calls.find((c) => c.path === "/burrows/bur_aaaaaaaaaaaa/runs");
+	const dispatch = calls.find((c) => c.path === "/sandboxes/bur_aaaaaaaaaaaa/runs");
 	const body = dispatch?.body as { metadata: { frontmatter: Record<string, unknown> } };
 	return body.metadata.frontmatter;
 };
@@ -47,7 +47,7 @@ describe("spawnRun: maxCostUsd precedence (warren-a63d)", () => {
 			name: "pi",
 			renderedJson: makeAgentJson({ name: "pi", frontmatter: {} }),
 		});
-		const { client, calls } = makeBurrowClient();
+		const { client, calls } = makeSandboxClient();
 		await spawnRun({
 			repos,
 			runtimeProvider: makeProvider(client),
@@ -64,7 +64,7 @@ describe("spawnRun: maxCostUsd precedence (warren-a63d)", () => {
 			name: "pi",
 			renderedJson: makeAgentJson({ name: "pi", frontmatter: { maxCostUsd: 1 } }),
 		});
-		const { client, calls } = makeBurrowClient();
+		const { client, calls } = makeSandboxClient();
 		await spawnRun({
 			repos,
 			runtimeProvider: makeProvider(client),
@@ -83,7 +83,7 @@ describe("spawnRun: maxCostUsd precedence (warren-a63d)", () => {
 			name: "pi",
 			renderedJson: makeAgentJson({ name: "pi", frontmatter: { maxCostUsd: "5O" } }),
 		});
-		const { client, calls } = makeBurrowClient();
+		const { client, calls } = makeSandboxClient();
 		await spawnRun({
 			repos,
 			runtimeProvider: makeProvider(client),
@@ -100,7 +100,7 @@ describe("spawnRun: maxCostUsd precedence (warren-a63d)", () => {
 			name: "pi",
 			renderedJson: makeAgentJson({ name: "pi", frontmatter: { maxCostUsd: 1 } }),
 		});
-		const { client, calls } = makeBurrowClient();
+		const { client, calls } = makeSandboxClient();
 		await spawnRun({
 			repos,
 			runtimeProvider: makeProvider(client),

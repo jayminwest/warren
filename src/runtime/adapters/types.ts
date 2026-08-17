@@ -168,7 +168,7 @@ export type AdapterEventKind =
 
 /**
  * Partial event shape produced by `parseEvents` — burrow's `RuntimeEvent`
- * lifted without the persistence columns (`id`, `seq`, `burrowId`,
+ * lifted without the persistence columns (`id`, `seq`, `sandboxId`,
  * `runId`, `ts`), which the persisting layer fills in.
  */
 export interface AdapterRuntimeEvent {

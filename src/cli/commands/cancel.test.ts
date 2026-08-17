@@ -27,7 +27,7 @@ function cancelResponse(over: Partial<CancelRunResponse> = {}): CancelRunRespons
 	return {
 		state: "cancelled",
 		alreadyTerminal: false,
-		burrowRun: { id: "brun-1", state: "cancelled" },
+		sandboxRun: { id: "brun-1", state: "cancelled" },
 		...over,
 	};
 }
@@ -75,7 +75,7 @@ describe("runCancel", () => {
 		expect(res.alreadyTerminal).toBe(false);
 		const parsed = JSON.parse(out.join("")) as CancelRunResponse;
 		expect(parsed.state).toBe("cancelled");
-		expect(parsed.burrowRun?.id).toBe("brun-1");
+		expect(parsed.sandboxRun?.id).toBe("brun-1");
 	});
 
 	test("forwards-the-reason-to-the-sdk", async () => {
@@ -103,7 +103,7 @@ describe("runCancel", () => {
 			{
 				client: client({
 					cancelRun: async () =>
-						cancelResponse({ state: "succeeded", alreadyTerminal: true, burrowRun: null }),
+						cancelResponse({ state: "succeeded", alreadyTerminal: true, sandboxRun: null }),
 				}),
 			},
 			{ runId: "run-1" },

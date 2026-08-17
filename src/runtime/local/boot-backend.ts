@@ -4,7 +4,7 @@
  * so the boot orchestrator (`src/server/main/`) never reaches into the local
  * provider's internals itself.
  *
- * Bucket 9 of the burrow-client eviction removed `ServerDeps.burrowClient` and
+ * Bucket 9 of the burrow-client eviction removed `ServerDeps.sandboxClient` and
  * stopped `bootServer` from threading a live client through its wiring. The
  * burrow daemon itself is gone now (warren-9a26): the spawn path is warren's
  * in-process engine (warren-413d), the preview-sidecar seam is warren-owned
@@ -13,7 +13,7 @@
  * the shared run store, the sidecar registry, and the manifest-backed
  * workspace destroyer — re-homed HERE, under `src/runtime/local/`, out of
  * `src/server/main/`, mirroring the CLI's `resolveLocalRunBackend`
- * (`./diagnostics/burrow.ts`, warren-11cc).
+ * (`./diagnostics/local-runtime.ts`, warren-11cc).
  *
  * Under `WARREN_RUNTIME=k8s` there is no local sandbox at all (agents run in
  * pods), so boot never constructs this backend — it resolves the `K8sProvider`

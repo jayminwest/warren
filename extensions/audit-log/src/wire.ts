@@ -47,7 +47,7 @@ export interface RunListPage {
  * server's allowlisted projection (`id`, `runId`, `seq`, `ts`, `kind`,
  * `stream`, `payload`); `payload` is free-form and kind-dependent.
  *
- * `seq` is warren's `burrowEventSeq` — monotonic PER RUN, not globally.
+ * `seq` is warren's `sandboxEventSeq` — monotonic PER RUN, not globally.
  * FRICTION §1: there is no warren-wide sequence, so the collector keeps
  * one cursor per run.
  */

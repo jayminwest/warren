@@ -41,8 +41,8 @@ describe("auto_plan_run (warren-a32a)", () => {
 				frontmatter: opts.frontmatter ?? { auto_plan_run: true },
 			},
 			trigger: "cron",
-			burrowId: "bur_aaaaaaaaaaaa",
-			burrowRunId: "run_zzzzzzzzzzzz",
+			sandboxId: "bur_aaaaaaaaaaaa",
+			sandboxRunId: "run_zzzzzzzzzzzz",
 		});
 		await repos.runs.markRunning(run.id);
 		return {
@@ -51,7 +51,7 @@ describe("auto_plan_run (warren-a32a)", () => {
 			broker: new RunEventBroker(),
 			runId: run.id,
 			projectPath: project.localPath,
-			workspacePath: "/data/burrow/ws",
+			workspacePath: "/data/sandbox/ws",
 			projectId: project.id,
 		};
 	}
@@ -62,7 +62,7 @@ describe("auto_plan_run (warren-a32a)", () => {
 			const f = fakeFs({
 				"/data/projects/x/y/.seeds/issues.jsonl": "",
 				"/data/projects/x/y/.seeds/plans.jsonl": "",
-				"/data/burrow/ws/.seeds/plans.jsonl":
+				"/data/sandbox/ws/.seeds/plans.jsonl":
 					'{"id":"pl-new1","status":"approved","children":["warren-c1","warren-c2"]}\n',
 			});
 			const e = fakeExec({ stagedDelta: true });
@@ -103,7 +103,7 @@ describe("auto_plan_run (warren-a32a)", () => {
 			const f = fakeFs({
 				"/data/projects/x/y/.seeds/issues.jsonl": "",
 				"/data/projects/x/y/.seeds/plans.jsonl": "",
-				"/data/burrow/ws/.seeds/plans.jsonl": plansBody,
+				"/data/sandbox/ws/.seeds/plans.jsonl": plansBody,
 			});
 			const e = fakeExec({ stagedDelta: true });
 
@@ -134,7 +134,7 @@ describe("auto_plan_run (warren-a32a)", () => {
 			const f = fakeFs({
 				"/data/projects/x/y/.seeds/issues.jsonl": "",
 				"/data/projects/x/y/.seeds/plans.jsonl": "",
-				"/data/burrow/ws/.seeds/plans.jsonl":
+				"/data/sandbox/ws/.seeds/plans.jsonl":
 					'{"id":"pl-new1","status":"approved","children":["warren-c1","warren-c2"]}\n',
 			});
 			const e = fakeExec({ stagedDelta: true });
@@ -162,7 +162,7 @@ describe("auto_plan_run (warren-a32a)", () => {
 			const f = fakeFs({
 				"/data/projects/x/y/.seeds/issues.jsonl": "",
 				"/data/projects/x/y/.seeds/plans.jsonl": "",
-				"/data/burrow/ws/.seeds/plans.jsonl":
+				"/data/sandbox/ws/.seeds/plans.jsonl":
 					'{"id":"pl-new1","status":"approved","children":["warren-c1"]}\n',
 			});
 			const e = fakeExec({ stagedDelta: true });
@@ -189,7 +189,7 @@ describe("auto_plan_run (warren-a32a)", () => {
 			const f = fakeFs({
 				"/data/projects/x/y/.seeds/issues.jsonl": "",
 				"/data/projects/x/y/.seeds/plans.jsonl": "",
-				"/data/burrow/ws/.seeds/plans.jsonl":
+				"/data/sandbox/ws/.seeds/plans.jsonl":
 					'{"id":"pl-new1","status":"approved","children":["warren-c1"]}\n',
 			});
 			const e = fakeExec({ stagedDelta: true });
@@ -216,7 +216,7 @@ describe("auto_plan_run (warren-a32a)", () => {
 			const f = fakeFs({
 				"/data/projects/x/y/.seeds/issues.jsonl": "",
 				"/data/projects/x/y/.seeds/plans.jsonl": existingPlan,
-				"/data/burrow/ws/.seeds/plans.jsonl": existingPlan,
+				"/data/sandbox/ws/.seeds/plans.jsonl": existingPlan,
 			});
 			const e = fakeExec({ stagedDelta: false });
 
@@ -241,7 +241,7 @@ describe("auto_plan_run (warren-a32a)", () => {
 			const f = fakeFs({
 				"/data/projects/x/y/.seeds/issues.jsonl": "",
 				"/data/projects/x/y/.seeds/plans.jsonl": "",
-				"/data/burrow/ws/.seeds/plans.jsonl":
+				"/data/sandbox/ws/.seeds/plans.jsonl":
 					'{"id":"pl-a","status":"approved","children":["warren-a1"]}\n' +
 					'{"id":"pl-b","status":"approved","children":["warren-b1","warren-b2"]}\n',
 			});
@@ -290,13 +290,13 @@ describe("auto_plan_run (warren-a32a)", () => {
 				frontmatter: { auto_plan_run: true },
 			},
 			trigger: "cron",
-			burrowId: "bur_aaaaaaaaaaaa",
-			burrowRunId: "run_zzzzzzzzzzzz",
+			sandboxId: "bur_aaaaaaaaaaaa",
+			sandboxRunId: "run_zzzzzzzzzzzz",
 		});
 		await repos.runs.markRunning(run.id);
 		try {
 			const f = fakeFs({
-				"/data/burrow/ws/.seeds/plans.jsonl":
+				"/data/sandbox/ws/.seeds/plans.jsonl":
 					'{"id":"pl-new1","status":"approved","children":["warren-c1"]}\n',
 			});
 			const e = fakeExec();
@@ -344,7 +344,7 @@ describe("auto_plan_run (warren-a32a)", () => {
 			const f = fakeFs({
 				"/data/projects/x/y/.seeds/issues.jsonl": "",
 				"/data/projects/x/y/.seeds/plans.jsonl": "",
-				"/data/burrow/ws/.seeds/plans.jsonl":
+				"/data/sandbox/ws/.seeds/plans.jsonl":
 					'{"id":"pl-new1","status":"approved","children":["warren-c1","warren-c2"]}\n',
 			});
 			const e = fakeExec({ stagedDelta: true });
@@ -372,7 +372,7 @@ describe("auto_plan_run (warren-a32a)", () => {
 			const f = fakeFs({
 				"/data/projects/x/y/.seeds/issues.jsonl": "",
 				"/data/projects/x/y/.seeds/plans.jsonl": "",
-				"/data/burrow/ws/.seeds/plans.jsonl":
+				"/data/sandbox/ws/.seeds/plans.jsonl":
 					'{"id":"pl-new1","status":"approved","children":["warren-c1","warren-gone"]}\n',
 			});
 			const e = fakeExec({ stagedDelta: true });
@@ -405,7 +405,7 @@ describe("auto_plan_run (warren-a32a)", () => {
 			const f = fakeFs({
 				"/data/projects/x/y/.seeds/issues.jsonl": "",
 				"/data/projects/x/y/.seeds/plans.jsonl": "",
-				"/data/burrow/ws/.seeds/plans.jsonl":
+				"/data/sandbox/ws/.seeds/plans.jsonl":
 					'{"id":"pl-new1","status":"approved","children":["warren-c1","warren-c2"]}\n',
 			});
 			const e = fakeExec({ stagedDelta: true });

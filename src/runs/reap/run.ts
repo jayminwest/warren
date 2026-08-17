@@ -71,7 +71,7 @@ export async function reapRun(input: ReapRunInput): Promise<ReapRunResult> {
 	const emit = async (kind: string, payload: unknown): Promise<EventRow> => {
 		const row = await input.repos.events.append({
 			runId: run.id,
-			burrowEventSeq: seq.next(),
+			sandboxEventSeq: seq.next(),
 			ts: now().toISOString(),
 			kind,
 			stream: "system",
@@ -109,14 +109,14 @@ export async function reapRun(input: ReapRunInput): Promise<ReapRunResult> {
 	// staying null means resolution FAILED (a live burrow 404 / API error); the
 	// pipeline is skipped and `workspace_lookup` is recorded, exactly as before.
 	let resolved: WorkspaceInfo | null = null;
-	if (run.burrowId === null) {
-		await fail("workspace_lookup", new Error("run has no burrow_id; nothing to reap from"));
+	if (run.sandboxId === null) {
+		await fail("workspace_lookup", new Error("run has no sandbox_id; nothing to reap from"));
 	} else {
 		try {
 			resolved = await provider.workspaceInfo({
 				runId: run.id,
-				sandboxId: run.burrowId,
-				providerRunId: run.burrowRunId ?? "",
+				sandboxId: run.sandboxId,
+				providerRunId: run.sandboxRunId ?? "",
 			});
 			workspacePath = resolved.workspacePath;
 			branch = resolved.branch;
@@ -364,8 +364,8 @@ export async function reapRun(input: ReapRunInput): Promise<ReapRunResult> {
 	// `terminate` closure is null when the run has no burrow or reap never
 	// resolved the worker — the same skip the old `workerClient === null` gate had.
 	const workspaceHandle: RunHandle | null =
-		run.burrowId !== null
-			? { runId: run.id, sandboxId: run.burrowId, providerRunId: run.burrowRunId ?? "" }
+		run.sandboxId !== null
+			? { runId: run.id, sandboxId: run.sandboxId, providerRunId: run.sandboxRunId ?? "" }
 			: null;
 	const terminate = workspaceHandle !== null ? () => provider.terminate(workspaceHandle) : null;
 	const workspaceDestroyed = await runWorkspaceDestroy({
@@ -385,12 +385,12 @@ export async function reapRun(input: ReapRunInput): Promise<ReapRunResult> {
 	// sweep and the `/readyz` stale-workspace diagnostic never re-strand
 	// this workspace. Best-effort like the destroy itself — a bookkeeping
 	// failure surfaces as an event and the GC simply reclaims it later.
-	if (workspaceDestroyed && run.burrowId !== null) {
+	if (workspaceDestroyed && run.sandboxId !== null) {
 		try {
-			await input.repos.runs.clearBurrowIdForWorkspace(run.burrowId);
+			await input.repos.runs.clearBurrowIdForWorkspace(run.sandboxId);
 		} catch (err) {
 			await emit("reap.workspace_destroy_record_failed", {
-				burrowId: run.burrowId,
+				sandboxId: run.sandboxId,
 				error: err instanceof Error ? err.message : String(err),
 			});
 		}

@@ -5,8 +5,8 @@
 			"id": "run_golden7d84",
 			"agentName": "claude-code",
 			"projectId": "project_golden7d84",
-			"burrowId": null,
-			"burrowRunId": null,
+			"sandboxId": null,
+			"sandboxRunId": null,
 			"workerId": null,
 			"seedId": null,
 			"renderedAgentJson": {

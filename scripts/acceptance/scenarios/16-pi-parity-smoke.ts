@@ -15,7 +15,7 @@
  *      (GET /agents/pi returns the AgentDefinition with frontmatter.source
  *      = "builtin").
  *   2. POST /runs accepts agentName='pi' and dispatches through the
- *      in-process engine — burrowId + burrowRunId (the provider-neutral
+ *      in-process engine — sandboxId + sandboxRunId (the provider-neutral
  *      sandbox/run ids) are populated on the 201.
  *   3. The run's renderedAgentJson is frozen from the pi built-in
  *      (name='pi', frontmatter.source='builtin').
@@ -74,8 +74,8 @@ interface RunRow {
 	readonly id: string;
 	readonly agentName: string;
 	readonly projectId: string | null;
-	readonly burrowId: string | null;
-	readonly burrowRunId: string | null;
+	readonly sandboxId: string | null;
+	readonly sandboxRunId: string | null;
 	readonly renderedAgentJson: AgentDefinitionEnvelope;
 	readonly state: string;
 	readonly prompt: string;
@@ -143,14 +143,16 @@ export const scenario: Scenario = {
 		assertEqual(run.agentName, "pi", "POST /runs run.agentName");
 		assertEqual(run.projectId, project.id, "POST /runs run.projectId");
 		assertTrue(
-			typeof run.burrowId === "string" && run.burrowId !== null && run.burrowId.length > 0,
-			"POST /runs run.burrowId populated (proves the engine accepted the dispatch)",
+			typeof run.sandboxId === "string" && run.sandboxId !== null && run.sandboxId.length > 0,
+			"POST /runs run.sandboxId populated (proves the engine accepted the dispatch)",
 		);
 		assertTrue(
-			typeof run.burrowRunId === "string" && run.burrowRunId !== null && run.burrowRunId.length > 0,
-			"POST /runs run.burrowRunId populated",
+			typeof run.sandboxRunId === "string" &&
+				run.sandboxRunId !== null &&
+				run.sandboxRunId.length > 0,
+			"POST /runs run.sandboxRunId populated",
 		);
-		assertEqual(created.burrow.id, run.burrowId, "response.burrow.id matches run.burrowId");
+		assertEqual(created.burrow.id, run.sandboxId, "response.burrow.id matches run.sandboxId");
 
 		// 3. renderedAgentJson is the frozen pi built-in.
 		assertEqual(run.renderedAgentJson.name, "pi", "run.renderedAgentJson.name");

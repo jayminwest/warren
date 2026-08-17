@@ -27,9 +27,9 @@ describe("recoverActiveRunStreams", () => {
 			defaultBranch: "main",
 		});
 		// Seed three runs:
-		//   run_a: queued + burrowRunId  → bridge
-		//   run_b: running + burrowRunId → bridge
-		//   run_c: running, no burrowRunId → skip
+		//   run_a: queued + sandboxRunId  → bridge
+		//   run_b: running + sandboxRunId → bridge
+		//   run_c: running, no sandboxRunId → skip
 		//   run_d: succeeded             → ignore
 		await repos.runs.create({
 			id: "run_aaaaaaaaaaaa",
@@ -38,8 +38,8 @@ describe("recoverActiveRunStreams", () => {
 			prompt: "p",
 			renderedAgentJson: {},
 			trigger: "manual",
-			burrowId: "bur_a",
-			burrowRunId: "rb_a",
+			sandboxId: "bur_a",
+			sandboxRunId: "rb_a",
 		});
 		const b = await repos.runs.create({
 			id: "run_bbbbbbbbbbbb",
@@ -48,8 +48,8 @@ describe("recoverActiveRunStreams", () => {
 			prompt: "p",
 			renderedAgentJson: {},
 			trigger: "manual",
-			burrowId: "bur_b",
-			burrowRunId: "rb_b",
+			sandboxId: "bur_b",
+			sandboxRunId: "rb_b",
 		});
 		await repos.runs.markRunning(b.id);
 		await repos.runs.create({
@@ -68,8 +68,8 @@ describe("recoverActiveRunStreams", () => {
 			prompt: "p",
 			renderedAgentJson: {},
 			trigger: "manual",
-			burrowId: "bur_d",
-			burrowRunId: "rb_d",
+			sandboxId: "bur_d",
+			sandboxRunId: "rb_d",
 		});
 		await repos.runs.markRunning(d.id);
 		await repos.runs.finalize(d.id, "succeeded");
@@ -80,19 +80,19 @@ describe("recoverActiveRunStreams", () => {
 		await db.close();
 	});
 
-	test("starts a bridge for each active run with a burrow_run_id", async () => {
-		const calls: { runId: string; burrowRunId: string }[] = [];
+	test("starts a bridge for each active run with a sandbox_run_id", async () => {
+		const calls: { runId: string; sandboxRunId: string }[] = [];
 		const result = await recoverActiveRunStreams({
 			repos,
 			broker,
 			runtimeProvider: makeProvider(),
 			bridge: async (input: BridgeRunStreamInput) => {
-				calls.push({ runId: input.runId, burrowRunId: input.burrowRunId });
+				calls.push({ runId: input.runId, sandboxRunId: input.sandboxRunId });
 				return { written: 0, skipped: 0, errored: false };
 			},
 		});
 		expect(result.bridges).toHaveLength(2);
-		expect(result.skipped).toEqual([{ runId: "run_cccccccccccc", reason: "no_burrow_run_id" }]);
+		expect(result.skipped).toEqual([{ runId: "run_cccccccccccc", reason: "no_sandbox_run_id" }]);
 		await Promise.all(result.bridges.map((b) => b.done));
 		const ids = calls.map((c) => c.runId).sort();
 		expect(ids).toEqual(["run_aaaaaaaaaaaa", "run_bbbbbbbbbbbb"]);
@@ -180,8 +180,8 @@ describe("recoverActiveRunStreams — resume after disconnect (warren-1fce)", ()
 			prompt: "p",
 			renderedAgentJson: {},
 			trigger: "manual",
-			burrowId: "bur_r",
-			burrowRunId: "rb_r",
+			sandboxId: "bur_r",
+			sandboxRunId: "rb_r",
 		});
 		runId = run.id;
 		await repos.runs.markRunning(runId);
@@ -189,7 +189,7 @@ describe("recoverActiveRunStreams — resume after disconnect (warren-1fce)", ()
 		for (const seq of [1, 2]) {
 			await repos.events.append({
 				runId,
-				burrowEventSeq: seq,
+				sandboxEventSeq: seq,
 				ts: `2026-06-05T00:00:0${seq}.000Z`,
 				kind: "text",
 				stream: "stdout",
@@ -225,7 +225,7 @@ describe("recoverActiveRunStreams — resume after disconnect (warren-1fce)", ()
 		// …so only the post-disconnect events (3, 4) were written, none re-persisted.
 		expect(bridgeResult?.written).toBe(2);
 		expect(bridgeResult?.skipped).toBe(0);
-		const seqs = (await repos.events.listByRun(runId)).map((e) => e.burrowEventSeq);
+		const seqs = (await repos.events.listByRun(runId)).map((e) => e.sandboxEventSeq);
 		expect(seqs).toEqual([1, 2, 3, 4]);
 	});
 });

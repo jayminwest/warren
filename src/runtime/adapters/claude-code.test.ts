@@ -10,7 +10,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
-	CLAUDE_CODE_BURROW_TMPDIR,
+	CLAUDE_CODE_SANDBOX_TMPDIR,
 	CLAUDE_CODE_SETTINGS_PATH,
 	claudeCodeAdapter,
 	claudeCodeBurrowTmpdir,
@@ -69,7 +69,7 @@ describe("claudeCodeAdapter.buildSpawnCommand", () => {
 		expect(blob).toContain("[STEERING]");
 	});
 
-	test("emits per-run TMPDIR pointing at .burrow-tmp under the in-sandbox workspace (burrow-8452)", () => {
+	test("emits per-run TMPDIR pointing at .sandbox-tmp under the in-sandbox workspace (burrow-8452)", () => {
 		const cmd = claudeCodeAdapter.buildSpawnCommand?.(
 			fakeSpawnContext({ prompt: "p", workspacePath: "/host/ws" }),
 		);
@@ -80,13 +80,13 @@ describe("claudeCodeAdapter.buildSpawnCommand", () => {
 describe("claudeCodeBurrowTmpdir", () => {
 	test("linux resolves under bwrap's /workspace remap, not the host path", () => {
 		expect(claudeCodeBurrowTmpdir("/host/ws", "linux")).toBe(
-			`/workspace/${CLAUDE_CODE_BURROW_TMPDIR}`,
+			`/workspace/${CLAUDE_CODE_SANDBOX_TMPDIR}`,
 		);
 	});
 
 	test("darwin keeps the host workspace path (sandbox-exec doesn't remap)", () => {
 		expect(claudeCodeBurrowTmpdir("/Users/u/ws", "darwin")).toBe(
-			`/Users/u/ws/${CLAUDE_CODE_BURROW_TMPDIR}`,
+			`/Users/u/ws/${CLAUDE_CODE_SANDBOX_TMPDIR}`,
 		);
 	});
 });
@@ -144,10 +144,10 @@ describe("claudeCodeAdapter.prepareWorkspace", () => {
 		expect(parsed).toMatchObject({ permissions: {}, hooks: {} });
 	});
 
-	test("plants .burrow-tmp/ + a `*` .gitignore (burrow-8452)", async () => {
+	test("plants .sandbox-tmp/ + a `*` .gitignore (burrow-8452)", async () => {
 		await claudeCodeAdapter.prepareWorkspace?.({ runId: "run_test", workspacePath: dir });
 		const fs = await import("node:fs");
-		const tmpDir = join(dir, CLAUDE_CODE_BURROW_TMPDIR);
+		const tmpDir = join(dir, CLAUDE_CODE_SANDBOX_TMPDIR);
 		expect(fs.statSync(tmpDir).isDirectory()).toBe(true);
 		expect(await readFile(join(tmpDir, ".gitignore"), "utf8")).toBe("*\n");
 	});

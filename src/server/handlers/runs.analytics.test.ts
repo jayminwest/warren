@@ -140,7 +140,7 @@ describe("GET /analytics/runs", () => {
 		await setRunPrState(repos, unsteeredId, "closed_unmerged");
 		await repos.events.append({
 			runId: steeredId,
-			burrowEventSeq: 1,
+			sandboxEventSeq: 1,
 			ts: "2026-05-20T10:02:00.000Z",
 			kind: "steer.sent",
 			payload: { text: "try again" },

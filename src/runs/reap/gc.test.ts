@@ -17,12 +17,12 @@ import {
 const NOW = new Date("2026-05-29T12:00:00.000Z");
 
 /** A terminal run row that anchors a burrow id at a given endedAt. */
-function terminalRun(burrowId: string, endedAt: string): RunRow {
-	return { burrowId, endedAt, state: "succeeded" } as unknown as RunRow;
+function terminalRun(sandboxId: string, endedAt: string): RunRow {
+	return { sandboxId, endedAt, state: "succeeded" } as unknown as RunRow;
 }
 
-function activeRun(burrowId: string): RunRow {
-	return { burrowId, endedAt: null, state: "running" } as unknown as RunRow;
+function activeRun(sandboxId: string): RunRow {
+	return { sandboxId, endedAt: null, state: "running" } as unknown as RunRow;
 }
 
 function destroyedOutcome(): WorkspaceDestroyOutcome {
@@ -37,7 +37,7 @@ describe("findStrandedBurrows", () => {
 			ttlMs: 60 * 60_000,
 			now: NOW,
 		});
-		expect(out.map((s) => s.burrowId)).toEqual(["bur_old"]);
+		expect(out.map((s) => s.sandboxId)).toEqual(["bur_old"]);
 		expect(out[0]?.ageMs).toBe(2 * 60 * 60_000);
 	});
 
@@ -71,7 +71,7 @@ describe("findStrandedBurrows", () => {
 			ttlMs: 60 * 60_000,
 			now: NOW,
 		});
-		expect(out.map((s) => s.burrowId)).toEqual(["bur_b", "bur_a"]);
+		expect(out.map((s) => s.sandboxId)).toEqual(["bur_b", "bur_a"]);
 	});
 
 	test("skips rows with an unparseable timestamp", () => {
@@ -88,11 +88,11 @@ describe("findStrandedBurrows", () => {
 describe("buildBurrowActivity", () => {
 	test("collects active burrow ids and the newest terminal endedAt", () => {
 		const active = buildBurrowActivity(
-			[{ burrowId: "bur_live", state: "running" } as unknown as RunRow],
+			[{ sandboxId: "bur_live", state: "running" } as unknown as RunRow],
 			[
-				{ burrowId: "bur_x", endedAt: "2026-05-01T00:00:00.000Z" } as unknown as RunRow,
-				{ burrowId: "bur_x", endedAt: "2026-05-02T00:00:00.000Z" } as unknown as RunRow,
-				{ burrowId: null, endedAt: "2026-05-03T00:00:00.000Z" } as unknown as RunRow,
+				{ sandboxId: "bur_x", endedAt: "2026-05-01T00:00:00.000Z" } as unknown as RunRow,
+				{ sandboxId: "bur_x", endedAt: "2026-05-02T00:00:00.000Z" } as unknown as RunRow,
+				{ sandboxId: null, endedAt: "2026-05-03T00:00:00.000Z" } as unknown as RunRow,
 			],
 		);
 		expect([...active.activeBurrowIds]).toEqual(["bur_live"]);
@@ -117,12 +117,12 @@ function tickInput(
 		repos: {
 			runs: {
 				listByState: async (states) => (states.includes("running") ? h.activeRuns : h.terminalRuns),
-				clearBurrowIdForWorkspace: async (burrowId) => {
-					h.cleared.push(burrowId);
-					// Mirror the real repo: null out burrowId so the next sweep
+				clearBurrowIdForWorkspace: async (sandboxId) => {
+					h.cleared.push(sandboxId);
+					// Mirror the real repo: null out sandboxId so the next sweep
 					// (and the readyz diagnostic) never re-strands the workspace.
 					h.terminalRuns = h.terminalRuns.map((r) =>
-						r.burrowId === burrowId ? ({ ...r, burrowId: null } as RunRow) : r,
+						r.sandboxId === sandboxId ? ({ ...r, sandboxId: null } as RunRow) : r,
 					);
 				},
 			},
@@ -216,7 +216,7 @@ describe("runWorkspaceGcTick", () => {
 		expect(first.destroyed).toBe(1);
 		expect(h.cleared).toEqual(["bur_old"]);
 		// Convergence: the next sweep finds nothing — the persisted marker
-		// (burrowId nulled) removes the burrow from the candidate universe.
+		// (sandboxId nulled) removes the burrow from the candidate universe.
 		const second = await runWorkspaceGcTick(input);
 		expect(second).toEqual({ scanned: 0, stranded: 0, destroyed: 0, failed: 0 });
 		expect(h.destroyed).toEqual(["bur_old"]);

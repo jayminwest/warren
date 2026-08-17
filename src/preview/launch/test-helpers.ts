@@ -20,13 +20,13 @@ export const PREVIEW_CONFIG: ServerPreviewConfig = {
 export interface FakeSidecar {
 	client: PreviewSidecarsClient;
 	readonly creates: Array<{
-		burrowId: string;
+		sandboxId: string;
 		command: readonly string[];
 		env?: Record<string, string>;
 		inboundPortForward?: { hostPort: number; sandboxPort: number };
 		readinessPath?: string;
 	}>;
-	readonly deletes: Array<{ burrowId: string; sidecarId: string }>;
+	readonly deletes: Array<{ sandboxId: string; sidecarId: string }>;
 	logs: { stdout: string; stderr: string };
 	createImpl?: () => Promise<{ id: string; state: string }>;
 	/**
@@ -57,7 +57,7 @@ export function fakeSidecars(
 	const client: PreviewSidecarsClient = {
 		async create(input: CreateInput) {
 			creates.push({
-				burrowId: input.burrowId,
+				sandboxId: input.sandboxId,
 				command: [...input.command],
 				...(input.env !== undefined ? { env: { ...input.env } } : {}),
 				...(input.inboundPortForward !== undefined
@@ -72,10 +72,10 @@ export function fakeSidecars(
 		async logs() {
 			return { stdout: state.logs.stdout, stderr: state.logs.stderr };
 		},
-		async delete(burrowId: string, sidecarId: string) {
-			deletes.push({ burrowId, sidecarId });
+		async delete(sandboxId: string, sidecarId: string) {
+			deletes.push({ sandboxId, sidecarId });
 		},
-		async get(_burrowId: string, sidecarId: string) {
+		async get(_sandboxId: string, sidecarId: string) {
 			const queue = statusQueue.get(sidecarId);
 			if (queue === undefined || queue.length === 0) {
 				return { state: "exited", exitCode: 0 };
@@ -151,7 +151,7 @@ export interface LaunchTestEnv {
 	repos: Repos;
 	allocator: PreviewPortAllocator;
 	runId: string;
-	burrowId: string;
+	sandboxId: string;
 }
 
 /**
@@ -175,8 +175,8 @@ export async function setupLaunchEnv(): Promise<LaunchTestEnv> {
 		prompt: "p",
 		renderedAgentJson: {},
 		trigger: "manual",
-		burrowId: "bur_aaaa",
+		sandboxId: "bur_aaaa",
 	});
 	const allocator = new PreviewPortAllocator(DrizzleAdapter.for(db), { start: 40000, end: 40002 });
-	return { db, repos, allocator, runId: run.id, burrowId: "bur_aaaa" };
+	return { db, repos, allocator, runId: run.id, sandboxId: "bur_aaaa" };
 }

@@ -8,7 +8,7 @@ import {
 	type RunDispatchedPayload,
 } from "../lifecycle-bus.ts";
 import { spawnRun } from "./index.ts";
-import { makeBurrowClient, makeProvider, setupRepos } from "./test-helpers.ts";
+import { makeProvider, makeSandboxClient, setupRepos } from "./test-helpers.ts";
 
 /**
  * warren-4e74: `spawnRun` fires the observe-only `run_dispatched`
@@ -44,7 +44,7 @@ describe("spawnRun: run_dispatched lifecycle emit (warren-4e74)", () => {
 		const { bus, seen } = spy();
 		installLifecycleBus(bus);
 
-		const { client } = makeBurrowClient();
+		const { client } = makeSandboxClient();
 		const result = await spawnRun({
 			repos,
 			runtimeProvider: makeProvider(client),
@@ -58,8 +58,8 @@ describe("spawnRun: run_dispatched lifecycle emit (warren-4e74)", () => {
 		const payload = seen[0] as RunDispatchedPayload;
 		expect(payload.runId).toBe(result.run.id);
 		expect(payload.trigger).toBe("healer");
-		expect(payload.sandboxId).toBe(result.burrow.id);
-		expect(payload.providerRunId).toBe(result.burrowRun.id);
+		expect(payload.sandboxId).toBe(result.sandbox.id);
+		expect(payload.providerRunId).toBe(result.sandboxRun.id);
 		expect(payload.agentName).toBe("refactor-bot");
 	});
 
@@ -67,7 +67,7 @@ describe("spawnRun: run_dispatched lifecycle emit (warren-4e74)", () => {
 		const { bus, seen } = spy();
 		installLifecycleBus(bus);
 
-		const provider = makeProvider(makeBurrowClient().client);
+		const provider = makeProvider(makeSandboxClient().client);
 		provider.create = () => Promise.reject(new Error("dispatch boom"));
 		await expect(
 			spawnRun({

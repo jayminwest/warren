@@ -67,8 +67,8 @@ interface RunRow {
 	readonly id: string;
 	readonly agentName: string;
 	readonly projectId: string | null;
-	readonly burrowId: string | null;
-	readonly burrowRunId: string | null;
+	readonly sandboxId: string | null;
+	readonly sandboxRunId: string | null;
 	readonly renderedAgentJson: AgentDefinitionEnvelope;
 	readonly state: string;
 	readonly prompt: string;
@@ -147,26 +147,26 @@ export const scenario: Scenario = {
 		assertEqual(r1.state, "queued", "POST /runs run.state at create time");
 		assertEqual(r1.trigger, "manual", "POST /runs run.trigger defaults to 'manual'");
 
-		// burrow_id + burrow_run_id are attached during spawnRun (mx-3bf4da)
+		// sandbox_id + sandbox_run_id are attached during spawnRun (mx-3bf4da)
 		// — both should be set by the time the 201 is returned.
 		assertTrue(
-			typeof r1.burrowId === "string" && r1.burrowId !== null && r1.burrowId.length > 0,
-			"POST /runs run.burrowId is null or empty after 201",
+			typeof r1.sandboxId === "string" && r1.sandboxId !== null && r1.sandboxId.length > 0,
+			"POST /runs run.sandboxId is null or empty after 201",
 		);
 		assertTrue(
-			typeof r1.burrowRunId === "string" && r1.burrowRunId !== null && r1.burrowRunId.length > 0,
-			"POST /runs run.burrowRunId is null or empty after 201",
+			typeof r1.sandboxRunId === "string" && r1.sandboxRunId !== null && r1.sandboxRunId.length > 0,
+			"POST /runs run.sandboxRunId is null or empty after 201",
 		);
 		assertTrue(
-			typeof r1Body.burrow?.id === "string" && r1Body.burrow.id === r1.burrowId,
-			"POST /runs response.burrow.id matches run.burrowId",
+			typeof r1Body.burrow?.id === "string" && r1Body.burrow.id === r1.sandboxId,
+			"POST /runs response.burrow.id matches run.sandboxId",
 		);
 		// workspacePath is intentionally an empty string post-RuntimeProvider
 		// seam (warren-1f56): a burrow host path has no provider-neutral home,
 		// so the seam's RunHandle drops it and dispatch returns
 		// `workspacePath: ""` (src/runs/spawn/dispatch.ts). It survives only as
 		// a display-only field slated for removal with the multi-worker /
-		// `/burrows` surface (design §5.C). Re-tighten this to assert a real
+		// `/sandboxes` surface (design §5.C). Re-tighten this to assert a real
 		// path if/when §5.C reinstates a provider-neutral workspace handle.
 		//
 		// warren-5af5: assert the EXACT contract value (`""`) rather than the

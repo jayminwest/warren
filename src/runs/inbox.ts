@@ -97,7 +97,7 @@ async function emitSteerDeliveredEvents(
 		seq += 1;
 		const row = await input.repos.events.append({
 			runId: input.runId,
-			burrowEventSeq: seq,
+			sandboxEventSeq: seq,
 			ts: now().toISOString(),
 			kind: "steer.delivered",
 			stream: "system",

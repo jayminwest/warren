@@ -19,7 +19,7 @@ export const silentLogger = {
 };
 
 /** An inert provider — the preview handlers never reach the runtime seam. */
-export function makeBurrowClient(): FakeProvider {
+export function makeSandboxClient(): FakeProvider {
 	return new FakeProvider();
 }
 
@@ -29,7 +29,7 @@ export async function depsFor(
 	db?: AnyWarrenDb,
 	previewMode: "subdomain" | "path" = "subdomain",
 ): Promise<{ deps: ServerDeps; bridges: BridgeRegistry }> {
-	const provider = makeBurrowClient();
+	const provider = makeSandboxClient();
 	const broker = new RunEventBroker();
 	const bridges = createBridgeRegistry({
 		repos,

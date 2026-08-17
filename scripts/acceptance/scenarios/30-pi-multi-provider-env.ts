@@ -61,8 +61,8 @@ interface ProjectRow {
 interface RunRow {
 	readonly id: string;
 	readonly agentName: string;
-	readonly burrowId: string | null;
-	readonly burrowRunId: string | null;
+	readonly sandboxId: string | null;
+	readonly sandboxRunId: string | null;
 	readonly renderedAgentJson: {
 		readonly name: string;
 		readonly frontmatter?: Record<string, unknown>;

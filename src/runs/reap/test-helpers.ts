@@ -302,7 +302,7 @@ export function fakeBurrowClient(
 export function makeBurrow(overrides: Partial<FakeSandbox> = {}): FakeSandbox {
 	return {
 		id: "bur_aaaaaaaaaaaa",
-		workspacePath: "/data/burrow/ws",
+		workspacePath: "/data/sandbox/ws",
 		branch: "agent/refactor-bot/run-1",
 		...overrides,
 	};
@@ -332,8 +332,8 @@ export async function setup(): Promise<Ctx> {
 		prompt: "p",
 		renderedAgentJson: {},
 		trigger: "manual",
-		burrowId: "bur_aaaaaaaaaaaa",
-		burrowRunId: "run_zzzzzzzzzzzz",
+		sandboxId: "bur_aaaaaaaaaaaa",
+		sandboxRunId: "run_zzzzzzzzzzzz",
 	});
 	await repos.runs.markRunning(run.id);
 	return {
@@ -342,7 +342,7 @@ export async function setup(): Promise<Ctx> {
 		broker: new RunEventBroker(),
 		runId: run.id,
 		projectPath: project.localPath,
-		workspacePath: "/data/burrow/ws",
+		workspacePath: "/data/sandbox/ws",
 	};
 }
 

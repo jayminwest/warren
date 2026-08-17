@@ -7,7 +7,7 @@ import { RuntimeUnreachableError } from "../../runtime/errors.ts";
 import { FakeProvider } from "../../runtime/fake/fake-provider.ts";
 import { composeDispatchPrompt, spawnRun } from "./index.ts";
 import { isRunScopedToken, verifyRunScopedToken } from "./run-token.ts";
-import { makeAgentJson, makeBurrowClient, makeProvider, setupRepos } from "./test-helpers.ts";
+import { makeAgentJson, makeProvider, makeSandboxClient, setupRepos } from "./test-helpers.ts";
 
 describe("spawnRun: validation", () => {
 	let db: WarrenDb;
@@ -21,7 +21,7 @@ describe("spawnRun: validation", () => {
 	});
 
 	test("rejects an empty prompt before touching db or burrow", async () => {
-		const { client, calls } = makeBurrowClient();
+		const { client, calls } = makeSandboxClient();
 		await expect(
 			spawnRun({
 				repos,
@@ -36,7 +36,7 @@ describe("spawnRun: validation", () => {
 	});
 
 	test("throws NotFoundError when the agent is not registered", async () => {
-		const { client, calls } = makeBurrowClient();
+		const { client, calls } = makeSandboxClient();
 		await expect(
 			spawnRun({
 				repos,
@@ -50,7 +50,7 @@ describe("spawnRun: validation", () => {
 	});
 
 	test("throws NotFoundError when the project does not exist", async () => {
-		const { client } = makeBurrowClient();
+		const { client } = makeSandboxClient();
 		await expect(
 			spawnRun({
 				repos,
@@ -75,7 +75,7 @@ describe("spawnRun: end-to-end", () => {
 	});
 
 	test("end-to-end: creates the warren run, provisions+seeds the burrow atomically, dispatches", async () => {
-		const { client, calls } = makeBurrowClient();
+		const { client, calls } = makeSandboxClient();
 		const result = await spawnRun({
 			repos,
 			runtimeProvider: makeProvider(client),
@@ -86,23 +86,23 @@ describe("spawnRun: end-to-end", () => {
 
 		expect(isId("run", result.run.id)).toBe(true);
 		expect(result.run.state).toBe("queued");
-		expect(result.run.burrowId).toBe("bur_aaaaaaaaaaaa");
-		expect(result.run.burrowRunId).toBe("run_zzzzzzzzzzzz");
+		expect(result.run.sandboxId).toBe("bur_aaaaaaaaaaaa");
+		expect(result.run.sandboxRunId).toBe("run_zzzzzzzzzzzz");
 		const reread = await repos.runs.require(result.run.id);
-		expect(reread.burrowId).toBe("bur_aaaaaaaaaaaa");
-		expect(reread.burrowRunId).toBe("run_zzzzzzzzzzzz");
+		expect(reread.sandboxId).toBe("bur_aaaaaaaaaaaa");
+		expect(reread.sandboxRunId).toBe("run_zzzzzzzzzzzz");
 
 		const stored = reread.renderedAgentJson as { name: string; sections: Record<string, string> };
 		expect(stored.name).toBe("refactor-bot");
 		expect(stored.sections.system).toBe("be a refactor agent");
 
 		// Two HTTP calls: provision-with-seed, then dispatch. The seed.files
-		// payload rides on POST /burrows so provisioning + workspace drops are
+		// payload rides on POST /sandboxes so provisioning + workspace drops are
 		// atomic — burrow rolls back if any file is rejected (R-07).
 		expect(calls).toHaveLength(2);
 		expect(calls[1]).toEqual({
 			method: "POST",
-			path: "/burrows/bur_aaaaaaaaaaaa/runs",
+			path: "/sandboxes/bur_aaaaaaaaaaaa/runs",
 			body: {
 				agentId: "pi",
 				prompt: "be a refactor agent\n\n---\n\nfix the flaky test",
@@ -122,14 +122,14 @@ describe("spawnRun: end-to-end", () => {
 		const seededPaths = (upBody.seed?.files ?? []).map((f) => f.path);
 		expect(seededPaths).toContain(".warren/agent.json");
 
-		// warren-3743: worker_id is nullified for new runs (the workers/burrows
+		// warren-3743: worker_id is nullified for new runs (the workers/sandboxes
 		// placement tables were dropped); the burrow correlation ids are still
 		// written for LocalProvider resume.
 		expect(reread.workerId).toBeNull();
 	});
 
 	test("leaves worker_id NULL and writes the burrow ids for new runs (warren-3743)", async () => {
-		const { client } = makeBurrowClient();
+		const { client } = makeSandboxClient();
 		const result = await spawnRun({
 			repos,
 			runtimeProvider: makeProvider(client),
@@ -139,8 +139,8 @@ describe("spawnRun: end-to-end", () => {
 		});
 		const stored = await repos.runs.require(result.run.id);
 		expect(stored.workerId).toBeNull();
-		expect(stored.burrowId).toBe(result.burrow.id);
-		expect(stored.burrowRunId).toBe(result.burrowRun.id);
+		expect(stored.sandboxId).toBe(result.sandbox.id);
+		expect(stored.sandboxRunId).toBe(result.sandboxRun.id);
 	});
 });
 
@@ -166,7 +166,7 @@ describe("spawnRun: burrow_config + runtime + metadata", () => {
 			}),
 		});
 
-		const { client, calls } = makeBurrowClient();
+		const { client, calls } = makeSandboxClient();
 		await spawnRun({
 			repos,
 			runtimeProvider: makeProvider(client),
@@ -178,7 +178,7 @@ describe("spawnRun: burrow_config + runtime + metadata", () => {
 
 		expect(calls[0]).toMatchObject({
 			method: "POST",
-			path: "/burrows",
+			path: "/sandboxes",
 			body: {
 				projectRoot: "/data/projects/x/y",
 				originUrl: "https://github.com/x/y.git",
@@ -189,7 +189,7 @@ describe("spawnRun: burrow_config + runtime + metadata", () => {
 		});
 		expect(calls[1]).toMatchObject({
 			method: "POST",
-			path: "/burrows/bur_aaaaaaaaaaaa/runs",
+			path: "/sandboxes/bur_aaaaaaaaaaaa/runs",
 			body: {
 				agentId: "pi",
 				prompt: "s\n\n---\n\np",
@@ -211,7 +211,7 @@ describe("spawnRun: burrow_config + runtime + metadata", () => {
 				frontmatter: { source: "builtin", runtime: "claude-code" },
 			}),
 		});
-		const { client, calls } = makeBurrowClient();
+		const { client, calls } = makeSandboxClient();
 		await spawnRun({
 			repos,
 			runtimeProvider: makeProvider(client),
@@ -219,14 +219,14 @@ describe("spawnRun: burrow_config + runtime + metadata", () => {
 			projectId: "prj_xxxxxxxxxxxx",
 			prompt: "help me think",
 		});
-		const dispatch = calls.find((c) => c.path === "/burrows/bur_aaaaaaaaaaaa/runs");
+		const dispatch = calls.find((c) => c.path === "/sandboxes/bur_aaaaaaaaaaaa/runs");
 		expect(dispatch).toBeDefined();
 		expect((dispatch?.body as { agentId: string }).agentId).toBe("claude-code");
 		// warren-53e6: the same runtime id has to ride on the `up` call so
 		// burrow's collectToolchainPaths mounts claude's binary into the
 		// sandbox. Without this, bwrap fails `execvp claude: No such file or
 		// directory` ~17s into the run.
-		const up = calls.find((c) => c.path === "/burrows");
+		const up = calls.find((c) => c.path === "/sandboxes");
 		expect(up).toBeDefined();
 		expect((up?.body as { agents: readonly string[] }).agents).toEqual(["claude-code"]);
 	});
@@ -238,7 +238,7 @@ describe("spawnRun: burrow_config + runtime + metadata", () => {
 			name: "refactor-bot",
 			renderedJson: makeAgentJson({ frontmatter: {} }),
 		});
-		const { client, calls } = makeBurrowClient();
+		const { client, calls } = makeSandboxClient();
 		await spawnRun({
 			repos,
 			runtimeProvider: makeProvider(client),
@@ -246,7 +246,7 @@ describe("spawnRun: burrow_config + runtime + metadata", () => {
 			projectId: "prj_xxxxxxxxxxxx",
 			prompt: "p",
 		});
-		const dispatch = calls.find((c) => c.path === "/burrows/bur_aaaaaaaaaaaa/runs");
+		const dispatch = calls.find((c) => c.path === "/sandboxes/bur_aaaaaaaaaaaa/runs");
 		expect((dispatch?.body as { agentId: string }).agentId).toBe("pi");
 	});
 
@@ -261,7 +261,7 @@ describe("spawnRun: burrow_config + runtime + metadata", () => {
 				frontmatter: { source: "library", runtime: "legacy-bot" },
 			}),
 		});
-		const { client, calls } = makeBurrowClient();
+		const { client, calls } = makeSandboxClient();
 		expect(
 			spawnRun({
 				repos,
@@ -271,7 +271,7 @@ describe("spawnRun: burrow_config + runtime + metadata", () => {
 				prompt: "p",
 			}),
 		).rejects.toThrow(/is not a known runtime id/);
-		expect(calls.find((c) => c.path === "/burrows")).toBeUndefined();
+		expect(calls.find((c) => c.path === "/sandboxes")).toBeUndefined();
 	});
 
 	test("forwards agent.frontmatter as burrow run metadata so piRuntime gets provider/model (warren-d34e)", async () => {
@@ -282,7 +282,7 @@ describe("spawnRun: burrow_config + runtime + metadata", () => {
 				frontmatter: { source: "builtin", provider: "anthropic", model: "claude-opus-4-7" },
 			}),
 		});
-		const { client, calls } = makeBurrowClient();
+		const { client, calls } = makeSandboxClient();
 		await spawnRun({
 			repos,
 			runtimeProvider: makeProvider(client),
@@ -291,7 +291,7 @@ describe("spawnRun: burrow_config + runtime + metadata", () => {
 			prompt: "p",
 		});
 
-		const dispatch = calls.find((c) => c.path === "/burrows/bur_aaaaaaaaaaaa/runs");
+		const dispatch = calls.find((c) => c.path === "/sandboxes/bur_aaaaaaaaaaaa/runs");
 		expect(dispatch).toBeDefined();
 		const body = dispatch?.body as { metadata: { frontmatter: Record<string, unknown> } };
 		expect(body.metadata.frontmatter.provider).toBe("anthropic");
@@ -307,7 +307,7 @@ describe("spawnRun: burrow_config + runtime + metadata", () => {
 				frontmatter: { provider: "pi", model: "pi-default" },
 			}),
 		});
-		const { client, calls } = makeBurrowClient();
+		const { client, calls } = makeSandboxClient();
 		await spawnRun({
 			repos,
 			runtimeProvider: makeProvider(client),
@@ -330,7 +330,7 @@ describe("spawnRun: burrow_config + runtime + metadata", () => {
 			},
 		});
 
-		const dispatch = calls.find((c) => c.path === "/burrows/bur_aaaaaaaaaaaa/runs");
+		const dispatch = calls.find((c) => c.path === "/sandboxes/bur_aaaaaaaaaaaa/runs");
 		const body = dispatch?.body as { metadata: { frontmatter: Record<string, unknown> } };
 		// Operator override wins for provider; project default wins for model.
 		expect(body.metadata.frontmatter.provider).toBe("openai");
@@ -353,7 +353,7 @@ describe("spawnRun: sandbox env (warren-b893)", () => {
 		// Bun's default cache dir is <cwd>/.bun/install/cache, so agents doing
 		// `git add .` sweep ~5k cache files into commits; pinning it to /tmp
 		// keeps it off the git index for every project, every agent.
-		const { client, calls } = makeBurrowClient();
+		const { client, calls } = makeSandboxClient();
 		await spawnRun({
 			repos,
 			runtimeProvider: makeProvider(client),
@@ -362,7 +362,7 @@ describe("spawnRun: sandbox env (warren-b893)", () => {
 			prompt: "fix it",
 			serverEnv: { WARREN_API_TOKEN: "tok_secret", WARREN_BIND_PORT: "9090" },
 		});
-		const up = calls.find((c) => c.path === "/burrows");
+		const up = calls.find((c) => c.path === "/sandboxes");
 		expect(up).toBeDefined();
 		const env = (up?.body as { env?: Record<string, string> }).env;
 		expect(env).toBeDefined();
@@ -388,9 +388,9 @@ describe("spawnRun: rollback", () => {
 	});
 
 	test("rolls back: cancels the warren row when burrow rejects the seed payload (atomic rollback, R-07)", async () => {
-		const { client, calls } = makeBurrowClient({
-			burrowsUpStatus: 422,
-			burrowsUpBody: {
+		const { client, calls } = makeSandboxClient({
+			sandboxUpStatus: 422,
+			sandboxUpBody: {
 				error: {
 					code: "validation_error",
 					message: "seed file rejected: workspace path escapes root",
@@ -410,15 +410,15 @@ describe("spawnRun: rollback", () => {
 		const rows = await repos.runs.listAll();
 		expect(rows).toHaveLength(1);
 		expect(rows[0]?.state).toBe("failed");
-		expect(rows[0]?.burrowId).toBeNull();
-		expect(rows[0]?.burrowRunId).toBeNull();
+		expect(rows[0]?.sandboxId).toBeNull();
+		expect(rows[0]?.sandboxRunId).toBeNull();
 
 		const methods = calls.map((c) => `${c.method} ${c.path}`);
-		expect(methods).toEqual(["POST /burrows"]);
+		expect(methods).toEqual(["POST /sandboxes"]);
 	});
 
 	test("rolls back when burrow dispatch fails", async () => {
-		const { client, calls } = makeBurrowClient({
+		const { client, calls } = makeSandboxClient({
 			runsCreateStatus: 500,
 			runsCreateBody: { error: { code: "internal_error", message: "boom" } },
 		});
@@ -435,10 +435,10 @@ describe("spawnRun: rollback", () => {
 		const rows = await repos.runs.listAll();
 		expect(rows).toHaveLength(1);
 		expect(rows[0]?.state).toBe("failed");
-		expect(rows[0]?.burrowId).toBeNull(); // warren-1f56: provider owns burrow-half rollback
-		expect(rows[0]?.burrowRunId).toBeNull();
+		expect(rows[0]?.sandboxId).toBeNull(); // warren-1f56: provider owns burrow-half rollback
+		expect(rows[0]?.sandboxRunId).toBeNull();
 		const methods = calls.map((c) => `${c.method} ${c.path}`);
-		expect(methods).toContain("DELETE /burrows/bur_aaaaaaaaaaaa");
+		expect(methods).toContain("DELETE /sandboxes/bur_aaaaaaaaaaaa");
 	});
 
 	test("propagates provider transport failures and leaves no warren row attached to a sandbox", async () => {
@@ -458,7 +458,7 @@ describe("spawnRun: rollback", () => {
 		const rows = await repos.runs.listAll();
 		expect(rows).toHaveLength(1);
 		expect(rows[0]?.state).toBe("failed");
-		expect(rows[0]?.burrowId).toBeNull();
+		expect(rows[0]?.sandboxId).toBeNull();
 	});
 });
 

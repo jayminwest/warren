@@ -31,8 +31,8 @@ interface RecordedCall {
 }
 
 interface PauseResumeFixture {
-	burrowId: string;
-	burrowRunId: string;
+	sandboxId: string;
+	sandboxRunId: string;
 }
 
 /**
@@ -45,8 +45,8 @@ interface PauseResumeFixture {
 function makePauseResumeClient(fix: PauseResumeFixture, calls: RecordedCall[]): FakeProvider {
 	return new FakeProvider(
 		{
-			sandboxId: fix.burrowId,
-			providerRunId: fix.burrowRunId,
+			sandboxId: fix.sandboxId,
+			providerRunId: fix.sandboxRunId,
 			statusValue: {
 				phase: "running",
 				exitCode: null,
@@ -72,8 +72,8 @@ describe("POST /runs/:id/steer and POST /runs/:id/cancel — HTTP handlers", () 
 	let projectId: string;
 
 	const fix: PauseResumeFixture = {
-		burrowId: "bur_aaaaaaaaaaaa",
-		burrowRunId: "run_zzzzzzzzzzzz",
+		sandboxId: "bur_aaaaaaaaaaaa",
+		sandboxRunId: "run_zzzzzzzzzzzz",
 	};
 
 	beforeEach(async () => {
@@ -107,8 +107,8 @@ describe("POST /runs/:id/steer and POST /runs/:id/cancel — HTTP handlers", () 
 			prompt: "p",
 			renderedAgentJson: {},
 			trigger: "manual",
-			burrowId: fix.burrowId,
-			burrowRunId: fix.burrowRunId,
+			sandboxId: fix.sandboxId,
+			sandboxRunId: fix.sandboxRunId,
 		});
 		await repos.runs.markRunning(run.id);
 		return run.id;
@@ -138,7 +138,7 @@ describe("POST /runs/:id/steer and POST /runs/:id/cancel — HTTP handlers", () 
 			expect(calls).toEqual([
 				{
 					method: "POST",
-					path: `/burrows/${fix.burrowId}/inbox`,
+					path: `/sandboxes/${fix.sandboxId}/inbox`,
 					body: { body: "stop and write tests" },
 				},
 			]);
@@ -173,7 +173,7 @@ describe("POST /runs/:id/steer and POST /runs/:id/cancel — HTTP handlers", () 
 			expect(calls).toEqual([
 				{
 					method: "POST",
-					path: `/burrows/${fix.burrowId}/inbox`,
+					path: `/sandboxes/${fix.sandboxId}/inbox`,
 					body: {
 						body: "remember to lint",
 						priority: "high",
@@ -269,18 +269,18 @@ describe("POST /runs/:id/steer and POST /runs/:id/cancel — HTTP handlers", () 
 			const body = (await res.json()) as {
 				state: string;
 				alreadyTerminal: boolean;
-				burrowRun: { id: string; state: string } | null;
+				sandboxRun: { id: string; state: string } | null;
 			};
 			expect(body.state).toBe("running");
 			expect(body.alreadyTerminal).toBe(false);
-			expect(body.burrowRun?.id).toBe(fix.burrowRunId);
-			expect(body.burrowRun?.state).toBe("running");
+			expect(body.sandboxRun?.id).toBe(fix.sandboxRunId);
+			expect(body.sandboxRun?.state).toBe("running");
 			// No reason key on the wire — `HttpRunsClient.cancel` omits the
 			// jsonBody entirely when `opts.reason` is undefined. The graceful
 			// cancel POST rides the seam; the status re-read follows it (warren-1f56).
 			expect(calls).toContainEqual({
 				method: "POST",
-				path: `/runs/${fix.burrowRunId}/cancel`,
+				path: `/runs/${fix.sandboxRunId}/cancel`,
 				body: undefined,
 			});
 		});
@@ -309,7 +309,7 @@ describe("POST /runs/:id/steer and POST /runs/:id/cancel — HTTP handlers", () 
 			expect(res.status).toBe(200);
 			expect(calls).toContainEqual({
 				method: "POST",
-				path: `/runs/${fix.burrowRunId}/cancel`,
+				path: `/runs/${fix.sandboxRunId}/cancel`,
 				body: { reason: "operator changed their mind" },
 			});
 		});
@@ -334,11 +334,11 @@ describe("POST /runs/:id/steer and POST /runs/:id/cancel — HTTP handlers", () 
 			const body = (await res.json()) as {
 				state: string;
 				alreadyTerminal: boolean;
-				burrowRun: unknown;
+				sandboxRun: unknown;
 			};
 			expect(body.state).toBe("succeeded");
 			expect(body.alreadyTerminal).toBe(true);
-			expect(body.burrowRun).toBeNull();
+			expect(body.sandboxRun).toBeNull();
 			// `cancelRun` short-circuits on a terminal row — no wire call.
 			expect(calls).toHaveLength(0);
 		});

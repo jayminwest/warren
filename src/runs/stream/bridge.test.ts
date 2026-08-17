@@ -11,14 +11,14 @@ describe("bridgeRunStream — event flow", () => {
 	let repos: Repos;
 	let broker: RunEventBroker;
 	let runId: string;
-	let burrowRunId: string;
+	let sandboxRunId: string;
 
 	beforeEach(async () => {
 		db = await openDatabase({ path: ":memory:" });
 		repos = createRepos(db);
 		const ids = await seedBridgeRun(repos);
 		runId = ids.runId;
-		burrowRunId = ids.burrowRunId;
+		sandboxRunId = ids.sandboxRunId;
 		broker = new RunEventBroker();
 	});
 
@@ -29,17 +29,17 @@ describe("bridgeRunStream — event flow", () => {
 	test("writes every event to the events table and returns a count", async () => {
 		const result = await bridgeRunStream({
 			runId,
-			burrowRunId,
+			sandboxRunId,
 			repos,
 			broker,
-			burrowId: "bur_aaaaaaaaaaaa",
+			sandboxId: "bur_aaaaaaaaaaaa",
 			runtimeProvider: makeProvider(),
-			source: source([evt(burrowRunId, 1), evt(burrowRunId, 2), evt(burrowRunId, 3)]),
+			source: source([evt(sandboxRunId, 1), evt(sandboxRunId, 2), evt(sandboxRunId, 3)]),
 		});
 		expect(result.written).toBe(3);
 		expect(result.skipped).toBe(0);
 		expect(result.errored).toBe(false);
-		const rows = (await repos.events.listByRun(runId)).map((e) => e.burrowEventSeq);
+		const rows = (await repos.events.listByRun(runId)).map((e) => e.sandboxEventSeq);
 		expect(rows).toEqual([1, 2, 3]);
 	});
 
@@ -48,21 +48,21 @@ describe("bridgeRunStream — event flow", () => {
 		// so the pi-native dialect fields are what extract.
 		const result = await bridgeRunStream({
 			runId,
-			burrowRunId,
+			sandboxRunId,
 			repos,
 			broker,
-			burrowId: "bur_aaaaaaaaaaaa",
+			sandboxId: "bur_aaaaaaaaaaaa",
 			runtimeProvider: makeProvider(),
 			source: source([
-				evt(burrowRunId, 1, {
+				evt(sandboxRunId, 1, {
 					kind: "tool_use",
 					payload: { toolName: "bash", command: "bun test", toolCallId: "c1" },
 				}),
-				evt(burrowRunId, 2, {
+				evt(sandboxRunId, 2, {
 					kind: "tool_result",
 					payload: { toolCallId: "c1", isError: true, result: "boom" },
 				}),
-				evt(burrowRunId, 3, { kind: "text" }),
+				evt(sandboxRunId, 3, { kind: "text" }),
 			]),
 		});
 		expect(result.written).toBe(3);
@@ -84,19 +84,19 @@ describe("bridgeRunStream — event flow", () => {
 		const consumed: number[] = [];
 		const consumer = (async () => {
 			for await (const row of sub) {
-				consumed.push(row.burrowEventSeq);
+				consumed.push(row.sandboxEventSeq);
 				if (consumed.length >= 2) break;
 			}
 		})();
 
 		await bridgeRunStream({
 			runId,
-			burrowRunId,
+			sandboxRunId,
 			repos,
 			broker,
-			burrowId: "bur_aaaaaaaaaaaa",
+			sandboxId: "bur_aaaaaaaaaaaa",
 			runtimeProvider: makeProvider(),
-			source: source([evt(burrowRunId, 1), evt(burrowRunId, 2)]),
+			source: source([evt(sandboxRunId, 1), evt(sandboxRunId, 2)]),
 		});
 		await consumer;
 
@@ -115,24 +115,24 @@ describe("bridgeRunStream — event flow", () => {
 		})();
 
 		const messageUpdate = (seq: number): StreamEventView =>
-			evt(burrowRunId, seq, {
+			evt(sandboxRunId, seq, {
 				kind: "telemetry",
 				stream: "system",
 				payload: { type: "message_update", message: { role: "assistant", content: [] } },
 			});
 		const result = await bridgeRunStream({
 			runId,
-			burrowRunId,
+			sandboxRunId,
 			repos,
 			broker,
-			burrowId: "bur_aaaaaaaaaaaa",
+			sandboxId: "bur_aaaaaaaaaaaa",
 			runtimeProvider: makeProvider(),
 			source: source([
-				evt(burrowRunId, 1),
+				evt(sandboxRunId, 1),
 				messageUpdate(2),
 				messageUpdate(3),
 				// Non-snapshot telemetry subtypes still persist.
-				evt(burrowRunId, 4, {
+				evt(sandboxRunId, 4, {
 					kind: "telemetry",
 					stream: "system",
 					payload: { type: "auto_retry_start" },
@@ -144,7 +144,7 @@ describe("bridgeRunStream — event flow", () => {
 		expect(result.written).toBe(2);
 		expect(result.skipped).toBe(0);
 		const rows = await repos.events.listByRun(runId);
-		expect(rows.map((e) => e.burrowEventSeq)).toEqual([1, 4]);
+		expect(rows.map((e) => e.sandboxEventSeq)).toEqual([1, 4]);
 		expect(published).toEqual(["text", "telemetry"]);
 	});
 
@@ -152,20 +152,20 @@ describe("bridgeRunStream — event flow", () => {
 		const stateChange =
 			(type: string) =>
 			(seq: number): StreamEventView =>
-				evt(burrowRunId, seq, {
+				evt(sandboxRunId, seq, {
 					kind: "state_change",
 					stream: "system",
 					payload: { type },
 				});
 		const result = await bridgeRunStream({
 			runId,
-			burrowRunId,
+			sandboxRunId,
 			repos,
 			broker,
-			burrowId: "bur_aaaaaaaaaaaa",
+			sandboxId: "bur_aaaaaaaaaaaa",
 			runtimeProvider: makeProvider(),
 			source: source([
-				evt(burrowRunId, 1),
+				evt(sandboxRunId, 1),
 				// Dropped: burrow's parser maps pi's unknown
 				// tool_execution_update into state_change.
 				stateChange("tool_execution_update")(2),
@@ -182,13 +182,13 @@ describe("bridgeRunStream — event flow", () => {
 		expect(result.written).toBe(5);
 		expect(result.skipped).toBe(0);
 		const rows = await repos.events.listByRun(runId);
-		expect(rows.map((e) => e.burrowEventSeq)).toEqual([1, 4, 5, 6, 7]);
+		expect(rows.map((e) => e.sandboxEventSeq)).toEqual([1, 4, 5, 6, 7]);
 	});
 
-	test("resume: skips events with seq <= MAX(burrow_event_seq)", async () => {
+	test("resume: skips events with seq <= MAX(sandbox_event_seq)", async () => {
 		await repos.events.append({
 			runId,
-			burrowEventSeq: 1,
+			sandboxEventSeq: 1,
 			ts: "2026-05-08T12:00:01.000Z",
 			kind: "text",
 			stream: "stdout",
@@ -196,7 +196,7 @@ describe("bridgeRunStream — event flow", () => {
 		});
 		await repos.events.append({
 			runId,
-			burrowEventSeq: 2,
+			sandboxEventSeq: 2,
 			ts: "2026-05-08T12:00:02.000Z",
 			kind: "text",
 			stream: "stdout",
@@ -205,34 +205,34 @@ describe("bridgeRunStream — event flow", () => {
 
 		const result = await bridgeRunStream({
 			runId,
-			burrowRunId,
+			sandboxRunId,
 			repos,
 			broker,
-			burrowId: "bur_aaaaaaaaaaaa",
+			sandboxId: "bur_aaaaaaaaaaaa",
 			runtimeProvider: makeProvider(),
 			source: source([
-				evt(burrowRunId, 1),
-				evt(burrowRunId, 2),
-				evt(burrowRunId, 3),
-				evt(burrowRunId, 4),
+				evt(sandboxRunId, 1),
+				evt(sandboxRunId, 2),
+				evt(sandboxRunId, 3),
+				evt(sandboxRunId, 4),
 			]),
 		});
 		expect(result.skipped).toBe(2);
 		expect(result.written).toBe(2);
-		const rows = (await repos.events.listByRun(runId)).map((e) => e.burrowEventSeq);
+		const rows = (await repos.events.listByRun(runId)).map((e) => e.sandboxEventSeq);
 		expect(rows).toEqual([1, 2, 3, 4]);
 	});
 
 	test("normalizes unknown stream tags to null", async () => {
 		await bridgeRunStream({
 			runId,
-			burrowRunId,
+			sandboxRunId,
 			repos,
 			broker,
-			burrowId: "bur_aaaaaaaaaaaa",
+			sandboxId: "bur_aaaaaaaaaaaa",
 			runtimeProvider: makeProvider(),
 			source: source([
-				evt(burrowRunId, 1, { stream: "weird" as unknown as StreamEventView["stream"] }),
+				evt(sandboxRunId, 1, { stream: "weird" as unknown as StreamEventView["stream"] }),
 			]),
 		});
 		const row = (await repos.events.listByRun(runId))[0];
@@ -242,16 +242,16 @@ describe("bridgeRunStream — event flow", () => {
 	test("persists the stream view's origin on the appended row (warren-5a07)", async () => {
 		await bridgeRunStream({
 			runId,
-			burrowRunId,
+			sandboxRunId,
 			repos,
 			broker,
-			burrowId: "bur_aaaaaaaaaaaa",
+			sandboxId: "bur_aaaaaaaaaaaa",
 			runtimeProvider: makeProvider(),
 			source: source([
-				evt(burrowRunId, 1, { origin: "agent" }),
+				evt(sandboxRunId, 1, { origin: "agent" }),
 				// Absent origin persists as NULL — unknown, never folded
 				// into a real bucket (mixed-semantics rule).
-				evt(burrowRunId, 2),
+				evt(sandboxRunId, 2),
 			]),
 		});
 		const rows = await repos.events.listByRun(runId);
@@ -263,16 +263,16 @@ describe("bridgeRunStream — event flow", () => {
 		const errs: object[] = [];
 		const errSource = (): AsyncIterable<StreamEventView> => ({
 			async *[Symbol.asyncIterator]() {
-				yield evt(burrowRunId, 1);
+				yield evt(sandboxRunId, 1);
 				throw new Error("burrow disconnected");
 			},
 		});
 		const result = await bridgeRunStream({
 			runId,
-			burrowRunId,
+			sandboxRunId,
 			repos,
 			broker,
-			burrowId: "bur_aaaaaaaaaaaa",
+			sandboxId: "bur_aaaaaaaaaaaa",
 			runtimeProvider: makeProvider(),
 			source: () => errSource(),
 			logger: {
@@ -292,7 +292,7 @@ describe("bridgeRunStream — event flow", () => {
 			async *[Symbol.asyncIterator]() {
 				let i = 1;
 				while (!signal.aborted) {
-					yield evt(burrowRunId, i++);
+					yield evt(sandboxRunId, i++);
 					await new Promise((r) => setTimeout(r, 1));
 				}
 			},
@@ -300,10 +300,10 @@ describe("bridgeRunStream — event flow", () => {
 
 		const promise = bridgeRunStream({
 			runId,
-			burrowRunId,
+			sandboxRunId,
 			repos,
 			broker,
-			burrowId: "bur_aaaaaaaaaaaa",
+			sandboxId: "bur_aaaaaaaaaaaa",
 			runtimeProvider: makeProvider(),
 			signal: ctrl.signal,
 			source: (s: AbortSignal) => infinite(s),
@@ -322,12 +322,12 @@ describe("bridgeRunStream — event flow", () => {
 
 		await bridgeRunStream({
 			runId,
-			burrowRunId,
+			sandboxRunId,
 			repos,
 			broker,
-			burrowId: "bur_aaaaaaaaaaaa",
+			sandboxId: "bur_aaaaaaaaaaaa",
 			runtimeProvider: makeProvider(),
-			source: source([evt(burrowRunId, 1)]),
+			source: source([evt(sandboxRunId, 1)]),
 		});
 
 		const after = await repos.runs.require(runId);
@@ -338,10 +338,10 @@ describe("bridgeRunStream — event flow", () => {
 	test("does not transition state when source yields no events", async () => {
 		await bridgeRunStream({
 			runId,
-			burrowRunId,
+			sandboxRunId,
 			repos,
 			broker,
-			burrowId: "bur_aaaaaaaaaaaa",
+			sandboxId: "bur_aaaaaaaaaaaa",
 			runtimeProvider: makeProvider(),
 			source: source([]),
 		});
@@ -357,12 +357,12 @@ describe("bridgeRunStream — event flow", () => {
 
 		await bridgeRunStream({
 			runId,
-			burrowRunId,
+			sandboxRunId,
 			repos,
 			broker,
-			burrowId: "bur_aaaaaaaaaaaa",
+			sandboxId: "bur_aaaaaaaaaaaa",
 			runtimeProvider: makeProvider(),
-			source: source([evt(burrowRunId, 1)]),
+			source: source([evt(sandboxRunId, 1)]),
 		});
 
 		const after = await repos.runs.require(runId);
@@ -374,16 +374,16 @@ describe("bridgeRunStream — event flow", () => {
 		const sub = broker.subscribe(runId);
 		const out: number[] = [];
 		const consumer = (async () => {
-			for await (const row of sub) out.push(row.burrowEventSeq);
+			for await (const row of sub) out.push(row.sandboxEventSeq);
 		})();
 		await bridgeRunStream({
 			runId,
-			burrowRunId,
+			sandboxRunId,
 			repos,
 			broker,
-			burrowId: "bur_aaaaaaaaaaaa",
+			sandboxId: "bur_aaaaaaaaaaaa",
 			runtimeProvider: makeProvider(),
-			source: source([evt(burrowRunId, 1)]),
+			source: source([evt(sandboxRunId, 1)]),
 		});
 		await consumer;
 		expect(out).toEqual([1]);

@@ -120,15 +120,15 @@ async function setup(
 		prompt: "work the seed",
 		renderedAgentJson: {},
 		trigger: opts.trigger ?? "manual",
-		burrowId: "bur_aaaaaaaaaaaa",
-		burrowRunId: "run_zzzzzzzzzzzz",
+		sandboxId: "bur_aaaaaaaaaaaa",
+		sandboxRunId: "run_zzzzzzzzzzzz",
 		...(opts.seedId !== null ? { seedId: opts.seedId ?? "warren-339d" } : {}),
 	});
 	await repos.runs.markRunning(run.id);
 	await repos.runs.finalize(run.id, "failed", new Date(), "provider_error");
 	await repos.events.append({
 		runId: run.id,
-		burrowEventSeq: 1,
+		sandboxEventSeq: 1,
 		ts: new Date().toISOString(),
 		kind: "reap.provider_error",
 		stream: "system",
@@ -189,8 +189,8 @@ function stubSpawn(repos: Repos, opts: { throw?: Error } = {}): SpawnStub {
 		newRunId = row.id;
 		return {
 			run: row,
-			burrow: { id: "bur_new", workspacePath: "" },
-			burrowRun: { id: "run_new" },
+			sandbox: { id: "bur_new", workspacePath: "" },
+			sandboxRun: { id: "run_new" },
 			agent: { name: input.agentName },
 		};
 	}) as unknown as typeof spawnRun;
@@ -304,7 +304,7 @@ describe("createProviderRetryLifecycleExtension", () => {
 		const fixture = await setup();
 		await fixture.repos.events.append({
 			runId: fixture.runId,
-			burrowEventSeq: 2,
+			sandboxEventSeq: 2,
 			ts: new Date().toISOString(),
 			kind: PROVIDER_RETRY_EVENTS.spawnRetry,
 			stream: "system",

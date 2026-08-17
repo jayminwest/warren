@@ -20,7 +20,7 @@ const silentLogger = {
 	debug() {},
 };
 
-function makeBurrowClient(): FakeProvider {
+function makeSandboxClient(): FakeProvider {
 	return new FakeProvider();
 }
 
@@ -30,12 +30,12 @@ async function depsFor(
 	db?: AnyWarrenDb,
 	previewMode: "subdomain" | "path" = "subdomain",
 ): Promise<{ deps: ServerDeps; bridges: BridgeRegistry }> {
-	const burrowClient = makeBurrowClient();
+	const sandboxClient = makeSandboxClient();
 	const broker = new RunEventBroker();
 	const bridges = createBridgeRegistry({
 		repos,
 		broker,
-		runtimeProvider: burrowClient,
+		runtimeProvider: sandboxClient,
 		bridge: async () => ({ written: 0, skipped: 0, errored: false }),
 	});
 	const previewExtras =
@@ -46,7 +46,7 @@ async function depsFor(
 				: { previewAuth, previewMode: "subdomain" as const, previewHost: HOST };
 	const deps: ServerDeps = {
 		repos,
-		runtimeProvider: burrowClient,
+		runtimeProvider: sandboxClient,
 		forge: new FakeForge(),
 		broker,
 		bridges,

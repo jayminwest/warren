@@ -133,14 +133,14 @@ describe("bridgeRunStream — RuntimeProvider seam (warren-c531)", () => {
 	let repos: Repos;
 	let broker: RunEventBroker;
 	let runId: string;
-	let burrowRunId: string;
+	let sandboxRunId: string;
 
 	beforeEach(async () => {
 		db = await openDatabase({ path: ":memory:" });
 		repos = createRepos(db);
 		const ids = await seedBridgeRun(repos);
 		runId = ids.runId;
-		burrowRunId = ids.burrowRunId;
+		sandboxRunId = ids.sandboxRunId;
 		broker = new RunEventBroker();
 	});
 
@@ -154,15 +154,15 @@ describe("bridgeRunStream — RuntimeProvider seam (warren-c531)", () => {
 		});
 		const result = await bridgeRunStream({
 			runId,
-			burrowRunId,
+			sandboxRunId,
 			repos,
 			broker,
-			burrowId: BURROW_ID,
+			sandboxId: BURROW_ID,
 			runtimeProvider: provider,
 		});
 		expect(result.written).toBe(3);
 		expect(result.errored).toBe(false);
-		const rows = (await repos.events.listByRun(runId)).map((e) => e.burrowEventSeq);
+		const rows = (await repos.events.listByRun(runId)).map((e) => e.sandboxEventSeq);
 		expect(rows).toEqual([1, 2, 3]);
 	});
 
@@ -179,17 +179,17 @@ describe("bridgeRunStream — RuntimeProvider seam (warren-c531)", () => {
 		});
 		const result = await bridgeRunStream({
 			runId,
-			burrowRunId,
+			sandboxRunId,
 			repos,
 			broker,
-			burrowId: BURROW_ID,
+			sandboxId: BURROW_ID,
 			runtimeProvider: provider,
 			runStatePollMs: 5,
 			runStateDrainMs: 10,
 		});
 		expect(result.terminalDetected).toEqual({ outcome: "succeeded" });
 		expect(result.errored).toBe(false);
-		expect(result.burrowRunMissing).toBeUndefined();
+		expect(result.sandboxRunMissing).toBeUndefined();
 	});
 
 	test("run-state poller surfaces oom_killed terminalReason as failureReason", async () => {
@@ -206,10 +206,10 @@ describe("bridgeRunStream — RuntimeProvider seam (warren-c531)", () => {
 		});
 		const result = await bridgeRunStream({
 			runId,
-			burrowRunId,
+			sandboxRunId,
 			repos,
 			broker,
-			burrowId: BURROW_ID,
+			sandboxId: BURROW_ID,
 			runtimeProvider: provider,
 			runStatePollMs: 5,
 			runStateDrainMs: 10,
@@ -236,10 +236,10 @@ describe("bridgeRunStream — RuntimeProvider seam (warren-c531)", () => {
 		const result = await within(
 			bridgeRunStream({
 				runId,
-				burrowRunId,
+				sandboxRunId,
 				repos,
 				broker,
-				burrowId: BURROW_ID,
+				sandboxId: BURROW_ID,
 				runtimeProvider: provider,
 				runStatePollMs: 5,
 				runStateDrainMs: 5,
@@ -253,7 +253,7 @@ describe("bridgeRunStream — RuntimeProvider seam (warren-c531)", () => {
 		expect(bridged.errored).toBe(false);
 	});
 
-	test("provider.streamEvents RuntimeRunNotFoundError → burrowRunMissing (lost run)", async () => {
+	test("provider.streamEvents RuntimeRunNotFoundError → sandboxRunMissing (lost run)", async () => {
 		const provider = makeFakeProvider({
 			streamEvents: () => ({
 				// biome-ignore lint/correctness/useYield: throws before yielding (a lost run).
@@ -272,13 +272,13 @@ describe("bridgeRunStream — RuntimeProvider seam (warren-c531)", () => {
 		});
 		const result = await bridgeRunStream({
 			runId,
-			burrowRunId,
+			sandboxRunId,
 			repos,
 			broker,
-			burrowId: BURROW_ID,
+			sandboxId: BURROW_ID,
 			runtimeProvider: provider,
 		});
-		expect(result.burrowRunMissing).toBe(true);
+		expect(result.sandboxRunMissing).toBe(true);
 		expect(result.errored).toBe(false);
 	});
 });

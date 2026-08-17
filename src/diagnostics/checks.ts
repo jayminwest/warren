@@ -10,7 +10,7 @@
  *
  *   - checks-sandbox.ts — bwrap bring-up and the canopy clone's
  *     existence + cleanliness. Burrow socket reachability lives in the
- *     allowlisted `src/runtime/local/diagnostics/burrow.ts` module
+ *     allowlisted `src/runtime/local/diagnostics/local-runtime.ts` module
  *     (warren-11cc), out of this diagnostics surface.
  *   - checks-config.ts — per-project `.warren/` parsing (fatal +
  *     deprecation), resolved DB dialect, live `SELECT 1` reachability.
@@ -22,7 +22,7 @@
  * Each check returns `{ name, ok, message?, hint? }`. Callers decide
  * how to render (newline-delimited JSON for doctor, one envelope for
  * readyz). The functions themselves are pure modulo their injected
- * `spawn` / `exists` / `burrowClient` seams — tests can stub all I/O.
+ * `spawn` / `exists` / `sandboxClient` seams — tests can stub all I/O.
  */
 
 export interface DiagnosticCheck {

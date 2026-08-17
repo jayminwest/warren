@@ -14,8 +14,8 @@ import { seededArtifactResetPaths } from "./seed-reset.ts";
 export async function runProviderFinalize(ctx: ReapPipelineContext): Promise<FinalizeResult> {
 	const handle: RunHandle = {
 		runId: ctx.run.id,
-		sandboxId: ctx.run.burrowId as string, // non-null in the pipeline branch (reapRun guards it)
-		providerRunId: ctx.run.burrowRunId ?? "",
+		sandboxId: ctx.run.sandboxId as string, // non-null in the pipeline branch (reapRun guards it)
+		providerRunId: ctx.run.sandboxRunId ?? "",
 	};
 	// Merges run unconditionally; COMMITS gate on project flags (warren-1f56).
 	const commit: string[] = [];

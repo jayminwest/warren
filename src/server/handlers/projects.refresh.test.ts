@@ -41,8 +41,8 @@ describe("POST /projects/:id/refresh — git fetch + hard reset", () => {
 	});
 
 	test("refreshes the clone, stamps lastFetchedAt + lastHeadSha, returns 200", async () => {
-		const burrowClient = new FakeProvider();
-		const deps = await depsFor(repos, burrowClient);
+		const sandboxClient = new FakeProvider();
+		const deps = await depsFor(repos, sandboxClient);
 		handle = startServer(deps, {
 			transport: { kind: "tcp", hostname: "127.0.0.1", port: 0 },
 			auth: NO_AUTH,
@@ -66,10 +66,10 @@ describe("POST /projects/:id/refresh — git fetch + hard reset", () => {
 	});
 
 	test("forwards an explicit ref into the refresh", async () => {
-		const burrowClient = new FakeProvider();
+		const sandboxClient = new FakeProvider();
 		const seenRefs: string[] = [];
 		const deps: ServerDeps = {
-			...(await depsFor(repos, burrowClient)),
+			...(await depsFor(repos, sandboxClient)),
 			spawn: async (cmd) => {
 				if (cmd[1] === "checkout") {
 					seenRefs.push(cmd[3] ?? "");
@@ -96,8 +96,8 @@ describe("POST /projects/:id/refresh — git fetch + hard reset", () => {
 	});
 
 	test("returns 404 for an unknown project id", async () => {
-		const burrowClient = new FakeProvider();
-		const deps = await depsFor(repos, burrowClient);
+		const sandboxClient = new FakeProvider();
+		const deps = await depsFor(repos, sandboxClient);
 		handle = startServer(deps, {
 			transport: { kind: "tcp", hostname: "127.0.0.1", port: 0 },
 			auth: NO_AUTH,
@@ -114,10 +114,10 @@ describe("POST /projects/:id/refresh — git fetch + hard reset", () => {
 	// through the boot forge (forge-contract.md §4) — the secret reaches git
 	// only as per-spawn GIT_CONFIG_* env, never held on a config object.
 	test("mints the fetch credential through the boot forge into the per-spawn env", async () => {
-		const burrowClient = new FakeProvider();
+		const sandboxClient = new FakeProvider();
 		const spawnEnvs: (Record<string, string | undefined> | undefined)[] = [];
 		const deps: ServerDeps = {
-			...(await depsFor(repos, burrowClient)),
+			...(await depsFor(repos, sandboxClient)),
 			forge: new GitHubForge({ token: "minted-secret" }),
 			spawn: async (cmd, opts) => {
 				spawnEnvs.push(opts.env);
@@ -145,12 +145,12 @@ describe("POST /projects/:id/refresh — git fetch + hard reset", () => {
 	});
 
 	test("a forge that does not own the clone URL spawns anonymous git", async () => {
-		const burrowClient = new FakeProvider();
+		const sandboxClient = new FakeProvider();
 		// depsFor wires FakeForge, which owns only fake:// URLs — the github.com
 		// project above parses to null, so no credential is minted.
 		const spawnEnvs: (Record<string, string | undefined> | undefined)[] = [];
 		const deps: ServerDeps = {
-			...(await depsFor(repos, burrowClient)),
+			...(await depsFor(repos, sandboxClient)),
 			spawn: async (cmd, opts) => {
 				spawnEnvs.push(opts.env);
 				if (cmd[1] === "rev-parse") {

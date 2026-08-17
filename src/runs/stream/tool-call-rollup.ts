@@ -63,7 +63,7 @@ export async function recordToolCallRollup(
 			const extraction = extractToolUse(runtime, row.payloadJson);
 			await repos.toolCalls.recordUse({
 				runId,
-				seq: row.burrowEventSeq,
+				seq: row.sandboxEventSeq,
 				ts: row.ts,
 				toolName: extraction.toolName,
 				command: extraction.command,
@@ -84,7 +84,7 @@ export async function recordToolCallRollup(
 		}
 	} catch (err) {
 		logger?.warn?.(
-			{ runId, seq: row.burrowEventSeq, err: err instanceof Error ? err.message : String(err) },
+			{ runId, seq: row.sandboxEventSeq, err: err instanceof Error ? err.message : String(err) },
 			"failed to record tool-calls rollup row",
 		);
 	}

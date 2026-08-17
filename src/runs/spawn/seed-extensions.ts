@@ -89,7 +89,7 @@ async function recordEvent(
 		const seq = ((await repos.events.maxSeqForRun(runId)) ?? 0) + 1;
 		await repos.events.append({
 			runId,
-			burrowEventSeq: seq,
+			sandboxEventSeq: seq,
 			ts: now.toISOString(),
 			kind,
 			stream: "system",

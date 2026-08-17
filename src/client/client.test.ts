@@ -66,7 +66,7 @@ describe("WarrenClient", () => {
 			observedUrl = String(input);
 			observedMethod = init?.method;
 			observedBody = init?.body as string;
-			return jsonResponse(201, { run: { id: "r1" }, burrow: { id: "b1" } });
+			return jsonResponse(201, { run: { id: "r1" }, sandbox: { id: "b1" } });
 		});
 
 		const client = new WarrenClient({
@@ -96,7 +96,7 @@ describe("WarrenClient", () => {
 		let fetched = false;
 		const stubFetch = stub(async () => {
 			fetched = true;
-			return jsonResponse(201, { run: { id: "r1" }, burrow: { id: "b1" } });
+			return jsonResponse(201, { run: { id: "r1" }, sandbox: { id: "b1" } });
 		});
 		const client = new WarrenClient({
 			config: { baseUrl: "https://warren.local" },
@@ -126,7 +126,7 @@ describe("WarrenClient", () => {
 			return jsonResponse(200, {
 				state: "cancelled",
 				alreadyTerminal: false,
-				burrowRun: { id: "b1", state: "cancelled" },
+				sandboxRun: { id: "b1", state: "cancelled" },
 			});
 		});
 
@@ -141,7 +141,7 @@ describe("WarrenClient", () => {
 		expect(JSON.parse(observedBody || "{}")).toEqual({ reason: "no longer needed" });
 		expect(res.state).toBe("cancelled");
 		expect(res.alreadyTerminal).toBe(false);
-		expect(res.burrowRun).toEqual({ id: "b1", state: "cancelled" });
+		expect(res.sandboxRun).toEqual({ id: "b1", state: "cancelled" });
 	});
 
 	test("cancelRun omits reason when not given and reports alreadyTerminal", async () => {
@@ -149,7 +149,7 @@ describe("WarrenClient", () => {
 
 		const stubFetch = stub(async (_input, init) => {
 			observedBody = init?.body as string;
-			return jsonResponse(200, { state: "succeeded", alreadyTerminal: true, burrowRun: null });
+			return jsonResponse(200, { state: "succeeded", alreadyTerminal: true, sandboxRun: null });
 		});
 
 		const client = new WarrenClient({
@@ -160,7 +160,7 @@ describe("WarrenClient", () => {
 		const res = await client.cancelRun("r2");
 		expect(JSON.parse(observedBody || "{}")).toEqual({});
 		expect(res.alreadyTerminal).toBe(true);
-		expect(res.burrowRun).toBeNull();
+		expect(res.sandboxRun).toBeNull();
 	});
 
 	test("performs version request", async () => {

@@ -88,7 +88,7 @@ export function createPlanRunSpawn(input: CreatePlanRunSpawnInput): CoordinatorS
 				: {}),
 			...(input.now !== undefined ? { now: input.now } : {}),
 		});
-		input.bridges.start(result.run.id, result.burrowRun.id, result.burrow.id);
+		input.bridges.start(result.run.id, result.sandboxRun.id, result.sandbox.id);
 		return { runId: result.run.id };
 	};
 }

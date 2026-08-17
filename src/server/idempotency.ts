@@ -34,7 +34,7 @@ export const DEFAULT_IDEMPOTENCY_TTL_MS = 10 * 60 * 1000;
  */
 export interface IdempotentDispatch {
 	readonly run: RunRow;
-	readonly burrow: { readonly id: string; readonly workspacePath: string };
+	readonly sandbox: { readonly id: string; readonly workspacePath: string };
 }
 
 interface Entry {

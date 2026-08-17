@@ -11,7 +11,7 @@
  * The `warren-a69a` shortcut: when burrow's cancel response carries a
  * terminal `state`, `cancelRun` calls `reapRun` inline so the warren row
  * finalizes without waiting for an external reap scheduler. That's the
- * happy path here — burrow accepts the cancel, returns burrowRun.state in
+ * happy path here — burrow accepts the cancel, returns sandboxRun.state in
  * {cancelled, succeeded, failed}, and warren transitions through reap to
  * the same terminal state.
  *
@@ -19,7 +19,7 @@
  *   1. Spawn a long-running stub run (`[sleep_ms=...]` in the prompt) and
  *      poll until it leaves `queued` so the cancel call doesn't race the
  *      bridge.
- *   2. POST /runs/:id/cancel → 200, alreadyTerminal=false, burrowRun
+ *   2. POST /runs/:id/cancel → 200, alreadyTerminal=false, sandboxRun
  *      non-null with a terminal state. The `state` field on the response
  *      is what `cancelRun` returned after reap; if it's already terminal
  *      we trust that. Otherwise we poll GET /runs/:id until state lands.
@@ -27,7 +27,7 @@
  *   4. The events log carries a `cancel.requested` audit event with
  *      payload.mode='forwarded' (mx-95f53b).
  *   5. Idempotency — a second POST /cancel returns 200 with
- *      alreadyTerminal=true and burrowRun=null (no second wire call).
+ *      alreadyTerminal=true and sandboxRun=null (no second wire call).
  *
  * Negative paths exercised: unknown run id → 404. (Empty / missing body
  * is allowed for cancel — the route accepts an empty body, see
@@ -44,8 +44,8 @@ interface ProjectRow {
 
 interface RunRow {
 	readonly id: string;
-	readonly burrowId: string | null;
-	readonly burrowRunId: string | null;
+	readonly sandboxId: string | null;
+	readonly sandboxRunId: string | null;
 	readonly state: string;
 	readonly endedAt: string | null;
 }
@@ -63,7 +63,7 @@ interface BurrowRun {
 interface CancelResponse {
 	readonly state: string;
 	readonly alreadyTerminal: boolean;
-	readonly burrowRun: BurrowRun | null;
+	readonly sandboxRun: BurrowRun | null;
 }
 
 interface EventRow {
@@ -105,8 +105,10 @@ export const scenario: Scenario = {
 		});
 		const run = spawn.run;
 		assertTrue(
-			typeof run.burrowRunId === "string" && run.burrowRunId !== null && run.burrowRunId.length > 0,
-			"spawn response missing burrowRunId — cancel path needs the burrow run id",
+			typeof run.sandboxRunId === "string" &&
+				run.sandboxRunId !== null &&
+				run.sandboxRunId.length > 0,
+			"spawn response missing sandboxRunId — cancel path needs the burrow run id",
 		);
 
 		// Wait for the bridge to mirror queued→running (mx-30a49a) so we
@@ -124,12 +126,12 @@ export const scenario: Scenario = {
 			{ body: { reason: "scenario-08 verification" } },
 		);
 		assertEqual(cancel.alreadyTerminal, false, "first cancel should NOT report alreadyTerminal");
-		if (cancel.burrowRun === null) {
-			throw new AcceptanceError("cancel response burrowRun is null on the forwarded path");
+		if (cancel.sandboxRun === null) {
+			throw new AcceptanceError("cancel response sandboxRun is null on the forwarded path");
 		}
 		assertTrue(
-			TERMINAL_STATES.has(cancel.burrowRun.state),
-			`burrowRun.state on cancel response must be terminal; got '${cancel.burrowRun.state}'`,
+			TERMINAL_STATES.has(cancel.sandboxRun.state),
+			`sandboxRun.state on cancel response must be terminal; got '${cancel.sandboxRun.state}'`,
 		);
 
 		// 2. Warren run row eventually reflects a terminal state. The
@@ -163,13 +165,13 @@ export const scenario: Scenario = {
 			"cancel.requested payload.reason mirrors request",
 		);
 		assertEqual(
-			payload.burrowRunId,
-			run.burrowRunId,
-			"cancel.requested payload.burrowRunId matches the spawn-time burrow run id",
+			payload.sandboxRunId,
+			run.sandboxRunId,
+			"cancel.requested payload.sandboxRunId matches the spawn-time burrow run id",
 		);
 
 		// 4. Idempotency — second cancel reports alreadyTerminal and no
-		//    second burrow wire call (burrowRun=null).
+		//    second burrow wire call (sandboxRun=null).
 		const idem = await http.expectJson<CancelResponse>(
 			"POST",
 			`/runs/${encodeURIComponent(run.id)}/cancel`,
@@ -183,9 +185,9 @@ export const scenario: Scenario = {
 		);
 		assertEqual(idem.state, "cancelled", "idempotent cancel reports state='cancelled'");
 		assertEqual(
-			idem.burrowRun,
+			idem.sandboxRun,
 			null,
-			"idempotent cancel does not re-call burrow; burrowRun is null",
+			"idempotent cancel does not re-call burrow; sandboxRun is null",
 		);
 
 		// 5. Unknown run id → 404. (Cancel without body is fine; cancel

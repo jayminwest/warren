@@ -44,7 +44,7 @@ import { depsFor, silentLogger, tcpUrl } from "./runs.test-helpers.ts";
 const TOKEN = "s3cret";
 
 /** A burrow client that 404s everything — no route here reaches it. */
-function inertBurrowClient(): FakeProvider {
+function inertSandboxClient(): FakeProvider {
 	return new FakeProvider();
 }
 
@@ -245,7 +245,7 @@ describe("public projections over the wire (warren-4f6c)", () => {
 		// warren-bd57: a resolved merge-watcher state so the landed-work
 		// fields flow through both projections below.
 		await repos.runs.setPrState(run.id, "merged", startedAt.toISOString());
-		handle = startServer(await depsFor(repos, inertBurrowClient()), {
+		handle = startServer(await depsFor(repos, inertSandboxClient()), {
 			transport: { kind: "tcp", hostname: "127.0.0.1", port: 0 },
 			auth: publicReadAuth(bearerAuth(TOKEN)),
 			logger: silentLogger,

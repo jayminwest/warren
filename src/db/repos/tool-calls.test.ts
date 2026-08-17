@@ -145,7 +145,7 @@ function suite(dialect: "sqlite" | "postgres"): void {
 			try {
 				await events.append({
 					runId,
-					burrowEventSeq: 1,
+					sandboxEventSeq: 1,
 					ts: "2026-08-10T00:00:00.000Z",
 					kind: "tool_use",
 					payload: {},

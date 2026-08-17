@@ -74,8 +74,8 @@ function suite(dialect: "sqlite" | "postgres"): void {
 				expect(row.state).toBe("queued");
 				expect(row.startedAt).toBeNull();
 				expect(row.endedAt).toBeNull();
-				expect(row.burrowId).toBeNull();
-				expect(row.burrowRunId).toBeNull();
+				expect(row.sandboxId).toBeNull();
+				expect(row.sandboxRunId).toBeNull();
 				// warren-0af9: created_at is the queued instant, stamped at insert.
 				expect(typeof row.createdAt).toBe("number");
 				expect(row.createdAt).toBeGreaterThan(0);
@@ -100,14 +100,14 @@ function suite(dialect: "sqlite" | "postgres"): void {
 			try {
 				const row = await spawn(repo, agentName, projectId);
 				const tagged = await repo.attachBurrow(row.id, {
-					burrowId: "bur_xxxxxxxxxxxx",
-					burrowRunId: "run_yyyyyyyyyyyy",
+					sandboxId: "bur_xxxxxxxxxxxx",
+					sandboxRunId: "run_yyyyyyyyyyyy",
 				});
-				expect(tagged.burrowId).toBe("bur_xxxxxxxxxxxx");
-				expect(tagged.burrowRunId).toBe("run_yyyyyyyyyyyy");
+				expect(tagged.sandboxId).toBe("bur_xxxxxxxxxxxx");
+				expect(tagged.sandboxRunId).toBe("run_yyyyyyyyyyyy");
 				expect(tagged.state).toBe("queued");
 				const reread = await repo.require(row.id);
-				expect(reread.burrowId).toBe("bur_xxxxxxxxxxxx");
+				expect(reread.sandboxId).toBe("bur_xxxxxxxxxxxx");
 			} finally {
 				await handle.close();
 			}
@@ -339,7 +339,7 @@ function suite(dialect: "sqlite" | "postgres"): void {
 				await repo.finalize(row.id, "failed", new Date(), "never_started");
 				await events.append({
 					runId: row.id,
-					burrowEventSeq: 1,
+					sandboxEventSeq: 1,
 					ts: "2026-05-08T13:00:00.000Z",
 					kind: "spawn_failed",
 					stream: "system",

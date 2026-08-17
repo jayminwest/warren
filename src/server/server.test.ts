@@ -21,7 +21,7 @@ const silentLogger = {
 	debug() {},
 };
 
-function makeBurrowClient(): FakeProvider {
+function makeSandboxClient(): FakeProvider {
 	return new FakeProvider();
 }
 
@@ -50,12 +50,12 @@ async function depsFor(
 		platform?: NodeJS.Platform;
 	} = {},
 ): Promise<ServerDeps> {
-	const burrowClient = makeBurrowClient();
+	const sandboxClient = makeSandboxClient();
 	const broker = new RunEventBroker();
 	return {
 		repos,
 		...(overrides.db !== undefined ? { db: overrides.db } : {}),
-		runtimeProvider: burrowClient,
+		runtimeProvider: sandboxClient,
 		forge: new FakeForge(),
 		broker,
 		bridges:
@@ -63,7 +63,7 @@ async function depsFor(
 			createBridgeRegistry({
 				repos,
 				broker,
-				runtimeProvider: burrowClient,
+				runtimeProvider: sandboxClient,
 				bridge: async () => ({ written: 0, skipped: 0, errored: false }),
 			}),
 		projectsConfig: { root: "/tmp/projects", gitBinary: "git" },

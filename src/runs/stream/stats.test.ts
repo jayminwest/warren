@@ -19,14 +19,14 @@ describe("bridgeRunStream — PiStatsClient (warren-a7dc)", () => {
 	let repos: Repos;
 	let broker: RunEventBroker;
 	let runId: string;
-	let burrowRunId: string;
+	let sandboxRunId: string;
 
 	beforeEach(async () => {
 		db = await openDatabase({ path: ":memory:" });
 		repos = createRepos(db);
 		const ids = await seedBridgeRun(repos);
 		runId = ids.runId;
-		burrowRunId = ids.burrowRunId;
+		sandboxRunId = ids.sandboxRunId;
 		broker = new RunEventBroker();
 	});
 
@@ -35,7 +35,7 @@ describe("bridgeRunStream — PiStatsClient (warren-a7dc)", () => {
 	});
 
 	test("snapshots baseline + terminal and persists the delta on agent_end", async () => {
-		const calls: { burrowRunId: string; phase: "baseline" | "terminal" }[] = [];
+		const calls: { sandboxRunId: string; phase: "baseline" | "terminal" }[] = [];
 		const responses: SessionStats[] = [
 			{
 				costUsd: 0.1,
@@ -53,24 +53,24 @@ describe("bridgeRunStream — PiStatsClient (warren-a7dc)", () => {
 			},
 		];
 		const piStats: PiStatsClient = {
-			async fetch(burrowRunId) {
+			async fetch(sandboxRunId) {
 				const idx = calls.length;
-				calls.push({ burrowRunId, phase: idx === 0 ? "baseline" : "terminal" });
+				calls.push({ sandboxRunId, phase: idx === 0 ? "baseline" : "terminal" });
 				return responses[idx] ?? null;
 			},
 		};
 		await bridgeRunStream({
 			runId,
-			burrowRunId,
+			sandboxRunId,
 			repos,
 			broker,
-			burrowId: "bur_aaaaaaaaaaaa",
+			sandboxId: "bur_aaaaaaaaaaaa",
 			runtimeProvider: makeProvider(),
 			piStats,
 			source: source([
-				evt(burrowRunId, 1, { kind: "agent_start" }),
-				evt(burrowRunId, 2, { kind: "text" }),
-				piAgentEnd(burrowRunId, 3),
+				evt(sandboxRunId, 1, { kind: "agent_start" }),
+				evt(sandboxRunId, 2, { kind: "text" }),
+				piAgentEnd(sandboxRunId, 3),
 			]),
 		});
 		expect(calls.map((c) => c.phase)).toEqual(["baseline", "terminal"]);
@@ -85,12 +85,12 @@ describe("bridgeRunStream — PiStatsClient (warren-a7dc)", () => {
 	test("undefined leaves cost columns null (parity with claude-code)", async () => {
 		await bridgeRunStream({
 			runId,
-			burrowRunId,
+			sandboxRunId,
 			repos,
 			broker,
-			burrowId: "bur_aaaaaaaaaaaa",
+			sandboxId: "bur_aaaaaaaaaaaa",
 			runtimeProvider: makeProvider(),
-			source: source([evt(burrowRunId, 1, { kind: "agent_start" }), piAgentEnd(burrowRunId, 2)]),
+			source: source([evt(sandboxRunId, 1, { kind: "agent_start" }), piAgentEnd(sandboxRunId, 2)]),
 		});
 		const after = await repos.runs.require(runId);
 		expect(after.costUsd).toBeNull();
@@ -113,16 +113,16 @@ describe("bridgeRunStream — PiStatsClient (warren-a7dc)", () => {
 		};
 		await bridgeRunStream({
 			runId,
-			burrowRunId,
+			sandboxRunId,
 			repos,
 			broker,
-			burrowId: "bur_aaaaaaaaaaaa",
+			sandboxId: "bur_aaaaaaaaaaaa",
 			runtimeProvider: makeProvider(),
 			piStats,
 			source: source([
-				evt(burrowRunId, 1, { kind: "agent_start" }),
-				piAgentEnd(burrowRunId, 2),
-				piAgentEnd(burrowRunId, 3),
+				evt(sandboxRunId, 1, { kind: "agent_start" }),
+				piAgentEnd(sandboxRunId, 2),
+				piAgentEnd(sandboxRunId, 3),
 			]),
 		});
 		expect(calls).toBe(2);
@@ -148,10 +148,10 @@ describe("bridgeRunStream — PiStatsClient (warren-a7dc)", () => {
 		};
 		await bridgeRunStream({
 			runId,
-			burrowRunId,
+			sandboxRunId,
 			repos,
 			broker,
-			burrowId: "bur_aaaaaaaaaaaa",
+			sandboxId: "bur_aaaaaaaaaaaa",
 			runtimeProvider: makeProvider(),
 			piStats,
 			logger: {
@@ -159,7 +159,7 @@ describe("bridgeRunStream — PiStatsClient (warren-a7dc)", () => {
 					warns.push(obj);
 				},
 			},
-			source: source([evt(burrowRunId, 1, { kind: "agent_start" }), piAgentEnd(burrowRunId, 2)]),
+			source: source([evt(sandboxRunId, 1, { kind: "agent_start" }), piAgentEnd(sandboxRunId, 2)]),
 		});
 		const after = await repos.runs.require(runId);
 		expect(after.costUsd).toBeNull();
@@ -186,13 +186,13 @@ describe("bridgeRunStream — PiStatsClient (warren-a7dc)", () => {
 		};
 		await bridgeRunStream({
 			runId,
-			burrowRunId,
+			sandboxRunId,
 			repos,
 			broker,
-			burrowId: "bur_aaaaaaaaaaaa",
+			sandboxId: "bur_aaaaaaaaaaaa",
 			runtimeProvider: makeProvider(),
 			piStats,
-			source: source([evt(burrowRunId, 1, { kind: "agent_start" }), piAgentEnd(burrowRunId, 2)]),
+			source: source([evt(sandboxRunId, 1, { kind: "agent_start" }), piAgentEnd(sandboxRunId, 2)]),
 		});
 		const after = await repos.runs.require(runId);
 		expect(after.costUsd).toBeCloseTo(0.3);
@@ -206,10 +206,10 @@ describe("bridgeRunStream — PiStatsClient (warren-a7dc)", () => {
 		// still snapshot before the bridge breaks.
 		await bridgeRunStream({
 			runId,
-			burrowRunId,
+			sandboxRunId,
 			repos,
 			broker,
-			burrowId: "bur_aaaaaaaaaaaa",
+			sandboxId: "bur_aaaaaaaaaaaa",
 			runtimeProvider: makeProvider(),
 			piStats: {
 				async fetch() {
@@ -218,7 +218,7 @@ describe("bridgeRunStream — PiStatsClient (warren-a7dc)", () => {
 				},
 			},
 			source: source([
-				evt(burrowRunId, 1, {
+				evt(sandboxRunId, 1, {
 					kind: "state_change",
 					stream: "system",
 					payload: { type: "result", subtype: "result", is_error: false },
@@ -234,14 +234,14 @@ describe("bridgeRunStream — in-stream pi cost extraction (warren-17a4)", () =>
 	let repos: Repos;
 	let broker: RunEventBroker;
 	let runId: string;
-	let burrowRunId: string;
+	let sandboxRunId: string;
 
 	beforeEach(async () => {
 		db = await openDatabase({ path: ":memory:" });
 		repos = createRepos(db);
 		const ids = await seedBridgeRun(repos);
 		runId = ids.runId;
-		burrowRunId = ids.burrowRunId;
+		sandboxRunId = ids.sandboxRunId;
 		broker = new RunEventBroker();
 	});
 
@@ -252,15 +252,15 @@ describe("bridgeRunStream — in-stream pi cost extraction (warren-17a4)", () =>
 	test("single-turn turn_end usage lands in cost/token columns at agent_end", async () => {
 		await bridgeRunStream({
 			runId,
-			burrowRunId,
+			sandboxRunId,
 			repos,
 			broker,
-			burrowId: "bur_aaaaaaaaaaaa",
+			sandboxId: "bur_aaaaaaaaaaaa",
 			runtimeProvider: makeProvider(),
 			source: source([
-				evt(burrowRunId, 1, { kind: "agent_start" }),
-				piTurnEnd(burrowRunId, 2, { input: 446, output: 44, costTotal: 0.000666 }),
-				piAgentEnd(burrowRunId, 3),
+				evt(sandboxRunId, 1, { kind: "agent_start" }),
+				piTurnEnd(sandboxRunId, 2, { input: 446, output: 44, costTotal: 0.000666 }),
+				piAgentEnd(sandboxRunId, 3),
 			]),
 		});
 		const after = await repos.runs.require(runId);
@@ -274,16 +274,16 @@ describe("bridgeRunStream — in-stream pi cost extraction (warren-17a4)", () =>
 	test("multi-turn turn_end usage accumulates across turns", async () => {
 		await bridgeRunStream({
 			runId,
-			burrowRunId,
+			sandboxRunId,
 			repos,
 			broker,
-			burrowId: "bur_aaaaaaaaaaaa",
+			sandboxId: "bur_aaaaaaaaaaaa",
 			runtimeProvider: makeProvider(),
 			source: source([
-				evt(burrowRunId, 1, { kind: "agent_start" }),
-				piTurnEnd(burrowRunId, 2, { input: 1658, output: 128, costTotal: 0.002298 }),
-				piTurnEnd(burrowRunId, 3, { input: 1812, output: 56, costTotal: 0.002092 }),
-				piAgentEnd(burrowRunId, 4),
+				evt(sandboxRunId, 1, { kind: "agent_start" }),
+				piTurnEnd(sandboxRunId, 2, { input: 1658, output: 128, costTotal: 0.002298 }),
+				piTurnEnd(sandboxRunId, 3, { input: 1812, output: 56, costTotal: 0.002092 }),
+				piAgentEnd(sandboxRunId, 4),
 			]),
 		});
 		const after = await repos.runs.require(runId);
@@ -295,12 +295,12 @@ describe("bridgeRunStream — in-stream pi cost extraction (warren-17a4)", () =>
 	test("no turn_end events leaves columns null (claude-code parity)", async () => {
 		await bridgeRunStream({
 			runId,
-			burrowRunId,
+			sandboxRunId,
 			repos,
 			broker,
-			burrowId: "bur_aaaaaaaaaaaa",
+			sandboxId: "bur_aaaaaaaaaaaa",
 			runtimeProvider: makeProvider(),
-			source: source([evt(burrowRunId, 1, { kind: "agent_start" }), piAgentEnd(burrowRunId, 2)]),
+			source: source([evt(sandboxRunId, 1, { kind: "agent_start" }), piAgentEnd(sandboxRunId, 2)]),
 		});
 		const after = await repos.runs.require(runId);
 		expect(after.costUsd).toBeNull();
@@ -321,15 +321,15 @@ describe("bridgeRunStream — in-stream pi cost extraction (warren-17a4)", () =>
 		};
 		await bridgeRunStream({
 			runId,
-			burrowRunId,
+			sandboxRunId,
 			repos,
 			broker,
-			burrowId: "bur_aaaaaaaaaaaa",
+			sandboxId: "bur_aaaaaaaaaaaa",
 			runtimeProvider: makeProvider(),
 			piStats,
 			source: source([
-				piTurnEnd(burrowRunId, 1, { input: 500, output: 200, costTotal: 0.123 }),
-				piAgentEnd(burrowRunId, 2),
+				piTurnEnd(sandboxRunId, 1, { input: 500, output: 200, costTotal: 0.123 }),
+				piAgentEnd(sandboxRunId, 2),
 			]),
 		});
 		const after = await repos.runs.require(runId);
@@ -340,14 +340,14 @@ describe("bridgeRunStream — in-stream pi cost extraction (warren-17a4)", () =>
 	test("terminalDetected via claude-code result still persists pi usage if observed", async () => {
 		await bridgeRunStream({
 			runId,
-			burrowRunId,
+			sandboxRunId,
 			repos,
 			broker,
-			burrowId: "bur_aaaaaaaaaaaa",
+			sandboxId: "bur_aaaaaaaaaaaa",
 			runtimeProvider: makeProvider(),
 			source: source([
-				piTurnEnd(burrowRunId, 1, { input: 100, output: 25, costTotal: 0.001 }),
-				evt(burrowRunId, 2, {
+				piTurnEnd(sandboxRunId, 1, { input: 100, output: 25, costTotal: 0.001 }),
+				evt(sandboxRunId, 2, {
 					kind: "state_change",
 					stream: "system",
 					payload: { type: "result", subtype: "result", is_error: false },
@@ -362,18 +362,18 @@ describe("bridgeRunStream — in-stream pi cost extraction (warren-17a4)", () =>
 	test("turn_end with malformed usage is ignored (no row update)", async () => {
 		await bridgeRunStream({
 			runId,
-			burrowRunId,
+			sandboxRunId,
 			repos,
 			broker,
-			burrowId: "bur_aaaaaaaaaaaa",
+			sandboxId: "bur_aaaaaaaaaaaa",
 			runtimeProvider: makeProvider(),
 			source: source([
-				evt(burrowRunId, 1, {
+				evt(sandboxRunId, 1, {
 					kind: "state_change",
 					stream: "system",
 					payload: { type: "turn_end", message: { role: "assistant" } },
 				}),
-				piAgentEnd(burrowRunId, 2),
+				piAgentEnd(sandboxRunId, 2),
 			]),
 		});
 		const after = await repos.runs.require(runId);
@@ -387,14 +387,14 @@ describe("bridgeRunStream — in-stream claude cost extraction (warren-87f9)", (
 	let repos: Repos;
 	let broker: RunEventBroker;
 	let runId: string;
-	let burrowRunId: string;
+	let sandboxRunId: string;
 
 	beforeEach(async () => {
 		db = await openDatabase({ path: ":memory:" });
 		repos = createRepos(db);
 		const ids = await seedBridgeRun(repos);
 		runId = ids.runId;
-		burrowRunId = ids.burrowRunId;
+		sandboxRunId = ids.sandboxRunId;
 		broker = new RunEventBroker();
 	});
 
@@ -405,14 +405,14 @@ describe("bridgeRunStream — in-stream claude cost extraction (warren-87f9)", (
 	test("result envelope lands in cost/token columns at terminal", async () => {
 		await bridgeRunStream({
 			runId,
-			burrowRunId,
+			sandboxRunId,
 			repos,
 			broker,
-			burrowId: "bur_aaaaaaaaaaaa",
+			sandboxId: "bur_aaaaaaaaaaaa",
 			runtimeProvider: makeProvider(),
 			source: source([
-				evt(burrowRunId, 1, { kind: "agent_start" }),
-				claudeResult(burrowRunId, 2, {
+				evt(sandboxRunId, 1, { kind: "agent_start" }),
+				claudeResult(sandboxRunId, 2, {
 					inputTokens: 1200,
 					outputTokens: 400,
 					cacheReadInputTokens: 5000,
@@ -432,14 +432,14 @@ describe("bridgeRunStream — in-stream claude cost extraction (warren-87f9)", (
 	test("result with no total_cost_usd / usage leaves columns null", async () => {
 		await bridgeRunStream({
 			runId,
-			burrowRunId,
+			sandboxRunId,
 			repos,
 			broker,
-			burrowId: "bur_aaaaaaaaaaaa",
+			sandboxId: "bur_aaaaaaaaaaaa",
 			runtimeProvider: makeProvider(),
 			source: source([
-				evt(burrowRunId, 1, { kind: "agent_start" }),
-				evt(burrowRunId, 2, {
+				evt(sandboxRunId, 1, { kind: "agent_start" }),
+				evt(sandboxRunId, 2, {
 					kind: "state_change",
 					stream: "system",
 					payload: { type: "result", subtype: "success", is_error: false },
@@ -454,13 +454,13 @@ describe("bridgeRunStream — in-stream claude cost extraction (warren-87f9)", (
 	test("failed result (is_error=true) still records cost", async () => {
 		await bridgeRunStream({
 			runId,
-			burrowRunId,
+			sandboxRunId,
 			repos,
 			broker,
-			burrowId: "bur_aaaaaaaaaaaa",
+			sandboxId: "bur_aaaaaaaaaaaa",
 			runtimeProvider: makeProvider(),
 			source: source([
-				claudeResult(burrowRunId, 1, {
+				claudeResult(sandboxRunId, 1, {
 					inputTokens: 50,
 					outputTokens: 10,
 					totalCostUsd: 0.0009,
@@ -476,14 +476,14 @@ describe("bridgeRunStream — in-stream claude cost extraction (warren-87f9)", (
 	test("pi turn_end + claude result — pi wins (parity)", async () => {
 		await bridgeRunStream({
 			runId,
-			burrowRunId,
+			sandboxRunId,
 			repos,
 			broker,
-			burrowId: "bur_aaaaaaaaaaaa",
+			sandboxId: "bur_aaaaaaaaaaaa",
 			runtimeProvider: makeProvider(),
 			source: source([
-				piTurnEnd(burrowRunId, 1, { input: 100, output: 25, costTotal: 0.005 }),
-				claudeResult(burrowRunId, 2, {
+				piTurnEnd(sandboxRunId, 1, { input: 100, output: 25, costTotal: 0.005 }),
+				claudeResult(sandboxRunId, 2, {
 					inputTokens: 999,
 					outputTokens: 999,
 					totalCostUsd: 9.99,

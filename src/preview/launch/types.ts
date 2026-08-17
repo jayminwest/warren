@@ -18,7 +18,7 @@ import type { PreviewPortAllocator } from "../port-allocator.ts";
 
 export interface PreviewSidecarsClient {
 	create(input: {
-		readonly burrowId: string;
+		readonly sandboxId: string;
 		readonly command: readonly string[];
 		readonly env?: Record<string, string>;
 		readonly cwd?: string;
@@ -26,11 +26,11 @@ export interface PreviewSidecarsClient {
 		readonly readinessPath?: string;
 	}): Promise<{ readonly id: string; readonly state: string }>;
 	logs(
-		burrowId: string,
+		sandboxId: string,
 		sidecarId: string,
 		opts?: { tailBytes?: number },
 	): Promise<{ readonly stdout: string; readonly stderr: string }>;
-	delete(burrowId: string, sidecarId: string): Promise<void>;
+	delete(sandboxId: string, sidecarId: string): Promise<void>;
 	/**
 	 * Observe sidecar lifecycle state (warren-d9e7). Used by the setup
 	 * pre-step to poll for completion before the dev-server sidecar
@@ -39,7 +39,7 @@ export interface PreviewSidecarsClient {
 	 * (CLAUDE.md "Relationship to burrow").
 	 */
 	get(
-		burrowId: string,
+		sandboxId: string,
 		sidecarId: string,
 	): Promise<{ readonly state: string; readonly exitCode: number | null }>;
 }
@@ -59,7 +59,7 @@ export type PreviewSidecarResolver = (sandboxId: string) => Promise<PreviewSidec
 
 export interface LaunchPreviewInput {
 	readonly runId: string;
-	readonly burrowId: string;
+	readonly sandboxId: string;
 	readonly previewConfig: ServerPreviewConfig;
 	readonly repos: Repos;
 	readonly allocator: PreviewPortAllocator;

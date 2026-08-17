@@ -10,7 +10,7 @@
  * inner iterator — reproducing exactly what burrow's shared-signal fetch did
  * before the seam hid the signal. A transport error / neutralized 404 from
  * `.next()` propagates unchanged so the bridge's catch classifies it (errored /
- * burrowRunMissing).
+ * sandboxRunMissing).
  *
  * ## Bounded teardown (warren-c433)
  * On abort the `finally` calls `iterator.return()` to tear the provider stream

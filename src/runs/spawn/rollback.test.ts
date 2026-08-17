@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { WarrenDb } from "../../db/client.ts";
 import type { Repos } from "../../db/repos/index.ts";
 import { spawnRun } from "./index.ts";
-import { makeBurrowClient, makeProvider, setupRepos } from "./test-helpers.ts";
+import { makeProvider, makeSandboxClient, setupRepos } from "./test-helpers.ts";
 
 /**
  * Durable spawn-failure trail (warren-fc6e / pl-f700 step 2): a spawn that
@@ -26,9 +26,9 @@ describe("spawnRun: durable spawn failure", () => {
 		(await repos.events.listByRun(runId)).find((e) => e.kind === "spawn_failed");
 
 	test("records failure_reason + spawn_failed event when burrow rejects the seed payload", async () => {
-		const { client } = makeBurrowClient({
-			burrowsUpStatus: 422,
-			burrowsUpBody: {
+		const { client } = makeSandboxClient({
+			sandboxUpStatus: 422,
+			sandboxUpBody: {
 				error: { code: "validation_error", message: "seed file rejected: path escapes root" },
 			},
 		});
@@ -48,15 +48,15 @@ describe("spawnRun: durable spawn failure", () => {
 
 		const ev = await spawnFailedEvent(row?.id ?? "");
 		expect(ev?.stream).toBe("system");
-		const payload = ev?.payloadJson as { step?: string; message?: string; burrowId?: string };
+		const payload = ev?.payloadJson as { step?: string; message?: string; sandboxId?: string };
 		expect(payload.step).toBe("spawn");
 		expect(payload.message).toContain("seed file rejected");
 		// No burrow id was ever observed (rollback before attach), so it's elided.
-		expect(payload.burrowId).toBeUndefined();
+		expect(payload.sandboxId).toBeUndefined();
 	});
 
 	test("records a spawn_failed event when dispatch fails (burrow id owned by the provider)", async () => {
-		const { client } = makeBurrowClient({
+		const { client } = makeSandboxClient({
 			runsCreateStatus: 500,
 			runsCreateBody: { error: { code: "internal_error", message: "boom" } },
 		});
@@ -76,13 +76,13 @@ describe("spawnRun: durable spawn failure", () => {
 
 		const payload = (await spawnFailedEvent(row?.id ?? ""))?.payloadJson as {
 			message?: string;
-			burrowId?: string;
+			sandboxId?: string;
 		};
 		expect(payload.message).toContain("boom");
 		// warren-1f56: `provider.create` collapses provision+dispatch and owns the
 		// burrow-half rollback, so the domain never learns the burrow id on a
 		// dispatch-step failure — the event elides it (the provider already
 		// destroyed the burrow, so there is nothing stranded to reference).
-		expect(payload.burrowId).toBeUndefined();
+		expect(payload.sandboxId).toBeUndefined();
 	});
 });

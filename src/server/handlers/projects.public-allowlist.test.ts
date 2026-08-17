@@ -33,7 +33,7 @@ interface ErrorBody {
 	readonly error: { readonly code: string; readonly message: string };
 }
 
-function inertBurrowClient(): FakeProvider {
+function inertSandboxClient(): FakeProvider {
 	return new FakeProvider();
 }
 
@@ -45,7 +45,7 @@ describe("POST /projects org allowlist", () => {
 
 	/** Start a server whose projects root is the temp dir. `undefined` ⇒ token mode. */
 	async function serve(allowlist: PublicAllowlist | undefined): Promise<void> {
-		const base = await depsFor(repos, inertBurrowClient());
+		const base = await depsFor(repos, inertSandboxClient());
 		const deps: ServerDeps = {
 			...base,
 			projectsConfig: { root: projectsRoot, gitBinary: "git" },

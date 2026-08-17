@@ -80,7 +80,7 @@ export async function launchPreview(input: LaunchPreviewInput): Promise<LaunchPr
 	let sidecarId: string;
 	try {
 		const created = await input.sidecars.create({
-			burrowId: input.burrowId,
+			sandboxId: input.sandboxId,
 			command: ["sh", "-c", input.previewConfig.command],
 			env: defaultSidecarEnv(input.previewConfig.port),
 			inboundPortForward: { hostPort: port, sandboxPort: input.previewConfig.port },
@@ -129,8 +129,8 @@ export async function launchPreview(input: LaunchPreviewInput): Promise<LaunchPr
 		}
 		// probe === "not_connected" → keep waiting under the connect budget.
 		if (now().getTime() >= connectDeadline) {
-			const failureTail = await captureFailureTail(input.sidecars, input.burrowId, sidecarId);
-			await safeDeleteSidecar(input.sidecars, input.burrowId, sidecarId);
+			const failureTail = await captureFailureTail(input.sidecars, input.sandboxId, sidecarId);
+			await safeDeleteSidecar(input.sidecars, input.sandboxId, sidecarId);
 			const message = `phase=connect: preview port did not accept a TCP connection within ${connectTimeoutMs}ms (probed ${probeUrl})`;
 			await input.repos.runs.attachPreview(input.runId, {
 				previewState: "failed",
@@ -164,8 +164,8 @@ export async function launchPreview(input: LaunchPreviewInput): Promise<LaunchPr
 		// disconnects mid-restart (e.g. HMR rebuilds). We keep probing under
 		// the readiness budget either way.
 		if (now().getTime() >= readinessDeadline) {
-			const failureTail = await captureFailureTail(input.sidecars, input.burrowId, sidecarId);
-			await safeDeleteSidecar(input.sidecars, input.burrowId, sidecarId);
+			const failureTail = await captureFailureTail(input.sidecars, input.sandboxId, sidecarId);
+			await safeDeleteSidecar(input.sidecars, input.sandboxId, sidecarId);
 			const message = `phase=readiness: readiness probe did not return 2xx within ${timeoutMs}ms (probed ${probeUrl})`;
 			await input.repos.runs.attachPreview(input.runId, {
 				previewState: "failed",

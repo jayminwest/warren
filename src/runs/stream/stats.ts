@@ -23,19 +23,19 @@ import type { BridgeLogger, PiStatsClient, SessionStats } from "./types.ts";
  */
 export async function snapshotStats(
 	client: PiStatsClient,
-	burrowRunId: string,
+	sandboxRunId: string,
 	signal: AbortSignal,
 	phase: "baseline" | "terminal",
 	runId: string,
 	logger: BridgeLogger | undefined,
 ): Promise<SessionStats | null> {
 	try {
-		return await client.fetch(burrowRunId, signal);
+		return await client.fetch(sandboxRunId, signal);
 	} catch (err) {
 		logger?.warn?.(
 			{
 				runId,
-				burrowRunId,
+				sandboxRunId,
 				phase,
 				err: err instanceof Error ? err.message : String(err),
 			},
@@ -47,7 +47,7 @@ export async function snapshotStats(
 
 export interface PersistPiStatsInput {
 	readonly piStats: PiStatsClient;
-	readonly burrowRunId: string;
+	readonly sandboxRunId: string;
 	readonly runId: string;
 	readonly repos: Repos;
 	readonly baseline: Promise<SessionStats | null> | undefined;
@@ -67,7 +67,7 @@ export interface PersistPiStatsInput {
 export async function persistPiStatsDelta(input: PersistPiStatsInput): Promise<void> {
 	const terminal = await snapshotStats(
 		input.piStats,
-		input.burrowRunId,
+		input.sandboxRunId,
 		input.signal,
 		"terminal",
 		input.runId,
@@ -94,7 +94,7 @@ export async function persistPiStatsDelta(input: PersistPiStatsInput): Promise<v
 		input.logger?.info?.(
 			{
 				runId: input.runId,
-				burrowRunId: input.burrowRunId,
+				sandboxRunId: input.sandboxRunId,
 				costUsd: delta.costUsd,
 				tokensInput: delta.tokensInput,
 				tokensOutput: delta.tokensOutput,
@@ -105,7 +105,7 @@ export async function persistPiStatsDelta(input: PersistPiStatsInput): Promise<v
 		input.logger?.warn?.(
 			{
 				runId: input.runId,
-				burrowRunId: input.burrowRunId,
+				sandboxRunId: input.sandboxRunId,
 				err: err instanceof Error ? err.message : String(err),
 			},
 			"attachStats threw; cost columns may be inconsistent",
@@ -117,7 +117,7 @@ export interface PersistInStreamUsageInput {
 	readonly usage: SessionStatsAccumulator;
 	readonly runtime: "pi" | "claude";
 	readonly runId: string;
-	readonly burrowRunId: string;
+	readonly sandboxRunId: string;
 	readonly repos: Repos;
 	readonly logger?: BridgeLogger;
 }
@@ -143,7 +143,7 @@ export async function persistInStreamUsage(input: PersistInStreamUsageInput): Pr
 		input.logger?.info?.(
 			{
 				runId: input.runId,
-				burrowRunId: input.burrowRunId,
+				sandboxRunId: input.sandboxRunId,
 				runtime: input.runtime,
 				costUsd: input.usage.costUsd,
 				tokensInput: input.usage.tokensInput,
@@ -155,7 +155,7 @@ export async function persistInStreamUsage(input: PersistInStreamUsageInput): Pr
 		input.logger?.warn?.(
 			{
 				runId: input.runId,
-				burrowRunId: input.burrowRunId,
+				sandboxRunId: input.sandboxRunId,
 				runtime: input.runtime,
 				err: err instanceof Error ? err.message : String(err),
 			},

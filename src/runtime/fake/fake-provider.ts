@@ -1,7 +1,7 @@
 /**
  * Test-only `RuntimeProvider` fake (warren-ea0a, plan pl-3007). The suite
  * used to drive the retired legacy burrow-backed LocalProvider mode through
- * stubbed burrow HTTP (`makeBurrowClient` helpers over `src/burrow-client/`).
+ * stubbed burrow HTTP (`makeSandboxClient` helpers over `src/burrow-client/`).
  * With the facade and the `@os-eco/burrow-cli` dependency gone, this module
  * is the semantic replacement: a contract-typed provider with plan-driven
  * canned behavior.
@@ -53,11 +53,11 @@ export interface FakeProviderPlan {
 	/** Workspace `workspaceInfo`/`finalize` resolve; `branch` rides along. */
 	readonly workspacePath?: string | null;
 	readonly branch?: string;
-	/** `create` records `POST /burrows` then throws this (provision failure). */
+	/** `create` records `POST /sandboxes` then throws this (provision failure). */
 	readonly provisionError?: unknown;
 	/**
 	 * `create` records both calls plus the legacy self-rollback
-	 * (`DELETE /burrows/:id`) then throws this (dispatch failure).
+	 * (`DELETE /sandboxes/:id`) then throws this (dispatch failure).
 	 */
 	readonly dispatchError?: unknown;
 	/** Events `streamEvents` yields in order before ending. */
@@ -85,7 +85,7 @@ export interface FakeProviderPlan {
 
 const DEFAULT_SANDBOX_ID = "bur_aaaaaaaaaaaa";
 const DEFAULT_PROVIDER_RUN_ID = "run_zzzzzzzzzzzz";
-const DEFAULT_WORKSPACE_PATH = "/data/burrow/ws";
+const DEFAULT_WORKSPACE_PATH = "/data/sandbox/ws";
 const DEFAULT_BRANCH = "agent/refactor-bot/run-1";
 const BUN_INSTALL_CACHE_DIR = "/tmp/bun-install-cache";
 
@@ -125,11 +125,11 @@ export class FakeProvider implements RuntimeProvider {
 	/** Provision + dispatch, recording the legacy two-call shape. */
 	create(spec: RunSpec): Promise<RunHandle> {
 		const env = composeSandboxEnv(spec.env, this.serverEnv);
-		this.calls.push({ method: "POST", path: "/burrows", body: burrowsUpBody(spec, env) });
+		this.calls.push({ method: "POST", path: "/sandboxes", body: sandboxUpBody(spec, env) });
 		if (this.plan.provisionError !== undefined) throw this.plan.provisionError;
 		this.calls.push({
 			method: "POST",
-			path: `/burrows/${this.sandboxId}/runs`,
+			path: `/sandboxes/${this.sandboxId}/runs`,
 			body: {
 				agentId: spec.runtimeId,
 				prompt: spec.prompt,
@@ -139,7 +139,7 @@ export class FakeProvider implements RuntimeProvider {
 		if (this.plan.dispatchError !== undefined) {
 			// The legacy mode owned the sandbox-half rollback on a partial
 			// failure: best-effort destroy, then rethrow.
-			this.calls.push({ method: "DELETE", path: `/burrows/${this.sandboxId}`, body: undefined });
+			this.calls.push({ method: "DELETE", path: `/sandboxes/${this.sandboxId}`, body: undefined });
 			throw this.plan.dispatchError;
 		}
 		return Promise.resolve({
@@ -169,7 +169,7 @@ export class FakeProvider implements RuntimeProvider {
 	sendMessage(handle: RunHandle, msg: OutboundMessage): Promise<Message> {
 		this.calls.push({
 			method: "POST",
-			path: `/burrows/${handle.sandboxId}/inbox`,
+			path: `/sandboxes/${handle.sandboxId}/inbox`,
 			body: msg,
 		});
 		if (this.plan.sendMessageError !== undefined) throw this.plan.sendMessageError;
@@ -229,7 +229,7 @@ export class FakeProvider implements RuntimeProvider {
 	}
 
 	terminate(handle: RunHandle): Promise<TeardownResult> {
-		this.calls.push({ method: "DELETE", path: `/burrows/${handle.sandboxId}`, body: undefined });
+		this.calls.push({ method: "DELETE", path: `/sandboxes/${handle.sandboxId}`, body: undefined });
 		return Promise.resolve({
 			archived: false,
 			deletedEvents: 0,
@@ -240,7 +240,7 @@ export class FakeProvider implements RuntimeProvider {
 	}
 }
 
-/** Convenience constructor mirroring the old `makeBurrowClient` helpers. */
+/** Convenience constructor mirroring the old `makeSandboxClient` helpers. */
 export function makeFakeProvider(plan: FakeProviderPlan = {}, serverEnv?: EnvLike): FakeProvider {
 	return new FakeProvider(plan, serverEnv);
 }
@@ -285,8 +285,8 @@ function composeSandboxEnv(
 	return env;
 }
 
-/** The recorded `POST /burrows` body — the legacy provision mapping. */
-function burrowsUpBody(spec: RunSpec, env: Record<string, string>): Record<string, unknown> {
+/** The recorded `POST /sandboxes` body — the legacy provision mapping. */
+function sandboxUpBody(spec: RunSpec, env: Record<string, string>): Record<string, unknown> {
 	if (spec.hostClonePathHint === undefined || spec.hostClonePathHint === "") {
 		throw new RuntimeProviderError(
 			"LocalProvider.create requires spec.hostClonePathHint (the host clone projectRoot)",

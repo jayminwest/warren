@@ -96,7 +96,7 @@ export async function runRun(
 				runId,
 				agent: spawned.run.agentName,
 				project: spawned.run.projectId,
-				burrowId: spawned.burrow.id,
+				sandboxId: spawned.sandbox.id,
 			});
 		} else if (mode === "pretty") {
 			context.stdio.stdout.write(

@@ -178,8 +178,8 @@ describe("redacted wire fields render on presence (warren-f53e)", () => {
 	test("the fields the public projection drops are optional in the row types", () => {
 		// `undefined !== null` is TRUE — the exact shape that blanked every
 		// run detail page in warren-1f12. Optional forces a presence test.
-		expect(types).toMatch(/burrowId\?: string \| null/);
-		expect(types).toMatch(/burrowRunId\?: string \| null/);
+		expect(types).toMatch(/sandboxId\?: string \| null/);
+		expect(types).toMatch(/sandboxRunId\?: string \| null/);
 		expect(types).toMatch(/previewFailureMessage\?: string \| null/);
 		expect(types).toMatch(/localPath\?: string/);
 		// `AgentRow` is canonical in `src/core/wire.ts` (warren-4253) and
@@ -193,10 +193,10 @@ describe("redacted wire fields render on presence (warren-f53e)", () => {
 	});
 
 	test("the burrow meta cards don't render as two empty '—' cards", () => {
-		expect(runDetail).toMatch(/\{r\.burrowId \? \(/);
-		expect(runDetail).toMatch(/\{r\.burrowRunId \? \(/);
-		expect(runDetail).not.toMatch(/burrowId \?\? "—"/);
-		expect(runDetail).not.toMatch(/burrowRunId \?\? "—"/);
+		expect(runDetail).toMatch(/\{r\.sandboxId \? \(/);
+		expect(runDetail).toMatch(/\{r\.sandboxRunId \? \(/);
+		expect(runDetail).not.toMatch(/sandboxId \?\? "—"/);
+		expect(runDetail).not.toMatch(/sandboxRunId \?\? "—"/);
 	});
 
 	test("the runs list renders its all-time cost tile on presence", () => {

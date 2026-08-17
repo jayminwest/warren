@@ -25,7 +25,7 @@ describe("two-phase probe loop (warren-9b15)", () => {
 	let repos: Repos;
 	let allocator: PreviewPortAllocator;
 	let runId: string;
-	let burrowId: string;
+	let sandboxId: string;
 
 	beforeEach(async () => {
 		const env: LaunchTestEnv = await setupLaunchEnv();
@@ -33,7 +33,7 @@ describe("two-phase probe loop (warren-9b15)", () => {
 		repos = env.repos;
 		allocator = env.allocator;
 		runId = env.runId;
-		burrowId = env.burrowId;
+		sandboxId = env.sandboxId;
 	});
 
 	afterEach(async () => {
@@ -52,7 +52,7 @@ describe("two-phase probe loop (warren-9b15)", () => {
 		}) as unknown as typeof fetch;
 		const result = await launchPreview({
 			runId,
-			burrowId,
+			sandboxId,
 			previewConfig: PREVIEW_CONFIG,
 			repos,
 			allocator,
@@ -98,7 +98,7 @@ describe("two-phase probe loop (warren-9b15)", () => {
 		}) as unknown as typeof fetch;
 		const result = await launchPreview({
 			runId,
-			burrowId,
+			sandboxId,
 			previewConfig: PREVIEW_CONFIG,
 			repos,
 			allocator,
@@ -139,7 +139,7 @@ describe("two-phase probe loop (warren-9b15)", () => {
 		}) as unknown as typeof fetch;
 		const result = await launchPreview({
 			runId,
-			burrowId,
+			sandboxId,
 			previewConfig: PREVIEW_CONFIG,
 			repos,
 			allocator,
@@ -171,7 +171,7 @@ describe("two-phase probe loop (warren-9b15)", () => {
 		]);
 		const result = await launchPreview({
 			runId,
-			burrowId,
+			sandboxId,
 			previewConfig: PREVIEW_CONFIG,
 			repos,
 			allocator,
@@ -225,7 +225,7 @@ describe("two-phase probe loop (warren-9b15)", () => {
 
 		const result = await launchPreview({
 			runId,
-			burrowId,
+			sandboxId,
 			previewConfig: PREVIEW_CONFIG,
 			repos,
 			allocator,

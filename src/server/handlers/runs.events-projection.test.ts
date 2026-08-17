@@ -79,25 +79,25 @@ describe("scrubSecrets — fixture corpus (warren-1cb7)", () => {
 		expect(scrubSecrets(line, null)).toBe(`a=${REDACTED_MARKER} b=${REDACTED_MARKER}`);
 	});
 
-	test("censors the burrowId runtime handle on the key alone (warren-5f59)", () => {
+	test("censors the sandboxId runtime handle on the key alone (warren-5f59)", () => {
 		const payload = {
 			kind: "reap.workspace_destroyed",
-			payload: { archived: false, burrowId: "run-run_abc123", nested: { burrowId: "x" } },
+			payload: { archived: false, sandboxId: "run-run_abc123", nested: { sandboxId: "x" } },
 		};
 		const scrubbed = scrubSecrets(payload, null) as typeof payload;
-		expect(scrubbed.payload.burrowId).toBe(REDACTED_MARKER);
-		expect(scrubbed.payload.nested.burrowId).toBe(REDACTED_MARKER);
+		expect(scrubbed.payload.sandboxId).toBe(REDACTED_MARKER);
+		expect(scrubbed.payload.nested.sandboxId).toBe(REDACTED_MARKER);
 		// The spectator-visible facts around the handle survive.
 		expect(scrubbed.payload.archived).toBe(false);
 	});
 
-	test("censors the burrowRunId runtime handle on the key alone (warren-d8f4)", () => {
+	test("censors the sandboxRunId runtime handle on the key alone (warren-d8f4)", () => {
 		const payload = {
 			kind: "watchdog.terminal_reconciled",
-			payload: { outcome: "succeeded", burrowRunId: "0f1e2d3c-pod-uid", idleMs: 42 },
+			payload: { outcome: "succeeded", sandboxRunId: "0f1e2d3c-pod-uid", idleMs: 42 },
 		};
 		const scrubbed = scrubSecrets(payload, null) as typeof payload;
-		expect(scrubbed.payload.burrowRunId).toBe(REDACTED_MARKER);
+		expect(scrubbed.payload.sandboxRunId).toBe(REDACTED_MARKER);
 		// The spectator-visible facts around the handle survive.
 		expect(scrubbed.payload.outcome).toBe("succeeded");
 		expect(scrubbed.payload.idleMs).toBe(42);
@@ -200,16 +200,16 @@ describe("projectEvent (warren-1cb7)", () => {
 
 	test("internal bridge plumbing is dropped whole", () => {
 		for (const kind of INTERNAL_EVENT_KINDS) {
-			const internal = { kind, payloadJson: { burrowRunId: "burun_1", burrowId: "bur_1" } };
+			const internal = { kind, payloadJson: { sandboxRunId: "burun_1", sandboxId: "bur_1" } };
 			expect(projectEvent(internal, ANONYMOUS_ACTOR)).toBeNull();
 			expect(projectEvent(internal, undefined)).toBe(internal);
 		}
 	});
 
-	test("reap.workspace_destroyed stays on the stream but its burrowId is censored (warren-5f59)", () => {
+	test("reap.workspace_destroyed stays on the stream but its sandboxId is censored (warren-5f59)", () => {
 		const reap = {
 			kind: "reap.workspace_destroyed",
-			payloadJson: { archived: false, burrowId: "run-run_xh5pk5jgep8a" },
+			payloadJson: { archived: false, sandboxId: "run-run_xh5pk5jgep8a" },
 		};
 		const projected = projectEvent(reap, ANONYMOUS_ACTOR);
 		expect(projected).not.toBeNull();
@@ -299,7 +299,7 @@ describe("projectEvent (warren-1cb7)", () => {
 });
 
 /** A burrow client that 404s everything — no route here reaches it. */
-function inertBurrowClient(): FakeProvider {
+function inertSandboxClient(): FakeProvider {
 	return new FakeProvider();
 }
 
@@ -331,7 +331,7 @@ describe("GET /runs/:id/events under WARREN_AUTH=public (warren-1cb7)", () => {
 			seq += 1;
 			await repos.events.append({
 				runId,
-				burrowEventSeq: seq,
+				sandboxEventSeq: seq,
 				ts: "2026-07-27T12:00:00.000Z",
 				kind: "tool_use",
 				stream: "stdout",
@@ -341,22 +341,22 @@ describe("GET /runs/:id/events under WARREN_AUTH=public (warren-1cb7)", () => {
 		seq += 1;
 		await repos.events.append({
 			runId,
-			burrowEventSeq: seq,
+			sandboxEventSeq: seq,
 			ts: "2026-07-27T12:00:01.000Z",
 			kind: "bridge_lost",
 			stream: "system",
-			payload: { burrowRunId: "burun_1", reason: "burrow_unreachable", finalized: true },
+			payload: { sandboxRunId: "burun_1", reason: "sandbox_unreachable", finalized: true },
 		});
 		seq += 1;
 		await repos.events.append({
 			runId,
-			burrowEventSeq: seq,
+			sandboxEventSeq: seq,
 			ts: "2026-07-27T12:00:02.000Z",
 			kind: "reap.workspace_destroyed",
 			stream: "system",
-			payload: { archived: false, burrowId: "run-run_xh5pk5jgep8a" },
+			payload: { archived: false, sandboxId: "run-run_xh5pk5jgep8a" },
 		});
-		handle = startServer(await depsFor(repos, inertBurrowClient()), {
+		handle = startServer(await depsFor(repos, inertSandboxClient()), {
 			transport: { kind: "tcp", hostname: "127.0.0.1", port: 0 },
 			auth: publicReadAuth(bearerAuth(TOKEN)),
 			logger: silentLogger,
@@ -401,13 +401,13 @@ describe("GET /runs/:id/events under WARREN_AUTH=public (warren-1cb7)", () => {
 		expect(new Set(kinds)).toEqual(new Set(["tool_use", "reap.workspace_destroyed"]));
 	});
 
-	test("the anonymous stream censors burrowId on reap.workspace_destroyed (warren-5f59)", async () => {
+	test("the anonymous stream censors sandboxId on reap.workspace_destroyed (warren-5f59)", async () => {
 		const { text, lines } = await stream();
 		expect(text).not.toContain("run-run_xh5pk5jgep8a");
 		const reap = lines
 			.map((l) => JSON.parse(l) as { kind: string; payload: Record<string, unknown> })
 			.find((l) => l.kind === "reap.workspace_destroyed");
-		expect(reap?.payload.burrowId).toBe(REDACTED_MARKER);
+		expect(reap?.payload.sandboxId).toBe(REDACTED_MARKER);
 		expect(reap?.payload.archived).toBe(false);
 	});
 

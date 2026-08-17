@@ -13,7 +13,7 @@ import { PREVIEW_TORN_DOWN_EVENT_KIND, teardownPreview } from "./teardown.ts";
 interface FakeSidecars {
 	resolver: SidecarResolver;
 	listingsBySidecar: Map<string, string[]>;
-	deletions: Array<{ burrowId: string; sidecarId: string }>;
+	deletions: Array<{ sandboxId: string; sidecarId: string }>;
 	listsCalled: string[];
 	listFailures: Set<string>;
 	deleteFailures: Set<string>;
@@ -21,14 +21,14 @@ interface FakeSidecars {
 
 function fakeSidecars(): FakeSidecars {
 	const listingsBySidecar = new Map<string, string[]>();
-	const deletions: Array<{ burrowId: string; sidecarId: string }> = [];
+	const deletions: Array<{ sandboxId: string; sidecarId: string }> = [];
 	const listsCalled: string[] = [];
 	const listFailures = new Set<string>();
 	const deleteFailures = new Set<string>();
-	const resolver: SidecarResolver = async (burrowId): Promise<SidecarClient | null> => {
+	const resolver: SidecarResolver = async (sandboxId): Promise<SidecarClient | null> => {
 		// Auto-seed one sidecar so list() returns something to delete.
-		if (!listingsBySidecar.has(burrowId)) {
-			listingsBySidecar.set(burrowId, [`sc_${burrowId}`]);
+		if (!listingsBySidecar.has(sandboxId)) {
+			listingsBySidecar.set(sandboxId, [`sc_${sandboxId}`]);
 		}
 		return {
 			list: async (id) => {
@@ -42,7 +42,7 @@ function fakeSidecars(): FakeSidecars {
 				if (deleteFailures.has(scid)) {
 					throw new Error(`delete failed for ${scid}`);
 				}
-				deletions.push({ burrowId: id, sidecarId: scid });
+				deletions.push({ sandboxId: id, sidecarId: scid });
 				const cur = listingsBySidecar.get(id) ?? [];
 				listingsBySidecar.set(
 					id,
@@ -78,7 +78,7 @@ describe("teardownPreview", () => {
 	async function spawnPreview(opts: {
 		state?: "starting" | "live" | "failed" | "torn-down" | null;
 		port?: number | null;
-		burrowId?: string;
+		sandboxId?: string;
 	}): Promise<string> {
 		const run = await repos.runs.create({
 			agentName: "agent",
@@ -86,7 +86,7 @@ describe("teardownPreview", () => {
 			prompt: "p",
 			renderedAgentJson: {},
 			trigger: "manual",
-			burrowId: opts.burrowId ?? "bur_test",
+			sandboxId: opts.sandboxId ?? "bur_test",
 		});
 		if (opts.state !== undefined) {
 			// warren-66d2: the repo guards preview transitions, so a fixture that
@@ -105,7 +105,7 @@ describe("teardownPreview", () => {
 	}
 
 	test("tears down a live preview, releases the port, emits an event, stops the sidecar", async () => {
-		const runId = await spawnPreview({ state: "live", port: 30100, burrowId: "bur_a" });
+		const runId = await spawnPreview({ state: "live", port: 30100, sandboxId: "bur_a" });
 		const sidecars = fakeSidecars();
 		const broker = new RunEventBroker();
 		const previews = createRunPreviewsRepo(db);
@@ -129,7 +129,7 @@ describe("teardownPreview", () => {
 		expect(reread.previewState).toBe("torn-down");
 		expect(reread.previewPort).toBeNull();
 
-		expect(sidecars.deletions).toEqual([{ burrowId: "bur_a", sidecarId: "sc_bur_a" }]);
+		expect(sidecars.deletions).toEqual([{ sandboxId: "bur_a", sidecarId: "sc_bur_a" }]);
 
 		const events = await repos.events.listByRun(runId);
 		const tornDown = events.find((e) => e.kind === PREVIEW_TORN_DOWN_EVENT_KIND);
@@ -143,7 +143,7 @@ describe("teardownPreview", () => {
 	});
 
 	test("tears down a `starting` preview the same way", async () => {
-		const runId = await spawnPreview({ state: "starting", port: 30101, burrowId: "bur_b" });
+		const runId = await spawnPreview({ state: "starting", port: 30101, sandboxId: "bur_b" });
 		const sidecars = fakeSidecars();
 		const previews = createRunPreviewsRepo(db);
 
@@ -164,7 +164,7 @@ describe("teardownPreview", () => {
 	});
 
 	test("idempotent against an already-torn-down row (no event, no sidecar call)", async () => {
-		const runId = await spawnPreview({ state: "torn-down", port: null, burrowId: "bur_c" });
+		const runId = await spawnPreview({ state: "torn-down", port: null, sandboxId: "bur_c" });
 		const sidecars = fakeSidecars();
 		const previews = createRunPreviewsRepo(db);
 
@@ -186,7 +186,7 @@ describe("teardownPreview", () => {
 	});
 
 	test("idempotent against a `failed` row (already-failed, no event)", async () => {
-		const runId = await spawnPreview({ state: "failed", port: null, burrowId: "bur_d" });
+		const runId = await spawnPreview({ state: "failed", port: null, sandboxId: "bur_d" });
 		const sidecars = fakeSidecars();
 		const previews = createRunPreviewsRepo(db);
 
@@ -241,7 +241,7 @@ describe("teardownPreview", () => {
 	});
 
 	test("sidecar.delete failure is logged but the route still succeeds", async () => {
-		const runId = await spawnPreview({ state: "live", port: 30102, burrowId: "bur_e" });
+		const runId = await spawnPreview({ state: "live", port: 30102, sandboxId: "bur_e" });
 		const sidecars = fakeSidecars();
 		// Pre-seed two sidecars and fail one of them.
 		sidecars.listingsBySidecar.set("bur_e", ["sc_a", "sc_b"]);
@@ -265,7 +265,7 @@ describe("teardownPreview", () => {
 
 		expect(result.tornDown).toBe(true);
 		// The successful one still got deleted.
-		expect(sidecars.deletions).toEqual([{ burrowId: "bur_e", sidecarId: "sc_b" }]);
+		expect(sidecars.deletions).toEqual([{ sandboxId: "bur_e", sidecarId: "sc_b" }]);
 		// The failure surfaced as a warn line.
 		const sidecarDeleteFailures = warnings.filter(
 			(w) => w.msg === "preview_teardown.sidecar_delete_failed",
@@ -274,7 +274,7 @@ describe("teardownPreview", () => {
 	});
 
 	test("sidecar.list throwing is logged via sidecar_stop_failed; teardown still completes", async () => {
-		const runId = await spawnPreview({ state: "live", port: 30103, burrowId: "bur_f" });
+		const runId = await spawnPreview({ state: "live", port: 30103, sandboxId: "bur_f" });
 		const sidecars = fakeSidecars();
 		sidecars.listFailures.add("bur_f");
 
@@ -303,7 +303,7 @@ describe("teardownPreview", () => {
 	});
 
 	test("calling teardown twice in a row only emits one event (idempotent at the SQL layer)", async () => {
-		const runId = await spawnPreview({ state: "live", port: 30104, burrowId: "bur_g" });
+		const runId = await spawnPreview({ state: "live", port: 30104, sandboxId: "bur_g" });
 		const sidecars = fakeSidecars();
 		const previews = createRunPreviewsRepo(db);
 
@@ -329,7 +329,7 @@ describe("teardownPreview", () => {
 	});
 
 	test("publishes the audit event through the broker so live subscribers see it", async () => {
-		const runId = await spawnPreview({ state: "live", port: 30105, burrowId: "bur_h" });
+		const runId = await spawnPreview({ state: "live", port: 30105, sandboxId: "bur_h" });
 		const sidecars = fakeSidecars();
 		const broker = new RunEventBroker();
 		const subscription = broker.subscribe(runId);
@@ -353,7 +353,7 @@ describe("teardownPreview", () => {
 	});
 
 	test("defaults the audit actor to `manual` when no actor is supplied", async () => {
-		const runId = await spawnPreview({ state: "live", port: 30106, burrowId: "bur_i" });
+		const runId = await spawnPreview({ state: "live", port: 30106, sandboxId: "bur_i" });
 		const sidecars = fakeSidecars();
 		const previews = createRunPreviewsRepo(db);
 
@@ -394,7 +394,7 @@ describe("RunPreviewsRepo.claimTeardown", () => {
 	async function makeRun(opts: {
 		state?: "starting" | "live" | "failed" | "torn-down" | null;
 		port?: number | null;
-		burrowId?: string;
+		sandboxId?: string;
 	}): Promise<string> {
 		const run = await repos.runs.create({
 			agentName: "agent",
@@ -402,7 +402,7 @@ describe("RunPreviewsRepo.claimTeardown", () => {
 			prompt: "p",
 			renderedAgentJson: {},
 			trigger: "manual",
-			burrowId: opts.burrowId ?? "bur_x",
+			sandboxId: opts.sandboxId ?? "bur_x",
 		});
 		if (opts.state !== undefined) {
 			// warren-66d2: the repo guards preview transitions, so a fixture that
@@ -421,13 +421,13 @@ describe("RunPreviewsRepo.claimTeardown", () => {
 	}
 
 	test("starting/live → torn-down clears the port and returns previous state", async () => {
-		const runId = await makeRun({ state: "live", port: 30200, burrowId: "bur_live" });
+		const runId = await makeRun({ state: "live", port: 30200, sandboxId: "bur_live" });
 		const previews = createRunPreviewsRepo(db);
 		const result = await previews.claimTeardown({ runId });
 		expect(result.status).toBe("torn-down");
 		expect(result.previousState).toBe("live");
 		expect(result.port).toBe(30200);
-		expect(result.burrowId).toBe("bur_live");
+		expect(result.sandboxId).toBe("bur_live");
 		const reread = await repos.runs.require(runId);
 		expect(reread.previewState).toBe("torn-down");
 		expect(reread.previewPort).toBeNull();

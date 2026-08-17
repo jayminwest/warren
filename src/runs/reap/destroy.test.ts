@@ -29,11 +29,15 @@ function deps(h: Harness) {
 }
 
 function run(
-	over: Partial<{ burrowId: string | null; mode: RunMode; previewState: PreviewState | null }> = {},
+	over: Partial<{
+		sandboxId: string | null;
+		mode: RunMode;
+		previewState: PreviewState | null;
+	}> = {},
 ) {
 	return {
 		id: "run_1",
-		burrowId: "bur_x" as string | null,
+		sandboxId: "bur_x" as string | null,
 		mode: "batch" as RunMode,
 		previewState: null as PreviewState | null,
 		...over,
@@ -53,7 +57,7 @@ describe("runWorkspaceDestroy", () => {
 		expect(h.events).toHaveLength(1);
 		expect(h.events[0]?.kind).toBe("reap.workspace_destroyed");
 		expect(h.events[0]?.payload).toMatchObject({
-			burrowId: "bur_x",
+			sandboxId: "bur_x",
 			archived: true,
 			deletedEvents: 3,
 			deletedMessages: 1,
@@ -76,7 +80,7 @@ describe("runWorkspaceDestroy", () => {
 	test("skips without an event when there is no burrow", async () => {
 		const h = harness();
 		const destroyed = await runWorkspaceDestroy({
-			run: run({ burrowId: null }),
+			run: run({ sandboxId: null }),
 			previewLaunchState: null,
 			terminate: async () => fakeTeardown(),
 			...deps(h),

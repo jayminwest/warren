@@ -82,7 +82,7 @@ describe("computeIdleMs", () => {
 		const runId = await seedRunning("2026-06-05T00:00:00Z");
 		await repos.events.append({
 			runId,
-			burrowEventSeq: 1,
+			sandboxEventSeq: 1,
 			ts: "2026-06-05T00:04:00Z",
 			kind: "text",
 			stream: "stdout",
@@ -186,7 +186,7 @@ describe("tickWatchdog", () => {
 
 	async function seedRunning(
 		startedAt: string,
-		opts: { burrowId?: string; burrowRunId?: string; mode?: RunMode } = {},
+		opts: { sandboxId?: string; sandboxRunId?: string; mode?: RunMode } = {},
 	): Promise<string> {
 		const row = await repos.runs.create({
 			agentName: "claude-code",
@@ -197,10 +197,10 @@ describe("tickWatchdog", () => {
 			mode: opts.mode ?? "batch",
 		});
 		await repos.runs.markRunning(row.id, new Date(startedAt));
-		if (opts.burrowId !== undefined || opts.burrowRunId !== undefined) {
+		if (opts.sandboxId !== undefined || opts.sandboxRunId !== undefined) {
 			await repos.runs.attachBurrow(row.id, {
-				...(opts.burrowId !== undefined ? { burrowId: opts.burrowId } : {}),
-				...(opts.burrowRunId !== undefined ? { burrowRunId: opts.burrowRunId } : {}),
+				...(opts.sandboxId !== undefined ? { sandboxId: opts.sandboxId } : {}),
+				...(opts.sandboxRunId !== undefined ? { sandboxRunId: opts.sandboxRunId } : {}),
 			});
 		}
 		return row.id;
@@ -208,8 +208,8 @@ describe("tickWatchdog", () => {
 
 	test("force-fails a hung run: emits event, cancels burrow, reaps failed", async () => {
 		const runId = await seedRunning("2026-06-05T00:00:00Z", {
-			burrowId: "bur_1",
-			burrowRunId: "run_b1",
+			sandboxId: "bur_1",
+			sandboxRunId: "run_b1",
 		});
 		const cancels: string[] = [];
 		const reapCalls: ReapRunInput[] = [];
@@ -236,13 +236,13 @@ describe("tickWatchdog", () => {
 		const timedOut = events.find((e) => e.kind === WATCHDOG_TIMED_OUT_KIND);
 		expect(timedOut).toBeDefined();
 		expect((timedOut?.payloadJson as { idleMs?: number }).idleMs).toBe(10 * 60_000);
-		expect((timedOut?.payloadJson as { burrowRunId?: string }).burrowRunId).toBe("run_b1");
+		expect((timedOut?.payloadJson as { sandboxRunId?: string }).sandboxRunId).toBe("run_b1");
 	});
 
 	test("forwards the active runtimeProvider into the force-fail reap (warren-a7cb)", async () => {
 		const runId = await seedRunning("2026-06-05T00:00:00Z", {
-			burrowId: "bur_1",
-			burrowRunId: "run_b1",
+			sandboxId: "bur_1",
+			sandboxRunId: "run_b1",
 		});
 		const provider = makeCancelProvider([]);
 		const reapCalls: ReapRunInput[] = [];
@@ -266,7 +266,7 @@ describe("tickWatchdog", () => {
 	});
 
 	test("leaves a run inside budget alone", async () => {
-		await seedRunning("2026-06-05T00:00:00Z", { burrowId: "bur_1", burrowRunId: "run_b1" });
+		await seedRunning("2026-06-05T00:00:00Z", { sandboxId: "bur_1", sandboxRunId: "run_b1" });
 		const reapCalls: ReapRunInput[] = [];
 
 		const result = await tickWatchdog({
@@ -284,7 +284,7 @@ describe("tickWatchdog", () => {
 		expect(reapCalls).toEqual([]);
 	});
 
-	test("skips the burrow cancel when the run has no burrow_run_id", async () => {
+	test("skips the burrow cancel when the run has no sandbox_run_id", async () => {
 		const runId = await seedRunning("2026-06-05T00:00:00Z");
 		const reapCalls: ReapRunInput[] = [];
 

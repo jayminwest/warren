@@ -66,14 +66,14 @@ describe("pollRunInbox", () => {
 			second?.id ?? "<null>",
 			first?.id ?? "<null>",
 		]);
-		expect(events.map((e) => e.burrowEventSeq)).toEqual([1, 2]);
+		expect(events.map((e) => e.sandboxEventSeq)).toEqual([1, 2]);
 		expect(broker.kinds).toEqual(["steer.delivered", "steer.delivered"]);
 	});
 
 	test("steer.delivered seqs continue from the run's existing event log", async () => {
 		await repos.events.append({
 			runId,
-			burrowEventSeq: 7,
+			sandboxEventSeq: 7,
 			ts: new Date().toISOString(),
 			kind: "steer.sent",
 			stream: "system",
@@ -83,7 +83,7 @@ describe("pollRunInbox", () => {
 		await pollRunInbox({ runId, repos });
 		const events = await repos.events.listByRun(runId);
 		const delivered = events.find((e) => e.kind === "steer.delivered");
-		expect(delivered?.burrowEventSeq).toBe(8);
+		expect(delivered?.sandboxEventSeq).toBe(8);
 		expect((delivered?.payloadJson as { messageId: string }).messageId).toBe(msg?.id ?? "<null>");
 	});
 

@@ -292,14 +292,14 @@ export function RunDetailPage() {
 				    burrow, pod name/UID under k8s (NOT null there; warren-0965) — and
 				    absent from a spectator's projection, where they rendered as two
 				    empty "—" jargon cards on the hero page. */}
-				{r.burrowId ? (
+				{r.sandboxId ? (
 					<MetaCard label="Sandbox ID">
-						<span className="font-mono text-xs">{r.burrowId}</span>
+						<span className="font-mono text-xs">{r.sandboxId}</span>
 					</MetaCard>
 				) : null}
-				{r.burrowRunId ? (
+				{r.sandboxRunId ? (
 					<MetaCard label="Sandbox Run">
-						<span className="font-mono text-xs">{r.burrowRunId}</span>
+						<span className="font-mono text-xs">{r.sandboxRunId}</span>
 					</MetaCard>
 				) : null}
 				<MetaCard label="Updated">{relativeTime(r.endedAt ?? r.startedAt)}</MetaCard>
@@ -386,7 +386,7 @@ function CancelStatus({
 				</p>
 			);
 		}
-		const runtimeState = d.burrowRun?.state; // pod phase under k8s (warren-0965)
+		const runtimeState = d.sandboxRun?.state; // pod phase under k8s (warren-0965)
 		return (
 			<p className="text-xs text-emerald-700 dark:text-emerald-300">
 				Cancel forwarded

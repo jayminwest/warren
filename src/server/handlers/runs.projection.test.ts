@@ -24,7 +24,7 @@ import { depsFor, silentLogger, tcpUrl } from "./runs.test-helpers.ts";
 const TOKEN = "s3cret";
 
 /** A burrow client that 404s everything — no route here reaches it. */
-function inertBurrowClient(): FakeProvider {
+function inertSandboxClient(): FakeProvider {
 	return new FakeProvider();
 }
 
@@ -39,12 +39,12 @@ describe("run field classification (warren-946f)", () => {
 
 	test("the redacted set is exactly the fields pl-b82d named", () => {
 		expect([...REDACTED_RUN_FIELDS].sort()).toEqual([
-			"burrowId",
-			"burrowRunId",
 			"previewFailureMessage",
 			"renderedAgentJson",
 			// warren-cd3b: a host filesystem path is internal topology.
 			"salvagePath",
+			"sandboxId",
+			"sandboxRunId",
 			"workerId",
 		]);
 	});
@@ -93,8 +93,8 @@ describe("GET /runs projections under WARREN_AUTH=public (warren-946f)", () => {
 			prompt: "fix the flaky test",
 			renderedAgentJson: { frontmatter: { provider: "anthropic", model: "opus" } },
 			trigger: "manual",
-			burrowId: "bur_1",
-			burrowRunId: "burun_1",
+			sandboxId: "bur_1",
+			sandboxRunId: "burun_1",
 			workerId: "worker_1",
 		});
 		runId = row.id;
@@ -105,7 +105,7 @@ describe("GET /runs projections under WARREN_AUTH=public (warren-946f)", () => {
 			previewState: "failed",
 			previewFailureMessage: "bun install exited 1: EACCES /root/.bun",
 		});
-		handle = startServer(await depsFor(repos, inertBurrowClient()), {
+		handle = startServer(await depsFor(repos, inertSandboxClient()), {
 			transport: { kind: "tcp", hostname: "127.0.0.1", port: 0 },
 			auth: publicReadAuth(bearerAuth(TOKEN)),
 			logger: silentLogger,
@@ -202,7 +202,7 @@ describe("GET /runs projections under WARREN_AUTH=public (warren-946f)", () => {
 		expect(Object.keys(detailBody)).toEqual(["run"]);
 		const detail = detailBody.run as Record<string, unknown>;
 		expect(Object.keys(detail).sort()).toEqual(Object.keys(stored).sort());
-		expect(detail.burrowId).toBe("bur_1");
+		expect(detail.sandboxId).toBe("bur_1");
 		expect(detail.renderedAgentJson).toEqual({
 			frontmatter: { provider: "anthropic", model: "opus" },
 		});

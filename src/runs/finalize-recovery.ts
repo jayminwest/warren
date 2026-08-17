@@ -152,7 +152,7 @@ export function createFinalizeRecovery(deps: FinalizeRecoveryDeps): FinalizeReco
 	async function recoverableRun(runId: string): Promise<RunRow | null> {
 		const run = await deps.repos.runs.get(runId);
 		if (run === null || run.state !== "running") return null;
-		if (run.burrowId === null || run.burrowRunId === null) return null;
+		if (run.sandboxId === null || run.sandboxRunId === null) return null;
 		if (!(await podIsLive(deps.runtimeProvider, run))) return null;
 		if (coordinator.peekIntent(runId) !== undefined) return null;
 		return run;
@@ -226,8 +226,8 @@ export function createFinalizeRecovery(deps: FinalizeRecoveryDeps): FinalizeReco
 async function podIsLive(provider: RuntimeProvider, run: RunRow): Promise<boolean> {
 	const handle: RunHandle = {
 		runId: run.id,
-		sandboxId: run.burrowId as string, // caller guards non-null
-		providerRunId: run.burrowRunId ?? "",
+		sandboxId: run.sandboxId as string, // caller guards non-null
+		providerRunId: run.sandboxRunId ?? "",
 	};
 	try {
 		const status = await provider.status(handle);
@@ -265,7 +265,7 @@ async function classifyOutcome(
 		const row = tail[i];
 		if (row === undefined) continue;
 		const outcome = detectRuntimeTerminal({
-			seq: row.burrowEventSeq,
+			seq: row.sandboxEventSeq,
 			ts: row.ts,
 			kind: row.kind,
 			stream: row.stream,
@@ -287,14 +287,14 @@ async function emitRecoveryEvent(
 	const seq = ((await deps.repos.events.maxSeqForRun(run.id)) ?? 0) + 1;
 	const row = await deps.repos.events.append({
 		runId: run.id,
-		burrowEventSeq: seq,
+		sandboxEventSeq: seq,
 		ts: now.toISOString(),
 		kind: FINALIZE_RECOVERY_KIND,
 		stream: "system",
 		payload: {
 			outcome: classified.outcome,
 			source: classified.source,
-			burrowRunId: run.burrowRunId,
+			sandboxRunId: run.sandboxRunId,
 		},
 	});
 	deps.broker?.publish(run.id, row);

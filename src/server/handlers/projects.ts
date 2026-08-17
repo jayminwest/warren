@@ -407,7 +407,7 @@ export function runProjectTriggerHandler(deps: ServerDeps): RouteHandler {
 
 		// Hand off to the bridge so events start flowing into warren.events —
 		// same posture as POST /runs (mx-…).
-		deps.bridges.start(result.run.id, result.burrowRun.id, result.burrow.id);
+		deps.bridges.start(result.run.id, result.sandboxRun.id, result.sandbox.id);
 
 		// Stamp the trigger row so the UI shows this manual fire as the most
 		// recent dispatch. Roll nextFireAt forward when the cron parses; on
@@ -437,7 +437,7 @@ export function runProjectTriggerHandler(deps: ServerDeps): RouteHandler {
 
 		return jsonResponse(201, {
 			run: result.run,
-			burrow: { id: result.burrow.id, workspacePath: result.burrow.workspacePath },
+			sandbox: { id: result.sandbox.id, workspacePath: result.sandbox.workspacePath },
 		});
 	};
 }

@@ -31,7 +31,7 @@ export type CancelBurrowRunFn = (reason: string) => Promise<void>;
 
 export interface EnforceBudgetCapInput {
 	readonly runId: string;
-	readonly burrowRunId: string;
+	readonly sandboxRunId: string;
 	readonly costCapUsd: number | null;
 	/** Pi accumulator (preferred when it has observed real usage). */
 	readonly piUsage: SessionStatsAccumulator;
@@ -55,7 +55,7 @@ export async function enforceBudgetCap(input: EnforceBudgetCapInput): Promise<bo
 
 	const capUsd = input.costCapUsd as number;
 	input.logger?.warn?.(
-		{ runId: input.runId, burrowRunId: input.burrowRunId, observedCostUsd, capUsd },
+		{ runId: input.runId, sandboxRunId: input.sandboxRunId, observedCostUsd, capUsd },
 		"run exceeded spend cap; cancelling",
 	);
 
@@ -64,7 +64,7 @@ export async function enforceBudgetCap(input: EnforceBudgetCapInput): Promise<bo
 		usage: usePi ? input.piUsage : input.claudeUsage,
 		runtime: usePi ? "pi" : "claude",
 		runId: input.runId,
-		burrowRunId: input.burrowRunId,
+		sandboxRunId: input.sandboxRunId,
 		repos: input.repos,
 		...(input.logger !== undefined ? { logger: input.logger } : {}),
 	});
@@ -77,7 +77,7 @@ export async function enforceBudgetCap(input: EnforceBudgetCapInput): Promise<bo
 		input.logger?.error?.(
 			{
 				runId: input.runId,
-				burrowRunId: input.burrowRunId,
+				sandboxRunId: input.sandboxRunId,
 				err: err instanceof Error ? err.message : String(err),
 			},
 			"budget-cap burrow cancel failed; reap will finalize from terminal-detect",
@@ -95,7 +95,7 @@ async function emitBudgetEvent(
 		const seq = ((await input.repos.events.maxSeqForRun(input.runId)) ?? 0) + 1;
 		const row = await input.repos.events.append({
 			runId: input.runId,
-			burrowEventSeq: seq,
+			sandboxEventSeq: seq,
 			ts: new Date().toISOString(),
 			kind: "budget.exceeded",
 			stream: "system",

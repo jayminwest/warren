@@ -32,11 +32,11 @@ import {
 	type DiagnosticLogger,
 	type WarrenConfigCheckProject,
 } from "../../diagnostics/checks.ts";
-import { checkStaleBurrowWorkspaces } from "../../diagnostics/stale-workspaces.ts";
+import { checkStaleSandboxWorkspaces } from "../../diagnostics/stale-workspaces.ts";
 import { loadPreviewPortRangeFromEnv, PreviewPortAllocator } from "../../preview/port-allocator.ts";
 import { loadProjectsConfigFromEnv } from "../../projects/config.ts";
 import { loadWorkspaceGcConfigFromEnv } from "../../runs/reap/gc.ts";
-import { doctorLocalRuntimeCheck } from "../../runtime/local/diagnostics/burrow.ts";
+import { doctorLocalRuntimeCheck } from "../../runtime/local/diagnostics/local-runtime.ts";
 import { resolveRuntimeKind } from "../../runtime/registry.ts";
 import type { CliContext, EnvLike } from "../output.ts";
 import { writeJsonLine } from "../output.ts";
@@ -238,16 +238,16 @@ async function staleBurrowWorkspacesCheck(
 		ttlMs = loadWorkspaceGcConfigFromEnv(env).ttlMs;
 	} catch (err) {
 		return {
-			name: "stale_burrow_workspaces",
+			name: "stale_sandbox_workspaces",
 			ok: false,
 			message: err instanceof Error ? err.message : String(err),
 		};
 	}
 	if (db === undefined) {
-		return { name: "stale_burrow_workspaces", ok: true, message: "no db handle wired" };
+		return { name: "stale_sandbox_workspaces", ok: true, message: "no db handle wired" };
 	}
 	const repos = createRepos(db);
-	return checkStaleBurrowWorkspaces({
+	return checkStaleSandboxWorkspaces({
 		probe: {
 			listByState: (state) => repos.runs.listByState(state),
 		},

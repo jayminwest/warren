@@ -7,7 +7,7 @@
  * Newly-dispatched children are picked up by a polling watcher so a stream
  * opened before child 2 lands still sees its events without a reconnect.
  *
- * Live events are deduped by (runId, burrowEventSeq) against the high-water
+ * Live events are deduped by (runId, sandboxEventSeq) against the high-water
  * mark established during history replay, so a row that lands in the gap
  * between snapshot and subscribe isn't either dropped or duplicated.
  */
@@ -38,7 +38,7 @@ export async function* tailPlanRunEvents(
 	const history = await input.repos.events.listByRunIds(initialRunIds);
 	for (const row of history) {
 		const prev = seenSeq.get(row.runId) ?? 0;
-		if (row.burrowEventSeq > prev) seenSeq.set(row.runId, row.burrowEventSeq);
+		if (row.sandboxEventSeq > prev) seenSeq.set(row.runId, row.sandboxEventSeq);
 		yield row;
 	}
 
@@ -97,8 +97,8 @@ export async function* tailPlanRunEvents(
 				continue;
 			}
 			const prev = seenSeq.get(row.runId) ?? 0;
-			if (row.burrowEventSeq <= prev) continue;
-			seenSeq.set(row.runId, row.burrowEventSeq);
+			if (row.sandboxEventSeq <= prev) continue;
+			seenSeq.set(row.runId, row.sandboxEventSeq);
 			yield row;
 		}
 	} finally {

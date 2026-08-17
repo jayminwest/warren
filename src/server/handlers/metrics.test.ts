@@ -16,7 +16,7 @@ const TOKEN = "metrics-test-token-0000000000000000000000";
 
 const silentLogger = { info() {}, warn() {}, error() {}, debug() {} };
 
-function makeBurrowClient(): FakeProvider {
+function makeSandboxClient(): FakeProvider {
 	return new FakeProvider();
 }
 
@@ -26,19 +26,19 @@ async function depsFor(
 	registry?: MetricsRegistry,
 	streamLimiter?: EventStreamLimiter,
 ): Promise<ServerDeps> {
-	const burrowClient = makeBurrowClient();
+	const sandboxClient = makeSandboxClient();
 	const broker = new RunEventBroker();
 	const bridges = createBridgeRegistry({
 		repos,
 		broker,
-		runtimeProvider: burrowClient,
+		runtimeProvider: sandboxClient,
 		bridge: async () => ({ written: 0, skipped: 0, errored: false }),
 	});
 	return {
 		repos,
 		db,
 		...createDbSeams(db),
-		runtimeProvider: burrowClient,
+		runtimeProvider: sandboxClient,
 		forge: new FakeForge(),
 		broker,
 		bridges,

@@ -57,8 +57,8 @@ describe("GET /projects/:id/seeds/:seedId — single-seed status read (warren-40
 	}
 
 	test("returns {id, status, blockedBy} for an open seed", async () => {
-		const burrowClient = new FakeProvider();
-		const deps = await depsWithSdSpawn(burrowClient, async () => ({
+		const sandboxClient = new FakeProvider();
+		const deps = await depsWithSdSpawn(sandboxClient, async () => ({
 			stdout: JSON.stringify({
 				success: true,
 				issue: { id: "warren-abcd", status: "open", blockedBy: [] },
@@ -81,8 +81,8 @@ describe("GET /projects/:id/seeds/:seedId — single-seed status read (warren-40
 	});
 
 	test("returns status='closed' so the UI can drop the seed from BatchDispatch", async () => {
-		const burrowClient = new FakeProvider();
-		const deps = await depsWithSdSpawn(burrowClient, async () => ({
+		const sandboxClient = new FakeProvider();
+		const deps = await depsWithSdSpawn(sandboxClient, async () => ({
 			stdout: JSON.stringify({
 				success: true,
 				issue: { id: "warren-zzzz", status: "closed" },
@@ -104,8 +104,8 @@ describe("GET /projects/:id/seeds/:seedId — single-seed status read (warren-40
 	});
 
 	test("404 for unknown project id", async () => {
-		const burrowClient = new FakeProvider();
-		const deps = await depsWithSdSpawn(burrowClient, async () => ({
+		const sandboxClient = new FakeProvider();
+		const deps = await depsWithSdSpawn(sandboxClient, async () => ({
 			stdout: "",
 			stderr: "",
 			exitCode: 0,
@@ -121,8 +121,8 @@ describe("GET /projects/:id/seeds/:seedId — single-seed status read (warren-40
 	});
 
 	test("400 ProjectLacksSeedsError when project has no .seeds/", async () => {
-		const burrowClient = new FakeProvider();
-		const deps = await depsWithSdSpawn(burrowClient, async () => ({
+		const sandboxClient = new FakeProvider();
+		const deps = await depsWithSdSpawn(sandboxClient, async () => ({
 			stdout: "",
 			stderr: "",
 			exitCode: 0,

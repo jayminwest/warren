@@ -26,7 +26,7 @@
  *
  * The hook is fired from the two places a run can terminalize infra-lost:
  * `reapRun` (watchdog terminal-reconcile, inline bridge reap) and
- * `reconcileLostBurrowRun` (live-bridge 404, boot ghost reconcile). The
+ * `reconcileLostSandboxRun` (live-bridge 404, boot ghost reconcile). The
  * user-initiated cancel ghost path (`src/runs/cancel.ts`) deliberately does
  * NOT fire it — an operator who clicked Cancel asked for no new run.
  *
@@ -224,7 +224,7 @@ export function createInfraLostRetryHook(input: CreateInfraLostRetryHookInput): 
 		const seq = ((await input.repos.events.maxSeqForRun(runId)) ?? 0) + 1;
 		const row = await input.repos.events.append({
 			runId,
-			burrowEventSeq: seq,
+			sandboxEventSeq: seq,
 			ts: now().toISOString(),
 			kind,
 			stream: "system",
@@ -250,7 +250,7 @@ export function createInfraLostRetryHook(input: CreateInfraLostRetryHookInput): 
 		if (projectId === null) return;
 		try {
 			const result = await spawnRunFn(buildRetrySpawnInput(input, run, projectId, decision));
-			input.bridges.start(result.run.id, result.burrowRun.id, result.burrow.id, run.mode);
+			input.bridges.start(result.run.id, result.sandboxRun.id, result.sandbox.id, run.mode);
 			// Linkage in both directions so an operator tailing either run can
 			// follow the chain (warren-4af7).
 			await emitSystem(run.id, RUN_RETRY_DISPATCHED_KIND, {

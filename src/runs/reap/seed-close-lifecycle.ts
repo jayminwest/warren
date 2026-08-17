@@ -126,7 +126,7 @@ function makeRunEventEmitter(
 		const maxSeq = (await input.repos.events.maxSeqForRun(runId)) ?? 0;
 		const row = await input.repos.events.append({
 			runId,
-			burrowEventSeq: maxSeq + 1,
+			sandboxEventSeq: maxSeq + 1,
 			ts: now().toISOString(),
 			kind,
 			stream: "system",

@@ -122,7 +122,7 @@ warren doctor [options]
 
 | Flag | Required | Default | Description |
 | --- | --- | --- | --- |
-| `--local` |  |  | run the deployment-side checks instead (env vars, burrow socket, bwrap, DB) |
+| `--local` |  |  | run the deployment-side checks instead (env vars, sandbox runtime, bwrap, DB) |
 | `--no-auth` |  |  | skip the auth check (loopback dev mode) |
 | `--verbose` |  |  | print raw probe/driver output (withheld from check messages) to stderr |
 | `--url <url>` |  |  | warren server base URL (env WARREN_BASE_URL) |

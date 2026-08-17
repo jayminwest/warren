@@ -52,8 +52,8 @@ export function wireInfraLostRetry(input: InfraLostRetryWiringInput): InfraLostR
 			repos: input.repos,
 			runtimeProvider: input.runtimeProvider,
 			bridges: {
-				start: (runId, burrowRunId, burrowId, mode) =>
-					registryCell.current?.start(runId, burrowRunId, burrowId, mode),
+				start: (runId, sandboxRunId, sandboxId, mode) =>
+					registryCell.current?.start(runId, sandboxRunId, sandboxId, mode),
 			},
 			...(input.broker !== undefined ? { broker: input.broker } : {}),
 			projectsConfig: input.projectsConfig,

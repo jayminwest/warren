@@ -33,7 +33,7 @@ function inputFor(
 ): RecordOutcomeFactsInput {
 	return {
 		runId: "run-1",
-		workspacePath: "/data/burrow/ws",
+		workspacePath: "/data/sandbox/ws",
 		branch: "agent/bot/run-1",
 		baseBranch: "main",
 		project: { gitUrl: "https://github.com/x/y.git", localPath: "/data/projects/x/y" },
@@ -106,7 +106,7 @@ describe("recordOutcomeFacts (warren-ab2b)", () => {
 		expect(stats).toEqual({ filesChanged: 1, insertions: 5, deletions: 2 });
 		expect(calls).toHaveLength(1);
 		expect(calls[0]?.args).toEqual(["diff", "--numstat", "main..HEAD"]);
-		expect(calls[0]?.cwd).toBe("/data/burrow/ws");
+		expect(calls[0]?.cwd).toBe("/data/sandbox/ws");
 		expect(captured.facts).toEqual({
 			commitsAhead: 1,
 			filesChanged: 1,

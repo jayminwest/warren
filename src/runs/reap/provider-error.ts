@@ -270,7 +270,7 @@ function classifyEnvelope(
  * Classify a run's persisted event stream for a terminal provider error.
  *
  * Walks the events in order (callers pass `listByRun`, which is
- * ascending by `burrow_event_seq`). For each `state_change`/`system`
+ * ascending by `sandbox_event_seq`). For each `state_change`/`system`
  * event whose payload is pi's `turn_end` or `agent_end` lifecycle
  * envelope, the **last** envelope that carries a `stopReason` wins:
  *

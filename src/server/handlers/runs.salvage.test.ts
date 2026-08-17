@@ -21,7 +21,7 @@ import { depsFor, silentLogger, tcpUrl } from "./runs.test-helpers.ts";
  *   location, and a `reap.workspace_salvaged` event surfaces it to operators.
  */
 
-function inertBurrowClient(): FakeProvider {
+function inertSandboxClient(): FakeProvider {
 	return new FakeProvider();
 }
 
@@ -64,7 +64,7 @@ describe("POST /runs/:id/salvage (warren-cd3b)", () => {
 	});
 
 	async function serveWith(opts: { salvageDir?: string } = {}): Promise<string> {
-		const deps = await depsFor(repos, inertBurrowClient(), undefined, {
+		const deps = await depsFor(repos, inertSandboxClient(), undefined, {
 			...(opts.salvageDir !== undefined ? { salvageDir: opts.salvageDir } : {}),
 		});
 		handle = startServer(deps, {

@@ -53,7 +53,7 @@ describe("createLocalSidecarsResolver", () => {
 		expect(facade).not.toBeNull();
 		if (facade === null) return;
 		const createdRecord = await facade.create({
-			burrowId: "local-run_1",
+			sandboxId: "local-run_1",
 			command: ["sh", "-c", "bun run dev"],
 			env: { PORT: "3000" },
 			inboundPortForward: { hostPort: 40123, sandboxPort: 3000 },

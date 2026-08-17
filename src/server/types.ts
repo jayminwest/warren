@@ -278,7 +278,7 @@ export interface ServerDeps {
 	readonly previewMaxLive?: number;
 	/**
 	 * Fallback workspace-GC TTL in ms (warren-0a9a). Resolved from
-	 * `WARREN_WORKSPACE_GC_TTL` at boot so `/readyz`'s `stale_burrow_workspaces`
+	 * `WARREN_WORKSPACE_GC_TTL` at boot so `/readyz`'s `stale_sandbox_workspaces`
 	 * probe ages burrows on the GC sweeper's threshold. Tests may omit; the probe
 	 * is skipped when absent.
 	 */

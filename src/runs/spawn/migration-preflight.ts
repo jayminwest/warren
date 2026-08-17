@@ -306,7 +306,7 @@ export async function recordMigrationHealEvent(
 		const seq = ((await repos.events.maxSeqForRun(runId)) ?? 0) + 1;
 		await repos.events.append({
 			runId,
-			burrowEventSeq: seq,
+			sandboxEventSeq: seq,
 			ts: now.toISOString(),
 			kind: "migration_journal_heal",
 			stream: "system",

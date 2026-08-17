@@ -300,7 +300,7 @@ export class WarrenClient {
 	 * - `follow: true` keeps the connection open so new events stream as
 	 *   the run progresses. Without it, the server closes once the
 	 *   current backlog is drained.
-	 * - `sinceSeq` replays only events with `burrowEventSeq > sinceSeq`,
+	 * - `sinceSeq` replays only events with `sandboxEventSeq > sinceSeq`,
 	 *   matching the server's `?since=` semantics.
 	 * - `signal` aborts the underlying fetch so callers can tear the
 	 *   connection down on unmount / cancel.

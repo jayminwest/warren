@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { doctorLocalRuntimeCheck, resolveLocalRunBackend } from "./burrow.ts";
+import { doctorLocalRuntimeCheck, resolveLocalRunBackend } from "./local-runtime.ts";
 
 describe("resolveLocalRunBackend", () => {
 	test("local topology resolves a provider with the preview sidecar seam", async () => {

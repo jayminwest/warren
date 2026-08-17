@@ -19,7 +19,7 @@ import type { FakeProvider } from "../../runtime/fake/fake-provider.ts";
 import type { FinalizeIntent, FinalizeResult, RunHandle } from "../contract.ts";
 import { RuntimeProviderError } from "../errors.ts";
 
-const WS = "/data/burrow/ws";
+const WS = "/data/sandbox/ws";
 const CLONE = "/data/projects/x/y";
 const HANDLE: RunHandle = {
 	runId: "run_domain0001",

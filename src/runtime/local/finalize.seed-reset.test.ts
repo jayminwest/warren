@@ -11,7 +11,7 @@ import { fakeBurrowClient, fakeExec, fakeFs, makeBurrow } from "../../runs/reap/
 import type { FakeProvider } from "../../runtime/fake/fake-provider.ts";
 import type { FinalizeIntent, RunHandle } from "../contract.ts";
 
-const WS = "/data/burrow/ws";
+const WS = "/data/sandbox/ws";
 const HANDLE: RunHandle = {
 	runId: "run_domain0001",
 	sandboxId: "bur_aaaaaaaaaaaa",

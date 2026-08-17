@@ -98,8 +98,8 @@ export interface RunRow {
 	 * the public projection drops both (warren-946f), so consumers must
 	 * test presence, not `!== null` (warren-f53e).
 	 */
-	burrowId?: string | null;
-	burrowRunId?: string | null;
+	sandboxId?: string | null;
+	sandboxRunId?: string | null;
 	/**
 	 * Back-link to the seeds issue this run was dispatched against
 	 * (pl-bb70 step 3 / warren-805a). Null encodes "no seed" — manual
@@ -237,7 +237,7 @@ export interface PreviewLoginResponse {
 	url: string;
 }
 
-export interface BurrowSummary {
+export interface SandboxSummary {
 	id: string;
 	workspacePath: string;
 }
@@ -299,7 +299,7 @@ export interface CreateRunInput {
 
 export interface SpawnRunResponse {
 	run: RunRow;
-	burrow: BurrowSummary;
+	sandbox: SandboxSummary;
 }
 
 /**
@@ -327,7 +327,7 @@ export interface ListRunsResponse {
 export interface CancelRunResponse {
 	state: RunState;
 	alreadyTerminal: boolean;
-	burrowRun: { state: string } | null;
+	sandboxRun: { state: string } | null;
 }
 
 export interface SteerRunResponse {
@@ -624,7 +624,7 @@ export interface ReadyPlansResponse {
  */
 export interface RunTriggerResponse {
 	run: RunRow;
-	burrow: BurrowSummary;
+	sandbox: SandboxSummary;
 }
 
 /* ----------------------------------------------------------------------- */

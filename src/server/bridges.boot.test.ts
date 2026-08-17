@@ -24,7 +24,7 @@ describe("bootBridges", () => {
 		await db.close();
 	});
 
-	test("resumes runs with a burrow_run_id; skips ones without", async () => {
+	test("resumes runs with a sandbox_run_id; skips ones without", async () => {
 		const project = (await repos.projects.listAll())[0];
 		if (!project) throw new Error("project missing");
 
@@ -36,8 +36,8 @@ describe("bootBridges", () => {
 			trigger: "manual",
 		});
 		await repos.runs.attachBurrow(r1.id, {
-			burrowId: "bur_xxxxxxxxxxxx",
-			burrowRunId: "run_zzzzzzzzzzzz",
+			sandboxId: "bur_xxxxxxxxxxxx",
+			sandboxRunId: "run_zzzzzzzzzzzz",
 		});
 
 		const r2 = await repos.runs.create({
@@ -47,7 +47,7 @@ describe("bootBridges", () => {
 			renderedAgentJson: { sections: { system: "x" } },
 			trigger: "manual",
 		});
-		// r2 has no burrow_run_id — partial spawn
+		// r2 has no sandbox_run_id — partial spawn
 
 		const calls: string[] = [];
 		const result = await bootBridges({
@@ -72,7 +72,7 @@ describe("bootBridges", () => {
 
 		// The `burrows` placement table was dropped in warren-3743, so the old
 		// "pre-pl-9ba1 orphan" skip (reason: no_placement) no longer applies —
-		// any active run carrying a burrow_id + burrow_run_id resumes.
+		// any active run carrying a sandbox_id + sandbox_run_id resumes.
 		const r1 = await repos.runs.create({
 			agentName: "refactor-bot",
 			projectId: project.id,
@@ -81,8 +81,8 @@ describe("bootBridges", () => {
 			trigger: "manual",
 		});
 		await repos.runs.attachBurrow(r1.id, {
-			burrowId: "bur_aaaaaaaaaaaa",
-			burrowRunId: "rb_aaaaaaaaaa",
+			sandboxId: "bur_aaaaaaaaaaaa",
+			sandboxRunId: "rb_aaaaaaaaaa",
 		});
 
 		const r2 = await repos.runs.create({
@@ -93,8 +93,8 @@ describe("bootBridges", () => {
 			trigger: "manual",
 		});
 		await repos.runs.attachBurrow(r2.id, {
-			burrowId: "bur_secondsecond",
-			burrowRunId: "rb_second_aaaa",
+			sandboxId: "bur_secondsecond",
+			sandboxRunId: "rb_second_aaaa",
 		});
 
 		const calls: string[] = [];
@@ -126,8 +126,8 @@ describe("bootBridges", () => {
 			trigger: "manual",
 		});
 		await repos.runs.attachBurrow(r.id, {
-			burrowId: "bur_lostlostlost",
-			burrowRunId: "rb_ghostghost1",
+			sandboxId: "bur_lostlostlost",
+			sandboxRunId: "rb_ghostghost1",
 		});
 		await repos.runs.markRunning(r.id);
 
@@ -163,7 +163,7 @@ describe("bootBridges", () => {
 		await result.registry.stopAll();
 	});
 
-	test("warren-b1a9: bridge burrowRunMissing reconciles + stops reconnect loop", async () => {
+	test("warren-b1a9: bridge sandboxRunMissing reconciles + stops reconnect loop", async () => {
 		const project = (await repos.projects.listAll())[0];
 		if (!project) throw new Error("project missing");
 		const r = await repos.runs.create({
@@ -174,8 +174,8 @@ describe("bootBridges", () => {
 			trigger: "manual",
 		});
 		await repos.runs.attachBurrow(r.id, {
-			burrowId: "bur_a",
-			burrowRunId: "rb_a",
+			sandboxId: "bur_a",
+			sandboxRunId: "rb_a",
 		});
 		await repos.runs.markRunning(r.id);
 
@@ -186,14 +186,14 @@ describe("bootBridges", () => {
 			runtimeProvider: makeProvider().provider,
 			bridge: async () => {
 				calls += 1;
-				return { written: 0, skipped: 0, errored: false, burrowRunMissing: true as const };
+				return { written: 0, skipped: 0, errored: false, sandboxRunMissing: true as const };
 			},
 			reconnectBackoffMs: [0],
 		});
 
 		registry.start(r.id, "rb_a", "bur_a");
 		while (registry.size() > 0) await new Promise((res) => setTimeout(res, 0));
-		expect(calls).toBe(1); // No reconnect after burrowRunMissing.
+		expect(calls).toBe(1); // No reconnect after sandboxRunMissing.
 		const run = await repos.runs.require(r.id);
 		expect(run.state).toBe("failed");
 		expect(run.failureReason).toBe("sandbox_run_lost");

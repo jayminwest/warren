@@ -213,8 +213,8 @@ describe("mirrorPlans (warren-d9a2)", () => {
 			prompt: "p",
 			renderedAgentJson: {},
 			trigger: "manual",
-			burrowId: "bur_aaaaaaaaaaaa",
-			burrowRunId: "run_zzzzzzzzzzzz",
+			sandboxId: "bur_aaaaaaaaaaaa",
+			sandboxRunId: "run_zzzzzzzzzzzz",
 		});
 		await repos.runs.markRunning(run.id);
 		return {
@@ -223,7 +223,7 @@ describe("mirrorPlans (warren-d9a2)", () => {
 			broker: new RunEventBroker(),
 			runId: run.id,
 			projectPath: project.localPath,
-			workspacePath: "/data/burrow/ws",
+			workspacePath: "/data/sandbox/ws",
 		};
 	}
 
@@ -314,7 +314,7 @@ describe("mirrorPlans (warren-d9a2)", () => {
 				exec: e.exec,
 			});
 
-			const workspacePlans = f.files.get("/data/burrow/ws/.seeds/plans.jsonl") ?? "";
+			const workspacePlans = f.files.get("/data/sandbox/ws/.seeds/plans.jsonl") ?? "";
 			expect(workspacePlans).toContain("pl-agent-created");
 		} finally {
 			await ctx.db.close();

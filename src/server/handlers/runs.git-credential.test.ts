@@ -15,7 +15,7 @@ import { startServer } from "../server.ts";
 import type { ServeHandle } from "../types.ts";
 import { depsFor, silentLogger, tcpUrl } from "./runs.test-helpers.ts";
 
-function inertBurrowClient(): FakeProvider {
+function inertSandboxClient(): FakeProvider {
 	return new FakeProvider();
 }
 
@@ -38,7 +38,7 @@ describe("POST /runs/:id/git-credential (warren-c9ac)", () => {
 	});
 
 	async function serve(): Promise<string> {
-		const deps = await depsFor(repos, inertBurrowClient());
+		const deps = await depsFor(repos, inertSandboxClient());
 		handle = startServer(deps, {
 			transport: { kind: "tcp", hostname: "127.0.0.1", port: 0 },
 			auth: NO_AUTH,

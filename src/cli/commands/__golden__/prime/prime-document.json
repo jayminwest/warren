@@ -117,7 +117,7 @@
       "options": [
         {
           "flags": "--local",
-          "description": "run the deployment-side checks instead (env vars, burrow socket, bwrap, DB)"
+          "description": "run the deployment-side checks instead (env vars, sandbox runtime, bwrap, DB)"
         },
         {
           "flags": "--no-auth",

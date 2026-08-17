@@ -4,7 +4,7 @@ import type { Repos } from "../../db/repos/index.ts";
 import { RuntimeUnreachableError } from "../../runtime/errors.ts";
 import { FakeProvider } from "../../runtime/fake/fake-provider.ts";
 import { spawnRun } from "./index.ts";
-import { makeBurrowClient, makeProvider, setupRepos } from "./test-helpers.ts";
+import { makeProvider, makeSandboxClient, setupRepos } from "./test-helpers.ts";
 import type { SpawnLogger } from "./types.ts";
 
 interface LogLine {
@@ -45,7 +45,7 @@ describe("spawnRun: instrumentation (warren-c686)", () => {
 	});
 
 	test("logs placement, provision, and dispatch with run_id and request_id", async () => {
-		const { client } = makeBurrowClient();
+		const { client } = makeSandboxClient();
 		const { logger, lines } = makeRecordingLogger({ request_id: "req_abc" });
 		const result = await spawnRun({
 			repos,
@@ -65,17 +65,17 @@ describe("spawnRun: instrumentation (warren-c686)", () => {
 		const provisioned = byEvent("spawn.provisioned");
 		expect(provisioned?.obj.run_id).toBe(result.run.id);
 		expect(provisioned?.obj.request_id).toBe("req_abc");
-		expect(provisioned?.obj.burrow_id).toBe(result.burrow.id);
+		expect(provisioned?.obj.sandbox_id).toBe(result.sandbox.id);
 		expect(typeof provisioned?.obj.duration_ms).toBe("number");
 
 		const dispatched = byEvent("spawn.dispatched");
 		expect(dispatched?.obj.run_id).toBe(result.run.id);
-		expect(dispatched?.obj.burrow_run_id).toBe(result.burrowRun.id);
+		expect(dispatched?.obj.sandbox_run_id).toBe(result.sandboxRun.id);
 		expect(typeof dispatched?.obj.duration_ms).toBe("number");
 	});
 
 	test("logs the rollback branch when burrow dispatch fails", async () => {
-		const { client } = makeBurrowClient({
+		const { client } = makeSandboxClient({
 			runsCreateStatus: 500,
 			runsCreateBody: { error: { code: "internal_error", message: "boom" } },
 		});
@@ -132,6 +132,6 @@ describe("spawnRun: instrumentation (warren-c686)", () => {
 		// The warren row was rolled back to failed with no burrow attached.
 		const rows = await repos.runs.listAll();
 		expect(rows[0]?.state).toBe("failed");
-		expect(rows[0]?.burrowId).toBeNull();
+		expect(rows[0]?.sandboxId).toBeNull();
 	});
 });

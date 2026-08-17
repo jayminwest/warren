@@ -92,8 +92,8 @@ export interface CreateRunInput {
 	prompt: string;
 	renderedAgentJson: unknown;
 	trigger: string;
-	burrowId?: string | null;
-	burrowRunId?: string | null;
+	sandboxId?: string | null;
+	sandboxRunId?: string | null;
 	/** Worker hosting the burrow (warren-135b); denormalized for run routing. */
 	workerId?: string | null;
 	/** Seeds issue back-link (pl-bb70 step 3); null = no seed. */
@@ -123,8 +123,8 @@ export interface CreateRunInput {
 }
 
 export interface AttachBurrowInput {
-	burrowId?: string;
-	burrowRunId?: string;
+	sandboxId?: string;
+	sandboxRunId?: string;
 	workerId?: string;
 }
 
@@ -160,8 +160,8 @@ export class RunsRepo {
 			id: input.id ?? generateId("run"),
 			agentName: input.agentName,
 			projectId: input.projectId,
-			burrowId: input.burrowId ?? null,
-			burrowRunId: input.burrowRunId ?? null,
+			sandboxId: input.sandboxId ?? null,
+			sandboxRunId: input.sandboxRunId ?? null,
 			workerId: input.workerId ?? null,
 			seedId: input.seedId ?? null,
 			parentRunId: input.parentRunId ?? null,
@@ -296,18 +296,18 @@ export class RunsRepo {
 	 */
 	async attachBurrow(id: string, input: AttachBurrowInput): Promise<RunRow> {
 		if (
-			input.burrowId === undefined &&
-			input.burrowRunId === undefined &&
+			input.sandboxId === undefined &&
+			input.sandboxRunId === undefined &&
 			input.workerId === undefined
 		) {
 			throw new ValidationError(
-				"attachBurrow requires at least one of burrowId, burrowRunId, or workerId",
+				"attachBurrow requires at least one of sandboxId, sandboxRunId, or workerId",
 			);
 		}
 		const current = await this.require(id);
-		const patch: { burrowId?: string; burrowRunId?: string; workerId?: string } = {};
-		if (input.burrowId !== undefined) patch.burrowId = input.burrowId;
-		if (input.burrowRunId !== undefined) patch.burrowRunId = input.burrowRunId;
+		const patch: { sandboxId?: string; sandboxRunId?: string; workerId?: string } = {};
+		if (input.sandboxId !== undefined) patch.sandboxId = input.sandboxId;
+		if (input.sandboxRunId !== undefined) patch.sandboxRunId = input.sandboxRunId;
 		if (input.workerId !== undefined) patch.workerId = input.workerId;
 		await this.adapter.runWrite(this.db.update(this.runs).set(patch).where(eq(this.runs.id, id)));
 		return { ...current, ...patch };
@@ -315,12 +315,12 @@ export class RunsRepo {
 
 	/**
 	 * Persist a confirmed workspace destruction (warren-9b77) by nulling
-	 * `burrowId` on every run row that referenced it, so the fallback GC
+	 * `sandboxId` on every run row that referenced it, so the fallback GC
 	 * and the readyz stale-workspace diagnostic never re-strand it. Body
 	 * lives in runs-workspace.ts.
 	 */
-	clearBurrowIdForWorkspace(burrowId: string): Promise<void> {
-		return clearBurrowIdForWorkspace(this.adapter, burrowId);
+	clearBurrowIdForWorkspace(sandboxId: string): Promise<void> {
+		return clearBurrowIdForWorkspace(this.adapter, sandboxId);
 	}
 
 	async markRunning(id: string, now: Date = new Date()): Promise<RunRow> {

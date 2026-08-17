@@ -30,10 +30,10 @@
  * Two corner cases bypass the seam entirely:
  *   1. The run is already terminal. The provider's cancel is itself idempotent,
  *      but warren can answer locally without a wire call.
- *   2. The run is queued and has no `burrowRunId`. This is the partial spawn
+ *   2. The run is queued and has no `sandboxRunId`. This is the partial spawn
  *      window: a sandbox was provisioned but the backend never accepted a run
  *      handle (or rolled it back). The warren row is queued with
- *      `burrowRunId = null`. There is nothing remote to cancel, so the warren
+ *      `sandboxRunId = null`. There is nothing remote to cancel, so the warren
  *      row is transitioned queued → cancelled directly. Bypasses the reap
  *      pipeline because there is no backend run to read events from. Idempotent
  *      against a concurrent spawn rollback because the state-machine guard
@@ -108,17 +108,17 @@ export interface CancelRunInput {
 }
 
 export interface CancelRunResult {
-	/** Warren run state after the call. Unchanged for the common path; only updated for the no-burrowRunId direct cancel. */
+	/** Warren run state after the call. Unchanged for the common path; only updated for the no-sandboxRunId direct cancel. */
 	readonly state: RunState;
 	/**
 	 * Post-cancel backend run snapshot, or null when the wire call was bypassed
-	 * (already-terminal / no-burrowRunId / lost). Narrowed to `{ id, state }`
+	 * (already-terminal / no-sandboxRunId / lost). Narrowed to `{ id, state }`
 	 * (warren-1f56) — the only fields the HTTP response and the UI
-	 * (`CancelRunResponse.burrowRun`) read. `id` is the (warren-side) burrowRunId;
+	 * (`CancelRunResponse.sandboxRun`) read. `id` is the (warren-side) sandboxRunId;
 	 * `state` is sourced from `provider.status()`, since the seam returns `void`
 	 * from `cancel()` and the domain re-reads the phase out-of-band.
 	 */
-	readonly burrowRun: { readonly id: string; readonly state: RunState } | null;
+	readonly sandboxRun: { readonly id: string; readonly state: RunState } | null;
 	/** True when the warren row was already terminal on entry — no work was done. */
 	readonly alreadyTerminal: boolean;
 }
@@ -127,38 +127,38 @@ export async function cancelRun(input: CancelRunInput): Promise<CancelRunResult>
 	const run = await input.repos.runs.require(input.runId);
 
 	if (isTerminal(run.state)) {
-		return { state: run.state, burrowRun: null, alreadyTerminal: true };
+		return { state: run.state, sandboxRun: null, alreadyTerminal: true };
 	}
 
-	if (run.burrowRunId === null) {
+	if (run.sandboxRunId === null) {
 		// Partial spawn — the backend never accepted a run handle. The warren
 		// state machine allows queued → cancelled directly. A running row
 		// without a backend run id is not a state the spawn flow can produce,
 		// so reject it loudly.
 		if (run.state !== "queued") {
 			throw new ValidationError(
-				`run is in state '${run.state}' but has no burrow_run_id; cannot cancel`,
+				`run is in state '${run.state}' but has no sandbox_run_id; cannot cancel`,
 			);
 		}
 		const updated = await input.repos.runs.finalize(run.id, "cancelled", input.now?.());
 		await emitCancelEvent(input, run.id, { reason: input.reason, mode: "warren_only" });
-		return { state: updated.state, burrowRun: null, alreadyTerminal: false };
+		return { state: updated.state, sandboxRun: null, alreadyTerminal: false };
 	}
 
-	const burrowRunId = run.burrowRunId;
-	if (run.burrowId === null) {
-		// A run with a burrowRunId always has a burrowId (spawn writes them
+	const sandboxRunId = run.sandboxRunId;
+	if (run.sandboxId === null) {
+		// A run with a sandboxRunId always has a sandboxId (spawn writes them
 		// in that order). Defensive narrowing for noUncheckedIndexedAccess.
 		throw new ValidationError(
-			`run '${run.id}' has burrow_run_id but no burrow_id; cannot resolve worker`,
+			`run '${run.id}' has sandbox_run_id but no sandbox_id; cannot resolve worker`,
 		);
 	}
 	// The seam handle: `sandboxId` is the sandbox/burrow id, `providerRunId` the
 	// backend run id cancel is scoped to.
 	const handle: RunHandle = {
 		runId: run.id,
-		sandboxId: run.burrowId,
-		providerRunId: burrowRunId,
+		sandboxId: run.sandboxId,
+		providerRunId: sandboxRunId,
 	};
 	try {
 		await input.runtimeProvider.cancel(handle, input.reason);
@@ -176,9 +176,9 @@ export async function cancelRun(input: CancelRunInput): Promise<CancelRunResult>
 			await emitCancelEvent(input, run.id, {
 				reason: input.reason,
 				mode: "sandbox_run_lost",
-				burrowRunId,
+				sandboxRunId,
 			});
-			return { state: finalized.state, burrowRun: null, alreadyTerminal: false };
+			return { state: finalized.state, sandboxRun: null, alreadyTerminal: false };
 		}
 		throw err;
 	}
@@ -186,7 +186,7 @@ export async function cancelRun(input: CancelRunInput): Promise<CancelRunResult>
 	// The seam's `cancel()` returns void (it discards the backend's post-cancel
 	// row), so re-read the run's phase out-of-band via `status()` — the domain
 	// needs it for the inline-reap decision and the HTTP response's
-	// `burrowRun.state`.
+	// `sandboxRun.state`.
 	const status = await input.runtimeProvider.status(handle);
 	// warren-fe9b / warren-d15c: when the post-cancel read shows the run already
 	// GONE (`exists:false`), that absence is our own delete landing — the cancel
@@ -194,13 +194,13 @@ export async function cancelRun(input: CancelRunInput): Promise<CancelRunResult>
 	// `failed/sandbox_run_lost`. (On K8s the common case is a `Terminating` pod
 	// still reading `running`; the watchdog's cancel fast path then finalizes
 	// the row once the pod is confirmed gone.)
-	const burrowState: RunState = status.exists ? status.phase : "cancelled";
+	const sandboxState: RunState = status.exists ? status.phase : "cancelled";
 
 	await emitCancelEvent(input, run.id, {
 		reason: input.reason,
 		mode: "forwarded",
-		burrowRunId,
-		burrowRunState: burrowState,
+		sandboxRunId,
+		sandboxRunState: sandboxState,
 	});
 
 	// warren-a69a: when the backend reports a terminal state for the cancelled
@@ -209,12 +209,12 @@ export async function cancelRun(input: CancelRunInput): Promise<CancelRunResult>
 	// failures land on the run's event log without escaping the cancel
 	// response.
 	let stateAfter: RunState = run.state;
-	if (isTerminalRunState(burrowState)) {
+	if (isTerminalRunState(sandboxState)) {
 		const reap = input.reap ?? reapSeamNotConfigured;
 		try {
 			const result = await reap({
 				runId: run.id,
-				outcome: burrowState,
+				outcome: sandboxState,
 				repos: input.repos,
 				// warren-a7cb: route the cancel-path reap's finalize + terminate
 				// through the active backend (in-pod under WARREN_RUNTIME=k8s).
@@ -229,7 +229,7 @@ export async function cancelRun(input: CancelRunInput): Promise<CancelRunResult>
 			input.logger?.error?.(
 				{
 					runId: run.id,
-					burrowRunId,
+					sandboxRunId,
 					err: err instanceof Error ? err.message : String(err),
 				},
 				"reap threw out of cancel terminal-detect path",
@@ -239,7 +239,7 @@ export async function cancelRun(input: CancelRunInput): Promise<CancelRunResult>
 
 	return {
 		state: stateAfter,
-		burrowRun: { id: burrowRunId, state: burrowState },
+		sandboxRun: { id: sandboxRunId, state: sandboxState },
 		alreadyTerminal: false,
 	};
 }
@@ -263,7 +263,7 @@ async function emitCancelEvent(
 	const seq = ((await input.repos.events.maxSeqForRun(runId)) ?? 0) + 1;
 	const row = await input.repos.events.append({
 		runId,
-		burrowEventSeq: seq,
+		sandboxEventSeq: seq,
 		ts: now().toISOString(),
 		kind: "cancel.requested",
 		stream: "system",

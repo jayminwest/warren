@@ -36,7 +36,7 @@ export interface SpawnRunInput {
 	/**
 	 * Runtime-provider seam (warren-c42c: burrow-client eviction, bucket 2).
 	 * `spawnRun` dispatches EXCLUSIVELY through `provider.create(spec)` — the
-	 * single call that collapses burrow's `burrowsUp` + `runs.create` (and, on
+	 * single call that collapses burrow's `sandboxUp` + `runs.create` (and, on
 	 * a partial failure, owns the sandbox-half teardown). Required: the spawn
 	 * path no longer knows about burrow, so callers resolve the boot-selected
 	 * provider (`resolveRuntimeProvider`, honoring `WARREN_RUNTIME`) and thread
@@ -181,7 +181,7 @@ export interface SpawnRunInput {
 	 * Seeds CLI shell-out deps for the post-dispatch extension write
 	 * (pl-bb70 step 4, warren-46cd). When both `seedId` and this are
 	 * provided, spawnRun fires a single `sd update --extensions` after
-	 * `attachBurrow(burrowRunId)` succeeds, merging `{role, trigger,
+	 * `attachBurrow(sandboxRunId)` succeeds, merging `{role, trigger,
 	 * lastRunId, lastRunAt}` onto the seed. Failure is fire-and-log
 	 * (mirrors the pl-2f15 risk #4 mitigation in src/triggers/tick.ts):
 	 * a `seeds_extension_write_failed` system event lands on the run,
@@ -230,10 +230,10 @@ export interface SpawnRunResult {
 	 * ids the callers use (`bridges.start`, the HTTP response). The runtime seam
 	 * returns only an opaque `RunHandle`, so `burrow.workspacePath` — a host path
 	 * with no provider-neutral home — is a display-only carry-over (empty on the
-	 * real dispatch path) kept for wire/UI compatibility until the `/burrows`
+	 * real dispatch path) kept for wire/UI compatibility until the `/sandboxes`
 	 * surface is retired (plan §5.C).
 	 */
-	readonly burrow: { readonly id: string; readonly workspacePath: string };
-	readonly burrowRun: { readonly id: string };
+	readonly sandbox: { readonly id: string; readonly workspacePath: string };
+	readonly sandboxRun: { readonly id: string };
 	readonly agent: AgentDefinition;
 }

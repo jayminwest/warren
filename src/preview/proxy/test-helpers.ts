@@ -46,7 +46,7 @@ export async function setupProxyEnv(opts: SetupOpts = {}): Promise<ProxyTestEnv>
 		prompt: "p",
 		renderedAgentJson: {},
 		trigger: "manual",
-		burrowId: "bur_x",
+		sandboxId: "bur_x",
 		workerId: LOCAL_WORKER_NAME,
 	});
 	await repos.runs.attachPreview(run.id, {

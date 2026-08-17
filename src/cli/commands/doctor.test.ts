@@ -88,9 +88,9 @@ describe("runDoctor", () => {
 			},
 			{},
 		);
-		const burrowCheck = result.checks.find((c: DoctorCheck) => c.name === "local_runtime");
-		expect(burrowCheck?.ok).toBe(false);
-		expect(burrowCheck?.message).toContain("ECONNREFUSED");
+		const sandboxCheck = result.checks.find((c: DoctorCheck) => c.name === "local_runtime");
+		expect(sandboxCheck?.ok).toBe(false);
+		expect(sandboxCheck?.message).toContain("ECONNREFUSED");
 		expect(result.exitCode).toBe(1);
 	});
 
@@ -161,7 +161,7 @@ describe("runDoctor", () => {
 			"warren_config",
 			"warren_config_deprecations",
 			"preview_port_allocator",
-			"stale_burrow_workspaces",
+			"stale_sandbox_workspaces",
 			"preview_auth_strength",
 			"local_runtime",
 		]);
@@ -187,7 +187,7 @@ describe("runDoctor", () => {
 		);
 		const names = result.checks.map((c) => c.name);
 		expect(names).not.toContain("bwrap");
-		expect(names).not.toContain("stale_burrow_workspaces");
+		expect(names).not.toContain("stale_sandbox_workspaces");
 		expect(names).not.toContain("local_runtime");
 		const runtime = result.checks.find((c: DoctorCheck) => c.name === "runtime_backend");
 		expect(runtime?.ok).toBe(true);

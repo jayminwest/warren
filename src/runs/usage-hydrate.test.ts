@@ -15,8 +15,8 @@ function row(over: Partial<RunRow> & { id: string; state: RunRow["state"] }): Ru
 	return {
 		agentName: "claude-code",
 		projectId: "prj_1",
-		burrowId: null,
-		burrowRunId: null,
+		sandboxId: null,
+		sandboxRunId: null,
 		workerId: null,
 		seedId: null,
 		renderedAgentJson: null,

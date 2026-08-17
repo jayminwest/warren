@@ -128,11 +128,11 @@ export async function maybeReconcileTerminal(
 	idleMs: number,
 	now: Date,
 ): Promise<RunTerminalState | null> {
-	if (run.burrowId === null || run.burrowRunId === null) return null;
+	if (run.sandboxId === null || run.sandboxRunId === null) return null;
 	const handle: RunHandle = {
 		runId: run.id,
-		sandboxId: run.burrowId,
-		providerRunId: run.burrowRunId,
+		sandboxId: run.sandboxId,
+		providerRunId: run.sandboxRunId,
 	};
 	let status: RunStatus;
 	try {
@@ -175,7 +175,7 @@ async function forceReconcile(
 ): Promise<void> {
 	const log = bindBridgeLogger(deps.logger, {
 		run_id: run.id,
-		...(run.burrowRunId !== null ? { burrow_run_id: run.burrowRunId } : {}),
+		...(run.sandboxRunId !== null ? { sandbox_run_id: run.sandboxRunId } : {}),
 	});
 	await emitReconciledEvent(deps, run, status, target.outcome, idleMs, now, cancelRequested);
 	await deps.reap({
@@ -216,7 +216,7 @@ async function emitReconciledEvent(
 	const seq = ((await deps.repos.events.maxSeqForRun(run.id)) ?? 0) + 1;
 	const row = await deps.repos.events.append({
 		runId: run.id,
-		burrowEventSeq: seq,
+		sandboxEventSeq: seq,
 		ts: now.toISOString(),
 		kind: WATCHDOG_TERMINAL_RECONCILED_KIND,
 		stream: "system",
@@ -225,7 +225,7 @@ async function emitReconciledEvent(
 			outcome,
 			providerPhase: status.phase,
 			providerExists: status.exists,
-			burrowRunId: run.burrowRunId,
+			sandboxRunId: run.sandboxRunId,
 			// The provider's free-text terminal detail (warren-4a95) — e.g. the
 			// kubelet's eviction message (`Pod ephemeral local storage usage
 			// exceeds the total limit of containers …`). Persisted onto the run's

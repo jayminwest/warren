@@ -12,7 +12,7 @@
  *
  * `prepareWorkspace` writes a minimal `.claude/settings.local.json` so
  * the agent has a stable settings file even when the project ships none,
- * plants a private `.burrow-tmp/` for the spawn's `TMPDIR` (burrow-8452 —
+ * plants a private `.sandbox-tmp/` for the spawn's `TMPDIR` (burrow-8452 —
  * the host UID-keyed `/tmp/claude-${uid}/` root races every other
  * claude-code on the machine during startup cleanup), and, when the host
  * is logged in, forwards credentials into the run's `.claude/` (see
@@ -50,7 +50,7 @@ export const CLAUDE_CODE_SETTINGS_PATH = ".claude/settings.local.json";
  * Pinning TMPDIR inside the workspace gives each spawned claude a private
  * sweep boundary (burrow-8452).
  */
-export const CLAUDE_CODE_BURROW_TMPDIR = ".burrow-tmp";
+export const CLAUDE_CODE_SANDBOX_TMPDIR = ".sandbox-tmp";
 
 const DEFAULT_SETTINGS: Record<string, unknown> = {
 	permissions: {},
@@ -127,7 +127,7 @@ export function claudeCodeBurrowTmpdir(
 	plat: NodeJS.Platform = process.platform,
 ): string {
 	const home = plat === "linux" ? "/workspace" : workspacePath;
-	return join(home, CLAUDE_CODE_BURROW_TMPDIR);
+	return join(home, CLAUDE_CODE_SANDBOX_TMPDIR);
 }
 
 /**
@@ -135,7 +135,7 @@ export function claudeCodeBurrowTmpdir(
  * tool output never trips `git status` inside a project worktree.
  */
 function ensureBurrowTmpdir(workspacePath: string): void {
-	const dir = join(workspacePath, CLAUDE_CODE_BURROW_TMPDIR);
+	const dir = join(workspacePath, CLAUDE_CODE_SANDBOX_TMPDIR);
 	mkdirSync(dir, { recursive: true });
 	writeFileSync(join(dir, ".gitignore"), "*\n", { encoding: "utf8", flag: "w" });
 }

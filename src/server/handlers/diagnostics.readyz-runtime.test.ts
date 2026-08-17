@@ -75,7 +75,7 @@ describe("/readyz runtime-topology scoping (warren-c128)", () => {
 		expect(ok).toBe(true);
 		expect(names).not.toContain("burrow_reachable");
 		expect(names).not.toContain("bwrap");
-		expect(names).not.toContain("stale_burrow_workspaces");
+		expect(names).not.toContain("stale_sandbox_workspaces");
 		// The topology-relevant checks survive.
 		expect(names).toContain("db_reachable");
 		expect(names).toContain("agents");

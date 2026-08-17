@@ -120,8 +120,8 @@ async function setupK8sAutoPlan(): Promise<K8sAutoCtx> {
 			frontmatter: { auto_plan_run: true },
 		},
 		trigger: "cron",
-		burrowId: "bur_aaaaaaaaaaaa",
-		burrowRunId: "run_zzzzzzzzzzzz",
+		sandboxId: "bur_aaaaaaaaaaaa",
+		sandboxRunId: "run_zzzzzzzzzzzz",
 	});
 	await repos.runs.markRunning(run.id);
 	return { db, repos, broker: new RunEventBroker(), runId: run.id, projectPath: project.localPath };

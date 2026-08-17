@@ -40,8 +40,8 @@ describe("GET /projects/:id/triggers — parsed YAML joined with scheduler state
 	});
 
 	test("empty list + empty errors when .warren/ is absent", async () => {
-		const burrowClient = new FakeProvider();
-		const deps = await depsFor(repos, burrowClient);
+		const sandboxClient = new FakeProvider();
+		const deps = await depsFor(repos, sandboxClient);
 		handle = startServer(deps, {
 			transport: { kind: "tcp", hostname: "127.0.0.1", port: 0 },
 			auth: NO_AUTH,
@@ -94,9 +94,9 @@ describe("GET /projects/:id/triggers — parsed YAML joined with scheduler state
 			lastRunId: seedRun.id,
 		});
 
-		const burrowClient = new FakeProvider();
+		const sandboxClient = new FakeProvider();
 		const deps: ServerDeps = {
-			...(await depsFor(repos, burrowClient)),
+			...(await depsFor(repos, sandboxClient)),
 			// Freeze "now" so the recomputed nextFireAt is deterministic.
 			now: () => new Date("2026-05-10T12:00:00.000Z"),
 		};
@@ -146,8 +146,8 @@ describe("GET /projects/:id/triggers — parsed YAML joined with scheduler state
 			"- id: nightly\n  kind: cron\n  cron: '0 2 * * *'\n",
 		);
 
-		const burrowClient = new FakeProvider();
-		const deps = await depsFor(repos, burrowClient);
+		const sandboxClient = new FakeProvider();
+		const deps = await depsFor(repos, sandboxClient);
 		handle = startServer(deps, {
 			transport: { kind: "tcp", hostname: "127.0.0.1", port: 0 },
 			auth: NO_AUTH,
@@ -167,8 +167,8 @@ describe("GET /projects/:id/triggers — parsed YAML joined with scheduler state
 	});
 
 	test("404 for an unknown project id", async () => {
-		const burrowClient = new FakeProvider();
-		const deps = await depsFor(repos, burrowClient);
+		const sandboxClient = new FakeProvider();
+		const deps = await depsFor(repos, sandboxClient);
 		handle = startServer(deps, {
 			transport: { kind: "tcp", hostname: "127.0.0.1", port: 0 },
 			auth: NO_AUTH,

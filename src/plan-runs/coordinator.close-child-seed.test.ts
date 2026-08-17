@@ -66,7 +66,7 @@ describe("advancePlanRun — host-side child seed close (warren-3806)", () => {
 		await h.repos.runs.finalize(runId, "succeeded", NOW);
 		await h.repos.events.append({
 			runId,
-			burrowEventSeq: 1,
+			sandboxEventSeq: 1,
 			ts: NOW.toISOString(),
 			kind: "reap.empty_push",
 			stream: "system",

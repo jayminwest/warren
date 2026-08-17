@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { WarrenDb } from "../../db/client.ts";
 import type { Repos } from "../../db/repos/index.ts";
 import { spawnRun } from "./index.ts";
-import { makeBurrowClient, makeProvider, setupRepos } from "./test-helpers.ts";
+import { makeProvider, makeSandboxClient, setupRepos } from "./test-helpers.ts";
 
 /**
  * warren-709e (#419): a run dispatched with an explicit `targetBranch`
@@ -23,7 +23,7 @@ describe("spawnRun: targetBranch (warren-709e)", () => {
 	});
 
 	test("persists targetBranch on the run row and pins the burrow branch", async () => {
-		const { client, calls } = makeBurrowClient();
+		const { client, calls } = makeSandboxClient();
 		const { run } = await spawnRun({
 			repos,
 			runtimeProvider: makeProvider(client),
@@ -44,7 +44,7 @@ describe("spawnRun: targetBranch (warren-709e)", () => {
 	});
 
 	test("defaults a root run's base ref to targetBranch when no ref is given", async () => {
-		const { client } = makeBurrowClient();
+		const { client } = makeSandboxClient();
 		let refreshRef: string | undefined;
 		await spawnRun({
 			repos,
@@ -69,7 +69,7 @@ describe("spawnRun: targetBranch (warren-709e)", () => {
 	});
 
 	test("an explicit ref still wins over targetBranch for the base ref", async () => {
-		const { client } = makeBurrowClient();
+		const { client } = makeSandboxClient();
 		let refreshRef: string | undefined;
 		await spawnRun({
 			repos,
@@ -95,7 +95,7 @@ describe("spawnRun: targetBranch (warren-709e)", () => {
 	});
 
 	test("a whitespace-only targetBranch falls through to a null row + composed branch", async () => {
-		const { client, calls } = makeBurrowClient();
+		const { client, calls } = makeSandboxClient();
 		const { run } = await spawnRun({
 			repos,
 			runtimeProvider: makeProvider(client),
@@ -130,7 +130,7 @@ describe("spawnRun: targetBranch policy (warren-3a75)", () => {
 	});
 
 	const dispatch = (targetBranch: string) => {
-		const { client } = makeBurrowClient();
+		const { client } = makeSandboxClient();
 		return spawnRun({
 			repos,
 			runtimeProvider: makeProvider(client),

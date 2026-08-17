@@ -296,7 +296,7 @@ describe("advancePlanRun — completion phase", () => {
 		// Insert an empty-push event so the coordinator's trivial-merge probe finds it.
 		await h.repos.events.append({
 			runId,
-			burrowEventSeq: 1,
+			sandboxEventSeq: 1,
 			ts: NOW.toISOString(),
 			kind: "reap.empty_push",
 			stream: "system",
@@ -337,7 +337,7 @@ describe("advancePlanRun — completion phase", () => {
 		await h.repos.runs.finalize(runId, "succeeded", NOW);
 		await h.repos.events.append({
 			runId,
-			burrowEventSeq: 1,
+			sandboxEventSeq: 1,
 			ts: NOW.toISOString(),
 			kind: "reap.empty_push",
 			stream: "system",

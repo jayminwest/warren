@@ -298,7 +298,7 @@ async function dispatchProviderRetry(
 			logger: input.logger,
 			now,
 		});
-		input.bridges.start(result.run.id, result.burrowRun.id, result.burrow.id, result.run.mode);
+		input.bridges.start(result.run.id, result.sandboxRun.id, result.sandbox.id, result.run.mode);
 		// Lineage on BOTH streams: the successor names its origin (this is
 		// also the single-retry bound marker), the origin names its successor.
 		await emit(result.run.id, PROVIDER_RETRY_EVENTS.spawnRetry, {
@@ -346,7 +346,7 @@ function makeRunEventEmitter(
 		const maxSeq = (await input.repos.events.maxSeqForRun(runId)) ?? 0;
 		const row = await input.repos.events.append({
 			runId,
-			burrowEventSeq: maxSeq + 1,
+			sandboxEventSeq: maxSeq + 1,
 			ts: now().toISOString(),
 			kind,
 			stream: "system",

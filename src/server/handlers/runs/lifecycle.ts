@@ -87,7 +87,7 @@ export const PUBLIC_RUN_FIELDS = [
  *
  * - `renderedAgentJson` — the fully rendered system prompt. Prompt
  *   engineering is the IP here, and it is pure noise to a spectator.
- * - `burrowId` / `burrowRunId` / `workerId` — internal runtime handles.
+ * - `sandboxId` / `sandboxRunId` / `workerId` — internal runtime handles.
  *   They also render as empty "—" cards on the K8s instance today.
  * - `previewFailureMessage` — free text carrying a subprocess stderr tail.
  * - `salvagePath` — a host filesystem path (warren-cd3b); internal topology,
@@ -95,8 +95,8 @@ export const PUBLIC_RUN_FIELDS = [
  */
 export const REDACTED_RUN_FIELDS = [
 	"renderedAgentJson",
-	"burrowId",
-	"burrowRunId",
+	"sandboxId",
+	"sandboxRunId",
 	"workerId",
 	"previewFailureMessage",
 	"salvagePath",

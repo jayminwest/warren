@@ -53,7 +53,7 @@ describe("POST /plan-runs/:id/cancel", () => {
 			startedAt: new Date().toISOString(),
 		});
 
-		// Create a queued run with NO burrow_run_id — cancelRun's "partial spawn"
+		// Create a queued run with NO sandbox_run_id — cancelRun's "partial spawn"
 		// branch handles this without a burrow round-trip, so we can assert the
 		// chain through without stubbing the burrow client's cancel endpoint.
 		const childRun = await repos.runs.create({

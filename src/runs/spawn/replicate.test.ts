@@ -3,7 +3,7 @@ import { ValidationError } from "../../core/errors.ts";
 import type { WarrenDb } from "../../db/client.ts";
 import type { Repos } from "../../db/repos/index.ts";
 import { spawnRun } from "./index.ts";
-import { makeAgentJson, makeBurrowClient, makeProvider, setupRepos } from "./test-helpers.ts";
+import { makeAgentJson, makeProvider, makeSandboxClient, setupRepos } from "./test-helpers.ts";
 
 /**
  * warren-e96f: a replicate run ("re-run from scratch") re-dispatches the
@@ -46,7 +46,7 @@ describe("spawnRun: replicate (warren-e96f)", () => {
 
 	test("uses the project default base (NOT the parent's pushed branch) and records clone_kind", async () => {
 		const parentId = await makeParent();
-		const { client } = makeBurrowClient();
+		const { client } = makeSandboxClient();
 		let refreshRef: string | undefined = "sentinel";
 		const { run } = await spawnRun({
 			repos,
@@ -73,7 +73,7 @@ describe("spawnRun: replicate (warren-e96f)", () => {
 
 	test("honors an explicit ref instead of the parent's pushed branch", async () => {
 		const parentId = await makeParent();
-		const { client } = makeBurrowClient();
+		const { client } = makeSandboxClient();
 		let refreshRef: string | undefined;
 		await spawnRun({
 			repos,
@@ -108,7 +108,7 @@ describe("spawnRun: replicate (warren-e96f)", () => {
 			renderedAgentJson: makeAgentJson(),
 			trigger: "manual",
 		});
-		const { client } = makeBurrowClient();
+		const { client } = makeSandboxClient();
 		await expect(
 			spawnRun({
 				repos,
@@ -124,7 +124,7 @@ describe("spawnRun: replicate (warren-e96f)", () => {
 
 	test("defaults a parented run to clone_kind=continue when cloneKind is omitted", async () => {
 		const parentId = await makeParent();
-		const { client } = makeBurrowClient();
+		const { client } = makeSandboxClient();
 		const { run } = await spawnRun({
 			repos,
 			runtimeProvider: makeProvider(client),
@@ -137,7 +137,7 @@ describe("spawnRun: replicate (warren-e96f)", () => {
 	});
 
 	test("a root run leaves clone_kind null", async () => {
-		const { client } = makeBurrowClient();
+		const { client } = makeSandboxClient();
 		const { run } = await spawnRun({
 			repos,
 			runtimeProvider: makeProvider(client),

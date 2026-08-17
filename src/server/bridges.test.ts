@@ -115,8 +115,8 @@ describe("createBridgeRegistry", () => {
 			prompt: "p",
 			renderedAgentJson: {},
 			trigger: "manual",
-			burrowId: "bur_a",
-			burrowRunId: "rb_a",
+			sandboxId: "bur_a",
+			sandboxRunId: "rb_a",
 		});
 
 		let calls = 0;
@@ -154,8 +154,8 @@ describe("createBridgeRegistry", () => {
 			prompt: "p",
 			renderedAgentJson: {},
 			trigger: "manual",
-			burrowId: "bur_a",
-			burrowRunId: "rb_a",
+			sandboxId: "bur_a",
+			sandboxRunId: "rb_a",
 		});
 
 		let calls = 0;
@@ -195,8 +195,8 @@ describe("createBridgeRegistry", () => {
 			prompt: "p",
 			renderedAgentJson: {},
 			trigger: "manual",
-			burrowId: "bur_a",
-			burrowRunId: "rb_a",
+			sandboxId: "bur_a",
+			sandboxRunId: "rb_a",
 		});
 
 		let bridgeCalls = 0;
@@ -240,8 +240,8 @@ describe("createBridgeRegistry", () => {
 			prompt: "p",
 			renderedAgentJson: {},
 			trigger: "manual",
-			burrowId: "bur_a",
-			burrowRunId: "rb_a",
+			sandboxId: "bur_a",
+			sandboxRunId: "rb_a",
 		});
 
 		const registry = createBridgeRegistry({
@@ -279,8 +279,8 @@ describe("createBridgeRegistry", () => {
 			prompt: "p",
 			renderedAgentJson: {},
 			trigger: "manual",
-			burrowId: "bur_a",
-			burrowRunId: "rb_a",
+			sandboxId: "bur_a",
+			sandboxRunId: "rb_a",
 		});
 
 		const errors: { runId: string; err: string }[] = [];
@@ -330,8 +330,8 @@ describe("createBridgeRegistry", () => {
 			prompt: "p",
 			renderedAgentJson: {},
 			trigger: "manual",
-			burrowId: "bur_a",
-			burrowRunId: "rb_a",
+			sandboxId: "bur_a",
+			sandboxRunId: "rb_a",
 		});
 
 		let calls = 0;

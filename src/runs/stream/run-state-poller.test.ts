@@ -16,14 +16,14 @@ describe("bridgeRunStream — run-state poller (warren-6596)", () => {
 	let repos: Repos;
 	let broker: RunEventBroker;
 	let runId: string;
-	let burrowRunId: string;
+	let sandboxRunId: string;
 
 	beforeEach(async () => {
 		db = await openDatabase({ path: ":memory:" });
 		repos = createRepos(db);
 		const ids = await seedBridgeRun(repos);
 		runId = ids.runId;
-		burrowRunId = ids.burrowRunId;
+		sandboxRunId = ids.sandboxRunId;
 		broker = new RunEventBroker();
 	});
 
@@ -45,17 +45,17 @@ describe("bridgeRunStream — run-state poller (warren-6596)", () => {
 			async *[Symbol.asyncIterator]() {
 				let i = 1;
 				while (!signal.aborted) {
-					yield evt(burrowRunId, i++, { kind: "text", payload: { text: `line ${i}` } });
+					yield evt(sandboxRunId, i++, { kind: "text", payload: { text: `line ${i}` } });
 					await new Promise((r) => setTimeout(r, 1));
 				}
 			},
 		});
 		const result = await bridgeRunStream({
 			runId,
-			burrowRunId,
+			sandboxRunId,
 			repos,
 			broker,
-			burrowId: "bur_aaaaaaaaaaaa",
+			sandboxId: "bur_aaaaaaaaaaaa",
 			runtimeProvider: makeProvider(),
 			source: (s: AbortSignal) => infiniteTextSource(s),
 			runStateProbe,
@@ -64,19 +64,19 @@ describe("bridgeRunStream — run-state poller (warren-6596)", () => {
 		});
 		expect(result.terminalDetected).toEqual({ outcome: "succeeded" });
 		expect(result.errored).toBe(false);
-		expect(result.burrowRunMissing).toBeUndefined();
+		expect(result.sandboxRunMissing).toBeUndefined();
 	});
 
 	test("maps burrow failed/cancelled to the matching terminal outcome", async () => {
-		for (const burrowState of ["failed", "cancelled"] as const) {
+		for (const sandboxState of ["failed", "cancelled"] as const) {
 			db = await openDatabase({ path: ":memory:" });
 			repos = createRepos(db);
 			const ids = await seedBridgeRun(repos, {
-				burrowId: "bur_bbbbbbbbbbbb",
-				burrowRunId: "run_qqqqqqqqqqqq",
+				sandboxId: "bur_bbbbbbbbbbbb",
+				sandboxRunId: "run_qqqqqqqqqqqq",
 			});
 			const localRunId = ids.runId;
-			const localBurrowRunId = ids.burrowRunId;
+			const localBurrowRunId = ids.sandboxRunId;
 			broker = new RunEventBroker();
 			const probe = async (
 				_: string,
@@ -84,7 +84,7 @@ describe("bridgeRunStream — run-state poller (warren-6596)", () => {
 			): Promise<{
 				state: "running" | "failed" | "cancelled";
 				exitCode: number | null;
-			}> => ({ state: burrowState, exitCode: burrowState === "failed" ? 1 : null });
+			}> => ({ state: sandboxState, exitCode: sandboxState === "failed" ? 1 : null });
 			const infinite = (signal: AbortSignal): AsyncIterable<StreamEventView> => ({
 				async *[Symbol.asyncIterator]() {
 					while (!signal.aborted) {
@@ -95,17 +95,17 @@ describe("bridgeRunStream — run-state poller (warren-6596)", () => {
 			});
 			const result = await bridgeRunStream({
 				runId: localRunId,
-				burrowRunId: localBurrowRunId,
+				sandboxRunId: localBurrowRunId,
 				repos,
 				broker,
-				burrowId: "bur_bbbbbbbbbbbb",
+				sandboxId: "bur_bbbbbbbbbbbb",
 				runtimeProvider: makeProvider(),
 				source: (s: AbortSignal) => infinite(s),
 				runStateProbe: probe,
 				runStatePollMs: 5,
 				runStateDrainMs: 10,
 			});
-			expect(result.terminalDetected).toEqual({ outcome: burrowState });
+			expect(result.terminalDetected).toEqual({ outcome: sandboxState });
 			expect(result.errored).toBe(false);
 			await db.close();
 		}
@@ -114,7 +114,7 @@ describe("bridgeRunStream — run-state poller (warren-6596)", () => {
 	test("in-stream terminal-detect wins over poller observation", async () => {
 		// In-stream terminal carries exit-code semantics from the runtime
 		// parser — it's authoritative when both fire.
-		const claudeResultEvt = evt(burrowRunId, 1, {
+		const claudeResultEvt = evt(sandboxRunId, 1, {
 			kind: "state_change",
 			stream: "system",
 			payload: { type: "result", subtype: "result", is_error: true, terminal_reason: "completed" },
@@ -125,10 +125,10 @@ describe("bridgeRunStream — run-state poller (warren-6596)", () => {
 		});
 		const result = await bridgeRunStream({
 			runId,
-			burrowRunId,
+			sandboxRunId,
 			repos,
 			broker,
-			burrowId: "bur_aaaaaaaaaaaa",
+			sandboxId: "bur_aaaaaaaaaaaa",
 			runtimeProvider: makeProvider(),
 			source: source([claudeResultEvt]),
 			runStateProbe: probe,

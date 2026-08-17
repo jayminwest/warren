@@ -38,7 +38,7 @@ describe("cancelPlanRun", () => {
 		await repos.planRuns.transitionTo(created.planRun.id, "running", {
 			startedAt: new Date().toISOString(),
 		});
-		// Queued run with NO burrow_run_id — cancelRun's "partial spawn"
+		// Queued run with NO sandbox_run_id — cancelRun's "partial spawn"
 		// branch cancels it without a runtime round-trip.
 		const childRun = await repos.runs.create({
 			agentName: "claude-code",
@@ -110,8 +110,8 @@ describe("cancelPlanRun", () => {
 			prompt: "work on sd wa-a",
 			renderedAgentJson: {},
 			trigger: "plan-run",
-			burrowId: "burrow_x",
-			burrowRunId: "br_x",
+			sandboxId: "burrow_x",
+			sandboxRunId: "br_x",
 		});
 		await repos.planRuns.updateChild({
 			planRunId: created.planRun.id,

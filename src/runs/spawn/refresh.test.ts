@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { WarrenDb } from "../../db/client.ts";
 import type { Repos } from "../../db/repos/index.ts";
 import { spawnRun } from "./index.ts";
-import { makeBurrowClient, makeProvider, setupRepos } from "./test-helpers.ts";
+import { makeProvider, makeSandboxClient, setupRepos } from "./test-helpers.ts";
 
 describe("spawnRun: project refresh (warren-1bb6)", () => {
 	let db: WarrenDb;
@@ -16,7 +16,7 @@ describe("spawnRun: project refresh (warren-1bb6)", () => {
 	});
 
 	test("refreshes the project clone before provisioning burrow when projectsConfig + projectSpawn are wired", async () => {
-		const { client, calls } = makeBurrowClient();
+		const { client, calls } = makeSandboxClient();
 		let refreshCalled = false;
 		let refreshRef: string | undefined;
 		await spawnRun({
@@ -48,7 +48,7 @@ describe("spawnRun: project refresh (warren-1bb6)", () => {
 	});
 
 	test("forwards an explicit ref override into refreshProjectFn", async () => {
-		const { client } = makeBurrowClient();
+		const { client } = makeSandboxClient();
 		let receivedRef: string | undefined;
 		await spawnRun({
 			repos,
@@ -72,7 +72,7 @@ describe("spawnRun: project refresh (warren-1bb6)", () => {
 	});
 
 	test("aborts spawn when refresh fails — no warren row, no burrow", async () => {
-		const { client, calls } = makeBurrowClient();
+		const { client, calls } = makeSandboxClient();
 		await expect(
 			spawnRun({
 				repos,
@@ -93,7 +93,7 @@ describe("spawnRun: project refresh (warren-1bb6)", () => {
 	});
 
 	test("skips refresh when projectsConfig is not wired (back-compat for tests)", async () => {
-		const { client, calls } = makeBurrowClient();
+		const { client, calls } = makeSandboxClient();
 		let refreshCalled = false;
 		await spawnRun({
 			repos,
@@ -128,7 +128,7 @@ describe("spawnRun: burrow branch composition (warren-9993)", () => {
 	});
 
 	test("composes burrow branch as '<default-prefix>/<run.id>' when no override is set", async () => {
-		const { client, calls } = makeBurrowClient();
+		const { client, calls } = makeSandboxClient();
 		const result = await spawnRun({
 			repos,
 			runtimeProvider: makeProvider(client),
@@ -136,12 +136,12 @@ describe("spawnRun: burrow branch composition (warren-9993)", () => {
 			projectId: "prj_xxxxxxxxxxxx",
 			prompt: "p",
 		});
-		const upBody = calls.find((c) => c.path === "/burrows")?.body as { branch?: string };
+		const upBody = calls.find((c) => c.path === "/sandboxes")?.body as { branch?: string };
 		expect(upBody.branch).toBe(`burrow/${result.run.id}`);
 	});
 
 	test("env-level runBranchPrefixDefault overrides the built-in 'burrow' default", async () => {
-		const { client, calls } = makeBurrowClient();
+		const { client, calls } = makeSandboxClient();
 		const result = await spawnRun({
 			repos,
 			runtimeProvider: makeProvider(client),
@@ -150,12 +150,12 @@ describe("spawnRun: burrow branch composition (warren-9993)", () => {
 			prompt: "p",
 			runBranchPrefixDefault: "warren",
 		});
-		const upBody = calls.find((c) => c.path === "/burrows")?.body as { branch?: string };
+		const upBody = calls.find((c) => c.path === "/sandboxes")?.body as { branch?: string };
 		expect(upBody.branch).toBe(`warren/${result.run.id}`);
 	});
 
 	test("project default runBranchPrefix beats env-level fallback", async () => {
-		const { client, calls } = makeBurrowClient();
+		const { client, calls } = makeSandboxClient();
 		const result = await spawnRun({
 			repos,
 			runtimeProvider: makeProvider(client),
@@ -177,7 +177,7 @@ describe("spawnRun: burrow branch composition (warren-9993)", () => {
 				size: () => 0,
 			},
 		});
-		const upBody = calls.find((c) => c.path === "/burrows")?.body as { branch?: string };
+		const upBody = calls.find((c) => c.path === "/sandboxes")?.body as { branch?: string };
 		expect(upBody.branch).toBe(`bot/${result.run.id}`);
 	});
 });

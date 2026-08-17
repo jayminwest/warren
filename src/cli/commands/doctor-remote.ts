@@ -4,7 +4,7 @@
  * Post-collapse, plain `warren doctor` checks the CLIENT's view of a
  * (possibly remote) warren: is the server reachable, does the configured
  * credential authenticate, and does the server version match the CLI's.
- * The deployment-side probes (bwrap, burrow socket, projects root, DB
+ * The deployment-side probes (bwrap, sandbox runtime, projects root, DB
  * reachability, per-project `.warren/` validity) only make sense on the
  * host warren is deployed on — they live behind `warren doctor --local`
  * in `./doctor.ts`.

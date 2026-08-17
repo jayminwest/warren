@@ -22,7 +22,7 @@ import { depsFor, silentLogger, tcpUrl } from "./runs.test-helpers.ts";
  * idempotent re-POST.
  */
 
-function inertBurrowClient(): FakeProvider {
+function inertSandboxClient(): FakeProvider {
 	return new FakeProvider();
 }
 
@@ -72,7 +72,7 @@ describe("finalize callback endpoints", () => {
 	});
 
 	async function serveWith(auth = NO_AUTH): Promise<string> {
-		const deps = await depsFor(repos, inertBurrowClient(), undefined, {
+		const deps = await depsFor(repos, inertSandboxClient(), undefined, {
 			finalizeCoordinator: coordinator,
 		});
 		handle = startServer(deps, {
@@ -164,7 +164,7 @@ describe("finalize callback endpoints", () => {
 
 	test("GET finalize-intent miss fires the recovery hook with the agent_exit hint (warren-5202)", async () => {
 		const misses: { runId: string; hint: unknown }[] = [];
-		const deps = await depsFor(repos, inertBurrowClient(), undefined, {
+		const deps = await depsFor(repos, inertSandboxClient(), undefined, {
 			finalizeCoordinator: coordinator,
 		});
 		handle = startServer(
@@ -194,7 +194,7 @@ describe("finalize callback endpoints", () => {
 	test("GET finalize-intent with a parked intent does NOT fire the recovery hook", async () => {
 		coordinator.register("run_x", sampleIntent());
 		const misses: string[] = [];
-		const deps = await depsFor(repos, inertBurrowClient(), undefined, {
+		const deps = await depsFor(repos, inertSandboxClient(), undefined, {
 			finalizeCoordinator: coordinator,
 		});
 		handle = startServer(
@@ -220,7 +220,7 @@ describe("finalize callback endpoints", () => {
 
 	test("GET finalize-intent tolerates a malformed agent_exit (hint omitted, still 200)", async () => {
 		const misses: { runId: string; hint: unknown }[] = [];
-		const deps = await depsFor(repos, inertBurrowClient(), undefined, {
+		const deps = await depsFor(repos, inertSandboxClient(), undefined, {
 			finalizeCoordinator: coordinator,
 		});
 		handle = startServer(

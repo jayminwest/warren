@@ -153,7 +153,7 @@ describe("GET /analytics/behavior", () => {
 			if (steered) {
 				await repos.events.append({
 					runId,
-					burrowEventSeq: 1,
+					sandboxEventSeq: 1,
 					ts: `2026-05-2${i}T10:02:00.000Z`,
 					kind: "steer.sent",
 					payload: { text: "nudge" },

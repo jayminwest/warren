@@ -4,7 +4,7 @@
  * Acceptance criterion #4 of pl-f17e:
  *   "warren-on-postgres dispatches a run end-to-end against a Postgres
  *   container, streams events, restarts warren mid-stream, and verifies
- *   event resume from MAX(events.burrow_event_seq)+1 works the same as
+ *   event resume from MAX(events.sandbox_event_seq)+1 works the same as
  *   on SQLite (docs/design/runtime-and-supervisor.md restart-recovery contract)."
  *
  * This is the structural twin of scenario 06 (restart-recovery) — the
@@ -66,8 +66,8 @@ interface CreateRunResponse {
 	readonly run: {
 		readonly id: string;
 		readonly state: string;
-		readonly burrowId: string | null;
-		readonly burrowRunId: string | null;
+		readonly sandboxId: string | null;
+		readonly sandboxRunId: string | null;
 	};
 }
 
@@ -171,10 +171,12 @@ export const scenario: Scenario = {
 			});
 			const runId = created.run.id;
 			assertTrue(
-				typeof created.run.burrowRunId === "string" && created.run.burrowRunId !== null,
-				"POST /runs must attach burrow_run_id by the 201 — bootBridges resume needs it",
+				typeof created.run.sandboxRunId === "string" && created.run.sandboxRunId !== null,
+				"POST /runs must attach sandbox_run_id by the 201 — bootBridges resume needs it",
 			);
-			ctx.logger.debug(`scenario-19: spawned ${runId} (burrow_run_id=${created.run.burrowRunId})`);
+			ctx.logger.debug(
+				`scenario-19: spawned ${runId} (sandbox_run_id=${created.run.sandboxRunId})`,
+			);
 
 			try {
 				const beforeKill = await waitForEventCount<EventEnvelope>(
@@ -229,15 +231,15 @@ export const scenario: Scenario = {
 					assertTrue(allSeqs.has(env.seq), `post-restart pg events lost pre-kill seq ${env.seq}`);
 				}
 
-				const reread = await http.expectJson<{ burrowRunId: string | null }>(
+				const reread = await http.expectJson<{ sandboxRunId: string | null }>(
 					"GET",
 					`/runs/${encodeURIComponent(runId)}`,
 					200,
 				);
 				assertEqual(
-					reread.burrowRunId,
-					created.run.burrowRunId,
-					"GET /runs/:id post-restart preserves burrow_run_id (pg)",
+					reread.sandboxRunId,
+					created.run.sandboxRunId,
+					"GET /runs/:id post-restart preserves sandbox_run_id (pg)",
 				);
 			} finally {
 				await safelyCancel(http, runId, ctx);

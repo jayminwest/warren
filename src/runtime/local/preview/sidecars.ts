@@ -43,7 +43,7 @@ export type LocalSidecarsResolver = (sandboxId: string) => Promise<LocalSidecars
 /**
  * Build the warren-owned sidecar resolver over the sidecar registry. The
  * facade methods keep the burrow-era call shape (the sandbox id rides as the
- * first argument / `burrowId` field) so `src/preview/` and the reap sub-step
+ * first argument / `sandboxId` field) so `src/preview/` and the reap sub-step
  * consume it unchanged.
  */
 export function createLocalSidecarsResolver(registry: LocalSidecarRegistry): LocalSidecarsResolver {
@@ -53,7 +53,7 @@ export function createLocalSidecarsResolver(registry: LocalSidecarRegistry): Loc
 			create: (input) =>
 				registry
 					.create({
-						sandboxId: input.burrowId,
+						sandboxId: input.sandboxId,
 						command: input.command,
 						...(input.env !== undefined ? { env: input.env } : {}),
 						...(input.cwd !== undefined ? { cwd: input.cwd } : {}),

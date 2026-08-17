@@ -126,8 +126,8 @@ function hookFor(h: Harness) {
 			});
 			return {
 				run,
-				burrow: { id: "bur_retry", workspacePath: "" },
-				burrowRun: { id: "brun_retry" },
+				sandbox: { id: "bur_retry", workspacePath: "" },
+				sandboxRun: { id: "brun_retry" },
 				agent: { name: input.agentName } as SpawnRunResult["agent"],
 			};
 		},

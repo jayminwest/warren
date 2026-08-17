@@ -23,7 +23,7 @@ const BURROW_TERMINAL_STATES = new Set<RunTerminalState>(["succeeded", "failed",
  * `runs.get` this used to call. `status()` never throws on a missing run: it
  * returns `exists:false`, which the probe maps to `null` so the poller keeps
  * polling (transient) and the event stream's own 404 path (now the neutralized
- * `RuntimeRunNotFoundError` → `burrowRunMissing`) stays authoritative for the
+ * `RuntimeRunNotFoundError` → `sandboxRunMissing`) stays authoritative for the
  * ghost-run reconciliation — exactly as burrow's 404 bubbled before. Real
  * transport failures (`BurrowUnreachableError`) still throw out of `status()`
  * and are swallowed + retried by the poller's own catch. `terminalReason` rides
@@ -37,11 +37,11 @@ const BURROW_TERMINAL_STATES = new Set<RunTerminalState>(["succeeded", "failed",
  * pod metadata instead.
  */
 export function defaultRunStateProbe(provider: RuntimeProvider, handle: RunHandle): RunStateProbe {
-	return async (_burrowRunId, _signal) => {
+	return async (_sandboxRunId, _signal) => {
 		const status = await provider.status(handle);
 		// `exists:false` ⇒ the backend lost the run. Return null (transient) and
 		// let the stream's own ghost-run path finalize it, mirroring today's
-		// "probe 404 bubbles/swallowed; stream sets burrowRunMissing" split.
+		// "probe 404 bubbles/swallowed; stream sets sandboxRunMissing" split.
 		if (!status.exists) return null;
 		return {
 			state: status.phase,
@@ -53,7 +53,7 @@ export function defaultRunStateProbe(provider: RuntimeProvider, handle: RunHandl
 
 export interface RunStatePollerInput {
 	readonly probe: RunStateProbe;
-	readonly burrowRunId: string;
+	readonly sandboxRunId: string;
 	readonly ctrl: AbortController;
 	readonly pollIntervalMs: number;
 	readonly drainMs: number;
@@ -70,17 +70,17 @@ export interface RunStatePollerInput {
  * authoritative for transport failures.
  */
 export async function runStatePoller(input: RunStatePollerInput): Promise<void> {
-	const { probe, burrowRunId, ctrl, pollIntervalMs, drainMs, observed, runId, logger } = input;
+	const { probe, sandboxRunId, ctrl, pollIntervalMs, drainMs, observed, runId, logger } = input;
 	while (!ctrl.signal.aborted) {
 		try {
-			const row = await probe(burrowRunId, ctrl.signal);
+			const row = await probe(sandboxRunId, ctrl.signal);
 			if (row !== null && isBurrowTerminal(row.state)) {
 				observed.value = toTerminalSnapshot(row.state, row.exitCode, row.terminalReason);
 				logger?.info?.(
 					{
 						runId,
-						burrowRunId,
-						burrowState: row.state,
+						sandboxRunId,
+						sandboxState: row.state,
 						exitCode: row.exitCode,
 						terminalReason: row.terminalReason,
 					},
@@ -92,13 +92,13 @@ export async function runStatePoller(input: RunStatePollerInput): Promise<void> 
 			}
 		} catch (err) {
 			// BurrowNotFoundError or transport failure — let the main stream
-			// loop classify (404 → burrowRunMissing, others → errored). The
+			// loop classify (404 → sandboxRunMissing, others → errored). The
 			// poller doesn't make those calls itself; it just keeps trying
 			// until the stream aborts.
 			logger?.warn?.(
 				{
 					runId,
-					burrowRunId,
+					sandboxRunId,
 					err: err instanceof Error ? err.message : String(err),
 				},
 				"run-state poller probe failed; retrying",

@@ -38,7 +38,7 @@ interface CancelFetchPlan {
 	status?: number;
 }
 
-function makeBurrowClient(plan: CancelFetchPlan = {}): {
+function makeSandboxClient(plan: CancelFetchPlan = {}): {
 	client: FakeProvider;
 	calls: FakeProviderCall[];
 } {
@@ -89,27 +89,27 @@ describe("cancelRun", () => {
 
 	async function createRun(
 		opts: {
-			burrowId?: string | null;
-			burrowRunId?: string | null;
+			sandboxId?: string | null;
+			sandboxRunId?: string | null;
 			state?: "queued" | "running";
 		} = {},
 	): Promise<string> {
-		const burrowId = opts.burrowId === undefined ? "bur_aaaaaaaaaaaa" : opts.burrowId;
+		const sandboxId = opts.sandboxId === undefined ? "bur_aaaaaaaaaaaa" : opts.sandboxId;
 		const run = await repos.runs.create({
 			agentName: "refactor-bot",
 			projectId,
 			prompt: "p",
 			renderedAgentJson: {},
 			trigger: "manual",
-			burrowId,
-			burrowRunId: opts.burrowRunId === undefined ? "run_zzzzzzzzzzzz" : opts.burrowRunId,
+			sandboxId,
+			sandboxRunId: opts.sandboxRunId === undefined ? "run_zzzzzzzzzzzz" : opts.sandboxRunId,
 		});
 		if (opts.state === "running") await repos.runs.markRunning(run.id);
 		return run.id;
 	}
 
 	test("throws NotFoundError when the run does not exist", async () => {
-		const { client, calls } = makeBurrowClient();
+		const { client, calls } = makeSandboxClient();
 		await expect(
 			cancelRun({
 				runId: "run_doesnotexist",
@@ -122,7 +122,7 @@ describe("cancelRun", () => {
 
 	test("forwards the cancel through the provider and emits a cancel.requested event", async () => {
 		const runId = await createRun({ state: "running" });
-		const { client, calls } = makeBurrowClient();
+		const { client, calls } = makeSandboxClient();
 		const reapCalls: { runId: string; outcome: string }[] = [];
 		const result = await cancelRun({
 			runId,
@@ -135,7 +135,7 @@ describe("cancelRun", () => {
 			},
 		});
 		expect(result.alreadyTerminal).toBe(false);
-		expect(result.burrowRun?.state).toBe("cancelled");
+		expect(result.sandboxRun?.state).toBe("cancelled");
 		// The graceful cancel POST rides the seam (warren-1f56); the status
 		// re-read (runs.get + events replay) follows it.
 		expect(calls).toContainEqual({
@@ -152,11 +152,11 @@ describe("cancelRun", () => {
 		const payload = event.payloadJson as {
 			reason: string;
 			mode: string;
-			burrowRunId: string;
+			sandboxRunId: string;
 		};
 		expect(payload.mode).toBe("forwarded");
 		expect(payload.reason).toBe("operator changed their mind");
-		expect(payload.burrowRunId).toBe("run_zzzzzzzzzzzz");
+		expect(payload.sandboxRunId).toBe("run_zzzzzzzzzzzz");
 		expect(reapCalls).toEqual([{ runId, outcome: "cancelled" }]);
 	});
 
@@ -189,7 +189,7 @@ describe("cancelRun", () => {
 
 	test("warren-a69a: terminal burrow state triggers reap inline", async () => {
 		const runId = await createRun({ state: "running" });
-		const { client } = makeBurrowClient();
+		const { client } = makeSandboxClient();
 		const reapCalls: { runId: string; outcome: string }[] = [];
 		const result = await cancelRun({
 			runId,
@@ -206,7 +206,7 @@ describe("cancelRun", () => {
 
 	test("warren-a69a: succeeded burrow state also triggers reap (graceful exit during cancel)", async () => {
 		const runId = await createRun({ state: "running" });
-		const { client } = makeBurrowClient({ run: { state: "succeeded" } });
+		const { client } = makeSandboxClient({ run: { state: "succeeded" } });
 		const reapCalls: { runId: string; outcome: string }[] = [];
 		await cancelRun({
 			runId,
@@ -222,7 +222,7 @@ describe("cancelRun", () => {
 
 	test("warren-a69a: non-terminal burrow state does not trigger reap", async () => {
 		const runId = await createRun({ state: "running" });
-		const { client } = makeBurrowClient({ run: { state: "running" } });
+		const { client } = makeSandboxClient({ run: { state: "running" } });
 		const reapCalls: { runId: string }[] = [];
 		const result = await cancelRun({
 			runId,
@@ -240,7 +240,7 @@ describe("cancelRun", () => {
 
 	test("warren-a69a: reap throwing does not escape; cancel still returns the burrow run", async () => {
 		const runId = await createRun({ state: "running" });
-		const { client } = makeBurrowClient();
+		const { client } = makeSandboxClient();
 		const result = await cancelRun({
 			runId,
 			repos,
@@ -249,7 +249,7 @@ describe("cancelRun", () => {
 				throw new Error("disk full");
 			},
 		});
-		expect(result.burrowRun?.state).toBe("cancelled");
+		expect(result.sandboxRun?.state).toBe("cancelled");
 		// reap was attempted but threw — warren state is unchanged.
 		expect(result.state).toBe("running");
 		expect((await repos.runs.require(runId)).state).toBe("running");
@@ -257,7 +257,7 @@ describe("cancelRun", () => {
 
 	test("omits the reason field on the wire when unset", async () => {
 		const runId = await createRun({ state: "running" });
-		const { client, calls } = makeBurrowClient();
+		const { client, calls } = makeSandboxClient();
 		await cancelRun({
 			runId,
 			repos,
@@ -270,7 +270,7 @@ describe("cancelRun", () => {
 	test("returns idempotently when the run is already terminal", async () => {
 		const runId = await createRun({ state: "running" });
 		await repos.runs.finalize(runId, "succeeded");
-		const { client, calls } = makeBurrowClient();
+		const { client, calls } = makeSandboxClient();
 		const result = await cancelRun({
 			runId,
 			repos,
@@ -278,22 +278,22 @@ describe("cancelRun", () => {
 		});
 		expect(result.alreadyTerminal).toBe(true);
 		expect(result.state).toBe("succeeded");
-		expect(result.burrowRun).toBeNull();
+		expect(result.sandboxRun).toBeNull();
 		expect(calls).toHaveLength(0);
 		expect(await repos.events.countByRun(runId)).toBe(0);
 	});
 
-	test("queued run with no burrow_run_id is cancelled in warren without a wire call", async () => {
+	test("queued run with no sandbox_run_id is cancelled in warren without a wire call", async () => {
 		const run = await repos.runs.create({
 			agentName: "refactor-bot",
 			projectId,
 			prompt: "p",
 			renderedAgentJson: {},
 			trigger: "manual",
-			burrowId: "bur_aaaaaaaaaaaa",
-			burrowRunId: null,
+			sandboxId: "bur_aaaaaaaaaaaa",
+			sandboxRunId: null,
 		});
-		const { client, calls } = makeBurrowClient();
+		const { client, calls } = makeSandboxClient();
 		const result = await cancelRun({
 			runId: run.id,
 			reason: "abort",
@@ -301,7 +301,7 @@ describe("cancelRun", () => {
 			runtimeProvider: await makeProvider(client, repos),
 		});
 		expect(result.alreadyTerminal).toBe(false);
-		expect(result.burrowRun).toBeNull();
+		expect(result.sandboxRun).toBeNull();
 		expect(result.state).toBe("cancelled");
 		expect(calls).toHaveLength(0);
 		expect((await repos.runs.require(run.id)).state).toBe("cancelled");
@@ -315,18 +315,18 @@ describe("cancelRun", () => {
 		expect(payload.reason).toBe("abort");
 	});
 
-	test("rejects a running run with no burrow_run_id (impossible state)", async () => {
+	test("rejects a running run with no sandbox_run_id (impossible state)", async () => {
 		const run = await repos.runs.create({
 			agentName: "refactor-bot",
 			projectId,
 			prompt: "p",
 			renderedAgentJson: {},
 			trigger: "manual",
-			burrowId: "bur_aaaaaaaaaaaa",
-			burrowRunId: null,
+			sandboxId: "bur_aaaaaaaaaaaa",
+			sandboxRunId: null,
 		});
 		await repos.runs.markRunning(run.id);
-		const { client, calls } = makeBurrowClient();
+		const { client, calls } = makeSandboxClient();
 		await expect(
 			cancelRun({ runId: run.id, repos, runtimeProvider: await makeProvider(client, repos) }),
 		).rejects.toBeInstanceOf(ValidationError);
@@ -344,7 +344,7 @@ describe("cancelRun", () => {
 				if (consumed.length >= 1) break;
 			}
 		})();
-		const { client } = makeBurrowClient();
+		const { client } = makeSandboxClient();
 		await cancelRun({
 			runId,
 			repos,
@@ -360,13 +360,13 @@ describe("cancelRun", () => {
 		const runId = await createRun({ state: "running" });
 		await repos.events.append({
 			runId,
-			burrowEventSeq: 12,
+			sandboxEventSeq: 12,
 			ts: "2026-05-08T12:00:00Z",
 			kind: "text",
 			stream: "stdout",
 			payload: {},
 		});
-		const { client } = makeBurrowClient();
+		const { client } = makeSandboxClient();
 		await cancelRun({
 			runId,
 			repos,
@@ -375,7 +375,7 @@ describe("cancelRun", () => {
 		});
 		const events = await repos.events.listByRun(runId);
 		const requested = events.find((e) => e.kind === "cancel.requested");
-		expect(requested?.burrowEventSeq).toBe(13);
+		expect(requested?.sandboxEventSeq).toBe(13);
 	});
 
 	test("transport errors surface as RuntimeUnreachableError", async () => {
@@ -393,14 +393,14 @@ describe("cancelRun", () => {
 
 	test("warren-b1a9: backend run-not-found reconciles the run to failed/sandbox_run_lost", async () => {
 		const runId = await createRun({ state: "running" });
-		const { client } = makeBurrowClient({ status: 404 });
+		const { client } = makeSandboxClient({ status: 404 });
 		const result = await cancelRun({
 			runId,
 			repos,
 			runtimeProvider: await makeProvider(client, repos),
 		});
 		expect(result.state).toBe("failed");
-		expect(result.burrowRun).toBeNull();
+		expect(result.sandboxRun).toBeNull();
 		expect(result.alreadyTerminal).toBe(false);
 		const run = await repos.runs.require(runId);
 		expect(run.state).toBe("failed");
@@ -414,7 +414,7 @@ describe("cancelRun", () => {
 
 	test("non-not-found backend errors still propagate without emitting an audit event", async () => {
 		const runId = await createRun({ state: "running" });
-		const { client } = makeBurrowClient({ status: 500 });
+		const { client } = makeSandboxClient({ status: 500 });
 		await expect(
 			cancelRun({ runId, repos, runtimeProvider: await makeProvider(client, repos) }),
 		).rejects.toThrow();

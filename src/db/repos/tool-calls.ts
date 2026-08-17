@@ -33,7 +33,7 @@ export const DEFAULT_TOOL_CALL_CAP = 50_000;
 
 export interface RecordToolUseInput {
 	readonly runId: string;
-	/** burrow_event_seq of the tool_use event. */
+	/** sandbox_event_seq of the tool_use event. */
 	readonly seq: number;
 	readonly ts: string;
 	readonly toolName: string | null;

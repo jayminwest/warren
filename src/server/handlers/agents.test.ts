@@ -87,8 +87,8 @@ describe("GET /agents — listing with source provenance (warren-d3e9)", () => {
 				frontmatter: { source: "builtin" },
 			},
 		});
-		const burrowClient = new FakeProvider();
-		const deps = await depsFor(repos, burrowClient);
+		const sandboxClient = new FakeProvider();
+		const deps = await depsFor(repos, sandboxClient);
 		handle = startServer(deps, {
 			transport: { kind: "tcp", hostname: "127.0.0.1", port: 0 },
 			auth: NO_AUTH,
@@ -112,8 +112,8 @@ describe("GET /agents — listing with source provenance (warren-d3e9)", () => {
 				frontmatter: {},
 			},
 		});
-		const burrowClient = new FakeProvider();
-		const deps = await depsFor(repos, burrowClient);
+		const sandboxClient = new FakeProvider();
+		const deps = await depsFor(repos, sandboxClient);
 		handle = startServer(deps, {
 			transport: { kind: "tcp", hostname: "127.0.0.1", port: 0 },
 			auth: NO_AUTH,

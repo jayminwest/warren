@@ -5,7 +5,7 @@ import { createWarrenConfigCache } from "../../warren-config/index.ts";
 import { NO_AUTH } from "../auth.ts";
 import { startServer } from "../server.ts";
 import type { BridgeRegistry, ServeHandle, ServerDeps } from "../types.ts";
-import { depsFor, makeBurrowClient, silentLogger, tcpUrl } from "./projects.test-helpers.ts";
+import { depsFor, makeSandboxClient, silentLogger, tcpUrl } from "./projects.test-helpers.ts";
 
 describe("POST /projects/:id/triggers/:triggerId/run — manual Run Now (warren-99c3)", () => {
 	let db: WarrenDb;
@@ -62,21 +62,21 @@ describe("POST /projects/:id/triggers/:triggerId/run — manual Run Now (warren-
 
 		const tmpWs = await mkdtemp(join(tmpdir(), "warren-triggers-ws-"));
 		const calls: { method: string; path: string; body: unknown }[] = [];
-		const burrowClient = makeBurrowClient(
-			{ burrowId: "bur_xxxxxxxxxxxx", burrowRunId: "run_zzzzzzzzzzzz", workspacePath: tmpWs },
+		const sandboxClient = makeSandboxClient(
+			{ sandboxId: "bur_xxxxxxxxxxxx", sandboxRunId: "run_zzzzzzzzzzzz", workspacePath: tmpWs },
 			calls,
 		);
 
-		const bridgeStarted: { runId: string; burrowRunId: string }[] = [];
+		const bridgeStarted: { runId: string; sandboxRunId: string }[] = [];
 		const bridges: BridgeRegistry = {
-			start: (runId, burrowRunId) => {
-				bridgeStarted.push({ runId, burrowRunId });
+			start: (runId, sandboxRunId) => {
+				bridgeStarted.push({ runId, sandboxRunId });
 			},
 			stopAll: async () => {},
 			size: () => bridgeStarted.length,
 		};
 		const deps: ServerDeps = {
-			...(await depsFor(repos, burrowClient, bridges)),
+			...(await depsFor(repos, sandboxClient, bridges)),
 			now: () => new Date("2026-05-10T12:00:00.000Z"),
 		};
 		handle = startServer(deps, {
@@ -91,15 +91,15 @@ describe("POST /projects/:id/triggers/:triggerId/run — manual Run Now (warren-
 		expect(res.status).toBe(201);
 		const body = (await res.json()) as {
 			run: { id: string; trigger: string; agentName: string; prompt: string };
-			burrow: { id: string; workspacePath: string };
+			sandbox: { id: string; workspacePath: string };
 		};
 		expect(body.run.id).toMatch(/^run_/);
 		expect(body.run.trigger).toBe("manual-trigger");
 		expect(body.run.agentName).toBe("refactor-bot");
 		expect(body.run.prompt).toBe("hand-rolled prompt");
-		expect(body.burrow.id).toBe("bur_xxxxxxxxxxxx");
+		expect(body.sandbox.id).toBe("bur_xxxxxxxxxxxx");
 		expect(bridgeStarted.length).toBe(1);
-		expect(bridgeStarted[0]?.burrowRunId).toBe("run_zzzzzzzzzzzz");
+		expect(bridgeStarted[0]?.sandboxRunId).toBe("run_zzzzzzzzzzzz");
 
 		// Triggers row stamped with manual fire + nextFireAt rolled forward.
 		const row = await repos.triggers.get({ projectId, triggerId: "nightly" });
@@ -123,13 +123,13 @@ describe("POST /projects/:id/triggers/:triggerId/run — manual Run Now (warren-
 
 		const tmpWs = await mkdtemp(join(tmpdir(), "warren-triggers-ws-"));
 		const calls: { method: string; path: string; body: unknown }[] = [];
-		const burrowClient = makeBurrowClient(
-			{ burrowId: "bur_xxxxxxxxxxxx", burrowRunId: "run_zzzzzzzzzzzz", workspacePath: tmpWs },
+		const sandboxClient = makeSandboxClient(
+			{ sandboxId: "bur_xxxxxxxxxxxx", sandboxRunId: "run_zzzzzzzzzzzz", workspacePath: tmpWs },
 			calls,
 		);
 		const warrenConfigs = createWarrenConfigCache();
 		const deps: ServerDeps = {
-			...(await depsFor(repos, burrowClient)),
+			...(await depsFor(repos, sandboxClient)),
 			warrenConfigs,
 			now: () => new Date("2026-05-10T12:00:00.000Z"),
 		};
@@ -149,7 +149,7 @@ describe("POST /projects/:id/triggers/:triggerId/run — manual Run Now (warren-
 		expect(res.status).toBe(201);
 		const body = (await res.json()) as { run: { prompt: string } };
 		expect(body.run.prompt).toBe("fresh prompt");
-		const dispatch = calls.find((c) => c.path === "/burrows/bur_xxxxxxxxxxxx/runs");
+		const dispatch = calls.find((c) => c.path === "/sandboxes/bur_xxxxxxxxxxxx/runs");
 		const meta = (dispatch?.body as { metadata: { frontmatter: Record<string, unknown> } }).metadata
 			.frontmatter;
 		expect(meta.maxCostUsd).toBe(9);
@@ -165,11 +165,11 @@ describe("POST /projects/:id/triggers/:triggerId/run — manual Run Now (warren-
 		);
 
 		const calls: { method: string; path: string; body: unknown }[] = [];
-		const burrowClient = makeBurrowClient(
-			{ burrowId: "bur_xxxxxxxxxxxx", burrowRunId: "run_zzzzzzzzzzzz", workspacePath: "/tmp/ws" },
+		const sandboxClient = makeSandboxClient(
+			{ sandboxId: "bur_xxxxxxxxxxxx", sandboxRunId: "run_zzzzzzzzzzzz", workspacePath: "/tmp/ws" },
 			calls,
 		);
-		const deps = await depsFor(repos, burrowClient);
+		const deps = await depsFor(repos, sandboxClient);
 		handle = startServer(deps, {
 			transport: { kind: "tcp", hostname: "127.0.0.1", port: 0 },
 			auth: NO_AUTH,
@@ -186,11 +186,11 @@ describe("POST /projects/:id/triggers/:triggerId/run — manual Run Now (warren-
 
 	test("404 when the project id is unknown", async () => {
 		const calls: { method: string; path: string; body: unknown }[] = [];
-		const burrowClient = makeBurrowClient(
-			{ burrowId: "bur_xxxxxxxxxxxx", burrowRunId: "run_zzzzzzzzzzzz", workspacePath: "/tmp/ws" },
+		const sandboxClient = makeSandboxClient(
+			{ sandboxId: "bur_xxxxxxxxxxxx", sandboxRunId: "run_zzzzzzzzzzzz", workspacePath: "/tmp/ws" },
 			calls,
 		);
-		const deps = await depsFor(repos, burrowClient);
+		const deps = await depsFor(repos, sandboxClient);
 		handle = startServer(deps, {
 			transport: { kind: "tcp", hostname: "127.0.0.1", port: 0 },
 			auth: NO_AUTH,

@@ -16,7 +16,7 @@
  * configurable budget the run is force-failed:
  *
  *   1. emit a `watchdog.timed_out` system event on the run's log;
- *   2. best-effort `POST /runs/:burrow_run_id/cancel` so burrow stops the
+ *   2. best-effort `POST /runs/:sandbox_run_id/cancel` so burrow stops the
  *      agent turn;
  *   3. `reapRun` with `outcome: "failed"`, `failureReason: "timed_out"` —
  *      reap's final `workspace_destroy` sub-step tears down the burrow
@@ -275,11 +275,11 @@ async function forceFail(
 	idleMs: number,
 	now: Date,
 ): Promise<void> {
-	// warren-9f06: bind run_id (+ burrow_run_id when present) once per
+	// warren-9f06: bind run_id (+ sandbox_run_id when present) once per
 	// force-fail so the timeout/cancel lines share correlation fields.
 	const log = bindBridgeLogger(deps.logger, {
 		run_id: run.id,
-		...(run.burrowRunId !== null ? { burrow_run_id: run.burrowRunId } : {}),
+		...(run.sandboxRunId !== null ? { sandbox_run_id: run.sandboxRunId } : {}),
 	});
 	await emitTimedOutEvent(deps, run, idleMs, now);
 	await cancelBurrowRun(deps, run, log);
@@ -321,11 +321,11 @@ async function cancelBurrowRun(
 	run: RunRow,
 	log: ReturnType<typeof bindBridgeLogger>,
 ): Promise<void> {
-	if (run.burrowId === null || run.burrowRunId === null) return;
+	if (run.sandboxId === null || run.sandboxRunId === null) return;
 	const handle: RunHandle = {
 		runId: run.id,
-		sandboxId: run.burrowId,
-		providerRunId: run.burrowRunId,
+		sandboxId: run.sandboxId,
+		providerRunId: run.sandboxRunId,
 	};
 	try {
 		await deps.runtimeProvider.cancel(handle, "watchdog heartbeat timeout");
@@ -347,14 +347,14 @@ async function emitTimedOutEvent(
 	const seq = ((await deps.repos.events.maxSeqForRun(run.id)) ?? 0) + 1;
 	const row = await deps.repos.events.append({
 		runId: run.id,
-		burrowEventSeq: seq,
+		sandboxEventSeq: seq,
 		ts: now.toISOString(),
 		kind: WATCHDOG_TIMED_OUT_KIND,
 		stream: "system",
 		payload: {
 			idleMs,
 			heartbeatTimeoutMs: deps.heartbeatTimeoutMs,
-			burrowRunId: run.burrowRunId,
+			sandboxRunId: run.sandboxRunId,
 		},
 	});
 	deps.broker?.publish(run.id, row);

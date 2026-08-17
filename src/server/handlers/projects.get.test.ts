@@ -10,7 +10,7 @@ import { depsFor, silentLogger, tcpUrl } from "./projects.test-helpers.ts";
 import { PUBLIC_PROJECT_FIELDS } from "./projects.ts";
 
 /** A burrow client no assertion here reaches. */
-function inertBurrowClient(): FakeProvider {
+function inertSandboxClient(): FakeProvider {
 	return new FakeProvider();
 }
 
@@ -33,7 +33,7 @@ describe("GET /projects/:id (warren-2a89)", () => {
 	});
 
 	test("returns the full row for an operator", async () => {
-		const deps = await depsFor(repos, inertBurrowClient());
+		const deps = await depsFor(repos, inertSandboxClient());
 		handle = startServer(deps, {
 			transport: { kind: "tcp", hostname: "127.0.0.1", port: 0 },
 			auth: NO_AUTH,
@@ -54,7 +54,7 @@ describe("GET /projects/:id (warren-2a89)", () => {
 	});
 
 	test("returns the canonical 404 envelope for an unknown id", async () => {
-		const deps = await depsFor(repos, inertBurrowClient());
+		const deps = await depsFor(repos, inertSandboxClient());
 		handle = startServer(deps, {
 			transport: { kind: "tcp", hostname: "127.0.0.1", port: 0 },
 			auth: NO_AUTH,
@@ -68,7 +68,7 @@ describe("GET /projects/:id (warren-2a89)", () => {
 	});
 
 	test("the SDK getProject round-trips against the real route", async () => {
-		const deps = await depsFor(repos, inertBurrowClient());
+		const deps = await depsFor(repos, inertSandboxClient());
 		handle = startServer(deps, {
 			transport: { kind: "tcp", hostname: "127.0.0.1", port: 0 },
 			auth: NO_AUTH,
@@ -87,7 +87,7 @@ describe("GET /projects/:id (warren-2a89)", () => {
 	});
 
 	test("an anonymous spectator sees only the public field set", async () => {
-		const deps = await depsFor(repos, inertBurrowClient());
+		const deps = await depsFor(repos, inertSandboxClient());
 		handle = startServer(deps, {
 			transport: { kind: "tcp", hostname: "127.0.0.1", port: 0 },
 			auth: publicReadAuth(bearerAuth("s3cret")),

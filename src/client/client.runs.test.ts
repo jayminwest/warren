@@ -7,7 +7,7 @@ describe("WarrenClient.dispatch", () => {
 		let observedBody: string | undefined;
 		const stubFetch = stub(async (_input, init) => {
 			observedBody = init?.body as string;
-			return jsonResponse(201, { run: { id: "r1" }, burrow: { id: "b1" } });
+			return jsonResponse(201, { run: { id: "r1" }, sandbox: { id: "b1" } });
 		});
 		const c = new WarrenClient({
 			config: { baseUrl: "https://w.local" },
@@ -37,7 +37,7 @@ describe("WarrenClient.dispatch", () => {
 		let observedBody: string | undefined;
 		const stubFetch = stub(async (_input, init) => {
 			observedBody = init?.body as string;
-			return jsonResponse(201, { run: { id: "r1" }, burrow: { id: "b1" } });
+			return jsonResponse(201, { run: { id: "r1" }, sandbox: { id: "b1" } });
 		});
 		const c = new WarrenClient({
 			config: { baseUrl: "https://w.local" },
@@ -64,7 +64,7 @@ describe("WarrenClient.steer", () => {
 			return jsonResponse(200, {
 				message: {
 					id: "m1",
-					burrowId: "b1",
+					sandboxId: "b1",
 					fromActor: "operator",
 					body: "focus on tests",
 					priority: "high",
@@ -102,7 +102,7 @@ describe("WarrenClient.steer", () => {
 			return jsonResponse(200, {
 				message: {
 					id: "m2",
-					burrowId: "b1",
+					sandboxId: "b1",
 					fromActor: "warren",
 					body: "nudge",
 					priority: "normal",

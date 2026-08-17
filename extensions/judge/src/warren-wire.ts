@@ -52,7 +52,7 @@ export const RUN_FAILURE_REASONS = [
 	"crashed",
 	"timed_out",
 	"sandbox_run_lost",
-	"burrow_unreachable",
+	"sandbox_unreachable",
 	"dropped_commit",
 	"finalize_failed",
 	"finalize_unposted",

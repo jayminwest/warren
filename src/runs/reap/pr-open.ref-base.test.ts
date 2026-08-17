@@ -43,8 +43,8 @@ describe("reapRun pr_open base resolution (warren-8cbf)", () => {
 			trigger: "plan-run",
 			...(ref !== null ? { ref } : {}),
 			...(targetBranch !== undefined ? { targetBranch } : {}),
-			burrowId: "bur_bbbbbbbbbbbb",
-			burrowRunId: "run_wwwwwwwwwwww",
+			sandboxId: "bur_bbbbbbbbbbbb",
+			sandboxRunId: "run_wwwwwwwwwwww",
 		});
 		await ctx.repos.runs.markRunning(run.id);
 		return run.id;

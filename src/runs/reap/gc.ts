@@ -131,7 +131,7 @@ function isTruthy(raw: string | undefined): boolean {
 /* ----------------------------------------------------------------------- */
 
 export interface StrandedBurrow {
-	readonly burrowId: string;
+	readonly sandboxId: string;
 	/** ISO timestamp the age check ran against (latest terminal run end). */
 	readonly idleSince: string;
 	/** Age in ms at sweep time (now − idleSince), always ≥ ttlMs. */
@@ -157,13 +157,13 @@ export function buildBurrowActivity(
 ): BurrowActivity {
 	const activeBurrowIds = new Set<string>();
 	for (const r of activeRuns) {
-		if (r.burrowId !== null) activeBurrowIds.add(r.burrowId);
+		if (r.sandboxId !== null) activeBurrowIds.add(r.sandboxId);
 	}
 	const latestEndedAt = new Map<string, string>();
 	for (const r of terminalRuns) {
-		if (r.burrowId === null || r.endedAt === null) continue;
-		const prev = latestEndedAt.get(r.burrowId);
-		if (prev === undefined || r.endedAt > prev) latestEndedAt.set(r.burrowId, r.endedAt);
+		if (r.sandboxId === null || r.endedAt === null) continue;
+		const prev = latestEndedAt.get(r.sandboxId);
+		if (prev === undefined || r.endedAt > prev) latestEndedAt.set(r.sandboxId, r.endedAt);
 	}
 	return { activeBurrowIds, latestEndedAt };
 }
@@ -184,13 +184,13 @@ export interface FindStrandedInput extends BurrowActivity {
 export function findStrandedBurrows(input: FindStrandedInput): StrandedBurrow[] {
 	const nowMs = input.now.getTime();
 	const out: StrandedBurrow[] = [];
-	for (const [burrowId, idleSince] of input.latestEndedAt) {
-		if (input.activeBurrowIds.has(burrowId)) continue;
+	for (const [sandboxId, idleSince] of input.latestEndedAt) {
+		if (input.activeBurrowIds.has(sandboxId)) continue;
 		const idleMs = Date.parse(idleSince);
 		if (Number.isNaN(idleMs)) continue;
 		const ageMs = nowMs - idleMs;
 		if (ageMs < input.ttlMs) continue;
-		out.push({ burrowId, idleSince, ageMs });
+		out.push({ sandboxId, idleSince, ageMs });
 	}
 	out.sort((a, b) => b.ageMs - a.ageMs);
 	return out;
@@ -210,12 +210,12 @@ export interface WorkspaceGcReposLike {
 	readonly runs: {
 		listByState(state: RunState[]): Promise<RunRow[]>;
 		/**
-		 * Persist a confirmed destruction (warren-9b77) by nulling `burrowId`
+		 * Persist a confirmed destruction (warren-9b77) by nulling `sandboxId`
 		 * on every run row that referenced the workspace, so the next sweep
 		 * (and the `/readyz` stale-workspace diagnostic, which reuses
 		 * `findStrandedBurrows`) never re-strands it.
 		 */
-		clearBurrowIdForWorkspace(burrowId: string): Promise<void>;
+		clearBurrowIdForWorkspace(sandboxId: string): Promise<void>;
 	};
 }
 
@@ -267,8 +267,8 @@ export async function runWorkspaceGcTick(
 	// Scanned = distinct burrow ids that carry a terminal run and no live run
 	// (the candidate universe the predicate walks).
 	let scanned = 0;
-	for (const burrowId of activity.latestEndedAt.keys()) {
-		if (!activity.activeBurrowIds.has(burrowId)) scanned += 1;
+	for (const sandboxId of activity.latestEndedAt.keys()) {
+		if (!activity.activeBurrowIds.has(sandboxId)) scanned += 1;
 	}
 
 	let destroyed = 0;
@@ -293,11 +293,11 @@ async function destroyOne(
 	input: WorkspaceGcTickInput,
 	candidate: StrandedBurrow,
 ): Promise<boolean> {
-	const outcome = await input.destroyWorkspace(candidate.burrowId);
+	const outcome = await input.destroyWorkspace(candidate.sandboxId);
 	if (outcome.status === "destroyed") {
 		input.logger?.info(
 			{
-				burrowId: candidate.burrowId,
+				sandboxId: candidate.sandboxId,
 				ageMs: candidate.ageMs,
 				archived: outcome.archived,
 				deletedEvents: outcome.deletedEvents,
@@ -305,18 +305,18 @@ async function destroyOne(
 			},
 			"workspace_gc.destroyed",
 		);
-		await persistDestruction(input, candidate.burrowId);
+		await persistDestruction(input, candidate.sandboxId);
 		return true;
 	}
 	if (outcome.status === "already-gone") {
 		// The workspace is already gone on the backend's side — count it as
 		// reclaimed so we don't churn on it every sweep.
-		input.logger?.info({ burrowId: candidate.burrowId }, "workspace_gc.already_gone");
-		await persistDestruction(input, candidate.burrowId);
+		input.logger?.info({ sandboxId: candidate.sandboxId }, "workspace_gc.already_gone");
+		await persistDestruction(input, candidate.sandboxId);
 		return true;
 	}
 	input.logger?.warn(
-		{ burrowId: candidate.burrowId, err: outcome.error },
+		{ sandboxId: candidate.sandboxId, err: outcome.error },
 		"workspace_gc.destroy_failed",
 	);
 	return false;
@@ -328,12 +328,12 @@ async function destroyOne(
  * is logged and the workspace simply re-strands next tick (the pre-9b77
  * behaviour), never fails the sweep.
  */
-async function persistDestruction(input: WorkspaceGcTickInput, burrowId: string): Promise<void> {
+async function persistDestruction(input: WorkspaceGcTickInput, sandboxId: string): Promise<void> {
 	try {
-		await input.repos.runs.clearBurrowIdForWorkspace(burrowId);
+		await input.repos.runs.clearBurrowIdForWorkspace(sandboxId);
 	} catch (err) {
 		input.logger?.warn(
-			{ burrowId, err: err instanceof Error ? err.message : String(err) },
+			{ sandboxId, err: err instanceof Error ? err.message : String(err) },
 			"workspace_gc.persist_failed",
 		);
 	}

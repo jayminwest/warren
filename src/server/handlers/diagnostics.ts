@@ -16,7 +16,7 @@ import {
 	checkWarrenConfigDeprecations,
 	type DiagnosticCheck,
 } from "../../diagnostics/checks.ts";
-import { checkStaleBurrowWorkspaces } from "../../diagnostics/stale-workspaces.ts";
+import { checkStaleSandboxWorkspaces } from "../../diagnostics/stale-workspaces.ts";
 import { DEFAULT_MAX_LIVE } from "../../preview/eviction/index.ts";
 import { DEFAULT_PREVIEW_PORT_RANGE, PreviewPortAllocator } from "../../preview/port-allocator.ts";
 import type { SpawnFn } from "../../projects/clone.ts";
@@ -107,7 +107,7 @@ async function localReadyzChecks(deps: ServerDeps, spawn: SpawnFn): Promise<Diag
 			spawn,
 			...(deps.platform !== undefined ? { platform: deps.platform } : {}),
 		}),
-		await staleBurrowWorkspacesReadyzCheck(deps),
+		await staleSandboxWorkspacesReadyzCheck(deps),
 	];
 }
 
@@ -176,17 +176,17 @@ async function previewMaxLiveReadyzCheck(deps: ServerDeps): Promise<DiagnosticCh
 	});
 }
 
-async function staleBurrowWorkspacesReadyzCheck(deps: ServerDeps): Promise<DiagnosticCheck> {
+async function staleSandboxWorkspacesReadyzCheck(deps: ServerDeps): Promise<DiagnosticCheck> {
 	// TTL is resolved at boot (`ServerDeps.workspaceGcTtlMs`). Tests omit it;
 	// degrade to an informational `ok: true` rather than guessing a TTL.
 	if (deps.workspaceGcTtlMs === undefined) {
 		return {
-			name: "stale_burrow_workspaces",
+			name: "stale_sandbox_workspaces",
 			ok: true,
 			message: "workspace GC TTL not wired",
 		};
 	}
-	return checkStaleBurrowWorkspaces({
+	return checkStaleSandboxWorkspaces({
 		probe: {
 			listByState: (state) => deps.repos.runs.listByState(state),
 		},

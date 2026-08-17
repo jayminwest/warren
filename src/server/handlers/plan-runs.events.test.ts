@@ -71,7 +71,7 @@ describe("GET /plan-runs/:id/events", () => {
 
 		await repos.events.append({
 			runId: runA.id,
-			burrowEventSeq: 1,
+			sandboxEventSeq: 1,
 			ts: "2026-05-18T00:00:00.000Z",
 			kind: "plan_run.dispatched",
 			stream: "system",
@@ -79,7 +79,7 @@ describe("GET /plan-runs/:id/events", () => {
 		});
 		await repos.events.append({
 			runId: runB.id,
-			burrowEventSeq: 1,
+			sandboxEventSeq: 1,
 			ts: "2026-05-18T00:00:01.000Z",
 			kind: "plan_run.dispatched",
 			stream: "system",
@@ -126,7 +126,7 @@ describe("GET /plan-runs/:id/events", () => {
 		// headers immediately instead of parking before the first byte.
 		await repos.events.append({
 			runId: child.id,
-			burrowEventSeq: 1,
+			sandboxEventSeq: 1,
 			ts: "2026-05-18T00:00:00.000Z",
 			kind: "plan_run.dispatched",
 			stream: "system",

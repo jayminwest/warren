@@ -109,9 +109,9 @@ export type CloneKind = (typeof CLONE_KINDS)[number];
  *     runtime backend has no record of the run — a burrow 404 (local) or a
  *     pod vanished from the API with no cancel intent (K8s). A pod warren
  *     deleted itself is NOT lost: cancel intent wins → `cancelled` (warren-fe9b).
- *   - `burrow_unreachable` (warren-af76) means burrow stayed up but
+ *   - `sandbox_unreachable` (warren-af76) means burrow stayed up but
  *     unresponsive — the socket probe timed out, so the bridge errored
- *     with `burrowRunMissing:false` and reconnected with no forward
+ *     with `sandboxRunMissing:false` and reconnected with no forward
  *     progress past `BRIDGE_STALL_CEILING` consecutive attempts. The
  *     reconnect loop gives up and finalizes the warren row `failed` with
  *     this reason instead of spinning forever (the run otherwise wedges
@@ -206,7 +206,7 @@ export const RUN_FAILURE_REASONS = [
 	"crashed",
 	"timed_out",
 	"sandbox_run_lost",
-	"burrow_unreachable",
+	"sandbox_unreachable",
 	"dropped_commit",
 	"finalize_failed",
 	"push_rejected_policy",

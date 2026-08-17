@@ -3,15 +3,15 @@
  *
  * Acceptance criterion #6:
  *   "Killing warren mid-run and restarting it: the bridge resumes from
- *   `MAX(events.burrow_event_seq) + 1`, no event is dropped, and the
+ *   `MAX(events.sandbox_event_seq) + 1`, no event is dropped, and the
  *   final events table mirrors burrow's stream end-to-end with no
  *   gaps in seq."
  *
  * Wire summary (re-derived from src/runs/stream/bridge.ts + src/server/bridges.ts):
- *   - warren's bridge polls burrow's `/runs/:burrowRunId/stream` and writes
+ *   - warren's bridge polls burrow's `/runs/:sandboxRunId/stream` and writes
  *     each event to `events` table BEFORE publishing on the broker.
  *   - On warren restart, `bootBridges()` walks runs in {queued, running}
- *     with a non-null `burrow_run_id` and re-attaches a fresh bridge.
+ *     with a non-null `sandbox_run_id` and re-attaches a fresh bridge.
  *   - Each new bridge reads `EventsRepo.maxSeqForRun(runId)` and skips
  *     events with `seq <= maxSeq` (mx-a0cf07). burrow's stream replays
  *     from the start, so the dedup is client-side.
@@ -47,8 +47,8 @@ interface CreateRunResponse {
 	readonly run: {
 		readonly id: string;
 		readonly state: string;
-		readonly burrowId: string | null;
-		readonly burrowRunId: string | null;
+		readonly sandboxId: string | null;
+		readonly sandboxRunId: string | null;
 	};
 }
 
@@ -93,10 +93,10 @@ export const scenario: Scenario = {
 		});
 		const runId = created.run.id;
 		assertTrue(
-			typeof created.run.burrowRunId === "string" && created.run.burrowRunId !== null,
-			"POST /runs must attach burrow_run_id by the 201 — bootBridges resume needs it",
+			typeof created.run.sandboxRunId === "string" && created.run.sandboxRunId !== null,
+			"POST /runs must attach sandbox_run_id by the 201 — bootBridges resume needs it",
 		);
-		ctx.logger.debug(`scenario-06: spawned ${runId} (burrow_run_id=${created.run.burrowRunId})`);
+		ctx.logger.debug(`scenario-06: spawned ${runId} (sandbox_run_id=${created.run.sandboxRunId})`);
 
 		try {
 			// Phase 1 — wait for the bridge to land at least PRE_KILL_MIN_EVENTS
@@ -163,17 +163,17 @@ export const scenario: Scenario = {
 				assertTrue(allSeqs.has(env.seq), `post-restart events lost pre-kill seq ${env.seq}`);
 			}
 
-			// Run row's burrow_run_id is unchanged across the restart — we're
+			// Run row's sandbox_run_id is unchanged across the restart — we're
 			// resuming the same burrow run, not re-spawning.
-			const reread = await http.expectJson<{ burrowRunId: string | null }>(
+			const reread = await http.expectJson<{ sandboxRunId: string | null }>(
 				"GET",
 				`/runs/${encodeURIComponent(runId)}`,
 				200,
 			);
 			assertEqual(
-				reread.burrowRunId,
-				created.run.burrowRunId,
-				"GET /runs/:id post-restart preserves burrow_run_id",
+				reread.sandboxRunId,
+				created.run.sandboxRunId,
+				"GET /runs/:id post-restart preserves sandbox_run_id",
 			);
 		} finally {
 			await safelyCancel(http, runId, ctx);

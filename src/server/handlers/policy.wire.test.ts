@@ -23,7 +23,7 @@ import { depsFor, silentLogger, tcpUrl } from "./runs.test-helpers.ts";
 const TOKEN = "s3cret";
 
 /** A burrow client that 404s everything — no gated route here reaches it. */
-function inertBurrowClient(): FakeProvider {
+function inertSandboxClient(): FakeProvider {
 	return new FakeProvider();
 }
 
@@ -41,7 +41,7 @@ describe("route policy enforcement under WARREN_AUTH=public (warren-b875)", () =
 	beforeEach(async () => {
 		db = await openDatabase({ path: ":memory:" });
 		repos = createRepos(db);
-		handle = startServer(await depsFor(repos, inertBurrowClient()), {
+		handle = startServer(await depsFor(repos, inertSandboxClient()), {
 			transport: { kind: "tcp", hostname: "127.0.0.1", port: 0 },
 			auth: publicReadAuth(bearerAuth(TOKEN)),
 			logger: silentLogger,
@@ -127,7 +127,7 @@ describe("route policy enforcement under WARREN_AUTH=public (warren-b875)", () =
 			},
 		};
 		if (handle) await handle.stop();
-		handle = startServer(await depsFor(repos, inertBurrowClient()), {
+		handle = startServer(await depsFor(repos, inertSandboxClient()), {
 			transport: { kind: "tcp", hostname: "127.0.0.1", port: 0 },
 			auth: publicReadAuth(bearerAuth(TOKEN)),
 			logger,
@@ -162,7 +162,7 @@ describe("route policy enforcement under the default token provider", () => {
 	});
 
 	test("the operator's full capability set clears every policy (fresh-install path)", async () => {
-		handle = startServer(await depsFor(repos, inertBurrowClient()), {
+		handle = startServer(await depsFor(repos, inertSandboxClient()), {
 			transport: { kind: "tcp", hostname: "127.0.0.1", port: 0 },
 			auth: bearerAuth(TOKEN),
 			logger: silentLogger,

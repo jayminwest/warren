@@ -30,7 +30,7 @@ export async function runSetupStep(args: {
 	let setupSidecarId: string;
 	try {
 		const created = await input.sidecars.create({
-			burrowId: input.burrowId,
+			sandboxId: input.sandboxId,
 			command: ["sh", "-c", setupCommand],
 		});
 		setupSidecarId = created.id;
@@ -48,17 +48,17 @@ export async function runSetupStep(args: {
 	while (true) {
 		let status: { state: string; exitCode: number | null };
 		try {
-			status = await input.sidecars.get(input.burrowId, setupSidecarId);
+			status = await input.sidecars.get(input.sandboxId, setupSidecarId);
 		} catch {
 			// Transient status-poll failure: don't fail the setup over a single
 			// dropped query. Sleep and try again until the wall clock catches up.
 			if (now().getTime() >= deadline) {
 				const failureTail = await captureFailureTail(
 					input.sidecars,
-					input.burrowId,
+					input.sandboxId,
 					setupSidecarId,
 				);
-				await safeDeleteSidecar(input.sidecars, input.burrowId, setupSidecarId);
+				await safeDeleteSidecar(input.sidecars, input.sandboxId, setupSidecarId);
 				return {
 					ok: false,
 					reason: "setup_timeout",
@@ -75,11 +75,11 @@ export async function runSetupStep(args: {
 				// Best-effort cleanup of the completed setup sidecar — burrow's
 				// registry would garbage-collect it eventually, but explicit
 				// removal keeps `GET /burrows/:id/sidecars` lists short.
-				await safeDeleteSidecar(input.sidecars, input.burrowId, setupSidecarId);
+				await safeDeleteSidecar(input.sidecars, input.sandboxId, setupSidecarId);
 				return { ok: true };
 			}
-			const failureTail = await captureFailureTail(input.sidecars, input.burrowId, setupSidecarId);
-			await safeDeleteSidecar(input.sidecars, input.burrowId, setupSidecarId);
+			const failureTail = await captureFailureTail(input.sidecars, input.sandboxId, setupSidecarId);
+			await safeDeleteSidecar(input.sidecars, input.sandboxId, setupSidecarId);
 			return {
 				ok: false,
 				reason: "setup_failed",
@@ -89,8 +89,8 @@ export async function runSetupStep(args: {
 		}
 
 		if (now().getTime() >= deadline) {
-			const failureTail = await captureFailureTail(input.sidecars, input.burrowId, setupSidecarId);
-			await safeDeleteSidecar(input.sidecars, input.burrowId, setupSidecarId);
+			const failureTail = await captureFailureTail(input.sidecars, input.sandboxId, setupSidecarId);
+			await safeDeleteSidecar(input.sidecars, input.sandboxId, setupSidecarId);
 			return {
 				ok: false,
 				reason: "setup_timeout",

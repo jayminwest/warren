@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { openDatabase, type WarrenDb } from "../db/client.ts";
 import { createRepos, type Repos } from "../db/repos/index.ts";
 import { type ReapRunInput, type ReapRunResult, RunEventBroker } from "../runs/index.ts";
-import { reconcileLostBurrowRun } from "./bridge-reconnect.ts";
+import { reconcileLostSandboxRun } from "./bridge-reconnect.ts";
 import { makeProvider } from "./bridges.test-helpers.ts";
 import { createBridgeRegistry } from "./bridges.ts";
 
@@ -38,8 +38,8 @@ describe("runWithReconnect bridge_stalled/bridge_recovered (warren-6376)", () =>
 			prompt: "p",
 			renderedAgentJson: {},
 			trigger: "manual",
-			burrowId: "bur_a",
-			burrowRunId: "rb_a",
+			sandboxId: "bur_a",
+			sandboxRunId: "rb_a",
 		});
 		return run.id;
 	}
@@ -100,7 +100,7 @@ describe("runWithReconnect bridge_stalled/bridge_recovered (warren-6376)", () =>
 		expect(kinds.indexOf("bridge_stalled")).toBeLessThan(kinds.indexOf("bridge_recovered"));
 	});
 
-	test("finalizes run as failed/burrow_unreachable once stall ceiling is crossed", async () => {
+	test("finalizes run as failed/sandbox_unreachable once stall ceiling is crossed", async () => {
 		const runId = await seedRun();
 		let calls = 0;
 		const registry = createBridgeRegistry({
@@ -108,7 +108,7 @@ describe("runWithReconnect bridge_stalled/bridge_recovered (warren-6376)", () =>
 			broker: new RunEventBroker(),
 			runtimeProvider: makeProvider().provider,
 			// Burrow is up but unresponsive: every reconnect errors with
-			// burrowRunMissing:false, so the loop would spin forever without
+			// sandboxRunMissing:false, so the loop would spin forever without
 			// the hard ceiling (warren-af76).
 			bridge: async () => {
 				calls += 1;
@@ -127,13 +127,13 @@ describe("runWithReconnect bridge_stalled/bridge_recovered (warren-6376)", () =>
 
 		const run = await repos.runs.get(runId);
 		expect(run?.state).toBe("failed");
-		expect(run?.failureReason).toBe("burrow_unreachable");
+		expect(run?.failureReason).toBe("sandbox_unreachable");
 
 		const events = await repos.events.listByRun(runId);
 		expect(events.filter((e) => e.kind === "bridge_stalled").length).toBe(1);
 		const lost = events.filter((e) => e.kind === "bridge_lost");
 		expect(lost.length).toBe(1);
-		expect((lost[0]?.payloadJson as { reason: string }).reason).toBe("burrow_unreachable");
+		expect((lost[0]?.payloadJson as { reason: string }).reason).toBe("sandbox_unreachable");
 		expect((lost[0]?.payloadJson as { finalized: boolean }).finalized).toBe(true);
 	});
 
@@ -143,13 +143,13 @@ describe("runWithReconnect bridge_stalled/bridge_recovered (warren-6376)", () =>
 		// reconciler tears down through `provider.terminate` — no domain-side burrow
 		// call, works for both K8s pod delete and burrow destroy.
 		const { provider, terminateCalls } = makeProvider();
-		await reconcileLostBurrowRun({
+		await reconcileLostSandboxRun({
 			runId,
-			burrowRunId: "rb_a",
+			sandboxRunId: "rb_a",
 			repos,
 			broker: new RunEventBroker(),
 			runtimeProvider: provider,
-			failureReason: "burrow_unreachable",
+			failureReason: "sandbox_unreachable",
 		});
 
 		// Run finalized terminal, AND the run's sandbox was torn down through the seam.
@@ -162,7 +162,7 @@ describe("runWithReconnect bridge_stalled/bridge_recovered (warren-6376)", () =>
 	});
 
 	test("skips teardown when the run has no sandbox id (warren-4f01)", async () => {
-		// A run with no burrow_id ⇒ nothing to tear down, but the run still
+		// A run with no sandbox_id ⇒ nothing to tear down, but the run still
 		// finalizes terminal and the teardown seam is never invoked.
 		const project = await repos.projects.create({
 			gitUrl: "https://github.com/x/y.git",
@@ -175,12 +175,12 @@ describe("runWithReconnect bridge_stalled/bridge_recovered (warren-6376)", () =>
 			prompt: "p",
 			renderedAgentJson: {},
 			trigger: "manual",
-			burrowRunId: "rb_nosandbox1",
+			sandboxRunId: "rb_nosandbox1",
 		});
 		const { provider, terminateCalls } = makeProvider();
-		await reconcileLostBurrowRun({
+		await reconcileLostSandboxRun({
 			runId: run.id,
-			burrowRunId: "rb_nosandbox1",
+			sandboxRunId: "rb_nosandbox1",
 			repos,
 			broker: new RunEventBroker(),
 			runtimeProvider: provider,
@@ -249,8 +249,8 @@ describe("reap orchestration through the provider seam (warren-a7cb)", () => {
 			prompt: "p",
 			renderedAgentJson: {},
 			trigger: "manual",
-			burrowId: "bur_a",
-			burrowRunId: "rb_a",
+			sandboxId: "bur_a",
+			sandboxRunId: "rb_a",
 		});
 		return run.id;
 	}
@@ -286,9 +286,9 @@ describe("reap orchestration through the provider seam (warren-a7cb)", () => {
 	test("reconcile tears down via provider.terminate and emits workspace_destroyed", async () => {
 		const runId = await seedRun();
 		const { provider, terminateCalls } = makeProvider();
-		await reconcileLostBurrowRun({
+		await reconcileLostSandboxRun({
 			runId,
-			burrowRunId: "rb_a",
+			sandboxRunId: "rb_a",
 			repos,
 			broker: new RunEventBroker(),
 			runtimeProvider: provider,
@@ -304,7 +304,7 @@ describe("reap orchestration through the provider seam (warren-a7cb)", () => {
 		);
 		expect(destroyed).toBeDefined();
 		expect(destroyed?.payloadJson).toMatchObject({
-			burrowId: "bur_a",
+			sandboxId: "bur_a",
 			archived: false,
 			deletedEvents: 3,
 			deletedRuns: 1,
@@ -315,9 +315,9 @@ describe("reap orchestration through the provider seam (warren-a7cb)", () => {
 	test("reconcile degrades a terminate failure to workspace_destroy_failed", async () => {
 		const runId = await seedRun();
 		const { provider } = makeProvider({ throwOnTerminate: new Error("pod delete 500") });
-		await reconcileLostBurrowRun({
+		await reconcileLostSandboxRun({
 			runId,
-			burrowRunId: "rb_a",
+			sandboxRunId: "rb_a",
 			repos,
 			broker: new RunEventBroker(),
 			runtimeProvider: provider,
@@ -327,7 +327,7 @@ describe("reap orchestration through the provider seam (warren-a7cb)", () => {
 			(e) => e.kind === "reap.workspace_destroy_failed",
 		);
 		expect(failed).toBeDefined();
-		expect(failed?.payloadJson).toMatchObject({ burrowId: "bur_a", step: "destroy" });
+		expect(failed?.payloadJson).toMatchObject({ sandboxId: "bur_a", step: "destroy" });
 		// The run still finalized despite the best-effort teardown failure.
 		expect((await repos.runs.get(runId))?.state).toBe("failed");
 	});

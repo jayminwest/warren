@@ -29,9 +29,9 @@ import type { FinalizeStage } from "./finalize-stages.ts";
 export interface RunHandle {
 	/** warren domain id — the identity, generated pre-dispatch */
 	runId: string;
-	/** provider workspace/sandbox id (burrowId | pod name) */
+	/** provider workspace/sandbox id (sandboxId | pod name) */
 	sandboxId: string;
-	/** provider run/dispatch id (burrowRunId | pod uid) */
+	/** provider run/dispatch id (sandboxRunId | pod uid) */
 	providerRunId: string;
 }
 

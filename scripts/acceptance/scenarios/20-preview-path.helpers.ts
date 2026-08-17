@@ -29,7 +29,7 @@ export interface ProjectRow {
 export interface RunRow {
 	readonly id: string;
 	readonly state: string;
-	readonly burrowId: string | null;
+	readonly sandboxId: string | null;
 	readonly previewState: "starting" | "live" | "failed" | "torn-down" | null;
 	readonly previewPort: number | null;
 	readonly previewFailureMessage: string | null;

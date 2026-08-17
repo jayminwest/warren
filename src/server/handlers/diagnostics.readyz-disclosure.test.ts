@@ -102,7 +102,7 @@ describe("/readyz disclosure contract (warren-51de)", () => {
 	test("every degraded check still names what is wrong via a stable reason", async () => {
 		const { checks } = await degradedBody();
 		const byName = new Map(checks.map((c) => [c.name, c]));
-		expect(byName.get("stale_burrow_workspaces")?.message).toBe(
+		expect(byName.get("stale_sandbox_workspaces")?.message).toBe(
 			"probe failed (reason=unreachable)",
 		);
 		expect(byName.get("warren_config")?.message).toContain("prj_acme: warren_config_unavailable");

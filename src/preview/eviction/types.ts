@@ -36,15 +36,15 @@ export interface PreviewEvictionLogger {
  * verb the launcher already uses; tests inject a fake that captures calls.
  */
 export type SidecarClient = Pick<PreviewSidecarsClient, "delete"> & {
-	list(burrowId: string): Promise<readonly { readonly id: string }[]>;
+	list(sandboxId: string): Promise<readonly { readonly id: string }[]>;
 };
 
-export type SidecarResolver = (burrowId: string) => Promise<SidecarClient | null>;
+export type SidecarResolver = (sandboxId: string) => Promise<SidecarClient | null>;
 
 export interface RunPreviewRow {
 	readonly runId: string;
 	readonly projectId: string | null;
-	readonly burrowId: string | null;
+	readonly sandboxId: string | null;
 	readonly workerId: string | null;
 	readonly previewState: "starting" | "live";
 	readonly previewPort: number | null;
@@ -83,7 +83,7 @@ export interface ManualTeardownClaim {
 	readonly status: ManualTeardownStatus;
 	readonly previousState: PreviewState | null;
 	readonly port: number | null;
-	readonly burrowId: string | null;
+	readonly sandboxId: string | null;
 }
 
 export interface RunPreviewsRepo {

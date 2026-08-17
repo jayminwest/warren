@@ -21,7 +21,7 @@
  * for the run-scoped variant), so warren dedupes on the consumer side:
  * `EventsRepo.maxSeqForRun(runId)` gives the last seq we persisted, and
  * any incoming event whose `seq <= maxSeq` is dropped. This is the
- * "MAX(events.burrow_event_seq) + 1" recovery point in docs/design/agent-composition.md — we
+ * "MAX(events.sandbox_event_seq) + 1" recovery point in docs/design/agent-composition.md — we
  * implement it client-side because the wire route doesn't.
  *
  * The bridge swallows transport-layer errors (BurrowUnreachableError
@@ -53,7 +53,7 @@
  * (the acceptance stub-shell, many user-authored shell agents) emit
  * only `text` events, so the bridge has no in-stream signal to break on.
  * To cover that gap, the bridge runs a parallel low-frequency poller
- * that calls burrow's `runs.get(burrowRunId)`. When burrow reports a
+ * that calls burrow's `runs.get(sandboxRunId)`. When burrow reports a
  * terminal state, the poller waits a short drain window (so the next
  * tail poll picks up final events), then aborts the stream. The bridge
  * synthesises a `terminalDetected` from the burrow state so reap runs
@@ -61,7 +61,7 @@
  * that override `source` without supplying `runStateProbe`.
  *
  * Restart recovery. `recoverActiveRunStreams` walks the runs table for
- * rows in {queued, running} that already have a `burrow_run_id`, and
+ * rows in {queued, running} that already have a `sandbox_run_id`, and
  * starts a bridge for each. It returns the in-flight bridges so the
  * caller can stop them on shutdown.
  */

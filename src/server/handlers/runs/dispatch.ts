@@ -158,7 +158,7 @@ export function createRunHandler(deps: ServerDeps): RouteHandler {
 			// warren-245d: thread the resolved runtime provider so POST /runs
 			// dispatches through the K8sProvider under WARREN_RUNTIME=k8s. Without
 			// this, spawnRun fell back to the burrow LocalProvider and every K8s
-			// dispatch 503'd `burrow_unreachable`. Mirrors conversations.ts.
+			// dispatch 503'd `sandbox_unreachable`. Mirrors conversations.ts.
 			runtimeProvider: deps.runtimeProvider,
 			agentName,
 			projectId,
@@ -192,10 +192,10 @@ export function createRunHandler(deps: ServerDeps): RouteHandler {
 		// keeping every side effect (spawn + bridge start) deduped.
 		const dispatch = async (): Promise<IdempotentDispatch> => {
 			const result = await spawnRun(options);
-			deps.bridges.start(result.run.id, result.burrowRun.id, result.burrow.id);
+			deps.bridges.start(result.run.id, result.sandboxRun.id, result.sandbox.id);
 			return {
 				run: result.run,
-				burrow: { id: result.burrow.id, workspacePath: result.burrow.workspacePath },
+				sandbox: { id: result.sandbox.id, workspacePath: result.sandbox.workspacePath },
 			};
 		};
 

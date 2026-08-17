@@ -30,7 +30,7 @@ describe("reapRun", () => {
 
 	test("merges burrow .mulch into project .mulch and pushes the workspace branch", async () => {
 		const f = fakeFs({
-			"/data/burrow/ws/.mulch/expertise/build.jsonl":
+			"/data/sandbox/ws/.mulch/expertise/build.jsonl":
 				'{"id":"mx-1","recorded_at":"2026-05-08T21:00:00Z","content":"new"}\n',
 			"/data/projects/x/y/.mulch/expertise/build.jsonl":
 				'{"id":"mx-1","recorded_at":"2026-05-08T20:00:00Z","content":"old"}\n',
@@ -61,12 +61,12 @@ describe("reapRun", () => {
 		expect(e.calls).toHaveLength(3);
 		expect(e.calls[0]?.cmd).toBe("git");
 		expect(e.calls[0]?.args).toEqual(["push", "origin", "HEAD:agent/refactor-bot/run-1"]);
-		expect(e.calls[0]?.cwd).toBe("/data/burrow/ws");
+		expect(e.calls[0]?.cwd).toBe("/data/sandbox/ws");
 		expect(e.calls[1]?.cmd).toBe("git");
 		expect(e.calls[1]?.args).toEqual(["rev-list", "--count", "main..HEAD"]);
 		expect(e.calls[2]?.cmd).toBe("git");
 		expect(e.calls[2]?.args).toEqual(["diff", "--numstat", "main..HEAD"]);
-		expect(e.calls[2]?.cwd).toBe("/data/burrow/ws");
+		expect(e.calls[2]?.cwd).toBe("/data/sandbox/ws");
 		// The measured facts landed on the run row (warren-ab2b).
 		const row = await ctx.repos.runs.require(ctx.runId);
 		expect(row.commitsAhead).toBe(1);
@@ -206,8 +206,8 @@ describe("reapRun", () => {
 			prompt: "p",
 			renderedAgentJson: {},
 			trigger: "manual",
-			burrowId: "bur_aaaaaaaaaaaa",
-			burrowRunId: "run_zzzzzzzzzzzz",
+			sandboxId: "bur_aaaaaaaaaaaa",
+			sandboxRunId: "run_zzzzzzzzzzzz",
 		});
 		await customRepos.runs.markRunning(run.id);
 
@@ -253,8 +253,8 @@ describe("reapRun", () => {
 			prompt: "p",
 			renderedAgentJson: {},
 			trigger: "manual",
-			burrowId: "bur_aaaaaaaaaaaa",
-			burrowRunId: "run_freshfreshfr",
+			sandboxId: "bur_aaaaaaaaaaaa",
+			sandboxRunId: "run_freshfreshfr",
 		});
 		await reapRun({
 			runId: fresh.id,
@@ -341,16 +341,16 @@ describe("reapRun", () => {
 		expect(result.workspaceDestroyed).toBe(true);
 		const events = await ctx.repos.events.listByRun(ctx.runId);
 		const destroyed = events.find((ev) => ev.kind === "reap.workspace_destroyed");
-		expect(destroyed?.payloadJson).toMatchObject({ burrowId: "bur_aaaaaaaaaaaa" });
+		expect(destroyed?.payloadJson).toMatchObject({ sandboxId: "bur_aaaaaaaaaaaa" });
 		// Emitted after the terminal transition, so reap.completed precedes it.
 		const order = events.map((ev) => ev.kind);
 		expect(order.indexOf("reap.completed")).toBeLessThan(order.indexOf("reap.workspace_destroyed"));
 
-		// warren-9b77: the destruction is persisted — burrowId is nulled, so
+		// warren-9b77: the destruction is persisted — sandboxId is nulled, so
 		// the fallback GC predicate (and the readyz diagnostic that reuses
 		// it) never re-strands this workspace.
 		const reaped = await ctx.repos.runs.require(ctx.runId);
-		expect(reaped.burrowId).toBeNull();
+		expect(reaped.sandboxId).toBeNull();
 		const activity = buildBurrowActivity([], [reaped]);
 		expect(findStrandedBurrows({ ...activity, ttlMs: 0, now: new Date() })).toEqual([]);
 	});
@@ -365,8 +365,8 @@ describe("reapRun", () => {
 			prompt: "p",
 			renderedAgentJson: {},
 			trigger: "manual",
-			burrowId: "bur_aaaaaaaaaaaa",
-			burrowRunId: "run_neverstarted1",
+			sandboxId: "bur_aaaaaaaaaaaa",
+			sandboxRunId: "run_neverstarted1",
 		});
 		const e = fakeExec();
 
@@ -406,8 +406,8 @@ describe("reapRun", () => {
 			prompt: "p",
 			renderedAgentJson: {},
 			trigger: "manual",
-			burrowId: "bur_aaaaaaaaaaaa",
-			burrowRunId: "run_neverstarted2",
+			sandboxId: "bur_aaaaaaaaaaaa",
+			sandboxRunId: "run_neverstarted2",
 		});
 
 		const result = await reapRun({
@@ -426,7 +426,7 @@ describe("reapRun", () => {
 
 	test("publishes reap-emitted events to the broker for live tailers", async () => {
 		const f = fakeFs({
-			"/data/burrow/ws/.mulch/expertise/build.jsonl":
+			"/data/sandbox/ws/.mulch/expertise/build.jsonl":
 				'{"id":"mx-1","recorded_at":"2026-05-08T21:00:00Z","content":"new"}\n',
 		});
 		const sub = ctx.broker.subscribe(ctx.runId);

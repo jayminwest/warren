@@ -22,8 +22,8 @@ export function stub(
 }
 
 export interface BurrowFixture {
-	burrowId: string;
-	burrowRunId: string;
+	sandboxId: string;
+	sandboxRunId: string;
 	workspacePath: string;
 }
 
@@ -33,14 +33,14 @@ export interface BurrowFixture {
  * returned handle ids are the same ones the retired burrow stub produced,
  * so the assertions that pin the provider-boundary payloads read unchanged.
  */
-export function makeBurrowClient(
+export function makeSandboxClient(
 	fix: BurrowFixture,
 	calls: { method: string; path: string; body: unknown }[],
 ): FakeProvider {
 	return new FakeProvider(
 		{
-			sandboxId: fix.burrowId,
-			providerRunId: fix.burrowRunId,
+			sandboxId: fix.sandboxId,
+			providerRunId: fix.sandboxRunId,
 			workspacePath: fix.workspacePath,
 		},
 		undefined,

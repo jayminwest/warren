@@ -10,7 +10,7 @@
  *     bearer headers, API-key prefixes, DSN userinfo, JWTs, …).
  *   - {@link SECRET_FIELD_SET} — object keys censored on the key alone
  *     (secret-named fields plus internal runtime handles like
- *     `burrowId` that the run projection withholds).
+ *     `sandboxId` that the run projection withholds).
  *   - {@link buildEnvSecretPattern} — this instance's own env secrets,
  *     matched by literal value.
  *
@@ -40,11 +40,11 @@ export const REDACTED_MARKER = "[redacted]";
  * pino redact paths can't express the dash — the event scrubber matches on
  * the lowercased key alone, so it can (warren-9bbc).
  *
- * `burrowId` rides along for a different reason: it is not a credential,
+ * `sandboxId` rides along for a different reason: it is not a credential,
  * it is an internal runtime handle the run projection already withholds
  * (`REDACTED_RUN_FIELDS`, warren-946f), and system events like
  * `reap.workspace_destroyed` re-leaked it through the transcript
- * (warren-5f59). `burrowRunId` is the same class of handle —
+ * (warren-5f59). `sandboxRunId` is the same class of handle —
  * `watchdog.terminal_reconciled` re-leaked it (warren-d8f4), and under
  * `WARREN_RUNTIME=k8s` the value is a real Kubernetes pod UID, not
  * something derivable from the run id. Censoring on the key keeps the
@@ -66,8 +66,8 @@ export const REDACTED_MARKER = "[redacted]";
 const SECRET_FIELD_SET = new Set<string>([
 	...SECRET_FIELDS.map((f) => f.toLowerCase()),
 	"x-api-key",
-	"burrowid",
-	"burrowrunid",
+	"sandboxid",
+	"sandboxrunid",
 	"bundlepath",
 	"salvagepath",
 ]);

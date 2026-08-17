@@ -24,7 +24,7 @@ describe("launchPreview", () => {
 	let repos: Repos;
 	let allocator: PreviewPortAllocator;
 	let runId: string;
-	let burrowId: string;
+	let sandboxId: string;
 
 	beforeEach(async () => {
 		const env: LaunchTestEnv = await setupLaunchEnv();
@@ -32,7 +32,7 @@ describe("launchPreview", () => {
 		repos = env.repos;
 		allocator = env.allocator;
 		runId = env.runId;
-		burrowId = env.burrowId;
+		sandboxId = env.sandboxId;
 	});
 
 	afterEach(async () => {
@@ -44,7 +44,7 @@ describe("launchPreview", () => {
 		const { fetch, calls } = fakeFetch([new Response("ok", { status: 200 })]);
 		const result = await launchPreview({
 			runId,
-			burrowId,
+			sandboxId,
 			previewConfig: PREVIEW_CONFIG,
 			repos,
 			allocator,
@@ -79,7 +79,7 @@ describe("launchPreview", () => {
 		const config: ServerPreviewConfig = { ...PREVIEW_CONFIG, port: 5173 };
 		await launchPreview({
 			runId,
-			burrowId,
+			sandboxId,
 			previewConfig: config,
 			repos,
 			allocator,
@@ -101,7 +101,7 @@ describe("launchPreview", () => {
 		const config: ServerPreviewConfig = { ...PREVIEW_CONFIG, readiness_path: "/healthz" };
 		await launchPreview({
 			runId,
-			burrowId,
+			sandboxId,
 			previewConfig: config,
 			repos,
 			allocator,
@@ -119,7 +119,7 @@ describe("launchPreview", () => {
 		const { fetch } = fakeFetch([new Response(null, { status: 302 })]);
 		const result = await launchPreview({
 			runId,
-			burrowId,
+			sandboxId,
 			previewConfig: PREVIEW_CONFIG,
 			repos,
 			allocator,
@@ -157,7 +157,7 @@ describe("launchPreview", () => {
 		const sidecars = fakeSidecars();
 		const result = await launchPreview({
 			runId,
-			burrowId,
+			sandboxId,
 			previewConfig: PREVIEW_CONFIG,
 			repos,
 			allocator: tinyAllocator,
@@ -185,7 +185,7 @@ describe("launchPreview", () => {
 		};
 		const result = await launchPreview({
 			runId,
-			burrowId,
+			sandboxId,
 			previewConfig: PREVIEW_CONFIG,
 			repos,
 			allocator,
@@ -214,7 +214,7 @@ describe("launchPreview", () => {
 		]);
 		const result = await launchPreview({
 			runId,
-			burrowId,
+			sandboxId,
 			previewConfig: PREVIEW_CONFIG,
 			repos,
 			allocator,
@@ -263,7 +263,7 @@ describe("launchPreview", () => {
 		]);
 		const result = await launchPreview({
 			runId,
-			burrowId,
+			sandboxId,
 			previewConfig: PREVIEW_CONFIG,
 			repos,
 			allocator,
@@ -311,7 +311,7 @@ describe("launchPreview", () => {
 
 		const result = await launchPreview({
 			runId,
-			burrowId,
+			sandboxId,
 			previewConfig: PREVIEW_CONFIG,
 			repos,
 			allocator,
@@ -359,7 +359,7 @@ describe("launchPreview", () => {
 		const { fetch } = fakeFetch([new Response("nope", { status: 500 })]);
 		const result = await launchPreview({
 			runId,
-			burrowId,
+			sandboxId,
 			previewConfig: PREVIEW_CONFIG,
 			repos,
 			allocator,

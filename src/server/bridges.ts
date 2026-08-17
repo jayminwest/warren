@@ -2,8 +2,8 @@
  * Live registry of `bridgeRunStream` controllers.
  *
  * The HTTP server boots, walks the runs table for (queued|running) rows
- * that have a `burrow_run_id`, and attaches a bridge to each — that's
- * the docs/design/runtime-and-supervisor.md "MAX(events.burrow_event_seq)+1 on warren restart" recovery.
+ * that have a `sandbox_run_id`, and attaches a bridge to each — that's
+ * the docs/design/runtime-and-supervisor.md "MAX(events.sandbox_event_seq)+1 on warren restart" recovery.
  * Every subsequent `POST /runs` registers a new bridge for the spawned
  * run via `start()`. On shutdown, `stopAll()` aborts everyone in one
  * pass and awaits the drain so the events table stays consistent with
@@ -22,13 +22,13 @@
  * warren never sees. The registry wraps the bridge in a backoff loop
  * that re-invokes it until the run reaches a terminal state in warren's
  * DB (the reaper's territory, mx-fadaa2) or the registry is aborted.
- * Each reconnect re-reads `MAX(events.burrow_event_seq)` so the seq
+ * Each reconnect re-reads `MAX(events.sandbox_event_seq)` so the seq
  * dedupe in `bridgeRunStream` keeps the events table consistent.
  *
  * Ghost-run reconciliation (warren-b1a9). When burrow returns 404 for
- * the run's `burrow_run_id` (typically because warren's host machine
+ * the run's `sandbox_run_id` (typically because warren's host machine
  * restarted and burrow lost its in-memory run state), the bridge sets
- * `burrowRunMissing: true` instead of `errored: true`. The registry
+ * `sandboxRunMissing: true` instead of `errored: true`. The registry
  * catches this, stops the reconnect loop, transitions the warren row to
  * `failed` with `failure_reason='sandbox_run_lost'`, and emits a
  * `bridge_lost` system event. `bootBridges` also pre-probes each active
@@ -58,11 +58,11 @@ import {
 import type { RuntimeProvider } from "../runtime/contract.ts";
 import type { SeedsCliDeps } from "../seeds-cli/index.ts";
 import type { WarrenConfigCache } from "../warren-config/index.ts";
-import { defaultSleep, reconcileLostBurrowRun, runWithReconnect } from "./bridge-reconnect.ts";
+import { defaultSleep, reconcileLostSandboxRun, runWithReconnect } from "./bridge-reconnect.ts";
 import type { BridgeRegistry } from "./types.ts";
 
 interface BridgeEntry {
-	readonly burrowRunId: string;
+	readonly sandboxRunId: string;
 	readonly abort: AbortController;
 	readonly done: Promise<BridgeRunStreamResult>;
 }
@@ -87,7 +87,7 @@ export const BRIDGE_STALL_THRESHOLD = 3;
  * forward progress. Past this count, `runWithReconnect` stops looping
  * against an up-but-unresponsive burrow (socket probe times out, so the
  * bridge never sees a clean 404) and finalizes the warren run as `failed`
- * with `failure_reason='burrow_unreachable'`. Sized so `bridge_stalled`
+ * with `failure_reason='sandbox_unreachable'`. Sized so `bridge_stalled`
  * (at `BRIDGE_STALL_THRESHOLD`) fires well before we give up, and so the
  * wall-clock budget under `DEFAULT_RECONNECT_BACKOFF_MS` is roughly four
  * minutes of backoff before finalize. Exposed via the registry input so
@@ -139,7 +139,7 @@ export interface CreateBridgeRegistryInput {
 	readonly stallThreshold?: number;
 	/**
 	 * Consecutive errored-reconnect count after which the bridge gives up
-	 * and finalizes the run as `failed` / `burrow_unreachable` (warren-af76)
+	 * and finalizes the run as `failed` / `sandbox_unreachable` (warren-af76)
 	 * rather than reconnecting forever against an unresponsive burrow.
 	 * Defaults to `BRIDGE_STALL_CEILING`; tests lower it to exercise the
 	 * path.
@@ -213,13 +213,13 @@ export function createBridgeRegistry(input: CreateBridgeRegistryInput): BridgeRe
 	const stallCeiling = input.stallCeiling ?? BRIDGE_STALL_CEILING;
 	const sleep = input.sleep ?? defaultSleep;
 
-	function start(runId: string, burrowRunId: string, burrowId: string, mode?: RunMode): void {
+	function start(runId: string, sandboxRunId: string, sandboxId: string, mode?: RunMode): void {
 		if (live.has(runId)) return;
 		const abort = new AbortController();
 		const done = runWithReconnect({
 			runId,
-			burrowRunId,
-			burrowId,
+			sandboxRunId,
+			sandboxId,
 			repos: input.repos,
 			broker: input.broker,
 			runtimeProvider: input.runtimeProvider,
@@ -241,7 +241,7 @@ export function createBridgeRegistry(input: CreateBridgeRegistryInput): BridgeRe
 			...(input.seedsCli !== undefined ? { seedsCli: input.seedsCli } : {}),
 			...(input.onInfraLostRun !== undefined ? { onInfraLostRun: input.onInfraLostRun } : {}),
 		});
-		const entry: BridgeEntry = { burrowRunId, abort, done };
+		const entry: BridgeEntry = { sandboxRunId, abort, done };
 		live.set(runId, entry);
 		// warren-018a: `done` is fire-and-forgotten. Without a `.catch` here,
 		// any synchronous-in-bridge throw (placement missing, transient pool
@@ -254,14 +254,14 @@ export function createBridgeRegistry(input: CreateBridgeRegistryInput): BridgeRe
 			.catch(async (err) => {
 				const message = err instanceof Error ? err.message : String(err);
 				input.logger?.error?.(
-					{ runId, burrowRunId, burrowId, err: message },
+					{ runId, sandboxRunId, sandboxId, err: message },
 					"bridge crashed with unhandled error",
 				);
 				try {
 					const seq = ((await input.repos.events.maxSeqForRun(runId)) ?? 0) + 1;
 					const row = await input.repos.events.append({
 						runId,
-						burrowEventSeq: seq,
+						sandboxEventSeq: seq,
 						ts: new Date().toISOString(),
 						kind: "bridge_fatal",
 						stream: "system",
@@ -299,13 +299,13 @@ export function createBridgeRegistry(input: CreateBridgeRegistryInput): BridgeRe
 
 export interface BootBridgesResult {
 	readonly registry: BridgeRegistry;
-	readonly resumed: readonly { runId: string; burrowRunId: string }[];
+	readonly resumed: readonly { runId: string; sandboxRunId: string }[];
 	/**
 	 * Active rows we did NOT attach a bridge to. Reasons:
-	 *   - `no_burrow_run_id` / `no_burrow_id` — partial spawn (spawn-rollback territory).
-	 *   - `no_placement` — pre-pl-9ba1 orphan: `burrow_id` is set but `burrows` row missing.
+	 *   - `no_sandbox_run_id` / `no_sandbox_id` — partial spawn (spawn-rollback territory).
+	 *   - `no_placement` — pre-pl-9ba1 orphan: `sandbox_id` is set but `burrows` row missing.
 	 *   - `sandbox_run_lost` (warren-b1a9) — burrow returned 404 for the
-	 *     `burrow_run_id`. The reconciler already finalized the warren
+	 *     `sandbox_run_id`. The reconciler already finalized the warren
 	 *     row to `failed`; the bridge isn't started because there's
 	 *     nothing to stream.
 	 */
@@ -314,7 +314,7 @@ export interface BootBridgesResult {
 
 /**
  * Build a registry and prime it with bridges for every active run that
- * has a `burrow_run_id`. Active rows missing one are skipped — those
+ * has a `sandbox_run_id`. Active rows missing one are skipped — those
  * are partial spawns the spawn-rollback path should already have
  * cancelled. Surface them in `skipped` so the operator sees the count.
  */
@@ -331,23 +331,23 @@ export async function bootBridges(input: CreateBridgeRegistryInput): Promise<Boo
 	// bridge.
 	const provider: RuntimeProvider = input.runtimeProvider;
 	const candidates = await input.repos.runs.listByState(["queued", "running"]);
-	const resumed: { runId: string; burrowRunId: string }[] = [];
+	const resumed: { runId: string; sandboxRunId: string }[] = [];
 	const skipped: { runId: string; reason: string }[] = [];
 
 	for (const run of candidates) {
-		if (run.burrowRunId === null) {
-			skipped.push({ runId: run.id, reason: "no_burrow_run_id" });
+		if (run.sandboxRunId === null) {
+			skipped.push({ runId: run.id, reason: "no_sandbox_run_id" });
 			input.logger?.warn?.(
 				{ runId: run.id, state: run.state },
-				"skipping recovery: run has no burrow_run_id",
+				"skipping recovery: run has no sandbox_run_id",
 			);
 			continue;
 		}
-		if (run.burrowId === null) {
-			skipped.push({ runId: run.id, reason: "no_burrow_id" });
+		if (run.sandboxId === null) {
+			skipped.push({ runId: run.id, reason: "no_sandbox_id" });
 			input.logger?.warn?.(
-				{ runId: run.id, state: run.state, burrowRunId: run.burrowRunId },
-				"skipping recovery: run has burrow_run_id but no burrow_id",
+				{ runId: run.id, state: run.state, sandboxRunId: run.sandboxRunId },
+				"skipping recovery: run has sandbox_run_id but no sandbox_id",
 			);
 			continue;
 		}
@@ -365,15 +365,15 @@ export async function bootBridges(input: CreateBridgeRegistryInput): Promise<Boo
 		try {
 			const status = await provider.status({
 				runId: run.id,
-				sandboxId: run.burrowId,
-				providerRunId: run.burrowRunId,
+				sandboxId: run.sandboxId,
+				providerRunId: run.sandboxRunId,
 			});
 			lost = !status.exists;
 		} catch (err) {
 			input.logger?.warn?.(
 				{
 					runId: run.id,
-					burrowRunId: run.burrowRunId,
+					sandboxRunId: run.sandboxRunId,
 					err: err instanceof Error ? err.message : String(err),
 				},
 				"bootBridges reconcile probe failed (transport); starting bridge anyway",
@@ -381,9 +381,9 @@ export async function bootBridges(input: CreateBridgeRegistryInput): Promise<Boo
 		}
 		if (lost) {
 			skipped.push({ runId: run.id, reason: "sandbox_run_lost" });
-			await reconcileLostBurrowRun({
+			await reconcileLostSandboxRun({
 				runId: run.id,
-				burrowRunId: run.burrowRunId,
+				sandboxRunId: run.sandboxRunId,
 				repos: input.repos,
 				broker: input.broker,
 				...(input.onInfraLostRun !== undefined ? { onInfraLostRun: input.onInfraLostRun } : {}),
@@ -393,15 +393,15 @@ export async function bootBridges(input: CreateBridgeRegistryInput): Promise<Boo
 				runtimeProvider: input.runtimeProvider,
 				logger: bindBridgeLogger(input.logger, {
 					run_id: run.id,
-					burrow_run_id: run.burrowRunId,
+					sandbox_run_id: run.sandboxRunId,
 				}),
 			});
 			continue;
 		}
-		registry.start(run.id, run.burrowRunId, run.burrowId, run.mode);
-		resumed.push({ runId: run.id, burrowRunId: run.burrowRunId });
+		registry.start(run.id, run.sandboxRunId, run.sandboxId, run.mode);
+		resumed.push({ runId: run.id, sandboxRunId: run.sandboxRunId });
 		input.logger?.info?.(
-			{ runId: run.id, burrowRunId: run.burrowRunId, state: run.state },
+			{ runId: run.id, sandboxRunId: run.sandboxRunId, state: run.state },
 			"resumed run stream bridge",
 		);
 	}

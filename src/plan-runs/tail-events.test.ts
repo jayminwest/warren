@@ -53,7 +53,7 @@ describe("tailPlanRunEvents", () => {
 		return {
 			id: seq,
 			runId,
-			burrowEventSeq: seq,
+			sandboxEventSeq: seq,
 			ts: new Date(seq * 1000).toISOString(),
 			kind,
 			stream: null,
@@ -66,14 +66,14 @@ describe("tailPlanRunEvents", () => {
 		const { planRunId, runId } = await makePlanRunWithRun();
 		await repos.events.append({
 			runId,
-			burrowEventSeq: 1,
+			sandboxEventSeq: 1,
 			ts: new Date().toISOString(),
 			kind: "stdout",
 			payload: { line: "one" },
 		});
 		await repos.events.append({
 			runId,
-			burrowEventSeq: 2,
+			sandboxEventSeq: 2,
 			ts: new Date().toISOString(),
 			kind: "stdout",
 			payload: { line: "two" },
@@ -90,14 +90,14 @@ describe("tailPlanRunEvents", () => {
 		})) {
 			rows.push(row);
 		}
-		expect(rows.map((r) => r.burrowEventSeq)).toEqual([1, 2]);
+		expect(rows.map((r) => r.sandboxEventSeq)).toEqual([1, 2]);
 	});
 
 	test("follow mode yields live broker arrivals and dedupes replayed seqs", async () => {
 		const { planRunId, runId } = await makePlanRunWithRun();
 		await repos.events.append({
 			runId,
-			burrowEventSeq: 1,
+			sandboxEventSeq: 1,
 			ts: new Date().toISOString(),
 			kind: "stdout",
 			payload: { line: "history" },
@@ -128,6 +128,6 @@ describe("tailPlanRunEvents", () => {
 		broker.publish(runId, eventRow(runId, 2));
 
 		await pump;
-		expect(rows.map((r) => r.burrowEventSeq)).toEqual([1, 2]);
+		expect(rows.map((r) => r.sandboxEventSeq)).toEqual([1, 2]);
 	});
 });

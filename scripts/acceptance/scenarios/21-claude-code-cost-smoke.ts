@@ -49,8 +49,8 @@ interface RunRow {
 	readonly id: string;
 	readonly agentName: string;
 	readonly projectId: string | null;
-	readonly burrowId: string | null;
-	readonly burrowRunId: string | null;
+	readonly sandboxId: string | null;
+	readonly sandboxRunId: string | null;
 	readonly renderedAgentJson: AgentDefinitionEnvelope;
 	readonly state: string;
 	readonly costUsd?: number | null;
@@ -101,12 +101,14 @@ export const scenario: Scenario = {
 		);
 		assertEqual(run.agentName, "claude-code", "POST /runs run.agentName");
 		assertTrue(
-			typeof run.burrowId === "string" && run.burrowId !== null && run.burrowId.length > 0,
-			"POST /runs run.burrowId populated (proves burrow.up was invoked)",
+			typeof run.sandboxId === "string" && run.sandboxId !== null && run.sandboxId.length > 0,
+			"POST /runs run.sandboxId populated (proves burrow.up was invoked)",
 		);
 		assertTrue(
-			typeof run.burrowRunId === "string" && run.burrowRunId !== null && run.burrowRunId.length > 0,
-			"POST /runs run.burrowRunId populated",
+			typeof run.sandboxRunId === "string" &&
+				run.sandboxRunId !== null &&
+				run.sandboxRunId.length > 0,
+			"POST /runs run.sandboxRunId populated",
 		);
 
 		try {

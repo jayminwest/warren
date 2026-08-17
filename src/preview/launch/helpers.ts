@@ -32,11 +32,11 @@ export function defaultSidecarEnv(sandboxPort: number): Record<string, string> {
 
 export async function captureFailureTail(
 	sidecars: PreviewSidecarsClient,
-	burrowId: string,
+	sandboxId: string,
 	sidecarId: string,
 ): Promise<string> {
 	try {
-		const logs = await sidecars.logs(burrowId, sidecarId, {
+		const logs = await sidecars.logs(sandboxId, sidecarId, {
 			tailBytes: PREVIEW_FAILURE_TAIL_BYTES,
 		});
 		const tail = logs.stderr.trim() !== "" ? logs.stderr : logs.stdout;
@@ -48,11 +48,11 @@ export async function captureFailureTail(
 
 export async function safeDeleteSidecar(
 	sidecars: PreviewSidecarsClient,
-	burrowId: string,
+	sandboxId: string,
 	sidecarId: string,
 ): Promise<void> {
 	try {
-		await sidecars.delete(burrowId, sidecarId);
+		await sidecars.delete(sandboxId, sidecarId);
 	} catch {
 		// Best-effort cleanup — eviction worker also terminates lingering sidecars.
 	}

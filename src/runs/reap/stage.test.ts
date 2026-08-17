@@ -52,8 +52,8 @@ describe("reapRun commit-through-reap sub-steps (warren-7ecc)", () => {
 			prompt: "p",
 			renderedAgentJson: {},
 			trigger: "manual",
-			burrowId: "bur_aaaaaaaaaaaa",
-			burrowRunId: "run_zzzzzzzzzzzz",
+			sandboxId: "bur_aaaaaaaaaaaa",
+			sandboxRunId: "run_zzzzzzzzzzzz",
 		});
 		await repos.runs.markRunning(run.id);
 		return {
@@ -62,7 +62,7 @@ describe("reapRun commit-through-reap sub-steps (warren-7ecc)", () => {
 			broker: new RunEventBroker(),
 			runId: run.id,
 			projectPath: project.localPath,
-			workspacePath: "/data/burrow/ws",
+			workspacePath: "/data/sandbox/ws",
 		};
 	}
 
@@ -87,8 +87,8 @@ describe("reapRun commit-through-reap sub-steps (warren-7ecc)", () => {
 			});
 
 			expect(result.seedsCommitted).toBe(true);
-			expect(f.files.get("/data/burrow/ws/.seeds/issues.jsonl")).toContain("warren-1234");
-			expect(f.files.get("/data/burrow/ws/.seeds/plans.jsonl")).toContain("pl-abcd");
+			expect(f.files.get("/data/sandbox/ws/.seeds/issues.jsonl")).toContain("warren-1234");
+			expect(f.files.get("/data/sandbox/ws/.seeds/plans.jsonl")).toContain("pl-abcd");
 			const gitArgs = e.calls.filter((c) => c.cmd === "git").map((c) => c.args);
 			expect(gitArgs).toContainEqual(["add", "--", ".seeds/"]);
 			expect(gitArgs).toContainEqual([
@@ -221,9 +221,9 @@ describe("reapRun commit-through-reap sub-steps (warren-7ecc)", () => {
 				exec: e.exec,
 			});
 
-			expect(f.files.get("/data/burrow/ws/.seeds/issues.jsonl")).toBeDefined();
-			expect(f.files.get("/data/burrow/ws/.seeds/config.yaml")).toBeUndefined();
-			expect(f.files.get("/data/burrow/ws/.seeds/templates.jsonl")).toBeUndefined();
+			expect(f.files.get("/data/sandbox/ws/.seeds/issues.jsonl")).toBeDefined();
+			expect(f.files.get("/data/sandbox/ws/.seeds/config.yaml")).toBeUndefined();
+			expect(f.files.get("/data/sandbox/ws/.seeds/templates.jsonl")).toBeUndefined();
 		} finally {
 			await seedsCtx.db.close();
 		}
@@ -275,7 +275,7 @@ describe("reapRun commit-through-reap sub-steps (warren-7ecc)", () => {
 		});
 
 		expect(result.seedsCommitted).toBe(false);
-		expect(f.files.get("/data/burrow/ws/.seeds/issues.jsonl")).toBeUndefined();
+		expect(f.files.get("/data/sandbox/ws/.seeds/issues.jsonl")).toBeUndefined();
 		const gitArgs = e.calls.filter((c) => c.cmd === "git").map((c) => c.args);
 		expect(gitArgs.find((a) => a.includes("add") && a.includes(".seeds/"))).toBeUndefined();
 		expect(gitArgs.find((a) => a.includes("commit"))).toBeUndefined();

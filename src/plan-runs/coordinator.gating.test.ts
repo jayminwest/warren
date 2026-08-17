@@ -282,7 +282,7 @@ describe("advancePlanRun — parentRunId gate (warren-d9a2)", () => {
 		const seq = ((await h.repos.events.maxSeqForRun(parentRunId)) ?? 0) + 1;
 		await h.repos.events.append({
 			runId: parentRunId,
-			burrowEventSeq: seq,
+			sandboxEventSeq: seq,
 			ts: NOW.toISOString(),
 			kind: "reap.empty_push",
 			stream: "system",

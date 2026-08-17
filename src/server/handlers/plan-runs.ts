@@ -233,7 +233,7 @@ export function resumePlanRunHandler(deps: ServerDeps): RouteHandler {
  * `GET /plan-runs/:id/events` — NDJSON tail of the union of every child
  * run's events. Read-only: snapshots `events.listByRunIds(...)` first,
  * then subscribes to the broker for each child run. Live arrivals after
- * the snapshot are deduped by (runId, burrowEventSeq). The generator is
+ * the snapshot are deduped by (runId, sandboxEventSeq). The generator is
  * `tailPlanRunEvents` in the domain.
  *
  * `?follow=1` keeps the stream open until the client disconnects or the

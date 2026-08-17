@@ -26,9 +26,9 @@ export async function mergeMulch(
 	emit: (kind: string, payload: unknown) => Promise<EventRow>,
 	fail: (step: ReapStep, err: unknown, path?: string) => Promise<void>,
 ): Promise<MulchMergeResult> {
-	const burrowDir = join(workspacePath, ".mulch", "expertise");
+	const sandboxDir = join(workspacePath, ".mulch", "expertise");
 	const projectDir = join(projectPath, ".mulch", "expertise");
-	const filenames = (await fs.readdir(burrowDir)).filter((n) => n.endsWith(".jsonl")).sort();
+	const filenames = (await fs.readdir(sandboxDir)).filter((n) => n.endsWith(".jsonl")).sort();
 
 	let updated = 0;
 	let skipped = 0;
@@ -36,10 +36,10 @@ export async function mergeMulch(
 
 	for (const filename of filenames) {
 		const domain = filename.slice(0, -".jsonl".length);
-		const burrowPath = join(burrowDir, filename);
+		const sandboxPath = join(sandboxDir, filename);
 		const projectPath2 = join(projectDir, filename);
 		try {
-			const incoming = await fs.readFile(burrowPath);
+			const incoming = await fs.readFile(sandboxPath);
 			if (incoming === null) continue;
 			const existing = (await fs.readFile(projectPath2)) ?? "";
 			const result = await mergeMulchFile(domain, existing, incoming, emit);
@@ -51,7 +51,7 @@ export async function mergeMulch(
 			skipped += result.skipped;
 			appended += result.appended;
 		} catch (err) {
-			await fail("mulch_merge", err, burrowPath);
+			await fail("mulch_merge", err, sandboxPath);
 		}
 	}
 

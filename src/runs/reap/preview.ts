@@ -17,7 +17,7 @@ import type { ReapStep } from "./types.ts";
 
 export interface RunPreviewLaunchInput {
 	readonly runId: string;
-	readonly burrowId: string;
+	readonly sandboxId: string;
 	readonly workerId: string | null;
 	readonly outcome: string;
 	readonly previewConfig: ServerPreviewConfig;
@@ -80,7 +80,7 @@ export async function runPreviewLaunch(
 				: undefined;
 		const result = await (input.launchPreviewFn ?? launchPreview)({
 			runId: input.runId,
-			burrowId: input.burrowId,
+			sandboxId: input.sandboxId,
 			previewConfig: input.previewConfig,
 			repos: input.repos,
 			allocator: input.portAllocator,

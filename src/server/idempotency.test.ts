@@ -4,7 +4,7 @@ import { IdempotencyStore, type IdempotentDispatch } from "./idempotency.ts";
 function fakeDispatch(runId: string): IdempotentDispatch {
 	return {
 		run: { id: runId } as IdempotentDispatch["run"],
-		burrow: { id: `bur_${runId}`, workspacePath: "/ws" },
+		sandbox: { id: `bur_${runId}`, workspacePath: "/ws" },
 	};
 }
 

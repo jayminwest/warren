@@ -51,15 +51,15 @@ export interface RecordedCall {
 /**
  * Failure plan for the fake provider (warren-ea0a). Named after the
  * historical burrow HTTP stub so the spawn tests read unchanged: a non-2xx
- * `burrowsUpStatus` fails the provision half of `create`;
+ * `sandboxUpStatus` fails the provision half of `create`;
  * `runsCreateStatus` fails the dispatch half (after the fake records the
  * legacy self-rollback DELETE, exactly as the retired legacy mode did). The
  * thrown error's message comes from the body's `error.message` — several
  * rollback tests assert on it.
  */
 export interface BurrowFetchPlan {
-	burrowsUpStatus?: number;
-	burrowsUpBody?: unknown;
+	sandboxUpStatus?: number;
+	sandboxUpBody?: unknown;
 	runsCreateStatus?: number;
 	runsCreateBody?: unknown;
 }
@@ -73,13 +73,13 @@ function planErrorMessage(body: unknown, fallback: string): string {
 	return fallback;
 }
 
-export function makeBurrowClient(plan: BurrowFetchPlan = {}): {
+export function makeSandboxClient(plan: BurrowFetchPlan = {}): {
 	client: FakeProvider;
 	calls: FakeProviderCall[];
 } {
 	const provisionError =
-		plan.burrowsUpStatus !== undefined && plan.burrowsUpStatus >= 300
-			? new Error(planErrorMessage(plan.burrowsUpBody, `provision failed ${plan.burrowsUpStatus}`))
+		plan.sandboxUpStatus !== undefined && plan.sandboxUpStatus >= 300
+			? new Error(planErrorMessage(plan.sandboxUpBody, `provision failed ${plan.sandboxUpStatus}`))
 			: undefined;
 	const dispatchError =
 		plan.runsCreateStatus !== undefined && plan.runsCreateStatus >= 300
@@ -101,7 +101,7 @@ export function makeBurrowClient(plan: BurrowFetchPlan = {}): {
 export function readAgentEnvelopeFrontmatter(
 	calls: readonly RecordedCall[],
 ): Record<string, unknown> {
-	const up = calls.find((c) => c.method === "POST" && c.path === "/burrows");
+	const up = calls.find((c) => c.method === "POST" && c.path === "/sandboxes");
 	const seed = (
 		up?.body as { seed?: { files?: ReadonlyArray<{ path: string; contents: string }> } }
 	)?.seed;

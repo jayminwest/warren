@@ -52,8 +52,8 @@ describe("cancelRun — K8s pod-delete topology (warren-fe9b)", () => {
 			prompt: "p",
 			renderedAgentJson: {},
 			trigger: "manual",
-			burrowId: "bur_aaaaaaaaaaaa",
-			burrowRunId: "run_zzzzzzzzzzzz",
+			sandboxId: "bur_aaaaaaaaaaaa",
+			sandboxRunId: "run_zzzzzzzzzzzz",
 		});
 		await repos.runs.markRunning(run.id);
 		return run.id;
@@ -90,7 +90,7 @@ describe("cancelRun — K8s pod-delete topology (warren-fe9b)", () => {
 		// through it with outcome `cancelled` is what finalizes spend for the run.
 		expect(reapCalls).toEqual([{ runId, outcome: "cancelled" }]);
 		expect(result.state).toBe("cancelled");
-		expect(result.burrowRun?.state).toBe("cancelled");
+		expect(result.sandboxRun?.state).toBe("cancelled");
 		// The cancel intent is recorded on the run's event log — the watchdog
 		// terminal-reconcile net reads it to resolve a later exists:false
 		// observation to `cancelled` as well.

@@ -46,8 +46,8 @@ describe("drop workers + burrows placement tables (warren-3743)", () => {
 
 		const runCols = sqliteColumnNames(raw, "runs");
 		expect(runCols.has("worker_id")).toBe(true);
-		expect(runCols.has("burrow_id")).toBe(true);
-		expect(runCols.has("burrow_run_id")).toBe(true);
+		expect(runCols.has("sandbox_id")).toBe(true);
+		expect(runCols.has("sandbox_run_id")).toBe(true);
 	});
 
 	test("sqlite: replaying the drop SQL against an old populated schema", () => {

@@ -73,7 +73,7 @@ export {
  */
 export interface ToolCallMiningRow {
 	readonly runId: string;
-	/** burrow_event_seq of the tool_use event — orders calls within a run. */
+	/** sandbox_event_seq of the tool_use event — orders calls within a run. */
 	readonly seq: number;
 	/** The invoked tool's name, or null when the shape read none. */
 	readonly toolName: string | null;

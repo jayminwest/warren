@@ -137,7 +137,7 @@ describe("deleteProject", () => {
 		});
 		await eventsRepo.append({
 			runId: created.id,
-			burrowEventSeq: 1,
+			sandboxEventSeq: 1,
 			ts: "2026-05-09T00:00:01.000Z",
 			kind: "log",
 			payload: { line: "secret transcript" },

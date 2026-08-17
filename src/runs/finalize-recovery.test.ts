@@ -65,7 +65,7 @@ describe("createFinalizeRecovery (warren-5202)", () => {
 			mode: "batch",
 		});
 		await repos.runs.markRunning(row.id, T0);
-		await repos.runs.attachBurrow(row.id, { burrowId: "pod_1", burrowRunId: "run_b1" });
+		await repos.runs.attachBurrow(row.id, { sandboxId: "pod_1", sandboxRunId: "run_b1" });
 		return row.id;
 	}
 
@@ -210,7 +210,7 @@ describe("createFinalizeRecovery (warren-5202)", () => {
 		const runId = await seedRunningWithBurrow();
 		await repos.events.append({
 			runId,
-			burrowEventSeq: 1,
+			sandboxEventSeq: 1,
 			ts: T0.toISOString(),
 			kind: "state_change",
 			stream: "system",

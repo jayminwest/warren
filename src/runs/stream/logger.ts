@@ -2,7 +2,7 @@
  * Bridge-logger binding helpers (warren-9f06 / pl-f700 step 5).
  *
  * The run-lifecycle entry points (`runWithReconnect`, `reapRun`, the
- * watchdog detector) used to hand-thread `{ runId, burrowRunId }` onto
+ * watchdog detector) used to hand-thread `{ runId, sandboxRunId }` onto
  * every single log call and guard each one with `logger?.x?.()`. This
  * module replaces that with a structural pass:
  *
@@ -10,7 +10,7 @@
  *     methods are no-ops, so an entry point can bind once and then call
  *     `log.info(...)` unconditionally — no `?.` ceremony.
  *   - {@link bindBridgeLogger} binds the per-run correlation fields
- *     (`run_id`, `burrow_run_id`, optional `worker`) via the caller's
+ *     (`run_id`, `sandbox_run_id`, optional `worker`) via the caller's
  *     pino `.child(...)` exactly once at the entry point, falling back to
  *     the no-op when the caller wired nothing.
  *
@@ -50,7 +50,7 @@ export const NOOP_BRIDGE_LOGGER: BoundBridgeLogger = {
  */
 export interface BridgeLoggerBindings {
 	readonly run_id: string;
-	readonly burrow_run_id?: string;
+	readonly sandbox_run_id?: string;
 	readonly worker?: string;
 }
 
@@ -65,7 +65,7 @@ export function bindBridgeLogger(
 ): BoundBridgeLogger {
 	const base = logger ?? NOOP_BRIDGE_LOGGER;
 	const filtered: Record<string, string> = { run_id: bindings.run_id };
-	if (bindings.burrow_run_id !== undefined) filtered.burrow_run_id = bindings.burrow_run_id;
+	if (bindings.sandbox_run_id !== undefined) filtered.sandbox_run_id = bindings.sandbox_run_id;
 	if (bindings.worker !== undefined) filtered.worker = bindings.worker;
 	const child = base.child?.(filtered);
 	if (child !== undefined) return asBound(child);

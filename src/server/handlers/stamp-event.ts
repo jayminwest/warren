@@ -37,7 +37,7 @@ export async function stampRunSystemEvent(
 		const now = (deps.now ?? (() => new Date()))();
 		await deps.repos.events.append({
 			runId: input.runId,
-			burrowEventSeq: seq,
+			sandboxEventSeq: seq,
 			ts: now.toISOString(),
 			kind: input.kind,
 			stream: "system",

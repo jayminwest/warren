@@ -38,7 +38,7 @@ describe("reapRun provider-error safety net (warren-edc3)", () => {
 			'{"type":"error","error":{"type":"invalid_request_error","message":"Your credit balance is too low to access the Anthropic API"}}';
 		await ctx.repos.events.append({
 			runId: ctx.runId,
-			burrowEventSeq: 1,
+			sandboxEventSeq: 1,
 			ts: new Date().toISOString(),
 			kind: "state_change",
 			stream: "system",
@@ -94,15 +94,15 @@ describe("reapRun provider-error safety net (warren-edc3)", () => {
 			prompt: "p",
 			renderedAgentJson: {},
 			trigger: "manual",
-			burrowId: "bur_bbbbbbbbbbbb",
-			burrowRunId: "run_yyyyyyyyyyyy",
+			sandboxId: "bur_bbbbbbbbbbbb",
+			sandboxRunId: "run_yyyyyyyyyyyy",
 			provider: "openrouter",
 			model: "moonshotai/kimi-k3",
 		});
 		await ctx.repos.runs.markRunning(run.id);
 		await ctx.repos.events.append({
 			runId: run.id,
-			burrowEventSeq: 1,
+			sandboxEventSeq: 1,
 			ts: new Date().toISOString(),
 			kind: "state_change",
 			stream: "system",
@@ -145,7 +145,7 @@ describe("reapRun provider-error safety net (warren-edc3)", () => {
 		// calls out a diff-shape heuristic for producing.
 		await ctx.repos.events.append({
 			runId: ctx.runId,
-			burrowEventSeq: 1,
+			sandboxEventSeq: 1,
 			ts: new Date().toISOString(),
 			kind: "state_change",
 			stream: "system",
@@ -176,7 +176,7 @@ describe("reapRun provider-error safety net (warren-edc3)", () => {
 			'{"type":"error","error":{"type":"invalid_request_error","message":"Your credit balance is too low to access the Anthropic API"}}';
 		await ctx.repos.events.append({
 			runId: ctx.runId,
-			burrowEventSeq: 1,
+			sandboxEventSeq: 1,
 			ts: new Date().toISOString(),
 			kind: "state_change",
 			stream: "system",
@@ -184,7 +184,7 @@ describe("reapRun provider-error safety net (warren-edc3)", () => {
 		});
 		await ctx.repos.events.append({
 			runId: ctx.runId,
-			burrowEventSeq: 2,
+			sandboxEventSeq: 2,
 			ts: new Date().toISOString(),
 			kind: "state_change",
 			stream: "system",
@@ -210,7 +210,7 @@ describe("reapRun provider-error safety net (warren-edc3)", () => {
 		const message = "Your credit balance is too low to access the Anthropic API";
 		await ctx.repos.events.append({
 			runId: ctx.runId,
-			burrowEventSeq: 1,
+			sandboxEventSeq: 1,
 			ts: new Date().toISOString(),
 			kind: "state_change",
 			stream: "system",
@@ -243,7 +243,7 @@ describe("reapRun provider-error safety net (warren-edc3)", () => {
 			'{"type":"error","error":{"type":"invalid_request_error","message":"402: This request requires more credits"}}';
 		await ctx.repos.events.append({
 			runId: ctx.runId,
-			burrowEventSeq: 1,
+			sandboxEventSeq: 1,
 			ts: new Date().toISOString(),
 			kind: "state_change",
 			stream: "system",

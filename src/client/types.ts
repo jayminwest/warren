@@ -82,8 +82,8 @@ export interface RunRow {
 	id: string;
 	agentName: string;
 	projectId: string | null;
-	burrowId: string | null;
-	burrowRunId: string | null;
+	sandboxId: string | null;
+	sandboxRunId: string | null;
 	seedId: string | null;
 	/** Chain back-link (warren-4b11 / warren-e96f); null for root runs. */
 	parentRunId: string | null;
@@ -165,7 +165,7 @@ export interface RunEvent {
 export interface StreamRunEventsOptions {
 	/** Keep the connection open and emit new events as they arrive. */
 	follow?: boolean;
-	/** Replay starting just after this `burrowEventSeq`. */
+	/** Replay starting just after this `sandboxEventSeq`. */
 	sinceSeq?: number;
 	/** External abort signal — closes the underlying HTTP body. */
 	signal?: AbortSignal;
@@ -229,7 +229,7 @@ export interface DispatchRunInput {
 
 export interface SpawnRunResponse {
 	run: RunRow;
-	burrow: {
+	sandbox: {
 		id: string;
 		workspacePath: string;
 	};
@@ -283,7 +283,7 @@ export type MessagePriority = InboxPriority;
 /** Burrow inbox message row returned by `POST /runs/:id/steer`. */
 export interface InboxMessage {
 	id: string;
-	burrowId: string;
+	sandboxId: string;
 	fromActor: string;
 	body: string;
 	priority: InboxPriority;
@@ -314,14 +314,14 @@ export interface CancelRunInput {
 /**
  * `POST /runs/:id/cancel` response. `alreadyTerminal` is true when the run
  * had already reached a terminal state, in which case no cancel was issued.
- * `burrowRun` carries the burrow-side run's `{ id, state }` re-read after the
+ * `sandboxRun` carries the burrow-side run's `{ id, state }` re-read after the
  * cancel, or null when there was nothing remote to cancel (queued run with
- * no `burrowRunId`, or already terminal).
+ * no `sandboxRunId`, or already terminal).
  */
 export interface CancelRunResponse {
 	state: RunState;
 	alreadyTerminal: boolean;
-	burrowRun: { id: string; state: RunState } | null;
+	sandboxRun: { id: string; state: RunState } | null;
 }
 
 /** `GET /version` — the running warren build's semver. Auth-exempt. */

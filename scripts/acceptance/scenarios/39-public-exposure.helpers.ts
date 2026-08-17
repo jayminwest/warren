@@ -221,8 +221,8 @@ export async function seedPublicInstanceDb(input: SeedPublicInstanceInput): Prom
 				sections: { system: SENTINELS.runRenderedAgent },
 			},
 			trigger: "manual",
-			burrowId: SENTINELS.runBurrowId,
-			burrowRunId: SENTINELS.runBurrowRunId,
+			sandboxId: SENTINELS.runBurrowId,
+			sandboxRunId: SENTINELS.runBurrowRunId,
 			workerId: SENTINELS.runWorkerId,
 			seedId,
 		});
@@ -339,7 +339,7 @@ async function seedEvents(repos: Repos, runId: string, instanceToken: string): P
 	const ts = "2026-07-27T00:00:00.000Z";
 	await repos.events.append({
 		runId,
-		burrowEventSeq: 1,
+		sandboxEventSeq: 1,
 		ts,
 		kind: "agent_output",
 		stream: "stdout",
@@ -349,7 +349,7 @@ async function seedEvents(repos: Repos, runId: string, instanceToken: string): P
 	});
 	await repos.events.append({
 		runId,
-		burrowEventSeq: 2,
+		sandboxEventSeq: 2,
 		ts,
 		kind: "agent_output",
 		stream: "stdout",
@@ -360,7 +360,7 @@ async function seedEvents(repos: Repos, runId: string, instanceToken: string): P
 	});
 	await repos.events.append({
 		runId,
-		burrowEventSeq: 3,
+		sandboxEventSeq: 3,
 		ts,
 		kind: "tool_use",
 		stream: "stdout",
@@ -368,7 +368,7 @@ async function seedEvents(repos: Repos, runId: string, instanceToken: string): P
 	});
 	await repos.events.append({
 		runId,
-		burrowEventSeq: 4,
+		sandboxEventSeq: 4,
 		ts,
 		kind: "agent_output",
 		stream: "stdout",
@@ -382,15 +382,15 @@ async function seedEvents(repos: Repos, runId: string, instanceToken: string): P
 	});
 	await repos.events.append({
 		runId,
-		burrowEventSeq: 5,
+		sandboxEventSeq: 5,
 		ts,
 		kind: "bridge_lost",
 		stream: "system",
-		payload: { burrowId: SENTINELS.runBurrowId, attempts: 3 },
+		payload: { sandboxId: SENTINELS.runBurrowId, attempts: 3 },
 	});
 	await repos.events.append({
 		runId,
-		burrowEventSeq: 6,
+		sandboxEventSeq: 6,
 		ts,
 		kind: "reap_failed",
 		stream: "system",
@@ -402,7 +402,7 @@ async function seedEvents(repos: Repos, runId: string, instanceToken: string): P
 	});
 	await repos.events.append({
 		runId,
-		burrowEventSeq: 7,
+		sandboxEventSeq: 7,
 		ts,
 		kind: "spawn_failed",
 		stream: "system",
@@ -410,19 +410,19 @@ async function seedEvents(repos: Repos, runId: string, instanceToken: string): P
 	});
 	await repos.events.append({
 		runId,
-		burrowEventSeq: 8,
+		sandboxEventSeq: 8,
 		ts,
 		kind: "watchdog.terminal_reconciled",
 		stream: "system",
-		payload: { burrowRunId: SENTINELS.eventWatchdogBurrowRunId, state: "succeeded" },
+		payload: { sandboxRunId: SENTINELS.eventWatchdogBurrowRunId, state: "succeeded" },
 	});
 	await repos.events.append({
 		runId,
-		burrowEventSeq: 9,
+		sandboxEventSeq: 9,
 		ts,
 		kind: "reap.workspace_destroyed",
 		stream: "system",
-		payload: { burrowId: SENTINELS.eventReapBurrowId, archived: true },
+		payload: { sandboxId: SENTINELS.eventReapBurrowId, archived: true },
 	});
 
 	// Filler past the snapshot page bound (warren-b0bd). Seq starts at 1000
@@ -432,7 +432,7 @@ async function seedEvents(repos: Repos, runId: string, instanceToken: string): P
 	for (let i = 0; i < filler; i++) {
 		await repos.events.append({
 			runId,
-			burrowEventSeq: 1000 + i,
+			sandboxEventSeq: 1000 + i,
 			ts,
 			kind: "agent_output",
 			stream: "stdout",

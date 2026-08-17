@@ -96,7 +96,7 @@ export async function bootBridgesAndProviderRetry(
 	if (bridgesBoot.skipped.length > 0) {
 		input.logger.warn(
 			{ count: bridgesBoot.skipped.length, runs: bridgesBoot.skipped },
-			"skipped runs without burrow_run_id",
+			"skipped runs without sandbox_run_id",
 		);
 	}
 

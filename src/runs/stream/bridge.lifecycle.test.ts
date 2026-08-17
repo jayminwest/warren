@@ -25,14 +25,14 @@ describe("bridgeRunStream — lifecycle emits (warren-28ca)", () => {
 	let repos: Repos;
 	let broker: RunEventBroker;
 	let runId: string;
-	let burrowRunId: string;
+	let sandboxRunId: string;
 
 	beforeEach(async () => {
 		db = await openDatabase({ path: ":memory:" });
 		repos = createRepos(db);
 		const ids = await seedBridgeRun(repos);
 		runId = ids.runId;
-		burrowRunId = ids.burrowRunId;
+		sandboxRunId = ids.sandboxRunId;
 		broker = new RunEventBroker();
 	});
 
@@ -66,12 +66,12 @@ describe("bridgeRunStream — lifecycle emits (warren-28ca)", () => {
 
 		await bridgeRunStream({
 			runId,
-			burrowRunId,
+			sandboxRunId,
 			repos,
 			broker,
-			burrowId: "bur_aaaaaaaaaaaa",
+			sandboxId: "bur_aaaaaaaaaaaa",
 			runtimeProvider: makeProvider(),
-			source: source([evt(burrowRunId, 1), evt(burrowRunId, 2), evt(burrowRunId, 3)]),
+			source: source([evt(sandboxRunId, 1), evt(sandboxRunId, 2), evt(sandboxRunId, 3)]),
 		});
 
 		expect(started).toHaveLength(1);
@@ -84,12 +84,12 @@ describe("bridgeRunStream — lifecycle emits (warren-28ca)", () => {
 
 		await bridgeRunStream({
 			runId,
-			burrowRunId,
+			sandboxRunId,
 			repos,
 			broker,
-			burrowId: "bur_aaaaaaaaaaaa",
+			sandboxId: "bur_aaaaaaaaaaaa",
 			runtimeProvider: makeProvider(),
-			source: source([evt(burrowRunId, 1), evt(burrowRunId, 2), evt(burrowRunId, 3)]),
+			source: source([evt(sandboxRunId, 1), evt(sandboxRunId, 2), evt(sandboxRunId, 3)]),
 		});
 
 		expect(emitted.map((p) => p.seq)).toEqual([1, 2, 3]);
@@ -103,12 +103,12 @@ describe("bridgeRunStream — lifecycle emits (warren-28ca)", () => {
 	test("no installed bus ⇒ emits are a pure no-op", async () => {
 		const result = await bridgeRunStream({
 			runId,
-			burrowRunId,
+			sandboxRunId,
 			repos,
 			broker,
-			burrowId: "bur_aaaaaaaaaaaa",
+			sandboxId: "bur_aaaaaaaaaaaa",
 			runtimeProvider: makeProvider(),
-			source: source([evt(burrowRunId, 1)]),
+			source: source([evt(sandboxRunId, 1)]),
 		});
 		expect(result.written).toBe(1);
 	});

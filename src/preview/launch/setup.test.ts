@@ -22,7 +22,7 @@ describe("setup pre-step (warren-d9e7)", () => {
 	let repos: Repos;
 	let allocator: PreviewPortAllocator;
 	let runId: string;
-	let burrowId: string;
+	let sandboxId: string;
 
 	beforeEach(async () => {
 		const env: LaunchTestEnv = await setupLaunchEnv();
@@ -30,7 +30,7 @@ describe("setup pre-step (warren-d9e7)", () => {
 		repos = env.repos;
 		allocator = env.allocator;
 		runId = env.runId;
-		burrowId = env.burrowId;
+		sandboxId = env.sandboxId;
 	});
 
 	afterEach(async () => {
@@ -46,7 +46,7 @@ describe("setup pre-step (warren-d9e7)", () => {
 		const { fetch } = fakeFetch([new Response("ok", { status: 200 })]);
 		const result = await launchPreview({
 			runId,
-			burrowId,
+			sandboxId,
 			previewConfig: { ...PREVIEW_CONFIG, setup: "pnpm install" },
 			repos,
 			allocator,
@@ -69,7 +69,7 @@ describe("setup pre-step (warren-d9e7)", () => {
 			sandboxPort: 3000,
 		});
 		// Setup sidecar is cleaned up on success.
-		expect(sidecars.deletes).toContainEqual({ burrowId, sidecarId: "sc_test_1" });
+		expect(sidecars.deletes).toContainEqual({ sandboxId, sidecarId: "sc_test_1" });
 	});
 
 	test("non-zero setup exit returns setup_failed, never spawns the dev server", async () => {
@@ -77,7 +77,7 @@ describe("setup pre-step (warren-d9e7)", () => {
 		sidecars.statusQueue.set("sc_test_1", [{ state: "exited", exitCode: 1 }]);
 		const result = await launchPreview({
 			runId,
-			burrowId,
+			sandboxId,
 			previewConfig: { ...PREVIEW_CONFIG, setup: "pnpm install" },
 			repos,
 			allocator,
@@ -91,7 +91,7 @@ describe("setup pre-step (warren-d9e7)", () => {
 		expect((result as { failureTail: string }).failureTail).toContain("ERR_PNPM_FETCH");
 		// Only the setup sidecar was created; the dev server never spawned.
 		expect(sidecars.creates).toHaveLength(1);
-		expect(sidecars.deletes).toEqual([{ burrowId, sidecarId: "sc_test_1" }]);
+		expect(sidecars.deletes).toEqual([{ sandboxId, sidecarId: "sc_test_1" }]);
 		const row = await repos.runs.require(runId);
 		expect(row.previewState).toBe("failed");
 		expect(row.previewPort).toBeNull();
@@ -108,7 +108,7 @@ describe("setup pre-step (warren-d9e7)", () => {
 		const now = (): Date => new Date(t0 + ticks);
 		const result = await launchPreview({
 			runId,
-			burrowId,
+			sandboxId,
 			previewConfig: { ...PREVIEW_CONFIG, setup: "sleep 9999" },
 			repos,
 			allocator,
@@ -125,7 +125,7 @@ describe("setup pre-step (warren-d9e7)", () => {
 		expect((result as { reason: string }).reason).toBe("setup_timeout");
 		// Dev server sidecar was never spawned; setup was deleted.
 		expect(sidecars.creates).toHaveLength(1);
-		expect(sidecars.deletes).toEqual([{ burrowId, sidecarId: "sc_test_1" }]);
+		expect(sidecars.deletes).toEqual([{ sandboxId, sidecarId: "sc_test_1" }]);
 		const row = await repos.runs.require(runId);
 		expect(row.previewState).toBe("failed");
 		expect(row.previewPort).toBeNull();
@@ -137,7 +137,7 @@ describe("setup pre-step (warren-d9e7)", () => {
 		const { fetch } = fakeFetch([new Response("ok", { status: 200 })]);
 		const result = await launchPreview({
 			runId,
-			burrowId,
+			sandboxId,
 			previewConfig: PREVIEW_CONFIG,
 			repos,
 			allocator,

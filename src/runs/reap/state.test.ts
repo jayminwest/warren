@@ -34,8 +34,8 @@ describe("reapRun failure-reason inference (warren-3c40 / warren-5165)", () => {
 			prompt: "p",
 			renderedAgentJson: {},
 			trigger: "manual",
-			burrowId: "bur_aaaaaaaaaaaa",
-			burrowRunId: "run_neverstarted",
+			sandboxId: "bur_aaaaaaaaaaaa",
+			sandboxRunId: "run_neverstarted",
 		});
 
 		const result = await reapRun({
@@ -65,7 +65,7 @@ describe("reapRun failure-reason inference (warren-3c40 / warren-5165)", () => {
 		// the warren-5165 no-output shape.
 		await ctx.repos.events.append({
 			runId: ctx.runId,
-			burrowEventSeq: 1,
+			sandboxEventSeq: 1,
 			ts: new Date().toISOString(),
 			kind: "text",
 			stream: "stdout",
@@ -95,7 +95,7 @@ describe("reapRun failure-reason inference (warren-3c40 / warren-5165)", () => {
 		// events.
 		await ctx.repos.events.append({
 			runId: ctx.runId,
-			burrowEventSeq: 1,
+			sandboxEventSeq: 1,
 			ts: new Date().toISOString(),
 			kind: "state_change",
 			stream: "system",
@@ -124,7 +124,7 @@ describe("reapRun failure-reason inference (warren-3c40 / warren-5165)", () => {
 		// credential fault.
 		await ctx.repos.events.append({
 			runId: ctx.runId,
-			burrowEventSeq: 1,
+			sandboxEventSeq: 1,
 			ts: new Date().toISOString(),
 			kind: "text",
 			stream: "stderr",
@@ -151,7 +151,7 @@ describe("reapRun failure-reason inference (warren-3c40 / warren-5165)", () => {
 		// not reclassify its own credential failure.
 		await ctx.repos.events.append({
 			runId: ctx.runId,
-			burrowEventSeq: 1,
+			sandboxEventSeq: 1,
 			ts: new Date().toISOString(),
 			kind: "text",
 			stream: "stderr",
@@ -177,7 +177,7 @@ describe("reapRun failure-reason inference (warren-3c40 / warren-5165)", () => {
 		// not no_model_response.
 		await ctx.repos.events.append({
 			runId: ctx.runId,
-			burrowEventSeq: 1,
+			sandboxEventSeq: 1,
 			ts: new Date().toISOString(),
 			kind: "tool_use",
 			stream: "stdout",
@@ -229,7 +229,7 @@ describe("reapRun failure-reason inference (warren-3c40 / warren-5165)", () => {
 		// output would now classify as no_model_response).
 		await ctx.repos.events.append({
 			runId: ctx.runId,
-			burrowEventSeq: 1,
+			sandboxEventSeq: 1,
 			ts: new Date().toISOString(),
 			kind: "text",
 			stream: "stdout",
