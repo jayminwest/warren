@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { CoreV1Api, V1Pod } from "@kubernetes/client-node";
 import type { ReapExec, ReapFs } from "../runs/reap/types.ts";
+import { DockerProvider } from "./docker/provider.ts";
 import { UnknownRuntimeError } from "./errors.ts";
 import { K8sProvider } from "./k8s/provider.ts";
 import { LocalProvider } from "./local/provider.ts";
@@ -41,8 +42,12 @@ describe("resolveRuntimeKind", () => {
 		expect(resolveRuntimeKind({ WARREN_RUNTIME: "k8s" })).toBe("k8s");
 	});
 
+	test("accepts the docker selector (warren-3732, sibling containers)", () => {
+		expect(resolveRuntimeKind({ WARREN_RUNTIME: "docker" })).toBe("docker");
+	});
+
 	test("fails loudly on an unknown value rather than falling back", () => {
-		expect(() => resolveRuntimeKind({ WARREN_RUNTIME: "docker" })).toThrow(UnknownRuntimeError);
+		expect(() => resolveRuntimeKind({ WARREN_RUNTIME: "nomad" })).toThrow(UnknownRuntimeError);
 	});
 });
 
@@ -109,6 +114,24 @@ describe("resolveRuntimeProvider", () => {
 			enforcedResourceLimits: true,
 			workspaceArchive: false,
 			workspaceGc: false,
+		});
+	});
+
+	test("resolves DockerProvider for WARREN_RUNTIME=docker (warren-3732)", () => {
+		const provider = resolveRuntimeProvider(deps, { WARREN_RUNTIME: "docker" });
+		expect(provider).toBeInstanceOf(DockerProvider);
+	});
+
+	test("DockerProvider advertises the honest docker v1 capability set", () => {
+		const provider = resolveRuntimeProvider(deps, { WARREN_RUNTIME: "docker" });
+		expect(provider.capabilities).toEqual({
+			previewPorts: false,
+			networkPolicy: "coarse",
+			longLived: true,
+			midRunSteering: true,
+			enforcedResourceLimits: true,
+			workspaceArchive: false,
+			workspaceGc: true,
 		});
 	});
 

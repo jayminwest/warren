@@ -1,0 +1,179 @@
+/**
+ * Pure builder of the `docker run` argv for one agent container
+ * (warren-3732). Inputs are the same `SandboxProfile` + `SpawnCommand` the
+ * LocalProvider's bwrap spawn consumes, so the drive loop
+ * (`src/runtime/local/drive.ts`) never learns which boundary it crosses —
+ * the container boundary IS the sandbox.
+ *
+ * Mapping from profile to container:
+ *
+ *   - `workspace`, `home`, `readOnlyMounts`, `workspaceGitdir` bind-mount at
+ *     the IDENTICAL absolute path inside the container (path parity — see
+ *     `./config.ts`), workspace + home read-write, the rest read-only.
+ *   - `network` maps coarsely: `none` ⇒ `--network none`; `restricted` ⇒
+ *     the configured restricted network (default bridge — the honest v1
+ *     degradation, no domain allowlist); `open` ⇒ docker's default.
+ *   - `memoryLimitMb` / `cpuLimit` map to `--memory` / `--cpus` (real cgroup
+ *     enforcement by the docker daemon).
+ *   - `setEnv` + the command's extra env render to an `--env-file` so
+ *     secrets never ride the docker CLI argv (`docker inspect` shows env
+ *     either way, but argv is world-readable via `ps`). `envPassthrough`
+ *     names forward as bare `--env NAME` (docker copies the value from
+ *     warren's own env).
+ *   - `HOME` exports the run's real writable home (warren-c865 parity).
+ *   - A loopback `WARREN_API_URL` rewrites to the host-gateway alias and
+ *     the container gets `--add-host <alias>:host-gateway`.
+ *
+ * The container is deliberately created WITHOUT `--rm`: the spawn seam must
+ * `docker inspect` the dead container for the OOMKilled flag before
+ * removing it (`./spawn.ts`).
+ */
+
+import { basename } from "node:path";
+import type { SandboxProfile, SpawnCommand } from "../../sandbox/types.ts";
+import { type DockerConfig, rewriteLoopbackUrl } from "./config.ts";
+
+/** Container name prefix — deterministic per run so cancel can target it. */
+export const DOCKER_CONTAINER_PREFIX = "warren-run-";
+
+/**
+ * Derive the container name for a run. The workspace's basename IS the
+ * sandbox id (`local-<runId>`, `src/runtime/local/paths.ts`), which is
+ * already docker-name safe (`[a-zA-Z0-9_.-]`); a defensive scrub keeps an
+ * exotic run id from producing an invalid name.
+ */
+export function containerNameForWorkspace(workspacePath: string): string {
+	const id = basename(workspacePath).replace(/[^a-zA-Z0-9_.-]/g, "-");
+	return `${DOCKER_CONTAINER_PREFIX}${id}`;
+}
+
+/** Network flag for a profile's intent — the coarse v1 mapping. */
+export function dockerNetworkArgs(profile: SandboxProfile, config: DockerConfig): string[] {
+	if (profile.network === "none") return ["--network", "none"];
+	if (profile.network === "restricted") {
+		return ["--network", config.restrictedNetwork ?? "bridge"];
+	}
+	return [];
+}
+
+/** Resource flags — docker daemon cgroup enforcement. */
+export function dockerResourceArgs(profile: SandboxProfile): string[] {
+	const args: string[] = [];
+	if (profile.memoryLimitMb !== undefined) {
+		args.push("--memory", `${Math.floor(profile.memoryLimitMb)}m`);
+	}
+	if (profile.cpuLimit !== undefined && profile.cpuLimit > 0) {
+		args.push("--cpus", String(profile.cpuLimit));
+	}
+	return args;
+}
+
+/** Bind-mount flags — host-path parity, workspace + home read-write. */
+export function dockerMountArgs(profile: SandboxProfile): string[] {
+	const args: string[] = [
+		"--mount",
+		`type=bind,source=${profile.workspace},target=${profile.workspace}`,
+		"--mount",
+		`type=bind,source=${profile.home},target=${profile.home}`,
+	];
+	for (const mount of profile.readOnlyMounts) {
+		args.push("--mount", `type=bind,source=${mount},target=${mount},readonly`);
+	}
+	if (profile.workspaceGitdir !== undefined) {
+		args.push(
+			"--mount",
+			`type=bind,source=${profile.workspaceGitdir},target=${profile.workspaceGitdir}`,
+		);
+	}
+	return args;
+}
+
+/**
+ * Compose the container env: profile `setEnv` (loopback callback rewritten),
+ * overlaid by the command's extra env, plus `HOME`. Passthrough names are
+ * NOT rendered here — they forward as bare `--env NAME` argv entries.
+ */
+export function composeContainerEnv(
+	profile: SandboxProfile,
+	command: SpawnCommand,
+	config: DockerConfig,
+): Record<string, string> {
+	const env: Record<string, string> = { ...profile.setEnv };
+	const apiUrl = env.WARREN_API_URL;
+	if (apiUrl !== undefined) {
+		const rewritten = rewriteLoopbackUrl(apiUrl, config.hostGatewayName);
+		if (rewritten !== null) env.WARREN_API_URL = rewritten;
+	}
+	Object.assign(env, command.env ?? {});
+	env.HOME = profile.home;
+	return env;
+}
+
+/**
+ * Render env entries in docker's `--env-file` format: one `KEY=VALUE` per
+ * line, value bytes verbatim (docker ≥1.9 treats everything after the first
+ * `=` as the value). Keys are validated defensively — a malformed key would
+ * corrupt the file.
+ */
+export function renderEnvFile(env: Record<string, string>): string {
+	const lines: string[] = [];
+	for (const [key, value] of Object.entries(env)) {
+		if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) continue;
+		lines.push(`${key}=${value.replace(/\n/g, "\\n")}`);
+	}
+	return lines.length === 0 ? "" : `${lines.join("\n")}\n`;
+}
+
+/** Resolve the container working directory (mirrors sandbox.ts resolveCwd). */
+function resolveContainerCwd(workspace: string, cwd: string | undefined): string {
+	if (cwd === undefined || cwd === "") return workspace;
+	if (cwd.startsWith("/")) return cwd;
+	return `${workspace.replace(/\/$/, "")}/${cwd}`;
+}
+
+export interface DockerRunSpec {
+	readonly argv: string[];
+	/** Env entries the caller writes to the `--env-file` path in argv. */
+	readonly envFileContents: string;
+	/** Deterministic container name (cancel + OOM probe target). */
+	readonly containerName: string;
+}
+
+/**
+ * Build the full `docker run` invocation for one agent spawn. `envFilePath`
+ * is the caller-chosen host path the env file lands at (the spawn seam owns
+ * its lifecycle); the argv references it by `--env-file`.
+ */
+export function buildDockerRunSpec(
+	profile: SandboxProfile,
+	command: SpawnCommand,
+	config: DockerConfig,
+	envFilePath: string,
+): DockerRunSpec {
+	const containerName = containerNameForWorkspace(profile.workspace);
+	const argv: string[] = [
+		config.bin,
+		"run",
+		"--name",
+		containerName,
+		"-i",
+		"--workdir",
+		resolveContainerCwd(profile.workspace, command.cwd),
+		"--add-host",
+		`${config.hostGatewayName}:host-gateway`,
+		...dockerMountArgs(profile),
+		...dockerNetworkArgs(profile, config),
+		...dockerResourceArgs(profile),
+		"--env-file",
+		envFilePath,
+	];
+	for (const name of profile.envPassthrough) {
+		argv.push("--env", name);
+	}
+	argv.push(config.image, ...command.argv);
+	return {
+		argv,
+		envFileContents: renderEnvFile(composeContainerEnv(profile, command, config)),
+		containerName,
+	};
+}

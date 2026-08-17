@@ -11,6 +11,7 @@
  *   - `local` → in-process `LocalProvider` (warren-413d; the burrow-backed
  *     legacy mode was deleted in warren-ea0a).
  *   - `k8s`   → `K8sProvider`.
+ *   - `docker` → `DockerProvider` (warren-3732, sibling containers).
  *   - anything else → `UnknownRuntimeError` (fail loud — never silently fall
  *     back to the default, so a typo can't route runs onto the wrong backend).
  *
@@ -23,6 +24,8 @@ import type { CoreV1Api } from "@kubernetes/client-node";
 import type { ReapExec, ReapFs } from "../runs/reap/types.ts";
 import type { EnvLike } from "../runs/spawn/callback-env.ts";
 import type { RuntimeProvider } from "./contract.ts";
+import { DockerProvider, type DockerProviderDeps } from "./docker/provider.ts";
+import type { DockerSpawnDeps } from "./docker/spawn.ts";
 import { UnknownRuntimeError } from "./errors.ts";
 import type { AdmissionCounterSink, PodAdmissionSource } from "./k8s/admission.ts";
 import type { FinalizeCoordinator } from "./k8s/finalize-coordinator.ts";
@@ -35,13 +38,13 @@ import { LocalProvider } from "./local/provider.ts";
 import type { LocalRunStore } from "./local/run-store.ts";
 
 /** Runtime backends the selector understands. */
-export type RuntimeKind = "local" | "k8s";
+export type RuntimeKind = "local" | "k8s" | "docker";
 
 /** Selector default when `WARREN_RUNTIME` is unset — the self-host backend. */
 export const DEFAULT_RUNTIME_KIND: RuntimeKind = "local";
 
 /** Every recognized `WARREN_RUNTIME` value (used for validation + error hints). */
-export const RUNTIME_KINDS: readonly RuntimeKind[] = ["local", "k8s"];
+export const RUNTIME_KINDS: readonly RuntimeKind[] = ["local", "k8s", "docker"];
 
 /** Minimal env surface the selector reads. */
 export type RuntimeEnv = Readonly<Record<string, string | undefined>>;
@@ -152,6 +155,12 @@ export interface RuntimeProviderDeps {
 	 * port forwards. Absent ⇒ terminate skips the cascade (tests).
 	 */
 	readonly localSidecars?: SidecarCascade;
+	/**
+	 * OPTIONAL docker spawn seams — only consulted for `WARREN_RUNTIME=docker`
+	 * (warren-3732). A test injects a scripted docker CLI here; production
+	 * leaves it unset so the seam spawns the real CLI.
+	 */
+	readonly docker?: DockerSpawnDeps;
 }
 
 /**
@@ -194,7 +203,26 @@ export function resolveRuntimeProvider(
 			});
 		case "k8s":
 			return buildK8sProvider(deps);
+		case "docker":
+			return buildDockerProvider(deps);
 	}
+}
+
+/**
+ * Construct the `DockerProvider` (warren-3732) from the shared deps bag.
+ * The sibling-container backend reuses the local state roots, run store,
+ * and reap seams; only the spawn boundary differs.
+ */
+function buildDockerProvider(deps: RuntimeProviderDeps): DockerProvider {
+	const providerDeps: DockerProviderDeps = {
+		...(deps.serverEnv !== undefined ? { serverEnv: deps.serverEnv } : {}),
+		...(deps.fs !== undefined ? { fs: deps.fs } : {}),
+		...(deps.exec !== undefined ? { exec: deps.exec } : {}),
+		...(deps.localStore !== undefined ? { store: deps.localStore } : {}),
+		...(deps.localSidecars !== undefined ? { sidecars: deps.localSidecars } : {}),
+		...(deps.docker !== undefined ? { docker: deps.docker } : {}),
+	};
+	return new DockerProvider(providerDeps);
 }
 
 /**
