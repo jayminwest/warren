@@ -25,25 +25,28 @@ Every run is short-lived and sandboxed. A run completes a task, validates the ch
 
 ## Quickstart
 
-Warren publishes a prebuilt image to `ghcr.io/jayminwest/warren`. Nothing to clone, nothing to compile:
+One `docker run`, two secrets, no security flags. Warren publishes a prebuilt image to `ghcr.io/jayminwest/warren`. Nothing to clone, nothing to compile.
 
 ```bash
-export WARREN_API_TOKEN=$(openssl rand -hex 32)
 export ANTHROPIC_API_KEY=sk-ant-...     # your key
 export GITHUB_TOKEN=ghp_...             # repo scope: clone + push
 
-docker run -d --name warren --restart unless-stopped -p 8080:8080 -v warren_data:/data \
-  --security-opt apparmor=unconfined \
-  --security-opt seccomp=unconfined \
-  --security-opt systempaths=unconfined \
-  --cap-add SYS_ADMIN \
-  -e WARREN_API_TOKEN \
+docker run -d --name warren --restart unless-stopped -p 8080:8080 \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -v "$(command -v docker)":/usr/bin/docker:ro \
+  -v /srv/warren:/srv/warren \
+  -e WARREN_RUNTIME=docker \
+  -e WARREN_DATA_DIR=/srv/warren \
   -e ANTHROPIC_API_KEY \
   -e GITHUB_TOKEN \
   ghcr.io/jayminwest/warren:latest
 
-echo "$WARREN_API_TOKEN"   # paste this into the UI
+docker logs warren | grep mintedOperatorToken   # your UI token, printed once
 ```
+
+Leave `WARREN_API_TOKEN` unset. First boot mints an operator token, prints it to the logs exactly once, and persists it under the data dir.
+
+The `docker` runtime runs each agent as a sibling container over the docker socket. The container boundary is the sandbox, so the run needs no `security-opt` or `cap-add` flags (see [docs/design/runtime-docker-provider.md](docs/design/runtime-docker-provider.md)). The data dir bind-mounts at the same absolute path on host and container. That path parity lets agent containers resolve the workspace. Build the agent image once from a clone with `docker build -f deploy/docker/Dockerfile.agent -t warren-agent:latest .`, or point `WARREN_DOCKER_AGENT_IMAGE` at your own.
 
 Open <http://localhost:8080> and paste the token. Click **Projects → Add** and give it a GitHub URL.
 
@@ -51,11 +54,9 @@ Then **Dispatch run**, pick `claude-code`, write a prompt, and start it. The eve
 
 `:latest` tracks `main`. Pin a release tag such as `:v0.13.1` for a reproducible deploy. [CHANGELOG.md](CHANGELOG.md) records the release history.
 
-The four security flags relax the outer container so the sandbox runtime can nest its own user namespaces (see [docs/design/runtime-and-supervisor.md](docs/design/runtime-and-supervisor.md)). Remove any one of them and sandbox provisioning fails.
+The quickstart exports the two required secrets. [`.env.example`](.env.example) documents the full knob set.
 
-The quickstart exports the three required variables. [`.env.example`](.env.example) documents the full knob set.
-
-To manage the same container declaratively, use the compose file instead. It pulls the same image and applies the same flags:
+To manage the same container declaratively, use the compose file instead. The shipped compose file targets the `local` runtime and carries the four bwrap security flags that topology needs:
 
 ```bash
 git clone https://github.com/jayminwest/warren && cd warren
@@ -63,7 +64,7 @@ cp .env.example .env && $EDITOR .env
 docker compose up -d
 ```
 
-> **Image requirement (self-host, `local` runtime): bubblewrap + user namespaces.** In the default topology warren sandboxes each run itself with `bwrap`. The published image installs every dependency (see [`Dockerfile`](Dockerfile)). Under `WARREN_RUNTIME=k8s` this does not apply, because the run pods carry their own toolchain image.
+> **Image requirement (self-host, `local` runtime): bubblewrap + user namespaces.** In the `local` topology warren sandboxes each run itself with `bwrap`, and the container needs the four security flags in `docker-compose.yml`. Under `WARREN_RUNTIME=docker` or `WARREN_RUNTIME=k8s` this does not apply, because the run container or pod boundary is the sandbox.
 
 ## Who this is for
 

@@ -28,13 +28,20 @@ name: Acceptance (nightly)
 #
 # INCLUDED (deterministic boot/doctor/config/triggers/roundtrip core):
 #   01, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 14, 15, 16, 17,
-#   21, 22, 26, 30, 35, 36, 41
+#   21, 22, 26, 30, 35, 36, 41, 42
 #
 #   - 41 (local-topology self-host) — pins the internalized local
 #     runtime (warren-413d) end-to-end, including the warren-c865
 #     falsification (a no-commit run must not fail dropped_commit).
 #     Runs here, not per-PR, because the warren-owned bwrap sandbox
 #     needs the user-namespace privileges this runner provisions.
+#   - 42 (one-line self-host) — the plan pl-3007 phase-4 exit pin
+#     (warren-1a5a). Boots warren via ONE `docker run` with exactly two
+#     secrets and no security flags, scrapes the first-boot token mint
+#     from `docker logs`, and drives a stub-agent run to `succeeded`
+#     under WARREN_RUNTIME=docker. Builds the control-plane image, so it
+#     takes minutes — nightly, not PR CI. The ubuntu-latest runner
+#     already ships a docker daemon.
 #
 # EXCLUDED, with reasons:
 #   - 13 (container-smoke)      — needs docker-in-docker.
