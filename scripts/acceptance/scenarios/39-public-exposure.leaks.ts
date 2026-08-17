@@ -53,10 +53,17 @@ export const FLOW_ROUTE_EXPECTED_STATUS: Readonly<Record<string, number>> = {
  * the body never varies by caller, and `cache-control: no-store` already
  * forbids shared caching. The header sweep asserts THAT set for these
  * routes rather than the projection baseline.
+ *
+ * `/github-app/installed` (warren-54c7) is the manifest `setup_url`
+ * return route — same anonymous flow page as its siblings: the id it
+ * renders arrives on GitHub's own redirect query string, nothing
+ * server-side varies by caller, so it rides the same shared
+ * `htmlResponse` header set and the same exemption here.
  */
 export const FLOW_PAGE_PATTERNS: ReadonlySet<string> = new Set([
 	"/github-app/register",
 	"/github-app/callback",
+	"/github-app/installed",
 ]);
 
 /**
