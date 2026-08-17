@@ -33,6 +33,7 @@ import { runRemoteDoctor } from "./commands/doctor-remote.ts";
 import { runInit } from "./commands/init.ts";
 import { runPlanCancel, runPlanRun } from "./commands/plan-run.ts";
 import { runPlanList, runPlanStatus } from "./commands/plan-status.ts";
+import { runProjects } from "./commands/projects.ts";
 import { runRun } from "./commands/run.ts";
 import { runServe } from "./commands/serve.ts";
 import { withCliDb } from "./context.ts";
@@ -426,6 +427,16 @@ export function buildProgram(baseContext: CliContext): Command {
 					: {}),
 			},
 		);
+		process.exit(result.exitCode);
+	});
+
+	addClientFlags(
+		program
+			.command("projects")
+			.description("list the projects registered on the warren server (GET /projects)"),
+	).action(async (opts: RemoteOpts) => {
+		const client = resolveWarrenClient(context.env, clientFlags(opts));
+		const result = await runProjects(context, { client });
 		process.exit(result.exitCode);
 	});
 

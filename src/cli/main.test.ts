@@ -29,6 +29,7 @@ describe("buildProgram", () => {
 			"login",
 			"plan",
 			"prime",
+			"projects",
 			"run",
 			"serve",
 			"show",
