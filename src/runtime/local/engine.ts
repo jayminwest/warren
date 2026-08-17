@@ -86,6 +86,17 @@ export interface LocalEngineDeps {
 	readonly exec?: ReapExec;
 	/** Drive-loop seams (tests): spawn / registry / clock. */
 	readonly drive?: DriveDeps;
+	/**
+	 * Preview sidecar registry (warren-4bf3) — `terminate` cascade-deletes
+	 * the sandbox's sidecars so a torn-down run never strands a dev server
+	 * on a host port. Optional: tests (and the legacy mode) omit it.
+	 */
+	readonly sidecars?: SidecarCascade;
+}
+
+/** The slice of the preview sidecar registry the engine consumes. */
+export interface SidecarCascade {
+	cascadeDelete(sandboxId: string): Promise<void>;
 }
 
 export class LocalEngine {
@@ -156,6 +167,7 @@ export class LocalEngine {
 			workspacePath: workspace.workspacePath,
 			homePath,
 			branch: spec.branch,
+			profile,
 		});
 		const manifest: LocalRunManifest = {
 			version: 1,
@@ -364,6 +376,9 @@ export class LocalEngine {
 	async terminate(handle: RunHandle): Promise<TeardownResult> {
 		const record = this.store.getBySandboxId(handle.sandboxId);
 		record?.proc?.cancel();
+		// Cascade: terminate every live preview sidecar + release every
+		// forward before the workspace they run in disappears (warren-4bf3).
+		await this.deps.sidecars?.cascadeDelete(handle.sandboxId).catch(() => undefined);
 		const manifest = await readLocalRunManifest(this.roots, handle.sandboxId);
 		const workspacePath = record?.workspacePath ?? manifest?.workspacePath ?? null;
 		const homePath = record?.homePath ?? manifest?.homePath ?? null;

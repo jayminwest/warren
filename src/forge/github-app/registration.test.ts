@@ -10,6 +10,7 @@ import {
 	REGISTRATION_STATE_TTL_MS,
 	RegistrationSessions,
 	renderCredentialsPage,
+	renderInstalledPage,
 	renderRegistrationErrorPage,
 	renderRegistrationPage,
 } from "./registration.ts";
@@ -20,11 +21,13 @@ describe("buildGitHubAppManifest", () => {
 			name: "warren-test",
 			homepageUrl: "https://example.test/",
 			redirectUrl: "http://127.0.0.1:8377/github-app/callback",
+			setupUrl: "http://127.0.0.1:8377/github-app/installed",
 		});
 		expect(manifest).toEqual({
 			name: "warren-test",
 			url: "https://example.test/",
 			redirect_url: "http://127.0.0.1:8377/github-app/callback",
+			setup_url: "http://127.0.0.1:8377/github-app/installed",
 			public: false,
 			default_permissions: GITHUB_APP_MANIFEST_PERMISSIONS,
 		});
@@ -209,6 +212,7 @@ describe("renderRegistrationPage", () => {
 			name: "warren-test",
 			homepageUrl: "https://example.test/",
 			redirectUrl: "http://127.0.0.1:8377/github-app/callback",
+			setupUrl: "http://127.0.0.1:8377/github-app/installed",
 		});
 		const html = renderRegistrationPage({
 			manifest,
@@ -228,6 +232,7 @@ describe("renderRegistrationPage", () => {
 			name: "warren-test",
 			homepageUrl: "https://example.test/",
 			redirectUrl: "http://127.0.0.1:8377/github-app/callback",
+			setupUrl: "http://127.0.0.1:8377/github-app/installed",
 		});
 		const html = renderRegistrationPage({
 			manifest,
@@ -245,6 +250,7 @@ describe("renderRegistrationPage", () => {
 			name: '"><script>alert(1)</script>',
 			homepageUrl: "https://example.test/",
 			redirectUrl: "http://127.0.0.1:8377/github-app/callback",
+			setupUrl: "http://127.0.0.1:8377/github-app/installed",
 		});
 		const html = renderRegistrationPage({
 			manifest,
@@ -313,5 +319,25 @@ describe("renderRegistrationErrorPage", () => {
 		expect(html).toContain("&lt;bad&gt;");
 		expect(html).toContain("detail &lt;here&gt;");
 		expect(html).toContain("/github-app/register");
+	});
+});
+
+describe("renderInstalledPage", () => {
+	test("renders the installation id into every secret-store block (warren-54c7)", () => {
+		const html = renderInstalledPage({ installationId: "87654321" });
+		expect(html).toContain("WARREN_GITHUB_APP_INSTALLATION_ID=87654321");
+		expect(html).toContain("&quot;github-app-installation-id&quot;:&quot;87654321&quot;");
+		expect(html).toContain("WARREN_GITHUB_APP_INSTALLATION_ID: &quot;87654321&quot;");
+		// The App id and PEM were shown once on the credentials page; this
+		// route never sees them, so they stay placeholders.
+		expect(html).toContain("&lt;the App id from the credentials page&gt;");
+		expect(html).toContain("&lt;the PEM");
+	});
+
+	test("a null installation id renders the manual fallback, not an error", () => {
+		const html = renderInstalledPage({ installationId: null });
+		expect(html).toContain("Installation id not on this URL");
+		expect(html).toContain("settings/installations/");
+		expect(html).toContain("WARREN_GITHUB_APP_INSTALLATION_ID=&lt;from");
 	});
 });

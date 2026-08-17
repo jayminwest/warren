@@ -33,7 +33,9 @@ import type { StreamLogger } from "./k8s/log-stream.ts";
 import type { PodCacheReader } from "./k8s/pod-watcher.ts";
 import { defaultCoreApiFactory, K8sProvider } from "./k8s/provider.ts";
 import type { K8sInboxStore } from "./k8s/send-message.ts";
+import type { SidecarCascade } from "./local/engine.ts";
 import { LocalProvider } from "./local/provider.ts";
+import type { LocalRunStore } from "./local/run-store.ts";
 
 /** Runtime backends the selector understands. */
 export type RuntimeKind = "local" | "k8s";
@@ -146,6 +148,21 @@ export interface RuntimeProviderDeps {
 	 * `credentialLifetime`; absent, the provider's own default (allow) applies.
 	 */
 	readonly k8sAllowStaticPushTokenFallback?: boolean;
+	/**
+	 * OPTIONAL shared run store for the in-process LocalProvider engine
+	 * (warren-413d) — only consulted for `WARREN_RUNTIME=local`. Boot
+	 * threads the store it also hands the preview sidecar registry
+	 * (warren-4bf3), so sidecars resolve profiles off the same records the
+	 * engine writes. Absent ⇒ the provider's private default (tests).
+	 */
+	readonly localStore?: LocalRunStore;
+	/**
+	 * OPTIONAL preview sidecar cascade for the in-process LocalProvider
+	 * (warren-4bf3) — only consulted for `WARREN_RUNTIME=local`. Boot
+	 * threads the warren-owned registry so `terminate` releases sidecars +
+	 * port forwards. Absent ⇒ terminate skips the cascade (tests).
+	 */
+	readonly localSidecars?: SidecarCascade;
 }
 
 /**
@@ -186,6 +203,8 @@ export function resolveRuntimeProvider(
 				...(deps.serverEnv !== undefined ? { serverEnv: deps.serverEnv } : {}),
 				...(deps.fs !== undefined ? { fs: deps.fs } : {}),
 				...(deps.exec !== undefined ? { exec: deps.exec } : {}),
+				...(deps.localStore !== undefined ? { store: deps.localStore } : {}),
+				...(deps.localSidecars !== undefined ? { sidecars: deps.localSidecars } : {}),
 			});
 		case "k8s":
 			return buildK8sProvider(deps);

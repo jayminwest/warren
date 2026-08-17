@@ -7,7 +7,7 @@ This page enumerates every `warren` command with its arguments, flags, and the s
 
 To refresh: `bun run gen:cli-ref`. To check (CI mode): `bun run gen:cli-ref:check`.
 
-Total commands: **20**.
+Total commands: **21**.
 
 ## Global options
 
@@ -236,6 +236,19 @@ warren plan list [options]
 | `--project <id>` |  |  | only plan-runs for this project (prj_xxx) |
 | `--state <state>` |  |  | only plan-runs in this state (queued\|running\|succeeded\|failed\|cancelled) |
 | `--output <mode>` |  | `"ndjson"` | output mode: ndjson (default) or pretty |
+| `--url <url>` |  |  | warren server base URL (env WARREN_BASE_URL) |
+| `--token <token>` |  |  | bearer token (env WARREN_API_TOKEN) |
+
+### `warren projects`
+
+list the projects registered on the warren server (GET /projects)
+
+```bash
+warren projects [options]
+```
+
+| Flag | Required | Default | Description |
+| --- | --- | --- | --- |
 | `--url <url>` |  |  | warren server base URL (env WARREN_BASE_URL) |
 | `--token <token>` |  |  | bearer token (env WARREN_API_TOKEN) |
 

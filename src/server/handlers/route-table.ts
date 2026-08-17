@@ -15,7 +15,11 @@ import { getAgentHandler, listAgentsHandler } from "./agents.ts";
 import { healAlertHandler } from "./alerts.ts";
 import { readyzHandler } from "./diagnostics.ts";
 import { streamLifecycleEventsHandler } from "./events-stream.ts";
-import { gitHubAppCallbackHandler, registerGitHubAppHandler } from "./github-app.ts";
+import {
+	gitHubAppCallbackHandler,
+	gitHubAppInstalledHandler,
+	registerGitHubAppHandler,
+} from "./github-app.ts";
 import { healthzHandler, previewConfigHandler, versionHandler, whoamiHandler } from "./meta.ts";
 import { metricsHandler } from "./metrics.ts";
 import {
@@ -126,6 +130,14 @@ const ROUTE_TABLE: readonly RouteEntry[] = [
 		pattern: "/github-app/callback",
 		policy: "anonymous",
 		build: () => gitHubAppCallbackHandler(),
+	},
+	// warren-54c7: the manifest setup_url target — GitHub's post-install
+	// redirect lands here carrying the installation id.
+	{
+		method: "GET",
+		pattern: "/github-app/installed",
+		policy: "anonymous",
+		build: () => gitHubAppInstalledHandler(),
 	},
 	{ method: "GET", pattern: "/metrics", policy: "readOperator", build: metricsHandler },
 	// warren-e195: `readPublic`, not `anonymous` — an exempt route gets no actor to name.
@@ -326,8 +338,7 @@ const ROUTE_TABLE: readonly RouteEntry[] = [
  * warren-e320: every route under the `/github-app` prefix rides the
  * boot-resolved registration gate (`resolveGitHubAppRegistrationGate`).
  * Prefix matching is deliberate: the `/github-app/installed` return route
- * proposed in warren-54c7 must inherit the gate the day it lands, without
- * anyone remembering to wire it. A gated-off route answers 404 — never
+ * (warren-54c7) inherits the gate with nobody having to remember to wire it. A gated-off route answers 404 — never
  * 401/403 — so the public-mode invariant scenario 39 guards holds.
  */
 const GITHUB_APP_ROUTE_PREFIX = "/github-app";

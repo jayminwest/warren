@@ -298,7 +298,14 @@ describe("scan — the seams warren-89a6 added", () => {
 			},
 		);
 	});
-
+	test("the UI seam flags server-only imports, spares the kernel, ndjson reader and itself (warren-f0ae)", () => {
+		const rule = ruleNamed("ui-is-a-browser-consumer");
+		const rel = "src/ui/src/a.ts";
+		expect(scanText(rule, rel, 'import { s } from "../../server/main.ts";\n')).toHaveLength(1);
+		for (const spec of ["../../../core/wire.ts", "../../../client/ndjson.ts", "../lib/f.ts"]) {
+			expect(scanText(rule, rel, `import { x } from "${spec}";\n`)).toEqual([]);
+		}
+	});
 	test("flags any import in the dependency-free kernel", () => {
 		withFixtureRepo(
 			{

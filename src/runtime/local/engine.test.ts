@@ -12,6 +12,7 @@ import { RuntimeProviderError, RuntimeRunNotFoundError } from "../errors.ts";
 import { LocalEngine, type LocalEngineDeps } from "./engine.ts";
 import { readLocalRunManifest } from "./manifest.ts";
 import { localHomePath, localWorkspacePath, resolveLocalStateRoots } from "./paths.ts";
+import { LocalRunStore } from "./run-store.ts";
 
 /* -------------------------------------------------------------------------- */
 /* Hermetic git fixture (warren-cfa7 posture)                                  */
@@ -94,6 +95,7 @@ interface Harness {
 	readonly dataDir: string;
 	readonly repo: string;
 	readonly profiles: SandboxProfile[];
+	readonly store: LocalRunStore;
 	cleanup(): Promise<void>;
 }
 
@@ -102,8 +104,10 @@ async function makeHarness(): Promise<Harness> {
 	const repo = await mkdtemp(join(tmpdir(), "warren-engine-repo-"));
 	await bootstrapRepo(repo);
 	const profiles: SandboxProfile[] = [];
+	const store = new LocalRunStore();
 	const deps: LocalEngineDeps = {
 		serverEnv: { WARREN_DATA_DIR: dataDir, WARREN_BIND_PORT: "8181" },
+		store,
 		drive: {
 			spawn: (profile) => {
 				profiles.push(profile);
@@ -117,6 +121,7 @@ async function makeHarness(): Promise<Harness> {
 		dataDir,
 		repo,
 		profiles,
+		store,
 		cleanup: async () => {
 			await rm(dataDir, { recursive: true, force: true });
 			await rm(repo, { recursive: true, force: true });
@@ -377,6 +382,37 @@ describe("LocalEngine.workspaceInfo + finalize + terminate", () => {
 			});
 			expect(result.pushed).toBe(false);
 			expect(result.stages.every((s) => s.status === "skipped")).toBe(true);
+		} finally {
+			await h.cleanup();
+		}
+	});
+
+	test("stores the sandbox profile on the record and cascades sidecar teardown", async () => {
+		const h = await makeHarness();
+		const cascaded: string[] = [];
+		const engine = new LocalEngine({
+			serverEnv: { WARREN_DATA_DIR: h.dataDir, WARREN_BIND_PORT: "8181" },
+			store: h.store,
+			drive: {
+				spawn: () => Promise.resolve(immediateProc([TERMINAL_LINE])),
+				registry: { get: (id) => (id === "fake" ? fakeAdapter : undefined) },
+			},
+			sidecars: {
+				cascadeDelete: (sandboxId) => {
+					cascaded.push(sandboxId);
+					return Promise.resolve();
+				},
+			},
+		});
+		try {
+			const handle = await engine.create(makeSpec(h, "run_e11"));
+			await awaitTerminal(engine, handle.providerRunId);
+			const record = h.store.getBySandboxId(handle.sandboxId);
+			expect(record).toBeDefined();
+			expect(record?.profile).not.toBeNull();
+			expect(record?.profile?.workspace).toContain("local-run_e11");
+			await engine.terminate(handle);
+			expect(cascaded).toEqual([handle.sandboxId]);
 		} finally {
 			await h.cleanup();
 		}

@@ -85,6 +85,9 @@ describe("ROUTE_TABLE policy classification", () => {
 		// /callback refuses without a live single-use state nonce.
 		"GET /github-app/register",
 		"GET /github-app/callback",
+		// warren-54c7: GitHub's post-install redirect target; renders only what
+		// the query string carries (the installation id), nothing server-side.
+		"GET /github-app/installed",
 	];
 
 	/** Reads that must stay operator-only — each with the reason it is here. */
