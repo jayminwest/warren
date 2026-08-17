@@ -111,6 +111,17 @@ async function resetOneSeededPath(
 			timeoutMs: 10_000,
 			env,
 		});
+		// git-rm no-ops on a drop the index never knew (untracked in every ref),
+		// so sweep the worktree bytes too — the live contents were verified equal
+		// to what warren seeded above, so this deletes no agent work. Without the
+		// sweep the residue reads as a dirty `.warren/` path at empty-push
+		// classification and trips dropped_commit on a genuine no-op run
+		// (warren-0f18's falsification assertion).
+		await exec.run("git", ["clean", "-f", "--", seeded.path], {
+			cwd: workspacePath,
+			timeoutMs: 10_000,
+			env,
+		});
 	}
 	return true;
 }
