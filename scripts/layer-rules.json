@@ -111,6 +111,13 @@
 			]
 		},
 		{
+			"name": "ui-is-a-browser-consumer",
+			"why": "The UI is a Vite browser bundle. It consumes the import-nothing kernel (src/core/) and the SDK's browser-safe NDJSON reader, and nothing else in src/: any other module drags bun:sqlite or drizzle toward the browser. tsconfig.app.json's `include` list failing with TS6307 is a build accident, not a seam guard — this rule is the guard. Mirrors AGENTS.md: the UI consumes src/core, its own code, and the re-exported client types.",
+			"from": ["src/ui/"],
+			"forbidImports": ["src/"],
+			"exceptImports": ["src/ui/", "src/core/", "src/client/ndjson.ts"]
+		},
+		{
 			"name": "core-kernel-imports-nothing",
 			"why": "src/core/ is the dependency-free kernel. A kernel with no imports is what lets the Vite-bundled UI reach the same module, so neither drizzle nor bun:sqlite reaches the browser bundle.",
 			"from": ["src/core/"],

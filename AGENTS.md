@@ -429,7 +429,7 @@ Two guards hold the rule, and both run inside `bun run lint`.
   prints `file:line` plus the rule's `why`. A deliberate exception goes
   in that rule's `allow` list with a `why` field.
 
-Eleven seams ship today:
+Twelve seams ship today:
 
 - The two burrow boundaries inherited from the retired burrow-boundary
   guard (warren-f796). No direct `src/burrow-client/` or
@@ -450,6 +450,9 @@ Eleven seams ship today:
   Everything else consumes the boot-resolved `Forge` instance. See
   [docs/design/forge-contract.md](docs/design/forge-contract.md).
 - `src/core/` may import only itself.
+- `src/ui/` is a browser consumer: it imports the `src/core/` kernel, the
+  SDK's browser-safe `src/client/ndjson.ts` reader, and its own code —
+  nothing else under `src/` (warren-f0ae).
 
 Two sharp edges:
 
