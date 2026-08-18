@@ -10,6 +10,100 @@ Releases **0.9.10 and earlier** live in
 
 ## [Unreleased]
 
+## [0.17.0] — 2026-08-17
+
+The absorption release. The **pl-3007 campaign** internalized the
+sandbox substrate that warren previously delegated to the co-tenanted
+burrow daemon: profile generation, harness adapters, the spawn path,
+and preview sidecars are all warren-owned now. Warren no longer
+spawns `burrow serve`, links `@os-eco/burrow-cli`, or talks to a
+burrow socket — one process, one fewer moving part in every deploy.
+Alongside the absorption, a new **DockerProvider** runs agents as
+sibling containers, and plan-runs picked up retry and resume
+machinery.
+
+### Added
+
+- **DockerProvider** (`WARREN_RUNTIME=docker`, warren-3732, #961) —
+  a third runtime backend that runs each agent as a sibling container
+  over the docker socket, between `local`'s in-process engine and
+  `k8s`'s pods.
+- `POST /plan-runs/:id/resume` restarts a plan-run that failed on a
+  merge timeout, picking up from the next open child (warren-1eff,
+  #942).
+- Plan-runs retry a child once on `child_provider_error` instead of
+  failing the whole plan (#933), and infra-lost runs
+  (`burrow_run_lost`) auto-retry as one re-dispatched run (#937).
+- `warren projects` lists registered projects from the CLI
+  (warren-e127, #952).
+- A provider → env-key registry in `src/core` gives both runtimes
+  generic credential delivery, so adding a provider no longer means
+  touching each runtime by hand (warren-fb8d, #948).
+- Dispatch-time preflight compares the workspace's drizzle migration
+  journal against the server's, failing fast on schema skew instead
+  of mid-run (warren-1f03, #931).
+- K8s `/readyz` reports `k8s_api_reachable` via the PodWatcher's
+  sync state (#946).
+- Acceptance scenarios pin the self-host paths: scenario 41 covers
+  the local topology (warren-0f18, #953) and the container scenario
+  proves the one-line fresh-host bring-up (#962).
+
+### Changed
+
+- **The burrow absorption (pl-3007).** bwrap/sandbox-exec/cgroup
+  profile generation lifted into `src/sandbox/` (#934); the pi and
+  claude-code harness adapters source-lifted into
+  `src/runtime/adapters/` (#936); LocalProvider spawns through the
+  internalized sandbox with an in-process run store (#947); preview
+  sidecars and inbound port forwards re-homed onto it (#950); the
+  K8s in-pod trio rewired off burrow (#943); the supervisor no
+  longer spawns `burrow serve` — socket wait, restart budget, and
+  token minting all deleted (warren-9a26, #955); `src/burrow-client/`
+  deleted and `@os-eco/burrow-cli` dropped from the package
+  (#959); and the burrow-shaped wire vocabulary renamed, migrating
+  `runs.burrowId` (#963).
+- **Sapling retired** as a builtin agent: the agent definition, the
+  runtime id, and the adapter are gone (warren-f525, #932).
+- Warren-authored PR bodies now carry the agent's own narrative —
+  rationale, hazards, test notes — instead of a fully templated
+  shell (#944).
+- The GitHub App registration pages match the warren UI styling
+  (#956).
+- `docs/` paths are treated as a public surface: deleting or moving
+  one requires a tombstone pointer in `docs/README.md` (warren-d602,
+  #960).
+- Guard hardening: `check:layers` walks the real module graph
+  instead of line regexes (warren-d382, #957), the
+  handlers-are-a-thin-surface rule actually bites now (#954), and a
+  new UI-consumer seam rule pins what `src/ui/**` may import (#951).
+
+### Fixed
+
+- Plan-run children honor the plan's `ref` as the PR base, so
+  chained children can accumulate on a shared branch (#945).
+- A transient provider network error mid-run no longer kills the run
+  without retry (#935), and the pi adapter surfaces the provider's
+  actual error body instead of an opaque `Provider error` (#940).
+- `POST /runs/:id/cancel` on K8s finalizes the run row instead of
+  leaving it static after deleting the pod (#938).
+- Pod warning events (`FailedAttachVolume` & co.) surface on the run
+  stream instead of dying silently in the cluster (warren-32f8,
+  #941).
+- The GitHub App install flow no longer dead-ends on GitHub — the
+  manifest carries a `setup_url` back to warren (#949).
+- `warren login` warns when a stale `WARREN_API_TOKEN` from a cwd
+  `.env` outranks the stored credential, and auth-rejection errors
+  name the env as the token source (warren-8807, #928).
+- Auto-merge re-arms after a conflict-repair push instead of
+  stranding the PR (#926).
+- CI self-healing: bundle-size autoheal fires on push-event failures
+  too (warren-ffd2, #927), and seeds-merge-autoheal fires on
+  `.seeds` pushes to main (warren-c84c, #925).
+- Dispatch rejects known provider/model mismatches up front
+  (warren-bad5, #924).
+- Acceptance rot: scenarios 04/05/07/09/10 no longer call deleted
+  plot-era APIs (#958).
+
 ## [0.16.1] — 2026-08-16
 
 The dogfood release. Nearly every change here (#899–#923) was authored

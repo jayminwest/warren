@@ -47,8 +47,8 @@ the sequencing and [docs/PHILOSOPHY.md](docs/PHILOSOPHY.md) for policy.
 
 Warren runs against a swappable runtime provider, resolved once at boot
 from `WARREN_RUNTIME` (`src/runtime/registry.ts`) behind the
-`RuntimeProvider` contract (`src/runtime/contract.ts`). Two backends
-exist.
+`RuntimeProvider` contract (`src/runtime/contract.ts`). Three
+backends exist.
 
 - `LocalProvider` (`src/runtime/local/`, the default) runs the
   in-process engine. It materializes a worktree, composes a bwrap
@@ -56,6 +56,10 @@ exist.
   the agent through a host-side loop. The runtime adapters
   (`src/runtime/adapters/`) own the per-harness command, parser, and
   steering shapes.
+- `DockerProvider` (`src/runtime/docker/`, `WARREN_RUNTIME=docker`)
+  runs each agent as a sibling container over the docker socket. The
+  container boundary is the sandbox. See
+  [docs/design/runtime-docker-provider.md](docs/design/runtime-docker-provider.md).
 - `K8sProvider` (`src/runtime/k8s/`, `WARREN_RUNTIME=k8s`) runs each
   agent as a Kubernetes pod. The pod boundary is the sandbox, so no
   bwrap runs there.
