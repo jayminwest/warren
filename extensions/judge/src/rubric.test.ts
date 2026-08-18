@@ -27,6 +27,17 @@ describe("renderJudgeSystemPrompt", () => {
 		expect(prompt).toContain("200");
 	});
 
+	test("carries the ground-truth reconciliation instructions", () => {
+		// warren-bf3d: three dropped_commit runs were judged clean with the
+		// reap.empty_push evidence in context — the prompt must bind the
+		// verdict to get_run_facts' state/failureReason and the reap tail.
+		const prompt = renderJudgeSystemPrompt().replace(/\n/gu, " ");
+		expect(prompt).toContain("## Ground truth reconciliation (mandatory)");
+		expect(prompt).toContain("`failureReason: dropped_commit`");
+		expect(prompt).toContain("`reap.empty_push`");
+		expect(prompt).toContain("CAN coexist with `clean`");
+	});
+
 	test("makes report_verdict the mandatory final action", () => {
 		const prompt = renderJudgeSystemPrompt();
 		expect(prompt).toContain("MUST be a call to the `report_verdict` tool");

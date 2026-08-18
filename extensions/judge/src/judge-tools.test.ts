@@ -120,6 +120,61 @@ describe("page_events tool", () => {
 		}),
 	);
 
+	test(
+		"stops serving transcript once accrued cost reaches the per-judgment cap",
+		withFakeWarren(async (fake) => {
+			fake.addRun({ id: "run-1", state: "failed", startedAt: "2026-08-15T00:00:00.000Z" });
+			seedEvents(fake, "run-1", 20);
+			let accrued = 0.1;
+			const { tools, state } = createJudgeTools({
+				client: makeClient(fake),
+				runId: "run-1",
+				eventsPageSize: 5,
+				maxPages: 10,
+				maxCostUsd: 0.25,
+				getAccruedCostUsd: () => accrued,
+			});
+			const page = tools.find((t) => t.name === "page_events");
+			const served = JSON.parse(
+				(await page?.execute("c1", { since: 0 }))?.content[0]?.text ?? "{}",
+			) as { events: unknown[] };
+			expect(served.events).toHaveLength(5);
+			expect(state.costCapHit).toBe(false);
+
+			accrued = 0.25;
+			const refused = JSON.parse(
+				(await page?.execute("c2", { since: 5 }))?.content[0]?.text ?? "{}",
+			) as { error?: string; events?: unknown[]; message?: string };
+			expect(refused.error).toBe("cost_cap_reached");
+			expect(refused.events).toBeUndefined();
+			expect(refused.message).toContain("report_verdict");
+			expect(state.costCapHit).toBe(true);
+			// A refused page never counts against the page budget.
+			expect(state.pagesRead).toBe(1);
+		}),
+	);
+
+	test(
+		"serves pages without a cost gate when no cap is configured",
+		withFakeWarren(async (fake) => {
+			fake.addRun({ id: "run-1", state: "failed", startedAt: "2026-08-15T00:00:00.000Z" });
+			seedEvents(fake, "run-1", 5);
+			const { tools, state } = createJudgeTools({
+				client: makeClient(fake),
+				runId: "run-1",
+				eventsPageSize: 5,
+				maxPages: 10,
+				getAccruedCostUsd: () => 999,
+			});
+			const page = tools.find((t) => t.name === "page_events");
+			const served = JSON.parse(
+				(await page?.execute("c1", { since: 0 }))?.content[0]?.text ?? "{}",
+			) as { events: unknown[] };
+			expect(served.events).toHaveLength(5);
+			expect(state.costCapHit).toBe(false);
+		}),
+	);
+
 	test("rejects a malformed since cursor without touching warren", async () => {
 		const { tools } = createJudgeTools({
 			client: createClient({ baseUrl: "http://127.0.0.1:1", token: "tok" }),

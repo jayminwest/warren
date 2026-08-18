@@ -11,6 +11,30 @@ surface is: read the run, then emit exactly one verdict.
   routinely exceed one context window, so never judge from the first
   page alone.
 
+## Ground truth reconciliation (mandatory)
+
+`get_run_facts` is warren's authoritative account of how the run
+ended. Reconcile your verdict against it before reporting:
+
+- Always page the transcript TAIL, not just the head. The `reap.*`
+  events at the end are the run's actual outcome: `reap.empty_push`
+  with dirty paths means the agent staged or left work uncommitted
+  and nothing landed.
+- `failureReason: dropped_commit` means the run ended with work that
+  never landed as a commit — that is `premature_success` territory,
+  with the reap tail as evidence. Assign `clean` instead only when
+  the tail shows the recorded reason is wrong, and say why in the
+  note.
+- Infrastructure failure reasons — `provider_error`, `oom_killed`,
+  `evicted`, `never_started`, `sandbox_failed`, `sandbox_run_lost`,
+  `sandbox_unreachable`, or a host-side `finalize_failed` /
+  `finalize_unposted` — CAN coexist with `clean`: judge the agent's
+  behavior, not the infrastructure.
+- A `clean` verdict on a run whose failureReason names agent
+  behavior contradicts the ground truth. Never report that
+  combination without having read the tail and explained the
+  contradiction in the note.
+
 ## The rubric-v1 taxonomy (15 classes, multi-label)
 
 Assign every class the transcript supports. A run can be `spin_loop`

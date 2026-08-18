@@ -18,8 +18,12 @@
  * Per-judgment accounting: every attempt's `getSessionStats()` aggregates
  * into {@link JudgmentStats} (tokens + cost per provider/model), and the
  * final cost, pages read, and page-cap flag land in the verdict's
- * provenance. When the accrued cost reaches the per-judgment cap the loop
- * stops early with `budget_exceeded` rather than burning another attempt.
+ * provenance. The per-judgment cap is enforced twice (warren-9a34): live
+ * inside an attempt — once accrued cost reaches the cap, `page_events`
+ * stops serving transcript and tells the model to report from what it has,
+ * so a successful attempt overshoots by at most one model turn — and
+ * between attempts, where a capped-out judgment that still holds no verdict
+ * resolves as `budget_exceeded` rather than burning another attempt.
  */
 
 import type { WarrenClient } from "./client.ts";
@@ -155,23 +159,41 @@ export async function judgeRun(opts: JudgeRunOptions): Promise<JudgeOutcome> {
 	const systemPrompt = renderJudgeSystemPrompt();
 	const userPrompt =
 		`Judge run ${opts.runId} under rubric v1. Begin with get_run_facts, ` +
-		"then page_events through the transcript, and end by calling " +
+		"then page_events through the transcript — including its tail, where " +
+		"the reap.* events record the actual outcome — and end by calling " +
 		"report_verdict exactly once.";
 
 	let lastFailure: { reason: "malformed_verdict" | "judge_error"; detail: string } | null = null;
 
 	for (let attempt = 1; attempt <= maxAttempts; attempt++) {
 		stats.attempts = attempt;
+		// Live accrued cost: prior attempts (stats) + the in-flight session.
+		// page_events reads it through this closure to gate on the cap
+		// mid-attempt (warren-9a34); the session lands after tool creation,
+		// so the reference is deliberately mutable.
+		let liveSession: JudgeSession | null = null;
 		const { tools, state } = createJudgeTools({
 			client: opts.client,
 			runId: opts.runId,
 			eventsPageSize: opts.eventsPageSize ?? DEFAULT_EVENTS_PAGE_SIZE,
 			maxPages: opts.maxPages ?? DEFAULT_MAX_PAGES,
+			...(opts.maxCostUsdPerJudgment !== undefined
+				? { maxCostUsd: opts.maxCostUsdPerJudgment }
+				: {}),
+			getAccruedCostUsd: () => {
+				if (liveSession === null) return stats.costUsd;
+				try {
+					return stats.costUsd + liveSession.getSessionStats().costUsd;
+				} catch {
+					return stats.costUsd;
+				}
+			},
 		});
 		let session: JudgeSession | null = null;
 		let attemptError: unknown = null;
 		try {
 			session = await opts.sessionFactory({ systemPrompt, tools });
+			liveSession = session;
 			await session.prompt(userPrompt);
 			await session.waitForIdle();
 		} catch (error) {

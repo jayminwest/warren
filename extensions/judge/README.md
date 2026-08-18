@@ -92,8 +92,12 @@ Step 6 (warren-33da) adds the collector daemon:
   `budget_exceeded` marker would occupy the store's dedupe key and block
   the eventual real verdict (warren-5fcf). The per-judgment cap is clamped
   to the remaining daily budget so one judgment cannot push the fleet past
-  the day gate; a judgment that hits its cap MID-ATTEMPT does resolve with
-  a `budget_exceeded` marker, because the attempts were billed.
+  the day gate. The cap is live inside an attempt too (warren-9a34): once
+  accrued cost reaches it, `page_events` stops serving transcript and
+  tells the model to report from the pages it has, so a successful
+  judgment overshoots the cap by at most one model turn. An attempt that
+  still ends without a verdict past the cap resolves with a
+  `budget_exceeded` marker, because the attempts were billed.
 - SIGTERM/SIGINT abort the loop between cycles; the in-flight judgment
   always finishes and checkpoints before exit.
 - [`src/calibration.ts`](src/calibration.ts) — the calibration re-judge
