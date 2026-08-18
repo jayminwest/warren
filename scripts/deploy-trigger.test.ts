@@ -24,7 +24,13 @@ const SHA_EXPR = `\${{ github.sha }}`;
 // Shell (not Actions) interpolation, but the same lint rule applies.
 const NEW_NAME_EXPR = `newName: \${AR_BASE}/warren`;
 
-type Step = { name?: string; id?: string; run?: string; env?: Record<string, string> };
+type Step = {
+	name?: string;
+	id?: string;
+	run?: string;
+	env?: Record<string, string>;
+	with?: Record<string, unknown>;
+};
 
 type Workflow = {
 	on?: {
@@ -203,5 +209,94 @@ describe("post-deploy /version smoke test", () => {
 	test("a versionless build-only dispatch has nothing to assert and passes", () => {
 		const r = runSmokeTest({ version: "", host: "", body: "" });
 		expect(r.exitCode).toBe(0);
+	});
+});
+
+// Assembled at runtime for the same noTemplateCurlyInString reason as SHA_EXPR.
+const TARGET_SHA_EXPR = `\${{ env.TARGET_SHA }}`;
+
+/**
+ * Execute the judge-roll shell against a stubbed `kubectl`, so the assertions
+ * exercise what the workflow really runs rather than a restatement of it.
+ */
+function runJudgeRoll(opts: {
+	/** Whether `kubectl get deploy/judge` finds a judge Deployment. */
+	deployed: boolean;
+	/** Image the stubbed post-roll jsonpath read reports. */
+	liveImage?: string;
+}): { exitCode: number; output: string } {
+	const script = stepScript("deploy", "Roll judge extension deployment");
+	const dir = mkdtempSync(join(tmpdir(), "warren-judge-roll-"));
+	try {
+		const stub = join(dir, "kubectl");
+		// Case order matters: the jsonpath read also matches `get deploy/judge`.
+		writeFileSync(
+			stub,
+			[
+				"#!/bin/sh",
+				'case "$*" in',
+				"  *jsonpath*) printf '%s' \"$STUB_LIVE_IMAGE\" ;;",
+				'  *"set image"*|*"rollout status"*) exit 0 ;;',
+				'  *"get deploy/judge"*) exit "$STUB_GET_EXIT" ;;',
+				"esac",
+				"exit 0",
+			].join("\n"),
+		);
+		chmodSync(stub, 0o755);
+		const result = Bun.spawnSync({
+			cmd: ["bash", "-c", script],
+			env: {
+				PATH: `${dir}:${process.env.PATH ?? ""}`,
+				AR_BASE: "us-west1-docker.pkg.dev/example/warren",
+				SHA: "cafebabe",
+				STUB_GET_EXIT: opts.deployed ? "0" : "1",
+				STUB_LIVE_IMAGE: opts.liveImage ?? "",
+			},
+			stdout: "pipe",
+			stderr: "pipe",
+		});
+		return {
+			exitCode: result.exitCode,
+			output: `${result.stdout.toString()}${result.stderr.toString()}`,
+		};
+	} finally {
+		rmSync(dir, { recursive: true, force: true });
+	}
+}
+
+describe("judge extension image build + roll (warren-eecb)", () => {
+	test("build-push builds warren-ext-judge from the extension directory alone", () => {
+		const steps = loadWorkflow("deploy-gke.yml").jobs?.["build-push"]?.steps ?? [];
+		const step = steps.find((s) => s.name?.startsWith("Build + push warren-ext-judge"));
+		expect(step).toBeDefined();
+		// The build context is the package (docs/design/extensions.md §2) —
+		// nothing outside extensions/judge/ may be referenced.
+		expect(step?.with?.context).toBe("extensions/judge");
+		expect(String(step?.with?.tags)).toContain(`/warren-ext-judge:${TARGET_SHA_EXPR}`);
+	});
+
+	test("skips cleanly when no judge Deployment exists (opt-in extension)", () => {
+		const r = runJudgeRoll({ deployed: false });
+		expect(r.exitCode).toBe(0);
+		expect(r.output).toContain("skipping");
+	});
+
+	test("rolls and verifies when the live image matches the built SHA", () => {
+		const r = runJudgeRoll({
+			deployed: true,
+			liveImage: "us-west1-docker.pkg.dev/example/warren/warren-ext-judge:cafebabe",
+		});
+		expect(r.exitCode).toBe(0);
+		expect(r.output).toContain("Verified: judge deployment is running cafebabe");
+	});
+
+	test("fails loudly when the rolled-out image does not match", () => {
+		const r = runJudgeRoll({
+			deployed: true,
+			liveImage: "us-west1-docker.pkg.dev/example/warren/warren-ext-judge:stale",
+		});
+		expect(r.exitCode).toBe(1);
+		expect(r.output).toContain("::error::");
+		expect(r.output).toContain("stale");
 	});
 });

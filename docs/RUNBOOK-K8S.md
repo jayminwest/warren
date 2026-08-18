@@ -131,8 +131,8 @@ The job runs when `release.yml` calls this workflow after it cuts a release (`wo
 There is deliberately **no push trigger** (warren-8b5f).
 A push to `main` used to build, the release from that same push then called this workflow again, and thus every release built twice.
 
-The job builds all three images with `docker buildx --platform linux/amd64` — Autopilot is amd64, and arm64 CrashLoops with `exec format error`.
-The images are: root `Dockerfile` → `warren`, `deploy/docker/Dockerfile.agent` → `warren-agent`, and `deploy/docker/Dockerfile.workspace-init` → `warren-workspace-init`.
+The job builds all four images with `docker buildx --platform linux/amd64` — Autopilot is amd64, and arm64 CrashLoops with `exec format error`.
+The images are: root `Dockerfile` → `warren`, `deploy/docker/Dockerfile.agent` → `warren-agent`, `deploy/docker/Dockerfile.workspace-init` → `warren-workspace-init`, and `extensions/judge/Dockerfile` → `warren-ext-judge` (warren-eecb; built from the extension directory alone).
 The job tags each image with the full commit SHA **and** `latest`.
 It pushes to the same `<region>-docker.pkg.dev/<project>/<repo>` Artifact Registry that `cloudbuild.yaml` targets.
 The layer cache is GHA-scoped per image.
@@ -148,10 +148,16 @@ The render pins all three images to the commit SHA: control-plane image via kust
 Then `kubectl apply -k` runs, with a `rollout status` gate after it.
 That render is exactly the documented `gke-live` pattern (`deploy/k8s/overlays/gke/kustomization.yaml` header), produced from CI vars instead of a hand-maintained local overlay.
 
-**Post-deploy checks** close the job with two assertions, both fatal.
+**Post-deploy checks** close the warren rollout with two assertions, both fatal.
 First, the rolled-out control-plane image must be the exact SHA the job just built.
 Second, on the release path, the job polls `GET https://$WARREN_INGRESS_HOST/version` until it reports the released semver.
 That poll proves that the ingress serves the new code, not just that the Deployment spec points at it (warren-8b5f).
+
+**Judge extension roll** (warren-eecb) closes the job.
+If a `judge` Deployment exists in the `warren` namespace, the job moves it to `warren-ext-judge:<sha>` with `kubectl set image`, waits for the rollout, and verifies the live image.
+`set image` touches only the image: the operator's provider/model/budget env and the imperatively created Secrets (both owned by the gitignored `gke-live-judge` overlay) stay as deployed.
+If no judge Deployment exists, the step skips — the judge is opt-in, and CI never creates it.
+After a CI roll, refresh the local overlay's `newTag` from the live Deployment before any manual `kubectl apply -k`, or the apply rolls the image back (same hazard as warren-0028).
 
 Auth is **GCP Workload Identity Federation** (`google-github-actions/auth`) — no long-lived JSON service-account keys.
 A repo admin must configure:

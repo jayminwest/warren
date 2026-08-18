@@ -1,6 +1,6 @@
 name: GKE Build & Deploy
 
-# Build + push the three warren container images to Artifact Registry, then
+# Build + push the four warren container images to Artifact Registry, then
 # (on a published release or a manual dispatch that opts in) roll the GKE
 # Autopilot deployment forward to the freshly built, SHA-pinned images
 # (warren-bd79). Replaces the manual `deploy/docker/build-images.sh` +
@@ -147,12 +147,12 @@ jobs:
 
       # Autopilot schedules amd64; a single-arch arm64 image CrashLoops with
       # `exec format error`. A multi-arch MANIFEST would still be safe on GKE
-      # (each node pulls the layer set for its own arch), but the three
+      # (each node pulls the layer set for its own arch), but the
       # GKE-internal Artifact Registry images deliberately stay amd64-only:
       # no arm64 node ever pulls them, and skipping the QEMU arm64 build
       # keeps the deploy-critical AR push fast and immune to emulation
       # flakes. Only the PUBLIC ghcr.io image is multi-arch (warren-fe9f,
-      # next step). All three AR builds run on native amd64 with GHA layer
+      # next step). All four AR builds run on native amd64 with GHA layer
       # cache (per-image scope), tagged by the full commit SHA and `latest`.
       - name: Build + push warren (control plane, Artifact Registry)
         uses: docker/build-push-action@v7
@@ -216,6 +216,26 @@ jobs:
             ${{ env.AR_BASE }}/warren-workspace-init:latest
           cache-from: type=gha,scope=warren-init
           cache-to: type=gha,mode=max,scope=warren-init
+
+      # The judge extension image (extensions/judge, warren-eecb). Built from
+      # the extension directory ALONE — extensions build against warren's
+      # public HTTP surface only (docs/design/extensions.md §2), so the build
+      # context is the package, exactly as a third party would ship theirs.
+      # Before this step the image was built + pushed from a laptop (docker
+      # buildx, tag = git sha), so a judge fix required a workstation with
+      # registry credentials.
+      - name: Build + push warren-ext-judge
+        uses: docker/build-push-action@v7
+        with:
+          context: extensions/judge
+          file: extensions/judge/Dockerfile
+          platforms: linux/amd64
+          push: true
+          tags: |
+            ${{ env.AR_BASE }}/warren-ext-judge:${{ env.TARGET_SHA }}
+            ${{ env.AR_BASE }}/warren-ext-judge:latest
+          cache-from: type=gha,scope=warren-ext-judge
+          cache-to: type=gha,mode=max,scope=warren-ext-judge
 
   deploy:
     needs: build-push
@@ -404,3 +424,33 @@ jobs:
           done
           echo "::error::${URL} never reported version ${VERSION} (last saw '${ACTUAL:-<no response>}'). The rollout did not reach the ingress."
           exit 1
+
+      # Roll the judge extension Deployment (extensions/judge) forward to the
+      # image this run just pushed (warren-eecb). The judge is an OPT-IN
+      # observer (docs/design/extensions.md): the first deploy is manual via
+      # the gitignored gke-live-judge overlay, which owns the operator's
+      # provider/model/budget env and whose Secrets are created imperatively.
+      # So this step only ever moves the IMAGE on a Deployment that already
+      # exists — `set image` leaves env and Secrets untouched, CI never
+      # creates the judge, and a cluster that never opted in skips cleanly.
+      # Runs last so a judge failure can never mask the warren rollout
+      # verification above.
+      - name: Roll judge extension deployment forward
+        env:
+          SHA: ${{ env.TARGET_SHA }}
+        run: |
+          set -euo pipefail
+          if ! kubectl -n warren get deploy/judge >/dev/null 2>&1; then
+            echo "No judge Deployment in the cluster (opt-in extension); skipping."
+            exit 0
+          fi
+          EXPECTED="${AR_BASE}/warren-ext-judge:${SHA}"
+          kubectl -n warren set image deploy/judge "judge=${EXPECTED}"
+          kubectl -n warren rollout status deploy/judge --timeout=300s
+          ACTUAL=$(kubectl -n warren get deploy/judge \
+            -o jsonpath='{.spec.template.spec.containers[?(@.name=="judge")].image}')
+          if [ "${ACTUAL}" != "${EXPECTED}" ]; then
+            echo "::error::Rolled-out judge image ${ACTUAL} does not match ${EXPECTED}"
+            exit 1
+          fi
+          echo "Verified: judge deployment is running ${SHA}."

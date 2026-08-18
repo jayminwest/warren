@@ -6,6 +6,12 @@
 # Deploy with an overlay that pins the real image (see
 # ../../overlays/gke-live-judge, gitignored) after creating the judge
 # Secret imperatively (secrets.yaml documents the keys).
+#
+# The image (warren-ext-judge) is built + pushed by CI beside the other
+# warren images, and the release deploy rolls an EXISTING judge Deployment
+# forward to the released SHA via `kubectl set image` (warren-eecb,
+# .github/workflows/deploy-gke.yml). CI never creates the judge and never
+# touches its env or Secrets — first deploy stays manual and opt-in.
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
