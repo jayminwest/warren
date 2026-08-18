@@ -18,6 +18,7 @@
 
 import {
 	createAgentSession,
+	createExtensionRuntime,
 	ModelRuntime,
 	type ResourceLoader,
 	SessionManager,
@@ -75,7 +76,14 @@ class JudgeResourceLoader implements ResourceLoader {
 		this.#systemPrompt = systemPrompt;
 	}
 	public getExtensions() {
-		return { extensions: [], runtime: undefined, errors: [] } as never;
+		// No extensions load, but the runtime object must be REAL:
+		// AgentSession hands it to ExtensionRunner, whose bindCore assigns
+		// action methods onto it unconditionally — `runtime: undefined`
+		// throws `undefined is not an object (evaluating
+		// 'this.runtime.sendMessage')` on the first prompt (warren-5fcf,
+		// hit live: every judgment errored). Fresh per call so no state
+		// leaks between judge sessions.
+		return { extensions: [], runtime: createExtensionRuntime(), errors: [] } as never;
 	}
 	public getSkills() {
 		return { skills: [], diagnostics: [] };

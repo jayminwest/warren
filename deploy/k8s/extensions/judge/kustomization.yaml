@@ -1,0 +1,15 @@
+# Judge extension (extensions/judge, plan pl-17ca / warren-5fcf) — the
+# bounded, read-only LLM judge collector deployed BESIDE warren in the
+# `warren` namespace. Deliberately NOT part of ../../base: extensions are
+# opt-in observers, never required infrastructure (docs/design/extensions.md).
+#
+# Deploy with an overlay that pins the real image (see
+# ../../overlays/gke-live-judge, gitignored) after creating the judge
+# Secret imperatively (secrets.yaml documents the keys).
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - secrets.yaml
+  - pvc.yaml
+  - deployment.yaml
+  - service.yaml

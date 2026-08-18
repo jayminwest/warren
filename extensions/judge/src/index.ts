@@ -198,6 +198,17 @@ async function main(): Promise<void> {
 		onCycleError: (err) => console.error(`${EXTENSION_NAME}: cycle failed:`, err),
 		onRunError: (runId, err) =>
 			console.error(`${EXTENSION_NAME}: judgment for run ${runId} failed:`, err),
+			// An unjudged marker's detail exists only here — the store row
+			// carries the reason alone, so an unlogged detail is
+			// undiagnosable from the pod (warren-5fcf: 334 judge_error
+			// markers with no error text anywhere).
+			onJudgment: (runId, outcome) => {
+				if (outcome.kind === "unjudged") {
+					console.error(
+						`${EXTENSION_NAME}: run ${runId} unjudged (${outcome.reason}): ${outcome.detail}`,
+					);
+				}
+			},
 			onBudgetSkip: (runId, detail) =>
 				console.error(`${EXTENSION_NAME}: run ${runId} unjudged (budget_exceeded): ${detail}`),
 		}),

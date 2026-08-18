@@ -1,0 +1,25 @@
+# ClusterIP for the judge's token-gated export surface
+# (GET /verdicts.jsonl, GET /agreement, unauthenticated /healthz).
+# In-cluster consumers dial http://judge.warren.svc.cluster.local:8080;
+# operators use `kubectl port-forward svc/judge -n warren 8080:8080`.
+# Deliberately NOT exposed via the Ingress: the surface is operator-facing
+# and bearer-gated, and verdicts must never be readable by agents
+# (the Goodhart guard, docs/design/agent-analytics.md §12.5).
+apiVersion: v1
+kind: Service
+metadata:
+  name: judge
+  namespace: warren
+  labels:
+    app.kubernetes.io/name: warren
+    app.kubernetes.io/component: judge
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: warren
+    app.kubernetes.io/component: judge
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+      protocol: TCP
