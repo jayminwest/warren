@@ -146,6 +146,8 @@ The env contract documents `WARREN_BASE_URL`, `WARREN_API_TOKEN`, and
   token.
 - Auth-rejection errors name the environment as the token source when
   it supplied the credential.
+- `warren doctor` names the slot that supplied the token, in the ok line
+  and in the rejection hint.
 
 The exit-code table is the stable warren-b61e one. The workflows cover
 dispatch-and-wait, tail-and-steer, and plan runs. Default output is
