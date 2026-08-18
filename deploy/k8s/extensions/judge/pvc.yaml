@@ -1,0 +1,19 @@
+# The judge's verdict store, judgment cursors, and spend ledger — one
+# SQLite file at /app/data/judge.db (JUDGE_DB_PATH). Must survive pod
+# replacement: the cursor store is what makes a restart resume instead of
+# re-judging (and re-billing) the whole backlog, and verdicts are
+# append-only history. storageClassName intentionally omitted so each
+# cluster's default class binds (standard-rwo on GKE).
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: judge-data
+  namespace: warren
+  labels:
+    app.kubernetes.io/name: warren
+    app.kubernetes.io/component: judge
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 1Gi
