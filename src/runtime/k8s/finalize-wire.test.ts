@@ -63,6 +63,29 @@ describe("validateFinalizeResult", () => {
 		expect(() => validateFinalizeResult(bad)).toThrow(/not a known finalize stage/);
 	});
 
+	test("accepts an empty mergedBody — a pruned tracker file is legal workspace truth (warren-8e05)", () => {
+		const r = fullResult();
+		const artifacts = {
+			...r.artifacts,
+			mulch: {
+				...r.artifacts.mulch,
+				files: [{ path: ".mulch/expertise/sandbox.jsonl", mergedBody: "" }],
+				counts: { updated: 0, skipped: 0, appended: 0 },
+			},
+		};
+		const out = validateFinalizeResult({ ...r, artifacts });
+		expect(out.artifacts.mulch?.files[0]?.mergedBody).toBe("");
+	});
+
+	test("still rejects an empty path on a delta file entry", () => {
+		const r = fullResult();
+		const artifacts = {
+			...r.artifacts,
+			mulch: { ...r.artifacts.mulch, files: [{ path: "", mergedBody: "x\n" }] },
+		};
+		expect(() => validateFinalizeResult({ ...r, artifacts })).toThrow(/path must be a non-empty/);
+	});
+
 	test("rejects a malformed artifact delta file entry", () => {
 		const bad = fullResult();
 		const badArtifacts = {
