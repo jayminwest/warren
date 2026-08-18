@@ -48,6 +48,14 @@ Leave `WARREN_API_TOKEN` unset. First boot mints an operator token, prints it to
 
 The `docker` runtime runs each agent as a sibling container over the docker socket. The container boundary is the sandbox, so the run needs no `security-opt` or `cap-add` flags (see [docs/design/runtime-docker-provider.md](docs/design/runtime-docker-provider.md)). The data dir bind-mounts at the same absolute path on host and container. That path parity lets agent containers resolve the workspace. Build the agent image once from a clone with `docker build -f deploy/docker/Dockerfile.agent -t warren-agent:latest .`, or point `WARREN_DOCKER_AGENT_IMAGE` at your own.
 
+> **macOS Docker Desktop caveats.** Three traps hit this quickstart on a Mac.
+>
+> - **The docker CLI mount becomes an empty directory.** Docker Desktop shares a fixed set of host paths with its VM, and the host `docker` binary sits outside that set. The `-v "$(command -v docker)":/usr/bin/docker:ro` mount then creates an empty directory at the target, and every dispatch fails with `Executable not found in $PATH: "docker"`. Put a [static linux docker CLI](https://download.docker.com/linux/static/stable/x86_64/) on the data volume instead, then add `-e WARREN_DOCKER_BIN=/srv/warren/bin/docker`. Under `WARREN_RUNTIME=docker`, `GET /readyz` reports a `docker_cli` failure until that CLI answers.
+>
+> - **`-v /srv/warren:/srv/warren` materializes inside the Desktop VM, not on the host filesystem.** Path parity still holds for the agent containers, because they share the same VM. Read the data dir with `docker exec`, not with Finder.
+>
+> - **Pull the image before you run it.** Run `docker pull ghcr.io/jayminwest/warren:latest` first. A stale cached `:latest` from before the 0.17.0 absorption release crash-loops and demands `BURROW_API_TOKEN`.
+
 Open <http://localhost:8080> and paste the token. Click **Projects → Add** and give it a GitHub URL.
 
 Then **Dispatch run**, pick `claude-code`, write a prompt, and start it. The events panel streams live. When the run completes, warren pushes a branch you can open a PR from.

@@ -8,6 +8,9 @@
  * the three sibling test files), which all import from `./checks.ts`,
  * keeps resolving unchanged.
  *
+ *   - checks-docker.ts — the docker CLI probe for the docker topology
+ *     (warren-5c42): the sibling-container backend cannot dispatch
+ *     without an executable CLI that reaches a daemon.
  *   - checks-sandbox.ts — bwrap bring-up and the canopy clone's
  *     existence + cleanliness. Burrow socket reachability lives in the
  *     allowlisted `src/runtime/local/diagnostics/local-runtime.ts` module
@@ -84,6 +87,12 @@ export {
 	checkWarrenDb,
 	type WarrenConfigCheckProject,
 } from "./checks-config.ts";
+export {
+	checkDockerCli,
+	DOCKER_CLI_HINT,
+	DOCKER_CLI_PROBE_TIMEOUT_MS,
+	dockerCliProbeArgv,
+} from "./checks-docker.ts";
 export {
 	checkPreviewAuthStrength,
 	checkPreviewMaxLive,

@@ -9,6 +9,7 @@
 import {
 	checkBwrap,
 	checkDatabaseReachable,
+	checkDockerCli,
 	checkPreviewAuthStrength,
 	checkPreviewMaxLive,
 	checkPreviewPortAllocator,
@@ -20,6 +21,7 @@ import { checkStaleSandboxWorkspaces } from "../../diagnostics/stale-workspaces.
 import { DEFAULT_MAX_LIVE } from "../../preview/eviction/index.ts";
 import { DEFAULT_PREVIEW_PORT_RANGE, PreviewPortAllocator } from "../../preview/port-allocator.ts";
 import type { SpawnFn } from "../../projects/clone.ts";
+import { resolveDockerConfig } from "../../runtime/docker/config.ts";
 import { resolveRuntimeKind } from "../../runtime/registry.ts";
 import { jsonResponse } from "../response.ts";
 import type { RouteHandler, ServerDeps } from "../types.ts";
@@ -53,6 +55,11 @@ export function readyzHandler(deps: ServerDeps): RouteHandler {
 		// found" and needlessly degrades readiness (warren-c128).
 		// `localReadyzChecks` returns [] under k8s.
 		checks.push(...(await localReadyzChecks(deps, spawn)));
+		// The docker-topology counterpart (warren-5c42): under
+		// `WARREN_RUNTIME=docker` the one binary a dispatch cannot proceed
+		// without is the docker CLI, so readiness execs it. Returns [] on the
+		// other backends.
+		checks.push(...(await dockerReadyzChecks(spawn)));
 		// The K8s-topology counterpart (warren-39e1): under `WARREN_RUNTIME=k8s`
 		// /readyz asserts something POSITIVE about the control plane — the pod
 		// watcher's informer sync state — rather than just skipping the burrow
@@ -109,6 +116,23 @@ async function localReadyzChecks(deps: ServerDeps, spawn: SpawnFn): Promise<Diag
 		}),
 		await staleSandboxWorkspacesReadyzCheck(deps),
 	];
+}
+
+/**
+ * The docker-topology readyz probe — `docker_cli` (warren-5c42). Scoped the
+ * same way as the local bwrap probe (warren-c128): only the sibling-container
+ * backend needs a docker CLI, so on `local` / `k8s` there is nothing to probe
+ * and the check is absent. A broken CLI used to boot green and surface only
+ * at the first dispatch, as `Executable not found in $PATH: "docker"` — the
+ * macOS Docker Desktop bind-mount trap in particular (see
+ * `DOCKER_CLI_HINT`). Reads `WARREN_RUNTIME` and `WARREN_DOCKER_BIN` off
+ * `process.env` directly, mirroring `localReadyzChecks` — boot already
+ * validated the runtime value via `resolveRuntimeProvider`, and the spawn
+ * seam resolves its own config from the same env.
+ */
+async function dockerReadyzChecks(spawn: SpawnFn): Promise<DiagnosticCheck[]> {
+	if (resolveRuntimeKind() !== "docker") return [];
+	return [await checkDockerCli({ spawn, dockerBin: resolveDockerConfig(process.env).bin })];
 }
 
 /**

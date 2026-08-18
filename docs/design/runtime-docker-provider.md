@@ -78,7 +78,13 @@ The provider declares its flags honestly per contract §5.
 
 - `WARREN_DOCKER_AGENT_IMAGE` — the agent image. Default
   `warren-agent:latest`.
-- `WARREN_DOCKER_BIN` — the docker CLI path. Default `docker`.
+- `WARREN_DOCKER_BIN` — the docker CLI path. Default `docker`. Under this
+  runtime `GET /readyz` execs `<bin> version` as the `docker_cli` check
+  (warren-5c42) and reports 503 while the CLI is missing, is not executable,
+  or cannot reach a daemon. On macOS Docker Desktop a bind-mounted host CLI
+  resolves to an empty directory, because the host CLI path sits outside
+  Desktop's shared paths — put a static linux CLI on the data volume and
+  point this knob at it.
 - `WARREN_DOCKER_RESTRICTED_NETWORK` — the restricted network name.
 
 An unknown `WARREN_RUNTIME` value still fails loudly at boot.

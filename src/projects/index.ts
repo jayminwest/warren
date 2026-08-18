@@ -23,6 +23,7 @@ export {
 } from "./clone.ts";
 export {
 	DEFAULT_PROJECTS_DIR,
+	defaultProjectsRoot,
 	type EnvLike,
 	loadProjectsConfigFromEnv,
 	type ProjectsConfig,
