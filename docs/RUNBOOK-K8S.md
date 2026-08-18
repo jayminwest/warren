@@ -132,7 +132,8 @@ There is deliberately **no push trigger** (warren-8b5f).
 A push to `main` used to build, the release from that same push then called this workflow again, and thus every release built twice.
 
 The job builds all four images with `docker buildx --platform linux/amd64` — Autopilot is amd64, and arm64 CrashLoops with `exec format error`.
-The images are: root `Dockerfile` → `warren`, `deploy/docker/Dockerfile.agent` → `warren-agent`, `deploy/docker/Dockerfile.workspace-init` → `warren-workspace-init`, and `extensions/judge/Dockerfile` → `warren-ext-judge` (warren-eecb; built from the extension directory alone).
+The images are: root `Dockerfile` → `warren`, `deploy/docker/Dockerfile.agent` → `warren-agent`, and `deploy/docker/Dockerfile.workspace-init` → `warren-workspace-init`.
+The fourth image is `extensions/judge/Dockerfile` → `warren-ext-judge` (warren-eecb), built from the extension directory alone.
 The job tags each image with the full commit SHA **and** `latest`.
 It pushes to the same `<region>-docker.pkg.dev/<project>/<repo>` Artifact Registry that `cloudbuild.yaml` targets.
 The layer cache is GHA-scoped per image.
@@ -154,10 +155,14 @@ Second, on the release path, the job polls `GET https://$WARREN_INGRESS_HOST/ver
 That poll proves that the ingress serves the new code, not just that the Deployment spec points at it (warren-8b5f).
 
 **Judge extension roll** (warren-eecb) closes the job.
-If a `judge` Deployment exists in the `warren` namespace, the job moves it to `warren-ext-judge:<sha>` with `kubectl set image`, waits for the rollout, and verifies the live image.
-`set image` touches only the image: the operator's provider/model/budget env and the imperatively created Secrets (both owned by the gitignored `gke-live-judge` overlay) stay as deployed.
+If a `judge` Deployment exists in the `warren` namespace, the job moves it to `warren-ext-judge:<sha>` with `kubectl set image`.
+The job then waits for the rollout and verifies the live image against the built SHA.
+`set image` touches only the image.
+The operator's provider/model/budget env and the imperative Secrets, both owned by the gitignored `gke-live-judge` overlay, stay as deployed.
 If no judge Deployment exists, the step skips — the judge is opt-in, and CI never creates it.
-After a CI roll, refresh the local overlay's `newTag` from the live Deployment before any manual `kubectl apply -k`, or the apply rolls the image back (same hazard as warren-0028).
+
+After a CI roll, refresh the local overlay's `newTag` from the live Deployment before any manual `kubectl apply -k`.
+A stale manual apply rolls the image back (the warren-0028 hazard).
 
 Auth is **GCP Workload Identity Federation** (`google-github-actions/auth`) — no long-lived JSON service-account keys.
 A repo admin must configure:
