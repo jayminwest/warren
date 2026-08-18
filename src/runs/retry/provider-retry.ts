@@ -145,12 +145,23 @@ const TRANSIENT_PATTERNS: readonly RegExp[] = [
 ];
 
 /**
- * Classify a provider's terminal error message for retry. Durable wins
- * over transient when both match; no match fails closed as `unknown`.
- * Pure + defensive: any input (empty, whitespace, non-string coerced by
- * the caller) classifies without throwing.
+ * Classify a provider's terminal error for retry. The structured
+ * `httpStatus` (captured on the `reap.provider_error` payload by
+ * warren-4001's enrichment) wins over prose parsing: a 5xx whose prose
+ * never spells out the code must not fail closed as `unknown`
+ * (warren-f8b2). Durable wins over transient when both match; no match
+ * fails closed as `unknown`. Pure + defensive: any input (empty,
+ * whitespace, non-string coerced by the caller, non-finite status)
+ * classifies without throwing.
  */
-export function classifyProviderError(message: string): ProviderErrorClass {
+export function classifyProviderError(
+	message: string,
+	httpStatus?: number | null,
+): ProviderErrorClass {
+	if (typeof httpStatus === "number" && Number.isFinite(httpStatus)) {
+		if (httpStatus >= 500) return "transient";
+		if (httpStatus >= 400 && httpStatus < 500) return "durable";
+	}
 	const text = message.toLowerCase();
 	if (DURABLE_PATTERNS.some((p) => p.test(text))) return "durable";
 	if (TRANSIENT_PATTERNS.some((p) => p.test(text))) return "transient";
@@ -228,18 +239,18 @@ async function maybeRetryProviderError(
 	// The single-retry bound: a run that was itself dispatched as a
 	// provider retry carries the lineage marker and never retries again.
 	if (events.some((e) => e.kind === PROVIDER_RETRY_EVENTS.spawnRetry)) return;
-	const message = lastProviderErrorMessage(events);
-	if (message === null) return;
-	const verdict = classifyProviderError(message);
+	const signal = lastProviderErrorSignal(events);
+	if (signal === null) return;
+	const verdict = classifyProviderError(signal.message, signal.httpStatus);
 	if (verdict !== "transient") {
 		input.logger.info(
-			{ runId, verdict, providerError: message },
+			{ runId, verdict, providerError: signal.message },
 			"provider-retry.skipped: error is not transient",
 		);
 		return;
 	}
 
-	await dispatchProviderRetry(input, now, { ...run, projectId }, message);
+	await dispatchProviderRetry(input, now, { ...run, projectId }, signal.message);
 }
 
 /**
@@ -320,17 +331,26 @@ async function dispatchProviderRetry(
 	}
 }
 
-/** The last `reap.provider_error` message on the run's stream, if any. */
-function lastProviderErrorMessage(events: readonly EventRow[]): string | null {
-	let message: string | null = null;
+/** The structured signal off the last `reap.provider_error` event, if any. */
+interface ProviderErrorEventSignal {
+	readonly message: string;
+	/** Structured status captured by warren-4001's enrichment, else `null`. */
+	readonly httpStatus: number | null;
+}
+
+function lastProviderErrorSignal(events: readonly EventRow[]): ProviderErrorEventSignal | null {
+	let signal: ProviderErrorEventSignal | null = null;
 	for (const event of events) {
 		if (event.kind !== "reap.provider_error") continue;
-		const payload = event.payloadJson as { message?: unknown } | null;
+		const payload = event.payloadJson as { message?: unknown; httpStatus?: unknown } | null;
 		if (payload !== null && typeof payload.message === "string" && payload.message.length > 0) {
-			message = payload.message;
+			signal = {
+				message: payload.message,
+				httpStatus: typeof payload.httpStatus === "number" ? payload.httpStatus : null,
+			};
 		}
 	}
-	return message;
+	return signal;
 }
 
 /**

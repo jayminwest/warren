@@ -79,6 +79,21 @@ describe("classifyProviderError", () => {
 		expect(classifyProviderError("the agent exploded")).toBe("unknown");
 	});
 
+	test("reads the structured httpStatus before the prose fallback", () => {
+		// 5xx short-circuits to transient even with no status token in the
+		// prose (warren-f8b2).
+		expect(classifyProviderError("the upstream gateway choked", 502)).toBe("transient");
+		expect(classifyProviderError("something weird happened", 503)).toBe("transient");
+		// 4xx short-circuits to durable even when the prose looks transient.
+		expect(classifyProviderError("connection reset by peer", 401)).toBe("durable");
+		expect(classifyProviderError("request failed", 429)).toBe("durable");
+		// Null/undefined/out-of-range status falls back to the message parse.
+		expect(classifyProviderError("something weird happened", null)).toBe("unknown");
+		expect(classifyProviderError("Network connection lost.", undefined)).toBe("transient");
+		expect(classifyProviderError("something weird happened", Number.NaN)).toBe("unknown");
+		expect(classifyProviderError("something weird happened", 200)).toBe("unknown");
+	});
+
 	test("durable wins when a message names both a symptom and a cause", () => {
 		expect(classifyProviderError("request failed with 401: connection reset by peer")).toBe(
 			"durable",
@@ -103,7 +118,12 @@ interface Fixture {
 }
 
 async function setup(
-	opts: { trigger?: string; seedId?: string | null; providerMessage?: string } = {},
+	opts: {
+		trigger?: string;
+		seedId?: string | null;
+		providerMessage?: string;
+		httpStatus?: number | null;
+	} = {},
 ): Promise<Fixture> {
 	const db = await openDatabase({ path: ":memory:" });
 	openDb = db;
@@ -132,7 +152,10 @@ async function setup(
 		ts: new Date().toISOString(),
 		kind: "reap.provider_error",
 		stream: "system",
-		payload: { message: opts.providerMessage ?? "Network connection lost." },
+		payload: {
+			message: opts.providerMessage ?? "Network connection lost.",
+			httpStatus: opts.httpStatus ?? null,
+		},
 	});
 	return { repos, runId: run.id, projectId: project.id };
 }
@@ -284,6 +307,24 @@ describe("createProviderRetryLifecycleExtension", () => {
 		const oldEvents = await fixture.repos.events.listByRun(fixture.runId);
 		const dispatched = oldEvents.find((e) => e.kind === PROVIDER_RETRY_EVENTS.retryDispatched);
 		expect((dispatched?.payloadJson as { newRunId?: string }).newRunId).toBe(spawn.newRunId);
+	});
+
+	test("retries a 5xx httpStatus even when the prose names no status code", async () => {
+		const fixture = await setup({
+			providerMessage: "the provider returned an empty response",
+			httpStatus: 502,
+		});
+		const { spawn } = await fire(fixture);
+		expect(spawn.calls).toHaveLength(1);
+	});
+
+	test("does not retry a 4xx httpStatus even when the prose looks transient", async () => {
+		const fixture = await setup({
+			providerMessage: "connection reset while reaching the model",
+			httpStatus: 401,
+		});
+		const { spawn } = await fire(fixture);
+		expect(spawn.calls).toHaveLength(0);
 	});
 
 	test("does not retry a durable provider rejection", async () => {
