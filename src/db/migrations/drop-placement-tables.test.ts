@@ -1,7 +1,10 @@
 /**
  * Migration 0028 (sqlite) / 0022 (postgres) — drop the `workers` + `burrows`
- * placement tables, retain `runs.worker_id` / `runs.burrow_id` /
- * `runs.burrow_run_id` for historical rows (warren-3743, plan pl-829f step 24).
+ * placement tables, retain `runs.worker_id` / `runs.sandbox_id` /
+ * `runs.sandbox_run_id` for historical rows (warren-3743, plan pl-829f step 24).
+ * The two sandbox columns were named `burrow_id` / `burrow_run_id` until
+ * migration 0049 renamed them (warren-572d); the replay case below still
+ * creates the old names on purpose, because it starts from the old schema.
  *
  * Two angles are covered:
  *
@@ -139,8 +142,8 @@ describe("drop workers + burrows placement tables (warren-3743)", () => {
 			);
 			const cols = new Set(colRows.rows.map((r) => r.column_name));
 			expect(cols.has("worker_id")).toBe(true);
-			expect(cols.has("burrow_id")).toBe(true);
-			expect(cols.has("burrow_run_id")).toBe(true);
+			expect(cols.has("sandbox_id")).toBe(true);
+			expect(cols.has("sandbox_run_id")).toBe(true);
 		},
 	);
 });
