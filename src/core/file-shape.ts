@@ -77,6 +77,7 @@ function readPathsWith(
 	payload: Record<string, unknown>,
 	table: Readonly<Record<string, readonly string[]>>,
 	nameKeys: readonly string[],
+	argsKeys: readonly string[],
 ): readonly string[] {
 	let name: string | null = null;
 	for (const key of nameKeys) {
@@ -86,27 +87,32 @@ function readPathsWith(
 	if (name === null) return [];
 	const keys = table[name];
 	if (keys === undefined) return [];
-	const input = asRecord(payload.input);
-	if (input === null) return [];
-	const out: string[] = [];
-	for (const key of keys) {
-		const p = toStr(input[key]);
-		if (p !== null) out.push(p);
+	for (const argsKey of argsKeys) {
+		const input = asRecord(payload[argsKey]);
+		if (input === null) continue;
+		const out: string[] = [];
+		for (const key of keys) {
+			const p = toStr(input[key]);
+			if (p !== null) out.push(p);
+		}
+		if (out.length > 0) return out;
 	}
-	return out;
+	return [];
 }
 
 const CLAUDE_CODE_FILE_SHAPE: FileShape = {
 	runtime: "claude-code",
 	readPaths(payload) {
-		return readPathsWith(payload, ANTHROPIC_FILE_TOOLS, ["name"]);
+		return readPathsWith(payload, ANTHROPIC_FILE_TOOLS, ["name"], ["input"]);
 	},
 };
 
+// Pi's native `toolCall` blocks carry args under `arguments`, not
+// `input` (warren-677c) — the same wrapper the pi tool shape reads.
 const PI_FILE_SHAPE: FileShape = {
 	runtime: "pi",
 	readPaths(payload) {
-		return readPathsWith(payload, PI_FILE_TOOLS, ["name", "toolName"]);
+		return readPathsWith(payload, PI_FILE_TOOLS, ["name", "toolName"], ["input", "arguments"]);
 	},
 };
 

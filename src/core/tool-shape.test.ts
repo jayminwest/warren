@@ -98,6 +98,40 @@ describe("pi toolShape", () => {
 		expect(reading).toEqual({ toolName: "bash", command: "git status", toolUseId: "call_1" });
 	});
 
+	test("reads the pi-native toolCall block with the arguments wrapper (warren-677c)", () => {
+		// The exact shape production emits: 10,583/10,583 pi bash rows
+		// landed command=NULL because only input/command were read.
+		const reading = shape.readToolUse({
+			name: "bash",
+			type: "toolCall",
+			id: "call_7",
+			arguments: { command: "bun run check:all" },
+		});
+		expect(reading).toEqual({
+			toolName: "bash",
+			command: "bun run check:all",
+			toolUseId: "call_7",
+		});
+	});
+
+	test("prefers input.command over arguments.command over top-level command", () => {
+		expect(
+			shape.readToolUse({
+				name: "bash",
+				input: { command: "from-input" },
+				arguments: { command: "from-arguments" },
+				command: "from-top",
+			})?.command,
+		).toBe("from-input");
+		expect(
+			shape.readToolUse({
+				name: "bash",
+				arguments: { command: "from-arguments" },
+				command: "from-top",
+			})?.command,
+		).toBe("from-arguments");
+	});
+
 	test("falls back to pi-native camelCase fields", () => {
 		const reading = shape.readToolUse({
 			toolName: "bash",

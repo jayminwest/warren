@@ -19,7 +19,7 @@
  *     "no matching result ⇒ non-error" semantics in reverse.
  */
 
-import { and, asc, eq, gte, inArray, notExists, sql } from "drizzle-orm";
+import { and, asc, eq, gt, gte, inArray, notExists, sql } from "drizzle-orm";
 import type { SqliteDrizzleDb } from "../client.ts";
 import type { ToolCallRow } from "../schema.ts";
 import type { DrizzleAdapter } from "./drizzle-adapter.ts";
@@ -150,6 +150,41 @@ export class ToolCallsRepo {
 				.limit(opts.limit),
 		);
 		return rows.map((r) => r.runId);
+	}
+
+	/**
+	 * Distinct run ids that already HAVE rollup rows, keyset-paged by run
+	 * id — the corpus-repair walk (warren-677c). Where
+	 * {@link listRunsMissingRollup} finds runs the backfill never touched,
+	 * this finds runs it touched with a since-fixed shape, so a repair pass
+	 * can re-extract them from retained events. Keyset pagination
+	 * (`afterRunId`) keeps the walk stable while the pass itself rewrites
+	 * the rows it pages over.
+	 */
+	async listRunsWithRollup(opts: { afterRunId?: string; limit: number }): Promise<string[]> {
+		const rows = await this.adapter.pickAll<{ runId: string }>(
+			this.db
+				.selectDistinct({ runId: this.toolCalls.runId })
+				.from(this.toolCalls)
+				.where(
+					opts.afterRunId === undefined ? undefined : gt(this.toolCalls.runId, opts.afterRunId),
+				)
+				.orderBy(asc(this.toolCalls.runId))
+				.limit(opts.limit),
+		);
+		return rows.map((r) => r.runId);
+	}
+
+	/**
+	 * Drop one run's rollup rows so a repair pass can re-extract them from
+	 * events (warren-677c). Callers must verify the run's tool events are
+	 * still retained BEFORE deleting — the rollup is derived state only as
+	 * long as its source survives.
+	 */
+	async deleteForRun(runId: string): Promise<void> {
+		await this.adapter.runWrite(
+			this.db.delete(this.toolCalls).where(eq(this.toolCalls.runId, runId)),
+		);
 	}
 
 	async countByRun(runId: string): Promise<number> {

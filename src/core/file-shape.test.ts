@@ -62,8 +62,41 @@ describe("pi fileShape", () => {
 		]);
 	});
 
+	test("reads the pi-native toolCall block with the arguments wrapper (warren-677c)", () => {
+		// The exact shape production emits: 3,944/3,944 pi edit/read/write
+		// rows landed with empty file_paths because only `input` was read.
+		expect(shape.readPaths({ name: "read", type: "toolCall", arguments: { path: "AGENTS.md" } })) //
+			.toEqual(["AGENTS.md"]);
+		expect(shape.readPaths({ name: "edit", arguments: { path: "src/a.ts" } })).toEqual([
+			"src/a.ts",
+		]);
+		expect(shape.readPaths({ name: "write", arguments: { file_path: "docs/x.md" } })).toEqual([
+			"docs/x.md",
+		]);
+	});
+
+	test("prefers input paths over arguments paths when both are present", () => {
+		expect(
+			shape.readPaths({
+				name: "read",
+				input: { path: "from-input.ts" },
+				arguments: { path: "from-arguments.ts" },
+			}),
+		).toEqual(["from-input.ts"]);
+	});
+
 	test("returns an empty list for non-file tools and unreadable payloads", () => {
 		expect(shape.readPaths({ name: "bash", input: { command: "pwd" } })).toEqual([]);
+		expect(shape.readPaths({ name: "bash", arguments: { command: "pwd" } })).toEqual([]);
 		expect(shape.readPaths({})).toEqual([]);
+	});
+});
+
+describe("claude-code fileShape ignores the arguments dialect", () => {
+	const shape = fileShapeFor("claude-code");
+	if (shape === null) throw new Error("claude-code shape missing");
+
+	test("arguments wrapper belongs to pi", () => {
+		expect(shape.readPaths({ name: "Read", arguments: { file_path: "x.ts" } })).toEqual([]);
 	});
 });

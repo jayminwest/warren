@@ -157,15 +157,22 @@ const CLAUDE_CODE_TOOL_SHAPE: ToolShape = {
  * Pi's rows arrive through burrow's `message_end` explosion in the same
  * normalized content-block shape as claude-code's, but pi-native fields
  * ride along in camelCase (`toolName`, `toolCallId`, `isError`, a
- * top-level `command`, and `result`/`output` bodies). The pi shape
- * reads the normalized fields first and falls back to the native ones.
+ * top-level `command`, and `result`/`output` bodies). Pi's own
+ * `toolCall` blocks wrap the args in an `arguments` record instead of
+ * `input` — `{"name":"bash","type":"toolCall","arguments":{"command":…}}`
+ * is the shape production emits (warren-677c). The pi shape reads the
+ * normalized fields first and falls back to the native ones.
  */
 const PI_TOOL_SHAPE: ToolShape = {
 	runtime: "pi",
 	readToolUse(payload) {
 		return useReading(
 			firstStr(payload.name, payload.toolName),
-			firstStr(asRecord(payload.input)?.command, payload.command),
+			firstStr(
+				asRecord(payload.input)?.command,
+				asRecord(payload.arguments)?.command,
+				payload.command,
+			),
 			firstStr(payload.id, payload.toolCallId, payload.tool_use_id),
 		);
 	},

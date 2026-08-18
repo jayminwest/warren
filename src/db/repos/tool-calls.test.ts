@@ -176,6 +176,40 @@ function suite(dialect: "sqlite" | "postgres"): void {
 			}
 		});
 
+		test("listRunsWithRollup pages runs that HAVE rollup rows; deleteForRun empties one run", async () => {
+			const { handle, toolCalls, runId } = await open();
+			try {
+				// No rollup rows yet — not a repair candidate.
+				expect(await toolCalls.listRunsWithRollup({ limit: 10 })).toEqual([]);
+				await toolCalls.recordUse({
+					runId,
+					seq: 1,
+					ts: "2026-08-10T00:00:00.000Z",
+					toolName: "bash",
+					command: null,
+					filePaths: [],
+					toolUseId: "c1",
+				});
+				await toolCalls.recordUse({
+					runId,
+					seq: 2,
+					ts: "2026-08-10T00:00:01.000Z",
+					toolName: "read",
+					command: null,
+					filePaths: [],
+					toolUseId: "c2",
+				});
+				expect(await toolCalls.listRunsWithRollup({ limit: 10 })).toEqual([runId]);
+				// Keyset pagination: everything after the last-seen run id.
+				expect(await toolCalls.listRunsWithRollup({ limit: 10, afterRunId: runId })).toEqual([]);
+				await toolCalls.deleteForRun(runId);
+				expect(await toolCalls.countByRun(runId)).toBe(0);
+				expect(await toolCalls.listRunsWithRollup({ limit: 10 })).toEqual([]);
+			} finally {
+				await handle.close();
+			}
+		});
+
 		test("rollup rows cascade on project delete like the events transcript", async () => {
 			const { handle, toolCalls, projects, projectId, runId } = await open();
 			try {

@@ -159,3 +159,105 @@ export async function backfillToolCallRollup(
 	}
 	return { runs, uses, results };
 }
+
+/** Default page size for the repair walk over runs with rollup rows. */
+export const DEFAULT_TOOL_CALLS_REPAIR_PAGE_SIZE = 100;
+
+export interface ToolCallsRepairOptions {
+	/** Runs re-extracted per keyset page; default {@link DEFAULT_TOOL_CALLS_REPAIR_PAGE_SIZE}. */
+	readonly pageSize?: number;
+	readonly logger?: ToolCallsBackfillLogger;
+}
+
+export interface ToolCallsRepairResult {
+	/** Runs whose rollup rows were dropped and re-extracted. */
+	readonly runs: number;
+	/** Runs left untouched (run row gone, events pruned, or extraction error). */
+	readonly skipped: number;
+	/** tool_use rows re-written. */
+	readonly uses: number;
+	/** tool_result joins re-applied. */
+	readonly results: number;
+}
+
+/**
+ * Re-extract EXISTING rollup rows through the (fixed) shape registries
+ * (warren-677c). The boot backfill only targets runs with NO rollup
+ * rows, so rows a since-fixed shape mis-read (pi's `arguments` wrapper
+ * left every command NULL and every file_paths empty) never re-enter
+ * its candidate set. This pass walks every run that has rollup rows,
+ * drops them, and replays the run's retained tool events through the
+ * same extraction seam the bridge and backfill use.
+ *
+ * A run whose tool events are no longer retained is SKIPPED, never
+ * deleted — the rollup is only derived state while its source survives.
+ * Re-extracting an already-correct run rewrites identical rows, so
+ * over-selection is harmless; the pass is idempotent end to end.
+ */
+export async function repairToolCallRollup(
+	repos: Repos,
+	opts: ToolCallsRepairOptions = {},
+): Promise<ToolCallsRepairResult> {
+	const pageSize = opts.pageSize ?? DEFAULT_TOOL_CALLS_REPAIR_PAGE_SIZE;
+	let afterRunId: string | undefined;
+	let runs = 0;
+	let skipped = 0;
+	let uses = 0;
+	let results = 0;
+	for (;;) {
+		const page = await repos.toolCalls.listRunsWithRollup({
+			limit: pageSize,
+			...(afterRunId === undefined ? {} : { afterRunId }),
+		});
+		if (page.length === 0) break;
+		for (const runId of page) {
+			const counted = await repairOneRun(repos, runId, opts.logger).catch((err: unknown) => {
+				opts.logger?.warn(
+					{ runId, err: err instanceof Error ? err.message : String(err) },
+					"tool-calls repair: skipping run after error",
+				);
+				return null;
+			});
+			if (counted === null) {
+				skipped += 1;
+				continue;
+			}
+			runs += 1;
+			uses += counted.uses;
+			results += counted.results;
+		}
+		afterRunId = page[page.length - 1];
+	}
+	opts.logger?.info({ runs, skipped, uses, results }, "tool-calls rollup repair pass complete");
+	return { runs, skipped, uses, results };
+}
+
+/**
+ * Drop-and-replay one run's rollup rows from its retained tool events.
+ * Returns null (repairing nothing) when the run row is gone or its
+ * events were pruned — the rollup is only derived state while its
+ * source survives, so a sourceless run keeps its stale rows.
+ */
+async function repairOneRun(
+	repos: Repos,
+	runId: string,
+	logger: ToolCallsBackfillLogger | undefined,
+): Promise<{ uses: number; results: number } | null> {
+	const run = await repos.runs.get(runId);
+	if (run === null) return null;
+	const rows = await repos.events.listToolEventsForRun(runId);
+	if (rows.length === 0) {
+		logger?.warn({ runId }, "tool-calls repair: events pruned, keeping stale rollup");
+		return null;
+	}
+	const runtime = runtimeFromRenderedAgent(run.renderedAgentJson);
+	await repos.toolCalls.deleteForRun(runId);
+	let uses = 0;
+	let results = 0;
+	for (const row of rows) {
+		const counted = await recordEvent(repos, runId, runtime, row);
+		uses += counted.uses;
+		results += counted.results;
+	}
+	return { uses, results };
+}
