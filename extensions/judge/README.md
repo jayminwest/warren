@@ -108,9 +108,13 @@ Step 6 (warren-33da) adds the collector daemon:
   band-agreement between the cheap and strong verdicts is computed from
   the store's calibration join and persisted per rubric version in the
   `calibration_metrics` table — the disagreement rate is itself the
-  tracked signal. Budget gates apply to calibration judgments too: a
-  budget breach writes a visible `unjudged` marker under the strong
-  model id, never a silent skip. Disabled unless
+  tracked signal. Budget gates apply to calibration judgments too: past
+  the daily budget the sampled run is DEFERRED — no marker, no store
+  write, same PR #969 semantics as the collector — so it re-enters the
+  candidate pool next pass instead of a `budget_exceeded` marker
+  permanently excluding it. The deferral stays visible in the cycle
+  stats and a once-per-pass log line. Per-judgment failures from billed
+  attempts still write markers. Disabled unless
   `JUDGE_CALIBRATION_MODEL` is set.
 
 Step 8 (warren-265d) adds the export surface and the end-to-end smoke:

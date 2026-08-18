@@ -129,7 +129,7 @@ async function main(): Promise<void> {
 					onCycle: (stats) =>
 						console.error(
 							`${EXTENSION_NAME}: calibration — ${stats.sampled} sampled, ` +
-								`${stats.rejudged} re-judged, ${stats.budgetSkipped} budget-skipped, ` +
+								`${stats.rejudged} re-judged, ${stats.budgetDeferred} budget-deferred, ` +
 								`agreement ${String(stats.report.overallRate)} over ` +
 								`${stats.report.sampledPairs} pairs`,
 						),
@@ -137,10 +137,8 @@ async function main(): Promise<void> {
 						console.error(`${EXTENSION_NAME}: calibration pass failed:`, err),
 					onRunError: (runId, err) =>
 						console.error(`${EXTENSION_NAME}: calibration re-judge for run ${runId} failed:`, err),
-					onBudgetSkip: (runId, detail) =>
-						console.error(
-							`${EXTENSION_NAME}: run ${runId} calibration-unjudged (budget_exceeded): ${detail}`,
-						),
+					onBudgetDeferred: (runId, detail) =>
+						console.error(`${EXTENSION_NAME}: calibration deferring from run ${runId}: ${detail}`),
 				});
 	exportServer =
 		config.exportToken === null

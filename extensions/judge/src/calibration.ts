@@ -13,9 +13,15 @@
  * of the same sample is an exact no-op.
  *
  * Budget gates apply to calibration judgments exactly as to first-pass
- * ones: the fleet daily budget and the per-judgment cap are shared, and a
- * budget breach records a VISIBLE unjudged marker under the strong model
- * id — never a silent skip (§12.5).
+ * ones: the fleet daily budget and the per-judgment cap are shared. Past
+ * the daily budget the sampled run is DEFERRED — no marker, no store
+ * write — mirroring the collector's semantics (PR #969): a
+ * `budget_exceeded` marker under the strong model id would occupy the
+ * dedupe key and permanently exclude the run from every future sample.
+ * The deferral stays visible in the cycle stats and the once-per-pass
+ * deferral log line. Per-judgment failures (judge_error,
+ * malformed_verdict, a mid-attempt cap breach) still record markers,
+ * because the attempts were billed.
  *
  * The agreement rate is computed from the store's calibration join and
  * persisted per rubric version in the `calibration_metrics` table, so the
@@ -256,15 +262,16 @@ export interface CalibrationDeps {
 	readonly random?: () => number;
 	readonly onRunError?: (runId: string, err: unknown) => void;
 	readonly onJudgment?: (runId: string, outcome: string) => void;
-	/** After every budget skip — loud by design (§12.5). */
-	readonly onBudgetSkip?: (runId: string, detail: string) => void;
+	/** Once per pass, on the first budget deferral — loud by design (§12.5). */
+	readonly onBudgetDeferred?: (runId: string, detail: string) => void;
 }
 
 export interface CalibrationCycleStats {
 	readonly candidates: number;
 	readonly sampled: number;
 	readonly rejudged: number;
-	readonly budgetSkipped: number;
+	/** Sampled runs deferred by the exhausted daily budget — no row written. */
+	readonly budgetDeferred: number;
 	readonly report: AgreementReport;
 }
 
@@ -276,7 +283,8 @@ export function strongJudgeModelId(provider: string, model: string): string {
 /**
  * Runs eligible for the calibration sample: judged by the cheap model under
  * this rubric version, with no row yet from the strong model (a verdict OR
- * an unjudged marker — a budget-skip marker is that run's resolution).
+ * an unjudged marker from a billed attempt). A budget deferral writes no
+ * row, so a deferred run re-enters the candidate pool next pass.
  */
 function calibrationCandidates(deps: CalibrationDeps, strongId: string): string[] {
 	const cheapJudged = new Set<string>();
@@ -319,25 +327,27 @@ export async function calibrateOnce(deps: CalibrationDeps): Promise<CalibrationC
 	const sample = sampleRuns(candidates, deps.sampleSize, random);
 
 	let rejudged = 0;
-	let budgetSkipped = 0;
+	let budgetDeferred = 0;
+	let deferralAnnounced = false;
 	for (const runId of sample) {
 		try {
 			const today = dayKey(now());
 			const spentToday = deps.spend.spendForDay(today);
 			const remaining = deps.dailyBudgetUsd - spentToday;
 			if (remaining <= 0) {
-				deps.verdicts.recordUnjudged({
-					runId,
-					rubricVersion: deps.rubricVersion,
-					judgeModelId: strongId,
-					reason: "budget_exceeded",
-				});
-				deps.onBudgetSkip?.(
-					runId,
-					`fleet daily budget $${deps.dailyBudgetUsd.toFixed(4)} exhausted ` +
-						`($${spentToday.toFixed(4)} spent on ${today})`,
-				);
-				budgetSkipped += 1;
+				// DEFER, never mark (PR #969 semantics): a budget_exceeded
+				// marker under the strong id would occupy the dedupe key and
+				// permanently exclude this run from every future sample. No
+				// write means the next pass can re-draw it.
+				budgetDeferred += 1;
+				if (!deferralAnnounced) {
+					deferralAnnounced = true;
+					deps.onBudgetDeferred?.(
+						runId,
+						`fleet daily budget $${deps.dailyBudgetUsd.toFixed(4)} exhausted ` +
+							`($${spentToday.toFixed(4)} spent on ${today})`,
+					);
+				}
 				continue;
 			}
 			const maxCostUsd = Math.min(deps.maxCostUsdPerJudgment, remaining);
@@ -387,7 +397,7 @@ export async function calibrateOnce(deps: CalibrationDeps): Promise<CalibrationC
 		candidates: candidates.length,
 		sampled: sample.length,
 		rejudged,
-		budgetSkipped,
+		budgetDeferred,
 		report,
 	};
 }

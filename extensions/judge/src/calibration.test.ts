@@ -206,23 +206,30 @@ describe("calibrateOnce", () => {
 		deps.verdicts.close();
 	});
 
-	test("a budget breach records a visible unjudged marker under the strong model id", async () => {
+	test("an exhausted daily budget defers the sampled run — no marker, announced once", async () => {
 		const { deps, verdicts, judged } = makeDeps({ dailyBudgetUsd: 0 });
-		seedCheapVerdicts(verdicts, ["run-1"]);
-		const skips: string[] = [];
+		seedCheapVerdicts(verdicts, ["run-1", "run-2"]);
+		const deferrals: string[] = [];
 
-		const result = await calibrateOnce({ ...deps, onBudgetSkip: (runId) => skips.push(runId) });
-		expect(result.budgetSkipped).toBe(1);
+		const result = await calibrateOnce({
+			...deps,
+			onBudgetDeferred: (runId) => deferrals.push(runId),
+		});
+		expect(result.budgetDeferred).toBe(2);
 		expect(result.rejudged).toBe(0);
 		expect(judged).toHaveLength(0);
-		expect(skips).toEqual(["run-1"]);
+		// Announced once per pass, not once per deferred run.
+		expect(deferrals).toHaveLength(1);
 
-		const rows = verdicts.rowsForRun("run-1");
-		expect(rows[1]).toMatchObject({
-			kind: "unjudged",
-			judgeModelId: STRONG_ID,
-			reason: "budget_exceeded",
-		});
+		// No marker: a budget_exceeded row under the strong id would occupy
+		// the dedupe key and permanently exclude the run from every future
+		// sample (PR #969 semantics). Both runs stay candidates.
+		for (const runId of ["run-1", "run-2"]) {
+			expect(verdicts.rowsForRun(runId)).toHaveLength(1);
+		}
+		const rerun = await calibrateOnce({ ...deps, dailyBudgetUsd: 5 });
+		expect(rerun.candidates).toBe(2);
+		expect(rerun.rejudged).toBe(2);
 		verdicts.close();
 	});
 
