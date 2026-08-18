@@ -85,10 +85,15 @@ Step 6 (warren-33da) adds the collector daemon:
   ledger: every judgment's accrued USD cost, summed per UTC day to enforce
   `JUDGE_DAILY_BUDGET_USD`. Spend is ledgered for verdicts AND unjudged
   markers alike — the provider billed the attempts either way.
-- Budget gates (§12.5): past the daily budget the judgment is SKIPPED and a
-  visible `unjudged` marker with reason `budget_exceeded` is recorded —
-  never a silent drop. The per-judgment cap is clamped to the remaining
-  daily budget so one judgment cannot push the fleet past the day gate.
+- Budget gates (§12.5): past the daily budget the run is DEFERRED — no
+  marker, no checkpoint — so it re-enters the candidate set once budget
+  frees (the next UTC day). The hole stays visible in the cycle stats and
+  a once-per-cycle deferral log line, never as a permanent write-off: a
+  `budget_exceeded` marker would occupy the store's dedupe key and block
+  the eventual real verdict (warren-5fcf). The per-judgment cap is clamped
+  to the remaining daily budget so one judgment cannot push the fleet past
+  the day gate; a judgment that hits its cap MID-ATTEMPT does resolve with
+  a `budget_exceeded` marker, because the attempts were billed.
 - SIGTERM/SIGINT abort the loop between cycles; the in-flight judgment
   always finishes and checkpoints before exit.
 - [`src/calibration.ts`](src/calibration.ts) — the calibration re-judge
@@ -111,9 +116,9 @@ Step 8 (warren-265d) adds the export surface and the end-to-end smoke:
 - [`src/smoke.test.ts`](src/smoke.test.ts) — the end-to-end smoke against
   the fake-warren double with a stubbed judge (no provider calls):
   terminal run → judged → validated verdict exported over
-  `/verdicts.jsonl`; the budget-skip path exports a visible `unjudged`
-  marker; the re-judge append path keeps both verdicts readable keyed by
-  rubric version, with the stored calibration metric served by
+  `/verdicts.jsonl`; the fleet-budget path defers the run and judges it
+  once budget frees; the re-judge append path keeps both verdicts readable
+  keyed by rubric version, with the stored calibration metric served by
   `/agreement`.
 
 ## Export surface
@@ -178,7 +183,7 @@ extension's own store, never a core table.
 | `JUDGE_DB_PATH`   | no       | SQLite store path (default `./data/judge.db`) |
 | `JUDGE_POLL_INTERVAL_MS` | no | Delay between terminal-run discovery polls (default `30000`) |
 | `JUDGE_MAX_COST_USD` | no | Per-judgment USD cost cap (default `0.25`) — the §12.5 analog of `maxCostUsd`. The legacy `JUDGE_MAX_COST_USD_PER_JUDGMENT` spelling still resolves as a fallback alias |
-| `JUDGE_DAILY_BUDGET_USD` | no | Fleet-level daily judge budget (default `5`); past it, runs are marked `unjudged` rather than degraded silently |
+| `JUDGE_DAILY_BUDGET_USD` | no | Fleet-level daily judge budget (default `5`); past it, further runs are deferred to the next UTC day, visibly in the cycle stats |
 | `JUDGE_MAX_RETRIES` | no | Malformed/missing-verdict retries per judgment (default `2`) |
 | `JUDGE_MAX_PAGES` | no | Hard cap on events pages per judgment (default `40`); past it the tail degrades to a lower-confidence verdict, never unbounded spend |
 | `JUDGE_EVENTS_PAGE_SIZE` | no | Default events page size when the model omits `limit` (default `200`) |

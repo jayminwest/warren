@@ -78,8 +78,8 @@ spec:
                   name: judge-secrets
                   key: openrouter-api-key
                   optional: true
-            # --- budget gates (§12.5). Past the daily budget, runs get a
-            # visible `unjudged` marker and are retried next UTC day. ---
+            # --- budget gates (§12.5). Past the daily budget, further runs
+            # are deferred (visibly, in the cycle stats) to the next UTC day. ---
             - name: JUDGE_DAILY_BUDGET_USD
               value: "5"
             # --- export surface: token-gated /verdicts.jsonl + /agreement.

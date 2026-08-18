@@ -12,12 +12,21 @@
  *
  * Budget gates (agent-analytics §12.5), checked per run before judging:
  *   - `JUDGE_DAILY_BUDGET_USD` fleet-wide: when the day's ledgered spend
- *     reaches the budget the judgment is SKIPPED and a visible unjudged
- *     marker with reason `budget_exceeded` is recorded — never a silent
- *     drop. The marker is the run's resolution under this rubric version.
+ *     reaches the budget the run is DEFERRED — no marker, no checkpoint,
+ *     so it re-enters the candidate set once budget frees (the next UTC
+ *     day). The hole stays visible in the cycle stats and the deferral
+ *     log line, never as a permanent write-off: a `budget_exceeded`
+ *     marker would checkpoint the run closed under this
+ *     (rubricVersion, judgeModelId) pair AND occupy the store's dedupe
+ *     key, blocking the eventual real verdict (warren-5fcf — a backlog
+ *     larger than one day's budget would have been burned unjudged on
+ *     day one).
  *   - `JUDGE_MAX_COST_USD` per judgment: passed to the judge loop as its
  *     cost cap, clamped to the remaining daily budget so one judgment
- *     cannot push the fleet past the day gate.
+ *     cannot push the fleet past the day gate. A judgment that hits its
+ *     cap mid-attempt DOES resolve with a `budget_exceeded` marker — the
+ *     attempts were billed, and retrying an over-cap run burns the same
+ *     budget again.
  *
  * Sequencing is serial: one judgment at a time, so the daily gate's
  * read-then-judge is race-free and a graceful shutdown has at most one
@@ -59,8 +68,12 @@ export interface JudgeCollectorDeps {
 	readonly onRunError?: (runId: string, err: unknown) => void;
 	/** After every accepted judgment — the operator's visibility feed. */
 	readonly onJudgment?: (runId: string, outcome: JudgeOutcome) => void;
-	/** After every budget skip — loud by design (§12.5). */
-	readonly onBudgetSkip?: (runId: string, detail: string) => void;
+	/**
+	 * Once per cycle when the fleet gate first trips — loud by design
+	 * (§12.5), but once, not once per deferred run (a big backlog would
+	 * repeat the line hundreds of times every cycle).
+	 */
+	readonly onBudgetDeferred?: (runId: string, detail: string) => void;
 }
 
 export interface JudgeCycleStats {
@@ -68,7 +81,8 @@ export interface JudgeCycleStats {
 	readonly terminalRuns: number;
 	readonly judged: number;
 	readonly alreadyJudged: number;
-	readonly budgetSkipped: number;
+	/** Runs deferred (not judged, not marked) because the daily budget is spent. */
+	readonly budgetDeferred: number;
 }
 
 const DEFAULT_RUNS_PAGE_SIZE = 500;
@@ -90,52 +104,19 @@ async function discoverRuns(client: WarrenClient, pageSize: number): Promise<Run
 	}
 }
 
-/** Record a budget-skip marker and checkpoint — the skip is the resolution. */
-function recordBudgetSkip(
-	runId: string,
-	detail: string,
-	deps: JudgeCollectorDeps,
-	now: () => Date,
-): void {
-	deps.verdicts.recordUnjudged({
-		runId,
-		rubricVersion: deps.rubricVersion,
-		judgeModelId: deps.judgeModelId,
-		reason: "budget_exceeded",
-	});
-	deps.cursors.checkpoint(runId, {
-		rubricVersion: deps.rubricVersion,
-		judgeModelId: deps.judgeModelId,
-		outcome: "unjudged",
-		updatedAt: now().toISOString(),
-	});
-	deps.onBudgetSkip?.(runId, detail);
-}
-
 /**
- * Judge one terminal run: budget gate, judge, store, ledger, checkpoint —
- * in that order, and the checkpoint is always last.
+ * Judge one terminal run: judge, store, ledger, checkpoint — in that
+ * order, and the checkpoint is always last. The fleet budget gate lives
+ * in the cycle loop (a gated run is deferred, never resolved); this
+ * function only clamps the per-judgment cap to the remaining budget.
  */
 async function judgeOneRun(
 	runId: string,
+	remainingBudgetUsd: number,
 	deps: JudgeCollectorDeps,
 	now: () => Date,
-): Promise<"judged" | "budget_skipped"> {
-	const today = dayKey(now());
-	const spentToday = deps.spend.spendForDay(today);
-	const remaining = deps.dailyBudgetUsd - spentToday;
-	if (remaining <= 0) {
-		recordBudgetSkip(
-			runId,
-			`fleet daily budget $${deps.dailyBudgetUsd.toFixed(4)} exhausted ` +
-				`($${spentToday.toFixed(4)} spent on ${today})`,
-			deps,
-			now,
-		);
-		return "budget_skipped";
-	}
-
-	const maxCostUsd = Math.min(deps.maxCostUsdPerJudgment, remaining);
+): Promise<"judged"> {
+	const maxCostUsd = Math.min(deps.maxCostUsdPerJudgment, remainingBudgetUsd);
 	const outcome = await deps.judge(runId, { maxCostUsd });
 
 	if (outcome.kind === "verdict") {
@@ -174,16 +155,34 @@ export async function collectOnce(deps: JudgeCollectorDeps): Promise<JudgeCycleS
 
 	let judged = 0;
 	let alreadyJudged = 0;
-	let budgetSkipped = 0;
+	let budgetDeferred = 0;
+	let deferralAnnounced = false;
 	for (const run of terminal) {
 		if (!deps.cursors.needsJudgment(run.id, deps.rubricVersion, deps.judgeModelId)) {
 			alreadyJudged += 1;
 			continue;
 		}
+		// Fleet gate: past the daily budget the run is DEFERRED — no
+		// marker, no checkpoint — so it re-enters the candidate set once
+		// budget frees. Re-read per run: each judgment moves the ledger.
+		const today = dayKey(now());
+		const spentToday = deps.spend.spendForDay(today);
+		const remaining = deps.dailyBudgetUsd - spentToday;
+		if (remaining <= 0) {
+			budgetDeferred += 1;
+			if (!deferralAnnounced) {
+				deferralAnnounced = true;
+				deps.onBudgetDeferred?.(
+					run.id,
+					`fleet daily budget $${deps.dailyBudgetUsd.toFixed(4)} exhausted ` +
+						`($${spentToday.toFixed(4)} spent on ${today}); deferring until budget frees`,
+				);
+			}
+			continue;
+		}
 		try {
-			const result = await judgeOneRun(run.id, deps, now);
-			if (result === "judged") judged += 1;
-			else budgetSkipped += 1;
+			await judgeOneRun(run.id, remaining, deps, now);
+			judged += 1;
 		} catch (err) {
 			// Per-run isolation: one failing judgment (warren unreachable,
 			// wire drift, store error) must not starve the others. The
@@ -196,7 +195,7 @@ export async function collectOnce(deps: JudgeCollectorDeps): Promise<JudgeCycleS
 		terminalRuns: terminal.length,
 		judged,
 		alreadyJudged,
-		budgetSkipped,
+		budgetDeferred,
 	};
 }
 

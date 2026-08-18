@@ -137,8 +137,8 @@ describe("judge export smoke", () => {
 		});
 	}
 
-	async function cycle(judge: JudgeFn, dailyBudgetUsd = 5): Promise<void> {
-		await collectOnce({
+	async function cycle(judge: JudgeFn, dailyBudgetUsd = 5) {
+		return await collectOnce({
 			client,
 			verdicts,
 			cursors,
@@ -179,7 +179,7 @@ describe("judge export smoke", () => {
 			dailyBudgetUsd: 5,
 			now: () => NOW,
 		});
-		expect(stats).toMatchObject({ terminalRuns: 1, judged: 1, budgetSkipped: 0 });
+		expect(stats).toMatchObject({ terminalRuns: 1, judged: 1, budgetDeferred: 0 });
 
 		// The gate: no token, no rows — there is no public projection.
 		expect(handler(authed("/verdicts.jsonl", null)).status).toBe(401);
@@ -193,21 +193,35 @@ describe("judge export smoke", () => {
 		expect(validateVerdict(row.verdict).provenance.rubricVersion).toBe(RUBRIC);
 	});
 
-	test("budget skip writes a visible unjudged marker that exports", async () => {
+	test("an exhausted daily budget defers the run — no marker, judged once budget frees", async () => {
 		addTerminalRun("r-smoke-budget");
-		const judge: JudgeFn = async () => {
+		const gated: JudgeFn = async () => {
 			throw new Error("judge must not run past the budget gate");
 		};
-		await cycle(judge, 0);
+		const stats = await cycle(gated, 0);
+		expect(stats).toMatchObject({ judged: 0, budgetDeferred: 1 });
 
+		// No marker exported: a budget_exceeded row would occupy the store's
+		// dedupe key and block the eventual real verdict (warren-5fcf).
+		expect(await exportRows(handler)).toHaveLength(0);
+
+		// Budget available again — the deferred run is judged for real.
+		const judge: JudgeFn = async (runId) =>
+			({
+				kind: "verdict",
+				verdict: verdictFor(runId, CHEAP_MODEL, "high"),
+				stats: {
+					attempts: 1,
+					tokens: { input: 10, output: 5, cacheRead: 0, cacheWrite: 0, total: 15 },
+					costUsd: 0.01,
+					pagesRead: 1,
+					pageCapHit: false,
+				},
+			}) satisfies JudgeOutcome;
+		await cycle(judge, 5);
 		const rows = await exportRows(handler);
 		expect(rows).toHaveLength(1);
-		expect(rows[0]).toMatchObject({
-			kind: "unjudged",
-			runId: "r-smoke-budget",
-			reason: "budget_exceeded",
-			verdict: null,
-		});
+		expect(rows[0]).toMatchObject({ kind: "verdict", runId: "r-smoke-budget" });
 	});
 
 	test("re-judge appends: both verdicts stay readable keyed by rubric version, and /agreement serves the metric", async () => {

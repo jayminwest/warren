@@ -193,7 +193,7 @@ async function main(): Promise<void> {
 			console.error(
 				`${EXTENSION_NAME}: cycle — ${stats.terminalRuns} terminal, ` +
 					`${stats.judged} judged, ${stats.alreadyJudged} current, ` +
-					`${stats.budgetSkipped} budget-skipped`,
+					`${stats.budgetDeferred} budget-deferred`,
 			),
 		onCycleError: (err) => console.error(`${EXTENSION_NAME}: cycle failed:`, err),
 		onRunError: (runId, err) =>
@@ -209,8 +209,8 @@ async function main(): Promise<void> {
 					);
 				}
 			},
-			onBudgetSkip: (runId, detail) =>
-				console.error(`${EXTENSION_NAME}: run ${runId} unjudged (budget_exceeded): ${detail}`),
+			onBudgetDeferred: (runId, detail) =>
+				console.error(`${EXTENSION_NAME}: deferring from run ${runId}: ${detail}`),
 		}),
 	]);
 	verdicts.close();

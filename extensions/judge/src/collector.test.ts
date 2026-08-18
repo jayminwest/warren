@@ -97,7 +97,7 @@ function makeHarness(opts?: {
 		dailyBudgetUsd: opts?.dailyBudgetUsd ?? 5,
 		now: opts?.now ?? (() => NOW),
 		onRunError: (runId, err) => errors.push({ runId, err }),
-		onBudgetSkip: (runId, detail) => skips.push({ runId, detail }),
+		onBudgetDeferred: (runId, detail) => skips.push({ runId, detail }),
 	};
 	return { fake, verdicts, cursors, spend, judgeCalls, errors, skips, deps };
 }
@@ -196,26 +196,37 @@ describe("collectOnce", () => {
 		}
 	});
 
-	test("skips with a visible budget_exceeded marker once the daily budget is exhausted", async () => {
+	test("defers without a marker or checkpoint once the daily budget is exhausted", async () => {
 		// Each stubbed judgment spends 0.01, so the first run lands exactly
-		// on the budget and the second sees it exhausted.
+		// on the budget and the rest see it exhausted.
 		const h = makeHarness({ dailyBudgetUsd: 0.01 });
 		h.fake.addRun({ id: "run-1", state: "succeeded", startedAt: "2026-08-15T10:00:00.000Z" });
 		h.fake.addRun({ id: "run-2", state: "succeeded", startedAt: "2026-08-15T11:00:00.000Z" });
+		h.fake.addRun({ id: "run-3", state: "succeeded", startedAt: "2026-08-15T12:00:00.000Z" });
 		try {
 			const out = await collectOnce(h.deps);
 			expect(out.judged).toBe(1);
-			expect(out.budgetSkipped).toBe(1);
-			// Oldest first: run-1 was judged, run-2 hit the exhausted budget.
+			expect(out.budgetDeferred).toBe(2);
+			// Oldest first: run-1 was judged, the rest hit the exhausted budget.
 			expect(h.judgeCalls.map((c) => c.runId)).toEqual(["run-1"]);
+			// The deferral announces ONCE per cycle, not once per run.
 			expect(h.skips).toHaveLength(1);
 			expect(h.skips[0]?.runId).toBe("run-2");
 			expect(h.skips[0]?.detail).toContain("daily budget");
-			const rows = h.verdicts.rowsForRun("run-2");
-			expect(rows[0]?.kind).toBe("unjudged");
-			expect(rows[0]?.reason).toBe("budget_exceeded");
-			// The skip is the run's resolution — checkpointed, not retried.
-			expect(h.cursors.needsJudgment("run-2", RUBRIC_V1, MODEL)).toBe(false);
+			// No marker, no checkpoint: a budget_exceeded row would close the
+			// run under this pair AND occupy the store's dedupe key, blocking
+			// the eventual real verdict (warren-5fcf).
+			expect(h.verdicts.rowsForRun("run-2")).toHaveLength(0);
+			expect(h.cursors.needsJudgment("run-2", RUBRIC_V1, MODEL)).toBe(true);
+			// Budget freed (next UTC day) — the oldest deferred run is
+			// judged; the day's budget then gates the next one again.
+			const nextDay = await collectOnce({
+				...h.deps,
+				now: () => new Date("2026-08-16T10:00:00.000Z"),
+			});
+			expect(nextDay.judged).toBe(1);
+			expect(nextDay.budgetDeferred).toBe(1);
+			expect(h.verdicts.rowsForRun("run-2")[0]?.kind).toBe("verdict");
 		} finally {
 			teardown(h);
 		}
@@ -242,7 +253,7 @@ describe("collectOnce", () => {
 		try {
 			const out = await collectOnce(h.deps);
 			expect(out.judged).toBe(1);
-			expect(out.budgetSkipped).toBe(0);
+			expect(out.budgetDeferred).toBe(0);
 		} finally {
 			teardown(h);
 		}
