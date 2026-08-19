@@ -1,27 +1,37 @@
 <p align="center">
-  <img src="branding/logo.png" alt="warren — self-hostable cloud control plane" width="640">
+  <img src="branding/logo.png" alt="warren, the self-hosted control plane for coding agents" width="640">
 </p>
 
 # Warren
 
-Spawn cloud agents at your GitHub repos. Watch them work live, steer them mid-run, get a branch back.
+The self-hosted control plane for coding agents. Issue in, PR out. Your infra, your keys.
 
 [![CI](https://github.com/jayminwest/warren/actions/workflows/ci.yml/badge.svg)](https://github.com/jayminwest/warren/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Discord](https://img.shields.io/badge/Discord-join-5865F2?logo=discord&logoColor=white)](https://discord.gg/4r6r5jUEFE)
 
-[**Watch the demo**](https://youtu.be/daa7y8g9BkM) — a run dispatched, streamed, steered, and reaped.
+[**Watch it live**](https://app.warren.run): the public read-only instance. Real projects, real runs, live event streams, no login.
 
-[**Watch it live**](https://app.warren.run) — the public read-only instance. Real projects, real runs, live event streams, no login.
+[**Watch the demo**](https://youtu.be/daa7y8g9BkM): a run dispatched, streamed, steered, and reaped.
 
-<!-- TODO: this slot still wants a run-detail screenshot or GIF. The repo ships
-     no such asset yet (branding/ holds the logo only). -->
+<!-- TODO: this slot still wants the canonical demo GIF (issue -> dispatch ->
+     live events -> PR). The repo ships no such asset yet (branding/ holds the
+     logo only). -->
 
-> The Coolify of coding agents. Self-hosted control plane: point it at a repo, bring your own key, agents run in sandboxes on your infra, PRs come out.
+Anyone can get a PR out of an agent. Warren is for what happens next: dozens of runs a day, on your infrastructure, with your API keys. Each run needs a sandbox, a spend cap, an audit trail, and a verdict.
 
-Warren is a self-hostable control plane for ephemeral coding agents. It is harness-agnostic — run pi, Claude Code, and other agents behind one interface — on your own infrastructure with your own API keys.
+Warren dispatches ephemeral agents at your GitHub repos and controls the whole run:
 
-Every run is short-lived and sandboxed. A run completes a task, validates the changes, pushes a branch, and exits. **One container, one volume, one HTTP API, one UI.**
+- **Dispatch.** Point warren at a repo, pick an agent, write a prompt. Seven builtin agents ship behind one adapter registry, `claude-code` and `pi` included.
+- **Sandbox.** Warren isolates every run: bwrap locally, a sibling container under Docker, a pod on Kubernetes.
+- **Cap.** Per-run USD spend caps, enforced mid-run. Per-project concurrency and cluster admission control on top.
+- **Steer.** Send instructions into a live run. Steering is the escalation path, not the interface.
+- **Audit.** Every run event lands in an append-only audit log, exported at `GET /audit-log.jsonl`.
+- **Judge.** An isolated judge scores finished runs against a 15-class rubric and serves verdicts at `GET /verdicts.jsonl`. Agents never see their verdicts.
+
+A run completes a task, validates the changes, pushes a branch, and exits. **One container, one volume, one HTTP API, one UI.**
+
+Warren runs warren. In the seven days before 2026-08-18, warren-dispatched agents authored 91 of this repo's 239 commits (38%). The product judged and audited that work itself, in public at [app.warren.run](https://app.warren.run).
 
 ## Quickstart
 
@@ -103,7 +113,7 @@ GitHub App mode has shipped. Set `WARREN_FORGE=app` and warren mints short-lived
 
 Two supported paths:
 
-- **Single box (`local` runtime).** The [Quickstart](#quickstart) above *is* a complete deploy — one container, one volume. Run it on a home server or any Docker host. Warren serves plain HTTP. Put TLS on your edge with Caddy on a home server, or with your ingress.
+- **Single box (`local` runtime).** The [Quickstart](#quickstart) above *is* a complete deploy: one container, one volume. Run it on a home server or any Docker host. Warren serves plain HTTP. Put TLS on your edge with Caddy on a home server, or with your ingress.
 - **Cluster (`k8s` runtime), the hosted target.** Deploy to Kubernetes. **GKE Autopilot is the reference cluster.** Each run is its own pod, and admission caps shed load before the cluster thrashes. The canonical procedure is **[docs/RUNBOOK-K8S.md](docs/RUNBOOK-K8S.md)**. The manifest quick-start is [`deploy/k8s/README.md`](deploy/k8s/README.md).
 
 Continuous deployment ships in [`.github/workflows/deploy-gke.yml`](.github/workflows/deploy-gke.yml).
@@ -136,7 +146,7 @@ Warren ships enough operator-visible surface to stay inspectable without extra i
 
 V1 ships a bearer-gated Prometheus exposition endpoint (`GET /metrics`) that works under both runtimes. It carries no OpenTelemetry exporter. For richer tracing, the request-id and pino combination is the seam to extend. The route table (`ROUTE_TABLE` in `src/server/handlers/index.ts`) is the stable surface to instrument against.
 
-Both runtimes serve `GET /metrics` (bearer-gated, warren-682a) — a Prometheus exposition endpoint. Each scrape reports run-count, cost, token, and event-stream gauges (`src/server/handlers/metrics.ts`). Under `k8s` the same endpoint also carries pod-lifecycle gauges — see the runbook.
+Both runtimes serve `GET /metrics` (bearer-gated, warren-682a), a Prometheus exposition endpoint. Each scrape reports run-count, cost, token, and event-stream gauges (`src/server/handlers/metrics.ts`). Under `k8s` the same endpoint also carries pod-lifecycle gauges. See the runbook.
 
 ## Community
 
@@ -225,14 +235,14 @@ Caddy's DNS-01 plugin supports Cloudflare, Route 53, DigitalOcean, Hetzner, Lino
 
 Per-project overrides for `idle_ttl` and `max_lifetime` live in `.warren/preview.yaml`. `/readyz` surfaces port-allocator saturation warnings.
 
-Warren does not route cross-host preview traffic: the proxy returns **501** for off-host runs (`runs.worker_id` other than the local worker). The `k8s` runtime provider superseded the multi-worker model that once scoped this work (old R-12) — see [ROADMAP.md](ROADMAP.md). See [docs/design/preview-environments.md](docs/design/preview-environments.md) for the full design.
+Warren does not route cross-host preview traffic: the proxy returns **501** for off-host runs (`runs.worker_id` other than the local worker). The `k8s` runtime provider superseded the multi-worker model that once scoped this work (old R-12). See [ROADMAP.md](ROADMAP.md). See [docs/design/preview-environments.md](docs/design/preview-environments.md) for the full design.
 
 ## Architecture
 
 Warren runs against a swappable **runtime provider**, selected once at boot by `WARREN_RUNTIME` (`src/runtime/registry.ts`), behind one contract (`src/runtime/contract.ts`). Two topologies share the same domain code:
 
-- **`local` (default) — self-host.** The whole system is one container. Warren isolates each run with `bwrap` through its own in-process engine. This is the primary path everything above describes.
-- **`k8s` — scale-out.** Each run is its own Kubernetes pod. Built for clusters and GKE Autopilot. See [**the K8s runbook**](docs/RUNBOOK-K8S.md) and [`deploy/k8s/`](deploy/k8s/README.md).
+- **`local` (default): self-host.** The whole system is one container. Warren isolates each run with `bwrap` through its own in-process engine. This is the primary path everything above describes.
+- **`k8s`: scale-out.** Each run is its own Kubernetes pod. Built for clusters and GKE Autopilot. See [**the K8s runbook**](docs/RUNBOOK-K8S.md) and [`deploy/k8s/`](deploy/k8s/README.md).
 
 ```
 ┌──────────────── container (bwrap-friendly host) ────────────────┐
@@ -255,9 +265,9 @@ Under `WARREN_RUNTIME=k8s` this diagram changes shape entirely. Warren is a Depl
 
 ## CLI
 
-The `warren` (or `wr`) CLI is the agent-facing surface — the same pipeline the web UI drives, scriptable from any shell. The web UI is for daily human work.
+The `warren` (or `wr`) CLI is the agent-facing surface: the same pipeline the web UI drives, scriptable from any shell. The web UI is for daily human work.
 
-Install it from npm. The package ships raw bun-shebang TypeScript, so it requires [Bun](https://bun.sh) v1.1+ on the machine that runs it — no build step, no Node fallback:
+Install it from npm. The package ships raw bun-shebang TypeScript, so it needs [Bun](https://bun.sh) v1.1+ on the machine that runs it. No build step, no Node fallback:
 
 ```bash
 npm i -g @os-eco/warren-cli
@@ -265,7 +275,7 @@ npm i -g @os-eco/warren-cli
 
 Programmatic consumers import the typed client straight from the package: `import { WarrenClient } from "@os-eco/warren-cli/client"`.
 
-Every remote-capable command talks to a warren server over HTTP — a local user is a remote user pointed at localhost. Server resolution: `--url`/`--token` flags, then `WARREN_BASE_URL` (default `http://localhost:8080`) / `WARREN_API_TOKEN`, then the client config file `warren login` writes. The genuinely-local commands are `serve`, `db migrate-to-postgres`, and `doctor --local`.
+Every remote-capable command talks to a warren server over HTTP. A local user is a remote user pointed at localhost. Server resolution: `--url`/`--token` flags, then `WARREN_BASE_URL` (default `http://localhost:8080`) / `WARREN_API_TOKEN`, then the client config file `warren login` writes. The genuinely-local commands are `serve`, `db migrate-to-postgres`, and `doctor --local`.
 
 Agents bootstrapping a session run `warren prime` first. It emits the command reference (derived from the program definition), the env contract, the stable exit-code table, and the canonical workflows. Then store credentials once, piping the token on stdin so it stays out of shell history:
 
@@ -405,7 +415,7 @@ const { planRun } = await warren.createPlanRun({
 const detail = await warren.getPlanRun(planRun.id);
 for (const child of detail.children) {
   const run = detail.runs.find((r) => r.id === child.runId);
-  console.log(`#${child.seq} ${child.seedId} [${child.state}] cost=${run?.costUsd ?? "—"}`);
+  console.log(`#${child.seq} ${child.seedId} [${child.state}] cost=${run?.costUsd ?? "-"}`);
 }
 
 // List plan-runs, optionally filtered by project / state
@@ -439,7 +449,7 @@ How the current release is scoped. Full details in [SECURITY.md](SECURITY.md#v1-
 - **Trust-the-socket** between warren and the runtime inside the container, which share the container by design.
 - **No CSRF, single-user.** The UI calls warren's API with the bearer, and CORS is strict.
 - **SQLite by default, Postgres optional.** Run history and scheduler state live in `/data/warren.db` on the local volume out of the box. Org-scale deploys can attach a managed Postgres by setting `WARREN_DB_URL=postgres://user:pw@host/db`.
-- **One host is the concurrency ceiling — in the `local` topology.** A single container caps concurrency at what one box can sandbox. The scale-out answer is the `k8s` runtime (each run a pod, cluster-scheduled with admission caps). See [docs/RUNBOOK-K8S.md](docs/RUNBOOK-K8S.md).
+- **One host is the concurrency ceiling in the `local` topology.** A single container caps concurrency at what one box can sandbox. The scale-out answer is the `k8s` runtime (each run a pod, cluster-scheduled with admission caps). See [docs/RUNBOOK-K8S.md](docs/RUNBOOK-K8S.md).
 
 ## Roadmap
 
