@@ -48,6 +48,9 @@ export const PUBLIC_RUN_FIELDS = [
 	// warren-afeb: the dispatch-supplied clone ref — a branch/tag/SHA name of
 	// the same class as targetBranch and salvageRef, safe for spectators.
 	"ref",
+	// warren-aaf7: the base-commit pin — a SHA of the same spectator class as
+	// ref/targetBranch (a name in the public repo's history).
+	"baseCommit",
 	// warren-cd3b: the rescue ref is operator-recovery metadata (a branch name
 	// carrying the run id, which is already public) — safe for spectators.
 	"salvageRef",

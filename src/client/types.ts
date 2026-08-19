@@ -131,6 +131,8 @@ export interface RunRow {
 	targetBranch: string | null;
 	/** Dispatch-supplied git ref the workspace was cloned from (warren-afeb). Null when unset. */
 	ref: string | null;
+	/** Base-commit pin (warren-aaf7): 40-hex SHA the workspace was cut at. Null when unset. */
+	baseCommit: string | null;
 	/**
 	 * Declared provider/model frozen at dispatch (warren-2ede / #860).
 	 * Null on rows predating the columns — read as "unknown".
@@ -190,6 +192,8 @@ export interface CreateRunInput {
 	project?: string;
 	prompt?: string;
 	ref?: string;
+	/** Base-commit pin (warren-aaf7): 40-hex SHA the workspace is cut at; PR base stays `ref`-shaped. */
+	baseCommit?: string;
 	/** Existing branch to push the workspace back to at reap (warren-05ea / #419). */
 	targetBranch?: string;
 	providerOverride?: string;
@@ -214,6 +218,8 @@ export interface DispatchRunInput {
 	prompt: string;
 	/** Maps to CreateRunInput.ref — git branch / ref to clone the workspace from. */
 	branch?: string;
+	/** Maps to CreateRunInput.baseCommit — 40-hex SHA to pin the workspace cut (warren-aaf7). */
+	baseCommit?: string;
 	/** Maps to CreateRunInput.targetBranch — branch reap pushes back to (#419). */
 	targetBranch?: string;
 	/** Maps to CreateRunInput.modelOverride. */

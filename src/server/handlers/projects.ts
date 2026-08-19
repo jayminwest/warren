@@ -6,6 +6,7 @@
  */
 
 import { NotFoundError, ValidationError } from "../../core/errors.ts";
+import type { TrackerContext } from "../../core/wire.ts";
 import { mintGitCredentialSecret } from "../../forge/credentials.ts";
 import { ProjectLacksSeedsError } from "../../plan-runs/errors.ts";
 import { computeReadyPlans, type ReadyPlanInput } from "../../plan-runs/index.ts";
@@ -18,8 +19,7 @@ import {
 	refreshProject,
 } from "../../projects/index.ts";
 import { spawnRun } from "../../runs/index.ts";
-import type { SeedsCliDeps } from "../../seeds-cli/index.ts";
-import { listPlans, listSeedStatuses, showPlan, showSeed } from "../../seeds-cli/index.ts";
+import type { IssueTracker, PlanCapableTracker } from "../../tracker/contract.ts";
 import { buildTriggerSummaries, parseCron, resolveCronPrompt } from "../../triggers/index.ts";
 import {
 	type CronTrigger,
@@ -167,21 +167,21 @@ export function getProjectWarrenConfigHandler(deps: ServerDeps): RouteHandler {
 }
 
 /**
- * The shared 3-gate seeds-read preamble (warren-5819): project 404 via
- * `projects.require` → `hasSeeds` gate (ProjectLacksSeedsError → 400) →
- * tracker-configured gate (ValidationError → 400). Every seeds-read
- * handler starts here; the tracker-contract port (warren-2d98) swaps the
- * third gate onto `deps.issueTracker` and the return onto the tracker.
+ * The shared 3-gate tracker-read preamble (warren-5819 / warren-47b0):
+ * project 404 via `projects.require` → `hasSeeds` gate
+ * (ProjectLacksSeedsError → 400) → tracker-configured gate (ValidationError
+ * → 400). Every seeds-read handler starts here, reading through
+ * `deps.issueTracker` (the IssueTracker seam) — never the seeds facade.
  *
  * `project.hasSeeds` keeps its wire name (public projection compat) but
  * means "a tracker is configured for this project" — today the `.seeds/`
  * probe via `detectProjectFeatures`.
  */
-async function requireSeedsProject(
+async function requireTrackerProject(
 	deps: ServerDeps,
 	id: string,
 	feature: string,
-): Promise<{ project: ProjectRow; seedsCli: SeedsCliDeps }> {
+): Promise<{ project: ProjectRow; tracker: IssueTracker; ctx: TrackerContext }> {
 	const project = await deps.repos.projects.require(id);
 	if (!project.hasSeeds) {
 		throw new ProjectLacksSeedsError(
@@ -189,30 +189,45 @@ async function requireSeedsProject(
 			{ recoveryHint: "add a .seeds/ directory to the project clone and refresh" },
 		);
 	}
-	if (deps.seedsCli === undefined) {
+	if (deps.issueTracker === undefined) {
 		throw new ValidationError(
-			`seeds CLI is not configured on this warren; ${feature} requires sd`,
+			`no issue tracker is configured on this warren; ${feature} requires one`,
 			{ recoveryHint: "set WARREN_SD_BINARY (or install sd on PATH) and restart" },
 		);
 	}
-	return { project, seedsCli: deps.seedsCli };
+	return {
+		project,
+		tracker: deps.issueTracker,
+		ctx: { projectId: project.id, localPath: project.localPath },
+	};
+}
+
+/** Plans reads need the plans capability; fail loudly, never silently no-op. */
+function requirePlanTracker(tracker: IssueTracker, feature: string): PlanCapableTracker {
+	if (!tracker.capabilities.supportsPlans) {
+		throw new ValidationError(
+			`the configured issue tracker does not support plans; ${feature} is not available`,
+			{ recoveryHint: "use a plan-capable tracker (seeds) for plan surfaces" },
+		);
+	}
+	// The capability flag above is the contract's guarantee the plans arm exists.
+	return tracker as unknown as PlanCapableTracker;
 }
 
 /**
  * `GET /projects/:id/seeds/:seedId` — single-seed status read
  * (warren-4015 / warren-ea66 acceptance (d) follow-up).
  *
- * Surfaces the same `sd show <id> --json` payload the plan-run coordinator
- * already shells out for (via `showSeed`) so the PlotDetail BatchDispatch
+ * Surfaces the tracker's `getIssue` read so the PlotDetail BatchDispatch
  * dialog can drop closed seeds at confirm time instead of round-tripping
  * a doomed `POST /runs` per attachment. Read-only; no state changes.
  *
  * Gates mirror the plan-run handlers so the wire contract stays uniform:
  *   - project 404 via `projects.require`,
  *   - `hasSeeds` gate (ProjectLacksSeedsError → 400),
- *   - `seedsCli` configured (ValidationError → 400),
- *   - SeedsCliError from `showSeed` bubbles up as 500 — a missing seed
- *     surfaces as the underlying `sd show` failure rather than a special
+ *   - tracker configured (ValidationError → 400),
+ *   - TrackerError from `getIssue` bubbles up as 500 — a missing seed
+ *     surfaces as a tracker failure rather than a special
  *     404, matching the plan-runs / plot-plan-runs status probe posture.
  *
  * Response shape is intentionally narrow (`{id, status, blockedBy}`):
@@ -223,8 +238,8 @@ export function getProjectSeedHandler(deps: ServerDeps): RouteHandler {
 	return async (ctx) => {
 		const id = requireParam(ctx, "id");
 		const seedId = requireParam(ctx, "seedId");
-		const { project, seedsCli } = await requireSeedsProject(deps, id, "seed status read");
-		const issue = await showSeed(seedsCli, project.localPath, seedId);
+		const { tracker, ctx: trackerCtx } = await requireTrackerProject(deps, id, "seed status read");
+		const issue = await tracker.getIssue(trackerCtx, seedId);
 		return jsonResponse(200, {
 			id: issue.id,
 			status: issue.status,
@@ -237,20 +252,20 @@ export function getProjectSeedHandler(deps: ServerDeps): RouteHandler {
  * `GET /projects/:id/seeds/plans` — list a project's seeds plans
  * (warren-9b49 / pl-dfb5 step 3).
  *
- * Shells out to `sd plan list --json` via `listPlans` and returns the
+ * Reads the tracker's `listPlans` and returns the
  * wire-lean plan summaries the plan-run dispatch form needs to populate
  * its plan-id selector (no `sections` body). Read-only; no state changes.
  *
  * Gates mirror `getProjectSeedHandler` so the seeds-read contract stays
  * uniform: project 404 via `projects.require`, `hasSeeds` gate
- * (ProjectLacksSeedsError → 400), `seedsCli` configured (ValidationError
- * → 400), and SeedsCliError from `listPlans` bubbles up as 500.
+ * (ProjectLacksSeedsError → 400), tracker configured (ValidationError
+ * → 400), and TrackerError from `listPlans` bubbles up as 500.
  */
 export function listProjectSeedPlansHandler(deps: ServerDeps): RouteHandler {
 	return async (ctx) => {
 		const id = requireParam(ctx, "id");
-		const { project, seedsCli } = await requireSeedsProject(deps, id, "plan list");
-		const plans = await listPlans(seedsCli, project.localPath);
+		const { tracker, ctx: trackerCtx } = await requireTrackerProject(deps, id, "plan list");
+		const plans = await requirePlanTracker(tracker, "plan list").listPlans(trackerCtx);
 		return jsonResponse(200, { plans });
 	};
 }
@@ -261,34 +276,41 @@ export function listProjectSeedPlansHandler(deps: ServerDeps): RouteHandler {
  *
  * Read-on-demand composition of existing seeds-cli readers plus the
  * plan-runs dedup query: `listPlans` → filter to `approved` → resolve each
- * approved plan's children via `showPlan` → build the project-wide status
- * map via `listSeedStatuses` → fetch already-dispatched plan ids via
+ * approved plan's children via `getPlan` → build the project-wide status
+ * map via `listIssueStatuses` → fetch already-dispatched plan ids via
  * `repos.planRuns.listDispatchedPlanIds` → return `{ plans }` from the pure
  * `computeReadyPlans` helper (approved + ≥1 open child + not dispatched).
  *
  * Gates mirror `listProjectSeedPlansHandler`: project 404 via
  * `projects.require`, `hasSeeds` gate (ProjectLacksSeedsError → 400),
- * `seedsCli` configured (ValidationError → 400), and SeedsCliError from
+ * tracker configured (ValidationError → 400), and TrackerError from
  * any reader bubbles up as 500.
  */
 export function listReadyPlansHandler(deps: ServerDeps): RouteHandler {
 	return async (ctx) => {
 		const id = requireParam(ctx, "id");
-		const { project, seedsCli } = await requireSeedsProject(deps, id, "ready plans");
-		const allPlans = await listPlans(seedsCli, project.localPath);
+		const {
+			project,
+			tracker,
+			ctx: trackerCtx,
+		} = await requireTrackerProject(deps, id, "ready plans");
+		const planTracker = requirePlanTracker(tracker, "ready plans");
+		const allPlans = await planTracker.listPlans(trackerCtx);
 		const approved = allPlans.filter((plan) => plan.status === "approved");
 		const plans: ReadyPlanInput[] = await Promise.all(
 			approved.map(async (plan) => {
-				const detail = await showPlan(seedsCli, project.localPath, plan.id);
+				// TODO(warren-47b0): N+1 (1 + N getPlan + 1 statuses per request) — a
+				// hosted-tracker hazard; bridge-side caching owns the fix.
+				const detail = await planTracker.getPlan(trackerCtx, plan.id);
 				return {
 					id: plan.id,
 					...(plan.name === undefined ? {} : { name: plan.name }),
 					status: plan.status,
-					children: detail.children,
+					children: [...detail.children],
 				};
 			}),
 		);
-		const seedStatusById = await listSeedStatuses(seedsCli, project.localPath);
+		const seedStatusById = await tracker.listIssueStatuses(trackerCtx);
 		const dispatchedPlanIds = new Set(await deps.repos.planRuns.listDispatchedPlanIds(project.id));
 		const ready = computeReadyPlans({ plans, seedStatusById, dispatchedPlanIds });
 		return jsonResponse(200, { plans: ready });

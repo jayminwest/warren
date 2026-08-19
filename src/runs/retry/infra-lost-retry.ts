@@ -173,6 +173,7 @@ function buildRetrySpawnInput(
 	};
 	if (run.seedId !== null) draft.seedId = run.seedId;
 	if (run.ref !== null) draft.ref = run.ref;
+	if (run.baseCommit !== null) draft.baseCommit = run.baseCommit;
 	if (run.targetBranch !== null) draft.targetBranch = run.targetBranch;
 	if (decision.remainingBudgetUsd !== null) draft.maxCostUsdOverride = decision.remainingBudgetUsd;
 	if (input.projectsConfig !== undefined) draft.projectsConfig = input.projectsConfig;

@@ -11,6 +11,7 @@
  * than failing the PR open.
  */
 
+import type { IssueTracker, TrackerContext } from "../../tracker/contract.ts";
 import { authenticatedCloneUrl } from "../../workspace/git/clone-url.ts";
 import type { PrCommit, PrSeed } from "../pr.ts";
 import type { ReapExec } from "./types.ts";
@@ -62,6 +63,14 @@ export interface GatherPrContextInput {
 	 */
 	readonly seedId?: string | null;
 	readonly exec: ReapExec;
+	/** Project id for the tracker context (seeds needs only `localPath`). */
+	readonly projectId?: string;
+	/**
+	 * The boot-resolved issue tracker (warren-47b0). The seed read goes
+	 * through `getIssue` — never a hardcoded `sd` spawn. Absent (tests,
+	 * unconfigured warren) → the seed section degrades to null.
+	 */
+	readonly issueTracker?: IssueTracker;
 	/** K8s fallback source for the commit/diff-stat sections (warren-ab66). */
 	readonly cloneFetch?: CloneFetchConfig;
 	/**
@@ -104,11 +113,12 @@ const CLONE_FETCH_REF_PREFIX = "refs/warren/pr-open/";
 export async function gatherPrContext(input: GatherPrContextInput): Promise<PrContext> {
 	const [stats, seed] = await Promise.all([
 		gatherCommitStats(input),
-		resolveSeed(
-			{ seedId: input.seedId ?? null, prompt: input.prompt },
-			input.projectPath,
-			input.exec,
-		),
+		resolveSeed({ seedId: input.seedId ?? null, prompt: input.prompt }, input.issueTracker, {
+			// Seeds resolves .seeds/ off cwd; only localPath matters to it, but
+			// keep the context complete when the caller knows the project id.
+			projectId: input.projectId ?? "",
+			localPath: input.projectPath,
+		}),
 	]);
 	return {
 		commits: stats.commits,
@@ -282,25 +292,17 @@ interface SeedAttribution {
 
 async function resolveSeed(
 	attribution: SeedAttribution,
-	cwd: string,
-	exec: ReapExec,
+	tracker: IssueTracker | undefined,
+	ctx: TrackerContext,
 ): Promise<PrSeed | null> {
 	// warren-50c8: the run row's column is authoritative when present.
 	const id = attribution.seedId ?? scanPromptForSeedId(attribution.prompt);
 	if (id === null) return null;
+	if (tracker === undefined) return null;
 	try {
-		const out = await exec.run("sd", ["show", id, "--format", "json"], {
-			cwd,
-			timeoutMs: 10_000,
-		});
-		const parsed: unknown = JSON.parse(out.stdout);
-		if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) return null;
-		const obj = parsed as Record<string, unknown>;
-		const issue = obj.issue ?? obj;
-		if (issue === null || typeof issue !== "object" || Array.isArray(issue)) return null;
-		const title = (issue as Record<string, unknown>).title;
-		if (typeof title !== "string" || title === "") return null;
-		return { id, title };
+		const issue = await tracker.getIssue(ctx, id);
+		if (issue.title === undefined || issue.title === "") return null;
+		return { id, title: issue.title };
 	} catch {
 		return null;
 	}
