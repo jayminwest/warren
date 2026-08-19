@@ -90,6 +90,7 @@ The base creates:
 - Two namespaces: `warren` for the control plane, `warren-runs` for run pods.
 - A ServiceAccount plus the RBAC Role and RoleBinding (§4).
 - A ResourceQuota with its paired LimitRange.
+- Run-pod NetworkPolicies (default-deny ingress + coarse egress — §4.1).
 - One PVC: `warren-data` (5Gi). The `warren-repo-cache` claim is opt-in via overlay (§5.3, warren-554f).
 - The Deployment, the Service, and the Ingress.
 
@@ -519,6 +520,64 @@ If dispatch fails with a `403 Forbidden` from the K8s API, check this Role first
 A missing verb shows up as pods that never get created, or as an informer that never attaches.
 `configmaps` and `watch` are the common gaps — the plan text under-specified them.
 
+### 4.1 NetworkPolicy — run-pod egress contract (warren-8dbb)
+
+`deploy/k8s/base/networkpolicy.yaml` is the network-layer backstop for every
+warren-managed run pod (`warren.io/managed-by=warren`).
+
+Without a NetworkPolicy-capable CNI these objects are inert no-ops and the
+cluster keeps the flat-pod behaviour. With one (kind + Calico/Cilium, GKE
+Dataplane V2, most managed clusters) they take effect on apply.
+
+Live validation on kind and GKE is an operator follow-up. This tree only ships
+the manifests and offline-renders them via `kubectl kustomize`.
+
+Four policies ship, all in `warren-runs`:
+
+| Policy | Selects | Effect |
+|---|---|---|
+| `warren-runs-default-deny-ingress` | `warren.io/managed-by=warren` | **Deny all ingress.** Run pods are clients only — nothing (peer run pods, the control-plane pod network, anything else) should dial them. `kubectl logs`/`exec` ride the apiserver→kubelet path and are unaffected. |
+| `warren-runs-restricted-egress` | `warren.io/network=restricted` (the project default, `DEFAULT_K8S_NETWORK`) | **Coarse egress allowlist** — see contract below. |
+| `warren-runs-none-egress` | `warren.io/network=none` | **Deny all egress.** Mirrors LocalProvider/bwrap unshared-net and DockerProvider `--network none`. |
+| `warren-runs-open-egress` | `warren.io/network=open` | **Allow all egress.** Explicit so a future namespace-wide default-deny egress an operator adds does not surprise an `open` run. Ingress stays denied. |
+
+**`restricted` egress contract** (what a default run pod may dial):
+
+1. **DNS** — UDP/TCP port 53 to any destination. CoreDNS / kube-dns placement
+   differs across kind, k3d, and GKE. Pinning a namespace/podSelector would break
+   one of them, so the port alone is the allow.
+2. **Warren control-plane Service** — TCP 8080 to pods in namespace `warren`
+   labelled `app.kubernetes.io/name=warren,app.kubernetes.io/component=control-plane`.
+   This is the in-cluster callback (`http://warren.warren.svc.cluster.local:8080`)
+   the agent uses for events, inbox, and finalize. If you rename the control-plane
+   namespace or labels, update this rule in lockstep with
+   `WARREN_K8S_CALLBACK_*` / `pod-spec.ts`.
+3. **External world** — `0.0.0.0/0`. Git clone/push, model providers, and package
+   registries all leave the cluster. **No CIDR or FQDN pin** ships in-tree.
+   GitHub and provider ranges move, and FQDN-based policy needs Cilium or GKE
+   Dataplane V2. That tightening is operator territory at release time — widen
+   or narrow this rule in a live overlay, never by guessing CIDRs into base.
+
+What the policy set deliberately does **not** cover:
+
+- The control-plane pod in namespace `warren` (Ingress, ServiceMonitor, and
+  operator traffic stay unrestricted).
+- Per-domain allowlisting (`networkPolicy: "coarse"` in
+  `K8S_PROVIDER_CAPABILITIES` — see §8).
+- IPv6 egress (`::/0`). Add it in a live overlay if the cluster is dual-stack
+  and agents need it.
+
+Sanity checks after apply:
+
+```bash
+kubectl -n warren-runs get networkpolicy
+# A running restricted pod should resolve DNS, reach the warren Service on :8080,
+# and reach an external host (e.g. api.github.com). It must NOT accept a connect
+# from another run pod:
+kubectl -n warren-runs get pods -l warren.io/managed-by=warren -o wide
+# (from a debug pod in warren-runs) nc -zv <run-pod-ip> 1-65535  → times out
+```
+
 ---
 
 ## 5. Garbage collection & resource growth
@@ -865,7 +924,7 @@ Operators must know the gaps:
 
 - **Preview environments are off** (`previewPorts: false`). A `.warren/preview.yaml` produces no preview and logs `reap.preview_skipped_unsupported`. Service/Ingress previews are a deferred feature.
 - **Steering latency is ~5s, not real-time.** Steer writes a `run_inbox` row, and the in-pod agent polls `GET /runs/:id/inbox`. That trade gains reliability (it survives pod and control-plane restarts) at a latency cost against the LocalProvider stdin path.
-- **Network policy is coarse.** No per-domain allowlist exists under k8s v1 (`networkPolicy: "coarse"`, against the LocalProvider's `domain-allowlist`).
+- **Network policy is coarse.** No per-domain allowlist exists under k8s v1 (`networkPolicy: "coarse"`, against the LocalProvider's `domain-allowlist`). The base manifests ship default-deny ingress plus DNS/Service/open-external egress for `restricted` runs (§4.1). FQDN allowlisting is operator territory (Cilium / GKE Dataplane V2).
 - **The repo cache is opt-in and RWO — single-node only.** The cache is off by default (warren-554f). If you enable it, move `warren-repo-cache` to a `ReadWriteMany` class (GKE Filestore CSI, or Longhorn on bare metal) **before** you add a second node. Otherwise concurrent run pods deadlock on the RWO claim (Multi-Attach, design R2). Do not provision Filestore only to run single-node. Leaving the cache off is the cheaper default.
 
 ---
@@ -887,6 +946,9 @@ kubectl -n warren-runs describe pod run-<id>                # scheduling / OOM e
 
 # RBAC sanity
 kubectl auth can-i --as=system:serviceaccount:warren:warren create pods -n warren-runs
+
+# NetworkPolicy (run-pod egress contract, §4.1)
+kubectl -n warren-runs get networkpolicy
 
 # Edge (Cloud Armor, §1.7)
 gcloud compute backend-services list --global --format='table(name,securityPolicy)'

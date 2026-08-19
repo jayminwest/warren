@@ -3,8 +3,9 @@
 # Two roles:
 #   1. The in-cluster callback target run pods dial — the agent POSTs
 #      events/finalize to `http://warren.warren.svc.cluster.local:8080`
-#      (pod-spec.ts serviceDnsCallbackUrl). The `warren-runs` RBAC does NOT grant
-#      network policy; reachability is standard cluster DNS + flat pod network.
+#      (pod-spec.ts serviceDnsCallbackUrl). Egress to this Service is allowed
+#      explicitly by `networkpolicy.yaml` (warren-runs-restricted-egress); the
+#      RBAC Role does not speak to the pod network.
 #   2. The backend the Ingress routes external traffic to, and the target the
 #      Prometheus ServiceMonitor (servicemonitor.yaml) selects via
 #      `app.kubernetes.io/name: warren` + named port `http`.
