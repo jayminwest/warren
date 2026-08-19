@@ -295,7 +295,6 @@ async function autoDispatchStep(
 		planRuns: ctx.input.repos.planRuns,
 		emit: ctx.emit,
 		fail: (step, err) => ctx.fail(step, err),
-		...(ctx.input.seedsCli !== undefined ? { seedsCli: ctx.input.seedsCli } : {}),
 		...(ctx.input.issueTracker !== undefined ? { issueTracker: ctx.input.issueTracker } : {}),
 	});
 	state.autoPlanRunCreated = autoDispatch.created;

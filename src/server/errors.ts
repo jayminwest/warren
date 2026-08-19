@@ -34,7 +34,7 @@ import {
 	ValidationError,
 	WarrenError,
 } from "../core/errors.ts";
-import { PlanHasNoOpenChildrenError, ProjectLacksSeedsError } from "../plan-runs/errors.ts";
+import { PlanHasNoOpenChildrenError, ProjectLacksTrackerError } from "../plan-runs/errors.ts";
 import { ProjectUnavailableError } from "../projects/errors.ts";
 import { AgentSchemaError } from "../registry/errors.ts";
 import { RunSpawnError } from "../runs/errors.ts";
@@ -216,7 +216,7 @@ function buildEnvelope(code: string, message: string, hint?: string): ErrorEnvel
 function warrenStatusFor(err: WarrenError): number {
 	if (err instanceof NotFoundError) return 404;
 	if (err instanceof ValidationError) return 400;
-	if (err instanceof ProjectLacksSeedsError) return 400;
+	if (err instanceof ProjectLacksTrackerError) return 400;
 	if (err instanceof PlanHasNoOpenChildrenError) return 400;
 	if (err instanceof StateTransitionError) return 409;
 	// Provider-neutral runtime errors (warren-36cb): K8sProvider transport

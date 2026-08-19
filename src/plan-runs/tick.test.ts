@@ -3,13 +3,13 @@ import { openDatabase, type WarrenDb } from "../db/client.ts";
 import { createRepos, type Repos } from "../db/repos/index.ts";
 import { agents } from "../db/schema.ts";
 import type { PrMergeChecker } from "../runs/pr-merge.ts";
-import type { CoordinatorShowSeedFn, CoordinatorSpawnFn } from "./coordinator.ts";
+import type { CoordinatorGetIssueFn, CoordinatorSpawnFn } from "./coordinator.ts";
 import { bootPlanRunCoordinator, runPlanRunTick } from "./tick.ts";
 
 const NOW = new Date("2026-05-17T00:00:00.000Z");
 
 const noopPoll: PrMergeChecker = async () => ({ kind: "open" });
-const openSeed: CoordinatorShowSeedFn = async (_p, id) => ({ id, status: "open" });
+const openSeed: CoordinatorGetIssueFn = async (_p, id) => ({ id, status: "open" });
 
 interface Harness {
 	db: WarrenDb;
@@ -51,7 +51,7 @@ describe("runPlanRunTick", () => {
 	test("returns empty advances + errors when no plan_runs are active", async () => {
 		const result = await runPlanRunTick({
 			repos: h.repos,
-			showSeed: openSeed,
+			getIssue: openSeed,
 			checkPrMerged: noopPoll,
 			spawn: async () => ({ runId: "unused" }),
 			now: () => NOW,
@@ -95,7 +95,7 @@ describe("runPlanRunTick", () => {
 
 		const result = await runPlanRunTick({
 			repos: h.repos,
-			showSeed: openSeed,
+			getIssue: openSeed,
 			checkPrMerged: noopPoll,
 			spawn,
 			now: () => NOW,
@@ -146,21 +146,21 @@ describe("runPlanRunTick", () => {
 		};
 
 		// Force a coordinator throw on plan A by making listChildren raise via
-		// a poisoned showSeed for warren-a.
-		const showSeed: CoordinatorShowSeedFn = async (_p, id) => {
-			if (id === "warren-a") throw new Error("showSeed exploded");
+		// a poisoned getIssue for warren-a.
+		const getIssue: CoordinatorGetIssueFn = async (_p, id) => {
+			if (id === "warren-a") throw new Error("getIssue exploded");
 			return { id, status: "open" };
 		};
 
 		const result = await runPlanRunTick({
 			repos: h.repos,
-			showSeed,
+			getIssue,
 			checkPrMerged: noopPoll,
 			spawn,
 			now: () => NOW,
 		});
 
-		// showSeed throw is caught inside the coordinator → returns noop, not an
+		// getIssue throw is caught inside the coordinator → returns noop, not an
 		// advance error. Plan B still advances.
 		expect(result.errors).toEqual([]);
 		expect(result.advances).toHaveLength(2);
@@ -193,7 +193,7 @@ describe("runPlanRunTick", () => {
 
 		await runPlanRunTick({
 			repos: h.repos,
-			showSeed: openSeed,
+			getIssue: openSeed,
 			checkPrMerged: noopPoll,
 			spawn,
 			now: () => NOW,
@@ -225,7 +225,7 @@ describe("bootPlanRunCoordinator", () => {
 		let scheduled = 0;
 		const handle = bootPlanRunCoordinator({
 			repos: h.repos,
-			showSeed: openSeed,
+			getIssue: openSeed,
 			checkPrMerged: noopPoll,
 			spawn: async () => ({ runId: "unused" }),
 			tickMs: 100,
@@ -243,7 +243,7 @@ describe("bootPlanRunCoordinator", () => {
 	test("runOnce fires a single tick and increments tickCount", async () => {
 		const handle = bootPlanRunCoordinator({
 			repos: h.repos,
-			showSeed: openSeed,
+			getIssue: openSeed,
 			checkPrMerged: noopPoll,
 			spawn: async () => ({ runId: "unused" }),
 			tickMs: 100,
@@ -287,7 +287,7 @@ describe("bootPlanRunCoordinator", () => {
 		};
 		const handle = bootPlanRunCoordinator({
 			repos: h.repos,
-			showSeed: openSeed,
+			getIssue: openSeed,
 			checkPrMerged: noopPoll,
 			spawn: slowSpawn,
 			tickMs: 100,

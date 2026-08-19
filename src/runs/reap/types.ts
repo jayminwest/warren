@@ -163,18 +163,15 @@ export interface ReapRunInput {
 	 */
 	readonly launchPreview?: (input: LaunchPreviewInput) => Promise<LaunchPreviewResult>;
 	/**
-	 * Optional seeds-CLI seam (warren-41d5). Forwarded to the auto_plan_run
-	 * sub-step so reap validates a new plan's child seeds (via `showSeed`)
-	 * before dispatching a plan-run — mirroring the manual `POST /plan-runs`
-	 * handler. A plan referencing seeds that don't exist on the default
-	 * branch is skipped with an `auto_plan_run_skipped` event instead of
-	 * wedging the coordinator on the first unresolvable child. Omit (unit
-	 * tests) ⇒ no validation, behavior unchanged.
+	 * Optional seeds-CLI seam (warren-41d5). Retained for the legacy
+	 * write/extension paths; the auto_plan_run sub-step now reads
+	 * `issueTracker` (warren-2d98).
 	 */
 	readonly seedsCli?: SeedsCliDeps;
 	/**
-	 * Boot-resolved IssueTracker (warren-5819, pl-a37b Track B). Threading
-	 * seam — reap still reads `seedsCli`; the port lands in warren-47b0.
+	 * Boot-resolved IssueTracker (warren-5819, pl-a37b Track B). The
+	 * auto_plan_run sub-step validates a new plan's children through it
+	 * (warren-2d98).
 	 */
 	readonly issueTracker?: IssueTracker;
 }

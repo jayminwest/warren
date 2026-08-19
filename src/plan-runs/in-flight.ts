@@ -11,15 +11,15 @@
 
 import { formatError } from "../core/errors.ts";
 import { renderPlanRunPrompt } from "../core/plan-run-prompt.ts";
+import { IssueNotFoundError } from "../core/wire.ts";
 import type { PlanRunChildRow, PlanRunRow, RunRow } from "../db/schema.ts";
 import type { PrMergeChecker } from "../runs/pr-merge.ts";
-import { SeedNotFoundError } from "../seeds-cli/index.ts";
 import type {
 	AdvanceResult,
 	CoordinatorCloseChildSeedFn,
 	CoordinatorEmitFn,
+	CoordinatorGetIssueFn,
 	CoordinatorRepos,
-	CoordinatorShowSeedFn,
 	CoordinatorSpawnFn,
 	CoordinatorSpawnResult,
 } from "./coordinator.ts";
@@ -40,7 +40,7 @@ export interface HandleInFlightInput {
 	readonly repos: CoordinatorRepos;
 	readonly checkPrMerged: PrMergeChecker;
 	readonly emit: CoordinatorEmitFn;
-	readonly showSeed: CoordinatorShowSeedFn;
+	readonly getIssue: CoordinatorGetIssueFn;
 	readonly mergeTimeoutMs: number;
 	readonly now: () => Date;
 	readonly reopenPr?: CoordinatorReopenPrFn; // warren-22de: (re)open PR before failing
@@ -159,17 +159,17 @@ type ChildSeedResolution = "resolved" | "unresolved" | "transient";
  * an unmerged branch) pushed nothing because it *could not do the work* —
  * that must fail with a typed reason, not be scored a phantom success.
  *
- * Only a definitive `SeedNotFoundError` is terminal; any other (transient:
- * timeout / lock / malformed) failure stays retryable so a flaky seed
- * store never converts a genuine trivial merge into a spurious failure.
+ * Only a definitive `IssueNotFoundError` is terminal; any other (transient:
+ * timeout / lock / malformed) failure stays retryable so a flaky tracker
+ * never converts a genuine trivial merge into a spurious failure.
  * This mirrors the dispatch-arm semantics in coordinator.ts.
  */
 async function resolveChildSeed(input: HandleInFlightInput): Promise<ChildSeedResolution> {
 	try {
-		await input.showSeed(input.planRun.projectId, input.child.seedId);
+		await input.getIssue(input.planRun.projectId, input.child.seedId);
 		return "resolved";
 	} catch (err) {
-		return err instanceof SeedNotFoundError ? "unresolved" : "transient";
+		return err instanceof IssueNotFoundError ? "unresolved" : "transient";
 	}
 }
 

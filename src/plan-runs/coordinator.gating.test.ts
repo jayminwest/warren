@@ -33,7 +33,7 @@ describe("advancePlanRun — parentRunId gate (warren-d9a2)", () => {
 		const result = await advancePlanRun({
 			planRun: h.planRun,
 			repos: h.repos,
-			showSeed: h.showSeedStub("open"),
+			getIssue: h.getIssueStub("open"),
 			checkPrMerged: neverPoll,
 			spawn: h.spawnStub(() => "run_x"),
 			emit: h.emit,
@@ -51,7 +51,7 @@ describe("advancePlanRun — parentRunId gate (warren-d9a2)", () => {
 		const result = await advancePlanRun({
 			planRun: pr,
 			repos: h.repos,
-			showSeed: h.showSeedStub("open"),
+			getIssue: h.getIssueStub("open"),
 			checkPrMerged: async () => ({ kind: "merged", mergedAt: NOW.toISOString() }),
 			spawn: h.spawnStub(() => "run_child"),
 			emit: h.emit,
@@ -79,7 +79,7 @@ describe("advancePlanRun — parentRunId gate (warren-d9a2)", () => {
 		const result = await advancePlanRun({
 			planRun,
 			repos: h.repos,
-			showSeed: h.showSeedStub("open"),
+			getIssue: h.getIssueStub("open"),
 			// The merged check polls the PR itself; with reap threading the run's
 			// ref as the PR base, "merged" here means merged-into-ref — the gate
 			// needs no extra base input.
@@ -107,7 +107,7 @@ describe("advancePlanRun — parentRunId gate (warren-d9a2)", () => {
 		const result = await advancePlanRun({
 			planRun: pr,
 			repos: h.repos,
-			showSeed: h.showSeedStub("open"),
+			getIssue: h.getIssueStub("open"),
 			checkPrMerged: async () => ({ kind: "open" }),
 			spawn: h.spawnStub(() => "unused"),
 			emit: h.emit,
@@ -128,7 +128,7 @@ describe("advancePlanRun — parentRunId gate (warren-d9a2)", () => {
 		const result = await advancePlanRun({
 			planRun: pr,
 			repos: h.repos,
-			showSeed: h.showSeedStub("open"),
+			getIssue: h.getIssueStub("open"),
 			checkPrMerged: async () => ({ kind: "open" }),
 			spawn: h.spawnStub(() => "unused"),
 			emit: h.emit,
@@ -159,7 +159,7 @@ describe("advancePlanRun — parentRunId gate (warren-d9a2)", () => {
 		const result = await advancePlanRun({
 			planRun: pr,
 			repos: h.repos,
-			showSeed: h.showSeedStub("open"),
+			getIssue: h.getIssueStub("open"),
 			checkPrMerged: async () => ({ kind: "open" }),
 			spawn: h.spawnStub(() => "unused"),
 			emit: h.emit,
@@ -178,7 +178,7 @@ describe("advancePlanRun — parentRunId gate (warren-d9a2)", () => {
 		const result = await advancePlanRun({
 			planRun: pr,
 			repos: h.repos,
-			showSeed: h.showSeedStub("open"),
+			getIssue: h.getIssueStub("open"),
 			checkPrMerged: async () => ({ kind: "open" }),
 			spawn: h.spawnStub(() => "unused"),
 			emit: h.emit,
@@ -197,7 +197,7 @@ describe("advancePlanRun — parentRunId gate (warren-d9a2)", () => {
 		const result = await advancePlanRun({
 			planRun: pr,
 			repos: h.repos,
-			showSeed: h.showSeedStub("open"),
+			getIssue: h.getIssueStub("open"),
 			checkPrMerged: async () => ({ kind: "closed_unmerged" }),
 			spawn: h.spawnStub(() => "unused"),
 			emit: h.emit,
@@ -224,7 +224,7 @@ describe("advancePlanRun — parentRunId gate (warren-d9a2)", () => {
 		const result = await advancePlanRun({
 			planRun: pr,
 			repos: h.repos,
-			showSeed: h.showSeedStub("open"),
+			getIssue: h.getIssueStub("open"),
 			checkPrMerged: async () => ({ kind: "forge_error", errorKind: "not_found", detail }),
 			spawn: h.spawnStub(() => "unused"),
 			emit: h.emit,
@@ -258,7 +258,7 @@ describe("advancePlanRun — parentRunId gate (warren-d9a2)", () => {
 		const result = await advancePlanRun({
 			planRun: pr,
 			repos: h.repos,
-			showSeed: h.showSeedStub("open"),
+			getIssue: h.getIssueStub("open"),
 			checkPrMerged: async () => ({ kind: "forge_error", errorKind, detail: errorKind }),
 			spawn: h.spawnStub(() => "unused"),
 			emit: h.emit,
@@ -292,7 +292,7 @@ describe("advancePlanRun — parentRunId gate (warren-d9a2)", () => {
 		const result = await advancePlanRun({
 			planRun: pr,
 			repos: h.repos,
-			showSeed: h.showSeedStub("open"),
+			getIssue: h.getIssueStub("open"),
 			checkPrMerged: neverPoll,
 			spawn: h.spawnStub(() => "run_child"),
 			emit: h.emit,
@@ -306,7 +306,7 @@ describe("advancePlanRun — parentRunId gate (warren-d9a2)", () => {
 		const result = await advancePlanRun({
 			planRun: pr,
 			repos: h.repos,
-			showSeed: h.showSeedStub("open"),
+			getIssue: h.getIssueStub("open"),
 			checkPrMerged: neverPoll,
 			spawn: h.spawnStub(() => "run_child"),
 			emit: h.emit,
@@ -322,7 +322,7 @@ describe("advancePlanRun — parentRunId gate (warren-d9a2)", () => {
 		const result = await advancePlanRun({
 			planRun: pr,
 			repos: h.repos,
-			showSeed: h.showSeedStub("open"),
+			getIssue: h.getIssueStub("open"),
 			checkPrMerged: neverPoll,
 			spawn: h.spawnStub(() => "unused"),
 			emit: h.emit,

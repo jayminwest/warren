@@ -1,12 +1,13 @@
+import { type Issue, IssueNotFoundError, type IssueStatus } from "../core/wire.ts";
 import { openDatabase, type WarrenDb } from "../db/client.ts";
 import { createRepos, type Repos } from "../db/repos/index.ts";
 import type { PlanRunChildState, PlanRunRow } from "../db/schema.ts";
 import { agents } from "../db/schema.ts";
 import type { PrMergeChecker } from "../runs/pr-merge.ts";
-import { SeedNotFoundError } from "../seeds-cli/index.ts";
+import type { IssueTracker, TrackerCapabilities, TrackerContext } from "../tracker/contract.ts";
 import type {
 	CoordinatorEmitFn,
-	CoordinatorShowSeedFn,
+	CoordinatorGetIssueFn,
 	CoordinatorSpawnFn,
 } from "./coordinator.ts";
 
@@ -18,6 +19,49 @@ export interface CapturedEvent {
 	payload: Record<string, unknown>;
 }
 
+/** Capabilities every coordinator test double carries (mirrors SeedsTracker). */
+const FAKE_TRACKER_CAPABILITIES: TrackerCapabilities = {
+	supportsPlans: true,
+	supportsMetadata: true,
+	supportsScheduledIssues: true,
+	isGitNative: true,
+};
+
+/**
+ * Fake-tracker unit double for the coordinator tests (warren-2d98): an
+ * in-memory `IssueTracker` answering `getIssue` from a status map, with
+ * dedicated not-found / transient modes for the terminal-vs-retryable
+ * arms. The coordinator consumes the `getIssue` closure, so the harness
+ * adapts the double onto `CoordinatorGetIssueFn`.
+ */
+export class FakeTracker implements IssueTracker {
+	readonly capabilities = FAKE_TRACKER_CAPABILITIES;
+	/** Issue ids whose reads throw a transient TrackerError-shaped failure. */
+	readonly transient = new Set<string>();
+
+	constructor(private readonly issues: ReadonlyMap<string, IssueStatus>) {}
+
+	async getIssue(_ctx: TrackerContext, issueId: string): Promise<Issue> {
+		if (this.transient.has(issueId)) throw new Error("tracker timed out");
+		const status = this.issues.get(issueId) ?? this.issues.get("*");
+		if (status === undefined) {
+			throw new IssueNotFoundError(`Issue not found: ${issueId}`);
+		}
+		return { id: issueId, status };
+	}
+
+	async listIssueStatuses(): Promise<ReadonlyMap<string, IssueStatus>> {
+		return this.issues;
+	}
+
+	async closeIssue(): Promise<void> {}
+}
+
+/** Adapt a FakeTracker onto the coordinator's getIssue seam. */
+export function getIssueFromTracker(tracker: FakeTracker): CoordinatorGetIssueFn {
+	return async (projectId, issueId) => tracker.getIssue({ projectId }, issueId);
+}
+
 export interface Harness {
 	db: WarrenDb;
 	repos: Repos;
@@ -25,11 +69,11 @@ export interface Harness {
 	planRun: PlanRunRow;
 	events: CapturedEvent[];
 	emit: CoordinatorEmitFn;
-	showSeedStub: (status: "open" | "closed") => CoordinatorShowSeedFn;
-	/** A showSeed that always throws SeedNotFoundError (warren-2a8c). */
-	showSeedNotFound: CoordinatorShowSeedFn;
-	/** A showSeed that always throws a transient (non-not-found) error. */
-	showSeedTransient: CoordinatorShowSeedFn;
+	getIssueStub: (status: "open" | "closed") => CoordinatorGetIssueFn;
+	/** A getIssue that always throws IssueNotFoundError (warren-2a8c). */
+	getIssueNotFound: CoordinatorGetIssueFn;
+	/** A getIssue that always throws a transient (non-not-found) error. */
+	getIssueTransient: CoordinatorGetIssueFn;
 	spawnStub: (newRunId: () => string) => CoordinatorSpawnFn;
 	makeRun: (seedId: string) => Promise<string>;
 	/**
@@ -105,14 +149,11 @@ export async function setup(): Promise<Harness> {
 	const emit: CoordinatorEmitFn = async (runId, kind, payload) => {
 		events.push({ runId, kind, payload });
 	};
-	const showSeedStub = (status: "open" | "closed"): CoordinatorShowSeedFn => {
-		return async (_projectId, seedId) => ({ id: seedId, status });
-	};
-	const showSeedNotFound: CoordinatorShowSeedFn = async (_projectId, seedId) => {
-		throw new SeedNotFoundError(`Issue not found: ${seedId}`);
-	};
-	const showSeedTransient: CoordinatorShowSeedFn = async () => {
-		throw new Error("sd timed out");
+	const getIssueStub = (status: "open" | "closed"): CoordinatorGetIssueFn =>
+		getIssueFromTracker(new FakeTracker(new Map([["*", status]])));
+	const getIssueNotFound: CoordinatorGetIssueFn = getIssueFromTracker(new FakeTracker(new Map()));
+	const getIssueTransient: CoordinatorGetIssueFn = async () => {
+		throw new Error("tracker timed out");
 	};
 	const spawnStub = (newRunId: () => string): CoordinatorSpawnFn => {
 		return async ({ child, prompt }) => {
@@ -158,9 +199,9 @@ export async function setup(): Promise<Harness> {
 		planRun,
 		events,
 		emit,
-		showSeedStub,
-		showSeedNotFound,
-		showSeedTransient,
+		getIssueStub,
+		getIssueNotFound,
+		getIssueTransient,
 		spawnStub,
 		makeRun,
 	};

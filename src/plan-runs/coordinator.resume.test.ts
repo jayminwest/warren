@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { SeedNotFoundError, SeedsCliError } from "../seeds-cli/index.ts";
+import { IssueNotFoundError, TrackerError } from "../core/wire.ts";
 import { type Harness, NOW, neverPoll, setup } from "./coordinator.test-helpers.ts";
-import { advancePlanRun, type CoordinatorShowSeedFn } from "./coordinator.ts";
+import { advancePlanRun, type CoordinatorGetIssueFn } from "./coordinator.ts";
 
 describe("advancePlanRun — resume phase", () => {
 	let h: Harness;
@@ -18,7 +18,7 @@ describe("advancePlanRun — resume phase", () => {
 		await h.repos.planRuns.transitionTo(h.planRun.id, "running", { startedAt: NOW.toISOString() });
 		const planRun = await h.repos.planRuns.require(h.planRun.id);
 		let calls = 0;
-		const showSeed: CoordinatorShowSeedFn = async (_p, seedId) => {
+		const getIssue: CoordinatorGetIssueFn = async (_p, seedId) => {
 			calls += 1;
 			// First call (seq=1) reports closed; second (seq=2) reports open.
 			if (seedId === "warren-a") return { id: seedId, status: "closed" };
@@ -27,7 +27,7 @@ describe("advancePlanRun — resume phase", () => {
 		const result = await advancePlanRun({
 			planRun,
 			repos: h.repos,
-			showSeed,
+			getIssue,
 			checkPrMerged: neverPoll,
 			spawn: h.spawnStub(() => "unused"),
 			emit: h.emit,
@@ -40,16 +40,16 @@ describe("advancePlanRun — resume phase", () => {
 		expect(children.find((c) => c.seq === 2)?.state).toBe("dispatched");
 	});
 
-	test("warren-0fed: a definitive SeedNotFoundError fails the child and the plan-run", async () => {
+	test("warren-0fed: a definitive IssueNotFoundError fails the child and the plan-run", async () => {
 		await h.repos.planRuns.transitionTo(h.planRun.id, "running", { startedAt: NOW.toISOString() });
 		const planRun = await h.repos.planRuns.require(h.planRun.id);
-		const showSeed: CoordinatorShowSeedFn = async (_p, seedId) => {
-			throw new SeedNotFoundError(`sd show ${seedId} exited 1: Issue not found`);
+		const getIssue: CoordinatorGetIssueFn = async (_p, seedId) => {
+			throw new IssueNotFoundError(`sd show ${seedId} exited 1: Issue not found`);
 		};
 		const result = await advancePlanRun({
 			planRun,
 			repos: h.repos,
-			showSeed,
+			getIssue,
 			checkPrMerged: neverPoll,
 			spawn: h.spawnStub(() => "unused"),
 			emit: h.emit,
@@ -71,13 +71,13 @@ describe("advancePlanRun — resume phase", () => {
 	test("warren-0fed: a transient sd failure stays a retryable noop, not terminal", async () => {
 		await h.repos.planRuns.transitionTo(h.planRun.id, "running", { startedAt: NOW.toISOString() });
 		const planRun = await h.repos.planRuns.require(h.planRun.id);
-		const showSeed: CoordinatorShowSeedFn = async (_p, seedId) => {
-			throw new SeedsCliError(`sd show ${seedId} exited 1: database is locked`);
+		const getIssue: CoordinatorGetIssueFn = async (_p, seedId) => {
+			throw new TrackerError(`sd show ${seedId} exited 1: database is locked`);
 		};
 		const result = await advancePlanRun({
 			planRun,
 			repos: h.repos,
-			showSeed,
+			getIssue,
 			checkPrMerged: neverPoll,
 			spawn: h.spawnStub(() => "unused"),
 			emit: h.emit,

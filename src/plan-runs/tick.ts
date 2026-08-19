@@ -31,9 +31,9 @@ import {
 	advancePlanRun,
 	type CoordinatorCloseChildSeedFn,
 	type CoordinatorEmitFn,
+	type CoordinatorGetIssueFn,
 	type CoordinatorReopenPrFn,
 	type CoordinatorRepos,
-	type CoordinatorShowSeedFn,
 	type CoordinatorSpawnFn,
 	type PlanRunEventKind,
 } from "./coordinator.ts";
@@ -46,7 +46,7 @@ export interface PlanRunTickLogger {
 
 export interface PlanRunTickDeps {
 	readonly repos: Pick<Repos, "planRuns" | "runs" | "events">;
-	readonly showSeed: CoordinatorShowSeedFn;
+	readonly getIssue: CoordinatorGetIssueFn;
 	readonly checkPrMerged: PrMergeChecker;
 	readonly spawn: CoordinatorSpawnFn;
 	readonly now?: () => Date;
@@ -119,7 +119,7 @@ function buildAdvanceInput(
 	return {
 		planRun,
 		repos: deps.repos as CoordinatorRepos,
-		showSeed: deps.showSeed,
+		getIssue: deps.getIssue,
 		checkPrMerged: deps.checkPrMerged,
 		spawn: deps.spawn,
 		emit,

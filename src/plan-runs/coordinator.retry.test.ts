@@ -46,7 +46,7 @@ describe("advancePlanRun — automatic child retry (warren-6de9)", () => {
 		advancePlanRun({
 			planRun: await h.repos.planRuns.require(h.planRun.id),
 			repos: h.repos,
-			showSeed: h.showSeedStub("open"),
+			getIssue: h.getIssueStub("open"),
 			checkPrMerged: neverPoll,
 			spawn: h.spawnStub(() => "unused"),
 			emit: h.emit,
@@ -101,7 +101,7 @@ describe("advancePlanRun — automatic child retry (warren-6de9)", () => {
 		const second = await advancePlanRun({
 			planRun: await h.repos.planRuns.require(h.planRun.id),
 			repos: h.repos,
-			showSeed: h.showSeedStub("open"),
+			getIssue: h.getIssueStub("open"),
 			checkPrMerged: async () => ({ kind: "open" }),
 			spawn: h.spawnStub(() => "unused"),
 			emit: h.emit,
@@ -123,7 +123,7 @@ describe("advancePlanRun — automatic child retry (warren-6de9)", () => {
 		const second = await advancePlanRun({
 			planRun: await h.repos.planRuns.require(h.planRun.id),
 			repos: h.repos,
-			showSeed: h.showSeedStub("open"),
+			getIssue: h.getIssueStub("open"),
 			checkPrMerged: neverPoll,
 			spawn: h.spawnStub(() => "unused"),
 			emit: h.emit,

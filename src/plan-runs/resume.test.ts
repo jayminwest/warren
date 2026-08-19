@@ -81,7 +81,7 @@ describe("resumePlanRun (warren-1eff)", () => {
 		const result = await advancePlanRun({
 			planRun,
 			repos: h.repos,
-			showSeed: h.showSeedStub("open"),
+			getIssue: h.getIssueStub("open"),
 			checkPrMerged: async () => ({ kind: "merged", mergedAt: RESUME_AT.toISOString() }),
 			spawn: h.spawnStub(() => "unused"),
 			emit: h.emit,
@@ -107,7 +107,7 @@ describe("resumePlanRun (warren-1eff)", () => {
 		const result = await advancePlanRun({
 			planRun,
 			repos: h.repos,
-			showSeed: h.showSeedStub("open"),
+			getIssue: h.getIssueStub("open"),
 			checkPrMerged: async () => ({ kind: "open" }),
 			spawn: h.spawnStub(() => "unused"),
 			emit: h.emit,
@@ -158,7 +158,7 @@ describe("resumePlanRun (warren-1eff)", () => {
 		const advanced = await advancePlanRun({
 			planRun: reloaded,
 			repos: h.repos,
-			showSeed: h.showSeedStub("open"),
+			getIssue: h.getIssueStub("open"),
 			checkPrMerged: async () => ({ kind: "merged", mergedAt: RESUME_AT.toISOString() }),
 			spawn: h.spawnStub(() => "unused"),
 			emit: h.emit,
@@ -192,7 +192,7 @@ describe("resumePlanRun (warren-1eff)", () => {
 		const advanced = await advancePlanRun({
 			planRun: reloaded,
 			repos: h.repos,
-			showSeed: h.showSeedStub("open"),
+			getIssue: h.getIssueStub("open"),
 			checkPrMerged: async () => ({ kind: "open" }),
 			spawn: h.spawnStub(() => "unused"),
 			emit: h.emit,

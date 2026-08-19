@@ -42,7 +42,7 @@ describe("advancePlanRun — PR recovery and plan completion", () => {
 		const result = await advancePlanRun({
 			planRun,
 			repos: h.repos,
-			showSeed: h.showSeedStub("open"),
+			getIssue: h.getIssueStub("open"),
 			checkPrMerged: neverPoll,
 			spawn: h.spawnStub(() => "unused"),
 			emit: h.emit,
@@ -69,7 +69,7 @@ describe("advancePlanRun — PR recovery and plan completion", () => {
 		const result = await advancePlanRun({
 			planRun,
 			repos: h.repos,
-			showSeed: h.showSeedStub("open"),
+			getIssue: h.getIssueStub("open"),
 			checkPrMerged: neverPoll,
 			spawn: h.spawnStub(() => "unused"),
 			emit: h.emit,
@@ -96,7 +96,7 @@ describe("advancePlanRun — PR recovery and plan completion", () => {
 		const result = await advancePlanRun({
 			planRun,
 			repos: h.repos,
-			showSeed: h.showSeedStub("open"),
+			getIssue: h.getIssueStub("open"),
 			checkPrMerged: async () => ({ kind: "merged", mergedAt: MERGED_AT }),
 			spawn: h.spawnStub(() => "unused"),
 			emit: h.emit,
@@ -125,7 +125,7 @@ describe("advancePlanRun — PR recovery and plan completion", () => {
 		const result = await advancePlanRun({
 			planRun,
 			repos: h.repos,
-			showSeed: h.showSeedStub("open"),
+			getIssue: h.getIssueStub("open"),
 			checkPrMerged: neverPoll,
 			spawn: h.spawnStub(() => "unused"),
 			emit: h.emit,
@@ -165,7 +165,7 @@ describe("advancePlanRun — PR recovery and plan completion", () => {
 		const result = await advancePlanRun({
 			planRun,
 			repos: h.repos,
-			showSeed: h.showSeedStub("open"),
+			getIssue: h.getIssueStub("open"),
 			checkPrMerged: neverPoll,
 			spawn: h.spawnStub(() => "unused"),
 			emit: h.emit,

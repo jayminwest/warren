@@ -28,7 +28,7 @@ describe("advancePlanRun — completion phase", () => {
 		const result = await advancePlanRun({
 			planRun,
 			repos: h.repos,
-			showSeed: h.showSeedStub("open"),
+			getIssue: h.getIssueStub("open"),
 			checkPrMerged: async () => ({ kind: "open" }),
 			spawn: h.spawnStub(() => "unused"),
 			emit: h.emit,
@@ -58,7 +58,7 @@ describe("advancePlanRun — completion phase", () => {
 		const result = await advancePlanRun({
 			planRun,
 			repos: h.repos,
-			showSeed: h.showSeedStub("open"),
+			getIssue: h.getIssueStub("open"),
 			checkPrMerged: async () => ({ kind: "open" }),
 			spawn: h.spawnStub(() => "unused"),
 			emit: h.emit,
@@ -93,7 +93,7 @@ describe("advancePlanRun — completion phase", () => {
 		const result = await advancePlanRun({
 			planRun,
 			repos: h.repos,
-			showSeed: h.showSeedStub("open"),
+			getIssue: h.getIssueStub("open"),
 			checkPrMerged: async () => ({ kind: "merged", mergedAt: "2026-05-17T01:00:00.000Z" }),
 			spawn: h.spawnStub(() => "unused"),
 			emit: h.emit,
@@ -130,7 +130,7 @@ describe("advancePlanRun — completion phase", () => {
 		const result = await advancePlanRun({
 			planRun,
 			repos: h.repos,
-			showSeed: h.showSeedStub("open"),
+			getIssue: h.getIssueStub("open"),
 			checkPrMerged: async () => ({ kind: "closed_unmerged" }),
 			spawn: h.spawnStub(() => "unused"),
 			emit: h.emit,
@@ -169,7 +169,7 @@ describe("advancePlanRun — completion phase", () => {
 		const result = await advancePlanRun({
 			planRun,
 			repos: h.repos,
-			showSeed: h.showSeedStub("open"),
+			getIssue: h.getIssueStub("open"),
 			checkPrMerged: async () => ({ kind: "forge_error", errorKind: "not_found", detail }),
 			spawn: h.spawnStub(() => "unused"),
 			emit: h.emit,
@@ -211,7 +211,7 @@ describe("advancePlanRun — completion phase", () => {
 		const result = await advancePlanRun({
 			planRun,
 			repos: h.repos,
-			showSeed: h.showSeedStub("open"),
+			getIssue: h.getIssueStub("open"),
 			checkPrMerged: async () => ({ kind: "forge_error", errorKind, detail: errorKind }),
 			spawn: h.spawnStub(() => "unused"),
 			emit: h.emit,
@@ -243,7 +243,7 @@ describe("advancePlanRun — completion phase", () => {
 		const result = await advancePlanRun({
 			planRun,
 			repos: h.repos,
-			showSeed: h.showSeedStub("open"),
+			getIssue: h.getIssueStub("open"),
 			checkPrMerged: neverPoll,
 			spawn: h.spawnStub(() => "unused"),
 			emit: h.emit,
@@ -274,7 +274,7 @@ describe("advancePlanRun — completion phase", () => {
 		const result = await advancePlanRun({
 			planRun,
 			repos: h.repos,
-			showSeed: h.showSeedStub("open"),
+			getIssue: h.getIssueStub("open"),
 			checkPrMerged: neverPoll,
 			spawn: h.spawnStub(() => "unused"),
 			emit: h.emit,
@@ -313,7 +313,7 @@ describe("advancePlanRun — completion phase", () => {
 		const result = await advancePlanRun({
 			planRun,
 			repos: h.repos,
-			showSeed: h.showSeedStub("open"),
+			getIssue: h.getIssueStub("open"),
 			checkPrMerged: neverPoll,
 			spawn: h.spawnStub(() => "unused"),
 			emit: h.emit,
@@ -359,7 +359,7 @@ describe("advancePlanRun — completion phase", () => {
 		const result = await advancePlanRun({
 			planRun,
 			repos: h.repos,
-			showSeed: h.showSeedNotFound,
+			getIssue: h.getIssueNotFound,
 			checkPrMerged: neverPoll,
 			spawn: h.spawnStub(() => "unused"),
 			emit: h.emit,
@@ -393,7 +393,7 @@ describe("advancePlanRun — completion phase", () => {
 		const result = await advancePlanRun({
 			planRun,
 			repos: h.repos,
-			showSeed: h.showSeedStub("open"),
+			getIssue: h.getIssueStub("open"),
 			checkPrMerged: neverPoll,
 			spawn: h.spawnStub(() => "unused"),
 			emit: h.emit,
@@ -414,7 +414,7 @@ describe("advancePlanRun — completion phase", () => {
 		const result = await advancePlanRun({
 			planRun,
 			repos: h.repos,
-			showSeed: h.showSeedTransient,
+			getIssue: h.getIssueTransient,
 			checkPrMerged: neverPoll,
 			spawn: h.spawnStub(() => "unused"),
 			emit: h.emit,

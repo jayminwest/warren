@@ -1,5 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import type { SeedsCliDeps } from "../../seeds-cli/index.ts";
+import type { IssueTracker } from "../../tracker/contract.ts";
+import { SeedsTracker } from "../../tracker/seeds-tracker.ts";
+import { dispatchAutoPlanRuns, trackerSupportsAutoPlanRun } from "./auto-plan-run.ts";
 import { reapRun } from "./index.ts";
 import {
 	createRepos,
@@ -356,7 +359,9 @@ describe("auto_plan_run (warren-a32a)", () => {
 				...reapDeps(fakeBurrowClient(makeBurrow()), { fs: f.fs, exec: e.exec }),
 				fs: f.fs,
 				exec: e.exec,
-				seedsCli: fakeSeedsCli({ "warren-c1": "open", "warren-c2": "closed" }),
+				issueTracker: new SeedsTracker(
+					fakeSeedsCli({ "warren-c1": "open", "warren-c2": "closed" }),
+				),
 			});
 
 			expect(result.autoPlanRunCreated).toBe(true);
@@ -384,7 +389,9 @@ describe("auto_plan_run (warren-a32a)", () => {
 				...reapDeps(fakeBurrowClient(makeBurrow()), { fs: f.fs, exec: e.exec }),
 				fs: f.fs,
 				exec: e.exec,
-				seedsCli: fakeSeedsCli({ "warren-c1": "open", "warren-gone": "missing" }),
+				issueTracker: new SeedsTracker(
+					fakeSeedsCli({ "warren-c1": "open", "warren-gone": "missing" }),
+				),
 			});
 
 			expect(result.autoPlanRunCreated).toBe(false);
@@ -417,7 +424,9 @@ describe("auto_plan_run (warren-a32a)", () => {
 				...reapDeps(fakeBurrowClient(makeBurrow()), { fs: f.fs, exec: e.exec }),
 				fs: f.fs,
 				exec: e.exec,
-				seedsCli: fakeSeedsCli({ "warren-c1": "closed", "warren-c2": "closed" }),
+				issueTracker: new SeedsTracker(
+					fakeSeedsCli({ "warren-c1": "closed", "warren-c2": "closed" }),
+				),
 			});
 
 			expect(result.autoPlanRunCreated).toBe(false);
@@ -427,5 +436,46 @@ describe("auto_plan_run (warren-a32a)", () => {
 		} finally {
 			await ctx.db.close();
 		}
+	});
+});
+
+describe("auto_plan_run tracker fence (warren-2d98)", () => {
+	/** A hosted tracker: plan-ignorant state lives off-repo. */
+	const remoteTracker: IssueTracker = {
+		capabilities: {
+			supportsPlans: true,
+			supportsMetadata: false,
+			supportsScheduledIssues: false,
+			isGitNative: false,
+		},
+		getIssue: async (_ctx, id) => ({ id, status: "open" }),
+		listIssueStatuses: async () => new Map(),
+		closeIssue: async () => {},
+	};
+
+	test("trackerSupportsAutoPlanRun requires git-native + plans", () => {
+		expect(trackerSupportsAutoPlanRun(remoteTracker)).toBe(false);
+	});
+
+	test("a non-git-native tracker fences the feature off entirely", async () => {
+		const created: unknown[] = [];
+		const result = await dispatchAutoPlanRuns({
+			run: { id: "run_x", renderedAgentJson: null, agentName: "patrol-bot" },
+			project: { id: "pr_x", defaultBranch: "main", localPath: "/data/projects/x/y" },
+			workspacePlanIds: new Set(["pl-new1"]),
+			baselinePlanIds: new Set(),
+			workspacePlansBody: '{"id":"pl-new1","status":"approved","children":["warren-c1"]}',
+			planRuns: {
+				create: async (input) => {
+					created.push(input);
+					return { planRun: { id: "plr_x" } };
+				},
+			},
+			emit: async () => {},
+			fail: async () => {},
+			issueTracker: remoteTracker,
+		});
+		expect(result.created).toBe(false);
+		expect(created).toEqual([]);
 	});
 });

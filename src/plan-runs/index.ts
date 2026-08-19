@@ -44,9 +44,9 @@ export {
 	advancePlanRun,
 	type CoordinatorCloseChildSeedFn,
 	type CoordinatorEmitFn,
+	type CoordinatorGetIssueFn,
 	type CoordinatorReopenPrFn,
 	type CoordinatorRepos,
-	type CoordinatorShowSeedFn,
 	type CoordinatorSpawnFn,
 	type CoordinatorSpawnInput,
 	type CoordinatorSpawnResult,
@@ -60,7 +60,7 @@ export {
 	PLAN_RUN_ACCEPTED_PLAN_STATUSES,
 } from "./create.ts";
 export { type CreatePlanRunSpawnInput, createPlanRunSpawn } from "./dispatch.ts";
-export { PlanHasNoOpenChildrenError, ProjectLacksSeedsError } from "./errors.ts";
+export { PlanHasNoOpenChildrenError, ProjectLacksTrackerError } from "./errors.ts";
 export {
 	type ComputeReadyPlansInput,
 	computeReadyPlans,

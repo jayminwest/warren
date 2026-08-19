@@ -19,7 +19,7 @@
  *
  * Handler order preserved from warren-f923:
  *   (1) load project; NotFoundError → 404 if missing.
- *   (2) reject when project.hasSeeds is false (ProjectLacksSeedsError).
+ *   (2) reject when the git-native tracker lacks .seeds (ProjectLacksTrackerError).
  *   (3) showPlan; assert plan.status is accepted and at least one open
  *       child exists (PlanHasNoOpenChildrenError).
  *   (4) resolve agent via repos.agents.get from the global registry.
@@ -30,17 +30,22 @@
 
 import { NotFoundError, ValidationError } from "../core/errors.ts";
 import { assertPlanRunPromptTemplate } from "../core/plan-run-prompt.ts";
+import type { Plan, PlanStatus } from "../core/wire.ts";
 import type { Repos } from "../db/repos/index.ts";
 import type { CreatePlanRunResult } from "../db/repos/plan-runs.ts";
 import type { ProjectRow } from "../db/schema.ts";
 import type { SpawnFn } from "../projects/clone.ts";
 import type { ProjectsConfig } from "../projects/config.ts";
 import { refreshProject } from "../projects/index.ts";
-import { type SeedsCliDeps, showPlan, showSeed } from "../seeds-cli/index.ts";
+import type { IssueTracker, PlanCapableTracker, TrackerContext } from "../tracker/contract.ts";
 import type { WarrenConfigCache } from "../warren-config/index.ts";
-import { PlanHasNoOpenChildrenError, ProjectLacksSeedsError } from "./errors.ts";
+import { PlanHasNoOpenChildrenError, ProjectLacksTrackerError } from "./errors.ts";
 
-export const PLAN_RUN_ACCEPTED_PLAN_STATUSES = ["approved", "active", "done"] as const;
+export const PLAN_RUN_ACCEPTED_PLAN_STATUSES: readonly PlanStatus[] = [
+	"approved",
+	"active",
+	"done",
+];
 
 export interface CreatePlanRunOrchestrationInput {
 	readonly projectId: string;
@@ -61,8 +66,8 @@ export interface CreatePlanRunOrchestrationInput {
 	readonly dispatcherHandle?: string;
 
 	readonly repos: Repos;
-	/** Undefined ⇒ ValidationError — plan-runs require the seeds CLI. */
-	readonly seedsCli: SeedsCliDeps | undefined;
+	/** Undefined ⇒ ValidationError — plan-runs require an issue tracker. */
+	readonly issueTracker: IssueTracker | undefined;
 	/** Git spawn seam. When wired, the host clone is refreshed before the plan walk (warren-6d60). */
 	readonly spawn?: SpawnFn;
 	readonly projectsConfig: ProjectsConfig;
@@ -82,8 +87,15 @@ export interface CreatePlanRunOrchestrationInput {
  */
 async function refreshDispatchProject(
 	input: CreatePlanRunOrchestrationInput,
+	tracker: IssueTracker,
 	project: ProjectRow,
 ): Promise<ProjectRow> {
+	// Only a git-native tracker reads plan state off the project's host
+	// clone, so only it benefits from the pre-walk refresh (warren-2d98). A
+	// remote tracker answers from its own host — no clone refresh needed
+	// (this is where ROADMAP predicts refreshProjectFn dies; it stays for
+	// POST /projects/:id/refresh, which is about the clone, not the tracker).
+	if (!tracker.capabilities.isGitNative) return project;
 	if (input.spawn === undefined) return project;
 	const refreshed = await (input.refreshProjectFn ?? refreshProject)({
 		repo: input.repos.projects,
@@ -103,6 +115,43 @@ async function refreshDispatchProject(
  * persisted row up on its next tick; this function only validates and
  * persists.
  */
+
+/**
+ * Step (3) in isolation: read the plan through the tracker and assert it
+ * is dispatchable — plan-capable tracker, accepted status, at least one
+ * child. Extracted so `createPlanRun` stays under the cognitive-complexity
+ * ceiling (warren-d3a6).
+ */
+async function readDispatchablePlan(
+	tracker: IssueTracker,
+	ctx: TrackerContext,
+	planId: string,
+): Promise<Plan> {
+	if (!tracker.capabilities.supportsPlans) {
+		throw new ValidationError(
+			"tracker does not support plans; plan-runs require a plan-capable tracker",
+			{
+				recoveryHint: "configure a tracker whose issues can be grouped into ordered plans",
+			},
+		);
+	}
+	const plan = await (tracker as unknown as PlanCapableTracker).getPlan(ctx, planId);
+	if (!PLAN_RUN_ACCEPTED_PLAN_STATUSES.includes(plan.status)) {
+		throw new ValidationError(
+			`plan ${planId} is in status '${plan.status}'; plan-runs require one of ${PLAN_RUN_ACCEPTED_PLAN_STATUSES.join(", ")}`,
+			{
+				recoveryHint: "approve or activate the plan in the tracker, then retry POST /plan-runs",
+			},
+		);
+	}
+	if (plan.children.length === 0) {
+		throw new PlanHasNoOpenChildrenError(`plan ${planId} has no children; nothing to dispatch`, {
+			recoveryHint: "run `sd plan submit <seed-id>` to populate the plan's children",
+		});
+	}
+	return plan;
+}
+
 export async function createPlanRun(
 	input: CreatePlanRunOrchestrationInput,
 ): Promise<CreatePlanRunResult> {
@@ -111,9 +160,19 @@ export async function createPlanRun(
 	// (1) project lookup — NotFoundError → 404.
 	const project = await input.repos.projects.require(input.projectId);
 
-	// (2) hasSeeds gate.
-	if (!project.hasSeeds) {
-		throw new ProjectLacksSeedsError(
+	// (2) tracker availability gate — for the git-native seeds tracker this
+	// is the hasSeeds check; a remote tracker carries its own state.
+	const tracker = input.issueTracker;
+	if (tracker === undefined) {
+		throw new ValidationError(
+			"no issue tracker is configured on this warren; plan-runs require one",
+			{
+				recoveryHint: "set WARREN_SD_BINARY (or install sd on PATH) and restart",
+			},
+		);
+	}
+	if (tracker.capabilities.isGitNative && !project.hasSeeds) {
+		throw new ProjectLacksTrackerError(
 			`project ${project.id} has no .seeds/ directory; plan-runs are not accepted`,
 			{
 				recoveryHint: "add a .seeds/ directory to the project clone and refresh",
@@ -121,41 +180,21 @@ export async function createPlanRun(
 		);
 	}
 
-	const dispatchProject = await refreshDispatchProject(input, project);
+	const dispatchProject = await refreshDispatchProject(input, tracker, project);
+	const ctx: TrackerContext = {
+		projectId: dispatchProject.id,
+		localPath: dispatchProject.localPath,
+	};
 
-	// (3) read the plan via seeds-cli.
-	if (input.seedsCli === undefined) {
-		throw new ValidationError("seeds CLI is not configured on this warren; plan-runs require sd", {
-			recoveryHint: "set WARREN_SD_BINARY (or install sd on PATH) and restart",
-		});
-	}
-	const plan = await showPlan(input.seedsCli, dispatchProject.localPath, input.planId);
-	if (!(PLAN_RUN_ACCEPTED_PLAN_STATUSES as readonly string[]).includes(plan.status)) {
-		throw new ValidationError(
-			`plan ${input.planId} is in status '${plan.status}'; plan-runs require one of ${PLAN_RUN_ACCEPTED_PLAN_STATUSES.join(", ")}`,
-			{
-				recoveryHint: "approve or activate the plan in seeds, then retry POST /plan-runs",
-			},
-		);
-	}
-	if (plan.children.length === 0) {
-		throw new PlanHasNoOpenChildrenError(
-			`plan ${input.planId} has no children; nothing to dispatch`,
-			{
-				recoveryHint: "run `sd plan submit <seed-id>` to populate the plan's children",
-			},
-		);
-	}
-	// Probe every child seed's status — if all are already closed there is
-	// nothing to dispatch. Each child is read in parallel since the seeds
-	// CLI is shell-out + filesystem read, not network.
-	const seedsCli = input.seedsCli;
+	// (3) read the plan through the tracker.
+	const plan = await readDispatchablePlan(tracker, ctx, input.planId);
+	// Probe every child issue's status — if all are already closed there is
+	// nothing to dispatch. Each child is read in parallel; the statuses are
+	// normalized onto the neutral IssueStatus vocabulary, so `closed` here
+	// covers every tracker's terminal state.
 	const childStatuses = await Promise.all(
 		plan.children.map((seedId) =>
-			showSeed(seedsCli, dispatchProject.localPath, seedId).then((s) => ({
-				seedId,
-				status: s.status,
-			})),
+			tracker.getIssue(ctx, seedId).then((issue) => ({ seedId, status: issue.status })),
 		),
 	);
 	const hasOpenChild = childStatuses.some((c) => c.status !== "closed");

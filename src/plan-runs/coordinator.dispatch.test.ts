@@ -17,7 +17,7 @@ describe("advancePlanRun — dispatch phase", () => {
 		const result = await advancePlanRun({
 			planRun: h.planRun,
 			repos: h.repos,
-			showSeed: h.showSeedStub("open"),
+			getIssue: h.getIssueStub("open"),
 			checkPrMerged: neverPoll,
 			spawn: h.spawnStub(() => "run_x"),
 			emit: h.emit,
@@ -47,7 +47,7 @@ describe("advancePlanRun — dispatch phase", () => {
 		const result = await advancePlanRun({
 			planRun,
 			repos: h.repos,
-			showSeed: h.showSeedStub("open"),
+			getIssue: h.getIssueStub("open"),
 			checkPrMerged: neverPoll,
 			spawn: h.spawnStub(() => "unused"),
 			emit: h.emit,
@@ -67,7 +67,7 @@ describe("advancePlanRun — dispatch phase", () => {
 		await advancePlanRun({
 			planRun: h.planRun,
 			repos: h.repos,
-			showSeed: h.showSeedStub("open"),
+			getIssue: h.getIssueStub("open"),
 			checkPrMerged: neverPoll,
 			spawn: capturingSpawn,
 			emit: h.emit,
@@ -94,7 +94,7 @@ describe("advancePlanRun — dispatch phase", () => {
 		const result = await advancePlanRun({
 			planRun,
 			repos: h.repos,
-			showSeed: h.showSeedStub("open"),
+			getIssue: h.getIssueStub("open"),
 			checkPrMerged: neverPoll,
 			spawn: capturingSpawn,
 			emit: h.emit,
@@ -111,7 +111,7 @@ describe("advancePlanRun — dispatch phase", () => {
 		const result = await advancePlanRun({
 			planRun: h.planRun,
 			repos: h.repos,
-			showSeed: h.showSeedStub("open"),
+			getIssue: h.getIssueStub("open"),
 			checkPrMerged: neverPoll,
 			spawn: failingSpawn,
 			emit: h.emit,

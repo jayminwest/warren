@@ -4,6 +4,7 @@ import { FakeForge } from "../../forge/fake/fake-forge.ts";
 import type { SpawnFn, SpawnOptions, SpawnResult } from "../../projects/clone.ts";
 import { RunEventBroker } from "../../runs/index.ts";
 import { FakeProvider } from "../../runtime/fake/fake-provider.ts";
+import { SeedsTracker } from "../../tracker/seeds-tracker.ts";
 import { createBridgeRegistry } from "../bridges.ts";
 import type { BridgeRegistry, Logger, ServeHandle, ServerDeps } from "../types.ts";
 
@@ -107,6 +108,7 @@ export async function depsFor(input: BuildDepsInput): Promise<ServerDeps> {
 		logger: input.logger ?? silentLogger,
 		uiDistDir: null,
 		seedsCli: { sdBinary: "sd", spawn: input.sdSpawn },
+		issueTracker: new SeedsTracker({ sdBinary: "sd", spawn: input.sdSpawn }),
 		...(input.spawn !== undefined ? { spawn: input.spawn } : {}),
 		...(input.refreshProjectFn !== undefined ? { refreshProjectFn: input.refreshProjectFn } : {}),
 		...(input.streamLimiter !== undefined ? { streamLimiter: input.streamLimiter } : {}),

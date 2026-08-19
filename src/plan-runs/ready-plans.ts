@@ -12,15 +12,17 @@
  * around it and unit-test the truth table in isolation.
  */
 
-const APPROVED_STATUS = "approved";
-const CLOSED_STATUS = "closed";
+import type { IssueStatus, PlanStatus } from "../core/wire.ts";
+
+const APPROVED_STATUS: PlanStatus = "approved";
+const CLOSED_STATUS: IssueStatus = "closed";
 
 /** A plan as seen by the readiness computation. */
 export interface ReadyPlanInput {
 	id: string;
 	name?: string;
 	status: string;
-	/** Child seed ids belonging to this plan. */
+	/** Child issue ids belonging to this plan. */
 	children: string[];
 }
 
@@ -29,13 +31,13 @@ export interface ReadyPlan {
 	id: string;
 	name?: string;
 	status: string;
-	/** Number of child seeds that are still open (non-closed). */
+	/** Number of child issues that are still open (non-closed). */
 	openChildCount: number;
 }
 
 export interface ComputeReadyPlansInput {
 	plans: readonly ReadyPlanInput[];
-	/** Status of every seed in the project, keyed by seed id. */
+	/** Status of every issue in the project, keyed by issue id, normalized onto the neutral vocabulary. */
 	seedStatusById: ReadonlyMap<string, string>;
 	/** Plan ids that already have a plan_run row (deduped out). */
 	dispatchedPlanIds: ReadonlySet<string>;
@@ -43,7 +45,7 @@ export interface ComputeReadyPlansInput {
 
 /**
  * Return the subset of `plans` that are ready to dispatch: status
- * `approved`, at least one open child seed, and not in
+ * `approved`, at least one open child issue, and not in
  * `dispatchedPlanIds`. Each surfaced plan is annotated with its
  * `openChildCount`.
  */

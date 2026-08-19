@@ -7,7 +7,7 @@
 
 import { NotFoundError, ValidationError } from "../../core/errors.ts";
 import { mintGitCredentialSecret } from "../../forge/credentials.ts";
-import { ProjectLacksSeedsError } from "../../plan-runs/errors.ts";
+import { ProjectLacksTrackerError } from "../../plan-runs/errors.ts";
 import { computeReadyPlans, type ReadyPlanInput } from "../../plan-runs/index.ts";
 import type { ProjectRow } from "../../projects/index.ts";
 import {
@@ -168,7 +168,7 @@ export function getProjectWarrenConfigHandler(deps: ServerDeps): RouteHandler {
 
 /**
  * The shared 3-gate seeds-read preamble (warren-5819): project 404 via
- * `projects.require` → `hasSeeds` gate (ProjectLacksSeedsError → 400) →
+ * `projects.require` → `hasSeeds` gate (ProjectLacksTrackerError → 400) →
  * tracker-configured gate (ValidationError → 400). Every seeds-read
  * handler starts here; the tracker-contract port (warren-2d98) swaps the
  * third gate onto `deps.issueTracker` and the return onto the tracker.
@@ -184,7 +184,7 @@ async function requireSeedsProject(
 ): Promise<{ project: ProjectRow; seedsCli: SeedsCliDeps }> {
 	const project = await deps.repos.projects.require(id);
 	if (!project.hasSeeds) {
-		throw new ProjectLacksSeedsError(
+		throw new ProjectLacksTrackerError(
 			`project ${project.id} has no .seeds/ directory; ${feature} is not available`,
 			{ recoveryHint: "add a .seeds/ directory to the project clone and refresh" },
 		);
@@ -209,7 +209,7 @@ async function requireSeedsProject(
  *
  * Gates mirror the plan-run handlers so the wire contract stays uniform:
  *   - project 404 via `projects.require`,
- *   - `hasSeeds` gate (ProjectLacksSeedsError → 400),
+ *   - `hasSeeds` gate (ProjectLacksTrackerError → 400),
  *   - `seedsCli` configured (ValidationError → 400),
  *   - SeedsCliError from `showSeed` bubbles up as 500 — a missing seed
  *     surfaces as the underlying `sd show` failure rather than a special
@@ -243,7 +243,7 @@ export function getProjectSeedHandler(deps: ServerDeps): RouteHandler {
  *
  * Gates mirror `getProjectSeedHandler` so the seeds-read contract stays
  * uniform: project 404 via `projects.require`, `hasSeeds` gate
- * (ProjectLacksSeedsError → 400), `seedsCli` configured (ValidationError
+ * (ProjectLacksTrackerError → 400), `seedsCli` configured (ValidationError
  * → 400), and SeedsCliError from `listPlans` bubbles up as 500.
  */
 export function listProjectSeedPlansHandler(deps: ServerDeps): RouteHandler {
@@ -267,7 +267,7 @@ export function listProjectSeedPlansHandler(deps: ServerDeps): RouteHandler {
  * `computeReadyPlans` helper (approved + ≥1 open child + not dispatched).
  *
  * Gates mirror `listProjectSeedPlansHandler`: project 404 via
- * `projects.require`, `hasSeeds` gate (ProjectLacksSeedsError → 400),
+ * `projects.require`, `hasSeeds` gate (ProjectLacksTrackerError → 400),
  * `seedsCli` configured (ValidationError → 400), and SeedsCliError from
  * any reader bubbles up as 500.
  */

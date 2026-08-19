@@ -9,12 +9,18 @@
 import { WarrenError } from "../core/errors.ts";
 
 /**
- * `POST /plan-runs` (warren-f923) rejection when the target project doesn't
- * carry a `.seeds/` directory (`project.hasSeeds === false`). 400 status,
- * stable code so HTTP consumers branch on it without parsing the message.
- * Mapped to 400 in src/server/errors.ts alongside ValidationError.
+ * `POST /plan-runs` (warren-f923) rejection when the target project's
+ * tracker is unavailable — for the git-native seeds tracker that means the
+ * clone carries no `.seeds/` directory (`project.hasSeeds === false`). 400
+ * status, stable code so HTTP consumers branch on it without parsing the
+ * message. Mapped to 400 in src/server/errors.ts alongside ValidationError.
+ *
+ * Renamed off seeds in warren-2d98; the wire `code` stays
+ * `project_lacks_seeds` deliberately so existing HTTP consumers (and the
+ * sibling handler ports) keep branching on one stable discriminator until
+ * the read/write handler issues (warren-47b0 / warren-6234) retire it.
  */
-export class ProjectLacksSeedsError extends WarrenError {
+export class ProjectLacksTrackerError extends WarrenError {
 	readonly code = "project_lacks_seeds";
 }
 
@@ -22,7 +28,7 @@ export class ProjectLacksSeedsError extends WarrenError {
  * `POST /plan-runs` (warren-f923) rejection when the target plan has no
  * open child seeds — every child is already closed, so the coordinator
  * would immediately succeed without dispatching anything. Same 400-status
- * posture as ProjectLacksSeedsError.
+ * posture as ProjectLacksTrackerError.
  */
 export class PlanHasNoOpenChildrenError extends WarrenError {
 	readonly code = "plan_has_no_open_children";

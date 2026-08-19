@@ -197,7 +197,7 @@ GET    /plan-runs/:id/events      tails the union of every child run's events
 ```
 
 The dispatch handler rejects in this order: (1) project not found →
-404; (2) `!project.hasSeeds` → `ProjectLacksSeedsError` (typed 400,
+404; (2) `!project.hasSeeds` → `ProjectLacksTrackerError` (typed 400, wire code `project_lacks_seeds` unchanged,
 recoveryHint references adding `.seeds/`); (3) plan status ∉
 {`approved`,`active`,`done`} or empty children → `ValidationError` /
 `PlanHasNoOpenChildrenError`; (4) every child already closed → also

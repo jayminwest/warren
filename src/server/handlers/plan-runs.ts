@@ -96,7 +96,7 @@ export function createPlanRunHandler(deps: ServerDeps): RouteHandler {
 			...(maxCostUsd !== undefined ? { maxCostUsd } : {}),
 			...(dispatcherHandle !== undefined ? { dispatcherHandle } : {}),
 			repos: deps.repos,
-			seedsCli: deps.seedsCli,
+			issueTracker: deps.issueTracker,
 			projectsConfig: deps.projectsConfig,
 			...(deps.spawn !== undefined ? { spawn: deps.spawn } : {}),
 			...(gitSecret !== undefined ? { gitToken: gitSecret } : {}),

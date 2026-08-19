@@ -1,6 +1,6 @@
+import { IssueNotFoundError } from "../../core/wire.ts";
 import type { CreatePlanRunInput } from "../../db/repos/plan-runs.ts";
 import { readAutoPlanRunAgent } from "../../registry/schema.ts";
-import { SeedNotFoundError, type SeedsCliDeps, showSeed } from "../../seeds-cli/index.ts";
 import type { IssueTracker } from "../../tracker/contract.ts";
 import { splitLines } from "./util.ts";
 
@@ -90,21 +90,21 @@ export interface DispatchAutoPlanRunsInput {
 	readonly emit: (kind: string, payload: unknown) => Promise<unknown>;
 	readonly fail: (step: "auto_plan_run", err: unknown) => Promise<void>;
 	/**
-	 * Optional seeds-CLI seam (warren-41d5). When wired, every child seed of
-	 * a new plan is probed via `showSeed` before the plan-run is created —
-	 * mirroring the manual `POST /plan-runs` handler's validation. A plan
-	 * referencing a seed that doesn't resolve (or whose children are all
-	 * closed) is skipped with an `auto_plan_run_skipped` event instead of
-	 * being dispatched, so the coordinator never wedges on an unresolvable
-	 * child. Absent (existing unit tests) ⇒ no validation, behavior
-	 * unchanged — same optional-seam posture as `warrenConfigs`/`portAllocator`.
-	 */
-	readonly seedsCli?: SeedsCliDeps;
-	/**
-	 * Boot-resolved IssueTracker (warren-5819) — threading seam; the
-	 * auto-plan-run port to the tracker contract lands in warren-47b0.
+	 * Boot-resolved IssueTracker (warren-5819, ported in warren-2d98). When
+	 * wired AND the tracker is git-native with plan support (seeds), every
+	 * child issue of a new plan is probed via `getIssue` before the plan-run
+	 * is created — mirroring `createPlanRun`'s validation. A plan referencing
+	 * an issue that doesn't resolve (or whose children are all closed) is
+	 * skipped with an `auto_plan_run_skipped` event instead of being
+	 * dispatched, so the coordinator never wedges on an unresolvable child.
+	 * Absent (existing unit tests) ⇒ no validation, behavior unchanged.
 	 */
 	readonly issueTracker?: IssueTracker;
+}
+
+/** Can this tracker back the auto-plan-run feature at all? (warren-2d98) */
+export function trackerSupportsAutoPlanRun(tracker: IssueTracker): boolean {
+	return tracker.capabilities.isGitNative && tracker.capabilities.supportsPlans;
 }
 
 type PlanChildrenValidation =
@@ -112,26 +112,28 @@ type PlanChildrenValidation =
 	| { readonly ok: false; readonly reason: string; readonly missing: readonly string[] };
 
 /**
- * Mirror the manual handler's child-seed validation (warren-41d5): probe
- * every child via `showSeed`. A `SeedNotFoundError` on any child marks the
- * plan un-dispatchable (`missing_child_seeds`); a plan whose children all
- * resolve but are all `closed` is rejected too (`all_children_closed`,
- * matching the manual handler's `hasOpenChild` gate). Transient `sd`
- * failures (timeout, lock) propagate so the caller surfaces them as a
- * `reap_failed` step=`auto_plan_run` event rather than silently skipping.
+ * Mirror the manual handler's child-issue validation (warren-41d5, ported
+ * to the tracker seam in warren-2d98): probe every child via `getIssue`.
+ * An `IssueNotFoundError` on any child marks the plan un-dispatchable
+ * (`missing_child_seeds`); a plan whose children all resolve but are all
+ * `closed` is rejected too (`all_children_closed`, matching the manual
+ * handler's `hasOpenChild` gate). Transient tracker failures (timeout,
+ * lock) propagate so the caller surfaces them as a `reap_failed`
+ * step=`auto_plan_run` event rather than silently skipping.
  */
 async function validatePlanChildren(
-	seedsCli: SeedsCliDeps,
+	tracker: IssueTracker,
+	projectId: string,
 	projectPath: string,
 	children: readonly string[],
 ): Promise<PlanChildrenValidation> {
 	const probes = await Promise.all(
 		children.map(async (seedId) => {
 			try {
-				const issue = await showSeed(seedsCli, projectPath, seedId);
+				const issue = await tracker.getIssue({ projectId, localPath: projectPath }, seedId);
 				return { status: issue.status, missing: false };
 			} catch (err) {
-				if (err instanceof SeedNotFoundError) return { seedId, status: null, missing: true };
+				if (err instanceof IssueNotFoundError) return { seedId, status: null, missing: true };
 				throw err;
 			}
 		}),
@@ -154,7 +156,7 @@ export interface DispatchAutoPlanRunsResult {
 
 /**
  * Dispatch a single new plan: parse its children, validate them against the
- * persisted seed store when `seedsCli` is wired (warren-41d5), and create the
+ * tracker when one is wired (warren-41d5 / warren-2d98), and create the
  * plan-run. Returns the new plan-run id on dispatch, or `null` when the plan
  * was skipped (no children, missing/closed child seeds — the latter emit an
  * `auto_plan_run_skipped` event). Throws on a transient failure so the caller
@@ -167,9 +169,10 @@ async function dispatchOnePlan(
 ): Promise<string | null> {
 	const children = parsePlanChildren(workspacePlansBody, planId);
 	if (children.length === 0) return null;
-	if (input.seedsCli !== undefined) {
+	if (input.issueTracker !== undefined && trackerSupportsAutoPlanRun(input.issueTracker)) {
 		const validation = await validatePlanChildren(
-			input.seedsCli,
+			input.issueTracker,
+			input.project.id,
 			input.project.localPath,
 			children,
 		);
@@ -210,6 +213,13 @@ export async function dispatchAutoPlanRuns(
 ): Promise<DispatchAutoPlanRunsResult> {
 	const { workspacePlanIds, baselinePlanIds, workspacePlansBody } = input;
 	if (workspacePlanIds === null || baselinePlanIds === null || workspacePlansBody === null) {
+		return { created: false, id: null, planId: null };
+	}
+	// warren-2d98: the plan detection (raw .seeds/plans.jsonl text) is
+	// irreducibly seeds-shaped, so a wired tracker that is not git-native +
+	// plan-capable cannot back the feature at all — fence it off instead of
+	// dispatching against state the tracker can't validate.
+	if (input.issueTracker !== undefined && !trackerSupportsAutoPlanRun(input.issueTracker)) {
 		return { created: false, id: null, planId: null };
 	}
 	let created = false;

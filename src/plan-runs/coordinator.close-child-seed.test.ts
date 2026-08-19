@@ -48,7 +48,7 @@ describe("advancePlanRun — host-side child seed close (warren-3806)", () => {
 		const result = await advancePlanRun({
 			planRun,
 			repos: h.repos,
-			showSeed: h.showSeedStub("open"),
+			getIssue: h.getIssueStub("open"),
 			checkPrMerged: async () => ({ kind: "merged", mergedAt: "2026-05-17T01:00:00.000Z" }),
 			spawn: h.spawnStub(() => "unused"),
 			emit: h.emit,
@@ -84,7 +84,7 @@ describe("advancePlanRun — host-side child seed close (warren-3806)", () => {
 		const result = await advancePlanRun({
 			planRun,
 			repos: h.repos,
-			showSeed: h.showSeedStub("open"),
+			getIssue: h.getIssueStub("open"),
 			checkPrMerged: neverPoll,
 			spawn: h.spawnStub(() => "unused"),
 			emit: h.emit,
@@ -113,7 +113,7 @@ describe("advancePlanRun — host-side child seed close (warren-3806)", () => {
 		const result = await advancePlanRun({
 			planRun,
 			repos: h.repos,
-			showSeed: h.showSeedStub("open"),
+			getIssue: h.getIssueStub("open"),
 			checkPrMerged: async () => ({ kind: "open" }),
 			spawn: h.spawnStub(() => "unused"),
 			emit: h.emit,
