@@ -12,10 +12,11 @@ import {
 } from "./test-helpers.ts";
 
 /**
- * warren-89b0: a zero-commit push whose ONLY dirty paths are warren-managed
- * bookkeeping artifacts is a deliberate no-op (`succeeded`, `noChanges`), NOT a
- * dropped commit (`failed`); and the host-side seed close never fires for a run
- * whose terminal state is `failed`.
+ * warren-89b0 / warren-ba08: a zero-commit push whose ONLY dirty paths are
+ * warren-managed bookkeeping artifacts is a deliberate no-op on a FRESH-branch
+ * dispatch (`succeeded`, `noChanges`), NOT a dropped commit (`failed`). On a
+ * REF-dispatch (`ref` / `targetBranch` set) the same shape reaps
+ * `failed`/`no_changes` so shepherds cannot read "agent did nothing" as fixed.
  */
 
 const ISSUES =
@@ -34,7 +35,10 @@ function fakeSeedsCli(): { seedsCli: SeedsCliDeps; calls: Array<{ args: string[]
 	return { seedsCli, calls };
 }
 
-async function setupSeeded(seedId: string | null): Promise<{
+async function setupSeeded(
+	seedId: string | null,
+	opts: { ref?: string; targetBranch?: string } = {},
+): Promise<{
 	repos: Awaited<ReturnType<typeof createRepos>>;
 	runId: string;
 }> {
@@ -56,6 +60,8 @@ async function setupSeeded(seedId: string | null): Promise<{
 		sandboxId: "bur_aaaaaaaaaaaa",
 		sandboxRunId: "run_zzzzzzzzzzzz",
 		...(seedId !== null ? { seedId } : {}),
+		...(opts.ref !== undefined ? { ref: opts.ref } : {}),
+		...(opts.targetBranch !== undefined ? { targetBranch: opts.targetBranch } : {}),
 	});
 	await repos.runs.markRunning(run.id);
 	return { repos, runId: run.id };
@@ -113,6 +119,86 @@ describe("reapRun zero-commit classification (warren-89b0)", () => {
 			fs: f.fs,
 			exec: e.exec,
 			seedsCli,
+		});
+
+		expect(result.state).toBe("failed");
+		expect(result.failureReason).toBe("dropped_commit");
+	});
+});
+
+describe("reapRun ref-dispatch zero-commit (warren-ba08)", () => {
+	test("ref-dispatch with a clean zero-commit tree fails as no_changes", async () => {
+		const { repos, runId } = await setupSeeded(null, {
+			ref: "fix/pr-head",
+			targetBranch: "fix/pr-head",
+		});
+		const f = fakeFs({ "/data/projects/x/y/.seeds/issues.jsonl": ISSUES });
+		const e = fakeExec({ revListCount: "0", gitStatus: "" });
+
+		const result = await reapRun({
+			runId,
+			outcome: "succeeded",
+			repos,
+			...reapDeps(fakeBurrowClient(makeBurrow()), { fs: f.fs, exec: e.exec }),
+			fs: f.fs,
+			exec: e.exec,
+		});
+
+		expect(result.state).toBe("failed");
+		expect(result.failureReason).toBe("no_changes");
+		const row = await repos.runs.require(runId);
+		expect(row.state).toBe("failed");
+		expect(row.failureReason).toBe("no_changes");
+		const events = await repos.events.listByRun(runId);
+		expect(events.find((ev) => ev.kind === "reap.empty_push")?.payloadJson).toMatchObject({
+			noChanges: true,
+			droppedCommit: false,
+		});
+		expect(events.find((ev) => ev.kind === "reap.completed")?.payloadJson).toMatchObject({
+			state: "failed",
+			failureReason: "no_changes",
+			noChanges: true,
+		});
+	});
+
+	test("targetBranch-only dispatch with bookkeeping-only dirt fails as no_changes", async () => {
+		const { repos, runId } = await setupSeeded(null, { targetBranch: "fix/pr-head" });
+		const f = fakeFs({ "/data/projects/x/y/.seeds/issues.jsonl": ISSUES });
+		const e = fakeExec({
+			revListCount: "0",
+			gitStatus: " M .mulch/expertise/build.jsonl\n?? .seeds/issues.jsonl\n",
+		});
+
+		const result = await reapRun({
+			runId,
+			outcome: "succeeded",
+			repos,
+			...reapDeps(fakeBurrowClient(makeBurrow()), { fs: f.fs, exec: e.exec }),
+			fs: f.fs,
+			exec: e.exec,
+		});
+
+		expect(result.state).toBe("failed");
+		expect(result.failureReason).toBe("no_changes");
+		const row = await repos.runs.require(runId);
+		expect(row.failureReason).toBe("no_changes");
+	});
+
+	test("ref-dispatch with real uncommitted work stays dropped_commit, not no_changes", async () => {
+		const { repos, runId } = await setupSeeded(null, {
+			ref: "fix/pr-head",
+			targetBranch: "fix/pr-head",
+		});
+		const f = fakeFs({ "/data/projects/x/y/.seeds/issues.jsonl": ISSUES });
+		const e = fakeExec({ revListCount: "0", gitStatus: " M src/foo.ts\n" });
+
+		const result = await reapRun({
+			runId,
+			outcome: "succeeded",
+			repos,
+			...reapDeps(fakeBurrowClient(makeBurrow()), { fs: f.fs, exec: e.exec }),
+			fs: f.fs,
+			exec: e.exec,
 		});
 
 		expect(result.state).toBe("failed");

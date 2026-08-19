@@ -1113,6 +1113,7 @@ components:
         - sandbox_run_lost
         - sandbox_unreachable
         - dropped_commit
+        - no_changes
         - finalize_failed
         - push_rejected_policy
         - finalize_unposted
@@ -1312,6 +1313,7 @@ components:
             - sandbox_run_lost
             - sandbox_unreachable
             - dropped_commit
+            - no_changes
             - finalize_failed
             - push_rejected_policy
             - finalize_unposted

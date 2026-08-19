@@ -61,6 +61,7 @@ const RUN_FAILURE_REASON_LABELS: Readonly<Record<string, string>> = {
 	sandbox_run_lost: "Sandbox run lost",
 	sandbox_unreachable: "Sandbox unreachable",
 	dropped_commit: "Dropped commit",
+	no_changes: "No changes",
 	finalize_failed: "Finalize failed",
 	push_rejected_policy: "Push blocked by repository policy",
 	finalize_unposted: "Finalize not posted",

@@ -119,19 +119,17 @@ export type CloneKind = (typeof CLONE_KINDS)[number];
  *     in `running`). Distinct from `sandbox_run_lost`, which is a clean
  *     404; here burrow never answered at all.
  *   - `dropped_commit` (warren-72b9) means reap's `git push` landed zero
- *     commits ahead of the base branch (`reap.empty_push`) AND the
- *     workspace tree was still dirty at reap — the agent edited/staged
- *     work but never ran `git commit` (the common weak-model failure,
- *     e.g. Gemini Flash narrating "before committing" then exiting).
- *     Distinguished from a deliberate no-op — a clean tree with zero
- *     commits, OR a dirty tree whose ONLY uncommitted paths are
- *     warren-managed bookkeeping artifacts (`.mulch/`, `.seeds/`;
- *     warren-89b0) — which stays `succeeded` and
- *     is surfaced as `noChanges` on `reap.empty_push` / `reap.completed`.
- *     The dropped-commit guard stays conservative: any non-bookkeeping
- *     dirty path (real uncommitted work) still fails the run — marking a
- *     genuine dropped commit `failed` keeps it from masquerading as success
- *     and, on plan-runs, fails the plan instead of silently advancing.
+ *     commits ahead of the base (`reap.empty_push`) AND the workspace was
+ *     still dirty with non-bookkeeping paths — agent edited/staged work
+ *     but never `git commit`ed. A clean tree, or dirt only under warren
+ *     bookkeeping (`.mulch/`, `.seeds/`; warren-89b0), is a deliberate
+ *     no-op: fresh-branch dispatches stay `succeeded` with `noChanges` on
+ *     `reap.empty_push` / `reap.completed`; ref-dispatch (`ref` /
+ *     `targetBranch`) reaps `failed`/`no_changes` instead (warren-ba08).
+ *   - `no_changes` (warren-ba08): ref-dispatch zero-commit over a clean or
+ *     bookkeeping-only tree — repair produced no new work. Distinct from
+ *     `dropped_commit` (dirty non-bookkeeping tree). Fresh-branch no-ops
+ *     keep the warren-89b0 succeeded+`noChanges`-flag shape.
  *   - `finalize_failed` (warren-495d) means reap's finalize did NOT
  *     complete its branch push before it timed out or failed — under K8s
  *     the in-pod finalize round-trip (git push → mirror deltas → POST the
@@ -211,6 +209,7 @@ export const RUN_FAILURE_REASONS = [
 	"sandbox_run_lost",
 	"sandbox_unreachable",
 	"dropped_commit",
+	"no_changes",
 	"finalize_failed",
 	"push_rejected_policy",
 	"finalize_unposted",
