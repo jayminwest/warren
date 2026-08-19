@@ -6,10 +6,6 @@ import type { RunSpec } from "../contract.ts";
 import { driveLocalRun, readSpecFrontmatter } from "./drive.ts";
 import { LocalRunStore } from "./run-store.ts";
 
-/* -------------------------------------------------------------------------- */
-/* Fakes                                                                       */
-/* -------------------------------------------------------------------------- */
-
 const PROFILE: SandboxProfile = {
 	workspace: "/tmp/ws",
 	home: "/tmp/home",
@@ -176,10 +172,6 @@ function makeFakeProxy(
 		stopCalls: () => stopCalls,
 	};
 }
-
-/* -------------------------------------------------------------------------- */
-/* Tests                                                                       */
-/* -------------------------------------------------------------------------- */
 
 describe("driveLocalRun", () => {
 	test("persists parsed stdout events and terminalizes succeeded on exit 0", async () => {

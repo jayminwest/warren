@@ -172,7 +172,12 @@ export class LocalRunStore {
 		if (record.phase === "queued") record.phase = "running";
 	}
 
-	/** Terminalize the record and wake every suspended stream consumer. */
+	/**
+	 * Terminalize the record and wake every suspended stream consumer.
+	 * Idempotent once a terminal phase is set (warren-8a6e): `LocalEngine.cancel`
+	 * settles `cancelled` immediately, and later drive-loop paths (kill-exit
+	 * mapping, catch-all error terminalize) must not overwrite that outcome.
+	 */
 	terminalize(
 		record: LocalRunRecord,
 		outcome: {
@@ -182,6 +187,10 @@ export class LocalRunStore {
 			errorMessage?: string | null;
 		},
 	): void {
+		if (this.isTerminal(record)) {
+			this.notify(record);
+			return;
+		}
 		record.phase = outcome.phase;
 		record.exitCode = outcome.exitCode;
 		record.terminalReason = outcome.terminalReason;

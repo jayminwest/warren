@@ -84,7 +84,7 @@ const PENDING_ADAPTER: Readonly<Record<string, string>> = {
 	"src/runs/usage-aggregate.ts": "picks the usage shape by runtime; the adapter should answer",
 	"src/runs/stream/bridge.ts": "tags in-stream usage by runtime at three call sites",
 	"src/runs/stream/budget.ts": "same usage tag on the budget path",
-	"src/runtime/local/drive.ts": "branches on claude-code for the local drive loop",
+	"src/runtime/local/drive-prepare.ts": "branches on claude-code for the local drive loop",
 	"src/runtime/local/profile.ts": "per-runtime env passthrough and binary probe list",
 };
 

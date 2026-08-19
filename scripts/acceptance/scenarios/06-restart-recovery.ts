@@ -1,28 +1,21 @@
 /**
- * Scenario 06 — restart-recovery (docs/design/runtime-and-supervisor.md "MAX(seq)+1" contract).
+ * Scenario 06 — restart-recovery under the internalized LocalProvider
+ * (docs/design/runtime-and-supervisor.md, AGENTS.md Runtime topology).
  *
- * Acceptance criterion #6:
- *   "Killing warren mid-run and restarting it: the bridge resumes from
- *   `MAX(events.sandbox_event_seq) + 1`, no event is dropped, and the
- *   final events table mirrors burrow's stream end-to-end with no
- *   gaps in seq."
+ * Post burrow-absorption (plan pl-3007 / warren-ea0a) the local engine's
+ * run store is in-process (`src/runtime/local/run-store.ts`). A warren
+ * restart wipes that store, so live rows reconcile as `lost` on the next
+ * `bootBridges()` pass — the same operator-visible outcome a burrow-daemon
+ * restart produced. That is the documented local-topology posture, not a
+ * regression.
  *
- * Wire summary (re-derived from src/runs/stream/bridge.ts + src/server/bridges.ts):
- *   - warren's bridge polls burrow's `/runs/:sandboxRunId/stream` and writes
- *     each event to `events` table BEFORE publishing on the broker.
- *   - On warren restart, `bootBridges()` walks runs in {queued, running}
- *     with a non-null `sandbox_run_id` and re-attaches a fresh bridge.
- *   - Each new bridge reads `EventsRepo.maxSeqForRun(runId)` and skips
- *     events with `seq <= maxSeq` (mx-a0cf07). burrow's stream replays
- *     from the start, so the dedup is client-side.
- *
- * Timing:
- *   The stub agent (lib/stub-agent/agent.sh) emits per-second heartbeats
- *   while it sleeps for `WARREN_STUB_SLEEP_MS` (8s, set in run.ts via
- *   bootInProc.extraEnv). That gives the bridge a steady source of new
- *   burrow events during the warren-down window — without them, the
- *   restart-recovery path is silently dormant (no new events to bridge,
- *   no contradiction even if recovery is broken).
+ * Acceptance criterion (redesigned, warren-8a6e):
+ *   Killing warren mid-run and restarting it: the still-running warren
+ *   row is reconciled to `failed` with `failureReason='sandbox_run_lost'`,
+ *   a `bridge_lost` system event is appended, and the durable pre-kill
+ *   events table is preserved (no truncate). The scenario no longer
+ *   asserts bridge resume / MAX(seq)+1 continuity — that contract only
+ *   held while a durable burrow daemon outlived warren.
  *
  * Lifecycle: requires `ctx.lifecycle.killWarren` / `restartWarren`.
  * In-proc only until the container launcher exposes equivalent hooks.
@@ -37,7 +30,7 @@ import {
 } from "../lib/assert.ts";
 import { WarrenHttp } from "../lib/http.ts";
 import { waitForServerDown } from "../lib/poll.ts";
-import { waitForEventCount, waitForSeqAbove } from "./lib/poll-helpers.ts";
+import { collectRunEvents, waitForEventCount, waitForRunTerminal } from "./lib/poll-helpers.ts";
 
 interface ProjectRow {
 	readonly id: string;
@@ -48,6 +41,15 @@ interface CreateRunResponse {
 		readonly id: string;
 		readonly state: string;
 		readonly sandboxId: string | null;
+		readonly sandboxRunId: string | null;
+	};
+}
+
+interface RunDetail {
+	readonly run: {
+		readonly id: string;
+		readonly state: string;
+		readonly failureReason: string | null;
 		readonly sandboxRunId: string | null;
 	};
 }
@@ -69,7 +71,8 @@ const POST_RESTART_TIMEOUT_MS = 20_000;
 
 export const scenario: Scenario = {
 	id: "06",
-	title: "warren restart resumes the bridge from MAX(seq)+1; events table has no gaps",
+	title:
+		"warren restart reconciles in-flight local runs as sandbox_run_lost; durable events preserved",
 	modes: ["in-proc"],
 	async run(ctx) {
 		const lifecycle = ctx.lifecycle;
@@ -88,20 +91,21 @@ export const scenario: Scenario = {
 			body: {
 				agent: ctx.fixtures.stubAgentName,
 				project: project.id,
-				prompt: "scenario-06 restart recovery",
+				prompt: "[sleep_ms=15000] scenario-06 restart recovery",
 			},
 		});
 		const runId = created.run.id;
 		assertTrue(
 			typeof created.run.sandboxRunId === "string" && created.run.sandboxRunId !== null,
-			"POST /runs must attach sandbox_run_id by the 201 — bootBridges resume needs it",
+			"POST /runs must attach sandbox_run_id by the 201 — bootBridges reconcile needs it",
 		);
 		ctx.logger.debug(`scenario-06: spawned ${runId} (sandbox_run_id=${created.run.sandboxRunId})`);
 
 		try {
 			// Phase 1 — wait for the bridge to land at least PRE_KILL_MIN_EVENTS
-			// events into warren's events table. This proves the bridge is
-			// actively attached pre-kill.
+			// events into warren's durable events table. Proves the bridge is
+			// actively attached pre-kill and gives us a pre-kill seq set to
+			// assert survives the restart.
 			const beforeKill = await waitForEventCount<EventEnvelope>(
 				http,
 				runId,
@@ -114,66 +118,82 @@ export const scenario: Scenario = {
 				`scenario-06: pre-kill events=${beforeKill.length} maxSeq=${maxSeqBeforeKill}`,
 			);
 
-			// Phase 2 — kill warren. Burrow stays up; the agent keeps sleeping
-			// + heartbeating; burrow's events table accumulates rows warren
-			// can't see until restart.
+			// Phase 2 — kill warren. The in-process LocalRunStore dies with
+			// it; the agent child is reaped by the OS. On restart there is
+			// nothing to re-attach to.
 			await lifecycle.killWarren();
 			ctx.logger.debug("scenario-06: warren killed; waiting for the port to stop answering");
 			await waitForServerDown(ctx.warrenUrl, KILL_DRAIN_TIMEOUT_MS);
 
 			// Phase 3 — restart warren. bootBridges() walks queued/running
-			// runs, finds this one, attaches a fresh bridge.
+			// runs, probes provider.status(), sees exists:false (store wiped),
+			// and reconciles the row via reconcileLostSandboxRun.
 			await lifecycle.restartWarren();
-			ctx.logger.debug("scenario-06: warren restarted");
+			ctx.logger.debug("scenario-06: warren restarted; waiting for lost-run reconcile");
 
-			// Phase 4 — wait for the resumed bridge to write at least one new
-			// event (seq > maxSeqBeforeKill). Without this, recovery could
-			// silently no-op and the test would still pass on cached history.
-			const afterRestart = await waitForSeqAbove<EventEnvelope>(
-				http,
-				runId,
-				maxSeqBeforeKill,
-				POST_RESTART_TIMEOUT_MS,
-			);
-			const maxSeqAfter = afterRestart[afterRestart.length - 1]?.seq ?? 0;
-			assertTrue(
-				maxSeqAfter > maxSeqBeforeKill,
-				`expected resumed bridge to write seq > ${maxSeqBeforeKill}, got max ${maxSeqAfter}`,
-			);
-			ctx.logger.debug(
-				`scenario-06: post-restart events=${afterRestart.length} maxSeq=${maxSeqAfter}`,
-			);
-
-			// Phase 5 — final assertions. The events table must contain a
-			// contiguous run from seq 1..maxSeqAfter. No gaps means the
-			// MAX(seq)+1 dedup didn't drop any event burrow streamed during
-			// the warren-down window.
-			assertNoSeqGaps(afterRestart, "post-restart event sequence");
-			assertEqual(afterRestart[0]?.seq ?? 0, 1, "first event in table is seq=1");
+			// Phase 4 — the live row must terminalize as failed/sandbox_run_lost.
+			// bootBridges does this inline during boot, so the first GET after
+			// /healthz is often already terminal; poll anyway for races.
+			const terminal = await waitForRunTerminal(http, runId, POST_RESTART_TIMEOUT_MS);
 			assertEqual(
-				afterRestart[afterRestart.length - 1]?.seq ?? 0,
-				maxSeqAfter,
-				"final event's seq matches max",
+				terminal.state,
+				"failed",
+				"post-restart live row reconciles to state='failed' (local store wiped)",
+			);
+			assertEqual(
+				terminal.failureReason,
+				"sandbox_run_lost",
+				"post-restart failureReason is sandbox_run_lost (documented LocalProvider posture)",
 			);
 
-			// Every pre-kill seq must still be present after restart — the
-			// bridge dedupes via maxSeq, it doesn't truncate the table.
-			const allSeqs = new Set(afterRestart.map((e) => e.seq));
-			for (const env of beforeKill) {
-				assertTrue(allSeqs.has(env.seq), `post-restart events lost pre-kill seq ${env.seq}`);
-			}
-
-			// Run row's sandbox_run_id is unchanged across the restart — we're
-			// resuming the same burrow run, not re-spawning.
-			const reread = await http.expectJson<{ sandboxRunId: string | null }>(
+			const reread = await http.expectJson<RunDetail>(
 				"GET",
 				`/runs/${encodeURIComponent(runId)}`,
 				200,
 			);
+			// sandbox_run_id is a durable column on the warren row — reconcile
+			// does not clear it. Identity of the *provider* run is gone; the
+			// warren-side foreign key remains for audit.
 			assertEqual(
-				reread.sandboxRunId,
+				reread.run.sandboxRunId,
 				created.run.sandboxRunId,
-				"GET /runs/:id post-restart preserves sandbox_run_id",
+				"GET /runs/:id post-restart preserves the durable sandbox_run_id column",
+			);
+
+			// Phase 5 — durable pre-kill events survive; a bridge_lost audit
+			// event is appended by reconcileLostSandboxRun.
+			const afterRestart = await collectRunEvents<EventEnvelope>(http, runId);
+			assertTrue(
+				afterRestart.length >= beforeKill.length,
+				`post-restart events (${afterRestart.length}) must retain pre-kill rows (${beforeKill.length})`,
+			);
+			const allSeqs = new Set(afterRestart.map((e) => e.seq));
+			for (const env of beforeKill) {
+				assertTrue(allSeqs.has(env.seq), `post-restart events lost pre-kill seq ${env.seq}`);
+			}
+			const bridgeLost = afterRestart.find((e) => e.kind === "bridge_lost");
+			if (bridgeLost === undefined) {
+				throw new AcceptanceError(
+					`no bridge_lost event after restart reconcile; kinds=${afterRestart.map((e) => e.kind).join(",")}`,
+				);
+			}
+			assertEqual(bridgeLost.stream, "system", "bridge_lost event uses stream='system'");
+			const payload = (bridgeLost.payload ?? {}) as {
+				sandboxRunId?: string;
+				reason?: string;
+			};
+			assertEqual(
+				payload.sandboxRunId,
+				created.run.sandboxRunId,
+				"bridge_lost payload.sandboxRunId matches the spawn-time id",
+			);
+			assertEqual(
+				payload.reason,
+				"sandbox_run_lost",
+				"bridge_lost payload.reason is sandbox_run_lost",
+			);
+			ctx.logger.debug(
+				`scenario-06: reconciled lost run; events=${afterRestart.length} bridge_lost.seq=${bridgeLost.seq}`,
 			);
 		} finally {
 			await safelyCancel(http, runId, ctx);

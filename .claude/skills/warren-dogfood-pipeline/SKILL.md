@@ -174,6 +174,15 @@ push.
 4. `sd sync && ml sync`; if the hook blocks sandboxed, commit the
    `.seeds`/`.mulch` diff with `--no-verify`.
 5. Rebase onto origin (main moved under you all session) and push;
-   `git status` must end "up to date with origin".
+   `git status` must end "up to date with origin". Do NOT trust push
+   output alone — `remote: N of N required status checks are expected`
+   appears on a SUCCESSFUL push and is easy to misread as a rejection
+   (warren-53c0). After any push that touched `.seeds/`, verify the
+   remote tip is clean:
+   `git fetch origin && bun run check:seeds-integrity` against
+   `git show origin/main:.seeds/issues.jsonl` (or the branch you
+   pushed), and confirm `jq -r .id <(git show origin/<ref>:.seeds/issues.jsonl) | sort | uniq -d`
+   is empty. The pre-push hook refuses a corrupt tip locally, but a
+   misread of push output has still left a bad file on origin once.
 6. Final report: table of issue → PR → merge state → cost, total spend,
    borderline items left for the operator, and the filed follow-ups.

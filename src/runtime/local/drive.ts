@@ -41,22 +41,18 @@
  */
 
 import { extractAgentEventEnvelope } from "../../core/event-envelope.ts";
-import {
-	type ProxyHandle,
-	proxyEnvVars,
-	type StartProxyOptions,
-	startProxy,
-} from "../../sandbox/proxy-server.ts";
+import type { ProxyHandle, StartProxyOptions } from "../../sandbox/proxy-server.ts";
 import { runSandboxed } from "../../sandbox/sandbox.ts";
 import type { SandboxProfile, SpawnCommand, SpawnResult } from "../../sandbox/types.ts";
-import { forwardClaudeHostCredentials } from "../adapters/claude-credentials.ts";
-import {
-	type AdapterRuntimeEvent,
-	type AgentRuntimeAdapter,
-	allAdapters,
-} from "../adapters/index.ts";
+import type { AdapterRuntimeEvent, AgentRuntimeAdapter } from "../adapters/index.ts";
 import type { AgentFrontmatter } from "../adapters/types.ts";
 import type { RunSpec } from "../contract.ts";
+import {
+	abandonSpawnedChild,
+	cancelWon,
+	prepareSpawn,
+	settleCancelledIfNeeded,
+} from "./drive-prepare.ts";
 import { createStdinController, type StdinController, startMidRunSteering } from "./drive-stdin.ts";
 import type { LocalRunRecord, LocalRunStore } from "./run-store.ts";
 
@@ -80,11 +76,6 @@ export interface DriveDeps {
 	readonly now?: () => Date;
 	readonly log?: (message: string) => void;
 }
-
-/** The default adapter registry: warren's built-in runtime adapters. */
-const DEFAULT_REGISTRY: { get(id: string): AgentRuntimeAdapter | undefined } = {
-	get: (id) => allAdapters().find((adapter) => adapter.runtimeId === id),
-};
 
 /**
  * Pull the agent frontmatter off `spec.metadata.frontmatter` (the domain's
@@ -146,6 +137,9 @@ export async function driveLocalRun(
 	try {
 		await spawnAndPump(store, record, spec, profile, deps);
 	} catch (err) {
+		// A cancel that already settled the record must stay cancelled even if
+		// teardown throws (double-cancel, closed stream, etc.).
+		if (store.isTerminal(record)) return;
 		const message = err instanceof Error ? err.message : String(err);
 		store.appendEvent(record, { kind: "error", stream: "system", payload: { message } });
 		store.terminalize(record, {
@@ -157,23 +151,6 @@ export async function driveLocalRun(
 	}
 }
 
-/** Fail fast with a structured record when the runtime id is unknown or spawnless. */
-function failBeforeSpawn(
-	store: LocalRunStore,
-	record: LocalRunRecord,
-	message: string,
-	deps: DriveDeps,
-): void {
-	const now = deps.now ?? (() => new Date());
-	store.appendEvent(record, { kind: "error", stream: "system", payload: { message } }, now);
-	store.terminalize(record, {
-		phase: "failed",
-		exitCode: null,
-		terminalReason: "error",
-		errorMessage: message,
-	});
-}
-
 async function spawnAndPump(
 	store: LocalRunStore,
 	record: LocalRunRecord,
@@ -182,53 +159,21 @@ async function spawnAndPump(
 	deps: DriveDeps,
 ): Promise<void> {
 	const log = deps.log ?? (() => {});
-	const runtime = (deps.registry ?? DEFAULT_REGISTRY).get(spec.runtimeId);
-	if (runtime === undefined) {
-		failBeforeSpawn(store, record, `runtime '${spec.runtimeId}' is not registered`, deps);
+	// Cancel can win before spawn (LocalEngine.cancel terminalizes immediately).
+	if (cancelWon(store, record)) {
+		settleCancelledIfNeeded(store, record);
 		return;
 	}
-	if (runtime.buildSpawnCommand === undefined) {
-		failBeforeSpawn(
-			store,
-			record,
-			`runtime '${spec.runtimeId}' declares no buildSpawnCommand`,
-			deps,
-		);
+	const prepared = await prepareSpawn(store, record, spec, profile, deps);
+	if (prepared === null) return;
+	const { runtime, runProfile, runCommand, proxy, useStdinHold } = prepared;
+
+	// Re-check after async setup — cancel may have landed mid-prepare.
+	if (cancelWon(store, record)) {
+		await proxy?.stop();
+		settleCancelledIfNeeded(store, record);
 		return;
 	}
-
-	const pendingMessages = store.claimPending(record, deps.now);
-	if (runtime.prepareWorkspace !== undefined) {
-		await runtime.prepareWorkspace({ runId: spec.runId, workspacePath: record.workspacePath });
-	}
-	// warren-c865, live: with $HOME a real per-run directory (not the
-	// workspace), forward the host's claude OAuth blob into it so auth
-	// resolves via $HOME lookup. ANTHROPIC_API_KEY rides the env allowlist.
-	if (spec.runtimeId === "claude-code") {
-		await forwardClaudeHostCredentials(record.homePath).catch(() => {});
-	}
-
-	const useStdinHold = typeof runtime.shouldCloseStdinOnEvent === "function";
-	const frontmatter = readSpecFrontmatter(spec.metadata);
-	const baseCommand = runtime.buildSpawnCommand({
-		runId: spec.runId,
-		prompt: spec.prompt,
-		pendingMessages,
-		workspacePath: record.workspacePath,
-		...(frontmatter !== undefined ? { frontmatter } : {}),
-	});
-	const holdCommand: SpawnCommand = useStdinHold
-		? { ...baseCommand, holdStdin: true }
-		: baseCommand;
-
-	// warren-70bb: under network=restricted, start a per-run loopback CONNECT
-	// proxy that enforces allowedDomains, plumb proxyAddress into the profile
-	// (so bwrap/seatbelt share-net + allow only that endpoint), and overlay
-	// HTTP(S)_PROXY onto the agent env. open/none stay byte-identical.
-	const armed = await armRestrictedProxy(store, record, profile, holdCommand, deps);
-	if (armed === null) return; // failBeforeSpawn already terminalized
-	const { runProfile, runCommand, proxy } = armed;
-
 	log(`local-drive: launching '${runtime.runtimeId}' in ${record.workspacePath}`);
 	let proc: SpawnResult;
 	try {
@@ -236,6 +181,10 @@ async function spawnAndPump(
 	} catch (err) {
 		await proxy?.stop();
 		throw err;
+	}
+	if (cancelWon(store, record)) {
+		await abandonSpawnedChild(store, record, proc, proxy);
+		return;
 	}
 	record.proc = proc;
 	store.markRunning(record);
@@ -256,51 +205,6 @@ async function spawnAndPump(
 		// can't pin the run (burrow dispatch.ts shape).
 		await proxy?.stop();
 	}
-}
-
-interface ArmedProxy {
-	readonly runProfile: SandboxProfile;
-	readonly runCommand: SpawnCommand;
-	readonly proxy: ProxyHandle | null;
-}
-
-/**
- * When `profile.network === "restricted"`, start the per-run proxy and return
- * a profile+command pair with `proxyAddress` + HTTP(S)_PROXY set. On start
- * failure the run is terminalized failed and `null` is returned so the caller
- * bails without spawning. open/none return the inputs unchanged with no proxy.
- */
-async function armRestrictedProxy(
-	store: LocalRunStore,
-	record: LocalRunRecord,
-	profile: SandboxProfile,
-	command: SpawnCommand,
-	deps: DriveDeps,
-): Promise<ArmedProxy | null> {
-	if (profile.network !== "restricted") {
-		return { runProfile: profile, runCommand: command, proxy: null };
-	}
-	const startProxyFn = deps.startProxy ?? startProxy;
-	let proxy: ProxyHandle;
-	try {
-		proxy = await startProxyFn({ allowedDomains: profile.allowedDomains });
-	} catch (err) {
-		const message = err instanceof Error ? err.message : String(err);
-		failBeforeSpawn(store, record, `failed to start network proxy: ${message}`, deps);
-		return null;
-	}
-	const runProfile: SandboxProfile = {
-		...profile,
-		proxyAddress: { host: "127.0.0.1", port: proxy.port },
-	};
-	const runCommand: SpawnCommand = {
-		...command,
-		env: {
-			...(command.env ?? {}),
-			...proxyEnvVars(proxy.url),
-		},
-	};
-	return { runProfile, runCommand, proxy };
 }
 
 interface PumpOutcome {
@@ -360,6 +264,10 @@ function terminalize(
 	outcome: PumpOutcome,
 	deps: DriveDeps,
 ): void {
+	// LocalEngine.cancel terminalizes immediately (warren-8a6e); the drive
+	// loop still drains the child but must not overwrite a settled phase
+	// (e.g. cancelled → failed from a non-zero kill exit).
+	if (store.isTerminal(record)) return;
 	const now = deps.now ?? (() => new Date());
 	const { exitCode } = outcome;
 	if (record.cancelRequested) {

@@ -118,7 +118,14 @@ async function spawnLinux(
 	const limits = resolveSandboxLimits(profile, process.env);
 	const cgroup = limits ? prepareSandboxCgroup(limits) : null;
 
-	let argv = buildBwrapArgv(profile, command, { bwrapBin: options.bwrapBin });
+	// Resolve bwrap against the HOST process PATH before we replace env with
+	// the sandbox's hardened PATH (warren-8a6e). Bun.spawn looks bare names
+	// up in the spawn `env.PATH`, and the sandbox PATH is only toolchain dirs
+	// + /usr/bin:/bin — it does not carry the host's acceptance bwrap shim
+	// (or a non-system bwrap install). Pinning the absolute path keeps the
+	// host tool resolvable without leaking the full host PATH into the child.
+	const bwrapBin = options.bwrapBin ?? Bun.which("bwrap") ?? "bwrap";
+	let argv = buildBwrapArgv(profile, command, { bwrapBin });
 	if (cgroup) argv = wrapArgvForCgroup(argv, cgroup.procsPath);
 	const env = resolveSandboxEnv(profile, command, {
 		homePath: SANDBOX_HOME_PATH,
