@@ -161,6 +161,29 @@ describe("reapRun ref-dispatch zero-commit (warren-ba08)", () => {
 		});
 	});
 
+	test("ref-dispatch with commits made reaps as succeeded", async () => {
+		const { repos, runId } = await setupSeeded(null, {
+			ref: "fix/pr-head",
+			targetBranch: "fix/pr-head",
+		});
+		const f = fakeFs({ "/data/projects/x/y/.seeds/issues.jsonl": ISSUES });
+		const e = fakeExec({ revListCount: "2", gitStatus: "" });
+
+		const result = await reapRun({
+			runId,
+			outcome: "succeeded",
+			repos,
+			...reapDeps(fakeBurrowClient(makeBurrow()), { fs: f.fs, exec: e.exec }),
+			fs: f.fs,
+			exec: e.exec,
+		});
+
+		expect(result.state).toBe("succeeded");
+		expect(result.failureReason).toBeNull();
+		expect(result.branchPushed).toBe(true);
+		expect(result.commitsAhead).toBe(2);
+	});
+
 	test("targetBranch-only dispatch with bookkeeping-only dirt fails as no_changes", async () => {
 		const { repos, runId } = await setupSeeded(null, { targetBranch: "fix/pr-head" });
 		const f = fakeFs({ "/data/projects/x/y/.seeds/issues.jsonl": ISSUES });

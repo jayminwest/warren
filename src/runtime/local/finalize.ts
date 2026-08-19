@@ -366,6 +366,10 @@ async function finalizePush(
 		trail.skipped("commits_ahead");
 		return { pushed: false, commitsAhead: null, emptyPush: false, dirty: false, dirtyPaths: [] };
 	}
+	const commitsAhead = await countCommitsAhead(intent, workspacePath, exec, trail);
+	const dirtyPaths = commitsAhead === 0 ? await workspaceDirtyPaths(exec, workspacePath) : [];
+	const dirty = dirtyPaths.length > 0;
+
 	const refspec = intent.branch === "" ? "HEAD" : `HEAD:${intent.branch}`;
 	try {
 		// warren-4e1c: the push authenticates with the per-spawn credential the
@@ -377,10 +381,10 @@ async function finalizePush(
 			env: githubCredentialGitEnv(intent.gitToken),
 		});
 		trail.ok("branch_push");
+		return { pushed: true, commitsAhead, emptyPush: commitsAhead === 0, dirty, dirtyPaths };
 	} catch (err) {
 		trail.failed("branch_push", err);
 		await collector.fail("branch_push", err, workspacePath);
-		trail.skipped("commits_ahead");
 		// warren-b68d: `ReapExec.run` rejects with an Error whose message carries
 		// stderr, so the remote's own refusal text is what gets parsed here.
 		const rejection = parsePushRejection(err instanceof Error ? err.message : String(err));
@@ -389,11 +393,6 @@ async function finalizePush(
 		}
 		return { pushed: false, commitsAhead: null, emptyPush: false, dirty: false, dirtyPaths: [] };
 	}
-	const commitsAhead = await countCommitsAhead(intent, workspacePath, exec, trail);
-	// warren-72b9/89b0: capture dirty PATHS on a zero-commit push (dropped commit vs no-op).
-	const dirtyPaths = commitsAhead === 0 ? await workspaceDirtyPaths(exec, workspacePath) : [];
-	const dirty = dirtyPaths.length > 0;
-	return { pushed: true, commitsAhead, emptyPush: commitsAhead === 0, dirty, dirtyPaths };
 }
 
 async function countCommitsAhead(
@@ -407,10 +406,22 @@ async function countCommitsAhead(
 		return null;
 	}
 	try {
-		const out = await exec.run("git", ["rev-list", "--count", `${intent.baseBranch}..HEAD`], {
-			cwd: workspacePath,
-			timeoutMs: 10_000,
-		});
+		const baseRef =
+			intent.branch !== "" && intent.branch === intent.baseBranch
+				? `origin/${intent.baseBranch}`
+				: intent.baseBranch;
+		let out = await exec
+			.run("git", ["rev-list", "--count", `${baseRef}..HEAD`], {
+				cwd: workspacePath,
+				timeoutMs: 10_000,
+			})
+			.catch(() => null);
+		if (out === null) {
+			out = await exec.run("git", ["rev-list", "--count", `${intent.baseBranch}..HEAD`], {
+				cwd: workspacePath,
+				timeoutMs: 10_000,
+			});
+		}
 		const parsed = Number.parseInt(out.stdout.trim(), 10);
 		trail.ok("commits_ahead");
 		return Number.isFinite(parsed) ? parsed : null;
