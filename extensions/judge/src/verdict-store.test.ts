@@ -129,6 +129,7 @@ describe("VerdictStore.recordUnjudged", () => {
 	test("migrates existing database schema missing the detail column", () => {
 		const tmpDir = mkdtempSync(join(tmpdir(), "verdict-store-test-"));
 		const dbPath = join(tmpDir, "legacy.db");
+		let store: VerdictStore | undefined;
 		try {
 			const db = new Database(dbPath);
 			db.run(`
@@ -144,9 +145,21 @@ describe("VerdictStore.recordUnjudged", () => {
 					dedupe_key TEXT NOT NULL UNIQUE
 				);
 			`);
+			// A pre-migration row: the real upgrade input is a populated
+			// legacy file, not an empty table.
+			db.run(
+				`INSERT INTO verdict_rows
+					(kind, run_id, rubric_version, judge_model_id, verdict, reason, recorded_at, dedupe_key)
+				 VALUES ('unjudged', 'run-old', 'rubric-v1-abc', 'cheap-model', NULL, 'judge_error',
+					'2026-08-01T00:00:00.000Z', 'run-old|rubric-v1-abc|cheap-model')`,
+			);
 			db.close();
 
-			const store = new VerdictStore(dbPath);
+			store = new VerdictStore(dbPath);
+			const legacy = store.rowsForRun("run-old")[0];
+			expect(legacy?.kind).toBe("unjudged");
+			expect(legacy?.detail).toBeNull();
+
 			const id = store.recordUnjudged({
 				runId: "run-legacy",
 				rubricVersion: "rubric-v1-abc",
@@ -154,12 +167,12 @@ describe("VerdictStore.recordUnjudged", () => {
 				reason: "judge_error",
 				detail: "legacy db detail test",
 			});
-			expect(id).toBe(1);
+			expect(id).toBe(2);
 			const row = store.rowsForRun("run-legacy")[0];
 			expect(row?.kind).toBe("unjudged");
 			expect(row?.detail).toBe("legacy db detail test");
-			store.close();
 		} finally {
+			store?.close();
 			rmSync(tmpDir, { recursive: true, force: true });
 		}
 	});

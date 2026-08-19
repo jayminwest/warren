@@ -15,10 +15,10 @@
  *
  * Write-path discipline: `recordVerdict` accepts only wire.ts-validated
  * verdicts. It re-runs `validateVerdict` before touching the DB, so nothing
- * outside the 12.3 contract can land even from an in-memory caller that
+ * outside the §12.3 contract can land even from an in-memory caller that
  * skipped the parse boundary. `recordUnjudged` stores a marker with a
  * machine-readable reason; a judgment resolves to a validated verdict or an
- * unjudged marker, nothing else (agent-analytics 12.5).
+ * unjudged marker, nothing else (agent-analytics §12.5).
  */
 
 import { Database } from "bun:sqlite";
@@ -62,7 +62,7 @@ export interface UnjudgedRow {
 export type StoreRow = VerdictRow | UnjudgedRow;
 
 /**
- * One leg of the calibration join (12.5): the cheap judge's verdict and the
+ * One leg of the calibration join (§12.5): the cheap judge's verdict and the
  * strong judge's verdict for the same runId + rubricVersion, paired so the
  * agreement-rate computation can compare band assignments class by class.
  */
@@ -257,7 +257,7 @@ export class VerdictStore {
 
 	/**
 	 * Per-rubric-version read: every row judged under `rubricVersion`, in
-	 * append order. Trend lines must never mix rubric versions (12.3), so
+	 * append order. Trend lines must never mix rubric versions (§12.3), so
 	 * this is the analytics surface's primary query.
 	 */
 	rowsForRubricVersion(rubricVersion: string): StoreRow[] {
@@ -268,7 +268,7 @@ export class VerdictStore {
 	}
 
 	/**
-	 * The calibration join (12.5): for one rubric version, pair every run
+	 * The calibration join (§12.5): for one rubric version, pair every run
 	 * that has a verdict from BOTH `cheapModelId` and `strongModelId`. The
 	 * disagreement rate between the two legs is the tracked signal that
 	 * drives any future taxonomy narrowing. Unjudged markers never join.

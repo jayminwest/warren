@@ -10,7 +10,7 @@
  * no-op. A crash BEFORE the accept re-judges from scratch — no run is
  * ever skipped.
  *
- * Budget gates (agent-analytics 12.5), checked per run before judging:
+ * Budget gates (agent-analytics §12.5), checked per run before judging:
  *   - `JUDGE_DAILY_BUDGET_USD` fleet-wide: when the day's ledgered spend
  *     reaches the budget the run is DEFERRED — no marker, no checkpoint,
  *     so it re-enters the candidate set once budget frees (the next UTC
@@ -70,7 +70,7 @@ export interface JudgeCollectorDeps {
 	readonly onJudgment?: (runId: string, outcome: JudgeOutcome) => void;
 	/**
 	 * Once per cycle when the fleet gate first trips — loud by design
-	 * (12.5), but once, not once per deferred run (a big backlog would
+	 * (§12.5), but once, not once per deferred run (a big backlog would
 	 * repeat the line hundreds of times every cycle).
 	 */
 	readonly onBudgetDeferred?: (runId: string, detail: string) => void;
@@ -88,7 +88,7 @@ export interface JudgeCycleStats {
 const DEFAULT_RUNS_PAGE_SIZE = 500;
 
 /**
- * Discover every run by paging the full list from offset 0. FRICTION 1:
+ * Discover every run by paging the full list from offset 0. FRICTION §1:
  * no "changed since" parameter exists, so this is a full re-list every
  * cycle. Re-seeing a row is harmless — the cursor gate and the store's
  * dedupe key both absorb it.

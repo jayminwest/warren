@@ -188,6 +188,7 @@ describe("collectOnce", () => {
 			expect(rows).toHaveLength(1);
 			expect(rows[0]?.kind).toBe("unjudged");
 			expect(rows[0]?.reason).toBe("malformed_verdict");
+			expect(rows[0]?.detail).toBe("exhausted attempts");
 			// Spend is ledgered even for an unjudged outcome — no refund.
 			expect(h.spend.spendForDay("2026-08-15")).toBeCloseTo(0.03, 10);
 			expect(h.cursors.needsJudgment("run-1", RUBRIC_V1, MODEL)).toBe(false);

@@ -1,5 +1,5 @@
 /**
- * The calibration re-judge (plan pl-17ca step 7, agent-analytics 12.5).
+ * The calibration re-judge (plan pl-17ca step 7, agent-analytics §12.5).
  *
  * Full coverage by a cheap model inverts the sampling question: a periodic
  * strong-model pass re-judges a small RANDOM sample of already-judged runs
@@ -50,7 +50,7 @@ export interface ClassAgreement {
 }
 
 /**
- * The persisted calibration metric (12.5): per-class and overall
+ * The persisted calibration metric (§12.5): per-class and overall
  * band-agreement between the cheap and strong judge over the paired sample,
  * for one rubric version. Trend lines must never mix rubric versions, so
  * the rubric version is part of the metric's identity.
@@ -262,7 +262,7 @@ export interface CalibrationDeps {
 	readonly random?: () => number;
 	readonly onRunError?: (runId: string, err: unknown) => void;
 	readonly onJudgment?: (runId: string, outcome: string) => void;
-	/** Once per pass, on the first budget deferral — loud by design (12.5). */
+	/** Once per pass, on the first budget deferral — loud by design (§12.5). */
 	readonly onBudgetDeferred?: (runId: string, detail: string) => void;
 }
 
