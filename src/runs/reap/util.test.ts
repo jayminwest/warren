@@ -4,6 +4,7 @@ import {
 	HARNESS_STATE_PREFIXES,
 	isBookkeepingOnlyDirty,
 	parseDirtyPaths,
+	WARREN_RUNTIME_SCRATCH,
 } from "./util.ts";
 
 describe("parseDirtyPaths", () => {
@@ -61,5 +62,42 @@ describe("isBookkeepingOnlyDirty", () => {
 
 	test("false when harness scratch is mixed with real uncommitted work", () => {
 		expect(isBookkeepingOnlyDirty([".claude/settings.local.json", "src/foo.ts"])).toBe(false);
+	});
+
+	// warren-8dc8: .claude.json and .gitconfig.burrow were not covered
+	test("'.claude.json'.startsWith('.claude/') is false but still classified ignorable (warren-8dc8)", () => {
+		expect(".claude.json".startsWith(".claude/")).toBe(false);
+		expect(isBookkeepingOnlyDirty([".claude.json"])).toBe(true);
+	});
+
+	test("true for .gitconfig.burrow alone (warren-8dc8)", () => {
+		expect(isBookkeepingOnlyDirty([".gitconfig.burrow"])).toBe(true);
+	});
+
+	test("true for the full observed dirty set from the original report (warren-8dc8)", () => {
+		expect(
+			isBookkeepingOnlyDirty([
+				".gitconfig.burrow",
+				".claude.json",
+				".claude/.last-cleanup",
+				".claude/backups/",
+				".claude/policy-limits.json",
+				".claude/projects/",
+			]),
+		).toBe(true);
+	});
+
+	test("false when harness scratch and .gitconfig.burrow are mixed with real work (warren-8dc8)", () => {
+		expect(isBookkeepingOnlyDirty([".claude.json", ".gitconfig.burrow", "src/foo.ts"])).toBe(false);
+	});
+
+	test(".gitconfig.burrow lives in WARREN_RUNTIME_SCRATCH, not HARNESS_STATE_PREFIXES (ownership split)", () => {
+		// .gitconfig.burrow is warren-written for every runtime, so it belongs in the
+		// warren-owned constant — not in any harness adapter. A pi run with only this
+		// dirty path must also reap clean, which only holds when the coverage comes from
+		// the runtime-agnostic list.
+		expect(WARREN_RUNTIME_SCRATCH.some((p) => ".gitconfig.burrow".startsWith(p))).toBe(true);
+		expect(HARNESS_STATE_PREFIXES.some((p) => ".gitconfig.burrow".startsWith(p))).toBe(false);
+		expect(isBookkeepingOnlyDirty([".gitconfig.burrow"])).toBe(true);
 	});
 });

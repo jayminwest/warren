@@ -4,6 +4,7 @@ import { promisify } from "node:util";
 import type { RunRow, RunTerminalState } from "../../db/schema.ts";
 import { resolveSpawnEnv } from "../../projects/clone.ts";
 import { harnessStatePrefixes } from "../../runtime/adapters/index.ts";
+import { WORKSPACE_GITCONFIG_FILENAME } from "../../workspace/git/identity.ts";
 import type { ReapExec, ReapFs, ReapRunResult } from "./types.ts";
 
 const execFileAsync = promisify(execFile);
@@ -182,12 +183,28 @@ export const BOOKKEEPING_ARTIFACT_PREFIXES: readonly string[] = [".mulch/", ".se
 export const HARNESS_STATE_PREFIXES: readonly string[] = harnessStatePrefixes();
 
 /**
+ * Warren-written runtime files that are neither committed on the agent's behalf
+ * nor owned by any specific harness (warren-8dc8). A fourth category, distinct
+ * from {@link BOOKKEEPING_ARTIFACT_PREFIXES} (warren commits those) and
+ * {@link HARNESS_STATE_PREFIXES} (harness-written, per-adapter). These paths
+ * are written by warren's runtime infrastructure for every run regardless of
+ * which harness is used. `.gitconfig.burrow` is the canonical example:
+ * `writeWorkspaceGitconfig` drops it so git inside the sandbox picks up the
+ * workspace identity — it is never staged or committed. Import
+ * {@link WORKSPACE_GITCONFIG_FILENAME} rather than re-spelling the literal;
+ * warren-598f closed a nine-spelling drift by routing through one resolver.
+ */
+export const WARREN_RUNTIME_SCRATCH: readonly string[] = [WORKSPACE_GITCONFIG_FILENAME];
+
+/**
  * Prefixes whose dirty paths are never lost agent work: warren-committed
- * bookkeeping artifacts plus harness-owned scratch state.
+ * bookkeeping artifacts, harness-owned scratch state, and warren-written
+ * runtime files.
  */
 const IGNORABLE_DIRTY_PREFIXES: readonly string[] = [
 	...BOOKKEEPING_ARTIFACT_PREFIXES,
 	...HARNESS_STATE_PREFIXES,
+	...WARREN_RUNTIME_SCRATCH,
 ];
 
 /**
