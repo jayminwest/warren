@@ -79,7 +79,7 @@ export async function spawnRun(input: SpawnRunInput): Promise<SpawnRunResult> {
 	// before burrow forks the new run branch off it. The parent link is also
 	// recorded on the new run row below so the UI can render a chain indicator
 	// and chain cost/token totals are derivable by walking the link.
-	const baseRef = await resolveContinuationRef(input, project, targetBranch);
+	const baseRef = input.baseCommit ?? (await resolveContinuationRef(input, project, targetBranch));
 
 	// Refresh the project clone to origin/<ref> so the run sees the
 	// latest commits. Skipped only when the caller didn't wire the
@@ -175,6 +175,9 @@ export async function spawnRun(input: SpawnRunInput): Promise<SpawnRunResult> {
 		// warren-afeb: freeze the explicit dispatch-supplied clone ref onto the
 		// row so POST /runs and GET /runs/:id can echo that it took.
 		...(input.ref !== undefined ? { ref: input.ref } : {}),
+		// warren-aaf7: freeze the base-commit pin so the projections can echo
+		// it; the PR base resolution (reap) reads `ref` only, never this.
+		...(input.baseCommit !== undefined ? { baseCommit: input.baseCommit } : {}),
 		now: input.now?.(),
 	});
 	// warren-a0a2: expose the run id the instant the row exists so the cron

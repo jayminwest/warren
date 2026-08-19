@@ -49,6 +49,10 @@
           "description": "link the run to a seeds issue (POST /runs seedId)"
         },
         {
+          "flags": "--base-commit <sha>",
+          "description": "pin the workspace cut to a 40-hex commit SHA"
+        },
+        {
           "flags": "--url <url>",
           "description": "warren server base URL (env WARREN_BASE_URL)"
         },

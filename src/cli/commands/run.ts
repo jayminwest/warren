@@ -66,6 +66,8 @@ export interface RunArgs {
 	readonly maxCostUsd?: number;
 	/** Seeds issue to link the run to (warren-ca2f), forwarded to `POST /runs` seedId. */
 	readonly seedId?: string;
+	/** Base-commit pin (warren-aaf7): 40-hex SHA the workspace is cut at. */
+	readonly baseCommit?: string;
 }
 
 export interface RunDeps extends RemoteTailDeps {
@@ -109,6 +111,7 @@ export async function runRun(
 			...(args.modelOverride !== undefined ? { modelOverride: args.modelOverride } : {}),
 			...(args.maxCostUsd !== undefined ? { maxCostUsd: args.maxCostUsd } : {}),
 			...(args.seedId !== undefined ? { seedId: args.seedId } : {}),
+			...(args.baseCommit !== undefined ? { baseCommit: args.baseCommit } : {}),
 		});
 		runId = spawned.run.id;
 		if (mode === "ndjson") {

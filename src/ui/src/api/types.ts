@@ -168,8 +168,9 @@ export interface RunRow {
 	prMergedAt: string | null;
 	/** Existing branch reap pushes the workspace back to (#419). Null when unset. */
 	targetBranch: string | null;
-	/** Dispatch-supplied clone ref (warren-afeb). Null when unset. */
+	/** Dispatch-supplied clone ref (warren-afeb) / base-commit pin (warren-aaf7). Null when unset. */
 	ref: string | null;
+	baseCommit: string | null;
 	/** Declared provider/model frozen at dispatch (warren-2ede / #860). Null = predates the columns. */
 	provider: string | null;
 	model: string | null;
@@ -230,8 +231,7 @@ export interface PreviewTeardownResponse {
 /**
  * Wire envelope of `POST /runs/:id/preview/login` (R-19 / docs/design/preview-environments.md,
  * warren-e1b0). The credential-bearing half of the handshake is the
- * `Set-Cookie` header the browser stores implicitly; `url` is the
- * mode-correct preview target the caller navigates to afterwards.
+ * `Set-Cookie` header; `url` is the mode-correct preview target.
  */
 export interface PreviewLoginResponse {
 	url: string;
@@ -243,9 +243,9 @@ export interface SandboxSummary {
 }
 
 /**
- * Wire-side input for `POST /runs`. `ref` is an optional branch / tag /
- * SHA the project clone should be checked out at before the run; omit
- * (or pass empty) to use `project.defaultBranch` (warren-1bb6, warren-7589).
+ * Wire-side input for `POST /runs`. `ref` is an optional branch name the clone
+ * is cut at (pin a commit with `baseCommit`, warren-aaf7); omit to use
+ * `project.defaultBranch` (warren-1bb6, warren-7589).
  *
  * `providerOverride` / `modelOverride` are optional per-run overrides of
  * the agent's `frontmatter.provider` / `frontmatter.model`. Empty strings
@@ -258,6 +258,7 @@ export interface CreateRunInput {
 	project: string;
 	prompt: string;
 	ref?: string;
+	baseCommit?: string;
 	/** Existing branch reap pushes the workspace back to (#419). */
 	targetBranch?: string;
 	providerOverride?: string;

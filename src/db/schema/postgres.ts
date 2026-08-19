@@ -112,6 +112,8 @@ export const runs = pgTable(
 		targetBranch: text("target_branch"),
 		// Dispatch-supplied clone ref (warren-afeb); see the sqlite schema comment.
 		ref: text("ref"),
+		// Base-commit pinning (warren-aaf7); see the sqlite schema comment.
+		baseCommit: text("base_commit"),
 		// Salvage-before-destroy (warren-cd3b); see the sqlite schema comment.
 		salvageRef: text("salvage_ref"),
 		salvagePath: text("salvage_path"),

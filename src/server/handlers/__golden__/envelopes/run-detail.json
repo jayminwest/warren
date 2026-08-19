@@ -25,6 +25,7 @@
 			"prUrl": null,
 			"targetBranch": null,
 			"ref": null,
+			"baseCommit": null,
 			"salvageRef": null,
 			"salvagePath": null,
 			"costUsd": null,

@@ -1,6 +1,7 @@
 import { ValidationError } from "../../../core/errors.ts";
 import { mintGitCredentialSecret } from "../../../forge/credentials.ts";
 import { readProviderFrontmatter } from "../../../registry/schema.ts";
+import { validateBaseCommit, validateDispatchRef } from "../../../runs/base-commit.ts";
 import { readMaxCostUsd } from "../../../runs/cost-cap.ts";
 import { spawnRun } from "../../../runs/index.ts";
 import type { IdempotentDispatch } from "../../idempotency.ts";
@@ -139,7 +140,11 @@ async function buildHttpSpawnOptions(
 	logger: Parameters<typeof spawnRun>[0]["logger"],
 ): Promise<Parameters<typeof spawnRun>[0]> {
 	const seedId = optionalString(body, "seedId");
-	const ref = optionalString(body, "ref");
+	// warren-aaf7: the base-commit pin split. `ref` must stay branch-shaped
+	// (it feeds the PR base at reap); a SHA belongs in `baseCommit`, which
+	// overrides only the workspace cut point.
+	const ref = validateDispatchRef(optionalString(body, "ref"));
+	const baseCommit = validateBaseCommit(optionalString(body, "baseCommit"));
 	// warren-709e (#419): an explicit target branch the run must push to
 	// instead of the composed `${prefix}/${runId}`.
 	const targetBranch = optionalString(body, "targetBranch");
@@ -176,6 +181,8 @@ async function buildHttpSpawnOptions(
 		metadata: optionalObject(body, "metadata"),
 		now: deps.now,
 		ref,
+		// warren-aaf7: workspace cut override; never reaches PR-base resolution.
+		...(baseCommit !== undefined ? { baseCommit } : {}),
 		providerOverride,
 		modelOverride,
 		...(trigger !== undefined ? { trigger } : {}),
