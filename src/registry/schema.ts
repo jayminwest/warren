@@ -28,6 +28,7 @@ import { z } from "zod";
 import { type AcceptedRuntimeId, isKnownRuntimeId, KNOWN_RUNTIME_IDS } from "../core/wire.ts";
 import { AgentNameSchema } from "./agent-name.ts";
 import { AgentSchemaError } from "./errors.ts";
+import { type GatedPromptFragments, validateGatedPrompts } from "./prompt-gating.ts";
 
 // warren-2b75: the shared agent-name grammar lives in agent-name.ts (file-size
 // budget); re-export so existing import sites keep resolving it from here.
@@ -61,6 +62,8 @@ export interface AgentDefinition {
 	readonly sections: Readonly<Record<string, string>>;
 	readonly resolvedFrom: readonly string[];
 	readonly frontmatter: Readonly<Record<string, unknown>>;
+	/** Capability-gated fragments (warren-cb46) — see prompt-gating.ts. */
+	readonly gatedPrompts?: GatedPromptFragments;
 }
 
 /**
@@ -454,6 +457,8 @@ export function validateAgentDefinition(def: AgentDefinition): void {
 	validateAgentRuntimeId(def);
 	// warren-3305: a malformed steering capability fails just as loudly.
 	readSteeringCapability(def.frontmatter, def.name);
+	// warren-cb46: gated fragments must be strings (see prompt-gating.ts).
+	validateGatedPrompts(def);
 }
 
 /**

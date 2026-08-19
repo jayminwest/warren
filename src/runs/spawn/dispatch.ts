@@ -1,12 +1,9 @@
 /**
- * `spawnRun` — composition flow (docs/design/agent-composition.md).
- *
- * Resolves the cached agent, builds a neutral `RunSpec`, and dispatches via
- * `provider.create(spec)` (warren-c42c). The warren run row is created BEFORE
- * `create`; `attachBurrow` writes correlation ids only after success. A failed
- * `create` rolls the row back `failed`/`never_started` (sandbox half is the
- * provider's job). Dispatch-context (warren-d6ca) is snapshotted right after
- * the row lands, before any runtime contact.
+ * `spawnRun` — composition flow (docs/design/agent-composition.md). Resolves the cached
+ * agent, builds a neutral `RunSpec`, and dispatches via `provider.create(spec)`
+ * (warren-c42c). The run row is created BEFORE `create`; `attachBurrow` writes
+ * correlation ids only after success. A failed `create` rolls the row back
+ * `failed`/`never_started`. Dispatch-context (warren-d6ca) snapshots right after.
  */
 
 import { NotFoundError, ValidationError } from "../../core/errors.ts";
@@ -32,6 +29,7 @@ import { resolveContinuationRef } from "./continuation.ts";
 import { writeDispatchContext } from "./dispatch-context.ts";
 import { injectGitIdentityEnv, warnIfGitIdentityUnconfigured } from "./git-identity.ts";
 import { healMigrationJournalCollisions, recordMigrationHealEvent } from "./migration-preflight.ts";
+import { gateAgentPrompts } from "./prompt-capabilities.ts";
 import { assertNoKnownProviderModelMismatch } from "./provider-model.ts";
 import {
 	bindRunLogger,
@@ -41,15 +39,14 @@ import {
 	logSpawnFailed,
 	rollback,
 } from "./rollback.ts";
-import { writeSeedExtensions } from "./seed-extensions.ts";
+import { resolveSeedTracker, writeSeedExtensions } from "./seed-extensions.ts";
 import type { SpawnRunInput, SpawnRunResult } from "./types.ts";
 
 /**
- * Vestigial worker-placement label carried on the `spawn.placement` /
+ * Vestigial worker-placement label on the `spawn.placement` /
  * `spawn.provisioned` log lines (warren-c42c). Multi-worker placement was
- * retired with the K8s migration (warren-76c5 / warren-3743) — a run has no
- * "worker" on either backend — so this is a fixed log field, not a routing
- * decision. A local neutral constant since the burrow-client import was cut.
+ * retired with the K8s migration (warren-76c5 / warren-3743), so this is a
+ * fixed log field, not a routing decision.
  */
 const WORKER_PLACEMENT_LABEL = "local";
 
@@ -141,12 +138,18 @@ async function dispatchRun(input: SpawnRunInput): Promise<SpawnRunResult> {
 			? { projectDefaultUsd: projectDefaults.maxCostUsd }
 			: {}),
 	});
-	const agent = withMaxCostUsdOverride(
-		withProviderOverrides(baseAgent, {
-			...(effectiveProvider !== undefined ? { providerOverride: effectiveProvider } : {}),
-			...(effectiveModel !== undefined ? { modelOverride: effectiveModel } : {}),
-		}),
-		capOverride,
+	// warren-cb46: gate tracker/mulch prompt fragments on the project's real
+	// capabilities before anything freezes the agent (prompt-capabilities.ts).
+	const agent = gateAgentPrompts(
+		withMaxCostUsdOverride(
+			withProviderOverrides(baseAgent, {
+				...(effectiveProvider !== undefined ? { providerOverride: effectiveProvider } : {}),
+				...(effectiveModel !== undefined ? { modelOverride: effectiveModel } : {}),
+			}),
+			capOverride,
+		),
+		projectAfterRefresh,
+		input.issueTracker,
 	);
 	// warren-bad5: validate only after the override > project default >
 	// agent frontmatter chain has been fully resolved.
@@ -361,15 +364,16 @@ async function dispatchRun(input: SpawnRunInput): Promise<SpawnRunResult> {
 			sandboxId: handle.sandboxId,
 			providerRunId: handle.providerRunId,
 		});
-		// pl-bb70 step 4: stamp the seed's warren-namespaced extensions after
-		// dispatch lands. Fire-and-log — anything that throws here (sd not
-		// on PATH, project clone vanished, write race) emits a system event
-		// on the run and DOES NOT roll the dispatch back. Mirrors the cron
-		// tick's clearScheduledFor recovery shape in src/triggers/tick.ts.
-		if (input.seedId !== undefined && input.seedsCli !== undefined) {
+		// pl-bb70 step 4 + warren-6234: stamp the run's tracker metadata
+		// after dispatch via the IssueTracker seam, fire-and-log (see
+		// seed-extensions.ts). A legacy `seedsCli` (plan-runs port pending,
+		// warren-2d98) wraps in SeedsTracker here.
+		const seedTracker = resolveSeedTracker(input.issueTracker, input.seedsCli);
+		if (input.seedId !== undefined && seedTracker !== undefined) {
 			await writeSeedExtensions({
 				repos: input.repos,
-				seedsCli: input.seedsCli,
+				issueTracker: seedTracker,
+				projectId: projectAfterRefresh.id,
 				projectPath: projectAfterRefresh.localPath,
 				seedId: input.seedId,
 				runId: run.id,

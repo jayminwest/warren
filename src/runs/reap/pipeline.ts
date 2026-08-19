@@ -319,8 +319,7 @@ async function prOpenStep(ctx: ReapPipelineContext, state: ReapPipelineState): P
 	) {
 		return;
 	}
-	// warren-45e6: the forge is boot-wired; a reap input without one (tests)
-	// skips pr_open exactly as if auto-open were disabled.
+	// warren-45e6: a reap input without a forge (tests) skips pr_open as if disabled.
 	const forge = ctx.input.forge;
 	if (forge === undefined) return;
 	state.openedPr = await runPrOpen({
@@ -334,6 +333,7 @@ async function prOpenStep(ctx: ReapPipelineContext, state: ReapPipelineState): P
 		previewOptedIn: ctx.input.previewConfig !== undefined,
 		exec: ctx.exec,
 		emit: ctx.emit,
+		issueTracker: ctx.input.issueTracker,
 		fail: (step, err) => ctx.fail(step, err),
 		setPrUrl: (id, url) => ctx.input.repos.runs.setPrUrl(id, url),
 		...(ctx.input.prTemplate !== undefined ? { prTemplate: ctx.input.prTemplate } : {}),

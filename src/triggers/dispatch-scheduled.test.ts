@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import type { ScheduledIssue } from "../core/wire.ts";
 import { openDatabase, type WarrenDb } from "../db/client.ts";
 import { createRepos, type Repos } from "../db/repos/index.ts";
 import { agents } from "../db/schema.ts";
-import type { ScheduledSeed } from "../seeds-cli/index.ts";
 import { type DispatchSpawnFn, dispatchScheduledSeed } from "./dispatch.ts";
 
 interface RecordedSpawn {
@@ -81,7 +81,11 @@ describe("dispatchScheduledSeed", () => {
 		await db.close();
 	});
 
-	function seed(scheduledFor: string, status = "open", id = "warren-s1"): ScheduledSeed {
+	function seed(
+		scheduledFor: string,
+		status: ScheduledIssue["status"] = "open",
+		id = "warren-s1",
+	): ScheduledIssue {
 		return { id, status, scheduledFor: new Date(scheduledFor), title: "sched seed" };
 	}
 

@@ -19,6 +19,7 @@
 
 import type { AgentDefinition } from "../schema.ts";
 import { MODEL_TIERS } from "./model-tiers.ts";
+import { MULCH_FRAGMENT, QUALITY_GATE_CHAIN, TRACKER_FRAGMENT } from "./prompt-fragments.ts";
 
 const SYSTEM_BODY = `You are a CI-repair agent. A pull request that warren opened has failing CI checks. Your job is to read the failure, find the root cause, apply the smallest correct fix, verify it locally, and commit. Warren pushes your commit to the PR's existing branch, so CI re-runs automatically. You do NOT open a new pull request.
 
@@ -31,9 +32,9 @@ The dispatch prompt contains the CI failure context for this PR:
 
 ## Procedure
 
-1. Run \`ml prime\` to load project expertise. Read CLAUDE.md / AGENTS.md if present.
+1. Read CLAUDE.md / AGENTS.md if present.
 2. Read the CI failure context in the prompt. Classify the failure: type error, lint violation, test failure, build break, or flake.
-3. Reproduce locally where possible. Run the project's quality gate (\`$WARREN_QUALITY_GATE\` if set, otherwise the command documented in CLAUDE.md / AGENTS.md, otherwise \`bun run check:all\` or \`npm run lint && npm run typecheck && npm test\`). Confirm you see the same failure the CI saw.
+3. Reproduce locally where possible. Run the project's quality gate (${QUALITY_GATE_CHAIN}). Confirm you see the same failure the CI saw.
 4. Find the root cause. Read the failing file(s), the test, and any related code. Do not paper over a symptom — fix the cause.
 5. Apply the SMALLEST correct fix. Touch only what the failure requires. Do not refactor unrelated code, reformat passing files, change public APIs, or add/remove dependencies as a side effect.
 6. Re-run the quality gate. You are NOT done until it exits zero. If your first fix doesn't make the gate green, keep going — fix the next failure too. Lint warnings count as failures.
@@ -58,9 +59,11 @@ The dispatch prompt contains the CI failure context for this PR:
 
 - The project repo is mounted at the burrow workspace root, checked out on the failing PR's branch.
 - /workspace/.warren/agent.json is this rendered agent definition.
-- /workspace/.mulch/expertise/<domain>.jsonl holds project expertise.
-- /workspace/.seeds/issues.jsonl holds the issue queue.
 `;
+
+// warren-cb46: expertise / issue-queue text is capability-gated — a project
+// with no .mulch/ or .seeds/ gets no false assertions about them.
+const GATED_PROMPTS = { tracker: TRACKER_FRAGMENT, mulch: MULCH_FRAGMENT };
 
 export const PR_FIXER_BUILTIN: AgentDefinition = {
 	name: "pr-fixer",
@@ -69,6 +72,7 @@ export const PR_FIXER_BUILTIN: AgentDefinition = {
 		system: SYSTEM_BODY,
 		burrow_config: '[sandbox]\nnetwork = "open"\n',
 	},
+	gatedPrompts: GATED_PROMPTS,
 	resolvedFrom: ["builtin:pr-fixer"],
 	frontmatter: {
 		source: "builtin",

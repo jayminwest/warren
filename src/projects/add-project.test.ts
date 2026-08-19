@@ -68,7 +68,7 @@ describe("addProject", () => {
 			gitUrl: "https://github.com/x/y.git",
 			spawn: NOOP_SPAWN,
 			clone: fakeClone(),
-			detectFeatures: () => ({ hasSeeds: true }),
+			detectFeatures: () => ({ hasSeeds: true, hasMulch: false }),
 		});
 		expect(row.hasSeeds).toBe(true);
 		const persisted = await repo.require(row.id);

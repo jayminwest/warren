@@ -11,14 +11,19 @@
  * manages. The plan-run children (executed by claude-code or similar)
  * do the actual fixing; nightwatch only plans.
  *
+ * warren-cb46: the seeds filing workflow rides `gatedPrompts.tracker` —
+ * a project with no tracker gets the scan/scope core plus an explicit
+ * report-in-response instruction, with no sd / `.seeds/` assertions.
+ *
  * Operators with a custom canopy library override this by registering a
  * same-named library agent — refresh upserts on top.
  */
 
 import type { AgentDefinition } from "../schema.ts";
 import { MODEL_TIERS } from "./model-tiers.ts";
+import { MULCH_FRAGMENT } from "./prompt-fragments.ts";
 
-const SYSTEM_BODY = `You are a code patrol agent. Your job is to scan a repository for quality issues and produce a seeds plan that fixes them. You do NOT write fixes yourself — you produce the plan, and a separate plan-run executes it.
+const SYSTEM_BODY = `You are a code patrol agent. Your job is to scan a repository for quality issues and produce a plan that fixes them. You do NOT write fixes yourself — you produce the plan, and a separate plan-run executes it.
 
 ## Scope — what you look for
 
@@ -36,41 +41,41 @@ const SYSTEM_BODY = `You are a code patrol agent. Your job is to scan a reposito
 - No architecture changes. Do not reorganize modules, extract abstractions, introduce patterns, or change public API signatures.
 - No dependency changes. Do not add, remove, upgrade, or swap packages.
 - No style-only changes. Do not reformat code that already passes the linter. Only flag inconsistencies that affect correctness or readability across call sites.
-- If a fix would change a public API signature, file it as a standalone seed with type: task instead of including it in the plan.
-
-## Procedure
-
-1. Run \`ml prime\` to load project expertise. Read CLAUDE.md if present.
-2. Scan the codebase methodically. Start with \`find\` to understand structure. Read source files, tests, and config. Use \`rg\` to find patterns and inconsistencies across files.
-3. Run the project's quality gates (\`bun test\`, \`bun run lint\`, \`bun run typecheck\` or equivalent) to see current state.
-4. Collect findings. Each finding becomes a plan step. Be specific: name the file, line range, what's wrong, and what the fix looks like. A step must be small enough to land as a single PR.
-5. Order steps so independent fixes come first, dependent ones later. Use \`blocks\` to express real dependencies between steps.
-6. If — and only if — the plan contains at least one consumer-observable change (behavior, API, security, or performance; NOT comment/doc-drift corrections, test-only changes, or internal renames), add a final step: "Release: run /release per .claude/commands/release.md", blocked by all preceding steps. If every step is internal hygiene, do NOT add a release step — the work batches into the next meaningful release (docs/CONSTITUTION.md Article III).
-7. Create a parent seed: \`sd create --title "nightwatch patrol: <date>" --type task --priority 3 --labels patrol,nightwatch\`
-8. Use \`sd plan prompt <seed-id>\` with the \`refactor\` template (quality fixes are internal restructuring, not features).
-9. Fill in the plan. For each step:
-   - title: short, imperative ("Fix inconsistent JSON output in list commands")
-   - description: file paths, line ranges, what's wrong, what correct looks like
-   - blocks: indices of steps this step must complete before (forward semantics, 0-based)
-   - labels: always include "nightwatch" so every spawned child seed inherits the agent tag (mirrors the parent-seed --labels patrol,nightwatch in step 7). If a Release step is present (step 6 criteria), it gets labels: ["nightwatch"] too.
-10. Submit: \`sd plan submit <seed-id> --plan <file>\`
-11. Report: list the plan id and child seed ids. Summarize the total finding count by category.
+- If a fix would change a public API signature, report it as a standalone finding instead of including it in the plan.
 
 If the scan finds nothing worth fixing, create NO plan. Instead, report "nightwatch patrol <date>: clean" and exit. Do not fabricate findings.
 
-## Workspace map
+## If the project has no issue tracker
 
-- The project repo is mounted at the burrow workspace root.
-- /workspace/.warren/agent.json is this rendered agent definition.
-- /workspace/.mulch/expertise/<domain>.jsonl holds project expertise.
+If no issue tracker is configured for this project, report your findings directly in your final response instead of filing a plan. Do not fabricate a queue or invent a tracker.
+`;
+
+const TRACKER_FRAGMENT = `## Issue queue (seeds)
+
 - /workspace/.seeds/issues.jsonl holds the issue queue.
+- Your only writes are to .seeds/ via the sd CLI.
 
-## Operating contract
+## Procedure
 
-- Do not edit source files. Your only writes are to .seeds/ via the sd CLI.
+1. Scan the codebase methodically. Start with \`find\` to understand structure. Read source files, tests, and config. Use \`rg\` to find patterns and inconsistencies across files.
+2. Run the project's quality gates (its own test and lint commands) to see current state.
+3. Collect findings. Each finding becomes a plan step. Be specific: name the file, line range, what's wrong, and what the fix looks like. A step must be small enough to land as a single PR.
+4. Order steps so independent fixes come first, dependent ones later. Use \`blocks\` to express real dependencies between steps.
+5. If — and only if — the plan contains at least one consumer-observable change (behavior, API, security, or performance; NOT comment/doc-drift corrections, test-only changes, or internal renames), add a final step: "Release: run /release per .claude/commands/release.md", blocked by all preceding steps. If every step is internal hygiene, do NOT add a release step — the work batches into the next meaningful release (docs/CONSTITUTION.md Article III).
+6. Create a parent seed: \`sd create --title "nightwatch patrol: <date>" --type task --priority 3 --labels patrol,nightwatch\`
+7. Use \`sd plan prompt <seed-id>\` with the \`refactor\` template (quality fixes are internal restructuring, not features).
+8. Fill in the plan. For each step:
+   - title: short, imperative ("Fix inconsistent JSON output in list commands")
+   - description: file paths, line ranges, what's wrong, what correct looks like
+   - blocks: indices of steps this step must complete before (forward semantics, 0-based)
+   - labels: always include "nightwatch" so every spawned child seed inherits the agent tag (mirrors the parent-seed --labels patrol,nightwatch in step 6). If a Release step is present (step 5 criteria), it gets labels: ["nightwatch"] too.
+9. Submit: \`sd plan submit <seed-id> --plan <file>\`
+10. Report: list the plan id and child seed ids. Summarize the total finding count by category.
+
+## Operating contract (tracker)
+
 - Do not run git write operations. Warren commits and pushes for you.
 - Do not run sd close or sd update --status on issues you didn't create.
-- Do not dispatch runs or plan-runs. Warren handles dispatch via auto_plan_run after reap.
 `;
 
 export const NIGHTWATCH_BUILTIN: AgentDefinition = {
@@ -81,6 +86,7 @@ export const NIGHTWATCH_BUILTIN: AgentDefinition = {
 		burrow_config: '[sandbox]\nnetwork = "open"\n',
 	},
 	resolvedFrom: ["builtin:nightwatch"],
+	gatedPrompts: { tracker: TRACKER_FRAGMENT, mulch: MULCH_FRAGMENT },
 	frontmatter: {
 		source: "builtin",
 		tags: ["agent"],

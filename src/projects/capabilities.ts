@@ -33,10 +33,15 @@ import { join } from "node:path";
 
 /**
  * Feature directories warren probes for at clone refresh time (warren-4e20).
- * `.seeds/` joined in warren-9990 to gate plan-run dispatch.
+ * `.seeds/` joined in warren-9990 to gate plan-run dispatch. `.mulch/`
+ * joined in warren-cb46 to gate the mulch prompt fragments (probe-only:
+ * there is no `has_mulch` column yet, so the flag is consumed at
+ * dispatch time by the prompt-capability resolver rather than off the
+ * projects row).
  */
 export const PROJECT_FEATURE_DIRS = {
 	seeds: ".seeds",
+	mulch: ".mulch",
 } as const;
 
 /**
@@ -46,6 +51,8 @@ export const PROJECT_FEATURE_DIRS = {
  */
 export interface ProjectFeatureFlags {
 	readonly hasSeeds: boolean;
+	/** Probe-only (warren-cb46): no projects-row column yet — dispatch reads it fresh. */
+	readonly hasMulch: boolean;
 }
 
 /**
@@ -65,5 +72,6 @@ export function detectProjectFeatures(
 ): ProjectFeatureFlags {
 	return {
 		hasSeeds: exists(join(localPath, PROJECT_FEATURE_DIRS.seeds)),
+		hasMulch: exists(join(localPath, PROJECT_FEATURE_DIRS.mulch)),
 	};
 }

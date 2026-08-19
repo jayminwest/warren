@@ -3,6 +3,7 @@ import { isKnownRuntimeId } from "../../core/wire.ts";
 import { openDatabase, type WarrenDb } from "../../db/client.ts";
 import { AgentsRepo } from "../../db/repos/agents.ts";
 import { DrizzleAdapter } from "../../db/repos/drizzle-adapter.ts";
+import { ALL_PROMPT_CAPABILITIES, withGatedPromptFragments } from "../prompt-gating.ts";
 import {
 	AgentNameSchema,
 	parseRenderedAgent,
@@ -154,8 +155,10 @@ describe("PLANNER_BUILTIN", () => {
 		// POST /burrows (src/runs/burrow_config.ts), so the path-scoped
 		// write contract is enforced in the prompt for now. These string
 		// checks pin the contract so a casual edit doesn't silently widen
-		// the role.
-		const system = PLANNER_BUILTIN.sections.system ?? "";
+		// the role. Asserted against the fully-composed render (warren-cb46)
+		// because the tracker text now rides gatedPrompts.
+		const system = withGatedPromptFragments(PLANNER_BUILTIN, ALL_PROMPT_CAPABILITIES).sections
+			.system;
 		expect(system).toMatch(/must NOT/);
 		expect(system).toMatch(/source files/);
 		expect(system).toMatch(/Dispatch agent runs/);
@@ -170,8 +173,10 @@ describe("PLANNER_BUILTIN", () => {
 		// The planner's only side effect on work items is via
 		// `sd plan submit`, which spawns child seeds (mx-77117c documents
 		// the 0-BASED `steps[i].blocks` index semantics — the prompt
-		// reiterates that so the agent doesn't off-by-one).
-		const system = PLANNER_BUILTIN.sections.system ?? "";
+		// reiterates that so the agent doesn't off-by-one). That text rides
+		// gatedPrompts.tracker (warren-cb46) — assert on the composed render.
+		const system = withGatedPromptFragments(PLANNER_BUILTIN, ALL_PROMPT_CAPABILITIES).sections
+			.system;
 		expect(system).toMatch(/sd plan prompt/);
 		expect(system).toMatch(/sd plan submit/);
 		expect(system).toMatch(/0-BASED/);

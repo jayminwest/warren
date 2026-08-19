@@ -23,16 +23,16 @@
  * id, or clone path — and it is NOT widened for this consumer. The subscriber
  * resolves everything it needs from the control-plane's own state, keyed off the
  * payload's `runId` / `projectId`: the run row (its `seedId`), the project row
- * (its `localPath` clone + `hasSeeds`), and the boot-wired seeds CLI. It gates on
+ * (its `localPath` clone + `hasSeeds`), and the boot-wired issue tracker (warren-6234: `tracker.closeIssue`). It gates on
  * the payload's `outcome === "succeeded"` (already folded past dropped-commit /
  * finalize-failed / provider-error flips by reap), `branchPushed`, and a positive
- * `commitsAhead`. Its `sd close` mutates the clone; a `seeds.seed_id_closed` event
+ * `commitsAhead`. Its tracker close mutates the tracker state (seeds: the clone); a `seeds.seed_id_closed` event
  * is appended to the run's stream for observability, best-effort.
  */
 
 import type { Repos } from "../../db/repos/index.ts";
 import type { EventRow } from "../../db/schema.ts";
-import type { SeedsCliDeps } from "../../seeds-cli/index.ts";
+import type { IssueTracker } from "../../tracker/contract.ts";
 import type { RunEventBroker } from "../events.ts";
 import { type LifecycleExtension, WARREN_EXT_PROTOCOL } from "../lifecycle-bus.ts";
 import { closeRunSeedId } from "./seeds.ts";
@@ -44,7 +44,8 @@ export interface SeedCloseObserverLogger {
 
 export interface SeedCloseLifecycleExtensionInput {
 	readonly repos: Repos;
-	readonly seedsCli: SeedsCliDeps;
+	/** warren-6234: the close runs through the IssueTracker seam. */
+	readonly issueTracker: IssueTracker;
 	readonly logger: SeedCloseObserverLogger;
 	/** Optional broker so the observability event reaches live tailers too. */
 	readonly broker?: RunEventBroker;
@@ -100,8 +101,9 @@ async function closeSeedForReap(
 	try {
 		await closeRunSeedId({
 			seedId: run.seedId,
+			projectId: project.id,
 			projectPath: project.localPath,
-			seedsCli: input.seedsCli,
+			issueTracker: input.issueTracker,
 			emit,
 		});
 	} catch (err) {

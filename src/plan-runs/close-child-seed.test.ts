@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { WARREN_BOT_IDENTITY } from "../bot-identity.ts";
 import type { SpawnFn } from "../projects/index.ts";
-import type { SeedsCliDeps } from "../seeds-cli/index.ts";
+import type { IssueTracker } from "../tracker/contract.ts";
 import { closeMergedChildSeed } from "./close-child-seed.ts";
 
 interface SpawnCall {
@@ -37,27 +37,42 @@ function makeGitSpawn(opts: { dirtyAfterClose: boolean; pushExit?: number }): {
 	return { spawn, calls };
 }
 
-function makeSeedsCli(): { seedsCli: SeedsCliDeps; calls: SpawnCall[] } {
-	const calls: SpawnCall[] = [];
-	const seedsCli: SeedsCliDeps = {
-		sdBinary: "sd",
-		spawn: async (cmd, spawnOpts) => {
-			calls.push({ cmd: cmd as string[], cwd: spawnOpts.cwd });
-			return { stdout: "", stderr: "", exitCode: 0 };
+interface CloseCall {
+	readonly seedId: string;
+	readonly projectId: string;
+	readonly localPath?: string;
+}
+
+function makeTracker(isGitNative = true): { issueTracker: IssueTracker; closeCalls: CloseCall[] } {
+	const closeCalls: CloseCall[] = [];
+	const issueTracker: IssueTracker = {
+		capabilities: {
+			supportsPlans: true,
+			supportsMetadata: true,
+			supportsScheduledIssues: true,
+			isGitNative,
+		},
+		getIssue: async () => {
+			throw new Error("unused");
+		},
+		listIssueStatuses: async () => new Map(),
+		closeIssue: async (ctx, seedId) => {
+			closeCalls.push({ seedId, projectId: ctx.projectId, localPath: ctx.localPath });
 		},
 	};
-	return { seedsCli, calls };
+	return { issueTracker, closeCalls };
 }
 
 describe("closeMergedChildSeed", () => {
 	test("closes an open seed on the default branch and pushes", async () => {
 		const { spawn, calls } = makeGitSpawn({ dirtyAfterClose: true });
-		const { seedsCli, calls: sdCalls } = makeSeedsCli();
+		const { issueTracker, closeCalls } = makeTracker();
 		const result = await closeMergedChildSeed({
 			projectPath: "/data/projects/x/y",
 			defaultBranch: "main",
 			seedId: "warren-3f09",
-			seedsCli,
+			projectId: "prj_1",
+			issueTracker,
 			spawn,
 			gitBinary: "git",
 		});
@@ -65,10 +80,11 @@ describe("closeMergedChildSeed", () => {
 		expect(result.kind).toBe("closed");
 		if (result.kind === "closed") expect(result.branch).toBe("main");
 
-		// sd close ran inside the throwaway worktree, not the project clone.
-		expect(sdCalls).toHaveLength(1);
-		expect(sdCalls[0]?.cmd).toEqual(["sd", "close", "warren-3f09"]);
-		expect(sdCalls[0]?.cwd).not.toBe("/data/projects/x/y");
+		// The tracker close ran inside the throwaway worktree, not the project clone.
+		expect(closeCalls).toEqual([
+			{ seedId: "warren-3f09", projectId: "prj_1", localPath: closeCalls[0]?.localPath },
+		]);
+		expect(closeCalls[0]?.localPath).not.toBe("/data/projects/x/y");
 
 		const has = (sub: string) => calls.some((c) => c.cmd.includes(sub));
 		expect(has("fetch")).toBe(true);
@@ -93,12 +109,13 @@ describe("closeMergedChildSeed", () => {
 
 	test("githubToken → fetch + push carry the credential env; token stays out of argv", async () => {
 		const { spawn, calls } = makeGitSpawn({ dirtyAfterClose: true });
-		const { seedsCli } = makeSeedsCli();
+		const { issueTracker } = makeTracker();
 		await closeMergedChildSeed({
 			projectPath: "/data/projects/x/y",
 			defaultBranch: "main",
 			seedId: "warren-3f09",
-			seedsCli,
+			projectId: "prj_1",
+			issueTracker,
 			spawn,
 			gitBinary: "git",
 			githubToken: "ghp_secret",
@@ -121,12 +138,13 @@ describe("closeMergedChildSeed", () => {
 
 	test("already-closed seed yields noop without a commit or push", async () => {
 		const { spawn, calls } = makeGitSpawn({ dirtyAfterClose: false });
-		const { seedsCli } = makeSeedsCli();
+		const { issueTracker } = makeTracker();
 		const result = await closeMergedChildSeed({
 			projectPath: "/data/projects/x/y",
 			defaultBranch: "main",
 			seedId: "warren-f854",
-			seedsCli,
+			projectId: "prj_1",
+			issueTracker,
 			spawn,
 			gitBinary: "git",
 		});
@@ -140,17 +158,39 @@ describe("closeMergedChildSeed", () => {
 
 	test("push failure throws and still removes the worktree", async () => {
 		const { spawn, calls } = makeGitSpawn({ dirtyAfterClose: true, pushExit: 1 });
-		const { seedsCli } = makeSeedsCli();
+		const { issueTracker } = makeTracker();
 		await expect(
 			closeMergedChildSeed({
 				projectPath: "/data/projects/x/y",
 				defaultBranch: "main",
 				seedId: "warren-3f09",
-				seedsCli,
+				projectId: "prj_1",
+				issueTracker,
 				spawn,
 				gitBinary: "git",
 			}),
 		).rejects.toThrow(/git push failed/);
 		expect(calls.some((c) => c.cmd.includes("remove"))).toBe(true);
+	});
+
+	test("non-git-native tracker collapses to one tracker.closeIssue call (warren-6234)", async () => {
+		const { spawn, calls } = makeGitSpawn({ dirtyAfterClose: true });
+		const { issueTracker, closeCalls } = makeTracker(false);
+		const result = await closeMergedChildSeed({
+			projectPath: "/data/projects/x/y",
+			defaultBranch: "main",
+			seedId: "warren-3f09",
+			projectId: "prj_1",
+			issueTracker,
+			spawn,
+			gitBinary: "git",
+		});
+
+		expect(result).toEqual({ kind: "closed", branch: "main" });
+		expect(closeCalls).toEqual([
+			{ seedId: "warren-3f09", projectId: "prj_1", localPath: "/data/projects/x/y" },
+		]);
+		// No git machinery ran — no worktree, no commit, no push.
+		expect(calls).toHaveLength(0);
 	});
 });

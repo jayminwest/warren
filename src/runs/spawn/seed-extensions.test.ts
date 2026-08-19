@@ -2,8 +2,9 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { WarrenDb } from "../../db/client.ts";
 import type { Repos } from "../../db/repos/index.ts";
 import type { SpawnFn as ProjectSpawnFn, SpawnResult } from "../../projects/clone.ts";
+import type { IssueTracker, MetadataCapableTracker } from "../../tracker/contract.ts";
 import { spawnRun } from "./index.ts";
-import { UNKNOWN_TRIGGER_EVENT } from "./seed-extensions.ts";
+import { UNKNOWN_TRIGGER_EVENT, writeSeedExtensions } from "./seed-extensions.ts";
 import { makeProvider, makeSandboxClient, setupRepos } from "./test-helpers.ts";
 import type { SpawnLogger } from "./types.ts";
 
@@ -226,5 +227,106 @@ describe("spawnRun: post-dispatch seed extension write (pl-bb70)", () => {
 		expect(events[0]?.kind).toBe(UNKNOWN_TRIGGER_EVENT);
 		expect(events[0]?.stream).toBe("system");
 		expect((events[0]?.payloadJson as { trigger: string }).trigger).toBe("totally-made-up");
+	});
+});
+
+describe("writeSeedExtensions: capability gating (warren-6234)", () => {
+	let db: WarrenDb;
+	let repos: Repos;
+
+	beforeEach(async () => {
+		({ db, repos } = await setupRepos());
+	});
+	afterEach(async () => {
+		await db.close();
+	});
+
+	test("skips the write with a debug log when the tracker lacks supportsMetadata", async () => {
+		let mergeCalls = 0;
+		const debugs: string[] = [];
+		const tracker: IssueTracker & Partial<MetadataCapableTracker> = {
+			capabilities: {
+				supportsPlans: false,
+				supportsMetadata: false,
+				supportsScheduledIssues: false,
+				isGitNative: false,
+			},
+			getIssue: async () => {
+				throw new Error("unused");
+			},
+			listIssueStatuses: async () => new Map(),
+			closeIssue: async () => {},
+			mergeIssueMetadata: async () => {
+				mergeCalls += 1;
+			},
+		};
+		const logger: SpawnLogger = {
+			info: () => {},
+			warn: () => {},
+			error: () => {},
+			debug: (_fields, msg) => void debugs.push(msg ?? ""),
+			child() {
+				return logger;
+			},
+		};
+		const run = await repos.runs.create({
+			agentName: "refactor-bot",
+			projectId: "prj_xxxxxxxxxxxx",
+			prompt: "fix it",
+			renderedAgentJson: { sections: {} },
+			trigger: "manual",
+		});
+
+		await writeSeedExtensions({
+			repos,
+			issueTracker: tracker,
+			projectId: "prj_xxxxxxxxxxxx",
+			projectPath: "/data/projects/x/y",
+			seedId: "warren-abc",
+			runId: run.id,
+			agentName: "refactor-bot",
+			trigger: "manual",
+			now: new Date("2026-05-15T17:00:00.000Z"),
+			logger,
+		});
+
+		expect(mergeCalls).toBe(0);
+		expect(debugs.some((m) => m.includes("metadata"))).toBe(true);
+		expect(await repos.events.countByRun(run.id)).toBe(0);
+	});
+
+	test("routes the merge through tracker.mergeIssueMetadata with the tracker context", async () => {
+		const merges: Array<{ projectId: string; localPath?: string; seedId: string }> = [];
+		const tracker: IssueTracker & Partial<MetadataCapableTracker> = {
+			capabilities: {
+				supportsPlans: true,
+				supportsMetadata: true,
+				supportsScheduledIssues: true,
+				isGitNative: true,
+			},
+			getIssue: async () => {
+				throw new Error("unused");
+			},
+			listIssueStatuses: async () => new Map(),
+			closeIssue: async () => {},
+			mergeIssueMetadata: async (ctx, seedId) => {
+				merges.push({ projectId: ctx.projectId, localPath: ctx.localPath, seedId });
+			},
+		};
+
+		await writeSeedExtensions({
+			repos,
+			issueTracker: tracker,
+			projectId: "prj_xxxxxxxxxxxx",
+			projectPath: "/data/projects/x/y",
+			seedId: "warren-abc",
+			runId: "run_x",
+			agentName: "refactor-bot",
+			now: new Date("2026-05-15T17:00:00.000Z"),
+		});
+
+		expect(merges).toEqual([
+			{ projectId: "prj_xxxxxxxxxxxx", localPath: "/data/projects/x/y", seedId: "warren-abc" },
+		]);
 	});
 });
