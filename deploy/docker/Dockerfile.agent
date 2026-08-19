@@ -12,9 +12,9 @@
 # Unlike the control-plane Dockerfile this image has NO supervisor, NO
 # `burrow serve`, and NO bubblewrap/uidmap — the pod boundary replaces all of
 # that (design k8s-migration.md §2.2). It bakes the agent toolchain (design §4.3):
-# bun, real Node, the coding-agent CLIs (claude-code, pi, sapling), and the
-# os-eco data-plane CLIs (canopy/seeds/mulch/plot) the agent shells out to during
-# a run.
+# bun, real Node, python3+uv (warren-fabb), the coding-agent CLIs (claude-code,
+# pi, sapling), and the os-eco data-plane CLIs (canopy/seeds/mulch/plot) the
+# agent shells out to during a run.
 #
 # Build context is the repo root:
 #   docker build -f deploy/docker/Dockerfile.agent -t warren-agent:latest .
@@ -24,15 +24,25 @@ FROM oven/bun:1.2
 # git + https CA roots for clone/push; real Node (NodeSource LTS) for agent
 # tooling whose shims are `#!/usr/bin/env node` (parity with the control-plane
 # image, warren-a82b). No bubblewrap/uidmap/netcat — the pod is the sandbox.
+# warren-fabb (pl-a37b step 17): python3 + pip + venv + uv so a Python
+# mirror's agent can run the project's own tests (pytest/uv). Deliberately
+# minimal — no go/rust/jdk this pass; a stack needing more pins its own
+# agentImage via `.warren/config.yaml`.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         git \
         ca-certificates \
         curl \
         gnupg \
+        python3 \
+        python3-pip \
+        python3-venv \
     && curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
     && apt-get install -y --no-install-recommends nodejs \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && curl -LsSf https://astral.sh/uv/install.sh \
+        | env UV_INSTALL_DIR=/usr/local/bin UV_UNMANAGED_INSTALL=1 sh \
+    && uv --version
 
 # Trust the `/workspace` emptyDir regardless of owner uid (warren-fd08 live
 # validation): the pod runs as uid 1000 but the emptyDir mountpoint is

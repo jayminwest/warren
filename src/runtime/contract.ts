@@ -50,11 +50,8 @@ export interface RunSpec {
 	/** optional burrow worktree optimization; K8s ignores it. */
 	hostClonePathHint?: string;
 
-	/**
-	 * OPTIONAL project identity (the warren `projects.id`). K8s stamps it onto the
-	 * pod (`warren.io/project`) and counts by it for the per-project admission cap
-	 * (warren-b6f2); LocalProvider ignores it.
-	 */
+	/** OPTIONAL project identity (warren `projects.id`) — K8s stamps it on the
+	 * pod (`warren.io/project`) for admission (warren-b6f2); Local ignores it. */
 	projectId?: string;
 	/**
 	 * OPTIONAL per-project concurrency cap — max simultaneous non-terminal run
@@ -62,6 +59,11 @@ export interface RunSpec {
 	 * (warren-b6f2). K8s enforces it; LocalProvider ignores it.
 	 */
 	maxProjectConcurrency?: number;
+
+	/** Per-project agent image override (`.warren/config.yaml` `agentImage`,
+	 * warren-fabb): this > the runtime's `WARREN_*_AGENT_IMAGE` env > default.
+	 * Docker + K8s consume it; LocalProvider ignores it (host toolchain). */
+	agentImage?: string;
 
 	// Agent.
 	runtimeId: AcceptedRuntimeId;
@@ -76,10 +78,9 @@ export interface RunSpec {
 	resources?: { memoryMiB?: number; cpuMillicores?: number; ephemeralStorageMiB?: number };
 	/**
 	 * OPTIONAL per-project pod resource defaults from `.warren/config.yaml`
-	 * `resources` (warren-aedd) — the dispatch path reads the project config once
-	 * and carries the subset here because the provider is built at boot and can't
-	 * re-read it per run (same pattern as `maxProjectConcurrency`). Precedence:
-	 * per-run `resources` limit > `projectResources` > env defaults. K8s only.
+	 * `resources` (warren-aedd) — same boot-time pattern as
+	 * `maxProjectConcurrency`. Precedence: per-run `resources` limit >
+	 * `projectResources` > env defaults. K8s only.
 	 */
 	projectResources?: {
 		requests?: { memoryMiB?: number; cpuMillicores?: number; ephemeralStorageMiB?: number };

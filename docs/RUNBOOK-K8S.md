@@ -67,7 +67,7 @@ See [`deploy/k8s/README.md`](../deploy/k8s/README.md) for `--load-k3d`, `--load-
 | Image | Env var | Dockerfile | Role |
 |---|---|---|---|
 | `warren` (control plane) | referenced by the Deployment | root `Dockerfile` | boots `warren serve` directly (Deployment overrides ENTRYPOINT away from the supervisor — no burrow child under k8s) |
-| `warren-agent` | `WARREN_K8S_AGENT_IMAGE` (default `warren-agent:latest`) | `deploy/docker/Dockerfile.agent` | the run pod's toolchain: bun, node, git, the coding-agent CLIs + os-eco CLIs; runs `bun run agent:run` (`src/runtime/k8s/agent-entrypoint.ts`) |
+| `warren-agent` | `WARREN_K8S_AGENT_IMAGE` (default `warren-agent:latest`) | `deploy/docker/Dockerfile.agent` | the run pod's toolchain: bun, node, git, python3 + uv (warren-fabb), the coding-agent CLIs + os-eco CLIs; runs `bun run agent:run` (`src/runtime/k8s/agent-entrypoint.ts`) |
 | `warren-workspace-init` | `WARREN_K8S_INIT_IMAGE` (default `warren-workspace-init:latest`) | `deploy/docker/Dockerfile.workspace-init` | lightweight bun+git init container; runs `bun run workspace:init` (`src/runtime/k8s/workspace-init.ts`) |
 
 The `:latest` defaults name no registry.
@@ -471,7 +471,7 @@ Manifest values live in `deploy/k8s/base/deployment.yaml` plus the overlays.
 |---|---|---|
 | `WARREN_RUNTIME` | `k8s` | selects `K8sProvider` (default `local`) |
 | `WARREN_K8S_NAMESPACE` | `warren-runs` | namespace run pods land in |
-| `WARREN_K8S_AGENT_IMAGE` / `WARREN_K8S_INIT_IMAGE` | registry paths | the run pod + init images (§1.2) |
+| `WARREN_K8S_AGENT_IMAGE` / `WARREN_K8S_INIT_IMAGE` | registry paths | the run pod + init images (§1.2). Per-project override: a project's `.warren/config.yaml` `agentImage` pins its own run-pod image — precedence: project `agentImage` > `WARREN_K8S_AGENT_IMAGE` > default (warren-fabb; the init image is not overridable) |
 | `WARREN_K8S_CALLBACK_SERVICE` / `_NAMESPACE` / `_PORT` | `warren` / `warren` / `8080` | the in-pod callback URL = Service DNS `warren.warren.svc.cluster.local:8080` (provider-owned; do not set `WARREN_API_URL` by hand) |
 | `WARREN_K8S_REPO_CACHE_PVC` | unset (cache OFF by default, warren-554f) | opt-in: names the shared repo-cache claim; set it (plus the PVC) via an overlay to enable the cache — see §5.3 |
 | `WARREN_K8S_REPO_CACHE_PATH` | `/repo-cache` | mount path for the cache |

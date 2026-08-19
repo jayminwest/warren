@@ -75,6 +75,16 @@ export interface SandboxProfile {
 	 */
 	workspaceGitdir?: string;
 	/**
+	 * OPTIONAL per-project agent image override from `.warren/config.yaml`
+	 * `agentImage`, carried on the RunSpec (warren-fabb) and threaded here
+	 * because the drive-loop spawn seam receives only the profile + command.
+	 * Container runtimes consume it: DockerProvider picks it over the env
+	 * default, K8s resolves it into the pod-spec image. The bwrap/
+	 * sandbox-exec paths (LocalProvider) ignore it — the host toolchain is
+	 * the sandbox there, so there is no image to pick.
+	 */
+	agentImage?: string;
+	/**
 	 * Per-run inbound loopback port-forwards. For each pair, traffic
 	 * arriving at `127.0.0.1:hostPort` on the host is piped into
 	 * `127.0.0.1:sandboxPort` inside the sandbox's network namespace.
