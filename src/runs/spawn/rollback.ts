@@ -32,10 +32,31 @@ const NOOP_SPAWN_LOGGER: Required<Pick<SpawnLogger, "info" | "warn" | "error">> 
 	},
 };
 
-/** Bind `run_id` onto the caller's logger (or the no-op) once per spawn. */
-export function bindRunLogger(logger: SpawnLogger | undefined, runId: string): SpawnLogger {
+/**
+ * Bind `run_id` (and, when present, dispatch provenance) onto the caller's
+ * logger once per spawn (warren-c686 / warren-9ce3). Reading
+ * `dispatcherHandle` + `dispatchOrigin` here is what keeps them from being
+ * dropped silently — the dispatch-context writer (warren-d6ca) will also
+ * consume them off the input bag, but the logger binding is the live carry
+ * until that lands.
+ */
+export function bindRunLogger(
+	logger: SpawnLogger | undefined,
+	runId: string,
+	provenance?: {
+		readonly dispatcherHandle?: string;
+		readonly dispatchOrigin?: string;
+	},
+): SpawnLogger {
 	const base = logger ?? NOOP_SPAWN_LOGGER;
-	return base.child?.({ run_id: runId }) ?? base;
+	const bindings: Record<string, string> = { run_id: runId };
+	if (provenance?.dispatcherHandle !== undefined && provenance.dispatcherHandle !== "") {
+		bindings.dispatcher_handle = provenance.dispatcherHandle;
+	}
+	if (provenance?.dispatchOrigin !== undefined) {
+		bindings.dispatch_origin = provenance.dispatchOrigin;
+	}
+	return base.child?.(bindings) ?? base;
 }
 
 /** warren-c686: worker placement resolved (logged before the run row exists). */

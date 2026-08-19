@@ -152,6 +152,9 @@ describe("bootScheduler", () => {
 		expect(spawnRunCalls[0]?.agentName).toBe("claude-code");
 		expect(spawnRunCalls[0]?.projectId).toBe(projectId);
 		expect(spawnRunCalls[0]?.trigger).toBe("cron");
+		// warren-9ce3: explicit provenance + seedId forward from the cron entry.
+		expect(spawnRunCalls[0]?.dispatchOrigin).toBe("cron");
+		expect(spawnRunCalls[0]?.seedId).toBe("warren-abc");
 		// spawnRun threaded the prod plumbing through (refresh hook + cache).
 		expect(spawnRunCalls[0]?.projectsConfig).toBe(PROJECTS_CONFIG);
 		expect(spawnRunCalls[0]?.warrenConfigs).toBe(warrenConfigs);
@@ -196,13 +199,16 @@ describe("bootScheduler", () => {
 			return { stdout: "", stderr: "", exitCode: 0 };
 		};
 
+		const scheduledSpawnCalls: SpawnRunInput[] = [];
 		const spawnRunFn = async (input: SpawnRunInput): Promise<SpawnRunResult> => {
+			scheduledSpawnCalls.push(input);
 			const run = await repos.runs.create({
 				agentName: input.agentName,
 				projectId: input.projectId,
 				prompt: input.prompt,
 				renderedAgentJson: { sections: {} },
 				trigger: input.trigger ?? "manual",
+				...(input.seedId !== undefined ? { seedId: input.seedId } : {}),
 			});
 			return {
 				run,
@@ -232,6 +238,12 @@ describe("bootScheduler", () => {
 		expect(result?.scheduled).toHaveLength(1);
 		const fired = result?.scheduled[0];
 		expect(fired?.kind).toBe("fired");
+		// warren-9ce3: scheduled origin + seedId land on the spawn input
+		// (and therefore on runs.seed_id) rather than only in metadata.
+		expect(scheduledSpawnCalls).toHaveLength(1);
+		expect(scheduledSpawnCalls[0]?.dispatchOrigin).toBe("scheduled");
+		expect(scheduledSpawnCalls[0]?.seedId).toBe("warren-zzzz");
+		expect(scheduledSpawnCalls[0]?.trigger).toBe("scheduled");
 		const runId = fired?.kind === "fired" ? fired.runId : "";
 		const listCall = spawnCalls.find((c) => c.cmd[1] === "list");
 		const updateCall = spawnCalls.find((c) => c.cmd[1] === "update");
@@ -309,6 +321,89 @@ describe("bootScheduler", () => {
 		} finally {
 			await rm(tmpRoot, { recursive: true, force: true });
 		}
+	});
+
+	test("ci-fixer dispatch stamps dispatchOrigin=ci_fixer (warren-9ce3)", async () => {
+		// Seed an opener run with a failing PR so the ci-fixer pass fires.
+		const opener = await repos.runs.create({
+			agentName: "claude-code",
+			projectId,
+			prompt: "open the PR",
+			renderedAgentJson: { sections: {} },
+			trigger: "manual",
+		});
+		await repos.runs.markRunning(opener.id, NOW);
+		await repos.runs.setPrUrl(opener.id, "fake://x/y/pulls/9");
+
+		const { DEFAULT_RUN_BRANCH_PREFIX } = await import("../runs/branch.ts");
+		const forge = new FakeForge();
+		const ref = forge.parseRepoRef("fake://x/y/pulls/9");
+		if (ref === null) throw new Error("fake forge must own fake:// urls");
+		forge.setChecks(ref, `${DEFAULT_RUN_BRANCH_PREFIX}/${opener.id}`, [
+			{
+				name: "test",
+				status: "completed",
+				conclusion: "failure",
+				jobId: "1",
+				detailsUrl: null,
+			},
+		]);
+
+		const spawnRunCalls: SpawnRunInput[] = [];
+		const spawnRunFn = async (input: SpawnRunInput): Promise<SpawnRunResult> => {
+			spawnRunCalls.push(input);
+			const run = await repos.runs.create({
+				agentName: input.agentName,
+				projectId: input.projectId,
+				prompt: input.prompt,
+				renderedAgentJson: { sections: {} },
+				trigger: input.trigger ?? "manual",
+			});
+			return {
+				run,
+				sandbox: { id: "bur_fix", workspacePath: "/ws" },
+				sandboxRun: { id: "rb_fix" },
+				agent: { name: input.agentName, sections: {} } as never,
+			};
+		};
+
+		const handle = bootScheduler({
+			repos,
+			forge,
+			runtimeProvider: RUNTIME_PROVIDER,
+			bridges: makeBridges([]),
+			warrenConfigs: createWarrenConfigCache({
+				load: async () => ({
+					triggers: null,
+					defaults: {
+						ciFixer: {
+							enabled: true,
+							maxRetries: 2,
+							cooldownMinutes: 10,
+							logTailLines: 200,
+							role: "claude-code",
+						},
+					},
+					prTemplate: null,
+					sourceFile: null,
+					errors: [],
+					warnings: [],
+				}),
+			}),
+			projectsConfig: PROJECTS_CONFIG,
+			projectSpawn: (async () => ({ stdout: "", stderr: "", exitCode: 0 })) as SpawnFn,
+			config: { ...SCHEDULER_CONFIG, disabled: true },
+			now: () => NOW,
+			spawnRunFn,
+			cloneExists: () => true,
+		});
+
+		await handle.runOnce();
+		await handle.stop();
+
+		const fixerCall = spawnRunCalls.find((c) => c.trigger === "ci-fixer");
+		expect(fixerCall).toBeDefined();
+		expect(fixerCall?.dispatchOrigin).toBe("ci_fixer");
 	});
 
 	test("disabled config does not schedule an interval", async () => {

@@ -4,7 +4,13 @@ import { createRepos, type Repos } from "../../db/repos/index.ts";
 import { NO_AUTH } from "../auth.ts";
 import { startServer } from "../server.ts";
 import type { BridgeRegistry, ServeHandle } from "../types.ts";
-import { depsFor, makeSandboxClient, silentLogger, tcpUrl } from "./runs.test-helpers.ts";
+import {
+	depsFor,
+	makeRecordingLogger,
+	makeSandboxClient,
+	silentLogger,
+	tcpUrl,
+} from "./runs.test-helpers.ts";
 
 describe("POST /runs — spawn flow", () => {
 	let db: WarrenDb;
@@ -106,6 +112,81 @@ describe("POST /runs — spawn flow", () => {
 		expect(bridgeStarted[0]?.sandboxRunId).toBe("run_zzzzzzzzzzzz");
 		expect(calls.some((c) => c.method === "POST" && c.path === "/sandboxes")).toBe(true);
 		expect(calls.some((c) => c.path === "/sandboxes/bur_xxxxxxxxxxxx/runs")).toBe(true);
+	});
+
+	test("stamps dispatchOrigin=api on a plain POST /runs (warren-9ce3)", async () => {
+		const project = (await repos.projects.listAll())[0];
+		if (!project) throw new Error("project missing");
+
+		const { mkdtemp } = await import("node:fs/promises");
+		const { tmpdir } = await import("node:os");
+		const { join } = await import("node:path");
+		const tmpWs = await mkdtemp(join(tmpdir(), "warren-handlers-origin-"));
+
+		const { logger, lines } = makeRecordingLogger();
+		const sandboxClient = makeSandboxClient(
+			{ sandboxId: "bur_origin00000", sandboxRunId: "run_origin00000", workspacePath: tmpWs },
+			[],
+		);
+		const deps = { ...(await depsFor(repos, sandboxClient)), logger };
+		handle = startServer(deps, {
+			transport: { kind: "tcp", hostname: "127.0.0.1", port: 0 },
+			auth: NO_AUTH,
+			logger,
+		});
+
+		const res = await fetch(`${tcpUrl(handle)}/runs`, {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({
+				agent: "refactor-bot",
+				project: project.id,
+				prompt: "hello",
+				dispatcherHandle: "@operator",
+			}),
+		});
+		expect(res.status).toBe(201);
+
+		const provisioned = lines.find((l) => l.obj.event === "spawn.provisioned");
+		expect(provisioned?.obj.dispatch_origin).toBe("api");
+		expect(provisioned?.obj.dispatcher_handle).toBe("@operator");
+	});
+
+	test("stamps dispatchOrigin=cli when body.trigger is cli (warren-9ce3)", async () => {
+		const project = (await repos.projects.listAll())[0];
+		if (!project) throw new Error("project missing");
+
+		const { mkdtemp } = await import("node:fs/promises");
+		const { tmpdir } = await import("node:os");
+		const { join } = await import("node:path");
+		const tmpWs = await mkdtemp(join(tmpdir(), "warren-handlers-cli-"));
+
+		const { logger, lines } = makeRecordingLogger();
+		const sandboxClient = makeSandboxClient(
+			{ sandboxId: "bur_cli00000000", sandboxRunId: "run_cli00000000", workspacePath: tmpWs },
+			[],
+		);
+		const deps = { ...(await depsFor(repos, sandboxClient)), logger };
+		handle = startServer(deps, {
+			transport: { kind: "tcp", hostname: "127.0.0.1", port: 0 },
+			auth: NO_AUTH,
+			logger,
+		});
+
+		const res = await fetch(`${tcpUrl(handle)}/runs`, {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({
+				agent: "refactor-bot",
+				project: project.id,
+				prompt: "hello",
+				trigger: "cli",
+			}),
+		});
+		expect(res.status).toBe(201);
+
+		const provisioned = lines.find((l) => l.obj.event === "spawn.provisioned");
+		expect(provisioned?.obj.dispatch_origin).toBe("cli");
 	});
 
 	test("optional seedId persists onto runs.seed_id (warren-805a)", async () => {

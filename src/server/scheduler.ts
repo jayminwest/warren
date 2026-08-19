@@ -129,16 +129,22 @@ export function bootScheduler(input: BootSchedulerInput): SchedulerHandle {
 		...(input.now !== undefined ? { now: input.now } : {}),
 	});
 
+	const mintProjectGitSecret = async (projectId: string): Promise<string | undefined> => {
+		// §4 per-spawn mint: credential is minted immediately before the spawn,
+		// never captured at boot. Unowned URL / `no_credential` → undefined.
+		const project = await input.repos.projects.get(projectId);
+		return project !== null
+			? await mintGitCredentialSecret(input.forge, project.gitUrl)
+			: undefined;
+	};
+
 	const spawnDispatch: DispatchSpawnFn = async (
 		args: DispatchSpawnInput,
 	): Promise<DispatchSpawnResult> => {
-		// §4 per-spawn mint: the pre-dispatch refresh's git credential is
-		// minted from the forge immediately before the spawn, never captured
-		// at boot. An unowned URL or `no_credential` mints undefined →
-		// anonymous git, matching the old empty-token passthrough.
-		const project = await input.repos.projects.get(args.projectId);
-		const gitSecret =
-			project !== null ? await mintGitCredentialSecret(input.forge, project.gitUrl) : undefined;
+		const gitSecret = await mintProjectGitSecret(args.projectId);
+		// warren-9ce3: origin from the resolved trigger kind; seedId forward
+		// closes the scheduled-seed loss (was only buried in metadata).
+		const dispatchOrigin = args.trigger === "scheduled" ? "scheduled" : "cron";
 		const result = await spawnRunFn({
 			repos: input.repos,
 			runtimeProvider: input.runtimeProvider,
@@ -146,6 +152,8 @@ export function bootScheduler(input: BootSchedulerInput): SchedulerHandle {
 			projectId: args.projectId,
 			prompt: args.prompt,
 			trigger: args.trigger,
+			dispatchOrigin,
+			...(args.seedId !== undefined ? { seedId: args.seedId } : {}),
 			...(args.metadata !== undefined ? { metadata: args.metadata } : {}),
 			...(args.maxCostUsd !== undefined ? { maxCostUsdOverride: args.maxCostUsd } : {}),
 			projectsConfig: input.projectsConfig,
@@ -153,17 +161,14 @@ export function bootScheduler(input: BootSchedulerInput): SchedulerHandle {
 			githubToken: gitSecret,
 			warrenConfigs: input.warrenConfigs,
 			seedsCli: seedsDeps,
-			// warren-a0a2: forward the cron dispatcher's row-id probe so its
-			// bounded-retry GC can reclaim a transient never_started row.
+			// warren-a0a2: forward the cron dispatcher's row-id probe.
 			...(args.onRowCreated !== undefined ? { onRunRowCreated: args.onRowCreated } : {}),
 			...(input.runBranchPrefixDefault !== undefined
 				? { runBranchPrefixDefault: input.runBranchPrefixDefault }
 				: {}),
 			...(input.now !== undefined ? { now: input.now } : {}),
 		});
-		// Same hand-off as POST /runs — bridge the dispatched run so its
-		// events flow into warren.events. Without this the scheduled run
-		// would emit events into burrow that the warren wire never sees.
+		// Same hand-off as POST /runs — bridge so events flow into warren.events.
 		input.bridges.start(result.run.id, result.sandboxRun.id, result.sandbox.id);
 		return { runId: result.run.id };
 	};
@@ -178,9 +183,7 @@ export function bootScheduler(input: BootSchedulerInput): SchedulerHandle {
 	const ciFixerSpawn: TickCiFixerSpawnFn = async (
 		args: TickCiFixerSpawnInput,
 	): Promise<{ runId: string }> => {
-		const project = await input.repos.projects.get(args.projectId);
-		const gitSecret =
-			project !== null ? await mintGitCredentialSecret(input.forge, project.gitUrl) : undefined;
+		const gitSecret = await mintProjectGitSecret(args.projectId);
 		const result = await spawnRunFn({
 			repos: input.repos,
 			runtimeProvider: input.runtimeProvider,
@@ -188,6 +191,9 @@ export function bootScheduler(input: BootSchedulerInput): SchedulerHandle {
 			projectId: args.projectId,
 			prompt: args.prompt,
 			trigger: "ci-fixer",
+			// warren-9ce3: underscore spelling matches the dispatch-origin
+			// vocabulary (distinct from the hyphenated trigger column).
+			dispatchOrigin: "ci_fixer",
 			parentRunId: args.parentRunId,
 			targetBranch: args.targetBranch,
 			projectsConfig: input.projectsConfig,

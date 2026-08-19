@@ -65,6 +65,9 @@ export function createPlanRunSpawn(input: CreatePlanRunSpawnInput): CoordinatorS
 			projectId: planRun.projectId,
 			prompt,
 			trigger: "plan-run",
+			// warren-9ce3: underscore spelling matches the dispatch-origin
+			// vocabulary (distinct from the hyphenated trigger column).
+			dispatchOrigin: "plan_run",
 			seedId: child.seedId,
 			...(planRun.providerOverride !== null ? { providerOverride: planRun.providerOverride } : {}),
 			...(planRun.modelOverride !== null ? { modelOverride: planRun.modelOverride } : {}),

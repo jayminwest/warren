@@ -31,6 +31,29 @@ export interface SpawnLogger {
 	child?(bindings: object): SpawnLogger;
 }
 
+/**
+ * Explicit dispatch provenance for the dispatch-context log
+ * (warren-9ce3 / pl-a37b Track A). Closed vocabulary stamped at every
+ * production `spawnRun` call site. Distinct from `runs.trigger`: both
+ * retry paths inherit the original run's trigger, so deriving origin
+ * from trigger is lossy. Underscore spellings match the issue surface
+ * warren-d6ca will persist; they deliberately differ from the
+ * hyphenated `RUN_TRIGGER_KINDS` column values.
+ */
+export const DISPATCH_ORIGINS = [
+	"api",
+	"cli",
+	"cron",
+	"scheduled",
+	"manual_trigger",
+	"ci_fixer",
+	"healer",
+	"plan_run",
+	"retry_infra_lost",
+	"retry_provider",
+] as const;
+export type DispatchOrigin = (typeof DISPATCH_ORIGINS)[number];
+
 export interface SpawnRunInput {
 	readonly repos: Repos;
 	/**
@@ -193,8 +216,19 @@ export interface SpawnRunInput {
 	/**
 	 * Handle of the user dispatching the run (warren-e848). Persisted onto
 	 * plan-run bookkeeping; carried through unchanged by the spawn flow.
+	 * Read by {@link spawnRun} so the dispatch-context writer (warren-d6ca)
+	 * can stamp who dispatched without a second pass over the input.
 	 */
 	readonly dispatcherHandle?: string;
+	/**
+	 * Explicit dispatch provenance (warren-9ce3 / pl-a37b Track A).
+	 * Who/what kicked this run off — distinct from `trigger`, which both
+	 * retry paths inherit from the original run and is therefore lossy for
+	 * "why was THIS row created". Set at every production `spawnRun` call
+	 * site; the dispatch-context writer (warren-d6ca) records it. Internal
+	 * to the spawn seam today — not on the HTTP wire yet.
+	 */
+	readonly dispatchOrigin?: DispatchOrigin;
 	/**
 	 * Structured logger for the spawn flow (warren-c686 / pl-f700 step 1).
 	 * The HTTP handlers pass `ctx.logger` (pre-bound with `request_id`);
