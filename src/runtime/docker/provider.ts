@@ -93,6 +93,7 @@ export const DOCKER_PROVIDER_CAPABILITIES: RuntimeCapabilities = Object.freeze({
 
 export class DockerProvider implements RuntimeProvider {
 	readonly capabilities: RuntimeCapabilities = DOCKER_PROVIDER_CAPABILITIES;
+	readonly kind = "docker" as const;
 
 	private readonly engine: LocalEngine;
 

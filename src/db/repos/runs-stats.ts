@@ -7,10 +7,13 @@
  * load run bodies.
  */
 
-import { sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import type { SqliteDrizzleDb } from "../client.ts";
 import { RUN_STATES, type RunState } from "../schema.ts";
 import type { DrizzleAdapter } from "./drizzle-adapter.ts";
+
+/** Lifecycle states that still occupy a queue/admission slot. */
+const NON_TERMINAL_STATES = ["queued", "running"] as const satisfies readonly RunState[];
 
 /** Cost + token totals across all runs. */
 export interface RunCostAggregate {
@@ -43,6 +46,29 @@ export async function countRunsByState(adapter: DrizzleAdapter): Promise<Record<
  * runs, or pi runs whose stats RPC failed) coalesce to 0. One aggregate
  * query; backs the cost panel of the operational-stats log line.
  */
+/**
+ * Count non-terminal runs (`queued` + `running`) for the dispatch-context
+ * queue snapshot (warren-e1f1). Instance-wide when `projectId` is omitted;
+ * scoped to one project otherwise. Source is the runs table — not the k8s
+ * admission gate's in-memory pod counts, which never reach the dispatch site.
+ */
+export async function countNonTerminal(
+	adapter: DrizzleAdapter,
+	projectId?: string,
+): Promise<number> {
+	const db = adapter.drizzle as SqliteDrizzleDb;
+	const runs = adapter.schema.runs;
+	const stateCond = inArray(runs.state, [...NON_TERMINAL_STATES]);
+	const where = projectId === undefined ? stateCond : and(stateCond, eq(runs.projectId, projectId));
+	const [row] = await adapter.pickAll<{ count: number | string }>(
+		db
+			.select({ count: sql<number>`count(*)`.as("count") })
+			.from(runs)
+			.where(where),
+	);
+	return Number(row?.count ?? 0);
+}
+
 export async function aggregateRunCost(adapter: DrizzleAdapter): Promise<RunCostAggregate> {
 	const db = adapter.drizzle as SqliteDrizzleDb;
 	const runs = adapter.schema.runs;

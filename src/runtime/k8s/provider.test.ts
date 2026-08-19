@@ -57,6 +57,10 @@ describe("K8sProvider", () => {
 		});
 	});
 
+	test("reports kind k8s (warren-e1f1)", () => {
+		expect(new K8sProvider(deps).kind).toBe("k8s");
+	});
+
 	test("capabilities are frozen", () => {
 		expect(Object.isFrozen(K8S_PROVIDER_CAPABILITIES)).toBe(true);
 	});

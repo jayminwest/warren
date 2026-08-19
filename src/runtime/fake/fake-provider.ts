@@ -95,6 +95,8 @@ const BUN_INSTALL_CACHE_DIR = "/tmp/bun-install-cache";
  */
 export class FakeProvider implements RuntimeProvider {
 	readonly capabilities: RuntimeCapabilities = LOCAL_PROVIDER_CAPABILITIES;
+	/** Mirrors LocalProvider — FakeProvider is the local-shaped test double. */
+	readonly kind = "local" as const;
 	readonly calls: FakeProviderCall[];
 	/** Writable in tests so a scenario can arm a failure after construction. */
 	readonly plan: { -readonly [K in keyof FakeProviderPlan]: FakeProviderPlan[K] };

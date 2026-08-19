@@ -14,6 +14,10 @@ describe("DockerProvider", () => {
 		expect(provider.capabilities.midRunSteering).toBe(true);
 	});
 
+	test("reports kind docker (warren-e1f1)", () => {
+		expect(new DockerProvider().kind).toBe("docker");
+	});
+
 	test("status never throws on an unknown run — it reports lost (§6.7)", async () => {
 		const provider = new DockerProvider({ store: new LocalRunStore() });
 		const status = await provider.status(handle);

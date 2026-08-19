@@ -1,10 +1,4 @@
-/**
- * Repository for the `runs` table.
- *
- * Warren's run row mirrors the lifecycle of the underlying burrow run
- * (queued → running → succeeded|failed|cancelled); warren observes, the
- * runtime owns the queue.
- */
+/** Repository for the `runs` table (queued → running → terminal). */
 
 import { and, eq } from "drizzle-orm";
 import { NotFoundError, StateTransitionError, ValidationError } from "../../core/errors.ts";
@@ -39,6 +33,7 @@ import {
 	listForAnalytics,
 	listWithUnresolvedPr,
 } from "./runs-queries.ts";
+import { countNonTerminal } from "./runs-stats.ts";
 import { clearBurrowIdForWorkspace } from "./runs-workspace.ts";
 
 const ALLOWED_TRANSITIONS: Record<RunState, readonly RunState[]> = {
@@ -284,16 +279,17 @@ export class RunsRepo {
 		return listByState(this.adapter, state);
 	}
 
+	/** Non-terminal (`queued`+`running`) count; body in runs-stats.ts (warren-e1f1). */
+	countNonTerminal(projectId?: string): Promise<number> {
+		return countNonTerminal(this.adapter, projectId);
+	}
+
 	/** The retry a `sandbox_run_lost` original spawned (warren-4af7); body in runs-queries.ts. */
 	findByRetryOf(runId: string): Promise<RunRow | null> {
 		return findByRetryOf(this.adapter, runId);
 	}
 
-	/**
-	 * Write back the burrow IDs as they become available (the spawn flow
-	 * provisions the burrow first, dispatches the run second). At least one
-	 * field must be set.
-	 */
+	/** Write back sandbox IDs as spawn provisions them; at least one field required. */
 	async attachBurrow(id: string, input: AttachBurrowInput): Promise<RunRow> {
 		if (
 			input.sandboxId === undefined &&
@@ -313,12 +309,7 @@ export class RunsRepo {
 		return { ...current, ...patch };
 	}
 
-	/**
-	 * Persist a confirmed workspace destruction (warren-9b77) by nulling
-	 * `sandboxId` on every run row that referenced it, so the fallback GC
-	 * and the readyz stale-workspace diagnostic never re-strand it. Body
-	 * lives in runs-workspace.ts.
-	 */
+	/** Null sandboxId after workspace destroy (warren-9b77); body in runs-workspace.ts. */
 	clearBurrowIdForWorkspace(sandboxId: string): Promise<void> {
 		return clearBurrowIdForWorkspace(this.adapter, sandboxId);
 	}

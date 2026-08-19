@@ -4,7 +4,7 @@ import { AgentsRepo } from "./agents.ts";
 import { DrizzleAdapter } from "./drizzle-adapter.ts";
 import { ProjectsRepo } from "./projects.ts";
 import { RunsRepo } from "./runs.ts";
-import { aggregateRunCost, countRunsByState } from "./runs-stats.ts";
+import { aggregateRunCost, countNonTerminal, countRunsByState } from "./runs-stats.ts";
 
 function suite(dialect: "sqlite" | "postgres"): void {
 	describe(`runs-stats (${dialect})`, () => {
@@ -20,7 +20,7 @@ function suite(dialect: "sqlite" | "postgres"): void {
 				localPath: "/data/projects/x/y",
 				defaultBranch: "main",
 			});
-			return { handle, adapter, repo, agentName: a.name, projectId: p.id };
+			return { handle, adapter, repo, agents, projects, agentName: a.name, projectId: p.id };
 		};
 
 		const spawn = (repo: RunsRepo, agentName: string, projectId: string) =>
@@ -44,6 +44,46 @@ function suite(dialect: "sqlite" | "postgres"): void {
 				expect(counts.succeeded).toBe(0);
 				expect(counts.failed).toBe(0);
 				expect(counts.cancelled).toBe(0);
+			} finally {
+				await handle.close();
+			}
+		});
+
+		test("countNonTerminal counts queued+running across the instance", async () => {
+			const { handle, adapter, repo, agentName, projectId } = await open();
+			try {
+				expect(await countNonTerminal(adapter)).toBe(0);
+				const a = await spawn(repo, agentName, projectId);
+				await spawn(repo, agentName, projectId);
+				await repo.markRunning(a.id);
+				const done = await spawn(repo, agentName, projectId);
+				await repo.markRunning(done.id);
+				await repo.finalize(done.id, "succeeded");
+				// 1 running + 1 queued; the succeeded row is excluded.
+				expect(await countNonTerminal(adapter)).toBe(2);
+				expect(await repo.countNonTerminal()).toBe(2);
+			} finally {
+				await handle.close();
+			}
+		});
+
+		test("countNonTerminal scopes to a project when projectId is set", async () => {
+			const { handle, adapter, repo, agentName, projectId, projects } = await open();
+			try {
+				const other = await projects.create({
+					gitUrl: "https://github.com/x/z.git",
+					localPath: "/data/projects/x/z",
+					defaultBranch: "main",
+				});
+				await spawn(repo, agentName, projectId);
+				await spawn(repo, agentName, projectId);
+				const otherRun = await spawn(repo, agentName, other.id);
+				await repo.markRunning(otherRun.id);
+				expect(await countNonTerminal(adapter)).toBe(3);
+				expect(await countNonTerminal(adapter, projectId)).toBe(2);
+				expect(await countNonTerminal(adapter, other.id)).toBe(1);
+				expect(await repo.countNonTerminal(projectId)).toBe(2);
+				expect(await repo.countNonTerminal(other.id)).toBe(1);
 			} finally {
 				await handle.close();
 			}

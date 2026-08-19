@@ -44,6 +44,7 @@ const CAPABILITIES: RuntimeCapabilities = {
 /** A provider whose stream tails forever (until torn down) and whose status is fixed. */
 class FakeRuntimeProvider implements RuntimeProvider {
 	readonly capabilities = CAPABILITIES;
+	readonly kind = "local" as const;
 	constructor(private readonly fixedStatus: RunStatus) {}
 
 	create(_spec: RunSpec): Promise<RunHandle> {

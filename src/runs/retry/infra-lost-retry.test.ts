@@ -35,6 +35,7 @@ const STUB_PROVIDER: RuntimeProvider = {
 		workspaceArchive: false,
 		workspaceGc: false,
 	},
+	kind: "local",
 	create: () => Promise.reject(new Error("not used")),
 	streamEvents: () => {
 		throw new Error("not used");

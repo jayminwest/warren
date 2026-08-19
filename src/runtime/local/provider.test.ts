@@ -21,6 +21,10 @@ describe("LocalProvider", () => {
 		});
 	});
 
+	test("reports kind local (warren-e1f1)", () => {
+		expect(new LocalProvider().kind).toBe("local");
+	});
+
 	test("capabilities are frozen", () => {
 		expect(Object.isFrozen(LOCAL_PROVIDER_CAPABILITIES)).toBe(true);
 	});

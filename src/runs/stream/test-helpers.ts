@@ -33,6 +33,7 @@ export function makeProvider(): RuntimeProvider {
 			workspaceArchive: false,
 			workspaceGc: false,
 		},
+		kind: "local",
 		create: unexpected("create"),
 		streamEvents: unexpected("streamEvents"),
 		status: unexpected("status"),

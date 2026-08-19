@@ -202,7 +202,7 @@ const BUN_INSTALL_CACHE_DIR = "/tmp/bun-install-cache";
 
 export class K8sProvider implements RuntimeProvider {
 	readonly capabilities: RuntimeCapabilities = K8S_PROVIDER_CAPABILITIES;
-
+	readonly kind = "k8s" as const;
 	/** Memoized default log-follow factory — built lazily, never at construction. */
 	private readonly defaultLogFollow = defaultLogFollowFactory();
 

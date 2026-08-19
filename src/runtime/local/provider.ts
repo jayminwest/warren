@@ -85,6 +85,7 @@ export const LOCAL_PROVIDER_CAPABILITIES: RuntimeCapabilities = Object.freeze({
 
 export class LocalProvider implements RuntimeProvider {
 	readonly capabilities: RuntimeCapabilities = LOCAL_PROVIDER_CAPABILITIES;
+	readonly kind = "local" as const;
 
 	private readonly engine: LocalEngine;
 

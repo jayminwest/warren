@@ -1,14 +1,8 @@
 /**
  * The `RuntimeProvider` contract — the seam that decouples warren's domain from
- * its execution backend (burrow today, Kubernetes next).
- *
- * Authoritative spec: `docs/design/runtime-provider-contract.md` (sections 1–2,
- * with the §4 finalize seam and §6 corrections baked in). This file is
- * types-only; the LocalProvider implementation lands in a later step.
- *
- * The invariant the contract exists to protect: the domain must never leak a
- * burrow-id, a pod name, a socket, a host path, or a `SandboxProfile` across the
- * seam. Everything here is warren's *need*; providers satisfy it.
+ * its execution backend. Spec: `docs/design/runtime-provider-contract.md`.
+ * Types-only; the domain must never leak a burrow-id, pod name, socket, host
+ * path, or `SandboxProfile` across the seam.
  */
 
 import type {
@@ -445,8 +439,13 @@ export interface FinalizeStageOutcome {
  * the load-bearing §4 seam (its existence is not optional — something must
  * bridge the filesystem gap under pod-per-run).
  */
+/** `WARREN_RUNTIME` backend id on a live provider (warren-e1f1). */
+export type RuntimeProviderKind = "local" | "docker" | "k8s";
+
 export interface RuntimeProvider {
 	readonly capabilities: RuntimeCapabilities;
+	/** Backend identity — set once per concrete class (warren-e1f1). */
+	readonly kind: RuntimeProviderKind;
 
 	/**
 	 * Create a run. Collapses burrow's two-call (`burrows.up` + `runs.create`)
