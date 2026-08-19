@@ -13,6 +13,7 @@ resources:
   - serviceaccount.yaml
   - rbac.yaml
   - resourcequota.yaml
+  - networkpolicy.yaml
   - secrets.yaml
   - pvc.yaml
   - deployment.yaml

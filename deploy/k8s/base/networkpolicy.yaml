@@ -1,0 +1,132 @@
+# Run-pod NetworkPolicy (warren-8dbb / pl-a37b step 28).
+#
+# Scope locked for v0.18.0: default-deny ingress on every warren-managed run
+# pod, plus coarse egress for the `restricted` default (DNS + control-plane
+# Service + open external). Full FQDN allowlisting (GitHub / model-provider /
+# package-registry hostnames) needs Cilium or GKE Dataplane V2 and is operator
+# territory at release time — do NOT invent CIDR lists here; those ranges move.
+#
+# Selectors match labels stamped by `podLabelsForRun` (src/runtime/k8s/pod-spec.ts):
+#   warren.io/managed-by=warren   — every run pod the control plane creates
+#   warren.io/network=<mode>      — RunSpec network intent (none|restricted|open)
+#
+# policyTypes is explicit on every object so a CNI cannot mis-read an empty
+# rules list as "no opinion". Empty ingress/egress rule lists are deny-all for
+# that direction. Multiple policies that select the same pod are additive (OR).
+#
+# What this deliberately does NOT do:
+#   - Restrict external egress to named hosts/CIDRs (unstable; see above).
+#   - Touch the control-plane pod in namespace `warren` (Ingress/ServiceMonitor
+#     / operator traffic stays unrestricted).
+#   - Require a NetworkPolicy-capable CNI to boot the control plane — without
+#     one these objects are inert no-ops and runs keep the flat-pod behaviour.
+---
+# 1. Default-deny ingress for every warren-managed run pod.
+#
+# Run pods are clients: they dial the control-plane Service, git hosts, and
+# model providers. Nothing should dial them (previews are off under k8s;
+# kubectl exec/logs ride the apiserver→kubelet path, not the pod network).
+# This is the peer-isolation backstop the issue names — pod A cannot accept
+# a connection from pod B, the control plane's pod network, or anything else.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: warren-runs-default-deny-ingress
+  namespace: warren-runs
+  labels:
+    app.kubernetes.io/name: warren
+    app.kubernetes.io/component: runs
+spec:
+  podSelector:
+    matchLabels:
+      warren.io/managed-by: warren
+  policyTypes:
+    - Ingress
+---
+# 2. Coarse egress for `network: restricted` (the project default,
+#    DEFAULT_K8S_NETWORK). Allows:
+#      (a) DNS — UDP/TCP 53, any destination (CoreDNS / kube-dns placement
+#          differs across kind, k3d, and GKE; pinning a podSelector here
+#          would break one of them).
+#      (b) the warren control-plane Service — in-cluster callback
+#          (events / inbox / finalize) on :8080, selected by the control-plane
+#          pod labels in namespace `warren`.
+#      (c) 0.0.0.0/0 — external git hosts, model providers, package registries.
+#          Intentionally open: FQDN-based allowlisting is the follow-up, not a
+#          forged CIDR list. Peer isolation is the ingress policy above, not
+#          an egress except-CIDR guess.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: warren-runs-restricted-egress
+  namespace: warren-runs
+  labels:
+    app.kubernetes.io/name: warren
+    app.kubernetes.io/component: runs
+spec:
+  podSelector:
+    matchLabels:
+      warren.io/network: restricted
+  policyTypes:
+    - Egress
+  egress:
+    # (a) cluster DNS
+    - ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # (b) warren control-plane Service (pod endpoints in namespace `warren`)
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: warren
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: warren
+              app.kubernetes.io/component: control-plane
+      ports:
+        - protocol: TCP
+          port: 8080
+    # (c) external world — git clone/push, model providers, package registries
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+---
+# 3. `network: none` — deny all egress. Mirrors LocalProvider/bwrap's
+#    unshared net and DockerProvider's `--network none`. Ingress is already
+#    denied by policy 1.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: warren-runs-none-egress
+  namespace: warren-runs
+  labels:
+    app.kubernetes.io/name: warren
+    app.kubernetes.io/component: runs
+spec:
+  podSelector:
+    matchLabels:
+      warren.io/network: none
+  policyTypes:
+    - Egress
+---
+# 4. `network: open` — explicit allow-all egress so the intent is visible in
+#    the manifest set (and survives a future namespace-wide default-deny egress
+#    an operator might add). Ingress stays denied by policy 1.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: warren-runs-open-egress
+  namespace: warren-runs
+  labels:
+    app.kubernetes.io/name: warren
+    app.kubernetes.io/component: runs
+spec:
+  podSelector:
+    matchLabels:
+      warren.io/network: open
+  policyTypes:
+    - Egress
+  egress:
+    - {}

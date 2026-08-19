@@ -11,6 +11,7 @@ deploy/k8s/
     serviceaccount.yaml   control-plane ServiceAccount
     rbac.yaml             Role + RoleBinding scoped to warren-runs ONLY
     resourcequota.yaml    ResourceQuota (50 pods) + LimitRange defaults
+    networkpolicy.yaml    run-pod NetworkPolicy (default-deny ingress + coarse egress)
     secrets.yaml          Secret TEMPLATES (placeholders — do not apply as-is)
     pvc.yaml              warren-data (5Gi) — the repo-cache is opt-in, see below
     deployment.yaml       warren control-plane Deployment
