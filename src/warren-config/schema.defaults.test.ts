@@ -35,6 +35,18 @@ describe("DefaultsConfigSchema", () => {
 		if (parsed.success) expect(parsed.data.maxCostUsd).toBe(2.5);
 	});
 
+	// warren-540f: repoContext — free-text onboarding block, capped at 8 KiB so
+	// a runaway blob cannot silently eat the prompt budget.
+	test("accepts repoContext up to 8192 characters and rejects longer or empty values", () => {
+		const ok = DefaultsConfigSchema.safeParse({ repoContext: "python repo; gate is pytest -q" });
+		expect(ok.success).toBe(true);
+		if (ok.success) expect(ok.data.repoContext).toBe("python repo; gate is pytest -q");
+
+		expect(DefaultsConfigSchema.safeParse({ repoContext: "x".repeat(8192) }).success).toBe(true);
+		expect(DefaultsConfigSchema.safeParse({ repoContext: "x".repeat(8193) }).success).toBe(false);
+		expect(DefaultsConfigSchema.safeParse({ repoContext: "" }).success).toBe(false);
+	});
+
 	test("rejects a non-positive or string maxCostUsd", () => {
 		for (const bad of [0, -1, "2.5"]) {
 			expect(DefaultsConfigSchema.safeParse({ maxCostUsd: bad }).success).toBe(false);

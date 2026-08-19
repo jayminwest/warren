@@ -381,6 +381,17 @@ export const DefaultsConfigSchema = z
 		// warren-3db0: opt-in closed-loop healer; missing block → intake skips it.
 		healer: HealerConfigSchema.optional(),
 		qualityGate: z.string().min(1, "qualityGate must be non-empty if provided").optional(),
+		// warren-540f: free-text per-project onboarding context injected into
+		// every dispatched agent's prompt by composeDispatchPrompt. This is where
+		// "this is a Python repo, the gate is pytest -q, there is no tracker here"
+		// lives for a mirror you do not control. Capped at 8 KiB so a runaway
+		// blob cannot silently eat the prompt budget; bytes are counted in the
+		// dispatch-context `prompt_bytes`.
+		repoContext: z
+			.string()
+			.min(1, "repoContext must be non-empty if provided")
+			.max(8192, "repoContext must be at most 8192 characters")
+			.optional(),
 	})
 	.strict();
 

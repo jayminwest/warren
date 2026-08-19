@@ -76,6 +76,17 @@ burrow branch from (`${prefix}/${run.id}`); precedence project default >
 present) carries the preview block at the top level and wins over any
 nested `preview:` field — see `PreviewConfigSchema` in §11.L.
 
+**`repoContext` (warren-540f).** A free-text onboarding block (capped at
+8192 characters) injected by `composeDispatchPrompt`
+(`src/runs/spawn/dispatch.ts`) between the agent's `system` section and
+the user's prompt, delimited by horizontal rules. Its bytes count into
+the dispatch-context `prompt_bytes` (`src/runs/spawn/dispatch-context.ts`).
+This is the blessed way to onboard a **mirror of a repo you do not
+control**: the host clone's untracked `.warren/config.yaml` survives
+every clone refresh, and `repoContext` rides the composed prompt so it
+reaches docker and k8s runs too. The end-to-end recipe lives in
+[`docs/onboarding-external-repos.md`](../onboarding-external-repos.md).
+
 **Loader contract** (`src/warren-config/load.ts`):
 
 - Returns `LoadedWarrenConfig = { triggers: TriggersConfig | null,
