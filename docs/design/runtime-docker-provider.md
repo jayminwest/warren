@@ -50,6 +50,26 @@ the deterministic container name with `docker rm -f`.
 Secrets reach the container through an `--env-file` in a private tmp dir.
 They never ride the CLI argv.
 
+## Non-root agent identity (warren-3f32)
+
+claude-code refuses `--dangerously-skip-permissions` when `getuid()==0`.
+The K8s pod already runs uid 1000 with `runAsNonRoot`; docker mirrors that.
+
+- `deploy/docker/Dockerfile.agent` ends with `USER bun` (oven/bun's uid 1000).
+- `buildDockerRunSpec` always passes `--user <uid>:<gid>`. When warren itself
+  is root (compose default) the fixed agent uid is 1000
+  (`DOCKER_AGENT_UID`, same value as `WARREN_POD_UID` / `DEFAULT_SANDBOX_UID`).
+  When warren is already a non-root host user the container runs as that uid
+  so the just-materialized workspace and HOME stay writable without a chown.
+- `SandboxProfile.runAsUid` / `runAsGid` override both arms when set.
+- Before `docker run`, the spawn seam recursively chowns the bind-mounted
+  workspace, HOME, and optional worktree gitdir onto the agent uid whenever
+  warren created them as root. Without that step uid 1000 hits EACCES on
+  every git write and every agent config write under HOME. The shared clone
+  `.git` is included because worktree commits write objects there; under the
+  root-warren topology that chown is idempotent across concurrent runs (all
+  target uid 1000).
+
 ## Networking and the callback URL
 
 `network: "none"` maps to `--network none`. `network: "restricted"` maps to
