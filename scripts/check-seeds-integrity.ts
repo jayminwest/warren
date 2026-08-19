@@ -39,6 +39,13 @@ const REPO_ROOT = resolve(import.meta.dir, "..");
 /** The one queue, repo-relative POSIX. */
 export const ISSUES_FILE = ".seeds/issues.jsonl";
 
+/**
+ * When set, `main` reads the queue text from stdin instead of the on-disk
+ * file. Used by the pre-push hook (warren-53c0) so the gate scans the blob
+ * at the pushed tip rather than a dirty or divergent worktree.
+ */
+const STDIN_FLAG = "--stdin";
+
 export type ViolationKind = "duplicate-id" | "contradiction" | "invalid-json";
 
 export interface Violation {
@@ -150,8 +157,15 @@ export function scanText(file: string, text: string): Violation[] {
 	return [...violations, ...duplicateViolations(file, byId)];
 }
 
+function readQueueText(): string {
+	if (process.argv.includes(STDIN_FLAG)) {
+		return readFileSync(0, "utf8");
+	}
+	return readFileSync(resolve(REPO_ROOT, ISSUES_FILE), "utf8");
+}
+
 function main(): void {
-	const text = readFileSync(resolve(REPO_ROOT, ISSUES_FILE), "utf8");
+	const text = readQueueText();
 	const violations = scanText(ISSUES_FILE, text);
 	if (violations.length === 0) {
 		const rows = text.split("\n").filter((l) => l.trim() !== "").length;
