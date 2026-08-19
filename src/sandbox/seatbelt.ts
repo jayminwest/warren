@@ -20,6 +20,9 @@
  *     restricted mode falls back to deny-everything.
  */
 
+import { realpathSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
 import type { SandboxProfile, SpawnCommand } from "./types.ts";
 
 export const SYSTEM_READ_SUBPATHS: readonly string[] = [
@@ -69,6 +72,15 @@ export function buildSeatbeltProfile(profile: SandboxProfile): string {
 	for (const path of profile.readOnlyMounts) {
 		lines.push(`(allow file-read* (subpath ${sbString(path)}))`);
 	}
+
+	// Host bun install root (warren-bea7). bun's `bun run` path and the
+	// bun-shebang stubs under ~/.bun/bin resolve the real user's ~/.bun via
+	// getpwuid, not $HOME — which the sandbox rewrites to profile.home. Without
+	// a read grant here every `bun run <script>` fails with
+	// CouldntReadCurrentDirectory and sd/ml (global bun installs) are unusable.
+	// Keep the grant scoped to the install root, never the whole host home.
+	// Canonicalize so seatbelt's path match doesn't miss a symlinked install.
+	lines.push(`(allow file-read* (subpath ${sbString(realpathOrSelf(resolveHostBunInstall()))}))`);
 
 	lines.push(
 		`(allow file-read-data file-read-metadata file-write* (subpath ${sbString(profile.workspace)}))`,
@@ -146,6 +158,28 @@ function renderNetworkRules(profile: SandboxProfile): string[] {
 	const proxy = profile.proxyAddress;
 	if (!proxy) return [];
 	return [`(allow network-outbound (remote tcp ${sbString(`localhost:${proxy.port}`)}))`];
+}
+
+/**
+ * Host path of the invoking user's bun install root. Prefers `$BUN_INSTALL`,
+ * otherwise `~/.bun`. Exported so tests can pin the same path the profile
+ * renders without re-deriving the precedence.
+ */
+export function resolveHostBunInstall(
+	env: NodeJS.ProcessEnv = process.env,
+	home: string = homedir(),
+): string {
+	const fromEnv = env.BUN_INSTALL;
+	if (typeof fromEnv === "string" && fromEnv.length > 0) return fromEnv;
+	return join(home, ".bun");
+}
+
+function realpathOrSelf(path: string): string {
+	try {
+		return realpathSync(path);
+	} catch {
+		return path;
+	}
 }
 
 /** Quote a string for SBPL: escape backslash and double-quote. */
