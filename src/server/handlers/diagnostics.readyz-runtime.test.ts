@@ -51,6 +51,10 @@ async function readyzChecks(
 		repos,
 		db,
 		spawn,
+		// Pin the probe to Linux semantics: checkBwrap self-skips on non-Linux
+		// platforms, so without this the "no bwrap ⇒ 503" premise only holds
+		// on Linux hosts and the test flips green/red by machine (warren-4de5).
+		platform: "linux" satisfies NodeJS.Platform,
 		projectsConfig: { root: "/tmp/projects", gitBinary: "git" },
 		logger: silentLogger,
 		uiDistDir: null,
