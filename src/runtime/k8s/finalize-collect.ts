@@ -220,6 +220,10 @@ async function runPush(
 		trail.skipped("commits_ahead");
 		return NO_PUSH;
 	}
+	const commitsAhead = await countCommitsAhead(intent, workspacePath, git, trail);
+	const dirtyPaths = commitsAhead === 0 ? await workspaceDirtyPaths(workspacePath, git) : [];
+	const dirty = dirtyPaths.length > 0;
+
 	const refspec = intent.branch === "" ? "HEAD" : `HEAD:${intent.branch}`;
 	const restore = await authenticateOrigin(intent.gitToken, workspacePath, git);
 	try {
@@ -228,7 +232,6 @@ async function runPush(
 			const err = new Error(push.stderr.trim() || push.stdout.trim() || "git push failed");
 			trail.failed("branch_push", err);
 			collector.fail("branch_push", err, workspacePath);
-			trail.skipped("commits_ahead");
 			// warren-b68d: a policy refusal carries its own remediation onward.
 			// Both streams are read because git splits the remote's echo across
 			// them by version.
@@ -239,16 +242,11 @@ async function runPush(
 			return NO_PUSH;
 		}
 		trail.ok("branch_push");
-		const commitsAhead = await countCommitsAhead(intent, workspacePath, git, trail);
-		// warren-89b0: capture dirty PATHS on a zero-commit push so warren can
-		// classify a bookkeeping-only no-op vs a dropped commit (parity with
-		// ../local/finalize.ts).
-		const dirtyPaths = commitsAhead === 0 ? await workspaceDirtyPaths(workspacePath, git) : [];
 		return {
 			pushed: true,
 			commitsAhead,
 			emptyPush: commitsAhead === 0,
-			dirty: dirtyPaths.length > 0,
+			dirty,
 			dirtyPaths,
 		};
 	} finally {
@@ -293,10 +291,20 @@ async function countCommitsAhead(
 		trail.skipped("commits_ahead");
 		return null;
 	}
-	const res = await git(["rev-list", "--count", `${intent.baseBranch}..HEAD`], {
+	const baseRef =
+		intent.branch !== "" && intent.branch === intent.baseBranch
+			? `origin/${intent.baseBranch}`
+			: intent.baseBranch;
+	let res = await git(["rev-list", "--count", `${baseRef}..HEAD`], {
 		cwd: workspacePath,
 		timeoutMs: 10_000,
 	});
+	if (res.exitCode !== 0 && baseRef !== intent.baseBranch) {
+		res = await git(["rev-list", "--count", `${intent.baseBranch}..HEAD`], {
+			cwd: workspacePath,
+			timeoutMs: 10_000,
+		});
+	}
 	if (res.exitCode !== 0) {
 		trail.failed("commits_ahead", new Error(res.stderr.trim() || "git rev-list failed"));
 		return null;
