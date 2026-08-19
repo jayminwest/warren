@@ -59,6 +59,8 @@ export interface WriteDispatchContextInput {
 	runtimeId: string;
 	runtimeBackend: string;
 	prompt: string;
+	/** warren-540f: project repoContext — its bytes count into prompt_bytes. */
+	repoContext?: string;
 	mode: string;
 	network: string;
 	trigger: string;
@@ -89,6 +91,10 @@ export async function writeDispatchContext(args: {
 	readonly network: string;
 }): Promise<void> {
 	const input = assembleWriteInput(args);
+	// warren-540f: repoContext rides the prompt — its bytes count into prompt_bytes.
+	if (args.projectDefaults?.repoContext !== undefined) {
+		input.repoContext = args.projectDefaults.repoContext;
+	}
 	try {
 		const row = await buildDispatchContextRow(input);
 		await input.repos.dispatchContext.insert(row);
@@ -192,7 +198,13 @@ export async function buildDispatchContextRow(
 		...(maxCostUsd !== null ? { maxCostUsd } : {}),
 		runtimeId: input.runtimeId,
 		runtimeBackend: input.runtimeBackend,
-		promptBytes: PROMPT_ENCODER.encode(input.prompt).byteLength,
+		// warren-540f: prompt_bytes counts the user prompt plus the injected
+		// repoContext block (the schema caps the latter at 8 KiB). The agent
+		// `system` body is NOT counted — it is frozen per-agent, not dispatch-time
+		// input, and pre-540f rows would not be comparable if it were.
+		promptBytes:
+			PROMPT_ENCODER.encode(input.prompt).byteLength +
+			(input.repoContext !== undefined ? PROMPT_ENCODER.encode(input.repoContext).byteLength : 0),
 		mode: input.mode,
 		network: input.network,
 		queueQueuedRuns: queue.queued,

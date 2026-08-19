@@ -28,6 +28,7 @@ import { spawnRun } from "../runs/index.ts";
 import type { BridgeRegistry } from "../runs/stream/types.ts";
 import type { RuntimeProvider } from "../runtime/contract.ts";
 import type { SeedsCliDeps } from "../seeds-cli/index.ts";
+import type { IssueTracker } from "../tracker/contract.ts";
 import type { WarrenConfigCache } from "../warren-config/index.ts";
 import type { CoordinatorSpawnFn } from "./coordinator.ts";
 
@@ -47,6 +48,8 @@ export interface CreatePlanRunSpawnInput {
 	/** Raw `GITHUB_TOKEN` for the pre-dispatch refresh fetch — see `SpawnRunInput.githubToken`. */
 	readonly githubToken?: string;
 	readonly seedsCli: SeedsCliDeps;
+	/** Boot-resolved IssueTracker (warren-5819) — threading seam for the child spawn. */
+	readonly issueTracker?: IssueTracker;
 	readonly runBranchPrefixDefault?: string;
 	readonly now?: () => Date;
 	/** Test seam — defaults to the live `spawnRun`. */
@@ -85,6 +88,7 @@ export function createPlanRunSpawn(input: CreatePlanRunSpawnInput): CoordinatorS
 			githubToken: input.githubToken,
 			warrenConfigs: input.warrenConfigs,
 			seedsCli: input.seedsCli,
+			...(input.issueTracker !== undefined ? { issueTracker: input.issueTracker } : {}),
 			dispatcherHandle: planRun.dispatcherHandle,
 			...(input.runBranchPrefixDefault !== undefined
 				? { runBranchPrefixDefault: input.runBranchPrefixDefault }

@@ -98,6 +98,11 @@ and `loadWarrenConfig()` surfaces it. Notable knobs:
 - `defaultRole`, `defaultPrompt`, `defaultProvider`, `defaultModel`,
   `defaultBranch`, `runBranchPrefix` — dispatch-time defaults. See
   [docs/design/warren-config.md](docs/design/warren-config.md).
+- `repoContext` (warren-540f) — free-text onboarding block (≤8 KiB)
+  injected into every dispatched agent's prompt between the agent system
+  section and the user task. The blessed way to onboard a mirror of a
+  repo you do not control — see
+  [docs/onboarding-external-repos.md](docs/onboarding-external-repos.md).
 - `preview` — per-run preview environments. The canonical home is
   `.warren/preview.yaml`. See
   [docs/design/preview-environments.md](docs/design/preview-environments.md).

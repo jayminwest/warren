@@ -24,6 +24,7 @@ import type { LifecycleBus, LifecycleRegistration } from "../../runs/lifecycle-b
 import type { BridgeRegistry } from "../../runs/stream/types.ts";
 import type { RuntimeProvider } from "../../runtime/contract.ts";
 import type { SeedsCliDeps } from "../../seeds-cli/index.ts";
+import type { IssueTracker } from "../../tracker/contract.ts";
 import type { WarrenConfigCache } from "../../warren-config/index.ts";
 import type { Logger } from "../types.ts";
 
@@ -38,6 +39,8 @@ export interface ProviderRetryWiringInput {
 	readonly forge: Forge;
 	readonly warrenConfigs: WarrenConfigCache;
 	readonly seedsCli: SeedsCliDeps;
+	/** Boot-resolved IssueTracker (warren-5819) — forwarded to the retry extension. */
+	readonly issueTracker?: IssueTracker;
 	readonly broker?: RunEventBroker;
 	readonly runBranchPrefixDefault?: string;
 	readonly now?: () => Date;
@@ -65,6 +68,7 @@ export function wireProviderRetry(input: ProviderRetryWiringInput): LifecycleReg
 			forge: input.forge,
 			warrenConfigs: input.warrenConfigs,
 			seedsCli: input.seedsCli,
+			...(input.issueTracker !== undefined ? { issueTracker: input.issueTracker } : {}),
 			logger: retryLogger,
 			...(input.broker !== undefined ? { broker: input.broker } : {}),
 			...(input.runBranchPrefixDefault !== undefined

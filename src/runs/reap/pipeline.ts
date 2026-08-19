@@ -68,7 +68,7 @@ export interface ReapPipelineState {
 	/**
 	 * warren-486c: the K8s mirror commit could NOT be made durable on origin
 	 * (push failed/rejected), so auto-dispatch is suppressed — a plan-run must
-	 * never be created against host-only tracker state child pods can't clone.
+	 * never be created against host-only tracker state pods can't clone.
 	 */
 	mirrorDurabilityFailed: boolean;
 	prUrl: string | null;
@@ -281,8 +281,7 @@ async function autoDispatchStep(
 	state: ReapPipelineState,
 	plans: { ids: Set<string> | null; body: string | null; baseline: Set<string> | null },
 ): Promise<void> {
-	// warren-486c: never dispatch against a mirror commit that never reached
-	// origin — the child pods would clone a ref missing their seed ids.
+	// warren-486c: never dispatch against a mirror commit that never reached origin.
 	if (state.mirrorDurabilityFailed) {
 		await ctx.emit("auto_plan_run_skipped", { reason: "mirror_durability_failed" });
 		return;
@@ -297,6 +296,7 @@ async function autoDispatchStep(
 		emit: ctx.emit,
 		fail: (step, err) => ctx.fail(step, err),
 		...(ctx.input.seedsCli !== undefined ? { seedsCli: ctx.input.seedsCli } : {}),
+		...(ctx.input.issueTracker !== undefined ? { issueTracker: ctx.input.issueTracker } : {}),
 	});
 	state.autoPlanRunCreated = autoDispatch.created;
 	state.autoPlanRunId = autoDispatch.id;

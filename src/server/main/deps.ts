@@ -20,6 +20,7 @@ import type { RuntimeProvider } from "../../runtime/contract.ts";
 import type { PodAdmissionSource } from "../../runtime/k8s/admission.ts";
 import type { PodMetricsSource } from "../../runtime/k8s/pod-metrics.ts";
 import type { PodCacheReader, PodSyncSource } from "../../runtime/k8s/pod-watcher.ts";
+import { SeedsTracker } from "../../tracker/seeds-tracker.ts";
 import type { createWarrenConfigCache } from "../../warren-config/index.ts";
 import { createDbSeams } from "../db-seams.ts";
 import { IdempotencyStore } from "../idempotency.ts";
@@ -95,6 +96,12 @@ export interface BuildServerDepsInput {
 	readonly publicAllowlist: PublicAllowlist | undefined;
 	readonly previewAuth: PreviewAuth | undefined;
 	readonly sdBinary: string;
+	/**
+	 * Boot-resolved IssueTracker (warren-5819). Optional so tests can omit;
+	 * when absent, `buildServerDeps` constructs a `SeedsTracker` from
+	 * `sdBinary` + `defaultSpawn`.
+	 */
+	readonly issueTracker?: import("../../tracker/contract.ts").IssueTracker;
 	readonly metricsRegistry?: MetricsRegistry;
 	/**
 	 * The started K8s pod-watcher (src/server/main/runtime-wiring.ts), present
@@ -145,6 +152,14 @@ export function buildServerDeps(input: BuildServerDepsInput): ServerDeps {
 		previewSidecars,
 		sdBinary,
 		metricsRegistry,
+		/**
+		 * Boot-resolved IssueTracker (warren-5819). The orchestrator threads
+		 * the same instance into the fan-out sites (bridges, retries,
+		 * scheduler, plan-runs); when a test omits it, `buildServerDeps`
+		 * builds one from `sdBinary` so `deps.issueTracker` always tracks
+		 * `deps.seedsCli`'s configured-ness.
+		 */
+		issueTracker,
 		k8sPodWatcher,
 		salvageDir,
 		finalizeRecovery,
@@ -177,6 +192,7 @@ export function buildServerDeps(input: BuildServerDepsInput): ServerDeps {
 		uiDistDir,
 		spawn: defaultSpawn,
 		seedsCli: { sdBinary, spawn: defaultSpawn },
+		issueTracker: issueTracker ?? new SeedsTracker({ sdBinary, spawn: defaultSpawn }),
 		autoOpenPr,
 		warrenConfigs,
 		...(runBranchPrefixDefault !== undefined ? { runBranchPrefixDefault } : {}),

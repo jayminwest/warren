@@ -261,8 +261,18 @@ export async function spawnRun(input: SpawnRunInput): Promise<SpawnRunResult> {
 		...(projectDefaults?.resources !== undefined
 			? { projectResources: projectDefaults.resources }
 			: {}),
+		// warren-fabb: per-project agent image override (docker + k8s consume it;
+		// LocalProvider ignores it — host toolchain). Precedence: project override
+		// > WARREN_DOCKER_AGENT_IMAGE / WARREN_K8S_AGENT_IMAGE env > default.
+		...(projectDefaults?.agentImage !== undefined
+			? { agentImage: projectDefaults.agentImage }
+			: {}),
 		runtimeId,
-		prompt: composeDispatchPrompt(agent.sections.system, input.prompt),
+		prompt: composeDispatchPrompt(
+			agent.sections.system,
+			input.prompt,
+			projectDefaults?.repoContext,
+		),
 		metadata: composeBurrowMetadata(input.metadata, agent.frontmatter),
 		mode: input.mode ?? "batch",
 		network: burrowConfig.network ?? "none",
@@ -462,10 +472,20 @@ function composeRunEnv(
  * `runs.prompt` (warren-side) keeps the user-typed input verbatim; only
  * the body sent on POST /sandboxes/:id/runs is composed.
  */
-export function composeDispatchPrompt(systemBody: string | undefined, userPrompt: string): string {
+export function composeDispatchPrompt(
+	systemBody: string | undefined,
+	userPrompt: string,
+	repoContext?: string,
+): string {
 	const trimmed = (systemBody ?? "").trim();
-	if (trimmed === "") return userPrompt;
-	return `${trimmed}\n\n---\n\n${userPrompt}`;
+	// warren-540f: the project's `.warren/config.yaml` `repoContext` block
+	// rides between the system section and the user prompt, clearly
+	// delimited. Absent/whitespace-only → byte-identical to the pre-540f
+	// composition.
+	const context = (repoContext ?? "").trim();
+	const parts = [trimmed, context].filter((part) => part !== "");
+	if (parts.length === 0) return userPrompt;
+	return `${parts.join("\n\n---\n\n")}\n\n---\n\n${userPrompt}`;
 }
 
 /** Fold agent frontmatter onto operator metadata (burrow-b5b4 / warren-618b). */

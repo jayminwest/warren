@@ -33,6 +33,7 @@ import { buildPrContent } from "../../runs/pr.ts";
 import type { RuntimeProvider } from "../../runtime/contract.ts";
 import type { SeedsCliDeps } from "../../seeds-cli/index.ts";
 import { showSeed } from "../../seeds-cli/index.ts";
+import type { IssueTracker } from "../../tracker/contract.ts";
 import type { WarrenConfigCache } from "../../warren-config/index.ts";
 import type { EnvLike } from "../config.ts";
 import type { BridgeRegistry, Logger } from "../types.ts";
@@ -185,6 +186,8 @@ export interface PlanRunWiringInput {
 	readonly autoOpenPr: AutoOpenPrConfig;
 	readonly runBranchPrefixDefault?: string;
 	readonly seedsCli: SeedsCliDeps;
+	/** Boot-resolved IssueTracker (warren-5819) — forwarded to the child-dispatch spawn. */
+	readonly issueTracker?: IssueTracker;
 	readonly projectSpawn: SpawnFn;
 	readonly logger: Logger;
 	readonly now?: () => Date;
@@ -208,6 +211,7 @@ export function bootPlanRunCoordinatorWiring(input: PlanRunWiringInput): PlanRun
 		autoOpenPr,
 		runBranchPrefixDefault,
 		seedsCli,
+		issueTracker,
 		projectSpawn,
 		logger,
 		now,
@@ -251,6 +255,7 @@ export function bootPlanRunCoordinatorWiring(input: PlanRunWiringInput): PlanRun
 			// the K8s control plane) — see SpawnRunInput.githubToken.
 			githubToken: env.GITHUB_TOKEN,
 			seedsCli,
+			...(issueTracker !== undefined ? { issueTracker } : {}),
 			...(runBranchPrefixDefault !== undefined ? { runBranchPrefixDefault } : {}),
 			...(now !== undefined ? { now } : {}),
 		}),

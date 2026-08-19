@@ -57,6 +57,7 @@ import {
 } from "../runs/index.ts";
 import type { RuntimeProvider } from "../runtime/contract.ts";
 import type { SeedsCliDeps } from "../seeds-cli/index.ts";
+import type { IssueTracker } from "../tracker/contract.ts";
 import type { WarrenConfigCache } from "../warren-config/index.ts";
 import { defaultSleep, reconcileLostSandboxRun, runWithReconnect } from "./bridge-reconnect.ts";
 import type { BridgeRegistry } from "./types.ts";
@@ -181,6 +182,12 @@ export interface CreateBridgeRegistryInput {
 	 */
 	readonly seedsCli?: SeedsCliDeps;
 	/**
+	 * Boot-resolved IssueTracker (warren-5819) — threaded beside `seedsCli`
+	 * into the reconnect path's inline reap. Threading seam; the reap port
+	 * to the tracker contract lands in warren-47b0.
+	 */
+	readonly issueTracker?: IssueTracker;
+	/**
 	 * Infra-lost auto-retry hook (warren-4af7). Threaded into every bridge's
 	 * `runWithReconnect` (the mid-stream 404 reconcile) and into the
 	 * `bootBridges` ghost-run reconcile, so a run that terminalizes
@@ -239,6 +246,7 @@ export function createBridgeRegistry(input: CreateBridgeRegistryInput): BridgeRe
 				? { previewLaunchConfig: input.previewLaunchConfig }
 				: {}),
 			...(input.seedsCli !== undefined ? { seedsCli: input.seedsCli } : {}),
+			...(input.issueTracker !== undefined ? { issueTracker: input.issueTracker } : {}),
 			...(input.onInfraLostRun !== undefined ? { onInfraLostRun: input.onInfraLostRun } : {}),
 		});
 		const entry: BridgeEntry = { sandboxRunId, abort, done };

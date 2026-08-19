@@ -238,6 +238,16 @@ export interface ServerDeps {
 	 * `defaultSpawn`; tests can omit (extension write is a no-op).
 	 */
 	readonly seedsCli?: SeedsCliDeps;
+	/**
+	 * The boot-resolved IssueTracker (warren-5819, plan pl-a37b Track B
+	 * step 7). Constructed once at boot — a `SeedsTracker` wrapping the
+	 * same `WARREN_SD_BINARY` + `defaultSpawn` pair `seedsCli` uses — and
+	 * threaded through the same pass-through seams. Call sites still read
+	 * the facade (`deps.seedsCli`); the port to the tracker contract lands
+	 * in warren-2d98 / warren-47b0 / warren-6234, which delete `seedsCli`
+	 * once no consumer remains. Tests may omit.
+	 */
+	readonly issueTracker?: import("../tracker/contract.ts").IssueTracker;
 	/** Provided so tests can override `Date.now()`. */
 	readonly now?: () => Date;
 	/**

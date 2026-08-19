@@ -25,6 +25,7 @@ import {
 } from "../runs/index.ts";
 import type { RuntimeProvider } from "../runtime/contract.ts";
 import type { SeedsCliDeps } from "../seeds-cli/index.ts";
+import type { IssueTracker } from "../tracker/contract.ts";
 import type { WarrenConfigCache } from "../warren-config/index.ts";
 import {
 	resolveProjectPreviewConfig,
@@ -74,10 +75,11 @@ export interface RunWithReconnectInput {
 	readonly previewLaunchConfig?: PreviewLaunchConfig;
 	/**
 	 * Optional seeds-CLI seam (warren-41d5). Forwarded to the inline reap
-	 * call so the auto_plan_run sub-step validates a new plan's child seeds
-	 * before dispatching a plan-run.
+	 * call so the auto_plan_run sub-step validates child seeds first.
 	 */
 	readonly seedsCli?: SeedsCliDeps;
+	/** Boot-resolved IssueTracker (warren-5819) — seam for the inline reap call. */
+	readonly issueTracker?: IssueTracker;
 	/** Infra-lost auto-retry hook (warren-4af7), forwarded to the 404 reconcile. */
 	readonly onInfraLostRun?: (runId: string) => Promise<void>;
 }
@@ -202,6 +204,7 @@ export async function runWithReconnect(
 						: {}),
 					...(prTemplate !== undefined ? { prTemplate } : {}),
 					...(input.seedsCli !== undefined ? { seedsCli: input.seedsCli } : {}),
+					...(input.issueTracker !== undefined ? { issueTracker: input.issueTracker } : {}),
 				});
 			} catch (err) {
 				log.error(

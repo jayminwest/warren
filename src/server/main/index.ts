@@ -38,6 +38,7 @@ import { loadWorkspaceGcConfigFromEnv } from "../../runs/reap/gc.ts";
 import { resolveLocalBootBackend } from "../../runtime/local/boot-backend.ts";
 import { resolveRuntimeKind } from "../../runtime/registry.ts";
 import { loadWarrenServerConfigFromFile } from "../../server-config/index.ts";
+import { SeedsTracker } from "../../tracker/seeds-tracker.ts";
 import { loadTriggerSchedulerConfigFromEnv } from "../../triggers/index.ts";
 import { createWarrenConfigCache } from "../../warren-config/index.ts";
 import { NO_AUTH, resolveAuth, resolveAuthKind, resolveOperatorToken } from "../auth.ts";
@@ -194,6 +195,11 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 	// Seeds-CLI seam shared by the bridge reap path (warren-41d5) and the plan-run coordinator.
 	const schedulerConfig = loadTriggerSchedulerConfigFromEnv(env);
 	const seedsCli = { sdBinary: schedulerConfig.sdBinary, spawn: defaultSpawn };
+	// warren-5819 (pl-a37b Track B step 7): the same pair wraps into ONE
+	// SeedsTracker, threaded through every seedsCli fan-out site below and
+	// onto ServerDeps. Call sites still read the facade — the contract port
+	// is warren-2d98/47b0/6234.
+	const issueTracker = new SeedsTracker(seedsCli);
 
 	// Tier-1 observation bus (warren-bb60) + first-party consumers (warren-4e74 healer,
 	// warren-df3e seed-close). Installed BEFORE bridges resume in-flight runs so no emit
@@ -247,6 +253,7 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 		projectsConfig,
 		warrenConfigs,
 		seedsCli,
+		issueTracker,
 		env,
 		logger,
 		projectSpawn: defaultSpawn,
@@ -269,6 +276,7 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 			portAllocator,
 			previewLaunchConfig: previewSurface.launchConfig,
 			seedsCli,
+			issueTracker,
 			// warren-4af7: infra-lost ghost-reconcile + registry late-binding.
 			onInfraLostRun,
 			onRegistryCreated,
@@ -282,6 +290,7 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 		forge,
 		warrenConfigs,
 		seedsCli,
+		issueTracker,
 		broker,
 		...(runBranchPrefixDefault !== undefined ? { runBranchPrefixDefault } : {}),
 		...(opts.now !== undefined ? { now: opts.now } : {}),
@@ -295,6 +304,7 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 		projectsConfig,
 		projectSpawn: defaultSpawn,
 		config: schedulerConfig,
+		issueTracker,
 		logger: schedulerLoggerFromPino(logger),
 		// warren-0b49: the boot-resolved forge drives the CI-fixer poller and
 		// the per-spawn credential mints (§4) — no captured githubToken.
@@ -322,6 +332,7 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 		projectsConfig,
 		autoOpenPr,
 		seedsCli,
+		issueTracker,
 		projectSpawn: defaultSpawn,
 		logger,
 		...(runBranchPrefixDefault !== undefined ? { runBranchPrefixDefault } : {}),
@@ -402,6 +413,7 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 		previewAuth: previewSurface.previewAuth,
 		...(previewSidecars !== undefined ? { previewSidecars } : {}),
 		sdBinary: schedulerConfig.sdBinary,
+		issueTracker,
 		metricsRegistry,
 		// warren-cd3b: durable salvage-bundle intake dir (the persistent volume).
 		salvageDir,

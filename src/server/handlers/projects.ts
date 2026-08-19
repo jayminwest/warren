@@ -18,6 +18,7 @@ import {
 	refreshProject,
 } from "../../projects/index.ts";
 import { spawnRun } from "../../runs/index.ts";
+import type { SeedsCliDeps } from "../../seeds-cli/index.ts";
 import { listPlans, listSeedStatuses, showPlan, showSeed } from "../../seeds-cli/index.ts";
 import { buildTriggerSummaries, parseCron, resolveCronPrompt } from "../../triggers/index.ts";
 import {
@@ -166,6 +167,38 @@ export function getProjectWarrenConfigHandler(deps: ServerDeps): RouteHandler {
 }
 
 /**
+ * The shared 3-gate seeds-read preamble (warren-5819): project 404 via
+ * `projects.require` → `hasSeeds` gate (ProjectLacksSeedsError → 400) →
+ * tracker-configured gate (ValidationError → 400). Every seeds-read
+ * handler starts here; the tracker-contract port (warren-2d98) swaps the
+ * third gate onto `deps.issueTracker` and the return onto the tracker.
+ *
+ * `project.hasSeeds` keeps its wire name (public projection compat) but
+ * means "a tracker is configured for this project" — today the `.seeds/`
+ * probe via `detectProjectFeatures`.
+ */
+async function requireSeedsProject(
+	deps: ServerDeps,
+	id: string,
+	feature: string,
+): Promise<{ project: ProjectRow; seedsCli: SeedsCliDeps }> {
+	const project = await deps.repos.projects.require(id);
+	if (!project.hasSeeds) {
+		throw new ProjectLacksSeedsError(
+			`project ${project.id} has no .seeds/ directory; ${feature} is not available`,
+			{ recoveryHint: "add a .seeds/ directory to the project clone and refresh" },
+		);
+	}
+	if (deps.seedsCli === undefined) {
+		throw new ValidationError(
+			`seeds CLI is not configured on this warren; ${feature} requires sd`,
+			{ recoveryHint: "set WARREN_SD_BINARY (or install sd on PATH) and restart" },
+		);
+	}
+	return { project, seedsCli: deps.seedsCli };
+}
+
+/**
  * `GET /projects/:id/seeds/:seedId` — single-seed status read
  * (warren-4015 / warren-ea66 acceptance (d) follow-up).
  *
@@ -190,22 +223,8 @@ export function getProjectSeedHandler(deps: ServerDeps): RouteHandler {
 	return async (ctx) => {
 		const id = requireParam(ctx, "id");
 		const seedId = requireParam(ctx, "seedId");
-		const project = await deps.repos.projects.require(id);
-		if (!project.hasSeeds) {
-			throw new ProjectLacksSeedsError(
-				`project ${project.id} has no .seeds/ directory; seed status read is not available`,
-				{
-					recoveryHint: "add a .seeds/ directory to the project clone and refresh",
-				},
-			);
-		}
-		if (deps.seedsCli === undefined) {
-			throw new ValidationError(
-				"seeds CLI is not configured on this warren; seed status read requires sd",
-				{ recoveryHint: "set WARREN_SD_BINARY (or install sd on PATH) and restart" },
-			);
-		}
-		const issue = await showSeed(deps.seedsCli, project.localPath, seedId);
+		const { project, seedsCli } = await requireSeedsProject(deps, id, "seed status read");
+		const issue = await showSeed(seedsCli, project.localPath, seedId);
 		return jsonResponse(200, {
 			id: issue.id,
 			status: issue.status,
@@ -230,20 +249,8 @@ export function getProjectSeedHandler(deps: ServerDeps): RouteHandler {
 export function listProjectSeedPlansHandler(deps: ServerDeps): RouteHandler {
 	return async (ctx) => {
 		const id = requireParam(ctx, "id");
-		const project = await deps.repos.projects.require(id);
-		if (!project.hasSeeds) {
-			throw new ProjectLacksSeedsError(
-				`project ${project.id} has no .seeds/ directory; plan list is not available`,
-				{ recoveryHint: "add a .seeds/ directory to the project clone and refresh" },
-			);
-		}
-		if (deps.seedsCli === undefined) {
-			throw new ValidationError(
-				"seeds CLI is not configured on this warren; plan list requires sd",
-				{ recoveryHint: "set WARREN_SD_BINARY (or install sd on PATH) and restart" },
-			);
-		}
-		const plans = await listPlans(deps.seedsCli, project.localPath);
+		const { project, seedsCli } = await requireSeedsProject(deps, id, "plan list");
+		const plans = await listPlans(seedsCli, project.localPath);
 		return jsonResponse(200, { plans });
 	};
 }
@@ -267,20 +274,7 @@ export function listProjectSeedPlansHandler(deps: ServerDeps): RouteHandler {
 export function listReadyPlansHandler(deps: ServerDeps): RouteHandler {
 	return async (ctx) => {
 		const id = requireParam(ctx, "id");
-		const project = await deps.repos.projects.require(id);
-		if (!project.hasSeeds) {
-			throw new ProjectLacksSeedsError(
-				`project ${project.id} has no .seeds/ directory; ready plans are not available`,
-				{ recoveryHint: "add a .seeds/ directory to the project clone and refresh" },
-			);
-		}
-		if (deps.seedsCli === undefined) {
-			throw new ValidationError(
-				"seeds CLI is not configured on this warren; ready plans require sd",
-				{ recoveryHint: "set WARREN_SD_BINARY (or install sd on PATH) and restart" },
-			);
-		}
-		const seedsCli = deps.seedsCli;
+		const { project, seedsCli } = await requireSeedsProject(deps, id, "ready plans");
 		const allPlans = await listPlans(seedsCli, project.localPath);
 		const approved = allPlans.filter((plan) => plan.status === "approved");
 		const plans: ReadyPlanInput[] = await Promise.all(

@@ -1,6 +1,7 @@
 import type { CreatePlanRunInput } from "../../db/repos/plan-runs.ts";
 import { readAutoPlanRunAgent } from "../../registry/schema.ts";
 import { SeedNotFoundError, type SeedsCliDeps, showSeed } from "../../seeds-cli/index.ts";
+import type { IssueTracker } from "../../tracker/contract.ts";
 import { splitLines } from "./util.ts";
 
 /* ----------------------------------------------------------------------- */
@@ -99,6 +100,11 @@ export interface DispatchAutoPlanRunsInput {
 	 * unchanged — same optional-seam posture as `warrenConfigs`/`portAllocator`.
 	 */
 	readonly seedsCli?: SeedsCliDeps;
+	/**
+	 * Boot-resolved IssueTracker (warren-5819) — threading seam; the
+	 * auto-plan-run port to the tracker contract lands in warren-47b0.
+	 */
+	readonly issueTracker?: IssueTracker;
 }
 
 type PlanChildrenValidation =

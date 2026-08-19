@@ -97,7 +97,12 @@ The provider declares its flags honestly per contract §5.
 ## Operator knobs
 
 - `WARREN_DOCKER_AGENT_IMAGE` — the agent image. Default
-  `warren-agent:latest`.
+  `warren-agent:latest`. A project can pin its own image with the
+  `agentImage` key in `.warren/config.yaml` (warren-fabb) — precedence:
+  project `agentImage` > `WARREN_DOCKER_AGENT_IMAGE` > default. The agent
+  image bakes bun, node, git, python3 + uv (warren-fabb), and the agent
+  CLIs; a stack needing a different toolchain pins a dedicated image
+  instead of redeploying warren.
 - `WARREN_DOCKER_BIN` — the docker CLI path. Default `docker`. Under this
   runtime `GET /readyz` execs `<bin> version` as the `docker_cli` check
   (warren-5c42) and reports 503 while the CLI is missing, is not executable,
