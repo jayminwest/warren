@@ -114,8 +114,6 @@ describe("runCiFixerPass (via runTick)", () => {
 			repos,
 			now: () => NOW,
 			loadWarrenConfig: async () => ciFixerConfig(),
-			listScheduledSeeds: async () => ({ scheduled: [], errors: [] }),
-			updateExtensions: async () => {},
 			spawn: async () => ({ runId: "unused" }),
 			ciFixer: {
 				forge,
@@ -147,8 +145,6 @@ describe("runCiFixerPass (via runTick)", () => {
 			repos,
 			now: () => NOW,
 			loadWarrenConfig: async () => emptyConfig(),
-			listScheduledSeeds: async () => ({ scheduled: [], errors: [] }),
-			updateExtensions: async () => {},
 			spawn: async () => ({ runId: "unused" }),
 			ciFixer: {
 				forge: new FakeForge(),
@@ -183,8 +179,6 @@ describe("runCiFixerPass (via runTick)", () => {
 				repos,
 				now: () => NOW,
 				loadWarrenConfig: async () => ciFixerConfig(),
-				listScheduledSeeds: async () => ({ scheduled: [], errors: [] }),
-				updateExtensions: async () => {},
 				spawn: async () => ({ runId: "unused" }),
 				noticeGate: {
 					shouldNotify: (key) => {

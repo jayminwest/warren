@@ -1,6 +1,7 @@
 import { CI_FIXER_TRIGGER } from "../../ci-fixer/poller.ts";
 import type { Forge, ForgeErrorKind, PullRequestRef, RepoRef } from "../../forge/contract.ts";
 import { mintGitCredentialSecret } from "../../forge/credentials.ts";
+import type { IssueTracker } from "../../tracker/contract.ts";
 import { type AutoOpenPrConfig, type BuildPrContentInput, buildPrContent } from "../pr.ts";
 import type { PrTemplateOverrides } from "../pr-template.ts";
 import { type CloneFetchConfig, gatherPrContext, type PrContext } from "./pr-context.ts";
@@ -165,6 +166,7 @@ export async function tryOpenPr(input: TryOpenPrInput): Promise<TryOpenPrResult>
 export interface RunPrOpenInput {
 	readonly autoOpen: AutoOpenPrConfig;
 	readonly project: {
+		readonly id: string;
 		gitUrl: string;
 		defaultBranch: string;
 		localPath: string;
@@ -190,6 +192,8 @@ export interface RunPrOpenInput {
 	/** The boot-resolved forge (warren-45e6). */
 	readonly forge: Forge;
 	readonly prTemplate?: PrTemplateOverrides;
+	/** Boot-resolved issue tracker for seed attribution (warren-47b0). */
+	readonly issueTracker?: IssueTracker;
 	/** Injected sleep for tests; defaults to real setTimeout-based sleep. */
 	readonly sleep?: (ms: number) => Promise<void>;
 }
@@ -256,6 +260,8 @@ export async function runPrOpen(input: RunPrOpenInput): Promise<OpenedPr | null>
 			seedId: input.run.seedId ?? null,
 			exec: input.exec,
 			emit: input.emit,
+			projectId: input.project.id,
+			issueTracker: input.issueTracker,
 			...(cloneFetch !== undefined ? { cloneFetch } : {}),
 		});
 		const prArgs: TryOpenPrInput = {

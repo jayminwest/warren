@@ -165,6 +165,10 @@ export const runs = sqliteTable(
 		// run projections can echo what a ref-pinned dispatch took. Null = the
 		// run dispatched against the resolved default/continuation base.
 		ref: text("ref"),
+		// Base-commit pinning (warren-aaf7): a 40-hex commit SHA the workspace is
+		// cut at, SPLIT from `ref` (which stays branch-shaped and feeds the PR
+		// base). Null = the workspace cut follows `ref`/continuation/default.
+		baseCommit: text("base_commit"),
 		// Salvage-before-destroy (warren-cd3b). When a reap's branch push never
 		// landed, the workspace's committed work is captured BEFORE destroy:
 		// `salvage_ref` is the rescue branch pushed to origin

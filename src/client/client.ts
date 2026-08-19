@@ -210,6 +210,7 @@ export class WarrenClient {
 			prompt: input.prompt,
 		};
 		if (input.branch !== undefined) body.ref = input.branch;
+		if (input.baseCommit !== undefined) body.baseCommit = input.baseCommit;
 		if (input.targetBranch !== undefined) body.targetBranch = input.targetBranch;
 		if (input.model !== undefined) body.modelOverride = input.model;
 		if (input.provider !== undefined) body.providerOverride = input.provider;

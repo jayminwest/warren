@@ -1,12 +1,53 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import type { ScheduledIssue } from "../core/wire.ts";
 import { openDatabase, type WarrenDb } from "../db/client.ts";
 import { createRepos, type Repos } from "../db/repos/index.ts";
 import { agents } from "../db/schema.ts";
-import type { WarrenExtensions } from "../seeds-cli/index.ts";
 import type { LoadedWarrenConfig } from "../warren-config/index.ts";
 import { CronRetryTracker, MAX_CRON_TRANSIENT_RETRIES } from "./cron-retry.ts";
 import type { DispatchSpawnFn } from "./dispatch.ts";
+import type { TickIssueTracker } from "./tick.ts";
 import { runTick, startScheduler } from "./tick.ts";
+
+/** warren-6234: fake tracker for the scheduled-issues pass. */
+function makeTracker(
+	opts: { scheduled?: readonly ScheduledIssue[]; listThrows?: boolean; mergeThrows?: boolean } = {},
+): {
+	issueTracker: TickIssueTracker;
+	merges: Array<{ projectId: string; localPath?: string; seedId: string; metadata: unknown }>;
+	seenContexts: Array<{ projectId: string; localPath?: string }>;
+} {
+	const merges: Array<{
+		projectId: string;
+		localPath?: string;
+		seedId: string;
+		metadata: unknown;
+	}> = [];
+	const seenContexts: Array<{ projectId: string; localPath?: string }> = [];
+	const issueTracker: TickIssueTracker = {
+		capabilities: {
+			supportsPlans: true,
+			supportsMetadata: true,
+			supportsScheduledIssues: true,
+			isGitNative: true,
+		},
+		getIssue: async () => {
+			throw new Error("unused");
+		},
+		listIssueStatuses: async () => new Map(),
+		closeIssue: async () => {},
+		listScheduledIssues: async (ctx) => {
+			seenContexts.push({ projectId: ctx.projectId, localPath: ctx.localPath });
+			if (opts.listThrows) throw new Error("sd boom");
+			return opts.scheduled ?? [];
+		},
+		mergeIssueMetadata: async (ctx, seedId, metadata) => {
+			merges.push({ projectId: ctx.projectId, localPath: ctx.localPath, seedId, metadata });
+			if (opts.mergeThrows) throw new Error("sd update exit 1");
+		},
+	};
+	return { issueTracker, merges, seenContexts };
+}
 
 const NOW = new Date("2026-05-11T00:05:00.000Z");
 
@@ -74,8 +115,6 @@ describe("runTick", () => {
 			repos,
 			now: () => NOW,
 			loadWarrenConfig: async () => emptyConfig(),
-			listScheduledSeeds: async () => ({ scheduled: [], errors: [] }),
-			updateExtensions: async () => {},
 			spawn: async () => ({ runId: "run_unused" }),
 		});
 		expect(result.cron).toEqual([]);
@@ -123,8 +162,6 @@ describe("runTick", () => {
 				errors: [],
 				warnings: [],
 			}),
-			listScheduledSeeds: async () => ({ scheduled: [], errors: [] }),
-			updateExtensions: async () => {},
 			spawn,
 		});
 
@@ -176,8 +213,6 @@ describe("runTick", () => {
 				repos,
 				now: () => new Date(`2026-05-11T00:0${5 + i}:00.000Z`),
 				loadWarrenConfig: async () => config,
-				listScheduledSeeds: async () => ({ scheduled: [], errors: [] }),
-				updateExtensions: async () => {},
 				spawn,
 				cronRetryTracker,
 				deleteNeverStartedRun,
@@ -195,11 +230,20 @@ describe("runTick", () => {
 		expect(survivors).toHaveLength(1);
 	});
 
-	test("fires past-due scheduled seeds and merges all warren extension keys in one write", async () => {
-		const writes: { path: string; seedId: string; extensions: WarrenExtensions }[] = [];
+	test("fires past-due scheduled issues and merges all warren metadata keys in one write", async () => {
+		const { issueTracker, merges, seenContexts } = makeTracker({
+			scheduled: [
+				{
+					id: "warren-sched",
+					status: "open",
+					scheduledFor: new Date("2026-05-10T10:00:00.000Z"),
+				},
+			],
+		});
 		const result = await runTick({
 			repos,
 			now: () => NOW,
+			issueTracker,
 			loadWarrenConfig: async () => ({
 				triggers: null,
 				defaults: { defaultRole: "claude-code" },
@@ -208,35 +252,21 @@ describe("runTick", () => {
 				errors: [],
 				warnings: [],
 			}),
-			listScheduledSeeds: async (path) => {
-				expect(path).toBe(localPath);
-				return {
-					scheduled: [
-						{
-							id: "warren-sched",
-							status: "open",
-							scheduledFor: new Date("2026-05-10T10:00:00.000Z"),
-						},
-					],
-					errors: [],
-				};
-			},
-			updateExtensions: async (path, seedId, extensions) => {
-				writes.push({ path, seedId, extensions });
-			},
 			spawn: async () => ({ runId: "run_sched" }),
 		});
 
 		expect(result.scheduled).toHaveLength(1);
 		expect(result.scheduled[0]?.kind).toBe("fired");
+		expect(seenContexts).toEqual([{ projectId, localPath }]);
 		// pl-bb70 step 5: scheduledFor clear + lastScheduledRun + the common
 		// warren-namespaced keys (role, trigger, lastRunId, lastRunAt) land in
-		// a single sd update.
-		expect(writes).toEqual([
+		// a single tracker metadata merge.
+		expect(merges).toEqual([
 			{
-				path: localPath,
+				projectId,
+				localPath,
 				seedId: "warren-sched",
-				extensions: {
+				metadata: {
 					role: "claude-code",
 					trigger: "scheduled",
 					lastRunId: "run_sched",
@@ -246,6 +276,34 @@ describe("runTick", () => {
 				},
 			},
 		]);
+	});
+
+	test("skips the scheduled pass when the tracker lacks supportsScheduledIssues (warren-6234)", async () => {
+		const { issueTracker, seenContexts } = makeTracker({
+			scheduled: [
+				{
+					id: "warren-sched",
+					status: "open",
+					scheduledFor: new Date("2026-05-10T10:00:00.000Z"),
+				},
+			],
+		});
+		const unsupported: TickIssueTracker = {
+			...issueTracker,
+			capabilities: {
+				...issueTracker.capabilities,
+				supportsScheduledIssues: false,
+			},
+		};
+		const result = await runTick({
+			repos,
+			now: () => NOW,
+			issueTracker: unsupported,
+			loadWarrenConfig: async () => emptyConfig(),
+			spawn: async () => ({ runId: "run_unused" }),
+		});
+		expect(seenContexts).toHaveLength(0);
+		expect(result.scheduled).toEqual([]);
 	});
 
 	test("extension-write failure stamps a system event on the dispatched run (risk #4)", async () => {
@@ -273,7 +331,7 @@ describe("runTick", () => {
 				errors: [],
 				warnings: [],
 			}),
-			listScheduledSeeds: async () => ({
+			issueTracker: makeTracker({
 				scheduled: [
 					{
 						id: "warren-sched",
@@ -281,11 +339,8 @@ describe("runTick", () => {
 						scheduledFor: new Date("2026-05-10T10:00:00.000Z"),
 					},
 				],
-				errors: [],
-			}),
-			updateExtensions: async () => {
-				throw new Error("sd update exit 1");
-			},
+				mergeThrows: true,
+			}).issueTracker,
 			spawn: async () => ({ runId: realRun.id }),
 			logger,
 		});
@@ -306,24 +361,22 @@ describe("runTick", () => {
 			defaultBranch: "main",
 		});
 
-		const seenPaths: string[] = [];
 		const logger = makeLogger();
+		const { issueTracker, seenContexts } = makeTracker({ listThrows: true });
 		const result = await runTick({
 			repos,
 			now: () => NOW,
 			loadWarrenConfig: async () => emptyConfig(),
-			listScheduledSeeds: async (path) => {
-				seenPaths.push(path);
-				if (path === localPath) throw new Error("sd boom");
-				return { scheduled: [], errors: [] };
-			},
-			updateExtensions: async () => {},
+			issueTracker,
 			spawn: async () => ({ runId: "n/a" }),
 			logger,
 		});
 
 		// Both projects were visited, even though one threw.
-		expect(seenPaths).toEqual([localPath, other.localPath]);
+		expect(seenContexts).toEqual([
+			{ projectId, localPath },
+			{ projectId: other.id, localPath: other.localPath },
+		]);
 		expect(result.projectErrors).toEqual([]);
 		expect(logger.logs.some((l) => l.msg === "scheduler.sd_list_failed")).toBe(true);
 	});
@@ -344,8 +397,6 @@ describe("runTick", () => {
 				if (calls === 1) throw new Error("clone missing");
 				return emptyConfig();
 			},
-			listScheduledSeeds: async () => ({ scheduled: [], errors: [] }),
-			updateExtensions: async () => {},
 			spawn: async () => ({ runId: "n/a" }),
 		});
 
@@ -367,8 +418,6 @@ describe("startScheduler", () => {
 				events: {} as never,
 			},
 			loadWarrenConfig: async () => emptyConfig(),
-			listScheduledSeeds: async () => ({ scheduled: [], errors: [] }),
-			updateExtensions: async () => {},
 			spawn: async () => ({ runId: "n/a" }),
 		});
 
@@ -401,8 +450,6 @@ describe("startScheduler", () => {
 				new Promise<LoadedWarrenConfig>((resolve) => {
 					resolveInflight = () => resolve(emptyConfig());
 				}),
-			listScheduledSeeds: async () => ({ scheduled: [], errors: [] }),
-			updateExtensions: async () => {},
 			spawn: async () => ({ runId: "n/a" }),
 			logger,
 		});
@@ -426,8 +473,6 @@ describe("startScheduler", () => {
 				events: {} as never,
 			},
 			loadWarrenConfig: async () => emptyConfig(),
-			listScheduledSeeds: async () => ({ scheduled: [], errors: [] }),
-			updateExtensions: async () => {},
 			spawn: async () => ({ runId: "n/a" }),
 		});
 

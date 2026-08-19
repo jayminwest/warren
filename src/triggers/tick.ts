@@ -12,15 +12,14 @@
  *   2. Dispatches cron entries via `dispatchCronTrigger`. No-catch-up
  *      semantics live in the dispatcher; the tick just feeds it `now`.
  *
- *   3. Shells out to `sd list --format json` for scheduled-for seeds and
- *      dispatches the past-due ones via `dispatchScheduledSeed`.
- *      Post-dispatch, fires a single `updateExtensions` merge that
- *      combines the scheduled-fire clear (`scheduledFor:null,
- *      lastScheduledRun`) with the warren-namespaced common keys
- *      (`role, trigger:'scheduled', lastRunId, lastRunAt`) so the seed
- *      lands in its post-fire state with one sd update (pl-bb70 step 5,
- *      consolidating the prior `clearScheduledFor` specialization).
- *      Any failure here is surfaced as a
+ *   3. Walks the tracker's scheduled issues
+ *      (`tracker.listScheduledIssues`, warren-6234) and dispatches the
+ *      past-due ones via `dispatchScheduledSeed`. Post-dispatch, fires a
+ *      single `tracker.mergeIssueMetadata` merge that combines the
+ *      scheduled-fire clear (`scheduledFor:null, lastScheduledRun`) with
+ *      the warren-namespaced common keys (`role, trigger:'scheduled',
+ *      lastRunId, lastRunAt`) so the issue lands in its post-fire state
+ *      with one merge (pl-bb70 step 5). Any failure here is surfaced as a
  *      `trigger.cleared_extension_failed` system event on the dispatched
  *      run so the operator sees the lingering extension without tailing
  *      logs (pl-2f15 risk #4).
@@ -38,7 +37,11 @@
 import { formatError } from "../core/errors.ts";
 import type { Repos } from "../db/repos/index.ts";
 import type { ProjectRow } from "../db/schema.ts";
-import type { ScheduledSeed, WarrenExtensions } from "../seeds-cli/index.ts";
+import type {
+	IssueTracker,
+	MetadataCapableTracker,
+	ScheduledIssueCapableTracker,
+} from "../tracker/contract.ts";
 import type { LoadedWarrenConfig } from "../warren-config/index.ts";
 import { runCiFixerPass, type TickCiFixerDeps } from "./ci-fixer-pass.ts";
 import type { CronRetryTracker } from "./cron-retry.ts";
@@ -62,28 +65,12 @@ export type LoadWarrenConfigFn = (
 	projectPath: string,
 ) => Promise<LoadedWarrenConfig>;
 
-export type ListScheduledSeedsFn = (projectPath: string) => Promise<{
-	scheduled: readonly ScheduledSeed[];
-	errors: readonly { seedId: string; message: string }[];
-}>;
-
-/**
- * Shell-out facade injected from `bootScheduler` — wraps `sd update <id>
- * --extensions <json>` so the tick can merge the post-fire extension
- * payload in one call. The tick composes the `WarrenExtensions` object
- * (validated downstream by `WarrenExtensionsSchema` inside the helper)
- * so this dep stays a thin pass-through suitable for test stubs.
- */
-export type UpdateSeedExtensionsFn = (
-	projectPath: string,
-	seedId: string,
-	extensions: WarrenExtensions,
-) => Promise<void>;
-
 export interface TickLogger {
 	info(obj: Record<string, unknown>, msg?: string): void;
 	warn(obj: Record<string, unknown>, msg?: string): void;
 	error(obj: Record<string, unknown>, msg?: string): void;
+	/** warren-6234: optional debug channel for capability-gated skips. */
+	debug?(obj: Record<string, unknown>, msg?: string): void;
 }
 
 /**
@@ -97,11 +84,25 @@ export interface SchedulerNoticeGate {
 	clearNotice(key: string): void;
 }
 
+/**
+ * The tracker surface the tick consumes: the base contract plus the
+ * optional capability arms the scheduled pass branches on (warren-6234).
+ * The capability flags stay authoritative — the arms are only called
+ * after the matching flag reads true.
+ */
+export type TickIssueTracker = IssueTracker &
+	Partial<ScheduledIssueCapableTracker & MetadataCapableTracker>;
+
 export interface TickDeps {
 	readonly repos: Pick<Repos, "projects" | "triggers" | "runs" | "events">;
 	readonly loadWarrenConfig: LoadWarrenConfigFn;
-	readonly listScheduledSeeds: ListScheduledSeedsFn;
-	readonly updateExtensions: UpdateSeedExtensionsFn;
+	/**
+	 * warren-6234: the scheduled-issues pass routes through the IssueTracker
+	 * seam. Omitted, or a tracker without `supportsScheduledIssues`, skips the
+	 * pass; the post-fire metadata write additionally requires
+	 * `supportsMetadata`.
+	 */
+	readonly issueTracker?: TickIssueTracker;
 	readonly spawn: DispatchSpawnFn;
 	readonly ciFixer?: TickCiFixerDeps;
 	/**

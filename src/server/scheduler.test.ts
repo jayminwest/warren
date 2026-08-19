@@ -10,6 +10,7 @@ import type { SpawnFn } from "../projects/clone.ts";
 import type { ProjectsConfig } from "../projects/config.ts";
 import type { SpawnRunInput, SpawnRunResult } from "../runs/index.ts";
 import type { RuntimeProvider } from "../runtime/contract.ts";
+import { SeedsTracker } from "../tracker/seeds-tracker.ts";
 import type { TriggerSchedulerConfig } from "../triggers/index.ts";
 import { createWarrenConfigCache } from "../warren-config/index.ts";
 import { bootScheduler } from "./scheduler.ts";
@@ -163,7 +164,7 @@ describe("bootScheduler", () => {
 		expect(bridgeCalls[0]?.sandboxRunId).toBe("rb_a");
 	});
 
-	test("listScheduledSeeds + updateExtensions use the configured sdBinary and projectSpawn", async () => {
+	test("scheduled pass routes through the tracker seam using the configured sdBinary and projectSpawn (warren-6234)", async () => {
 		const bridgeCalls: BridgeCall[] = [];
 		const warrenConfigs = createWarrenConfigCache({
 			load: async () => ({
@@ -227,6 +228,10 @@ describe("bootScheduler", () => {
 			projectsConfig: PROJECTS_CONFIG,
 			projectSpawn,
 			config: { ...SCHEDULER_CONFIG, sdBinary: "sd-test", disabled: true },
+			// warren-6234: the scheduled pass routes through the tracker
+			// seam; a SeedsTracker over the same sdBinary + projectSpawn
+			// pair keeps the shell-out assertions meaningful.
+			issueTracker: new SeedsTracker({ sdBinary: "sd-test", spawn: projectSpawn }),
 			now: () => NOW,
 			spawnRunFn,
 			cloneExists: () => true,

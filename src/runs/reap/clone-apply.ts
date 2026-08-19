@@ -45,6 +45,7 @@ import {
 import { mintGitCredentialSecret } from "../../forge/credentials.ts";
 import type { FinalizeResult } from "../../runtime/contract.ts";
 import { githubCredentialGitEnv } from "../../workspace/git/credential-env.ts";
+import { isCommitSha } from "../base-commit.ts";
 import { hasAutoPlanRunFrontmatter } from "./auto-plan-run.ts";
 import type { ReapPipelineContext, ReapPipelineState } from "./pipeline.ts";
 
@@ -189,6 +190,19 @@ export async function pushCloneDeltasToOrigin(
 	ctx: ReapPipelineContext,
 	ref: string,
 ): Promise<boolean> {
+	// warren-aaf7: a 40-hex ref is a commit SHA, not a push target — `git
+	// push origin HEAD:<sha>` is rejected by the remote. Legacy rows dispatched
+	// with a SHA `ref` (pre-split) can still reach here, so skip the push with
+	// a logged reason rather than burning a `clone_apply_push` failure. The
+	// caller suppresses auto-dispatch (return false): a SHA-pinned run must not
+	// spawn a plan-run against host-only state either.
+	if (isCommitSha(ref)) {
+		await ctx.emit("reap.clone_deltas_push_skipped", {
+			ref,
+			reason: "ref is a commit sha; nothing to push to",
+		});
+		return false;
+	}
 	try {
 		// warren-4e1c: per-spawn minted credential (forge-contract.md §4 —
 		// minted HERE, immediately before the push spawn, never held). A mint

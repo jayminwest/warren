@@ -309,6 +309,27 @@ describe("pushCloneDeltasToOrigin (warren-486c durability + warren-4e1c credenti
 		expect(push?.env && "GIT_CONFIG_COUNT" in push.env).toBe(false);
 	});
 
+	test("a 40-hex ref is skipped with a logged reason, never pushed (warren-aaf7)", async () => {
+		const { exec, calls } = recordingExec();
+		const failed: { step: ReapStep; message: string }[] = [];
+		const emitted: { kind: string; payload: unknown }[] = [];
+		const ctx = {
+			...pushCtx(exec, failed),
+			emit: async (kind: string, payload: unknown) => {
+				emitted.push({ kind, payload });
+				return {} as never;
+			},
+		} as unknown as ReapPipelineContext;
+		const sha = "0123456789abcdef0123456789abcdef01234567";
+		const ok = await pushCloneDeltasToOrigin(ctx, sha);
+		expect(ok).toBe(false);
+		expect(calls.find((c) => c.args[0] === "push")).toBeUndefined();
+		expect(failed).toEqual([]);
+		expect(emitted).toEqual([
+			{ kind: "reap.clone_deltas_push_skipped", payload: { ref: sha, reason: expect.any(String) } },
+		]);
+	});
+
 	test("a mint failure folds into clone_apply_push and suppresses the push", async () => {
 		const { exec, calls } = recordingExec();
 		const failed: { step: ReapStep; message: string }[] = [];
