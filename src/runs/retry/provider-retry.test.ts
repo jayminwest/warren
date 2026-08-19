@@ -94,6 +94,29 @@ describe("classifyProviderError", () => {
 		expect(classifyProviderError("something weird happened", 200)).toBe("unknown");
 	});
 
+	test("reads the structured upstreamBody before the message prose", () => {
+		// Opaque harness message (pi's OPAQUE_MESSAGE) with a transient
+		// upstream body retries (warren-eaa6).
+		expect(classifyProviderError("Provider returned error", null, "529 overloaded_error")).toBe(
+			"transient",
+		);
+		expect(classifyProviderError("Provider returned error", null, '{"error":"bad gateway"}')).toBe(
+			"transient",
+		);
+		// A durable upstream body fails closed even though the surface
+		// message is opaque.
+		expect(classifyProviderError("Provider returned error", null, "invalid api key")).toBe(
+			"durable",
+		);
+		// An unrecognized body falls through to the message prose.
+		expect(classifyProviderError("Network connection lost.", null, "weird body")).toBe("transient");
+		expect(classifyProviderError("something weird happened", null, "weird body")).toBe("unknown");
+		// httpStatus still wins over the body tier.
+		expect(classifyProviderError("Provider returned error", 401, "502 bad gateway")).toBe(
+			"durable",
+		);
+	});
+
 	test("durable wins when a message names both a symptom and a cause", () => {
 		expect(classifyProviderError("request failed with 401: connection reset by peer")).toBe(
 			"durable",
@@ -123,6 +146,7 @@ async function setup(
 		seedId?: string | null;
 		providerMessage?: string;
 		httpStatus?: number | null;
+		upstreamBody?: string | null;
 	} = {},
 ): Promise<Fixture> {
 	const db = await openDatabase({ path: ":memory:" });
@@ -155,6 +179,7 @@ async function setup(
 		payload: {
 			message: opts.providerMessage ?? "Network connection lost.",
 			httpStatus: opts.httpStatus ?? null,
+			upstreamBody: opts.upstreamBody ?? null,
 		},
 	});
 	return { repos, runId: run.id, projectId: project.id };
@@ -294,6 +319,9 @@ describe("createProviderRetryLifecycleExtension", () => {
 		expect(call.seedId).toBe("warren-339d");
 		expect(call.parentRunId).toBe(fixture.runId);
 		expect(call.cloneKind).toBe("replicate");
+		// retryOf back-link (warren-eaa6/warren-58ff): the successor row
+		// carries the original run's id so retry projections see it.
+		expect(call.retryOf).toBe(fixture.runId);
 		expect(started).toEqual([spawn.newRunId]);
 
 		// The successor names its origin (also the single-retry bound marker).
@@ -322,6 +350,44 @@ describe("createProviderRetryLifecycleExtension", () => {
 		const fixture = await setup({
 			providerMessage: "connection reset while reaching the model",
 			httpStatus: 401,
+		});
+		const { spawn } = await fire(fixture);
+		expect(spawn.calls).toHaveLength(0);
+	});
+
+	test("retries an opaque message when the upstreamBody reads transient", async () => {
+		const fixture = await setup({
+			providerMessage: "Provider returned error",
+			upstreamBody: '{"type":"error","error":{"type":"overloaded_error"}}',
+		});
+		const { spawn } = await fire(fixture);
+		expect(spawn.calls).toHaveLength(1);
+		expect((spawn.calls[0] as SpawnCall).retryOf).toBe(fixture.runId);
+	});
+
+	test("retries an opaque message with a 529 httpStatus", async () => {
+		const fixture = await setup({
+			providerMessage: "Provider returned error",
+			httpStatus: 529,
+		});
+		const { spawn } = await fire(fixture);
+		expect(spawn.calls).toHaveLength(1);
+	});
+
+	test("does not retry a 401 httpStatus even when the upstreamBody looks 5xx", async () => {
+		const fixture = await setup({
+			providerMessage: "Provider returned error",
+			httpStatus: 401,
+			upstreamBody: "502 bad gateway from the upstream edge",
+		});
+		const { spawn } = await fire(fixture);
+		expect(spawn.calls).toHaveLength(0);
+	});
+
+	test("does not retry an opaque message with a durable upstreamBody", async () => {
+		const fixture = await setup({
+			providerMessage: "Provider returned error",
+			upstreamBody: '{"error":{"type":"authentication_error","message":"invalid api key"}}',
 		});
 		const { spawn } = await fire(fixture);
 		expect(spawn.calls).toHaveLength(0);
