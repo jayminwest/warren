@@ -1,9 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtempSync } from "node:fs";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { SandboxProfile } from "../../sandbox/types.ts";
-import { makeDockerSpawn } from "./spawn.ts";
+import { DOCKER_AGENT_GID, DOCKER_AGENT_UID } from "./container-spec.ts";
+import { chownDockerMounts, chownPathRecursive, makeDockerSpawn } from "./spawn.ts";
 
 function makeProfile(overrides: Partial<SandboxProfile> = {}): SandboxProfile {
 	return {
@@ -70,11 +71,53 @@ function tmpRoot(): string {
 	return mkdtempSync(join(tmpdir(), "warren-docker-spawn-test-"));
 }
 
+describe("chownDockerMounts", () => {
+	test("chowns workspace, home, and gitdir when chownMounts is set", () => {
+		const seen: Array<{ path: string; uid: number; gid: number }> = [];
+		chownDockerMounts(
+			makeProfile({ workspaceGitdir: "/repo/.git" }),
+			{ uid: 1000, gid: 1000, chownMounts: true },
+			(path, uid, gid) => {
+				seen.push({ path, uid, gid });
+			},
+		);
+		expect(seen).toEqual([
+			{ path: "/data/local/workspaces/local-run-9", uid: 1000, gid: 1000 },
+			{ path: "/data/local/homes/local-run-9", uid: 1000, gid: 1000 },
+			{ path: "/repo/.git", uid: 1000, gid: 1000 },
+		]);
+	});
+
+	test("skips chown when the agent runs as the host user", () => {
+		const seen: string[] = [];
+		chownDockerMounts(makeProfile(), { uid: 501, gid: 20, chownMounts: false }, (path) => {
+			seen.push(path);
+		});
+		expect(seen).toEqual([]);
+	});
+
+	test("chownPathRecursive visits every nested path (chown-to-self is a no-op)", () => {
+		const root = mkdtempSync(join(tmpdir(), "warren-chown-"));
+		mkdirSync(join(root, "sub"));
+		writeFileSync(join(root, "sub", "f.txt"), "x");
+		const uid = typeof process.getuid === "function" ? process.getuid() : 0;
+		const gid = typeof process.getgid === "function" ? process.getgid() : 0;
+		// chown to the calling uid is permitted without CAP_CHOWN and exercises
+		// the recursive walk end-to-end under any host identity.
+		expect(() => chownPathRecursive(root, uid, gid)).not.toThrow();
+	});
+});
+
 describe("makeDockerSpawn", () => {
 	test("spawns docker run with the container argv and writes the env file", async () => {
 		const procs: FakeProc[] = [];
+		const chowned: Array<{ path: string; uid: number; gid: number }> = [];
 		const spawn = makeDockerSpawn({
 			tmpRoot: tmpRoot(),
+			hostIdentity: { uid: 0, gid: 0 },
+			chownPath: (path, uid, gid) => {
+				chowned.push({ path, uid, gid });
+			},
 			spawn: (argv) => {
 				const proc = makeFakeProc(argv);
 				procs.push(proc);
@@ -87,9 +130,38 @@ describe("makeDockerSpawn", () => {
 		expect(run).toBeDefined();
 		expect(run?.argv[1]).toBe("run");
 		expect(run?.argv).toContain("warren-run-local-run-9");
+		expect(run?.argv[run.argv.indexOf("--user") + 1]).toBe(
+			`${DOCKER_AGENT_UID}:${DOCKER_AGENT_GID}`,
+		);
 		expect(run?.argv.at(-1)).toBe("--print");
+		expect(chowned).toEqual([
+			{ path: "/data/local/workspaces/local-run-9", uid: 1000, gid: 1000 },
+			{ path: "/data/local/homes/local-run-9", uid: 1000, gid: 1000 },
+		]);
 		procs[0]?.resolveExit(0);
 		expect(await result.exited).toBe(0);
+	});
+
+	test("non-root host identity skips chown and passes that uid as --user", async () => {
+		const procs: FakeProc[] = [];
+		const chowned: string[] = [];
+		const spawn = makeDockerSpawn({
+			tmpRoot: tmpRoot(),
+			hostIdentity: { uid: 501, gid: 20 },
+			chownPath: (path) => {
+				chowned.push(path);
+			},
+			spawn: (argv) => {
+				const proc = makeFakeProc(argv);
+				procs.push(proc);
+				return proc.subprocess;
+			},
+			runDocker: () => Promise.resolve({ exitCode: 0, stdout: "false" }),
+		});
+		await spawn(makeProfile(), { argv: ["claude"] });
+		expect(procs[0]?.argv[procs[0].argv.indexOf("--user") + 1]).toBe("501:20");
+		expect(chowned).toEqual([]);
+		procs[0]?.resolveExit(0);
 	});
 
 	test("resolves exited with the container exit code and probes OOMKilled", async () => {
@@ -97,6 +169,8 @@ describe("makeDockerSpawn", () => {
 		const inspected: string[][] = [];
 		const spawn = makeDockerSpawn({
 			tmpRoot: tmpRoot(),
+			hostIdentity: { uid: 501, gid: 20 },
+			chownPath: () => {},
 			spawn: (argv) => {
 				const proc = makeFakeProc(argv);
 				procs.push(proc);
@@ -121,6 +195,8 @@ describe("makeDockerSpawn", () => {
 		const procs: FakeProc[] = [];
 		const spawn = makeDockerSpawn({
 			tmpRoot: tmpRoot(),
+			hostIdentity: { uid: 501, gid: 20 },
+			chownPath: () => {},
 			spawn: (argv) => {
 				const proc = makeFakeProc(argv);
 				procs.push(proc);
@@ -137,6 +213,8 @@ describe("makeDockerSpawn", () => {
 		const procs: FakeProc[] = [];
 		const spawn = makeDockerSpawn({
 			tmpRoot: tmpRoot(),
+			hostIdentity: { uid: 501, gid: 20 },
+			chownPath: () => {},
 			spawn: (argv) => {
 				const proc = makeFakeProc(argv);
 				procs.push(proc);
@@ -161,6 +239,8 @@ describe("makeDockerSpawn", () => {
 		const calls: string[][] = [];
 		const spawn = makeDockerSpawn({
 			tmpRoot: tmpRoot(),
+			hostIdentity: { uid: 501, gid: 20 },
+			chownPath: () => {},
 			spawn: (argv) => {
 				const proc = makeFakeProc(argv);
 				procs.push(proc);

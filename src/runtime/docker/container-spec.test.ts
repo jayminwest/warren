@@ -5,7 +5,10 @@ import {
 	buildDockerRunSpec,
 	composeContainerEnv,
 	containerNameForWorkspace,
+	DOCKER_AGENT_GID,
+	DOCKER_AGENT_UID,
 	renderEnvFile,
+	resolveDockerAgentUser,
 } from "./container-spec.ts";
 
 const config = resolveDockerConfig({ WARREN_DOCKER_AGENT_IMAGE: "warren-agent:test" });
@@ -38,7 +41,56 @@ describe("containerNameForWorkspace", () => {
 	});
 });
 
+describe("resolveDockerAgentUser", () => {
+	test("root host falls back to the K8s-parity uid 1000 and requests chown", () => {
+		expect(resolveDockerAgentUser(makeProfile(), { uid: 0, gid: 0 })).toEqual({
+			uid: DOCKER_AGENT_UID,
+			gid: DOCKER_AGENT_GID,
+			chownMounts: true,
+		});
+		expect(DOCKER_AGENT_UID).toBe(1000);
+		expect(DOCKER_AGENT_GID).toBe(1000);
+	});
+
+	test("non-root host runs as the host uid and skips chown", () => {
+		expect(resolveDockerAgentUser(makeProfile(), { uid: 501, gid: 20 })).toEqual({
+			uid: 501,
+			gid: 20,
+			chownMounts: false,
+		});
+	});
+
+	test("profile runAsUid wins over the host identity", () => {
+		expect(
+			resolveDockerAgentUser(makeProfile({ runAsUid: 1234, runAsGid: 1234 }), {
+				uid: 501,
+				gid: 20,
+			}),
+		).toEqual({ uid: 1234, gid: 1234, chownMounts: false });
+		expect(resolveDockerAgentUser(makeProfile({ runAsUid: 1234 }), { uid: 0, gid: 0 })).toEqual({
+			uid: 1234,
+			gid: 1234,
+			chownMounts: true,
+		});
+	});
+});
+
 describe("buildDockerRunSpec", () => {
+	test("passes --user for the resolved non-root agent identity (warren-3f32)", () => {
+		const asRoot = buildDockerRunSpec(makeProfile(), command, config, "/tmp/e.env", {
+			uid: 0,
+			gid: 0,
+		});
+		expect(asRoot.argv[asRoot.argv.indexOf("--user") + 1]).toBe(
+			`${DOCKER_AGENT_UID}:${DOCKER_AGENT_GID}`,
+		);
+		const asHost = buildDockerRunSpec(makeProfile(), command, config, "/tmp/e.env", {
+			uid: 501,
+			gid: 20,
+		});
+		expect(asHost.argv[asHost.argv.indexOf("--user") + 1]).toBe("501:20");
+	});
+
 	test("bind-mounts workspace and home at identical paths, read-write", () => {
 		const spec = buildDockerRunSpec(makeProfile(), command, config, "/tmp/e.env");
 		expect(spec.argv).toContain(
