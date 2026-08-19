@@ -210,6 +210,7 @@ async function dispatchHealer(
 			? { runBranchPrefixDefault: deps.runBranchPrefixDefault }
 			: {}),
 		...(deps.seedsCli !== undefined ? { seedsCli: deps.seedsCli } : {}),
+		...(deps.issueTracker !== undefined ? { issueTracker: deps.issueTracker } : {}),
 		...(deps.now !== undefined ? { now: deps.now } : {}),
 		logger: deps.logger,
 	});

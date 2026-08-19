@@ -10,6 +10,7 @@ import type {
 import type { PreviewPortAllocator } from "../../preview/port-allocator.ts";
 import type { RuntimeProvider } from "../../runtime/contract.ts";
 import type { SeedsCliDeps } from "../../seeds-cli/index.ts";
+import type { IssueTracker } from "../../tracker/contract.ts";
 import type { ServerPreviewConfig } from "../../warren-config/index.ts";
 import type { RunEventBroker } from "../events.ts";
 import type { AutoOpenPrConfig } from "../pr.ts";
@@ -171,6 +172,11 @@ export interface ReapRunInput {
 	 * tests) ⇒ no validation, behavior unchanged.
 	 */
 	readonly seedsCli?: SeedsCliDeps;
+	/**
+	 * Boot-resolved IssueTracker (warren-5819, pl-a37b Track B). Threading
+	 * seam — reap still reads `seedsCli`; the port lands in warren-47b0.
+	 */
+	readonly issueTracker?: IssueTracker;
 }
 
 export interface ReapStepError {

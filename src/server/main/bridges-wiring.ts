@@ -21,6 +21,7 @@ import { reapRun } from "../../runs/index.ts";
 import type { LifecycleBus, LifecycleRegistration } from "../../runs/lifecycle-bus.ts";
 import type { RuntimeProvider } from "../../runtime/contract.ts";
 import type { SeedsCliDeps } from "../../seeds-cli/index.ts";
+import type { IssueTracker } from "../../tracker/contract.ts";
 import type { WarrenConfigCache } from "../../warren-config/index.ts";
 import { type BootBridgesResult, bootBridges, type CreateBridgeRegistryInput } from "../bridges.ts";
 import type { Logger } from "../types.ts";
@@ -67,6 +68,8 @@ export interface BridgesWiringInput {
 	readonly forge: Forge;
 	readonly warrenConfigs: WarrenConfigCache;
 	readonly seedsCli: SeedsCliDeps;
+	/** Boot-resolved IssueTracker (warren-5819) — forwarded to the provider-retry consumer. */
+	readonly issueTracker?: IssueTracker;
 	readonly broker?: RunEventBroker;
 	readonly runBranchPrefixDefault?: string;
 	readonly now?: () => Date;
@@ -111,6 +114,7 @@ export async function bootBridgesAndProviderRetry(
 		forge: input.forge,
 		warrenConfigs: input.warrenConfigs,
 		seedsCli: input.seedsCli,
+		...(input.issueTracker !== undefined ? { issueTracker: input.issueTracker } : {}),
 		...(input.broker !== undefined ? { broker: input.broker } : {}),
 		...(input.runBranchPrefixDefault !== undefined
 			? { runBranchPrefixDefault: input.runBranchPrefixDefault }

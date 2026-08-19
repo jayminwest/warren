@@ -42,6 +42,7 @@ import type { SpawnFn as ProjectSpawnFn } from "../../projects/clone.ts";
 import type { ProjectsConfig } from "../../projects/config.ts";
 import type { RuntimeProvider } from "../../runtime/contract.ts";
 import type { SeedsCliDeps } from "../../seeds-cli/index.ts";
+import type { IssueTracker } from "../../tracker/contract.ts";
 import type { WarrenConfigCache } from "../../warren-config/index.ts";
 import { resolveCostCapUsd } from "../cost-cap.ts";
 import type { RunEventBroker } from "../events.ts";
@@ -178,6 +179,7 @@ function buildRetrySpawnInput(
 	if (input.projectSpawn !== undefined) draft.projectSpawn = input.projectSpawn;
 	if (input.warrenConfigs !== undefined) draft.warrenConfigs = input.warrenConfigs;
 	if (input.seedsCli !== undefined) draft.seedsCli = input.seedsCli;
+	if (input.issueTracker !== undefined) draft.issueTracker = input.issueTracker;
 	if (input.githubToken !== undefined) draft.githubToken = input.githubToken;
 	if (input.runBranchPrefixDefault !== undefined) {
 		draft.runBranchPrefixDefault = input.runBranchPrefixDefault;
@@ -201,6 +203,8 @@ export interface CreateInfraLostRetryHookInput {
 	readonly projectSpawn?: ProjectSpawnFn;
 	readonly warrenConfigs?: WarrenConfigCache;
 	readonly seedsCli?: SeedsCliDeps;
+	/** Boot-resolved IssueTracker (warren-5819) — threading seam for the retry spawn. */
+	readonly issueTracker?: IssueTracker;
 	/** Raw `GITHUB_TOKEN` for the pre-dispatch refresh fetch. */
 	readonly githubToken?: string;
 	readonly runBranchPrefixDefault?: string;

@@ -189,6 +189,7 @@ async function buildHttpSpawnOptions(
 		warrenConfigs: deps.warrenConfigs,
 		runBranchPrefixDefault: deps.runBranchPrefixDefault,
 		seedsCli: deps.seedsCli,
+		...(deps.issueTracker !== undefined ? { issueTracker: deps.issueTracker } : {}),
 		logger,
 	};
 }

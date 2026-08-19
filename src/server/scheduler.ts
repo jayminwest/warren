@@ -81,6 +81,11 @@ export interface BootSchedulerInput {
 	 *     short-lived App credential never has to outlive a tick loop.
 	 */
 	readonly forge: Forge;
+	/**
+	 * Boot-resolved IssueTracker (warren-5819), threaded onto every
+	 * scheduled/ci-fixer `spawnRun` call. Tests may omit.
+	 */
+	readonly issueTracker?: import("../tracker/contract.ts").IssueTracker;
 	/** Override the spawnRun seam (tests). Defaults to the live `spawnRun`. */
 	readonly spawnRunFn?: typeof spawnRun;
 	/**
@@ -102,6 +107,10 @@ export function bootScheduler(input: BootSchedulerInput): SchedulerHandle {
 	const spawnRunFn = input.spawnRunFn ?? spawnRun;
 
 	const seedsDeps = { sdBinary: input.config.sdBinary, spawn: input.projectSpawn };
+	// warren-5819: hoisted so the spawn closures below stay under the
+	// cognitive-complexity ceiling.
+	const trackerOption =
+		input.issueTracker !== undefined ? { issueTracker: input.issueTracker } : {};
 
 	// warren-a0a2: one bounded-retry tracker for the scheduler's process
 	// lifetime (in-memory; a restart resets counters — see cron-retry.ts). The
@@ -161,6 +170,7 @@ export function bootScheduler(input: BootSchedulerInput): SchedulerHandle {
 			githubToken: gitSecret,
 			warrenConfigs: input.warrenConfigs,
 			seedsCli: seedsDeps,
+			...trackerOption,
 			// warren-a0a2: forward the cron dispatcher's row-id probe.
 			...(args.onRowCreated !== undefined ? { onRunRowCreated: args.onRowCreated } : {}),
 			...(input.runBranchPrefixDefault !== undefined
@@ -201,6 +211,7 @@ export function bootScheduler(input: BootSchedulerInput): SchedulerHandle {
 			githubToken: gitSecret,
 			warrenConfigs: input.warrenConfigs,
 			seedsCli: seedsDeps,
+			...trackerOption,
 			...(input.runBranchPrefixDefault !== undefined
 				? { runBranchPrefixDefault: input.runBranchPrefixDefault }
 				: {}),

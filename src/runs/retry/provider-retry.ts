@@ -48,6 +48,7 @@ import type { SpawnFn as ProjectSpawnFn } from "../../projects/clone.ts";
 import type { ProjectsConfig } from "../../projects/config.ts";
 import type { RuntimeProvider } from "../../runtime/contract.ts";
 import type { SeedsCliDeps } from "../../seeds-cli/index.ts";
+import type { IssueTracker } from "../../tracker/contract.ts";
 import type { WarrenConfigCache } from "../../warren-config/index.ts";
 import type { RunEventBroker } from "../events.ts";
 import { type LifecycleExtension, WARREN_EXT_PROTOCOL } from "../lifecycle-bus.ts";
@@ -198,6 +199,8 @@ export interface ProviderRetryLifecycleExtensionInput {
 	readonly warrenConfigs?: WarrenConfigCache;
 	readonly runBranchPrefixDefault?: string;
 	readonly seedsCli?: SeedsCliDeps;
+	/** Boot-resolved IssueTracker (warren-5819) — threading seam for the retry spawn. */
+	readonly issueTracker?: IssueTracker;
 	readonly logger: ProviderRetryLogger;
 	/** Broker so the lineage events reach live tailers too. */
 	readonly broker?: RunEventBroker;
@@ -328,6 +331,7 @@ async function dispatchProviderRetry(
 				? { runBranchPrefixDefault: input.runBranchPrefixDefault }
 				: {}),
 			...(input.seedsCli !== undefined ? { seedsCli: input.seedsCli } : {}),
+			...(input.issueTracker !== undefined ? { issueTracker: input.issueTracker } : {}),
 			logger: input.logger,
 			now,
 		});

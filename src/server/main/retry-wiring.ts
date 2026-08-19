@@ -21,6 +21,7 @@ import { createInfraLostRetryHook, type InfraLostRetryHook } from "../../runs/in
 import type { BridgeRegistry } from "../../runs/stream/types.ts";
 import type { RuntimeProvider } from "../../runtime/contract.ts";
 import type { SeedsCliDeps } from "../../seeds-cli/index.ts";
+import type { IssueTracker } from "../../tracker/contract.ts";
 import type { WarrenConfigCache } from "../../warren-config/index.ts";
 import type { EnvLike } from "../config.ts";
 import type { Logger } from "../types.ts";
@@ -34,6 +35,8 @@ export interface InfraLostRetryWiringInput {
 	readonly projectSpawn: SpawnFn;
 	readonly warrenConfigs: WarrenConfigCache;
 	readonly seedsCli: SeedsCliDeps;
+	/** Boot-resolved IssueTracker (warren-5819) — forwarded to the retry hook. */
+	readonly issueTracker?: IssueTracker;
 	readonly env: EnvLike;
 	readonly runBranchPrefixDefault?: string;
 	readonly logger: Logger;
@@ -60,6 +63,7 @@ export function wireInfraLostRetry(input: InfraLostRetryWiringInput): InfraLostR
 			projectSpawn: input.projectSpawn,
 			warrenConfigs: input.warrenConfigs,
 			seedsCli: input.seedsCli,
+			...(input.issueTracker !== undefined ? { issueTracker: input.issueTracker } : {}),
 			...(input.env.GITHUB_TOKEN !== undefined ? { githubToken: input.env.GITHUB_TOKEN } : {}),
 			...(input.runBranchPrefixDefault !== undefined
 				? { runBranchPrefixDefault: input.runBranchPrefixDefault }

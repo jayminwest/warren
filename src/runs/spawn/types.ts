@@ -214,6 +214,12 @@ export interface SpawnRunInput {
 	 */
 	readonly seedsCli?: SeedsCliDeps;
 	/**
+	 * Boot-resolved IssueTracker (warren-5819, pl-a37b Track B). Threading
+	 * seam only for now — `spawnRun` still reads `seedsCli`; the port to
+	 * `tracker.mergeIssueMetadata` lands in warren-2d98. Tests may omit.
+	 */
+	readonly issueTracker?: import("../../tracker/contract.ts").IssueTracker;
+	/**
 	 * Handle of the user dispatching the run (warren-e848). Persisted onto
 	 * plan-run bookkeeping; carried through unchanged by the spawn flow.
 	 * Read by {@link spawnRun} so the dispatch-context writer (warren-d6ca)
