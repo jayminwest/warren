@@ -196,19 +196,19 @@ async function main(): Promise<void> {
 		onCycleError: (err) => console.error(`${EXTENSION_NAME}: cycle failed:`, err),
 		onRunError: (runId, err) =>
 			console.error(`${EXTENSION_NAME}: judgment for run ${runId} failed:`, err),
-			// An unjudged marker's detail exists only here — the store row
-			// carries the reason alone, so an unlogged detail is
-			// undiagnosable from the pod (warren-5fcf: 334 judge_error
-			// markers with no error text anywhere).
-			onJudgment: (runId, outcome) => {
-				if (outcome.kind === "unjudged") {
-					console.error(
-						`${EXTENSION_NAME}: run ${runId} unjudged (${outcome.reason}): ${outcome.detail}`,
-					);
-				}
-			},
-			onBudgetDeferred: (runId, detail) =>
-				console.error(`${EXTENSION_NAME}: deferring from run ${runId}: ${detail}`),
+		// The store persists a fresh marker's detail (warren-a106), but a
+		// dedupe conflict drops the insert, so this log line stays the only
+		// sink for a replayed marker's detail (warren-5fcf: 334 judge_error
+		// markers with no error text anywhere).
+		onJudgment: (runId, outcome) => {
+			if (outcome.kind === "unjudged") {
+				console.error(
+					`${EXTENSION_NAME}: run ${runId} unjudged (${outcome.reason}): ${outcome.detail}`,
+				);
+			}
+		},
+		onBudgetDeferred: (runId, detail) =>
+			console.error(`${EXTENSION_NAME}: deferring from run ${runId}: ${detail}`),
 		}),
 	]);
 	verdicts.close();

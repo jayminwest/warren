@@ -105,6 +105,7 @@ describe("GET /verdicts.jsonl", () => {
 			rubricVersion: RUBRIC,
 			judgeModelId: "cheap-model",
 			reason: "budget_exceeded",
+			detail: "accrued cost $0.2500 reached per-judgment cap",
 		});
 		const third = verdicts.recordVerdict(verdict("r-3", "cheap-model", "2026-08-15T00:01:00Z"));
 		expect(first).not.toBeNull();
@@ -117,10 +118,15 @@ describe("GET /verdicts.jsonl", () => {
 		const rows = (await res.text())
 			.trim()
 			.split("\n")
-			.map((line) => JSON.parse(line) as { id: number; kind: string; runId: string });
+			.map(
+				(line) =>
+					JSON.parse(line) as { id: number; kind: string; runId: string; detail: string | null },
+			);
 		expect(rows.map((r) => r.id)).toEqual([2, 3]);
 		expect(rows[0]?.kind).toBe("unjudged");
 		expect(rows[0]?.runId).toBe("r-2");
+		expect(rows[0]?.detail).toBe("accrued cost $0.2500 reached per-judgment cap");
+		expect(rows[1]?.detail).toBeNull();
 		expect(rows[1]?.kind).toBe("verdict");
 	});
 

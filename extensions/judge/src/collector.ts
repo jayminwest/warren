@@ -127,6 +127,7 @@ async function judgeOneRun(
 			rubricVersion: deps.rubricVersion,
 			judgeModelId: deps.judgeModelId,
 			reason: outcome.reason,
+			detail: outcome.detail,
 		});
 	}
 	// Spend is ledgered for every outcome — an unjudged marker is not a

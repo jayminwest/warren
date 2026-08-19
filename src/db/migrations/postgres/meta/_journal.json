@@ -316,6 +316,13 @@
 			"when": 1786944302747,
 			"tag": "0044_melted_the_executioner",
 			"breakpoints": true
+		},
+		{
+			"idx": 45,
+			"version": "7",
+			"when": 1787159414284,
+			"tag": "0045_lively_zombie",
+			"breakpoints": true
 		}
 	]
 }

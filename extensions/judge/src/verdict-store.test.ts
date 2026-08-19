@@ -1,3 +1,7 @@
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { Database } from "bun:sqlite";
 import { describe, expect, test } from "bun:test";
 import { VerdictStore } from "./verdict-store.ts";
 import type { JudgeVerdict } from "./wire.ts";
@@ -90,20 +94,87 @@ describe("VerdictStore.recordVerdict", () => {
 });
 
 describe("VerdictStore.recordUnjudged", () => {
-	test("appends an unjudged marker with a reason", () => {
+	test("appends an unjudged marker with a reason and detail", () => {
 		const store = makeStore();
 		const id = store.recordUnjudged({
 			runId: "run-1",
 			rubricVersion: "rubric-v1-abc",
 			judgeModelId: "cheap-model",
 			reason: "budget_exceeded",
+			detail: "accrued cost $0.2500 reached per-judgment cap",
 		});
 		expect(id).toBe(1);
 		const row = store.rowsForRun("run-1")[0];
 		expect(row?.kind).toBe("unjudged");
 		expect(row?.reason).toBe("budget_exceeded");
+		expect(row?.detail).toBe("accrued cost $0.2500 reached per-judgment cap");
 		expect(row?.verdict).toBeNull();
 		store.close();
+	});
+
+	test("defaults detail to null when omitted", () => {
+		const store = makeStore();
+		store.recordUnjudged({
+			runId: "run-1",
+			rubricVersion: "rubric-v1-abc",
+			judgeModelId: "cheap-model",
+			reason: "judge_error",
+		});
+		const row = store.rowsForRun("run-1")[0];
+		expect(row?.kind).toBe("unjudged");
+		expect(row?.detail).toBeNull();
+		store.close();
+	});
+
+	test("migrates existing database schema missing the detail column", () => {
+		const tmpDir = mkdtempSync(join(tmpdir(), "verdict-store-test-"));
+		const dbPath = join(tmpDir, "legacy.db");
+		let store: VerdictStore | undefined;
+		try {
+			const db = new Database(dbPath);
+			db.run(`
+				CREATE TABLE verdict_rows (
+					id INTEGER PRIMARY KEY AUTOINCREMENT,
+					kind TEXT NOT NULL CHECK (kind IN ('verdict', 'unjudged')),
+					run_id TEXT NOT NULL,
+					rubric_version TEXT NOT NULL,
+					judge_model_id TEXT NOT NULL,
+					verdict TEXT,
+					reason TEXT,
+					recorded_at TEXT NOT NULL,
+					dedupe_key TEXT NOT NULL UNIQUE
+				);
+			`);
+			// A pre-migration row: the real upgrade input is a populated
+			// legacy file, not an empty table.
+			db.run(
+				`INSERT INTO verdict_rows
+					(kind, run_id, rubric_version, judge_model_id, verdict, reason, recorded_at, dedupe_key)
+				 VALUES ('unjudged', 'run-old', 'rubric-v1-abc', 'cheap-model', NULL, 'judge_error',
+					'2026-08-01T00:00:00.000Z', 'run-old|rubric-v1-abc|cheap-model')`,
+			);
+			db.close();
+
+			store = new VerdictStore(dbPath);
+			const legacy = store.rowsForRun("run-old")[0];
+			expect(legacy?.kind).toBe("unjudged");
+			expect(legacy?.detail).toBeNull();
+
+			const id = store.recordUnjudged({
+				runId: "run-legacy",
+				rubricVersion: "rubric-v1-abc",
+				judgeModelId: "cheap-model",
+				reason: "judge_error",
+				detail: "legacy db detail test",
+			});
+			expect(id).toBe(2);
+			const row = store.rowsForRun("run-legacy")[0];
+			expect(row?.kind).toBe("unjudged");
+			expect(row?.detail).toBe("legacy db detail test");
+		} finally {
+			store?.close();
+			rmSync(tmpDir, { recursive: true, force: true });
+		}
 	});
 
 	test("replay of the same unjudged marker is a no-op", () => {
@@ -167,6 +238,7 @@ describe("VerdictStore paging and per-rubric reads", () => {
 		expect(row?.kind).toBe("verdict");
 		expect(row?.verdict).toEqual(verdict);
 		expect(row?.judgeModelId).toBe("cheap-model");
+		expect(row?.detail).toBeNull();
 		store.close();
 	});
 });
