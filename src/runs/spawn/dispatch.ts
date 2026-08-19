@@ -4,9 +4,8 @@
  * Resolves the cached agent, builds a neutral `RunSpec`, and dispatches via
  * `provider.create(spec)` (warren-c42c). The warren run row is created BEFORE
  * `create`; `attachBurrow` writes correlation ids only after success. A failed
- * `create` rolls the row back `failed`/`never_started` (sandbox half is the
- * provider's job). Dispatch-context (warren-d6ca) is snapshotted right after
- * the row lands, before any runtime contact.
+ * `create` rolls the row back `failed`/`never_started` (sandbox half is the provider's
+ * job). Dispatch-context (warren-d6ca) is snapshotted right after the row lands.
  */
 
 import { NotFoundError, ValidationError } from "../../core/errors.ts";
