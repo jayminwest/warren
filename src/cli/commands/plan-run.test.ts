@@ -5,6 +5,7 @@ import type {
 	CreatePlanRunInput,
 	CreatePlanRunResponse,
 	PlanRunDetailResponse,
+	PlanRunRow,
 	PlanRunState,
 	RunEvent,
 } from "../../client/types.ts";
@@ -42,10 +43,11 @@ interface FakeClientOverrides {
 	cancelPlanRun?: () => Promise<CancelPlanRunResponse>;
 }
 
-function planRunRow(state: PlanRunState) {
+function planRunRow(state: PlanRunState): PlanRunRow {
 	return {
 		id: "pr-1",
 		planId: "pl-abc",
+		source: "plan",
 		projectId: "prj_1",
 		agentName: "claude-code",
 		promptTemplate: "",

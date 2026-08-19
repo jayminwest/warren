@@ -20,6 +20,7 @@ function planRunRow(overrides: Partial<PlanRunRow> = {}): PlanRunRow {
 	return {
 		id: "pr-1",
 		planId: "pl-abc",
+		source: "plan",
 		projectId: "prj_1",
 		agentName: "claude-code",
 		promptTemplate: "",

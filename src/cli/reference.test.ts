@@ -83,7 +83,7 @@ describe("collectCommandReference", () => {
 	test("carries the commander-computed usage tail", () => {
 		const commands = collectCommandReference(testProgram());
 		expect(byName(commands, "run").usage).toBe("[options] <agent> <project>");
-		expect(byName(commands, "plan run").usage).toBe("[options] <plan-id>");
+		expect(byName(commands, "plan run").usage).toBe("[options] [plan-id]");
 	});
 });
 

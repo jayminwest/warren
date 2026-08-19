@@ -268,7 +268,7 @@ function PlanRunListRow({
 	projectLabel,
 }: {
 	planRunId: string;
-	planId: string;
+	planId: string | null;
 	state: PlanRunState;
 	startedAt: string | null;
 	agentName: string;

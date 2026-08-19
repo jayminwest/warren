@@ -30,6 +30,7 @@ import type { Actor } from "../types.ts";
 export const PUBLIC_PLAN_RUN_FIELDS = [
 	"id",
 	"planId",
+	"source",
 	"projectId",
 	"agentName",
 	"ref",

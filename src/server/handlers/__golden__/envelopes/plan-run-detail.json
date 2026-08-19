@@ -4,6 +4,7 @@
 		"planRun": {
 			"id": "planRun_golden7d84",
 			"planId": "pl-golden7d84",
+			"source": "plan",
 			"projectId": "project_golden7d84",
 			"agentName": "claude-code",
 			"promptTemplate": "work on sd {seed_id}",

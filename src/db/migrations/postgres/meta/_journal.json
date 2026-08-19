@@ -330,6 +330,13 @@
 			"when": 1787172354069,
 			"tag": "0046_normal_imperial_guard",
 			"breakpoints": true
+		},
+		{
+			"idx": 47,
+			"version": "7",
+			"when": 1787179365706,
+			"tag": "0047_red_skrulls",
+			"breakpoints": true
 		}
 	]
 }

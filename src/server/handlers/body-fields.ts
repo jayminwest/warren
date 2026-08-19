@@ -36,6 +36,24 @@ export function optionalEnum<T extends string>(
 }
 
 /**
+ * An optional body field that must be a JSON array of non-empty strings
+ * (warren-de42: `POST /plan-runs` `issues`). Rejects non-array values and
+ * empty/duplicate-free-unchecked entries — only the shape; ordering and
+ * dedup semantics belong to the domain.
+ */
+export function optionalStringArray(
+	body: Record<string, unknown>,
+	key: string,
+): string[] | undefined {
+	const value = body[key];
+	if (value === undefined || value === null) return undefined;
+	if (!Array.isArray(value) || value.some((v) => typeof v !== "string")) {
+		throw new ValidationError(`field '${key}' must be an array of strings`);
+	}
+	return value as string[];
+}
+
+/**
  * An optional body field that must be a positive finite JSON number. The
  * first consumer is `POST /runs` `maxCostUsd` (the warren-a63d spend cap):
  * a cap of zero, a negative, or a string would otherwise coerce downstream

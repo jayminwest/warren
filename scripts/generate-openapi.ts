@@ -41,6 +41,7 @@ import {
 	CLONE_KINDS,
 	EVENT_STREAMS,
 	PLAN_RUN_CHILD_STATES,
+	PLAN_RUN_SOURCES,
 	PLAN_RUN_STATES,
 	PREVIEW_STATES,
 	PULL_REQUEST_LIFECYCLES,
@@ -231,7 +232,8 @@ function buildComponentSchemas(): Record<string, JsonSchema> {
 			type: "object",
 			properties: {
 				id: STRING,
-				planId: STRING,
+				planId: NULLABLE_STRING,
+				source: enumSchema(PLAN_RUN_SOURCES),
 				projectId: STRING,
 				agentName: STRING,
 				promptTemplate: STRING,
@@ -249,7 +251,7 @@ function buildComponentSchemas(): Record<string, JsonSchema> {
 			},
 			required: [
 				"id",
-				"planId",
+				"source",
 				"projectId",
 				"agentName",
 				"promptTemplate",

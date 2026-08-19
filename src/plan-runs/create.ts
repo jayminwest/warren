@@ -30,7 +30,7 @@
 
 import { NotFoundError, ValidationError } from "../core/errors.ts";
 import { assertPlanRunPromptTemplate } from "../core/plan-run-prompt.ts";
-import type { Plan, PlanStatus } from "../core/wire.ts";
+import type { PlanRunSource, PlanStatus } from "../core/wire.ts";
 import type { Repos } from "../db/repos/index.ts";
 import type { CreatePlanRunResult } from "../db/repos/plan-runs.ts";
 import type { ProjectRow } from "../db/schema.ts";
@@ -49,7 +49,19 @@ export const PLAN_RUN_ACCEPTED_PLAN_STATUSES: readonly PlanStatus[] = [
 
 export interface CreatePlanRunOrchestrationInput {
 	readonly projectId: string;
-	readonly planId: string;
+	/**
+	 * Tracker plan id (`pl-XXXX`) — the classic form. Mutually exclusive
+	 * with `issues`; exactly one of the two must be set (warren-de42).
+	 */
+	readonly planId?: string;
+	/**
+	 * warren-de42 (2026-08-04 decision): an explicit ordered issue-id list,
+	 * the plan-run form a `supportsPlans: false` tracker can still drive.
+	 * `getPlan` is skipped entirely; each id is validated via
+	 * `tracker.getIssue` and the child sequence is synthesized in list
+	 * order with the same PR-merge gating the plan path uses.
+	 */
+	readonly issues?: readonly string[];
 	readonly agentName: string;
 	/**
 	 * Operator-supplied prompt template. Must reference the child seed
@@ -122,11 +134,11 @@ async function refreshDispatchProject(
  * child. Extracted so `createPlanRun` stays under the cognitive-complexity
  * ceiling (warren-d3a6).
  */
-async function readDispatchablePlan(
+async function readPlanChildIds(
 	tracker: IssueTracker,
 	ctx: TrackerContext,
 	planId: string,
-): Promise<Plan> {
+): Promise<readonly string[]> {
 	if (!tracker.capabilities.supportsPlans) {
 		throw new ValidationError(
 			"tracker does not support plans; plan-runs require a plan-capable tracker",
@@ -149,19 +161,110 @@ async function readDispatchablePlan(
 			recoveryHint: "run `sd plan submit <seed-id>` to populate the plan's children",
 		});
 	}
-	return plan;
+	// Probe every child issue's status — if all are already closed there is
+	// nothing to dispatch. Each child is read in parallel; the statuses are
+	// normalized onto the neutral IssueStatus vocabulary, so `closed` here
+	// covers every tracker's terminal state.
+	const childStatuses = await Promise.all(
+		plan.children.map((seedId) =>
+			tracker.getIssue(ctx, seedId).then((issue) => ({ seedId, status: issue.status })),
+		),
+	);
+	const hasOpenChild = childStatuses.some((c) => c.status !== "closed");
+	if (!hasOpenChild) {
+		throw new PlanHasNoOpenChildrenError(
+			`plan ${planId} has no open children; every child seed is closed`,
+			{
+				recoveryHint: "re-open at least one child seed (sd update <id> --status open) and retry",
+			},
+		);
+	}
+	return plan.children;
 }
 
-export async function createPlanRun(
+/**
+ * The issues form of step (3): no plan read, no supportsPlans requirement —
+ * each id is validated through `tracker.getIssue` (a missing id throws
+ * `IssueNotFoundError` → 404) and the statuses drive the same
+ * "at least one open child" gate as the plan form.
+ */
+async function readDispatchableIssues(
+	tracker: IssueTracker,
+	ctx: TrackerContext,
+	issues: readonly string[],
+): Promise<readonly string[]> {
+	const seen = new Set<string>();
+	for (const id of issues) {
+		if (id.trim() === "") {
+			throw new ValidationError("issues[] entries must be non-empty issue ids");
+		}
+		if (seen.has(id)) {
+			throw new ValidationError(`issues[] contains duplicate id '${id}'`);
+		}
+		seen.add(id);
+	}
+	const statuses = await Promise.all(
+		issues.map((issueId) =>
+			tracker.getIssue(ctx, issueId).then((issue) => ({ issueId, status: issue.status })),
+		),
+	);
+	const hasOpen = statuses.some((s) => s.status !== "closed");
+	if (!hasOpen) {
+		throw new PlanHasNoOpenChildrenError(
+			"every issue in the posted list is closed; nothing to dispatch",
+			{
+				recoveryHint: "re-open at least one issue in the tracker and retry",
+			},
+		);
+	}
+	return issues.map((s) => s);
+}
+
+/**
+ * warren-de42 form disambiguation + step (3): exactly one of `planId` /
+ * `issues` drives the child sequence. The plan form requires a
+ * supportsPlans tracker and walks the plan; the issues form validates each
+ * posted id via `getIssue` and synthesizes the sequence in list order.
+ */
+async function readChildSequence(
+	tracker: IssueTracker,
+	ctx: TrackerContext,
 	input: CreatePlanRunOrchestrationInput,
-): Promise<CreatePlanRunResult> {
-	if (input.promptTemplate !== undefined) assertPlanRunPromptTemplate(input.promptTemplate);
+): Promise<{ source: PlanRunSource; planId: string | null; childIds: readonly string[] }> {
+	const hasPlanId = input.planId !== undefined && input.planId !== "";
+	const hasIssues = input.issues !== undefined;
+	if (hasPlanId === hasIssues) {
+		throw new ValidationError("exactly one of 'planId' or 'issues' is required", {
+			recoveryHint:
+				"pass planId for a plan-capable tracker, or issues: [id, ...] for an explicit ordered issue list",
+		});
+	}
+	if (hasIssues && (input.issues?.length ?? 0) === 0) {
+		throw new ValidationError("'issues' must contain at least one issue id");
+	}
+	if (hasPlanId && input.planId !== undefined) {
+		return {
+			source: "plan",
+			planId: input.planId,
+			childIds: await readPlanChildIds(tracker, ctx, input.planId),
+		};
+	}
+	return {
+		source: "issues",
+		planId: null,
+		childIds: await readDispatchableIssues(tracker, ctx, input.issues ?? []),
+	};
+}
 
-	// (1) project lookup — NotFoundError → 404.
+/**
+ * Steps (1)+(2) in isolation: project lookup + the tracker availability
+ * gate. Extracted so `createPlanRun` stays under the cognitive-complexity
+ * ceiling (warren-d3a6).
+ */
+async function requireTrackedProject(
+	input: CreatePlanRunOrchestrationInput,
+): Promise<{ project: ProjectRow; tracker: IssueTracker }> {
 	const project = await input.repos.projects.require(input.projectId);
-
-	// (2) tracker availability gate — for the git-native seeds tracker this
-	// is the hasSeeds check; a remote tracker carries its own state.
 	const tracker = input.issueTracker;
 	if (tracker === undefined) {
 		throw new ValidationError(
@@ -179,6 +282,15 @@ export async function createPlanRun(
 			},
 		);
 	}
+	return { project, tracker };
+}
+
+export async function createPlanRun(
+	input: CreatePlanRunOrchestrationInput,
+): Promise<CreatePlanRunResult> {
+	if (input.promptTemplate !== undefined) assertPlanRunPromptTemplate(input.promptTemplate);
+
+	const { project, tracker } = await requireTrackedProject(input);
 
 	const dispatchProject = await refreshDispatchProject(input, tracker, project);
 	const ctx: TrackerContext = {
@@ -186,26 +298,9 @@ export async function createPlanRun(
 		localPath: dispatchProject.localPath,
 	};
 
-	// (3) read the plan through the tracker.
-	const plan = await readDispatchablePlan(tracker, ctx, input.planId);
-	// Probe every child issue's status — if all are already closed there is
-	// nothing to dispatch. Each child is read in parallel; the statuses are
-	// normalized onto the neutral IssueStatus vocabulary, so `closed` here
-	// covers every tracker's terminal state.
-	const childStatuses = await Promise.all(
-		plan.children.map((seedId) =>
-			tracker.getIssue(ctx, seedId).then((issue) => ({ seedId, status: issue.status })),
-		),
-	);
-	const hasOpenChild = childStatuses.some((c) => c.status !== "closed");
-	if (!hasOpenChild) {
-		throw new PlanHasNoOpenChildrenError(
-			`plan ${input.planId} has no open children; every child seed is closed`,
-			{
-				recoveryHint: "re-open at least one child seed (sd update <id> --status open) and retry",
-			},
-		);
-	}
+	// (3) read the child sequence through the tracker — plan form walks the
+	// plan; issues form synthesizes the sequence from the posted list.
+	const { source, planId, childIds } = await readChildSequence(tracker, ctx, input);
 
 	// (4) resolve the agent from the global registry.
 	const agent = await input.repos.agents.get(input.agentName);
@@ -215,10 +310,11 @@ export async function createPlanRun(
 
 	// (5/6) persist.
 	return input.repos.planRuns.create({
-		planId: input.planId,
+		planId,
+		source,
 		projectId: project.id,
 		agentName: agent.name,
-		children: plan.children.map((seedId, index) => ({ seq: index + 1, seedId })),
+		children: childIds.map((seedId, index) => ({ seq: index + 1, seedId })),
 		...(input.promptTemplate !== undefined ? { promptTemplate: input.promptTemplate } : {}),
 		...(input.ref !== undefined ? { ref: input.ref } : {}),
 		...(input.providerOverride !== undefined ? { providerOverride: input.providerOverride } : {}),

@@ -253,6 +253,86 @@ describe("createPlanRun", () => {
 			}),
 		).rejects.toBeInstanceOf(ValidationError);
 	});
+
+	/* ----------------- the issues form (warren-de42) ----------------- */
+
+	test("creates a plan-run from an ordered issue list against SeedsTracker", async () => {
+		const result = await createPlanRun({
+			...baseInput(),
+			planId: undefined,
+			issues: ["wa-a", "wa-b"],
+		});
+		expect(result.planRun.planId).toBeNull();
+		expect(result.planRun.source).toBe("issues");
+		expect(result.children.map((c) => ({ seq: c.seq, seedId: c.seedId }))).toEqual([
+			{ seq: 1, seedId: "wa-a" },
+			{ seq: 2, seedId: "wa-b" },
+		]);
+		const next = await repos.planRuns.pickNextPending(result.planRun.id);
+		expect(next?.seedId).toBe("wa-a");
+	});
+
+	test("creates a plan-run from an issue list against a plans-incapable tracker (warren-de42)", async () => {
+		const result = await createPlanRun({
+			...baseInput(),
+			projectId: bareProjectId,
+			planId: undefined,
+			issues: ["gh-1", "gh-2"],
+			issueTracker: new RemoteFakeTracker("pl-acc", "active", [], {
+				supportsPlans: false,
+			}),
+		});
+		expect(result.planRun.source).toBe("issues");
+		expect(result.planRun.planId).toBeNull();
+		expect(result.children.map((c) => c.seedId)).toEqual(["gh-1", "gh-2"]);
+	});
+
+	test("rejects when both planId and issues are set", async () => {
+		await expect(createPlanRun({ ...baseInput(), issues: ["wa-a"] })).rejects.toBeInstanceOf(
+			ValidationError,
+		);
+	});
+
+	test("rejects when neither planId nor issues is set", async () => {
+		await expect(createPlanRun({ ...baseInput(), planId: undefined })).rejects.toBeInstanceOf(
+			ValidationError,
+		);
+	});
+
+	test("rejects an empty issues list", async () => {
+		await expect(
+			createPlanRun({ ...baseInput(), planId: undefined, issues: [] }),
+		).rejects.toBeInstanceOf(ValidationError);
+	});
+
+	test("rejects a duplicate id in the issues list", async () => {
+		await expect(
+			createPlanRun({ ...baseInput(), planId: undefined, issues: ["wa-a", "wa-a"] }),
+		).rejects.toBeInstanceOf(ValidationError);
+	});
+
+	test("rejects an issues list whose every issue is closed", async () => {
+		await expect(
+			createPlanRun({
+				...baseInput(),
+				planId: undefined,
+				issues: ["wa-c"],
+				issueTracker: new SeedsTracker(
+					sdFor("pl-acc", "active", { "wa-a": "open", "wa-b": "open", "wa-c": "closed" }),
+				),
+			}),
+		).rejects.toBeInstanceOf(PlanHasNoOpenChildrenError);
+	});
+
+	test("rejects an issues list containing an unknown issue id", async () => {
+		await expect(
+			createPlanRun({
+				...baseInput(),
+				planId: undefined,
+				issues: ["wa-a", "wa-missing"],
+			}),
+		).rejects.toThrow();
+	});
 });
 
 /** Fake hosted (non-git-native) tracker double for the domain tests (warren-2d98). */

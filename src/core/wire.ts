@@ -495,18 +495,14 @@ export function isActivePreviewState(state: PreviewState): state is PreviewActiv
  * Plan-run lifecycle (pl-a258 step 2 / warren-4d7c). One row per dispatched
  * `sd plan` walk; the coordinator (warren-2623) advances the row through
  * these states as it executes each child seed sequentially:
- *
- *   - `queued`     — row inserted by POST /plan-runs; first tick will flip
- *                    to `running` and dispatch the lowest-seq child.
- *   - `running`    — at least one child has been dispatched. The row stays
- *                    here until every child is `merged` / `skipped`, OR a
- *                    child terminal-fails / its PR closes without merge.
+ *   - `queued`     — inserted by POST /plan-runs; first tick flips to
+ *                    `running` and dispatches the lowest-seq child.
+ *   - `running`    — a child has been dispatched; stays until every child
+ *                    is `merged`/`skipped` OR one terminal-fails.
  *   - `succeeded`  — every child reached `merged` or `skipped`.
- *   - `failed`     — a child terminal-failed or its PR closed unmerged;
- *                    `failure_reason` carries the discriminator.
- *   - `cancelled`  — operator hit POST /plan-runs/:id/cancel.
- *
- * TS-only narrowing — no SQL CHECK constraint (mx-2ab984).
+ *   - `failed`     — a child terminal-failed or its PR closed unmerged
+ *                    (`failure_reason` carries the discriminator).
+ *   - `cancelled`  — operator hit POST /plan-runs/:id/cancel. No SQL CHECK (mx-2ab984).
  */
 export const PLAN_RUN_STATES = ["queued", "running", "succeeded", "failed", "cancelled"] as const;
 export type PlanRunState = (typeof PLAN_RUN_STATES)[number];
@@ -529,6 +525,10 @@ export type PlanRunActiveState = (typeof PLAN_RUN_ACTIVE_STATES)[number];
 export function isTerminalPlanRunState(state: PlanRunState): state is PlanRunTerminalState {
 	return (PLAN_RUN_TERMINAL_STATES as readonly PlanRunState[]).includes(state);
 }
+
+// warren-de42: `plan` = tracker plan id via getPlan; `issues` = explicit ordered issue-id list.
+export const PLAN_RUN_SOURCES = ["plan", "issues"] as const;
+export type PlanRunSource = (typeof PLAN_RUN_SOURCES)[number];
 
 /**
  * Values `GET /plan-runs?state=` accepts (warren-302a). `active` is the union

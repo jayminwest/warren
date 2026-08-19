@@ -2,7 +2,12 @@
  * Plan-run wire types (warren-8ffc), split out of `./types.ts`
  * (warren-fcc8) to keep that file under its line budget.
  */
-import type { PlanRunChildState, PlanRunState, PlanRunStateFilter } from "../core/wire.ts";
+import type {
+	PlanRunChildState,
+	PlanRunSource,
+	PlanRunState,
+	PlanRunStateFilter,
+} from "../core/wire.ts";
 import type { RunRow } from "./types.ts";
 
 /* Plan-runs — typed facade over /plan-runs (warren-8ffc).                 */
@@ -22,7 +27,10 @@ export {
 
 export interface PlanRunRow {
 	id: string;
-	planId: string;
+	/** Null on the warren-de42 `issues` form. */
+	planId: string | null;
+	/** warren-de42: 'plan' (classic plan id) | 'issues' (explicit issue-id list). */
+	source: PlanRunSource;
 	projectId: string;
 	agentName: string;
 	promptTemplate: string;
@@ -56,10 +64,12 @@ export interface PlanRunChildRow {
 	retryCount: number;
 }
 
-/** `POST /plan-runs` request body. Wire envelope is camelCase. */
+/** `POST /plan-runs` request body. Exactly one of `planId` / `issues` (warren-de42). */
 export interface CreatePlanRunInput {
 	project: string;
-	planId: string;
+	planId?: string;
+	/** warren-de42: ordered issue-id list; the tracker need not support plans. */
+	issues?: string[];
 	agent: string;
 	promptTemplate?: string;
 	ref?: string;

@@ -29,7 +29,7 @@ import {
 import { jsonResponse, ndjsonResponse } from "../response.ts";
 import { reserveEventStreamSlot } from "../stream-limits.ts";
 import type { RouteHandler, ServerDeps } from "../types.ts";
-import { optionalPositiveNumber } from "./body-fields.ts";
+import { optionalPositiveNumber, optionalStringArray } from "./body-fields.ts";
 import {
 	optionalString,
 	parseBoolean,
@@ -75,6 +75,10 @@ export function createPlanRunHandler(deps: ServerDeps): RouteHandler {
 		const providerOverride = optionalString(body, "providerOverride");
 		const modelOverride = optionalString(body, "modelOverride");
 		const dispatcherHandle = optionalString(body, "dispatcherHandle");
+		// warren-de42: planId | issues are mutually exclusive and exactly one
+		// is required — the domain (createPlanRun) owns that assertion.
+		const planId = optionalString(body, "planId");
+		const issues = optionalStringArray(body, "issues");
 		// warren-a63d: per-child spend cap; each child dispatch carries it as
 		// maxCostUsdOverride. Same boundary validation as POST /runs.
 		const maxCostUsd = optionalPositiveNumber(body, "maxCostUsd");
@@ -87,7 +91,8 @@ export function createPlanRunHandler(deps: ServerDeps): RouteHandler {
 		const gitSecret = await mintGitCredentialSecret(deps.forge, project.gitUrl);
 		const result = await createPlanRun({
 			projectId,
-			planId: requireString(body, "planId"),
+			...(planId !== undefined ? { planId } : {}),
+			...(issues !== undefined ? { issues } : {}),
 			agentName: requireString(body, "agent"),
 			...(promptTemplate !== undefined ? { promptTemplate } : {}),
 			...(ref !== undefined ? { ref } : {}),

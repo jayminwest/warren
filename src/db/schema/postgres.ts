@@ -43,6 +43,7 @@ import {
 	INBOX_STATES,
 	INDEX_NAMES,
 	PLAN_RUN_CHILD_STATES,
+	PLAN_RUN_SOURCES,
 	PLAN_RUN_STATES,
 	PREVIEW_STATES,
 	PULL_REQUEST_LIFECYCLES,
@@ -218,7 +219,9 @@ export const planRuns = pgTable(
 	TABLE_NAMES.planRuns,
 	{
 		id: text("id").primaryKey(),
-		planId: text("plan_id").notNull(),
+		planId: text("plan_id"),
+		// Mirror of sqlite plan_runs.source (warren-de42): 'plan' | 'issues'.
+		source: text("source", { enum: PLAN_RUN_SOURCES }).notNull().default("plan"),
 		projectId: text("project_id")
 			.notNull()
 			.references(() => projects.id, { onDelete: "cascade" }),

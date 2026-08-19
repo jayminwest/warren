@@ -163,7 +163,7 @@ function renderListPretty(sink: WriteSink, planRuns: readonly PlanRunRow[]): voi
 	const rows = planRuns.map((pr) => [
 		pr.id,
 		pr.state,
-		pr.planId,
+		pr.planId ?? "-",
 		pr.projectId,
 		pr.agentName,
 		pr.createdAt,

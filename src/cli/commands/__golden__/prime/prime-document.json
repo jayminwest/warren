@@ -178,6 +178,10 @@
           "description": "registered agent name"
         },
         {
+          "flags": "--issues <ids>",
+          "description": "comma-separated ordered issue-id list (plan-run without a plan-capable tracker)"
+        },
+        {
           "flags": "--prompt-template <text>",
           "description": "per-child prompt template override"
         },

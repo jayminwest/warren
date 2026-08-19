@@ -167,17 +167,18 @@ warren plan [options] [command]
 dispatch a serial plan-run against a remote warren and tail events as NDJSON
 
 ```bash
-warren plan run [options] <plan-id>
+warren plan run [options] [plan-id]
 ```
 
 | Argument | Required | Description |
 | --- | --- | --- |
-| `<plan-id>` | yes | seeds plan id (pl_xxx) |
+| `[plan-id]` |  | seeds plan id (pl_xxx); mutually exclusive with --issues |
 
 | Flag | Required | Default | Description |
 | --- | --- | --- | --- |
 | `--project <id>` | yes |  | project id (prj_xxx) |
 | `--agent <name>` | yes |  | registered agent name |
+| `--issues <ids>` |  |  | comma-separated ordered issue-id list (plan-run without a plan-capable tracker) |
 | `--prompt-template <text>` |  |  | per-child prompt template override |
 | `--ref <git-ref>` |  |  | git ref to clone child workspaces from |
 | `--provider <name>` |  |  | per-run override of agent frontmatter.provider |

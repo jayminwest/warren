@@ -20,7 +20,7 @@
  * pretty` renderer lands separately in warren-ae0a.
  */
 
-import type { WarrenClient } from "../../client/index.ts";
+import type { CreatePlanRunInput, WarrenClient } from "../../client/index.ts";
 import type { PlanRunState } from "../../client/types.ts";
 import type { CliContext } from "../output.ts";
 import {
@@ -38,7 +38,10 @@ import { type RemoteTailDeps, tailOutcomeExit, tailWithDetach } from "./remote-t
 export type { SigintDisposer } from "./remote-tail.ts";
 
 export interface PlanRunArgs {
-	readonly planId: string;
+	/** Seeds plan id — mutually exclusive with `issues` (warren-de42). */
+	readonly planId?: string;
+	/** warren-de42: ordered issue-id list; drives the walk without a plan-capable tracker. */
+	readonly issues?: string[];
 	readonly project: string;
 	readonly agent: string;
 	readonly promptTemplate?: string;
@@ -51,6 +54,29 @@ export interface PlanRunArgs {
 	readonly follow: boolean;
 	/** Output mode for the dispatch summary + event stream. Default `ndjson`. */
 	readonly output?: PlanRunOutput;
+}
+
+/**
+ * warren-de42: usage validation for the two mutually exclusive source forms.
+ * Returns the error message, or undefined when the args are usable.
+ */
+function validatePlanRunArgs(args: PlanRunArgs): string | undefined {
+	if (args.project === "" || args.agent === "") {
+		return "--project and --agent are both required";
+	}
+	const hasPlanId = args.planId !== undefined && args.planId !== "";
+	const hasIssues = args.issues !== undefined && args.issues.length > 0;
+	if (hasPlanId === hasIssues) {
+		return "exactly one of <plan-id> or --issues <a,b,c> is required";
+	}
+	return undefined;
+}
+
+/** warren-de42: the plan-id / issues source fields for the create body. */
+function sourceFields(args: PlanRunArgs): Pick<CreatePlanRunInput, "planId" | "issues"> {
+	return args.planId !== undefined && args.planId !== ""
+		? { planId: args.planId }
+		: { issues: args.issues ?? [] };
 }
 
 export interface PlanCancelArgs {
@@ -82,11 +108,11 @@ export async function runPlanRun(
 	deps: PlanRunDeps,
 	args: PlanRunArgs,
 ): Promise<PlanRunResult> {
-	if (args.planId === "" || args.project === "" || args.agent === "") {
-		context.stdio.stderr.write("warren: plan-id, --project, and --agent are all required\n");
+	const usage = validatePlanRunArgs(args);
+	if (usage !== undefined) {
+		context.stdio.stderr.write(`warren: ${usage}\n`);
 		return { exitCode: EXIT_USAGE };
 	}
-
 	if (!(await probeOrReport(context, deps.client, deps.probeTimeoutMs))) {
 		return { exitCode: EXIT_SERVER_UNREACHABLE };
 	}
@@ -96,7 +122,7 @@ export async function runPlanRun(
 	let planRunId: string;
 	try {
 		const created = await deps.client.createPlanRun({
-			planId: args.planId,
+			...sourceFields(args),
 			project: args.project,
 			agent: args.agent,
 			...(args.promptTemplate !== undefined ? { promptTemplate: args.promptTemplate } : {}),

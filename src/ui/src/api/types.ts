@@ -25,6 +25,7 @@ export {
 	PLAN_RUN_ACTIVE_STATES,
 	PLAN_RUN_TERMINAL_STATES,
 	type PlanRunChildState,
+	type PlanRunSource,
 	type PlanRunState,
 	type PlanRunStateFilter,
 	PREVIEW_ACTIVE_STATES,
@@ -43,6 +44,7 @@ import type {
 	ErrorEnvelope,
 	EventStream,
 	PlanRunChildState,
+	PlanRunSource,
 	PlanRunState,
 	PreviewState,
 	PullRequestLifecycle,
@@ -633,7 +635,9 @@ export interface RunTriggerResponse {
 
 export interface PlanRunRow {
 	id: string;
-	planId: string;
+	/** Null on the warren-de42 `issues` form (source: 'plan' | 'issues'). */
+	planId: string | null;
+	source: PlanRunSource;
 	projectId: string;
 	agentName: string;
 	promptTemplate: string;
@@ -667,10 +671,12 @@ export interface PlanRunChildRow {
 	retryCount: number;
 }
 
-/** `POST /plan-runs` request body (warren-f923). */
+/** `POST /plan-runs` request body (warren-f923). Exactly one of `planId` / `issues` (warren-de42). */
 export interface CreatePlanRunInput {
 	project: string;
-	planId: string;
+	planId?: string;
+	/** warren-de42: ordered issue-id list; the tracker need not support plans. */
+	issues?: string[];
 	agent: string;
 	promptTemplate?: string;
 	ref?: string;

@@ -39,6 +39,7 @@ import { and, asc, eq, inArray } from "drizzle-orm";
 import { NotFoundError, StateTransitionError, ValidationError } from "../../core/errors.ts";
 import { generateId } from "../../core/ids.ts";
 import { DEFAULT_PLAN_RUN_PROMPT_TEMPLATE } from "../../core/plan-run-prompt.ts";
+import type { PlanRunSource } from "../../core/wire.ts";
 import type { SqliteDrizzleDb } from "../client.ts";
 import type { PlanRunChildRow, PlanRunChildState, PlanRunRow, PlanRunState } from "../schema.ts";
 import type { DrizzleAdapter } from "./drizzle-adapter.ts";
@@ -107,7 +108,13 @@ export interface CreatePlanRunChildInput {
 
 export interface CreatePlanRunInput {
 	id?: string;
-	planId: string;
+	/**
+	 * Tracker plan id (`pl-XXXX`). Null on the warren-de42 `issues` form —
+	 * the child sequence came from an explicit ordered issue-id list.
+	 */
+	planId?: string | null;
+	/** warren-de42: 'plan' (classic) | 'issues' (explicit issue-id list). */
+	source?: PlanRunSource;
 	projectId: string;
 	agentName: string;
 	promptTemplate?: string;
@@ -200,7 +207,8 @@ export class PlanRunsRepo {
 		const id = input.id ?? generateId("planRun");
 		const planRunRow: PlanRunRow = {
 			id,
-			planId: input.planId,
+			planId: input.planId ?? null,
+			source: input.source ?? "plan",
 			projectId: input.projectId,
 			agentName: input.agentName,
 			promptTemplate: input.promptTemplate ?? DEFAULT_PLAN_RUN_PROMPT_TEMPLATE,
@@ -265,7 +273,7 @@ export class PlanRunsRepo {
 	 */
 	async resolvePlanForRunIds(
 		runIds: readonly string[],
-	): Promise<{ runId: string; planId: string; planRunId: string }[]> {
+	): Promise<{ runId: string; planId: string | null; planRunId: string }[]> {
 		if (runIds.length === 0) return [];
 		const rows = await this.adapter.pickAll(
 			this.db
@@ -278,7 +286,7 @@ export class PlanRunsRepo {
 				.innerJoin(this.planRuns, eq(this.planRuns.id, this.planRunChildren.planRunId))
 				.where(inArray(this.planRunChildren.runId, runIds as string[])),
 		);
-		const out: { runId: string; planId: string; planRunId: string }[] = [];
+		const out: { runId: string; planId: string | null; planRunId: string }[] = [];
 		for (const r of rows) {
 			if (r.runId === null) continue;
 			out.push({ runId: r.runId, planId: r.planId, planRunId: r.planRunId });
@@ -343,7 +351,8 @@ export class PlanRunsRepo {
 				.from(this.planRuns)
 				.where(eq(this.planRuns.projectId, projectId)),
 		);
-		return rows.map((r) => r.planId);
+		// warren-de42: null plan ids (the `issues` form) are not plan ids.
+		return rows.map((r) => r.planId).filter((id): id is string => id !== null);
 	}
 
 	/**
