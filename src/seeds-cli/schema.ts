@@ -165,23 +165,16 @@ export const PlanListEnvelopeSchema = z
 	.passthrough();
 
 export type PlanListEnvelope = z.infer<typeof PlanListEnvelopeSchema>;
+export type PlanListPlan = z.infer<typeof PlanListPlanSchema>;
 
 /**
  * Projected, wire-lean plan summary returned by `listPlans` — strips the
  * `sd plan list` `sections` blob and any other passthrough fields so the
- * HTTP response stays small.
+ * HTTP response stays small. Canonical declaration lives in
+ * `src/core/wire-tracker.ts` (warren-6c29); re-exported here so the
+ * facade keeps its historical import surface.
  */
-export interface PlanSummary {
-	readonly id: string;
-	readonly status: string;
-	readonly seed?: string;
-	readonly template?: string;
-	readonly revision?: number;
-	readonly name?: string;
-	readonly childCount: number;
-	readonly createdAt?: string;
-	readonly updatedAt?: string;
-}
+export type { PlanSummary } from "../core/wire.ts";
 
 export interface ScheduledSeed {
 	readonly id: string;

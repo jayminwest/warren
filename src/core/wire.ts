@@ -59,9 +59,8 @@ export type RunMode = (typeof RUN_MODES)[number];
 // The actor vocabulary of GET /whoami (warren-3754) lives in
 // ./wire-actor.ts (file-size budget); re-exported for one canonical home.
 export * from "./wire-actor.ts";
-// The steering-inbox vocabulary (warren-3d0b, warren-3305) lives in
-// ./wire-inbox.ts (file-size budget); re-exported here so the canonical
-// import path stays `src/core/wire.ts`.
+// The steering-inbox vocabulary (warren-3d0b) lives in ./wire-inbox.ts;
+// re-exported so the canonical import path stays `src/core/wire.ts`.
 export * from "./wire-inbox.ts";
 // The analytics-insight vocabulary (warren-be04) lives in
 // ./wire-insight.ts (file-size budget); re-exported for one canonical home.
@@ -69,6 +68,8 @@ export * from "./wire-insight.ts";
 // The runtime-id vocabulary (warren-c4be) lives in ./wire-runtime.ts
 // (file-size budget); re-exported for one canonical home.
 export * from "./wire-runtime.ts";
+// The IssueTracker seam vocabulary (warren-6c29) lives in ./wire-tracker.ts.
+export * from "./wire-tracker.ts";
 
 /**
  * Chain-kind discriminator for a run that carries a `parent_run_id`
