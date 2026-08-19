@@ -109,6 +109,8 @@ export interface CreateRunInput {
 	targetBranch?: string | null;
 	/** Dispatch-supplied git ref the workspace clones from (warren-afeb); null = none. */
 	ref?: string | null;
+	/** Base-commit pin (warren-aaf7): 40-hex SHA the workspace is cut at; null = none. */
+	baseCommit?: string | null;
 	/** Declared provider/model frozen at dispatch (warren-2ede / pl-103e).
 	 * Null = agent declares none (or a historical row). */
 	provider?: string | null;
@@ -175,6 +177,7 @@ export class RunsRepo {
 			prUrl: null,
 			targetBranch: input.targetBranch ?? null,
 			ref: input.ref ?? null,
+			baseCommit: input.baseCommit ?? null,
 			provider: input.provider ?? null,
 			model: input.model ?? null,
 			// Merge-watcher facts (warren-3bc6): unset until post_reap settles the PR.

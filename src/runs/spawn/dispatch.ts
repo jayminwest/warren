@@ -47,8 +47,7 @@ import type { SpawnRunInput, SpawnRunResult } from "./types.ts";
  * `spawn.provisioned` log lines (warren-c42c). Multi-worker placement was
  * retired with the K8s migration (warren-76c5 / warren-3743) — a run has no
  * "worker" on either backend — so this is a fixed log field, not a routing
- * decision. Kept a local neutral constant now that the spawn path no longer
- * imports burrow-client's `LOCAL_WORKER_NAME`.
+ * decision. A local neutral constant since the burrow-client import was cut.
  */
 const WORKER_PLACEMENT_LABEL = "local";
 
@@ -79,7 +78,7 @@ export async function spawnRun(input: SpawnRunInput): Promise<SpawnRunResult> {
 	// before burrow forks the new run branch off it. The parent link is also
 	// recorded on the new run row below so the UI can render a chain indicator
 	// and chain cost/token totals are derivable by walking the link.
-	const baseRef = await resolveContinuationRef(input, project, targetBranch);
+	const baseRef = input.baseCommit ?? (await resolveContinuationRef(input, project, targetBranch));
 
 	// Refresh the project clone to origin/<ref> so the run sees the
 	// latest commits. Skipped only when the caller didn't wire the
@@ -175,6 +174,9 @@ export async function spawnRun(input: SpawnRunInput): Promise<SpawnRunResult> {
 		// warren-afeb: freeze the explicit dispatch-supplied clone ref onto the
 		// row so POST /runs and GET /runs/:id can echo that it took.
 		...(input.ref !== undefined ? { ref: input.ref } : {}),
+		// warren-aaf7: freeze the base-commit pin so the projections can echo
+		// it; the PR base resolution (reap) reads `ref` only, never this.
+		...(input.baseCommit !== undefined ? { baseCommit: input.baseCommit } : {}),
 		now: input.now?.(),
 	});
 	// warren-a0a2: expose the run id the instant the row exists so the cron

@@ -132,6 +132,13 @@ export interface SpawnRunInput {
 	/** Branch, tag, or SHA to refresh to. Defaults to the project's tracked default branch. */
 	readonly ref?: string;
 	/**
+	 * Base-commit pin (warren-aaf7): a full 40-hex commit SHA the workspace
+	 * is cut at. Overrides `ref` (and the continuation parent branch) for the
+	 * workspace materialization ONLY — the PR base stays `ref`-shaped, so a
+	 * SHA never reaches the GitHub PR call. Persisted on `runs.base_commit`.
+	 */
+	readonly baseCommit?: string;
+	/**
 	 * Continuation parent (warren-4b11). When set, this run is a "re-run with
 	 * follow-up" of a prior terminal run: its workspace is seeded from the
 	 * parent's pushed branch (`${prefix}/${parentRunId}`) instead of the
