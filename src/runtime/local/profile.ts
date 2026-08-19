@@ -118,6 +118,13 @@ function isUnderSystemMounts(path: string): boolean {
 export function resolveToolchainPaths(
 	runtimeId: AcceptedRuntimeId,
 	which: (name: string) => string | null = (name) => Bun.which(name),
+	/**
+	 * Host bun install root. Defaults to `$BUN_INSTALL` or `~/.bun`. Injected
+	 * for tests; production uses the real host path so the sandbox can read
+	 * bun-shebang CLI sources under `install/global/node_modules` (burrow-aa46)
+	 * and so macOS seatbelt grants the same root (warren-bea7).
+	 */
+	hostBunInstall: string = defaultHostBunInstall(),
 ): string[] {
 	const names = [...(AGENT_BINARIES[runtimeId] ?? []), ...COMMON_BINARIES];
 	const dirs: string[] = [];
@@ -142,7 +149,24 @@ export function resolveToolchainPaths(
 			// unresolvable symlink — the name dir above is the best we can do
 		}
 	}
+	// Bun global CLIs (sd, ml, …) are bun-shebang stubs under `<BUN_INSTALL>/bin`
+	// that import their .ts sources from `install/global/node_modules`. Mount the
+	// modules root whenever the install tree exists so those stubs resolve inside
+	// the sandbox (burrow-aa46). Always mount the install root itself when present
+	// so bun's getpwuid-based ~/.bun lookup (not $HOME) succeeds on macOS
+	// (warren-bea7) and on Linux bwrap where host home is otherwise invisible.
+	if (hostBunInstall !== "" && existsSync(hostBunInstall)) {
+		add(hostBunInstall);
+		const globalModules = join(hostBunInstall, "install/global/node_modules");
+		if (existsSync(globalModules)) add(globalModules);
+	}
 	return dirs;
+}
+
+function defaultHostBunInstall(): string {
+	const fromEnv = process.env.BUN_INSTALL;
+	if (typeof fromEnv === "string" && fromEnv.length > 0) return fromEnv;
+	return join(homedir(), ".bun");
 }
 
 /* -------------------------------------------------------------------------- */

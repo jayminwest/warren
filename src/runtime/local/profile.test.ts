@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { MaterializedWorkspace } from "../../workspace/materialize.ts";
@@ -69,21 +69,45 @@ describe("resolveEnvPassthrough", () => {
 });
 
 describe("resolveToolchainPaths", () => {
+	// Empty third arg suppresses the host bun-install auto-grant so these
+	// tests stay hermetic regardless of whether ~/.bun exists on the runner.
 	test("adds the resolved bin dir for agent + common binaries", () => {
 		const which = (name: string): string | null =>
 			name === "claude" ? "/home/dev/.local/bin/claude" : null;
-		const dirs = resolveToolchainPaths("claude-code", which);
+		const dirs = resolveToolchainPaths("claude-code", which, "");
 		expect(dirs).toContain("/home/dev/.local/bin");
 	});
 
 	test("keeps system-mounted bin dirs for the PATH contribution", () => {
 		const which = (name: string): string | null => (name === "git" ? "/usr/bin/git" : null);
-		const dirs = resolveToolchainPaths("pi", which);
+		const dirs = resolveToolchainPaths("pi", which, "");
 		expect(dirs).toContain("/usr/bin");
 	});
 
 	test("skips binaries that do not resolve and dedupes dirs", () => {
-		const dirs = resolveToolchainPaths("claude-code", () => null);
+		const dirs = resolveToolchainPaths("claude-code", () => null, "");
+		expect(dirs).toEqual([]);
+	});
+
+	test("adds the host bun install root and global modules when present (warren-bea7)", () => {
+		const root = mkdtempSync(join(tmpdir(), "warren-bun-install-"));
+		try {
+			const globalModules = join(root, "install/global/node_modules");
+			mkdirSync(globalModules, { recursive: true });
+			const dirs = resolveToolchainPaths("claude-code", () => null, root);
+			expect(dirs).toContain(root);
+			expect(dirs).toContain(globalModules);
+		} finally {
+			rmSync(root, { recursive: true, force: true });
+		}
+	});
+
+	test("skips a missing host bun install root", () => {
+		const dirs = resolveToolchainPaths(
+			"claude-code",
+			() => null,
+			"/no/such/bun-install-root-warren-bea7",
+		);
 		expect(dirs).toEqual([]);
 	});
 });

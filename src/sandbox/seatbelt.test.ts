@@ -1,5 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { buildSeatbeltArgv, buildSeatbeltProfile, SYSTEM_READ_SUBPATHS } from "./seatbelt.ts";
+import { realpathSync } from "node:fs";
+import {
+	buildSeatbeltArgv,
+	buildSeatbeltProfile,
+	resolveHostBunInstall,
+	SYSTEM_READ_SUBPATHS,
+} from "./seatbelt.ts";
 import type { SandboxProfile } from "./types.ts";
 
 function baseProfile(over: Partial<SandboxProfile> = {}): SandboxProfile {
@@ -113,6 +119,34 @@ describe("buildSeatbeltProfile", () => {
 		expect(out).toContain(
 			'(allow file-read* (subpath "/Users/u/.bun/install/global/node_modules"))',
 		);
+	});
+
+	test("host bun install root is always readable (warren-bea7)", () => {
+		// bun's `bun run` path and bun-shebang CLIs resolve the real user's
+		// ~/.bun via getpwuid, not $HOME. Grant only that install root — never
+		// the whole host home — so quality gates and sd/ml work in-sandbox.
+		const out = buildSeatbeltProfile(baseProfile());
+		// Profile canonicalizes the path the same way sandbox.ts does for other
+		// binds (seatbelt matches realpath forms).
+		const raw = resolveHostBunInstall();
+		let bunInstall = raw;
+		try {
+			bunInstall = realpathSync(raw);
+		} catch {
+			// missing install root still renders the unresolved path
+		}
+		expect(out).toContain(`(allow file-read* (subpath "${bunInstall}"))`);
+		// Must not open the whole host home as a subpath grant.
+		const hostHome = bunInstall.endsWith("/.bun") ? bunInstall.slice(0, -"/.bun".length) : null;
+		if (hostHome !== null && hostHome.length > 1) {
+			expect(out).not.toContain(`(allow file-read* (subpath "${hostHome}"))`);
+		}
+	});
+
+	test("resolveHostBunInstall prefers BUN_INSTALL over ~/.bun", () => {
+		expect(resolveHostBunInstall({ BUN_INSTALL: "/opt/bun" }, "/Users/u")).toBe("/opt/bun");
+		expect(resolveHostBunInstall({}, "/Users/u")).toBe("/Users/u/.bun");
+		expect(resolveHostBunInstall({ BUN_INSTALL: "" }, "/Users/u")).toBe("/Users/u/.bun");
 	});
 
 	test("temp roots get read+write so claude-code's Bash output round-trip works (burrow-8452)", () => {
