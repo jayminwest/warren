@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# Pre-push gate: refuse a push that would land a corrupt .seeds/issues.jsonl
+# (warren-53c0). Companion to the lint-gate check:seeds-integrity (warren-a71f)
+# — that one runs in CI and at pre-commit, but a direct push to main bypasses
+# both. This hook is the one that must survive a direct-to-main push, because
+# the corruption it catches (duplicate / contradictory rows from a
+# merge=union auto-merge) is invisible in a diff.
+#
+# Range detection + the integrity scan live in scripts/pre-push-seeds-guard.ts
+# so the pure helpers can be unit-tested. The hook itself only strips the
+# inherited GIT_* vars (same reason as pre-commit / warren-8664) and execs.
+set -euo pipefail
+
+# Git exports GIT_DIR, GIT_WORK_TREE, and GIT_INDEX_FILE to every hook it runs,
+# and an inherited GIT_DIR outranks the `cwd` a child process passes. Strip
+# them so the guard (and the integrity check it may spawn) see a plain shell.
+exec env -u GIT_DIR -u GIT_WORK_TREE -u GIT_INDEX_FILE -u GIT_PREFIX \
+	bun run scripts/pre-push-seeds-guard.ts
