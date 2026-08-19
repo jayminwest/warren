@@ -47,8 +47,7 @@ import type { SpawnRunInput, SpawnRunResult } from "./types.ts";
  * `spawn.provisioned` log lines (warren-c42c). Multi-worker placement was
  * retired with the K8s migration (warren-76c5 / warren-3743) — a run has no
  * "worker" on either backend — so this is a fixed log field, not a routing
- * decision. Kept a local neutral constant now that the spawn path no longer
- * imports burrow-client's `LOCAL_WORKER_NAME`.
+ * decision. A local neutral constant since the burrow-client import was cut.
  */
 const WORKER_PLACEMENT_LABEL = "local";
 
