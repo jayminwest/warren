@@ -37,6 +37,13 @@ export {
 	normalizeDirectory,
 } from "./analytics/directory-difficulty.ts";
 export {
+	buildDispatchAnalytics,
+	type DispatchAnalytics,
+	type DispatchAnalyticsRow,
+	type DispatchCountBucket,
+	NONE_KEY as DISPATCH_ANALYTICS_NONE_KEY,
+} from "./analytics/dispatch-analytics.ts";
+export {
 	buildInsights,
 	buildSteeringSignals,
 	countSteeringByRun,

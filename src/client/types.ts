@@ -22,6 +22,11 @@ import type {
 	RunMode,
 	RunState,
 } from "../core/wire.ts";
+import type {
+	DispatchAnalytics,
+	DispatchAnalyticsRow,
+	DispatchCountBucket,
+} from "../runs/analytics/dispatch-analytics.ts";
 
 export {
 	type ActorCapabilities,
@@ -337,6 +342,18 @@ export interface ListRunsResponse {
 	costTotalUsd: number | null;
 	costPricedCount: number;
 }
+
+/* ----------------------------------------------------------------------- */
+/* Dispatch-context analytics (warren-5423 / pl-a37b Track A step 5).      */
+/* Pure aggregator owns the body shape; re-export so the SDK surface is   */
+/* the single consumer-facing name (wire-vocabulary rule).                */
+/* ----------------------------------------------------------------------- */
+export type { DispatchAnalytics, DispatchAnalyticsRow, DispatchCountBucket };
+
+/** `GET /analytics/dispatch` — filter echo wrapped around the pure rollup. */
+export type DispatchAnalyticsResponse = DispatchAnalytics & {
+	readonly filter: { projectId: string | null; from: string | null; to: string | null };
+};
 
 /* ----------------------------------------------------------------------- */
 /* Plan-runs — typed facade over /plan-runs (warren-8ffc).                 */

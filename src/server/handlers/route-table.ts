@@ -50,6 +50,7 @@ import {
 	getRunHandler,
 	listBehaviorAnalyticsHandler,
 	listCostAnalyticsHandler,
+	listDispatchAnalyticsHandler,
 	listRunAnalyticsHandler,
 	listRunsHandler,
 	pollRunInboxHandler,
@@ -97,7 +98,8 @@ interface RouteEntry {
  *   `/metrics` are operator diagnostics (the latter deliberately not
  *   auth-exempt, warren-682a). `/analytics/cost` is the instance-wide USD
  *   rollup (per-run cost on a run detail is a deliberate exception).
- *   `/analytics/behavior` and the per-project seeds / ready-plans reads
+ *   `/analytics/behavior`, `/analytics/dispatch` (dispatch-context log),
+ *   and the per-project seeds / ready-plans reads
  *   surface project internals. `/projects/:id/triggers` and
  *   `/projects/:id/warren-config` carry trigger prompt text, `qualityGate`
  *   command strings, and admission caps. `/preview/config` discloses
@@ -216,6 +218,12 @@ const ROUTE_TABLE: readonly RouteEntry[] = [
 		pattern: "/analytics/behavior",
 		policy: "readOperator",
 		build: listBehaviorAnalyticsHandler,
+	},
+	{
+		method: "GET",
+		pattern: "/analytics/dispatch",
+		policy: "readOperator",
+		build: listDispatchAnalyticsHandler,
 	},
 	{ method: "GET", pattern: "/runs", policy: "readPublic", build: listRunsHandler },
 	// warren-f566: the global lifecycle notification stream (NDJSON, one

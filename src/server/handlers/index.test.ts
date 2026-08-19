@@ -96,6 +96,7 @@ describe("ROUTE_TABLE policy classification", () => {
 		"GET /metrics", // cumulative cost + operational shape (warren-682a)
 		"GET /analytics/cost", // instance-wide USD rollup
 		"GET /analytics/behavior", // cross-run tool/command mining
+		"GET /analytics/dispatch", // dispatch-context log (warren-5423)
 		"GET /runs/:id/inbox", // DESTRUCTIVE ON READ — drains the steering queue
 		"GET /runs/:id/finalize-intent", // pod callback; pollable to race the pod
 		"GET /projects/:id/triggers", // trigger prompts + qualityGate commands
