@@ -74,6 +74,27 @@ describe("spawnRun: instrumentation (warren-c686)", () => {
 		expect(typeof dispatched?.obj.duration_ms).toBe("number");
 	});
 
+	test("binds dispatcherHandle + dispatchOrigin onto post-placement log lines (warren-9ce3)", async () => {
+		const { client } = makeSandboxClient();
+		const { logger, lines } = makeRecordingLogger({ request_id: "req_prov" });
+		const result = await spawnRun({
+			repos,
+			runtimeProvider: makeProvider(client),
+			agentName: "refactor-bot",
+			projectId: "prj_xxxxxxxxxxxx",
+			prompt: "p",
+			dispatcherHandle: "@operator",
+			dispatchOrigin: "api",
+			logger,
+		});
+
+		const provisioned = lines.find((l) => l.obj.event === "spawn.provisioned");
+		expect(provisioned?.obj.run_id).toBe(result.run.id);
+		expect(provisioned?.obj.dispatcher_handle).toBe("@operator");
+		expect(provisioned?.obj.dispatch_origin).toBe("api");
+		expect(provisioned?.obj.request_id).toBe("req_prov");
+	});
+
 	test("logs the rollback branch when burrow dispatch fails", async () => {
 		const { client } = makeSandboxClient({
 			runsCreateStatus: 500,

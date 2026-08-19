@@ -303,7 +303,11 @@ async function dispatchProviderRetry(
 			agentName: run.agentName,
 			projectId: run.projectId,
 			prompt: run.prompt,
+			// trigger is inherited from the original (lossy for provenance) —
+			// dispatchOrigin is the explicit "this row is a provider retry"
+			// stamp (warren-9ce3).
 			trigger: run.trigger,
+			dispatchOrigin: "retry_provider",
 			...(run.seedId !== null ? { seedId: run.seedId } : {}),
 			mode: run.mode,
 			// Lineage on the row (warren-e96f `replicate` semantics): a fresh

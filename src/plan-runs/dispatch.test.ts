@@ -123,6 +123,8 @@ describe("createPlanRunSpawn", () => {
 
 		expect(captured).toHaveLength(1);
 		expect(captured[0]?.trigger).toBe("plan-run");
+		// warren-9ce3: underscore spelling distinct from the hyphenated trigger.
+		expect(captured[0]?.dispatchOrigin).toBe("plan_run");
 		expect(captured[0]?.dispatcherHandle).toBe(planRun.dispatcherHandle);
 		expect(captured[0]?.runtimeProvider).toBe(runtimeProvider);
 		// warren-a63d: the plan-run's per-child spend cap rides the override slot.

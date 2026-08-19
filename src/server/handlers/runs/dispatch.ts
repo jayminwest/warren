@@ -128,64 +128,75 @@ async function resolveDispatchFields(
 	};
 }
 
+/**
+ * Assemble the `spawnRun` input bag for `POST /runs` (warren-9ce3 origin +
+ * optional field forwarding). Extracted so `createRunHandler`'s request
+ * body stays under the cognitive-complexity ceiling.
+ */
+async function buildHttpSpawnOptions(
+	deps: ServerDeps,
+	body: Record<string, unknown>,
+	logger: Parameters<typeof spawnRun>[0]["logger"],
+): Promise<Parameters<typeof spawnRun>[0]> {
+	const seedId = optionalString(body, "seedId");
+	const ref = optionalString(body, "ref");
+	// warren-709e (#419): an explicit target branch the run must push to
+	// instead of the composed `${prefix}/${runId}`.
+	const targetBranch = optionalString(body, "targetBranch");
+	const dispatcherHandle = optionalString(body, "dispatcherHandle");
+	// warren-97a2: the HTTP-collapsed `warren run` labels its dispatches
+	// trigger=cli; omitting the field preserves the spawnRun default.
+	const trigger = optionalString(body, "trigger");
+	const {
+		agentName,
+		projectId,
+		prompt,
+		providerOverride,
+		modelOverride,
+		maxCostUsd,
+		parentRunId,
+		cloneKind,
+	} = await resolveDispatchFields(deps, body);
+
+	// warren-9ce3: trigger=cli → origin "cli"; every other POST /runs is "api".
+	const dispatchOrigin = trigger === "cli" ? "cli" : "api";
+	return {
+		repos: deps.repos,
+		// warren-245d: thread the resolved runtime provider so POST /runs
+		// dispatches through the K8sProvider under WARREN_RUNTIME=k8s.
+		runtimeProvider: deps.runtimeProvider,
+		agentName,
+		projectId,
+		prompt,
+		mode: "batch",
+		projectsConfig: deps.projectsConfig,
+		projectSpawn: deps.spawn ?? defaultSpawn,
+		...(await mintSpawnGithubToken(deps, projectId)),
+		// warren-b27c: shape-checked, not cast.
+		metadata: optionalObject(body, "metadata"),
+		now: deps.now,
+		ref,
+		providerOverride,
+		modelOverride,
+		...(trigger !== undefined ? { trigger } : {}),
+		...(maxCostUsd !== undefined ? { maxCostUsdOverride: maxCostUsd } : {}),
+		seedId,
+		...(targetBranch !== undefined ? { targetBranch } : {}),
+		...(parentRunId !== undefined ? { parentRunId } : {}),
+		...(cloneKind !== undefined ? { cloneKind } : {}),
+		dispatcherHandle,
+		dispatchOrigin,
+		warrenConfigs: deps.warrenConfigs,
+		runBranchPrefixDefault: deps.runBranchPrefixDefault,
+		seedsCli: deps.seedsCli,
+		logger,
+	};
+}
+
 export function createRunHandler(deps: ServerDeps): RouteHandler {
 	return async (ctx) => {
 		const body = await readJsonBody(ctx);
-		const seedId = optionalString(body, "seedId");
-		const ref = optionalString(body, "ref");
-		// warren-709e (#419): an explicit target branch the run must push to
-		// instead of the composed `${prefix}/${runId}`. Persisted on the run row
-		// and used both to pin the burrow workspace branch (composeRunBranch) and
-		// to default the root-run base ref when no `ref` is supplied.
-		const targetBranch = optionalString(body, "targetBranch");
-		const dispatcherHandle = optionalString(body, "dispatcherHandle");
-		// warren-97a2: the HTTP-collapsed `warren run` labels its dispatches
-		// trigger=cli; omitting the field preserves the spawnRun default.
-		const trigger = optionalString(body, "trigger");
-		const {
-			agentName,
-			projectId,
-			prompt,
-			providerOverride,
-			modelOverride,
-			maxCostUsd,
-			parentRunId,
-			cloneKind,
-		} = await resolveDispatchFields(deps, body);
-
-		const options: Parameters<typeof spawnRun>[0] = {
-			repos: deps.repos,
-			// warren-245d: thread the resolved runtime provider so POST /runs
-			// dispatches through the K8sProvider under WARREN_RUNTIME=k8s. Without
-			// this, spawnRun fell back to the burrow LocalProvider and every K8s
-			// dispatch 503'd `sandbox_unreachable`. Mirrors conversations.ts.
-			runtimeProvider: deps.runtimeProvider,
-			agentName,
-			projectId,
-			prompt,
-			mode: "batch",
-			projectsConfig: deps.projectsConfig,
-			projectSpawn: deps.spawn ?? defaultSpawn,
-			...(await mintSpawnGithubToken(deps, projectId)),
-			// warren-b27c: shape-checked, not cast. An array or scalar `metadata`
-			// used to sail through the cast and reach persistence typed as a record.
-			metadata: optionalObject(body, "metadata"),
-			now: deps.now,
-			ref,
-			providerOverride,
-			modelOverride,
-			...(trigger !== undefined ? { trigger } : {}),
-			...(maxCostUsd !== undefined ? { maxCostUsdOverride: maxCostUsd } : {}),
-			seedId,
-			...(targetBranch !== undefined ? { targetBranch } : {}),
-			...(parentRunId !== undefined ? { parentRunId } : {}),
-			...(cloneKind !== undefined ? { cloneKind } : {}),
-			dispatcherHandle,
-			warrenConfigs: deps.warrenConfigs,
-			runBranchPrefixDefault: deps.runBranchPrefixDefault,
-			seedsCli: deps.seedsCli,
-			logger: ctx.logger,
-		};
+		const options = await buildHttpSpawnOptions(deps, body, ctx.logger);
 
 		// warren-d525: the real dispatch — spawn and attach the bridge. Wrapped
 		// so the idempotency store can run it at most once per (projectId, key),
@@ -206,7 +217,7 @@ export function createRunHandler(deps: ServerDeps): RouteHandler {
 		const idempotencyKey = ctx.request.headers.get("Idempotency-Key") ?? "";
 		const dispatched =
 			idempotencyKey !== "" && deps.idempotencyStore !== undefined
-				? await deps.idempotencyStore.run(projectId, idempotencyKey, dispatch)
+				? await deps.idempotencyStore.run(options.projectId, idempotencyKey, dispatch)
 				: await dispatch();
 
 		return jsonResponse(201, dispatched);

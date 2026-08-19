@@ -162,7 +162,11 @@ function buildRetrySpawnInput(
 		agentName: run.agentName,
 		projectId,
 		prompt: run.prompt,
+		// trigger is inherited from the original (lossy for provenance) —
+		// dispatchOrigin is the explicit "this row is an infra-lost retry"
+		// stamp (warren-9ce3).
 		trigger: run.trigger,
+		dispatchOrigin: "retry_infra_lost",
 		mode: run.mode,
 		retryOf: run.id,
 	};
