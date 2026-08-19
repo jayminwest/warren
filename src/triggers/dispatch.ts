@@ -28,8 +28,8 @@
  */
 
 import { formatError, NotFoundError } from "../core/errors.ts";
+import type { ScheduledIssue } from "../core/wire.ts";
 import type { Repos } from "../db/repos/index.ts";
-import type { ScheduledSeed } from "../seeds-cli/index.ts";
 import type { CronTrigger, DefaultsConfig } from "../warren-config/index.ts";
 import { parseCron } from "./cron.ts";
 import {
@@ -254,7 +254,8 @@ export async function dispatchCronTrigger(input: DispatchCronInput): Promise<Dis
 
 export interface DispatchScheduledInput {
 	readonly projectId: string;
-	readonly seed: ScheduledSeed;
+	/** warren-6234: neutral tracker DTO (was the seeds-cli ScheduledSeed). */
+	readonly seed: ScheduledIssue;
 	readonly defaults?: DefaultsConfig | null;
 	readonly now: Date;
 	readonly spawn: DispatchSpawnFn;
@@ -278,7 +279,8 @@ export type DispatchScheduledResult =
 	| { readonly kind: "error"; readonly seedId: string; readonly reason: string };
 
 /**
- * Decide-and-spawn for a single scheduled seed. Returns `{kind: 'fired',
+ * Decide-and-spawn for a single scheduled issue (warren-6234: neutral
+ * tracker DTO). Returns `{kind: 'fired',
  * runId, role}` so the caller can merge the full warren-namespaced
  * extension payload (role + trigger + lastRunId + lastRunAt + scheduledFor
  * clear + lastScheduledRun pointer) into the seed in a single sd update,
@@ -348,7 +350,7 @@ export function resolveCronPrompt(
 }
 
 function resolveScheduledPrompt(
-	seed: ScheduledSeed,
+	seed: ScheduledIssue,
 	defaults: DefaultsConfig | null | undefined,
 ): string {
 	if (defaults?.defaultPrompt !== undefined && defaults.defaultPrompt.trim() !== "") {

@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { openDatabase, type WarrenDb } from "../../db/client.ts";
 import { createRepos, type Repos } from "../../db/repos/index.ts";
 import { FakeProvider } from "../../runtime/fake/fake-provider.ts";
+import { SeedsTracker } from "../../tracker/seeds-tracker.ts";
 import { NO_AUTH } from "../auth.ts";
 import { startServer } from "../server.ts";
 import type { ServeHandle, ServerDeps } from "../types.ts";
@@ -51,7 +52,7 @@ describe("GET /projects/:id/seeds/:seedId — single-seed status read (warren-40
 			const base = await depsFor(repos, provider);
 			return {
 				...base,
-				seedsCli: { sdBinary: "sd", spawn: sdSpawn },
+				issueTracker: new SeedsTracker({ sdBinary: "sd", spawn: sdSpawn }),
 			};
 		})();
 	}
@@ -139,9 +140,9 @@ describe("GET /projects/:id/seeds/:seedId — single-seed status read (warren-40
 		expect(body.error.code).toBe("project_lacks_seeds");
 	});
 
-	test("400 ValidationError when seeds CLI is not configured on warren", async () => {
-		// `depsFor` does NOT set seedsCli, so this exercises the
-		// "warren has no sd configured" path.
+	test("400 ValidationError when no issue tracker is configured on warren", async () => {
+		// `depsFor` does NOT set issueTracker, so this exercises the
+		// "warren has no tracker configured" path.
 		const deps = await depsFor(repos, new FakeProvider());
 		handle = startServer(deps, {
 			transport: { kind: "tcp", hostname: "127.0.0.1", port: 0 },

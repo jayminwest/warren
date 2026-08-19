@@ -204,7 +204,7 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 	// Tier-1 observation bus (warren-bb60) + first-party consumers (warren-4e74 healer,
 	// warren-df3e seed-close). Installed BEFORE bridges resume in-flight runs so no emit
 	// is dropped (see lifecycle-bus-wiring.ts). warren-3bc6: `forge` is the boot-resolved instance.
-	const lifecycleBusHandle = bootLifecycleBus({ logger, repos, seedsCli, broker, forge });
+	const lifecycleBusHandle = bootLifecycleBus({ logger, repos, issueTracker, broker, forge });
 
 	// K8s runtime background loops (pl-829f step 25 / warren-7c30); undefined under the
 	// default `local` backend. warren-c531: booted HERE (before `bootBridges`).

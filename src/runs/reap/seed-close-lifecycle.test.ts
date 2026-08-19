@@ -4,7 +4,7 @@
  * Exercises the extension in isolation: it observes `post_reap` and runs the
  * idempotent host-side `sd close` against the project clone only when the reap
  * settled `succeeded` with a pushed branch, the run carries a seed id, and the
- * project has seeds. It resolves run/project/seedsCli itself (the payload stays
+ * project has seeds. It resolves run/project/tracker itself (the payload stays
  * within the frozen warren-ext/v1 shape — no seed id, no clone path). The
  * handler is invoked directly and awaited so the fire-and-forget bus dispatch
  * does not race the assertions.
@@ -13,7 +13,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { openDatabase, type WarrenDb } from "../../db/client.ts";
 import { createRepos } from "../../db/repos/index.ts";
-import type { SeedsCliDeps } from "../../seeds-cli/index.ts";
+import type { IssueTracker } from "../../tracker/contract.ts";
 import {
 	type LifecycleEnvelope,
 	type PostReapPayload,
@@ -21,21 +21,29 @@ import {
 } from "../lifecycle-bus.ts";
 import { createSeedCloseLifecycleExtension } from "./seed-close-lifecycle.ts";
 
-/** Build a SeedsCliDeps stub whose `spawn` tracks calls and returns exit 0. */
-function fakeSeedsCli(opts: { exitCode?: number } = {}): {
-	seedsCli: SeedsCliDeps;
-	calls: Array<{ args: string[]; cwd: string }>;
+/** Build a fake IssueTracker whose closeIssue records calls (warren-6234). */
+function fakeTracker(opts: { fail?: boolean } = {}): {
+	issueTracker: IssueTracker;
+	calls: Array<{ seedId: string; projectId: string; localPath?: string }>;
 } {
-	const calls: Array<{ args: string[]; cwd: string }> = [];
-	const seedsCli: SeedsCliDeps = {
-		sdBinary: "sd",
-		spawn: async (args, spawnOpts) => {
-			calls.push({ args: args as string[], cwd: spawnOpts?.cwd ?? "" });
-			const exitCode = opts.exitCode ?? 0;
-			return { exitCode, stdout: "", stderr: exitCode !== 0 ? "error" : "" };
+	const calls: Array<{ seedId: string; projectId: string; localPath?: string }> = [];
+	const issueTracker: IssueTracker = {
+		capabilities: {
+			supportsPlans: true,
+			supportsMetadata: true,
+			supportsScheduledIssues: true,
+			isGitNative: true,
+		},
+		getIssue: async () => {
+			throw new Error("unused");
+		},
+		listIssueStatuses: async () => new Map(),
+		closeIssue: async (_ctx, seedId) => {
+			calls.push({ seedId, projectId: _ctx.projectId, localPath: _ctx.localPath });
+			if (opts.fail) throw new Error("close exit 1");
 		},
 	};
-	return { seedsCli, calls };
+	return { issueTracker, calls };
 }
 
 function recordingLogger() {
@@ -105,21 +113,21 @@ function envelope(
 
 async function fire(
 	repos: ReturnType<typeof createRepos>,
-	seedsCli: SeedsCliDeps,
+	issueTracker: IssueTracker,
 	logger: ReturnType<typeof recordingLogger>["logger"],
 	payload: Partial<PostReapPayload> & { runId: string },
 ): Promise<void> {
-	const ext = createSeedCloseLifecycleExtension({ repos, seedsCli, logger });
+	const ext = createSeedCloseLifecycleExtension({ repos, issueTracker, logger });
 	await ext.hooks.post_reap?.(envelope(payload));
 }
 
 describe("createSeedCloseLifecycleExtension", () => {
 	test("negotiates warren-ext/v1 and subscribes to post_reap only", () => {
 		const { logger } = recordingLogger();
-		const { seedsCli } = fakeSeedsCli();
+		const { issueTracker } = fakeTracker();
 		const ext = createSeedCloseLifecycleExtension({
 			repos: {} as ReturnType<typeof createRepos>,
-			seedsCli,
+			issueTracker,
 			logger,
 		});
 		expect(ext.name).toBe("seed-close");
@@ -127,66 +135,64 @@ describe("createSeedCloseLifecycleExtension", () => {
 		expect(Object.keys(ext.hooks)).toEqual(["post_reap"]);
 	});
 
-	test("closes the run seed via sd close on a succeeded, pushed reap", async () => {
+	test("closes the run seed via tracker.closeIssue on a succeeded, pushed reap", async () => {
 		const { repos, runId, projectId } = await setup();
-		const { seedsCli, calls } = fakeSeedsCli();
+		const { issueTracker, calls } = fakeTracker();
 		const { logger } = recordingLogger();
-		await fire(repos, seedsCli, logger, { runId, projectId });
+		await fire(repos, issueTracker, logger, { runId, projectId });
 
-		const closeCall = calls.find((c) => c.args.includes("close") && c.args.includes("sd-target"));
-		expect(closeCall).toBeDefined();
-		expect(closeCall?.cwd).toBe("/data/projects/x/y");
+		expect(calls).toEqual([{ seedId: "sd-target", projectId, localPath: "/data/projects/x/y" }]);
 		const events = await repos.events.listByRun(runId);
 		expect(events.find((ev) => ev.kind === "seeds.seed_id_closed")).toBeDefined();
 	});
 
 	test("skips when the run carries no seed id", async () => {
 		const { repos, runId, projectId } = await setup({ seedId: null });
-		const { seedsCli, calls } = fakeSeedsCli();
+		const { issueTracker, calls } = fakeTracker();
 		const { logger } = recordingLogger();
-		await fire(repos, seedsCli, logger, { runId, projectId });
-		expect(calls.some((c) => c.args.includes("close"))).toBe(false);
+		await fire(repos, issueTracker, logger, { runId, projectId });
+		expect(calls).toHaveLength(0);
 	});
 
 	test("skips when the reap outcome is not succeeded", async () => {
 		const { repos, runId, projectId } = await setup();
-		const { seedsCli, calls } = fakeSeedsCli();
+		const { issueTracker, calls } = fakeTracker();
 		const { logger } = recordingLogger();
-		await fire(repos, seedsCli, logger, { runId, projectId, outcome: "failed" });
-		expect(calls.some((c) => c.args.includes("close"))).toBe(false);
+		await fire(repos, issueTracker, logger, { runId, projectId, outcome: "failed" });
+		expect(calls).toHaveLength(0);
 	});
 
 	test("skips when the branch was not pushed", async () => {
 		const { repos, runId, projectId } = await setup();
-		const { seedsCli, calls } = fakeSeedsCli();
+		const { issueTracker, calls } = fakeTracker();
 		const { logger } = recordingLogger();
-		await fire(repos, seedsCli, logger, { runId, projectId, branchPushed: false });
-		expect(calls.some((c) => c.args.includes("close"))).toBe(false);
+		await fire(repos, issueTracker, logger, { runId, projectId, branchPushed: false });
+		expect(calls).toHaveLength(0);
 	});
 
 	test("skips when the pushed branch has no commits", async () => {
 		const { repos, runId, projectId } = await setup();
-		const { seedsCli, calls } = fakeSeedsCli();
+		const { issueTracker, calls } = fakeTracker();
 		const { logger } = recordingLogger();
-		await fire(repos, seedsCli, logger, { runId, projectId, commitsAhead: 0 });
-		expect(calls.some((c) => c.args.includes("close"))).toBe(false);
+		await fire(repos, issueTracker, logger, { runId, projectId, commitsAhead: 0 });
+		expect(calls).toHaveLength(0);
 		const events = await repos.events.listByRun(runId);
 		expect(events.some((ev) => ev.kind === "seeds.seed_id_closed")).toBe(false);
 	});
 
 	test("skips when the project has no seeds", async () => {
 		const { repos, runId, projectId } = await setup({ hasSeeds: false });
-		const { seedsCli, calls } = fakeSeedsCli();
+		const { issueTracker, calls } = fakeTracker();
 		const { logger } = recordingLogger();
-		await fire(repos, seedsCli, logger, { runId, projectId });
-		expect(calls.some((c) => c.args.includes("close"))).toBe(false);
+		await fire(repos, issueTracker, logger, { runId, projectId });
+		expect(calls).toHaveLength(0);
 	});
 
 	test("logs seed-close.failed and never throws when sd close fails", async () => {
 		const { repos, runId, projectId } = await setup();
-		const { seedsCli } = fakeSeedsCli({ exitCode: 1 });
+		const { issueTracker } = fakeTracker({ fail: true });
 		const { lines, logger } = recordingLogger();
-		await fire(repos, seedsCli, logger, { runId, projectId });
+		await fire(repos, issueTracker, logger, { runId, projectId });
 		expect(lines.find((l) => l.msg === "seed-close.failed")).toBeDefined();
 	});
 });

@@ -28,7 +28,6 @@ import type { SpawnFn } from "../projects/clone.ts";
 import type { ProjectsConfig } from "../projects/config.ts";
 import { spawnRun } from "../runs/index.ts";
 import type { RuntimeProvider } from "../runtime/contract.ts";
-import { listScheduledSeeds, updateExtensions } from "../seeds-cli/index.ts";
 import {
 	CronRetryTracker,
 	createProjectCloneHealer,
@@ -226,9 +225,9 @@ export function bootScheduler(input: BootSchedulerInput): SchedulerHandle {
 		disabled: input.config.disabled,
 		repos: input.repos,
 		loadWarrenConfig: (projectId, projectPath) => input.warrenConfigs.get(projectId, projectPath),
-		listScheduledSeeds: (projectPath) => listScheduledSeeds(seedsDeps, projectPath),
-		updateExtensions: (projectPath, seedId, extensions) =>
-			updateExtensions(seedsDeps, projectPath, seedId, extensions),
+		// warren-6234: the scheduled-issues pass routes through the tracker
+		// seam (listScheduledIssues + mergeIssueMetadata).
+		...(input.issueTracker !== undefined ? { issueTracker: input.issueTracker } : {}),
 		spawn: spawnDispatch,
 		cronRetryTracker,
 		deleteNeverStartedRun,

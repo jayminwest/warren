@@ -28,6 +28,8 @@ export interface SpawnLogger {
 	info(obj: object, msg?: string): void;
 	warn(obj: object, msg?: string): void;
 	error(obj: object, msg?: string): void;
+	/** warren-6234: optional debug channel for capability-gated skips. */
+	debug?(obj: object, msg?: string): void;
 	child?(bindings: object): SpawnLogger;
 }
 
@@ -132,6 +134,13 @@ export interface SpawnRunInput {
 	/** Branch, tag, or SHA to refresh to. Defaults to the project's tracked default branch. */
 	readonly ref?: string;
 	/**
+	 * Base-commit pin (warren-aaf7): a full 40-hex commit SHA the workspace
+	 * is cut at. Overrides `ref` (and the continuation parent branch) for the
+	 * workspace materialization ONLY — the PR base stays `ref`-shaped, so a
+	 * SHA never reaches the GitHub PR call. Persisted on `runs.base_commit`.
+	 */
+	readonly baseCommit?: string;
+	/**
 	 * Continuation parent (warren-4b11). When set, this run is a "re-run with
 	 * follow-up" of a prior terminal run: its workspace is seeded from the
 	 * parent's pushed branch (`${prefix}/${parentRunId}`) instead of the
@@ -214,9 +223,11 @@ export interface SpawnRunInput {
 	 */
 	readonly seedsCli?: SeedsCliDeps;
 	/**
-	 * Boot-resolved IssueTracker (warren-5819, pl-a37b Track B). Threading
-	 * seam only for now — `spawnRun` still reads `seedsCli`; the port to
-	 * `tracker.mergeIssueMetadata` lands in warren-2d98. Tests may omit.
+	 * Boot-resolved IssueTracker (warren-5819, pl-a37b Track B). The
+	 * post-dispatch extension write routes through `tracker.mergeIssueMetadata`
+	 * (warren-6234); when omitted but `seedsCli` is wired, spawnRun wraps the
+	 * facade in a SeedsTracker so legacy callers keep the write. Tests may
+	 * omit both.
 	 */
 	readonly issueTracker?: import("../../tracker/contract.ts").IssueTracker;
 	/**

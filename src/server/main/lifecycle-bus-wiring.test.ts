@@ -4,7 +4,7 @@ import { createRepos, type Repos } from "../../db/repos/index.ts";
 import { FakeForge } from "../../forge/fake/fake-forge.ts";
 import { HEALER_TRIGGER } from "../../healer/index.ts";
 import { clearLifecycleBus, lifecycleBus } from "../../runs/index.ts";
-import type { SeedsCliDeps } from "../../seeds-cli/index.ts";
+import type { IssueTracker } from "../../tracker/contract.ts";
 import type { Logger } from "../types.ts";
 import { bootLifecycleBus, type LifecycleBusWiringInput } from "./lifecycle-bus-wiring.ts";
 
@@ -21,9 +21,18 @@ function recordingLogger(): { lines: LoggedLine[]; logger: Logger } {
 	return { lines, logger: { info: push("info"), warn: push("warn"), error: push("error") } };
 }
 
-const seedsCli: SeedsCliDeps = {
-	sdBinary: "sd",
-	spawn: async () => ({ exitCode: 0, stdout: "", stderr: "" }),
+const issueTracker: IssueTracker = {
+	capabilities: {
+		supportsPlans: true,
+		supportsMetadata: true,
+		supportsScheduledIssues: true,
+		isGitNative: true,
+	},
+	getIssue: async () => {
+		throw new Error("unused");
+	},
+	listIssueStatuses: async () => new Map(),
+	closeIssue: async () => {},
 };
 
 describe("bootLifecycleBus", () => {
@@ -40,7 +49,7 @@ describe("bootLifecycleBus", () => {
 	});
 
 	function wiringInput(logger: Logger): LifecycleBusWiringInput {
-		return { logger, repos, seedsCli };
+		return { logger, repos, issueTracker };
 	}
 
 	test("registers the healer + seed-close consumers and installs the process singleton", () => {
