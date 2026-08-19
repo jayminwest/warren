@@ -5,6 +5,7 @@
  * from the legacy `src/runs/spawn.ts` under warren-f71c / pl-9088 step 6.
  */
 
+import type { GatedPromptFragments } from "../../registry/prompt-gating.ts";
 import {
 	type AgentDefinition,
 	parseRenderedAgent,
@@ -57,12 +58,38 @@ export function readCachedAgent(raw: unknown, name: string): AgentDefinition {
 				!Array.isArray(candidate.frontmatter)
 					? (candidate.frontmatter as Record<string, unknown>)
 					: {},
+			// warren-cb46: capability-gated prompt fragments ride the row's
+			// renderedJson; validated strings only.
+			gatedPrompts: readCachedGatedPrompts(candidate.gatedPrompts, name),
 		};
 	}
 	if (RenderResponseSchema.safeParse(raw).success) {
 		return parseRenderedAgent(raw, name);
 	}
 	throw new RunSpawnError(`cached agent "${name}" does not match AgentDefinition shape`);
+}
+
+/**
+ * Validate + return the row's gated prompt fragments (warren-cb46).
+ * `undefined` when the row predates gated fragments; a present-but-malformed
+ * fragment fails the spawn loudly rather than injecting junk into the prompt.
+ */
+function readCachedGatedPrompts(raw: unknown, name: string): GatedPromptFragments | undefined {
+	if (raw === undefined || raw === null) return undefined;
+	if (typeof raw !== "object" || Array.isArray(raw)) {
+		throw new RunSpawnError(`cached agent "${name}" has malformed gatedPrompts`);
+	}
+	const obj = raw as Record<string, unknown>;
+	const result: { tracker?: string; mulch?: string } = {};
+	for (const key of ["tracker", "mulch"] as const) {
+		const value = obj[key];
+		if (value === undefined) continue;
+		if (typeof value !== "string") {
+			throw new RunSpawnError(`cached agent "${name}" has non-string gatedPrompts.${key}`);
+		}
+		result[key] = value;
+	}
+	return result;
 }
 
 /**

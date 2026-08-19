@@ -350,3 +350,57 @@ describe("removeMaterializedWorkspace", () => {
 		expect(list.find((e) => e.worktree.endsWith("/ws-stale"))).toBeUndefined();
 	});
 });
+
+describe("materializeProjectWorkspace: base-branch threading (warren-232d)", () => {
+	let root: string;
+	let repo: string;
+	let home: string;
+
+	beforeEach(async () => {
+		root = mkdtempSync(join(tmpdir(), "warren-mat-"));
+		repo = join(root, "repo");
+		home = join(root, "home");
+		await bootstrapRepo(repo);
+		// A master-default repo: the default branch IS master, and a distinct
+		// commit exists on master but not on main's tip... bootstrap uses
+		// initialBranch 'main', so add a master branch with an extra commit.
+		await fixtureGitOrThrow(repo, ["checkout", "-b", "master"]);
+		writeFileSync(join(repo, "MASTER.md"), "# master\n");
+		await fixtureGitOrThrow(repo, ["add", "."]);
+		await fixtureGitOrThrow(repo, ["commit", "-m", "master commit"]);
+		await fixtureGitOrThrow(repo, ["checkout", "main"]);
+	});
+
+	afterEach(() => {
+		rmSync(root, { recursive: true, force: true });
+	});
+
+	test("carves the run branch off the project's actual default branch (master), not 'main'", async () => {
+		const ws = join(root, "ws");
+		await materializeProjectWorkspace({
+			workspacePath: ws,
+			branch: "run/master-default",
+			baseBranch: "master",
+			projectRoot: repo,
+			hostEnv: isolatedEnv(home),
+		});
+
+		// The run branch's tip is master's commit — the file only master
+		// carries is present, and the host clone stays on main (untouched).
+		expect(await Bun.file(join(ws, "MASTER.md")).exists()).toBe(true);
+		const hostBranch = await fixtureGitOrThrow(repo, ["rev-parse", "--abbrev-ref", "HEAD"]);
+		expect(hostBranch.stdout.trim()).toBe("main");
+	});
+
+	test("refuses to carve a run branch when baseBranch is absent (no 'main' hard-code)", async () => {
+		const ws = join(root, "ws-no-base");
+		await expect(
+			materializeProjectWorkspace({
+				workspacePath: ws,
+				branch: "run/no-base",
+				projectRoot: repo,
+				hostEnv: isolatedEnv(home),
+			}),
+		).rejects.toBeInstanceOf(WorkspaceMaterializationError);
+	});
+});

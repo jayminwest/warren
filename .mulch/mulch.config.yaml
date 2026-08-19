@@ -61,6 +61,7 @@ domains:
   gates: {}
   observability: {}
   tracker: {}
+  dispatch: {}
   tracker-port: {}
 governance:
   max_entries: 100

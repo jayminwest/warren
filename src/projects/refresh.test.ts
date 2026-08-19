@@ -26,7 +26,7 @@ describe("refreshProjectClone", () => {
 		expect(result).toEqual({
 			headSha: sha,
 			ref: "main",
-			features: { hasSeeds: true },
+			features: { hasSeeds: true, hasMulch: true },
 		});
 		expect(calls.map((c) => c.cmd[1])).toEqual([
 			"fetch",
@@ -204,7 +204,7 @@ describe("refreshProjectClone", () => {
 			},
 		});
 
-		expect(result.features).toEqual({ hasSeeds: true });
+		expect(result.features).toEqual({ hasSeeds: true, hasMulch: false });
 		expect(probed).toContain("/data/projects/x/y/.seeds");
 	});
 
@@ -228,7 +228,7 @@ describe("refreshProjectClone", () => {
 describe("detectProjectFeatures", () => {
 	test("returns hasSeeds=false when .seeds/ is absent", () => {
 		const result = detectProjectFeatures("/data/projects/x/y", () => false);
-		expect(result).toEqual({ hasSeeds: false });
+		expect(result).toEqual({ hasSeeds: false, hasMulch: false });
 	});
 
 	test("returns hasSeeds=true when .seeds/ exists at the clone root (warren-9990)", () => {
@@ -237,7 +237,7 @@ describe("detectProjectFeatures", () => {
 			probed.push(p);
 			return p === "/data/projects/x/y/.seeds";
 		});
-		expect(result).toEqual({ hasSeeds: true });
+		expect(result).toEqual({ hasSeeds: true, hasMulch: false });
 		expect(probed).toContain("/data/projects/x/y/.seeds");
 	});
 });
@@ -367,5 +367,89 @@ describe("refreshProjectClone git-hooks arming (warren-8f4c)", () => {
 
 		// Run must succeed even when package.json is unreadable.
 		expect(result.headSha).toBe(sha);
+	});
+});
+
+describe("refreshProjectClone: fetch-only mode (warren-232d)", () => {
+	const PIN = "0123456789abcdef0123456789abcdef01234567";
+	const HEAD = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+
+	test("fetches the pinned sha, verifies it, and never moves HEAD (no checkout/reset)", async () => {
+		const { spawn, calls } = recorder((cmd) => {
+			if (cmd[1] === "rev-parse") return ok(`${HEAD}\n`);
+			return ok();
+		});
+		const result = await refreshProjectClone({
+			config: CFG,
+			localPath: "/data/projects/x/y",
+			ref: "main",
+			fetchCommit: PIN,
+			spawn,
+			exists: () => true,
+		});
+
+		// headSha is the clone's UNCHANGED HEAD; ref echoes the pin.
+		expect(result).toEqual({
+			headSha: HEAD,
+			ref: PIN,
+			features: { hasSeeds: true, hasMulch: true },
+		});
+		expect(calls.map((c) => c.cmd.slice(0, 2))).toEqual([
+			["git", "fetch"],
+			["git", "cat-file"],
+			["git", "rev-parse"],
+		]);
+		expect(calls[0]?.cmd).toEqual(["git", "fetch", "origin", PIN]);
+		expect(calls[1]?.cmd).toEqual(["git", "cat-file", "-e", `${PIN}^{commit}`]);
+		// Detached-HEAD safety: the shared clone's checked-out branch never moves.
+		const verbs = calls.map((c) => c.cmd[1]);
+		expect(verbs).not.toContain("checkout");
+		expect(verbs).not.toContain("reset");
+	});
+
+	test("falls back to a full fetch when the server rejects the sha fetch (no allowReachableSHA1InWant)", async () => {
+		const { spawn, calls } = recorder((cmd) => {
+			if (cmd[1] === "fetch" && cmd.includes(PIN)) {
+				return { stdout: "", stderr: "Server does not allow request", exitCode: 128 };
+			}
+			if (cmd[1] === "rev-parse") return ok(`${HEAD}\n`);
+			return ok();
+		});
+		const result = await refreshProjectClone({
+			config: CFG,
+			localPath: "/data/projects/x/y",
+			ref: "main",
+			fetchCommit: PIN,
+			spawn,
+			exists: () => true,
+		});
+
+		expect(result.headSha).toBe(HEAD);
+		expect(calls.map((c) => c.cmd)).toEqual([
+			["git", "fetch", "origin", PIN],
+			["git", "fetch", "--prune", "origin"],
+			["git", "cat-file", "-e", `${PIN}^{commit}`],
+			["git", "rev-parse", "HEAD"],
+		]);
+	});
+
+	test("aborts when the pinned commit is not on origin", async () => {
+		const { spawn } = recorder((cmd) => {
+			if (cmd[1] === "cat-file") {
+				return { stdout: "", stderr: "bad object", exitCode: 128 };
+			}
+			if (cmd[1] === "rev-parse") return ok(`${HEAD}\n`);
+			return ok();
+		});
+		await expect(
+			refreshProjectClone({
+				config: CFG,
+				localPath: "/data/projects/x/y",
+				ref: "main",
+				fetchCommit: PIN,
+				spawn,
+				exists: () => true,
+			}),
+		).rejects.toBeInstanceOf(ProjectUnavailableError);
 	});
 });

@@ -43,7 +43,7 @@ describe("refreshProject", () => {
 				return {
 					headSha: "abcd1234abcd1234abcd1234abcd1234abcd1234",
 					ref: input.ref,
-					features: { hasSeeds: false },
+					features: { hasSeeds: false, hasMulch: false },
 				};
 			},
 			now: () => new Date("2026-05-09T19:00:00.000Z"),
@@ -81,7 +81,7 @@ describe("refreshProject", () => {
 				return {
 					headSha: "deadbeef".repeat(5),
 					ref: input.ref,
-					features: { hasSeeds: false },
+					features: { hasSeeds: false, hasMulch: false },
 				};
 			},
 		});
@@ -134,7 +134,7 @@ describe("refreshProject", () => {
 				refresh: async () => ({
 					headSha: "x",
 					ref: "",
-					features: { hasSeeds: false },
+					features: { hasSeeds: false, hasMulch: false },
 				}),
 			}),
 		).rejects.toBeInstanceOf(ValidationError);
@@ -150,7 +150,7 @@ describe("refreshProject", () => {
 				refresh: async () => ({
 					headSha: "x",
 					ref: "main",
-					features: { hasSeeds: false },
+					features: { hasSeeds: false, hasMulch: false },
 				}),
 			}),
 		).rejects.toMatchObject({ code: "not_found" });
@@ -163,7 +163,7 @@ describe("refreshProject", () => {
 			gitUrl: "https://github.com/x/y.git",
 			spawn: NOOP_SPAWN,
 			clone: fakeClone(),
-			detectFeatures: () => ({ hasSeeds: false }),
+			detectFeatures: () => ({ hasSeeds: false, hasMulch: false }),
 		});
 		expect(row.hasSeeds).toBe(false);
 
@@ -175,7 +175,7 @@ describe("refreshProject", () => {
 			refresh: async (input) => ({
 				headSha: "1234".repeat(10),
 				ref: input.ref,
-				features: { hasSeeds: true },
+				features: { hasSeeds: true, hasMulch: false },
 			}),
 		});
 
@@ -191,7 +191,7 @@ describe("refreshProject", () => {
 			gitUrl: "https://github.com/x/y.git",
 			spawn: NOOP_SPAWN,
 			clone: fakeClone(),
-			detectFeatures: () => ({ hasSeeds: true }),
+			detectFeatures: () => ({ hasSeeds: true, hasMulch: false }),
 		});
 		expect(row.hasSeeds).toBe(true);
 
@@ -203,7 +203,7 @@ describe("refreshProject", () => {
 			refresh: async (input) => ({
 				headSha: "5678".repeat(10),
 				ref: input.ref,
-				features: { hasSeeds: false },
+				features: { hasSeeds: false, hasMulch: false },
 			}),
 		});
 
@@ -238,7 +238,7 @@ describe("refreshProject", () => {
 				return {
 					headSha: "deadbeef".repeat(5),
 					ref: input.ref,
-					features: { hasSeeds: false },
+					features: { hasSeeds: false, hasMulch: false },
 				};
 			},
 		});
@@ -310,7 +310,7 @@ describe("refreshProject git-hooks knob (warren-8f4c)", () => {
 				return {
 					headSha: "a".repeat(40),
 					ref: input.ref,
-					features: { hasSeeds: false },
+					features: { hasSeeds: false, hasMulch: false },
 				};
 			},
 		});
@@ -353,7 +353,7 @@ describe("refreshProject git-hooks knob (warren-8f4c)", () => {
 				return {
 					headSha: "b".repeat(40),
 					ref: input.ref,
-					features: { hasSeeds: false },
+					features: { hasSeeds: false, hasMulch: false },
 				};
 			},
 		});

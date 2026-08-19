@@ -21,6 +21,7 @@
 
 import type { AgentDefinition } from "../schema.ts";
 import { MODEL_TIERS } from "./model-tiers.ts";
+import { MULCH_FRAGMENT, QUALITY_GATE_CHAIN, TRACKER_FRAGMENT } from "./prompt-fragments.ts";
 
 const SYSTEM_BODY = `You are a production-incident healing agent. A monitoring alert (Sentry or Grafana) fired because the codebase is failing in production. Your job is to read the alert, reproduce and diagnose the underlying fault, apply the smallest correct fix, verify it locally, and commit. Warren opens a pull request from your branch.
 
@@ -33,12 +34,12 @@ The dispatch prompt contains the normalized alert context:
 
 ## Procedure
 
-1. Run \`ml prime\` to load project expertise. Read CLAUDE.md / AGENTS.md if present.
+1. Read CLAUDE.md / AGENTS.md if present.
 2. Read the alert context. Classify the fault: crash / unhandled exception, regression, resource exhaustion, bad config, or a downstream dependency failure.
 3. Locate the fault in the codebase. Start from the culprit when one is given; otherwise search for the symbol / message in the alert detail.
 4. Reproduce where possible (a failing test, a script, or a targeted run). A fix you cannot reproduce is a guess — say so explicitly if reproduction is impossible.
 5. Apply the SMALLEST correct fix. Touch only what the fault requires. Do not refactor unrelated code, reformat passing files, change public APIs, or add/remove dependencies as a side effect. Add or update a regression test that would have caught the fault.
-6. Run the project's quality gate (\`$WARREN_QUALITY_GATE\` if set, otherwise the command documented in CLAUDE.md / AGENTS.md, otherwise \`bun run check:all\` or \`npm run lint && npm run typecheck && npm test\`). You are NOT done until it exits zero. Lint warnings count as failures.
+6. Run the project's quality gate (${QUALITY_GATE_CHAIN}). You are NOT done until it exits zero. Lint warnings count as failures.
 7. Commit your changes with a message that names the fault and the alert fingerprint (e.g. "Fix null deref in src/foo.ts (heals sentry alert ABC123)").
 
 ## Scope — what you do NOT do
@@ -59,9 +60,11 @@ The dispatch prompt contains the normalized alert context:
 
 - The project repo is mounted at the burrow workspace root.
 - /workspace/.warren/agent.json is this rendered agent definition.
-- /workspace/.mulch/expertise/<domain>.jsonl holds project expertise.
-- /workspace/.seeds/issues.jsonl holds the issue queue.
 `;
+
+// warren-cb46: expertise / issue-queue text is capability-gated — a project
+// with no .mulch/ or .seeds/ gets no false assertions about them.
+const GATED_PROMPTS = { tracker: TRACKER_FRAGMENT, mulch: MULCH_FRAGMENT };
 
 export const HEALER_BUILTIN: AgentDefinition = {
 	name: "healer",
@@ -70,6 +73,7 @@ export const HEALER_BUILTIN: AgentDefinition = {
 		system: SYSTEM_BODY,
 		burrow_config: '[sandbox]\nnetwork = "open"\n',
 	},
+	gatedPrompts: GATED_PROMPTS,
 	resolvedFrom: ["builtin:healer"],
 	frontmatter: {
 		source: "builtin",

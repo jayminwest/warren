@@ -158,6 +158,14 @@ export interface RefreshProjectInput {
 	/** Branch, tag, or SHA. Defaults to the project row's tracked default_branch. */
 	readonly ref?: string;
 	/**
+	 * Detached-HEAD-safe fetch-only mode (warren-232d): fetch this 40-hex
+	 * commit from origin without moving the host clone's HEAD. Forwarded to
+	 * `refreshProjectClone` — see `RefreshProjectCloneInput.fetchCommit`.
+	 * Takes precedence over `ref` for the clone operation; the echo `ref` in
+	 * the result is the fetched SHA.
+	 */
+	readonly fetchCommit?: string;
+	/**
 	 * GitHub token for private-repo fetches (`GITHUB_TOKEN`), forwarded to
 	 * `refreshProjectClone` — see `RefreshProjectCloneInput.token`.
 	 */
@@ -221,6 +229,7 @@ export async function refreshProject(input: RefreshProjectInput): Promise<Refres
 		config,
 		localPath: row.localPath,
 		ref,
+		...(input.fetchCommit !== undefined ? { fetchCommit: input.fetchCommit } : {}),
 		token: input.token,
 		spawn: input.spawn,
 		timeoutMs: input.timeoutMs ?? DEFAULT_GIT_TIMEOUT_MS,

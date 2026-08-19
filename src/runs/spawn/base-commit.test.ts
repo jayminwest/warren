@@ -95,3 +95,80 @@ describe("spawnRun: baseCommit pinning (warren-aaf7)", () => {
 		expect(run.baseCommit).toBeNull();
 	});
 });
+
+describe("spawnRun: baseCommit dispatch is detached-HEAD safe (warren-232d)", () => {
+	let db: WarrenDb;
+	let repos: Repos;
+	const SHA = "0123456789abcdef0123456789abcdef01234567";
+
+	beforeEach(async () => {
+		({ db, repos } = await setupRepos());
+	});
+	afterEach(async () => {
+		await db.close();
+	});
+
+	test("refreshes in fetch-only mode — fetchCommit carried, no checkout ref", async () => {
+		const { client } = makeSandboxClient();
+		let receivedRef: string | undefined;
+		let receivedFetchCommit: string | undefined;
+		await spawnRun({
+			repos,
+			runtimeProvider: makeProvider(client),
+			agentName: "refactor-bot",
+			projectId: "prj_xxxxxxxxxxxx",
+			prompt: "replay history",
+			baseCommit: SHA,
+			ref: "fix/pr-head",
+			projectsConfig: { root: "/data/projects", gitBinary: "git" },
+			projectSpawn: async () => ({ stdout: "", stderr: "", exitCode: 0 }),
+			refreshProjectFn: async (input) => {
+				receivedRef = input.ref;
+				receivedFetchCommit = input.fetchCommit;
+				const updated = await repos.projects.recordRefresh({
+					id: input.id,
+					headSha: SHA,
+				});
+				return { project: updated, headSha: SHA, ref: input.ref ?? "" };
+			},
+		});
+
+		// The refresh runs in fetch-only mode: the SHA rides fetchCommit (which
+		// never moves the host clone's HEAD), never as the checkout ref.
+		expect(receivedFetchCommit).toBe(SHA);
+		expect(receivedRef).toBeUndefined();
+	});
+
+	test("skips the migration journal preflight (heal path would commit on the wrong base)", async () => {
+		const { client } = makeSandboxClient();
+		let healCalls = 0;
+		const { run } = await spawnRun({
+			repos,
+			runtimeProvider: makeProvider(client),
+			agentName: "refactor-bot",
+			projectId: "prj_xxxxxxxxxxxx",
+			prompt: "replay history",
+			baseCommit: SHA,
+			projectsConfig: { root: "/data/projects", gitBinary: "git" },
+			projectSpawn: async () => ({ stdout: "", stderr: "", exitCode: 0 }),
+			refreshProjectFn: async (input) => {
+				const updated = await repos.projects.recordRefresh({
+					id: input.id,
+					headSha: SHA,
+				});
+				return { project: updated, headSha: SHA, ref: input.ref ?? "" };
+			},
+			migrationHealFn: async () => {
+				healCalls += 1;
+				return { collisions: [], commitSha: null };
+			},
+		});
+
+		// A SHA baseRef always differs from the default branch name, but the
+		// preflight must not fire: the host clone was never checked out onto
+		// the pin, so a heal commit would land on the wrong base.
+		expect(healCalls).toBe(0);
+		const events = await repos.events.listByRun(run.id);
+		expect(events.find((e) => e.kind === "migration_journal_heal")).toBeUndefined();
+	});
+});

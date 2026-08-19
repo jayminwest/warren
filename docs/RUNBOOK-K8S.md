@@ -632,6 +632,11 @@ The number of distinct repos times their object-store size bounds growth — run
 If the cache fills: expand the PVC, or clear `WARREN_K8S_REPO_CACHE_PVC` to turn the cache off (runs then clone fresh — slower, with no disk growth).
 A wedged or corrupt mirror never blocks a run: any cache failure falls back to a direct network clone automatically (§7.5).
 
+Known refspec limit (warren-232d, accepted): the mirror update fetches only `refs/heads/*` and `refs/tags/*`.
+A `baseCommit`-pinned run whose SHA no branch or tag reaches therefore misses the cache.
+The local clone's `git checkout <sha>` fails, so the init container falls back to a direct network clone, which carries the full object store.
+This costs one uncached clone for unreachable-SHA replays and preserves correctness.
+
 ### 5.4 Namespace quota (the hard backstop)
 
 `warren-runs` carries a `ResourceQuota` (50 pods, 100 CPU / 200Gi requests, 200 CPU / 200Gi limits) plus a paired `LimitRange` (`warren-runs-defaults`).
