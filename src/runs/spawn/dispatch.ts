@@ -10,6 +10,7 @@
  */
 
 import { NotFoundError, ValidationError } from "../../core/errors.ts";
+import { withProjectCloneLock } from "../../projects/clone-lock.ts";
 import { refreshProject } from "../../projects/manage.ts";
 import {
 	readProviderFrontmatter,
@@ -27,6 +28,7 @@ import { buildSeedFiles } from "../seed.ts";
 import { validateTargetBranch } from "../target-branch.ts";
 import { readCachedAgent, readProjectDefaults, resolveOverride } from "./agent-cache.ts";
 import { injectWarrenCallbackEnv } from "./callback-env.ts";
+import { resolveContinuationRef } from "./continuation.ts";
 import { writeDispatchContext } from "./dispatch-context.ts";
 import { injectGitIdentityEnv, warnIfGitIdentityUnconfigured } from "./git-identity.ts";
 import { healMigrationJournalCollisions, recordMigrationHealEvent } from "./migration-preflight.ts";
@@ -55,7 +57,16 @@ export async function spawnRun(input: SpawnRunInput): Promise<SpawnRunResult> {
 	if (input.prompt.trim() === "") {
 		throw new ValidationError("prompt cannot be empty");
 	}
+	// warren-232d: serialize the per-project dispatch critical section — the
+	// clone refresh (`checkout --force` / `reset --hard`), the working-tree
+	// defaults read, and the provider's worktree materialization all mutate or
+	// read the SAME shared host clone, so two concurrent dispatches on one
+	// project with different base refs must not interleave. Different projects
+	// dispatch in parallel; see src/projects/clone-lock.ts.
+	return withProjectCloneLock(input.projectId, () => dispatchRun(input));
+}
 
+async function dispatchRun(input: SpawnRunInput): Promise<SpawnRunResult> {
 	const agentRow = await input.repos.agents.get(input.agentName);
 	if (!agentRow) {
 		throw new NotFoundError(`agent not found: ${input.agentName}`);
@@ -80,19 +91,23 @@ export async function spawnRun(input: SpawnRunInput): Promise<SpawnRunResult> {
 	// and chain cost/token totals are derivable by walking the link.
 	const baseRef = input.baseCommit ?? (await resolveContinuationRef(input, project, targetBranch));
 
-	// Refresh the project clone to origin/<ref> so the run sees the
-	// latest commits. Skipped only when the caller didn't wire the
-	// projects-config + spawn seam (tests that pre-stage their own
-	// fixtures). Refresh failure aborts the spawn before we create a
-	// warren row — a stale workspace is worse than a clean error
-	// (warren-1bb6).
+	// warren-232d: a baseCommit dispatch NEVER moves the host clone's HEAD.
+	// The refresh runs in fetch-only mode (the pinned SHA's objects come
+	// down, HEAD/working tree untouched — see refreshProjectClone's
+	// `fetchCommit` leg) and the workspace is cut at the SHA directly by
+	// the provider (`git worktree add -b <runBranch> <ws> <sha>`), so the
+	// shared clone's checked-out branch never moves for a pinned replay.
 	const refreshed =
 		input.projectsConfig !== undefined && input.projectSpawn !== undefined
 			? await (input.refreshProjectFn ?? refreshProject)({
 					repo: input.repos.projects,
 					config: input.projectsConfig,
 					id: project.id,
-					...(baseRef !== undefined ? { ref: baseRef } : {}),
+					...(input.baseCommit !== undefined
+						? { fetchCommit: input.baseCommit }
+						: baseRef !== undefined
+							? { ref: baseRef }
+							: {}),
 					token: input.githubToken,
 					spawn: input.projectSpawn,
 					...(input.now !== undefined ? { now: input.now } : {}),
@@ -285,8 +300,13 @@ export async function spawnRun(input: SpawnRunInput): Promise<SpawnRunResult> {
 		// (colliding artifacts deleted, `bun run db:generate`, heal commit on the
 		// host clone branch) BEFORE the provider forks the workspace. A fresh
 		// dispatch from the default branch cannot collide, so it is skipped.
+		// warren-232d: a baseCommit dispatch skips the preflight too — its host
+		// clone was NOT checked out onto the base ref (fetch-only refresh), so
+		// the heal path would commit onto whatever branch the clone happens to
+		// sit on (or a detached HEAD), not the pinned base.
 		if (
 			refreshed !== null &&
+			input.baseCommit === undefined &&
 			baseRef !== undefined &&
 			baseRef !== projectAfterRefresh.defaultBranch &&
 			input.projectSpawn !== undefined
@@ -378,64 +398,6 @@ export async function spawnRun(input: SpawnRunInput): Promise<SpawnRunResult> {
 		await rollback(input, run.id, log, err);
 		throw err;
 	}
-}
-
-/**
- * Resolve the git ref the project clone should be refreshed to before the
- * burrow forks the new run branch (warren-4b11).
- *
- * - No `parentRunId` → explicit `ref`, else the `targetBranch` push target
- *   (warren-709e), else undefined → refreshProject's project default branch.
- * - `parentRunId` set with `cloneKind: "replicate"` (warren-e96f) → the
- *   caller's explicit `ref` (or the project default branch). A replicate is a
- *   fresh re-dispatch of the parent's config, NOT a continuation, so it must
- *   NOT check out the parent's pushed branch — that branch may be stale or may
- *   never have been pushed (parent failed early).
- * - `parentRunId` set (default `cloneKind: "continue"`) → the parent run's
- *   pushed branch, recomposed from the
- *   same prefix precedence the parent's spawn used
- *   (`composeRunBranch(resolveRunBranchPrefix(...), parentRunId)`). We read
- *   the project defaults here (a lightweight pre-refresh peek) only to get
- *   the prefix; the working tree's `.warren/` is stable across a project's
- *   runs, so this matches the branch the parent actually pushed.
- *
- * The parent must belong to the same project — a continuation forks the
- * parent's branch on the same origin, so a cross-project parent would be a
- * meaningless base. We reject it with a typed ValidationError rather than
- * silently checking out a branch that doesn't exist on this origin.
- */
-async function resolveContinuationRef(
-	input: SpawnRunInput,
-	project: { id: string; localPath: string },
-	targetBranch: string | undefined,
-): Promise<string | undefined> {
-	if (!input.parentRunId) return input.ref ?? targetBranch; // warren-709e
-	// Replicate (warren-e96f): fresh re-dispatch against the explicit ref /
-	// project default base, not the parent's pushed branch. We still validate
-	// the parent below (same-project guard), but the base ref is the caller's.
-	if (input.cloneKind === "replicate") {
-		const parent = await input.repos.runs.require(input.parentRunId);
-		if (parent.projectId !== project.id) {
-			throw new ValidationError(
-				`parent run ${parent.id} belongs to a different project; a re-run must reuse the same project`,
-				{ recoveryHint: "re-run with a cloneFromRunId from the same project, or omit it" },
-			);
-		}
-		return input.ref;
-	}
-	const parent = await input.repos.runs.require(input.parentRunId);
-	if (parent.projectId !== project.id) {
-		throw new ValidationError(
-			`parent run ${parent.id} belongs to a different project; a continuation must reuse the same project's branch`,
-			{ recoveryHint: "re-run with a parentRunId from the same project, or omit it" },
-		);
-	}
-	const defaults = await readProjectDefaults(input.warrenConfigs, project.id, project.localPath);
-	const prefix = resolveRunBranchPrefix({
-		projectDefault: defaults?.runBranchPrefix,
-		envDefault: input.runBranchPrefixDefault,
-	});
-	return composeRunBranch(prefix, parent.id);
 }
 
 // warren-b893: route Bun cache outside the workspace so `git add .` never sweeps it.

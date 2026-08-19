@@ -100,7 +100,11 @@ export interface MaterializeProjectOptions {
 	 * checked out at `main` can't be re-used directly.
 	 */
 	createBranch?: boolean;
-	/** Branch the per-run branch is carved from. Defaults to `main`. */
+	/**
+	 * Base ref the per-run branch is carved from (warren-232d: no default —
+	 * thread the project's actual default branch; a master-default repo must
+	 * not silently cut off 'main'). Required when `createBranch` is true.
+	 */
 	baseBranch?: string;
 	/** Path to start probing for an existing host clone (typically projectRoot). */
 	projectRoot?: string;
@@ -222,17 +226,26 @@ async function materializeViaWorktree(
 	options: MaterializeProjectOptions,
 ): Promise<MaterializedWorkspaceSource> {
 	const createBranch = options.createBranch ?? true;
+	if (createBranch && options.baseBranch === undefined) {
+		// warren-232d: no hard-coded 'main' fallback — a master/develop-default
+		// repo must cut its run branch off the project's actual default branch,
+		// which the caller (the providers) threads from the project row.
+		throw new WorkspaceMaterializationError(
+			"materializeProjectWorkspace: baseBranch is required when createBranch is true",
+			{
+				recoveryHint:
+					"Thread the project's default branch (RunSpec.baseBranch) so the run " +
+					"branch is carved off the right base; never assume 'main'.",
+			},
+		);
+	}
 	try {
 		await addWorktree({
 			hostClonePath: hostClone.topLevel,
 			workspacePath: options.workspacePath,
 			branch: options.branch,
 			createBranch,
-			...(createBranch && options.baseBranch
-				? { baseBranch: options.baseBranch }
-				: createBranch
-					? { baseBranch: "main" }
-					: {}),
+			...(createBranch && options.baseBranch ? { baseBranch: options.baseBranch } : {}),
 		});
 	} catch (err) {
 		throw wrapMaterializationError(`failed to add worktree at ${options.workspacePath}`, err);

@@ -189,6 +189,14 @@ async function mirrorIsUsable(git: InitGitRunner, mirrorPath: string): Promise<b
  * sight. Credential hygiene: `clone --mirror` embeds the auth URL in `origin`,
  * so we immediately reset it to the clean URL; subsequent `fetch` passes the
  * auth URL positionally and never persists it.
+ *
+ * warren-232d (accepted limit): the update refspec fetches ONLY
+ * `refs/heads/*` + `refs/tags/*`, so a `baseCommit` SHA that is not reachable
+ * from any branch or tag is absent from the mirror — `cloneBaseAndCarve`'s
+ * `git checkout <sha>` then fails inside `materializeViaCache`, which catches
+ * it and falls back to a DIRECT network clone (where the full object store
+ * carries the SHA). That fallback is the documented behavior: correctness is
+ * preserved at the cost of one uncached clone for unreachable-SHA replays.
  */
 async function ensureMirror(
 	git: InitGitRunner,
