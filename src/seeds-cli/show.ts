@@ -20,10 +20,12 @@
  */
 
 import { formatError } from "../core/errors.ts";
+import { isPlanStatus, PLAN_STATUSES } from "../core/wire.ts";
 import { SeedNotFoundError, SeedsCliError } from "./errors.ts";
 import type { SeedsCliDeps } from "./extensions.ts";
 import {
 	PlanListEnvelopeSchema,
+	type PlanListPlan,
 	PlanShowEnvelopeSchema,
 	type PlanShowPlan,
 	type PlanSummary,
@@ -75,7 +77,22 @@ export async function listPlans(
 		);
 	}
 
-	return envelope.data.plans.map((plan) => ({
+	return envelope.data.plans.map(toPlanSummary);
+}
+
+/**
+ * Project one `sd plan list` row onto the canonical, wire-lean
+ * `PlanSummary` (src/core/wire-tracker.ts). Unknown plan statuses fail
+ * fast: seeds' own VALID_PLAN_STATUSES is the closed set, so anything
+ * else means the envelope is not what we think it is.
+ */
+function toPlanSummary(plan: PlanListPlan): PlanSummary {
+	if (!isPlanStatus(plan.status)) {
+		throw new SeedsCliError(
+			`sd plan list returned unknown plan status '${plan.status}' for ${plan.id}; expected one of ${PLAN_STATUSES.join(", ")}`,
+		);
+	}
+	return {
 		id: plan.id,
 		status: plan.status,
 		childCount: plan.children?.length ?? 0,
@@ -85,7 +102,7 @@ export async function listPlans(
 		...(plan.name !== undefined ? { name: plan.name } : {}),
 		...(plan.createdAt !== undefined ? { createdAt: plan.createdAt } : {}),
 		...(plan.updatedAt !== undefined ? { updatedAt: plan.updatedAt } : {}),
-	}));
+	};
 }
 
 export async function showPlan(
