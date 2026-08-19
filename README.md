@@ -37,6 +37,7 @@ Anyone can get a PR out of an agent. Warren is for what happens next: dozens of 
 - [Deploy](#deploy)
 - [Community](#community)
 - [Optional integrations](#optional-integrations)
+- [Extensions](#extensions)
 - [PR-body template](#pr-body-template)
 - [Per-run preview environments](#per-run-preview-environments)
 - [Architecture](#architecture)
@@ -128,7 +129,7 @@ Stable (`0.17.0`), running on GKE in continuous use against real GitHub repos. T
 
 Scenario-based acceptance tests in [`scripts/acceptance/`](scripts/acceptance/) cover the end-to-end path. They span manual runs, cron triggers, K8s pod dispatch, Postgres, previews, restart recovery, cost analytics, the seeds-extensions roundtrip, and serial plan-run dispatch.
 
-GitHub App mode has shipped. Set `WARREN_FORGE=app` and warren mints short-lived installation tokens per operation instead of holding a static PAT. Register an App in one browser round-trip at `GET /github-app/register` (see [the K8s runbook §2.6](docs/RUNBOOK-K8S.md)). The 0.17.0 absorption release internalized the sandbox substrate (plan pl-3007) and added a `DockerProvider` (`WARREN_RUNTIME=docker`) that runs each agent as a sibling container. The active frontier is the issue-tracker contract cut. See [ROADMAP.md](ROADMAP.md).
+The 0.17.0 absorption release internalized the sandbox substrate (plan pl-3007) and added a `DockerProvider` (`WARREN_RUNTIME=docker`) that runs each agent as a sibling container. The active frontier is the issue-tracker contract cut. See [ROADMAP.md](ROADMAP.md).
 
 ## What you get
 
@@ -146,7 +147,7 @@ GitHub App mode has shipped. Set `WARREN_FORGE=app` and warren mints short-lived
 Two supported paths:
 
 - **Single box (`local` runtime).** The [Quickstart](#quickstart) above *is* a complete deploy: one container, one volume. Run it on a home server or any Docker host. Warren serves plain HTTP. Put TLS on your edge with Caddy on a home server, or with your ingress.
-- **Cluster (`k8s` runtime), the hosted target.** Deploy to Kubernetes. **GKE Autopilot is the reference cluster.** Each run is its own pod, and admission caps shed load before the cluster thrashes. The canonical procedure is **[docs/RUNBOOK-K8S.md](docs/RUNBOOK-K8S.md)**. The manifest quick-start is [`deploy/k8s/README.md`](deploy/k8s/README.md).
+- **Cluster (`k8s` runtime), the hosted target.** Set `WARREN_RUNTIME=k8s` and each run becomes its own pod, with **GKE Autopilot** as the reference cluster. Kubelet enforces per-run CPU and memory, and a runaway run kills its own pod, not the control plane. Admission caps shed load before the cluster thrashes. Two features degrade: previews are off, and steering is a 5s poll rather than real-time. The canonical procedure is **[docs/RUNBOOK-K8S.md](docs/RUNBOOK-K8S.md)**, and the manifest quick-start is [`deploy/k8s/README.md`](deploy/k8s/README.md).
 
 Continuous deployment ships in [`.github/workflows/deploy-gke.yml`](.github/workflows/deploy-gke.yml).
 
@@ -155,16 +156,6 @@ A published GitHub release (cut by [`release.yml`](.github/workflows/release.yml
 The job then fails unless the rolled-out image is the released SHA **and** the ingress `/version` reports the released semver.
 
 Auth is GCP Workload Identity Federation, so there are no long-lived keys. The OIDC provider, service account, and cluster coordinates are repo secrets and variables (see [docs/RUNBOOK-K8S.md](docs/RUNBOOK-K8S.md) §1.6).
-
-### Deploy to Kubernetes (scale-out)
-
-The `local` topology is one box, and one host is the concurrency ceiling. The `k8s` topology lifts that ceiling by running **each agent run as its own pod**.
-
-Kubelet enforces per-run CPU and memory natively. A runaway run kills its own pod instead of the control plane, and admission caps shed load before the cluster thrashes. The pod boundary is the sandbox.
-
-Set `WARREN_RUNTIME=k8s` on the control-plane Deployment and follow **[docs/RUNBOOK-K8S.md](docs/RUNBOOK-K8S.md)**. The runbook owns the image build, manifest overlays, secrets, and admission procedure. The manifest quick-start is [`deploy/k8s/README.md`](deploy/k8s/README.md).
-
-Some LocalProvider features degrade under `k8s`: previews are off, and steering is a 5s poll rather than real-time. The runbook's capability section spells out the gaps.
 
 ### Observability on a live deploy
 
@@ -176,9 +167,7 @@ Warren ships enough operator-visible surface to stay inspectable without extra i
 - **Per-run cost and token usage.** Warren populates the `runs.cost_usd` and `runs.tokens_*` columns for the `pi` and `claude-code` built-ins (see [docs/design/agent-composition.md](docs/design/agent-composition.md)). The UI run-detail page surfaces them, and `GET /analytics/cost?from=&to=&projectId=` aggregates across runs (`src/db/repos/runs.ts:listForAnalytics`). A per-run `maxCostUsd` cap in `.warren/config.yaml` cancels a run at its spend ceiling (see [docs/design/warren-config.md](docs/design/warren-config.md)).
 - **Pre-flight checks.** Run `warren doctor --local` (`src/cli/commands/doctor.ts`) on a deployed instance. It surfaces common misconfigurations: empty or placeholder bearer tokens, unbalanced preview markers, and a missing `WARREN_PREVIEW_HOST` on a project that uses previews. Cheaper than reading the logs after a failed run.
 
-V1 ships a bearer-gated Prometheus exposition endpoint (`GET /metrics`) that works under both runtimes. It carries no OpenTelemetry exporter. For richer tracing, the request-id and pino combination is the seam to extend. The route table (`ROUTE_TABLE` in `src/server/handlers/index.ts`) is the stable surface to instrument against.
-
-Both runtimes serve `GET /metrics` (bearer-gated, warren-682a), a Prometheus exposition endpoint. Each scrape reports run-count, cost, token, and event-stream gauges (`src/server/handlers/metrics.ts`). Under `k8s` the same endpoint also carries pod-lifecycle gauges. See the runbook.
+Both runtimes serve `GET /metrics` (bearer-gated, warren-682a), a Prometheus exposition endpoint. Each scrape reports run-count, cost, token, and event-stream gauges (`src/server/handlers/metrics.ts`), plus pod-lifecycle gauges under `k8s`. Warren carries no OpenTelemetry exporter. For richer tracing, the request-id and pino combination is the seam to extend.
 
 ## Community
 
@@ -191,6 +180,12 @@ Warren bundles a few [os-eco](https://github.com/jayminwest/os-eco) tools as opt
 - **Agent memory.** A project with a `.mulch/` directory gets its expertise primed into every run, and reap merges new records back with last-write-wins by timestamp.
 - **Issue queue.** A project with a `.seeds/` directory lets agents read the queue, claim work, file follow-ups, and close finished issues. `.seeds/` also unlocks serial plan-run dispatch and past-due `extensions.scheduledFor` triggers (see [docs/design/scheduler.md](docs/design/scheduler.md) and [docs/design/plan-run-coordinator.md](docs/design/plan-run-coordinator.md)). Tune the plan-run coordinator with `WARREN_PLAN_RUN_TICK_MS` (default 10s), or turn it off with `WARREN_PLAN_RUN_DISABLED=1`.
 See the topic records under [docs/design/](docs/design/) for the full contracts.
+
+## Extensions
+
+The audit log and the judge from [Why warren](#why-warren) are not core code. Each one is an out-of-process extension under [`extensions/`](extensions/): a standalone Bun package with its own lockfile, tests, and container image. An extension consumes warren's published HTTP surface only. It never imports `src/`, and core never imports an extension. The `check:layers` gate enforces the boundary in both directions.
+
+[`extensions/audit-log/FRICTION.md`](extensions/audit-log/FRICTION.md) records every gap the flagship build found in that HTTP surface. That list is the spec for the future extension loader and public catalog. See [docs/design/extensions.md](docs/design/extensions.md).
 
 ## PR-body template
 
@@ -275,6 +270,10 @@ Warren runs against a swappable **runtime provider**, selected once at boot by `
 
 - **`local` (default): self-host.** The whole system is one container. Warren isolates each run with `bwrap` through its own in-process engine. This is the primary path everything above describes.
 - **`k8s`: scale-out.** Each run is its own Kubernetes pod. Built for clusters and GKE Autopilot. See [**the K8s runbook**](docs/RUNBOOK-K8S.md) and [`deploy/k8s/`](deploy/k8s/README.md).
+
+GitHub access sits behind the same kind of seam: a **forge**, resolved once at boot by `WARREN_FORGE` (`src/forge/registry.ts`). The default `github` forge authenticates with a static PAT. The `app` forge runs warren as a GitHub App and mints a short-lived installation token per operation. Register an App in one browser round-trip at `GET /github-app/register` (see [the K8s runbook §2.6](docs/RUNBOOK-K8S.md)). A `fake` forge backs the acceptance harness.
+
+Only `src/forge/` speaks the GitHub REST API, and `check:layers` holds that boundary. The contract is [docs/design/forge-contract.md](docs/design/forge-contract.md).
 
 ```
 ┌──────────────── container (bwrap-friendly host) ────────────────┐
@@ -369,6 +368,7 @@ src/
 ├── core/               types, errors, id minting (ag_*, prj_*, run_*)
 ├── registry/           agent definition resolution (built-in + library)
 ├── projects/           GitHub clone management
+├── forge/              boot-resolved GitHub access: PAT, App, fake (docs/design/forge-contract.md)
 ├── runs/               spawn / stream / reap composition flow (docs/design/agent-composition.md)
 ├── plan-runs/          serial plan execution (docs/design/plan-run-coordinator.md)
 ├── triggers/           cron + scheduled-for dispatcher (docs/design/scheduler.md)
@@ -387,27 +387,16 @@ src/
 
 `src/client/` exports a typed TypeScript client for driving warren programmatically: dispatching runs, streaming events, and managing projects, agents, and plan-runs. It imports nothing from the server, and it targets scripts, CLIs, acceptance harnesses, and external agents.
 
-### Setup
-
-```bash
-export WARREN_BASE_URL=https://warren.example.com   # default: http://localhost:8080
-export WARREN_API_TOKEN=<your-token>
-```
-
-### Dispatch a run and wait for it
-
 ```ts
 import { WarrenClient } from "./src/client/index.ts";
 
-const warren = WarrenClient.fromEnv();
+const warren = WarrenClient.fromEnv();  // WARREN_BASE_URL + WARREN_API_TOKEN
 await warren.probe();  // throws WarrenUnreachableError if warren is down
 
 const { run } = await warren.dispatch({
   agent: "claude-code",
   project: "my-project",
   prompt: "Add input validation to the signup form",
-  branch: "main",             // optional: git ref to clone from
-  model: "claude-sonnet-4-6", // optional: override the default model
 });
 
 const final = await warren.waitForRun(run.id, {
@@ -416,61 +405,7 @@ const final = await warren.waitForRun(run.id, {
 console.log(`Run ${final.state}, PR: ${final.prUrl}`);
 ```
 
-### Stream events
-
-```ts
-for await (const event of warren.streamRunEvents(run.id, { follow: true })) {
-  if (event.stream === "stdout") process.stdout.write(String(event.payload));
-}
-```
-
-### Steer a running agent
-
-```ts
-await warren.steer(run.id, {
-  body: "Focus on the email field first, skip phone for now",
-  priority: "high",
-});
-```
-
-### Plan-runs
-
-```ts
-// Dispatch a serial plan-run against a seeds plan
-const { planRun } = await warren.createPlanRun({
-  project: "my-project",
-  planId: "pl-abc123",
-  agent: "claude-code",
-});
-
-// Inspect child state alongside the fanned-out child runs[]
-const detail = await warren.getPlanRun(planRun.id);
-for (const child of detail.children) {
-  const run = detail.runs.find((r) => r.id === child.runId);
-  console.log(`#${child.seq} ${child.seedId} [${child.state}] cost=${run?.costUsd ?? "-"}`);
-}
-
-// List plan-runs, optionally filtered by project / state
-const { planRuns } = await warren.listPlanRuns({ project: "my-project", state: "running" });
-```
-
-### Error handling
-
-```ts
-import { WarrenClientError, WarrenUnreachableError } from "./src/client/index.ts";
-
-try {
-  await warren.dispatch({ agent: "claude-code", project: "bad-id", prompt: "..." });
-} catch (err) {
-  if (err instanceof WarrenUnreachableError) {
-    // warren is down or unreachable
-  } else if (err instanceof WarrenClientError) {
-    // warren returned an error: err.status, err.code, err.message, err.hint
-  }
-}
-```
-
-The full type surface (all inputs, outputs, row shapes, enums) is in `src/client/types.ts`.
+The same client streams events (`streamRunEvents`, with `follow`), steers a live run (`steer`), and drives plan-runs (`createPlanRun`, `getPlanRun`, `listPlanRuns`). A failed call throws `WarrenClientError` (with `status`, `code`, and `hint`) or `WarrenUnreachableError`. The full type surface (all inputs, outputs, row shapes, enums) is in `src/client/types.ts`.
 
 ## Operating model
 

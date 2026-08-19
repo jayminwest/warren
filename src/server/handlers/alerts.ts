@@ -198,6 +198,8 @@ async function dispatchHealer(
 		projectId: candidate.projectId,
 		prompt: buildHealPrompt(alert),
 		trigger: HEALER_TRIGGER,
+		// warren-9ce3: explicit provenance for the dispatch-context log.
+		dispatchOrigin: "healer",
 		mode: "batch",
 		metadata: { healFingerprint: alert.fingerprint, alertSource: alert.source },
 		projectsConfig: deps.projectsConfig,

@@ -317,6 +317,8 @@ describe("createProviderRetryLifecycleExtension", () => {
 		expect(call.prompt).toBe("work the seed");
 		expect(call.trigger).toBe("manual");
 		expect(call.seedId).toBe("warren-339d");
+		// warren-9ce3: origin is the retry path, not the inherited trigger.
+		expect(call.dispatchOrigin).toBe("retry_provider");
 		expect(call.parentRunId).toBe(fixture.runId);
 		expect(call.cloneKind).toBe("replicate");
 		// retryOf back-link (warren-eaa6/warren-58ff): the successor row

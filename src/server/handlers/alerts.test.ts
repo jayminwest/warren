@@ -7,7 +7,13 @@ import { createRepos, type Repos } from "../../db/repos/index.ts";
 import { NO_AUTH } from "../auth.ts";
 import { startServer } from "../server.ts";
 import type { ServeHandle } from "../types.ts";
-import { depsFor, makeSandboxClient, silentLogger, tcpUrl } from "./runs.test-helpers.ts";
+import {
+	depsFor,
+	makeRecordingLogger,
+	makeSandboxClient,
+	silentLogger,
+	tcpUrl,
+} from "./runs.test-helpers.ts";
 
 const SENTRY_PAYLOAD = {
 	data: {
@@ -57,17 +63,18 @@ describe("POST /alerts/heal", () => {
 		await db.close();
 	});
 
-	async function serve(): Promise<void> {
+	async function serve(recording?: ReturnType<typeof makeRecordingLogger>): Promise<void> {
 		const tmpWs = await mkdtemp(join(tmpdir(), "warren-heal-ws-"));
 		const sandboxClient = makeSandboxClient(
 			{ sandboxId: "bur_heal0000000", sandboxRunId: "run_healrun00000", workspacePath: tmpWs },
 			[],
 		);
-		const deps = await depsFor(repos, sandboxClient);
+		const logger = recording?.logger ?? silentLogger;
+		const deps = { ...(await depsFor(repos, sandboxClient)), logger };
 		handle = startServer(deps, {
 			transport: { kind: "tcp", hostname: "127.0.0.1", port: 0 },
 			auth: NO_AUTH,
-			logger: silentLogger,
+			logger,
 		});
 	}
 
@@ -85,7 +92,8 @@ describe("POST /alerts/heal", () => {
 			projectLocalPath,
 			"healer:\n  enabled: true\n  projectMapping:\n    - issue-99\n",
 		);
-		await serve();
+		const recording = makeRecordingLogger();
+		await serve(recording);
 
 		const res = await post(SENTRY_PAYLOAD);
 		expect(res.status).toBe(202);
@@ -102,6 +110,9 @@ describe("POST /alerts/heal", () => {
 		const run = await repos.runs.require(body.runId);
 		expect(run.trigger).toBe("healer");
 		expect(run.agentName).toBe("healer");
+		// warren-9ce3: healer origin rides the spawn logger binding.
+		const provisioned = recording.lines.find((l) => l.obj.event === "spawn.provisioned");
+		expect(provisioned?.obj.dispatch_origin).toBe("healer");
 
 		// The durable heal.dispatched event is stamped for idempotency.
 		const events = await repos.events.listByKind("heal.dispatched");

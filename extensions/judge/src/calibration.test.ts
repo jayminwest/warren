@@ -259,6 +259,7 @@ describe("calibrateOnce", () => {
 			kind: "unjudged",
 			judgeModelId: STRONG_ID,
 			reason: "judge_error",
+			detail: "provider 500",
 		});
 		expect(spend.spendForDay("2026-08-15")).toBeCloseTo(0.02);
 		verdicts.close();

@@ -23,6 +23,7 @@ interface RecordedSpawn {
 	agentName: string;
 	prompt: string;
 	trigger: string;
+	seedId?: string;
 	metadata?: unknown;
 	maxCostUsd?: number;
 }
@@ -48,6 +49,7 @@ function spawnRecorder(
 			agentName: input.agentName,
 			prompt: input.prompt,
 			trigger: input.trigger,
+			...(input.seedId !== undefined ? { seedId: input.seedId } : {}),
 			metadata: input.metadata,
 			...(input.maxCostUsd !== undefined ? { maxCostUsd: input.maxCostUsd } : {}),
 		});
@@ -164,6 +166,8 @@ describe("dispatchCronTrigger", () => {
 				agentName: "claude-code",
 				prompt: "Work on seed warren-abc (cron trigger nightly).",
 				trigger: "cron",
+				// warren-9ce3: seed pointer is first-class on the seam.
+				seedId: "warren-abc",
 				metadata: { triggerId: TRIGGER_ID, cron: "0 0 * * *", seed: "warren-abc" },
 			},
 		]);

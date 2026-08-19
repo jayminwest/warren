@@ -371,6 +371,7 @@ export async function calibrateOnce(deps: CalibrationDeps): Promise<CalibrationC
 					rubricVersion: deps.rubricVersion,
 					judgeModelId: strongId,
 					reason: outcome.reason,
+					detail: outcome.detail,
 				});
 			}
 			// Spend is ledgered for every outcome — an unjudged marker is not a

@@ -23,4 +23,5 @@ export {
 	healMigrationJournalCollisions,
 	recordMigrationHealEvent,
 } from "./migration-preflight.ts";
-export type { SpawnRunInput, SpawnRunResult } from "./types.ts";
+export type { DispatchOrigin, SpawnRunInput, SpawnRunResult } from "./types.ts";
+export { DISPATCH_ORIGINS } from "./types.ts";
