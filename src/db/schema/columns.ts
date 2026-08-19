@@ -39,6 +39,9 @@ export const TABLE_NAMES = {
 	planRunChildren: "plan_run_children",
 	runInbox: "run_inbox",
 	toolCalls: "tool_calls",
+	// warren-36e7 / pl-a37b Track A: one insert-only fact row per dispatched
+	// run. PK is run_id; cascade on runs delete matches tool_calls.
+	dispatchContext: "dispatch_context",
 } as const;
 
 /**
@@ -92,6 +95,9 @@ export const INDEX_NAMES = {
 	// index keeps the result-join UPDATE a covered lookup.
 	toolCallsRunSeq: "tool_calls_run_seq_idx",
 	toolCallsRunUseId: "tool_calls_run_use_id_idx",
+	// warren-36e7. GET /analytics/dispatch (warren-5423) windows on
+	// created_at, not started_at, so never-started dispatches stay visible.
+	dispatchContextCreatedAt: "dispatch_context_created_at_idx",
 } as const;
 
 /**

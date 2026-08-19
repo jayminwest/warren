@@ -476,28 +476,7 @@ export const runInbox = sqliteTable(
 	(t) => [index(INDEX_NAMES.runInboxRunState).on(t.runId, t.state)],
 );
 
-/**
- * Tool-calls rollup (warren-7746 / pl-103e step 9). One row per `tool_use`
- * event, extracted at event-append time (the stream bridge) or by the
- * boot-time backfill through the per-runtime shape registries
- * (`src/core/tool-shape.ts` + `src/core/file-shape.ts`), so the
- * `/analytics/behavior` command mining reads structured rows instead of
- * re-parsing raw event payloads under a silent row cap.
- *
- * `run_id` FKs `runs.id` ON DELETE CASCADE, so the rollup dies with the run
- * (and with the project via `runs.project_id` CASCADE) exactly like the
- * `events` transcript it derives from — retention survival across project
- * delete is deliberately a phase-4 extension concern, per the plan.
- *
- * Column nullability is the extraction report, not schema laxity: a row
- * whose runtime shape could not read the payload at all lands with
- * `tool_name`/`command`/`tool_use_id` all NULL (the shape registry's exact
- * parse-failure condition), which the coverage rollup counts as unparsed.
- * `is_error` + `result_bytes` start false/NULL on the tool_use row and are
- * filled in by the matching tool_result's UPDATE on (run_id, tool_use_id);
- * a result that never arrives reads as non-error, mirroring the old
- * read-time join semantics.
- */
+/** Tool-calls rollup (warren-7746). One row per tool_use; CASCADE with run. */
 export const toolCalls = sqliteTable(
 	TABLE_NAMES.toolCalls,
 	{
@@ -505,27 +484,66 @@ export const toolCalls = sqliteTable(
 		runId: text("run_id")
 			.notNull()
 			.references(() => runs.id, { onDelete: "cascade" }),
-		// sandbox_event_seq of the tool_use event — orders calls within a run.
 		seq: integer("seq").notNull(),
 		ts: text("ts").notNull(),
 		toolName: text("tool_name"),
-		// Raw command as the harness emitted it; generalization happens at
-		// read time so future queries can re-generalize differently.
 		command: text("command"),
-		// File paths the call touches (fileShape registry); JSON string array.
 		filePaths: text("file_paths", { mode: "json" }),
 		toolUseId: text("tool_use_id"),
 		isError: integer("is_error", { mode: "boolean" }).notNull().default(false),
-		// UTF-8 byte size of the tool_result body (context-waste insight).
 		resultBytes: integer("result_bytes"),
-		// Parse-boundary provenance, mirrored from the source event row
-		// (warren-5a07). NULL reads as unknown, never a real bucket.
 		origin: text("origin"),
 	},
 	(t) => [
 		uniqueIndex(INDEX_NAMES.toolCallsRunSeq).on(t.runId, t.seq),
 		index(INDEX_NAMES.toolCallsRunUseId).on(t.runId, t.toolUseId),
 	],
+);
+
+/**
+ * Dispatch-context log (warren-36e7). Insert-only fact row per dispatch;
+ * PK run_id CASCADE. created_at is ISO8601 TEXT (analytics window).
+ * NULL means unknown. Four groups: action, queue, provenance, issue.
+ */
+export const dispatchContext = sqliteTable(
+	TABLE_NAMES.dispatchContext,
+	{
+		runId: text("run_id")
+			.primaryKey()
+			.references(() => runs.id, { onDelete: "cascade" }),
+		createdAt: text("created_at").notNull(),
+		agentName: text("agent_name"),
+		provider: text("provider"),
+		model: text("model"),
+		providerSource: text("provider_source"),
+		modelSource: text("model_source"),
+		capSource: text("cap_source"),
+		maxCostUsd: real("max_cost_usd"),
+		runtimeId: text("runtime_id"),
+		runtimeBackend: text("runtime_backend"),
+		promptBytes: integer("prompt_bytes"),
+		mode: text("mode"),
+		network: text("network"),
+		queueQueuedRuns: integer("queue_queued_runs"),
+		queueRunningRuns: integer("queue_running_runs"),
+		queueProjectNonTerminal: integer("queue_project_non_terminal"),
+		queueSnapshotSource: text("queue_snapshot_source"),
+		trigger: text("trigger"),
+		dispatchOrigin: text("dispatch_origin"),
+		dispatcherHandle: text("dispatcher_handle"),
+		triggerId: text("trigger_id"),
+		planRunId: text("plan_run_id"),
+		retryKind: text("retry_kind"),
+		retryOfRunId: text("retry_of_run_id"),
+		parentRunId: text("parent_run_id"),
+		attemptNo: integer("attempt_no"),
+		rootRunId: text("root_run_id"),
+		seedId: text("seed_id"),
+		seedStatus: text("seed_status"),
+		seedPriority: integer("seed_priority"),
+		seedSize: text("seed_size"),
+	},
+	(t) => [index(INDEX_NAMES.dispatchContextCreatedAt).on(t.createdAt)],
 );
 
 export type PlanRunRow = typeof planRuns.$inferSelect;
@@ -536,3 +554,5 @@ export type RunInboxRow = typeof runInbox.$inferSelect;
 export type RunInboxInsert = typeof runInbox.$inferInsert;
 export type ToolCallRow = typeof toolCalls.$inferSelect;
 export type ToolCallInsert = typeof toolCalls.$inferInsert;
+export type DispatchContextRow = typeof dispatchContext.$inferSelect;
+export type DispatchContextInsert = typeof dispatchContext.$inferInsert;

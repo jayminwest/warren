@@ -16,22 +16,26 @@ import { getTableConfig as getPgTableConfig, type PgTable } from "drizzle-orm/pg
 import { getTableConfig as getSqliteTableConfig, type SQLiteTable } from "drizzle-orm/sqlite-core";
 import {
 	agents as pgAgents,
+	dispatchContext as pgDispatchContext,
 	events as pgEvents,
 	planRunChildren as pgPlanRunChildren,
 	planRuns as pgPlanRuns,
 	projects as pgProjects,
 	runInbox as pgRunInbox,
 	runs as pgRuns,
+	toolCalls as pgToolCalls,
 	triggers as pgTriggers,
 } from "./postgres.ts";
 import {
 	agents as sqliteAgents,
+	dispatchContext as sqliteDispatchContext,
 	events as sqliteEvents,
 	planRunChildren as sqlitePlanRunChildren,
 	planRuns as sqlitePlanRuns,
 	projects as sqliteProjects,
 	runInbox as sqliteRunInbox,
 	runs as sqliteRuns,
+	toolCalls as sqliteToolCalls,
 	triggers as sqliteTriggers,
 } from "./sqlite.ts";
 
@@ -44,6 +48,10 @@ const SQLITE_TABLES: Record<string, SQLiteTable> = {
 	planRuns: sqlitePlanRuns,
 	planRunChildren: sqlitePlanRunChildren,
 	runInbox: sqliteRunInbox,
+	// warren-36e7: tool_calls was missing from the parity walk; register it
+	// alongside the new dispatch_context table so both stay locked.
+	toolCalls: sqliteToolCalls,
+	dispatchContext: sqliteDispatchContext,
 };
 
 const PG_TABLES: Record<string, PgTable> = {
@@ -55,6 +63,8 @@ const PG_TABLES: Record<string, PgTable> = {
 	planRuns: pgPlanRuns,
 	planRunChildren: pgPlanRunChildren,
 	runInbox: pgRunInbox,
+	toolCalls: pgToolCalls,
+	dispatchContext: pgDispatchContext,
 };
 
 type AnyTable = keyof typeof SQLITE_TABLES;
@@ -194,6 +204,8 @@ const TABLE_KEYS: AnyTable[] = [
 	"planRuns",
 	"planRunChildren",
 	"runInbox",
+	"toolCalls",
+	"dispatchContext",
 ];
 
 describe("schema dialect parity (sqlite ↔ postgres)", () => {
