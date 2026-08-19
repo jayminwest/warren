@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import type { SandboxProfile, SpawnResult } from "../../sandbox/types.ts";
+import type { ProxyHandle, StartProxyOptions } from "../../sandbox/proxy-server.ts";
+import type { SandboxProfile, SpawnCommand, SpawnResult } from "../../sandbox/types.ts";
 import type { AgentRuntimeAdapter } from "../adapters/index.ts";
 import type { RunSpec } from "../contract.ts";
 import { driveLocalRun, readSpecFrontmatter } from "./drive.ts";
@@ -141,13 +142,39 @@ function driveWith(
 	spec: RunSpec,
 	fake: FakeProc,
 	adapter: AgentRuntimeAdapter,
-	extra: { midRunInboxPollMs?: number } = {},
+	extra: {
+		midRunInboxPollMs?: number;
+		profile?: SandboxProfile;
+		spawn?: (profile: SandboxProfile, command: SpawnCommand) => Promise<SpawnResult>;
+		startProxy?: (opts: StartProxyOptions) => Promise<ProxyHandle>;
+	} = {},
 ): Promise<void> {
-	return driveLocalRun(store, record, spec, PROFILE, {
-		spawn: () => Promise.resolve(fake.proc),
+	const { profile = PROFILE, spawn, startProxy, midRunInboxPollMs } = extra;
+	return driveLocalRun(store, record, spec, profile, {
+		spawn: spawn ?? (() => Promise.resolve(fake.proc)),
 		registry: { get: (id) => (id === adapter.runtimeId ? adapter : undefined) },
-		...extra,
+		...(startProxy !== undefined ? { startProxy } : {}),
+		...(midRunInboxPollMs !== undefined ? { midRunInboxPollMs } : {}),
 	});
+}
+
+function makeFakeProxy(
+	port = 51234,
+): ProxyHandle & { stopped: () => boolean; stopCalls: () => number } {
+	let stopped = false;
+	let stopCalls = 0;
+	return {
+		port,
+		url: `http://127.0.0.1:${port}`,
+		deniedCount: 0,
+		allowedCount: 0,
+		stop: async () => {
+			stopCalls += 1;
+			stopped = true;
+		},
+		stopped: () => stopped,
+		stopCalls: () => stopCalls,
+	};
 }
 
 /* -------------------------------------------------------------------------- */
@@ -334,6 +361,118 @@ describe("driveLocalRun", () => {
 		});
 		await driveWith(store, record, makeSpec(), fake, adapter);
 		expect(seenPending.map((m) => (m as { body: string }).body)).toEqual(["queued-note"]);
+	});
+
+	test("network=restricted arms proxyAddress + HTTP(S)_PROXY and stops the proxy with the run", async () => {
+		const store = new LocalRunStore();
+		const record = makeRecord(store);
+		const fake = makeFakeProc({
+			stdoutLines: [
+				JSON.stringify({ kind: "state_change", stream: "system", payload: { type: "result" } }),
+			],
+		});
+		const proxy = makeFakeProxy(51999);
+		let seenProfile: SandboxProfile | undefined;
+		let seenCommand: SpawnCommand | undefined;
+		let startOpts: StartProxyOptions | undefined;
+		const restricted: SandboxProfile = {
+			...PROFILE,
+			network: "restricted",
+			allowedDomains: ["api.anthropic.com", "github.com"],
+		};
+		await driveWith(store, record, makeSpec({ network: "restricted" }), fake, makeAdapter(), {
+			profile: restricted,
+			startProxy: async (opts) => {
+				startOpts = opts;
+				return proxy;
+			},
+			spawn: async (profile, command) => {
+				seenProfile = profile;
+				seenCommand = command;
+				return fake.proc;
+			},
+		});
+		expect(startOpts?.allowedDomains).toEqual(["api.anthropic.com", "github.com"]);
+		expect(seenProfile?.proxyAddress).toEqual({ host: "127.0.0.1", port: 51999 });
+		expect(seenCommand?.env?.HTTP_PROXY).toBe(proxy.url);
+		expect(seenCommand?.env?.HTTPS_PROXY).toBe(proxy.url);
+		expect(seenCommand?.env?.http_proxy).toBe(proxy.url);
+		expect(seenCommand?.env?.https_proxy).toBe(proxy.url);
+		expect(seenCommand?.env?.NO_PROXY).toBe("");
+		expect(proxy.stopped()).toBe(true);
+		expect(proxy.stopCalls()).toBe(1);
+		expect(record.phase).toBe("succeeded");
+	});
+
+	test("network=open does not start a proxy and leaves the profile untouched", async () => {
+		const store = new LocalRunStore();
+		const record = makeRecord(store);
+		const fake = makeFakeProc({
+			stdoutLines: [
+				JSON.stringify({ kind: "state_change", stream: "system", payload: { type: "result" } }),
+			],
+		});
+		let startProxyCalls = 0;
+		let seenProfile: SandboxProfile | undefined;
+		let seenCommand: SpawnCommand | undefined;
+		await driveWith(store, record, makeSpec(), fake, makeAdapter(), {
+			startProxy: async () => {
+				startProxyCalls += 1;
+				return makeFakeProxy();
+			},
+			spawn: async (profile, command) => {
+				seenProfile = profile;
+				seenCommand = command;
+				return fake.proc;
+			},
+		});
+		expect(startProxyCalls).toBe(0);
+		expect(seenProfile?.proxyAddress).toBeUndefined();
+		expect(seenCommand?.env?.HTTP_PROXY).toBeUndefined();
+	});
+
+	test("a proxy start failure terminalizes failed without spawning", async () => {
+		const store = new LocalRunStore();
+		const record = makeRecord(store);
+		let spawnCalls = 0;
+		await driveLocalRun(
+			store,
+			record,
+			makeSpec({ network: "restricted" }),
+			{ ...PROFILE, network: "restricted", allowedDomains: ["github.com"] },
+			{
+				startProxy: () => Promise.reject(new Error("EADDRINUSE")),
+				spawn: async () => {
+					spawnCalls += 1;
+					throw new Error("should not spawn");
+				},
+				registry: { get: () => makeAdapter() },
+			},
+		);
+		expect(spawnCalls).toBe(0);
+		expect(record.phase).toBe("failed");
+		expect(record.errorMessage).toContain("failed to start network proxy");
+		expect(record.errorMessage).toContain("EADDRINUSE");
+	});
+
+	test("spawn rejection still stops a live restricted proxy", async () => {
+		const store = new LocalRunStore();
+		const record = makeRecord(store);
+		const proxy = makeFakeProxy();
+		await driveLocalRun(
+			store,
+			record,
+			makeSpec({ network: "restricted" }),
+			{ ...PROFILE, network: "restricted", allowedDomains: ["github.com"] },
+			{
+				startProxy: async () => proxy,
+				spawn: () => Promise.reject(new Error("bwrap missing")),
+				registry: { get: () => makeAdapter() },
+			},
+		);
+		expect(proxy.stopped()).toBe(true);
+		expect(record.phase).toBe("failed");
+		expect(record.errorMessage).toContain("bwrap missing");
 	});
 });
 

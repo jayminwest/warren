@@ -17,13 +17,19 @@
  *      plus the warren-c865 home-credential forward: with $HOME now a real
  *      per-run directory, the host's claude OAuth blob is copied into it so
  *      auth resolves via $HOME lookup instead of the workspace.
- *   3. Spawn through `runSandboxed`. Batch runtimes (claude-code) close
+ *   3. Under `network=restricted`, start a per-run loopback CONNECT proxy
+ *      (warren-70bb / burrow `src/proxy/server.ts`), set `proxyAddress` on
+ *      the profile, and overlay HTTP(S)_PROXY onto the agent env. open/none
+ *      skip this path entirely so default behavior stays byte-identical.
+ *   4. Spawn through `runSandboxed`. Batch runtimes (claude-code) close
  *      stdin at spawn; stdin-held runtimes (pi — declares
  *      `shouldCloseStdinOnEvent`) keep it open until the terminal event
  *      lands, with mid-run steering delivered over the live stdin
  *      (`encodeSteeringMessage`) and the auto-reply hook
- *      (`autoRespondToEvent`) declining interactive RPCs.
- *   4. Terminalize the record: cancelled (cancel() won the race), oom_killed
+ *      (`autoRespondToEvent`) declining interactive RPCs. The proxy stops
+ *      in the drive loop's `finally` so a hung CONNECT tunnel cannot pin
+ *      the run.
+ *   5. Terminalize the record: cancelled (cancel() won the race), oom_killed
  *      (the cgroup probe, burrow-2083 parity), stream error, or the exit
  *      code. An agent that exits WITHOUT a terminal envelope gets a
  *      synthesized `agent_end` (warren-9a4a parity with the k8s entrypoint)
@@ -35,6 +41,12 @@
  */
 
 import { extractAgentEventEnvelope } from "../../core/event-envelope.ts";
+import {
+	type ProxyHandle,
+	proxyEnvVars,
+	type StartProxyOptions,
+	startProxy,
+} from "../../sandbox/proxy-server.ts";
 import { runSandboxed } from "../../sandbox/sandbox.ts";
 import type { SandboxProfile, SpawnCommand, SpawnResult } from "../../sandbox/types.ts";
 import { forwardClaudeHostCredentials } from "../adapters/claude-credentials.ts";
@@ -51,9 +63,16 @@ import type { LocalRunRecord, LocalRunStore } from "./run-store.ts";
 /** Mid-run steering poll cadence — burrow's MID_RUN_INBOX_POLL_MS verbatim. */
 export const MID_RUN_INBOX_POLL_MS = 200;
 
+export type StartProxyFn = (opts: StartProxyOptions) => Promise<ProxyHandle>;
+
 export interface DriveDeps {
 	/** Spawn seam — defaults to `runSandboxed` (tests inject a fake child). */
 	readonly spawn?: (profile: SandboxProfile, command: SpawnCommand) => Promise<SpawnResult>;
+	/**
+	 * Proxy starter seam (warren-70bb) — defaults to `startProxy`. Tests inject
+	 * a fake so restricted-network runs never bind a real loopback port.
+	 */
+	readonly startProxy?: StartProxyFn;
 	/** Adapter registry — defaults to warren's built-ins. */
 	readonly registry?: { get(id: string): AgentRuntimeAdapter | undefined };
 	/** Test seam: mid-run inbox poll cadence (ms). */
@@ -198,21 +217,90 @@ async function spawnAndPump(
 		workspacePath: record.workspacePath,
 		...(frontmatter !== undefined ? { frontmatter } : {}),
 	});
-	const command: SpawnCommand = useStdinHold ? { ...baseCommand, holdStdin: true } : baseCommand;
+	const holdCommand: SpawnCommand = useStdinHold
+		? { ...baseCommand, holdStdin: true }
+		: baseCommand;
+
+	// warren-70bb: under network=restricted, start a per-run loopback CONNECT
+	// proxy that enforces allowedDomains, plumb proxyAddress into the profile
+	// (so bwrap/seatbelt share-net + allow only that endpoint), and overlay
+	// HTTP(S)_PROXY onto the agent env. open/none stay byte-identical.
+	const armed = await armRestrictedProxy(store, record, profile, holdCommand, deps);
+	if (armed === null) return; // failBeforeSpawn already terminalized
+	const { runProfile, runCommand, proxy } = armed;
+
 	log(`local-drive: launching '${runtime.runtimeId}' in ${record.workspacePath}`);
-	const proc = await (deps.spawn ?? runSandboxed)(profile, command);
+	let proc: SpawnResult;
+	try {
+		proc = await (deps.spawn ?? runSandboxed)(runProfile, runCommand);
+	} catch (err) {
+		await proxy?.stop();
+		throw err;
+	}
 	record.proc = proc;
 	store.markRunning(record);
 
 	const stdin = createStdinController(runtime, proc, useStdinHold);
 	const midRun = startMidRunSteering(store, record, runtime, proc, stdin, deps);
-	const outcome = await pumpToExit(store, record, runtime, proc, stdin, deps);
-	midRun.abort();
-	await midRun.done;
-	await stdin.closeIfDangling();
+	try {
+		const outcome = await pumpToExit(store, record, runtime, proc, stdin, deps);
+		terminalize(store, record, runProfile, proc, outcome, deps);
+		log(`local-drive: '${runtime.runtimeId}' exited ${outcome.exitCode}`);
+	} finally {
+		// Stop the steering loop before tearing down stdin so its final
+		// poll tick can't race the closeStdin path (burrow dispatch.ts).
+		midRun.abort();
+		await midRun.done;
+		await stdin.closeIfDangling();
+		// Bound proxy teardown to spawn lifetime — a hung CONNECT tunnel
+		// can't pin the run (burrow dispatch.ts shape).
+		await proxy?.stop();
+	}
+}
 
-	terminalize(store, record, profile, proc, outcome, deps);
-	log(`local-drive: '${runtime.runtimeId}' exited ${outcome.exitCode}`);
+interface ArmedProxy {
+	readonly runProfile: SandboxProfile;
+	readonly runCommand: SpawnCommand;
+	readonly proxy: ProxyHandle | null;
+}
+
+/**
+ * When `profile.network === "restricted"`, start the per-run proxy and return
+ * a profile+command pair with `proxyAddress` + HTTP(S)_PROXY set. On start
+ * failure the run is terminalized failed and `null` is returned so the caller
+ * bails without spawning. open/none return the inputs unchanged with no proxy.
+ */
+async function armRestrictedProxy(
+	store: LocalRunStore,
+	record: LocalRunRecord,
+	profile: SandboxProfile,
+	command: SpawnCommand,
+	deps: DriveDeps,
+): Promise<ArmedProxy | null> {
+	if (profile.network !== "restricted") {
+		return { runProfile: profile, runCommand: command, proxy: null };
+	}
+	const startProxyFn = deps.startProxy ?? startProxy;
+	let proxy: ProxyHandle;
+	try {
+		proxy = await startProxyFn({ allowedDomains: profile.allowedDomains });
+	} catch (err) {
+		const message = err instanceof Error ? err.message : String(err);
+		failBeforeSpawn(store, record, `failed to start network proxy: ${message}`, deps);
+		return null;
+	}
+	const runProfile: SandboxProfile = {
+		...profile,
+		proxyAddress: { host: "127.0.0.1", port: proxy.port },
+	};
+	const runCommand: SpawnCommand = {
+		...command,
+		env: {
+			...(command.env ?? {}),
+			...proxyEnvVars(proxy.url),
+		},
+	};
+	return { runProfile, runCommand, proxy };
 }
 
 interface PumpOutcome {
