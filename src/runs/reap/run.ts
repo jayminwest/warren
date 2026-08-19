@@ -8,7 +8,12 @@ import { runWorkspaceDestroy } from "./destroy.ts";
 import { createPipelineState, runReapPipeline } from "./pipeline.ts";
 import { detectTerminalProviderError, providerErrorEventPayload } from "./provider-error.ts";
 import { salvageWorkspace, type WorkspaceSalvageOutcome } from "./salvage.ts";
-import { inferFailureReason, isTerminal, transitionToTerminal } from "./state.ts";
+import {
+	detectSpawnExecFailure,
+	inferFailureReason,
+	isTerminal,
+	transitionToTerminal,
+} from "./state.ts";
 import type { ReapRunInput, ReapRunResult, ReapStep, ReapStepError } from "./types.ts";
 import { buildAlreadyTerminalResult, createSeqAllocator, defaultExec, defaultFs } from "./util.ts";
 
@@ -141,8 +146,20 @@ export async function reapRun(input: ReapRunInput): Promise<ReapRunResult> {
 		outcome: pipelineInput.outcome,
 	});
 
+	// warren-4e2a: a spawn-exec failure produced zero agent work — skip the
+	// seeds commit + branch push (same posture as never_started; the push
+	// would pollute the repo). `inferFailureReason` classifies it below.
+	const spawnExecFailed =
+		stateOnEntry !== "queued" &&
+		input.outcome === "failed" &&
+		(await detectSpawnExecFailure(input.repos, run.id));
+
 	if (stateOnEntry === "queued" && resolved !== null && project !== null) {
 		await emit("reap.never_started_skip", { message: "agent never ran; skipping pipeline" });
+	} else if (spawnExecFailed && resolved !== null && project !== null) {
+		await emit("reap.spawn_failed_skip", {
+			message: "agent process could not be spawned; skipping seeds commit and branch push",
+		});
 	} else if (stateOnEntry !== "queued" && resolved !== null && project !== null) {
 		await runReapPipeline(
 			{

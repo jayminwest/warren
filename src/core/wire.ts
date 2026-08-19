@@ -94,19 +94,17 @@ export type CloneKind = (typeof CLONE_KINDS)[number];
  *     `never_started` (config/runtime issue, e.g. under-specified prompt).
  *   - `running` on entry but events table holds no model-turn output
  *     (`text` / `thinking` / `tool_use` on stdout) ⇒ `no_model_response`
- *     (typically a credential/auth failure — the original warren-5165
- *     symptom was claude-code emitting an init system event then exiting
- *     with "Not logged in" before any assistant turn — but also covers
- *     rate-limit and provider-network failures).
+ *     (typically a credential/auth failure — the warren-5165 symptom was
+ *     claude-code exiting with "Not logged in" before any assistant turn;
+ *     also covers rate-limit and provider-network failures).
  *   - `running` on entry with model output ⇒ `crashed` (agent ran and
  *     hit an unrecoverable error mid-conversation).
  *   - `timed_out` (warren-285d) is set by the heartbeat watchdog
- *     (src/runs/watchdog.ts) when a `running` run goes silent-but-busy
- *     past `WARREN_RUN_HEARTBEAT_TIMEOUT_MS` — e.g. a runaway gate command
- *     behind a stuck bash tool. The watchdog cancels the burrow run and
- *     reaps it `failed` so the sandbox process tree is torn down instead
- *     of pinning CPU forever. burrow itself reports no separate timeout
- *     state, so warren owns the deadline.
+ *     (src/runs/watchdog.ts) when a `running` run goes silent-but-busy past
+ *     `WARREN_RUN_HEARTBEAT_TIMEOUT_MS` — e.g. a runaway gate command behind
+ *     a stuck bash tool. The watchdog cancels the burrow run and reaps it
+ *     `failed` so the sandbox tree is torn down instead of pinning CPU
+ *     forever; burrow reports no timeout state, so warren owns the deadline.
  *   - `sandbox_run_lost` (warren-b1a9; renamed from `burrow_run_lost` in
  *     warren-d15c for the runtime-neutral warren-36cb taxonomy) means the
  *     runtime backend has no record of the run — a burrow 404 (local) or a
@@ -131,10 +129,9 @@ export type CloneKind = (typeof CLONE_KINDS)[number];
  *     warren-89b0) — which stays `succeeded` and
  *     is surfaced as `noChanges` on `reap.empty_push` / `reap.completed`.
  *     The dropped-commit guard stays conservative: any non-bookkeeping
- *     dirty path (real uncommitted work) still fails the run. Marking a
- *     genuine dropped commit `failed` keeps it
- *     commit from masquerading as success and, on plan-runs, fails the
- *     plan instead of silently auto-merging/advancing past the child.
+ *     dirty path (real uncommitted work) still fails the run — marking a
+ *     genuine dropped commit `failed` keeps it from masquerading as success
+ *     and, on plan-runs, fails the plan instead of silently advancing.
  *   - `finalize_failed` (warren-495d) means reap's finalize did NOT
  *     complete its branch push before it timed out or failed — under K8s
  *     the in-pod finalize round-trip (git push → mirror deltas → POST the
@@ -193,6 +190,8 @@ export type CloneKind = (typeof CLONE_KINDS)[number];
  *     debugging path). Distinct from `no_model_response` (the agent
  *     started but produced nothing) and `never_started` (the bridge
  *     never claimed the row).
+ *   - `spawn_failed` (warren-4e2a): the agent PROCESS could not be exec'd at
+ *     all (e.g. missing docker CLI); reap skips the seeds commit + branch push.
  *   - `evicted` (warren-c0cd) means the kubelet evicted the run pod under node
  *     resource pressure (K8s `status.reason=="Evicted"`) — most often
  *     ephemeral-storage exhaustion (the emptyDir workspace outgrowing its
@@ -206,6 +205,7 @@ export const RUN_FAILURE_REASONS = [
 	"never_started",
 	"no_model_response",
 	"sandbox_failed",
+	"spawn_failed",
 	"crashed",
 	"timed_out",
 	"sandbox_run_lost",

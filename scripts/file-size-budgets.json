@@ -6,6 +6,7 @@
 		"src/db/repos/runs.test.ts": 538,
 		"src/db/schema/sqlite.ts": 564,
 		"src/runs/reap/pipeline.ts": 528,
+		"src/runs/reap/run.ts": 513,
 		"src/runs/reap/stage.test.ts": 526,
 		"src/runtime/contract.ts": 510,
 		"src/runtime/k8s/finalize-entrypoint.ts": 510,
