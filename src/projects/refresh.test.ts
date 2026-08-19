@@ -26,7 +26,7 @@ describe("refreshProjectClone", () => {
 		expect(result).toEqual({
 			headSha: sha,
 			ref: "main",
-			features: { hasSeeds: true },
+			features: { hasSeeds: true, hasMulch: true },
 		});
 		expect(calls.map((c) => c.cmd[1])).toEqual([
 			"fetch",
@@ -204,7 +204,7 @@ describe("refreshProjectClone", () => {
 			},
 		});
 
-		expect(result.features).toEqual({ hasSeeds: true });
+		expect(result.features).toEqual({ hasSeeds: true, hasMulch: false });
 		expect(probed).toContain("/data/projects/x/y/.seeds");
 	});
 
@@ -228,7 +228,7 @@ describe("refreshProjectClone", () => {
 describe("detectProjectFeatures", () => {
 	test("returns hasSeeds=false when .seeds/ is absent", () => {
 		const result = detectProjectFeatures("/data/projects/x/y", () => false);
-		expect(result).toEqual({ hasSeeds: false });
+		expect(result).toEqual({ hasSeeds: false, hasMulch: false });
 	});
 
 	test("returns hasSeeds=true when .seeds/ exists at the clone root (warren-9990)", () => {
@@ -237,7 +237,7 @@ describe("detectProjectFeatures", () => {
 			probed.push(p);
 			return p === "/data/projects/x/y/.seeds";
 		});
-		expect(result).toEqual({ hasSeeds: true });
+		expect(result).toEqual({ hasSeeds: true, hasMulch: false });
 		expect(probed).toContain("/data/projects/x/y/.seeds");
 	});
 });

@@ -30,6 +30,7 @@ import { injectWarrenCallbackEnv } from "./callback-env.ts";
 import { writeDispatchContext } from "./dispatch-context.ts";
 import { injectGitIdentityEnv, warnIfGitIdentityUnconfigured } from "./git-identity.ts";
 import { healMigrationJournalCollisions, recordMigrationHealEvent } from "./migration-preflight.ts";
+import { gateAgentPrompts } from "./prompt-capabilities.ts";
 import { assertNoKnownProviderModelMismatch } from "./provider-model.ts";
 import {
 	bindRunLogger,
@@ -43,12 +44,10 @@ import { writeSeedExtensions } from "./seed-extensions.ts";
 import type { SpawnRunInput, SpawnRunResult } from "./types.ts";
 
 /**
- * Vestigial worker-placement label carried on the `spawn.placement` /
+ * Vestigial worker-placement label on the `spawn.placement` /
  * `spawn.provisioned` log lines (warren-c42c). Multi-worker placement was
- * retired with the K8s migration (warren-76c5 / warren-3743) — a run has no
- * "worker" on either backend — so this is a fixed log field, not a routing
- * decision. Kept a local neutral constant now that the spawn path no longer
- * imports burrow-client's `LOCAL_WORKER_NAME`.
+ * retired with the K8s migration (warren-76c5 / warren-3743), so this is a
+ * fixed log field, not a routing decision.
  */
 const WORKER_PLACEMENT_LABEL = "local";
 
@@ -127,12 +126,18 @@ export async function spawnRun(input: SpawnRunInput): Promise<SpawnRunResult> {
 			? { projectDefaultUsd: projectDefaults.maxCostUsd }
 			: {}),
 	});
-	const agent = withMaxCostUsdOverride(
-		withProviderOverrides(baseAgent, {
-			...(effectiveProvider !== undefined ? { providerOverride: effectiveProvider } : {}),
-			...(effectiveModel !== undefined ? { modelOverride: effectiveModel } : {}),
-		}),
-		capOverride,
+	// warren-cb46: gate tracker/mulch prompt fragments on the project's real
+	// capabilities before anything freezes the agent (prompt-capabilities.ts).
+	const agent = gateAgentPrompts(
+		withMaxCostUsdOverride(
+			withProviderOverrides(baseAgent, {
+				...(effectiveProvider !== undefined ? { providerOverride: effectiveProvider } : {}),
+				...(effectiveModel !== undefined ? { modelOverride: effectiveModel } : {}),
+			}),
+			capOverride,
+		),
+		projectAfterRefresh,
+		input.issueTracker,
 	);
 	// warren-bad5: validate only after the override > project default >
 	// agent frontmatter chain has been fully resolved.
@@ -381,7 +386,6 @@ export async function spawnRun(input: SpawnRunInput): Promise<SpawnRunResult> {
 /**
  * Resolve the git ref the project clone should be refreshed to before the
  * burrow forks the new run branch (warren-4b11).
- *
  * - No `parentRunId` → explicit `ref`, else the `targetBranch` push target
  *   (warren-709e), else undefined → refreshProject's project default branch.
  * - `parentRunId` set with `cloneKind: "replicate"` (warren-e96f) → the
@@ -390,11 +394,8 @@ export async function spawnRun(input: SpawnRunInput): Promise<SpawnRunResult> {
  *   NOT check out the parent's pushed branch — that branch may be stale or may
  *   never have been pushed (parent failed early).
  * - `parentRunId` set (default `cloneKind: "continue"`) → the parent run's
- *   pushed branch, recomposed from the
- *   same prefix precedence the parent's spawn used
- *   (`composeRunBranch(resolveRunBranchPrefix(...), parentRunId)`). We read
- *   the project defaults here (a lightweight pre-refresh peek) only to get
- *   the prefix; the working tree's `.warren/` is stable across a project's
+ *   pushed branch, recomposed from the same prefix precedence the parent's
+ *   spawn used. The working tree's `.warren/` is stable across a project's
  *   runs, so this matches the branch the parent actually pushed.
  *
  * The parent must belong to the same project — a continuation forks the
