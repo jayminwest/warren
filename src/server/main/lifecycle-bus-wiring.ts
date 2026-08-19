@@ -39,13 +39,14 @@ import {
 	DEFAULT_INITIAL_INTERVAL_MS,
 } from "../../runs/reap/pr-merge-watcher.ts";
 import { createSeedCloseLifecycleExtension } from "../../runs/reap/seed-close-lifecycle.ts";
-import type { SeedsCliDeps } from "../../seeds-cli/index.ts";
+import type { IssueTracker } from "../../tracker/contract.ts";
 import type { Logger } from "../types.ts";
 
 export interface LifecycleBusWiringInput {
 	readonly logger: Logger;
 	readonly repos: Repos;
-	readonly seedsCli: SeedsCliDeps;
+	/** warren-6234: the seed-close consumer closes through the tracker seam. */
+	readonly issueTracker: IssueTracker;
 	/** Broker so the seed-close observability event reaches live tailers too. */
 	readonly broker?: RunEventBroker;
 
@@ -77,7 +78,7 @@ export interface LifecycleBusHandle {
  * teardown (or a test) leaves no global state behind.
  */
 export function bootLifecycleBus(input: LifecycleBusWiringInput): LifecycleBusHandle {
-	const { logger, repos, seedsCli, broker } = input;
+	const { logger, repos, issueTracker, broker } = input;
 	const lifecycleStream = new LifecycleStreamBroker();
 	const bus = new LifecycleBus({
 		onError: ({ extension, hook, runId, error }) => {
@@ -111,7 +112,7 @@ export function bootLifecycleBus(input: LifecycleBusWiringInput): LifecycleBusHa
 		}),
 		createSeedCloseLifecycleExtension({
 			repos,
-			seedsCli,
+			issueTracker,
 			logger: { error: (obj, msg) => logger.error(obj, msg) },
 			...(broker !== undefined ? { broker } : {}),
 		}),

@@ -39,7 +39,7 @@ import {
 	logSpawnFailed,
 	rollback,
 } from "./rollback.ts";
-import { writeSeedExtensions } from "./seed-extensions.ts";
+import { resolveSeedTracker, writeSeedExtensions } from "./seed-extensions.ts";
 import type { SpawnRunInput, SpawnRunResult } from "./types.ts";
 
 /**
@@ -339,15 +339,16 @@ export async function spawnRun(input: SpawnRunInput): Promise<SpawnRunResult> {
 			sandboxId: handle.sandboxId,
 			providerRunId: handle.providerRunId,
 		});
-		// pl-bb70 step 4: stamp the seed's warren-namespaced extensions after
-		// dispatch lands. Fire-and-log — anything that throws here (sd not
-		// on PATH, project clone vanished, write race) emits a system event
-		// on the run and DOES NOT roll the dispatch back. Mirrors the cron
-		// tick's clearScheduledFor recovery shape in src/triggers/tick.ts.
-		if (input.seedId !== undefined && input.seedsCli !== undefined) {
+		// pl-bb70 step 4 + warren-6234: stamp the run's tracker metadata
+		// after dispatch via the IssueTracker seam, fire-and-log (see
+		// seed-extensions.ts). A legacy `seedsCli` (plan-runs port pending,
+		// warren-2d98) wraps in SeedsTracker here.
+		const seedTracker = resolveSeedTracker(input.issueTracker, input.seedsCli);
+		if (input.seedId !== undefined && seedTracker !== undefined) {
 			await writeSeedExtensions({
 				repos: input.repos,
-				seedsCli: input.seedsCli,
+				issueTracker: seedTracker,
+				projectId: projectAfterRefresh.id,
 				projectPath: projectAfterRefresh.localPath,
 				seedId: input.seedId,
 				runId: run.id,

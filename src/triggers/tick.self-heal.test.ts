@@ -69,8 +69,6 @@ describe("runTick self-heal (warren-1ec7)", () => {
 				loadCalls += 1;
 				return emptyConfig();
 			},
-			listScheduledSeeds: async () => ({ scheduled: [], errors: [] }),
-			updateExtensions: async () => {},
 			spawn: async () => ({ runId: "n/a" }),
 		});
 		expect(loadCalls).toBe(1);
@@ -87,8 +85,6 @@ describe("runTick self-heal (warren-1ec7)", () => {
 				loadCalls += 1;
 				return emptyConfig();
 			},
-			listScheduledSeeds: async () => ({ scheduled: [], errors: [] }),
-			updateExtensions: async () => {},
 			spawn: async () => ({ runId: "n/a" }),
 		});
 		expect(loadCalls).toBe(0);
@@ -105,8 +101,6 @@ describe("runTick self-heal (warren-1ec7)", () => {
 			loadWarrenConfig: async () => {
 				throw new Error("clone missing on disk");
 			},
-			listScheduledSeeds: async () => ({ scheduled: [], errors: [] }),
-			updateExtensions: async () => {},
 			spawn: async () => ({ runId: "n/a" }),
 			logger,
 		} as const;
@@ -127,10 +121,22 @@ describe("runTick self-heal (warren-1ec7)", () => {
 			now: () => NOW,
 			noticeGate: gate,
 			loadWarrenConfig: async () => emptyConfig(),
-			listScheduledSeeds: async () => {
-				throw new Error("Not in a seeds project");
+			issueTracker: {
+				capabilities: {
+					supportsPlans: true,
+					supportsMetadata: true,
+					supportsScheduledIssues: true,
+					isGitNative: true,
+				},
+				getIssue: async () => {
+					throw new Error("unused");
+				},
+				listIssueStatuses: async () => new Map(),
+				closeIssue: async () => {},
+				listScheduledIssues: async () => {
+					throw new Error("Not in a seeds project");
+				},
 			},
-			updateExtensions: async () => {},
 			spawn: async () => ({ runId: "n/a" }),
 			logger,
 		} as const;

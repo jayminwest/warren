@@ -65,7 +65,6 @@ export {
 	type TriggerSummary,
 } from "./summary.ts";
 export {
-	type ListScheduledSeedsFn,
 	type LoadWarrenConfigFn,
 	type RunTickResult,
 	runTick,
@@ -79,5 +78,4 @@ export {
 	type TickCiFixerSpawnInput,
 	type TickDeps,
 	type TickLogger,
-	type UpdateSeedExtensionsFn,
 } from "./tick.ts";

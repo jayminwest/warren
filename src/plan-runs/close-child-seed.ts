@@ -12,6 +12,12 @@
  * closes the seed on the project's default branch, using WARREN_BOT_IDENTITY
  * (Article VII) — no dependency on agent initiative.
  *
+ * warren-6234: the close runs through the IssueTracker seam
+ * (`tracker.closeIssue`). The worktree/commit/push machinery is
+ * GIT-NATIVE-ONLY — fenced behind `capabilities.isGitNative`. A non-git-native
+ * tracker (hosted issues) has no clone to commit to, so `closeMergedChildSeed`
+ * collapses to a single `tracker.closeIssue` call and reports `closed`.
+ *
  * Mechanics mirror `defaultPlotSyncer` in src/plots/sync.ts: fetch origin,
  * spin a throwaway worktree off `origin/<defaultBranch>`, run `sd close`
  * there, and — only when that actually changed `.seeds/issues.jsonl` — author
@@ -29,7 +35,7 @@ import {
 	warrenCommitIdentityEnv,
 } from "../bot-identity.ts";
 import type { SpawnFn } from "../projects/index.ts";
-import { closeSeed, type SeedsCliDeps } from "../seeds-cli/index.ts";
+import type { IssueTracker } from "../tracker/contract.ts";
 import { githubCredentialGitEnv } from "../workspace/git/credential-env.ts";
 
 export interface CloseMergedChildSeedInput {
@@ -39,7 +45,10 @@ export interface CloseMergedChildSeedInput {
 	readonly defaultBranch: string;
 	/** Seed id to close. */
 	readonly seedId: string;
-	readonly seedsCli: SeedsCliDeps;
+	/** warren-6234: the tracker seam — close runs through `tracker.closeIssue`. */
+	readonly issueTracker: IssueTracker;
+	/** Project id for the tracker context (warren-6234). */
+	readonly projectId: string;
 	/** git spawn seam (same shape used across projects/plots). */
 	readonly spawn: SpawnFn;
 	readonly gitBinary: string;
@@ -110,6 +119,17 @@ async function addWorktree(
 export async function closeMergedChildSeed(
 	input: CloseMergedChildSeedInput,
 ): Promise<CloseMergedChildSeedResult> {
+	// warren-6234: non-git-native trackers close through the host API — no
+	// worktree, no commit, no push. `branch` reports the tracked default
+	// branch for logging symmetry with the git-native path.
+	if (!input.issueTracker.capabilities.isGitNative) {
+		await input.issueTracker.closeIssue(
+			{ projectId: input.projectId, localPath: input.projectPath },
+			input.seedId,
+		);
+		return { kind: "closed", branch: input.defaultBranch };
+	}
+
 	const scrub = gitRepoContextScrubEnv();
 	// Credential env for the network-touching calls only (fetch + push).
 	const cred = githubCredentialGitEnv(input.githubToken);
@@ -126,9 +146,12 @@ export async function closeMergedChildSeed(
 	try {
 		await addWorktree(input, worktreePath, branchName, scrub);
 
-		// `sd close` is idempotent; it rewrites .seeds/issues.jsonl only when the
-		// seed was open on this branch.
-		await closeSeed(input.seedsCli, worktreePath, input.seedId);
+		// The close is idempotent; it rewrites .seeds/issues.jsonl only when the
+		// seed was open on this branch (seeds: `sd close` inside the worktree).
+		await input.issueTracker.closeIssue(
+			{ projectId: input.projectId, localPath: worktreePath },
+			input.seedId,
+		);
 
 		const status = await runGit(
 			input,

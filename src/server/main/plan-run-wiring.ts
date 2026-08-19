@@ -34,6 +34,7 @@ import type { RuntimeProvider } from "../../runtime/contract.ts";
 import type { SeedsCliDeps } from "../../seeds-cli/index.ts";
 import { showSeed } from "../../seeds-cli/index.ts";
 import type { IssueTracker } from "../../tracker/contract.ts";
+import { SeedsTracker } from "../../tracker/seeds-tracker.ts";
 import type { WarrenConfigCache } from "../../warren-config/index.ts";
 import type { EnvLike } from "../config.ts";
 import type { BridgeRegistry, Logger } from "../types.ts";
@@ -124,8 +125,11 @@ function createReopenPr(
 
 type CloseChildSeedDeps = Pick<
 	PlanRunWiringInput,
-	"forge" | "repos" | "projectsConfig" | "seedsCli" | "projectSpawn" | "logger"
->;
+	"forge" | "repos" | "projectsConfig" | "projectSpawn" | "logger"
+> & {
+	/** warren-6234: the close runs through the tracker seam. */
+	readonly issueTracker: IssueTracker;
+};
 
 /**
  * Build the host-side child-seed close seam (warren-3806). Fired the instant
@@ -135,7 +139,7 @@ type CloseChildSeedDeps = Pick<
  * the plan keeps advancing (mirrors the Plot auto-done hook's tolerance).
  */
 function createCloseChildSeed(deps: CloseChildSeedDeps): CoordinatorCloseChildSeedFn {
-	const { forge, repos, projectsConfig, seedsCli, projectSpawn, logger } = deps;
+	const { forge, repos, projectsConfig, issueTracker, projectSpawn, logger } = deps;
 	return async ({ planRun, child }) => {
 		try {
 			const project = await repos.projects.get(planRun.projectId);
@@ -149,7 +153,8 @@ function createCloseChildSeed(deps: CloseChildSeedDeps): CoordinatorCloseChildSe
 				projectPath: project.localPath,
 				defaultBranch: project.defaultBranch,
 				seedId: child.seedId,
-				seedsCli,
+				projectId: planRun.projectId,
+				issueTracker,
 				spawn: projectSpawn,
 				gitBinary: projectsConfig.gitBinary,
 				// Minted per close so the fetch/push work against private repos
@@ -232,7 +237,8 @@ export function bootPlanRunCoordinatorWiring(input: PlanRunWiringInput): PlanRun
 			forge,
 			repos,
 			projectsConfig,
-			seedsCli,
+			// warren-6234: the child-seed close runs through the tracker seam.
+			issueTracker: issueTracker ?? new SeedsTracker(seedsCli),
 			projectSpawn,
 			logger,
 		}),
