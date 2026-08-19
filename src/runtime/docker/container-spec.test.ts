@@ -91,6 +91,22 @@ describe("buildDockerRunSpec", () => {
 		expect(asHost.argv[asHost.argv.indexOf("--user") + 1]).toBe("501:20");
 	});
 
+	test("agent image precedence: profile.agentImage > env config (warren-fabb)", () => {
+		// config.image here is the env override ("warren-agent:test") — the
+		// project override must win over it, and fall back to it when absent.
+		const overridden = buildDockerRunSpec(
+			makeProfile({ agentImage: "ghcr.io/acme/agent-py:1.0" }),
+			command,
+			config,
+			"/tmp/e.env",
+		);
+		expect(overridden.argv).toContain("ghcr.io/acme/agent-py:1.0");
+		expect(overridden.argv).not.toContain("warren-agent:test");
+
+		const fallback = buildDockerRunSpec(makeProfile(), command, config, "/tmp/e.env");
+		expect(fallback.argv).toContain("warren-agent:test");
+	});
+
 	test("bind-mounts workspace and home at identical paths, read-write", () => {
 		const spec = buildDockerRunSpec(makeProfile(), command, config, "/tmp/e.env");
 		expect(spec.argv).toContain(

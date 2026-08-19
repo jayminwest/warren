@@ -8,6 +8,7 @@ Two paths lead out of here. Take the first to run warren against your own repos.
 
 - [`../README.md`](../README.md) — what warren is, the container quickstart, and the two deploy shapes.
 - [`project-setup.md`](project-setup.md) — how to make one of your repos ready for warren: auto-merge on agent PRs, the secrets it needs, and branch cleanup.
+- [`onboarding-external-repos.md`](onboarding-external-repos.md) — the mirror recipe for a repo you do not control: host-clone `.warren/config.yaml`, `repoContext` onboarding block, and the runtime nuances (warren-540f).
 - [`RUNBOOK-K8S.md`](RUNBOOK-K8S.md) — the operator playbook for the `k8s` runtime: deploy, secrets and rotation, RBAC, garbage collection, admission caps, observability, and incident response.
 - [`../deploy/k8s/README.md`](../deploy/k8s/README.md) — the Kubernetes manifest quick start: overlay layout, `kubectl apply -k`, and the secret commands.
 - [`PHILOSOPHY.md`](PHILOSOPHY.md) — the ideas warren rests on, and why the loop has the shape it has.

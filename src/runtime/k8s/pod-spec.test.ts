@@ -260,6 +260,20 @@ describe("buildRunPod", () => {
 		expect(pod.metadata?.annotations?.["warren.io/branch"]).toBeUndefined();
 	});
 
+	test("agent image precedence: spec.agentImage > env config (warren-fabb)", () => {
+		// config.agentImage here comes from WARREN_K8S_AGENT_IMAGE — the
+		// per-project override must win, and fall back to it when absent.
+		const withEnvImage = resolveK8sPodConfig({ WARREN_K8S_AGENT_IMAGE: "ghcr.io/acme/agent:1.2" });
+		const overridden = buildRunPod(
+			baseSpec({ agentImage: "ghcr.io/acme/agent-py:1.0" }),
+			withEnvImage,
+		);
+		expect(overridden.spec?.containers?.[0]?.image).toBe("ghcr.io/acme/agent-py:1.0");
+
+		const fallback = buildRunPod(baseSpec(), withEnvImage);
+		expect(fallback.spec?.containers?.[0]?.image).toBe("ghcr.io/acme/agent:1.2");
+	});
+
 	test("imagePullPolicy: omitted by default, applied to BOTH containers when set (warren-245d)", () => {
 		const bare = buildRunPod(baseSpec(), config);
 		expect(bare.spec?.initContainers?.[0]?.imagePullPolicy).toBeUndefined();
