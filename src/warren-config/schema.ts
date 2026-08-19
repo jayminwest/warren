@@ -47,6 +47,7 @@ import { parseDurationMs } from "../preview/duration.ts";
 import { AGENT_NAME_PATTERN } from "../registry/agent-name.ts";
 import { CiFixerConfigSchema, HealerConfigSchema } from "./feature-loop-config.ts";
 import { AdmissionConfigSchema, ResourcesConfigSchema } from "./resources-config.ts";
+import { TrackerConfigSchema } from "./tracker-config.ts";
 
 // warren-3db0: re-exported so the historical import sites (and
 // `warren-config/index.ts`) keep resolving these from `./schema.ts`
@@ -64,8 +65,6 @@ export {
 	type HealerConfig,
 	HealerConfigSchema,
 } from "./feature-loop-config.ts";
-// warren-ac7a / pl-829f step 14: K8s resource + network defaults re-exported
-// from `resources-config.ts` (extracted for the file-size budget).
 export {
 	type AdmissionConfig,
 	AdmissionConfigSchema,
@@ -79,6 +78,9 @@ export {
 	type ResourcesConfig,
 	ResourcesConfigSchema,
 } from "./resources-config.ts";
+// warren-ac7a / pl-829f step 14: K8s resource + network defaults re-exported
+// from `resources-config.ts` (extracted for the file-size budget).
+export { type TrackerConfig, TrackerConfigSchema } from "./tracker-config.ts";
 
 const TriggerIdSchema = z
 	.string()
@@ -406,6 +408,9 @@ export const DefaultsConfigSchema = z
 			.min(1, "repoContext must be non-empty if provided")
 			.max(8192, "repoContext must be at most 8192 characters")
 			.optional(),
+		// warren-d3a9: external tracker container (warren-tracker/v1). Absent →
+		// the boot-resolved default tracker (SeedsTracker today).
+		tracker: TrackerConfigSchema.optional(),
 	})
 	.strict();
 
