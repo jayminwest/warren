@@ -11,6 +11,7 @@ export function isTerminal(state: string): boolean {
  * and the caller didn't override.
  *
  *   queued on entry  → never_started (bridge never claimed the row)
+ *   running, no model-turn output, spawn-exec error on system → spawn_failed
  *   running, no model-turn output, sandbox error on stderr → sandbox_failed
  *   running, no model-turn output observed → no_model_response
  *   running, model-turn output observed   → crashed
@@ -44,6 +45,68 @@ export function isTerminal(state: string): boolean {
  */
 const SANDBOX_ERROR_LINE = /^(?:bwrap|sandbox-exec): /m;
 
+/**
+ * The spawn-exec failure signature (warren-4e2a). When the runtime's
+ * spawn seam cannot exec the agent process at all — the docker CLI
+ * missing/unexecutable under DockerProvider, or the sandbox binary
+ * itself absent under LocalProvider — the process spawn throws and the
+ * drive loop collapses the throw into an `error` event on
+ * `stream=system` (`src/runtime/local/drive.ts`). Bun reports a missing
+ * binary as `Executable not found in $PATH: "<bin>"` (ENOENT); a
+ * node-style spawn failure reads `spawn <bin> ENOENT`. Anchored like
+ * the sandbox matcher so an agent printing the phrase in prose cannot
+ * reclassify its own crash — the event must ALSO ride the system
+ * stream, which only warren/runtime-owned writers use.
+ */
+const SPAWN_EXEC_ERROR_LINE = /(?:Executable not found in \$PATH: |spawn \S+ ENOENT)/;
+
+/** True for a runtime-owned spawn-exec error event (system stream only). */
+function isSpawnExecErrorEvent(ev: EventRowLike): boolean {
+	return ev.stream === "system" && SPAWN_EXEC_ERROR_LINE.test(eventMessage(ev.payloadJson));
+}
+
+/**
+ * Read the error body out of a system-stream event payload. The drive
+ * loop writes spawn-exec failures as `{ message }`; accept a bare string
+ * or a `{ text }` shape too so a writer change degrades gracefully.
+ */
+function eventMessage(payload: unknown): string {
+	if (typeof payload === "string") return payload;
+	if (payload !== null && typeof payload === "object" && !Array.isArray(payload)) {
+		const body = payload as { message?: unknown; text?: unknown };
+		if (typeof body.message === "string") return body.message;
+		if (typeof body.text === "string") return body.text;
+	}
+	return "";
+}
+
+/** The event shape this module reads (a full `EventRow` satisfies it). */
+interface EventRowLike {
+	readonly stream: string | null;
+	readonly kind: string;
+	readonly payloadJson: unknown;
+}
+
+function sawModelTurnEvent(events: readonly EventRowLike[]): boolean {
+	return events.some(
+		(ev) =>
+			ev.stream === "stdout" &&
+			(ev.kind === "text" || ev.kind === "thinking" || ev.kind === "tool_use"),
+	);
+}
+
+/**
+ * warren-4e2a: detect the spawn-exec failure shape — no model-turn
+ * output AND a runtime-owned spawn-exec error event. Reap consults this
+ * BEFORE the pipeline so a run whose agent process never existed skips
+ * the seeds-state commit and the bookkeeping-branch push (nothing
+ * useful happened; the push pollutes the repo).
+ */
+export async function detectSpawnExecFailure(repos: Repos, runId: string): Promise<boolean> {
+	const events = await repos.events.listByRun(runId);
+	return !sawModelTurnEvent(events) && events.some(isSpawnExecErrorEvent);
+}
+
 /** Read the text body out of an event payload (string or `{text}` shape). */
 function eventText(payload: unknown): string {
 	if (typeof payload === "string") return payload;
@@ -61,12 +124,11 @@ export async function inferFailureReason(
 ): Promise<RunFailureReason> {
 	if (stateOnEntry === "queued") return "never_started";
 	const events = await repos.events.listByRun(runId);
-	const sawModelTurn = events.some(
-		(ev) =>
-			ev.stream === "stdout" &&
-			(ev.kind === "text" || ev.kind === "thinking" || ev.kind === "tool_use"),
-	);
-	if (sawModelTurn) return "crashed";
+	if (sawModelTurnEvent(events)) return "crashed";
+	// warren-4e2a: the spawn-exec arm wins over the sandbox arm — a
+	// spawn that never exec'd is an infra fault one level below a sandbox
+	// refusal, and must not read as either a sandbox or a credential fault.
+	if (events.some(isSpawnExecErrorEvent)) return "spawn_failed";
 	const sawSandboxError = events.some(
 		(ev) => ev.stream === "stderr" && SANDBOX_ERROR_LINE.test(eventText(ev.payloadJson)),
 	);

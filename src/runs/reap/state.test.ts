@@ -170,6 +170,192 @@ describe("reapRun failure-reason inference (warren-3c40 / warren-5165)", () => {
 		expect(result.failureReason).toBe("no_model_response");
 	});
 
+	test("classifies a spawn-exec system error as spawn_failed (warren-4e2a)", async () => {
+		// The runtime could not exec the agent process at all — the docker
+		// CLI is missing under DockerProvider, so the spawn seam threw and
+		// the drive loop collapsed the throw into an `error` event on the
+		// system stream. Without the spawn arm this shape collapses into
+		// no_model_response, which reads as "the model said nothing".
+		await ctx.repos.events.append({
+			runId: ctx.runId,
+			sandboxEventSeq: 1,
+			ts: new Date().toISOString(),
+			kind: "error",
+			stream: "system",
+			payload: { message: 'Executable not found in $PATH: "docker"' },
+		});
+
+		const result = await reapRun({
+			runId: ctx.runId,
+			outcome: "failed",
+			repos: ctx.repos,
+			...reapDeps(fakeBurrowClient(makeBurrow()), { fs: fakeFs().fs, exec: fakeExec().exec }),
+			fs: fakeFs().fs,
+			exec: fakeExec().exec,
+		});
+
+		expect(result.failureReason).toBe("spawn_failed");
+		const row = await ctx.repos.runs.require(ctx.runId);
+		expect(row.failureReason).toBe("spawn_failed");
+	});
+
+	test("matches the node-style spawn ENOENT shape as spawn_failed (warren-4e2a)", async () => {
+		await ctx.repos.events.append({
+			runId: ctx.runId,
+			sandboxEventSeq: 1,
+			ts: new Date().toISOString(),
+			kind: "error",
+			stream: "system",
+			payload: { message: "spawn docker ENOENT" },
+		});
+
+		const result = await reapRun({
+			runId: ctx.runId,
+			outcome: "failed",
+			repos: ctx.repos,
+			...reapDeps(fakeBurrowClient(makeBurrow()), { fs: fakeFs().fs, exec: fakeExec().exec }),
+			fs: fakeFs().fs,
+			exec: fakeExec().exec,
+		});
+
+		expect(result.failureReason).toBe("spawn_failed");
+	});
+
+	test("a model turn outranks a spawn-exec error line (warren-4e2a)", async () => {
+		// The spawn matcher only applies when the agent never produced a
+		// model turn — an agent that ran and crashed stays `crashed` even
+		// if some later system error line happens to match the pattern.
+		await ctx.repos.events.append({
+			runId: ctx.runId,
+			sandboxEventSeq: 1,
+			ts: new Date().toISOString(),
+			kind: "text",
+			stream: "stdout",
+			payload: { text: "Working on it." },
+		});
+		await ctx.repos.events.append({
+			runId: ctx.runId,
+			sandboxEventSeq: 2,
+			ts: new Date().toISOString(),
+			kind: "error",
+			stream: "system",
+			payload: { message: 'Executable not found in $PATH: "docker"' },
+		});
+
+		const result = await reapRun({
+			runId: ctx.runId,
+			outcome: "failed",
+			repos: ctx.repos,
+			...reapDeps(fakeBurrowClient(makeBurrow()), { fs: fakeFs().fs, exec: fakeExec().exec }),
+			fs: fakeFs().fs,
+			exec: fakeExec().exec,
+		});
+
+		expect(result.failureReason).toBe("crashed");
+	});
+
+	test("spawn-exec failure skips the seeds commit + branch push (warren-4e2a)", async () => {
+		// The runtime could not exec the agent process at all (docker CLI
+		// missing under DockerProvider): the drive loop collapsed the spawn
+		// throw into a system-stream error event and no model turn ever
+		// flowed. The run reaps failed, but the seeds-state commit and the
+		// bookkeeping-branch push must NOT run — nothing useful happened,
+		// and the push pollutes the repo.
+		await ctx.repos.events.append({
+			runId: ctx.runId,
+			sandboxEventSeq: 1,
+			ts: new Date().toISOString(),
+			kind: "error",
+			stream: "system",
+			payload: { message: 'Executable not found in $PATH: "docker"' },
+		});
+		const e = fakeExec();
+
+		const result = await reapRun({
+			runId: ctx.runId,
+			outcome: "failed",
+			repos: ctx.repos,
+			...reapDeps(fakeBurrowClient(makeBurrow()), { fs: fakeFs().fs, exec: e.exec }),
+			fs: fakeFs().fs,
+			exec: e.exec,
+		});
+
+		expect(result.state).toBe("failed");
+		expect(result.failureReason).toBe("spawn_failed");
+		// No git commands run — no seeds commit, no branch push.
+		expect(e.calls).toHaveLength(0);
+		expect(result.seedsCommitted).toBe(false);
+		expect(result.branchPushed).toBe(false);
+		// The skip is operator-visible and precedes reap.completed.
+		const events = await ctx.repos.events.listByRun(ctx.runId);
+		const skipEv = events.find((ev) => ev.kind === "reap.spawn_failed_skip");
+		expect(skipEv).toBeDefined();
+		const order = events.map((ev) => ev.kind);
+		expect(order.indexOf("reap.spawn_failed_skip")).toBeLessThan(order.indexOf("reap.completed"));
+		// The workspace still tears down — nothing on it is worth preserving.
+		expect(result.workspaceDestroyed).toBe(true);
+	});
+
+	test("a model turn defeats the spawn-exec pipeline skip (warren-4e2a)", async () => {
+		// An agent that produced work reaps through the normal pipeline
+		// even when a matching system error line exists — the skip is
+		// gated on the no-model-turn shape, same as the classifier.
+		await ctx.repos.events.append({
+			runId: ctx.runId,
+			sandboxEventSeq: 1,
+			ts: new Date().toISOString(),
+			kind: "text",
+			stream: "stdout",
+			payload: { text: "Working on it." },
+		});
+		await ctx.repos.events.append({
+			runId: ctx.runId,
+			sandboxEventSeq: 2,
+			ts: new Date().toISOString(),
+			kind: "error",
+			stream: "system",
+			payload: { message: 'Executable not found in $PATH: "docker"' },
+		});
+
+		const result = await reapRun({
+			runId: ctx.runId,
+			outcome: "failed",
+			repos: ctx.repos,
+			...reapDeps(fakeBurrowClient(makeBurrow()), { fs: fakeFs().fs, exec: fakeExec().exec }),
+			fs: fakeFs().fs,
+			exec: fakeExec().exec,
+		});
+
+		expect(result.failureReason).toBe("crashed");
+		const events = await ctx.repos.events.listByRun(ctx.runId);
+		expect(events.find((ev) => ev.kind === "reap.spawn_failed_skip")).toBeUndefined();
+	});
+
+	test("an agent-side stderr line mentioning ENOENT does not reclassify (warren-4e2a)", async () => {
+		// The matcher only accepts the runtime-owned system stream — an
+		// agent printing the phrase on its own stderr must not flip a
+		// credential-shaped failure into spawn_failed.
+		await ctx.repos.events.append({
+			runId: ctx.runId,
+			sandboxEventSeq: 1,
+			ts: new Date().toISOString(),
+			kind: "text",
+			stream: "stderr",
+			payload: { text: "spawn rg ENOENT while running the agent's tool" },
+		});
+
+		const result = await reapRun({
+			runId: ctx.runId,
+			outcome: "failed",
+			repos: ctx.repos,
+			...reapDeps(fakeBurrowClient(makeBurrow()), { fs: fakeFs().fs, exec: fakeExec().exec }),
+			fs: fakeFs().fs,
+			exec: fakeExec().exec,
+		});
+
+		expect(result.failureReason).toBe("no_model_response");
+	});
+
 	test("thinking and tool_use events also count as model-turn output (warren-5165)", async () => {
 		// burrow's jsonl-claude parser maps assistant content blocks into
 		// kind=text, kind=thinking, or kind=tool_use. Any one of them is

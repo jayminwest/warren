@@ -1,18 +1,25 @@
 <p align="center">
-  <img src="branding/logo.png" alt="warren, the self-hosted control plane for coding agents" width="640">
+  <a href="https://warren.run">
+    <img src="branding/logo.png" alt="warren, the self-hosted control plane for coding agents" width="640">
+  </a>
 </p>
+
+<div align="center">
+
+[![CI](https://img.shields.io/github/actions/workflow/status/jayminwest/warren/ci.yml?branch=main&style=for-the-badge&label=CI)](https://github.com/jayminwest/warren/actions/workflows/ci.yml)
+[![Latest release](https://img.shields.io/github/v/release/jayminwest/warren?style=for-the-badge&label=Release)](https://github.com/jayminwest/warren/releases)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge)](LICENSE)
+[![Discord](https://img.shields.io/badge/Discord-Join-5865F2.svg?style=for-the-badge&logo=discord&logoColor=white)](https://discord.gg/4r6r5jUEFE)
+
+**[Live instance](https://app.warren.run)** · **[Demo](https://youtu.be/daa7y8g9BkM)** · **[Quickstart](#quickstart)** · **[Docs](docs/README.md)** · **[Contributing](CONTRIBUTING.md)** · **[Roadmap](ROADMAP.md)**
+
+</div>
 
 # Warren
 
 The self-hosted control plane for coding agents. Issue in, PR out. Your infra, your keys.
 
-[![CI](https://github.com/jayminwest/warren/actions/workflows/ci.yml/badge.svg)](https://github.com/jayminwest/warren/actions/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Discord](https://img.shields.io/badge/Discord-join-5865F2?logo=discord&logoColor=white)](https://discord.gg/4r6r5jUEFE)
-
-[**Watch it live**](https://app.warren.run): the public read-only instance. Real projects, real runs, live event streams, no login.
-
-[**Watch the demo**](https://youtu.be/daa7y8g9BkM): a run dispatched, streamed, steered, and reaped.
+[app.warren.run](https://app.warren.run) is the public read-only instance: real projects, real runs, live event streams, no login. The [demo](https://youtu.be/daa7y8g9BkM) shows a run dispatched, streamed, steered, and reaped.
 
 <!-- TODO: this slot still wants the canonical demo GIF (issue -> dispatch ->
      live events -> PR). The repo ships no such asset yet (branding/ holds the
@@ -20,18 +27,28 @@ The self-hosted control plane for coding agents. Issue in, PR out. Your infra, y
 
 Anyone can get a PR out of an agent. Warren is for what happens next: dozens of runs a day, on your infrastructure, with your API keys. Each run needs a sandbox, a spend cap, an audit trail, and a verdict.
 
-Warren dispatches ephemeral agents at your GitHub repos and controls the whole run:
+## Table of contents
 
-- **Dispatch.** Point warren at a repo, pick an agent, write a prompt. Seven builtin agents ship behind one adapter registry, `claude-code` and `pi` included.
-- **Sandbox.** Warren isolates every run: bwrap locally, a sibling container under Docker, a pod on Kubernetes.
-- **Cap.** Per-run USD spend caps, enforced mid-run. Per-project concurrency and cluster admission control on top.
-- **Steer.** Send instructions into a live run. Steering is the escalation path, not the interface.
-- **Audit.** Every run event lands in an append-only audit log, exported at `GET /audit-log.jsonl`.
-- **Judge.** An isolated judge scores finished runs against a 15-class rubric and serves verdicts at `GET /verdicts.jsonl`. Agents never see their verdicts.
-
-A run completes a task, validates the changes, pushes a branch, and exits. **One container, one volume, one HTTP API, one UI.**
-
-Warren runs warren. In the seven days before 2026-08-18, warren-dispatched agents authored 91 of this repo's 239 commits (38%). The product judged and audited that work itself, in public at [app.warren.run](https://app.warren.run).
+- [Quickstart](#quickstart)
+- [Why warren](#why-warren)
+- [Who this is for](#who-this-is-for)
+- [Status](#status)
+- [What you get](#what-you-get)
+- [Deploy](#deploy)
+- [Community](#community)
+- [Optional integrations](#optional-integrations)
+- [PR-body template](#pr-body-template)
+- [Per-run preview environments](#per-run-preview-environments)
+- [Architecture](#architecture)
+- [CLI](#cli)
+- [HTTP API](#http-api)
+- [Development](#development)
+- [Project layout](#project-layout)
+- [Client SDK](#client-sdk)
+- [Operating model](#operating-model)
+- [Roadmap](#roadmap)
+- [Security](#security)
+- [License](#license)
 
 ## Quickstart
 
@@ -83,6 +100,21 @@ docker compose up -d
 ```
 
 > **Image requirement (self-host, `local` runtime): bubblewrap + user namespaces.** In the `local` topology warren sandboxes each run itself with `bwrap`, and the container needs the four security flags in `docker-compose.yml`. Under `WARREN_RUNTIME=docker` or `WARREN_RUNTIME=k8s` this does not apply, because the run container or pod boundary is the sandbox.
+
+## Why warren
+
+Warren dispatches ephemeral agents at your GitHub repos and controls the whole run:
+
+- **Dispatch.** Point warren at a repo, pick an agent, write a prompt. Seven builtin agents ship behind one adapter registry, `claude-code` and `pi` included.
+- **Sandbox.** Warren isolates every run: bwrap locally, a sibling container under Docker, a pod on Kubernetes.
+- **Cap.** Per-run USD spend caps, enforced mid-run. Per-project concurrency and cluster admission control on top.
+- **Steer.** Send instructions into a live run. Steering is the escalation path, not the interface.
+- **Audit.** Every run event lands in an append-only audit log, exported at `GET /audit-log.jsonl`.
+- **Judge.** An isolated judge scores finished runs against a 15-class rubric and serves verdicts at `GET /verdicts.jsonl`. Agents never see their verdicts.
+
+A run completes a task, validates the changes, pushes a branch, and exits. **One container, one volume, one HTTP API, one UI.**
+
+Warren runs warren. In the seven days before 2026-08-18, warren-dispatched agents authored 91 of this repo's 239 commits (38%). The product judged and audited that work itself, in public at [app.warren.run](https://app.warren.run).
 
 ## Who this is for
 
