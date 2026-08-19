@@ -121,6 +121,74 @@ function suite(dialect: "sqlite" | "postgres"): void {
 				await handle.close();
 			}
 		});
+
+		test("listForAnalytics windows on created_at and joins run outcome (warren-5423)", async () => {
+			const handle = await withDb({ dialect });
+			const adapter = DrizzleAdapter.for(handle.db);
+			const agents = new AgentsRepo(adapter);
+			const projects = new ProjectsRepo(adapter);
+			const runs = new RunsRepo(adapter);
+			const dispatchContext = new DispatchContextRepo(adapter);
+			try {
+				await agents.upsert({ name: "refactor-bot", renderedJson: {} });
+				const project = await projects.create({
+					gitUrl: "https://github.com/x/y.git",
+					localPath: "/data/projects/x/y",
+					defaultBranch: "main",
+				});
+				// Never-started run: stays queued, startedAt null.
+				const queued = await runs.create({
+					agentName: "refactor-bot",
+					projectId: project.id,
+					renderedAgentJson: {},
+					prompt: "x",
+					trigger: "manual",
+					now: new Date("2026-05-20T10:00:00.000Z"),
+				});
+				await dispatchContext.insert({
+					runId: queued.id,
+					createdAt: "2026-05-20T10:00:00.000Z",
+					dispatchOrigin: "api",
+					retryKind: "none",
+					provider: "anthropic",
+					model: "sonnet",
+					queueQueuedRuns: 1,
+					queueRunningRuns: 0,
+				});
+				// Outside the window — must not appear.
+				const old = await runs.create({
+					agentName: "refactor-bot",
+					projectId: project.id,
+					renderedAgentJson: {},
+					prompt: "old",
+					trigger: "manual",
+					now: new Date("2026-01-01T00:00:00.000Z"),
+				});
+				await dispatchContext.insert({
+					runId: old.id,
+					createdAt: "2026-01-01T00:00:00.000Z",
+					dispatchOrigin: "cron",
+				});
+				const rows = await dispatchContext.listForAnalytics({
+					from: "2026-05-01T00:00:00.000Z",
+					to: "2026-06-01T00:00:00.000Z",
+				});
+				expect(rows).toHaveLength(1);
+				expect(rows[0]).toMatchObject({
+					runId: queued.id,
+					state: "queued",
+					dispatchOrigin: "api",
+					provider: "anthropic",
+					model: "sonnet",
+					failureReason: null,
+					costUsd: null,
+					prState: null,
+					projectId: project.id,
+				});
+			} finally {
+				await handle.close();
+			}
+		});
 	});
 }
 

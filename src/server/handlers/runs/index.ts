@@ -4,6 +4,7 @@
 
 export { listRunAnalyticsHandler } from "./analytics.ts";
 export { listBehaviorAnalyticsHandler } from "./analytics-behavior.ts";
+export { listDispatchAnalyticsHandler } from "./analytics-dispatch.ts";
 export { createRunHandler } from "./dispatch.ts";
 export {
 	asNdjsonStream,

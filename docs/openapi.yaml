@@ -131,6 +131,21 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
+  /analytics/dispatch:
+    get:
+      operationId: listDispatchAnalyticsHandler
+      tags:
+        - analytics
+      summary: GET /analytics/dispatch
+      responses:
+        '200':
+          description: Successful response.
+        default:
+          description: Error response (see `src/core/errors.ts`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
   /analytics/runs:
     get:
       operationId: listRunAnalyticsHandler
