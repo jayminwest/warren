@@ -232,7 +232,10 @@ export function buildDockerRunSpec(
 	for (const name of profile.envPassthrough) {
 		argv.push("--env", name);
 	}
-	argv.push(config.image, ...command.argv);
+	// warren-fabb: per-project agentImage override (SandboxProfile.agentImage,
+	// from `.warren/config.yaml`) wins over the env-resolved default.
+	// Precedence: project override > WARREN_DOCKER_AGENT_IMAGE > default.
+	argv.push(profile.agentImage ?? config.image, ...command.argv);
 	return {
 		argv,
 		envFileContents: renderEnvFile(composeContainerEnv(profile, command, config)),

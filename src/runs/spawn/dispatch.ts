@@ -258,6 +258,12 @@ export async function spawnRun(input: SpawnRunInput): Promise<SpawnRunResult> {
 		...(projectDefaults?.resources !== undefined
 			? { projectResources: projectDefaults.resources }
 			: {}),
+		// warren-fabb: per-project agent image override (docker + k8s consume it;
+		// LocalProvider ignores it — host toolchain). Precedence: project override
+		// > WARREN_DOCKER_AGENT_IMAGE / WARREN_K8S_AGENT_IMAGE env > default.
+		...(projectDefaults?.agentImage !== undefined
+			? { agentImage: projectDefaults.agentImage }
+			: {}),
 		runtimeId,
 		prompt: composeDispatchPrompt(agent.sections.system, input.prompt),
 		metadata: composeBurrowMetadata(input.metadata, agent.frontmatter),

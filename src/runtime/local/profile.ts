@@ -302,6 +302,9 @@ export async function buildLocalSandboxProfile(input: BuildProfileInput): Promis
 		...(workspace.source.gitCommonDir !== undefined
 			? { workspaceGitdir: workspace.source.gitCommonDir }
 			: {}),
+		// warren-fabb: per-project agent image override — consumed only by the
+		// container spawn seams (docker); the bwrap profile builder ignores it.
+		...(spec.agentImage !== undefined ? { agentImage: spec.agentImage } : {}),
 		...(spec.timeoutMs !== undefined
 			? { timeoutMs: spec.timeoutMs }
 			: toml.timeoutMs !== undefined

@@ -412,7 +412,10 @@ function buildAgentContainer(spec: RunSpec, config: K8sPodConfig): V1Container {
 	const requests = clampRequests(config.requests, limits);
 	return {
 		name: AGENT_CONTAINER_NAME,
-		image: config.agentImage,
+		// warren-fabb: per-project agentImage override (RunSpec.agentImage, from
+		// `.warren/config.yaml`) wins over the env-resolved default. Precedence:
+		// project override > WARREN_K8S_AGENT_IMAGE > DEFAULT_K8S_AGENT_IMAGE.
+		image: spec.agentImage ?? config.agentImage,
 		...(config.imagePullPolicy !== undefined ? { imagePullPolicy: config.imagePullPolicy } : {}),
 		// NO `workingDir` override (warren-245d): the container starts in the image
 		// WORKDIR (`/app`) so `bun run agent:run` resolves — `bun run` reads the

@@ -29,6 +29,15 @@ describe("DefaultsConfigSchema", () => {
 		expect(parsed.success).toBe(true);
 	});
 
+	test("accepts a per-project agentImage override and rejects a blank one (warren-fabb)", () => {
+		const parsed = DefaultsConfigSchema.safeParse({ agentImage: "ghcr.io/acme/agent-py:1.0" });
+		expect(parsed.success).toBe(true);
+		if (parsed.success) expect(parsed.data.agentImage).toBe("ghcr.io/acme/agent-py:1.0");
+
+		expect(DefaultsConfigSchema.safeParse({ agentImage: "" }).success).toBe(false);
+		expect(DefaultsConfigSchema.safeParse({ agentImage: 7 }).success).toBe(false);
+	});
+
 	test("accepts a positive maxCostUsd project-wide spend cap (warren-a63d)", () => {
 		const parsed = DefaultsConfigSchema.safeParse({ maxCostUsd: 2.5 });
 		expect(parsed.success).toBe(true);

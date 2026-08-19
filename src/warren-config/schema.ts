@@ -308,6 +308,16 @@ export type PreviewConfig = z.infer<typeof PreviewConfigSchema>;
 // project-wide default below so both sites can never validate differently.
 const MaxCostUsdSchema = z.number().positive("maxCostUsd must be positive").finite();
 
+// warren-fabb: per-project override of the agent image the container runtimes
+// (DockerProvider + K8sProvider) launch each run in — a Python mirror pins a
+// stack-specific image without redeploying warren. Precedence: this project
+// override > WARREN_DOCKER_AGENT_IMAGE / WARREN_K8S_AGENT_IMAGE env > built-in
+// default `warren-agent:latest`. LocalProvider ignores it (host toolchain).
+const AgentImageSchema = z
+	.string()
+	.min(1, "agentImage must be non-empty if provided")
+	.max(512, "agentImage must be a container image reference (registry/repo:tag)");
+
 // warren-a63d: per-trigger spend cap (USD); folded onto agent frontmatter
 // (trigger > agent) and enforced mid-run by the bridge. Positive finite.
 const CronTriggerSchema = z
@@ -355,6 +365,10 @@ export const DefaultsConfigSchema = z
 		// warren-9993: run branch prefix; spawnRun composes `${prefix}/${run.id}`.
 		// Precedence: project default > WARREN_RUN_BRANCH_PREFIX env > "burrow".
 		runBranchPrefix: RunBranchPrefixSchema.optional(),
+		// warren-fabb: per-project agent image override for the container
+		// runtimes (docker + k8s). Precedence: project override >
+		// WARREN_DOCKER_AGENT_IMAGE / WARREN_K8S_AGENT_IMAGE env > default.
+		agentImage: AgentImageSchema.optional(),
 		// warren-7be9 / docs/design/preview-environments.md: per-run preview environments (R-19). Canonical
 		// home is `.warren/preview.yaml` (post-warren-5840); this nested field is
 		// still accepted for migration — when both exist, `preview.yaml` wins.
