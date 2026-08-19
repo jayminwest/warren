@@ -161,6 +161,8 @@ describe("infra-lost run auto-retry (warren-4af7)", () => {
 		expect(call?.prompt).toBe("work warren-xyz");
 		expect(call?.seedId).toBe("warren-xyz");
 		expect(call?.projectId).toBe(h.projectId);
+		// warren-9ce3: origin is the retry path, not the inherited trigger.
+		expect(call?.dispatchOrigin).toBe("retry_infra_lost");
 		// Cumulative spend: cap $5 minus the $2 the first attempt burned.
 		expect(call?.maxCostUsdOverride).toBe(3);
 

@@ -134,6 +134,18 @@ function reqString(obj: Record<string, unknown>, key: string, label: string): st
 	return v;
 }
 
+/**
+ * warren-8e05: a delta file's body may be legitimately empty — `ml prune` leaves
+ * zero-byte `.mulch/expertise/*.jsonl` domain files, and the collector ships
+ * workspace truth verbatim. Rejecting `""` here failed every finalize-result
+ * POST from a workspace with an empty tracker file.
+ */
+function reqStringAllowEmpty(obj: Record<string, unknown>, key: string, label: string): string {
+	const v = obj[key];
+	if (typeof v !== "string") throw new ValidationError(`${label}.${key} must be a string`);
+	return v;
+}
+
 function reqBoolean(obj: Record<string, unknown>, key: string, label: string): boolean {
 	const v = obj[key];
 	if (typeof v !== "boolean") throw new ValidationError(`${label}.${key} must be a boolean`);
@@ -193,7 +205,7 @@ function validateArtifactDelta(value: unknown, key: string): ArtifactDelta {
 		const fo = asRecord(f, `${label}.files[${i}]`);
 		return {
 			path: reqString(fo, "path", `${label}.files[${i}]`),
-			mergedBody: reqString(fo, "mergedBody", `${label}.files[${i}]`),
+			mergedBody: reqStringAllowEmpty(fo, "mergedBody", `${label}.files[${i}]`),
 		};
 	});
 	const countsRaw = asRecord(o.counts ?? {}, `${label}.counts`);

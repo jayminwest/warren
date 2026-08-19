@@ -29,7 +29,7 @@ import { registerBootstrapCommands } from "./commands/bootstrap.ts";
 import { runConfigMigrate } from "./commands/config-migrate.ts";
 import { runMigrateToPostgres } from "./commands/db.ts";
 import { runDoctor } from "./commands/doctor.ts";
-import { runRemoteDoctor } from "./commands/doctor-remote.ts";
+import { remoteDoctorDeps, runRemoteDoctor } from "./commands/doctor-remote.ts";
 import { runInit } from "./commands/init.ts";
 import { runPlanCancel, runPlanRun } from "./commands/plan-run.ts";
 import { runPlanList, runPlanStatus } from "./commands/plan-status.ts";
@@ -256,8 +256,8 @@ export function buildProgram(baseContext: CliContext): Command {
 			});
 			process.exit(exitCode);
 		}
-		const client = resolveWarrenClient(context.env, clientFlags(opts));
-		const result = await runRemoteDoctor(context, { client }, { noAuth: opts.auth === false });
+		const deps = remoteDoctorDeps(context.env, clientFlags(opts));
+		const result = await runRemoteDoctor(context, deps, { noAuth: opts.auth === false });
 		process.exit(result.exitCode);
 	});
 

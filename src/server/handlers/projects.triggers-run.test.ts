@@ -6,6 +6,7 @@ import { NO_AUTH } from "../auth.ts";
 import { startServer } from "../server.ts";
 import type { BridgeRegistry, ServeHandle, ServerDeps } from "../types.ts";
 import { depsFor, makeSandboxClient, silentLogger, tcpUrl } from "./projects.test-helpers.ts";
+import { makeRecordingLogger } from "./runs.test-helpers.ts";
 
 describe("POST /projects/:id/triggers/:triggerId/run — manual Run Now (warren-99c3)", () => {
 	let db: WarrenDb;
@@ -75,14 +76,16 @@ describe("POST /projects/:id/triggers/:triggerId/run — manual Run Now (warren-
 			stopAll: async () => {},
 			size: () => bridgeStarted.length,
 		};
+		const recording = makeRecordingLogger();
 		const deps: ServerDeps = {
 			...(await depsFor(repos, sandboxClient, bridges)),
 			now: () => new Date("2026-05-10T12:00:00.000Z"),
+			logger: recording.logger,
 		};
 		handle = startServer(deps, {
 			transport: { kind: "tcp", hostname: "127.0.0.1", port: 0 },
 			auth: NO_AUTH,
-			logger: silentLogger,
+			logger: recording.logger,
 		});
 
 		const res = await fetch(`${tcpUrl(handle)}/projects/${projectId}/triggers/nightly/run`, {
@@ -100,6 +103,13 @@ describe("POST /projects/:id/triggers/:triggerId/run — manual Run Now (warren-
 		expect(body.sandbox.id).toBe("bur_xxxxxxxxxxxx");
 		expect(bridgeStarted.length).toBe(1);
 		expect(bridgeStarted[0]?.sandboxRunId).toBe("run_zzzzzzzzzzzz");
+
+		// warren-9ce3: trigger.seed lands on runs.seed_id; origin rides the
+		// spawn logger binding (underscore spelling distinct from the column).
+		const persisted = await repos.runs.require(body.run.id);
+		expect(persisted.seedId).toBe("warren-1");
+		const provisioned = recording.lines.find((l) => l.obj.event === "spawn.provisioned");
+		expect(provisioned?.obj.dispatch_origin).toBe("manual_trigger");
 
 		// Triggers row stamped with manual fire + nextFireAt rolled forward.
 		const row = await repos.triggers.get({ projectId, triggerId: "nightly" });

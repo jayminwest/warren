@@ -220,15 +220,15 @@ export async function spawnRun(input: SpawnRunInput): Promise<SpawnRunResult> {
 
 	const runEnv = composeRunEnv(run.id, projectDefaults?.qualityGate, input.serverEnv);
 
-	// warren-b802: resolve per-project runtime override for the planner
-	// interactive agent at dispatch time so the agent row
-	// stays honest as 'builtin'.
+	// warren-b802: per-project runtime override (planner stays 'builtin').
 	const runtimeOverride = interactiveRuntimeOverride(agent.name, projectDefaults);
 
-	const log = bindRunLogger(input.logger, run.id);
-	// warren-e7b7: on the K8s topology no supervisor exists to install a
-	// gitconfig or warn about a missing agent identity — emit one structured
-	// warn per dispatch so the operator sees the misconfiguration per-run.
+	// warren-9ce3: read dispatcherHandle + dispatchOrigin (were dropped silently).
+	const log = bindRunLogger(input.logger, run.id, {
+		dispatcherHandle: input.dispatcherHandle,
+		dispatchOrigin: input.dispatchOrigin,
+	});
+	// warren-e7b7: warn once per dispatch when agent git identity is unset (K8s).
 	warnIfGitIdentityUnconfigured(log, input.serverEnv ?? process.env);
 	// Runtime-provider seam (warren-c42c: burrow-client eviction, bucket 2).
 	// `provider.create` collapses burrow's provision + dispatch (`sandboxUp` +

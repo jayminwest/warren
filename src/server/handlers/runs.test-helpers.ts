@@ -15,6 +15,38 @@ export const silentLogger = {
 	error() {},
 };
 
+/**
+ * Recording logger with pino-style `child` binding merge (warren-9ce3).
+ * Use to assert dispatch provenance (`dispatch_origin`, `dispatcher_handle`)
+ * rides onto spawn log lines from HTTP call sites that go through real
+ * `spawnRun` rather than a stubbed `spawnRunFn`.
+ */
+export function makeRecordingLogger(bound: Record<string, unknown> = {}): {
+	logger: {
+		info(obj: object, msg?: string): void;
+		warn(obj: object, msg?: string): void;
+		error(obj: object, msg?: string): void;
+		child(extra: object): unknown;
+	};
+	lines: Array<{ level: string; obj: Record<string, unknown>; msg?: string }>;
+} {
+	const lines: Array<{ level: string; obj: Record<string, unknown>; msg?: string }> = [];
+	const merge = (bindings: Record<string, unknown>, obj: object) => ({
+		...bindings,
+		...(obj as Record<string, unknown>),
+	});
+	const make = (bindings: Record<string, unknown>) => ({
+		info: (obj: object, msg?: string) =>
+			lines.push({ level: "info", obj: merge(bindings, obj), msg }),
+		warn: (obj: object, msg?: string) =>
+			lines.push({ level: "warn", obj: merge(bindings, obj), msg }),
+		error: (obj: object, msg?: string) =>
+			lines.push({ level: "error", obj: merge(bindings, obj), msg }),
+		child: (extra: object) => make(merge(bindings, extra)),
+	});
+	return { logger: make(bound), lines };
+}
+
 export function stub(
 	impl: (input: URL | RequestInfo, init?: RequestInit) => Promise<Response>,
 ): typeof fetch {

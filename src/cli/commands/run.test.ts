@@ -4,6 +4,7 @@ import {
 	type RunEvent,
 	type RunRow,
 	type SpawnRunResponse,
+	type WaitForRunOptions,
 	type WarrenClient,
 	WarrenClientError,
 	WarrenUnreachableError,
@@ -98,14 +99,60 @@ interface MockClientInput {
 	readonly createError?: Error;
 	readonly events?: readonly RunEvent[];
 	readonly streamError?: Error;
+	/** Final row returned by waitForRun / getRun once terminal (or the only snap). */
 	readonly row?: RunRow;
+	/**
+	 * Sequence of getRun/waitForRun snapshots after the stream closes
+	 * (warren-22cf). When set, waitForRun walks the list and only resolves
+	 * once a terminal state appears (or throws wait_timeout if none does).
+	 */
+	readonly waitRows?: readonly RunRow[];
+	readonly waitError?: Error;
 	readonly createCalls?: CreateRunInput[];
+	readonly waitCalls?: WaitForRunOptions[];
 	readonly onStream?: (signal?: AbortSignal) => void;
+}
+
+function isTerminal(state: string): boolean {
+	return state === "succeeded" || state === "failed" || state === "cancelled";
+}
+
+function waitTimeout(opts: WaitForRunOptions, lastState: string): WarrenClientError {
+	return new WarrenClientError(
+		408,
+		"wait_timeout",
+		`run run-1 did not reach a terminal state within ${opts.timeoutMs ?? 0}ms (last state: ${lastState})`,
+	);
+}
+
+/** Resolve waitForRun against a row sequence or a single final row (warren-22cf). */
+function resolveWaitRow(input: MockClientInput, opts: WaitForRunOptions): RunRow {
+	if (input.waitError !== undefined) throw input.waitError;
+	const sequence = input.waitRows;
+	if (sequence !== undefined) {
+		const terminal = sequence.find((row) => isTerminal(row.state));
+		if (terminal !== undefined) return terminal;
+		const last = sequence[sequence.length - 1] ?? runRow({ state: "running" });
+		throw waitTimeout(opts, last.state);
+	}
+	const row = input.row ?? runRow();
+	if (!isTerminal(row.state)) throw waitTimeout(opts, row.state);
+	return row;
 }
 
 /** Mocked WarrenClient (warren-97a2): the run command never touches a DB or a socket. */
 function mockClient(input: MockClientInput = {}): WarrenClient {
 	const events = input.events ?? [];
+	let snapIdx = 0;
+	const nextSnap = (): RunRow => {
+		const sequence = input.waitRows;
+		if (sequence !== undefined && sequence.length > 0) {
+			const row = sequence[Math.min(snapIdx, sequence.length - 1)] ?? runRow();
+			snapIdx += 1;
+			return row;
+		}
+		return input.row ?? runRow();
+	};
 	return {
 		probe: async () => {
 			if (input.probeError !== undefined) throw input.probeError;
@@ -114,7 +161,7 @@ function mockClient(input: MockClientInput = {}): WarrenClient {
 			input.createCalls?.push(body);
 			if (input.createError !== undefined) throw input.createError;
 			const spawned: SpawnRunResponse = {
-				run: input.row ?? runRow(),
+				run: input.row ?? runRow({ state: "running", endedAt: null }),
 				sandbox: { id: "bur-1", workspacePath: "/ws/run-1" },
 			};
 			return spawned;
@@ -133,7 +180,11 @@ function mockClient(input: MockClientInput = {}): WarrenClient {
 					throw new DOMException("The operation was aborted", "AbortError");
 				}
 			})(),
-		getRun: async () => input.row ?? runRow(),
+		getRun: async () => nextSnap(),
+		waitForRun: async (_runId: string, opts: WaitForRunOptions = {}) => {
+			input.waitCalls?.push(opts);
+			return resolveWaitRow(input, opts);
+		},
 	} as unknown as WarrenClient;
 }
 
@@ -282,15 +333,77 @@ describe("runRun", () => {
 		expect(err.join("")).toContain("detaching from run run-1");
 	});
 
-	test("a non-terminal read-back after the stream closes counts as failed", async () => {
-		const { context } = captureContext();
+	test("polls past a non-terminal stream close until the true terminal state (warren-22cf)", async () => {
+		const { context, out } = captureContext();
+		const waitCalls: WaitForRunOptions[] = [];
 		const result = await runRun(
 			context,
-			{ client: mockClient({ row: runRow({ state: "running" }) }) },
+			{
+				client: mockClient({
+					events: [runEvent(1)],
+					waitCalls,
+					waitRows: [
+						runRow({ state: "running", endedAt: null, prUrl: null }),
+						runRow({ state: "succeeded" }),
+					],
+				}),
+				waitForRunOptions: { intervalMs: 1, timeoutMs: 5_000 },
+			},
+			ARGS,
+		);
+		expect(result.exitCode).toBe(0);
+		expect(result.state).toBe("succeeded");
+		expect(waitCalls).toHaveLength(1);
+		expect(waitCalls[0]?.timeoutMs).toBe(5_000);
+		const lines = parseLines(out);
+		const terminal = lines.find((l) => l.event === "run.terminal");
+		expect(terminal?.state).toBe("succeeded");
+		expect(lines.some((l) => l.event === "run.stream_ended")).toBe(false);
+	});
+
+	test("a post-stream wait timeout emits run.stream_ended, not a bogus terminal (warren-22cf)", async () => {
+		const { context, out, err } = captureContext();
+		const result = await runRun(
+			context,
+			{
+				client: mockClient({
+					events: [runEvent(1)],
+					waitRows: [runRow({ state: "running", endedAt: null, prUrl: null })],
+				}),
+				waitForRunOptions: { intervalMs: 1, timeoutMs: 10 },
+			},
 			ARGS,
 		);
 		expect(result.exitCode).toBe(1);
-		expect(result.state).toBe("failed");
+		expect(result.state).toBeUndefined();
+		const lines = parseLines(out);
+		const ended = lines.find((l) => l.event === "run.stream_ended");
+		expect(ended).toBeDefined();
+		expect(ended?.state).toBe("running");
+		expect(ended?.reason).toBe("await_terminal_timeout");
+		expect(lines.some((l) => l.event === "run.terminal")).toBe(false);
+		expect(err.join("")).toContain("did not reach a terminal state");
+	});
+
+	test("pretty mode names the stream-ended-but-not-terminal case (warren-22cf)", async () => {
+		const { context, out } = captureContext();
+		const prettyContext: CliContext = { ...context, output: "pretty" };
+		const result = await runRun(
+			prettyContext,
+			{
+				client: mockClient({
+					waitRows: [runRow({ state: "running", endedAt: null, prUrl: null })],
+				}),
+				waitForRunOptions: { intervalMs: 1, timeoutMs: 10 },
+			},
+			ARGS,
+		);
+		expect(result.exitCode).toBe(1);
+		const text = out.join("");
+		expect(text).toContain("stream ended but run is not terminal yet");
+		expect(text).toContain("last state: running");
+		expect(text).not.toContain("run.terminal");
+		expect(text).not.toMatch(/✔ run run-1/);
 	});
 });
 

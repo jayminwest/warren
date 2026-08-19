@@ -1107,6 +1107,7 @@ components:
         - never_started
         - no_model_response
         - sandbox_failed
+        - spawn_failed
         - crashed
         - timed_out
         - sandbox_run_lost
@@ -1305,6 +1306,7 @@ components:
             - never_started
             - no_model_response
             - sandbox_failed
+            - spawn_failed
             - crashed
             - timed_out
             - sandbox_run_lost

@@ -9,6 +9,7 @@ interface RecordedSpawn {
 	agentName: string;
 	prompt: string;
 	trigger: string;
+	seedId?: string;
 	metadata?: unknown;
 	maxCostUsd?: number;
 }
@@ -28,6 +29,7 @@ function spawnRecorder(
 			agentName: input.agentName,
 			prompt: input.prompt,
 			trigger: input.trigger,
+			...(input.seedId !== undefined ? { seedId: input.seedId } : {}),
 			metadata: input.metadata,
 			...(input.maxCostUsd !== undefined ? { maxCostUsd: input.maxCostUsd } : {}),
 		});
@@ -114,6 +116,8 @@ describe("dispatchScheduledSeed", () => {
 		// lastScheduledRun}` in a single sd update.
 		expect(result.role).toBe("claude-code");
 		expect(calls[0]?.trigger).toBe("scheduled");
+		// warren-9ce3: first-class seedId on the seam (not only in metadata).
+		expect(calls[0]?.seedId).toBe("warren-s1");
 		expect(calls[0]?.agentName).toBe("claude-code");
 		expect(calls[0]?.prompt).toBe("Sched body.");
 	});

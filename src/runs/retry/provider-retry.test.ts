@@ -79,6 +79,44 @@ describe("classifyProviderError", () => {
 		expect(classifyProviderError("the agent exploded")).toBe("unknown");
 	});
 
+	test("reads the structured httpStatus before the prose fallback", () => {
+		// 5xx short-circuits to transient even with no status token in the
+		// prose (warren-f8b2).
+		expect(classifyProviderError("the upstream gateway choked", 502)).toBe("transient");
+		expect(classifyProviderError("something weird happened", 503)).toBe("transient");
+		// 4xx short-circuits to durable even when the prose looks transient.
+		expect(classifyProviderError("connection reset by peer", 401)).toBe("durable");
+		expect(classifyProviderError("request failed", 429)).toBe("durable");
+		// Null/undefined/out-of-range status falls back to the message parse.
+		expect(classifyProviderError("something weird happened", null)).toBe("unknown");
+		expect(classifyProviderError("Network connection lost.", undefined)).toBe("transient");
+		expect(classifyProviderError("something weird happened", Number.NaN)).toBe("unknown");
+		expect(classifyProviderError("something weird happened", 200)).toBe("unknown");
+	});
+
+	test("reads the structured upstreamBody before the message prose", () => {
+		// Opaque harness message (pi's OPAQUE_MESSAGE) with a transient
+		// upstream body retries (warren-eaa6).
+		expect(classifyProviderError("Provider returned error", null, "529 overloaded_error")).toBe(
+			"transient",
+		);
+		expect(classifyProviderError("Provider returned error", null, '{"error":"bad gateway"}')).toBe(
+			"transient",
+		);
+		// A durable upstream body fails closed even though the surface
+		// message is opaque.
+		expect(classifyProviderError("Provider returned error", null, "invalid api key")).toBe(
+			"durable",
+		);
+		// An unrecognized body falls through to the message prose.
+		expect(classifyProviderError("Network connection lost.", null, "weird body")).toBe("transient");
+		expect(classifyProviderError("something weird happened", null, "weird body")).toBe("unknown");
+		// httpStatus still wins over the body tier.
+		expect(classifyProviderError("Provider returned error", 401, "502 bad gateway")).toBe(
+			"durable",
+		);
+	});
+
 	test("durable wins when a message names both a symptom and a cause", () => {
 		expect(classifyProviderError("request failed with 401: connection reset by peer")).toBe(
 			"durable",
@@ -103,7 +141,13 @@ interface Fixture {
 }
 
 async function setup(
-	opts: { trigger?: string; seedId?: string | null; providerMessage?: string } = {},
+	opts: {
+		trigger?: string;
+		seedId?: string | null;
+		providerMessage?: string;
+		httpStatus?: number | null;
+		upstreamBody?: string | null;
+	} = {},
 ): Promise<Fixture> {
 	const db = await openDatabase({ path: ":memory:" });
 	openDb = db;
@@ -132,7 +176,11 @@ async function setup(
 		ts: new Date().toISOString(),
 		kind: "reap.provider_error",
 		stream: "system",
-		payload: { message: opts.providerMessage ?? "Network connection lost." },
+		payload: {
+			message: opts.providerMessage ?? "Network connection lost.",
+			httpStatus: opts.httpStatus ?? null,
+			upstreamBody: opts.upstreamBody ?? null,
+		},
 	});
 	return { repos, runId: run.id, projectId: project.id };
 }
@@ -269,8 +317,13 @@ describe("createProviderRetryLifecycleExtension", () => {
 		expect(call.prompt).toBe("work the seed");
 		expect(call.trigger).toBe("manual");
 		expect(call.seedId).toBe("warren-339d");
+		// warren-9ce3: origin is the retry path, not the inherited trigger.
+		expect(call.dispatchOrigin).toBe("retry_provider");
 		expect(call.parentRunId).toBe(fixture.runId);
 		expect(call.cloneKind).toBe("replicate");
+		// retryOf back-link (warren-eaa6/warren-58ff): the successor row
+		// carries the original run's id so retry projections see it.
+		expect(call.retryOf).toBe(fixture.runId);
 		expect(started).toEqual([spawn.newRunId]);
 
 		// The successor names its origin (also the single-retry bound marker).
@@ -284,6 +337,62 @@ describe("createProviderRetryLifecycleExtension", () => {
 		const oldEvents = await fixture.repos.events.listByRun(fixture.runId);
 		const dispatched = oldEvents.find((e) => e.kind === PROVIDER_RETRY_EVENTS.retryDispatched);
 		expect((dispatched?.payloadJson as { newRunId?: string }).newRunId).toBe(spawn.newRunId);
+	});
+
+	test("retries a 5xx httpStatus even when the prose names no status code", async () => {
+		const fixture = await setup({
+			providerMessage: "the provider returned an empty response",
+			httpStatus: 502,
+		});
+		const { spawn } = await fire(fixture);
+		expect(spawn.calls).toHaveLength(1);
+	});
+
+	test("does not retry a 4xx httpStatus even when the prose looks transient", async () => {
+		const fixture = await setup({
+			providerMessage: "connection reset while reaching the model",
+			httpStatus: 401,
+		});
+		const { spawn } = await fire(fixture);
+		expect(spawn.calls).toHaveLength(0);
+	});
+
+	test("retries an opaque message when the upstreamBody reads transient", async () => {
+		const fixture = await setup({
+			providerMessage: "Provider returned error",
+			upstreamBody: '{"type":"error","error":{"type":"overloaded_error"}}',
+		});
+		const { spawn } = await fire(fixture);
+		expect(spawn.calls).toHaveLength(1);
+		expect((spawn.calls[0] as SpawnCall).retryOf).toBe(fixture.runId);
+	});
+
+	test("retries an opaque message with a 529 httpStatus", async () => {
+		const fixture = await setup({
+			providerMessage: "Provider returned error",
+			httpStatus: 529,
+		});
+		const { spawn } = await fire(fixture);
+		expect(spawn.calls).toHaveLength(1);
+	});
+
+	test("does not retry a 401 httpStatus even when the upstreamBody looks 5xx", async () => {
+		const fixture = await setup({
+			providerMessage: "Provider returned error",
+			httpStatus: 401,
+			upstreamBody: "502 bad gateway from the upstream edge",
+		});
+		const { spawn } = await fire(fixture);
+		expect(spawn.calls).toHaveLength(0);
+	});
+
+	test("does not retry an opaque message with a durable upstreamBody", async () => {
+		const fixture = await setup({
+			providerMessage: "Provider returned error",
+			upstreamBody: '{"error":{"type":"authentication_error","message":"invalid api key"}}',
+		});
+		const { spawn } = await fire(fixture);
+		expect(spawn.calls).toHaveLength(0);
 	});
 
 	test("does not retry a durable provider rejection", async () => {

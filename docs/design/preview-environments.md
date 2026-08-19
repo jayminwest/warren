@@ -27,8 +27,8 @@ RunDetail UI surface, and acceptance scenario `20-preview.ts`
 (happy-path + idle-TTL eviction; macOS skipped per `mx-1d31f0`)
 followed. Operator setup (wildcard CNAME, Caddy DNS-01 snippet, the
 full `WARREN_PREVIEW_*` knob table) is documented in
-[README](README.md#per-run-previews--operator-setup) and
-[`.env.example`](.env.example). Static-site previews
+[README](../../README.md#operator-setup) and
+[`.env.example`](../../.env.example). Static-site previews
 (`type: static`), PR-template configurability, the `.warren/` YAML
 reorg, and a PR-close webhook → preview-teardown hook stay as
 sibling follow-ups under `pl-2c59`. The PR-close webhook teardown

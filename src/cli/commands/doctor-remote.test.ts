@@ -7,7 +7,7 @@ import {
 	type WhoamiResponse,
 } from "../../client/index.ts";
 import type { CliContext } from "../output.ts";
-import { runRemoteDoctor } from "./doctor-remote.ts";
+import { remoteDoctorDeps, runRemoteDoctor } from "./doctor-remote.ts";
 
 function captureContext(): { context: CliContext; out: string[]; err: string[] } {
 	const out: string[] = [];
@@ -86,6 +86,78 @@ describe("runRemoteDoctor", () => {
 		const auth = result.checks.find((c) => c.name === "auth_valid");
 		expect(auth?.ok).toBe(false);
 		expect(auth?.hint).toContain("WARREN_API_TOKEN");
+		expect(auth?.hint).toContain("warren login");
+	});
+
+	test("remoteDoctorDeps carries the slots the resolution picked (warren-8807)", () => {
+		const deps = remoteDoctorDeps(
+			{ WARREN_BASE_URL: "https://env.example.com", WARREN_API_TOKEN: "tok-env" },
+			{},
+		);
+		expect(deps.client.config.baseUrl).toBe("https://env.example.com");
+		expect(deps.baseUrlSource).toBe("env");
+		expect(deps.tokenSource).toBe("env");
+	});
+
+	test("the reachability line names where the base URL came from (warren-8807)", async () => {
+		const { context } = captureContext();
+		const result = await runRemoteDoctor(
+			context,
+			{
+				client: mockClient({ version: "1.2.3" }),
+				cliVersion: "1.2.3",
+				baseUrlSource: "default",
+			},
+			{},
+		);
+		const reachable = result.checks.find((c) => c.name === "server_reachable");
+		expect(reachable?.message).toContain("http://localhost:8080");
+		expect(reachable?.message).toContain("built-in default");
+	});
+
+	test("the ok line names the slot the token came from (warren-8807)", async () => {
+		const { context } = captureContext();
+		const result = await runRemoteDoctor(
+			context,
+			{ client: mockClient({ version: "1.2.3" }), cliVersion: "1.2.3", tokenSource: "env" },
+			{},
+		);
+		const auth = result.checks.find((c) => c.name === "auth_valid");
+		expect(auth?.ok).toBe(true);
+		expect(auth?.message).toContain("admitted as operator");
+		expect(auth?.message).toContain("WARREN_API_TOKEN");
+	});
+
+	test("a rejected token names its slot in the hint (warren-8807)", async () => {
+		const { context } = captureContext();
+		const client = mockClient({
+			whoamiError: new WarrenClientError(401, "unauthorized", "bad token"),
+		});
+		const result = await runRemoteDoctor(context, { client, tokenSource: "env" }, {});
+		const auth = result.checks.find((c) => c.name === "auth_valid");
+		expect(auth?.ok).toBe(false);
+		expect(auth?.hint).toContain("rejected token came from WARREN_API_TOKEN");
+		expect(auth?.hint).toContain(".env");
+	});
+
+	test("a rejected --token is not blamed on the environment (warren-8807)", async () => {
+		const { context } = captureContext();
+		const client = mockClient({
+			whoamiError: new WarrenClientError(401, "unauthorized", "bad token"),
+		});
+		const result = await runRemoteDoctor(context, { client, tokenSource: "flag" }, {});
+		const auth = result.checks.find((c) => c.name === "auth_valid");
+		expect(auth?.hint).toContain("rejected token came from --token");
+	});
+
+	test("a rejected config-file token points back at warren login (warren-8807)", async () => {
+		const { context } = captureContext();
+		const client = mockClient({
+			whoamiError: new WarrenClientError(401, "unauthorized", "bad token"),
+		});
+		const result = await runRemoteDoctor(context, { client, tokenSource: "config-file" }, {});
+		const auth = result.checks.find((c) => c.name === "auth_valid");
+		expect(auth?.hint).toContain("rejected token came from the client config file");
 		expect(auth?.hint).toContain("warren login");
 	});
 

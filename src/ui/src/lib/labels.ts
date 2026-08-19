@@ -55,6 +55,7 @@ const RUN_FAILURE_REASON_LABELS: Readonly<Record<string, string>> = {
 	never_started: "Never started",
 	no_model_response: "No model response",
 	sandbox_failed: "Sandbox failed",
+	spawn_failed: "Spawn failed",
 	crashed: "Crashed",
 	timed_out: "Timed out",
 	sandbox_run_lost: "Sandbox run lost",
