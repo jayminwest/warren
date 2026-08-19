@@ -61,6 +61,7 @@ domains:
   gates: {}
   observability: {}
   tracker: {}
+  tracker-port: {}
 governance:
   max_entries: 100
   warn_entries: 150
