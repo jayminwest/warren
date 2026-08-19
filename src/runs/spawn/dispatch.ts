@@ -1,38 +1,12 @@
 /**
- * `spawnRun` — the composition flow (docs/design/agent-composition.md).
+ * `spawnRun` — composition flow (docs/design/agent-composition.md).
  *
- * One call drives the ritual that turns "the operator picked an agent +
- * project + prompt" into "the runtime has a dispatched run":
- *
- *   1. Resolve the cached agent definition (registry refresh seeded it
- *      via `cn render`). The rendered envelope is what gets frozen onto
- *      `runs.rendered_agent_json` — re-rendering at run time is
- *      deliberately not done here. Operators trigger a fresh render via
- *      `POST /agents/refresh` if they want one.
- *
- *   2. Build the neutral `RunSpec` (workspace inputs from the project clone,
- *      `network` from the agent's `burrow_config`, the `.canopy/.mulch/
- *      .seeds/.pi` workspace drops from `../seed.ts` as `seedFiles`, plus the
- *      composed env + prompt) and dispatch through the runtime seam,
- *      `provider.create(spec)` (warren-c42c). The provider — `LocalProvider`
- *      (burrow) or `K8sProvider` (pod) — materializes the workspace, seeds it,
- *      and starts the run, collapsing what used to be burrow's two-call
- *      provision-then-dispatch into one, and owns destroying any partially
- *      provisioned sandbox on a mid-flight failure.
- *
- * The warren run row is created BEFORE `provider.create`, with both
- * correlation ids nulled — `attachBurrow` writes back the handle's
- * `sandboxId` / `providerRunId` only after `create` fully succeeds, so the
- * warren `run_xxx` id is in hand throughout the flow while a failed dispatch
- * leaves no sandbox id on the row (the provider already tore it down). These
- * ids are the LocalProvider resume correlation the bridge reconnect path
- * reads after a host restart.
- *
- * Failure handling: anything before the `create` call just throws (no warren
- * row exists yet, or the row unwinds via the domain rollback). Failures from
- * `create` onward are caught — `rollback` finalizes the warren row
- * `failed`/`never_started` (the sandbox half is the provider's job). The
- * original error is rethrown for the caller (HTTP route, CLI).
+ * Resolves the cached agent, builds a neutral `RunSpec`, and dispatches via
+ * `provider.create(spec)` (warren-c42c). The warren run row is created BEFORE
+ * `create`; `attachBurrow` writes correlation ids only after success. A failed
+ * `create` rolls the row back `failed`/`never_started` (sandbox half is the
+ * provider's job). Dispatch-context (warren-d6ca) is snapshotted right after
+ * the row lands, before any runtime contact.
  */
 
 import { NotFoundError, ValidationError } from "../../core/errors.ts";
@@ -53,6 +27,7 @@ import { buildSeedFiles } from "../seed.ts";
 import { validateTargetBranch } from "../target-branch.ts";
 import { readCachedAgent, readProjectDefaults, resolveOverride } from "./agent-cache.ts";
 import { injectWarrenCallbackEnv } from "./callback-env.ts";
+import { writeDispatchContext } from "./dispatch-context.ts";
 import { injectGitIdentityEnv, warnIfGitIdentityUnconfigured } from "./git-identity.ts";
 import { healMigrationJournalCollisions, recordMigrationHealEvent } from "./migration-preflight.ts";
 import { assertNoKnownProviderModelMismatch } from "./provider-model.ts";
@@ -206,6 +181,19 @@ export async function spawnRun(input: SpawnRunInput): Promise<SpawnRunResult> {
 	// bounded-retry GC can reclaim it if the dispatch below throws (see types).
 	input.onRunRowCreated?.(run.id);
 
+	// warren-d6ca: dispatch-context snapshot BEFORE any runtime contact so a
+	// never-started failure still gets a row. Fire-and-log — see writeDispatchContext.
+	await writeDispatchContext({
+		spawn: input,
+		run,
+		agent,
+		baseAgent,
+		declaredProvider,
+		declaredModel,
+		projectDefaults,
+		network: burrowConfig.network ?? "none",
+	});
+
 	// warren-9993/a993: burrow branch = `${prefix}/${run.id}` (prefix precedence
 	// project default > env > "burrow"); a CI-fixer run's `targetBranch` pins it
 	// to the open PR head ref instead, so the fixer's commits re-run that PR's CI.
@@ -222,6 +210,7 @@ export async function spawnRun(input: SpawnRunInput): Promise<SpawnRunResult> {
 
 	// warren-b802: per-project runtime override (planner stays 'builtin').
 	const runtimeOverride = interactiveRuntimeOverride(agent.name, projectDefaults);
+	const runtimeId = readRuntimeId(agent, runtimeOverride);
 
 	// warren-9ce3: read dispatcherHandle + dispatchOrigin (were dropped silently).
 	const log = bindRunLogger(input.logger, run.id, {
@@ -238,7 +227,6 @@ export async function spawnRun(input: SpawnRunInput): Promise<SpawnRunResult> {
 	// boot-selected provider (`resolveRuntimeProvider`, honoring `WARREN_RUNTIME`)
 	// and thread it in; there is no `sandboxClient` on this seam to fall back to.
 	const provider: RuntimeProvider = input.runtimeProvider;
-	const runtimeId = readRuntimeId(agent, runtimeOverride);
 	// Neutral RunSpec (provider maps it to the two burrow calls). `network` is
 	// REQUIRED on the seam, so resolve burrow's own default (`none`) here — the
 	// domain now owns the "no explicit network ⇒ default" decision that
@@ -477,17 +465,7 @@ export function composeDispatchPrompt(systemBody: string | undefined, userPrompt
 	return `${trimmed}\n\n---\n\n${userPrompt}`;
 }
 
-/**
- * Merge the operator-supplied dispatch metadata with the post-override agent
- * frontmatter so burrow's piRuntime can read provider/model from
- * `Run.metadataJson.frontmatter` (burrow-b5b4). Without this, ctx.frontmatter
- * is undefined inside burrow and buildPiArgv falls back to PI_DEFAULT_MODEL
- * even when warren resolved a non-default per warren-618b / warren-f8c0.
- *
- * Operator metadata wins on key collisions except for `frontmatter`, which is
- * always sourced from the agent — it's the resolved envelope, not a
- * caller-supplied field.
- */
+/** Fold agent frontmatter onto operator metadata (burrow-b5b4 / warren-618b). */
 function composeBurrowMetadata(
 	operatorMetadata: unknown,
 	frontmatter: Record<string, unknown>,
