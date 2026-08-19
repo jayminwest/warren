@@ -76,9 +76,21 @@ COPY . /app
 
 # Route Bun's install cache outside the workspace so `git add .` never sweeps it
 # (mirrors the domain's BUN_INSTALL_CACHE_DIR). The agent runs unprivileged
-# (uid 1000, set by the pod securityContext); give it a writable HOME on /tmp.
+# (uid 1000 — K8s pod securityContext, docker `--user`, see warren-3f32); give
+# it a writable HOME on /tmp so tooling that ignores the bind-mounted run home
+# still has somewhere to write.
 ENV BUN_INSTALL_CACHE_DIR=/tmp/bun-install-cache
 ENV HOME=/tmp
+
+# oven/bun ships a non-root `bun` user at uid/gid 1000. Drop root in the image
+# as defense in depth (warren-3f32): claude-code refuses
+# `--dangerously-skip-permissions` when getuid()==0. DockerProvider also passes
+# `--user 1000:1000` (or the host uid when warren is non-root) so an image
+# rebuilt without this USER still runs non-root; K8s overrides via
+# securityContext the same way. Hand /app to bun so a standalone smoke run of
+# this image can still read the baked source.
+RUN chown -R bun:bun /app
+USER bun
 
 # pod-spec.ts sets the container `command` explicitly (K8S_AGENT_COMMAND); this
 # CMD is the same entry so the image is runnable standalone for smoke tests.

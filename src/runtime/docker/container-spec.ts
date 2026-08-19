@@ -23,6 +23,12 @@
  *   - `HOME` exports the run's real writable home (warren-c865 parity).
  *   - A loopback `WARREN_API_URL` rewrites to the host-gateway alias and
  *     the container gets `--add-host <alias>:host-gateway`.
+ *   - `--user` forces a non-root identity (warren-3f32). claude-code refuses
+ *     `--dangerously-skip-permissions` when `getuid()==0`; the K8s pod already
+ *     runs uid 1000 with `runAsNonRoot`, and docker needs the same story. See
+ *     `resolveDockerAgentUser` — root warren (compose default) → uid 1000 plus
+ *     a host-side chown of the bind mounts; non-root warren → that host uid so
+ *     the already-owned workspace/HOME stay writable without a privileged chown.
  *
  * The container is deliberately created WITHOUT `--rm`: the spawn seam must
  * `docker inspect` the dead container for the OOMKilled flag before
@@ -30,8 +36,59 @@
  */
 
 import { basename } from "node:path";
+import { DEFAULT_SANDBOX_GID, DEFAULT_SANDBOX_UID } from "../../sandbox/bwrap.ts";
 import type { SandboxProfile, SpawnCommand } from "../../sandbox/types.ts";
 import { type DockerConfig, rewriteLoopbackUrl } from "./config.ts";
+
+/**
+ * Unprivileged uid/gid the agent container runs as when warren itself is
+ * root (compose / bare Dockerfile default). Mirrors `WARREN_POD_UID` on the
+ * K8s path and `DEFAULT_SANDBOX_UID` under bwrap (warren-3f32).
+ */
+export const DOCKER_AGENT_UID = DEFAULT_SANDBOX_UID;
+export const DOCKER_AGENT_GID = DEFAULT_SANDBOX_GID;
+
+export interface DockerAgentUser {
+	readonly uid: number;
+	readonly gid: number;
+	/**
+	 * True when the spawn seam must `chown` the bind-mounted workspace/HOME
+	 * (and optional gitdir) to `uid:gid` before `docker run`. Only needed when
+	 * warren created those dirs as root and the container will run as the
+	 * fixed non-root agent uid.
+	 */
+	readonly chownMounts: boolean;
+}
+
+/**
+ * Pick the container `--user` identity.
+ *
+ * - Host uid is a real non-root user → run as that uid/gid. The workspace and
+ *   HOME were just materialized by the same user, so they are already writable
+ *   and no chown is required (and would fail without CAP_CHOWN).
+ * - Host is root (or uid unknown) → fall back to the K8s-parity uid 1000 and
+ *   ask the spawn seam to chown the mounts. Fixed 1000 (not a random
+ *   non-zero) keeps image `USER bun` / tooling that assumes uid 1000 aligned.
+ * - `SandboxProfile.runAsUid` / `runAsGid` override both arms when set.
+ */
+export function resolveDockerAgentUser(
+	profile: SandboxProfile,
+	host: { uid?: number; gid?: number } = {},
+): DockerAgentUser {
+	if (profile.runAsUid !== undefined) {
+		const uid = profile.runAsUid;
+		const gid = profile.runAsGid ?? uid;
+		return { uid, gid, chownMounts: host.uid === 0 || host.uid === undefined };
+	}
+	if (host.uid !== undefined && host.uid !== 0) {
+		return {
+			uid: host.uid,
+			gid: host.gid !== undefined && host.gid !== 0 ? host.gid : host.uid,
+			chownMounts: false,
+		};
+	}
+	return { uid: DOCKER_AGENT_UID, gid: DOCKER_AGENT_GID, chownMounts: true };
+}
 
 /** Container name prefix — deterministic per run so cancel can target it. */
 export const DOCKER_CONTAINER_PREFIX = "warren-run-";
@@ -149,14 +206,19 @@ export function buildDockerRunSpec(
 	command: SpawnCommand,
 	config: DockerConfig,
 	envFilePath: string,
+	hostIdentity: { uid?: number; gid?: number } = {},
 ): DockerRunSpec {
 	const containerName = containerNameForWorkspace(profile.workspace);
+	const agentUser = resolveDockerAgentUser(profile, hostIdentity);
 	const argv: string[] = [
 		config.bin,
 		"run",
 		"--name",
 		containerName,
 		"-i",
+		// Non-root (warren-3f32) — image USER is defense in depth; --user wins.
+		"--user",
+		`${agentUser.uid}:${agentUser.gid}`,
 		"--workdir",
 		resolveContainerCwd(profile.workspace, command.cwd),
 		"--add-host",
