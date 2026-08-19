@@ -238,9 +238,9 @@ function applyFinalizeToState(state: ReapPipelineState, r: FinalizeResult): void
 }
 
 /**
- * warren-72b9 / warren-89b0: classify a zero-commit push via `classifyEmptyPush`
- * — clean/bookkeeping-only ⇒ `noChanges` (succeeded), else `droppedCommit`
- * (failed). Domain-owned: needs the run outcome; workspace is gone post-terminate.
+ * warren-72b9 / warren-89b0: classify zero-commit push via `classifyEmptyPush`
+ * (noChanges vs droppedCommit). Run-level flip for ref-dispatch `no_changes`
+ * is in `reapRun` (warren-ba08). Domain-owned; workspace gone post-terminate.
  */
 async function emitEmptyPushIfNeeded(
 	ctx: ReapPipelineContext,

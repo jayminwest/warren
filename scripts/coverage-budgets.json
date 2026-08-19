@@ -1,5 +1,5 @@
 {
-	"_comment": "Coverage floors enforced by scripts/check-coverage.ts (warren-e4b1, pl-7b06 step 17). Set just below the current baseline to absorb measurement noise. The ratchet only goes UP — raise these numbers as coverage improves. Exception: warren-b8bf (pl-3a79 step 8) deleted ~7.4k LOC of well-tested plot code, moving the lines baseline from 92.73% to ~91.96% and functions to 89.33%; both floors lowered accordingly.",
-	"functions": 89.3,
-	"lines": 91.85
+	"_comment": "Coverage floors enforced by scripts/check-coverage.ts (warren-e4b1, pl-7b06 step 17). Set just below the current baseline to absorb measurement noise. The ratchet only goes UP — raise these numbers as coverage improves. Exception: warren-b8bf (pl-3a79 step 8) deleted ~7.4k LOC of well-tested plot code, moving the lines baseline from 92.73% to ~91.96% and functions to 89.33%; both floors lowered accordingly. warren-ba08 ratchet: floors raised to the suggested 90.91/93.37 after the ref-dispatch no_changes path landed.",
+	"functions": 90.91,
+	"lines": 93.37
 }

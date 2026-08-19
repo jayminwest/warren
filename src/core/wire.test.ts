@@ -51,6 +51,10 @@ describe("run vocabulary", () => {
 		expect(RUN_FAILURE_REASONS).toContain("evicted");
 	});
 
+	test("failure reasons include no_changes for ref-dispatch zero-commit (warren-ba08)", () => {
+		expect(RUN_FAILURE_REASONS).toContain("no_changes");
+	});
+
 	/**
 	 * Drift #2 (warren-b229): the UI still typed `mode: "batch" |
 	 * "interactive"` after warren-d622 / warren-ee27 deleted the value.

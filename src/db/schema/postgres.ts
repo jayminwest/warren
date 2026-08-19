@@ -337,6 +337,55 @@ export const toolCalls = pgTable(
 	],
 );
 
+/**
+ * Dispatch-context log (warren-36e7) — mirror of sqlite. See sqlite.ts for
+ * the four column groups, nullability semantics, and cascade intent.
+ */
+export const dispatchContext = pgTable(
+	TABLE_NAMES.dispatchContext,
+	{
+		runId: text("run_id")
+			.primaryKey()
+			.references(() => runs.id, { onDelete: "cascade" }),
+		createdAt: text("created_at").notNull(),
+
+		agentName: text("agent_name"),
+		provider: text("provider"),
+		model: text("model"),
+		providerSource: text("provider_source"),
+		modelSource: text("model_source"),
+		capSource: text("cap_source"),
+		maxCostUsd: doublePrecision("max_cost_usd"),
+		runtimeId: text("runtime_id"),
+		runtimeBackend: text("runtime_backend"),
+		promptBytes: integer("prompt_bytes"),
+		mode: text("mode"),
+		network: text("network"),
+
+		queueQueuedRuns: integer("queue_queued_runs"),
+		queueRunningRuns: integer("queue_running_runs"),
+		queueProjectNonTerminal: integer("queue_project_non_terminal"),
+		queueSnapshotSource: text("queue_snapshot_source"),
+
+		trigger: text("trigger"),
+		dispatchOrigin: text("dispatch_origin"),
+		dispatcherHandle: text("dispatcher_handle"),
+		triggerId: text("trigger_id"),
+		planRunId: text("plan_run_id"),
+		retryKind: text("retry_kind"),
+		retryOfRunId: text("retry_of_run_id"),
+		parentRunId: text("parent_run_id"),
+		attemptNo: integer("attempt_no"),
+		rootRunId: text("root_run_id"),
+
+		seedId: text("seed_id"),
+		seedStatus: text("seed_status"),
+		seedPriority: integer("seed_priority"),
+		seedSize: text("seed_size"),
+	},
+	(t) => [index(INDEX_NAMES.dispatchContextCreatedAt).on(t.createdAt)],
+);
+
 export type PlanRunRow = typeof planRuns.$inferSelect;
 export type PlanRunInsert = typeof planRuns.$inferInsert;
 export type PlanRunChildRow = typeof planRunChildren.$inferSelect;
@@ -345,3 +394,5 @@ export type RunInboxRow = typeof runInbox.$inferSelect;
 export type RunInboxInsert = typeof runInbox.$inferInsert;
 export type ToolCallRow = typeof toolCalls.$inferSelect;
 export type ToolCallInsert = typeof toolCalls.$inferInsert;
+export type DispatchContextRow = typeof dispatchContext.$inferSelect;
+export type DispatchContextInsert = typeof dispatchContext.$inferInsert;

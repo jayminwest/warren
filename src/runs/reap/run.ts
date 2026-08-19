@@ -21,11 +21,7 @@ export async function reapRun(input: ReapRunInput): Promise<ReapRunResult> {
 	const fs = input.fs ?? defaultFs;
 	const exec = input.exec ?? defaultExec;
 	const now = input.now ?? (() => new Date());
-	// Runtime-provider seam (warren-1f56). The workspace-dependent half of reap
-	// (finalize) + the sandbox teardown (terminate) + workspace resolution route
-	// through this. REQUIRED since warren-e24d: reap no longer builds a fallback
-	// burrow-backed provider, so it holds no burrow client of its own — the boot
-	// wiring (and tests) construct the provider and thread it in.
+	// RuntimeProvider seam (warren-1f56/e24d): finalize + terminate + workspace.
 	const provider: RuntimeProvider = input.runtimeProvider;
 
 	const run = await input.repos.runs.require(input.runId);
@@ -188,18 +184,17 @@ export async function reapRun(input: ReapRunInput): Promise<ReapRunResult> {
 		});
 	}
 
-	// warren-72b9: `droppedCommit` flips an otherwise-succeeded run to
-	// `failed`/`dropped_commit` so it can't masquerade as success.
-	// warren-edc3: a terminal provider error does the same — and blocks the
-	// bookkeeping-only PR / seed close / plan-run advance that would
-	// otherwise ship a no-code PR and discard the agent's uncommitted edits.
-	// warren-495d: a finalize that timed out / failed before the branch push
-	// completed leaves the agent's commits unpushed — flip an otherwise-
-	// succeeded run to `failed`/`finalize_failed` so it can't report success
-	// while its work sits only on the (soon-to-be-destroyed) workspace.
+	// Flip succeeded→failed: dropped_commit (72b9), ref-dispatch no_changes (ba08;
+	// fresh-branch no-ops stay succeeded/89b0), provider_error (edc3), finalize_failed (495d).
 	const finalizeFailed = state.finalizeFailed && input.outcome === "succeeded";
+	const noChangesFailure =
+		state.noChanges &&
+		(run.ref !== null || run.targetBranch !== null) &&
+		input.outcome === "succeeded";
 	const effectiveOutcome: RunTerminalState =
-		state.droppedCommit || failedFromProviderError || finalizeFailed ? "failed" : input.outcome;
+		state.droppedCommit || noChangesFailure || failedFromProviderError || finalizeFailed
+			? "failed"
+			: input.outcome;
 
 	if (failedFromProviderError && providerError !== null) {
 		// warren-4001: structured provider-error surface — the payload names
@@ -211,6 +206,8 @@ export async function reapRun(input: ReapRunInput): Promise<ReapRunResult> {
 	let failureReason: RunFailureReason | null = null;
 	if (state.droppedCommit) {
 		failureReason = "dropped_commit";
+	} else if (noChangesFailure) {
+		failureReason = "no_changes";
 	} else if (failedFromProviderError) {
 		failureReason = "provider_error";
 	} else if (finalizeFailed) {
@@ -357,8 +354,7 @@ export async function reapRun(input: ReapRunInput): Promise<ReapRunResult> {
 			rescueRef: salvage?.rescueRef ?? null,
 			bundlePath: salvage?.bundlePath ?? null,
 		},
-		// warren-89b0: distinguish a deliberate no-op (succeeded, non-alarming)
-		// from a dropped commit (failed) for operators reading the terminal event.
+		// warren-89b0/ba08: noChanges flag (run state may still be failed on ref-dispatch).
 		noChanges: state.noChanges,
 		prUrl: state.prUrl,
 		previewState: state.previewLaunchState,
