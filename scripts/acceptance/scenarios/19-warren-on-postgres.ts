@@ -1,18 +1,21 @@
 /**
  * Scenario 19 — warren-on-postgres end-to-end (R-13, pl-f17e step 7).
  *
- * Acceptance criterion #4 of pl-f17e:
- *   "warren-on-postgres dispatches a run end-to-end against a Postgres
- *   container, streams events, restarts warren mid-stream, and verifies
- *   event resume from MAX(events.sandbox_event_seq)+1 works the same as
- *   on SQLite (docs/design/runtime-and-supervisor.md restart-recovery contract)."
+ * Acceptance criterion (redesigned with scenario 06, warren-8a6e):
+ *   warren-on-postgres dispatches a run end-to-end against a Postgres
+ *   container, streams events, kills warren mid-stream, and verifies the
+ *   post-restart lost-run reconcile lands the same way as on SQLite
+ *   (docs/design/runtime-and-supervisor.md / AGENTS.md — a warren restart
+ *   wipes the in-process LocalRunStore and live rows reconcile as
+ *   sandbox_run_lost). Durable pre-kill events in the pg-backed events
+ *   table are preserved.
  *
  * This is the structural twin of scenario 06 (restart-recovery) — the
  * difference is the backend warren writes its rows to. Scenario 06 runs
  * against the harness's default sqlite handle; scenario 19 stands up an
- * isolated Postgres database, points a fresh warren+burrow at it via
+ * isolated Postgres database, points a fresh warren at it via
  * WARREN_DB_URL, then exercises the same kill-mid-stream / restart /
- * resume contract.
+ * lost-reconcile contract.
  *
  * ## Substrate decision (deviating from withDb in src/db/testing.ts)
  *
@@ -56,7 +59,7 @@ import {
 import { WarrenHttp } from "../lib/http.ts";
 import { type BootHandle, bootInProc } from "../lib/inproc.ts";
 import { waitForServerDown } from "../lib/poll.ts";
-import { waitForEventCount, waitForSeqAbove } from "./lib/poll-helpers.ts";
+import { collectRunEvents, waitForEventCount, waitForRunTerminal } from "./lib/poll-helpers.ts";
 
 interface ProjectRow {
 	readonly id: string;
@@ -98,7 +101,8 @@ const POST_RESTART_TIMEOUT_MS = 30_000;
 
 export const scenario: Scenario = {
 	id: "19",
-	title: "warren-on-postgres: end-to-end dispatch + restart-recovery against pg backend",
+	title:
+		"warren-on-postgres: end-to-end dispatch + post-restart sandbox_run_lost reconcile against pg backend",
 	// Requires the host-side fixtures (sample project, canopy, stub agent),
 	// plus a kill/restart lifecycle hook. In-proc only — the compose
 	// launcher doesn't expose pg-URL injection or warren lifecycle.
@@ -166,13 +170,13 @@ export const scenario: Scenario = {
 				body: {
 					agent: ctx.fixtures.stubAgentName,
 					project: project.id,
-					prompt: "scenario-19 warren-on-postgres",
+					prompt: "[sleep_ms=15000] scenario-19 warren-on-postgres",
 				},
 			});
 			const runId = created.run.id;
 			assertTrue(
 				typeof created.run.sandboxRunId === "string" && created.run.sandboxRunId !== null,
-				"POST /runs must attach sandbox_run_id by the 201 — bootBridges resume needs it",
+				"POST /runs must attach sandbox_run_id by the 201 — bootBridges reconcile needs it",
 			);
 			ctx.logger.debug(
 				`scenario-19: spawned ${runId} (sandbox_run_id=${created.run.sandboxRunId})`,
@@ -194,52 +198,74 @@ export const scenario: Scenario = {
 				const lifecycle = handle;
 				await lifecycle.killWarren();
 				ctx.logger.debug("scenario-19: warren killed; waiting for the port to stop answering");
-				await waitForServerDown(ctx.warrenUrl, KILL_DRAIN_TIMEOUT_MS);
+				await waitForServerDown(handle.warrenUrl, KILL_DRAIN_TIMEOUT_MS);
 
 				await lifecycle.restartWarren();
-				ctx.logger.debug("scenario-19: warren restarted; verifying pg-backed resume");
+				ctx.logger.debug("scenario-19: warren restarted; verifying pg-backed lost-run reconcile");
 
 				// Same post-restart pg dialect check — re-attaching to the
 				// existing database, not re-migrating.
 				await assertDbReachableOnPostgres(http);
 
-				const afterRestart = await waitForSeqAbove<EventEnvelope>(
-					http,
-					runId,
-					maxSeqBeforeKill,
-					POST_RESTART_TIMEOUT_MS,
-				);
-				const maxSeqAfter = afterRestart[afterRestart.length - 1]?.seq ?? 0;
-				assertTrue(
-					maxSeqAfter > maxSeqBeforeKill,
-					`expected resumed bridge to write seq > ${maxSeqBeforeKill}, got max ${maxSeqAfter}`,
-				);
-				ctx.logger.debug(
-					`scenario-19: post-restart events=${afterRestart.length} maxSeq=${maxSeqAfter}`,
-				);
-
-				assertNoSeqGaps(afterRestart, "post-restart event sequence (pg)");
-				assertEqual(afterRestart[0]?.seq ?? 0, 1, "first event in pg table is seq=1");
+				// LocalProvider store wiped on restart → bootBridges reconciles
+				// the live row as sandbox_run_lost (same posture as scenario 06).
+				const terminal = await waitForRunTerminal(http, runId, POST_RESTART_TIMEOUT_MS);
 				assertEqual(
-					afterRestart[afterRestart.length - 1]?.seq ?? 0,
-					maxSeqAfter,
-					"final event's seq matches max (pg)",
+					terminal.state,
+					"failed",
+					"post-restart live row reconciles to state='failed' on pg (local store wiped)",
+				);
+				assertEqual(
+					terminal.failureReason,
+					"sandbox_run_lost",
+					"post-restart failureReason is sandbox_run_lost on pg",
 				);
 
+				const afterRestart = await collectRunEvents<EventEnvelope>(http, runId);
+				assertTrue(
+					afterRestart.length >= beforeKill.length,
+					`post-restart pg events (${afterRestart.length}) must retain pre-kill rows (${beforeKill.length})`,
+				);
 				const allSeqs = new Set(afterRestart.map((e) => e.seq));
 				for (const env of beforeKill) {
 					assertTrue(allSeqs.has(env.seq), `post-restart pg events lost pre-kill seq ${env.seq}`);
 				}
-
-				const reread = await http.expectJson<{ sandboxRunId: string | null }>(
-					"GET",
-					`/runs/${encodeURIComponent(runId)}`,
-					200,
+				const bridgeLost = afterRestart.find((e) => e.kind === "bridge_lost");
+				if (bridgeLost === undefined) {
+					throw new AcceptanceError(
+						`no bridge_lost event after pg restart reconcile; kinds=${afterRestart.map((e) => e.kind).join(",")}`,
+					);
+				}
+				const payload = (bridgeLost.payload ?? {}) as {
+					sandboxRunId?: string;
+					reason?: string;
+				};
+				assertEqual(
+					payload.sandboxRunId,
+					created.run.sandboxRunId,
+					"bridge_lost payload.sandboxRunId matches the spawn-time id (pg)",
 				);
 				assertEqual(
-					reread.sandboxRunId,
+					payload.reason,
+					"sandbox_run_lost",
+					"bridge_lost payload.reason is sandbox_run_lost (pg)",
+				);
+
+				const reread = await http.expectJson<{
+					run: { sandboxRunId: string | null; failureReason: string | null };
+				}>("GET", `/runs/${encodeURIComponent(runId)}`, 200);
+				assertEqual(
+					reread.run.sandboxRunId,
 					created.run.sandboxRunId,
-					"GET /runs/:id post-restart preserves sandbox_run_id (pg)",
+					"GET /runs/:id post-restart preserves the durable sandbox_run_id column (pg)",
+				);
+				assertEqual(
+					reread.run.failureReason,
+					"sandbox_run_lost",
+					"GET /runs/:id post-restart failureReason is sandbox_run_lost (pg)",
+				);
+				ctx.logger.debug(
+					`scenario-19: reconciled lost run on pg; events=${afterRestart.length} bridge_lost.seq=${bridgeLost.seq}`,
 				);
 			} finally {
 				await safelyCancel(http, runId, ctx);

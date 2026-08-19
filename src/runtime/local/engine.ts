@@ -297,9 +297,17 @@ export class LocalEngine {
 	}
 
 	/**
-	 * Graceful stop: latch the cancel and kill the live child. Idempotent — an
+	 * Graceful stop: latch the cancel, kill the live child, and terminalize the
+	 * record as `cancelled` immediately (warren-8a6e). Idempotent — an
 	 * already-terminal run resolves cleanly, matching burrow's cancel. A ghost
 	 * run rethrows `RuntimeRunNotFoundError` (the domain terminalizes the row).
+	 *
+	 * Immediate terminalization matters: `cancelRun` re-reads `status()` and
+	 * only inline-reaps when the phase is already terminal. Waiting on the
+	 * drive loop (or the 30s watchdog cancel-reconcile tick) left the warren
+	 * row `running` for the full grace window after a local cancel. The drive
+	 * loop still owns teardown of the child; it no-ops its own terminalize
+	 * once the record is already terminal.
 	 */
 	async cancel(handle: RunHandle, _reason?: string): Promise<void> {
 		const record = this.store.getByRunId(handle.providerRunId);
@@ -309,11 +317,20 @@ export class LocalEngine {
 				{ recoveryHint: "the run is unknown to the backend; terminalize the warren row" },
 			);
 		}
-		if (!this.store.isTerminal(record)) {
-			record.cancelRequested = true;
-			record.proc?.cancel();
-		}
-		return Promise.resolve();
+		if (this.store.isTerminal(record)) return;
+		record.cancelRequested = true;
+		// Terminalize BEFORE killing the child. Order matters (warren-8a6e):
+		// killing first can let a late agent `result` envelope land, the bridge
+		// detectRuntimeTerminal path reaps `failed`, and cancel's own inline
+		// reap then races it. Settling cancelled first means streamEvents ends
+		// cleanly and store.terminalize is idempotent against any late write.
+		this.store.terminalize(record, {
+			phase: "cancelled",
+			exitCode: null,
+			terminalReason: "cancelled",
+			errorMessage: "cancelled",
+		});
+		record.proc?.cancel();
 	}
 
 	/**

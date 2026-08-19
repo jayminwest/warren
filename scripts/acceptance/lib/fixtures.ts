@@ -143,10 +143,20 @@ export async function buildFixtures(roots: FixtureRoots): Promise<BuiltFixtures>
  */
 async function buildShimBin(dir: string): Promise<void> {
 	await mkdir(dir, { recursive: true });
-	const shims: ReadonlyArray<readonly [string, string]> = [
+	const shims: Array<readonly [string, string]> = [
 		["claude", "./stub-agent/claude-code-path-shim.sh"],
 		["pi", "./stub-agent/pi-path-shim.sh"],
 	];
+	// warren-8a6e / warren-dc19: Bun.spawn resolves the bare `bwrap` name
+	// against the *sandbox* PATH (toolchain dirs only — see src/sandbox/env.ts),
+	// not the host process PATH. The sandbox PATH is built from the bin dir of
+	// the resolved agent binary, so bwrap must sit next to `claude`/`pi` in
+	// EVERY shim dir the harness may put first on PATH. Without it, every
+	// stub run fails spawn_failed with `Executable not found in $PATH: "bwrap"`
+	// on hosts that lack a real bubblewrap.
+	if (Bun.which("bwrap") === null) {
+		shims.push(["bwrap", "./stub-agent/bwrap-shim.sh"]);
+	}
 	for (const [name, rel] of shims) {
 		const source = new URL(rel, import.meta.url).pathname;
 		const target = join(dir, name);

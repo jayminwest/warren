@@ -339,6 +339,57 @@ describe("LocalEngine.sendMessage + cancel", () => {
 			await h.cleanup();
 		}
 	});
+
+	// warren-8a6e: cancel must surface phase=cancelled on status() immediately
+	// so cancelRun's inline-reap path fires without the 30s watchdog tick.
+	test("cancel terminalizes the record immediately for status()", async () => {
+		const h = await makeHarness();
+		try {
+			let release: (() => void) | undefined;
+			const held = new Promise<void>((r) => {
+				release = r;
+			});
+			let cancelCount = 0;
+			const empty = new ReadableStream<Uint8Array>({
+				start(c) {
+					c.close();
+				},
+			});
+			const longProc = (): SpawnResult => ({
+				pid: 9999,
+				stdout: new ReadableStream({ start() {} }),
+				stderr: empty,
+				exited: held.then(() => 143),
+				cancel: () => {
+					cancelCount += 1;
+					release?.();
+				},
+				closeStdin: () => Promise.resolve(),
+				writeStdin: () => Promise.resolve(),
+			});
+			const engine = new LocalEngine({
+				serverEnv: { WARREN_DATA_DIR: h.dataDir },
+				store: h.store,
+				drive: {
+					registry: { get: (id: string) => (id === "fake" ? fakeAdapter : undefined) } as never,
+					spawn: async () => longProc(),
+				},
+			});
+			const handle = await engine.create(makeSpec(h, "run_e7_cancel"));
+			for (let i = 0; i < 50; i++) {
+				if ((await engine.status(handle)).phase === "running") break;
+				await Bun.sleep(20);
+			}
+			await engine.cancel(handle, "operator stop");
+			const status = await engine.status(handle);
+			expect(status.phase).toBe("cancelled");
+			expect(status.terminalReason).toBe("cancelled");
+			expect(status.exists).toBe(true);
+			expect(cancelCount).toBeGreaterThanOrEqual(1);
+		} finally {
+			await h.cleanup();
+		}
+	});
 });
 
 describe("LocalEngine.workspaceInfo + finalize + terminate", () => {
