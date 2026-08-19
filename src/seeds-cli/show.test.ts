@@ -285,6 +285,18 @@ describe("listPlans", () => {
 		expect((plans[0] as unknown as Record<string, unknown>).sections).toBeUndefined();
 	});
 
+	test("throws SeedsCliError on an unknown plan status", async () => {
+		const spawn: SpawnFn = async () =>
+			ok(
+				JSON.stringify({
+					plans: [{ id: "pl-x", status: "archived", children: [] }],
+				}),
+			);
+		await expect(listPlans({ spawn, sdBinary: "sd" }, "/p")).rejects.toThrow(
+			"unknown plan status 'archived'",
+		);
+	});
+
 	test("childCount defaults to 0 when children is absent", async () => {
 		const spawn: SpawnFn = async () =>
 			ok(JSON.stringify({ plans: [{ id: "pl-x", status: "draft" }] }));

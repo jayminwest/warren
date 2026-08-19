@@ -581,22 +581,16 @@ export interface SeedStatusResponse {
 
 /**
  * `GET /projects/:id/seeds/plans` — wire-lean seeds plan summary
- * (warren-9b49 / pl-dfb5 step 3). Mirrors `PlanSummary` in
- * src/seeds-cli/schema.ts; the heavyweight `sections` body is dropped
- * server-side because the only consumer (the plan-run dispatch form's
- * plan-id selector) just needs a label and status.
+ * (warren-9b49 / pl-dfb5 step 3). Canonical declaration lives in
+ * `src/core/wire-tracker.ts` (warren-6c29); re-exported here so the
+ * browser bundle cannot drift from the server truth. The heavyweight
+ * `sections` body is dropped server-side because the only consumer (the
+ * plan-run dispatch form's plan-id selector) just needs a label and
+ * status.
  */
-export interface PlanSummary {
-	id: string;
-	status: string;
-	seed?: string;
-	template?: string;
-	revision?: number;
-	name?: string;
-	childCount: number;
-	createdAt?: string;
-	updatedAt?: string;
-}
+import type { PlanSummary } from "../../../core/wire.ts";
+
+export type { PlanSummary };
 
 export interface SeedPlansResponse {
 	plans: PlanSummary[];

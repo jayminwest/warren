@@ -149,6 +149,14 @@ export const DOMAIN_STEMS = [
 	// steering-inbox constant needs its own stem. SteeringCapability the type
 	// was already guarded by "capability".
 	"steering",
+	// warren-6c29 (plan pl-a37b Track B): the IssueTracker seam's wire
+	// vocabulary (Issue, IssueStatus, Plan, PlanStatus, PlanSummary,
+	// TrackerContext, TrackerError, ...) joins the guarded stems. All three
+	// nouns are needed — "plan" alone misses Issue/Tracker names, and
+	// "tracker" alone misses Plan/Issue names.
+	"issue",
+	"plan",
+	"tracker",
 ] as const;
 
 /**
