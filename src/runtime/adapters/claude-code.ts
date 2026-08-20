@@ -62,9 +62,12 @@ export const claudeCodeAdapter: AgentRuntimeAdapter = {
 	/**
 	 * The harness drops `.claude/settings.local.json` into the workspace at
 	 * runtime. This is the prefix `HARNESS_STATE_PREFIXES` carried before the
-	 * seam existed, moved verbatim (warren-f6f2).
+	 * seam existed, moved verbatim (warren-f6f2). `.claude.json` is a sibling
+	 * file (not a child of `.claude/`) that claude-code also writes at runtime —
+	 * `'.claude.json'.startsWith('.claude/')` is false, so it needs its own
+	 * entry (warren-8dc8).
 	 */
-	harnessStatePrefixes: [".claude/"],
+	harnessStatePrefixes: [".claude/", ".claude.json"],
 	/**
 	 * Empty by evidence, not by omission. The provider-error net (warren-edc3)
 	 * was written against pi's turn lifecycle, and warren has never observed

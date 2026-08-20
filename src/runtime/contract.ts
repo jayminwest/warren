@@ -348,24 +348,24 @@ export interface FinalizeResult {
 	/** warren-5ea1: set ONLY on a warren-SYNTHESIZED failed result — the in-pod finalize never POSTed one. */
 	unposted?: "timeout" | "pod_terminal" | "pod_gone";
 	/**
-	 * Commits the pushed branch is ahead of `intent.baseBranch`. WIDENED from
-	 * the design-doc's `number` to `number | null` to match reap's real shape
-	 * (warren-f3bb): the count is genuinely uncomputable when the push was
-	 * skipped/failed, no `baseBranch` was supplied, or `git rev-list` failed,
-	 * and collapsing that to `0` would masquerade a failed count as an empty
-	 * push. `0` means the push landed no new commits; positive means real work.
+	 * Commits the pushed branch is ahead of `intent.baseBranch`; `null` (warren-f3bb)
+	 * when the push was skipped/failed, `baseBranch` is absent, or rev-list failed —
+	 * `0` must mean "landed no new commits", never a failed count.
 	 */
 	commitsAhead: number | null;
+	/**
+	 * The ref the count ran against (warren-ba08): `baseBranch`, or on a repair run
+	 * (branch === base ⇒ `base..HEAD` is empty by construction) the pre-push
+	 * `origin/<base>` SHA. Outcome facts diff against it. Present iff `commitsAhead !== null`.
+	 */
+	commitsAheadBase?: string;
 	/** dropped-commit detection: pushed but zero commits ahead of the base */
 	emptyPush: boolean;
 	/**
-	 * Workspace-dirtiness at push time (warren-1f56): `git status --porcelain`
-	 * was non-empty. Probed ONLY when `pushed && commitsAhead === 0` (matching
-	 * reap's `commitsAheadStep`), `false` otherwise. The domain owns the
-	 * `droppedCommit` derivation (`dirty && outcome === "succeeded"`) and the
-	 * `reap.empty_push` emission — both need the run outcome, a domain concern
-	 * the provider seam does not carry, and the workspace is provider-owned +
-	 * destroyed by `terminate`, so the domain cannot re-probe post-finalize.
+	 * Workspace-dirtiness at push time (warren-1f56): `git status --porcelain` was
+	 * non-empty. Probed ONLY when `pushed && commitsAhead === 0` (reap's
+	 * `commitsAheadStep`), else `false`. The domain owns `droppedCommit` + the
+	 * `reap.empty_push` emission (they need the run outcome; `terminate` kills the workspace).
 	 */
 	dirty: boolean;
 	/**

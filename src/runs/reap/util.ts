@@ -4,6 +4,7 @@ import { promisify } from "node:util";
 import type { RunRow, RunTerminalState } from "../../db/schema.ts";
 import { resolveSpawnEnv } from "../../projects/clone.ts";
 import { harnessStatePrefixes } from "../../runtime/adapters/index.ts";
+import { WORKSPACE_GITCONFIG_FILENAME } from "../../workspace/git/identity.ts";
 import type { ReapExec, ReapFs, ReapRunResult } from "./types.ts";
 
 const execFileAsync = promisify(execFile);
@@ -182,13 +183,47 @@ export const BOOKKEEPING_ARTIFACT_PREFIXES: readonly string[] = [".mulch/", ".se
 export const HARNESS_STATE_PREFIXES: readonly string[] = harnessStatePrefixes();
 
 /**
+ * Warren-written runtime files that are neither committed on the agent's behalf
+ * nor owned by any specific harness (warren-8dc8). A fourth category, distinct
+ * from {@link BOOKKEEPING_ARTIFACT_PREFIXES} (warren commits those) and
+ * {@link HARNESS_STATE_PREFIXES} (harness-written, per-adapter). These paths
+ * are written by warren's runtime infrastructure for every run regardless of
+ * which harness is used. `.gitconfig.burrow` is the canonical example:
+ * `writeWorkspaceGitconfig` drops it so git inside the sandbox picks up the
+ * workspace identity — it is never staged or committed. Import
+ * {@link WORKSPACE_GITCONFIG_FILENAME} rather than re-spelling the literal;
+ * warren-598f closed a nine-spelling drift by routing through one resolver.
+ */
+export const WARREN_RUNTIME_SCRATCH: readonly string[] = [WORKSPACE_GITCONFIG_FILENAME];
+
+/**
  * Prefixes whose dirty paths are never lost agent work: warren-committed
- * bookkeeping artifacts plus harness-owned scratch state.
+ * bookkeeping artifacts, harness-owned scratch state, and warren-written
+ * runtime files.
  */
 const IGNORABLE_DIRTY_PREFIXES: readonly string[] = [
 	...BOOKKEEPING_ARTIFACT_PREFIXES,
 	...HARNESS_STATE_PREFIXES,
+	...WARREN_RUNTIME_SCRATCH,
 ];
+
+/**
+ * The remote-tracking ref finalize must resolve BEFORE `branch_push` to count
+ * `commits_ahead` on a ref-dispatch repair run, or `null` when the plain
+ * `baseBranch..HEAD` range is the right one (warren-ba08, #979 / #994).
+ *
+ * On a repair run the push branch IS the base branch (`branch === baseBranch`,
+ * warren-709e): workspace init checks the target branch out directly and
+ * skips the per-run carve, so HEAD is attached to `baseBranch` and
+ * `rev-list --count baseBranch..HEAD` is empty by construction — whether the
+ * agent landed 0 commits or 10. The only ref still holding the pre-run tip is
+ * `origin/<baseBranch>`, and `git push origin HEAD:<baseBranch>` rewrites it
+ * on success, so the caller must `rev-parse` it before the push and count
+ * against the resolved SHA after.
+ */
+export function repairBaseTrackingRef(branch: string, baseBranch: string): string | null {
+	return branch !== "" && branch === baseBranch ? `origin/${baseBranch}` : null;
+}
 
 /**
  * True when the dirty tree is non-empty AND every dirty path lives under a

@@ -35,7 +35,12 @@ export interface RecordOutcomeFactsInput {
 	readonly workspacePath: string | null;
 	/** The run's pushed branch (K8s clone-fetch source); null = none. */
 	readonly branch: string | null;
-	/** Project default branch; null = unmeasurable (matches finalize). */
+	/**
+	 * The base ref for the `base..head` diff — finalize's reported
+	 * `commitsAheadBase` (the ref it counted `commits_ahead` against; a SHA on
+	 * a ref-dispatch repair run, warren-ba08) else the run's base branch;
+	 * null = unmeasurable (matches finalize).
+	 */
 	readonly baseBranch: string | null;
 	readonly project: { readonly gitUrl: string; readonly localPath: string };
 	/** finalize's measured count; the fact persisted verbatim. */

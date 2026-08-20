@@ -20,13 +20,21 @@ describe("adapter registry (warren-c80e)", () => {
 		expect(allAdapters()).toHaveLength(KNOWN_RUNTIME_IDS.length);
 	});
 
-	test("every declared prefix is directory-shaped", () => {
-		// The consumers match with `startsWith`, so a prefix missing its
-		// trailing slash would also swallow a sibling like `.claudeignore`.
+	test("every declared prefix is directory-shaped or an exact filename (warren-8dc8)", () => {
+		// The consumers match with `startsWith`. Entries fall into two valid shapes:
+		//   1. Directory prefix (ends with '/') — the trailing slash prevents accidentally
+		//      swallowing siblings (e.g. '.claude' without slash would also match '.claude.json').
+		//   2. Exact filename (no slash, contains a dot extension) — precise enough that
+		//      startsWith won't swallow unrelated siblings. Used when the harness writes a
+		//      sibling file rather than a directory (warren-8dc8: '.claude.json' is a sibling
+		//      of '.claude/', not inside it, so the directory prefix alone does not cover it).
+		// A bare name with no extension and no trailing slash is the dangerous form and is rejected.
 		for (const adapter of allAdapters()) {
 			for (const prefix of adapter.harnessStatePrefixes) {
-				expect(prefix.endsWith("/")).toBe(true);
 				expect(prefix.startsWith("/")).toBe(false);
+				const isDirectory = prefix.endsWith("/");
+				const isExactFile = prefix.includes(".");
+				expect(isDirectory || isExactFile).toBe(true);
 			}
 		}
 	});
