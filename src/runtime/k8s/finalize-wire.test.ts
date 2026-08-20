@@ -47,6 +47,15 @@ describe("validateFinalizeResult", () => {
 		expect(validateFinalizeResult(JSON.parse(JSON.stringify(r)))).toEqual(r);
 	});
 
+	test("carries an optional commitsAheadBase and keeps it off the shape when absent (warren-ba08)", () => {
+		expect(validateFinalizeResult(fullResult())).not.toHaveProperty("commitsAheadBase");
+		const withBase = { ...fullResult(), commitsAheadBase: "0123abcd" };
+		expect(validateFinalizeResult(withBase).commitsAheadBase).toBe("0123abcd");
+		expect(() =>
+			validateFinalizeResult({ ...fullResult(), commitsAheadBase: 7 } as unknown),
+		).toThrow(ValidationError);
+	});
+
 	test("accepts commitsAhead: null (the widened shape)", () => {
 		const r = { ...fullResult(), commitsAhead: null };
 		expect(validateFinalizeResult(r).commitsAhead).toBeNull();

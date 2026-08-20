@@ -3,6 +3,7 @@ import type { SeedsCliDeps } from "../../seeds-cli/index.ts";
 import { reapRun } from "./run.ts";
 import {
 	createRepos,
+	FAKE_REV_PARSE_SHA,
 	fakeBurrowClient,
 	fakeExec,
 	fakeFs,
@@ -159,6 +160,51 @@ describe("reapRun ref-dispatch zero-commit (warren-ba08)", () => {
 			failureReason: "no_changes",
 			noChanges: true,
 		});
+	});
+
+	test("ref-dispatch with commits made reaps as succeeded, counted from the pre-push origin tip", async () => {
+		// Repair topology: the workspace branch IS the ref (branch === baseBranch).
+		const { repos, runId } = await setupSeeded(null, {
+			ref: "fix/pr-head",
+			targetBranch: "fix/pr-head",
+		});
+		const f = fakeFs({ "/data/projects/x/y/.seeds/issues.jsonl": ISSUES });
+		const e = fakeExec({ revListCount: "2", gitStatus: "" });
+
+		const result = await reapRun({
+			runId,
+			outcome: "succeeded",
+			repos,
+			...reapDeps(fakeBurrowClient(makeBurrow({ branch: "fix/pr-head" })), {
+				fs: f.fs,
+				exec: e.exec,
+			}),
+			fs: f.fs,
+			exec: e.exec,
+		});
+
+		expect(result.state).toBe("succeeded");
+		expect(result.failureReason).toBeNull();
+		expect(result.branchPushed).toBe(true);
+		expect(result.commitsAhead).toBe(2);
+		// The count and the outcome-facts diff both run against the PRE-PUSH
+		// origin tip, never the structurally-empty `fix/pr-head..HEAD` range.
+		const measured = e.calls
+			.filter((c) => c.cmd === "git")
+			.map((c) => c.args)
+			.filter(
+				(a) => ["rev-parse", "push", "rev-list"].includes(a[0] ?? "") || a.includes("--numstat"),
+			);
+		expect(measured).toEqual([
+			["rev-parse", "--verify", "origin/fix/pr-head"],
+			["push", "origin", "HEAD:fix/pr-head"],
+			["rev-list", "--count", `${FAKE_REV_PARSE_SHA}..HEAD`],
+			["diff", "--numstat", `${FAKE_REV_PARSE_SHA}..HEAD`],
+		]);
+		const row = await repos.runs.require(runId);
+		expect(row.commitsAhead).toBe(2);
+		const events = await repos.events.listByRun(runId);
+		expect(events.find((ev) => ev.kind === "reap.empty_push")).toBeUndefined();
 	});
 
 	test("targetBranch-only dispatch with bookkeeping-only dirt fails as no_changes", async () => {

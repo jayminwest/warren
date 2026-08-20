@@ -492,12 +492,13 @@ export async function runReapPipeline(
 	// warren-ab2b: persist the reap-time outcome facts (commits_ahead + parsed
 	// diff totals) while the workspace / pushed branch is still readable.
 	// Skipped when finalize never measured (commitsAhead null ⇒ all unknown).
+	// warren-ba08: diff against the SAME ref finalize counted from (repair runs: a SHA).
 	if (state.commitsAhead !== null) {
 		state.diffStats = await recordOutcomeFacts({
 			runId: ctx.run.id,
 			workspacePath: ctx.workspacePath,
 			branch: ctx.branch,
-			baseBranch: ctx.baseBranch,
+			baseBranch: finalizeResult.commitsAheadBase ?? ctx.baseBranch,
 			project: ctx.project,
 			commitsAhead: state.commitsAhead,
 			branchPushed: state.branchPushed,

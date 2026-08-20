@@ -271,9 +271,12 @@ export function validateFinalizeResult(value: unknown): FinalizeResult {
 	}
 
 	const dirtyPaths = optStringArray(o, "dirtyPaths", "result");
+	// warren-ba08: optional — an older in-pod image omits it (domain falls back to baseBranch).
+	const commitsAheadBase = optStringOrNull(o, "commitsAheadBase", "result");
 	return {
 		pushed: reqBoolean(o, "pushed", "result"),
 		commitsAhead: reqNumberOrNull(o, "commitsAhead", "result"),
+		...(commitsAheadBase !== null ? { commitsAheadBase } : {}),
 		emptyPush: reqBoolean(o, "emptyPush", "result"),
 		dirty: reqBoolean(o, "dirty", "result"),
 		...(dirtyPaths !== undefined ? { dirtyPaths } : {}),
