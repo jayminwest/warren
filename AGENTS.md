@@ -22,7 +22,10 @@ infrastructure.
 - **mulch** — persistent agent memory across runs. Activated by a
   `.mulch/` directory in the project.
 - **seeds** — the integrated issue queue agents read from and write to.
-  Activated by a `.seeds/` directory.
+  Activated by a `.seeds/` directory. Seeds is implementation #1 of the
+  `IssueTracker` seam (`src/tracker/contract.ts`), with external
+  trackers reachable through the `RemoteTracker` bridge — see
+  [docs/design/issue-tracker.md](docs/design/issue-tracker.md).
 
 The agent registry is entirely inline. `BUILTIN_AGENTS`
 (`src/registry/builtins/`) ships seven agents and boot seeds them into
@@ -33,10 +36,13 @@ no external agent library. `GET /agents` still reports
 only for legacy rows.
 
 **plan-run** is a dispatch mode over the single-run primitive, unlocked
-by a `.seeds/` plan. `POST /plan-runs` walks a seeds plan's children
-one at a time and gates each on the previous PR merging.
-Re-dispatching the same plan resumes from the next open child. See
-[docs/design/plan-run-coordinator.md](docs/design/plan-run-coordinator.md).
+by a plan in the project's issue tracker — `POST /plan-runs` with
+`planId` (requires a `supportsPlans` tracker, such as a `.seeds/` plan)
+or with an explicit ordered list of issue ids (any tracker). Warren
+walks the children one at a time and gates each on the previous PR
+merging. Re-dispatching the same plan resumes from the next open
+child. See [docs/design/plan-run-coordinator.md](docs/design/plan-run-coordinator.md)
+and the issue-tracker design record.
 
 Plan pl-3a79 retired and deleted two former data-plane features:
 `plot` (a shared coordination substrate) and `canopy` (an external
@@ -470,6 +476,12 @@ and the package in warren-ea0a):
 - `src/ui/` is a browser consumer: it imports the `src/core/` kernel, the
   SDK's browser-safe `src/client/ndjson.ts` reader, and its own code —
   nothing else under `src/` (warren-f0ae).
+
+Beside the layer rules, the `IssueTracker` seam (`src/tracker/contract.ts`,
+boot-wired as `deps.issueTracker`) is a provider seam, not a bus
+subscriber: call sites consume the boot-resolved instance and branch
+on its capability flags. See
+[docs/design/issue-tracker.md](docs/design/issue-tracker.md).
 
 Two sharp edges:
 
