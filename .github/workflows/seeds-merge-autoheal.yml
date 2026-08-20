@@ -207,7 +207,7 @@ jobs:
               --jq '.[] | select(.isCrossRepository | not) | .number'); do
             # Pre-filter on files so we only poll PRs that can be CONFLICTING
             # for warren-b34b reasons at all.
-            if ! gh pr view "$n" --json files --jq '.[].path' | grep -qE '^\.seeds/.*\.jsonl$'; then
+            if ! gh pr view "$n" --json files --jq '.files[].path' | grep -qE '^\.seeds/.*\.jsonl$'; then
               continue
             fi
             state=""
