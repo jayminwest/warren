@@ -2,10 +2,12 @@ import { describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { KNOWN_PROVIDER_NAMES, PROVIDER_ENV_REGISTRY } from "../../core/providers.ts";
 import type { MaterializedWorkspace } from "../../workspace/materialize.ts";
 import type { RunSpec } from "../contract.ts";
 import {
 	buildLocalSandboxProfile,
+	PI_PROVIDER_ENV_KEYS,
 	parseSandboxSection,
 	readLocalSandboxConfig,
 	resolveEnvPassthrough,
@@ -56,6 +58,31 @@ describe("resolveEnvPassthrough", () => {
 		expect(resolveEnvPassthrough("pi", { provider: "google" })).toContain("GEMINI_API_KEY");
 		// case-insensitive, matching burrow's normalization
 		expect(resolveEnvPassthrough("pi", { provider: "OpenAI" })).toContain("OPENAI_BASE_URL");
+	});
+
+	test("warren-81e0: forwards the openrouter key set for an openrouter pi run", () => {
+		// Regression: a project `defaultProvider: openrouter` (e.g. warren's own
+		// `.warren/config.yaml`) folds onto the pi argv as `--provider openrouter`,
+		// but the burrow-inherited PI_PROVIDER_ENV_KEYS lacked openrouter, so the
+		// key never entered the sandbox/container and pi died with
+		// "No API key found for openrouter" despite the operator holding it.
+		const passthrough = resolveEnvPassthrough("pi", { provider: "openrouter" });
+		expect(passthrough).toContain("OPENROUTER_API_KEY");
+		expect(passthrough).toContain("OPENROUTER_BASE_URL");
+		expect(passthrough).toContain("ANTHROPIC_API_KEY"); // base rides along
+	});
+
+	test("warren-81e0: PI_PROVIDER_ENV_KEYS covers the canonical provider registry", () => {
+		// Drift guard: every non-anthropic provider in PROVIDER_ENV_REGISTRY
+		// (src/core/providers.ts) must contribute its full key set here, so the
+		// local/docker passthrough can never again lag dispatch-time vocabulary.
+		for (const name of KNOWN_PROVIDER_NAMES) {
+			if (name === "anthropic") continue;
+			const registration = PROVIDER_ENV_REGISTRY[name];
+			for (const key of [...registration.envKeys, ...registration.optionalEnvKeys]) {
+				expect(PI_PROVIDER_ENV_KEYS[name]).toContain(key);
+			}
+		}
 	});
 
 	test("keeps the pi base for the default provider and unknown providers", () => {

@@ -19,10 +19,12 @@
  *   - `K8sProvider` maps each provider's canonical env key to an optional
  *     secretKeyRef (`warren-<provider>-key` / `api-key`, overridable per
  *     provider) — generically, with no per-provider code blocks.
- *   - `LocalProvider` folds every registry key present in the server env
- *     into the sandbox env it hands burrow. Burrow's own env allowlist
- *     still gates what reaches the agent process; widening that allowlist
- *     is the burrow-side follow-up noted on warren-fb8d.
+ *   - `LocalProvider` (and the DockerProvider, which shares the local
+ *     profile builder) forwards the registry-derived key set for the run's
+ *     `frontmatter.provider` via `PI_PROVIDER_ENV_KEYS` in
+ *     `src/runtime/local/profile.ts` — that table is DERIVED from this
+ *     registry since warren-81e0, so the sandbox allowlist can never lag
+ *     the dispatch-time provider vocabulary again.
  *
  * A provider name absent from the registry is UNKNOWN, not invalid — the
  * provider vocabulary is intentionally open-ended (custom gateways, new pi

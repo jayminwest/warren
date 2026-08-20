@@ -30,6 +30,7 @@ import { existsSync, realpathSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
+import { KNOWN_PROVIDER_NAMES, PROVIDER_ENV_REGISTRY } from "../../core/providers.ts";
 import type { AcceptedRuntimeId } from "../../core/wire.ts";
 import type { SandboxProfile } from "../../sandbox/types.ts";
 import type { MaterializedWorkspace } from "../../workspace/materialize.ts";
@@ -59,15 +60,25 @@ export const PI_ENV_PASSTHROUGH: readonly string[] = [
  * pi's per-provider key delta (burrow's `PI_PROVIDER_ENV_KEYS`, burrow-6f3f):
  * when `frontmatter.provider` selects a non-anthropic provider, the matching
  * key(s) ride in addition to the anthropic base.
+ *
+ * Derived from the canonical `PROVIDER_ENV_REGISTRY` (warren-fb8d,
+ * `src/core/providers.ts`) so the local/docker allowlist can never drift
+ * behind the dispatch-time provider vocabulary again: warren-81e0 was
+ * exactly that drift — the registry (and the K8s pod-env seam) knew
+ * `openrouter`, this hand-maintained table did not, so a run dispatched
+ * with `provider: openrouter` (e.g. via a project's `.warren/config.yaml`
+ * `defaultProvider`) reached the sandbox without `OPENROUTER_API_KEY` and
+ * pi died with "No API key found for openrouter" despite the operator
+ * holding the key. Each entry is the provider's required `envKeys` plus
+ * its `optionalEnvKeys` (base-URL overrides); `anthropic` is omitted
+ * because the base allowlist already carries it.
  */
-export const PI_PROVIDER_ENV_KEYS: Readonly<Record<string, readonly string[]>> = {
-	openai: ["OPENAI_API_KEY", "OPENAI_BASE_URL"],
-	google: ["GEMINI_API_KEY"],
-	groq: ["GROQ_API_KEY"],
-	mistral: ["MISTRAL_API_KEY"],
-	deepseek: ["DEEPSEEK_API_KEY"],
-	zai: ["ZAI_API_KEY"],
-};
+export const PI_PROVIDER_ENV_KEYS: Readonly<Record<string, readonly string[]>> = Object.fromEntries(
+	KNOWN_PROVIDER_NAMES.filter((name) => name !== "anthropic").map((name) => {
+		const registration = PROVIDER_ENV_REGISTRY[name];
+		return [name, [...registration.envKeys, ...registration.optionalEnvKeys]];
+	}),
+);
 
 /**
  * Resolve the host-env names forwarded into the sandbox for a run. Keyed off
