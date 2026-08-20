@@ -173,6 +173,10 @@ jobs:
   # Push-to-main trigger (warren-c84c): a `.seeds` merge to main is what
   # makes open `.seeds`-touching PRs flip to CONFLICTING, and no pull_request
   # event fires on those PRs when it happens. Scan for them here.
+  # warren-c97b / warren-61aa: the scan must not filter on mergeability in
+  # a single un-polled `gh pr list` — GitHub still reports UNKNOWN for the
+  # PRs this push just flipped, so they were silently dropped and never
+  # rechecked. Poll each candidate like the heal job does instead.
   scan:
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
@@ -189,12 +193,36 @@ jobs:
           prs="[]"
           # Only same-repo PRs are candidates: a fork branch is not pushable
           # and must never receive a token (same rule as the heal job).
-          for n in $(gh pr list --state open --json number,mergeable,isCrossRepository \
-              --jq '.[] | select(.mergeable == "CONFLICTING") | select(.isCrossRepository | not) | .number'); do
-            if gh pr view "$n" --json files --jq '.[].path' | grep -qE '^\.seeds/.*\.jsonl$'; then
-              echo "candidate: PR #$n"
-              prs="$(printf '%s' "$prs" | jq -c --argjson n "$n" '. + [$n]')"
+          #
+          # Do NOT filter on `.mergeable == "CONFLICTING"` in a single
+          # `gh pr list`. The `.seeds` merge to main that fired this push is
+          # what flips open `.seeds`-touching PRs CONFLICTING, and GitHub
+          # computes `mergeable` asynchronously: for the seconds right after
+          # the main push those PRs still report `UNKNOWN`, so an un-polled
+          # list drops them and nothing else rechecks (warren-c97b/61aa).
+          # Enumerate every open same-repo PR, pre-filter on touched files,
+          # then poll each candidate's mergeability until it resolves (bounded
+          # to match the heal job) before deciding whether to heal.
+          for n in $(gh pr list --state open --json number,isCrossRepository \
+              --jq '.[] | select(.isCrossRepository | not) | .number'); do
+            # Pre-filter on files so we only poll PRs that can be CONFLICTING
+            # for warren-b34b reasons at all.
+            if ! gh pr view "$n" --json files --jq '.[].path' | grep -qE '^\.seeds/.*\.jsonl$'; then
+              continue
             fi
+            state=""
+            for i in 1 2 3 4 5 6; do
+              state="$(gh pr view "$n" --json mergeable --jq .mergeable)"
+              echo "PR #$n poll $i: mergeable=$state"
+              [ "$state" = "UNKNOWN" ] || break
+              sleep 10
+            done
+            if [ "$state" != "CONFLICTING" ]; then
+              echo "PR #$n is $state — no heal needed."
+              continue
+            fi
+            echo "candidate: PR #$n"
+            prs="$(printf '%s' "$prs" | jq -c --argjson n "$n" '. + [$n]')"
           done
           echo "heal candidates: $prs"
           echo "prs=$prs" >> "$GITHUB_OUTPUT"
