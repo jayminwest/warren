@@ -6,23 +6,25 @@ import { DEFAULT_WARREN_BASE_URL, WarrenClient } from "../client/index.ts";
 import {
 	resolveClientConfig,
 	resolveClientConfigWithSources,
-	resolveWarrenClient,
+	resolveCommandClient,
+	resolveWarrenClientWithSources,
 } from "./client.ts";
+import type { CliContext } from "./output.ts";
 
 // Point the config-file slot at a path that cannot exist, so a real
 // `~/.warren/client.json` on the dev machine (written by `warren login`)
 // never leaks into tests that exercise the built-in default.
 const NO_CONFIG_FILE = { WARREN_CLIENT_CONFIG: join(tmpdir(), "warren-client-test-absent.json") };
 
-describe("resolveWarrenClient", () => {
+describe("resolveWarrenClientWithSources", () => {
 	test("falls back to the built-in default with no env and no flags", () => {
-		const client = resolveWarrenClient(NO_CONFIG_FILE);
+		const { client } = resolveWarrenClientWithSources(NO_CONFIG_FILE);
 		expect(client.config.baseUrl).toBe(DEFAULT_WARREN_BASE_URL);
 		expect(client.config.token).toBeUndefined();
 	});
 
 	test("reads WARREN_BASE_URL + WARREN_API_TOKEN from the env", () => {
-		const client = resolveWarrenClient({
+		const { client } = resolveWarrenClientWithSources({
 			WARREN_BASE_URL: "https://warren.example.com",
 			WARREN_API_TOKEN: "tok-env",
 		});
@@ -31,7 +33,7 @@ describe("resolveWarrenClient", () => {
 	});
 
 	test("flags beat env (precedence: flags > env, warren-97a2 D5)", () => {
-		const client = resolveWarrenClient(
+		const { client } = resolveWarrenClientWithSources(
 			{ WARREN_BASE_URL: "https://env.example.com", WARREN_API_TOKEN: "tok-env" },
 			{ url: "https://flag.example.com", token: "tok-flag" },
 		);
@@ -40,7 +42,7 @@ describe("resolveWarrenClient", () => {
 	});
 
 	test("empty-string flags are treated as unset", () => {
-		const client = resolveWarrenClient(
+		const { client } = resolveWarrenClientWithSources(
 			{ WARREN_BASE_URL: "https://env.example.com", WARREN_API_TOKEN: "tok-env" },
 			{ url: "", token: "" },
 		);
@@ -56,17 +58,17 @@ describe("resolveWarrenClient", () => {
 				path,
 				JSON.stringify({ baseUrl: "https://file.example.com", token: "tok-file" }),
 			);
-			const fromFile = resolveWarrenClient({ WARREN_CLIENT_CONFIG: path });
+			const { client: fromFile } = resolveWarrenClientWithSources({ WARREN_CLIENT_CONFIG: path });
 			expect(fromFile.config.baseUrl).toBe("https://file.example.com");
 			expect(fromFile.config.token).toBe("tok-file");
-			const envWins = resolveWarrenClient({
+			const { client: envWins } = resolveWarrenClientWithSources({
 				WARREN_CLIENT_CONFIG: path,
 				WARREN_BASE_URL: "https://env.example.com",
 				WARREN_API_TOKEN: "tok-env",
 			});
 			expect(envWins.config.baseUrl).toBe("https://env.example.com");
 			expect(envWins.config.token).toBe("tok-env");
-			const flagWins = resolveWarrenClient(
+			const { client: flagWins } = resolveWarrenClientWithSources(
 				{ WARREN_CLIENT_CONFIG: path },
 				{ url: "https://flag.example.com" },
 			);
@@ -101,7 +103,7 @@ describe("resolveWarrenClient", () => {
 	});
 
 	test("a flag-only token still pairs with the default URL", () => {
-		const client = resolveWarrenClient(NO_CONFIG_FILE, { token: "tok-flag" });
+		const { client } = resolveWarrenClientWithSources(NO_CONFIG_FILE, { token: "tok-flag" });
 		expect(client.config.baseUrl).toBe(DEFAULT_WARREN_BASE_URL);
 		expect(client.config.token).toBe("tok-flag");
 	});
@@ -163,5 +165,47 @@ describe("resolveClientConfigWithSources", () => {
 		expect(resolveClientConfigWithSources(env, { token: "tok-flag" }).config).toEqual(
 			resolveClientConfig(env, { token: "tok-flag" }),
 		);
+	});
+});
+
+describe("resolveCommandClient", () => {
+	function context(env: Record<string, string | undefined>): CliContext {
+		return {
+			env,
+			stdio: { stdout: { write: () => undefined }, stderr: { write: () => undefined } },
+			spawn: async () => ({ stdout: "", stderr: "", exitCode: 0 }),
+		};
+	}
+
+	test("hands back a context carrying the slot the token came from (warren-2d4c)", () => {
+		const resolved = resolveCommandClient(
+			context({ ...NO_CONFIG_FILE, WARREN_API_TOKEN: "tok-env" }),
+			{},
+		);
+		expect(resolved.client.config.token).toBe("tok-env");
+		expect(resolved.context.tokenSource).toBe("env");
+	});
+
+	test("a --token flag claims the slot over an env token (warren-2d4c)", () => {
+		const resolved = resolveCommandClient(
+			context({ ...NO_CONFIG_FILE, WARREN_API_TOKEN: "tok-env" }),
+			{ token: "tok-flag" },
+		);
+		expect(resolved.client.config.token).toBe("tok-flag");
+		expect(resolved.context.tokenSource).toBe("flag");
+	});
+
+	test("leaves the slot unset when no token exists anywhere", () => {
+		const resolved = resolveCommandClient(context(NO_CONFIG_FILE), {});
+		expect(resolved.client.config.token).toBeUndefined();
+		expect(resolved.context.tokenSource).toBeUndefined();
+	});
+
+	test("carries the rest of the context through untouched", () => {
+		const base = context({ ...NO_CONFIG_FILE, WARREN_API_TOKEN: "tok-env" });
+		const resolved = resolveCommandClient(base, {});
+		expect(resolved.context.env).toBe(base.env);
+		expect(resolved.context.stdio).toBe(base.stdio);
+		expect(resolved.context.spawn).toBe(base.spawn);
 	});
 });

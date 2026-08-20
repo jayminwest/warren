@@ -28,7 +28,7 @@ export interface AddProjectArgs {
 }
 
 export interface AddProjectDeps {
-	/** Remote warren client. Production wires `resolveWarrenClient(context.env, flags)`. */
+	/** Remote warren client. Production wires `resolveCommandClient(context, opts)`. */
 	readonly client: WarrenClient;
 	/** Override the probe timeout (tests). */
 	readonly probeTimeoutMs?: number;

@@ -22,7 +22,7 @@ import {
 	WarrenClient,
 	type WarrenClientConfig,
 } from "../client/index.ts";
-import type { EnvLike } from "./output.ts";
+import type { CliContext, EnvLike } from "./output.ts";
 
 /** The `--url` / `--token` flag pair every remote command accepts. */
 export interface ClientFlags {
@@ -62,12 +62,31 @@ export interface ResolvedClientConfig {
 	readonly tokenSource?: ClientConfigSource;
 }
 
+/** A resolved client plus the context that remembers where its token came from. */
+export interface CommandClient {
+	readonly client: WarrenClient;
+	readonly context: CliContext;
+}
+
 /**
- * Resolve a {@link WarrenClient} for this invocation. Empty-string flags
- * are treated as unset so `--url ""` can't clobber a good env value.
+ * Resolve the client for one command invocation, and hand back a context
+ * that carries the slot the token came from (warren-2d4c). Every remote
+ * command resolves through here, so the shared catch-tail
+ * (`commandFailure`) can blame the slot that actually supplied the rejected
+ * credential rather than guessing at `WARREN_API_TOKEN`.
+ *
+ * The context is returned rather than mutated because `CliContext` is
+ * readonly and one program builds many of them, one per invocation.
  */
-export function resolveWarrenClient(env: EnvLike, flags: ClientFlags = {}): WarrenClient {
-	return resolveWarrenClientWithSources(env, flags).client;
+export function resolveCommandClient(context: CliContext, opts: RemoteOpts): CommandClient {
+	const resolved = resolveWarrenClientWithSources(context.env, clientFlags(opts));
+	return {
+		client: resolved.client,
+		context:
+			resolved.tokenSource !== undefined
+				? { ...context, tokenSource: resolved.tokenSource }
+				: context,
+	};
 }
 
 /** A resolved client plus the slot each half of its config came from. */
@@ -78,8 +97,9 @@ export interface ResolvedWarrenClient {
 }
 
 /**
- * Resolve a client and keep the slots, for commands that have to report
- * which credential they sent. `warren doctor` is the caller (warren-8807).
+ * Resolve a client and keep the slots, for callers that have to report
+ * which credential they sent (warren-8807). `warren doctor` reads both
+ * halves; {@link resolveCommandClient} wraps this for every other command.
  */
 export function resolveWarrenClientWithSources(
 	env: EnvLike,

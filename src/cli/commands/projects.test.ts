@@ -98,4 +98,16 @@ describe("runProjects", () => {
 		expect(res.exitCode).toBe(4);
 		expect(err.join("")).toContain("invalid token");
 	});
+
+	test("blames the slot the rejected token came from (warren-2d4c)", async () => {
+		const { context, err } = captureContext("ndjson");
+		const rejecting = {
+			listProjects: async (): Promise<ListProjectsResponse> => {
+				throw new WarrenClientError(401, "unauthorized", "invalid token");
+			},
+		} as unknown as WarrenClient;
+		const res = await runProjects({ ...context, tokenSource: "flag" }, { client: rejecting });
+		expect(res.exitCode).toBe(4);
+		expect(err.join("")).toContain("token came from --token");
+	});
 });

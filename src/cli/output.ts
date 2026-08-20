@@ -15,6 +15,8 @@ import {
 	type SpawnOptions,
 	type SpawnResult,
 } from "../projects/clone.ts";
+import { authFailureHint } from "./auth-hints.ts";
+import type { ClientConfigSource } from "./client.ts";
 
 export interface WriteSink {
 	write(chunk: string): void;
@@ -46,6 +48,16 @@ export interface CliContext {
 	 * via `buildProgram`.
 	 */
 	readonly output?: OutputMode;
+	/**
+	 * Which slot supplied the token this invocation carries (warren-2d4c):
+	 * the `--token` flag, the environment, the client config file, or
+	 * nothing at all. `resolveCommandClient` puts it here, so
+	 * {@link commandFailure} can name the rejected credential's slot
+	 * instead of guessing from the environment. Optional because the
+	 * genuinely-local commands (`serve`, `db migrate-to-postgres`,
+	 * `doctor --local`) resolve no client, and tests build contexts by hand.
+	 */
+	readonly tokenSource?: ClientConfigSource;
 }
 
 /** A stdout-shaped sink backed by Node's writable streams (for production). */
@@ -220,24 +232,15 @@ export function formatDurationMs(ms: number): string {
  */
 export function commandFailure(context: CliContext, err: unknown): { readonly exitCode: number } {
 	context.stdio.stderr.write(`warren: ${formatError(err)}\n`);
-	// warren-8807: when the env supplied the token, name the source on an
-	// auth rejection so the operator sees WHY the wrong credential won —
-	// Bun auto-loads `.env` from the invoking cwd, and a stale
-	// WARREN_API_TOKEN there silently outranks the client config file.
-	if (exitCodeForError(err) === EXIT_AUTH_REJECTED && hasEnvToken(context.env)) {
-		context.stdio.stderr.write(
-			"  hint: token came from WARREN_API_TOKEN in the environment — a stale `.env` " +
-				"in your cwd is auto-loaded by Bun and overrides ~/.warren/client.json; " +
-				"unset it or pass --token\n",
-		);
+	// warren-2d4c: name the slot the rejected credential came from. The
+	// source rides on the context (`resolveCommandClient` resolved it
+	// alongside the client), so a rejected `--token` is no longer blamed on
+	// a WARREN_API_TOKEN that merely happened to be set. `warren doctor`
+	// reads the same helper, so neither surface can word it differently.
+	if (exitCodeForError(err) === EXIT_AUTH_REJECTED) {
+		context.stdio.stderr.write(`  hint: ${authFailureHint(context.tokenSource, context.env)}\n`);
 	}
 	return { exitCode: exitCodeForError(err) };
-}
-
-/** True when the environment carries a non-empty WARREN_API_TOKEN. */
-function hasEnvToken(env: EnvLike): boolean {
-	const token = env.WARREN_API_TOKEN;
-	return token !== undefined && token !== "";
 }
 
 /** Format a thrown error for human stderr output. */

@@ -3,8 +3,8 @@
  * CLI for cloud plan-runs (warren-ec6a, pl-55df step 2).
  *
  * Unlike the DB-backed commands (`warren run`, `warren serve`, …), the `plan`
- * group talks to a remote warren over HTTP via {@link resolveWarrenClient} —
- * it is the first command without `withCliDb`. The flow mirrors `warren run`:
+ * group talks to a remote warren over HTTP via `resolveCommandClient`. It
+ * is the first command without `withCliDb`. The flow mirrors `warren run`:
  * probe the server first (turning a down warren into a friendly error rather
  * than a mid-stream transport throw), POST `/plan-runs`, print the
  * `{planRun, children}` dispatch summary, then tail the union event stream as

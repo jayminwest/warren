@@ -22,7 +22,7 @@ import { Command, CommanderError } from "commander";
 import { openDatabase } from "../db/client.ts";
 import { parseDatabaseUrl } from "../db/url.ts";
 import { VERSION } from "../index.ts";
-import { addClientFlags, clientFlags, type RemoteOpts, resolveWarrenClient } from "./client.ts";
+import { addClientFlags, clientFlags, type RemoteOpts, resolveCommandClient } from "./client.ts";
 import { runAddProject } from "./commands/add-project.ts";
 import { registerBootstrapCommands } from "./commands/bootstrap.ts";
 import { runConfigMigrate } from "./commands/config-migrate.ts";
@@ -105,9 +105,9 @@ export function buildProgram(baseContext: CliContext): Command {
 			.argument("<git-url>", "GitHub URL (https or git@)")
 			.option("--default-branch <name>", "override the auto-detected default branch"),
 	).action(async (gitUrl: string, opts: { defaultBranch?: string } & RemoteOpts) => {
-		const client = resolveWarrenClient(context.env, clientFlags(opts));
+		const { client, context: ctx } = resolveCommandClient(context, opts);
 		const result = await runAddProject(
-			context,
+			ctx,
 			{ client },
 			{
 				gitUrl,
@@ -150,9 +150,9 @@ export function buildProgram(baseContext: CliContext): Command {
 				baseCommit?: string;
 			} & RemoteOpts,
 		) => {
-			const client = resolveWarrenClient(context.env, clientFlags(opts));
+			const { client, context: ctx } = resolveCommandClient(context, opts);
 			const result = await runRun(
-				context,
+				ctx,
 				{ client },
 				{
 					agent,
@@ -182,7 +182,7 @@ export function buildProgram(baseContext: CliContext): Command {
 			context.stdio.stderr.write("warren: --project and --cwd are mutually exclusive\n");
 			process.exit(2);
 		}
-		const client = resolveWarrenClient(context.env, clientFlags(opts));
+		const { client, context: ctx } = resolveCommandClient(context, opts);
 		const args =
 			opts.project !== undefined
 				? {
@@ -195,7 +195,7 @@ export function buildProgram(baseContext: CliContext): Command {
 						cwd: opts.cwd ?? process.cwd(),
 						...(opts.defaultRole !== undefined ? { defaultRole: opts.defaultRole } : {}),
 					};
-		const result = await runInit(context, { client }, args);
+		const result = await runInit(ctx, { client }, args);
 		process.exit(result.exitCode);
 	});
 
@@ -217,12 +217,12 @@ export function buildProgram(baseContext: CliContext): Command {
 			context.stdio.stderr.write("warren: --project and --cwd are mutually exclusive\n");
 			process.exit(2);
 		}
-		const client = resolveWarrenClient(context.env, clientFlags(opts));
+		const { client, context: ctx } = resolveCommandClient(context, opts);
 		const args =
 			opts.project !== undefined
 				? { mode: "project" as const, projectId: opts.project }
 				: { mode: "cwd" as const, cwd: opts.cwd ?? process.cwd() };
-		const result = await runConfigMigrate(context, { client }, args);
+		const result = await runConfigMigrate(ctx, { client }, args);
 		process.exit(result.exitCode);
 	});
 
@@ -367,9 +367,9 @@ export function buildProgram(baseContext: CliContext): Command {
 				output?: string;
 			} & RemoteOpts,
 		) => {
-			const client = resolveWarrenClient(context.env, clientFlags(opts));
+			const { client, context: ctx } = resolveCommandClient(context, opts);
 			const result = await runPlanRun(
-				context,
+				ctx,
 				{ client },
 				{
 					...(planId !== undefined && planId !== "" ? { planId } : {}),
@@ -395,9 +395,9 @@ export function buildProgram(baseContext: CliContext): Command {
 			.argument("<plan-run-id>", "plan-run id")
 			.option("--output <mode>", "output mode: ndjson (default) or pretty", "ndjson"),
 	).action(async (planRunId: string, opts: { output?: string } & RemoteOpts) => {
-		const client = resolveWarrenClient(context.env, clientFlags(opts));
+		const { client, context: ctx } = resolveCommandClient(context, opts);
 		const result = await runPlanCancel(
-			context,
+			ctx,
 			{ client },
 			{ planRunId, output: parsePlanRunOutput(opts.output) },
 		);
@@ -410,9 +410,9 @@ export function buildProgram(baseContext: CliContext): Command {
 			.argument("<plan-run-id>", "plan-run id")
 			.option("--output <mode>", "output mode: ndjson (default) or pretty", "ndjson"),
 	).action(async (planRunId: string, opts: { output?: string } & RemoteOpts) => {
-		const client = resolveWarrenClient(context.env, clientFlags(opts));
+		const { client, context: ctx } = resolveCommandClient(context, opts);
 		const result = await runPlanStatus(
-			context,
+			ctx,
 			{ client },
 			{ planRunId, output: parsePlanRunOutput(opts.output) },
 		);
@@ -429,9 +429,9 @@ export function buildProgram(baseContext: CliContext): Command {
 			)
 			.option("--output <mode>", "output mode: ndjson (default) or pretty", "ndjson"),
 	).action(async (opts: { project?: string; state?: string; output?: string } & RemoteOpts) => {
-		const client = resolveWarrenClient(context.env, clientFlags(opts));
+		const { client, context: ctx } = resolveCommandClient(context, opts);
 		const result = await runPlanList(
-			context,
+			ctx,
 			{ client },
 			{
 				output: parsePlanRunOutput(opts.output),
@@ -449,8 +449,8 @@ export function buildProgram(baseContext: CliContext): Command {
 			.command("projects")
 			.description("list the projects registered on the warren server (GET /projects)"),
 	).action(async (opts: RemoteOpts) => {
-		const client = resolveWarrenClient(context.env, clientFlags(opts));
-		const result = await runProjects(context, { client });
+		const { client, context: ctx } = resolveCommandClient(context, opts);
+		const result = await runProjects(ctx, { client });
 		process.exit(result.exitCode);
 	});
 

@@ -6,7 +6,7 @@
  */
 
 import type { Command } from "commander";
-import { addClientFlags, clientFlags, type RemoteOpts, resolveWarrenClient } from "./client.ts";
+import { addClientFlags, type RemoteOpts, resolveCommandClient } from "./client.ts";
 import { runCancel } from "./commands/cancel.ts";
 import { runShow } from "./commands/show.ts";
 import { runTail } from "./commands/tail.ts";
@@ -25,8 +25,8 @@ export function registerRunCommands(program: Command, context: CliContext): void
 				"emit a compact projection (id, state, failureReason, prUrl, costUsd, endedAt)",
 			),
 	).action(async (runId: string, opts: { summary?: boolean } & RemoteOpts) => {
-		const client = resolveWarrenClient(context.env, clientFlags(opts));
-		const result = await runShow(context, { client }, { runId, summary: opts.summary === true });
+		const { client, context: ctx } = resolveCommandClient(context, opts);
+		const result = await runShow(ctx, { client }, { runId, summary: opts.summary === true });
 		process.exit(result.exitCode);
 	});
 
@@ -46,9 +46,9 @@ export function registerRunCommands(program: Command, context: CliContext): void
 			context.stdio.stderr.write("warren: --timeout must be a positive number of seconds\n");
 			process.exit(EXIT_USAGE);
 		}
-		const client = resolveWarrenClient(context.env, clientFlags(opts));
+		const { client, context: ctx } = resolveCommandClient(context, opts);
 		const result = await runWait(
-			context,
+			ctx,
 			{ client },
 			{
 				runId,
@@ -67,9 +67,9 @@ export function registerRunCommands(program: Command, context: CliContext): void
 			.option("--no-follow", "drain the current backlog and exit instead of following")
 			.option("--from-seq <n>", "replay only events after this seq", (v) => Number(v)),
 	).action(async (runId: string, opts: { follow: boolean; fromSeq?: number } & RemoteOpts) => {
-		const client = resolveWarrenClient(context.env, clientFlags(opts));
+		const { client, context: ctx } = resolveCommandClient(context, opts);
 		const result = await runTail(
-			context,
+			ctx,
 			{ client },
 			{
 				runId,
@@ -87,9 +87,9 @@ export function registerRunCommands(program: Command, context: CliContext): void
 			.argument("<run-id>", "run id")
 			.option("--reason <text>", "operator note recorded on the cancel"),
 	).action(async (runId: string, opts: { reason?: string } & RemoteOpts) => {
-		const client = resolveWarrenClient(context.env, clientFlags(opts));
+		const { client, context: ctx } = resolveCommandClient(context, opts);
 		const result = await runCancel(
-			context,
+			ctx,
 			{ client },
 			{ runId, ...(opts.reason !== undefined ? { reason: opts.reason } : {}) },
 		);

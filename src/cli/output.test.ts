@@ -187,6 +187,7 @@ describe("exit-code contract", () => {
 			env: { WARREN_API_TOKEN: "tok-stale" },
 			stdio: { stdout: sink(), stderr: errSink },
 			spawn: defaultSpawn,
+			tokenSource: "env" as const,
 		};
 		const { exitCode } = commandFailure(context, new WarrenClientError(401, "unauthorized", "no"));
 		expect(exitCode).toBe(4);
@@ -196,14 +197,56 @@ describe("exit-code contract", () => {
 		expect(text).not.toContain("tok-stale");
 	});
 
-	test("commandFailure stays silent about the source when no env token is set", () => {
+	test("commandFailure blames --token, not an unrelated env token (warren-2d4c)", () => {
+		const errSink = sink();
+		const context = {
+			env: { WARREN_API_TOKEN: "tok-env" },
+			stdio: { stdout: sink(), stderr: errSink },
+			spawn: defaultSpawn,
+			tokenSource: "flag" as const,
+		};
+		commandFailure(context, new WarrenClientError(401, "unauthorized", "no"));
+		const text = errSink.chunks.join("");
+		expect(text).toContain("token came from --token");
+		expect(text).not.toContain("WARREN_API_TOKEN in the environment");
+	});
+
+	test("commandFailure names the config file a rejected token came from (warren-2d4c)", () => {
+		const errSink = sink();
+		const context = {
+			env: { WARREN_CLIENT_CONFIG: "/srv/agent/client.json" },
+			stdio: { stdout: sink(), stderr: errSink },
+			spawn: defaultSpawn,
+			tokenSource: "config-file" as const,
+		};
+		commandFailure(context, new WarrenClientError(401, "unauthorized", "no"));
+		const text = errSink.chunks.join("");
+		expect(text).toContain("token came from the client config file");
+		expect(text).toContain("/srv/agent/client.json");
+	});
+
+	test("commandFailure falls back to every slot when no source was resolved (warren-2d4c)", () => {
+		const errSink = sink();
+		const context = {
+			env: { WARREN_CLIENT_CONFIG: "/srv/agent/client.json" },
+			stdio: { stdout: sink(), stderr: errSink },
+			spawn: defaultSpawn,
+		};
+		commandFailure(context, new WarrenClientError(401, "unauthorized", "no"));
+		const text = errSink.chunks.join("");
+		expect(text).toContain("WARREN_API_TOKEN");
+		expect(text).toContain("warren login");
+	});
+
+	test("commandFailure stays silent about the token on a non-auth failure", () => {
 		const errSink = sink();
 		const context = {
 			env: {},
 			stdio: { stdout: sink(), stderr: errSink },
 			spawn: defaultSpawn,
+			tokenSource: "env" as const,
 		};
-		commandFailure(context, new WarrenClientError(401, "unauthorized", "no"));
+		commandFailure(context, new WarrenUnreachableError("down"));
 		expect(errSink.chunks.join("")).not.toContain("token came from");
 	});
 });

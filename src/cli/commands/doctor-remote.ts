@@ -16,6 +16,7 @@
 
 import type { WarrenClient } from "../../client/index.ts";
 import { VERSION } from "../../index.ts";
+import { authFailureHint } from "../auth-hints.ts";
 import {
 	type ClientConfigSource,
 	type ClientFlags,
@@ -31,7 +32,7 @@ export interface RemoteDoctorArgs {
 }
 
 export interface RemoteDoctorDeps {
-	/** Remote warren client. Production wires `resolveWarrenClient(context.env, flags)`. */
+	/** Remote warren client. Production wires it through `remoteDoctorDeps`. */
 	readonly client: WarrenClient;
 	/** Override the probe timeout (tests). */
 	readonly probeTimeoutMs?: number;
@@ -96,7 +97,7 @@ export async function runRemoteDoctor(
 	if (args.noAuth === true) {
 		checks.push({ name: "auth_valid", ok: true, message: "skipped (--no-auth)" });
 	} else {
-		checks.push(await authCheck(deps.client, deps.tokenSource));
+		checks.push(await authCheck(deps.client, deps.tokenSource, context.env));
 	}
 
 	// 3. Version match: a skewed CLI speaks a wire shape the server may
@@ -105,10 +106,6 @@ export async function runRemoteDoctor(
 
 	return finish(context, checks);
 }
-
-/** Hint when the caller did not resolve a source: name every slot. */
-const UNSOURCED_AUTH_HINT =
-	"check WARREN_API_TOKEN / --token or the token `warren login` saved in the client config file (~/.warren/client.json, WARREN_CLIENT_CONFIG) against the server's credential; if this only fails from inside a repo, a stale `.env` in your cwd (auto-loaded by Bun) may be overriding the config file";
 
 /** How the base URL slot reads in operator-facing output (warren-8807). */
 function baseUrlSourceLabel(source: ClientConfigSource | undefined): string | undefined {
@@ -140,28 +137,10 @@ function tokenSourceLabel(source: ClientConfigSource | undefined): string | unde
 	}
 }
 
-/**
- * Name the slot the rejected credential came from, not every candidate. The
- * env arm carries the `.env` warning because that is the one an operator
- * cannot see: Bun loads the file before the process starts, so a stale token
- * in the repo they happen to be standing in outranks what `warren login` saved.
- */
-function authFailureHint(source: ClientConfigSource | undefined): string {
-	switch (source) {
-		case "flag":
-			return "the rejected token came from --token; check it against the server's credential";
-		case "env":
-			return "the rejected token came from WARREN_API_TOKEN in the environment; Bun auto-loads `.env` from the invoking cwd, so a stale token there outranks the one `warren login` saved in ~/.warren/client.json";
-		case "config-file":
-			return "the rejected token came from the client config file (~/.warren/client.json, WARREN_CLIENT_CONFIG); re-run `warren login` to replace it";
-		default:
-			return UNSOURCED_AUTH_HINT;
-	}
-}
-
 async function authCheck(
 	client: WarrenClient,
 	tokenSource: ClientConfigSource | undefined,
+	env: EnvLike,
 ): Promise<DoctorCheck> {
 	const label = tokenSourceLabel(tokenSource);
 	try {
@@ -177,7 +156,7 @@ async function authCheck(
 			name: "auth_valid",
 			ok: false,
 			message: formatError(err),
-			hint: authFailureHint(tokenSource),
+			hint: authFailureHint(tokenSource, env),
 		};
 	}
 }

@@ -1,0 +1,39 @@
+/**
+ * Operator-facing wording for a rejected credential (warren-2d4c).
+ *
+ * Two surfaces report the same failure: the `auth_valid` check in
+ * `warren doctor` (`./commands/doctor-remote.ts`) and the catch-tail every
+ * other command shares (`commandFailure` in `./output.ts`). The text lives
+ * here once so the two cannot drift apart, and so the slots it names stay
+ * the slots the resolution actually read: the config-file arm prints the
+ * path `clientConfigPath` resolves, which honours `WARREN_CLIENT_CONFIG`,
+ * instead of asserting `~/.warren/client.json`.
+ */
+
+import { clientConfigPath } from "../client/config-file.ts";
+import type { ClientConfigSource } from "./client.ts";
+import type { EnvLike } from "./output.ts";
+
+/**
+ * Name the slot the rejected credential came from, not every candidate. The
+ * env arm carries the `.env` warning because that is the one an operator
+ * cannot see: Bun loads the file before the process starts, so a stale token
+ * in the repo they happen to be standing in outranks what `warren login` saved.
+ *
+ * An absent source still names every slot. Both callers now resolve one for
+ * real, so absent means "no token anywhere"; #1035 owns rewording that arm,
+ * and lands it on both surfaces at once.
+ */
+export function authFailureHint(source: ClientConfigSource | undefined, env: EnvLike): string {
+	const configFile = clientConfigPath(env);
+	switch (source) {
+		case "flag":
+			return "the rejected token came from --token; check it against the server's credential";
+		case "env":
+			return `the rejected token came from WARREN_API_TOKEN in the environment; Bun auto-loads \`.env\` from the invoking cwd, so a stale token there outranks the one \`warren login\` saved in ${configFile}`;
+		case "config-file":
+			return `the rejected token came from the client config file (${configFile}); re-run \`warren login\` to replace it`;
+		default:
+			return `check WARREN_API_TOKEN / --token or the token \`warren login\` saved in the client config file (${configFile}) against the server's credential; if this only fails from inside a repo, a stale \`.env\` in your cwd (auto-loaded by Bun) may be overriding the config file`;
+	}
+}

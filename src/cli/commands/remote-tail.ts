@@ -52,7 +52,7 @@ export type TailOutcome =
  * the same four fields.
  */
 export interface RemoteTailDeps {
-	/** Remote warren client. Production wires `resolveWarrenClient(context.env, flags)`. */
+	/** Remote warren client. Production wires `resolveCommandClient(context, opts)`. */
 	readonly client: WarrenClient;
 	/**
 	 * SIGINT seam (tests). Registers `handler` and returns a disposer that
