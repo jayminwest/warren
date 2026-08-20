@@ -122,7 +122,6 @@ async function runPathHappyPath(ctx: ScenarioCtx): Promise<void> {
 			canopyRepoUrl: ctx.fixtures.canopyRepoUrl,
 			gitConfigPath: sample.gitConfigPath,
 			extraEnv: {
-				WARREN_STUB_SLEEP_MS: "0",
 				// Path mode: WARREN_PREVIEW_HOST deliberately unset. The
 				// fresh-install promise is that the operator needs nothing
 				// beyond a single-box deploy + a warren API token.

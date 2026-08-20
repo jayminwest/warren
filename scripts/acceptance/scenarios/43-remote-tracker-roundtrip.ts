@@ -116,7 +116,7 @@ async function buildFixture(input: {
 		join(input.fixturePath, "README.md"),
 		"# scenario-43 fixture: a seeds-free project served by FakeTracker\n",
 	);
-	for (const tool of ["stub-agent.sh", "claude-code-stub-agent.sh"]) {
+	for (const tool of ["claude-code-stub-agent.sh"]) {
 		const body = await readFile(join(input.sourceSamplePath, "tools", tool));
 		await writeFile(join(input.fixturePath, "tools", tool), body, { mode: 0o755 });
 	}
@@ -223,7 +223,6 @@ export const scenario: Scenario = {
 				// a connected RemoteTracker in place of the SeedsTracker.
 				serverEntry: "scripts/acceptance/lib/remote-tracker-server-entry.ts",
 				extraEnv: {
-					WARREN_STUB_SLEEP_MS: "0",
 					WARREN_FORGE: "fake",
 					WARREN_FAKE_FORGE_STATE_FILE: forgeStateFile,
 					WARREN_PLAN_RUN_TICK_MS: "1000",

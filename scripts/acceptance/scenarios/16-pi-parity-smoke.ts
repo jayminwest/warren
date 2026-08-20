@@ -89,7 +89,7 @@ interface RunRow {
 
 interface CreateRunResponse {
 	readonly run: RunRow;
-	readonly burrow: { readonly id: string; readonly workspacePath: string };
+	readonly sandbox: { readonly id: string; readonly workspacePath: string };
 }
 
 const RUN_ID_PATTERN = /^run_[0-9a-hjkmnpqrstvwxyz]{12}$/;
@@ -152,7 +152,7 @@ export const scenario: Scenario = {
 				run.sandboxRunId.length > 0,
 			"POST /runs run.sandboxRunId populated",
 		);
-		assertEqual(created.burrow.id, run.sandboxId, "response.burrow.id matches run.sandboxId");
+		assertEqual(created.sandbox.id, run.sandboxId, "response.sandbox.id matches run.sandboxId");
 
 		// 3. renderedAgentJson is the frozen pi built-in.
 		assertEqual(run.renderedAgentJson.name, "pi", "run.renderedAgentJson.name");

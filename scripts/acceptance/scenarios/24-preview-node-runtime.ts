@@ -162,7 +162,6 @@ async function runNodePreview(ctx: ScenarioCtx): Promise<void> {
 			canopyRepoUrl: ctx.fixtures.canopyRepoUrl,
 			gitConfigPath: sample.gitConfigPath,
 			extraEnv: {
-				WARREN_STUB_SLEEP_MS: "0",
 				WARREN_PREVIEW_HOST: PREVIEW_HOST,
 				WARREN_PREVIEW_IDLE_TTL: "30m",
 				WARREN_PREVIEW_MAX_LIFETIME: "8h",

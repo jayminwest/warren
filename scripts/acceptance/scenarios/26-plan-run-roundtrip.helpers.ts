@@ -111,10 +111,6 @@ export async function buildPlanRunFixture(input: BuildPlanRunFixtureInput): Prom
 
 	const burrowToml = await readFile(join(input.sourceSamplePath, "burrow.toml"), "utf8");
 	await writeFile(join(input.fixturePath, "burrow.toml"), burrowToml);
-	await copyFile(
-		join(input.sourceSamplePath, "tools", "stub-agent.sh"),
-		join(input.fixturePath, "tools", "stub-agent.sh"),
-	);
 	// claude-code stub is the agent scenario 26 dispatches against — raw-text
 	// stub-shell never emits a runtime-terminal envelope, so the bridge
 	// would never finalize the child runs. The claude-stub emits a `result`
@@ -141,7 +137,6 @@ export async function buildPlanRunFixture(input: BuildPlanRunFixtureInput): Prom
 
 	const env = withGitIdentity();
 	await runIn(input.fixturePath, ["git", "init", "--initial-branch=main"], env);
-	await runIn(input.fixturePath, ["chmod", "+x", "tools/stub-agent.sh"], env);
 	await runIn(input.fixturePath, ["chmod", "+x", "tools/claude-code-stub-agent.sh"], env);
 	await runIn(input.fixturePath, ["git", "add", "."], env);
 	await runIn(input.fixturePath, ["git", "commit", "-m", "init: plan-run acceptance fixture"], env);

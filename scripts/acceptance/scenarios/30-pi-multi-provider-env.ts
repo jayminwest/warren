@@ -71,7 +71,7 @@ interface RunRow {
 
 interface CreateRunResponse {
 	readonly run: RunRow;
-	readonly burrow: { readonly id: string };
+	readonly sandbox: { readonly id: string };
 }
 
 interface EventEnvelope {

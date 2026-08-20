@@ -30,8 +30,8 @@
 # lands in the per-run writable $HOME instead of dirtying the worktree).
 #
 # Prompt-driven side-effect knobs (warren-dc19 — replaces the retired
-# stub-shell burrow runtime for scenarios 05/07/09/10, mirroring
-# lib/stub-agent/agent.sh). Each knob fires only when present, so a
+# stub-shell burrow runtime for scenarios 05/07/09/10; the legacy
+# lib/stub-agent/agent.sh carried them first). Each knob fires only when present, so a
 # knobless prompt keeps the zero-workspace-mutation contract above:
 #   [sleep_ms=N]      — sleep N ms before the terminal result envelope,
 #                       emitting one assistant heartbeat event per second
@@ -73,8 +73,8 @@ emit '{"type":"system","subtype":"init","session_id":"sess_stub","model":"claude
 # assistant text — the "at least one event" signal.
 emit '{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"ack"}]}}'
 
-# Knob-driven workspace side effects (pre-sleep, mirroring agent.sh lines
-# 1-2) so a mid-flight cancel still reaps them.
+# Knob-driven workspace side effects (pre-sleep) so a mid-flight
+# cancel still reaps them.
 _now="$(date -u +%Y-%m-%dT%H:%M:%S.000Z)"
 if [ -n "${mulch_id}" ]; then
   mkdir -p ".mulch/expertise"

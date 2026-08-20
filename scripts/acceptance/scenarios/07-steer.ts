@@ -26,7 +26,7 @@
  * empty-body case so the error contract is anchored.
  *
  * Stays self-contained: spawns its own long-running stub run (sleep set
- * via `[sleep_ms=...]` in the prompt — see lib/stub-agent/agent.sh) so
+ * via `[sleep_ms=...]` in the prompt — see lib/stub-agent/claude-code-path-shim.sh) so
  * the warren row stays non-terminal during the steer call. Cleanup
  * cancels the run so teardown doesn't trip over a live agent.
  */
@@ -48,7 +48,7 @@ interface RunRow {
 
 interface CreateRunResponse {
 	readonly run: RunRow;
-	readonly burrow: { readonly id: string; readonly workspacePath: string };
+	readonly sandbox: { readonly id: string; readonly workspacePath: string };
 }
 
 interface SteerMessage {
@@ -104,7 +104,7 @@ export const scenario: Scenario = {
 		const project = await ensureSampleProject(http, ctx.fixtures.sampleProjectGitUrl);
 
 		// Spawn a long-running run. The stub agent reads `[sleep_ms=...]`
-		// from its prompt arg (see lib/stub-agent/agent.sh) and sleeps so
+		// from its prompt arg (see lib/stub-agent/claude-code-path-shim.sh) and sleeps so
 		// the warren row stays non-terminal across the steer call.
 		const spawnPrompt = "[sleep_ms=8000] scenario-07 steerable run";
 		const spawn = await http.expectJson<CreateRunResponse>("POST", "/runs", 201, {
