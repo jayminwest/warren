@@ -349,6 +349,13 @@ export async function runWorkspaceInit(
 	const log = deps.log ?? ((m: string) => console.log(m));
 	const cfg = parseInitEnv(env);
 
+	// warren-cb93: the agent process runs as a DIFFERENT uid than the entrypoint
+	// (the entrypoint/agent uid split) and shares only the pod gid (fsGroup), so
+	// the clone this init container materializes must be GROUP-writable —
+	// otherwise the split-off agent cannot write its own workspace. Committed
+	// modes are unaffected (git tracks only the exec bit).
+	process.umask(0o002);
+
 	const usedCache = await materializeViaCache(git, fs, cfg, log);
 	if (!usedCache) await directClone(git, cfg, log);
 	await writeSeedFiles(cfg, fs, log);

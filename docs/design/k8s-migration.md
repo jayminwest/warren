@@ -206,6 +206,35 @@ matters for short runs. Defer.
 This is stricter than the current Fly posture (which didn't need the compose
 flags but also didn't explicitly drop caps).
 
+**Entrypoint/agent uid split (warren-cb93, amendment):** the agent container
+adds back `capabilities: [SETUID, SETGID, KILL]` for warren's in-pod
+entrypoint only (still uid 1000), never for the agent.
+
+The entrypoint wraps the agent argv in `setpriv` with a full privilege
+drop: `--reuid=1001 --regid=1000 --clear-groups --no-new-privs
+--inh-caps=-all --ambient-caps=-all --bounding-set=-all`
+(`src/runtime/k8s/agent-uid-drop.ts`). The agent process then runs under a
+different uid than the process whose stdout IS the pod log.
+
+That closes the warren-6646 residual. A forged write at `/proc/1/fd/1` from
+the agent now fails EACCES (cross-uid), so the agent cannot reproduce the
+in-band provenance marker.
+
+The split-off agent also cannot SIGNAL the entrypoint. The entrypoint keeps
+KILL as its own backstop for the watchdog, which now signals cross-uid.
+
+Two prerequisites apply. First, the container runtime must propagate ambient
+caps to a non-root pid 1. Containerd and runc do this. The entrypoint
+preflights the drop and fails the run legibly when the caps never arrive.
+
+Second, the workspace stays group-writable (pod `fsGroup` 1000 plus
+`umask 002` in the init container and the entrypoint), so the uid-1001 agent
+can write its uid-1000-owned checkout.
+
+`WARREN_K8S_AGENT_UID_DROP=0` restores the legacy shared-uid shape. The
+DockerProvider keeps its current behavior. It spawns the agent argv directly
+as the container's pid 1, so no entrypoint fd exists to protect.
+
 ---
 
 ## 3. Resource Model

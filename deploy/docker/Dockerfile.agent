@@ -28,6 +28,12 @@ FROM oven/bun:1.2
 # mirror's agent can run the project's own tests (pytest/uv). Deliberately
 # minimal — no go/rust/jdk this pass; a stack needing more pins its own
 # agentImage via `.warren/config.yaml`.
+# util-linux ships `setpriv`, the warren-cb93 entrypoint/agent uid-split
+# primitive: the in-pod entrypoint (uid 1000) setpriv-drops the AGENT process
+# to uid 1001 so a forged write at the entrypoint's stdout fd (/proc/1/fd/1)
+# fails EACCES (see src/runtime/k8s/agent-uid-drop.ts). K8s-only: the
+# DockerProvider spawns the agent argv directly as the container's pid 1, so
+# there is no entrypoint fd to protect and no split applies.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         git \
@@ -37,6 +43,7 @@ RUN apt-get update \
         python3 \
         python3-pip \
         python3-venv \
+        util-linux \
     && curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
     && apt-get install -y --no-install-recommends nodejs \
     && rm -rf /var/lib/apt/lists/* \
@@ -48,7 +55,9 @@ RUN apt-get update \
 # validation): the pod runs as uid 1000 but the emptyDir mountpoint is
 # root-owned, so git >= 2.35.2 refuses the agent's commits + finalize's push with
 # "detected dubious ownership". A system-wide safe.directory is the canonical
-# container fix (single-tenant pod ⇒ no added trust surface).
+# container fix (single-tenant pod ⇒ no added trust surface). warren-cb93:
+# this fix is uid-AGNOSTIC, so it also covers the uid-1001 agent the
+# entrypoint/agent uid split spawns inside a uid-1000-owned checkout.
 RUN git config --system --add safe.directory '*'
 
 # Baked coding-agent runtimes + os-eco data-plane CLIs. Versions track the

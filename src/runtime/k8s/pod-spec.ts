@@ -26,12 +26,7 @@
  *     values); the pod NAME is DNS-1123-sanitized — see `podNameForRun`.
  */
 
-import type {
-	V1Container,
-	V1Pod,
-	V1PodSecurityContext,
-	V1SecurityContext,
-} from "@kubernetes/client-node";
+import type { V1Container, V1Pod, V1PodSecurityContext } from "@kubernetes/client-node";
 import {
 	DEFAULT_K8S_CPU_LIMIT_MILLICORES,
 	DEFAULT_K8S_CPU_REQUEST_MILLICORES,
@@ -42,11 +37,14 @@ import {
 	type ResourcesConfig,
 } from "../../warren-config/index.ts";
 import type { RunSpec } from "../contract.ts";
+import { type AgentUidDrop, WARREN_POD_AGENT_UID } from "./agent-uid-drop.ts";
 import {
+	agentContainerSecurityContext,
 	buildAgentEnv,
 	buildInitEnv,
 	buildInitVolumeMounts,
 	buildRunPodVolumes,
+	containerSecurityContext,
 	DEFAULT_K8S_GIT_SECRET_KEY,
 	DEFAULT_K8S_GIT_SECRET_NAME,
 	pickImagePullPolicy,
@@ -88,6 +86,13 @@ export type { ResolvedResourceQuantities } from "./pod-resources.ts";
 /** Unprivileged uid/gid the agent + init containers run as (§2.2, was `DEFAULT_SANDBOX_UID`). */
 export const WARREN_POD_UID = 1000;
 export const WARREN_POD_GID = 1000;
+
+// warren-cb93: the drop contract lives in `./agent-uid-drop.ts`; re-exported from the pod-shape surface.
+export {
+	ENV_AGENT_RUN_AS_GID,
+	ENV_AGENT_RUN_AS_UID,
+	WARREN_POD_AGENT_UID,
+} from "./agent-uid-drop.ts";
 
 /** Shared `emptyDir` the init container materializes and the agent mounts (§4.2). */
 export const WORKSPACE_VOLUME_NAME = "workspace";
@@ -224,6 +229,14 @@ export interface K8sPodConfig {
 	cancelGracePeriodSeconds: number;
 	/** Grace (seconds) `terminate()` force-deletes the pod with; 0 = immediate (step 19). */
 	terminateGracePeriodSeconds: number;
+	/**
+	 * The entrypoint/agent uid split (warren-cb93, `./agent-uid-drop.ts`). When
+	 * set, the agent container carries SETUID/SETGID/KILL for the ENTRYPOINT
+	 * and `WARREN_AGENT_RUN_AS_*` env so the entrypoint setpriv-drops the agent
+	 * to this identity — closing the `/proc/1/fd/1` provenance-marker forge.
+	 * Unset (WARREN_K8S_AGENT_UID_DROP=0) ⇒ the legacy shared-uid shape.
+	 */
+	agentUidDrop?: AgentUidDrop;
 	/** optional ServiceAccount for the run pod (RBAC step). */
 	serviceAccountName?: string;
 	/**
@@ -306,6 +319,13 @@ export function resolveK8sPodConfig(
 			DEFAULT_K8S_TERMINATE_GRACE_SECONDS,
 		),
 	};
+	// warren-cb93: the uid split is ON by default; an operator whose runtime
+	// does not propagate ambient caps to a non-root pid 1 (containerd/runc do;
+	// the entrypoint needs effective SETUID/SETGID for setpriv) opts out here.
+	const dropRaw = env.WARREN_K8S_AGENT_UID_DROP?.trim().toLowerCase();
+	const dropDisabled =
+		dropRaw === "0" || dropRaw === "false" || dropRaw === "no" || dropRaw === "off";
+	if (!dropDisabled) config.agentUidDrop = { uid: WARREN_POD_AGENT_UID, gid: WARREN_POD_GID };
 	const sa = env.WARREN_K8S_SERVICE_ACCOUNT?.trim();
 	if (sa !== undefined && sa !== "") config.serviceAccountName = sa;
 	// warren-6016: both halves or nothing, mirroring resolveWarrenBotIdentity.
@@ -342,18 +362,6 @@ export function podNameForRun(runId: string): string {
 }
 
 // --- Builder ---------------------------------------------------------------
-
-/** Container-level hardening applied to BOTH the init and agent containers (§2.2). */
-function containerSecurityContext(config: K8sPodConfig): V1SecurityContext {
-	return {
-		runAsNonRoot: true,
-		runAsUser: config.uid,
-		runAsGroup: config.gid,
-		allowPrivilegeEscalation: false,
-		capabilities: { drop: ["ALL"] },
-		seccompProfile: { type: "RuntimeDefault" },
-	};
-}
 
 /** Pod-level securityContext (§2.2). `fsGroup` lets uid 1000 write the emptyDir. */
 function podSecurityContext(config: K8sPodConfig): V1PodSecurityContext {
@@ -426,7 +434,7 @@ function buildAgentContainer(spec: RunSpec, config: K8sPodConfig): V1Container {
 		env: buildAgentEnv(spec, config),
 		volumeMounts: [{ name: WORKSPACE_VOLUME_NAME, mountPath: WORKSPACE_MOUNT_PATH }],
 		resources: resourceRequirements(requests, limits),
-		securityContext: containerSecurityContext(config),
+		securityContext: agentContainerSecurityContext(config),
 	};
 }
 

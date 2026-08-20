@@ -10,9 +10,10 @@
  * called), so the module pairing carries no initialization-order coupling.
  */
 
-import type { V1EnvVar, V1Volume, V1VolumeMount } from "@kubernetes/client-node";
+import type { V1EnvVar, V1SecurityContext, V1Volume, V1VolumeMount } from "@kubernetes/client-node";
 import { KNOWN_PROVIDER_NAMES, primaryProviderEnvKey } from "../../core/providers.ts";
 import type { RunSpec } from "../contract.ts";
+import { ENV_AGENT_RUN_AS_GID, ENV_AGENT_RUN_AS_UID } from "./agent-uid-drop.ts";
 import {
 	type BuildRunPodOptions,
 	type K8sPodConfig,
@@ -180,6 +181,43 @@ export const ENV_BASE_BRANCH = "WARREN_BASE_BRANCH";
 /** The agent frontmatter/metadata (JSON) — provider/model overrides the runtime honors. */
 export const ENV_AGENT_METADATA = "WARREN_AGENT_METADATA";
 
+/* --- Container security contexts (§2.2 + warren-cb93) ----------------------- */
+
+/** Container-level hardening applied to BOTH the init and agent containers (§2.2). */
+export function containerSecurityContext(config: K8sPodConfig): V1SecurityContext {
+	return {
+		runAsNonRoot: true,
+		runAsUser: config.uid,
+		runAsGroup: config.gid,
+		allowPrivilegeEscalation: false,
+		capabilities: { drop: ["ALL"] },
+		seccompProfile: { type: "RuntimeDefault" },
+	};
+}
+
+/**
+ * The agent container's hardening (§2.2 + warren-cb93). Same non-root base as
+ * the init container — the ENTRYPOINT keeps uid 1000 — plus, when the uid
+ * split is enabled, the three caps the split needs:
+ *
+ *   - `SETUID`/`SETGID`: the entrypoint's `setpriv --reuid/--regid` of the
+ *     agent process to `WARREN_POD_AGENT_UID`. A non-root pid 1 receives them
+ *     via the runtime's ambient-cap propagation (containerd/runc raise
+ *     ambient caps for added caps on a non-root init; the entrypoint's
+ *     preflight fails the run legibly when they never arrive).
+ *   - `KILL`: the stdin-hold watchdog's backstop `kill()` targets the
+ *     split-off agent — a cross-uid signal, EPERM without the cap.
+ *
+ * The AGENT keeps none of them: setpriv empties its capability sets and sets
+ * no_new_privs (`./agent-uid-drop.ts`), so the add list stops at warren's
+ * own entrypoint.
+ */
+export function agentContainerSecurityContext(config: K8sPodConfig): V1SecurityContext {
+	const base = containerSecurityContext(config);
+	if (config.agentUidDrop === undefined) return base;
+	return { ...base, capabilities: { drop: ["ALL"], add: ["SETUID", "SETGID", "KILL"] } };
+}
+
 /** Deterministic name-sort so the generated spec is stable across builds. */
 function sortByName(vars: V1EnvVar[]): V1EnvVar[] {
 	return vars.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
@@ -286,6 +324,15 @@ export function buildAgentEnv(spec: RunSpec, config: K8sPodConfig): V1EnvVar[] {
 		[ENV_BRANCH]: spec.branch,
 		[ENV_BASE_BRANCH]: spec.baseBranch,
 	};
+	// warren-cb93: the entrypoint/agent uid split. The entrypoint reads these
+	// and setpriv-drops the agent process to a uid distinct from its own, so an
+	// agent write at `/proc/1/fd/1` (the provenance-marker forge, warren-6646's
+	// residual) fails EACCES. Stamped only when the split is enabled on the
+	// resolved config (see `resolveK8sPodConfig`).
+	if (config.agentUidDrop !== undefined) {
+		plain[ENV_AGENT_RUN_AS_UID] = String(config.agentUidDrop.uid);
+		plain[ENV_AGENT_RUN_AS_GID] = String(config.agentUidDrop.gid);
+	}
 	if (spec.metadata !== undefined) plain[ENV_AGENT_METADATA] = JSON.stringify(spec.metadata);
 	// warren-6016: thread the operator's bookkeeping-bot identity override so
 	// the in-pod salvage commit resolves the SAME spelling the control plane's

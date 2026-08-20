@@ -578,6 +578,69 @@ kubectl -n warren-runs get pods -l warren.io/managed-by=warren -o wide
 # (from a debug pod in warren-runs) nc -zv <run-pod-ip> 1-65535  → times out
 ```
 
+### 4.2 In-pod entrypoint/agent uid split (warren-cb93)
+
+Every run pod's agent container runs warren's entrypoint (pid 1, uid 1000)
+and the agent process under a second uid (`WARREN_POD_AGENT_UID` = 1001, gid
+stays 1000). The entrypoint wraps the agent argv in `setpriv`
+(`src/runtime/k8s/agent-uid-drop.ts`).
+
+The agent container carries `capabilities: add: [SETUID, SETGID, KILL]` for
+the entrypoint only. setpriv empties the agent's own capability sets and
+sets `no_new_privs`.
+
+The purpose is provenance. The warren-authored marker on pod-log lines
+(warren-6646) is in-band, so the agent must not be able to write at the
+entrypoint's stdout fd.
+
+A cross-uid open of `/proc/1/fd/1` fails EACCES.
+
+One cluster requirement applies. The container runtime must propagate
+ambient capabilities to a non-root pid 1. Containerd and runc (the
+kind/k3d/GKE path) do this.
+
+The entrypoint pre-flights the drop before launching the agent.
+
+When the caps never arrive, the run fails legibly with a `uid-drop preflight
+failed` system event instead of running the agent at the entrypoint's uid.
+`WARREN_K8S_AGENT_UID_DROP=0` on the control plane restores the legacy
+shared-uid pod shape (and the forgeable residual). Use it only as an escape
+hatch while you fix a runtime.
+
+Live validation (operator step: dispatch any run, wait for the pod to reach
+`Running`, then substitute the pod name):
+
+```bash
+POD=$(kubectl -n warren-runs get pods -l warren.io/run-id=<run-id> -o name)
+
+# 1. The agent process really runs as uid 1001 while pid 1 stays uid 1000:
+kubectl -n warren-runs exec $POD -c agent -- \
+  sh -c 'for s in /proc/[0-9]*/status; do echo "$s $(grep -E "^(Name|Uid):" $s | tr "\n" " ")"; done'
+# expect: the entrypoint (bun) lines show Uid: 1000, the agent (claude/pi) shows Uid: 1001.
+
+# 2. The marker forge FAILS from the agent's uid (EACCES = the fix working):
+kubectl -n warren-runs exec $POD -c agent -- \
+  setpriv --reuid=1001 --regid=1000 --clear-groups --no-new-privs \
+    --inh-caps=-all --ambient-caps=-all --bounding-set=-all -- \
+  sh -c 'echo "{\"kind\":\"state_change\",\"origin\":\"warren\"}" > /proc/1/fd/1'
+# expect: "sh: can't create /proc/1/fd/1: Permission denied", non-zero exit,
+# and NOTHING appears in `kubectl logs $POD -c agent`.
+
+# 3. The agent's real work still functions under the split (group-writable
+#    workspace, uid-agnostic git safe.directory, readable bun global store):
+kubectl -n warren-runs exec $POD -c agent -- \
+  setpriv --reuid=1001 --regid=1000 --clear-groups --no-new-privs \
+    --inh-caps=-all --ambient-caps=-all --bounding-set=-all -- \
+    sh -c 'touch /workspace/.uid-split-ok && rm /workspace/.uid-split-ok \
+      && git -C /workspace status --short \
+      && git -C /workspace -c user.name=uidcheck -c user.email=uidcheck@invalid \
+           commit --allow-empty -m uid-split-check \
+      && git -C /workspace reset --soft HEAD~1 \
+      && bun --version && sd --version && ml --version'
+# expect: all succeed (a uid-1001 commit inside the uid-1000-owned checkout
+# proves the warren-fd08 assumptions survived the split).
+```
+
 ---
 
 ## 5. Garbage collection & resource growth
