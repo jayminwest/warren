@@ -14,11 +14,13 @@
  * so a canopy version bump doesn't silently break the fixture.
  *
  * The sample project carries:
- *   - `burrow.toml` — declares the `stub-shell` agent (../burrow/SPEC.md §12.3
- *     declarative AgentConfig) pointing at the bash script the harness
- *     runs on every dispatch.
- *   - `tools/stub-agent.sh` — the deterministic stub committed via
- *     scripts/acceptance/lib/stub-agent/agent.sh.
+ *   - `burrow.toml` — the `[sandbox]` section the local profile still
+ *     reads (src/runtime/local/profile.ts). The legacy `[env]`
+ *     envPassthrough list and `[[agents]]` registry block left with the
+ *     stub-shell burrow runtime (warren-dc19): dispatch resolves the
+ *     agent through the WARREN_SEED_AGENTS_FILE payload + PATH shims,
+ *     and the knob contract is prompt-driven ([sleep_ms]/[mulch_*]/
+ *     [seed_*] — see lib/stub-agent/claude-code-path-shim.sh).
  *   - `README.md` — so `git commit` has at least one tracked file
  *     warren's git clone can resolve a default branch from.
  *
@@ -26,7 +28,7 @@
  * Builders here just write files; lifecycle is the launcher's problem.
  */
 import { chmod, copyFile, mkdir, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 
 export interface FixtureRoots {
 	readonly tmpRoot: string;
@@ -43,8 +45,6 @@ export interface BuiltFixtures {
 	readonly knownSeedTitle: string;
 	readonly knownMulchDomain: string;
 	readonly knownMulchRecordId: string;
-	/** Path to the stub bash script committed inside the sample project. */
-	readonly stubAgentScriptInProject: string;
 	/**
 	 * Directory holding the `claude` PATH-shim stub
 	 * (lib/stub-agent/claude-code-path-shim.sh). The harness prepends it
@@ -127,7 +127,6 @@ export async function buildFixtures(roots: FixtureRoots): Promise<BuiltFixtures>
 		knownSeedTitle: KNOWN_SEED_TITLE,
 		knownMulchDomain: KNOWN_MULCH_DOMAIN,
 		knownMulchRecordId: KNOWN_MULCH_RECORD_ID,
-		stubAgentScriptInProject: join(sampleProjectPath, "tools", "stub-agent.sh"),
 		claudeShimBinDir,
 		gitConfigPath,
 		seedAgentsFilePath,
@@ -260,8 +259,9 @@ async function buildCanopyRepo(repoPath: string): Promise<void> {
 			"--section",
 			`burrow_config=${burrowConfigSection}`,
 			// Pin the burrow runtime to the declarative stub-shell runtime
-			// (agent.sh — honors the [sleep_ms]/[mulch_*]/[seed_*] prompt
-			// knobs). Without this, readRuntimeId() (src/registry/schema.ts)
+			// (the legacy agent.sh honored the [sleep_ms]/[mulch_*]/[seed_*]
+			// prompt knobs; the PATH shim carries that contract now).
+			// Without this, readRuntimeId() (src/registry/schema.ts)
 			// falls back to DEFAULT_RUNTIME_ID="pi", so warren dispatches
 			// stub-shell runs onto the pi runtime (pi-agent.sh), which ignores
 			// those knobs — completing before cancel can land (scenario 08) and
@@ -286,8 +286,11 @@ async function buildSampleProject(repoPath: string): Promise<void> {
 
 	await runIn(repoPath, ["git", "init", "--initial-branch=main"], env);
 
-	// Project's burrow.toml — declares the stub-shell [[agents]] entry
-	// burrow uses to resolve the agentId warren passes on dispatch.
+	// Project's burrow.toml — only the `[sandbox]` section survives the
+	// burrow excision: the local profile reads it for network/allowed
+	// domains (src/runtime/local/profile.ts). The `[env]` WARREN_STUB_*
+	// passthrough list and the `[[agents]]` stub-shell registry entry
+	// were burrow-runtime concerns and are gone with it (warren-75dd).
 	const burrowToml = [
 		"# warren acceptance — sample project burrow.toml",
 		"[project]",
@@ -298,34 +301,10 @@ async function buildSampleProject(repoPath: string): Promise<void> {
 		`network = "restricted"`,
 		`allowed_domains = ["github.com", "registry.npmjs.org"]`,
 		"",
-		// Forward the four WARREN_STUB_* knobs the agent.sh script reads
-		// from the harness env into the sandbox. burrow's resolveEnv()
-		// silently drops keys missing from the host env, so scenarios
-		// that don't set them (03, 04) are unaffected; scenarios 05/06
-		// rely on WARREN_STUB_SLEEP_MS to keep the agent alive across the
-		// kill window.
-		"[env]",
-		`optional = ["WARREN_STUB_SLEEP_MS", "WARREN_STUB_MULCH_DOMAIN", "WARREN_STUB_MULCH_ID", "WARREN_STUB_SEED_ID", "WARREN_STUB_NO_COMMIT_SEEDS"]`,
-		"",
-		"[[agents]]",
-		`id = "${STUB_AGENT_NAME}"`,
-		`displayName = "Stub Shell (acceptance)"`,
-		`command = "bash"`,
-		`args = ["./tools/stub-agent.sh", "{{prompt}}"]`,
-		`promptDelivery = "arg"`,
-		`outputFormat = "raw-text"`,
-		`supportsResume = false`,
-		`inboxDelivery = "none"`,
-		"",
 	].join("\n");
 	await writeFile(join(repoPath, "burrow.toml"), burrowToml);
 
-	// Stub agent script — copied from the harness's stub-agent dir so
-	// edits to scripts/acceptance/lib/stub-agent/agent.sh propagate.
-	const harnessStubScript = new URL("./stub-agent/agent.sh", import.meta.url);
-	const targetScript = join(repoPath, "tools", "stub-agent.sh");
-	await mkdir(dirname(targetScript), { recursive: true });
-	await copyFile(harnessStubScript, targetScript);
+	await mkdir(join(repoPath, "tools"), { recursive: true });
 
 	// Pi-shaped stub agent script (warren-17a4) — emits pi RPC JSONL with
 	// `turn_end` usage so scenario 16 can assert non-null cost/token
@@ -361,13 +340,12 @@ async function buildSampleProject(repoPath: string): Promise<void> {
 		"# warren acceptance sample project",
 		"",
 		"This repo is a fixture used by warren's acceptance harness.",
-		"It declares the `stub-shell` agent (see `burrow.toml`) which",
-		"runs `tools/stub-agent.sh` for deterministic, no-network runs.",
+		"Runs dispatch against the boot-seeded `stub-shell` agent, which",
+		"the harness PATH shims drive for deterministic, no-network runs.",
 		"",
 	].join("\n");
 	await writeFile(join(repoPath, "README.md"), readme);
 
-	await runIn(repoPath, ["chmod", "+x", "tools/stub-agent.sh"], env);
 	await runIn(repoPath, ["chmod", "+x", "tools/pi-stub-agent.sh"], env);
 	await runIn(repoPath, ["chmod", "+x", "tools/claude-code-stub-agent.sh"], env);
 	await runIn(repoPath, ["git", "add", "."], env);

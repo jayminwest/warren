@@ -103,7 +103,6 @@ export const scenario: Scenario = {
 				canopyRepoUrl: ctx.fixtures.canopyRepoUrl,
 				gitConfigPath,
 				extraEnv: {
-					WARREN_STUB_SLEEP_MS: "0",
 					// FakeForge owns the project's fake:// URL: reap's pr_open
 					// records into the state file and the coordinator's merge
 					// gate polls it — no GH fixture, no fetch override.

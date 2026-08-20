@@ -107,7 +107,6 @@ export const scenario: Scenario = {
 				canopyRepoUrl: ctx.fixtures.canopyRepoUrl,
 				gitConfigPath,
 				extraEnv: {
-					WARREN_STUB_SLEEP_MS: "0",
 					// FakeForge owns the project's fake:// URL; the auto-merge
 					// driver above merges the child PR through the state file.
 					WARREN_FORGE: "fake",
@@ -202,10 +201,6 @@ async function buildReadyPlansFixture(input: BuildReadyPlansFixtureInput): Promi
 
 	const burrowToml = await readFile(join(input.sourceSamplePath, "burrow.toml"), "utf8");
 	await writeFile(join(input.fixturePath, "burrow.toml"), burrowToml);
-	await copyFile(
-		join(input.sourceSamplePath, "tools", "stub-agent.sh"),
-		join(input.fixturePath, "tools", "stub-agent.sh"),
-	);
 	// claude-code stub is the agent this scenario dispatches against — it
 	// emits a `result` envelope warren's detectRuntimeTerminal recognizes
 	// so the dispatched child run finalizes cleanly.
@@ -227,7 +222,6 @@ async function buildReadyPlansFixture(input: BuildReadyPlansFixtureInput): Promi
 
 	const env = withGitIdentity();
 	await runIn(input.fixturePath, ["git", "init", "--initial-branch=main"], env);
-	await runIn(input.fixturePath, ["chmod", "+x", "tools/stub-agent.sh"], env);
 	await runIn(input.fixturePath, ["chmod", "+x", "tools/claude-code-stub-agent.sh"], env);
 	await runIn(input.fixturePath, ["git", "add", "."], env);
 	await runIn(

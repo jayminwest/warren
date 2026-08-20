@@ -79,7 +79,7 @@ interface RunRow {
 
 interface CreateRunResponse {
 	readonly run: RunRow;
-	readonly burrow: { readonly id: string; readonly workspacePath: string };
+	readonly sandbox: { readonly id: string; readonly workspacePath: string };
 }
 
 const RUN_ID_PATTERN = /^run_[0-9a-hjkmnpqrstvwxyz]{12}$/;
@@ -158,8 +158,8 @@ export const scenario: Scenario = {
 			"POST /runs run.sandboxRunId is null or empty after 201",
 		);
 		assertTrue(
-			typeof r1Body.burrow?.id === "string" && r1Body.burrow.id === r1.sandboxId,
-			"POST /runs response.burrow.id matches run.sandboxId",
+			typeof r1Body.sandbox?.id === "string" && r1Body.sandbox.id === r1.sandboxId,
+			"POST /runs response.sandbox.id matches run.sandboxId",
 		);
 		// workspacePath is intentionally an empty string post-RuntimeProvider
 		// seam (warren-1f56): a burrow host path has no provider-neutral home,
@@ -176,9 +176,9 @@ export const scenario: Scenario = {
 		// silently passing. The field's presence is asserted by the strict
 		// equality itself (`undefined !== ""`).
 		assertEqual(
-			r1Body.burrow?.workspacePath,
+			r1Body.sandbox?.workspacePath,
 			"",
-			'POST /runs response.burrow.workspacePath is exactly "" (seam drops host path until §5.C — warren-1f56)',
+			'POST /runs response.sandbox.workspacePath is exactly "" (seam drops host path until §5.C — warren-1f56)',
 		);
 
 		// rendered_agent_json populated and matches the cached envelope.

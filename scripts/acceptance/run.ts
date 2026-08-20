@@ -239,11 +239,6 @@ async function runInProcMode(opts: RunModeArgs): Promise<number> {
 				// (warren-0f18/warren-ea0a): the fixture shim dir wins
 				// resolution, so runs drive the deterministic stub agents.
 				PATH: `${fixtures.shimBinDir}:${process.env.PATH ?? ""}`,
-				// Stub agent reads this; burrow's [env].optional in the sample
-				// project's burrow.toml forwards it into the sandbox. 8s gives
-				// scenarios 05/06 a steady stream of per-second heartbeat
-				// events while leaving room to kill+restart warren mid-run.
-				WARREN_STUB_SLEEP_MS: "8000",
 				// Scenario 15 drives a live cron + scheduledFor dispatch via
 				// the R-06 tick loop; the 60s production default would push
 				// the scenario past any reasonable budget. Other scenarios

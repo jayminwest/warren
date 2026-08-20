@@ -44,7 +44,7 @@ interface ProjectRow {
 
 interface CreateRunResponse {
 	readonly run: { readonly id: string; readonly state: string };
-	readonly burrow: { readonly id: string };
+	readonly sandbox: { readonly id: string };
 }
 
 interface EventEnvelope {

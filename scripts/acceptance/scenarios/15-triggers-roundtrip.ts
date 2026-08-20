@@ -80,7 +80,7 @@ interface ListTriggersResponse {
 
 interface RunNowResponse {
 	readonly run: RunRow;
-	readonly burrow: { id: string; workspacePath: string };
+	readonly sandbox: { id: string; workspacePath: string };
 }
 
 interface RefreshResponse {

@@ -107,7 +107,6 @@ export const scenario: Scenario = {
 				canopyRepoUrl: ctx.fixtures.canopyRepoUrl,
 				gitConfigPath,
 				extraEnv: {
-					WARREN_STUB_SLEEP_MS: "0",
 					// The whole point: select FakeForge and NOTHING else special.
 					WARREN_FORGE: "fake",
 					// Cross-process OBSERVATION seam only — the scenario reads the

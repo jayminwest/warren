@@ -146,13 +146,6 @@ export const scenario: Scenario = {
 				canopyRepoUrl: ctx.fixtures.canopyRepoUrl,
 				gitConfigPath,
 				dbUrl: scenarioUrl,
-				extraEnv: {
-					// Same per-second heartbeat shape scenario 06 relies on so
-					// the bridge has a steady stream of new burrow events
-					// during the warren-down window. Without it, the resume
-					// path is silently dormant.
-					WARREN_STUB_SLEEP_MS: "8000",
-				},
 			});
 			ctx.logger.info(`scenario-19: warren ready at ${handle.warrenUrl} (pg=${scenarioDbName})`);
 
