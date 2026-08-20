@@ -191,7 +191,9 @@ export async function showSeed(
  * doesn't resolve (e.g. `Issue not found`, `no such issue`). Distinguishing
  * this from a transient shell-out failure (timeout, lock) lets the plan-run
  * coordinator fail terminally instead of retrying forever (warren-0fed).
+ * Exported for extensions.ts's close path (warren-53ea) — one spelling of
+ * "not found" for every sd surface.
  */
-function isNotFoundMessage(detail: string): boolean {
+export function isNotFoundMessage(detail: string): boolean {
 	return /not found|no such/i.test(detail);
 }

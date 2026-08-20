@@ -142,7 +142,14 @@ function createCloseChildSeed(deps: CloseChildSeedDeps): CoordinatorCloseChildSe
 	return async ({ planRun, child }) => {
 		try {
 			const project = await repos.projects.get(planRun.projectId);
-			if (project === null || !project.hasSeeds) return;
+			if (project === null) return;
+			// warren-53ea: the hasSeeds gate applies only to a GIT-NATIVE tracker
+			// (seeds state lives in the clone). A non-git-native tracker closes
+			// through its host API — closeMergedChildSeed's isGitNative arm — and
+			// needs no clone state at all. Gating it on hasSeeds would suppress
+			// the close entirely for tracker-served projects (caught by
+			// acceptance scenario 43).
+			if (issueTracker.capabilities.isGitNative && !project.hasSeeds) return;
 			// warren-63e7: mint the fetch/push credential from the forge
 			// immediately before the git spawns (forge-contract.md §4 — minted,
 			// never held) instead of reading a boot-captured env.GITHUB_TOKEN.

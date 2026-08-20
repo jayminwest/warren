@@ -91,6 +91,21 @@ if [ -n "${seed_id}" ]; then
 JSON
 fi
 
+# Remote-tracker plan-run mode (warren-53ea / scenario 43): when the
+# prompt embeds `touchfile <id>`, the project has NO .seeds/ directory
+# (the issue queue lives in an external warren-tracker/v1 container), so
+# the shim authors an ordinary file commit — the run branch needs a
+# non-zero commitsAhead so reap pushes it and the plan-run coordinator's
+# PR-merge gate has a PR to poll.
+if [[ "${_stdin}" =~ touchfile[[:space:]]+([A-Za-z0-9_.-]+) ]]; then
+  _issue_id="${BASH_REMATCH[1]}"
+  mkdir -p agent-output
+  printf 'touched by the claude stub agent for %s\n' "${_issue_id}" > "agent-output/${_issue_id}.txt"
+  git add "agent-output/${_issue_id}.txt" >/dev/null 2>&1 || true
+  git -c user.name="claude-path-shim" -c user.email="shim@warren.invalid" \
+    commit -m "claude-shim: touch ${_issue_id}" >/dev/null 2>&1 || true
+fi
+
 if [[ "${_stdin}" =~ closeseed[[:space:]]+([A-Za-z0-9_.-]+) ]]; then
   _seed_id="${BASH_REMATCH[1]}"
   _ts="$(date -u +%Y-%m-%dT%H:%M:%S.000Z)"

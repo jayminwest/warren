@@ -23,12 +23,13 @@
 
 import { formatError } from "../core/errors.ts";
 import type { SpawnFn } from "../projects/clone.ts";
-import { SeedsCliError } from "./errors.ts";
+import { SeedNotFoundError, SeedsCliError } from "./errors.ts";
 import {
 	type ParseScheduledSeedsResult,
 	parseScheduledSeeds,
 	SeedsListEnvelopeSchema,
 } from "./schema.ts";
+import { isNotFoundMessage } from "./show.ts";
 import { DEFAULT_SD_TIMEOUT_MS, truncate } from "./util.ts";
 import { type WarrenExtensions, WarrenExtensionsSchema } from "./warren-extensions.ts";
 
@@ -97,9 +98,16 @@ export async function closeSeed(
 		timeoutMs: deps.timeoutMs ?? DEFAULT_SD_TIMEOUT_MS,
 	});
 	if (result.exitCode !== 0) {
-		throw new SeedsCliError(
-			`sd close ${seedId} exited ${result.exitCode}: ${truncate(result.stderr || result.stdout)}`,
-		);
+		const detail = truncate(result.stderr || result.stdout);
+		const message = `sd close ${seedId} exited ${result.exitCode}: ${detail}`;
+		// warren-53ea: the IssueTracker not-found taxonomy holds on the close
+		// path too — a missing id is SeedNotFoundError (→ IssueNotFoundError at
+		// the SeedsTracker seam), never a generic TrackerError. Mirrors
+		// show.ts's read-path mapping.
+		if (isNotFoundMessage(detail)) {
+			throw new SeedNotFoundError(message);
+		}
+		throw new SeedsCliError(message);
 	}
 }
 

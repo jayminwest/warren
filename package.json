@@ -93,7 +93,7 @@
 		"acceptance": "bun run scripts/acceptance/run.ts",
 		"acceptance:container": "bun run scripts/acceptance/run.ts --mode container",
 		"acceptance:public": "bun run scripts/acceptance/run.ts --only 39 --stop-on-failure",
-		"acceptance:nightly": "bun run scripts/acceptance/run.ts --only 01,03,04,05,06,07,08,09,10,11,12,14,15,16,17,21,22,26,30,35,36,40,41,42",
+		"acceptance:nightly": "bun run scripts/acceptance/run.ts --only 01,03,04,05,06,07,08,09,10,11,12,14,15,16,17,21,22,26,30,35,36,40,41,42,43",
 		"prepare": "[ -e .git ] && git config core.hooksPath scripts/hooks && git config merge.seeds-jsonl.driver 'bun scripts/merge-seeds-jsonl.ts %O %A %B' || true"
 	},
 	"devDependencies": {

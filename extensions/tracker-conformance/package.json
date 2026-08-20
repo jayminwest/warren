@@ -1,0 +1,22 @@
+{
+	"name": "@warren-ext/tracker-conformance",
+	"version": "0.0.0",
+	"description": "warren-tracker/v1 conformance suite + FakeTracker reference server (warren-53ea) — the falsification test a foreign issue-tracker implementation runs against",
+	"private": true,
+	"type": "module",
+	"main": "src/fake-tracker.ts",
+	"scripts": {
+		"start": "bun run src/fake-tracker.ts",
+		"check": "bun run src/check.ts",
+		"test": "bun test",
+		"typecheck": "tsc --noEmit -p tsconfig.json"
+	},
+	"license": "MIT",
+	"engines": {
+		"bun": ">=1.1.0"
+	},
+	"devDependencies": {
+		"@types/bun": "^1.2.0",
+		"typescript": "^5.6.0"
+	}
+}
