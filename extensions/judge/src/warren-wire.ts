@@ -41,9 +41,12 @@ export function isTerminalRunState(state: RunState): boolean {
 
 /**
  * Infrastructure failure vocabulary, mirroring warren's
- * `RUN_FAILURE_REASONS`. Behavioral failures are the judge's own taxonomy
- * (`wire.ts`); this is the ground-truth infrastructure arm the judge reads
- * to separate "the platform failed" from "the agent failed".
+ * `RUN_FAILURE_REASONS` (`src/core/wire.ts`). Behavioral failures are the
+ * judge's own taxonomy (`wire.ts`); this is the ground-truth infrastructure
+ * arm the judge reads to separate "the platform failed" from "the agent
+ * failed". Hand-maintained on purpose — extensions never import `src/` — so
+ * keep it in core's order and append when core grows (warren-4e2a /
+ * warren-ba08 added `spawn_failed`, `no_changes`, `push_rejected_policy`).
  */
 export const RUN_FAILURE_REASONS = [
 	"never_started",
@@ -55,6 +58,7 @@ export const RUN_FAILURE_REASONS = [
 	"sandbox_run_lost",
 	"sandbox_unreachable",
 	"dropped_commit",
+	"no_changes",
 	"finalize_failed",
 	"push_rejected_policy",
 	"finalize_unposted",
