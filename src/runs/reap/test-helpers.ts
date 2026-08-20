@@ -142,6 +142,12 @@ export interface FakeExecOpts {
 	/** Throw on git rev-list calls (default: succeed). */
 	failRevList?: string;
 	/**
+	 * Stdout for `git rev-parse --verify <ref>` (warren-ba08: the pre-push
+	 * `origin/<branch>` tip finalize pins on a ref-dispatch repair run).
+	 * Default a fixed fake SHA; pass `""` to simulate a missing tracking ref.
+	 */
+	revParse?: string;
+	/**
 	 * Throw on `git cat-file -e <ref>:<path>` (default: succeed) — simulates
 	 * a seed drop absent from the base ref, i.e. untracked in every ref
 	 * (warren-0f18's seed_reset sweep test).
@@ -193,6 +199,15 @@ function handleRevList(failRevList: string | null, revListCount: string): ExecRe
 	return { stdout: `${revListCount}\n`, stderr: "" };
 }
 
+/** warren-ba08: `git rev-parse --verify` exits non-zero (throws) when the ref is missing. */
+function handleRevParse(revParse: string): ExecResult {
+	if (revParse === "") throw new Error("fatal: Needed a single revision");
+	return { stdout: `${revParse}\n`, stderr: "" };
+}
+
+/** The pre-run tip `fakeExec` resolves `origin/<branch>` to by default. */
+export const FAKE_REV_PARSE_SHA = "0123456789abcdef0123456789abcdef01234567";
+
 function handleStatus(failGitStatus: string | null, gitStatus: string): ExecResult {
 	if (failGitStatus !== null) throw new Error(failGitStatus);
 	return { stdout: gitStatus, stderr: "" };
@@ -215,6 +230,7 @@ export function fakeExec(opts: FakeExecOpts = {}): FakeExec {
 	const failRevList = opts.failRevList ?? null;
 	const failCatFile = opts.failCatFile === true;
 	const revListCount = opts.revListCount ?? "1";
+	const revParse = opts.revParse ?? FAKE_REV_PARSE_SHA;
 	const numstat = opts.numstat ?? "";
 	const stagedDelta = opts.stagedDelta === true;
 	const gitStatus = opts.gitStatus ?? "";
@@ -224,6 +240,7 @@ export function fakeExec(opts: FakeExecOpts = {}): FakeExec {
 	const route = (cmd: string, args: readonly string[]): ExecResult | null => {
 		if (isGitSub(cmd, args, "cat-file")) return handleCatFile(failCatFile);
 		if (isGitSub(cmd, args, "rev-list")) return handleRevList(failRevList, revListCount);
+		if (isGitSub(cmd, args, "rev-parse")) return handleRevParse(revParse);
 		if (isGitSub(cmd, args, "status") && args.includes("--porcelain")) {
 			return handleStatus(failGitStatus, gitStatus);
 		}

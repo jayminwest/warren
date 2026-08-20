@@ -35,7 +35,12 @@ export interface RecordOutcomeFactsInput {
 	readonly workspacePath: string | null;
 	/** The run's pushed branch (K8s clone-fetch source); null = none. */
 	readonly branch: string | null;
-	/** Project default branch; null = unmeasurable (matches finalize). */
+	/**
+	 * The base ref for the `base..head` diff — finalize's reported
+	 * `commitsAheadBase` (the ref it counted `commits_ahead` against; a SHA on
+	 * a ref-dispatch repair run, warren-ba08) else the run's base branch;
+	 * null = unmeasurable (matches finalize).
+	 */
 	readonly baseBranch: string | null;
 	readonly project: { readonly gitUrl: string; readonly localPath: string };
 	/** finalize's measured count; the fact persisted verbatim. */
@@ -104,14 +109,7 @@ async function measureDiffStats(input: RecordOutcomeFactsInput): Promise<DiffSta
 	if (input.baseBranch === null) return null;
 	// LocalProvider: read straight off the still-live host worktree.
 	if (input.workspacePath !== null) {
-		const baseRef =
-			input.branch !== null && input.branch === input.baseBranch
-				? `origin/${input.baseBranch}`
-				: input.baseBranch;
-		return (
-			(await numstat(input.exec, input.workspacePath, baseRef, "HEAD")) ??
-			(await numstat(input.exec, input.workspacePath, input.baseBranch, "HEAD"))
-		);
+		return numstat(input.exec, input.workspacePath, input.baseBranch, "HEAD");
 	}
 	// K8s: no host worktree — fetch the pushed branch into the project clone
 	// and read the range there (warren-ab66 posture). Requires the push to
@@ -142,11 +140,7 @@ async function numstatFromClone(
 		return null;
 	}
 	try {
-		const baseRef = branch === baseBranch ? `origin/${baseBranch}` : baseBranch;
-		return (
-			(await numstat(exec, project.localPath, baseRef, tempRef)) ??
-			(await numstat(exec, project.localPath, baseBranch, tempRef))
-		);
+		return await numstat(exec, project.localPath, baseBranch, tempRef);
 	} finally {
 		try {
 			await exec.run("git", ["update-ref", "-d", tempRef], {
@@ -179,7 +173,7 @@ async function numstat(
 }
 
 /**
- * Parse `git diff --numstat` output: one `<added>	<deleted>	<path>` row
+ * Parse `git diff --numstat` output: one `<added>\t<deleted>\t<path>` row
  * per file, with `-` for binary files (counted as a changed file with zero
  * line deltas, matching `git diff --stat`'s "Bin 0 -> N bytes" row).
  */
@@ -190,7 +184,7 @@ export function parseNumstat(stdout: string): DiffStats {
 	for (const raw of stdout.split("\n")) {
 		const line = raw.trimEnd();
 		if (line === "") continue;
-		const [added, removed] = line.split("	");
+		const [added, removed] = line.split("\t");
 		if (added === undefined || removed === undefined) continue;
 		filesChanged++;
 		if (added !== "-") insertions += Number.parseInt(added, 10) || 0;

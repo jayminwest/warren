@@ -260,9 +260,22 @@ describe("finalize — stage trail + push reporting", () => {
 		const result = await p.finalize(HANDLE, intent({ artifacts: [], baseBranch: undefined }));
 		expect(result.pushed).toBe(true);
 		expect(result.commitsAhead).toBe(null);
+		expect(result.commitsAheadBase).toBeUndefined();
 		expect(result.stages).toEqual([
 			{ stage: "branch_push", status: "ok" },
 			{ stage: "commits_ahead", status: "skipped" },
+		]);
+	});
+
+	test("fresh-branch dispatch counts baseBranch..HEAD with no rev-parse and reports the base", async () => {
+		const fs = fakeFs(fullSeed());
+		const exec = fakeExec({ revListCount: "3" });
+		const result = await provider({ fs, exec }).finalize(HANDLE, intent({ artifacts: [] }));
+		expect(result.commitsAhead).toBe(3);
+		expect(result.commitsAheadBase).toBe("main");
+		expect(exec.calls.map((c) => c.args)).toEqual([
+			["push", "origin", "HEAD:warren/run-1"],
+			["rev-list", "--count", "main..HEAD"],
 		]);
 	});
 });

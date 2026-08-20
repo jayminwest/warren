@@ -4,8 +4,23 @@ import {
 	HARNESS_STATE_PREFIXES,
 	isBookkeepingOnlyDirty,
 	parseDirtyPaths,
+	repairBaseTrackingRef,
 	WARREN_RUNTIME_SCRATCH,
 } from "./util.ts";
+
+describe("repairBaseTrackingRef (warren-ba08)", () => {
+	test("a ref-dispatch repair run (branch === baseBranch) counts from origin/<base>", () => {
+		expect(repairBaseTrackingRef("fix/pr-head", "fix/pr-head")).toBe("origin/fix/pr-head");
+	});
+
+	test("a fresh-branch dispatch keeps the plain base ref", () => {
+		expect(repairBaseTrackingRef("warren/run-1", "main")).toBeNull();
+	});
+
+	test("an empty push branch (HEAD refspec) is never the repair topology", () => {
+		expect(repairBaseTrackingRef("", "")).toBeNull();
+	});
+});
 
 describe("parseDirtyPaths", () => {
 	test("parses porcelain status lines into workspace-relative paths", () => {

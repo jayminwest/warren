@@ -221,7 +221,9 @@ interface FinalizeIntent {
 }
 interface FinalizeResult {
   pushed: boolean;
-  commitsAhead: number;
+  commitsAhead: number | null;      // null = not measured (warren-f3bb)
+  commitsAheadBase?: string;        // ref the count ran against; a repair run pins the
+                                    // pre-push origin/<base> SHA (warren-ba08)
   emptyPush: boolean;               // dropped-commit detection
   mirror: {                         // artifact diffs the domain applies to the project clone
     mulch?: MulchDelta; seeds?: SeedsDelta; plans?: PlansDelta; plot?: PlotDelta;

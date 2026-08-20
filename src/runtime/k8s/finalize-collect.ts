@@ -13,7 +13,7 @@
  */
 
 import { join } from "node:path";
-import { parseDirtyPaths } from "../../runs/reap/util.ts";
+import { parseDirtyPaths, repairBaseTrackingRef } from "../../runs/reap/util.ts";
 import { authenticatedCloneUrl } from "../../workspace/git/clone-url.ts";
 import type {
 	ArtifactDelta,
@@ -188,6 +188,8 @@ function bodyToFiles(path: string, body: string | null): ArtifactDeltaFile[] {
 export interface PushOutcome {
 	pushed: boolean;
 	commitsAhead: number | null;
+	/** The ref `commitsAhead` was counted against; null when not measured. */
+	commitsAheadBase: string | null;
 	emptyPush: boolean;
 	dirty: boolean;
 	dirtyPaths: readonly string[];
@@ -196,10 +198,42 @@ export interface PushOutcome {
 const NO_PUSH: PushOutcome = {
 	pushed: false,
 	commitsAhead: null,
+	commitsAheadBase: null,
 	emptyPush: false,
 	dirty: false,
 	dirtyPaths: [],
 };
+
+/**
+ * The base ref `commits_ahead` counts from, resolved BEFORE the push (parity
+ * with `../local/finalize.ts`): `intent.baseBranch` as-is, except on a
+ * ref-dispatch repair run where the pre-push tip of `origin/<baseBranch>` must
+ * be pinned to a SHA first (see `repairBaseTrackingRef`). `null` ⇒ no
+ * `baseBranch`, count skipped; an `error` ⇒ the tracking ref could not be
+ * resolved, count fails (never a structural `0`).
+ */
+type CountBase = { ref: string } | { error: Error } | null;
+
+async function resolveCountBase(
+	intent: InPodFinalizeIntent,
+	workspacePath: string,
+	git: FinalizeGitRunner,
+): Promise<CountBase> {
+	if (intent.baseBranch === undefined || intent.baseBranch === "") return null;
+	const trackingRef = repairBaseTrackingRef(intent.branch, intent.baseBranch);
+	if (trackingRef === null) return { ref: intent.baseBranch };
+	const res = await git(["rev-parse", "--verify", trackingRef], {
+		cwd: workspacePath,
+		timeoutMs: 10_000,
+	});
+	const sha = res.stdout.trim();
+	if (res.exitCode !== 0 || sha === "") {
+		return {
+			error: new Error(res.stderr.trim() || `git rev-parse ${trackingRef} returned no object`),
+		};
+	}
+	return { ref: sha };
+}
 
 /**
  * `git push origin HEAD:<branch>` then the commits-ahead / empty-push count,
@@ -220,10 +254,9 @@ async function runPush(
 		trail.skipped("commits_ahead");
 		return NO_PUSH;
 	}
-	const commitsAhead = await countCommitsAhead(intent, workspacePath, git, trail);
-	const dirtyPaths = commitsAhead === 0 ? await workspaceDirtyPaths(workspacePath, git) : [];
-	const dirty = dirtyPaths.length > 0;
-
+	// warren-ba08: pin the count base before the push rewrites the
+	// remote-tracking ref on a repair run; the count itself stays post-push.
+	const countBase = await resolveCountBase(intent, workspacePath, git);
 	const refspec = intent.branch === "" ? "HEAD" : `HEAD:${intent.branch}`;
 	const restore = await authenticateOrigin(intent.gitToken, workspacePath, git);
 	try {
@@ -232,6 +265,7 @@ async function runPush(
 			const err = new Error(push.stderr.trim() || push.stdout.trim() || "git push failed");
 			trail.failed("branch_push", err);
 			collector.fail("branch_push", err, workspacePath);
+			trail.skipped("commits_ahead");
 			// warren-b68d: a policy refusal carries its own remediation onward.
 			// Both streams are read because git splits the remote's echo across
 			// them by version.
@@ -242,11 +276,18 @@ async function runPush(
 			return NO_PUSH;
 		}
 		trail.ok("branch_push");
+		const commitsAhead = await countCommitsAhead(countBase, workspacePath, git, trail);
+		// warren-89b0: capture dirty PATHS on a zero-commit push so warren can
+		// classify a bookkeeping-only no-op vs a dropped commit (parity with
+		// ../local/finalize.ts).
+		const dirtyPaths = commitsAhead === 0 ? await workspaceDirtyPaths(workspacePath, git) : [];
 		return {
 			pushed: true,
 			commitsAhead,
+			commitsAheadBase:
+				commitsAhead !== null && countBase !== null && "ref" in countBase ? countBase.ref : null,
 			emptyPush: commitsAhead === 0,
-			dirty,
+			dirty: dirtyPaths.length > 0,
 			dirtyPaths,
 		};
 	} finally {
@@ -282,29 +323,23 @@ export async function authenticateOrigin(
 }
 
 async function countCommitsAhead(
-	intent: InPodFinalizeIntent,
+	countBase: CountBase,
 	workspacePath: string,
 	git: FinalizeGitRunner,
 	trail: StageTrail,
 ): Promise<number | null> {
-	if (intent.baseBranch === undefined || intent.baseBranch === "") {
+	if (countBase === null) {
 		trail.skipped("commits_ahead");
 		return null;
 	}
-	const baseRef =
-		intent.branch !== "" && intent.branch === intent.baseBranch
-			? `origin/${intent.baseBranch}`
-			: intent.baseBranch;
-	let res = await git(["rev-list", "--count", `${baseRef}..HEAD`], {
+	if ("error" in countBase) {
+		trail.failed("commits_ahead", countBase.error);
+		return null;
+	}
+	const res = await git(["rev-list", "--count", `${countBase.ref}..HEAD`], {
 		cwd: workspacePath,
 		timeoutMs: 10_000,
 	});
-	if (res.exitCode !== 0 && baseRef !== intent.baseBranch) {
-		res = await git(["rev-list", "--count", `${intent.baseBranch}..HEAD`], {
-			cwd: workspacePath,
-			timeoutMs: 10_000,
-		});
-	}
 	if (res.exitCode !== 0) {
 		trail.failed("commits_ahead", new Error(res.stderr.trim() || "git rev-list failed"));
 		return null;
@@ -376,6 +411,7 @@ export async function collectFinalizeResult(
 	return {
 		pushed: push.pushed,
 		commitsAhead: push.commitsAhead,
+		...(push.commitsAheadBase !== null ? { commitsAheadBase: push.commitsAheadBase } : {}),
 		emptyPush: push.emptyPush,
 		dirty: push.dirty,
 		dirtyPaths: push.dirtyPaths,

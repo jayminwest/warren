@@ -208,6 +208,24 @@ const IGNORABLE_DIRTY_PREFIXES: readonly string[] = [
 ];
 
 /**
+ * The remote-tracking ref finalize must resolve BEFORE `branch_push` to count
+ * `commits_ahead` on a ref-dispatch repair run, or `null` when the plain
+ * `baseBranch..HEAD` range is the right one (warren-ba08, #979 / #994).
+ *
+ * On a repair run the push branch IS the base branch (`branch === baseBranch`,
+ * warren-709e): workspace init checks the target branch out directly and
+ * skips the per-run carve, so HEAD is attached to `baseBranch` and
+ * `rev-list --count baseBranch..HEAD` is empty by construction — whether the
+ * agent landed 0 commits or 10. The only ref still holding the pre-run tip is
+ * `origin/<baseBranch>`, and `git push origin HEAD:<baseBranch>` rewrites it
+ * on success, so the caller must `rev-parse` it before the push and count
+ * against the resolved SHA after.
+ */
+export function repairBaseTrackingRef(branch: string, baseBranch: string): string | null {
+	return branch !== "" && branch === baseBranch ? `origin/${baseBranch}` : null;
+}
+
+/**
  * True when the dirty tree is non-empty AND every dirty path lives under a
  * bookkeeping ({@link BOOKKEEPING_ARTIFACT_PREFIXES}) or harness-state
  * ({@link HARNESS_STATE_PREFIXES}) directory (warren-89b0, warren-f6f2). An
