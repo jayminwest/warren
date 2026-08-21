@@ -108,7 +108,7 @@
 		"yaml": "^2.8.2"
 	},
 	"dependencies": {
-		"@kubernetes/client-node": "^1.4.0",
+		"@kubernetes/client-node": "^2.0.0",
 		"@sentry/bun": "^10.59.0",
 		"commander": "^15.0.0",
 		"croner": "^10.0.1",
