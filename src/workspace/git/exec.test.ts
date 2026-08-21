@@ -1,24 +1,14 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { WorkspaceMaterializationError } from "../errors.ts";
 import { runGit, runGitOrThrow } from "./exec.ts";
+import { mkdtempOutsideRepo, scrubbedGitEnv } from "./test-fixture.ts";
 
-/**
- * Strip inherited `GIT_*` vars (GIT_DIR, GIT_INDEX_FILE, GIT_WORK_TREE, ...)
- * so a temp-dir git call is isolated from any surrounding repo context — most
- * importantly the git pre-commit hook, which exports GIT_DIR into the
- * environment and would otherwise make "outside a repo" assertions resolve to
- * the worktree's own .git.
- */
 export function cleanGitEnv(
 	extra: Record<string, string | undefined> = {},
 ): Record<string, string> {
-	const out: Record<string, string> = {};
-	for (const [k, v] of Object.entries(process.env)) {
-		if (v !== undefined && !k.startsWith("GIT_")) out[k] = v;
-	}
+	const out = scrubbedGitEnv();
 	for (const [k, v] of Object.entries(extra)) {
 		if (v !== undefined) out[k] = v;
 	}
@@ -29,7 +19,7 @@ describe("runGit", () => {
 	let root: string;
 
 	beforeEach(() => {
-		root = mkdtempSync(join(tmpdir(), "warren-exec-"));
+		root = mkdtempOutsideRepo("warren-exec-");
 	});
 
 	afterEach(() => {
@@ -114,7 +104,7 @@ describe("runGitOrThrow", () => {
 	let root: string;
 
 	beforeEach(() => {
-		root = mkdtempSync(join(tmpdir(), "warren-exec-throw-"));
+		root = mkdtempOutsideRepo("warren-exec-throw-");
 	});
 
 	afterEach(() => {

@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { WorkspaceMaterializationError } from "../errors.ts";
-import { assertFixtureHermetic, fixtureGitOrThrow } from "./test-fixture.ts";
+import { assertFixtureHermetic, fixtureGitOrThrow, mkdtempOutsideRepo } from "./test-fixture.ts";
 import {
 	addWorktree,
 	branchExists,
@@ -85,7 +85,7 @@ describe("git worktree helpers", () => {
 	});
 
 	test("discoverHostClone returns null outside a git repo", async () => {
-		const outside = mkdtempSync(join(tmpdir(), "warren-non-git-"));
+		const outside = mkdtempOutsideRepo("warren-non-git-");
 		try {
 			const result = await discoverHostClone(outside);
 			expect(result).toBeNull();
