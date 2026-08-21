@@ -17,11 +17,7 @@
 
 import type { Command } from "commander";
 import { loadWarrenClientConfigFromFile } from "../client/config-file.ts";
-import {
-	DEFAULT_WARREN_BASE_URL,
-	WarrenClient,
-	type WarrenClientConfig,
-} from "../client/index.ts";
+import { DEFAULT_WARREN_BASE_URL, WarrenClient, type WarrenClientConfig } from "../client/index.ts";
 import { ValidationError } from "../core/errors.ts";
 import type { CliContext, EnvLike } from "./output.ts";
 
