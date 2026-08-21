@@ -1,6 +1,13 @@
 # Tier-1 Observation Event Bus — `warren-ext/v1`
 
-**Status:** Live — the observe-only lifecycle seam (warren-bb60,
+**Kind:** contract
+**Design state:** approved
+**Delivery:** shipped
+**Arrived:** 2026-07-28
+**Shipped:** v0.13.0
+**Current truth:** `src/runs/lifecycle-bus.ts` and `src/server/main/lifecycle-bus-wiring.ts`
+
+The observe-only lifecycle seam (warren-bb60,
 pl-3a79 step 16) with its first proof consumer wired (warren-4e74,
 step 17). The bus + registration API ship in `src/runs/lifecycle-bus.ts`;
 the run-lifecycle emit call-sites (`run_dispatched` in `spawnRun`,

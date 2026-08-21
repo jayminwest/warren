@@ -1,5 +1,12 @@
 # Runtime, Supervisor & Event Durability
 
+**Kind:** contract
+**Design state:** approved
+**Delivery:** shipped
+**Arrived:** 2026-08-01
+**Shipped:** v0.17.0 reflects the warren-owned runtime
+**Current truth:** `src/runtime/`, `src/sandbox/`, and `src/supervisor/`
+
 > **Provenance:** lifted from the retired top-level spec §3.3, §5.1–5.3,
 > §9, §10.3, and §11.A as part of the SPEC retirement plan `pl-1717`
 > (step `warren-8184`), then rewritten in warren-ea0a when plan pl-3007

@@ -1,10 +1,16 @@
 # Warren → Kubernetes Migration Design
 
+**Kind:** architecture-decision
+**Design state:** approved
+**Delivery:** shipped
+**Arrived:** 2026-07-07
+**Shipped:** v0.10.0
+**Current truth:** [`docs/RUNBOOK-K8S.md`](../RUNBOOK-K8S.md) and `src/runtime/k8s/`
+
 > **HISTORICAL — shipped in v0.10.0.** This document is a design record, not a plan in flight. The K8s runtime it argues for now runs in production — see [`docs/RUNBOOK-K8S.md`](../RUNBOOK-K8S.md) for how warren behaves today.
 >
 > **Decisions #2 and #3 below changed during the work (2026-07-09).** Warren keeps burrow rather than archiving it: burrow became one provider (`LocalProvider`) behind the `RuntimeProvider` contract, and K8s became the scale backend. See [`runtime-provider-contract.md`](./runtime-provider-contract.md) for that seam. The rest of this document's architecture reasoning — pod-per-run, init container, pod-log streaming, `run_inbox` — still describes the shipped system.
 
-**Status:** Design record — architecture decisions.
 **Date:** 2026-07-07  
 **Author:** derived from postmortem `notes/2026-07-07-warren-deployed-oom-crash-loop-postmortem.md`  
 **Scope:** Warren control plane + run dispatch

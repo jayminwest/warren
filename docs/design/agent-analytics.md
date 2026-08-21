@@ -1,9 +1,13 @@
 # Agent Analytics — the telemetry corpus as a pillar
 
-**Status:** Approved — owner go recorded 2026-08-14. Seeds plan
-pl-103e (Agent analytics phase 1) is the execution vehicle for phases
-0–3. Phase 4 (observer extension, judge layer) remains explicitly
-deferred. Modeled on
+**Kind:** direction
+**Design state:** approved
+**Delivery:** mixed
+**Arrived:** 2026-08-11
+
+Owner approval was recorded 2026-08-14. Seeds plan pl-103e executed
+phases 0–3. Phase 4 contains both shipped judge work and deferred
+regulation work. Modeled on
 [`extensions.md`](./extensions.md), which is the house form for a
 direction record rather than a locked contract.
 **Date:** 2026-08-07, from a survey of HEAD plus PHILOSOPHY, ROADMAP,
@@ -25,9 +29,16 @@ recorded: rubric v1 launches with the full 15-class taxonomy
 (§12.4), and the verdict shape is locked (§12.3) — confidence as
 three bands, evidence ranges plus a capped note.
 **Grounds:** [`PHILOSOPHY.md`](../PHILOSOPHY.md) operating rules 1, 2,
-5, and 6; [`ROADMAP.md`](../../ROADMAP.md) Next items 1, 2, and 6;
-[`tier1-observation-bus.md`](./tier1-observation-bus.md);
+5, and 6; [`ROADMAP.md`](../../ROADMAP.md); [`tier1-observation-bus.md`](./tier1-observation-bus.md);
 `extensions/audit-log/FRICTION.md`.
+
+## Scope status
+
+| Scope | Delivery | Evidence |
+|---|---|---|
+| Phases 0–3: capture, insights, and UI | `shipped` | pl-103e, v0.16.0 |
+| Phase 4: judge extension | `shipped` | pl-17ca, v0.16.0 |
+| Phase 4: regulation and remaining extension surfaces | `deferred` | Requires a payer and the named FRICTION.md surfaces |
 
 ---
 
@@ -164,11 +175,10 @@ modules, and coverage is uneven.
   is therefore not harness-agnostic, and its response cannot separate
   "the harness emitted no commands" from "the commands did not parse."
 
-This is the `AgentRuntimeAdapter` seam, ROADMAP Next item 2.
-**Analytics is a second, larger payer for that seam.** Add a
-`toolShape` (and a `fileShape` for path extraction) beside `usageShape`
-in the adapter registry, and every insight in §4 becomes
-harness-agnostic by construction.
+This was the `AgentRuntimeAdapter` seam. The seam, runtime-owned
+extractors, and harness repatriation shipped by v0.17.0; Pi tool-shape
+repair followed before the v0.18.0 corpus campaign. Analytics was a
+second, larger payer for making those semantics harness-agnostic.
 
 ### 5.3 Outcome — success means "exited 0"
 

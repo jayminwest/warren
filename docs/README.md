@@ -28,10 +28,9 @@ Two paths lead out of here. Take the first to run warren against your own repos.
 
 ## Design records
 
-These two documents record the design of the Kubernetes runtime. Both shipped in v0.10.0, so read them as history rather than as a plan.
+[`design/README.md`](design/README.md) is the complete design catalog. It separates pre-roadmap discovery, approved but unscheduled ideas, roadmap promotion, shipped contracts, and historical evidence. It also records when each design arrived.
 
-- [`design/k8s-migration.md`](design/k8s-migration.md) — why each run became a pod: the OOM postmortem, pod-per-run, the init container, pod-log event streams, and `run_inbox` steering.
-- [`design/runtime-provider-contract.md`](design/runtime-provider-contract.md) — the `RuntimeProvider` seam that lets the `local` and `k8s` backends swap without a domain rewrite.
+Design approval is not a build commitment. [`../ROADMAP.md`](../ROADMAP.md) remains the only source of build order, Seeds holds executable work, and [`../CHANGELOG.md`](../CHANGELOG.md) is the ship log.
 
 ## Tombstones
 

@@ -1,5 +1,12 @@
 # Per-Run Preview Environments + PR-Body Template
 
+**Kind:** contract
+**Design state:** approved
+**Delivery:** shipped
+**Arrived:** 2026-08-01
+**Shipped:** v0.3.2
+**Current truth:** `src/runs/reap/preview.ts`, `src/server/main/preview-wiring.ts`, and `.warren/preview.yaml`
+
 > **Salvage provenance:** lifted verbatim from the retired top-level spec §11.L (per-run
 > preview environments, design lock for R-19) and §11.M (PR-body
 > template) as part of the SPEC retirement plan `pl-1717` (step

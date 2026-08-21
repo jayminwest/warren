@@ -290,6 +290,14 @@ name.
 `gen:cli-ref:check` rides the same gate and holds the generated CLI
 reference in place.
 
+`check:design-docs` also rides inside `lint` and enforces these rules:
+
+- Every record has controlled metadata and one row in `docs/design/README.md`.
+- Shipped records point to current truth.
+- Mixed records have a scope-status table.
+- Records in `next` state name their ROADMAP order.
+- Approval alone never means roadmap commitment.
+
 Details on the additional checks:
 
 - **`check:size`** (warren-4553) — enforces a per-file line-count
@@ -353,7 +361,7 @@ Details on the additional checks:
 Biome's `noExcessiveCognitiveComplexity` rule (warren-d3a6, ceiling 15)
 holds a project-wide complexity budget. New code must stay under the
 threshold. Existing complexity and filename exceptions document their
-ratchet policies inline in `biome.jsonc`; both lists only shrink.
+ratchet policies inline in `biome.jsonc`. Both lists only shrink.
 
 ## Docs are a public surface
 

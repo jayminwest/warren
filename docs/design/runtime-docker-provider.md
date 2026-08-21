@@ -1,5 +1,12 @@
 # Docker runtime provider (warren-3732)
 
+**Kind:** contract
+**Design state:** approved
+**Delivery:** shipped
+**Arrived:** 2026-08-17
+**Shipped:** v0.17.0
+**Current truth:** `src/runtime/docker/`
+
 `WARREN_RUNTIME=docker` runs each agent as a sibling container over the
 docker socket. The container boundary is the sandbox. Self-hosters who pick
 this topology no longer need nested bwrap or the four compose security

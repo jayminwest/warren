@@ -1,5 +1,12 @@
 # `.warren/` Directory Convention + Config-Loader Contract
 
+**Kind:** contract
+**Design state:** approved
+**Delivery:** shipped
+**Arrived:** 2026-08-01
+**Shipped:** v0.1.5; YAML reorganization followed in v0.3.2
+**Current truth:** `src/warren-config/`
+
 > **Salvage provenance:** lifted from the retired top-level spec §11.H (`.warren/`
 > directory convention, 2026-05-10, reorg 2026-05-14) as part of the
 > SPEC retirement plan `pl-1717` (step `warren-3bec`). The wording

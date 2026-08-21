@@ -1,6 +1,11 @@
 # Planning-session record — 2026-07-29 (reconstructed 2026-07-30)
 
-**Status:** historical record. The seven `local-planning/` docs from the
+**Kind:** historical-evidence
+**Design state:** approved
+**Delivery:** not-applicable
+**Arrived:** 2026-07-31
+
+The seven `local-planning/` docs from the
 2026-07-29 planning session were deleted (warren-0a2c) after their
 *decisions* were promoted into `docs/PHILOSOPHY.md`, `ROADMAP.md`, and
 seeds plan pl-1c02 — but before their *evidence layer* had a durable

@@ -1,5 +1,12 @@
 # Agent Composition + Pi Runtime Contract
 
+**Kind:** contract
+**Design state:** approved
+**Delivery:** shipped
+**Arrived:** 2026-08-01
+**Shipped:** before this record; live contract salvaged in v0.13.2
+**Current truth:** `src/registry/schema.ts`, `src/registry/builtins/`, and `src/runs/seed.ts`
+
 > **Salvage provenance:** lifted from the retired top-level spec §4.1 (the four sides of
 > a custom agent), the still-live schema parts of §4.2, §4.3 (the
 > composition flow), and §11.K (pi runtime support) as part of the SPEC

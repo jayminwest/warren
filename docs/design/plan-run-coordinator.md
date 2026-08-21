@@ -1,5 +1,12 @@
 # PlanRun Coordinator + Ready-to-Dispatch Surface
 
+**Kind:** contract
+**Design state:** approved
+**Delivery:** shipped
+**Arrived:** 2026-08-01
+**Shipped:** v0.3.17; ready-to-dispatch followed in v0.9.4
+**Current truth:** `src/plan-runs/`
+
 > **Salvage provenance:** lifted from the retired top-level spec §11.P (PlanRun: serial
 > plan execution, pl-a258) and §11.R (ready-to-dispatch surface,
 > pl-3fc4) as part of the SPEC retirement plan `pl-1717` (step

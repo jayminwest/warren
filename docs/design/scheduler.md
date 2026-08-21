@@ -1,5 +1,12 @@
 # Scheduler Contract (cron + scheduled-for)
 
+**Kind:** contract
+**Design state:** approved
+**Delivery:** shipped
+**Arrived:** 2026-08-01
+**Shipped:** v0.1.6
+**Current truth:** `src/triggers/`
+
 > **Salvage provenance:** lifted from the retired top-level spec §11.I (Scheduler —
 > cron + scheduled-for, 2026-05-11) as part of the SPEC retirement plan
 > `pl-1717` (step `warren-979e`). The wording below is the live

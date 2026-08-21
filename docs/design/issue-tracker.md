@@ -1,12 +1,18 @@
 # IssueTracker Contract — Design Record
 
-**Status:** Shipped — Track B of plan pl-a37b (seed warren-bc61) closed
-and landed in v0.18.0. The seam is live: `SeedsTracker` (implementation
-#1, in-core) and `RemoteTracker` (implementation #2, the bridge to
-external containers speaking `warren-tracker/v1`) boot-resolve per
-project from `.warren/config.yaml`. The wire protocol stays
-**EXPERIMENTAL** until a foreign implementation survives the
-conformance suite unchanged (PHILOSOPHY rule 4).
+**Kind:** contract
+**Design state:** approved
+**Delivery:** shipped
+**Arrived:** 2026-08-20
+**Shipped:** v0.18.0
+**Current truth:** `src/tracker/contract.ts`, `src/tracker/seeds-tracker.ts`, and `src/tracker/remote/`
+
+Track B of plan pl-a37b (seed warren-bc61) closed. The seam is live:
+`SeedsTracker` (implementation #1, in-core) and `RemoteTracker`
+(implementation #2, the bridge to external containers speaking
+`warren-tracker/v1`) boot-resolve per project from `.warren/config.yaml`.
+The wire protocol stays **EXPERIMENTAL** until a foreign implementation
+survives the conformance suite unchanged (PHILOSOPHY rule 4).
 **Date:** 2026-08-20 (retrospective record; the code landed as seeds
 warren-6c29, warren-5819, warren-2d98, warren-47b0, warren-6234,
 warren-de42, warren-d3a9, warren-53ea).

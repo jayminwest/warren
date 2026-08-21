@@ -1,8 +1,14 @@
 # RuntimeProvider Contract — Design Spike
 
+**Kind:** contract
+**Design state:** approved
+**Delivery:** shipped
+**Arrived:** 2026-07-09
+**Shipped:** v0.10.0
+**Current truth:** `src/runtime/contract.ts` and `src/runtime/registry.ts`
+
 > **HISTORICAL — shipped in v0.10.0.** This document is a design record, not a plan in flight. The contract below now lives in `src/runtime/contract.ts`, and both backends implement it — see [`docs/RUNBOOK-K8S.md`](../RUNBOOK-K8S.md) §0 for the operator view. Read the code when the two disagree.
 
-**Status:** Design — the seam that unblocked the migration branch
 **Date:** 2026-07-09
 **Companion:** [`k8s-migration.md`](./k8s-migration.md) — the architecture record this seam serves
 **Grounded in:** three codebase ground-truth audits (dispatch/RunSpec, event/status,
