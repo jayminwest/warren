@@ -1,4 +1,6 @@
 import { describe, expect, test } from "bun:test";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
 	type VersionResponse,
 	type WarrenClient,
@@ -8,6 +10,14 @@ import {
 } from "../../client/index.ts";
 import type { CliContext } from "../output.ts";
 import { remoteDoctorDeps, runRemoteDoctor } from "./doctor-remote.ts";
+
+// Point the config-file slot at a path that cannot exist, so a real
+// `~/.warren/client.json` on the dev machine (written by `warren login`)
+// never leaks into tests that exercise the built-in default. Same constant
+// and same hazard as `src/cli/client.test.ts`: `remoteDoctorDeps` runs the
+// real resolution chain, so without this the test fails on a corrupt file
+// that has nothing to do with the code under test (warren-3f76).
+const NO_CONFIG_FILE = { WARREN_CLIENT_CONFIG: join(tmpdir(), "warren-client-test-absent.json") };
 
 function captureContext(): { context: CliContext; out: string[]; err: string[] } {
 	const out: string[] = [];
@@ -91,7 +101,11 @@ describe("runRemoteDoctor", () => {
 
 	test("remoteDoctorDeps carries the slots the resolution picked (warren-8807)", () => {
 		const deps = remoteDoctorDeps(
-			{ WARREN_BASE_URL: "https://env.example.com", WARREN_API_TOKEN: "tok-env" },
+			{
+				...NO_CONFIG_FILE,
+				WARREN_BASE_URL: "https://env.example.com",
+				WARREN_API_TOKEN: "tok-env",
+			},
 			{},
 		);
 		expect(deps.client.config.baseUrl).toBe("https://env.example.com");
