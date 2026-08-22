@@ -318,7 +318,12 @@ Details on the additional checks:
   goes down. `src/ui/` is in scope as of warren-c8bd with three
   grandfathered entries. The walk skips only `src/ui/dist/`. Biome's
   `noExcessiveLinesPerFunction` rule enforces the same 500-line cap at
-  the function level.
+  the function level. `bun run scripts/check-file-sizes.ts --headroom 10`
+  reports the files with 10 lines of slack or less, and never fails
+  (warren-8746). A file at its ceiling passes every PR that touches it
+  alone. It then fails once a merge lands the union of two of them.
+  `.github/workflows/size-overshoot-report.yml` names what overshot, on
+  the PR itself.
 - **`check:debt`** (warren-7f2b) — scans `src/` and `scripts/` for
   `TODO` / `FIXME` / `HACK` / `XXX`. Any marker without a tracker
   reference on the same line fails the gate. Accepted references are

@@ -1,0 +1,138 @@
+name: size-overshoot-report
+
+# Tells a PR exactly what tripped `check:size`, without a local repro.
+#
+# The file-size budgets only ratchet down, on purpose: the failure text says
+# "refactor instead of raising the budget". So there is no honest auto-heal for
+# this gate the way `bundle-size-autoheal.yml` re-baselines a measured bundle,
+# and editing a contributor's source on their branch is not a bounded action.
+# What is missing is the diagnosis. When a file sits at its ceiling and two
+# independently green PRs each add lines to it, the update-branch merge pushes
+# the union to the branch, CI re-runs on the union, and `check:size` fails there
+# even though both sides passed alone (PRs #1007, #1009 and #1011 on
+# src/runs/spawn/dispatch.ts, 2026-08-19/20). Each needed a human to work out
+# which file and by how much.
+#
+# This job re-runs the gate on the head branch and, if it is the one that
+# failed, posts (or edits in place) ONE comment naming each overshoot as
+# `path: lines/budget (+N)` plus the files closest to their own ceilings. It
+# always exits 0, so it never masks the real failure, and it re-runs the gate
+# rather than parsing CI logs, so a failure that was something else costs one
+# comment-free job and says so.
+#
+# Uses the same GitHub App installation token as auto-merge.yml and
+# bundle-size-autoheal.yml, minted per run from AUTO_MERGE_APP_ID +
+# AUTO_MERGE_APP_PRIVATE_KEY. The App needs `pull_requests: write` to post the
+# comment; it already needs that scope to enable auto-merge.
+# NOTE: workflow_run jobs run from the DEFAULT branch's copy of this file, so
+# this only takes effect once merged to main (warren-8746).
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+
+permissions:
+  contents: read
+
+# Same reasoning as bundle-size-autoheal.yml (warren-ffd2): do NOT guard on
+# `github.event.workflow_run.event == 'pull_request'`. Warren pushes agent
+# branches directly, so a PR branch's CI run often carries the `push` event and
+# a pull_request-only guard would silently drop the failure this workflow
+# exists to explain. Accept any failed same-repo CI run on a non-main branch
+# and let `pr-gate` prove there is an open same-repo PR first.
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    if: >-
+      github.event.workflow_run.conclusion == 'failure' &&
+      github.event.workflow_run.head_branch != 'main' &&
+      github.event.workflow_run.head_repository.full_name == github.repository
+    env:
+      HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+      MARKER: "<!-- size-overshoot-report -->"
+      HEADROOM_LINES: "10"
+    steps:
+      - name: Mint app installation token
+        id: app-token
+        uses: actions/create-github-app-token@v3.2.0
+        with:
+          app-id: ${{ vars.AUTO_MERGE_APP_ID }}
+          private-key: ${{ secrets.AUTO_MERGE_APP_PRIVATE_KEY }}
+
+      # Only report onto a branch with an open same-repo PR. A push-event CI
+      # failure on a branch with no open PR has nowhere to post, and this keeps
+      # the fork semantics intact (an open fork PR fails the head-repo
+      # job-level check before we ever get here).
+      - name: Require an open same-repo PR on the head branch
+        id: pr-gate
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          GH_REPO: ${{ github.repository }}
+          HEAD_REF: ${{ github.repository_owner }}:${{ github.event.workflow_run.head_branch }}
+        run: |
+          set -euo pipefail
+          number=$(gh api "repos/${GH_REPO}/pulls?head=${HEAD_REF}&state=open" --jq '.[0].number // empty')
+          if [ -z "$number" ]; then
+            echo "No open PR for ${HEAD_BRANCH}. Nothing to report."
+            echo "has-pr=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "Reporting onto PR #${number}."
+            echo "has-pr=true" >> "$GITHUB_OUTPUT"
+            echo "number=${number}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v7.0.1
+        if: steps.pr-gate.outputs.has-pr == 'true'
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+          ref: ${{ github.event.workflow_run.head_branch }}
+
+      - uses: oven-sh/setup-bun@v2
+        if: steps.pr-gate.outputs.has-pr == 'true'
+        with:
+          bun-version-file: .bun-version
+
+      - if: steps.pr-gate.outputs.has-pr == 'true'
+        run: bun install
+
+      - name: Report the overshoot if (and only if) that was the failure
+        if: steps.pr-gate.outputs.has-pr == 'true'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          GH_REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ steps.pr-gate.outputs.number }}
+        run: |
+          set -euo pipefail
+          if bun run check:size; then
+            echo "The file-size guard passes on this branch, so the CI failure was something else. Nothing to report."
+            exit 0
+          fi
+          echo "The file-size guard is failing. Building the report."
+          body="${RUNNER_TEMP}/size-overshoot.md"
+          {
+            echo "${MARKER}"
+            echo
+            echo "### The file-size guard failed on this branch"
+            echo
+            echo "Budgets only ratchet down; reflow or split the file."
+            echo
+            echo "Two independently green PRs can each pass this gate alone and still push a shared file past its ceiling once the update-branch merge lands the union, so the file named here is not always one this PR edited."
+            echo
+            echo '```'
+            bun run scripts/check-file-sizes.ts --headroom "${HEADROOM_LINES}"
+            echo '```'
+          } > "$body"
+          # One comment, edited in place on a re-run rather than appended. A
+          # marker comment past the first 100 API pages would be missed and a
+          # second one posted; no PR is anywhere near that.
+          existing=$(gh api "repos/${GH_REPO}/issues/${PR_NUMBER}/comments" --paginate \
+            --jq ".[] | select(.body | startswith(\"${MARKER}\")) | .id" | awk 'NR==1')
+          if [ -n "$existing" ]; then
+            gh api --method PATCH "repos/${GH_REPO}/issues/comments/${existing}" -F "body=@${body}" > /dev/null
+            echo "Updated comment ${existing} on PR #${PR_NUMBER}."
+          else
+            gh api --method POST "repos/${GH_REPO}/issues/${PR_NUMBER}/comments" -F "body=@${body}" > /dev/null
+            echo "Posted the report on PR #${PR_NUMBER}."
+          fi

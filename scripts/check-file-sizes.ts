@@ -19,6 +19,15 @@
  * Companion: Biome's `noExcessiveLinesPerFunction` rule (configured in
  * `biome.jsonc`) enforces a per-function ceiling. This script enforces a
  * per-file ceiling — Biome has no equivalent built-in for that.
+ *
+ * Usage:
+ *   bun run scripts/check-file-sizes.ts                # gate
+ *   bun run scripts/check-file-sizes.ts --headroom 10  # warn, never fails
+ *
+ * `--headroom N` reports the files with N lines of headroom or less. A
+ * file sitting at its ceiling passes the gate on every PR that touches it
+ * alone, then fails once an update-branch merge lands the union of two of
+ * them, so the number worth watching is the slack, not the pass (warren-8746).
  */
 
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
@@ -95,9 +104,17 @@ function isTsFile(name: string): boolean {
 
 type Failure = { path: string; lines: number; budget: number; reason: string };
 
-export function scan(): { failures: Failure[]; staleBudgetEntries: string[] } {
+/** One walked file against the ceiling that applies to it. */
+export type Measurement = { path: string; lines: number; budget: number };
+
+export function scan(): {
+	failures: Failure[];
+	staleBudgetEntries: string[];
+	measurements: Measurement[];
+} {
 	const { threshold, budgets } = loadBudgets();
 	const failures: Failure[] = [];
+	const measurements: Measurement[] = [];
 	const seenInWalk = new Set<string>();
 
 	const roots: string[] = [];
@@ -122,6 +139,7 @@ export function scan(): { failures: Failure[]; staleBudgetEntries: string[] } {
 
 		const lines = countLines(abs);
 		const explicit = budgets[rel];
+		measurements.push({ path: rel, lines, budget: explicit ?? threshold });
 		if (explicit !== undefined) {
 			if (lines > explicit) {
 				failures.push({
@@ -146,10 +164,72 @@ export function scan(): { failures: Failure[]; staleBudgetEntries: string[] } {
 		if (!seenInWalk.has(path)) staleBudgetEntries.push(path);
 	}
 
-	return { failures, staleBudgetEntries };
+	return { failures, staleBudgetEntries, measurements };
+}
+
+/**
+ * Split the walked files into the ones already past their ceiling and the
+ * ones within `n` lines of it, tightest slack first. A file exactly at its
+ * budget has zero headroom, which is the state a merge union turns into a
+ * failure neither side's own CI run predicted.
+ */
+export function headroomReport(
+	n: number,
+	measurements: readonly Measurement[],
+): { over: Measurement[]; near: Measurement[] } {
+	const slack = (m: Measurement) => m.budget - m.lines;
+	const over = measurements.filter((m) => slack(m) < 0);
+	const near = measurements.filter((m) => slack(m) >= 0 && slack(m) <= n);
+	const bySlack = (a: Measurement, b: Measurement) => slack(a) - slack(b);
+	return { over: over.sort(bySlack), near: near.sort(bySlack) };
+}
+
+/** `--headroom N` or `--headroom=N`, or `null` when the flag is absent. */
+export function parseHeadroom(argv: readonly string[]): number | null {
+	const prefix = "--headroom=";
+	for (let i = 0; i < argv.length; i++) {
+		const arg = argv[i];
+		if (arg === "--headroom") return readLineCount(argv[i + 1]);
+		if (arg?.startsWith(prefix)) return readLineCount(arg.slice(prefix.length));
+	}
+	return null;
+}
+
+function readLineCount(raw: string | undefined): number {
+	const n = Number(raw);
+	if (raw === undefined || raw === "" || !Number.isInteger(n) || n < 0) {
+		throw new Error("--headroom takes a whole number of lines, e.g. --headroom 10");
+	}
+	return n;
+}
+
+/** The warning mode. It reports and returns; it never gates. */
+function reportHeadroom(n: number): void {
+	const { measurements } = scan();
+	const { over, near } = headroomReport(n, measurements);
+	if (over.length === 0 && near.length === 0) {
+		console.log(`No file is within ${n} lines of its ceiling.`);
+		return;
+	}
+	if (over.length > 0) {
+		console.log(`Over budget (${over.length}):`);
+		for (const m of over)
+			console.log(`  ${m.path}: ${m.lines}/${m.budget} (+${m.lines - m.budget})`);
+	}
+	if (near.length > 0) {
+		if (over.length > 0) console.log("");
+		console.log(`Within ${n} lines of the ceiling (${near.length}):`);
+		for (const m of near)
+			console.log(`  ${m.path}: ${m.lines}/${m.budget} (${m.budget - m.lines} left)`);
+	}
 }
 
 function main(): void {
+	const headroom = parseHeadroom(process.argv.slice(2));
+	if (headroom !== null) {
+		reportHeadroom(headroom);
+		return;
+	}
 	const { failures, staleBudgetEntries } = scan();
 
 	if (staleBudgetEntries.length > 0) {
