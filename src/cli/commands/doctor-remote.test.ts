@@ -1,4 +1,6 @@
 import { describe, expect, test } from "bun:test";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
 	type VersionResponse,
 	type WarrenClient,
@@ -24,6 +26,7 @@ function captureContext(): { context: CliContext; out: string[]; err: string[] }
 }
 
 interface MockClientInput {
+	readonly baseUrl?: string;
 	readonly probeError?: Error;
 	readonly whoamiError?: Error;
 	readonly version?: string;
@@ -33,7 +36,7 @@ interface MockClientInput {
 /** Mocked WarrenClient (warren-97a2): the client half of doctor never touches a DB. */
 function mockClient(input: MockClientInput = {}): WarrenClient {
 	return {
-		config: { baseUrl: "http://localhost:8080" },
+		config: { baseUrl: input.baseUrl ?? "http://localhost:8080" },
 		probe: async () => {
 			if (input.probeError !== undefined) throw input.probeError;
 		},
@@ -87,6 +90,50 @@ describe("runRemoteDoctor", () => {
 		expect(auth?.ok).toBe(false);
 		expect(auth?.hint).toContain("WARREN_API_TOKEN");
 		expect(auth?.hint).toContain("warren login");
+	});
+
+	test("the unreachable hint names the slot the base URL came from (warren-4f1b)", async () => {
+		const { context } = captureContext();
+		const configAt = join(tmpdir(), "warren-doctor-config.json");
+		const client = mockClient({
+			baseUrl: "https://stale.example.com",
+			probeError: new WarrenUnreachableError("connection refused"),
+		});
+		const result = await runRemoteDoctor(
+			{ ...context, env: { WARREN_CLIENT_CONFIG: configAt } },
+			{ client, baseUrlSource: "config-file" },
+			{},
+		);
+		const hint = result.checks[0]?.hint ?? "";
+		expect(hint).toContain("https://stale.example.com");
+		expect(hint).toContain("came from the client config file");
+		// The resolved path, not a hard-coded ~/.warren/client.json.
+		expect(hint).toContain(configAt);
+		// And no longer the two slots that did not supply it.
+		expect(hint).not.toContain("WARREN_BASE_URL");
+		expect(hint).not.toContain("--url");
+	});
+
+	test("the unreachable hint says so when no slot supplied a base URL (warren-4f1b)", async () => {
+		const { context } = captureContext();
+		const client = mockClient({ probeError: new WarrenUnreachableError("connection refused") });
+		const result = await runRemoteDoctor(context, { client, baseUrlSource: "default" }, {});
+		const hint = result.checks[0]?.hint ?? "";
+		expect(hint).toContain("built-in default");
+		expect(hint).toContain("WARREN_BASE_URL");
+	});
+
+	test("the auth line names the resolved config path, not the default (warren-4f1b)", async () => {
+		const { context } = captureContext();
+		const configAt = join(tmpdir(), "warren-doctor-config.json");
+		const result = await runRemoteDoctor(
+			{ ...context, env: { WARREN_CLIENT_CONFIG: configAt } },
+			{ client: mockClient({}), tokenSource: "config-file" },
+			{},
+		);
+		const auth = result.checks.find((c) => c.name === "auth_valid");
+		expect(auth?.message).toContain(configAt);
+		expect(auth?.message).not.toContain("~/.warren/client.json");
 	});
 
 	test("remoteDoctorDeps carries the slots the resolution picked (warren-8807)", () => {
