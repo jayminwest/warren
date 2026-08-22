@@ -42,7 +42,7 @@ export class JiraClient {
 
 	async getIssue(key: string): Promise<JiraIssue> {
 		const path = `/rest/api/3/issue/${encodeURIComponent(key)}?fields=${ISSUE_FIELDS}`;
-		return (await this.request("GET", path)) as JiraIssue;
+		return requireObject(await this.request("GET", path), `GET ${path}`) as JiraIssue;
 	}
 
 	/**
@@ -63,7 +63,8 @@ export class JiraClient {
 				maxResults: String(this.config.searchPageSize),
 			});
 			if (token !== undefined) query.set("nextPageToken", token);
-			const body = (await this.request("GET", `/rest/api/3/search/jql?${query}`)) as JiraSearchPage;
+			const path = `/rest/api/3/search/jql?${query}`;
+			const body = requireObject(await this.request("GET", path), `GET ${path}`) as JiraSearchPage;
 			for (const issue of body.issues ?? []) {
 				if (typeof issue.key === "string" && issue.key.length > 0) {
 					statuses[issue.key] = issue.fields?.status?.name ?? "";
@@ -80,7 +81,7 @@ export class JiraClient {
 
 	async transitions(key: string): Promise<JiraTransitionsResponse> {
 		const path = `/rest/api/3/issue/${encodeURIComponent(key)}/transitions`;
-		return (await this.request("GET", path)) as JiraTransitionsResponse;
+		return requireObject(await this.request("GET", path), `GET ${path}`) as JiraTransitionsResponse;
 	}
 
 	async applyTransition(key: string, transitionId: string): Promise<void> {
@@ -123,6 +124,19 @@ export class JiraClient {
 			throw new JiraApiError(`jira ${method} ${path} returned a body that is not JSON`, 502);
 		}
 	}
+}
+
+/**
+ * A 2xx that carried no object. `applyTransition` expects exactly that and
+ * does not come through here, but a read does: a proxy answering 200 with
+ * an empty body would otherwise reach the mapping as `undefined` and
+ * surface as an internal error rather than as the upstream problem it is.
+ */
+function requireObject(body: unknown, what: string): object {
+	if (body === null || typeof body !== "object") {
+		throw new JiraApiError(`jira ${what} answered 2xx with no object`, 502);
+	}
+	return body;
 }
 
 /**
