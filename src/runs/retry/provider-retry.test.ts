@@ -1,20 +1,13 @@
 /**
- * Run-level provider-error retry (warren-339d).
+ * The post_reap subscriber of the run-level provider-error retry
+ * (warren-339d). Drives the handler directly, the way the seed-close
+ * subscriber's tests do, against an in-memory DB with a stubbed spawn
+ * seam. It asserts that a transient `provider_error` is redispatched with
+ * lineage on both runs' streams, that every fail-closed gate skips
+ * (durable message, plan-run child, non-failed outcome), and that the
+ * attempt bound stops the lineage and says so.
  *
- * Two halves, exercised separately:
- *
- *   1. `classifyProviderError` — the transient-vs-durable discriminator.
- *      Only network/upstream-class messages retry; auth, model, quota,
- *      rate-limit, and malformed-request rejections fail closed, as does
- *      anything unrecognized.
- *
- *   2. `createProviderRetryLifecycleExtension` — the post_reap subscriber.
- *      Drives the handler directly (like the seed-close subscriber's
- *      tests) against an in-memory DB with a stubbed spawn seam, and
- *      asserts the redispatch fires exactly once for a transient
- *      provider_error, stamps lineage on both runs' streams, and skips
- *      every fail-closed gate (durable message, plan-run child, already
- *      a retry, non-failed outcome).
+ * The pure classifier lives in `provider-retry.classify.test.ts`.
  */
 
 import { afterEach, describe, expect, test } from "bun:test";
@@ -28,101 +21,11 @@ import {
 import type { spawnRun } from "../spawn/index.ts";
 import type { BridgeRegistry } from "../stream/types.ts";
 import {
-	classifyProviderError,
 	createProviderRetryLifecycleExtension,
+	MAX_PROVIDER_RETRIES,
 	PROVIDER_RETRY_EVENTS,
 	type ProviderRetryLifecycleExtensionInput,
 } from "./provider-retry.ts";
-
-describe("classifyProviderError", () => {
-	test("classifies network-class messages as transient", () => {
-		expect(classifyProviderError("Network connection lost.")).toBe("transient");
-		expect(classifyProviderError("read ECONNRESET")).toBe("transient");
-		expect(classifyProviderError("socket hang up")).toBe("transient");
-		expect(classifyProviderError("fetch failed")).toBe("transient");
-		expect(classifyProviderError("request timed out after 30s")).toBe("transient");
-		expect(classifyProviderError("connect ETIMEDOUT 10.0.0.1:443")).toBe("transient");
-	});
-
-	test("classifies upstream 5xx / overload messages as transient", () => {
-		expect(classifyProviderError("502 Bad Gateway")).toBe("transient");
-		expect(classifyProviderError("503 Service Unavailable")).toBe("transient");
-		expect(classifyProviderError("529 overloaded_error")).toBe("transient");
-		expect(classifyProviderError("Internal server error")).toBe("transient");
-	});
-
-	test("classifies auth failures as durable", () => {
-		expect(classifyProviderError("401 Unauthorized")).toBe("durable");
-		expect(classifyProviderError("invalid x-api-key provided")).toBe("durable");
-		expect(classifyProviderError("authentication_error: invalid api key")).toBe("durable");
-		expect(classifyProviderError("403 Forbidden")).toBe("durable");
-	});
-
-	test("classifies model-not-found as durable", () => {
-		expect(classifyProviderError("404 model 'kimi-k3' not found")).toBe("durable");
-		expect(classifyProviderError("The model `gpt-x` does not exist")).toBe("durable");
-		expect(classifyProviderError("not_found_error: model")).toBe("durable");
-	});
-
-	test("classifies quota / billing / rate-limit as durable", () => {
-		expect(
-			classifyProviderError("400 Your credit balance is too low to access the Anthropic API"),
-		).toBe("durable");
-		expect(classifyProviderError("402 payment required: quota exceeded")).toBe("durable");
-		expect(classifyProviderError("429 rate limit exceeded")).toBe("durable");
-		expect(classifyProviderError("Too many requests")).toBe("durable");
-	});
-
-	test("fails closed on unrecognized messages", () => {
-		expect(classifyProviderError("")).toBe("unknown");
-		expect(classifyProviderError("something weird happened")).toBe("unknown");
-		expect(classifyProviderError("the agent exploded")).toBe("unknown");
-	});
-
-	test("reads the structured httpStatus before the prose fallback", () => {
-		// 5xx short-circuits to transient even with no status token in the
-		// prose (warren-f8b2).
-		expect(classifyProviderError("the upstream gateway choked", 502)).toBe("transient");
-		expect(classifyProviderError("something weird happened", 503)).toBe("transient");
-		// 4xx short-circuits to durable even when the prose looks transient.
-		expect(classifyProviderError("connection reset by peer", 401)).toBe("durable");
-		expect(classifyProviderError("request failed", 429)).toBe("durable");
-		// Null/undefined/out-of-range status falls back to the message parse.
-		expect(classifyProviderError("something weird happened", null)).toBe("unknown");
-		expect(classifyProviderError("Network connection lost.", undefined)).toBe("transient");
-		expect(classifyProviderError("something weird happened", Number.NaN)).toBe("unknown");
-		expect(classifyProviderError("something weird happened", 200)).toBe("unknown");
-	});
-
-	test("reads the structured upstreamBody before the message prose", () => {
-		// Opaque harness message (pi's OPAQUE_MESSAGE) with a transient
-		// upstream body retries (warren-eaa6).
-		expect(classifyProviderError("Provider returned error", null, "529 overloaded_error")).toBe(
-			"transient",
-		);
-		expect(classifyProviderError("Provider returned error", null, '{"error":"bad gateway"}')).toBe(
-			"transient",
-		);
-		// A durable upstream body fails closed even though the surface
-		// message is opaque.
-		expect(classifyProviderError("Provider returned error", null, "invalid api key")).toBe(
-			"durable",
-		);
-		// An unrecognized body falls through to the message prose.
-		expect(classifyProviderError("Network connection lost.", null, "weird body")).toBe("transient");
-		expect(classifyProviderError("something weird happened", null, "weird body")).toBe("unknown");
-		// httpStatus still wins over the body tier.
-		expect(classifyProviderError("Provider returned error", 401, "502 bad gateway")).toBe(
-			"durable",
-		);
-	});
-
-	test("durable wins when a message names both a symptom and a cause", () => {
-		expect(classifyProviderError("request failed with 401: connection reset by peer")).toBe(
-			"durable",
-		);
-	});
-});
 
 // ---- Extension harness ----------------------------------------------------
 
@@ -149,6 +52,10 @@ async function setup(
 		upstreamBody?: string | null;
 		/** Folded onto the failed run the way a real dispatch freezes it. */
 		frontmatter?: Record<string, unknown>;
+		/** Provider retries already dispatched in the lineage before this run. */
+		priorRetries?: number;
+		/** Stamp the failed run itself as a dispatched provider retry (default: `priorRetries > 0`). */
+		stampFailedRun?: boolean;
 	} = {},
 ): Promise<Fixture> {
 	const db = await openDatabase({ path: ":memory:" });
@@ -160,6 +67,12 @@ async function setup(
 		localPath: "/data/projects/x/y",
 		defaultBranch: "main",
 	});
+	const ancestorId = await buildRetryLineage(
+		repos,
+		project.id,
+		opts.trigger ?? "manual",
+		opts.priorRetries ?? 0,
+	);
 	const run = await repos.runs.create({
 		agentName: "refactor-bot",
 		projectId: project.id,
@@ -169,6 +82,7 @@ async function setup(
 		sandboxId: "bur_aaaaaaaaaaaa",
 		sandboxRunId: "run_zzzzzzzzzzzz",
 		...(opts.seedId !== null ? { seedId: opts.seedId ?? "warren-339d" } : {}),
+		...(ancestorId !== null ? retryLinks(ancestorId) : {}),
 	});
 	await repos.runs.markRunning(run.id);
 	await repos.runs.finalize(run.id, "failed", new Date(), "provider_error");
@@ -184,7 +98,56 @@ async function setup(
 			upstreamBody: opts.upstreamBody ?? null,
 		},
 	});
+	if (ancestorId !== null && (opts.stampFailedRun ?? true)) {
+		await stampProviderRetry(repos, run.id, ancestorId);
+	}
 	return { repos, runId: run.id, projectId: project.id };
+}
+
+/** The row links `dispatchProviderRetry` writes onto the retry it spawns. */
+function retryLinks(ancestorId: string) {
+	return { parentRunId: ancestorId, cloneKind: "replicate" as const, retryOf: ancestorId };
+}
+
+/**
+ * The lineage behind the failed run: a root dispatched by hand, then one
+ * already-dispatched provider retry for every attempt after the first,
+ * linked and stamped the way `dispatchProviderRetry` writes them. Returns
+ * the id the failed run links back to, or `null` when it starts a lineage.
+ */
+async function buildRetryLineage(
+	repos: Repos,
+	projectId: string,
+	trigger: string,
+	priorRetries: number,
+): Promise<string | null> {
+	let ancestorId: string | null = null;
+	for (let i = 0; i < priorRetries; i++) {
+		const ancestor = await repos.runs.create({
+			agentName: "refactor-bot",
+			projectId,
+			prompt: "work the seed",
+			renderedAgentJson: {},
+			trigger,
+			...(ancestorId !== null ? retryLinks(ancestorId) : {}),
+		});
+		if (ancestorId !== null) await stampProviderRetry(repos, ancestor.id, ancestorId);
+		ancestorId = ancestor.id;
+	}
+	return ancestorId;
+}
+
+/** The lineage stamp `dispatchProviderRetry` appends to a retry's stream. */
+async function stampProviderRetry(repos: Repos, runId: string, fromRunId: string): Promise<void> {
+	const maxSeq = (await repos.events.maxSeqForRun(runId)) ?? 0;
+	await repos.events.append({
+		runId,
+		sandboxEventSeq: maxSeq + 1,
+		ts: new Date().toISOString(),
+		kind: PROVIDER_RETRY_EVENTS.spawnRetry,
+		stream: "system",
+		payload: { retriedFromRunId: fromRunId, providerError: "Network connection lost." },
+	});
 }
 
 function recordingBridges(): { bridges: BridgeRegistry; started: string[] } {
@@ -433,18 +396,51 @@ describe("createProviderRetryLifecycleExtension", () => {
 		expect(spawn.calls).toHaveLength(0);
 	});
 
-	test("does not retry a run that is itself a provider retry (single-retry bound)", async () => {
-		const fixture = await setup();
-		await fixture.repos.events.append({
-			runId: fixture.runId,
-			sandboxEventSeq: 2,
-			ts: new Date().toISOString(),
-			kind: PROVIDER_RETRY_EVENTS.spawnRetry,
-			stream: "system",
-			payload: { retriedFromRunId: "run_origin", providerError: "Network connection lost." },
+	test("records reap.provider_retry_skipped with the verdict that declined it", async () => {
+		const fixture = await setup({ providerMessage: "401 Unauthorized" });
+		await fire(fixture);
+		const events = await fixture.repos.events.listByRun(fixture.runId);
+		const skipped = events.find((e) => e.kind === PROVIDER_RETRY_EVENTS.retrySkipped);
+		expect(skipped).toBeDefined();
+		expect(skipped?.payloadJson).toMatchObject({
+			verdict: "durable",
+			providerError: "401 Unauthorized",
 		});
+	});
+
+	test("dispatches the retry of a retry, which the old bound refused", async () => {
+		// One provider retry already dispatched: the run that just failed IS
+		// that retry. The bound used to stop here on the marker alone.
+		const fixture = await setup({ priorRetries: 1 });
+		const { spawn } = await fire(fixture);
+		expect(spawn.calls).toHaveLength(1);
+		const events = await fixture.repos.events.listByRun(fixture.runId);
+		expect(events.some((e) => e.kind === PROVIDER_RETRY_EVENTS.retryExhausted)).toBe(false);
+	});
+
+	test("stops at the bound and records reap.provider_retry_exhausted", async () => {
+		const fixture = await setup({ priorRetries: MAX_PROVIDER_RETRIES });
 		const { spawn } = await fire(fixture);
 		expect(spawn.calls).toHaveLength(0);
+		const events = await fixture.repos.events.listByRun(fixture.runId);
+		const exhausted = events.find((e) => e.kind === PROVIDER_RETRY_EVENTS.retryExhausted);
+		expect(exhausted).toBeDefined();
+		expect(exhausted?.payloadJson).toMatchObject({
+			attempts: MAX_PROVIDER_RETRIES,
+			maxAttempts: MAX_PROVIDER_RETRIES,
+		});
+	});
+
+	test("counts the stamps, not the retryOf hops, so an infra-lost hop is free", async () => {
+		// infra-lost-retry.ts writes `retryOf` on its own dispatch and stamps no
+		// `spawn.provider_retry`. A lineage of MAX hops that way therefore still
+		// holds one spent provider attempt, not MAX, and has room for another.
+		const fixture = await setup({
+			priorRetries: MAX_PROVIDER_RETRIES,
+			stampFailedRun: false,
+		});
+		const { spawn } = await fire(fixture);
+		expect(spawn.calls).toHaveLength(1);
 	});
 
 	test("does not retry plan-run children (the coordinator owns child retry)", async () => {
