@@ -13,6 +13,7 @@ import type {
 	InboxState,
 	RunState,
 } from "../core/wire.ts";
+import type { GitSpawnCredential } from "../workspace/git/credential-env.ts";
 import type { ArtifactDelta } from "./finalize-deltas.ts";
 import type { FinalizeStage } from "./finalize-stages.ts";
 
@@ -321,11 +322,10 @@ export interface FinalizeIntent {
 	resetSeededPaths?: ReadonlyArray<{ path: string; contents: string }>;
 	/**
 	 * Per-spawn minted git credential for `branch_push` (warren-4e1c, forge
-	 * contract §4 — minted via `mintGitCredentialSecret` immediately before
+	 * contract §4: minted via `mintGitCredential` immediately before
 	 * `finalize`, never held on a config object). LocalProvider splices it into
-	 * the push's `GIT_CONFIG_*` env; K8s prefers it over the env-derived token.
-	 * Undefined ⇒ anonymous push. */
-	gitToken?: string;
+	 * the push's `GIT_CONFIG_*` env, K8s prefers it, undefined pushes anonymously. */
+	gitCredential?: GitSpawnCredential;
 }
 
 /**

@@ -43,6 +43,8 @@ export const SECRET_FIELDS = [
 	"secret",
 	"apiKey",
 	"GITHUB_TOKEN",
+	// warren-1b6f: the forge-neutral spelling the github arm now reads first.
+	"WARREN_GIT_TOKEN",
 	"BURROW_API_TOKEN",
 	"WARREN_BURROW_TOKEN",
 	// warren-9bbc: snake_case JSON keys an agent transcript or an OAuth /
@@ -59,15 +61,18 @@ export const SECRET_FIELDS = [
 	"clientSecret",
 	"private_key",
 	"privateKey",
-	// warren-6c4c: the per-spawn git-credential env (githubCredentialGitEnv,
+	// warren-6c4c: the per-spawn git-credential env (gitCredentialGitEnv,
 	// forge-contract.md §4) embeds the minted secret inline in
 	// GIT_CONFIG_KEY_0's `url.https://x-access-token:<secret>@…` value — list
 	// the names so a logged SpawnOptions.env can never leak one.
 	"GIT_CONFIG_KEY_0",
 	"GIT_CONFIG_VALUE_0",
 	// warren-4e1c: the per-spawn minted push credential rides
-	// `FinalizeIntent.gitToken` / `WorkspaceSalvageInput.gitToken` — list the
-	// field name so a logged intent/salvage object can never leak one.
+	// `FinalizeIntent.gitCredential` / `WorkspaceSalvageInput.gitCredential`:
+	// list the field name so a logged intent/salvage object can never leak
+	// one. `gitToken` stays listed: the in-pod finalize wire still carries the
+	// bare secret under that name (warren-1b6f).
+	"gitCredential",
 	"gitToken",
 	// warren-f8df: the GitHub App forge (src/forge/github-app/) — the cached
 	// `ghs_` installation token, the env var holding the App's PEM, and any

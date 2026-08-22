@@ -14,6 +14,7 @@ import type { AgentDefinition } from "../../registry/schema.ts";
 import type { RuntimeProvider } from "../../runtime/contract.ts";
 import type { SeedsCliDeps } from "../../seeds-cli/index.ts";
 import type { WarrenConfigCache } from "../../warren-config/index.ts";
+import type { GitSpawnCredential } from "../../workspace/git/credential-env.ts";
 import type { MigrationHealFn } from "./migration-preflight.ts";
 
 /**
@@ -127,10 +128,10 @@ export interface SpawnRunInput {
 	/**
 	 * GitHub credential for the pre-dispatch refresh's `git fetch`
 	 * against a private repo (minted per-spawn via
-	 * `mintGitCredentialSecret`, forwarded to `refreshProject`).
+	 * `mintGitCredential`, forwarded to `refreshProject`).
 	 * Absent → anonymous.
 	 */
-	readonly githubToken?: string;
+	readonly gitCredential?: GitSpawnCredential;
 	/** Branch, tag, or SHA to refresh to. Defaults to the project's tracked default branch. */
 	readonly ref?: string;
 	/**

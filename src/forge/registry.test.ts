@@ -236,3 +236,20 @@ describe("resolveForge app arm (warren-f8df)", () => {
 		).not.toThrow();
 	});
 });
+
+describe("the github arm's static secret", () => {
+	test("reads WARREN_GIT_TOKEN before GITHUB_TOKEN", async () => {
+		const forge = resolveForge({}, { WARREN_GIT_TOKEN: "neutral", GITHUB_TOKEN: "legacy" });
+		const ref = forge.parseRepoRef("https://github.com/x/y.git");
+		expect(ref).not.toBeNull();
+		const cred = await forge.gitCredential(ref as NonNullable<typeof ref>);
+		expect(cred.ok && cred.value.secret).toBe("neutral");
+	});
+
+	test("still falls back to GITHUB_TOKEN, so an existing deployment is untouched", async () => {
+		const forge = resolveForge({}, { GITHUB_TOKEN: "legacy" });
+		const ref = forge.parseRepoRef("https://github.com/x/y.git");
+		const cred = await forge.gitCredential(ref as NonNullable<typeof ref>);
+		expect(cred.ok && cred.value.secret).toBe("legacy");
+	});
+});

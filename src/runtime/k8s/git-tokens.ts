@@ -38,7 +38,7 @@ function normalizeToken(raw: string | undefined): string | undefined {
  * mint seam is wired (PAT mode without a forge handle keeps the static
  * Secret ref), when the domain already pinned `WARREN_GIT_TOKEN` on the
  * spec, or when the mint yields anonymous git (foreign host / no_credential
- * — see `mintGitCredentialSecret`). A genuine App-mode mint failure THROWS
+ * (see `mintGitCredential`). A genuine App-mode mint failure THROWS
  * (`GitCredentialMintError`) so the dispatch fails loud instead of cloning
  * with a credential the run will outlive.
  */

@@ -255,6 +255,7 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 		warrenConfigs,
 		seedsCli,
 		issueTracker,
+		forge,
 		env,
 		logger,
 		projectSpawn: defaultSpawn,

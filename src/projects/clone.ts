@@ -24,7 +24,8 @@ import { existsSync } from "node:fs";
 import { mkdir, rm } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { formatError } from "../core/errors.ts";
-import { githubCredentialGitEnv } from "../workspace/git/credential-env.ts";
+import type { GitSpawnCredential } from "../workspace/git/credential-env.ts";
+import { gitCredentialGitEnv } from "../workspace/git/credential-env.ts";
 import type { ProjectsConfig } from "./config.ts";
 import { ProjectUnavailableError } from "./errors.ts";
 
@@ -123,13 +124,13 @@ export interface CloneProjectInput {
 	/**
 	 * GitHub token for private-repo access (`GITHUB_TOKEN` at the HTTP
 	 * boundary). Applied as a process-scoped `insteadOf` rewrite via
-	 * `githubCredentialGitEnv` on the network-touching git spawns (clone,
+	 * `gitCredentialGitEnv` on the network-touching git spawns (clone,
 	 * `remote set-head`) — never in argv, never persisted to the clone's
 	 * config. Absent/empty → anonymous clone, exactly the old behavior.
 	 * The supervisor's global rule covers the local topology; this covers
 	 * `warren serve` running bare (K8s pod), where no global rule exists.
 	 */
-	readonly token?: string;
+	readonly gitCredential?: GitSpawnCredential;
 	readonly spawn: SpawnFn;
 	readonly timeoutMs?: number;
 	/** Filesystem probes — overrideable for tests. */
@@ -162,7 +163,7 @@ export async function cloneProjectRepo(input: CloneProjectInput): Promise<CloneP
 
 	// No token → no `env` key at all, so anonymous public-repo clones spawn
 	// exactly as before (plain inheritance, nothing for tests to see).
-	const credEnv = githubCredentialGitEnv(input.token);
+	const credEnv = gitCredentialGitEnv(input.gitCredential);
 	const netEnv = Object.keys(credEnv).length > 0 ? { env: credEnv } : {};
 
 	const cloneCmd = [config.gitBinary, "clone", gitUrl, localPath];

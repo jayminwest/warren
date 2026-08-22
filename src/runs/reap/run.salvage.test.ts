@@ -90,7 +90,7 @@ describe("reapRun salvage-before-destroy (warren-cd3b)", () => {
 		expect(pushes.length).toBeGreaterThanOrEqual(2);
 		for (const push of pushes) {
 			expect(push.env?.GIT_CONFIG_KEY_0).toBe(
-				"url.https://x-access-token:fake-credential@github.com/.insteadOf",
+				"url.https://fake:fake-credential@github.com/.insteadOf",
 			);
 			expect(push.env?.GIT_CONFIG_VALUE_0).toBe("https://github.com/");
 		}

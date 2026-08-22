@@ -292,7 +292,7 @@ describe("pushCloneDeltasToOrigin (warren-486c durability + warren-4e1c credenti
 		// Minted from the forge (FakeForge's static secret), per-spawn — never held.
 		expect(push?.env?.GIT_CONFIG_COUNT).toBe("1");
 		expect(push?.env?.GIT_CONFIG_KEY_0).toBe(
-			"url.https://x-access-token:fake-credential@github.com/.insteadOf",
+			"url.https://fake:fake-credential@github.com/.insteadOf",
 		);
 		expect(push?.env?.GIT_CONFIG_VALUE_0).toBe("https://github.com/");
 		// The repo-context scrub still rides alongside the credential.

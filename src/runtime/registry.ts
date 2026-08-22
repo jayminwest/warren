@@ -129,7 +129,7 @@ export interface RuntimeProviderDeps {
 	/**
 	 * OPTIONAL git-credential mint seam for the K8s token windows
 	 * (forge-contract.md §4.1, warren-c9ac) — only consulted for
-	 * `WARREN_RUNTIME=k8s`. Boot wires it to `mintGitCredentialSecret` over the
+	 * `WARREN_RUNTIME=k8s`. Boot wires it to `mintGitCredential` over the
 	 * resolved forge so `create()` mints the init-container clone credential at
 	 * pod-spec time (window 1).
 	 */

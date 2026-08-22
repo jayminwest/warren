@@ -105,7 +105,7 @@ async function dispatchRun(input: SpawnRunInput): Promise<SpawnRunResult> {
 						: baseRef !== undefined
 							? { ref: baseRef }
 							: {}),
-					token: input.githubToken,
+					gitCredential: input.gitCredential,
 					spawn: input.projectSpawn,
 					...(input.now !== undefined ? { now: input.now } : {}),
 					...(input.warrenConfigs !== undefined ? { warrenConfigs: input.warrenConfigs } : {}),

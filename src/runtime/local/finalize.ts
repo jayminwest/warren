@@ -42,7 +42,7 @@ import {
 	repairBaseTrackingRef,
 	workspaceDirtyPaths,
 } from "../../runs/reap/util.ts";
-import { githubCredentialGitEnv } from "../../workspace/git/credential-env.ts";
+import { gitCredentialGitEnv } from "../../workspace/git/credential-env.ts";
 import type {
 	ArtifactDelta,
 	ArtifactDeltaFile,
@@ -425,7 +425,7 @@ async function finalizePush(
 		await exec.run("git", ["push", "origin", refspec], {
 			cwd: workspacePath,
 			timeoutMs: 60_000,
-			env: githubCredentialGitEnv(intent.gitToken),
+			env: gitCredentialGitEnv(intent.gitCredential),
 		});
 		trail.ok("branch_push");
 	} catch (err) {

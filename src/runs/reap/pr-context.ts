@@ -13,6 +13,7 @@
 
 import type { IssueTracker, TrackerContext } from "../../tracker/contract.ts";
 import { authenticatedCloneUrl } from "../../workspace/git/clone-url.ts";
+import type { GitSpawnCredential } from "../../workspace/git/credential-env.ts";
 import type { PrCommit, PrSeed } from "../pr.ts";
 import type { ReapExec } from "./types.ts";
 
@@ -36,11 +37,11 @@ export interface CloneFetchConfig {
 	readonly gitUrl: string;
 	/**
 	 * Per-fetch git credential secret, minted from the forge immediately before
-	 * the fetch (`mintGitCredentialSecret`, warren-45e6 — credentials are
+	 * the fetch (`mintGitCredential`, warren-45e6: credentials are
 	 * minted, never held; forge-contract.md §4). Injected as the clone URL's
 	 * userinfo by `authenticatedCloneUrl`.
 	 */
-	readonly token: string;
+	readonly gitCredential: GitSpawnCredential;
 }
 
 export interface GatherPrContextInput {
@@ -155,7 +156,7 @@ async function collectFromClone(
 	cfg: CloneFetchConfig,
 ): Promise<CommitStats> {
 	const tempRef = `${CLONE_FETCH_REF_PREFIX}${cfg.runId}`;
-	const url = authenticatedCloneUrl(cfg.gitUrl, cfg.token);
+	const url = authenticatedCloneUrl(cfg.gitUrl, cfg.gitCredential.secret);
 	try {
 		// Fetch only the run branch into a namespaced temp ref (never a local
 		// branch); `--force` lets a re-reap overwrite a stale ref.

@@ -38,12 +38,15 @@
 
 import type { Repos } from "../../db/repos/index.ts";
 import type { RunFailureReason, RunRow } from "../../db/schema.ts";
+import type { Forge } from "../../forge/contract.ts";
+import { mintGitCredential } from "../../forge/credentials.ts";
 import type { SpawnFn as ProjectSpawnFn } from "../../projects/clone.ts";
 import type { ProjectsConfig } from "../../projects/config.ts";
 import type { RuntimeProvider } from "../../runtime/contract.ts";
 import type { SeedsCliDeps } from "../../seeds-cli/index.ts";
 import type { IssueTracker } from "../../tracker/contract.ts";
 import type { WarrenConfigCache } from "../../warren-config/index.ts";
+import type { GitSpawnCredential } from "../../workspace/git/credential-env.ts";
 import { resolveCostCapUsd } from "../cost-cap.ts";
 import type { RunEventBroker } from "../events.ts";
 import { spawnRun } from "../spawn/dispatch.ts";
@@ -152,12 +155,14 @@ type RetrySpawnDraft = {
  * cognitive-complexity ceiling where conditional spreads would not.
  */
 function buildRetrySpawnInput(
+	gitCredential: GitSpawnCredential | undefined,
 	input: CreateInfraLostRetryHookInput,
 	run: RunRow,
 	projectId: string,
 	decision: InfraLostRetryDecision,
 ): SpawnRunInput {
 	const draft: RetrySpawnDraft = {
+		...(gitCredential !== undefined ? { gitCredential } : {}),
 		repos: input.repos,
 		runtimeProvider: input.runtimeProvider,
 		agentName: run.agentName,
@@ -181,7 +186,6 @@ function buildRetrySpawnInput(
 	if (input.warrenConfigs !== undefined) draft.warrenConfigs = input.warrenConfigs;
 	if (input.seedsCli !== undefined) draft.seedsCli = input.seedsCli;
 	if (input.issueTracker !== undefined) draft.issueTracker = input.issueTracker;
-	if (input.githubToken !== undefined) draft.githubToken = input.githubToken;
 	if (input.runBranchPrefixDefault !== undefined) {
 		draft.runBranchPrefixDefault = input.runBranchPrefixDefault;
 	}
@@ -206,8 +210,12 @@ export interface CreateInfraLostRetryHookInput {
 	readonly seedsCli?: SeedsCliDeps;
 	/** Boot-resolved IssueTracker (warren-5819) — threading seam for the retry spawn. */
 	readonly issueTracker?: IssueTracker;
-	/** Raw `GITHUB_TOKEN` for the pre-dispatch refresh fetch. */
-	readonly githubToken?: string;
+	/**
+	 * Boot-resolved forge. The retry's pre-dispatch refresh fetch mints its
+	 * credential HERE, per dispatch (forge-contract.md §4), rather than
+	 * holding a boot-read `GITHUB_TOKEN` across the process lifetime.
+	 */
+	readonly forge?: Forge;
 	readonly runBranchPrefixDefault?: string;
 	/** Live tail fan-out for the linkage events; omit in tests. */
 	readonly broker?: RunEventBroker;
@@ -258,7 +266,14 @@ export function createInfraLostRetryHook(input: CreateInfraLostRetryHookInput): 
 		const projectId = run.projectId;
 		if (projectId === null) return;
 		try {
-			const result = await spawnRunFn(buildRetrySpawnInput(input, run, projectId, decision));
+			const project = await input.repos.projects.get(projectId);
+			const gitCredential =
+				input.forge !== undefined && project !== null
+					? await mintGitCredential(input.forge, project.gitUrl)
+					: undefined;
+			const result = await spawnRunFn(
+				buildRetrySpawnInput(gitCredential, input, run, projectId, decision),
+			);
 			input.bridges.start(result.run.id, result.sandboxRun.id, result.sandbox.id, run.mode);
 			// Linkage in both directions so an operator tailing either run can
 			// follow the chain (warren-4af7).

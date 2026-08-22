@@ -22,6 +22,8 @@
  */
 
 import type { Repos } from "../db/repos/index.ts";
+import type { Forge } from "../forge/contract.ts";
+import { mintGitCredential } from "../forge/credentials.ts";
 import type { SpawnFn } from "../projects/clone.ts";
 import type { ProjectsConfig } from "../projects/config.ts";
 import { spawnRun } from "../runs/index.ts";
@@ -45,8 +47,12 @@ export interface CreatePlanRunSpawnInput {
 	readonly warrenConfigs: WarrenConfigCache;
 	readonly projectsConfig: ProjectsConfig;
 	readonly projectSpawn: SpawnFn;
-	/** Raw `GITHUB_TOKEN` for the pre-dispatch refresh fetch — see `SpawnRunInput.githubToken`. */
-	readonly githubToken?: string;
+	/**
+	 * Boot-resolved forge. The pre-dispatch refresh fetch mints its credential
+	 * HERE, per dispatch (forge-contract.md §4), instead of the boot-captured
+	 * `GITHUB_TOKEN` this used to hold across the coordinator's whole lifetime.
+	 */
+	readonly forge?: Forge;
 	readonly seedsCli: SeedsCliDeps;
 	/** Boot-resolved IssueTracker (warren-5819) — threading seam for the child spawn. */
 	readonly issueTracker?: IssueTracker;
@@ -61,6 +67,8 @@ export function createPlanRunSpawn(input: CreatePlanRunSpawnInput): CoordinatorS
 	return async ({ planRun, child, prompt }) => {
 		const project = await input.repos.projects.require(planRun.projectId);
 		const ref = planRun.ref ?? project.defaultBranch;
+		const gitCredential =
+			input.forge === undefined ? undefined : await mintGitCredential(input.forge, project.gitUrl);
 		const result = await spawnRunFn({
 			repos: input.repos,
 			runtimeProvider: input.runtimeProvider,
@@ -85,7 +93,7 @@ export function createPlanRunSpawn(input: CreatePlanRunSpawnInput): CoordinatorS
 			},
 			projectsConfig: input.projectsConfig,
 			projectSpawn: input.projectSpawn,
-			githubToken: input.githubToken,
+			gitCredential,
 			warrenConfigs: input.warrenConfigs,
 			seedsCli: input.seedsCli,
 			...(input.issueTracker !== undefined ? { issueTracker: input.issueTracker } : {}),

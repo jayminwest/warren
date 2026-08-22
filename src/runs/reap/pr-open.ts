@@ -1,6 +1,6 @@
 import { CI_FIXER_TRIGGER } from "../../ci-fixer/poller.ts";
 import type { Forge, ForgeErrorKind, PullRequestRef, RepoRef } from "../../forge/contract.ts";
-import { mintGitCredentialSecret } from "../../forge/credentials.ts";
+import { mintGitCredential } from "../../forge/credentials.ts";
 import type { IssueTracker } from "../../tracker/contract.ts";
 import { type AutoOpenPrConfig, type BuildPrContentInput, buildPrContent } from "../pr.ts";
 import type { PrTemplateOverrides } from "../pr-template.ts";
@@ -218,13 +218,13 @@ async function resolveCloneFetchConfig(
 	input: RunPrOpenInput,
 ): Promise<CloneFetchConfig | undefined> {
 	if (input.workspacePath !== null) return undefined;
-	const secret = await mintGitCredentialSecret(input.forge, input.project.gitUrl);
-	if (secret === undefined) return undefined;
+	const gitCredential = await mintGitCredential(input.forge, input.project.gitUrl);
+	if (gitCredential === undefined) return undefined;
 	return {
 		runBranch: input.branch,
 		runId: input.run.id,
 		gitUrl: input.project.gitUrl,
-		token: secret,
+		gitCredential,
 	};
 }
 

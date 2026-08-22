@@ -26,6 +26,17 @@ describe("LOG_REDACT_PATHS", () => {
 		expect(LOG_REDACT_PATHS).toContain("*.token");
 		expect(LOG_REDACT_PATHS).toContain("headers.authorization");
 	});
+
+	test("covers the minted git credential under both of its spellings", () => {
+		// warren-1b6f renamed the field carrying the per-spawn secret. A rename
+		// that misses this list turns a logged intent into a leak, so both the
+		// new field and the in-pod wire's older `gitToken` stay listed, along
+		// with the env var the github arm now reads first.
+		expect(LOG_REDACT_PATHS).toContain("gitCredential");
+		expect(LOG_REDACT_PATHS).toContain("*.gitCredential");
+		expect(LOG_REDACT_PATHS).toContain("gitToken");
+		expect(LOG_REDACT_PATHS).toContain("WARREN_GIT_TOKEN");
+	});
 });
 
 describe("LOG_REDACT_OPTIONS applied to pino", () => {

@@ -90,7 +90,12 @@ describe("gatherPrContext K8s clone fetch (warren-ab66)", () => {
 			baseBranch: "main",
 			prompt: "no seed here",
 			exec: realExec,
-			cloneFetch: { runBranch: "run-1", runId: "run-abc", gitUrl: origin, token: "" },
+			cloneFetch: {
+				runBranch: "run-1",
+				runId: "run-abc",
+				gitUrl: origin,
+				gitCredential: { username: "x-access-token", secret: "", host: "github.com" },
+			},
 		});
 		expect(ctx.commits.map((c) => c.subject)).toEqual(["feat: add a", "feat: add b"]);
 		for (const c of ctx.commits) expect(c.sha).toMatch(/^[0-9a-f]{40}$/);
@@ -113,7 +118,7 @@ describe("gatherPrContext K8s clone fetch (warren-ab66)", () => {
 				runBranch: "run-1",
 				runId: "run-def",
 				gitUrl: join(root, "does-not-exist"),
-				token: "",
+				gitCredential: { username: "x-access-token", secret: "", host: "github.com" },
 			},
 			emit: async (kind, payload) => {
 				emitted.push({ kind, payload });
@@ -150,7 +155,12 @@ describe("gatherPrContext K8s clone fetch (warren-ab66)", () => {
 			prompt: "no seed here",
 			exec: realExec,
 			// Present but must be ignored because workspacePath !== null.
-			cloneFetch: { runBranch: "run-1", runId: "run-ghi", gitUrl: origin, token: "" },
+			cloneFetch: {
+				runBranch: "run-1",
+				runId: "run-ghi",
+				gitUrl: origin,
+				gitCredential: { username: "x-access-token", secret: "", host: "github.com" },
+			},
 		});
 		expect(ctx.commits.map((c) => c.subject)).toEqual(["feat: add a", "feat: add b"]);
 		expect(ctx.diffStat).toContain("a.ts");
@@ -183,7 +193,12 @@ describe("gatherPrContext K8s clone fetch (warren-ab66)", () => {
 			baseBranch: "main",
 			prompt: "no seed here",
 			exec: realExec,
-			cloneFetch: { runBranch: "run-1", runId: "run-body", gitUrl: origin, token: "" },
+			cloneFetch: {
+				runBranch: "run-1",
+				runId: "run-body",
+				gitUrl: origin,
+				gitCredential: { username: "x-access-token", secret: "", host: "github.com" },
+			},
 		});
 		expect(ctx.finalCommitBody).toBe(
 			"Rationale: the seam was already there.\n\nHandoff: watch the retry path.",
@@ -198,7 +213,12 @@ describe("gatherPrContext K8s clone fetch (warren-ab66)", () => {
 			baseBranch: "main",
 			prompt: "no seed here",
 			exec: realExec,
-			cloneFetch: { runBranch: "run-1", runId: "run-nobody", gitUrl: origin, token: "" },
+			cloneFetch: {
+				runBranch: "run-1",
+				runId: "run-nobody",
+				gitUrl: origin,
+				gitCredential: { username: "x-access-token", secret: "", host: "github.com" },
+			},
 		});
 		expect(ctx.finalCommitBody).toBeNull();
 	});

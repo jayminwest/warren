@@ -56,7 +56,11 @@ describe("salvageWorkspace (warren-cd3b)", () => {
 				return { stdout: "", stderr: "" };
 			},
 		};
-		const out = await salvageWorkspace({ ...input, exec, gitToken: "ghp_rescue" });
+		const out = await salvageWorkspace({
+			...input,
+			exec,
+			gitCredential: { username: "x-access-token", secret: "ghp_rescue", host: "github.com" },
+		});
 		expect(out.rescueRef).toBe("warren/rescue/run_x");
 		expect(envs[0]?.GIT_CONFIG_COUNT).toBe("1");
 		expect(envs[0]?.GIT_CONFIG_KEY_0).toBe(

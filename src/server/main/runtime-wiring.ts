@@ -38,7 +38,7 @@ import {
 	Watch,
 } from "@kubernetes/client-node";
 import type { Forge } from "../../forge/contract.ts";
-import { mintGitCredentialSecret } from "../../forge/credentials.ts";
+import { mintGitCredential } from "../../forge/credentials.ts";
 import type { RuntimeProvider } from "../../runtime/contract.ts";
 import type { AdmissionCounterSink } from "../../runtime/k8s/admission.ts";
 import {
@@ -267,7 +267,11 @@ function k8sForgeTokenWindows(forge: Forge | undefined): {
 } {
 	if (forge === undefined) return {};
 	return {
-		k8sMintGitCredential: (gitUrl) => mintGitCredentialSecret(forge, gitUrl),
+		// The in-pod finalize wire (v1) still carries a bare secret, so the
+		// credential is flattened at this ONE boundary. Its username and host
+		// stay GitHub's literals inside the pod, which is the remaining half of
+		// warren-1b6f and needs a wire-version decision to close.
+		k8sMintGitCredential: async (gitUrl) => (await mintGitCredential(forge, gitUrl))?.secret,
 		k8sAllowStaticPushTokenFallback: forge.capabilities.credentialLifetime === "static",
 	};
 }

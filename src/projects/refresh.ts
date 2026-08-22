@@ -24,7 +24,8 @@
  */
 
 import { existsSync } from "node:fs";
-import { githubCredentialGitEnv } from "../workspace/git/credential-env.ts";
+import type { GitSpawnCredential } from "../workspace/git/credential-env.ts";
+import { gitCredentialGitEnv } from "../workspace/git/credential-env.ts";
 import { detectProjectFeatures, type ProjectFeatureFlags } from "./capabilities.ts";
 import type { SpawnFn, SpawnOptions, SpawnResult } from "./clone.ts";
 import type { ProjectsConfig } from "./config.ts";
@@ -64,11 +65,11 @@ export interface RefreshProjectCloneInput {
 	/**
 	 * GitHub token for private-repo access (`GITHUB_TOKEN` at the HTTP
 	 * boundary). Applied to the `git fetch` spawn as a process-scoped
-	 * `insteadOf` rewrite (`githubCredentialGitEnv`) so a bare `warren
+	 * `insteadOf` rewrite (`gitCredentialGitEnv`) so a bare `warren
 	 * serve` (K8s pod, no supervisor-installed global rule) can refresh a
 	 * private clone. Absent/empty → anonymous fetch, the old behavior.
 	 */
-	readonly token?: string;
+	readonly gitCredential?: GitSpawnCredential;
 	readonly spawn: SpawnFn;
 	readonly timeoutMs?: number;
 	readonly exists?: (path: string) => boolean;
@@ -121,7 +122,7 @@ export async function refreshProjectClone(
 	}
 
 	// No token → no `env` key, plain inheritance (see CloneProjectInput.token).
-	const credEnv = githubCredentialGitEnv(input.token);
+	const credEnv = gitCredentialGitEnv(input.gitCredential);
 	const netEnv: Pick<SpawnOptions, "env"> = Object.keys(credEnv).length > 0 ? { env: credEnv } : {};
 	// warren-232d: fetch-only mode for baseCommit dispatches. The shared host
 	// clone's HEAD is never moved — the workspace is cut at the pinned SHA

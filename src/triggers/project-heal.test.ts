@@ -89,7 +89,7 @@ describe("recloneMissingProject", () => {
 			}),
 			config: CONFIG,
 			spawn: async () => ({ stdout: "", stderr: "", exitCode: 0 }),
-			token: "ghs_secret",
+			gitCredential: { username: "x-access-token", secret: "ghs_secret", host: "github.com" },
 			clone: async (input) => {
 				calls.push({ ...input, spawn: undefined });
 				return { localPath: input.config.root, defaultBranch: input.defaultBranch ?? "" };
@@ -101,7 +101,7 @@ describe("recloneMissingProject", () => {
 			name: "widget",
 			gitUrl: "https://github.com/acme/widget.git",
 			defaultBranch: "trunk",
-			token: "ghs_secret",
+			gitCredential: { username: "x-access-token", secret: "ghs_secret", host: "github.com" },
 		});
 	});
 });

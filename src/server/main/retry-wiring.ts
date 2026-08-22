@@ -15,6 +15,7 @@
  */
 
 import type { Repos } from "../../db/repos/index.ts";
+import type { Forge } from "../../forge/contract.ts";
 import type { SpawnFn } from "../../projects/clone.ts";
 import type { ProjectsConfig } from "../../projects/config.ts";
 import { createInfraLostRetryHook, type InfraLostRetryHook } from "../../runs/index.ts";
@@ -37,6 +38,8 @@ export interface InfraLostRetryWiringInput {
 	readonly seedsCli: SeedsCliDeps;
 	/** Boot-resolved IssueTracker (warren-5819) — forwarded to the retry hook. */
 	readonly issueTracker?: IssueTracker;
+	/** Boot-resolved forge, so the retry mints its refresh credential per dispatch. */
+	readonly forge?: Forge;
 	readonly env: EnvLike;
 	readonly runBranchPrefixDefault?: string;
 	readonly logger: Logger;
@@ -64,7 +67,7 @@ export function wireInfraLostRetry(input: InfraLostRetryWiringInput): InfraLostR
 			warrenConfigs: input.warrenConfigs,
 			seedsCli: input.seedsCli,
 			...(input.issueTracker !== undefined ? { issueTracker: input.issueTracker } : {}),
-			...(input.env.GITHUB_TOKEN !== undefined ? { githubToken: input.env.GITHUB_TOKEN } : {}),
+			...(input.forge !== undefined ? { forge: input.forge } : {}),
 			...(input.runBranchPrefixDefault !== undefined
 				? { runBranchPrefixDefault: input.runBranchPrefixDefault }
 				: {}),

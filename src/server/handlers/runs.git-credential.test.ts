@@ -2,7 +2,7 @@
  * HTTP coverage for `POST /runs/:id/git-credential` (warren-c9ac,
  * forge-contract.md §4.1 window 3): the in-pod harness re-mints a push
  * credential over the authenticated callback when no reap intent parked one.
- * The handler resolves run → project → `mintGitCredentialSecret(deps.forge)`;
+ * The handler resolves run → project → `mintGitCredential(deps.forge)`;
  * FakeForge (depsFor's default) mints `fake-credential`.
  */
 

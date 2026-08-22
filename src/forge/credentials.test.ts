@@ -1,27 +1,50 @@
 import { describe, expect, test } from "bun:test";
-import { GitCredentialMintError, mintGitCredentialSecret } from "./credentials.ts";
+import { GitCredentialMintError, mintGitCredential } from "./credentials.ts";
 import { FakeForge } from "./fake/fake-forge.ts";
 import { GitHubForge } from "./github/provider.ts";
 
-describe("mintGitCredentialSecret", () => {
+describe("mintGitCredential", () => {
 	test("returns undefined for a URL the forge does not own", async () => {
 		const forge = new GitHubForge({ token: "tok" });
-		expect(await mintGitCredentialSecret(forge, "https://gitlab.com/x/y.git")).toBeUndefined();
+		expect(await mintGitCredential(forge, "https://gitlab.com/x/y.git")).toBeUndefined();
 	});
 
 	test("mints the static secret for an owned URL under PAT mode", async () => {
 		const forge = new GitHubForge({ token: "tok" });
-		expect(await mintGitCredentialSecret(forge, "https://github.com/x/y.git")).toBe("tok");
+		expect(await mintGitCredential(forge, "https://github.com/x/y.git")).toEqual({
+			username: "x-access-token",
+			secret: "tok",
+			host: "github.com",
+		});
 	});
 
 	test("maps no_credential (empty token) to anonymous git", async () => {
 		const forge = new GitHubForge({ token: "" });
-		expect(await mintGitCredentialSecret(forge, "https://github.com/x/y.git")).toBeUndefined();
+		expect(await mintGitCredential(forge, "https://github.com/x/y.git")).toBeUndefined();
 	});
 
-	test("mints the FakeForge credential for a fake URL", async () => {
+	test("mints the FakeForge credential, with no host to rewrite against", async () => {
+		// FakeForge OWNS fake://repo, but its authority is the repo name rather
+		// than a git host, so there is no https remote an insteadOf rule could
+		// name. The credential still exists for the consumers that do not need
+		// one; only the rewrite renders nothing (warren-1b6f).
 		const forge = new FakeForge();
-		expect(await mintGitCredentialSecret(forge, "fake://repo")).toBe("fake-credential");
+		expect(await mintGitCredential(forge, "fake://repo")).toEqual({
+			username: "fake",
+			secret: "fake-credential",
+			host: "",
+		});
+	});
+
+	test("reads the host off the clone URL, in each spelling warren accepts", async () => {
+		const forge = new GitHubForge({ token: "tok" });
+		for (const url of [
+			"https://github.com/x/y.git",
+			"ssh://git@github.com/x/y.git",
+			"git@github.com:x/y.git",
+		]) {
+			expect((await mintGitCredential(forge, url))?.host, url).toBe("github.com");
+		}
 	});
 
 	test("throws GitCredentialMintError on a non-no_credential mint failure", async () => {
@@ -31,8 +54,8 @@ describe("mintGitCredentialSecret", () => {
 				ok: false,
 				error: { kind: "network", detail: "boom" },
 			});
-		await expect(
-			mintGitCredentialSecret(forge, "https://github.com/x/y.git"),
-		).rejects.toBeInstanceOf(GitCredentialMintError);
+		await expect(mintGitCredential(forge, "https://github.com/x/y.git")).rejects.toBeInstanceOf(
+			GitCredentialMintError,
+		);
 	});
 });

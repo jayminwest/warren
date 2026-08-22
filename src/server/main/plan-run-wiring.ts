@@ -12,7 +12,7 @@
 
 import type { Repos } from "../../db/repos/index.ts";
 import type { Forge } from "../../forge/contract.ts";
-import { mintGitCredentialSecret } from "../../forge/credentials.ts";
+import { mintGitCredential } from "../../forge/credentials.ts";
 import {
 	bootPlanRunCoordinator,
 	type CoordinatorCloseChildSeedFn,
@@ -154,7 +154,7 @@ function createCloseChildSeed(deps: CloseChildSeedDeps): CoordinatorCloseChildSe
 			// immediately before the git spawns (forge-contract.md §4 — minted,
 			// never held) instead of reading a boot-captured env.GITHUB_TOKEN.
 			// Undefined → anonymous git, the old no-token behavior.
-			const gitSecret = await mintGitCredentialSecret(forge, project.gitUrl);
+			const gitSecret = await mintGitCredential(forge, project.gitUrl);
 			const result = await closeMergedChildSeed({
 				projectPath: project.localPath,
 				defaultBranch: project.defaultBranch,
@@ -165,7 +165,7 @@ function createCloseChildSeed(deps: CloseChildSeedDeps): CoordinatorCloseChildSe
 				gitBinary: projectsConfig.gitBinary,
 				// Minted per close so the fetch/push work against private repos
 				// on the K8s control plane (no supervisor insteadOf rule there).
-				githubToken: gitSecret,
+				gitCredential: gitSecret,
 			});
 			logger.info(
 				{ planRunId: planRun.id, seq: child.seq, seedId: child.seedId, outcome: result.kind },
@@ -268,9 +268,7 @@ export function bootPlanRunCoordinatorWiring(input: PlanRunWiringInput): PlanRun
 			warrenConfigs,
 			projectsConfig,
 			projectSpawn,
-			// Raw token for the pre-dispatch refresh fetch (private repos on
-			// the K8s control plane) — see SpawnRunInput.githubToken.
-			githubToken: env.GITHUB_TOKEN,
+			forge,
 			seedsCli,
 			...(issueTracker !== undefined ? { issueTracker } : {}),
 			...(runBranchPrefixDefault !== undefined ? { runBranchPrefixDefault } : {}),

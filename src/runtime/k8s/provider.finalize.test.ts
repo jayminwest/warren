@@ -78,7 +78,10 @@ describe("K8sProvider.finalize — wiring", () => {
 			finalizeCoordinator: coordinator,
 			finalizeSetTimer: inertTimer,
 		});
-		const p = provider.finalize(handle, { ...intent(), gitToken: "minted_per_spawn" });
+		const p = provider.finalize(handle, {
+			...intent(),
+			gitCredential: { username: "x-access-token", secret: "minted_per_spawn", host: "github.com" },
+		});
 		await Promise.resolve();
 		const parked = coordinator.peekIntent(handle.runId);
 		expect(parked?.gitToken).toBe("minted_per_spawn");
@@ -145,7 +148,10 @@ describe("K8sProvider.finalize — wiring", () => {
 			finalizeCoordinator: coordinator,
 			finalizeSetTimer: inertTimer,
 		});
-		const p = provider.finalize(handle, { ...intent(), gitToken: "ghs_minted" });
+		const p = provider.finalize(handle, {
+			...intent(),
+			gitCredential: { username: "x-access-token", secret: "ghs_minted", host: "github.com" },
+		});
 		await Promise.resolve();
 		const parked = coordinator.peekIntent(handle.runId);
 		expect(parked?.gitToken).toBe("ghs_minted");

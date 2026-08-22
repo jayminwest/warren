@@ -23,7 +23,7 @@
 
 import type { Repos } from "../db/repos/index.ts";
 import type { Forge } from "../forge/contract.ts";
-import { mintGitCredentialSecret } from "../forge/credentials.ts";
+import { mintGitCredential } from "../forge/credentials.ts";
 import type { SpawnFn } from "../projects/clone.ts";
 import type { ProjectsConfig } from "../projects/config.ts";
 import { spawnRun } from "../runs/index.ts";
@@ -44,6 +44,7 @@ import {
 	type TriggerSchedulerConfig,
 } from "../triggers/index.ts";
 import type { WarrenConfigCache } from "../warren-config/index.ts";
+import type { GitSpawnCredential } from "../workspace/git/credential-env.ts";
 import type { BridgeRegistry } from "./types.ts";
 
 export interface BootSchedulerInput {
@@ -75,7 +76,7 @@ export interface BootSchedulerInput {
 	 *   - the CI-fixer poller reads check runs / log tails through it, and
 	 *     its capability flags drive the §5 degradations;
 	 *   - the self-heal re-clone and the scheduled-dispatch refresh mint
-	 *     their git credential PER SPAWN via `mintGitCredentialSecret`
+	 *     their git credential PER SPAWN via `mintGitCredential`
 	 *     (forge-contract.md §4 — credentials are minted, never held), so a
 	 *     short-lived App credential never has to outlive a tick loop.
 	 */
@@ -131,19 +132,19 @@ export function bootScheduler(input: BootSchedulerInput): SchedulerHandle {
 		tracker: projectHealTracker,
 		config: input.projectsConfig,
 		spawn: input.projectSpawn,
-		mintToken: (project) => mintGitCredentialSecret(input.forge, project.gitUrl),
+		mintCredential: (project) => mintGitCredential(input.forge, project.gitUrl),
 		...(input.logger !== undefined ? { logger: input.logger } : {}),
 		...(input.cloneExists !== undefined ? { exists: input.cloneExists } : {}),
 		...(input.now !== undefined ? { now: input.now } : {}),
 	});
 
-	const mintProjectGitSecret = async (projectId: string): Promise<string | undefined> => {
+	const mintProjectGitSecret = async (
+		projectId: string,
+	): Promise<GitSpawnCredential | undefined> => {
 		// §4 per-spawn mint: credential is minted immediately before the spawn,
 		// never captured at boot. Unowned URL / `no_credential` → undefined.
 		const project = await input.repos.projects.get(projectId);
-		return project !== null
-			? await mintGitCredentialSecret(input.forge, project.gitUrl)
-			: undefined;
+		return project !== null ? await mintGitCredential(input.forge, project.gitUrl) : undefined;
 	};
 
 	const spawnDispatch: DispatchSpawnFn = async (
@@ -166,7 +167,7 @@ export function bootScheduler(input: BootSchedulerInput): SchedulerHandle {
 			...(args.maxCostUsd !== undefined ? { maxCostUsdOverride: args.maxCostUsd } : {}),
 			projectsConfig: input.projectsConfig,
 			projectSpawn: input.projectSpawn,
-			githubToken: gitSecret,
+			gitCredential: gitSecret,
 			warrenConfigs: input.warrenConfigs,
 			seedsCli: seedsDeps,
 			...trackerOption,
@@ -207,7 +208,7 @@ export function bootScheduler(input: BootSchedulerInput): SchedulerHandle {
 			targetBranch: args.targetBranch,
 			projectsConfig: input.projectsConfig,
 			projectSpawn: input.projectSpawn,
-			githubToken: gitSecret,
+			gitCredential: gitSecret,
 			warrenConfigs: input.warrenConfigs,
 			seedsCli: seedsDeps,
 			...trackerOption,

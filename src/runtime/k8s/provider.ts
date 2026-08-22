@@ -153,7 +153,7 @@ export interface K8sProviderDeps {
 	 * OPTIONAL git-credential mint seam (forge-contract.md §4.1, warren-c9ac).
 	 * `create()` mints the window-1 init-container clone credential at pod-spec
 	 * time so a short-lived App-mode token is fresh for the clone. Boot wires
-	 * this to `mintGitCredentialSecret` over the resolved forge; absent, the pod
+	 * this to `mintGitCredential` over the resolved forge; absent, the pod
 	 * spec keeps the static `warren-git-token` Secret ref (PAT-mode posture).
 	 */
 	readonly mintGitCredential?: (gitUrl: string) => Promise<string | undefined>;
@@ -469,13 +469,13 @@ export class K8sProvider implements RuntimeProvider {
 	 * The short-lived git push credential rides the intent (fetched over the
 	 * authenticated callback AFTER the agent exits), NOT the agent container's
 	 * static env — a compromised agent never holds the push token (blast-radius
-	 * minimization). warren-4e1c: the domain-minted `intent.gitToken` wins; absent,
+	 * minimization). warren-4e1c: the domain-minted `intent.gitCredential?.secret` wins; absent,
 	 * the static env fallback is gated on `allowStaticPushTokenFallback` (OFF under
 	 * App mode — warren-c9ac, `./git-tokens.ts`). */
 	finalize(handle: RunHandle, intent: FinalizeIntent): Promise<FinalizeResult> {
 		const env = this.deps.serverEnv ?? process.env;
 		const gitToken = resolveK8sPushToken({
-			intentToken: intent.gitToken,
+			intentToken: intent.gitCredential?.secret,
 			env,
 			allowStaticEnv: this.deps.allowStaticPushTokenFallback ?? true,
 		});

@@ -39,6 +39,7 @@ import type { ProjectsConfig } from "../projects/config.ts";
 import { refreshProject } from "../projects/index.ts";
 import type { IssueTracker, PlanCapableTracker, TrackerContext } from "../tracker/contract.ts";
 import type { WarrenConfigCache } from "../warren-config/index.ts";
+import type { GitSpawnCredential } from "../workspace/git/credential-env.ts";
 import { PlanHasNoOpenChildrenError, ProjectLacksTrackerError } from "./errors.ts";
 
 export const PLAN_RUN_ACCEPTED_PLAN_STATUSES: readonly PlanStatus[] = [
@@ -83,8 +84,8 @@ export interface CreatePlanRunOrchestrationInput {
 	/** Git spawn seam. When wired, the host clone is refreshed before the plan walk (warren-6d60). */
 	readonly spawn?: SpawnFn;
 	readonly projectsConfig: ProjectsConfig;
-	/** Private-repo credential for the host-side refresh fetch (minted per-spawn via `mintGitCredentialSecret`). */
-	readonly gitToken?: string;
+	/** Private-repo credential for the host-side refresh fetch (minted per-spawn via `mintGitCredential`). */
+	readonly gitCredential?: GitSpawnCredential;
 	readonly warrenConfigs?: WarrenConfigCache;
 	/** Test seam — defaults to the live `refreshProject`. */
 	readonly refreshProjectFn?: typeof refreshProject;
@@ -113,7 +114,7 @@ async function refreshDispatchProject(
 		repo: input.repos.projects,
 		config: input.projectsConfig,
 		id: project.id,
-		token: input.gitToken,
+		gitCredential: input.gitCredential,
 		spawn: input.spawn,
 		...(input.ref !== undefined ? { ref: input.ref } : {}),
 		...(input.now !== undefined ? { now: input.now } : {}),

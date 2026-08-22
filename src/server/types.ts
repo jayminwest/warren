@@ -169,7 +169,7 @@ export interface ServerDeps {
 	 * Boot-resolved forge (`resolveForge` in `src/forge/registry.ts`, honoring
 	 * `WARREN_FORGE`), resolved ONCE in `bootServer` (warren-6c4c) and threaded
 	 * here exactly like `runtimeProvider`. REQUIRED. Handlers mint per-spawn git
-	 * credentials through it (`mintGitCredentialSecret`); the handle must never
+	 * credentials through it (`mintGitCredential`); the handle must never
 	 * appear in a public projection.
 	 */
 	readonly forge: Forge;

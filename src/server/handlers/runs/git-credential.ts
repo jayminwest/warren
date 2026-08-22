@@ -9,7 +9,7 @@
  * it). The resolved design routes this window through the same authenticated
  * callback channel the intent poll already uses: the pod asks warren, warren
  * mints a FRESH credential off the boot-resolved forge
- * (`mintGitCredentialSecret`, §4 — minted, never held), and returns it in the
+ * (`mintGitCredential`, §4: minted, never held), and returns it in the
  * response body. Under App mode this is the ONLY credential path the salvage
  * window can rely on; the pod-side static env is a last resort for PAT mode.
  *
@@ -27,7 +27,7 @@
  */
 
 import { NotFoundError } from "../../../core/errors.ts";
-import { mintGitCredentialSecret } from "../../../forge/credentials.ts";
+import { mintGitCredential } from "../../../forge/credentials.ts";
 import { jsonResponse } from "../../response.ts";
 import type { RouteHandler, ServerDeps } from "../../types.ts";
 import { requireParam } from "../index.ts";
@@ -41,7 +41,10 @@ export function postRunGitCredentialHandler(deps: ServerDeps): RouteHandler {
 		if (project === null) {
 			throw new NotFoundError(`project ${run.projectId} for run ${id}`);
 		}
-		const gitToken = await mintGitCredentialSecret(deps.forge, project.gitUrl);
-		return jsonResponse(200, { gitToken: gitToken ?? null });
+		const gitCredential = await mintGitCredential(deps.forge, project.gitUrl);
+		// The in-pod wire carries the bare secret (the pod injects it into the
+		// origin URL rather than rendering an insteadOf rule), so the credential
+		// flattens here. warren-1b6f left that half of the wire alone.
+		return jsonResponse(200, { gitToken: gitCredential?.secret ?? null });
 	};
 }

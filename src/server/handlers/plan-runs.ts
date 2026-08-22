@@ -18,7 +18,7 @@ import {
 	PLAN_RUN_STATE_FILTERS,
 	type PlanRunStateFilter,
 } from "../../core/wire.ts";
-import { mintGitCredentialSecret } from "../../forge/credentials.ts";
+import { mintGitCredential } from "../../forge/credentials.ts";
 import {
 	buildDefaultPlanRunEmit,
 	cancelPlanRun,
@@ -88,7 +88,7 @@ export function createPlanRunHandler(deps: ServerDeps): RouteHandler {
 		// through the boot forge (forge-contract.md §4); no config object
 		// holds a token.
 		const project = await deps.repos.projects.require(projectId);
-		const gitSecret = await mintGitCredentialSecret(deps.forge, project.gitUrl);
+		const gitSecret = await mintGitCredential(deps.forge, project.gitUrl);
 		const result = await createPlanRun({
 			projectId,
 			...(planId !== undefined ? { planId } : {}),
@@ -104,7 +104,7 @@ export function createPlanRunHandler(deps: ServerDeps): RouteHandler {
 			issueTracker: deps.issueTracker,
 			projectsConfig: deps.projectsConfig,
 			...(deps.spawn !== undefined ? { spawn: deps.spawn } : {}),
-			...(gitSecret !== undefined ? { gitToken: gitSecret } : {}),
+			...(gitSecret !== undefined ? { gitCredential: gitSecret } : {}),
 			...(deps.warrenConfigs !== undefined ? { warrenConfigs: deps.warrenConfigs } : {}),
 			...(deps.refreshProjectFn !== undefined ? { refreshProjectFn: deps.refreshProjectFn } : {}),
 			...(deps.now !== undefined ? { now: deps.now } : {}),

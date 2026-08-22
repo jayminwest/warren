@@ -34,6 +34,7 @@ import type { ProjectRow } from "../db/schema.ts";
 import { cloneProjectRepo, type SpawnFn } from "../projects/clone.ts";
 import type { ProjectsConfig } from "../projects/config.ts";
 import { parseGitHubUrl } from "../projects/url.ts";
+import type { GitSpawnCredential } from "../workspace/git/credential-env.ts";
 
 /** Default gap between repeated notices for the same unresolved condition. */
 export const NOTICE_INTERVAL_MS = 3_600_000;
@@ -103,7 +104,7 @@ export interface RecloneMissingProjectInput {
 	readonly config: ProjectsConfig;
 	readonly spawn: SpawnFn;
 	/** `GITHUB_TOKEN` for private-repo access — see `CloneProjectInput.token`. */
-	readonly token?: string;
+	readonly gitCredential?: GitSpawnCredential;
 	readonly timeoutMs?: number;
 	/** Injected cloner; defaults to the live `cloneProjectRepo`. */
 	readonly clone?: typeof cloneProjectRepo;
@@ -126,7 +127,7 @@ export async function recloneMissingProject(input: RecloneMissingProjectInput): 
 		owner: parsed.owner,
 		name: parsed.name,
 		defaultBranch: input.project.defaultBranch,
-		token: input.token,
+		gitCredential: input.gitCredential,
 		spawn: input.spawn,
 		...(input.timeoutMs !== undefined ? { timeoutMs: input.timeoutMs } : {}),
 	});
@@ -158,9 +159,9 @@ export interface ProjectCloneHealerInput {
 	 * Per-reclone credential mint (warren-0b49, forge-contract.md §4 —
 	 * credentials are minted, never held). Invoked immediately before the
 	 * re-clone spawns git; the boot wiring resolves it from the boot-resolved
-	 * forge via `mintGitCredentialSecret`. Absent → anonymous git.
+	 * forge via `mintGitCredential`. Absent → anonymous git.
 	 */
-	readonly mintToken?: (project: ProjectRow) => Promise<string | undefined>;
+	readonly mintCredential?: (project: ProjectRow) => Promise<GitSpawnCredential | undefined>;
 	readonly timeoutMs?: number;
 	readonly logger?: HealLogger;
 	/** Filesystem probe — overrideable for tests. */
@@ -230,7 +231,8 @@ async function attemptReclone(
 	recloneFn: typeof recloneMissingProject,
 	project: ProjectRow,
 ): Promise<void> {
-	const token = input.mintToken !== undefined ? await input.mintToken(project) : undefined;
+	const token =
+		input.mintCredential !== undefined ? await input.mintCredential(project) : undefined;
 	await recloneFn({
 		project,
 		config: input.config,

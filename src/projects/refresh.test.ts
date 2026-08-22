@@ -103,7 +103,7 @@ describe("refreshProjectClone", () => {
 			config: CFG,
 			localPath: "/data/projects/x/y",
 			ref: "main",
-			token: "ghp_secret",
+			gitCredential: { username: "x-access-token", secret: "ghp_secret", host: "github.com" },
 			spawn,
 			exists: () => true,
 		});

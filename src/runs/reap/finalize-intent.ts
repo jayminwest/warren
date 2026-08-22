@@ -5,8 +5,9 @@
  * per-spawn minted push credential.
  */
 
-import { mintGitCredentialSecret } from "../../forge/credentials.ts";
+import { mintGitCredential } from "../../forge/credentials.ts";
 import type { FinalizeIntent, FinalizeResult, RunHandle } from "../../runtime/contract.ts";
+import type { GitSpawnCredential } from "../../workspace/git/credential-env.ts";
 import type { ReapPipelineContext } from "./pipeline.ts";
 import { seededArtifactResetPaths } from "./seed-reset.ts";
 
@@ -25,10 +26,10 @@ export async function runProviderFinalize(ctx: ReapPipelineContext): Promise<Fin
 	// A mint failure is recorded and degrades to an anonymous push, which fails
 	// closed as a `branch_push` stage failure on a private repo — rather than
 	// skipping the merges wholesale.
-	let gitToken: string | undefined;
+	let gitCredential: GitSpawnCredential | undefined;
 	if (ctx.input.forge !== undefined) {
 		try {
-			gitToken = await mintGitCredentialSecret(ctx.input.forge, ctx.project.gitUrl);
+			gitCredential = await mintGitCredential(ctx.input.forge, ctx.project.gitUrl);
 		} catch (err) {
 			await ctx.fail("branch_push", err);
 		}
@@ -36,7 +37,7 @@ export async function runProviderFinalize(ctx: ReapPipelineContext): Promise<Fin
 	const intent: FinalizeIntent = {
 		branch: ctx.branch ?? "",
 		push: true,
-		...(gitToken !== undefined ? { gitToken } : {}),
+		...(gitCredential !== undefined ? { gitCredential } : {}),
 		// Opaque artifact keys the domain asks the provider to merge (warren-df3e);
 		// the returned `FinalizeResult.artifacts` is keyed the same way.
 		artifacts: ["mulch", "seeds", "plans"],
