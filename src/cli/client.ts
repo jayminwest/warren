@@ -17,11 +17,8 @@
 
 import type { Command } from "commander";
 import { loadWarrenClientConfigFromFile } from "../client/config-file.ts";
-import {
-	loadWarrenClientConfigFromEnv,
-	WarrenClient,
-	type WarrenClientConfig,
-} from "../client/index.ts";
+import { DEFAULT_WARREN_BASE_URL, WarrenClient, type WarrenClientConfig } from "../client/index.ts";
+import { ValidationError } from "../core/errors.ts";
 import type { CliContext, EnvLike } from "./output.ts";
 
 /** The `--url` / `--token` flag pair every remote command accepts. */
@@ -136,19 +133,30 @@ export function resolveClientConfigWithSources(
 	env: EnvLike,
 	flags: ClientFlags = {},
 ): ResolvedClientConfig {
-	const fromEnv = loadWarrenClientConfigFromEnv(env);
 	const fromFile = loadWarrenClientConfigFromFile(env);
+	// Read the env slot raw: `loadWarrenClientConfigFromEnv` throws on an
+	// explicitly-empty WARREN_BASE_URL, which let a stray empty line in a
+	// cwd `.env` defeat an explicit `--url` before the merge ever ran
+	// (warren-ff07 / #1034). Empty now just loses, like every other slot.
+	const envBaseUrl = env.WARREN_BASE_URL;
 	const baseUrl = firstNonEmpty(
 		{ source: "flag", value: flags.url },
-		{ source: "env", value: env.WARREN_BASE_URL },
+		{ source: "env", value: envBaseUrl },
 		{ source: "config-file", value: fromFile?.baseUrl },
 	);
+	if (baseUrl === undefined && envBaseUrl === "") {
+		// The empty env var was the only candidate: keep the loader's
+		// fail-fast contract so a misconfigured environment still says so.
+		throw new ValidationError("WARREN_BASE_URL is set to an empty string", {
+			recoveryHint: `unset WARREN_BASE_URL to fall back to ${DEFAULT_WARREN_BASE_URL}`,
+		});
+	}
 	const token = firstNonEmpty(
 		{ source: "flag", value: flags.token },
 		{ source: "env", value: env.WARREN_API_TOKEN },
 		{ source: "config-file", value: fromFile?.token },
 	);
-	const resolvedBaseUrl = baseUrl?.value ?? fromEnv.baseUrl;
+	const resolvedBaseUrl = baseUrl?.value ?? DEFAULT_WARREN_BASE_URL;
 	const baseUrlSource = baseUrl?.source ?? "default";
 	return token !== undefined
 		? {

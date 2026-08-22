@@ -3,6 +3,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DEFAULT_WARREN_BASE_URL, WarrenClient } from "../client/index.ts";
+import { ValidationError } from "../core/errors.ts";
 import {
 	resolveClientConfig,
 	resolveClientConfigWithSources,
@@ -115,6 +116,45 @@ describe("resolveClientConfigWithSources", () => {
 		expect(resolved.config.baseUrl).toBe(DEFAULT_WARREN_BASE_URL);
 		expect(resolved.baseUrlSource).toBe("default");
 		expect(resolved.tokenSource).toBeUndefined();
+	});
+
+	test("an empty WARREN_BASE_URL loses to an explicit --url (warren-ff07)", () => {
+		const resolved = resolveClientConfigWithSources(
+			{ ...NO_CONFIG_FILE, WARREN_BASE_URL: "" },
+			{ url: "http://127.0.0.1:9" },
+		);
+		expect(resolved.config.baseUrl).toBe("http://127.0.0.1:9");
+		expect(resolved.baseUrlSource).toBe("flag");
+	});
+
+	test("an empty WARREN_BASE_URL loses to a config-file URL (warren-ff07)", async () => {
+		const dir = await mkdtemp(join(tmpdir(), "warren-client-test-"));
+		try {
+			const path = join(dir, "client.json");
+			await writeFile(path, JSON.stringify({ baseUrl: "https://file.example.com" }));
+			const resolved = resolveClientConfigWithSources({
+				WARREN_CLIENT_CONFIG: path,
+				WARREN_BASE_URL: "",
+			});
+			expect(resolved.config.baseUrl).toBe("https://file.example.com");
+			expect(resolved.baseUrlSource).toBe("config-file");
+		} finally {
+			await rm(dir, { recursive: true, force: true });
+		}
+	});
+
+	test("empty WARREN_BASE_URL with no higher slot still fails with the loader's error", () => {
+		let caught: unknown;
+		try {
+			resolveClientConfigWithSources({ ...NO_CONFIG_FILE, WARREN_BASE_URL: "" });
+		} catch (err) {
+			caught = err;
+		}
+		expect(caught).toBeInstanceOf(ValidationError);
+		if (caught instanceof ValidationError) {
+			expect(caught.message).toBe("WARREN_BASE_URL is set to an empty string");
+			expect(caught.recoveryHint).toContain("unset WARREN_BASE_URL");
+		}
 	});
 
 	test("names the winning slot per value, independently (warren-8807)", async () => {
