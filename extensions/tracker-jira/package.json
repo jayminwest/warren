@@ -1,0 +1,22 @@
+{
+	"name": "@warren-ext/tracker-jira",
+	"version": "0.0.0",
+	"description": "Warren issue-tracker extension: warren-tracker/v1 over the Jira REST API, out of process (warren-27d9)",
+	"private": true,
+	"type": "module",
+	"main": "src/index.ts",
+	"scripts": {
+		"start": "bun run src/index.ts",
+		"test": "bun test",
+		"typecheck": "tsc --noEmit -p tsconfig.json",
+		"dev-server": "bun run src/dev-server.ts"
+	},
+	"license": "MIT",
+	"engines": {
+		"bun": ">=1.1.0"
+	},
+	"devDependencies": {
+		"@types/bun": "^1.2.0",
+		"typescript": "^5.6.0"
+	}
+}
