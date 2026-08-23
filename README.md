@@ -1,6 +1,6 @@
 <p align="center">
   <a href="https://warren.run">
-    <img src="branding/logo.png" alt="warren" width="640">
+    <img src="branding/logo.png" alt="Warren — coding agents into infrastructure" width="640">
   </a>
 </p>
 

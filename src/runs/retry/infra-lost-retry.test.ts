@@ -60,6 +60,8 @@ interface Harness {
 		retryOf?: string;
 		costUsd?: number;
 		maxCostUsd?: number;
+		/** Extra frontmatter frozen onto the run, beside the cap. */
+		frontmatter?: Record<string, unknown>;
 		failureReason?: "sandbox_run_lost" | "crashed" | "provider_error";
 	}) => Promise<RunRow>;
 }
@@ -84,7 +86,10 @@ async function setup(): Promise<Harness> {
 				projectId: project.id,
 				prompt: over.prompt ?? "fix the thing",
 				renderedAgentJson: {
-					frontmatter: over.maxCostUsd !== undefined ? { maxCostUsd: over.maxCostUsd } : {},
+					frontmatter: {
+						...(over.maxCostUsd !== undefined ? { maxCostUsd: over.maxCostUsd } : {}),
+						...(over.frontmatter ?? {}),
+					},
 					sections: {},
 				},
 				trigger: "manual",
@@ -179,6 +184,30 @@ describe("infra-lost run auto-retry (warren-4af7)", () => {
 		const retryEvents = await h.repos.events.listByRun(retry.id);
 		const backlink = retryEvents.find((e) => e.kind === RUN_RETRY_OF_KIND);
 		expect(backlink?.payloadJson).toMatchObject({ retryOf: original.id });
+	});
+
+	test("carries the provider and model the failed run resolved (warren-0d80)", async () => {
+		const original = await h.run({
+			frontmatter: { provider: "openrouter", model: "moonshotai/kimi-k3" },
+		});
+		await hookFor(h)(original.id);
+		expect(h.spawnCalls[0]?.providerOverride).toBe("openrouter");
+		expect(h.spawnCalls[0]?.modelOverride).toBe("moonshotai/kimi-k3");
+	});
+
+	test("keeps the remaining budget as the cap, not the original's full one (warren-0d80)", async () => {
+		// The frozen frontmatter carries the FULL $5 cap. warren-4af7 says the
+		// retry gets what is left, so the inherited cap must not win here.
+		const original = await h.run({ maxCostUsd: 5, costUsd: 2 });
+		await hookFor(h)(original.id);
+		expect(h.spawnCalls[0]?.maxCostUsdOverride).toBe(3);
+	});
+
+	test("passes no provider or model for a run that declared none (warren-0d80)", async () => {
+		const original = await h.run({});
+		await hookFor(h)(original.id);
+		expect(h.spawnCalls[0]?.providerOverride).toBeUndefined();
+		expect(h.spawnCalls[0]?.modelOverride).toBeUndefined();
 	});
 
 	test("uncapped original → retry dispatches with no cap override", async () => {
