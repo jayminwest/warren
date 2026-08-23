@@ -55,6 +55,7 @@ import { type LifecycleExtension, WARREN_EXT_PROTOCOL } from "../lifecycle-bus.t
 import { spawnRun } from "../spawn/index.ts";
 import type { SpawnLogger } from "../spawn/types.ts";
 import type { BridgeRegistry } from "../stream/types.ts";
+import { inheritedDispatchOverrides } from "./inherited-overrides.ts";
 
 /** Event kinds this module stamps for lineage + observability. */
 export const PROVIDER_RETRY_EVENTS = {
@@ -289,6 +290,8 @@ async function dispatchProviderRetry(
 		readonly trigger: string;
 		readonly seedId: string | null;
 		readonly mode: "batch";
+		/** Frozen at the original dispatch; the retry's overrides are read back off it. */
+		readonly renderedAgentJson: unknown;
 	},
 	message: string,
 ): Promise<void> {
@@ -313,6 +316,11 @@ async function dispatchProviderRetry(
 			dispatchOrigin: "retry_provider",
 			...(run.seedId !== null ? { seedId: run.seedId } : {}),
 			mode: run.mode,
+			// warren-0d80: the provider, model and cap the original run actually
+			// resolved sit folded on its frozen frontmatter. Without them the
+			// retry re-resolves off the agent and the project defaults, so an
+			// operator-selected model silently swaps mid-lineage.
+			...inheritedDispatchOverrides(run.renderedAgentJson),
 			// Lineage on the row (warren-e96f `replicate` semantics): a fresh
 			// re-dispatch of the failed run's config off the project default
 			// branch, independent of whatever the failed run did. The event

@@ -14,6 +14,7 @@
  * and 1 otherwise.
  */
 
+import { clientConfigPath } from "../../client/config-file.ts";
 import type { WarrenClient } from "../../client/index.ts";
 import { VERSION } from "../../index.ts";
 import { authFailureHint } from "../auth-hints.ts";
@@ -40,8 +41,10 @@ export interface RemoteDoctorDeps {
 	readonly cliVersion?: string;
 	/**
 	 * Which slot supplied the token, from `resolveWarrenClientWithSources`.
-	 * Absent means the caller did not resolve one, and the auth check falls
-	 * back to naming every slot.
+	 * Absent means NO TOKEN in any slot, which is an ordinary production
+	 * state: the resolution picks from flag, env and config file with no
+	 * default arm, so it omits the source exactly when all three are empty
+	 * (warren-4f1b).
 	 */
 	readonly tokenSource?: ClientConfigSource;
 	/** Which slot supplied the base URL. Absent leaves the line as the URL alone. */
@@ -88,7 +91,7 @@ export async function runRemoteDoctor(
 			name: "server_reachable",
 			ok: false,
 			message: formatError(err),
-			hint: "check WARREN_BASE_URL / --url and that `warren serve` is running",
+			hint: baseUrlFailureHint(deps.baseUrlSource, deps.client.config.baseUrl, context.env),
 		});
 		return finish(context, checks);
 	}
@@ -123,15 +126,47 @@ function baseUrlSourceLabel(source: ClientConfigSource | undefined): string | un
 	}
 }
 
+/**
+ * Where to look when the server did not answer. The fixed text named
+ * `WARREN_BASE_URL` and `--url` whatever the URL came from, so a stale URL
+ * in the config file sent the operator to two slots that had not supplied
+ * it (warren-4f1b). The slot is already resolved on the ok line; this is
+ * the path where it matters.
+ */
+function baseUrlFailureHint(
+	source: ClientConfigSource | undefined,
+	baseUrl: string,
+	env: EnvLike,
+): string {
+	const serving = "and that `warren serve` is running there";
+	switch (source) {
+		case "flag":
+			return `${baseUrl} came from --url; check it ${serving}`;
+		case "env":
+			return `${baseUrl} came from WARREN_BASE_URL in the environment; check it ${serving}`;
+		case "config-file":
+			return `${baseUrl} came from the client config file (${clientConfigPath(env)}); check it ${serving}, or re-run \`warren login\` to replace it`;
+		case "default":
+			return `${baseUrl} is the built-in default, because no slot supplied one; set WARREN_BASE_URL or pass --url, ${serving}`;
+		default:
+			return `check WARREN_BASE_URL / --url ${serving}`;
+	}
+}
+
 /** How the token slot reads in operator-facing output (warren-8807). */
-function tokenSourceLabel(source: ClientConfigSource | undefined): string | undefined {
+function tokenSourceLabel(
+	source: ClientConfigSource | undefined,
+	env: EnvLike,
+): string | undefined {
 	switch (source) {
 		case "flag":
 			return "--token";
 		case "env":
 			return "WARREN_API_TOKEN in the environment";
 		case "config-file":
-			return "the client config file (~/.warren/client.json, WARREN_CLIENT_CONFIG)";
+			// The path the resolution actually read, which honours
+			// WARREN_CLIENT_CONFIG rather than asserting the default (warren-4f1b).
+			return `the client config file (${clientConfigPath(env)})`;
 		default:
 			return undefined;
 	}
@@ -142,7 +177,7 @@ async function authCheck(
 	tokenSource: ClientConfigSource | undefined,
 	env: EnvLike,
 ): Promise<DoctorCheck> {
-	const label = tokenSourceLabel(tokenSource);
+	const label = tokenSourceLabel(tokenSource, env);
 	try {
 		const who = await client.whoami();
 		const admitted = `admitted as ${who.identity} (capabilities: ${who.capabilities.join(", ")})`;

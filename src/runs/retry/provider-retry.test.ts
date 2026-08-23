@@ -147,6 +147,8 @@ async function setup(
 		providerMessage?: string;
 		httpStatus?: number | null;
 		upstreamBody?: string | null;
+		/** Folded onto the failed run the way a real dispatch freezes it. */
+		frontmatter?: Record<string, unknown>;
 	} = {},
 ): Promise<Fixture> {
 	const db = await openDatabase({ path: ":memory:" });
@@ -162,7 +164,7 @@ async function setup(
 		agentName: "refactor-bot",
 		projectId: project.id,
 		prompt: "work the seed",
-		renderedAgentJson: {},
+		renderedAgentJson: opts.frontmatter !== undefined ? { frontmatter: opts.frontmatter } : {},
 		trigger: opts.trigger ?? "manual",
 		sandboxId: "bur_aaaaaaaaaaaa",
 		sandboxRunId: "run_zzzzzzzzzzzz",
@@ -324,6 +326,11 @@ describe("createProviderRetryLifecycleExtension", () => {
 		// retryOf back-link (warren-eaa6/warren-58ff): the successor row
 		// carries the original run's id so retry projections see it.
 		expect(call.retryOf).toBe(fixture.runId);
+		// A run that declared no provider, model or cap passes none, so the
+		// retry resolves off the agent and the project defaults as it did.
+		expect(call.providerOverride).toBeUndefined();
+		expect(call.modelOverride).toBeUndefined();
+		expect(call.maxCostUsdOverride).toBeUndefined();
 		expect(started).toEqual([spawn.newRunId]);
 
 		// The successor names its origin (also the single-retry bound marker).
@@ -337,6 +344,23 @@ describe("createProviderRetryLifecycleExtension", () => {
 		const oldEvents = await fixture.repos.events.listByRun(fixture.runId);
 		const dispatched = oldEvents.find((e) => e.kind === PROVIDER_RETRY_EVENTS.retryDispatched);
 		expect((dispatched?.payloadJson as { newRunId?: string }).newRunId).toBe(spawn.newRunId);
+	});
+
+	test("carries the provider, model and cap the failed run resolved (warren-0d80)", async () => {
+		// Observed 2026-08-20: a run dispatched on one model retried on the
+		// project default, because the overrides never reached spawnRun.
+		const fixture = await setup({
+			frontmatter: {
+				provider: "openrouter",
+				model: "deepseek/deepseek-v4-pro-0813",
+				maxCostUsd: 6,
+			},
+		});
+		const { spawn } = await fire(fixture);
+		const call = spawn.calls[0] as SpawnCall;
+		expect(call.providerOverride).toBe("openrouter");
+		expect(call.modelOverride).toBe("deepseek/deepseek-v4-pro-0813");
+		expect(call.maxCostUsdOverride).toBe(6);
 	});
 
 	test("retries a 5xx httpStatus even when the prose names no status code", async () => {

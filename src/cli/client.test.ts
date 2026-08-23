@@ -3,6 +3,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DEFAULT_WARREN_BASE_URL, WarrenClient } from "../client/index.ts";
+import { ValidationError } from "../core/errors.ts";
 import {
 	resolveClientConfig,
 	resolveClientConfigWithSources,
@@ -158,6 +159,46 @@ describe("resolveClientConfigWithSources", () => {
 		);
 		expect(resolved.config.token).toBe("tok-env");
 		expect(resolved.tokenSource).toBe("env");
+	});
+
+	test("an empty WARREN_BASE_URL loses to an explicit --url", () => {
+		const resolved = resolveClientConfigWithSources(
+			{ ...NO_CONFIG_FILE, WARREN_BASE_URL: "" },
+			{ url: "https://flag.example.com" },
+		);
+		expect(resolved.config.baseUrl).toBe("https://flag.example.com");
+		expect(resolved.baseUrlSource).toBe("flag");
+	});
+
+	test("an empty WARREN_BASE_URL falls through to the config-file URL", async () => {
+		const dir = await mkdtemp(join(tmpdir(), "warren-client-test-"));
+		try {
+			const path = join(dir, "client.json");
+			await writeFile(path, JSON.stringify({ baseUrl: "https://file.example.com" }));
+			const resolved = resolveClientConfigWithSources({
+				WARREN_CLIENT_CONFIG: path,
+				WARREN_BASE_URL: "",
+			});
+			expect(resolved.config.baseUrl).toBe("https://file.example.com");
+			expect(resolved.baseUrlSource).toBe("config-file");
+		} finally {
+			await rm(dir, { recursive: true, force: true });
+		}
+	});
+
+	test("an empty WARREN_BASE_URL with no URL candidate preserves the validation error", () => {
+		let thrown: unknown;
+		try {
+			resolveClientConfigWithSources({ ...NO_CONFIG_FILE, WARREN_BASE_URL: "" });
+		} catch (error) {
+			thrown = error;
+		}
+		expect(thrown).toBeInstanceOf(ValidationError);
+		const validationError = thrown as ValidationError;
+		expect(validationError.message).toBe("WARREN_BASE_URL is set to an empty string");
+		expect(validationError.recoveryHint).toBe(
+			`unset WARREN_BASE_URL to fall back to ${DEFAULT_WARREN_BASE_URL}`,
+		);
 	});
 
 	test("the merged config matches what resolveClientConfig returns", () => {
