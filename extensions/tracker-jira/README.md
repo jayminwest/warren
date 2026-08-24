@@ -123,6 +123,7 @@ rather than a transient one, and warren does not retry a 4xx.
 | 401 / 403 | `502 upstream_unauthorized` | **this container's** Jira credential was rejected. Passing 401 through would send an operator to warren's bearer, the wrong secret |
 | 429 | `429 upstream_rate_limited`, `Retry-After` passed through | warren's bridge already backs off on 429 and honors the header |
 | 5xx or unreachable | `502 upstream_error` / `upstream_unreachable` | the tracker answered; the system behind it did not |
+| n/a | `400 invalid_issue_id` | the path segment is not valid percent-encoding, so there is no id to look up |
 
 There are no retries in this container. A second, unsynchronized backoff
 underneath warren's own would only make the wait harder to predict.

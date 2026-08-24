@@ -17,6 +17,7 @@ import { JiraClient } from "./jira/client.ts";
 import {
 	CAPABILITY_NOT_SUPPORTED_CODE,
 	type CapabilitiesResponse,
+	INVALID_ISSUE_ID_CODE,
 	type RemoteIssueStatusesResponse,
 	type RemoteTrackerCapabilities,
 	TRACKER_PROTOCOL_VERSION,
@@ -59,6 +60,27 @@ function errorJson(
 ): Response {
 	const body: TrackerErrorResponse = { error: { code, message } };
 	return json(body, status, headers);
+}
+
+/**
+ * Percent-decode one path segment. A malformed escape such as the `%` in
+ * `/issues/%` makes `decodeURIComponent` throw, and the route has to answer
+ * with the JSON error envelope rather than let a URIError leave the handler.
+ */
+function decodeSegment(raw: string | undefined): string | undefined {
+	try {
+		return decodeURIComponent(raw ?? "");
+	} catch {
+		return undefined;
+	}
+}
+
+function badIssueId(raw: string | undefined): Response {
+	return errorJson(
+		INVALID_ISSUE_ID_CODE,
+		`issue id is not a valid percent-encoded segment: ${raw ?? ""}`,
+		400,
+	);
 }
 
 function capabilityOff(surface: string): Response {
@@ -114,7 +136,8 @@ export function createJiraTrackerHandler(
 
 		const issueMatch = ISSUE_PATH.exec(path);
 		if (request.method === "GET" && issueMatch !== null) {
-			const key = decodeURIComponent(issueMatch[1] ?? "");
+			const key = decodeSegment(issueMatch[1]);
+			if (key === undefined) return badIssueId(issueMatch[1]);
 			try {
 				return json(await readIssue(client, config, key));
 			} catch (err) {
@@ -133,7 +156,8 @@ export function createJiraTrackerHandler(
 
 		const closeMatch = CLOSE_PATH.exec(path);
 		if (request.method === "POST" && closeMatch !== null) {
-			const key = decodeURIComponent(closeMatch[1] ?? "");
+			const key = decodeSegment(closeMatch[1]);
+			if (key === undefined) return badIssueId(closeMatch[1]);
 			try {
 				return json(await closeIssue(client, config, key));
 			} catch (err) {

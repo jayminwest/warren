@@ -223,3 +223,30 @@ describe("the undeclared surfaces", () => {
 		expect((await response.json()) as unknown).toMatchObject({ error: { code: "not_found" } });
 	});
 });
+
+describe("a malformed path segment", () => {
+	test("leaves through the error envelope instead of a URIError", async () => {
+		const { call } = harness();
+		for (const [method, path] of [
+			["GET", "/issues/%"],
+			["GET", "/issues/%zz"],
+			["POST", "/issues/%/close"],
+			["POST", "/issues/%e0%a4%a/close"],
+		] as const) {
+			const response = await call(method, path);
+			expect(response.status, `${method} ${path}`).toBe(400);
+			expect(response.headers.get("content-type"), `${method} ${path}`).toContain(
+				"application/json",
+			);
+			expect((await response.json()) as unknown, `${method} ${path}`).toMatchObject({
+				error: { code: "invalid_issue_id" },
+			});
+		}
+	});
+
+	test("still decodes a well-formed escape", async () => {
+		const { call } = harness();
+		const response = await call("GET", `/issues/${encodeURIComponent("WAR-1")}`);
+		expect(response.status).toBe(200);
+	});
+});

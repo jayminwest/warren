@@ -22,6 +22,9 @@ export const TRACKER_PROTOCOL_VERSION = "warren-tracker/v1";
 /** Reserved error code: the requested issue id does not exist. */
 export const TRACKER_ISSUE_NOT_FOUND_CODE = "issue_not_found";
 
+/** Returned when a path segment is not valid percent-encoding. */
+export const INVALID_ISSUE_ID_CODE = "invalid_issue_id";
+
 /** Returned on an optional surface this tracker does not declare. */
 export const CAPABILITY_NOT_SUPPORTED_CODE = "capability_not_supported";
 
