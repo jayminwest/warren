@@ -129,10 +129,16 @@ the last three are the record of a decision.
 recorded rather than propagated, because the bus swallows it either way and
 this puts the failure on the operator's stream.
 
-One gate is still silent: a run marked `provider_error` whose stream holds
+One gate is still silent. A run marked `provider_error` whose stream holds
 no `reap.provider_error` event with a message returns without an event.
 That is a missing-data case rather than a policy decision, and inventing a
 `verdict` for it would misreport a classifier run that never happened.
+
+The silent gate runs before the attempt bound, so it stays silent even on a
+lineage that has spent every attempt. An exhaustion event there would name a
+bound that never decided anything, because the classifier never ran. The
+order is also the cheaper one. The signal sits in the events the handler
+already read, and the bound reads chain rows.
 
 ## 4. The three retries beside each other
 

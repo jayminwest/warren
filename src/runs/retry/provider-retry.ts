@@ -270,6 +270,13 @@ async function maybeRetryProviderError(
 
 	const events = await input.repos.events.listByRun(runId);
 	const emit = makeRunEventEmitter(input, now);
+	// The missing-data gate comes first and stays silent. A run with no
+	// `reap.provider_error` message never reached the classifier, so neither a
+	// verdict nor an exhaustion verdict would describe anything that happened
+	// (docs/design/provider-retry.md section 3). It is also the cheaper of the
+	// two: the signal is already in `events`, the bound reads chain rows.
+	const signal = lastProviderErrorSignal(events);
+	if (signal === null) return;
 	// The bound: a lineage that has spent its attempts stops here, on the
 	// run that reached the cap, rather than returning bare.
 	const attempts = await countProviderRetries(input.repos, run, events);
@@ -284,8 +291,6 @@ async function maybeRetryProviderError(
 		});
 		return;
 	}
-	const signal = lastProviderErrorSignal(events);
-	if (signal === null) return;
 	const verdict = classifyProviderError(signal.message, signal.httpStatus, signal.upstreamBody);
 	if (verdict !== "transient") {
 		input.logger.info(
