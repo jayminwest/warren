@@ -13,12 +13,16 @@ name: size-overshoot-report
 # src/runs/spawn/dispatch.ts, 2026-08-19/20). Each needed a human to work out
 # which file and by how much.
 #
-# This job re-runs the gate on the head branch and, if it is the one that
-# failed, posts (or edits in place) ONE comment naming each overshoot as
-# `path: lines/budget (+N)` plus the files closest to their own ceilings. It
-# always exits 0, so it never masks the real failure, and it re-runs the gate
-# rather than parsing CI logs, so a failure that was something else costs one
-# comment-free job and says so.
+# The report is built by CI itself, on the branch, with no credentials in
+# reach, and uploaded as the `size-overshoot-report` artifact. This job only
+# reads that artifact and posts (or edits in place) ONE comment. It never
+# checks out the head branch and never runs code from it, so the App
+# installation token minted here is never exposed to branch-controlled code.
+# Warren pushes agent branches directly, so a branch author is not necessarily
+# someone who should be able to reach that token.
+#
+# It always exits 0, so it never masks the real failure. No artifact means
+# `check:size` was not the failure, and the job says so and stops.
 #
 # Uses the same GitHub App installation token as auto-merge.yml and
 # bundle-size-autoheal.yml, minted per run from AUTO_MERGE_APP_ID +
@@ -52,7 +56,7 @@ jobs:
     env:
       HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
       MARKER: "<!-- size-overshoot-report -->"
-      HEADROOM_LINES: "10"
+      MAX_REPORT_BYTES: "40000"
     steps:
       - name: Mint app installation token
         id: app-token
@@ -64,7 +68,8 @@ jobs:
       # Only report onto a branch with an open same-repo PR. A push-event CI
       # failure on a branch with no open PR has nowhere to post, and this keeps
       # the fork semantics intact (an open fork PR fails the head-repo
-      # job-level check before we ever get here).
+      # job-level check before we ever get here). The number comes from the
+      # API, never from the artifact, which the branch controls.
       - name: Require an open same-repo PR on the head branch
         id: pr-gate
         env:
@@ -83,33 +88,36 @@ jobs:
             echo "number=${number}" >> "$GITHUB_OUTPUT"
           fi
 
-      - uses: actions/checkout@v7.0.1
+      # Data, not code. CI produced this on the branch without credentials;
+      # nothing from it is executed here.
+      - name: Download the report CI built
+        id: artifact
         if: steps.pr-gate.outputs.has-pr == 'true'
+        continue-on-error: true
+        uses: actions/download-artifact@v7
         with:
-          token: ${{ steps.app-token.outputs.token }}
-          ref: ${{ github.event.workflow_run.head_branch }}
+          name: size-overshoot-report
+          path: size-overshoot
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ steps.app-token.outputs.token }}
 
-      - uses: oven-sh/setup-bun@v2
-        if: steps.pr-gate.outputs.has-pr == 'true'
-        with:
-          bun-version-file: .bun-version
-
-      - if: steps.pr-gate.outputs.has-pr == 'true'
-        run: bun install
-
-      - name: Report the overshoot if (and only if) that was the failure
-        if: steps.pr-gate.outputs.has-pr == 'true'
+      - name: Post the overshoot report
+        if: steps.pr-gate.outputs.has-pr == 'true' && steps.artifact.outcome == 'success'
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           GH_REPO: ${{ github.repository }}
           PR_NUMBER: ${{ steps.pr-gate.outputs.number }}
         run: |
           set -euo pipefail
-          if bun run check:size; then
-            echo "The file-size guard passes on this branch, so the CI failure was something else. Nothing to report."
+          report="size-overshoot/report.txt"
+          if [ ! -s "$report" ]; then
+            echo "The artifact is empty, so check:size was not the failure. Nothing to report."
             exit 0
           fi
-          echo "The file-size guard is failing. Building the report."
+          # The branch wrote this text. It is quoted into a fenced block, so
+          # neutralise anything that could close the fence and cap the size.
+          safe="${RUNNER_TEMP}/report.txt"
+          head -c "${MAX_REPORT_BYTES}" "$report" | tr -d '\000' | sed 's/`/'"'"'/g' > "$safe"
           body="${RUNNER_TEMP}/size-overshoot.md"
           {
             echo "${MARKER}"
@@ -121,7 +129,7 @@ jobs:
             echo "Two independently green PRs can each pass this gate alone and still push a shared file past its ceiling once the update-branch merge lands the union, so the file named here is not always one this PR edited."
             echo
             echo '```'
-            bun run scripts/check-file-sizes.ts --headroom "${HEADROOM_LINES}"
+            cat "$safe"
             echo '```'
           } > "$body"
           # One comment, edited in place on a re-run rather than appended. A
@@ -136,3 +144,7 @@ jobs:
             gh api --method POST "repos/${GH_REPO}/issues/${PR_NUMBER}/comments" -F "body=@${body}" > /dev/null
             echo "Posted the report on PR #${PR_NUMBER}."
           fi
+
+      - name: Say why there is nothing to report
+        if: steps.pr-gate.outputs.has-pr == 'true' && steps.artifact.outcome != 'success'
+        run: echo "CI uploaded no size-overshoot-report artifact, so check:size was not the failure. Nothing to report."

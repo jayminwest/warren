@@ -46,6 +46,25 @@ jobs:
         if: always()
         run: bun run report:quality-metrics
 
+      - name: Build the file-size overshoot report
+        if: failure()
+        run: |
+          set -euo pipefail
+          if bun run check:size > /dev/null 2>&1; then
+            echo "check:size passes on this branch, so the failure was something else."
+            exit 0
+          fi
+          mkdir -p size-overshoot
+          bun run scripts/check-file-sizes.ts --headroom 10 > size-overshoot/report.txt
+
+      - name: Upload the file-size overshoot report
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: size-overshoot-report
+          path: size-overshoot/report.txt
+          if-no-files-found: ignore
+
       - name: Upload test timing artifact
         if: always()
         uses: actions/upload-artifact@v7
