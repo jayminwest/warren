@@ -146,7 +146,8 @@ export function resolveForge(deps: ForgeDeps = {}, env: ForgeEnv = process.env):
 		case "github": {
 			// warren-1b6f: the forge-neutral name wins, and GITHUB_TOKEN stays as
 			// the fallback, matching `src/runtime/k8s/git-tokens.ts`.
-			const tokenFactory = deps.githubToken ?? (() => firstToken(env.WARREN_GIT_TOKEN, env.GITHUB_TOKEN));
+			const tokenFactory =
+				deps.githubToken ?? (() => firstToken(env.WARREN_GIT_TOKEN, env.GITHUB_TOKEN));
 			return new GitHubForge({
 				token: tokenFactory(),
 				...(deps.githubFetch !== undefined ? { fetch: deps.githubFetch } : {}),

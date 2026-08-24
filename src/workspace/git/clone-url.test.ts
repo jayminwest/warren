@@ -1,9 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import {
-	authenticatedCloneUrl,
-	bareTokenCredential,
-	DEFAULT_GIT_USERNAME,
-} from "./clone-url.ts";
+import { authenticatedCloneUrl, bareTokenCredential, DEFAULT_GIT_USERNAME } from "./clone-url.ts";
 
 const github = { username: "x-access-token", secret: "tok" };
 
@@ -40,15 +36,15 @@ describe("authenticatedCloneUrl", () => {
 	});
 
 	test("leaves the URL alone when the secret is empty", () => {
-		expect(authenticatedCloneUrl("https://github.com/o/r.git", { username: "oauth2", secret: "" })).toBe(
-			"https://github.com/o/r.git",
-		);
+		expect(
+			authenticatedCloneUrl("https://github.com/o/r.git", { username: "oauth2", secret: "" }),
+		).toBe("https://github.com/o/r.git");
 	});
 
 	test("falls back to the default username when the forge named none", () => {
-		expect(authenticatedCloneUrl("https://github.com/o/r.git", { username: "", secret: "tok" })).toBe(
-			`https://${DEFAULT_GIT_USERNAME}:tok@github.com/o/r.git`,
-		);
+		expect(
+			authenticatedCloneUrl("https://github.com/o/r.git", { username: "", secret: "tok" }),
+		).toBe(`https://${DEFAULT_GIT_USERNAME}:tok@github.com/o/r.git`);
 	});
 
 	test("does not touch ssh URLs", () => {
