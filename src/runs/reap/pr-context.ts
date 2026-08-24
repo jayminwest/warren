@@ -156,7 +156,7 @@ async function collectFromClone(
 	cfg: CloneFetchConfig,
 ): Promise<CommitStats> {
 	const tempRef = `${CLONE_FETCH_REF_PREFIX}${cfg.runId}`;
-	const url = authenticatedCloneUrl(cfg.gitUrl, cfg.gitCredential.secret);
+	const url = authenticatedCloneUrl(cfg.gitUrl, cfg.gitCredential);
 	try {
 		// Fetch only the run branch into a namespaced temp ref (never a local
 		// branch); `--force` lets a re-reap overwrite a stale ref.

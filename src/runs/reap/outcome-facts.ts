@@ -131,7 +131,7 @@ async function numstatFromClone(
 	const { branch, baseBranch, runId, exec, project } = input;
 	if (branch === null || baseBranch === null) return null;
 	const tempRef = `${FETCH_REF_PREFIX}${runId}`;
-	const url = authenticatedCloneUrl(project.gitUrl, gitCredential.secret);
+	const url = authenticatedCloneUrl(project.gitUrl, gitCredential);
 	try {
 		await exec.run("git", ["fetch", "--no-tags", "--force", url, `${branch}:${tempRef}`], {
 			cwd: project.localPath,

@@ -124,14 +124,29 @@ export function resolveForgeKind(env: ForgeEnv = process.env): ForgeKind {
  * `WARREN_FORGE` (see module doc) and constructs the chosen forge from
  * `deps`.
  */
+/**
+ * The first env token that carries something, trimmed.
+ *
+ * An operator who exports `WARREN_GIT_TOKEN=""` has not chosen a neutral
+ * token, so an empty or blank value must not shadow a valid `GITHUB_TOKEN`
+ * behind it. Same rule as `normalizeToken` in
+ * `src/runtime/k8s/git-tokens.ts`, which the comment below claims parity with.
+ */
+function firstToken(...raw: readonly (string | undefined)[]): string {
+	for (const value of raw) {
+		const trimmed = value?.trim();
+		if (trimmed !== undefined && trimmed !== "") return trimmed;
+	}
+	return "";
+}
+
 export function resolveForge(deps: ForgeDeps = {}, env: ForgeEnv = process.env): Forge {
 	const kind = resolveForgeKind(env);
 	switch (kind) {
 		case "github": {
 			// warren-1b6f: the forge-neutral name wins, and GITHUB_TOKEN stays as
 			// the fallback, matching `src/runtime/k8s/git-tokens.ts`.
-			const tokenFactory =
-				deps.githubToken ?? (() => env.WARREN_GIT_TOKEN ?? env.GITHUB_TOKEN ?? "");
+			const tokenFactory = deps.githubToken ?? (() => firstToken(env.WARREN_GIT_TOKEN, env.GITHUB_TOKEN));
 			return new GitHubForge({
 				token: tokenFactory(),
 				...(deps.githubFetch !== undefined ? { fetch: deps.githubFetch } : {}),

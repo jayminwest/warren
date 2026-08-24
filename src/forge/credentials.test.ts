@@ -47,6 +47,22 @@ describe("mintGitCredential", () => {
 		}
 	});
 
+	test("keeps a self-hosted forge port in the host it rewrites against", async () => {
+		// git treats host and host:port as different remotes, so an insteadOf
+		// rule that drops the port names a URL that never appears.
+		const forge = new GitHubForge({ token: "tok" });
+		forge.parseRepoRef = (url: string) =>
+			url.includes("acme.internal") ? { forge: "github", key: "x/y" } : null;
+		for (const url of [
+			"https://git.acme.internal:8443/x/y.git",
+			"ssh://git@git.acme.internal:2222/x/y.git",
+		]) {
+			expect((await mintGitCredential(forge, url))?.host, url).toBe(
+				url.startsWith("https") ? "git.acme.internal:8443" : "git.acme.internal:2222",
+			);
+		}
+	});
+
 	test("throws GitCredentialMintError on a non-no_credential mint failure", async () => {
 		const forge = new GitHubForge({ token: "tok" });
 		forge.gitCredential = () =>

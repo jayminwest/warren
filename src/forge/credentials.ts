@@ -102,6 +102,9 @@ function remoteHost(cloneUrl: string): string | null {
 	if (parsed.protocol !== "https:" && parsed.protocol !== "http:" && parsed.protocol !== "ssh:") {
 		return null;
 	}
-	const host = parsed.hostname.toLowerCase();
+	// `host`, not `hostname`: a self-hosted forge on a non-default port is a
+	// different remote to git, and an `insteadOf` rule without the port would
+	// never match the URL it is supposed to rewrite.
+	const host = parsed.host.toLowerCase();
 	return host === "" ? null : host;
 }

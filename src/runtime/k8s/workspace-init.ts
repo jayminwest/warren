@@ -65,7 +65,7 @@ import {
 } from "node:fs/promises";
 import { dirname, isAbsolute, join, normalize } from "node:path";
 import { WorkspaceMaterializationError } from "../../workspace/errors.ts";
-import { authenticatedCloneUrl } from "../../workspace/git/clone-url.ts";
+import { authenticatedCloneUrl, bareTokenCredential } from "../../workspace/git/clone-url.ts";
 import { runGit } from "../../workspace/git/exec.ts";
 import { parseSeedManifest } from "./seed-configmap.ts";
 
@@ -262,7 +262,7 @@ async function materializeViaCache(
 ): Promise<boolean> {
 	if (cfg.repoCacheDir === undefined) return false;
 	const mirrorPath = mirrorPathFor(cfg.repoCacheDir, cfg.repoUrl);
-	const authUrl = authenticatedCloneUrl(cfg.repoUrl, cfg.token);
+	const authUrl = authenticatedCloneUrl(cfg.repoUrl, bareTokenCredential(cfg.token));
 	try {
 		await ensureMirror(git, fs, cfg, mirrorPath, authUrl, log);
 		// Local clone from the mirror path — no network, no credentials.
@@ -290,7 +290,7 @@ async function directClone(
 	cfg: InitEnv,
 	log: (m: string) => void,
 ): Promise<void> {
-	const cloneUrl = authenticatedCloneUrl(cfg.repoUrl, cfg.token);
+	const cloneUrl = authenticatedCloneUrl(cfg.repoUrl, bareTokenCredential(cfg.token));
 	log(`workspace-init: cloning ${cfg.repoUrl} (${cfg.baseBranch}) into ${cfg.workspacePath}`);
 	await cloneBaseAndCarve(git, cfg, cloneUrl);
 	// Strip the embedded token so it never persists in the workspace .git/config.

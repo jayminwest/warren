@@ -246,6 +246,15 @@ describe("the github arm's static secret", () => {
 		expect(cred.ok && cred.value.secret).toBe("neutral");
 	});
 
+	test("treats an empty or blank neutral token as unset, not as a choice", async () => {
+		for (const blank of ["", "   "]) {
+			const forge = resolveForge({}, { WARREN_GIT_TOKEN: blank, GITHUB_TOKEN: "legacy" });
+			const ref = forge.parseRepoRef("https://github.com/x/y.git");
+			const cred = await forge.gitCredential(ref as NonNullable<typeof ref>);
+			expect(cred.ok && cred.value.secret, JSON.stringify(blank)).toBe("legacy");
+		}
+	});
+
 	test("still falls back to GITHUB_TOKEN, so an existing deployment is untouched", async () => {
 		const forge = resolveForge({}, { GITHUB_TOKEN: "legacy" });
 		const ref = forge.parseRepoRef("https://github.com/x/y.git");

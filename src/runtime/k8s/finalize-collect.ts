@@ -14,7 +14,7 @@
 
 import { join } from "node:path";
 import { parseDirtyPaths, repairBaseTrackingRef } from "../../runs/reap/util.ts";
-import { authenticatedCloneUrl } from "../../workspace/git/clone-url.ts";
+import { authenticatedCloneUrl, bareTokenCredential } from "../../workspace/git/clone-url.ts";
 import type {
 	ArtifactDelta,
 	ArtifactDeltaFile,
@@ -313,7 +313,7 @@ export async function authenticateOrigin(
 	const res = await git(["remote", "get-url", "origin"], { cwd: workspacePath });
 	if (res.exitCode !== 0) return async () => {};
 	const origin = res.stdout.trim();
-	const authed = authenticatedCloneUrl(origin, token);
+	const authed = authenticatedCloneUrl(origin, bareTokenCredential(token));
 	if (authed === origin) return async () => {};
 	const set = await git(["remote", "set-url", "origin", authed], { cwd: workspacePath });
 	if (set.exitCode !== 0) return async () => {};
