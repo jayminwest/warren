@@ -39,20 +39,40 @@ issues depend on:
   hierarchy every later step throws through. Error messages never carry
   secrets by construction.
 
+Landed in plan step 4 (warren-a732): the minimal V0 Warren HTTP client and
+its deterministic fake —
+
+- [`src/warren-client.ts`](src/warren-client.ts) — `WarrenClient` over
+  warren's published surface (`GET /whoami`, `POST /runs`, `GET /runs/:id`,
+  all `{run}`-enveloped). Dispatch carries a caller-owned stable
+  `Idempotency-Key` and is NEVER retried: an ambiguous outcome (network loss
+  after send, 5xx) fails closed as `DispatchUncertainError` because warren's
+  idempotency store is not durable across restart. Safe reads retry
+  429/5xx/network honoring `Retry-After`, bounded. The bearer token lives
+  only in the `Authorization` header — no error, log, or payload embeds it.
+- [`src/warren-fake.ts`](src/warren-fake.ts) — `FakeWarrenServer`, an
+  in-process fake speaking the same documented envelopes through the same
+  `fetch` seam (no production shortcut). It records every request, models
+  accepted-response-loss (`dropNextResponses`), rate-limited reads with
+  `Retry-After`, malformed envelopes (`respondOnceWith`), and restart
+  (`restart()` wipes the non-durable idempotency store while runs survive).
+
 Not implemented yet (later pl-91b6 steps): the campaign manifest and
 repository-policy schemas, the SQLite state store and action journal, the
-warren and GitHub clients, validation/approval/admission, dispatch and
-reconciliation, PR-intent rendering, the polling loop, and the CLI. The
-entrypoint ([`src/index.ts`](src/index.ts)) is a placeholder that exits
-`not_implemented`.
+read-only GitHub client, validation/approval/admission, dispatch and
+reconciliation orchestration, PR-intent rendering, the polling loop, and the
+CLI. The entrypoint ([`src/index.ts`](src/index.ts)) is a placeholder that
+exits `not_implemented`.
 
 ## Layout
 
 ```
 src/
-  clock.ts   injectable clock + id interfaces, prod defaults, test fakes
-  errors.ts  campaign-controller error base types
-  index.ts   entrypoint placeholder + package identity
+  clock.ts         injectable clock + id interfaces, prod defaults, test fakes
+  errors.ts        campaign-controller error base types
+  warren-client.ts minimal V0 Warren HTTP client (dispatch, detail, retries)
+  warren-fake.ts   deterministic in-process fake Warren server
+  index.ts         entrypoint placeholder + package identity
 ```
 
 ## Development

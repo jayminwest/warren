@@ -15,7 +15,15 @@ export type CampaignControllerErrorCode =
 	| "config_invalid"
 	| "state_invalid"
 	| "boundary_violated"
-	| "not_implemented";
+	| "not_implemented"
+	/* Warren transport failures (warren-a732). Additive codes for the V0
+	 * Warren HTTP client; every message stays secret-free by construction. */
+	| "warren_auth_rejected"
+	| "warren_rejected"
+	| "warren_rate_limited"
+	| "warren_unreachable"
+	| "warren_envelope_invalid"
+	| "dispatch_uncertain";
 
 /** Root of every error the campaign controller raises. */
 export class CampaignControllerError extends Error {

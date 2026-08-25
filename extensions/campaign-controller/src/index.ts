@@ -32,3 +32,21 @@ export {
 	StateError,
 	ValidationError,
 } from "./errors.ts";
+export {
+	DispatchUncertainError,
+	isTerminalRunState,
+	parseRunEnvelope,
+	readTerminalFacts,
+	redactSecret,
+	WarrenAuthError,
+	WarrenClient,
+	type WarrenClientOptions,
+	type WarrenDispatchInput,
+	WarrenEnvelopeError,
+	WarrenRateLimitError,
+	WarrenRejectedError,
+	type WarrenRunView,
+	type WarrenTerminalFacts,
+	WarrenUnreachableError,
+} from "./warren-client.ts";
+export { type FakeRunRow, FakeWarrenServer, type RecordedRequest } from "./warren-fake.ts";
