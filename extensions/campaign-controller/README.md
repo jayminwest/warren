@@ -49,11 +49,28 @@ issues depend on:
   attention items, leases, and the budget reservation ledger. No column in
   the schema can hold a secret, token, or credential — a schema-inspection
   test proves it against the live database.
+- [`src/github/`](src/github/) — the extension-local, structurally
+  read-only GitHub V0 client (plan step 5, warren-33aa):
+  [`client.ts`](src/github/client.ts) (narrowed GET/HEAD reads of
+  repository metadata, file content, issues, pull requests,
+  participating notifications, issue comments, reviews, review comments,
+  check runs, and combined statuses, with conditional ETag/Last-Modified
+  requests and bounded pagination),
+  [`http-transport.ts`](src/github/http-transport.ts) (real fetch, one
+  `read` operation that hard-fails any non-GET/HEAD method),
+  [`pr-request.ts`](src/github/pr-request.ts) (pure, deep-frozen
+  cross-fork PR-intent rendering — never posted),
+  [`dedupe.ts`](src/github/dedupe.ts) (stable node-id deduplication),
+  [`redact.ts`](src/github/redact.ts) (credential scrubbing), and
+  [`fake-server.ts`](src/github/fake-server.ts) (a deterministic
+  in-process fake GitHub that records every request, paginates, serves
+  duplicate node ids, and simulates primary and secondary rate limits).
+  There is no GitHub mutation operation anywhere on the production
+  surface.
 
 Not implemented yet (later pl-91b6 steps): the campaign manifest and
-repository-policy schemas, the warren and GitHub clients,
-validation/approval/admission, dispatch and reconciliation, PR-intent
-rendering, the polling loop, and the CLI. The entrypoint
+repository-policy schemas, the warren client, validation/approval/admission,
+dispatch and reconciliation, the polling loop, and the CLI. The entrypoint
 ([`src/index.ts`](src/index.ts)) is a placeholder that exits `not_implemented`.
 
 ## Layout
@@ -63,6 +80,8 @@ src/
   clock.ts   injectable clock + id interfaces, prod defaults, test fakes
   errors.ts  campaign-controller error base types
   store/     SQLite state store: schema, migrations, action journal, budget, leases
+  github/    structurally read-only GitHub client, PR-intent renderer,
+             dedupe/redaction helpers, and the fake GitHub server
   index.ts   entrypoint placeholder + package identity
 ```
 
