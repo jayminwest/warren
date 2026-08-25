@@ -612,6 +612,9 @@ observe-only process singleton that run-lifecycle call sites emit into.
 Proof consumers are the healer (`src/healer/lifecycle.ts`) and the
 seed-close reap hook (`src/runs/reap/seed-close-lifecycle.ts`). See
 [docs/design/tier1-observation-bus.md](docs/design/tier1-observation-bus.md).
+The run-level provider retry (`src/runs/retry/provider-retry.ts`) is a
+third consumer. Its policy is in
+[docs/design/provider-retry.md](docs/design/provider-retry.md).
 
 ## Extensions
 

@@ -39,6 +39,7 @@ This table is the complete inventory. `Approved` means a design is coherent enou
 | [IssueTracker contract](./issue-tracker.md) | `contract` | `approved` | `shipped` | 2026-08-20 |
 | [PlanRun coordinator](./plan-run-coordinator.md) | `contract` | `approved` | `shipped` | 2026-08-01 |
 | [Preview environments](./preview-environments.md) | `contract` | `approved` | `shipped` | 2026-08-01 |
+| [Provider-error retry](./provider-retry.md) | `contract` | `approved` | `shipped` | 2026-08-22 |
 | [Runtime and supervisor](./runtime-and-supervisor.md) | `contract` | `approved` | `shipped` | 2026-08-01 |
 | [Docker runtime provider](./runtime-docker-provider.md) | `contract` | `approved` | `shipped` | 2026-08-17 |
 | [RuntimeProvider contract](./runtime-provider-contract.md) | `contract` | `approved` | `shipped` | 2026-07-09 |
