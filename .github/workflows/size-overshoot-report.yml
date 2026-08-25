@@ -78,7 +78,9 @@ jobs:
           HEAD_REF: ${{ github.repository_owner }}:${{ github.event.workflow_run.head_branch }}
         run: |
           set -euo pipefail
-          number=$(gh api "repos/${GH_REPO}/pulls?head=${HEAD_REF}&state=open" --jq '.[0].number // empty')
+          number=$(gh api --method GET "repos/${GH_REPO}/pulls" \
+            -f "head=${HEAD_REF}" -f "base=main" -f "state=open" \
+            --jq '.[0].number // empty')
           if [ -z "$number" ]; then
             echo "No open PR for ${HEAD_BRANCH}. Nothing to report."
             echo "has-pr=false" >> "$GITHUB_OUTPUT"
