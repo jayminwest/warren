@@ -358,6 +358,29 @@ describe("scan — the extension boundary (warren-0781, plan pl-116e)", () => {
 		);
 	});
 
+	test("both directions stay forbidden for every shipped extension, including campaign-controller (warren-772a)", () => {
+		// The campaign-controller scaffold must not weaken the seam it is born
+		// under: a file inside it importing src/, and a src/ file importing it,
+		// both fire — in one scan, proving the two rules are symmetric.
+		withFixtureRepo(
+			{
+				"extensions/campaign-controller/src/controller.ts":
+					'import { X } from "../../../src/core/wire.ts";\n',
+				"src/server/main/wiring.ts":
+					'import { y } from "../../../extensions/campaign-controller/src/index.ts";\n',
+			},
+			(dir) => {
+				const rules = scan(dir, RULES)
+					.map((v) => `${v.rule} ${v.file}`)
+					.sort();
+				expect(rules).toEqual([
+					"core-does-not-import-extensions src/server/main/wiring.ts",
+					"extensions-are-standalone extensions/campaign-controller/src/controller.ts",
+				]);
+			},
+		);
+	});
+
 	test("leaves an extension's own internal imports alone", () => {
 		withFixtureRepo(
 			{

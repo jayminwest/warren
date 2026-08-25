@@ -1,0 +1,9 @@
+# Keep the build context to exactly what the image needs.
+node_modules/
+data/
+*.db
+*.db-journal
+.git/
+README.md
+*.test.ts
+__golden__/
