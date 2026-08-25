@@ -20,9 +20,12 @@ import type { EnvLike } from "./output.ts";
  * cannot see: Bun loads the file before the process starts, so a stale token
  * in the repo they happen to be standing in outranks what `warren login` saved.
  *
- * An absent source still names every slot. Both callers now resolve one for
- * real, so absent means "no token anywhere"; #1035 owns rewording that arm,
- * and lands it on both surfaces at once.
+ * An absent source means NO TOKEN AT ALL, which is a normal production
+ * state rather than an unresolved caller (warren-4f1b). `resolveClientConfig`
+ * picks the token from flag, env or config file with no default arm, so it
+ * omits the source exactly when all three are empty, and both callers
+ * resolve one for real. Sending that operator to check three empty slots
+ * described a search they had already lost; the answer is `warren login`.
  */
 export function authFailureHint(source: ClientConfigSource | undefined, env: EnvLike): string {
 	const configFile = clientConfigPath(env);
@@ -30,10 +33,10 @@ export function authFailureHint(source: ClientConfigSource | undefined, env: Env
 		case "flag":
 			return "the rejected token came from --token; check it against the server's credential";
 		case "env":
-			return `the rejected token came from WARREN_API_TOKEN in the environment; Bun auto-loads \`.env\` from the invoking cwd, so a stale token there outranks the one \`warren login\` saved in ${configFile}`;
+			return `the rejected token came from WARREN_API_TOKEN in the environment; check it against the server's credential. Bun auto-loads \`.env\` from the invoking cwd, so a stale token there outranks the one \`warren login\` saved in ${configFile}`;
 		case "config-file":
 			return `the rejected token came from the client config file (${configFile}); re-run \`warren login\` to replace it`;
 		default:
-			return `check WARREN_API_TOKEN / --token or the token \`warren login\` saved in the client config file (${configFile}) against the server's credential; if this only fails from inside a repo, a stale \`.env\` in your cwd (auto-loaded by Bun) may be overriding the config file`;
+			return `no token is configured in any slot: --token, WARREN_API_TOKEN, and the client config file (${configFile}) are all empty. Run \`warren login\` to save one, or pass --token`;
 	}
 }
