@@ -16,6 +16,16 @@ export const EXTENSION_NAME = "campaign-controller";
 export const EXTENSION_VERSION = "0.0.0";
 
 export {
+	type AdmissionResult,
+	admitWorkItem,
+	approveCampaign,
+	type CampaignApprovalResult,
+	type CampaignImportResult,
+	type IssueSnapshot,
+	importCampaign,
+} from "./admission.ts";
+export * from "./admission-errors.ts";
+export {
 	type Clock,
 	FixedClock,
 	type IdGenerator,

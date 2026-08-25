@@ -99,6 +99,16 @@ issues depend on:
 Landed in plan step 4 (warren-a732): the minimal V0 Warren HTTP client and
 its deterministic fake —
 
+- [`src/admission.ts`](src/admission.ts) and
+  [`src/admission-errors.ts`](src/admission-errors.ts) (plan step 6,
+  warren-a252): campaign import (immutable digest-keyed manifest, ordered
+  work items, changed-field invalidation back to `awaiting_approval`),
+  explicit digest-bound approval, and the per-item admission gate —
+  expiry, policy freshness and digest binding, ordered membership,
+  upstream/fork allowlist, all-false mutation flags, warren identity and
+  caps, campaign and daily budget reservation, concurrency, one active
+  attempt, and protected-path fail-closed attention. Every refusal names
+  its invariant; no network call can occur before admission succeeds.
 - [`src/warren-client.ts`](src/warren-client.ts) — `WarrenClient` over
   warren's published surface (`GET /whoami`, `POST /runs`, `GET /runs/:id`,
   all `{run}`-enveloped). Dispatch carries a caller-owned stable
@@ -114,8 +124,7 @@ its deterministic fake —
   `Retry-After`, malformed envelopes (`respondOnceWith`), and restart
   (`restart()` wipes the non-durable idempotency store while runs survive).
 
-Not implemented yet (later pl-91b6 steps): validation/approval/admission,
-dispatch and reconciliation orchestration, PR-intent journaling, the
+Not implemented yet (later pl-91b6 steps): dispatch and reconciliation orchestration, PR-intent journaling, the
 polling loop, and the CLI. The entrypoint ([`src/index.ts`](src/index.ts))
 is a placeholder that exits `not_implemented`.
 
