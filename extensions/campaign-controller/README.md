@@ -66,7 +66,17 @@ issues depend on:
   manifest. OpenClaw lives here as data, never as controller conditionals.
   Golden tests ([`src/openclaw-profile.test.ts`](src/openclaw-profile.test.ts))
   pin the round-trip and the limits.
-
+- [`src/store/`](src/store/) — the controller-owned SQLite state store and
+  action journal (plan pl-91b6 step 3, warren-2853): `bun:sqlite` with WAL,
+  explicit transactional migrations, injected clock/ids, campaigns with
+  immutable manifest digests, ordered work items, the
+  `planned → executing → succeeded|uncertain|retryable_failure|permanent_failure`
+  action journal written `planned` before any I/O, deterministic action keys,
+  one active attempt per work item, Warren run correlation, prospective
+  cross-fork PR identity, GitHub events deduplicated by stable node id,
+  attention items, leases, and the budget reservation ledger. No column in
+  the schema can hold a secret, token, or credential — a schema-inspection
+  test proves it against the live database.
 - [`src/github/`](src/github/) — the extension-local, structurally
   read-only GitHub V0 client (plan step 5, warren-33aa):
   [`client.ts`](src/github/client.ts) (narrowed GET/HEAD reads of
@@ -86,15 +96,33 @@ issues depend on:
   There is no GitHub mutation operation anywhere on the production
   surface.
 
-Not implemented yet (later pl-91b6 steps): the SQLite state store and action journal, the
-warren client, validation/approval/admission flow, dispatch and
-reconciliation, PR-intent journaling, the polling loop, and the CLI. The
-entrypoint ([`src/index.ts`](src/index.ts)) is a placeholder that exits
-`not_implemented`.
+Landed in plan step 4 (warren-a732): the minimal V0 Warren HTTP client and
+its deterministic fake —
+
+- [`src/warren-client.ts`](src/warren-client.ts) — `WarrenClient` over
+  warren's published surface (`GET /whoami`, `POST /runs`, `GET /runs/:id`,
+  all `{run}`-enveloped). Dispatch carries a caller-owned stable
+  `Idempotency-Key` and is NEVER retried: an ambiguous outcome (network loss
+  after send, 5xx) fails closed as `DispatchUncertainError` because warren's
+  idempotency store is not durable across restart. Safe reads retry
+  429/5xx/network honoring `Retry-After`, bounded. The bearer token lives
+  only in the `Authorization` header — no error, log, or payload embeds it.
+- [`src/warren-fake.ts`](src/warren-fake.ts) — `FakeWarrenServer`, an
+  in-process fake speaking the same documented envelopes through the same
+  `fetch` seam (no production shortcut). It records every request, models
+  accepted-response-loss (`dropNextResponses`), rate-limited reads with
+  `Retry-After`, malformed envelopes (`respondOnceWith`), and restart
+  (`restart()` wipes the non-durable idempotency store while runs survive).
+
+Not implemented yet (later pl-91b6 steps): validation/approval/admission,
+dispatch and reconciliation orchestration, PR-intent journaling, the
+polling loop, and the CLI. The entrypoint ([`src/index.ts`](src/index.ts))
+is a placeholder that exits `not_implemented`.
 
 ## Layout
 
 ```
+src/
 src/
   clock.ts             injectable clock + id interfaces, prod defaults, test fakes
   digest.ts            canonical-JSON sha256 digests
@@ -103,8 +131,12 @@ src/
   manifest.ts          V0 campaign manifest schema + validation
   mutations.ts         frozen mutation-flag vocabulary (all false in V0)
   repository-policy.ts V0 repository-policy snapshot schema + validation
+  store/     SQLite state store: schema, migrations, action journal, budget, leases
   github/    structurally read-only GitHub client, PR-intent renderer,
              dedupe/redaction helpers, and the fake GitHub server
+  warren-client.ts minimal V0 Warren HTTP client (dispatch, detail, retries)
+  warren-fake.ts   deterministic in-process fake Warren server
+  index.ts   entrypoint placeholder + package identity
 profiles/
   openclaw.repository-policy.json         committed OpenClaw policy profile
   openclaw.campaign-manifest.example.json committed digest-bound example manifest

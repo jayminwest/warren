@@ -1,0 +1,186 @@
+/**
+ * Campaign and work-item persistence.
+ *
+ * The manifest is immutable by absence of an update path: `manifest_digest`
+ * is UNIQUE and `manifest_json` is written once at creation. Approval
+ * (`approveCampaign`) stamps `approved_at_ms`; nothing can rebind a digest.
+ */
+import { StateError } from "../errors.ts";
+import { nowMs, type StoreContext } from "./context.ts";
+import type { CampaignRow, CampaignStatus, WorkItemRow, WorkItemStatus } from "./types.ts";
+
+type CampaignDbRow = {
+	id: string;
+	status: string;
+	manifest_digest: string;
+	manifest_json: string;
+	policy_digest: string | null;
+	budget_cap_usd_cents: number | null;
+	created_at_ms: number;
+	updated_at_ms: number;
+	approved_at_ms: number | null;
+};
+
+type WorkItemDbRow = {
+	id: string;
+	campaign_id: string;
+	position: number;
+	issue_ref: string;
+	status: string;
+	created_at_ms: number;
+	updated_at_ms: number;
+};
+
+function toCampaign(row: CampaignDbRow): CampaignRow {
+	return {
+		id: row.id,
+		status: row.status as CampaignStatus,
+		manifestDigest: row.manifest_digest,
+		manifestJson: row.manifest_json,
+		policyDigest: row.policy_digest,
+		budgetCapUsdCents: row.budget_cap_usd_cents,
+		createdAtMs: row.created_at_ms,
+		updatedAtMs: row.updated_at_ms,
+		approvedAtMs: row.approved_at_ms,
+	};
+}
+
+function toWorkItem(row: WorkItemDbRow): WorkItemRow {
+	return {
+		id: row.id,
+		campaignId: row.campaign_id,
+		position: row.position,
+		issueRef: row.issue_ref,
+		status: row.status as WorkItemStatus,
+		createdAtMs: row.created_at_ms,
+		updatedAtMs: row.updated_at_ms,
+	};
+}
+
+export class CampaignStore {
+	readonly #ctx: StoreContext;
+
+	constructor(ctx: StoreContext) {
+		this.#ctx = ctx;
+	}
+
+	createCampaign(input: {
+		manifestDigest: string;
+		manifestJson: string;
+		policyDigest?: string | null;
+		budgetCapUsdCents?: number | null;
+		status?: CampaignStatus;
+	}): CampaignRow {
+		const now = nowMs(this.#ctx);
+		const id = this.#ctx.ids.newId();
+		try {
+			this.#ctx.db
+				.query(
+					`INSERT INTO campaigns
+					 (id, status, manifest_digest, manifest_json, policy_digest,
+					  budget_cap_usd_cents, created_at_ms, updated_at_ms, approved_at_ms)
+					 VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL)`,
+				)
+				.run(
+					id,
+					input.status ?? "draft",
+					input.manifestDigest,
+					input.manifestJson,
+					input.policyDigest ?? null,
+					input.budgetCapUsdCents ?? null,
+					now,
+					now,
+				);
+		} catch (cause) {
+			throw new StateError(`campaign digest already stored: ${input.manifestDigest}`, {
+				cause,
+			});
+		}
+		return this.getCampaign(id) as CampaignRow;
+	}
+
+	getCampaign(id: string): CampaignRow | null {
+		const row = this.#ctx.db
+			.query("SELECT * FROM campaigns WHERE id = ?")
+			.get(id) as CampaignDbRow | null;
+		return row === null ? null : toCampaign(row);
+	}
+
+	getCampaignByDigest(manifestDigest: string): CampaignRow | null {
+		const row = this.#ctx.db
+			.query("SELECT * FROM campaigns WHERE manifest_digest = ?")
+			.get(manifestDigest) as CampaignDbRow | null;
+		return row === null ? null : toCampaign(row);
+	}
+
+	setCampaignStatus(id: string, status: CampaignStatus): void {
+		this.#ctx.db
+			.query("UPDATE campaigns SET status = ?, updated_at_ms = ? WHERE id = ?")
+			.run(status, nowMs(this.#ctx), id);
+	}
+
+	/** Stamp approval over the immutable manifest. Idempotent per campaign. */
+	approveCampaign(id: string): CampaignRow {
+		const now = nowMs(this.#ctx);
+		this.#ctx.db
+			.query(
+				"UPDATE campaigns SET approved_at_ms = COALESCE(approved_at_ms, ?), updated_at_ms = ? WHERE id = ?",
+			)
+			.run(now, now, id);
+		const row = this.getCampaign(id);
+		if (row === null) throw new StateError(`unknown campaign: ${id}`);
+		return row;
+	}
+
+	addWorkItem(input: {
+		campaignId: string;
+		position: number;
+		issueRef: string;
+		status?: WorkItemStatus;
+	}): WorkItemRow {
+		const now = nowMs(this.#ctx);
+		const id = this.#ctx.ids.newId();
+		try {
+			this.#ctx.db
+				.query(
+					`INSERT INTO work_items (id, campaign_id, position, issue_ref, status, created_at_ms, updated_at_ms)
+					 VALUES (?, ?, ?, ?, ?, ?, ?)`,
+				)
+				.run(
+					id,
+					input.campaignId,
+					input.position,
+					input.issueRef,
+					input.status ?? "candidate",
+					now,
+					now,
+				);
+		} catch (cause) {
+			throw new StateError(
+				`work item position ${input.position} already exists in campaign ${input.campaignId}`,
+				{ cause },
+			);
+		}
+		return this.getWorkItem(id) as WorkItemRow;
+	}
+
+	getWorkItem(id: string): WorkItemRow | null {
+		const row = this.#ctx.db
+			.query("SELECT * FROM work_items WHERE id = ?")
+			.get(id) as WorkItemDbRow | null;
+		return row === null ? null : toWorkItem(row);
+	}
+
+	listWorkItems(campaignId: string): WorkItemRow[] {
+		const rows = this.#ctx.db
+			.query("SELECT * FROM work_items WHERE campaign_id = ? ORDER BY position")
+			.all(campaignId) as WorkItemDbRow[];
+		return rows.map(toWorkItem);
+	}
+
+	setWorkItemStatus(id: string, status: WorkItemStatus): void {
+		this.#ctx.db
+			.query("UPDATE work_items SET status = ?, updated_at_ms = ? WHERE id = ?")
+			.run(status, nowMs(this.#ctx), id);
+	}
+}

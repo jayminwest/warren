@@ -39,10 +39,7 @@ export {
 	StateError,
 	ValidationError,
 } from "./errors.ts";
-export {
-	ReadOnlyGithubClient,
-	type ReadOnlyGithubClientOptions,
-} from "./github/client.ts";
+export { ReadOnlyGithubClient, type ReadOnlyGithubClientOptions } from "./github/client.ts";
 export { type DedupedItems, dedupeByNodeId, filterNewByNodeId } from "./github/dedupe.ts";
 export {
 	GithubApiError,
@@ -124,3 +121,49 @@ export {
 	WORK_TYPES,
 	type WorkType,
 } from "./repository-policy.ts";
+export { ActionStore, type SettleActionInput } from "./store/actions.ts";
+export { BudgetStore } from "./store/budget.ts";
+export { CampaignStore } from "./store/campaigns.ts";
+export { EventStore } from "./store/events.ts";
+export { LeaseStore } from "./store/leases.ts";
+export { MIGRATIONS } from "./store/schema.ts";
+export {
+	CampaignStateStore,
+	type CampaignStateStoreDeps,
+	type SchemaColumn,
+} from "./store/state-store.ts";
+export {
+	type ActionErrorClass,
+	type ActionRow,
+	type ActionState,
+	type AttentionItemRow,
+	type CampaignRow,
+	type CampaignStatus,
+	type GithubEventRow,
+	type LeaseRow,
+	type PrIdentityRow,
+	type ReservationRow,
+	type ReservationState,
+	type RunLinkRow,
+	TERMINAL_ACTION_STATES,
+	type WorkItemRow,
+	type WorkItemStatus,
+} from "./store/types.ts";
+export {
+	DispatchUncertainError,
+	isTerminalRunState,
+	parseRunEnvelope,
+	readTerminalFacts,
+	redactSecret,
+	WarrenAuthError,
+	WarrenClient,
+	type WarrenClientOptions,
+	type WarrenDispatchInput,
+	WarrenEnvelopeError,
+	WarrenRateLimitError,
+	WarrenRejectedError,
+	type WarrenRunView,
+	type WarrenTerminalFacts,
+	WarrenUnreachableError,
+} from "./warren-client.ts";
+export { type FakeRunRow, FakeWarrenServer, type RecordedRequest } from "./warren-fake.ts";
