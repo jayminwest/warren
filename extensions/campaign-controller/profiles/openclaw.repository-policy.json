@@ -1,0 +1,45 @@
+{
+	"schemaVersion": 1,
+	"profileId": "openclaw",
+	"upstream": {
+		"owner": "openclaw",
+		"repo": "openclaw"
+	},
+	"source": {
+		"url": "https://raw.githubusercontent.com/openclaw/openclaw/main/CONTRIBUTING.md",
+		"fetchedAt": "2026-08-25T00:00:00.000Z",
+		"sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+	},
+	"stalenessMaxDays": 90,
+	"issueFirstRequired": true,
+	"aiDisclosure": {
+		"required": true,
+		"evidenceRequired": true
+	},
+	"allowedWorkTypes": ["bug-fix", "feature", "docs", "test", "refactor"],
+	"forbiddenPaths": [
+		".github/workflows/*",
+		"SECURITY.md",
+		"COPYING",
+		"package.json"
+	],
+	"protectedPaths": ["docs/CONSTITUTION.md", ".warren/triggers.yaml"],
+	"upstreamObservedMaxOpenPrs": 20,
+	"maxOpenPrs": 5,
+	"maxNewPrsPerDay": 2,
+	"requiredChecks": ["ci", "typecheck", "lint"],
+	"mutations": {
+		"createPullRequest": false,
+		"pushCommits": false,
+		"updateBranch": false,
+		"postComment": false,
+		"editComment": false,
+		"requestReview": false,
+		"addLabels": false,
+		"closePullRequest": false,
+		"reopenPullRequest": false,
+		"enableAutoMerge": false,
+		"mergePullRequest": false,
+		"editIssue": false
+	}
+}

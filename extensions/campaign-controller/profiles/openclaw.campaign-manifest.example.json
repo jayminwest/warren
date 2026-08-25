@@ -1,0 +1,34 @@
+{
+	"schemaVersion": 1,
+	"campaignId": "camp-openclaw-eod-v0",
+	"campaignVersion": 1,
+	"upstream": {
+		"owner": "openclaw",
+		"repo": "openclaw"
+	},
+	"fork": {
+		"owner": "warren-run-bot",
+		"repo": "openclaw"
+	},
+	"defaultBranch": "main",
+	"issues": [812, 815, 823],
+	"warren": {
+		"project": "openclaw-contrib",
+		"agent": "pi",
+		"provider": "anthropic",
+		"model": "claude-sonnet-4-5"
+	},
+	"promptDigest": "e9271f621c15aafb25668a1dfa7d627c7a0c47c1b1c6fda497f01997107af2d2",
+	"budget": {
+		"perRunUsd": 5,
+		"dailyUsd": 20,
+		"totalUsd": 100
+	},
+	"maxConcurrentRuns": 2,
+	"expiresAt": "2026-12-31T00:00:00.000Z",
+	"approval": {
+		"approvedBy": "jayminwest",
+		"approvedAt": "2026-08-25T12:00:00.000Z",
+		"manifestDigest": "bb2a1708f48b721c1d16a07845f7247aa1da702770b40956fecc48d2a74e1b44"
+	}
+}

@@ -24,6 +24,13 @@ export {
 	UuidIdGenerator,
 } from "./clock.ts";
 export {
+	canonicalJson,
+	digestOf,
+	isSha256Hex,
+	SHA256_HEX,
+	sha256Hex,
+} from "./digest.ts";
+export {
 	BoundaryError,
 	CampaignControllerError,
 	type CampaignControllerErrorCode,
@@ -32,3 +39,41 @@ export {
 	StateError,
 	ValidationError,
 } from "./errors.ts";
+export {
+	checkRepoCoordinates,
+	isValidOwner,
+	isValidRefName,
+	isValidRepo,
+	type RepoCoordinates,
+} from "./github-grammar.ts";
+export {
+	type ApprovalEnvelope,
+	type CampaignBudget,
+	type CampaignManifest,
+	type IssueId,
+	MANIFEST_SCHEMA_VERSION,
+	MAX_CAMPAIGN_ISSUES,
+	MAX_CAP_USD,
+	type ManifestValidationOptions,
+	type ValidatedCampaignManifest,
+	validateCampaignManifest,
+	type WarrenTarget,
+} from "./manifest.ts";
+export {
+	MUTATION_FLAGS,
+	type MutationFlag,
+	type Mutations,
+	NO_MUTATIONS,
+} from "./mutations.ts";
+export {
+	MAX_STALENESS_DAYS,
+	OPENCLAW_UPSTREAM_MAX_OPEN_PRS,
+	type PolicySource,
+	type PolicyValidationOptions,
+	REPOSITORY_POLICY_SCHEMA_VERSION,
+	type RepositoryPolicy,
+	type ValidatedRepositoryPolicy,
+	validateRepositoryPolicy,
+	WORK_TYPES,
+	type WorkType,
+} from "./repository-policy.ts";

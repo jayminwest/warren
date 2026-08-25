@@ -1,0 +1,129 @@
+/**
+ * Golden tests for the committed OpenClaw data profile and example campaign
+ * manifest (plan pl-91b6 step 2, warren-5055).
+ *
+ * OpenClaw is data, never conditionals: these tests pin the committed
+ * snapshot's validity, its deterministic round-trip, the upstream
+ * 20-open-PR limit, and the stricter controller caps. The validation clock
+ * is pinned to just after the snapshot's fetchedAt so the committed profile
+ * stays provably fresh-shaped; live validation with the real clock fails
+ * once the snapshot ages past its own staleness bound, which is the point.
+ */
+import { describe, expect, test } from "bun:test";
+import { canonicalJson, digestOf } from "./digest.ts";
+import { validateCampaignManifest } from "./manifest.ts";
+import { OPENCLAW_UPSTREAM_MAX_OPEN_PRS, validateRepositoryPolicy } from "./repository-policy.ts";
+
+const DATA_DIR = new URL("../profiles/", import.meta.url);
+/** Pinned to one day after the committed snapshot was fetched. */
+const PINNED_NOW = Date.parse("2026-08-26T00:00:00.000Z");
+
+async function loadGolden(name: string): Promise<unknown> {
+	return Bun.file(new URL(name, DATA_DIR)).json();
+}
+
+describe("openclaw repository-policy golden", () => {
+	test("the committed profile validates and pins the upstream 20-open-PR limit", async () => {
+		const { policy } = validateRepositoryPolicy(
+			await loadGolden("openclaw.repository-policy.json"),
+			{ nowMs: PINNED_NOW },
+		);
+		expect(policy.profileId).toBe("openclaw");
+		expect(policy.upstream).toEqual({ owner: "openclaw", repo: "openclaw" });
+		expect(policy.upstreamObservedMaxOpenPrs).toBe(OPENCLAW_UPSTREAM_MAX_OPEN_PRS);
+		expect(OPENCLAW_UPSTREAM_MAX_OPEN_PRS).toBe(20);
+	});
+
+	test("the controller cap is strictly stricter than the upstream limit", async () => {
+		const { policy } = validateRepositoryPolicy(
+			await loadGolden("openclaw.repository-policy.json"),
+			{ nowMs: PINNED_NOW },
+		);
+		expect(policy.maxOpenPrs).toBeLessThan(OPENCLAW_UPSTREAM_MAX_OPEN_PRS);
+		expect(policy.maxNewPrsPerDay).toBeLessThanOrEqual(policy.maxOpenPrs);
+	});
+
+	test("the committed profile round-trips deterministically", async () => {
+		const raw = await loadGolden("openclaw.repository-policy.json");
+		const first = validateRepositoryPolicy(raw, { nowMs: PINNED_NOW });
+		const second = validateRepositoryPolicy(JSON.parse(canonicalJson(first.policy)), {
+			nowMs: PINNED_NOW,
+		});
+		expect(canonicalJson(second.policy)).toBe(canonicalJson(first.policy));
+		expect(second.digest).toBe(first.digest);
+	});
+
+	test("the committed profile admits no mutation", async () => {
+		const { policy } = validateRepositoryPolicy(
+			await loadGolden("openclaw.repository-policy.json"),
+			{ nowMs: PINNED_NOW },
+		);
+		for (const [flag, allowed] of Object.entries(policy.mutations)) {
+			expect(allowed, flag).toBe(false);
+		}
+	});
+});
+
+describe("openclaw campaign-manifest golden", () => {
+	test("the committed example validates with its recorded approval digest", async () => {
+		const { manifest, digest } = validateCampaignManifest(
+			await loadGolden("openclaw.campaign-manifest.example.json"),
+			{ nowMs: PINNED_NOW },
+		);
+		expect(manifest.campaignId).toBe("camp-openclaw-eod-v0");
+		expect(manifest.upstream).toEqual({ owner: "openclaw", repo: "openclaw" });
+		expect(manifest.fork).toEqual({ owner: "warren-run-bot", repo: "openclaw" });
+		expect(digest).toBe(manifest.approval.manifestDigest);
+	});
+
+	test("the committed example round-trips deterministically", async () => {
+		const raw = await loadGolden("openclaw.campaign-manifest.example.json");
+		const first = validateCampaignManifest(raw, { nowMs: PINNED_NOW });
+		const second = validateCampaignManifest(JSON.parse(canonicalJson(first.manifest)), {
+			nowMs: PINNED_NOW,
+		});
+		expect(canonicalJson(second.manifest)).toBe(canonicalJson(first.manifest));
+		expect(second.digest).toBe(first.digest);
+	});
+
+	test("normalization carries no keys beyond the schema", async () => {
+		const raw = (await loadGolden("openclaw.campaign-manifest.example.json")) as Record<
+			string,
+			unknown
+		>;
+		const rawKeys = Object.keys(raw).sort();
+		const { manifest } = validateCampaignManifest(raw, { nowMs: PINNED_NOW });
+		// Normalization adds the optional-but-present `prompt: undefined` slot
+		// and nothing else; every input key survives, no extra key appears.
+		expect(Object.keys(manifest).sort()).toEqual(
+			Array.from(new Set([...rawKeys, "prompt"])).sort(),
+		);
+		// Secret-free by construction: no normalized value is a credential.
+		expect(canonicalJson(manifest)).not.toMatch(/ghp_|github_pat_|token/i);
+	});
+
+	test("the example manifest and policy agree on the upstream target", async () => {
+		const manifest = validateCampaignManifest(
+			await loadGolden("openclaw.campaign-manifest.example.json"),
+			{ nowMs: PINNED_NOW },
+		);
+		const policy = validateRepositoryPolicy(await loadGolden("openclaw.repository-policy.json"), {
+			nowMs: PINNED_NOW,
+		});
+		expect(manifest.manifest.upstream).toEqual(policy.policy.upstream);
+	});
+
+	test("digests are stable across reloads (golden pin)", async () => {
+		const policy = validateRepositoryPolicy(await loadGolden("openclaw.repository-policy.json"), {
+			nowMs: PINNED_NOW,
+		});
+		const manifest = validateCampaignManifest(
+			await loadGolden("openclaw.campaign-manifest.example.json"),
+			{ nowMs: PINNED_NOW },
+		);
+		// Recompute from an independent canonical serialization.
+		expect(digestOf(policy.policy)).toBe(policy.digest);
+		const { approval: _a, ...unapproved } = manifest.manifest;
+		expect(digestOf(unapproved)).toBe(manifest.digest);
+	});
+});
