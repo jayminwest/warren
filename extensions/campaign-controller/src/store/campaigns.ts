@@ -132,6 +132,26 @@ export class CampaignStore {
 		return row;
 	}
 
+	listCampaigns(): CampaignRow[] {
+		const rows = this.#ctx.db
+			.query("SELECT * FROM campaigns ORDER BY created_at_ms, id")
+			.all() as CampaignDbRow[];
+		return rows.map(toCampaign);
+	}
+
+	/**
+	 * A bound field of the campaign's manifest changed: the approval bound
+	 * the old digest, so it no longer authorizes anything. The row returns
+	 * to `awaiting_approval` and loses its approval stamp (warren-a252).
+	 */
+	invalidateApproval(id: string): void {
+		this.#ctx.db
+			.query(
+				"UPDATE campaigns SET status = 'awaiting_approval', approved_at_ms = NULL, updated_at_ms = ? WHERE id = ?",
+			)
+			.run(nowMs(this.#ctx), id);
+	}
+
 	addWorkItem(input: {
 		campaignId: string;
 		position: number;

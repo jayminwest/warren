@@ -24,6 +24,7 @@ export type CampaignControllerErrorCode =
 	| "warren_unreachable"
 	| "warren_envelope_invalid"
 	| "dispatch_uncertain"
+	| "admission_refused"
 	| "upstream_error"
 	| "rate_limited";
 
