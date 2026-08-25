@@ -22,13 +22,17 @@
  * anything unrecognized fail closed — a retry that can never succeed
  * just burns a second sandbox.
  *
- * ## The single-retry bound
+ * ## The retry bound
  *
  * The redispatch stamps a `spawn.provider_retry` lineage event onto the
- * NEW run's stream. A later failure of that run sees the marker and
- * stops — the retry of a retry is never dispatched, so the bound holds
- * across restarts without any new schema. The origin run gets a
- * `reap.provider_retry_dispatched` event naming the successor.
+ * NEW run's stream, so any later failure can walk its own lineage back to
+ * the root with no new schema. {@link MAX_PROVIDER_RETRIES} caps how many
+ * of those stamps one lineage may hold. The run that reaches the cap gets
+ * a `reap.provider_retry_exhausted` event instead of a successor, the
+ * origin of every dispatched retry gets `reap.provider_retry_dispatched`
+ * naming that successor, and a failure the classifier declines gets
+ * `reap.provider_retry_skipped` carrying the verdict. The policy is
+ * written down in `docs/design/provider-retry.md`.
  *
  * ## Wiring
  *
@@ -41,7 +45,7 @@
  */
 
 import type { Repos } from "../../db/repos/index.ts";
-import type { EventRow } from "../../db/schema.ts";
+import type { EventRow, RunRow } from "../../db/schema.ts";
 import type { Forge } from "../../forge/contract.ts";
 import { mintGitCredentialSecret } from "../../forge/credentials.ts";
 import type { SpawnFn as ProjectSpawnFn } from "../../projects/clone.ts";
@@ -65,7 +69,18 @@ export const PROVIDER_RETRY_EVENTS = {
 	retryDispatched: "reap.provider_retry_dispatched",
 	/** Appended to the FAILED run when the redispatch itself threw. */
 	retryFailed: "reap.provider_retry_failed",
+	/** Appended to the FAILED run whose lineage has spent the retry bound. */
+	retryExhausted: "reap.provider_retry_exhausted",
+	/** Appended to the FAILED run the classifier declined to retry. */
+	retrySkipped: "reap.provider_retry_skipped",
 } as const;
+
+/**
+ * How many auto-dispatched provider retries one lineage may hold
+ * (warren-ac61). The origin run is not an attempt, so at 2 a transient
+ * failure is redispatched twice before warren stops and says so.
+ */
+export const MAX_PROVIDER_RETRIES = 2;
 
 /**
  * The retry verdict for a provider's terminal error message.
@@ -254,21 +269,77 @@ async function maybeRetryProviderError(
 	if (run.trigger === "plan-run" || run.trigger === "auto_plan_run") return;
 
 	const events = await input.repos.events.listByRun(runId);
-	// The single-retry bound: a run that was itself dispatched as a
-	// provider retry carries the lineage marker and never retries again.
-	if (events.some((e) => e.kind === PROVIDER_RETRY_EVENTS.spawnRetry)) return;
+	const emit = makeRunEventEmitter(input, now);
+	// The missing-data gate comes first and stays silent. A run with no
+	// `reap.provider_error` message never reached the classifier, so neither a
+	// verdict nor an exhaustion verdict would describe anything that happened
+	// (docs/design/provider-retry.md section 3). It is also the cheaper of the
+	// two: the signal is already in `events`, the bound reads chain rows.
 	const signal = lastProviderErrorSignal(events);
 	if (signal === null) return;
+	// The bound: a lineage that has spent its attempts stops here, on the
+	// run that reached the cap, rather than returning bare.
+	const attempts = await countProviderRetries(input.repos, run, events);
+	if (attempts >= MAX_PROVIDER_RETRIES) {
+		input.logger.info(
+			{ runId, attempts, maxAttempts: MAX_PROVIDER_RETRIES },
+			"provider-retry.exhausted: the lineage has spent its retry bound",
+		);
+		await emit(runId, PROVIDER_RETRY_EVENTS.retryExhausted, {
+			attempts,
+			maxAttempts: MAX_PROVIDER_RETRIES,
+		});
+		return;
+	}
 	const verdict = classifyProviderError(signal.message, signal.httpStatus, signal.upstreamBody);
 	if (verdict !== "transient") {
 		input.logger.info(
 			{ runId, verdict, providerError: signal.message },
 			"provider-retry.skipped: error is not transient",
 		);
+		await emit(runId, PROVIDER_RETRY_EVENTS.retrySkipped, {
+			verdict,
+			providerError: signal.message,
+		});
 		return;
 	}
 
 	await dispatchProviderRetry(input, now, { ...run, projectId }, signal.message);
+}
+
+/**
+ * How many provider retries this lineage has already spent, counted from
+ * the run that just failed backwards toward the root. A run carrying the
+ * `spawn.provider_retry` stamp was dispatched as one; every other run in
+ * the chain adds nothing, including an infra-lost retry that interrupted
+ * it. Counting `retryOf` hops instead would over-count, because
+ * `./infra-lost-retry.ts` writes that column too.
+ *
+ * Only the two retry dispatchers write `retryOf`, so the chain is the
+ * retry depth and nothing else. `parentRunId` is followed only from a run
+ * that carries the stamp, which is the pre-warren-eaa6 provider-retry row
+ * shape, so a plain `continue` clone is never walked. The walk stops at
+ * the cap, so it reads at most {@link MAX_PROVIDER_RETRIES} chain rows.
+ */
+async function countProviderRetries(
+	repos: Repos,
+	failed: Pick<RunRow, "id" | "retryOf" | "parentRunId">,
+	failedEvents: readonly EventRow[],
+): Promise<number> {
+	let attempts = 0;
+	let current: Pick<RunRow, "id" | "retryOf" | "parentRunId"> | null = failed;
+	let events: readonly EventRow[] = failedEvents;
+	const seen = new Set<string>([failed.id]);
+	while (current !== null && attempts < MAX_PROVIDER_RETRIES) {
+		const stamped = events.some((e) => e.kind === PROVIDER_RETRY_EVENTS.spawnRetry);
+		if (stamped) attempts += 1;
+		const parentId: string | null = current.retryOf ?? (stamped ? current.parentRunId : null);
+		if (parentId === null || seen.has(parentId)) break;
+		seen.add(parentId);
+		current = await repos.runs.get(parentId);
+		events = current === null ? [] : await repos.events.listByRun(parentId);
+	}
+	return attempts;
 }
 
 /**
