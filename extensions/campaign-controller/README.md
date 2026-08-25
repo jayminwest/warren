@@ -38,13 +38,23 @@ issues depend on:
   `ValidationError` / `ConfigError` / `StateError` / `BoundaryError`
   hierarchy every later step throws through. Error messages never carry
   secrets by construction.
+- [`src/store/`](src/store/) — the controller-owned SQLite state store and
+  action journal (plan pl-91b6 step 3, warren-2853): `bun:sqlite` with WAL,
+  explicit transactional migrations, injected clock/ids, campaigns with
+  immutable manifest digests, ordered work items, the
+  `planned → executing → succeeded|uncertain|retryable_failure|permanent_failure`
+  action journal written `planned` before any I/O, deterministic action keys,
+  one active attempt per work item, Warren run correlation, prospective
+  cross-fork PR identity, GitHub events deduplicated by stable node id,
+  attention items, leases, and the budget reservation ledger. No column in
+  the schema can hold a secret, token, or credential — a schema-inspection
+  test proves it against the live database.
 
 Not implemented yet (later pl-91b6 steps): the campaign manifest and
-repository-policy schemas, the SQLite state store and action journal, the
-warren and GitHub clients, validation/approval/admission, dispatch and
-reconciliation, PR-intent rendering, the polling loop, and the CLI. The
-entrypoint ([`src/index.ts`](src/index.ts)) is a placeholder that exits
-`not_implemented`.
+repository-policy schemas, the warren and GitHub clients,
+validation/approval/admission, dispatch and reconciliation, PR-intent
+rendering, the polling loop, and the CLI. The entrypoint
+([`src/index.ts`](src/index.ts)) is a placeholder that exits `not_implemented`.
 
 ## Layout
 
@@ -52,6 +62,7 @@ entrypoint ([`src/index.ts`](src/index.ts)) is a placeholder that exits
 src/
   clock.ts   injectable clock + id interfaces, prod defaults, test fakes
   errors.ts  campaign-controller error base types
+  store/     SQLite state store: schema, migrations, action journal, budget, leases
   index.ts   entrypoint placeholder + package identity
 ```
 

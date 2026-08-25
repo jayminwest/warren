@@ -32,3 +32,31 @@ export {
 	StateError,
 	ValidationError,
 } from "./errors.ts";
+export { ActionStore, type SettleActionInput } from "./store/actions.ts";
+export { BudgetStore } from "./store/budget.ts";
+export { CampaignStore } from "./store/campaigns.ts";
+export { EventStore } from "./store/events.ts";
+export { LeaseStore } from "./store/leases.ts";
+export { MIGRATIONS } from "./store/schema.ts";
+export {
+	CampaignStateStore,
+	type CampaignStateStoreDeps,
+	type SchemaColumn,
+} from "./store/state-store.ts";
+export {
+	type ActionErrorClass,
+	type ActionRow,
+	type ActionState,
+	type AttentionItemRow,
+	type CampaignRow,
+	type CampaignStatus,
+	type GithubEventRow,
+	type LeaseRow,
+	type PrIdentityRow,
+	type ReservationRow,
+	type ReservationState,
+	type RunLinkRow,
+	TERMINAL_ACTION_STATES,
+	type WorkItemRow,
+	type WorkItemStatus,
+} from "./store/types.ts";
