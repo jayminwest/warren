@@ -122,6 +122,12 @@ export class FakeGithubServer implements GithubTransport {
 		return this;
 	}
 
+	/** Remove a registered resource so subsequent reads answer 404. */
+	deleteResource(path: string): this {
+		this.resources.delete(normalize(path));
+		return this;
+	}
+
 	/** Bump a resource's version without changing its body. */
 	bumpResource(path: string): this {
 		const prior = this.resources.get(normalize(path));

@@ -110,6 +110,30 @@ export {
 	NO_MUTATIONS,
 } from "./mutations.ts";
 export {
+	type AttentionCandidate,
+	type AttentionDerivationInput,
+	type AttentionReason,
+	deriveAttentionCandidates,
+} from "./reconcile/attention.ts";
+export {
+	dedupeEvents,
+	type GithubEventKind,
+	type NormalizedGithubEvent,
+	normalizeCheckRun,
+	normalizeCombinedStatus,
+	normalizeIssueComment,
+	normalizePolicyDigest,
+	normalizePullRequest,
+	normalizeReview,
+	normalizeReviewComment,
+} from "./reconcile/events.ts";
+export type {
+	ReconcileResult,
+	UpstreamPrReconcilerDeps,
+	UpstreamPrTarget,
+} from "./reconcile/reconciler.ts";
+export { UpstreamPrReconciler } from "./reconcile/reconciler.ts";
+export {
 	MAX_STALENESS_DAYS,
 	OPENCLAW_UPSTREAM_MAX_OPEN_PRS,
 	type PolicySource,

@@ -151,6 +151,8 @@ export interface GithubIssueCommentSnapshot {
 	nodeId: string;
 	id: number;
 	authorLogin: string;
+	/** GitHub author association (OWNER, MEMBER, CONTRIBUTOR, ...). */
+	authorAssociation: string;
 	body: string;
 	createdAt: string;
 	updatedAt: string;
@@ -162,6 +164,8 @@ export interface GithubReviewSnapshot {
 	nodeId: string;
 	id: number;
 	authorLogin: string;
+	/** GitHub author association (OWNER, MEMBER, CONTRIBUTOR, ...). */
+	authorAssociation: string;
 	state: string;
 	body: string;
 	submittedAt: string | null;
@@ -174,6 +178,8 @@ export interface GithubReviewCommentSnapshot {
 	nodeId: string;
 	id: number;
 	authorLogin: string;
+	/** GitHub author association (OWNER, MEMBER, CONTRIBUTOR, ...). */
+	authorAssociation: string;
 	body: string;
 	createdAt: string;
 	updatedAt: string;

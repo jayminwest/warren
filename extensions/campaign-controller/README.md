@@ -114,6 +114,23 @@ its deterministic fake —
   `Retry-After`, malformed envelopes (`respondOnceWith`), and restart
   (`restart()` wipes the non-durable idempotency store while runs survive).
 
+Landed in plan step 9 (warren-323d): read-only upstream PR reconciliation —
+
+- [`src/reconcile/`](src/reconcile/) — `UpstreamPrReconciler` reconciles one
+  already-known upstream PR identity. Participating notifications are
+  wake-ups only (never a source of state); the authoritative pull request,
+  reviews, issue comments, review comments, check runs, combined status,
+  and an optional watched policy file are re-read through GET/HEAD and
+  normalized into durable events keyed by repository + event kind + node
+  id + content digest — so reordered pages, replayed wake-ups, edits, and
+  controller restarts land exactly once. Attention items (requested
+  changes, actionable maintainer comments, failing checks, policy
+  changes, human takeover, stale author action, unresolved ambiguity) are
+  derived deterministically and stored through a deduplicating write.
+  Comment and review text is untrusted data, never a controller command;
+  the reconciler performs no GitHub mutation, dispatch, reply, resolve,
+  or rerequest.
+
 Not implemented yet (later pl-91b6 steps): validation/approval/admission,
 dispatch and reconciliation orchestration, PR-intent journaling, the
 polling loop, and the CLI. The entrypoint ([`src/index.ts`](src/index.ts))
@@ -132,6 +149,7 @@ src/
   mutations.ts         frozen mutation-flag vocabulary (all false in V0)
   repository-policy.ts V0 repository-policy snapshot schema + validation
   store/     SQLite state store: schema, migrations, action journal, budget, leases
+  reconcile/ read-only upstream PR reconciliation and attention derivation
   github/    structurally read-only GitHub client, PR-intent renderer,
              dedupe/redaction helpers, and the fake GitHub server
   warren-client.ts minimal V0 Warren HTTP client (dispatch, detail, retries)

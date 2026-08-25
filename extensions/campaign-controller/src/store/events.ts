@@ -236,6 +236,19 @@ export class EventStore {
 		};
 	}
 
+	listGithubEvents(campaignId: string): GithubEventRow[] {
+		const rows = this.#ctx.db
+			.query("SELECT * FROM github_events WHERE campaign_id = ? ORDER BY observed_at_ms, node_id")
+			.all(campaignId) as GithubEventDbRow[];
+		return rows.map((row) => ({
+			nodeId: row.node_id,
+			campaignId: row.campaign_id,
+			eventKind: row.event_kind,
+			payloadJson: row.payload_json,
+			observedAtMs: row.observed_at_ms,
+		}));
+	}
+
 	addAttention(input: {
 		campaignId: string;
 		reason: string;
@@ -282,6 +295,31 @@ export class EventStore {
 			)
 			.all(campaignId) as AttentionDbRow[];
 		return rows.map((row) => this.getAttentionItem(row.id) as AttentionItemRow);
+	}
+
+	/**
+	 * Insert an attention item only when no open item with the same
+	 * campaign, reason, and detail JSON exists. The reconciler derives a
+	 * deterministic detail (stable subject key, no wall-clock noise), so
+	 * re-deriving the same attention across ticks and restarts is a no-op.
+	 */
+	addAttentionOnce(input: {
+		campaignId: string;
+		reason: string;
+		workItemId?: string | null;
+		detailJson?: string | null;
+	}): { row: AttentionItemRow; created: boolean } {
+		const detailJson = input.detailJson ?? null;
+		const existing = this.#ctx.db
+			.query(
+				`SELECT id FROM attention_items
+				 WHERE campaign_id = ? AND reason = ? AND detail_json IS ? AND resolved_at_ms IS NULL`,
+			)
+			.get(input.campaignId, input.reason, detailJson) as { id: string } | null;
+		if (existing !== null) {
+			return { row: this.getAttentionItem(existing.id) as AttentionItemRow, created: false };
+		}
+		return { row: this.addAttention({ ...input, detailJson }), created: true };
 	}
 
 	resolveAttention(id: string): void {
