@@ -20,9 +20,9 @@ import { KubeConfig, Log, type LogOptions } from "@kubernetes/client-node";
 import type { LogFollowController, LogFollowFn } from "./log-stream.ts";
 
 /**
- * Is `err` the AbortError node-fetch (or the WHATWG stream) raises when a request
- * is aborted? Matched by `name`, the one field both the node-fetch `AbortError`
- * (`name === "AbortError"`) and the platform `DOMException` abort share. Scoped
+ * Is `err` the AbortError an HTTP client or WHATWG stream raises when a request
+ * is aborted? Matched by `name`, the one field both the legacy node-fetch error
+ * and the undici `DOMException` share. Scoped
  * deliberately narrow so ONLY the expected teardown signal is swallowed — every
  * other stream error still propagates into the pump's reconnect/backoff.
  */
@@ -68,18 +68,13 @@ export function makeLogFollow(log: Log): LogFollowFn {
 		sink.on("close", () => finish(undefined));
 		sink.on("error", (err) => finish(err));
 
-		// `Log.log` does `response.body.pipe(sink)`, and `.pipe()` attaches NO
-		// error listener to the SOURCE. When we tear the follow down after a
-		// terminal (warren-fd08's prompt finalize fallback), `controller.abort()`
-		// makes node-fetch emit an AbortError on `response.body`; with no listener
-		// that `emit("error")` throws, and because it fires inside the signal's
-		// abort-event dispatch it surfaces as an UNCAUGHT exception (a try/catch
-		// around `abort.abort()` can't reach it) — the control plane crash-looped
-		// on every K8s run teardown (warren-595f). The destination emits a `pipe`
-		// event carrying the source, so capture the source here and route ITS
-		// errors into the same single-settle `finish`: an AbortError (expected
-		// teardown, or a race with our own abort) closes cleanly; every other
-		// source error propagates to the pump exactly like a sink error.
+		// `Log.log` pipes a Node source into `sink` (`Readable.fromWeb(response.body)`
+		// under client-node v2), and `.pipe()` attaches NO source error listener.
+		// Capture the source from the destination's `pipe` event and route its
+		// errors through the same single-settle finish: an AbortError during our
+		// teardown closes cleanly; every other source error reaches the reconnect
+		// pump. This also preserves the warren-595f guard against uncaught source
+		// errors during request cancellation.
 		let source: Readable | undefined;
 		sink.on("pipe", (src: Readable) => {
 			source = src;
@@ -111,28 +106,18 @@ export function makeLogFollow(log: Log): LogFollowFn {
 		}
 		return {
 			abort: () => {
-				// Mark the teardown BEFORE closing anything: the `pipe`-captured error
-				// listener above must see `aborting` so any error the close produces is
-				// treated as an expected clean end rather than a stream failure.
+				// Mark teardown before closing either layer so a cancellation error from
+				// the source is classified as the expected clean end.
 				aborting = true;
-				// NEVER dispatch `abort.abort()` when the response source is in hand:
-				// under Bun the abort-event dispatch constructs an AbortError
-				// DOMException that surfaces as an UNCAUGHT exception OUTSIDE any
-				// try/catch on this frame (8 crash-loop restarts on live GKE,
-				// warren-4e36; the warren-595f pipe-listener alone did not stop it and
-				// a try/catch around abort() does not either — the throw is async).
-				// Destroying the piped source Readable closes the HTTP stream through
-				// node-fetch's own teardown WITHOUT ever firing the abort signal; our
-				// source error listener + `aborting` turn any resulting error into a
-				// clean single-settle finish. The signal abort stays only as the
-				// fallback for the (unreachable in practice) no-source case, still
-				// guarded so teardown can never throw.
 				try {
-					if (source !== undefined) {
-						source.destroy();
-					} else {
-						abort.abort();
-					}
+					// client-node v2 wraps undici's Web body with Readable.fromWeb. Destroying
+					// that wrapper is local stream teardown, not the client's request-
+					// cancellation contract, so cancellation must reach the controller too.
+					// The source error listener is installed before `Log.log` returns, so abort
+					// the request first and then destroy the wrapper as a local backstop
+					// (warren-4e36 / warren-595f).
+					abort.abort();
+					source?.destroy();
 				} catch (err) {
 					if (!isAbortError(err)) {
 						finish(err);

@@ -32,12 +32,11 @@ function fakeLog(
 
 /**
  * A fake `Log` that mirrors `@kubernetes/client-node`'s real `Log.log` teardown
- * shape: it `.pipe()`s a source (`response.body`) into the sink and wires the
- * returned `AbortController` so that aborting emits an AbortError on that SOURCE
- * (exactly what node-fetch does on abort). `.pipe()` never attaches a source
- * error listener, so this is the shape that crash-looped the control plane on
- * K8s teardown (warren-595f). `source` is exposed so a test can also emit a
- * non-abort mid-stream error.
+ * shape: it `.pipe()`s a source into the sink and wires the returned controller
+ * so aborting emits an AbortError on that source. `.pipe()` never attaches a
+ * source error listener, so this is the shape that crash-looped the control
+ * plane on K8s teardown (warren-595f). `source` is exposed so a test can also
+ * emit a non-abort mid-stream error.
  */
 function fakePipedLog(): { log: Log; source: PassThrough; abort: AbortController } {
 	const source = new PassThrough();
@@ -48,7 +47,7 @@ function fakePipedLog(): { log: Log; source: PassThrough; abort: AbortController
 			abort.signal.addEventListener("abort", () => {
 				const err = new Error("The user aborted a request.");
 				err.name = "AbortError";
-				source.emit("error", err); // node-fetch's real abort() body
+				source.emit("error", err); // transport abort surfaced on the piped body
 			});
 			return Promise.resolve(abort);
 		},
@@ -144,13 +143,11 @@ describe("makeLogFollow", () => {
 		expect(doneCount).toBe(1);
 	});
 
-	test("abort during an active follow tears down via source.destroy — the abort signal is NEVER dispatched (warren-4e36)", async () => {
-		// warren-595f → warren-4e36: dispatching `abort.abort()` makes node-fetch
-		// raise an AbortError that (under Bun) escapes every try/catch as an
-		// UNCAUGHT exception and crash-loops the control plane. The teardown now
-		// destroys the captured piped source instead — node-fetch's own stream
-		// teardown closes the HTTP body with no abort-event dispatch at all.
-		// A temporary uncaughtException/unhandledRejection guard captures any escape.
+	test("abort during an active follow closes the source and request without an escape", async () => {
+		// client-node v2's undici path exposes request cancellation through the
+		// controller, while Readable.fromWeb is only the local stream wrapper. The
+		// source error guard still prevents the cancellation signal from escaping as
+		// an uncaught exception.
 		const fake = fakePipedLog();
 		const escapes: unknown[] = [];
 		const onEscape = (e: unknown): void => {
@@ -172,9 +169,7 @@ describe("makeLogFollow", () => {
 			controller.abort();
 			// Let the (previously crashing) async uncaught-exception path settle.
 			await new Promise((resolve) => setTimeout(resolve, 10));
-			// The signal must never be dispatched (that dispatch IS the crash);
-			// teardown goes through source.destroy() instead.
-			expect(fake.abort.signal.aborted).toBe(false);
+			expect(fake.abort.signal.aborted).toBe(true);
 			expect(fake.source.destroyed).toBe(true);
 			expect(doneCount).toBe(1);
 			expect(endErr).toBeUndefined();
