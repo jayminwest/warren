@@ -15,7 +15,9 @@ export type CampaignControllerErrorCode =
 	| "config_invalid"
 	| "state_invalid"
 	| "boundary_violated"
-	| "not_implemented";
+	| "not_implemented"
+	| "upstream_error"
+	| "rate_limited";
 
 /** Root of every error the campaign controller raises. */
 export class CampaignControllerError extends Error {

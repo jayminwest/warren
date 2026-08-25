@@ -32,3 +32,50 @@ export {
 	StateError,
 	ValidationError,
 } from "./errors.ts";
+export {
+	ReadOnlyGithubClient,
+	type ReadOnlyGithubClientOptions,
+} from "./github/client.ts";
+export { type DedupedItems, dedupeByNodeId, filterNewByNodeId } from "./github/dedupe.ts";
+export {
+	GithubApiError,
+	GithubRateLimitError,
+	type GithubRateLimitKind,
+} from "./github/errors.ts";
+export {
+	type FakeAbuseState,
+	FakeGithubServer,
+	type FakeGithubServerOptions,
+	type FakeRateLimitState,
+	type RecordedGithubRequest,
+} from "./github/fake-server.ts";
+export {
+	assertReadMethod,
+	BunFetchGithubTransport,
+} from "./github/http-transport.ts";
+export {
+	type CrossForkPullRequestIntent,
+	type CrossForkPullRequestIntentInput,
+	renderCrossForkPullRequestIntent,
+} from "./github/pr-request.ts";
+export { REDACTED, redactHeaders, redactText, redactValue } from "./github/redact.ts";
+export type {
+	GithubCheckRunSnapshot,
+	GithubCombinedStatusSnapshot,
+	GithubConditionalHeaders,
+	GithubContentSnapshot,
+	GithubIssueCommentSnapshot,
+	GithubIssueSnapshot,
+	GithubNoded,
+	GithubNotificationSnapshot,
+	GithubPageResult,
+	GithubPullRequestSnapshot,
+	GithubRateSnapshot,
+	GithubReadMethod,
+	GithubReadRequest,
+	GithubReadResult,
+	GithubRepoSnapshot,
+	GithubReviewCommentSnapshot,
+	GithubReviewSnapshot,
+	GithubTransport,
+} from "./github/types.ts";
