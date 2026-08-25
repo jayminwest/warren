@@ -17,11 +17,8 @@
 
 import type { Command } from "commander";
 import { loadWarrenClientConfigFromFile } from "../client/config-file.ts";
-import {
-	loadWarrenClientConfigFromEnv,
-	WarrenClient,
-	type WarrenClientConfig,
-} from "../client/index.ts";
+import { DEFAULT_WARREN_BASE_URL, WarrenClient, type WarrenClientConfig } from "../client/index.ts";
+import { ValidationError } from "../core/errors.ts";
 import type { CliContext, EnvLike } from "./output.ts";
 
 /** The `--url` / `--token` flag pair every remote command accepts. */
@@ -136,7 +133,6 @@ export function resolveClientConfigWithSources(
 	env: EnvLike,
 	flags: ClientFlags = {},
 ): ResolvedClientConfig {
-	const fromEnv = loadWarrenClientConfigFromEnv(env);
 	const fromFile = loadWarrenClientConfigFromFile(env);
 	const baseUrl = firstNonEmpty(
 		{ source: "flag", value: flags.url },
@@ -148,7 +144,14 @@ export function resolveClientConfigWithSources(
 		{ source: "env", value: env.WARREN_API_TOKEN },
 		{ source: "config-file", value: fromFile?.token },
 	);
-	const resolvedBaseUrl = baseUrl?.value ?? fromEnv.baseUrl;
+
+	if (baseUrl === undefined && env.WARREN_BASE_URL === "") {
+		throw new ValidationError("WARREN_BASE_URL is set to an empty string", {
+			recoveryHint: `unset WARREN_BASE_URL to fall back to ${DEFAULT_WARREN_BASE_URL}`,
+		});
+	}
+
+	const resolvedBaseUrl = baseUrl?.value ?? DEFAULT_WARREN_BASE_URL;
 	const baseUrlSource = baseUrl?.source ?? "default";
 	return token !== undefined
 		? {

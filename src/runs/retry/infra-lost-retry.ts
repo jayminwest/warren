@@ -51,6 +51,7 @@ import type { SpawnRunInput } from "../spawn/types.ts";
 import type { BridgeLogger } from "../stream/index.ts";
 import { bindBridgeLogger } from "../stream/index.ts";
 import type { BridgeRegistry } from "../stream/types.ts";
+import { inheritedDispatchOverrides } from "./inherited-overrides.ts";
 
 /**
  * Failure causes that justify one automatic run-level re-dispatch. Today
@@ -175,6 +176,15 @@ function buildRetrySpawnInput(
 	if (run.ref !== null) draft.ref = run.ref;
 	if (run.baseCommit !== null) draft.baseCommit = run.baseCommit;
 	if (run.targetBranch !== null) draft.targetBranch = run.targetBranch;
+	// warren-0d80: provider and model come off the original's frozen
+	// frontmatter, so the retry runs on what the operator selected rather than
+	// on whatever the agent and project defaults resolve to now.
+	const inherited = inheritedDispatchOverrides(run.renderedAgentJson);
+	if (inherited.providerOverride !== undefined) draft.providerOverride = inherited.providerOverride;
+	if (inherited.modelOverride !== undefined) draft.modelOverride = inherited.modelOverride;
+	// The cap is deliberately NOT taken from `inherited`. warren-4af7 gives
+	// this retry the original cap MINUS what the first attempt spent, and the
+	// full frozen cap would hand it a fresh budget.
 	if (decision.remainingBudgetUsd !== null) draft.maxCostUsdOverride = decision.remainingBudgetUsd;
 	if (input.projectsConfig !== undefined) draft.projectsConfig = input.projectsConfig;
 	if (input.projectSpawn !== undefined) draft.projectSpawn = input.projectSpawn;
