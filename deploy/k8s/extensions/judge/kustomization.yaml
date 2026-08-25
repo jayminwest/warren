@@ -5,7 +5,8 @@
 #
 # Deploy with an overlay that pins the real image (see
 # ../../overlays/gke-live-judge, gitignored) after creating the judge
-# Secret imperatively (secrets.yaml documents the keys).
+# Secret imperatively. secrets.yaml documents the required keys but is
+# intentionally not rendered by this kustomization.
 #
 # The image (warren-ext-judge) is built + pushed by CI beside the other
 # warren images, and the release deploy rolls an EXISTING judge Deployment
@@ -15,7 +16,6 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
-  - secrets.yaml
   - pvc.yaml
   - deployment.yaml
   - service.yaml

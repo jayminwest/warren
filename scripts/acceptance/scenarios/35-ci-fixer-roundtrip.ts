@@ -108,7 +108,14 @@ export const scenario: Scenario = {
 		const slug = parseRepoSlug(repoUrl);
 
 		const http = new WarrenHttp({ baseUrl: ctx.warrenUrl, token: ctx.token });
-		await http.expectStatus("POST", "/agents/refresh", 200);
+		// The stub agent was seeded at boot via WARREN_SEED_AGENTS_FILE
+		// (warren-e376); POST /agents/refresh is deleted (pl-3a79). GET it
+		// to prove boot seeding landed before spawning against it.
+		await http.expectStatus(
+			"GET",
+			`/agents/${encodeURIComponent(ctx.fixtures.stubAgentName)}`,
+			200,
+		);
 		const project = await http.expectJson<ProjectRow>("POST", "/projects", 201, {
 			body: { gitUrl: repoUrl },
 		});
