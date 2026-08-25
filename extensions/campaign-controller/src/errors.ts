@@ -23,7 +23,9 @@ export type CampaignControllerErrorCode =
 	| "warren_rate_limited"
 	| "warren_unreachable"
 	| "warren_envelope_invalid"
-	| "dispatch_uncertain";
+	| "dispatch_uncertain"
+	| "upstream_error"
+	| "rate_limited";
 
 /** Root of every error the campaign controller raises. */
 export class CampaignControllerError extends Error {
