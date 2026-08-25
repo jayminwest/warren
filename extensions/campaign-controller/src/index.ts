@@ -32,10 +32,7 @@ export {
 	StateError,
 	ValidationError,
 } from "./errors.ts";
-export {
-	ReadOnlyGithubClient,
-	type ReadOnlyGithubClientOptions,
-} from "./github/client.ts";
+export { ReadOnlyGithubClient, type ReadOnlyGithubClientOptions } from "./github/client.ts";
 export { type DedupedItems, dedupeByNodeId, filterNewByNodeId } from "./github/dedupe.ts";
 export {
 	GithubApiError,
@@ -107,3 +104,21 @@ export {
 	type WorkItemRow,
 	type WorkItemStatus,
 } from "./store/types.ts";
+export {
+	DispatchUncertainError,
+	isTerminalRunState,
+	parseRunEnvelope,
+	readTerminalFacts,
+	redactSecret,
+	WarrenAuthError,
+	WarrenClient,
+	type WarrenClientOptions,
+	type WarrenDispatchInput,
+	WarrenEnvelopeError,
+	WarrenRateLimitError,
+	WarrenRejectedError,
+	type WarrenRunView,
+	type WarrenTerminalFacts,
+	WarrenUnreachableError,
+} from "./warren-client.ts";
+export { type FakeRunRow, FakeWarrenServer, type RecordedRequest } from "./warren-fake.ts";
