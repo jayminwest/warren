@@ -67,9 +67,28 @@ issues depend on:
   Golden tests ([`src/openclaw-profile.test.ts`](src/openclaw-profile.test.ts))
   pin the round-trip and the limits.
 
+- [`src/github/`](src/github/) — the extension-local, structurally
+  read-only GitHub V0 client (plan step 5, warren-33aa):
+  [`client.ts`](src/github/client.ts) (narrowed GET/HEAD reads of
+  repository metadata, file content, issues, pull requests,
+  participating notifications, issue comments, reviews, review comments,
+  check runs, and combined statuses, with conditional ETag/Last-Modified
+  requests and bounded pagination),
+  [`http-transport.ts`](src/github/http-transport.ts) (real fetch, one
+  `read` operation that hard-fails any non-GET/HEAD method),
+  [`pr-request.ts`](src/github/pr-request.ts) (pure, deep-frozen
+  cross-fork PR-intent rendering — never posted),
+  [`dedupe.ts`](src/github/dedupe.ts) (stable node-id deduplication),
+  [`redact.ts`](src/github/redact.ts) (credential scrubbing), and
+  [`fake-server.ts`](src/github/fake-server.ts) (a deterministic
+  in-process fake GitHub that records every request, paginates, serves
+  duplicate node ids, and simulates primary and secondary rate limits).
+  There is no GitHub mutation operation anywhere on the production
+  surface.
+
 Not implemented yet (later pl-91b6 steps): the SQLite state store and action journal, the
-warren and GitHub clients, validation/approval/admission flow, dispatch and
-reconciliation, PR-intent rendering, the polling loop, and the CLI. The
+warren client, validation/approval/admission flow, dispatch and
+reconciliation, PR-intent journaling, the polling loop, and the CLI. The
 entrypoint ([`src/index.ts`](src/index.ts)) is a placeholder that exits
 `not_implemented`.
 
@@ -84,6 +103,8 @@ src/
   manifest.ts          V0 campaign manifest schema + validation
   mutations.ts         frozen mutation-flag vocabulary (all false in V0)
   repository-policy.ts V0 repository-policy snapshot schema + validation
+  github/    structurally read-only GitHub client, PR-intent renderer,
+             dedupe/redaction helpers, and the fake GitHub server
 profiles/
   openclaw.repository-policy.json         committed OpenClaw policy profile
   openclaw.campaign-manifest.example.json committed digest-bound example manifest
