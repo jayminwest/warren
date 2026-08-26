@@ -31,6 +31,7 @@ export {
 	PREVIEW_ACTIVE_STATES,
 	type PreviewState,
 	type PullRequestLifecycle,
+	RUN_STATES,
 	RUN_TERMINAL_STATES,
 	type RunFailureReason,
 	type RunMode,
@@ -57,9 +58,8 @@ export interface ProjectRow {
 	id: string;
 	gitUrl: string;
 	/**
-	 * OPTIONAL on the wire: an absolute server filesystem path, so the
-	 * public projection drops it (warren-4f6c / warren-f53e). Operator-only
-	 * surfaces may read it; anything a spectator reaches must test presence.
+	 * OPTIONAL on the wire: absolute server path, dropped by the public
+	 * projection (warren-4f6c / warren-f53e) — test presence, not null.
 	 */
 	localPath?: string;
 	defaultBranch: string;

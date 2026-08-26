@@ -4,6 +4,8 @@
 // router can redirect back to login on the next render pass.
 
 import { readNdjsonStream } from "../../../client/ndjson.ts";
+import type { InstanceFactsResponse } from "./instance-types.ts";
+import type { OpsOverviewResponse } from "./ops-types.ts";
 import type {
 	RunAnalyticsFilter,
 	RunAnalyticsResponse,
@@ -527,8 +529,32 @@ async function streamErrorFromResponse(res: Response): Promise<Error> {
 }
 
 /* ----------------------------------------------------------------------- */
+/* ----------------------------------------------------------------------- */
+/* Ops overview (pl-7e38 step 12 / warren-d850)                            */
+/* ----------------------------------------------------------------------- */
+
+export const opsApi = {
+	/**
+	 * One-poll control-plane snapshot behind the Operations page
+	 * (pl-7e38 step 13). Spectators get the reduced projection — the
+	 * envelope's operator sections arrive undefined, never zero.
+	 */
+	overview: (signal?: AbortSignal) =>
+		request<OpsOverviewResponse>("/ops/overview", { ...(signal ? { signal } : {}) }),
+};
+
 /* Meta                                                                     */
 /* ----------------------------------------------------------------------- */
+
+export const instanceApi = {
+	/**
+	 * `GET /instance` — boot-resolved instance facts (warren-2eec). The
+	 * body is an allowlist; spectators get the reduced projection. The
+	 * Dispatch page reads the runtime kind and admission caps off it.
+	 */
+	facts: (signal?: AbortSignal) =>
+		request<InstanceFactsResponse>("/instance", { ...(signal ? { signal } : {}) }),
+};
 
 export const metaApi = {
 	healthz: () => request<{ ok: boolean }>("/healthz"),
@@ -545,6 +571,14 @@ export const metaApi = {
 	 */
 	whoami: (signal?: AbortSignal) =>
 		request<WhoamiResponse>("/whoami", { ...(signal ? { signal } : {}) }),
+	/**
+	 * Boot-resolved instance facts (warren-2eec), for the Instance and
+	 * Login pages. Read-only by construction; the body shrinks under the
+	 * public spectator projection, and the pages placeholder the absent
+	 * fields.
+	 */
+	instance: (signal?: AbortSignal) =>
+		request<InstanceFactsResponse>("/instance", { ...(signal ? { signal } : {}) }),
 };
 
 /* ----------------------------------------------------------------------- */

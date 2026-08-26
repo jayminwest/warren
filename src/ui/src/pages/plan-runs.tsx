@@ -2,75 +2,51 @@ import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { planRunsApi, projectsApi } from "@/api/client.ts";
-import type {
-	CapabilityName,
-	PlanRunRow,
-	PlanRunState,
-	PlanRunStateFilter,
-	RunRow,
-} from "@/api/types.ts";
+import type { PlanRunRow, PlanRunStateFilter } from "@/api/types.ts";
 import { OperatorOnly, useOperatorHint } from "@/components/operator-only.tsx";
-import { PlanRunStateBadge } from "@/components/plan-run-state-badge.tsx";
-import { Alert } from "@/components/ui/alert.tsx";
-import { Button } from "@/components/ui/button.tsx";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card.tsx";
-import { EmptyState } from "@/components/ui/empty-state.tsx";
-import { PageHeader } from "@/components/ui/page-header.tsx";
-import { responsiveTrailingControl } from "@/components/ui/responsive.ts";
-import { SortableTableHead } from "@/components/ui/sortable-table-head.tsx";
-import { Spinner } from "@/components/ui/spinner.tsx";
-import {
-	Table,
-	TableBody,
-	TableCell,
-	TableHead,
-	TableHeader,
-	TableRow,
-} from "@/components/ui/table.tsx";
-import { useCapabilities } from "@/hooks/use-capabilities.ts";
+import type { SortState } from "@/components/ui/sortable-table-head.tsx";
 import { type Comparator, compareStrings, useClientSort } from "@/hooks/use-client-sort.ts";
 import { formatError } from "@/lib/format-error.ts";
-import { formatChildStateCounts } from "@/lib/labels.ts";
-import { relativeTime } from "@/lib/utils.ts";
-import { ReadyPlansView } from "./ready-plans.tsx";
-import { formatCostUsd } from "./run-detail.tsx";
-
-type PlanRunsTab = "plan-runs" | "ready";
+import { WalkRow } from "./plan-runs/walk-row.tsx";
 
 /**
- * `GET /projects/:id/ready-plans` is readOperator — it surfaces project
- * internals — so the tab that renders it is dropped for a spectator rather
- * than left to 403 (warren-f53e / pl-b82d step 19).
+ * Plan runs — the Direction C walk inventory (warren-23b2 / pl-7e38
+ * step 6, from docs/ui-revamp/screens/plan-runs.jsx). Sequential walks
+ * with child-by-child progress: no summary cards, the table is the
+ * product. Filterable like the run index (state, project, free-text
+ * plan / plan-run id). The read surface is readPublic, so a spectator
+ * sees the same inventory read-only — the only operator affordance on
+ * this page is the Dispatch plan button, which `OperatorOnly` drops.
  */
-const READY_TAB_CAPABILITY: CapabilityName = "readOperator";
 
-type PlanRunSortKey = "state" | "id" | "planId" | "project" | "agentName" | "startedAt";
+type PlanRunSortKey = "state" | "id" | "planId" | "startedAt";
 
-const TABS: { label: string; value: PlanRunsTab }[] = [
-	{ label: "Plan runs", value: "plan-runs" },
-	{ label: "Ready to dispatch", value: "ready" },
+const STATE_OPTIONS: { label: string; value: "all" | PlanRunStateFilter }[] = [
+	{ label: "State: all", value: "all" },
+	{ label: "State: active", value: "active" },
+	{ label: "State: queued", value: "queued" },
+	{ label: "State: running", value: "running" },
+	{ label: "State: succeeded", value: "succeeded" },
+	{ label: "State: failed", value: "failed" },
+	{ label: "State: cancelled", value: "cancelled" },
 ];
 
-// warren-302a: the default pill used to read "Active" while carrying the
-// value "all", and the server read a missing `?state` as active-only when no
-// project was selected and as every state when one was. Three different
-// things. "All" is now a real option and the default, so a visitor landing
-// here sees history instead of an empty table on a quiet instance.
-const STATE_FILTERS: { label: string; value: "all" | PlanRunStateFilter }[] = [
-	{ label: "All", value: "all" },
-	{ label: "Active", value: "active" },
-	{ label: "Queued", value: "queued" },
-	{ label: "Running", value: "running" },
-	{ label: "Succeeded", value: "succeeded" },
-	{ label: "Failed", value: "failed" },
-	{ label: "Cancelled", value: "cancelled" },
-];
+const COLUMN_WIDTHS = {
+	state: "w-[78px]",
+	planRun: "w-[150px]",
+	plan: "w-[90px]",
+	project: "w-[128px]",
+	agent: "w-[118px]",
+	trigger: "w-[62px]",
+	started: "w-[56px]",
+	elapsed: "w-[62px]",
+	cap: "w-[54px]",
+} as const;
 
 export function PlanRunsPage() {
-	const caps = useCapabilities();
-	const [tab, setTab] = useState<PlanRunsTab>("plan-runs");
 	const [stateFilter, setStateFilter] = useState<"all" | PlanRunStateFilter>("all");
 	const [projectFilter, setProjectFilter] = useState<string>("");
+	const [search, setSearch] = useState("");
 
 	const planRuns = useQuery({
 		queryKey: ["plan-runs", projectFilter, stateFilter],
@@ -97,84 +73,73 @@ export function PlanRunsPage() {
 		return m;
 	}, [projects.data]);
 
+	const rows = useMemo(() => {
+		const all = planRuns.data?.planRuns ?? [];
+		if (search.length === 0) return all;
+		const q = search.toLowerCase();
+		return all.filter(
+			(pr) => pr.id.toLowerCase().includes(q) || (pr.planId ?? "").toLowerCase().includes(q),
+		);
+	}, [planRuns.data, search]);
+
 	const comparators = useMemo<Record<PlanRunSortKey, Comparator<PlanRunRow>>>(
 		() => ({
 			state: (a, b) => compareStrings(a.state, b.state),
 			id: (a, b) => compareStrings(a.id, b.id),
-			planId: (a, b) => compareStrings(a.planId, b.planId),
-			project: (a, b) =>
-				compareStrings(
-					projectIndex.get(a.projectId) ?? a.projectId,
-					projectIndex.get(b.projectId) ?? b.projectId,
-				),
-			agentName: (a, b) => compareStrings(a.agentName, b.agentName),
-			startedAt: (a, b) => compareStrings(a.startedAt, b.startedAt),
+			planId: (a, b) => compareStrings(a.planId ?? "", b.planId ?? ""),
+			startedAt: (a, b) => compareStrings(a.startedAt ?? "", b.startedAt ?? ""),
 		}),
-		[projectIndex],
+		[],
 	);
-	const { sorted, sort, onSort } = useClientSort(planRuns.data?.planRuns ?? [], comparators, {
+	const { sorted, sort, onSort } = useClientSort(rows, comparators, {
 		initialKey: "startedAt",
 		initialDirection: "desc",
 		defaultDirections: { startedAt: "desc" },
 	});
 
-	const emptyHint = useOperatorHint("Dispatch one above.");
-	const canReadReady = caps.can(READY_TAB_CAPABILITY);
-	const visibleTabs = canReadReady ? TABS : TABS.filter((t) => t.value !== "ready");
-	const activeTab = tab === "ready" && !canReadReady ? "plan-runs" : tab;
+	const hasFilters = stateFilter !== "all" || projectFilter.length > 0 || search.length > 0;
+	const emptyHint = useOperatorHint("Dispatch one from the Dispatch plan page.");
+	const projectLabel = (pr: PlanRunRow): string => projectIndex.get(pr.projectId) ?? pr.projectId;
 
 	return (
-		<div className="space-y-6">
-			<PageHeader
-				title="Plan runs"
-				description="Serial execution of a seeds plan — one warren run per open child, in order."
-				actions={
-					<OperatorOnly>
-						<Link to="/plan-runs/new">
-							<Button>Dispatch a plan run</Button>
-						</Link>
-					</OperatorOnly>
-				}
-			/>
-
-			<div className="flex flex-wrap items-center gap-2">
-				{visibleTabs.map((t) => (
-					<button
-						key={t.value}
-						type="button"
-						onClick={() => setTab(t.value)}
-						className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
-							activeTab === t.value
-								? "bg-(--color-primary) text-(--color-primary-foreground)"
-								: "bg-(--color-card) hover:bg-(--color-accent)"
-						}`}
+		<div className="flex min-h-full flex-col px-6 pb-12 pt-[22px] sm:px-[24px]">
+			<div className="flex shrink-0 items-start gap-4 pb-5">
+				<div className="flex min-w-0 flex-1 flex-col gap-[5px]">
+					<h1 className="text-[20px] font-semibold leading-6 tracking-[-0.025em] text-(--color-text)">
+						Plan runs
+					</h1>
+					<p className="text-[12px] leading-4 text-(--color-text-2)">
+						Sequential multi-issue walks. Each child seed gates on the previous PR merging.
+					</p>
+				</div>
+				<OperatorOnly>
+					<Link
+						to="/dispatch/plan"
+						className="flex h-[31px] shrink-0 items-center justify-center gap-[7px] rounded-(--radius-sm) bg-(--color-primary) px-[11px] text-[11px] leading-3.5 font-medium text-(--color-primary-ink)"
 					>
-						{t.label}
-					</button>
-				))}
+						＋ Dispatch plan
+					</Link>
+				</OperatorOnly>
 			</div>
 
-			<div className="flex flex-wrap items-center gap-2">
-				{activeTab === "plan-runs"
-					? STATE_FILTERS.map((f) => (
-							<button
-								key={f.value}
-								type="button"
-								onClick={() => setStateFilter(f.value)}
-								className={`rounded-full border px-3 py-1 text-xs transition-colors ${
-									stateFilter === f.value
-										? "bg-(--color-primary) text-(--color-primary-foreground)"
-										: "bg-(--color-card) hover:bg-(--color-accent)"
-								}`}
-							>
-								{f.label}
-							</button>
-						))
-					: null}
-				<select
+			<div className="flex min-h-[44px] shrink-0 flex-wrap items-center gap-[7px] rounded-t border border-(--color-border) bg-(--color-surface) px-2 py-[7px]">
+				<FilterSelect
+					name="State filter"
+					value={stateFilter}
+					onChange={(v) => setStateFilter(v as "all" | PlanRunStateFilter)}
+					active={stateFilter !== "all"}
+				>
+					{STATE_OPTIONS.map((o) => (
+						<option key={o.value} value={o.value}>
+							{o.label}
+						</option>
+					))}
+				</FilterSelect>
+				<FilterSelect
+					name="Project filter"
 					value={projectFilter}
-					onChange={(e) => setProjectFilter(e.target.value)}
-					className={`h-8 rounded-md border bg-(--color-card) px-2 text-xs ${responsiveTrailingControl}`}
+					onChange={setProjectFilter}
+					active={projectFilter !== ""}
 				>
 					<option value="">All projects</option>
 					{projects.data?.projects.map((p) => (
@@ -182,166 +147,135 @@ export function PlanRunsPage() {
 							{p.gitUrl}
 						</option>
 					))}
-				</select>
+				</FilterSelect>
+				{hasFilters ? (
+					<button
+						type="button"
+						onClick={() => {
+							setStateFilter("all");
+							setProjectFilter("");
+							setSearch("");
+						}}
+						className="h-[25px] px-2 text-[10px] leading-3 font-medium text-(--color-text-2) hover:text-(--color-text)"
+					>
+						Clear
+					</button>
+				) : null}
+				<div className="min-w-0 flex-1" />
+				<input
+					type="search"
+					value={search}
+					onChange={(e) => setSearch(e.target.value)}
+					placeholder="Filter by plan or plan-run ID"
+					className="h-[27px] w-[220px] shrink-0 rounded-(--radius-sm) border border-(--color-border-strong) bg-(--color-bg) px-[9px] text-[10px] leading-3 text-(--color-text-2) placeholder:text-(--color-text-3) focus:outline-none"
+				/>
 			</div>
 
-			{activeTab === "ready" ? (
-				<ReadyPlansView projectId={projectFilter} />
-			) : (
-				<Card>
-					<CardHeader>
-						<CardTitle>{planRuns.data?.planRuns.length ?? 0} plan runs</CardTitle>
-					</CardHeader>
-					<CardContent className="p-0">
-						{planRuns.isLoading ? (
-							<div className="p-6">
-								<Spinner label="Loading plan runs" />
-							</div>
-						) : planRuns.isError ? (
-							<div className="p-6">
-								<Alert variant="danger" title="Failed to load plan runs">
-									{formatError(planRuns.error)}
-								</Alert>
-							</div>
-						) : planRuns.data?.planRuns.length === 0 ? (
-							<EmptyState title="No plan runs match this filter" description={emptyHint} />
-						) : (
-							<Table>
-								<TableHeader>
-									<TableRow>
-										<SortableTableHead columnKey="state" sort={sort} onSort={onSort}>
-											State
-										</SortableTableHead>
-										<SortableTableHead columnKey="id" sort={sort} onSort={onSort}>
-											ID
-										</SortableTableHead>
-										<SortableTableHead columnKey="planId" sort={sort} onSort={onSort}>
-											Plan
-										</SortableTableHead>
-										<SortableTableHead columnKey="project" sort={sort} onSort={onSort}>
-											Project
-										</SortableTableHead>
-										<SortableTableHead columnKey="agentName" sort={sort} onSort={onSort}>
-											Agent
-										</SortableTableHead>
-										<TableHead className="whitespace-nowrap">Children</TableHead>
-										<TableHead className="whitespace-nowrap">Cost</TableHead>
-										<SortableTableHead columnKey="startedAt" sort={sort} onSort={onSort}>
-											Started
-										</SortableTableHead>
-									</TableRow>
-								</TableHeader>
-								<TableBody>
-									{sorted.map((pr) => (
-										<PlanRunListRow
-											key={pr.id}
-											planRunId={pr.id}
-											planId={pr.planId}
-											state={pr.state}
-											startedAt={pr.startedAt}
-											agentName={pr.agentName}
-											projectLabel={projectIndex.get(pr.projectId) ?? pr.projectId}
-										/>
-									))}
-								</TableBody>
-							</Table>
-						)}
-					</CardContent>
-				</Card>
-			)}
+			<div className="shrink-0 overflow-x-auto rounded-b bg-(--color-surface)">
+				<div className="min-w-[1080px]">
+					<HeaderRow sort={sort} onSort={onSort} />
+					{planRuns.isLoading ? (
+						<StatusLine>Loading plan runs…</StatusLine>
+					) : planRuns.isError ? (
+						<StatusLine danger>Failed to load plan runs: {formatError(planRuns.error)}</StatusLine>
+					) : sorted.length === 0 ? (
+						<StatusLine>
+							No plan runs match this filter.
+							{emptyHint !== undefined ? ` ${emptyHint}` : ""}
+						</StatusLine>
+					) : (
+						sorted.map((pr) => <WalkRow key={pr.id} planRun={pr} projectLabel={projectLabel(pr)} />)
+					)}
+				</div>
+			</div>
 		</div>
 	);
 }
 
-/**
- * Per-row component so each plan run can fetch its own child-state counts
- * without one big GET. Detail endpoint is cheap (single tx) and the list
- * page polls every 5s — the cost is bounded and keeps the list endpoint
- * narrow (rows only, no children fan-out, mirrors `GET /runs` shape).
- */
-function PlanRunListRow({
-	planRunId,
-	planId,
-	state,
-	startedAt,
-	agentName,
-	projectLabel,
+function HeaderRow({
+	sort,
+	onSort,
 }: {
-	planRunId: string;
-	planId: string | null;
-	state: PlanRunState;
-	startedAt: string | null;
-	agentName: string;
-	projectLabel: string;
+	sort: SortState<PlanRunSortKey>;
+	onSort: (key: PlanRunSortKey) => void;
 }) {
-	const detail = useQuery({
-		queryKey: ["plan-runs", planRunId],
-		queryFn: ({ signal }) => planRunsApi.get(planRunId, signal),
-		// warren-f566: the lifecycle stream invalidates `["plan-runs"]`, which
-		// prefix-matches this per-row key, so this is only the slow fallback for
-		// public mode / dropped notifications — same posture as the list query
-		// above. At 5s it was the N+1 the issue named: one request per row per
-		// 5s per open tab, so a 20-row page out-polled the list twelvefold.
-		refetchInterval: 45_000,
-	});
-	const counts = formatChildStateCounts(detail.data?.children ?? []);
-	const cost = summarizeCost(detail.data?.runs ?? []);
-	return (
-		<TableRow>
-			<TableCell>
-				<PlanRunStateBadge state={state} />
-			</TableCell>
-			<TableCell>
-				<Link
-					to={`/plan-runs/${encodeURIComponent(planRunId)}`}
-					className="font-mono text-xs underline-offset-2 hover:underline"
+	const head = (label: string, width: string, sortKey?: PlanRunSortKey, right = false) => (
+		<div
+			key={label}
+			className={`${width} shrink-0 ${right ? "text-right" : ""} text-[9px] leading-3 font-semibold tracking-[0.05em] text-(--color-text-3) uppercase`}
+		>
+			{sortKey === undefined ? (
+				label
+			) : (
+				<button
+					type="button"
+					onClick={() => onSort(sortKey)}
+					className="cursor-pointer hover:text-(--color-text-2)"
+					title={sort.key === sortKey ? `Sorted ${sort.direction}` : `Sort by ${label}`}
 				>
-					{planRunId}
-				</Link>
-			</TableCell>
-			<TableCell className="whitespace-nowrap font-mono text-xs">{planId}</TableCell>
-			<TableCell className="whitespace-nowrap font-mono text-xs">{projectLabel}</TableCell>
-			<TableCell className="whitespace-nowrap">{agentName}</TableCell>
-			<TableCell className="text-xs text-(--color-muted-foreground)" title={counts.title}>
-				{counts.text}
-			</TableCell>
-			<TableCell
-				className="whitespace-nowrap font-mono text-xs text-(--color-muted-foreground)"
-				title={
-					cost.priced === 0
-						? "No child runs have a recorded cost yet"
-						: `${cost.priced} of ${cost.total} child runs have a recorded cost`
-				}
-			>
-				{cost.priced === 0 ? "—" : formatCostUsd(cost.sum)}
-			</TableCell>
-			<TableCell className="whitespace-nowrap text-(--color-muted-foreground)">
-				{relativeTime(startedAt)}
-			</TableCell>
-		</TableRow>
+					{label}
+					{sort.key === sortKey ? (sort.direction === "asc" ? " ↑" : " ↓") : ""}
+				</button>
+			)}
+		</div>
+	);
+
+	return (
+		<div className="flex h-[31px] items-center gap-2.5 border-b border-(--color-border-strong) bg-(--color-thead) px-2.5">
+			{head("State", COLUMN_WIDTHS.state, "state")}
+			{head("Plan run", COLUMN_WIDTHS.planRun, "id")}
+			{head("Plan", COLUMN_WIDTHS.plan, "planId")}
+			{head("Project", COLUMN_WIDTHS.project)}
+			{head("Agent", COLUMN_WIDTHS.agent)}
+			{head("Trigger", COLUMN_WIDTHS.trigger)}
+			{head("Started", COLUMN_WIDTHS.started, "startedAt")}
+			{head("Elapsed", COLUMN_WIDTHS.elapsed, undefined, true)}
+			{head("Cap", COLUMN_WIDTHS.cap, undefined, true)}
+			<div className="min-w-0 flex-1 text-[9px] leading-3 font-semibold tracking-[0.05em] text-(--color-text-3) uppercase">
+				Children
+			</div>
+		</div>
 	);
 }
 
-/**
- * Aggregate cost across a plan-run's child runs (warren-2235 / pl-b0c0
- * step 5). Mirrors RunsRepo.aggregate's NULL-aware rollup: `sum` adds
- * non-null `costUsd` only, `priced` counts those rows, `total` is the
- * full child-run count. Ghost runs whose cost was never recorded land
- * in `total - priced` — the tooltip surfaces the gap so a low total
- * isn't mistaken for cheap.
- */
-function summarizeCost(runs: RunRow[]): {
-	sum: number;
-	priced: number;
-	total: number;
-} {
-	let sum = 0;
-	let priced = 0;
-	for (const r of runs) {
-		if (r.costUsd !== null) {
-			sum += r.costUsd;
-			priced += 1;
-		}
-	}
-	return { sum, priced, total: runs.length };
+function FilterSelect({
+	name,
+	value,
+	onChange,
+	active,
+	children,
+}: {
+	/** Stable accessible name for the filter control. */
+	name: string;
+	value: string;
+	onChange: (value: string) => void;
+	active: boolean;
+	children: React.ReactNode;
+}) {
+	return (
+		<select
+			aria-label={name}
+			value={value}
+			onChange={(e) => onChange(e.target.value)}
+			className={`h-[27px] cursor-pointer rounded-(--radius-sm) border bg-(--color-bg) px-2 text-[10px] leading-3 text-(--color-text-2) focus:outline-none ${
+				active
+					? "border-(--color-primary) text-(--color-primary)"
+					: "border-(--color-border) text-(--color-text-3)"
+			}`}
+		>
+			{children}
+		</select>
+	);
+}
+
+function StatusLine({ children, danger = false }: { children: React.ReactNode; danger?: boolean }) {
+	return (
+		<div
+			className={`px-2.5 py-6 text-[11px] leading-4 ${
+				danger ? "text-(--color-danger)" : "text-(--color-text-3)"
+			}`}
+		>
+			{children}
+		</div>
+	);
 }
