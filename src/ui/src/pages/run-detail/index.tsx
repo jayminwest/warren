@@ -13,7 +13,7 @@ import { useEventStream } from "@/hooks/use-event-stream.ts";
 import { formatError } from "@/lib/format-error.ts";
 import { formatPullRequestLifecycle } from "@/lib/labels.ts";
 import { cn } from "@/lib/utils.ts";
-import type { NewRunRouteState } from "@/pages/new-run.tsx";
+import type { DispatchRouteState } from "@/pages/dispatch/dispatch-draft.ts";
 import { EventTail } from "@/pages/run-detail/event-tail.tsx";
 import { PhaseRail } from "@/pages/run-detail/phase-rail.tsx";
 import { PreviewPanel } from "@/pages/run-detail/preview-panel.tsx";
@@ -132,7 +132,7 @@ function DispatchFromRunButtons({ run }: { run: RunRow }) {
 				className={btn}
 				onClick={() =>
 					navigate("/dispatch", {
-						state: { cloneFromRunId: run.id, ...base } satisfies NewRunRouteState,
+						state: { cloneFromRunId: run.id, ...base } satisfies DispatchRouteState,
 					})
 				}
 			>
@@ -143,7 +143,7 @@ function DispatchFromRunButtons({ run }: { run: RunRow }) {
 				className={btn}
 				onClick={() =>
 					navigate("/dispatch", {
-						state: { continueFromRunId: run.id, ...base } satisfies NewRunRouteState,
+						state: { continueFromRunId: run.id, ...base } satisfies DispatchRouteState,
 					})
 				}
 			>
