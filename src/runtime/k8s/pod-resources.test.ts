@@ -118,6 +118,40 @@ describe("resolveK8sPodConfig — ephemeral-storage", () => {
 		expect(c.limits.ephemeralStorageMiB).toBe(40_960);
 		expect(c.requests.ephemeralStorageMiB).toBe(10_240);
 	});
+
+	// warren-06b8: memory follows the same three-tier chain. The first payer is
+	// the openclaw contribution fork — its repo cannot carry a .warren/ config
+	// (the file would ride every upstream PR diff), and the monorepo test run
+	// used ~3.9GiB against the 2Gi default request, so the node evicted the
+	// agent an hour into paid work.
+	test("reads bounded MiB integers from the WARREN_K8S_MEMORY_*_MIB env", () => {
+		const c = resolveK8sPodConfig({
+			WARREN_K8S_MEMORY_REQUEST_MIB: "4096",
+			WARREN_K8S_MEMORY_LIMIT_MIB: "6144",
+		});
+		expect(c.requests.memoryMiB).toBe(4096);
+		expect(c.limits.memoryMiB).toBe(6144);
+	});
+
+	test("invalid memory env falls back to the 2Gi/4Gi defaults", () => {
+		for (const raw of ["63", "1048577", "-5", "1.5", "  ", "abc"]) {
+			const c = resolveK8sPodConfig({
+				WARREN_K8S_MEMORY_REQUEST_MIB: raw,
+				WARREN_K8S_MEMORY_LIMIT_MIB: raw,
+			});
+			expect(c.requests.memoryMiB).toBe(2048);
+			expect(c.limits.memoryMiB).toBe(4096);
+		}
+	});
+
+	test("a per-project memory block beats the memory env default", () => {
+		const c = resolveK8sPodConfig(
+			{ WARREN_K8S_MEMORY_LIMIT_MIB: "6144" },
+			{ limits: { memoryMiB: 8192 } },
+		);
+		expect(c.limits.memoryMiB).toBe(8192);
+		expect(c.requests.memoryMiB).toBe(2048);
+	});
 });
 
 describe("buildRunPod — resource rendering", () => {
