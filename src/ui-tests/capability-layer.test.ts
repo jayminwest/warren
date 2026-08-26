@@ -96,7 +96,7 @@ describe("route guards and nav filtering (warren-f53e)", () => {
 	const nav = read("components", "console", "console-nav.ts");
 
 	test("both dispatch forms are wrapped in OperatorRoute", () => {
-		for (const page of ["DispatchPage", "NewPlanRunPage"]) {
+		for (const page of ["DispatchPage", "DispatchPlanPage"]) {
 			expect(app).toMatch(new RegExp(`<OperatorRoute>\\s*<${page} />\\s*</OperatorRoute>`));
 		}
 	});
@@ -128,7 +128,13 @@ describe("route guards and nav filtering (warren-f53e)", () => {
 });
 
 describe("every mutation site sits behind the one gate (warren-f53e)", () => {
-	const GATED_ELSEWHERE = new Set(["refresh-projects-cta.tsx", "use-dispatch-state.ts"]); // warren-bbe8: dispatch mutation lives in the Direction C page state hook, route-gated like the legacy new-run form was
+	// warren-bbe8 / warren-02bb: the dispatch mutations live in the
+	// Direction C page state hooks, route-gated like the legacy forms were.
+	const GATED_ELSEWHERE = new Set([
+		"refresh-projects-cta.tsx",
+		"use-dispatch-state.ts",
+		"walk-state.ts",
+	]);
 
 	test("no file calls useMutation without importing OperatorOnly", () => {
 		const offenders: string[] = [];
@@ -165,7 +171,7 @@ describe("every mutation site sits behind the one gate (warren-f53e)", () => {
 		expect(read("pages", "projects.tsx")).toMatch(
 			/<OperatorOnly capability="admin">\s*<Button size="sm" onClick=\{\(\) => setAddOpen\(true\)\}>/,
 		);
-		expect(read("pages", "new-plan-run.tsx")).toMatch(/<OperatorOnly capability="admin">/);
+		expect(read("pages", "dispatch-plan.tsx")).toMatch(/<OperatorOnly capability="admin">/);
 	});
 });
 
