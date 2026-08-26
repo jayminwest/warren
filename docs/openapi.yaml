@@ -165,6 +165,24 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
+  /events:
+    get:
+      operationId: listEventsHandler
+      tags:
+        - events
+      summary: GET /events
+      responses:
+        '200':
+          description: Successful response.
+        default:
+          description: Error response (see `src/core/errors.ts`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+      description: >-
+        pl-7e38 step 15 (warren-5eec): cross-run Event explorer query, readPublic with the same
+        per-row `projectEvent` reduction as `/runs/:id/events`.
   /events/stream:
     get:
       operationId: streamLifecycleEventsHandler
