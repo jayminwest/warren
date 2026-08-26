@@ -4,6 +4,7 @@
 // router can redirect back to login on the next render pass.
 
 import { readNdjsonStream } from "../../../client/ndjson.ts";
+import type { InstanceFactsResponse } from "./instance-types.ts";
 import type {
 	RunAnalyticsFilter,
 	RunAnalyticsResponse,
@@ -485,6 +486,13 @@ export const metaApi = {
 	 */
 	whoami: (signal?: AbortSignal) =>
 		request<WhoamiResponse>("/whoami", { ...(signal ? { signal } : {}) }),
+	/**
+	 * Boot-time instance facts (warren-2eec). The body varies with
+	 * `Authorization`: the spectator projection drops `dbBackend`,
+	 * `uptimeSeconds`, and `admission`, so treat those as optional.
+	 */
+	instanceFacts: (signal?: AbortSignal) =>
+		request<InstanceFactsResponse>("/instance", { ...(signal ? { signal } : {}) }),
 };
 
 /* ----------------------------------------------------------------------- */
