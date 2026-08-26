@@ -4,5 +4,5 @@
  */
 import { runCli } from "./run.ts";
 
-const code = await runCli(process.argv.slice(2));
+const code = await runCli(process.argv.slice(2), { env: process.env });
 process.exitCode = code;
