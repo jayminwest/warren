@@ -75,6 +75,9 @@ describe("ROUTE_TABLE policy classification", () => {
 		"GET /projects",
 		"GET /projects/:id", // same projection as the list (warren-2a89)
 		"GET /analytics/runs",
+		// pl-7e38 step 12 (warren-d850): run-counts-only reduced projection —
+		// spend/delivery/interventions/services are stripped (./ops-overview.ts).
+		"GET /ops/overview",
 		"GET /runs",
 		"GET /runs/:id",
 		"GET /runs/:id/events",

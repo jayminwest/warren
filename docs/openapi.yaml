@@ -27,6 +27,8 @@ tags:
     description: Liveness, readiness, and version.
   - name: metrics
     description: '`/metrics` routes.'
+  - name: ops
+    description: '`/ops` routes.'
   - name: plan-runs
     description: '`/plan-runs` routes.'
   - name: preview
@@ -283,6 +285,25 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
+  /ops/overview:
+    get:
+      operationId: opsOverviewHandler
+      tags:
+        - ops
+      summary: GET /ops/overview
+      responses:
+        '200':
+          description: Successful response.
+        default:
+          description: Error response (see `src/core/errors.ts`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+      description: >-
+        pl-7e38 step 12 (warren-d850): one-poll control-plane snapshot for the Operations dashboard.
+        `readPublic` with a reduced projection — a spectator sees run counts only (see
+        ./ops-overview.ts).
   /plan-runs:
     get:
       operationId: listPlanRunsHandler
