@@ -25,7 +25,6 @@ import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 
 const UI_SRC = join(import.meta.dir, "..", "ui", "src");
-
 function walk(dir: string): string[] {
 	const out: string[] = [];
 	for (const entry of readdirSync(dir)) {
@@ -62,7 +61,9 @@ describe("useCapabilities (warren-f53e)", () => {
 	});
 
 	test("both token-mutating sites clear the cache so the answer is re-asked", () => {
-		expect(read("components", "layout.tsx")).toMatch(
+		// warren-4ed7: the logout site moved from the legacy layout.tsx
+		// into the console sidebar footer.
+		expect(read("components", "console", "console-sidebar.tsx")).toMatch(
 			/setApiToken\(null\);[\s\S]{0,400}qc\.clear\(\)/,
 		);
 		expect(read("pages", "login.tsx")).toMatch(/qc\.clear\(\)/);
@@ -91,7 +92,8 @@ describe("AuthGate lets an anonymous visitor through (warren-f53e)", () => {
 
 describe("route guards and nav filtering (warren-f53e)", () => {
 	const app = read("app.tsx");
-	const layout = read("components", "layout.tsx");
+	const sidebar = read("components", "console", "console-sidebar.tsx");
+	const nav = read("components", "console", "console-nav.ts");
 
 	test("both dispatch forms are wrapped in OperatorRoute", () => {
 		for (const page of ["NewRunPage", "NewPlanRunPage"]) {
@@ -106,31 +108,25 @@ describe("route guards and nav filtering (warren-f53e)", () => {
 		expect(guard).toMatch(/status === "loading"\) return null/);
 	});
 
-	test("the cost analytics page and its nav entry are gated together", () => {
-		expect(app).toMatch(/<OperatorRoute capability="readOperator">/);
-		expect(layout).toMatch(/to: "\/cost-analytics"[\s\S]*?capability: "readOperator"/);
+	test("the cost analytics surface and its route gate travel together", () => {
+		// warren-4ed7: the legacy /cost-analytics route folded into the
+		// Telemetry Economics tab, which keeps the same readOperator guard
+		// GET /analytics/cost carries in ROUTE_TABLE (warren-cf63).
+		expect(app).toMatch(/<OperatorRoute capability="readOperator">\s*<TelemetryEconomicsTab \/>/);
+		expect(app).toMatch(/Navigate to="\/telemetry\/economics"/);
+		expect(nav).not.toMatch(/to: "\/cost-analytics"/);
 	});
 
-	test("nav links are filtered by capability and the dispatch CTA is gated", () => {
-		expect(layout).toMatch(
-			/NAV_ITEMS\.filter\(\s*\(\{ capability \}\) => capability === undefined \|\| caps\.can\(capability\)/,
-		);
-		expect(layout).toMatch(/<OperatorOnly>\s*<NavLink\s*to="\/runs\/new"/);
+	test("console nav entries declare capability and the sidebar filters on it", () => {
+		// An entry whose destination is readOperator never shows to a caller
+		// who would only ever see a 403 there. No Direction C entry carries a
+		// capability today — this holds the seam for the page issues that
+		// land gated destinations.
+		expect(nav).toMatch(/readonly capability\?: CapabilityName/);
+		expect(sidebar).toMatch(/item\.capability === undefined \|\| caps\.can\(item\.capability\)/);
 	});
 });
 
-/**
- * Every file that mutates must import the gate. This is the criterion that
- * actually scales: it fails the moment someone adds a mutation to a page
- * that has no notion of capabilities, without this test needing to know
- * which button the mutation is behind.
- *
- * `mutationFn` is the marker — a `useMutation` is the only way the UI
- * writes. The exemptions are NAMED, not pattern-matched, and each is
- * asserted separately below: `RefreshProjectsCTA.tsx` is a leaf gated by
- * its caller, and `new-run.tsx` is a whole page guarded at the route (its
- * only reason to exist is the dispatch it submits).
- */
 describe("every mutation site sits behind the one gate (warren-f53e)", () => {
 	const GATED_ELSEWHERE = new Set(["refresh-projects-cta.tsx", "new-run.tsx"]);
 

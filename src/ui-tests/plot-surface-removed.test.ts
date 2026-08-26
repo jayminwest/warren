@@ -72,7 +72,9 @@ describe("plot surface is gone from the UI (warren-1f12)", () => {
 
 describe("route-level error boundary (warren-1f12)", () => {
 	const boundary = readFileSync(join(UI_SRC, "components", "error-boundary.tsx"), "utf8");
-	const layout = readFileSync(join(UI_SRC, "components", "layout.tsx"), "utf8");
+	// warren-4ed7: the routed Outlet moved from the legacy Layout into the
+	// Direction C console shell.
+	const layout = readFileSync(join(UI_SRC, "components", "console", "console-shell.tsx"), "utf8");
 
 	test("implements the React error-boundary contract", () => {
 		// Both halves are required: getDerivedStateFromError swaps in the
