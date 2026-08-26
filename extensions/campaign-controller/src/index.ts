@@ -26,6 +26,17 @@ export {
 } from "./admission.ts";
 export * from "./admission-errors.ts";
 export {
+	CliError,
+	EXIT_CONFIG_INVALID,
+	EXIT_INPUT_INVALID,
+	EXIT_OK,
+	EXIT_REFUSED,
+	EXIT_UPSTREAM,
+	EXIT_USAGE,
+	exitCodeFor,
+} from "./cli/exit-codes.ts";
+export { type RunCliOptions, runCli } from "./cli/run.ts";
+export {
 	type Clock,
 	FixedClock,
 	type IdGenerator,
@@ -210,6 +221,15 @@ export {
 	type WorkItemRow,
 	type WorkItemStatus,
 } from "./store/types.ts";
+export type {
+	TickDeps,
+	TickOutcome,
+	TickReport,
+	TickResult,
+	TickStage,
+	TickWorkItemSummary,
+} from "./tick/tick.ts";
+export { runTick, TickConcurrentError } from "./tick/tick.ts";
 export {
 	DispatchUncertainError,
 	isTerminalRunState,

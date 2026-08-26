@@ -163,14 +163,45 @@ Landed in plan step 9 (warren-323d): read-only upstream PR reconciliation —
   the reconciler performs no GitHub mutation, dispatch, reply, resolve,
   or rerequest.
 
-Not implemented yet (later pl-91b6 steps): PR-intent journaling, the
-polling loop, and the CLI. The entrypoint ([`src/index.ts`](src/index.ts))
-is a placeholder that exits `not_implemented`.
+Landed in plan step 8 (warren-fb4f): dry-run cross-fork PR-intent
+rendering and journaling —
+
+- [`src/pr-intent/intender.ts`](src/pr-intent/intender.ts) — given an
+  approved campaign and a SUCCEEDED run against the bot-owned fork, derives
+  the exact upstream pull-request request (head `<fork>:<run-branch>`, base
+  the upstream default branch), renders a policy-compliant title and body,
+  and journals its digest as a `planned` dry-run action BEFORE the result is
+  emitted. It performs no I/O; the request is evidence, never transport.
+
+Landed in plan step 10 (warren-d050): the composed dry-run tick and the
+operator CLI —
+
+- [`src/tick/tick.ts`](src/tick/tick.ts) — `runTick` executes one
+  deterministic, bounded, restart-safe dry-run pass over one campaign in the
+  fixed order **lease → validate/admit → reserve/journal → Warren dispatch
+  or reconcile → render dry-run PR intent → read-only GitHub reconcile →
+  settle/report**. One campaign lease refuses a concurrent tick; at most
+  ONE new dispatch leaves any tick; the post-loop restart sweep resumes
+  known runs and fails closed every unconfirmed dispatch (never a re-POST);
+  every stage lands as a JSON-safe outcome record.
+- [`src/cli/`](src/cli/) — the operator CLI
+  ([`src/cli/main.ts`](src/cli/main.ts), testable seam
+  [`runCli`](src/cli/run.ts)): `manifest validate` / `manifest import`,
+  `approve`, `tick`, `status`, `journal`, and `attention list` / `ack`.
+  NDJSON is the default output (`--format human` for readable text), and
+  the exit-code table in [`src/cli/exit-codes.ts`](src/cli/exit-codes.ts)
+  is stable: 0 ok, 1 usage, 2 invalid input, 3 invalid config, 4 refused
+  (including concurrent tick), 5 upstream failure. Configuration comes only
+  from explicit flags and the named `CAMPAIGN_*` / `WARREN_BASE_URL` /
+  `WARREN_API_TOKEN` / `GITHUB_TOKEN` / `GITHUB_API_BASE` variables; the
+  two credential variables are the only way a secret enters, and every
+  emitted line is scrubbed against them. No command posts a PR or comment,
+  mutates GitHub, discovers GKE secrets, or enables a live mode
+  (`--live`/`--execute` are refused as usage errors).
 
 ## Layout
 
 ```
-src/
 src/
   clock.ts             injectable clock + id interfaces, prod defaults, test fakes
   digest.ts            canonical-JSON sha256 digests
@@ -179,18 +210,22 @@ src/
   manifest.ts          V0 campaign manifest schema + validation
   mutations.ts         frozen mutation-flag vocabulary (all false in V0)
   repository-policy.ts V0 repository-policy snapshot schema + validation
+  admission.ts         campaign import, digest approval, per-item admission
   store/     SQLite state store: schema, migrations, action journal, budget, leases
   dispatch/  durable Warren dispatch + restart reconciliation state machine
   reconcile/ read-only upstream PR reconciliation and attention derivation
+  pr-intent/ dry-run cross-fork PR-intent rendering + journaling
   github/    structurally read-only GitHub client, PR-intent renderer,
              dedupe/redaction helpers, and the fake GitHub server
+  tick/      the composed dry-run tick (lease → admit → dispatch/reconcile
+             → PR intent → read-only GitHub reconcile → settle/report)
+  cli/       the operator CLI: run/main, config, output envelopes, exit codes
   warren-client.ts minimal V0 Warren HTTP client (dispatch, detail, retries)
   warren-fake.ts   deterministic in-process fake Warren server
-  index.ts   entrypoint placeholder + package identity
+  index.ts   package identity + public re-exports
 profiles/
   openclaw.repository-policy.json         committed OpenClaw policy profile
   openclaw.campaign-manifest.example.json committed digest-bound example manifest
-index.ts   entrypoint placeholder + package identity
 ```
 
 ## Development
@@ -202,13 +237,34 @@ bun run typecheck  # strict tsc, noEmit
 bun run lint       # biome check src
 ```
 
+## Operator CLI
+
+```bash
+bun run src/cli/main.ts <command> [flags]   # NDJSON by default
+
+manifest validate [--manifest <p>] [--policy <p>]   validate a manifest (+ policy)
+manifest import --manifest <p> --policy <p>         import the immutable campaign
+approve --campaign <id> --digest <sha256> --by <n>  approve a manifest digest
+tick --campaign <id> [--dry-run]                    one dry-run reconciliation tick
+status [--campaign <id>] [--work-item <id>]         campaign / work-item status
+journal [--campaign <id>] [--work-item <id>]        the durable action journal
+attention list --campaign <id> [--all]              open attention items
+attention ack --campaign <id> --id <id>             acknowledge an attention item
+```
+
+Paths come from flags or `CAMPAIGN_DB_PATH`, `CAMPAIGN_MANIFEST_PATH`,
+`CAMPAIGN_POLICY_PATH`, `CAMPAIGN_SUMMARIES_PATH`, `WARREN_BASE_URL`,
+`GITHUB_API_BASE`. The Warren credential comes only from
+`WARREN_API_TOKEN` and the optional GitHub credential only from
+`GITHUB_TOKEN`; neither is ever echoed, journaled, or accepted as a flag.
+
 ## Container
 
 ```bash
 docker build -t warren-ext-campaign-controller .
 ```
 
-The image builds from this directory alone and runs the entrypoint
-placeholder; it exits non-zero with `not_implemented` until the pl-91b6
-steps land. The controller will own its storage on `/app/data`
-(`CAMPAIGN_DB_PATH`).
+The image builds from this directory alone and runs the operator CLI
+(`src/cli/main.ts`). The controller owns its storage on `/app/data`
+(`CAMPAIGN_DB_PATH`); the container contract is dry-run only — there is no
+live mode to enable.

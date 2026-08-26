@@ -308,6 +308,15 @@ export class EventStore {
 		return rows.map((row) => this.getAttentionItem(row.id) as AttentionItemRow);
 	}
 
+	/** Every attention item of the campaign, open first, optionally resolved. */
+	listAttention(campaignId: string, includeResolved: boolean): AttentionItemRow[] {
+		const sql = includeResolved
+			? "SELECT * FROM attention_items WHERE campaign_id = ? ORDER BY resolved_at_ms IS NOT NULL, created_at_ms, id"
+			: "SELECT * FROM attention_items WHERE campaign_id = ? AND resolved_at_ms IS NULL ORDER BY created_at_ms, id";
+		const rows = this.#ctx.db.query(sql).all(campaignId) as AttentionDbRow[];
+		return rows.map((row) => this.getAttentionItem(row.id) as AttentionItemRow);
+	}
+
 	/**
 	 * Insert an attention item only when no open item with the same
 	 * campaign, reason, and detail JSON exists. The reconciler derives a

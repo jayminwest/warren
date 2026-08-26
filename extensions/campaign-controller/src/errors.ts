@@ -26,7 +26,11 @@ export type CampaignControllerErrorCode =
 	| "dispatch_uncertain"
 	| "admission_refused"
 	| "upstream_error"
-	| "rate_limited";
+	| "rate_limited"
+	/* CLI surface codes (warren-d050): argv/refusal failures surfaced by the
+	 * operator CLI. Additive; every message stays secret-free. */
+	| "usage_invalid"
+	| "tick_concurrent";
 
 /** Root of every error the campaign controller raises. */
 export class CampaignControllerError extends Error {

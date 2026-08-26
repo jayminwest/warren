@@ -1,5 +1,5 @@
 {
-	"_comment": "Grandfathered clones for the scoped jscpd run (warren-032a, .jscpd.scoped.json). The scoped run reads src/cli, src/client, src/ui/src/api and src/server/handlers at 40 tokens with a 0% threshold, so ANY clone across those surfaces fails unless it is listed here. Entries are file PAIRS, not line ranges, so ordinary edits do not churn the list; `a` and `b` are repo-relative POSIX and order does not matter. Every entry states why the copy is tolerated. Ratchet only goes down — delete an entry when the clone is gone (a stale entry fails the gate on purpose), and add one only with a reason.",
+	"_comment": "Grandfathered clones for the scoped jscpd run (warren-032a, .jscpd.scoped.json). The scoped run reads src/cli, src/client, src/ui/src/api and src/server/handlers at 40 tokens with a 0% threshold, so ANY clone across those surfaces fails unless it is listed here. Entries are file PAIRS, not line ranges, so ordinary edits do not churn the list; `a` and `b` are repo-relative POSIX and order does not matter. Every entry states why the copy is tolerated. Ratchet only goes down \u2014 delete an entry when the clone is gone (a stale entry fails the gate on purpose), and add one only with a reason.",
 	"allowlist": [
 		{
 			"a": "src/cli/main.ts",
@@ -9,12 +9,12 @@
 		{
 			"a": "src/client/client.ts",
 			"b": "src/ui/src/api/client.ts",
-			"why": "The run-events querystring builder (`follow` / `since` params) in the SDK client and the UI client. Two API clients over one API is deliberate: owner decision D2 (docs/design/2026-07-29-planning-session-record.md) shares TYPES only and keeps the UI's own transport — 'duplicated transport is cheap; duplicated truth is what bit us'."
+			"why": "The run-events querystring builder (`follow` / `since` params) in the SDK client and the UI client. Two API clients over one API is deliberate: owner decision D2 (docs/design/2026-07-29-planning-session-record.md) shares TYPES only and keeps the UI's own transport \u2014 'duplicated transport is cheap; duplicated truth is what bit us'."
 		},
 		{
 			"a": "src/client/types.plan-runs.ts",
 			"b": "src/ui/src/api/types.ts",
-			"why": "The plan-run wire-row interfaces, declared in both the SDK and the UI type modules. These are interfaces, not the enum-shaped vocabulary `check:wire-types` guards, and they have not been hoisted to src/core — warren-42f1 moves the wire envelopes/rows into src/core/wire.ts, after which this entry goes away."
+			"why": "The plan-run wire-row interfaces, declared in both the SDK and the UI type modules. These are interfaces, not the enum-shaped vocabulary `check:wire-types` guards, and they have not been hoisted to src/core \u2014 warren-42f1 moves the wire envelopes/rows into src/core/wire.ts, after which this entry goes away."
 		},
 		{
 			"a": "src/client/types.ts",
@@ -39,7 +39,7 @@
 		{
 			"a": "src/server/handlers/runs/analytics.ts",
 			"b": "src/server/handlers/runs/lifecycle.ts",
-			"why": "The run-row → metrics-row projection (`extractProviderModel` plus the runId/projectId/agentName pick). Window parsing itself is already shared — resolveAnalyticsWindow and parseAnalyticsDateBound live once in lifecycle.ts and analytics imports them. mx-24e25f records that the runs-analytics handler deliberately mirrors the cost handler so the two payloads keep the same recognisable shape."
+			"why": "The run-row \u2192 metrics-row projection (`extractProviderModel` plus the runId/projectId/agentName pick). Window parsing itself is already shared \u2014 resolveAnalyticsWindow and parseAnalyticsDateBound live once in lifecycle.ts and analytics imports them. mx-24e25f records that the runs-analytics handler deliberately mirrors the cost handler so the two payloads keep the same recognisable shape."
 		},
 		{
 			"a": "src/server/handlers/runs/analytics.ts",
@@ -50,6 +50,11 @@
 			"a": "src/ui/src/api/client.ts",
 			"b": "src/ui/src/api/client.ts",
 			"why": "Per-endpoint URLSearchParams filter builders and the error-envelope parse, repeated inside the single UI client. Each endpoint's param set differs, so the repeat is the builder idiom rather than shared logic; there is no second module for it to live in."
+		},
+		{
+			"a": "extensions/campaign-controller/src/cli/commands/store-commands.ts",
+			"b": "extensions/campaign-controller/src/cli/commands/store-commands.ts",
+			"why": "Per-command wrapper repeats inside the campaign-controller CLI command module: each command declares its flags, opens the store through the shared withStore/campaignScoped helpers, and projects rows through the shared *ToJson helpers. The per-command flag declaration is the shape the dispatcher in src/cli/run.ts asks for; the lifecycle and projection logic itself already lives once (withStore, campaignScoped, scopeFlags, requireCampaign, shared.ts)."
 		}
 	]
 }

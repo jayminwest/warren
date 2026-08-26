@@ -201,6 +201,20 @@ export class ActionStore {
 		return rows.map(toAction);
 	}
 
+	listActionsForCampaign(campaignId: string): ActionRow[] {
+		const rows = this.#ctx.db
+			.query(`SELECT ${COLUMNS} FROM actions WHERE campaign_id = ? ORDER BY created_at_ms, id`)
+			.all(campaignId) as ActionDbRow[];
+		return rows.map(toAction);
+	}
+
+	listAllActions(): ActionRow[] {
+		const rows = this.#ctx.db
+			.query(`SELECT ${COLUMNS} FROM actions ORDER BY created_at_ms, id`)
+			.all() as ActionDbRow[];
+		return rows.map(toAction);
+	}
+
 	listUnfinishedActions(): ActionRow[] {
 		const rows = this.#ctx.db
 			.query(

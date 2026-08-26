@@ -6,7 +6,7 @@
 	"type": "module",
 	"main": "src/index.ts",
 	"scripts": {
-		"start": "bun run src/index.ts",
+		"start": "bun run src/cli/main.ts",
 		"test": "bun test",
 		"typecheck": "tsc --noEmit -p tsconfig.json",
 		"lint": "biome check src"
