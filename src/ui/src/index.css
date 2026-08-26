@@ -1,7 +1,9 @@
 @import "tailwindcss";
 /*
- * The design tokens (warren-ac7b). Everything a theme change touches lives in
- * that file; what stays here is the Tailwind import, the fonts the tokens name,
+ * The Direction C design tokens (warren-059a). Everything a theme change
+ * touches lives in that file: the verbatim canvas token set, the light-theme
+ * remap, the legacy-name compatibility aliases, and the Tailwind @theme
+ * wiring. What stays here is the Tailwind import, the fonts the tokens name,
  * the `dark:` variant wiring, and the base element rules.
  */
 @import "./tokens.css";
@@ -42,6 +44,10 @@
  * decoupled from the user's toggle. With `useTheme` now resolving
  * "system" to a concrete data-theme=light|dark at runtime, this single
  * source of truth keeps utilities and tokens aligned.
+ *
+ * Direction C inverts the default: the token sheet's :root is the dark
+ * palette and `[data-theme="light"]` carries the light remap, but the
+ * variant wiring is unchanged — it still keys off the concrete attribute.
  */
 @custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
 
