@@ -7,7 +7,6 @@ import type {
 	TriggerSummary,
 	WarrenConfigResponse,
 } from "@/api/types.ts";
-import { DispatchPlanButton } from "@/components/dispatch-plan-dialog.tsx";
 import { OperatorOnly } from "@/components/operator-only.tsx";
 import { Alert } from "@/components/ui/alert.tsx";
 import { Button } from "@/components/ui/button.tsx";
@@ -338,7 +337,9 @@ export function ReadyPlansPanel({ projectId }: { projectId: string }) {
 						<span className="shrink-0 font-mono text-[9px] leading-3 text-(--color-text-3)">
 							{plan.openChildCount} open child{plan.openChildCount === 1 ? "" : "ren"}
 						</span>
-						<DispatchPlanButton projectId={projectId} planId={plan.id} planIdLocked />
+						<Link to="/dispatch/plan" className="shrink-0">
+							<Button size="sm">Dispatch plan</Button>
+						</Link>
 					</div>
 				))
 			)}
