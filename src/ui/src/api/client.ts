@@ -4,6 +4,7 @@
 // router can redirect back to login on the next render pass.
 
 import { readNdjsonStream } from "../../../client/ndjson.ts";
+import type { OpsOverviewResponse } from "./ops-types.ts";
 import type {
 	RunAnalyticsFilter,
 	RunAnalyticsResponse,
@@ -467,6 +468,20 @@ async function streamErrorFromResponse(res: Response): Promise<Error> {
 }
 
 /* ----------------------------------------------------------------------- */
+/* ----------------------------------------------------------------------- */
+/* Ops overview (pl-7e38 step 12 / warren-d850)                            */
+/* ----------------------------------------------------------------------- */
+
+export const opsApi = {
+	/**
+	 * One-poll control-plane snapshot behind the Operations page
+	 * (pl-7e38 step 13). Spectators get the reduced projection — the
+	 * envelope's operator sections arrive undefined, never zero.
+	 */
+	overview: (signal?: AbortSignal) =>
+		request<OpsOverviewResponse>("/ops/overview", { ...(signal ? { signal } : {}) }),
+};
+
 /* Meta                                                                     */
 /* ----------------------------------------------------------------------- */
 
