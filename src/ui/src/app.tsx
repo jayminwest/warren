@@ -17,7 +17,7 @@ import { PlanRunDetailPage } from "@/pages/plan-run-detail.tsx";
 import { PlanRunsPage } from "@/pages/plan-runs.tsx";
 import { ProjectDetailPage } from "@/pages/project-detail.tsx";
 import { ProjectsPage } from "@/pages/projects.tsx";
-import { RunDetailPage } from "@/pages/run-detail.tsx";
+import { RunDetailPage } from "@/pages/run-detail/index.tsx";
 import { RunsPage } from "@/pages/runs.tsx";
 import {
 	TelemetryBehaviorTab,

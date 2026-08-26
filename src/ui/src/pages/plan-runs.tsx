@@ -33,7 +33,7 @@ import { formatError } from "@/lib/format-error.ts";
 import { formatChildStateCounts } from "@/lib/labels.ts";
 import { relativeTime } from "@/lib/utils.ts";
 import { ReadyPlansView } from "./ready-plans.tsx";
-import { formatCostUsd } from "./run-detail.tsx";
+import { formatCostUsd } from "./run-detail-format.ts";
 
 type PlanRunsTab = "plan-runs" | "ready";
 

@@ -8,7 +8,7 @@
  * formatter is the one shared piece — re-exported from RunDetail so the
  * sub-cent rounding rule (mx-9d987a) stays in lockstep.
  */
-export { formatCostUsd } from "../run-detail.tsx";
+export { formatCostUsd } from "../run-detail-format.ts";
 
 /** 1_234_567 → "1.2M", 12_345 → "12.3k", 999 → "999". */
 export function formatTokens(n: number): string {

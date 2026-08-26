@@ -14,7 +14,7 @@ import { formatError } from "@/lib/format-error.ts";
 import { formatPlanRunFailureReason } from "@/lib/labels.ts";
 import { formatTimestamp, relativeTime } from "@/lib/utils.ts";
 import { PlanRunChildTable } from "./plan-run-detail/child-table.tsx";
-import { formatCostUsd } from "./run-detail.tsx";
+import { formatCostUsd } from "./run-detail-format.ts";
 
 const ACTIVE_STATES = new Set<PlanRunRow["state"]>(["queued", "running"]);
 

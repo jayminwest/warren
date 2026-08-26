@@ -169,7 +169,10 @@ describe("every mutation site sits behind the one gate (warren-f53e)", () => {
 
 describe("redacted wire fields render on presence (warren-f53e)", () => {
 	const types = read("api", "types.ts");
-	const runDetail = read("pages", "run-detail.tsx");
+	// warren-8c85: the legacy run detail page split into the Direction C
+	// run-detail/ directory; the runtime facts panel owns the sandbox
+	// handle rendering now.
+	const runDetail = read("pages", "run-detail", "side-panels.tsx");
 
 	test("the fields the public projection drops are optional in the row types", () => {
 		// `undefined !== null` is TRUE — the exact shape that blanked every
@@ -188,9 +191,10 @@ describe("redacted wire fields render on presence (warren-f53e)", () => {
 		expect(types).toMatch(/costTotalUsd\?: number/);
 	});
 
-	test("the burrow meta cards don't render as two empty '—' cards", () => {
-		expect(runDetail).toMatch(/\{r\.sandboxId \? \(/);
-		expect(runDetail).toMatch(/\{r\.sandboxRunId \? \(/);
+	test("the burrow meta facts don't render as empty '—' rows", () => {
+		// The Direction C Runtime panel (warren-8c85) presence-tests the
+		// runtime handle before rendering it.
+		expect(runDetail).toMatch(/handle !== null && handle\.length > 0/);
 		expect(runDetail).not.toMatch(/sandboxId \?\? "—"/);
 		expect(runDetail).not.toMatch(/sandboxRunId \?\? "—"/);
 	});
@@ -320,13 +324,20 @@ describe("empty states don't point a spectator at a hidden control (warren-b67b)
 });
 
 describe("demo polish (warren-f53e)", () => {
-	test("the steer form sits above the 480px event tail", () => {
-		const runDetail = read("pages", "run-detail.tsx");
+	test("the steer form is reachable beside the event tail, not below it", () => {
+		// warren-f53e's original fix stacked SteerForm above the 480px
+		// tail because steering meant scrolling past the whole log.
+		// The Direction C workload inspector (warren-8c85) solves the same
+		// problem by layout: the tail is the main column and the steer
+		// inbox sits in the always-visible side column.
+		const runDetail = read("pages", "run-detail", "index.tsx");
+		const aside = runDetail.indexOf("<aside");
 		const steer = runDetail.indexOf("<SteerForm");
 		const tail = runDetail.indexOf("<EventTail");
 		expect(steer).toBeGreaterThan(-1);
 		expect(tail).toBeGreaterThan(-1);
-		expect(steer).toBeLessThan(tail);
+		expect(aside).toBeGreaterThan(-1);
+		expect(steer).toBeGreaterThan(aside);
 	});
 
 	test("the plot-era residue is gone from the two files that carried it", () => {

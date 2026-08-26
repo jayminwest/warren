@@ -38,7 +38,7 @@ import {
 	TableHeader,
 	TableRow,
 } from "@/components/ui/table.tsx";
-import { formatCostUsd } from "./run-detail.tsx";
+import { formatCostUsd } from "./run-detail-format.ts";
 
 const DIMENSIONS: { id: CostDimension; label: string; subtitle: string }[] = [
 	{ id: "date", label: "By date", subtitle: "Daily spend (YYYY-MM-DD)" },
