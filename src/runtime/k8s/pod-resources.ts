@@ -11,6 +11,8 @@ import type { V1ResourceRequirements } from "@kubernetes/client-node";
 import {
 	DEFAULT_K8S_EPHEMERAL_STORAGE_LIMIT_MIB,
 	DEFAULT_K8S_EPHEMERAL_STORAGE_REQUEST_MIB,
+	DEFAULT_K8S_MEMORY_LIMIT_MIB,
+	DEFAULT_K8S_MEMORY_REQUEST_MIB,
 	type ResourcesConfig,
 } from "../../warren-config/index.ts";
 
@@ -58,6 +60,30 @@ export function resolveEphemeralStorageMiB(
 				"WARREN_K8S_EPHEMERAL_STORAGE_LIMIT_MIB",
 				DEFAULT_K8S_EPHEMERAL_STORAGE_LIMIT_MIB,
 			),
+	};
+}
+
+/**
+ * Resolve the memory request/limit (MiB) for a run pod. Same precedence as
+ * `resolveEphemeralStorageMiB`: the per-project `.warren/config.yaml`
+ * `resources` block wins, then the `WARREN_K8S_MEMORY_REQUEST_MIB` /
+ * `_LIMIT_MIB` env defaults, then the compiled-in 2Gi/4Gi defaults. The env
+ * slot exists for workloads whose repo the operator cannot carry a
+ * `.warren/` directory in — the first payer is the openclaw fork
+ * (warren-06b8): a monorepo pnpm test run used ~3.9GiB against the 2Gi
+ * default request and the node evicted the agent an hour into paid work.
+ */
+export function resolveMemoryMiB(
+	env: ResourceEnv,
+	resources: ResourcesConfig | null | undefined,
+): { requestMiB: number; limitMiB: number } {
+	return {
+		requestMiB:
+			resources?.requests?.memoryMiB ??
+			pickMiB(env, "WARREN_K8S_MEMORY_REQUEST_MIB", DEFAULT_K8S_MEMORY_REQUEST_MIB),
+		limitMiB:
+			resources?.limits?.memoryMiB ??
+			pickMiB(env, "WARREN_K8S_MEMORY_LIMIT_MIB", DEFAULT_K8S_MEMORY_LIMIT_MIB),
 	};
 }
 

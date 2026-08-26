@@ -20,6 +20,7 @@ import {
 	gitHubAppInstalledHandler,
 	registerGitHubAppHandler,
 } from "./github-app.ts";
+import { instanceFactsHandler } from "./instance.ts";
 import { healthzHandler, previewConfigHandler, versionHandler, whoamiHandler } from "./meta.ts";
 import { metricsHandler } from "./metrics.ts";
 import { opsOverviewHandler } from "./ops-overview.ts";
@@ -91,8 +92,9 @@ interface RouteEntry {
  *   list can't drift from the policy table.
  * - `readPublic` — the demo surface a `WARREN_AUTH=public` spectator sees: the
  *   run / project / agent / plan-run listings and details, the run event stream,
- *   `/whoami` (the caller's own identity), `/analytics/runs`, and the reduced
- *   `GET /ops/overview` snapshot (run counts only). Each is served
+ *   `/whoami` (the caller's own identity), `/instance` (a reduced static facts
+ *   projection, warren-2eec), `/analytics/runs`, and the reduced
+ *   `GET /ops/overview` snapshot (run counts only, warren-d850). Each is served
  *   through a public projection (pl-b82d steps 14-16) before an instance is
  *   actually exposed; the policy is what makes the projection reachable, not
  *   what makes it safe.
@@ -155,6 +157,15 @@ const ROUTE_TABLE: readonly RouteEntry[] = [
 	},
 	// warren-e195: `readPublic`, not `anonymous` — an exempt route gets no actor to name.
 	{ method: "GET", pattern: "/whoami", policy: "readPublic", build: () => whoamiHandler() },
+	// warren-2eec: read-only instance facts for the operator console. The
+	// body is a boot facts allowlist; spectators get the reduced projection
+	// (src/instance/facts.ts). Never secrets or connection strings.
+	{
+		method: "GET",
+		pattern: "/instance",
+		policy: "readPublic",
+		build: instanceFactsHandler,
+	},
 
 	{ method: "GET", pattern: "/agents", policy: "readPublic", build: listAgentsHandler },
 	{ method: "GET", pattern: "/agents/:name", policy: "readPublic", build: getAgentHandler },
@@ -406,6 +417,8 @@ export const API_PREFIXES: readonly string[] = [
 	"/preview",
 	"/plan-runs",
 	"/whoami",
+	// warren-2eec: instance facts surface (`GET /instance`).
+	"/instance",
 	"/github-app",
 	// warren-f566: the global lifecycle stream (`/events/stream`).
 	"/events",

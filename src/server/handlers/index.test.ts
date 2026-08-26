@@ -69,6 +69,7 @@ describe("ROUTE_TABLE policy classification", () => {
 		"GET /healthz",
 		"GET /version",
 		"GET /whoami", // reflects the caller's own request back at it (warren-e195)
+		"GET /instance", // reduced static facts projection (warren-2eec)
 		"GET /agents",
 		"GET /agents/:name",
 		"GET /projects",
