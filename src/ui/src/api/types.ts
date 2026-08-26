@@ -1,6 +1,4 @@
-// Wire-side response shapes for warren's HTTP API.
-//
-// The ENUM VOCABULARY (run / plan-run / preview lifecycle states, the
+// Wire-side response shapes for warren's HTTP API. The ENUM VOCABULARY (run / plan-run / preview lifecycle states, the
 // failure-cause discriminator, run mode, clone kind, event stream) is NOT
 // declared here. It is defined once in `src/core/wire.ts` — warren's
 // dependency-free kernel — and re-exported below, so the UI and the server
@@ -16,6 +14,8 @@
 export {
 	type AgentRow,
 	type AgentSource,
+	EVENT_STREAMS,
+	type EventStream,
 	type ForgeErrorKind,
 	isActivePreviewState,
 	isPullRequestLifecycle,
@@ -31,6 +31,7 @@ export {
 	PREVIEW_ACTIVE_STATES,
 	type PreviewState,
 	type PullRequestLifecycle,
+	RUN_STATES,
 	RUN_TERMINAL_STATES,
 	type RunFailureReason,
 	type RunMode,
@@ -57,9 +58,8 @@ export interface ProjectRow {
 	id: string;
 	gitUrl: string;
 	/**
-	 * OPTIONAL on the wire: an absolute server filesystem path, so the
-	 * public projection drops it (warren-4f6c / warren-f53e). Operator-only
-	 * surfaces may read it; anything a spectator reaches must test presence.
+	 * OPTIONAL on the wire: absolute server path, dropped by the public
+	 * projection (warren-4f6c / warren-f53e) — test presence, not null.
 	 */
 	localPath?: string;
 	defaultBranch: string;
@@ -360,10 +360,9 @@ export interface RunEvent {
 
 /**
  * One slim line on the global lifecycle stream (`GET /events/stream`,
- * warren-f566). A pure invalidation hint for the list pages — the
- * server carries no replay, so the consumer re-reads its list queries
- * on receipt. `state` is the run's best-known state after the
- * transition, or null when the hook carries no state change.
+ * warren-f566): a pure invalidation hint — the server carries no replay,
+ * so the consumer re-reads its list queries on receipt. `state` is the
+ * run's best-known state after the transition, or null if no change.
  */
 export interface LifecycleStreamNotification {
 	runId: string;

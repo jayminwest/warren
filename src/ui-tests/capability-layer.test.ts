@@ -7,7 +7,7 @@
  * cancel / refresh / delete affordance is rendered anywhere. The warren UI
  * package ships without a React test harness (no jsdom, no
  * @testing-library, mx-a86ce6), so — same convention as
- * `plot-surface-removed.test.ts` and `ready-plans-tab.test.ts` — the
+ * `plot-surface-removed.test.ts` and `walk-inventory.test.ts` — the
  * invariants are pinned at the source level:
  *
  *   1. every mutating `useMutation` lives in a file that imports the ONE
@@ -96,7 +96,7 @@ describe("route guards and nav filtering (warren-f53e)", () => {
 	const nav = read("components", "console", "console-nav.ts");
 
 	test("both dispatch forms are wrapped in OperatorRoute", () => {
-		for (const page of ["NewRunPage", "NewPlanRunPage"]) {
+		for (const page of ["DispatchPage", "NewPlanRunPage"]) {
 			expect(app).toMatch(new RegExp(`<OperatorRoute>\\s*<${page} />\\s*</OperatorRoute>`));
 		}
 	});
@@ -128,7 +128,7 @@ describe("route guards and nav filtering (warren-f53e)", () => {
 });
 
 describe("every mutation site sits behind the one gate (warren-f53e)", () => {
-	const GATED_ELSEWHERE = new Set(["refresh-projects-cta.tsx", "new-run.tsx"]);
+	const GATED_ELSEWHERE = new Set(["refresh-projects-cta.tsx", "use-dispatch-state.ts"]); // warren-bbe8: dispatch mutation lives in the Direction C page state hook, route-gated like the legacy new-run form was
 
 	test("no file calls useMutation without importing OperatorOnly", () => {
 		const offenders: string[] = [];
@@ -150,9 +150,11 @@ describe("every mutation site sits behind the one gate (warren-f53e)", () => {
 		);
 	});
 
-	test("the plan-dispatch dialog is gated at its entry point", () => {
-		const dialog = read("components", "dispatch-plan-dialog.tsx");
-		expect(dialog).toMatch(/<OperatorOnly>\s*<Button type="button" size="sm"/);
+	test("the plan-runs dispatch control is gated at its entry point", () => {
+		// warren-23b2: the Direction C walk inventory's Dispatch plan link is
+		// the page's only operator affordance, wrapped in the one gate.
+		const page = read("pages", "plan-runs.tsx");
+		expect(page).toMatch(/<OperatorOnly>\s*<Link\s+to="\/dispatch\/plan"/);
 	});
 
 	test("project + registry mutation is gated on admin, not dispatch", () => {
@@ -231,19 +233,17 @@ describe("redacted wire fields render on presence (warren-f53e)", () => {
 		expect(analyticsTypes).toMatch(/costPerMergedPrUsd\?: number \| null/);
 	});
 
-	test("the run-analytics consumers guard the redacted cost fields", () => {
-		const kpi = read("pages", "run-analytics", "kpi-cards.tsx");
-		const tables = read("pages", "run-analytics", "tables.tsx");
-		const tokenStats = read("pages", "run-analytics", "token-stats.tsx");
-		// KpiCards: the `Total cost` card renders only when `cost` is present.
-		expect(kpi).toMatch(/cost !== undefined \?/);
-		expect(kpi).not.toMatch(/totals\.cost\.total/);
-		// Tables: the `Cost` column is omitted when no bucket carries costUsd.
-		expect(tables).toMatch(/buckets\.some\(\(b\) => b\.costUsd !== undefined\)/);
-		expect(tables).toMatch(/b\.costUsd === undefined \? "—" : formatCostUsd/);
-		// TokenStats: same treatment for the `$/1M` column.
-		expect(tokenStats).toMatch(/buckets\.some\(\(b\) => b\.costUsd !== undefined\)/);
-		expect(tokenStats).toMatch(/b\.costUsd === undefined \? "—" : costPer1M/);
+	test("the telemetry consumers guard the redacted cost fields", () => {
+		// warren-7197: the legacy run-analytics chunks are deleted; the
+		// Direction C Telemetry tabs are the consumers now. The metric
+		// strip renders cost/merged PR on presence, and the economics tab
+		// coalesces the redacted bucket figure to "—" rather than NaN.
+		const metrics = read("pages", "telemetry", "telemetry-metrics.tsx");
+		const economics = read("pages", "telemetry", "economics-tab.tsx");
+		expect(metrics).toMatch(/costPerMergedPr === null \|\| costPerMergedPr === undefined/);
+		expect(economics).toMatch(
+			/row\.costPerMergedPrUsd === null \|\| row\.costPerMergedPrUsd === undefined/,
+		);
 	});
 });
 
@@ -271,12 +271,15 @@ describe("empty states don't point a spectator at a hidden control (warren-b67b)
 		expect(read("components", "ui", "empty-state.tsx")).toMatch(/\{description \? \(/);
 	});
 
-	test("the two dispatch lists gate their instruction on `dispatch`", () => {
-		for (const page of ["runs.tsx", "plan-runs.tsx"]) {
-			const src = read("pages", page);
-			expect(src).toMatch(/useOperatorHint\("Dispatch one above\."\)/);
-			expect(src).toMatch(/description=\{emptyHint\}/);
-		}
+	test("the dispatch lists gate their instruction on `dispatch`", () => {
+		// runs.tsx keeps the legacy EmptyState slot; the Direction C walk
+		// inventory (warren-23b2) carries its quiet placeholder inline but
+		// the hint is still the copy-level gate.
+		const runs = read("pages", "runs.tsx");
+		expect(runs).toMatch(/useOperatorHint\("Dispatch one above\."\)/);
+		expect(runs).toMatch(/description=\{emptyHint\}/);
+		const planRuns = read("pages", "plan-runs.tsx");
+		expect(planRuns).toMatch(/useOperatorHint\(/);
 	});
 
 	test("the projects list gates its instruction on `admin`, like the add-project control", () => {
@@ -293,23 +296,16 @@ describe("empty states don't point a spectator at a hidden control (warren-b67b)
 	/**
 	 * The scaling half: gated copy travels as `useOperatorHint("…")` and
 	 * reaches the slot as an expression, so a description STRING LITERAL that
-	 * points at an on-page control ("… above") is by construction ungated.
+	 * points at an on-page control (“… above”) is by construction ungated.
 	 * That catches a fourth page without this test naming it.
-	 *
-	 * One named exemption, in the style of `GATED_ELSEWHERE` above:
-	 * `ready-plans.tsx` lives inside a `readOperator` tab that `plan-runs.tsx`
-	 * drops for a spectator, so its "choose one above" never reaches one.
 	 *
 	 * Expression descriptions are outside the guard by design — the Agents
 	 * page's copy is a JSX fragment and its spectator issues are tracked
 	 * separately.
 	 */
 	test("no ungated empty-state literal points at an on-page control", () => {
-		const GATED_ELSEWHERE = new Set(["ready-plans.tsx"]);
 		const offenders: string[] = [];
 		for (const file of UI_FILES) {
-			const name = file.slice(file.lastIndexOf("/") + 1);
-			if (GATED_ELSEWHERE.has(name)) continue;
 			const literals = readFileSync(file, "utf8").match(/description="[^"]*"/g) ?? [];
 			if (literals.some((literal) => / above/.test(literal))) {
 				offenders.push(file.slice(UI_SRC.length + 1));
