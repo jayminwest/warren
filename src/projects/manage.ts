@@ -137,7 +137,7 @@ export async function addProject(input: AddProjectInput): Promise<ProjectRow> {
 		defaultBranch: input.defaultBranch,
 		gitCredential: input.gitCredential,
 		spawn: input.spawn,
-		timeoutMs: input.timeoutMs ?? DEFAULT_GIT_TIMEOUT_MS,
+		timeoutMs: input.timeoutMs ?? config.gitTimeoutMs ?? DEFAULT_GIT_TIMEOUT_MS,
 	});
 
 	const detect = input.detectFeatures ?? detectProjectFeatures;
@@ -233,7 +233,7 @@ export async function refreshProject(input: RefreshProjectInput): Promise<Refres
 		...(input.fetchCommit !== undefined ? { fetchCommit: input.fetchCommit } : {}),
 		gitCredential: input.gitCredential,
 		spawn: input.spawn,
-		timeoutMs: input.timeoutMs ?? DEFAULT_GIT_TIMEOUT_MS,
+		timeoutMs: input.timeoutMs ?? config.gitTimeoutMs ?? DEFAULT_GIT_TIMEOUT_MS,
 		armHooks,
 	});
 

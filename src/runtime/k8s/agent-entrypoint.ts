@@ -82,7 +82,11 @@ import {
 	readLines,
 } from "./agent-io.ts";
 import { createStdinHoldController } from "./agent-stdin-hold.ts";
-import { applyAgentUidDrop, uidDropPreflightErrorMessage } from "./agent-uid-drop.ts";
+import {
+	applyAgentUidDrop,
+	uidDropPreflightErrorMessage,
+	withCrossUidKill,
+} from "./agent-uid-drop.ts";
 import { type FinalizeEntrypointDeps, runFinalizeEntrypoint } from "./finalize-entrypoint.ts";
 
 /* -------------------------------------------------------------------------- */
@@ -261,7 +265,16 @@ export async function runAgent(
 	const command = await resolveAgentCommand(baseCommand, useStdinHold, env, { spawn, out, log });
 	if (command === null) return { exitCode: 1, phase: "failed" };
 	log(`agent-entrypoint: launching '${runtime.runtimeId}' in ${env.workspacePath}`);
-	const proc = await spawn(command, { cwd: env.workspacePath });
+	const spawned = await spawn(command, { cwd: env.workspacePath });
+	// warren-950d: under the uid split the watchdog's kill is a cross-uid
+	// signal the entrypoint's empty effective capability set cannot deliver on
+	// containerd 2.x — route it through setpriv (assume the agent's uid, then
+	// signal uid-matched). No drop env ⇒ pass-through.
+	const proc = withCrossUidKill(spawned, env.agentRunAs, {
+		spawn,
+		cwd: env.workspacePath,
+		log,
+	});
 
 	// All the stdin-hold machinery (close-on-trigger, auto-reply, idle watchdog,
 	// mid-run steering) lives behind this controller; for a batch runtime it is a

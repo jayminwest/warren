@@ -226,20 +226,37 @@ That closes the warren-6646 residual. A forged write at `/proc/1/fd/1` from
 the agent now fails EACCES (cross-uid), so the agent cannot reproduce the
 in-band provenance marker.
 
-The split-off agent also cannot SIGNAL the entrypoint. The entrypoint keeps
-KILL as its own backstop for the watchdog, which now signals cross-uid.
+The split-off agent also cannot SIGNAL the entrypoint. The watchdog's own
+cross-uid kill routes through the same setpriv drop (`withCrossUidKill`),
+because the entrypoint's effective capability set is empty on containerd 2.x.
 
-Two prerequisites apply. First, the container runtime must propagate ambient
-caps to a non-root pid 1. Containerd and runc do this. The entrypoint
-preflights the drop and fails the run legibly when the caps never arrive.
+Two prerequisites apply. First, setpriv must be able to gain
+CAP_SETUID/CAP_SETGID (warren-950d amendment). containerd 2.x grants a
+non-root pid 1 its `capabilities.add` in the bounding set only.
+
+So the agent image bakes file caps on setpriv
+(`setcap cap_setuid,cap_setgid+ep`) and the agent container sets
+`allowPrivilegeEscalation: true` while the split is on.
+
+`no_new_privs` off is what lets the file caps take effect for the
+entrypoint. The agent stays sealed by setpriv's own
+`--no-new-privs --bounding-set=-all`.
+
+The entrypoint preflights the drop and the run fails legibly
+(`spawn_failed`) when the caps never arrive. The deploy workflow gates on
+the same probe via `scripts/k8s-uid-drop-canary.ts` (RUNBOOK-K8S.md §4.2).
 
 Second, the workspace stays group-writable (pod `fsGroup` 1000 plus
 `umask 002` in the init container and the entrypoint), so the uid-1001 agent
 can write its uid-1000-owned checkout.
 
 `WARREN_K8S_AGENT_UID_DROP=0` restores the legacy shared-uid shape. The
-DockerProvider keeps its current behavior. It spawns the agent argv directly
-as the container's pid 1, so no entrypoint fd exists to protect.
+DockerProvider spawns the agent argv directly as the container's pid 1, so
+no entrypoint fd exists to protect and no split applies.
+
+The shared agent image now ships a file-caps setpriv, so the docker run
+pins `--security-opt no-new-privileges` to keep those caps (and any setuid
+bit) inert there (warren-950d).
 
 ---
 

@@ -443,6 +443,30 @@ jobs:
           fi
           echo "Verified: warren deployment is running the released SHA ${SHA}."
 
+      # Prove the entrypoint/agent uid split (warren-cb93) can privilege its
+      # setpriv drop on the LIVE cluster with the agent image this run just
+      # built — before any run is dispatched against it (warren-950d). A GKE
+      # node auto-upgrade to containerd 2.x silently broke the split on
+      # 2026-08-25 (capabilities.add lands bounding-only for a non-root
+      # pid 1) and every dispatched run died at the preflight; this gate
+      # turns that class of cluster drift into a red deploy instead. The
+      # canary pod is rendered from the same builders the run pod uses
+      # (scripts/k8s-uid-drop-canary.ts), so the gate cannot drift from
+      # dispatch.
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Verify agent uid-drop split on the live cluster
+        env:
+          SHA: ${{ env.TARGET_SHA }}
+        run: |
+          set -euo pipefail
+          bun install --frozen-lockfile
+          bun run scripts/k8s-uid-drop-canary.ts \
+            --image "${AR_BASE}/warren-agent:${SHA}" \
+            --namespace warren-runs
+
       # The step above proves the Deployment *spec* points at the released
       # image. This one proves the public ingress actually serves it: GET
       # /version is auth-exempt and returns {"version":"X.Y.Z"} straight from

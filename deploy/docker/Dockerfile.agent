@@ -34,6 +34,17 @@ FROM oven/bun:1.2
 # fails EACCES (see src/runtime/k8s/agent-uid-drop.ts). K8s-only: the
 # DockerProvider spawns the agent argv directly as the container's pid 1, so
 # there is no entrypoint fd to protect and no split applies.
+#
+# warren-950d: containerd 2.x grants the pod spec's SETUID/SETGID
+# `capabilities.add` to a non-root pid 1 in the BOUNDING set only, never
+# effectively — so setpriv must carry file capabilities
+# (`cap_setuid,cap_setgid+ep`, via libcap2-bin's setcap) to privilege the
+# drop itself. File caps take effect only while no_new_privs is off (the
+# agent container sets `allowPrivilegeEscalation: true` for the entrypoint);
+# the split-off AGENT runs under `--no-new-privs` with an emptied bounding
+# set, so it cannot use this same binary to climb back (verified live on GKE
+# Autopilot / containerd 2.1.7). DockerProvider runs pin
+# `--security-opt no-new-privileges` so the caps stay inert there too.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         git \
@@ -44,6 +55,9 @@ RUN apt-get update \
         python3-pip \
         python3-venv \
         util-linux \
+        libcap2-bin \
+    && setcap cap_setuid,cap_setgid+ep "$(command -v setpriv)" \
+    && getcap "$(command -v setpriv)" \
     && curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
     && apt-get install -y --no-install-recommends nodejs \
     && rm -rf /var/lib/apt/lists/* \

@@ -219,6 +219,14 @@ export function buildDockerRunSpec(
 		// Non-root (warren-3f32) — image USER is defense in depth; --user wins.
 		"--user",
 		`${agentUser.uid}:${agentUser.gid}`,
+		// warren-950d: the shared agent image bakes file capabilities on
+		// setpriv (cap_setuid,cap_setgid — the K8s entrypoint/agent uid-split
+		// primitive). Docker's default bounding set includes SETUID/SETGID and
+		// leaves no_new_privs off, so without this flag the agent could exec
+		// that binary and switch uid (including to 0). no-new-privileges makes
+		// file caps and setuid bits inert for the whole container.
+		"--security-opt",
+		"no-new-privileges",
 		"--workdir",
 		resolveContainerCwd(profile.workspace, command.cwd),
 		"--add-host",

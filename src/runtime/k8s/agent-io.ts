@@ -92,6 +92,13 @@ export interface AgentProc {
 	writeStdin?: (chunk: string) => Promise<void>;
 	/** Force-kill the child (the stdin-hold watchdog's backstop). */
 	kill?: () => void;
+	/**
+	 * The child's OS pid. Under the uid split the entrypoint routes `kill`
+	 * through a setpriv cross-uid helper that needs it (warren-950d,
+	 * `./agent-uid-drop.ts` `withCrossUidKill`); absent (a test double) the
+	 * direct `kill` stays in place.
+	 */
+	pid?: number;
 }
 
 /**
@@ -307,6 +314,7 @@ export const defaultSpawn: AgentSpawn = async (command, opts) => {
 		closeStdin,
 		writeStdin,
 		kill: () => proc.kill(),
+		pid: proc.pid,
 	};
 };
 

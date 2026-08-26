@@ -196,26 +196,39 @@ export function containerSecurityContext(config: K8sPodConfig): V1SecurityContex
 }
 
 /**
- * The agent container's hardening (§2.2 + warren-cb93). Same non-root base as
- * the init container — the ENTRYPOINT keeps uid 1000 — plus, when the uid
- * split is enabled, the three caps the split needs:
+ * The agent container's hardening (§2.2 + warren-cb93 + warren-950d). Same
+ * non-root base as the init container — the ENTRYPOINT keeps uid 1000 —
+ * plus, when the uid split is enabled, the shape the split needs:
  *
- *   - `SETUID`/`SETGID`: the entrypoint's `setpriv --reuid/--regid` of the
- *     agent process to `WARREN_POD_AGENT_UID`. A non-root pid 1 receives them
- *     via the runtime's ambient-cap propagation (containerd/runc raise
- *     ambient caps for added caps on a non-root init; the entrypoint's
- *     preflight fails the run legibly when they never arrive).
- *   - `KILL`: the stdin-hold watchdog's backstop `kill()` targets the
- *     split-off agent — a cross-uid signal, EPERM without the cap.
+ *   - `SETUID`/`SETGID` in `capabilities.add`: they must sit in the
+ *     container's BOUNDING set for the agent image's file-caps setpriv
+ *     (`setcap cap_setuid,cap_setgid+ep`, Dockerfile.agent) to gain them on
+ *     exec — a non-root pid 1 gets `capabilities.add` bounding-only on
+ *     containerd 2.x, never effective, so the file caps are what actually
+ *     privilege the drop (warren-950d; verified on GKE Autopilot).
+ *   - `allowPrivilegeEscalation: true`: keeps no_new_privs OFF for the
+ *     entrypoint so those file caps can take effect at all. This is the one
+ *     deliberate relaxation of the §2.2 posture, scoped to the agent
+ *     container and only while the split is on.
+ *   - `KILL`: legacy best-effort — on a runtime that still grants added caps
+ *     effectively (containerd 1.x) it lets the watchdog's direct `kill()`
+ *     land cross-uid. On containerd 2.x the kill routes through setpriv
+ *     instead (`./agent-uid-drop.ts` `withCrossUidKill`).
  *
- * The AGENT keeps none of them: setpriv empties its capability sets and sets
- * no_new_privs (`./agent-uid-drop.ts`), so the add list stops at warren's
- * own entrypoint.
+ * The AGENT keeps none of this: setpriv runs it under no_new_privs (file
+ * caps inert, irrevocably inherited) with an emptied bounding set
+ * (`./agent-uid-drop.ts`), so the escalation path stops at warren's own
+ * entrypoint — the preflight proves the drop and the run fails legibly
+ * (`spawn_failed`) when the cluster no longer supports it.
  */
 export function agentContainerSecurityContext(config: K8sPodConfig): V1SecurityContext {
 	const base = containerSecurityContext(config);
 	if (config.agentUidDrop === undefined) return base;
-	return { ...base, capabilities: { drop: ["ALL"], add: ["SETUID", "SETGID", "KILL"] } };
+	return {
+		...base,
+		allowPrivilegeEscalation: true,
+		capabilities: { drop: ["ALL"], add: ["SETUID", "SETGID", "KILL"] },
+	};
 }
 
 /** Deterministic name-sort so the generated spec is stable across builds. */

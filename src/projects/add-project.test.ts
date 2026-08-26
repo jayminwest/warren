@@ -61,6 +61,28 @@ describe("addProject", () => {
 		expect(row.defaultBranch).toBe("trunk");
 	});
 
+	// warren-4fe1: found registering openclaw (~2.9GB) — the handler never
+	// passes timeoutMs, so the config-level operator override
+	// (WARREN_GIT_TIMEOUT_MS) must reach the cloner through the fallback chain.
+	test("falls back to config.gitTimeoutMs when the caller passes no timeoutMs", async () => {
+		let received: number | undefined;
+		await addProject({
+			repo,
+			config: { ...CFG, gitTimeoutMs: 900_000 },
+			gitUrl: "https://github.com/x/big.git",
+			spawn: NOOP_SPAWN,
+			clone: async (input) => {
+				received = input.timeoutMs;
+				return {
+					localPath: `${input.config.root}/${input.owner}/${input.name}`,
+					defaultBranch: "main",
+				};
+			},
+		});
+
+		expect(received).toBe(900_000);
+	});
+
 	test("persists hasSeeds=true after probe (warren-9990)", async () => {
 		const row = await addProject({
 			repo,

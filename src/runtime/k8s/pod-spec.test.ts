@@ -294,18 +294,19 @@ describe("buildRunPod", () => {
 		expect(sc?.seccompProfile?.type).toBe("RuntimeDefault");
 	});
 
-	test("every container drops ALL caps, forbids privilege escalation, runs non-root + seccomp", () => {
+	test("every container drops ALL caps, runs non-root + seccomp", () => {
 		const pod = buildRunPod(baseSpec(), config);
 		const containers = [...(pod.spec?.initContainers ?? []), ...(pod.spec?.containers ?? [])];
 		expect(containers.length).toBe(2);
 		for (const c of containers) {
 			const sc = c.securityContext;
-			expect(sc?.allowPrivilegeEscalation).toBe(false);
 			expect(sc?.capabilities?.drop).toEqual(["ALL"]);
 			expect(sc?.runAsNonRoot).toBe(true);
 			expect(sc?.runAsUser).toBe(1000);
 			expect(sc?.seccompProfile?.type).toBe("RuntimeDefault");
 		}
+		// The agent container's uid-split relaxation: pod-spec.uid-drop.test.ts (warren-950d).
+		expect(pod.spec?.initContainers?.[0]?.securityContext?.allowPrivilegeEscalation).toBe(false);
 	});
 
 	test("references a workspace-init init container sharing the /workspace emptyDir", () => {
