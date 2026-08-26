@@ -70,7 +70,7 @@ function LoginMark() {
 function useInstanceFacts() {
 	return useQuery({
 		queryKey: ["meta", "instance"],
-		queryFn: ({ signal }) => metaApi.instanceFacts(signal),
+		queryFn: ({ signal }) => metaApi.instance(signal),
 		staleTime: 60_000,
 		retry: 1,
 	});

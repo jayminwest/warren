@@ -487,11 +487,12 @@ export const metaApi = {
 	whoami: (signal?: AbortSignal) =>
 		request<WhoamiResponse>("/whoami", { ...(signal ? { signal } : {}) }),
 	/**
-	 * Boot-time instance facts (warren-2eec). The body varies with
-	 * `Authorization`: the spectator projection drops `dbBackend`,
-	 * `uptimeSeconds`, and `admission`, so treat those as optional.
+	 * Boot-resolved instance facts (warren-2eec), for the Instance and
+	 * Login pages. Read-only by construction; the body shrinks under the
+	 * public spectator projection, and the pages placeholder the absent
+	 * fields.
 	 */
-	instanceFacts: (signal?: AbortSignal) =>
+	instance: (signal?: AbortSignal) =>
 		request<InstanceFactsResponse>("/instance", { ...(signal ? { signal } : {}) }),
 };
 

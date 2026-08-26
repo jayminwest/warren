@@ -1,31 +1,24 @@
-/**
- * Wire envelope of `GET /instance` (warren-2eec / pl-7e38 step 17) — the
- * read-only boot facts allowlist (src/instance/facts.ts). Split from
- * types.ts to respect its frozen line budget.
- */
+/* ----------------------------------------------------------------------- */
+/* Instance facts — `GET /instance` (warren-2eec / pl-7e38 step 17).     */
+/*                                                                       */
+/* The body varies with `Authorization`: an operator gets the full        */
+/* projection, a `WARREN_AUTH=public` spectator gets the reduced static   */
+/* one (`version`, `runtime`, `authMode`). The operator-only fields are   */
+/* therefore optional on the wire type, and the Instance page renders     */
+/* them as quiet "—" placeholders when absent — never fabricated.         */
+/* ----------------------------------------------------------------------- */
 
-/**
- * Auth mode resolved at boot (`resolveAuthKind`, src/server/auth.ts).
- * Echoed verbatim over the wire by the instance facts endpoint.
- */
-export type InstanceAuthMode = "token" | "public";
+export interface InstanceAdmissionFacts {
+	maxQueueDepth: number;
+	maxPendingPods: number;
+	maxProjectConcurrency: number | null;
+}
 
-/**
- * Wire envelope of `GET /instance` — the read-only boot facts allowlist
- * (src/instance/facts.ts). An operator gets the full projection; a
- * `WARREN_AUTH=public` spectator gets the reduced static projection, so
- * `dbBackend`, `uptimeSeconds`, and `admission` are optional fields only
- * the operator body carries. Never secrets or connection strings.
- */
 export interface InstanceFactsResponse {
 	version: string;
-	runtime: string;
-	authMode: InstanceAuthMode;
+	runtime: "local" | "docker" | "k8s";
+	authMode: "token" | "public";
 	dbBackend?: "sqlite" | "postgres" | null;
 	uptimeSeconds?: number;
-	admission?: {
-		maxQueueDepth: number;
-		maxPendingPods: number;
-		maxProjectConcurrency: number | null;
-	} | null;
+	admission?: InstanceAdmissionFacts | null;
 }
