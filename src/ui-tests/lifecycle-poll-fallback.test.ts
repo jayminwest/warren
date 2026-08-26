@@ -3,7 +3,7 @@
  *
  * The warren UI package ships without a React test harness (no jsdom, no
  * @testing-library, mx-a86ce6), so the invariant is pinned at the source
- * level the way `ready-plans-tab.test.ts` pins its tab model: read the
+ * level the way `walk-inventory.test.ts` pins the walk page: read the
  * pages and assert what a regression would break.
  *
  * The invariant: after warren-f566 the global lifecycle stream drives
@@ -23,8 +23,8 @@ const read = (file: string): string => readFileSync(join(UI_PAGES, file), "utf8"
 
 const SURFACES = [
 	{ file: "runs.tsx", what: "the runs list" },
-	{ file: "plan-runs.tsx", what: "the plan-runs list and its rows" },
-	{ file: "ready-plans.tsx", what: "the ready-to-dispatch view" },
+	{ file: "plan-runs.tsx", what: "the plan-runs list" },
+	{ file: "plan-runs/walk-row.tsx", what: "the walk rows" },
 ] as const;
 
 describe("warren-f566 polling fallback (GH #847)", () => {
@@ -39,12 +39,12 @@ describe("warren-f566 polling fallback (GH #847)", () => {
 	}
 
 	test("the per-row plan-run query polls on the fallback cadence, not per-row fast", () => {
-		const source = read("plan-runs.tsx");
+		const source = read("plan-runs/walk-row.tsx");
 		// The row key is a PREFIX match for the `["plan-runs"]` key the
 		// invalidation hook busts, so the stream already refreshes these rows;
 		// the timer is the public-mode fallback only.
-		expect(source).toMatch(/queryKey: \["plan-runs", planRunId\]/);
-		const row = source.slice(source.indexOf('queryKey: ["plan-runs", planRunId]'));
+		expect(source).toMatch(/queryKey: \["plan-runs", planRun\.id\]/);
+		const row = source.slice(source.indexOf('queryKey: ["plan-runs", planRun.id]'));
 		expect(row).toMatch(/refetchInterval: 45_000/);
 	});
 
@@ -53,7 +53,7 @@ describe("warren-f566 polling fallback (GH #847)", () => {
 			join(import.meta.dir, "..", "ui", "src", "hooks", "use-lifecycle-stream-invalidation.ts"),
 			"utf8",
 		);
-		for (const key of ["runs", "plan-runs", "ready-plans"]) {
+		for (const key of ["runs", "plan-runs"]) {
 			expect(hook).toMatch(new RegExp(`queryKey: \\["${key}"\\]`));
 		}
 	});
