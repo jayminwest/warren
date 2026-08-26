@@ -56,10 +56,29 @@ describe("loadProjectsConfigFromEnv", () => {
 			loadProjectsConfigFromEnv({
 				WARREN_PROJECTS_DIR: "/srv/projects",
 				WARREN_GIT_BINARY: "/usr/local/bin/git",
+				WARREN_GIT_TIMEOUT_MS: "900000",
 			}),
 		).toEqual({
 			root: "/srv/projects",
 			gitBinary: "/usr/local/bin/git",
+			gitTimeoutMs: 900000,
 		});
+	});
+
+	// The first payer is openclaw (~2.9GB): a full registration clone cannot
+	// finish inside the 120s default, and the server offered no override.
+	test("omits gitTimeoutMs when WARREN_GIT_TIMEOUT_MS is unset or blank", () => {
+		expect(loadProjectsConfigFromEnv({})).not.toHaveProperty("gitTimeoutMs");
+		expect(loadProjectsConfigFromEnv({ WARREN_GIT_TIMEOUT_MS: "  " })).not.toHaveProperty(
+			"gitTimeoutMs",
+		);
+	});
+
+	test("rejects a non-positive or non-integer WARREN_GIT_TIMEOUT_MS", () => {
+		for (const bad of ["0", "-5", "abc", "1.5"]) {
+			expect(() => loadProjectsConfigFromEnv({ WARREN_GIT_TIMEOUT_MS: bad })).toThrow(
+				ValidationError,
+			);
+		}
 	});
 });

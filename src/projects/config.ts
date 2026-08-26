@@ -12,6 +12,12 @@
  *   WARREN_DATA_DIR       the deploy's persistent volume — the projects root
  *                         derives from it (see below)
  *   WARREN_GIT_BINARY     git binary path — defaults to "git" (shared with canopy registry)
+ *   WARREN_GIT_TIMEOUT_MS host-clone git operation timeout in milliseconds —
+ *                         registration clones and refresh fetches. Unset falls
+ *                         back to DEFAULT_GIT_TIMEOUT_MS (120s). Large external
+ *                         repos (the first payer: openclaw at ~2.9GB) cannot
+ *                         finish a full clone in 120s, and the server offered
+ *                         no way to say so short of a code change.
  *
  * Why the projects root derives from `WARREN_DATA_DIR` (warren-5c42): the
  * README quickstart mounts ONE volume and points `WARREN_DATA_DIR` at it
@@ -43,6 +49,11 @@ export const DEFAULT_PROJECTS_DIR = join(DEFAULT_DATA_DIR, PROJECTS_SUBDIR);
 export interface ProjectsConfig {
 	readonly root: string;
 	readonly gitBinary: string;
+	/**
+	 * Operator override for host-clone git timeouts (WARREN_GIT_TIMEOUT_MS).
+	 * Absent → callers fall back to DEFAULT_GIT_TIMEOUT_MS.
+	 */
+	readonly gitTimeoutMs?: number;
 }
 
 export type EnvLike = Readonly<Record<string, string | undefined>>;
@@ -66,8 +77,22 @@ export function loadProjectsConfigFromEnv(env: EnvLike = process.env): ProjectsC
 		});
 	}
 
+	const rawTimeout = env.WARREN_GIT_TIMEOUT_MS?.trim();
+	let gitTimeoutMs: number | undefined;
+	if (rawTimeout !== undefined && rawTimeout !== "") {
+		const parsed = Number(rawTimeout);
+		if (!Number.isInteger(parsed) || parsed <= 0) {
+			throw new ValidationError(
+				`WARREN_GIT_TIMEOUT_MS must be a positive integer of milliseconds, got "${rawTimeout}"`,
+				{ recoveryHint: "unset it to fall back to the 120000ms default" },
+			);
+		}
+		gitTimeoutMs = parsed;
+	}
+
 	return {
 		root,
 		gitBinary: env.WARREN_GIT_BINARY ?? "git",
+		...(gitTimeoutMs !== undefined ? { gitTimeoutMs } : {}),
 	};
 }

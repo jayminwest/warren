@@ -29,6 +29,7 @@ This table is the complete inventory. `Approved` means a design is coherent enou
 | Record | Kind | Design state | Delivery | Arrived |
 |---|---|---|---|---|
 | [The corpus flywheel](./corpus-flywheel.md) | `direction` | `draft` | `unscheduled` | 2026-08-15 |
+| [MCP server](./mcp-server.md) | `proposal` | `draft` | `unscheduled` | 2026-08-26 |
 | [External-repository mirror pilot](./external-repository-mirror-pilot.md) | `pilot` | `approved` | `now` | 2026-08-20 |
 | [Campaign controller](./campaign-controller.md) | `direction` | `approved` | `next` | 2026-08-20 |
 | [Resumable agent environments](./resumable-agent-environments.md) | `proposal` | `proposed` | `unscheduled` | 2026-08-20 |
@@ -52,7 +53,7 @@ This table is the complete inventory. `Approved` means a design is coherent enou
 
 ## Pre-roadmap discovery
 
-The current unscheduled records are the draft [corpus flywheel](./corpus-flywheel.md) and the proposed [resumable agent environments](./resumable-agent-environments.md). They remain ideas until the roadmap promotes them.
+The current unscheduled records are the draft [corpus flywheel](./corpus-flywheel.md), the draft [MCP server](./mcp-server.md), and the proposed [resumable agent environments](./resumable-agent-environments.md). They remain ideas until the roadmap promotes them.
 
 ## Build order
 
