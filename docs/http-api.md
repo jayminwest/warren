@@ -7,7 +7,7 @@ This page enumerates every HTTP route registered by warren's `Bun.serve` router.
 
 To refresh: `bun run gen:docs`. To check (CI mode): `bun run gen:docs:check`.
 
-Total routes: **47**.
+Total routes: **48**.
 
 ## /agents
 
@@ -56,6 +56,12 @@ Total routes: **47**.
 | Method | Pattern | Handler | Notes |
 | --- | --- | --- | --- |
 | `GET` | `/metrics` | `metricsHandler` |  |
+
+## /ops
+
+| Method | Pattern | Handler | Notes |
+| --- | --- | --- | --- |
+| `GET` | `/ops/overview` | `opsOverviewHandler` | warren-d850 / pl-7e38 step 12: the one-poll control-plane snapshot for the Operations dashboard. `readPublic` with a reduced projection — spend / inbox / health sections are stripped for a spectator (see ./ops.ts); scenario 39 guards the reduction. |
 
 ## /plan-runs
 

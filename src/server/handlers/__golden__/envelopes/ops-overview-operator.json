@@ -1,0 +1,41 @@
+{
+	"status": 200,
+	"body": {
+		"overview": {
+			"runsByState": {
+				"queued": 0,
+				"running": 0,
+				"succeeded": 1,
+				"failed": 1,
+				"cancelled": 0
+			},
+			"spend": {
+				"windowHours": 24,
+				"recentCostUsd": 5.25,
+				"totalCostUsd": 105.25
+			},
+			"delivery": {
+				"branchesPushed": 1,
+				"prsOpened": 1,
+				"prsMerged": 1
+			},
+			"inbox": {
+				"byState": {
+					"unread": 1,
+					"delivered": 0,
+					"failed": 0
+				},
+				"pending": 1
+			},
+			"health": {
+				"db": {
+					"wired": true,
+					"reachable": true,
+					"dialect": "sqlite"
+				},
+				"runtimeKind": "local",
+				"eventBusWired": false
+			}
+		}
+	}
+}

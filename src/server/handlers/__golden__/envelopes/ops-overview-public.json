@@ -1,0 +1,19 @@
+{
+	"status": 200,
+	"body": {
+		"overview": {
+			"runsByState": {
+				"queued": 0,
+				"running": 0,
+				"succeeded": 1,
+				"failed": 1,
+				"cancelled": 0
+			},
+			"delivery": {
+				"branchesPushed": 1,
+				"prsOpened": 1,
+				"prsMerged": 1
+			}
+		}
+	}
+}

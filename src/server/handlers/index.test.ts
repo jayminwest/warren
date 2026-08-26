@@ -77,6 +77,9 @@ describe("ROUTE_TABLE policy classification", () => {
 		"GET /runs",
 		"GET /runs/:id",
 		"GET /runs/:id/events",
+		// warren-d850: the ops-overview snapshot, served through the reduced
+		// public projection (spend / inbox / health stripped — ./ops.ts).
+		"GET /ops/overview",
 		"GET /plan-runs",
 		"GET /plan-runs/:id",
 		"GET /plan-runs/:id/events",

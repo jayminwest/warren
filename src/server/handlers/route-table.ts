@@ -22,6 +22,7 @@ import {
 } from "./github-app.ts";
 import { healthzHandler, previewConfigHandler, versionHandler, whoamiHandler } from "./meta.ts";
 import { metricsHandler } from "./metrics.ts";
+import { opsOverviewHandler } from "./ops.ts";
 import {
 	cancelPlanRunHandler,
 	createPlanRunHandler,
@@ -90,7 +91,8 @@ interface RouteEntry {
  *   list can't drift from the policy table.
  * - `readPublic` — the demo surface a `WARREN_AUTH=public` spectator sees: the
  *   run / project / agent / plan-run listings and details, the run event stream,
- *   `/whoami` (the caller's own identity), and `/analytics/runs`. Each is served
+ *   `/whoami` (the caller's own identity), `/analytics/runs`, and the reduced
+ *   `/ops/overview` snapshot. Each is served
  *   through a public projection (pl-b82d steps 14-16) before an instance is
  *   actually exposed; the policy is what makes the projection reachable, not
  *   what makes it safe.
@@ -144,6 +146,17 @@ const ROUTE_TABLE: readonly RouteEntry[] = [
 	{ method: "GET", pattern: "/metrics", policy: "readOperator", build: metricsHandler },
 	// warren-e195: `readPublic`, not `anonymous` — an exempt route gets no actor to name.
 	{ method: "GET", pattern: "/whoami", policy: "readPublic", build: () => whoamiHandler() },
+
+	// warren-d850 / pl-7e38 step 12: the one-poll control-plane snapshot for
+	// the Operations dashboard. `readPublic` with a reduced projection —
+	// spend / inbox / health sections are stripped for a spectator (see
+	// ./ops.ts); scenario 39 guards the reduction.
+	{
+		method: "GET",
+		pattern: "/ops/overview",
+		policy: "readPublic",
+		build: opsOverviewHandler,
+	},
 
 	{ method: "GET", pattern: "/agents", policy: "readPublic", build: listAgentsHandler },
 	{ method: "GET", pattern: "/agents/:name", policy: "readPublic", build: getAgentHandler },
@@ -397,6 +410,8 @@ export const API_PREFIXES: readonly string[] = [
 	"/github-app",
 	// warren-f566: the global lifecycle stream (`/events/stream`).
 	"/events",
+	// warren-d850: the ops-overview snapshot (`/ops/overview`).
+	"/ops",
 ];
 
 /**
