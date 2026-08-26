@@ -59,9 +59,9 @@ import {
 } from "./pod-resources.ts";
 
 // Re-exported so `./pod-spec.ts` stays the single import surface for the pod
-// shape; the env builders + ENV name constants live in `./pod-env.ts` (split
-// out to keep this file under the size ratchet).
+// shape; the env builders + ENV name constants live in `./pod-env.ts`.
 export {
+	agentContainerSecurityContext,
 	buildAgentEnv,
 	buildInitEnv,
 	buildInitVolumeMounts,

@@ -597,17 +597,55 @@ entrypoint's stdout fd.
 
 A cross-uid open of `/proc/1/fd/1` fails EACCES.
 
-One cluster requirement applies. The container runtime must propagate
-ambient capabilities to a non-root pid 1. Containerd and runc (the
-kind/k3d/GKE path) do this.
+The setpriv privilege comes from file capabilities (warren-950d).
+containerd 2.x puts `capabilities.add` for a non-root pid 1 in the
+bounding set only. A bare setpriv then fails setresuid with EPERM, exit
+127. A GKE node auto-upgrade caused exactly this on 2026-08-25.
+
+The fix has two halves:
+
+- The agent image bakes file capabilities on the setpriv binary
+  (`setcap cap_setuid,cap_setgid+ep`, `deploy/docker/Dockerfile.agent`).
+- The agent container sets `allowPrivilegeEscalation: true` while the split
+  is on. This keeps `no_new_privs` off for the entrypoint, which lets the
+  file caps take effect on exec. The `capabilities.add` list still matters
+  because file caps only grant what the bounding set contains.
+
+The agent side cannot climb back with the same binary. setpriv runs it
+under `--no-new-privs` (inherited and irrevocable — file caps are inert)
+with `--bounding-set=-all` (SETUID gone from bounding regardless). Live
+canary pods on GKE Autopilot / containerd 2.1.7 proved both halves.
+
+The stdin-hold watchdog's force-kill is a cross-uid signal the entrypoint
+can no longer deliver directly. It routes through the same setpriv drop
+(`withCrossUidKill` in `src/runtime/k8s/agent-uid-drop.ts`).
 
 The entrypoint pre-flights the drop before launching the agent.
 
-When the caps never arrive, the run fails legibly with a `uid-drop preflight
-failed` system event instead of running the agent at the entrypoint's uid.
+When setpriv cannot gain the caps, the run fails legibly with a `uid-drop
+preflight failed` system event instead of running the agent at the
+entrypoint's uid. Reap finalizes it `spawn_failed` (an infrastructure
+fault, warren-950d) — never `no_model_response`.
+
+The deploy workflow gates on the split. After every rollout,
+`scripts/k8s-uid-drop-canary.ts` runs the exact preflight in a canary pod
+built from the run-pod builders, with the freshly built agent image.
+
+A cluster or image that can no longer privilege the drop turns the deploy
+red before any run dispatches. Run it by hand against any cluster:
+
+```bash
+bun run scripts/k8s-uid-drop-canary.ts --image <agent-image> --namespace warren-runs
+```
+
 `WARREN_K8S_AGENT_UID_DROP=0` on the control plane restores the legacy
-shared-uid pod shape (and the forgeable residual). Use it only as an escape
-hatch while you fix a runtime.
+shared-uid pod shape (and the forgeable residual). Use it only as an
+escape hatch while you fix a runtime or image.
+
+Removal procedure: deploy an agent image with the file-caps setpriv, and
+run the canary above until it passes. Then run
+`kubectl -n warren set env deploy/warren WARREN_K8S_AGENT_UID_DROP-` and
+confirm the next run's pod log shows the `dropping agent to uid 1001` line.
 
 Live validation (operator step: dispatch any run, wait for the pod to reach
 `Running`, then substitute the pod name):

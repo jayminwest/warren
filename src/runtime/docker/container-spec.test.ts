@@ -91,6 +91,11 @@ describe("buildDockerRunSpec", () => {
 		expect(asHost.argv[asHost.argv.indexOf("--user") + 1]).toBe("501:20");
 	});
 
+	test("pins --security-opt no-new-privileges so file caps + setuid bits stay inert (warren-950d)", () => {
+		const spec = buildDockerRunSpec(makeProfile(), command, config, "/tmp/e.env");
+		expect(spec.argv[spec.argv.indexOf("--security-opt") + 1]).toBe("no-new-privileges");
+	});
+
 	test("agent image precedence: profile.agentImage > env config (warren-fabb)", () => {
 		// config.image here is the env override ("warren-agent:test") — the
 		// project override must win over it, and fall back to it when absent.

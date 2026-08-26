@@ -199,6 +199,60 @@ describe("reapRun failure-reason inference (warren-3c40 / warren-5165)", () => {
 		expect(row.failureReason).toBe("spawn_failed");
 	});
 
+	test("classifies the uid-drop preflight refusal as spawn_failed (warren-950d)", async () => {
+		// K8s entrypoint preflight refusal, zero model turns (was no_model_response).
+		await ctx.repos.events.append({
+			runId: ctx.runId,
+			sandboxEventSeq: 1,
+			ts: new Date().toISOString(),
+			kind: "error",
+			stream: "system",
+			payload: {
+				message:
+					"agent-entrypoint: uid-drop preflight failed (setpriv exited 127) — " +
+					"the entrypoint could not gain CAP_SETUID/CAP_SETGID",
+			},
+		});
+
+		const result = await reapRun({
+			runId: ctx.runId,
+			outcome: "failed",
+			repos: ctx.repos,
+			...reapDeps(fakeBurrowClient(makeBurrow()), { fs: fakeFs().fs, exec: fakeExec().exec }),
+			fs: fakeFs().fs,
+			exec: fakeExec().exec,
+		});
+
+		expect(result.failureReason).toBe("spawn_failed");
+		// The spawn-class skip applies too: no seeds commit, no branch push.
+		expect(result.seedsCommitted).toBe(false);
+		expect(result.branchPushed).toBe(false);
+	});
+
+	test("a uid-drop mention on a non-system stream never reclassifies (warren-950d)", async () => {
+		// An agent PRINTING the message in stdout prose must not reclassify.
+		await ctx.repos.events.append({
+			runId: ctx.runId,
+			sandboxEventSeq: 1,
+			ts: new Date().toISOString(),
+			kind: "text",
+			stream: "stdout",
+			payload: { text: "agent-entrypoint: uid-drop preflight failed (setpriv exited 127)" },
+		});
+
+		const result = await reapRun({
+			runId: ctx.runId,
+			outcome: "failed",
+			repos: ctx.repos,
+			...reapDeps(fakeBurrowClient(makeBurrow()), { fs: fakeFs().fs, exec: fakeExec().exec }),
+			fs: fakeFs().fs,
+			exec: fakeExec().exec,
+		});
+
+		// stdout text counts as a model turn ⇒ crashed, not spawn_failed.
+		expect(result.failureReason).toBe("crashed");
+	});
+
 	test("matches the node-style spawn ENOENT shape as spawn_failed (warren-4e2a)", async () => {
 		await ctx.repos.events.append({
 			runId: ctx.runId,
