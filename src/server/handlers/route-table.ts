@@ -22,6 +22,7 @@ import {
 } from "./github-app.ts";
 import { healthzHandler, previewConfigHandler, versionHandler, whoamiHandler } from "./meta.ts";
 import { metricsHandler } from "./metrics.ts";
+import { opsOverviewHandler } from "./ops-overview.ts";
 import {
 	cancelPlanRunHandler,
 	createPlanRunHandler,
@@ -90,7 +91,8 @@ interface RouteEntry {
  *   list can't drift from the policy table.
  * - `readPublic` — the demo surface a `WARREN_AUTH=public` spectator sees: the
  *   run / project / agent / plan-run listings and details, the run event stream,
- *   `/whoami` (the caller's own identity), and `/analytics/runs`. Each is served
+ *   `/whoami` (the caller's own identity), `/analytics/runs`, and the reduced
+ *   `GET /ops/overview` snapshot (run counts only). Each is served
  *   through a public projection (pl-b82d steps 14-16) before an instance is
  *   actually exposed; the policy is what makes the projection reachable, not
  *   what makes it safe.
@@ -142,6 +144,15 @@ const ROUTE_TABLE: readonly RouteEntry[] = [
 		build: () => gitHubAppInstalledHandler(),
 	},
 	{ method: "GET", pattern: "/metrics", policy: "readOperator", build: metricsHandler },
+	// pl-7e38 step 12 (warren-d850): one-poll control-plane snapshot for the
+	// Operations dashboard. `readPublic` with a reduced projection — a
+	// spectator sees run counts only (see ./ops-overview.ts).
+	{
+		method: "GET",
+		pattern: "/ops/overview",
+		policy: "readPublic",
+		build: opsOverviewHandler,
+	},
 	// warren-e195: `readPublic`, not `anonymous` — an exempt route gets no actor to name.
 	{ method: "GET", pattern: "/whoami", policy: "readPublic", build: () => whoamiHandler() },
 
@@ -391,6 +402,7 @@ export const API_PREFIXES: readonly string[] = [
 	"/readyz",
 	"/version",
 	"/metrics",
+	"/ops",
 	"/preview",
 	"/plan-runs",
 	"/whoami",
