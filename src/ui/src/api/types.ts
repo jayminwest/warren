@@ -1,6 +1,4 @@
-// Wire-side response shapes for warren's HTTP API.
-//
-// The ENUM VOCABULARY (run / plan-run / preview lifecycle states, the
+// Wire-side response shapes for warren's HTTP API. The ENUM VOCABULARY (run / plan-run / preview lifecycle states, the
 // failure-cause discriminator, run mode, clone kind, event stream) is NOT
 // declared here. It is defined once in `src/core/wire.ts` — warren's
 // dependency-free kernel — and re-exported below, so the UI and the server
@@ -16,6 +14,8 @@
 export {
 	type AgentRow,
 	type AgentSource,
+	EVENT_STREAMS,
+	type EventStream,
 	type ForgeErrorKind,
 	isActivePreviewState,
 	isPullRequestLifecycle,
@@ -360,10 +360,9 @@ export interface RunEvent {
 
 /**
  * One slim line on the global lifecycle stream (`GET /events/stream`,
- * warren-f566). A pure invalidation hint for the list pages — the
- * server carries no replay, so the consumer re-reads its list queries
- * on receipt. `state` is the run's best-known state after the
- * transition, or null when the hook carries no state change.
+ * warren-f566): a pure invalidation hint — the server carries no replay,
+ * so the consumer re-reads its list queries on receipt. `state` is the
+ * run's best-known state after the transition, or null if no change.
  */
 export interface LifecycleStreamNotification {
 	runId: string;
