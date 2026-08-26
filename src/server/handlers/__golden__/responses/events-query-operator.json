@@ -1,0 +1,24 @@
+{
+	"status": 200,
+	"body": {
+		"events": [
+			{
+				"id": 7,
+				"runId": "run-golden",
+				"seq": 12,
+				"ts": "2026-08-27T00:00:00.000Z",
+				"kind": "reap_failed",
+				"stream": "system",
+				"origin": "agent",
+				"payload": {
+					"step": "push",
+					"message": "raw stderr /host/path",
+					"path": "/data/secret"
+				}
+			}
+		],
+		"total": 1,
+		"limit": 100,
+		"offset": 0
+	}
+}
