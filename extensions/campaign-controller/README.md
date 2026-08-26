@@ -124,6 +124,28 @@ its deterministic fake —
   `Retry-After`, malformed envelopes (`respondOnceWith`), and restart
   (`restart()` wipes the non-durable idempotency store while runs survive).
 
+Landed in plan step 7 (warren-2a0a): durable Warren dispatch and restart
+reconciliation —
+
+- [`src/dispatch/dispatcher.ts`](src/dispatch/dispatcher.ts) —
+  `WarrenDispatcher` converts one admitted work item into a Warren run
+  without duplicate paid work. In ONE transaction it reserves the full
+  per-run cap and journals a deterministic `warren_dispatch` action with
+  the exact request digest BEFORE any I/O; the action key is the stable
+  `Idempotency-Key` sent to warren. A confirmed POST persists the run
+  correlation and the only warren call from then on is the safe, retryable
+  `GET /runs/:id` until terminal. An ambiguous POST with no known run
+  settles `uncertain`, moves the work item to `dispatch_uncertain`, creates
+  an attention item, keeps the reservation conservative, and is NEVER
+  re-POSTed — by this process or after a restart. Restart reconciliation
+  (`reconcileAfterRestart`) expires leases, resumes known-run reads to
+  terminal, settles the ACTUAL cost when known (unknown cost keeps the full
+  reservation active), and fails closed every unfinished action with no
+  correlated run. Terminal success records the pushed branch/ref;
+  failure records the structured outcome (`run_failed` + state + failure
+  reason) without advancing. No PR intent is rendered and no GitHub
+  mutation exists here (later steps).
+
 Landed in plan step 9 (warren-323d): read-only upstream PR reconciliation —
 
 - [`src/reconcile/`](src/reconcile/) — `UpstreamPrReconciler` reconciles one
@@ -141,7 +163,7 @@ Landed in plan step 9 (warren-323d): read-only upstream PR reconciliation —
   the reconciler performs no GitHub mutation, dispatch, reply, resolve,
   or rerequest.
 
-Not implemented yet (later pl-91b6 steps): dispatch and reconciliation orchestration, PR-intent journaling, the
+Not implemented yet (later pl-91b6 steps): PR-intent journaling, the
 polling loop, and the CLI. The entrypoint ([`src/index.ts`](src/index.ts))
 is a placeholder that exits `not_implemented`.
 
@@ -158,6 +180,7 @@ src/
   mutations.ts         frozen mutation-flag vocabulary (all false in V0)
   repository-policy.ts V0 repository-policy snapshot schema + validation
   store/     SQLite state store: schema, migrations, action journal, budget, leases
+  dispatch/  durable Warren dispatch + restart reconciliation state machine
   reconcile/ read-only upstream PR reconciliation and attention derivation
   github/    structurally read-only GitHub client, PR-intent renderer,
              dedupe/redaction helpers, and the fake GitHub server

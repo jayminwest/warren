@@ -115,6 +115,27 @@ export class BudgetStore {
 		return this.getReservation(id) as ReservationRow;
 	}
 
+	/** The active-or-settled reservation attached to an action, if any. */
+	getReservationByAction(actionId: string): ReservationRow | null {
+		const row = this.#ctx.db
+			.query("SELECT * FROM budget_reservations WHERE action_id = ? ORDER BY created_at_ms DESC")
+			.get(actionId) as ReservationDbRow | null;
+		return row === null ? null : toReservation(row);
+	}
+
+	/** Bind an existing reservation to the action it funds. */
+	attachReservation(id: string, actionId: string): ReservationRow {
+		const row = this.getReservation(id);
+		if (row === null) throw new StateError(`unknown reservation: ${id}`);
+		if (row.state !== "active") {
+			throw new StateError(`reservation ${id} is ${row.state}; only active reservations attach`);
+		}
+		this.#ctx.db
+			.query("UPDATE budget_reservations SET action_id = ? WHERE id = ?")
+			.run(actionId, id);
+		return this.getReservation(id) as ReservationRow;
+	}
+
 	/** cap − settled spend − active reservations. */
 	availableUsdCents(campaignId: string): number {
 		const cap = this.#campaignCap(campaignId);

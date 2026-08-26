@@ -94,11 +94,22 @@ export class EventStore {
 		return this.getRunLink(input.runId) as RunLinkRow;
 	}
 
+	/** The run link bound to one action, if a confirmed run exists for it. */
+	getRunLinkByAction(actionId: string): RunLinkRow | null {
+		const row = this.#ctx.db
+			.query("SELECT * FROM run_links WHERE action_id = ?")
+			.get(actionId) as RunLinkDbRow | null;
+		return row === null ? null : this.#toRunLink(row);
+	}
+
 	getRunLink(runId: string): RunLinkRow | null {
 		const row = this.#ctx.db
 			.query("SELECT * FROM run_links WHERE run_id = ?")
 			.get(runId) as RunLinkDbRow | null;
-		if (row === null) return null;
+		return row === null ? null : this.#toRunLink(row);
+	}
+
+	#toRunLink(row: RunLinkDbRow): RunLinkRow {
 		return {
 			runId: row.run_id,
 			planRunId: row.plan_run_id,

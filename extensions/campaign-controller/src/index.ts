@@ -41,6 +41,18 @@ export {
 	sha256Hex,
 } from "./digest.ts";
 export {
+	DISPATCH_UNCERTAIN_REASON,
+	type DispatchOutcome,
+	type DispatchOutcomeStatus,
+	type RestartFailClosedEntry,
+	type RestartReconcileResult,
+	type RunReconcileResult,
+	WARREN_DISPATCH_ACTION_TYPE,
+	WarrenDispatcher,
+	type WarrenDispatcherDeps,
+	type WarrenDispatchRequestSpec,
+} from "./dispatch/dispatcher.ts";
+export {
 	BoundaryError,
 	CampaignControllerError,
 	type CampaignControllerErrorCode,

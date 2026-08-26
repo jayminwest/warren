@@ -72,6 +72,7 @@ export type ActionErrorClass =
 	| "ambiguous_response"
 	| "warren_rejected"
 	| "github_rejected"
+	| "run_failed"
 	| "policy_violation"
 	| "unknown";
 
