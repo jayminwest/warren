@@ -132,6 +132,21 @@ export {
 	NO_MUTATIONS,
 } from "./mutations.ts";
 export {
+	PR_INTENT_ACTION_TYPE,
+	PR_INTENT_PROTECTED_PATH_REASON,
+	type PrIntentInput,
+	type PrIntentInvariant,
+	type PrIntentIssueFacts,
+	type PrIntentMachineJson,
+	PrIntentRefusal,
+	type PrIntentResult,
+	type PrIntentSummaryFacts,
+	type PrIntentUpstreamFacts,
+	prIntentActionKey,
+	prIntentMachineJson,
+	renderAndJournalPrIntent,
+} from "./pr-intent/intender.ts";
+export {
 	type AttentionCandidate,
 	type AttentionDerivationInput,
 	type AttentionReason,
