@@ -7,8 +7,8 @@
 	},
 	"source": {
 		"url": "https://raw.githubusercontent.com/openclaw/openclaw/main/CONTRIBUTING.md",
-		"fetchedAt": "2026-08-25T00:00:00.000Z",
-		"sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+		"fetchedAt": "2026-08-26T15:00:00.000Z",
+		"sha256": "fc7b4b2e39552efc20229bb37f624b64969f40cc95a12ebec533daa2c912cfc8"
 	},
 	"stalenessMaxDays": 90,
 	"issueFirstRequired": true,
@@ -16,18 +16,27 @@
 		"required": true,
 		"evidenceRequired": true
 	},
-	"allowedWorkTypes": ["bug-fix", "feature", "docs", "test", "refactor"],
+	"allowedWorkTypes": ["bug-fix", "feature", "docs"],
 	"forbiddenPaths": [
 		".github/workflows/*",
+		".github/CODEOWNERS",
 		"SECURITY.md",
+		"CHANGELOG.md",
 		"COPYING",
 		"package.json"
 	],
-	"protectedPaths": ["docs/CONSTITUTION.md", ".warren/triggers.yaml"],
+	"protectedPaths": [
+		"src/security/*",
+		"src/secrets/*",
+		"scripts/github/*",
+		"pnpm-lock.yaml",
+		"package-lock.json",
+		".gitignore"
+	],
 	"upstreamObservedMaxOpenPrs": 20,
 	"maxOpenPrs": 5,
 	"maxNewPrsPerDay": 2,
-	"requiredChecks": ["ci", "typecheck", "lint"],
+	"requiredChecks": ["openclaw/ci-gate"],
 	"mutations": {
 		"createPullRequest": false,
 		"pushCommits": false,

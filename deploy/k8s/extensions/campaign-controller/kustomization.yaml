@@ -1,0 +1,31 @@
+# Campaign-controller extension (extensions/campaign-controller, plan
+# pl-91b6) — the dry-run-only upstream-contribution controller deployed
+# BESIDE warren in the `warren` namespace. Deliberately NOT part of
+# ../../base: extensions are opt-in, never required infrastructure
+# (docs/design/extensions.md).
+#
+# Deploy with an overlay that pins the real image and generates the
+# campaign-controller-config ConfigMap (manifest.json + policy.json)
+# after creating the Secret imperatively. secrets.yaml documents the
+# required key but is intentionally not rendered by this kustomization
+# (warren-0812).
+#
+# The image (warren-ext-campaign-controller) is built + pushed by CI
+# beside the other warren images (.github/workflows/deploy-gke.yml),
+# and the release deploy rolls an EXISTING Deployment forward to the
+# released SHA via `kubectl set image` — CI never creates the
+# controller and never touches its env, ConfigMap, or Secrets; first
+# deploy stays manual and opt-in, exactly like the judge.
+#
+# Go-live order (RUNBOOK.md §2-§4):
+#   1. apply this (via the live overlay) — the pod idles, CAMPAIGN_ID unset
+#   2. create campaign-controller-secrets (see secrets.yaml)
+#   3. kubectl exec ... manifest import --manifest /app/config/manifest.json \
+#        --policy /app/config/policy.json
+#   4. owner approves: kubectl exec ... approve --campaign <id> --digest <sha256> --by <name>
+#   5. set CAMPAIGN_ID in the live overlay patch and re-apply
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - pvc.yaml
+  - deployment.yaml
