@@ -7,11 +7,11 @@ import { MotionProvider } from "@/components/ui/motion.tsx";
 import { ToastProvider } from "@/components/ui/toast.tsx";
 import { useLifecycleStreamInvalidation } from "@/hooks/use-lifecycle-stream-invalidation.ts";
 import { AgentsPage } from "@/pages/agents.tsx";
+import { DispatchPage } from "@/pages/dispatch.tsx";
 import { EventExplorerPage } from "@/pages/event-explorer.tsx";
 import { InstancePage } from "@/pages/instance.tsx";
 import { LoginPage } from "@/pages/login.tsx";
 import { NewPlanRunPage } from "@/pages/new-plan-run.tsx";
-import { NewRunPage } from "@/pages/new-run.tsx";
 import { OperationsPage } from "@/pages/operations.tsx";
 import { PlanRunDetailPage } from "@/pages/plan-run-detail.tsx";
 import { PlanRunsPage } from "@/pages/plan-runs.tsx";
@@ -96,7 +96,7 @@ export function App() {
 									path="/dispatch"
 									element={
 										<OperatorRoute>
-											<NewRunPage />
+											<DispatchPage />
 										</OperatorRoute>
 									}
 								/>

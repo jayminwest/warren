@@ -154,7 +154,7 @@ export function RunsPage() {
 				description="Agent runs dispatched into isolated sandboxes."
 				actions={
 					<OperatorOnly>
-						<Link to="/runs/new">
+						<Link to="/dispatch">
 							<Button>Dispatch a run</Button>
 						</Link>
 					</OperatorOnly>

@@ -4,6 +4,7 @@
 // router can redirect back to login on the next render pass.
 
 import { readNdjsonStream } from "../../../client/ndjson.ts";
+import type { InstanceFactsResponse } from "./instance-types.ts";
 import type {
 	RunAnalyticsFilter,
 	RunAnalyticsResponse,
@@ -469,6 +470,16 @@ async function streamErrorFromResponse(res: Response): Promise<Error> {
 /* ----------------------------------------------------------------------- */
 /* Meta                                                                     */
 /* ----------------------------------------------------------------------- */
+
+export const instanceApi = {
+	/**
+	 * `GET /instance` — boot-resolved instance facts (warren-2eec). The
+	 * body is an allowlist; spectators get the reduced projection. The
+	 * Dispatch page reads the runtime kind and admission caps off it.
+	 */
+	facts: (signal?: AbortSignal) =>
+		request<InstanceFactsResponse>("/instance", { ...(signal ? { signal } : {}) }),
+};
 
 export const metaApi = {
 	healthz: () => request<{ ok: boolean }>("/healthz"),
