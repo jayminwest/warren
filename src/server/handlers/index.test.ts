@@ -81,6 +81,10 @@ describe("ROUTE_TABLE policy classification", () => {
 		"GET /runs",
 		"GET /runs/:id",
 		"GET /runs/:id/events",
+		// pl-7e38 step 15 (warren-5eec): global events query — each row
+		// rides the same per-event reduction the /runs/:id/events tail
+		// applies, and internal kinds are excluded in SQL (./events-query.ts).
+		"GET /events",
 		"GET /plan-runs",
 		"GET /plan-runs/:id",
 		"GET /plan-runs/:id/events",

@@ -163,7 +163,37 @@ export function eventToNdjson(
 ): string | null {
 	const projected = projectEvent(row, actor);
 	if (projected === null) return null;
-	return `${JSON.stringify({
+	return `${JSON.stringify(toWireEventFields(projected))}\n`;
+}
+
+/** The wire field names one event row carries on JSON surfaces. */
+export interface WireEventFields {
+	readonly id: number;
+	readonly runId: string;
+	readonly seq: number;
+	readonly ts: string;
+	readonly kind: string;
+	readonly stream: string | null;
+	readonly origin: string | null;
+	readonly payload: unknown;
+}
+
+/**
+ * Map one projected event row onto the wire field names. Shared by the
+ * NDJSON tails (`eventToNdjson`) and the global events query
+ * (`GET /events`, warren-5eec) so the two surfaces cannot drift.
+ */
+export function toWireEventFields(projected: {
+	id: number;
+	runId: string;
+	sandboxEventSeq: number;
+	ts: string;
+	kind: string;
+	stream: string | null;
+	origin: string | null;
+	payloadJson: unknown;
+}): WireEventFields {
+	return {
 		id: projected.id,
 		runId: projected.runId,
 		seq: projected.sandboxEventSeq,
@@ -172,5 +202,5 @@ export function eventToNdjson(
 		stream: projected.stream,
 		origin: projected.origin,
 		payload: projected.payloadJson,
-	})}\n`;
+	};
 }

@@ -1,0 +1,37 @@
+{
+	"status": 200,
+	"body": {
+		"events": [
+			{
+				"id": 42,
+				"runId": "run_golden0000000000000",
+				"seq": 7,
+				"ts": "2026-01-01T00:00:06.000Z",
+				"kind": "reap_failed",
+				"stream": null,
+				"origin": "agent",
+				"payload": {
+					"step": "push",
+					"message": "[redacted]"
+				}
+			},
+			{
+				"id": 43,
+				"runId": "run_golden0000000000000",
+				"seq": 8,
+				"ts": "2026-01-01T00:00:06.000Z",
+				"kind": "tool_use",
+				"stream": "stdout",
+				"origin": "agent",
+				"payload": {
+					"input": {
+						"command": "bun test"
+					}
+				}
+			}
+		],
+		"total": 2,
+		"limit": 100,
+		"offset": 0
+	}
+}

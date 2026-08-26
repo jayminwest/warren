@@ -14,6 +14,7 @@ import type { Route, RouteHandler, RoutePolicy, ServerDeps } from "../types.ts";
 import { getAgentHandler, listAgentsHandler } from "./agents.ts";
 import { healAlertHandler } from "./alerts.ts";
 import { readyzHandler } from "./diagnostics.ts";
+import { eventsQueryHandler } from "./events-query.ts";
 import { streamLifecycleEventsHandler } from "./events-stream.ts";
 import {
 	gitHubAppCallbackHandler,
@@ -248,6 +249,11 @@ const ROUTE_TABLE: readonly RouteEntry[] = [
 		build: listDispatchAnalyticsHandler,
 	},
 	{ method: "GET", pattern: "/runs", policy: "readPublic", build: listRunsHandler },
+	// pl-7e38 step 15 (warren-5eec): the global events query for the Event
+	// explorer page. `readPublic` — each row rides the same per-event
+	// reduction `GET /runs/:id/events` applies (./events-query.ts), with
+	// internal kinds excluded in SQL. `?limit/?offset` capped at 500.
+	{ method: "GET", pattern: "/events", policy: "readPublic", build: eventsQueryHandler },
 	// warren-f566: the global lifecycle notification stream (NDJSON, one
 	// `{runId, hook, state, ts}` line per lifecycle transition). The list
 	// pages hold ONE connection per tab and debounce-invalidate their list

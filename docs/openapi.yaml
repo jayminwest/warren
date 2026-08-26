@@ -165,6 +165,25 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
+  /events:
+    get:
+      operationId: eventsQueryHandler
+      tags:
+        - events
+      summary: GET /events
+      responses:
+        '200':
+          description: Successful response.
+        default:
+          description: Error response (see `src/core/errors.ts`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+      description: >-
+        pl-7e38 step 15 (warren-5eec): the global events query for the Event explorer page.
+        `readPublic` — each row rides the same per-event reduction `GET /runs/:id/events` applies
+        (./events-query.ts), with internal kinds excluded in SQL. `?limit/?offset` capped at 500.
   /events/stream:
     get:
       operationId: streamLifecycleEventsHandler

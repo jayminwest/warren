@@ -291,7 +291,7 @@ export function listCostAnalyticsHandler(deps: ServerDeps): RouteHandler {
 
 export function parseAnalyticsDateBound(
 	ctx: { url: URL },
-	name: "from" | "to",
+	name: "from" | "to" | "since" | "until",
 ): string | undefined {
 	const raw = ctx.url.searchParams.get(name);
 	if (raw === null || raw === "") return undefined;
