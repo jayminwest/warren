@@ -163,7 +163,7 @@ describe("every mutation site sits behind the one gate (warren-f53e)", () => {
 		// removed in the deletion pass (warren-6fcd), so the Agents page no
 		// longer carries an admin mutation control.
 		expect(read("pages", "projects.tsx")).toMatch(
-			/<OperatorOnly capability="admin">\s*<AddProjectForm/,
+			/<OperatorOnly capability="admin">\s*<Button size="sm" onClick=\{\(\) => setAddOpen\(true\)\}>/,
 		);
 		expect(read("pages", "new-plan-run.tsx")).toMatch(/<OperatorOnly capability="admin">/);
 	});
@@ -203,13 +203,16 @@ describe("redacted wire fields render on presence (warren-f53e)", () => {
 		expect(runs).toMatch(/costTotals\.total !== undefined/);
 	});
 
-	test("the agents panel reads the flat metadata that survives projection", () => {
+	test("the agents registry reads the flat metadata that survives projection", () => {
 		const agents = read("pages", "agents.tsx");
 		expect(agents).toMatch(/agent\.provider \?\?/);
 		expect(agents).toMatch(/agent\.model \?\?/);
-		// The rendered envelope (system prompt, canopy paths) is dropped for
-		// a spectator, so its half of the panel is operator-only.
-		expect(agents).toMatch(/<OperatorOnly capability="readOperator">\s*<AgentDefinitionInternals/);
+		// The rendered envelope (system prompt, cost cap) is dropped for a
+		// spectator, so the Direction C registry (warren-db84) reads the
+		// cost cap out of `renderedJson` only under a strict narrowing
+		// guard — a spectator's cell degrades to "—", never a guess.
+		expect(agents).toMatch(/readCostCap/);
+		expect(agents).toMatch(/typeof cap === "number" && Number\.isFinite/);
 	});
 
 	// warren-e274: `REDACTED_RUN_TOTALS_FIELDS` drops `totals.cost` and
@@ -281,12 +284,14 @@ describe("empty states don't point a spectator at a hidden control (warren-b67b)
 		expect(planRuns).toMatch(/useOperatorHint\(/);
 	});
 
-	test("the projects list gates its instruction on `admin`, like AddProjectForm", () => {
+	test("the projects list gates its instruction on `admin`, like the add-project control", () => {
 		// `POST /projects` is `admin`, not `dispatch` (warren-b875) — gating
 		// the copy on `dispatch` would print it for a caller who still can't
-		// see the form.
+		// see the control.
 		const projects = read("pages", "projects.tsx");
-		expect(projects).toMatch(/useOperatorHint\("Add one with a GitHub URL above\.", "admin"\)/);
+		expect(projects).toMatch(
+			/useOperatorHint\("An operator can add one with a GitHub URL\.", "admin"\)/,
+		);
 		expect(projects).toMatch(/description=\{emptyHint\}/);
 	});
 
