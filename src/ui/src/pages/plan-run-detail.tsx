@@ -1,22 +1,35 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CircleStop } from "lucide-react";
 import { useParams } from "react-router-dom";
-import { planRunsApi } from "@/api/client.ts";
-import type { PlanRunRow, RunRow } from "@/api/types.ts";
+import { planRunsApi, projectsApi } from "@/api/client.ts";
+import type { CancelPlanRunResponse, PlanRunDetailResponse } from "@/api/types.ts";
 import { isTerminalPlanRunState } from "@/api/types.ts";
 import { OperatorOnly } from "@/components/operator-only.tsx";
-import { PlanRunStateBadge } from "@/components/plan-run-state-badge.tsx";
 import { Alert } from "@/components/ui/alert.tsx";
-import { Button } from "@/components/ui/button.tsx";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card.tsx";
 import { Spinner } from "@/components/ui/spinner.tsx";
 import { formatError } from "@/lib/format-error.ts";
 import { formatPlanRunFailureReason } from "@/lib/labels.ts";
-import { formatTimestamp, relativeTime } from "@/lib/utils.ts";
-import { PlanRunChildTable } from "./plan-run-detail/child-table.tsx";
-import { formatCostUsd } from "./run-detail.tsx";
+import { ChildWalkPanel } from "./plan-run-detail/child-walk.tsx";
+import { DetailRail } from "./plan-run-detail/detail-rail.tsx";
+import { PLAN_RUN_STATE_COLOR, summarizeCost } from "./plan-runs/walk-state.ts";
 
-const ACTIVE_STATES = new Set<PlanRunRow["state"]>(["queued", "running"]);
+/**
+ * Plan run detail — the Direction C walk inspector (warren-2520 /
+ * pl-7e38 step 8, from docs/ui-revamp/screens/plan-run-detail.jsx).
+ * Child-by-child gate state in the main panel, the source plan
+ * definition + prompt + delivered PRs in the right rail. No summary
+ * cards; the walk is the product.
+ *
+ * Keeps the legacy page's data behavior: one `GET /plan-runs/:id`
+ * round-trip under the `["plan-runs", id]` key (shared with the
+ * inventory's per-row detail fetch), 5s poll while active, and the
+ * Tier-1 lifecycle stream invalidates the key globally
+ * (use-lifecycle-stream-invalidation). The read surface is readPublic,
+ * so a spectator sees the same walk read-only — the only operator
+ * affordance is the Cancel plan run button, which `OperatorOnly` drops.
+ */
+
+const ACTIVE_STATES = new Set<PlanRunDetailResponse["planRun"]["state"]>(["queued", "running"]);
 
 export function PlanRunDetailPage() {
 	const { id = "" } = useParams<{ id: string }>();
@@ -30,6 +43,13 @@ export function PlanRunDetailPage() {
 			if (!data) return 5000;
 			return isTerminalPlanRunState(data.planRun.state) ? false : 5000;
 		},
+	});
+
+	// Same key as the inventory pages: resolves the project git URL for
+	// the hero meta line, falling back to the raw project id.
+	const projects = useQuery({
+		queryKey: ["projects"],
+		queryFn: ({ signal }) => projectsApi.list(signal),
 	});
 
 	const cancel = useMutation({
@@ -49,166 +69,108 @@ export function PlanRunDetailPage() {
 	}
 	if (!detail.data) return null;
 	const { planRun, children, runs } = detail.data;
+
+	const project = projects.data?.projects.find((p) => p.id === planRun.projectId);
+	const projectLabel = project
+		? project.gitUrl.replace(/^https:\/\/github\.com\//, "") || project.gitUrl
+		: planRun.projectId;
 	const canCancel = ACTIVE_STATES.has(planRun.state);
-	const cost = summarizeRunCost(runs);
+	const cost = summarizeCost(runs);
 
 	return (
-		<div className="space-y-6">
-			<header className="flex flex-wrap items-start justify-between gap-3">
-				<div>
-					<div className="flex items-center gap-3">
-						<h1 className="font-mono text-xl font-semibold">{planRun.id}</h1>
-						<PlanRunStateBadge state={planRun.state} />
-						{planRun.state === "failed" && planRun.failureReason !== null ? (
-							// Prose for the visitor, raw reason in the tooltip for the
-							// operator (warren-14fc / #641).
-							<span className="text-xs text-(--color-destructive)" title={planRun.failureReason}>
-								{formatPlanRunFailureReason(planRun.failureReason)}
-							</span>
-						) : null}
-					</div>
-					<p className="mt-1 text-sm text-(--color-muted-foreground)">
-						Plan <span className="font-mono">{planRun.planId}</span> ·{" "}
-						<span className="font-medium">{planRun.agentName}</span> ·{" "}
-						<span className="font-mono">{planRun.projectId}</span>
-					</p>
-				</div>
+		<div className="flex min-h-full flex-col px-6 pb-12 pt-[22px] sm:px-[24px]">
+			<div className="shrink-0 pb-2.5">
+				<span className="font-mono text-[10px] leading-3 text-(--color-text-3)">
+					PLAN RUNS / {id.toUpperCase()}
+				</span>
+			</div>
+
+			<header className="flex shrink-0 flex-wrap items-center gap-3 pb-5">
+				<h1 className="font-mono text-[16px] leading-5 font-medium text-(--color-text)">{id}</h1>
+				<StateLabel state={planRun.state} />
+				{planRun.planId !== null ? <PlanChip planId={planRun.planId} /> : null}
+				<span className="text-[11px] leading-[14px] text-(--color-text-2)">
+					{projectLabel} · {planRun.agentName} · {planRun.trigger}
+				</span>
+				<div className="min-w-0 flex-1" />
 				{canCancel ? (
 					<OperatorOnly>
 						<div className="flex flex-col items-end gap-1">
-							<Button
-								variant="destructive"
+							<button
+								type="button"
 								onClick={() => cancel.mutate()}
 								disabled={cancel.isPending}
+								className="flex h-[31px] items-center justify-center gap-[7px] rounded-(--radius-sm) border border-(--color-border-strong) bg-(--color-surface) px-[11px] text-[11px] leading-[14px] font-medium text-(--color-text) disabled:opacity-60"
 							>
-								<CircleStop className="h-4 w-4" />
-								{cancel.isPending ? "Cancelling…" : "Cancel"}
-							</Button>
+								<CircleStop className="h-2 w-2 text-(--color-danger)" aria-hidden />
+								{cancel.isPending ? "Cancelling…" : "Cancel plan run"}
+							</button>
 							<CancelStatus mutation={cancel} />
 						</div>
 					</OperatorOnly>
 				) : null}
 			</header>
 
-			<div className="grid gap-4 md:grid-cols-3">
-				<MetaCard label="Plan">
-					<span className="font-mono text-xs">{planRun.planId}</span>
-				</MetaCard>
-				<MetaCard label="Agent">{planRun.agentName}</MetaCard>
-				<MetaCard label="Project">
-					<span className="font-mono text-xs">{planRun.projectId}</span>
-				</MetaCard>
-				<MetaCard label="Dispatcher">{planRun.dispatcherHandle}</MetaCard>
-				<MetaCard label="Trigger">{planRun.trigger}</MetaCard>
-				<MetaCard label="Children">{children.length}</MetaCard>
-				<MetaCard label="Cost">
-					<span
-						className="font-mono text-xs"
-						title={
-							cost.priced === 0
-								? "No child runs have a recorded cost yet"
-								: `${cost.priced} of ${runs.length} child runs have a recorded cost`
-						}
-					>
-						{cost.priced === 0 ? "—" : formatCostUsd(cost.sum)}
+			{planRun.state === "failed" && planRun.failureReason !== null ? (
+				<Alert variant="danger" title="Walk failed">
+					{/* Prose for the visitor, raw reason in the tooltip for the
+					    operator (warren-14fc / #641). */}
+					<span title={planRun.failureReason}>
+						{formatPlanRunFailureReason(planRun.failureReason)}
 					</span>
-				</MetaCard>
-				<MetaCard label="Started">{formatTimestamp(planRun.startedAt)}</MetaCard>
-				<MetaCard label="Ended">{formatTimestamp(planRun.endedAt)}</MetaCard>
-				<MetaCard label="Duration">{formatDuration(planRun)}</MetaCard>
-				{planRun.providerOverride !== null ? (
-					<MetaCard label="Provider override">
-						<span className="font-mono text-xs">{planRun.providerOverride}</span>
-					</MetaCard>
-				) : null}
-				{planRun.modelOverride !== null ? (
-					<MetaCard label="Model override">
-						<span className="font-mono text-xs">{planRun.modelOverride}</span>
-					</MetaCard>
-				) : null}
-				{planRun.ref !== null ? (
-					<MetaCard label="Ref">
-						<span className="font-mono text-xs">{planRun.ref}</span>
-					</MetaCard>
-				) : null}
-				<MetaCard label="Created">{relativeTime(planRun.createdAt)}</MetaCard>
+				</Alert>
+			) : null}
+
+			<div className="flex min-h-0 flex-1 flex-col gap-4 lg:flex-row">
+				<ChildWalkPanel planRun={planRun} childRows={children} runs={runs} />
+				<DetailRail detail={detail.data} projectLabel={projectLabel} cost={cost} />
 			</div>
-
-			<Card>
-				<CardHeader>
-					<CardTitle>Prompt template</CardTitle>
-				</CardHeader>
-				<CardContent>
-					<pre className="whitespace-pre-wrap break-words rounded-md bg-(--color-muted) p-3 text-sm">
-						{planRun.promptTemplate}
-					</pre>
-				</CardContent>
-			</Card>
-
-			<PlanRunChildTable planChildren={children} runs={runs} />
 		</div>
+	);
+}
+
+function StateLabel({ state }: { state: PlanRunDetailResponse["planRun"]["state"] }) {
+	const color = PLAN_RUN_STATE_COLOR[state];
+	return (
+		<span className="flex items-center gap-[7px]">
+			<span
+				className="h-1.5 w-1.5 shrink-0 rounded-full"
+				style={{ backgroundColor: color }}
+				aria-hidden
+			/>
+			<span className="font-mono text-[10px] leading-3" style={{ color }}>
+				{state}
+			</span>
+		</span>
+	);
+}
+
+function PlanChip({ planId }: { planId: string }) {
+	return (
+		<span className="flex h-5 items-center rounded-(--radius-xs) border border-(--color-primary-border, var(--color-border-strong)) px-1.5 font-mono text-[9px] leading-3 text-(--color-primary)">
+			{planId}
+		</span>
 	);
 }
 
 function CancelStatus({
 	mutation,
 }: {
-	mutation: ReturnType<typeof useMutation<unknown, Error, void>>;
+	mutation: ReturnType<typeof useMutation<CancelPlanRunResponse, Error, void>>;
 }) {
 	if (mutation.isError) {
-		return <p className="text-xs text-(--color-destructive)">{formatError(mutation.error)}</p>;
+		return (
+			<p className="text-[10px] leading-3 text-(--color-danger)">{formatError(mutation.error)}</p>
+		);
 	}
-	if (mutation.isSuccess) {
-		return <p className="text-xs text-emerald-700 dark:text-emerald-300">Cancel forwarded.</p>;
+	if (mutation.isSuccess && mutation.data !== undefined) {
+		return (
+			<p className="text-[10px] leading-3 text-(--color-success)">
+				{mutation.data.alreadyTerminal
+					? "Walk was already terminal."
+					: `Cancel forwarded${mutation.data.cancelledChild !== null ? ` (child ${mutation.data.cancelledChild.childSeq})` : ""}.`}
+			</p>
+		);
 	}
 	return null;
-}
-
-function MetaCard({ label, children }: { label: string; children: React.ReactNode }) {
-	return (
-		<Card>
-			<CardContent className="space-y-1 p-4">
-				<div className="text-xs uppercase tracking-wide text-(--color-muted-foreground)">
-					{label}
-				</div>
-				<div className="text-sm">{children}</div>
-			</CardContent>
-		</Card>
-	);
-}
-
-/**
- * Sum non-null `costUsd` across a plan-run's child runs (warren-2235 /
- * pl-b0c0 step 5). NULL-aware: matches RunsRepo.aggregate's posture so
- * the Cost meta card displays the same number a future server-side
- * rollup would, and the `priced` counter surfaces ghost runs whose cost
- * was never recorded.
- */
-function summarizeRunCost(runs: RunRow[]): { sum: number; priced: number } {
-	let sum = 0;
-	let priced = 0;
-	for (const r of runs) {
-		if (r.costUsd !== null) {
-			sum += r.costUsd;
-			priced += 1;
-		}
-	}
-	return { sum, priced };
-}
-
-function formatDuration(planRun: PlanRunRow): string {
-	if (planRun.startedAt === null) return "—";
-	const start = Date.parse(planRun.startedAt);
-	if (Number.isNaN(start)) return "—";
-	const endRaw = planRun.endedAt ?? new Date().toISOString();
-	const end = Date.parse(endRaw);
-	if (Number.isNaN(end)) return "—";
-	const ms = end - start;
-	if (ms < 0) return "—";
-	const sec = Math.floor(ms / 1000);
-	if (sec < 60) return `${sec}s`;
-	const min = Math.floor(sec / 60);
-	if (min < 60) return `${min}m ${sec % 60}s`;
-	const hr = Math.floor(min / 60);
-	return `${hr}h ${min % 60}m`;
 }

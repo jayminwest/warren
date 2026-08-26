@@ -11,7 +11,7 @@ import { EmptyState } from "@/components/ui/empty-state.tsx";
 import { Spinner } from "@/components/ui/spinner.tsx";
 import { formatError } from "@/lib/format-error.ts";
 import { cn } from "@/lib/utils.ts";
-import { formatCostUsd } from "@/pages/run-detail.tsx";
+import { formatCostUsd } from "@/pages/run-detail-format.ts";
 import { RunsTable } from "@/pages/runs/runs-table.tsx";
 
 /**

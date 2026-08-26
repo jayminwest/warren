@@ -1,5 +1,5 @@
 import type { RunRow } from "@/api/types.ts";
-import { formatCostUsd } from "@/pages/run-detail.tsx";
+import { formatCostUsd } from "@/pages/run-detail-format.ts";
 
 /**
  * Formatting helpers for the Direction C Runs inventory

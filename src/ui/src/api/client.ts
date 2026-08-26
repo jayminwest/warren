@@ -5,6 +5,7 @@
 
 import { readNdjsonStream } from "../../../client/ndjson.ts";
 import type { InstanceFactsResponse } from "./instance-types.ts";
+import type { OpsOverviewResponse } from "./ops-types.ts";
 import type {
 	RunAnalyticsFilter,
 	RunAnalyticsResponse,
@@ -18,6 +19,7 @@ import type {
 	CreatePlanRunInput,
 	CreatePlanRunResponse,
 	CreateRunInput,
+	EventStream,
 	LifecycleStreamNotification,
 	ListRunsResponse,
 	PlanRunDetailResponse,
@@ -169,6 +171,11 @@ export const agentsApi = {
 export const projectsApi = {
 	list: (signal?: AbortSignal) =>
 		request<{ projects: ProjectRow[] }>("/projects", { ...(signal ? { signal } : {}) }),
+	/** Bare-row envelope, matching the SDK's `getProject()` (warren-435b). */
+	get: (id: string, signal?: AbortSignal) =>
+		request<ProjectRow>(`/projects/${encodeURIComponent(id)}`, {
+			...(signal ? { signal } : {}),
+		}),
 	create: (input: { gitUrl: string; defaultBranch?: string }) =>
 		request<ProjectRow>("/projects", { method: "POST", body: input }),
 	delete: (id: string) =>
@@ -219,6 +226,65 @@ export const projectsApi = {
 		request<ReadyPlansResponse>(`/projects/${encodeURIComponent(id)}/ready-plans`, {
 			...(signal ? { signal } : {}),
 		}),
+};
+
+/* ----------------------------------------------------------------------- */
+/* Event explorer (`GET /events`, pl-7e38 step 15 / warren-5eec)          */
+/* ----------------------------------------------------------------------- */
+
+/** One event row on the global query — the same eight-key wire shape the per-run NDJSON stream emits, as JSON. */
+export interface EventExplorerRow {
+	id: number;
+	runId: string;
+	seq: number;
+	ts: string;
+	kind: string;
+	stream: string | null;
+	origin: string | null;
+	payload: unknown;
+}
+
+/** Response envelope of `GET /events` — one bounded page plus the filtered total. */
+export interface EventsListResponse {
+	events: EventExplorerRow[];
+	total: number;
+	limit: number;
+	offset: number;
+}
+
+export interface EventsQueryFilterUI {
+	/** Run id — rides `events_run_seq_idx`. */
+	runId?: string;
+	/** Project id — inner join through `runs`. */
+	projectId?: string;
+	/** Exact event kind (open string: the harness vocabulary). */
+	kind?: string;
+	/** One of the canonical `EVENT_STREAMS` (server-validated). */
+	stream?: EventStream;
+	/** Inclusive lower bound on `ts` (ISO8601). */
+	since?: string;
+	/** Inclusive upper bound on `ts` (ISO8601). */
+	until?: string;
+	limit?: number;
+	offset?: number;
+}
+
+export const eventsApi = {
+	list: (filter: EventsQueryFilterUI = {}, signal?: AbortSignal) => {
+		const params = new URLSearchParams();
+		if (filter.runId) params.set("run", filter.runId);
+		if (filter.projectId) params.set("project", filter.projectId);
+		if (filter.kind) params.set("kind", filter.kind);
+		if (filter.stream) params.set("stream", filter.stream);
+		if (filter.since) params.set("since", filter.since);
+		if (filter.until) params.set("until", filter.until);
+		if (filter.limit !== undefined) params.set("limit", String(filter.limit));
+		if (filter.offset !== undefined) params.set("offset", String(filter.offset));
+		const qs = params.toString();
+		return request<EventsListResponse>(`/events${qs.length > 0 ? `?${qs}` : ""}`, {
+			...(signal ? { signal } : {}),
+		});
+	},
 };
 
 /* ----------------------------------------------------------------------- */
@@ -468,6 +534,20 @@ async function streamErrorFromResponse(res: Response): Promise<Error> {
 }
 
 /* ----------------------------------------------------------------------- */
+/* ----------------------------------------------------------------------- */
+/* Ops overview (pl-7e38 step 12 / warren-d850)                            */
+/* ----------------------------------------------------------------------- */
+
+export const opsApi = {
+	/**
+	 * One-poll control-plane snapshot behind the Operations page
+	 * (pl-7e38 step 13). Spectators get the reduced projection — the
+	 * envelope's operator sections arrive undefined, never zero.
+	 */
+	overview: (signal?: AbortSignal) =>
+		request<OpsOverviewResponse>("/ops/overview", { ...(signal ? { signal } : {}) }),
+};
+
 /* Meta                                                                     */
 /* ----------------------------------------------------------------------- */
 

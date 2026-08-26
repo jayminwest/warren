@@ -53,7 +53,7 @@ describe("plot surface is gone from the UI (warren-1f12)", () => {
 	});
 
 	test("RunDetail and PlanRunDetail render no Plot MetaCard", () => {
-		const runDetail = readFileSync(join(UI_SRC, "pages", "run-detail.tsx"), "utf8");
+		const runDetail = readFileSync(join(UI_SRC, "pages", "run-detail", "index.tsx"), "utf8");
 		const planRunDetail = readFileSync(join(UI_SRC, "pages", "plan-run-detail.tsx"), "utf8");
 		for (const src of [runDetail, planRunDetail]) {
 			expect(src).not.toMatch(/PlotMetaCardContent/);
