@@ -78,6 +78,9 @@ describe("ROUTE_TABLE policy classification", () => {
 		// pl-7e38 step 12 (warren-d850): run-counts-only reduced projection —
 		// spend/delivery/interventions/services are stripped (./ops-overview.ts).
 		"GET /ops/overview",
+		// pl-7e38 step 15 (warren-5eec): per-row `projectEvent` reduction —
+		// exactly what the per-run public stream shows for each row.
+		"GET /events",
 		"GET /runs",
 		"GET /runs/:id",
 		"GET /runs/:id/events",

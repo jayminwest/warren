@@ -161,7 +161,7 @@ describe("every mutation site sits behind the one gate (warren-f53e)", () => {
 		// removed in the deletion pass (warren-6fcd), so the Agents page no
 		// longer carries an admin mutation control.
 		expect(read("pages", "projects.tsx")).toMatch(
-			/<OperatorOnly capability="admin">\s*<AddProjectForm/,
+			/<OperatorOnly capability="admin">\s*<Button size="sm" onClick=\{\(\) => setAddOpen\(true\)\}>/,
 		);
 		expect(read("pages", "new-plan-run.tsx")).toMatch(/<OperatorOnly capability="admin">/);
 	});
@@ -276,12 +276,14 @@ describe("empty states don't point a spectator at a hidden control (warren-b67b)
 		}
 	});
 
-	test("the projects list gates its instruction on `admin`, like AddProjectForm", () => {
+	test("the projects list gates its instruction on `admin`, like the add-project control", () => {
 		// `POST /projects` is `admin`, not `dispatch` (warren-b875) — gating
 		// the copy on `dispatch` would print it for a caller who still can't
-		// see the form.
+		// see the control.
 		const projects = read("pages", "projects.tsx");
-		expect(projects).toMatch(/useOperatorHint\("Add one with a GitHub URL above\.", "admin"\)/);
+		expect(projects).toMatch(
+			/useOperatorHint\("An operator can add one with a GitHub URL\.", "admin"\)/,
+		);
 		expect(projects).toMatch(/description=\{emptyHint\}/);
 	});
 

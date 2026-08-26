@@ -151,7 +151,7 @@ function parseRunsSort(ctx: { url: URL }): { sort: "started" | "cost"; dir: "asc
  * end (no opaque cursor — the predicates here are stable + the
  * `runs.id` tiebreaker in `orderByClause` keeps the order total).
  */
-function parseRunsPagination(ctx: { url: URL }): { limit: number; offset: number } {
+export function parseRunsPagination(ctx: { url: URL }): { limit: number; offset: number } {
 	const rawLimit = ctx.url.searchParams.get("limit");
 	const rawOffset = ctx.url.searchParams.get("offset");
 	let limit = 100;
@@ -289,10 +289,7 @@ export function listCostAnalyticsHandler(deps: ServerDeps): RouteHandler {
 	};
 }
 
-export function parseAnalyticsDateBound(
-	ctx: { url: URL },
-	name: "from" | "to",
-): string | undefined {
+export function parseAnalyticsDateBound(ctx: { url: URL }, name: string): string | undefined {
 	const raw = ctx.url.searchParams.get(name);
 	if (raw === null || raw === "") return undefined;
 	const d = new Date(raw);
