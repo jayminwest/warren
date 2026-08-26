@@ -169,6 +169,11 @@ export const agentsApi = {
 export const projectsApi = {
 	list: (signal?: AbortSignal) =>
 		request<{ projects: ProjectRow[] }>("/projects", { ...(signal ? { signal } : {}) }),
+	/** Bare-row envelope, matching the SDK's `getProject()` (warren-435b). */
+	get: (id: string, signal?: AbortSignal) =>
+		request<ProjectRow>(`/projects/${encodeURIComponent(id)}`, {
+			...(signal ? { signal } : {}),
+		}),
 	create: (input: { gitUrl: string; defaultBranch?: string }) =>
 		request<ProjectRow>("/projects", { method: "POST", body: input }),
 	delete: (id: string) =>
