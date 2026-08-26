@@ -20,7 +20,7 @@ import { useEventStream } from "@/hooks/use-event-stream.ts";
 import { formatError } from "@/lib/format-error.ts";
 import { formatPullRequestLifecycle } from "@/lib/labels.ts";
 import { formatTimestamp, relativeTime } from "@/lib/utils.ts";
-import type { NewRunRouteState } from "@/pages/new-run.tsx";
+import type { DispatchRouteState } from "@/pages/dispatch.tsx";
 import { CostCard } from "@/pages/run-detail-cost.tsx";
 import { EventTail } from "@/pages/run-detail-events.tsx";
 import { extractReapSummary, isBridgeStalled } from "@/pages/run-detail-format.ts";
@@ -222,13 +222,13 @@ export function RunDetailPage() {
 								<Button
 									variant="outline"
 									onClick={() =>
-										navigate("/runs/new", {
+										navigate("/dispatch", {
 											state: {
 												cloneFromRunId: r.id,
 												agent: r.agentName,
 												project: r.projectId ?? undefined,
 												prompt: r.prompt,
-											} satisfies NewRunRouteState,
+											} satisfies DispatchRouteState,
 										})
 									}
 								>
@@ -238,13 +238,13 @@ export function RunDetailPage() {
 								<Button
 									variant="outline"
 									onClick={() =>
-										navigate("/runs/new", {
+										navigate("/dispatch", {
 											state: {
 												continueFromRunId: r.id,
 												agent: r.agentName,
 												project: r.projectId ?? undefined,
 												prompt: r.prompt,
-											} satisfies NewRunRouteState,
+											} satisfies DispatchRouteState,
 										})
 									}
 								>

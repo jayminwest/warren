@@ -52,7 +52,6 @@ export function useLifecycleStreamInvalidation(): void {
 				debounce = undefined;
 				void queryClient.invalidateQueries({ queryKey: ["runs"] });
 				void queryClient.invalidateQueries({ queryKey: ["plan-runs"] });
-				void queryClient.invalidateQueries({ queryKey: ["ready-plans"] });
 			}, LIFECYCLE_INVALIDATE_DEBOUNCE_MS);
 		};
 
