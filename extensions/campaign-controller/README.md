@@ -230,9 +230,14 @@ profiles/
 
 ## Development
 
+See [RUNBOOK.md](RUNBOOK.md) for the operator boundary, commands, evidence
+checklist, restart recovery, stop conditions, and the separate explicit
+authorization each live action needs.
+
 ```bash
 bun install        # from THIS directory — the package owns its lockfile
 bun test           # standalone test suite
+bun run acceptance  # the OpenClaw V0 end-to-end dry-run scenario
 bun run typecheck  # strict tsc, noEmit
 bun run lint       # biome check src
 ```

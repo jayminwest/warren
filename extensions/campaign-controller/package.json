@@ -8,6 +8,7 @@
 	"scripts": {
 		"start": "bun run src/cli/main.ts",
 		"test": "bun test",
+		"acceptance": "bun test src/acceptance/openclaw-v0.e2e.test.ts",
 		"typecheck": "tsc --noEmit -p tsconfig.json",
 		"lint": "biome check src"
 	},
