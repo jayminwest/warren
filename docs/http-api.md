@@ -7,7 +7,7 @@ This page enumerates every HTTP route registered by warren's `Bun.serve` router.
 
 To refresh: `bun run gen:docs`. To check (CI mode): `bun run gen:docs:check`.
 
-Total routes: **47**.
+Total routes: **48**.
 
 ## /agents
 
@@ -50,6 +50,12 @@ Total routes: **47**.
 | Method | Pattern | Handler | Notes |
 | --- | --- | --- | --- |
 | `GET` | `/healthz` | `healthzHandler` |  |
+
+## /instance
+
+| Method | Pattern | Handler | Notes |
+| --- | --- | --- | --- |
+| `GET` | `/instance` | `instanceFactsHandler` | warren-2eec: read-only instance facts for the operator console. The body is a boot facts allowlist; spectators get the reduced projection (src/instance/facts.ts). Never secrets or connection strings. |
 
 ## /metrics
 
