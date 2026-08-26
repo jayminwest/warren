@@ -101,6 +101,24 @@ patches:
       metadata:
         name: warren-openrouter-key
         namespace: warren-runs
+  # The live warren-data volume was expanded to 15Gi under disk pressure, and
+  # Kubernetes forbids shrinking a bound PVC — an apply of the base's 5Gi
+  # request fails with "field can not be less than status.capacity" and blocks
+  # the whole deploy (warren-3d37, first seen on the warren-950d rollout). The
+  # overlay must track the live size. Base keeps 5Gi for fresh self-hosts.
+  - target:
+      kind: PersistentVolumeClaim
+      name: warren-data
+    patch: |
+      apiVersion: v1
+      kind: PersistentVolumeClaim
+      metadata:
+        name: warren-data
+        namespace: warren
+      spec:
+        resources:
+          requests:
+            storage: 15Gi
   # GCE external Application LB exposure (warren-682a). The host below is a
   # PLACEHOLDER — gke-live patches it (and the ManagedCertificate domain) to
   # the real hostname. The static-IP name refers to a reserved *global*

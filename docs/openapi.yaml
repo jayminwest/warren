@@ -21,6 +21,8 @@ tags:
     description: '`/events` routes.'
   - name: github-app
     description: '`/github-app` routes.'
+  - name: instance
+    description: '`/instance` routes.'
   - name: meta
     description: Liveness, readiness, and version.
   - name: metrics
@@ -247,6 +249,25 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
+  /instance:
+    get:
+      operationId: instanceFactsHandler
+      tags:
+        - instance
+      summary: GET /instance
+      responses:
+        '200':
+          description: Successful response.
+        default:
+          description: Error response (see `src/core/errors.ts`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+      description: >-
+        warren-2eec: read-only instance facts for the operator console. The body is a boot facts
+        allowlist; spectators get the reduced projection (src/instance/facts.ts). Never secrets or
+        connection strings.
   /metrics:
     get:
       operationId: metricsHandler
