@@ -3,53 +3,115 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { agentsApi, projectsApi, runsApi } from "@/api/client.ts";
+import type { RunRow } from "@/api/types.ts";
 import { OperatorOnly, useOperatorHint } from "@/components/operator-only.tsx";
-import { StateBadge } from "@/components/state-badge.tsx";
 import { Alert } from "@/components/ui/alert.tsx";
 import { Button } from "@/components/ui/button.tsx";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card.tsx";
 import { EmptyState } from "@/components/ui/empty-state.tsx";
-import { FilterPill } from "@/components/ui/filter-pill.tsx";
-import { FadeInItem, StaggerList } from "@/components/ui/motion.tsx";
-import { PageHeader } from "@/components/ui/page-header.tsx";
-import { responsiveCardHeaderRow } from "@/components/ui/responsive.ts";
-import { SortableTableHead } from "@/components/ui/sortable-table-head.tsx";
 import { Spinner } from "@/components/ui/spinner.tsx";
-import {
-	Table,
-	TableBody,
-	TableCell,
-	TableHead,
-	TableHeader,
-	TableRow,
-} from "@/components/ui/table.tsx";
 import { formatError } from "@/lib/format-error.ts";
-import { relativeTime } from "@/lib/utils.ts";
-import { formatCostUsd } from "./run-detail.tsx";
+import { cn } from "@/lib/utils.ts";
+import { formatCostUsd } from "@/pages/run-detail.tsx";
+import { RunsTable } from "@/pages/runs/runs-table.tsx";
 
-// Cost column is on by default (warren-a7ec): pi runs are the common
-// runtime today and hydrate `costUsd` via in-stream extraction
-// (warren-17a4), so the column carries signal for most installs. The
-// toggle remains as a hide option for operators who want to recover the
-// horizontal space; localStorage persists the choice.
-const COST_COLUMN_LS_KEY = "warren.runsList.showCostColumn";
-// warren-ee50 / pl-b0c0 step 1: page size + offset persist in
-// localStorage so the operator's chosen window survives a refresh.
-// `offset` is intentionally NOT persisted — a stale offset can land
-// past the end of the result set after the row count shrinks, and
-// resetting to page 1 on reload is the conservative default.
+/**
+ * Runs — the Direction C workload inventory (warren-9e87 / pl-7e38
+ * step 3), translated from docs/ui-revamp/screens/runs.jsx: a filter
+ * strip plus a dense run index table. No summary cards — the table is
+ * the product. Colors come only from token variables; operator
+ * affordances (Dispatch run) ride OperatorOnly so the spectator
+ * projection stays read-only.
+ *
+ * Refresh behavior is unchanged from the legacy page (warren-f566):
+ * the global lifecycle stream invalidates the ["runs"] query family;
+ * this page keeps a 45s fallback poll.
+ */
+
+// warren-ee50: page size persists in localStorage; offset deliberately
+// does not (a stale offset can land past the end of a shrunken set).
 const PAGE_SIZE_LS_KEY = "warren.runsList.pageSize";
 const PAGE_SIZE_OPTIONS: readonly number[] = [25, 50, 100, 200];
 const DEFAULT_PAGE_SIZE = 50;
 
-type Filter = "all" | { kind: "agent"; value: string } | { kind: "project"; value: string };
-type SortKey = "started" | "cost";
-type SortDir = "asc" | "desc";
+/** State filter values. "active" = running + queued (the export's chip). */
+const STATE_FILTERS = [
+	"all",
+	"active",
+	"running",
+	"queued",
+	"succeeded",
+	"failed",
+	"cancelled",
+] as const;
+type StateFilter = (typeof STATE_FILTERS)[number];
+
+type AgentFilter = "all" | string;
+type ProjectFilter = "all" | string;
+type TriggerFilter = "all" | string;
+
+interface PageFilters {
+	state: StateFilter;
+	agent: AgentFilter;
+	project: ProjectFilter;
+	trigger: TriggerFilter;
+	search: string;
+}
+
+const NO_FILTERS: PageFilters = {
+	state: "all",
+	agent: "all",
+	project: "all",
+	trigger: "all",
+	search: "",
+};
+
+function matchesStateFilter(state: RunRow["state"], filter: StateFilter): boolean {
+	if (filter === "all") return true;
+	if (filter === "active") return state === "running" || state === "queued";
+	return state === filter;
+}
+
+/**
+ * Filter-bar control chrome from the export: bg, border, 27px height,
+ * 10px quiet text. The state/trigger/search filters run client-side
+ * over the loaded window (the list API takes no state/trigger param);
+ * agent/project filters push to the server via the list query params.
+ */
+function FilterSelect({
+	label,
+	value,
+	onChange,
+	options,
+	title,
+}: {
+	label: string;
+	value: string;
+	onChange: (value: string) => void;
+	options: { value: string; label: string }[];
+	title?: string;
+}) {
+	return (
+		<select
+			aria-label={label}
+			title={title}
+			value={value}
+			onChange={(e) => onChange(e.target.value)}
+			className={cn(
+				"h-[27px] rounded-(--radius-sm) border border-(--color-border) bg-(--color-bg) px-2 text-[10px] leading-3 text-(--color-text-2)",
+				value !== "all" && "border-(--color-border-strong)",
+			)}
+		>
+			{options.map((o) => (
+				<option key={o.value} value={o.value}>
+					{o.label}
+				</option>
+			))}
+		</select>
+	);
+}
 
 export function RunsPage() {
-	const [filter, setFilter] = useState<Filter>("all");
-	const [sort, setSort] = useState<SortKey>("started");
-	const [dir, setDir] = useState<SortDir>("desc");
+	const [filters, setFilters] = useState<PageFilters>(NO_FILTERS);
 	const [pageSize, setPageSize] = useState<number>(() => {
 		if (typeof window === "undefined") return DEFAULT_PAGE_SIZE;
 		const stored = window.localStorage.getItem(PAGE_SIZE_LS_KEY);
@@ -58,63 +120,35 @@ export function RunsPage() {
 		return PAGE_SIZE_OPTIONS.includes(n) ? n : DEFAULT_PAGE_SIZE;
 	});
 	const [offset, setOffset] = useState<number>(0);
-	const [showCost, setShowCost] = useState<boolean>(() => {
-		if (typeof window === "undefined") return true;
-		const stored = window.localStorage.getItem(COST_COLUMN_LS_KEY);
-		// Default to on; only "0" hides the column.
-		return stored !== "0";
-	});
-
-	useEffect(() => {
-		if (typeof window === "undefined") return;
-		window.localStorage.setItem(COST_COLUMN_LS_KEY, showCost ? "1" : "0");
-	}, [showCost]);
 
 	useEffect(() => {
 		if (typeof window === "undefined") return;
 		window.localStorage.setItem(PAGE_SIZE_LS_KEY, String(pageSize));
 	}, [pageSize]);
 
-	// Any change to filter / sort / dir / page size resets to page 1.
-	// Otherwise an operator who narrows the result set can land on a
-	// past-the-end offset and see an empty page.
+	// Any filter / page-size change resets to page 1 so a narrowed result
+	// set never leaves the offset past its end.
 	// biome-ignore lint/correctness/useExhaustiveDependencies: offset reset is the intended side effect
 	useEffect(() => {
 		setOffset(0);
-	}, [filter, sort, dir, pageSize]);
+	}, [filters, pageSize]);
 
-	const filterApi = {
-		...(filter === "all" ? {} : { [filter.kind]: filter.value }),
-		sort,
-		dir,
+	const serverFilter = {
+		...(filters.agent !== "all" ? { agent: filters.agent } : {}),
+		...(filters.project !== "all" ? { project: filters.project } : {}),
+		sort: "started" as const,
+		dir: "desc" as const,
 		limit: pageSize,
 		offset,
 	};
 	const runs = useQuery({
-		queryKey: ["runs", filter, sort, dir, pageSize, offset],
-		queryFn: ({ signal }) => runsApi.list(filterApi, signal),
-		// warren-f566: the global lifecycle stream drives invalidation; this
-		// is only the slow fallback for public mode / dropped notifications.
+		queryKey: ["runs", filters.agent, filters.project, pageSize, offset],
+		queryFn: ({ signal }) => runsApi.list(serverFilter, signal),
+		// warren-f566: the lifecycle stream drives invalidation; this is
+		// only the slow fallback for public mode / dropped notifications.
 		refetchInterval: 45_000,
 	});
-	const emptyHint = useOperatorHint("Dispatch one above.");
 
-	// Click cycles: inactive → desc → asc → (back to started/desc default).
-	const toggleSort = (key: SortKey): void => {
-		if (sort !== key) {
-			setSort(key);
-			setDir("desc");
-			return;
-		}
-		if (dir === "desc") {
-			setDir("asc");
-			return;
-		}
-		// asc → reset to default (started/desc)
-		setSort("started");
-		setDir("desc");
-	};
-	const sortState = { key: sort, direction: dir };
 	const agents = useQuery({
 		queryKey: ["agents"],
 		queryFn: ({ signal }) => agentsApi.list({}, signal),
@@ -130,175 +164,160 @@ export function RunsPage() {
 		return m;
 	}, [projects.data]);
 
-	// All-time totals from the server (warren-ee50). Survives pagination
-	// — unlike the prior "sum the visible page" approach. `costTotalUsd` is
-	// absent from a spectator's envelope (warren-946f drops the
-	// instance-wide rollup), so it stays `undefined` rather than 0 and the
-	// tile below renders on presence — a coalesced 0 would read as a real
-	// "$0.00 all-time" headline (warren-f53e).
+	const loadedRows = useMemo(() => runs.data?.runs ?? [], [runs.data]);
+
+	// Client-side window filters (state / trigger / search-by-id-or-seed).
+	const rows = useMemo(() => {
+		const q = filters.search.trim().toLowerCase();
+		return loadedRows.filter((r) => {
+			if (!matchesStateFilter(r.state, filters.state)) return false;
+			if (filters.trigger !== "all" && r.trigger !== filters.trigger) return false;
+			if (q.length > 0) {
+				const seed = r.seedId ?? "";
+				if (!r.id.toLowerCase().includes(q) && !seed.toLowerCase().includes(q)) return false;
+			}
+			return true;
+		});
+	}, [loadedRows, filters.state, filters.trigger, filters.search]);
+
+	const triggerOptions = useMemo(() => {
+		const seen = new Set<string>();
+		for (const r of loadedRows) seen.add(r.trigger);
+		return [
+			{ value: "all", label: "Trigger ⌄" },
+			...[...seen].sort().map((t) => ({ value: t, label: t })),
+		];
+	}, [loadedRows]);
+
 	const totalRuns = runs.data?.total ?? 0;
+	// All-time rollup from the server. `costTotalUsd` is absent from a
+	// spectator's envelope (warren-946f drops the instance-wide rollup), so
+	// it stays `undefined` rather than 0 and the footer figure renders on
+	// presence — a coalesced 0 would read as a real "$0.00 all-time"
+	// (warren-f53e). No summary cards (the design spec): this is a quiet
+	// footer figure, not a tile.
 	const costTotals = {
 		total: runs.data?.costTotalUsd,
 		priced: runs.data?.costPricedCount ?? 0,
 	};
-	const visibleCount = runs.data?.runs.length ?? 0;
+	const anyFilterActive =
+		filters.state !== "all" ||
+		filters.agent !== "all" ||
+		filters.project !== "all" ||
+		filters.trigger !== "all" ||
+		filters.search.trim().length > 0;
+	const emptyHint = useOperatorHint("Dispatch one above.");
+	const visibleCount = rows.length;
 	const rangeStart = visibleCount === 0 ? 0 : offset + 1;
 	const rangeEnd = offset + visibleCount;
 	const hasPrev = offset > 0;
-	const hasNext = offset + visibleCount < totalRuns;
+	const hasNext = offset + loadedRows.length < totalRuns;
 
 	return (
-		<div className="space-y-6">
-			<PageHeader
-				title="Runs"
-				description="Agent runs dispatched into isolated sandboxes."
-				actions={
-					<OperatorOnly>
-						<Link to="/runs/new">
-							<Button>Dispatch a run</Button>
-						</Link>
-					</OperatorOnly>
-				}
-			/>
-
-			<div className="flex flex-wrap items-center justify-between gap-3">
-				<div className="flex flex-wrap items-center gap-2">
-					<label className="ml-1 flex items-center gap-1 text-xs text-(--color-muted-foreground)">
-						<input
-							type="checkbox"
-							checked={showCost}
-							onChange={(e) => setShowCost(e.target.checked)}
-						/>
-						Show cost
-					</label>
+		<div className="flex min-h-full flex-col px-6 pt-[22px] pb-12 sm:px-[24px]">
+			{/* Page header: title + description + operator action (export layout). */}
+			<div className="flex shrink-0 flex-wrap items-start justify-between gap-4 pb-5">
+				<div className="flex min-w-0 flex-col gap-[5px]">
+					<h1 className="text-[20px] leading-6 font-semibold tracking-[-0.025em] text-(--color-text)">
+						Runs
+					</h1>
+					<p className="text-[12px] leading-4 text-(--color-text-2)">
+						Managed agent workloads across every project and runtime.
+					</p>
 				</div>
+				<OperatorOnly>
+					<Link
+						to="/dispatch"
+						className="inline-flex h-[31px] items-center gap-[7px] rounded-(--radius-sm) bg-(--color-primary) px-[11px] text-[11px] leading-[14px] font-medium text-(--color-primary-ink) hover:opacity-90"
+					>
+						＋ Dispatch run
+					</Link>
+				</OperatorOnly>
 			</div>
 
-			<StaggerList className="flex flex-wrap gap-2">
-				<FadeInItem>
-					<FilterPill active={filter === "all"} label="All" onClick={() => setFilter("all")} />
-				</FadeInItem>
-				{agents.data?.agents.map((a) => (
-					<FadeInItem key={`a-${a.name}`}>
-						<FilterPill
-							active={filter !== "all" && filter.kind === "agent" && filter.value === a.name}
-							label={`agent: ${a.name}`}
-							onClick={() => setFilter({ kind: "agent", value: a.name })}
-						/>
-					</FadeInItem>
-				))}
-				{projects.data?.projects.map((p) => (
-					<FadeInItem key={`p-${p.id}`}>
-						<FilterPill
-							active={filter !== "all" && filter.kind === "project" && filter.value === p.id}
-							label={`project: ${p.gitUrl.replace(/^https:\/\/github\.com\//, "")}`}
-							onClick={() => setFilter({ kind: "project", value: p.id })}
-						/>
-					</FadeInItem>
-				))}
-			</StaggerList>
-
-			<Card>
-				<CardHeader className={responsiveCardHeaderRow}>
-					<CardTitle>{totalRuns} runs</CardTitle>
-					{showCost && costTotals.total !== undefined && costTotals.priced > 0 ? (
-						<span
-							className="font-mono text-xs text-(--color-muted-foreground)"
-							title={`${costTotals.priced} of ${totalRuns} runs have a recorded cost (all-time)`}
-						>
-							total: {formatCostUsd(costTotals.total)}
-						</span>
-					) : null}
-				</CardHeader>
-				<CardContent className="p-0">
-					{runs.isLoading ? (
-						<div className="p-6">
-							<Spinner label="Loading runs" />
-						</div>
-					) : runs.isError ? (
-						<div className="p-6">
-							<Alert variant="danger" title="Failed to load runs">
-								{formatError(runs.error)}
-							</Alert>
-						</div>
-					) : runs.data?.runs.length === 0 ? (
-						<EmptyState title="No runs match this filter" description={emptyHint} />
-					) : (
-						<Table>
-							<TableHeader>
-								<TableRow>
-									<TableHead className="whitespace-nowrap">State</TableHead>
-									<TableHead className="whitespace-nowrap">ID</TableHead>
-									<TableHead className="whitespace-nowrap">Agent</TableHead>
-									<TableHead className="whitespace-nowrap">Project</TableHead>
-									<SortableTableHead columnKey="started" sort={sortState} onSort={toggleSort}>
-										Started
-									</SortableTableHead>
-									{showCost ? (
-										<SortableTableHead
-											columnKey="cost"
-											sort={sortState}
-											onSort={toggleSort}
-											align="right"
-										>
-											Cost
-										</SortableTableHead>
-									) : null}
-								</TableRow>
-							</TableHeader>
-							<TableBody>
-								{runs.data?.runs.map((r) => (
-									<TableRow key={r.id}>
-										<TableCell>
-											<StateBadge state={r.state} />
-										</TableCell>
-										<TableCell>
-											<Link
-												to={`/runs/${encodeURIComponent(r.id)}`}
-												className="font-mono text-xs underline-offset-2 hover:underline"
-											>
-												{r.id}
-											</Link>
-											{r.parentRunId !== null ? (
-												<Link
-													to={`/runs/${encodeURIComponent(r.parentRunId)}`}
-													className="block font-mono text-xs text-(--color-muted-foreground) hover:underline"
-												>
-													↪ from {r.parentRunId}
-												</Link>
-											) : null}
-										</TableCell>
-										<TableCell className="whitespace-nowrap">{r.agentName}</TableCell>
-										<TableCell className="whitespace-nowrap font-mono text-xs">
-											{r.projectId === null ? (
-												<span className="italic text-(--color-muted-foreground)">
-													(deleted project)
-												</span>
-											) : (
-												(projectIndex.get(r.projectId) ?? r.projectId)
-											)}
-										</TableCell>
-										<TableCell className="whitespace-nowrap text-(--color-muted-foreground)">
-											{relativeTime(r.startedAt)}
-										</TableCell>
-										{showCost ? (
-											<TableCell className="whitespace-nowrap text-right font-mono text-xs">
-												{r.costUsd !== null ? (
-													formatCostUsd(r.costUsd)
-												) : (
-													<span className="text-(--color-muted-foreground)">—</span>
-												)}
-											</TableCell>
-										) : null}
-									</TableRow>
-								))}
-							</TableBody>
-						</Table>
+			{/* Filter strip (the export's surface bar). */}
+			<div className="flex shrink-0 flex-wrap items-center gap-[7px] rounded-t-(--radius-md) border border-(--color-border) bg-(--color-surface) px-[9px] py-[7px]">
+				<FilterSelect
+					label="State"
+					value={filters.state}
+					onChange={(v) => setFilters((f) => ({ ...f, state: v as StateFilter }))}
+					options={STATE_FILTERS.map((s) => ({ value: s, label: s === "all" ? "State ⌄" : s }))}
+					title="Filters the loaded page client-side; the list API takes no state param yet"
+				/>
+				<FilterSelect
+					label="Agent"
+					value={filters.agent}
+					onChange={(v) => setFilters((f) => ({ ...f, agent: v }))}
+					options={[
+						{ value: "all", label: "Agent ⌄" },
+						...(agents.data?.agents ?? []).map((a) => ({ value: a.name, label: a.name })),
+					]}
+				/>
+				<FilterSelect
+					label="Project"
+					value={filters.project}
+					onChange={(v) => setFilters((f) => ({ ...f, project: v }))}
+					options={[
+						{ value: "all", label: "Project ⌄" },
+						...(projects.data?.projects ?? []).map((p) => ({
+							value: p.id,
+							label: p.gitUrl.replace(/^https:\/\/github\.com\//, ""),
+						})),
+					]}
+				/>
+				<FilterSelect
+					label="Trigger"
+					value={filters.trigger}
+					onChange={(v) => setFilters((f) => ({ ...f, trigger: v }))}
+					options={triggerOptions}
+				/>
+				<button
+					type="button"
+					onClick={() => setFilters(NO_FILTERS)}
+					className={cn(
+						"flex h-[25px] items-center px-2 text-[10px] leading-3 font-medium",
+						anyFilterActive
+							? "text-(--color-text-2) hover:text-(--color-text)"
+							: "text-(--color-text-3) opacity-60",
 					)}
-				</CardContent>
+					disabled={!anyFilterActive}
+				>
+					Clear
+				</button>
+				<span className="flex-1" />
+				<input
+					type="search"
+					aria-label="Filter by run ID or seed"
+					placeholder="Filter by run ID or seed"
+					value={filters.search}
+					onChange={(e) => setFilters((f) => ({ ...f, search: e.target.value }))}
+					className="h-[27px] w-[220px] shrink-0 rounded-(--radius-sm) border border-(--color-border-strong) bg-(--color-bg) px-[9px] text-[10px] leading-3 text-(--color-text-2) placeholder:text-(--color-text-3)"
+				/>
+			</div>
+
+			{/* Inventory table. */}
+			<div className="flex min-h-0 flex-1 flex-col overflow-clip rounded-b-(--radius-md) border border-t-0 border-(--color-border) bg-(--color-surface)">
+				{runs.isLoading ? (
+					<div className="p-6">
+						<Spinner label="Loading runs" />
+					</div>
+				) : runs.isError ? (
+					<div className="p-6">
+						<Alert variant="danger" title="Failed to load runs">
+							{formatError(runs.error)}
+						</Alert>
+					</div>
+				) : visibleCount === 0 ? (
+					<div className="p-6">
+						<EmptyState title="No runs match this filter" description={emptyHint} />
+					</div>
+				) : (
+					<RunsTable rows={rows} projectIndex={projectIndex} />
+				)}
+
 				{totalRuns > 0 ? (
-					<div className="flex flex-wrap items-center justify-between gap-3 border-t border-(--color-border) px-4 py-2">
-						<div className="flex items-center gap-2 text-xs text-(--color-muted-foreground)">
+					<div className="mt-auto flex flex-wrap items-center justify-between gap-3 border-t border-(--color-border) px-4 py-2">
+						<div className="flex items-center gap-2 text-xs text-(--color-text-3)">
 							<label htmlFor="runs-page-size" className="text-xs">
 								Rows per page
 							</label>
@@ -306,7 +325,7 @@ export function RunsPage() {
 								id="runs-page-size"
 								value={pageSize}
 								onChange={(e) => setPageSize(Number.parseInt(e.target.value, 10))}
-								className="rounded border border-(--color-border) bg-(--color-card) px-2 py-1 text-xs"
+								className="rounded border border-(--color-border) bg-(--color-bg) px-2 py-1 text-xs"
 							>
 								{PAGE_SIZE_OPTIONS.map((n) => (
 									<option key={n} value={n}>
@@ -315,7 +334,15 @@ export function RunsPage() {
 								))}
 							</select>
 						</div>
-						<div className="flex items-center gap-3 text-xs text-(--color-muted-foreground)">
+						<div className="flex items-center gap-3 text-xs text-(--color-text-3)">
+							{costTotals.total !== undefined && costTotals.priced > 0 ? (
+								<span
+									className="font-mono text-[10px] leading-3 text-(--color-text-3)"
+									title={`${costTotals.priced} of ${totalRuns} runs have a recorded cost (all-time)`}
+								>
+									total: {formatCostUsd(costTotals.total)}
+								</span>
+							) : null}
 							<span className="font-mono">
 								{rangeStart}–{rangeEnd} of {totalRuns}
 							</span>
@@ -342,7 +369,7 @@ export function RunsPage() {
 						</div>
 					</div>
 				) : null}
-			</Card>
+			</div>
 		</div>
 	);
 }
