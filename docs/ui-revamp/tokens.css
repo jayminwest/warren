@@ -1,0 +1,53 @@
+/*
+ * Direction C operator-console design tokens.
+ * Exported verbatim from the Paper canvas "Warren · Direction C — Operator Console"
+ * (token contentHash d4ac0285). This file is the single theming source for the
+ * UI revamp (plan pl-7e38). Dark tokens are the default; each `--color-lt-*`
+ * token is the light-theme value for the matching dark token. The app applies
+ * light theme by reassigning the base custom properties (for example
+ * `--color-bg: var(--color-lt-bg)`) under a `[data-theme="light"]` or
+ * `prefers-color-scheme` scope — components reference only the base names.
+ */
+:root {
+  --color-bg: oklch(14% 0.008 264);
+  --color-sidebar: oklch(12.8% 0.008 264);
+  --color-surface: oklch(16.5% 0.010 264);
+  --color-surface-raised: oklch(19% 0.011 264);
+  --color-surface-hover: oklch(21% 0.012 264);
+  --color-thead: oklch(15.5% 0.009 264);
+  --color-text: oklch(96% 0.005 264);
+  --color-text-2: oklch(72% 0.012 264);
+  --color-text-3: oklch(53% 0.014 264);
+  --color-border: oklch(24% 0.012 264);
+  --color-border-strong: oklch(31% 0.013 264);
+  --color-primary: oklch(72% 0.110 152);
+  --color-primary-ink: oklch(15% 0.010 152);
+  --color-success: oklch(72% 0.130 150);
+  --color-warning: oklch(80% 0.150 75);
+  --color-danger: oklch(68% 0.210 27);
+  --color-info: oklch(72% 0.140 240);
+  --color-neutral: oklch(70% 0.020 264);
+  --color-lt-bg: oklch(96.8% 0.004 264);
+  --color-lt-sidebar: oklch(98.6% 0.002 264);
+  --color-lt-surface: oklch(100% 0 0);
+  --color-lt-surface-raised: oklch(97.6% 0.004 264);
+  --color-lt-surface-hover: oklch(95.2% 0.006 264);
+  --color-lt-thead: oklch(98% 0.003 264);
+  --color-lt-text: oklch(22% 0.015 264);
+  --color-lt-text-2: oklch(45% 0.015 264);
+  --color-lt-text-3: oklch(58% 0.014 264);
+  --color-lt-border: oklch(90% 0.006 264);
+  --color-lt-border-strong: oklch(82.5% 0.010 264);
+  --color-lt-primary: oklch(54% 0.125 152);
+  --color-lt-primary-ink: oklch(99% 0.002 152);
+  --color-lt-success: oklch(54% 0.125 150);
+  --color-lt-warning: oklch(60% 0.130 75);
+  --color-lt-danger: oklch(54% 0.190 27);
+  --color-lt-info: oklch(52% 0.125 240);
+  --color-lt-neutral: oklch(48% 0.018 264);
+  --font-sans: Inter;
+  --font-mono: JetBrains Mono;
+  --radius-xs: 2px;
+  --radius-sm: 3px;
+  --radius-md: 4px;
+}

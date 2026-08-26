@@ -1,0 +1,134 @@
+# Campaign-controller extension (extensions/campaign-controller, plan
+# pl-91b6) — the dry-run-only upstream-contribution controller deployed
+# BESIDE warren in the `warren` namespace, on the judge topology: one
+# replica, Recreate, its own PVC, warren reached over the in-cluster
+# Service.
+#
+# The container is the operator CLI, wrapped in a tick loop. With
+# CAMPAIGN_ID unset (this template's default) the loop is INERT: it
+# logs an idle line and sleeps — no GitHub read, no warren call, no
+# store write. The live overlay sets CAMPAIGN_ID after the campaign is
+# imported and its digest approved by the owner. One-off admin commands
+# (manifest import, approve, status, journal, attention) run through
+# the same pod:
+#
+#   kubectl -n warren exec deploy/campaign-controller -- \
+#     bun run src/cli/main.ts status --campaign <id>
+#
+# V0 ships no live mode: the GitHub transport has no mutation method
+# and --live/--execute are usage errors (RUNBOOK.md §1). The one
+# spend-capable surface is warren dispatch, and that is gated behind
+# the owner-approved campaign digest, not behind this Deployment.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: campaign-controller
+  namespace: warren
+  labels:
+    app.kubernetes.io/name: warren
+    app.kubernetes.io/component: campaign-controller
+spec:
+  replicas: 1
+  # One replica with one store is a design invariant (controller
+  # split-brain risk, docs/design/campaign-controller.md §18); Recreate
+  # also keeps the RWO PVC from wedging a rollout.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: warren
+      app.kubernetes.io/component: campaign-controller
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: warren
+        app.kubernetes.io/component: campaign-controller
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: campaign-controller
+          image: LOCATION-docker.pkg.dev/PROJECT/warren/warren-ext-campaign-controller:latest
+          imagePullPolicy: IfNotPresent
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              echo "campaign-controller: tick loop starting (interval ${CAMPAIGN_TICK_INTERVAL_SECONDS:-600}s)" >&2
+              while true; do
+                if [ -n "${CAMPAIGN_ID}" ]; then
+                  bun run src/cli/main.ts tick --campaign "${CAMPAIGN_ID}" || echo "campaign-controller: tick exited $?" >&2
+                else
+                  echo "campaign-controller: idle — CAMPAIGN_ID unset (no campaign imported/approved yet)" >&2
+                fi
+                sleep "${CAMPAIGN_TICK_INTERVAL_SECONDS:-600}"
+              done
+          env:
+            # Which campaign this loop ticks. Empty = inert idle loop.
+            # The live overlay sets it to the imported campaign id after
+            # the owner approves the manifest digest.
+            - name: CAMPAIGN_ID
+              value: ""
+            - name: CAMPAIGN_TICK_INTERVAL_SECONDS
+              value: "600"
+            - name: WARREN_BASE_URL
+              value: "http://warren.warren.svc.cluster.local:8080"
+            # Single-token auth (src/server/auth.ts): same shared secret
+            # the judge uses. A controller-scoped credential is a known
+            # gap, same as the judge's (see its secrets.yaml note).
+            - name: WARREN_API_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: warren-secrets
+                  key: warren-api-token
+            # Read-only GitHub credential for the bot account
+            # (warren-run-bot): authenticated polling of the upstream
+            # repo and the bot's participating notifications. Optional:
+            # absent means unauthenticated reads at public rate limits.
+            - name: GITHUB_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: campaign-controller-secrets
+                  key: github-token
+                  optional: true
+            - name: CAMPAIGN_DB_PATH
+              value: "/app/data/campaign.db"
+            # Campaign manifest + policy snapshot arrive as a ConfigMap
+            # (campaign-controller-config) created by the live overlay's
+            # configMapGenerator. Optional mount: the idle loop never
+            # reads these paths, so the template deploys inert without it.
+            - name: CAMPAIGN_MANIFEST_PATH
+              value: "/app/config/manifest.json"
+            - name: CAMPAIGN_POLICY_PATH
+              value: "/app/config/policy.json"
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            readOnlyRootFilesystem: false
+          volumeMounts:
+            - mountPath: /app/data
+              name: data
+            - mountPath: /app/config
+              name: config
+              readOnly: true
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: campaign-controller-data
+        - name: config
+          configMap:
+            name: campaign-controller-config
+            optional: true

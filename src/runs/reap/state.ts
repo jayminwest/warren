@@ -1,5 +1,6 @@
 import type { Repos } from "../../db/repos/index.ts";
 import type { RunFailureReason, RunTerminalState } from "../../db/schema.ts";
+import { UID_DROP_PREFLIGHT_ERROR_PREFIX } from "../../runtime/k8s/agent-uid-drop.ts";
 
 export function isTerminal(state: string): boolean {
 	return state === "succeeded" || state === "failed" || state === "cancelled";
@@ -12,6 +13,8 @@ export function isTerminal(state: string): boolean {
  *
  *   queued on entry  → never_started (bridge never claimed the row)
  *   running, no model-turn output, spawn-exec error on system → spawn_failed
+ *   running, no model-turn output, uid-drop preflight refusal on system
+ *     → spawn_failed (warren-950d)
  *   running, no model-turn output, sandbox error on stderr → sandbox_failed
  *   running, no model-turn output observed → no_model_response
  *   running, model-turn output observed   → crashed
@@ -66,6 +69,27 @@ function isSpawnExecErrorEvent(ev: EventRowLike): boolean {
 }
 
 /**
+ * True for the K8s entrypoint's uid-drop preflight refusal (warren-950d).
+ * The in-pod entrypoint emits it on `stream=system` before ever spawning the
+ * agent (`src/runtime/k8s/agent-uid-drop.ts`), so the run has zero model
+ * turns and — without this arm — collapsed into `no_model_response`, which
+ * reads as a credential/provider fault. It is a spawn-class infrastructure
+ * failure: the agent process was never started. Anchored to the system
+ * stream, which only warren-owned writers reach past the provenance gate.
+ */
+function isUidDropPreflightErrorEvent(ev: EventRowLike): boolean {
+	return (
+		ev.stream === "system" &&
+		eventMessage(ev.payloadJson).startsWith(UID_DROP_PREFLIGHT_ERROR_PREFIX)
+	);
+}
+
+/** Any system-stream witness that the agent process never came into existence. */
+function isSpawnClassFailureEvent(ev: EventRowLike): boolean {
+	return isSpawnExecErrorEvent(ev) || isUidDropPreflightErrorEvent(ev);
+}
+
+/**
  * Read the error body out of a system-stream event payload. The drive
  * loop writes spawn-exec failures as `{ message }`; accept a bare string
  * or a `{ text }` shape too so a writer change degrades gracefully.
@@ -104,7 +128,7 @@ function sawModelTurnEvent(events: readonly EventRowLike[]): boolean {
  */
 export async function detectSpawnExecFailure(repos: Repos, runId: string): Promise<boolean> {
 	const events = await repos.events.listByRun(runId);
-	return !sawModelTurnEvent(events) && events.some(isSpawnExecErrorEvent);
+	return !sawModelTurnEvent(events) && events.some(isSpawnClassFailureEvent);
 }
 
 /** Read the text body out of an event payload (string or `{text}` shape). */
@@ -128,7 +152,9 @@ export async function inferFailureReason(
 	// warren-4e2a: the spawn-exec arm wins over the sandbox arm — a
 	// spawn that never exec'd is an infra fault one level below a sandbox
 	// refusal, and must not read as either a sandbox or a credential fault.
-	if (events.some(isSpawnExecErrorEvent)) return "spawn_failed";
+	// warren-950d: the K8s uid-drop preflight refusal joins it — the
+	// entrypoint refused to spawn the agent at all.
+	if (events.some(isSpawnClassFailureEvent)) return "spawn_failed";
 	const sawSandboxError = events.some(
 		(ev) => ev.stream === "stderr" && SANDBOX_ERROR_LINE.test(eventText(ev.payloadJson)),
 	);

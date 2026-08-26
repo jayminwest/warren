@@ -16,7 +16,7 @@ import { OPENCLAW_UPSTREAM_MAX_OPEN_PRS, validateRepositoryPolicy } from "./repo
 
 const DATA_DIR = new URL("../profiles/", import.meta.url);
 /** Pinned to one day after the committed snapshot was fetched. */
-const PINNED_NOW = Date.parse("2026-08-26T00:00:00.000Z");
+const PINNED_NOW = Date.parse("2026-08-27T00:00:00.000Z");
 
 async function loadGolden(name: string): Promise<unknown> {
 	return Bun.file(new URL(name, DATA_DIR)).json();

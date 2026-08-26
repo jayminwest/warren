@@ -237,6 +237,24 @@ jobs:
           cache-from: type=gha,scope=warren-ext-judge
           cache-to: type=gha,mode=max,scope=warren-ext-judge
 
+      # The campaign-controller extension image
+      # (extensions/campaign-controller, plan pl-91b6). Same contract as
+      # the judge: built from the extension directory ALONE, first deploy
+      # manual via the gitignored gke-live-campaign-controller overlay,
+      # CI only ever rolls an existing Deployment forward.
+      - name: Build + push warren-ext-campaign-controller
+        uses: docker/build-push-action@v7
+        with:
+          context: extensions/campaign-controller
+          file: extensions/campaign-controller/Dockerfile
+          platforms: linux/amd64
+          push: true
+          tags: |
+            ${{ env.AR_BASE }}/warren-ext-campaign-controller:${{ env.TARGET_SHA }}
+            ${{ env.AR_BASE }}/warren-ext-campaign-controller:latest
+          cache-from: type=gha,scope=warren-ext-campaign-controller
+          cache-to: type=gha,mode=max,scope=warren-ext-campaign-controller
+
   deploy:
     needs: build-push
     # Roll GKE forward only when the caller opts in. `inputs.deploy` is set by
@@ -425,6 +443,30 @@ jobs:
           fi
           echo "Verified: warren deployment is running the released SHA ${SHA}."
 
+      # Prove the entrypoint/agent uid split (warren-cb93) can privilege its
+      # setpriv drop on the LIVE cluster with the agent image this run just
+      # built — before any run is dispatched against it (warren-950d). A GKE
+      # node auto-upgrade to containerd 2.x silently broke the split on
+      # 2026-08-25 (capabilities.add lands bounding-only for a non-root
+      # pid 1) and every dispatched run died at the preflight; this gate
+      # turns that class of cluster drift into a red deploy instead. The
+      # canary pod is rendered from the same builders the run pod uses
+      # (scripts/k8s-uid-drop-canary.ts), so the gate cannot drift from
+      # dispatch.
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Verify agent uid-drop split on the live cluster
+        env:
+          SHA: ${{ env.TARGET_SHA }}
+        run: |
+          set -euo pipefail
+          bun install --frozen-lockfile
+          bun run scripts/k8s-uid-drop-canary.ts \
+            --image "${AR_BASE}/warren-agent:${SHA}" \
+            --namespace warren-runs
+
       # The step above proves the Deployment *spec* points at the released
       # image. This one proves the public ingress actually serves it: GET
       # /version is auth-exempt and returns {"version":"X.Y.Z"} straight from
@@ -496,3 +538,27 @@ jobs:
             exit 1
           fi
           echo "Verified: judge deployment is running ${SHA}."
+
+      # Roll the campaign-controller extension Deployment
+      # (extensions/campaign-controller) forward on the same opt-in
+      # contract as the judge above: image only, env/ConfigMap/Secrets
+      # untouched, skip cleanly when the cluster never opted in.
+      - name: Roll campaign-controller extension deployment forward
+        env:
+          SHA: ${{ env.TARGET_SHA }}
+        run: |
+          set -euo pipefail
+          if ! kubectl -n warren get deploy/campaign-controller >/dev/null 2>&1; then
+            echo "No campaign-controller Deployment in the cluster (opt-in extension); skipping."
+            exit 0
+          fi
+          EXPECTED="${AR_BASE}/warren-ext-campaign-controller:${SHA}"
+          kubectl -n warren set image deploy/campaign-controller "campaign-controller=${EXPECTED}"
+          kubectl -n warren rollout status deploy/campaign-controller --timeout=300s
+          ACTUAL=$(kubectl -n warren get deploy/campaign-controller \
+            -o jsonpath='{.spec.template.spec.containers[?(@.name=="campaign-controller")].image}')
+          if [ "${ACTUAL}" != "${EXPECTED}" ]; then
+            echo "::error::Rolled-out campaign-controller image ${ACTUAL} does not match ${EXPECTED}"
+            exit 1
+          fi
+          echo "Verified: campaign-controller deployment is running ${SHA}."

@@ -189,8 +189,8 @@ export type CloneKind = (typeof CLONE_KINDS)[number];
  *     debugging path). Distinct from `no_model_response` (the agent
  *     started but produced nothing) and `never_started` (the bridge
  *     never claimed the row).
- *   - `spawn_failed` (warren-4e2a): the agent PROCESS could not be exec'd at
- *     all (e.g. missing docker CLI); reap skips the seeds commit + branch push.
+ *   - `spawn_failed` (warren-4e2a, warren-950d): the agent PROCESS was never exec'd — a missing
+ *     docker CLI, or the K8s uid-drop preflight refusal; reap skips the seeds commit + push.
  *   - `evicted` (warren-c0cd) means the kubelet evicted the run pod under node
  *     resource pressure (K8s `status.reason=="Evicted"`) — most often
  *     ephemeral-storage exhaustion (the emptyDir workspace outgrowing its

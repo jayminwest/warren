@@ -40,16 +40,19 @@ describe("buildRunPod uid split (warren-cb93)", () => {
 		// The init container materializes the workspace and never spawns the
 		// agent — it keeps the bare drop-ALL posture.
 		expect(init?.securityContext?.capabilities).toEqual({ drop: ["ALL"] });
-		// The agent container's ENTRYPOINT (uid 1000) needs SETUID/SETGID to
-		// setpriv the agent process to WARREN_POD_AGENT_UID, and KILL so the
-		// stdin-hold watchdog can still signal the split-off (cross-uid) agent.
+		expect(init?.securityContext?.allowPrivilegeEscalation).toBe(false);
+		// The ENTRYPOINT (uid 1000) needs SETUID/SETGID in its bounding set
+		// for the image's file-caps setpriv (warren-950d — containerd 2.x
+		// grants capabilities.add bounding-only to a non-root pid 1).
 		expect(agent?.securityContext?.capabilities).toEqual({
 			drop: ["ALL"],
 			add: ["SETUID", "SETGID", "KILL"],
 		});
 		expect(agent?.securityContext?.runAsNonRoot).toBe(true);
 		expect(agent?.securityContext?.runAsUser).toBe(1000);
-		expect(agent?.securityContext?.allowPrivilegeEscalation).toBe(false);
+		// warren-950d: no_new_privs must stay OFF for the entrypoint or the
+		// file caps on setpriv are inert and the split preflight fails.
+		expect(agent?.securityContext?.allowPrivilegeEscalation).toBe(true);
 	});
 
 	test("the agent env carries the uid-drop contract", () => {
@@ -66,5 +69,6 @@ describe("buildRunPod uid split (warren-cb93)", () => {
 		expect(bareNames).not.toContain(ENV_AGENT_RUN_AS_UID);
 		expect(bareNames).not.toContain(ENV_AGENT_RUN_AS_GID);
 		expect(bareAgent?.securityContext?.capabilities).toEqual({ drop: ["ALL"] });
+		expect(bareAgent?.securityContext?.allowPrivilegeEscalation).toBe(false);
 	});
 });
