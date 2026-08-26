@@ -96,7 +96,7 @@ describe("route guards and nav filtering (warren-f53e)", () => {
 	const nav = read("components", "console", "console-nav.ts");
 
 	test("both dispatch forms are wrapped in OperatorRoute", () => {
-		for (const page of ["NewRunPage", "NewPlanRunPage"]) {
+		for (const page of ["DispatchPage", "NewPlanRunPage"]) {
 			expect(app).toMatch(new RegExp(`<OperatorRoute>\\s*<${page} />\\s*</OperatorRoute>`));
 		}
 	});
@@ -128,7 +128,7 @@ describe("route guards and nav filtering (warren-f53e)", () => {
 });
 
 describe("every mutation site sits behind the one gate (warren-f53e)", () => {
-	const GATED_ELSEWHERE = new Set(["refresh-projects-cta.tsx", "new-run.tsx"]);
+	const GATED_ELSEWHERE = new Set(["refresh-projects-cta.tsx", "use-dispatch-state.ts"]); // warren-bbe8: dispatch mutation lives in the Direction C page state hook, route-gated like the legacy new-run form was
 
 	test("no file calls useMutation without importing OperatorOnly", () => {
 		const offenders: string[] = [];
@@ -233,19 +233,17 @@ describe("redacted wire fields render on presence (warren-f53e)", () => {
 		expect(analyticsTypes).toMatch(/costPerMergedPrUsd\?: number \| null/);
 	});
 
-	test("the run-analytics consumers guard the redacted cost fields", () => {
-		const kpi = read("pages", "run-analytics", "kpi-cards.tsx");
-		const tables = read("pages", "run-analytics", "tables.tsx");
-		const tokenStats = read("pages", "run-analytics", "token-stats.tsx");
-		// KpiCards: the `Total cost` card renders only when `cost` is present.
-		expect(kpi).toMatch(/cost !== undefined \?/);
-		expect(kpi).not.toMatch(/totals\.cost\.total/);
-		// Tables: the `Cost` column is omitted when no bucket carries costUsd.
-		expect(tables).toMatch(/buckets\.some\(\(b\) => b\.costUsd !== undefined\)/);
-		expect(tables).toMatch(/b\.costUsd === undefined \? "—" : formatCostUsd/);
-		// TokenStats: same treatment for the `$/1M` column.
-		expect(tokenStats).toMatch(/buckets\.some\(\(b\) => b\.costUsd !== undefined\)/);
-		expect(tokenStats).toMatch(/b\.costUsd === undefined \? "—" : costPer1M/);
+	test("the telemetry consumers guard the redacted cost fields", () => {
+		// warren-7197: the legacy run-analytics chunks are deleted; the
+		// Direction C Telemetry tabs are the consumers now. The metric
+		// strip renders cost/merged PR on presence, and the economics tab
+		// coalesces the redacted bucket figure to "—" rather than NaN.
+		const metrics = read("pages", "telemetry", "telemetry-metrics.tsx");
+		const economics = read("pages", "telemetry", "economics-tab.tsx");
+		expect(metrics).toMatch(/costPerMergedPr === null \|\| costPerMergedPr === undefined/);
+		expect(economics).toMatch(
+			/row\.costPerMergedPrUsd === null \|\| row\.costPerMergedPrUsd === undefined/,
+		);
 	});
 });
 
