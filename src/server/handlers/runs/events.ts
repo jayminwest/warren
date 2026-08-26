@@ -4,7 +4,7 @@ import { ndjsonResponse } from "../../response.ts";
 import { reserveEventStreamSlot } from "../../stream-limits.ts";
 import type { Actor, RouteHandler, ServerDeps } from "../../types.ts";
 import { parseBoolean, parseNonNegativeInt, parsePositiveInt, requireParam } from "../index.ts";
-import { projectEvent } from "./event-projection.ts";
+import { projectedWireEvent, type WireEventRow } from "./event-projection.ts";
 
 export function streamRunEventsHandler(deps: ServerDeps): RouteHandler {
 	return async (ctx) => {
@@ -148,29 +148,8 @@ export function asNdjsonStream<T>(
  * warren-authored internal appends) stays null on the wire — unknown,
  * never folded into a real bucket.
  */
-export function eventToNdjson(
-	row: {
-		id: number;
-		runId: string;
-		sandboxEventSeq: number;
-		ts: string;
-		kind: string;
-		stream: string | null;
-		origin: string | null;
-		payloadJson: unknown;
-	},
-	actor?: Actor,
-): string | null {
-	const projected = projectEvent(row, actor);
+export function eventToNdjson(row: WireEventRow, actor?: Actor): string | null {
+	const projected = projectedWireEvent(row, actor);
 	if (projected === null) return null;
-	return `${JSON.stringify({
-		id: projected.id,
-		runId: projected.runId,
-		seq: projected.sandboxEventSeq,
-		ts: projected.ts,
-		kind: projected.kind,
-		stream: projected.stream,
-		origin: projected.origin,
-		payload: projected.payloadJson,
-	})}\n`;
+	return `${JSON.stringify(projected)}\n`;
 }

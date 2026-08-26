@@ -142,6 +142,59 @@ function sanitizeFailurePayload(payload: unknown): unknown {
 	return out;
 }
 
+/**
+ * The wire shape of one event — the exact keys the NDJSON line and the
+ * JSON `GET /events` row share. One mapping site, two encodings.
+ */
+export interface WireEvent {
+	readonly id: number;
+	readonly runId: string;
+	readonly seq: number;
+	readonly ts: string;
+	readonly kind: string;
+	readonly stream: string | null;
+	readonly origin: string | null;
+	readonly payload: unknown;
+}
+
+/**
+ * Narrow one event row for `actor` and map it onto the eight-key wire
+ * shape. Returns `null` for an event the public projection drops
+ * entirely — the caller omits it from the wire rather than serving a
+ * placeholder. Shared by the per-run NDJSON encoder (`eventToNdjson`)
+ * and the global JSON query (`GET /events`) so the two surfaces cannot
+ * drift (warren-5eec).
+ */
+export function projectedWireEvent<T extends ProjectableEvent & WireEventRow>(
+	row: T,
+	actor: Actor | undefined,
+): WireEvent | null {
+	const projected = projectEvent(row, actor);
+	if (projected === null) return null;
+	return {
+		id: projected.id,
+		runId: projected.runId,
+		seq: projected.sandboxEventSeq,
+		ts: projected.ts,
+		kind: projected.kind,
+		stream: projected.stream,
+		origin: projected.origin,
+		payload: projected.payloadJson,
+	};
+}
+
+/** Structural parent of the rows {@link projectedWireEvent} accepts. */
+export interface WireEventRow {
+	readonly id: number;
+	readonly kind: string;
+	readonly runId: string;
+	readonly sandboxEventSeq: number;
+	readonly ts: string;
+	readonly stream: string | null;
+	readonly origin: string | null;
+	readonly payloadJson: unknown;
+}
+
 /** The shape the projection reads. Structurally satisfied by an `EventRow`. */
 interface ProjectableEvent {
 	readonly kind: string;
