@@ -26,12 +26,17 @@ const DOT_CLASS: Record<AdmissionStatus, string> = {
 
 function ManifestLineRow({ line }: { line: ManifestLine }) {
 	return (
-		<div className={`flex ${line.indent ? "pl-[14px]" : ""}`}>
-			<span className={keyClass}>{line.key}</span>
+		<div className={`flex min-w-0 ${line.indent ? "pl-[14px]" : ""}`}>
+			<span className={`${keyClass} shrink-0`}>{line.key}</span>
 			{line.value !== undefined ? (
 				<>
-					<span className={keyClass}>&nbsp;</span>
-					<span className={valueClass}>{line.value}</span>
+					<span className={`${keyClass} shrink-0`}>&nbsp;</span>
+					<span
+						className={`${valueClass} min-w-0 truncate`}
+						{...(line.value ? { title: line.value } : {})}
+					>
+						{line.value}
+					</span>
 				</>
 			) : null}
 		</div>
@@ -82,7 +87,7 @@ export function ResolvedManifest(props: ResolvedManifestProps) {
 	const admission = buildAdmissionRows(props.project, props.facts);
 
 	return (
-		<aside className="flex w-[350px] shrink-0 flex-col overflow-clip rounded-(--radius-md) border border-(--color-border) bg-(--color-surface)">
+		<aside className="flex w-full shrink-0 flex-col overflow-clip rounded-(--radius-md) border border-(--color-border) bg-(--color-surface) lg:w-[350px]">
 			<div className="flex h-[39px] shrink-0 items-center border-b border-(--color-border) px-3">
 				<h2 className="text-[11px] font-semibold leading-[14px] text-(--color-text)">
 					Resolved manifest
