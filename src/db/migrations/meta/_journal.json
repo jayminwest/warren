@@ -379,6 +379,13 @@
 			"when": 1787850244312,
 			"tag": "0053_futuristic_blur",
 			"breakpoints": true
+		},
+		{
+			"idx": 54,
+			"version": "6",
+			"when": 1787855601342,
+			"tag": "0054_young_gunslinger",
+			"breakpoints": true
 		}
 	]
 }

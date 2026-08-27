@@ -15,7 +15,13 @@
 import { digestOf } from "./digest.ts";
 import { ValidationError } from "./errors.ts";
 import { checkRepoCoordinates, type RepoCoordinates } from "./github-grammar.ts";
-import { MUTATION_FLAGS, type MutationFlag, type Mutations, NO_MUTATIONS } from "./mutations.ts";
+import {
+	EXECUTABLE_MUTATION_FLAGS,
+	MUTATION_FLAGS,
+	type MutationFlag,
+	type Mutations,
+	NO_MUTATIONS,
+} from "./mutations.ts";
 import {
 	asObject,
 	rejectUnknownKeys,
@@ -275,14 +281,22 @@ function requireMutations(root: ReturnType<typeof asObject>): Mutations {
 			);
 		}
 	}
-	const enabled = MUTATION_FLAGS.filter((flag) => raw[flag] === true) as MutationFlag[];
-	if (enabled.length > 0) {
-		throw new ValidationError(
-			`mutation flag(s) enabled at 'repository policy.mutations': ${enabled.join(", ")} — V0 is dry-run only; every mutation flag must be false`,
-		);
-	}
 	for (const flag of MUTATION_FLAGS) {
 		requireBoolean(raw, flag, "repository policy.mutations");
 	}
-	return NO_MUTATIONS;
+	// Phase 2 (warren-84da): `createPullRequest` is the single executable
+	// mutation. Every other flag stays schema-refused until its own phase
+	// lands — the schema change is the reviewable event (§7.1).
+	const enabled = MUTATION_FLAGS.filter(
+		(flag) => raw[flag] === true && !EXECUTABLE_MUTATION_FLAGS.includes(flag),
+	) as MutationFlag[];
+	if (enabled.length > 0) {
+		throw new ValidationError(
+			`mutation flag(s) enabled at 'repository policy.mutations': ${enabled.join(", ")} — no executable code path exists for them; only ${EXECUTABLE_MUTATION_FLAGS.join(", ")} may be enabled (warren-84da)`,
+		);
+	}
+	if (raw.createPullRequest !== true) {
+		return NO_MUTATIONS;
+	}
+	return Object.freeze({ ...NO_MUTATIONS, createPullRequest: true });
 }

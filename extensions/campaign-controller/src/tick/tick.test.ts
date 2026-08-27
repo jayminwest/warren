@@ -21,6 +21,8 @@ import { FixedClock, SequentialIdGenerator } from "../clock.ts";
 import { digestOf } from "../digest.ts";
 import { ReadOnlyGithubClient } from "../github/client.ts";
 import { FakeGithubServer } from "../github/fake-server.ts";
+import { GithubPrAlreadyExistsError, type GithubPrCreateTransport } from "../github/pr-create.ts";
+import { FakeGithubPrCreator } from "../github/pr-create-fake.ts";
 import { PR_INTENT_ACTION_TYPE } from "../pr-intent/intender.ts";
 import { CampaignStateStore } from "../store/state-store.ts";
 import { WarrenClient } from "../warren-client.ts";
@@ -186,6 +188,10 @@ function harness(options: {
 	issues?: number[];
 	store?: CampaignStateStore;
 	ids?: SequentialIdGenerator;
+	/** Import/approve with this policy instead of the dry-run base one. */
+	policy?: Record<string, unknown>;
+	/** Wire the Phase 2 creator so ticks execute journaled intents. */
+	prCreator?: GithubPrCreateTransport;
 }): TickHarness {
 	const clock = new FixedClock(NOW);
 	const ids = options.ids ?? new SequentialIdGenerator();
@@ -202,9 +208,10 @@ function harness(options: {
 	const github = new FakeGithubServer({ clock });
 	seedGithub(github, options.issues ?? [812]);
 	const issues = options.issues ?? [812];
+	const policy = options.policy ?? basePolicy();
 	const imported = importCampaign(store, {
 		manifest: signedManifest(issues),
-		policy: basePolicy(),
+		policy,
 		nowMs: NOW,
 	});
 	approveCampaign(store, {
@@ -225,8 +232,9 @@ function harness(options: {
 			github: new ReadOnlyGithubClient(github),
 			clock,
 			ids,
-			policy: basePolicy(),
+			policy,
 			summaries,
+			...(options.prCreator !== undefined ? { prCreator: options.prCreator } : {}),
 		},
 	};
 }
@@ -332,8 +340,8 @@ describe("runTick", () => {
 		h.warren.onGetRunRead((_id, count) => {
 			reads = count;
 			// Read #1 was tick 1's post-dispatch confirmation; read #2 is the
-		// item loop's reconcile (still running), read #3 is the restart
-		// sweep — the run settles only there.
+			// item loop's reconcile (still running), read #3 is the restart
+			// sweep — the run settles only there.
 			if (count >= 3) {
 				h.warren.setRunState(runId, {
 					state: "succeeded",
@@ -384,6 +392,39 @@ describe("runTick", () => {
 		expect(intents).toHaveLength(1);
 		const tick4 = await runTick(h.deps, h.campaignId);
 		expect(stagesOf(tick4.stages)).toContain("pr_intent:already_journaled");
+		expect(
+			h.store.actions
+				.listActionsForCampaign(h.campaignId)
+				.filter((action) => action.actionType === PR_INTENT_ACTION_TYPE),
+		).toHaveLength(1);
+	});
+
+	test("backfills a null journaled result_branch from the run wire (warren-5255)", async () => {
+		const h = harness({});
+		const tick1 = await runTick(h.deps, h.campaignId);
+		const runId = runIdOf(tick1);
+		// A warren predating the run-wire `branch` field: the run succeeds
+		// with no targetBranch override and no composed branch served, so the
+		// dispatch settles with result_branch null and the intent refuses.
+		h.warren.setRunState(runId, { state: "succeeded", costUsd: 1 });
+		const tick2 = await runTick(h.deps, h.campaignId);
+		expect(stagesOf(tick2.stages)).toContain("pr_intent:refused");
+		const settled = h.store.actions
+			.listActionsForCampaign(h.campaignId)
+			.find((action) => action.state === "succeeded");
+		expect(settled?.resultBranch).toBeNull();
+
+		// The warren upgrade lands and the run wire now serves the composed
+		// branch; the next tick backfills the journal row and renders.
+		h.warren.setRunState(runId, { branch: BRANCH });
+		const tick3 = await runTick(h.deps, h.campaignId);
+		expect(stagesOf(tick3.stages)).toContain("pr_intent:rendered");
+		const backfilled = h.store.actions
+			.listActionsForCampaign(h.campaignId)
+			.find((action) => action.resultRunId === runId && action.state === "succeeded");
+		expect(backfilled?.resultBranch).toBe(BRANCH);
+		// No second dispatch, no second intent.
+		expect(h.warren.createdRunCount()).toBe(1);
 		expect(
 			h.store.actions
 				.listActionsForCampaign(h.campaignId)
@@ -624,5 +665,149 @@ describe("runTick", () => {
 		expect(detailOf(second).newEvents).toBe(0);
 		expect(detailOf(second).duplicateEvents).toBeGreaterThan(0);
 		expect(h.store.events.listGithubEvents(h.campaignId)).toHaveLength(before);
+	});
+});
+
+/** Phase 2 (warren-84da): the policy-gated live PR create over the same tick. */
+describe("runTick with a policy-gated PR creator", () => {
+	function livePolicy(): Record<string, unknown> {
+		const policy = basePolicy() as { mutations: Record<string, boolean> };
+		policy.mutations = { ...policy.mutations, createPullRequest: true };
+		return policy;
+	}
+
+	function upstreamPrFixture(number: number, headRef: string): Record<string, unknown> {
+		return {
+			node_id: `PR_${number}`,
+			number,
+			state: "open",
+			draft: true,
+			title: "fix: existing cross-fork PR",
+			user: { login: "warren-run-bot" },
+			head: {
+				ref: headRef,
+				sha: "abc123abc123abc123abc123abc123abc123abc1",
+				repo: { full_name: "warren-run-bot/openclaw" },
+			},
+			base: {
+				ref: "main",
+				sha: "def456def456def456def456def456def456def4",
+				repo: { full_name: "openclaw/openclaw" },
+			},
+			merged_at: null,
+			closed_at: null,
+			created_at: "2026-08-25T10:00:00.000Z",
+			updated_at: "2026-08-25T10:00:00.000Z",
+			html_url: `https://github.com/openclaw/openclaw/pull/${number}`,
+		};
+	}
+
+	async function driveToTerminal(h: TickHarness): Promise<void> {
+		const tick1 = await runTick(h.deps, h.campaignId);
+		h.warren.setRunState(runIdOf(tick1), {
+			state: "succeeded",
+			costUsd: 1,
+			branch: BRANCH,
+		});
+	}
+
+	test("executes the journaled intent exactly once and records the created PR", async () => {
+		const creator = new FakeGithubPrCreator({ firstPrNumber: 130001 });
+		const h = harness({ policy: livePolicy(), prCreator: creator });
+		await driveToTerminal(h);
+		const tick2 = await runTick(h.deps, h.campaignId);
+		expect(tick2.dryRun).toBe(false);
+		expect(stagesOf(tick2.stages)).toContain("pr_intent:rendered");
+		expect(stagesOf(tick2.stages)).toContain("pr_execute:created");
+		expect(creator.received).toHaveLength(1);
+		// The exact journaled request went to the wire: draft, cross-fork head.
+		expect(creator.received[0]?.url).toBe("/repos/openclaw/openclaw/pulls");
+		expect(creator.received[0]?.body.head).toBe(`warren-run-bot:${BRANCH}`);
+		expect(creator.received[0]?.body.draft).toBe(true);
+		const intent = h.store.actions
+			.listActionsForCampaign(h.campaignId)
+			.find((action) => action.actionType === PR_INTENT_ACTION_TYPE);
+		expect(intent?.state).toBe("succeeded");
+		expect(intent?.resultPrNumber).toBe(130001);
+		const identity = h.store.events.listPrIdentities(h.campaignId)[0];
+		expect(identity?.prNumber).toBe(130001);
+		expect(identity?.prUrl).toBe("https://github.com/openclaw/openclaw/pull/130001");
+		// Re-tick: stable — no second POST, no second intent.
+		const tick3 = await runTick(h.deps, h.campaignId);
+		expect(stagesOf(tick3.stages)).toContain("pr_execute:already_executed");
+		expect(creator.received).toHaveLength(1);
+	});
+
+	test("a lost create response settles uncertain and is never re-POSTed", async () => {
+		const creator = new FakeGithubPrCreator();
+		creator.loseNextResponse();
+		const h = harness({ policy: livePolicy(), prCreator: creator });
+		await driveToTerminal(h);
+		const tick2 = await runTick(h.deps, h.campaignId);
+		expect(stagesOf(tick2.stages)).toContain("pr_execute:settled_uncertain");
+		expect(creator.received).toHaveLength(1);
+		const attention = h.store.events.listAttention(h.campaignId, false);
+		expect(attention.some((item) => item.reason === "pr_create_uncertain")).toBe(true);
+		// The uncertain action blocks every later tick; the POST count is final.
+		const tick3 = await runTick(h.deps, h.campaignId);
+		expect(stagesOf(tick3.stages)).toContain("pr_execute:uncertain_blocked");
+		expect(creator.received).toHaveLength(1);
+	});
+
+	test("a PR already visible upstream is recovered pre-flight with zero POSTs", async () => {
+		const creator = new FakeGithubPrCreator();
+		const h = harness({ policy: livePolicy(), prCreator: creator });
+		await driveToTerminal(h);
+		h.github.setPaginatedCollection("/repos/openclaw/openclaw/pulls", [
+			upstreamPrFixture(7777, BRANCH),
+		]);
+		const tick2 = await runTick(h.deps, h.campaignId);
+		expect(stagesOf(tick2.stages)).toContain("pr_execute:recovered_existing");
+		expect(creator.received).toHaveLength(0);
+		const intent = h.store.actions
+			.listActionsForCampaign(h.campaignId)
+			.find((action) => action.actionType === PR_INTENT_ACTION_TYPE);
+		expect(intent?.state).toBe("succeeded");
+		expect(intent?.resultPrNumber).toBe(7777);
+	});
+
+	test("GitHub's 422 already-exists recovers through the read, never a second POST", async () => {
+		// The PR becomes visible upstream only when the POST bounces —
+		// invisible at pre-flight, so this exercises the 422 recovery arm.
+		let posts = 0;
+		let h: TickHarness | null = null;
+		const creator: GithubPrCreateTransport = {
+			async createPullRequest(intent) {
+				posts += 1;
+				(h as TickHarness).github.setPaginatedCollection("/repos/openclaw/openclaw/pulls", [
+					upstreamPrFixture(7777, BRANCH),
+				]);
+				throw new GithubPrAlreadyExistsError(
+					`fake: a pull request already exists for head ${intent.body.head}`,
+					intent.url,
+				);
+			},
+		};
+		h = harness({ policy: livePolicy(), prCreator: creator });
+		await driveToTerminal(h);
+		const tick2 = await runTick(h.deps, h.campaignId);
+		expect(stagesOf(tick2.stages)).toContain("pr_execute:recovered_existing");
+		expect(posts).toBe(1);
+		const intent = h.store.actions
+			.listActionsForCampaign(h.campaignId)
+			.find((action) => action.actionType === PR_INTENT_ACTION_TYPE);
+		expect(intent?.state).toBe("succeeded");
+		expect(intent?.resultPrNumber).toBe(7777);
+		// Stable across re-ticks: no further POST.
+		await runTick(h.deps, h.campaignId);
+		expect(posts).toBe(1);
+	});
+
+	test("dry-run policy stays dry: no creator, no pr_execute stage, no POST", async () => {
+		const h = harness({});
+		await driveToTerminal(h);
+		const tick2 = await runTick(h.deps, h.campaignId);
+		expect(tick2.dryRun).toBe(true);
+		expect(stagesOf(tick2.stages).some((stage) => stage.startsWith("pr_execute"))).toBe(false);
 	});
 });

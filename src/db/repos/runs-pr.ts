@@ -1,6 +1,7 @@
 /**
- * PR-fact write methods for the `runs` table (warren-f6af's `setPrUrl`,
- * warren-3bc6's `setPrState`), extracted from `RunsRepo` to keep `runs.ts`
+ * PR- and branch-fact write methods for the `runs` table (warren-f6af's
+ * `setPrUrl`, warren-3bc6's `setPrState`, warren-5255's `setBranch`),
+ * extracted from `RunsRepo` to keep `runs.ts`
  * under the file-size budget. Mirrors the `runs-queries.ts` /
  * `runs-ci-fixer.ts` precedent: each method is a free function taking the
  * `DrizzleAdapter` as its first argument, and `RunsRepo` delegates to it
@@ -28,6 +29,23 @@ async function requireRun(adapter: DrizzleAdapter, id: string): Promise<RunRow> 
  * `finalize` because reap fires this *before* the terminal transition
  * (so the URL lands on the `reap.completed` event payload too).
  */
+/**
+ * Persist the composed workspace branch spawnRun dispatched to
+ * (warren-5255). Written once, right after branch composition — the run id
+ * is generated inside `create`, so the branch cannot ride the insert.
+ */
+export async function setBranch(
+	adapter: DrizzleAdapter,
+	id: string,
+	branch: string,
+): Promise<RunRow> {
+	const db = adapter.drizzle as SqliteDrizzleDb;
+	const runs = adapter.schema.runs;
+	const current = await requireRun(adapter, id);
+	await adapter.runWrite(db.update(runs).set({ branch }).where(eq(runs.id, id)));
+	return { ...current, branch };
+}
+
 export async function setPrUrl(
 	adapter: DrizzleAdapter,
 	id: string,
