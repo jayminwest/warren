@@ -193,6 +193,20 @@ spec:
                   name: warren-secrets
                   key: warren-public-allowlist
                   optional: true
+            # --- judge export proxy (warren-a309, RUNBOOK-K8S §3) ---
+            # Backs GET /verdicts.jsonl on the warren control plane by
+            # proxying to the judge extension (src/server/handlers/
+            # judge-proxy.ts). Both must be set to enable the surface; unset
+            # (or a missing judge-secrets Secret) disables it cleanly, so the
+            # judge stays opt-in and the kind overlay needs nothing.
+            - name: WARREN_JUDGE_BASE_URL
+              value: "http://judge.warren.svc.cluster.local:8080"
+            - name: WARREN_JUDGE_EXPORT_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: judge-secrets
+                  key: judge-export-token
+                  optional: true
           volumeMounts:
             - name: data
               mountPath: /data

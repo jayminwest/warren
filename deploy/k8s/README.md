@@ -123,6 +123,7 @@ kubectl -n warren-runs create secret generic warren-openrouter-key \
 | `warren-secrets/sentry-dsn` | warren | `SENTRY_DSN` | error reporting (optional) |
 | `warren-secrets/warren-auth` | warren | `WARREN_AUTH` | auth posture: `token` (default) or `public` (optional) |
 | `warren-secrets/warren-public-allowlist` | warren | `WARREN_PUBLIC_ALLOWLIST` | owners (`my-org`) and/or repos (`some-owner/some-repo`) a public instance may hold (required iff `warren-auth=public`) |
+| `judge-secrets/judge-export-token` | warren | `WARREN_JUDGE_EXPORT_TOKEN` | bearer credential for the judge export proxy (`WARREN_JUDGE_BASE_URL` in `base/deployment.yaml`; optional — unset disables the surface) |
 | `warren-git-token/token` | warren-runs | `WARREN_GIT_TOKEN` (init pod + agent pod) | init-container clone; salvage-window rescue push (harness-only, scrubbed from the agent child) |
 | `warren-openrouter-key/api-key` | warren-runs | `OPENROUTER_API_KEY` (agent pod) | OpenRouter auth for `openrouter`-provider runs (optional) |
 
