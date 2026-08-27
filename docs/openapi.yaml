@@ -1198,6 +1198,11 @@ components:
       type: string
       enum:
         - batch
+    RunCostBasis:
+      type: string
+      enum:
+        - api
+        - subscription_estimate
     CloneKind:
       type: string
       enum:
@@ -1507,6 +1512,8 @@ components:
           type:
             - string
             - 'null'
+        costBasis:
+          $ref: '#/components/schemas/RunCostBasis'
       required:
         - id
         - agentName
@@ -1514,6 +1521,7 @@ components:
         - state
         - prompt
         - trigger
+        - costBasis
     PlanRun:
       type: object
       properties:

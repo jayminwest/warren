@@ -59,7 +59,13 @@ export function shortSha(sha: string | null | undefined): string {
 	return sha.slice(0, 7);
 }
 
-/** Run cost as "$0.412"; "—" when unmeasured (never a fabricated $0.00). */
+/**
+ * Run cost as "$0.412"; "—" when unmeasured (never a fabricated $0.00).
+ * A subscription-authenticated run (warren-f3c3) renders as an estimate:
+ * "~$0.412 est." — the API-priced number is not a bill.
+ */
 export function runCostLabel(row: RunRow): string {
-	return row.costUsd !== null ? formatCostUsd(row.costUsd) : "—";
+	if (row.costUsd === null) return "—";
+	if (row.costBasis === "subscription_estimate") return `~${formatCostUsd(row.costUsd)} est.`;
+	return formatCostUsd(row.costUsd);
 }

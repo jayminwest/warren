@@ -1,0 +1,1 @@
+ALTER TABLE `runs` ADD `cost_basis` text DEFAULT 'api' NOT NULL;

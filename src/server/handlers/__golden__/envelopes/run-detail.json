@@ -29,6 +29,7 @@
 			"salvageRef": null,
 			"salvagePath": null,
 			"costUsd": null,
+			"costBasis": "api",
 			"tokensInput": null,
 			"tokensOutput": null,
 			"tokensCacheRead": null,

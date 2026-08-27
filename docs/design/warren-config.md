@@ -77,6 +77,12 @@ value keeps the fail-open rule above (no cap, and the unreadable value
 stays visible on the frozen `rendered_agent_json`) rather than being
 silently replaced by the project default. `resolveCapOverride` in
 `src/runs/cost-cap.ts` is the one implementation of this chain.
+Cap semantics for subscription-authenticated runs (warren-f3c3):
+`costUsd` is always priced at API rates, so `maxCostUsd` always enforces
+against that estimated number — it is a runaway brake on estimated usage,
+not a bill. A run whose anthropic credential is `CLAUDE_CODE_OAUTH_TOKEN`
+(no `ANTHROPIC_API_KEY`) is stamped `costBasis: subscription_estimate` at
+dispatch, and the UI renders its cost as an estimate; the cap is unchanged.
 `runBranchPrefix` (warren-9993) overrides the prefix warren composes the
 burrow branch from (`${prefix}/${run.id}`); precedence project default >
 `WARREN_RUN_BRANCH_PREFIX` env > built-in `"warren"` (warren-2de0; the

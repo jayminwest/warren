@@ -49,6 +49,7 @@ import type {
 	PlanRunState,
 	PreviewState,
 	PullRequestLifecycle,
+	RunCostBasis,
 	RunFailureReason,
 	RunMode,
 	RunState,
@@ -177,14 +178,14 @@ export interface RunRow {
 	provider: string | null;
 	model: string | null;
 	/**
-	 * Salvage-before-destroy (warren-cd3b): where a finalize_failed run's
-	 * committed work was captured — `salvageRef` is the `warren/rescue/<runId>`
-	 * branch on origin, `salvagePath` the durable git-bundle file. Null = none captured.
+	 * Salvage-before-destroy (warren-cd3b): where a finalize_failed run's committed
+	 * work was captured — `salvageRef` is the rescue branch, `salvagePath` the git bundle.
 	 */
 	salvageRef: string | null;
 	salvagePath: string | null;
 	/** Per-run cost in USD (warren-a7dc), the bridge's `get_session_stats` start/end delta. Null for non-pi runtimes. */
 	costUsd: number | null;
+	costBasis: RunCostBasis; // warren-f3c3: `subscription_estimate` = estimate, not a bill
 	/** Input tokens consumed (warren-a7dc); see `costUsd` for nullability. */
 	tokensInput: number | null;
 	/** Output tokens produced (warren-a7dc); see `costUsd` for nullability. */
