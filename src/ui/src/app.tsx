@@ -23,6 +23,7 @@ import { SetupLandingRoute, SetupPage } from "@/pages/setup.tsx";
 import {
 	TelemetryBehaviorTab,
 	TelemetryEconomicsTab,
+	TelemetryIndexRedirect,
 	TelemetryJudgeTab,
 	TelemetryLoopTab,
 	TelemetryPage,
@@ -134,7 +135,7 @@ export function App() {
 								{/* Telemetry consolidates the legacy analytics routes
 								    under its tabs until warren-7197 rebuilds them. */}
 								<Route path="/telemetry" element={<TelemetryPage />}>
-									<Route index element={<Navigate to="loop" replace />} />
+									<Route index element={<TelemetryIndexRedirect />} />
 									<Route path="loop" element={<TelemetryLoopTab />} />
 									<Route path="behavior" element={<TelemetryBehaviorTab />} />
 									<Route path="judge" element={<TelemetryJudgeTab />} />

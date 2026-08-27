@@ -1,5 +1,11 @@
-import { NavLink, Outlet } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { Navigate, NavLink, Outlet, useLocation } from "react-router-dom";
+import { OperatorOnly } from "@/components/operator-only.tsx";
 import { cn } from "@/lib/utils.ts";
+import { TelemetryBehaviorTab } from "@/pages/telemetry/behavior-tab.tsx";
+import { TelemetryEconomicsTab } from "@/pages/telemetry/economics-tab.tsx";
+import { TelemetryJudgeTab } from "@/pages/telemetry/judge-tab.tsx";
+import { TelemetryLoopTab } from "@/pages/telemetry/loop-tab.tsx";
 import { TelemetryMetricStrip } from "@/pages/telemetry/telemetry-metrics.tsx";
 import {
 	TELEMETRY_RANGE_DAYS,
@@ -25,6 +31,14 @@ export { TelemetryLoopTab } from "@/pages/telemetry/loop-tab.tsx";
  * without recharts — the outcome bars and ranking rows are lightweight
  * div/SVG marks so the consolidation shrinks the bundle. The Judge tab
  * reads the judge extension's published surface only.
+ *
+ * Mobile chrome (warren-93cc / pl-4ab6): below md there is no tab strip
+ * and no range selector (mock mobile/telemetry.jsx) — the four tabs'
+ * content stacks as panels on one scroll, and the selected window
+ * surfaces as panel-header meta (TelemetryPanel appends it). Routing
+ * decision: tabs are child routes, so deep links below md redirect to
+ * /telemetry (the stacked arm shows every panel anyway); desktop
+ * routing is unchanged.
  */
 
 const TABS = [
@@ -41,11 +55,11 @@ function endsTodayLabel(): string {
 		.toUpperCase()}`;
 }
 
-/** The 7D/14D/30D/90D segmented control from the artboards. */
+/** The 7D/14D/30D/90D segmented control from the artboards (md+ only). */
 function RangeSelector() {
 	const { days, setDays } = useTelemetryWindow();
 	return (
-		<div className="flex items-center gap-3">
+		<div className="hidden items-center gap-3 md:flex">
 			<span className="hidden font-mono text-[11px] tracking-[0.04em] leading-[14px] text-(--color-text-3) sm:inline">
 				{endsTodayLabel()}
 			</span>
@@ -77,17 +91,21 @@ function RangeSelector() {
 	);
 }
 
-/** The tab strip; active tab carries the 2px primary underline. */
+/**
+ * The tab strip; active tab carries the 2px primary underline. Below md
+ * the strip is hidden (stacked panels) — md+ it never wraps: labels
+ * scroll horizontally instead of collapsing into two-line stubs.
+ */
 function TabNav() {
 	return (
-		<nav className="flex w-full shrink-0 items-end gap-6 border-b border-(--color-border)">
+		<nav className="hidden w-full shrink-0 items-end gap-6 overflow-x-auto whitespace-nowrap border-b border-(--color-border) md:flex">
 			{TABS.map(({ path, label }) => (
 				<NavLink
 					key={path}
 					to={`/telemetry/${path}`}
 					className={({ isActive }) =>
 						cn(
-							"flex flex-col gap-2 pb-0 font-mono text-[11px] leading-[14px] tracking-[0.08em]",
+							"flex shrink-0 flex-col gap-2 pb-0 font-mono text-[11px] leading-[14px] tracking-[0.08em]",
 							isActive
 								? "font-semibold text-(--color-text)"
 								: "text-(--color-text-3) hover:text-(--color-text-2)",
@@ -108,8 +126,47 @@ function TabNav() {
 	);
 }
 
+/** md+ only? True once the viewport reaches the desktop breakpoint. */
+function useIsDesktop(): boolean {
+	const [isDesktop, setIsDesktop] = useState(
+		() =>
+			typeof window !== "undefined" &&
+			typeof window.matchMedia === "function" &&
+			window.matchMedia("(min-width: 768px)").matches,
+	);
+	useEffect(() => {
+		const mq = window.matchMedia("(min-width: 768px)");
+		const update = () => setIsDesktop(mq.matches);
+		update();
+		mq.addEventListener("change", update);
+		return () => mq.removeEventListener("change", update);
+	}, []);
+	return isDesktop;
+}
+
+/**
+ * The index child: desktop keeps the legacy "land on THE LOOP"
+ * redirect; below md the stacked arm already renders everything, so
+ * the index child stays empty (redirecting would bounce off the
+ * page-level deep-link flatten).
+ */
+export function TelemetryIndexRedirect() {
+	const isDesktop = useIsDesktop();
+	if (!isDesktop) return null;
+	return <Navigate to="/telemetry/loop" replace />;
+}
+
 /** The tab layout: every /telemetry/* child renders under these tabs. */
 export function TelemetryPage() {
+	const isDesktop = useIsDesktop();
+	const location = useLocation();
+
+	// Below md there is no tab strip — every panel is already on the
+	// scroll, so a deep link just flattens to /telemetry.
+	if (!isDesktop && location.pathname !== "/telemetry") {
+		return <Navigate to="/telemetry" replace />;
+	}
+
 	return (
 		<TelemetryWindowProvider>
 			<div className="flex min-h-full flex-col gap-5 px-3.5 py-6 md:px-6">
@@ -127,7 +184,17 @@ export function TelemetryPage() {
 				</header>
 				<TelemetryMetricStrip />
 				<TabNav />
-				<div className="min-h-0 flex-1">
+				{/* Below md: all four tabs' content as stacked panels. The
+			    economics arm keeps the readOperator guard its route carries. */}
+				<div className="flex flex-col gap-5 md:hidden">
+					<TelemetryLoopTab />
+					<TelemetryBehaviorTab />
+					<TelemetryJudgeTab />
+					<OperatorOnly capability="readOperator">
+						<TelemetryEconomicsTab />
+					</OperatorOnly>
+				</div>
+				<div className="hidden min-h-0 flex-1 md:block">
 					<Outlet />
 				</div>
 			</div>
