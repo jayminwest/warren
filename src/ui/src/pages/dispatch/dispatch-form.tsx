@@ -1,5 +1,11 @@
 import type { ReactNode } from "react";
 import type { AgentRow, ProjectRow } from "@/api/types.ts";
+import {
+	responsiveFooterActions,
+	responsiveFooterButton,
+	responsiveFormControl,
+} from "@/components/ui/responsive.ts";
+import { cn } from "@/lib/utils.ts";
 
 /**
  * Left rail of the Direction C Dispatch page (warren-bbe8): the workload
@@ -8,8 +14,11 @@ import type { AgentRow, ProjectRow } from "@/api/types.ts";
  * `src/ui/src/tokens.css`.
  */
 
-const controlClass =
-	"h-8 w-full rounded-(--radius-sm) border border-(--color-border-strong) bg-(--color-bg) px-2.5 text-[11px] leading-[14px] text-(--color-text) placeholder:text-(--color-text-3) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-primary)";
+const controlClass = cn(
+	responsiveFormControl,
+	"w-full rounded-(--radius-sm) border border-(--color-border-strong) bg-(--color-bg) px-2.5 leading-[17px] text-(--color-text) placeholder:text-(--color-text-3) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-primary)",
+	"sm:h-8 sm:text-[11px] sm:leading-[14px]",
+);
 
 const labelClass = "text-[10px] font-medium leading-3 text-(--color-text-2)";
 const hintClass = "font-mono text-[9px] leading-3 text-(--color-text-3)";
@@ -231,7 +240,7 @@ export function DispatchForm(props: DispatchFormProps) {
 				<div className="flex flex-col gap-[5px]">
 					<span className={labelClass}>Prompt</span>
 					<textarea
-						className={`${controlClass} min-h-[104px] resize-y py-2 leading-[17px]`}
+						className={cn(controlClass, "min-h-[104px] resize-y py-2 sm:leading-[17px]")}
 						value={props.prompt}
 						onChange={(e) => props.onPrompt(e.target.value)}
 						placeholder="What should the agent do?"
@@ -268,21 +277,28 @@ export function DispatchForm(props: DispatchFormProps) {
 				</div>
 			</Section>
 
-			<div className="flex items-center gap-2 px-[15px] py-[12px]">
-				<p className={hintClass}>Dispatch writes the run definition before admission.</p>
-				<div className="flex-1" />
+			<div className={cn(responsiveFooterActions, "px-[15px] py-[12px] sm:items-center")}>
+				<p className={cn(hintClass, "sm:flex-1")}>
+					Dispatch writes the run definition before admission.
+				</p>
 				<button
 					type="button"
 					onClick={props.onCancel}
 					disabled={props.pending}
-					className="flex h-[31px] items-center rounded-(--radius-sm) border border-(--color-border-strong) bg-(--color-surface) px-[11px] text-[11px] font-medium leading-[14px] text-(--color-text-2) hover:bg-(--color-surface-hover) disabled:opacity-50"
+					className={cn(
+						responsiveFooterButton,
+						"flex h-11 items-center justify-center rounded-(--radius-sm) border border-(--color-border-strong) bg-(--color-surface) px-[11px] text-[11px] font-medium leading-[14px] text-(--color-text-2) hover:bg-(--color-surface-hover) disabled:opacity-50 sm:h-[31px] sm:justify-start",
+					)}
 				>
 					Cancel
 				</button>
 				<button
 					type="submit"
 					disabled={!canSubmit}
-					className="flex h-[31px] items-center rounded-(--radius-sm) bg-(--color-primary) px-[11px] text-[11px] font-medium leading-[14px] text-(--color-primary-ink) disabled:opacity-50"
+					className={cn(
+						responsiveFooterButton,
+						"flex h-11 items-center justify-center rounded-(--radius-sm) bg-(--color-primary) px-[11px] text-[11px] font-medium leading-[14px] text-(--color-primary-ink) disabled:opacity-50 sm:h-[31px] sm:justify-start",
+					)}
 				>
 					{props.pending ? "Dispatching…" : "Dispatch workload"}
 				</button>
