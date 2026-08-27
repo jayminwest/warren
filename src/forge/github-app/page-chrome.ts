@@ -13,40 +13,40 @@
  * - They must render with zero SPA assets built: the flow exists for
  *   first-boot setup, exactly when `src/ui/dist/` may not exist.
  *
- * The token VALUES mirror the SPA's dark-theme design tokens
- * (`src/ui/src/tokens.css`, the `data-theme="dark"` block) — same neutral
- * hue family, same brand green, same radius scale, and the same font
- * stacks with the self-hosted variable fonts dropped in favor of the
- * system fallbacks those stacks already name (CSP forbids fetching the
- * font files anyway). When the SPA tokens move, move these too.
+ * The token VALUES mirror the Direction C dark palette
+ * (`src/ui/src/tokens.css`, the `:root` base block) — same neutral hue
+ * family, same brand green, same flattened radius scale, and the same
+ * font stacks (the self-hosted variable fonts named first can never load
+ * under this CSP, so the system fallbacks render). The pages stay
+ * dark-only on purpose: the SPA's theme switch needs the FOUC script,
+ * and CSP forbids inline scripts here. When the SPA tokens move, move
+ * these too.
  */
 
 /**
- * The inline stylesheet, derived from the SPA dark tokens. Selector style
- * stays element-level on purpose: these pages are hand-authored HTML
- * strings, and class plumbing through every call site is the drift
- * surface this helper exists to remove.
+ * The inline stylesheet, derived from the Direction C dark tokens.
+ * Selector style stays element-level on purpose: these pages are
+ * hand-authored HTML strings, and class plumbing through every call site
+ * is the drift surface this helper exists to remove.
  */
 export const REGISTRATION_CHROME_STYLE = `
 	:root {
 		--bg: oklch(14% 0.008 264);
-		--fg: oklch(96% 0.005 264);
-		--muted: oklch(20% 0.012 264);
-		--muted-foreground: oklch(67% 0.012 264);
-		--border: oklch(28% 0.012 264);
-		--card: oklch(17% 0.01 264);
+		--surface: oklch(16.5% 0.01 264);
+		--text: oklch(96% 0.005 264);
+		--text-2: oklch(72% 0.012 264);
+		--border: oklch(24% 0.012 264);
 		--primary: oklch(72% 0.11 152);
-		--primary-foreground: oklch(15% 0.01 152);
-		--radius-md: 0.375rem;
-		--radius-lg: 0.5rem;
-		--shadow-md: 0 4px 6px -1px oklch(20% 0.01 264 / 0.1), 0 2px 4px -2px oklch(20% 0.01 264 / 0.06);
+		--primary-ink: oklch(15% 0.01 152);
+		--radius-sm: 3px;
+		--radius-md: 4px;
 	}
 	body {
 		margin: 0;
 		padding: 0 1rem;
 		background: var(--bg);
-		color: var(--fg);
-		font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
+		color: var(--text);
+		font-family: "Inter Variable", Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
 		line-height: 1.5;
 	}
 	header {
@@ -58,7 +58,7 @@ export const REGISTRATION_CHROME_STYLE = `
 		margin: 0 auto;
 		padding: 1rem 0;
 		font-weight: 600;
-		letter-spacing: 0.02em;
+		letter-spacing: -0.025em;
 	}
 	header .brand span { color: var(--primary); }
 	main { max-width: 52rem; margin: 0 auto 3rem; }
@@ -67,10 +67,10 @@ export const REGISTRATION_CHROME_STYLE = `
 	p { margin: 0.5rem 0; }
 	a { color: var(--primary); }
 	code, pre {
-		font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+		font-family: "JetBrains Mono Variable", "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 	}
 	pre {
-		background: var(--muted);
+		background: var(--surface);
 		border: 1px solid var(--border);
 		border-radius: var(--radius-md);
 		padding: 0.75rem;
@@ -82,16 +82,15 @@ export const REGISTRATION_CHROME_STYLE = `
 		font: inherit;
 		font-weight: 500;
 		padding: 0.5rem 1rem;
-		border-radius: var(--radius-lg);
-		border: 1px solid var(--primary);
+		border-radius: var(--radius-sm);
+		border: none;
 		background: var(--primary);
-		color: var(--primary-foreground);
+		color: var(--primary-ink);
 		cursor: pointer;
-		box-shadow: var(--shadow-md);
 	}
 	dt { font-weight: 600; margin-top: 0.5rem; }
 	dd { margin-left: 0; }
-	.note { color: var(--muted-foreground); font-size: 0.875rem; }
+	.note { color: var(--text-2); font-size: 0.875rem; }
 `;
 
 /**
