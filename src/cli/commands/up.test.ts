@@ -9,6 +9,7 @@ import {
 	type UpDeps,
 	type UpRuntimeProbe,
 } from "./up.ts";
+import type { UpWizardDeps } from "./up-wizard.ts";
 
 function probe(over: Partial<UpRuntimeProbe>): UpRuntimeProbe {
 	return {
@@ -93,12 +94,27 @@ function bootedHandle(token?: string): WarrenServerHandle {
 	};
 }
 
+function wizardDeps(over: Partial<UpWizardDeps> = {}): UpWizardDeps {
+	return {
+		homeDir: () => "/home/op",
+		isInteractive: () => false,
+		prompt: async () => {
+			throw new Error("prompt must not run in this test");
+		},
+		runCommand: async () => ({ stdout: "", exitCode: 1 }),
+		hasBinary: () => false,
+		fetchGitHubLogin: async () => undefined,
+		...over,
+	};
+}
+
 function happyDeps(over: Partial<UpDeps> = {}): UpDeps {
 	return {
 		probe: probe({ platform: "linux", hasBinary: (n) => n === "bwrap" }),
 		homeDir: () => "/home/op",
 		mkdir: () => undefined,
 		saveConfig: () => "/home/op/.warren/client.json",
+		wizard: wizardDeps(),
 		serveDeps: {
 			boot: async () => bootedHandle("tok123"),
 			waitForShutdown: async () => undefined,

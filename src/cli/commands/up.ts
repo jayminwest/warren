@@ -18,10 +18,10 @@
  *      via the `warren login` persistence function (mode 0600) so the user
  *      never greps a log for the minted token.
  *
- * Scope guard (pl-26f3): no interactive prompts (credential wizard is
- * warren-80e9), no browser opening (auth handoff is warren-48f8) —
- * `--no-open` is reserved and inert here. The command prints the UI URL
- * as the seam warren-48f8 will open.
+ * Scope guard (pl-26f3): the browser handoff is warren-48f8 — `--no-open`
+ * is reserved and inert here. The credential wizard (warren-80e9) DOES
+ * run here, before boot: see `up-wizard.ts`. `--no-wizard` (or a non-TTY
+ * stdin) skips every prompt while the stored `~/.warren/env` still loads.
  */
 
 import { existsSync, mkdirSync } from "node:fs";
@@ -34,6 +34,7 @@ import type { WarrenClientConfig } from "../../client/index.ts";
 import type { CliContext } from "../output.ts";
 import { commandFailure } from "../output.ts";
 import { runServe, type ServeDeps } from "./serve.ts";
+import { defaultUpWizardDeps, mergeUnderEnv, runUpWizard, type UpWizardDeps } from "./up-wizard.ts";
 
 export interface UpArgs {
 	/**
@@ -41,6 +42,12 @@ export interface UpArgs {
 	 * Inert in this step: nothing is opened either way.
 	 */
 	readonly open?: boolean;
+	/**
+	 * `--no-wizard` — skip the credential wizard (warren-80e9). Also
+	 * automatic when stdin is not a TTY (CI, scripts): prompts never
+	 * block, the stored `~/.warren/env` still loads under the real env.
+	 */
+	readonly wizard?: boolean;
 }
 
 /** Platform/binary seams the runtime detection reads. */
@@ -62,6 +69,8 @@ export interface UpDeps {
 	/** Data-dir creation (tests script failure). */
 	readonly mkdir?: (path: string) => void;
 	readonly homeDir?: () => string;
+	/** Credential wizard seams; defaults probe the live machine (warren-80e9). */
+	readonly wizard?: UpWizardDeps;
 }
 
 export interface UpResult {
@@ -183,6 +192,14 @@ export async function runUp(context: CliContext, deps: UpDeps, args: UpArgs): Pr
 
 	context.stdio.stdout.write(`${decision.sentence}\n`);
 
+	// Credential wizard (warren-80e9): env > stored > prompted. The stored
+	// ~/.warren/env loads on every boot; prompts run only when interactive
+	// and a needed credential is absent from both env and store.
+	const wizardDeps =
+		deps.wizard ?? defaultUpWizardDeps(context, context.env, deps.homeDir ?? homedir);
+	const storedEnv = await runUpWizard(context, wizardDeps, { wizard: args.wizard !== false });
+	Object.assign(env, mergeUnderEnv(env, storedEnv));
+
 	return runServe(
 		upContext,
 		{
@@ -212,8 +229,12 @@ export function registerUpCommand(program: Command, context: CliContext): void {
 			"boot warren for a fresh machine: detect the runtime, default the data dir, serve, and log the operator in",
 		)
 		.option("--no-open", "do not open the UI in a browser (reserved; warren-48f8)")
-		.action(async (opts: { open?: boolean }) => {
-			const result = await runUp(context, {}, { open: opts.open });
+		.option(
+			"--no-wizard",
+			"skip the first-boot credential wizard (also automatic when stdin is not a TTY)",
+		)
+		.action(async (opts: { open?: boolean; wizard?: boolean }) => {
+			const result = await runUp(context, {}, { open: opts.open, wizard: opts.wizard });
 			process.exit(result.exitCode);
 		});
 }

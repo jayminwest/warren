@@ -411,6 +411,10 @@
         {
           "flags": "--no-open",
           "description": "do not open the UI in a browser (reserved; warren-48f8)"
+        },
+        {
+          "flags": "--no-wizard",
+          "description": "skip the first-boot credential wizard (also automatic when stdin is not a TTY)"
         }
       ]
     }
