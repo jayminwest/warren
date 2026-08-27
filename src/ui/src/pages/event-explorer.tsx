@@ -385,25 +385,32 @@ function EventRowView({
 				type="button"
 				onClick={onToggle}
 				aria-expanded={expanded}
-				className="flex w-full items-start gap-2.5 px-3 py-[7px] text-left hover:bg-(--color-surface-hover)"
+				className="flex w-full flex-col items-start gap-0.5 px-3 py-[7px] text-left hover:bg-(--color-surface-hover) md:flex-row md:gap-2.5"
 			>
-				<span className="w-12 shrink-0 font-mono text-[10px] leading-3 text-(--color-text-3)">
-					{row.id}
-				</span>
-				<span className="w-16 shrink-0 font-mono text-[10px] leading-3 text-(--color-text-3)">
-					{formatEventClock(row.ts)}
-				</span>
-				<span
-					className={`w-24 shrink-0 truncate font-mono text-[10px] leading-3 ${streamToneClass(row.stream)}`}
-				>
-					{row.kind}
-				</span>
-				<span className="min-w-0 flex-1 truncate font-mono text-[10px] leading-[14px] text-(--color-text-2)">
-					{row.runId} · {summarizeEventPayload(row.payload)}
+				<div className="flex w-full items-center gap-2 md:contents">
+					<span className="hidden shrink-0 font-mono text-[10px] leading-3 text-(--color-text-3) md:block md:w-12">
+						{row.id}
+					</span>
+					<span className="w-[46px] shrink-0 font-mono text-[10px] leading-3 text-(--color-text-3) md:w-16">
+						{formatEventClock(row.ts)}
+					</span>
+					<span
+						className={`w-[58px] shrink-0 truncate font-mono text-[10px] leading-3 md:w-24 ${streamToneClass(row.stream)}`}
+					>
+						{row.kind}
+					</span>
+					<span className="min-w-0 flex-1 truncate font-mono text-[10px] leading-[14px] text-(--color-text-2)">
+						{row.runId} · {summarizeEventPayload(row.payload)}
+					</span>
+				</div>
+				{/* Mobile line 2 (warren-e2e2): the wire row carries no per-event
+				agent/project fields, so the indented metadata line shows seq + run. */}
+				<span className="pl-[54px] font-mono text-[9px] leading-3 text-(--color-text-3) md:hidden">
+					seq {row.seq} · {row.runId}
 				</span>
 			</button>
 			{expanded && (
-				<pre className="mx-[5.5rem] mb-2 overflow-x-auto rounded-sm border-l border-(--color-border-strong) px-2.5 py-[7px] font-mono text-[10px] leading-[15px] text-(--color-text-3)">
+				<pre className="mx-2 mb-2 overflow-x-auto rounded-sm border-l border-(--color-border-strong) px-2.5 py-[7px] font-mono text-[10px] leading-[15px] text-(--color-text-3) md:mx-[5.5rem]">
 					{payloadJson}
 				</pre>
 			)}
