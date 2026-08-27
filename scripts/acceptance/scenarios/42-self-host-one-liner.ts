@@ -26,7 +26,7 @@
  *   5. DISPATCH SUCCEEDS — the run drives the deterministic stub
  *      claude-code shim (lib/stub-agent/claude-code-path-shim.sh) baked
  *      into a local agent image, so no real provider spend. The shim's
- *      `closeseed` knob commits, reap pushes `burrow/<runId>` to the
+ *      `closeseed` knob commits, reap pushes `warren/<runId>` to the
  *      fixture repo, and the scenario rev-parses the ref.
  *
  * Harness plumbing that is NOT part of the operator claim (each flagged
@@ -293,12 +293,12 @@ export const scenario: Scenario = {
 
 			const branchSha = execFileSync(
 				"git",
-				["-C", fixtures.projectPath, "rev-parse", `refs/heads/burrow/${dispatched.run.id}`],
+				["-C", fixtures.projectPath, "rev-parse", `refs/heads/warren/${dispatched.run.id}`],
 				{ encoding: "utf8" },
 			).trim();
 			assertTrue(
 				/^[0-9a-f]{40}$/.test(branchSha),
-				`run branch burrow/${dispatched.run.id} pushed to the fixture repo (rev-parse → ${branchSha})`,
+				`run branch warren/${dispatched.run.id} pushed to the fixture repo (rev-parse → ${branchSha})`,
 			);
 
 			ctx.logger.info("scenario-42: one-line self-host claim verified end to end");

@@ -127,7 +127,8 @@ When warren spawns a run:
    by warren as `${prefix}/${run.id}` where the prefix resolves project
    default (`.warren/config.yaml.runBranchPrefix`, or the same field in
    legacy `.warren/defaults.json`) > `WARREN_RUN_BRANCH_PREFIX` env >
-   built-in `"burrow"` (warren-9993; the legacy default preserves
+   built-in `"warren"` (warren-9993; warren-2de0 flipped the default — the
+   legacy `"burrow"` value survives
    backward compatibility). The warren `run_xxx` suffix makes the branch
    back-reference the warren run row on `git log` / PR review without a
    separate lookup.

@@ -32,7 +32,7 @@ describe("loadRunBranchPrefixFromEnv", () => {
 describe("resolveRunBranchPrefix", () => {
 	test("falls back to DEFAULT_RUN_BRANCH_PREFIX when nothing is set", () => {
 		expect(resolveRunBranchPrefix({})).toBe(DEFAULT_RUN_BRANCH_PREFIX);
-		expect(DEFAULT_RUN_BRANCH_PREFIX).toBe("burrow");
+		expect(DEFAULT_RUN_BRANCH_PREFIX).toBe("warren");
 	});
 
 	test("prefers project default over env over built-in", () => {

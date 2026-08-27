@@ -165,7 +165,7 @@ export const scenario: Scenario = {
 				expectedPrUrl,
 				"run.prUrl is the FakeForge-minted PR ref (fake://<key>/pulls/1)",
 			);
-			const runBranch = `burrow/${runId}`;
+			const runBranch = `warren/${runId}`;
 			const branchSha = execFileSync(
 				"git",
 				["-C", ctx.fixtures.sampleProjectPath, "rev-parse", `refs/heads/${runBranch}`],

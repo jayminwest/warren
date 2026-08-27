@@ -107,7 +107,7 @@ describe("spawnRun: targetBranch (warren-709e)", () => {
 
 		expect(run.targetBranch).toBeNull();
 		const upBody = calls[0]?.body as { branch?: string };
-		expect(upBody.branch).toBe(`burrow/${run.id}`);
+		expect(upBody.branch).toBe(`warren/${run.id}`);
 	});
 });
 

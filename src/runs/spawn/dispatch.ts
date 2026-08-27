@@ -215,7 +215,7 @@ async function dispatchRun(input: SpawnRunInput): Promise<SpawnRunResult> {
 	});
 
 	// warren-9993/a993: burrow branch = `${prefix}/${run.id}` (prefix precedence
-	// project default > env > "burrow"); a CI-fixer run's `targetBranch` pins it
+	// project default > env > built-in "warren" default); a CI-fixer run's `targetBranch` pins it
 	// to the open PR head ref instead, so the fixer's commits re-run that PR's CI.
 	const branch = composeRunBranch(
 		resolveRunBranchPrefix({
