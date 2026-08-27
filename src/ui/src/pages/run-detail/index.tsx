@@ -334,8 +334,20 @@ export function RunDetailPage() {
 
 			<PhaseRail run={r} events={stream.events} />
 
+			{/*
+			 * Mobile section order (warren-3399): below md the stack reads
+			 * Runtime → Budget → Event stream → Steering, with Prompt / Run
+			 * definition / Preview collapsed into details disclosures — the
+			 * 375px mock omits them entirely; collapsing keeps the data
+			 * reachable. Breakpoint decision: the two-column row still cuts
+			 * over at xl (the side column needs the width), but the mobile
+			 * treatments apply below md only, so 768–1279 keeps the
+			 * desktop-weight stacked layout. `max-xl:contents` promotes the
+			 * aside's children into this flex container below xl so the
+			 * order-* utilities can interleave panels with the event column.
+			 */}
 			<div className="flex min-h-0 flex-1 flex-col gap-3 xl:flex-row">
-				<div className="flex min-w-0 flex-1 flex-col gap-3">
+				<div className="flex min-w-0 flex-1 flex-col gap-3 order-3 md:order-none">
 					<EventTail
 						events={stream.events}
 						status={stream.status}
@@ -343,15 +355,54 @@ export function RunDetailPage() {
 						terminal={isTerminal}
 					/>
 				</div>
-				<aside className="flex w-full shrink-0 flex-col gap-3 xl:w-[326px]">
-					<RuntimePanel run={r} />
-					<BudgetPanel run={r} />
-					{r.previewState !== null ? <PreviewPanel run={r} /> : null}
-					<RunDefinitionPanel run={r} projectName={projectName} />
-					<PromptPanel run={r} />
+				<aside className="flex w-full shrink-0 flex-col gap-3 max-xl:contents xl:w-[326px]">
+					<div className="order-1 md:order-none">
+						<RuntimePanel run={r} />
+					</div>
+					<div className="order-2 md:order-none">
+						<BudgetPanel run={r} />
+					</div>
+					<div className="hidden md:contents">
+						{r.previewState !== null ? <PreviewPanel run={r} /> : null}
+						<RunDefinitionPanel run={r} projectName={projectName} />
+						<PromptPanel run={r} />
+					</div>
 					<OperatorOnly>
-						<SteerForm runId={r.id} disabled={isTerminal} />
+						<div className="order-4 md:order-none">
+							<SteerForm runId={r.id} disabled={isTerminal} />
+						</div>
 					</OperatorOnly>
+					<details className="order-5 group md:hidden">
+						<summary className="flex h-[39px] cursor-pointer list-none items-center rounded-(--radius-md) border border-(--color-border) bg-(--color-surface) px-3 text-[11px] leading-[14px] font-semibold text-(--color-text) [&::-webkit-details-marker]:hidden">
+							Prompt
+							<span className="ml-auto font-mono text-[9px] leading-3 text-(--color-text-3) transition group-open:rotate-90">
+								&#9656;
+							</span>
+						</summary>
+						<div className="pt-3">
+							<PromptPanel run={r} />
+						</div>
+					</details>
+					<details className="order-6 group md:hidden">
+						<summary className="flex h-[39px] cursor-pointer list-none items-center rounded-(--radius-md) border border-(--color-border) bg-(--color-surface) px-3 text-[11px] leading-[14px] font-semibold text-(--color-text) [&::-webkit-details-marker]:hidden">
+							Run definition
+							<span className="ml-auto font-mono text-[9px] leading-3 text-(--color-text-3) transition group-open:rotate-90">
+								&#9656;
+							</span>
+						</summary>
+						<div className="pt-3">
+							<RunDefinitionPanel run={r} projectName={projectName} />
+						</div>
+					</details>
+					<details className="order-7 group md:hidden">
+						<summary className="flex h-[39px] cursor-pointer list-none items-center rounded-(--radius-md) border border-(--color-border) bg-(--color-surface) px-3 text-[11px] leading-[14px] font-semibold text-(--color-text) [&::-webkit-details-marker]:hidden">
+							Preview
+							<span className="ml-auto font-mono text-[9px] leading-3 text-(--color-text-3) transition group-open:rotate-90">
+								&#9656;
+							</span>
+						</summary>
+						<div className="pt-3">{r.previewState !== null ? <PreviewPanel run={r} /> : null}</div>
+					</details>
 				</aside>
 			</div>
 		</div>
