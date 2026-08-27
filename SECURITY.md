@@ -68,6 +68,24 @@ Setting `WARREN_APP_CRED_STORE=data-dir` opts a deployment in. Warren stores the
 
 ## Browser and preview boundaries
 
+### One-time setup code handoff (warren-48f8)
+
+`warren up` can open the operator's browser at `GET /setup?code=<code>`.
+The browser then lands in the UI with the operator session already active.
+The setup code is 32 crypto-random bytes that lives ten minutes and redeems
+exactly once.
+
+Only a boot that opts in mints a code (`warren up`, never `warren serve`).
+The long-lived operator token never rides the URL. Only the throwaway code
+does. The redemption page writes the token to the SPA's existing
+localStorage key, then redirects to `/`.
+
+- **Never on `WARREN_AUTH=public`.** The handoff never arms under public
+  auth. `/setup` answers 404 there.
+- **Never under `--no-auth`.** No token exists to hand off.
+- **A spent or expired code answers 400.** This also covers a replay from
+  browser history. The error page points at the UI login.
+
 The UI stores the operator bearer in the warren origin and does not provide separate CSRF protection. Strict CORS and the single-deployment-token model are part of this posture. Do not serve untrusted content on the UI origin.
 
 Preview environments run repository code and therefore use a separate browser origin on supported TCP deployments.

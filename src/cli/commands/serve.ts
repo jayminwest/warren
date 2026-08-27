@@ -21,6 +21,11 @@ import { formatError } from "../output.ts";
 
 export interface ServeArgs {
 	readonly noAuth?: boolean;
+	/**
+	 * warren-48f8: arm the one-time browser auth handoff (mints a single-use
+	 * /setup code). Set only by `warren up`; plain `warren serve` never arms it.
+	 */
+	readonly setupHandoff?: boolean;
 }
 
 export interface ServeDeps {
@@ -59,6 +64,7 @@ export async function runServe(
 		const opts: BootServerOptions = {
 			env: context.env,
 			...(args.noAuth === true ? { noAuth: true } : {}),
+			...(args.setupHandoff === true ? { setupHandoff: true } : {}),
 			...(context.now !== undefined ? { now: context.now } : {}),
 		};
 		handle = await boot(opts);

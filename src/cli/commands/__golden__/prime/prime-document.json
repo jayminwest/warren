@@ -410,7 +410,7 @@
       "options": [
         {
           "flags": "--no-open",
-          "description": "do not open the UI in a browser (reserved; warren-48f8)"
+          "description": "do not open the UI in a browser (the setup URL is still printed)"
         },
         {
           "flags": "--no-wizard",
