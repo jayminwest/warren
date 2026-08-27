@@ -1,6 +1,14 @@
 /**
  * Canonical provider → env-key registry (warren-fb8d).
  *
+ * Wire vocabulary consumed here (RunCostBasis) comes from ./wire.ts —
+ * `src/core/` imports only itself.
+ */
+import type { RunCostBasis } from "./wire.ts";
+
+/**
+ * Canonical provider → env-key registry (warren-fb8d).
+ *
  * THIS FILE IS THE SINGLE SOURCE OF TRUTH for which environment variables a
  * model provider authenticates with. Before it existed, the knowledge was
  * hardcoded per-topology with DISJOINT provider sets: the K8s pod-spec
@@ -132,4 +140,31 @@ export function collectProviderEnv(
 		}
 	}
 	return out;
+}
+
+/**
+ * Cost-basis detection (warren-f3c3 / pl-26f3 step 5), beside the provider
+ * env resolution it reads. A run whose anthropic credential resolves from
+ * `CLAUDE_CODE_OAUTH_TOKEN` (a Claude subscription grant) with no
+ * `ANTHROPIC_API_KEY` present is priced on subscription, so its `costUsd`
+ * is an API-priced ESTIMATE, not a bill → `subscription_estimate`.
+ * Everything else — API-key runs, non-anthropic providers, both keys
+ * present (the API key wins in the harness) — is `api`.
+ *
+ * `provider` is the DECLARED frontmatter provider (after the override
+ * chain). An undeclared provider defaults to anthropic's shape: both
+ * shipped runtimes (claude-code, pi) authenticate against anthropic unless
+ * the frontmatter says otherwise.
+ */
+export function resolveRunCostBasis(
+	provider: string | undefined,
+	env: Readonly<Record<string, string | undefined>>,
+): RunCostBasis {
+	const anthropicShaped = provider === undefined || normalizeProviderName(provider) === "anthropic";
+	if (!anthropicShaped) return "api";
+	const oauth = env.CLAUDE_CODE_OAUTH_TOKEN;
+	const apiKey = env.ANTHROPIC_API_KEY;
+	const hasOauth = oauth !== undefined && oauth !== "";
+	const hasApiKey = apiKey !== undefined && apiKey !== "";
+	return hasOauth && !hasApiKey ? "subscription_estimate" : "api";
 }

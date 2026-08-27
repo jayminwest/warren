@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { RunRow } from "@/api/types.ts";
+import { CostBasisNote } from "@/components/cost-basis-note.tsx";
 import { formatTimestamp, relativeTime } from "@/lib/utils.ts";
 import { formatCostUsd, formatTokens } from "@/pages/run-detail-format.ts";
 import { formatDuration, shortSha } from "@/pages/runs/runs-format.ts";
@@ -88,8 +89,13 @@ export function BudgetPanel({ run }: { run: RunRow }) {
 		>
 			<div className="flex items-baseline justify-between">
 				<span className="font-mono text-[22px] leading-7 font-medium tracking-[-0.04em] text-(--color-text)">
-					{run.costUsd !== null ? formatCostUsd(run.costUsd) : DASH}
+					{run.costUsd !== null
+						? run.costBasis === "subscription_estimate"
+							? `~${formatCostUsd(run.costUsd)} est.`
+							: formatCostUsd(run.costUsd)
+						: DASH}
 				</span>
+				<CostBasisNote run={run} />
 			</div>
 			<MetaRow label="tokens in">
 				{run.tokensInput !== null ? formatTokens(run.tokensInput) : DASH}

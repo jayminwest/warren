@@ -18,6 +18,7 @@ import type {
 	InboxState,
 	PreviewState,
 	PullRequestLifecycle,
+	RunCostBasis,
 	RunFailureReason,
 	RunMode,
 	RunState,
@@ -43,6 +44,7 @@ export {
 	type PreviewState,
 	type PullRequestLifecycle,
 	RUN_TERMINAL_STATES,
+	type RunCostBasis,
 	type RunFailureReason,
 	type RunMode,
 	type RunState,
@@ -148,6 +150,10 @@ export interface RunRow {
 	salvageRef: string | null;
 	salvagePath: string | null;
 	costUsd: number | null;
+	/** How `costUsd` was priced (warren-f3c3): `subscription_estimate` when
+	 * the run authenticated via CLAUDE_CODE_OAUTH_TOKEN — an API-priced
+	 * estimate, not a bill. `api` otherwise (and for legacy rows). */
+	costBasis: RunCostBasis;
 	tokensInput: number | null;
 	tokensOutput: number | null;
 	tokensCacheRead: number | null;

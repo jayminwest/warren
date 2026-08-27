@@ -8,6 +8,7 @@ import type {
 	CloneKind,
 	PreviewState,
 	PullRequestLifecycle,
+	RunCostBasis,
 	RunFailureReason,
 	RunMode,
 	RunRow,
@@ -115,6 +116,8 @@ export interface CreateRunInput {
 	 * Null = agent declares none (or a historical row). */
 	provider?: string | null;
 	model?: string | null;
+	/** Cost basis (warren-f3c3); defaults to `api`. */
+	costBasis?: RunCostBasis;
 	/** Queued-instant override (warren-0af9); defaults to the wall clock at insert. */
 	now?: Date;
 }
@@ -153,6 +156,7 @@ export class RunsRepo {
 	}
 
 	async create(input: CreateRunInput): Promise<RunRow> {
+		const { costBasis = "api" } = input;
 		const row: RunRow = {
 			id: input.id ?? generateId("run"),
 			agentName: input.agentName,
@@ -191,6 +195,7 @@ export class RunsRepo {
 			salvageRef: null,
 			salvagePath: null,
 			costUsd: null,
+			costBasis,
 			tokensInput: null,
 			tokensOutput: null,
 			tokensCacheRead: null,

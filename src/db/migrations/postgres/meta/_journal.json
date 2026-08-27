@@ -337,6 +337,13 @@
 			"when": 1787179365706,
 			"tag": "0047_red_skrulls",
 			"breakpoints": true
+		},
+		{
+			"idx": 48,
+			"version": "7",
+			"when": 1787850245665,
+			"tag": "0048_legal_wild_child",
+			"breakpoints": true
 		}
 	]
 }
