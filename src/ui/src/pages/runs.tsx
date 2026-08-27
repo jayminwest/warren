@@ -305,30 +305,30 @@ export function RunsPage() {
 
 			{/* Inventory table. */}
 			<div className="flex min-h-0 flex-1 flex-col overflow-clip rounded-b-(--radius-md) border border-t-0 border-(--color-border) bg-(--color-surface)">
-				{/* Mobile arm: the inventory degrades to compact row cards
-				    (warren-dea8, docs/ui-revamp/screens/mobile/runs.jsx). */}
-				{!runs.isLoading && !runs.isError && visibleCount > 0 ? (
-					<RunsCardList rows={rows} projectIndex={projectIndex} now={now} />
-				) : null}
-				<div className="hidden md:block">
-					{runs.isLoading ? (
-						<div className="p-6">
-							<Spinner label="Loading runs" />
+				{runs.isLoading ? (
+					<div className="p-6">
+						<Spinner label="Loading runs" />
+					</div>
+				) : runs.isError ? (
+					<div className="p-6">
+						<Alert variant="danger" title="Failed to load runs">
+							{formatError(runs.error)}
+						</Alert>
+					</div>
+				) : visibleCount === 0 ? (
+					<div className="p-6">
+						<EmptyState title="No runs match this filter" description={emptyHint} />
+					</div>
+				) : (
+					<>
+						{/* Mobile arm: the inventory degrades to compact row cards
+						    (warren-dea8, docs/ui-revamp/screens/mobile/runs.jsx). */}
+						<RunsCardList rows={rows} projectIndex={projectIndex} now={now} />
+						<div className="hidden md:block">
+							<RunsTable rows={rows} projectIndex={projectIndex} now={now} />
 						</div>
-					) : runs.isError ? (
-						<div className="p-6">
-							<Alert variant="danger" title="Failed to load runs">
-								{formatError(runs.error)}
-							</Alert>
-						</div>
-					) : visibleCount === 0 ? (
-						<div className="p-6">
-							<EmptyState title="No runs match this filter" description={emptyHint} />
-						</div>
-					) : (
-						<RunsTable rows={rows} projectIndex={projectIndex} now={now} />
-					)}
-				</div>
+					</>
+				)}
 				{totalRuns > 0 ? (
 					<div className="mt-auto flex flex-wrap items-center justify-between gap-3 border-t border-(--color-border) px-4 py-2">
 						<div className="flex items-center gap-2 text-xs text-(--color-text-3)">

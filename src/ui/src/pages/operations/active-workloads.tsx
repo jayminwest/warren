@@ -55,8 +55,11 @@ export function ActiveWorkloads({
 				</span>
 			</header>
 			<div className="flex flex-col overflow-clip rounded-(--radius-md) border border-(--color-border) bg-(--color-surface)">
-				{/* Mobile arm: compact workload cards (warren-dea8). */}
-				{active.length > 0 ? (
+				{active.length === 0 ? (
+					<p className="px-3 py-3 font-mono text-[10px] leading-3 text-(--color-text-3)">
+						{loading ? "loading active workloads…" : "No active workloads — the instance is quiet."}
+					</p>
+				) : (
 					<InventoryCardList>
 						{active.map((run) => (
 							<ActiveWorkloadCard
@@ -71,7 +74,7 @@ export function ActiveWorkloads({
 							/>
 						))}
 					</InventoryCardList>
-				) : null}
+				)}
 				<div className="hidden md:block">
 					<div className="flex h-[31px] shrink-0 items-center gap-2.5 border-b border-(--color-border-strong) bg-(--color-thead) px-2.5">
 						<span className="w-[82px] shrink-0 font-mono text-[9px] font-semibold tracking-[0.05em] text-(--color-text-3)">
@@ -96,45 +99,37 @@ export function ActiveWorkloads({
 							COST
 						</span>
 					</div>
-					{active.length === 0 ? (
-						<p className="px-3 py-3 font-mono text-[10px] leading-3 text-(--color-text-3)">
-							{loading
-								? "loading active workloads…"
-								: "No active workloads — the instance is quiet."}
-						</p>
-					) : (
-						active.map((run) => (
-							<Link
-								key={run.id}
-								to={`/runs/${run.id}`}
-								className="flex h-[38px] items-center gap-2.5 border-b border-(--color-border) px-2.5 last:border-b-0 hover:bg-(--color-surface-hover)"
-							>
-								<span className="w-[82px] shrink-0">
-									<StatePill state={run.state} />
-								</span>
-								<span className="w-[112px] shrink-0 truncate font-mono text-[10px] leading-3 text-(--color-text)">
-									{run.id}
-								</span>
-								<span className="w-[76px] shrink-0 truncate text-[11px] leading-3.5 text-(--color-text-2)">
-									{run.agentName}
-								</span>
-								<span className="w-[96px] shrink-0 truncate text-[11px] leading-3.5 text-(--color-text-3)">
-									{run.projectId === null
-										? "orphaned"
-										: (projectIndex.get(run.projectId) ?? run.projectId)}
-								</span>
-								<span className="min-w-0 flex-1 truncate text-[11px] leading-3.5 text-(--color-text-2)">
-									{run.state === "queued" ? "awaiting admission" : activityLine(run.prompt)}
-								</span>
-								<span className="w-[48px] shrink-0 text-right font-mono text-[10px] leading-3 text-(--color-text-2)">
-									{formatDurationMs(phaseElapsedMs(run, now))}
-								</span>
-								<span className="w-[52px] shrink-0 text-right font-mono text-[10px] leading-3 text-(--color-text-2)">
-									{run.costUsd === null ? "—" : formatCostUsd(run.costUsd)}
-								</span>
-							</Link>
-						))
-					)}
+					{active.map((run) => (
+						<Link
+							key={run.id}
+							to={`/runs/${run.id}`}
+							className="flex h-[38px] items-center gap-2.5 border-b border-(--color-border) px-2.5 last:border-b-0 hover:bg-(--color-surface-hover)"
+						>
+							<span className="w-[82px] shrink-0">
+								<StatePill state={run.state} />
+							</span>
+							<span className="w-[112px] shrink-0 truncate font-mono text-[10px] leading-3 text-(--color-text)">
+								{run.id}
+							</span>
+							<span className="w-[76px] shrink-0 truncate text-[11px] leading-3.5 text-(--color-text-2)">
+								{run.agentName}
+							</span>
+							<span className="w-[96px] shrink-0 truncate text-[11px] leading-3.5 text-(--color-text-3)">
+								{run.projectId === null
+									? "orphaned"
+									: (projectIndex.get(run.projectId) ?? run.projectId)}
+							</span>
+							<span className="min-w-0 flex-1 truncate text-[11px] leading-3.5 text-(--color-text-2)">
+								{run.state === "queued" ? "awaiting admission" : activityLine(run.prompt)}
+							</span>
+							<span className="w-[48px] shrink-0 text-right font-mono text-[10px] leading-3 text-(--color-text-2)">
+								{formatDurationMs(phaseElapsedMs(run, now))}
+							</span>
+							<span className="w-[52px] shrink-0 text-right font-mono text-[10px] leading-3 text-(--color-text-2)">
+								{run.costUsd === null ? "—" : formatCostUsd(run.costUsd)}
+							</span>
+						</Link>
+					))}
 					<div className="flex h-[38px] shrink-0 items-center gap-3 border-t border-(--color-border) px-2.5">
 						<span className="font-mono text-[9px] leading-3 text-(--color-text-3)">
 							NEWEST-RUNS WINDOW · FALLBACK POLL
