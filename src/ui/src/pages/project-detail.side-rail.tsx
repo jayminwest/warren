@@ -67,12 +67,12 @@ export function ProjectFactsPanel({ project }: { project: ProjectRow }) {
 			<dl className="flex flex-col gap-2.5 px-3.5 py-3">
 				{rows.map((row) => (
 					<div key={row.label} className="flex items-center gap-2.5">
-						<dt className="w-[100px] shrink-0 text-[11px] leading-[14px] text-(--color-text-3)">
+						<dt className="max-md:w-[110px] md:w-[100px] shrink-0 text-[11px] leading-[14px] text-(--color-text-3)">
 							{row.label}
 						</dt>
 						<dd
 							title={row.title}
-							className={`min-w-0 truncate font-mono text-[10px] leading-3 ${
+							className={`min-w-0 truncate font-mono text-[10px] leading-3 max-md:flex-1 max-md:text-right ${
 								row.muted ? "text-(--color-text-3)" : "text-(--color-text-2)"
 							}`}
 						>
