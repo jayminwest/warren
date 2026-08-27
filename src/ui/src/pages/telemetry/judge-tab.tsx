@@ -7,6 +7,7 @@ import {
 	summarizeJudgeVerdicts,
 	useJudgeVerdicts,
 } from "@/pages/telemetry/judge-verdicts.ts";
+import { MeterBar } from "@/pages/telemetry/meter-bar.tsx";
 import { useRunsJoin } from "@/pages/telemetry/runs-join.ts";
 import { TelemetryPanel } from "@/pages/telemetry/telemetry-panel.tsx";
 
@@ -162,18 +163,14 @@ export function TelemetryJudgeTab() {
 							const max = summary.failingClasses[0]?.count ?? 1;
 							const width = `${Math.max(4, Math.round((c.count / max) * 100))}%`;
 							return (
-								<div key={c.name} className="flex w-full items-center gap-2.5">
-									<span className="w-36 shrink-0 font-mono text-[11px] leading-[14px] text-(--color-text-2)">
-										{c.name}
-									</span>
-									<div
-										className="h-2.5 shrink-0 rounded-[1px] bg-(--color-danger)"
-										style={{ width }}
-									/>
-									<span className="font-mono text-[11px] leading-[14px] text-(--color-text-3)">
-										{String(c.count)}
-									</span>
-								</div>
+								<MeterBar
+									key={c.name}
+									label={c.name}
+									labelClass="w-36 text-(--color-text-2)"
+									width={width}
+									markClass="h-2.5 bg-(--color-danger)"
+									value={String(c.count)}
+								/>
 							);
 						})}
 					</div>
