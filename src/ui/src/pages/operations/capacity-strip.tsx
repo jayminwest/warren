@@ -27,8 +27,9 @@ function CapacityCell({
 	return (
 		<div
 			className={cn(
-				"flex min-w-0 flex-1 flex-col gap-2 px-3.5 pt-3 pb-2.5",
-				border && "border-r border-(--color-border)",
+				"flex min-w-0 flex-col gap-2 px-3.5 pt-3 pb-2.5 sm:flex-1",
+				border &&
+					"border-b border-(--color-border) last:border-b-0 sm:border-b-0 sm:border-r sm:border-r-(--color-border)",
 			)}
 		>
 			<span className="font-mono text-[9px] tracking-[0.07em] text-(--color-text-3)">{label}</span>
@@ -79,7 +80,7 @@ export function CapacityStrip({
 	const spend = overview.spend;
 	const delivery = overview.delivery;
 	return (
-		<div className="flex flex-wrap overflow-clip rounded-(--radius-md) border border-(--color-border) bg-(--color-surface)">
+		<div className="flex min-w-0 flex-col overflow-clip rounded-(--radius-md) border border-(--color-border) bg-(--color-surface) sm:flex-row">
 			<CapacityCell
 				label="RUNNING"
 				value={String(running)}

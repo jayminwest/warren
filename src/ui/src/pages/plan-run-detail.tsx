@@ -78,7 +78,7 @@ export function PlanRunDetailPage() {
 	const cost = summarizeCost(runs);
 
 	return (
-		<div className="flex min-h-full flex-col px-6 pb-12 pt-[22px] sm:px-[24px]">
+		<div className="flex min-h-full flex-col px-3.5 pb-12 pt-[22px] md:px-6">
 			<div className="shrink-0 pb-2.5">
 				<span className="font-mono text-[10px] leading-3 text-(--color-text-3)">
 					PLAN RUNS / {id.toUpperCase()}

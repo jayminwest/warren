@@ -288,7 +288,7 @@ export function InstancePage() {
 	});
 
 	return (
-		<div className="flex min-h-full flex-col gap-5 px-6 pt-6 pb-12 sm:px-[22px]">
+		<div className="flex min-h-full flex-col gap-5 px-3.5 pt-6 pb-12 md:px-6">
 			<header className="flex flex-col gap-1.5">
 				<h1 className="text-[22px] leading-7 font-semibold tracking-[-0.025em] text-(--color-text)">
 					Instance

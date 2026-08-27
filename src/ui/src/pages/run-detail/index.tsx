@@ -313,7 +313,7 @@ export function RunDetailPage() {
 				);
 
 	return (
-		<div className="flex min-h-full flex-col gap-3 px-6 pt-[22px] pb-12 sm:px-[24px]">
+		<div className="flex min-h-full flex-col gap-3 px-3.5 pt-[22px] pb-12 md:px-6">
 			<nav className="shrink-0 font-mono text-[10px] leading-3 text-(--color-text-3)">
 				RUNS / {r.id.toUpperCase()}
 			</nav>

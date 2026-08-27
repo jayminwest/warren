@@ -28,7 +28,9 @@ function MetricCell({
 	return (
 		<div
 			{...(title ? { title } : {})}
-			className={`flex min-w-0 flex-1 flex-col gap-2 px-5 py-4 ${hasRightBorder ? "border-r border-(--color-border)" : ""}`}
+			className={`flex min-w-0 flex-1 flex-col gap-2 border-b border-(--color-border) px-5 py-4 last:border-b-0 sm:border-b-0 ${
+				hasRightBorder ? "sm:border-r sm:border-r-(--color-border)" : ""
+			}`}
 		>
 			<span className="font-mono text-[10px] tracking-[0.08em] leading-3 text-(--color-text-3)">
 				{label}

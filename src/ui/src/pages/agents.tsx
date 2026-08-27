@@ -3,6 +3,12 @@ import { agentsApi } from "@/api/client.ts";
 import type { AgentRow } from "@/api/types.ts";
 import { Alert } from "@/components/ui/alert.tsx";
 import { EmptyState } from "@/components/ui/empty-state.tsx";
+import {
+	CardFigure,
+	CardFigureNote,
+	InventoryCardList,
+	InventoryRowCard,
+} from "@/components/ui/inventory-card.tsx";
 import { Spinner } from "@/components/ui/spinner.tsx";
 import { formatError } from "@/lib/format-error.ts";
 import { formatTimestamp } from "@/lib/utils.ts";
@@ -31,7 +37,7 @@ export function AgentsPage() {
 	});
 
 	return (
-		<div className="flex min-h-full flex-col gap-5 px-6 pt-[22px] pb-12 sm:px-[24px]">
+		<div className="flex min-h-full flex-col gap-5 px-3.5 pt-[22px] pb-12 md:px-6">
 			<div className="flex items-start gap-4 pb-1">
 				<div className="flex min-w-0 flex-1 flex-col gap-[5px]">
 					<h1 className="text-xl leading-6 font-semibold tracking-[-0.025em] text-(--color-text)">
@@ -70,20 +76,49 @@ export function AgentsPage() {
 function AgentRegistryTable({ agents }: { agents: readonly AgentRow[] }) {
 	return (
 		<div className="flex flex-col overflow-hidden rounded-[4px] border border-(--color-border) bg-(--color-surface)">
-			<div className="flex h-[31px] shrink-0 items-center gap-2.5 border-b border-b-(--color-border-strong) bg-(--color-thead) px-2.5">
-				<ColumnHeader width="w-[220px] sm:w-[280px]">AGENT</ColumnHeader>
-				<ColumnHeader width="w-[80px]">SOURCE</ColumnHeader>
-				<ColumnHeader width="w-[110px]">PROVIDER</ColumnHeader>
-				<ColumnHeader width="w-[170px]">DEFAULT MODEL</ColumnHeader>
-				<ColumnHeader width="w-[110px]">COST CAP</ColumnHeader>
-				<div className="min-w-0 flex-1 font-sans text-[9px] leading-3 font-semibold tracking-[0.05em] text-(--color-text-3)">
-					LAST REFRESHED
+			{/* Mobile arm: compact registry cards (warren-dea8). */}
+			<InventoryCardList>
+				{agents.map((agent) => (
+					<AgentCard key={agent.name} agent={agent} />
+				))}
+			</InventoryCardList>
+			<div className="hidden md:block">
+				<div className="flex h-[31px] shrink-0 items-center gap-2.5 border-b border-b-(--color-border-strong) bg-(--color-thead) px-2.5">
+					<ColumnHeader width="w-[220px] sm:w-[280px]">AGENT</ColumnHeader>
+					<ColumnHeader width="w-[80px]">SOURCE</ColumnHeader>
+					<ColumnHeader width="w-[110px]">PROVIDER</ColumnHeader>
+					<ColumnHeader width="w-[170px]">DEFAULT MODEL</ColumnHeader>
+					<ColumnHeader width="w-[110px]">COST CAP</ColumnHeader>
+					<div className="min-w-0 flex-1 font-sans text-[9px] leading-3 font-semibold tracking-[0.05em] text-(--color-text-3)">
+						LAST REFRESHED
+					</div>
 				</div>
+				{agents.map((agent, i) => (
+					<AgentRegistryRow key={agent.name} agent={agent} last={i === agents.length - 1} />
+				))}
 			</div>
-			{agents.map((agent, i) => (
-				<AgentRegistryRow key={agent.name} agent={agent} last={i === agents.length - 1} />
-			))}
 		</div>
+	);
+}
+
+/** Mobile registry card (warren-dea8): name + description, provider /
+ *  model / cap figures, refresh note. */
+function AgentCard({ agent }: { agent: AgentRow }) {
+	const costCap = readCostCap(agent.renderedJson);
+	return (
+		<InventoryRowCard
+			tone="neutral"
+			stateLabel={agent.source ?? "builtin"}
+			title={agent.name}
+			subline={agent.description ?? agent.provider ?? ""}
+			figures={
+				<>
+					<CardFigure value={agent.model ?? "—"} />
+					<CardFigureNote value={costCap === null ? "—" : `$${costCap.toFixed(2)} cap`} />
+				</>
+			}
+			meta={`refreshed ${formatTimestamp(agent.lastRefreshed)}`}
+		/>
 	);
 }
 

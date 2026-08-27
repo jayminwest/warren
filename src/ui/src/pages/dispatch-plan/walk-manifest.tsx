@@ -158,7 +158,7 @@ export function WalkManifest(props: WalkManifestProps) {
 	const admission = buildWalkAdmissionRows(props.project, props.facts);
 
 	return (
-		<aside className="flex w-[350px] shrink-0 flex-col overflow-clip rounded-(--radius-md) border border-(--color-border) bg-(--color-surface)">
+		<aside className="flex w-full shrink-0 flex-col overflow-clip rounded-(--radius-md) border border-(--color-border) bg-(--color-surface) lg:w-[350px]">
 			<div className="flex h-[39px] shrink-0 items-center border-b border-(--color-border) px-3">
 				<h2 className="text-[11px] font-semibold leading-[14px] text-(--color-text)">
 					Resolved manifest

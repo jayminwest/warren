@@ -112,25 +112,27 @@ export function TelemetryJudgeTab() {
 						No failed verdicts in the export — every judged run is clean.
 					</p>
 				) : (
-					<table className="w-full">
-						<thead>
-							<tr>
-								{["RUN", "AGENT", "FAILING CLASS", "PR", "JUDGED"].map((h, i) => (
-									<th
-										key={h}
-										className={`pb-2 pr-3 text-left font-mono text-[10px] tracking-[0.06em] text-(--color-text-3) ${i === 4 ? "text-right" : ""}`}
-									>
-										{h}
-									</th>
+					<div className="overflow-x-auto">
+						<table className="w-full">
+							<thead>
+								<tr>
+									{["RUN", "AGENT", "FAILING CLASS", "PR", "JUDGED"].map((h, i) => (
+										<th
+											key={h}
+											className={`pb-2 pr-3 text-left font-mono text-[10px] tracking-[0.06em] text-(--color-text-3) ${i === 4 ? "text-right" : ""}`}
+										>
+											{h}
+										</th>
+									))}
+								</tr>
+							</thead>
+							<tbody>
+								{failing.slice(0, FAILED_ROWS).map((row) => (
+									<FailedVerdictRow key={row.id} row={row} run={runById.get(row.runId)} />
 								))}
-							</tr>
-						</thead>
-						<tbody>
-							{failing.slice(0, FAILED_ROWS).map((row) => (
-								<FailedVerdictRow key={row.id} row={row} run={runById.get(row.runId)} />
-							))}
-						</tbody>
-					</table>
+							</tbody>
+						</table>
+					</div>
 				)}
 				<p className="text-[12px] leading-4 text-(--color-text-2)">
 					Failed verdicts and unjudged markers from the extension's append-only export, joined with

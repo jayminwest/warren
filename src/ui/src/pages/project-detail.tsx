@@ -61,7 +61,7 @@ export function ProjectDetailPage() {
 	const isOperator = caps.can("readOperator");
 
 	return (
-		<div className="flex min-h-full flex-col px-6 pt-[22px] pb-12 sm:px-[24px]">
+		<div className="flex min-h-full flex-col px-3.5 pt-[22px] pb-12 md:px-6">
 			<div className="pb-2.5">
 				<span className="font-mono text-[10px] leading-3 text-(--color-text-3)">
 					PROJECTS / {project.data ? repoName(project.data).toUpperCase() : "…"}

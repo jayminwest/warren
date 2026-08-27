@@ -112,7 +112,7 @@ function TabNav() {
 export function TelemetryPage() {
 	return (
 		<TelemetryWindowProvider>
-			<div className="flex min-h-full flex-col gap-5 px-6 py-6 sm:px-[22px]">
+			<div className="flex min-h-full flex-col gap-5 px-3.5 py-6 md:px-6">
 				<header className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
 					<div className="flex flex-col gap-1.5">
 						<h1 className="text-[22px] font-semibold leading-7 tracking-[-0.025em] text-(--color-text)">

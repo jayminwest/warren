@@ -18,6 +18,12 @@ import {
 	DialogTitle,
 } from "@/components/ui/dialog.tsx";
 import { EmptyState } from "@/components/ui/empty-state.tsx";
+import {
+	CardFigure,
+	CardFigureNote,
+	InventoryCardList,
+	InventoryRowCard,
+} from "@/components/ui/inventory-card.tsx";
 import { Spinner } from "@/components/ui/spinner.tsx";
 import { formatError } from "@/lib/format-error.ts";
 import { relativeTime } from "@/lib/utils.ts";
@@ -104,21 +110,11 @@ export function ProjectsPage() {
 				) : rows.length === 0 ? (
 					<EmptyState title="No projects yet" description={emptyHint} />
 				) : (
-					<table className="w-full table-fixed border-collapse">
-						<thead>
-							<tr className="h-[31px] rounded-t-[4px] bg-(--color-thead) text-left">
-								<Th className="w-[min(250px,35%)]">Project</Th>
-								<Th className="w-[110px]">Default branch</Th>
-								<Th className="w-[110px]">Last head</Th>
-								<Th className="w-[110px]">Last fetched</Th>
-								<Th className="w-[110px]">Issue queue</Th>
-								<Th className="hidden w-[100px] md:table-cell">Added</Th>
-								<Th className="w-[130px] text-right">Actions</Th>
-							</tr>
-						</thead>
-						<tbody>
+					<>
+						{/* Mobile arm: compact registry cards (warren-dea8). */}
+						<InventoryCardList>
 							{rows.map((p) => (
-								<RegistryRow
+								<ProjectCard
 									key={p.id}
 									project={p}
 									onRefresh={() => refresh.mutate(p.id)}
@@ -126,8 +122,34 @@ export function ProjectsPage() {
 									onDelete={() => setConfirmDelete(p)}
 								/>
 							))}
-						</tbody>
-					</table>
+						</InventoryCardList>
+						<div className="hidden md:block">
+							<table className="w-full table-fixed border-collapse">
+								<thead>
+									<tr className="h-[31px] rounded-t-[4px] bg-(--color-thead) text-left">
+										<Th className="w-[min(250px,35%)]">Project</Th>
+										<Th className="w-[110px]">Default branch</Th>
+										<Th className="w-[110px]">Last head</Th>
+										<Th className="w-[110px]">Last fetched</Th>
+										<Th className="w-[110px]">Issue queue</Th>
+										<Th className="hidden w-[100px] md:table-cell">Added</Th>
+										<Th className="w-[130px] text-right">Actions</Th>
+									</tr>
+								</thead>
+								<tbody>
+									{rows.map((p) => (
+										<RegistryRow
+											key={p.id}
+											project={p}
+											onRefresh={() => refresh.mutate(p.id)}
+											refreshPending={refresh.isPending && refresh.variables === p.id}
+											onDelete={() => setConfirmDelete(p)}
+										/>
+									))}
+								</tbody>
+							</table>
+						</div>
+					</>
 				)}
 			</div>
 
@@ -289,5 +311,68 @@ function RegistryRow({
 				</OperatorOnly>
 			</td>
 		</tr>
+	);
+}
+
+/** Mobile registry card (warren-dea8): repo, clone freshness, actions. */
+function ProjectCard({
+	project,
+	onRefresh,
+	refreshPending,
+	onDelete,
+}: {
+	project: ProjectRow;
+	onRefresh: () => void;
+	refreshPending: boolean;
+	onDelete: () => void;
+}) {
+	return (
+		<InventoryRowCard
+			tone="neutral"
+			stateLabel={project.hasSeeds ? ".seeds" : "repo"}
+			title={repoName(project)}
+			titleTo={`/projects/${encodeURIComponent(project.id)}`}
+			subline={project.gitUrl}
+			figures={
+				<>
+					<CardFigure value={project.defaultBranch} />
+					<CardFigureNote
+						value={
+							project.lastFetchedAt !== null
+								? `fetched ${relativeTime(project.lastFetchedAt)}`
+								: "never fetched"
+						}
+					/>
+				</>
+			}
+			meta={`HEAD ${project.lastHeadSha !== null ? project.lastHeadSha.slice(0, 7) : "—"} · added ${formatDate(project.addedAt)}`}
+		>
+			{/* Refresh/delete are admin routes; the spectator card drops them,
+			    same contract as the desktop row (warren-b875 / warren-f53e). */}
+			<OperatorOnly capability="admin">
+				<div className="flex gap-1.5">
+					<Button
+						variant="outline"
+						size="sm"
+						className="h-6 px-2.5 text-[10px]"
+						onClick={onRefresh}
+						disabled={refreshPending}
+						title="git fetch + reset --hard origin/<branch>"
+					>
+						<RefreshCw className={`h-3 w-3 ${refreshPending ? "animate-spin" : ""}`} />
+						Refresh
+					</Button>
+					<Button
+						variant="ghost"
+						size="sm"
+						className="h-6 w-6 p-0"
+						onClick={onDelete}
+						aria-label={`Delete ${project.id}`}
+					>
+						<Trash2 className="h-3 w-3" />
+					</Button>
+				</div>
+			</OperatorOnly>
+		</InventoryRowCard>
 	);
 }

@@ -11,11 +11,14 @@ import { cn } from "@/lib/utils.ts";
 
 function Stat({
 	label,
+	shortLabel,
 	value,
 	title,
 	hideOnNarrow = false,
 }: {
 	label: string;
+	/** Compact artboard spelling below sm (e.g. "RUN" for "RUNNING"). */
+	shortLabel?: string;
 	value: string;
 	/** Hover hint, e.g. which upcoming issue lands the real figure. */
 	title?: string;
@@ -29,7 +32,14 @@ function Stat({
 			)}
 			{...(title ? { title } : {})}
 		>
-			<span className="w-max shrink-0 text-(--color-text-3)">{label}</span>
+			{shortLabel === undefined ? (
+				<span className="w-max shrink-0 text-(--color-text-3)">{label}</span>
+			) : (
+				<>
+					<span className="w-max shrink-0 text-(--color-text-3) sm:hidden">{shortLabel}</span>
+					<span className="w-max shrink-0 text-(--color-text-3) max-sm:hidden">{label}</span>
+				</>
+			)}
 			<span className="w-max shrink-0 text-(--color-text-2)">{value}</span>
 		</span>
 	);
@@ -59,7 +69,11 @@ function HealthStat({ health }: { health: ConsoleStats["health"] }) {
 					health === "ok" ? "text-(--color-text-2)" : "text-(--color-text-3)",
 				)}
 			>
-				{label}
+				{/* Compact artboard spelling below sm (warren-dea8). */}
+				<span className="sm:hidden">
+					{health === "ok" ? "HEALTHY" : health === "down" ? "ERROR" : "—"}
+				</span>
+				<span className="hidden sm:inline">{label}</span>
 			</span>
 		</span>
 	);
@@ -84,7 +98,6 @@ function BurnStat() {
 			label="BURN"
 			value="— / H"
 			title="Spend rate lands with the ops overview API (warren-d850)"
-			hideOnNarrow
 		/>
 	);
 }
@@ -96,6 +109,7 @@ function RuntimeStat() {
 			label="RUNTIME"
 			value="—"
 			title="Runtime kind lands with the ops overview API (warren-d850)"
+			hideOnNarrow
 		/>
 	);
 }
@@ -106,9 +120,14 @@ export function ConsoleTopbar({ stats }: { stats: ConsoleStats }) {
 			<HealthStat health={stats.health} />
 			<Stat
 				label="RUNNING"
+				shortLabel="RUN"
 				value={stats.runningCount === null ? "—" : String(stats.runningCount)}
 			/>
-			<Stat label="QUEUE" value={stats.queuedCount === null ? "—" : String(stats.queuedCount)} />
+			<Stat
+				label="QUEUE"
+				shortLabel="QUE"
+				value={stats.queuedCount === null ? "—" : String(stats.queuedCount)}
+			/>
 			<BurnStat />
 			<span className="flex-1" />
 			<RuntimeStat />

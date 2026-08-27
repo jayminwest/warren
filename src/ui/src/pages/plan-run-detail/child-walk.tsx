@@ -112,7 +112,7 @@ function ChildRow({
 
 	return (
 		<div
-			className={`flex min-h-[49px] items-center gap-3 border-b border-(--color-border) px-3.5 py-1.5 ${
+			className={`flex min-h-[49px] flex-wrap items-center gap-3 border-b border-(--color-border) px-3.5 py-1.5 ${
 				isGate ? "bg-(--color-surface-raised)" : ""
 			}`}
 		>

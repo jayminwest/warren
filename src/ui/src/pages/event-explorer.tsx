@@ -136,7 +136,7 @@ export function EventExplorerPage() {
 	};
 
 	return (
-		<div className="flex min-h-full flex-col gap-4 px-6 pt-5 pb-12 sm:px-[22px]">
+		<div className="flex min-h-full flex-col gap-4 px-3.5 pt-5 pb-12 md:px-6">
 			<div className="font-mono text-[10px] leading-3 tracking-[0.06em] text-(--color-text-3)">
 				OPERATIONS / EVENT EXPLORER
 			</div>

@@ -235,27 +235,29 @@ function AgentEconomicsTable() {
 			) : rows.length === 0 && !runs.isLoading ? (
 				<p className="text-[12px] leading-4 text-(--color-text-3)">No runs in this window.</p>
 			) : (
-				<table className="w-full">
-					<thead>
-						<tr>
-							{["AGENT", "RUNS", "SUCCESS", "JUDGE PASS", "AVG DUR", "COST / MERGED PR"].map(
-								(h, i) => (
-									<th
-										key={h}
-										className={`pb-2 pr-3 text-left font-mono text-[10px] tracking-[0.06em] text-(--color-text-3) ${i >= 1 ? "text-right" : ""}`}
-									>
-										{h}
-									</th>
-								),
-							)}
-						</tr>
-					</thead>
-					<tbody>
-						{rows.map((r) => (
-							<EconomicsAgentRow key={r.agent} row={r} pass={agentPass?.get(r.agent)} />
-						))}
-					</tbody>
-				</table>
+				<div className="overflow-x-auto">
+					<table className="w-full">
+						<thead>
+							<tr>
+								{["AGENT", "RUNS", "SUCCESS", "JUDGE PASS", "AVG DUR", "COST / MERGED PR"].map(
+									(h, i) => (
+										<th
+											key={h}
+											className={`pb-2 pr-3 text-left font-mono text-[10px] tracking-[0.06em] text-(--color-text-3) ${i >= 1 ? "text-right" : ""}`}
+										>
+											{h}
+										</th>
+									),
+								)}
+							</tr>
+						</thead>
+						<tbody>
+							{rows.map((r) => (
+								<EconomicsAgentRow key={r.agent} row={r} pass={agentPass?.get(r.agent)} />
+							))}
+						</tbody>
+					</table>
+				</div>
 			)}
 			<p className="text-[12px] leading-4 text-(--color-text-2)">
 				Avg duration is the mean run duration in the window. Cost per merged PR is undefined ("—")

@@ -21,7 +21,7 @@ export function DispatchPage() {
 	const s = useDispatchState();
 
 	return (
-		<div className="flex min-h-full flex-col gap-1.5 px-6 pt-5 pb-12 sm:px-[22px]">
+		<div className="flex min-h-full flex-col gap-1.5 px-3.5 pt-5 pb-12 md:px-6">
 			<p className="font-mono text-[10px] leading-3 text-(--color-text-3)">RUNS / NEW</p>
 			<div className="flex flex-col gap-[5px] pb-[20px]">
 				<h1 className="text-xl leading-6 font-semibold tracking-[-0.025em] text-(--color-text)">

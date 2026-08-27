@@ -12,6 +12,7 @@ import { Spinner } from "@/components/ui/spinner.tsx";
 import { formatError } from "@/lib/format-error.ts";
 import { cn } from "@/lib/utils.ts";
 import { formatCostUsd } from "@/pages/run-detail-format.ts";
+import { RunsCardList } from "@/pages/runs/runs-cards.tsx";
 import { RunsTable } from "@/pages/runs/runs-table.tsx";
 
 /**
@@ -214,7 +215,7 @@ export function RunsPage() {
 	const hasNext = offset + loadedRows.length < totalRuns;
 
 	return (
-		<div className="flex min-h-full flex-col px-6 pt-[22px] pb-12 sm:px-[24px]">
+		<div className="flex min-h-full flex-col px-3.5 pt-[22px] pb-12 md:px-6">
 			{/* Page header: title + description + operator action (export layout). */}
 			<div className="flex shrink-0 flex-wrap items-start justify-between gap-4 pb-5">
 				<div className="flex min-w-0 flex-col gap-[5px]">
@@ -297,24 +298,30 @@ export function RunsPage() {
 
 			{/* Inventory table. */}
 			<div className="flex min-h-0 flex-1 flex-col overflow-clip rounded-b-(--radius-md) border border-t-0 border-(--color-border) bg-(--color-surface)">
-				{runs.isLoading ? (
-					<div className="p-6">
-						<Spinner label="Loading runs" />
-					</div>
-				) : runs.isError ? (
-					<div className="p-6">
-						<Alert variant="danger" title="Failed to load runs">
-							{formatError(runs.error)}
-						</Alert>
-					</div>
-				) : visibleCount === 0 ? (
-					<div className="p-6">
-						<EmptyState title="No runs match this filter" description={emptyHint} />
-					</div>
-				) : (
-					<RunsTable rows={rows} projectIndex={projectIndex} />
-				)}
-
+				{/* Mobile arm: the inventory degrades to compact row cards
+				    (warren-dea8, docs/ui-revamp/screens/mobile/runs.jsx). */}
+				{!runs.isLoading && !runs.isError && visibleCount > 0 ? (
+					<RunsCardList rows={rows} projectIndex={projectIndex} />
+				) : null}
+				<div className="hidden md:block">
+					{runs.isLoading ? (
+						<div className="p-6">
+							<Spinner label="Loading runs" />
+						</div>
+					) : runs.isError ? (
+						<div className="p-6">
+							<Alert variant="danger" title="Failed to load runs">
+								{formatError(runs.error)}
+							</Alert>
+						</div>
+					) : visibleCount === 0 ? (
+						<div className="p-6">
+							<EmptyState title="No runs match this filter" description={emptyHint} />
+						</div>
+					) : (
+						<RunsTable rows={rows} projectIndex={projectIndex} />
+					)}
+				</div>
 				{totalRuns > 0 ? (
 					<div className="mt-auto flex flex-wrap items-center justify-between gap-3 border-t border-(--color-border) px-4 py-2">
 						<div className="flex items-center gap-2 text-xs text-(--color-text-3)">

@@ -56,28 +56,30 @@ function StruggleTable({ directories }: { directories: readonly DirectoryStat[] 
 		.slice(0, DIRECTORY_ROWS);
 	const maxScore = top.reduce((m, d) => Math.max(m, d.difficultyScore), 0);
 	return (
-		<table className="w-full">
-			<thead>
-				<tr>
-					{["DIRECTORY", "DIFFICULTY", "FAIL SHARE", "TOUCHES", "RETRIES"].map((h, i) => (
-						<th
-							key={h}
-							className={cn(
-								"pb-2 pr-3 text-left font-mono text-[10px] tracking-[0.06em] text-(--color-text-3)",
-								i >= 2 && "text-right",
-							)}
-						>
-							{h}
-						</th>
+		<div className="overflow-x-auto">
+			<table className="w-full">
+				<thead>
+					<tr>
+						{["DIRECTORY", "DIFFICULTY", "FAIL SHARE", "TOUCHES", "RETRIES"].map((h, i) => (
+							<th
+								key={h}
+								className={cn(
+									"pb-2 pr-3 text-left font-mono text-[10px] tracking-[0.06em] text-(--color-text-3)",
+									i >= 2 && "text-right",
+								)}
+							>
+								{h}
+							</th>
+						))}
+					</tr>
+				</thead>
+				<tbody>
+					{top.map((d) => (
+						<DifficultyRow key={d.directory} dir={d} maxScore={maxScore} />
 					))}
-				</tr>
-			</thead>
-			<tbody>
-				{top.map((d) => (
-					<DifficultyRow key={d.directory} dir={d} maxScore={maxScore} />
-				))}
-			</tbody>
-		</table>
+				</tbody>
+			</table>
+		</div>
 	);
 }
 
