@@ -1,6 +1,7 @@
 import { type DirectoryStat, RUN_ANALYTICS_NONE_KEY } from "@/api/client.ts";
 import { formatRunFailureReason } from "@/lib/labels.ts";
 import { cn } from "@/lib/utils.ts";
+import { MeterBar } from "@/pages/telemetry/meter-bar.tsx";
 import { TelemetryPanel } from "@/pages/telemetry/telemetry-panel.tsx";
 import { useTelemetryWindow } from "@/pages/telemetry/use-telemetry-window.tsx";
 
@@ -25,17 +26,13 @@ function DifficultyRow({ dir, maxScore }: { dir: DirectoryStat; maxScore: number
 			<td className="py-1.5 pr-3 font-mono text-[11px] leading-[14px] text-(--color-text-2)">
 				{dir.directory}
 			</td>
-			<td className="py-1.5 pr-3">
-				<div className="flex items-center gap-2">
-					<div
-						className="h-2.5 shrink-0 rounded-[1px] bg-(--color-warning)"
-						style={{ width }}
-						title={`difficulty score ${String(dir.difficultyScore)}`}
-					/>
-					<span className="font-mono text-[11px] leading-[14px] text-(--color-text-3)">
-						{String(dir.difficultyScore)}
-					</span>
-				</div>
+			<td className="w-full py-1.5 pr-3">
+				<MeterBar
+					width={width}
+					markClass="h-2.5 bg-(--color-warning)"
+					title={`difficulty score ${String(dir.difficultyScore)}`}
+					value={String(dir.difficultyScore)}
+				/>
 			</td>
 			<td className="py-1.5 pr-3 text-right font-mono text-[11px] leading-[14px] text-(--color-text-2)">
 				{dir.failureShare === null ? "—" : `${Math.round(dir.failureShare * 100)}%`}
@@ -98,19 +95,14 @@ function FailureCauseRow({
 }) {
 	const width = max > 0 ? `${Math.max(4, Math.round((count / max) * 100))}%` : "4px";
 	return (
-		<div className="flex w-full items-center gap-2.5">
-			<span className="w-32 shrink-0 font-mono text-[11px] leading-[14px] text-(--color-text-2)">
-				{label}
-			</span>
-			<div
-				className="h-2.5 shrink-0 rounded-[1px] bg-(--color-danger)"
-				style={{ width }}
-				title={`${String(count)} failed runs`}
-			/>
-			<span className="font-mono text-[11px] leading-[14px] text-(--color-text-3)">
-				{String(count)}
-			</span>
-		</div>
+		<MeterBar
+			label={label}
+			labelClass="w-32 text-(--color-text-2)"
+			width={width}
+			markClass="h-2.5 bg-(--color-danger)"
+			title={`${String(count)} failed runs`}
+			value={String(count)}
+		/>
 	);
 }
 
