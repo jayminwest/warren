@@ -20,7 +20,15 @@ import {
  * `GET /runs` shape, so the fan-out is the same bounded N+1 the legacy
  * page carried (warren-f566: stream-driven invalidation + 45s fallback).
  */
-export function WalkRow({ planRun, projectLabel }: { planRun: PlanRunRow; projectLabel: string }) {
+export function WalkRow({
+	planRun,
+	projectLabel,
+	now,
+}: {
+	planRun: PlanRunRow;
+	projectLabel: string;
+	now: number;
+}) {
 	const detail = useQuery({
 		queryKey: ["plan-runs", planRun.id],
 		queryFn: ({ signal }) => planRunsApi.get(planRun.id, signal),
@@ -85,7 +93,7 @@ export function WalkRow({ planRun, projectLabel }: { planRun: PlanRunRow; projec
 				{relativeTime(planRun.startedAt)}
 			</div>
 			<div className="w-[62px] shrink-0 text-right font-mono text-[10px] leading-3 text-(--color-text-2)">
-				{planRunElapsed(planRun)}
+				{planRunElapsed(planRun, now)}
 			</div>
 			<div
 				className="w-[54px] shrink-0 text-right font-mono text-[10px] leading-3 text-(--color-text-2)"
