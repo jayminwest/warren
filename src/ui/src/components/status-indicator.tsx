@@ -7,12 +7,9 @@
  * `StatusMeta` record: `{ label, variant, icon, pulse }`. The
  * concrete rendering — a `Badge` with optional leading icon and an
  * optional `motion-safe:animate-pulse` hint — is centralised in
- * `<StatusIndicator>`. The legacy wrappers (`StateBadge`,
- * `PlanRunStateBadge`, `PlanRunChildStateBadge`,
- * the inline `PreviewStateBadge` in `run-detail.tsx`, and the
- * inline `statusVariant()` switch in `run-detail.tsx`) all delegate
- * here so adding a new state or swapping a colour token is a
- * one-line change rather than a multi-file grep.
+ * `<StatusIndicator>` (the old wrappers — `StateBadge`,
+ * `PlanRunStateBadge`, `PlanRunChildStateBadge` — were removed with
+ * the legacy pages in the pl-7e38 teardown, warren-7396).
  *
  * `<RunFailureBadge>` at the bottom is the same idea for the OTHER
  * enum a run row carries — its `failureReason`. It lives here rather
