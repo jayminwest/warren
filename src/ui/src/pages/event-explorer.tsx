@@ -8,9 +8,11 @@ import { Button } from "@/components/ui/button.tsx";
 import { EmptyState } from "@/components/ui/empty-state.tsx";
 import { FilterPill } from "@/components/ui/filter-pill.tsx";
 import { Input } from "@/components/ui/input.tsx";
+import { responsiveFormControl } from "@/components/ui/responsive.ts";
 import { Spinner } from "@/components/ui/spinner.tsx";
 import { useToast } from "@/components/ui/toast.tsx";
 import { formatError } from "@/lib/format-error.ts";
+import { cn } from "@/lib/utils.ts";
 import {
 	buildFilter,
 	collectExportLines,
@@ -233,21 +235,24 @@ function FilterStrip({
 				onChange={(e) => patch({ runId: e.target.value })}
 				placeholder="run id"
 				aria-label="Filter by run id"
-				className="h-7 w-36 font-mono text-[10px]"
+				className={cn(responsiveFormControl, "w-36 font-mono sm:h-7 sm:text-[10px]")}
 			/>
 			<Input
 				value={state.kind}
 				onChange={(e) => patch({ kind: e.target.value })}
 				placeholder="kind"
 				aria-label="Filter by event kind"
-				className="h-7 w-32 font-mono text-[10px]"
+				className={cn(responsiveFormControl, "w-32 font-mono sm:h-7 sm:text-[10px]")}
 			/>
 			{projects !== undefined && (
 				<select
 					value={state.projectId}
 					onChange={(e) => patch({ projectId: e.target.value })}
 					aria-label="Filter by project"
-					className="h-7 max-w-48 rounded-sm border border-(--color-border) bg-(--color-bg) px-2 font-mono text-[10px] text-(--color-text-2)"
+					className={cn(
+						responsiveFormControl,
+						"max-w-48 rounded-sm border border-(--color-border) bg-(--color-bg) px-2 font-mono text-(--color-text-2) sm:h-7 sm:text-[10px]",
+					)}
 				>
 					<option value="">all projects</option>
 					{projects.map((p) => (
@@ -263,11 +268,12 @@ function FilterStrip({
 						key={r.id}
 						type="button"
 						onClick={() => patch({ rangeId: r.id })}
-						className={
+						className={cn(
+							responsiveFormControl,
 							state.rangeId === r.id
-								? "bg-(--color-surface-raised) px-2.5 py-1.5 font-mono text-[10px] leading-3 text-(--color-text)"
-								: "px-2.5 py-1.5 font-mono text-[10px] leading-3 text-(--color-text-3) hover:text-(--color-text-2)"
-						}
+								? "bg-(--color-surface-raised) px-2.5 font-mono leading-[17px] text-(--color-text) sm:h-auto sm:py-1.5 sm:text-[10px] sm:leading-3"
+								: "px-2.5 font-mono leading-[17px] text-(--color-text-3) hover:text-(--color-text-2) sm:h-auto sm:py-1.5 sm:text-[10px] sm:leading-3",
+						)}
 					>
 						{r.label}
 					</button>
@@ -336,10 +342,22 @@ function RowsPanel({
 						{offset + 1}–{lastRow} of {total}
 					</span>
 					<span className="flex items-center gap-2">
-						<Button variant="ghost" size="sm" disabled={offset === 0} onClick={onPrev}>
+						<Button
+							variant="ghost"
+							size="sm"
+							disabled={offset === 0}
+							onClick={onPrev}
+							className={cn(responsiveFormControl, "sm:h-8 sm:text-xs")}
+						>
 							Prev
 						</Button>
-						<Button variant="ghost" size="sm" disabled={lastRow >= total} onClick={onNext}>
+						<Button
+							variant="ghost"
+							size="sm"
+							disabled={lastRow >= total}
+							onClick={onNext}
+							className={cn(responsiveFormControl, "sm:h-8 sm:text-xs")}
+						>
 							Next
 						</Button>
 					</span>
