@@ -8,10 +8,14 @@ import type { CapabilityName } from "@/api/types.ts";
  * INFRASTRUCTURE = 04 Projects / 05 Agents / 06 Telemetry, footer =
  * 07 Instance + Documentation. The mono indices are part of the design —
  * do not renumber without a canvas change.
+ *
+ * Addendum (warren-1c7b): the Event explorer page (warren-24b9) shipped
+ * orphaned, so Events was appended to INFRASTRUCTURE as 07 and the footer
+ * Instance index moved to 08. A canvas update should ratify this ordering.
  */
 
 export interface ConsoleNavItem {
-	/** Mono index rendered before the label ("01"…"07"). */
+	/** Mono index rendered before the label ("01"…"08"). */
 	readonly index: string;
 	readonly label: string;
 	readonly to: string;
@@ -32,11 +36,12 @@ export const INFRASTRUCTURE_NAV: readonly ConsoleNavItem[] = [
 	{ index: "04", label: "Projects", to: "/projects" },
 	{ index: "05", label: "Agents", to: "/agents" },
 	{ index: "06", label: "Telemetry", to: "/telemetry" },
+	{ index: "07", label: "Events", to: "/events" },
 ];
 
-/** Footer entry: 07 Instance. */
+/** Footer entry: 08 Instance. */
 export const INSTANCE_NAV_ITEM: ConsoleNavItem = {
-	index: "07",
+	index: "08",
 	label: "Instance",
 	to: "/instance",
 };
