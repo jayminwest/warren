@@ -179,27 +179,27 @@ export function PlanRunsPage() {
 			</div>
 
 			<div className="shrink-0 overflow-x-auto rounded-b bg-(--color-surface)">
-				{/* Mobile arm: compact walk cards (warren-dea8). */}
-				{!planRuns.isLoading && !planRuns.isError && sorted.length > 0 ? (
-					<WalkCardList planRuns={sorted} projectLabel={projectLabel} now={now} />
-				) : null}
-				<div className="hidden min-w-[1080px] md:block">
-					<HeaderRow sort={sort} onSort={onSort} />
-					{planRuns.isLoading ? (
-						<StatusLine>Loading plan runs…</StatusLine>
-					) : planRuns.isError ? (
-						<StatusLine danger>Failed to load plan runs: {formatError(planRuns.error)}</StatusLine>
-					) : sorted.length === 0 ? (
-						<StatusLine>
-							No plan runs match this filter.
-							{emptyHint !== undefined ? ` ${emptyHint}` : ""}
-						</StatusLine>
-					) : (
-						sorted.map((pr) => (
-							<WalkRow key={pr.id} planRun={pr} projectLabel={projectLabel(pr)} now={now} />
-						))
-					)}
-				</div>
+				{planRuns.isLoading ? (
+					<StatusLine>Loading plan runs…</StatusLine>
+				) : planRuns.isError ? (
+					<StatusLine danger>Failed to load plan runs: {formatError(planRuns.error)}</StatusLine>
+				) : sorted.length === 0 ? (
+					<StatusLine>
+						No plan runs match this filter.
+						{emptyHint !== undefined ? ` ${emptyHint}` : ""}
+					</StatusLine>
+				) : (
+					<>
+						{/* Mobile arm: compact walk cards (warren-dea8). */}
+						<WalkCardList planRuns={sorted} projectLabel={projectLabel} now={now} />
+						<div className="hidden min-w-[1080px] md:block">
+							<HeaderRow sort={sort} onSort={onSort} />
+							{sorted.map((pr) => (
+								<WalkRow key={pr.id} planRun={pr} projectLabel={projectLabel(pr)} now={now} />
+							))}
+						</div>
+					</>
+				)}
 			</div>
 		</div>
 	);
