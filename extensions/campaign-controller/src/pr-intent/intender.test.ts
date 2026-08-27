@@ -291,14 +291,14 @@ describe("renderAndJournalPrIntent", () => {
 		const body = result.intent.body.body;
 		expect(body).toContain("Closes #812");
 		expect(body).toContain("## AI disclosure");
-		expect(body).toContain("## Problem");
+		expect(body).toContain("## What Problem This Solves");
 		expect(body).toContain("## Solution");
 		expect(body).toContain("## User impact");
-		expect(body).toContain("## Validation evidence");
+		expect(body).toContain("## Evidence");
 		expect(body).toContain("## Warren run reference");
 		expect(body).toContain("## Operator review notes");
 		expect(body).toContain("maintainers may push edits");
-		expect(body).toContain("dry-run pull-request intent");
+		expect(body).toContain("journaled, owner-approved cross-fork intent");
 		expect(result.intent.body.head).toBe(`warren-run-bot:${BRANCH}`);
 		expect(result.intent.body.base).toBe("main");
 		expect(result.intent.body.draft).toBe(true);

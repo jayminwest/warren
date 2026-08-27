@@ -43,12 +43,17 @@ export function formatElapsedMs(ms: number): string {
 	return `${hr}:${String(min % 60).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;
 }
 
-/** Elapsed between start and end (or now) — `—` before the walk starts. */
-export function planRunElapsed(planRun: PlanRunRow): string {
+/** Elapsed between start and end (or now) — `—` before the walk starts.
+ *
+ * `now` is REQUIRED (warren-b610): a default `new Date()` evaluated per
+ * render froze live walks until the 45s refetch; call sites thread a
+ * `useNow` tick.
+ */
+export function planRunElapsed(planRun: PlanRunRow, now: number): string {
 	if (planRun.startedAt === null) return "—";
 	const start = Date.parse(planRun.startedAt);
 	if (Number.isNaN(start)) return "—";
-	const end = Date.parse(planRun.endedAt ?? new Date().toISOString());
+	const end = planRun.endedAt !== null ? Date.parse(planRun.endedAt) : now;
 	if (Number.isNaN(end)) return "—";
 	return formatElapsedMs(end - start);
 }

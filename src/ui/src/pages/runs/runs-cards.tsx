@@ -50,7 +50,7 @@ function sublineOf(row: RunRow, projectName: string): string {
 	return extras.join(" · ");
 }
 
-function RunCard({ row, projectName }: { row: RunRow; projectName: string }) {
+function RunCard({ row, projectName, now }: { row: RunRow; projectName: string; now: number }) {
 	return (
 		<InventoryRowCard
 			tone={stateTone(row.state)}
@@ -60,7 +60,7 @@ function RunCard({ row, projectName }: { row: RunRow; projectName: string }) {
 			subline={sublineOf(row, projectName)}
 			figures={
 				<>
-					<CardFigure value={formatDuration(row)} />
+					<CardFigure value={formatDuration(row, now)} />
 					<CardFigureNote value={runCostLabel(row)} />
 				</>
 			}
@@ -76,15 +76,18 @@ function RunCard({ row, projectName }: { row: RunRow; projectName: string }) {
 export function RunsCardList({
 	rows,
 	projectIndex,
+	now,
 }: {
 	rows: readonly RunRow[];
 	projectIndex: Map<string, string>;
+	now: number;
 }) {
 	return (
 		<InventoryCardList>
 			{rows.map((row) => (
 				<RunCard
 					key={row.id}
+					now={now}
 					row={row}
 					projectName={
 						row.projectId === null
