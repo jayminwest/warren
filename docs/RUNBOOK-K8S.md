@@ -492,6 +492,8 @@ Manifest values live in `deploy/k8s/base/deployment.yaml` plus the overlays.
 | `WARREN_AUTH` | unset ⇒ `token` | auth posture (§2.5); `public` admits credential-less spectators to the public projection |
 | `WARREN_PUBLIC_ALLOWLIST` | unset | owners and/or `owner/repo` entries a public instance may hold; required under `WARREN_AUTH=public` |
 | `WARREN_GITHUB_APP_REGISTRATION` | unset (fail-safe default, §2.6) | existence gate for the `/github-app/*` registration surface (warren-e320). `on`/`off` overrides the default. Gated-off routes answer 404 |
+| `WARREN_JUDGE_BASE_URL` | `http://judge.warren.svc.cluster.local:8080` | base URL of the judge extension Service; with the token below it enables the server-side `GET /verdicts.jsonl` proxy (the judge Service stays cluster-internal — the browser only talks to warren). Set in `deploy/k8s/base/deployment.yaml` |
+| `WARREN_JUDGE_EXPORT_TOKEN` | from `judge-secrets/judge-export-token` (optional) | bearer credential the proxy presents to the judge's export endpoint (`deploy/k8s/extensions/judge/secrets.yaml`). Both knobs unset ⇒ the surface is disabled |
 
 The provider injects these into pods (never set them by hand): `WARREN_API_URL`, `WARREN_RUN_ID`, `WARREN_REPO_URL`, `WARREN_BRANCH`, `WARREN_BASE_BRANCH`, `WARREN_WORKSPACE_PATH`, `WARREN_SEED_MANIFEST`.
 
