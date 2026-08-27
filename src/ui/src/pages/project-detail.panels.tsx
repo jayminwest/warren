@@ -10,6 +10,12 @@ import type {
 import { OperatorOnly } from "@/components/operator-only.tsx";
 import { Alert } from "@/components/ui/alert.tsx";
 import { Button } from "@/components/ui/button.tsx";
+import {
+	CardFigure,
+	CardFigureNote,
+	InventoryCardList,
+	InventoryRowCard,
+} from "@/components/ui/inventory-card.tsx";
 import { Spinner } from "@/components/ui/spinner.tsx";
 import { formatError } from "@/lib/format-error.ts";
 import { relativeTime } from "@/lib/utils.ts";
@@ -137,10 +143,10 @@ function DefaultsColumn({ entries }: { entries: Array<[string, string]> }) {
 		<dl className="flex min-w-0 flex-1 flex-col gap-2.5">
 			{entries.map(([key, value]) => (
 				<div key={key} className="flex items-center gap-2.5">
-					<dt className="w-[120px] shrink-0 text-[11px] leading-[14px] text-(--color-text-3)">
+					<dt className="max-md:w-[110px] md:w-[120px] shrink-0 text-[11px] leading-[14px] text-(--color-text-3)">
 						{key}
 					</dt>
-					<dd className="min-w-0 truncate font-mono text-[10px] leading-3 text-(--color-text-2)">
+					<dd className="min-w-0 truncate font-mono text-[10px] leading-3 max-md:flex-1 max-md:text-right text-(--color-text-2)">
 						{value}
 					</dd>
 				</div>
@@ -195,20 +201,88 @@ export function TriggersPanel({ projectId }: { projectId: string }) {
 			) : list.length === 0 ? (
 				<EmptyRow text="No triggers configured — edit .warren/triggers.yaml on the project repo to add one." />
 			) : (
-				list.map((t, i) => (
-					<TriggerRow
-						key={t.id}
-						trigger={t}
-						last={i === list.length - 1}
-						isRunning={runNow.isPending && runNow.variables === t.id}
-						runError={
-							runNow.isError && runNow.variables === t.id ? formatError(runNow.error) : null
-						}
-						onRunNow={() => runNow.mutate(t.id)}
-					/>
-				))
+				<>
+					{/* No mobile artboard for project-detail (warren-89aa): the
+					 * trigger rows degrade to the shared InventoryRowCard pattern
+					 * below md; the table-style rows above md are untouched. */}
+					<InventoryCardList>
+						{list.map((t) => (
+							<TriggerCard
+								key={t.id}
+								trigger={t}
+								isRunning={runNow.isPending && runNow.variables === t.id}
+								onRunNow={() => runNow.mutate(t.id)}
+							/>
+						))}
+					</InventoryCardList>
+					<div className="hidden md:block">
+						{list.map((t, i) => (
+							<TriggerRow
+								key={t.id}
+								trigger={t}
+								last={i === list.length - 1}
+								isRunning={runNow.isPending && runNow.variables === t.id}
+								runError={
+									runNow.isError && runNow.variables === t.id ? formatError(runNow.error) : null
+								}
+								onRunNow={() => runNow.mutate(t.id)}
+							/>
+						))}
+					</div>
+				</>
 			)}
 		</section>
+	);
+}
+
+/* The mobile arm of one trigger row (warren-89aa): dot-only state
+ * (triggers carry no run-state), role + last-fired as the trailing
+ * figures, prompt/parse-error as the meta line. */
+function TriggerCard({
+	trigger,
+	isRunning,
+	onRunNow,
+}: {
+	trigger: TriggerSummary;
+	isRunning: boolean;
+	onRunNow: () => void;
+}) {
+	const lastFired =
+		trigger.lastFiredAt !== null
+			? `last fired ${relativeTime(trigger.lastFiredAt)}`
+			: "never fired";
+	const prompt =
+		trigger.parseError !== null
+			? `cron parse error: ${trigger.parseError}`
+			: (trigger.prompt ?? "—");
+	return (
+		<InventoryRowCard
+			tone={trigger.parseError !== null ? "warning" : "neutral"}
+			title={trigger.id}
+			subline={`${trigger.cron} · ${trigger.timezone ?? "UTC"}${
+				trigger.seed !== undefined ? ` · ${trigger.seed}` : ""
+			}`}
+			figures={
+				<>
+					<CardFigure value={trigger.role} />
+					<CardFigureNote value={lastFired} />
+				</>
+			}
+			meta={prompt}
+		>
+			{/* `POST /projects/:id/triggers/:tid/run` is `dispatch`-gated. */}
+			<OperatorOnly>
+				<Button
+					variant="outline"
+					size="sm"
+					className="h-6 px-2.5 text-[10px]"
+					onClick={onRunNow}
+					disabled={isRunning}
+				>
+					{isRunning ? "Dispatching…" : "Run now"}
+				</Button>
+			</OperatorOnly>
+		</InventoryRowCard>
 	);
 }
 
@@ -321,27 +395,55 @@ export function ReadyPlansPanel({ projectId }: { projectId: string }) {
 			) : plans.length === 0 ? (
 				<EmptyRow text="No approved plans with open, undispatched children right now." />
 			) : (
-				plans.map((plan, i) => (
-					<div
-						key={plan.id}
-						className={`flex min-h-[49px] flex-wrap items-center gap-3 px-3.5 py-1.5 ${
-							i === plans.length - 1 ? "" : "border-b border-b-(--color-border)"
-						}`}
-					>
-						<span className="w-[70px] shrink-0 font-mono text-[10px] leading-3 text-(--color-primary)">
-							{plan.id}
-						</span>
-						<span className="min-w-0 flex-1 truncate text-[11px] leading-[14px] text-(--color-text-2)">
-							{plan.name ?? plan.status}
-						</span>
-						<span className="shrink-0 font-mono text-[9px] leading-3 text-(--color-text-3)">
-							{plan.openChildCount} open child{plan.openChildCount === 1 ? "" : "ren"}
-						</span>
-						<Link to="/dispatch/plan" className="shrink-0">
-							<Button size="sm">Dispatch plan</Button>
-						</Link>
+				<>
+					{/* Mobile arm (warren-89aa): ready-plan rows degrade to the
+					 * shared InventoryRowCard pattern below md. */}
+					<InventoryCardList>
+						{plans.map((plan) => (
+							<InventoryRowCard
+								key={plan.id}
+								tone="info"
+								stateLabel="ready"
+								title={plan.id}
+								subline={plan.name ?? plan.status}
+								figures={
+									<CardFigure
+										value={`${plan.openChildCount} open child${
+											plan.openChildCount === 1 ? "" : "ren"
+										}`}
+									/>
+								}
+							>
+								<Link to="/dispatch/plan" className="shrink-0">
+									<Button size="sm">Dispatch plan</Button>
+								</Link>
+							</InventoryRowCard>
+						))}
+					</InventoryCardList>
+					<div className="hidden md:block">
+						{plans.map((plan, i) => (
+							<div
+								key={plan.id}
+								className={`flex min-h-[49px] flex-wrap items-center gap-3 px-3.5 py-1.5 ${
+									i === plans.length - 1 ? "" : "border-b border-b-(--color-border)"
+								}`}
+							>
+								<span className="w-[70px] shrink-0 font-mono text-[10px] leading-3 text-(--color-primary)">
+									{plan.id}
+								</span>
+								<span className="min-w-0 flex-1 truncate text-[11px] leading-[14px] text-(--color-text-2)">
+									{plan.name ?? plan.status}
+								</span>
+								<span className="shrink-0 font-mono text-[9px] leading-3 text-(--color-text-3)">
+									{plan.openChildCount} open child{plan.openChildCount === 1 ? "" : "ren"}
+								</span>
+								<Link to="/dispatch/plan" className="shrink-0">
+									<Button size="sm">Dispatch plan</Button>
+								</Link>
+							</div>
+						))}
 					</div>
-				))
+				</>
 			)}
 		</section>
 	);
