@@ -257,9 +257,10 @@ export function ConsoleSidebarBody({
 				))}
 				{/* First-run setup (warren-a911): the manual entry point
 				    back to the checklist, shown only to a caller who can
-				    act on it and only while no project exists — once one
-				    does, the checklist is done and the entry retires. */}
-				{caps.can("admin") && stats.projectsCount === 0 ? (
+				    act on it and only while no run exists — once one
+				    dispatches, the checklist is done and the entry
+				    retires (warren-ed11). */}
+				{caps.can("admin") && stats.runsTotal === 0 ? (
 					<NavRow item={SETUP_NAV_ITEM} onNavigate={onNavigate} />
 				) : null}
 			</nav>
