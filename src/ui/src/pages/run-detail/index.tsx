@@ -15,7 +15,7 @@ import { formatPullRequestLifecycle } from "@/lib/labels.ts";
 import { cn } from "@/lib/utils.ts";
 import type { DispatchRouteState } from "@/pages/dispatch/dispatch-draft.ts";
 import { EventTail } from "@/pages/run-detail/event-tail.tsx";
-import { PhaseRail } from "@/pages/run-detail/phase-rail.tsx";
+import { PhaseRail, PhaseRailStrip } from "@/pages/run-detail/phase-rail.tsx";
 import { PreviewPanel } from "@/pages/run-detail/preview-panel.tsx";
 import {
 	BudgetPanel,
@@ -332,7 +332,12 @@ export function RunDetailPage() {
 				</Alert>
 			) : null}
 
-			<PhaseRail run={r} events={stream.events} />
+			<div className="hidden md:block">
+				<PhaseRail run={r} events={stream.events} />
+			</div>
+			<div className="md:hidden">
+				<PhaseRailStrip run={r} events={stream.events} />
+			</div>
 
 			<div className="flex min-h-0 flex-1 flex-col gap-3 xl:flex-row">
 				<div className="flex min-w-0 flex-1 flex-col gap-3">
