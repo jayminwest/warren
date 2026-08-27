@@ -24,6 +24,7 @@
 			"trigger": "manual",
 			"prUrl": null,
 			"targetBranch": null,
+			"branch": null,
 			"ref": null,
 			"baseCommit": null,
 			"salvageRef": null,

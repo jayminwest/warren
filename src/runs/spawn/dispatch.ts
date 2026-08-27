@@ -303,6 +303,11 @@ async function dispatchRun(input: SpawnRunInput): Promise<SpawnRunResult> {
 		env: runEnv,
 	};
 	try {
+		// warren-5255: freeze the composed workspace branch onto the row so
+		// HTTP consumers (the campaign-controller's cross-fork head ref) read
+		// it instead of re-deriving the prefix composition. Inside the try so
+		// a failure unwinds through the same rollback as the dispatch itself.
+		await input.repos.runs.setBranch(run.id, branch);
 		// warren-1f03: dispatch-time drizzle migration preflight. A ref-dispatch
 		// onto an existing branch whose generated migrations collide with a
 		// journal slot main landed after the branch was cut is healed prompt-free

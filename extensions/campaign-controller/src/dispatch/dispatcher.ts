@@ -41,6 +41,7 @@ import { TERMINAL_ACTION_STATES } from "../store/types.ts";
 import {
 	DispatchUncertainError,
 	isTerminalRunState,
+	runPushedBranch,
 	WarrenAuthError,
 	type WarrenClient,
 	WarrenRateLimitError,
@@ -447,7 +448,7 @@ export class WarrenDispatcher {
 				terminal: false,
 				settledNow: false,
 				workItemStatus: workItemId === null ? null : "running",
-				branch: run.targetBranch,
+				branch: runPushedBranch(run),
 				costUsdCents: null,
 			};
 		}
@@ -459,7 +460,7 @@ export class WarrenDispatcher {
 				terminal: true,
 				settledNow: false,
 				workItemStatus: null,
-				branch: run.targetBranch,
+				branch: runPushedBranch(run),
 				costUsdCents: run.costUsd === null ? null : usdToCents(run.costUsd),
 			};
 		}
@@ -472,7 +473,7 @@ export class WarrenDispatcher {
 					? null
 					: canonicalJson({ runState: run.state, failureReason: run.failureReason }),
 				resultRunId: run.id,
-				resultBranch: run.targetBranch,
+				resultBranch: runPushedBranch(run),
 			});
 			if (workItemId !== null) {
 				this.#store.campaigns.setWorkItemStatus(workItemId, succeeded ? "terminal" : "failed");
@@ -490,7 +491,7 @@ export class WarrenDispatcher {
 			terminal: true,
 			settledNow: true,
 			workItemStatus: succeeded ? "terminal" : "failed",
-			branch: run.targetBranch,
+			branch: runPushedBranch(run),
 			costUsdCents: run.costUsd === null ? null : usdToCents(run.costUsd),
 		};
 	}

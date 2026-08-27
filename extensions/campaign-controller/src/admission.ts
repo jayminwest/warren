@@ -35,7 +35,7 @@ import { digestOf } from "./digest.ts";
 import { ValidationError } from "./errors.ts";
 import { checkRepoCoordinates, type RepoCoordinates } from "./github-grammar.ts";
 import { type CampaignManifest, validateCampaignManifest } from "./manifest.ts";
-import { MUTATION_FLAGS } from "./mutations.ts";
+import { EXECUTABLE_MUTATION_FLAGS, MUTATION_FLAGS } from "./mutations.ts";
 import { type RepositoryPolicy, validateRepositoryPolicy } from "./repository-policy.ts";
 import type { CampaignStateStore } from "./store/state-store.ts";
 import type { CampaignRow, ReservationRow, WorkItemRow } from "./store/types.ts";
@@ -452,13 +452,20 @@ function verifyWarrenTarget(manifest: CampaignManifest): void {
 	}
 }
 
-/** Defensive re-check: V0 is dry-run only; every mutation flag must be false. */
+/**
+ * Defensive re-check: only mutations with an executable code path may be
+ * enabled (Phase 2, warren-84da, opened exactly `createPullRequest`); the
+ * schema enforces the same rule, and this belt-and-suspenders copy holds
+ * even against a store row validated by an older revision.
+ */
 function verifyMutationFlags(policy: RepositoryPolicy): void {
-	const enabled = MUTATION_FLAGS.filter((flag) => policy.mutations[flag] !== false);
+	const enabled = MUTATION_FLAGS.filter(
+		(flag) => policy.mutations[flag] !== false && !EXECUTABLE_MUTATION_FLAGS.includes(flag),
+	);
 	if (enabled.length > 0) {
 		throw new AdmissionRefusal(
 			"mutation_flag_enabled",
-			`mutation flag(s) enabled: ${enabled.join(", ")} — V0 is dry-run only and every mutation flag must be false`,
+			`mutation flag(s) enabled: ${enabled.join(", ")} — no executable code path exists for them (only ${EXECUTABLE_MUTATION_FLAGS.join(", ")} may be enabled, warren-84da)`,
 		);
 	}
 }

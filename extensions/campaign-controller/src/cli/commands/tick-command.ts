@@ -14,6 +14,8 @@ import { ConfigError } from "../../errors.ts";
 import { ReadOnlyGithubClient } from "../../github/client.ts";
 import type { FetchLike as GithubFetchLike } from "../../github/http-transport.ts";
 import { BunFetchGithubTransport } from "../../github/http-transport.ts";
+import { BunFetchGithubPrCreator } from "../../github/pr-create.ts";
+import { validateRepositoryPolicy } from "../../repository-policy.ts";
 import { runTick } from "../../tick/tick.ts";
 import type { FetchLike } from "../../warren-client.ts";
 import { WarrenClient } from "../../warren-client.ts";
@@ -70,6 +72,7 @@ export async function runTickCommand(
 			fetchImpl: deps.githubFetch,
 		});
 		const github = new ReadOnlyGithubClient(transport);
+		const prCreator = maybeBuildPrCreator(config, deps, policy);
 		const result = await runTick(
 			{
 				store,
@@ -79,6 +82,7 @@ export async function runTickCommand(
 				ids: deps.ids,
 				policy,
 				summaries,
+				...(prCreator !== undefined ? { prCreator } : {}),
 			},
 			campaignId,
 		);
@@ -86,6 +90,39 @@ export async function runTickCommand(
 	} finally {
 		store.close();
 	}
+}
+
+/**
+ * The Phase 2 gate (warren-84da): the PR creator exists ONLY when the
+ * validated repository policy enables `mutations.createPullRequest` AND a
+ * GitHub credential is present. There is deliberately no flag for this —
+ * the capability comes from the approved policy file, and `--live` stays a
+ * usage error. An invalid policy fails the tick later, at admission, with
+ * its own precise error; here it simply means no creator.
+ */
+function maybeBuildPrCreator(
+	config: CliConfig,
+	deps: TickCommandDeps,
+	policy: unknown,
+): BunFetchGithubPrCreator | undefined {
+	if (config.githubToken === null || config.githubToken.length === 0) {
+		return undefined;
+	}
+	let validated: ReturnType<typeof validateRepositoryPolicy>;
+	try {
+		validated = validateRepositoryPolicy(policy, { nowMs: deps.clock.nowMs() });
+	} catch {
+		return undefined;
+	}
+	if (validated.policy.mutations.createPullRequest !== true) {
+		return undefined;
+	}
+	return new BunFetchGithubPrCreator({
+		policy: validated.policy,
+		baseUrl: config.githubBaseUrl ?? undefined,
+		token: config.githubToken,
+		fetchImpl: deps.githubFetch,
+	});
 }
 
 function requireCampaignFlag(flags: Readonly<Record<string, string | true>>): string {

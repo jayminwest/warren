@@ -162,10 +162,10 @@ export const runs = sqliteTable(
 		prUrl: text("pr_url"),
 		// Operator-requested target branch (warren-1f81, #419); null = none.
 		targetBranch: text("target_branch"),
+		branch: text("branch"), // composed workspace branch frozen at dispatch (warren-5255)
 		// Operator-requested git ref the workspace was cloned from (warren-afeb),
-		// frozen from the dispatch body's explicit `ref` so POST /runs and the
-		// run projections can echo what a ref-pinned dispatch took. Null = the
-		// run dispatched against the resolved default/continuation base.
+		// frozen from the dispatch body's explicit `ref` so the run projections
+		// echo it. Null = the resolved default/continuation base was used.
 		ref: text("ref"),
 		// Base-commit pinning (warren-aaf7): a 40-hex commit SHA the workspace is
 		// cut at, SPLIT from `ref` (which stays branch-shaped and feeds the PR
