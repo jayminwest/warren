@@ -1,23 +1,30 @@
 import { useQuery } from "@tanstack/react-query";
-import { getApiToken } from "@/api/client.ts";
+// Relative import, not the `@/` alias — this module's tests run under
+// the repo-root `bun test`, which resolves no `@/` (see format.test.ts).
+import { getApiToken } from "../../api/client.ts";
 
 /**
- * Judge-verdict consumption (warren-7197 / pl-7e38 step 14).
+ * Judge-verdict consumption (warren-7197 / pl-7e38 step 14;
+ * warren-f927 retargeted it at the warren proxy).
  *
- * The judge is an OPTIONAL warren extension (extensions/judge). It is
- * never part of the core server, so this fetch targets the extension's
- * published HTTP surface (`GET /verdicts.jsonl`) directly — deliberately
- * NOT routed through `src/ui/src/api/client.ts`, whose paths
- * `check:client-contract` holds to the warren ROUTE_TABLE. Extension
- * awareness must not leak into core modules (extensions seam,
- * docs/design/extensions.md), and a fetch the warren server does not
- * serve is exactly the drift that gate exists to catch.
+ * The judge is an OPTIONAL warren extension (extensions/judge). Its
+ * verdict export is reachable from the browser only through warren's
+ * operator-gated reverse proxy, `GET /extensions/judge/verdicts.jsonl`
+ * (warren-1b40): warren's CSP is `connect-src 'self'`, and the judge's
+ * own credential lives server-side. The fetch below stays same-origin
+ * and carries the warren bearer token via getApiToken(). It is still
+ * deliberately NOT routed through `src/ui/src/api/client.ts`'s JSON
+ * `request()` — the export is NDJSON text, not a JSON envelope.
  *
- * The base URL defaults to same-origin (a reverse proxy fronts the
- * extension in that deployment); override with `VITE_JUDGE_BASE_URL`.
- * Any non-OK response or network failure is the ABSENT state — the
- * extension not being deployed is a normal condition, never an error
- * banner.
+ * States are classified honestly (warren-f927):
+ * - 501 from the proxy: the extension is genuinely absent/unconfigured.
+ * - 401/403: deployed, but this browser holds no accepted credential.
+ * - non-NDJSON body (the SPA index.html masquerade): "misconfigured",
+ *   never silently swallowed parse failures.
+ * - network throw / other non-OK: transport "error".
+ * - an empty NDJSON body is a HEALTHY judge with zero verdicts, not an
+ *   error (extensions/judge/src/server.ts emits exactly that plus the
+ *   `X-Verdicts-Max-Id` high-water header).
  */
 
 /** One class assignment in a verdict row (rubric v1, 15 classes). */
@@ -55,51 +62,77 @@ export type JudgeVerdictsAbsent = Extract<JudgeVerdictsState, { readonly availab
 
 export type JudgeVerdictsState =
 	| { readonly available: true; readonly rows: readonly JudgeStoreRow[] }
-	| { readonly available: false; readonly reason: "absent" | "unauthorized" | "error" };
+	| {
+			readonly available: false;
+			readonly reason: "absent" | "unauthorized" | "misconfigured" | "error";
+	  };
 
 /** Fetch page size: enough for a trend line, bounded on purpose. */
 const VERDICT_PAGE_LIMIT = 500;
 
-const JUDGE_BASE_URL: string = import.meta.env.VITE_JUDGE_BASE_URL ?? "";
-
 export const JUDGE_VERDICTS_QUERY_KEY = ["telemetry", "judge-verdicts"] as const;
 
-async function fetchJudgeVerdicts(signal: AbortSignal): Promise<JudgeVerdictsState> {
+/** The warren proxy path (warren-1b40; same-origin under CSP). */
+const JUDGE_PROXY_PATH = "/extensions/judge/verdicts.jsonl";
+
+/** Does this response carry the judge export, not the SPA index.html? */
+function isNdjsonResponse(res: Response, text: string): boolean {
+	const contentType = res.headers.get("content-type") ?? "";
+	if (contentType.length > 0 && !contentType.toLowerCase().includes("x-ndjson")) return false;
+	// Content-type can be missing; a leading `<` is the SPA fallback.
+	const firstLine = text.split("\n").find((l) => l.trim().length > 0) ?? "";
+	return !firstLine.trimStart().startsWith("<");
+}
+
+export async function fetchJudgeVerdicts(signal: AbortSignal): Promise<JudgeVerdictsState> {
 	const headers: Record<string, string> = { accept: "application/x-ndjson" };
 	const token = getApiToken();
 	if (token !== null && token.length > 0) headers.authorization = `Bearer ${token}`;
 
 	let res: Response;
 	try {
-		res = await fetch(`${JUDGE_BASE_URL}/verdicts.jsonl?limit=${String(VERDICT_PAGE_LIMIT)}`, {
+		res = await fetch(`${JUDGE_PROXY_PATH}?limit=${String(VERDICT_PAGE_LIMIT)}`, {
 			headers,
 			signal,
 		});
 	} catch {
-		// Network failure = not deployed at this origin (or offline).
-		return { available: false, reason: "absent" };
+		// Transport failure (offline, same-origin fetch rejected).
+		return { available: false, reason: "error" };
 	}
 
+	if (res.status === 501) {
+		// The warren proxy reports the extension as not configured.
+		return { available: false, reason: "absent" };
+	}
+	if (res.status === 401 || res.status === 403) {
+		// The extension is deployed but this browser holds no credential
+		// it accepts (e.g. a WARREN_AUTH=public spectator).
+		return { available: false, reason: "unauthorized" };
+	}
 	if (!res.ok) {
-		return {
-			available: false,
-			// 401/403: the extension is deployed but this browser holds no
-			// credential it accepts (e.g. a WARREN_AUTH=public spectator).
-			reason: res.status === 401 || res.status === 403 ? "unauthorized" : "absent",
-		};
+		// 502 and friends: the proxy is configured but the judge is
+		// unreachable or rejected the export request.
+		return { available: false, reason: "error" };
 	}
 
 	const text = await res.text();
+	if (!isNdjsonResponse(res, text)) {
+		// HTML (or another non-NDJSON body) can never read as a deployed
+		// judge — classify instead of swallowing line-by-line parse noise.
+		return { available: false, reason: "misconfigured" };
+	}
+
 	const rows: JudgeStoreRow[] = [];
 	for (const line of text.split("\n")) {
 		if (line.trim().length === 0) continue;
 		try {
 			rows.push(JSON.parse(line) as JudgeStoreRow);
 		} catch {
-			// Skip a malformed line rather than drop the whole page.
+			// Skip a malformed line (e.g. a torn append) rather than drop
+			// the whole page.
 		}
 	}
-	if (rows.length === 0) return { available: false, reason: "error" };
+	// An empty page is a healthy judge with zero verdicts.
 	return { available: true, rows };
 }
 

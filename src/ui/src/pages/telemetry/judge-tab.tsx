@@ -29,14 +29,33 @@ const UNJUDGED_REASON_LABELS: Record<string, string> = {
 	judge_error: "judge error",
 };
 
+/** Distinct copy per absence reason (warren-f927): "not deployed" is
+ * printed ONLY when the warren proxy itself reports the extension as
+ * unconfigured — never for transport or misconfiguration states. */
+const ABSENT_COPY: Record<JudgeVerdictsAbsent["reason"], { meta: string; line: string }> = {
+	absent: {
+		meta: "EXTENSION ABSENT",
+		line: "The judge extension is not deployed against this instance. Set WARREN_JUDGE_BASE_URL and WARREN_JUDGE_EXPORT_TOKEN (or deploy extensions/judge) and the proxy's verdict export becomes this tab's evidence.",
+	},
+	unauthorized: {
+		meta: "EXTENSION LOCKED",
+		line: "The judge extension is deployed but did not accept this browser's credential. Operators can open the verdict export with a token the extension accepts.",
+	},
+	misconfigured: {
+		meta: "PROXY MISCONFIGURED",
+		line: "The verdict proxy answered with an HTML page instead of the NDJSON export. Something in front of warren (or its proxy config) is serving the SPA where the judge export should be — this is never a healthy judge.",
+	},
+	error: {
+		meta: "EXPORT UNREACHABLE",
+		line: "The verdict proxy could not be reached, or the judge behind it is unreachable/rejected the export request. Check the judge service and the proxy's WARREN_JUDGE_BASE_URL.",
+	},
+};
+
 function AbsentPanel({ state }: { state: JudgeVerdictsAbsent }) {
-	const line =
-		state.reason === "unauthorized"
-			? "The judge extension is deployed but did not accept this browser's credential. Operators can open the verdict export with a token the extension accepts."
-			: "The judge extension is not deployed against this instance. Deploy extensions/judge and its verdict export (/verdicts.jsonl) becomes this tab's evidence.";
+	const copy = ABSENT_COPY[state.reason];
 	return (
-		<TelemetryPanel title="Judge verdicts" meta="EXTENSION ABSENT">
-			<p className="max-w-prose text-[12px] leading-[17px] text-(--color-text-2)">{line}</p>
+		<TelemetryPanel title="Judge verdicts" meta={copy.meta}>
+			<p className="max-w-prose text-[12px] leading-[17px] text-(--color-text-2)">{copy.line}</p>
 		</TelemetryPanel>
 	);
 }
@@ -90,9 +109,22 @@ export function TelemetryJudgeTab() {
 		);
 	}
 
-	const state = verdicts.data ?? { available: false as const, reason: "absent" as const };
+	const state = verdicts.data ?? { available: false as const, reason: "error" as const };
 	if (!state.available) {
 		return <AbsentPanel state={state} />;
+	}
+
+	// Healthy judge, zero exported verdicts — an honest empty state, not
+	// an error (warren-f927: the empty NDJSON page is a normal response).
+	if (state.rows.length === 0) {
+		return (
+			<TelemetryPanel title="Judge verdicts" meta="HEALTHY · NO VERDICTS YET">
+				<p className="max-w-prose text-[12px] leading-[17px] text-(--color-text-2)">
+					The judge export is reachable and answered with an empty page — no verdicts have been
+					recorded yet. Once the judge starts finishing runs, its rubric-v1 verdicts land here.
+				</p>
+			</TelemetryPanel>
+		);
 	}
 
 	const summary = summarizeJudgeVerdicts(state.rows);
