@@ -12,8 +12,9 @@
  * The fix mints a credential bound to a SINGLE run at dispatch time and injects
  * THAT instead. A run-scoped token authorizes only the run's own callback
  * surface — `GET /runs/:thisId/inbox`, `GET /runs/:thisId/finalize-intent`,
- * `POST /runs/:thisId/finalize-result`, `POST /runs/:thisId/salvage`
- * (`RUN_CALLBACK_ROUTE_PATTERNS`) — and nothing else, and only for its own
+ * `POST /runs/:thisId/finalize-result`, `POST /runs/:thisId/salvage`,
+ * `POST /runs/:thisId/git-credential` (`RUN_CALLBACK_ROUTE_PATTERNS`) — and
+ * nothing else, and only for its own
  * run id. Its lifetime is bounded by the
  * run: the server's request gate rejects it once the run reaches a terminal
  * state (see `src/server/server.ts`).
@@ -95,10 +96,10 @@ function constantTimeEqual(a: string, b: string): boolean {
 
 /**
  * The ONLY routes a run-scoped credential may reach — a run's own callback
- * surface (the in-pod steering poll, the two finalize legs, and the salvage
- * intake). The request gate additionally pins the `:id` param to the token's
- * bound run id and refuses once that run is terminal, so this set is
- * necessary but not sufficient on its own.
+ * surface (the in-pod steering poll, the two finalize legs, the salvage
+ * intake, and the App-mode credential remint). The request gate additionally
+ * pins the `:id` param to the token's bound run id and refuses once that run
+ * is terminal, so this set is necessary but not sufficient on its own.
  *
  * `/runs/:id/salvage` (warren-cd3b) was missing here until warren-7c1e. Its
  * only caller is `finalize-entrypoint.ts`, which posts with the pod's
@@ -115,6 +116,18 @@ export const RUN_CALLBACK_ROUTE_PATTERNS: ReadonlySet<string> = new Set([
 	"/runs/:id/finalize-intent",
 	"/runs/:id/finalize-result",
 	"/runs/:id/salvage",
+	// warren-5a5c: the K8s App-mode credential remint. Its only caller is
+	// `finalize-entrypoint.ts` / `salvage-post.ts` inside the pod, which POST
+	// with the pod's run-scoped `WARREN_API_TOKEN` — the same shape as the
+	// salvage 403 warren-7c1e fixed. Under App mode a mounted installation
+	// token expires long before a run ends, so the pod cannot hold a push
+	// credential; it MUST ask the control plane to mint one over this
+	// authenticated callback channel (forge-contract.md §4.1 window 3). The
+	// handler mints off the boot-resolved forge and returns a fresh, scoped
+	// credential — it never echoes or widens the caller's own token — so
+	// admitting the route keeps the narrow rule intact: a run token still
+	// reaches only its OWN run's remint, and only while that run is live.
+	"/runs/:id/git-credential",
 ]);
 
 /** True iff `pattern` is one of the run-callback routes a run token may reach. */

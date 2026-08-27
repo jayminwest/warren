@@ -36,6 +36,8 @@ import { WarrenHttp } from "./http.ts";
 export interface K8sTarget {
 	readonly http: WarrenHttp;
 	readonly baseUrl: string;
+	/** Operator bearer — needed to mint run-scoped callback tokens (scenario 38, warren-5a5c). */
+	readonly token: string;
 	readonly projectId: string;
 	readonly agentName: string;
 }
@@ -67,6 +69,7 @@ export function resolveK8sTarget(ctx: ScenarioCtx): K8sTarget {
 	return {
 		http: new WarrenHttp({ baseUrl, token }),
 		baseUrl,
+		token,
 		projectId,
 		agentName,
 	};
