@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Download, Pause, Play } from "lucide-react";
 import { useState } from "react";
 import { type EventExplorerRow, eventsApi, projectsApi } from "@/api/client.ts";
-import { EVENT_STREAMS, type ProjectRow } from "@/api/types.ts";
+import type { ProjectRow } from "@/api/types.ts";
 import { Alert } from "@/components/ui/alert.tsx";
 import { Button } from "@/components/ui/button.tsx";
 import { EmptyState } from "@/components/ui/empty-state.tsx";
@@ -26,6 +26,7 @@ import {
 	summarizeEventPayload,
 	TIME_RANGES,
 } from "./event-explorer-format.ts";
+import { MobileFilterStrip, STREAM_FILTERS } from "./event-explorer-mobile-filter-strip.tsx";
 
 /**
  * Event explorer (warren-24b9 / pl-7e38 step 16) — every structured
@@ -45,11 +46,6 @@ const PAGE_SIZE = 100;
 const FOLLOW_POLL_MS = 5_000;
 /** Slow fallback poll, the runs-list pattern (warren-f566). */
 const FALLBACK_POLL_MS = 45_000;
-
-const STREAM_FILTERS: readonly { id: string; label: string }[] = [
-	{ id: "all", label: "ALL" },
-	...EVENT_STREAMS.map((s) => ({ id: s, label: s.toUpperCase() })),
-];
 
 export function EventExplorerPage() {
 	const [state, setState] = useState<FilterState>({
@@ -144,12 +140,12 @@ export function EventExplorerPage() {
 			</div>
 
 			<div className="flex flex-wrap items-end justify-between gap-3">
-				<div className="flex flex-col gap-1.5">
+				<div className="flex min-w-0 flex-grow flex-col gap-1.5">
 					<div className="flex items-center gap-2.5">
-						<h1 className="text-[22px] font-semibold leading-7 tracking-[-0.025em] text-(--color-text)">
+						<h1 className="text-[17px] font-semibold leading-[22px] tracking-[-0.02em] text-(--color-text) md:text-[22px] md:leading-7 md:tracking-[-0.025em]">
 							Event explorer
 						</h1>
-						{follow && <LiveBadge />}
+						{follow && <LiveBadge className="hidden md:inline-flex" />}
 					</div>
 					<p className="max-w-prose text-[13px] leading-[18px] text-(--color-text-2)">
 						Every structured event this instance emits, in sequence order. Filter it, follow it,
@@ -157,28 +153,33 @@ export function EventExplorerPage() {
 					</p>
 				</div>
 				<div className="flex items-center gap-2">
+					{follow && <LiveBadge className="md:hidden" />}
 					<Button
 						variant="outline"
 						size="sm"
+						aria-label={follow ? "Pause tail" : "Follow tail"}
 						onClick={() => {
 							setFollow((prev) => !prev);
 							setOffset(0);
 						}}
 					>
 						{follow ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
-						{follow ? "Pause tail" : "Follow tail"}
+						<span className="hidden md:inline">{follow ? "Pause tail" : "Follow tail"}</span>
 					</Button>
 					<Button
 						variant="outline"
 						size="sm"
+						aria-label="Export ndjson"
 						onClick={() => void exportNdjson()}
 						disabled={exporting}
 					>
 						<Download className="h-3.5 w-3.5" />
-						{exporting ? "Exporting…" : "Export ndjson"}
+						<span className="hidden md:inline">{exporting ? "Exporting…" : "Export ndjson"}</span>
 					</Button>
 				</div>
 			</div>
+
+			<MobileFilterStrip state={state} patch={patch} projects={projects.data?.projects} />
 
 			<FilterStrip state={state} patch={patch} projects={projects.data?.projects} />
 
@@ -198,9 +199,14 @@ export function EventExplorerPage() {
 	);
 }
 
-function LiveBadge() {
+function LiveBadge({ className }: { className?: string }) {
 	return (
-		<span className="flex items-center gap-1.5 rounded-xs border border-(--color-success)/40 px-1.5 py-0.5">
+		<span
+			className={cn(
+				"flex items-center gap-1.5 rounded-xs border border-(--color-success)/40 px-1.5 py-0.5",
+				className,
+			)}
+		>
 			<span className="h-1.5 w-1.5 rounded-full bg-(--color-success)" />
 			<span className="font-mono text-[9px] leading-3 tracking-[0.08em] text-(--color-success)">
 				LIVE
@@ -219,7 +225,7 @@ function FilterStrip({
 	projects: readonly ProjectRow[] | undefined;
 }) {
 	return (
-		<div className="flex flex-wrap items-center gap-2 rounded-t border border-(--color-border) bg-(--color-surface) px-2.5 py-2">
+		<div className="hidden flex-wrap items-center gap-2 rounded-t border border-(--color-border) bg-(--color-surface) px-2.5 py-2 md:flex">
 			{STREAM_FILTERS.map((f) => (
 				<FilterPill
 					key={f.id}
@@ -337,7 +343,7 @@ function RowsPanel({
 				/>
 			))}
 			{success && rows.length > 0 && (
-				<div className="flex items-center justify-between px-3 py-2 font-mono text-[10px] leading-3 text-(--color-text-3)">
+				<div className="flex items-center justify-between px-3 py-2 font-mono text-[9px] leading-[11px] text-(--color-text-3) md:text-[10px] md:leading-3">
 					<span>
 						{offset + 1}–{lastRow} of {total}
 					</span>
