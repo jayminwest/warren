@@ -118,6 +118,8 @@ export class FakeWarrenServer {
 	private rateLimitedReadsRemaining = 0;
 	private rateLimitRetryAfterSec: number | null = null;
 	private nextRawResponse: Response | null = null;
+	private getRunReads = 0;
+	private getRunReadHook: ((id: string, readCount: number) => void) | null = null;
 
 	constructor(options: FakeWarrenOptions) {
 		this.token = options.token;
@@ -186,7 +188,13 @@ export class FakeWarrenServer {
 		if (runMatch === null) {
 			return undefined;
 		}
-		const run = this.runs.get(decodeURIComponent(runMatch[1] ?? ""));
+		const id = decodeURIComponent(runMatch[1] ?? "");
+		this.getRunReads += 1;
+		// The hook runs BEFORE the row is read, so a test can mutate the run
+		// between two reads — the live interleaving where a run settles while
+		// a tick is still in flight (warren-968d).
+		this.getRunReadHook?.(id, this.getRunReads);
+		const run = this.runs.get(id);
 		if (run === undefined) {
 			return errorResponse(404, "not_found", "run not found");
 		}
@@ -237,6 +245,11 @@ export class FakeWarrenServer {
 	/** Serve one raw response (malformed-envelope scenarios). */
 	respondOnceWith(raw: Response): void {
 		this.nextRawResponse = raw;
+	}
+
+	/** Install a hook fired before each `GET /runs/:id` response is built. */
+	onGetRunRead(hook: (id: string, readCount: number) => void): void {
+		this.getRunReadHook = hook;
 	}
 
 	/** Simulate a warren restart: runs survive, the idempotency store does not. */
