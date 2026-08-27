@@ -3,9 +3,11 @@ import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { planRunsApi, projectsApi } from "@/api/client.ts";
 import type { PlanRunRow, PlanRunStateFilter } from "@/api/types.ts";
+import { isTerminalPlanRunState } from "@/api/types.ts";
 import { OperatorOnly, useOperatorHint } from "@/components/operator-only.tsx";
 import type { SortState } from "@/components/ui/sortable-table-head.tsx";
 import { type Comparator, compareStrings, useClientSort } from "@/hooks/use-client-sort.ts";
+import { useNow } from "@/hooks/use-now.ts";
 import { formatError } from "@/lib/format-error.ts";
 import { WalkCardList } from "./plan-runs/walk-cards.tsx";
 import { WalkRow } from "./plan-runs/walk-row.tsx";
@@ -100,6 +102,10 @@ export function PlanRunsPage() {
 
 	const hasFilters = stateFilter !== "all" || projectFilter.length > 0 || search.length > 0;
 	const emptyHint = useOperatorHint("Dispatch one from the Dispatch plan page.");
+	// Live elapsed (warren-b610): a 1s tick between the 45s refetches,
+	// running only while a visible walk is non-terminal.
+	const hasLiveWalks = sorted.some((pr) => !isTerminalPlanRunState(pr.state));
+	const now = useNow(1000, hasLiveWalks);
 	const projectLabel = (pr: PlanRunRow): string => projectIndex.get(pr.projectId) ?? pr.projectId;
 
 	return (
@@ -175,7 +181,7 @@ export function PlanRunsPage() {
 			<div className="shrink-0 overflow-x-auto rounded-b bg-(--color-surface)">
 				{/* Mobile arm: compact walk cards (warren-dea8). */}
 				{!planRuns.isLoading && !planRuns.isError && sorted.length > 0 ? (
-					<WalkCardList planRuns={sorted} projectLabel={projectLabel} />
+					<WalkCardList planRuns={sorted} projectLabel={projectLabel} now={now} />
 				) : null}
 				<div className="hidden min-w-[1080px] md:block">
 					<HeaderRow sort={sort} onSort={onSort} />
@@ -189,7 +195,9 @@ export function PlanRunsPage() {
 							{emptyHint !== undefined ? ` ${emptyHint}` : ""}
 						</StatusLine>
 					) : (
-						sorted.map((pr) => <WalkRow key={pr.id} planRun={pr} projectLabel={projectLabel(pr)} />)
+						sorted.map((pr) => (
+							<WalkRow key={pr.id} planRun={pr} projectLabel={projectLabel(pr)} now={now} />
+						))
 					)}
 				</div>
 			</div>

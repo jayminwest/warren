@@ -1,11 +1,11 @@
 import { useQuery } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { opsApi, projectsApi, runsApi } from "@/api/client.ts";
 import { useConsoleStats } from "@/components/console/use-console-stats.ts";
 import { OperatorOnly } from "@/components/operator-only.tsx";
 import { Alert } from "@/components/ui/alert.tsx";
 import { Spinner } from "@/components/ui/spinner.tsx";
+import { useNow } from "@/hooks/use-now.ts";
 import { formatError } from "@/lib/format-error.ts";
 import { ActiveWorkloads } from "./operations/active-workloads.tsx";
 import { CapacityStrip } from "./operations/capacity-strip.tsx";
@@ -31,12 +31,9 @@ import { ServicesPanel } from "./operations/services-panel.tsx";
 const NOW_TICK_MS = 1000;
 
 export function OperationsPage() {
-	// A 1s tick drives the elapsed/oldest figures without re-fetching.
-	const [now, setNow] = useState(() => Date.now());
-	useEffect(() => {
-		const t = window.setInterval(() => setNow(Date.now()), NOW_TICK_MS);
-		return () => window.clearInterval(t);
-	}, []);
+	// A 1s tick drives the elapsed/oldest figures without re-fetching
+	// (warren-b610: now the shared useNow hook).
+	const now = useNow(NOW_TICK_MS);
 
 	const overview = useQuery({
 		queryKey: ["ops-overview"],

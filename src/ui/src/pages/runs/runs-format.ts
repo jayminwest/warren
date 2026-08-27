@@ -15,8 +15,14 @@ export function startedAtOf(row: RunRow): string | null {
 	return null;
 }
 
-/** "14:12" / "2:31:42" / "3d 04:10" — elapsed between start and end (or now). */
-export function formatDuration(row: RunRow, now = Date.now()): string {
+/** "14:12" / "2:31:42" / "3d 04:10" — elapsed between start and end (or now).
+ *
+ * `now` is REQUIRED (warren-b610): a default `Date.now()` evaluates per
+ * render, so a list that only re-renders on its 45s refetch froze live
+ * durations. Call sites thread a `useNow` tick (or a fresh `Date.now()`
+ * on pages that already poll fast, like run detail).
+ */
+export function formatDuration(row: RunRow, now: number): string {
 	const startIso = startedAtOf(row);
 	if (startIso === null) return "—";
 	const start = new Date(startIso).getTime();

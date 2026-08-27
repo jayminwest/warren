@@ -123,7 +123,7 @@ export function RunDefinitionPanel({ run, projectName }: { run: RunRow; projectN
 			<MetaRow label="trigger">{run.trigger}</MetaRow>
 			<MetaRow label="tracker">{run.seedId ?? "no tracker item"}</MetaRow>
 			<MetaRow label="started">{formatTimestamp(run.startedAt)}</MetaRow>
-			<MetaRow label="elapsed">{formatDuration(run)}</MetaRow>
+			<MetaRow label="elapsed">{formatDuration(run, Date.now())}</MetaRow>
 			{run.parentRunId !== null ? (
 				<MetaRow label={run.cloneKind === "replicate" ? "re-run of" : "continued from"}>
 					{run.parentRunId}
