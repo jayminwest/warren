@@ -4,11 +4,13 @@ This directory holds operator, API, architecture, and contributor documentation.
 
 ## Run warren
 
-- [`quickstart.md`](quickstart.md) — start a Linux Compose deployment and dispatch the first run.
+- [`quickstart.md`](quickstart.md) — the casual path end to end: install script, `warren up`, credential wizard, GitHub App connect, first run.
+- [`credentials.md`](credentials.md) — the two model paths and the two GitHub paths, including machine-account guidance.
 - [`self-host/docker.md`](self-host/docker.md) — local and sibling-container Docker topologies, agent images, persistence, and macOS Docker Desktop requirements.
 - [`RUNBOOK-K8S.md`](RUNBOOK-K8S.md) — Kubernetes deployment, secrets, RBAC, garbage collection, admission, and incident response.
 - [`../deploy/k8s/README.md`](../deploy/k8s/README.md) — Kubernetes manifest and overlay commands.
 - [`operations.md`](operations.md) — probes, structured logs, metrics, run events, cost, backups, and common triage.
+- [`../.env.example`](../.env.example) — annotated deployment environment reference.
 - [`project-setup.md`](project-setup.md) — repository permissions, CI, auto-merge, and branch cleanup.
 - [`onboarding-external-repos.md`](onboarding-external-repos.md) — configure a mirror or repository that you do not control.
 - [`previews.md`](previews.md) — optional per-run preview environments, DNS, TLS, auth, and lifecycle.

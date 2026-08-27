@@ -7,7 +7,7 @@ Warren supports two Docker-hosted shapes. Choose the runtime before you copy an 
 | Compose default | `local` | `bwrap` inside the warren container | Baked into the control-plane image |
 | Sibling containers | `docker` | One Docker container per run | Separate agent image |
 
-The [quickstart](../quickstart.md) uses the first shape. This guide documents both and the requirements that do not fit in the root README.
+The [first-run guide](../quickstart.md) uses the install script and `warren up`, which never touch Compose. Compose is the operator path. This guide documents both Docker shapes and the requirements that do not fit in the root README.
 
 ## Local runtime with Compose
 
@@ -77,7 +77,24 @@ docker logs warren | grep mintedOperatorToken
 export WARREN_API_TOKEN='<mintedOperatorToken value>'
 ```
 
-Open <http://localhost:8080> and paste the same token. Then follow the [quickstart dispatch steps](../quickstart.md#dispatch-the-first-run) to add a project and start the first run.
+Open <http://localhost:8080> and paste the same token. Then dispatch the first run:
+
+1. Open **Projects**, select **Add**, and enter the target GitHub URL.
+2. Select **Dispatch run**.
+3. Select an agent, enter a small task, and start the run.
+4. Watch the event stream until the run reaches a terminal state.
+
+A successful run finalizes its workspace and pushes the run branch. Warren opens a pull request when the forge and project configuration permit it.
+
+Install the CLI when you want to dispatch from a shell:
+
+```bash
+npm i -g @os-eco/warren-cli
+echo "$WARREN_API_TOKEN" | warren login --url http://localhost:8080
+warren projects
+```
+
+The package requires Bun v1.1 or later because it ships raw TypeScript with a Bun shebang. Read [Credentials](../credentials.md) for the full credential picture, including the machine-account identity guidance.
 
 Set `WARREN_DOCKER_AGENT_IMAGE` when the image is not named `warren-agent:latest`. A project-level `agentImage` in `.warren/config.yaml` overrides the deployment default and lets a repository pin a stack-specific toolchain.
 

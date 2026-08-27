@@ -5,7 +5,7 @@ This runbook is the durable operations document.
 It covers deploy, secrets, RBAC, garbage collection, admission control, observability, and incident response.
 
 **Scope.** This runbook covers the `WARREN_RUNTIME=k8s` topology only.
-For the default self-host topology, which runs warren's `LocalProvider` in one container, see the [quickstart](quickstart.md).
+For the default self-host topology, which runs warren's `LocalProvider` in one container, see the [Docker self-host guide](self-host/docker.md) and the [Operators section](../README.md#operators) of the root README.
 That path needs none of this document.
 
 **Cross-references** (read these documents, do not duplicate them here):
