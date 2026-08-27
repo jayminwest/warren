@@ -44,6 +44,7 @@ import {
 	RuntimeRunNotFoundError,
 	RuntimeUnreachableError,
 } from "../runtime/errors.ts";
+import { SandboxGitPreflightError } from "../sandbox/git-preflight.ts";
 import { WarrenConfigInvalidError, WarrenConfigUnavailableError } from "../warren-config/errors.ts";
 import { EventStreamCapacityError } from "./stream-limits.ts";
 import type { ErrorEnvelope, RoutePolicy } from "./types.ts";
@@ -226,6 +227,9 @@ function warrenStatusFor(err: WarrenError): number {
 	if (err instanceof RuntimeRunNotFoundError) return 404;
 	if (err instanceof RuntimeConflictError) return 409;
 	if (err instanceof ProjectUnavailableError) return 503;
+	// warren-1219: the resolved git cannot execute inside the sandbox —
+	// a host toolchain problem (fix the host), same family as 503.
+	if (err instanceof SandboxGitPreflightError) return 503;
 	if (err instanceof WarrenConfigUnavailableError) return 503;
 	// warren-02aa: a present-but-broken guardrail file is operator-fixable
 	// input, not a host failure — 422, same family as AgentSchemaError.

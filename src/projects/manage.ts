@@ -37,6 +37,7 @@ import type { ProjectsRepo } from "../db/repos/projects.ts";
 import type { ProjectRow } from "../db/schema.ts";
 import type { Forge } from "../forge/contract.ts";
 import type { BridgeLogger } from "../runs/stream/index.ts";
+import { assertSandboxGit, type SandboxGitPreflightResult } from "../sandbox/git-preflight.ts";
 import type { WarrenConfigCache } from "../warren-config/index.ts";
 import type { GitSpawnCredential } from "../workspace/git/credential-env.ts";
 import {
@@ -111,6 +112,16 @@ export interface AddProjectInput {
 	 * `parseForgeOwnedUrl`. Omit ⇒ the legacy github.com-only posture.
 	 */
 	readonly forge?: Forge;
+	/**
+	 * Sandbox git preflight (warren-1219): when provided (LocalProvider
+	 * topology only), the resolved git binary is proven to EXECUTE inside
+	 * the composed sandbox profile BEFORE anything is cloned — a broken
+	 * git (e.g. macOS nix git with dylibs outside the seatbelt-readable
+	 * paths) fails registration with a typed error naming the binary,
+	 * instead of surfacing post-hoc as a dropped_commit run failure.
+	 * Boot-cached by the caller (`sandboxGitPreflightCached`).
+	 */
+	readonly sandboxGitPreflight?: () => Promise<SandboxGitPreflightResult>;
 }
 
 export async function addProject(input: AddProjectInput): Promise<ProjectRow> {
@@ -126,6 +137,13 @@ export async function addProject(input: AddProjectInput): Promise<ProjectRow> {
 		throw new ValidationError(`project already exists: ${existing.id}`, {
 			recoveryHint: "DELETE /projects/:id first if you want to re-clone",
 		});
+	}
+
+	// warren-1219: prove the sandbox git executes BEFORE cloning, so a
+	// host with a broken sandbox toolchain leaves "neither" (no row, no
+	// disk clone) — the same atomicity contract as a clone failure.
+	if (input.sandboxGitPreflight !== undefined) {
+		assertSandboxGit(await input.sandboxGitPreflight());
 	}
 
 	const cloneFn = input.clone ?? cloneProjectRepo;
