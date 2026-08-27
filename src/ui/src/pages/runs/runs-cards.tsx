@@ -3,72 +3,38 @@ import {
 	CardFigure,
 	CardFigureNote,
 	InventoryCardList,
-	type InventoryCardTone,
 	InventoryRowCard,
 } from "@/components/ui/inventory-card.tsx";
-import { relativeTime } from "@/lib/utils.ts";
-import {
-	formatDuration,
-	projectLabel,
-	runCostLabel,
-	shortSha,
-	startedAtOf,
-} from "@/pages/runs/runs-format.ts";
+import { costNoteToneOf, stateCellOf, sublineOf } from "@/pages/runs/runs-card.helpers.ts";
+import { formatDuration, projectLabel, runCostLabel } from "@/pages/runs/runs-format.ts";
 
 /**
  * The mobile arm of the Runs inventory (warren-dea8 / pl-7e38 step 20):
  * the table degrades to the artboard row-card pattern
  * (docs/ui-revamp/screens/mobile/runs.jsx) below `md`. Same rows, same
  * data, token colors only; the desktop table stays untouched.
+ *
+ * warren-f8a2 collapsed the card to the mock's two-line anatomy: no meta
+ * row, one-contextual-extra subline, cancelled on the neutral tone, and a
+ * warning-tinted cost note near the cap. The cell/subline decisions live
+ * in runs-card.helpers.ts (pure, tested there).
  */
 
-function stateTone(state: RunRow["state"]): InventoryCardTone {
-	switch (state) {
-		case "running":
-			return "info";
-		case "queued":
-			return "warning";
-		case "succeeded":
-			return "success";
-		case "failed":
-			return "danger";
-		default:
-			return "muted";
-	}
-}
-
-/** Subline: agent · project, mirroring the artboard row's second line. */
-function sublineOf(row: RunRow, projectName: string): string {
-	const branch = row.targetBranch ?? row.ref ?? null;
-	const sha = shortSha(row.baseCommit);
-	const extras: string[] = [row.agentName, projectName];
-	if (row.parentRunId !== null) extras.push(`↪ ${row.parentRunId}`);
-	else if (row.retryOf !== null) extras.push(`retry of ${row.retryOf}`);
-	else if (row.seedId !== null) extras.push(row.seedId);
-	if (branch !== null) extras.push(branch);
-	else if (sha !== "") extras.push(sha);
-	return extras.join(" · ");
-}
-
 function RunCard({ row, projectName, now }: { row: RunRow; projectName: string; now: number }) {
+	const state = stateCellOf(row);
 	return (
 		<InventoryRowCard
-			tone={stateTone(row.state)}
-			stateLabel={row.state}
+			tone={state.tone}
+			stateLabel={state.label}
 			title={row.id}
 			titleTo={`/runs/${encodeURIComponent(row.id)}`}
 			subline={sublineOf(row, projectName)}
 			figures={
 				<>
 					<CardFigure value={formatDuration(row, now)} />
-					<CardFigureNote value={runCostLabel(row)} />
+					<CardFigureNote value={runCostLabel(row)} tone={costNoteToneOf(row)} />
 				</>
 			}
-			meta={`${relativeTime(startedAtOf(row))} · ${row.trigger}${
-				row.commitsAhead !== null && row.commitsAhead > 0
-					? ` · ${row.commitsAhead} commit${row.commitsAhead === 1 ? "" : "s"}`
-					: ""
-			}`}
 		/>
 	);
 }
