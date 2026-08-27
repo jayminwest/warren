@@ -481,7 +481,7 @@ Manifest values live in `deploy/k8s/base/deployment.yaml` plus the overlays.
 | `WARREN_K8S_NAMESPACE` | `warren-runs` | namespace run pods land in |
 | `WARREN_K8S_AGENT_IMAGE` / `WARREN_K8S_INIT_IMAGE` | registry paths | the run pod + init images (§1.2). Per-project override: a project's `.warren/config.yaml` `agentImage` pins its own run-pod image — precedence: project `agentImage` > `WARREN_K8S_AGENT_IMAGE` > default (warren-fabb; the init image is not overridable) |
 | `WARREN_K8S_CALLBACK_SERVICE` / `_NAMESPACE` / `_PORT` | `warren` / `warren` / `8080` | the in-pod callback URL = Service DNS `warren.warren.svc.cluster.local:8080` (provider-owned; do not set `WARREN_API_URL` by hand) |
-| `WARREN_K8S_REPO_CACHE_PVC` | unset (cache OFF by default, warren-554f) | opt-in: names the shared repo-cache claim; set it (plus the PVC) via an overlay to enable the cache — see §5.3 |
+| `WARREN_K8S_REPO_CACHE_PVC` | unset (cache OFF by default, warren-554f) | opt-in: names the shared repo-cache claim; set it (plus the PVC) via an overlay — or, on the deploy-gke pipeline, via the repo variable of the same name (warren-8175) — see §5.3 |
 | `WARREN_K8S_REPO_CACHE_PATH` | `/repo-cache` | mount path for the cache |
 | `WARREN_K8S_MAX_QUEUE_DEPTH` | `50` | admission: total non-terminal pods; `0` disables (§5.5) |
 | `WARREN_K8S_MAX_PENDING_PODS` | `20` | admission: Pending pods; `0` disables |
@@ -732,6 +732,12 @@ RWX storage (like GKE Filestore, 1TiB minimum) costs too much to share a disk of
 
 Single-node clusters may opt back in via an overlay that adds the claim and re-sets the env — see `deploy/k8s/README.md` "Repo cache (opt-in)".
 Before adding a second node, either turn the cache back off or migrate the claim to a `ReadWriteMany` class (design R2).
+
+Multi-node clusters enable the cache with an RWX claim instead (warren-8175).
+Create `warren-repo-cache` in `warren-runs` on an RWX class (GKE: `standard-rwx`, Filestore Basic HDD, 1TiB tier minimum).
+Then set the repo variable `WARREN_K8S_REPO_CACHE_PVC=warren-repo-cache` — the render step in `deploy-gke.yml` re-wires the env on every deploy.
+The cost trade flips when a repo is large.
+Before the live cluster enabled the cache (2026-08), each openclaw run (~2.9GB) spent ~20min in Init on a fresh clone.
 
 When enabled, `warren-repo-cache` is a **shared clone cache**, never a working tree — the working tree is the per-pod `emptyDir`.
 The init container keeps a per-repo bare mirror at `/repo-cache` (`<sha256(url)>.git`, `git clone --mirror`, then `git fetch` on reuse).
