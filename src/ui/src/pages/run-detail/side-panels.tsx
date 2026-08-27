@@ -155,7 +155,7 @@ export function PromptPanel({ run }: { run: RunRow }) {
 				</button>
 			}
 		>
-			<p className="font-mono text-[10px] leading-4 break-words text-(--color-text-2)">
+			<p className="max-h-[240px] overflow-auto font-mono text-[10px] leading-4 break-words text-(--color-text-2)">
 				{run.prompt}
 			</p>
 		</PanelShell>
