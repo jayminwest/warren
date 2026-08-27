@@ -307,6 +307,7 @@ jobs:
           GIT_AUTHOR_NAME: ${{ vars.WARREN_GIT_AUTHOR_NAME || 'warren' }}
           GIT_AUTHOR_EMAIL: ${{ vars.WARREN_GIT_AUTHOR_EMAIL || 'warren@users.noreply.github.com' }}
           INGRESS_HOST: ${{ vars.WARREN_INGRESS_HOST }}
+          REPO_CACHE_PVC: ${{ vars.WARREN_K8S_REPO_CACHE_PVC }}
         run: |
           set -euo pipefail
           mkdir -p deploy/k8s/overlays/gke-live
@@ -367,6 +368,33 @@ jobs:
                 spec:
                   domains:
                     - ${INGRESS_HOST}
+          EOF
+          fi
+          # Opt-in repo-cache (warren-8175): when the repo variable
+          # WARREN_K8S_REPO_CACHE_PVC names a claim, wire it onto the
+          # Deployment so run-pod init containers reuse the shared git
+          # mirror instead of re-cloning. The PVC itself is imperative
+          # infra like the Secrets — created once by the operator, never
+          # by this workflow (deploy/k8s/README.md "Repo cache (opt-in)";
+          # RWO caveat: warren-554f — use an RWX class on multi-node).
+          # Deployment env has a strategic-merge key (name), so this
+          # partial patch appends the one entry without replacing the list.
+          if [ -n "${REPO_CACHE_PVC}" ]; then
+            cat >> deploy/k8s/overlays/gke-live/kustomization.yaml <<EOF
+            - patch: |
+                apiVersion: apps/v1
+                kind: Deployment
+                metadata:
+                  name: warren
+                  namespace: warren
+                spec:
+                  template:
+                    spec:
+                      containers:
+                        - name: warren
+                          env:
+                            - name: WARREN_K8S_REPO_CACHE_PVC
+                              value: ${REPO_CACHE_PVC}
           EOF
           fi
           echo "----- rendered gke-live kustomization -----"

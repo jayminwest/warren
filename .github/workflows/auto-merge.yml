@@ -1,10 +1,15 @@
 name: auto-merge
 
 # Enable GitHub's auto-merge on PRs authored by the repo owner — or by
-# the deployment's dedicated bot account, named by the repo variable
-# AUTO_MERGE_BOT_LOGIN (unset → owner-only; a variable rather than a
-# hardcoded login so forks/self-hosters name their own bot) — so they
-# merge as soon as the `ci` required check passes. Other authors' PRs
+# one of the deployment's dedicated bot accounts, named by the repo
+# variable AUTO_MERGE_BOT_LOGIN (unset → owner-only; a variable rather
+# than a hardcoded login so forks/self-hosters name their own bot) — so
+# they merge as soon as the `ci` required check passes. The variable
+# accepts a comma-separated list with no spaces (warren-7d31), because
+# a deployment can author run PRs under more than one identity: the
+# forge GitHub App (`<app-slug>[bot]`) when the App credential opens
+# the PR, and the machine account (e.g. `warren-run-bot`) when a
+# run-scoped token does. Other authors' PRs
 # still run CI but require a manual `gh pr merge` (or click). Squash is
 # the chosen merge method — keeps main history linear, drops the
 # burrow/run_xxx branch noise from agent-opened PRs.
@@ -32,7 +37,8 @@ jobs:
       !github.event.pull_request.draft &&
       (github.event.pull_request.user.login == github.repository_owner ||
        (vars.AUTO_MERGE_BOT_LOGIN != '' &&
-        github.event.pull_request.user.login == vars.AUTO_MERGE_BOT_LOGIN)) &&
+        contains(format(',{0},', vars.AUTO_MERGE_BOT_LOGIN),
+                 format(',{0},', github.event.pull_request.user.login)))) &&
       !contains(github.event.pull_request.labels.*.name, 'no-automerge')
     steps:
       # Pin to the PR head SHA, not the default `refs/pull/N/merge` ref.

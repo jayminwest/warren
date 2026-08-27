@@ -384,6 +384,39 @@ Before scaling out, migrate the claim to a `ReadWriteMany` class (GKE Filestore
 CSI; Longhorn on bare metal) and pin it via an overlay `storageClassName`
 (design R2) — or simply leave the cache off.
 
+**Multi-node clusters enable the cache with an RWX claim** (warren-8175).
+The cache is worth the cost only when a repo is large. Each openclaw run pod
+(~2.9GB) spent ~20min in Init on a fresh clone.
+
+On GKE the cheapest RWX class is `standard-rwx` (Filestore Basic HDD). The
+tier minimum is 1TiB, about $160–200/mo. The operator makes the cost call.
+
+```yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: warren-repo-cache
+  namespace: warren-runs
+spec:
+  accessModes: ["ReadWriteMany"]
+  storageClassName: standard-rwx
+  resources: {requests: {storage: 1Ti}}
+```
+
+Create the claim with `kubectl apply -f`, like the Secrets. The deploy
+workflow never creates storage.
+
+Then set the repo variable `WARREN_K8S_REPO_CACHE_PVC=warren-repo-cache`.
+The render step in `deploy-gke.yml` wires the env onto the Deployment on
+each deploy, so the setting survives releases.
+
+The class binds on first consumer, and a Filestore instance takes about
+15–25min to provision. The first pod that mounts the claim waits for that
+provisioning.
+
+A one-off pre-warm Job that mounts the claim moves the wait off the first
+real run. The same Job can also seed the mirror of a large repo.
+
 ## Known follow-ups
 
 - **`/readyz` probes.** Deployment probes use the auth-exempt `/healthz`. Deeper

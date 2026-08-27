@@ -300,7 +300,7 @@ export function escapeHtml(value: string): string {
 /**
  * Shared chrome for every page in this flow (warren-4f1e): the layout,
  * brand header, and design tokens live once in `page-chrome.ts`, mirrored
- * from the SPA's dark-theme tokens. `body` is trusted, already-escaped
+ * from the SPA's Direction C dark tokens. `body` is trusted, already-escaped
  * markup from the renderers below; `title` is plain text escaped here.
  */
 function page(title: string, body: string): string {
