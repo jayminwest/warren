@@ -1,5 +1,11 @@
 import type { ReactNode } from "react";
 import type { AgentRow, ProjectRow } from "@/api/types.ts";
+import {
+	responsiveFooterActions,
+	responsiveFooterButton,
+	responsiveFormControl,
+} from "@/components/ui/responsive.ts";
+import { cn } from "@/lib/utils.ts";
 import type { WalkDraft, WalkSourceMode } from "./walk-draft.ts";
 
 /**
@@ -9,8 +15,10 @@ import type { WalkDraft, WalkSourceMode } from "./walk-draft.ts";
  * dark and light themes both render off `src/ui/src/tokens.css`.
  */
 
-const controlClass =
-	"h-8 w-full rounded-(--radius-sm) border border-(--color-border-strong) bg-(--color-bg) px-2.5 text-[11px] leading-[14px] text-(--color-text) placeholder:text-(--color-text-3) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-primary) disabled:cursor-not-allowed disabled:opacity-60";
+const controlClass = cn(
+	responsiveFormControl,
+	"w-full rounded-(--radius-sm) border border-(--color-border-strong) bg-(--color-bg) px-2.5 leading-[17px] text-(--color-text) placeholder:text-(--color-text-3) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-primary) disabled:cursor-not-allowed disabled:opacity-60 sm:h-8 sm:text-[11px] sm:leading-[14px]",
+);
 
 const labelClass = "text-[10px] font-medium leading-3 text-(--color-text-2)";
 const hintClass = "font-mono text-[9px] leading-3 text-(--color-text-3)";
@@ -334,7 +342,7 @@ function ChildrenSection(p: SectionProps) {
 			</div>
 			{d.sourceMode === "issues" ? (
 				<textarea
-					className={`${controlClass} mb-[5px] min-h-[64px] resize-y py-2 leading-[17px]`}
+					className={cn(controlClass, "mb-[5px] min-h-[64px] resize-y py-2 sm:leading-[17px]")}
 					value={d.issuesText}
 					onChange={(e) => p.onIssuesText(e.target.value)}
 					placeholder={"warren-93df\nwarren-4c1a\nwarren-b7e2"}
@@ -442,7 +450,7 @@ function IntentSection(p: SectionProps) {
 			<div className="flex flex-col gap-[5px]">
 				<span className={labelClass}>Prompt template</span>
 				<textarea
-					className={`${controlClass} min-h-[64px] resize-y py-2 leading-[17px]`}
+					className={cn(controlClass, "min-h-[64px] resize-y py-2 sm:leading-[17px]")}
 					value={d.promptTemplate}
 					onChange={(e) => p.onPrompt(e.target.value)}
 					placeholder="work on sd {seed_id}"
@@ -456,26 +464,33 @@ function IntentSection(p: SectionProps) {
 	);
 }
 
+const footerButtonClass = cn(
+	responsiveFooterButton,
+	"flex h-11 items-center justify-center rounded-(--radius-sm) px-[11px] text-[11px] font-medium leading-[14px] disabled:opacity-50 sm:h-[31px] sm:justify-start",
+);
+
 function Footer(p: SectionProps) {
 	return (
 		<>
-			<div className="flex items-center gap-2 px-[15px] py-[12px]">
-				<p className={hintClass}>
+			<div className={cn(responsiveFooterActions, "px-[15px] py-[12px] sm:items-center")}>
+				<p className={cn(hintClass, "sm:flex-1")}>
 					Dispatch writes the plan-run record before the first child is admitted.
 				</p>
-				<div className="flex-1" />
 				<button
 					type="button"
 					onClick={p.onCancel}
 					disabled={p.pending}
-					className="flex h-[31px] items-center rounded-(--radius-sm) border border-(--color-border-strong) bg-(--color-surface) px-[11px] text-[11px] font-medium leading-[14px] text-(--color-text-2) hover:bg-(--color-surface-hover) disabled:opacity-50"
+					className={cn(
+						footerButtonClass,
+						"border border-(--color-border-strong) bg-(--color-surface) text-(--color-text-2) hover:bg-(--color-surface-hover)",
+					)}
 				>
 					Cancel
 				</button>
 				<button
 					type="submit"
 					disabled={!p.canSubmit}
-					className="flex h-[31px] items-center rounded-(--radius-sm) bg-(--color-primary) px-[11px] text-[11px] font-medium leading-[14px] text-(--color-primary-ink) disabled:opacity-50"
+					className={cn(footerButtonClass, "bg-(--color-primary) text-(--color-primary-ink)")}
 				>
 					{p.pending ? "Dispatching…" : "Dispatch plan"}
 				</button>
