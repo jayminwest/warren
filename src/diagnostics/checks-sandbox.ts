@@ -11,6 +11,10 @@
  */
 
 import type { SpawnFn } from "../projects/clone.ts";
+import {
+	SandboxGitPreflightError,
+	type SandboxGitPreflightResult,
+} from "../sandbox/git-preflight.ts";
 import type { DiagnosticCheck } from "./checks.ts";
 
 export const BWRAP_PROBE_TIMEOUT_MS = 5_000;
@@ -45,6 +49,46 @@ export function bwrapProbeArgv(binary: string): string[] {
 		"--",
 		"/bin/true",
 	];
+}
+
+/**
+ * Functionally probe that the resolved git EXECUTES inside the composed
+ * sandbox profile (warren-1219): `git --version` runs through the same
+ * confinement a real run gets. A PATH-resolved git whose dylibs sit
+ * outside the readable paths (the macOS nix spike) fails HERE, at doctor
+ * time, instead of surfacing post-hoc as a dropped_commit run failure.
+ * The probe itself lives in `src/sandbox/git-preflight.ts`; this is the
+ * doctor/readyz-shaped adapter.
+ */
+export async function checkSandboxGit(deps: {
+	/** Result seam — production wires the (boot-cached) probe, tests stub it. */
+	readonly probe: () => Promise<SandboxGitPreflightResult>;
+}): Promise<DiagnosticCheck> {
+	let result: SandboxGitPreflightResult;
+	try {
+		result = await deps.probe();
+	} catch (err) {
+		return {
+			name: "sandbox_git",
+			ok: false,
+			message: err instanceof Error ? err.message : String(err),
+			hint: err instanceof SandboxGitPreflightError ? err.recoveryHint : INSTALL_HINT,
+		};
+	}
+	if (result.ok) {
+		return {
+			name: "sandbox_git",
+			ok: true,
+			message: result.message,
+			...(result.hint !== undefined ? { hint: result.hint } : {}),
+		};
+	}
+	return {
+		name: "sandbox_git",
+		ok: false,
+		message: result.message,
+		hint: result.hint ?? INSTALL_HINT,
+	};
 }
 
 /**

@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -296,5 +296,29 @@ describe("buildLocalSandboxProfile", () => {
 			frontmatter: { provider: "groq" },
 		});
 		expect(profile.envPassthrough).toContain("GROQ_API_KEY");
+	});
+});
+
+describe("resolveToolchainPaths (WARREN_SANDBOX_GIT override, warren-1219)", () => {
+	const ENV = "WARREN_SANDBOX_GIT";
+
+	afterEach(() => {
+		delete process.env[ENV];
+	});
+
+	test("prefers the preflight substitution over PATH resolution for git", () => {
+		process.env[ENV] = "/usr/bin/git";
+		const which = (name: string): string | null =>
+			name === "git" ? "/nix/store/abc-git/bin/git" : null;
+		const dirs = resolveToolchainPaths("pi", which, "");
+		expect(dirs).toContain("/usr/bin");
+		expect(dirs).not.toContain("/nix/store/abc-git/bin");
+	});
+
+	test("still uses PATH resolution for git when no override is set", () => {
+		const which = (name: string): string | null =>
+			name === "git" ? "/nix/store/abc-git/bin/git" : null;
+		const dirs = resolveToolchainPaths("pi", which, "");
+		expect(dirs).toContain("/nix/store/abc-git/bin");
 	});
 });

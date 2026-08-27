@@ -25,6 +25,7 @@ import {
 	checkGitIdentity,
 	checkPreviewAuthStrength,
 	checkPreviewPortAllocator,
+	checkSandboxGit,
 	checkWarrenConfig,
 	checkWarrenConfigDeprecations,
 	checkWarrenDb,
@@ -38,6 +39,7 @@ import { loadProjectsConfigFromEnv } from "../../projects/config.ts";
 import { loadWorkspaceGcConfigFromEnv } from "../../runs/reap/gc.ts";
 import { doctorLocalRuntimeCheck } from "../../runtime/local/diagnostics/local-runtime.ts";
 import { resolveRuntimeKind } from "../../runtime/registry.ts";
+import type { SandboxGitPreflightResult } from "../../sandbox/git-preflight.ts";
 import type { CliContext, EnvLike } from "../output.ts";
 import { writeJsonLine } from "../output.ts";
 
@@ -80,6 +82,12 @@ export interface DoctorDeps {
 	 * the probe path runs identically on macOS dev machines.
 	 */
 	readonly platform?: NodeJS.Platform;
+	/**
+	 * Override the sandbox-git preflight probe (warren-1219). Production
+	 * omits it (the boot-cached real probe runs, host bwrap/sandbox-exec
+	 * included); tests stub the result.
+	 */
+	readonly probeSandboxGit?: () => Promise<SandboxGitPreflightResult>;
 }
 
 export interface DoctorResult {
@@ -129,6 +137,15 @@ export async function runDoctor(
 				...(deps.platform !== undefined ? { platform: deps.platform } : {}),
 			}),
 		);
+		// warren-1219: prove the resolved git EXECUTES inside the composed
+		// sandbox profile — the macOS nix-git dyld failure class, caught at
+		// doctor time instead of as a dropped_commit run failure. Runs only
+		// when a probe is wired: `main.ts` wires the real (boot-cached)
+		// probe, tests stub it — a bare `runDoctor` call stays hermetic
+		// (no host bwrap/sandbox-exec spawn from the unit suite).
+		if (deps.probeSandboxGit !== undefined) {
+			checks.push(await checkSandboxGit({ probe: deps.probeSandboxGit }));
+		}
 	}
 
 	checks.push(

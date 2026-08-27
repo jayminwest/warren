@@ -32,6 +32,7 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { KNOWN_PROVIDER_NAMES, PROVIDER_ENV_REGISTRY } from "../../core/providers.ts";
 import type { AcceptedRuntimeId } from "../../core/wire.ts";
+import { WARREN_SANDBOX_GIT_ENV } from "../../sandbox/git-preflight.ts";
 import type { SandboxProfile } from "../../sandbox/types.ts";
 import type { MaterializedWorkspace } from "../../workspace/materialize.ts";
 import type { RunSpec } from "../contract.ts";
@@ -119,12 +120,31 @@ function isUnderSystemMounts(path: string): boolean {
 }
 
 /**
+ * Resolve one probed binary. `git` honors `WARREN_SANDBOX_GIT` (warren-1219):
+ * the sandbox git preflight sets it when the PATH-resolved git fails inside
+ * the sandbox but /usr/bin/git passes, so profile composition prefers the
+ * binary that actually executes there. An operator may also pin it by hand.
+ */
+function resolveBinaryPath(name: string, which: (name: string) => string | null): string | null {
+	if (name === "git") {
+		const override = process.env[WARREN_SANDBOX_GIT_ENV];
+		if (typeof override === "string" && override !== "") return override;
+	}
+	return which(name);
+}
+
+/**
  * Resolve the host paths the sandbox must mount + PATH-prepend so the agent's
  * bare-name argv resolves inside bwrap. For each probed binary: the bin dir
  * (the name's home) always contributes a PATH entry; when the resolved binary
  * (symlink target) escapes bwrap's system RO mounts, its directory is added
  * too so the target exists inside the sandbox. Missing binaries are skipped —
  * the spawn itself surfaces a clear ENOENT.
+ *
+ * The `git` entry honors `WARREN_SANDBOX_GIT` (warren-1219): the sandbox
+ * git preflight sets it when the PATH-resolved git fails inside the sandbox
+ * but /usr/bin/git passes, so profile composition prefers the binary that
+ * actually executes there.
  */
 export function resolveToolchainPaths(
 	runtimeId: AcceptedRuntimeId,
@@ -146,7 +166,7 @@ export function resolveToolchainPaths(
 		dirs.push(dir);
 	};
 	for (const name of names) {
-		const found = which(name);
+		const found = resolveBinaryPath(name, which);
 		if (found === null) continue;
 		// The bin dir carries the NAME (a symlink or the binary itself). It always
 		// lands on the profile: bwrap's nested --ro-bind over an already-mounted
