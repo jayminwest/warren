@@ -47,7 +47,7 @@ pushed branch ──► optional pull request
 ## What warren owns
 
 - **Workspace.** Each run starts from a fresh worktree or clone on its own branch.
-- **Isolation.** Runs operate under `bwrap`, in a sibling Docker container, or in a Kubernetes pod.
+- **Isolation.** Each run stays inside a sandbox boundary the operator chooses for the deployment.
 - **Lifecycle.** Warren dispatches, monitors, cancels, finalizes, and cleans up each run.
 - **Control.** Streams stay live, steering reaches supported harnesses, and spend caps hold during execution.
 - **Recovery.** Watchdogs reconcile lost processes and pods. Finalization salvages work before teardown when possible.
@@ -62,13 +62,7 @@ A **harness** is the coding-agent process warren drives. A **runtime** is the pl
 
 Warren's run model supports any harness with a Warren runtime adapter. The current distribution includes adapters for Pi and Claude Code. Agent roles such as planner, healer, and PR fixer compose prompts and policy on top of those harnesses.
 
-Three runtime providers implement the same lifecycle:
-
-| Runtime | Isolation boundary | Best fit |
-|---|---|---|
-| `local` | `bwrap` on Linux, `sandbox-exec` on macOS | One host |
-| `docker` | Sibling container | Docker hosts and custom agent images |
-| `k8s` | Pod per run | Cluster scheduling and admission control |
+Three runtime providers implement the same lifecycle. A casual install never picks one. `warren up` detects the machine and picks for you. Operators choose explicitly. See [Operators](#operators) for the topology table.
 
 ## Who it fits today
 
@@ -79,26 +73,43 @@ The current boundary is explicit:
 - One deployment serves one operator or trusted team.
 - One bearer credential guards the operator surface.
 - Warren has no named users, RBAC, or per-user attribution.
-- The shipped forge supports GitHub PAT and GitHub App credentials.
+- The shipped forge speaks GitHub through a GitHub App (the default) or a static token for operator and CI paths.
 - Warren is self-hosted software, not a hosted SaaS.
 
 See [Security](SECURITY.md) for the full threat model and [Roadmap](ROADMAP.md) for future work.
 
 ## Quickstart
 
-### CLI-only install
-
-On macOS or Linux, the one-liner installs Bun if needed and the `warren` CLI globally (no sudo, user-local paths):
+Two commands take a fresh macOS or Linux machine to a running warren:
 
 ```bash
 curl -fsSL https://warren.run/install | sh
+warren up
 ```
 
-That lands `warren` on your PATH and prints the next step, `warren up`. To pin a version or install a local build, see the env knobs (`WARREN_INSTALL_VERSION`, `WARREN_INSTALL_TARBALL`) documented at the top of [`scripts/install.sh`](scripts/install.sh). The script itself lives in this repo. The warren.run serving side lives in the warren-site repo.
+The install script puts Bun and the `warren` CLI on your PATH when they are missing. `warren up` detects the sandbox runtime for your machine, asks for the one credential it still needs, and boots the server. Your browser opens already logged in. From there the UI walks you through the rest: connect GitHub, pick a repository, and dispatch the prefilled starter run.
+
+Warren stores everything under `~/.warren/`. Stop the server with Ctrl-C and restart it with `warren up` again.
+
+Read the [first-run guide](docs/quickstart.md) for the full walkthrough, including the subscription-versus-API-key choice.
+
+## Operators
+
+Casual installs stop at the Quickstart. Deployments that serve a team, run in Docker or a cluster, or need explicit credentials start here.
+
+### Runtime topologies
+
+| Runtime | Isolation boundary | Best fit |
+|---|---|---|
+| `local` | `bwrap` on Linux, `sandbox-exec` on macOS | One host |
+| `docker` | Sibling container | Docker hosts and custom agent images |
+| `k8s` | Pod per run | Cluster scheduling and admission control |
+
+All three providers implement the same run lifecycle.
 
 ### Full deployment via Compose
 
-The shortest complete path uses the shipped Compose file and the `local` runtime on a Linux Docker host. Compose includes the security flags that nested `bwrap` needs.
+The shortest operator path uses the shipped Compose file and the `local` runtime on a Linux Docker host. Compose includes the security flags that nested `bwrap` needs.
 
 ```bash
 git clone https://github.com/jayminwest/warren
@@ -111,7 +122,13 @@ docker compose logs warren | grep mintedOperatorToken
 
 Open <http://localhost:8080>, paste the minted token, add a GitHub repository, and dispatch a run. Warren streams the events and pushes the result branch.
 
-For the sibling-container topology, custom agent images, persistent paths, and macOS Docker Desktop requirements, use the [Docker self-host guide](docs/self-host/docker.md). For Kubernetes, use the [Kubernetes runbook](docs/RUNBOOK-K8S.md).
+### Operator references
+
+- [Docker self-host guide](docs/self-host/docker.md) — sibling-container topology, custom agent images, persistence, macOS Docker Desktop requirements.
+- [Kubernetes runbook](docs/RUNBOOK-K8S.md) — cluster deployment, secrets, RBAC, admission, incident response.
+- [Credentials](docs/credentials.md) — model and GitHub credential paths, including the static-token and machine-account guidance.
+- [Operations](docs/operations.md) — probes, logs, metrics, cost, backups, triage.
+- [Environment reference](.env.example) — every deployment knob, annotated.
 
 ## Optional integrations and extensions
 
@@ -127,6 +144,7 @@ See [Extensions](docs/design/extensions.md) for their contracts and current pack
 ## Documentation
 
 - [First run](docs/quickstart.md)
+- [Credentials](docs/credentials.md)
 - [Docker self-hosting](docs/self-host/docker.md)
 - [Kubernetes operations](docs/RUNBOOK-K8S.md)
 - [Operations and observability](docs/operations.md)
