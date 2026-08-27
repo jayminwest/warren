@@ -46,6 +46,18 @@ export const INSTANCE_NAV_ITEM: ConsoleNavItem = {
 	to: "/instance",
 };
 
+/**
+ * First-run setup entry point (warren-a911): rendered in the sidebar
+ * only while the instance has zero projects AND this caller can act on
+ * the checklist. Index "00" — it sits before everything else.
+ */
+export const SETUP_NAV_ITEM: ConsoleNavItem = {
+	index: "00",
+	label: "Setup",
+	to: "/setup",
+	capability: "admin",
+};
+
 /** Docs live in the repo; the console links out to the README. */
 export const DOCUMENTATION_URL = "https://github.com/jayminwest/warren#readme";
 
