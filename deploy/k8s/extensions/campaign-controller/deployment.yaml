@@ -15,10 +15,11 @@
 #   kubectl -n warren exec deploy/campaign-controller -- \
 #     bun run src/cli/main.ts status --campaign <id>
 #
-# V0 ships no live mode: the GitHub transport has no mutation method
-# and --live/--execute are usage errors (RUNBOOK.md §1). The one
-# spend-capable surface is warren dispatch, and that is gated behind
-# the owner-approved campaign digest, not behind this Deployment.
+# Live PR creation (Phase 2, warren-84da) is policy-gated: the creator
+# exists only under a policy with mutations.createPullRequest plus a
+# GitHub credential; --live/--execute stay usage errors (RUNBOOK.md §1,
+# §8). Warren dispatch, the other spend-capable surface, is gated
+# behind the owner-approved campaign digest, not behind this Deployment.
 apiVersion: apps/v1
 kind: Deployment
 metadata:

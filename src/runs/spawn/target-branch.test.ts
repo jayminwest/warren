@@ -36,6 +36,8 @@ describe("spawnRun: targetBranch (warren-709e)", () => {
 		expect(run.targetBranch).toBe("fix/pr-head");
 		const reread = await repos.runs.require(run.id);
 		expect(reread.targetBranch).toBe("fix/pr-head");
+		// warren-5255: the frozen workspace branch equals the override.
+		expect(reread.branch).toBe("fix/pr-head");
 
 		// The burrow workspace branch equals the push target, not
 		// `${prefix}/${runId}`.
@@ -108,6 +110,10 @@ describe("spawnRun: targetBranch (warren-709e)", () => {
 		expect(run.targetBranch).toBeNull();
 		const upBody = calls[0]?.body as { branch?: string };
 		expect(upBody.branch).toBe(`warren/${run.id}`);
+		// warren-5255: a default dispatch freezes the composed branch onto the
+		// row, so HTTP consumers read it instead of re-deriving the prefix.
+		const reread = await repos.runs.require(run.id);
+		expect(reread.branch).toBe(`warren/${run.id}`);
 	});
 });
 
