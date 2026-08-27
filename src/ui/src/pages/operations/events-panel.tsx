@@ -1,13 +1,33 @@
+import { useQuery } from "@tanstack/react-query";
+import { Link } from "react-router-dom";
+import { eventsApi } from "@/api/client.ts";
+import { formatError } from "@/lib/format-error.ts";
+import {
+	formatEventClock,
+	streamToneClass,
+	summarizeEventPayload,
+} from "../event-explorer-format.ts";
+
 /**
- * Recent control-plane events panel (warren-d903). A quiet placeholder,
- * not a fabricated feed: the global events query API (pl-7e38 step 15,
- * warren-5eec) does not exist yet, and the only live surface —
- * `GET /events/stream` — is a no-replay follow stream the shell already
- * holds one connection to (warren-f566's one-connection-per-tab rule),
- * so this page does not open a second one just to show a partial tail.
+ * Recent control-plane events panel (warren-4cf8): a bounded recent
+ * tail from `GET /events` (warren-5eec, spectator-safe readPublic
+ * projection). One polled bounded read, not a held-open stream, so it
+ * respects the one-connection-per-tab rule (warren-f566); the Event
+ * explorer at /events (warren-24b9) carries the full feed.
  */
 
+const TAIL_LIMIT = 12;
+const POLL_MS = 45_000;
+
 export function EventsPanel() {
+	const events = useQuery({
+		queryKey: ["operations-events-tail"],
+		queryFn: ({ signal }) => eventsApi.list({ limit: TAIL_LIMIT }, signal),
+		refetchInterval: POLL_MS,
+	});
+
+	const rows = events.data?.events ?? [];
+
 	return (
 		<div className="flex min-w-0 flex-1 flex-col md:min-w-[320px]">
 			<header className="flex h-7 shrink-0 items-center pb-1.25">
@@ -20,11 +40,50 @@ export function EventsPanel() {
 				</span>
 			</header>
 			<div className="flex flex-1 flex-col justify-center overflow-clip rounded-(--radius-md) border border-(--color-border) bg-(--color-surface)">
-				<p className="px-3 py-4 font-mono text-[10px] leading-4 text-(--color-text-3)">
-					The global event query API lands with warren-5eec; the Event explorer (warren-24b9) will
-					carry the full structured feed. The live lifecycle stream already refreshes every figure
-					on this page.
-				</p>
+				{events.isPending ? (
+					<p className="px-3 py-4 font-mono text-[10px] leading-4 text-(--color-text-3)">
+						loading control-plane events…
+					</p>
+				) : events.isError ? (
+					<p className="px-3 py-4 font-mono text-[10px] leading-4 text-(--color-danger)">
+						{formatError(events.error)}
+					</p>
+				) : rows.length === 0 ? (
+					<p className="px-3 py-4 font-mono text-[10px] leading-4 text-(--color-text-3)">
+						No control-plane events recorded yet.
+					</p>
+				) : (
+					rows.map((event) => (
+						<div
+							key={event.id}
+							className="flex min-h-[26px] items-baseline gap-2.5 border-b border-(--color-border) px-3 py-1 last:border-b-0"
+						>
+							<span className="w-[52px] shrink-0 font-mono text-[10px] leading-3 text-(--color-text-3)">
+								{formatEventClock(event.ts)}
+							</span>
+							<span
+								className={`w-[64px] shrink-0 truncate font-mono text-[10px] leading-3 uppercase ${streamToneClass(event.stream)}`}
+							>
+								{event.stream ?? "—"}
+							</span>
+							<span className="min-w-0 flex-1 truncate font-mono text-[10px] leading-3 text-(--color-text-2)">
+								{summarizeEventPayload(event.payload)}
+							</span>
+						</div>
+					))
+				)}
+				<div className="flex h-[30px] shrink-0 items-center gap-3 border-t border-(--color-border) px-3">
+					<span className="font-mono text-[9px] leading-3 text-(--color-text-3)">
+						NEWEST FIRST · BOUNDED POLL
+					</span>
+					<span className="flex-1" />
+					<Link
+						to="/events"
+						className="text-[11px] leading-3.5 text-(--color-primary) hover:underline"
+					>
+						View all →
+					</Link>
+				</div>
 			</div>
 		</div>
 	);
