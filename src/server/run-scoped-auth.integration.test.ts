@@ -27,6 +27,7 @@ const routes: Route[] = [
 	{ method: "GET", pattern: "/runs/:id/inbox", policy: "readOperator", handler: ok },
 	{ method: "GET", pattern: "/runs/:id/finalize-intent", policy: "readOperator", handler: ok },
 	{ method: "POST", pattern: "/runs/:id/finalize-result", policy: "dispatch", handler: ok },
+	{ method: "POST", pattern: "/runs/:id/git-credential", policy: "dispatch", handler: ok },
 	{ method: "POST", pattern: "/runs", policy: "dispatch", handler: ok },
 	{ method: "DELETE", pattern: "/projects/:id", policy: "admin", handler: ok },
 	{ method: "GET", pattern: "/analytics/cost", policy: "readOperator", handler: ok },
@@ -72,6 +73,13 @@ describe("run-scoped token — accepted on its own callback surface", () => {
 	test("POST /runs/:id/finalize-result for its own run", async () => {
 		expect((await call("POST", `/runs/${RUN_A}/finalize-result`, scopedA)).status).toBe(200);
 	});
+
+	// warren-5a5c: the K8s App-mode credential remint rides the same
+	// run-scoped channel — the pod's finalize-entrypoint POSTs here with
+	// `WARREN_API_TOKEN` set to the run-scoped credential.
+	test("POST /runs/:id/git-credential for its own run", async () => {
+		expect((await call("POST", `/runs/${RUN_A}/git-credential`, scopedA)).status).toBe(200);
+	});
 });
 
 describe("run-scoped token — rejected on operator routes (acceptance)", () => {
@@ -90,6 +98,7 @@ describe("run-scoped token — rejected on operator routes (acceptance)", () => 
 	test("cannot reach another run's callback surface", async () => {
 		expect((await call("GET", `/runs/${RUN_B}/inbox`, scopedA)).status).toBe(403);
 		expect((await call("POST", `/runs/${RUN_B}/finalize-result`, scopedA)).status).toBe(403);
+		expect((await call("POST", `/runs/${RUN_B}/git-credential`, scopedA)).status).toBe(403);
 	});
 });
 
