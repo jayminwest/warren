@@ -1,5 +1,6 @@
 import type { RunAnalyticsTotals, RunDayBucket } from "@/api/client.ts";
 import { cn } from "@/lib/utils.ts";
+import { MeterBar } from "@/pages/telemetry/meter-bar.tsx";
 import { TelemetryPanel } from "@/pages/telemetry/telemetry-panel.tsx";
 import { useTelemetryWindow } from "@/pages/telemetry/use-telemetry-window.tsx";
 
@@ -27,7 +28,7 @@ function OutcomeColumn({ bucket, maxRuns }: { bucket: RunDayBucket; maxRuns: num
 	const h = (n: number) => `${Math.max(n === 0 ? 0 : 2, Math.round(n * scale))}px`;
 	return (
 		<div
-			className="flex h-[120px] min-w-[3px] flex-1 flex-col justify-end gap-px"
+			className="flex h-[120px] w-full min-w-0 flex-1 basis-0 flex-col justify-end gap-px"
 			title={`${bucket.key}: ${String(bucket.succeeded)} succeeded · ${String(bucket.cancelled)} cancelled · ${String(bucket.failed)} failed`}
 		>
 			{bucket.failed > 0 ? (
@@ -84,36 +85,22 @@ function StageRow({
 	const width =
 		known && maxMs > 0 ? `${Math.max(4, Math.round((medianMs / maxMs) * 100))}%` : "4px";
 	return (
-		<div className="flex w-full items-center gap-2.5">
-			<span
-				className={cn(
-					"w-24 shrink-0 font-mono text-[11px] leading-[14px]",
-					highlight ? "text-(--color-text)" : "text-(--color-text-2)",
-				)}
-			>
-				{label}
-			</span>
-			<div
-				className={cn(
-					"h-3 shrink-0 rounded-[1px]",
-					!known
-						? "bg-(--color-border)"
-						: highlight
-							? "bg-(--color-primary)"
-							: "bg-(--color-neutral)",
-				)}
-				style={{ width }}
-				title={known ? formatDuration(medianMs) : "no API surface for this stage yet"}
-			/>
-			<span
-				className={cn(
-					"font-mono text-[11px] leading-[14px]",
-					highlight && known ? "font-semibold text-(--color-primary)" : "text-(--color-text-3)",
-				)}
-			>
-				{formatDuration(medianMs)}
-			</span>
-		</div>
+		<MeterBar
+			label={label}
+			labelClass={cn("w-24", highlight ? "text-(--color-text)" : "text-(--color-text-2)")}
+			width={width}
+			markClass={cn(
+				"h-3",
+				!known
+					? "bg-(--color-border)"
+					: highlight
+						? "bg-(--color-primary)"
+						: "bg-(--color-neutral)",
+			)}
+			title={known ? formatDuration(medianMs) : "no API surface for this stage yet"}
+			value={formatDuration(medianMs)}
+			valueClass={highlight && known ? "font-semibold text-(--color-primary)" : undefined}
+		/>
 	);
 }
 
@@ -145,7 +132,7 @@ function OutcomesChart({ totals, series }: OutcomesData) {
 
 	return (
 		<>
-			<div className="flex h-[120px] w-full items-end gap-1">
+			<div className="flex h-[120px] w-full items-end gap-0.5">
 				{series.map((b) => (
 					<OutcomeColumn key={b.key} bucket={b} maxRuns={maxRuns} />
 				))}
