@@ -185,7 +185,7 @@ export function RunsPage() {
 		const seen = new Set<string>();
 		for (const r of loadedRows) seen.add(r.trigger);
 		return [
-			{ value: "all", label: "Trigger ⌄" },
+			{ value: "all", label: "Trigger" },
 			...[...seen].sort().map((t) => ({ value: t, label: t })),
 		];
 	}, [loadedRows]);
@@ -242,7 +242,7 @@ export function RunsPage() {
 					label="State"
 					value={filters.state}
 					onChange={(v) => setFilters((f) => ({ ...f, state: v as StateFilter }))}
-					options={STATE_FILTERS.map((s) => ({ value: s, label: s === "all" ? "State ⌄" : s }))}
+					options={STATE_FILTERS.map((s) => ({ value: s, label: s === "all" ? "State" : s }))}
 					title="Filters the loaded page client-side; the list API takes no state param yet"
 				/>
 				<FilterSelect
@@ -250,7 +250,7 @@ export function RunsPage() {
 					value={filters.agent}
 					onChange={(v) => setFilters((f) => ({ ...f, agent: v }))}
 					options={[
-						{ value: "all", label: "Agent ⌄" },
+						{ value: "all", label: "Agent" },
 						...(agents.data?.agents ?? []).map((a) => ({ value: a.name, label: a.name })),
 					]}
 				/>
@@ -259,7 +259,7 @@ export function RunsPage() {
 					value={filters.project}
 					onChange={(v) => setFilters((f) => ({ ...f, project: v }))}
 					options={[
-						{ value: "all", label: "Project ⌄" },
+						{ value: "all", label: "Project" },
 						...(projects.data?.projects ?? []).map((p) => ({
 							value: p.id,
 							label: p.gitUrl.replace(/^https:\/\/github\.com\//, ""),
