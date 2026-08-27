@@ -1,7 +1,8 @@
 import * as DialogPrimitive from "@radix-ui/react-dialog";
-import { Menu, X } from "lucide-react";
+import { X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Outlet, useLocation } from "react-router-dom";
+import { ConsoleBottomNav } from "@/components/console/console-bottom-nav.tsx";
 import { ConsoleSidebar, ConsoleSidebarBody } from "@/components/console/console-sidebar.tsx";
 import { ConsoleMobileStatusStrip, ConsoleTopbar } from "@/components/console/console-topbar.tsx";
 import { type ConsoleStats, useConsoleStats } from "@/components/console/use-console-stats.ts";
@@ -19,6 +20,8 @@ import { cn } from "@/lib/utils.ts";
  * Below md the chrome splits into the mock's two phone bands (warren-3290,
  * docs/ui-revamp/screens/mobile/operations.jsx): a 48px brand bar (mark +
  * wordmark + environment/identity chip) and a standalone 34px status strip.
+ * Navigation lives in the mock's 54px bottom tab bar (warren-4d4a); its
+ * "·· More" tab opens the slide-over drawer the hamburger used to.
  */
 
 /**
@@ -68,19 +71,8 @@ export function ConsoleShell() {
 			{/* Mobile header + main column. */}
 			<div className="flex min-h-0 min-w-0 flex-1 flex-col">
 				{/* Mobile chrome — visible only < md (warren-3290): the mock's two
-				    stacked bands, a 48px brand bar then the 34px status strip. The
-				    hamburger stays until the bottom-nav More tab lands (warren-4d4a). */}
+				    stacked bands, a 48px brand bar then the 34px status strip. */}
 				<div className="flex h-12 shrink-0 items-center gap-2 border-b border-(--color-border) bg-(--color-sidebar) px-3.5 md:hidden">
-					<Button
-						variant="ghost"
-						size="sm"
-						aria-label="Open navigation menu"
-						aria-expanded={mobileNavOpen}
-						onClick={() => setMobileNavOpen(true)}
-						className="h-8 w-8 shrink-0 p-0"
-					>
-						<Menu className="h-4 w-4" />
-					</Button>
 					<WarrenLogo className="h-5 w-5 shrink-0" />
 					<span className="text-[13px] leading-4 font-semibold tracking-[-0.02em] text-(--color-text)">
 						warren
@@ -104,6 +96,10 @@ export function ConsoleShell() {
 						<Outlet />
 					</ErrorBoundary>
 				</main>
+
+				{/* Mobile bottom tab bar (warren-4d4a): in-flow sibling of <main>,
+				    so pages scroll above it and nothing hides under the bar. */}
+				<ConsoleBottomNav onOpenMore={() => setMobileNavOpen(true)} />
 			</div>
 
 			{/* Mobile slide-over drawer: same sidebar body as the desktop rail. */}
