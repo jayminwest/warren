@@ -44,7 +44,7 @@ Total routes: **50**.
 | --- | --- | --- | --- |
 | `GET` | `/github-app/register` | `registerGitHubAppHandler` | warren-a647: App manifest registration; anonymous — see ./github-app.ts. |
 | `GET` | `/github-app/callback` | `gitHubAppCallbackHandler` |  |
-| `GET` | `/github-app/installed` | `gitHubAppInstalledHandler` | warren-54c7: the manifest setup_url target — GitHub's post-install redirect lands here carrying the installation id. |
+| `GET` | `/github-app/installed` | `gitHubAppInstalledHandler` | warren-54c7: the manifest setup_url target — GitHub's post-install redirect. |
 
 ## /healthz
 

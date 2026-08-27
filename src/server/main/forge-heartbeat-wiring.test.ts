@@ -6,6 +6,7 @@ import {
 	generateTestAppKeyPair,
 	stubGitHubAppServer,
 } from "../../forge/github-app/test-helpers.ts";
+import { HotForge } from "../../forge/hot-forge.ts";
 import { MetricsRegistry } from "../../observability/metrics-registry.ts";
 import type { Logger } from "../types.ts";
 import { bootForgeHeartbeatFromEnv } from "./forge-heartbeat-wiring.ts";
@@ -40,6 +41,18 @@ async function flushTicks(): Promise<void> {
 }
 
 describe("bootForgeHeartbeatFromEnv (warren-1295)", () => {
+	test("unwraps a HotForge wrapper and probes the App delegate (warren-b504)", () => {
+		const { logger } = makeLogger();
+		const handle = bootForgeHeartbeatFromEnv({
+			env: { WARREN_FORGE: "app" },
+			forge: new HotForge(makeAppForge()),
+			logger,
+			metricsRegistry: undefined,
+		});
+		expect(handle).not.toBeUndefined();
+		handle?.stop();
+	});
+
 	test("returns undefined when the resolved forge is not the App provider (default github arm)", () => {
 		const { logger } = makeLogger();
 		const handle = bootForgeHeartbeatFromEnv({

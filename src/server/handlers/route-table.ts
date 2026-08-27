@@ -19,6 +19,7 @@ import { streamLifecycleEventsHandler } from "./events-stream.ts";
 import {
 	gitHubAppCallbackHandler,
 	gitHubAppInstalledHandler,
+	gitHubAppRouteOptions,
 	registerGitHubAppHandler,
 } from "./github-app.ts";
 import { instanceFactsHandler } from "./instance.ts";
@@ -138,15 +139,14 @@ const ROUTE_TABLE: readonly RouteEntry[] = [
 		method: "GET",
 		pattern: "/github-app/callback",
 		policy: "anonymous",
-		build: () => gitHubAppCallbackHandler(),
+		build: (deps) => gitHubAppCallbackHandler(gitHubAppRouteOptions(deps)),
 	},
-	// warren-54c7: the manifest setup_url target — GitHub's post-install
-	// redirect lands here carrying the installation id.
+	// warren-54c7: the manifest setup_url target — GitHub's post-install redirect.
 	{
 		method: "GET",
 		pattern: "/github-app/installed",
 		policy: "anonymous",
-		build: () => gitHubAppInstalledHandler(),
+		build: (deps) => gitHubAppInstalledHandler(gitHubAppRouteOptions(deps)),
 	},
 	{ method: "GET", pattern: "/metrics", policy: "readOperator", build: metricsHandler },
 	// pl-7e38 step 12 (warren-d850): one-poll control-plane snapshot for the

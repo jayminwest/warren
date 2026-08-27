@@ -67,6 +67,7 @@ domains:
   storage: {}
   warren-api: {}
   github: {}
+  packaging: {}
 governance:
   max_entries: 100
   warn_entries: 150
