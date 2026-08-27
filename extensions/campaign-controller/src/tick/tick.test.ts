@@ -332,8 +332,8 @@ describe("runTick", () => {
 		h.warren.onGetRunRead((_id, count) => {
 			reads = count;
 			// Read #1 was tick 1's post-dispatch confirmation; read #2 is the
-		// item loop's reconcile (still running), read #3 is the restart
-		// sweep — the run settles only there.
+			// item loop's reconcile (still running), read #3 is the restart
+			// sweep — the run settles only there.
 			if (count >= 3) {
 				h.warren.setRunState(runId, {
 					state: "succeeded",
@@ -384,6 +384,39 @@ describe("runTick", () => {
 		expect(intents).toHaveLength(1);
 		const tick4 = await runTick(h.deps, h.campaignId);
 		expect(stagesOf(tick4.stages)).toContain("pr_intent:already_journaled");
+		expect(
+			h.store.actions
+				.listActionsForCampaign(h.campaignId)
+				.filter((action) => action.actionType === PR_INTENT_ACTION_TYPE),
+		).toHaveLength(1);
+	});
+
+	test("backfills a null journaled result_branch from the run wire (warren-5255)", async () => {
+		const h = harness({});
+		const tick1 = await runTick(h.deps, h.campaignId);
+		const runId = runIdOf(tick1);
+		// A warren predating the run-wire `branch` field: the run succeeds
+		// with no targetBranch override and no composed branch served, so the
+		// dispatch settles with result_branch null and the intent refuses.
+		h.warren.setRunState(runId, { state: "succeeded", costUsd: 1 });
+		const tick2 = await runTick(h.deps, h.campaignId);
+		expect(stagesOf(tick2.stages)).toContain("pr_intent:refused");
+		const settled = h.store.actions
+			.listActionsForCampaign(h.campaignId)
+			.find((action) => action.state === "succeeded");
+		expect(settled?.resultBranch).toBeNull();
+
+		// The warren upgrade lands and the run wire now serves the composed
+		// branch; the next tick backfills the journal row and renders.
+		h.warren.setRunState(runId, { branch: BRANCH });
+		const tick3 = await runTick(h.deps, h.campaignId);
+		expect(stagesOf(tick3.stages)).toContain("pr_intent:rendered");
+		const backfilled = h.store.actions
+			.listActionsForCampaign(h.campaignId)
+			.find((action) => action.resultRunId === runId && action.state === "succeeded");
+		expect(backfilled?.resultBranch).toBe(BRANCH);
+		// No second dispatch, no second intent.
+		expect(h.warren.createdRunCount()).toBe(1);
 		expect(
 			h.store.actions
 				.listActionsForCampaign(h.campaignId)

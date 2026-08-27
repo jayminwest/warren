@@ -112,6 +112,9 @@ export const runs = pgTable(
 		trigger: text("trigger").notNull(),
 		prUrl: text("pr_url"),
 		targetBranch: text("target_branch"),
+		// Composed workspace branch frozen at dispatch (warren-5255); the full
+		// story lives on the `Run.branch` doc comment in src/client/types.ts.
+		branch: text("branch"),
 		// Dispatch-supplied clone ref (warren-afeb); see the sqlite schema comment.
 		ref: text("ref"),
 		// Base-commit pinning (warren-aaf7); see the sqlite schema comment.

@@ -316,6 +316,7 @@ describe("terminal-state facts", () => {
 			state: "succeeded",
 			ref: "refs/heads/main",
 			targetBranch: "warren/run/seq-1",
+			branch: "warren/run/seq-1",
 			costUsd: 1.25,
 		});
 		const facts = readTerminalFacts(await client.getRun(id));
@@ -325,6 +326,7 @@ describe("terminal-state facts", () => {
 			failureReason: null,
 			ref: "refs/heads/main",
 			targetBranch: "warren/run/seq-1",
+			branch: "warren/run/seq-1",
 			costUsd: 1.25,
 		});
 	});

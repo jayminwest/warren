@@ -194,6 +194,32 @@ export class ActionStore {
 		return this.getAction(id) as ActionRow;
 	}
 
+	/**
+	 * Backfill a settled succeeded action's null `result_branch` from a safe
+	 * re-read of the run (warren-5255): a dispatch that settled against a
+	 * warren predating the run-wire `branch` field journaled null. Fills
+	 * null → value only; a recorded branch is frozen — a mismatch is a
+	 * StateError, never an overwrite.
+	 */
+	backfillResultBranch(id: string, branch: string): ActionRow {
+		const action = this.requireAction(id);
+		if (action.state !== "succeeded") {
+			throw new StateError(
+				`action ${id} is ${action.state}; only a succeeded row backfills a branch`,
+			);
+		}
+		if (action.resultBranch !== null) {
+			if (action.resultBranch !== branch) {
+				throw new StateError(
+					`action ${id} already recorded branch '${action.resultBranch}'; refusing to overwrite with '${branch}'`,
+				);
+			}
+			return action;
+		}
+		this.#update(id, { result_branch: branch });
+		return this.getAction(id) as ActionRow;
+	}
+
 	listActionsForWorkItem(workItemId: string): ActionRow[] {
 		const rows = this.#ctx.db
 			.query(`SELECT ${COLUMNS} FROM actions WHERE work_item_id = ? ORDER BY created_at_ms, id`)

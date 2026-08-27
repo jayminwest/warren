@@ -45,6 +45,9 @@ export const PUBLIC_RUN_FIELDS = [
 	"trigger",
 	"prUrl",
 	"targetBranch",
+	// warren-5255: the composed workspace branch frozen at dispatch — a
+	// branch name carrying the run id, same spectator class as salvageRef.
+	"branch",
 	// warren-afeb: the dispatch-supplied clone ref — a branch/tag/SHA name of
 	// the same class as targetBranch and salvageRef, safe for spectators.
 	"ref",

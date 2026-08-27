@@ -45,7 +45,7 @@ import {
 import { UpstreamPrReconciler } from "../reconcile/reconciler.ts";
 import type { CampaignStateStore } from "../store/state-store.ts";
 import type { CampaignRow, CampaignStatus, WorkItemRow } from "../store/types.ts";
-import type { WarrenClient } from "../warren-client.ts";
+import { runPushedBranch, type WarrenClient } from "../warren-client.ts";
 
 /** A concurrent tick holds the campaign lease. */
 export class TickConcurrentError extends CampaignControllerError {
@@ -221,14 +221,14 @@ async function runLeasedTick(
 		if (item.status === "terminal" && !intentRenderedFor.has(item.id)) {
 			stages.push(
 				await intentOutcome({
-				deps,
-				dispatcher,
-				campaign,
-				manifest,
-				item,
-				nowMs: deps.clock.nowMs(),
-				alreadyDispatched: true,
-			}),
+					deps,
+					dispatcher,
+					campaign,
+					manifest,
+					item,
+					nowMs: deps.clock.nowMs(),
+					alreadyDispatched: true,
+				}),
 			);
 		}
 	}
@@ -434,6 +434,11 @@ async function intentOutcome(ctx: WorkItemContext): Promise<TickOutcome> {
 			detail: { issue: issueNumber },
 		};
 	}
+	// warren-5255: a dispatch that settled against a warren predating the
+	// run-wire `branch` field journaled result_branch null. Re-read the run
+	// (a safe, retryable GET — the same class reconciliation uses) and
+	// backfill so the intent can derive its cross-fork head ref.
+	await backfillDispatchBranch(ctx);
 	const issue = await readIssueSnapshot(ctx.deps.github, ctx.manifest, issueNumber);
 	const upstream = await readUpstreamFacts(ctx.deps, ctx.manifest);
 	try {
@@ -462,6 +467,30 @@ async function intentOutcome(ctx: WorkItemContext): Promise<TickOutcome> {
 			};
 		}
 		throw error;
+	}
+}
+
+/**
+ * Backfill a succeeded dispatch's missing result_branch from the run wire
+ * (warren-5255). Fill-only: a journaled branch is frozen, and a warren that
+ * still serves no branch leaves the row untouched (the intent then refuses
+ * `run_branch_missing` fail-closed, exactly as before).
+ */
+async function backfillDispatchBranch(ctx: WorkItemContext): Promise<void> {
+	const settled = ctx.deps.store.actions
+		.listActionsForWorkItem(ctx.item.id)
+		.find(
+			(action) =>
+				action.actionType === WARREN_DISPATCH_ACTION_TYPE &&
+				action.state === "succeeded" &&
+				action.resultRunId !== null &&
+				action.resultBranch === null,
+		);
+	if (settled === undefined || settled.resultRunId === null) return;
+	const run = await ctx.deps.warrenClient.getRun(settled.resultRunId);
+	const branch = runPushedBranch(run);
+	if (branch !== null) {
+		ctx.deps.store.actions.backfillResultBranch(settled.id, branch);
 	}
 }
 

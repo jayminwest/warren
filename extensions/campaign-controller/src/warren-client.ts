@@ -41,9 +41,28 @@ export interface WarrenRunView {
 	ref: string | null;
 	/** Branch the reap path pushes the workspace back to. */
 	targetBranch: string | null;
+	/**
+	 * Composed workspace branch frozen at dispatch (warren-5255):
+	 * `${runBranchPrefix}/${runId}`, or the targetBranch override. Null on
+	 * warren instances or run rows predating the column.
+	 */
+	branch: string | null;
 	provider: string | null;
 	model: string | null;
 	costUsd: number | null;
+}
+
+/**
+ * The branch the run's push actually landed on: the dispatch-frozen
+ * `branch` when warren serves it (warren-5255), else the operator
+ * `targetBranch` override, else unknown. Never derives the prefix
+ * composition locally — that is warren's own single source of truth.
+ */
+export function runPushedBranch(run: {
+	branch: string | null;
+	targetBranch: string | null;
+}): string | null {
+	return run.branch ?? run.targetBranch;
 }
 
 /** Terminal-state facts reconciliation (pl-91b6 step 7) reads. */
@@ -53,6 +72,7 @@ export interface WarrenTerminalFacts {
 	failureReason: string | null;
 	ref: string | null;
 	targetBranch: string | null;
+	branch: string | null;
 	costUsd: number | null;
 }
 
@@ -210,6 +230,7 @@ export function parseRunEnvelope(raw: unknown): WarrenRunView {
 		failureReason: asString(row.failureReason),
 		ref: asString(row.ref),
 		targetBranch: asString(row.targetBranch),
+		branch: asString(row.branch),
 		provider: asString(row.provider),
 		model: asString(row.model),
 		costUsd: typeof row.costUsd === "number" ? row.costUsd : null,
@@ -231,6 +252,7 @@ export function readTerminalFacts(run: WarrenRunView): WarrenTerminalFacts {
 		failureReason: run.failureReason,
 		ref: run.ref,
 		targetBranch: run.targetBranch,
+		branch: run.branch,
 		costUsd: run.costUsd,
 	};
 }
