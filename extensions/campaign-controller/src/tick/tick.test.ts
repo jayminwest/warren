@@ -301,12 +301,13 @@ describe("runTick", () => {
 		// Exactly one warren POST for the whole lifecycle.
 		expect(h.warren.createdRunCount()).toBe(1);
 
-		// The third tick no-ops on the intent: the campaign completed, and a
-		// completed campaign renders nothing further.
+		// The third tick replays the intent idempotently: a completed campaign
+		// backfills/replays terminal work items under the deterministic action
+		// key instead of refusing them (warren-968d).
 		const tick3 = await runTick(h.deps, h.campaignId);
 		expect(stagesOf(tick3.stages)).toEqual([
 			"lease:acquired",
-			"pr_intent:campaign_not_active",
+			"pr_intent:already_journaled",
 			"github_reconcile:none",
 		]);
 		const intents = h.store.actions
@@ -316,6 +317,78 @@ describe("runTick", () => {
 		expect(intents[0]?.state).toBe("planned");
 		// Every GitHub interaction was a read.
 		expect(h.github.requestCount).toBeGreaterThan(0);
+	});
+
+	test("renders pr_intent before completion when the run settles during the restart sweep (warren-968d)", async () => {
+		const h = harness({});
+		const tick1 = await runTick(h.deps, h.campaignId);
+		const runId = runIdOf(tick1);
+
+		// The live interleaving: the run is still running when the item loop
+		// reconciles it, and completes before the restart sweep's second
+		// authoritative read — all within ONE tick. The old pipeline settled
+		// the campaign completed and the pr_intent stage never ran.
+		let reads = 0;
+		h.warren.onGetRunRead((_id, count) => {
+			reads = count;
+			// Read #1 was tick 1's post-dispatch confirmation; read #2 is the
+		// item loop's reconcile (still running), read #3 is the restart
+		// sweep — the run settles only there.
+			if (count >= 3) {
+				h.warren.setRunState(runId, {
+					state: "succeeded",
+					costUsd: 1.5,
+					targetBranch: BRANCH,
+				});
+			}
+		});
+		const tick2 = await runTick(h.deps, h.campaignId);
+		expect(reads).toBeGreaterThanOrEqual(3);
+		expect(stagesOf(tick2.stages)).toContain("reconcile_run:running");
+		expect(stagesOf(tick2.stages)).toContain("pr_intent:rendered");
+		expect(tick2.campaignStatus).toBe("completed");
+		const intents = h.store.actions
+			.listActionsForCampaign(h.campaignId)
+			.filter((action) => action.actionType === PR_INTENT_ACTION_TYPE);
+		expect(intents).toHaveLength(1);
+		expect(intents[0]?.state).toBe("planned");
+		expect(h.warren.createdRunCount()).toBe(1);
+	});
+
+	test("backfills pr_intent idempotently for a campaign completed un-rendered (warren-968d)", async () => {
+		const h = harness({});
+		const tick1 = await runTick(h.deps, h.campaignId);
+		h.warren.setRunState(runIdOf(tick1), {
+			state: "succeeded",
+			costUsd: 1,
+			targetBranch: BRANCH,
+		});
+		// The operator had supplied no summary yet, so the intent was skipped
+		// while the campaign settled completed.
+		const noSummaries = { ...h.deps, summaries: new Map() };
+		const tick2 = await runTick(noSummaries, h.campaignId);
+		expect(stagesOf(tick2.stages)).toContain("pr_intent:skipped_no_summary");
+		expect(tick2.campaignStatus).toBe("completed");
+
+		// The summary arrives later; the completed campaign backfills the
+		// intent under the deterministic action key instead of refusing.
+		const tick3 = await runTick(h.deps, h.campaignId);
+		expect(stagesOf(tick3.stages)).toEqual([
+			"lease:acquired",
+			"pr_intent:rendered",
+			"github_reconcile:none",
+		]);
+		const intents = h.store.actions
+			.listActionsForCampaign(h.campaignId)
+			.filter((action) => action.actionType === PR_INTENT_ACTION_TYPE);
+		expect(intents).toHaveLength(1);
+		const tick4 = await runTick(h.deps, h.campaignId);
+		expect(stagesOf(tick4.stages)).toContain("pr_intent:already_journaled");
+		expect(
+			h.store.actions
+				.listActionsForCampaign(h.campaignId)
+				.filter((action) => action.actionType === PR_INTENT_ACTION_TYPE),
+		).toHaveLength(1);
 	});
 
 	test("restart resumes the known run to terminal without a second POST", async () => {
