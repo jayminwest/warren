@@ -3,7 +3,7 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { agentsApi, projectsApi, runsApi } from "@/api/client.ts";
-import { isTerminalRunState, type RunRow } from "@/api/types.ts";
+import { isTerminalRunState } from "@/api/types.ts";
 import { OperatorOnly, useOperatorHint } from "@/components/operator-only.tsx";
 import { Alert } from "@/components/ui/alert.tsx";
 import { Button } from "@/components/ui/button.tsx";
@@ -11,9 +11,14 @@ import { EmptyState } from "@/components/ui/empty-state.tsx";
 import { Spinner } from "@/components/ui/spinner.tsx";
 import { useNow } from "@/hooks/use-now.ts";
 import { formatError } from "@/lib/format-error.ts";
-import { cn } from "@/lib/utils.ts";
 import { formatCostUsd } from "@/pages/run-detail-format.ts";
 import { RunsCardList } from "@/pages/runs/runs-cards.tsx";
+import {
+	matchesStateFilter,
+	NO_FILTERS,
+	type PageFilters,
+	RunsFilterBar,
+} from "@/pages/runs/runs-filter-bar.tsx";
 import { RunsTable } from "@/pages/runs/runs-table.tsx";
 
 /**
@@ -34,83 +39,6 @@ import { RunsTable } from "@/pages/runs/runs-table.tsx";
 const PAGE_SIZE_LS_KEY = "warren.runsList.pageSize";
 const PAGE_SIZE_OPTIONS: readonly number[] = [25, 50, 100, 200];
 const DEFAULT_PAGE_SIZE = 50;
-
-/** State filter values. "active" = running + queued (the export's chip). */
-const STATE_FILTERS = [
-	"all",
-	"active",
-	"running",
-	"queued",
-	"succeeded",
-	"failed",
-	"cancelled",
-] as const;
-type StateFilter = (typeof STATE_FILTERS)[number];
-
-type AgentFilter = "all" | string;
-type ProjectFilter = "all" | string;
-type TriggerFilter = "all" | string;
-
-interface PageFilters {
-	state: StateFilter;
-	agent: AgentFilter;
-	project: ProjectFilter;
-	trigger: TriggerFilter;
-	search: string;
-}
-
-const NO_FILTERS: PageFilters = {
-	state: "all",
-	agent: "all",
-	project: "all",
-	trigger: "all",
-	search: "",
-};
-
-function matchesStateFilter(state: RunRow["state"], filter: StateFilter): boolean {
-	if (filter === "all") return true;
-	if (filter === "active") return state === "running" || state === "queued";
-	return state === filter;
-}
-
-/**
- * Filter-bar control chrome from the export: bg, border, 27px height,
- * 10px quiet text. The state/trigger/search filters run client-side
- * over the loaded window (the list API takes no state/trigger param);
- * agent/project filters push to the server via the list query params.
- */
-function FilterSelect({
-	label,
-	value,
-	onChange,
-	options,
-	title,
-}: {
-	label: string;
-	value: string;
-	onChange: (value: string) => void;
-	options: { value: string; label: string }[];
-	title?: string;
-}) {
-	return (
-		<select
-			aria-label={label}
-			title={title}
-			value={value}
-			onChange={(e) => onChange(e.target.value)}
-			className={cn(
-				"h-[27px] rounded-(--radius-sm) border border-(--color-border) bg-(--color-bg) px-2 text-[10px] leading-3 text-(--color-text-2)",
-				value !== "all" && "border-(--color-border-strong)",
-			)}
-		>
-			{options.map((o) => (
-				<option key={o.value} value={o.value}>
-					{o.label}
-				</option>
-			))}
-		</select>
-	);
-}
 
 export function RunsPage() {
 	const [filters, setFilters] = useState<PageFilters>(NO_FILTERS);
@@ -202,12 +130,6 @@ export function RunsPage() {
 		total: runs.data?.costTotalUsd,
 		priced: runs.data?.costPricedCount ?? 0,
 	};
-	const anyFilterActive =
-		filters.state !== "all" ||
-		filters.agent !== "all" ||
-		filters.project !== "all" ||
-		filters.trigger !== "all" ||
-		filters.search.trim().length > 0;
 	const emptyHint = useOperatorHint("Dispatch one above.");
 	// Live durations (warren-b610): a 1s tick keeps the Duration cell of a
 	// running run moving between the 45s refetches. The tick runs only
@@ -243,66 +165,14 @@ export function RunsPage() {
 				</OperatorOnly>
 			</div>
 
-			{/* Filter strip (the export's surface bar). */}
-			<div className="flex shrink-0 flex-wrap items-center gap-[7px] rounded-t-(--radius-md) border border-(--color-border) bg-(--color-surface) px-[9px] py-[7px]">
-				<FilterSelect
-					label="State"
-					value={filters.state}
-					onChange={(v) => setFilters((f) => ({ ...f, state: v as StateFilter }))}
-					options={STATE_FILTERS.map((s) => ({ value: s, label: s === "all" ? "State" : s }))}
-					title="Filters the loaded page client-side; the list API takes no state param yet"
-				/>
-				<FilterSelect
-					label="Agent"
-					value={filters.agent}
-					onChange={(v) => setFilters((f) => ({ ...f, agent: v }))}
-					options={[
-						{ value: "all", label: "Agent" },
-						...(agents.data?.agents ?? []).map((a) => ({ value: a.name, label: a.name })),
-					]}
-				/>
-				<FilterSelect
-					label="Project"
-					value={filters.project}
-					onChange={(v) => setFilters((f) => ({ ...f, project: v }))}
-					options={[
-						{ value: "all", label: "Project" },
-						...(projects.data?.projects ?? []).map((p) => ({
-							value: p.id,
-							label: p.gitUrl.replace(/^https:\/\/github\.com\//, ""),
-						})),
-					]}
-				/>
-				<FilterSelect
-					label="Trigger"
-					value={filters.trigger}
-					onChange={(v) => setFilters((f) => ({ ...f, trigger: v }))}
-					options={triggerOptions}
-				/>
-				<button
-					type="button"
-					onClick={() => setFilters(NO_FILTERS)}
-					className={cn(
-						"flex h-[25px] items-center px-2 text-[10px] leading-3 font-medium",
-						anyFilterActive
-							? "text-(--color-text-2) hover:text-(--color-text)"
-							: "text-(--color-text-3) opacity-60",
-					)}
-					disabled={!anyFilterActive}
-				>
-					Clear
-				</button>
-				<span className="flex-1" />
-				<input
-					type="search"
-					aria-label="Filter by run ID or seed"
-					placeholder="Filter by run ID or seed"
-					value={filters.search}
-					onChange={(e) => setFilters((f) => ({ ...f, search: e.target.value }))}
-					className="h-[27px] w-[220px] shrink-0 rounded-(--radius-sm) border border-(--color-border-strong) bg-(--color-bg) px-[9px] text-[10px] leading-3 text-(--color-text-2) placeholder:text-(--color-text-3)"
-				/>
-			</div>
-
+			{/* Filter strip: mobile pill strip below md, the export's surface bar at md+ (warren-6419). */}
+			<RunsFilterBar
+				filters={filters}
+				setFilters={setFilters}
+				agentNames={(agents.data?.agents ?? []).map((a) => a.name)}
+				projects={(projects.data?.projects ?? []).map((p) => ({ id: p.id, gitUrl: p.gitUrl }))}
+				triggerOptions={triggerOptions}
+			/>
 			{/* Inventory table. */}
 			<div className="flex min-h-0 flex-1 flex-col overflow-clip rounded-b-(--radius-md) border border-t-0 border-(--color-border) bg-(--color-surface)">
 				{runs.isLoading ? (

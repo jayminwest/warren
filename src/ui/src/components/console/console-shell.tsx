@@ -1,22 +1,57 @@
 import * as DialogPrimitive from "@radix-ui/react-dialog";
-import { Menu, X } from "lucide-react";
+import { X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Outlet, useLocation } from "react-router-dom";
+import { ConsoleBottomNav } from "@/components/console/console-bottom-nav.tsx";
 import { ConsoleSidebar, ConsoleSidebarBody } from "@/components/console/console-sidebar.tsx";
-import { ConsoleTopbar } from "@/components/console/console-topbar.tsx";
-import { useConsoleStats } from "@/components/console/use-console-stats.ts";
+import { ConsoleMobileStatusStrip, ConsoleTopbar } from "@/components/console/console-topbar.tsx";
+import { type ConsoleStats, useConsoleStats } from "@/components/console/use-console-stats.ts";
 import { ErrorBoundary } from "@/components/error-boundary.tsx";
 import { Button } from "@/components/ui/button.tsx";
+import { WarrenLogo } from "@/components/warren-logo.tsx";
+import { useCapabilities } from "@/hooks/use-capabilities.ts";
+import { cn } from "@/lib/utils.ts";
 
 /**
  * The Direction C operator-console shell (warren-4ed7, pl-7e38 step 2):
  * fixed 224px sidebar + 42px status strip, with the routed page below.
  * Every later page issue mounts inside this shell via the Outlet.
  *
- * Below md the sidebar collapses into a drawer (the full responsive pass
- * is warren-dea8); the status strip stays, with the wider-only figures
- * hidden on narrow viewports.
+ * Below md the chrome splits into the mock's two phone bands (warren-3290,
+ * docs/ui-revamp/screens/mobile/operations.jsx): a 48px brand bar (mark +
+ * wordmark + environment/identity chip) and a standalone 34px status strip.
+ * Navigation lives in the mock's 54px bottom tab bar (warren-4d4a); its
+ * "·· More" tab opens the slide-over drawer the hamburger used to.
  */
+
+/**
+ * Environment/identity chip in the mobile brand bar (warren-3290). Same data
+ * as the drawer's InstanceCard: access mode as the label, health as the dot.
+ */
+function MobileIdentityChip({ stats }: { stats: ConsoleStats }) {
+	const caps = useCapabilities();
+	const isOperator = caps.can("readOperator");
+	return (
+		<span className="flex shrink-0 items-center gap-1.5 rounded-(--radius-md) border border-(--color-border) bg-(--color-surface) py-[5px] pr-2 pl-2">
+			<span
+				className={cn(
+					"h-1.5 w-1.5 shrink-0 rounded-full",
+					stats.health === "ok" && "bg-(--color-success)",
+					stats.health === "down" && "bg-(--color-danger)",
+					stats.health === "unknown" && "bg-(--color-text-3)",
+				)}
+				aria-hidden
+			/>
+			<span className="text-[11px] leading-[14px] font-medium text-(--color-text)">
+				{isOperator ? "operator" : "read-only"}
+			</span>
+			<span className="text-[10px] leading-3 text-(--color-text-3)" aria-hidden>
+				⌄
+			</span>
+		</span>
+	);
+}
+
 export function ConsoleShell() {
 	const stats = useConsoleStats();
 	const location = useLocation();
@@ -35,21 +70,18 @@ export function ConsoleShell() {
 
 			{/* Mobile header + main column. */}
 			<div className="flex min-h-0 min-w-0 flex-1 flex-col">
-				{/* Mobile top strip — visible only < md. The ConsoleTopbar header
-				    carries the border and the gutters; this row only adds the
-				    nav trigger (warren-1b58, no nested landmarks). */}
-				<div className="flex h-[42px] shrink-0 items-center md:hidden">
-					<Button
-						variant="ghost"
-						size="sm"
-						aria-label="Open navigation menu"
-						aria-expanded={mobileNavOpen}
-						onClick={() => setMobileNavOpen(true)}
-						className="h-8 w-8 p-0"
-					>
-						<Menu className="h-4 w-4" />
-					</Button>
-					<ConsoleTopbar stats={stats} />
+				{/* Mobile chrome — visible only < md (warren-3290): the mock's two
+				    stacked bands, a 48px brand bar then the 34px status strip. */}
+				<div className="flex h-12 shrink-0 items-center gap-2 border-b border-(--color-border) bg-(--color-sidebar) px-3.5 md:hidden">
+					<WarrenLogo className="h-5 w-5 shrink-0" />
+					<span className="text-[13px] leading-4 font-semibold tracking-[-0.02em] text-(--color-text)">
+						warren
+					</span>
+					<span className="flex-1" />
+					<MobileIdentityChip stats={stats} />
+				</div>
+				<div className="md:hidden">
+					<ConsoleMobileStatusStrip stats={stats} />
 				</div>
 
 				{/* Desktop status strip. */}
@@ -64,6 +96,10 @@ export function ConsoleShell() {
 						<Outlet />
 					</ErrorBoundary>
 				</main>
+
+				{/* Mobile bottom tab bar (warren-4d4a): in-flow sibling of <main>,
+				    so pages scroll above it and nothing hides under the bar. */}
+				<ConsoleBottomNav onOpenMore={() => setMobileNavOpen(true)} />
 			</div>
 
 			{/* Mobile slide-over drawer: same sidebar body as the desktop rail. */}
