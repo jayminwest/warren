@@ -1,6 +1,7 @@
 import { type DirectoryStat, RUN_ANALYTICS_NONE_KEY } from "@/api/client.ts";
 import { formatRunFailureReason } from "@/lib/labels.ts";
 import { cn } from "@/lib/utils.ts";
+import { formatScore } from "@/pages/telemetry/format.ts";
 import { MeterBar } from "@/pages/telemetry/meter-bar.tsx";
 import { TelemetryPanel } from "@/pages/telemetry/telemetry-panel.tsx";
 import { useTelemetryWindow } from "@/pages/telemetry/use-telemetry-window.tsx";
@@ -30,8 +31,8 @@ function DifficultyRow({ dir, maxScore }: { dir: DirectoryStat; maxScore: number
 				<MeterBar
 					width={width}
 					markClass="h-2.5 bg-(--color-warning)"
-					title={`difficulty score ${String(dir.difficultyScore)}`}
-					value={String(dir.difficultyScore)}
+					title={`difficulty score ${formatScore(dir.difficultyScore)}`}
+					value={formatScore(dir.difficultyScore)}
 				/>
 			</td>
 			<td className="py-1.5 pr-3 text-right font-mono text-[11px] leading-[14px] text-(--color-text-2)">
