@@ -98,13 +98,26 @@ describe("validateRepositoryPolicy", () => {
 		expectInvalid({ ...basePolicy(), maxNewPrsPerDay: 6 }, "between 1 and 5");
 	});
 
-	test("rejects any enabled mutation flag", () => {
+	test("admits createPullRequest — the one executable mutation (warren-84da)", () => {
 		const enabled = basePolicy() as { mutations: Record<string, unknown> };
 		enabled.mutations = { ...NO_MUTATIONS, createPullRequest: true };
-		expectInvalid(enabled, "createPullRequest");
+		const validated = validateRepositoryPolicy(enabled, { nowMs: NOW });
+		expect(validated.policy.mutations.createPullRequest).toBe(true);
+		expect(validated.policy.mutations.mergePullRequest).toBe(false);
+		// The digest must change with the flag: enabling the mutation is a
+		// new policy snapshot needing its own campaign approval.
+		const dryRun = validateRepositoryPolicy(basePolicy(), { nowMs: NOW });
+		expect(validated.digest).not.toBe(dryRun.digest);
+	});
+
+	test("rejects every enabled mutation flag without an executable code path", () => {
 		const merge = basePolicy() as { mutations: Record<string, unknown> };
 		merge.mutations = { ...NO_MUTATIONS, mergePullRequest: true, postComment: true };
 		expectInvalid(merge, "postComment, mergePullRequest");
+		// createPullRequest riding along does not launder the others in.
+		const mixed = basePolicy() as { mutations: Record<string, unknown> };
+		mixed.mutations = { ...NO_MUTATIONS, createPullRequest: true, pushCommits: true };
+		expectInvalid(mixed, "pushCommits");
 	});
 
 	test("rejects missing mutation flags", () => {

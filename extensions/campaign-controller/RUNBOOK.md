@@ -13,10 +13,21 @@ V0 is dry-run by **structural absence**, not by a flag:
 
 - The production GitHub transport (`src/github/http-transport.ts`) exposes one
   operation, `read`, and refuses any method other than `GET` and `HEAD`
-  *before* any network I/O. No mutation method exists on any transport.
-- The repository-policy schema rejects any enabled mutation flag.
-- The CLI refuses `--live` and `--execute` as usage errors.
-- No code path posts a PR, comments, replies, claims an issue, pushes a
+  *before* any network I/O. No mutation method exists on that transport.
+- **Phase 2 (warren-84da) added exactly one mutation**, in a separate class
+  (`src/github/pr-create.ts`): executing a journaled cross-fork PR intent.
+  It stays structurally absent under a dry-run policy — the creator cannot
+  be constructed unless the validated repository policy enables
+  `mutations.createPullRequest`, and enabling that flag changes the policy
+  digest, which requires a fresh owner-approved campaign (§8). Its target
+  is pinned to the policy upstream's `/pulls` collection.
+- The repository-policy schema rejects every other enabled mutation flag —
+  `createPullRequest` is the single flag with an executable code path.
+- The CLI refuses `--live` and `--execute` as usage errors. There is no
+  live flag: the capability comes only from the approved policy file plus
+  a GitHub credential.
+- Under a dry-run policy, no code path posts a PR; under any policy, no
+  code path comments, replies, claims an issue, pushes a
   commit, updates a branch, or enables auto-merge.
 - No code path reads GKE secrets, Kubernetes secrets, or any secret store.
 - No code path performs a real paid Warren dispatch against a live Warren
@@ -144,7 +155,14 @@ or by possession of any credential. Each needs its own explicit owner
 approval over a code revision that adds the exact capability:
 
 - a **real paid Warren dispatch** (any run against a live Warren);
-- posting, editing, closing, or reopening a **real pull request**;
+- posting a **real pull request**. The code path exists as of Phase 2
+  (warren-84da), but posting still requires ALL of: (1) a repository-policy
+  snapshot with `mutations.createPullRequest: true`, (2) the owner
+  importing + approving a campaign bound to that policy's digest (the flag
+  changes the digest, so no standing approval carries over), and (3) a
+  GitHub credential in the deployment. The first live PR is one issue and
+  one PR under such a fresh approval;
+- editing, closing, or reopening a **real pull request**;
 - **claiming an issue** or creating/editing an issue;
 - posting or editing any **comment or reply**, including re-review requests
   and thread resolutions;
