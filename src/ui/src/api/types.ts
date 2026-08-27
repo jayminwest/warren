@@ -177,15 +177,13 @@ export interface RunRow {
 	/** Declared provider/model frozen at dispatch (warren-2ede / #860). Null = predates the columns. */
 	provider: string | null;
 	model: string | null;
-	/**
-	 * Salvage-before-destroy (warren-cd3b): where a finalize_failed run's committed
-	 * work was captured — `salvageRef` is the rescue branch, `salvagePath` the git bundle.
-	 */
+	/** Salvage-before-destroy (warren-cd3b): rescue branch + git bundle of a finalize_failed run's work. */
 	salvageRef: string | null;
 	salvagePath: string | null;
 	/** Per-run cost in USD (warren-a7dc), the bridge's `get_session_stats` start/end delta. Null for non-pi runtimes. */
 	costUsd: number | null;
 	costBasis: RunCostBasis; // warren-f3c3: `subscription_estimate` = estimate, not a bill
+	maxCostUsd?: number | null; // warren-f8a2: runs-list cap overlay; absent for spectators and detail GETs
 	/** Input tokens consumed (warren-a7dc); see `costUsd` for nullability. */
 	tokensInput: number | null;
 	/** Output tokens produced (warren-a7dc); see `costUsd` for nullability. */
