@@ -10,6 +10,42 @@ kind: Kustomization
 resources:
   - ../../base
 patches:
+  # base/secrets.yaml is a placeholder TEMPLATE (README: "Secrets — never
+  # commit real values"). Applying it would install REPLACE_ME Secrets (or
+  # clobber real ones created imperatively), so delete all three from the
+  # render. Create the real Secrets BEFORE `kubectl apply` — the imperative
+  # commands are in ../../README.md and in the header of base/secrets.yaml
+  # (warren-df5c).
+  - target:
+      kind: Secret
+      name: warren-secrets
+    patch: |
+      $patch: delete
+      apiVersion: v1
+      kind: Secret
+      metadata:
+        name: warren-secrets
+        namespace: warren
+  - target:
+      kind: Secret
+      name: warren-git-token
+    patch: |
+      $patch: delete
+      apiVersion: v1
+      kind: Secret
+      metadata:
+        name: warren-git-token
+        namespace: warren-runs
+  - target:
+      kind: Secret
+      name: warren-openrouter-key
+    patch: |
+      $patch: delete
+      apiVersion: v1
+      kind: Secret
+      metadata:
+        name: warren-openrouter-key
+        namespace: warren-runs
   - target:
       kind: Ingress
       name: warren

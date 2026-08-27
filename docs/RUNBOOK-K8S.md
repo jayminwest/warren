@@ -85,6 +85,12 @@ kubectl apply -k deploy/k8s/overlays/gke     # GKE Autopilot
 kubectl apply -k deploy/k8s/overlays/kind    # local kind / k3d dev
 ```
 
+Both overlays **delete the placeholder Secret templates** from the render —
+the apply will not create them. Create the real Secrets imperatively
+BEFORE applying (commands in [`deploy/k8s/README.md`](../deploy/k8s/README.md),
+"Secrets — never commit real values"), because without `warren-secrets`
+the pod blocks in CreateContainerConfigError (warren-df5c).
+
 The base creates:
 
 - Two namespaces: `warren` for the control plane, `warren-runs` for run pods.
