@@ -135,3 +135,27 @@ export function ConsoleTopbar({ stats }: { stats: ConsoleStats }) {
 		</header>
 	);
 }
+
+/**
+ * The 34px phone status strip (warren-3290, docs/ui-revamp/screens/mobile/
+ * operations.jsx): exactly the four mobile figures — HEALTHY, RUN, QUE, BURN —
+ * left-packed with no spacer, on its own row under the brand bar.
+ */
+export function ConsoleMobileStatusStrip({ stats }: { stats: ConsoleStats }) {
+	return (
+		<header className="flex h-[34px] w-full shrink-0 items-center gap-3.5 overflow-clip border-b border-(--color-border) px-3.5">
+			<HealthStat health={stats.health} />
+			<Stat
+				label="RUNNING"
+				shortLabel="RUN"
+				value={stats.runningCount === null ? "—" : String(stats.runningCount)}
+			/>
+			<Stat
+				label="QUEUE"
+				shortLabel="QUE"
+				value={stats.queuedCount === null ? "—" : String(stats.queuedCount)}
+			/>
+			<BurnStat />
+		</header>
+	);
+}
