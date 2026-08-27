@@ -19,9 +19,10 @@
  *      never greps a log for the minted token.
  *
  * Scope guard (pl-26f3): no interactive prompts (credential wizard is
- * warren-80e9), no browser opening (auth handoff is warren-48f8) —
- * `--no-open` is reserved and inert here. The command prints the UI URL
- * as the seam warren-48f8 will open.
+ * warren-80e9). warren-48f8 IS here: the boot arms the one-time setup
+ * handoff and this command opens the browser at the redemption URL
+ * (open(1) / xdg-open), suppressed by --no-open or a non-TTY stdout; the
+ * URL is always printed as the fallback.
  */
 
 import { existsSync, mkdirSync } from "node:fs";
@@ -36,10 +37,7 @@ import { commandFailure } from "../output.ts";
 import { runServe, type ServeDeps } from "./serve.ts";
 
 export interface UpArgs {
-	/**
-	 * `--no-open` — reserved for the browser auth handoff (warren-48f8).
-	 * Inert in this step: nothing is opened either way.
-	 */
+	/** `--no-open` — do not open the browser at the setup URL (warren-48f8). */
 	readonly open?: boolean;
 }
 
@@ -62,6 +60,10 @@ export interface UpDeps {
 	/** Data-dir creation (tests script failure). */
 	readonly mkdir?: (path: string) => void;
 	readonly homeDir?: () => string;
+	/** warren-48f8: is stdout a TTY? Defaults to the live process check. */
+	readonly isTty?: () => boolean;
+	/** warren-48f8: open `url` in the platform browser (tests record the call). */
+	readonly openBrowser?: (url: string) => void;
 }
 
 export interface UpResult {
@@ -138,6 +140,16 @@ export function dockerDaemonLikelyReachable(env: EnvLike = process.env): boolean
 	return existsSync("/var/run/docker.sock") || existsSync("/run/docker.sock");
 }
 
+/** Which command opens a URL on this platform (best-effort). */
+function browserOpener(context: CliContext): (url: string) => void {
+	return (url: string) => {
+		const cmd = process.platform === "darwin" ? "open" : "xdg-open";
+		// Fire-and-forget: a failed/absent opener must never take the server
+		// down — the printed URL is the fallback path.
+		void context.spawn([cmd, url], { cwd: process.cwd() }).catch(() => undefined);
+	};
+}
+
 export async function runUp(context: CliContext, deps: UpDeps, args: UpArgs): Promise<UpResult> {
 	const probe: UpRuntimeProbe = deps.probe ?? {
 		platform: process.platform,
@@ -195,13 +207,24 @@ export async function runUp(context: CliContext, deps: UpDeps, args: UpArgs): Pr
 				context.stdio.stdout.write(
 					`✔ logged in to ${handle.url} (config: ${path}) — warren commands work with no env vars now\n`,
 				);
-				// warren-48f8 seam: the auth handoff will open this URL in a
-				// browser (behind `--open`, currently inert).
-				if (args.open === false) return;
-				context.stdio.stdout.write(`UI: ${handle.url}\n`);
+				// warren-48f8: open the one-time setup URL in a browser so the
+				// operator's tab lands already-logged-in; always print it as the
+				// fallback (a non-TTY stdout or a failed opener still shows it).
+				if (handle.setupUrl === undefined) {
+					context.stdio.stdout.write(`UI: ${handle.url}\n`);
+					return;
+				}
+				if (args.open === false) {
+					context.stdio.stdout.write(`UI (open this to sign in): ${handle.setupUrl}\n`);
+					return;
+				}
+				context.stdio.stdout.write(`UI: ${handle.setupUrl}\n`);
+				if ((deps.isTty ?? (() => process.stdout.isTTY ?? false))()) {
+					(deps.openBrowser ?? browserOpener(context))(handle.setupUrl);
+				}
 			},
 		},
-		{},
+		{ setupHandoff: true },
 	);
 }
 
@@ -211,7 +234,7 @@ export function registerUpCommand(program: Command, context: CliContext): void {
 		.description(
 			"boot warren for a fresh machine: detect the runtime, default the data dir, serve, and log the operator in",
 		)
-		.option("--no-open", "do not open the UI in a browser (reserved; warren-48f8)")
+		.option("--no-open", "do not open the UI in a browser (the setup URL is still printed)")
 		.action(async (opts: { open?: boolean }) => {
 			const result = await runUp(context, {}, { open: opts.open });
 			process.exit(result.exitCode);
