@@ -7,7 +7,7 @@ This page enumerates every `warren` command with its arguments, flags, and the s
 
 To refresh: `bun run gen:cli-ref`. To check (CI mode): `bun run gen:cli-ref:check`.
 
-Total commands: **21**.
+Total commands: **22**.
 
 ## Global options
 
@@ -360,6 +360,18 @@ warren serve [options]
 | Flag | Required | Default | Description |
 | --- | --- | --- | --- |
 | `--no-auth` |  |  | boot without bearer-token auth (loopback only) |
+
+### `warren up`
+
+boot warren for a fresh machine: detect the runtime, default the data dir, serve, and log the operator in
+
+```bash
+warren up [options]
+```
+
+| Flag | Required | Default | Description |
+| --- | --- | --- | --- |
+| `--no-open` |  |  | do not open the UI in a browser (reserved; warren-48f8) |
 
 ## Exit codes
 

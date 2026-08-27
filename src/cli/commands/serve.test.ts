@@ -89,4 +89,38 @@ describe("runServe", () => {
 		);
 		expect(received?.noAuth).toBe(true);
 	});
+
+	test("runs the onBooted hook after listening and stops the server when it throws", async () => {
+		const { context, out, err } = captureContext();
+		let stopped = false;
+		let booted = false;
+		const handle: WarrenServerHandle = {
+			transport: { kind: "tcp", hostname: "127.0.0.1", port: 8080 },
+			url: "http://127.0.0.1:8080",
+			stop: async () => {
+				stopped = true;
+			},
+		};
+
+		const result = await runServe(
+			context,
+			{
+				boot: async () => handle,
+				waitForShutdown: async () => {
+					throw new Error("never reached");
+				},
+				onBooted: async () => {
+					booted = true;
+					throw new Error("config write failed");
+				},
+			},
+			{},
+		);
+
+		expect(result.exitCode).toBe(1);
+		expect(booted).toBe(true);
+		expect(stopped).toBe(true);
+		expect(out.join("")).toContain("warren listening at");
+		expect(err.join("")).toContain("post-boot step failed");
+	});
 });
