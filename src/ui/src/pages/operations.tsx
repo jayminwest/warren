@@ -60,13 +60,13 @@ export function OperationsPage() {
 	const loading = overview.isLoading || runs.isLoading;
 
 	return (
-		<div className="flex min-w-0 flex-1 flex-col gap-4 px-3.5 pt-5 pb-12 md:px-6">
-			<header className="flex flex-wrap items-start justify-between gap-4 pb-1">
-				<div className="flex min-w-0 flex-col gap-1.5">
-					<h1 className="text-xl leading-6 font-semibold tracking-[-0.025em] text-(--color-text)">
+		<div className="flex min-w-0 flex-1 flex-col gap-4 px-3.5 pt-4 pb-12 md:px-6 md:pt-5">
+			<header className="flex items-center gap-2.5 pb-1 md:flex-wrap md:items-start md:justify-between md:gap-4">
+				<div className="flex min-w-0 flex-1 flex-col gap-0.5 md:flex-none md:gap-1.5">
+					<h1 className="text-[17px] leading-[22px] font-semibold tracking-[-0.02em] text-(--color-text) md:text-xl md:leading-6 md:tracking-[-0.025em]">
 						Operations
 					</h1>
-					<p className="text-[12px] leading-4 text-(--color-text-2)">
+					<p className="text-[11px] leading-3.5 text-(--color-text-2) md:text-[12px] md:leading-4">
 						Control-plane state and workload activity across this instance.
 					</p>
 				</div>
@@ -75,9 +75,10 @@ export function OperationsPage() {
 					<OperatorOnly>
 						<Link
 							to="/dispatch"
-							className="flex h-8 items-center gap-1.5 rounded-(--radius-sm) bg-(--color-primary) px-3 text-[11px] leading-3.5 font-medium text-(--color-primary-ink) hover:opacity-90"
+							className="flex items-center gap-1.5 rounded-(--radius-sm) bg-(--color-primary) px-[11px] py-[7px] text-[11px] leading-3.5 font-medium text-(--color-primary-ink) hover:opacity-90 md:h-8 md:px-3 md:py-0"
 						>
-							＋ Dispatch run
+							<span className="md:hidden">＋ Dispatch</span>
+							<span className="hidden md:inline">＋ Dispatch run</span>
 						</Link>
 					</OperatorOnly>
 				</div>
@@ -87,14 +88,15 @@ export function OperationsPage() {
 
 			<CapacityStrip overview={overview.data} runs={runs.data?.runs} now={now} />
 
-			<div className="flex flex-wrap gap-3 pt-1">
+			{/** md+ only per the mobile artboard — services/lifecycle are dropped at 375px. */}
+			<div className="hidden gap-3 pt-1 md:flex md:flex-wrap">
 				<ServicesPanel overview={overview.data} health={stats.health} />
 				<LifecycleTable overview={overview.data} runs={runs.data?.runs} now={now} />
 			</div>
 
 			<InterventionsPanel overview={overview.data} />
 
-			<div className="flex flex-wrap gap-3 pt-1">
+			<div className="flex flex-col gap-3 pt-1 md:flex-row md:flex-wrap">
 				<ActiveWorkloads
 					runs={runs.data?.runs}
 					projects={projects.data?.projects}
