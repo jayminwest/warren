@@ -71,6 +71,8 @@ ensure_bun() {
   if [ -n "$missing" ]; then
     if [ "$(id -u 2>/dev/null || echo nonroot)" = "0" ] && command -v apt-get >/dev/null 2>&1; then
       log "installing missing prerequisites:$missing"
+      # Slim images ship empty apt lists — update before the first install.
+      apt-get update -qq >/dev/null 2>&1 || true
       # shellcheck disable=SC2086
       apt-get install -y $missing >/dev/null || die "apt-get install failed for:$missing"
       for tool in curl unzip; do
