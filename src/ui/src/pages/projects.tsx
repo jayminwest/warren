@@ -74,7 +74,7 @@ export function ProjectsPage() {
 	const rows = projects.data?.projects ?? [];
 
 	return (
-		<div className="flex min-h-full flex-col px-6 pt-5 pb-12 sm:px-[22px]">
+		<div className="flex min-h-full flex-col px-3.5 pt-5 pb-12 md:px-6">
 			{/* Page header: title + one-line premise, actions on the right
 			    (canvas layout: 20px semibold title, quiet description). */}
 			<div className="flex flex-wrap items-start justify-between gap-4 pb-5">
@@ -132,7 +132,7 @@ export function ProjectsPage() {
 										<Th className="w-[110px]">Last head</Th>
 										<Th className="w-[110px]">Last fetched</Th>
 										<Th className="w-[110px]">Issue queue</Th>
-										<Th className="hidden w-[100px] md:table-cell">Added</Th>
+										<Th className="w-[100px]">Added</Th>
 										<Th className="w-[130px] text-right">Actions</Th>
 									</tr>
 								</thead>
@@ -279,7 +279,7 @@ function RegistryRow({
 					<span className="font-mono text-[10px] leading-3 text-(--color-text-3)">—</span>
 				)}
 			</td>
-			<td className="hidden px-2.5 py-1.5 font-mono text-[10px] leading-3 text-(--color-text-3) md:table-cell">
+			<td className="px-2.5 py-1.5 font-mono text-[10px] leading-3 text-(--color-text-3)">
 				{formatDate(project.addedAt)}
 			</td>
 			<td className="px-2.5 py-1.5 text-right">
