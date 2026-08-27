@@ -137,7 +137,7 @@ describe("spawnRun: burrow branch composition (warren-9993)", () => {
 			prompt: "p",
 		});
 		const upBody = calls.find((c) => c.path === "/sandboxes")?.body as { branch?: string };
-		expect(upBody.branch).toBe(`burrow/${result.run.id}`);
+		expect(upBody.branch).toBe(`warren/${result.run.id}`);
 	});
 
 	test("env-level runBranchPrefixDefault overrides the built-in 'burrow' default", async () => {

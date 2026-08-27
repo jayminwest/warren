@@ -274,7 +274,7 @@ export interface ServerDeps {
 	 * Deployment-wide run-branch prefix fallback (warren-9993). Resolved
 	 * from `WARREN_RUN_BRANCH_PREFIX` at boot and threaded into every
 	 * `spawnRun` call so a per-project default in `.warren/defaults.json`
-	 * still wins. Unset → spawnRun falls back to "burrow".
+	 * still wins. Unset → spawnRun falls back to the built-in default ("warren").
 	 */
 	readonly runBranchPrefixDefault?: string;
 	/**

@@ -55,8 +55,8 @@ describe("spawnRun: continuation (warren-4b11)", () => {
 			},
 		});
 
-		// Default prefix is "burrow"; parent branch is burrow/<parentId>.
-		expect(refreshRef).toBe(`burrow/${parentId}`);
+		// Default prefix is "warren"; parent branch is warren/<parentId>.
+		expect(refreshRef).toBe(`warren/${parentId}`);
 		expect(run.parentRunId).toBe(parentId);
 	});
 
@@ -111,7 +111,7 @@ describe("spawnRun: continuation (warren-4b11)", () => {
 			},
 		});
 
-		expect(refreshRef).toBe(`burrow/${parentId}`);
+		expect(refreshRef).toBe(`warren/${parentId}`);
 	});
 
 	test("targetBranch pins the burrow branch to the PR head ref (warren-a993)", async () => {

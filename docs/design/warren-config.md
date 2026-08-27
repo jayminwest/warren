@@ -79,7 +79,8 @@ silently replaced by the project default. `resolveCapOverride` in
 `src/runs/cost-cap.ts` is the one implementation of this chain.
 `runBranchPrefix` (warren-9993) overrides the prefix warren composes the
 burrow branch from (`${prefix}/${run.id}`); precedence project default >
-`WARREN_RUN_BRANCH_PREFIX` env > built-in `"burrow"`. `agentImage`
+`WARREN_RUN_BRANCH_PREFIX` env > built-in `"warren"` (warren-2de0; the
+legacy default was `"burrow"`). `agentImage`
 (warren-fabb) pins the agent image for the container runtimes — a Python
 mirror runs its agent in a stack-specific image without redeploying warren.
 Precedence: project `agentImage` > `WARREN_DOCKER_AGENT_IMAGE` /
