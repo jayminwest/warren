@@ -66,6 +66,7 @@ import {
 	steerRunHandler,
 	streamRunEventsHandler,
 } from "./runs/index.ts";
+import { setupHandoffHandler } from "./setup.ts";
 
 /* ----------------------------------------------------------------------- */
 /* Route table                                                              */
@@ -148,16 +149,19 @@ const ROUTE_TABLE: readonly RouteEntry[] = [
 		policy: "anonymous",
 		build: (deps) => gitHubAppInstalledHandler(gitHubAppRouteOptions(deps)),
 	},
+	// warren-48f8: setup-code redemption; anonymous by necessity — the code IS
+	// the auth. 404 unless the boot armed the handoff (src/server/setup-handoff.ts).
+	{
+		method: "GET",
+		pattern: "/setup",
+		policy: "anonymous",
+		build: (deps) => setupHandoffHandler(deps.setupHandoff),
+	},
 	{ method: "GET", pattern: "/metrics", policy: "readOperator", build: metricsHandler },
 	// pl-7e38 step 12 (warren-d850): one-poll control-plane snapshot for the
 	// Operations dashboard. `readPublic` with a reduced projection — a
 	// spectator sees run counts only (see ./ops-overview.ts).
-	{
-		method: "GET",
-		pattern: "/ops/overview",
-		policy: "readPublic",
-		build: opsOverviewHandler,
-	},
+	{ method: "GET", pattern: "/ops/overview", policy: "readPublic", build: opsOverviewHandler },
 	// pl-7e38 step 15 (warren-5eec): cross-run Event explorer query, readPublic
 	// with the same per-row `projectEvent` reduction as `/runs/:id/events`.
 	{ method: "GET", pattern: "/events", policy: "readPublic", build: listEventsHandler },
@@ -166,12 +170,7 @@ const ROUTE_TABLE: readonly RouteEntry[] = [
 	// warren-2eec: read-only instance facts for the operator console. The
 	// body is a boot facts allowlist; spectators get the reduced projection
 	// (src/instance/facts.ts). Never secrets or connection strings.
-	{
-		method: "GET",
-		pattern: "/instance",
-		policy: "readPublic",
-		build: instanceFactsHandler,
-	},
+	{ method: "GET", pattern: "/instance", policy: "readPublic", build: instanceFactsHandler },
 
 	{ method: "GET", pattern: "/agents", policy: "readPublic", build: listAgentsHandler },
 	{ method: "GET", pattern: "/agents/:name", policy: "readPublic", build: getAgentHandler },
@@ -426,6 +425,7 @@ export const API_PREFIXES: readonly string[] = [
 	// warren-2eec: instance facts surface (`GET /instance`).
 	"/instance",
 	"/github-app",
+	"/setup", // warren-48f8: the setup-handoff redemption page (an API path, not SPA).
 	// warren-f566: the global lifecycle stream (`/events/stream`).
 	"/events",
 ];

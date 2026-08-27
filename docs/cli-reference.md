@@ -371,7 +371,7 @@ warren up [options]
 
 | Flag | Required | Default | Description |
 | --- | --- | --- | --- |
-| `--no-open` |  |  | do not open the UI in a browser (reserved; warren-48f8) |
+| `--no-open` |  |  | do not open the UI in a browser (the setup URL is still printed) |
 | `--no-wizard` |  |  | skip the first-boot credential wizard (also automatic when stdin is not a TTY) |
 
 ## Exit codes

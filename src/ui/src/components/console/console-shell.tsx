@@ -35,8 +35,10 @@ export function ConsoleShell() {
 
 			{/* Mobile header + main column. */}
 			<div className="flex min-h-0 min-w-0 flex-1 flex-col">
-				{/* Mobile top strip — visible only < md. */}
-				<header className="flex h-[42px] shrink-0 items-center gap-3 border-b border-(--color-border) md:hidden">
+				{/* Mobile top strip — visible only < md. The ConsoleTopbar header
+				    carries the border and the gutters; this row only adds the
+				    nav trigger (warren-1b58, no nested landmarks). */}
+				<div className="flex h-[42px] shrink-0 items-center md:hidden">
 					<Button
 						variant="ghost"
 						size="sm"
@@ -48,10 +50,10 @@ export function ConsoleShell() {
 						<Menu className="h-4 w-4" />
 					</Button>
 					<ConsoleTopbar stats={stats} />
-				</header>
+				</div>
 
 				{/* Desktop status strip. */}
-				<div className="hidden md:flex">
+				<div className="hidden md:block">
 					<ConsoleTopbar stats={stats} />
 				</div>
 

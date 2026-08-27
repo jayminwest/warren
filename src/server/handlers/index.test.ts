@@ -95,6 +95,11 @@ describe("ROUTE_TABLE policy classification", () => {
 		// warren-54c7: GitHub's post-install redirect target; renders only what
 		// the query string carries (the installation id), nothing server-side.
 		"GET /github-app/installed",
+		// warren-48f8: one-time setup code redemption — anonymous by necessity
+		// (browser navigation carries no bearer); the single-use code IS the
+		// auth, and the handoff never arms under WARREN_AUTH=public (the route
+		// 404s there, so a spectator learns nothing from it).
+		"GET /setup",
 	];
 
 	/** Reads that must stay operator-only — each with the reason it is here. */

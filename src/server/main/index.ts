@@ -40,11 +40,12 @@ import { loadWarrenServerConfigFromFile } from "../../server-config/index.ts";
 import { SeedsTracker } from "../../tracker/seeds-tracker.ts";
 import { loadTriggerSchedulerConfigFromEnv } from "../../triggers/index.ts";
 import { createWarrenConfigCache } from "../../warren-config/index.ts";
-import { NO_AUTH, resolveAuth, resolveAuthKind, resolveOperatorToken } from "../auth.ts";
-import { DEFAULT_DATA_DIR, type EnvLike, loadServerConfigFromEnv } from "../config.ts";
+import { NO_AUTH, resolveAuth, resolveAuthKind } from "../auth.ts";
+import { type EnvLike, loadServerConfigFromEnv } from "../config.ts";
 import { bootGitHubAppRegistrationGate } from "../github-app-gate.ts";
 import { bootScheduler } from "../scheduler.ts";
 import { startServer } from "../server.ts";
+import { armSetupHandoffFromBoot, setupRedemptionUrl } from "../setup-handoff.ts";
 import { loadEventStreamLimitsFromEnv } from "../stream-limits.ts";
 import type { AuthProvider, RunActivityCheck, ServeHandle } from "../types.ts";
 import { seedAgentsAtBoot } from "./agent-seeding.ts";
@@ -64,6 +65,7 @@ import { bootPlanRunCoordinatorWiring } from "./plan-run-wiring.ts";
 import { bootPreviewSurface } from "./preview-wiring.ts";
 import { wireInfraLostRetry } from "./retry-wiring.ts";
 import { bootK8sRuntime, resolveBootRuntimeProvider } from "./runtime-wiring.ts";
+import { bootstrapOperatorToken } from "./token-bootstrap.ts";
 import { bootToolCallsBackfill } from "./tool-calls-backfill-wiring.ts";
 import { closeDatabase, defaultSpawn, redactDbUrl, resolvePgPoolMax } from "./utils.ts";
 import { bootWorkspaceGc } from "./workspace-gc-wiring.ts";
@@ -78,6 +80,7 @@ export interface BootServerOptions {
 	readonly defaultUiDistDir?: string;
 	/** Override `Date.now()` for deterministic tests. */
 	readonly now?: () => Date;
+	readonly setupHandoff?: boolean; // warren-48f8: arm the one-time setup handoff (warren up only).
 	/** warren-53ea: boot-wired IssueTracker override; pass it ALREADY-CONNECTED. */
 	readonly issueTracker?: import("../../tracker/contract.ts").IssueTracker;
 }
@@ -86,40 +89,19 @@ export interface WarrenServerHandle extends ServeHandle {
 	stop(): Promise<void>;
 	/** Token from the mint-or-persist path (not env); `warren up` writes the client config. */
 	readonly operatorToken?: string;
+	readonly setupUrl?: string; // warren-48f8: one-time /setup URL, only when the handoff armed.
 }
 
 export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenServerHandle> {
 	const env = opts.env ?? process.env;
 	const { logger, metricsRegistry } = await bootObservability(env);
 
-	// warren-ef6e fresh-install token bootstrap: with no WARREN_API_TOKEN
-	// (and no --no-auth), mint-or-reuse the persisted operator token.
-	// process.env is patched because dispatch-time run-token seams fall
-	// through to `process.env` for the mint secret.
-	const tokenBoot =
-		opts.noAuth === true
-			? null
-			: resolveOperatorToken(env, env.WARREN_DATA_DIR ?? DEFAULT_DATA_DIR);
-	const bootEnv =
-		tokenBoot === null || tokenBoot.source === "env"
-			? env
-			: { ...env, WARREN_API_TOKEN: tokenBoot.token };
-	if (tokenBoot !== null && tokenBoot.source !== "env") {
-		process.env.WARREN_API_TOKEN = tokenBoot.token;
-		if (tokenBoot.source === "minted") {
-			// The field name is deliberately NOT `token`: LOG_REDACT_OPTIONS censors
-			// that name (warren-b2dd); this prints the credential exactly once (warren-ef6e).
-			logger.info(
-				{ mintedOperatorToken: tokenBoot.token, path: tokenBoot.path },
-				"WARREN_API_TOKEN unset — minted an operator token (printed exactly once; persisted under the data dir)",
-			);
-		} else {
-			logger.info(
-				{ path: tokenBoot.path },
-				"WARREN_API_TOKEN unset — reusing the persisted operator token",
-			);
-		}
-	}
+	// warren-ef6e fresh-install token bootstrap (see ./token-bootstrap.ts).
+	const { tokenBoot, bootEnv } = bootstrapOperatorToken({
+		env,
+		logger,
+		...(opts.noAuth !== undefined ? { noAuth: opts.noAuth } : {}),
+	});
 
 	const serverConfig = loadServerConfigFromEnv({
 		env: bootEnv,
@@ -134,6 +116,9 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 	// org allowlist; `undefined` in every other mode ⇒ no org restriction.
 	const authKind = resolveAuthKind(env);
 	const publicAllowlist = resolvePublicAllowlist(authKind === "public", env);
+
+	// warren-48f8: one-time setup handoff (warren up only; never public/no-auth).
+	const setupHandoffBoot = armSetupHandoffFromBoot(opts, tokenBoot, env, authKind, logger);
 
 	if (serverConfig.dbUrlConflict !== null) {
 		logger.warn(
@@ -392,6 +377,7 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 		runtimeProvider,
 		forge,
 		gitHubAppRegistration,
+		...(setupHandoffBoot !== undefined ? { setupHandoff: setupHandoffBoot.store } : {}),
 		...(gitHubAppActivation !== undefined ? { gitHubAppActivation } : {}),
 		broker,
 		// warren-f566: the global lifecycle stream broker the bus wiring owns.
@@ -458,6 +444,9 @@ export async function bootServer(opts: BootServerOptions = {}): Promise<WarrenSe
 		transport: handle.transport,
 		url: handle.url,
 		...(tokenBoot !== null && tokenBoot.source !== "env" ? { operatorToken: tokenBoot.token } : {}),
+		...(setupHandoffBoot !== undefined
+			? { setupUrl: setupRedemptionUrl(handle.url, setupHandoffBoot.code) }
+			: {}),
 		stop: async () => {
 			logger.info({}, "warren server stopping");
 			// Stop the HTTP listener first, then drain the scheduler so any in-flight
